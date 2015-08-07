@@ -1091,7 +1091,24 @@ static int mxsfb_init_fbinfo_dt(struct mxsfb_info *host)
 	if (!ret) {
 		memcpy(host->disp_dev, disp_dev, strlen(disp_dev));
 		/* Timing is from encoder driver */
-		goto put_display_node;
+
+		/*
+		 * ### FIXME ### 06.08.2015 HK:
+		 *
+		 * Before mxsfb_probe() calls mxsfb_init_fbinfo(), which in
+		 * turn calls us here, fb_info was newly allocated and the
+		 * modelist initialized to an empty list. However our caller
+		 * mxsfb_init_fbinfo() expects us to fill the modelist,
+		 * because it will immediately try to allocate the framebuffer
+		 * after we return. So if we return here already, the modelist
+		 * is still empty and framebuffer allocation will/may fail due
+		 * to some uninitialized values (e.g. resolution).
+		 *
+		 * We work around this by not returning here and duplicating
+		 * the dislpay/timing information from the ldb device tree
+		 * entry also in the lcdif entry. This must be fixed!
+		 */
+//###		goto put_display_node;
 	}
 
 	timings = of_get_display_timings(display_np);

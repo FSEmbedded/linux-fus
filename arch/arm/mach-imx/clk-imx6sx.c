@@ -600,6 +600,9 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	imx_clk_set_parent(clks[IMX6SX_CLK_EIM_SLOW_SEL], clks[IMX6SX_CLK_PLL2_PFD2]);
 	imx_clk_set_rate(clks[IMX6SX_CLK_EIM_SLOW], 132000000);
 
+	/* Set LDB parent to PLL5 ### */
+	imx_clk_set_parent(clks[IMX6SX_CLK_LDB_DI0_SEL], clks[IMX6SX_CLK_PLL5_VIDEO_DIV]);
+
 	/* set parent clock for LCDIF1 pixel clock */
 	imx_clk_set_parent(clks[IMX6SX_CLK_LCDIF1_PRE_SEL], clks[IMX6SX_CLK_PLL5_VIDEO_DIV]);
 	imx_clk_set_parent(clks[IMX6SX_CLK_LCDIF1_SEL], clks[IMX6SX_CLK_LCDIF1_PODF]);
