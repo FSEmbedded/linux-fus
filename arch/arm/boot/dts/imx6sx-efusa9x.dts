@@ -149,6 +149,20 @@
 			status = "disabled";
 		};
 
+#if 0
+		reg_atmel_mxt_vdd: atmel_mxt_vdd {
+			compatible = "regulator-fixed";
+			regulator-name = "mxt-3v3";
+			status = "enabled";
+		};
+
+		reg_atmel_mxt_avdd: atmel_mxt_avdd {
+			compatible = "regulator-fixed";
+			regulator-name = "mxt-3v3";
+			status = "enabled";
+		};
+#endif
+
 #if 0 //###
 		reg_sd3_vmmc: sd3_vmmc{
 			compatible = "regulator-fixed";
@@ -759,7 +773,6 @@
        // ### TODO: SX8655 on SINTF 0x48 -> driver missing from 3.14.28
        // ### TODO: SX8655 on RGB adapter 0x49 -> driver missing from 3.14.28
        // ### TODO: FT5x06 on touch connector
-       // ### TODO: mXT224 on touch connector
 
        pca9632@60 {
 		compatible = "nxp,pca9632";
@@ -788,14 +801,19 @@
 		};
 	};
 
-#if 0
 	mxt224@4a {
 		compatible = "atmel,maxtouch";
 		reg = <0x4a>;
 		interrupt-parent = <&gpio7>;
 		interrupts = <0 2>;
-	};
+		atmel,cfg_name = "mxt224.cfg";
+		atmel,reset-gpio = <&gpio3 21 0>;
+#if 0
+		atmel,suspend-mode = <2>;
+		vdd = <&reg_atmel_mxt_vdd>;
+		avdd = <&reg_atmel_mxt_avdd>;
 #endif
+	};
 
 #if 0
         egalax_ts@04 {
