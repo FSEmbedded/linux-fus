@@ -694,8 +694,6 @@
 	pinctrl-0 = <&pinctrl_i2c1_1>;
 	status = "okay";
 
-       // ### TODO: RTC PCA8565, this is not yet converted to device trees
-
 	sgtl5000: sgtl5000@0a {
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
@@ -703,6 +701,11 @@
 		VDDA-supply = <&reg_sgtl5000_vdda>;
 		VDDIO-supply = <&reg_sgtl5000_vddio>;
 		VDDD-supply = <&reg_sgtl5000_vddd>;
+	};
+
+	rtc8565@51 {
+		compatible = "nxp,pcf8565", "nxp,pcf8563";
+		reg = <0x51>;
 	};
 
 #if 0

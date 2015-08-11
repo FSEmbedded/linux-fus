@@ -40,5 +40,16 @@ int rtc_set_ntp_time(struct timespec now)
 		rtc_class_close(rtc);
 	}
 
+#ifdef CONFIG_RTC_HCTOSYS_OPT
+	rtc = rtc_class_open(CONFIG_RTC_HCTOSYS_OPT_DEVICE);
+	if (rtc) {
+		/* rtc_hctosys exclusively uses UTC, so we call set_time here,
+		 * not set_mmss. */
+		if (rtc->ops && (rtc->ops->set_time || rtc->ops->set_mmss))
+			err = rtc_set_time(rtc, &tm);
+		rtc_class_close(rtc);
+	}
+#endif
+
 	return err;
 }

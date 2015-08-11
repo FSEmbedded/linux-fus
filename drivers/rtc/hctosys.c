@@ -22,18 +22,17 @@
  * the best guess is to add 0.5s.
  */
 
-static int __init rtc_hctosys(void)
+static int __init do_rtc_hctosys(char *name)
 {
 	int err = -ENODEV;
 	struct rtc_time tm;
 	struct timespec tv = {
 		.tv_nsec = NSEC_PER_SEC >> 1,
 	};
-	struct rtc_device *rtc = rtc_class_open(CONFIG_RTC_HCTOSYS_DEVICE);
+	struct rtc_device *rtc = rtc_class_open(name);
 
 	if (rtc == NULL) {
-		pr_err("%s: unable to open rtc device (%s)\n",
-			__FILE__, CONFIG_RTC_HCTOSYS_DEVICE);
+		pr_err("%s: unable to open rtc device (%s)\n", __FILE__, name);
 		goto err_open;
 	}
 
@@ -49,6 +48,13 @@ static int __init rtc_hctosys(void)
 	if (err) {
 		dev_err(rtc->dev.parent,
 			"hctosys: invalid date/time\n");
+		goto err_invalid;
+	}
+
+	if ((tm.tm_year == 70) && (tm.tm_mon == 0) && (tm.tm_mday == 1)) {
+		dev_err(rtc->dev.parent,
+			"hctosys: 1970-01-01 not accepted as valid date\n");
+		err = -EINVAL;
 		goto err_invalid;
 	}
 
@@ -71,6 +77,17 @@ err_open:
 	rtc_hctosys_ret = err;
 
 	return err;
+}
+
+static int __init rtc_hctosys(void)
+{
+#ifdef CONFIG_RTC_HCTOSYS_OPT
+	/* Check the optional RTC first (e.g. more precise external RTC) */
+	if (!do_rtc_hctosys(CONFIG_RTC_HCTOSYS_OPT_DEVICE))
+		return 0;
+#endif
+
+	return do_rtc_hctosys(CONFIG_RTC_HCTOSYS_DEVICE);
 }
 
 late_initcall(rtc_hctosys);

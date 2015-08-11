@@ -56,6 +56,26 @@ config RTC_HCTOSYS_DEVICE
 	  sleep states. Do not specify an RTC here unless it stays powered
 	  during all this system's supported sleep states.
 
+config RTC_HCTOSYS_OPT
+	bool "Check an optional RTC first"
+	depends on RTC_HCTOSYS
+       	default n
+       	help
+          Some devices have an optional RTC. For example some system variants
+	  may be equipped with an additional external RTC that is more
+	  precise than the on-chip RTC that shows some drift.
+
+	  Say Y here if such an optional RTC should be checked first before
+	  falling back to the standard RTC defined above.
+
+config RTC_HCTOSYS_OPT_DEVICE
+	string "Optional RTC used to set the system time"
+	depends on RTC_HCTOSYS_OPT
+	default "rtc1"
+	help
+	  The optional RTC device that will be checked first. The same
+	  restrictions apply as for the standard RTC above.
+
 config RTC_DEBUG
 	bool "RTC debug support"
 	help
