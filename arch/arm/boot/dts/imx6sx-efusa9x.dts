@@ -110,23 +110,31 @@
 		};
 #endif //###
 
+		/* SGTL5000 analog voltage */
 		reg_sgtl5000_vdda: sgtl5000_vdda {
 			compatible = "regulator-fixed";
 			regulator-name = "VDDA-supply";
 			regulator-min-microvolt = <3000000>;
 			regulator-max-microvolt = <3000000>;
+			regulator-always-on;
 		};
+
+		/* SGTL5000 I/O voltage */
 		reg_sgtl5000_vddio: sgtl5000_vddio {
 			compatible = "regulator-fixed";
 			regulator-name = "VDDIO-supply";
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
 		};
+
+		/* SGTL5000 internal digital voltage */
 		reg_sgtl5000_vddd: sgtl5000_vddd {
 			compatible = "regulator-fixed";
 			regulator-name = "VDDD-supply";
 			regulator-min-microvolt = <1500000>;
 			regulator-max-microvolt = <1500000>;
+			regulator-always-on;
 		};
 
 		reg_lcd_3v3: lcd-3v3 {
@@ -182,6 +190,20 @@
 		};
 	};
 
+	sound-sgtl5000 {
+		compatible = "fsl,imx-audio-sgtl5000";
+		cpu-dai = <&ssi1>;
+		audio-codec = <&sgtl5000>;
+		model = "imx-sgtl5000";
+		mux-int-port = <1>;  /* SSI1=1, SSI2=2, SSI3=7 */
+		mux-ext-port = <6>;
+		audio-routing =
+			"LINE_IN", "Line In Jack",
+//###			"MIC_IN", "Mic Jack",
+//###			"Line Out Jack", "LINE_OUT",
+			"Headphone Jack", "HP_OUT";
+	};
+
 #if 0 //###
 	sound-cs42888 {
 		compatible = "fsl,imx6-sabreauto-cs42888",
@@ -233,15 +255,15 @@
 			>;
 		};
 
-#if 0 //###
-		pinctrl_audmux_3: audmux-3 {
+		pinctrl_audmux_6: audmux-6 {
 			fsl,pins = <
-				MX6SX_PAD_SD1_CMD__AUDMUX_AUD5_RXC    0x130b0
-				MX6SX_PAD_SD1_CLK__AUDMUX_AUD5_RXFS   0x130b0
-				MX6SX_PAD_SD1_DATA3__AUDMUX_AUD5_RXD  0x130b0
+				MX6SX_PAD_SD3_DATA0__AUDMUX_AUD6_RXD	0x130b0
+				MX6SX_PAD_SD3_DATA1__AUDMUX_AUD6_TXC	0x130b0
+				MX6SX_PAD_SD3_DATA2__AUDMUX_AUD6_TXFS	0x130b0
+				MX6SX_PAD_SD3_DATA3__AUDMUX_AUD6_TXD	0x130b0
+				MX6SX_PAD_ENET1_MDIO__AUDMUX_MCLK       0x130b0 //###???
 			>;
 		};
-#endif //###
 
 		pinctrl_enet1_1: enet1grp-1 {
 			fsl,pins = <
@@ -420,12 +442,6 @@
 				MX6SX_PAD_QSPI1B_SS0_B__QSPI1_B_SS0_B   0x70a1
 			>;
 		};
-
-		pinctrl_spdif_3: spdifgrp-3 {
-			fsl,pins = <
-				MX6SX_PAD_ENET2_COL__SPDIF_IN		0x1b0b0
-			>;
-		};
 #endif //###
 
 		pinctrl_uart1_1: uart1grp-1 {
@@ -531,13 +547,13 @@
 	vref-supply = <&reg_vref_3v3>;
 	status = "okay";
 };
+#endif //###
 
 &audmux {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_audmux_3>;
+	pinctrl-0 = <&pinctrl_audmux_6>;
 	status = "okay";
 };
-#endif //###
 
 &clks {
 	assigned-clocks = <&clks IMX6SX_PLL4_BYPASS_SRC>,
@@ -654,11 +670,11 @@
 	sgtl5000: sgtl5000@0a {
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
-		clocks = <&clks 201>;
+		clocks = <&clks IMX6SX_CLK_AUDIO>;
 		VDDA-supply = <&reg_sgtl5000_vdda>;
 		VDDIO-supply = <&reg_sgtl5000_vddio>;
 		VDDD-supply = <&reg_sgtl5000_vddd>;
-       };
+	};
 
 #if 0
 	ov564x: ov564x@3c {
@@ -861,18 +877,11 @@
 };
 
 
-#if 0 //###
-&spdif {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_spdif_3>;
+&ssi1 {
+//###	fsl,mode = "i2s-master";
+	fsl,mode = "i2s-slave";
 	status = "okay";
 };
-
-&ssi2 {
-	fsl,mode = "i2s-master";
-	status = "okay";
-};
-#endif //###
 
 &lcdif1 {
 	display = <&display0>;			/* Remove when already active */

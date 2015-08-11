@@ -397,7 +397,7 @@ static const struct snd_kcontrol_new sgtl5000_snd_controls[] = {
 	},
 
 	SOC_DOUBLE("Capture Volume", SGTL5000_CHIP_ANA_ADC_CTRL, 0, 4, 0xf, 0),
-	SOC_SINGLE_TLV("Capture Attenuate Switch (-6dB)",
+	SOC_SINGLE_TLV("Capture Attenuate (-6dB) Switch",
 			SGTL5000_CHIP_ANA_ADC_CTRL,
 			8, 1, 0, capture_6db_attenuate),
 	SOC_SINGLE("Capture ZC Switch", SGTL5000_CHIP_ANA_CTRL, 1, 1, 0),
