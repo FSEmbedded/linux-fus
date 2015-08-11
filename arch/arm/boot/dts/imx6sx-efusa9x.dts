@@ -8,6 +8,10 @@
 
 /dts-v1/;
 
+/* If UART_C uses RTS, we can only have one CS on SPI_B; if UART_C does
+   not need RTS, we can have a second CS on SPI_B */
+#define CONFIG_EFUSA9X_UART_C_RTS
+
 #include "imx6sx.dtsi"
 
 / {
@@ -411,6 +415,28 @@
 			>;
 		};
 
+		pinctrl_ecspi1: ecspi1grp_1 {
+			fsl,pins = <
+				MX6SX_PAD_QSPI1A_SCLK__ECSPI1_SCLK	0x100b1
+				MX6SX_PAD_QSPI1A_DATA0__ECSPI1_MOSI	0x100b1
+				MX6SX_PAD_QSPI1A_DATA1__ECSPI1_MISO	0x100b1
+				MX6SX_PAD_QSPI1A_SS0_B__GPIO4_IO_22	0x80000000
+#ifndef CONFIG_EFUSA9X_UART_C_RTS
+				MX6SX_PAD_KEY_ROW2__GPIO2_IO_17		0x80000000
+#endif
+			>;
+		};
+
+		pinctrl_ecspi5: ecspi5grp_1 {
+			fsl,pins = <
+				MX6SX_PAD_QSPI1B_SS1_B__ECSPI5_SCLK	0x100b1
+				MX6SX_PAD_QSPI1A_DQS__ECSPI5_MOSI	0x100b1
+				MX6SX_PAD_QSPI1A_SS1_B__ECSPI5_MISO	0x100b1
+				MX6SX_PAD_QSPI1B_DQS__GPIO4_IO_28	0x80000000
+				MX6SX_PAD_QSPI1A_DATA2__GPIO4_IO_18	0x80000000
+			>;
+		};
+
 #if 0 //###
 		pinctrl_mlb_2: mlbgrp-2 {
 			fsl,pins = <
@@ -460,13 +486,16 @@
 			>;
 		};
 
-		/* Bluetooth communication */
+		/* UART_C: Bluetooth communication; if SPI_B needs a
+		   second CS, we can not use RTS here */
 		pinctrl_uart5_1: uart5grp-1 {
 			fsl,pins = <
 				MX6SX_PAD_KEY_ROW3__UART5_RX    0x1b0b1
 				MX6SX_PAD_KEY_COL3__UART5_TX    0x1b0b1
+#ifdef CONFIG_EFUSA9X_UART_C_RTS
 				MX6SX_PAD_KEY_ROW2__UART5_CTS_B 0x1b0b1
 				MX6SX_PAD_KEY_COL2__UART5_RTS_B 0x1b0b1
+#endif
 			>;
 		};
 
@@ -988,12 +1017,14 @@
 #endif //###
 
 &uart1 {
+	/* UART_A: TXD, RXD only, RS232-level on SKIT */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1_1>;
 	status = "okay";
 };
 
 &uart3 {
+	/* UART_B: TXD, RXD, RTS, CTS, RS232-level on SKIT */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3_1>;
 	fsl,uart-has-rtscts;
@@ -1001,14 +1032,18 @@
 };
 
 &uart5 {
-	/* Bluetooth communication */
+        /* UART_C: Bluetooth communication; if no RTS is needed, we
+	   can have a second CS on SPI_B, RS485-level on SKIT */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart5_1>;
+#ifdef CONFIG_EFUSA9X_UART_C_RTS
 	fsl,uart-has-rtscts;
+#endif
 	status = "okay";
 };
 
 &uart6 {
+	/* UART_D: TXD, RXD only, TTL-level on SKIT feature connector */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart6_1>;
 	status = "okay";
@@ -1080,32 +1115,65 @@
 };
 #endif
 
-#if 0
-&qspi1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_qspi1_1>;
-	/* only map 128MB */
-	reg = <0x021e0000 0x4000>, <0x60000000 0x8000000>;
-	status = "okay";
-	ddrsmp=<2>;
+/* SPI_A */
+&ecspi5 {
+	/* SPI_A: 2x CS */
+        fsl,spi-num-chipselects = <2>;
+        cs-gpios = <&gpio4 28 0>, <&gpio4 18 0>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_ecspi5>;
+        status = "okay";
 
-	flash0: n25q256a@0 {
-		#address-cells = <1>;
-		#size-cells = <1>;
-		compatible = "micron,n25q256a";
-		spi-max-frequency = <29000000>;
-		reg = <0>;
-	};
+	spidev@0 {
+                #address-cells = <1>;
+                #size-cells = <1>;
+                compatible = "linux,spidev";
+                spi-max-frequency = <20000000>;
+                reg = <0>;
+        };
 
-	flash1: n25q256a@1 {
-		#address-cells = <1>;
-		#size-cells = <1>;
-		compatible = "micron,n25q256a";
-		spi-max-frequency = <29000000>;
-		reg = <1>;
-	};
+	spidev@1 {
+                #address-cells = <1>;
+                #size-cells = <1>;
+                compatible = "linux,spidev";
+                spi-max-frequency = <20000000>;
+                reg = <1>;
+        };
 };
-#endif //###
+
+&ecspi1 {
+	/* SPI_B, 1x or 2x CS, depending on UART_C */
+#ifdef CONFIG_EFUSA9X_UART_C_RTS
+	/* If UART_C uses TS, we have only one CS for SPI_B */
+        fsl,spi-num-chipselects = <1>;
+        cs-gpios = <&gpio4 22 0>;
+#else
+	/* If UART_C does not use RTS, we can have a second CS on SPI_B */
+        fsl,spi-num-chipselects = <2>;
+        cs-gpios = <&gpio4 22 0>, <&gpio2 17 0>;
+#endif
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_ecspi1>;
+        status = "okay";
+
+	spidev@0 {
+                #address-cells = <1>;
+                #size-cells = <1>;
+                compatible = "linux,spidev";
+                spi-max-frequency = <20000000>;
+                reg = <0>;
+        };
+
+#ifndef CONFIG_EFUSA9X_UART_C_RTS
+	spidev@3 {
+                #address-cells = <1>;
+                #size-cells = <1>;
+                compatible = "linux,spidev";
+                spi-max-frequency = <20000000>;
+                reg = <3>;
+        };
+#endif
+};
 
 #if 0
 &gpmi {
