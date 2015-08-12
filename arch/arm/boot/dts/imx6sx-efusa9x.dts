@@ -1129,11 +1129,9 @@
 };
 #endif //###
 
-#if 0
 &pxp {
 	status = "okay";
 };
-#endif
 
 /* SPI_A */
 &ecspi5 {
