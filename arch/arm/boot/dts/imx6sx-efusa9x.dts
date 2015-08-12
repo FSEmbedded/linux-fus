@@ -347,7 +347,21 @@
 				MX6SX_PAD_LCD1_VSYNC__LCDIF1_VSYNC     0x00b0
 			>;
 		};
-		
+
+		pinctrl_flexcan1_1: flexcan1grp-1 {
+			fsl,pins = <
+				MX6SX_PAD_SD3_DATA5__CAN1_TX	0x1b020
+				MX6SX_PAD_SD3_DATA7__CAN1_RX	0x1b020
+			>;
+		};
+
+		pinctrl_flexcan2_1: flexcan2grp-1 {
+			fsl,pins = <
+				MX6SX_PAD_SD3_DATA6__CAN2_TX	0x1b020
+				MX6SX_PAD_SD3_DATA4__CAN2_RX	0x1b020
+			>;
+		};
+
 #if 0 //###
 		pinctrl_esai_2: esaigrp-2 {
 			fsl,pins = <
@@ -364,19 +378,6 @@
 			>;
 		};
 
-		pinctrl_flexcan1_1: flexcan1grp-1 {
-			fsl,pins = <
-				MX6SX_PAD_QSPI1B_DQS__CAN1_TX	0x1b020
-				MX6SX_PAD_QSPI1A_SS1_B__CAN1_RX	0x1b020
-			>;
-		};
-
-		pinctrl_flexcan2_1: flexcan2grp-1 {
-			fsl,pins = <
-				MX6SX_PAD_QSPI1B_SS1_B__CAN2_RX 0x1b020
-				MX6SX_PAD_QSPI1A_DQS__CAN2_TX	0x1b020
-			>;
-		};
 #endif //###
 
 #if 0
@@ -681,25 +682,23 @@
 	status = "okay";
 };
 
-#if 0 //###
 &flexcan1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1_1>;
-	trx-en-gpio = <&max7310_b 5 GPIO_ACTIVE_HIGH>;
-	trx-stby-gpio = <&max7310_b 4 GPIO_ACTIVE_HIGH>;
-	trx-wakeup-gpio = <&max7310_b 7 GPIO_ACTIVE_HIGH>;
+//###	trx-en-gpio = <&max7310_b 5 GPIO_ACTIVE_HIGH>;
+//###	trx-stby-gpio = <&max7310_b 4 GPIO_ACTIVE_HIGH>;
+//###	trx-wakeup-gpio = <&max7310_b 7 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 };
 
 &flexcan2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2_1>;
-	trx-en-gpio = <&max7310_b 5 GPIO_ACTIVE_HIGH>;
-	trx-stby-gpio = <&max7310_b 4 GPIO_ACTIVE_HIGH>;
-	trx-wakeup-gpio = <&max7310_b 7 GPIO_ACTIVE_HIGH>;
+//###	trx-en-gpio = <&max7310_b 5 GPIO_ACTIVE_HIGH>;
+//###	trx-stby-gpio = <&max7310_b 4 GPIO_ACTIVE_HIGH>;
+//###	trx-wakeup-gpio = <&max7310_b 7 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 };
-#endif //###
 
 /* I2C_C */
 &i2c1 {
