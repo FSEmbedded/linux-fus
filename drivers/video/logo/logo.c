@@ -41,8 +41,12 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 		/* SuperH Linux logo */
 		logo = &logo_superh_mono;
 #endif
+#ifdef CONFIG_LOGO_FS_MONO
+		/* F&S Linux logo */
+		logo = &logo_fs_mono;
+#endif
 	}
-	
+
 	if (depth >= 4) {
 #ifdef CONFIG_LOGO_LINUX_VGA16
 		/* Generic Linux logo */
@@ -56,8 +60,12 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 		/* SuperH Linux logo */
 		logo = &logo_superh_vga16;
 #endif
+#ifdef CONFIG_LOGO_FS_VGA16
+		/* F&S Linux logo */
+		logo = &logo_fs_vga16;
+#endif
 	}
-	
+
 	if (depth >= 8) {
 #ifdef CONFIG_LOGO_LINUX_CLUT224
 		/* Generic Linux logo */
@@ -95,6 +103,10 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 #ifdef CONFIG_LOGO_M32R_CLUT224
 		/* M32R Linux logo */
 		logo = &logo_m32r_clut224;
+#endif
+#ifdef CONFIG_LOGO_FS_CLUT224
+		/* F&S Linux logo */
+		logo = &logo_fs_clut224;
 #endif
 	}
 	return logo;

@@ -82,4 +82,22 @@ config LOGO_M32R_CLUT224
 	depends on M32R
 	default y
 
+config LOGO_FS_MONO
+	bool "Black and white F&S Linux logo"
+	default n
+	help
+	   Tux is holding the NetDCU logo
+
+config LOGO_FS_VGA16
+	bool "16-color F&S Linux logo"
+	default n
+	help
+	   Tux is holding the NetDCU logo
+
+config LOGO_FS_CLUT224
+	bool "224-color F&S Linux logo"
+	default n
+	help
+	   Tux is holding the NetDCU logo
+
 endif # LOGO
