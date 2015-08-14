@@ -163,6 +163,13 @@
 		};
 #endif
 
+		reg_vref_3v3: regulator@0 {
+			compatible = "regulator-fixed";
+			regulator-name = "vref-3v3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+		};
+
 #if 0 //###
 		reg_sd3_vmmc: sd3_vmmc{
 			compatible = "regulator-fixed";
@@ -171,13 +178,6 @@
 			regulator-max-microvolt = <3000000>;
 			gpio = <&gpio2 11 GPIO_ACTIVE_HIGH>;
 			enable-active-high;
-		};
-
-		reg_vref_3v3: regulator@0 {
-			compatible = "regulator-fixed";
-			regulator-name = "vref-3v3";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
 		};
 
 		reg_psu_5v: psu_5v0 {
@@ -581,17 +581,17 @@
 	};
 };
 
-#if 0 //###
 &adc1 {
 	vref-supply = <&reg_vref_3v3>;
+	num-channels = <2>;
 	status = "okay";
 };
 
 &adc2 {
 	vref-supply = <&reg_vref_3v3>;
+	num-channels = <2>;
 	status = "okay";
 };
-#endif //###
 
 &audmux {
 	pinctrl-names = "default";
