@@ -320,7 +320,7 @@ static int scan_read_oob(struct mtd_info *mtd, uint8_t *buf, loff_t offs,
 	struct mtd_oob_ops ops;
 	int res, ret = 0;
 
-	ops.mode = MTD_OPS_PLACE_OOB;
+	ops.mode = MTD_OPS_RAW;
 	ops.ooboffs = 0;
 	ops.ooblen = mtd->oobsize;
 
@@ -423,7 +423,7 @@ static int scan_block_fast(struct mtd_info *mtd, struct nand_bbt_descr *bd,
 	ops.oobbuf = buf;
 	ops.ooboffs = 0;
 	ops.datbuf = NULL;
-	ops.mode = MTD_OPS_PLACE_OOB;
+	ops.mode = MTD_OPS_RAW;
 
 	for (j = 0; j < numpages; j++) {
 		/*

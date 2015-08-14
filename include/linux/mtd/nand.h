@@ -33,7 +33,7 @@ extern int nand_scan(struct mtd_info *mtd, int max_chips);
  * and override command or ECC setup according to flash type.
  */
 extern int nand_scan_ident(struct mtd_info *mtd, int max_chips,
-			   struct nand_flash_dev *table);
+			   const struct nand_flash_dev *table);
 extern int nand_scan_tail(struct mtd_info *mtd);
 
 /* Free resources held by the NAND device */
@@ -157,6 +157,12 @@ typedef enum {
 
 /* Device supports subpage reads */
 #define NAND_SUBPAGE_READ	0x00001000
+
+/* F&S Extensions */
+/* Chip is software write-protected */
+#define NAND_SW_WRITE_PROTECT	0x08000000
+/* Chip can't use bad block marker because of special type of ECC */
+#define NAND_NO_BADBLOCK	0x04000000
 
 /* Options valid for Samsung large page devices */
 #define NAND_SAMSUNG_LP_OPTIONS NAND_CACHEPRG
