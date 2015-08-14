@@ -380,8 +380,8 @@
 
 #endif //###
 
-#if 0
 		pinctrl_gpmi_nand_1: gpmi-nand-1 {
+#if 0
 			fsl,pins = <
 				MX6SX_PAD_NAND_CLE__RAWNAND_CLE         0xb0b1
 				MX6SX_PAD_NAND_ALE__RAWNAND_ALE         0xb0b1
@@ -400,8 +400,8 @@
 				MX6SX_PAD_NAND_DATA06__RAWNAND_DATA06   0xb0b1
 				MX6SX_PAD_NAND_DATA07__RAWNAND_DATA07   0xb0b1
 			>;
-		};
 #endif
+		};
 
 		/* I2C_C: RTC (PCA8565), LVDS-Connector, SGTL5000 (SKIT),
 		   Mini-PCIe (SKIT), Camera (SKIT, 2x) */
@@ -1193,13 +1193,21 @@
 #endif
 };
 
-#if 0
+&dma_apbh {
+	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
+	compatible = "fus,imx6sx-dma-apbh", "fus,imx28-dma-apbh";
+};
+
 &gpmi {
+	/* Switch to F&S implementation of GPMI NAND driver */
+	compatible = "fus,imx6sx-gpmi-nand";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
+	fus,skipblocks = <2>;
+	fus,chunk1k;
+	fus,ecc_strength = <52>;
 	status = "okay";
 };
-#endif
 
 #if 0 //###
 &vadc {
