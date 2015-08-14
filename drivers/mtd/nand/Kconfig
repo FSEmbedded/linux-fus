@@ -389,6 +389,13 @@ config MTD_NAND_GPMI_NAND
 	 block, such as SD card. So pay attention to it when you enable
 	 the GPMI.
 
+config MTD_NAND_GPMI_NAND_FUS
+        tristate "GPMI NAND Flash Controller driver (F&S version)"
+        depends on MTD_NAND && MXS_DMA_EXT
+        help
+	  Enables NAND Flash support for i.MX6 on F&S boards and modules.
+	  It uses the new and extended version of the APBH DMA driver.
+
 config MTD_NAND_BCM47XXNFLASH
 	tristate "Support for NAND flash on BCM4706 BCMA bus"
 	depends on BCMA_NFLASH
