@@ -56,6 +56,7 @@
 #include <linux/regulator/consumer.h>
 #include <video/of_display_timing.h>
 #include <video/videomode.h>
+#include <linux/uaccess.h>
 
 #include "mxc/mxc_dispdrv.h"
 
@@ -213,12 +214,14 @@ struct mxsfb_info {
 	struct regulator *reg_lcd;
 	bool wait4vsync;
 	struct completion vsync_complete;
+	ktime_t vsync_nf_timestamp;
 	struct semaphore flip_sem;
 	int cur_blank;
 	int restore_blank;
 	char disp_dev[32];
 	struct mxc_dispdrv_handle *dispdrv;
 	int id;
+	struct fb_var_screeninfo var;
 };
 
 #define mxsfb_is_v3(host) (host->devdata->ipversion == 3)
@@ -388,6 +391,7 @@ static irqreturn_t mxsfb_irq_handler(int irq, void *dev_id)
 		writel(CTRL1_VSYNC_EDGE_IRQ_EN,
 			     host->base + LCDC_CTRL1 + REG_CLR);
 		host->wait4vsync = 0;
+		host->vsync_nf_timestamp = ktime_get();
 		complete(&host->vsync_complete);
 	}
 
@@ -604,12 +608,38 @@ static void mxsfb_disable_controller(struct fb_info *fb_info)
 	}
 }
 
+/**
+   This function compare the fb parameter see whether it was different
+   parameter for hardware, if it was different parameter, the hardware
+   will reinitialize. All will compared except x/y offset.
+ */
+static bool mxsfb_par_equal(struct fb_info *fbi, struct mxsfb_info *host)
+{
+	/* Here we set the xoffset, yoffset to zero, and compare two
+	 * var see have different or not. */
+	struct fb_var_screeninfo oldvar = host->var;
+	struct fb_var_screeninfo newvar = fbi->var;
+
+	if ((fbi->var.activate & FB_ACTIVATE_MASK) == FB_ACTIVATE_NOW &&
+	    fbi->var.activate & FB_ACTIVATE_FORCE)
+		return false;
+
+	oldvar.xoffset = newvar.xoffset = 0;
+	oldvar.yoffset = newvar.yoffset = 0;
+
+	return memcmp(&oldvar, &newvar, sizeof(struct fb_var_screeninfo)) == 0;
+}
+
 static int mxsfb_set_par(struct fb_info *fb_info)
 {
 	struct mxsfb_info *host = to_imxfb_host(fb_info);
 	u32 ctrl, vdctrl0, vdctrl4;
 	int line_size, fb_size;
 	int reenable = 0;
+
+	/* If parameter no change, don't reconfigure. */
+	if (mxsfb_par_equal(fb_info, host))
+		return 0;
 
 	clk_enable_axi(host);
 	clk_enable_disp_axi(host);
@@ -624,6 +654,7 @@ static int mxsfb_set_par(struct fb_info *fb_info)
 		reenable = 1;
 		mxsfb_disable_controller(fb_info);
 	}
+
 
 	sema_init(&host->flip_sem, 1);
 
@@ -737,6 +768,12 @@ static int mxsfb_set_par(struct fb_info *fb_info)
 	if (reenable)
 		mxsfb_enable_controller(fb_info);
 
+	/* Clear activate as not Reconfiguring framebuffer again */
+	if ((fb_info->var.activate & FB_ACTIVATE_FORCE) &&
+		(fb_info->var.activate & FB_ACTIVATE_MASK) == FB_ACTIVATE_NOW)
+		fb_info->var.activate = FB_ACTIVATE_NOW;
+
+	host->var = fb_info->var;
 	return 0;
 }
 
@@ -818,7 +855,16 @@ static int mxsfb_ioctl(struct fb_info *fb_info, unsigned int cmd,
 
 	switch (cmd) {
 	case MXCFB_WAIT_FOR_VSYNC:
-		ret = mxsfb_wait_for_vsync(fb_info);
+		{
+			long long timestamp;
+			struct mxsfb_info *host = to_imxfb_host(fb_info);
+			ret = mxsfb_wait_for_vsync(fb_info);
+			timestamp = ktime_to_ns(host->vsync_nf_timestamp);
+			if ((ret == 0) && copy_to_user((void *)arg,
+					&timestamp, sizeof(timestamp))) {
+			    ret = -EFAULT;
+			}
+		}
 		break;
 	default:
 		break;
@@ -845,6 +891,8 @@ static int mxsfb_blank(int blank, struct fb_info *fb_info)
 		break;
 
 	case FB_BLANK_UNBLANK:
+		fb_info->var.activate = (fb_info->var.activate & ~FB_ACTIVATE_MASK) |
+				FB_ACTIVATE_NOW | FB_ACTIVATE_FORCE;
 		if (!host->enabled)
 			mxsfb_enable_controller(fb_info);
 		mxsfb_set_par(&host->fb_info);
@@ -1475,8 +1523,6 @@ static void mxsfb_shutdown(struct platform_device *pdev)
 	 */
 	writel(CTRL_RUN, host->base + LCDC_CTRL + REG_CLR);
 	writel(CTRL_MASTER, host->base + LCDC_CTRL + REG_CLR);
-	clk_disable_disp_axi(host);
-	clk_disable_axi(host);
 }
 
 #ifdef CONFIG_PM_RUNTIME
