@@ -37,6 +37,15 @@
 	};
 
 #if 0 //###
+	/* ### Versuch, die Reset-Leitung für EMMC zu toggeln */
+	emmc_reset: emmc-reset {
+		compatible = "gpio-reset";
+		reset-gpios = <&gpio6 22 GPIO_ACTIVE_LOW>;
+		reset-delay-us = <1>;
+		#reset-cells = <0>;
+	};
+#endif
+#if 0 //###
 	max7322_reset: max7322-reset {
 		compatible = "gpio-reset";
 		reset-gpios = <&gpio4 22 GPIO_ACTIVE_LOW>;
@@ -147,6 +156,27 @@
 			gpio = <&gpio3 19 0>;
 			enable-active-high;
 			status = "disabled";
+		};
+
+		reg_camera_dovdd: camera_dovdd {
+			compatible = "regulator-fixed";
+			regulator-name = "DOVDD-supply";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+
+		reg_camera_avdd: camera_avdd {
+			compatible = "regulator-fixed";
+			regulator-name = "VAVDD-supply";
+			regulator-min-microvolt = <2800000>;
+			regulator-max-microvolt = <2800000>;
+		};
+
+		reg_camera_dvdd: camera_dvdd {
+			compatible = "regulator-fixed";
+			regulator-name = "DVDD-supply";
+			regulator-min-microvolt = <1500000>;
+			regulator-max-microvolt = <1500000>;
 		};
 
 #if 0
@@ -523,6 +553,7 @@
 
 		pinctrl_usbotg1_1: usbotg1grp-1 {
 			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9 0x80000000
 				MX6SX_PAD_GPIO1_IO10__ANATOP_OTG1_ID 0x17059
 			>;
 		};
@@ -575,9 +606,32 @@
 				MX6SX_PAD_SD4_DATA5__USDHC4_DATA5 0x17071
 				MX6SX_PAD_SD4_DATA6__USDHC4_DATA6 0x17071
 				MX6SX_PAD_SD4_DATA7__USDHC4_DATA7 0x17071
-				MX6SX_PAD_SD4_RESET_B__USDHC4_RESET_B 0x17071 //???
+//###				MX6SX_PAD_SD4_RESET_B__USDHC4_RESET_B 0x17071 //???
+				MX6SX_PAD_SD4_RESET_B__GPIO6_IO_22 0x80000000 //???
 			>;
 		};
+
+		pinctrl_csi1: csi1grp-0 {
+			fsl,pins = <
+				MX6SX_PAD_CSI_MCLK__CSI1_FIELD		0x110b0
+				MX6SX_PAD_CSI_PIXCLK__CSI1_PIXCLK	0x110b0
+				MX6SX_PAD_CSI_VSYNC__CSI1_VSYNC		0x110b0
+//###				MX6SX_PAD_CSI_HSYNC__CSI1_HSYNC		0x110b0
+//###				MX6SX_PAD_LCD1_DATA17__CSI1_DATA_0	0x110b0
+//###				MX6SX_PAD_LCD1_DATA16__CSI1_DATA_1	0x110b0
+				MX6SX_PAD_CSI_DATA00__CSI1_DATA_2	0x110b0
+				MX6SX_PAD_CSI_DATA01__CSI1_DATA_3	0x110b0
+				MX6SX_PAD_CSI_DATA02__CSI1_DATA_4	0x110b0
+				MX6SX_PAD_CSI_DATA03__CSI1_DATA_5	0x110b0
+				MX6SX_PAD_CSI_DATA04__CSI1_DATA_6	0x110b0
+				MX6SX_PAD_CSI_DATA05__CSI1_DATA_7	0x110b0
+				MX6SX_PAD_CSI_DATA06__CSI1_DATA_8	0x110b0
+				MX6SX_PAD_CSI_DATA07__CSI1_DATA_9	0x110b0
+				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x80000000 //Reset
+				MX6SX_PAD_CSI_HSYNC__GPIO1_IO_22	0x80000000 //PWDN
+			>;
+		};
+
 	};
 };
 
@@ -607,17 +661,6 @@
 				<&clks IMX6SX_PLL4_BYPASS_SRC>;
 	assigned-clock-rates = <0>, <0>, <24576000>;
 };
-
-#if 0 //###
-&csi2 {
-	status = "okay";
-	port {
-		csi2_ep: endpoint {
-			remote-endpoint = <&vadc_ep>;
-		};
-	};
-};
-#endif //###
 
 #if 0
 &dcic1 {
@@ -722,44 +765,51 @@
 	};
 
 #if 0
-	ov564x: ov564x@3c {
-		compatible = "ovti,ov564x";
+	ov5640: ov5640@3c {
+		compatible = "ovti,ov5640";
 		reg = <0x3c>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_ipu1_2>;
-		clocks = <&clks 201>;
+		pinctrl-0 = <&pinctrl_csi1>;
+		clocks = <&clks IMX6SX_CLK_CSI>;
 		clock-names = "csi_mclk";
-		DOVDD-supply = <&vgen4_reg>; /* 1.8v */
-		AVDD-supply = <&vgen3_reg>;  /* 2.8v, on rev C board is VGEN3,
-						on rev B board is VGEN5 */
+		AVDD-supply = <&vgen3_reg>;  /* 2.8v */
 		DVDD-supply = <&vgen2_reg>;  /* 1.5v*/
-		pwn-gpios = <&gpio1 16 1>;   /* active low: SD1_DAT0 */
-		rst-gpios = <&gpio1 17 0>;   /* active high: SD1_DAT1 */
+		pwn-gpios = <&gpio1 22 0>;
+		rst-gpios = <&gpio3 27 0>;
 		csi_id = <0>;
 		mclk = <24000000>;
 		mclk_source = <0>;
+		port {
+			ov5640_ep: endpoint {
+				remote-endpoint = <&csi1_ep>;
+			};
+		};
 	};
 #endif
 
-#if 0 //###
+#if 1
 	ov9665: ov9665@30 {
 		compatible = "ovti,ov9665";
 		reg = <0x30>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_ipu1_2>;
-		clocks = <&clks 201>;
+		pinctrl-0 = <&pinctrl_csi1>;
+		clocks = <&clks IMX6SX_CLK_CSI>;
 		clock-names = "csi_mclk";
-		DOVDD-supply = <&reg_camera_dovdd>; /* 1.8v */
-		AVDD-supply = <&reg_camera_avdd>;  /* 2.8v, on rev C board is VGEN3,
-						      on rev B board is VGEN5 */
-		DVDD-supply = <&reg_camera_dvdd>;  /* 1.5v*/
-		pwn-gpios = <&gpio5 24 1>;   /* active low: CSI0_DAT6 */
-		rst-gpios = <&gpio5 23 0>;   /* active high: CSI0_DAT5 */
+		DOVDD-supply = <&reg_camera_dovdd>;	/* 1.8v */
+		AVDD-supply = <&reg_camera_avdd>;	/* 2.8v */
+		DVDD-supply = <&reg_camera_dvdd>;	/* 1.5v */
+		pwn-gpios = <&gpio1 22 1>;	/* active low */
+		rst-gpios = <&gpio3 27 0>;	/* active high */
 		csi_id = <0>;
 		mclk = <24000000>;
 		mclk_source = <0>;
+		port {
+			ov9665_ep: endpoint {
+				remote-endpoint = <&csi1_ep>;
+			};
+		};
 	};
-#endif //###
+#endif
 };
 
 /* I2C_A */
@@ -936,7 +986,6 @@
 	display = <&display0>;			/* Remove when already active */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcdif1_1>;	/* Remove when already active */
-//###	disp-dev = "ldb";
 	lcd-supply = <&reg_lcd_3v3>;
 //###	status = "okay";
 
@@ -1070,7 +1119,8 @@
 };
 
 &usbotg1 {
-//###	vbus-supply = <&reg_usb_otg1_vbus>;
+	vbus-supply = <&reg_usb_otg1_vbus>;
+	dr_mode = "peripheral";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg1_1>;
 	status = "okay";
@@ -1115,8 +1165,9 @@
 	bus-width = <8>;
 	//###cd-gpios = <&gpio7 11 0>;
 	no-1-8-v;
-	keep-power-in-suspend;
-	enable-sdio-wakup;
+	non-removable;
+//###	keep-power-in-suspend;
+//###	enable-sdio-wakup;
 	status = "okay";
 };
 #endif
@@ -1131,6 +1182,25 @@
 
 &pxp {
 	status = "okay";
+};
+
+&csi1 {
+	status = "okay";
+
+	port {
+		csi1_ep: endpoint {
+			remote-endpoint = <&ov9665_ep>;
+		};
+	};
+};
+
+&csi2 {
+	status = "okay";
+	port {
+		csi2_ep: endpoint {
+			remote-endpoint = <&vadc_ep>;
+		};
+	};
 };
 
 /* SPI_A */
@@ -1209,7 +1279,6 @@
 	status = "okay";
 };
 
-#if 0 //###
 &vadc {
 	vadc_in = <0>;
 	csi_id = <1>;
@@ -1220,4 +1289,3 @@
 		};
 	};
 };
-#endif //###
