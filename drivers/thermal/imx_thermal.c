@@ -65,8 +65,9 @@
 #define IMX_PASSIVE_DELAY		1000
 
 #define FACTOR0				10000000
-#define FACTOR1				15976
-#define FACTOR2				4297157
+#define FACTOR1				15423
+#define FACTOR2				4148468
+#define OFFSET				3580661
 
 #define TEMPMON_V1			1
 #define TEMPMON_V2			2
@@ -492,23 +493,26 @@ static inline void imx6_calibrate_data(struct imx_thermal_data *data, u32 val)
 	 * Derived from linear interpolation:
 	 * slope = 0.4297157 - (0.0015976 * 25C fuse)
 	 * slope = (FACTOR2 - FACTOR1 * n1) / FACTOR0
+	 * offset = OFFSET / 1000000
 	 * (Nmeas - n1) / (Tmeas - t1) = slope
 	 * We want to reduce this down to the minimum computation necessary
 	 * for each temperature read.  Also, we want Tmeas in millicelsius
 	 * and we don't want to lose precision from integer division. So...
-	 * Tmeas = (Nmeas - n1) / slope + t1
-	 * milli_Tmeas = 1000 * (Nmeas - n1) / slope + 1000 * t1
-	 * milli_Tmeas = -1000 * (n1 - Nmeas) / slope + 1000 * t1
+	 * Tmeas = (Nmeas - n1) / slope + t1 + offset
+	 * milli_Tmeas = 1000 * (Nmeas - n1) / slope + 1000 * t1 + OFFSET / 1000
+	 * milli_Tmeas = -1000 * (n1 - Nmeas) / slope + 1000 * t1 + OFFSET /1000
 	 * Let constant c1 = (-1000 / slope)
-	 * milli_Tmeas = (n1 - Nmeas) * c1 + 1000 * t1
-	 * Let constant c2 = n1 *c1 + 1000 * t1
+	 * milli_Tmeas = (n1 - Nmeas) * c1 + 1000 * t1 + OFFSET / 1000
+	 * Let constant c2 = n1 *c1 + 1000 * t1 + OFFSET / 1000
 	 * milli_Tmeas = c2 - Nmeas * c1
 	 */
 	temp64 = FACTOR0;
 	temp64 *= 1000;
 	do_div(temp64, FACTOR1 * n1 - FACTOR2);
 	data->c1 = temp64;
-	data->c2 = n1 * data->c1 + 1000 * t1;
+	temp64 = OFFSET;
+	do_div(temp64, 1000);
+	data->c2 = n1 * data->c1 + 1000 * t1 + temp64;
 }
 
 /*
@@ -696,8 +700,10 @@ static int imx_thermal_probe(struct platform_device *pdev)
 	}
 
 	data->irq = platform_get_irq(pdev, 0);
-	if (data->irq < 0)
-		return data->irq;
+	if (data->irq < 0) {
+		ret = data->irq;
+		goto out;
+	}
 
 	platform_set_drvdata(pdev, data);
 
@@ -707,7 +713,7 @@ static int imx_thermal_probe(struct platform_device *pdev)
 	ret = imx_get_sensor_data(pdev);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to get sensor data\n");
-		return ret;
+		goto out;
 	}
 
 	/* Make sure sensor is in known good state for measurements */
@@ -724,7 +730,7 @@ static int imx_thermal_probe(struct platform_device *pdev)
 		ret = PTR_ERR(data->cdev[0]);
 		dev_err(&pdev->dev,
 			"failed to register cpufreq cooling device: %d\n", ret);
-		return ret;
+		goto out;
 	}
 
 	data->cdev[1] = devfreq_cooling_register();
@@ -732,7 +738,7 @@ static int imx_thermal_probe(struct platform_device *pdev)
 		ret = PTR_ERR(data->cdev[1]);
 		dev_err(&pdev->dev,
 			"failed to register devfreq cooling device: %d\n", ret);
-		return ret;
+		goto out;
 	}
 
 	data->tz = thermal_zone_device_register("imx_thermal_zone",
@@ -747,7 +753,7 @@ static int imx_thermal_probe(struct platform_device *pdev)
 			"failed to register thermal zone device %d\n", ret);
 		cpufreq_cooling_unregister(data->cdev[0]);
 		devfreq_cooling_unregister(data->cdev[1]);
-		return ret;
+		goto out;
 	}
 
 	/* Enable measurements at ~ 10 Hz */
@@ -766,7 +772,7 @@ static int imx_thermal_probe(struct platform_device *pdev)
 			0, "imx_thermal", data);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to request alarm irq: %d\n", ret);
-		return ret;
+		goto out;
 	}
 	data->irq_enabled = true;
 
@@ -777,6 +783,9 @@ static int imx_thermal_probe(struct platform_device *pdev)
 		register_busfreq_notifier(&thermal_notifier);
 
 	return 0;
+out:
+	clk_disable_unprepare(data->thermal_clk);
+	return ret;
 }
 
 static int imx_thermal_remove(struct platform_device *pdev)
