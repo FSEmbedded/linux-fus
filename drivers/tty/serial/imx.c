@@ -188,6 +188,7 @@
 
 #define UART_NR 8
 #define IMX_RXBD_NUM 20
+#define IMX_MODULE_MAX_CLK_RATE	80000000
 
 /* i.mx21 type uart runs on all i.mx except i.mx1 */
 enum imx_uart_type {
@@ -247,7 +248,7 @@ struct imx_port {
 	struct delayed_work	tsk_dma_tx;
 	struct work_struct	tsk_dma_rx;
 	wait_queue_head_t	dma_wait;
-	unsigned int            saved_reg[11];
+	unsigned int            saved_reg[10];
 #define DMA_TX_IS_WORKING 1
 	unsigned long		flags;
 };
@@ -1402,8 +1403,7 @@ static void imx_flush_buffer(struct uart_port *port)
 	 */
 	sport->saved_reg[0] = readl(sport->port.membase + UBIR);
 	sport->saved_reg[1] = readl(sport->port.membase + UBMR);
-	sport->saved_reg[2] = readl(sport->port.membase + UBRC);
-	sport->saved_reg[3] = readl(sport->port.membase + IMX21_UTS);
+	sport->saved_reg[2] = readl(sport->port.membase + IMX21_UTS);
 
 	i = 100;
 
@@ -1417,8 +1417,7 @@ static void imx_flush_buffer(struct uart_port *port)
 	/* Restore the registers */
 	writel(sport->saved_reg[0], sport->port.membase + UBIR);
 	writel(sport->saved_reg[1], sport->port.membase + UBMR);
-	writel(sport->saved_reg[2], sport->port.membase + UBRC);
-	writel(sport->saved_reg[3], sport->port.membase + IMX21_UTS);
+	writel(sport->saved_reg[2], sport->port.membase + IMX21_UTS);
 }
 
 static void
@@ -1952,6 +1951,7 @@ static int serial_imx_suspend(struct platform_device *dev, pm_message_t state)
 	uart_suspend_port(&imx_reg, &sport->port);
 
 	/* Save necessary regs */
+	clk_prepare_enable(sport->clk_ipg);
 	sport->saved_reg[0] = readl(sport->port.membase + UCR1);
 	sport->saved_reg[1] = readl(sport->port.membase + UCR2);
 	sport->saved_reg[2] = readl(sport->port.membase + UCR3);
@@ -1961,8 +1961,8 @@ static int serial_imx_suspend(struct platform_device *dev, pm_message_t state)
 	sport->saved_reg[6] = readl(sport->port.membase + UTIM);
 	sport->saved_reg[7] = readl(sport->port.membase + UBIR);
 	sport->saved_reg[8] = readl(sport->port.membase + UBMR);
-	sport->saved_reg[9] = readl(sport->port.membase + UBRC);
-	sport->saved_reg[10] = readl(sport->port.membase + IMX21_UTS);
+	sport->saved_reg[9] = readl(sport->port.membase + IMX21_UTS);
+	clk_disable_unprepare(sport->clk_ipg);
 
 	return 0;
 }
@@ -1972,13 +1972,13 @@ static int serial_imx_resume(struct platform_device *dev)
 	struct imx_port *sport = platform_get_drvdata(dev);
 	unsigned int val;
 
+	clk_prepare_enable(sport->clk_ipg);
 	writel(sport->saved_reg[4], sport->port.membase + UFCR);
 	writel(sport->saved_reg[5], sport->port.membase + UESC);
 	writel(sport->saved_reg[6], sport->port.membase + UTIM);
 	writel(sport->saved_reg[7], sport->port.membase + UBIR);
 	writel(sport->saved_reg[8], sport->port.membase + UBMR);
-	writel(sport->saved_reg[9], sport->port.membase + UBRC);
-	writel(sport->saved_reg[10], sport->port.membase + IMX21_UTS);
+	writel(sport->saved_reg[9], sport->port.membase + IMX21_UTS);
 	writel(sport->saved_reg[0], sport->port.membase + UCR1);
 	writel(sport->saved_reg[1] | 0x1, sport->port.membase + UCR2);
 	writel(sport->saved_reg[2], sport->port.membase + UCR3);
@@ -1988,6 +1988,10 @@ static int serial_imx_resume(struct platform_device *dev)
 	val = readl(sport->port.membase + UCR3);
 	val &= ~(UCR3_AWAKEN | UCR3_AIRINTEN);
 	writel(val, sport->port.membase + UCR3);
+	val = readl(sport->port.membase + USR1);
+	if (val & USR1_AWAKE)
+		writel(USR1_AWAKE, sport->port.membase + USR1);
+	clk_disable_unprepare(sport->clk_ipg);
 
 	uart_resume_port(&imx_reg, &sport->port);
 
@@ -2109,6 +2113,14 @@ static int serial_imx_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	sport->port.uartclk = clk_get_rate(sport->clk_per);
+	if (sport->port.uartclk > IMX_MODULE_MAX_CLK_RATE) {
+		ret = clk_set_rate(sport->clk_per, IMX_MODULE_MAX_CLK_RATE);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "clk_set_rate() failed\n");
+			return ret;
+		}
+	}
 	sport->port.uartclk = clk_get_rate(sport->clk_per);
 
 	imx_ports[sport->port.line] = sport;

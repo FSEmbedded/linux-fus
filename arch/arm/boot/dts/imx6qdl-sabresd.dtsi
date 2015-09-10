@@ -254,6 +254,11 @@
 	soc-supply = <&sw1c_reg>;
 };
 
+&clks {
+	fsl,ldb-di0-parent = <&clks IMX6QDL_CLK_PLL2_PFD0_352M>;
+	fsl,ldb-di1-parent = <&clks IMX6QDL_CLK_PLL2_PFD0_352M>;
+};
+
 &ecspi1 {
 	fsl,spi-num-chipselects = <1>;
 	cs-gpios = <&gpio4 9 0>;
@@ -456,8 +461,8 @@
 		};
 	};
 
-	ov5640_mipi: ov5640_mipi@3c { /* i2c2 driver */
-		compatible = "ovti,ov5640_mipi";
+	ov564x_mipi: ov564x_mipi@3c { /* i2c2 driver */
+		compatible = "ovti,ov564x_mipi";
 		reg = <0x3c>;
 		clocks = <&clks 201>;
 		clock-names = "csi_mclk";

@@ -457,6 +457,24 @@ static struct sdma_driver_data sdma_imx6sx = {
 	.script_addrs = &sdma_script_imx6sx,
 };
 
+static struct sdma_script_start_addrs sdma_script_imx7d = {
+	.ap_2_ap_addr = 644,
+	.uart_2_mcu_addr = 819,
+	.mcu_2_app_addr = 749,
+	.uartsh_2_mcu_addr = 1034,
+	.mcu_2_shp_addr = 962,
+	.app_2_mcu_addr = 685,
+	.shp_2_mcu_addr = 893,
+	.spdif_2_mcu_addr = 1102,
+	.mcu_2_spdif_addr = 1136,
+};
+
+static struct sdma_driver_data sdma_imx7d = {
+	.chnenbl0 = SDMA_CHNENBL0_IMX35,
+	.num_events = 48,
+	.script_addrs = &sdma_script_imx7d,
+};
+
 static struct platform_device_id sdma_devtypes[] = {
 	{
 		.name = "imx25-sdma",
@@ -480,6 +498,9 @@ static struct platform_device_id sdma_devtypes[] = {
 		.name = "imx6sx-sdma",
 		.driver_data = (unsigned long)&sdma_imx6sx,
 	}, {
+		.name = "imx7d-sdma",
+		.driver_data = (unsigned long)&sdma_imx7d,
+	}, {
 		/* sentinel */
 	}
 };
@@ -487,6 +508,7 @@ MODULE_DEVICE_TABLE(platform, sdma_devtypes);
 
 static const struct of_device_id sdma_dt_ids[] = {
 	{ .compatible = "fsl,imx6sx-sdma", .data = &sdma_imx6sx, },
+	{ .compatible = "fsl,imx7d-sdma", .data = &sdma_imx7d, },
 	{ .compatible = "fsl,imx6q-sdma", .data = &sdma_imx6q, },
 	{ .compatible = "fsl,imx53-sdma", .data = &sdma_imx53, },
 	{ .compatible = "fsl,imx51-sdma", .data = &sdma_imx51, },
@@ -571,6 +593,10 @@ static int sdma_run_channel0(struct sdma_engine *sdma)
 	} else {
 		dev_err(sdma->dev, "Timeout waiting for CH0 ready\n");
 	}
+
+	/* Set bits of CONFIG register with dynamic context switching */
+	if (readl(sdma->regs + SDMA_H_CONFIG) == 0)
+		writel_relaxed(SDMA_H_CONFIG_CSM, sdma->regs + SDMA_H_CONFIG);
 
 	return ret ? 0 : -ETIMEDOUT;
 }
@@ -670,6 +696,8 @@ static void sdma_update_channel_loop(struct sdma_channel *sdmac)
 			sdmac->chn_real_count = bd->mode.count;
 			bd->mode.count = sdmac->chn_count;
 		}
+
+		sdma_handle_channel_loop(sdmac);
 	}
 }
 
@@ -713,9 +741,12 @@ static void sdma_tasklet(unsigned long data)
 	}
 	spin_unlock_irqrestore(&sdmac->lock, flags);
 
-	if (sdmac->flags & IMX_DMA_SG_LOOP)
-		sdma_handle_channel_loop(sdmac);
-	else
+	if (sdmac->flags & IMX_DMA_SG_LOOP) {
+		if (sdmac->peripheral_type != IMX_DMATYPE_HDMI)
+			sdma_update_channel_loop(sdmac);
+		else
+			sdma_handle_channel_loop(sdmac);
+	} else
 		mxc_sdma_handle_channel_normal(sdmac);
 }
 
@@ -732,10 +763,6 @@ static irqreturn_t sdma_int_handler(int irq, void *dev_id)
 	while (stat) {
 		int channel = fls(stat) - 1;
 		struct sdma_channel *sdmac = &sdma->channel[channel];
-
-		if ((sdmac->flags & IMX_DMA_SG_LOOP) &&
-			(sdmac->peripheral_type != IMX_DMATYPE_HDMI))
-			sdma_update_channel_loop(sdmac);
 
 		spin_lock_irqsave(&sdmac->lock, flags);
 		if (sdmac->status == DMA_IN_PROGRESS || (sdmac->flags & IMX_DMA_SG_LOOP))
@@ -997,7 +1024,7 @@ static int sdma_config_channel(struct sdma_channel *sdmac)
 	sdmac->shp_addr = 0;
 	sdmac->per_addr = 0;
 
-	if (sdmac->event_id0) {
+	if (sdmac->event_id0 >= 0) {
 		if (sdmac->event_id0 >= sdmac->sdma->drvdata->num_events)
 			return -EINVAL;
 		sdma_event_enable(sdmac, sdmac->event_id0);
@@ -1169,7 +1196,7 @@ static void sdma_free_chan_resources(struct dma_chan *chan)
 
 	sdma_disable_channel(sdmac);
 
-	if (sdmac->event_id0)
+	if (sdmac->event_id0 >= 0)
 		sdma_event_disable(sdmac, sdmac->event_id0);
 	if (sdmac->event_id1)
 		sdma_event_disable(sdmac, sdmac->event_id1);
@@ -1581,6 +1608,7 @@ static void sdma_issue_pending(struct dma_chan *chan)
 #define SDMA_SCRIPT_ADDRS_ARRAY_SIZE_V1	34
 #define SDMA_SCRIPT_ADDRS_ARRAY_SIZE_V2	38
 #define SDMA_SCRIPT_ADDRS_ARRAY_SIZE_V3	41
+#define SDMA_SCRIPT_ADDRS_ARRAY_SIZE_V4	42
 
 static void sdma_add_scripts(struct sdma_engine *sdma,
 		const struct sdma_script_start_addrs *addr)
@@ -1628,6 +1656,9 @@ static void sdma_load_firmware(const struct firmware *fw, void *context)
 			break;
 		case 3:
 			sdma->script_number = SDMA_SCRIPT_ADDRS_ARRAY_SIZE_V3;
+			break;
+		case 4:
+			sdma->script_number = SDMA_SCRIPT_ADDRS_ARRAY_SIZE_V4;
 			break;
 		default:
 			dev_err(sdma->dev, "unknown firmware version\n");
@@ -1789,9 +1820,6 @@ static int __init sdma_init(struct sdma_engine *sdma)
 	writel_relaxed(0, sdma->regs + SDMA_H_CONFIG);
 
 	writel_relaxed(ccb_phys, sdma->regs + SDMA_H_C0PTR);
-
-	/* Set bits of CONFIG register with given context switching mode */
-	writel_relaxed(SDMA_H_CONFIG_CSM, sdma->regs + SDMA_H_CONFIG);
 
 	/* Initializes channel's priorities */
 	sdma_set_channel_priority(&sdma->channel[0], 7);
@@ -2064,8 +2092,8 @@ static int sdma_suspend(struct device *dev)
 	struct sdma_engine *sdma = platform_get_drvdata(pdev);
 	int i;
 
-	/* Do nothing if not i.MX6SX */
-	if (sdma->drvdata != &sdma_imx6sx)
+	/* Do nothing if not i.MX6SX or i.MX7D*/
+	if (sdma->drvdata != &sdma_imx6sx && sdma->drvdata != &sdma_imx7d)
 		return 0;
 
 	clk_enable(sdma->clk_ipg);
@@ -2096,8 +2124,8 @@ static int sdma_resume(struct device *dev)
 	struct sdma_engine *sdma = platform_get_drvdata(pdev);
 	int i, ret;
 
-	/* Do nothing if not i.MX6SX */
-	if (sdma->drvdata != &sdma_imx6sx)
+	/* Do nothing if not i.MX6SX or i.MX7D*/
+	if (sdma->drvdata != &sdma_imx6sx && sdma->drvdata != &sdma_imx7d)
 		return 0;
 
 	clk_enable(sdma->clk_ipg);

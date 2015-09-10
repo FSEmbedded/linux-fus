@@ -39,7 +39,7 @@
  * the required value in the imx_fb_videomode structure.
  */
 
-#include <linux/busfreq-imx6.h>
+#include <linux/busfreq-imx.h>
 #include <linux/console.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -202,9 +202,11 @@ struct mxsfb_info {
 	struct clk *clk_pix;
 	struct clk *clk_axi;
 	struct clk *clk_disp_axi;
+	bool clk_pix_enabled;
 	bool clk_axi_enabled;
 	bool clk_disp_axi_enabled;
 	void __iomem *base;	/* registers */
+	u32 sync;		/* record display timing polarities */
 	unsigned allocated_size;
 	int enabled;
 	unsigned ld_intf_width;
@@ -250,6 +252,24 @@ static const struct mxsfb_devdata mxsfb_devdata[] = {
 static int mxsfb_map_videomem(struct fb_info *info);
 static int mxsfb_unmap_videomem(struct fb_info *info);
 static int mxsfb_set_par(struct fb_info *fb_info);
+
+/* enable lcdif pix clock */
+static inline void clk_enable_pix(struct mxsfb_info *host)
+{
+	if (!host->clk_pix_enabled && (host->clk_pix != NULL)) {
+		clk_prepare_enable(host->clk_pix);
+		host->clk_pix_enabled = true;
+	}
+}
+
+/* disable lcdif pix clock */
+static inline void clk_disable_pix(struct mxsfb_info *host)
+{
+	if (host->clk_pix_enabled && (host->clk_pix != NULL)) {
+		clk_disable_unprepare(host->clk_pix);
+		host->clk_pix_enabled = false;
+	}
+}
 
 /* enable lcdif axi clock */
 static inline void clk_enable_axi(struct mxsfb_info *host)
@@ -385,6 +405,8 @@ static irqreturn_t mxsfb_irq_handler(int irq, void *dev_id)
 	acked_status = (enable & status) << CTRL1_IRQ_STATUS_SHIFT;
 
 	if ((acked_status & CTRL1_VSYNC_EDGE_IRQ) && host->wait4vsync) {
+		writel(CTRL1_VSYNC_EDGE_IRQ,
+				host->base + LCDC_CTRL1 + REG_CLR);
 		writel(CTRL1_VSYNC_EDGE_IRQ_EN,
 			     host->base + LCDC_CTRL1 + REG_CLR);
 		host->wait4vsync = 0;
@@ -392,6 +414,8 @@ static irqreturn_t mxsfb_irq_handler(int irq, void *dev_id)
 	}
 
 	if (acked_status & CTRL1_CUR_FRAME_DONE_IRQ) {
+		writel(CTRL1_CUR_FRAME_DONE_IRQ,
+				host->base + LCDC_CTRL1 + REG_CLR);
 		writel(CTRL1_CUR_FRAME_DONE_IRQ_EN,
 			     host->base + LCDC_CTRL1 + REG_CLR);
 		up(&host->flip_sem);
@@ -489,6 +513,7 @@ static void mxsfb_enable_controller(struct fb_info *fb_info)
 				"dispdrv:%s\n", host->dispdrv->drv->name);
 			return;
 		}
+		host->sync = fb_info->var.sync;
 	}
 
 	if (host->reg_lcd) {
@@ -505,9 +530,11 @@ static void mxsfb_enable_controller(struct fb_info *fb_info)
 	clk_enable_axi(host);
 	clk_enable_disp_axi(host);
 
-	clk_set_rate(host->clk_pix, PICOS2KHZ(fb_info->var.pixclock) * 1000U);
-	ret =
-	    clk_set_rate(host->clk_pix,
+	/* the pixel clock should be disabled before
+	 * trying to set its clock rate successfully.
+	 */
+	clk_disable_pix(host);
+	ret = clk_set_rate(host->clk_pix,
 			 PICOS2KHZ(fb_info->var.pixclock) * 1000U);
 	if (ret) {
 		dev_err(&host->pdev->dev,
@@ -522,7 +549,7 @@ static void mxsfb_enable_controller(struct fb_info *fb_info)
 		}
 		return;
 	}
-	clk_prepare_enable(host->clk_pix);
+	clk_enable_pix(host);
 
 	/* Clean soft reset and clock gate bit if it was enabled  */
 	writel(CTRL_SFTRST | CTRL_CLKGATE, host->base + LCDC_CTRL + REG_CLR);
@@ -590,8 +617,6 @@ static void mxsfb_disable_controller(struct fb_info *fb_info)
 	reg = readl(host->base + LCDC_VDCTRL4);
 	writel(reg & ~VDCTRL4_SYNC_SIGNALS_ON, host->base + LCDC_VDCTRL4);
 
-	clk_disable_unprepare(host->clk_pix);
-
 	pm_runtime_put_sync_suspend(&host->pdev->dev);
 
 	host->enabled = 0;
@@ -613,6 +638,7 @@ static int mxsfb_set_par(struct fb_info *fb_info)
 
 	clk_enable_axi(host);
 	clk_enable_disp_axi(host);
+	clk_enable_pix(host);
 
 	dev_dbg(&host->pdev->dev, "%s\n", __func__);
 	/*
@@ -696,13 +722,14 @@ static int mxsfb_set_par(struct fb_info *fb_info)
 		VDCTRL0_VSYNC_PERIOD_UNIT |
 		VDCTRL0_VSYNC_PULSE_WIDTH_UNIT |
 		VDCTRL0_SET_VSYNC_PULSE_WIDTH(fb_info->var.vsync_len);
-	if (fb_info->var.sync & FB_SYNC_HOR_HIGH_ACT)
+	/* use the saved sync to avoid wrong sync information */
+	if (host->sync & FB_SYNC_HOR_HIGH_ACT)
 		vdctrl0 |= VDCTRL0_HSYNC_ACT_HIGH;
-	if (fb_info->var.sync & FB_SYNC_VERT_HIGH_ACT)
+	if (host->sync & FB_SYNC_VERT_HIGH_ACT)
 		vdctrl0 |= VDCTRL0_VSYNC_ACT_HIGH;
-	if (!(fb_info->var.sync & FB_SYNC_OE_LOW_ACT))
+	if (!(host->sync & FB_SYNC_OE_LOW_ACT))
 		vdctrl0 |= VDCTRL0_ENABLE_ACT_HIGH;
-	if (fb_info->var.sync & FB_SYNC_CLK_LAT_FALL)
+	if (host->sync & FB_SYNC_CLK_LAT_FALL)
 		vdctrl0 |= VDCTRL0_DOTCLK_ACT_FALLING;
 
 	writel(vdctrl0, host->base + LCDC_VDCTRL0);
@@ -793,8 +820,6 @@ static int mxsfb_wait_for_vsync(struct fb_info *fb_info)
 
 	init_completion(&host->vsync_complete);
 
-	writel(CTRL1_VSYNC_EDGE_IRQ,
-		host->base + LCDC_CTRL1 + REG_CLR);
 	host->wait4vsync = 1;
 	writel(CTRL1_VSYNC_EDGE_IRQ_EN,
 		host->base + LCDC_CTRL1 + REG_SET);
@@ -842,12 +867,14 @@ static int mxsfb_blank(int blank, struct fb_info *fb_info)
 
 		clk_disable_disp_axi(host);
 		clk_disable_axi(host);
+		clk_disable_pix(host);
 		break;
 
 	case FB_BLANK_UNBLANK:
-		if (!host->enabled)
+		if (!host->enabled) {
+			mxsfb_set_par(&host->fb_info);
 			mxsfb_enable_controller(fb_info);
-		mxsfb_set_par(&host->fb_info);
+		}
 		break;
 	}
 	return 0;
@@ -877,6 +904,7 @@ static int mxsfb_pan_display(struct fb_var_screeninfo *var,
 
 	clk_enable_axi(host);
 	clk_enable_disp_axi(host);
+	clk_enable_pix(host);
 
 	offset = fb_info->fix.line_length * var->yoffset;
 
@@ -889,8 +917,6 @@ static int mxsfb_pan_display(struct fb_var_screeninfo *var,
 	writel(fb_info->fix.smem_start + offset,
 			host->base + host->devdata->next_buf);
 
-	writel(CTRL1_CUR_FRAME_DONE_IRQ,
-		host->base + LCDC_CTRL1 + REG_CLR);
 	writel(CTRL1_CUR_FRAME_DONE_IRQ_EN,
 		host->base + LCDC_CTRL1 + REG_SET);
 
@@ -951,6 +977,13 @@ static int mxsfb_restore_mode(struct mxsfb_info *host)
 
 	clk_enable_axi(host);
 	clk_enable_disp_axi(host);
+
+	/* Enable pixel clock earlier since in 7D
+	 * the lcdif registers should be accessed
+	 * when the pixel clock is enabled, otherwise
+	 * the bus will be hang.
+	 */
+	clk_enable_pix(host);
 
 	/* Only restore the mode when the controller is running */
 	ctrl = readl(host->base + LCDC_CTRL);
@@ -1027,7 +1060,6 @@ static int mxsfb_restore_mode(struct mxsfb_info *host)
 	line_count = fb_info->fix.smem_len / fb_info->fix.line_length;
 	fb_info->fix.ypanstep = 1;
 
-	clk_prepare_enable(host->clk_pix);
 	host->enabled = 1;
 
 	return 0;
@@ -1161,6 +1193,8 @@ static int mxsfb_init_fbinfo(struct mxsfb_info *host)
 	modelist = list_first_entry(&fb_info->modelist,
 			struct fb_modelist, list);
 	fb_videomode_to_var(var, &modelist->mode);
+	/* save the sync value getting from dtb */
+	host->sync = fb_info->var.sync;
 
 	var->nonstd = 0;
 	var->activate = FB_ACTIVATE_NOW;
@@ -1191,6 +1225,7 @@ static void mxsfb_dispdrv_init(struct platform_device *pdev,
 	struct device *dev = &pdev->dev;
 	char disp_dev[32];
 
+	memset(&setting, 0x0, sizeof(setting));
 	setting.fbi = fbi;
 	memcpy(disp_dev, host->disp_dev, strlen(host->disp_dev));
 	disp_dev[strlen(host->disp_dev)] = '\0';

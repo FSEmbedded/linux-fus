@@ -167,7 +167,10 @@ struct hw_bank {
  * @role: current role
  * @is_otg: if the device is otg-capable
  * @fsm: otg finite state machine
- * @fsm_timer: pointer to timer list of otg fsm
+ * @otg_fsm_hrtimer: hrtimer for otg fsm timers
+ * @hr_timeouts: time out list for active otg fsm timers
+ * @enabled_otg_timer_bits: bits of enabled otg timers
+ * @next_otg_timer: next nearest enabled timer to be expired
  * @hnp_polling_work: work for hnp polling
  * @work: work for role changing
  * @wq: workqueue thread
@@ -201,6 +204,9 @@ struct hw_bank {
  * @in_lpm: if the core in low power mode
  * @wakeup_int: if wakeup interrupt occur
  * @rev: The revision number for controller
+ * @hnp_enable: indicates if OTG full HNP is enabled
+ * @adp_probe_event: indicates to enable adp probe
+ * @adp_sense_event: indicates to enable adp sense
  */
 struct ci_hdrc {
 	struct device			*dev;
@@ -212,7 +218,10 @@ struct ci_hdrc {
 	bool				is_otg;
 	struct usb_otg			otg;
 	struct otg_fsm			fsm;
-	struct ci_otg_fsm_timer_list	*fsm_timer;
+	struct hrtimer			otg_fsm_hrtimer;
+	ktime_t				hr_timeouts[NUM_OTG_FSM_TIMERS];
+	unsigned			enabled_otg_timer_bits;
+	enum otg_fsm_timer		next_otg_timer;
 	struct timer_list		hnp_polling_timer;
 	struct work_struct		hnp_polling_work;
 	struct work_struct		work;
@@ -262,6 +271,9 @@ struct ci_hdrc {
 	u32				pm_portsc;
 	u32				pm_usbmode;
 	struct work_struct		power_lost_work;
+	bool				hnp_enable;
+	bool				adp_probe_event;
+	bool				adp_sense_event;
 };
 
 static inline struct ci_role_driver *ci_role(struct ci_hdrc *ci)

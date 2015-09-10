@@ -21,7 +21,7 @@
  * Copyright 2008 Embedded Alley Solutions, Inc All Rights Reserved.
  */
 
-#include <linux/busfreq-imx6.h>
+#include <linux/busfreq-imx.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/device.h>
@@ -90,7 +90,7 @@
 #define MERGE_BLOCK	2
 
 static unsigned long default_bpp = 16;
-DEFINE_MUTEX(hard_lock);
+static DEFINE_MUTEX(hard_lock);
 
 struct update_marker_data {
 	struct list_head full_list;
