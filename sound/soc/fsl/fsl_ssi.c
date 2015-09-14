@@ -44,7 +44,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/pm_runtime.h>
-#include <linux/busfreq-imx6.h>
+#include <linux/busfreq-imx.h>
 
 #include <sound/core.h>
 #include <sound/pcm.h>
@@ -623,8 +623,6 @@ static int fsl_ssi_startup(struct snd_pcm_substream *substream,
 	if (ret)
 		return ret;
 
-	pm_runtime_get_sync(dai->dev);
-
 	/* When using dual fifo mode, it is safer to ensure an even period
 	 * size. If appearing to an odd number while DMA always starts its
 	 * task from fifo0, fifo1 would be neglected at the end of each
@@ -647,8 +645,6 @@ static void fsl_ssi_shutdown(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct fsl_ssi_private *ssi_private =
 		snd_soc_dai_get_drvdata(rtd->cpu_dai);
-
-	pm_runtime_put_sync(dai->dev);
 
 	clk_disable_unprepare(ssi_private->clk);
 
@@ -1093,6 +1089,7 @@ static int fsl_ssi_trigger(struct snd_pcm_substream *substream, int cmd,
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		pm_runtime_get_sync(dai->dev);
 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 			fsl_ssi_tx_config(ssi_private, true);
 		else
@@ -1106,6 +1103,7 @@ static int fsl_ssi_trigger(struct snd_pcm_substream *substream, int cmd,
 			fsl_ssi_tx_config(ssi_private, false);
 		else
 			fsl_ssi_rx_config(ssi_private, false);
+		pm_runtime_put_sync(dai->dev);
 		break;
 
 	default:
@@ -1261,6 +1259,7 @@ static int fsl_ssi_imx_probe(struct platform_device *pdev,
 	struct device_node *np = pdev->dev.of_node;
 	u32 dmas[4];
 	int ret;
+	u32 buffer_size;
 
 	if (ssi_private->has_ipg_clk_name)
 		ssi_private->clk = devm_clk_get(&pdev->dev, "ipg");
@@ -1297,7 +1296,7 @@ static int fsl_ssi_imx_probe(struct platform_device *pdev,
 	ssi_private->dma_params_tx.addr = ssi_private->ssi_phys + CCSR_SSI_STX0;
 	ssi_private->dma_params_rx.addr = ssi_private->ssi_phys + CCSR_SSI_SRX0;
 
-	ret = !of_property_read_u32_array(np, "dmas", dmas, 4);
+	ret = of_property_read_u32_array(np, "dmas", dmas, 4);
 	if (ssi_private->use_dma && !ret && dmas[2] == IMX_DMATYPE_SSI_DUAL) {
 		ssi_private->use_dual_fifo = true;
 		/* When using dual fifo mode, we need to keep watermark
@@ -1306,6 +1305,9 @@ static int fsl_ssi_imx_probe(struct platform_device *pdev,
 		ssi_private->dma_params_tx.maxburst &= ~0x1;
 		ssi_private->dma_params_rx.maxburst &= ~0x1;
 	}
+
+	if (of_property_read_u32(np, "fsl,dma-buffer-size", &buffer_size))
+		buffer_size = IMX_SSI_DMABUF_SIZE;
 
 	if (!ssi_private->use_dma) {
 
@@ -1327,7 +1329,7 @@ static int fsl_ssi_imx_probe(struct platform_device *pdev,
 		if (ret)
 			goto error_pcm;
 	} else {
-		ret = imx_pcm_dma_init(pdev, IMX_SSI_DMABUF_SIZE);
+		ret = imx_pcm_dma_init(pdev, buffer_size);
 		if (ret)
 			goto error_pcm;
 	}

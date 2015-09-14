@@ -433,6 +433,12 @@ struct bufdesc_ex {
  */
 #define FEC_QUIRK_TKT210590             (1 << 11)
 
+struct fec_enet_stop_mode {
+	struct regmap *gpr;
+	u8 req_gpr;
+	u8 req_bit;
+};
+
 struct fec_enet_priv_tx_q {
 	int index;
 	unsigned char *tx_bounce[TX_RING_SIZE];
@@ -510,6 +516,7 @@ struct fec_enet_private {
 	struct	phy_device *phy_dev;
 	int	mii_timeout;
 	int	mii_bus_share;
+	bool	miibus_up_failed;
 	uint	phy_speed;
 	phy_interface_t	phy_interface;
 	struct device_node *phy_node;
@@ -521,6 +528,7 @@ struct fec_enet_private {
 	bool	bufdesc_ex;
 	int	pause_flag;
 	int	wol_flag;
+	int	wake_irq;
 	u32	quirks;
 
 	struct	napi_struct napi;
@@ -562,6 +570,8 @@ struct fec_enet_private {
 	unsigned int reload_period;
 	int pps_enable;
 	unsigned int next_counter;
+
+	struct fec_enet_stop_mode gpr;
 };
 
 void fec_ptp_init(struct platform_device *pdev);
