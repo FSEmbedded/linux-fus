@@ -128,6 +128,8 @@
 #define CTRL1_IRQ_STATUS_SHIFT			8
 
 #define CTRL2_OUTSTANDING_REQS__REQ_16		(3 << 21)
+#define CTRL2_ODD_LINE_PATTERN__BGR		(5 << 16)
+#define CTRL2_EVEN_LINE_PATTERN__BGR		(5 << 12)
 
 #define TRANSFER_COUNT_SET_VCOUNT(x)	(((x) & 0xffff) << 16)
 #define TRANSFER_COUNT_GET_VCOUNT(x)	(((x) >> 16) & 0xffff)
@@ -203,7 +205,6 @@ struct mxsfb_info {
 	struct clk *clk_pix;
 	struct clk *clk_axi;
 	struct clk *clk_disp_axi;
-	bool clk_pix_enabled;
 	bool clk_axi_enabled;
 	bool clk_disp_axi_enabled;
 	void __iomem *base;	/* registers */
@@ -223,7 +224,6 @@ struct mxsfb_info {
 	char disp_dev[32];
 	struct mxc_dispdrv_handle *dispdrv;
 	int id;
-	struct fb_var_screeninfo var;
 };
 
 #define mxsfb_is_v3(host) (host->devdata->ipversion == 3)
@@ -255,24 +255,6 @@ static const struct mxsfb_devdata mxsfb_devdata[] = {
 static int mxsfb_map_videomem(struct fb_info *info);
 static int mxsfb_unmap_videomem(struct fb_info *info);
 static int mxsfb_set_par(struct fb_info *fb_info);
-
-/* enable lcdif pix clock */
-static inline void clk_enable_pix(struct mxsfb_info *host)
-{
-	if (!host->clk_pix_enabled && (host->clk_pix != NULL)) {
-		clk_prepare_enable(host->clk_pix);
-		host->clk_pix_enabled = true;
-	}
-}
-
-/* disable lcdif pix clock */
-static inline void clk_disable_pix(struct mxsfb_info *host)
-{
-	if (host->clk_pix_enabled && (host->clk_pix != NULL)) {
-		clk_disable_unprepare(host->clk_pix);
-		host->clk_pix_enabled = false;
-	}
-}
 
 /* enable lcdif axi clock */
 static inline void clk_enable_axi(struct mxsfb_info *host)
@@ -534,10 +516,6 @@ static void mxsfb_enable_controller(struct fb_info *fb_info)
 	clk_enable_axi(host);
 	clk_enable_disp_axi(host);
 
-	/* the pixel clock should be disabled before
-	 * trying to set its clock rate successfully.
-	 */
-	clk_disable_pix(host);
 	ret = clk_set_rate(host->clk_pix,
 			 PICOS2KHZ(fb_info->var.pixclock) * 1000U);
 	if (ret) {
@@ -553,7 +531,7 @@ static void mxsfb_enable_controller(struct fb_info *fb_info)
 		}
 		return;
 	}
-	clk_enable_pix(host);
+	clk_prepare_enable(host->clk_pix);
 
 	/* Clean soft reset and clock gate bit if it was enabled  */
 	writel(CTRL_SFTRST | CTRL_CLKGATE, host->base + LCDC_CTRL + REG_CLR);
@@ -621,6 +599,8 @@ static void mxsfb_disable_controller(struct fb_info *fb_info)
 	reg = readl(host->base + LCDC_VDCTRL4);
 	writel(reg & ~VDCTRL4_SYNC_SIGNALS_ON, host->base + LCDC_VDCTRL4);
 
+	clk_disable_unprepare(host->clk_pix);
+
 	pm_runtime_put_sync_suspend(&host->pdev->dev);
 
 	host->enabled = 0;
@@ -633,28 +613,6 @@ static void mxsfb_disable_controller(struct fb_info *fb_info)
 	}
 }
 
-/**
-   This function compare the fb parameter see whether it was different
-   parameter for hardware, if it was different parameter, the hardware
-   will reinitialize. All will compared except x/y offset.
- */
-static bool mxsfb_par_equal(struct fb_info *fbi, struct mxsfb_info *host)
-{
-	/* Here we set the xoffset, yoffset to zero, and compare two
-	 * var see have different or not. */
-	struct fb_var_screeninfo oldvar = host->var;
-	struct fb_var_screeninfo newvar = fbi->var;
-
-	if ((fbi->var.activate & FB_ACTIVATE_MASK) == FB_ACTIVATE_NOW &&
-	    fbi->var.activate & FB_ACTIVATE_FORCE)
-		return false;
-
-	oldvar.xoffset = newvar.xoffset = 0;
-	oldvar.yoffset = newvar.yoffset = 0;
-
-	return memcmp(&oldvar, &newvar, sizeof(struct fb_var_screeninfo)) == 0;
-}
-
 static int mxsfb_set_par(struct fb_info *fb_info)
 {
 	struct mxsfb_info *host = to_imxfb_host(fb_info);
@@ -662,13 +620,8 @@ static int mxsfb_set_par(struct fb_info *fb_info)
 	int line_size, fb_size;
 	int reenable = 0;
 
-	/* If parameter no change, don't reconfigure. */
-	if (mxsfb_par_equal(fb_info, host))
-		return 0;
-
 	clk_enable_axi(host);
 	clk_enable_disp_axi(host);
-	clk_enable_pix(host);
 
 	dev_dbg(&host->pdev->dev, "%s\n", __func__);
 	/*
@@ -794,12 +747,6 @@ static int mxsfb_set_par(struct fb_info *fb_info)
 	if (reenable)
 		mxsfb_enable_controller(fb_info);
 
-	/* Clear activate as not Reconfiguring framebuffer again */
-	if ((fb_info->var.activate & FB_ACTIVATE_FORCE) &&
-		(fb_info->var.activate & FB_ACTIVATE_MASK) == FB_ACTIVATE_NOW)
-		fb_info->var.activate = FB_ACTIVATE_NOW;
-
-	host->var = fb_info->var;
 	return 0;
 }
 
@@ -912,7 +859,6 @@ static int mxsfb_blank(int blank, struct fb_info *fb_info)
 
 		clk_disable_disp_axi(host);
 		clk_disable_axi(host);
-		clk_disable_pix(host);
 		break;
 
 	case FB_BLANK_UNBLANK:
@@ -949,7 +895,6 @@ static int mxsfb_pan_display(struct fb_var_screeninfo *var,
 
 	clk_enable_axi(host);
 	clk_enable_disp_axi(host);
-	clk_enable_pix(host);
 
 	offset = fb_info->fix.line_length * var->yoffset;
 
@@ -1022,13 +967,6 @@ static int mxsfb_restore_mode(struct mxsfb_info *host)
 
 	clk_enable_axi(host);
 	clk_enable_disp_axi(host);
-
-	/* Enable pixel clock earlier since in 7D
-	 * the lcdif registers should be accessed
-	 * when the pixel clock is enabled, otherwise
-	 * the bus will be hang.
-	 */
-	clk_enable_pix(host);
 
 	/* Only restore the mode when the controller is running */
 	ctrl = readl(host->base + LCDC_CTRL);
@@ -1105,6 +1043,7 @@ static int mxsfb_restore_mode(struct mxsfb_info *host)
 	line_count = fb_info->fix.smem_len / fb_info->fix.line_length;
 	fb_info->fix.ypanstep = 1;
 
+	clk_prepare_enable(host->clk_pix);
 	host->enabled = 1;
 
 	return 0;
@@ -1555,6 +1494,8 @@ static void mxsfb_shutdown(struct platform_device *pdev)
 	 */
 	writel(CTRL_RUN, host->base + LCDC_CTRL + REG_CLR);
 	writel(CTRL_MASTER, host->base + LCDC_CTRL + REG_CLR);
+	clk_disable_disp_axi(host);
+	clk_disable_axi(host);
 }
 
 #ifdef CONFIG_PM_RUNTIME

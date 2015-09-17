@@ -155,7 +155,6 @@
 			regulator-name = "lcd-3v3";
 			gpio = <&gpio3 19 0>;
 			enable-active-high;
-			status = "disabled";
 		};
 
 		reg_camera_dovdd: camera_dovdd {
@@ -987,22 +986,22 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcdif1_1>;	/* Remove when already active */
 	lcd-supply = <&reg_lcd_3v3>;
-//###	status = "okay";
+	status = "okay";
 
 	display0: display {
 		bits-per-pixel = <16>;
-		bus-width = <16>;
+		bus-width = <18>;
 		display-timings {
 			native-mode = <&timing0>;
 			timing0: wvga {
-				clock-frequency = <33500000>;
-				hactive = <800>;
+				clock-frequency = <25000000>;
+				hactive = <640>;
 				vactive = <480>;
-				hfront-porch = <40>;
-				hback-porch = <88>;
-				hsync-len = <128>;
-				vback-porch = <33>;
-				vfront-porch = <10>;
+				hfront-porch = <16>;
+				hback-porch = <134>;
+				hsync-len = <10>;
+				vback-porch = <11>;
+				vfront-porch = <32>;
 				vsync-len = <2>;
 				hsync-active = <0>;
 				vsync-active = <0>;
@@ -1016,6 +1015,7 @@
 &lcdif2 {
         display = <&display1>;
         disp-dev = "ldb";
+	lcd-supply = <&reg_lcd_3v3>;
         status = "okay";
 
         display1: display {
