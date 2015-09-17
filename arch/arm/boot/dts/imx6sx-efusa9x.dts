@@ -45,29 +45,6 @@
 		#reset-cells = <0>;
 	};
 #endif
-#if 0 //###
-	max7322_reset: max7322-reset {
-		compatible = "gpio-reset";
-		reset-gpios = <&gpio4 22 GPIO_ACTIVE_LOW>;
-		reset-delay-us = <1>;
-		#reset-cells = <0>;
-	};
-
-	hannstar_cabc {
-		compatible = "hannstar,cabc";
-
-		lvds0 {
-			gpios = <&max7310_a 0 GPIO_ACTIVE_HIGH>;
-		};
-	};
-
-	max7310_reset: max7310-reset {
-		compatible = "gpio-reset";
-		reset-gpios = <&gpio1 15 GPIO_ACTIVE_LOW>;
-		reset-delay-us = <1>;
-		#reset-cells = <0>;
-	};
-#endif //###
 
 	memory {
 		reg = <0x80000000 0x80000000>;
@@ -80,48 +57,6 @@
 
 	regulators {
 		compatible = "simple-bus";
-
-#if 0 //###
-		reg_audio: cs42888_supply {
-			compatible = "regulator-fixed";
-			regulator-name = "cs42888_supply";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			regulator-always-on;
-		};
-
-		si4763_vio1: vio1_tnr {
-			compatible = "regulator-fixed";
-			regulator-name = "vio1";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			regulator-always-on;
-		};
-
-		si4763_vio2: vio2_tnr {
-			compatible = "regulator-fixed";
-			regulator-name = "vio2";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			regulator-always-on;
-		};
-
-		si4763_vd: f3v3_tnr {
-			compatible = "regulator-fixed";
-			regulator-name = "vd";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			regulator-always-on;
-		};
-
-		si4763_va: f5v_tnr {
-			compatible = "regulator-fixed";
-			regulator-name = "va";
-			regulator-min-microvolt = <5000000>;
-			regulator-max-microvolt = <5000000>;
-			regulator-always-on;
-		};
-#endif //###
 
 		/* SGTL5000 analog voltage */
 		reg_sgtl5000_vdda: sgtl5000_vdda {
@@ -199,24 +134,6 @@
 			regulator-max-microvolt = <3300000>;
 		};
 
-#if 0 //###
-		reg_sd3_vmmc: sd3_vmmc{
-			compatible = "regulator-fixed";
-			regulator-name = "VCC_SD3";
-			regulator-min-microvolt = <3000000>;
-			regulator-max-microvolt = <3000000>;
-			gpio = <&gpio2 11 GPIO_ACTIVE_HIGH>;
-			enable-active-high;
-		};
-
-		reg_psu_5v: psu_5v0 {
-			compatible = "regulator-fixed";
-			regulator-name = "PSU-5V0";
-			regulator-min-microvolt = <5000000>;
-			regulator-max-microvolt = <5000000>;
-			regulator-boot-on;
-		};
-#endif //###
 
 		reg_usb_otg1_vbus: usb_otg1_vbus {
 			compatible = "regulator-fixed";
@@ -250,53 +167,22 @@
 //###			"Line Out Jack", "LINE_OUT",
 			"Headphone Jack", "HP_OUT";
 	};
-
-#if 0 //###
-	sound-cs42888 {
-		compatible = "fsl,imx6-sabreauto-cs42888",
-				"fsl,imx-audio-cs42888";
-		model = "imx-cs42888";
-		esai-controller = <&esai>;
-		asrc-controller = <&asrc>;
-		audio-codec = <&codec>;
-	};
-
-	sound-fm {
-		compatible = "fsl,imx-audio-si476x",
-			   "fsl,imx-tuner-si476x";
-		model = "imx-radio-si4763";
-
-		ssi-controller = <&ssi2>;
-		fm-controller = <&si476x_codec>;
-		mux-int-port = <2>;
-		mux-ext-port = <5>;
-	};
-
-	sound-spdif {
-		compatible = "fsl,imx-audio-spdif";
-		model = "imx-spdif";
-		spdif-controller = <&spdif>;
-		spdif-in;
-	};
-#endif //###
 };
 
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	imx6x-sabreauto {
+	imx6x-efusa9x {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
+				/* VLCD_ON */
 				MX6SX_PAD_LCD1_DATA18__GPIO3_IO_19	0x17059
+				/* I2C2_IRQn (SX8655, ext. touch) */
 				MX6SX_PAD_SD3_CLK__GPIO7_IO_0		0x80000000
+				/* RESETOUTn */
+				MX6SX_PAD_ENET1_CRS__GPIO2_IO_1		0x80000000
 #if 0 //###
-				MX6SX_PAD_SD4_RESET_B__GPIO6_IO_22	0x80000000
-				MX6SX_PAD_USB_H_STROBE__GPIO7_IO_11 0x17059
-				MX6SX_PAD_USB_H_DATA__GPIO7_IO_10	0x17059
-				MX6SX_PAD_LCD1_DATA23__GPIO3_IO_24	0x80000000
-				MX6SX_PAD_SD2_CLK__GPIO6_IO_6		0x80000000
-				MX6SX_PAD_LCD1_DATA22__GPIO3_IO_23	0x80000000
 				MX6SX_PAD_GPIO1_IO13__WDOG1_WDOG_ANY	0x10b0
 #endif //###
 			>;
@@ -391,26 +277,9 @@
 			>;
 		};
 
-#if 0 //###
-		pinctrl_esai_2: esaigrp-2 {
-			fsl,pins = <
-				MX6SX_PAD_CSI_DATA00__ESAI_TX_CLK   0x1b030
-				MX6SX_PAD_CSI_DATA01__ESAI_TX_FS    0x1b030
-				MX6SX_PAD_CSI_HSYNC__ESAI_TX0       0x1b030
-				MX6SX_PAD_CSI_DATA04__ESAI_TX1      0x1b030
-				MX6SX_PAD_CSI_DATA06__ESAI_TX2_RX3  0x1b030
-				MX6SX_PAD_CSI_DATA07__ESAI_TX3_RX2  0x1b030
-				MX6SX_PAD_CSI_DATA02__ESAI_RX_CLK   0x1b030
-				MX6SX_PAD_CSI_DATA03__ESAI_RX_FS    0x1b030
-				MX6SX_PAD_CSI_VSYNC__ESAI_TX5_RX0   0x1b030
-				MX6SX_PAD_CSI_DATA05__ESAI_TX4_RX1  0x1b030
-			>;
-		};
-
-#endif //###
-
 		pinctrl_gpmi_nand_1: gpmi-nand-1 {
 #if 0
+			/* Already configured in NBoot/U-Boot */
 			fsl,pins = <
 				MX6SX_PAD_NAND_CLE__RAWNAND_CLE         0xb0b1
 				MX6SX_PAD_NAND_ALE__RAWNAND_ALE         0xb0b1
@@ -482,34 +351,9 @@
 		};
 
 #if 0 //###
-		pinctrl_mlb_2: mlbgrp-2 {
-			fsl,pins = <
-				MX6SX_PAD_ENET2_RX_CLK__MLB_DATA	0x31
-				MX6SX_PAD_ENET2_CRS__MLB_SIG		0x31
-				MX6SX_PAD_ENET2_TX_CLK__MLB_CLK		0x31
-			>;
-		};
-
 		pinctrl_pwm4_0: pwm4grp-0 {
 			fsl,pins = <
 				MX6SX_PAD_SD1_DATA1__PWM4_OUT 0x110b0
-			>;
-		};
-
-		pinctrl_qspi1_1: qspi1grp_1 {
-			fsl,pins = <
-				MX6SX_PAD_QSPI1A_DATA0__QSPI1_A_DATA_0  0x70a1
-				MX6SX_PAD_QSPI1A_DATA1__QSPI1_A_DATA_1  0x70a1
-				MX6SX_PAD_QSPI1A_DATA2__QSPI1_A_DATA_2  0x70a1
-				MX6SX_PAD_QSPI1A_DATA3__QSPI1_A_DATA_3  0x70a1
-				MX6SX_PAD_QSPI1A_SCLK__QSPI1_A_SCLK     0x70a1
-				MX6SX_PAD_QSPI1A_SS0_B__QSPI1_A_SS0_B   0x70a1
-				MX6SX_PAD_QSPI1B_DATA0__QSPI1_B_DATA_0  0x70a1
-				MX6SX_PAD_QSPI1B_DATA1__QSPI1_B_DATA_1  0x70a1
-				MX6SX_PAD_QSPI1B_DATA2__QSPI1_B_DATA_2  0x70a1
-				MX6SX_PAD_QSPI1B_DATA3__QSPI1_B_DATA_3  0x70a1
-				MX6SX_PAD_QSPI1B_SCLK__QSPI1_B_SCLK     0x70a1
-				MX6SX_PAD_QSPI1B_SS0_B__QSPI1_B_SS0_B   0x70a1
 			>;
 		};
 #endif //###
@@ -674,18 +518,6 @@
 	status = "okay";
 };
 #endif
-
-#if 0 //###
-&esai {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esai_2>;
-	assigned-clocks = <&clks IMX6SX_CLK_ESAI_SEL>,
-			  <&clks IMX6SX_CLK_ESAI_EXTAL>;
-	assigned-clock-parents = <&clks IMX6SX_CLK_PLL4_AUDIO_DIV>;
-	assigned-clock-rates = <0>, <24576000>;
-	status = "okay";
-};
-#endif //###
 
 &fec1 {
 	pinctrl-names = "default";
@@ -872,52 +704,6 @@
 		wakeup-gpios = <&gpio6 22 0>;
         };
 #endif
-
-#if 0
-	elan@10 {
-		compatible = "elan,elan-touch";
-		reg = <0x10>;
-		interrupt-parent = <&gpio3>;
-		interrupts = <28 3>;
-		gpio_elan_cs = <&gpio2 18 0>;
-		gpio_elan_rst = <&gpio3 8 0>;
-		gpio_intr = <&gpio3 28 0>;
-		status = "okay";
-	};
-
-	codec: cs42888@048 {
-		compatible = "cirrus,cs42888";
-		reg = <0x048>;
-		clocks = <&codec_osc 0>;
-		clock-names = "mclk";
-		VA-supply = <&reg_audio>;
-		VD-supply = <&reg_audio>;
-		VLS-supply = <&reg_audio>;
-		VLC-supply = <&reg_audio>;
-	};
-
-	si4763: si4763@63 {
-		compatible = "si4761";
-		reg = <0x63>;
-		va-supply = <&si4763_va>;
-		vd-supply = <&si4763_vd>;
-		vio1-supply = <&si4763_vio1>;
-		vio2-supply = <&si4763_vio2>;
-		revision-a10; /* set to default A10 compatible command set */
-
-		si476x_codec: si476x-codec {
-			compatible = "si476x-codec";
-		};
-	};
-
-	max7322: gpio@68 {
-		compatible = "maxim,max7322";
-		reg = <0x68>;
-		gpio-controller;
-		#gpio-cells = <2>;
-		resets = <&max7322_reset>;
-	};
-#endif
 };
 
 /* I2C_B */
@@ -929,49 +715,6 @@
 
        // ### TODO: FT5x06 on I2C_B
        // ### TODO: mXT224 on I2C_B
-
-#if 0 //###
-	max7310_a: gpio@30 {
-		compatible = "maxim,max7310";
-		reg = <0x30>;
-		gpio-controller;
-		#gpio-cells = <2>;
-		resets = <&max7310_reset>;
-	};
-
-	max7310_b: gpio@32 {
-		compatible = "maxim,max7310";
-		reg = <0x32>;
-		gpio-controller;
-		#gpio-cells = <2>;
-		resets = <&max7310_reset>;
-	};
-
-	mma8451@1c {
-		compatible = "fsl,mma8451";
-		reg = <0x1c>;
-		position = <7>;
-		interrupt-parent = <&gpio3>;
-		interrupts = <24 8>;
-		interrupt-route = <1>;
-	};
-
-	mag3110@0e {
-		compatible = "fsl,mag3110";
-		reg = <0x0e>;
-		position = <2>;
-		interrupt-parent = <&gpio6>;
-		interrupts = <6 1>;
-	};
-
-	isl29023@44 {
-		compatible = "fsl,isl29023";
-		reg = <0x44>;
-		rext = <499>;
-		interrupt-parent = <&gpio3>;
-		interrupts = <23 2>;
-	};
-#endif //###
 };
 
 
@@ -1073,12 +816,6 @@
 };
 
 #if 0 //###
-&mlb {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_mlb_2>;
-	status = "okay";
-};
-
 &pcie {
 	reset-gpio = <&max7310_b 3 0>;
 	status = "okay";
