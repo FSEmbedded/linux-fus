@@ -185,6 +185,8 @@
 #if 0 //###
 				MX6SX_PAD_GPIO1_IO13__WDOG1_WDOG_ANY	0x10b0
 #endif //###
+				/* Reset for external touches on I2C_A */
+				MX6SX_PAD_LCD1_DATA20__GPIO3_IO_21	0x80000000
 			>;
 		};
 
@@ -695,6 +697,33 @@
 #endif
 	};
 
+        /* Touch driver Focaltech  */
+#if 0
+	/* Mainline driver, may only work on EDT displays */
+	edt-ft5x06@38 {
+		compatible = "edt,edt-ft5306";
+		reg = <0x38>;
+		threshold = <25>;
+		gain = <8>;
+		offset = <0>;
+		interrupt-parent = <&gpio7>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&gpio3 21 GPIO_ACTIVE_LOW>;
+	};
+#else
+	/* F&S driver V2.0 */
+	ft5x06_ts@38 {
+		compatible = "FocalTech,ft5306";
+		reg = <0x38>;
+		threshold = <25>;
+		gain = <8>;
+		offset = <0>;
+		interrupt-parent = <&gpio7>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&gpio3 21 GPIO_ACTIVE_LOW>;
+	};
+#endif
+
 #if 0
         egalax_ts@04 {
                 compatible = "eeti,egalax_ts";
@@ -737,7 +766,7 @@
 		display-timings {
 			native-mode = <&timing0>;
 			timing0: wvga {
-				clock-frequency = <25000000>;
+				clock-frequency = <27000000>;
 				hactive = <640>;
 				vactive = <480>;
 				hfront-porch = <16>;
