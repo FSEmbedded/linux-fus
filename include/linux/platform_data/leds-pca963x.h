@@ -23,6 +23,10 @@
 #define __LINUX_PCA963X_H
 #include <linux/leds.h>
 
+/* Flags for each LED */
+#define PCA963X_FLAGS_ACTIVE_HIGH	0x01
+#define PCA963X_FLAGS_DEFAULT_ON	0x02
+
 enum pca963x_outdrv {
 	PCA963X_OPEN_DRAIN,
 	PCA963X_TOTEM_POLE, /* aka push-pull */

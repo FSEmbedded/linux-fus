@@ -107,6 +107,7 @@ struct pca963x_led {
 	struct work_struct work;
 	enum led_brightness brightness;
 	struct led_classdev led_cdev;
+	int flags;
 	int led_num; /* 0 .. 7 potentially */
 	enum pca963x_cmd cmd;
 	char name[32];
@@ -121,10 +122,16 @@ static void pca963x_brightness_work(struct pca963x_led *pca963x)
 	u8 ledout;
 	int shift = 2 * (pca963x->led_num % 4);
 	u8 mask = 0x3 << shift;
+	enum led_brightness brightness;
 
 	mutex_lock(&pca963x->chip->mutex);
+
+	brightness = pca963x->brightness;
+	if (pca963x->flags & PCA963X_FLAGS_ACTIVE_HIGH)
+		brightness = LED_FULL - brightness;
+
 	ledout = i2c_smbus_read_byte_data(pca963x->chip->client, ledout_addr);
-	switch (pca963x->brightness) {
+	switch (brightness) {
 	case LED_FULL:
 		i2c_smbus_write_byte_data(pca963x->chip->client, ledout_addr,
 			(ledout & ~mask) | (PCA963X_LED_ON << shift));
@@ -135,8 +142,7 @@ static void pca963x_brightness_work(struct pca963x_led *pca963x)
 		break;
 	default:
 		i2c_smbus_write_byte_data(pca963x->chip->client,
-			PCA963X_PWM_BASE + pca963x->led_num,
-			pca963x->brightness);
+			PCA963X_PWM_BASE + pca963x->led_num, brightness);
 		i2c_smbus_write_byte_data(pca963x->chip->client, ledout_addr,
 			(ledout & ~mask) | (PCA963X_LED_PWM << shift));
 		break;
@@ -292,6 +298,11 @@ pca963x_dt_init(struct i2c_client *client, struct pca963x_chipdef *chip)
 			of_get_property(child, "label", NULL) ? : child->name;
 		led.default_trigger =
 			of_get_property(child, "linux,default-trigger", NULL);
+		led.flags = 0;
+		if (of_property_read_bool(child, "active-high"))
+			led.flags |= PCA963X_FLAGS_ACTIVE_HIGH;
+		if (of_property_read_bool(child, "default-on"))
+			led.flags |= PCA963X_FLAGS_DEFAULT_ON;
 		pca963x_leds[reg] = led;
 	}
 	pdata = devm_kzalloc(&client->dev,
@@ -339,6 +350,7 @@ static int pca963x_probe(struct i2c_client *client,
 	struct pca963x_platform_data *pdata;
 	struct pca963x_chipdef *chip;
 	int i, err;
+	unsigned int val = 0;
 
 	chip = &pca963x_chipdefs[id->driver_data];
 	pdata = dev_get_platdata(&client->dev);
@@ -374,10 +386,23 @@ static int pca963x_probe(struct i2c_client *client,
 	pca963x_chip->client = client;
 	pca963x_chip->leds = pca963x;
 
-	/* Turn off LEDs by default*/
-	i2c_smbus_write_byte_data(client, chip->ledout_base, 0x00);
+	/* Set LEDs to default*/
+	if (pdata) {
+		for (i = 0; i < chip->n_leds; i++) {
+			int flags = pdata->leds.leds[i].flags;
+
+			flags &= PCA963X_FLAGS_ACTIVE_HIGH
+				 		| PCA963X_FLAGS_DEFAULT_ON;
+			if ((flags == PCA963X_FLAGS_ACTIVE_HIGH)
+			    || (flags == PCA963X_FLAGS_DEFAULT_ON))
+				val |= PCA963X_LED_ON << (2 * i);
+		}
+	}
+
+	i2c_smbus_write_byte_data(client, chip->ledout_base, (u8)val);
 	if (chip->n_leds > 4)
-		i2c_smbus_write_byte_data(client, chip->ledout_base + 1, 0x00);
+		i2c_smbus_write_byte_data(client, chip->ledout_base + 1,
+					  (u8)(val >> 8));
 
 	for (i = 0; i < chip->n_leds; i++) {
 		pca963x[i].led_num = i;
@@ -385,6 +410,7 @@ static int pca963x_probe(struct i2c_client *client,
 
 		/* Platform data can specify LED names and default triggers */
 		if (pdata && i < pdata->leds.num_leds) {
+			pca963x[i].flags = pdata->leds.leds[i].flags;
 			if (pdata->leds.leds[i].name)
 				snprintf(pca963x[i].name,
 					 sizeof(pca963x[i].name), "pca963x:%s",
@@ -415,9 +441,13 @@ static int pca963x_probe(struct i2c_client *client,
 	/* Disable LED all-call address and set normal mode */
 	i2c_smbus_write_byte_data(client, PCA963X_MODE1, 0x00);
 
-	/* Configure output: open-drain or totem pole (push-pull) */
-	if (pdata && pdata->outdrv == PCA963X_OPEN_DRAIN)
-		i2c_smbus_write_byte_data(client, PCA963X_MODE2, 0x01);
+	if (pdata) {
+		/* Configure output: open-drain or totem pole (push-pull) */
+		if (pdata->outdrv == PCA963X_OPEN_DRAIN)
+			i2c_smbus_write_byte_data(client, PCA963X_MODE2, 0x01);
+		else
+			i2c_smbus_write_byte_data(client, PCA963X_MODE2, 0x05);
+	}
 
 	return 0;
 
