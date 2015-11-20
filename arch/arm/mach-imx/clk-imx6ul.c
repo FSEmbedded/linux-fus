@@ -26,6 +26,22 @@
 #define BM_CCM_CCDR_MMDC_CH0_MASK	(0x2 << 16)
 #define CCDR	0x4
 
+/* ### FIXME: The values with ? are not verified yet */
+static const char *cko1_sels[]		= {
+	"pll3_usb_otg"/*?*/, "pll2_bus"/*?*/, "pll1_sys"/*?*/,
+	"pll5_video_div"/*?*/, "dummy", "axi", "enfc_podf", "dummy",
+	"sim_sel", "dummy", "lcdif_sel", "ahb", "ipg", "perclk", "ckil",
+	"pll4_audio_div",
+};
+static const char *cko2_sels[]		= {
+	"dummy", "mmdc_p0_fast", "gpmi_io", "usdhc1", "dummy", "dummy",
+	"ecspi_podf", "dummy", "gpmi_bch_apb", "dummy", "dummy", "csi",
+	"dummy", "dummy", "osc", "dummy", "dummy", "usdhc2", "sai1", "sai2",
+	"sai3_podf", "dummy", "dummy", "can_podf", "dummy", "dummy", "dummy",
+	"qspi1", "eim_slow", "uart_podf", "spdif", "dummy",
+};
+static const char *cko_sels[] = { "cko1", "cko2", };
+
 static const char *pll_bypass_src_sels[] = { "osc", "dummy", };
 static const char *pll1_bypass_sels[] = { "pll1", "pll1_bypass_src", };
 static const char *pll2_bypass_sels[] = { "pll2", "pll2_bypass_src", };
@@ -253,6 +269,10 @@ static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 	clks[IMX6UL_CLK_LDB_DI0_DIV_SEL]  = imx_clk_mux("ldb_di0", base + 0x20, 10, 1, ldb_di0_div_sels, ARRAY_SIZE(ldb_di0_div_sels));
 	clks[IMX6UL_CLK_LDB_DI1_DIV_SEL]  = imx_clk_mux("ldb_di1", base + 0x20, 11, 1, ldb_di1_div_sels, ARRAY_SIZE(ldb_di1_div_sels));
 
+	clks[IMX6UL_CLK_CKO1_SEL]	  = imx_clk_mux("cko1_sel",	base + 0x60, 0, 4, cko1_sels, ARRAY_SIZE(cko1_sels));
+	clks[IMX6UL_CLK_CKO2_SEL]	  = imx_clk_mux("cko2_sel",	base + 0x60, 16, 5, cko2_sels, ARRAY_SIZE(cko2_sels));
+	clks[IMX6UL_CLK_CKO]		  = imx_clk_mux("cko",		base + 0x60, 8, 1, cko_sels, ARRAY_SIZE(cko_sels));
+
 	clks[IMX6UL_CLK_LDB_DI0_DIV_3_5] = imx_clk_fixed_factor("ldb_di0_div_3_5", "ldb_di0_sel", 2, 7);
 	clks[IMX6UL_CLK_LDB_DI0_DIV_7]	 = imx_clk_fixed_factor("ldb_di0_div_7",   "ldb_di0_sel", 1, 7);
 	clks[IMX6UL_CLK_LDB_DI1_DIV_3_5] = imx_clk_fixed_factor("ldb_di1_div_3_5", "qspi1_sel", 2, 7);
@@ -288,6 +308,8 @@ static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 	clks[IMX6UL_CLK_ECSPI_PODF]	= imx_clk_divider("ecspi_podf",	   "ecspi_sel",		base + 0x38, 19, 6);
 	clks[IMX6UL_CLK_LCDIF_PRED]	= imx_clk_divider("lcdif_pred",	   "lcdif_pre_sel",	base + 0x38, 12, 3);
 	clks[IMX6UL_CLK_CSI_PODF]       = imx_clk_divider("csi_podf",      "csi_sel",           base + 0x3c, 11, 3);
+	clks[IMX6UL_CLK_CKO1_PODF]      = imx_clk_divider("cko1_podf",     "cko1_sel",          base + 0x60, 4, 3);
+	clks[IMX6UL_CLK_CKO2_PODF]      = imx_clk_divider("cko2_podf",     "cko2_sel",          base + 0x60, 21, 3);
 
 	clks[IMX6UL_CLK_ARM]		= imx_clk_busy_divider("arm", 	    "pll1_sw",	base +	0x10, 0,  3,  base + 0x48, 16);
 	clks[IMX6UL_CLK_MMDC_PODF]	= imx_clk_busy_divider("mmdc_podf", "periph2",	base +  0x14, 3,  3,  base + 0x48, 2);
@@ -396,7 +418,10 @@ static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 	clks[IMX6UL_CLK_I2C4]		= imx_clk_gate2("i2c4",		"perclk", 	 base + 0x80,	24);
 	clks[IMX6UL_CLK_PWM5]		= imx_clk_gate2("pwm5",		"perclk",	 base + 0x80,	26);
 	clks[IMX6UL_CLK_PWM6]		= imx_clk_gate2("pwm6",		"perclk",	 base +	0x80,	28);
-	clks[IMX6UL_CLK_PWM7]		= imx_clk_gate2("Pwm7",		"perclk",	 base + 0x80,	30);
+	clks[IMX6UL_CLK_PWM7]		= imx_clk_gate2("pwm7",		"perclk",	 base + 0x80,	30);
+
+	clks[IMX6UL_CLK_CKO1]		= imx_clk_gate("cko1",		"cko1_podf",	 base + 0x60,	7);
+	clks[IMX6UL_CLK_CKO2]		= imx_clk_gate("cko2",		"cko2_podf",	 base + 0x60,	24);
 
 	/* mask handshake of mmdc */
 	writel_relaxed(BM_CCM_CCDR_MMDC_CH0_MASK, base + CCDR);
