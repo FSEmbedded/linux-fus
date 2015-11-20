@@ -209,6 +209,7 @@ struct mxsfb_info {
 	bool clk_disp_axi_enabled;
 	void __iomem *base;	/* registers */
 	u32 sync;		/* record display timing polarities */
+	u32 pattern;		/* RGB reordering on LCD interface */
 	unsigned allocated_size;
 	int enabled;
 	unsigned ld_intf_width;
@@ -539,7 +540,9 @@ static void mxsfb_enable_controller(struct fb_info *fb_info)
 	/* reconfigure the lcdif after */
 	mxsfb_set_par(&host->fb_info);
 
-	writel(CTRL2_OUTSTANDING_REQS__REQ_16,
+	/* Switch Color on LCD interface if requested */
+	writel(CTRL2_OUTSTANDING_REQS__REQ_16
+	       | (host->pattern << 16) | (host->pattern << 12),
 		host->base + LCDC_V4_CTRL2 + REG_SET);
 
 	/* if it was disabled, re-enable the mode again */
@@ -1064,6 +1067,11 @@ static int mxsfb_init_fbinfo_dt(struct mxsfb_info *host)
 	int ret = 0;
 
 	host->id = of_alias_get_id(np, "lcdif");
+
+	/* RGB=0, RBG=1, GBR=2, GRB=3, BRG=4, BGR=5 */
+	ret = of_property_read_u32(np, "pattern", &host->pattern);
+	if ((ret < 0) || (host->pattern > 5))
+		host->pattern = 0;
 
 	display_np = of_parse_phandle(np, "display", 0);
 	if (!display_np) {
