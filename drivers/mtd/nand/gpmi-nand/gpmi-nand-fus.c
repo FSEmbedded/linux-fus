@@ -35,7 +35,6 @@
 #include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
-//####include <linux/mtd/gpmi-nand.h>
 #include <linux/mtd/partitions.h>
 #include <linux/mtd/nand.h>
 #include <linux/mxs-dma-ext.h>		/* struct mxs_dma_ccw, CCW_*, ... */
@@ -45,7 +44,6 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_mtd.h>
-//####include <mach/clock.h>			/* ### unclean access to struct clk */
 #include "gpmi-regs.h"
 #include "bch-regs.h"
 
@@ -557,12 +555,14 @@ static int start_dma_with_bch_irq(struct gpmi_nand_data *priv,
 				  struct dma_async_tx_descriptor *desc)
 {
 	struct completion *bch_c = &priv->bch_done;
+	struct completion *dma_c = &priv->dma_done;
 	struct resources *r = &priv->resources;
 	unsigned long remain;
 	dma_cookie_t cookie;
 
 	/* Prepare to receive an interrupt from the BCH block. */
 	init_completion(bch_c);
+	init_completion(dma_c);
 
 	/* Remove any COMPLETE_IRQ states from previous writes (we only check
 	   COMPLETE_IRQ when reading); BCH has a pending state, too, so we may
@@ -573,10 +573,20 @@ static int start_dma_with_bch_irq(struct gpmi_nand_data *priv,
 	/* Enable BCH complete interrupt */
 	writel(BM_BCH_CTRL_COMPLETE_IRQ_EN, r->bch_regs + HW_BCH_CTRL_SET);
 
-	/* Start the DMA, we are not interested in the DMA callback */
-	desc->callback = NULL;
+	/* Start the DMA */
+	desc->callback		= dma_irq_callback;
+	desc->callback_param	= priv;
 	cookie = dmaengine_submit(desc);
 	dma_async_issue_pending(get_dma_chan(priv));
+
+	/* Wait for the interrupt from the DMA block. */
+	remain = wait_for_completion_timeout(dma_c, msecs_to_jiffies(1000));
+	if (!remain) {
+		dev_err(priv->dev, "DMA (+BCH) timeout, last DMA: %d\n",
+			priv->last_dma_type);
+		gpmi_dump_info(priv);
+		return -ETIMEDOUT;
+	}
 
 	/* Wait for the interrupt from the BCH block. */
 	remain = wait_for_completion_timeout(bch_c, msecs_to_jiffies(1000));
