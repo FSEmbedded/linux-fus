@@ -56,15 +56,15 @@
 			clock-latency = <61036>; /* two CLK32 periods */
 			operating-points = <
 				/* kHz	uV */
-				528000	1175000
-				396000	1025000
-				198000	950000
+				528000	1250000
+				396000	1150000
+				198000	1150000
 			>;
 			fsl,soc-operating-points = <
 				/* KHz	uV */
-				528000	1175000
-				396000	1175000
-				198000	1175000
+				528000	1250000
+				396000	1150000
+				198000	1150000
 			>;
 			clocks = <&clks IMX6UL_CLK_ARM>,
 				 <&clks IMX6UL_CLK_PLL2_BUS>,
@@ -428,8 +428,8 @@
 				compatible = "fsl,imx6ul-pwm", "fsl,imx27-pwm";
 				reg = <0x0208c000 0x4000>;
 				interrupts = <GIC_SPI 86 IRQ_TYPE_LEVEL_HIGH>;
-				clocks = <&clks IMX6UL_CLK_DUMMY>,
-					 <&clks IMX6UL_CLK_DUMMY>;
+				clocks = <&clks IMX6UL_CLK_PWM4>,
+					 <&clks IMX6UL_CLK_PWM4>;
 				clock-names = "ipg", "per";
 				#pwm-cells = <2>;
 			};
