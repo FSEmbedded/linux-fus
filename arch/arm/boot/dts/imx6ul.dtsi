@@ -686,6 +686,7 @@
 				interrupts = <GIC_SPI 4 IRQ_TYPE_LEVEL_HIGH>;
 				fsl,keycode = <116>; /* KEY_POWER */
 				fsl,wakeup;
+				status = "disabled";
 			};
 
 			epit1: epit@020d0000 {
