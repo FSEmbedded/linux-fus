@@ -1,0 +1,62 @@
+Version History for Linux Kernel on F&S Vybrid Boards and Modules
+=================================================================
+
+Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
+
+
+linux-3.14.38-fsimx6ul-V1.0 (25.11.2015)
+----------------------------------------
+Supported Boards: efusA7UL
+
+- Use kernel 3.14.28, Freescale version rel_imx_3.14.28_1.0.0_ga
+- Improve behavior of cpu_is_imx6* macros
+- Add basic device tree imx6sx-efusa9x.dts and fsimx6sx_defconfig (efusA9X)
+- Fix mxsfb driver to work with LVDS (LDB) on i.MX6SX
+- Add audio support (SGTL5000) for efusA9X
+- Add support for SPI (spidev) on efusA9X
+- Add support for external RTC PCF8665 via I2C on efusA9X
+- Use Atmel driver for MXT touch, add support for Atmel MXT touch for efusA9X
+- Add support for Marvell SD8787 WLAN/Bluetooth for efusA9X
+- Add CAN support (flexcan) for efusA9X
+- Activate PXP v4l2 device on efusA9X (for video overlays)
+- Activate Vivante GPU for fsimx6sx
+- Add F&S extended MXS APBH DMA driver (needed for NAND driver)
+- Improve generic NAND driver (bitflips reporting, skip region for NBoot, etc.)
+- Add F&S version of GPMI NAND driver
+- Use F&S GPMI NAND driver on efusA9X
+- Add and use F&S Linux logo with Tux holding NetDCU tile
+- Add support for ADC on efusA9X
+- Add imx_v7_android_defconfig and fsimx6sx_android_defconfig (for Android)
+- Add basic support for Android on efusA9X
+- Rebase to linux-3.14.38, Freescale version rel_imx_3.14.38_6ul_ga
+- Add support for parallel RGB interface
+- Clean up fsimx6sx device tree and defconfig
+- Add support for Focaltech FT5x06 touch (ft5x06_ts_v2.c), backport driver
+  edt_ft5x06.c from kernel 3.17
+- Improve pca963x driver (Totem pole levels, DefaultOn & ActiveHigh configs)
+- Backport Semtech SX8654/SX8655/SX8656 touch driver from Kernel 4.2, improve
+  to allow setting parameters in device tree and via sysfs
+- Add device tree property "pattern" for mxsfb to set order of RGB bits
+- Add clko1 and clko2 infrastructure to i.MX6UL (needed for audio)
+- Fix "DMA chain execution failed" error in F&S GPMI NAND driver
+- On i.MX6UL, add clock for PWM4 and tune CPU operating points
+- Add device tree and defconfig for efusA7UL (fsimx6ul):
+  * LCD with 800x480 resolution (WVGA)
+  * pxp_v4l2 support for video overlays
+  * PWM backlight on PWM1 for backlight connector
+  * Backlight via PCA9632 for RGB adapter
+  * Audio with SGTL5000 on SAI2, register access with bitbanging I2C
+  * Ethernet: 100MBit/s via RMII on ENET1
+  * Serial ports on UART1, UART2, UART5 and UART6
+  * Flexcan1 and Flexcan2
+  * USB Device on USBOTG1, USB Host on USBOTG2
+  * USDHC1 for WLAN/Bluetooth (Marvell SD8787), prepared for SD card
+  * USDHC2 for eMMC, prepared for SD card
+  * I2C1 with PCA9632 (LED driver), Semtech SX8655 (4/5 wire touch), Atmel
+    MXT224 (pcap touch) and Focaltech FT5x06 (pcap touch)
+  * I2C2 with MXT224 (pcap touch)
+  * I2C5 (bitbanging) with SGTL5000 and RTC PCA8565
+  * ECSPI1 and ECSPI2 for user defined SPI (spidev)
+  * User PWM on PWM4
+  * GPMI for NAND flash with F&S NAND driver and F&S APBH DMA driver
+ 
