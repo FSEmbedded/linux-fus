@@ -10,6 +10,13 @@
 #define CONFIG_EFUSA7UL_WLAN
 #define CONFIG_EFUSA7UL_NAND
 
+/* Please select only one of the following touch devices. Make sure that the
+   corresponding touchscreen driver is activated in the kernel */
+//#define CONFIG_EFUSA7UL_4WTOUCH_SX8655_ONBOARD
+#define CONFIG_EFUSA7UL_4WTOUCH_SX8655_RGBADAPTER
+//#define CONFIG_EFUSA7UL_CAPTOUCH_MXT224
+//#define CONFIG_EFUSA7UL_CAPTOUCH_FT5x06
+
 /dts-v1/;
 
 #include <dt-bindings/input/input.h>
@@ -391,10 +398,6 @@
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
-	// ### TODO: SX8655 on SINTF 0x48 -> driver missing from 3.14.38
-	// ### TODO: SX8655 on RGB adapter 0x49 -> driver missing from 3.14.38
-	// ### TODO: FT5x06 on touch connector
-
 	pca9632@60 {
 		compatible = "nxp,pca9632";
 		reg = <0x60>;
@@ -422,6 +425,53 @@
 		};
 	};
 
+#ifdef CONFIG_EFUSA7UL_4WTOUCH_SX8655_ONBOARD
+	/* 4/5 wire analog resistive touch, controller on efus SKIT */
+	sx8654@48 {
+		compatible = "semtech,sx8654";
+		reg = <0x48>;
+		touchrate = <0x30>;
+		powdly = <0x06>;
+		filt = <0x02>;
+		setdly = <0x08>;
+		pinctrl-names = "default";
+		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
+		interrupt-parent = <&gpio5>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+	};
+#endif
+
+#ifdef CONFIG_EFUSA7UL_4WTOUCH_SX8655_RGBADAPTER
+	/* 4/5 wire analog resistive touch, controller on RGB adapter */
+	sx8654@49 {
+		compatible = "semtech,sx8654";
+		reg = <0x49>;
+		touchrate = <0x30>;
+		powdly = <0x06>;
+		filt = <0x02>;
+		setdly = <0x08>;
+		pinctrl-names = "default";
+		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
+		interrupt-parent = <&gpio5>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+	};
+#endif
+
+#ifdef CONFIG_EFUSA7UL_CAPTOUCH_FT5x06
+	/* F&S driver V2.0 on Touch-Connector (I2C) */
+	ft5x06_ts@38 {
+		compatible = "FocalTech,ft5306";
+		reg = <0x38>;
+		threshold = <25>;
+		gain = <8>;
+		offset = <0>;
+		interrupt-parent = <&gpio5>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+	};
+#endif
+
+#ifdef CONFIG_EFUSA7UL_CAPTOUCH_MXT224
+	/* Atmel PCAP touch on Touch-Connector (I2C) */
 	mxt224@4a {
 		compatible = "atmel,maxtouch";
 		reg = <0x4a>;
@@ -435,6 +485,7 @@
 		avdd = <&reg_atmel_mxt_avdd>;
 #endif
 	};
+#endif
 };
 
 /* I2C_B: Feature Connector (SKIT) */
