@@ -214,8 +214,8 @@ dtb-$(CONFIG_ARCH_MXC) += \
 	imx6sx-sabreauto.dtb \
 	imx6sx-sabreauto-m4.dtb \
 	imx6sx-sdb-lcdif1.dtb \
-	imx6sx-efusa9x.dtb \
-	imx6ul-efusa7ul.dtb \
+	fsimx6sx-efusa9x.dtb \
+	fsimx6ul-efusa7ul.dtb \
 	imx6ul-14x14-lpddr2-arm2.dtb \
 	imx6ul-14x14-ddr3-arm2.dtb \
 	imx6ul-14x14-ddr3-arm2-adc.dtb \
