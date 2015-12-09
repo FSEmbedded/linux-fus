@@ -791,7 +791,18 @@ static struct i2c_driver pca963x_driver = {
 	.id_table = pca963x_id,
 };
 
-module_i2c_driver(pca963x_driver);
+static int __init pca963x_init(void)
+{
+	return i2c_add_driver(&pca963x_driver);
+}
+subsys_initcall(pca963x_init);
+
+static void __exit pca963x_exit(void)
+{
+	return i2c_del_driver(&pca963x_driver);
+}
+
+module_exit(pca963x_exit);
 
 MODULE_AUTHOR("Peter Meerwald <p.meerwald@bct-electronic.com>");
 MODULE_DESCRIPTION("PCA963X LED driver");

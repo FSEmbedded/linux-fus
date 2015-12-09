@@ -13,20 +13,26 @@
 #define CONFIG_EFUSA9X_UART_C_RTS
 
 #include "imx6sx.dtsi"
-
+#include <dt-bindings/pwm/pwm.h>
 / {
 	model = "F&S efusA9X";
 	compatible = "fus,imx6sx-efusa9x", "fsl,imx6sx";
 
-#if 0 //###
-	backlight2 {
+	backlight_lcd {
+		compatible = "pwm-backlight";
+		pwms = <&pca963x 1 640000 PWM_POLARITY_INVERTED>;
+		brightness-levels = <0 4 8 16 32 64 128 255>;
+		default-brightness-level = <0>;
+		fb-names = "mxs-lcdif1";
+	};
+
+	backlight_ldb {
 		compatible = "pwm-backlight";
 		pwms = <&pwm4 0 5000000>;
 		brightness-levels = <0 4 8 16 32 64 128 255>;
 		default-brightness-level = <6>;
-		fb-names = "mxs-lcdif1";
+		fb-names = "mxs-lcdif2";
 	};
-#endif //###
 
 	clocks {
 		codec_osc: anaclk2 {
@@ -88,7 +94,17 @@
 		reg_lcd_3v3: lcd-3v3 {
 			compatible = "regulator-fixed";
 			regulator-name = "lcd-3v3";
+			gpio = <&pca963x 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+		};
+
+		reg_ldb_3v3: ldb-3v3 {
+			compatible = "regulator-fixed";
+			regulator-name = "ldb-3v3";
 			gpio = <&gpio3 19 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
 			enable-active-high;
 		};
 
@@ -656,17 +672,17 @@
 	// ### TODO: SX8655 on RGB adapter 0x49 -> driver missing from 3.14.38
 	// ### TODO: FT5x06 on touch connector
 
-	pca9632@60 {
+	pca963x: pca9632@60 {
 		compatible = "nxp,pca9632";
 		reg = <0x60>;
 		nxp,totem-pole;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		#pwm-cells = <3>;
+		#gpio-cells = <1>;
 		led@0 {
 			reg = <0>;
 			label = "0-PWRCTL";
-			default-on;
-			active-high;
 			type = "GPIO";
 		};
 		led@1 {
@@ -819,7 +835,7 @@
 &lcdif2 {
 	display = <&display1>;
 	disp-dev = "ldb";
-	lcd-supply = <&reg_lcd_3v3>;
+	lcd-supply = <&reg_ldb_3v3>;
 	status = "okay";
 
 	display1: display {

@@ -292,7 +292,7 @@ config LEDS_PCA955X
 	  devices include PCA9550, PCA9551, PCA9552, and PCA9553.
 
 config LEDS_PCA963X
-	tristate "LED support for PCA963x I2C chip"
+	bool "LED support for PCA963x I2C chip"
 	depends on LEDS_CLASS
 	depends on I2C
 	help
