@@ -6,6 +6,16 @@
  * published by the Free Software Foundation.
  */
 
+#define CONFIG_EFUSA9X_BL_LEVELS_16
+#define CONFIG_EFUSA9X_WLAN
+
+/* Please select only one of the following touch devices. Make sure that the
+   corresponding touchscreen driver is activated in the kernel */
+//#define CONFIG_EFUSA9X_4WTOUCH_SX8655_ONBOARD
+#define CONFIG_EFUSA9X_4WTOUCH_SX8655_RGBADAPTER
+//#define CONFIG_EFUSA9X_CAPTOUCH_MXT224
+//#define CONFIG_EFUSA9X_CAPTOUCH_FT5x06
+
 /dts-v1/;
 
 /* If UART_C uses RTS, we can only have one CS on SPI_B; if UART_C does
@@ -21,16 +31,28 @@
 	backlight_lcd {
 		compatible = "pwm-backlight";
 		pwms = <&pca963x 1 640000 PWM_POLARITY_INVERTED>;
-		brightness-levels = <0 4 8 16 32 64 128 255>;
-		default-brightness-level = <0>;
+#ifdef CONFIG_EFUSA9X_BL_LEVELS_16
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+#else
+		brightness-levels = <0 5 21 47 83 130 187 255>;
+		default-brightness-level = <6>;
+#endif
 		fb-names = "mxs-lcdif1";
 	};
 
 	backlight_ldb {
 		compatible = "pwm-backlight";
 		pwms = <&pwm4 0 5000000>;
-		brightness-levels = <0 4 8 16 32 64 128 255>;
+#ifdef CONFIG_EFUSA9X_BL_LEVELS_16
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+#else
+		brightness-levels = <0 5 21 47 83 130 187 255>;
 		default-brightness-level = <6>;
+#endif
 		fb-names = "mxs-lcdif2";
 	};
 
@@ -668,10 +690,6 @@
 	pinctrl-0 = <&pinctrl_i2c2_1>;
 	status = "okay";
 
-	// ### TODO: SX8655 on SINTF 0x48 -> driver missing from 3.14.38
-	// ### TODO: SX8655 on RGB adapter 0x49 -> driver missing from 3.14.38
-	// ### TODO: FT5x06 on touch connector
-
 	pca963x: pca9632@60 {
 		compatible = "nxp,pca9632";
 		reg = <0x60>;
@@ -703,6 +721,7 @@
 		};
 	};
 
+#ifdef CONFIG_EFUSA9X_CAPTOUCH_MXT224
 	mxt224@4a {
 		compatible = "atmel,maxtouch";
 		reg = <0x4a>;
@@ -716,6 +735,7 @@
 		avdd = <&reg_atmel_mxt_avdd>;
 #endif
 	};
+#endif
 
         /* Touch driver Focaltech  */
 #if 0
@@ -731,6 +751,8 @@
 		reset-gpios = <&gpio3 21 GPIO_ACTIVE_LOW>;
 	};
 #else
+
+#ifdef CONFIG_EFUSA9X_CAPTOUCH_FT5x06
 	/* F&S driver V2.0 */
 	ft5x06_ts@38 {
 		compatible = "FocalTech,ft5306";
@@ -744,9 +766,10 @@
 	};
 #endif
 
+#endif
 
 	/* Touch driver SX8654 */
-
+#ifdef CONFIG_EFUSA9X_4WTOUCH_SX8655_ONBOARD
 	sx8654@48 {
 		compatible = "semtech,sx8654";
 		reg = <0x48>;
@@ -759,6 +782,9 @@
 		interrupt-parent = <&gpio7>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
 	};
+#endif
+
+#ifdef CONFIG_EFUSA9X_4WTOUCH_SX8655_RGBADAPTER
 	sx8654@49 {
 		compatible = "semtech,sx8654";
 		reg = <0x49>;
@@ -771,6 +797,7 @@
 		interrupt-parent = <&gpio7>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
 	};
+#endif
 
 #if 0
 	egalax_ts@04 {
@@ -952,8 +979,12 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc1_1>;
 	bus-width = <4>;
+#ifdef CONFIG_EFUSA9X_WLAN
+	non-removable;
+#else
 	cd-gpios = <&gpio1 2 0>;
 	wp-gpios = <&gpio1 3 0>;
+#endif
 	keep-power-in-suspend;
 	enable-sdio-wakeup;
 	status = "okay";
