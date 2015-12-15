@@ -97,6 +97,15 @@ config FSL_OTP
 
 	  If unsure, it is safe to say Y.
 
+config BDINFO
+       bool "Support Board Information System (/sys/bdinfo)"
+       default y
+       help
+         The Board Information System reads board specific data and presents
+         it in a subdirectory of /sys.
+
+	 If unsure, say Y.
+
 config PRINTER
 	tristate "Parallel printer support"
 	depends on PARPORT
