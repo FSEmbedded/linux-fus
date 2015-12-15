@@ -205,6 +205,13 @@
 //###			"Line Out Jack", "LINE_OUT",
 			"Headphone Jack", "HP_OUT";
 	};
+
+	/* -------------------- BOARD INFO -------------------- */
+	bdinfo {
+		compatible = "bdinfo";
+		board_name = "efusa9x";
+		ecc_strength = "8";
+	};
 };
 
 &iomuxc {
