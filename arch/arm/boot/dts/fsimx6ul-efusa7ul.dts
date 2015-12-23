@@ -169,6 +169,13 @@
 	        #address-cells = <1>;
 	        #size-cells = <0>;
 	};
+
+	/* -------------------- BOARD INFO -------------------- */
+	bdinfo {
+		compatible = "bdinfo";
+		board_name = "efusA7UL";
+		ecc_strength = "8";
+	};
 };
 
 &cpu0 {
