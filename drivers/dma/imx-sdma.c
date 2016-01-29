@@ -38,6 +38,7 @@
 #include <linux/dmaengine.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/of_address.h>
 #include <linux/of_dma.h>
 
 #include <asm/irq.h>
@@ -281,6 +282,8 @@ struct sdma_channel {
 	unsigned int			chn_real_count;
 	struct tasklet_struct		tasklet;
 	struct imx_dma_data		data;
+	bool				src_dualfifo;
+	bool				dst_dualfifo;
 };
 
 #define IMX_DMA_SG_LOOP		BIT(0)
@@ -348,6 +351,9 @@ struct sdma_engine {
 	struct sdma_script_start_addrs	*script_addrs;
 	const struct sdma_driver_data	*drvdata;
 	struct gen_pool 		*iram_pool;
+	u32                             spba_start_addr;
+	u32                             spba_end_addr;
+	bool				suspend_off;
 };
 
 static struct sdma_driver_data sdma_imx31 = {
@@ -735,7 +741,7 @@ static void sdma_tasklet(unsigned long data)
 	unsigned long flags;
 
 	spin_lock_irqsave(&sdmac->lock, flags);
-	if (sdmac->status != DMA_IN_PROGRESS && !(sdmac->flags & IMX_DMA_SG_LOOP)) {
+	if (sdmac->status != DMA_IN_PROGRESS) {
 		spin_unlock_irqrestore(&sdmac->lock, flags);
 		return;
 	}
@@ -765,7 +771,7 @@ static irqreturn_t sdma_int_handler(int irq, void *dev_id)
 		struct sdma_channel *sdmac = &sdma->channel[channel];
 
 		spin_lock_irqsave(&sdmac->lock, flags);
-		if (sdmac->status == DMA_IN_PROGRESS || (sdmac->flags & IMX_DMA_SG_LOOP))
+		if (sdmac->status == DMA_IN_PROGRESS)
 			tasklet_schedule(&sdmac->tasklet);
 		spin_unlock_irqrestore(&sdmac->lock, flags);
 
@@ -951,8 +957,53 @@ static void sdma_disable_channel(struct sdma_channel *sdmac)
 	writel_relaxed(BIT(channel), sdma->regs + SDMA_H_STATSTOP);
 }
 
+static int sdma_pause_channel(struct sdma_channel *sdmac)
+{
+	struct sdma_engine *sdma = sdmac->sdma;
+	int channel = sdmac->channel;
+	unsigned long flags;
+
+	if (!(sdmac->flags & IMX_DMA_SG_LOOP))
+		return -EINVAL;
+
+	writel_relaxed(BIT(channel), sdma->regs + SDMA_H_STATSTOP);
+
+	spin_lock_irqsave(&sdmac->lock, flags);
+	sdmac->status = DMA_PAUSED;
+	spin_unlock_irqrestore(&sdmac->lock, flags);
+
+	return 0;
+}
+
+static int sdma_resume_channel(struct sdma_channel *sdmac)
+{
+	struct sdma_engine *sdma = sdmac->sdma;
+	unsigned long flags;
+
+	if (!(sdmac->flags & IMX_DMA_SG_LOOP))
+		return -EINVAL;
+	/*
+	 * restore back context since context may loss if mega/fast OFF
+	 */
+	if (sdma->suspend_off) {
+		if (sdma_load_context(sdmac)) {
+			dev_err(sdmac->sdma->dev, "context load failed.\n");
+			return -EINVAL;
+		}
+	}
+
+	sdma_enable_channel(sdmac->sdma, sdmac->channel);
+	spin_lock_irqsave(&sdmac->lock, flags);
+	sdmac->status = DMA_IN_PROGRESS;
+	spin_unlock_irqrestore(&sdmac->lock, flags);
+
+	return 0;
+}
+
 static void sdma_set_watermarklevel_for_p2p(struct sdma_channel *sdmac)
 {
+	struct sdma_engine *sdma = sdmac->sdma;
+
 	int lwml = sdmac->watermark_level & 0xff;
 	int hwml = (sdmac->watermark_level >> 16) & 0xff;
 
@@ -992,12 +1043,23 @@ static void sdma_set_watermarklevel_for_p2p(struct sdma_channel *sdmac)
 	 * 1 : Source on SPBA
 	 * 0 : Source on AIPS
 	 */
-	__set_bit(11, &sdmac->watermark_level);
+	if (sdmac->per_address >= sdma->spba_start_addr &&
+			sdmac->per_address <= sdma->spba_end_addr)
+		__set_bit(11, &sdmac->watermark_level);
+
 	/* BIT 12:
 	 * 1 : Destination on SPBA
 	 * 0 : Destination on AIPS
 	 */
-	__set_bit(12, &sdmac->watermark_level);
+	if (sdmac->per_address2 >= sdma->spba_start_addr &&
+			sdmac->per_address2 <= sdma->spba_end_addr)
+		__set_bit(12, &sdmac->watermark_level);
+
+	if (sdmac->src_dualfifo)
+		__set_bit(13, &sdmac->watermark_level);
+	if (sdmac->dst_dualfifo)
+		__set_bit(14, &sdmac->watermark_level);
+
 	__set_bit(31, &sdmac->watermark_level);
 	/* BIT 31:
 	 * 1 : Amount of samples to be transferred is
@@ -1169,6 +1231,8 @@ static int sdma_alloc_chan_resources(struct dma_chan *chan)
 	sdmac->peripheral_type = data->peripheral_type;
 	sdmac->event_id0 = data->dma_request;
 	sdmac->event_id1 = data->dma_request2;
+	sdmac->src_dualfifo = data->src_dualfifo;
+	sdmac->dst_dualfifo = data->dst_dualfifo;
 
 	clk_enable(sdmac->sdma->clk_ipg);
 	clk_enable(sdmac->sdma->clk_ahb);
@@ -1537,6 +1601,13 @@ static int sdma_control(struct dma_chan *chan, enum dma_ctrl_cmd cmd,
 	case DMA_TERMINATE_ALL:
 		sdma_disable_channel(sdmac);
 		return 0;
+	/* only support pause/resume on cyclic mode */
+	case DMA_PAUSE:
+		return sdma_pause_channel(sdmac);
+
+	case DMA_RESUME:
+		return sdma_resume_channel(sdmac);
+
 	case DMA_SLAVE_CONFIG:
 		if (dmaengine_cfg->direction == DMA_DEV_TO_MEM) {
 			sdmac->per_address = dmaengine_cfg->src_addr;
@@ -1571,6 +1642,15 @@ static int sdma_control(struct dma_chan *chan, enum dma_ctrl_cmd cmd,
 	}
 
 	return -EINVAL;
+}
+
+static enum dma_status sdma_wait_tasklet(struct dma_chan *chan)
+{
+	struct sdma_channel *sdmac = to_sdma_chan(chan);
+
+	tasklet_kill(&sdmac->tasklet);
+
+	return sdmac->status;
 }
 
 static enum dma_status sdma_tx_status(struct dma_chan *chan,
@@ -1860,18 +1940,11 @@ static struct dma_chan *sdma_xlate(struct of_phandle_args *dma_spec,
 	if (dma_spec->args_count != 3)
 		return NULL;
 
+	memset(&data, 0, sizeof(data));
+
 	data.dma_request = dma_spec->args[0];
 	data.peripheral_type = dma_spec->args[1];
 	data.priority = dma_spec->args[2];
-
-	/*
-	 * init dma_request2 to zero, which is not used by the dts.
-	 * For P2P, dma_request2 is init from dma_request_channel(),
-	 * chan->private will point to the imx_dma_data, and in
-	 * device_alloc_chan_resources(), imx_dma_data.dma_request2 will
-	 * be set to sdmac->event_id1.
-	 */
-	data.dma_request2 = 0;
 
 	return dma_request_channel(mask, sdma_filter_fn, &data);
 }
@@ -1881,10 +1954,12 @@ static int __init sdma_probe(struct platform_device *pdev)
 	const struct of_device_id *of_id =
 			of_match_device(sdma_dt_ids, &pdev->dev);
 	struct device_node *np = pdev->dev.of_node;
+	struct device_node *spba_bus;
 	const char *fw_name;
 	int ret;
 	int irq;
 	struct resource *iores;
+	struct resource spba_res;
 	struct sdma_platform_data *pdata = dev_get_platdata(&pdev->dev);
 	int i;
 	struct sdma_engine *sdma;
@@ -2035,6 +2110,7 @@ static int __init sdma_probe(struct platform_device *pdev)
 	sdma->dma_device.device_alloc_chan_resources = sdma_alloc_chan_resources;
 	sdma->dma_device.device_free_chan_resources = sdma_free_chan_resources;
 	sdma->dma_device.device_tx_status = sdma_tx_status;
+	sdma->dma_device.device_wait_tasklet = sdma_wait_tasklet;
 	sdma->dma_device.device_prep_slave_sg = sdma_prep_slave_sg;
 	sdma->dma_device.device_prep_dma_cyclic = sdma_prep_dma_cyclic;
 	sdma->dma_device.device_prep_dma_memcpy = sdma_prep_memcpy;
@@ -2056,6 +2132,14 @@ static int __init sdma_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "failed to register controller\n");
 			goto err_register;
 		}
+
+		spba_bus = of_find_compatible_node(NULL, NULL, "fsl,spba-bus");
+		ret = of_address_to_resource(spba_bus, 0, &spba_res);
+		if (!ret) {
+			sdma->spba_start_addr = spba_res.start;
+			sdma->spba_end_addr = spba_res.end;
+		}
+		of_node_put(spba_bus);
 	}
 
 	platform_set_drvdata(pdev, sdma);
@@ -2091,6 +2175,8 @@ static int sdma_suspend(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sdma_engine *sdma = platform_get_drvdata(pdev);
 	int i;
+
+	sdma->suspend_off = false;
 
 	/* Do nothing if not i.MX6SX or i.MX7D*/
 	if (sdma->drvdata != &sdma_imx6sx && sdma->drvdata != &sdma_imx7d)
@@ -2136,6 +2222,9 @@ static int sdma_resume(struct device *dev)
 		clk_disable(sdma->clk_ahb);
 		return 0;
 	}
+
+	sdma->suspend_off = true;
+
 	/* restore regs and load firmware */
 	for (i = 0; i < MXC_SDMA_SAVED_REG_NUM; i++) {
 		/*
@@ -2165,7 +2254,7 @@ static int sdma_resume(struct device *dev)
 #endif
 
 static const struct dev_pm_ops sdma_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(sdma_suspend, sdma_resume)
+	SET_LATE_SYSTEM_SLEEP_PM_OPS(sdma_suspend, sdma_resume)
 };
 
 static struct platform_driver sdma_driver = {

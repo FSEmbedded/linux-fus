@@ -1402,6 +1402,11 @@
 				status = "okay";
 			};
 
+			rpmsg: rpmsg{
+				compatible = "fsl,imx6sx-rpmsg";
+				status = "disabled";
+			};
+
 			mcctest: mcctest{
 				compatible = "fsl,imx6sx-mcc-test";
 				status = "disabled";

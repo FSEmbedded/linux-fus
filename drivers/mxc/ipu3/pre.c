@@ -51,7 +51,7 @@ struct ipu_pre_data {
 };
 
 static LIST_HEAD(pre_list);
-static DEFINE_MUTEX(pre_list_lock);
+static DEFINE_SPINLOCK(pre_list_lock);
 
 static inline void pre_write(struct ipu_pre_data *pre,
 			u32 value, unsigned int offset)
@@ -67,15 +67,16 @@ static inline u32 pre_read(struct ipu_pre_data *pre, unsigned offset)
 static struct ipu_pre_data *get_pre(unsigned int id)
 {
 	struct ipu_pre_data *pre;
+	unsigned long lock_flags;
 
-	mutex_lock(&pre_list_lock);
+	spin_lock_irqsave(&pre_list_lock, lock_flags);
 	list_for_each_entry(pre, &pre_list, list) {
 		if (pre->id == id) {
-			mutex_unlock(&pre_list_lock);
+			spin_unlock_irqrestore(&pre_list_lock, lock_flags);
 			return pre;
 		}
 	}
-	mutex_unlock(&pre_list_lock);
+	spin_unlock_irqrestore(&pre_list_lock, lock_flags);
 
 	return NULL;
 }
@@ -176,16 +177,7 @@ void ipu_pre_free_double_buffer(unsigned int id)
 EXPORT_SYMBOL(ipu_pre_free_double_buffer);
 
 /* PRE register configurations */
-static int ipu_pre_set_ctrl(unsigned int id,
-			    bool repeat,
-			    bool vflip,
-			    bool handshake_en,
-			    bool hsk_abort_en,
-			    unsigned int hsk_line_num,
-			    bool sdw_update,
-			    unsigned int block_size,
-			    unsigned int interlaced,
-			    unsigned int prefetch_mode)
+int ipu_pre_set_ctrl(unsigned int id, struct ipu_pre_context *config)
 {
 	struct ipu_pre_data *pre = get_pre(id);
 	unsigned long lock_flags;
@@ -194,29 +186,32 @@ static int ipu_pre_set_ctrl(unsigned int id,
 	if (!pre)
 		return -EINVAL;
 
+	if (!pre->enabled)
+		clk_prepare_enable(pre->clk);
+
 	spin_lock_irqsave(&pre->lock, lock_flags);
 	pre_write(pre, BF_PRE_CTRL_TPR_RESET_SEL(1), HW_PRE_CTRL_SET);
 
-	if (repeat)
+	if (config->repeat)
 		pre_write(pre, BF_PRE_CTRL_EN_REPEAT(1), HW_PRE_CTRL_SET);
 	else
 		pre_write(pre, BM_PRE_CTRL_EN_REPEAT, HW_PRE_CTRL_CLR);
 
-	if (vflip)
+	if (config->vflip)
 		pre_write(pre, BF_PRE_CTRL_VFLIP(1), HW_PRE_CTRL_SET);
 	else
 		pre_write(pre, BM_PRE_CTRL_VFLIP, HW_PRE_CTRL_CLR);
 
-	if (handshake_en) {
+	if (config->handshake_en) {
 		pre_write(pre, BF_PRE_CTRL_HANDSHAKE_EN(1), HW_PRE_CTRL_SET);
-		if (hsk_abort_en)
+		if (config->hsk_abort_en)
 			pre_write(pre, BF_PRE_CTRL_HANDSHAKE_ABORT_SKIP_EN(1),
 				  HW_PRE_CTRL_SET);
 		else
 			pre_write(pre, BM_PRE_CTRL_HANDSHAKE_ABORT_SKIP_EN,
 				  HW_PRE_CTRL_CLR);
 
-		switch (hsk_line_num) {
+		switch (config->hsk_line_num) {
 		case 0 /* 4 lines */:
 			pre_write(pre, BM_PRE_CTRL_HANDSHAKE_LINE_NUM,
 				  HW_PRE_CTRL_CLR);
@@ -242,13 +237,13 @@ static int ipu_pre_set_ctrl(unsigned int id,
 		pre_write(pre, BM_PRE_CTRL_HANDSHAKE_EN, HW_PRE_CTRL_CLR);
 
 
-	switch (prefetch_mode) {
+	switch (config->prefetch_mode) {
 	case 0:
 		pre_write(pre, BM_PRE_CTRL_BLOCK_EN, HW_PRE_CTRL_CLR);
 		break;
 	case 1:
 		pre_write(pre, BF_PRE_CTRL_BLOCK_EN(1), HW_PRE_CTRL_SET);
-		switch (block_size) {
+		switch (config->block_size) {
 		case 0:
 			pre_write(pre, BM_PRE_CTRL_BLOCK_16, HW_PRE_CTRL_CLR);
 			break;
@@ -267,7 +262,7 @@ static int ipu_pre_set_ctrl(unsigned int id,
 		goto err;
 	}
 
-	switch (interlaced) {
+	switch (config->interlaced) {
 	case 0: /* progressive mode */
 		pre_write(pre, BM_PRE_CTRL_SO, HW_PRE_CTRL_CLR);
 		break;
@@ -285,7 +280,7 @@ static int ipu_pre_set_ctrl(unsigned int id,
 		goto err;
 	}
 
-	if (sdw_update)
+	if (config->sdw_update)
 		pre_write(pre, BF_PRE_CTRL_SDW_UPDATE(1), HW_PRE_CTRL_SET);
 	else
 		pre_write(pre, BM_PRE_CTRL_SDW_UPDATE, HW_PRE_CTRL_CLR);
@@ -293,8 +288,12 @@ static int ipu_pre_set_ctrl(unsigned int id,
 err:
 	spin_unlock_irqrestore(&pre->lock, lock_flags);
 
+	if (!pre->enabled)
+		clk_disable_unprepare(pre->clk);
+
 	return ret;
 }
+EXPORT_SYMBOL(ipu_pre_set_ctrl);
 
 static void ipu_pre_irq_mask(struct ipu_pre_data *pre,
 			     unsigned long mask, bool clear)
@@ -749,12 +748,6 @@ int ipu_pre_config(int id, struct ipu_pre_context *config)
 	if (ret < 0)
 		goto out;
 
-	ret = ipu_pre_set_ctrl(id, config->repeat,
-			config->vflip, config->handshake_en,
-			config->hsk_abort_en, config->hsk_line_num,
-			config->sdw_update, config->block_size,
-			config->interlaced, config->prefetch_mode);
-
 	ipu_pre_irq_mask(pre, BM_PRE_IRQ_HANDSHAKE_ABORT_IRQ |
 			      BM_PRE_IRQ_TPR_RD_NUM_BYTES_OVFL_IRQ |
 			      BM_PRE_IRQ_HANDSHAKE_ERROR_IRQ, false);
@@ -839,14 +832,18 @@ void ipu_pre_disable(int id)
 }
 EXPORT_SYMBOL(ipu_pre_disable);
 
-int ipu_pre_set_fb_buffer(int id, unsigned long fb_paddr,
+int ipu_pre_set_fb_buffer(int id, bool resolve,
+			  unsigned long fb_paddr,
+			  unsigned int y_res,
 			  unsigned int x_crop,
 			  unsigned int y_crop,
 			  unsigned int sec_buf_off,
 			  unsigned int trd_buf_off)
 {
 	struct ipu_pre_data *pre = get_pre(id);
+	unsigned int store_stat, store_block_y;
 	unsigned long lock_flags;
+	bool update = true;
 
 	if (!pre)
 		return -EINVAL;
@@ -858,7 +855,34 @@ int ipu_pre_set_fb_buffer(int id, unsigned long fb_paddr,
 	pre_write(pre, BF_PRE_PREFETCH_ENGINE_OUTPUT_SIZE_ULC_OUTPUT_SIZE_ULC_X(x_crop) |
 		       BF_PRE_PREFETCH_ENGINE_OUTPUT_SIZE_ULC_OUTPUT_SIZE_ULC_Y(y_crop),
 		  HW_PRE_PREFETCH_ENGINE_OUTPUT_SIZE_ULC);
-	pre_write(pre, BF_PRE_CTRL_SDW_UPDATE(1), HW_PRE_CTRL_SET);
+
+	/*
+	 * Update shadow only when store engine runs out of the problematic
+	 * window to workaround the SoC design bug recorded by errata ERR009624.
+	 */
+	if (y_res > IPU_PRE_SMALL_LINE) {
+		unsigned long timeout = jiffies + msecs_to_jiffies(20);
+
+		do {
+			if (time_after(jiffies, timeout)) {
+				update = false;
+				dev_warn(pre->dev, "timeout waiting for PRE "
+					"to run out of problematic window for "
+					"shadow update\n");
+				break;
+			}
+
+			store_stat = pre_read(pre, HW_PRE_STORE_ENGINE_STATUS);
+			store_block_y = (store_stat &
+				BM_PRE_STORE_ENGINE_STATUS_STORE_BLOCK_Y) >>
+				BP_PRE_STORE_ENGINE_STATUS_STORE_BLOCK_Y;
+		} while (store_block_y >=
+			 (resolve ? DIV_ROUND_UP(y_res, 4) - 1 : y_res - 2) ||
+			  store_block_y == 0);
+	}
+
+	if (update)
+		pre_write(pre, BF_PRE_CTRL_SDW_UPDATE(1), HW_PRE_CTRL_SET);
 	spin_unlock_irqrestore(&pre->lock, lock_flags);
 
 	return 0;
@@ -870,6 +894,7 @@ static int ipu_pre_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct ipu_pre_data *pre;
 	struct resource *res;
+	unsigned long lock_flags;
 	int id, irq, err;
 
 	pre = devm_kzalloc(&pdev->dev, sizeof(*pre), GFP_KERNEL);
@@ -912,9 +937,9 @@ static int ipu_pre_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	mutex_lock(&pre_list_lock);
+	spin_lock_irqsave(&pre_list_lock, lock_flags);
 	list_add_tail(&pre->list, &pre_list);
-	mutex_unlock(&pre_list_lock);
+	spin_unlock_irqrestore(&pre_list_lock, lock_flags);
 
 	ipu_pre_alloc_double_buffer(pre->id, IPU_PRE_MAX_WIDTH * 8 * IPU_PRE_MAX_BPP);
 
@@ -935,6 +960,7 @@ static int ipu_pre_probe(struct platform_device *pdev)
 static int ipu_pre_remove(struct platform_device *pdev)
 {
 	struct ipu_pre_data *pre = platform_get_drvdata(pdev);
+	unsigned long lock_flags;
 
 	if (pre->iram_pool && pre->double_buffer_base) {
 		gen_pool_free(pre->iram_pool,
@@ -942,9 +968,9 @@ static int ipu_pre_remove(struct platform_device *pdev)
 			      pre->double_buffer_size);
 	}
 
-	mutex_lock(&pre_list_lock);
+	spin_lock_irqsave(&pre_list_lock, lock_flags);
 	list_del(&pre->list);
-	mutex_unlock(&pre_list_lock);
+	spin_unlock_irqrestore(&pre_list_lock, lock_flags);
 
 	return 0;
 }

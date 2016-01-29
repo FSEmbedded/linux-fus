@@ -95,8 +95,6 @@ extern int audio_bus_freq_mode;
 extern void mx6_ddr3_freq_change(u32 freq, void *ddr_settings,
 	bool dll_mode, void *iomux_offsets);
 
-extern unsigned long save_ttbr1(void);
-extern void restore_ttbr1(unsigned long ttbr1);
 extern unsigned long ddr_freq_change_iram_base;
 
 extern unsigned long ddr_freq_change_total_size;
@@ -330,7 +328,8 @@ int update_ddr_freq_imx_smp(int ddr_rate)
 
 		iram_ddr_settings[0][0] = ddr_settings_size;
 		iram_iomux_settings[0][0] = iomux_settings_size;
-		if (ddr_rate == ddr_med_rate && cpu_is_imx6q()) {
+		if (ddr_rate == ddr_med_rate && cpu_is_imx6q() &&
+			ddr_med_rate != ddr_normal_rate) {
 			for (i = 0; i < ARRAY_SIZE(ddr3_dll_mx6q); i++) {
 				iram_ddr_settings[i + 1][0] =
 						normal_mmdc_settings[i][0];
@@ -760,7 +759,8 @@ int init_ddrc_ddr_settings(struct platform_device *busfreq_pdev)
 			(void *)ddr_freq_change_iram_base + SMP_WFE_CODE_SIZE,
 			&imx7d_ddr3_freq_change,
 			MX7_BUSFREQ_OCRAM_SIZE - SMP_WFE_CODE_SIZE);
-	else if (ddr_type == IMX_DDR_TYPE_LPDDR3)
+	else if (ddr_type == IMX_DDR_TYPE_LPDDR3
+		|| ddr_type == IMX_DDR_TYPE_LPDDR2)
 		imx7d_change_ddr_freq = (void *)fncpy(
 				(void *)ddr_freq_change_iram_base +
 				SMP_WFE_CODE_SIZE,
