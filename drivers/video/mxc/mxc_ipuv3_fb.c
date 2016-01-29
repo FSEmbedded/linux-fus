@@ -83,6 +83,11 @@ struct mxcfb_info {
 	bool on_the_fly;
 	uint32_t final_pfmt;
 	unsigned long gpu_sec_buf_off;
+	unsigned long base;
+	uint32_t x_crop;
+	uint32_t y_crop;
+	unsigned int sec_buf_off;
+	unsigned int trd_buf_off;
 	dma_addr_t store_addr;
 	dma_addr_t alpha_phy_addr0;
 	dma_addr_t alpha_phy_addr1;
@@ -101,6 +106,7 @@ struct mxcfb_info {
 	struct completion flip_complete;
 	struct completion alpha_flip_complete;
 	struct completion vsync_complete;
+	struct completion otf_complete;	/* on the fly */
 
 	void *ipu;
 	struct fb_info *ovfbi;
@@ -111,6 +117,8 @@ struct mxcfb_info {
 	uint32_t cur_ipu_pfmt;
 	uint32_t cur_fb_pfmt;
 	bool cur_prefetch;
+	spinlock_t spin_lock;	/* for PRE small yres cases */
+	struct ipu_pre_context *pre_config;
 };
 
 struct mxcfb_pfmt {
@@ -411,6 +419,8 @@ static irqreturn_t mxcfb_nf_irq_handler(int irq, void *dev_id);
 static int mxcfb_blank(int blank, struct fb_info *info);
 static int mxcfb_map_video_memory(struct fb_info *fbi);
 static int mxcfb_unmap_video_memory(struct fb_info *fbi);
+static int mxcfb_ioctl(struct fb_info *fbi, unsigned int cmd,
+			unsigned long arg);
 
 /*
  * Set fixed framebuffer parameters based on variable settings.
@@ -530,7 +540,9 @@ static int _setup_disp_channel2(struct fb_info *fbi)
 	 * so we call complete() for both mxc_fbi->flip_complete
 	 * and mxc_fbi->alpha_flip_complete.
 	 */
-	complete(&mxc_fbi->flip_complete);
+	if (!mxc_fbi->prefetch ||
+	    (mxc_fbi->prefetch && !ipu_pre_yres_is_small(fbi->var.yres)))
+		complete(&mxc_fbi->flip_complete);
 	if (mxc_fbi->alpha_chan_en) {
 		mxc_fbi->cur_ipu_alpha_buf = 1;
 		init_completion(&mxc_fbi->alpha_flip_complete);
@@ -545,8 +557,7 @@ static int _setup_disp_channel2(struct fb_info *fbi)
 			mxc_fbi->pre_num = ipu_pre_alloc(mxc_fbi->ipu_id,
 							 mxc_fbi->ipu_ch);
 			if (mxc_fbi->pre_num < 0) {
-				dev_err(fbi->device,
-					"failed to alloc PRE\n");
+				dev_dbg(fbi->device, "failed to alloc PRE\n");
 				mxc_fbi->prefetch = mxc_fbi->cur_prefetch;
 				mxc_fbi->resolve = false;
 				if (!mxc_fbi->on_the_fly)
@@ -559,7 +570,7 @@ static int _setup_disp_channel2(struct fb_info *fbi)
 		pre.handshake_en = true;
 		pre.hsk_abort_en = true;
 		pre.hsk_line_num = 0;
-		pre.sdw_update = false;
+		pre.sdw_update = true;
 		pre.cur_buf = base;
 		pre.next_buf = pre.cur_buf;
 		if (fbi->var.vmode & FB_VMODE_INTERLACED) {
@@ -705,11 +716,41 @@ static int _setup_disp_channel2(struct fb_info *fbi)
 		ipu_base = pre.store_addr;
 		mxc_fbi->store_addr = ipu_base;
 
-		retval = ipu_pre_sdw_update(mxc_fbi->pre_num);
-		if (retval < 0) {
-			dev_err(fbi->device,
-				"failed to update PRE shadow reg %d\n", retval);
-			return retval;
+		if (mxc_fbi->cur_prefetch && mxc_fbi->on_the_fly) {
+			/*
+			 * Make sure any pending interrupt is handled so that
+			 * the buffer panned can start to be scanned out.
+			 */
+			if (!ipu_pre_yres_is_small(fbi->var.yres)) {
+				mxcfb_ioctl(fbi, MXCFB_WAIT_FOR_VSYNC,
+						(unsigned long)fbi->par);
+				mxcfb_ioctl(fbi, MXCFB_WAIT_FOR_VSYNC,
+						(unsigned long)fbi->par);
+			}
+
+			mxc_fbi->pre_config = &pre;
+
+			/*
+			 * Write the PRE control register in the flip interrupt
+			 * handler in this on-the-fly case to workaround the
+			 * SoC design bug recorded by errata ERR009624.
+			 */
+			init_completion(&mxc_fbi->otf_complete);
+			ipu_clear_irq(mxc_fbi->ipu, mxc_fbi->ipu_ch_irq);
+			ipu_enable_irq(mxc_fbi->ipu, mxc_fbi->ipu_ch_irq);
+			retval = wait_for_completion_timeout(
+						&mxc_fbi->otf_complete, HZ/2);
+			if (retval == 0) {
+				dev_err(fbi->device, "timeout when waiting "
+						"for on the fly config irq\n");
+				return -ETIMEDOUT;
+			} else {
+				retval = 0;
+			}
+		} else {
+			retval = ipu_pre_set_ctrl(mxc_fbi->pre_num, &pre);
+			if (retval < 0)
+				return retval;
 		}
 
 		if (!mxc_fbi->on_the_fly || !mxc_fbi->cur_prefetch) {
@@ -2006,14 +2047,14 @@ static int mxcfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 				}
 			}
 
-			if (mxc_fbi->cur_prefetch == !!enable)
-				break;
-
 			retval = mxcfb_check_var(&fbi->var, fbi);
 			if (retval)
 				break;
 
 			mxc_fbi->prefetch = !!enable;
+
+			if (mxc_fbi->cur_prefetch == mxc_fbi->prefetch)
+				break;
 
 			fbi->var.activate = (fbi->var.activate & ~FB_ACTIVATE_MASK) |
 						FB_ACTIVATE_NOW | FB_ACTIVATE_FORCE;
@@ -2306,24 +2347,12 @@ mxcfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 			  *mxc_graphic_fbi = NULL;
 	u_int y_bottom;
 	unsigned int fr_xoff, fr_yoff, fr_w, fr_h;
-	unsigned int x_crop = 0, y_crop = 0;
 	unsigned long base, ipu_base = 0, active_alpha_phy_addr = 0;
 	bool loc_alpha_en = false;
 	int fb_stride;
 	int bw = 0, bh = 0;
 	int i;
 	int ret;
-
-	if (mxc_fbi->resolve) {
-		fmt_to_tile_block(info->var.nonstd, &bw, &bh);
-
-		if (mxc_fbi->cur_var.xoffset % bw != var->xoffset % bw ||
-		    mxc_fbi->cur_var.yoffset % bh != var->yoffset % bh) {
-			dev_err(info->device, "do not support panning "
-				"with tile crop settings changed\n");
-			return -EINVAL;
-		}
-	}
 
 	/* no pan display during fb blank */
 	if (mxc_fbi->ipu_ch == MEM_FG_SYNC) {
@@ -2340,6 +2369,17 @@ mxcfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 	}
 	if (mxc_fbi->cur_blank != FB_BLANK_UNBLANK)
 		return -EINVAL;
+
+	if (mxc_fbi->resolve) {
+		fmt_to_tile_block(info->var.nonstd, &bw, &bh);
+
+		if (mxc_fbi->cur_var.xoffset % bw != var->xoffset % bw ||
+		    mxc_fbi->cur_var.yoffset % bh != var->yoffset % bh) {
+			dev_err(info->device, "do not support panning "
+				"with tile crop settings changed\n");
+			return -EINVAL;
+		}
+	}
 
 	y_bottom = var->yoffset;
 
@@ -2388,13 +2428,27 @@ mxcfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 		if (mxc_fbi->cur_prefetch && (info->var.vmode & FB_VMODE_INTERLACED))
 			base += info->var.rotate ?
 				fr_w * bytes_per_pixel(fbi_to_pixfmt(info, true)) : 0;
-	} else {
-		x_crop = fr_xoff & ~(bw - 1);
-		y_crop = fr_yoff & ~(bh - 1);
 	}
 
 	if (mxc_fbi->cur_prefetch) {
-		unsigned int sec_buf_off = 0, trd_buf_off = 0;
+		unsigned long lock_flags = 0;
+
+		if (ipu_pre_yres_is_small(info->var.yres))
+			/*
+			 * Update the PRE buffer address in the flip interrupt
+			 * handler in this case to workaround the SoC design
+			 * bug recorded by errata ERR009624.
+			 */
+			spin_lock_irqsave(&mxc_fbi->spin_lock, lock_flags);
+
+		if (mxc_fbi->resolve) {
+			mxc_fbi->x_crop = fr_xoff & ~(bw - 1);
+			mxc_fbi->y_crop = fr_yoff & ~(bh - 1);
+		} else {
+			mxc_fbi->x_crop = 0;
+			mxc_fbi->y_crop = 0;
+		}
+
 		ipu_get_channel_offset(fbi_to_pixfmt(info, true),
 				       info->var.xres,
 				       fr_h,
@@ -2402,13 +2456,15 @@ mxcfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 				       0, 0,
 				       fr_yoff,
 				       fr_xoff,
-				       &sec_buf_off,
-				       &trd_buf_off);
+				       &mxc_fbi->sec_buf_off,
+				       &mxc_fbi->trd_buf_off);
 		if (mxc_fbi->resolve)
-			sec_buf_off = mxc_fbi->gpu_sec_buf_off;
-		ipu_pre_set_fb_buffer(mxc_fbi->pre_num, base,
-				      x_crop, y_crop,
-				      sec_buf_off, trd_buf_off);
+			mxc_fbi->sec_buf_off = mxc_fbi->gpu_sec_buf_off;
+
+		if (ipu_pre_yres_is_small(info->var.yres)) {
+			mxc_fbi->base = base;
+			spin_unlock_irqrestore(&mxc_fbi->spin_lock, lock_flags);
+		}
 	} else {
 		ipu_base = base;
 	}
@@ -2441,10 +2497,15 @@ mxcfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 		}
 	}
 
-	ret = wait_for_completion_timeout(&mxc_fbi->flip_complete, HZ/2);
-	if (ret == 0) {
-		dev_err(info->device, "timeout when waiting for flip irq\n");
-		return -ETIMEDOUT;
+	if (!mxc_fbi->cur_prefetch ||
+	    (mxc_fbi->cur_prefetch && !ipu_pre_yres_is_small(info->var.yres))) {
+		ret = wait_for_completion_timeout(&mxc_fbi->flip_complete,
+						  HZ/2);
+		if (ret == 0) {
+			dev_err(info->device, "timeout when waiting for flip "
+						"irq\n");
+			return -ETIMEDOUT;
+		}
 	}
 
 	if (!mxc_fbi->cur_prefetch) {
@@ -2486,6 +2547,14 @@ next:
 
 			ipu_select_buffer(mxc_fbi->ipu, mxc_fbi->ipu_ch,
 					  IPU_INPUT_BUFFER, mxc_fbi->cur_ipu_buf);
+		} else if (!ipu_pre_yres_is_small(info->var.yres)) {
+			ipu_pre_set_fb_buffer(mxc_fbi->pre_num,
+					      mxc_fbi->resolve,
+					      base, info->var.yres,
+					      mxc_fbi->x_crop,
+					      mxc_fbi->y_crop,
+					      mxc_fbi->sec_buf_off,
+					      mxc_fbi->trd_buf_off);
 		}
 		ipu_clear_irq(mxc_fbi->ipu, mxc_fbi->ipu_ch_irq);
 		ipu_enable_irq(mxc_fbi->ipu, mxc_fbi->ipu_ch_irq);
@@ -2512,6 +2581,16 @@ next:
 		ipu_clear_irq(mxc_fbi->ipu, mxc_fbi->ipu_ch_irq);
 		ipu_enable_irq(mxc_fbi->ipu, mxc_fbi->ipu_ch_irq);
 		return -EBUSY;
+	}
+
+	if (mxc_fbi->cur_prefetch && ipu_pre_yres_is_small(info->var.yres)) {
+		ret = wait_for_completion_timeout(&mxc_fbi->flip_complete,
+						  HZ/2);
+		if (ret == 0) {
+			dev_err(info->device, "timeout when waiting for flip "
+						"irq\n");
+			return -ETIMEDOUT;
+		}
 	}
 
 	dev_dbg(info->device, "Update complete\n");
@@ -2600,6 +2679,24 @@ static irqreturn_t mxcfb_irq_handler(int irq, void *dev_id)
 {
 	struct fb_info *fbi = dev_id;
 	struct mxcfb_info *mxc_fbi = fbi->par;
+
+	if (mxc_fbi->pre_config) {
+		ipu_pre_set_ctrl(mxc_fbi->pre_num, mxc_fbi->pre_config);
+		mxc_fbi->pre_config = NULL;
+		complete(&mxc_fbi->otf_complete);
+		return IRQ_HANDLED;
+	}
+
+	if (mxc_fbi->cur_prefetch && ipu_pre_yres_is_small(fbi->var.yres)) {
+		spin_lock(&mxc_fbi->spin_lock);
+		ipu_pre_set_fb_buffer(mxc_fbi->pre_num,
+				      mxc_fbi->resolve,
+				      mxc_fbi->base, fbi->var.yres,
+				      mxc_fbi->x_crop, mxc_fbi->y_crop,
+				      mxc_fbi->sec_buf_off,
+				      mxc_fbi->trd_buf_off);
+		spin_unlock(&mxc_fbi->spin_lock);
+	}
 
 	complete(&mxc_fbi->flip_complete);
 	return IRQ_HANDLED;
@@ -2766,6 +2863,7 @@ static struct fb_info *mxcfb_init_fbinfo(struct device *dev, struct fb_ops *ops)
 {
 	struct fb_info *fbi;
 	struct mxcfb_info *mxcfbi;
+	struct ipuv3_fb_platform_data *plat_data = dev->platform_data;
 
 	/*
 	 * Allocate sufficient memory for the fb structure
@@ -2777,6 +2875,8 @@ static struct fb_info *mxcfb_init_fbinfo(struct device *dev, struct fb_ops *ops)
 	mxcfbi = (struct mxcfb_info *)fbi->par;
 
 	fbi->var.activate = FB_ACTIVATE_NOW;
+
+	bpp_to_var(plat_data->default_bpp, &fbi->var);
 
 	fbi->fbops = ops;
 	fbi->flags = FBINFO_FLAG_DEFAULT;
@@ -3375,6 +3475,7 @@ static int mxcfb_probe(struct platform_device *pdev)
 	mxcfbi->first_set_par = true;
 	mxcfbi->prefetch = plat_data->prefetch;
 	mxcfbi->pre_num = -1;
+	spin_lock_init(&mxcfbi->spin_lock);
 
 	ret = mxcfb_dispdrv_init(pdev, fbi);
 	if (ret < 0)
