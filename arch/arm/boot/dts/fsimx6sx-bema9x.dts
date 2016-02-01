@@ -1,0 +1,479 @@
+/*
+ * Copyright (C) 2015 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+#define CONFIG_BEMA9X_BL_LEVELS_16
+
+/dts-v1/;
+
+#include "imx6sx.dtsi"
+
+/ {
+	model = "F&S bemA9X";
+	compatible = "fus,imx6sx-bema9x", "fsl,imx6sx";
+
+
+	backlight_lcd {
+		compatible = "pwm-backlight";
+		pwms = <&pwm4 0 5000000>;
+#ifdef CONFIG_BEMA9X_BL_LEVELS_16
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+#else
+		brightness-levels = <0 5 21 47 83 130 187 255>;
+		default-brightness-level = <6>;
+#endif
+		fb-names = "mxs-lcdif1";
+		enable-gpios = <&gpio3 24 GPIO_ACTIVE_HIGH>;
+	};
+
+pwmleds {
+	compatible = "pwm-leds";
+	red {
+		label = "led_red";
+		pwms = <&pwm5 0 7812500>;
+		max-brightness = <255>;
+	};
+	blue {
+		label = "led_blue";
+		pwms = <&pwm6 0 7812500>;
+		max-brightness = <255>;
+	};
+	yellow{
+		label = "led_yellow";
+		pwms = <&pwm7 0 7812500>;
+		max-brightness = <255>;
+	};
+};
+
+#if 0
+	memory {
+		reg = <0x80000000 0x80000000>;
+	};
+
+	clocks {
+		codec_osc: anaclk2 {
+			#clock-cells = <0>;
+			compatible = "fixed-clock";
+			clock-frequency = <24576000>;
+		};
+	};
+
+	pxp_v4l2_out {
+		compatible = "fsl,imx6sx-pxp-v4l2", "fsl,imx6sl-pxp-v4l2";
+		status = "okay";
+	};
+#endif
+
+	regulators {
+		compatible = "simple-bus";
+
+		reg_lcd_3v3: lcd-3v3 {
+			compatible = "regulator-fixed";
+			regulator-name = "lcd-3v3";
+			gpio = <&gpio3 27 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+
+		reg_vref_3v3: regulator@0 {
+//			compatible = "regulator-fixed";
+			regulator-name = "vref-3v3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+		};
+
+
+		reg_usb_otg1_vbus: usb_otg1_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_otg1_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+//			gpio = <&gpio1 9 0>;
+			enable-active-high;
+		};
+
+		reg_usb_otg2_vbus: usb_otg2_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_otg2_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio1 12 0>;
+			enable-active-high;
+		};
+	};
+
+
+	/* -------------------- BOARD INFO -------------------- */
+	bdinfo {
+		compatible = "bdinfo";
+		board_name = "bema9x";
+		ecc_strength = "8";
+	};
+
+};
+
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog>;
+
+ 	imx6x-bema9x { 
+
+		pinctrl_hog: hoggrp {
+			fsl,pins = <
+				/* VBL_ON active low */
+				MX6SX_PAD_LCD1_DATA23__GPIO3_IO_24	0x80000000
+
+				/* VLCD_ON active low */
+				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x80000000 
+
+				/* LED_YELLOW_PWM_ON */
+				MX6SX_PAD_RGMII2_TD0__GPIO5_IO_18	0x0001b0b1
+
+				/* BootGPIO */
+				MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9	0x0001b0b1
+
+				/* RESETOUT */
+				MX6SX_PAD_LCD1_DATA19__GPIO3_IO_20	0x0001b0b1
+
+				/* INT_BUTTONC */
+				MX6SX_PAD_LCD1_DATA20__GPIO3_IO_21	0x0001b0b1
+
+				/* DVS */
+				MX6SX_PAD_QSPI1B_DQS__GPIO4_IO_28	0x0001b0b1
+			>;
+		};
+
+
+		pinctrl_enet1_1: enet1grp-1 {
+			fsl,pins = <
+				/* gpio to reset phy, activated in uboot */
+//				MX6SX_PAD_ENET2_CRS__GPIO2_IO_7		0xa0b1
+				/* 50MHz base clock from CPU to PHY */
+				MX6SX_PAD_GPIO1_IO05__ENET1_REF_CLK1	0x400000a1
+				/* MDIO */
+				MX6SX_PAD_ENET1_MDC__ENET1_MDC		0xa0b1
+				MX6SX_PAD_ENET1_MDIO__ENET1_MDIO	0xa0b1
+				/* fec1 */
+				MX6SX_PAD_RGMII1_TD0__ENET1_TX_DATA_0	0xa0b1
+				MX6SX_PAD_RGMII1_TD1__ENET1_TX_DATA_1	0xa0b1
+				MX6SX_PAD_RGMII1_TX_CTL__ENET1_TX_EN	0xa0b1
+				MX6SX_PAD_RGMII1_RXC__ENET1_RX_ER	0x3081
+				MX6SX_PAD_RGMII1_RD0__ENET1_RX_DATA_0	0x3081
+				MX6SX_PAD_RGMII1_RD1__ENET1_RX_DATA_1	0x3081
+				MX6SX_PAD_RGMII1_RX_CTL__ENET1_RX_EN	0x3081
+			>;
+		};
+
+		/* Display LCD1 missing signals yet: 
+			LCD1_DATA19 -> resetoutn, 
+			LCD1_DATA20 -> int_buttonc, */
+		pinctrl_lcdif1_1: lcd1grp-1 {
+			fsl,pins = <
+				MX6SX_PAD_LCD1_CLK__LCDIF1_CLK		0x00b0
+				MX6SX_PAD_LCD1_DATA00__LCDIF1_DATA_0	0x00b0
+				MX6SX_PAD_LCD1_DATA01__LCDIF1_DATA_1	0x00b0
+				MX6SX_PAD_LCD1_DATA02__LCDIF1_DATA_2	0x00b0
+				MX6SX_PAD_LCD1_DATA03__LCDIF1_DATA_3	0x00b0
+				MX6SX_PAD_LCD1_DATA04__LCDIF1_DATA_4	0x00b0
+				MX6SX_PAD_LCD1_DATA05__LCDIF1_DATA_5	0x00b0
+				MX6SX_PAD_LCD1_DATA06__LCDIF1_DATA_6	0x00b0
+				MX6SX_PAD_LCD1_DATA07__LCDIF1_DATA_7	0x00b0
+				MX6SX_PAD_LCD1_DATA08__LCDIF1_DATA_8	0x00b0
+				MX6SX_PAD_LCD1_DATA09__LCDIF1_DATA_9	0x00b0
+				MX6SX_PAD_LCD1_DATA10__LCDIF1_DATA_10	0x00b0
+				MX6SX_PAD_LCD1_DATA11__LCDIF1_DATA_11	0x00b0
+				MX6SX_PAD_LCD1_DATA12__LCDIF1_DATA_12	0x00b0
+				MX6SX_PAD_LCD1_DATA13__LCDIF1_DATA_13	0x00b0
+				MX6SX_PAD_LCD1_DATA14__LCDIF1_DATA_14	0x00b0
+				MX6SX_PAD_LCD1_DATA15__LCDIF1_DATA_15	0x00b0
+				MX6SX_PAD_LCD1_DATA16__LCDIF1_DATA_16	0x00b0
+				MX6SX_PAD_LCD1_DATA17__LCDIF1_DATA_17	0x00b0
+				MX6SX_PAD_LCD1_ENABLE__LCDIF1_ENABLE	0x00b0
+				MX6SX_PAD_LCD1_HSYNC__LCDIF1_HSYNC	0x00b0
+				MX6SX_PAD_LCD1_VSYNC__LCDIF1_VSYNC	0x00b0
+			>;
+		};
+
+
+		pinctrl_uart3_1: uart3grp-1 {
+			fsl,pins = <
+				MX6SX_PAD_QSPI1B_SS0_B__UART3_TX	0x1b0b1
+				MX6SX_PAD_QSPI1B_SCLK__UART3_RX		0x1b0b1
+				MX6SX_PAD_QSPI1B_DATA1__UART3_RTS_B	0x1b0b1
+				MX6SX_PAD_QSPI1B_DATA0__UART3_CTS_B	0x1b0b1
+			>;
+		};
+
+		/* RTSA/CTSA are not available on the connector */
+		pinctrl_uart4_1: uart4grp-1 {
+			fsl,pins = <
+				MX6SX_PAD_SD3_CMD__UART4_TX		0x1b0b1
+				MX6SX_PAD_SD3_DATA3__UART4_RX		0x1b0b1
+			>;
+		};
+
+
+		pinctrl_pwm4_0: pwm4grp-0 {
+			fsl,pins = < 
+				MX6SX_PAD_GPIO1_IO13__PWM4_OUT		0x110b0	
+                        >; 
+                     };    
+
+		pinctrl_pwm5_0: pwm5grp-0 {
+			fsl,pins = < 
+				MX6SX_PAD_RGMII2_TD3__PWM5_OUT		0x110b0	
+                        >; 
+                     };    
+
+		pinctrl_pwm6_0: pwm6grp-0 {
+			fsl,pins = < 
+				MX6SX_PAD_RGMII2_TD2__PWM6_OUT		0x110b0	
+                        >; 
+                     };    
+
+		pinctrl_pwm7_0: pwm7grp-0 {
+			fsl,pins = < 
+				MX6SX_PAD_RGMII2_TD1__PWM7_OUT		0x110b0	
+                        >; 
+                     };    
+
+
+		pinctrl_usbotg2_1: usbotg2grp-1 {
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO12__GPIO1_IO_12	0x80000000
+			>;
+		};
+
+#if 0 
+		/* on-board WLAN */
+		pinctrl_usdhc1_1: usdhc1grp-1 {
+			fsl,pins = <
+				MX6SX_PAD_SD4_CMD__USDHC4_CMD		0x17071
+				MX6SX_PAD_SD4_CLK__USDHC4_CLK		0x10071
+				MX6SX_PAD_SD4_DATA0__USDHC4_DATA0	0x17071
+				MX6SX_PAD_SD4_DATA1__USDHC4_DATA1	0x17071
+				MX6SX_PAD_SD4_DATA2__USDHC4_DATA2	0x17071
+				MX6SX_PAD_SD4_DATA3__USDHC4_DATA3	0x17071
+				/* Wlan enable */
+				MX6SX_PAD_RGMII2_TXC__GPIO5_IO_23	0x80000000 
+				/* irq */
+				MX6SX_PAD_SD4_RESET_B__GPIO6_IO_22	0x80000000 
+			>;
+		};
+#endif
+
+		/* SD card */
+		pinctrl_usdhc2_1: usdhc2grp-1 {
+			fsl,pins = <
+				MX6SX_PAD_SD2_CMD__USDHC2_CMD		0x17071
+				MX6SX_PAD_SD2_CLK__USDHC2_CLK		0x10071
+				MX6SX_PAD_SD2_DATA0__USDHC2_DATA0	0x17071
+				MX6SX_PAD_SD2_DATA1__USDHC2_DATA1	0x17071
+				MX6SX_PAD_SD2_DATA2__USDHC2_DATA2	0x17071
+				MX6SX_PAD_SD2_DATA3__USDHC2_DATA3	0x17071
+			>;
+		};
+
+		pinctrl_i2c1_1: i2c1grp-1 {
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO00__I2C1_SCL		0x0001b8b1
+				MX6SX_PAD_GPIO1_IO01__I2C1_SDA		0x0001b8b1
+			>;
+		};
+
+		pinctrl_i2c3_1: i2c3grp-1 {
+			fsl,pins = <
+				MX6SX_PAD_KEY_COL4__I2C3_SCL	0x0001b8b1
+				MX6SX_PAD_KEY_ROW4__I2C3_SDA	0x0001b8b1
+			>;
+		};
+
+		pinctrl_i2c4_1: i2c4grp-1 {
+			fsl,pins = <
+				MX6SX_PAD_SD3_DATA0__I2C4_SCL 		0x0001b8b1
+				MX6SX_PAD_SD3_DATA1__I2C4_SDA		0x0001b8b1
+			>;
+		};
+
+	};
+};
+
+&fec1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_enet1_1>;
+	phy-mode = "rmii";
+	fsl,magic-packet;
+	status = "okay";
+};
+
+
+/* I2C1 to J6 and connector, Touch */
+&i2c1 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c1_1>;
+	status = "okay";
+};
+
+/* I2C3 to connector */
+&i2c3 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c3_1>;
+	status = "okay";
+};
+
+/* I2C4 to U10 and U4 (RTC)*/
+&i2c4 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c4_1>;
+	status = "okay";
+
+	rtc8565@51 {
+		compatible = "nxp,pcf8565", "nxp,pcf8563";
+		reg = <0x51>;
+	};
+};
+
+&lcdif1 {
+	display = <&display0>;			/* Remove when already active */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lcdif1_1>;	/* Remove when already active */
+	lcd-supply = <&reg_lcd_3v3>;
+	status = "okay";
+
+	display0: display {
+		bits-per-pixel = <16>;
+		bus-width = <18>;
+		display-timings {
+			native-mode = <&timing0>;
+			timing0: vga {
+//				clock-frequency = <27000000>;
+				clock-frequency = <25188000>;
+				hactive = <640>;
+				vactive = <480>;
+				hfront-porch = <16>;
+				hback-porch = <134>;
+				hsync-len = <10>;
+				vback-porch = <11>;
+				vfront-porch = <32>;
+				vsync-len = <2>;
+				hsync-active = <0>;
+				vsync-active = <0>;
+				de-active = <1>;
+				pixelclk-active = <1>;
+			};
+		};
+	};
+};
+
+
+&uart3 {
+	/* UART_A: TXD, RXD, RTS CTS, COM2 on SKIT */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3_1>;
+	fsl,uart-has-rtscts;
+	status = "okay";
+};
+
+&uart4 {
+	/* UART_B: TXD, RXD,  COM3 on SKIT */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart4_1>;
+	fsl;
+	status = "okay";
+};
+
+/* USB device */
+&usbotg1 {
+	/* signals don't use mulitplexer, so no pinctrl here */
+	vbus-supply = <&reg_usb_otg1_vbus>;
+	dr_mode = "peripheral";
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+
+/* USB host */
+&usbotg2 {
+	vbus-supply = <&reg_usb_otg2_vbus>;
+	dr_mode = "host";
+	pinctrl-0 = <&pinctrl_usbotg2_1>;
+	status = "okay";
+};
+
+#if 0
+&usdhc1 {
+	/* on-board WLAN */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc1_1>;
+	bus-width = <4>;
+	non-removable;
+	keep-power-in-suspend;
+	enable-sdio-wakeup;
+	status = "okay";
+};
+#endif
+
+&usdhc2 {
+	/* External normal sized SD clot on SKIT */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc2_1>;
+	bus-width = <4>;
+	keep-power-in-suspend;
+	enable-sdio-wakeup;
+	status = "okay";
+};
+
+/* backlight PWM */
+&pwm4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm4_0>;
+	status = "okay";
+};
+
+/* PWM5 LED_RED_PWM */
+&pwm5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm5_0>;
+	status = "okay";
+};
+
+/* PWM6 LED_BLUE_PWM */
+&pwm6 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm6_0>;
+	status = "okay";
+};
+
+/* PWM7 LED_YELLOW_PWM */
+&pwm7 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm7_0>;
+	status = "okay";
+};
+
+
+&dma_apbh {
+	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
+	compatible = "fus,imx6sx-dma-apbh", "fus,imx28-dma-apbh";
+};
+
+&gpmi {
+	/* Switch to F&S implementation of GPMI NAND driver */
+	compatible = "fus,imx6sx-gpmi-nand";
+	pinctrl-names = "default";
+	fus,skipblocks = <2>;
+	fus,chunk1k;
+	fus,ecc_strength = <8>;		// Spare area 64 bytes
+//###	fus,ecc_strength = <52>;	// Spare area 224 bytes
+	status = "okay";
+};
+
