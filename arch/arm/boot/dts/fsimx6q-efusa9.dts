@@ -1,0 +1,220 @@
+/*
+ * Copyright 2016 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+#define CONFIG_EFUSA9_REV110
+//#define CONFIG_EFUSA9_REV121
+
+/* The following display config will be converted to Kconfig in the future */
+/* Define this if you have at least one display (D0) */
+#define CONFIG_EFUSA9_D0
+
+#ifdef CONFIG_EFUSA9_D0
+/* Activate exactly one entry for the type of display D0 */
+//#define CONFIG_EFUSA9_D0_LVDS				// LVDS
+#define CONFIG_EFUSA9_D0_LCD				// LCD
+//#define CONFIG_EFUSA9_D0_HDMI				// HDMI
+
+/*
+ * Define a mode_str entry for display D0 (depends on display type above)
+ * See the following files for possible values:
+ *   LVDS: drivers/video/mxc/ldb.c
+ *   LCD:  drivers/video/mxc/mxc_lcdif.c
+ *   HDMI: drivers/video/mxc/mxc_hdmi.c (actually fetched from panel via EDID)
+ */
+//#define CONFIG_EFUSA9_D0_MODE_STR "LDB-WVGA"		// LVDS      
+#define CONFIG_EFUSA9_D0_MODE_STR "LCD-ET070080"	// LCD
+//#define CONFIG_EFUSA9_D0_MODE_STR "1920x1080M@60"	// HDMI
+#endif // CONFIG_EFUSA9_D0
+
+/* Define this if you have a second display (D1) */
+#define CONFIG_EFUSA9_D1
+
+#ifdef CONFIG_EFUSA9_D1
+/* Activate exactly one entry for the type of display D1 */
+#define CONFIG_EFUSA9_D1_LVDS				// LVDS
+#if !defined(CONFIG_EFUSA9_D0_LCD)
+//#define CONFIG_EFUSA9_D1_LCD				// LCD
+#endif
+#if !defined(CONFIG_EFUSA9_D0_HDMI)
+//#define CONFIG_EFUSA9_D1_HDMI				// HDMI
+#endif
+
+/* Define a mode_str entry for display D1 (see comment for D0 above) */
+#define CONFIG_EFUSA9_D1_MODE_STR "LDB-WVGA"		// LVDS      
+//#define CONFIG_EFUSA9_D1_MODE_STR "LCD-ET070080"	// LCD
+//#define CONFIG_EFUSA9_D1_MODE_STR "1920x1080M@60"	// HDMI
+
+#endif // CONFIG_EFUSA9_D1
+
+/* Define this if you have a therd display (D2) */
+#define CONFIG_EFUSA9_D2
+
+#ifdef CONFIG_EFUSA9_D2
+/* Activate exactly one entry for the type of display D0 */
+//#define CONFIG_EFUSA9_D2_LVDS				// LVDS
+//#define CONFIG_EFUSA9_D2_LCD				// LCD
+#define CONFIG_EFUSA9_D2_HDMI				// HDMI
+
+/*
+ * Define a mode_str entry for display D0 (depends on display type above)
+ * See the following files for possible values:
+ *   LVDS: drivers/video/mxc/ldb.c
+ *   LCD:  drivers/video/mxc/mxc_lcdif.c
+ *   HDMI: drivers/video/mxc/mxc_hdmi.c (actually fetched from panel via EDID)
+ */
+//#define CONFIG_EFUSA9_D2_MODE_STR "LDB-WVGA"		// LVDS      
+//#define CONFIG_EFUSA9_D2_MODE_STR "LCD-ET070080"	// LCD
+#define CONFIG_EFUSA9_D2_MODE_STR "1920x1080M@60"	// HDMI
+#endif // CONFIG_EFUSA9_D2
+
+/* Define this if you have a fourth display (D3) */
+//#define CONFIG_EFUSA9_D3
+
+#ifdef CONFIG_EFUSA9_D3
+/* Activate exactly one entry for the type of display D3 */
+#define CONFIG_EFUSA9_D3_LVDS				// LVDS
+#if !defined(CONFIG_EFUSA9_D2_LCD)
+//#define CONFIG_EFUSA9_D3_LCD				// LCD
+#endif
+#if !defined(CONFIG_EFUSA9_D2_HDMI)
+//#define CONFIG_EFUSA9_D3_HDMI				// HDMI
+#endif
+
+/* Define a mode_str entry for display D1 (see comment for D0 above) */
+#define CONFIG_EFUSA9_D3_MODE_STR "LDB-WVGA"		// LVDS      
+//#define CONFIG_EFUSA9_D3_MODE_STR "LCD-ET070080"	// LCD
+//#define CONFIG_EFUSA9_D3_MODE_STR "1920x1080M@60"	// HDMI
+
+#endif // CONFIG_EFUSA9_D3
+
+/* Do some settings to make configurations easier */
+#if defined(CONFIG_EFUSA9_D0_LVDS) || defined(CONFIG_EFUSA9_D1_LVDS)
+#define CONFIG_EFUSA9_LVDS
+#if defined(CONFIG_EFUSA9_D0_LVDS) && defined(CONFIG_EFUSA9_D1_LVDS)
+#define CONFIG_EFUSA9_LVDS_MODE "sep1"
+#else
+//#define CONFIG_EFUSA9_LVDS_MODE "sin0"	// Single-channel on LVDS0
+#define CONFIG_EFUSA9_LVDS_MODE "sin1"		// Single-channel on LVDS1
+//#define CONFIG_EFUSA9_LVDS_MODE "dul1"	// Clone mode
+//#define CONFIG_EFUSA9_LVDS_MODE "spl1"	// Dual-channel LVDS
+#endif
+#endif
+
+#if defined(CONFIG_EFUSA9_D0_LCD) || defined(CONFIG_EFUSA9_D1_LCD)
+#define CONFIG_EFUSA9_LCD
+#endif
+#if defined(CONFIG_EFUSA9_D0_HDMI) || defined(CONFIG_EFUSA9_D1_HDMI) \
+	|| defined(CONFIG_EFUSA9_D2_HDMI) || defined(CONFIG_EFUSA9_D3_HDMI)
+#define CONFIG_EFUSA9_HDMI
+#define CONFIG_EFUSA9_HDMI_AUDIO
+#define CONFIG_EFUSA9_HDMI_CEC
+#endif
+
+/* Please select only one of the following touch devices. Make sure that the
+   corresponding touchscreen driver is activated in the kernel */
+//#define CONFIG_EFUSA9_4WTOUCH_SX8655_ONBOARD
+#define CONFIG_EFUSA9_4WTOUCH_SX8655_RGBADAPTER
+//#define CONFIG_EFUSA9_CAPTOUCH_MXT224
+//#define CONFIG_EFUSA9_CAPTOUCH_FT5x06
+
+#define CONFIG_EFUSA9_NAND
+#define CONFIG_EFUSA9_SGTL5000_AUDIO
+
+#define CONFIG_EFUSA9_CAMERA_INTERFACE
+//#define CONFIG_EFUSA9_PARALLEL_INTERFACE
+#define CONFIG_EFUSA9_SERIAL_INTERFACE
+
+#define CONFIG_EFUSA9_SD_A
+#define CONFIG_EFUSA9_SD_B
+//#define CONFIG_EFUSA9_EMMC
+
+#define CONFIG_EFUSA9_I2C_A
+#define CONFIG_EFUSA9_I2C_B
+#define CONFIG_EFUSA9_I2C_C
+
+#define CONFIG_EFUSA9_SPI_A
+#define CONFIG_EFUSA9_SPI_B
+
+#define CONFIG_EFUSA9_UART_A
+#define CONFIG_EFUSA9_UART_B
+#define CONFIG_EFUSA9_UART_C
+#define CONFIG_EFUSA9_UART_D
+
+#include "imx6q.dtsi"
+#include "fsimx6qdl-efusa9.dtsi"
+
+/ {
+	model = "F&S i.MX6 Quad efusA9 module";
+	compatible = "fus,imx6q-efusa9", "fsl,imx6q";
+};
+
+
+&dma_apbh {
+	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
+	compatible = "fus,imx6q-dma-apbh", "fus,imx28-dma-apbh";
+};
+
+#ifdef CONFIG_EFUSA9_LVDS
+&ldb {
+	ipu_id = <0>;
+	sec_ipu_id = <0>;
+#ifdef CONFIG_EFUSA9_LCD
+	disp_id = <1>;
+	sec_disp_id = <0>;
+	
+	lvds-channel@0 {
+		crtc = "ipu1-di1";
+		status = "okay";
+	};
+#else
+	disp_id = <0>;
+	sec_disp_id = <1>;
+	
+	lvds-channel@0 {
+		crtc = "ipu1-di0";
+		status = "okay";
+	};
+#endif
+};
+#endif
+
+#ifdef CONFIG_EFUSA9_HDMI
+&hdmi_core {
+	ipu_id = <1>;
+	disp_id = <0>;
+#ifdef CONFIG_EFUSA9_D3_HDMI
+	disp_id = <1>; 
+#endif
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_EFUSA9_D0
+&mxcfb1 {
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_EFUSA9_D1
+&mxcfb2 {
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_EFUSA9_D2
+&mxcfb3 {
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_EFUSA9_D3
+&mxcfb4 {
+	status = "okay";
+};
+#endif
