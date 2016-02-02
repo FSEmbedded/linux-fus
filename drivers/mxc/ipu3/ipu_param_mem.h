@@ -305,6 +305,13 @@ static inline void _ipu_ch_param_init(struct ipu_soc *ipu, int ch,
 
 		_ipu_ch_params_set_packing(&params, 5, 0, 6, 5, 5, 11, 8, 16);
 		break;
+	case IPU_PIX_FMT_BGR666:
+		ipu_ch_param_set_field(&params, 0, 107, 3, 3);	/* bits/pixel */
+		ipu_ch_param_set_field(&params, 1, 85, 4, 7);	/* pix format */
+		ipu_ch_param_set_field(&params, 1, 78, 7, 31);	/* burst size */
+
+		_ipu_ch_params_set_packing(&params, 6, 12, 6, 6, 6, 0, 8, 16);
+		break;
 	case IPU_PIX_FMT_BGRA4444:
 		ipu_ch_param_set_field(&params, 0, 107, 3, 3);	/* bits/pixel */
 		ipu_ch_param_set_field(&params, 1, 85, 4, 7);	/* pix format */

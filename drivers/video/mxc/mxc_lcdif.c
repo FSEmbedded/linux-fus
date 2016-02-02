@@ -48,6 +48,12 @@ static struct fb_videomode lcdif_modedb[] = {
 	FB_SYNC_CLK_LAT_FALL,
 	FB_VMODE_NONINTERLACED,
 	0,},
+	{
+	/* 800x480 @ 57 Hz , pixel clk @ 27MHz */
+	"LCD-ET070080", 57, 800, 480, 37037, 152, 40, 33, 10, 64, 2,
+	0,
+	FB_VMODE_NONINTERLACED,
+	0,},
 };
 static int lcdif_modedb_sz = ARRAY_SIZE(lcdif_modedb);
 
@@ -135,6 +141,8 @@ static int lcd_get_of_property(struct platform_device *pdev,
 		plat_data->default_ifmt = IPU_PIX_FMT_RGB565;
 	else if (!strncmp(default_ifmt, "RGB666", 6))
 		plat_data->default_ifmt = IPU_PIX_FMT_RGB666;
+	else if (!strncmp(default_ifmt, "BGR666", 6))
+		plat_data->default_ifmt = IPU_PIX_FMT_BGR666;
 	else if (!strncmp(default_ifmt, "YUV444", 6))
 		plat_data->default_ifmt = IPU_PIX_FMT_YUV444;
 	else if (!strncmp(default_ifmt, "LVDS666", 7))

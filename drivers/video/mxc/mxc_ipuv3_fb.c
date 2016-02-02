@@ -3061,6 +3061,8 @@ static int mxcfb_option_setup(struct platform_device *pdev, struct fb_info *fbi)
 				pdata->interface_pix_fmt = IPU_PIX_FMT_RGB565;
 			else if (!strncmp(opt+3, "RGB666", 6))
 				pdata->interface_pix_fmt = IPU_PIX_FMT_RGB666;
+			else if (!strncmp(opt+3, "BGR666", 6))
+				pdata->interface_pix_fmt = IPU_PIX_FMT_BGR666;
 			else if (!strncmp(opt+3, "YUV444", 6))
 				pdata->interface_pix_fmt = IPU_PIX_FMT_YUV444;
 			else if (!strncmp(opt+3, "LVDS666", 7))
@@ -3396,6 +3398,8 @@ static int mxcfb_get_of_property(struct platform_device *pdev,
 		plat_data->interface_pix_fmt = IPU_PIX_FMT_RGB565;
 	else if (!strncmp(pixfmt, "RGB666", 6))
 		plat_data->interface_pix_fmt = IPU_PIX_FMT_RGB666;
+	else if (!strncmp(pixfmt, "BGR666", 6))
+		plat_data->interface_pix_fmt = IPU_PIX_FMT_BGR666;
 	else if (!strncmp(pixfmt, "YUV444", 6))
 		plat_data->interface_pix_fmt = IPU_PIX_FMT_YUV444;
 	else if (!strncmp(pixfmt, "LVDS666", 7))
