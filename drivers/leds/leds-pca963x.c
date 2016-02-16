@@ -45,6 +45,7 @@
 #define PCA963X_LED_PWM		0x2	/* Controlled through PWM */
 #define PCA963X_LED_GRP_PWM	0x3	/* Controlled through PWM/GRPPWM */
 #define PCA963X_LED_MASK	0x3	/* MASK LED */
+#define PCA963X_LED_OUT		0x8	/* LEDOUT Register */
 
 #define PCA963X_MODE2_DMBLNK	0x20	/* Enable blinking */
 
@@ -445,18 +446,16 @@ static int pca963x_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	}
 
 	reg = pca963x_chip->chipdef->pwmout_base + pwm->hwpwm;
-	calc = (duty_ns * 255 + 127) / pwm->period;
+	if(duty_ns != 0)
+		calc = (duty_ns * 255 + 127) / pwm->period;
+	else {
+		calc = 0;
+	}
 
-	if(pwm->polarity == PWM_POLARITY_INVERSED)
+	if((!pwm->polarity == PWM_POLARITY_INVERSED))
 		calc = 255 - calc;
 
-	if (calc < 1)
-		i2c_smbus_write_byte_data(pca963x_chip->client, reg, LED_OFF);
-	else if (calc == 255)
-		i2c_smbus_write_byte_data(pca963x_chip->client, reg, LED_FULL);
-	else
-		i2c_smbus_write_byte_data(pca963x_chip->client, reg, calc);
-
+	i2c_smbus_write_byte_data(pca963x_chip->client, reg, calc);
 	return 0;
 }
 
@@ -489,8 +488,10 @@ static void pca963x_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
 
 	val &= ~(PCA963X_LED_MASK << (2 * pwm->hwpwm));
 
-	if(pca963x_chip->leds[pwm->hwpwm].flags & PCA963X_FLAGS_DEFAULT_ON)
+	if((!pwm->polarity == PWM_POLARITY_INVERSED))
 		val |= PCA963X_LED_ON << (2 * pwm->hwpwm);
+	else
+		val |= PCA963X_LED_OFF << (2 * pwm->hwpwm);
 
 	i2c_smbus_write_byte_data(pca963x_chip->client,
 				  pca963x_chip->chipdef->ledout_base, val);
