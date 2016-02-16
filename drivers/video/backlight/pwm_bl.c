@@ -35,6 +35,7 @@ struct pwm_bl_data {
 	int			enable_gpio;
 	unsigned long		enable_gpio_flags;
 	unsigned int		scale;
+	struct property		*fb_names_prop;
 	int			(*notify)(struct device *,
 					  int brightness);
 	void			(*notify_after)(struct device *,
@@ -128,6 +129,24 @@ static int pwm_backlight_get_brightness(struct backlight_device *bl)
 {
 	return bl->props.brightness;
 }
+
+#ifdef CONFIG_OF
+static int pwm_backlight_check_fb_dt(struct device *dev,
+				     struct fb_info *info)
+{
+	struct backlight_device *bl = dev_get_drvdata(dev);
+	struct pwm_bl_data *pb = bl_get_data(bl);
+	const char *cp;
+
+	for (cp = of_prop_next_string(pb->fb_names_prop, NULL); cp;
+		     cp = of_prop_next_string(pb->fb_names_prop, cp)) {
+		if(!strcmp(info->fix.id, cp))
+			return (!strcmp(info->fix.id, cp));
+	}
+
+	return 0;
+}
+#endif
 
 static int pwm_backlight_check_fb(struct backlight_device *bl,
 				  struct fb_info *info)
@@ -264,6 +283,11 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 	pb->exit = data->exit;
 	pb->dev = &pdev->dev;
 	pb->enabled = false;
+#ifdef CONFIG_OF
+	pb->fb_names_prop = of_find_property(pb->dev->of_node, "fb-names", NULL);
+	if (pb->fb_names_prop)
+		pb->check_fb = pwm_backlight_check_fb_dt;
+#endif
 
 	if (gpio_is_valid(pb->enable_gpio)) {
 		unsigned long flags;

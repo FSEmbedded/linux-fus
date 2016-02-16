@@ -31,6 +31,7 @@
 	backlight_lcd {
 		compatible = "pwm-backlight";
 		pwms = <&pca963x 1 640000 PWM_POLARITY_INVERTED>;
+		power-supply = <&reg_lcd_bl>;
 #ifdef CONFIG_EFUSA9X_BL_LEVELS_16
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
@@ -44,7 +45,8 @@
 
 	backlight_ldb {
 		compatible = "pwm-backlight";
-		pwms = <&pwm4 0 5000000>;
+		pwms = <&pwm6 0 5000000>;
+		power-supply = <&reg_ldb_bl>;
 #ifdef CONFIG_EFUSA9X_BL_LEVELS_16
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
@@ -113,18 +115,27 @@
 			regulator-always-on;
 		};
 
-		reg_lcd_3v3: lcd-3v3 {
+		reg_disp_3v3: disp-3v3 {
 			compatible = "regulator-fixed";
-			regulator-name = "lcd-3v3";
-			gpio = <&pca963x 0>;
+			regulator-name = "disp-3v3";
+			gpio = <&gpio3 19 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+
+		reg_lcd_bl: lcd-bl {
+			compatible = "regulator-fixed";
+			regulator-name = "lcd-bl";
+			gpio = <&pca963x 0 0>;
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 		};
 
-		reg_ldb_3v3: ldb-3v3 {
+		reg_ldb_bl: ldb-bl {
 			compatible = "regulator-fixed";
-			regulator-name = "ldb-3v3";
-			gpio = <&gpio3 19 0>;
+			regulator-name = "ldb-bl";
+			gpio = <&gpio3 20 0>;
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
@@ -404,6 +415,12 @@
 			>;
 		};
 #endif //###
+
+		pinctrl_pwm6_0: pwm6grp-0 {
+			fsl,pins = <
+				MX6SX_PAD_LCD1_DATA22__PWM6_OUT		0x110b0
+			>;
+		};
 
 		pinctrl_uart1_1: uart1grp-1 {
 			fsl,pins = <
@@ -704,7 +721,7 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		#pwm-cells = <3>;
-		#gpio-cells = <1>;
+		#gpio-cells = <2>;
 		led@0 {
 			reg = <0>;
 			label = "0-PWRCTL";
@@ -839,7 +856,7 @@
 	display = <&display0>;			/* Remove when already active */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcdif1_1>;	/* Remove when already active */
-	lcd-supply = <&reg_lcd_3v3>;
+	lcd-supply = <&reg_disp_3v3>;
 	status = "okay";
 
 	display0: display {
@@ -869,7 +886,7 @@
 &lcdif2 {
 	display = <&display1>;
 	disp-dev = "ldb";
-	lcd-supply = <&reg_ldb_3v3>;
+	lcd-supply = <&reg_disp_3v3>;
 	status = "okay";
 
 	display1: display {
@@ -1031,6 +1048,12 @@
 	status = "okay";
 };
 #endif //###
+
+&pwm6 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm6_0>;
+	status = "okay";
+};
 
 &pxp {
 	status = "okay";
