@@ -28,14 +28,29 @@
 static void __init imx6ul_enet_clk_init(void)
 {
 	struct regmap *gpr;
+	struct device_node *np;
 
 	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6ul-iomuxc-gpr");
-	if (!IS_ERR(gpr))
-		regmap_update_bits(gpr, IOMUXC_GPR1, IMX6UL_GPR1_ENET_CLK_DIR,
-				   IMX6UL_GPR1_ENET_CLK_OUTPUT);
-	else
+	if (IS_ERR(gpr)) {
 		pr_err("failed to find fsl,imx6ul-iomux-gpr regmap\n");
+		return;
+	}
 
+	np = of_find_node_by_path("/soc/aips-bus@02100000/ethernet@02188000");
+	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   0, IMX6UL_GPR1_ENET1_CLK_OUTPUT);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   IMX6UL_GPR1_ENET1_CLK_OUTPUT, 0);
+
+	np = of_find_node_by_path("/soc/aips-bus@02000000/ethernet@020b4000");
+	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   0, IMX6UL_GPR1_ENET2_CLK_OUTPUT);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   IMX6UL_GPR1_ENET2_CLK_OUTPUT, 0);
 }
 
 static int ksz8081_phy_fixup(struct phy_device *dev)

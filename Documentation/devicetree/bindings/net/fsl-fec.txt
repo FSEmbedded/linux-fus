@@ -30,6 +30,8 @@ Optional properties:
 - fsl,wakeup_irq : The property define the wakeup irq index in enet irq source.
 - stop-mode : If present, indicates soc need to set gpr bit to request stop
   mode.
+- fsl,ref-clock-out : Reference clock is an output rather than an input.
+  (F&S extension)
 
 Optional subnodes:
 - mdio : specifies the mdio bus in the FEC, used as a container for phy nodes

@@ -170,6 +170,16 @@ static int __init imx6sx_arm2_flexcan_fixup(void)
 	return 0;
 }
 
+static int dp83848_phy_fixup(struct phy_device *dev)
+{
+	u16 val;
+
+	val = phy_read(dev, 0x19);
+	val &= ~(0x1 << 5);
+	phy_write(dev, 0x19, val);
+	return 0;
+}
+
 static int ar8031_phy_fixup(struct phy_device *dev)
 {
 	u16 val;
@@ -194,27 +204,44 @@ static int ar8031_phy_fixup(struct phy_device *dev)
 	return 0;
 }
 
+#define PHY_ID_DP83848 	0x20005c90
 #define PHY_ID_AR8031   0x004dd074
 static void __init imx6sx_enet_phy_init(void)
 {
-	if (IS_BUILTIN(CONFIG_PHYLIB))
+	if (IS_BUILTIN(CONFIG_PHYLIB)) {
+		phy_register_fixup_for_uid(PHY_ID_DP83848, 0xfffffff0,
+					   dp83848_phy_fixup);
 		phy_register_fixup_for_uid(PHY_ID_AR8031, 0xffffffff,
 					   ar8031_phy_fixup);
+	}
 }
 
 static void __init imx6sx_enet_clk_sel(void)
 {
 	struct regmap *gpr;
+	struct device_node *np;
 
 	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6sx-iomuxc-gpr");
-	if (!IS_ERR(gpr)) {
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				   IMX6SX_GPR1_FEC_CLOCK_MUX_SEL_MASK, 0);
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				   IMX6SX_GPR1_FEC_CLOCK_PAD_DIR_MASK, 0);
-	} else {
+	if (IS_ERR(gpr)) {
 		pr_err("failed to find fsl,imx6sx-iomux-gpr regmap\n");
+		return;
 	}
+
+	np = of_find_node_by_path("/soc/aips-bus@02100000/ethernet@02188000");
+	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   0, IMX6SX_GPR1_ENET1_CLOCK_MASK);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   IMX6SX_GPR1_ENET1_CLOCK_MASK, 0);
+
+	np = of_find_node_by_path("/soc/aips-bus@02100000/ethernet@021b4000");
+	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   0, IMX6SX_GPR1_ENET2_CLOCK_MASK);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   IMX6SX_GPR1_ENET2_CLOCK_MASK, 0);
 }
 
 static inline void imx6sx_enet_init(void)

@@ -307,8 +307,11 @@ pwmleds {
 &fec1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet1_1>;
+	assigned-clocks = <&clks IMX6SX_CLK_ENET_REF>;
+	assigned-clock-rates = <50000000>;
 	phy-mode = "rmii";
 	fsl,magic-packet;
+	fsl,ref-clock-out;
 	status = "okay";
 };
 
