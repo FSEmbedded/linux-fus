@@ -27,8 +27,8 @@
 #include <linux/of.h>			/* __setup() */
 
 struct bdinfo {
-	const char ** prop_name;
-	const char ** prop_val;
+	const char **prop_name;
+	const char **prop_val;
 	unsigned int acount;
 	unsigned int mode;
 	struct kobj_attribute *kattr;
@@ -40,13 +40,22 @@ struct bdinfo bdi;
 
 static char *login_tty;
 
+static int __init login_tty_setup(char *arg)
+{
+	login_tty = arg;
+
+	return 0;
+}
+
+__setup("login_tty=", login_tty_setup);
+
 static ssize_t bdinfo_show(struct kobject *kobj,
 				      struct kobj_attribute *attr, char *buf)
 {
 	int i;
 
-	for(i=0; i<bdi.acount; i++) {
-		if(strcmp(bdi.prop_name[i],attr->attr.name) == 0) {
+	for (i = 0; i < bdi.acount; i++) {
+		if (strcmp(bdi.prop_name[i],attr->attr.name) == 0) {
 			break;
 		}
 	}
@@ -81,7 +90,7 @@ static int __init bdinfo_alloc(struct platform_device *pdev)
 
 	p = bdi.kattr;
 
-	for(i=0; i<bdi.acount; i++) {
+	for (i = 0; i < bdi.acount; i++) {
 		p->attr.name = bdi.prop_name[i];
 		p->attr.mode = bdi.mode;
 		p->show = bdinfo_show;
@@ -135,10 +144,8 @@ static int login_tty_init(struct platform_device *pdev, int i)
 		memcpy(buf, login_tty, len);
 		buf[len++] = 0;
 		bdi.prop_val[i] = buf;
-	}
-	else {
+	} else
 		bdi.prop_val[i] = login_tty;
-	}
 
 	i++;
 
@@ -148,13 +155,6 @@ static int login_tty_init(struct platform_device *pdev, int i)
 		to = "0";
 
 	bdi.prop_val[i] = to;
-
-	return 0;
-}
-
-static int __init login_tty_setup(char *arg)
-{
-	login_tty = arg;
 
 	return 0;
 }
@@ -170,10 +170,8 @@ static int bdinfo_dt_init(struct platform_device *pdev)
 	bdi.acount = 0;
 	bdi.mode = 0400;
 
-	__setup("login_tty=", login_tty_setup);
-
 	/* login_speed and login_tty = 2 */
-	if(login_tty)
+	if (login_tty)
 		bdi.acount = 2;
 
 	for_each_property_of_node(pdev->dev.of_node, prop) {
@@ -192,7 +190,6 @@ static int bdinfo_dt_init(struct platform_device *pdev)
 
 	bdi.prop_val = devm_kzalloc(&pdev->dev, bdi.acount *
 						sizeof(char *), GFP_KERNEL);
-
 	if (!bdi.prop_val)
 		return -ENOMEM;
 
@@ -207,7 +204,7 @@ static int bdinfo_dt_init(struct platform_device *pdev)
 		i++;
 	}
 
-	if(login_tty) {
+	if (login_tty) {
 		ret = login_tty_init(pdev, i);
 	}
 
@@ -234,10 +231,8 @@ static int bdinfo_probe(struct platform_device *pdev)
 	if (!bdi.bdinfo_kobj) {
 		dev_err(&pdev->dev, "cannot create kobject!\n");
 		ret = -ENOMEM;
-	}
-	else {
+	} else
 		ret = sysfs_create_group(bdi.bdinfo_kobj, &bdi.attr_group);
-	}
 
 	if (ret)
 		goto exit;
