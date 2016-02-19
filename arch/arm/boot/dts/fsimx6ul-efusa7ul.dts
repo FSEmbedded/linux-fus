@@ -506,6 +506,7 @@
 
 	// ### TODO: FT5x06 on I2C_B
 
+#if 0
 	mxt224@4a {
 		compatible = "atmel,maxtouch";
 		reg = <0x4a>;
@@ -519,6 +520,7 @@
 		avdd = <&reg_atmel_mxt_avdd>;
 #endif
 	};
+#endif
 };
 
 /* I2C_C (Bitbanging): RTC (PCA8565), SGTL5000 (SKIT) */
