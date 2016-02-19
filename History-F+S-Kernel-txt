@@ -3,6 +3,26 @@ Version History for Linux Kernel on F&S Vybrid Boards and Modules
 
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
+linux-3.14.52-fsimx6sx-V1.0 (19.02.2016)
+----------------------------------------
+Supported Boards: efusA9X, BemA9X
+Not tested: efusA7UL, efusA9
+
+- Improve pca963x LED driver, support configuration of outputs as PWM and GPIO
+- Improve touch configuration, only one touch at a time on efusA9X and efusA7UL
+- Activate all possible touch drivers in fsimx6sx_defconfig/fsimx6ul_defconfig
+- Add support for bdinfo device and use it on fsimx6sx and fsimx6ul
+- Handle bitflip count of last read page in NAND flash correctly
+- Rebase to kernel 3.14.52, Freescale version rel_imx_3.14.52_1.1.0_ga
+- Add support and device tree for BemA9X
+- Add device tree for efusA9
+- Add basic support for OV9665 camera
+- Further improve pca963x LED driver, fix polarity issue
+- Add fb-names in PWM backlight driver to refer to the framebuffer device
+- Support ENET clock output on i.MX6-SoloX and i.MX6UL (fsl,ref-clock-out)
+- Remove CMA size to 128MB on fsimx6sx, required for BemA9X
+- Improve device tree for efusA9X and efusA7UL
+
 
 linux-3.14.38-fsimx6ul-V1.0 (25.11.2015)
 ----------------------------------------
