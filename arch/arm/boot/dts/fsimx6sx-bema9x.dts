@@ -6,6 +6,7 @@
  * published by the Free Software Foundation.
  */
 #define CONFIG_BEMA9X_BL_LEVELS_16
+#define CONFIG_EFUSA9X_CAPTOUCH_FT5x06
 
 /dts-v1/;
 
@@ -138,8 +139,11 @@ pwmleds {
 				/* BootGPIO */
 				MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9	0x0001b0b1
 
-				/* RESETOUT */
+				/* TOUCH RESET */
 				MX6SX_PAD_LCD1_DATA19__GPIO3_IO_20	0x0001b0b1
+
+				/* TOUCH INTERUPT*/
+				MX6SX_PAD_GPIO1_IO04__GPIO1_IO_4	0x0001b0b1
 
 				/* INT_BUTTONC */
 				MX6SX_PAD_LCD1_DATA20__GPIO3_IO_21	0x0001b0b1
@@ -222,26 +226,26 @@ pwmleds {
 		pinctrl_pwm4_0: pwm4grp-0 {
 			fsl,pins = < 
 				MX6SX_PAD_GPIO1_IO13__PWM4_OUT		0x110b0	
-                        >; 
-                     };    
+			>; 
+		};    
 
 		pinctrl_pwm5_0: pwm5grp-0 {
 			fsl,pins = < 
 				MX6SX_PAD_RGMII2_TD3__PWM5_OUT		0x110b0	
-                        >; 
-                     };    
+			>; 
+		};    
 
 		pinctrl_pwm6_0: pwm6grp-0 {
 			fsl,pins = < 
 				MX6SX_PAD_RGMII2_TD2__PWM6_OUT		0x110b0	
-                        >; 
-                     };    
+			>; 
+		};    
 
 		pinctrl_pwm7_0: pwm7grp-0 {
 			fsl,pins = < 
 				MX6SX_PAD_RGMII2_TD1__PWM7_OUT		0x110b0	
-                        >; 
-                     };    
+			>; 
+		};    
 
 
 		pinctrl_usbotg2_1: usbotg2grp-1 {
@@ -282,22 +286,22 @@ pwmleds {
 
 		pinctrl_i2c1_1: i2c1grp-1 {
 			fsl,pins = <
-				MX6SX_PAD_GPIO1_IO00__I2C1_SCL		0x0001b8b1
-				MX6SX_PAD_GPIO1_IO01__I2C1_SDA		0x0001b8b1
+				MX6SX_PAD_GPIO1_IO00__I2C1_SCL		0x4001b8b1
+				MX6SX_PAD_GPIO1_IO01__I2C1_SDA		0x4001b8b1
 			>;
 		};
 
 		pinctrl_i2c3_1: i2c3grp-1 {
 			fsl,pins = <
-				MX6SX_PAD_KEY_COL4__I2C3_SCL	0x0001b8b1
-				MX6SX_PAD_KEY_ROW4__I2C3_SDA	0x0001b8b1
+				MX6SX_PAD_KEY_COL4__I2C3_SCL	0x4001b8b1
+				MX6SX_PAD_KEY_ROW4__I2C3_SDA	0x4001b8b1
 			>;
 		};
 
 		pinctrl_i2c4_1: i2c4grp-1 {
 			fsl,pins = <
-				MX6SX_PAD_SD3_DATA0__I2C4_SCL 		0x0001b8b1
-				MX6SX_PAD_SD3_DATA1__I2C4_SDA		0x0001b8b1
+				MX6SX_PAD_SD3_DATA0__I2C4_SCL 		0x4001b8b1
+				MX6SX_PAD_SD3_DATA1__I2C4_SDA		0x4001b8b1
 			>;
 		};
 
@@ -316,7 +320,7 @@ pwmleds {
 };
 
 
-/* I2C1 to J6 and connector, Touch */
+/* I2C1 to J6 and connector */
 &i2c1 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
@@ -332,7 +336,7 @@ pwmleds {
 	status = "okay";
 };
 
-/* I2C4 to U10 and U4 (RTC)*/
+/* I2C4 to U10 and U4 (RTC) U10 connector connects display touch controller (FT5306) */
 &i2c4 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
@@ -343,6 +347,21 @@ pwmleds {
 		compatible = "nxp,pcf8565", "nxp,pcf8563";
 		reg = <0x51>;
 	};
+
+#ifdef CONFIG_EFUSA9X_CAPTOUCH_FT5x06
+	/* F&S driver V2.0 */
+	ft5x06_ts@70 {
+		compatible = "FocalTech,ft5306";
+		reg = <0x38>;
+		threshold = <25>;
+		gain = <8>;
+		offset = <0>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <4 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&gpio3 21 GPIO_ACTIVE_LOW>;
+	};
+#endif
+
 };
 
 &lcdif1 {
