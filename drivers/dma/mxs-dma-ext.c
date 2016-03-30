@@ -1,5 +1,6 @@
 /*
- * Copyright 2011-2012 Freescale Semiconductor, Inc. All Rights Reserved.
+ * Copyright 2011-2015 Freescale Semiconductor, Inc. All Rights Reserved.
+ * Copyright 2015-2016 F&S Elektronik Systeme GmbH
  *
  * Refer to drivers/dma/imx-sdma.c
  *
@@ -28,8 +29,9 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_dma.h>
-
+#include <linux/pm_runtime.h>
 #include <asm/irq.h>
+
 #include "dmaengine.h"			/* Cookie stuff */
 
 /*
@@ -57,6 +59,7 @@
 	(((dma_is_apbh(d) && apbh_is_old(d)) ? 0x050 : 0x110) + (n) * 0x70)
 #define HW_APBHX_CHn_SEMA(d, n) \
 	(((dma_is_apbh(d) && apbh_is_old(d)) ? 0x080 : 0x140) + (n) * 0x70)
+#define HW_APBX_CHn_DEBUG1(d, n) (0x150 + (n) * 0x70)
 
 #define CCW_BLOCK_SIZE	(4 * PAGE_SIZE)
 #define NUM_CCW	(int)(CCW_BLOCK_SIZE / sizeof(struct mxs_dma_ccw))
@@ -72,7 +75,6 @@ struct mxs_dma_chan {
 	unsigned int			desc_index;
 	unsigned int			desc_count;
 	enum dma_status			status;
-#define MXS_DMA_SG_LOOP			(1 << 0)
 };
 
 #define MXS_DMA_CHANNELS		16
@@ -121,32 +123,32 @@ static struct mxs_dma_type mxs_dma_types[] = {
 	}
 };
 
-static struct platform_device_id mxs_dma_ids[] = {
+static struct platform_device_id mxs_dma_ext_ids[] = {
 	{
-		.name = "imx23-dma-apbh",
+		.name = "imx23-dma-ext-apbh",
 		.driver_data = (kernel_ulong_t) &mxs_dma_types[0],
 	}, {
-		.name = "imx23-dma-apbx",
+		.name = "imx23-dma-ext-apbx",
 		.driver_data = (kernel_ulong_t) &mxs_dma_types[1],
 	}, {
-		.name = "imx28-dma-apbh",
+		.name = "imx28-dma-ext-apbh",
 		.driver_data = (kernel_ulong_t) &mxs_dma_types[2],
 	}, {
-		.name = "imx28-dma-apbx",
+		.name = "imx28-dma-ext-apbx",
 		.driver_data = (kernel_ulong_t) &mxs_dma_types[3],
 	}, {
 		/* end of list */
 	}
 };
 
-static const struct of_device_id mxs_dma_dt_ids[] = {
-	{ .compatible = "fus,imx23-dma-apbh", .data = &mxs_dma_ids[0], },
-	{ .compatible = "fus,imx23-dma-apbx", .data = &mxs_dma_ids[1], },
-	{ .compatible = "fus,imx28-dma-apbh", .data = &mxs_dma_ids[2], },
-	{ .compatible = "fus,imx28-dma-apbx", .data = &mxs_dma_ids[3], },
+static const struct of_device_id mxs_dma_ext_dt_ids[] = {
+	{ .compatible = "fus,imx23-dma-apbh", .data = &mxs_dma_ext_ids[0], },
+	{ .compatible = "fus,imx23-dma-apbx", .data = &mxs_dma_ext_ids[1], },
+	{ .compatible = "fus,imx28-dma-apbh", .data = &mxs_dma_ext_ids[2], },
+	{ .compatible = "fus,imx28-dma-apbx", .data = &mxs_dma_ext_ids[3], },
 	{ /* sentinel */ }
 };
-MODULE_DEVICE_TABLE(of, mxs_dma_dt_ids);
+MODULE_DEVICE_TABLE(of, mxs_dma_ext_dt_ids);
 
 static struct mxs_dma_chan *to_mxs_dma_ext_chan(struct dma_chan *chan)
 {
@@ -175,12 +177,37 @@ static void mxs_dma_ext_reset_chan(struct mxs_dma_chan *mxs_chan)
 	int chan_id = mxs_chan->chan.chan_id;
 
 //	printk("### DMA %d: resetting channel\n", chan_id);
-	if (dma_is_apbh(mxs_dma) && apbh_is_old(mxs_dma))
+	if (dma_is_apbh(mxs_dma) && apbh_is_old(mxs_dma)) {
 		writel(1 << (chan_id + BP_APBH_CTRL0_RESET_CHANNEL),
 			mxs_dma->base + HW_APBHX_CTRL0 + STMP_OFFSET_REG_SET);
-	else
+	} else {
+		unsigned long elapsed = 0;
+		const unsigned long max_wait = 50000; /* 50ms */
+		void __iomem *reg_dbg1 = mxs_dma->base +
+				HW_APBX_CHn_DEBUG1(mxs_dma, chan_id);
+
+		/*
+		 * On i.MX28 APBX, the DMA channel can stop working if we reset
+		 * the channel while it is in READ_FLUSH (0x08) state.
+		 * We wait here until we leave the state. Then we trigger the
+		 * reset. Waiting a maximum of 50ms, the kernel shouldn't crash
+		 * because of this.
+		 */
+		while ((readl(reg_dbg1) & 0xf) == 0x8 && elapsed < max_wait) {
+			udelay(100);
+			elapsed += 100;
+		}
+
+		if (elapsed >= max_wait)
+			dev_err(&mxs_chan->mxs_dma->pdev->dev,
+					"Failed waiting for the DMA channel %d to leave state READ_FLUSH, trying to reset channel in READ_FLUSH state now\n",
+					chan_id);
+
 		writel(1 << (chan_id + BP_APBHX_CHANNEL_CTRL_RESET_CHANNEL),
 			mxs_dma->base + HW_APBHX_CHANNEL_CTRL + STMP_OFFSET_REG_SET);
+	}
+
+	mxs_chan->status = DMA_COMPLETE;
 
 	/* Set cmd_addr for first descriptor */
 	writel(mxs_chan->ccw_phys,
@@ -243,6 +270,11 @@ static void mxs_dma_ext_resume_chan(struct mxs_dma_chan *mxs_chan)
 	mxs_chan->status = DMA_IN_PROGRESS;
 }
 
+static dma_cookie_t mxs_dma_ext_tx_submit(struct dma_async_tx_descriptor *tx)
+{
+	return dma_cookie_assign(tx);
+}
+
 static void mxs_dma_ext_tasklet(unsigned long data)
 {
 	struct mxs_dma_chan *mxs_chan = (struct mxs_dma_chan *)data;
@@ -251,60 +283,77 @@ static void mxs_dma_ext_tasklet(unsigned long data)
 		mxs_chan->desc.callback(mxs_chan->desc.callback_param);
 }
 
-static dma_cookie_t mxs_dma_ext_tx_submit(struct dma_async_tx_descriptor *tx)
+static int mxs_dma_ext_irq_to_chan(struct mxs_dma_engine *mxs_dma, int irq)
 {
-	return dma_cookie_assign(tx);
+	int i;
+
+	for (i = 0; i != mxs_dma->nr_channels; ++i)
+		if (mxs_dma->mxs_chans[i].chan_irq == irq)
+			return i;
+
+	return -EINVAL;
 }
 
 static irqreturn_t mxs_dma_ext_int_handler(int irq, void *dev_id)
 {
 	struct mxs_dma_engine *mxs_dma = dev_id;
-	u32 stat1, stat2;
+	struct mxs_dma_chan *mxs_chan;
+	u32 completed;
+	u32 err;
+	int chan = mxs_dma_ext_irq_to_chan(mxs_dma, irq);
+
+	if (chan < 0)
+		return IRQ_NONE;
 
 	/* completion status */
-	stat1 = readl(mxs_dma->base + HW_APBHX_CTRL1);
-	stat1 &= MXS_DMA_CHANNELS_MASK;
-	writel(stat1, mxs_dma->base + HW_APBHX_CTRL1 + STMP_OFFSET_REG_CLR);
+	completed = readl(mxs_dma->base + HW_APBHX_CTRL1);
+	completed = (completed >> chan) & 0x1;
+
+	/* Clear interrupt */
+	writel((1 << chan),
+			mxs_dma->base + HW_APBHX_CTRL1 + STMP_OFFSET_REG_CLR);
 
 	/* error status */
-	stat2 = readl(mxs_dma->base + HW_APBHX_CTRL2);
-	writel(stat2, mxs_dma->base + HW_APBHX_CTRL2 + STMP_OFFSET_REG_CLR);
+	err = readl(mxs_dma->base + HW_APBHX_CTRL2) >> chan;
+
+	/*
+	 * error status bit is in the upper 16 bits, error irq bit in the lower
+	 * 16 bits. We transform it into a simpler error code:
+	 * err: 0x00 = no error, 0x01 = TERMINATION, 0x02 = BUS_ERROR
+	 */
+	err = ((err >> MXS_DMA_CHANNELS) & 1) + (err & 1);
+
+	/* Clear error irq */
+	writel((1 << chan),
+			mxs_dma->base + HW_APBHX_CTRL2 + STMP_OFFSET_REG_CLR);
 
 	/*
 	 * When both completion and error of termination bits set at the
 	 * same time, we do not take it as an error.  IOW, it only becomes
-	 * an error we need to handle here in case of either it's (1) a bus
-	 * error or (2) a termination error with no completion.
+	 * an error we need to handle here in case of either it's a bus
+	 * error or a termination error with no completion. 0x01 is termination
+	 * error, so we can subtract err & completed to get the real error case.
 	 */
-	stat2 = ((stat2 >> MXS_DMA_CHANNELS) & stat2) | /* (1) */
-		(~(stat2 >> MXS_DMA_CHANNELS) & stat2 & ~stat1); /* (2) */
+	err -= err & completed;
 
-	/* combine error and completion status for checking */
-	stat1 = (stat2 << MXS_DMA_CHANNELS) | stat1;
-	while (stat1) {
-		int channel = fls(stat1) - 1;
-		struct mxs_dma_chan *mxs_chan =
-			&mxs_dma->mxs_chans[channel % MXS_DMA_CHANNELS];
+	mxs_chan = &mxs_dma->mxs_chans[chan];
 
-		if (channel >= MXS_DMA_CHANNELS) {
-			dev_dbg(mxs_dma->dma_device.dev,
-				"%s: error in channel %d\n", __func__,
-				channel - MXS_DMA_CHANNELS);
-			mxs_chan->status = DMA_ERROR;
-			mxs_dma_ext_reset_chan(mxs_chan);
-		} else {
-			mxs_chan->status = DMA_COMPLETE;
-			mxs_dma_ext_start_new_chain(mxs_chan);
-		}
-
-		stat1 &= ~(1 << channel);
-
-		if (mxs_chan->status == DMA_COMPLETE)
-			dma_cookie_complete(&mxs_chan->desc);
-
-		/* schedule tasklet on this channel */
-		tasklet_schedule(&mxs_chan->tasklet);
+	if (err) {
+		dev_dbg(mxs_dma->dma_device.dev,
+			"%s: error in channel %d\n", __func__,
+			chan);
+		mxs_chan->status = DMA_ERROR;
+		mxs_dma_ext_reset_chan(mxs_chan);
+	} else if (mxs_chan->status != DMA_COMPLETE) {
+		mxs_chan->status = DMA_COMPLETE;
+		mxs_dma_ext_start_new_chain(mxs_chan);
 	}
+
+	if (mxs_chan->status == DMA_COMPLETE)
+		dma_cookie_complete(&mxs_chan->desc);
+
+	/* schedule tasklet on this channel */
+	tasklet_schedule(&mxs_chan->tasklet);
 
 	return IRQ_HANDLED;
 }
@@ -517,7 +566,7 @@ static void mxs_dma_ext_issue_pending(struct dma_chan *chan)
 	}
 }
 
-static int __init mxs_dma_ext_init(struct mxs_dma_engine *mxs_dma)
+static int mxs_dma_ext_init(struct mxs_dma_engine *mxs_dma)
 {
 	int ret;
 
@@ -612,7 +661,7 @@ static int __init mxs_dma_ext_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	of_id = of_match_device(mxs_dma_dt_ids, &pdev->dev);
+	of_id = of_match_device(mxs_dma_ext_dt_ids, &pdev->dev);
 	if (of_id)
 		id_entry = of_id->data;
 	else
@@ -658,6 +707,7 @@ static int __init mxs_dma_ext_probe(struct platform_device *pdev)
 
 	mxs_dma->pdev = pdev;
 	mxs_dma->dma_device.dev = &pdev->dev;
+	dev_set_drvdata(&pdev->dev, mxs_dma);
 
 	/* mxs_dma gets 65535 bytes maximum sg size */
 	mxs_dma->dma_device.dev->dma_parms = &mxs_dma->dma_parms;
@@ -690,12 +740,60 @@ static int __init mxs_dma_ext_probe(struct platform_device *pdev)
 	return 0;
 }
 
+static int mxs_dma_ext_runtime_suspend(struct device *dev)
+{
+	struct mxs_dma_engine *mxs_dma = dev_get_drvdata(dev);
+
+	clk_disable(mxs_dma->clk);
+	return 0;
+}
+
+static int mxs_dma_ext_runtime_resume(struct device *dev)
+{
+	struct mxs_dma_engine *mxs_dma = dev_get_drvdata(dev);
+	int ret;
+
+	ret = clk_enable(mxs_dma->clk);
+	if (ret < 0) {
+		dev_err(dev, "clk_enable failed: %d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int mxs_dma_ext_pm_suspend(struct device *dev)
+{
+	/*
+	 * We do not save any registers here, since the gpmi will release its
+	 * DMA channel.
+	 */
+	return 0;
+}
+
+static int mxs_dma_ext_pm_resume(struct device *dev)
+{
+	struct mxs_dma_engine *mxs_dma = dev_get_drvdata(dev);
+	int ret;
+
+	ret = mxs_dma_ext_init(mxs_dma);
+	if (ret)
+		return ret;
+	return 0;
+}
+
+static const struct dev_pm_ops mxs_dma_ext_pm_ops = {
+	SET_RUNTIME_PM_OPS(mxs_dma_ext_runtime_suspend, mxs_dma_ext_runtime_resume, NULL)
+	SET_SYSTEM_SLEEP_PM_OPS(mxs_dma_ext_pm_suspend, mxs_dma_ext_pm_resume)
+};
+
 static struct platform_driver mxs_dma_ext_driver = {
 	.driver		= {
 		.name	= "mxs-dma-ext",
-		.of_match_table = mxs_dma_dt_ids,
+		.pm = &mxs_dma_ext_pm_ops,
+		.of_match_table = mxs_dma_ext_dt_ids,
 	},
-	.id_table	= mxs_dma_ids,
+	.id_table	= mxs_dma_ext_ids,
 };
 
 static int __init mxs_dma_ext_module_init(void)
