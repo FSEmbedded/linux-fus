@@ -903,6 +903,14 @@ static inline int onfi_feature(struct nand_chip *chip)
 	return chip->onfi_version ? le16_to_cpu(chip->onfi_params.features) : 0;
 }
 
+/* return the supported optional commands. */
+static inline int onfi_get_opt_cmd(struct nand_chip *chip)
+{
+	if (!chip->onfi_version)
+		return 0;
+	return le16_to_cpu(chip->onfi_params.opt_cmd);
+}
+
 /* return the supported asynchronous timing mode. */
 static inline int onfi_get_async_timing_mode(struct nand_chip *chip)
 {

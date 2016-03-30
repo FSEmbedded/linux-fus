@@ -608,7 +608,7 @@
 #ifdef CONFIG_EFUSA7UL_NAND
 &gpmi {
 	/* Switch to F&S implementation of GPMI NAND driver */
-	compatible = "fus,imx6ul-gpmi-nand", "fus,imx6sx-gpmi-nand";
+	compatible = "fus,imx6ul-gpmi-nand", "fus,imx6q-gpmi-nand";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
 	fus,skipblocks = <2>;
