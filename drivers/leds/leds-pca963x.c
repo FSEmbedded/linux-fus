@@ -452,10 +452,11 @@ static int pca963x_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 		calc = 0;
 	}
 
-	if((!pwm->polarity == PWM_POLARITY_INVERSED))
+	if(pwm->polarity == PWM_POLARITY_NORMAL)
 		calc = 255 - calc;
 
 	i2c_smbus_write_byte_data(pca963x_chip->client, reg, calc);
+
 	return 0;
 }
 
@@ -463,6 +464,7 @@ static int pca963x_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm)
 {
 	u8 val;
 	struct pca963x *pca963x_chip;
+
 	pca963x_chip = container_of(chip, struct pca963x, chip);
 	val = i2c_smbus_read_byte_data(pca963x_chip->client,
 				       pca963x_chip->chipdef->ledout_base);
@@ -482,16 +484,17 @@ static void pca963x_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
 {
 	u8 val;
 	struct pca963x *pca963x_chip;
+
 	pca963x_chip = container_of(chip, struct pca963x, chip);
 	val = i2c_smbus_read_byte_data(pca963x_chip->client,
 				       pca963x_chip->chipdef->ledout_base);
 
 	val &= ~(PCA963X_LED_MASK << (2 * pwm->hwpwm));
 
-	if((!pwm->polarity == PWM_POLARITY_INVERSED))
-		val |= PCA963X_LED_ON << (2 * pwm->hwpwm);
-	else
+	if(pwm->polarity == PWM_POLARITY_INVERSED)
 		val |= PCA963X_LED_OFF << (2 * pwm->hwpwm);
+	else
+		val |= PCA963X_LED_ON << (2 * pwm->hwpwm);
 
 	i2c_smbus_write_byte_data(pca963x_chip->client,
 				  pca963x_chip->chipdef->ledout_base, val);
@@ -509,6 +512,7 @@ static void pca963x_pwm_free(struct pwm_chip *chip, struct pwm_device *pwm)
 {
 	struct pca963x *pca963x_chip;
 	pca963x_chip = container_of(chip, struct pca963x, chip);
+
 	i2c_smbus_write_byte_data(pca963x_chip->client,
 				  pca963x_chip->chipdef->mode1, 0x00);
 	pwmchip_remove(&pca963x_chip->chip);
@@ -528,10 +532,10 @@ static int pca963x_pwm_request(struct pwm_chip *chip, struct pwm_device *pwm)
 	pwm->flags  = pca963x_chip->leds[pwm->hwpwm].flags;
 	pwm->period = 640000;
 
-	if(!(pwm->flags & PCA963X_FLAGS_ACTIVE_HIGH))
-		pwm->polarity = PWM_POLARITY_INVERSED;
-	else
+	if(pwm->flags & PCA963X_FLAGS_ACTIVE_HIGH)
 		pwm->polarity = PWM_POLARITY_NORMAL;
+	else
+		pwm->polarity = PWM_POLARITY_INVERSED;
 
 	if((pca963x_chip->leds[pwm->hwpwm].flags & PCA963X_FLAGS_DEFAULT_ON &&
 	pwm->polarity == PWM_POLARITY_NORMAL) ||
