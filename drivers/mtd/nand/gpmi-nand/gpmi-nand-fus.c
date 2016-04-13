@@ -39,6 +39,8 @@
 #include <linux/platform_device.h>	/* GPMI_ */
 #include <linux/dma-mapping.h>		/* dma_alloc_coherent(), ... */
 #include <linux/delay.h>		/* udelay() */
+#include <linux/pm_runtime.h>
+#include <linux/busfreq-imx.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_mtd.h>
@@ -61,6 +63,7 @@
 #define GPMI_FUS_TIMEOUT_DATA	100
 #define GPMI_FUS_TIMEOUT_WRITE	100
 #define GPMI_FUS_TIMEOUT_ERASE	400
+#define GPMI_FUS_TIMEOUT_RPM	50
 
 /* BCH : Status Block Completion Codes */
 #define STATUS_GOOD		0x00
@@ -396,9 +399,27 @@ static const struct gpmi_devdata gpmi_devdata_imx6q = {
 	.max_chain_delay = 12,
 };
 
+static const struct gpmi_devdata gpmi_devdata_imx6qp = {
+	.type = IS_MX6QP,
+	.bch_max_ecc_strength = 40,
+	.max_chain_delay = 12,
+};
+
 static const struct gpmi_devdata gpmi_devdata_imx6sx = {
 	.type = IS_MX6SX,
 	.bch_max_ecc_strength = 62,
+	.max_chain_delay = 12,
+};
+
+static const struct gpmi_devdata gpmi_devdata_imx7d = {
+	.type = IS_MX7D,
+	.bch_max_ecc_strength = 62,
+	.max_chain_delay = 12,
+};
+
+static const struct gpmi_devdata gpmi_devdata_imx6ul = {
+	.type = IS_MX6UL,
+	.bch_max_ecc_strength = 40,
 	.max_chain_delay = 12,
 };
 
@@ -914,7 +935,7 @@ error:
 	return -ETIMEDOUT;
 }
 
-static int __gpmi_enable_clk(struct gpmi_nand_data *this, bool v)
+static int gpmi_enable_clk(struct gpmi_nand_data *this, bool v)
 {
 	struct clk *clk;
 	int ret;
@@ -941,9 +962,6 @@ err_clk:
 	return ret;
 }
 
-#define gpmi_enable_clk(x) __gpmi_enable_clk(x, true)
-#define gpmi_disable_clk(x) __gpmi_enable_clk(x, false)
-
 /* Configures the geometry for BCH.  */
 static int bch_set_geometry(struct gpmi_nand_data *priv, unsigned int oobavail,
 			    unsigned int index)
@@ -954,9 +972,11 @@ static int bch_set_geometry(struct gpmi_nand_data *priv, unsigned int oobavail,
 	unsigned int layout0, layout1;
 	int ret;
 
-	ret = gpmi_enable_clk(priv);
-	if (ret)
+	ret = pm_runtime_get_sync(priv->dev);
+	if (ret < 0) {
+		dev_err(priv->dev, "Failed to enable clock\n");
 		goto err_out;
+	}
 
 	ret = gpmi_reset_block(priv, r->bch_regs);
 	if (ret)
@@ -1014,7 +1034,8 @@ static int bch_set_geometry(struct gpmi_nand_data *priv, unsigned int oobavail,
 //###	writel(BM_BCH_CTRL_COMPLETE_IRQ_EN, r->bch_regs + HW_BCH_CTRL_SET);
 
 err_out:
-	gpmi_disable_clk(priv);
+	pm_runtime_mark_last_busy(priv->dev);
+	pm_runtime_put_autosuspend(priv->dev);
 
 	return ret;
 }
@@ -1651,9 +1672,14 @@ static int enable_edo_mode(struct gpmi_nand_data *this, int mode)
 
 	nand->select_chip(mtd, -1);
 
+	pm_runtime_get_sync(this->dev);
+	clk_disable_unprepare(r->clock[0]);
 	/* [3] set the main IO clock, 100MHz for mode 5, 80MHz for mode 4. */
 	rate = (mode == 5) ? 100000000 : 80000000;
 	clk_set_rate(r->clock[0], rate);
+	clk_prepare_enable(r->clock[0]);
+	pm_runtime_mark_last_busy(this->dev);
+        pm_runtime_put_autosuspend(this->dev);	
 
 	/* Let the gpmi_begin() re-compute the timing again. */
 	this->flags &= ~GPMI_TIMING_INIT_OK;
@@ -1700,9 +1726,9 @@ static void gpmi_begin(struct gpmi_nand_data *this)
 	int ret;
 
 	/* Enable the clock. */
-	ret = gpmi_enable_clk(this);
-	if (ret) {
-		dev_err(this->dev, "Failed to enable clk\n");
+	ret = pm_runtime_get_sync(this->dev);
+	if (ret < 0) {
+		dev_err(this->dev, "Failed to enable clock\n");
 		goto err_out;
 	}
 
@@ -1774,7 +1800,8 @@ err_out:
 
 static void gpmi_end(struct gpmi_nand_data *this)
 {
-	gpmi_disable_clk(this);
+	pm_runtime_mark_last_busy(this->dev);
+	pm_runtime_put_autosuspend(this->dev);
 }
 
 /* -------------------- LOCAL HELPER FUNCTIONS ----------------------------- */
@@ -2247,6 +2274,10 @@ static char *extra_clks_for_mx6q[GPMI_CLK_MAX] = {
 	"gpmi_apb", "gpmi_bch", "gpmi_bch_apb", "per1_bch",
 };
 
+static char *extra_clks_for_mx7d[GPMI_CLK_MAX] = {
+	"gpmi_bch_apb",
+};
+
 static int gpmi_get_clks(struct gpmi_nand_data *this)
 {
 	struct resources *r = &this->resources;
@@ -2264,6 +2295,8 @@ static int gpmi_get_clks(struct gpmi_nand_data *this)
 	/* Get extra clocks */
 	if (GPMI_IS_MX6(this))
 		extra_clks = extra_clks_for_mx6q;
+	if (GPMI_IS_MX7(this))
+		extra_clks = extra_clks_for_mx7d;
 	if (!extra_clks)
 		return 0;
 
@@ -2280,7 +2313,7 @@ static int gpmi_get_clks(struct gpmi_nand_data *this)
 		r->clock[i] = clk;
 	}
 
-	if (GPMI_IS_MX6(this))
+	if (GPMI_IS_MX6(this) || GPMI_IS_MX7(this))
 		/*
 		 * Set the default value for the gpmi clock in mx6q:
 		 *
@@ -2294,6 +2327,15 @@ static int gpmi_get_clks(struct gpmi_nand_data *this)
 err_clock:
 	dev_dbg(this->dev, "failed in finding the clocks.\n");
 	return err;
+}
+
+static int init_rpm(struct gpmi_nand_data *this)
+{
+	pm_runtime_enable(this->dev);
+	pm_runtime_set_autosuspend_delay(this->dev, GPMI_FUS_TIMEOUT_RPM);
+	pm_runtime_use_autosuspend(this->dev);
+
+	return 0;
 }
 
 static int acquire_resources(struct gpmi_nand_data *this)
@@ -2319,6 +2361,7 @@ static int acquire_resources(struct gpmi_nand_data *this)
 	ret = gpmi_get_clks(this);
 	if (ret)
 		goto exit_clock;
+
 	return 0;
 
 exit_clock:
@@ -2338,10 +2381,11 @@ static int gpmi_init(struct gpmi_nand_data *this)
 	struct resources *r = &this->resources;
 	int ret;
 
-	/* Initialize the hardwares. */
-	ret = gpmi_enable_clk(this);
-	if (ret)
+	ret = pm_runtime_get_sync(this->dev);
+	if (ret < 0) {
+		dev_err(this->dev, "Failed to enable clock\n");
 		return ret;
+	}
 
 	ret = gpmi_reset_block(this, r->gpmi_regs);
 	if (!ret) {
@@ -2365,7 +2409,8 @@ static int gpmi_init(struct gpmi_nand_data *this)
 	 */
 //###??	writel(BM_GPMI_CTRL1_DECOUPLE_CS, r->gpmi_regs + HW_GPMI_CTRL1_SET);
 
-	gpmi_disable_clk(this);
+	pm_runtime_mark_last_busy(this->dev);
+	pm_runtime_put_autosuspend(this->dev);
 
 	return ret;
 }
@@ -3203,9 +3248,18 @@ static const struct of_device_id gpmi_nand_fus_id_table[] = {
 		.compatible = "fus,imx6q-gpmi-nand",
 		.data = (void *)&gpmi_devdata_imx6q,
 	}, {
+		.compatible = "fus,imx6qp-gpmi-nand",
+		.data = (void *)&gpmi_devdata_imx6qp,
+	}, {
 		.compatible = "fus,imx6sx-gpmi-nand",
 		.data = (void *)&gpmi_devdata_imx6sx,
-	}, {}
+	}, {
+		.compatible = "fus,imx6ul-gpmi-nand",
+		.data = (void *)&gpmi_devdata_imx6ul,
+	}, {
+		.compatible = "fus,imx7d-gpmi-nand",
+		.data = (void *)&gpmi_devdata_imx7d,
+	}, { /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, gpmi_nand_fus_id_table);
 
@@ -3237,6 +3291,10 @@ static int gpmi_nand_fus_probe(struct platform_device *pdev)
 	if (ret)
 		goto exit_acquire_resources;
 
+	ret = init_rpm(this);
+	if (ret)
+		goto exit_nfc_init;
+
 	ret = init_hardware(this);
 	if (ret)
 		goto exit_nfc_init;
@@ -3262,6 +3320,7 @@ static int gpmi_nand_fus_remove(struct platform_device *pdev)
 	struct gpmi_nand_data *this = platform_get_drvdata(pdev);
 
 	gpmi_fus_exit(this);
+	pm_runtime_disable(this->dev);
 	release_resources(this);
 	return 0;
 }
@@ -3271,6 +3330,7 @@ static int gpmi_nand_fus_pm_suspend(struct device *dev)
 	struct gpmi_nand_data *this = dev_get_drvdata(dev);
 
 	release_dma_channels(this);
+	pinctrl_pm_select_sleep_state(dev);
 	return 0;
 }
 
@@ -3278,6 +3338,8 @@ static int gpmi_nand_fus_pm_resume(struct device *dev)
 {
 	struct gpmi_nand_data *this = dev_get_drvdata(dev);
 	int ret;
+
+	pinctrl_pm_select_default_state(dev);
 
 	ret = acquire_dma_channels(this);
 	if (ret < 0)
@@ -3304,7 +3366,33 @@ static int gpmi_nand_fus_pm_resume(struct device *dev)
 	return 0;
 }
 
+int gpmi_nand_fus_runtime_suspend(struct device *dev)
+{
+	struct gpmi_nand_data *this = dev_get_drvdata(dev);
+
+	gpmi_enable_clk(this, false);
+	release_bus_freq(BUS_FREQ_HIGH);
+
+	return 0;
+}
+
+int gpmi_nand_fus_runtime_resume(struct device *dev)
+{
+	struct gpmi_nand_data *this = dev_get_drvdata(dev);
+	int ret;
+
+	ret = gpmi_enable_clk(this, true);
+	if (ret)
+		return ret;
+
+	request_bus_freq(BUS_FREQ_HIGH);
+
+	return 0;
+}
+
 static const struct dev_pm_ops gpmi_nand_fus_pm_ops = {
+	SET_RUNTIME_PM_OPS(gpmi_nand_fus_runtime_suspend,
+			   gpmi_nand_fus_runtime_resume, NULL)
 	SET_SYSTEM_SLEEP_PM_OPS(gpmi_nand_fus_pm_suspend,
 				gpmi_nand_fus_pm_resume)
 };
