@@ -808,26 +808,25 @@ static ssize_t ft5x0x_ts_setting_show(struct device *dev,
 				       struct device_attribute *dattr,
 				       char *buf)
 {
-	this_client = to_i2c_client(dev);
-	struct ft5x0x_ts_data *tsdata = i2c_get_clientdata(this_client);
+	struct i2c_client *client = to_i2c_client(dev);
+	struct ft5x0x_ts_data *tsdata = i2c_get_clientdata(client);
 	struct ft5x0x_ts_attribute *attr =
 			container_of(dattr, struct ft5x0x_ts_attribute, dattr);
 	u8 *field = (u8 *)tsdata + attr->field_offset;
-	int val;
-	size_t count = 0;
-	int error = 0;
+	u8 val;
+	int ret = 0;
 	u8 addr;
-	unsigned char uc_reg_value;
+
+	this_client = client;
 	mutex_lock(&tsdata->mutex);
 	addr = attr->addr_reg;
 	if (addr != FT5X0X_REG_NOREGISTER) {
 		val = ft5x0x_read_fw_ver();
-		ft5x0x_read_reg(addr, &val);
-		if (val < 0) {
-			error = val;
-			dev_err(&this_client->dev,
+		ret = ft5x0x_read_reg(addr, &val);
+		if (ret < 0) {
+			dev_err(&client->dev,
 				"Failed to fetch attribute %s, error %d\n",
-				dattr->attr.name, error);
+				dattr->attr.name, ret);
 			goto out;
 		}
 	} else {
@@ -835,56 +834,60 @@ static ssize_t ft5x0x_ts_setting_show(struct device *dev,
 	}
 
 	if (val != *field) {
-		dev_warn(&this_client->dev,
+		dev_warn(&client->dev,
 			 "%s: read (%d) and stored value (%d) differ\n",
 			 dattr->attr.name, val, *field);
 		*field = val;
 	}
 
-	count = scnprintf(buf, PAGE_SIZE, "%d\n", val);
+	ret = scnprintf(buf, PAGE_SIZE, "%d\n", val);
 out:
 	mutex_unlock(&tsdata->mutex);
-	return error ?: count;
+
+	return ret;
 }
 
 static ssize_t ft5x0x_ts_setting_store(struct device *dev,
 					struct device_attribute *dattr,
 					const char *buf, size_t count)
 {
-	this_client = to_i2c_client(dev);
-	struct ft5x0x_ts_data *tsdata = i2c_get_clientdata(this_client);
+	struct i2c_client *client = to_i2c_client(dev);
+	struct ft5x0x_ts_data *tsdata = i2c_get_clientdata(client);
 	struct ft5x0x_ts_attribute *attr =
 			container_of(dattr, struct ft5x0x_ts_attribute, dattr);
 	u8 *field = (u8 *)tsdata + attr->field_offset;
 	unsigned int val;
-	int error;
+	int ret;
 	u8 addr;
+
+	this_client = client;
 	mutex_lock(&tsdata->mutex);
-	error = kstrtouint(buf, 0, &val);
-	if (error)
+	ret = kstrtouint(buf, 0, &val);
+	if (ret)
 		goto out;
 
 	if (val < attr->limit_low || val > attr->limit_high) {
-		error = -ERANGE;
+		ret = -ERANGE;
 		goto out;
 	}
 
 	addr = attr->addr_reg;
 
 	if (addr != FT5X0X_REG_NOREGISTER) {
-		error = ft5x0x_write_reg(addr, val);
-		if (error) {
-			dev_err(&this_client->dev,
+		ret = ft5x0x_write_reg(addr, val);
+		if (ret) {
+			dev_err(&client->dev,
 				"Failed to update attribute %s, error: %d\n",
-				dattr->attr.name, error);
+				dattr->attr.name, ret);
 			goto out;
 		}
 	}
 	*field = val;
+	ret = count;
 
 out:
 	mutex_unlock(&tsdata->mutex);
-	return error ?: count;
+	return ret;
 }
 
 static EDT_ATTR(gain, S_IWUSR | S_IRUGO, FT5X0X_REG_GAINGROUP, 0, 31);
