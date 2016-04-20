@@ -25,6 +25,7 @@
 #include "common.h"
 #include "cpuidle.h"
 
+#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 static void __init imx6ul_enet_clk_init(void)
 {
 	struct regmap *gpr;
@@ -78,6 +79,7 @@ static inline void imx6ul_enet_init(void)
 	imx6ul_enet_phy_init();
 	imx6_enet_mac_init("fsl,imx6ul-fec");
 }
+#endif /* CONFIG_FEC || CONFIG_FEC_MODULE */
 
 static void __init imx6ul_init_machine(void)
 {
@@ -92,7 +94,9 @@ static void __init imx6ul_init_machine(void)
 	of_platform_populate(NULL, of_default_bus_match_table,
 					NULL, parent);
 
+#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 	imx6ul_enet_init();
+#endif
 	imx_anatop_init();
 	imx6ul_pm_init();
 }

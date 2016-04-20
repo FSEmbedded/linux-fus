@@ -25,7 +25,6 @@
 #include "common.h"
 #include "cpuidle.h"
 
-static struct fec_platform_data fec_pdata[2];
 static struct flexcan_platform_data flexcan_pdata[2];
 static int flexcan_en_gpio;
 static int flexcan_en_active_high;
@@ -33,6 +32,9 @@ static int flexcan_stby_gpio;
 static int flexcan_stby_active_high;
 static int flexcan0_en;
 static int flexcan1_en;
+
+#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
+static struct fec_platform_data fec_pdata[2];
 
 static void imx6sx_fec1_sleep_enable(int enabled)
 {
@@ -79,6 +81,89 @@ static void __init imx6sx_enet_plt_init(void)
 	if (np && of_get_property(np, "fsl,magic-packet", NULL))
 		fec_pdata[1].sleep_mode_enable = imx6sx_fec2_sleep_enable;
 }
+
+static int dp83848_phy_fixup(struct phy_device *dev)
+{
+	u16 val;
+
+	val = phy_read(dev, 0x19);
+	val &= ~(0x1 << 5);
+	phy_write(dev, 0x19, val);
+	return 0;
+}
+
+static int ar8031_phy_fixup(struct phy_device *dev)
+{
+	u16 val;
+
+	/* Set RGMII IO voltage to 1.8V */
+	phy_write(dev, 0x1d, 0x1f);
+	phy_write(dev, 0x1e, 0x8);
+
+	/* disable phy AR8031 SmartEEE function. */
+	phy_write(dev, 0xd, 0x3);
+	phy_write(dev, 0xe, 0x805d);
+	phy_write(dev, 0xd, 0x4003);
+	val = phy_read(dev, 0xe);
+	val &= ~(0x1 << 8);
+	phy_write(dev, 0xe, val);
+
+	/* introduce tx clock delay */
+	phy_write(dev, 0x1d, 0x5);
+	val = phy_read(dev, 0x1e);
+	val |= 0x0100;
+	phy_write(dev, 0x1e, val);
+	return 0;
+}
+
+#define PHY_ID_DP83848 	0x20005c90
+#define PHY_ID_AR8031   0x004dd074
+static void __init imx6sx_enet_phy_init(void)
+{
+	if (IS_BUILTIN(CONFIG_PHYLIB)) {
+		phy_register_fixup_for_uid(PHY_ID_DP83848, 0xfffffff0,
+					   dp83848_phy_fixup);
+		phy_register_fixup_for_uid(PHY_ID_AR8031, 0xffffffff,
+					   ar8031_phy_fixup);
+	}
+}
+
+static void __init imx6sx_enet_clk_sel(void)
+{
+	struct regmap *gpr;
+	struct device_node *np;
+
+	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6sx-iomuxc-gpr");
+	if (IS_ERR(gpr)) {
+		pr_err("failed to find fsl,imx6sx-iomux-gpr regmap\n");
+		return;
+	}
+
+	np = of_find_node_by_path("/soc/aips-bus@02100000/ethernet@02188000");
+	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   0, IMX6SX_GPR1_ENET1_CLOCK_MASK);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   IMX6SX_GPR1_ENET1_CLOCK_MASK, 0);
+
+	np = of_find_node_by_path("/soc/aips-bus@02100000/ethernet@021b4000");
+	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   0, IMX6SX_GPR1_ENET2_CLOCK_MASK);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   IMX6SX_GPR1_ENET2_CLOCK_MASK, 0);
+}
+
+static inline void imx6sx_enet_init(void)
+{
+	imx6_enet_mac_init("fsl,imx6sx-fec");
+	imx6sx_enet_phy_init();
+	imx6sx_enet_clk_sel();
+	imx6sx_enet_plt_init();
+}
+#endif /* CONFIG_FEC || CONFIG_FEC_MODULE */
 
 static void mx6sx_flexcan_switch(void)
 {
@@ -170,94 +255,14 @@ static int __init imx6sx_arm2_flexcan_fixup(void)
 	return 0;
 }
 
-static int dp83848_phy_fixup(struct phy_device *dev)
-{
-	u16 val;
-
-	val = phy_read(dev, 0x19);
-	val &= ~(0x1 << 5);
-	phy_write(dev, 0x19, val);
-	return 0;
-}
-
-static int ar8031_phy_fixup(struct phy_device *dev)
-{
-	u16 val;
-
-	/* Set RGMII IO voltage to 1.8V */
-	phy_write(dev, 0x1d, 0x1f);
-	phy_write(dev, 0x1e, 0x8);
-
-	/* disable phy AR8031 SmartEEE function. */
-	phy_write(dev, 0xd, 0x3);
-	phy_write(dev, 0xe, 0x805d);
-	phy_write(dev, 0xd, 0x4003);
-	val = phy_read(dev, 0xe);
-	val &= ~(0x1 << 8);
-	phy_write(dev, 0xe, val);
-
-	/* introduce tx clock delay */
-	phy_write(dev, 0x1d, 0x5);
-	val = phy_read(dev, 0x1e);
-	val |= 0x0100;
-	phy_write(dev, 0x1e, val);
-	return 0;
-}
-
-#define PHY_ID_DP83848 	0x20005c90
-#define PHY_ID_AR8031   0x004dd074
-static void __init imx6sx_enet_phy_init(void)
-{
-	if (IS_BUILTIN(CONFIG_PHYLIB)) {
-		phy_register_fixup_for_uid(PHY_ID_DP83848, 0xfffffff0,
-					   dp83848_phy_fixup);
-		phy_register_fixup_for_uid(PHY_ID_AR8031, 0xffffffff,
-					   ar8031_phy_fixup);
-	}
-}
-
-static void __init imx6sx_enet_clk_sel(void)
-{
-	struct regmap *gpr;
-	struct device_node *np;
-
-	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6sx-iomuxc-gpr");
-	if (IS_ERR(gpr)) {
-		pr_err("failed to find fsl,imx6sx-iomux-gpr regmap\n");
-		return;
-	}
-
-	np = of_find_node_by_path("/soc/aips-bus@02100000/ethernet@02188000");
-	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				   0, IMX6SX_GPR1_ENET1_CLOCK_MASK);
-	else
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				   IMX6SX_GPR1_ENET1_CLOCK_MASK, 0);
-
-	np = of_find_node_by_path("/soc/aips-bus@02100000/ethernet@021b4000");
-	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				   0, IMX6SX_GPR1_ENET2_CLOCK_MASK);
-	else
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				   IMX6SX_GPR1_ENET2_CLOCK_MASK, 0);
-}
-
-static inline void imx6sx_enet_init(void)
-{
-	imx6_enet_mac_init("fsl,imx6sx-fec");
-	imx6sx_enet_phy_init();
-	imx6sx_enet_clk_sel();
-	imx6sx_enet_plt_init();
-}
-
 /* Add auxdata to pass platform data */
 static const struct of_dev_auxdata imx6sx_auxdata_lookup[] __initconst = {
 	OF_DEV_AUXDATA("fsl,imx6q-flexcan", 0x02090000, NULL, &flexcan_pdata[0]),
 	OF_DEV_AUXDATA("fsl,imx6q-flexcan", 0x02094000, NULL, &flexcan_pdata[1]),
+#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 	OF_DEV_AUXDATA("fsl,imx6sx-fec", 0x02188000, NULL, &fec_pdata[0]),
 	OF_DEV_AUXDATA("fsl,imx6sx-fec", 0x021b4000, NULL, &fec_pdata[1]),
+#endif
 	{ /* sentinel */ }
 };
 
@@ -274,7 +279,9 @@ static void __init imx6sx_init_machine(void)
 	of_platform_populate(NULL, of_default_bus_match_table,
 					imx6sx_auxdata_lookup, parent);
 
+#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 	imx6sx_enet_init();
+#endif
 	imx_anatop_init();
 	imx6sx_pm_init();
 }

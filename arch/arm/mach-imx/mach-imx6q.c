@@ -45,12 +45,14 @@
 #include "cpuidle.h"
 #include "hardware.h"
 
-static struct fec_platform_data fec_pdata;
 static struct flexcan_platform_data flexcan_pdata[2];
 static int flexcan_en_gpio;
 static int flexcan_stby_gpio;
 static int flexcan0_en;
 static int flexcan1_en;
+
+#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
+static struct fec_platform_data fec_pdata;
 
 static void imx6q_fec_sleep_enable(int enabled)
 {
@@ -76,64 +78,6 @@ static void __init imx6q_enet_plt_init(void)
 	np = of_find_node_by_path("/soc/aips-bus@02100000/ethernet@02188000");
 	if (np && of_get_property(np, "fsl,magic-packet", NULL))
 		fec_pdata.sleep_mode_enable = imx6q_fec_sleep_enable;
-}
-
-static void mx6q_flexcan_switch(void)
-{
-	if (flexcan0_en || flexcan1_en) {
-		/*
-		 * The transceiver TJA1041A on sabreauto RevE baseboard will
-		 * fail to transit to Normal state if EN/STBY is high by default
-		 * after board power up. So we set the EN/STBY initial state to low
-		 * first then to high to guarantee the state transition successfully.
-		 */
-		gpio_set_value_cansleep(flexcan_en_gpio, 0);
-		gpio_set_value_cansleep(flexcan_stby_gpio, 0);
-
-		gpio_set_value_cansleep(flexcan_en_gpio, 1);
-		gpio_set_value_cansleep(flexcan_stby_gpio, 1);
-	} else {
-		/*
-		 * avoid to disable CAN xcvr if any of the CAN interfaces
-		 * are down. XCRV will be disabled only if both CAN2
-		 * interfaces are DOWN.
-		*/
-		gpio_set_value_cansleep(flexcan_en_gpio, 0);
-		gpio_set_value_cansleep(flexcan_stby_gpio, 0);
-	}
-}
-
-static void imx6q_flexcan0_switch_auto(int enable)
-{
-	flexcan0_en = enable;
-	mx6q_flexcan_switch();
-}
-
-static void imx6q_flexcan1_switch_auto(int enable)
-{
-	flexcan1_en = enable;
-	mx6q_flexcan_switch();
-}
-
-static int __init imx6q_flexcan_fixup_auto(void)
-{
-	struct device_node *np;
-
-	np = of_find_node_by_path("/soc/aips-bus@02000000/can@02090000");
-	if (!np)
-		return -ENODEV;
-
-	flexcan_en_gpio = of_get_named_gpio(np, "trx-en-gpio", 0);
-	flexcan_stby_gpio = of_get_named_gpio(np, "trx-stby-gpio", 0);
-	if (gpio_is_valid(flexcan_en_gpio) && gpio_is_valid(flexcan_stby_gpio) &&
-		!gpio_request_one(flexcan_en_gpio, GPIOF_DIR_OUT, "flexcan-trx-en") &&
-		!gpio_request_one(flexcan_stby_gpio, GPIOF_DIR_OUT, "flexcan-trx-stby")) {
-		/* flexcan 0 & 1 are using the same GPIOs for transceiver */
-		flexcan_pdata[0].transceiver_switch = imx6q_flexcan0_switch_auto;
-		flexcan_pdata[1].transceiver_switch = imx6q_flexcan1_switch_auto;
-	}
-
-	return 0;
 }
 
 /* For imx6q sabrelite board: set KSZ9021RN RGMII pad skew */
@@ -176,34 +120,6 @@ static int ksz9031rn_phy_fixup(struct phy_device *dev)
 
 	return 0;
 }
-
-/*
- * fixup for PLX PEX8909 bridge to configure GPIO1-7 as output High
- * as they are used for slots1-7 PERST#
- */
-static void ventana_pciesw_early_fixup(struct pci_dev *dev)
-{
-	u32 dw;
-
-	if (!of_machine_is_compatible("gw,ventana"))
-		return;
-
-	if (dev->devfn != 0)
-		return;
-
-	pci_read_config_dword(dev, 0x62c, &dw);
-	dw |= 0xaaa8; // GPIO1-7 outputs
-	pci_write_config_dword(dev, 0x62c, dw);
-
-	pci_read_config_dword(dev, 0x644, &dw);
-	dw |= 0xfe;   // GPIO1-7 output high
-	pci_write_config_dword(dev, 0x644, dw);
-
-	msleep(100);
-}
-DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLX, 0x8609, ventana_pciesw_early_fixup);
-DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLX, 0x8606, ventana_pciesw_early_fixup);
-DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLX, 0x8604, ventana_pciesw_early_fixup);
 
 static int ar8031_phy_fixup(struct phy_device *dev)
 {
@@ -325,6 +241,115 @@ put_node:
 	of_node_put(np);
 }
 
+static void __init imx6q_enet_clk_sel(void)
+{
+	struct regmap *gpr;
+
+	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6q-iomuxc-gpr");
+	if (!IS_ERR(gpr))
+		regmap_update_bits(gpr, IOMUXC_GPR5,
+				   IMX6Q_GPR5_ENET_TX_CLK_SEL, IMX6Q_GPR5_ENET_TX_CLK_SEL);
+	else
+		pr_err("failed to find fsl,imx6q-iomux-gpr regmap\n");
+}
+
+static inline void imx6q_enet_init(void)
+{
+	imx6_enet_mac_init("fsl,imx6q-fec");
+	imx6q_enet_phy_init();
+	imx6q_1588_init();
+	if (cpu_is_imx6q() && imx_get_soc_revision() == IMX_CHIP_REVISION_2_0)
+		imx6q_enet_clk_sel();
+	imx6q_enet_plt_init();
+}
+#endif /* CONFIG_FEC || CONFIG_FEC_MODULE */
+
+static void mx6q_flexcan_switch(void)
+{
+	if (flexcan0_en || flexcan1_en) {
+		/*
+		 * The transceiver TJA1041A on sabreauto RevE baseboard will
+		 * fail to transit to Normal state if EN/STBY is high by default
+		 * after board power up. So we set the EN/STBY initial state to low
+		 * first then to high to guarantee the state transition successfully.
+		 */
+		gpio_set_value_cansleep(flexcan_en_gpio, 0);
+		gpio_set_value_cansleep(flexcan_stby_gpio, 0);
+
+		gpio_set_value_cansleep(flexcan_en_gpio, 1);
+		gpio_set_value_cansleep(flexcan_stby_gpio, 1);
+	} else {
+		/*
+		 * avoid to disable CAN xcvr if any of the CAN interfaces
+		 * are down. XCRV will be disabled only if both CAN2
+		 * interfaces are DOWN.
+		*/
+		gpio_set_value_cansleep(flexcan_en_gpio, 0);
+		gpio_set_value_cansleep(flexcan_stby_gpio, 0);
+	}
+}
+
+static void imx6q_flexcan0_switch_auto(int enable)
+{
+	flexcan0_en = enable;
+	mx6q_flexcan_switch();
+}
+
+static void imx6q_flexcan1_switch_auto(int enable)
+{
+	flexcan1_en = enable;
+	mx6q_flexcan_switch();
+}
+
+static int __init imx6q_flexcan_fixup_auto(void)
+{
+	struct device_node *np;
+
+	np = of_find_node_by_path("/soc/aips-bus@02000000/can@02090000");
+	if (!np)
+		return -ENODEV;
+
+	flexcan_en_gpio = of_get_named_gpio(np, "trx-en-gpio", 0);
+	flexcan_stby_gpio = of_get_named_gpio(np, "trx-stby-gpio", 0);
+	if (gpio_is_valid(flexcan_en_gpio) && gpio_is_valid(flexcan_stby_gpio) &&
+		!gpio_request_one(flexcan_en_gpio, GPIOF_DIR_OUT, "flexcan-trx-en") &&
+		!gpio_request_one(flexcan_stby_gpio, GPIOF_DIR_OUT, "flexcan-trx-stby")) {
+		/* flexcan 0 & 1 are using the same GPIOs for transceiver */
+		flexcan_pdata[0].transceiver_switch = imx6q_flexcan0_switch_auto;
+		flexcan_pdata[1].transceiver_switch = imx6q_flexcan1_switch_auto;
+	}
+
+	return 0;
+}
+
+/*
+ * fixup for PLX PEX8909 bridge to configure GPIO1-7 as output High
+ * as they are used for slots1-7 PERST#
+ */
+static void ventana_pciesw_early_fixup(struct pci_dev *dev)
+{
+	u32 dw;
+
+	if (!of_machine_is_compatible("gw,ventana"))
+		return;
+
+	if (dev->devfn != 0)
+		return;
+
+	pci_read_config_dword(dev, 0x62c, &dw);
+	dw |= 0xaaa8; // GPIO1-7 outputs
+	pci_write_config_dword(dev, 0x62c, dw);
+
+	pci_read_config_dword(dev, 0x644, &dw);
+	dw |= 0xfe;   // GPIO1-7 output high
+	pci_write_config_dword(dev, 0x644, dw);
+
+	msleep(100);
+}
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLX, 0x8609, ventana_pciesw_early_fixup);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLX, 0x8606, ventana_pciesw_early_fixup);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLX, 0x8604, ventana_pciesw_early_fixup);
+
 static void __init imx6q_csi_mux_init(void)
 {
 	/*
@@ -354,33 +379,13 @@ static void __init imx6q_csi_mux_init(void)
 	}
 }
 
-static void __init imx6q_enet_clk_sel(void)
-{
-	struct regmap *gpr;
-
-	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6q-iomuxc-gpr");
-	if (!IS_ERR(gpr))
-		regmap_update_bits(gpr, IOMUXC_GPR5,
-				   IMX6Q_GPR5_ENET_TX_CLK_SEL, IMX6Q_GPR5_ENET_TX_CLK_SEL);
-	else
-		pr_err("failed to find fsl,imx6q-iomux-gpr regmap\n");
-}
-
-static inline void imx6q_enet_init(void)
-{
-	imx6_enet_mac_init("fsl,imx6q-fec");
-	imx6q_enet_phy_init();
-	imx6q_1588_init();
-	if (cpu_is_imx6q() && imx_get_soc_revision() == IMX_CHIP_REVISION_2_0)
-		imx6q_enet_clk_sel();
-	imx6q_enet_plt_init();
-}
-
 /* Add auxdata to pass platform data */
 static const struct of_dev_auxdata imx6q_auxdata_lookup[] __initconst = {
 	OF_DEV_AUXDATA("fsl,imx6q-flexcan", 0x02090000, NULL, &flexcan_pdata[0]),
 	OF_DEV_AUXDATA("fsl,imx6q-flexcan", 0x02094000, NULL, &flexcan_pdata[1]),
+#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 	OF_DEV_AUXDATA("fsl,imx6q-fec", 0x02188000, NULL, &fec_pdata),
+#endif
 	{ /* sentinel */ }
 };
 
@@ -403,7 +408,9 @@ static void __init imx6q_init_machine(void)
 	of_platform_populate(NULL, of_default_bus_match_table,
 					imx6q_auxdata_lookup, parent);
 
+#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 	imx6q_enet_init();
+#endif
 	imx_anatop_init();
 	imx6q_csi_mux_init();
 	cpu_is_imx6q() ?  imx6q_pm_init() : imx6dl_pm_init();
