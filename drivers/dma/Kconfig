@@ -276,6 +276,7 @@ config MXS_DMA
 config MXS_DMA_EXT
 	bool "Extended MXS DMA support"
 	depends on SOC_IMX23 || SOC_IMX28 || SOC_IMX6
+	select STMP_DEVICE
 	select DMA_ENGINE
 	help
 	  Use the extended version of the MXS DMA engine to have better
