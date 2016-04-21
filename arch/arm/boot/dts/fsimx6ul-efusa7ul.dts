@@ -64,6 +64,14 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 
+		reg_vref_3v3: regulator_3v3 {
+			compatible = "regulator-fixed";
+			regulator-name = "vref-3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
 		reg_can: regulator_can {
 			compatible = "regulator-fixed";
 			regulator-name = "can";
@@ -83,14 +91,13 @@
 			enable-active-high;
 		};
 
-#if 0
-		reg_sd1_vmmc: regulator@1 {
+#ifdef CONFIG_EFUSA7UL_WLAN
+		reg_wlan_vmmc_1v8: regulator_wlan {
 			compatible = "regulator-fixed";
-			regulator-name = "VSD_3V3";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			gpio = <&gpio1 9 GPIO_ACTIVE_HIGH>;
-			enable-active-high;
+			regulator-name = "vmmc-wlan-1v8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-always-on;
 		};
 #endif
 
@@ -371,13 +378,14 @@
 	bus-width = <4>;
 #ifdef CONFIG_EFUSA7UL_WLAN
 	non-removable;
+	keep-power-in-suspend;
+	enable-sdio-wakeup;
+	vmmc-supply = <&reg_wlan_vmmc_1v8>;
 #else
 	cd-gpios = <&gpio1 19 1>;
 	wp-gpios = <&gpio1 18 0>;
+	vmmc-supply = <&reg_vref_3v3>;
 #endif
-	keep-power-in-suspend;
-	enable-sdio-wakeup;
-//###	vmmc-supply = <&reg_sd1_vmmc>;
 	status = "okay";
 };
 
@@ -393,9 +401,10 @@
 	/* Use 8 data lines for eMMC */
 	bus-width = <8>;
 #endif
-	keep-power-in-suspend;
-	enable-sdio-wakeup;
+	/* ### TODO: set non-removable only if eMMC or board rev 1.00;
+	   actually U-Boot should overwrite this property at boot time */
 	non-removable;
+	vmmc-supply = <&reg_vref_3v3>;
 	status = "okay";
 };
 

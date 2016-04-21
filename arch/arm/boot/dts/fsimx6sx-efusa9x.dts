@@ -181,8 +181,18 @@
 			regulator-name = "vref-3v3";
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
 		};
 
+#ifdef CONFIG_EFUSA9X_WLAN
+		reg_wlan_vmmc_1v8: regulator_wlan {
+			compatible = "regulator-fixed";
+			regulator-name = "vmmc-wlan-1v8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-always-on;
+		};
+#endif
 
 		reg_usb_otg1_vbus: usb_otg1_vbus {
 			compatible = "regulator-fixed";
@@ -1005,12 +1015,14 @@
 	bus-width = <4>;
 #ifdef CONFIG_EFUSA9X_WLAN
 	non-removable;
+	keep-power-in-suspend;
+	enable-sdio-wakeup;
+	vmmc-supply = <&reg_wlan_vmmc_1v8>;
 #else
 	cd-gpios = <&gpio1 2 0>;
 	wp-gpios = <&gpio1 3 0>;
+	vmmc-supply = <&reg_vref_3v3>;
 #endif
-	keep-power-in-suspend;
-	enable-sdio-wakeup;
 	status = "okay";
 };
 
@@ -1021,8 +1033,7 @@
 	bus-width = <4>;
 	cd-gpios = <&gpio1 6 0>;
 	wp-gpios = <&gpio1 7 0>;
-	keep-power-in-suspend;
-	enable-sdio-wakeup;
+	vmmc-supply = <&reg_vref_3v3>;
 	status = "okay";
 };
 
@@ -1032,11 +1043,9 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc4_3>;
 	bus-width = <8>;
-	//###cd-gpios = <&gpio7 11 0>;
 	no-1-8-v;
 	non-removable;
-//###	keep-power-in-suspend;
-//###	enable-sdio-wakup;
+	vmmc-supply = <&reg_vref_3v3>;
 	status = "okay";
 };
 #endif
