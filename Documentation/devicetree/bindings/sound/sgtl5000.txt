@@ -7,10 +7,15 @@ Required properties:
 
 - clocks : the clock provider of SYS_MCLK
 
+Optional properties:
+- mono2both : Instead of just playing mono sound on the left channel, copy
+              it to both channels
+
 Example:
 
 codec: sgtl5000@0a {
 	compatible = "fsl,sgtl5000";
 	reg = <0x0a>;
 	clocks = <&clks 150>;
+	mono2both;
 };

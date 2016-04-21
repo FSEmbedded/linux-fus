@@ -539,6 +539,7 @@
 		reg = <0x0a>;
 		//###clocks = <&clks IMX6UL_CLK_SAI2>;
 		//###clocks = <&clks IMX6UL_CLK_PLL42>;
+		mono2both;
 		clocks = <&clks IMX6UL_CLK_CKO>;
 		VDDA-supply = <&reg_sgtl5000_vdda>;
 		VDDIO-supply = <&reg_sgtl5000_vddio>;

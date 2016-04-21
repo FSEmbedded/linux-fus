@@ -131,6 +131,7 @@ struct sgtl5000_priv {
 	struct regmap *regmap;
 	struct clk *mclk;
 	int revision;
+	int mono2both;
 };
 
 /*
@@ -707,14 +708,24 @@ static int sgtl5000_pcm_hw_params(struct snd_pcm_substream *substream,
 		return -EFAULT;
 	}
 
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		stereo = SGTL5000_DAC_STEREO;
-	else
-		stereo = SGTL5000_ADC_STEREO;
-
-	/* set mono to save power */
-	snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER, stereo,
-			channels == 1 ? 0 : stereo);
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if (sgtl5000->mono2both) {
+			/* In case of mono, copy left to right channel */
+			stereo = (channels == 1) ? SGTL5000_MONO_DAC : 0;
+			snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_TEST2,
+					    SGTL5000_MONO_DAC, stereo);
+		} else {
+			/* set mono for playback to save power */
+			stereo = (channels == 1) ? 0 : SGTL5000_DAC_STEREO;
+			snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
+					    SGTL5000_DAC_STEREO, stereo);
+		}
+	} else {
+		/* set mono for capture to save power */
+		stereo = (channels == 1) ? 0 : SGTL5000_ADC_STEREO;
+		snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
+				    SGTL5000_ADC_STEREO, stereo);
+	}
 
 	/* set codec clock base on lrclk */
 	ret = sgtl5000_set_clock(codec, params_rate(params));
@@ -1438,6 +1449,27 @@ static int sgtl5000_fill_defaults(struct sgtl5000_priv *sgtl5000)
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_OF)
+static int sgtl5000_dt_init(const struct i2c_client *client,
+			    struct sgtl5000_priv *sgtl5000)
+{
+	struct device_node *np = client->dev.of_node;
+
+	if (of_property_read_bool(np, "mono2both"))
+		sgtl5000->mono2both = 1;
+
+	printk("### SGTL5000: mono2both=%d\n", sgtl5000->mono2both);
+
+	return 0;
+}
+#else
+static inline int sgtl5000_dt_init(struct i2c_client *client,
+				   struct sgtl5000_priv *sgtl5000)
+{
+	return 0;
+}
+#endif
+
 static int sgtl5000_i2c_probe(struct i2c_client *client,
 			      const struct i2c_device_id *id)
 {
@@ -1448,6 +1480,10 @@ static int sgtl5000_i2c_probe(struct i2c_client *client,
 								GFP_KERNEL);
 	if (!sgtl5000)
 		return -ENOMEM;
+
+	ret = sgtl5000_dt_init(client, sgtl5000);
+	if (ret < 0)
+		return ret;
 
 	sgtl5000->regmap = devm_regmap_init_i2c(client, &sgtl5000_regmap);
 	if (IS_ERR(sgtl5000->regmap)) {
