@@ -9,6 +9,7 @@
 #define CONFIG_EFUSA7UL_BL_LEVELS_16
 #define CONFIG_EFUSA7UL_WLAN
 #define CONFIG_EFUSA7UL_NAND
+//#define CONFIG_EFUSA7UL_SD_A_CDWP
 
 /* Please select only one of the following touch devices. Make sure that the
    corresponding touchscreen driver is activated in the kernel */
@@ -36,7 +37,7 @@
 #endif
 
 	memory {
-		reg = <0x80000000 0x20000000>;
+		reg = <0x80000000 0x80000000>;
 	};
 
 	backlight {
@@ -101,16 +102,13 @@
 		};
 #endif
 
-#if 0 //###
 		reg_dvfs: regulator_dvfs {
 			compatible = "regulator-fixed";
 			regulator-min-microvolt = <1325000>;
 			regulator-max-microvolt = <1325000>;
 			regulator-name = "dvfs";
-			regulator-type = "voltage";
 			regulator-always-on;
 		};
-#endif //###
 
 		reg_usb_otg2_vbus: usb_otg2_vbus {
 			compatible = "regulator-fixed";
@@ -188,7 +186,7 @@
 &cpu0 {
 	arm-supply = <&reg_arm>;
 	soc-supply = <&reg_soc>;
-//###	dc-supply = <&reg_dvfs>;
+	dc-supply = <&reg_dvfs>;
 };
 
 &clks {
@@ -382,8 +380,12 @@
 	enable-sdio-wakeup;
 	vmmc-supply = <&reg_wlan_vmmc_1v8>;
 #else
+#ifdef CONFIG_EFUSA7UL_SD_A_CDWP
 	cd-gpios = <&gpio1 19 1>;
 	wp-gpios = <&gpio1 18 0>;
+#else
+	non-removable;
+#endif
 	vmmc-supply = <&reg_vref_3v3>;
 #endif
 	status = "okay";
@@ -403,7 +405,12 @@
 #endif
 	/* ### TODO: set non-removable only if eMMC or board rev 1.00;
 	   actually U-Boot should overwrite this property at boot time */
+#ifdef CONFIG_EFUSA7UL_SD_A_CDWP
 	non-removable;
+#else
+	cd-gpios = <&gpio1 19 1>;
+	wp-gpios = <&gpio1 18 0>;
+#endif
 	vmmc-supply = <&reg_vref_3v3>;
 	status = "okay";
 };

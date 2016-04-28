@@ -69,12 +69,12 @@ static const char *display_sels[]	= { "pll2_bus", "pll2_pfd2_396m", "pll3_usb_ot
 static const char *csi_sels[]		= { "osc", "pll2_pfd2_396m", "pll3_120m", "pll3_pfd1_540m", };
 static const char *cko1_sels[]		= {
 	"pll3_usb_otg", "pll2_bus", "pll1_sys", "pll5_video_div",
-	"dummy", "ocram", "dummy", "pxp_axi", "epdc_axi", "lcdif_pix",
+	"vadc", "ocram", "dummy", "pxp_axi", "epdc_axi", "lcdif_pix",
 	"epdc_pix", "ahb", "ipg", "perclk", "ckil", "pll4_audio_div",
 };
 static const char *cko2_sels[]		= {
 	"dummy", "mmdc_p0_fast", "usdhc4", "usdhc1", "dummy", "wrck",
-	"ecspi_root", "dummy", "usdhc3", "pcie", "arm", "csi_core",
+	"ecspi_root", "dummy", "usdhc3", "pcie", "arm", "csi",
 	"lcdif_axi", "dummy", "osc", "dummy", "gpu2d_ovg_core",
 	"usdhc2", "ssi1", "ssi2", "ssi3", "gpu2d_core", "dummy",
 	"dummy", "dummy", "dummy", "esai_extal", "eim_slow", "uart_serial",
