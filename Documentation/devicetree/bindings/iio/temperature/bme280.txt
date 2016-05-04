@@ -1,0 +1,31 @@
+* Bosch bme280 digital humidity, pressure and temperature sensor
+
+Required properties:
+  - compatible: Should be "st,bme280-humid"
+  - reg: Should contain the ADC I2C address
+
+Optional properties:
+  - temperature_oversampling: set the temperature oversampling rate. The rate
+    can be 0, 1, 2, 4, 8, 16
+  - pressure_oversampling: set the pressure oversampling rate. The rate
+    can be 0, 1, 2, 4, 8, 16
+  - humidity_oversampling: set the humidity oversampling rate. The rate
+    can be 0, 1, 2, 4, 8, 16
+  - t_standby: controls inactive duration in normal mode. The time can be
+    1, 63, 125, 250, 500, 1000, 2000, 4000 ms
+  - filter: controls the time constant of the IIR filter. the filter value can
+    be 0 (filter off), 2, 4, 8, 16
+
+    All values which differ from the values above will be rounded to one of
+    them.
+
+Example:
+i2c4: 	bme280@76 {
+		compatible = "st,bme280-humid";
+		reg = <0x76>;
+		temperature_oversampling = <4>;
+		pressure_oversampling = <2>;
+		humidity_oversampling = <1>;
+		t_standby = <30>;
+		filter = <0>;
+	};
