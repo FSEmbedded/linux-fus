@@ -1,0 +1,18 @@
+Device-Tree bindings for lirc-gpioblaster
+
+Required properties:
+	- compatible: should be "lirc-gpioblaster".
+	- gpios: specifies GPIO used for IR signal reception.
+
+Optional properties:
+	- softcarrier: If you want to modulate the output signal with 38 kHz.
+
+Example node:
+
+	lirc_gpioblaster {
+		compatible = "lirc-gpioblaster";
+		gpios = <&gpio1 20 0>;
+		softcarrier;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_lirc_blaster>;
+	};
