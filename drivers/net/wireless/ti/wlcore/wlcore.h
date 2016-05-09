@@ -185,6 +185,7 @@ struct wl1271 {
 	struct wl1271_if_operations *if_ops;
 
 	int irq;
+	int irq_flags;
 
 	spinlock_t wl_lock;
 

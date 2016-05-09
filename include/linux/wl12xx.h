@@ -56,7 +56,6 @@ struct wl12xx_platform_data {
 	int board_ref_clock;
 	int board_tcxo_clock;
 	unsigned long platform_quirks;
-	bool pwr_in_suspend;
 };
 
 /* Platform does not support level trigger interrupts */

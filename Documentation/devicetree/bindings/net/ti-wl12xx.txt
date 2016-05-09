@@ -1,0 +1,19 @@
+Device-Tree bindings for TI WL12xx Chip
+
+Required properties:
+- compatible : can be "ti,wl1271", "ti,wl1273", "ti,wl1281", "ti,wl1283".
+- reg : Should be <X>, according to which registers within the silicon block
+        the device uses.
+- interrupts : <a> where a is the interrupt number for the port.
+- interrupt-parent : the phandle for the interrupt controller that services
+		     interrupts for this device.
+- ref-clock-frequency: The clock reference frequency of the chip in Hz.
+
+example:
+	wlcore: wlcore@2 {
+		compatible = "ti,wl1271";
+		reg = <2>;
+		interrupt-parent = <&gpio3>;
+		interrupts = <28 IRQ_TYPE_LEVEL_HIGH>; /* gpio 92 */
+		ref-clock-frequency = <38400000>;
+	};

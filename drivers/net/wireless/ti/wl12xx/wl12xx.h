@@ -79,4 +79,10 @@ struct wl12xx_priv {
 	struct wl127x_rx_mem_pool_addr *rx_mem_addr;
 };
 
+struct wl12xx_clock {
+	u32	freq;
+	bool	xtal;
+	u8	hw_idx;
+};
+
 #endif /* __WL12XX_PRIV_H__ */
