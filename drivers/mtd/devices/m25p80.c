@@ -167,7 +167,6 @@ static int m25p80_erase(struct spi_nor *nor, loff_t offset)
 
 	spi_write(flash->spi, flash->command, m25p_cmdsz(nor));
 
-	*retlen = m.actual_length - m25p_cmdsz(nor) - dummy;
 	return 0;
 }
 
@@ -202,6 +201,7 @@ static int m25p_probe(struct spi_device *spi)
 	nor->read_reg = m25p80_read_reg;
 
 	nor->dev = &spi->dev;
+	nor->np = spi->dev.of_node;
 	nor->mtd = &flash->mtd;
 	nor->priv = flash;
 
@@ -316,7 +316,7 @@ static struct spi_driver m25p80_driver = {
 		.name	= "m25p80",
 		.owner	= THIS_MODULE,
 	},
-	.id_table	= spi_nor_ids,
+	.id_table	= m25p_ids,
 	.probe	= m25p_probe,
 	.remove	= m25p_remove,
 

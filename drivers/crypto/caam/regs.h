@@ -74,11 +74,11 @@
 #endif
 #else
 #ifdef __LITTLE_ENDIAN
-#define wr_reg32(reg, data) __raw_writel(data, reg)
-#define rd_reg32(reg) __raw_readl(reg)
+#define wr_reg32(reg, data) writel(data, reg)
+#define rd_reg32(reg) readl(reg)
 #ifdef CONFIG_64BIT
-#define wr_reg64(reg, data) __raw_writeq(data, reg)
-#define rd_reg64(reg) __raw_readq(reg)
+#define wr_reg64(reg, data) writeq(data, reg)
+#define rd_reg64(reg) readq(reg)
 #endif
 #endif
 #endif
@@ -93,19 +93,6 @@
 #ifdef __BIG_ENDIAN
 static inline void wr_reg64(u64 __iomem *reg, u64 data)
 {
-	wr_reg32((u32 __iomem *)reg, (data & 0xffffffff00000000ull) >> 32);
-	wr_reg32((u32 __iomem *)reg + 1, data & 0x00000000ffffffffull);
-}
-
-static inline u64 rd_reg64(u64 __iomem *reg)
-{
-	return (((u64)rd_reg32((u32 __iomem *)reg)) << 32) |
-		((u64)rd_reg32((u32 __iomem *)reg + 1));
-}
-#else
-#ifdef __LITTLE_ENDIAN
-static inline void wr_reg64(u64 __iomem *reg, u64 data)
-{
 	wr_reg32((u32 __iomem *)reg + 1, (data & 0xffffffff00000000ull) >> 32);
 	wr_reg32((u32 __iomem *)reg, data & 0x00000000ffffffffull);
 }
@@ -114,6 +101,19 @@ static inline u64 rd_reg64(u64 __iomem *reg)
 {
 	return (((u64)rd_reg32((u32 __iomem *)reg + 1)) << 32) |
 		((u64)rd_reg32((u32 __iomem *)reg));
+}
+#else
+#ifdef __LITTLE_ENDIAN
+static inline void wr_reg64(u64 __iomem *reg, u64 data)
+{
+	wr_reg32((u32 __iomem *)reg, (data & 0xffffffff00000000ull) >> 32);
+	wr_reg32((u32 __iomem *)reg + 1, data & 0x00000000ffffffffull);
+}
+
+static inline u64 rd_reg64(u64 __iomem *reg)
+{
+	return (((u64)rd_reg32((u32 __iomem *)reg)) << 32) |
+		((u64)rd_reg32((u32 __iomem *)reg + 1));
 }
 #endif
 #endif
@@ -137,75 +137,18 @@ struct jr_outentry {
  */
 
 /* Job Ring */
-#define CHA_ID_JR_SHIFT	60
-#define CHA_ID_JR_MASK		(0xfull << CHA_ID_JR_SHIFT)
+#define CHA_ID_MS_JR_SHIFT	28
+#define CHA_ID_MS_JR_MASK	(0xfull << CHA_ID_MS_JR_SHIFT)
 
 /* DEscriptor COntroller */
-#define CHA_ID_DECO_SHIFT	56
-#define CHA_ID_DECO_MASK	(0xfull << CHA_ID_DECO_SHIFT)
+#define CHA_ID_MS_DECO_SHIFT	24
+#define CHA_ID_MS_DECO_MASK	(0xfull << CHA_ID_MS_DECO_SHIFT)
 #define CHA_NUM_DECONUM_SHIFT	56 /* legacy definition */
 #define CHA_NUM_DECONUM_MASK	(0xfull << CHA_NUM_DECONUM_SHIFT)
 
-/* ZUC-Authentication */
-#define CHA_ID_ZA_SHIFT	44
-#define CHA_ID_ZA_MASK		(0xfull << CHA_ID_ZA_SHIFT)
-
-/* ZUC-Encryption */
-#define CHA_ID_ZE_SHIFT	40
-#define CHA_ID_ZE_MASK		(0xfull << CHA_ID_ZE_SHIFT)
-
-/* SNOW f9 */
-#define CHA_ID_SNW9_SHIFT	36
-#define CHA_ID_SNW9_MASK	(0xfull << CHA_ID_SNW9_SHIFT)
-
-/* CRC */
-#define CHA_ID_CRC_SHIFT	32
-#define CHA_ID_CRC_MASK		(0xfull << CHA_ID_CRC_SHIFT)
-
-/* Public Key */
-#define CHA_ID_PK_SHIFT	28
-#define CHA_ID_PK_MASK		(0xfull << CHA_ID_PK_SHIFT)
-
-/* Kasumi */
-#define CHA_ID_KAS_SHIFT	24
-#define CHA_ID_KAS_MASK		(0xfull << CHA_ID_KAS_SHIFT)
-
-/* SNOW f8 */
-#define CHA_ID_SNW8_SHIFT	20
-#define CHA_ID_SNW8_MASK	(0xfull << CHA_ID_SNW8_SHIFT)
-
-/*
- * Random Generator
- * RNG4 = FIPS-verification-compliant, requires init kickstart for use
- */
-#define CHA_ID_RNG_SHIFT	16
-#define CHA_ID_RNG_MASK		(0xfull << CHA_ID_RNG_SHIFT)
-#define CHA_ID_RNG_A		(0x1ull << CHA_ID_RNG_SHIFT)
-#define CHA_ID_RNG_B		(0x2ull << CHA_ID_RNG_SHIFT)
-#define CHA_ID_RNG_C		(0x3ull << CHA_ID_RNG_SHIFT)
-#define CHA_ID_RNG_4		(0x4ull << CHA_ID_RNG_SHIFT)
-
-/*
- * Message Digest
- * LP256 = Low Power (MD5/SHA1/SHA224/SHA256 + HMAC)
- * LP512 = Low Power (LP256 + SHA384/SHA512)
- * HP    = High Power (LP512 + SMAC)
- */
-#define CHA_ID_MD_SHIFT		12
-#define CHA_ID_MD_MASK		(0xfull << CHA_ID_MD_SHIFT)
-#define CHA_ID_MD_LP256		(0x0ull << CHA_ID_MD_SHIFT)
-#define CHA_ID_MD_LP512		(0x1ull << CHA_ID_MD_SHIFT)
-#define CHA_ID_MD_HP		(0x2ull << CHA_ID_MD_SHIFT)
-
-/* ARC4 Streamcipher */
-#define CHA_ID_ARC4_SHIFT	8
-#define CHA_ID_ARC4_MASK	(0xfull << CHA_ID_ARC4_SHIFT)
-#define CHA_ID_ARC4_LP		(0x0ull << CHA_ID_ARC4_SHIFT)
-#define CHA_ID_ARC4_HP		(0x1ull << CHA_ID_ARC4_SHIFT)
-
-/* DES Blockcipher Accelerator */
-#define CHA_ID_DES_SHIFT	4
-#define CHA_ID_DES_MASK		(0xfull << CHA_ID_DES_SHIFT)
+/* Number of DECOs */
+#define CHA_NUM_MS_DECONUM_SHIFT	24
+#define CHA_NUM_MS_DECONUM_MASK	(0xfull << CHA_NUM_MS_DECONUM_SHIFT)
 
 /*
  * AES Blockcipher + Combo Mode Accelerator
@@ -213,12 +156,72 @@ struct jr_outentry {
  * HP = High Power (LP + CBCXCBC/CTRXCBC/XTS/GCM)
  * DIFFPWR = ORed in if differential-power-analysis resistance implemented
  */
-#define CHA_ID_AES_SHIFT	0
-#define CHA_ID_AES_MASK		(0xfull << CHA_ID_AES_SHIFT)
-#define CHA_ID_AES_LP		(0x3ull << CHA_ID_AES_SHIFT)
-#define CHA_ID_AES_HP		(0x4ull << CHA_ID_AES_SHIFT)
-#define CHA_ID_AES_DIFFPWR	(0x1ull << CHA_ID_AES_SHIFT)
+#define CHA_ID_LS_AES_SHIFT	0
+#define CHA_ID_LS_AES_MASK	(0xfull << CHA_ID_LS_AES_SHIFT)
+#define CHA_ID_LS_AES_LP	(0x3ull << CHA_ID_LS_AES_SHIFT)
+#define CHA_ID_LS_AES_HP	(0x4ull << CHA_ID_LS_AES_SHIFT)
+#define CHA_ID_LS_AES_DIFFPWR	(0x1ull << CHA_ID_LS_AES_SHIFT)
 
+/* DES Blockcipher Accelerator */
+#define CHA_ID_LS_DES_SHIFT	4
+#define CHA_ID_LS_DES_MASK		(0xfull << CHA_ID_LS_DES_SHIFT)
+
+/* ARC4 Streamcipher */
+#define CHA_ID_LS_ARC4_SHIFT	8
+#define CHA_ID_LS_ARC4_MASK	(0xfull << CHA_ID_LS_ARC4_SHIFT)
+#define CHA_ID_LS_ARC4_LP	(0x0ull << CHA_ID_LS_ARC4_SHIFT)
+#define CHA_ID_LS_ARC4_HP	(0x1ull << CHA_ID_LS_ARC4_SHIFT)
+
+/*
+ * Message Digest
+ * LP256 = Low Power (MD5/SHA1/SHA224/SHA256 + HMAC)
+ * LP512 = Low Power (LP256 + SHA384/SHA512)
+ * HP    = High Power (LP512 + SMAC)
+ */
+#define CHA_ID_LS_MD_SHIFT	12
+#define CHA_ID_LS_MD_MASK	(0xfull << CHA_ID_LS_MD_SHIFT)
+#define CHA_ID_LS_MD_LP256	(0x0ull << CHA_ID_LS_MD_SHIFT)
+#define CHA_ID_LS_MD_LP512	(0x1ull << CHA_ID_LS_MD_SHIFT)
+#define CHA_ID_LS_MD_HP		(0x2ull << CHA_ID_LS_MD_SHIFT)
+
+/*
+ * Random Generator
+ * RNG4 = FIPS-verification-compliant, requires init kickstart for use
+ */
+#define CHA_ID_LS_RNG_SHIFT	16
+#define CHA_ID_LS_RNG_MASK	(0xfull << CHA_ID_LS_RNG_SHIFT)
+#define CHA_ID_LS_RNG_A		(0x1ull << CHA_ID_LS_RNG_SHIFT)
+#define CHA_ID_LS_RNG_B		(0x2ull << CHA_ID_LS_RNG_SHIFT)
+#define CHA_ID_LS_RNG_C		(0x3ull << CHA_ID_LS_RNG_SHIFT)
+#define CHA_ID_LS_RNG_4		(0x4ull << CHA_ID_LS_RNG_SHIFT)
+
+/* ZUC-Authentication */
+#define CHA_ID_MS_ZA_SHIFT	12
+#define CHA_ID_MS_ZA_MASK	(0xfull << CHA_ID_MS_ZA_SHIFT)
+
+/* ZUC-Encryption */
+#define CHA_ID_MS_ZE_SHIFT	8
+#define CHA_ID_MS_ZE_MASK	(0xfull << CHA_ID_MS_ZE_SHIFT)
+
+/* SNOW f8 */
+#define CHA_ID_LS_SNW8_SHIFT	20
+#define CHA_ID_LS_SNW8_MASK	(0xfull << CHA_ID_LS_SNW8_SHIFT)
+
+/* Kasumi */
+#define CHA_ID_LS_KAS_SHIFT	24
+#define CHA_ID_LS_KAS_MASK	(0xfull << CHA_ID_LS_KAS_SHIFT)
+
+/* Public Key */
+#define CHA_ID_LS_PK_SHIFT	28
+#define CHA_ID_LS_PK_MASK	(0xfull << CHA_ID_LS_PK_SHIFT)
+
+/* CRC */
+#define CHA_ID_MS_CRC_SHIFT	0
+#define CHA_ID_MS_CRC_MASK	(0xfull << CHA_ID_MS_CRC_SHIFT)
+
+/* SNOW f9 */
+#define CHA_ID_MS_SNW9_SHIFT	4
+#define CHA_ID_MS_SNW9_MASK	(0xfull << CHA_ID_MS_SNW9_SHIFT)
 
 /*
  * caam_perfmon - Performance Monitor/Secure Memory Status/
@@ -228,45 +231,8 @@ struct jr_outentry {
  */
 
 /* Number of DECOs */
-#define CHA_NUM_MS_DECONUM_SHIFT	24
-#define CHA_NUM_MS_DECONUM_MASK	(0xfull << CHA_NUM_MS_DECONUM_SHIFT)
-
-/* CHA Version IDs */
-#define CHA_ID_LS_AES_SHIFT	0
-#define CHA_ID_LS_AES_MASK		(0xfull << CHA_ID_LS_AES_SHIFT)
-
-#define CHA_ID_LS_DES_SHIFT	4
-#define CHA_ID_LS_DES_MASK		(0xfull << CHA_ID_LS_DES_SHIFT)
-
-#define CHA_ID_LS_ARC4_SHIFT	8
-#define CHA_ID_LS_ARC4_MASK	(0xfull << CHA_ID_LS_ARC4_SHIFT)
-
-#define CHA_ID_LS_MD_SHIFT	12
-#define CHA_ID_LS_MD_MASK	(0xfull << CHA_ID_LS_MD_SHIFT)
-
-#define CHA_ID_LS_RNG_SHIFT	16
-#define CHA_ID_LS_RNG_MASK	(0xfull << CHA_ID_LS_RNG_SHIFT)
-
-#define CHA_ID_LS_SNW8_SHIFT	20
-#define CHA_ID_LS_SNW8_MASK	(0xfull << CHA_ID_LS_SNW8_SHIFT)
-
-#define CHA_ID_LS_KAS_SHIFT	24
-#define CHA_ID_LS_KAS_MASK	(0xfull << CHA_ID_LS_KAS_SHIFT)
-
-#define CHA_ID_LS_PK_SHIFT	28
-#define CHA_ID_LS_PK_MASK	(0xfull << CHA_ID_LS_PK_SHIFT)
-
-#define CHA_ID_MS_CRC_SHIFT	0
-#define CHA_ID_MS_CRC_MASK	(0xfull << CHA_ID_MS_CRC_SHIFT)
-
-#define CHA_ID_MS_SNW9_SHIFT	4
-#define CHA_ID_MS_SNW9_MASK	(0xfull << CHA_ID_MS_SNW9_SHIFT)
-
-#define CHA_ID_MS_DECO_SHIFT	24
-#define CHA_ID_MS_DECO_MASK	(0xfull << CHA_ID_MS_DECO_SHIFT)
-
-#define CHA_ID_MS_JR_SHIFT	28
-#define CHA_ID_MS_JR_MASK	(0xfull << CHA_ID_MS_JR_SHIFT)
+#define CHA_NUM_DECONUM_SHIFT	56
+#define CHA_NUM_DECONUM_MASK	(0xfull << CHA_NUM_DECONUM_SHIFT)
 
 struct sec_vid {
 	u16 ip_id;
@@ -300,7 +266,11 @@ struct caam_perfmon {
 #define CTPR_MS_PG_SZ_SHIFT	4
 	u32 comp_parms_ms;	/* CTPR - Compile Parameters Register	*/
 	u32 comp_parms_ls;	/* CTPR - Compile Parameters Register	*/
-	u64 rsvd1[2];
+	/* Secure Memory State Visibility */
+	u32 rsvd1;
+	u32 smstatus;	/* Secure memory status */
+	u32 rsvd2;
+	u32 smpartown;	/* Secure memory partition owner */
 
 	/* CAAM Global Status					fc0-fdf */
 	u64 faultaddr;	/* FAR  - Fault Address		*/
@@ -571,6 +541,35 @@ struct caam_ctrl {
 #define JRSTART_JR1_START       0x00000002 /* Start Job ring 1 */
 #define JRSTART_JR2_START       0x00000004 /* Start Job ring 2 */
 #define JRSTART_JR3_START       0x00000008 /* Start Job ring 3 */
+
+/* Secure Memory Configuration - if you have it */
+/* Secure Memory Register Offset from JR Base Reg*/
+#define SM_V1_OFFSET 0x0f4
+#define SM_V2_OFFSET 0xa00
+
+/* Minimum SM Version ID requiring v2 SM register mapping */
+#define SMVID_V2 0x20105
+
+struct caam_secure_mem_v1 {
+	u32 sm_cmd;	/* SMCJRx - Secure memory command */
+	u32 rsvd1;
+	u32 sm_status;	/* SMCSJRx - Secure memory status */
+    u32 rsvd2;
+
+	u32 sm_perm;	/* SMAPJRx - Secure memory access perms */
+	u32 sm_group2;	/* SMAP2JRx - Secure memory access group 2 */
+	u32 sm_group1;	/* SMAP1JRx - Secure memory access group 1 */
+};
+
+struct caam_secure_mem_v2 {
+	u32 sm_perm;	/* SMAPJRx - Secure memory access perms */
+	u32 sm_group2;	/* SMAP2JRx - Secure memory access group 2 */
+	u32 sm_group1;	/* SMAP1JRx - Secure memory access group 1 */
+	u32 rsvd1[118];
+	u32 sm_cmd;	/* SMCJRx - Secure memory command */
+	u32 rsvd2;
+	u32 sm_status;	/* SMCSJRx - Secure memory status */
+};
 
 /*
  * caam_job_ring - direct job ring setup

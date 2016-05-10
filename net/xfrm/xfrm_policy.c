@@ -44,11 +44,6 @@ struct xfrm_flo {
 	u8 flags;
 };
 
-struct xfrm_flo {
-	struct dst_entry *dst_orig;
-	u8 flags;
-};
-
 static DEFINE_SPINLOCK(xfrm_policy_afinfo_lock);
 static struct xfrm_policy_afinfo __rcu *xfrm_policy_afinfo[NPROTO]
 						__read_mostly;

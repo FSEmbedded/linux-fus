@@ -69,7 +69,6 @@ struct mmc_ext_csd {
 #define MMC_HIGH_52_MAX_DTR	52000000
 #define MMC_HIGH_DDR_MAX_DTR	52000000
 #define MMC_HS200_MAX_DTR	200000000
-#define MMC_HS400_MAX_DTR   200000000
 	unsigned int		sectors;
 	unsigned int		hc_erase_size;		/* In sectors */
 	unsigned int		hc_erase_timeout;	/* In milliseconds */
@@ -88,7 +87,6 @@ struct mmc_ext_csd {
 	unsigned int            data_sector_size;       /* 512 bytes or 4KB */
 	unsigned int            data_tag_unit_size;     /* DATA TAG UNIT size */
 	unsigned int		boot_ro_lock;		/* ro lock support */
-	unsigned int		boot_size;
 	bool			boot_ro_lockable;
 	bool			ffu_capable;	/* Firmware upgrade support */
 #define MMC_FIRMWARE_LEN 8
@@ -96,10 +94,10 @@ struct mmc_ext_csd {
 	u8			raw_exception_status;	/* 54 */
 	u8			raw_partition_support;	/* 160 */
 	u8			raw_rpmb_size_mult;	/* 168 */
-	u8			boot_bus_width;		/* 177 */
 	u8			raw_erased_mem_count;	/* 181 */
 	u8			raw_ext_csd_structure;	/* 194 */
 	u8			raw_card_type;		/* 196 */
+	u8			raw_driver_strength;	/* 197 */
 	u8			out_of_int_time;	/* 198 */
 	u8			raw_pwr_cl_52_195;	/* 200 */
 	u8			raw_pwr_cl_26_195;	/* 201 */
@@ -109,7 +107,6 @@ struct mmc_ext_csd {
 	u8			raw_hc_erase_gap_size;	/* 221 */
 	u8			raw_erase_timeout_mult;	/* 223 */
 	u8			raw_hc_erase_grp_size;	/* 224 */
-	u8			boot_info;		/* 228 */
 	u8			raw_sec_trim_mult;	/* 229 */
 	u8			raw_sec_erase_mult;	/* 230 */
 	u8			raw_sec_feature_support;/* 231 */
@@ -286,6 +283,7 @@ struct mmc_card {
 	unsigned int		erase_size;	/* erase size in sectors */
  	unsigned int		erase_shift;	/* if erase unit is power 2 */
  	unsigned int		pref_erase;	/* in sectors */
+	unsigned int		eg_boundary;	/* don't cross erase-group boundaries */
  	u8			erased_byte;	/* value of erased bytes */
 
 	u32			raw_cid[4];	/* raw card CID */
@@ -309,6 +307,7 @@ struct mmc_card {
 
 	unsigned int		sd_bus_speed;	/* Bus Speed Mode set for the card */
 	unsigned int		mmc_avail_type;	/* supported device type by both host and card */
+	unsigned int		drive_strength;	/* for UHS-I, HS200 or HS400 */
 
 	struct dentry		*debugfs_root;
 	struct mmc_part	part[MMC_NUM_PHY_PARTITION]; /* physical partitions */

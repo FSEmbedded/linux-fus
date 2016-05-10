@@ -321,29 +321,6 @@ static inline bool mei_cl_cmp_id(const struct mei_cl *cl1,
 }
 
 /**
- * mei_io_list_flush - removes list entry belonging to cl.
- *
- * @list:  An instance of our list structure
- * @cl: host client
- */
-static inline void mei_io_list_flush(struct mei_cl_cb *list, struct mei_cl *cl)
-{
-	__mei_io_list_flush(list, cl, false);
-}
-
-
-/**
- * mei_io_list_free - removes cb belonging to cl and free them
- *
- * @list:  An instance of our list structure
- * @cl: host client
- */
-static inline void mei_io_list_free(struct mei_cl_cb *list, struct mei_cl *cl)
-{
-	__mei_io_list_flush(list, cl, true);
-}
-
-/**
  * mei_io_cb_free - free mei_cb_private related memory
  *
  * @cb: mei callback struct
@@ -722,7 +699,7 @@ void mei_host_client_init(struct work_struct *work)
 bool mei_hbuf_acquire(struct mei_device *dev)
 {
 	if (mei_pg_state(dev) == MEI_PG_ON ||
-	    dev->pg_event == MEI_PG_EVENT_WAIT) {
+	    mei_pg_in_transition(dev)) {
 		dev_dbg(dev->dev, "device is in pg\n");
 		return false;
 	}

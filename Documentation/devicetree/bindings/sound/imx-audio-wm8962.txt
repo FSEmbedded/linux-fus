@@ -6,7 +6,7 @@ Required properties:
 
   - model		: The user-visible name of this sound complex
 
-  - ssi-controller	: The phandle of the i.MX SSI controller
+  - cpu-dai		: The phandle of CPU DAI
 
   - audio-codec		: The phandle of the WM8962 audio codec
 

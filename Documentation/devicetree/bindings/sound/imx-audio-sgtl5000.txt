@@ -45,7 +45,7 @@ sound {
 	compatible = "fsl,imx51-babbage-sgtl5000",
 		     "fsl,imx-audio-sgtl5000";
 	model = "imx51-babbage-sgtl5000";
-	cpu-dai = <&ssi1>;
+	ssi-controller = <&ssi1>;
 	audio-codec = <&sgtl5000>;
 	audio-routing =
 		"MIC_IN", "Mic Jack",

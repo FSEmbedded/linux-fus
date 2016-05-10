@@ -887,7 +887,8 @@ static int vmw_translate_mob_ptr(struct vmw_private *dev_priv,
 	struct vmw_relocation *reloc;
 	int ret;
 
-	ret = vmw_user_dmabuf_lookup(sw_context->fp->tfile, handle, &vmw_bo);
+	ret = vmw_user_dmabuf_lookup(sw_context->fp->tfile, handle, &vmw_bo,
+				     NULL);
 	if (unlikely(ret != 0)) {
 		DRM_ERROR("Could not find or use MOB buffer.\n");
 		ret = -EINVAL;
@@ -949,7 +950,8 @@ static int vmw_translate_guest_ptr(struct vmw_private *dev_priv,
 	struct vmw_relocation *reloc;
 	int ret;
 
-	ret = vmw_user_dmabuf_lookup(sw_context->fp->tfile, handle, &vmw_bo);
+	ret = vmw_user_dmabuf_lookup(sw_context->fp->tfile, handle, &vmw_bo,
+				     NULL);
 	if (unlikely(ret != 0)) {
 		DRM_ERROR("Could not find or use GMR region.\n");
 		ret = -EINVAL;
@@ -2492,7 +2494,7 @@ int vmw_execbuf_process(struct drm_file *file_priv,
 	ret = ttm_eu_reserve_buffers(&ticket, &sw_context->validate_nodes,
 				     true, NULL);
 	if (unlikely(ret != 0))
-		goto out_err;
+		goto out_err_nores;
 
 	ret = vmw_validate_buffers(dev_priv, sw_context);
 	if (unlikely(ret != 0))
@@ -2500,7 +2502,7 @@ int vmw_execbuf_process(struct drm_file *file_priv,
 
 	ret = vmw_resources_validate(sw_context);
 	if (unlikely(ret != 0))
-		goto out_err_nores;
+		goto out_err;
 
 	if (throttle_us) {
 		ret = vmw_wait_lag(dev_priv, &dev_priv->fifo.marker_queue,

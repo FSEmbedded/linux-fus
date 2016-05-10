@@ -120,92 +120,6 @@ void synaptics_reset(struct psmouse *psmouse)
 }
 
 #ifdef CONFIG_MOUSE_PS2_SYNAPTICS
-struct min_max_quirk {
-	const char * const *pnp_ids;
-	int x_min, x_max, y_min, y_max;
-};
-
-static const struct min_max_quirk min_max_pnpid_table[] = {
-	{
-		(const char * const []){"LEN0033", NULL},
-		1024, 5052, 2258, 4832
-	},
-	{
-		(const char * const []){"LEN0035", "LEN0042", NULL},
-		1232, 5710, 1156, 4696
-	},
-	{
-		(const char * const []){"LEN0034", "LEN0036", "LEN0037",
-					"LEN0039", "LEN2002", "LEN2004",
-					NULL},
-		1024, 5112, 2024, 4832
-	},
-	{
-		(const char * const []){"LEN2000", NULL},
-		1024, 5113, 2021, 4832
-	},
-	{
-		(const char * const []){"LEN2001", NULL},
-		1024, 5022, 2508, 4832
-	},
-	{
-		(const char * const []){"LEN2006", NULL},
-		1264, 5675, 1171, 4688
-	},
-	{ }
-};
-
-/* This list has been kindly provided by Synaptics. */
-static const char * const topbuttonpad_pnp_ids[] = {
-	"LEN0017",
-	"LEN0018",
-	"LEN0019",
-	"LEN0023",
-	"LEN002A",
-	"LEN002B",
-	"LEN002C",
-	"LEN002D",
-	"LEN002E",
-	"LEN0033", /* Helix */
-	"LEN0034", /* T431s, L440, L540, T540, W540, X1 Carbon 2nd */
-	"LEN0035", /* X240 */
-	"LEN0036", /* T440 */
-	"LEN0037", /* X1 Carbon 2nd */
-	"LEN0038",
-	"LEN0039", /* T440s */
-	"LEN0041",
-	"LEN0042", /* Yoga */
-	"LEN0045",
-	"LEN0046",
-	"LEN0047",
-	"LEN0048",
-	"LEN0049",
-	"LEN2000", /* S540 */
-	"LEN2001", /* Edge E431 */
-	"LEN2002", /* Edge E531 */
-	"LEN2003",
-	"LEN2004", /* L440 */
-	"LEN2005",
-	"LEN2006",
-	"LEN2007",
-	"LEN2008",
-	"LEN2009",
-	"LEN200A",
-	"LEN200B",
-	NULL
-};
-
-static bool matches_pnp_id(struct psmouse *psmouse, const char * const ids[])
-{
-	int i;
-
-	if (!strncmp(psmouse->ps2dev.serio->firmware_id, "PNP:", 4))
-		for (i = 0; ids[i]; i++)
-			if (strstr(psmouse->ps2dev.serio->firmware_id, ids[i]))
-				return true;
-
-	return false;
-}
 
 static bool cr48_profile_sensor;
 
@@ -485,16 +399,6 @@ static int synaptics_resolution(struct psmouse *psmouse)
 		if (resp[0] != 0 && (resp[1] & 0x80) && resp[2] != 0) {
 			priv->x_res = resp[0]; /* x resolution in units/mm */
 			priv->y_res = resp[2]; /* y resolution in units/mm */
-		}
-	}
-
-	for (i = 0; min_max_pnpid_table[i].pnp_ids; i++) {
-		if (matches_pnp_id(psmouse, min_max_pnpid_table[i].pnp_ids)) {
-			priv->x_min = min_max_pnpid_table[i].x_min;
-			priv->x_max = min_max_pnpid_table[i].x_max;
-			priv->y_min = min_max_pnpid_table[i].y_min;
-			priv->y_max = min_max_pnpid_table[i].y_max;
-			return 0;
 		}
 	}
 
@@ -1295,7 +1199,7 @@ static void set_input_params(struct psmouse *psmouse,
 					ABS_MT_POSITION_Y);
 		/* Image sensors can report per-contact pressure */
 		input_set_abs_params(dev, ABS_MT_PRESSURE, 0, 255, 0, 0);
-		input_mt_init_slots(dev, 3, INPUT_MT_POINTER | INPUT_MT_TRACK);
+		input_mt_init_slots(dev, 2, INPUT_MT_POINTER | INPUT_MT_TRACK);
 
 		/* Image sensors can signal 4 and 5 finger clicks */
 		__set_bit(BTN_TOOL_QUADTAP, dev->keybit);

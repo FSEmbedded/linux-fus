@@ -361,7 +361,6 @@ void			xprt_unlock_connect(struct rpc_xprt *, void *);
 #define XPRT_BINDING		(5)
 #define XPRT_CLOSING		(6)
 #define XPRT_CONGESTED		(9)
-#define XPRT_CONNECTION_REUSE	(10)
 
 static inline void xprt_set_connected(struct rpc_xprt *xprt)
 {

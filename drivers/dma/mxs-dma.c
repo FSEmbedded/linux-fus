@@ -448,6 +448,12 @@ static int mxs_dma_alloc_chan_resources(struct dma_chan *chan)
 	if (ret)
 		goto err_clk;
 
+	if (mxs_dma->dev_id == IMX7D_DMA) {
+		ret = clk_prepare_enable(mxs_dma->clk_io);
+		if (ret)
+			goto err_clk_unprepare;
+	}
+
 	mxs_dma_reset_chan(chan);
 
 	dma_async_tx_descriptor_init(&mxs_chan->desc, chan);
@@ -706,7 +712,7 @@ static enum dma_status mxs_dma_tx_status(struct dma_chan *chan,
 	return mxs_chan->status;
 }
 
-static int __init mxs_dma_init(struct mxs_dma_engine *mxs_dma)
+static int mxs_dma_init(struct mxs_dma_engine *mxs_dma)
 {
 	int ret;
 

@@ -380,10 +380,7 @@ static void handle_critical_trips(struct thermal_zone_device *tz,
 		dev_emerg(&tz->device,
 			  "critical temperature reached(%d C),shutting down\n",
 			  tz->temperature / 1000);
-		if (tz->poweroff)
-			return;
-		if (!orderly_poweroff(true))
-			tz->poweroff = true;
+		orderly_poweroff(true);
 	}
 }
 
@@ -1499,7 +1496,6 @@ struct thermal_zone_device *thermal_zone_device_register(const char *type,
 	tz->trips = trips;
 	tz->passive_delay = passive_delay;
 	tz->polling_delay = polling_delay;
-	tz->poweroff = false;
 
 	dev_set_name(&tz->device, "thermal_zone%d", tz->id);
 	result = device_register(&tz->device);

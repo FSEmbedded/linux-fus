@@ -1899,7 +1899,7 @@ int of_alias_max_index(const char *stem)
 	struct alias_prop *app;
 	int max = -ENODEV;
 
-	mutex_lock(&of_aliases_mutex);
+	mutex_lock(&of_mutex);
 
 	list_for_each_entry(app, &aliases_lookup, link) {
 		if (strcmp(app->stem, stem))
@@ -1908,7 +1908,7 @@ int of_alias_max_index(const char *stem)
 			max = app->id;
 	}
 
-	mutex_unlock(&of_aliases_mutex);
+	mutex_unlock(&of_mutex);
 
 	return max;
 }

@@ -25,8 +25,6 @@ diag_reg_offset:
 	.endm
 
 ENTRY(v7_secondary_startup)
-	bl	v7_invalidate_l1
-
 	mrc	p15, 0, r0, c0, c0, 0
 	ldr	r1, =0xf00
 	orr	r1, r1, #0xff
@@ -39,15 +37,5 @@ ENTRY(v7_secondary_startup)
 	beq	secondary_startup
 
 	set_diag_reg
-
-	/* Set the CPU status in SCU CPU status register. */
-	mrc	p15, 0, r0, c0, c0, 5
-	and	r0, r0, #3
-	mrc	p15, 4, r1, c15, c0, 0
-	ldr	r2, =SCU_CPU_STATUS
-	orr	r2, r2, r0
-	ldr	r0, =SCU_PM_NORMAL
-	strb	r0, [r1, r2]
-
 	b	secondary_startup
 ENDPROC(v7_secondary_startup)

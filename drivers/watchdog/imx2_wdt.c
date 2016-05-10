@@ -24,7 +24,9 @@
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/init.h>
+#include <linux/interrupt.h>
 #include <linux/io.h>
+#include <linux/irq.h>
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -45,13 +47,13 @@
 #define IMX2_WDT_WCR_WDE	(1 << 2)	/* -> Watchdog Enable */
 #define IMX2_WDT_WCR_WDZST	(1 << 0)	/* -> Watchdog timer Suspend */
 
-
 #define IMX2_WDT_WSR		0x02		/* Service Register */
 #define IMX2_WDT_SEQ1		0x5555		/* -> service sequence 1 */
 #define IMX2_WDT_SEQ2		0xAAAA		/* -> service sequence 2 */
 
 #define IMX2_WDT_WRSR		0x04		/* Reset Status Register */
 #define IMX2_WDT_WRSR_TOUT	(1 << 1)	/* -> Reset due to Timeout */
+
 #define IMX2_WDT_WICR		0x06		/*Interrupt Control Register*/
 #define IMX2_WDT_WICR_WIE	(1 << 15)	/* -> Interrupt Enable */
 #define IMX2_WDT_WICR_WTIS	(1 << 14)	/* -> Interrupt Status */
@@ -71,6 +73,7 @@ struct imx2_wdt_device {
 	struct timer_list timer;	/* Pings the watchdog when closed */
 	struct watchdog_device wdog;
 	struct notifier_block restart_handler;
+	bool wdog_b;
 };
 
 static bool nowayout = WATCHDOG_NOWAYOUT;
@@ -92,11 +95,15 @@ static const struct watchdog_info imx2_wdt_info = {
 static int imx2_restart_handler(struct notifier_block *this, unsigned long mode,
 				void *cmd)
 {
+	/* Assert SRS signal */
 	unsigned int wcr_enable = IMX2_WDT_WCR_WDE;
 	struct imx2_wdt_device *wdev = container_of(this,
 						    struct imx2_wdt_device,
 						    restart_handler);
-	/* Assert SRS signal */
+	/* Assert WDOG_B signal */
+	if (wdev->wdog_b)
+		wcr_enable = 0x14;
+
 	regmap_write(wdev->regmap, 0, wcr_enable);
 	/*
 	 * Due to imx6q errata ERR004346 (WDOG: WDOG SRS bit requires to be
@@ -174,6 +181,9 @@ static int imx2_wdt_set_timeout(struct watchdog_device *wdog,
 
 	regmap_update_bits(wdev->regmap, IMX2_WDT_WCR, IMX2_WDT_WCR_WT,
 			   WDOG_SEC_TO_COUNT(new_timeout));
+
+	wdog->timeout = new_timeout;
+
 	return 0;
 }
 
@@ -211,12 +221,58 @@ static inline void imx2_wdt_ping_if_active(struct watchdog_device *wdog)
 	}
 }
 
+static int imx2_wdt_check_pretimeout_set(struct imx2_wdt_device *wdev)
+{
+	u32 val;
+
+	regmap_read(wdev->regmap, IMX2_WDT_WICR, &val);
+	return (val & IMX2_WDT_WICR_WIE) ? 1 : 0;
+}
+
+static int imx2_wdt_set_pretimeout(struct watchdog_device *wdog, unsigned int new_timeout)
+{
+	struct imx2_wdt_device *wdev = watchdog_get_drvdata(wdog);
+	u32 val;
+
+	regmap_read(wdev->regmap, IMX2_WDT_WICR, &val);
+	/* set the new pre-timeout value in the WSR */
+	val &= ~IMX2_WDT_WICR_WICT;
+	val |= WDOG_SEC_TO_PRECOUNT(new_timeout);
+
+	if (!imx2_wdt_check_pretimeout_set(wdev))
+		val |= IMX2_WDT_WICR_WIE;	/*enable*/
+
+	regmap_write(wdev->regmap, IMX2_WDT_WICR, val);
+
+	wdog->pretimeout = new_timeout;
+
+	return 0;
+}
+
+static irqreturn_t imx2_wdt_isr(int irq, void *dev_id)
+{
+	struct platform_device *pdev = dev_id;
+	struct watchdog_device *wdog = platform_get_drvdata(pdev);
+	struct imx2_wdt_device *wdev = watchdog_get_drvdata(wdog);
+	u32 val;
+
+	regmap_read(wdev->regmap, IMX2_WDT_WICR, &val);
+	if (val & IMX2_WDT_WICR_WTIS) {
+		/*clear interrupt status bit*/
+		regmap_write(wdev->regmap, IMX2_WDT_WICR, val);
+		dev_warn(&pdev->dev, "watchdog pre-timeout:%d, %d Seconds remained\n", \
+			 wdog->pretimeout, wdog->timeout-wdog->pretimeout);
+	}
+	return IRQ_HANDLED;
+}
+
 static const struct watchdog_ops imx2_wdt_ops = {
 	.owner = THIS_MODULE,
 	.start = imx2_wdt_start,
 	.stop = imx2_wdt_stop,
 	.ping = imx2_wdt_ping,
 	.set_timeout = imx2_wdt_set_timeout,
+	.set_pretimeout = imx2_wdt_set_pretimeout,
 };
 
 static const struct regmap_config imx2_wdt_regmap_config = {
@@ -226,25 +282,6 @@ static const struct regmap_config imx2_wdt_regmap_config = {
 	.max_register = 0x8,
 };
 
-static struct platform_device_id wdt_devtypes[] = {
-	{
-		.name = "imx21-wdt",
-		.driver_data = IMX21,
-	}, {
-		.name = "imx7d-wdt",
-		.driver_data = IMX7D,
-	}, {
-		/* sentinel */
-	}
-};
-
-static const struct of_device_id imx2_wdt_dt_ids[] = {
-	{ .compatible = "fsl,imx21-wdt", .data = &wdt_devtypes[IMX21], },
-	{ .compatible = "fsl,imx7d-wdt", .data = &wdt_devtypes[IMX7D], },
-	{ /* sentinel */ }
-};
-
-MODULE_DEVICE_TABLE(of, imx2_wdt_dt_ids);
 static int __init imx2_wdt_probe(struct platform_device *pdev)
 {
 	struct imx2_wdt_device *wdev;
@@ -252,7 +289,9 @@ static int __init imx2_wdt_probe(struct platform_device *pdev)
 	struct resource *res;
 	void __iomem *base;
 	int ret;
+	int irq;
 	u32 val;
+	struct device_node *of_node = pdev->dev.of_node;
 
 	wdev = devm_kzalloc(&pdev->dev, sizeof(*wdev), GFP_KERNEL);
 	if (!wdev)
@@ -274,6 +313,19 @@ static int __init imx2_wdt_probe(struct platform_device *pdev)
 	if (IS_ERR(wdev->clk)) {
 		dev_err(&pdev->dev, "can't get Watchdog clock\n");
 		return PTR_ERR(wdev->clk);
+	}
+
+	irq = platform_get_irq(pdev, 0);
+	ret = devm_request_irq(&pdev->dev, irq, imx2_wdt_isr, 0,
+			       dev_name(&pdev->dev), pdev);
+	if (ret) {
+		dev_err(&pdev->dev, "can't get irq %d\n", irq);
+		return ret;
+	}
+
+	if (of_get_property(of_node, "fsl,wdog_b", NULL)) {
+		wdev->wdog_b = true;
+		dev_info(&pdev->dev, "use WDOG_B to reboot.\n");
 	}
 
 	wdog			= &wdev->wdog;
@@ -423,6 +475,7 @@ static const struct of_device_id imx2_wdt_dt_ids[] = {
 	{ .compatible = "fsl,imx21-wdt", },
 	{ /* sentinel */ }
 };
+MODULE_DEVICE_TABLE(of, imx2_wdt_dt_ids);
 
 static struct platform_driver imx2_wdt_driver = {
 	.remove		= __exit_p(imx2_wdt_remove),
@@ -431,7 +484,6 @@ static struct platform_driver imx2_wdt_driver = {
 		.name	= DRIVER_NAME,
 		.pm     = &imx2_wdt_pm_ops,
 		.of_match_table = imx2_wdt_dt_ids,
-		.pm = &imx2_wdt_pm_ops,
 	},
 };
 

@@ -261,7 +261,7 @@ void reset_isolation_suitable(pg_data_t *pgdat)
  */
 static void update_pageblock_skip(struct compact_control *cc,
 			struct page *page, unsigned long nr_isolated,
-			bool set_unsuitable, bool migrate_scanner)
+			bool migrate_scanner)
 {
 	struct zone *zone = cc->zone;
 	unsigned long pfn;
@@ -300,7 +300,7 @@ static inline bool isolation_suitable(struct compact_control *cc,
 
 static void update_pageblock_skip(struct compact_control *cc,
 			struct page *page, unsigned long nr_isolated,
-			bool set_unsuitable, bool migrate_scanner)
+			bool migrate_scanner)
 {
 }
 #endif /* CONFIG_COMPACTION */
@@ -509,8 +509,7 @@ isolate_fail:
 
 	/* Update the pageblock-skip if the whole pageblock was scanned */
 	if (blockpfn == end_pfn)
-		update_pageblock_skip(cc, valid_page, total_isolated, true,
-				      false);
+		update_pageblock_skip(cc, valid_page, total_isolated, false);
 
 	count_compact_events(COMPACTFREE_SCANNED, nr_scanned);
 	if (total_isolated)

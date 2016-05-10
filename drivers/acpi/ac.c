@@ -114,16 +114,6 @@ static const struct file_operations acpi_ac_fops = {
 };
 #endif
 
-#ifdef CONFIG_ACPI_PROCFS_POWER
-static const struct file_operations acpi_ac_fops = {
-	.owner = THIS_MODULE,
-	.open = acpi_ac_open_fs,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
-};
-#endif
-
 /* --------------------------------------------------------------------------
                                AC Adapter Management
    -------------------------------------------------------------------------- */
@@ -426,10 +416,6 @@ static int acpi_ac_remove(struct acpi_device *device)
 
 	power_supply_unregister(ac->charger);
 	unregister_acpi_notifier(&ac->battery_nb);
-
-#ifdef CONFIG_ACPI_PROCFS_POWER
-	acpi_ac_remove_fs(ac);
-#endif
 
 #ifdef CONFIG_ACPI_PROCFS_POWER
 	acpi_ac_remove_fs(ac);

@@ -919,11 +919,12 @@ static int mxs_lradc_read_raw(struct iio_dev *iio_dev,
 	case IIO_CHAN_INFO_OFFSET:
 		if (chan->type == IIO_TEMP) {
 			/* The calculated value from the ADC is in Kelvin, we
-			 * want Celsius for hwmon so the offset is
-			 * -272.15 * scale
+			 * want Celsius for hwmon so the offset is -273.15
+			 * The offset is applied before scaling so it is
+			 * actually -213.15 * 4 / 1.012 = -1079.644268
 			 */
-			*val = -1075;
-			*val2 = 691699;
+			*val = -1079;
+			*val2 = 644268;
 
 			return IIO_VAL_INT_PLUS_MICRO;
 		}
@@ -1153,10 +1154,6 @@ static irqreturn_t mxs_lradc_handle_irq(int irq, void *data)
 
 	if (lradc->use_touchscreen && (reg & ts_irq_mask)) {
 		mxs_lradc_handle_touch(lradc);
-		/* Make sure we don't clear the next conversion's interrupt. */
-		clr_irq &= ~(LRADC_CTRL1_LRADC_IRQ(TOUCHSCREEN_VCHANNEL1) |
-				LRADC_CTRL1_LRADC_IRQ(TOUCHSCREEN_VCHANNEL2));
-	}
 
 		/* Make sure we don't clear the next conversion's interrupt. */
 		clr_irq &= ~(LRADC_CTRL1_LRADC_IRQ(TOUCHSCREEN_VCHANNEL1) |

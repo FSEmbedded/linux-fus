@@ -5718,12 +5718,6 @@ int ci_dpm_init(struct radeon_device *rdev)
 		pi->mclk_dpm_key_disabled = 1;
 	}
 
-	/* mclk dpm is unstable on some R7 260X cards with the old mc ucode */
-	if ((rdev->pdev->device == 0x6658) &&
-	    (rdev->mc_fw->size == (BONAIRE_MC_UCODE_SIZE * 4))) {
-		pi->mclk_dpm_key_disabled = 1;
-	}
-
 	pi->caps_sclk_ds = true;
 
 	pi->mclk_strobe_mode_threshold = 40000;
@@ -5824,7 +5818,7 @@ int ci_dpm_init(struct radeon_device *rdev)
 			tmp |= DPM_ENABLED;
 			break;
 		default:
-			DRM_ERROR("Invalid PCC GPIO: %u!\n", gpio.shift);
+			DRM_DEBUG("Invalid PCC GPIO: %u!\n", gpio.shift);
 			break;
 		}
 		WREG32_SMC(CNB_PWRMGT_CNTL, tmp);

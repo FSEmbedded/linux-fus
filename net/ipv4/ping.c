@@ -263,10 +263,6 @@ int ping_init_sock(struct sock *sk)
 	if (sk->sk_family == AF_INET6)
 		sk->sk_ipv6only = 1;
 
-#if IS_ENABLED(CONFIG_IPV6)
-	if (sk->sk_family == AF_INET6)
-		inet6_sk(sk)->ipv6only = 1;
-#endif
 	inet_get_ping_group_range_net(net, &low, &high);
 	if (gid_lte(low, group) && gid_lte(group, high))
 		return 0;

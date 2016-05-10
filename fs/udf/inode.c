@@ -1297,7 +1297,6 @@ reread:
 		return -EIO;
 	}
 
-reread:
 	/*
 	 * Set defaults, but the inode is still incomplete!
 	 * Note: get_new_inode() sets the following on a new inode:

@@ -146,8 +146,7 @@ config DA9150_GPADC
 
 config CC10001_ADC
 	tristate "Cosmic Circuits 10001 ADC driver"
-	depends on HAVE_CLK || REGULATOR
-	depends on HAS_IOMEM
+	depends on HAS_IOMEM && HAVE_CLK && REGULATOR
 	select IIO_BUFFER
 	select IIO_TRIGGERED_BUFFER
 	help
@@ -163,6 +162,15 @@ config EXYNOS_ADC
 	  Core support for the ADC block found in the Samsung EXYNOS series
 	  of SoCs for drivers such as the touchscreen and hwmon to use to share
 	  this resource.
+
+config IMX7D_ADC
+	tristate "IMX7D ADC driver"
+	depends on ARCH_MXC || COMPILE_TEST
+	help
+	  Say yes here to build support for IMX7D ADC.
+
+	  This driver can also be built as a module. If so, the module will be
+	  called imx7d_adc.
 
 config LP8788_ADC
 	tristate "LP8788 ADC driver"
@@ -326,24 +334,6 @@ config TWL6030_GPADC
 
 	  This driver can also be built as a module. If so, the module will be
 	  called twl6030-gpadc.
-config VF610_ADC
-	tristate "Freescale vf610 ADC driver"
-	depends on OF
-	help
-	  Say yes here to support for Vybrid board analog-to-digital converter.
-	  Since the IP is used for i.MX6SLX, the driver also support i.MX6SLX.
-
-	  This driver can also be built as a module. If so, the module will be
-	  called vf610_adc.
-
-config AD2802A
-	tristate "2802A ADC driver"
-	depends on OF
-	help
-	  Say yes here to build support for 2802A ADC.
-
-	  This driver can also be built as a module. If so, the module will be
-	  called ad2802a.
 
 config VF610_ADC
 	tristate "Freescale vf610 ADC driver"

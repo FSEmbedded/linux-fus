@@ -169,18 +169,7 @@ static inline int tty_copy_to_user(struct tty_struct *tty,
 {
 	struct n_tty_data *ldata = tty->disc_data;
 
-	tty_audit_add_data(tty, to, n, ldata->icanon);
-	return copy_to_user(to, from, n);
-}
-
-static inline int tty_copy_to_user(struct tty_struct *tty,
-					void __user *to,
-					const void *from,
-					unsigned long n)
-{
-	struct n_tty_data *ldata = tty->disc_data;
-
-	tty_audit_add_data(tty, to, n, ldata->icanon);
+	tty_audit_add_data(tty, from, n, ldata->icanon);
 	return copy_to_user(to, from, n);
 }
 
@@ -354,8 +343,7 @@ static void n_tty_packet_mode_flush(struct tty_struct *tty)
 		spin_lock_irqsave(&tty->ctrl_lock, flags);
 		tty->ctrl_status |= TIOCPKT_FLUSHREAD;
 		spin_unlock_irqrestore(&tty->ctrl_lock, flags);
-		if (waitqueue_active(&tty->link->read_wait))
-			wake_up_interruptible(&tty->link->read_wait);
+		wake_up_interruptible(&tty->link->read_wait);
 	}
 }
 
@@ -1119,18 +1107,28 @@ static void eraser(unsigned char c, struct tty_struct *tty)
  *	Locking: ctrl_lock
  */
 
-static void isig(int sig, struct tty_struct *tty)
+static void __isig(int sig, struct tty_struct *tty)
 {
-	struct n_tty_data *ldata = tty->disc_data;
 	struct pid *tty_pgrp = tty_get_pgrp(tty);
 	if (tty_pgrp) {
 		kill_pgrp(tty_pgrp, sig, 1);
 		put_pid(tty_pgrp);
 	}
+}
 
-	if (!L_NOFLSH(tty)) {
+static void isig(int sig, struct tty_struct *tty)
+{
+	struct n_tty_data *ldata = tty->disc_data;
+
+	if (L_NOFLSH(tty)) {
+		/* signal only */
+		__isig(sig, tty);
+
+	} else { /* signal and flush */
 		up_read(&tty->termios_rwsem);
 		down_write(&tty->termios_rwsem);
+
+		__isig(sig, tty);
 
 		/* clear echo buffer */
 		mutex_lock(&ldata->output_lock);
@@ -1384,8 +1382,7 @@ handle_newline:
 			put_tty_queue(c, ldata);
 			smp_store_release(&ldata->canon_head, ldata->read_head);
 			kill_fasync(&tty->fasync, SIGIO, POLL_IN);
-			if (waitqueue_active(&tty->read_wait))
-				wake_up_interruptible_poll(&tty->read_wait, POLLIN);
+			wake_up_interruptible_poll(&tty->read_wait, POLLIN);
 			return 0;
 		}
 	}
@@ -1671,8 +1668,7 @@ static void __receive_buf(struct tty_struct *tty, const unsigned char *cp,
 
 	if ((read_cnt(ldata) >= ldata->minimum_to_wake) || L_EXTPROC(tty)) {
 		kill_fasync(&tty->fasync, SIGIO, POLL_IN);
-		if (waitqueue_active(&tty->read_wait))
-			wake_up_interruptible_poll(&tty->read_wait, POLLIN);
+		wake_up_interruptible_poll(&tty->read_wait, POLLIN);
 	}
 }
 
@@ -1891,10 +1887,8 @@ static void n_tty_set_termios(struct tty_struct *tty, struct ktermios *old)
 	}
 
 	/* The termios change make the tty ready for I/O */
-	if (waitqueue_active(&tty->write_wait))
-		wake_up_interruptible(&tty->write_wait);
-	if (waitqueue_active(&tty->read_wait))
-		wake_up_interruptible(&tty->read_wait);
+	wake_up_interruptible(&tty->write_wait);
+	wake_up_interruptible(&tty->read_wait);
 }
 
 /**
@@ -2483,11 +2477,6 @@ static unsigned int n_tty_poll(struct tty_struct *tty, struct file *file,
 		mask |= POLLHUP;
 	if (input_available_p(tty, 1))
 		mask |= POLLIN | POLLRDNORM;
-	else if (mask & POLLHUP) {
-		tty_flush_to_ldisc(tty);
-		if (input_available_p(tty, 1))
-			mask |= POLLIN | POLLRDNORM;
-	}
 	if (tty->packet && tty->link->ctrl_status)
 		mask |= POLLPRI | POLLIN | POLLRDNORM;
 	if (tty_hung_up_p(file))

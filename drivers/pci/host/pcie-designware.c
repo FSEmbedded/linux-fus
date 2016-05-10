@@ -196,15 +196,26 @@ void dw_pcie_msi_init(struct pcie_port *pp)
 	dw_pcie_wr_own_conf(pp, PCIE_MSI_ADDR_HI, 4, 0);
 }
 
-static void dw_pcie_msi_clear_irq(struct pcie_port *pp, int irq)
+void dw_pcie_msi_cfg_store(struct pcie_port *pp)
 {
-	unsigned int res, bit, val;
+	int i;
 
-	res = (irq / 32) * 12;
-	bit = irq % 32;
-	dw_pcie_rd_own_conf(pp, PCIE_MSI_INTR0_ENABLE + res, 4, &val);
-	val &= ~(1 << bit);
-	dw_pcie_wr_own_conf(pp, PCIE_MSI_INTR0_ENABLE + res, 4, val);
+	for (i = 0; i < MAX_MSI_CTRLS; i++)
+		dw_pcie_rd_own_conf(pp, PCIE_MSI_INTR0_ENABLE + i * 12, 4,
+				&pp->msi_enable[i]);
+}
+
+void dw_pcie_msi_cfg_restore(struct pcie_port *pp)
+{
+	int i;
+
+	for (i = 0; i < MAX_MSI_CTRLS; i++) {
+		dw_pcie_wr_own_conf(pp, PCIE_MSI_ADDR_LO, 4,
+				virt_to_phys((void *)pp->msi_data));
+		dw_pcie_wr_own_conf(pp, PCIE_MSI_ADDR_HI, 4, 0);
+		dw_pcie_wr_own_conf(pp, PCIE_MSI_INTR0_ENABLE + i * 12, 4,
+				pp->msi_enable[i]);
+	}
 }
 
 static void dw_pcie_msi_clear_irq(struct pcie_port *pp, int irq)
@@ -233,17 +244,6 @@ static void clear_irq_range(struct pcie_port *pp, unsigned int irq_base,
 	}
 
 	bitmap_release_region(pp->msi_irq_in_use, pos, order_base_2(nvec));
-}
-
-static void dw_pcie_msi_set_irq(struct pcie_port *pp, int irq)
-{
-	unsigned int res, bit, val;
-
-	res = (irq / 32) * 12;
-	bit = irq % 32;
-	dw_pcie_rd_own_conf(pp, PCIE_MSI_INTR0_ENABLE + res, 4, &val);
-	val |= 1 << bit;
-	dw_pcie_wr_own_conf(pp, PCIE_MSI_INTR0_ENABLE + res, 4, val);
 }
 
 static void dw_pcie_msi_set_irq(struct pcie_port *pp, int irq)

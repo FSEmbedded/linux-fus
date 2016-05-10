@@ -597,7 +597,6 @@ static int max732x_setup_gpio(struct max732x_chip *chip,
 	gc->ngpio = port;
 	gc->label = chip->client->name;
 	gc->owner = THIS_MODULE;
-	gc->dev = &chip->client->dev;
 
 	return port;
 }
@@ -624,7 +623,6 @@ static int max732x_probe(struct i2c_client *client,
 	struct i2c_client *c;
 	uint16_t addr_a, addr_b;
 	int ret, nr_port;
-	int gpio_base = -1;
 
 	pdata = dev_get_platdata(&client->dev);
 	node = client->dev.of_node;
@@ -634,8 +632,8 @@ static int max732x_probe(struct i2c_client *client,
 
 	if (!pdata) {
 		dev_dbg(&client->dev, "no platform data\n");
-	else
-		gpio_base = pdata->gpio_base;
+		return -EINVAL;
+	}
 
 	chip = devm_kzalloc(&client->dev, sizeof(*chip), GFP_KERNEL);
 	if (chip == NULL)

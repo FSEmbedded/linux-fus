@@ -1,7 +1,7 @@
 /*
  * Fast Ethernet Controller (ENET) PTP driver for MX6x.
  *
- * Copyright (C) 2012-2014 Freescale Semiconductor, Inc.
+ * Copyright (C) 2012 Freescale Semiconductor, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -353,6 +353,7 @@ static int fec_ptp_adjfreq(struct ptp_clock_info *ptp, s32 ppb)
 	tmp = readl(fep->hwp + FEC_ATIME_INC) & FEC_T_INC_MASK;
 	tmp |= corr_ns << FEC_T_INC_CORR_OFFSET;
 	writel(tmp, fep->hwp + FEC_ATIME_INC);
+	corr_period = corr_period > 1 ? corr_period - 1 : corr_period;
 	writel(corr_period, fep->hwp + FEC_ATIME_CORR);
 	/* dummy read to update the timer. */
 	timecounter_read(&fep->tc);
@@ -505,12 +506,6 @@ int fec_ptp_set(struct net_device *ndev, struct ifreq *ifr)
 		break;
 
 	default:
-		/*
-		 * register RXMTRL must be set in order to do V1 packets,
-		 * therefore it is not possible to time stamp both V1 Sync and
-		 * Delay_Req messages and hardware does not support
-		 * timestamping all packets => return error
-		 */
 		fep->hwts_rx_en = 1;
 		config.rx_filter = HWTSTAMP_FILTER_ALL;
 		break;

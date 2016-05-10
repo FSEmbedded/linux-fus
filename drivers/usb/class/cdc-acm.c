@@ -624,7 +624,6 @@ static void acm_port_shutdown(struct tty_port *port)
 	struct urb *urb;
 	struct acm_wb *wb;
 	int i;
-	int pm_err;
 
 	dev_dbg(&acm->control->dev, "%s\n", __func__);
 
@@ -1478,6 +1477,11 @@ skip_countries:
 		goto alloc_fail8;
 	}
 
+	if (quirks & CLEAR_HALT_CONDITIONS) {
+		usb_clear_halt(usb_dev, usb_rcvbulkpipe(usb_dev, epread->bEndpointAddress));
+		usb_clear_halt(usb_dev, usb_sndbulkpipe(usb_dev, epwrite->bEndpointAddress));
+	}
+
 	return 0;
 alloc_fail8:
 	if (acm->country_codes) {
@@ -1755,6 +1759,10 @@ static const struct usb_device_id acm_ids[] = {
 	},
 	{ USB_DEVICE(0x1576, 0x03b1), /* Maretron USB100 */
 	.driver_info = NO_UNION_NORMAL, /* reports zero length descriptor */
+	},
+
+	{ USB_DEVICE(0x2912, 0x0001), /* ATOL FPrint */
+	.driver_info = CLEAR_HALT_CONDITIONS,
 	},
 
 	/* Nokia S60 phones expose two ACM channels. The first is

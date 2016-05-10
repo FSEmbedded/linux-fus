@@ -983,12 +983,15 @@ static int prep_new_page(struct page *page, unsigned int order, gfp_t gfp_flags,
 	set_page_owner(page, order, gfp_flags);
 
 	/*
-	 * page->pfmemalloc is set when ALLOC_NO_WATERMARKS was necessary to
+	 * page is set pfmemalloc when ALLOC_NO_WATERMARKS was necessary to
 	 * allocate the page. The expectation is that the caller is taking
 	 * steps that will free more memory. The caller should avoid the page
 	 * being used for !PFMEMALLOC purposes.
 	 */
-	page->pfmemalloc = !!(alloc_flags & ALLOC_NO_WATERMARKS);
+	if (alloc_flags & ALLOC_NO_WATERMARKS)
+		set_page_pfmemalloc(page);
+	else
+		clear_page_pfmemalloc(page);
 
 	return 0;
 }
@@ -2073,18 +2076,6 @@ static void reset_alloc_batches(struct zone *preferred_zone)
 	} while (zone++ != preferred_zone);
 }
 
-static void reset_alloc_batches(struct zone *preferred_zone)
-{
-	struct zone *zone = preferred_zone->zone_pgdat->node_zones;
-
-	do {
-		mod_zone_page_state(zone, NR_ALLOC_BATCH,
-			high_wmark_pages(zone) - low_wmark_pages(zone) -
-			atomic_long_read(&zone->vm_stat[NR_ALLOC_BATCH]));
-		zone_clear_flag(zone, ZONE_FAIR_DEPLETED);
-	} while (zone++ != preferred_zone);
-}
-
 /*
  * get_page_from_freelist goes through the zonelist trying to allocate
  * a page.
@@ -2393,14 +2384,6 @@ __alloc_pages_may_oom(gfp_t gfp_mask, unsigned int order,
 		schedule_timeout_uninterruptible(1);
 		return NULL;
 	}
-
-	/*
-	 * PM-freezer should be notified that there might be an OOM killer on
-	 * its way to kill and wake somebody up. This is too early and we might
-	 * end up not killing anything but false positives are acceptable.
-	 * See freeze_processes.
-	 */
-	note_oom_kill();
 
 	/*
 	 * Go through the zonelist yet one more time, keep very high watermark

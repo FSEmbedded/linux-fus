@@ -2217,11 +2217,11 @@ static struct rq *finish_task_switch(struct task_struct *prev)
 	 * If a task dies, then it sets TASK_DEAD in tsk->state and calls
 	 * schedule one last time. The schedule call will never return, and
 	 * the scheduled task must drop that reference.
-	 * The test for TASK_DEAD must occur while the runqueue locks are
-	 * still held, otherwise prev could be scheduled on another cpu, die
-	 * there before we look at prev->state, and then the reference would
-	 * be dropped twice.
-	 *		Manfred Spraul <manfred@colorfullife.com>
+	 *
+	 * We must observe prev->state before clearing prev->on_cpu (in
+	 * finish_lock_switch), otherwise a concurrent wakeup can get prev
+	 * running on another CPU and we could rave with its RUNNING -> DEAD
+	 * transition, resulting in a double drop.
 	 */
 	prev_state = prev->state;
 	vtime_task_switch(prev);
@@ -2358,13 +2358,20 @@ unsigned long nr_running(void)
 
 /*
  * Check if only the current task is running on the cpu.
+ *
+ * Caution: this function does not check that the caller has disabled
+ * preemption, thus the result might have a time-of-check-to-time-of-use
+ * race.  The caller is responsible to use it correctly, for example:
+ *
+ * - from a non-preemptable section (of course)
+ *
+ * - from a thread that is bound to a single CPU
+ *
+ * - in a loop with very short iterations (e.g. a polling loop)
  */
 bool single_task_running(void)
 {
-	if (cpu_rq(smp_processor_id())->nr_running == 1)
-		return true;
-	else
-		return false;
+	return raw_rq()->nr_running == 1;
 }
 EXPORT_SYMBOL(single_task_running);
 
@@ -4225,7 +4232,7 @@ SYSCALL_DEFINE0(sched_yield)
 
 int __sched _cond_resched(void)
 {
-	if (should_resched()) {
+	if (should_resched(0)) {
 		preempt_schedule_common();
 		return 1;
 	}
@@ -4243,7 +4250,7 @@ EXPORT_SYMBOL(_cond_resched);
  */
 int __cond_resched_lock(spinlock_t *lock)
 {
-	int resched = should_resched();
+	int resched = should_resched(PREEMPT_LOCK_OFFSET);
 	int ret = 0;
 
 	lockdep_assert_held(lock);
@@ -4265,7 +4272,7 @@ int __sched __cond_resched_softirq(void)
 {
 	BUG_ON(!in_softirq());
 
-	if (should_resched()) {
+	if (should_resched(SOFTIRQ_DISABLE_OFFSET)) {
 		local_bh_enable();
 		preempt_schedule_common();
 		local_bh_disable();
@@ -5328,6 +5335,14 @@ static int sched_cpu_active(struct notifier_block *nfb,
 	case CPU_STARTING:
 		set_cpu_rq_start_time();
 		return NOTIFY_OK;
+	case CPU_ONLINE:
+		/*
+		 * At this point a starting CPU has marked itself as online via
+		 * set_cpu_online(). But it might not yet have marked itself
+		 * as active, which is essential from here on.
+		 *
+		 * Thus, fall-through and help the starting CPU along.
+		 */
 	case CPU_DOWN_FAILED:
 		set_cpu_active((long)hcpu, true);
 		return NOTIFY_OK;
@@ -7806,8 +7821,6 @@ static int sched_dl_global_validate(void)
 	int cpu, ret = 0;
 	unsigned long flags;
 
-	rcu_read_lock();
-
 	/*
 	 * Here we want to check the bandwidth not being set to some
 	 * value smaller than the currently allocated bandwidth in
@@ -7832,8 +7845,6 @@ static int sched_dl_global_validate(void)
 			break;
 	}
 
-	rcu_read_unlock();
-
 	return ret;
 }
 
@@ -7850,7 +7861,6 @@ static void sched_dl_do_global(void)
 	if (global_rt_runtime() != RUNTIME_INF)
 		new_bw = to_ratio(global_rt_period(), global_rt_runtime());
 
-	rcu_read_lock();
 	/*
 	 * FIXME: As above...
 	 */
@@ -7864,7 +7874,6 @@ static void sched_dl_do_global(void)
 
 		rcu_read_unlock_sched();
 	}
-	rcu_read_unlock();
 }
 
 static int sched_rt_global_validate(void)

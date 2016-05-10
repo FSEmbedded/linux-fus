@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Freescale Semiconductor, Inc.
+ * Copyright (C) 2013-2016 Freescale Semiconductor, Inc.
  *
  * The code contained herein is licensed under the GNU General Public
  * License. You may obtain a copy of the GNU General Public License
@@ -28,6 +28,7 @@
 #define ANADIG_ENET_PLL		0xe0
 #define ANADIG_AUDIO_PLL	0xf0
 #define ANADIG_VIDEO_PLL	0x130
+
 #define ANADIG_REG_2P5		0x130
 #define ANADIG_REG_CORE		0x140
 #define ANADIG_ANA_MISC0	0x150
@@ -45,8 +46,14 @@
 #define BM_ANADIG_REG_CORE_REG2			(0x1f << 18)
 #define BP_ANADIG_REG_CORE_REG2			(18)
 #define BM_ANADIG_ANA_MISC0_STOP_MODE_CONFIG	0x1000
+#define BM_ANADIG_ANA_MISC0_V2_STOP_MODE_CONFIG	0x800
+#define BM_ANADIG_ANA_MISC0_V3_STOP_MODE_CONFIG	0xc00
+#define BM_ANADIG_ANA_MISC2_REG1_STEP_TIME	(0x3 << 26)
+#define BP_ANADIG_ANA_MISC2_REG1_STEP_TIME	(26)
 /* Below MISC0_DISCON_HIGH_SNVS is only for i.MX6SL */
 #define BM_ANADIG_ANA_MISC0_DISCON_HIGH_SNVS	0x2000
+/* Since i.MX6SX, DISCON_HIGH_SNVS is changed to bit 12 */
+#define BM_ANADIG_ANA_MISC0_V2_DISCON_HIGH_SNVS	0x1000
 #define BM_ANADIG_USB_CHRG_DETECT_CHK_CHRG_B	0x80000
 #define BM_ANADIG_USB_CHRG_DETECT_EN_B		0x100000
 
@@ -88,33 +95,94 @@ static inline void imx_anatop_enable_2p5_pulldown(bool enable)
 
 static inline void imx_anatop_disconnect_high_snvs(bool enable)
 {
-	regmap_write(anatop, ANADIG_ANA_MISC0 + (enable ? REG_SET : REG_CLR),
-		BM_ANADIG_ANA_MISC0_DISCON_HIGH_SNVS);
+	if (cpu_is_imx6sx() || cpu_is_imx6ul())
+		regmap_write(anatop, ANADIG_ANA_MISC0 +
+			(enable ? REG_SET : REG_CLR),
+			BM_ANADIG_ANA_MISC0_V2_DISCON_HIGH_SNVS);
+	else
+		regmap_write(anatop, ANADIG_ANA_MISC0 +
+			(enable ? REG_SET : REG_CLR),
+			BM_ANADIG_ANA_MISC0_DISCON_HIGH_SNVS);
+}
+
+static void imx_anatop_disable_pu(bool off)
+{
+	u32  val, soc, delay;
+	if (off) {
+		regmap_read(anatop, ANADIG_REG_CORE, &val);
+		val &= ~BM_ANADIG_REG_CORE_REG1;
+		regmap_write(anatop, ANADIG_REG_CORE, val);
+	} else {
+		/* track vddpu with vddsoc */
+		regmap_read(anatop, ANADIG_REG_CORE, &val);
+		soc = val & BM_ANADIG_REG_CORE_REG2;
+		val &= ~BM_ANADIG_REG_CORE_REG1;
+		val |= soc >> 9;
+		regmap_write(anatop, ANADIG_REG_CORE, val);
+		/* wait PU LDO ramp */
+		regmap_read(anatop, ANADIG_ANA_MISC2, &val);
+		val &= BM_ANADIG_ANA_MISC2_REG1_STEP_TIME;
+		val >>= BP_ANADIG_ANA_MISC2_REG1_STEP_TIME;
+		delay = (soc >> BP_ANADIG_REG_CORE_REG2) *
+			(LDO_RAMP_UP_UNIT_IN_CYCLES << val) /
+			LDO_RAMP_UP_FREQ_IN_MHZ + 1;
+		udelay(delay);
+	}
 }
 
 void imx_anatop_pre_suspend(void)
 {
-	if (imx_mmdc_get_ddr_type() == IMX_DDR_TYPE_LPDDR2)
+	if (cpu_is_imx7d()) {
+		/* PLL and PFDs overwrite set */
+		regmap_write(anatop, ANADIG_ARM_PLL + REG_SET, 1 << 20);
+		regmap_write(anatop, ANADIG_DDR_PLL + REG_SET, 1 << 19);
+		regmap_write(anatop, ANADIG_SYS_PLL + REG_SET, 0x1ff << 17);
+		regmap_write(anatop, ANADIG_ENET_PLL + REG_SET, 1 << 13);
+		regmap_write(anatop, ANADIG_AUDIO_PLL + REG_SET, 1 << 24);
+		regmap_write(anatop, ANADIG_VIDEO_PLL + REG_SET, 1 << 24);
+		return;
+	}
+
+	if (cpu_is_imx6q() && imx_get_soc_revision() == IMX_CHIP_REVISION_2_0)
+		imx_anatop_disable_pu(true);
+
+	if ((imx_mmdc_get_ddr_type() == IMX_DDR_TYPE_LPDDR2) &&
+		!imx_gpc_usb_wakeup_enabled())
 		imx_anatop_enable_2p5_pulldown(true);
 	else
 		imx_anatop_enable_weak2p5(true);
 
 	imx_anatop_enable_fet_odrive(true);
 
-	if (cpu_is_imx6sl())
+	if (cpu_is_imx6sl() || cpu_is_imx6sx() || cpu_is_imx6ul())
 		imx_anatop_disconnect_high_snvs(true);
 }
 
 void imx_anatop_post_resume(void)
 {
-	if (imx_mmdc_get_ddr_type() == IMX_DDR_TYPE_LPDDR2)
+	if (cpu_is_imx7d()) {
+		/* PLL and PFDs overwrite clear */
+		regmap_write(anatop, ANADIG_ARM_PLL + REG_CLR, 1 << 20);
+		regmap_write(anatop, ANADIG_DDR_PLL + REG_CLR, 1 << 19);
+		regmap_write(anatop, ANADIG_SYS_PLL + REG_CLR, 0x1ff << 17);
+		regmap_write(anatop, ANADIG_ENET_PLL + REG_CLR, 1 << 13);
+		regmap_write(anatop, ANADIG_AUDIO_PLL + REG_CLR, 1 << 24);
+		regmap_write(anatop, ANADIG_VIDEO_PLL + REG_CLR, 1 << 24);
+		return;
+	}
+
+	if (cpu_is_imx6q() && imx_get_soc_revision() == IMX_CHIP_REVISION_2_0)
+		imx_anatop_disable_pu(false);
+
+	if ((imx_mmdc_get_ddr_type() == IMX_DDR_TYPE_LPDDR2) &&
+		!imx_gpc_usb_wakeup_enabled())
 		imx_anatop_enable_2p5_pulldown(false);
 	else
 		imx_anatop_enable_weak2p5(false);
 
 	imx_anatop_enable_fet_odrive(false);
 
-	if (cpu_is_imx6sl())
+	if (cpu_is_imx6sl() || cpu_is_imx6sx() || cpu_is_imx6ul())
 		imx_anatop_disconnect_high_snvs(false);
 
 }
@@ -174,7 +242,14 @@ void __init imx_init_revision_from_anatop(void)
 		revision = IMX_CHIP_REVISION_1_5;
 		break;
 	default:
-		revision = IMX_CHIP_REVISION_UNKNOWN;
+		/*
+		 * Fail back to return raw register value instead of 0xff.
+		 * It will be easy know version information in SOC if it
+		 * can't recongized by known version. And some chip like
+		 * i.MX7D soc digprog value match linux version format,
+		 * needn't map again and direct use register value.
+		 */
+		revision = digprog & 0xff;
 	}
 
 	mxc_set_cpu_type(digprog >> 16 & 0xff);

@@ -72,7 +72,7 @@ void ipv6_select_ident(struct net *net, struct frag_hdr *fhdr,
 				 &rt->rt6i_src.addr);
 	fhdr->identification = htonl(id);
 }
-EXPORT_SYMBOL_GPL(ipv6_proxy_select_ident);
+EXPORT_SYMBOL(ipv6_select_ident);
 
 int ip6_find_1stfragopt(struct sk_buff *skb, u8 **nexthdr)
 {

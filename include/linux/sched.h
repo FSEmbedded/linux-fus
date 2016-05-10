@@ -63,10 +63,6 @@ struct sched_param {
 
 #define SCHED_ATTR_SIZE_VER0	48	/* sizeof first published struct */
 
-#define VMACACHE_BITS 2
-#define VMACACHE_SIZE (1U << VMACACHE_BITS)
-#define VMACACHE_MASK (VMACACHE_SIZE - 1)
-
 /*
  * Extended scheduling parameters data structure.
  *
@@ -2837,12 +2833,6 @@ extern int _cond_resched(void);
 })
 
 extern int __cond_resched_lock(spinlock_t *lock);
-
-#ifdef CONFIG_PREEMPT_COUNT
-#define PREEMPT_LOCK_OFFSET	PREEMPT_OFFSET
-#else
-#define PREEMPT_LOCK_OFFSET	0
-#endif
 
 #define cond_resched_lock(lock) ({				\
 	___might_sleep(__FILE__, __LINE__, PREEMPT_LOCK_OFFSET);\

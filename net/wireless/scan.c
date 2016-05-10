@@ -292,8 +292,6 @@ void cfg80211_sched_scan_stopped_rtnl(struct wiphy *wiphy)
 
 	ASSERT_RTNL();
 
-	ASSERT_RTNL();
-
 	trace_cfg80211_sched_scan_stopped(wiphy);
 
 	__cfg80211_stop_sched_scan(rdev, true);

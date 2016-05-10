@@ -279,7 +279,7 @@ static struct flexcan_devtype_data fsl_p1010_devtype_data = {
 };
 static struct flexcan_devtype_data fsl_imx28_devtype_data;
 static struct flexcan_devtype_data fsl_imx6q_devtype_data = {
-	.features = FLEXCAN_HAS_V10_FEATURES | FLEXCAN_HAS_ERR005829,
+	.features = FLEXCAN_HAS_V10_FEATURES,
 };
 static struct flexcan_devtype_data fsl_vf610_devtype_data = {
 	.features = FLEXCAN_HAS_V10_FEATURES | FLEXCAN_HAS_MECR_FEATURES,
@@ -442,7 +442,7 @@ static int flexcan_chip_unfreeze(struct flexcan_priv *priv)
 	flexcan_write(reg, &regs->mcr);
 
 	while (timeout-- && (flexcan_read(&regs->mcr) & FLEXCAN_MCR_FRZ_ACK))
-		udelay(10);
+		udelay(20);
 
 	if (flexcan_read(&regs->mcr) & FLEXCAN_MCR_FRZ_ACK)
 		return -ETIMEDOUT;
@@ -1265,12 +1265,6 @@ static int flexcan_probe(struct platform_device *pdev)
 	else if (IS_ERR(reg_xceiver))
 		reg_xceiver = NULL;
 
-	reg_xceiver = devm_regulator_get(&pdev->dev, "xceiver");
-	if (PTR_ERR(reg_xceiver) == -EPROBE_DEFER)
-		return -EPROBE_DEFER;
-	else if (IS_ERR(reg_xceiver))
-		reg_xceiver = NULL;
-
 	if (pdev->dev.of_node)
 		of_property_read_u32(pdev->dev.of_node,
 						"clock-frequency", &clock_freq);
@@ -1382,7 +1376,6 @@ static int __maybe_unused flexcan_suspend(struct device *device)
 {
 	struct net_device *dev = dev_get_drvdata(device);
 	struct flexcan_priv *priv = netdev_priv(dev);
-	int err = 0;
 
 	if (netif_running(dev)) {
 		netif_stop_queue(dev);
@@ -1395,12 +1388,14 @@ static int __maybe_unused flexcan_suspend(struct device *device)
 			enable_irq_wake(dev->irq);
 			flexcan_enter_stop_mode(priv);
 		} else {
-			err = flexcan_chip_disable(priv);
+			flexcan_chip_stop(dev);
 		}
 	}
 	priv->can.state = CAN_STATE_SLEEPING;
 
-	return err;
+	pinctrl_pm_select_sleep_state(device);
+
+	return 0;
 }
 
 static int __maybe_unused flexcan_resume(struct device *device)
@@ -1408,6 +1403,8 @@ static int __maybe_unused flexcan_resume(struct device *device)
 	struct net_device *dev = dev_get_drvdata(device);
 	struct flexcan_priv *priv = netdev_priv(dev);
 	int err = 0;
+
+	pinctrl_pm_select_default_state(device);
 
 	priv->can.state = CAN_STATE_ERROR_ACTIVE;
 	if (netif_running(dev)) {
@@ -1417,9 +1414,9 @@ static int __maybe_unused flexcan_resume(struct device *device)
 		if (device_may_wakeup(device)) {
 			disable_irq_wake(dev->irq);
 			flexcan_exit_stop_mode(priv);
-		} else {
-			err = flexcan_chip_enable(priv);
 		}
+
+		err = flexcan_chip_start(dev);
 	}
 
 	return err;

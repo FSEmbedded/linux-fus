@@ -177,11 +177,6 @@ struct timeval;
 extern void swsusp_show_speed(ktime_t, ktime_t, unsigned int, char *);
 
 #ifdef CONFIG_SUSPEND
-struct pm_sleep_state {
-	const char *label;
-	suspend_state_t state;
-};
-
 /* kernel/power/suspend.c */
 extern const char *pm_labels[];
 extern const char *pm_states[];

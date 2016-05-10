@@ -17,7 +17,6 @@
 #include <linux/fs.h>
 #include <linux/uio.h>
 
-#include <net/ipv6.h>
 #include <net/net_namespace.h>
 #include <net/rtnetlink.h>
 #include <net/sock.h>
@@ -83,7 +82,7 @@ static const struct proto_ops macvtap_socket_ops;
 #define TUN_OFFLOADS (NETIF_F_HW_CSUM | NETIF_F_TSO_ECN | NETIF_F_TSO | \
 		      NETIF_F_TSO6 | NETIF_F_UFO)
 #define RX_OFFLOADS (NETIF_F_GRO | NETIF_F_LRO)
-#define TAP_FEATURES (NETIF_F_GSO | NETIF_F_SG)
+#define TAP_FEATURES (NETIF_F_GSO | NETIF_F_SG | NETIF_F_FRAGLIST)
 
 static struct macvlan_dev *macvtap_get_vlan_rcu(const struct net_device *dev)
 {
@@ -587,8 +586,6 @@ static int macvtap_skb_from_vnet_hdr(struct macvtap_queue *q,
 			break;
 		case VIRTIO_NET_HDR_GSO_UDP:
 			gso_type = SKB_GSO_UDP;
-			if (skb->protocol == htons(ETH_P_IPV6))
-				ipv6_proxy_select_ident(skb);
 			break;
 		default:
 			return -EINVAL;
@@ -1057,10 +1054,10 @@ static long macvtap_ioctl(struct file *file, unsigned int cmd,
 		return 0;
 
 	case TUNSETSNDBUF:
-		if (get_user(u, up))
+		if (get_user(s, sp))
 			return -EFAULT;
 
-		q->sk.sk_sndbuf = u;
+		q->sk.sk_sndbuf = s;
 		return 0;
 
 	case TUNGETVNETHDRSZ:

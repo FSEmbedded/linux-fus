@@ -447,8 +447,6 @@ static enum bp_state decrease_reservation(unsigned long nr_pages, gfp_t gfp)
 #ifdef CONFIG_XEN_HAVE_PVMMU
 		if (!xen_feature(XENFEAT_auto_translated_physmap)) {
 			if (!PageHighMem(page)) {
-				struct page *scratch_page = get_balloon_scratch_page();
-
 				ret = HYPERVISOR_update_va_mapping(
 						(unsigned long)__va(pfn << PAGE_SHIFT),
 						__pte_ma(0), 0);

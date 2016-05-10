@@ -60,7 +60,6 @@ static int imx_boot_secondary(unsigned int cpu, struct task_struct *idle)
 static void __init imx_smp_init_cpus(void)
 {
 	int i, ncores;
-	u32 me = smp_processor_id();
 	unsigned long arch_type;
 
 	asm volatile(
@@ -81,34 +80,21 @@ static void __init imx_smp_init_cpus(void)
 		ncores = scu_get_core_count(imx_scu_base);
 	}
 
-	if (setup_max_cpus < ncores)
-		ncores = (setup_max_cpus) ? setup_max_cpus : 1;
-
 	for (i = ncores; i < NR_CPUS; i++)
 		set_cpu_possible(i, false);
-
-	if (!arm_is_ca7()) {
-		/* Set the SCU CPU Power status for each inactive core. */
-		for (i = 0; i < NR_CPUS;  i++) {
-			if (i != me)
-				__raw_writeb(SCU_PM_POWEROFF,
-					imx_scu_base + 0x08 + i);
-		}
-	}
 }
 
 void imx_smp_prepare(void)
 {
+	if (arm_is_ca7())
+		return;
 	scu_enable(imx_scu_base);
-	/* Need to enable SCU standby for entering WAIT mode */
-	imx_scu_standby_enable();
 }
 
 static void __init imx_smp_prepare_cpus(unsigned int max_cpus)
 {
 	if (arm_is_ca7())
 		return;
-
 	imx_smp_prepare();
 
 	/*
@@ -120,8 +106,7 @@ static void __init imx_smp_prepare_cpus(unsigned int max_cpus)
 	 * secondary cores when booting them.
 	 */
 	asm("mrc p15, 0, %0, c15, c0, 1" : "=r" (g_diag_reg) : : "cc");
-	__cpuc_flush_dcache_area(&g_diag_reg, sizeof(g_diag_reg));
-	outer_clean_range(__pa(&g_diag_reg), __pa(&g_diag_reg + 1));
+	sync_cache_w(&g_diag_reg);
 }
 
 struct smp_operations  imx_smp_ops __initdata = {

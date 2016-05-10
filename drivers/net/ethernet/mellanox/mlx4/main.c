@@ -3454,7 +3454,7 @@ static void mlx4_unload_one(struct pci_dev *pdev)
 	priv->removed = 1;
 }
 
-static void __mlx4_remove_one(struct pci_dev *pdev)
+static void mlx4_remove_one(struct pci_dev *pdev)
 {
 	struct mlx4_dev_persistent *persist = pci_get_drvdata(pdev);
 	struct mlx4_dev  *dev  = persist->dev;

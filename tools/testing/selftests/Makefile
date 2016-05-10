@@ -9,7 +9,6 @@ TARGETS += memfd
 TARGETS += memory-hotplug
 TARGETS += mount
 TARGETS += mqueue
-TARGETS += mount
 TARGETS += net
 TARGETS += powerpc
 TARGETS += ptrace
@@ -28,7 +27,7 @@ TARGETS_HOTPLUG += memory-hotplug
 # Makefile to avoid test build failures when test
 # Makefile doesn't have explicit build rules.
 ifeq (1,$(MAKELEVEL))
-undefine LDFLAGS
+override LDFLAGS =
 override MAKEFLAGS =
 endif
 

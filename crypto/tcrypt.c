@@ -47,6 +47,8 @@
 #define ENCRYPT 1
 #define DECRYPT 0
 
+#define MAX_DIGEST_SIZE		64
+
 /*
  * return a string with the driver name
  */
@@ -930,24 +932,22 @@ static void test_ahash_speed(const char *algo, unsigned int secs,
 	struct tcrypt_result tresult;
 	struct ahash_request *req;
 	struct crypto_ahash *tfm;
-	const int output_size = 1024;
-	char *output = kmalloc(output_size, GFP_KERNEL);
+	char *output;
 	int i, ret;
 
 	tfm = crypto_alloc_ahash(algo, 0, 0);
 	if (IS_ERR(tfm)) {
 		pr_err("failed to load transform for %s: %ld\n",
 		       algo, PTR_ERR(tfm));
-		kfree(output);
 		return;
 	}
 
 	printk(KERN_INFO "\ntesting speed of async %s (%s)\n", algo,
 			get_driver_name(crypto_ahash, tfm));
 
-	if (crypto_ahash_digestsize(tfm) > sizeof(output)) {
-		pr_err("digestsize(%u) > outputbuffer(%zu)\n",
-		       crypto_ahash_digestsize(tfm), output_size);
+	if (crypto_ahash_digestsize(tfm) > MAX_DIGEST_SIZE) {
+		pr_err("digestsize(%u) > %d\n", crypto_ahash_digestsize(tfm),
+		       MAX_DIGEST_SIZE);
 		goto out;
 	}
 
@@ -961,6 +961,10 @@ static void test_ahash_speed(const char *algo, unsigned int secs,
 	init_completion(&tresult.completion);
 	ahash_request_set_callback(req, CRYPTO_TFM_REQ_MAY_BACKLOG,
 				   tcrypt_complete, &tresult);
+
+	output = kmalloc(MAX_DIGEST_SIZE, GFP_KERNEL);
+	if (!output)
+		goto out_nomem;
 
 	for (i = 0; speed[i].blen != 0; i++) {
 		if (speed[i].blen > TVMEMSIZE * PAGE_SIZE) {
@@ -988,10 +992,12 @@ static void test_ahash_speed(const char *algo, unsigned int secs,
 		}
 	}
 
+	kfree(output);
+
+out_nomem:
 	ahash_request_free(req);
 
 out:
-	kfree(output);
 	crypto_free_ahash(tfm);
 }
 

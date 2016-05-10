@@ -53,7 +53,6 @@
 #include "error.h"
 #include "sg_sw_sec4.h"
 #include "key_gen.h"
-#include <linux/string.h>
 
 /*
  * crypto alg
@@ -1702,7 +1701,6 @@ static int aead_setkey(struct crypto_aead *aead,
 		dev_err(jrdev, "unable to map key i/o memory\n");
 		return -ENOMEM;
 	}
-
 #ifdef DEBUG
 	print_hex_dump(KERN_ERR, "ctx.key@"__stringify(__LINE__)": ",
 		       DUMP_PREFIX_ADDRESS, 16, 4, ctx->key,
@@ -2086,6 +2084,8 @@ static int ablkcipher_setkey(struct crypto_ablkcipher *ablkcipher,
 		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
 		       desc_bytes(desc), 1);
 #endif
+	dma_sync_single_for_device(jrdev, ctx->sh_desc_dec_dma,
+				   desc_bytes(desc), DMA_TO_DEVICE);
 
 	return ret;
 }
@@ -2758,13 +2758,16 @@ static struct aead_edesc *aead_edesc_alloc(struct aead_request *req,
 		sg_to_sec4_sg_last(req->dst, dst_nents,
 				   edesc->sec4_sg + sec4_sg_index, 0);
 	}
+
 	edesc->sec4_sg_dma = dma_map_single(jrdev, edesc->sec4_sg,
 					    sec4_sg_bytes, DMA_TO_DEVICE);
 	if (dma_mapping_error(jrdev, edesc->sec4_sg_dma)) {
-		dev_err(jrdev, "unable to map S/G table\n");
+	dev_err(jrdev, "unable to map S/G table\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
+	dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma, sec4_sg_bytes,
+				   DMA_TO_DEVICE);
 	return edesc;
 }
 
@@ -3007,6 +3010,9 @@ static struct aead_edesc *aead_giv_edesc_alloc(struct aead_givcrypt_request
 		sg_to_sec4_sg_last(req->dst, dst_nents,
 				   edesc->sec4_sg + sec4_sg_index, 0);
 	}
+	dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma, sec4_sg_bytes,
+				   DMA_TO_DEVICE);
+
 	edesc->sec4_sg_dma = dma_map_single(jrdev, edesc->sec4_sg,
 					    sec4_sg_bytes, DMA_TO_DEVICE);
 	if (dma_mapping_error(jrdev, edesc->sec4_sg_dma)) {
@@ -3109,6 +3115,7 @@ static struct ablkcipher_edesc *ablkcipher_edesc_alloc(struct ablkcipher_request
 		dev_err(jrdev, "unable to map IV\n");
 		return ERR_PTR(-ENOMEM);
 	}
+	dma_sync_single_for_device(jrdev, iv_dma, ivsize, DMA_TO_DEVICE);
 
 	/*
 	 * Check if iv can be contiguous with source and destination.
@@ -3152,6 +3159,7 @@ static struct ablkcipher_edesc *ablkcipher_edesc_alloc(struct ablkcipher_request
 
 	edesc->sec4_sg_dma = dma_map_single(jrdev, edesc->sec4_sg,
 					    sec4_sg_bytes, DMA_TO_DEVICE);
+
 	if (dma_mapping_error(jrdev, edesc->sec4_sg_dma)) {
 		dev_err(jrdev, "unable to map S/G table\n");
 		return ERR_PTR(-ENOMEM);
@@ -3887,6 +3895,54 @@ static struct caam_alg_template driver_algs[] = {
 		.alg_op = OP_ALG_ALGSEL_SHA512 | OP_ALG_AAI_HMAC,
 	},
 	{
+		.name = "ecb(des)",
+		.driver_name = "ecb-des-caam",
+		.blocksize = DES_BLOCK_SIZE,
+		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
+		.template_ablkcipher = {
+			.setkey = ablkcipher_setkey,
+			.encrypt = ablkcipher_encrypt,
+			.decrypt = ablkcipher_decrypt,
+			.geniv = "<built-in>",
+			.min_keysize = DES_KEY_SIZE,
+			.max_keysize = DES_KEY_SIZE,
+			.ivsize = DES_BLOCK_SIZE,
+			},
+		.class1_alg_type = OP_ALG_ALGSEL_DES | OP_ALG_AAI_ECB,
+	},
+	{
+		.name = "ecb(arc4)",
+		.driver_name = "ecb-arc4-caam",
+		.blocksize = ARC4_BLOCK_SIZE,
+		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
+		.template_ablkcipher = {
+			.setkey = ablkcipher_setkey,
+			.encrypt = ablkcipher_encrypt,
+			.decrypt = ablkcipher_decrypt,
+			.geniv = "eseqiv",
+			.min_keysize = ARC4_MIN_KEY_SIZE,
+			.max_keysize = ARC4_MAX_KEY_SIZE,
+			.ivsize = ARC4_BLOCK_SIZE,
+		},
+		.class1_alg_type = OP_ALG_ALGSEL_ARC4 | OP_ALG_AAI_ECB
+	},
+	{
+		.name = "ecb(aes)",
+		.driver_name = "ecb-aes-caam",
+		.blocksize = AES_BLOCK_SIZE,
+		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
+		.template_ablkcipher = {
+			.setkey = ablkcipher_setkey,
+			.encrypt = ablkcipher_encrypt,
+			.decrypt = ablkcipher_decrypt,
+			.geniv = "eseqiv",
+			.min_keysize = AES_MIN_KEY_SIZE,
+			.max_keysize = AES_MAX_KEY_SIZE,
+			.ivsize = AES_BLOCK_SIZE,
+			},
+		.class1_alg_type = OP_ALG_ALGSEL_AES | OP_ALG_AAI_ECB,
+	},
+	{
 		.name = "authenc(hmac(md5),rfc3686(ctr(aes)))",
 		.driver_name = "authenc-hmac-md5-rfc3686-ctr-aes-caam",
 		.blocksize = 1,
@@ -4057,70 +4113,6 @@ static struct caam_alg_template driver_algs[] = {
 		.class1_alg_type = OP_ALG_ALGSEL_AES | OP_ALG_AAI_GCM,
 	},
 	/* ablkcipher descriptor */
-	{
-		.name = "ecb(des)",
-		.driver_name = "ecb-des-caam",
-		.blocksize = DES_BLOCK_SIZE,
-		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
-		.template_ablkcipher = {
-			.setkey = ablkcipher_setkey,
-			.encrypt = ablkcipher_encrypt,
-			.decrypt = ablkcipher_decrypt,
-			.geniv = "eseqiv",
-			.min_keysize = DES_KEY_SIZE,
-			.max_keysize = DES_KEY_SIZE,
-			.ivsize = DES_BLOCK_SIZE,
-			},
-		.class1_alg_type = OP_ALG_ALGSEL_DES | OP_ALG_AAI_ECB,
-	},
-	{
-		.name = "ecb(arc4)",
-		.driver_name = "ecb-arc4-caam",
-		.blocksize = ARC4_BLOCK_SIZE,
-		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
-		.template_ablkcipher = {
-			.setkey = ablkcipher_setkey,
-			.encrypt = ablkcipher_encrypt,
-			.decrypt = ablkcipher_decrypt,
-			.geniv = "eseqiv",
-			.min_keysize = ARC4_MIN_KEY_SIZE,
-			.max_keysize = ARC4_MAX_KEY_SIZE,
-			.ivsize = ARC4_BLOCK_SIZE,
-		},
-		.class1_alg_type = OP_ALG_ALGSEL_ARC4 | OP_ALG_AAI_ECB
-	},
-	{
-		.name = "ecb(aes)",
-		.driver_name = "ecb-aes-caam",
-		.blocksize = AES_BLOCK_SIZE,
-		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
-		.template_ablkcipher = {
-			.setkey = ablkcipher_setkey,
-			.encrypt = ablkcipher_encrypt,
-			.decrypt = ablkcipher_decrypt,
-			.geniv = "eseqiv",
-			.min_keysize = AES_MIN_KEY_SIZE,
-			.max_keysize = AES_MAX_KEY_SIZE,
-			.ivsize = AES_BLOCK_SIZE,
-			},
-		.class1_alg_type = OP_ALG_ALGSEL_AES | OP_ALG_AAI_ECB,
-	},
-	{
-		.name = "ctr(aes)",
-		.driver_name = "ctr-aes-caam",
-		.blocksize = AES_BLOCK_SIZE,
-		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
-		.template_ablkcipher = {
-			.setkey = ablkcipher_setkey,
-			.encrypt = ablkcipher_encrypt,
-			.decrypt = ablkcipher_decrypt,
-			.geniv = "eseqiv",
-			.min_keysize = AES_MIN_KEY_SIZE,
-			.max_keysize = AES_MAX_KEY_SIZE,
-			.ivsize = AES_BLOCK_SIZE,
-			},
-		.class1_alg_type = OP_ALG_ALGSEL_AES | OP_ALG_AAI_CTR_MOD128,
-	},
 	{
 		.name = "cbc(aes)",
 		.driver_name = "cbc-aes-caam",
@@ -4352,8 +4344,10 @@ static int __init caam_algapi_init(void)
 	struct device_node *dev_node;
 	struct platform_device *pdev;
 	struct device *ctrldev;
-	void *priv;
-	int i = 0, err = 0;
+	struct caam_drv_private *priv;
+	int i = 0, err = 0, md_limit = 0;
+	int des_inst, aes_inst, md_inst;
+	u64 cha_inst;
 
 	dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
 	if (!dev_node) {
@@ -4370,15 +4364,15 @@ static int __init caam_algapi_init(void)
 
 	ctrldev = &pdev->dev;
 	priv = dev_get_drvdata(ctrldev);
-	of_node_put(dev_node);
 
 	/*
 	 * If priv is NULL, it's probably because the caam driver wasn't
 	 * properly initialized (e.g. RNG4 init failed). Thus, bail out here.
 	 */
-	if (!priv)
+	if (!priv) {
+		of_node_put(dev_node);
 		return -ENODEV;
-
+	}
 
 	INIT_LIST_HEAD(&alg_list);
 
@@ -4387,14 +4381,14 @@ static int __init caam_algapi_init(void)
 	 * first, detect presence of DES, AES, and MD blocks. If MD present,
 	 * determine limit of supported digest size
 	 */
-	cha_inst = rd_reg64(&priv->ctrl->perfmon.cha_num);
-	des_inst = (cha_inst & CHA_ID_DES_MASK) >> CHA_ID_DES_SHIFT;
-	aes_inst = (cha_inst & CHA_ID_AES_MASK) >> CHA_ID_AES_SHIFT;
-	md_inst = (cha_inst & CHA_ID_MD_MASK) >> CHA_ID_MD_SHIFT;
+	cha_inst = rd_reg32(&priv->ctrl->perfmon.cha_num_ls);
+	des_inst = (cha_inst & CHA_ID_LS_DES_MASK) >> CHA_ID_LS_DES_SHIFT;
+	aes_inst = (cha_inst & CHA_ID_LS_AES_MASK) >> CHA_ID_LS_AES_SHIFT;
+	md_inst = (cha_inst & CHA_ID_LS_MD_MASK) >> CHA_ID_LS_MD_SHIFT;
 	if (md_inst) {
 		md_limit = SHA512_DIGEST_SIZE;
-		if ((rd_reg64(&priv->ctrl->perfmon.cha_id) & CHA_ID_MD_MASK)
-		     == CHA_ID_MD_LP256) /* LP256 limits digest size */
+		if ((rd_reg32(&priv->ctrl->perfmon.cha_id_ls) & CHA_ID_LS_MD_MASK)
+		     == CHA_ID_LS_MD_LP256) /* LP256 limits digest size */
 			md_limit = SHA256_DIGEST_SIZE;
 	}
 

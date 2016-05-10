@@ -1499,9 +1499,9 @@ static void error(struct mddev *mddev, struct md_rdev *rdev)
 	if (test_and_clear_bit(In_sync, &rdev->flags)) {
 		mddev->degraded++;
 		set_bit(Faulty, &rdev->flags);
-		spin_unlock_irqrestore(&conf->device_lock, flags);
 	} else
 		set_bit(Faulty, &rdev->flags);
+	spin_unlock_irqrestore(&conf->device_lock, flags);
 	/*
 	 * if recovery is running, make sure it aborts.
 	 */
@@ -2248,7 +2248,7 @@ static int narrow_write_error(struct r1bio *r1_bio, int i)
 		bio_trim(wbio, sector - r1_bio->sector, sectors);
 		wbio->bi_iter.bi_sector += rdev->data_offset;
 		wbio->bi_bdev = rdev->bdev;
-		if (submit_bio_wait(WRITE, wbio) == 0)
+		if (submit_bio_wait(WRITE, wbio) < 0)
 			/* failure! */
 			ok = rdev_set_badblocks(rdev, sector,
 						sectors, 0)

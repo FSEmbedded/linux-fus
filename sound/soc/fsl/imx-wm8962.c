@@ -92,7 +92,7 @@ static struct snd_soc_jack_gpio imx_mic_jack_gpio = {
 	.invert = 0,
 };
 
-static int hpjack_status_check(void)
+static int hpjack_status_check(void *data)
 {
 	struct imx_priv *priv = &card_priv;
 	struct platform_device *pdev = priv->pdev;
@@ -131,7 +131,7 @@ static int hpjack_status_check(void)
 	return ret;
 }
 
-static int micjack_status_check(void)
+static int micjack_status_check(void *data)
 {
 	struct imx_priv *priv = &card_priv;
 	struct platform_device *pdev = priv->pdev;
@@ -404,10 +404,11 @@ static int imx_wm8962_gpio_init(struct snd_soc_card *card)
 	if (gpio_is_valid(priv->hp_gpio)) {
 		imx_hp_jack_gpio.gpio = priv->hp_gpio;
 		imx_hp_jack_gpio.jack_status_check = hpjack_status_check;
+	
+		snd_soc_card_jack_new(card, "Headphone Jack",
+				SND_JACK_HEADPHONE, &imx_hp_jack,
+				imx_hp_jack_pins, ARRAY_SIZE(imx_hp_jack_pins));
 
-		snd_soc_jack_new(codec, "Headphone Jack", SND_JACK_HEADPHONE, &imx_hp_jack);
-		snd_soc_jack_add_pins(&imx_hp_jack,
-				ARRAY_SIZE(imx_hp_jack_pins), imx_hp_jack_pins);
 		snd_soc_jack_add_gpios(&imx_hp_jack, 1, &imx_hp_jack_gpio);
 	}
 
@@ -415,9 +416,10 @@ static int imx_wm8962_gpio_init(struct snd_soc_card *card)
 		imx_mic_jack_gpio.gpio = priv->mic_gpio;
 		imx_mic_jack_gpio.jack_status_check = micjack_status_check;
 
-		snd_soc_jack_new(codec, "AMIC", SND_JACK_MICROPHONE, &imx_mic_jack);
-		snd_soc_jack_add_pins(&imx_mic_jack,
-				ARRAY_SIZE(imx_mic_jack_pins), imx_mic_jack_pins);
+		snd_soc_card_jack_new(card, "AMIC",
+				SND_JACK_MICROPHONE, &imx_mic_jack,
+				imx_mic_jack_pins, ARRAY_SIZE(imx_mic_jack_pins)); 
+
 		snd_soc_jack_add_gpios(&imx_mic_jack, 1, &imx_mic_jack_gpio);
 	} else if (priv->amic_mono || priv->dmic_mono) {
 		/*
@@ -515,7 +517,7 @@ static int be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 static int imx_wm8962_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
-	struct device_node *cpu_np, *codec_np;
+	struct device_node *cpu_np, *codec_np = NULL;
 	struct platform_device *cpu_pdev;
 	struct imx_priv *priv = &card_priv;
 	struct i2c_client *codec_dev;
@@ -543,12 +545,12 @@ static int imx_wm8962_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(np, "mux-int-port", &int_port);
 	if (ret) {
 		dev_err(&pdev->dev, "mux-int-port missing or invalid\n");
-		return ret;
+		goto fail;
 	}
 	ret = of_property_read_u32(np, "mux-ext-port", &ext_port);
 	if (ret) {
 		dev_err(&pdev->dev, "mux-ext-port missing or invalid\n");
-		return ret;
+		goto fail;
 	}
 
 	/*
@@ -566,14 +568,14 @@ static int imx_wm8962_probe(struct platform_device *pdev)
 			IMX_AUDMUX_V2_PDCR_RXDSEL(ext_port));
 	if (ret) {
 		dev_err(&pdev->dev, "audmux internal port setup failed\n");
-		return ret;
+		goto fail;
 	}
 	ret = imx_audmux_v2_configure_port(ext_port,
 			IMX_AUDMUX_V2_PTCR_SYN,
 			IMX_AUDMUX_V2_PDCR_RXDSEL(int_port));
 	if (ret) {
 		dev_err(&pdev->dev, "audmux external port setup failed\n");
-		return ret;
+		goto fail;
 	}
 
 audmux_bypass:
@@ -695,10 +697,9 @@ audmux_bypass:
 		goto fail;
 	ret = snd_soc_of_parse_audio_routing(&data->card, "audio-routing");
 	if (ret)
-		goto clk_fail;
-	data->card.num_links = 1;
+		goto fail;
 	data->card.owner = THIS_MODULE;
-	data->card.dai_link = &data->dai;
+	data->card.dai_link = data->dai;
 	data->card.dapm_widgets = imx_wm8962_dapm_widgets;
 	data->card.num_dapm_widgets = ARRAY_SIZE(imx_wm8962_dapm_widgets);
 
@@ -746,7 +747,7 @@ fail_mic:
 	driver_remove_file(pdev->dev.driver, &driver_attr_headphone);
 fail_hp:
 fail:
-	of_node_put(ssi_np);
+	of_node_put(cpu_np);
 	of_node_put(codec_np);
 
 	return ret;

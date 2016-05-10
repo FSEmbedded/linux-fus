@@ -647,15 +647,18 @@ static int i915_drm_suspend_late(struct drm_device *drm_dev, bool hibernation)
 
 	pci_disable_device(drm_dev->pdev);
 	/*
-	 * During hibernation on some GEN4 platforms the BIOS may try to access
+	 * During hibernation on some platforms the BIOS may try to access
 	 * the device even though it's already in D3 and hang the machine. So
 	 * leave the device in D0 on those platforms and hope the BIOS will
-	 * power down the device properly. Platforms where this was seen:
-	 * Lenovo Thinkpad X301, X61s
+	 * power down the device properly. The issue was seen on multiple old
+	 * GENs with different BIOS vendors, so having an explicit blacklist
+	 * is inpractical; apply the workaround on everything pre GEN6. The
+	 * platforms where the issue was seen:
+	 * Lenovo Thinkpad X301, X61s, X60, T60, X41
+	 * Fujitsu FSC S7110
+	 * Acer Aspire 1830T
 	 */
-	if (!(hibernation &&
-	      drm_dev->pdev->subsystem_vendor == PCI_VENDOR_ID_LENOVO &&
-	      INTEL_INFO(dev_priv)->gen == 4))
+	if (!(hibernation && INTEL_INFO(dev_priv)->gen < 6))
 		pci_set_power_state(drm_dev->pdev, PCI_D3hot);
 
 	return 0;
@@ -801,14 +804,6 @@ int i915_resume_legacy(struct drm_device *dev)
 		return ret;
 
 	return i915_drm_resume(dev);
-}
-
-static int i915_resume_legacy(struct drm_device *dev)
-{
-	i915_resume_early(dev);
-	i915_resume(dev);
-
-	return 0;
 }
 
 /**
@@ -992,14 +987,6 @@ static int i915_pm_resume_early(struct device *dev)
 		return 0;
 
 	return i915_drm_resume_early(drm_dev);
-}
-
-static int i915_pm_resume_early(struct device *dev)
-{
-	struct pci_dev *pdev = to_pci_dev(dev);
-	struct drm_device *drm_dev = pci_get_drvdata(pdev);
-
-	return i915_resume_early(drm_dev);
 }
 
 static int i915_pm_resume(struct device *dev)

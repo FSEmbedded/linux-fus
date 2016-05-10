@@ -361,11 +361,6 @@ void truncate_inode_pages_range(struct address_space *mapping,
 				continue;
 			}
 
-			if (radix_tree_exceptional_entry(page)) {
-				clear_exceptional_entry(mapping, index, page);
-				continue;
-			}
-
 			lock_page(page);
 			WARN_ON(page->index != index);
 			wait_on_page_writeback(page);

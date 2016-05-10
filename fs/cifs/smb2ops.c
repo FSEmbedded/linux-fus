@@ -50,9 +50,13 @@ change_conf(struct TCP_Server_Info *server)
 		break;
 	default:
 		server->echoes = true;
-		server->oplocks = true;
+		if (enable_oplocks) {
+			server->oplocks = true;
+			server->oplock_credits = 1;
+		} else
+			server->oplocks = false;
+
 		server->echo_credits = 1;
-		server->oplock_credits = 1;
 	}
 	server->credits -= server->echo_credits + server->oplock_credits;
 	return 0;
@@ -1178,17 +1182,6 @@ static long smb3_fallocate(struct file *file, struct cifs_tcon *tcon, int mode,
 		return smb3_simple_falloc(file, tcon, off, len, false);
 
 	return -EOPNOTSUPP;
-}
-
-static void
-smb2_downgrade_oplock(struct TCP_Server_Info *server,
-			struct cifsInodeInfo *cinode, bool set_level2)
-{
-	if (set_level2)
-		server->ops->set_oplock_level(cinode, SMB2_OPLOCK_LEVEL_II,
-						0, NULL);
-	else
-		server->ops->set_oplock_level(cinode, 0, 0, NULL);
 }
 
 static void

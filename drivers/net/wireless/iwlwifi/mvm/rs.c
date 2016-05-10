@@ -224,9 +224,7 @@ static const struct rs_tx_column rs_tx_columns[] = {
 		.next_columns = {
 			RS_COLUMN_LEGACY_ANT_B,
 			RS_COLUMN_SISO_ANT_A,
-			RS_COLUMN_SISO_ANT_B,
-			RS_COLUMN_INVALID,
-			RS_COLUMN_INVALID,
+			RS_COLUMN_MIMO2,
 			RS_COLUMN_INVALID,
 			RS_COLUMN_INVALID,
 			RS_COLUMN_INVALID,
@@ -241,10 +239,8 @@ static const struct rs_tx_column rs_tx_columns[] = {
 		.ant = ANT_B,
 		.next_columns = {
 			RS_COLUMN_LEGACY_ANT_A,
-			RS_COLUMN_SISO_ANT_A,
 			RS_COLUMN_SISO_ANT_B,
-			RS_COLUMN_INVALID,
-			RS_COLUMN_INVALID,
+			RS_COLUMN_MIMO2,
 			RS_COLUMN_INVALID,
 			RS_COLUMN_INVALID,
 			RS_COLUMN_INVALID,
@@ -331,9 +327,6 @@ static const struct rs_tx_column rs_tx_columns[] = {
 		.ant = ANT_AB,
 		.next_columns = {
 			RS_COLUMN_SISO_ANT_A,
-			RS_COLUMN_SISO_ANT_B,
-			RS_COLUMN_SISO_ANT_A_SGI,
-			RS_COLUMN_SISO_ANT_B_SGI,
 			RS_COLUMN_MIMO2_SGI,
 			RS_COLUMN_LEGACY_ANT_A,
 			RS_COLUMN_LEGACY_ANT_B,
@@ -351,9 +344,6 @@ static const struct rs_tx_column rs_tx_columns[] = {
 		.sgi = true,
 		.next_columns = {
 			RS_COLUMN_SISO_ANT_A_SGI,
-			RS_COLUMN_SISO_ANT_B_SGI,
-			RS_COLUMN_SISO_ANT_A,
-			RS_COLUMN_SISO_ANT_B,
 			RS_COLUMN_MIMO2,
 			RS_COLUMN_LEGACY_ANT_A,
 			RS_COLUMN_LEGACY_ANT_B,
@@ -1212,18 +1202,6 @@ void iwl_mvm_rs_tx_status(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 	table = &lq_sta->lq;
 	lq_hwrate = le32_to_cpu(table->rs_table[0]);
 	rs_rate_from_ucode_rate(lq_hwrate, info->band, &lq_rate);
-
-	if (time_after(jiffies,
-		       (unsigned long)(lq_sta->last_tx + RS_IDLE_TIMEOUT))) {
-		int tid;
-		IWL_DEBUG_RATE(mvm, "Tx idle for too long. reinit rs\n");
-		for (tid = 0; tid < IWL_MAX_TID_COUNT; tid++)
-			ieee80211_stop_tx_ba_session(sta, tid);
-
-		iwl_mvm_rs_rate_init(mvm, sta, sband->band, false);
-		return;
-	}
-	lq_sta->last_tx = jiffies;
 
 	/* Here we actually compare this rate to the latest LQ command */
 	if (!rs_rate_equal(&tx_resp_rate, &lq_rate, allow_ant_mismatch)) {

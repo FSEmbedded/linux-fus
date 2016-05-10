@@ -115,11 +115,11 @@ config VIDEO_S3C_CAMIF
 	  will be called s3c-camif.
 
 config VIDEO_MXC_OUTPUT
-        tristate "MXC Video For Linux Video Output"
-        depends on VIDEO_DEV && ARCH_MXC && FB_MXC
-        select VIDEOBUF_DMA_CONTIG
-        ---help---
-        This is the video4linux2 output driver based on MXC module.
+	tristate "MXC Video For Linux Video Output"
+	depends on VIDEO_DEV && ARCH_MXC && FB_MXC
+	select VIDEOBUF_DMA_CONTIG
+	---help---
+	This is the video4linux2 output driver based on MXC module.
 
 config VIDEO_MXC_CAPTURE
 	tristate "MXC Video For Linux Video Capture"
@@ -135,6 +135,7 @@ source "drivers/media/platform/exynos4-is/Kconfig"
 source "drivers/media/platform/s5p-tv/Kconfig"
 source "drivers/media/platform/am437x/Kconfig"
 source "drivers/media/platform/xilinx/Kconfig"
+
 
 endif # V4L_PLATFORM_DRIVERS
 

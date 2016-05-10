@@ -762,14 +762,6 @@ requeue:
 static irqreturn_t cpsw_tx_interrupt(int irq, void *dev_id)
 {
 	struct cpsw_priv *priv = dev_id;
-	int value = irq - priv->irqs_table[0];
-
-	/* NOTICE: Ending IRQ here. The trick with the 'value' variable above
-	 * is to make sure we will always write the correct value to the EOI
-	 * register. Namely 0 for RX_THRESH Interrupt, 1 for RX Interrupt, 2
-	 * for TX Interrupt and 3 for MISC Interrupt.
-	 */
-	cpdma_ctlr_eoi(priv->dma, value);
 
 	cpdma_ctlr_eoi(priv->dma, CPDMA_EOI_TX);
 	cpdma_chan_process(priv->txch, 128);

@@ -674,13 +674,6 @@ static int msi_capability_init(struct pci_dev *dev, int nvec)
 		return ret;
 	}
 
-	ret = msi_verify_entries(dev);
-	if (ret) {
-		msi_mask_irq(entry, mask, ~mask);
-		free_msi_irqs(dev);
-		return ret;
-	}
-
 	ret = populate_msi_sysfs(dev);
 	if (ret) {
 		msi_mask_irq(entry, mask, ~mask);

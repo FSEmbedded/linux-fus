@@ -1154,7 +1154,6 @@ static int __cpufreq_add_dev(struct device *dev, struct subsys_interface *sif)
 		WARN_ON(update_policy_cpu(policy, cpu, dev));
 	else
 		policy->cpu = cpu;
-	}
 
 	cpumask_copy(policy->cpus, cpumask_of(cpu));
 

@@ -1,4 +1,3 @@
-
 #
 # kbuild file for firmware/
 #

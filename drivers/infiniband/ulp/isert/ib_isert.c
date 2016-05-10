@@ -356,9 +356,6 @@ isert_create_device_ib_res(struct isert_device *device)
 	if (ret)
 		return ret;
 
-	max_rx_cqe = min(ISER_MAX_RX_CQ_LEN, dev_attr->max_cqe);
-	max_tx_cqe = min(ISER_MAX_TX_CQ_LEN, dev_attr->max_cqe);
-
 	/* asign function handlers */
 	if (dev_attr->device_cap_flags & IB_DEVICE_MEM_MGT_EXTENSIONS &&
 	    dev_attr->device_cap_flags & IB_DEVICE_SIGNATURE_HANDOVER) {
@@ -2999,9 +2996,16 @@ isert_get_dataout(struct iscsi_conn *conn, struct iscsi_cmd *cmd, bool recovery)
 static int
 isert_immediate_queue(struct iscsi_conn *conn, struct iscsi_cmd *cmd, int state)
 {
-	int ret;
+	struct isert_cmd *isert_cmd = iscsit_priv_cmd(cmd);
+	int ret = 0;
 
 	switch (state) {
+	case ISTATE_REMOVE:
+		spin_lock_bh(&conn->cmd_lock);
+		list_del_init(&cmd->i_conn_node);
+		spin_unlock_bh(&conn->cmd_lock);
+		isert_put_cmd(isert_cmd, true);
+		break;
 	case ISTATE_SEND_NOPIN_WANT_RESPONSE:
 		ret = isert_put_nopin(cmd, conn, false);
 		break;
@@ -3366,6 +3370,41 @@ isert_wait4flush(struct isert_conn *isert_conn)
 	wait_for_completion(&isert_conn->wait_comp_err);
 }
 
+/**
+ * isert_put_unsol_pending_cmds() - Drop commands waiting for
+ *     unsolicitate dataout
+ * @conn:    iscsi connection
+ *
+ * We might still have commands that are waiting for unsolicited
+ * dataouts messages. We must put the extra reference on those
+ * before blocking on the target_wait_for_session_cmds
+ */
+static void
+isert_put_unsol_pending_cmds(struct iscsi_conn *conn)
+{
+	struct iscsi_cmd *cmd, *tmp;
+	static LIST_HEAD(drop_cmd_list);
+
+	spin_lock_bh(&conn->cmd_lock);
+	list_for_each_entry_safe(cmd, tmp, &conn->conn_cmd_list, i_conn_node) {
+		if ((cmd->cmd_flags & ICF_NON_IMMEDIATE_UNSOLICITED_DATA) &&
+		    (cmd->write_data_done < conn->sess->sess_ops->FirstBurstLength) &&
+		    (cmd->write_data_done < cmd->se_cmd.data_length))
+			list_move_tail(&cmd->i_conn_node, &drop_cmd_list);
+	}
+	spin_unlock_bh(&conn->cmd_lock);
+
+	list_for_each_entry_safe(cmd, tmp, &drop_cmd_list, i_conn_node) {
+		list_del_init(&cmd->i_conn_node);
+		if (cmd->i_state != ISTATE_REMOVE) {
+			struct isert_cmd *isert_cmd = iscsit_priv_cmd(cmd);
+
+			isert_info("conn %p dropping cmd %p\n", conn, cmd);
+			isert_put_cmd(isert_cmd, true);
+		}
+	}
+}
+
 static void isert_wait_conn(struct iscsi_conn *conn)
 {
 	struct isert_conn *isert_conn = conn->context;
@@ -3384,8 +3423,9 @@ static void isert_wait_conn(struct iscsi_conn *conn)
 	isert_conn_terminate(isert_conn);
 	mutex_unlock(&isert_conn->mutex);
 
-	isert_wait4cmds(conn);
 	isert_wait4flush(isert_conn);
+	isert_put_unsol_pending_cmds(conn);
+	isert_wait4cmds(conn);
 	isert_wait4logout(isert_conn);
 
 	queue_work(isert_release_wq, &isert_conn->release_work);
@@ -3436,14 +3476,6 @@ static int __init isert_init(void)
 					WQ_UNBOUND_MAX_ACTIVE);
 	if (!isert_release_wq) {
 		isert_err("Unable to allocate isert_release_wq\n");
-		ret = -ENOMEM;
-		goto destroy_comp_wq;
-	}
-
-	isert_release_wq = alloc_workqueue("isert_release_wq", WQ_UNBOUND,
-					WQ_UNBOUND_MAX_ACTIVE);
-	if (!isert_release_wq) {
-		pr_err("Unable to allocate isert_release_wq\n");
 		ret = -ENOMEM;
 		goto destroy_comp_wq;
 	}

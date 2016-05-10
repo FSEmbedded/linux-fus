@@ -470,6 +470,16 @@ static int __init acpi_bus_init_irq(void)
 	return 0;
 }
 
+/**
+ * acpi_early_init - Initialize ACPICA and populate the ACPI namespace.
+ *
+ * The ACPI tables are accessible after this, but the handling of events has not
+ * been initialized and the global lock is not available yet, so AML should not
+ * be executed at this point.
+ *
+ * Doing this before switching the EFI runtime services to virtual mode allows
+ * the EfiBootServices memory to be freed slightly earlier on boot.
+ */
 void __init acpi_early_init(void)
 {
 	acpi_status status;

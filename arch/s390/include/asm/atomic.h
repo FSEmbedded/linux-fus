@@ -162,8 +162,6 @@ static inline int __atomic_add_unless(atomic_t *v, int a, int u)
 
 #define __ATOMIC64_NO_BARRIER	"\n"
 
-#define __ATOMIC64_NO_BARRIER	"\n"
-
 #ifdef CONFIG_HAVE_MARCH_Z196_FEATURES
 
 #define __ATOMIC64_OR	"laog"

@@ -1,7 +1,7 @@
 /*
  *  Driver for Freescale's 3-Axis Accelerometer MMA8450
  *
- *  Copyright (C) 2011-2014 Freescale Semiconductor, Inc. All Rights Reserved.
+ *  Copyright (C) 2011-2015 Freescale Semiconductor, Inc. All Rights Reserved.
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -209,7 +209,7 @@ static ssize_t mma8450_scalemode_store(struct device *dev,
 	struct mma8450 *m = NULL;
 	struct i2c_client *client = to_i2c_client(dev);
 
-	ret = strict_strtoul(buf, 10, &mode);
+	ret = kstrtoul(buf, 10, &mode);
 	if (ret) {
 		dev_err(dev, "string transform error\n");
 		return ret;
@@ -269,7 +269,7 @@ static int mma8450_probe(struct i2c_client *c,
 					 I2C_FUNC_SMBUS_BYTE |
 					 I2C_FUNC_SMBUS_BYTE_DATA);
 	if (!err)
-		goto err_out;
+		return err;
 
 	client_id = i2c_smbus_read_byte_data(c, MMA8450_WHO_AM_I);
 
@@ -277,8 +277,7 @@ static int mma8450_probe(struct i2c_client *c,
 		dev_err(&c->dev,
 			"read chip ID 0x%x is not equal to 0x%x!\n", client_id,
 			MMA8450_ID);
-		err = -EINVAL;
-		goto err_out;
+		return -EINVAL;
 	}
 
 	m = devm_kzalloc(&c->dev, sizeof(*m), GFP_KERNEL);
@@ -327,6 +326,26 @@ static int mma8450_probe(struct i2c_client *c,
 	}
 
 	return 0;
+
+err_close:
+	mma8450_close(idev);
+err_unreg_dev:
+	mutex_destroy(&m->mma8450_lock);
+	input_unregister_polled_device(idev);
+	return err;
+}
+
+static int mma8450_remove(struct i2c_client *c)
+{
+	struct mma8450 *m = i2c_get_clientdata(c);
+	struct input_polled_dev *idev = m->idev;
+
+	sysfs_remove_group(&c->dev.kobj, &mma8450_attr_group);
+	mma8450_close(idev);
+	mutex_destroy(&m->mma8450_lock);
+	input_unregister_polled_device(idev);
+
+	return 0;
 }
 
 static const struct i2c_device_id mma8450_id[] = {
@@ -347,6 +366,7 @@ static struct i2c_driver mma8450_driver = {
 		.of_match_table = mma8450_dt_ids,
 	},
 	.probe		= mma8450_probe,
+	.remove		= mma8450_remove,
 	.id_table	= mma8450_id,
 };
 

@@ -238,8 +238,6 @@ sysexit_from_sys_call:
 
 	CFI_RESTORE_STATE
 
-	CFI_RESTORE_STATE
-
 #ifdef CONFIG_AUDITSYSCALL
 	.macro auditsys_entry_common
 	movl %esi,%r8d			/* 5th arg: 4th syscall arg */

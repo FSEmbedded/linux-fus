@@ -359,7 +359,7 @@ static int dlpar_memory_remove_by_index(u32 drc_index, struct property *prop)
 static inline int pseries_remove_memblock(unsigned long base,
 					  unsigned int memblock_size)
 {
-	return 0;
+	return -EOPNOTSUPP;
 }
 static inline int pseries_remove_mem_node(struct device_node *np)
 {

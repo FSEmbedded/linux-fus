@@ -700,7 +700,7 @@ static void iscsi_post_login_start_timers(struct iscsi_conn *conn)
 		iscsit_start_nopin_timer(conn);
 }
 
-static int iscsit_start_kthreads(struct iscsi_conn *conn)
+int iscsit_start_kthreads(struct iscsi_conn *conn)
 {
 	int ret = 0;
 
@@ -735,6 +735,7 @@ static int iscsit_start_kthreads(struct iscsi_conn *conn)
 
 	return 0;
 out_tx:
+	send_sig(SIGINT, conn->tx_thread, 1);
 	kthread_stop(conn->tx_thread);
 	conn->tx_thread_active = false;
 out_bitmap:
@@ -745,7 +746,7 @@ out_bitmap:
 	return ret;
 }
 
-int iscsi_post_login_handler(
+void iscsi_post_login_handler(
 	struct iscsi_np *np,
 	struct iscsi_conn *conn,
 	u8 zero_tsih)
@@ -755,7 +756,6 @@ int iscsi_post_login_handler(
 	struct se_session *se_sess = sess->se_sess;
 	struct iscsi_portal_group *tpg = sess->tpg;
 	struct se_portal_group *se_tpg = &tpg->tpg_se_tpg;
-	int rc;
 
 	iscsit_inc_conn_usage_count(conn);
 
@@ -795,10 +795,6 @@ int iscsi_post_login_handler(
 			" from node: %s\n", atomic_read(&sess->nconn),
 			sess->sess_ops->InitiatorName);
 		spin_unlock_bh(&sess->conn_lock);
-
-		rc = iscsit_start_kthreads(conn);
-		if (rc)
-			return rc;
 
 		iscsi_post_login_start_timers(conn);
 		/*
@@ -862,10 +858,6 @@ int iscsi_post_login_handler(
 		" iSCSI Target Portal Group: %hu\n", tpg->nsessions, tpg->tpgt);
 	spin_unlock_bh(&se_tpg->session_lock);
 
-	rc = iscsit_start_kthreads(conn);
-	if (rc)
-		return rc;
-
 	iscsi_post_login_start_timers(conn);
 	/*
 	 * Determine CPU mask to ensure connection's RX and TX kthreads
@@ -887,8 +879,8 @@ static void iscsi_handle_login_thread_timeout(unsigned long data)
 	struct iscsi_np *np = (struct iscsi_np *) data;
 
 	spin_lock_bh(&np->np_thread_lock);
-	pr_err("iSCSI Login timeout on Network Portal %s:%hu\n",
-			np->np_ip, np->np_port);
+	pr_err("iSCSI Login timeout on Network Portal %pISc:%hu\n",
+			&np->np_sockaddr, np->np_port);
 
 	if (np->np_login_timer_flags & ISCSI_TF_STOP) {
 		spin_unlock_bh(&np->np_thread_lock);
@@ -1366,8 +1358,8 @@ static int __iscsi_target_login_thread(struct iscsi_np *np)
 	spin_lock_bh(&np->np_thread_lock);
 	if (np->np_thread_state != ISCSI_NP_THREAD_ACTIVE) {
 		spin_unlock_bh(&np->np_thread_lock);
-		pr_err("iSCSI Network Portal on %s:%hu currently not"
-			" active.\n", np->np_ip, np->np_port);
+		pr_err("iSCSI Network Portal on %pISc:%hu currently not"
+			" active.\n", &np->np_sockaddr, np->np_port);
 		iscsit_tx_login_rsp(conn, ISCSI_STATUS_CLS_TARGET_ERR,
 				ISCSI_LOGIN_STATUS_SVC_UNAVAILABLE);
 		goto new_sess_out;

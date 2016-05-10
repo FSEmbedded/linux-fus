@@ -491,24 +491,6 @@ static char *acpi_handle_path(acpi_handle handle)
 }
 
 /**
- * acpi_handle_path: Return the object path of handle
- *
- * Caller must free the returned buffer
- */
-static char *acpi_handle_path(acpi_handle handle)
-{
-	struct acpi_buffer buffer = {
-		.length = ACPI_ALLOCATE_BUFFER,
-		.pointer = NULL
-	};
-
-	if (in_interrupt() ||
-	    acpi_get_name(handle, ACPI_FULL_PATHNAME, &buffer) != AE_OK)
-		return NULL;
-	return buffer.pointer;
-}
-
-/**
  * acpi_handle_printk: Print message with ACPI prefix and object path
  *
  * This function is called through acpi_handle_<level> macros and prints

@@ -20,6 +20,8 @@
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/regmap.h>
+#include <linux/pm_runtime.h>
+#include <linux/busfreq-imx.h>
 
 #include <sound/asoundef.h>
 #include <sound/dmaengine_pcm.h>
@@ -106,8 +108,11 @@ struct fsl_spdif_priv {
 	struct clk *rxclk;
 	struct clk *coreclk;
 	struct clk *sysclk;
+	struct clk *dmaclk;
 	struct snd_dmaengine_dai_dma_data dma_params_tx;
 	struct snd_dmaengine_dai_dma_data dma_params_rx;
+	/* regcache for SRPC */
+	u32 regcache_srpc;
 };
 
 /* DPLL locked and lock loss interrupt handler */
@@ -377,7 +382,6 @@ static int spdif_set_sample_rate(struct snd_pcm_substream *substream,
 	unsigned long csfs = 0;
 	u32 stc, mask, rate;
 	u8 clk, txclk_df, sysclk_df;
-	int ret;
 
 	switch (sample_rate) {
 	case 32000:
@@ -419,21 +423,6 @@ static int spdif_set_sample_rate(struct snd_pcm_substream *substream,
 
 	sysclk_df = spdif_priv->sysclk_df[rate];
 
-	/* Don't mess up the clocks from other modules */
-	if (clk != STC_TXCLK_SPDIF_ROOT)
-		goto clk_set_bypass;
-
-	/*
-	 * The S/PDIF block needs a clock of 64 * fs * txclk_df.
-	 * So request 64 * fs * (txclk_df + 1) to get rounded.
-	 */
-	ret = clk_set_rate(spdif_priv->txclk[rate], 64 * sample_rate * (txclk_df + 1));
-	if (ret) {
-		dev_err(&pdev->dev, "failed to set tx clock rate\n");
-		return ret;
-	}
-
-clk_set_bypass:
 	dev_dbg(&pdev->dev, "expected clock rate = %d\n",
 			(64 * sample_rate * txclk_df * sysclk_df));
 	dev_dbg(&pdev->dev, "actual clock rate = %ld\n",
@@ -472,6 +461,12 @@ static int fsl_spdif_startup(struct snd_pcm_substream *substream,
 		ret = clk_prepare_enable(spdif_priv->coreclk);
 		if (ret) {
 			dev_err(&pdev->dev, "failed to enable core clock\n");
+			return ret;
+		}
+
+		ret = clk_prepare_enable(spdif_priv->dmaclk);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to enable dma clock\n");
 			return ret;
 		}
 
@@ -541,6 +536,7 @@ static void fsl_spdif_shutdown(struct snd_pcm_substream *substream,
 		spdif_intr_status_clear(spdif_priv);
 		regmap_update_bits(regmap, REG_SPDIF_SCR,
 				SCR_LOW_POWER, SCR_LOW_POWER);
+		clk_disable_unprepare(spdif_priv->dmaclk);
 		clk_disable_unprepare(spdif_priv->coreclk);
 	}
 
@@ -1000,6 +996,16 @@ static const struct snd_soc_component_driver fsl_spdif_component = {
 };
 
 /* FSL SPDIF REGMAP */
+static const struct reg_default fsl_spdif_reg_defaults[] = {
+	{REG_SPDIF_SCR,    0x00000400},
+	{REG_SPDIF_SRCD,   0x00000000},
+	{REG_SPDIF_SIE,	   0x00000000},
+	{REG_SPDIF_STL,	   0x00000000},
+	{REG_SPDIF_STR,	   0x00000000},
+	{REG_SPDIF_STCSCH, 0x00000000},
+	{REG_SPDIF_STCSCL, 0x00000000},
+	{REG_SPDIF_STC,	   0x00020f00},
+};
 
 static bool fsl_spdif_readable_reg(struct device *dev, unsigned int reg)
 {
@@ -1036,14 +1042,11 @@ static bool fsl_spdif_volatile_reg(struct device *dev, unsigned int reg)
 	case REG_SPDIF_SRCSL:
 	case REG_SPDIF_SRU:
 	case REG_SPDIF_SRQ:
-	case REG_SPDIF_STL:
-	case REG_SPDIF_STR:
 	case REG_SPDIF_SRFM:
 		return true;
 	default:
 		return false;
 	}
-
 }
 
 static bool fsl_spdif_writeable_reg(struct device *dev, unsigned int reg)
@@ -1065,12 +1068,14 @@ static bool fsl_spdif_writeable_reg(struct device *dev, unsigned int reg)
 	}
 }
 
-static struct regmap_config fsl_spdif_regmap_config = {
+static const struct regmap_config fsl_spdif_regmap_config = {
 	.reg_bits = 32,
 	.reg_stride = 4,
 	.val_bits = 32,
 
 	.max_register = REG_SPDIF_STC,
+	.reg_defaults = fsl_spdif_reg_defaults,
+	.num_reg_defaults = ARRAY_SIZE(fsl_spdif_reg_defaults),
 	.readable_reg = fsl_spdif_readable_reg,
 	.volatile_reg = fsl_spdif_volatile_reg,
 	.writeable_reg = fsl_spdif_writeable_reg,
@@ -1083,7 +1088,7 @@ static u32 fsl_spdif_txclk_caldiv(struct fsl_spdif_priv *spdif_priv,
 {
 	const u32 rate[] = { 32000, 44100, 48000, 96000, 192000 };
 	bool is_sysclk = clk_is_match(clk, spdif_priv->sysclk);
-	u64 rate_ideal, rate_actual, sub;
+	u64 rate_actual, sub;
 	u32 sysclk_dfmin, sysclk_dfmax;
 	u32 txclk_df, sysclk_df, arate;
 
@@ -1093,11 +1098,7 @@ static u32 fsl_spdif_txclk_caldiv(struct fsl_spdif_priv *spdif_priv,
 
 	for (sysclk_df = sysclk_dfmin; sysclk_df <= sysclk_dfmax; sysclk_df++) {
 		for (txclk_df = 1; txclk_df <= 128; txclk_df++) {
-			rate_ideal = rate[index] * (txclk_df + 1) * 64;
-			if (round)
-				rate_actual = clk_round_rate(clk, rate_ideal);
-			else
-				rate_actual = clk_get_rate(clk);
+			rate_actual = clk_get_rate(clk);
 
 			arate = rate_actual / 64;
 			arate /= txclk_df * sysclk_df;
@@ -1208,9 +1209,6 @@ static int fsl_spdif_probe(struct platform_device *pdev)
 	memcpy(&spdif_priv->cpu_dai_drv, &fsl_spdif_dai, sizeof(fsl_spdif_dai));
 	spdif_priv->cpu_dai_drv.name = dev_name(&pdev->dev);
 
-	if (of_property_read_bool(np, "big-endian"))
-		fsl_spdif_regmap_config.val_format_endian = REGMAP_ENDIAN_BIG;
-
 	/* Get the addresses and IRQ */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	regs = devm_ioremap_resource(&pdev->dev, res);
@@ -1249,6 +1247,13 @@ static int fsl_spdif_probe(struct platform_device *pdev)
 	if (IS_ERR(spdif_priv->coreclk)) {
 		dev_err(&pdev->dev, "no core clock in devicetree\n");
 		return PTR_ERR(spdif_priv->coreclk);
+	}
+
+	/* Get dma clock for dma script operation */
+	spdif_priv->dmaclk = devm_clk_get(&pdev->dev, "dma");
+	if (IS_ERR(spdif_priv->dmaclk)) {
+		dev_err(&pdev->dev, "no dma clock in devicetree\n");
+		return PTR_ERR(spdif_priv->dmaclk);
 	}
 
 	/* Select clock source for rx/tx clock */
@@ -1306,7 +1311,7 @@ static int fsl_spdif_probe(struct platform_device *pdev)
 	return ret;
 }
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 static int fsl_spdif_runtime_resume(struct device *dev)
 {
 	request_bus_freq(BUS_FREQ_HIGH);
@@ -1346,9 +1351,11 @@ static int fsl_spdif_resume(struct device *dev)
 #endif /* CONFIG_PM_SLEEP */
 
 static const struct dev_pm_ops fsl_spdif_pm = {
+#ifdef CONFIG_PM
 	SET_RUNTIME_PM_OPS(fsl_spdif_runtime_suspend,
 			fsl_spdif_runtime_resume,
 			NULL)
+#endif
 	SET_SYSTEM_SLEEP_PM_OPS(fsl_spdif_suspend, fsl_spdif_resume)
 };
 

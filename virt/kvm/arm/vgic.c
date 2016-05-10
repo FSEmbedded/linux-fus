@@ -1162,7 +1162,6 @@ bool vgic_queue_irq(struct kvm_vcpu *vcpu, u8 sgi_source_id, int irq)
 	kvm_debug("LR%d allocated for IRQ%d %x\n", lr, irq, sgi_source_id);
 	vgic_cpu->vgic_irq_lr_map[irq] = lr;
 	set_bit(lr, vgic_cpu->lr_used);
-	__clear_bit(lr, (unsigned long *)vgic_cpu->vgic_elrsr);
 
 	vlr.irq = irq;
 	vlr.source = sgi_source_id;
@@ -1338,14 +1337,6 @@ static bool vgic_process_maintenance(struct kvm_vcpu *vcpu)
 	 * up any old maintenance interrupts here.
 	 */
 	vgic_clear_eisr(vcpu);
-
-	/*
-	 * In the next iterations of the vcpu loop, if we sync the vgic state
-	 * after flushing it, but before entering the guest (this happens for
-	 * pending signals and vmid rollovers), then make sure we don't pick
-	 * up any old maintenance interrupts here.
-	 */
-	memset(vgic_cpu->vgic_eisr, 0, sizeof(vgic_cpu->vgic_eisr[0]) * 2);
 
 	return level_pending;
 }
@@ -1570,7 +1561,7 @@ int kvm_vgic_inject_irq(struct kvm *kvm, int cpuid, unsigned int irq_num,
 			goto out;
 	}
 
-	if (irq_num >= kvm->arch.vgic.nr_irqs)
+	if (irq_num >= min(kvm->arch.vgic.nr_irqs, 1020))
 		return -EINVAL;
 
 	vcpu_id = vgic_update_irq_pending(kvm, cpuid, irq_num, level);
@@ -2170,10 +2161,7 @@ int kvm_set_irq(struct kvm *kvm, int irq_source_id,
 
 	BUG_ON(!vgic_initialized(kvm));
 
-	if (spi > kvm->arch.vgic.nr_irqs)
-		return -EINVAL;
 	return kvm_vgic_inject_irq(kvm, 0, spi, level);
-
 }
 
 /* MSI not implemented yet */

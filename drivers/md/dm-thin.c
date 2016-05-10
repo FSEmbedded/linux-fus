@@ -18,6 +18,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 #include <linux/sort.h>
 #include <linux/rbtree.h>
 
@@ -260,7 +261,7 @@ struct pool {
 	process_mapping_fn process_prepared_mapping;
 	process_mapping_fn process_prepared_discard;
 
-	struct dm_bio_prison_cell *cell_sort_array[CELL_SORT_ARRAY_SIZE];
+	struct dm_bio_prison_cell **cell_sort_array;
 };
 
 static enum pool_mode get_pool_mode(struct pool *pool);
@@ -1126,24 +1127,6 @@ static void schedule_external_copy(struct thin_c *tc, dm_block_t virt_block,
 
 	else
 		schedule_zero(tc, virt_block, data_dest, cell, bio);
-}
-
-static void set_pool_mode(struct pool *pool, enum pool_mode new_mode);
-
-static void check_for_space(struct pool *pool)
-{
-	int r;
-	dm_block_t nr_free;
-
-	if (get_pool_mode(pool) != PM_OUT_OF_DATA_SPACE)
-		return;
-
-	r = dm_pool_get_free_block_count(pool->pmd, &nr_free);
-	if (r)
-		return;
-
-	if (nr_free)
-		set_pool_mode(pool, PM_WRITE);
 }
 
 static void set_pool_mode(struct pool *pool, enum pool_mode new_mode);
@@ -2517,6 +2500,7 @@ static void __pool_destroy(struct pool *pool)
 {
 	__pool_table_remove(pool);
 
+	vfree(pool->cell_sort_array);
 	if (dm_pool_metadata_close(pool->pmd) < 0)
 		DMWARN("%s: dm_pool_metadata_close() failed.", __func__);
 
@@ -2629,6 +2613,13 @@ static struct pool *pool_create(struct mapped_device *pool_md,
 		goto bad_mapping_pool;
 	}
 
+	pool->cell_sort_array = vmalloc(sizeof(*pool->cell_sort_array) * CELL_SORT_ARRAY_SIZE);
+	if (!pool->cell_sort_array) {
+		*error = "Error allocating cell sort array";
+		err_p = ERR_PTR(-ENOMEM);
+		goto bad_sort_array;
+	}
+
 	pool->ref_count = 1;
 	pool->last_commit_jiffies = jiffies;
 	pool->pool_md = pool_md;
@@ -2637,6 +2628,8 @@ static struct pool *pool_create(struct mapped_device *pool_md,
 
 	return pool;
 
+bad_sort_array:
+	mempool_destroy(pool->mapping_pool);
 bad_mapping_pool:
 	dm_deferred_set_destroy(pool->all_io_ds);
 bad_all_io_ds:
@@ -2966,7 +2959,7 @@ static int pool_ctr(struct dm_target *ti, unsigned argc, char **argv)
 						metadata_low_callback,
 						pool);
 	if (r)
-		goto out_free_pt;
+		goto out_flags_changed;
 
 	pt->callbacks.congested_fn = pool_is_congested;
 	dm_table_add_target_callbacks(ti->table, &pt->callbacks);

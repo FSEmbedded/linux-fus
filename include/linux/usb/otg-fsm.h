@@ -61,11 +61,14 @@ enum otg_fsm_timer {
 	/* Auxiliary timers */
 	B_SE0_SRP,
 	B_SRP_FAIL,
-	B_DATA_PLS,
-	B_SSEND_SRP,
 	A_WAIT_ENUM,
 	B_DATA_PLS,
 	B_SSEND_SRP,
+	A_DP_END,
+	A_TST_MAINT,
+	B_SRP_REQD,
+	B_TST_SUSP,
+	HNP_POLLING,
 
 	NUM_OTG_FSM_TIMERS,
 };
@@ -137,7 +140,7 @@ struct otg_fsm {
 	/* Current usb protocol used: 0:undefine; 1:host; 2:client */
 	int protocol;
 	struct mutex lock;
-	u8 host_req_flag;
+	u8 *host_req_flag;
 };
 
 struct otg_fsm_ops {

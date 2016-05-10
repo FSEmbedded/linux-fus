@@ -699,14 +699,6 @@ static void __init arch_timer_common_init(void)
 static void __init arch_timer_init(void)
 {
 	/*
-	 * If we cannot rely on firmware initializing the timer registers then
-	 * we should use the physical timers instead.
-	 */
-	if (IS_ENABLED(CONFIG_ARM) &&
-	    of_property_read_bool(np, "arm,cpu-registers-not-fw-configured"))
-			arch_timer_use_virtual = false;
-
-	/*
 	 * If HYP mode is available, we know that the physical timer
 	 * has been configured to be accessible from PL1. Use it, so
 	 * that a guest can use the virtual timer instead.
@@ -723,8 +715,6 @@ static void __init arch_timer_init(void)
 			return;
 		}
 	}
-
-	arch_timer_c3stop = !of_property_read_bool(np, "always-on");
 
 	arch_timer_register();
 	arch_timer_common_init();

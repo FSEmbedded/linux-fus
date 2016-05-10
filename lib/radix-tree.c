@@ -1384,11 +1384,6 @@ void *radix_tree_delete_item(struct radix_tree_root *root,
 
 	offset = index & RADIX_TREE_MAP_MASK;
 
-	if (item && slot != item) {
-		slot = NULL;
-		goto out;
-	}
-
 	/*
 	 * Clear all tags associated with the item to be deleted.
 	 * This way of doing it would be inefficient, but seldom is any set.
@@ -1404,21 +1399,6 @@ void *radix_tree_delete_item(struct radix_tree_root *root,
 	__radix_tree_delete_node(root, node);
 
 	return entry;
-}
-EXPORT_SYMBOL(radix_tree_delete_item);
-
-/**
- *	radix_tree_delete    -    delete an item from a radix tree
- *	@root:		radix tree root
- *	@index:		index key
- *
- *	Remove the item at @index from the radix tree rooted at @root.
- *
- *	Returns the address of the deleted item, or NULL if it was not present.
- */
-void *radix_tree_delete(struct radix_tree_root *root, unsigned long index)
-{
-	return radix_tree_delete_item(root, index, NULL);
 }
 EXPORT_SYMBOL(radix_tree_delete_item);
 

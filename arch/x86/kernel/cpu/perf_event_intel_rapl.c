@@ -584,15 +584,11 @@ static int rapl_cpu_prepare(int cpu)
 	struct rapl_pmu *pmu = per_cpu(rapl_pmu, cpu);
 	int phys_id = topology_physical_package_id(cpu);
 	u64 ms;
-	u64 msr_rapl_power_unit_bits;
 
 	if (pmu)
 		return 0;
 
 	if (phys_id < 0)
-		return -1;
-
-	if (!rdmsrl_safe(MSR_RAPL_POWER_UNIT, &msr_rapl_power_unit_bits))
 		return -1;
 
 	pmu = kzalloc_node(sizeof(*pmu), GFP_KERNEL, cpu_to_node(cpu));

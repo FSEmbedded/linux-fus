@@ -977,11 +977,6 @@ static int snd_ftu_eff_switch_put(struct snd_kcontrol *kctl,
 	return err < 0 ? err : 1;
 }
 
-static void kctl_private_value_free(struct snd_kcontrol *kctl)
-{
-	kfree((void *)kctl->private_value);
-}
-
 static int snd_ftu_create_effect_switch(struct usb_mixer_interface *mixer,
 	int validx, int bUnitID)
 {

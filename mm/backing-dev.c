@@ -350,11 +350,6 @@ static void bdi_wb_shutdown(struct backing_dev_info *bdi)
 	 */
 	bdi_remove_from_list(bdi);
 
-	/* Make sure nobody queues further work */
-	spin_lock_bh(&bdi->wb_lock);
-	clear_bit(BDI_registered, &bdi->state);
-	spin_unlock_bh(&bdi->wb_lock);
-
 	/*
 	 * Drain work list and shutdown the delayed_work.  At this point,
 	 * @bdi->bdi_list is empty telling bdi_Writeback_workfn() that @bdi

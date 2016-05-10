@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2007, 2010-2015 Freescale Semiconductor, Inc.
+ * Copyright 2004-2007, 2010-2015 Freescale Semiconductor, Inc. All Rights Reserved.
  * Copyright (C) 2008 Juergen Beisert (kernel@pengutronix.de)
  *
  * This program is free software; you can redistribute it and/or
@@ -58,7 +58,11 @@
 #define IMX_CHIP_REVISION_3_3		0x33
 #define IMX_CHIP_REVISION_UNKNOWN	0xff
 
+#define IMX_DDR_TYPE_DDR3		0
 #define IMX_DDR_TYPE_LPDDR2		1
+#define IMX_DDR_TYPE_LPDDR3		2
+
+
 
 #ifndef __ASSEMBLY__
 extern unsigned int __mxc_cpu_type;
@@ -182,6 +186,11 @@ static inline bool cpu_is_imx6dl(void)
 static inline bool cpu_is_imx6sx(void)
 {
 	return __mxc_cpu_type == MXC_CPU_IMX6SX;
+}
+
+static inline bool cpu_is_imx6ul(void)
+{
+	return __mxc_cpu_type == MXC_CPU_IMX6UL;
 }
 
 static inline bool cpu_is_imx6q(void)

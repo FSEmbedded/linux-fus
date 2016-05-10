@@ -144,9 +144,6 @@ static int mmc_ios_show(struct seq_file *s, void *data)
 	case MMC_TIMING_MMC_HS400:
 		str = "mmc HS400";
 		break;
-	case MMC_TIMING_MMC_HS400:
-		str = "mmc high-speed DDR200";
-		break;
 	default:
 		str = "invalid";
 		break;

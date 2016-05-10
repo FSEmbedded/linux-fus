@@ -299,9 +299,5 @@ config PM_GENERIC_DOMAINS_OF
 	def_bool y
 	depends on PM_GENERIC_DOMAINS && OF
 
-config PM_GENERIC_DOMAINS_OF
-	def_bool y
-	depends on PM_GENERIC_DOMAINS && OF && !ARCH_EXYNOS
-
 config CPU_PM
 	bool

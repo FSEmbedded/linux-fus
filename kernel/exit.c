@@ -528,9 +528,6 @@ static void reparent_leader(struct task_struct *father, struct task_struct *p,
 	/* We don't want people slaying init. */
 	p->exit_signal = SIGCHLD;
 
-	if (p->exit_state == EXIT_DEAD)
-		return;
-
 	/* If it has exited notify the new parent about this child's death. */
 	if (!p->ptrace &&
 	    p->exit_state == EXIT_ZOMBIE && thread_group_empty(p)) {

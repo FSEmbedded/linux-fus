@@ -3789,13 +3789,6 @@ static int cifs_launder_page(struct page *page)
 	return rc;
 }
 
-static int
-cifs_pending_writers_wait(void *unused)
-{
-	schedule();
-	return 0;
-}
-
 void cifs_oplock_break(struct work_struct *work)
 {
 	struct cifsFileInfo *cfile = container_of(work, struct cifsFileInfo,

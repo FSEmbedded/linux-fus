@@ -50,8 +50,9 @@ enum ci_hw_regs {
 	OP_USBINTR,
 	OP_DEVICEADDR,
 	OP_ENDPTLISTADDR,
-	OP_PORTSC,
+	OP_TTCTRL,
 	OP_BURSTSIZE,
+	OP_PORTSC,
 	OP_DEVLC,
 	OP_OTGSC,
 	OP_USBMODE,
@@ -124,6 +125,8 @@ enum ci_revision {
  * @start: start this role
  * @stop: stop this role
  * @irq: irq handler for this role
+ * @suspend: system suspend handler for this role
+ * @resume: system resume handler for this role
  * @name: role name string (host/gadget)
  */
 struct ci_role_driver {
@@ -216,6 +219,8 @@ struct ci_hdrc {
 	ktime_t				hr_timeouts[NUM_OTG_FSM_TIMERS];
 	unsigned			enabled_otg_timer_bits;
 	enum otg_fsm_timer		next_otg_timer;
+	struct timer_list		hnp_polling_timer;
+	struct work_struct		hnp_polling_work;
 	struct work_struct		work;
 	struct workqueue_struct		*wq;
 
@@ -251,6 +256,18 @@ struct ci_hdrc {
 	bool				in_lpm;
 	bool				wakeup_int;
 	enum ci_revision		rev;
+	/* register save area for suspend&resume */
+	u32				pm_command;
+	u32				pm_status;
+	u32				pm_intr_enable;
+	u32				pm_frame_index;
+	u32				pm_segment;
+	u32				pm_frame_list;
+	u32				pm_async_next;
+	u32				pm_configured_flag;
+	u32				pm_portsc;
+	u32				pm_usbmode;
+	struct work_struct		power_lost_work;
 };
 
 static inline struct ci_role_driver *ci_role(struct ci_hdrc *ci)
@@ -411,8 +428,11 @@ static inline u32 hw_test_and_write(struct ci_hdrc *ci, enum ci_hw_regs reg,
 static inline bool ci_otg_is_fsm_mode(struct ci_hdrc *ci)
 {
 #ifdef CONFIG_USB_OTG_FSM
+	struct usb_otg_caps *otg_caps = &ci->platdata->ci_otg_caps;
+
 	return ci->is_otg && ci->roles[CI_ROLE_HOST] &&
-					ci->roles[CI_ROLE_GADGET];
+		ci->roles[CI_ROLE_GADGET] && (otg_caps->srp_support ||
+		otg_caps->hnp_support || otg_caps->adp_support);
 #else
 	return false;
 #endif
@@ -431,7 +451,10 @@ u8 hw_port_test_get(struct ci_hdrc *ci);
 int hw_wait_reg(struct ci_hdrc *ci, enum ci_hw_regs reg, u32 mask,
 				u32 value, unsigned int timeout_ms);
 
+void ci_platform_configure(struct ci_hdrc *ci);
 int hw_controller_reset(struct ci_hdrc *ci);
-void ci_hdrc_ahb_config(struct ci_hdrc *ci);
 
+int dbg_create_files(struct ci_hdrc *ci);
+
+void dbg_remove_files(struct ci_hdrc *ci);
 #endif	/* __DRIVERS_USB_CHIPIDEA_CI_H */

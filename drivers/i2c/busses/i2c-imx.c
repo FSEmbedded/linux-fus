@@ -386,6 +386,7 @@ static int i2c_imx_dma_xfer(struct imx_i2c_struct *i2c_imx,
 	return 0;
 
 err_submit:
+	dmaengine_terminate_all(dma->chan_using);
 err_desc:
 	dma_unmap_single(chan_dev, dma->dma_buf,
 			dma->dma_len, dma->dma_data_dir);
@@ -1119,7 +1120,8 @@ static struct platform_driver i2c_imx_driver = {
 	.probe = i2c_imx_probe,
 	.remove = i2c_imx_remove,
 	.driver	= {
-		.name	= DRIVER_NAME,
+		.name = DRIVER_NAME,
+		.owner = THIS_MODULE,
 		.of_match_table = i2c_imx_dt_ids,
 		.pm = IMX_I2C_PM,
 	},

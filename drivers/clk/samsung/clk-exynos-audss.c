@@ -253,10 +253,6 @@ static int exynos_audss_clk_remove(struct platform_device *pdev)
 	unregister_syscore_ops(&exynos_audss_clk_syscore_ops);
 #endif
 
-#ifdef CONFIG_PM_SLEEP
-	unregister_syscore_ops(&exynos_audss_clk_syscore_ops);
-#endif
-
 	of_clk_del_provider(pdev->dev.of_node);
 
 	exynos_audss_clk_teardown();

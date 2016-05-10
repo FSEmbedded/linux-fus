@@ -113,10 +113,6 @@ static bool mei_me_quirk_probe(struct pci_dev *pdev,
 	}
 
 	return true;
-
-no_mei:
-	dev_info(&pdev->dev, "Device doesn't have valid ME Interface\n");
-	return false;
 }
 
 /**

@@ -1597,9 +1597,6 @@ static int elantech_set_properties(struct elantech_data *etd)
 	/* Enable real hardware resolution on hw_version 3 ? */
 	etd->set_hw_resolution = !dmi_check_system(no_hw_res_dmi_table);
 
-	/* Enable real hardware resolution on hw_version 3 ? */
-	etd->set_hw_resolution = !dmi_check_system(no_hw_res_dmi_table);
-
 	return 0;
 }
 

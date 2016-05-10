@@ -95,13 +95,13 @@ repeat:
 	}
 
 	if (state == PM_SUSPEND_MEM) {
-		printk(info_test, pm_states[state].label);
+		printk(info_test, pm_states[state]);
 		status = pm_suspend(state);
 		if (status == -ENODEV)
 			state = PM_SUSPEND_STANDBY;
 	}
 	if (state == PM_SUSPEND_STANDBY) {
-		printk(info_test, pm_states[state].label);
+		printk(info_test, pm_states[state]);
 		status = pm_suspend(state);
 		if (status < 0)
 			state = PM_SUSPEND_FREEZE;

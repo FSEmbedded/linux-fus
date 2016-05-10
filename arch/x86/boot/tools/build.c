@@ -338,9 +338,6 @@ int main(int argc, char ** argv)
 	int fd;
 	void *kernel;
 	u32 crc = 0xffffffffUL;
-#ifdef CONFIG_EFI_STUB
-	unsigned int init_sz;
-#endif
 
 	efi_stub_defaults();
 

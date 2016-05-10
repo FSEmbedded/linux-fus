@@ -1383,7 +1383,6 @@ static int check_preds(struct filter_parse_state *ps)
 			continue;
 		}
 
-		cnt--;
 		if (elt->op == OP_AND || elt->op == OP_OR) {
 			n_logical_preds++;
 			cnt--;
@@ -1392,7 +1391,9 @@ static int check_preds(struct filter_parse_state *ps)
 		if (elt->op != OP_NOT)
 			cnt--;
 		n_normal_preds++;
-		WARN_ON_ONCE(cnt < 0);
+		/* all ops should have operands */
+		if (cnt < 0)
+			break;
 	}
 
 	if (cnt != 1 || !n_normal_preds || n_logical_preds >= n_normal_preds) {

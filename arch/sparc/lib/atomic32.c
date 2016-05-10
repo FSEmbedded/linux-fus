@@ -58,19 +58,6 @@ int atomic_xchg(atomic_t *v, int new)
 }
 EXPORT_SYMBOL(atomic_xchg);
 
-int atomic_xchg(atomic_t *v, int new)
-{
-	int ret;
-	unsigned long flags;
-
-	spin_lock_irqsave(ATOMIC_HASH(v), flags);
-	ret = v->counter;
-	v->counter = new;
-	spin_unlock_irqrestore(ATOMIC_HASH(v), flags);
-	return ret;
-}
-EXPORT_SYMBOL(atomic_xchg);
-
 int atomic_cmpxchg(atomic_t *v, int old, int new)
 {
 	int ret;

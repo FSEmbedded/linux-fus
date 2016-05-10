@@ -1554,14 +1554,6 @@ static int journal_get_superblock(journal_t *journal)
 		goto out;
 	}
 
-	if (JBD2_HAS_INCOMPAT_FEATURE(journal, JBD2_FEATURE_INCOMPAT_CSUM_V2) &&
-	    JBD2_HAS_INCOMPAT_FEATURE(journal, JBD2_FEATURE_INCOMPAT_CSUM_V3)) {
-		/* Can't have checksum v2 and v3 at the same time! */
-		printk(KERN_ERR "JBD2: Can't enable checksumming v2 and v3 "
-		       "at the same time!\n");
-		goto out;
-	}
-
 	if (!jbd2_verify_csum_type(journal, sb)) {
 		printk(KERN_ERR "JBD2: Unknown checksum type\n");
 		goto out;
@@ -1716,8 +1708,17 @@ int jbd2_journal_destroy(journal_t *journal)
 	while (journal->j_checkpoint_transactions != NULL) {
 		spin_unlock(&journal->j_list_lock);
 		mutex_lock(&journal->j_checkpoint_mutex);
-		jbd2_log_do_checkpoint(journal);
+		err = jbd2_log_do_checkpoint(journal);
 		mutex_unlock(&journal->j_checkpoint_mutex);
+		/*
+		 * If checkpointing failed, just free the buffers to avoid
+		 * looping forever
+		 */
+		if (err) {
+			jbd2_journal_destroy_checkpoint(journal);
+			spin_lock(&journal->j_list_lock);
+			break;
+		}
 		spin_lock(&journal->j_list_lock);
 	}
 
@@ -2085,8 +2086,12 @@ static void __journal_abort_soft (journal_t *journal, int errno)
 
 	__jbd2_journal_abort_hard(journal);
 
-	if (errno)
+	if (errno) {
 		jbd2_journal_update_sb_errno(journal);
+		write_lock(&journal->j_state_lock);
+		journal->j_flags |= JBD2_REC_ERR;
+		write_unlock(&journal->j_state_lock);
+	}
 }
 
 /**

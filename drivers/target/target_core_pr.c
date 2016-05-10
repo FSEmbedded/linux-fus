@@ -328,6 +328,9 @@ static int core_scsi3_pr_seq_non_holder(
 	int legacy = 0; /* Act like a legacy device and return
 			 * RESERVATION CONFLICT on some CDBs */
 
+	if (!se_sess->se_node_acl->device_list)
+		return;
+
 	se_deve = se_sess->se_node_acl->device_list[cmd->orig_fe_lun];
 	/*
 	 * Determine if the registration should be ignored due to
@@ -2287,7 +2290,6 @@ core_scsi3_pro_reserve(struct se_cmd *cmd, int type, int scope, u64 res_key)
 	spin_lock(&dev->dev_reservation_lock);
 	pr_res_holder = dev->dev_pr_res_holder;
 	if (pr_res_holder) {
-		int pr_res_type = pr_res_holder->pr_res_type;
 		/*
 		 * From spc4r17 Section 5.7.9: Reserving:
 		 *

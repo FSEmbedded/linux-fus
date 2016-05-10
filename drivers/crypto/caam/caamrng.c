@@ -214,6 +214,9 @@ static inline int rng_create_sh_desc(struct caam_rng_ctx *ctx)
 		dev_err(jrdev, "unable to map shared descriptor\n");
 		return -ENOMEM;
 	}
+	dma_sync_single_for_device(jrdev, ctx->sh_desc_dma, desc_bytes(desc),
+			       DMA_TO_DEVICE);
+
 #ifdef DEBUG
 	print_hex_dump(KERN_ERR, "rng shdesc@: ", DUMP_PREFIX_ADDRESS, 16, 4,
 		       desc, desc_bytes(desc), 1);
@@ -258,6 +261,49 @@ static void caam_cleanup(struct hwrng *rng)
 
 	rng_unmap_ctx(rng_ctx);
 }
+
+#ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_RNG_TEST
+static inline void test_len(struct hwrng *rng, size_t len, bool wait)
+{
+	u8 *buf;
+	int real_len;
+
+	buf = kzalloc(sizeof(u8) * len, GFP_KERNEL);
+	real_len = rng->read(rng, buf, len, wait);
+	if (real_len == 0 && wait)
+		pr_err("WAITING FAILED\n");
+	pr_info("wanted %d bytes, got %d\n", len, real_len);
+	print_hex_dump(KERN_INFO, "random bytes@: ", DUMP_PREFIX_ADDRESS,
+		       16, 4, buf, real_len, 1);
+	kfree(buf);
+}
+
+static inline void test_mode_once(struct hwrng *rng, bool wait)
+{
+#define TEST_CHUNK (RN_BUF_SIZE / 4)
+
+	test_len(rng, TEST_CHUNK, wait);
+	test_len(rng, RN_BUF_SIZE * 2, wait);
+	test_len(rng, RN_BUF_SIZE * 2 - TEST_CHUNK, wait);
+}
+
+static inline void test_mode(struct hwrng *rng, bool wait)
+{
+#define TEST_PASS 1
+	int i;
+
+	for (i = 0; i < TEST_PASS; i++)
+		test_mode_once(rng, wait);
+}
+
+static void self_test(struct hwrng *rng)
+{
+	pr_info("testing without waiting\n");
+	test_mode(rng, false);
+	pr_info("testing with waiting\n");
+	test_mode(rng, true);
+}
+#endif
 
 static int caam_init_buf(struct caam_rng_ctx *ctx, int buf_id)
 {
@@ -356,6 +402,10 @@ static int __init caam_rng_init(void)
 	err = caam_init_rng(rng_ctx, dev);
 	if (err)
 		return err;
+
+#ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_RNG_TEST
+	self_test(&caam_rng);
+#endif
 
 	dev_info(dev, "registering rng-caam\n");
 	return hwrng_register(&caam_rng);

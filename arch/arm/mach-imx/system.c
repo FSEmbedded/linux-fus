@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 1999 ARM Limited
  * Copyright (C) 2000 Deep Blue Solutions Ltd
- * Copyright 2006-2015 Freescale Semiconductor, Inc.
+ * Copyright 2006-2015 Freescale Semiconductor, Inc. All Rights Reserved.
  * Copyright 2008 Juergen Beisert, kernel@pengutronix.de
  * Copyright 2009 Ilya Yanok, Emcraft Systems Ltd, yanok@emcraft.com
  *
@@ -34,7 +34,6 @@
 
 static void __iomem *wdog_base;
 static struct clk *wdog_clk;
-static u32 wdog_source = 1; /* use WDOG1 default */
 
 /*
  * Reset the system. It is called by machine_restart().
@@ -51,18 +50,6 @@ void mxc_restart(enum reboot_mode mode, const char *cmd)
 
 	if (cpu_is_mx1())
 		wcr_enable = (1 << 0);
-	/*
-	 * Some i.MX6 boards use WDOG2 to reset external pmic in bypass mode,
-	 * so do WDOG2 reset here. Do not set SRS, since we will
-	 * trigger external POR later. Use WDOG1 to reset in ldo-enable
-	 * mode. You can set it by "fsl,wdog-reset" in dts.
-	 * For i.MX6SX we have to trigger wdog-reset to reset QSPI-NOR flash to
-	 * workaround qspi-nor reboot issue whatever ldo-bypass or not.
-	 */
-	else if ((wdog_source == 2 && (cpu_is_imx6q() || cpu_is_imx6dl() ||
-			cpu_is_imx6sl())) || cpu_is_imx6sx() || cpu_is_imx7d()
-			|| cpu_is_imx6ul())
-		wcr_enable = 0x14;
 	else
 		wcr_enable = (1 << 2);
 
@@ -120,8 +107,9 @@ void __init imx_init_l2cache(void)
 	}
 
 	/* Configure the L2 PREFETCH and POWER registers */
+	/* Set prefetch offset with any value except 23 as per errata 765569 */
 	val = readl_relaxed(l2x0_base + L310_PREFETCH_CTRL);
-	val |= 0x70800000;
+	val |= 0x7000000f;
 	/*
 	 * The L2 cache controller(PL310) version on the i.MX6D/Q is r3p1-50rel0
 	 * The L2 cache controller(PL310) version on the i.MX6DL/SOLO/SL/SX/DQP
@@ -132,9 +120,13 @@ void __init imx_init_l2cache(void)
 	 * Workaround: The only workaround to this erratum is to disable the
 	 * double linefill feature. This is the default behavior.
 	 */
-	if (cpu_is_imx6q())
-		val &= ~(1 << 30 | 1 << 23);
+	cache_id = readl_relaxed(l2x0_base + L2X0_CACHE_ID);
+	if (((cache_id & L2X0_CACHE_ID_PART_MASK) == L2X0_CACHE_ID_PART_L310)
+	    && ((cache_id & L2X0_CACHE_ID_RTL_MASK) < L310_CACHE_ID_RTL_R3P2))
+		val &= ~(1 << 30);
 	writel_relaxed(val, l2x0_base + L310_PREFETCH_CTRL);
+	val = L310_DYNAMIC_CLK_GATING_EN | L310_STNDBY_MODE_EN;
+	writel_relaxed(val, l2x0_base + L310_POWER_CTRL);
 
 	iounmap(l2x0_base);
 	of_node_put(np);

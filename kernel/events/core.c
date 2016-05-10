@@ -1886,8 +1886,6 @@ event_sched_in(struct perf_event *event,
 
 	perf_pmu_disable(event->pmu);
 
-	event->tstamp_running += tstamp - event->tstamp_stopped;
-
 	perf_set_shadow_time(event, ctx, tstamp);
 
 	perf_log_itrace_start(event);
@@ -1898,6 +1896,8 @@ event_sched_in(struct perf_event *event,
 		ret = -EAGAIN;
 		goto out;
 	}
+
+	event->tstamp_running += tstamp - event->tstamp_stopped;
 
 	if (!is_software_event(event))
 		cpuctx->active_oncpu++;
@@ -2542,7 +2542,7 @@ static void perf_event_context_sched_out(struct task_struct *task, int ctxn,
 	next_parent = rcu_dereference(next_ctx->parent_ctx);
 
 	/* If neither context have a parent context; they cannot be clones. */
-	if (!parent || !next_parent)
+	if (!parent && !next_parent)
 		goto unlock;
 
 	if (next_parent == ctx || next_ctx == parent || next_parent == parent) {
@@ -4366,20 +4366,20 @@ static void ring_buffer_attach(struct perf_event *event,
 		WARN_ON_ONCE(event->rcu_pending);
 
 		old_rb = event->rb;
-		event->rcu_batches = get_state_synchronize_rcu();
-		event->rcu_pending = 1;
-
 		spin_lock_irqsave(&old_rb->event_lock, flags);
 		list_del_rcu(&event->rb_entry);
 		spin_unlock_irqrestore(&old_rb->event_lock, flags);
-	}
 
-	if (event->rcu_pending && rb) {
-		cond_synchronize_rcu(event->rcu_batches);
-		event->rcu_pending = 0;
+		event->rcu_batches = get_state_synchronize_rcu();
+		event->rcu_pending = 1;
 	}
 
 	if (rb) {
+		if (event->rcu_pending) {
+			cond_synchronize_rcu(event->rcu_batches);
+			event->rcu_pending = 0;
+		}
+
 		spin_lock_irqsave(&rb->event_lock, flags);
 		list_add_rcu(&event->rb_entry, &rb->event_list);
 		spin_unlock_irqrestore(&rb->event_lock, flags);
@@ -4409,14 +4409,6 @@ static void ring_buffer_wakeup(struct perf_event *event)
 			wake_up_all(&event->waitq);
 	}
 	rcu_read_unlock();
-}
-
-static void rb_free_rcu(struct rcu_head *rcu_head)
-{
-	struct ring_buffer *rb;
-
-	rb = container_of(rcu_head, struct ring_buffer, rcu_head);
-	rb_free(rb);
 }
 
 struct ring_buffer *ring_buffer_get(struct perf_event *event)

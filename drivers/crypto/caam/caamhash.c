@@ -136,6 +136,15 @@ struct caam_hash_state {
 	int current_buf;
 };
 
+struct caam_export_state {
+	u8 buf[CAAM_MAX_HASH_BLOCK_SIZE];
+	u8 caam_ctx[MAX_CTX_LEN];
+	int buflen;
+	int (*update)(struct ahash_request *req);
+	int (*final)(struct ahash_request *req);
+	int (*finup)(struct ahash_request *req);
+};
+
 /* Common job descriptor seq in/out ptr routines */
 
 /* Map state->caam_ctx, and append seq_out_ptr command that points to it */
@@ -220,6 +229,10 @@ static inline int ctx_map_to_sec4_sg(u32 *desc, struct device *jrdev,
 		dev_err(jrdev, "unable to map ctx\n");
 		return -ENOMEM;
 	}
+
+	if ((flag == DMA_TO_DEVICE) || (flag == DMA_BIDIRECTIONAL))
+		dma_sync_single_for_device(jrdev, state->ctx_dma, ctx_len,
+					   flag);
 
 	dma_to_sec4_sg_one(sec4_sg, state->ctx_dma, ctx_len, 0);
 
@@ -1371,7 +1384,8 @@ static int ahash_digest(struct ahash_request *req)
 	}
 	append_seq_in_ptr(desc, src_dma, req->nbytes, options);
 
-	dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma,
+	if (edesc->sec4_sg_dma)
+		dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma,
 				   edesc->sec4_sg_bytes, DMA_TO_DEVICE);
 
 	edesc->dst_dma = map_seq_out_ptr_result(desc, jrdev, req->result,
@@ -1753,7 +1767,8 @@ static int ahash_update_first(struct ahash_request *req)
 		if (ret)
 			return ret;
 
-		dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma,
+		if (edesc->sec4_sg_dma)
+			dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma,
 					   sec4_sg_bytes, DMA_TO_DEVICE);
 #ifdef DEBUG
 		print_hex_dump(KERN_ERR, "jobdesc@"__stringify(__LINE__)": ",
@@ -1833,25 +1848,42 @@ static int ahash_final(struct ahash_request *req)
 
 static int ahash_export(struct ahash_request *req, void *out)
 {
-	struct crypto_ahash *ahash = crypto_ahash_reqtfm(req);
-	struct caam_hash_ctx *ctx = crypto_ahash_ctx(ahash);
 	struct caam_hash_state *state = ahash_request_ctx(req);
+	struct caam_export_state *export = out;
+	int len;
+	u8 *buf;
 
-	memcpy(out, ctx, sizeof(struct caam_hash_ctx));
-	memcpy(out + sizeof(struct caam_hash_ctx), state,
-	       sizeof(struct caam_hash_state));
+	if (state->current_buf) {
+		buf = state->buf_1;
+		len = state->buflen_1;
+	} else {
+		buf = state->buf_0;
+		len = state->buflen_1;
+	}
+
+	memcpy(export->buf, buf, len);
+	memcpy(export->caam_ctx, state->caam_ctx, sizeof(export->caam_ctx));
+	export->buflen = len;
+	export->update = state->update;
+	export->final = state->final;
+	export->finup = state->finup;
+
 	return 0;
 }
 
 static int ahash_import(struct ahash_request *req, const void *in)
 {
-	struct crypto_ahash *ahash = crypto_ahash_reqtfm(req);
-	struct caam_hash_ctx *ctx = crypto_ahash_ctx(ahash);
 	struct caam_hash_state *state = ahash_request_ctx(req);
+	const struct caam_export_state *export = in;
 
-	memcpy(ctx, in, sizeof(struct caam_hash_ctx));
-	memcpy(state, in + sizeof(struct caam_hash_ctx),
-	       sizeof(struct caam_hash_state));
+	memset(state, 0, sizeof(*state));
+	memcpy(state->buf_0, export->buf, export->buflen);
+	memcpy(state->caam_ctx, export->caam_ctx, sizeof(state->caam_ctx));
+	state->buflen_0 = export->buflen;
+	state->update = export->update;
+	state->final = export->final;
+	state->finup = export->finup;
+
 	return 0;
 }
 
@@ -1885,6 +1917,7 @@ static struct caam_hash_template driver_hash[] = {
 			.setkey = ahash_setkey,
 			.halg = {
 				.digestsize = SHA1_DIGEST_SIZE,
+				.statesize = sizeof(struct caam_export_state),
 				},
 			},
 		.alg_type = OP_ALG_ALGSEL_SHA1,
@@ -1906,6 +1939,7 @@ static struct caam_hash_template driver_hash[] = {
 			.setkey = ahash_setkey,
 			.halg = {
 				.digestsize = SHA224_DIGEST_SIZE,
+				.statesize = sizeof(struct caam_export_state),
 				},
 			},
 		.alg_type = OP_ALG_ALGSEL_SHA224,
@@ -1927,6 +1961,7 @@ static struct caam_hash_template driver_hash[] = {
 			.setkey = ahash_setkey,
 			.halg = {
 				.digestsize = SHA256_DIGEST_SIZE,
+				.statesize = sizeof(struct caam_export_state),
 				},
 			},
 		.alg_type = OP_ALG_ALGSEL_SHA256,
@@ -1948,6 +1983,7 @@ static struct caam_hash_template driver_hash[] = {
 			.setkey = ahash_setkey,
 			.halg = {
 				.digestsize = SHA384_DIGEST_SIZE,
+				.statesize = sizeof(struct caam_export_state),
 				},
 			},
 		.alg_type = OP_ALG_ALGSEL_SHA384,
@@ -1969,6 +2005,7 @@ static struct caam_hash_template driver_hash[] = {
 			.setkey = ahash_setkey,
 			.halg = {
 				.digestsize = SHA512_DIGEST_SIZE,
+				.statesize = sizeof(struct caam_export_state),
 				},
 			},
 		.alg_type = OP_ALG_ALGSEL_SHA512,
@@ -1990,6 +2027,7 @@ static struct caam_hash_template driver_hash[] = {
 			.setkey = ahash_setkey,
 			.halg = {
 				.digestsize = MD5_DIGEST_SIZE,
+				.statesize = sizeof(struct caam_export_state),
 				},
 			},
 		.alg_type = OP_ALG_ALGSEL_MD5,
@@ -2012,6 +2050,7 @@ static struct caam_hash_template driver_hash[] = {
 			.setkey = axcbc_setkey,
 			.halg = {
 				.digestsize = XCBC_MAC_DIGEST_SIZE,
+				.statesize = sizeof(struct caam_export_state),
 				},
 			},
 		.alg_type = OP_ALG_ALGSEL_AES | OP_ALG_AAI_XCBC_MAC,
@@ -2204,8 +2243,9 @@ static int __init caam_algapi_hash_init(void)
 	struct device_node *dev_node;
 	struct platform_device *pdev;
 	struct device *ctrldev;
-	void *priv;
-	int i = 0, err = 0;
+	struct caam_drv_private *priv;
+	int i = 0, err = 0, md_limit = 0, md_inst;
+	u64 cha_inst;
 
 	dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
 	if (!dev_node) {
@@ -2215,10 +2255,9 @@ static int __init caam_algapi_hash_init(void)
 	}
 
 	pdev = of_find_device_by_node(dev_node);
-	if (!pdev) {
-		of_node_put(dev_node);
+	of_node_put(dev_node);
+	if (!pdev)
 		return -ENODEV;
-	}
 
 	ctrldev = &pdev->dev;
 	priv = dev_get_drvdata(ctrldev);
@@ -2234,12 +2273,12 @@ static int __init caam_algapi_hash_init(void)
 	INIT_LIST_HEAD(&hash_list);
 
 	/* register algorithms the device supports */
-	cha_inst = rd_reg64(&priv->ctrl->perfmon.cha_num);
-	md_inst = (cha_inst & CHA_ID_MD_MASK) >> CHA_ID_MD_SHIFT;
+	cha_inst = rd_reg32(&priv->ctrl->perfmon.cha_num_ls);
+	md_inst = (cha_inst & CHA_ID_LS_MD_MASK) >> CHA_ID_LS_MD_SHIFT;
 	if (md_inst) {
 		md_limit = SHA512_DIGEST_SIZE;
-		if ((rd_reg64(&priv->ctrl->perfmon.cha_id) & CHA_ID_MD_MASK)
-		     == CHA_ID_MD_LP256) /* LP256 limits digest size */
+		if ((rd_reg32(&priv->ctrl->perfmon.cha_id_ls) & CHA_ID_LS_MD_MASK)
+		     == CHA_ID_LS_MD_LP256) /* LP256 limits digest size */
 			md_limit = SHA256_DIGEST_SIZE;
 	}
 

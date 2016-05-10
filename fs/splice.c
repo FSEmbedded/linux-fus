@@ -945,7 +945,9 @@ iter_file_splice_write(struct pipe_inode_info *pipe, struct file *out,
 			  loff_t *ppos, size_t len, unsigned int flags)
 {
 	struct splice_desc sd = {
+		.total_len = len,
 		.flags = flags,
+		.pos = *ppos,
 		.u.file = out,
 	};
 	int nbufs = pipe->buffers;

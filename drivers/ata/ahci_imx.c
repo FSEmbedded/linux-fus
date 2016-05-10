@@ -70,7 +70,6 @@ struct imx_ahci_priv {
 	u32 phy_params;
 };
 
-extern struct scsi_host_template ahci_platform_sht;
 void *sg_io_buffer_hack;
 
 static int ahci_imx_hotplug;
@@ -235,7 +234,7 @@ static int imx_sata_enable(struct ahci_host_priv *hpriv)
 	if (ret < 0)
 		goto disable_regulator;
 
-	if (imxpriv->type == AHCI_IMX6Q) {
+	if (imxpriv->type == AHCI_IMX6Q || imxpriv->type == AHCI_IMX6QP) {
 		/*
 		 * set PHY Paremeters, two steps to configure the GPR13,
 		 * one write for rest of parameters, mask of first write
@@ -259,12 +258,26 @@ static int imx_sata_enable(struct ahci_host_priv *hpriv)
 				   IMX6Q_GPR13_SATA_MPLL_CLK_EN);
 
 		usleep_range(100, 200);
+	}
 
+
+	if (imxpriv->type == AHCI_IMX6Q) {
 		ret = imx_sata_phy_reset(hpriv);
-		if (ret) {
-			dev_err(dev, "failed to reset phy: %d\n", ret);
-			goto disable_clk;
-		}
+	} else if (imxpriv->type == AHCI_IMX6QP) {
+		/* 6qp adds the sata reset mechanism, use it for 6qp sata */
+		regmap_update_bits(imxpriv->gpr, IOMUXC_GPR5,
+				   BIT(10), 0);
+
+		regmap_update_bits(imxpriv->gpr, IOMUXC_GPR5,
+				   BIT(11), 0);
+		udelay(50);
+		regmap_update_bits(imxpriv->gpr, IOMUXC_GPR5,
+				   BIT(11), BIT(11));
+	}
+
+	if (ret) {
+		dev_err(dev, "failed to reset phy: %d\n", ret);
+		goto disable_clk;
 	}
 
 	usleep_range(1000, 2000);
@@ -282,9 +295,6 @@ disable_regulator:
 static void imx_sata_disable(struct ahci_host_priv *hpriv)
 {
 	struct imx_ahci_priv *imxpriv = hpriv->plat_data;
-
-	if (imxpriv->no_device)
-		return;
 
 	if (imxpriv->no_device)
 		return;
@@ -578,7 +588,7 @@ static int imx_ahci_probe(struct platform_device *pdev)
 		return PTR_ERR(imxpriv->ahb_clk);
 	}
 
-	if (imxpriv->type == AHCI_IMX6Q) {
+	if (imxpriv->type == AHCI_IMX6Q || imxpriv->type == AHCI_IMX6QP) {
 		u32 reg_value;
 
 		imxpriv->gpr = syscon_regmap_lookup_by_compatible(
@@ -633,6 +643,24 @@ static int imx_ahci_probe(struct platform_device *pdev)
 
 	reg_val = clk_get_rate(imxpriv->ahb_clk) / 1000;
 	writel(reg_val, hpriv->mmio + IMX_TIMER1MS);
+
+	/*
+	* Due to IP bug on the Synopsis 3.00 SATA version,
+	* which is present on mx6q, and not on mx53,
+	* we should use sg_tablesize = 1 for reliable operation
+	*/
+	if (imxpriv->type == AHCI_IMX6Q || imxpriv->type == AHCI_IMX6QP) {
+		dma_addr_t dma;
+
+		ahci_platform_sht.sg_tablesize = 1;
+
+		sg_io_buffer_hack = dma_alloc_coherent(NULL, 0x10000,
+				&dma, GFP_KERNEL);
+		if (!sg_io_buffer_hack) {
+			ret = -ENOMEM;
+			goto disable_sata;
+		}
+	}
 
 	ret = ahci_platform_init_host(pdev, hpriv, &ahci_imx_port_info,
 				      &ahci_platform_sht);
