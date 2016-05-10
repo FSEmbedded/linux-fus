@@ -59,11 +59,20 @@
 #define MX6_BM_UNBURST_SETTING		BIT(1)
 #define MX6_BM_OVER_CUR_DIS		BIT(7)
 #define MX6_BM_WAKEUP_ENABLE		BIT(10)
-#define MX6_BM_UTMI_ON_CLOCK		BIT(13)
 #define MX6_BM_ID_WAKEUP		BIT(16)
 #define MX6_BM_VBUS_WAKEUP		BIT(17)
 #define MX6SX_BM_DPDM_WAKEUP_EN		BIT(29)
 #define MX6_BM_WAKEUP_INTR		BIT(31)
+#define MX6_USB_OTG1_PHY_CTRL		0x18
+/* For imx6dql, it is host-only controller, for later imx6, it is otg's */
+#define MX6_USB_OTG2_PHY_CTRL		0x1c
+#define MX6SX_USB_VBUS_WAKEUP_SOURCE(v)	(v << 8)
+#define MX6SX_USB_VBUS_WAKEUP_SOURCE_VBUS	MX6SX_USB_VBUS_WAKEUP_SOURCE(0)
+#define MX6SX_USB_VBUS_WAKEUP_SOURCE_AVALID	MX6SX_USB_VBUS_WAKEUP_SOURCE(1)
+#define MX6SX_USB_VBUS_WAKEUP_SOURCE_BVALID	MX6SX_USB_VBUS_WAKEUP_SOURCE(2)
+#define MX6SX_USB_VBUS_WAKEUP_SOURCE_SESS_END	MX6SX_USB_VBUS_WAKEUP_SOURCE(3)
+
+#define VF610_OVER_CUR_DIS		BIT(7)
 
 #define MX6_USB_HSIC_CTRL_OFFSET	0x10
 /* Send resume signal without 480Mhz PHY clock */
@@ -155,33 +164,6 @@ struct usbmisc_ops {
 	int (*post)(struct imx_usbmisc_data *data);
 	/* It's called when we need to enable/disable usb wakeup */
 	int (*set_wakeup)(struct imx_usbmisc_data *data, bool enabled);
-	/* It's called when system resume from usb power lost */
-	int (*power_lost_check)(struct imx_usbmisc_data *data);
-	/* It's called before setting portsc.suspendM */
-	int (*hsic_set_connect)(struct imx_usbmisc_data *data);
-	/* It's called during suspend/resume */
-	int (*hsic_set_clk)(struct imx_usbmisc_data *data, bool enabled);
-	/* USB OTG ADP probe enable */
-	void (*adp_probe_enable)(struct imx_usbmisc_data *data, bool on);
-	/* USB OTG ADP probe start */
-	void (*adp_probe_start)(struct imx_usbmisc_data *data);
-	/* USB OTG ADP sense enable */
-	void (*adp_sense_enable)(struct imx_usbmisc_data *data, bool on);
-	/* Check if usb OTG ADP probe irq */
-	bool (*is_probe_int)(struct imx_usbmisc_data *data);
-	/* Check if usb OTG ADP sense irq */
-	bool (*is_sense_int)(struct imx_usbmisc_data *data);
-	/* Check if usb OTG ADP sense probe is on-going by A-dev */
-	bool (*adp_sense_connection)(struct imx_usbmisc_data *data);
-	/* Check if it's a device attach or dettach event */
-	bool (*adp_attach_event)(struct imx_usbmisc_data *data);
-	/* override UTMI termination select */
-	int (*term_select_override)(struct imx_usbmisc_data *data,
-						bool enable, int val);
-	/* usb charger contact and primary detection */
-	int (*charger_primary_detection)(struct imx_usbmisc_data *data);
-	/* usb charger secondary detection */
-	int (*charger_secondary_detection)(struct imx_usbmisc_data *data);
 };
 
 struct imx_usbmisc {
@@ -189,8 +171,6 @@ struct imx_usbmisc {
 	spinlock_t lock;
 	const struct usbmisc_ops *ops;
 };
-
-static struct regulator *vbus_wakeup_reg;
 
 static int usbmisc_imx25_init(struct imx_usbmisc_data *data)
 {
@@ -323,66 +303,14 @@ static int usbmisc_imx53_init(struct imx_usbmisc_data *data)
 	return 0;
 }
 
-static int usbmisc_imx6_hsic_set_connect(struct imx_usbmisc_data *data)
-{
-	unsigned long flags;
-	u32 val;
-	struct imx_usbmisc *usbmisc = dev_get_drvdata(data->dev);
-
-	spin_lock_irqsave(&usbmisc->lock, flags);
-	if (data->index == 2 || data->index == 3) {
-		val = readl(usbmisc->base + MX6_USB_HSIC_CTRL_OFFSET
-						+ (data->index - 2) * 4);
-		if (!(val & MX6_BM_HSIC_DEV_CONN))
-			writel(val | MX6_BM_HSIC_DEV_CONN,
-				usbmisc->base + MX6_USB_HSIC_CTRL_OFFSET
-						+ (data->index - 2) * 4);
-	}
-	spin_unlock_irqrestore(&usbmisc->lock, flags);
-
-	return 0;
-}
-
-static int usbmisc_imx6_hsic_set_clk(struct imx_usbmisc_data *data, bool on)
-{
-	unsigned long flags;
-	u32 val;
-	struct imx_usbmisc *usbmisc = dev_get_drvdata(data->dev);
-
-	spin_lock_irqsave(&usbmisc->lock, flags);
-	if (data->index == 2 || data->index == 3) {
-		val = readl(usbmisc->base + MX6_USB_HSIC_CTRL_OFFSET
-						+ (data->index - 2) * 4);
-		val |= MX6_BM_HSIC_EN | MX6_BM_HSIC_CLK_ON;
-		if (on)
-			val |= MX6_BM_HSIC_CLK_ON;
-		else
-			val &= ~MX6_BM_HSIC_CLK_ON;
-		writel(val, usbmisc->base + MX6_USB_HSIC_CTRL_OFFSET
-						+ (data->index - 2) * 4);
-	}
-	spin_unlock_irqrestore(&usbmisc->lock, flags);
-
-	return 0;
-}
-
-static u32 imx6q_finalize_wakeup_setting(struct imx_usbmisc_data *data)
-{
-	if (data->available_role == USB_DR_MODE_PERIPHERAL)
-		return MX6_BM_VBUS_WAKEUP;
-	else if (data->available_role == USB_DR_MODE_OTG)
-		return MX6_BM_VBUS_WAKEUP | MX6_BM_ID_WAKEUP;
-
-	return 0;
-}
-
 static int usbmisc_imx6q_set_wakeup
 	(struct imx_usbmisc_data *data, bool enabled)
 {
 	struct imx_usbmisc *usbmisc = dev_get_drvdata(data->dev);
 	unsigned long flags;
 	u32 val;
-	u32 wakeup_setting = MX6_BM_WAKEUP_ENABLE;
+	u32 wakeup_setting = (MX6_BM_WAKEUP_ENABLE |
+		MX6_BM_VBUS_WAKEUP | MX6_BM_ID_WAKEUP);
 	int ret = 0;
 
 	if (data->index > 3)
@@ -391,20 +319,15 @@ static int usbmisc_imx6q_set_wakeup
 	spin_lock_irqsave(&usbmisc->lock, flags);
 	val = readl(usbmisc->base + data->index * 4);
 	if (enabled) {
-		wakeup_setting |= imx6q_finalize_wakeup_setting(data);
-		writel(val | wakeup_setting, usbmisc->base + data->index * 4);
-		spin_unlock_irqrestore(&usbmisc->lock, flags);
-		if (vbus_wakeup_reg)
-			ret = regulator_enable(vbus_wakeup_reg);
+		val |= wakeup_setting;
+		writel(val, usbmisc->base + data->index * 4);
 	} else {
 		if (val & MX6_BM_WAKEUP_INTR)
 			pr_debug("wakeup int at ci_hdrc.%d\n", data->index);
-		wakeup_setting |= MX6_BM_VBUS_WAKEUP | MX6_BM_ID_WAKEUP;
-		writel(val & ~wakeup_setting, usbmisc->base + data->index * 4);
-		spin_unlock_irqrestore(&usbmisc->lock, flags);
-		if (vbus_wakeup_reg && regulator_is_enabled(vbus_wakeup_reg))
-			regulator_disable(vbus_wakeup_reg);
+		val &= ~wakeup_setting;
+		writel(val, usbmisc->base + data->index * 4);
 	}
+	spin_unlock_irqrestore(&usbmisc->lock, flags);
 
 	return ret;
 }
@@ -1094,8 +1017,55 @@ int imx7d_charger_secondary_detection(struct imx_usbmisc_data *data)
 		charger->max_current = 900;
 	}
 
-	usb_charger_is_present(charger, true);
-	mutex_unlock(&charger->lock);
+	usbmisc_imx6q_set_wakeup(data, false);
+
+	return 0;
+}
+
+static int usbmisc_imx6sx_init(struct imx_usbmisc_data *data)
+{
+	void __iomem *reg = NULL;
+	unsigned long flags;
+	struct imx_usbmisc *usbmisc = dev_get_drvdata(data->dev);
+	u32 val;
+
+	usbmisc_imx6q_init(data);
+
+	if (data->index == 0 || data->index == 1) {
+		reg = usbmisc->base + MX6_USB_OTG1_PHY_CTRL + data->index * 4;
+		spin_lock_irqsave(&usbmisc->lock, flags);
+		/* Set vbus wakeup source as bvalid */
+		val = readl(reg);
+		writel(val | MX6SX_USB_VBUS_WAKEUP_SOURCE_BVALID, reg);
+		/*
+		 * Disable dp/dm wakeup in device mode when vbus is
+		 * not there.
+		 */
+		val = readl(usbmisc->base + data->index * 4);
+		writel(val & ~MX6SX_BM_DPDM_WAKEUP_EN,
+			usbmisc->base + data->index * 4);
+		spin_unlock_irqrestore(&usbmisc->lock, flags);
+	}
+
+	return 0;
+}
+
+static int usbmisc_vf610_init(struct imx_usbmisc_data *data)
+{
+	struct imx_usbmisc *usbmisc = dev_get_drvdata(data->dev);
+	u32 reg;
+
+	/*
+	 * Vybrid only has one misc register set, but in two different
+	 * areas. These is reflected in two instances of this driver.
+	 */
+	if (data->index >= 1)
+		return -EINVAL;
+
+	if (data->disable_oc) {
+		reg = readl(usbmisc->base);
+		writel(reg | VF610_OVER_CUR_DIS, usbmisc->base);
+	}
 
 	return 0;
 }
@@ -1152,6 +1122,15 @@ static const struct usbmisc_ops imx7d_usbmisc_ops = {
 	.charger_secondary_detection = imx7d_charger_secondary_detection,
 };
 
+static const struct usbmisc_ops vf610_usbmisc_ops = {
+	.init = usbmisc_vf610_init,
+};
+
+static const struct usbmisc_ops imx6sx_usbmisc_ops = {
+	.set_wakeup = usbmisc_imx6q_set_wakeup,
+	.init = usbmisc_imx6sx_init,
+};
+
 int imx_usbmisc_init(struct imx_usbmisc_data *data)
 {
 	struct imx_usbmisc *usbmisc;
@@ -1194,212 +1173,6 @@ int imx_usbmisc_set_wakeup(struct imx_usbmisc_data *data, bool enabled)
 }
 EXPORT_SYMBOL_GPL(imx_usbmisc_set_wakeup);
 
-int imx_usbmisc_power_lost_check(struct imx_usbmisc_data *data)
-{
-	struct imx_usbmisc *usbmisc;
-
-	if (!data)
-		return 0;
-
-	usbmisc = dev_get_drvdata(data->dev);
-	if (!usbmisc->ops->power_lost_check)
-		return 0;
-	return usbmisc->ops->power_lost_check(data);
-}
-EXPORT_SYMBOL_GPL(imx_usbmisc_power_lost_check);
-
-int imx_usbmisc_hsic_set_connect(struct imx_usbmisc_data *data)
-{
-	struct imx_usbmisc *usbmisc;
-
-	if (!data)
-		return 0;
-
-	usbmisc = dev_get_drvdata(data->dev);
-	if (!usbmisc->ops->hsic_set_connect)
-		return 0;
-	return usbmisc->ops->hsic_set_connect(data);
-}
-EXPORT_SYMBOL_GPL(imx_usbmisc_hsic_set_connect);
-
-int imx_usbmisc_hsic_set_clk(struct imx_usbmisc_data *data, bool on)
-{
-	struct imx_usbmisc *usbmisc;
-
-	if (!data)
-		return 0;
-
-	usbmisc = dev_get_drvdata(data->dev);
-	if (!usbmisc->ops->hsic_set_clk)
-		return 0;
-	return usbmisc->ops->hsic_set_clk(data, on);
-}
-EXPORT_SYMBOL_GPL(imx_usbmisc_hsic_set_clk);
-
-void imx_usbmisc_adp_probe_enable(struct imx_usbmisc_data *data)
-{
-	struct imx_usbmisc *usbmisc;
-
-	if (!data)
-		return;
-
-	usbmisc = dev_get_drvdata(data->dev);
-	if (!usbmisc->ops->adp_probe_enable)
-		return;
-	usbmisc->ops->adp_probe_enable(data, true);
-}
-EXPORT_SYMBOL_GPL(imx_usbmisc_adp_probe_enable);
-
-void imx_usbmisc_adp_probe_start(struct imx_usbmisc_data *data)
-{
-	struct imx_usbmisc *usbmisc;
-
-	if (!data)
-		return;
-
-	usbmisc = dev_get_drvdata(data->dev);
-	if (!usbmisc->ops->adp_probe_start)
-		return;
-	usbmisc->ops->adp_probe_start(data);
-}
-EXPORT_SYMBOL_GPL(imx_usbmisc_adp_probe_start);
-
-void imx_usbmisc_adp_sense_enable(struct imx_usbmisc_data *data)
-{
-	struct imx_usbmisc *usbmisc;
-
-	if (!data)
-		return;
-
-	usbmisc = dev_get_drvdata(data->dev);
-	if (!usbmisc->ops->adp_sense_enable)
-		return;
-	usbmisc->ops->adp_sense_enable(data, true);
-}
-EXPORT_SYMBOL_GPL(imx_usbmisc_adp_sense_enable);
-
-bool imx_usbmisc_adp_is_probe_int(struct imx_usbmisc_data *data)
-{
-	struct imx_usbmisc *usbmisc;
-
-	if (!data)
-		return 0;
-
-	usbmisc = dev_get_drvdata(data->dev);
-	if (!usbmisc->ops->is_probe_int)
-		return 0;
-	return usbmisc->ops->is_probe_int(data);
-}
-EXPORT_SYMBOL_GPL(imx_usbmisc_adp_is_probe_int);
-
-bool imx_usbmisc_adp_is_sense_int(struct imx_usbmisc_data *data)
-{
-	struct imx_usbmisc *usbmisc;
-
-	if (!data)
-		return 0;
-
-	usbmisc = dev_get_drvdata(data->dev);
-	if (!usbmisc->ops->is_sense_int)
-		return 0;
-	return usbmisc->ops->is_sense_int(data);
-}
-EXPORT_SYMBOL_GPL(imx_usbmisc_adp_is_sense_int);
-
-bool imx_usbmisc_adp_sense_connection(struct imx_usbmisc_data *data)
-{
-	struct imx_usbmisc *usbmisc;
-
-	if (!data)
-		return 0;
-
-	usbmisc = dev_get_drvdata(data->dev);
-	if (!usbmisc->ops->adp_sense_connection)
-		return 0;
-	return usbmisc->ops->adp_sense_connection(data);
-}
-EXPORT_SYMBOL_GPL(imx_usbmisc_adp_sense_connection);
-
-bool imx_usbmisc_adp_attach_event(struct imx_usbmisc_data *data)
-{
-	struct imx_usbmisc *usbmisc;
-
-	if (!data)
-		return 0;
-
-	usbmisc = dev_get_drvdata(data->dev);
-	if (!usbmisc->ops->adp_attach_event)
-		return 0;
-	return usbmisc->ops->adp_attach_event(data);
-}
-EXPORT_SYMBOL_GPL(imx_usbmisc_adp_attach_event);
-
-int imx_usbmisc_term_select_override(struct imx_usbmisc_data *data,
-						bool enable, int val)
-{
-	struct imx_usbmisc *usbmisc;
-
-	if (!data)
-		return 0;
-
-	usbmisc = dev_get_drvdata(data->dev);
-	if (!usbmisc->ops->term_select_override)
-		return 0;
-	return usbmisc->ops->term_select_override(data, enable, val);
-}
-EXPORT_SYMBOL_GPL(imx_usbmisc_term_select_override);
-
-int imx_usbmisc_charger_detection(struct imx_usbmisc_data *data, bool connect)
-{
-	struct imx_usbmisc *usbmisc;
-	struct usb_charger *charger = data->charger;
-	int ret = 0;
-
-	if (!data)
-		return -EINVAL;
-
-	usbmisc = dev_get_drvdata(data->dev);
-	if (!usbmisc->ops->charger_primary_detection)
-		return -ENOTSUPP;
-
-	mutex_lock(&charger->lock);
-	if (connect) {
-		charger->online = 1;
-		ret = usbmisc->ops->charger_primary_detection(data);
-		if (ret) {
-			dev_err(charger->dev,
-					"Error occurs during detection: %d\n",
-					ret);
-		} else {
-			if (charger->psy.type == POWER_SUPPLY_TYPE_USB)
-				usb_charger_is_present(charger, true);
-		}
-	} else {
-		charger->online = 0;
-		charger->max_current = 0;
-		charger->psy.type = POWER_SUPPLY_TYPE_MAINS;
-
-		usb_charger_is_present(charger, false);
-	}
-	mutex_unlock(&charger->lock);
-	return ret;
-}
-EXPORT_SYMBOL_GPL(imx_usbmisc_charger_detection);
-
-int imx_usbmisc_charger_secondary_detection(struct imx_usbmisc_data *data)
-{
-	struct imx_usbmisc *usbmisc;
-
-	if (!data)
-		return 0;
-
-	usbmisc = dev_get_drvdata(data->dev);
-	if (!usbmisc->ops->charger_secondary_detection)
-		return 0;
-	return usbmisc->ops->charger_secondary_detection(data);
-}
-EXPORT_SYMBOL_GPL(imx_usbmisc_charger_secondary_detection);
-
 static const struct of_device_id usbmisc_imx_dt_ids[] = {
 	{
 		.compatible = "fsl,imx25-usbmisc",
@@ -1433,14 +1206,6 @@ static const struct of_device_id usbmisc_imx_dt_ids[] = {
 		.compatible = "fsl,imx6sx-usbmisc",
 		.data = &imx6sx_usbmisc_ops,
 	},
-	{
-		.compatible = "fsl,imx6ul-usbmisc",
-		.data = &imx6sx_usbmisc_ops,
-	},
-	{
-		.compatible = "fsl,imx7d-usbmisc",
-		.data = &imx7d_usbmisc_ops,
-	},
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, usbmisc_imx_dt_ids);
@@ -1467,18 +1232,6 @@ static int usbmisc_imx_probe(struct platform_device *pdev)
 	data->ops = (const struct usbmisc_ops *)tmp_dev->data;
 	platform_set_drvdata(pdev, data);
 
-	vbus_wakeup_reg = devm_regulator_get(&pdev->dev, "vbus-wakeup");
-	if (PTR_ERR(vbus_wakeup_reg) == -EPROBE_DEFER)
-		return -EPROBE_DEFER;
-	else if (PTR_ERR(vbus_wakeup_reg) == -ENODEV)
-		/* no vbus regualator is needed */
-		vbus_wakeup_reg = NULL;
-	else if (IS_ERR(vbus_wakeup_reg)) {
-		dev_err(&pdev->dev, "Getting regulator error: %ld\n",
-			PTR_ERR(vbus_wakeup_reg));
-		return PTR_ERR(vbus_wakeup_reg);
-	}
-
 	return 0;
 }
 
@@ -1492,7 +1245,6 @@ static struct platform_driver usbmisc_imx_driver = {
 	.remove = usbmisc_imx_remove,
 	.driver = {
 		.name = "usbmisc_imx",
-		.owner = THIS_MODULE,
 		.of_match_table = usbmisc_imx_dt_ids,
 	 },
 };

@@ -30,6 +30,14 @@
 #define VISEntryHalf					\
 	VISEntry
 
+#define VISEntryHalfFast(fail_label)			\
+	rd		%fprs, %o5;			\
+	andcc		%o5, FPRS_FEF, %g0;		\
+	be,pt		%icc, 297f;			\
+	 nop;						\
+	ba,a,pt		%xcc, fail_label;		\
+297:	wr		%o5, FPRS_FEF, %fprs;
+
 #define VISExitHalf					\
 	VISExit
 
@@ -59,7 +67,8 @@ static inline void save_and_clear_fpu(void) {
 "		" : : "i" (FPRS_FEF|FPRS_DU) :
 		"o5", "g1", "g2", "g3", "g7", "cc");
 }
-extern int vis_emul(struct pt_regs *, unsigned int);
+
+int vis_emul(struct pt_regs *, unsigned int);
 #endif
 
 #endif /* _SPARC64_ASI_H */

@@ -124,8 +124,6 @@ enum ci_revision {
  * @start: start this role
  * @stop: stop this role
  * @irq: irq handler for this role
- * @suspend: system suspend handler for this role
- * @resume: system resume handler for this role
  * @name: role name string (host/gadget)
  */
 struct ci_role_driver {
@@ -171,7 +169,6 @@ struct hw_bank {
  * @hr_timeouts: time out list for active otg fsm timers
  * @enabled_otg_timer_bits: bits of enabled otg timers
  * @next_otg_timer: next nearest enabled timer to be expired
- * @hnp_polling_work: work for hnp polling
  * @work: work for role changing
  * @wq: workqueue thread
  * @qh_pool: allocation pool for queue heads
@@ -204,8 +201,6 @@ struct hw_bank {
  * @in_lpm: if the core in low power mode
  * @wakeup_int: if wakeup interrupt occur
  * @rev: The revision number for controller
- * @adp_probe_event: indicates to enable adp probe
- * @adp_sense_event: indicates to enable adp sense
  */
 struct ci_hdrc {
 	struct device			*dev;
@@ -221,8 +216,6 @@ struct ci_hdrc {
 	ktime_t				hr_timeouts[NUM_OTG_FSM_TIMERS];
 	unsigned			enabled_otg_timer_bits;
 	enum otg_fsm_timer		next_otg_timer;
-	struct timer_list		hnp_polling_timer;
-	struct work_struct		hnp_polling_work;
 	struct work_struct		work;
 	struct workqueue_struct		*wq;
 
@@ -258,20 +251,6 @@ struct ci_hdrc {
 	bool				in_lpm;
 	bool				wakeup_int;
 	enum ci_revision		rev;
-	/* register save area for suspend&resume */
-	u32				pm_command;
-	u32				pm_status;
-	u32				pm_intr_enable;
-	u32				pm_frame_index;
-	u32				pm_segment;
-	u32				pm_frame_list;
-	u32				pm_async_next;
-	u32				pm_configured_flag;
-	u32				pm_portsc;
-	u32				pm_usbmode;
-	struct work_struct		power_lost_work;
-	bool				adp_probe_event;
-	bool				adp_sense_event;
 };
 
 static inline struct ci_role_driver *ci_role(struct ci_hdrc *ci)
@@ -432,11 +411,8 @@ static inline u32 hw_test_and_write(struct ci_hdrc *ci, enum ci_hw_regs reg,
 static inline bool ci_otg_is_fsm_mode(struct ci_hdrc *ci)
 {
 #ifdef CONFIG_USB_OTG_FSM
-	struct usb_otg_caps *otg_caps = &ci->platdata->ci_otg_caps;
-
 	return ci->is_otg && ci->roles[CI_ROLE_HOST] &&
-		ci->roles[CI_ROLE_GADGET] && (otg_caps->hnp_support ||
-			otg_caps->srp_support || otg_caps->adp_support);
+					ci->roles[CI_ROLE_GADGET];
 #else
 	return false;
 #endif

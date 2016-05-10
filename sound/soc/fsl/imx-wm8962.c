@@ -695,8 +695,10 @@ audmux_bypass:
 		goto fail;
 	ret = snd_soc_of_parse_audio_routing(&data->card, "audio-routing");
 	if (ret)
-		goto fail;
-	data->card.dai_link = data->dai;
+		goto clk_fail;
+	data->card.num_links = 1;
+	data->card.owner = THIS_MODULE;
+	data->card.dai_link = &data->dai;
 	data->card.dapm_widgets = imx_wm8962_dapm_widgets;
 	data->card.num_dapm_widgets = ARRAY_SIZE(imx_wm8962_dapm_widgets);
 
@@ -744,10 +746,8 @@ fail_mic:
 	driver_remove_file(pdev->dev.driver, &driver_attr_headphone);
 fail_hp:
 fail:
-	if (cpu_np)
-		of_node_put(cpu_np);
-	if (codec_np)
-		of_node_put(codec_np);
+	of_node_put(ssi_np);
+	of_node_put(codec_np);
 
 	return ret;
 }
@@ -769,7 +769,6 @@ MODULE_DEVICE_TABLE(of, imx_wm8962_dt_ids);
 static struct platform_driver imx_wm8962_driver = {
 	.driver = {
 		.name = "imx-wm8962",
-		.owner = THIS_MODULE,
 		.pm = &snd_soc_pm_ops,
 		.of_match_table = imx_wm8962_dt_ids,
 	},

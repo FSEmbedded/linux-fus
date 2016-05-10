@@ -293,7 +293,9 @@ static void __init imx6q_1588_init(void)
 {
 	struct device_node *np;
 	struct clk *ptp_clk;
+	struct clk *enet_ref;
 	struct regmap *gpr;
+	u32 clksel;
 
 	np = of_find_compatible_node(NULL, NULL, "fsl,imx6q-fec");
 	if (!np) {
@@ -307,22 +309,66 @@ static void __init imx6q_1588_init(void)
 		goto put_node;
 	}
 
+	enet_ref = clk_get_sys(NULL, "enet_ref");
+	if (IS_ERR(enet_ref)) {
+		pr_warn("%s: failed to get enet clock\n", __func__);
+		goto put_ptp_clk;
+	}
+
 	/*
 	 * If enet_ref from ANATOP/CCM is the PTP clock source, we need to
 	 * set bit IOMUXC_GPR1[21].  Or the PTP clock must be from pad
 	 * (external OSC), and we need to clear the bit.
 	 */
+	clksel = clk_is_match(ptp_clk, enet_ref) ?
+				IMX6Q_GPR1_ENET_CLK_SEL_ANATOP :
+				IMX6Q_GPR1_ENET_CLK_SEL_PAD;
 	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6q-iomuxc-gpr");
 	if (!IS_ERR(gpr))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				IMX6Q_GPR1_ENET_CLK_SEL_MASK,
-				IMX6Q_GPR1_ENET_CLK_SEL_ANATOP);
+				clksel);
 	else
 		pr_err("failed to find fsl,imx6q-iomux-gpr regmap\n");
 
+	clk_put(enet_ref);
+put_ptp_clk:
 	clk_put(ptp_clk);
 put_node:
 	of_node_put(np);
+}
+
+static void __init imx6q_axi_init(void)
+{
+	struct regmap *gpr;
+	unsigned int mask;
+
+	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6q-iomuxc-gpr");
+	if (!IS_ERR(gpr)) {
+		/*
+		 * Enable the cacheable attribute of VPU and IPU
+		 * AXI transactions.
+		 */
+		mask = IMX6Q_GPR4_VPU_WR_CACHE_SEL |
+			IMX6Q_GPR4_VPU_RD_CACHE_SEL |
+			IMX6Q_GPR4_VPU_P_WR_CACHE_VAL |
+			IMX6Q_GPR4_VPU_P_RD_CACHE_VAL_MASK |
+			IMX6Q_GPR4_IPU_WR_CACHE_CTL |
+			IMX6Q_GPR4_IPU_RD_CACHE_CTL;
+		regmap_update_bits(gpr, IOMUXC_GPR4, mask, mask);
+
+		/* Increase IPU read QoS priority */
+		regmap_update_bits(gpr, IOMUXC_GPR6,
+				IMX6Q_GPR6_IPU1_ID00_RD_QOS_MASK |
+				IMX6Q_GPR6_IPU1_ID01_RD_QOS_MASK,
+				(0xf << 16) | (0x7 << 20));
+		regmap_update_bits(gpr, IOMUXC_GPR7,
+				IMX6Q_GPR7_IPU2_ID00_RD_QOS_MASK |
+				IMX6Q_GPR7_IPU2_ID01_RD_QOS_MASK,
+				(0xf << 16) | (0x7 << 20));
+	} else {
+		pr_warn("failed to find fsl,imx6q-iomuxc-gpr regmap\n");
+	}
 }
 
 static void __init imx6q_csi_mux_init(void)
@@ -394,8 +440,6 @@ static void __init imx6q_init_machine(void)
 		imx_print_silicon_rev(cpu_is_imx6dl() ? "i.MX6DL" : "i.MX6Q",
 				 imx_get_soc_revision());
 
-	mxc_arch_reset_init_dt();
-
 	parent = imx_soc_device_init();
 	if (parent == NULL)
 		pr_warn("failed to initialize soc device\n");
@@ -405,8 +449,9 @@ static void __init imx6q_init_machine(void)
 
 	imx6q_enet_init();
 	imx_anatop_init();
-	imx6q_csi_mux_init();
 	cpu_is_imx6q() ?  imx6q_pm_init() : imx6dl_pm_init();
+	imx6q_1588_init();
+	imx6q_axi_init();
 }
 
 #define OCOTP_CFG3			0x440
@@ -445,7 +490,7 @@ static void __init imx6q_opp_check_speed_grading(struct device *cpu_dev)
 	val >>= OCOTP_CFG3_SPEED_SHIFT;
 	val &= 0x3;
 
-	if (val != OCOTP_CFG3_SPEED_1P2GHZ)
+	if ((val != OCOTP_CFG3_SPEED_1P2GHZ) && cpu_is_imx6q())
 		if (dev_pm_opp_disable(cpu_dev, 1200000000))
 			pr_warn("failed to disable 1.2 GHz OPP\n");
 	if (val < OCOTP_CFG3_SPEED_996MHZ)
@@ -456,13 +501,7 @@ static void __init imx6q_opp_check_speed_grading(struct device *cpu_dev)
 			if (dev_pm_opp_disable(cpu_dev, 852000000))
 				pr_warn("failed to disable 852 MHz OPP\n");
 	}
-
-	if (IS_ENABLED(CONFIG_MX6_VPU_352M)) {
-		if (dev_pm_opp_disable(cpu_dev, 396000000))
-			pr_warn("failed to disable 396MHz OPP\n");
-		pr_info("remove 396MHz OPP for VPU running at 352MHz!\n");
-	}
-
+	iounmap(base);
 put_node:
 	of_node_put(np);
 }
@@ -530,14 +569,14 @@ static void __init imx6q_map_io(void)
 
 static void __init imx6q_init_irq(void)
 {
+	imx_gpc_check_dt();
 	imx_init_revision_from_anatop();
 	imx_init_l2cache();
 	imx_src_init();
-	imx_gpc_init();
 	irqchip_init();
 }
 
-static const char *imx6q_dt_compat[] __initdata = {
+static const char * const imx6q_dt_compat[] __initconst = {
 	"fsl,imx6dl",
 	"fsl,imx6q",
 	NULL,
@@ -556,5 +595,4 @@ DT_MACHINE_START(IMX6Q, "Freescale i.MX6 Quad/DualLite (Device Tree)")
 	.init_machine	= imx6q_init_machine,
 	.init_late      = imx6q_init_late,
 	.dt_compat	= imx6q_dt_compat,
-	.restart	= mxc_restart,
 MACHINE_END

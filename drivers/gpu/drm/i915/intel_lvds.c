@@ -32,6 +32,7 @@
 #include <linux/i2c.h>
 #include <linux/slab.h>
 #include <drm/drmP.h>
+#include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
 #include "intel_drv.h"
@@ -51,6 +52,7 @@ struct intel_lvds_encoder {
 
 	bool is_dual_link;
 	u32 reg;
+	u32 a3_power;
 
 	struct intel_lvds_connector *attached_connector;
 };
@@ -71,7 +73,12 @@ static bool intel_lvds_get_hw_state(struct intel_encoder *encoder,
 	struct drm_device *dev = encoder->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_lvds_encoder *lvds_encoder = to_lvds_encoder(&encoder->base);
+	enum intel_display_power_domain power_domain;
 	u32 tmp;
+
+	power_domain = intel_display_port_power_domain(encoder);
+	if (!intel_display_power_is_enabled(dev_priv, power_domain))
+		return false;
 
 	tmp = I915_READ(lvds_encoder->reg);
 
@@ -87,7 +94,7 @@ static bool intel_lvds_get_hw_state(struct intel_encoder *encoder,
 }
 
 static void intel_lvds_get_config(struct intel_encoder *encoder,
-				  struct intel_crtc_config *pipe_config)
+				  struct intel_crtc_state *pipe_config)
 {
 	struct drm_device *dev = encoder->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -109,7 +116,7 @@ static void intel_lvds_get_config(struct intel_encoder *encoder,
 	else
 		flags |= DRM_MODE_FLAG_PVSYNC;
 
-	pipe_config->adjusted_mode.flags |= flags;
+	pipe_config->base.adjusted_mode.flags |= flags;
 
 	/* gen2/3 store dither state in pfit control, needs to match */
 	if (INTEL_INFO(dev)->gen < 4) {
@@ -123,13 +130,9 @@ static void intel_lvds_get_config(struct intel_encoder *encoder,
 	if (HAS_PCH_SPLIT(dev_priv->dev))
 		ironlake_check_encoder_dotclock(pipe_config, dotclock);
 
-	pipe_config->adjusted_mode.crtc_clock = dotclock;
+	pipe_config->base.adjusted_mode.crtc_clock = dotclock;
 }
 
-/* The LVDS pin pair needs to be on before the DPLLs are enabled.
- * This is an exception to the general rule that mode_set doesn't turn
- * things on.
- */
 static void intel_pre_enable_lvds(struct intel_encoder *encoder)
 {
 	struct intel_lvds_encoder *lvds_encoder = to_lvds_encoder(&encoder->base);
@@ -137,7 +140,7 @@ static void intel_pre_enable_lvds(struct intel_encoder *encoder)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *crtc = to_intel_crtc(encoder->base.crtc);
 	const struct drm_display_mode *adjusted_mode =
-		&crtc->config.adjusted_mode;
+		&crtc->config->base.adjusted_mode;
 	int pipe = crtc->pipe;
 	u32 temp;
 
@@ -165,7 +168,7 @@ static void intel_pre_enable_lvds(struct intel_encoder *encoder)
 
 	/* set the corresponsding LVDS_BORDER bit */
 	temp &= ~LVDS_BORDER_ENABLE;
-	temp |= crtc->config.gmch_pfit.lvds_border_bits;
+	temp |= crtc->config->gmch_pfit.lvds_border_bits;
 	/* Set the B0-B3 data pairs corresponding to whether we're going to
 	 * set the DPLLs for dual-channel mode or not.
 	 */
@@ -176,8 +179,11 @@ static void intel_pre_enable_lvds(struct intel_encoder *encoder)
 
 	/* It would be nice to set 24 vs 18-bit mode (LVDS_A3_POWER_UP)
 	 * appropriately here, but we need to look more thoroughly into how
-	 * panels behave in the two modes.
+	 * panels behave in the two modes. For now, let's just maintain the
+	 * value we got from the BIOS.
 	 */
+	 temp &= ~LVDS_A3_POWER_MASK;
+	 temp |= lvds_encoder->a3_power;
 
 	/* Set the dithering flag on LVDS as needed, note that there is no
 	 * special lvds dither control bit on pch-split platforms, dithering is
@@ -185,7 +191,7 @@ static void intel_pre_enable_lvds(struct intel_encoder *encoder)
 	if (INTEL_INFO(dev)->gen == 4) {
 		/* Bspec wording suggests that LVDS port dithering only exists
 		 * for 18bpp panels. */
-		if (crtc->config.dither && crtc->config.pipe_bpp == 18)
+		if (crtc->config->dither && crtc->config->pipe_bpp == 18)
 			temp |= LVDS_ENABLE_DITHER;
 		else
 			temp &= ~LVDS_ENABLE_DITHER;
@@ -272,16 +278,15 @@ intel_lvds_mode_valid(struct drm_connector *connector,
 }
 
 static bool intel_lvds_compute_config(struct intel_encoder *intel_encoder,
-				      struct intel_crtc_config *pipe_config)
+				      struct intel_crtc_state *pipe_config)
 {
 	struct drm_device *dev = intel_encoder->base.dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_lvds_encoder *lvds_encoder =
 		to_lvds_encoder(&intel_encoder->base);
 	struct intel_connector *intel_connector =
 		&lvds_encoder->attached_connector->base;
-	struct drm_display_mode *adjusted_mode = &pipe_config->adjusted_mode;
-	struct intel_crtc *intel_crtc = lvds_encoder->base.new_crtc;
+	struct drm_display_mode *adjusted_mode = &pipe_config->base.adjusted_mode;
+	struct intel_crtc *intel_crtc = to_intel_crtc(pipe_config->base.crtc);
 	unsigned int lvds_bpp;
 
 	/* Should never happen!! */
@@ -290,8 +295,7 @@ static bool intel_lvds_compute_config(struct intel_encoder *intel_encoder,
 		return false;
 	}
 
-	if ((I915_READ(lvds_encoder->reg) & LVDS_A3_POWER_MASK) ==
-	    LVDS_A3_POWER_UP)
+	if (lvds_encoder->a3_power == LVDS_A3_POWER_UP)
 		lvds_bpp = 8*3;
 	else
 		lvds_bpp = 6*3;
@@ -331,15 +335,6 @@ static bool intel_lvds_compute_config(struct intel_encoder *intel_encoder,
 	return true;
 }
 
-static void intel_lvds_mode_set(struct intel_encoder *encoder)
-{
-	/*
-	 * We don't do anything here, the LVDS port is fully set up in the pre
-	 * enable hook - the ordering constraints for enabling the lvds port vs.
-	 * enabling the display pll are too strict.
-	 */
-}
-
 /**
  * Detect the LVDS connection.
  *
@@ -354,7 +349,7 @@ intel_lvds_detect(struct drm_connector *connector, bool force)
 	enum drm_connector_status status;
 
 	DRM_DEBUG_KMS("[CONNECTOR:%d:%s]\n",
-		      connector->base.id, drm_get_connector_name(connector));
+		      connector->base.id, connector->name);
 
 	status = intel_panel_detect(dev);
 	if (status != connector_status_unknown)
@@ -514,7 +509,7 @@ static int intel_lvds_set_property(struct drm_connector *connector,
 		intel_connector->panel.fitting_mode = value;
 
 		crtc = intel_attached_encoder(connector)->base.crtc;
-		if (crtc && crtc->enabled) {
+		if (crtc && crtc->state->enable) {
 			/*
 			 * If the CRTC is enabled, the display will be changed
 			 * according to the new panel fitting mode.
@@ -537,7 +532,10 @@ static const struct drm_connector_funcs intel_lvds_connector_funcs = {
 	.detect = intel_lvds_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.set_property = intel_lvds_set_property,
+	.atomic_get_property = intel_connector_atomic_get_property,
 	.destroy = intel_lvds_destroy,
+	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
+	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
 };
 
 static const struct drm_encoder_funcs intel_lvds_enc_funcs = {
@@ -845,8 +843,7 @@ bool intel_is_dual_link_lvds(struct drm_device *dev)
 	struct intel_encoder *encoder;
 	struct intel_lvds_encoder *lvds_encoder;
 
-	list_for_each_entry(encoder, &dev->mode_config.encoder_list,
-			    base.head) {
+	for_each_intel_encoder(dev, encoder) {
 		if (encoder->type == INTEL_OUTPUT_LVDS) {
 			lvds_encoder = to_lvds_encoder(&encoder->base);
 
@@ -864,8 +861,13 @@ static bool compute_is_dual_link_lvds(struct intel_lvds_encoder *lvds_encoder)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	/* use the module option value if specified */
-	if (i915_lvds_channel_mode > 0)
-		return i915_lvds_channel_mode == 2;
+	if (i915.lvds_channel_mode > 0)
+		return i915.lvds_channel_mode == 2;
+
+	/* single channel LVDS is limited to 112 MHz */
+	if (lvds_encoder->attached_connector->base.panel.fixed_mode->clock
+	    > 112999)
+		return true;
 
 	if (dmi_check_system(intel_dual_link_lvds))
 		return true;
@@ -915,6 +917,7 @@ void intel_lvds_init(struct drm_device *dev)
 	struct drm_encoder *encoder;
 	struct drm_display_mode *scan; /* *modes, *bios_mode; */
 	struct drm_display_mode *fixed_mode = NULL;
+	struct drm_display_mode *downclock_mode = NULL;
 	struct edid *edid;
 	struct drm_crtc *crtc;
 	u32 lvds;
@@ -964,6 +967,12 @@ void intel_lvds_init(struct drm_device *dev)
 		return;
 	}
 
+	if (intel_connector_init(&lvds_connector->base) < 0) {
+		kfree(lvds_connector);
+		kfree(lvds_encoder);
+		return;
+	}
+
 	lvds_encoder->attached_connector = lvds_connector;
 
 	intel_encoder = &lvds_encoder->base;
@@ -979,7 +988,6 @@ void intel_lvds_init(struct drm_device *dev)
 	intel_encoder->enable = intel_enable_lvds;
 	intel_encoder->pre_enable = intel_pre_enable_lvds;
 	intel_encoder->compute_config = intel_lvds_compute_config;
-	intel_encoder->mode_set = intel_lvds_mode_set;
 	intel_encoder->disable = intel_disable_lvds;
 	intel_encoder->get_hw_state = intel_lvds_get_hw_state;
 	intel_encoder->get_config = intel_lvds_get_config;
@@ -989,7 +997,7 @@ void intel_lvds_init(struct drm_device *dev)
 	intel_connector_attach_encoder(intel_connector, intel_encoder);
 	intel_encoder->type = INTEL_OUTPUT_LVDS;
 
-	intel_encoder->cloneable = false;
+	intel_encoder->cloneable = 0;
 	if (HAS_PCH_SPLIT(dev))
 		intel_encoder->crtc_mask = (1 << 0) | (1 << 1) | (1 << 2);
 	else if (IS_GEN4(dev))
@@ -1028,6 +1036,7 @@ void intel_lvds_init(struct drm_device *dev)
 	 * Attempt to get the fixed panel mode from DDC.  Assume that the
 	 * preferred mode is the right one.
 	 */
+	mutex_lock(&dev->mode_config.mutex);
 	edid = drm_get_edid(connector, intel_gmbus_get_adapter(dev_priv, pin));
 	if (edid) {
 		if (drm_add_edid_modes(connector, edid)) {
@@ -1060,15 +1069,14 @@ void intel_lvds_init(struct drm_device *dev)
 
 			fixed_mode = drm_mode_duplicate(dev, scan);
 			if (fixed_mode) {
-				intel_connector->panel.downclock_mode =
+				downclock_mode =
 					intel_find_panel_downclock(dev,
 					fixed_mode, connector);
-				if (intel_connector->panel.downclock_mode !=
-					NULL &&	i915_lvds_downclock) {
+				if (downclock_mode != NULL &&
+					i915.lvds_downclock) {
 					/* We found the downclock for LVDS. */
 					dev_priv->lvds_downclock_avail = true;
 					dev_priv->lvds_downclock =
-						intel_connector->panel.
 						downclock_mode->clock;
 					DRM_DEBUG_KMS("LVDS downclock is found"
 					" in EDID. Normal clock %dKhz, "
@@ -1122,28 +1130,34 @@ void intel_lvds_init(struct drm_device *dev)
 		goto failed;
 
 out:
+	mutex_unlock(&dev->mode_config.mutex);
+
+	intel_panel_init(&intel_connector->panel, fixed_mode, downclock_mode);
+
 	lvds_encoder->is_dual_link = compute_is_dual_link_lvds(lvds_encoder);
 	DRM_DEBUG_KMS("detected %s-link lvds configuration\n",
 		      lvds_encoder->is_dual_link ? "dual" : "single");
+
+	lvds_encoder->a3_power = I915_READ(lvds_encoder->reg) &
+				 LVDS_A3_POWER_MASK;
 
 	lvds_connector->lid_notifier.notifier_call = intel_lid_notify;
 	if (acpi_lid_notifier_register(&lvds_connector->lid_notifier)) {
 		DRM_DEBUG_KMS("lid notifier registration failed\n");
 		lvds_connector->lid_notifier.notifier_call = NULL;
 	}
-	drm_sysfs_connector_add(connector);
+	drm_connector_register(connector);
 
-	intel_panel_init(&intel_connector->panel, fixed_mode);
-	intel_panel_setup_backlight(connector);
+	intel_panel_setup_backlight(connector, INVALID_PIPE);
 
 	return;
 
 failed:
+	mutex_unlock(&dev->mode_config.mutex);
+
 	DRM_DEBUG_KMS("No LVDS modes found, disabling.\n");
 	drm_connector_cleanup(connector);
 	drm_encoder_cleanup(encoder);
-	if (fixed_mode)
-		drm_mode_destroy(dev, fixed_mode);
 	kfree(lvds_encoder);
 	kfree(lvds_connector);
 	return;

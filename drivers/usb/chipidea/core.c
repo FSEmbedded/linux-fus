@@ -411,7 +411,7 @@ static int ci_usb_phy_init(struct ci_hdrc *ci)
   *
  * This function returns an error code
  */
-int hw_controller_reset(struct ci_hdrc *ci)
+static int hw_controller_reset(struct ci_hdrc *ci)
 {
 	int count = 0;
 
@@ -423,32 +423,6 @@ int hw_controller_reset(struct ci_hdrc *ci)
 	}
 
 	return 0;
-}
-
-/**
- * ci_hrdc_ahb_config: override default AHB configuration
- * @ci: the controller
- */
-void ci_hdrc_ahb_config(struct ci_hdrc *ci)
-{
-	u32 value;
-	u8 ahb_burst;
-
-	/* AHB configuration */
-	if (ci->platdata->flags & CI_HDRC_OVERRIDE_AHB_BURST) {
-		value = ioread32(ci->hw_bank.abs + ID_SBUSCFG);
-		value &= ~SBUSCFG_AHBBRST;
-		value |= ci->platdata->ahbburst_config & SBUSCFG_AHBBRST;
-		iowrite32(value, ci->hw_bank.abs + ID_SBUSCFG);
-	}
-
-	ahb_burst = ioread32(ci->hw_bank.abs + ID_SBUSCFG) & SBUSCFG_AHBBRST;
-
-	/* Change RX/TX burst size */
-	if (ahb_burst == 0 &&
-			ci->platdata->flags & CI_HDRC_OVERRIDE_BURST_LENGTH)
-		hw_write(ci, OP_BURSTSIZE, BURST_BITS,
-				ci->platdata->burst_length & BURST_BITS);
 }
 
 /**
@@ -490,13 +464,6 @@ int hw_device_reset(struct ci_hdrc *ci)
 	hw_write(ci, OP_USBMODE, USBMODE_CM, USBMODE_CM_DC);
 	/* HW >= 2.3 */
 	hw_write(ci, OP_USBMODE, USBMODE_SLOM, USBMODE_SLOM);
-
-	ci_hdrc_ahb_config(ci);
-	/*
-	 * Set interrupt interval for device mode as 0 (immediately),
-	 * ehci core will set it to 1 (1 Micro-frame) by default for host mode.
-	 */
-	hw_write(ci, OP_USBCMD, 0xff0000, 0);
 
 	if (hw_read(ci, OP_USBMODE, USBMODE_CM) != USBMODE_CM_DC) {
 		pr_err("cannot enter in %s device mode", ci_role(ci)->name);
@@ -578,7 +545,7 @@ static irqreturn_t ci_irq(int irq, void *data)
 	 * and disconnection events.
 	 */
 	if (ci->is_otg && (otgsc & OTGSC_BSVIE) && (otgsc & OTGSC_BSVIS)) {
-		ci->vbus_glitch_check_event = true;
+		ci->b_sess_valid_event = true;
 		/* Clear BSV irq */
 		hw_write_otgsc(ci, OTGSC_BSVIS, OTGSC_BSVIS);
 		ci_otg_queue_work(ci);
@@ -623,20 +590,8 @@ static int ci_get_platdata(struct device *dev,
 				of_usb_host_tpl_support(dev->of_node);
 	}
 
-	if (platdata->dr_mode == USB_DR_MODE_OTG) {
-		/* We can support HNP and SRP */
-		platdata->ci_otg_caps.hnp_support = true;
-		platdata->ci_otg_caps.srp_support = true;
-		/* Update otg capabilities by DT properties */
-		of_usb_set_otg_caps(dev->of_node, &platdata->ci_otg_caps);
-	}
-
 	if (of_usb_get_maximum_speed(dev->of_node) == USB_SPEED_FULL)
 		platdata->flags |= CI_HDRC_FORCE_FULLSPEED;
-
-	if (of_find_property(dev->of_node, "phy-clkgate-delay-us", NULL))
-		of_property_read_u32(dev->of_node, "phy-clkgate-delay-us",
-					&platdata->phy_clkgate_delay_us);
 
 	return 0;
 }
@@ -750,52 +705,6 @@ static void ci_get_otg_capable(struct ci_hdrc *ci)
 	}
 }
 
-static enum ci_role ci_get_role(struct ci_hdrc *ci)
-{
-	if (ci->roles[CI_ROLE_HOST] && ci->roles[CI_ROLE_GADGET]) {
-		if (ci->is_otg) {
-			hw_write_otgsc(ci, OTGSC_IDIE, OTGSC_IDIE);
-			return ci_otg_role(ci);
-		} else {
-			/*
-			 * If the controller is not OTG capable, but support
-			 * role switch, the defalt role is gadget, and the
-			 * user can switch it through debugfs.
-			 */
-			return CI_ROLE_GADGET;
-		}
-	} else {
-		return ci->roles[CI_ROLE_HOST]
-			? CI_ROLE_HOST
-			: CI_ROLE_GADGET;
-	}
-}
-
-static void ci_start_new_role(struct ci_hdrc *ci)
-{
-	enum ci_role role = ci_get_role(ci);
-
-	if (ci->role != role)
-		ci_handle_id_switch(ci);
-
-	if (role == CI_ROLE_GADGET)
-		ci_handle_vbus_connected(ci);
-}
-
-static void ci_power_lost_work(struct work_struct *work)
-{
-	struct ci_hdrc *ci = container_of(work, struct ci_hdrc,
-						power_lost_work);
-
-	pm_runtime_get_sync(ci->dev);
-	if (!ci_otg_is_fsm_mode(ci))
-		ci_start_new_role(ci);
-	else
-		ci_hdrc_otg_fsm_restart(ci);
-	pm_runtime_put_sync(ci->dev);
-	enable_irq(ci->irq);
-}
-
 static int ci_hdrc_probe(struct platform_device *pdev)
 {
 	struct device	*dev = &pdev->dev;
@@ -899,12 +808,30 @@ static int ci_hdrc_probe(struct platform_device *pdev)
 		}
 	}
 
-	ci->role = ci_get_role(ci);
-	/* only update vbus status for peripheral */
-	if (ci->role == CI_ROLE_GADGET)
-		ci_handle_vbus_connected(ci);
+	if (ci->roles[CI_ROLE_HOST] && ci->roles[CI_ROLE_GADGET]) {
+		if (ci->is_otg) {
+			ci->role = ci_otg_role(ci);
+			/* Enable ID change irq */
+			hw_write_otgsc(ci, OTGSC_IDIE, OTGSC_IDIE);
+		} else {
+			/*
+			 * If the controller is not OTG capable, but support
+			 * role switch, the defalt role is gadget, and the
+			 * user can switch it through debugfs.
+			 */
+			ci->role = CI_ROLE_GADGET;
+		}
+	} else {
+		ci->role = ci->roles[CI_ROLE_HOST]
+			? CI_ROLE_HOST
+			: CI_ROLE_GADGET;
+	}
 
 	if (!ci_otg_is_fsm_mode(ci)) {
+		/* only update vbus status for peripheral */
+		if (ci->role == CI_ROLE_GADGET)
+			ci_handle_vbus_change(ci);
+
 		ret = ci_role_start(ci, ci->role);
 		if (ret) {
 			dev_err(dev, "can't start %s role\n",
@@ -931,9 +858,6 @@ static int ci_hdrc_probe(struct platform_device *pdev)
 		ci_hdrc_otg_fsm_start(ci);
 
 	device_set_wakeup_capable(&pdev->dev, true);
-
-	/* Init workqueue for controller power lost handling */
-	INIT_WORK(&ci->power_lost_work, ci_power_lost_work);
 
 	ret = dbg_create_files(ci);
 	if (!ret)
@@ -981,16 +905,15 @@ static void ci_otg_fsm_suspend_for_srp(struct ci_hdrc *ci)
 /* Handle SRP when wakeup by data pulse */
 static void ci_otg_fsm_wakeup_by_srp(struct ci_hdrc *ci)
 {
-	/*
-	 * if a_idle wakeup by data pulse,
-	 * handle it like normal SRP
-	 */
 	if ((ci->fsm.otg->state == OTG_STATE_A_IDLE) &&
 		(ci->fsm.a_bus_drop == 1) && (ci->fsm.a_bus_req == 0)) {
-		if (!hw_read_otgsc(ci, OTGSC_ID))
-			otg_add_timer(&ci->fsm, A_DP_END);
-		else
+		if (!hw_read_otgsc(ci, OTGSC_ID)) {
+			ci->fsm.a_srp_det = 1;
+			ci->fsm.a_bus_drop = 0;
+		} else {
 			ci->fsm.id = 1;
+		}
+		ci_otg_queue_work(ci);
 	}
 }
 
@@ -998,9 +921,6 @@ static void ci_controller_suspend(struct ci_hdrc *ci)
 {
 	disable_irq(ci->irq);
 	ci_hdrc_enter_lpm(ci, true);
-	if (ci->platdata->phy_clkgate_delay_us)
-		usleep_range(ci->platdata->phy_clkgate_delay_us,
-				ci->platdata->phy_clkgate_delay_us + 50);
 	usb_phy_set_suspend(ci->usb_phy, 1);
 	ci->in_lpm = true;
 	enable_irq(ci->irq);
@@ -1058,13 +978,10 @@ static int ci_suspend(struct device *dev)
 		return 0;
 	}
 
-	/* Extra routine per role before system suspend */
-	if (ci->role != CI_ROLE_END && ci_role(ci)->suspend)
-		ci_role(ci)->suspend(ci);
-
 	if (device_may_wakeup(dev)) {
 		if (ci_otg_is_fsm_mode(ci))
 			ci_otg_fsm_suspend_for_srp(ci);
+
 		usb_phy_set_wakeup(ci->usb_phy, true);
 		enable_irq_wake(ci->irq);
 	}
@@ -1077,17 +994,7 @@ static int ci_suspend(struct device *dev)
 static int ci_resume(struct device *dev)
 {
 	struct ci_hdrc *ci = dev_get_drvdata(dev);
-	bool power_lost = false;
-	u32 sample_reg_val;
 	int ret;
-
-	/* Check if controller resume from power lost */
-	sample_reg_val = hw_read(ci, OP_ENDPTLISTADDR, ~0);
-	if (sample_reg_val == 0)
-		power_lost = true;
-	else if (sample_reg_val == 0xFFFFFFFF)
-		/* Restore value 0 if it was set for power lost check */
-		hw_write(ci, OP_ENDPTLISTADDR, ~0, 0);
 
 	if (device_may_wakeup(dev))
 		disable_irq_wake(ci->irq);
@@ -1095,21 +1002,6 @@ static int ci_resume(struct device *dev)
 	ret = ci_controller_resume(dev);
 	if (ret)
 		return ret;
-
-	if (power_lost) {
-		/* shutdown and re-init for phy */
-		ci_usb_phy_exit(ci);
-		ci_usb_phy_init(ci);
-	}
-
-	/* Extra routine per role after system resume */
-	if (ci->role != CI_ROLE_END && ci_role(ci)->resume)
-		ci_role(ci)->resume(ci, power_lost);
-
-	if (power_lost) {
-		disable_irq_nosync(ci->irq);
-		schedule_work(&ci->power_lost_work);
-	}
 
 	if (ci->supports_runtime_pm) {
 		pm_runtime_disable(dev);
@@ -1121,7 +1013,6 @@ static int ci_resume(struct device *dev)
 }
 #endif /* CONFIG_PM_SLEEP */
 
-#ifdef CONFIG_PM_RUNTIME
 static int ci_runtime_suspend(struct device *dev)
 {
 	struct ci_hdrc *ci = dev_get_drvdata(dev);
@@ -1146,7 +1037,6 @@ static int ci_runtime_resume(struct device *dev)
 {
 	return ci_controller_resume(dev);
 }
-#endif /* CONFIG_PM_RUNTIME */
 
 #endif /* CONFIG_PM */
 static const struct dev_pm_ops ci_pm_ops = {
@@ -1160,7 +1050,6 @@ static struct platform_driver ci_hdrc_driver = {
 	.driver	= {
 		.name	= "ci_hdrc",
 		.pm	= &ci_pm_ops,
-		.owner	= THIS_MODULE,
 	},
 };
 

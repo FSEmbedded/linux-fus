@@ -45,6 +45,21 @@ static inline struct dma_map_ops *get_dma_ops(struct device *dev)
 		return __generic_dma_ops(dev);
 }
 
+static inline void arch_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
+				      struct iommu_ops *iommu, bool coherent)
+{
+	dev->archdata.dma_coherent = coherent;
+}
+#define arch_setup_dma_ops	arch_setup_dma_ops
+
+/* do not use this function in a driver */
+static inline bool is_device_dma_coherent(struct device *dev)
+{
+	if (!dev)
+		return false;
+	return dev->archdata.dma_coherent;
+}
+
 #include <asm-generic/dma-mapping-common.h>
 
 static inline dma_addr_t phys_to_dma(struct device *dev, phys_addr_t paddr)
@@ -82,7 +97,7 @@ static inline int dma_set_mask(struct device *dev, u64 mask)
 static inline bool dma_capable(struct device *dev, dma_addr_t addr, size_t size)
 {
 	if (!dev->dma_mask)
-		return 0;
+		return false;
 
 	return addr + size - 1 <= *dev->dma_mask;
 }

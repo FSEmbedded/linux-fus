@@ -9,7 +9,6 @@
 #include <linux/busfreq-imx.h>
 #include <linux/clk.h>
 #include <linux/cpu_cooling.h>
-#include <linux/cpufreq.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/device_cooling.h>
@@ -35,6 +34,7 @@
 #define MISC0_REFTOP_SELBIASOFF		(1 << 3)
 #define MISC1				0x0160
 #define MISC1_IRQ_TEMPHIGH		(1 << 29)
+/* Below LOW and PANIC bits are only for TEMPMON_IMX6SX */
 #define MISC1_IRQ_TEMPLOW		(1 << 28)
 #define MISC1_IRQ_TEMPPANIC		(1 << 27)
 
@@ -42,8 +42,14 @@
 #define IMX6_TEMPSENSE1			0x190
 #define IMX6_TEMPSENSE2			0x290
 
-#define IMX7_TEMPSENSE0			0x300
-#define IMX7_TEMPSENSE1			0x310
+#define TEMPSENSE1			0x0190
+#define TEMPSENSE1_MEASURE_FREQ		0xffff
+/* Below TEMPSENSE2 is only for TEMPMON_IMX6SX */
+#define TEMPSENSE2			0x0290
+#define TEMPSENSE2_LOW_VALUE_SHIFT	0
+#define TEMPSENSE2_LOW_VALUE_MASK	0xfff
+#define TEMPSENSE2_PANIC_VALUE_SHIFT	16
+#define TEMPSENSE2_PANIC_VALUE_MASK	0xfff0000
 
 #define TEMPSENSE2			0x0290
 #define TEMPSENSE2_LOW_VALUE_SHIFT	0
@@ -65,41 +71,22 @@
 #define IMX_PASSIVE_DELAY		1000
 
 #define FACTOR0				10000000
-#define FACTOR1				15423
-#define FACTOR2				4148468
-#define OFFSET				3580661
+#define FACTOR1				15976
+#define FACTOR2				4297157
 
-#define TEMPMON_V1			1
-#define TEMPMON_V2			2
-#define TEMPMON_V3			3
-
-#define POWERON				0
-#define POWERDOWN			1
-
-#define STOP				0
-#define START				1
-
-/* The driver supports 1 passive trip point and 1 critical trip point */
-enum imx_thermal_trip {
-	IMX_TRIP_PASSIVE,
-	IMX_TRIP_CRITICAL,
-	IMX_TRIP_NUM,
-};
-
-enum imx_reg_field_ids {
-	TEMP_VALUE,
-	POWER_DOWN,
-	MEASURE_START,
-	FINISHED,
-	MEASURE_FREQ,
-	PANIC_ALARM,
-	HIGH_ALARM,
-	MAX_REGFIELDS
-};
+#define TEMPMON_IMX6Q			1
+#define TEMPMON_IMX6SX			2
 
 struct thermal_soc_data {
 	u32 version;
-	const struct reg_field *reg_fields;
+};
+
+static struct thermal_soc_data thermal_imx6q_data = {
+	.version = TEMPMON_IMX6Q,
+};
+
+static struct thermal_soc_data thermal_imx6sx_data = {
+	.version = TEMPMON_IMX6SX,
 };
 
 struct imx_thermal_data {
@@ -107,13 +94,6 @@ struct imx_thermal_data {
 	struct thermal_cooling_device *cdev[2];
 	enum thermal_device_mode mode;
 	struct regmap *tempmon;
-	struct regmap_field *temp_value;
-	struct regmap_field *measure;
-	struct regmap_field *finished;
-	struct regmap_field *power_down;
-	struct regmap_field *measure_freq;
-	struct regmap_field *panic_alarm;
-	struct regmap_field *high_alarm;
 	u32 c1, c2; /* See formula in imx_get_sensor_data() */
 	unsigned long temp_passive;
 	unsigned long temp_critical;
@@ -122,93 +102,19 @@ struct imx_thermal_data {
 	bool irq_enabled;
 	int irq;
 	struct clk *thermal_clk;
-	struct mutex mutex;
 	const struct thermal_soc_data *socdata;
 };
-
-static struct reg_field imx6q_regfields[MAX_REGFIELDS] = {
-	[TEMP_VALUE] = REG_FIELD(IMX6_TEMPSENSE0, 8, 19),
-	[POWER_DOWN] = REG_FIELD(IMX6_TEMPSENSE0, 0, 0),
-	[MEASURE_START] = REG_FIELD(IMX6_TEMPSENSE0, 1, 1),
-	[FINISHED] = REG_FIELD(IMX6_TEMPSENSE0, 2, 2),
-	[MEASURE_FREQ] = REG_FIELD(IMX6_TEMPSENSE1, 0, 15),
-	[HIGH_ALARM] = REG_FIELD(IMX6_TEMPSENSE0, 20, 31),
-};
-
-static struct reg_field imx6sx_regfields[MAX_REGFIELDS] = {
-	[TEMP_VALUE] = REG_FIELD(IMX6_TEMPSENSE0, 8, 19),
-	[POWER_DOWN] = REG_FIELD(IMX6_TEMPSENSE0, 0, 0),
-	[MEASURE_START] = REG_FIELD(IMX6_TEMPSENSE0, 1, 1),
-	[FINISHED] = REG_FIELD(IMX6_TEMPSENSE0, 2, 2),
-	[MEASURE_FREQ] = REG_FIELD(IMX6_TEMPSENSE1, 0, 15),
-	[HIGH_ALARM] = REG_FIELD(IMX6_TEMPSENSE0, 20, 31),
-	[PANIC_ALARM] = REG_FIELD(IMX6_TEMPSENSE2, 16, 27),
-};
-
-static struct reg_field imx7d_regfields[MAX_REGFIELDS] = {
-	[TEMP_VALUE] = REG_FIELD(IMX7_TEMPSENSE1, 0, 8),
-	[POWER_DOWN] = REG_FIELD(IMX7_TEMPSENSE1, 9, 9),
-	[MEASURE_START] = REG_FIELD(IMX7_TEMPSENSE1, 10, 10),
-	[FINISHED] = REG_FIELD(IMX7_TEMPSENSE1, 11, 11),
-	[MEASURE_FREQ] = REG_FIELD(IMX7_TEMPSENSE1, 16, 31),
-	[HIGH_ALARM] = REG_FIELD(IMX7_TEMPSENSE0, 9, 17),
-	[PANIC_ALARM] = REG_FIELD(IMX7_TEMPSENSE0, 18, 26),
-};
-
-static struct thermal_soc_data thermal_imx6q_data = {
-	.version = TEMPMON_V1,
-	.reg_fields = imx6q_regfields,
-};
-
-static struct thermal_soc_data thermal_imx6sx_data = {
-	.version = TEMPMON_V2,
-	.reg_fields = imx6sx_regfields,
-};
-
-static struct thermal_soc_data thermal_imx7d_data = {
-	.version = TEMPMON_V3,
-	.reg_fields = imx7d_regfields,
-};
-
-static struct imx_thermal_data *imx_thermal_data;
-
-static int imx_thermal_regfield_alloc(struct platform_device *pdev)
-{
-	struct imx_thermal_data *data = platform_get_drvdata(pdev);
-	struct regmap *regmap = data->tempmon;
-	const struct reg_field *reg_fields = data->socdata->reg_fields;
-
-	data->power_down = devm_regmap_field_alloc(&pdev->dev, regmap,
-						 reg_fields[POWERDOWN]);
-	data->measure = devm_regmap_field_alloc(&pdev->dev, regmap,
-					     reg_fields[MEASURE_START]);
-	data->finished = devm_regmap_field_alloc(&pdev->dev, regmap,
-						  reg_fields[FINISHED]);
-	data->temp_value = devm_regmap_field_alloc(&pdev->dev, regmap,
-						reg_fields[TEMP_VALUE]);
-	data->measure_freq = devm_regmap_field_alloc(&pdev->dev, regmap,
-					      reg_fields[MEASURE_FREQ]);
-	data->high_alarm = devm_regmap_field_alloc(&pdev->dev, regmap,
-						reg_fields[HIGH_ALARM]);
-
-	/* for imx6q tempmon, no panic_alarm available */
-	if (data->socdata->version != TEMPMON_V1)
-		data->panic_alarm = devm_regmap_field_alloc(&pdev->dev, regmap,
-						   reg_fields[PANIC_ALARM]);
-	return 0;
-}
 
 static void imx_set_panic_temp(struct imx_thermal_data *data,
 			       signed long panic_temp)
 {
+	struct regmap *map = data->tempmon;
 	int critical_value;
 
-	if (data->socdata->version == TEMPMON_V3)
-		critical_value = panic_temp / 1000 + data->c1 - 25;
-	else
-		critical_value = (data->c2 - panic_temp) / data->c1;
-
-	regmap_field_write(data->panic_alarm, critical_value);
+	critical_value = (data->c2 - panic_temp) / data->c1;
+	regmap_write(map, TEMPSENSE2 + REG_CLR, TEMPSENSE2_PANIC_VALUE_MASK);
+	regmap_write(map, TEMPSENSE2 + REG_SET, critical_value <<
+			TEMPSENSE2_PANIC_VALUE_SHIFT);
 }
 
 static void imx_set_alarm_temp(struct imx_thermal_data *data,
@@ -217,13 +123,10 @@ static void imx_set_alarm_temp(struct imx_thermal_data *data,
 	int alarm_value;
 
 	data->alarm_temp = alarm_temp;
-
-	if (data->socdata->version == TEMPMON_V3)
-		alarm_value = alarm_temp / 1000 + data->c1 - 25;
-	else
-		alarm_value = (data->c2 - alarm_temp) / data->c1;
-
-	regmap_field_write(data->high_alarm, alarm_value);
+	alarm_value = (data->c2 - alarm_temp) / data->c1;
+	regmap_write(map, TEMPSENSE0 + REG_CLR, TEMPSENSE0_ALARM_VALUE_MASK);
+	regmap_write(map, TEMPSENSE0 + REG_SET, alarm_value <<
+			TEMPSENSE0_ALARM_VALUE_SHIFT);
 }
 
 static int imx_get_temp(struct thermal_zone_device *tz, unsigned long *temp)
@@ -284,18 +187,19 @@ static int imx_get_temp(struct thermal_zone_device *tz, unsigned long *temp)
 	}
 
 	/* See imx_get_sensor_data() for formula derivation */
-	if (data->socdata->version == TEMPMON_V3)
-		*temp = (val - data->c1 + 25) * 1000;
-	else
-		*temp = data->c2 - val * data->c1;
+	*temp = data->c2 - n_meas * data->c1;
 
-	/* Update alarm value to next higher trip point */
-	if (data->alarm_temp == data->temp_passive && *temp >= data->temp_passive)
-		imx_set_alarm_temp(data, data->temp_critical);
-	if (data->alarm_temp == data->temp_critical && *temp < data->temp_passive) {
-		imx_set_alarm_temp(data, data->temp_passive);
-		dev_dbg(&tz->device, "thermal alarm off: T < %lu\n",
-			data->alarm_temp / 1000);
+	/* Update alarm value to next higher trip point for TEMPMON_IMX6Q */
+	if (data->socdata->version == TEMPMON_IMX6Q) {
+		if (data->alarm_temp == data->temp_passive &&
+			*temp >= data->temp_passive)
+			imx_set_alarm_temp(data, data->temp_critical);
+		if (data->alarm_temp == data->temp_critical &&
+			*temp < data->temp_passive) {
+			imx_set_alarm_temp(data, data->temp_passive);
+			dev_dbg(&tz->device, "thermal alarm off: T < %lu\n",
+				data->alarm_temp / 1000);
+		}
 	}
 
 	if (*temp != data->last_temp) {
@@ -474,62 +378,12 @@ static struct thermal_zone_device_ops imx_tz_ops = {
 
 static inline void imx6_calibrate_data(struct imx_thermal_data *data, u32 val)
 {
-	int t1, t2, n1, n2;
-	u64 temp64;
-	/*
-	 * Sensor data layout:
-	 *   [31:20] - sensor value @ 25C
-	 *    [19:8] - sensor value of hot
-	 *     [7:0] - hot temperature value
-	 * Use universal formula now and only need sensor value @ 25C
-	 * slope = 0.4297157 - (0.0015976 * 25C fuse)
-	 */
-	n1 = val >> 20;
-	n2 = (val & 0xfff00) >> 8;
-	t2 = val & 0xff;
-	t1 = 25; /* t1 always 25C */
-
-	/*
-	 * Derived from linear interpolation:
-	 * slope = 0.4297157 - (0.0015976 * 25C fuse)
-	 * slope = (FACTOR2 - FACTOR1 * n1) / FACTOR0
-	 * offset = OFFSET / 1000000
-	 * (Nmeas - n1) / (Tmeas - t1) = slope
-	 * We want to reduce this down to the minimum computation necessary
-	 * for each temperature read.  Also, we want Tmeas in millicelsius
-	 * and we don't want to lose precision from integer division. So...
-	 * Tmeas = (Nmeas - n1) / slope + t1 + offset
-	 * milli_Tmeas = 1000 * (Nmeas - n1) / slope + 1000 * t1 + OFFSET / 1000
-	 * milli_Tmeas = -1000 * (n1 - Nmeas) / slope + 1000 * t1 + OFFSET /1000
-	 * Let constant c1 = (-1000 / slope)
-	 * milli_Tmeas = (n1 - Nmeas) * c1 + 1000 * t1 + OFFSET / 1000
-	 * Let constant c2 = n1 *c1 + 1000 * t1 + OFFSET / 1000
-	 * milli_Tmeas = c2 - Nmeas * c1
-	 */
-	temp64 = FACTOR0;
-	temp64 *= 1000;
-	do_div(temp64, FACTOR1 * n1 - FACTOR2);
-	data->c1 = temp64;
-	temp64 = OFFSET;
-	do_div(temp64, 1000);
-	data->c2 = n1 * data->c1 + 1000 * t1 + temp64;
-}
-
-/*
- * On i.MX7, we only use the calibration data at 25C to get the temp,
- * Tmeas = ( Nmeas - n1) + 25; n1 is the fuse value for 25C.
- */
-static inline void imx7_calibrate_data(struct imx_thermal_data *data, u32 val)
-{
-	data->c1 = (val >> 9) & 0x1ff;
-}
-
-static int imx_get_sensor_data(struct platform_device *pdev)
-{
 	struct imx_thermal_data *data = platform_get_drvdata(pdev);
 	struct regmap *map;
+	int t1, n1;
 	int ret;
 	u32 val;
+	u64 temp64;
 
 	map = syscon_regmap_lookup_by_phandle(pdev->dev.of_node,
 					      "fsl,tempmon-data");
@@ -539,11 +393,7 @@ static int imx_get_sensor_data(struct platform_device *pdev)
 		return ret;
 	}
 
-	if (data->socdata->version == TEMPMON_V3)
-		ret = regmap_read(map, IMX7_OCOTP_ANA1, &val);
-	else
-		ret = regmap_read(map, IMX6_OCOTP_ANA1, &val);
-
+	ret = regmap_read(map, OCOTP_ANA1, &val);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to read sensor data: %d\n", ret);
 		return ret;
@@ -554,22 +404,48 @@ static int imx_get_sensor_data(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	if (data->socdata->version == TEMPMON_V3)
-		imx7_calibrate_data(data, val);
-	else
-		imx6_calibrate_data(data, val);
+	/*
+	 * Sensor data layout:
+	 *   [31:20] - sensor value @ 25C
+	 * Use universal formula now and only need sensor value @ 25C
+	 * slope = 0.4297157 - (0.0015976 * 25C fuse)
+	 */
+	n1 = val >> 20;
+	t1 = 25; /* t1 always 25C */
 
 	/*
-	 * Set the default passive cooling trip point to IMX_TEMP_PASSIVE.
-	 * Can be changed from userspace.
+	 * Derived from linear interpolation:
+	 * slope = 0.4297157 - (0.0015976 * 25C fuse)
+	 * slope = (FACTOR2 - FACTOR1 * n1) / FACTOR0
+	 * (Nmeas - n1) / (Tmeas - t1) = slope
+	 * We want to reduce this down to the minimum computation necessary
+	 * for each temperature read.  Also, we want Tmeas in millicelsius
+	 * and we don't want to lose precision from integer division. So...
+	 * Tmeas = (Nmeas - n1) / slope + t1
+	 * milli_Tmeas = 1000 * (Nmeas - n1) / slope + 1000 * t1
+	 * milli_Tmeas = -1000 * (n1 - Nmeas) / slope + 1000 * t1
+	 * Let constant c1 = (-1000 / slope)
+	 * milli_Tmeas = (n1 - Nmeas) * c1 + 1000 * t1
+	 * Let constant c2 = n1 *c1 + 1000 * t1
+	 * milli_Tmeas = c2 - Nmeas * c1
+	 */
+	temp64 = FACTOR0;
+	temp64 *= 1000;
+	do_div(temp64, FACTOR1 * n1 - FACTOR2);
+	data->c1 = temp64;
+	data->c2 = n1 * data->c1 + 1000 * t1;
+
+	/*
+	 * Set the default passive cooling trip point,
+	 * can be changed from userspace.
 	 */
 	data->temp_passive = IMX_TEMP_PASSIVE;
 
 	/*
-	 * Set the default critical trip point to 20 C higher
-	 * than passive trip point. Can be changed from userspace.
+	 * The maximum die temperature set to 20 C higher than
+	 * IMX_TEMP_PASSIVE.
 	 */
-	data->temp_critical = IMX_TEMP_PASSIVE + 20 * 1000;
+	data->temp_critical = 1000 * 20 + data->temp_passive;
 
 	return 0;
 }
@@ -599,56 +475,15 @@ static irqreturn_t imx_thermal_alarm_irq_thread(int irq, void *dev)
 static const struct of_device_id of_imx_thermal_match[] = {
 	{ .compatible = "fsl,imx6q-tempmon", .data = &thermal_imx6q_data, },
 	{ .compatible = "fsl,imx6sx-tempmon", .data = &thermal_imx6sx_data, },
-	{ .compatible = "fsl,imx7d-tempmon", .data = &thermal_imx7d_data, },
 	{ /* end */ }
 };
 MODULE_DEVICE_TABLE(of, of_imx_thermal_match);
-
-static int thermal_notifier_event(struct notifier_block *this,
-					unsigned long event, void *ptr)
-{
-	mutex_lock(&imx_thermal_data->mutex);
-
-	switch (event) {
-	/*
-	 * In low_bus_freq_mode, the thermal sensor auto measurement
-	 * can be disabled to low the power consumption.
-	 */
-	case LOW_BUSFREQ_ENTER:
-		regmap_field_write(imx_thermal_data->measure, STOP);
-		regmap_field_write(imx_thermal_data->power_down, POWERDOWN);
-		imx_thermal_data->mode = THERMAL_DEVICE_DISABLED;
-		disable_irq(imx_thermal_data->irq);
-		clk_disable_unprepare(imx_thermal_data->thermal_clk);
-		break;
-
-	/* Enabled thermal auto measurement when exiting low_bus_freq_mode */
-	case LOW_BUSFREQ_EXIT:
-		clk_prepare_enable(imx_thermal_data->thermal_clk);
-		regmap_field_write(imx_thermal_data->power_down, POWERON);
-		regmap_field_write(imx_thermal_data->measure, START);
-		imx_thermal_data->mode = THERMAL_DEVICE_ENABLED;
-		enable_irq(imx_thermal_data->irq);
-		break;
-
-	default:
-		break;
-	}
-	mutex_unlock(&imx_thermal_data->mutex);
-
-	return NOTIFY_OK;
-}
-
-static struct notifier_block thermal_notifier = {
-	.notifier_call = thermal_notifier_event,
-};
 
 static int imx_thermal_probe(struct platform_device *pdev)
 {
 	const struct of_device_id *of_id =
 		of_match_device(of_imx_thermal_match, &pdev->dev);
 	struct imx_thermal_data *data;
-	struct cpumask clip_cpus;
 	struct regmap *map;
 	int measure_freq;
 	int ret;
@@ -668,35 +503,16 @@ static int imx_thermal_probe(struct platform_device *pdev)
 
 	data->socdata = of_id->data;
 
-	data->thermal_clk = devm_clk_get(&pdev->dev, NULL);
-	if (IS_ERR(data->thermal_clk)) {
-		dev_warn(&pdev->dev, "failed to get thermal clk!\n");
-	} else {
-		/*
-		 * Thermal sensor needs clk on to get correct value, normally
-		 * we should enable its clk before taking measurement and disable
-		 * clk after measurement is done, but if alarm function is enabled,
-		 * hardware will auto measure the temperature periodically, so we
-		 * need to keep the clk always on for alarm function.
-		 */
-		ret = clk_prepare_enable(data->thermal_clk);
-		if (ret)
-			dev_warn(&pdev->dev, "failed to enable thermal clk: %d\n", ret);
-	}
-
-	mutex_init(&data->mutex);
-	/* make sure the IRQ flag is clear before enable irq */
-	if (data->socdata->version != TEMPMON_V3)
-		regmap_write(map, MISC1 + REG_CLR, MISC1_IRQ_TEMPHIGH);
-	if (data->socdata->version == TEMPMON_V2) {
+	/* make sure the IRQ flag is clear before enabling irq on i.MX6SX */
+	if (data->socdata->version == TEMPMON_IMX6SX) {
+		regmap_write(map, MISC1 + REG_CLR, MISC1_IRQ_TEMPHIGH |
+			MISC1_IRQ_TEMPLOW | MISC1_IRQ_TEMPPANIC);
 		/*
 		 * reset value of LOW ALARM is incorrect, set it to lowest
 		 * value to avoid false trigger of low alarm.
 		 */
 		regmap_write(map, TEMPSENSE2 + REG_SET,
 			TEMPSENSE2_LOW_VALUE_MASK);
-		regmap_write(map, MISC1 + REG_CLR, MISC1_IRQ_TEMPLOW |
-			MISC1_IRQ_TEMPPANIC);
 	}
 
 	data->irq = platform_get_irq(pdev, 0);
@@ -724,21 +540,38 @@ static int imx_thermal_probe(struct platform_device *pdev)
 		regmap_write(map, MISC0 + REG_SET, MISC0_REFTOP_SELBIASOFF);
 	regmap_field_write(data->power_down, POWERDOWN);
 
-	cpumask_set_cpu(0, &clip_cpus);
-	data->cdev[0] = cpufreq_cooling_register(&clip_cpus);
-	if (IS_ERR(data->cdev[0])) {
-		ret = PTR_ERR(data->cdev[0]);
-		dev_err(&pdev->dev,
-			"failed to register cpufreq cooling device: %d\n", ret);
-		goto out;
+	data->cdev = cpufreq_cooling_register(cpu_present_mask);
+	if (IS_ERR(data->cdev)) {
+		ret = PTR_ERR(data->cdev);
+		if (ret != -EPROBE_DEFER)
+			dev_err(&pdev->dev,
+				"failed to register cpufreq cooling device: %d\n",
+				ret);
+		return ret;
 	}
 
-	data->cdev[1] = devfreq_cooling_register();
-	if (IS_ERR(data->cdev[1])) {
-		ret = PTR_ERR(data->cdev[1]);
-		dev_err(&pdev->dev,
-			"failed to register devfreq cooling device: %d\n", ret);
-		goto out;
+	data->thermal_clk = devm_clk_get(&pdev->dev, NULL);
+	if (IS_ERR(data->thermal_clk)) {
+		ret = PTR_ERR(data->thermal_clk);
+		if (ret != -EPROBE_DEFER)
+			dev_err(&pdev->dev,
+				"failed to get thermal clk: %d\n", ret);
+		cpufreq_cooling_unregister(data->cdev);
+		return ret;
+	}
+
+	/*
+	 * Thermal sensor needs clk on to get correct value, normally
+	 * we should enable its clk before taking measurement and disable
+	 * clk after measurement is done, but if alarm function is enabled,
+	 * hardware will auto measure the temperature periodically, so we
+	 * need to keep the clk always on for alarm function.
+	 */
+	ret = clk_prepare_enable(data->thermal_clk);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to enable thermal clk: %d\n", ret);
+		cpufreq_cooling_unregister(data->cdev);
+		return ret;
 	}
 
 	data->tz = thermal_zone_device_register("imx_thermal_zone",
@@ -751,15 +584,21 @@ static int imx_thermal_probe(struct platform_device *pdev)
 		ret = PTR_ERR(data->tz);
 		dev_err(&pdev->dev,
 			"failed to register thermal zone device %d\n", ret);
-		cpufreq_cooling_unregister(data->cdev[0]);
-		devfreq_cooling_unregister(data->cdev[1]);
-		goto out;
+		clk_disable_unprepare(data->thermal_clk);
+		cpufreq_cooling_unregister(data->cdev);
+		return ret;
 	}
 
 	/* Enable measurements at ~ 10 Hz */
 	measure_freq = DIV_ROUND_UP(32768, 10); /* 10 Hz */
 	regmap_field_write(data->measure_freq, measure_freq);
 	imx_set_alarm_temp(data, data->temp_passive);
+
+	if (data->socdata->version == TEMPMON_IMX6SX)
+		imx_set_panic_temp(data, data->temp_critical);
+
+	regmap_write(map, TEMPSENSE0 + REG_CLR, TEMPSENSE0_POWER_DOWN);
+	regmap_write(map, TEMPSENSE0 + REG_SET, TEMPSENSE0_MEASURE_TEMP);
 
 	if (data->socdata->version == TEMPMON_V2)
 		imx_set_panic_temp(data, data->temp_critical);
@@ -822,7 +661,6 @@ static int imx_thermal_suspend(struct device *dev)
 	regmap_field_write(data->power_down, POWERDOWN);
 
 	data->mode = THERMAL_DEVICE_DISABLED;
-	disable_irq(data->irq);
 	clk_disable_unprepare(data->thermal_clk);
 
 	return 0;
@@ -832,6 +670,7 @@ static int imx_thermal_resume(struct device *dev)
 {
 	struct imx_thermal_data *data = dev_get_drvdata(dev);
 
+	clk_prepare_enable(data->thermal_clk);
 	/* Enabled thermal sensor after resume */
 	clk_prepare_enable(data->thermal_clk);
 	regmap_field_write(data->power_down, POWERON);
@@ -849,7 +688,6 @@ static SIMPLE_DEV_PM_OPS(imx_thermal_pm_ops,
 static struct platform_driver imx_thermal = {
 	.driver = {
 		.name	= "imx_thermal",
-		.owner  = THIS_MODULE,
 		.pm	= &imx_thermal_pm_ops,
 		.of_match_table = of_imx_thermal_match,
 	},

@@ -19,11 +19,8 @@ void split_key_done(struct device *dev, u32 *desc, u32 err,
 	dev_err(dev, "%s %d: err 0x%x\n", __func__, __LINE__, err);
 #endif
 
-	if (err) {
-		char tmp[CAAM_ERROR_STR_MAX];
-
-		dev_err(dev, "%08x: %s\n", err, caam_jr_strstatus(tmp, err));
-	}
+	if (err)
+		caam_jr_strstatus(dev, err);
 
 	res->err = err;
 
@@ -74,9 +71,6 @@ int gen_split_key(struct device *jrdev, u8 *key_out, int split_key_len,
 	}
 
 	init_job_desc(desc, 0);
-
-	dma_sync_single_for_device(jrdev, dma_addr_in, keylen, DMA_TO_DEVICE);
-
 	append_key(desc, dma_addr_in, keylen, CLASS_2 | KEY_DEST_CLASS_REG);
 
 	/* Sets MDHA up into an HMAC-INIT */

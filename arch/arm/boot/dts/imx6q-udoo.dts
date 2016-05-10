@@ -8,17 +8,13 @@
  * published by the Free Software Foundation.
  *
  */
-
 /dts-v1/;
 #include "imx6q.dtsi"
+#include "imx6qdl-udoo.dtsi"
 
 / {
 	model = "Udoo i.MX6 Quad Board";
 	compatible = "udoo,imx6q-udoo", "fsl,imx6q";
-
-	memory {
-		reg = <0x10000000 0x40000000>;
-	};
 };
 
 &iomuxc {
@@ -44,18 +40,5 @@
 };
 
 &sata {
-	status = "okay";
-};
-
-&uart2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart2>;
-	status = "okay";
-};
-
-&usdhc3 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usdhc3>;
-	non-removable;
 	status = "okay";
 };

@@ -24,6 +24,7 @@
 #include <linux/pagemap.h>
 #include <linux/buffer_head.h>
 #include <linux/writeback.h>
+#include <linux/bitops.h>
 #include <linux/bio.h>
 #include <linux/completion.h>
 #include <linux/blkdev.h>
@@ -936,7 +937,7 @@ static void nilfs_drop_collected_inodes(struct list_head *head)
 		if (!test_and_clear_bit(NILFS_I_COLLECTED, &ii->i_state))
 			continue;
 
-		clear_bit(NILFS_I_INODE_DIRTY, &ii->i_state);
+		clear_bit(NILFS_I_INODE_SYNC, &ii->i_state);
 		set_bit(NILFS_I_UPDATED, &ii->i_state);
 	}
 }
@@ -1588,7 +1589,6 @@ static void nilfs_segctor_prepare_write(struct nilfs_sc_info *sci)
 
 		list_for_each_entry(bh, &segbuf->sb_segsum_buffers,
 				    b_assoc_buffers) {
-			set_buffer_async_write(bh);
 			if (bh->b_page != bd_page) {
 				if (bd_page) {
 					lock_page(bd_page);
@@ -1688,7 +1688,6 @@ static void nilfs_abort_logs(struct list_head *logs, int err)
 	list_for_each_entry(segbuf, logs, sb_list) {
 		list_for_each_entry(bh, &segbuf->sb_segsum_buffers,
 				    b_assoc_buffers) {
-			clear_buffer_async_write(bh);
 			if (bh->b_page != bd_page) {
 				if (bd_page)
 					end_page_writeback(bd_page);
@@ -1768,7 +1767,6 @@ static void nilfs_segctor_complete_write(struct nilfs_sc_info *sci)
 				    b_assoc_buffers) {
 			set_buffer_uptodate(bh);
 			clear_buffer_dirty(bh);
-			clear_buffer_async_write(bh);
 			if (bh->b_page != bd_page) {
 				if (bd_page)
 					end_page_writeback(bd_page);
@@ -1788,12 +1786,13 @@ static void nilfs_segctor_complete_write(struct nilfs_sc_info *sci)
 		 */
 		list_for_each_entry(bh, &segbuf->sb_payload_buffers,
 				    b_assoc_buffers) {
-			set_buffer_uptodate(bh);
-			clear_buffer_dirty(bh);
-			clear_buffer_async_write(bh);
-			clear_buffer_delay(bh);
-			clear_buffer_nilfs_volatile(bh);
-			clear_buffer_nilfs_redirected(bh);
+			const unsigned long set_bits = (1 << BH_Uptodate);
+			const unsigned long clear_bits =
+				(1 << BH_Dirty | 1 << BH_Async_Write |
+				 1 << BH_Delay | 1 << BH_NILFS_Volatile |
+				 1 << BH_NILFS_Redirected);
+
+			set_mask_bits(&bh->b_state, clear_bits, set_bits);
 			if (bh == segbuf->sb_super_root) {
 				if (bh->b_page != bd_page) {
 					end_page_writeback(bd_page);
@@ -1839,6 +1838,7 @@ static void nilfs_segctor_complete_write(struct nilfs_sc_info *sci)
 	nilfs_set_next_segment(nilfs, segbuf);
 
 	if (update_sr) {
+		nilfs->ns_flushed_device = 0;
 		nilfs_set_last_segment(nilfs, segbuf->sb_pseg_start,
 				       segbuf->sb_sum.seg_seq, nilfs->ns_cno++);
 
@@ -2216,7 +2216,7 @@ int nilfs_construct_dsync_segment(struct super_block *sb, struct inode *inode,
 	nilfs_transaction_lock(sb, &ti, 0);
 
 	ii = NILFS_I(inode);
-	if (test_bit(NILFS_I_INODE_DIRTY, &ii->i_state) ||
+	if (test_bit(NILFS_I_INODE_SYNC, &ii->i_state) ||
 	    nilfs_test_opt(nilfs, STRICT_ORDER) ||
 	    test_bit(NILFS_SC_UNCLOSED, &sci->sc_flags) ||
 	    nilfs_discontinued(nilfs)) {
@@ -2238,6 +2238,8 @@ int nilfs_construct_dsync_segment(struct super_block *sb, struct inode *inode,
 	sci->sc_dsync_end = end;
 
 	err = nilfs_segctor_do_construct(sci, SC_LSEG_DSYNC);
+	if (!err)
+		nilfs->ns_flushed_device = 0;
 
 	nilfs_transaction_unlock(sb);
 	return err;

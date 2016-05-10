@@ -31,8 +31,6 @@
 struct ci_hdrc_imx_platform_flag {
 	unsigned int flags;
 	bool runtime_pm;
-	u32 ahbburst_config;
-	u32 burst_length;
 };
 
 static const struct ci_hdrc_imx_platform_flag imx27_usb_data = {
@@ -40,59 +38,22 @@ static const struct ci_hdrc_imx_platform_flag imx27_usb_data = {
 
 static const struct ci_hdrc_imx_platform_flag imx28_usb_data = {
 	.flags = CI_HDRC_IMX28_WRITE_FIX |
-		CI_HDRC_IMX_EHCI_QUIRK |
-		CI_HDRC_DISABLE_STREAMING,
+		CI_HDRC_TURN_VBUS_EARLY_ON,
 };
 
 static const struct ci_hdrc_imx_platform_flag imx6q_usb_data = {
 	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM |
-		CI_HDRC_IMX_EHCI_QUIRK |
-		CI_HDRC_DISABLE_STREAMING |
-		CI_HDRC_OVERRIDE_AHB_BURST |
-		CI_HDRC_OVERRIDE_BURST_LENGTH |
-		CI_HDRC_IMX_VBUS_EARLY_ON,
-	.ahbburst_config = 0, /*bit0 - bit2 at $BASE + 0x90 */
-	.burst_length = 0x1010, /*bit0 - bit15 at $BASE + 0x160 */
+		CI_HDRC_TURN_VBUS_EARLY_ON,
 };
 
 static const struct ci_hdrc_imx_platform_flag imx6sl_usb_data = {
 	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM |
-		CI_HDRC_IMX_EHCI_QUIRK |
-		CI_HDRC_DISABLE_HOST_STREAMING |
-		CI_HDRC_OVERRIDE_AHB_BURST |
-		CI_HDRC_OVERRIDE_BURST_LENGTH |
-		CI_HDRC_IMX_VBUS_EARLY_ON,
-	.ahbburst_config = 0,
-	.burst_length = 0x1010,
+		CI_HDRC_TURN_VBUS_EARLY_ON,
 };
 
 static const struct ci_hdrc_imx_platform_flag imx6sx_usb_data = {
 	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM |
-		CI_HDRC_IMX_EHCI_QUIRK |
-		CI_HDRC_DISABLE_HOST_STREAMING |
-		CI_HDRC_OVERRIDE_AHB_BURST |
-		CI_HDRC_OVERRIDE_BURST_LENGTH |
-		CI_HDRC_IMX_VBUS_EARLY_ON,
-	.ahbburst_config = 0,
-	.burst_length = 0x1010,
-};
-
-static const struct ci_hdrc_imx_platform_flag imx6ul_usb_data = {
-	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM |
-		CI_HDRC_IMX_EHCI_QUIRK |
-		CI_HDRC_OVERRIDE_AHB_BURST |
-		CI_HDRC_OVERRIDE_BURST_LENGTH |
-		CI_HDRC_IMX_VBUS_EARLY_ON,
-	.ahbburst_config = 0,
-	.burst_length = 0x1010,
-};
-
-static const struct ci_hdrc_imx_platform_flag imx7d_usb_data = {
-	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM |
-		CI_HDRC_OVERRIDE_AHB_BURST |
-		CI_HDRC_OVERRIDE_BURST_LENGTH,
-	.ahbburst_config = 0,
-	.burst_length = 0x1010,
+		CI_HDRC_TURN_VBUS_EARLY_ON,
 };
 
 static const struct of_device_id ci_hdrc_imx_dt_ids[] = {
@@ -100,9 +61,7 @@ static const struct of_device_id ci_hdrc_imx_dt_ids[] = {
 	{ .compatible = "fsl,imx27-usb", .data = &imx27_usb_data},
 	{ .compatible = "fsl,imx6q-usb", .data = &imx6q_usb_data},
 	{ .compatible = "fsl,imx6sl-usb", .data = &imx6sl_usb_data},
-	{ .compatible = "fsl,imx6sx-usb", .data = &imx6sx_usb_data},
-	{ .compatible = "fsl,imx6ul-usb", .data = &imx6ul_usb_data},
-	{ .compatible = "fsl,imx7d-usb", .data = &imx7d_usb_data},
+	{ .compatible = "fsl,imx6sx-usb", .data = &imx6sl_usb_data},
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, ci_hdrc_imx_dt_ids);
@@ -114,13 +73,6 @@ struct ci_hdrc_imx_data {
 	struct imx_usbmisc_data *usbmisc_data;
 	bool supports_runtime_pm;
 	bool in_lpm;
-	bool imx_usb_charger_detection;
-	struct usb_charger charger;
-	struct regmap *anatop;
-	struct pinctrl *pinctrl;
-	struct pinctrl_state *pinctrl_hsic_active;
-	struct regulator *hsic_pad_regulator;
-	const struct ci_hdrc_imx_platform_flag *data;
 };
 
 static char *imx_usb_charger_supplied_to[] = {
@@ -381,7 +333,7 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 	struct ci_hdrc_platform_data pdata = {
 		.name		= dev_name(&pdev->dev),
 		.capoffset	= DEF_CAPOFFSET,
-		.notify_event = ci_hdrc_imx_notify_event,
+		.flags		= CI_HDRC_DISABLE_STREAMING,
 	};
 	int ret;
 	const struct of_device_id *of_id =
@@ -464,64 +416,10 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_clk;
 
-	if (data->usbmisc_data->index > 1 && (imx_has_hsic_con(data))) {
-		pdata.flags |= CI_HDRC_IMX_IS_HSIC;
-		data->hsic_pad_regulator = devm_regulator_get(&pdev->dev,
-									"pad");
-		if (PTR_ERR(data->hsic_pad_regulator) == -EPROBE_DEFER) {
-			ret = -EPROBE_DEFER;
-			goto err_clk;
-		} else if (PTR_ERR(data->hsic_pad_regulator) == -ENODEV) {
-			/* no pad regualator is needed */
-			data->hsic_pad_regulator = NULL;
-		} else if (IS_ERR(data->hsic_pad_regulator)) {
-			dev_err(&pdev->dev,
-				"Get hsic pad regulator error: %ld\n",
-					PTR_ERR(data->hsic_pad_regulator));
-			ret = PTR_ERR(data->hsic_pad_regulator);
-			goto err_clk;
-		}
-
-		if (data->hsic_pad_regulator) {
-			ret = regulator_enable(data->hsic_pad_regulator);
-			if (ret) {
-				dev_err(&pdev->dev,
-					"Fail to enable hsic pad regulator\n");
-				goto err_clk;
-			}
-		}
-	}
-
-	if (of_find_property(np, "fsl,anatop", NULL)) {
-		data->anatop = syscon_regmap_lookup_by_phandle(np,
-							"fsl,anatop");
-		if (IS_ERR(data->anatop)) {
-			dev_dbg(&pdev->dev,
-				"failed to find regmap for anatop\n");
-			ret = PTR_ERR(data->anatop);
-			goto disable_hsic_regulator;
-		}
-		if (data->usbmisc_data)
-			data->usbmisc_data->anatop = data->anatop;
-	}
-
-	if (of_find_property(np, "imx-usb-charger-detection", NULL)) {
-		data->imx_usb_charger_detection = true;
-		data->charger.dev = &pdev->dev;
-		data->usbmisc_data->charger = &data->charger;
-		ret = imx_usb_register_charger(&data->charger,
-						"imx_usb_charger");
-		if (ret && ret != -ENODEV)
-			goto disable_hsic_regulator;
-		if (!ret)
-			dev_dbg(&pdev->dev,
-					"USB Charger is created\n");
-	}
-
 	ret = imx_usbmisc_init(data->usbmisc_data);
 	if (ret) {
 		dev_err(&pdev->dev, "usbmisc init failed, ret=%d\n", ret);
-		goto remove_charger;
+		goto err_clk;
 	}
 
 	if (imx_platform_flag->flags & CI_HDRC_OVERRIDE_AHB_BURST)
@@ -556,6 +454,11 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 	/* usbmisc needs to know dr mode to choose wakeup setting */
 	data->usbmisc_data->available_role =
 				ci_hdrc_query_available_role(data->ci_pdev);
+
+	if (data->supports_runtime_pm) {
+		pm_runtime_set_active(&pdev->dev);
+		pm_runtime_enable(&pdev->dev);
+	}
 
 	if (data->supports_runtime_pm) {
 		pm_runtime_set_active(&pdev->dev);
@@ -604,21 +507,10 @@ static int ci_hdrc_imx_remove(struct platform_device *pdev)
 static int imx_controller_suspend(struct device *dev)
 {
 	struct ci_hdrc_imx_data *data = dev_get_drvdata(dev);
-	int ret;
 
 	dev_dbg(dev, "at %s\n", __func__);
 
-	if (data->usbmisc_data) {
-		ret = imx_usbmisc_hsic_set_clk(data->usbmisc_data, false);
-		if (ret) {
-			dev_err(dev,
-				"usbmisc hsic_set_clk failed, ret=%d\n", ret);
-			return ret;
-		}
-	}
-
 	clk_disable_unprepare(data->clk);
-	release_bus_freq(BUS_FREQ_HIGH);
 	data->in_lpm = true;
 
 	return 0;
@@ -636,24 +528,11 @@ static int imx_controller_resume(struct device *dev)
 		return 0;
 	}
 
-	request_bus_freq(BUS_FREQ_HIGH);
 	ret = clk_prepare_enable(data->clk);
-	if (ret) {
-		release_bus_freq(BUS_FREQ_HIGH);
+	if (ret)
 		return ret;
-	}
 
 	data->in_lpm = false;
-
-	ret = imx_usbmisc_power_lost_check(data->usbmisc_data);
-	/* re-init if resume from power lost */
-	if (ret > 0) {
-		ret = imx_usbmisc_init(data->usbmisc_data);
-		if (ret) {
-			dev_err(dev, "usbmisc init failed, ret=%d\n", ret);
-			goto clk_disable;
-		}
-	}
 
 	ret = imx_usbmisc_set_wakeup(data->usbmisc_data, false);
 	if (ret) {
@@ -661,20 +540,10 @@ static int imx_controller_resume(struct device *dev)
 		goto clk_disable;
 	}
 
-	ret = imx_usbmisc_hsic_set_clk(data->usbmisc_data, true);
-	if (ret) {
-		dev_err(dev, "usbmisc hsic_set_clk failed, ret=%d\n", ret);
-		goto hsic_set_clk_fail;
-	}
-
 	return 0;
 
-hsic_set_clk_fail:
-	imx_usbmisc_set_wakeup(data->usbmisc_data, true);
 clk_disable:
 	clk_disable_unprepare(data->clk);
-	release_bus_freq(BUS_FREQ_HIGH);
-
 	return ret;
 }
 
@@ -717,7 +586,6 @@ static int ci_hdrc_imx_resume(struct device *dev)
 }
 #endif /* CONFIG_PM_SLEEP */
 
-#ifdef CONFIG_PM_RUNTIME
 static int ci_hdrc_imx_runtime_suspend(struct device *dev)
 {
 	struct ci_hdrc_imx_data *data = dev_get_drvdata(dev);
@@ -741,7 +609,6 @@ static int ci_hdrc_imx_runtime_resume(struct device *dev)
 {
 	return imx_controller_resume(dev);
 }
-#endif /* CONFIG_PM_RUNTIME */
 
 #endif /* CONFIG_PM */
 
@@ -755,7 +622,6 @@ static struct platform_driver ci_hdrc_imx_driver = {
 	.remove = ci_hdrc_imx_remove,
 	.driver = {
 		.name = "imx_usb",
-		.owner = THIS_MODULE,
 		.of_match_table = ci_hdrc_imx_dt_ids,
 		.pm = &ci_hdrc_imx_pm_ops,
 	 },

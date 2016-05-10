@@ -59,8 +59,6 @@ struct fsl_esai {
 	u32 fifo_depth;
 	u32 slot_width;
 	u32 slots;
-	u32 tx_mask;
-	u32 rx_mask;
 	u32 hck_rate[2];
 	u32 sck_rate[2];
 	bool hck_dir[2];
@@ -359,8 +357,6 @@ static int fsl_esai_set_dai_tdm_slot(struct snd_soc_dai *dai, u32 tx_mask,
 
 	esai_priv->slot_width = slot_width;
 	esai_priv->slots = slots;
-	esai_priv->tx_mask    = tx_mask;
-	esai_priv->rx_mask    = rx_mask;
 
 	return 0;
 }
@@ -465,9 +461,6 @@ static int fsl_esai_startup(struct snd_pcm_substream *substream,
 	ret = clk_prepare_enable(esai_priv->coreclk);
 	if (ret)
 		return ret;
-	ret = clk_prepare_enable(esai_priv->dmaclk);
-	if (ret)
-		return ret;
 	if (!IS_ERR(esai_priv->extalclk)) {
 		ret = clk_prepare_enable(esai_priv->extalclk);
 		if (ret)
@@ -500,7 +493,6 @@ err_fsysclk:
 	if (!IS_ERR(esai_priv->extalclk))
 		clk_disable_unprepare(esai_priv->extalclk);
 err_extalck:
-	clk_disable_unprepare(esai_priv->dmaclk);
 	clk_disable_unprepare(esai_priv->coreclk);
 
 	return ret;
@@ -515,10 +507,15 @@ static int fsl_esai_hw_params(struct snd_pcm_substream *substream,
 	u32 width = snd_pcm_format_width(params_format(params));
 	u32 channels = params_channels(params);
 	u32 pins = DIV_ROUND_UP(channels, esai_priv->slots);
+	u32 slot_width = width;
 	u32 bclk, mask, val;
 	int ret;
 
-	bclk = params_rate(params) * esai_priv->slot_width * esai_priv->slots;
+	/* Override slot_width if being specifially set */
+	if (esai_priv->slot_width)
+		slot_width = esai_priv->slot_width;
+
+	bclk = params_rate(params) * slot_width * esai_priv->slots;
 
 	ret = fsl_esai_set_bclk(dai, tx, bclk);
 	if (ret)
@@ -540,7 +537,7 @@ static int fsl_esai_hw_params(struct snd_pcm_substream *substream,
 	regmap_update_bits(esai_priv->regmap, REG_ESAI_xFCR(tx), mask, val);
 
 	mask = ESAI_xCR_xSWS_MASK | (tx ? ESAI_xCR_PADC : 0);
-	val = ESAI_xCR_xSWS(esai_priv->slot_width, width) | (tx ? ESAI_xCR_PADC : 0);
+	val = ESAI_xCR_xSWS(slot_width, width) | (tx ? ESAI_xCR_PADC : 0);
 
 	regmap_update_bits(esai_priv->regmap, REG_ESAI_xCR(tx), mask, val);
 
@@ -574,7 +571,6 @@ static int fsl_esai_trigger(struct snd_pcm_substream *substream, int cmd,
 	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
 	u8 i, channels = substream->runtime->channels;
 	u32 pins = DIV_ROUND_UP(channels, esai_priv->slots);
-	u32 mask;
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -590,12 +586,6 @@ static int fsl_esai_trigger(struct snd_pcm_substream *substream, int cmd,
 		regmap_update_bits(esai_priv->regmap, REG_ESAI_xCR(tx),
 				   tx ? ESAI_xCR_TE_MASK : ESAI_xCR_RE_MASK,
 				   tx ? ESAI_xCR_TE(pins) : ESAI_xCR_RE(pins));
-		mask = tx ? esai_priv->tx_mask : esai_priv->rx_mask;
-		regmap_update_bits(esai_priv->regmap, REG_ESAI_xSMA(tx),
-				   ESAI_xSMA_xS_MASK, ESAI_xSMA_xS(mask));
-		regmap_update_bits(esai_priv->regmap, REG_ESAI_xSMB(tx),
-				   ESAI_xSMB_xS_MASK, ESAI_xSMB_xS(mask));
-
 		break;
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_STOP:
@@ -882,7 +872,7 @@ static int fsl_esai_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	esai_priv->pdev = pdev;
-	strcpy(esai_priv->name, np->name);
+	strncpy(esai_priv->name, np->name, sizeof(esai_priv->name) - 1);
 
 	if (of_property_read_bool(np, "big-endian"))
 		fsl_esai_regmap_config.val_format_endian = REGMAP_ENDIAN_BIG;
@@ -927,7 +917,7 @@ static int fsl_esai_probe(struct platform_device *pdev)
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
-		dev_err(&pdev->dev, "no irq for node %s\n", np->full_name);
+		dev_err(&pdev->dev, "no irq for node %s\n", pdev->name);
 		return irq;
 	}
 
@@ -938,8 +928,8 @@ static int fsl_esai_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	/* Set a default slot size */
-	esai_priv->slot_width = 32;
+	/* Set a default slot number */
+	esai_priv->slots = 2;
 
 	/* Set a default slot number */
 	esai_priv->slots = 2;
@@ -1061,8 +1051,6 @@ static struct platform_driver fsl_esai_driver = {
 	.probe = fsl_esai_probe,
 	.driver = {
 		.name = "fsl-esai-dai",
-		.owner = THIS_MODULE,
-		.pm = &fsl_esai_pm_ops,
 		.of_match_table = fsl_esai_dt_ids,
 	},
 };

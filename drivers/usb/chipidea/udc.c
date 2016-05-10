@@ -86,10 +86,8 @@ static int hw_device_state(struct ci_hdrc *ci, u32 dma)
 		/* interrupt, error, port change, reset, sleep/suspend */
 		hw_write(ci, OP_USBINTR, ~0,
 			     USBi_UI|USBi_UEI|USBi_PCI|USBi_URI|USBi_SLI);
-		hw_write(ci, OP_USBCMD, USBCMD_RS, USBCMD_RS);
 	} else {
 		hw_write(ci, OP_USBINTR, ~0, 0);
-		hw_write(ci, OP_USBCMD, USBCMD_RS, 0);
 	}
 	return 0;
 }
@@ -647,7 +645,7 @@ __acquires(hwep->lock)
 
 		if (hwreq->req.complete != NULL) {
 			spin_unlock(hwep->lock);
-			hwreq->req.complete(&hwep->ep, &hwreq->req);
+			usb_gadget_giveback_request(&hwep->ep, &hwreq->req);
 			spin_lock(hwep->lock);
 		}
 	}
@@ -717,10 +715,8 @@ __acquires(ci->lock)
 	}
 
 	spin_unlock(&ci->lock);
-	if (ci->gadget.speed != USB_SPEED_UNKNOWN) {
-		if (ci->driver)
-			ci->driver->disconnect(&ci->gadget);
-	}
+	if (ci->gadget.speed != USB_SPEED_UNKNOWN)
+		usb_gadget_udc_reset(&ci->gadget, ci->driver);
 
 	retval = _gadget_stop_activity(&ci->gadget);
 	if (retval)
@@ -851,16 +847,8 @@ __acquires(hwep->lock)
 	}
 
 	if ((setup->bRequestType & USB_RECIP_MASK) == USB_RECIP_DEVICE) {
-		if ((setup->wIndex == OTG_STS_SELECTOR) &&
-					ci_otg_is_fsm_mode(ci)) {
-			if (ci->gadget.host_request_flag)
-				*(u8 *)req->buf = HOST_REQUEST_FLAG;
-			else
-				*(u8 *)req->buf = 0;
-		} else {
-			*(u16 *)req->buf = (ci->remote_wakeup << 1) |
-				ci->gadget.is_selfpowered;
-		}
+		*(u16 *)req->buf = (ci->remote_wakeup << 1) |
+			ci->gadget.is_selfpowered;
 	} else if ((setup->bRequestType & USB_RECIP_MASK) \
 		   == USB_RECIP_ENDPOINT) {
 		dir = (le16_to_cpu(setup->wIndex) & USB_ENDPOINT_DIR_MASK) ?
@@ -958,7 +946,7 @@ __acquires(hwep->lock)
 			if ((hwep->type == USB_ENDPOINT_XFER_CONTROL) &&
 					hwreq->req.length)
 				hweptemp = hwep->ci->ep0in;
-			hwreq->req.complete(&hweptemp->ep, &hwreq->req);
+			usb_gadget_giveback_request(&hweptemp->ep, &hwreq->req);
 			spin_lock(hwep->lock);
 		}
 	}
@@ -974,28 +962,6 @@ static int otg_a_alt_hnp_support(struct ci_hdrc *ci)
 	dev_warn(&ci->gadget.dev,
 		"connect the device to an alternate port if you want HNP\n");
 	return isr_setup_status_phase(ci);
-}
-
-static int otg_srp_reqd(struct ci_hdrc *ci)
-{
-	if (ci_otg_is_fsm_mode(ci)) {
-		ci->fsm.otg_srp_reqd = 1;
-		return isr_setup_status_phase(ci);
-	} else {
-		return -ENOTSUPP;
-	}
-}
-
-static int otg_hnp_reqd(struct ci_hdrc *ci)
-{
-	if (ci_otg_is_fsm_mode(ci)) {
-		ci->fsm.otg_hnp_reqd = 1;
-		ci->fsm.b_bus_req = 1;
-		ci->gadget.host_request_flag = 1;
-		return isr_setup_status_phase(ci);
-	} else {
-		return -ENOTSUPP;
-	}
 }
 
 /**
@@ -1067,9 +1033,8 @@ __acquires(ci->lock)
 		    type != (USB_DIR_IN|USB_RECIP_ENDPOINT) &&
 		    type != (USB_DIR_IN|USB_RECIP_INTERFACE))
 			goto delegate;
-		if ((le16_to_cpu(req.wLength) != 2 &&
-			le16_to_cpu(req.wLength) != 1) ||
-				le16_to_cpu(req.wValue) != 0)
+		if (le16_to_cpu(req.wLength) != 2 ||
+		    le16_to_cpu(req.wValue)  != 0)
 			break;
 		err = isr_get_status_response(ci, &req);
 		break;
@@ -1119,12 +1084,6 @@ __acquires(ci->lock)
 					ci->test_mode = tmode;
 					err = isr_setup_status_phase(
 							ci);
-					break;
-				case TEST_OTG_SRP_REQD:
-					err = otg_srp_reqd(ci);
-					break;
-				case TEST_OTG_HNP_REQD:
-					err = otg_hnp_reqd(ci);
 					break;
 				default:
 					break;
@@ -1425,6 +1384,12 @@ static int ep_dequeue(struct usb_ep *ep, struct usb_request *req)
 		kfree(node);
 	}
 
+	list_for_each_entry_safe(node, tmpnode, &hwreq->tds, td) {
+		dma_pool_free(hwep->td_pool, node->ptr, node->dma);
+		list_del(&node->td);
+		kfree(node);
+	}
+
 	/* pop request */
 	list_del_init(&hwreq->queue);
 
@@ -1434,7 +1399,7 @@ static int ep_dequeue(struct usb_ep *ep, struct usb_request *req)
 
 	if (hwreq->req.complete != NULL) {
 		spin_unlock(hwep->lock);
-		hwreq->req.complete(&hwep->ep, &hwreq->req);
+		usb_gadget_giveback_request(&hwep->ep, &hwreq->req);
 		spin_lock(hwep->lock);
 	}
 
@@ -1567,11 +1532,26 @@ static int ci_udc_vbus_session(struct usb_gadget *_gadget, int is_active)
 		gadget_ready = 1;
 	spin_unlock_irqrestore(&ci->lock, flags);
 
-	/* Charger Detection */
-	ci_usb_charger_connect(ci, is_active);
-
-	if (gadget_ready)
-		ci_hdrc_gadget_connect(_gadget, is_active);
+	if (gadget_ready) {
+		if (is_active) {
+			pm_runtime_get_sync(&_gadget->dev);
+			hw_device_reset(ci);
+			hw_device_state(ci, ci->ep0out->qh.dma);
+			usb_gadget_set_state(_gadget, USB_STATE_POWERED);
+			usb_udc_vbus_handler(_gadget, true);
+		} else {
+			usb_udc_vbus_handler(_gadget, false);
+			if (ci->driver)
+				ci->driver->disconnect(&ci->gadget);
+			hw_device_state(ci, 0);
+			if (ci->platdata->notify_event)
+				ci->platdata->notify_event(ci,
+				CI_HDRC_CONTROLLER_STOPPED_EVENT);
+			_gadget_stop_activity(&ci->gadget);
+			pm_runtime_put_sync(&_gadget->dev);
+			usb_gadget_set_state(_gadget, USB_STATE_NOTATTACHED);
+		}
+	}
 
 	return 0;
 }
@@ -1630,21 +1610,23 @@ static int ci_udc_pullup(struct usb_gadget *_gadget, int is_on)
 {
 	struct ci_hdrc *ci = container_of(_gadget, struct ci_hdrc, gadget);
 
-	if (!ci->vbus_active)
-		return -EOPNOTSUPP;
+	/* Data+ pullup controlled by OTG state machine in OTG fsm mode */
+	if (ci_otg_is_fsm_mode(ci))
+		return 0;
 
+	pm_runtime_get_sync(&ci->gadget.dev);
 	if (is_on)
 		hw_write(ci, OP_USBCMD, USBCMD_RS, USBCMD_RS);
 	else
 		hw_write(ci, OP_USBCMD, USBCMD_RS, 0);
+	pm_runtime_put_sync(&ci->gadget.dev);
 
 	return 0;
 }
 
 static int ci_udc_start(struct usb_gadget *gadget,
 			 struct usb_gadget_driver *driver);
-static int ci_udc_stop(struct usb_gadget *gadget,
-			struct usb_gadget_driver *driver);
+static int ci_udc_stop(struct usb_gadget *gadget);
 /**
  * Device operations part of the API to the USB controller hardware,
  * which don't involve endpoints (or i/o)
@@ -1756,9 +1738,18 @@ static int ci_udc_start(struct usb_gadget *gadget,
 	ci->driver = driver;
 
 	/* Start otg fsm for B-device */
-	if (ci_otg_is_fsm_mode(ci)) {
-		if (ci->fsm.id)
-			ci_hdrc_otg_fsm_start(ci);
+	if (ci_otg_is_fsm_mode(ci) && ci->fsm.id) {
+		ci_hdrc_otg_fsm_start(ci);
+		return retval;
+	}
+
+	pm_runtime_get_sync(&ci->gadget.dev);
+	if (ci->vbus_active) {
+		spin_lock_irqsave(&ci->lock, flags);
+		hw_device_reset(ci);
+	} else {
+		usb_udc_vbus_handler(&ci->gadget, false);
+		pm_runtime_put_sync(&ci->gadget.dev);
 		return retval;
 	}
 
@@ -1787,8 +1778,7 @@ static void ci_udc_stop_for_otg_fsm(struct ci_hdrc *ci)
 /**
  * ci_udc_stop: unregister a gadget driver
  */
-static int ci_udc_stop(struct usb_gadget *gadget,
-			struct usb_gadget_driver *driver)
+static int ci_udc_stop(struct usb_gadget *gadget)
 {
 	struct ci_hdrc *ci = container_of(gadget, struct ci_hdrc, gadget);
 	unsigned long flags;
@@ -1895,6 +1885,7 @@ static int udc_start(struct ci_hdrc *ci)
 	ci->gadget.ops          = &usb_gadget_ops;
 	ci->gadget.speed        = USB_SPEED_UNKNOWN;
 	ci->gadget.max_speed    = USB_SPEED_HIGH;
+	ci->gadget.is_otg       = ci->is_otg ? 1 : 0;
 	ci->gadget.name         = ci->platdata->name;
 	ci->gadget.otg_caps	= &ci->platdata->ci_otg_caps;
 
@@ -1961,72 +1952,10 @@ void ci_hdrc_gadget_destroy(struct ci_hdrc *ci)
 	dma_pool_destroy(ci->qh_pool);
 }
 
-int ci_usb_charger_connect(struct ci_hdrc *ci, int is_active)
-{
-	int ret = 0;
-
-	if (is_active)
-		pm_runtime_get_sync(ci->dev);
-
-	if (ci->platdata->notify_event) {
-		if (is_active)
-			hw_write(ci, OP_USBCMD, USBCMD_RS, 0);
-
-		ret = ci->platdata->notify_event(ci,
-				CI_HDRC_CONTROLLER_VBUS_EVENT);
-		if (ret == CI_HDRC_NOTIFY_RET_DEFER_EVENT) {
-			hw_device_reset(ci);
-			/* Pull up dp */
-			hw_write(ci, OP_USBCMD, USBCMD_RS, USBCMD_RS);
-			ci->platdata->notify_event(ci,
-				CI_HDRC_CONTROLLER_CHARGER_POST_EVENT);
-			/* Pull down dp */
-			hw_write(ci, OP_USBCMD, USBCMD_RS, 0);
-		}
-	}
-
-	if (!is_active)
-		pm_runtime_put_sync(ci->dev);
-
-	return ret;
-}
-
-/**
- * ci_hdrc_gadget_connect: caller make sure gadget driver is binded
- */
-void ci_hdrc_gadget_connect(struct usb_gadget *gadget, int is_active)
-{
-	struct ci_hdrc *ci = container_of(gadget, struct ci_hdrc, gadget);
-
-	if (is_active) {
-		pm_runtime_get_sync(&gadget->dev);
-		hw_device_reset(ci);
-		hw_device_state(ci, ci->ep0out->qh.dma);
-		usb_gadget_set_state(gadget, USB_STATE_POWERED);
-	} else {
-		if (ci->driver)
-			ci->driver->disconnect(gadget);
-		hw_device_state(ci, 0);
-		if (ci->platdata->notify_event)
-			ci->platdata->notify_event(ci,
-			CI_HDRC_CONTROLLER_STOPPED_EVENT);
-		_gadget_stop_activity(gadget);
-		pm_runtime_put_sync(&gadget->dev);
-		usb_gadget_set_state(gadget, USB_STATE_NOTATTACHED);
-	}
-}
-
 static int udc_id_switch_for_device(struct ci_hdrc *ci)
 {
-	if (!ci->is_otg)
-		return 0;
-
-	/*
-	 * Clear and enable BSV irq for A-device switch to B-device
-	 * (in otg fsm mode, means A_IDLE->B_DILE) due to ID change.
-	 */
-	if (!ci_otg_is_fsm_mode(ci) ||
-			ci->fsm.otg->state == OTG_STATE_A_IDLE)
+	if (ci->is_otg)
+		/* Clear and enable BSV irq */
 		hw_write_otgsc(ci, OTGSC_BSVIS | OTGSC_BSVIE,
 					OTGSC_BSVIS | OTGSC_BSVIE);
 
@@ -2035,59 +1964,12 @@ static int udc_id_switch_for_device(struct ci_hdrc *ci)
 
 static void udc_id_switch_for_host(struct ci_hdrc *ci)
 {
-	if (!ci->is_otg)
-		return;
-
 	/*
-	 * Clear and disbale BSV irq for B-device switch to A-device
-	 * (in otg fsm mode, means B_IDLE->A_IDLE) due to ID change.
+	 * host doesn't care B_SESSION_VALID event
+	 * so clear and disbale BSV irq
 	 */
-	if (!ci_otg_is_fsm_mode(ci) ||
-			ci->fsm.otg->state == OTG_STATE_B_IDLE ||
-			ci->fsm.otg->state == OTG_STATE_UNDEFINED)
-		hw_write_otgsc(ci, OTGSC_BSVIE | OTGSC_BSVIS, OTGSC_BSVIS);
-}
-
-static void udc_suspend_for_power_lost(struct ci_hdrc *ci)
-{
-	/*
-	 * Set OP_ENDPTLISTADDR to be non-zero for
-	 * checking if controller resume from power lost
-	 * in non-host mode.
-	 */
-	if (hw_read(ci, OP_ENDPTLISTADDR, ~0) == 0)
-		hw_write(ci, OP_ENDPTLISTADDR, ~0, ~0);
-}
-
-/* Power lost with device mode */
-static void udc_resume_from_power_lost(struct ci_hdrc *ci)
-{
-	/* Force disconnect if power lost with vbus on */
-	if (!ci_otg_is_fsm_mode(ci) && ci->vbus_active)
-		usb_gadget_vbus_disconnect(&ci->gadget);
-
 	if (ci->is_otg)
-		hw_write_otgsc(ci, OTGSC_BSVIS | OTGSC_BSVIE,
-					OTGSC_BSVIS | OTGSC_BSVIE);
-}
-
-static void udc_suspend(struct ci_hdrc *ci)
-{
-	udc_suspend_for_power_lost(ci);
-
-	if (ci->driver && ci->vbus_active &&
-			(ci->gadget.state != USB_STATE_SUSPENDED))
-		usb_gadget_disconnect(&ci->gadget);
-}
-
-static void udc_resume(struct ci_hdrc *ci, bool power_lost)
-{
-	if (power_lost) {
-		udc_resume_from_power_lost(ci);
-	} else {
-		if (ci->driver && ci->vbus_active)
-			usb_gadget_connect(&ci->gadget);
-	}
+		hw_write_otgsc(ci, OTGSC_BSVIE | OTGSC_BSVIS, OTGSC_BSVIS);
 }
 
 /**

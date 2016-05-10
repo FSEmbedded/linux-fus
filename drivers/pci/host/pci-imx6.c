@@ -28,8 +28,10 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
-#include <linux/busfreq-imx.h>
-#include <linux/regulator/consumer.h>
+#include <linux/resource.h>
+#include <linux/signal.h>
+#include <linux/types.h>
+#include <linux/interrupt.h>
 
 #include "pcie-designware.h"
 
@@ -48,11 +50,8 @@ static u32 ddr_test_region = 0, test_region_size = SZ_2M;
 struct imx6_pcie {
 	int			dis_gpio;
 	int			reset_gpio;
-	int			power_on_gpio;
 	struct clk		*pcie_bus;
 	struct clk		*pcie_phy;
-	struct clk		*pcie_inbound_axi;
-	struct clk		*ref_100m;
 	struct clk		*pcie;
 	struct pcie_port	pp;
 	struct regmap		*iomuxc_gpr;
@@ -262,6 +261,31 @@ static int imx6_pcie_assert_core_reset(struct pcie_port *pp)
 	struct imx6_pcie *imx6_pcie = to_imx6_pcie(pp);
 	u32 val, gpr1, gpr12;
 
+	/*
+	 * If the bootloader already enabled the link we need some special
+	 * handling to get the core back into a state where it is safe to
+	 * touch it for configuration.  As there is no dedicated reset signal
+	 * wired up for MX6QDL, we need to manually force LTSSM into "detect"
+	 * state before completely disabling LTSSM, which is a prerequisite
+	 * for core configuration.
+	 *
+	 * If both LTSSM_ENABLE and REF_SSP_ENABLE are active we have a strong
+	 * indication that the bootloader activated the link.
+	 */
+	regmap_read(imx6_pcie->iomuxc_gpr, IOMUXC_GPR1, &gpr1);
+	regmap_read(imx6_pcie->iomuxc_gpr, IOMUXC_GPR12, &gpr12);
+
+	if ((gpr1 & IMX6Q_GPR1_PCIE_REF_CLK_EN) &&
+	    (gpr12 & IMX6Q_GPR12_PCIE_CTL_2)) {
+		val = readl(pp->dbi_base + PCIE_PL_PFLR);
+		val &= ~PCIE_PL_PFLR_LINK_STATE_MASK;
+		val |= PCIE_PL_PFLR_FORCE_LINK;
+		writel(val, pp->dbi_base + PCIE_PL_PFLR);
+
+		regmap_update_bits(imx6_pcie->iomuxc_gpr, IOMUXC_GPR12,
+				IMX6Q_GPR12_PCIE_CTL_2, 0 << 10);
+	}
+
 	if (is_imx7d_pcie(imx6_pcie)) {
 		/* G_RST */
 		regmap_update_bits(imx6_pcie->reg_src, 0x2c, BIT(1), BIT(1));
@@ -338,23 +362,16 @@ static int imx6_pcie_deassert_core_reset(struct pcie_port *pp)
 	int ret;
 	struct imx6_pcie *imx6_pcie = to_imx6_pcie(pp);
 
-	if (gpio_is_valid(imx6_pcie->power_on_gpio))
-		gpio_set_value(imx6_pcie->power_on_gpio, 1);
-
-	request_bus_freq(BUS_FREQ_HIGH);
 	ret = clk_prepare_enable(imx6_pcie->pcie_phy);
 	if (ret) {
 		dev_err(pp->dev, "unable to enable pcie_phy clock\n");
 		goto err_pcie_phy;
 	}
 
-	if (!IS_ENABLED(CONFIG_EP_MODE_IN_EP_RC_SYS)
-			&& !IS_ENABLED(CONFIG_RC_MODE_IN_EP_RC_SYS)) {
-		ret = clk_prepare_enable(imx6_pcie->pcie_bus);
-		if (ret) {
-			dev_err(pp->dev, "unable to enable pcie_bus clock\n");
-			goto err_pcie_bus;
-		}
+	ret = clk_prepare_enable(imx6_pcie->pcie_bus);
+	if (ret) {
+		dev_err(pp->dev, "unable to enable pcie_bus clock\n");
+		goto err_pcie_bus;
 	}
 
 	ret = clk_prepare_enable(imx6_pcie->pcie);
@@ -363,37 +380,21 @@ static int imx6_pcie_deassert_core_reset(struct pcie_port *pp)
 		goto err_pcie;
 	}
 
-	if (is_imx6sx_pcie(imx6_pcie)) {
-		ret = clk_prepare_enable(imx6_pcie->pcie_inbound_axi);
-		if (ret) {
-			dev_err(pp->dev, "unable to enable pcie clock\n");
-			goto err_inbound_axi;
-		}
+	/* power up core phy and enable ref clock */
+	regmap_update_bits(imx6_pcie->iomuxc_gpr, IOMUXC_GPR1,
+			IMX6Q_GPR1_PCIE_TEST_PD, 0 << 18);
+	/*
+	 * the async reset input need ref clock to sync internally,
+	 * when the ref clock comes after reset, internal synced
+	 * reset time is too short, cannot meet the requirement.
+	 * add one ~10us delay here.
+	 */
+	udelay(10);
+	regmap_update_bits(imx6_pcie->iomuxc_gpr, IOMUXC_GPR1,
+			IMX6Q_GPR1_PCIE_REF_CLK_EN, 1 << 16);
 
-		regmap_update_bits(imx6_pcie->iomuxc_gpr, IOMUXC_GPR12,
-				IMX6SX_GPR12_PCIE_TEST_PD, 0);
-	} else if (!is_imx7d_pcie(imx6_pcie)) {
-		/* power up core phy and enable ref clock */
-		regmap_update_bits(imx6_pcie->iomuxc_gpr, IOMUXC_GPR1,
-				IMX6Q_GPR1_PCIE_TEST_PD, 0);
-
-		/* sata_ref is not used by pcie on imx6sx */
-		ret = clk_prepare_enable(imx6_pcie->ref_100m);
-		if (ret) {
-			dev_err(pp->dev, "unable to enable ref_100m\n");
-			goto err_inbound_axi;
-		}
-		/*
-		 * the async reset input need ref clock to sync internally,
-		 * when the ref clock comes after reset, internal synced
-		 * reset time is too short , cannot meet the requirement.
-		 * add one ~10us delay here.
-		 */
-		udelay(10);
-		regmap_update_bits(imx6_pcie->iomuxc_gpr, IOMUXC_GPR1,
-				IMX6Q_GPR1_PCIE_REF_CLK_EN,
-				IMX6Q_GPR1_PCIE_REF_CLK_EN);
-	}
+	/* allow the clocks to stabilize */
+	usleep_range(200, 500);
 
 	/* Some boards don't have PCIe reset GPIO. */
 	if (gpio_is_valid(imx6_pcie->reset_gpio)) {
@@ -452,12 +453,8 @@ static int imx6_pcie_deassert_core_reset(struct pcie_port *pp)
 
 	return 0;
 
-err_inbound_axi:
-	clk_disable_unprepare(imx6_pcie->pcie);
 err_pcie:
-	if (!IS_ENABLED(CONFIG_EP_MODE_IN_EP_RC_SYS)
-			&& !IS_ENABLED(CONFIG_RC_MODE_IN_EP_RC_SYS))
-		clk_disable_unprepare(imx6_pcie->pcie_bus);
+	clk_disable_unprepare(imx6_pcie->pcie_bus);
 err_pcie_bus:
 	clk_disable_unprepare(imx6_pcie->pcie_phy);
 err_pcie_phy:
@@ -671,14 +668,10 @@ static int imx6_pcie_host_init(struct pcie_port *pp)
 
 	dw_pcie_setup_rc(pp);
 
-	ret = imx6_pcie_start_link(pp);
-	if (ret < 0)
-		return ret;
+	imx6_pcie_start_link(pp);
 
 	if (IS_ENABLED(CONFIG_PCI_MSI))
 		dw_pcie_msi_init(pp);
-
-	return 0;
 }
 
 static void imx6_pcie_reset_phy(struct pcie_port *pp)
@@ -700,9 +693,8 @@ static void imx6_pcie_reset_phy(struct pcie_port *pp)
 
 static int imx6_pcie_link_up(struct pcie_port *pp)
 {
-	struct imx6_pcie *imx6_pcie = to_imx6_pcie(pp);
 	u32 rc, debug_r0, rx_valid;
-	int count = 5000;
+	int count = 5;
 
 	/*
 	 * Test if the PHY reports that the link is up and also that the LTSSM
@@ -733,28 +725,26 @@ static int imx6_pcie_link_up(struct pcie_port *pp)
 		 * Wait a little bit, then re-check if the link finished
 		 * the training.
 		 */
-		udelay(10);
+		usleep_range(1000, 2000);
 	}
-
-	if (!is_imx7d_pcie(imx6_pcie)) {
-		/*
-		 * From L0, initiate MAC entry to gen2 if EP/RC supports gen2.
-		 * Wait 2ms (LTSSM timeout is 24ms, PHY lock is ~5us in gen2).
-		 * If (MAC/LTSSM.state == Recovery.RcvrLock)
-		 * && (PHY/rx_valid==0) then pulse PHY/rx_reset. Transition
-		 * to gen2 is stuck
-		 */
-		pcie_phy_read(pp->dbi_base, PCIE_PHY_RX_ASIC_OUT, &rx_valid);
-		debug_r0 = readl(pp->dbi_base + PCIE_PHY_DEBUG_R0);
+	/*
+	 * From L0, initiate MAC entry to gen2 if EP/RC supports gen2.
+	 * Wait 2ms (LTSSM timeout is 24ms, PHY lock is ~5us in gen2).
+	 * If (MAC/LTSSM.state == Recovery.RcvrLock)
+	 * && (PHY/rx_valid==0) then pulse PHY/rx_reset. Transition
+	 * to gen2 is stuck
+	 */
+	pcie_phy_read(pp->dbi_base, PCIE_PHY_RX_ASIC_OUT, &rx_valid);
+	debug_r0 = readl(pp->dbi_base + PCIE_PHY_DEBUG_R0);
 
 		if (rx_valid & 0x01)
 			return 0;
 
-		if ((debug_r0 & 0x3f) != 0x0d)
-			return 0;
+	if ((debug_r0 & 0x3f) != 0x0d)
+		return 0;
 
-		dev_err(pp->dev, "transition to gen2 is stuck, reset PHY!\n");
-		dev_dbg(pp->dev, "debug_r0=%08x debug_r1=%08x\n", debug_r0, rc);
+	dev_err(pp->dev, "transition to gen2 is stuck, reset PHY!\n");
+	dev_dbg(pp->dev, "debug_r0=%08x debug_r1=%08x\n", debug_r0, rc);
 
 		imx6_pcie_reset_phy(pp);
 	}
@@ -780,8 +770,8 @@ static int __init imx6_add_pcie_port(struct pcie_port *pp,
 		}
 
 		ret = devm_request_irq(&pdev->dev, pp->msi_irq,
-		                       imx6_pcie_msi_handler,
-		                       IRQF_SHARED, "mx6-pcie-msi", pp);
+				       imx6_pcie_msi_handler,
+				       IRQF_SHARED, "mx6-pcie-msi", pp);
 		if (ret) {
 			dev_err(&pdev->dev, "failed to request MSI irq\n");
 			return -ENODEV;
@@ -1237,18 +1227,6 @@ static int __init imx6_pcie_probe(struct platform_device *pdev)
 		}
 	}
 
-	imx6_pcie->power_on_gpio = of_get_named_gpio(np, "power-on-gpio", 0);
-	if (gpio_is_valid(imx6_pcie->power_on_gpio)) {
-		ret = devm_gpio_request_one(&pdev->dev,
-					imx6_pcie->power_on_gpio,
-					GPIOF_OUT_INIT_LOW,
-					"PCIe power enable");
-		if (ret) {
-			dev_err(&pdev->dev, "unable to get power-on gpio\n");
-			return ret;
-		}
-	}
-
 	/* Fetch clocks */
 	imx6_pcie->pcie_phy = devm_clk_get(&pdev->dev, "pcie_phy");
 	if (IS_ERR(imx6_pcie->pcie_phy)) {
@@ -1270,31 +1248,6 @@ static int __init imx6_pcie_probe(struct platform_device *pdev)
 			"pcie clock source missing or invalid\n");
 		return PTR_ERR(imx6_pcie->pcie);
 	}
-
-	if (is_imx7d_pcie(imx6_pcie)) {
-		imx6_pcie->iomuxc_gpr =
-			 syscon_regmap_lookup_by_compatible
-			 ("fsl,imx7d-iomuxc-gpr");
-		imx6_pcie->reg_src =
-			 syscon_regmap_lookup_by_compatible("fsl,imx7d-src");
-		if (IS_ERR(imx6_pcie->reg_src)) {
-			dev_err(&pdev->dev,
-				"imx7d pcie phy src missing or invalid\n");
-			return PTR_ERR(imx6_pcie->reg_src);
-		}
-		imx6_pcie->pcie_phy_regulator = devm_regulator_get(pp->dev,
-				"pcie-phy");
-	} else if (is_imx6sx_pcie(imx6_pcie)) {
-		imx6_pcie->pcie_inbound_axi = devm_clk_get(&pdev->dev,
-				"pcie_inbound_axi");
-		if (IS_ERR(imx6_pcie->pcie_inbound_axi)) {
-			dev_err(&pdev->dev,
-				"pcie clock source missing or invalid\n");
-			return PTR_ERR(imx6_pcie->pcie_inbound_axi);
-		}
-
-		imx6_pcie->pcie_phy_regulator = devm_regulator_get(pp->dev,
-				"pcie-phy");
 
 		imx6_pcie->iomuxc_gpr =
 			 syscon_regmap_lookup_by_compatible
@@ -1490,6 +1443,14 @@ static void imx6_pcie_shutdown(struct platform_device *pdev)
 	imx6_pcie_assert_core_reset(&imx6_pcie->pp);
 }
 
+static void imx6_pcie_shutdown(struct platform_device *pdev)
+{
+	struct imx6_pcie *imx6_pcie = platform_get_drvdata(pdev);
+
+	/* bring down link, so bootloader gets clean state in case of reboot */
+	imx6_pcie_assert_core_reset(&imx6_pcie->pp);
+}
+
 static const struct of_device_id imx6_pcie_of_match[] = {
 	{ .compatible = "fsl,imx6q-pcie", },
 	{ .compatible = "fsl,imx6sx-pcie", },
@@ -1502,7 +1463,6 @@ MODULE_DEVICE_TABLE(of, imx6_pcie_of_match);
 static struct platform_driver imx6_pcie_driver = {
 	.driver = {
 		.name	= "imx6q-pcie",
-		.owner	= THIS_MODULE,
 		.of_match_table = imx6_pcie_of_match,
 		.pm = &pci_imx_pm_ops,
 	},
@@ -1515,7 +1475,7 @@ static int __init imx6_pcie_init(void)
 {
 	return platform_driver_probe(&imx6_pcie_driver, imx6_pcie_probe);
 }
-late_initcall(imx6_pcie_init);
+module_init(imx6_pcie_init);
 
 MODULE_AUTHOR("Sean Cross <xobs@kosagi.com>");
 MODULE_DESCRIPTION("Freescale i.MX6 PCIe host controller driver");

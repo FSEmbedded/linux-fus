@@ -1,5 +1,5 @@
-/* USB OTG (On The Go) defines */
 /*
+ * USB PHY defines
  *
  * These APIs may be used between USB controllers.  USB device drivers
  * (for either host or peripheral roles) don't use these calls; they
@@ -106,7 +106,7 @@ struct usb_phy {
 	int	(*set_power)(struct usb_phy *x,
 				unsigned mA);
 
-	/* for non-OTG B devices: set transceiver into suspend mode */
+	/* Set transceiver into suspend mode */
 	int	(*set_suspend)(struct usb_phy *x,
 				int suspend);
 
@@ -214,6 +214,7 @@ extern void usb_put_phy(struct usb_phy *);
 extern void devm_usb_put_phy(struct device *dev, struct usb_phy *x);
 extern int usb_bind_phy(const char *dev_name, u8 index,
 				const char *phy_dev_name);
+extern void usb_phy_set_event(struct usb_phy *x, unsigned long event);
 #else
 static inline struct usb_phy *usb_get_phy(enum usb_phy_type type)
 {
@@ -254,6 +255,10 @@ static inline int usb_bind_phy(const char *dev_name, u8 index,
 				const char *phy_dev_name)
 {
 	return -EOPNOTSUPP;
+}
+
+static inline void usb_phy_set_event(struct usb_phy *x, unsigned long event)
+{
 }
 #endif
 

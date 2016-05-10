@@ -15,14 +15,11 @@
 
 #include <linux/bitrev.h>
 #include <linux/clk.h>
-#include <linux/clk-private.h>
 #include <linux/module.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/regmap.h>
-#include <linux/pm_runtime.h>
-#include <linux/busfreq-imx.h>
 
 #include <sound/asoundef.h>
 #include <sound/dmaengine_pcm.h>
@@ -93,7 +90,6 @@ struct spdif_mixer_control {
  * @sysclk: system clock for rx clock rate measurement
  * @dma_params_tx: DMA parameters for transmit channel
  * @dma_params_rx: DMA parameters for receive channel
- * @name: driver name
  */
 struct fsl_spdif_priv {
 	struct spdif_mixer_control fsl_spdif_control;
@@ -110,16 +106,9 @@ struct fsl_spdif_priv {
 	struct clk *rxclk;
 	struct clk *coreclk;
 	struct clk *sysclk;
-	struct clk *dmaclk;
 	struct snd_dmaengine_dai_dma_data dma_params_tx;
 	struct snd_dmaengine_dai_dma_data dma_params_rx;
-	/* regcache for SRPC */
-	u32 regcache_srpc;
-
-	/* The name space will be allocated dynamically */
-	char name[0];
 };
-
 
 /* DPLL locked and lock loss interrupt handler */
 static void spdif_irq_dpll_lock(struct fsl_spdif_priv *spdif_priv)
@@ -388,6 +377,7 @@ static int spdif_set_sample_rate(struct snd_pcm_substream *substream,
 	unsigned long csfs = 0;
 	u32 stc, mask, rate;
 	u8 clk, txclk_df, sysclk_df;
+	int ret;
 
 	switch (sample_rate) {
 	case 32000:
@@ -429,6 +419,21 @@ static int spdif_set_sample_rate(struct snd_pcm_substream *substream,
 
 	sysclk_df = spdif_priv->sysclk_df[rate];
 
+	/* Don't mess up the clocks from other modules */
+	if (clk != STC_TXCLK_SPDIF_ROOT)
+		goto clk_set_bypass;
+
+	/*
+	 * The S/PDIF block needs a clock of 64 * fs * txclk_df.
+	 * So request 64 * fs * (txclk_df + 1) to get rounded.
+	 */
+	ret = clk_set_rate(spdif_priv->txclk[rate], 64 * sample_rate * (txclk_df + 1));
+	if (ret) {
+		dev_err(&pdev->dev, "failed to set tx clock rate\n");
+		return ret;
+	}
+
+clk_set_bypass:
 	dev_dbg(&pdev->dev, "expected clock rate = %d\n",
 			(64 * sample_rate * txclk_df * sysclk_df));
 	dev_dbg(&pdev->dev, "actual clock rate = %ld\n",
@@ -467,12 +472,6 @@ static int fsl_spdif_startup(struct snd_pcm_substream *substream,
 		ret = clk_prepare_enable(spdif_priv->coreclk);
 		if (ret) {
 			dev_err(&pdev->dev, "failed to enable core clock\n");
-			return ret;
-		}
-
-		ret = clk_prepare_enable(spdif_priv->dmaclk);
-		if (ret) {
-			dev_err(&pdev->dev, "failed to enable dma clock\n");
 			return ret;
 		}
 
@@ -542,7 +541,6 @@ static void fsl_spdif_shutdown(struct snd_pcm_substream *substream,
 		spdif_intr_status_clear(spdif_priv);
 		regmap_update_bits(regmap, REG_SPDIF_SCR,
 				SCR_LOW_POWER, SCR_LOW_POWER);
-		clk_disable_unprepare(spdif_priv->dmaclk);
 		clk_disable_unprepare(spdif_priv->coreclk);
 	}
 
@@ -1084,8 +1082,8 @@ static u32 fsl_spdif_txclk_caldiv(struct fsl_spdif_priv *spdif_priv,
 				enum spdif_txrate index, bool round)
 {
 	const u32 rate[] = { 32000, 44100, 48000, 96000, 192000 };
-	bool is_sysclk = clk == spdif_priv->sysclk;
-	u64 rate_actual, sub;
+	bool is_sysclk = clk_is_match(clk, spdif_priv->sysclk);
+	u64 rate_ideal, rate_actual, sub;
 	u32 sysclk_dfmin, sysclk_dfmax;
 	u32 txclk_df, sysclk_df, arate;
 
@@ -1095,7 +1093,11 @@ static u32 fsl_spdif_txclk_caldiv(struct fsl_spdif_priv *spdif_priv,
 
 	for (sysclk_df = sysclk_dfmin; sysclk_df <= sysclk_dfmax; sysclk_df++) {
 		for (txclk_df = 1; txclk_df <= 128; txclk_df++) {
-			rate_actual = clk_get_rate(clk);
+			rate_ideal = rate[index] * (txclk_df + 1) * 64;
+			if (round)
+				rate_actual = clk_round_rate(clk, rate_ideal);
+			else
+				rate_actual = clk_get_rate(clk);
 
 			arate = rate_actual / 64;
 			arate /= txclk_df * sysclk_df;
@@ -1174,7 +1176,7 @@ static int fsl_spdif_probe_txclk(struct fsl_spdif_priv *spdif_priv,
 			spdif_priv->txclk_src[index], rate[index]);
 	dev_dbg(&pdev->dev, "use txclk df %d for %dHz sample rate\n",
 			spdif_priv->txclk_df[index], rate[index]);
-	if (spdif_priv->txclk[index] == spdif_priv->sysclk)
+	if (clk_is_match(spdif_priv->txclk[index], spdif_priv->sysclk))
 		dev_dbg(&pdev->dev, "use sysclk df %d for %dHz sample rate\n",
 				spdif_priv->sysclk_df[index], rate[index]);
 	dev_dbg(&pdev->dev, "the best rate for %dHz sample rate is %dHz\n",
@@ -1196,19 +1198,15 @@ static int fsl_spdif_probe(struct platform_device *pdev)
 	if (!np)
 		return -ENODEV;
 
-	spdif_priv = devm_kzalloc(&pdev->dev,
-			sizeof(struct fsl_spdif_priv) + strlen(np->name) + 1,
-			GFP_KERNEL);
+	spdif_priv = devm_kzalloc(&pdev->dev, sizeof(*spdif_priv), GFP_KERNEL);
 	if (!spdif_priv)
 		return -ENOMEM;
-
-	strcpy(spdif_priv->name, np->name);
 
 	spdif_priv->pdev = pdev;
 
 	/* Initialize this copy of the CPU DAI driver structure */
 	memcpy(&spdif_priv->cpu_dai_drv, &fsl_spdif_dai, sizeof(fsl_spdif_dai));
-	spdif_priv->cpu_dai_drv.name = spdif_priv->name;
+	spdif_priv->cpu_dai_drv.name = dev_name(&pdev->dev);
 
 	if (of_property_read_bool(np, "big-endian"))
 		fsl_spdif_regmap_config.val_format_endian = REGMAP_ENDIAN_BIG;
@@ -1228,12 +1226,12 @@ static int fsl_spdif_probe(struct platform_device *pdev)
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
-		dev_err(&pdev->dev, "no irq for node %s\n", np->full_name);
+		dev_err(&pdev->dev, "no irq for node %s\n", pdev->name);
 		return irq;
 	}
 
 	ret = devm_request_irq(&pdev->dev, irq, spdif_isr, 0,
-			spdif_priv->name, spdif_priv);
+			       dev_name(&pdev->dev), spdif_priv);
 	if (ret) {
 		dev_err(&pdev->dev, "could not claim irq %u\n", irq);
 		return ret;
@@ -1251,13 +1249,6 @@ static int fsl_spdif_probe(struct platform_device *pdev)
 	if (IS_ERR(spdif_priv->coreclk)) {
 		dev_err(&pdev->dev, "no core clock in devicetree\n");
 		return PTR_ERR(spdif_priv->coreclk);
-	}
-
-	/* Get dma clock for dma script operation */
-	spdif_priv->dmaclk = devm_clk_get(&pdev->dev, "dma");
-	if (IS_ERR(spdif_priv->dmaclk)) {
-		dev_err(&pdev->dev, "no dma clock in devicetree\n");
-		return PTR_ERR(spdif_priv->dmaclk);
 	}
 
 	/* Select clock source for rx/tx clock */
@@ -1371,7 +1362,6 @@ MODULE_DEVICE_TABLE(of, fsl_spdif_dt_ids);
 static struct platform_driver fsl_spdif_driver = {
 	.driver = {
 		.name = "fsl-spdif-dai",
-		.owner = THIS_MODULE,
 		.of_match_table = fsl_spdif_dt_ids,
 		.pm = &fsl_spdif_pm,
 	},

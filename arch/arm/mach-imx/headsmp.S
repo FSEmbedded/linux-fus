@@ -12,16 +12,7 @@
 
 #include <linux/linkage.h>
 #include <linux/init.h>
-#include <asm/asm-offsets.h>
-#include <asm/hardware/cache-l2x0.h>
-#include <asm/smp_scu.h>
 
-#define SCU_CPU_STATUS		0x08
-
-	.section ".text.head", "ax"
-.extern imx_scu_base
-
-#ifdef CONFIG_SMP
 diag_reg_offset:
 	.word	g_diag_reg - .
 
@@ -60,36 +51,3 @@ ENTRY(v7_secondary_startup)
 
 	b	secondary_startup
 ENDPROC(v7_secondary_startup)
-#endif
-
-#ifdef CONFIG_ARM_CPU_SUSPEND
-/*
- * The following code must assume it is running from physical address
- * where absolute virtual addresses to the data section have to be
- * turned into relative ones.
- */
-
-#ifdef CONFIG_CACHE_L2X0
-	.macro	pl310_resume
-	adr	r0, l2x0_saved_regs_offset
-	ldr	r2, [r0]
-	add	r2, r2, r0
-	ldr	r0, [r2, #L2X0_R_PHY_BASE]	@ get physical base of l2x0
-	ldr	r1, [r2, #L2X0_R_AUX_CTRL]	@ get aux_ctrl value
-	str	r1, [r0, #L2X0_AUX_CTRL]	@ restore aux_ctrl
-	ldr	r1, [r2, #L2X0_R_TAG_LATENCY]		@ get tag latency value
-	str	r1, [r0, #L2X0_TAG_LATENCY_CTRL]	@ restore tag latency
-	ldr	r1, [r2, #L2X0_R_DATA_LATENCY]		@ get data latency value
-	str	r1, [r0, #L2X0_DATA_LATENCY_CTRL]	@ restore data latency
-	mov	r1, #0x1
-	str	r1, [r0, #L2X0_CTRL]		@ re-enable L2
-	.endm
-
-l2x0_saved_regs_offset:
-	.word	l2x0_saved_regs - .
-
-#else
-	.macro	pl310_resume
-	.endm
-#endif
-#endif

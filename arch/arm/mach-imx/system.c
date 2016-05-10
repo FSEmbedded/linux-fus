@@ -43,7 +43,10 @@ void mxc_restart(enum reboot_mode mode, const char *cmd)
 {
 	unsigned int wcr_enable;
 
-	if (wdog_clk)
+	if (!wdog_base)
+		goto reset_fallback;
+
+	if (!IS_ERR(wdog_clk))
 		clk_enable(wdog_clk);
 
 	if (cpu_is_mx1())
@@ -83,6 +86,7 @@ void mxc_restart(enum reboot_mode mode, const char *cmd)
 	/* delay to allow the serial port to show the message */
 	mdelay(50);
 
+reset_fallback:
 	/* we'll take a jump through zero as a poor second */
 	soft_restart(0);
 }
@@ -92,48 +96,10 @@ void __init mxc_arch_reset_init(void __iomem *base)
 	wdog_base = base;
 
 	wdog_clk = clk_get_sys("imx2-wdt.0", NULL);
-	if (IS_ERR(wdog_clk)) {
+	if (IS_ERR(wdog_clk))
 		pr_warn("%s: failed to get wdog clock\n", __func__);
-		wdog_clk = NULL;
-		return;
-	}
-
-	clk_prepare(wdog_clk);
-}
-
-void __init mxc_arch_reset_init_dt(void)
-{
-	struct device_node *np = NULL;
-
-	if (cpu_is_imx6q() || cpu_is_imx6dl())
-		np = of_find_compatible_node(NULL, NULL, "fsl,imx6q-gpc");
-	else if (cpu_is_imx6sl())
-		np = of_find_compatible_node(NULL, NULL, "fsl,imx6sl-gpc");
-
-	if (np)
-		of_property_read_u32(np, "fsl,wdog-reset", &wdog_source);
-	pr_info("Use WDOG%d as reset source\n", wdog_source);
-
-	np = of_find_compatible_node(NULL, NULL, "fsl,imx21-wdt");
-	wdog_base = of_iomap(np, 0);
-	WARN_ON(!wdog_base);
-
-	/* Some i.MX6 boards use WDOG2 to reset board in ldo-bypass mode */
-	if (wdog_source == 2 && (cpu_is_imx6q() || cpu_is_imx6dl() ||
-		cpu_is_imx6sl())) {
-		np = of_find_compatible_node(np, NULL, "fsl,imx21-wdt");
-		wdog_base = of_iomap(np, 0);
-		WARN_ON(!wdog_base);
-	}
-
-	wdog_clk = of_clk_get(np, 0);
-	if (IS_ERR(wdog_clk)) {
-		pr_warn("%s: failed to get wdog clock\n", __func__);
-		wdog_clk = NULL;
-		return;
-	}
-
-	clk_prepare(wdog_clk);
+	else
+		clk_prepare(wdog_clk);
 }
 
 #ifdef CONFIG_CACHE_L2X0
@@ -154,9 +120,8 @@ void __init imx_init_l2cache(void)
 	}
 
 	/* Configure the L2 PREFETCH and POWER registers */
-	/* Set prefetch offset with any value except 23 as per errata 765569 */
-	val = readl_relaxed(l2x0_base + L2X0_PREFETCH_CTRL);
-	val |= 0x7000000f;
+	val = readl_relaxed(l2x0_base + L310_PREFETCH_CTRL);
+	val |= 0x70800000;
 	/*
 	 * The L2 cache controller(PL310) version on the i.MX6D/Q is r3p1-50rel0
 	 * The L2 cache controller(PL310) version on the i.MX6DL/SOLO/SL/SX/DQP
@@ -167,18 +132,14 @@ void __init imx_init_l2cache(void)
 	 * Workaround: The only workaround to this erratum is to disable the
 	 * double linefill feature. This is the default behavior.
 	 */
-	cache_id = readl_relaxed(l2x0_base + L2X0_CACHE_ID);
-	if (((cache_id & L2X0_CACHE_ID_PART_MASK) == L2X0_CACHE_ID_PART_L310)
-	    && ((cache_id & L2X0_CACHE_ID_RTL_MASK) < L2X0_CACHE_ID_RTL_R3P2))
-		val &= ~(1 << 30);
-	writel_relaxed(val, l2x0_base + L2X0_PREFETCH_CTRL);
-	val = L2X0_DYNAMIC_CLK_GATING_EN | L2X0_STNDBY_MODE_EN;
-	writel_relaxed(val, l2x0_base + L2X0_POWER_CTRL);
+	if (cpu_is_imx6q())
+		val &= ~(1 << 30 | 1 << 23);
+	writel_relaxed(val, l2x0_base + L310_PREFETCH_CTRL);
 
 	iounmap(l2x0_base);
 	of_node_put(np);
 
 out:
-	l2x0_of_init(0, ~0UL);
+	l2x0_of_init(0, ~0);
 }
 #endif

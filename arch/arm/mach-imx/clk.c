@@ -7,7 +7,15 @@
 
 DEFINE_SPINLOCK(imx_ccm_lock);
 
-bool uart_from_osc;
+void __init imx_check_clocks(struct clk *clks[], unsigned int count)
+{
+	unsigned i;
+
+	for (i = 0; i < count; i++)
+		if (IS_ERR(clks[i]))
+			pr_err("i.MX clk %u: register failed with %ld\n",
+			       i, PTR_ERR(clks[i]));
+}
 
 static struct clk * __init imx_obtain_fixed_clock_from_dt(const char *name)
 {

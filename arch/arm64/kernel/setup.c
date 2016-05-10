@@ -17,6 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/acpi.h>
 #include <linux/export.h>
 #include <linux/kernel.h>
 #include <linux/stddef.h>
@@ -25,6 +26,7 @@
 #include <linux/utsname.h>
 #include <linux/initrd.h>
 #include <linux/console.h>
+#include <linux/cache.h>
 #include <linux/bootmem.h>
 #include <linux/seq_file.h>
 #include <linux/screen_info.h>
@@ -39,13 +41,18 @@
 #include <linux/fs.h>
 #include <linux/proc_fs.h>
 #include <linux/memblock.h>
+#include <linux/of_iommu.h>
 #include <linux/of_fdt.h>
 #include <linux/of_platform.h>
+#include <linux/efi.h>
 #include <linux/personality.h>
 
+#include <asm/acpi.h>
+#include <asm/fixmap.h>
+#include <asm/cpu.h>
 #include <asm/cputype.h>
 #include <asm/elf.h>
-#include <asm/cputable.h>
+#include <asm/cpufeature.h>
 #include <asm/cpu_ops.h>
 #include <asm/sections.h>
 #include <asm/setup.h>
@@ -55,9 +62,8 @@
 #include <asm/traps.h>
 #include <asm/memblock.h>
 #include <asm/psci.h>
-
-unsigned int processor_id;
-EXPORT_SYMBOL(processor_id);
+#include <asm/efi.h>
+#include <asm/virt.h>
 
 unsigned long elf_hwcap __read_mostly;
 EXPORT_SYMBOL_GPL(elf_hwcap);
@@ -71,9 +77,11 @@ EXPORT_SYMBOL_GPL(elf_hwcap);
 				 COMPAT_HWCAP_NEON|COMPAT_HWCAP_IDIV|\
 				 COMPAT_HWCAP_LPAE)
 unsigned int compat_elf_hwcap __read_mostly = COMPAT_ELF_HWCAP_DEFAULT;
+unsigned int compat_elf_hwcap2 __read_mostly;
 #endif
 
-static const char *cpu_name;
+DECLARE_BITMAP(cpu_hwcaps, ARM64_NCAPS);
+
 phys_addr_t __fdt_pointer __initdata;
 
 /*
@@ -109,14 +117,23 @@ void __init early_print(const char *str, ...)
 	printk("%s", buf);
 }
 
+/*
+ * The recorded values of x0 .. x3 upon kernel entry.
+ */
+u64 __cacheline_aligned boot_args[4];
+
 void __init smp_setup_processor_id(void)
 {
+	u64 mpidr = read_cpuid_mpidr() & MPIDR_HWID_BITMASK;
+	cpu_logical_map(0) = mpidr;
+
 	/*
 	 * clear __my_cpu_offset on boot CPU to avoid hang caused by
 	 * using percpu variable early, for example, lockdep will
 	 * access percpu variable inside lock_release
 	 */
 	set_my_cpu_offset(0);
+	pr_info("Booting Linux on physical CPU 0x%lx\n", (unsigned long)mpidr);
 }
 
 bool arch_match_cpu_phys_id(int cpu, u64 phys_id)
@@ -193,40 +210,55 @@ static void __init smp_build_mpidr_hash(void)
 }
 #endif
 
-struct cpuinfo_arm64 {
-	struct cpu	cpu;
-	u32		reg_midr;
-};
-
-static DEFINE_PER_CPU(struct cpuinfo_arm64, cpu_data);
-
-void cpuinfo_store_cpu(void)
+static void __init hyp_mode_check(void)
 {
-	struct cpuinfo_arm64 *info = this_cpu_ptr(&cpu_data);
-	info->reg_midr = read_cpuid_id();
+	if (is_hyp_mode_available())
+		pr_info("CPU: All CPU(s) started at EL2\n");
+	else if (is_hyp_mode_mismatched())
+		WARN_TAINT(1, TAINT_CPU_OUT_OF_SPEC,
+			   "CPU: CPUs started in inconsistent modes");
+	else
+		pr_info("CPU: All CPU(s) started at EL1\n");
 }
+
+void __init do_post_cpus_up_work(void)
+{
+	hyp_mode_check();
+	apply_alternatives_all();
+}
+
+#ifdef CONFIG_UP_LATE_INIT
+void __init up_late_init(void)
+{
+	do_post_cpus_up_work();
+}
+#endif /* CONFIG_UP_LATE_INIT */
 
 static void __init setup_processor(void)
 {
-	struct cpu_info *cpu_info;
 	u64 features, block;
+	u32 cwg;
+	int cls;
 
-	cpu_info = lookup_processor_type(read_cpuid_id());
-	if (!cpu_info) {
-		printk("CPU configuration botched (ID %08x), unable to continue.\n",
-		       read_cpuid_id());
-		while (1);
-	}
-
-	cpu_name = cpu_info->cpu_name;
-
-	printk("CPU: %s [%08x] revision %d\n",
-	       cpu_name, read_cpuid_id(), read_cpuid_id() & 15);
+	printk("CPU: AArch64 Processor [%08x] revision %d\n",
+	       read_cpuid_id(), read_cpuid_id() & 15);
 
 	sprintf(init_utsname()->machine, ELF_PLATFORM);
 	elf_hwcap = 0;
 
-	cpuinfo_store_cpu();
+	cpuinfo_store_boot_cpu();
+
+	/*
+	 * Check for sane CTR_EL0.CWG value.
+	 */
+	cwg = cache_type_cwg();
+	cls = cache_line_size();
+	if (!cwg)
+		pr_warn("No Cache Writeback Granule information, assuming cache line size %d\n",
+			cls);
+	if (L1_CACHE_BYTES < cls)
+		pr_warn("L1_CACHE_BYTES smaller than the Cache Writeback Granule (%d < %d)\n",
+			L1_CACHE_BYTES, cls);
 
 	/*
 	 * ID_AA64ISAR0_EL1 contains 4-bit wide signed feature blocks.
@@ -258,6 +290,38 @@ static void __init setup_processor(void)
 	block = (features >> 16) & 0xf;
 	if (block && !(block & 0x8))
 		elf_hwcap |= HWCAP_CRC32;
+
+#ifdef CONFIG_COMPAT
+	/*
+	 * ID_ISAR5_EL1 carries similar information as above, but pertaining to
+	 * the Aarch32 32-bit execution state.
+	 */
+	features = read_cpuid(ID_ISAR5_EL1);
+	block = (features >> 4) & 0xf;
+	if (!(block & 0x8)) {
+		switch (block) {
+		default:
+		case 2:
+			compat_elf_hwcap2 |= COMPAT_HWCAP2_PMULL;
+		case 1:
+			compat_elf_hwcap2 |= COMPAT_HWCAP2_AES;
+		case 0:
+			break;
+		}
+	}
+
+	block = (features >> 8) & 0xf;
+	if (block && !(block & 0x8))
+		compat_elf_hwcap2 |= COMPAT_HWCAP2_SHA1;
+
+	block = (features >> 12) & 0xf;
+	if (block && !(block & 0x8))
+		compat_elf_hwcap2 |= COMPAT_HWCAP2_SHA2;
+
+	block = (features >> 16) & 0xf;
+	if (block && !(block & 0x8))
+		compat_elf_hwcap2 |= COMPAT_HWCAP2_CRC32;
+#endif
 }
 
 static void __init setup_machine_fdt(phys_addr_t dt_phys)
@@ -272,26 +336,9 @@ static void __init setup_machine_fdt(phys_addr_t dt_phys)
 		while (true)
 			cpu_relax();
 	}
+
+	dump_stack_set_arch_desc("%s (DT)", of_flat_dt_get_machine_name());
 }
-
-/*
- * Limit the memory size that was specified via FDT.
- */
-static int __init early_mem(char *p)
-{
-	phys_addr_t limit;
-
-	if (!p)
-		return 1;
-
-	limit = memparse(p, &p) & PAGE_MASK;
-	pr_notice("Memory limited to %lldMB\n", limit >> 20);
-
-	memblock_enforce_memory_limit(limit);
-
-	return 0;
-}
-early_param("mem", early_mem);
 
 static void __init request_standard_resources(void)
 {
@@ -325,11 +372,6 @@ u64 __cpu_logical_map[NR_CPUS] = { [0 ... NR_CPUS-1] = INVALID_HWID };
 
 void __init setup_arch(char **cmdline_p)
 {
-	/*
-	 * Unmask asynchronous aborts early to catch possible system errors.
-	 */
-	local_async_enable();
-
 	setup_processor();
 
 	setup_machine_fdt(__fdt_pointer);
@@ -341,21 +383,41 @@ void __init setup_arch(char **cmdline_p)
 
 	*cmdline_p = boot_command_line;
 
+	early_fixmap_init();
+	early_ioremap_init();
+
 	parse_early_param();
 
+	/*
+	 *  Unmask asynchronous aborts after bringing up possible earlycon.
+	 * (Report possible System Errors once we can report this occurred)
+	 */
+	local_async_enable();
+
+	efi_init();
 	arm64_memblock_init();
+
+	/* Parse the ACPI tables for possible boot-time configuration */
+	acpi_boot_table_init();
 
 	paging_init();
 	request_standard_resources();
 
-	unflatten_device_tree();
+	early_ioremap_reset();
 
-	psci_init();
-
-	cpu_logical_map(0) = read_cpuid_mpidr() & MPIDR_HWID_BITMASK;
-	cpu_read_bootcpu_ops();
+	if (acpi_disabled) {
+		unflatten_device_tree();
+		psci_dt_init();
+		cpu_read_bootcpu_ops();
 #ifdef CONFIG_SMP
-	smp_init_cpus();
+		of_smp_init_cpus();
+#endif
+	} else {
+		psci_acpi_init();
+		acpi_init_cpus();
+	}
+
+#ifdef CONFIG_SMP
 	smp_build_mpidr_hash();
 #endif
 
@@ -366,15 +428,21 @@ void __init setup_arch(char **cmdline_p)
 	conswitchp = &dummy_con;
 #endif
 #endif
+	if (boot_args[1] || boot_args[2] || boot_args[3]) {
+		pr_err("WARNING: x1-x3 nonzero in violation of boot protocol:\n"
+			"\tx1: %016llx\n\tx2: %016llx\n\tx3: %016llx\n"
+			"This indicates a broken bootloader or old kernel\n",
+			boot_args[1], boot_args[2], boot_args[3]);
+	}
 }
 
 static int __init arm64_device_init(void)
 {
-	of_clk_init(NULL);
+	of_iommu_init();
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 	return 0;
 }
-arch_initcall(arm64_device_init);
+arch_initcall_sync(arm64_device_init);
 
 static int __init topology_init(void)
 {
@@ -427,6 +495,15 @@ static const char *compat_hwcap_str[] = {
 	"lpae",
 	"evtstrm"
 };
+
+static const char *compat_hwcap2_str[] = {
+	"aes",
+	"pmull",
+	"sha1",
+	"sha2",
+	"crc32",
+	NULL
+};
 #endif /* CONFIG_COMPAT */
 
 static int c_show(struct seq_file *m, void *v)
@@ -458,6 +535,10 @@ static int c_show(struct seq_file *m, void *v)
 			for (j = 0; compat_hwcap_str[j]; j++)
 				if (compat_elf_hwcap & (1 << j))
 					seq_printf(m, " %s", compat_hwcap_str[j]);
+
+			for (j = 0; compat_hwcap2_str[j]; j++)
+				if (compat_elf_hwcap2 & (1 << j))
+					seq_printf(m, " %s", compat_hwcap2_str[j]);
 #endif /* CONFIG_COMPAT */
 		} else {
 			for (j = 0; hwcap_str[j]; j++)
@@ -466,11 +547,12 @@ static int c_show(struct seq_file *m, void *v)
 		}
 		seq_puts(m, "\n");
 
-		seq_printf(m, "CPU implementer\t: 0x%02x\n", (midr >> 24));
+		seq_printf(m, "CPU implementer\t: 0x%02x\n",
+			   MIDR_IMPLEMENTOR(midr));
 		seq_printf(m, "CPU architecture: 8\n");
-		seq_printf(m, "CPU variant\t: 0x%x\n", ((midr >> 20) & 0xf));
-		seq_printf(m, "CPU part\t: 0x%03x\n", ((midr >> 4) & 0xfff));
-		seq_printf(m, "CPU revision\t: %d\n\n", (midr & 0xf));
+		seq_printf(m, "CPU variant\t: 0x%x\n", MIDR_VARIANT(midr));
+		seq_printf(m, "CPU part\t: 0x%03x\n", MIDR_PARTNUM(midr));
+		seq_printf(m, "CPU revision\t: %d\n\n", MIDR_REVISION(midr));
 	}
 
 	return 0;

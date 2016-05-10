@@ -23,7 +23,6 @@
 #include "bits.h"
 #include "otg.h"
 #include "otg_fsm.h"
-#include "host.h"
 
 /**
  * hw_read_otgsc returns otgsc register bits value.
@@ -163,15 +162,6 @@ static void ci_otg_work(struct work_struct *work)
 {
 	struct ci_hdrc *ci = container_of(work, struct ci_hdrc, work);
 
-	if (ci->vbus_glitch_check_event) {
-		ci->vbus_glitch_check_event = false;
-		pm_runtime_get_sync(ci->dev);
-		ci_handle_vbus_glitch(ci);
-		pm_runtime_put_sync(ci->dev);
-		enable_irq(ci->irq);
-		return;
-	}
-
 	if (ci_otg_is_fsm_mode(ci) && !ci_otg_fsm_work(ci)) {
 		enable_irq(ci->irq);
 		return;
@@ -225,6 +215,9 @@ void ci_hdrc_otg_destroy(struct ci_hdrc *ci)
 		destroy_workqueue(ci->wq);
 		ci->wq = NULL;
 	}
+	/* Disable all OTG irq and clear status */
+	hw_write_otgsc(ci, OTGSC_INT_EN_BITS | OTGSC_INT_STATUS_BITS,
+						OTGSC_INT_STATUS_BITS);
 	if (ci_otg_is_fsm_mode(ci))
 		ci_hdrc_otg_fsm_remove(ci);
 }

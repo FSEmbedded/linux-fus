@@ -25,8 +25,6 @@
 #define VERSION		      (0xF << 25)
 #define CIVERSION	      (0x7 << 29)
 
-/* SBUSCFG */
-#define SBUSCFG_AHBBRST		(BIT(0) | BIT(1) | BIT(2))
 /* HCCPARAMS */
 #define HCCPARAMS_LEN         BIT(17)
 

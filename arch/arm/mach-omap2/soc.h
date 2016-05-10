@@ -423,13 +423,13 @@ IS_OMAP_TYPE(3430, 0x3430)
 #define OMAP3630_REV_ES1_1	(OMAP363X_CLASS | (0x1 << 8))
 #define OMAP3630_REV_ES1_2	(OMAP363X_CLASS | (0x2 << 8))
 
-#define TI816X_CLASS		0x81600034
+#define TI816X_CLASS		0x81600081
 #define TI8168_REV_ES1_0	TI816X_CLASS
 #define TI8168_REV_ES1_1	(TI816X_CLASS | (0x1 << 8))
 #define TI8168_REV_ES2_0	(TI816X_CLASS | (0x2 << 8))
 #define TI8168_REV_ES2_1	(TI816X_CLASS | (0x3 << 8))
 
-#define TI814X_CLASS		0x81400034
+#define TI814X_CLASS		0x81400081
 #define TI8148_REV_ES1_0	TI814X_CLASS
 #define TI8148_REV_ES2_0	(TI814X_CLASS | (0x1 << 8))
 #define TI8148_REV_ES2_1	(TI814X_CLASS | (0x2 << 8))
@@ -444,7 +444,9 @@ IS_OMAP_TYPE(3430, 0x3430)
 #define AM335X_REV_ES2_1	(AM335X_CLASS | (0x2 << 8))
 
 #define AM437X_CLASS		0x43700000
-#define AM437X_REV_ES1_0	AM437X_CLASS
+#define AM437X_REV_ES1_0	(AM437X_CLASS | (0x10 << 8))
+#define AM437X_REV_ES1_1	(AM437X_CLASS | (0x11 << 8))
+#define AM437X_REV_ES1_2	(AM437X_CLASS | (0x12 << 8))
 
 #define OMAP443X_CLASS		0x44300044
 #define OMAP4430_REV_ES1_0	(OMAP443X_CLASS | (0x10 << 8))
@@ -464,10 +466,16 @@ IS_OMAP_TYPE(3430, 0x3430)
 #define OMAP5430_REV_ES2_0	(OMAP54XX_CLASS | (0x30 << 16) | (0x20 << 8))
 #define OMAP5432_REV_ES2_0	(OMAP54XX_CLASS | (0x32 << 16) | (0x20 << 8))
 
+#define DRA7XX_CLASS		0x07000000
+#define DRA752_REV_ES1_0	(DRA7XX_CLASS | (0x52 << 16) | (0x10 << 8))
+#define DRA752_REV_ES1_1	(DRA7XX_CLASS | (0x52 << 16) | (0x11 << 8))
+#define DRA722_REV_ES1_0	(DRA7XX_CLASS | (0x22 << 16) | (0x10 << 8))
+
 void omap2xxx_check_revision(void);
 void omap3xxx_check_revision(void);
 void omap4xxx_check_revision(void);
 void omap5xxx_check_revision(void);
+void dra7xxx_check_revision(void);
 void omap3xxx_check_features(void);
 void ti81xx_check_features(void);
 void am33xx_check_features(void);

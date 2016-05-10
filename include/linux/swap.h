@@ -102,14 +102,6 @@ union swap_header {
 	} info;
 };
 
- /* A swap entry has to fit into a "unsigned long", as
-  * the entry is hidden in the "index" field of the
-  * swapper address space.
-  */
-typedef struct {
-	unsigned long val;
-} swp_entry_t;
-
 /*
  * current->reclaim_state points to one of these when a task is running
  * memory reclaim
@@ -166,10 +158,10 @@ enum {
 #define COMPACT_CLUSTER_MAX SWAP_CLUSTER_MAX
 
 /*
- * Ratio between the present memory in the zone and the "gap" that
- * we're allowing kswapd to shrink in addition to the per-zone high
- * wmark, even for zones that already have the high wmark satisfied,
- * in order to provide better per-zone lru behavior. We are ok to
+ * Ratio between zone->managed_pages and the "gap" that above the per-zone
+ * "high_wmark". While balancing nodes, We allow kswapd to shrink zones that
+ * do not meet the (high_wmark + gap) watermark, even which already met the
+ * high_wmark, in order to provide better per-zone lru behavior. We are ok to
  * spend not more than 1% of the memory for this zone balancing "gap".
  */
 #define KSWAPD_ZONE_BALANCE_GAP_RATIO 100
@@ -256,6 +248,42 @@ struct swap_info_struct {
 	struct swap_cluster_info discard_cluster_tail; /* list tail of discard clusters */
 };
 
+/* linux/mm/workingset.c */
+void *workingset_eviction(struct address_space *mapping, struct page *page);
+bool workingset_refault(void *shadow);
+void workingset_activation(struct page *page);
+extern struct list_lru workingset_shadow_nodes;
+
+static inline unsigned int workingset_node_pages(struct radix_tree_node *node)
+{
+	return node->count & RADIX_TREE_COUNT_MASK;
+}
+
+static inline void workingset_node_pages_inc(struct radix_tree_node *node)
+{
+	node->count++;
+}
+
+static inline void workingset_node_pages_dec(struct radix_tree_node *node)
+{
+	node->count--;
+}
+
+static inline unsigned int workingset_node_shadows(struct radix_tree_node *node)
+{
+	return node->count >> RADIX_TREE_COUNT_SHIFT;
+}
+
+static inline void workingset_node_shadows_inc(struct radix_tree_node *node)
+{
+	node->count += 1U << RADIX_TREE_COUNT_SHIFT;
+}
+
+static inline void workingset_node_shadows_dec(struct radix_tree_node *node)
+{
+	node->count -= 1U << RADIX_TREE_COUNT_SHIFT;
+}
+
 /* linux/mm/page_alloc.c */
 extern unsigned long totalram_pages;
 extern unsigned long totalreserve_pages;
@@ -280,17 +308,22 @@ extern void lru_add_drain(void);
 extern void lru_add_drain_cpu(int cpu);
 extern void lru_add_drain_all(void);
 extern void rotate_reclaimable_page(struct page *page);
-extern void deactivate_page(struct page *page);
+extern void deactivate_file_page(struct page *page);
 extern void swap_setup(void);
 
 extern void add_page_to_unevictable_list(struct page *page);
+
+extern void lru_cache_add_active_or_unevictable(struct page *page,
+						struct vm_area_struct *vma);
 
 /* linux/mm/vmscan.c */
 extern unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 					gfp_t gfp_mask, nodemask_t *mask);
 extern int __isolate_lru_page(struct page *page, isolate_mode_t mode);
-extern unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *mem,
-						  gfp_t gfp_mask, bool noswap);
+extern unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
+						  unsigned long nr_pages,
+						  gfp_t gfp_mask,
+						  bool may_swap);
 extern unsigned long mem_cgroup_shrink_node_zone(struct mem_cgroup *mem,
 						gfp_t gfp_mask, bool noswap,
 						struct zone *zone,
@@ -316,22 +349,6 @@ static inline int zone_reclaim(struct zone *z, gfp_t mask, unsigned int order)
 extern int page_evictable(struct page *page);
 extern void check_move_unevictable_pages(struct page **, int nr_pages);
 
-extern unsigned long scan_unevictable_pages;
-extern int scan_unevictable_handler(struct ctl_table *, int,
-					void __user *, size_t *, loff_t *);
-#ifdef CONFIG_NUMA
-extern int scan_unevictable_register_node(struct node *node);
-extern void scan_unevictable_unregister_node(struct node *node);
-#else
-static inline int scan_unevictable_register_node(struct node *node)
-{
-	return 0;
-}
-static inline void scan_unevictable_unregister_node(struct node *node)
-{
-}
-#endif
-
 extern int kswapd_run(int nid);
 extern void kswapd_stop(int nid);
 #ifdef CONFIG_MEMCG
@@ -343,9 +360,13 @@ static inline int mem_cgroup_swappiness(struct mem_cgroup *mem)
 }
 #endif
 #ifdef CONFIG_MEMCG_SWAP
-extern void mem_cgroup_uncharge_swap(swp_entry_t ent);
+extern void mem_cgroup_swapout(struct page *page, swp_entry_t entry);
+extern void mem_cgroup_uncharge_swap(swp_entry_t entry);
 #else
-static inline void mem_cgroup_uncharge_swap(swp_entry_t ent)
+static inline void mem_cgroup_swapout(struct page *page, swp_entry_t entry)
+{
+}
+static inline void mem_cgroup_uncharge_swap(swp_entry_t entry)
 {
 }
 #endif
@@ -405,7 +426,7 @@ extern void swap_shmem_alloc(swp_entry_t);
 extern int swap_duplicate(swp_entry_t);
 extern int swapcache_prepare(swp_entry_t);
 extern void swap_free(swp_entry_t);
-extern void swapcache_free(swp_entry_t, struct page *page);
+extern void swapcache_free(swp_entry_t);
 extern int free_swap_and_cache(swp_entry_t);
 extern int swap_type_of(dev_t, sector_t, struct block_device **);
 extern unsigned int count_swap_pages(int, int);
@@ -416,16 +437,6 @@ extern struct swap_info_struct *page_swap_info(struct page *);
 extern int reuse_swap_page(struct page *);
 extern int try_to_free_swap(struct page *);
 struct backing_dev_info;
-
-#ifdef CONFIG_MEMCG
-extern void
-mem_cgroup_uncharge_swapcache(struct page *page, swp_entry_t ent, bool swapout);
-#else
-static inline void
-mem_cgroup_uncharge_swapcache(struct page *page, swp_entry_t ent, bool swapout)
-{
-}
-#endif
 
 #else /* CONFIG_SWAP */
 
@@ -469,7 +480,7 @@ static inline void swap_free(swp_entry_t swp)
 {
 }
 
-static inline void swapcache_free(swp_entry_t swp, struct page *page)
+static inline void swapcache_free(swp_entry_t swp)
 {
 }
 
@@ -525,11 +536,6 @@ static inline swp_entry_t get_swap_page(void)
 	swp_entry_t entry;
 	entry.val = 0;
 	return entry;
-}
-
-static inline void
-mem_cgroup_uncharge_swapcache(struct page *page, swp_entry_t ent)
-{
 }
 
 #endif /* CONFIG_SWAP */

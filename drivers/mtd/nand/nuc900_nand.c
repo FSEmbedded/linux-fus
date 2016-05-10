@@ -10,7 +10,6 @@
  */
 
 #include <linux/slab.h>
-#include <linux/init.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -301,7 +300,6 @@ static struct platform_driver nuc900_nand_driver = {
 	.remove		= nuc900_nand_remove,
 	.driver		= {
 		.name	= "nuc900-fmi",
-		.owner	= THIS_MODULE,
 	},
 };
 
