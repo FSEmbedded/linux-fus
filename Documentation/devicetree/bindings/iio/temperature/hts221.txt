@@ -1,0 +1,25 @@
+* STMicroelectronics HTS221 capacitive digital sensor for relative humidity and temperature
+
+Required properties:
+  - compatible: Should be "st,hts221-humid"
+  - reg: Should contain the ADC I2C address
+
+Optional properties:
+  - poll_interval: Set the polling interval. It can be 1 Hz, 7 Hz or 12.5 Hz
+    every other value will be parsed to one of these frequences. Value is given
+    in msec, so 1 Hz = 1000 ms
+  - h_resolution: Select the numbers of averaged humidity samples. The Values
+    can be 4, 8, 16, 32, 64, 128, 256, 512. The higher the value, the higher
+    the accuracy but the higher the current too.
+  - t_resolution: Select the numbers of averaged temperature samples. The Values
+    can be 2, 4, 8, 16, 32, 64, 128, 256. The higher the value, the higher
+    the accuracy but the higher the current too.
+
+Example:
+i2c4: hts221@5f {
+		compatible = "st,hts221-humid";
+		reg = <0x5f>;
+		poll_interval = <100>;
+		h_resolution = <32>;
+		t_resolution = <16>;
+	};
