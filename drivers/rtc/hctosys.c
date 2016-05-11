@@ -71,6 +71,7 @@ static int __init do_rtc_hctosys(char *name)
 		tm.tm_hour, tm.tm_min, tm.tm_sec,
 		(long long) tv64.tv_sec);
 
+err_invalid:
 err_read:
 	rtc_class_close(rtc);
 

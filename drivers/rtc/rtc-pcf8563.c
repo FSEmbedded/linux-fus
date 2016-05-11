@@ -155,6 +155,11 @@ static int pcf8563_get_alarm_mode(struct i2c_client *client, unsigned char *en,
 	unsigned char buf;
 	int err;
 
+	if (en)
+		*en = 0;
+	if (pen)
+		*pen = 0;
+
 	err = pcf8563_read_block_data(client, PCF8563_REG_ST2, 1, &buf);
 	if (err)
 		return err;

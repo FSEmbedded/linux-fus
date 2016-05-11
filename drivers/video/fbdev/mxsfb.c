@@ -1273,6 +1273,7 @@ static int mxsfb_init_fbinfo(struct mxsfb_info *host)
 static void mxsfb_dispdrv_init(struct platform_device *pdev,
 			      struct fb_info *fbi)
 {
+#if IS_ENABLED(CONFIG_FB_MXC_SYNC_PANEL)
 	struct mxsfb_info *host = to_imxfb_host(fbi);
 	struct mxc_dispdrv_setting setting;
 	struct device *dev = &pdev->dev;
@@ -1292,6 +1293,7 @@ static void mxsfb_dispdrv_init(struct platform_device *pdev,
 		dev_info(dev, "registered mxc display driver %s\n",
 			 disp_dev);
 	}
+#endif
 }
 
 static void mxsfb_free_videomem(struct mxsfb_info *host)

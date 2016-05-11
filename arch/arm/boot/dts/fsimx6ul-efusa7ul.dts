@@ -196,9 +196,9 @@
 			  <&clks IMX6UL_CLK_CKO2_SEL>,
 			  <&clks IMX6UL_CLK_CKO>;
 
-	assigned-clock-parents = <&clks 0>,
+	assigned-clock-parents = <0>,
 				 <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>,
-				 <&clks 0>,
+				 <0>,
 				 <&clks IMX6UL_CLK_SAI2>,
 				 <&clks IMX6UL_CLK_CKO2>;
 //###	assigned-clock-rates = <786432000>, <0>, <24576000>;
@@ -381,7 +381,7 @@
 	vmmc-supply = <&reg_wlan_vmmc_1v8>;
 #else
 #ifdef CONFIG_EFUSA7UL_SD_A_CDWP
-	cd-gpios = <&gpio1 19 1>;
+	cd-gpios = <&gpio1 19 GPIO_ACTIVE_LOW>;
 	wp-gpios = <&gpio1 18 0>;
 #else
 	non-removable;
@@ -408,7 +408,7 @@
 #ifdef CONFIG_EFUSA7UL_SD_A_CDWP
 	non-removable;
 #else
-	cd-gpios = <&gpio1 19 1>;
+	cd-gpios = <&gpio1 19 GPIO_ACTIVE_LOW>;
 	wp-gpios = <&gpio1 18 0>;
 #endif
 	vmmc-supply = <&reg_vref_3v3>;

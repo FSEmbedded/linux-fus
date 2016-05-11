@@ -772,13 +772,12 @@ static int pca963x_remove(struct i2c_client *client)
 {
 	struct pca963x *pca963x_chip;
 	int i = 0;
-	int ret = 0;
 
 	pca963x_chip = i2c_get_clientdata(client);
 
 #ifdef CONFIG_GPIOLIB
 	if(pca963x_chip->n_gpio > 0)
-		ret = gpiochip_remove(&pca963x_chip->gchip);
+		gpiochip_remove(&pca963x_chip->gchip);
 #endif
 #ifdef CONFIG_PWM
 	if(pca963x_chip->n_pwm > 0) {
@@ -794,7 +793,7 @@ static int pca963x_remove(struct i2c_client *client)
 		}
 	}
 
-	return ret;
+	return 0;
 }
 
 static struct i2c_driver pca963x_driver = {

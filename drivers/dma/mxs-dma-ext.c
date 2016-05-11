@@ -180,8 +180,9 @@ static void mxs_dma_ext_start_new_chain(struct mxs_dma_chan *mxs_chan)
 //	printk("### DMA %d: next chain starting @ 0x%08x\n", chan_id, current_pos);
 }
 
-static void mxs_dma_ext_reset_chan(struct mxs_dma_chan *mxs_chan)
+static void mxs_dma_ext_reset_chan(struct dma_chan *chan)
 {
+	struct mxs_dma_chan *mxs_chan = to_mxs_dma_ext_chan(chan);
 	struct mxs_dma_engine *mxs_dma = mxs_chan->mxs_dma;
 	int chan_id = mxs_chan->chan.chan_id;
 
@@ -225,8 +226,9 @@ static void mxs_dma_ext_reset_chan(struct mxs_dma_chan *mxs_chan)
 	mxs_dma_ext_start_new_chain(mxs_chan);
 }
 
-static void mxs_dma_ext_enable_chan(struct mxs_dma_chan *mxs_chan)
+static void mxs_dma_ext_enable_chan(struct dma_chan *chan)
 {
+	struct mxs_dma_chan *mxs_chan = to_mxs_dma_ext_chan(chan);
 	struct mxs_dma_engine *mxs_dma = mxs_chan->mxs_dma;
 	int chan_id = mxs_chan->chan.chan_id;
 
@@ -242,13 +244,16 @@ static void mxs_dma_ext_enable_chan(struct mxs_dma_chan *mxs_chan)
 	writel(1, mxs_dma->base + HW_APBHX_CHn_SEMA(mxs_dma, chan_id));
 }
 
-static void mxs_dma_ext_disable_chan(struct mxs_dma_chan *mxs_chan)
+static void mxs_dma_ext_disable_chan(struct dma_chan *chan)
 {
+	struct mxs_dma_chan *mxs_chan = to_mxs_dma_ext_chan(chan);
+
 	mxs_chan->status = DMA_COMPLETE;
 }
 
-static void mxs_dma_ext_pause_chan(struct mxs_dma_chan *mxs_chan)
+static int mxs_dma_ext_pause_chan(struct dma_chan *chan)
 {
+	struct mxs_dma_chan *mxs_chan = to_mxs_dma_ext_chan(chan);
 	struct mxs_dma_engine *mxs_dma = mxs_chan->mxs_dma;
 	int chan_id = mxs_chan->chan.chan_id;
 
@@ -261,10 +266,12 @@ static void mxs_dma_ext_pause_chan(struct mxs_dma_chan *mxs_chan)
 			mxs_dma->base + HW_APBHX_CHANNEL_CTRL + STMP_OFFSET_REG_SET);
 
 	mxs_chan->status = DMA_PAUSED;
+	return 0;
 }
 
-static void mxs_dma_ext_resume_chan(struct mxs_dma_chan *mxs_chan)
+static int mxs_dma_ext_resume_chan(struct dma_chan *chan)
 {
+	struct mxs_dma_chan *mxs_chan = to_mxs_dma_ext_chan(chan);
 	struct mxs_dma_engine *mxs_dma = mxs_chan->mxs_dma;
 	int chan_id = mxs_chan->chan.chan_id;
 
@@ -277,6 +284,7 @@ static void mxs_dma_ext_resume_chan(struct mxs_dma_chan *mxs_chan)
 			mxs_dma->base + HW_APBHX_CHANNEL_CTRL + STMP_OFFSET_REG_CLR);
 
 	mxs_chan->status = DMA_IN_PROGRESS;
+	return 0;
 }
 
 static dma_cookie_t mxs_dma_ext_tx_submit(struct dma_async_tx_descriptor *tx)
@@ -352,7 +360,7 @@ static irqreturn_t mxs_dma_ext_int_handler(int irq, void *dev_id)
 			"%s: error in channel %d\n", __func__,
 			chan);
 		mxs_chan->status = DMA_ERROR;
-		mxs_dma_ext_reset_chan(mxs_chan);
+		mxs_dma_ext_reset_chan(&mxs_chan->chan);
 	} else if (mxs_chan->status != DMA_COMPLETE) {
 		mxs_chan->status = DMA_COMPLETE;
 		mxs_dma_ext_start_new_chain(mxs_chan);
@@ -415,7 +423,7 @@ static int mxs_dma_ext_alloc_chan_resources(struct dma_chan *chan)
 			goto err_clk_unprepare;
 	}
 
-	mxs_dma_ext_reset_chan(mxs_chan);
+	mxs_dma_ext_reset_chan(chan);
 
 	dma_async_tx_descriptor_init(&mxs_chan->desc, chan);
 	mxs_chan->desc.tx_submit = mxs_dma_ext_tx_submit;
@@ -441,7 +449,7 @@ static void mxs_dma_ext_free_chan_resources(struct dma_chan *chan)
 	struct mxs_dma_chan *mxs_chan = to_mxs_dma_ext_chan(chan);
 	struct mxs_dma_engine *mxs_dma = mxs_chan->mxs_dma;
 
-	mxs_dma_ext_disable_chan(mxs_chan);
+	mxs_dma_ext_disable_chan(chan);
 
 	free_irq(mxs_chan->chan_irq, mxs_dma);
 
@@ -536,28 +544,12 @@ static struct dma_async_tx_descriptor *mxs_dma_ext_prep_slave_sg(
 	return &mxs_chan->desc;
 }
 
-static int mxs_dma_ext_control(struct dma_chan *chan, enum dma_ctrl_cmd cmd,
-		unsigned long arg)
+static int mxs_dma_ext_terminate_all(struct dma_chan *chan)
 {
-	struct mxs_dma_chan *mxs_chan = to_mxs_dma_ext_chan(chan);
-	int ret = 0;
+	mxs_dma_ext_reset_chan(chan);
+	mxs_dma_ext_disable_chan(chan);
 
-	switch (cmd) {
-	case DMA_TERMINATE_ALL:
-		mxs_dma_ext_reset_chan(mxs_chan);
-		mxs_dma_ext_disable_chan(mxs_chan);
-		break;
-	case DMA_PAUSE:
-		mxs_dma_ext_pause_chan(mxs_chan);
-		break;
-	case DMA_RESUME:
-		mxs_dma_ext_resume_chan(mxs_chan);
-		break;
-	default:
-		ret = -ENOSYS;
-	}
-
-	return ret;
+	return 0;
 }
 
 static enum dma_status mxs_dma_ext_tx_status(struct dma_chan *chan,
@@ -576,7 +568,7 @@ static void mxs_dma_ext_issue_pending(struct dma_chan *chan)
 
 	if (mxs_chan->desc_count) {
 //		printk("### DMA: executing chain with %d entries\n", mxs_chan->desc_count);
-		mxs_dma_ext_enable_chan(mxs_chan);
+		mxs_dma_ext_enable_chan(chan);
 	} else {
 //		printk("### DMA: Empty chain, nothing to do\n");
 		mxs_chan->status = DMA_COMPLETE;
@@ -758,7 +750,13 @@ static int __init mxs_dma_ext_probe(struct platform_device *pdev)
 					mxs_dma_ext_free_chan_resources;
 	mxs_dma->dma_device.device_tx_status = mxs_dma_ext_tx_status;
 	mxs_dma->dma_device.device_prep_slave_sg = mxs_dma_ext_prep_slave_sg;
-	mxs_dma->dma_device.device_control = mxs_dma_ext_control;
+	mxs_dma->dma_device.device_pause = mxs_dma_ext_pause_chan;
+	mxs_dma->dma_device.device_resume = mxs_dma_ext_resume_chan;
+	mxs_dma->dma_device.device_terminate_all = mxs_dma_ext_terminate_all;
+	mxs_dma->dma_device.src_addr_widths = BIT(DMA_SLAVE_BUSWIDTH_4_BYTES);
+	mxs_dma->dma_device.dst_addr_widths = BIT(DMA_SLAVE_BUSWIDTH_4_BYTES);
+	mxs_dma->dma_device.directions = BIT(DMA_DEV_TO_MEM) | BIT(DMA_MEM_TO_DEV);
+	mxs_dma->dma_device.residue_granularity = DMA_RESIDUE_GRANULARITY_BURST;
 	mxs_dma->dma_device.device_issue_pending = mxs_dma_ext_issue_pending;
 
 	ret = dma_async_device_register(&mxs_dma->dma_device);
