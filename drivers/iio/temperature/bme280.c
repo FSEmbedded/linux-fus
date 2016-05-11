@@ -61,8 +61,6 @@
 
 #include "bme280.h"
 
-static struct bme280_t *p_bme280; /**< pointer to BME280 */
-
 /*!
  *	@brief This API is used to read uncompensated temperature
  *	in the registers 0xFA, 0xFB and 0xFC
@@ -80,7 +78,8 @@ static struct bme280_t *p_bme280; /**< pointer to BME280 */
  *
  *
 */
-static int bme280_read_uncomp_temperature(s32 *v_uncomp_temperature_s32)
+static int bme280_read_uncomp_temperature(struct bme280_t *bme280,
+						s32 *v_uncomp_temperature_s32)
 {
 	int ret = 0;
 	/* Array holding the MSB and LSb value
@@ -90,11 +89,11 @@ static int bme280_read_uncomp_temperature(s32 *v_uncomp_temperature_s32)
 	*/
 	u8 a_data_u8r[BME280_TEMPERATURE_DATA_SIZE] = {0, 0, 0};
 
-	a_data_u8r[0] = i2c_smbus_read_byte_data(p_bme280->client,
+	a_data_u8r[0] = i2c_smbus_read_byte_data(bme280->client,
 						 BME280_TEMPERATURE_MSB_REG);
-	a_data_u8r[1] = i2c_smbus_read_byte_data(p_bme280->client,
+	a_data_u8r[1] = i2c_smbus_read_byte_data(bme280->client,
 						 BME280_TEMPERATURE_LSB_REG);
-	a_data_u8r[2] = i2c_smbus_read_byte_data(p_bme280->client,
+	a_data_u8r[2] = i2c_smbus_read_byte_data(bme280->client,
 						 BME280_TEMPERATURE_XLSB_REG);
 
 	*v_uncomp_temperature_s32 = (s32)(((
@@ -121,7 +120,8 @@ static int bme280_read_uncomp_temperature(s32 *v_uncomp_temperature_s32)
  *  @return Returns the actual temperature
  *
 */
-s32 bme280_compensate_temperature_int32(s32 v_uncomp_temperature_s32)
+s32 bme280_compensate_temperature_int32(struct bme280_t *bme280,
+						s32 v_uncomp_temperature_s32)
 {
 	s32 v_x1_u32r = 0;
 	s32 v_x2_u32r = 0;
@@ -131,24 +131,23 @@ s32 bme280_compensate_temperature_int32(s32 v_uncomp_temperature_s32)
 	v_x1_u32r  =
 	((((v_uncomp_temperature_s32
 	>> BME280_SHIFT_BIT_POSITION_BY_03_BITS) -
-	((s32)p_bme280->cal_param.dig_T1
+	((s32)bme280->cal_param.dig_T1
 	<< BME280_SHIFT_BIT_POSITION_BY_01_BIT))) *
-	((s32)p_bme280->cal_param.dig_T2)) >>
+	((s32)bme280->cal_param.dig_T2)) >>
 	BME280_SHIFT_BIT_POSITION_BY_11_BITS;
 	/* calculate x2*/
 	v_x2_u32r  = (((((v_uncomp_temperature_s32
 	>> BME280_SHIFT_BIT_POSITION_BY_04_BITS) -
-	((s32)p_bme280->cal_param.dig_T1))
+	((s32)bme280->cal_param.dig_T1))
 	* ((v_uncomp_temperature_s32 >> BME280_SHIFT_BIT_POSITION_BY_04_BITS) -
-	((s32)p_bme280->cal_param.dig_T1)))
+	((s32)bme280->cal_param.dig_T1)))
 	>> BME280_SHIFT_BIT_POSITION_BY_12_BITS) *
-	((s32)p_bme280->cal_param.dig_T3))
+	((s32)bme280->cal_param.dig_T3))
 	>> BME280_SHIFT_BIT_POSITION_BY_14_BITS;
 	/* calculate t_fine*/
-	p_bme280->cal_param.t_fine = v_x1_u32r + v_x2_u32r;
+	bme280->cal_param.t_fine = v_x1_u32r + v_x2_u32r;
 	/* calculate temperature*/
-	temperature  = (p_bme280->cal_param.t_fine * 5 + 128)
-	>> BME280_SHIFT_BIT_POSITION_BY_08_BITS;
+	temperature  = (bme280->cal_param.t_fine * 5 + 128) >> 8;
 
 	return temperature;
 }
@@ -172,7 +171,8 @@ s32 bme280_compensate_temperature_int32(s32 v_uncomp_temperature_s32)
  *
  *
 */
-static int bme280_read_uncomp_pressure(s32 *v_uncomp_pressure_s32)
+static int bme280_read_uncomp_pressure(struct bme280_t *bme280,
+						s32 *v_uncomp_pressure_s32)
 {
 	int ret = 0;
 	/* Array holding the MSB and LSb value
@@ -182,11 +182,11 @@ static int bme280_read_uncomp_pressure(s32 *v_uncomp_pressure_s32)
 	*/
 	u8 a_data_u8[BME280_PRESSURE_DATA_SIZE] = {0, 0, 0};
 
-	a_data_u8[0] = i2c_smbus_read_byte_data(p_bme280->client,
+	a_data_u8[0] = i2c_smbus_read_byte_data(bme280->client,
 						BME280_PRESSURE_MSB_REG);
-	a_data_u8[1] = i2c_smbus_read_byte_data(p_bme280->client,
+	a_data_u8[1] = i2c_smbus_read_byte_data(bme280->client,
 						BME280_PRESSURE_LSB_REG);
-	a_data_u8[2] = i2c_smbus_read_byte_data(p_bme280->client,
+	a_data_u8[2] = i2c_smbus_read_byte_data(bme280->client,
 						BME280_PRESSURE_XLSB_REG);
 
 	*v_uncomp_pressure_s32 = (s32)((((u32)
@@ -215,40 +215,41 @@ static int bme280_read_uncomp_pressure(s32 *v_uncomp_pressure_s32)
  *  @return Return the actual pressure output as u32
  *
 */
-u32 bme280_compensate_pressure_int32(s32 v_uncomp_pressure_s32)
+u32 bme280_compensate_pressure_int32(struct bme280_t *bme280,
+						s32 v_uncomp_pressure_s32)
 {
 	s32 v_x1_u32 = 0;
 	s32 v_x2_u32 = 0;
 	u32 v_pressure_u32 = 0;
 
 	/* calculate x1*/
-	v_x1_u32 = (((s32)p_bme280->cal_param.t_fine)
+	v_x1_u32 = (((s32)bme280->cal_param.t_fine)
 	>> BME280_SHIFT_BIT_POSITION_BY_01_BIT) - (s32)64000;
 	/* calculate x2*/
 	v_x2_u32 = (((v_x1_u32 >> BME280_SHIFT_BIT_POSITION_BY_02_BITS)
 	* (v_x1_u32 >> BME280_SHIFT_BIT_POSITION_BY_02_BITS)
 	) >> BME280_SHIFT_BIT_POSITION_BY_11_BITS)
-	* ((s32)p_bme280->cal_param.dig_P6);
+	* ((s32)bme280->cal_param.dig_P6);
 	/* calculate x2*/
 	v_x2_u32 = v_x2_u32 + ((v_x1_u32 *
-	((s32)p_bme280->cal_param.dig_P5))
+	((s32)bme280->cal_param.dig_P5))
 	<< BME280_SHIFT_BIT_POSITION_BY_01_BIT);
 	/* calculate x2*/
 	v_x2_u32 = (v_x2_u32 >> BME280_SHIFT_BIT_POSITION_BY_02_BITS) +
-	(((s32)p_bme280->cal_param.dig_P4)
+	(((s32)bme280->cal_param.dig_P4)
 	<< BME280_SHIFT_BIT_POSITION_BY_16_BITS);
 	/* calculate x1*/
-	v_x1_u32 = (((p_bme280->cal_param.dig_P3 *
+	v_x1_u32 = (((bme280->cal_param.dig_P3 *
 	(((v_x1_u32 >> BME280_SHIFT_BIT_POSITION_BY_02_BITS) *
 	(v_x1_u32 >> BME280_SHIFT_BIT_POSITION_BY_02_BITS))
 	>> BME280_SHIFT_BIT_POSITION_BY_13_BITS))
 	>> BME280_SHIFT_BIT_POSITION_BY_03_BITS) +
-	((((s32)p_bme280->cal_param.dig_P2) *
+	((((s32)bme280->cal_param.dig_P2) *
 	v_x1_u32) >> BME280_SHIFT_BIT_POSITION_BY_01_BIT))
 	>> BME280_SHIFT_BIT_POSITION_BY_18_BITS;
 	/* calculate x1*/
 	v_x1_u32 = ((((32768 + v_x1_u32)) *
-	((s32)p_bme280->cal_param.dig_P1))
+	((s32)bme280->cal_param.dig_P1))
 	>> BME280_SHIFT_BIT_POSITION_BY_15_BITS);
 	/* calculate pressure*/
 	v_pressure_u32 =
@@ -272,17 +273,17 @@ u32 bme280_compensate_pressure_int32(s32 v_uncomp_pressure_s32)
 		else
 			return 0;
 
-		v_x1_u32 = (((s32)p_bme280->cal_param.dig_P9) *
+		v_x1_u32 = (((s32)bme280->cal_param.dig_P9) *
 		((s32)(((v_pressure_u32 >> BME280_SHIFT_BIT_POSITION_BY_03_BITS)
 		* (v_pressure_u32 >> BME280_SHIFT_BIT_POSITION_BY_03_BITS))
 		>> BME280_SHIFT_BIT_POSITION_BY_13_BITS)))
 		>> BME280_SHIFT_BIT_POSITION_BY_12_BITS;
 		v_x2_u32 = (((s32)(v_pressure_u32
 		>> BME280_SHIFT_BIT_POSITION_BY_02_BITS)) *
-		((s32)p_bme280->cal_param.dig_P8))
+		((s32)bme280->cal_param.dig_P8))
 		>> BME280_SHIFT_BIT_POSITION_BY_13_BITS;
 		v_pressure_u32 = (u32)((s32)v_pressure_u32 +
-		((v_x1_u32 + v_x2_u32 + p_bme280->cal_param.dig_P7)
+		((v_x1_u32 + v_x2_u32 + bme280->cal_param.dig_P7)
 		>> BME280_SHIFT_BIT_POSITION_BY_04_BITS));
 
 	return v_pressure_u32;
@@ -306,7 +307,8 @@ u32 bme280_compensate_pressure_int32(s32 v_uncomp_pressure_s32)
  *
  *
 */
-static int bme280_read_uncomp_humidity(s32 *v_uncomp_humidity_s32)
+static int bme280_read_uncomp_humidity(struct bme280_t *bme280,
+						s32 *v_uncomp_humidity_s32)
 {
 	int ret = 0;
 	/* Array holding the MSB and LSb value
@@ -315,14 +317,13 @@ static int bme280_read_uncomp_humidity(s32 *v_uncomp_humidity_s32)
 	*/
 	u8 a_data_u8[BME280_HUMIDITY_DATA_SIZE] = {0, 0};
 
-	a_data_u8[0] = i2c_smbus_read_byte_data(p_bme280->client,
+	a_data_u8[0] = i2c_smbus_read_byte_data(bme280->client,
 						BME280_HUMIDITY_MSB_REG);
-	a_data_u8[1] = i2c_smbus_read_byte_data(p_bme280->client,
+	a_data_u8[1] = i2c_smbus_read_byte_data(bme280->client,
 						BME280_HUMIDITY_LSB_REG);
 
 	*v_uncomp_humidity_s32 = (s32)((((u32)
-				(a_data_u8[BME280_HUMIDITY_MSB_DATA])) <<
-	BME280_SHIFT_BIT_POSITION_BY_08_BITS) |
+				(a_data_u8[BME280_HUMIDITY_MSB_DATA])) << 8) |
 				((u32)(a_data_u8[BME280_HUMIDITY_LSB_DATA])));
 
 	return ret;
@@ -342,31 +343,32 @@ static int bme280_read_uncomp_humidity(s32 *v_uncomp_humidity_s32)
  *  @return Return the actual relative humidity output as u32
  *
 */
-u32 bme280_compensate_humidity_int32(s32 v_uncomp_humidity_s32)
+u32 bme280_compensate_humidity_int32(struct bme280_t *bme280,
+						s32 v_uncomp_humidity_s32)
 {
 	s32 v_x1_u32 = 0;
 
 	/* calculate x1 */
-	v_x1_u32 = (p_bme280->cal_param.t_fine - ((s32)76800));
+	v_x1_u32 = (bme280->cal_param.t_fine - ((s32)76800));
 	/* calculate x1 */
 	v_x1_u32 = (((((v_uncomp_humidity_s32
 	<< BME280_SHIFT_BIT_POSITION_BY_14_BITS) -
-	(((s32)p_bme280->cal_param.dig_H4)
+	(((s32)bme280->cal_param.dig_H4)
 	<< BME280_SHIFT_BIT_POSITION_BY_20_BITS) -
-	(((s32)p_bme280->cal_param.dig_H5) * v_x1_u32)) +
+	(((s32)bme280->cal_param.dig_H5) * v_x1_u32)) +
 	((s32)16384)) >> BME280_SHIFT_BIT_POSITION_BY_15_BITS)
 	* (((((((v_x1_u32 *
-	((s32)p_bme280->cal_param.dig_H6))
+	((s32)bme280->cal_param.dig_H6))
 	>> BME280_SHIFT_BIT_POSITION_BY_10_BITS) *
-	(((v_x1_u32 * ((s32)p_bme280->cal_param.dig_H3))
+	(((v_x1_u32 * ((s32)bme280->cal_param.dig_H3))
 	>> BME280_SHIFT_BIT_POSITION_BY_11_BITS) + ((s32)32768)))
 	>> BME280_SHIFT_BIT_POSITION_BY_10_BITS) + ((s32)2097152)) *
-	((s32)p_bme280->cal_param.dig_H2) + 8192) >> 14));
+	((s32)bme280->cal_param.dig_H2) + 8192) >> 14));
 	v_x1_u32 = (v_x1_u32 - (((((v_x1_u32
 	>> BME280_SHIFT_BIT_POSITION_BY_15_BITS) *
 	(v_x1_u32 >> BME280_SHIFT_BIT_POSITION_BY_15_BITS))
 	>> BME280_SHIFT_BIT_POSITION_BY_07_BITS) *
-	((s32)p_bme280->cal_param.dig_H1))
+	((s32)bme280->cal_param.dig_H1))
 	>> BME280_SHIFT_BIT_POSITION_BY_04_BITS));
 	v_x1_u32 = (v_x1_u32 < 0 ? 0 : v_x1_u32);
 	v_x1_u32 = (v_x1_u32 > 419430400 ?
@@ -403,109 +405,93 @@ u32 bme280_compensate_humidity_int32(s32 v_uncomp_humidity_s32)
  *
  *
 */
-static int bme280_get_calib_param(void)
+static void bme280_get_calib_param(struct bme280_t *bme280)
 {
-	int ret = 0;
+	bme280->cal_param.dig_T1 = (i2c_smbus_read_byte_data(
+		bme280->client, BME280_TEMPERATURE_CALIB_DIG_T1_LSB_REG) |
+		(i2c_smbus_read_byte_data (bme280->client,
+		BME280_TEMPERATURE_CALIB_DIG_T1_MSB_REG) << 8));
 
-	p_bme280->cal_param.dig_T1 = (i2c_smbus_read_byte_data(
-		p_bme280->client, BME280_TEMPERATURE_CALIB_DIG_T1_LSB_REG) |
-		(i2c_smbus_read_byte_data (p_bme280->client,
-		BME280_TEMPERATURE_CALIB_DIG_T1_MSB_REG) <<
-					BME280_SHIFT_BIT_POSITION_BY_08_BITS));
+	bme280->cal_param.dig_T2 = (i2c_smbus_read_byte_data(
+		bme280->client, BME280_TEMPERATURE_CALIB_DIG_T2_LSB_REG) |
+		(i2c_smbus_read_byte_data (bme280->client,
+		BME280_TEMPERATURE_CALIB_DIG_T2_MSB_REG) << 8));
 
-	p_bme280->cal_param.dig_T2 = (i2c_smbus_read_byte_data(
-		p_bme280->client, BME280_TEMPERATURE_CALIB_DIG_T2_LSB_REG) |
-		(i2c_smbus_read_byte_data (p_bme280->client,
-		BME280_TEMPERATURE_CALIB_DIG_T2_MSB_REG) <<
-					BME280_SHIFT_BIT_POSITION_BY_08_BITS));
+	bme280->cal_param.dig_T3 = (i2c_smbus_read_byte_data(
+		bme280->client, BME280_TEMPERATURE_CALIB_DIG_T3_LSB_REG) |
+		(i2c_smbus_read_byte_data (bme280->client,
+		BME280_TEMPERATURE_CALIB_DIG_T3_MSB_REG) << 8));
 
-	p_bme280->cal_param.dig_T3 = (i2c_smbus_read_byte_data(
-		p_bme280->client, BME280_TEMPERATURE_CALIB_DIG_T3_LSB_REG) |
-		(i2c_smbus_read_byte_data (p_bme280->client,
-		BME280_TEMPERATURE_CALIB_DIG_T3_MSB_REG) <<
-					BME280_SHIFT_BIT_POSITION_BY_08_BITS));
+	bme280->cal_param.dig_P1 = (i2c_smbus_read_byte_data(
+		bme280->client, BME280_PRESSURE_CALIB_DIG_P1_LSB_REG) |
+		(i2c_smbus_read_byte_data (bme280->client,
+		BME280_PRESSURE_CALIB_DIG_P1_MSB_REG) << 8));
 
-	p_bme280->cal_param.dig_P1 = (i2c_smbus_read_byte_data(
-		p_bme280->client, BME280_PRESSURE_CALIB_DIG_P1_LSB_REG) |
-		(i2c_smbus_read_byte_data (p_bme280->client,
-		BME280_PRESSURE_CALIB_DIG_P1_MSB_REG) <<
-					BME280_SHIFT_BIT_POSITION_BY_08_BITS));
+	bme280->cal_param.dig_P2 = (i2c_smbus_read_byte_data(
+		bme280->client, BME280_PRESSURE_CALIB_DIG_P2_LSB_REG) |
+		(i2c_smbus_read_byte_data (bme280->client,
+		BME280_PRESSURE_CALIB_DIG_P2_MSB_REG) << 8));
 
-	p_bme280->cal_param.dig_P2 = (i2c_smbus_read_byte_data(
-		p_bme280->client, BME280_PRESSURE_CALIB_DIG_P2_LSB_REG) |
-		(i2c_smbus_read_byte_data (p_bme280->client,
-		BME280_PRESSURE_CALIB_DIG_P2_MSB_REG) <<
-					BME280_SHIFT_BIT_POSITION_BY_08_BITS));
+	bme280->cal_param.dig_P3 = (i2c_smbus_read_byte_data(
+		bme280->client, BME280_PRESSURE_CALIB_DIG_P3_LSB_REG) |
+		(i2c_smbus_read_byte_data (bme280->client,
+		BME280_PRESSURE_CALIB_DIG_P3_MSB_REG) << 8));
 
-	p_bme280->cal_param.dig_P3 = (i2c_smbus_read_byte_data(
-		p_bme280->client, BME280_PRESSURE_CALIB_DIG_P3_LSB_REG) |
-		(i2c_smbus_read_byte_data (p_bme280->client,
-		BME280_PRESSURE_CALIB_DIG_P3_MSB_REG) <<
-					BME280_SHIFT_BIT_POSITION_BY_08_BITS));
+	bme280->cal_param.dig_P4 = (i2c_smbus_read_byte_data(
+		bme280->client, BME280_PRESSURE_CALIB_DIG_P4_LSB_REG) |
+		(i2c_smbus_read_byte_data (bme280->client,
+		BME280_PRESSURE_CALIB_DIG_P4_MSB_REG) << 8));
 
-	p_bme280->cal_param.dig_P4 = (i2c_smbus_read_byte_data(
-		p_bme280->client, BME280_PRESSURE_CALIB_DIG_P4_LSB_REG) |
-		(i2c_smbus_read_byte_data (p_bme280->client,
-		BME280_PRESSURE_CALIB_DIG_P4_MSB_REG) <<
-					BME280_SHIFT_BIT_POSITION_BY_08_BITS));
+	bme280->cal_param.dig_P5 = (i2c_smbus_read_byte_data(
+		bme280->client, BME280_PRESSURE_CALIB_DIG_P5_LSB_REG) |
+		(i2c_smbus_read_byte_data (bme280->client,
+		BME280_PRESSURE_CALIB_DIG_P5_MSB_REG) << 8));
 
-	p_bme280->cal_param.dig_P5 = (i2c_smbus_read_byte_data(
-		p_bme280->client, BME280_PRESSURE_CALIB_DIG_P5_LSB_REG) |
-		(i2c_smbus_read_byte_data (p_bme280->client,
-		BME280_PRESSURE_CALIB_DIG_P5_MSB_REG) <<
-					BME280_SHIFT_BIT_POSITION_BY_08_BITS));
+	bme280->cal_param.dig_P6 = (i2c_smbus_read_byte_data(
+		bme280->client, BME280_PRESSURE_CALIB_DIG_P6_LSB_REG) |
+		(i2c_smbus_read_byte_data (bme280->client,
+		BME280_PRESSURE_CALIB_DIG_P6_MSB_REG) << 8));
 
-	p_bme280->cal_param.dig_P6 = (i2c_smbus_read_byte_data(
-		p_bme280->client, BME280_PRESSURE_CALIB_DIG_P6_LSB_REG) |
-		(i2c_smbus_read_byte_data (p_bme280->client,
-		BME280_PRESSURE_CALIB_DIG_P6_MSB_REG) <<
-					BME280_SHIFT_BIT_POSITION_BY_08_BITS));
+	bme280->cal_param.dig_P7 = (i2c_smbus_read_byte_data(
+		bme280->client, BME280_PRESSURE_CALIB_DIG_P7_LSB_REG) |
+		(i2c_smbus_read_byte_data (bme280->client,
+		BME280_PRESSURE_CALIB_DIG_P7_MSB_REG) << 8));
 
-	p_bme280->cal_param.dig_P7 = (i2c_smbus_read_byte_data(
-		p_bme280->client, BME280_PRESSURE_CALIB_DIG_P7_LSB_REG) |
-		(i2c_smbus_read_byte_data (p_bme280->client,
-		BME280_PRESSURE_CALIB_DIG_P7_MSB_REG) <<
-					BME280_SHIFT_BIT_POSITION_BY_08_BITS));
+	bme280->cal_param.dig_P8 = (i2c_smbus_read_byte_data(
+		bme280->client, BME280_PRESSURE_CALIB_DIG_P8_LSB_REG) |
+		(i2c_smbus_read_byte_data (bme280->client,
+		BME280_PRESSURE_CALIB_DIG_P8_MSB_REG) << 8));
 
-	p_bme280->cal_param.dig_P8 = (i2c_smbus_read_byte_data(
-		p_bme280->client, BME280_PRESSURE_CALIB_DIG_P8_LSB_REG) |
-		(i2c_smbus_read_byte_data (p_bme280->client,
-		BME280_PRESSURE_CALIB_DIG_P8_MSB_REG) <<
-					BME280_SHIFT_BIT_POSITION_BY_08_BITS));
+	bme280->cal_param.dig_P9 = (i2c_smbus_read_byte_data(
+		bme280->client, BME280_PRESSURE_CALIB_DIG_P9_LSB_REG) |
+		(i2c_smbus_read_byte_data (bme280->client,
+		BME280_PRESSURE_CALIB_DIG_P9_MSB_REG) << 8));
 
-	p_bme280->cal_param.dig_P9 = (i2c_smbus_read_byte_data(
-		p_bme280->client, BME280_PRESSURE_CALIB_DIG_P9_LSB_REG) |
-		(i2c_smbus_read_byte_data (p_bme280->client,
-		BME280_PRESSURE_CALIB_DIG_P9_MSB_REG) <<
-					BME280_SHIFT_BIT_POSITION_BY_08_BITS));
-
-	p_bme280->cal_param.dig_H1 = i2c_smbus_read_byte_data(p_bme280->client,
+	bme280->cal_param.dig_H1 = i2c_smbus_read_byte_data(bme280->client,
 					BME280_HUMIDITY_CALIB_DIG_H1_REG);
 
-	p_bme280->cal_param.dig_H2 = (i2c_smbus_read_byte_data(
-		p_bme280->client, BME280_HUMIDITY_CALIB_DIG_H2_LSB_REG) |
-		(i2c_smbus_read_byte_data(p_bme280->client,
-		BME280_HUMIDITY_CALIB_DIG_H2_MSB_REG) <<
-					BME280_SHIFT_BIT_POSITION_BY_08_BITS));
+	bme280->cal_param.dig_H2 = (i2c_smbus_read_byte_data(
+		bme280->client, BME280_HUMIDITY_CALIB_DIG_H2_LSB_REG) |
+		(i2c_smbus_read_byte_data(bme280->client,
+		BME280_HUMIDITY_CALIB_DIG_H2_MSB_REG) << 8));
 
-	p_bme280->cal_param.dig_H3 = i2c_smbus_read_byte_data(p_bme280->client,
+	bme280->cal_param.dig_H3 = i2c_smbus_read_byte_data(bme280->client,
 					BME280_HUMIDITY_CALIB_DIG_H3_REG);
 
-	p_bme280->cal_param.dig_H4 = ((i2c_smbus_read_byte_data(
-		p_bme280->client, BME280_HUMIDITY_CALIB_DIG_H4_MSB_REG) <<
+	bme280->cal_param.dig_H4 = ((i2c_smbus_read_byte_data(
+		bme280->client, BME280_HUMIDITY_CALIB_DIG_H4_MSB_REG) <<
 		BME280_SHIFT_BIT_POSITION_BY_04_BITS) |
-		(i2c_smbus_read_byte_data(p_bme280->client,
+		(i2c_smbus_read_byte_data(bme280->client,
 		BME280_HUMIDITY_CALIB_DIG_H4_LSB_REG) & BME280_MASK_3_0));
 
-	p_bme280->cal_param.dig_H5 = ((i2c_smbus_read_byte_data(
-		p_bme280->client, BME280_HUMIDITY_CALIB_DIG_H4_LSB_REG) &&
-		BME280_MASK_7_4) | (i2c_smbus_read_byte_data(p_bme280->client,
+	bme280->cal_param.dig_H5 = ((i2c_smbus_read_byte_data(
+		bme280->client, BME280_HUMIDITY_CALIB_DIG_H4_LSB_REG) &&
+		BME280_MASK_7_4) | (i2c_smbus_read_byte_data(bme280->client,
 		BME280_HUMIDITY_CALIB_DIG_H5_MSB_REG) <<
 					BME280_SHIFT_BIT_POSITION_BY_04_BITS));
 
-	p_bme280->cal_param.dig_H6 = i2c_smbus_read_byte_data(p_bme280->client,
+	bme280->cal_param.dig_H6 = i2c_smbus_read_byte_data(bme280->client,
 					BME280_HUMIDITY_CALIB_DIG_H6_REG);
-	return ret;
 }
 
 static int convert_oversampling_to_val(u8 val)
@@ -565,16 +551,16 @@ static u8 convert_oversampling_to_reg(u32 val)
  *
  *
 */
-static int bme280_set_oversamp_temperature(void)
+static int bme280_set_oversamp_temperature(struct bme280_t *bme280)
 {
 	int ret = 0;
 	u8 v_data_u8 = 0;
 	u8 oversamp_temp = 0;
 
 	oversamp_temp = convert_oversampling_to_reg(
-					p_bme280->oversamp_temperature);
+					bme280->oversamp_temperature);
 
-	v_data_u8 = i2c_smbus_read_byte_data(p_bme280->client,
+	v_data_u8 = i2c_smbus_read_byte_data(bme280->client,
 					      BME280_CTRL_MEAS_REG);
 	if(v_data_u8 < 0)
 		return -EFAULT;
@@ -584,7 +570,7 @@ static int bme280_set_oversamp_temperature(void)
 	v_data_u8 |= ((oversamp_temp << BME280_SHIFT_BIT_POSITION_BY_05_BITS) &
 							BME280_MASK_7_5);
 
-	i2c_smbus_write_byte_data(p_bme280->client, BME280_CTRL_MEAS_REG,
+	i2c_smbus_write_byte_data(bme280->client, BME280_CTRL_MEAS_REG,
 								v_data_u8);
 
 	return ret;
@@ -615,16 +601,16 @@ static int bme280_set_oversamp_temperature(void)
  *
  *
 */
-static int bme280_set_oversamp_pressure(void)
+static int bme280_set_oversamp_pressure(struct bme280_t *bme280)
 {
 	int ret = 0;
 	u8 v_data_u8 = 0;
 	u8 oversamp_press = 0;
 
 	oversamp_press = convert_oversampling_to_reg(
-						p_bme280->oversamp_pressure);
+						bme280->oversamp_pressure);
 
-	v_data_u8 = i2c_smbus_read_byte_data(p_bme280->client,
+	v_data_u8 = i2c_smbus_read_byte_data(bme280->client,
 					      BME280_CTRL_MEAS_REG);
 	if(v_data_u8 < 0)
 		return -EFAULT;
@@ -634,7 +620,7 @@ static int bme280_set_oversamp_pressure(void)
 	v_data_u8 |= ((oversamp_press <<
 		BME280_SHIFT_BIT_POSITION_BY_02_BITS) & BME280_MASK_4_2);
 
-	i2c_smbus_write_byte_data(p_bme280->client, BME280_CTRL_MEAS_REG,
+	i2c_smbus_write_byte_data(bme280->client, BME280_CTRL_MEAS_REG,
 								v_data_u8);
 	return ret;
 }
@@ -678,16 +664,16 @@ static int bme280_set_oversamp_pressure(void)
  *
  *
 */
-static int bme280_set_oversamp_humidity(void)
+static int bme280_set_oversamp_humidity(struct bme280_t *bme280)
 {
 	int ret = 0;
 	u8 v_data_u8 = 0;
 	u8 oversamp_hum = 0;
 
 	oversamp_hum = convert_oversampling_to_reg(
-						p_bme280->oversamp_humidity);
+						bme280->oversamp_humidity);
 
-	v_data_u8 = i2c_smbus_read_byte_data(p_bme280->client,
+	v_data_u8 = i2c_smbus_read_byte_data(bme280->client,
 					      BME280_CTRL_HUMIDITY_REG);
 	if(v_data_u8 < 0)
 		return -EFAULT;
@@ -696,16 +682,16 @@ static int bme280_set_oversamp_humidity(void)
 
 	v_data_u8 |= (oversamp_hum & BME280_MASK_2_0);
 
-	i2c_smbus_write_byte_data(p_bme280->client, BME280_CTRL_HUMIDITY_REG,
+	i2c_smbus_write_byte_data(bme280->client, BME280_CTRL_HUMIDITY_REG,
 								v_data_u8);
 
 	/* to make change effective write to ctrl_meas register */
-	v_data_u8 = i2c_smbus_read_byte_data(p_bme280->client,
+	v_data_u8 = i2c_smbus_read_byte_data(bme280->client,
 							BME280_CTRL_MEAS_REG);
 	if(v_data_u8 < 0)
 		return -EFAULT;
 
-	i2c_smbus_write_byte_data(p_bme280->client, BME280_CTRL_MEAS_REG,
+	i2c_smbus_write_byte_data(bme280->client, BME280_CTRL_MEAS_REG,
 								v_data_u8);
 
 	return ret;
@@ -730,12 +716,12 @@ static int bme280_set_oversamp_humidity(void)
  *
  *
 */
-static int bme280_set_power_mode(u8 v_power_mode_u8)
+static int bme280_set_power_mode(struct bme280_t *bme280, u8 v_power_mode_u8)
 {
 	int ret = 0;
 	u8 v_mode_u8r = 0;
 
-	v_mode_u8r = i2c_smbus_read_byte_data(p_bme280->client,
+	v_mode_u8r = i2c_smbus_read_byte_data(bme280->client,
 							BME280_CTRL_MEAS_REG);
 	if(v_mode_u8r < 0)
 		return -EFAULT;
@@ -743,7 +729,7 @@ static int bme280_set_power_mode(u8 v_power_mode_u8)
 	v_mode_u8r &= ~BME280_MASK_1_0;
 	v_mode_u8r |= (v_power_mode_u8 & BME280_MASK_1_0);
 
-	i2c_smbus_write_byte_data(p_bme280->client, BME280_CTRL_MEAS_REG,
+	i2c_smbus_write_byte_data(bme280->client, BME280_CTRL_MEAS_REG,
 								v_mode_u8r);
 
 	return ret;
@@ -771,24 +757,24 @@ static int bme280_set_power_mode(u8 v_power_mode_u8)
  *
  *
 */
-static int bme280_set_filter(void)
+static int bme280_set_filter(struct bme280_t *bme280)
 {
 	int ret = 0;
 	u8 v_data_u8 = 0;
 	u8 filter = 0;
 
-	if(p_bme280->filter > 12)
+	if(bme280->filter > 12)
 		filter = BME280_FILTER_COEFF_16;
-	else if(p_bme280->filter > 6)
+	else if(bme280->filter > 6)
 		filter = BME280_FILTER_COEFF_8;
-	else if(p_bme280->filter > 2)
+	else if(bme280->filter > 2)
 		filter = BME280_FILTER_COEFF_4;
-	else if(p_bme280->filter == 2)
+	else if(bme280->filter == 2)
 		filter = BME280_FILTER_COEFF_2;
 	else
 		filter = BME280_FILTER_COEFF_OFF;
 
-	v_data_u8 = i2c_smbus_read_byte_data(p_bme280->client,
+	v_data_u8 = i2c_smbus_read_byte_data(bme280->client,
 					      BME280_CONFIG_REG);
 	if(v_data_u8 < 0)
 		return -EFAULT;
@@ -797,7 +783,7 @@ static int bme280_set_filter(void)
 	v_data_u8 |= ((filter << BME280_SHIFT_BIT_POSITION_BY_02_BITS) &
 							BME280_MASK_4_2);
 
-	i2c_smbus_write_byte_data(p_bme280->client, BME280_CONFIG_REG,
+	i2c_smbus_write_byte_data(bme280->client, BME280_CONFIG_REG,
 								v_data_u8);
 
 	return ret;
@@ -836,30 +822,30 @@ static int bme280_set_filter(void)
  *
 */
 
-static int bme280_set_standby_durn(void)
+static int bme280_set_standby_durn(struct bme280_t *bme280)
 {
 	int ret = 0;
 	u8 v_data_u8 = 0;
 	u8 t_standby = 0;
 
-	if(p_bme280->t_standby > 3000)
+	if(bme280->t_standby > 3000)
 		t_standby = BME280_STANDBY_TIME_20_MS;
-	else if(p_bme280->t_standby > 1500)
+	else if(bme280->t_standby > 1500)
 		t_standby = BME280_STANDBY_TIME_10_MS;
-	else if(p_bme280->t_standby > 750)
+	else if(bme280->t_standby > 750)
 		t_standby = BME280_STANDBY_TIME_1000_MS;
-	else if(p_bme280->t_standby > 375)
+	else if(bme280->t_standby > 375)
 		t_standby = BME280_STANDBY_TIME_500_MS;
-	else if(p_bme280->t_standby > 187)
+	else if(bme280->t_standby > 187)
 		t_standby = BME280_STANDBY_TIME_250_MS;
-	else if(p_bme280->t_standby > 94)
+	else if(bme280->t_standby > 94)
 		t_standby = BME280_STANDBY_TIME_125_MS;
-	else if(p_bme280->t_standby > 32)
+	else if(bme280->t_standby > 32)
 		t_standby = BME280_STANDBY_TIME_63_MS;
 	else
 		t_standby = BME280_STANDBY_TIME_1_MS;
 
-	v_data_u8 = i2c_smbus_read_byte_data(p_bme280->client,
+	v_data_u8 = i2c_smbus_read_byte_data(bme280->client,
 							BME280_CONFIG_REG);
 	if(v_data_u8 < 0)
 		return -EFAULT;
@@ -868,7 +854,7 @@ static int bme280_set_standby_durn(void)
 	v_data_u8 |= ((t_standby << BME280_SHIFT_BIT_POSITION_BY_05_BITS) &
 							BME280_MASK_7_5);
 
-	i2c_smbus_write_byte_data(p_bme280->client, BME280_CONFIG_REG,
+	i2c_smbus_write_byte_data(bme280->client, BME280_CONFIG_REG,
 								v_data_u8);
 
 	return ret;
@@ -878,34 +864,35 @@ static int bme280_read_raw(struct iio_dev *iio_dev,
 			const struct iio_chan_spec *chan,
 			int *val, int *val2, long m)
 {
+	struct bme280_t *bme280 = iio_priv(iio_dev);
 	int ret = 0;
 	s32 uncomp_temp = 0;
 	s32 uncomp_press = 0;
 	s32 uncomp_hum = 0;
 	if(chan->type == IIO_TEMP)
 	{
-		dev_info(&p_bme280->client->dev, "temperature in Centigrade\n");
-		bme280_read_uncomp_temperature(&uncomp_temp);
+		/* temperature unit is in Centigrade */
+		bme280_read_uncomp_temperature(bme280, &uncomp_temp);
 		uncomp_temp =
-		bme280_compensate_temperature_int32(uncomp_temp);
+		bme280_compensate_temperature_int32(bme280, uncomp_temp);
 		*val = uncomp_temp;
 		ret = IIO_VAL_INT;
 	}
 	else if(chan->type == IIO_PRESSURE)
 	{
-		dev_info(&p_bme280->client->dev, ">pressure in Pascal\n");
-		bme280_read_uncomp_pressure(&uncomp_press);
+		/* pressure unit is in Pascal */
+		bme280_read_uncomp_pressure(bme280, &uncomp_press);
 		uncomp_press =
-		bme280_compensate_pressure_int32(uncomp_press);
+		bme280_compensate_pressure_int32(bme280, uncomp_press);
 		*val = uncomp_press;
 		ret = IIO_VAL_INT;
 	}
 	else if(chan->type == IIO_HUMIDITYRELATIVE)
 	{
-		dev_info(&p_bme280->client->dev, "humidity value / 1024 = xxx %%rH\n");
-		bme280_read_uncomp_humidity(&uncomp_hum);
+		/* humidity value / 1024 = xxx %%rH */
+		bme280_read_uncomp_humidity(bme280, &uncomp_hum);
 		uncomp_hum =
-		bme280_compensate_humidity_int32(uncomp_hum);
+		bme280_compensate_humidity_int32(bme280, uncomp_hum);
 		*val = uncomp_hum;
 		ret = IIO_VAL_INT;
 	}
@@ -983,55 +970,58 @@ static int bme280_init(struct bme280_t *bme280)
 
 	/* readout from device tree */
 	bme280 = bme280_dt_init(bme280);
-	/* refer lokal pointer to global pointer */
-	p_bme280 = bme280;
 	/* set name */
-	p_bme280->name = "bme280";
+	bme280->name = "bme280";
 	/* read Chip Id */
-	p_bme280->chip_id = i2c_smbus_read_byte_data(p_bme280->client, BME280_CHIP_ID_REG);
-	if(p_bme280->chip_id < 0)
+	bme280->chip_id = i2c_smbus_read_byte_data(bme280->client,
+							BME280_CHIP_ID_REG);
+	if(bme280->chip_id < 0)
 		return -ENODEV;
 	/* readout bme280 calibparam structure */
-	ret = bme280_get_calib_param();
+	bme280_get_calib_param(bme280);
 
-	ret = bme280_set_power_mode(BME280_SLEEP_MODE);
+	ret = bme280_set_power_mode(bme280, BME280_SLEEP_MODE);
 	if(ret < 0)
 		return ret;
 
-	ret = bme280_set_oversamp_humidity();
+	ret = bme280_set_oversamp_humidity(bme280);
 	if(ret < 0)
 		return ret;
 
-	ret = bme280_set_oversamp_temperature();
+	ret = bme280_set_oversamp_temperature(bme280);
 	if(ret < 0)
 		return ret;
 
-	ret = bme280_set_oversamp_pressure();
+	ret = bme280_set_oversamp_pressure(bme280);
 	if(ret < 0)
 		return ret;
 
-	ret = bme280_set_standby_durn();
+	ret = bme280_set_standby_durn(bme280);
 	if(ret < 0)
 		return ret;
 
-	ret = bme280_set_filter();
+	ret = bme280_set_filter(bme280);
 	if(ret < 0)
 		return ret;
 
-	ret = bme280_set_power_mode(BME280_NORMAL_MODE);
+	ret = bme280_set_power_mode(bme280, BME280_NORMAL_MODE);
 	if(ret < 0)
 		return ret;
 
 	return ret;
 }
 
+/* show the inactive duration t_standby in normal mode */
 static ssize_t show_t_standby(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct iio_dev *indio_dev = i2c_get_clientdata(client);
+	struct bme280_t *bme280 = iio_priv(indio_dev);
 	int val;
 	u8 v_data_u8;
 
-	v_data_u8 = i2c_smbus_read_byte_data(p_bme280->client,
+	v_data_u8 = i2c_smbus_read_byte_data(bme280->client,
 					      BME280_CONFIG_REG);
 	v_data_u8 &= BME280_MASK_7_5;
 	v_data_u8 = (v_data_u8 >> BME280_SHIFT_BIT_POSITION_BY_05_BITS);
@@ -1056,9 +1046,13 @@ static ssize_t show_t_standby(struct device *dev,
         return sprintf(buf, "t_standby: %d\n", val);
 }
 
+/* set the inactive duration t_standby in normal mode */
 static ssize_t store_t_standby(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct iio_dev *indio_dev = i2c_get_clientdata(client);
+	struct bme280_t *bme280 = iio_priv(indio_dev);
 	int ret = 0;
 	int val = 0;
 
@@ -1068,20 +1062,24 @@ static ssize_t store_t_standby(struct device *dev,
 	if(val < 0)
 		return -EINVAL;
 
-	p_bme280->t_standby = val;
+	bme280->t_standby = val;
 
-	ret = bme280_set_standby_durn();
+	ret = bme280_set_standby_durn(bme280);
 
         return count;
 }
 
+/* show the time constant of IIR filter */
 static ssize_t show_filter(struct device *dev, struct device_attribute *attr,
 			char *buf)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct iio_dev *indio_dev = i2c_get_clientdata(client);
+	struct bme280_t *bme280 = iio_priv(indio_dev);
 	int val = 0;
 	u8 v_data_u8 = 0;
 
-	v_data_u8 = i2c_smbus_read_byte_data(p_bme280->client,
+	v_data_u8 = i2c_smbus_read_byte_data(bme280->client,
 					      BME280_CONFIG_REG);
 	v_data_u8 &= BME280_MASK_4_2;
 	v_data_u8 = (v_data_u8 >> BME280_SHIFT_BIT_POSITION_BY_02_BITS);
@@ -1093,9 +1091,13 @@ static ssize_t show_filter(struct device *dev, struct device_attribute *attr,
         return sprintf(buf, "filter: %d\n", val);
 }
 
+/* set the time constant of IIR filter */
 static ssize_t store_filter(struct device *dev, struct device_attribute *attr,
 			 const char *buf, size_t count)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct iio_dev *indio_dev = i2c_get_clientdata(client);
+	struct bme280_t *bme280 = iio_priv(indio_dev);
 	int ret = 0;
 	int val = 0;
 
@@ -1105,20 +1107,24 @@ static ssize_t store_filter(struct device *dev, struct device_attribute *attr,
 	if(val < 0)
 		return -EINVAL;
 
-	p_bme280->filter = val;
+	bme280->filter = val;
 
-	ret = bme280_set_filter();
+	ret = bme280_set_filter(bme280);
 
         return count;
 }
 
+/* show the oversampling of humidity data */
 static ssize_t show_oversamp_pressure(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct iio_dev *indio_dev = i2c_get_clientdata(client);
+	struct bme280_t *bme280 = iio_priv(indio_dev);
 	int val = 0;
 	u8 v_data_u8 = 0;
 
-	v_data_u8 = i2c_smbus_read_byte_data(p_bme280->client,
+	v_data_u8 = i2c_smbus_read_byte_data(bme280->client,
 					      BME280_CTRL_MEAS_REG);
 	v_data_u8 &= BME280_MASK_4_2;
 	v_data_u8 = (v_data_u8 >> BME280_SHIFT_BIT_POSITION_BY_02_BITS);
@@ -1128,9 +1134,13 @@ static ssize_t show_oversamp_pressure(struct device *dev,
         return sprintf(buf, "oversampling x%d\n", val);
 }
 
+/* set the oversampling of pressure data */
 static ssize_t store_oversamp_pressure(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct iio_dev *indio_dev = i2c_get_clientdata(client);
+	struct bme280_t *bme280 = iio_priv(indio_dev);
 	int ret = 0;
 	int val = 0;
 
@@ -1140,21 +1150,24 @@ static ssize_t store_oversamp_pressure(struct device *dev,
 	if(val < 0)
 		return -EINVAL;
 
-	p_bme280->oversamp_pressure = val;
+	bme280->oversamp_pressure = val;
 
-	ret = bme280_set_oversamp_pressure();
+	ret = bme280_set_oversamp_pressure(bme280);
 
         return count;
 }
 
-
+/* show the oversampling of temperature data */
 static ssize_t show_oversamp_temperature(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct iio_dev *indio_dev = i2c_get_clientdata(client);
+	struct bme280_t *bme280 = iio_priv(indio_dev);
 	int val = 0;
 	u8 v_data_u8 = 0;
 
-	v_data_u8 = i2c_smbus_read_byte_data(p_bme280->client,
+	v_data_u8 = i2c_smbus_read_byte_data(bme280->client,
 					      BME280_CTRL_MEAS_REG);
 	v_data_u8 &= BME280_MASK_7_5;
 	v_data_u8 = (v_data_u8 >> BME280_SHIFT_BIT_POSITION_BY_05_BITS);
@@ -1164,9 +1177,13 @@ static ssize_t show_oversamp_temperature(struct device *dev,
         return sprintf(buf, "oversampling x%d\n", val);
 }
 
+/* set the oversampling of temperature data */
 static ssize_t store_oversamp_temperature(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct iio_dev *indio_dev = i2c_get_clientdata(client);
+	struct bme280_t *bme280 = iio_priv(indio_dev);
 	int ret = 0;
 	int val = 0;
 
@@ -1176,20 +1193,23 @@ static ssize_t store_oversamp_temperature(struct device *dev,
 	if(val < 0)
 		return -EINVAL;
 
-	p_bme280->oversamp_temperature = val;
+	bme280->oversamp_temperature = val;
 
-	ret = bme280_set_oversamp_temperature();
+	ret = bme280_set_oversamp_temperature(bme280);
 
         return count;
 }
-
+/* show the oversampling of humidity data */
 static ssize_t show_oversamp_humidity(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct iio_dev *indio_dev = i2c_get_clientdata(client);
+	struct bme280_t *bme280 = iio_priv(indio_dev);
 	int val = 0;
 	u8 v_data_u8 = 0;
 
-	v_data_u8 = i2c_smbus_read_byte_data(p_bme280->client,
+	v_data_u8 = i2c_smbus_read_byte_data(bme280->client,
 					      BME280_CTRL_HUMIDITY_REG);
 	v_data_u8 &= BME280_MASK_2_0;
 
@@ -1198,9 +1218,13 @@ static ssize_t show_oversamp_humidity(struct device *dev,
         return sprintf(buf, "oversampling x%d\n", val);
 }
 
+/* set the oversampling of humidity data */
 static ssize_t store_oversamp_humidity(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct iio_dev *indio_dev = i2c_get_clientdata(client);
+	struct bme280_t *bme280 = iio_priv(indio_dev);
 	int ret = 0;
 	int val = 0;
 
@@ -1210,9 +1234,9 @@ static ssize_t store_oversamp_humidity(struct device *dev,
 	if(val < 0)
 		return -EINVAL;
 
-	p_bme280->oversamp_humidity = val;
+	bme280->oversamp_humidity = val;
 
-	ret = bme280_set_oversamp_humidity();
+	ret = bme280_set_oversamp_humidity(bme280);
 
         return count;
 }
@@ -1287,7 +1311,7 @@ static int bme280_probe(struct i2c_client *client,
 		return ret;
 
 	indio_dev->dev.parent = &client->dev;
-	indio_dev->name = p_bme280->name;
+	indio_dev->name = bme280_chip->name;
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->info = &bme280_iio_info;
 
@@ -1308,12 +1332,20 @@ static int bme280_remove(struct i2c_client *client)
 #ifdef CONFIG_PM_SLEEP
 static int bme280_suspend(struct device *dev)
 {
-	return bme280_set_power_mode(BME280_SLEEP_MODE);
+	struct i2c_client *client = to_i2c_client(dev);
+	struct iio_dev *indio_dev = i2c_get_clientdata(client);
+	struct bme280_t *bme280 = iio_priv(indio_dev);
+
+	return bme280_set_power_mode(bme280, BME280_SLEEP_MODE);
 }
 
 static int bme280_resume(struct device *dev)
 {
-	return bme280_set_power_mode(BME280_NORMAL_MODE);
+	struct i2c_client *client = to_i2c_client(dev);
+	struct iio_dev *indio_dev = i2c_get_clientdata(client);
+	struct bme280_t *bme280 = iio_priv(indio_dev);
+
+	return bme280_set_power_mode(bme280, BME280_NORMAL_MODE);
 }
 #endif
 
