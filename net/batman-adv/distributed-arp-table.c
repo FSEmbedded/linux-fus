@@ -15,6 +15,7 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/bitops.h>
 #include <linux/if_ether.h>
 #include <linux/if_arp.h>
 #include <linux/if_vlan.h>
@@ -277,7 +278,7 @@ static void batadv_dat_entry_add(struct batadv_priv *bat_priv, __be32 ip,
 	/* if this entry is already known, just update it */
 	if (dat_entry) {
 		if (!batadv_compare_eth(dat_entry->mac_addr, mac_addr))
-			memcpy(dat_entry->mac_addr, mac_addr, ETH_ALEN);
+			ether_addr_copy(dat_entry->mac_addr, mac_addr);
 		dat_entry->last_update = jiffies;
 		batadv_dbg(BATADV_DBG_DAT, bat_priv,
 			   "Entry updated: %pI4 %pM (vid: %d)\n",
@@ -292,7 +293,7 @@ static void batadv_dat_entry_add(struct batadv_priv *bat_priv, __be32 ip,
 
 	dat_entry->ip = ip;
 	dat_entry->vid = vid;
-	memcpy(dat_entry->mac_addr, mac_addr, ETH_ALEN);
+	ether_addr_copy(dat_entry->mac_addr, mac_addr);
 	dat_entry->last_update = jiffies;
 	atomic_set(&dat_entry->refcount, 2);
 
@@ -422,7 +423,7 @@ static bool batadv_is_orig_node_eligible(struct batadv_dat_candidate *res,
 	int j;
 
 	/* check if orig node candidate is running DAT */
-	if (!(candidate->capabilities & BATADV_ORIG_CAPA_HAS_DAT))
+	if (!test_bit(BATADV_ORIG_CAPA_HAS_DAT, &candidate->capabilities))
 		goto out;
 
 	/* Check if this node has already been selected... */
@@ -537,7 +538,8 @@ batadv_dat_select_candidates(struct batadv_priv *bat_priv, __be32 ip_dst)
 	if (!bat_priv->orig_hash)
 		return NULL;
 
-	res = kmalloc(BATADV_DAT_CANDIDATES_NUM * sizeof(*res), GFP_ATOMIC);
+	res = kmalloc_array(BATADV_DAT_CANDIDATES_NUM, sizeof(*res),
+			    GFP_ATOMIC);
 	if (!res)
 		return NULL;
 
@@ -594,7 +596,7 @@ static bool batadv_dat_send_data(struct batadv_priv *bat_priv,
 		if (!neigh_node)
 			goto free_orig;
 
-		tmp_skb = pskb_copy(skb, GFP_ATOMIC);
+		tmp_skb = pskb_copy_for_clone(skb, GFP_ATOMIC);
 		if (!batadv_send_skb_prepare_unicast_4addr(bat_priv, tmp_skb,
 							   cand[i].orig_node,
 							   packet_subtype)) {
@@ -662,6 +664,7 @@ static void batadv_dat_tvlv_container_update(struct batadv_priv *bat_priv)
 void batadv_dat_status_update(struct net_device *net_dev)
 {
 	struct batadv_priv *bat_priv = netdev_priv(net_dev);
+
 	batadv_dat_tvlv_container_update(bat_priv);
 }
 
@@ -680,9 +683,9 @@ static void batadv_dat_tvlv_ogm_handler_v1(struct batadv_priv *bat_priv,
 					   uint16_t tvlv_value_len)
 {
 	if (flags & BATADV_TVLV_HANDLER_OGM_CIFNOTFND)
-		orig->capabilities &= ~BATADV_ORIG_CAPA_HAS_DAT;
+		clear_bit(BATADV_ORIG_CAPA_HAS_DAT, &orig->capabilities);
 	else
-		orig->capabilities |= BATADV_ORIG_CAPA_HAS_DAT;
+		set_bit(BATADV_ORIG_CAPA_HAS_DAT, &orig->capabilities);
 }
 
 /**
@@ -1026,6 +1029,11 @@ bool batadv_dat_snoop_incoming_arp_request(struct batadv_priv *bat_priv,
 	if (!skb_new)
 		goto out;
 
+	/* the rest of the TX path assumes that the mac_header offset pointing
+	 * to the inner Ethernet header has been set, therefore reset it now.
+	 */
+	skb_reset_mac_header(skb_new);
+
 	if (vid & BATADV_VLAN_HAS_TAG)
 		skb_new = vlan_insert_tag(skb_new, htons(ETH_P_8021Q),
 					  vid & VLAN_VID_MASK);
@@ -1093,6 +1101,7 @@ void batadv_dat_snoop_outgoing_arp_reply(struct batadv_priv *bat_priv,
 	batadv_dat_send_data(bat_priv, skb, ip_src, BATADV_P_DAT_DHT_PUT);
 	batadv_dat_send_data(bat_priv, skb, ip_dst, BATADV_P_DAT_DHT_PUT);
 }
+
 /**
  * batadv_dat_snoop_incoming_arp_reply - snoop the ARP reply and fill the local
  * DAT storage only

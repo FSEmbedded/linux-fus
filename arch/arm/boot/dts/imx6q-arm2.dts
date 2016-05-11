@@ -11,6 +11,7 @@
  */
 
 /dts-v1/;
+#include <dt-bindings/gpio/gpio.h>
 #include "imx6q.dtsi"
 
 / {
@@ -92,6 +93,7 @@
 				MX6QDL_PAD_RGMII_RD2__RGMII_RD2		0x1b0b0
 				MX6QDL_PAD_RGMII_RD3__RGMII_RD3		0x1b0b0
 				MX6QDL_PAD_RGMII_RX_CTL__RGMII_RX_CTL	0x1b0b0
+				MX6QDL_PAD_GPIO_6__ENET_IRQ		0x000b1
 			>;
 		};
 
@@ -208,6 +210,8 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet>;
 	phy-mode = "rgmii";
+	interrupts-extended = <&gpio1 6 IRQ_TYPE_LEVEL_HIGH>,
+			      <&intc 0 119 IRQ_TYPE_LEVEL_HIGH>;
 	status = "okay";
 };
 
@@ -223,8 +227,8 @@
 };
 
 &usdhc3 {
-	cd-gpios = <&gpio6 11 0>;
-	wp-gpios = <&gpio6 14 0>;
+	cd-gpios = <&gpio6 11 GPIO_ACTIVE_LOW>;
+	wp-gpios = <&gpio6 14 GPIO_ACTIVE_HIGH>;
 	vmmc-supply = <&reg_3p3v>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc3

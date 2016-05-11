@@ -31,7 +31,6 @@
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
 #include <linux/gpio.h>
-#include <linux/wl12xx.h>
 #include <linux/pm_runtime.h>
 #include <linux/printk.h>
 #include <linux/of.h>
@@ -247,10 +246,8 @@ static int wlcore_probe_of(struct device *dev, int *irq,
 	}
 
 	/* optional clock frequency params */
-
 	of_property_read_u32(np, "ref-clock-frequency",
 			     &pdev_data->ref_clock_freq);
-
 	of_property_read_u32(np, "tcxo-clock-frequency",
 			     &pdev_data->tcxo_clock_freq);
 
@@ -297,7 +294,6 @@ static int wl1271_probe(struct sdio_func *func,
 	func->card->quirks |= MMC_QUIRK_BLKSZ_FOR_BYTE_MODE;
 
 	ret = wlcore_probe_of(&func->dev, &irq, &pdev_data);
-
 	if (ret)
 		goto out_free_glue;
 

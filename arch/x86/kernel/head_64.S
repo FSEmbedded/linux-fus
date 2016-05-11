@@ -1,5 +1,5 @@
 /*
- *  linux/arch/x86_64/kernel/head.S -- start in 32bit and switch to 64bit
+ *  linux/arch/x86/kernel/head_64.S -- start in 32bit and switch to 64bit
  *
  *  Copyright (C) 2000 Andrea Arcangeli <andrea@suse.de> SuSE
  *  Copyright (C) 2000 Pavel Machek <pavel@suse.cz>
@@ -56,7 +56,7 @@ startup_64:
 	 * %rsi holds a physical pointer to real_mode_data.
 	 *
 	 * We come here either directly from a 64bit bootloader, or from
-	 * arch/x86_64/boot/compressed/head.S.
+	 * arch/x86/boot/compressed/head_64.S.
 	 *
 	 * We only come here initially at boot nothing else comes here.
 	 *
@@ -64,6 +64,9 @@ startup_64:
 	 * compiled to run at we first fixup the physical addresses in our page
 	 * tables and then reload them.
 	 */
+
+	/* Sanitize CPU configuration */
+	call verify_cpu
 
 	/*
 	 * Compute the delta between the address I am compiled to run at and the
@@ -146,7 +149,7 @@ startup_64:
 	leaq	level2_kernel_pgt(%rip), %rdi
 	leaq	4096(%rdi), %r8
 	/* See if it is a valid page table entry */
-1:	testq	$1, 0(%rdi)
+1:	testb	$1, 0(%rdi)
 	jz	2f
 	addq	%rbp, 0(%rdi)
 	/* Go to the next page */
@@ -173,6 +176,9 @@ ENTRY(secondary_startup_64)
 	 * to have any identity mapped pages in the kernel page table
 	 * after the boot processor executes this code.
 	 */
+
+	/* Sanitize CPU configuration */
+	call verify_cpu
 
 	movq	$(init_level4_pgt - __START_KERNEL_map), %rax
 1:
@@ -287,6 +293,8 @@ ENTRY(secondary_startup_64)
 	pushq	$__KERNEL_CS	# set correct cs
 	pushq	%rax		# target address in negative space
 	lretq
+
+#include "verify_cpu.S"
 
 #ifdef CONFIG_HOTPLUG_CPU
 /*
@@ -521,3 +529,4 @@ ENTRY(phys_base)
 	__PAGE_ALIGNED_BSS
 NEXT_PAGE(empty_zero_page)
 	.skip PAGE_SIZE
+

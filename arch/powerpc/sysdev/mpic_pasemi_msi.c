@@ -16,7 +16,6 @@
 #undef DEBUG
 
 #include <linux/irq.h>
-#include <linux/bootmem.h>
 #include <linux/msi.h>
 #include <asm/mpic.h>
 #include <asm/prom.h>
@@ -42,7 +41,7 @@ static struct mpic *msi_mpic;
 static void mpic_pasemi_msi_mask_irq(struct irq_data *data)
 {
 	pr_debug("mpic_pasemi_msi_mask_irq %d\n", data->irq);
-	mask_msi_irq(data);
+	pci_msi_mask_irq(data);
 	mpic_mask_irq(data);
 }
 
@@ -50,7 +49,7 @@ static void mpic_pasemi_msi_unmask_irq(struct irq_data *data)
 {
 	pr_debug("mpic_pasemi_msi_unmask_irq %d\n", data->irq);
 	mpic_unmask_irq(data);
-	unmask_msi_irq(data);
+	pci_msi_unmask_irq(data);
 }
 
 static struct irq_chip mpic_pasemi_msi_chip = {
@@ -63,17 +62,10 @@ static struct irq_chip mpic_pasemi_msi_chip = {
 	.name			= "PASEMI-MSI",
 };
 
-static int pasemi_msi_check_device(struct pci_dev *pdev, int nvec, int type)
-{
-	if (type == PCI_CAP_ID_MSIX)
-		pr_debug("pasemi_msi: MSI-X untested, trying anyway\n");
-
-	return 0;
-}
-
 static void pasemi_msi_teardown_msi_irqs(struct pci_dev *pdev)
 {
 	struct msi_desc *entry;
+	irq_hw_number_t hwirq;
 
 	pr_debug("pasemi_msi_teardown_msi_irqs, pdev %p\n", pdev);
 
@@ -81,10 +73,11 @@ static void pasemi_msi_teardown_msi_irqs(struct pci_dev *pdev)
 		if (entry->irq == NO_IRQ)
 			continue;
 
+		hwirq = virq_to_hw(entry->irq);
 		irq_set_msi_desc(entry->irq, NULL);
-		msi_bitmap_free_hwirqs(&msi_mpic->msi_bitmap,
-				       virq_to_hw(entry->irq), ALLOC_CHUNK);
 		irq_dispose_mapping(entry->irq);
+		msi_bitmap_free_hwirqs(&msi_mpic->msi_bitmap,
+				       hwirq, ALLOC_CHUNK);
 	}
 
 	return;
@@ -97,6 +90,8 @@ static int pasemi_msi_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 	struct msi_msg msg;
 	int hwirq;
 
+	if (type == PCI_CAP_ID_MSIX)
+		pr_debug("pasemi_msi: MSI-X untested, trying anyway\n");
 	pr_debug("pasemi_msi_setup_msi_irqs, pdev %p nvec %d type %d\n",
 		 pdev, nvec, type);
 
@@ -142,7 +137,7 @@ static int pasemi_msi_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 		 * register to generate MSI [512...1023]
 		 */
 		msg.data = hwirq-0x200;
-		write_msi_msg(virq, &msg);
+		pci_write_msi_msg(virq, &msg);
 	}
 
 	return 0;
@@ -169,7 +164,6 @@ int mpic_pasemi_msi_init(struct mpic *mpic)
 	WARN_ON(ppc_md.setup_msi_irqs);
 	ppc_md.setup_msi_irqs = pasemi_msi_setup_msi_irqs;
 	ppc_md.teardown_msi_irqs = pasemi_msi_teardown_msi_irqs;
-	ppc_md.msi_check_device = pasemi_msi_check_device;
 
 	return 0;
 }

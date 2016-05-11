@@ -349,8 +349,6 @@ static int sx8654_probe(struct i2c_client *client,
 	struct input_dev *input;
 	int error;
 
-	printk("= sx8654_probe =\n");
-
 	if (!i2c_check_functionality(client->adapter,
 				     I2C_FUNC_SMBUS_READ_WORD_DATA))
 		return -ENXIO;
@@ -445,17 +443,6 @@ static int sx8654_probe(struct i2c_client *client,
 		return error;
 
 	i2c_set_clientdata(client, sx8654);
-
-	printk("touchrate-coding: \t0x%02x\n", (i2c_smbus_read_byte_data(client,
-					  CMD_READ_REGISTER | I2C_REG_TOUCH0)) & 0xf0);
-	printk("powdly-coding: \t\t0x%02x\n", (i2c_smbus_read_byte_data(client,
-					  CMD_READ_REGISTER | I2C_REG_TOUCH0)) & 0x0f);
-	printk("filt-coding: \t\t0x%02x\n", (i2c_smbus_read_byte_data(client,
-					  CMD_READ_REGISTER | I2C_REG_TOUCH1)) & 0x03);
-	printk("setdly-coding: \t\t0x%02x\n", (i2c_smbus_read_byte_data(client,
-					  CMD_READ_REGISTER | I2C_REG_TOUCH2)) & 0x0f);
-
-	printk("= probe over =\n");
 
 	return 0;
 }

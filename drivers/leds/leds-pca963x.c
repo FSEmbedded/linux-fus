@@ -12,7 +12,7 @@
  * directory of this archive for more details.
  *
  * LED driver for the PCA9633 I2C LED driver (7-bit slave address 0x62)
- * LED driver for the PCA9634 I2C LED driver (7-bit slave address set by hw.)
+ * LED driver for the PCA9634/5 I2C LED driver (7-bit slave address set by hw.)
  *
  * Note that hardware blinking violates the leds infrastructure driver
  * interface since the hardware only supports blinking all LEDs with the
@@ -52,6 +52,7 @@
 enum pca963x_type {
 	pca9633,
 	pca9634,
+	pca9635,
 };
 
 struct pca963x_chipdef {
@@ -83,6 +84,15 @@ static struct pca963x_chipdef pca963x_chipdefs[] = {
 		.ledout_base	= 0xc,
 		.n_leds		= 8,
 	},
+	[pca9635] = {
+		.mode1		= 0x0,
+		.mode2		= 0x1,
+		.pwmout_base	= 0x2,
+		.grppwm		= 0x12,
+		.grpfreq	= 0x13,
+		.ledout_base	= 0x14,
+		.n_leds		= 16,
+	},
 };
 
 /* Total blink period in milliseconds */
@@ -93,6 +103,7 @@ static const struct i2c_device_id pca963x_id[] = {
 	{ "pca9632", pca9633 },
 	{ "pca9633", pca9633 },
 	{ "pca9634", pca9634 },
+	{ "pca9635", pca9635 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, pca963x_id);
@@ -390,6 +401,7 @@ static const struct of_device_id of_pca963x_match[] = {
 	{ .compatible = "nxp,pca9632", },
 	{ .compatible = "nxp,pca9633", },
 	{ .compatible = "nxp,pca9634", },
+	{ .compatible = "nxp,pca9635", },
 	{},
 };
 #else

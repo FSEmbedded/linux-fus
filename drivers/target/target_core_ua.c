@@ -48,7 +48,7 @@ target_scsi3_ua_check(struct se_cmd *cmd)
 		return 0;
 
 	nacl = sess->se_node_acl;
-	if (!nacl)
+	if (!nacl || !nacl->device_list)
 		return 0;
 
 	deve = nacl->device_list[cmd->orig_fe_lun];
@@ -90,7 +90,7 @@ int core_scsi3_ua_allocate(
 	/*
 	 * PASSTHROUGH OPS
 	 */
-	if (!nacl)
+	if (!nacl || !nacl->device_list)
 		return -EINVAL;
 
 	ua = kmem_cache_zalloc(se_ua_cache, GFP_ATOMIC);
@@ -161,8 +161,7 @@ int core_scsi3_ua_allocate(
 		spin_unlock(&deve->ua_lock);
 		spin_unlock_irq(&nacl->device_list_lock);
 
-		atomic_inc(&deve->ua_count);
-		smp_mb__after_atomic_inc();
+		atomic_inc_mb(&deve->ua_count);
 		return 0;
 	}
 	list_add_tail(&ua->ua_nacl_list, &deve->ua_list);
@@ -174,8 +173,7 @@ int core_scsi3_ua_allocate(
 		nacl->se_tpg->se_tpg_tfo->get_fabric_name(), unpacked_lun,
 		asc, ascq);
 
-	atomic_inc(&deve->ua_count);
-	smp_mb__after_atomic_inc();
+	atomic_inc_mb(&deve->ua_count);
 	return 0;
 }
 
@@ -189,8 +187,7 @@ void core_scsi3_ua_release_all(
 		list_del(&ua->ua_nacl_list);
 		kmem_cache_free(se_ua_cache, ua);
 
-		atomic_dec(&deve->ua_count);
-		smp_mb__after_atomic_dec();
+		atomic_dec_mb(&deve->ua_count);
 	}
 	spin_unlock(&deve->ua_lock);
 }
@@ -211,7 +208,7 @@ void core_scsi3_ua_for_check_condition(
 		return;
 
 	nacl = sess->se_node_acl;
-	if (!nacl)
+	if (!nacl || !nacl->device_list)
 		return;
 
 	spin_lock_irq(&nacl->device_list_lock);
@@ -250,8 +247,7 @@ void core_scsi3_ua_for_check_condition(
 		list_del(&ua->ua_nacl_list);
 		kmem_cache_free(se_ua_cache, ua);
 
-		atomic_dec(&deve->ua_count);
-		smp_mb__after_atomic_dec();
+		atomic_dec_mb(&deve->ua_count);
 	}
 	spin_unlock(&deve->ua_lock);
 	spin_unlock_irq(&nacl->device_list_lock);
@@ -280,7 +276,7 @@ int core_scsi3_ua_clear_for_request_sense(
 		return -EINVAL;
 
 	nacl = sess->se_node_acl;
-	if (!nacl)
+	if (!nacl || !nacl->device_list)
 		return -EINVAL;
 
 	spin_lock_irq(&nacl->device_list_lock);
@@ -309,8 +305,7 @@ int core_scsi3_ua_clear_for_request_sense(
 		list_del(&ua->ua_nacl_list);
 		kmem_cache_free(se_ua_cache, ua);
 
-		atomic_dec(&deve->ua_count);
-		smp_mb__after_atomic_dec();
+		atomic_dec_mb(&deve->ua_count);
 	}
 	spin_unlock(&deve->ua_lock);
 	spin_unlock_irq(&nacl->device_list_lock);

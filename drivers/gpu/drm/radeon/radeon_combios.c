@@ -116,7 +116,7 @@ enum radeon_combios_connector {
 	CONNECTOR_UNSUPPORTED_LEGACY
 };
 
-const int legacy_connector_convert[] = {
+static const int legacy_connector_convert[] = {
 	DRM_MODE_CONNECTOR_Unknown,
 	DRM_MODE_CONNECTOR_DVID,
 	DRM_MODE_CONNECTOR_VGA,
@@ -3385,6 +3385,14 @@ void radeon_combios_asic_init(struct drm_device *dev)
 	if (rdev->family == CHIP_RS480 &&
 	    rdev->pdev->subsystem_vendor == 0x103c &&
 	    rdev->pdev->subsystem_device == 0x30ae)
+		return;
+
+	/* quirk for rs4xx HP Compaq dc5750 Small Form Factor to make it resume
+	 * - it hangs on resume inside the dynclk 1 table.
+	 */
+	if (rdev->family == CHIP_RS480 &&
+	    rdev->pdev->subsystem_vendor == 0x103c &&
+	    rdev->pdev->subsystem_device == 0x280a)
 		return;
 
 	/* DYN CLK 1 */

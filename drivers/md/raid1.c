@@ -494,7 +494,6 @@ static void raid1_end_write_request(struct bio *bio, int error)
 		bio_put(to_put);
 }
 
-
 /*
  * This routine returns the disk from which the requested read should
  * be done. There is a per-array 'next expected sequential IO' sector
@@ -540,7 +539,13 @@ static int read_balance(struct r1conf *conf, struct r1bio *r1_bio, int *max_sect
 	has_nonrot_disk = 0;
 	choose_next_idle = 0;
 
-	choose_first = (conf->mddev->recovery_cp < this_sector + sectors);
+	if ((conf->mddev->recovery_cp < this_sector + sectors) ||
+	    (mddev_is_clustered(conf->mddev) &&
+	    md_cluster_ops->area_resyncing(conf->mddev, this_sector,
+		    this_sector + sectors)))
+		choose_first = 1;
+	else
+		choose_first = 0;
 
 	for (disk = 0 ; disk < conf->raid_disks * 2 ; disk++) {
 		sector_t dist;
@@ -703,11 +708,10 @@ static int read_balance(struct r1conf *conf, struct r1bio *r1_bio, int *max_sect
 	return best_disk;
 }
 
-static int raid1_mergeable_bvec(struct request_queue *q,
+static int raid1_mergeable_bvec(struct mddev *mddev,
 				struct bvec_merge_data *bvm,
 				struct bio_vec *biovec)
 {
-	struct mddev *mddev = q->queuedata;
 	struct r1conf *conf = mddev->private;
 	sector_t sector = bvm->bi_sector + get_start_sect(bvm->bi_bdev);
 	int max = biovec->bv_len;
@@ -736,7 +740,7 @@ static int raid1_mergeable_bvec(struct request_queue *q,
 
 }
 
-int md_raid1_congested(struct mddev *mddev, int bits)
+static int raid1_congested(struct mddev *mddev, int bits)
 {
 	struct r1conf *conf = mddev->private;
 	int i, ret = 0;
@@ -764,15 +768,6 @@ int md_raid1_congested(struct mddev *mddev, int bits)
 	}
 	rcu_read_unlock();
 	return ret;
-}
-EXPORT_SYMBOL_GPL(md_raid1_congested);
-
-static int raid1_congested(void *data, int bits)
-{
-	struct mddev *mddev = data;
-
-	return mddev_congested(mddev, bits) ||
-		md_raid1_congested(mddev, bits);
 }
 
 static void flush_pending_writes(struct r1conf *conf)
@@ -902,18 +897,18 @@ static sector_t wait_barrier(struct r1conf *conf, struct bio *bio)
 		 * However if there are already pending
 		 * requests (preventing the barrier from
 		 * rising completely), and the
-		 * pre-process bio queue isn't empty,
+		 * per-process bio queue isn't empty,
 		 * then don't wait, as we need to empty
-		 * that queue to get the nr_pending
-		 * count down.
+		 * that queue to allow conf->start_next_window
+		 * to increase.
 		 */
 		wait_event_lock_irq(conf->wait_barrier,
 				    !conf->array_frozen &&
 				    (!conf->barrier ||
-				    ((conf->start_next_window <
-				      conf->next_resync + RESYNC_SECTORS) &&
-				     current->bio_list &&
-				     !bio_list_empty(current->bio_list))),
+				     ((conf->start_next_window <
+				       conf->next_resync + RESYNC_SECTORS) &&
+				      current->bio_list &&
+				      !bio_list_empty(current->bio_list))),
 				    conf->resync_lock);
 		conf->nr_waiting--;
 	}
@@ -1002,8 +997,7 @@ static void unfreeze_array(struct r1conf *conf)
 	spin_unlock_irq(&conf->resync_lock);
 }
 
-
-/* duplicate the data pages for behind I/O 
+/* duplicate the data pages for behind I/O
  */
 static void alloc_behind_pages(struct bio *bio, struct r1bio *r1_bio)
 {
@@ -1114,8 +1108,10 @@ static void make_request(struct mddev *mddev, struct bio * bio)
 	md_write_start(mddev, bio); /* wait on superblock update early */
 
 	if (bio_data_dir(bio) == WRITE &&
-	    bio_end_sector(bio) > mddev->suspend_lo &&
-	    bio->bi_iter.bi_sector < mddev->suspend_hi) {
+	    ((bio_end_sector(bio) > mddev->suspend_lo &&
+	    bio->bi_iter.bi_sector < mddev->suspend_hi) ||
+	    (mddev_is_clustered(mddev) &&
+	     md_cluster_ops->area_resyncing(mddev, bio->bi_iter.bi_sector, bio_end_sector(bio))))) {
 		/* As the suspend_* range is controlled by
 		 * userspace, we want an interruptible
 		 * wait.
@@ -1126,7 +1122,10 @@ static void make_request(struct mddev *mddev, struct bio * bio)
 			prepare_to_wait(&conf->wait_barrier,
 					&w, TASK_INTERRUPTIBLE);
 			if (bio_end_sector(bio) <= mddev->suspend_lo ||
-			    bio->bi_iter.bi_sector >= mddev->suspend_hi)
+			    bio->bi_iter.bi_sector >= mddev->suspend_hi ||
+			    (mddev_is_clustered(mddev) &&
+			     !md_cluster_ops->area_resyncing(mddev,
+				     bio->bi_iter.bi_sector, bio_end_sector(bio))))
 				break;
 			schedule();
 		}
@@ -1472,7 +1471,6 @@ static void status(struct seq_file *seq, struct mddev *mddev)
 	seq_printf(seq, "]");
 }
 
-
 static void error(struct mddev *mddev, struct md_rdev *rdev)
 {
 	char b[BDEVNAME_SIZE];
@@ -1566,7 +1564,7 @@ static int raid1_spare_active(struct mddev *mddev)
 	unsigned long flags;
 
 	/*
-	 * Find all failed disks within the RAID1 configuration 
+	 * Find all failed disks within the RAID1 configuration
 	 * and mark them readable.
 	 * Called under mddev lock, so rcu protection not needed.
 	 * device_lock used to avoid races with raid1_end_read_request
@@ -1577,6 +1575,7 @@ static int raid1_spare_active(struct mddev *mddev)
 		struct md_rdev *rdev = conf->mirrors[i].rdev;
 		struct md_rdev *repl = conf->mirrors[conf->raid_disks + i].rdev;
 		if (repl
+		    && !test_bit(Candidate, &repl->flags)
 		    && repl->recovery_offset == MaxSector
 		    && !test_bit(Faulty, &repl->flags)
 		    && !test_and_set_bit(In_sync, &repl->flags)) {
@@ -1608,7 +1607,6 @@ static int raid1_spare_active(struct mddev *mddev)
 	print_conf(conf);
 	return count;
 }
-
 
 static int raid1_add_disk(struct mddev *mddev, struct md_rdev *rdev)
 {
@@ -1737,7 +1735,6 @@ abort:
 	print_conf(conf);
 	return err;
 }
-
 
 static void end_sync_read(struct bio *bio, int error)
 {
@@ -1950,7 +1947,7 @@ static int fix_sync_read_error(struct r1bio *r1_bio)
 	return 1;
 }
 
-static int process_checks(struct r1bio *r1_bio)
+static void process_checks(struct r1bio *r1_bio)
 {
 	/* We have read all readable devices.  If we haven't
 	 * got the block, then there is no hope left.
@@ -2042,7 +2039,6 @@ static int process_checks(struct r1bio *r1_bio)
 
 		bio_copy_data(sbio, pbio);
 	}
-	return 0;
 }
 
 static void sync_request_write(struct mddev *mddev, struct r1bio *r1_bio)
@@ -2060,8 +2056,8 @@ static void sync_request_write(struct mddev *mddev, struct r1bio *r1_bio)
 			return;
 
 	if (test_bit(MD_RECOVERY_REQUESTED, &mddev->recovery))
-		if (process_checks(r1_bio) < 0)
-			return;
+		process_checks(r1_bio);
+
 	/*
 	 * schedule writes
 	 */
@@ -2215,7 +2211,8 @@ static int narrow_write_error(struct r1bio *r1_bio, int i)
 	if (rdev->badblocks.shift < 0)
 		return 0;
 
-	block_sectors = 1 << rdev->badblocks.shift;
+	block_sectors = roundup(1 << rdev->badblocks.shift,
+				bdev_logical_block_size(rdev->bdev) >> 9);
 	sector = r1_bio->sector;
 	sectors = ((sector + block_sectors)
 		   & ~(sector_t)(block_sectors - 1))
@@ -2251,7 +2248,7 @@ static int narrow_write_error(struct r1bio *r1_bio, int i)
 		bio_trim(wbio, sector - r1_bio->sector, sectors);
 		wbio->bi_iter.bi_sector += rdev->data_offset;
 		wbio->bi_bdev = rdev->bdev;
-		if (submit_bio_wait(WRITE, wbio) == 0)
+		if (submit_bio_wait(WRITE, wbio) < 0)
 			/* failure! */
 			ok = rdev_set_badblocks(rdev, sector,
 						sectors, 0)
@@ -2461,7 +2458,6 @@ static void raid1d(struct md_thread *thread)
 	blk_finish_plug(&plug);
 }
 
-
 static int init_resync(struct r1conf *conf)
 {
 	int buffs;
@@ -2486,7 +2482,7 @@ static int init_resync(struct r1conf *conf)
  * that can be installed to exclude normal IO requests.
  */
 
-static sector_t sync_request(struct mddev *mddev, sector_t sector_nr, int *skipped, int go_faster)
+static sector_t sync_request(struct mddev *mddev, sector_t sector_nr, int *skipped)
 {
 	struct r1conf *conf = mddev->private;
 	struct r1bio *r1_bio;
@@ -2539,13 +2535,6 @@ static sector_t sync_request(struct mddev *mddev, sector_t sector_nr, int *skipp
 		*skipped = 1;
 		return sync_blocks;
 	}
-	/*
-	 * If there is non-resync activity waiting for a turn,
-	 * and resync is going fast enough,
-	 * then let it though before starting on this new sync request.
-	 */
-	if (!go_faster && conf->nr_waiting)
-		msleep_interruptible(1000);
 
 	bitmap_cond_end_sync(mddev->bitmap, sector_nr);
 	r1_bio = mempool_alloc(conf->r1buf_pool, GFP_NOIO);
@@ -2725,7 +2714,7 @@ static sector_t sync_request(struct mddev *mddev, sector_t sector_nr, int *skipp
 						/* remove last page from this bio */
 						bio->bi_vcnt--;
 						bio->bi_iter.bi_size -= len;
-						bio->bi_flags &= ~(1<< BIO_SEG_VALID);
+						__clear_bit(BIO_SEG_VALID, &bio->bi_flags);
 					}
 					goto bio_full;
 				}
@@ -2892,7 +2881,7 @@ static struct r1conf *setup_conf(struct mddev *mddev)
 	return ERR_PTR(err);
 }
 
-static int stop(struct mddev *mddev);
+static void raid1_free(struct mddev *mddev, void *priv);
 static int run(struct mddev *mddev)
 {
 	struct r1conf *conf;
@@ -2914,7 +2903,7 @@ static int run(struct mddev *mddev)
 	/*
 	 * copy the already verified devices into our private RAID1
 	 * bookkeeping area. [whatever we allocate in run(),
-	 * should be freed in stop()]
+	 * should be freed in raid1_free()]
 	 */
 	if (mddev->private == NULL)
 		conf = setup_conf(mddev);
@@ -2950,9 +2939,9 @@ static int run(struct mddev *mddev)
 		printk(KERN_NOTICE "md/raid1:%s: not clean"
 		       " -- starting background reconstruction\n",
 		       mdname(mddev));
-	printk(KERN_INFO 
+	printk(KERN_INFO
 		"md/raid1:%s: active with %d out of %d mirrors\n",
-		mdname(mddev), mddev->raid_disks - mddev->degraded, 
+		mdname(mddev), mddev->raid_disks - mddev->degraded,
 		mddev->raid_disks);
 
 	/*
@@ -2965,10 +2954,6 @@ static int run(struct mddev *mddev)
 	md_set_array_sectors(mddev, raid1_size(mddev, 0, 0));
 
 	if (mddev->queue) {
-		mddev->queue->backing_dev_info.congested_fn = raid1_congested;
-		mddev->queue->backing_dev_info.congested_data = mddev;
-		blk_queue_merge_bvec(mddev->queue, raid1_mergeable_bvec);
-
 		if (discard_supported)
 			queue_flag_set_unlocked(QUEUE_FLAG_DISCARD,
 						mddev->queue);
@@ -2978,37 +2963,23 @@ static int run(struct mddev *mddev)
 	}
 
 	ret =  md_integrity_register(mddev);
-	if (ret)
-		stop(mddev);
+	if (ret) {
+		md_unregister_thread(&mddev->thread);
+		raid1_free(mddev, conf);
+	}
 	return ret;
 }
 
-static int stop(struct mddev *mddev)
+static void raid1_free(struct mddev *mddev, void *priv)
 {
-	struct r1conf *conf = mddev->private;
-	struct bitmap *bitmap = mddev->bitmap;
+	struct r1conf *conf = priv;
 
-	/* wait for behind writes to complete */
-	if (bitmap && atomic_read(&bitmap->behind_writes) > 0) {
-		printk(KERN_INFO "md/raid1:%s: behind writes in progress - waiting to stop.\n",
-		       mdname(mddev));
-		/* need to kick something here to make sure I/O goes? */
-		wait_event(bitmap->behind_wait,
-			   atomic_read(&bitmap->behind_writes) == 0);
-	}
-
-	freeze_array(conf, 0);
-	unfreeze_array(conf);
-
-	md_unregister_thread(&mddev->thread);
 	if (conf->r1bio_pool)
 		mempool_destroy(conf->r1bio_pool);
 	kfree(conf->mirrors);
 	safe_put_page(conf->tmppage);
 	kfree(conf->poolinfo);
 	kfree(conf);
-	mddev->private = NULL;
-	return 0;
 }
 
 static int raid1_resize(struct mddev *mddev, sector_t sectors)
@@ -3191,7 +3162,7 @@ static struct md_personality raid1_personality =
 	.owner		= THIS_MODULE,
 	.make_request	= make_request,
 	.run		= run,
-	.stop		= stop,
+	.free		= raid1_free,
 	.status		= status,
 	.error_handler	= error,
 	.hot_add_disk	= raid1_add_disk,
@@ -3203,6 +3174,8 @@ static struct md_personality raid1_personality =
 	.check_reshape	= raid1_reshape,
 	.quiesce	= raid1_quiesce,
 	.takeover	= raid1_takeover,
+	.congested	= raid1_congested,
+	.mergeable_bvec	= raid1_mergeable_bvec,
 };
 
 static int __init raid_init(void)

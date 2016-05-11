@@ -33,7 +33,6 @@
 #include <scsi/scsi_transport.h>
 #include <scsi/scsi_transport_srp.h>
 #include "scsi_priv.h"
-#include "scsi_transport_srp_internal.h"
 
 struct srp_host_attrs {
 	atomic_t next_port_id;
@@ -757,18 +756,6 @@ struct srp_rport *srp_rport_add(struct Scsi_Host *shost,
 		return ERR_PTR(ret);
 	}
 
-	if (shost->active_mode & MODE_TARGET &&
-	    ids->roles == SRP_RPORT_ROLE_INITIATOR) {
-		ret = srp_tgt_it_nexus_create(shost, (unsigned long)rport,
-					      rport->port_id);
-		if (ret) {
-			device_del(&rport->dev);
-			transport_destroy_device(&rport->dev);
-			put_device(&rport->dev);
-			return ERR_PTR(ret);
-		}
-	}
-
 	transport_add_device(&rport->dev);
 	transport_configure_device(&rport->dev);
 
@@ -785,11 +772,6 @@ EXPORT_SYMBOL_GPL(srp_rport_add);
 void srp_rport_del(struct srp_rport *rport)
 {
 	struct device *dev = &rport->dev;
-	struct Scsi_Host *shost = dev_to_shost(dev->parent);
-
-	if (shost->active_mode & MODE_TARGET &&
-	    rport->roles == SRP_RPORT_ROLE_INITIATOR)
-		srp_tgt_it_nexus_destroy(shost, (unsigned long)rport);
 
 	transport_remove_device(dev);
 	device_del(dev);
@@ -821,6 +803,7 @@ EXPORT_SYMBOL_GPL(srp_remove_host);
 
 /**
  * srp_stop_rport_timers - stop the transport layer recovery timers
+ * @rport: SRP remote port for which to stop the timers.
  *
  * Must be called after srp_remove_host() and scsi_remove_host(). The caller
  * must hold a reference on the rport (rport->dev) and on the SCSI host

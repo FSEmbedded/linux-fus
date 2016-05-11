@@ -43,8 +43,6 @@
 
 #include "internal.h"
 
-#define PREFIX "ACPI: "
-
 #define _COMPONENT			ACPI_PCI_COMPONENT
 ACPI_MODULE_NAME("pci_link");
 #define ACPI_PCI_LINK_CLASS		"pci_irq_routing"
@@ -822,6 +820,22 @@ void acpi_penalize_isa_irq(int irq, int active)
 	if (irq >= 0 && irq < ARRAY_SIZE(acpi_irq_penalty)) {
 		if (active)
 			acpi_irq_penalty[irq] += PIRQ_PENALTY_ISA_USED;
+		else
+			acpi_irq_penalty[irq] += PIRQ_PENALTY_PCI_USING;
+	}
+}
+
+/*
+ * Penalize IRQ used by ACPI SCI. If ACPI SCI pin attributes conflict with
+ * PCI IRQ attributes, mark ACPI SCI as ISA_ALWAYS so it won't be use for
+ * PCI IRQs.
+ */
+void acpi_penalize_sci_irq(int irq, int trigger, int polarity)
+{
+	if (irq >= 0 && irq < ARRAY_SIZE(acpi_irq_penalty)) {
+		if (trigger != ACPI_MADT_TRIGGER_LEVEL ||
+		    polarity != ACPI_MADT_POLARITY_ACTIVE_LOW)
+			acpi_irq_penalty[irq] += PIRQ_PENALTY_ISA_ALWAYS;
 		else
 			acpi_irq_penalty[irq] += PIRQ_PENALTY_PCI_USING;
 	}

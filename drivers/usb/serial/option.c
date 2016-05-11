@@ -162,6 +162,7 @@ static void option_instat_callback(struct urb *urb);
 #define NOVATELWIRELESS_PRODUCT_HSPA_EMBEDDED_HIGHSPEED	0x9001
 #define NOVATELWIRELESS_PRODUCT_E362		0x9010
 #define NOVATELWIRELESS_PRODUCT_E371		0x9011
+#define NOVATELWIRELESS_PRODUCT_U620L		0x9022
 #define NOVATELWIRELESS_PRODUCT_G2		0xA010
 #define NOVATELWIRELESS_PRODUCT_MC551		0xB001
 
@@ -234,6 +235,8 @@ static void option_instat_callback(struct urb *urb);
 
 #define QUALCOMM_VENDOR_ID			0x05C6
 
+#define SIERRA_VENDOR_ID			0x1199
+
 #define CMOTECH_VENDOR_ID			0x16d8
 #define CMOTECH_PRODUCT_6001			0x6001
 #define CMOTECH_PRODUCT_CMU_300			0x6002
@@ -276,7 +279,12 @@ static void option_instat_callback(struct urb *urb);
 #define ZTE_PRODUCT_MF622			0x0001
 #define ZTE_PRODUCT_MF628			0x0015
 #define ZTE_PRODUCT_MF626			0x0031
+#define ZTE_PRODUCT_ZM8620_X			0x0396
+#define ZTE_PRODUCT_ME3620_MBIM			0x0426
+#define ZTE_PRODUCT_ME3620_X			0x1432
+#define ZTE_PRODUCT_ME3620_L			0x1433
 #define ZTE_PRODUCT_AC2726			0xfff1
+#define ZTE_PRODUCT_MG880			0xfffd
 #define ZTE_PRODUCT_CDMA_TECH			0xfffe
 #define ZTE_PRODUCT_AC8710T			0xffff
 #define ZTE_PRODUCT_MC2718			0xffe8
@@ -350,6 +358,7 @@ static void option_instat_callback(struct urb *urb);
 /* This is the 4G XS Stick W14 a.k.a. Mobilcom Debitel Surf-Stick *
  * It seems to contain a Qualcomm QSC6240/6290 chipset            */
 #define FOUR_G_SYSTEMS_PRODUCT_W14		0x9603
+#define FOUR_G_SYSTEMS_PRODUCT_W100		0x9b01
 
 /* iBall 3.5G connect wireless modem */
 #define IBALL_3_5G_CONNECT			0x9605
@@ -504,23 +513,20 @@ static void option_instat_callback(struct urb *urb);
 #define VIATELECOM_VENDOR_ID			0x15eb
 #define VIATELECOM_PRODUCT_CDS7			0x0001
 
-/* some devices interfaces need special handling due to a number of reasons */
-enum option_blacklist_reason {
-		OPTION_BLACKLIST_NONE = 0,
-		OPTION_BLACKLIST_SENDSETUP = 1,
-		OPTION_BLACKLIST_RESERVED_IF = 2
-};
-
-#define MAX_BL_NUM  8
 struct option_blacklist_info {
-	/* bitfield of interface numbers for OPTION_BLACKLIST_SENDSETUP */
+	/* bitmask of interface numbers blacklisted for send_setup */
 	const unsigned long sendsetup;
-	/* bitfield of interface numbers for OPTION_BLACKLIST_RESERVED_IF */
+	/* bitmask of interface numbers that are reserved */
 	const unsigned long reserved;
 };
 
 static const struct option_blacklist_info four_g_w14_blacklist = {
 	.sendsetup = BIT(0) | BIT(1),
+};
+
+static const struct option_blacklist_info four_g_w100_blacklist = {
+	.sendsetup = BIT(1) | BIT(2),
+	.reserved = BIT(3),
 };
 
 static const struct option_blacklist_info alcatel_x200_blacklist = {
@@ -547,6 +553,18 @@ static const struct option_blacklist_info zte_mc2718_z_blacklist = {
 
 static const struct option_blacklist_info zte_mc2716_z_blacklist = {
 	.sendsetup = BIT(1) | BIT(2) | BIT(3),
+};
+
+static const struct option_blacklist_info zte_me3620_mbim_blacklist = {
+	.reserved = BIT(2) | BIT(3) | BIT(4),
+};
+
+static const struct option_blacklist_info zte_me3620_xl_blacklist = {
+	.reserved = BIT(3) | BIT(4) | BIT(5),
+};
+
+static const struct option_blacklist_info zte_zm8620_x_blacklist = {
+	.reserved = BIT(3) | BIT(4) | BIT(5),
 };
 
 static const struct option_blacklist_info huawei_cdc12_blacklist = {
@@ -598,6 +616,11 @@ static const struct option_blacklist_info telit_le910_blacklist = {
 static const struct option_blacklist_info telit_le920_blacklist = {
 	.sendsetup = BIT(0),
 	.reserved = BIT(1) | BIT(5),
+};
+
+static const struct option_blacklist_info sierra_mc73xx_blacklist = {
+	.sendsetup = BIT(0) | BIT(2),
+	.reserved = BIT(8) | BIT(10) | BIT(11),
 };
 
 static const struct usb_device_id option_ids[] = {
@@ -1044,6 +1067,7 @@ static const struct usb_device_id option_ids[] = {
 	{ USB_DEVICE_AND_INTERFACE_INFO(NOVATELWIRELESS_VENDOR_ID, NOVATELWIRELESS_PRODUCT_MC551, 0xff, 0xff, 0xff) },
 	{ USB_DEVICE_AND_INTERFACE_INFO(NOVATELWIRELESS_VENDOR_ID, NOVATELWIRELESS_PRODUCT_E362, 0xff, 0xff, 0xff) },
 	{ USB_DEVICE_AND_INTERFACE_INFO(NOVATELWIRELESS_VENDOR_ID, NOVATELWIRELESS_PRODUCT_E371, 0xff, 0xff, 0xff) },
+	{ USB_DEVICE_AND_INTERFACE_INFO(NOVATELWIRELESS_VENDOR_ID, NOVATELWIRELESS_PRODUCT_U620L, 0xff, 0x00, 0x00) },
 
 	{ USB_DEVICE(AMOI_VENDOR_ID, AMOI_PRODUCT_H01) },
 	{ USB_DEVICE(AMOI_VENDOR_ID, AMOI_PRODUCT_H01A) },
@@ -1097,6 +1121,10 @@ static const struct usb_device_id option_ids[] = {
 	{ USB_DEVICE(QUALCOMM_VENDOR_ID, 0x6613)}, /* Onda H600/ZTE MF330 */
 	{ USB_DEVICE(QUALCOMM_VENDOR_ID, 0x0023)}, /* ONYX 3G device */
 	{ USB_DEVICE(QUALCOMM_VENDOR_ID, 0x9000)}, /* SIMCom SIM5218 */
+	{ USB_DEVICE_INTERFACE_CLASS(SIERRA_VENDOR_ID, 0x68c0, 0xff),
+	  .driver_info = (kernel_ulong_t)&sierra_mc73xx_blacklist }, /* MC73xx */
+	{ USB_DEVICE_INTERFACE_CLASS(SIERRA_VENDOR_ID, 0x9041, 0xff),
+	  .driver_info = (kernel_ulong_t)&sierra_mc73xx_blacklist }, /* MC7305/MC7355 */
 	{ USB_DEVICE(CMOTECH_VENDOR_ID, CMOTECH_PRODUCT_6001) },
 	{ USB_DEVICE(CMOTECH_VENDOR_ID, CMOTECH_PRODUCT_CMU_300) },
 	{ USB_DEVICE(CMOTECH_VENDOR_ID, CMOTECH_PRODUCT_6003),
@@ -1569,7 +1597,15 @@ static const struct usb_device_id option_ids[] = {
 	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, 0xff92, 0xff, 0xff, 0xff) },
 	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, 0xff93, 0xff, 0xff, 0xff) },
 	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, 0xff94, 0xff, 0xff, 0xff) },
-
+	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, 0xffec, 0xff, 0xff, 0xff) },
+	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, 0xffee, 0xff, 0xff, 0xff) },
+	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, 0xfff6, 0xff, 0xff, 0xff) },
+	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, 0xfff7, 0xff, 0xff, 0xff) },
+	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, 0xfff8, 0xff, 0xff, 0xff) },
+	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, 0xfff9, 0xff, 0xff, 0xff) },
+	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, 0xfffb, 0xff, 0xff, 0xff) },
+	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, 0xfffc, 0xff, 0xff, 0xff) },
+	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, ZTE_PRODUCT_MG880, 0xff, 0xff, 0xff) },
 	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, ZTE_PRODUCT_CDMA_TECH, 0xff, 0xff, 0xff) },
 	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, ZTE_PRODUCT_AC2726, 0xff, 0xff, 0xff) },
 	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, ZTE_PRODUCT_AC8710T, 0xff, 0xff, 0xff) },
@@ -1579,6 +1615,14 @@ static const struct usb_device_id option_ids[] = {
 	 .driver_info = (kernel_ulong_t)&zte_ad3812_z_blacklist },
 	{ USB_DEVICE_AND_INTERFACE_INFO(ZTE_VENDOR_ID, ZTE_PRODUCT_MC2716, 0xff, 0xff, 0xff),
 	 .driver_info = (kernel_ulong_t)&zte_mc2716_z_blacklist },
+	{ USB_DEVICE(ZTE_VENDOR_ID, ZTE_PRODUCT_ME3620_L),
+	 .driver_info = (kernel_ulong_t)&zte_me3620_xl_blacklist },
+	{ USB_DEVICE(ZTE_VENDOR_ID, ZTE_PRODUCT_ME3620_MBIM),
+	 .driver_info = (kernel_ulong_t)&zte_me3620_mbim_blacklist },
+	{ USB_DEVICE(ZTE_VENDOR_ID, ZTE_PRODUCT_ME3620_X),
+	 .driver_info = (kernel_ulong_t)&zte_me3620_xl_blacklist },
+	{ USB_DEVICE(ZTE_VENDOR_ID, ZTE_PRODUCT_ZM8620_X),
+	 .driver_info = (kernel_ulong_t)&zte_zm8620_x_blacklist },
 	{ USB_VENDOR_AND_INTERFACE_INFO(ZTE_VENDOR_ID, 0xff, 0x02, 0x01) },
 	{ USB_VENDOR_AND_INTERFACE_INFO(ZTE_VENDOR_ID, 0xff, 0x02, 0x05) },
 	{ USB_VENDOR_AND_INTERFACE_INFO(ZTE_VENDOR_ID, 0xff, 0x86, 0x10) },
@@ -1617,6 +1661,9 @@ static const struct usb_device_id option_ids[] = {
 	{ USB_DEVICE(LONGCHEER_VENDOR_ID, FOUR_G_SYSTEMS_PRODUCT_W14),
   	  .driver_info = (kernel_ulong_t)&four_g_w14_blacklist
   	},
+	{ USB_DEVICE(LONGCHEER_VENDOR_ID, FOUR_G_SYSTEMS_PRODUCT_W100),
+	  .driver_info = (kernel_ulong_t)&four_g_w100_blacklist
+	},
 	{ USB_DEVICE_INTERFACE_CLASS(LONGCHEER_VENDOR_ID, SPEEDUP_PRODUCT_SU9800, 0xff) },
 	{ USB_DEVICE(LONGCHEER_VENDOR_ID, ZOOM_PRODUCT_4597) },
 	{ USB_DEVICE(LONGCHEER_VENDOR_ID, IBALL_3_5G_CONNECT) },
@@ -1781,7 +1828,6 @@ static struct usb_serial_driver option_1port_device = {
 	.write             = usb_wwan_write,
 	.write_room        = usb_wwan_write_room,
 	.chars_in_buffer   = usb_wwan_chars_in_buffer,
-	.set_termios       = usb_wwan_set_termios,
 	.tiocmget          = usb_wwan_tiocmget,
 	.tiocmset          = usb_wwan_tiocmset,
 	.ioctl             = usb_wwan_ioctl,
@@ -1806,36 +1852,13 @@ struct option_private {
 
 module_usb_serial_driver(serial_drivers, option_ids);
 
-static bool is_blacklisted(const u8 ifnum, enum option_blacklist_reason reason,
-			   const struct option_blacklist_info *blacklist)
-{
-	unsigned long num;
-	const unsigned long *intf_list;
-
-	if (blacklist) {
-		if (reason == OPTION_BLACKLIST_SENDSETUP)
-			intf_list = &blacklist->sendsetup;
-		else if (reason == OPTION_BLACKLIST_RESERVED_IF)
-			intf_list = &blacklist->reserved;
-		else {
-			BUG_ON(reason);
-			return false;
-		}
-
-		for_each_set_bit(num, intf_list, MAX_BL_NUM + 1) {
-			if (num == ifnum)
-				return true;
-		}
-	}
-	return false;
-}
-
 static int option_probe(struct usb_serial *serial,
 			const struct usb_device_id *id)
 {
 	struct usb_interface_descriptor *iface_desc =
 				&serial->interface->cur_altsetting->desc;
 	struct usb_device_descriptor *dev_desc = &serial->dev->descriptor;
+	const struct option_blacklist_info *blacklist;
 
 	/* Never bind to the CD-Rom emulation interface	*/
 	if (iface_desc->bInterfaceClass == 0x08)
@@ -1846,10 +1869,9 @@ static int option_probe(struct usb_serial *serial,
 	 * the same class/subclass/protocol as the serial interfaces.  Look at
 	 * the Windows driver .INF files for reserved interface numbers.
 	 */
-	if (is_blacklisted(
-		iface_desc->bInterfaceNumber,
-		OPTION_BLACKLIST_RESERVED_IF,
-		(const struct option_blacklist_info *) id->driver_info))
+	blacklist = (void *)id->driver_info;
+	if (blacklist && test_bit(iface_desc->bInterfaceNumber,
+						&blacklist->reserved))
 		return -ENODEV;
 	/*
 	 * Don't bind network interface on Samsung GT-B3730, it is handled by
@@ -1860,8 +1882,8 @@ static int option_probe(struct usb_serial *serial,
 	    iface_desc->bInterfaceClass != USB_CLASS_CDC_DATA)
 		return -ENODEV;
 
-	/* Store device id so we can use it during attach. */
-	usb_set_serial_data(serial, (void *)id);
+	/* Store the blacklist info so we can use it during attach. */
+	usb_set_serial_data(serial, (void *)blacklist);
 
 	return 0;
 }
@@ -1869,7 +1891,7 @@ static int option_probe(struct usb_serial *serial,
 static int option_attach(struct usb_serial *serial)
 {
 	struct usb_interface_descriptor *iface_desc;
-	const struct usb_device_id *id;
+	const struct option_blacklist_info *blacklist;
 	struct usb_wwan_intf_private *data;
 	struct option_private *priv;
 
@@ -1883,16 +1905,16 @@ static int option_attach(struct usb_serial *serial)
 		return -ENOMEM;
 	}
 
-	/* Retrieve device id stored at probe. */
-	id = usb_get_serial_data(serial);
+	/* Retrieve blacklist info stored at probe. */
+	blacklist = usb_get_serial_data(serial);
+
 	iface_desc = &serial->interface->cur_altsetting->desc;
 
 	priv->bInterfaceNumber = iface_desc->bInterfaceNumber;
 	data->private = priv;
 
-	if (!is_blacklisted(iface_desc->bInterfaceNumber,
-			OPTION_BLACKLIST_SENDSETUP,
-			(struct option_blacklist_info *)id->driver_info)) {
+	if (!blacklist || !test_bit(iface_desc->bInterfaceNumber,
+						&blacklist->sendsetup)) {
 		data->send_setup = option_send_setup;
 	}
 	spin_lock_init(&data->susp_lock);
@@ -1958,6 +1980,7 @@ static void option_instat_callback(struct urb *urb)
 
 	/* Resubmit urb so we continue receiving IRQ data */
 	if (status != -ESHUTDOWN && status != -ENOENT) {
+		usb_mark_last_busy(port->serial->dev);
 		err = usb_submit_urb(urb, GFP_ATOMIC);
 		if (err)
 			dev_dbg(dev, "%s: resubmit intr urb failed. (%d)\n",
@@ -1990,7 +2013,7 @@ static int option_send_setup(struct usb_serial_port *port)
 	if (res)
 		return res;
 
-	res = usb_control_msg(serial->dev, usb_rcvctrlpipe(serial->dev, 0),
+	res = usb_control_msg(serial->dev, usb_sndctrlpipe(serial->dev, 0),
 				0x22, 0x21, val, priv->bInterfaceNumber, NULL,
 				0, USB_CTRL_SET_TIMEOUT);
 

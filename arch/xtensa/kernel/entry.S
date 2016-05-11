@@ -568,12 +568,13 @@ user_exception_exit:
 	 *	 (if we have restored WSBITS-1 frames).
 	 */
 
+2:
 #if XCHAL_HAVE_THREADPTR
 	l32i	a3, a1, PT_THREADPTR
 	wur	a3, threadptr
 #endif
 
-2:	j	common_exception_exit
+	j	common_exception_exit
 
 	/* This is the kernel exception exit.
 	 * We avoided to do a MOVSP when we entered the exception, but we
@@ -986,6 +987,8 @@ ENDPROC(fast_syscall_unrecoverable)
  *		j done
  */
 
+#ifdef CONFIG_FAST_SYSCALL_XTENSA
+
 #define TRY								\
 	.section __ex_table, "a";					\
 	.word	66f, 67f;						\
@@ -1049,6 +1052,18 @@ CATCH
 
 ENDPROC(fast_syscall_xtensa)
 
+#else /* CONFIG_FAST_SYSCALL_XTENSA */
+
+ENTRY(fast_syscall_xtensa)
+
+	l32i    a0, a2, PT_AREG0        # restore a0
+	movi	a2, -ENOSYS
+	rfe
+
+ENDPROC(fast_syscall_xtensa)
+
+#endif /* CONFIG_FAST_SYSCALL_XTENSA */
+
 
 /* fast_syscall_spill_registers.
  *
@@ -1063,6 +1078,8 @@ ENDPROC(fast_syscall_xtensa)
  *
  * Note: We assume the stack pointer is EXC_TABLE_KSTK in the fixup handler.
  */
+
+#ifdef CONFIG_FAST_SYSCALL_SPILL_REGISTERS
 
 ENTRY(fast_syscall_spill_registers)
 
@@ -1397,6 +1414,18 @@ ENTRY(fast_syscall_spill_registers_fixup_return)
 	rfde
 
 ENDPROC(fast_syscall_spill_registers_fixup_return)
+
+#else /* CONFIG_FAST_SYSCALL_SPILL_REGISTERS */
+
+ENTRY(fast_syscall_spill_registers)
+
+	l32i    a0, a2, PT_AREG0        # restore a0
+	movi	a2, -ENOSYS
+	rfe
+
+ENDPROC(fast_syscall_spill_registers)
+
+#endif /* CONFIG_FAST_SYSCALL_SPILL_REGISTERS */
 
 #ifdef CONFIG_MMU
 /*
@@ -1792,7 +1821,7 @@ ENDPROC(system_call)
 	mov	a12, a0
 	.endr
 #endif
-	_entry	a1, 48
+	_entry	a1, 16
 #if XCHAL_NUM_AREGS % 12 == 0
 	mov	a8, a8
 #elif XCHAL_NUM_AREGS % 12 == 4
@@ -1816,7 +1845,7 @@ ENDPROC(system_call)
 
 ENTRY(_switch_to)
 
-	entry	a1, 16
+	entry	a1, 48
 
 	mov	a11, a3			# and 'next' (a3)
 
