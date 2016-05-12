@@ -198,8 +198,6 @@ struct wl1271 {
 	int irq;
 	int irq_flags;
 
-	int irq_flags;
-
 	spinlock_t wl_lock;
 
 	enum wlcore_state state;
