@@ -242,6 +242,8 @@
 	efusa9x {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
+				/* VBL_ON on SKIT J3 */
+				MX6SX_PAD_LCD1_DATA19__GPIO3_IO_20 	0x17059
 				/* VLCD_ON */
 				MX6SX_PAD_LCD1_DATA18__GPIO3_IO_19	0x17059
 				/* I2C2_IRQn (SX8655, ext. touch) */
