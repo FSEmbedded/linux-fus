@@ -7,19 +7,23 @@
  */
 
 /dts-v1/;
+/* CHOOSE BOARD REVISION */
 // #define CONFIG_EFUSA9_REV110 // old board revision
 #define CONFIG_EFUSA9_REV121
 
+/* ENABLE DISPLAYS */
 /* The following display config will be converted to Kconfig in the future */
 /* Define this if you have at least one display (D0) */
 #define CONFIG_EFUSA9_D0
+/* Define this if you have a second display (D1) */
+#define CONFIG_EFUSA9_D1
 
+/* CONFIGURE DISPLAY 0 */
 #ifdef CONFIG_EFUSA9_D0
 /* Activate exactly one entry for the type of display D0 */
 #define CONFIG_EFUSA9_D0_LCD				// LCD
 //#define CONFIG_EFUSA9_D0_LVDS				// LVDS
 //#define CONFIG_EFUSA9_D0_HDMI				// HDMI
-
 /*
  * Define a mode_str entry for display D0 (depends on display type above)
  * See the following files for possible values:
@@ -27,23 +31,21 @@
  *   LCD:  drivers/video/mxc/mxc_lcdif.c
  *   HDMI: drivers/video/mxc/mxc_hdmi.c (actually fetched from panel via EDID)
  */
- #ifdef CONFIG_EFUSA9_D0_LCD
- 	#define CONFIG_EFUSA9_D0_MODE_STR "LCD-ET070080"	// LCD
- #elif defined(CONFIG_EFUSA9_D0_LVDS)
- 	#define CONFIG_EFUSA9_D0_MODE_STR "LDB-WVGA"		// LVDS
- #elif defined(CONFIG_EFUSA9_D0_HDMI)
- 	#define CONFIG_EFUSA9_D0_MODE_STR "1920x1080M@60"	// HDMI
- #endif
+#ifdef CONFIG_EFUSA9_D0_LCD
+	#define CONFIG_EFUSA9_D0_MODE_STR "LCD-ET070080"	// LCD
+#elif defined(CONFIG_EFUSA9_D0_LVDS)
+	#define CONFIG_EFUSA9_D0_MODE_STR "LDB-WVGA"		// LVDS
+#elif defined(CONFIG_EFUSA9_D0_HDMI)
+	#define CONFIG_EFUSA9_D0_MODE_STR "1920x1080M@60"	// HDMI
+#endif
 #endif // CONFIG_EFUSA9_D0
-/* Define this if you have a second display (D1) */
-#define CONFIG_EFUSA9_D1
 
+/* CONFIGURE DISPLAY 1 */
 #ifdef CONFIG_EFUSA9_D1
 /* Activate exactly one entry for the type of display D1 */
+//#define CONFIG_EFUSA9_D1_LCD				// LCD
 #define CONFIG_EFUSA9_D1_LVDS				// LVDS
 //#define CONFIG_EFUSA9_D1_HDMI				// HDMI
-//#define CONFIG_EFUSA9_D1_LCD				// LCD
-
 /* Define a mode_str entry for display D1 (see comment for D0 above) */
 #ifdef CONFIG_EFUSA9_D1_LVDS
 	#define CONFIG_EFUSA9_D1_MODE_STR "LDB-WVGA"		// LVDS
@@ -52,16 +54,26 @@
 #elif	defined(CONFIG_EFUSA9_D1_LCD)
 	#define CONFIG_EFUSA9_D1_MODE_STR "LCD-ET070080"	// LCD
 #endif
-
 #endif // CONFIG_EFUSA9_D1
 
 
 /* Do some settings to make configurations easier */
-#if defined(CONFIG_EFUSA9_D0_LVDS) || defined(CONFIG_EFUSA9_D1_LVDS)
+#if defined(CONFIG_EFUSA9_D0_LCD) || defined(CONFIG_EFUSA9_D1_LCD)
+#define CONFIG_EFUSA9_LCD
+#endif
+#if defined(CONFIG_EFUSA9_D0_HDMI) || defined(CONFIG_EFUSA9_D1_HDMI)
+#define CONFIG_EFUSA9_HDMI
+#endif
+
+#if defined(CONFIG_EFUSA9_D0_LVDS) || defined(CONFIG_EFUSA9_D1_LVDS) \
+	|| defined(CONFIG_EFUSA9_D2_LVDS)|| defined(CONFIG_EFUSA9_D3_LVDS)
 #define CONFIG_EFUSA9_LVDS
 #if defined(CONFIG_EFUSA9_D0_LVDS) && defined(CONFIG_EFUSA9_D1_LVDS)
 #define CONFIG_EFUSA9_LVDS_MODE "sep1"
 #else
+
+/* CONFIGURE LVDS MULTIDISPLAY*/
+/* Two displays are used on LVDS, choose one of the modes below*/
 //#define CONFIG_EFUSA9_LVDS_MODE "sin0"	// Single-channel on LVDS0
 #define CONFIG_EFUSA9_LVDS_MODE "sin1"		// Single-channel on LVDS1
 //#define CONFIG_EFUSA9_LVDS_MODE "dul1"	// Clone mode
@@ -69,17 +81,13 @@
 #endif
 #endif
 
-#if defined(CONFIG_EFUSA9_D0_LCD) || defined(CONFIG_EFUSA9_D1_LCD)
-#define CONFIG_EFUSA9_LCD
-#endif
-
-#define CONFIG_EFUSA9_HDMI
-
+/* HDMI */
 #ifdef CONFIG_EFUSA9_HDMI
 #define CONFIG_EFUSA9_HDMI_AUDIO
 #define CONFIG_EFUSA9_HDMI_CEC
 #endif
 
+/* TOUCH */
 /* Please select only one of the following touch devices. Make sure that the
    corresponding touchscreen driver is activated in the kernel */
 //#define CONFIG_EFUSA9_4WTOUCH_SX8655_ONBOARD
@@ -87,28 +95,43 @@
 //#define CONFIG_EFUSA9_CAPTOUCH_MXT224
 //#define CONFIG_EFUSA9_CAPTOUCH_FT5x06
 
+/* NAND */
 #define CONFIG_EFUSA9_NAND
+
+/* AUDIO */
 #define CONFIG_EFUSA9_SGTL5000_AUDIO
 
+/* ?? */
 #define CONFIG_EFUSA9_CAMERA_INTERFACE
+
+/* ?? */
 //#define CONFIG_EFUSA9_PARALLEL_INTERFACE
+
+/* SERIAL INTERFACE - MIPI CAMERA*/  
 #define CONFIG_EFUSA9_SERIAL_INTERFACE
 
+/* SD-CARD - A is micro SD; B is normalsize SD */
 #define CONFIG_EFUSA9_SD_A
 #define CONFIG_EFUSA9_SD_B
+
+/* EMMC*/
 //#define CONFIG_EFUSA9_EMMC
 
+/* I2C */
 #define CONFIG_EFUSA9_I2C_A
 #define CONFIG_EFUSA9_I2C_B
 #define CONFIG_EFUSA9_I2C_C
 
+/* SPI */
 #define CONFIG_EFUSA9_SPI_A
 #define CONFIG_EFUSA9_SPI_B
 
+/* UART */
 #define CONFIG_EFUSA9_UART_A
 #define CONFIG_EFUSA9_UART_B
 #define CONFIG_EFUSA9_UART_C
 #define CONFIG_EFUSA9_UART_D
+
 
 #include "imx6dl.dtsi"
 #include "fsimx6qdl-efusa9.dtsi"

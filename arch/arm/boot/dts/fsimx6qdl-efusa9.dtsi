@@ -82,9 +82,9 @@
 			compatible = "regulator-fixed";
 			regulator-name = "VLCD";
 #ifdef CONFIG_EFUSA9_REV110
-			gpio = <&gpio2 11 GPIO_ACTIVE_HIGH>;
-#elif defined(CONFIG_EFUSA9_REV121)
-			gpio = <&gpio3 30 GPIO_ACTIVE_HIGH>;
+//##TODO fix 		gpio = <&gpio2 11 GPIO_ACTIVE_HIGH>;
+//##TODO fix  #elif defined(CONFIG_EFUSA9_REV121)
+//##TODO fix 			gpio = <&gpio3 30 GPIO_ACTIVE_HIGH>;
 #endif
 			enable-active-high;
 		};
@@ -400,14 +400,14 @@
 	status = "okay";
 };
 
-&flexcan1 {
+&can1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1_1>;
 	xceiver-supply = <&reg_can>;
 	status = "okay";
 };
 
-&flexcan2 {
+&can2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2_1>;
 	xceiver-supply = <&reg_can>;
@@ -475,6 +475,7 @@
 		interrupt-parent = <&gpio1>;
 		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
 	};
+#if 0 	//##TODO fix
 #ifdef CONFIG_EFUSA9_SERIAL_INTERFACE
 	ov564x_mipi: ov564x_mipi@3c {
 		compatible = "ovti,ov564x_mipi";
@@ -494,6 +495,7 @@
 		mclk_source = <0>;
 	};
 #endif //  CONFIG_EFUSA9_SERIAL_INTERFACE
+#endif 	//##TODO fix
 
 #ifdef CONFIG_EFUSA9_PARALLEL_INTERFACE
 	ov9665: ov9665@30 {
@@ -566,6 +568,7 @@
 	};
 #endif
 
+#if 0 //##TODO fix
 #ifdef CONFIG_EFUSA9_4WTOUCH_SX8655_RGBADAPTER
 	/* 4/5 wire analog resistive touch, controller on efus SKIT */
 	sx8654@49 {
@@ -582,6 +585,7 @@
 		reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
 	};
 #endif
+#endif //##TODO fix
 
 #ifdef CONFIG_EFUSA9_CAPTOUCH_FT5x06
 	/* F&S driver V2.0 on Touch-Connector (I2C) */
