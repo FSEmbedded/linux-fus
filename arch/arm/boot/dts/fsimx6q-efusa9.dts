@@ -223,24 +223,24 @@
 };
 #endif
 #ifdef CONFIG_EFUSA9_D0
-&mxcfb1 {
+&mxcfb0 {
 	status = "okay";
 };
 #endif
 #ifdef CONFIG_EFUSA9_D1
-&mxcfb2 {
+&mxcfb1 {
 	status = "okay";
 };
 #endif
 
 #ifdef CONFIG_EFUSA9_D2
-&mxcfb3 {
+&mxcfb2 {
 	status = "okay";
 };
 #endif
 
 #ifdef CONFIG_EFUSA9_D3
-&mxcfb4 {
+&mxcfb3 {
 	status = "okay";
 };
 #endif

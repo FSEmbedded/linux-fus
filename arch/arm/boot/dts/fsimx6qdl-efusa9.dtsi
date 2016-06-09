@@ -6,19 +6,21 @@
  * published by the Free Software Foundation.
  */
 
+#include <dt-bindings/pwm/pwm.h>
+
 / {
 	aliases {
 #ifdef CONFIG_EFUSA9_D0
-		mxcfb0 = &mxcfb1;
+		mxcfb0 = &mxcfb0;
 #endif
 #ifdef CONFIG_EFUSA9_D1
-		mxcfb1 = &mxcfb2;
+		mxcfb1 = &mxcfb1;
 #endif
 #ifdef CONFIG_EFUSA9_D2
-		mxcfb2 = &mxcfb3;
+		mxcfb2 = &mxcfb2;
 #endif
 #ifdef CONFIG_EFUSA9_D3
-		mxcfb3 = &mxcfb4;
+		mxcfb3 = &mxcfb3;
 #endif
 	};
 	memory {
@@ -77,18 +79,39 @@
 		};
 #endif // CONFIG_EFUSA9_SGTL5000_AUDIO
 
+		reg_lcd_bl: lcd-bl {
+			compatible = "regulator-fixed";
+			regulator-name = "lcd-bl";
+			gpio = <&pca963x 0 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+		};
+
+		reg_ldb_bl: ldb-bl {
+			compatible = "regulator-fixed";
+			regulator-name = "ldb-bl";
+			gpio = <&gpio2 8 0>;	//TODO check pin
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+
 		/* LCD power on voltage */
 		reg_vlcd: vlcd {
 			compatible = "regulator-fixed";
 			regulator-name = "VLCD";
-#ifdef CONFIG_EFUSA9_REV110
-//##TODO fix 		gpio = <&gpio2 11 GPIO_ACTIVE_HIGH>;
-//##TODO fix  #elif defined(CONFIG_EFUSA9_REV121)
-//##TODO fix 			gpio = <&gpio3 30 GPIO_ACTIVE_HIGH>;
-#endif
-			enable-active-high;
+
+			gpio = <&gpio2 11 GPIO_ACTIVE_HIGH>;
 		};
 		
+#ifdef CONFIG_EFUSA9_5V_LVDS
+		reg_vlcd_5V: vlcd-5V {
+			compatible = "regulator-fixed";
+			regulator-name = "VLCD-5V";
+			gpio = <&gpio3 30 GPIO_ACTIVE_HIGH>;
+		};
+#endif
+
 		/* CAN */
 		reg_can: regulator_can {
 			compatible = "regulator-fixed";
@@ -164,7 +187,7 @@
 #endif
 
 #ifdef CONFIG_EFUSA9_D0
-	mxcfb1: fb@0 {
+	mxcfb0: fb@0 {
 		compatible = "fsl,mxc_sdc_fb";
 #ifdef CONFIG_EFUSA9_D0_LCD
 		disp_dev = "lcd";
@@ -189,7 +212,7 @@
 #endif
 
 #ifdef CONFIG_EFUSA9_D1
-	mxcfb2: fb@1 {
+	mxcfb1: fb@1 {
 		compatible = "fsl,mxc_sdc_fb";
 #ifdef CONFIG_EFUSA9_D1_LCD
 		disp_dev = "lcd";
@@ -214,7 +237,7 @@
 #endif
 
 #ifdef CONFIG_EFUSA9_D2
-	mxcfb3: fb@2 {
+	mxcfb2: fb@2 {
 		compatible = "fsl,mxc_sdc_fb";
 #ifdef CONFIG_EFUSA9_D2_LCD
 		disp_dev = "lcd";
@@ -239,7 +262,7 @@
 #endif
 
 #ifdef CONFIG_EFUSA9_D3
-	mxcfb4: fb@3 {
+	mxcfb3: fb@3 {
 		compatible = "fsl,mxc_sdc_fb";
 #ifdef CONFIG_EFUSA9_D3_LCD
 		disp_dev = "lcd";
@@ -266,6 +289,7 @@
 #ifdef CONFIG_EFUSA9_LCD
 	lcd@0 {
 		compatible = "fsl,lcd";
+		power-supply = <&reg_vlcd>;
 		ipu_id = <0>;
 		disp_id = <0>;
 		default_ifmt = "BGR666";
@@ -275,20 +299,34 @@
 	};
 #endif
 
-	backlight_pwm {
+backlight_lcd {
+		compatible = "pwm-backlight";
+		pwms = <&pca963x 1 640000 PWM_POLARITY_INVERTED>;
+		power-supply = <&reg_lcd_bl>;
+#ifdef CONFIG_EFUSA9_BL_LEVELS_16
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+#else
+		brightness-levels = <0 5 21 47 83 130 187 255>;
+		default-brightness-level = <6>;
+#endif
+		fb-names = "mxs-lcdif1";
+	};
+
+backlight_ldb {
 		compatible = "pwm-backlight";
 		pwms = <&pwm3 0 5000000>;
+		power-supply = <&reg_ldb_bl>;
+#ifdef CONFIG_EFUSA9_BL_LEVELS_16	//TODO add to dts
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+#else
 		brightness-levels = <0 5 21 47 83 130 187 255>;
-		default-brightness-level = <7>;
-		/* fixed regulator for lcd on voltage */
-		power-supply = <&reg_vlcd>;
-#ifdef CONFIG_EFUSA9_REV110
-		/* backlight enable (VCFL_ON) */
-		enable-gpios = <&gpio2 8 1>;
-#elif defined(CONFIG_EFUSA9_REV121)
-		enable-gpios = <&gpio2 11 0>, <&gpio2 8 1>;
+		default-brightness-level = <6>;
 #endif
-		status = "okay";
+		fb-names = "mxs-lcdif2";
 	};
 
 #ifdef CONFIG_EFUSA9_CAMERA_INTERFACE
@@ -526,15 +564,18 @@
 	pinctrl-0 = <&pinctrl_i2c2_2>;
 	status = "okay";
 
-	pca9632@60 { /* LED-driver */
+	pca963x: pca9632@60 { /* LED-driver */
 		compatible = "nxp,pca9632";
 		reg = <0x60>;
 		nxp,totem-pole;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		#pwm-cells = <3>;
+		#gpio-cells = <2>;
 		led@0 {
 			reg = <0>;
 			label = "0-PWRCTL";
+			type = "GPIO";
 			default-on;
 			active-high;
 		};
@@ -542,14 +583,17 @@
 			reg = <1>;
 			label = "1-LEDCTRL";
 			default-on;
+			type = "PWM";
 		};
 		led@2 {
 			reg = <2>;
 			label = "2-ROTATE";
+			type = "GPIO";
 		};
 		led@3 {
 			reg = <3>;
 			label = "3-unused";
+			type = "LED";
 		};
 	};
 #ifdef CONFIG_EFUSA9_4WTOUCH_SX8655_ONBOARD
@@ -794,9 +838,9 @@
 	ipu_id = <1>;
 	disp_id = <1>;
 	ext_ref = <1>;
-	mode = CONFIG_EFUSA9_LVDS_MODE;
 	sec_ipu_id = <1>;
 	sec_disp_id = <0>;
+	power-supply = <&reg_vlcd>;
 	status = "okay";
 
 	lvds-channel@0 {
@@ -866,14 +910,12 @@
 #ifdef CONFIG_EFUSA9_REV121
 				/* Camera clock 24MHz */
 				MX6QDL_PAD_NANDF_CS2__CCM_CLKO2 0x130b0
+				/* 5V_3V3n for VLCD */
+				MX6QDL_PAD_EIM_D30__GPIO3_IO30 0x13059
 #endif
 				/* VLCD_ON for reg_vlcd */ 
 				MX6QDL_PAD_SD4_DAT3__GPIO2_IO11 0x13059
-#ifdef CONFIG_EFUSA9_REV121
-				/* VLCD for reg_vlcd */
-				MX6QDL_PAD_EIM_D30__GPIO3_IO30 0x13059
-#endif
-				/* VBL_ON for  */ 
+				/* VBL_ON on SKIT J3  */ 
 				MX6QDL_PAD_SD4_DAT0__GPIO2_IO08 0x13059
 				/* WDOG1 */
 				MX6QDL_PAD_GPIO_9__WDOG1_B      0x80000000
