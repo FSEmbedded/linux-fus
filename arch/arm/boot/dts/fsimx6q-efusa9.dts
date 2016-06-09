@@ -176,13 +176,6 @@
 / {
 	model = "F&S i.MX6 Quad efusA9 module";
 	compatible = "fus,imx6q-efusa9", "fsl,imx6q";
-
-	/* -------------------- BOARD INFO -------------------- */
-	bdinfo {
-		compatible = "bdinfo";
-		board_name = "efusa9";
-		ecc_strength = "8";
-	};
 };
 
 &dma_apbh {

@@ -150,13 +150,6 @@
 / {
 	model = "F&S i.MX6 DualLite efusA9 module";
 	compatible = "fsl,imx6dl-efusa9", "fsl,imx6dl";
-
-	/* -------------------- BOARD INFO -------------------- */
-	bdinfo {
-		compatible = "bdinfo";
-		board_name = "efusa9";
-		ecc_strength = "8";
-	};
 };
 
 &dma_apbh {
