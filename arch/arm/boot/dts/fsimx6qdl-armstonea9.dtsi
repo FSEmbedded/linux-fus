@@ -328,7 +328,7 @@
 		interface_pix_fmt = "RGB24";
 		int_clk = <0>;
 #endif
-#ifdef CONFIG_ARMSTONEA9_D2_LVDS
+#ifdef CONFIG_ARMSTONEA9_D3_LVDS
 		disp_dev = "ldb";
 		interface_pix_fmt = "RGB666";
 		int_clk = <0>;

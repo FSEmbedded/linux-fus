@@ -8,8 +8,8 @@
 
 /dts-v1/;
 /* CHOOSE BOARD REVISION */
-// #define CONFIG_EFUSA9_REV110 // old board revision
-#define CONFIG_EFUSA9_REV121
+ #define CONFIG_EFUSA9_REV110 // old board revision
+//#define CONFIG_EFUSA9_REV121
 
 /* CONFIGURE 5V LVDS POWER SUPPLY */
 #ifdef CONFIG_EFUSA9_REV121
@@ -77,7 +77,7 @@
 //#define CONFIG_EFUSA9_LVDS_DUAL_MODE
 /* two channels for 'split-mode-display', one framebuffer */
 //#define CONFIG_EFUSA9_LVDS_SPLIT_MODE
-#endif 
+#endif
 
 /* Do some settings to make configurations easier */
 #if defined(CONFIG_EFUSA9_D0_LCD) || defined(CONFIG_EFUSA9_D1_LCD)
@@ -112,20 +112,20 @@
 /* AUDIO */
 #define CONFIG_EFUSA9_SGTL5000_AUDIO
 
-/* ?? */
-#define CONFIG_EFUSA9_CAMERA_INTERFACE
+/* Camera connected */
+#define CONFIG_ARMSTONEA9_CAMERA_INTERFACE
 
 /* ?? */
 //#define CONFIG_EFUSA9_PARALLEL_INTERFACE
 
-/* SERIAL INTERFACE - MIPI CAMERA*/  
+/* SERIAL INTERFACE - MIPI CAMERA*/
 #define CONFIG_EFUSA9_SERIAL_INTERFACE
 
 /* SD-CARD - A is micro SD; B is normalsize SD */
 #define CONFIG_EFUSA9_SD_A
 #define CONFIG_EFUSA9_SD_B
 
-/* EMMC*/
+/* EMMC */
 //#define CONFIG_EFUSA9_EMMC
 
 /* I2C */
@@ -162,25 +162,25 @@
 	ext_ref;
 #ifdef CONFIG_EFUSA9_LVDS_DUAL_MODE
 	 dual-mode;
-#endif 
+#endif
 #ifdef CONFIG_EFUSA9_LVDS_SPLIT_MODE
 	split-mode;
-#endif 
+#endif
 
 #ifdef CONFIG_EFUSA9_LCD		//if LCD is enabled too, LDB uses di1
 	lvds-channel@0 {
-		crtc = "ipu1-di1"; 	//ipu1-di1 means ipu 0, di1 
+		crtc = "ipu1-di1"; 	//ipu1-di1 means ipu 0, di1
 		reg = <0>;
 		status = "okay";
 	};
 #else
-	lvds-channel@0 {		//default LVDS uses di0	
+	lvds-channel@0 {		//default LVDS uses di0
 		crtc = "ipu1-di0";
 		reg = <0>;
 		status = "okay";
 	};
-#endif 
-#ifdef CONFIG_EFUSA9_D1_LVDS		//if both LVDS channels are used, 
+#endif
+#ifdef CONFIG_EFUSA9_D1_LVDS	//if both LVDS channels are used
 	lvds-channel@1 {		//dual and split mode ignore this node
 		crtc = "ipu1-di1";
 		reg = <1>;
