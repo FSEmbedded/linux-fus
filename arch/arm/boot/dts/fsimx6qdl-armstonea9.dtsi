@@ -1,0 +1,1148 @@
+/*
+ * Copyright 2016 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#include <dt-bindings/pwm/pwm.h>
+#include <dt-bindings/gpio/gpio.h>
+/ {
+	aliases {
+#ifdef CONFIG_ARMSTONEA9_D0
+		mxcfb0 = &mxcfb0;
+#endif
+#ifdef CONFIG_ARMSTONEA9_D1
+		mxcfb1 = &mxcfb1;
+#endif
+#ifdef CONFIG_ARMSTONEA9_D2
+		mxcfb2 = &mxcfb2;
+#endif
+#ifdef CONFIG_ARMSTONEA9_D3
+		mxcfb3 = &mxcfb3;
+#endif
+#ifdef CONFIG_ARMSTONEA9_SGTL5000_AUDIO
+		i2c5 = &i2c_gpio;
+#endif
+#ifdef CONFIG_ARMSTONEA9_HDMI
+		i2c6 = &i2c_gpio_hdmi;
+#endif
+	};
+	memory {
+		reg = <0x10000000 0x40000000>;
+	};
+
+	/* RGB-LCD backlight PWM on RGB adapter */
+	backlight_lcd {
+		compatible = "pwm-backlight";
+		pwms = <&pca963x 1 640000 PWM_POLARITY_INVERTED>;
+		power-supply = <&reg_lcd_bl>;
+#ifdef CONFIG_ARMSTONEA9_BL_LEVELS_16
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+#else
+		brightness-levels = <0 5 21 47 83 130 187 255>;
+		default-brightness-level = <6>;
+#endif
+		fb-names = "mxs-lcdif1";
+	};
+
+	/* LVDS backlight PWM (PWM3) */
+	backlight_ldb {
+		compatible = "pwm-backlight";
+		pwms = <&pwm3 0 5000000>;
+		power-supply = <&reg_ldb_bl>;
+#ifdef CONFIG_ARMSTONEA9_BL_LEVELS_16
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+#else
+		brightness-levels = <0 5 21 47 83 130 187 255>;
+		default-brightness-level = <6>;
+#endif
+		fb-names = "mxs-lcdif2";
+	};
+
+	regulators {
+		compatible = "simple-bus";
+
+		reg_usb_otg_vbus: usb_otg_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_otg_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			/* No way to switch USB1_OTG_VBUS power */
+			// gpio = <&gpio3 22 0>;
+			// enable-active-high;
+		};
+
+		reg_usb_h1_vbus: usb_h1_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_h1_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			/* No way to switch USB1_H1_VBUS power */
+			// gpio = <&gpio1 29 0>;
+			// enable-active-high;
+		};
+
+#ifdef CONFIG_ARMSTONEA9_SGTL5000_AUDIO
+		/* SGTL5000 analog voltage */
+		reg_sgtl5000_vdda: sgtl5000_vdda {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDA-supply";
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 I/O voltage */
+		reg_sgtl5000_vddio: sgtl5000_vddio {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 internal digital voltage */
+		reg_sgtl5000_vddd: sgtl5000_vddd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDD-supply";
+			regulator-min-microvolt = <1500000>;
+			regulator-max-microvolt = <1500000>;
+			regulator-always-on;
+		};
+#endif // CONFIG_ARMSTONEA9_SGTL5000_AUDIO
+
+		/* backlight lcd */
+		reg_lcd_bl: backlight_lcd {
+			compatible = "regulator-fixed";
+			regulator-name = "lcd-bl";
+			gpio = <&pca963x 0 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+		};
+
+		/* backlight ldb */
+		reg_ldb_bl: backlight_ldb {
+			compatible = "regulator-fixed";
+			regulator-name = "ldb-bl";
+			gpio = <&gpio2 8 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+
+		/* LCD power on voltage */
+		reg_vlcd: vlcd {
+			compatible = "regulator-fixed";
+			regulator-name = "VLCD";
+			gpio = <&gpio2 11 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+		};
+
+		/* CAN */
+		reg_can: regulator_can {
+			compatible = "regulator-fixed";
+			regulator-name = "can";
+		};
+
+#ifdef CONFIG_ARMSTONEA9_CAMERA_INTERFACE
+		reg_camera_dovdd: camera_dovdd {
+			compatible = "regulator-fixed";
+			regulator-name = "DOVDD-supply";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+
+		reg_camera_avdd: camera_avdd {
+			compatible = "regulator-fixed";
+			regulator-name = "VAVDD-supply";
+			regulator-min-microvolt = <2800000>;
+			regulator-max-microvolt = <2800000>;
+		};
+
+		reg_camera_dvdd: camera_dvdd {
+			compatible = "regulator-fixed";
+			regulator-name = "DVDD-supply";
+			regulator-min-microvolt = <1500000>;
+			regulator-max-microvolt = <1500000>;
+		};
+#endif /* CONFIG_ARMSTONEA9_CAMERA_INTERFACE */
+	};
+
+	/* -------------------- BOARD INFO -------------------- */
+	bdinfo {
+		compatible = "bdinfo";
+		board_name = "armstonea9";
+		ecc_strength = "8";
+	};
+
+#ifdef CONFIG_ARMSTONEA9_SGTL5000_AUDIO
+	/* Bitbanging I2C */
+	i2c_gpio: i2c-gpio {
+		compatible = "i2c-gpio";
+		gpios = <&gpio1 11 0 /* sda */
+			 &gpio1 10 0 /* scl */
+			>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_i2c5_gpio>;
+//		i2c-gpio,sda-open-drain;
+//		i2c-gpio,scl-open-drain;
+		i2c-gpio,delay-us = <2>;        /* ~100 kHz */
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_HDMI
+	i2c_gpio_hdmi: i2c-gpio-hdmi {
+		compatible = "i2c-gpio";
+		gpios = <&gpio2 14 0 /* sda */
+			 &gpio2 15 0 /* scl */
+			>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_i2c6_gpio>;
+//		i2c-gpio,sda-open-drain;
+//		i2c-gpio,scl-open-drain;
+		i2c-gpio,delay-us = <2>;        /* ~100 kHz */
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_SGTL5000_AUDIO
+	sound {
+		compatible = "fsl,imx-audio-sgtl5000";
+		cpu-dai = <&ssi1>;
+		audio-codec = <&sgtl5000>;
+		model = "imx-sgtl5000";
+		mux-int-port = <1>;  /* SSI1=1, SSI2=2, SSI3=7 */
+		mux-ext-port = <4>;
+		audio-routing =
+//			"MIC_IN", "Mic Jack",
+			"Mic Jack", "Mic Bias",
+			"LINE_IN", "Line In Jack";
+//			"Line Out Jack", "LINE_OUT";
+	};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_HDMI_AUDIO
+	sound-hdmi {
+		compatible = "fsl,imx6q-audio-hdmi",
+			     "fsl,imx-audio-hdmi";
+		model = "imx-audio-hdmi";
+		hdmi-controller = <&hdmi_audio>;
+	};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_D0
+	mxcfb0: fb@0 {
+		compatible = "fsl,mxc_sdc_fb";
+#ifdef CONFIG_ARMSTONEA9_D0_LCD
+		disp_dev = "lcd";
+		interface_pix_fmt = "RGB666";
+		int_clk = <1>;
+#endif
+#ifdef CONFIG_ARMSTONEA9_D0_HDMI
+		disp_dev = "hdmi";
+		interface_pix_fmt = "RGB24";
+		int_clk = <0>;
+#endif
+#ifdef CONFIG_ARMSTONEA9_D0_LVDS
+		disp_dev = "ldb";
+		interface_pix_fmt = "RGB666";
+		int_clk = <1>;
+#endif
+		mode_str = CONFIG_ARMSTONEA9_D0_MODE_STR;
+		default_bpp = <16>;
+		late_init = <0>;
+		status = "disabled";
+	};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_D1
+	mxcfb1: fb@1 {
+		compatible = "fsl,mxc_sdc_fb";
+#ifdef CONFIG_ARMSTONEA9_D1_LCD
+		disp_dev = "lcd";
+		interface_pix_fmt = "RGB666";
+		int_clk = <1>;
+#endif
+#ifdef CONFIG_ARMSTONEA9_D1_HDMI
+		disp_dev = "hdmi";
+		interface_pix_fmt = "RGB24";
+		int_clk = <0>;
+#endif
+#ifdef CONFIG_ARMSTONEA9_D1_LVDS
+		disp_dev = "ldb";
+		interface_pix_fmt = "RGB666";
+		int_clk = <1>;
+#endif
+		mode_str = CONFIG_ARMSTONEA9_D1_MODE_STR;
+		default_bpp = <24>;
+		late_init = <0>;
+		status = "disabled";
+	};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_D2
+	mxcfb2: fb@2 {
+		compatible = "fsl,mxc_sdc_fb";
+#ifdef CONFIG_ARMSTONEA9_D2_LCD
+		disp_dev = "lcd";
+		interface_pix_fmt = "RGB666";
+		int_clk = <1>;
+#endif
+#ifdef CONFIG_ARMSTONEA9_D2_HDMI
+		disp_dev = "hdmi";
+		interface_pix_fmt = "RGB24";
+		int_clk = <0>;
+#endif
+#ifdef CONFIG_ARMSTONEA9_D2_LVDS
+		disp_dev = "ldb";
+		interface_pix_fmt = "RGB666";
+		int_clk = <1>;
+#endif
+		mode_str = CONFIG_ARMSTONEA9_D2_MODE_STR;
+		default_bpp = <24>;
+		late_init = <0>;
+		status = "disabled";
+	};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_D3
+	mxcfb3: fb@3 {
+		compatible = "fsl,mxc_sdc_fb";
+#ifdef CONFIG_ARMSTONEA9_D3_LCD
+		disp_dev = "lcd";
+		interface_pix_fmt = "RGB666";
+		int_clk = <1>;
+#endif
+#ifdef CONFIG_ARMSTONEA9_D3_HDMI
+		disp_dev = "hdmi";
+		interface_pix_fmt = "RGB24";
+		int_clk = <0>;
+#endif
+#ifdef CONFIG_ARMSTONEA9_D2_LVDS
+		disp_dev = "ldb";
+		interface_pix_fmt = "RGB666";
+		int_clk = <0>;
+#endif
+		mode_str = CONFIG_ARMSTONEA9_D3_MODE_STR;
+		default_bpp = <16>;
+		late_init = <0>;
+		status = "disabled";
+	};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_LCD
+	lcd@0 {
+		compatible = "fsl,lcd";
+		power-supply = <&reg_vlcd>;
+		ipu_id = <0>;
+		disp_id = <0>;
+		default_ifmt = "BGR666";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_ipu1_ctrl &pinctrl_ipu1_dat>;
+		status = "okay";
+	};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_CAMERA_INTERFACE
+	/* digital camera interface */
+#ifdef CONFIG_ARMSTONEA9_PARALLEL_INTERFACE
+	v4l2_cap_0 {
+		compatible = "fsl,imx6q-v4l2-capture";
+		ipu_id = <0>;
+		csi_id = <0>;
+		mclk_source = <0>;
+		status = "okay";
+	};
+#endif
+
+	/* mipi camera interface */
+#ifdef CONFIG_ARMSTONEA9_SERIAL_INTERFACE
+	v4l2_cap_1 {
+		compatible = "fsl,imx6q-v4l2-capture";
+		ipu_id = <0>;
+		csi_id = <1>;
+		mclk_source = <0>;
+		status = "okay";
+	};
+#endif
+
+	v4l2_out {
+		compatible = "fsl,mxc_v4l2_output";
+		status = "okay";
+	};
+#endif
+};
+#if defined(CONFIG_ARMSTONEA9_SGTL5000_AUDIO) || \
+	defined(CONFIG_ARMSTONEA9_HDMI_AUDIO)
+&audmux {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_audmux_4>;
+	status = "okay";
+};
+#endif
+
+&clks {
+	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
+			  <&clks IMX6QDL_CLK_SSI1_SEL>,
+			  <&clks IMX6QDL_CLK_SSI1>,
+			  <&clks IMX6QDL_CLK_CKO2_SEL>,
+			  <&clks IMX6QDL_CLK_CKO>;
+
+	assigned-clock-parents = <0>,
+				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
+				 <0>,
+				 <&clks IMX6QDL_CLK_SSI1>,
+				 <&clks IMX6QDL_CLK_CKO2>;
+//###	assigned-clock-rates = <786432000>, <0>, <24576000>;
+	assigned-clock-rates = <786432000>, <0>, <12288000>;
+};
+
+#ifdef CONFIG_ARMSTONEA9_SPI_A
+/* SPI_A (2x CS) */
+&ecspi2 {
+	fsl,spi-num-chipselects = <2>;
+	cs-gpios = <&gpio2 26 0>; /* SPI_A_CS1 */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi2_1 &pinctrl_ecspi2_cs>;
+	status = "okay";
+
+	spidev@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+	};
+};
+#endif // CONFIG_ARMSTONEA9_SPI_A
+
+&fec {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_enet>;
+	phy-mode = "rgmii";
+	status = "okay";
+};
+
+/* CANRX1 Pin 63 & CANTX1 Pin 64 */
+&can2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_flexcan_a>;
+	xceiver-supply = <&reg_can>;
+	status = "okay";
+};
+
+&gpc {
+	fsl,cpu_pupscr_sw2iso = <0xf>;
+	fsl,cpu_pupscr_sw = <0xf>;
+	fsl,cpu_pdnscr_iso2sw = <0x1>;
+	fsl,cpu_pdnscr_iso = <0x1>;
+	fsl,ldo-bypass = <1>; /* use ldo-bypass, u-boot will check it and configure */
+	fsl,wdog-reset = <1>; /* watchdog select of reset source */
+};
+
+#ifdef CONFIG_ARMSTONEA9_HDMI_AUDIO
+&hdmi_audio {
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_HDMI
+&hdmi_video {
+	fsl,phy_reg_vlev = <0x0294>;
+	fsl,phy_reg_cksymtx = <0x800d>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_I2C_C
+/* additional bus on pins 18, 26 */
+&i2c1 {
+	clock-frequency = <200000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c1>;
+	status = "okay";
+
+#if 0
+#ifdef CONFIG_ARMSTONEA9_SERIAL_INTERFACE
+	ov564x_mipi: ov564x_mipi@3c {
+		compatible = "ovti,ov564x_mipi";
+		reg = <0x3c>;
+		/* derived from IMX6QDL_CLK_CKO2 */
+		clocks = <&clks IMX6QDL_CLK_CKO>;
+		clock-names = "csi_mclk";
+		DOVDD-supply = <&reg_camera_dovdd>; /* 1.8v */
+		AVDD-supply = <&reg_camera_avdd>;  /* 2.8v, rev C board is VGEN3
+						rev B board is VGEN5 */
+		DVDD-supply = <&reg_camera_dvdd>;  /* 1.5v*/
+		pwn-gpios = <&gpio5 24 GPIO_ACTIVE_HIGH>;
+		/* not available */
+		rst-gpios = <&gpio5 23 GPIO_ACTIVE_LOW>;
+		csi_id = <1>;
+		mclk = <24000000>;
+		mclk_source = <0>;
+	};
+#endif //  CONFIG_ARMSTONEA9_SERIAL_INTERFACE
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_PARALLEL_INTERFACE
+	ov9665: ov9665@30 {
+		compatible = "ovti,ov9665";
+		reg = <0x30>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_ipu1_2>;
+		clocks = <&clks IMX6QDL_CLK_CKO>;
+		clock-names = "csi_mclk";
+		DOVDD-supply = <&reg_camera_dovdd>; /* 1.8v */
+		AVDD-supply = <&reg_camera_avdd>;  /* 2.8v, rev C board is VGEN3
+						rev B board is VGEN5 */
+		DVDD-supply = <&reg_camera_dvdd>;  /* 1.5v*/
+		pwn-gpios = <&gpio5 24 GPIO_ACTIVE_HIGH>;
+		rst-gpios = <&gpio5 23 GPIO_ACTIVE_LOW>;
+		csi_id = <0>;
+		mclk = <24000000>;
+		mclk_source = <0>;
+	};
+#endif // CONFIG_ARMSTONEA9_PARALLEL_INTERFACE
+};
+#endif // CONFIG_ARMSTONEA9_I2C_C
+
+#ifdef CONFIG_ARMSTONEA9_I2C_B
+&i2c2 {
+	clock-frequency = <200000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c2>;
+	status = "okay";
+
+	rtc8565@51 {
+		compatible = "nxp,pcf8565", "nxp,pcf8563";
+		reg = <0x51>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
+	};
+	// adc
+};
+#endif // CONFIG_ARMSTONEA9_I2C_B
+
+#ifdef CONFIG_ARMSTONEA9_I2C_A
+&i2c3 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c3_5>;
+	status = "okay";
+
+	pca963x: pca9632@60 {
+		compatible = "nxp,pca9632";
+		reg = <0x60>;
+		nxp,totem-pole;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#pwm-cells = <3>;
+		#gpio-cells = <2>;
+		led@0 {
+			reg = <0>;
+			label = "0-PWRCTL";
+			type = "GPIO";
+			default-on;
+			active-high;
+		};
+		led@1 {
+			reg = <1>;
+			label = "1-LEDCTRL";
+			default-on;
+			type = "PWM";
+		};
+		led@2 {
+			reg = <2>;
+			label = "2-ROTATE";
+			type = "GPIO";
+		};
+		led@3 {
+			reg = <3>;
+			label = "3-unused";
+			type = "LED";
+		};
+	};
+
+#ifdef CONFIG_ARMSTONEA9_4WTOUCH_SX8655_ONBOARD
+	/* 4/5 wire analog resistive touch, controller on armstone */
+	sx8654@48 {
+		compatible = "semtech,sx8654";
+		reg = <0x48>;
+		touchrate = <0x30>;
+		powdly = <0x06>;
+		filt = <0x02>;
+		setdly = <0x08>;
+		pinctrl-names = "default";
+		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
+		interrupt-parent = <&gpio1>;
+		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
+	};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_4WTOUCH_SX8655_RGBADAPTER
+	/* 4/5 wire analog resistive touch, controller on armstone */
+	sx8654@49 {
+		compatible = "semtech,sx8654";
+		reg = <0x49>;
+		touchrate = <0x30>;
+		powdly = <0x06>;
+		filt = <0x02>;
+		setdly = <0x08>;
+		pinctrl-names = "default";
+		interrupt-parent = <&gpio1>;
+		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
+	};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_CAPTOUCH_FT5x06
+	/* F&S driver V2.0 on Touch-Connector (I2C) */
+	ft5x06_ts@38 {
+		compatible = "FocalTech,ft5306";
+		reg = <0x38>;
+		threshold = <25>;
+		gain = <8>;
+		offset = <0>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
+	};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_CAPTOUCH_MXT224
+	/* Atmel PCAP touch on Touch-Connector (I2C) */
+	mxt224@4a {
+		compatible = "atmel,maxtouch";
+		reg = <0x4a>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
+		atmel,cfg_name = "mxt224.cfg";
+		atmel,reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
+	};
+#endif
+};
+#endif // CONFIG_ARMSTONEA9_I2C_A
+
+#ifdef CONFIG_ARMSTONEA9_SGTL5000_AUDIO
+/* I2C_C (Bitbanging): RTC (PCA8565), SGTL5000 (SKIT) */
+&i2c_gpio {
+		sgtl5000: sgtl5000@0a {
+			compatible = "fsl,sgtl5000";
+			reg = <0x0a>;
+			mono2both;
+			clocks = <&clks IMX6QDL_CLK_CKO>;
+			VDDA-supply = <&reg_sgtl5000_vdda>;
+			VDDIO-supply = <&reg_sgtl5000_vddio>;
+			VDDD-supply = <&reg_sgtl5000_vddd>;
+		};
+};
+#endif // CONFIG_ARMSTONEA9_SGTL5000_AUDIO
+
+#ifdef CONFIG_ARMSTONEA9_HDMI
+&i2c_gpio_hdmi {
+
+	hdmi: edid@50 {
+		compatible = "fsl,imx6-hdmi-i2c";
+		reg = <0x50>;
+	};
+};
+
+#endif
+/* PWM_C (Pin 32) */
+&pwm1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm1_1>;
+	status = "okay";
+};
+
+/* PWM_A (Pin 28) */
+&pwm2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm2_1>;
+	status = "okay";
+};
+
+/* Backlight PWM (X8 Pin 25 & X9 Pin 3) */
+&pwm3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm3_1>;
+	status = "okay";
+};
+
+/* PWM_B (Pin 30) */
+&pwm4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm4_1>;
+	status = "okay";
+};
+
+#ifdef CONFIG_ARMSTONEA9_NAND
+&gpmi {
+	/* Switch to F&S implementation of GPMI NAND driver */
+	compatible = "fus,imx6q-gpmi-nand";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
+	fus,skipblocks = <2>;
+	fus,chunk1k;
+	fus,ecc_strength = <8>; // Spare area 64 bytes
+	//fus,ecc_strength = <52>;	// Spare area 224 bytes
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_SERIAL_INTERFACE
+&mipi_csi {
+	status = "okay";
+	ipu_id = <0>;
+	csi_id = <1>;
+	v_channel = <0>;
+	lanes = <2>;
+};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_SGTL5000_AUDIO
+&ssi1 {
+	fsl,mode = "i2s-slave";
+	status = "okay";
+};
+#endif // CONFIG_ARMSTONEA9_SGTL5000_AUDIO
+
+#ifdef CONFIG_ARMSTONEA9_UART_B
+/* UART1 on pins 13, 15 (port B)*/
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1_1>;
+	status = "okay";
+};
+#endif // CONFIG_ARMSTONEA9_UART_B
+
+#ifdef CONFIG_ARMSTONEA9_UART_A
+/* UART2 on pins 55-58 (debug port A)*/
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart2_1>;
+	fsl,uart-has-rtscts;
+	status = "okay";
+};
+#endif // CONFIG_ARMSTONEA9_UART_A
+
+#ifdef CONFIG_ARMSTONEA9_UART_C
+/* UART3 on pins 36, 38 (port C) */
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3_1>;
+	status = "okay";
+};
+#endif // CONFIG_ARMSTONEA9_UART_C
+
+&usbh1 {
+	vbus-supply = <&reg_usb_h1_vbus>;
+	status = "okay";
+};
+
+&usbotg {
+	vbus-supply = <&reg_usb_otg_vbus>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg_2>;
+	disable-over-current;
+	status = "okay";
+};
+
+#ifdef CONFIG_ARMSTONEA9_SD_A
+
+&usdhc3 {
+	/* Micro-SD-Card-Slot, CD is active low */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc3>;
+	cd-gpios = <&gpio6 15 GPIO_ACTIVE_LOW>;
+	status = "okay";
+};
+#endif /* CONFIG_ARMSTONEA9_SD_A */
+
+#ifdef CONFIG_ARMSTONEA9_LVDS
+&ldb {
+	power_supply = <&reg_vlcd>;
+	ipu_id = <1>;
+	disp_id = <1>;
+	ext_ref = <1>;
+	sec_ipu_id = <1>;
+	sec_disp_id = <0>;
+	status = "okay";
+
+	lvds-channel@0 {
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <18>;
+		primary;
+		status = "disabled";
+
+		display-timings {
+			native-mode = <&timing0>;
+			timing0: wvga {
+				clock-frequency = <33500000>;
+				hactive = <800>;
+				vactive = <480>;
+				hfront-porch = <40>;
+				hback-porch = <88>;
+				hsync-len = <128>;
+				vback-porch = <33>;
+				vfront-porch = <10>;
+				vsync-len = <2>;
+				hsync-active = <0>;
+				vsync-active = <0>;
+				de-active = <1>;
+				pixelclk-active = <0>;
+			};
+		};
+	};
+
+	lvds-channel@1 {
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <18>;
+		primary;
+		status = "disabled";
+
+		display-timings {
+			native-mode = <&timing1>;
+			timing1: wvga {
+				clock-frequency = <33500000>;
+				hactive = <800>;
+				vactive = <480>;
+				hfront-porch = <40>;
+				hback-porch = <88>;
+				hsync-len = <128>;
+				vback-porch = <33>;
+				vfront-porch = <10>;
+				vsync-len = <2>;
+				hsync-active = <0>;
+				vsync-active = <0>;
+				de-active = <1>;
+				pixelclk-active = <0>;
+			};
+		};
+	};
+};
+#endif
+
+#if 0 // not tested
+&pcie {
+	power-on-gpio = <&gpio3 19 0>;
+	reset-gpio = <&gpio7 12 0>;
+	status = "okay";
+};
+#endif
+
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog_1>;
+
+	imx6qdl-armstonea9 {
+		/* Pin configs that don't belong anywhere else */
+		pinctrl_hog_1: hoggrp-1 {
+			fsl,pins = <
+				/* Audio clock 24MHz */
+				MX6QDL_PAD_GPIO_0__CCM_CLKO1    0x130b0
+
+				/* VLCD_ON for reg_vlcd */
+				MX6QDL_PAD_SD4_DAT3__GPIO2_IO11 0x13059
+
+				/* VBL_ON for backlight on */
+				MX6QDL_PAD_SD4_DAT0__GPIO2_IO08 0x13059
+
+				/* WDOG1 */
+				MX6QDL_PAD_GPIO_9__WDOG1_B      0x80000000
+
+				/* SD2_WP pin */
+				MX6QDL_PAD_DI0_PIN4__GPIO4_IO20 0x80000000
+
+				 /* SD2_CD pin */
+				MX6QDL_PAD_GPIO_4__GPIO1_IO04   0x17059
+
+				/* SD2_WP pin */
+				MX6QDL_PAD_GPIO_2__GPIO1_IO02   0x80000000
+
+				/* camera powerdown - active high */
+				MX6QDL_PAD_CSI0_DAT6__GPIO5_IO24 0x17059
+
+				/* camera reset - active low */
+				MX6QDL_PAD_CSI0_DAT5__GPIO5_IO23 0x17059
+			>;
+		};
+
+		pinctrl_gpmi_nand_1: gpmi-nand-1 {
+#if 0
+			fsl,pins = <
+				MX6QDL_PAD_NANDF_CLE__NAND_CLE		0xb0b1
+				MX6QDL_PAD_NANDF_ALE__NAND_ALE		0xb0b1
+				MX6QDL_PAD_NANDF_WP_B__NAND_WP_B		0xb0b1
+				MX6QDL_PAD_NANDF_RB0__NAND_READY_B	0xb000
+				MX6QDL_PAD_NANDF_CS0__NAND_CE0_B		0xb0b1
+				MX6QDL_PAD_SD4_CMD__NAND_RE_B			0xb0b1
+				MX6QDL_PAD_SD4_CLK__NAND_WE_B			0xb0b1
+				MX6QDL_PAD_NANDF_D0__NAND_DATA00		0xb0b1
+				MX6QDL_PAD_NANDF_D1__NAND_DATA01		0xb0b1
+				MX6QDL_PAD_NANDF_D2__NAND_DATA02		0xb0b1
+				MX6QDL_PAD_NANDF_D3__NAND_DATA03		0xb0b1
+				MX6QDL_PAD_NANDF_D4__NAND_DATA04		0xb0b1
+				MX6QDL_PAD_NANDF_D5__NAND_DATA05		0xb0b1
+				MX6QDL_PAD_NANDF_D6__NAND_DATA06		0xb0b1
+				MX6QDL_PAD_NANDF_D7__NAND_DATA07		0xb0b1
+			>;
+#endif
+		};
+
+		/* LCD interface */
+		pinctrl_ipu1_ctrl: ipu1grp-1 {
+			fsl,pins = <
+				MX6QDL_PAD_DI0_DISP_CLK__IPU1_DI0_DISP_CLK 0x10
+				MX6QDL_PAD_DI0_PIN2__IPU1_DI0_PIN02        0x10
+				MX6QDL_PAD_DI0_PIN3__IPU1_DI0_PIN03        0x10
+				MX6QDL_PAD_DI0_PIN15__IPU1_DI0_PIN15       0x10
+			>;
+		};
+
+		pinctrl_ipu1_dat: ipu1grp-2 {
+			fsl,pins = <
+			/* LCD interface */
+				MX6QDL_PAD_DISP0_DAT0__IPU1_DISP0_DATA00   0x10
+				MX6QDL_PAD_DISP0_DAT1__IPU1_DISP0_DATA01   0x10
+				MX6QDL_PAD_DISP0_DAT2__IPU1_DISP0_DATA02   0x10
+				MX6QDL_PAD_DISP0_DAT3__IPU1_DISP0_DATA03   0x10
+				MX6QDL_PAD_DISP0_DAT4__IPU1_DISP0_DATA04   0x10
+				MX6QDL_PAD_DISP0_DAT5__IPU1_DISP0_DATA05   0x10
+				MX6QDL_PAD_DISP0_DAT6__IPU1_DISP0_DATA06   0x10
+				MX6QDL_PAD_DISP0_DAT7__IPU1_DISP0_DATA07   0x10
+				MX6QDL_PAD_DISP0_DAT8__IPU1_DISP0_DATA08   0x10
+				MX6QDL_PAD_DISP0_DAT9__IPU1_DISP0_DATA09   0x10
+				MX6QDL_PAD_DISP0_DAT10__IPU1_DISP0_DATA10  0x10
+				MX6QDL_PAD_DISP0_DAT11__IPU1_DISP0_DATA11  0x10
+				MX6QDL_PAD_DISP0_DAT12__IPU1_DISP0_DATA12  0x10
+				MX6QDL_PAD_DISP0_DAT13__IPU1_DISP0_DATA13  0x10
+				MX6QDL_PAD_DISP0_DAT14__IPU1_DISP0_DATA14  0x10
+				MX6QDL_PAD_DISP0_DAT15__IPU1_DISP0_DATA15  0x10
+				MX6QDL_PAD_DISP0_DAT16__IPU1_DISP0_DATA16  0x10
+				MX6QDL_PAD_DISP0_DAT17__IPU1_DISP0_DATA17  0x10
+			>;
+		};
+
+#ifdef CONFIG_ARMSTONEA9_PARALLEL_INTERFACE
+		pinctrl_ipu1_2: ipu1grp-cam { /* parallel camera */
+			fsl,pins = <
+				MX6QDL_PAD_CSI0_DAT10__IPU1_CSI0_DATA10    0x80000000
+				MX6QDL_PAD_CSI0_DAT11__IPU1_CSI0_DATA11    0x80000000
+				MX6QDL_PAD_CSI0_DAT12__IPU1_CSI0_DATA12    0x80000000
+				MX6QDL_PAD_CSI0_DAT13__IPU1_CSI0_DATA13    0x80000000
+				MX6QDL_PAD_CSI0_DAT14__IPU1_CSI0_DATA14    0x80000000
+				MX6QDL_PAD_CSI0_DAT15__IPU1_CSI0_DATA15    0x80000000
+				MX6QDL_PAD_CSI0_DAT16__IPU1_CSI0_DATA16    0x80000000
+				MX6QDL_PAD_CSI0_DAT17__IPU1_CSI0_DATA17    0x80000000
+				MX6QDL_PAD_CSI0_DAT18__IPU1_CSI0_DATA18    0x80000000
+				MX6QDL_PAD_CSI0_DAT19__IPU1_CSI0_DATA19    0x80000000
+				MX6QDL_PAD_CSI0_PIXCLK__IPU1_CSI0_PIXCLK   0x80000000
+				MX6QDL_PAD_CSI0_MCLK__IPU1_CSI0_HSYNC      0x80000000
+				MX6QDL_PAD_CSI0_VSYNC__IPU1_CSI0_VSYNC     0x80000000
+			>;
+		};
+#endif // CONFIG_ARMSTONEA9_PARALLEL_INTERFACE
+
+#ifdef CONFIG_ARMSTONEA9_SPI_A
+		/* ECSPI2 - SPI_A */
+		pinctrl_ecspi2_1: ecspi2grp {
+			fsl,pins = <
+				MX6QDL_PAD_EIM_OE__ECSPI2_MISO	0x100b1
+				MX6QDL_PAD_EIM_CS1__ECSPI2_MOSI	0x100b1
+				MX6QDL_PAD_EIM_CS0__ECSPI2_SCLK	0x100b1
+			>;
+		};
+		pinctrl_ecspi2_cs: ecspi2cs {
+			fsl,pins = <
+				/* ECSPI2_SS0 - slave (chip) select 0 */
+				MX6QDL_PAD_EIM_RW__GPIO2_IO26		0x80000000
+			>;
+		};
+#endif // CONFIG_ARMSTONEA9_SPI_A
+
+#ifdef CONFIG_ARMSTONEA9_UART_B
+		/* UART1 on pins 13, 15 (port B)*/
+		pinctrl_uart1_1: uart1grp-1{
+			fsl,pins = <
+				MX6QDL_PAD_CSI0_DAT10__UART1_TX_DATA	0x1b0b1
+				MX6QDL_PAD_CSI0_DAT11__UART1_RX_DATA	0x1b0b1
+			>;
+		};
+#endif // CONFIG_ARMSTONEA9_UART_B
+
+		/* UART2 on pins 55-58 (debug port A)*/
+		pinctrl_uart2_1: uart2grp-1{
+			fsl,pins = <
+				MX6QDL_PAD_EIM_D26__UART2_TX_DATA	0x1b0b1
+				MX6QDL_PAD_EIM_D27__UART2_RX_DATA	0x1b0b1
+#ifdef CONFIG_ARMSTONEA9_UART_A_RTSCTS
+				MX6QDL_PAD_EIM_D28__UART2_CTS_B		0x1b0b1
+				MX6QDL_PAD_EIM_D29__UART2_RTS_B		0x1b0b1
+#endif /* CONFIG_ARMSTONEA9_UART_A_RTSCTS */
+			>;
+		};
+
+		/* UART3 on pins 36, 38 (port C) */
+		pinctrl_uart3_1: uart3grp-1{
+			fsl,pins = <
+				MX6QDL_PAD_EIM_D24__UART3_TX_DATA	0x1b0b1
+				MX6QDL_PAD_EIM_D25__UART3_RX_DATA	0x1b0b1
+			>;
+		};
+
+		/* CAN A */
+		pinctrl_flexcan_a: flexcan2grp {
+			fsl,pins = <
+				MX6QDL_PAD_KEY_COL4__FLEXCAN2_TX	0x1b020
+				MX6QDL_PAD_KEY_ROW4__FLEXCAN2_RX	0x1b020
+			>;
+		};
+
+		pinctrl_usbotg_2: usbotggrp {
+			fsl,pins = <
+			/* Board must have R45 as 10 Ohm and R46 not equipped */
+				MX6QDL_PAD_ENET_RX_ER__USB_OTG_ID 	0x17059
+			>;
+		};
+
+		pinctrl_enet: enetgrp {
+			fsl,pins = <
+				MX6QDL_PAD_ENET_MDIO__ENET_MDIO		0x1b0b0
+				MX6QDL_PAD_ENET_MDC__ENET_MDC		0x1b0b0
+				MX6QDL_PAD_RGMII_TXC__RGMII_TXC		0x1b0b0
+				MX6QDL_PAD_RGMII_TD0__RGMII_TD0		0x1b0b0
+				MX6QDL_PAD_RGMII_TD1__RGMII_TD1		0x1b0b0
+				MX6QDL_PAD_RGMII_TD2__RGMII_TD2		0x1b0b0
+				MX6QDL_PAD_RGMII_TD3__RGMII_TD3		0x1b0b0
+				MX6QDL_PAD_RGMII_TX_CTL__RGMII_TX_CTL	0x1b0b0
+				MX6QDL_PAD_ENET_REF_CLK__ENET_TX_CLK	0x1b0b0
+				MX6QDL_PAD_RGMII_RXC__RGMII_RXC		0x1b0b0
+				MX6QDL_PAD_RGMII_RD0__RGMII_RD0		0x1b0b0
+				MX6QDL_PAD_RGMII_RD1__RGMII_RD1		0x1b0b0
+				MX6QDL_PAD_RGMII_RD2__RGMII_RD2		0x1b0b0
+				MX6QDL_PAD_RGMII_RD3__RGMII_RD3		0x1b0b0
+				MX6QDL_PAD_RGMII_RX_CTL__RGMII_RX_CTL	0x1b0b0
+				/* Phy interrupt IO pin*/
+				MX6QDL_PAD_GPIO_19__GPIO4_IO05		0x4001b0a8
+				/* Phy reset IO pin*/
+				MX6QDL_PAD_ENET_CRS_DV__GPIO1_IO25	0x4001b0a8
+			>;
+		};
+
+#ifdef CONFIG_ARMSTONEA9_I2C_A
+		/* I2C_A: Feature Connector (SKIT) */
+		pinctrl_i2c3_5: i2c3grp-1 {
+			fsl,pins = <
+				MX6QDL_PAD_GPIO_3__I2C3_SCL    	 0x4001b8b1
+				MX6QDL_PAD_GPIO_16__I2C3_SDA   	 0x4001b8b1
+			>;
+		};
+#endif // CONFIG_ARMSTONEA9_I2C_A
+
+#ifdef CONFIG_ARMSTONEA9_I2C_B
+		/* I2C2 as I2C port B  (DataFlash, PMIC, RTC) */
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <
+				MX6QDL_PAD_KEY_COL3__I2C2_SCL  	 0x4001b8b1
+				MX6QDL_PAD_KEY_ROW3__I2C2_SDA  	 0x4001b8b1
+			>;
+		};
+#endif // CONFIG_ARMSTONEA9_I2C_B
+
+#ifdef CONFIG_ARMSTONEA9_I2C_C
+		/* I2C_C: additonal bus on pins 18 and 26 */
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <
+				MX6QDL_PAD_CSI0_DAT8__I2C1_SDA   0x4001b8b1
+				MX6QDL_PAD_CSI0_DAT9__I2C1_SCL   0x4001b8b1
+			>;
+		};
+#endif // CONFIG_ARMSTONEA9_I2C_C
+
+#ifdef CONFIG_ARMSTONEA9_SGTL5000_AUDIO
+	i2c-gpio-0 {
+		pinctrl_i2c5_gpio: i2c5_gpio_grp {
+			fsl,pins = <
+				MX6QDL_PAD_SD2_CMD__GPIO1_IO11	0x4001b0b0
+				MX6QDL_PAD_SD2_CLK__GPIO1_IO10	0x4001b0b0
+			>;
+		};
+	};
+#endif /* CONFIG_ARMSTONEA9_SGTL5000_AUDIO */
+
+#if defined(CONFIG_ARMSTONEA9_SGTL5000_AUDIO) || \
+	defined(CONFIG_ARMSTONEA9_HDMI_AUDIO)
+		pinctrl_audmux_4: audmux-4 {
+			fsl,pins = <
+				MX6QDL_PAD_SD2_DAT3__AUD4_TXC  0x130b0
+				MX6QDL_PAD_SD2_DAT2__AUD4_TXD  0x130b0
+				MX6QDL_PAD_SD2_DAT1__AUD4_TXFS 0x130b0
+				MX6QDL_PAD_SD2_DAT0__AUD4_RXD  0x130b0
+			>;
+		};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_HDMI
+	/* HDMI interface */
+	pinctrl_i2c6_gpio: i2c6_gpio_grp {
+		fsl,pins = <
+			MX6QDL_PAD_SD4_DAT6__GPIO2_IO14		0x70B1
+			MX6QDL_PAD_SD4_DAT7__GPIO2_IO15		0x70B1
+		>;
+	};
+#endif
+
+		/* PWM port C - PWM1 */
+		pinctrl_pwm1_1: pwm1grp {
+			fsl,pins = <
+				MX6QDL_PAD_SD1_DAT3__PWM1_OUT 	0x110b0
+			>;
+		};
+
+		/* PWM port A - PWM2 */
+		pinctrl_pwm2_1: pwm2grp {
+			fsl,pins = <
+				MX6QDL_PAD_GPIO_1__PWM2_OUT 	0x110b0
+			>;
+		};
+
+		/* LVDS backlight control - PWM3 */
+		pinctrl_pwm3_1: pwm3grp {
+			fsl,pins = <
+				MX6QDL_PAD_SD4_DAT1__PWM3_OUT 	0x110b0
+			>;
+		};
+
+		/* PWM port B - PWM4 */
+		pinctrl_pwm4_1: pwm4grp {
+			fsl,pins = <
+				MX6QDL_PAD_SD4_DAT2__PWM4_OUT	0x110b0
+			>;
+		};
+
+#ifdef CONFIG_ARMSTONEA9_SD_A
+		pinctrl_usdhc3: usdhc3grp {
+			fsl,pins = <
+				MX6QDL_PAD_SD3_CMD__SD3_CMD	0x17051
+				MX6QDL_PAD_SD3_CLK__SD3_CLK	0x10051
+				MX6QDL_PAD_SD3_DAT0__SD3_DATA0	0x17051
+				MX6QDL_PAD_SD3_DAT1__SD3_DATA1	0x17051
+				MX6QDL_PAD_SD3_DAT2__SD3_DATA2	0x17051
+				MX6QDL_PAD_SD3_DAT3__SD3_DATA3	0x17051
+				MX6QDL_PAD_SD3_RST__GPIO7_IO08	0xb060 /* RST active low */
+			>;
+		};
+#endif // CONFIG_ARMSTONEA9_SD_A
+	};
+};
