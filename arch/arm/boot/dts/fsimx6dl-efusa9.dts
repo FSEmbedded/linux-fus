@@ -8,8 +8,8 @@
 
 /dts-v1/;
 /* CHOOSE BOARD REVISION */
- #define CONFIG_EFUSA9_REV110 // old board revision
-//#define CONFIG_EFUSA9_REV121
+// #define CONFIG_EFUSA9_REV110 // old board revision
+#define CONFIG_EFUSA9_REV121
 
 /* CONFIGURE 5V LVDS POWER SUPPLY */
 #ifdef CONFIG_EFUSA9_REV121

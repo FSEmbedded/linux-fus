@@ -154,6 +154,9 @@
 /* SD-CARD - A is micro SD */
 #define CONFIG_ARMSTONEA9_SD_A
 
+/* SATA */
+#define CONFIG_ARMSTONEA9_SATA
+
 /* I2C */
 #define CONFIG_ARMSTONEA9_I2C_A
 #define CONFIG_ARMSTONEA9_I2C_B
@@ -179,6 +182,12 @@
 	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
 	compatible = "fus,imx6q-dma-apbh", "fus,imx28-dma-apbh";
 };
+
+#ifdef CONFIG_ARMSTONEA9_SATA
+&sata{
+	status = "okay";
+};
+#endif
 
 #ifdef CONFIG_ARMSTONEA9_LVDS
 &ldb {
