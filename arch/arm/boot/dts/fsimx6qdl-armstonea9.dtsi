@@ -573,22 +573,6 @@
 		};
 	};
 
-#ifdef CONFIG_ARMSTONEA9_4WTOUCH_SX8655_ONBOARD
-	/* 4/5 wire analog resistive touch, controller on armstone */
-	sx8654@48 {
-		compatible = "semtech,sx8654";
-		reg = <0x48>;
-		touchrate = <0x30>;
-		powdly = <0x06>;
-		filt = <0x02>;
-		setdly = <0x08>;
-		pinctrl-names = "default";
-		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
-		interrupt-parent = <&gpio1>;
-		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
-	};
-#endif
-
 #ifdef CONFIG_ARMSTONEA9_4WTOUCH_SX8655_RGBADAPTER
 	/* 4/5 wire analog resistive touch, controller on armstone */
 	sx8654@49 {

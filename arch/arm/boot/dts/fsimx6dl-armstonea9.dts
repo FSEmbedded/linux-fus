@@ -88,7 +88,6 @@
 /* TOUCH */
 /* Please select only one of the following touch devices. Make sure that the
    corresponding touchscreen driver is activated in the kernel */
-//#define CONFIG_ARMSTONEA9_4WTOUCH_SX8655_ONBOARD
 #define CONFIG_ARMSTONEA9_4WTOUCH_SX8655_RGBADAPTER
 //#define CONFIG_ARMSTONEA9_CAPTOUCH_MXT224
 //#define CONFIG_ARMSTONEA9_CAPTOUCH_FT5x06

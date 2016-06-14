@@ -612,7 +612,6 @@ backlight_ldb {
 	};
 #endif
 
-#if 0 //##TODO fix
 #ifdef CONFIG_EFUSA9_4WTOUCH_SX8655_RGBADAPTER
 	/* 4/5 wire analog resistive touch, controller on efus SKIT */
 	sx8654@49 {
@@ -623,13 +622,11 @@ backlight_ldb {
 		filt = <0x02>;
 		setdly = <0x08>;
 		pinctrl-names = "default";
-		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
 		interrupt-parent = <&gpio1>;
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
 	};
 #endif
-#endif //##TODO fix
 
 #ifdef CONFIG_EFUSA9_CAPTOUCH_FT5x06
 	/* F&S driver V2.0 on Touch-Connector (I2C) */
@@ -679,6 +676,11 @@ backlight_ldb {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm4_1>;
 	status = "okay";
+};
+
+&dma_apbh {
+	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
+	compatible ="fus,imx28-dma-apbh";
 };
 
 #ifdef CONFIG_EFUSA9_NAND
@@ -934,6 +936,13 @@ backlight_ldb {
 				MX6QDL_PAD_CSI0_DAT6__GPIO5_IO24 0x17059
 				/* camera reset - active low */
 				MX6QDL_PAD_CSI0_DAT5__GPIO5_IO23 0x17059
+				/* SW I2C on LVDS connector */
+				MX6QDL_PAD_SD4_DAT6__GPIO2_IO14	0x80000000
+				MX6QDL_PAD_SD4_DAT7__GPIO2_IO15	0x80000000
+				/* I2C_A IRQ*/
+				MX6QDL_PAD_ENET_TXD0__GPIO1_IO30 0x80000000
+				/* I2C_A reset */
+				MX6QDL_PAD_ENET_TXD1__GPIO1_IO29 0x80000000
 			>;
 		};
 		
@@ -1216,7 +1225,7 @@ backlight_ldb {
 		pinctrl_i2c3_5: i2c3grp-1 {
 			fsl,pins = <
 				MX6QDL_PAD_GPIO_3__I2C3_SCL      0x4001b8b1
-				MX6QDL_PAD_GPIO_3__I2C3_SCL      0x4001b8b1
+				MX6QDL_PAD_GPIO_16__I2C3_SDA     0x4001b8b1
 			>;
 		};
 #endif // CONFIG_EFUSA9_I2C_B
