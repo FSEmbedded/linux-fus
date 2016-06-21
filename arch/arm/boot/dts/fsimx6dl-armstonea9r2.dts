@@ -1,0 +1,177 @@
+/*
+ * Copyright (C) 2016 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+/* CHOOSE BOARD REVISION */
+#define CONFIG_ARMSTONEA9R2_REV100 // old board revision
+//#define CONFIG_ARMSTONEA9R2_REV110
+
+/* The following display config will be converted to Kconfig in the future */
+/* Define this if you have at least one display (D0) */
+#define CONFIG_ARMSTONEA9R2_D0
+/* Define this if you have a second display (D1) */
+//#define CONFIG_ARMSTONEA9R2_D1
+
+/* ENABLE BACKLIGHT LEVELS */
+/* enable 16 levels of backlight brightness with correct gamma */
+#define CONFIG_ARMSTONEA9R2_BL_LEVELS_16
+
+/* CONFIGURE DISPLAY 0 */
+#ifdef CONFIG_ARMSTONEA9R2_D0
+/* Activate exactly one entry for the type of display D0 */
+#define CONFIG_ARMSTONEA9R2_D0_LVDS				// LVDS
+//#define CONFIG_ARMSTONEA9R2_D0_HDMI				// HDMI
+/*
+ * Define a mode_str entry for display D0 (depends on display type above)
+ * See the following files for possible values:
+ *   LVDS: drivers/video/mxc/ldb.c
+ *   HDMI: drivers/video/fbdev/mxc/mxc_hdmi.c (actually fetched from panel via EDID)
+ */
+#ifdef CONFIG_ARMSTONEA9R2_D0_LVDS
+	#define CONFIG_ARMSTONEA9R2_D0_MODE_STR "LDB-WVGA"		// LVDS
+#elif defined(CONFIG_ARMSTONEA9R2_D0_HDMI)
+	#define CONFIG_ARMSTONEA9R2_D0_MODE_STR "1920x1080M@60"	// HDMI
+#endif
+#endif // CONFIG_ARMSTONEA9R2_D0
+
+/* CONFIGURE DISPLAY 1 */
+#ifdef CONFIG_ARMSTONEA9R2_D1
+/* Activate exactly one entry for the type of display D1 */
+#define CONFIG_ARMSTONEA9R2_D1_LVDS				// LVDS
+//#define CONFIG_ARMSTONEA9R2_D1_HDMI				// HDMI
+
+/* Define a mode_str entry for display D1 (see comment for D0 above) */
+#ifdef CONFIG_ARMSTONEA9R2_D1_LVDS
+	#define CONFIG_ARMSTONEA9R2_D1_MODE_STR "LDB-WVGA"		// LVDS
+#elif defined(CONFIG_ARMSTONEA9R2_D1_HDMI)
+	#define CONFIG_ARMSTONEA9R2_D1_MODE_STR "1920x1080M@60"	// HDMI
+#endif
+#endif // CONFIG_ARMSTONEA9R2_D1
+
+/* CONFIGURE LVDS MULTIDISPLAY*/
+/* Two LVDS displays act as two independent displays (with two fb) by default.
+   Apart from this  can choose between dual-mode and split-mode */
+#if defined(CONFIG_ARMSTONEA9R2_D0_LVDS) && defined(CONFIG_ARMSTONEA9R2_D1_LVDS)
+/* one LVDS display per channel, one framebuffer for both */
+//#define CONFIG_ARMSTONEA9R2_LVDS_DUAL_MODE
+/* two channels for 'split-mode-display', one framebuffer */
+//#define CONFIG_ARMSTONEA9R2_LVDS_SPLIT_MODE
+#endif
+
+/* Do some settings to make configurations easier */
+#if defined(CONFIG_ARMSTONEA9R2_D0_HDMI) || defined(CONFIG_ARMSTONEA9R2_D1_HDMI)
+#define CONFIG_ARMSTONEA9R2_HDMI // activates HDMI node
+#endif
+
+#if defined(CONFIG_ARMSTONEA9R2_D0_LVDS) || defined(CONFIG_ARMSTONEA9R2_D1_LVDS)
+#define CONFIG_ARMSTONEA9R2_LVDS // activates LVDS node
+#define CONFIG_ARMSTONEA9R2_LVDS_3_3_V //LVDS with 3.3 V
+//#define CONFIG_ARMSTONEA9R2_LVDS_5_0_V //LVDS with 5.0 V
+#endif
+
+/* HDMI */
+#ifdef CONFIG_ARMSTONEA9R2_HDMI
+#define CONFIG_ARMSTONEA9R2_HDMI_AUDIO
+#define CONFIG_ARMSTONEA9R2_HDMI_CEC
+#endif
+
+
+/* TOUCH */
+/* Please select only one of the following touch devices. Make sure that the
+   corresponding touchscreen driver is activated in the kernel */
+//#define CONFIG_ARMSTONEA9R2_CAPTOUCH_MXT224
+//#define CONFIG_ARMSTONEA9R2_CAPTOUCH_FT5x06
+
+/* NAND */
+#define CONFIG_ARMSTONEA9R2_NAND
+
+/* AUDIO */
+#define CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO
+
+/* SERIAL INTERFACE - MIPI CAMERA */
+//#define CONFIG_ARMSTONEA9R2_SERIAL_INTERFACE
+
+/* SD-CARD - A is WLAN */
+#define CONFIG_ARMSTONEA9R2_WLAN
+/* SD-CARD - B is micro SD */
+#define CONFIG_ARMSTONEA9R2_SD_A
+/* SD-CARD - C is eMMC */
+#define CONFIG_ARMSTONEA9R2_EMMC
+
+/* I2C */
+#define CONFIG_ARMSTONEA9R2_I2C_A
+#define CONFIG_ARMSTONEA9R2_I2C_B
+#define CONFIG_ARMSTONEA9R2_I2C_C
+
+/* SPI */
+#define CONFIG_ARMSTONEA9R2_SPI_A
+#define CONFIG_ARMSTONEA9R2_SPI_B
+#define CONFIG_ARMSTONEA9R2_SPI_C
+
+/* UART */
+#define CONFIG_ARMSTONEA9R2_UART_A
+#define CONFIG_ARMSTONEA9R2_UART_A_RTSCTS
+#define CONFIG_ARMSTONEA9R2_UART_B
+#define CONFIG_ARMSTONEA9R2_UART_B_RTSCTS
+#define CONFIG_ARMSTONEA9R2_UART_C
+#define CONFIG_ARMSTONEA9R2_UART_D
+#define CONFIG_ARMSTONEA9R2_UART_D_RTSCTS
+#define CONFIG_ARMSTONEA9R2_UART_E
+
+#include "imx6dl.dtsi"
+#include "fsimx6qdl-armstonea9r2.dtsi"
+
+/ {
+	model = "F&S i.MX6 DualLite armStoneA9R2 module";
+	compatible = "fsl,imx6dl-armstonea9r2", "fsl,imx6dl";
+};
+
+#ifdef CONFIG_ARMSTONEA9R2_LVDS
+&ldb {
+	ext_ref;
+#ifdef CONFIG_ARMSTONEA9R2_LVDS_DUAL_MODE
+	 dual-mode;
+#endif
+#ifdef CONFIG_ARMSTONEA9R2_LVDS_SPLIT_MODE
+	split-mode;
+#endif
+
+	lvds-channel@0 {		//default LVDS uses di0
+		crtc = "ipu1-di0";
+		reg = <0>;
+		status = "okay";
+	};
+#ifdef CONFIG_ARMSTONEA9R2_D1_LVDS		//if both LVDS channels are used,
+	lvds-channel@1 {		//dual and split mode ignore this node
+		crtc = "ipu1-di1";
+		reg = <1>;
+		status = "okay";
+	};
+#endif
+};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9R2_HDMI
+&hdmi_core {
+	ipu_id = <0>;
+	disp_id = <1>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9R2_D0
+&mxcfb0 {
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9R2_D1
+&mxcfb1 {
+	status = "okay";
+};
+#endif
