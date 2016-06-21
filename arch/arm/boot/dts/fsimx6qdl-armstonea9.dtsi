@@ -28,7 +28,6 @@
 #ifdef CONFIG_ARMSTONEA9_HDMI
 		i2c6 = &i2c_gpio_hdmi;
 #endif
-		i2c7 = &i2c_lvds;
 	};
 	memory {
 		reg = <0x10000000 0x40000000>;
@@ -215,20 +214,6 @@
 		#size-cells = <0>;
 	};
 #endif
-
-	i2c_lvds: i2c-gpio-lvds {
-		compatible = "i2c-gpio";
-		gpios = <&gpio7 11 GPIO_ACTIVE_HIGH /* sda */
-			 &gpio1 03 GPIO_ACTIVE_HIGH /* scl */
-			>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_i2c7_gpio>;
-//		i2c-gpio,sda-open-drain;
-//		i2c-gpio,scl-open-drain;
-		i2c-gpio,delay-us = <2>;        /* ~100 kHz */
-		#address-cells = <1>;
-		#size-cells = <0>;
-	};
 
 #ifdef CONFIG_ARMSTONEA9_SGTL5000_AUDIO
 	sound {
@@ -1109,13 +1094,6 @@
 			>;
 		};
 #endif
-
-		pinctrl_i2c7_gpio: i2c7_gpio_grp {
-			fsl,pins = <
-				MX6QDL_PAD_GPIO_16__GPIO7_IO11		0x70B1 /* sda */
-				MX6QDL_PAD_GPIO_3__GPIO1_IO03		0x70B1 /* scl */
-			>;
-		};
 
 		/* PWM port C - PWM1 */
 		pinctrl_pwm1_1: pwm1grp {
