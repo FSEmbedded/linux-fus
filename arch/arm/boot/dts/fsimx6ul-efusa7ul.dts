@@ -374,11 +374,12 @@
 	pinctrl-1 = <&pinctrl_usdhc1_100mhz>;
 	pinctrl-2 = <&pinctrl_usdhc1_200mhz>;
 	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;
 #ifdef CONFIG_EFUSA7UL_WLAN
 	non-removable;
 	keep-power-in-suspend;
 	enable-sdio-wakeup;
-	vmmc-supply = <&reg_wlan_vmmc_1v8>;
+	vqmmc-supply = <&reg_wlan_vmmc_1v8>;
 #else
 #ifdef CONFIG_EFUSA7UL_SD_A_CDWP
 	cd-gpios = <&gpio1 19 GPIO_ACTIVE_LOW>;
@@ -386,7 +387,6 @@
 #else
 	non-removable;
 #endif
-	vmmc-supply = <&reg_vref_3v3>;
 #endif
 	status = "okay";
 };

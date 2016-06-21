@@ -1018,15 +1018,15 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc1_1>;
 	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;
 #ifdef CONFIG_EFUSA9X_WLAN
 	non-removable;
 	keep-power-in-suspend;
 	enable-sdio-wakeup;
-	vmmc-supply = <&reg_wlan_vmmc_1v8>;
+	vqmmc-supply = <&reg_wlan_vmmc_1v8>;
 #else
 	cd-gpios = <&gpio1 2 GPIO_ACTIVE_LOW>;
 	wp-gpios = <&gpio1 3 GPIO_ACTIVE_HIGH>;
-	vmmc-supply = <&reg_vref_3v3>;
 #endif
 	status = "okay";
 };
