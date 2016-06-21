@@ -47,6 +47,7 @@
 //#define CONFIG_ARMSTONEA9_D1_LCD				// LCD
 #define CONFIG_ARMSTONEA9_D1_LVDS				// LVDS
 //#define CONFIG_ARMSTONEA9_D1_HDMI				// HDMI
+
 /* Define a mode_str entry for display D1 (see comment for D0 above) */
 #ifdef CONFIG_ARMSTONEA9_D1_LVDS
 	#define CONFIG_ARMSTONEA9_D1_MODE_STR "LDB-WVGA"		// LVDS
@@ -127,13 +128,8 @@
 #include "fsimx6qdl-armstonea9.dtsi"
 
 / {
-	model = "F&S i.MX6 DualLite ARMSTONEA9 module";
-	compatible = "fsl,imx6dl-ARMSTONEA9", "fsl,imx6dl";
-};
-
-&dma_apbh {
-	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
-	compatible = "fus,imx6dl-dma-apbh", "fus,imx28-dma-apbh";
+	model = "F&S i.MX6 DualLite armStoneA9 module";
+	compatible = "fsl,imx6dl-armstonea9", "fsl,imx6dl";
 };
 
 #ifdef CONFIG_ARMSTONEA9_LVDS
@@ -176,19 +172,23 @@
 	status = "okay";
 };
 #endif
+
 #ifdef CONFIG_ARMSTONEA9_D0
 &mxcfb0 {
 	status = "okay";
 };
 #endif
+
 #ifdef CONFIG_ARMSTONEA9_D1
 &mxcfb1 {
 	status = "okay";
 };
 #endif
+
 &pxp {
 	status = "okay";
 };
+
 #if 0
 &iomuxc {
 	pinctrl-names = "default";

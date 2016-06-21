@@ -7,9 +7,6 @@
  */
 
 /dts-v1/;
-/* CHOOSE BOARD REVISION */
-// #define CONFIG_EFUSA9_REV110 // old board revision
-#define CONFIG_EFUSA9_REV121
 
 /* ENABLE DISPLAYS */
 /* The following display config will be converted to Kconfig in the future */
@@ -33,6 +30,7 @@
 #define CONFIG_ARMSTONEA9_D0_LCD				// LCD
 //#define CONFIG_ARMSTONEA9_D0_LVDS				// LVDS
 //#define CONFIG_ARMSTONEA9_D0_HDMI				// HDMI
+
 /*
  * Define a mode_str entry for display D0 (depends on display type above)
  * See the following files for possible values:
@@ -55,6 +53,7 @@
 //#define CONFIG_ARMSTONEA9_D1_LCD				// LCD
 #define CONFIG_ARMSTONEA9_D1_LVDS				// LVDS
 //#define CONFIG_ARMSTONEA9_D1_HDMI				// HDMI
+
 /* Define a mode_str entry for display D1 (see comment for D0 above) */
 #ifdef CONFIG_ARMSTONEA9_D1_LVDS
 	#define CONFIG_ARMSTONEA9_D1_MODE_STR "LDB-WVGA"		// LVDS
@@ -87,6 +86,7 @@
 //#define CONFIG_ARMSTONEA9_D3_LCD				// LCD
 #define CONFIG_ARMSTONEA9_D3_LVDS				// LVDS
 //#define CONFIG_ARMSTONEA9_D3_HDMI				// HDMI
+
 /* Define a mode_str entry for display D3 (see comment for D0 above) */
 #ifdef CONFIG_ARMSTONEA9_D3_LVDS
 	#define CONFIG_ARMSTONEA9_D3_MODE_STR "LDB-WVGA"		// LVDS
@@ -177,11 +177,6 @@
 	compatible = "fsl,imx6q-armstonea9", "fsl,imx6q";
 };
 
-&dma_apbh {
-	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
-	compatible = "fus,imx6q-dma-apbh", "fus,imx28-dma-apbh";
-};
-
 #ifdef CONFIG_ARMSTONEA9_SATA
 &sata{
 	status = "okay";
@@ -252,11 +247,13 @@
 	status = "okay";
 };
 #endif
+
 #ifdef CONFIG_ARMSTONEA9_D0
 &mxcfb0 {
 	status = "okay";
 };
 #endif
+
 #ifdef CONFIG_ARMSTONEA9_D1
 &mxcfb1 {
 	status = "okay";

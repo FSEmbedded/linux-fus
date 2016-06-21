@@ -28,6 +28,7 @@
 #ifdef CONFIG_ARMSTONEA9_HDMI
 		i2c6 = &i2c_gpio_hdmi;
 #endif
+		i2c7 = &i2c_lvds;
 	};
 	memory {
 		reg = <0x10000000 0x40000000>;
@@ -186,8 +187,8 @@
 	/* Bitbanging I2C */
 	i2c_gpio: i2c-gpio {
 		compatible = "i2c-gpio";
-		gpios = <&gpio1 11 0 /* sda */
-			 &gpio1 10 0 /* scl */
+		gpios = <&gpio1 11 GPIO_ACTIVE_HIGH /* sda */
+			 &gpio1 10 GPIO_ACTIVE_HIGH /* scl */
 			>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_i2c5_gpio>;
@@ -202,8 +203,8 @@
 #ifdef CONFIG_ARMSTONEA9_HDMI
 	i2c_gpio_hdmi: i2c-gpio-hdmi {
 		compatible = "i2c-gpio";
-		gpios = <&gpio2 14 0 /* sda */
-			 &gpio2 15 0 /* scl */
+		gpios = <&gpio2 14 GPIO_ACTIVE_HIGH /* sda */
+			 &gpio2 15 GPIO_ACTIVE_HIGH /* scl */
 			>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_i2c6_gpio>;
@@ -214,6 +215,20 @@
 		#size-cells = <0>;
 	};
 #endif
+
+	i2c_lvds: i2c-gpio-lvds {
+		compatible = "i2c-gpio";
+		gpios = <&gpio7 11 GPIO_ACTIVE_HIGH /* sda */
+			 &gpio1 03 GPIO_ACTIVE_HIGH /* scl */
+			>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_i2c7_gpio>;
+//		i2c-gpio,sda-open-drain;
+//		i2c-gpio,scl-open-drain;
+		i2c-gpio,delay-us = <2>;        /* ~100 kHz */
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
 
 #ifdef CONFIG_ARMSTONEA9_SGTL5000_AUDIO
 	sound {
@@ -411,7 +426,7 @@
 /* SPI_A (2x CS) */
 &ecspi2 {
 	fsl,spi-num-chipselects = <2>;
-	cs-gpios = <&gpio2 26 0>; /* SPI_A_CS1 */
+	cs-gpios = <&gpio2 26 GPIO_ACTIVE_HIGH>; /* SPI_A_CS1 */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi2_1 &pinctrl_ecspi2_cs>;
 	status = "okay";
@@ -670,6 +685,11 @@
 	status = "okay";
 };
 
+&dma_apbh {
+	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
+	compatible = "fus,imx6q-dma-apbh", "fus,imx28-dma-apbh";
+};
+
 #ifdef CONFIG_ARMSTONEA9_NAND
 &gpmi {
 	/* Switch to F&S implementation of GPMI NAND driver */
@@ -819,8 +839,11 @@
 
 #if 0 // not tested
 &pcie {
-	power-on-gpio = <&gpio3 19 0>;
-	reset-gpio = <&gpio7 12 0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pcie>;
+	disable-gpio = <&gpio5 15 GPIO_ACTIVE_LOW>;
+	power-on-gpio = <&gpio6 16 GPIO_ACTIVE_LOW>;
+	reset-gpio = <&gpio5 17 GPIO_ACTIVE_LOW>;
 	status = "okay";
 };
 #endif
@@ -845,20 +868,20 @@
 				/* WDOG1 */
 				MX6QDL_PAD_GPIO_9__WDOG1_B      0x80000000
 
-				/* SD2_WP pin */
-				MX6QDL_PAD_DI0_PIN4__GPIO4_IO20 0x80000000
-
-				 /* SD2_CD pin */
-				MX6QDL_PAD_GPIO_4__GPIO1_IO04   0x17059
-
-				/* SD2_WP pin */
-				MX6QDL_PAD_GPIO_2__GPIO1_IO02   0x80000000
+				/* I2C2_IRQn (SX8655, ext. touch) */
+				MX6QDL_PAD_ENET_TXD0__GPIO1_IO30 0x80000000
 
 				/* camera powerdown - active high */
 				MX6QDL_PAD_CSI0_DAT6__GPIO5_IO24 0x17059
 
 				/* camera reset - active low */
 				MX6QDL_PAD_CSI0_DAT5__GPIO5_IO23 0x17059
+
+				/* USB_HUB_RESET, U-Boot set the pads */
+				MX6QDL_PAD_GPIO_17__GPIO7_IO12 0x80000000
+
+				/* RTC_IRQ */
+				MX6QDL_PAD_ENET_TX_EN__GPIO1_IO28 0xb0b0
 			>;
 		};
 
@@ -1055,14 +1078,14 @@
 #endif // CONFIG_ARMSTONEA9_I2C_C
 
 #ifdef CONFIG_ARMSTONEA9_SGTL5000_AUDIO
-	i2c-gpio-0 {
-		pinctrl_i2c5_gpio: i2c5_gpio_grp {
-			fsl,pins = <
-				MX6QDL_PAD_SD2_CMD__GPIO1_IO11	0x4001b0b0
-				MX6QDL_PAD_SD2_CLK__GPIO1_IO10	0x4001b0b0
-			>;
+		i2c-gpio-0 {
+			pinctrl_i2c5_gpio: i2c5_gpio_grp {
+				fsl,pins = <
+					MX6QDL_PAD_SD2_CMD__GPIO1_IO11	0x4001b0b0
+					MX6QDL_PAD_SD2_CLK__GPIO1_IO10	0x4001b0b0
+				>;
+			};
 		};
-	};
 #endif /* CONFIG_ARMSTONEA9_SGTL5000_AUDIO */
 
 #if defined(CONFIG_ARMSTONEA9_SGTL5000_AUDIO) || \
@@ -1079,13 +1102,20 @@
 
 #ifdef CONFIG_ARMSTONEA9_HDMI
 	/* HDMI interface */
-	pinctrl_i2c6_gpio: i2c6_gpio_grp {
-		fsl,pins = <
-			MX6QDL_PAD_SD4_DAT6__GPIO2_IO14		0x70B1
-			MX6QDL_PAD_SD4_DAT7__GPIO2_IO15		0x70B1
-		>;
-	};
+		pinctrl_i2c6_gpio: i2c6_gpio_grp {
+			fsl,pins = <
+				MX6QDL_PAD_SD4_DAT6__GPIO2_IO14		0x70B1
+				MX6QDL_PAD_SD4_DAT7__GPIO2_IO15		0x70B1
+			>;
+		};
 #endif
+
+		pinctrl_i2c7_gpio: i2c7_gpio_grp {
+			fsl,pins = <
+				MX6QDL_PAD_GPIO_16__GPIO7_IO11		0x70B1 /* sda */
+				MX6QDL_PAD_GPIO_3__GPIO1_IO03		0x70B1 /* scl */
+			>;
+		};
 
 		/* PWM port C - PWM1 */
 		pinctrl_pwm1_1: pwm1grp {
@@ -1128,5 +1158,13 @@
 			>;
 		};
 #endif // CONFIG_ARMSTONEA9_SD_A
+
+		pinctrl_pcie: pciegrp {
+			fsl,pins = <
+				MX6QDL_PAD_DISP0_DAT21__GPIO5_IO15 0x1b0b0 /* PCIe-DIS */
+				MX6QDL_PAD_DISP0_DAT23__GPIO5_IO17 0x1b0b0 /* PCIe-RST */
+				MX6QDL_PAD_NANDF_CS3__GPIO6_IO16 0x1b0b0 /* PCIe-WAKE */
+			>;
+		};
 	};
 };
