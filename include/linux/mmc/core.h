@@ -197,6 +197,7 @@ extern void mmc_put_card(struct mmc_card *card);
 extern int mmc_flush_cache(struct mmc_card *);
 
 extern int mmc_detect_card_removed(struct mmc_host *host);
+extern void mmc_sdio_force_remove(struct mmc_host *host);
 
 int mmc_first_nonreserved_index(void);
 int mmc_get_reserved_index(struct mmc_host *host);
