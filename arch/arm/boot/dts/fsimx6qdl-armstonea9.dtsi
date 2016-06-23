@@ -617,6 +617,14 @@
 };
 #endif // CONFIG_ARMSTONEA9_I2C_A
 
+/* RAM size for continues memory allocator */
+#ifndef CONFIG_EFUSA9_CMA_SIZE
+	#define CONFIG_EFUSA9_CMA_SIZE 0x14000000 //set 320mb as default
+#endif
+&cma {
+	size = <CONFIG_EFUSA9_CMA_SIZE>; 
+};
+
 #ifdef CONFIG_ARMSTONEA9_SGTL5000_AUDIO
 /* I2C_C (Bitbanging): RTC (PCA8565), SGTL5000 (SKIT) */
 &i2c_gpio {

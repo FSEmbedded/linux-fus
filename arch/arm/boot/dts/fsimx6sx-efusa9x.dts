@@ -16,6 +16,11 @@
 //#define CONFIG_EFUSA9X_CAPTOUCH_MXT224
 //#define CONFIG_EFUSA9X_CAPTOUCH_FT5x06
 
+/* CMA */
+/* activate the define below and set a custom value if you want to change the
+   RAM size of continues memory allocator from default 320mb. */
+//#define CONFIG_EFUSA9_CMA_SIZE 0x4000000 /* e.g. 0x4000000 is 64mb */
+
 /dts-v1/;
 
 /* If UART_C uses RTS, we can only have one CS on SPI_B; if UART_C does
@@ -233,6 +238,14 @@
 		board_name = "efusa9x";
 		ecc_strength = "8";
 	};
+};
+
+/* RAM size for continues memory allocator */
+#ifndef CONFIG_EFUSA9_CMA_SIZE
+	#define CONFIG_EFUSA9_CMA_SIZE 0x14000000 //set 320mb as default
+#endif
+&cma {
+	size = <CONFIG_EFUSA9_CMA_SIZE>; 
 };
 
 &iomuxc {

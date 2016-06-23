@@ -97,7 +97,7 @@
 		ranges;
 
 		/* global autoconfigured region for contiguous allocations */
-		linux,cma {
+		cma: linux,cma {
 			compatible = "shared-dma-pool";
 			reusable;
 			size = <0x14000000>;

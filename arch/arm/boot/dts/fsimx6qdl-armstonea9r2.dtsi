@@ -333,6 +333,14 @@
 
 };
 
+/* RAM size for continues memory allocator */
+#ifndef CONFIG_EFUSA9_CMA_SIZE
+	#define CONFIG_EFUSA9_CMA_SIZE 0x14000000 //set 320mb as default
+#endif
+&cma {
+	size = <CONFIG_EFUSA9_CMA_SIZE>; 
+};
+
 #if defined(CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO) || \
 	defined(CONFIG_ARMSTONEA9R2_HDMI_AUDIO)
 &audmux {
