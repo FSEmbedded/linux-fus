@@ -37,23 +37,55 @@ struct mxc_lcdif_data {
 
 static struct fb_videomode lcdif_modedb[] = {
 	{
-	/* 800x480 @ 57 Hz , pixel clk @ 27MHz */
-	"CLAA-WVGA", 57, 800, 480, 37037, 40, 60, 10, 10, 20, 10,
-	FB_SYNC_CLK_LAT_FALL,
-	FB_VMODE_NONINTERLACED,
-	0,},
+		/* 800x480 @ 57 Hz , pixel clk @ 27MHz */
+		"CLAA-WVGA", 57, 800, 480, 37037, 40, 60, 10, 10, 20, 10,
+		FB_SYNC_CLK_LAT_FALL,
+		FB_VMODE_NONINTERLACED,
+		0,
+	},
 	{
-	/* 800x480 @ 60 Hz , pixel clk @ 32MHz */
-	"SEIKO-WVGA", 60, 800, 480, 29850, 89, 164, 23, 10, 10, 10,
-	FB_SYNC_CLK_LAT_FALL,
-	FB_VMODE_NONINTERLACED,
-	0,},
+		/* 800x480 @ 60 Hz , pixel clk @ 32MHz */
+		"SEIKO-WVGA", 60, 800, 480, 29850, 89, 164, 23, 10, 10, 10,
+		FB_SYNC_CLK_LAT_FALL,
+		FB_VMODE_NONINTERLACED,
+		0,
+	},
 	{
-	/* 800x480 @ 57 Hz , pixel clk @ 27MHz */
-	"LCD-ET070080", 57, 800, 480, 37037, 152, 40, 33, 10, 64, 2,
-	0,
-	FB_VMODE_NONINTERLACED,
-	0,},
+		/* 800x480 @ 57 Hz , pixel clk @ 27MHz */
+		"LCD-ET070080", 57, 800, 480, 37037, 152, 40, 33, 10, 64, 2,
+		0,
+		FB_VMODE_NONINTERLACED,
+		0,
+	},
+	{
+		/* 640x480 @ 60 Hz , pixel clk @ 25,175MHz */
+		"LCD-ET057090", 60, 640, 480, 39700, 114, 16, 32, 10, 30, 3,
+		0,
+		FB_VMODE_NONINTERLACED,
+		0,
+	},
+	{
+		/* 640x480 @ 60 Hz , pixel clk @ 27MHz */
+		"LCD-T056640480", 60, 640, 480, 37037, 134, 16, 11, 32, 10, 2,
+		0,
+		FB_VMODE_NONINTERLACED,
+		0,
+	},
+	{
+		/* 640x480 @ 60 Hz , pixel clk @ 27MHz */
+		"LCD-MI0430PT", 60, 480, 272, 111111, 2, 2, 2, 2, 41, 10,
+		0,
+		FB_VMODE_NONINTERLACED,
+		0,
+	},
+	{
+		/* 800x480 @ 57 Hz , pixel clk @ 27MHz */
+		"LCD-MI0700S4T", 60, 800, 480, 30062, 16, 210, 10, 22, 30, 13,
+		FB_SYNC_CLK_LAT_FALL,
+		FB_VMODE_NONINTERLACED,
+		0,
+	},
+
 };
 static int lcdif_modedb_sz = ARRAY_SIZE(lcdif_modedb);
 
