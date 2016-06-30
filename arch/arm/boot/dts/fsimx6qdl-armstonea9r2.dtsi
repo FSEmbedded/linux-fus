@@ -297,6 +297,24 @@
 	};
 #endif
 
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_status_leds>;
+
+		status_1 {
+			label = "Status1";
+			gpios = <&gpio7 13 GPIO_ACTIVE_HIGH>;
+			default-state = "keep";
+		};
+
+		status_2 {
+			label = "Status2";
+			gpios = <&gpio7 12 GPIO_ACTIVE_HIGH>;
+			default-state = "keep";
+		};
+	};
+
 /* Matrix Keypad not configurated yet, some pins can be multiple declared*/
 #if 0
 		matrix-keypad {
@@ -1200,6 +1218,13 @@
 				MX6QDL_PAD_EIM_EB0__GPIO2_IO28   0x1b0b0 /* PCIe-DIS */
 				MX6QDL_PAD_NANDF_CS1__GPIO6_IO14 0x1b0b0 /* PCIe-RST */
 				MX6QDL_PAD_NANDF_CS3__GPIO6_IO16 0x1b0b0 /* PCIe-WAKE */
+			>;
+		};
+
+		pinctrl_status_leds: ledgrp {
+			fsl,pins = <
+				MX6QDL_PAD_GPIO_17__GPIO7_IO12 0x80000000
+				MX6QDL_PAD_GPIO_18__GPIO7_IO13 0x80000000
 			>;
 		};
 	};

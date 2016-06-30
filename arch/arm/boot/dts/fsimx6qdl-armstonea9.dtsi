@@ -381,6 +381,24 @@
 		status = "okay";
 	};
 #endif
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_status_leds>;
+
+		status_1 {
+			label = "Status1";
+			gpios = <&gpio4 6 GPIO_ACTIVE_HIGH>;
+			default-state = "keep";
+		};
+
+		status_2 {
+			label = "Status2";
+			gpios = <&gpio4 7 GPIO_ACTIVE_HIGH>;
+			default-state = "keep";
+		};
+	};
 };
 #if defined(CONFIG_ARMSTONEA9_SGTL5000_AUDIO) || \
 	defined(CONFIG_ARMSTONEA9_HDMI_AUDIO)
@@ -1150,6 +1168,13 @@
 				MX6QDL_PAD_DISP0_DAT21__GPIO5_IO15 0x1b0b0 /* PCIe-DIS */
 				MX6QDL_PAD_DISP0_DAT23__GPIO5_IO17 0x1b0b0 /* PCIe-RST */
 				MX6QDL_PAD_NANDF_CS3__GPIO6_IO16 0x1b0b0 /* PCIe-WAKE */
+			>;
+		};
+
+		pinctrl_status_leds: ledgrp {
+			fsl,pins = <
+				MX6QDL_PAD_KEY_COL0__GPIO4_IO06 0x80000000
+				MX6QDL_PAD_KEY_ROW0__GPIO4_IO07 0x80000000
 			>;
 		};
 	};

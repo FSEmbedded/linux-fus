@@ -356,7 +356,25 @@ backlight_ldb {
 		compatible = "fsl,mxc_v4l2_output";
 		status = "okay";
 	};
-#endif 
+#endif
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_status_leds>;
+
+		status_1 {
+			label = "Status1";
+			gpios = <&gpio7 13 GPIO_ACTIVE_HIGH>;
+			default-state = "keep";
+		};
+
+		status_2 {
+			label = "Status2";
+			gpios = <&gpio7 12 GPIO_ACTIVE_HIGH>;
+			default-state = "keep";
+		};
+	};
 };
 
 /* RAM size for continues memory allocator */
@@ -1317,5 +1335,12 @@ backlight_ldb {
 			>;
 		};
 #endif // CONFIG_EFUSA9_EMMC
+
+		pinctrl_status_leds: ledgrp {
+			fsl,pins = <
+				MX6QDL_PAD_GPIO_17__GPIO7_IO12 0x80000000
+				MX6QDL_PAD_GPIO_18__GPIO7_IO13 0x80000000
+			>;
+		};
 	};
 };
