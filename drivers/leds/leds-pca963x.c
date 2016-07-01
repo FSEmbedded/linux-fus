@@ -447,69 +447,63 @@ pca963x_platform_init(struct i2c_client *client,
 static int pca963x_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 			      int duty_ns, int period_ns)
 {
-	unsigned int reg;
-	int calc;
+	u8 calc;
+	u8 val, mode, mask;
 	struct pca963x *pca963x_chip;
+
+	/*
+	 * When PWM is off, do not change the hardware, just save the new
+	 * period_ns and duty_ns (already done in PWM infrastructure).
+	 */
+	if (!test_bit(PWMF_ENABLED, &pwm->flags))
+		return 0;
+
 	pca963x_chip = container_of(chip, struct pca963x, chip);
 	if(period_ns != 640000) {
 		dev_warn(&pca963x_chip->client->dev,
-		"Signal period must be fix at 640000 (1.5625 kHz)\n");
+			 "Signal period must be fix at 640000 (1.5625 kHz)\n");
 		return 1;
 	}
 
-	reg = pca963x_chip->chipdef->pwmout_base + pwm->hwpwm;
-	if(duty_ns != 0)
-		calc = (duty_ns * 255 + 127) / pwm->period;
-	else {
-		calc = 0;
-	}
-
-	if(pwm->polarity == PWM_POLARITY_NORMAL)
+	calc = (u8)((duty_ns * 255 + 127) / pwm->period);
+	if (pwm->polarity == PWM_POLARITY_NORMAL)
 		calc = 255 - calc;
 
-	i2c_smbus_write_byte_data(pca963x_chip->client, reg, calc);
+	if (calc == 255)
+		mode = PCA963X_LED_ON;
+	else if (calc == 0)
+		mode = PCA963X_LED_OFF;
+	else {
+		u8 reg = pca963x_chip->chipdef->pwmout_base + pwm->hwpwm;
+
+		i2c_smbus_write_byte_data(pca963x_chip->client, reg, calc);
+		mode = PCA963X_LED_PWM;
+	}
+
+	/* Set new LED mode if different to previous mode */
+	val = i2c_smbus_read_byte_data(pca963x_chip->client,
+				       pca963x_chip->chipdef->ledout_base);
+	mask = PCA963X_LED_MASK << (2 * pwm->hwpwm);
+	mode <<= 2 * pwm->hwpwm;
+	if ((val & mask) != mode) {
+		val = (val & ~mask) | mode;
+		i2c_smbus_write_byte_data(pca963x_chip->client,
+				  pca963x_chip->chipdef->ledout_base, val);
+	}
 
 	return 0;
 }
 
 static int pca963x_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm)
 {
-	u8 val;
-	struct pca963x *pca963x_chip;
-
-	pca963x_chip = container_of(chip, struct pca963x, chip);
-	val = i2c_smbus_read_byte_data(pca963x_chip->client,
-				       pca963x_chip->chipdef->ledout_base);
-
-	val &= ~(PCA963X_LED_MASK << (2 * pwm->hwpwm));
-	val |= PCA963X_LED_PWM << (2 * pwm->hwpwm);
-
-	i2c_smbus_write_byte_data(pca963x_chip->client,
-				  pca963x_chip->chipdef->ledout_base, val);
-
-	pca963x_pwm_config(chip, pwm, pwm->duty_cycle, pwm->period);
-
-	return 0;
+	/* Activate PWM with the current duty_ns value */
+	return pca963x_pwm_config(chip, pwm, pwm->duty_cycle, pwm->period);
 }
 
 static void pca963x_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
 {
-	u8 val;
-	struct pca963x *pca963x_chip;
-
-	pca963x_chip = container_of(chip, struct pca963x, chip);
-	val = i2c_smbus_read_byte_data(pca963x_chip->client,
-				       pca963x_chip->chipdef->ledout_base);
-
-	val &= ~(PCA963X_LED_MASK << (2 * pwm->hwpwm));
-
-	if(pwm->polarity == PWM_POLARITY_INVERSED)
-		val |= PCA963X_LED_OFF << (2 * pwm->hwpwm);
-	else
-		val |= PCA963X_LED_ON << (2 * pwm->hwpwm);
-
-	i2c_smbus_write_byte_data(pca963x_chip->client,
-				  pca963x_chip->chipdef->ledout_base, val);
+	/* Switch backlight off (duty_ns = 0) */
+	pca963x_pwm_config(chip, pwm, 0, pwm->period);
 }
 
 static int pca963x_pwm_set_polarity(struct pwm_chip *chip,
