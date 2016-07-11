@@ -10,10 +10,15 @@
 
 /* ENABLE DISPLAYS */
 /* The following display config will be converted to Kconfig in the future */
+/* Keep the order, e.G. activating D0 and D3 but not D2 is not allowed */
 /* Define this if you have at least one display (D0) */
 #define CONFIG_ARMSTONEA9_D0
 /* Define this if you have a second display (D1) */
 #define CONFIG_ARMSTONEA9_D1
+/* Define this if you have a third display (D2) */
+//#define CONFIG_ARMSTONEA9_D2
+/* Define this if you have a fourth display (D3) */
+//#define CONFIG_ARMSTONEA9_D3
 
 /* ENABLE BACKLIGHT LEVELS */
 /* enable 16 levels of backlight brightness with correct gamma */
@@ -25,6 +30,7 @@
 #define CONFIG_ARMSTONEA9_D0_LCD				// LCD
 //#define CONFIG_ARMSTONEA9_D0_LVDS				// LVDS
 //#define CONFIG_ARMSTONEA9_D0_HDMI				// HDMI
+
 /*
  * Define a mode_str entry for display D0 (depends on display type above)
  * See the following files for possible values:
@@ -58,6 +64,39 @@
 #endif
 #endif // CONFIG_ARMSTONEA9_D1
 
+/* CONFIGURE DISPLAY 2 */
+#ifdef CONFIG_ARMSTONEA9_D2
+/* Activate exactly one entry for the type of display D2 */
+//#define CONFIG_ARMSTONEA9_D2_LCD				// LCD
+//#define CONFIG_ARMSTONEA9_D2_LVDS				// LVDS
+#define CONFIG_ARMSTONEA9_D2_HDMI				// HDMI
+/* Define a mode_str entry for display D2 (see comment for D0 above) */
+#ifdef CONFIG_ARMSTONEA9_D2_LVDS
+	#define CONFIG_ARMSTONEA9_D2_MODE_STR "LDB-WVGA"		// LVDS
+#elif defined(CONFIG_ARMSTONEA9_D2_HDMI)
+	#define CONFIG_ARMSTONEA9_D2_MODE_STR "1920x1080M@60"	// HDMI
+#elif	defined(CONFIG_ARMSTONEA9_D2_LCD)
+	#define CONFIG_ARMSTONEA9_D2_MODE_STR "LCD-ET070080"	// LCD
+#endif
+#endif // CONFIG_ARMSTONEA9_D2
+
+/* CONFIGURE DISPLAY 3 */
+#ifdef CONFIG_ARMSTONEA9_D3
+/* Activate exactly one entry for the type of display D3 */
+//#define CONFIG_ARMSTONEA9_D3_LCD				// LCD
+#define CONFIG_ARMSTONEA9_D3_LVDS				// LVDS
+//#define CONFIG_ARMSTONEA9_D3_HDMI				// HDMI
+
+/* Define a mode_str entry for display D3 (see comment for D0 above) */
+#ifdef CONFIG_ARMSTONEA9_D3_LVDS
+	#define CONFIG_ARMSTONEA9_D3_MODE_STR "LDB-WVGA"		// LVDS
+#elif defined(CONFIG_ARMSTONEA9_D3_HDMI)
+	#define CONFIG_ARMSTONEA9_D3_MODE_STR "1920x1080M@60"	// HDMI
+#elif	defined(CONFIG_ARMSTONEA9_D3_LCD)
+	#define CONFIG_ARMSTONEA9_D3_MODE_STR "LCD-ET070080"	// LCD
+#endif
+#endif // CONFIG_ARMSTONEA9_D3
+
 /* CONFIGURE LVDS MULTIDISPLAY*/
 /* Two LVDS displays act as two independent displays (with two fb) by default.
    Apart from this  can choose between dual-mode and split-mode */
@@ -69,14 +108,17 @@
 #endif
 
 /* Do some settings to make configurations easier */
-#if defined(CONFIG_ARMSTONEA9_D0_LCD) || defined(CONFIG_ARMSTONEA9_D1_LCD)
+#if defined(CONFIG_ARMSTONEA9_D0_LCD) || defined(CONFIG_ARMSTONEA9_D1_LCD) ||\
+    defined(CONFIG_ARMSTONEA9_D2_LCD) || defined(CONFIG_ARMSTONEA9_D3_LCD)
 #define CONFIG_ARMSTONEA9_LCD // activates LCD node
 #endif
-#if defined(CONFIG_ARMSTONEA9_D0_HDMI) || defined(CONFIG_ARMSTONEA9_D1_HDMI)
+#if defined(CONFIG_ARMSTONEA9_D0_HDMI) || defined(CONFIG_ARMSTONEA9_D1_HDMI) ||\
+    defined(CONFIG_ARMSTONEA9_D2_HDMI) || defined(CONFIG_ARMSTONEA9_D3_HDMI)
 #define CONFIG_ARMSTONEA9_HDMI // activates HDMI node
 #endif
 
-#if defined(CONFIG_ARMSTONEA9_D0_LVDS) || defined(CONFIG_ARMSTONEA9_D1_LVDS)
+#if defined(CONFIG_ARMSTONEA9_D0_LVDS) || defined(CONFIG_ARMSTONEA9_D1_LVDS) ||\
+    defined(CONFIG_ARMSTONEA9_D2_LVDS) || defined(CONFIG_ARMSTONEA9_D3_LVDS)
 #define CONFIG_ARMSTONEA9_LVDS // activates LVDS node
 #endif
 
@@ -116,6 +158,9 @@
 /* SD-CARD - A is micro SD */
 #define CONFIG_ARMSTONEA9_SD_A
 
+/* SATA */
+#define CONFIG_ARMSTONEA9_SATA
+
 /* I2C */
 #define CONFIG_ARMSTONEA9_I2C_A
 #define CONFIG_ARMSTONEA9_I2C_B
@@ -129,13 +174,19 @@
 #define CONFIG_ARMSTONEA9_UART_B
 #define CONFIG_ARMSTONEA9_UART_C
 
-#include "imx6dl.dtsi"
-#include "fsimx6qdl-armstonea9.dtsi"
+#include "imx6q.dtsi"
+#include "armstonea9qdl.dtsi"
 
 / {
-	model = "F&S i.MX6 DualLite armStoneA9 module";
-	compatible = "fsl,imx6dl-armstonea9", "fsl,imx6dl";
+	model = "F&S i.MX6 Quad armStoneA9 module";
+	compatible = "fsl,imx6q-armstonea9", "fsl,imx6q";
 };
+
+#ifdef CONFIG_ARMSTONEA9_SATA
+&sata{
+	status = "okay";
+};
+#endif
 
 #ifdef CONFIG_ARMSTONEA9_LVDS
 &ldb {
@@ -145,7 +196,30 @@
 #endif
 #ifdef CONFIG_ARMSTONEA9_LVDS_SPLIT_MODE
 	split-mode;
+#endif 
+
+#ifdef CONFIG_ARMSTONEA9_D2 		// 3 or 4 displays
+#if defined(CONFIG_ARMSTONEA9_LCD) && defined(CONFIG_ARMSTONEA9_HDMI) &&\
+    !defined(CONFIG_ARMSTONEA9_D3) 	// 3 displays: LCD, HDMI and LVDS
+	lvds-channel@0 {
+		crtc = "ipu2-di0";
+		reg = <0>;
+		status = "okay";
+	};
+#else	// remaining combinations with 3 or 4 displays
+	lvds-channel@0 {
+		crtc = "ipu2-di0";
+		reg = <0>;
+		status = "okay";
+	};
+	lvds-channel@1 {
+		crtc = "ipu2-di1";
+		reg = <1>;
+		status = "okay";
+	};
+
 #endif
+#else // 1 or 2 displays
 
 #ifdef CONFIG_ARMSTONEA9_LCD		//if LCD is enabled too, LVDS uses di1
 	lvds-channel@0 {
@@ -167,6 +241,7 @@
 		status = "okay";
 	};
 #endif
+#endif // 1 or 2 displays
 };
 #endif
 
@@ -190,30 +265,14 @@
 };
 #endif
 
-&pxp {
+#ifdef CONFIG_ARMSTONEA9_D2
+&mxcfb2 {
 	status = "okay";
 };
+#endif
 
-#if 0
-&iomuxc {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_hog_1>, <&pinctrl_hog_2>;
-
-	hog {
-		pinctrl_hog_2: hoggrp-2 {
-			fsl,pins = <
-				/* MAX17135 */
-				MX6QDL_PAD_EIM_A17__GPIO2_IO21 0x80000000
-				MX6QDL_PAD_EIM_D17__GPIO3_IO17 0x80000000
-				MX6QDL_PAD_EIM_D20__GPIO3_IO20 0x80000000
-				MX6QDL_PAD_EIM_A18__GPIO2_IO20 0x80000000
-				MX6QDL_PAD_EIM_OE__GPIO2_IO25 0x80000000
-				/* elan touch */
-				MX6QDL_PAD_EIM_A20__GPIO2_IO18 0x80000000
-				MX6QDL_PAD_EIM_DA8__GPIO3_IO08 0x80000000
-				MX6QDL_PAD_EIM_D28__GPIO3_IO28 0x170b0
-			>;
-		};
-	};
+#ifdef CONFIG_ARMSTONEA9_D3
+&mxcfb3 {
+	status = "okay";
 };
 #endif

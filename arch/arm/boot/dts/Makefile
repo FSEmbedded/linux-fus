@@ -284,9 +284,9 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6dl-udoo.dtb \
 	imx6dl-sabresd-enetirq.dtb \
 	imx6dl-wandboard.dtb \
-	fsimx6dl-efusa9.dtb \
-	fsimx6dl-armstonea9.dtb \
-	fsimx6dl-armstonea9r2.dtb \
+	efusa9dl.dtb \
+	armstonea9dl.dtb \
+	armstonea9r2dl.dtb \
 	imx6dl-wandboard-revb1.dtb \
 	imx6q-arm2.dtb \
 	imx6q-pop-arm2.dtb \
@@ -333,9 +333,9 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6q-tx6q-1110.dtb \
 	imx6q-udoo.dtb \
 	imx6q-wandboard.dtb \
-	fsimx6q-efusa9.dtb \
-	fsimx6q-armstonea9.dtb \
-	fsimx6q-armstonea9r2.dtb \
+	efusa9q.dtb \
+	armstonea9q.dtb \
+	armstonea9r2q.dtb \
 	imx6q-wandboard-revb1.dtb
 dtb-$(CONFIG_SOC_IMX6SL) += \
 	imx6sl-evk.dtb \
@@ -354,7 +354,8 @@ dtb-$(CONFIG_SOC_IMX6SX) += \
 	imx6sx-sdb-btwifi.dtb \
 	imx6sx-sdb-emmc.dtb \
 	imx6sx-sdb-lcdif1.dtb \
-	fsimx6sx-efusa9x.dtb \
+	efusa9x.dtb \
+	bema9x.dtb \
 	imx6sx-sdb-ldo.dtb	\
 	imx6sx-sdb-m4.dtb \
 	imx6sx-sdb-mqs.dtb \
@@ -376,8 +377,8 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	imx6ul-14x14-evk-csi.dtb \
 	imx6ul-14x14-evk-usb-certi.dtb \
 	imx6ul-14x14-lpddr2-arm2.dtb \
-	fsimx6ul-efusa7ul.dtb \
-	fsimx6ul-cubea7ul.dtb \
+	efusa7ul.dtb \
+	cubea7ul.dtb \
 	imx6ul-9x9-evk.dtb \
 	imx6ul-9x9-evk-btwifi.dtb \
 	imx6ul-9x9-evk-csi.dtb \

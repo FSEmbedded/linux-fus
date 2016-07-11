@@ -12,13 +12,10 @@
 //#define CONFIG_ARMSTONEA9R2_REV110
 
 /* The following display config will be converted to Kconfig in the future */
-/* Keep the order, e.G. activating D0 and D2 but not D1 is not allowed */
 /* Define this if you have at least one display (D0) */
 #define CONFIG_ARMSTONEA9R2_D0
 /* Define this if you have a second display (D1) */
 //#define CONFIG_ARMSTONEA9R2_D1
-/* Define this if you have a third display (D2) */
-//#define CONFIG_ARMSTONEA9R2_D2
 
 /* ENABLE BACKLIGHT LEVELS */
 /* enable 16 levels of backlight brightness with correct gamma */
@@ -56,20 +53,6 @@
 #endif
 #endif // CONFIG_ARMSTONEA9R2_D1
 
-/* CONFIGURE DISPLAY 2 */
-#ifdef CONFIG_ARMSTONEA9R2_D2
-/* Activate exactly one entry for the type of display D2 */
-#define CONFIG_ARMSTONEA9R2_D2_LVDS				// LVDS
-//#define CONFIG_ARMSTONEA9R2_D2_HDMI				// HDMI
-
-/* Define a mode_str entry for display D2 (see comment for D0 above) */
-#ifdef CONFIG_ARMSTONEA9R2_D2_LVDS
-	#define CONFIG_ARMSTONEA9R2_D2_MODE_STR "LDB-WVGA"		// LVDS
-#elif defined(CONFIG_ARMSTONEA9R2_D2_HDMI)
-	#define CONFIG_ARMSTONEA9R2_D2_MODE_STR "1920x1080M@60"	// HDMI
-#endif
-#endif // CONFIG_ARMSTONEA9R2_D2
-
 /* CONFIGURE LVDS MULTIDISPLAY*/
 /* Two LVDS displays act as two independent displays (with two fb) by default.
    Apart from this  can choose between dual-mode and split-mode */
@@ -81,13 +64,11 @@
 #endif
 
 /* Do some settings to make configurations easier */
-#if defined(CONFIG_ARMSTONEA9R2_D0_HDMI) || defined(CONFIG_ARMSTONEA9R2_D1_HDMI) ||\
-    defined(CONFIG_ARMSTONEA9R2_D2_HDMI)
+#if defined(CONFIG_ARMSTONEA9R2_D0_HDMI) || defined(CONFIG_ARMSTONEA9R2_D1_HDMI)
 #define CONFIG_ARMSTONEA9R2_HDMI // activates HDMI node
 #endif
 
-#if defined(CONFIG_ARMSTONEA9R2_D0_LVDS) || defined(CONFIG_ARMSTONEA9R2_D1_LVDS) ||\
-    defined(CONFIG_ARMSTONEA9R2_D2_LVDS)
+#if defined(CONFIG_ARMSTONEA9R2_D0_LVDS) || defined(CONFIG_ARMSTONEA9R2_D1_LVDS)
 #define CONFIG_ARMSTONEA9R2_LVDS // activates LVDS node
 #define CONFIG_ARMSTONEA9R2_LVDS_3_3_V //LVDS with 3.3 V
 //#define CONFIG_ARMSTONEA9R2_LVDS_5_0_V //LVDS with 5.0 V
@@ -98,6 +79,7 @@
 #define CONFIG_ARMSTONEA9R2_HDMI_AUDIO
 #define CONFIG_ARMSTONEA9R2_HDMI_CEC
 #endif
+
 
 /* TOUCH */
 /* Please select only one of the following touch devices. Make sure that the
@@ -136,9 +118,6 @@
 #define CONFIG_ARMSTONEA9R2_SPI_B
 #define CONFIG_ARMSTONEA9R2_SPI_C
 
-/* SATA */
-#define CONFIG_ARMSTONEA9R2_SATA
-
 /* UART */
 #define CONFIG_ARMSTONEA9R2_UART_A
 #define CONFIG_ARMSTONEA9R2_UART_A_RTSCTS
@@ -149,12 +128,12 @@
 #define CONFIG_ARMSTONEA9R2_UART_D_RTSCTS
 #define CONFIG_ARMSTONEA9R2_UART_E
 
-#include "imx6q.dtsi"
-#include "fsimx6qdl-armstonea9r2.dtsi"
+#include "imx6dl.dtsi"
+#include "armstonea9r2qdl.dtsi"
 
 / {
-	model = "F&S i.MX6 Quad armStoneA9R2 module";
-	compatible = "fsl,imx6q-armstonea9r2", "fsl,imx6q";
+	model = "F&S i.MX6 DualLite armStoneA9R2 module";
+	compatible = "fsl,imx6dl-armstonea9r2", "fsl,imx6dl";
 };
 
 #ifdef CONFIG_ARMSTONEA9R2_LVDS
@@ -172,21 +151,13 @@
 		reg = <0>;
 		status = "okay";
 	};
-#ifdef CONFIG_ARMSTONEA9R2_D2 		// 3 displays
-	lvds-channel@1 {
-		crtc = "ipu2-di1";
-		reg = <1>;
-		status = "okay";
-	};
-#else // 1 or 2 displays
-#ifdef CONFIG_ARMSTONEA9R2_D1_LVDS	//if both LVDS channels are used
+#ifdef CONFIG_ARMSTONEA9R2_D1_LVDS		//if both LVDS channels are used,
 	lvds-channel@1 {		//dual and split mode ignore this node
 		crtc = "ipu1-di1";
 		reg = <1>;
 		status = "okay";
 	};
 #endif
-#endif // 3 displays
 };
 #endif
 
@@ -206,18 +177,6 @@
 
 #ifdef CONFIG_ARMSTONEA9R2_D1
 &mxcfb1 {
-	status = "okay";
-};
-#endif
-
-#ifdef CONFIG_ARMSTONEA9R2_D2
-&mxcfb2 {
-	status = "okay";
-};
-#endif
-
-#ifdef CONFIG_ARMSTONEA9R2_SATA
-&sata {
 	status = "okay";
 };
 #endif

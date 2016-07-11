@@ -150,7 +150,7 @@
 
 
 #include "imx6dl.dtsi"
-#include "fsimx6qdl-efusa9.dtsi"
+#include "efusa9qdl.dtsi"
 
 / {
 	model = "F&S i.MX6 DualLite efusA9 module";
