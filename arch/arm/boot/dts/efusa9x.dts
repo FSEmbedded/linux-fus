@@ -779,7 +779,7 @@
 		reg = <0x4a>;
 		interrupt-parent = <&gpio7>;
 		interrupts = <0 2>;
-		atmel,cfg_name = "mxt224.cfg";
+		atmel,cfg_name = "atmel/mxt224.cfg";
 		atmel,reset-gpio = <&gpio3 21 GPIO_ACTIVE_LOW>;
 #if 0
 		atmel,suspend-mode = <2>;

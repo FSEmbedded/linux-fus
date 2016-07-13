@@ -752,7 +752,7 @@
 		reg = <0x4a>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
-		atmel,cfg_name = "mxt224.cfg";
+		atmel,cfg_name = "atmel/mxt224.cfg";
 		atmel,reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
 	};
 #endif
