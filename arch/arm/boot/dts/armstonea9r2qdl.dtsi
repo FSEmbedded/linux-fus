@@ -564,16 +564,18 @@
 	status = "okay";
 
 #ifdef CONFIG_ARMSTONEA9R2_CAPTOUCH_FT5x06
-	/* F&S driver V2.0 on Touch-Connector (I2C) */
+	/* F&S driver V3.0 on Touch-Connector (I2C) */
 	ft5x06_ts@38 {
 		compatible = "FocalTech,ft5306";
 		reg = <0x38>;
+		fingers = <2>;
+		touchscreen-size-x = <800>;
+		touchscreen-size-y = <480>;
 		threshold = <25>;
-		gain = <8>;
-		offset = <0>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
+		linux,wakeup;
 	};
 #endif
 

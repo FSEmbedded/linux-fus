@@ -370,16 +370,18 @@ pwmleds {
 	};
 
 #ifdef CONFIG_EFUSA9X_CAPTOUCH_FT5x06
-	/* F&S driver V2.0 */
+	/* F&S driver V3.0 */
 	ft5x06_ts@70 {
 		compatible = "FocalTech,ft5306";
 		reg = <0x38>;
+		fingers = <2>;
+		touchscreen-size-x = <640>;
+		touchscreen-size-y = <480>;
 		threshold = <25>;
-		gain = <8>;
-		offset = <0>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <4 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpios = <&gpio3 21 GPIO_ACTIVE_LOW>;
+		linux,wakeup;
 	};
 #endif
 
