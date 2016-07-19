@@ -5,13 +5,10 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-#define CONFIG_BEMA9X_BL_LEVELS_16
 #define CONFIG_EFUSA9X_CAPTOUCH_FT5x06
 
-/* CMA */
-/* activate the define below and set a custom value if you want to change the
-   RAM size of continues memory allocator from default 320mb. */
-//#define CONFIG_EFUSA9_CMA_SIZE 0x4000000 /* e.g. 0x4000000 is 64mb */
+/* CMA: Set 64 MB for Continuous Memory Allocator */
+#define CONFIG_BEMA9X_CMA_SIZE 0x4000000
 
 /dts-v1/;
 
@@ -25,14 +22,9 @@
 	backlight_lcd {
 		compatible = "pwm-backlight";
 		pwms = <&pwm4 0 5000000>;
-#ifdef CONFIG_BEMA9X_BL_LEVELS_16
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
-#else
-		brightness-levels = <0 5 21 47 83 130 187 255>;
-		default-brightness-level = <6>;
-#endif
 		fb-names = "mxs-lcdif1";
 		enable-gpios = <&gpio3 24 GPIO_ACTIVE_HIGH>;
 	};
@@ -132,12 +124,9 @@ pwmleds {
 
 };
 
-/* RAM size for continues memory allocator */
-#ifndef CONFIG_EFUSA9_CMA_SIZE
-	#define CONFIG_EFUSA9_CMA_SIZE 0x14000000 //set 320mb as default
-#endif
+/* RAM size for Continues Memory Allocator */
 &cma {
-	size = <CONFIG_EFUSA9_CMA_SIZE>; 
+	size = <CONFIG_BEMA9X_CMA_SIZE>;
 };
 
 &fec1 {
@@ -152,7 +141,7 @@ pwmleds {
 };
 
 
-/* I2C1 to J6 and connector */
+/* I2C1 to connector J2 pins 30+31 */
 &i2c1 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
@@ -160,25 +149,25 @@ pwmleds {
 	status = "okay";
 };
 
-/* I2C3 to connector */
+/* I2C3 to RTC and SGTL5000 */
 &i2c3 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c3_1>;
-	status = "okay";
-};
-
-/* I2C4 to U10 and U4 (RTC) U10 connector connects display touch controller (FT5306) */
-&i2c4 {
-	clock-frequency = <100000>;
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c4_1>;
 	status = "okay";
 
 	rtc8565@51 {
 		compatible = "nxp,pcf8565", "nxp,pcf8563";
 		reg = <0x51>;
 	};
+};
+
+/* I2C4 to connector J6 (touch) and connector J2 pins 32+33 */
+&i2c4 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c4_1>;
+	status = "okay";
 
 #ifdef CONFIG_EFUSA9X_CAPTOUCH_FT5x06
 	/* F&S driver V3.0 */
@@ -329,8 +318,8 @@ pwmleds {
 	pinctrl-names = "default";
 	fus,skipblocks = <2>;
 	fus,chunk1k;
-	fus,ecc_strength = <8>;		// Spare area 64 bytes
-//###	fus,ecc_strength = <52>;	// Spare area 224 bytes
+	fus,ecc_strength = <8>;		/* Spare area 64 bytes */
+//###	fus,ecc_strength = <52>;	/* Spare area 224 bytes */
 	status = "okay";
 };
 
@@ -338,7 +327,7 @@ pwmleds {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
- 	imx6x-bema9x { 
+ 	imx6x-bema9x {
 
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
@@ -346,7 +335,7 @@ pwmleds {
 				MX6SX_PAD_LCD1_DATA23__GPIO3_IO_24	0x80000000
 
 				/* VLCD_ON active low */
-				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x80000000 
+				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x80000000
 
 				/* LED_YELLOW_PWM_ON */
 				MX6SX_PAD_RGMII2_TD0__GPIO5_IO_18	0x0001b0b1
@@ -389,8 +378,8 @@ pwmleds {
 			>;
 		};
 
-		/* Display LCD1 missing signals yet: 
-			LCD1_DATA19 -> resetoutn, 
+		/* Display LCD1 missing signals yet:
+			LCD1_DATA19 -> resetoutn,
 			LCD1_DATA20 -> int_buttonc, */
 		pinctrl_lcdif1_1: lcd1grp-1 {
 			fsl,pins = <
@@ -439,28 +428,28 @@ pwmleds {
 
 
 		pinctrl_pwm4_0: pwm4grp-0 {
-			fsl,pins = < 
-				MX6SX_PAD_GPIO1_IO13__PWM4_OUT		0x110b0	
-			>; 
-		};    
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO13__PWM4_OUT		0x110b0
+			>;
+		};
 
 		pinctrl_pwm5_0: pwm5grp-0 {
-			fsl,pins = < 
-				MX6SX_PAD_RGMII2_TD3__PWM5_OUT		0x110b0	
-			>; 
-		};    
+			fsl,pins = <
+				MX6SX_PAD_RGMII2_TD3__PWM5_OUT		0x110b0
+			>;
+		};
 
 		pinctrl_pwm6_0: pwm6grp-0 {
-			fsl,pins = < 
-				MX6SX_PAD_RGMII2_TD2__PWM6_OUT		0x110b0	
-			>; 
-		};    
+			fsl,pins = <
+				MX6SX_PAD_RGMII2_TD2__PWM6_OUT		0x110b0
+			>;
+		};
 
 		pinctrl_pwm7_0: pwm7grp-0 {
-			fsl,pins = < 
-				MX6SX_PAD_RGMII2_TD1__PWM7_OUT		0x110b0	
-			>; 
-		};    
+			fsl,pins = <
+				MX6SX_PAD_RGMII2_TD1__PWM7_OUT		0x110b0
+			>;
+		};
 
 
 		pinctrl_usbotg2_1: usbotg2grp-1 {
@@ -469,7 +458,7 @@ pwmleds {
 			>;
 		};
 
-#if 0 
+#if 0
 		/* on-board WLAN */
 		pinctrl_usdhc1_1: usdhc1grp-1 {
 			fsl,pins = <
@@ -480,9 +469,9 @@ pwmleds {
 				MX6SX_PAD_SD4_DATA2__USDHC4_DATA2	0x17071
 				MX6SX_PAD_SD4_DATA3__USDHC4_DATA3	0x17071
 				/* Wlan enable */
-				MX6SX_PAD_RGMII2_TXC__GPIO5_IO_23	0x80000000 
+				MX6SX_PAD_RGMII2_TXC__GPIO5_IO_23	0x80000000
 				/* irq */
-				MX6SX_PAD_SD4_RESET_B__GPIO6_IO_22	0x80000000 
+				MX6SX_PAD_SD4_RESET_B__GPIO6_IO_22	0x80000000
 			>;
 		};
 #endif

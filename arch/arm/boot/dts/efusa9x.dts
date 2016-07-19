@@ -6,7 +6,6 @@
  * published by the Free Software Foundation.
  */
 
-#define CONFIG_EFUSA9X_BL_LEVELS_16
 #define CONFIG_EFUSA9X_WLAN
 
 /* Please select only one of the following touch devices. Make sure that the
@@ -16,10 +15,8 @@
 //#define CONFIG_EFUSA9X_CAPTOUCH_MXT224
 //#define CONFIG_EFUSA9X_CAPTOUCH_FT5x06
 
-/* CMA */
-/* activate the define below and set a custom value if you want to change the
-   RAM size of continues memory allocator from default 320mb. */
-//#define CONFIG_EFUSA9_CMA_SIZE 0x4000000 /* e.g. 0x4000000 is 64mb */
+/* CMA: Set 320 MB for Continuous Memory Allocator */
+#define CONFIG_EFUSA9X_CMA_SIZE 0x14000000
 
 /dts-v1/;
 
@@ -37,14 +34,9 @@
 		compatible = "pwm-backlight";
 		pwms = <&pca963x 1 640000 PWM_POLARITY_INVERTED>;
 		power-supply = <&reg_lcd_bl>;
-#ifdef CONFIG_EFUSA9X_BL_LEVELS_16
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
-#else
-		brightness-levels = <0 5 21 47 83 130 187 255>;
-		default-brightness-level = <6>;
-#endif
 		fb-names = "mxs-lcdif1";
 	};
 
@@ -52,14 +44,9 @@
 		compatible = "pwm-backlight";
 		pwms = <&pwm6 0 5000000>;
 		power-supply = <&reg_ldb_bl>;
-#ifdef CONFIG_EFUSA9X_BL_LEVELS_16
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
-#else
-		brightness-levels = <0 5 21 47 83 130 187 255>;
-		default-brightness-level = <6>;
-#endif
 		fb-names = "mxs-lcdif2";
 	};
 
@@ -240,12 +227,9 @@
 	};
 };
 
-/* RAM size for continues memory allocator */
-#ifndef CONFIG_EFUSA9_CMA_SIZE
-	#define CONFIG_EFUSA9_CMA_SIZE 0x14000000 //set 320mb as default
-#endif
+/* RAM size for Continues Memory Allocator */
 &cma {
-	size = <CONFIG_EFUSA9_CMA_SIZE>; 
+	size = <CONFIG_EFUSA9X_CMA_SIZE>;
 };
 
 &adc1 {
@@ -857,11 +841,11 @@
 	/* Switch to F&S implementation of GPMI NAND driver */
 	compatible = "fus,imx6sx-gpmi-nand";
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
+//###	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
 	fus,skipblocks = <2>;
 	fus,chunk1k;
-	fus,ecc_strength = <8>;		// Spare area 64 bytes
-//###	fus,ecc_strength = <52>;	// Spare area 224 bytes
+	fus,ecc_strength = <8>;		/* Spare area 64 bytes */
+//###	fus,ecc_strength = <52>;	/* Spare area 224 bytes */
 	status = "okay";
 };
 
@@ -988,8 +972,8 @@
 			>;
 		};
 
-		pinctrl_gpmi_nand_1: gpmi-nand-1 {
 #if 0
+		pinctrl_gpmi_nand_1: gpmi-nand-1 {
 			/* Already configured in NBoot/U-Boot */
 			fsl,pins = <
 				MX6SX_PAD_NAND_CLE__RAWNAND_CLE		0xb0b1
@@ -1009,8 +993,8 @@
 				MX6SX_PAD_NAND_DATA06__RAWNAND_DATA06	0xb0b1
 				MX6SX_PAD_NAND_DATA07__RAWNAND_DATA07	0xb0b1
 			>;
-#endif
 		};
+#endif
 
 		/* I2C_C: RTC (PCA8565), LVDS-Connector, SGTL5000 (SKIT),
 		   Mini-PCIe (SKIT), Camera (SKIT, 2x) */

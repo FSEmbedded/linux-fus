@@ -6,7 +6,6 @@
  * published by the Free Software Foundation.
  */
 
-#define CONFIG_EFUSA7UL_BL_LEVELS_16
 #define CONFIG_EFUSA7UL_WLAN
 #define CONFIG_EFUSA7UL_NAND
 //#define CONFIG_EFUSA7UL_SD_A_CDWP
@@ -18,10 +17,8 @@
 //#define CONFIG_EFUSA7UL_CAPTOUCH_MXT224
 //#define CONFIG_EFUSA7UL_CAPTOUCH_FT5x06
 
-/* CMA */
-/* activate the define below and set a custom value if you want to change the
-   RAM size of continues memory allocator from default 320mb. */
-//#define CONFIG_EFUSA9_CMA_SIZE 0x4000000 /* e.g. 0x4000000 is 64mb */
+/* CMA: Set 64 MB for Continuous Memory Allocator */
+#define CONFIG_EFUSA7UL_CMA_SIZE 0x4000000
 
 
 /dts-v1/;
@@ -49,14 +46,9 @@
 	backlight {
 		compatible = "pwm-backlight";
 		pwms = <&pwm1 0 5000000>;
-#ifdef CONFIG_EFUSA7UL_BL_LEVELS_16
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
-#else
-		brightness-levels = <0 5 21 47 83 130 187 255>;
-		default-brightness-level = <6>;
-#endif
 		power-supply = <&reg_backlight>;
 		status = "okay";
 	};
@@ -174,11 +166,11 @@
 		gpios = <&gpio5 8 0 /* sda */
 			 &gpio5 9 0 /* scl */
 			>;
-//###	        i2c-gpio,sda-open-drain;
+//###		i2c-gpio,sda-open-drain;
 //###		i2c-gpio,scl-open-drain;
-	        i2c-gpio,delay-us = <2>;        /* ~100 kHz */
-	        #address-cells = <1>;
-	        #size-cells = <0>;
+		i2c-gpio,delay-us = <2>;	/* ~100 kHz */
+		#address-cells = <1>;
+		#size-cells = <0>;
 	};
 
 	/* -------------------- BOARD INFO -------------------- */
@@ -189,12 +181,9 @@
 	};
 };
 
-/* RAM size for continues memory allocator */
-#ifndef CONFIG_EFUSA9_CMA_SIZE
-	#define CONFIG_EFUSA9_CMA_SIZE 0x14000000 //set 320mb as default
-#endif
+/* RAM size for Continues Memory Allocator */
 &cma {
-	size = <CONFIG_EFUSA9_CMA_SIZE>; 
+	size = <CONFIG_EFUSA7UL_CMA_SIZE>;
 };
 
 &cpu0 {
@@ -643,7 +632,7 @@
 	/* Switch to F&S implementation of GPMI NAND driver */
 	compatible = "fus,imx6ul-gpmi-nand", "fus,imx6q-gpmi-nand";
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
+//###	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
 	fus,skipblocks = <2>;
 	fus,chunk1k;
 	fus,ecc_strength = <8>;
@@ -683,11 +672,6 @@
 				MX6UL_PAD_SNVS_TAMPER4__GPIO5_IO04	0x80000000
 				/* VCFL */
 				MX6UL_PAD_SNVS_TAMPER5__GPIO5_IO05	0x80000000
-#if 0 //####
-				/* SCL and SDA for I2C_C (RTC, SGTL5000) */
-				MX6UL_PAD_SNVS_TAMPER9__GPIO5_IO09	0x1b0b0
-				MX6UL_PAD_SNVS_TAMPER8__GPIO5_IO08	0x1b0b0
-#endif //###
 #if 0 //###
 				MX6UL_PAD_LCD_RESET__WDOG1_WDOG_ANY	0x30b0
 #endif
@@ -697,18 +681,18 @@
 		pinctrl_enet1: enet1grp {
 			fsl,pins = <
 				/* MDIO */
-				MX6UL_PAD_GPIO1_IO07__ENET1_MDC		0x1b0b0
-				MX6UL_PAD_GPIO1_IO06__ENET1_MDIO	0x1b0b0
+				MX6UL_PAD_GPIO1_IO07__ENET1_MDC		0x0b0e9
+				MX6UL_PAD_GPIO1_IO06__ENET1_MDIO	0x0b831
 
 				/* FEC0 */
-				MX6UL_PAD_ENET1_RX_EN__ENET1_RX_EN	0x1b0b0
-				MX6UL_PAD_ENET1_RX_ER__ENET1_RX_ER	0x1b0b0
-				MX6UL_PAD_ENET1_RX_DATA0__ENET1_RDATA00	0x1b0b0
-				MX6UL_PAD_ENET1_RX_DATA1__ENET1_RDATA01	0x1b0b0
-				MX6UL_PAD_ENET1_TX_EN__ENET1_TX_EN	0x1b0b0
-				MX6UL_PAD_ENET1_TX_DATA0__ENET1_TDATA00	0x1b0b0
-				MX6UL_PAD_ENET1_TX_DATA1__ENET1_TDATA01	0x1b0b0
-				MX6UL_PAD_ENET1_TX_CLK__ENET1_REF_CLK1	0x4001b031
+				MX6UL_PAD_ENET1_RX_EN__ENET1_RX_EN	0x0b0e9
+				MX6UL_PAD_ENET1_RX_ER__ENET1_RX_ER	0x0b0e9
+				MX6UL_PAD_ENET1_RX_DATA0__ENET1_RDATA00	0x0b0e9
+				MX6UL_PAD_ENET1_RX_DATA1__ENET1_RDATA01	0x0b0e9
+				MX6UL_PAD_ENET1_TX_EN__ENET1_TX_EN	0x0b0e9
+				MX6UL_PAD_ENET1_TX_DATA0__ENET1_TDATA00	0x0b0e9
+				MX6UL_PAD_ENET1_TX_DATA1__ENET1_TDATA01	0x0b0e9
+				MX6UL_PAD_ENET1_TX_CLK__ENET1_REF_CLK1	0x40000031
 
 				/* PHY interrupt; on efusA7UL this is shared
 				   on both PHYs and even the PCA8565 RTC uses
@@ -948,8 +932,8 @@
 		};
 
 #ifdef CONFIG_EFUSA7UL_NAND
-		pinctrl_gpmi_nand_1: gpmi-nand-1 {
 #if 0
+		pinctrl_gpmi_nand_1: gpmi-nand-1 {
 			/* Already configured in NBoot/U-Boot */
 			fsl,pins = <
 				MX6SX_PAD_NAND_CLE__RAWNAND_CLE		0xb0b1
@@ -969,8 +953,8 @@
 				MX6SX_PAD_NAND_DATA06__RAWNAND_DATA06	0xb0b1
 				MX6SX_PAD_NAND_DATA07__RAWNAND_DATA07	0xb0b1
 			>;
-#endif
 		};
+#endif
 #endif
 	};
 };

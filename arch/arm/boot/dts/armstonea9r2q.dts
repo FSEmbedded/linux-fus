@@ -7,9 +7,9 @@
  */
 
 /dts-v1/;
-/* CHOOSE BOARD REVISION */
-#define CONFIG_ARMSTONEA9R2_REV100 // old board revision
-//#define CONFIG_ARMSTONEA9R2_REV110
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_ARMSTONEA9R2_BOARD_REVISION	100
 
 /* The following display config will be converted to Kconfig in the future */
 /* Keep the order, e.G. activating D0 and D2 but not D1 is not allowed */
@@ -19,10 +19,6 @@
 //#define CONFIG_ARMSTONEA9R2_D1
 /* Define this if you have a third display (D2) */
 //#define CONFIG_ARMSTONEA9R2_D2
-
-/* ENABLE BACKLIGHT LEVELS */
-/* enable 16 levels of backlight brightness with correct gamma */
-#define CONFIG_ARMSTONEA9R2_BL_LEVELS_16
 
 /* CONFIGURE DISPLAY 0 */
 #ifdef CONFIG_ARMSTONEA9R2_D0
@@ -99,16 +95,21 @@
 #define CONFIG_ARMSTONEA9R2_HDMI_CEC
 #endif
 
-/* TOUCH */
-/* Please select only one of the following touch devices. Make sure that the
-   corresponding touchscreen driver is activated in the kernel */
-//#define CONFIG_ARMSTONEA9R2_CAPTOUCH_MXT224
+/*
+ * Configure touch screen:
+ *
+ * - 4-wire/5-wire analog resistive touch (SX8655), on Touch Connector
+ * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
+ * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ *
+ * Select none if you do not need touch support.
+ */
+//#define CONFIG_ARMSTONEA9R2_4WTOUCH_SX8655
+#define CONFIG_ARMSTONEA9R2_CAPTOUCH_MXT224
 //#define CONFIG_ARMSTONEA9R2_CAPTOUCH_FT5x06
 
-/* CMA */
-/* activate the define below and set a custom value if you want to change the
-   RAM size of continues memory allocator from default 320mb. */
-//#define CONFIG_EFUSA9_CMA_SIZE 0x4000000 /* e.g. 0x4000000 is 64mb */
+/* CMA: Set 320 MB for Continuous Memory Allocator */
+#define CONFIG_ARMSTONEA9R2_CMA_SIZE	0x14000000
 
 /* NAND */
 #define CONFIG_ARMSTONEA9R2_NAND
@@ -116,14 +117,14 @@
 /* AUDIO */
 #define CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO
 
-/* SERIAL INTERFACE - MIPI CAMERA */
-//#define CONFIG_ARMSTONEA9R2_SERIAL_INTERFACE
+/* Camera on serial MIPI CSI interface */
+//#define CONFIG_ARMSTONEA9R2_SERIAL_CAMERA
 
-/* SD-CARD - A is WLAN */
+/* SD-CARD - SD_A is WLAN */
 #define CONFIG_ARMSTONEA9R2_WLAN
-/* SD-CARD - B is micro SD */
+/* SD-CARD - SD_B is micro SD */
 #define CONFIG_ARMSTONEA9R2_SD_A
-/* SD-CARD - C is eMMC */
+/* SD-CARD - SD_C is eMMC */
 #define CONFIG_ARMSTONEA9R2_EMMC
 
 /* I2C */
@@ -134,7 +135,7 @@
 /* SPI */
 #define CONFIG_ARMSTONEA9R2_SPI_A
 #define CONFIG_ARMSTONEA9R2_SPI_B
-#define CONFIG_ARMSTONEA9R2_SPI_C
+#define CONFIG_ARMSTONEA9R2_SPI_FLASH
 
 /* SATA */
 #define CONFIG_ARMSTONEA9R2_SATA
@@ -153,7 +154,7 @@
 #include "armstonea9r2qdl.dtsi"
 
 / {
-	model = "F&S i.MX6 Quad armStoneA9R2 module";
+	model = "F&S i.MX6 Dual/Quad armStoneA9r2";
 	compatible = "fsl,imx6q-armstonea9r2", "fsl,imx6q";
 };
 
@@ -216,6 +217,7 @@
 };
 #endif
 
+/* i.MX6 Dual and Quad can have SATA */
 #ifdef CONFIG_ARMSTONEA9R2_SATA
 &sata {
 	status = "okay";

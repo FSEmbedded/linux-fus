@@ -7,12 +7,12 @@
  */
 
 /dts-v1/;
-/* CHOOSE BOARD REVISION */
-// #define CONFIG_EFUSA9_REV110 // old board revision
-#define CONFIG_EFUSA9_REV121
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_EFUSA9_BOARD_REVISION	120
 
 /* CONFIGURE 5V LVDS POWER SUPPLY */
-#ifdef CONFIG_EFUSA9_REV121
+#if (CONFIG_EFUSA9_BOARD_REVISION >= 121)
 /* With REV121 you can connect LVDS displays that need 5V.
    Most displays run with 3.3V. Define the variable below to configure the
    gpio used for switching to 5V. */
@@ -31,10 +31,6 @@
 //#define CONFIG_EFUSA9_D2
 /* Define this if you have a fourth display (D3) */
 //#define CONFIG_EFUSA9_D3
-
-/* ENABLE BACKLIGHT LEVELS */
-/* enable 16 levels of backlight brightness with correct gamma */
-#define CONFIG_ARMSTONEA9_BL_LEVELS_16
 
 /* CONFIGURE DISPLAY 0 */
 #ifdef CONFIG_EFUSA9_D0
@@ -138,18 +134,24 @@
 #endif
 
 
-/* TOUCH */
-/* Please select only one of the following touch devices. Make sure that the
-   corresponding touchscreen driver is activated in the kernel */
+/*
+ * Configure touch screen:
+ *
+ * - 4-wire/5-wire analog resistive touch, touch controller on SKIT
+ * - 4-wire/5-wire analog resistive touch, touch controller on RGB LCD adapter
+ * - PCAP touch based on Maxtouch controller (MXT224, etc), on Touch Connector
+ * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ *
+ * On efusA9, all touches use the same interrupt line and I2C bus, so do not
+ * select more than one entry! Select none if you do not need touch support.
+ */
 //#define CONFIG_EFUSA9_4WTOUCH_SX8655_ONBOARD
 #define CONFIG_EFUSA9_4WTOUCH_SX8655_RGBADAPTER
 //#define CONFIG_EFUSA9_CAPTOUCH_MXT224
 //#define CONFIG_EFUSA9_CAPTOUCH_FT5x06
 
-/* CMA */
-/* activate the define below and set a custom value if you want to change the
-   RAM size of continues memory allocator from default 320mb. */
-//#define CONFIG_EFUSA9_CMA_SIZE 0x4000000 /* e.g. 0x4000000 is 64mb */
+/* CMA: Set 320 MB for Continuous Memory Allocator */
+#define CONFIG_EFUSA9_CMA_SIZE		0x14000000
 
 /* NAND */
 #define CONFIG_EFUSA9_NAND
@@ -158,15 +160,15 @@
 #define CONFIG_EFUSA9_SGTL5000_AUDIO
 
 /* Camera connected */
-#define CONFIG_ARMSTONEA9_CAMERA_INTERFACE
+#define CONFIG_EFUSA9_CAMERA
 
-/* ?? */
-//#define CONFIG_EFUSA9_PARALLEL_INTERFACE
+/* Camera on parallel CSI interface */
+//#define CONFIG_EFUSA9_PARALLEL_CAMERA
 
-/* SERIAL INTERFACE - MIPI CAMERA */
-#define CONFIG_EFUSA9_SERIAL_INTERFACE
+/* Camera on serial MIPI CSI interface */
+#define CONFIG_EFUSA9_SERIAL_CAMERA
 
-/* SD-CARD - A is micro SD; B is normalsize SD */
+/* SD-CARD - SD_A is micro SD; SD_B is normalsize SD */
 #define CONFIG_EFUSA9_SD_A
 #define CONFIG_EFUSA9_SD_B
 
@@ -191,19 +193,16 @@
 #define CONFIG_EFUSA9_UART_C
 #define CONFIG_EFUSA9_UART_D
 
+
 #include "imx6q.dtsi"
 #include "efusa9qdl.dtsi"
 
 / {
-	model = "F&S i.MX6 Quad efusA9 module";
+	model = "F&S i.MX6 Dual/Quad efusA9 module";
 	compatible = "fus,imx6q-efusa9", "fsl,imx6q";
 };
 
-&dma_apbh {
-	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
-	compatible = "fus,imx6q-dma-apbh", "fus,imx28-dma-apbh";
-};
-
+/* i.MX6 Dual and Quad can have SATA */
 #ifdef CONFIG_EFUSA9_SATA
 &sata{
 	status = "okay";
@@ -218,7 +217,7 @@
 #endif
 #ifdef CONFIG_EFUSA9_LVDS_SPLIT_MODE
 	split-mode;
-#endif 
+#endif
 
 #ifdef CONFIG_EFUSA9_D2 		// 3 or 4 displays
 #if defined(CONFIG_EFUSA9_LCD) && defined(CONFIG_EFUSA9_HDMI) &&\

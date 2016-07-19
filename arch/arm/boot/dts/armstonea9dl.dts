@@ -8,16 +8,15 @@
 
 /dts-v1/;
 
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_ARMSTONEA9_BOARD_REVISION	110
+
 /* ENABLE DISPLAYS */
 /* The following display config will be converted to Kconfig in the future */
 /* Define this if you have at least one display (D0) */
 #define CONFIG_ARMSTONEA9_D0
 /* Define this if you have a second display (D1) */
 #define CONFIG_ARMSTONEA9_D1
-
-/* ENABLE BACKLIGHT LEVELS */
-/* enable 16 levels of backlight brightness with correct gamma */
-#define CONFIG_ARMSTONEA9_BL_LEVELS_16
 
 /* CONFIGURE DISPLAY 0 */
 #ifdef CONFIG_ARMSTONEA9_D0
@@ -86,17 +85,23 @@
 #endif
 
 
-/* TOUCH */
-/* Please select only one of the following touch devices. Make sure that the
-   corresponding touchscreen driver is activated in the kernel */
+/*
+ * Configure touch screen:
+ *
+ * - 4-wire/5-wire analog resistive touch, touch controller on RGB LCD adapter
+ * - 4-wire/5-wire analog resistive touch (SX8655), on Touch Connector
+ * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
+ * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ *
+ * Select none if you do not need touch support.
+ */
 #define CONFIG_ARMSTONEA9_4WTOUCH_SX8655_RGBADAPTER
+//#define CONFIG_ARMSTONEA9_4WTOUCH_SX8655
 //#define CONFIG_ARMSTONEA9_CAPTOUCH_MXT224
 //#define CONFIG_ARMSTONEA9_CAPTOUCH_FT5x06
 
-/* CMA */
-/* activate the define below and set a custom value if you want to change the
-   RAM size of continues memory allocator from default 320mb. */
-//#define CONFIG_EFUSA9_CMA_SIZE 0x4000000 /* e.g. 0x4000000 is 64mb */
+/* CMA: Set 320 MB for Continuous Memory Allocator */
+#define CONFIG_ARMSTONEA9_CMA_SIZE	0x14000000
 
 /* NAND */
 #define CONFIG_ARMSTONEA9_NAND
@@ -105,15 +110,15 @@
 #define CONFIG_ARMSTONEA9_SGTL5000_AUDIO
 
 /* Camera connected */
-#define CONFIG_ARMSTONEA9_CAMERA_INTERFACE
+//#define CONFIG_ARMSTONEA9_CAMERA
 
-/* ?? */
-//#define CONFIG_ARMSTONEA9_PARALLEL_INTERFACE
+/* Camera on parallel CSI interface */
+//#define CONFIG_ARMSTONEA9_PARALLEL_CAMERA
 
-/* SERIAL INTERFACE - MIPI CAMERA */
-#define CONFIG_ARMSTONEA9_SERIAL_INTERFACE
+/* Camera on serial MIPI CSI interface */
+//#define CONFIG_ARMSTONEA9_SERIAL_CAMERA
 
-/* SD-CARD - A is micro SD */
+/* SD-CARD - SD_A is micro SD */
 #define CONFIG_ARMSTONEA9_SD_A
 
 /* I2C */
@@ -133,7 +138,7 @@
 #include "armstonea9qdl.dtsi"
 
 / {
-	model = "F&S i.MX6 DualLite armStoneA9 module";
+	model = "F&S i.MX6 Solo/DualLite armStoneA9";
 	compatible = "fsl,imx6dl-armstonea9", "fsl,imx6dl";
 };
 
@@ -141,27 +146,31 @@
 &ldb {
 	ext_ref;
 #ifdef CONFIG_ARMSTONEA9_LVDS_DUAL_MODE
-	 dual-mode;
+	dual-mode;
 #endif
 #ifdef CONFIG_ARMSTONEA9_LVDS_SPLIT_MODE
 	split-mode;
 #endif
 
-#ifdef CONFIG_ARMSTONEA9_LCD		//if LCD is enabled too, LVDS uses di1
+	/* Note: In crtc string, IPUs are counted from 1, displays from 0 */
+#ifdef CONFIG_ARMSTONEA9_LCD
+	/* If LCD is enabled, it must use DI0, so LVDS must use DI1 */
 	lvds-channel@0 {
-		crtc = "ipu1-di1"; 	//ipu1-di1 means ipu 0, di1
+		crtc = "ipu1-di1";
 		reg = <0>;
 		status = "okay";
 	};
 #else
-	lvds-channel@0 {		//default LVDS uses di0
+	/* If LCD is not enabled, LVDS can use DI0 */
+	lvds-channel@0 {
 		crtc = "ipu1-di0";
 		reg = <0>;
 		status = "okay";
 	};
 #endif
-#ifdef CONFIG_ARMSTONEA9_D1_LVDS	//if both LVDS channels are used
-	lvds-channel@1 {		//dual and split mode ignore this node
+#if defined(CONFIG_ARMSTONEA9_D0_LVDS) && defined(CONFIG_ARMSTONEA9_D1_LVDS)
+	/* If two separate LVDS displays are active, also use second channel */
+	lvds-channel@1 {
 		crtc = "ipu1-di1";
 		reg = <1>;
 		status = "okay";
@@ -190,30 +199,7 @@
 };
 #endif
 
+/* i.MX6 Solo and DualLite have a PXP engine */
 &pxp {
 	status = "okay";
 };
-
-#if 0
-&iomuxc {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_hog_1>, <&pinctrl_hog_2>;
-
-	hog {
-		pinctrl_hog_2: hoggrp-2 {
-			fsl,pins = <
-				/* MAX17135 */
-				MX6QDL_PAD_EIM_A17__GPIO2_IO21 0x80000000
-				MX6QDL_PAD_EIM_D17__GPIO3_IO17 0x80000000
-				MX6QDL_PAD_EIM_D20__GPIO3_IO20 0x80000000
-				MX6QDL_PAD_EIM_A18__GPIO2_IO20 0x80000000
-				MX6QDL_PAD_EIM_OE__GPIO2_IO25 0x80000000
-				/* elan touch */
-				MX6QDL_PAD_EIM_A20__GPIO2_IO18 0x80000000
-				MX6QDL_PAD_EIM_DA8__GPIO3_IO08 0x80000000
-				MX6QDL_PAD_EIM_D28__GPIO3_IO28 0x170b0
-			>;
-		};
-	};
-};
-#endif
