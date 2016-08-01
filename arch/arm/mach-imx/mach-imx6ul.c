@@ -17,6 +17,7 @@
 #include <linux/phy.h>
 #include <linux/pm_opp.h>
 #include <linux/regmap.h>
+#include <linux/micrel_phy.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 
@@ -55,20 +56,20 @@ static void __init imx6ul_enet_clk_init(void)
 static int ksz8081_phy_fixup(struct phy_device *dev)
 {
 	if (dev && dev->interface == PHY_INTERFACE_MODE_MII) {
-		phy_write(dev, 0x1f, 0x8110);
+		phy_write(dev, 0x1f, 0x8100);
 		phy_write(dev, 0x16, 0x201);
 	} else if (dev && dev->interface == PHY_INTERFACE_MODE_RMII) {
-		phy_write(dev, 0x1f, 0x8190);
+		phy_write(dev, 0x1f, 0x8180);
 		phy_write(dev, 0x16, 0x202);
 	}
 
 	return 0;
 }
 
-#define PHY_ID_KSZ8081	0x00221560
 static void __init imx6ul_enet_phy_init(void)
 {
-	phy_register_fixup_for_uid(PHY_ID_KSZ8081, 0xffffffff,	ksz8081_phy_fixup);
+	phy_register_fixup_for_uid(PHY_ID_KSZ8081, MICREL_PHY_ID_MASK,
+				   ksz8081_phy_fixup);
 }
 
 #define OCOTP_CFG3			0x440
