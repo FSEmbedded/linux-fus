@@ -2640,25 +2640,25 @@ static int mxc_hdmi_disp_init(struct mxc_dispdrv_handle *disp,
 	ret = device_create_file(&hdmi->pdev->dev, &dev_attr_fb_name);
 	if (ret < 0)
 		dev_warn(&hdmi->pdev->dev,
-			"cound not create sys node for fb name\n");
+			"could not create sys node for fb name\n");
 	ret = device_create_file(&hdmi->pdev->dev, &dev_attr_cable_state);
 	if (ret < 0)
 		dev_warn(&hdmi->pdev->dev,
-			"cound not create sys node for cable state\n");
+			"could not create sys node for cable state\n");
 	ret = device_create_file(&hdmi->pdev->dev, &dev_attr_edid);
 	if (ret < 0)
 		dev_warn(&hdmi->pdev->dev,
-			"cound not create sys node for edid\n");
+			"could not create sys node for edid\n");
 
 	ret = device_create_file(&hdmi->pdev->dev, &dev_attr_rgb_out_enable);
 	if (ret < 0)
 		dev_warn(&hdmi->pdev->dev,
-			"cound not create sys node for rgb out enable\n");
+			"could not create sys node for rgb out enable\n");
 
 	ret = device_create_file(&hdmi->pdev->dev, &dev_attr_hdcp_enable);
 	if (ret < 0)
 		dev_warn(&hdmi->pdev->dev,
-			"cound not create sys node for hdcp enable\n");
+			"could not create sys node for hdcp enable\n");
 
 	dev_dbg(&hdmi->pdev->dev, "%s exit\n", __func__);
 
