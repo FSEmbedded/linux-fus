@@ -11,79 +11,113 @@
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_ARMSTONEA9_BOARD_REVISION	110
 
-/* ENABLE DISPLAYS */
-/* The following display config will be converted to Kconfig in the future */
-/* Define this if you have at least one display (D0) */
-#define CONFIG_ARMSTONEA9_D0
-/* Define this if you have a second display (D1) */
-#define CONFIG_ARMSTONEA9_D1
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_LCD	1	/* LCD via RGB adapter */
+#define DISPLAY_HDMI	2	/* DVI/HDMI via HDMI connector */
+#define DISPLAY_LVDS0	3	/* LVDS channel 0 */
+#define DISPLAY_LVDS1	4	/* LVDS channel 1 */
 
-/* CONFIGURE DISPLAY 0 */
-#ifdef CONFIG_ARMSTONEA9_D0
-/* Activate exactly one entry for the type of display D0 */
-#define CONFIG_ARMSTONEA9_D0_LCD				// LCD
-//#define CONFIG_ARMSTONEA9_D0_LVDS				// LVDS
-//#define CONFIG_ARMSTONEA9_D0_HDMI				// HDMI
 /*
- * Define a mode_str entry for display D0 (depends on display type above)
- * See the following files for possible values:
- *   LVDS: drivers/video/mxc/ldb.c
- *   LCD:  drivers/video/mxc/mxc_lcdif.c
- *   HDMI: drivers/video/fbdev/mxc/mxc_hdmi.c (actually fetched from panel via EDID)
+ * Set the display configuration:
+ *
+ * - If you have no display, set both settings to DISPLAY_NONE.
+ * - If you have one display, set MXCFB0 to one of the display types above
+ *   and leave MXCFB1 at DISPLAY_NONE.
+ * - If you have two displays, set both settings to a display type from above.
+ *   You have to use different types for the two displays.
+ *
+ * The first display will also get a video overlay, so MXCFB0 will use /dev/fb0
+ * and /dev/fb1 and MXCFB1 will use /dev/fb2.
  */
-#ifdef CONFIG_ARMSTONEA9_D0_LCD
-	#define CONFIG_ARMSTONEA9_D0_MODE_STR "LCD-ET070080"	// LCD
-#elif defined(CONFIG_ARMSTONEA9_D0_LVDS)
-	#define CONFIG_ARMSTONEA9_D0_MODE_STR "LDB-WVGA"		// LVDS
-#elif defined(CONFIG_ARMSTONEA9_D0_HDMI)
-	#define CONFIG_ARMSTONEA9_D0_MODE_STR "1920x1080M@60"	// HDMI
-#endif
-#endif // CONFIG_ARMSTONEA9_D0
+#define CONFIG_ARMSTONEA9_MXCFB0	DISPLAY_LCD
+#define CONFIG_ARMSTONEA9_MXCFB1	DISPLAY_NONE
 
-/* CONFIGURE DISPLAY 1 */
-#ifdef CONFIG_ARMSTONEA9_D1
-/* Activate exactly one entry for the type of display D1 */
-//#define CONFIG_ARMSTONEA9_D1_LCD				// LCD
-#define CONFIG_ARMSTONEA9_D1_LVDS				// LVDS
-//#define CONFIG_ARMSTONEA9_D1_HDMI				// HDMI
+/* i.MX6 Solo and DualLite only have one IPU, do not change */
+#define CONFIG_ARMSTONEA9_USE_ONE_IPU
 
-/* Define a mode_str entry for display D1 (see comment for D0 above) */
-#ifdef CONFIG_ARMSTONEA9_D1_LVDS
-	#define CONFIG_ARMSTONEA9_D1_MODE_STR "LDB-WVGA"		// LVDS
-#elif defined(CONFIG_ARMSTONEA9_D1_HDMI)
-	#define CONFIG_ARMSTONEA9_D1_MODE_STR "1920x1080M@60"	// HDMI
-#elif	defined(CONFIG_ARMSTONEA9_D1_LCD)
-	#define CONFIG_ARMSTONEA9_D1_MODE_STR "LCD-ET070080"	// LCD
-#endif
-#endif // CONFIG_ARMSTONEA9_D1
+/*
+ * Configure LCD settings here (ignored if LCD is not used);
+ * see drivers/video/fbdev/mxc/mxc_lcdif.c for possible LCD mode strings
+ */
+#define CONFIG_ARMSTONEA9_LCD_BPP	16
+#define CONFIG_ARMSTONEA9_LCD_PIX_FMT	"RGB666"
+#define CONFIG_ARMSTONEA9_LCD_MODE_STR	"LCD-ET070080"
 
-/* CONFIGURE LVDS MULTIDISPLAY*/
-/* Two LVDS displays act as two independent displays (with two fb) by default.
-   Apart from this  can choose between dual-mode and split-mode */
-#if defined(CONFIG_ARMSTONEA9_D0_LVDS) && defined(CONFIG_ARMSTONEA9_D1_LVDS)
-/* one LVDS display per channel, one framebuffer for both */
-//#define CONFIG_ARMSTONEA9_LVDS_DUAL_MODE
-/* two channels for 'split-mode-display', one framebuffer */
+/* Configure HDMI settings here (ignored if HDMI is not used) */
+#define CONFIG_ARMSTONEA9_HDMI_BPP	24
+#define CONFIG_ARMSTONEA9_HDMI_PIX_FMT	"RGB24"
+#define CONFIG_ARMSTONEA9_HDMI_MODE_STR	"1920x1080M@60"
+
+/*
+ * Configure LVDS0 settings here (ignored if LVDS0 is not used)
+ * Mapping:
+ *
+ * - "spwg":  18 bpp or 24 bpp, in case of 24 bpp, bits 6 and 7 of each color
+ *            are encoded on fourth LVDS differential data pair
+ * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
+ *            all other data bits on all four differential data pairs
+ */
+#define CONFIG_ARMSTONEA9_LVDS0_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9_LVDS0_BPP	24
+#define CONFIG_ARMSTONEA9_LVDS0_PIX_FMT	"RGB666"
+#define CONFIG_ARMSTONEA9_LVDS0_DATA_WIDTH	18
+#define CONFIG_ARMSTONEA9_LVDS0_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+
+/*
+ * Configure LVDS1 settings here (ignored if LVDS1 is not used)
+ * For mapping value see above.
+ */
+#define CONFIG_ARMSTONEA9_LVDS1_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9_LVDS1_BPP	24
+#define CONFIG_ARMSTONEA9_LVDS1_PIX_FMT	"RGB666"
+#define CONFIG_ARMSTONEA9_LVDS1_DATA_WIDTH	18
+#define CONFIG_ARMSTONEA9_LVDS1_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+
+/*
+ * Define this for a two-channel display, i.e. one display, one framebuffer,
+ * but two LVDS channels, even pixels from one channel, odd pixels from the
+ * other channel. Only define either DISPLAY_LVDS0 or DISPLAY_LVDS1 in this
+ * case, using the full display resolution.
+ */
 //#define CONFIG_ARMSTONEA9_LVDS_SPLIT_MODE
-#endif
 
-/* Do some settings to make configurations easier */
-#if defined(CONFIG_ARMSTONEA9_D0_LCD) || defined(CONFIG_ARMSTONEA9_D1_LCD)
-#define CONFIG_ARMSTONEA9_LCD // activates LCD node
-#endif
-#if defined(CONFIG_ARMSTONEA9_D0_HDMI) || defined(CONFIG_ARMSTONEA9_D1_HDMI)
-#define CONFIG_ARMSTONEA9_HDMI // activates HDMI node
-#endif
-
-#if defined(CONFIG_ARMSTONEA9_D0_LVDS) || defined(CONFIG_ARMSTONEA9_D1_LVDS)
-#define CONFIG_ARMSTONEA9_LVDS // activates LVDS node
-#endif
-
-/* HDMI */
-#ifdef CONFIG_ARMSTONEA9_HDMI
-#define CONFIG_ARMSTONEA9_HDMI_AUDIO
-#endif
-
+/*
+ * Define this if you have two similar displays (same resolution and timings),
+ * one on each LVDS channel. The display content of the framebuffer is shown
+ * on both displays simultaneously (cloned). Only define either DISPLAY_LVDS0
+ * or DISPLAY_LVDS1 in this case, using the resolution of one of the displays.
+ */
+//#define CONFIG_ARMSTONEA9_LVDS_DUAL_MODE
 
 /*
  * Configure touch screen:
@@ -141,63 +175,6 @@
 	model = "F&S i.MX6 Solo/DualLite armStoneA9";
 	compatible = "fsl,imx6dl-armstonea9", "fsl,imx6dl";
 };
-
-#ifdef CONFIG_ARMSTONEA9_LVDS
-&ldb {
-	ext_ref;
-#ifdef CONFIG_ARMSTONEA9_LVDS_DUAL_MODE
-	dual-mode;
-#endif
-#ifdef CONFIG_ARMSTONEA9_LVDS_SPLIT_MODE
-	split-mode;
-#endif
-
-	/* Note: In crtc string, IPUs are counted from 1, displays from 0 */
-#ifdef CONFIG_ARMSTONEA9_LCD
-	/* If LCD is enabled, it must use DI0, so LVDS must use DI1 */
-	lvds-channel@0 {
-		crtc = "ipu1-di1";
-		reg = <0>;
-		status = "okay";
-	};
-#else
-	/* If LCD is not enabled, LVDS can use DI0 */
-	lvds-channel@0 {
-		crtc = "ipu1-di0";
-		reg = <0>;
-		status = "okay";
-	};
-#endif
-#if defined(CONFIG_ARMSTONEA9_D0_LVDS) && defined(CONFIG_ARMSTONEA9_D1_LVDS)
-	/* If two separate LVDS displays are active, also use second channel */
-	lvds-channel@1 {
-		crtc = "ipu1-di1";
-		reg = <1>;
-		status = "okay";
-	};
-#endif
-};
-#endif
-
-#ifdef CONFIG_ARMSTONEA9_HDMI
-&hdmi_core {
-	ipu_id = <0>;
-	disp_id = <1>;
-	status = "okay";
-};
-#endif
-
-#ifdef CONFIG_ARMSTONEA9_D0
-&mxcfb0 {
-	status = "okay";
-};
-#endif
-
-#ifdef CONFIG_ARMSTONEA9_D1
-&mxcfb1 {
-	status = "okay";
-};
-#endif
 
 /* i.MX6 Solo and DualLite have a PXP engine */
 &pxp {

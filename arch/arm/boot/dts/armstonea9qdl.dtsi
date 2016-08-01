@@ -8,20 +8,135 @@
 
 #include <dt-bindings/pwm/pwm.h>
 
+/*
+ * When using one IPU, having LCD and LVDS0 at the same time is not possible,
+ * because both devices would need to use display 0. But this can be simulated
+ * by using LVDS1 instead of LVDS0 and activating Dual Mode.
+ */
+#ifdef CONFIG_ARMSTONEA9_USE_ONE_IPU
+#undef CONFIG_ARMSTONEA9_MXCFB2
+#undef CONFIG_ARMSTONEA9_MXCFB3
+
+#if ((CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_LCD) \
+	&& (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_LVDS0))
+#undef CONFIG_ARMSTONEA9_MXCFB1
+#define CONFIG_ARMSTONEA9_MXCFB1		DISPLAY_LVDS1
+#define __MOVE_LVDS0_TO_LVDS1_DUAL_MODE__
+#endif
+
+#if ((CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_LVDS0) \
+	&& (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_LCD))
+#undef CONFIG_ARMSTONEA9_MXCFB0
+#define CONFIG_ARMSTONEA9_MXCFB0		DISPLAY_LVDS1
+#define __MOVE_LVDS0_TO_LVDS1_DUAL_MODE__
+#endif
+
+#ifdef __MOVE_LVDS0_TO_LVDS1_DUAL_MODE__
+#undef CONFIG_ARMSTONEA9_LVDS1_MAPPING
+#undef CONFIG_ARMSTONEA9_LVDS1_BPP
+#undef CONFIG_ARMSTONEA9_LVDS1_DATA_WIDTH
+#undef CONFIG_ARMSTONEA9_LVDS1_TIMING
+#define CONFIG_ARMSTONEA9_LVDS1_MAPPING		CONFIG_ARMSTONEA9_LVDS0_MAPPING
+#define CONFIG_ARMSTONEA9_LVDS1_BPP		CONFIG_ARMSTONEA9_LVDS0_BPP
+#define CONFIG_ARMSTONEA9_LVDS1_DATA_WIDTH	CONFIG_ARMSTONEA9_LVDS0_DATA_WIDTH
+#define CONFIG_ARMSTONEA9_LVDS1_TIMING		CONFIG_ARMSTONEA9_LVDS0_TIMING
+#ifndef CONFIG_ARMSTONEA9_LVDS_DUAL_MODE
+#define CONFIG_ARMSTONEA9_LVDS_DUAL_MODE
+#endif
+#endif
+#endif /* CONFIG_ARMSTONEA9_USE_ONE_IPU */
+
+/* Do we have LCD? */
+#if ((CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_LCD) \
+    || (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_LCD) \
+    || (CONFIG_ARMSTONEA9_MXCFB2 == DISPLAY_LCD) \
+    || (CONFIG_ARMSTONEA9_MXCFB3 == DISPLAY_LCD))
+#define CONFIG_ARMSTONEA9_LCD
+#if ((CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_LCD) \
+    || (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_LCD))
+#define __LCD_ON_0_OR_1__	1
+#define __LCD_ON_2_OR_3__	0
+#else
+#define __LCD_ON_0_OR_1__	0
+#define __LCD_ON_2_OR_3__	1
+#endif
+#endif
+
+/* Do we have HDMI? */
+#if ((CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_HDMI) \
+    || (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_HDMI) \
+    || (CONFIG_ARMSTONEA9_MXCFB2 == DISPLAY_HDMI) \
+    || (CONFIG_ARMSTONEA9_MXCFB3 == DISPLAY_HDMI))
+#define CONFIG_ARMSTONEA9_HDMI
+#define CONFIG_ARMSTONEA9_HDMI_AUDIO
+#define CONFIG_ARMSTONEA9_HDMI_CEC
+#if ((CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_HDMI) \
+    || (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_HDMI))
+#define __HDMI_ON_0_OR_1__	1
+#define __HDMI_ON_2_OR_3__	0
+#else
+#define __HDMI_ON_0_OR_1__	0
+#define __HDMI_ON_2_OR_3__	1
+#endif
+#endif
+
+/* Do we have LVDS0? */
+#if ((CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_LVDS0) \
+    || (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_LVDS0) \
+    || (CONFIG_ARMSTONEA9_MXCFB2 == DISPLAY_LVDS0) \
+    || (CONFIG_ARMSTONEA9_MXCFB3 == DISPLAY_LVDS0))
+#define CONFIG_ARMSTONEA9_LVDS0
+#if ((CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_LVDS0) \
+    || (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_LVDS0))
+#define __LVDS0_ON_0_OR_1__	1
+#define __LVDS0_ON_2_OR_3__	0
+#else
+#define __LVDS0_ON_0_OR_1__	0
+#define __LVDS0_ON_2_OR_3__	1
+#endif
+#endif
+
+/* Do we have LVDS1? */
+#if ((CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_LVDS1) \
+    || (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_LVDS1) \
+    || (CONFIG_ARMSTONEA9_MXCFB2 == DISPLAY_LVDS1) \
+    || (CONFIG_ARMSTONEA9_MXCFB3 == DISPLAY_LVDS1))
+#define CONFIG_ARMSTONEA9_LVDS1
+#if ((CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_LVDS1) \
+    || (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_LVDS1))
+#define __LVDS1_ON_0_OR_1__	1
+#define __LVDS1_ON_2_OR_3__	0
+#else
+#define __LVDS1_ON_0_OR_1__	0
+#define __LVDS1_ON_2_OR_3__	1
+#endif
+#endif
+
+/* Check which LVDS will be the primary display */
+#if (CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_LVDS0)
+#define __LVDS0_PRIMARY__
+#elif (CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_LVDS1)
+#define __LVDS1_PRIMARY__
+#elif (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_LVDS0)
+#define __LVDS0_PRIMARY__
+#elif (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_LVDS1)
+#define __LVDS1_PRIMARY__
+#elif (CONFIG_ARMSTONEA9_MXCFB2 == DISPLAY_LVDS0)
+#define __LVDS0_PRIMARY__
+#elif (CONFIG_ARMSTONEA9_MXCFB2 == DISPLAY_LVDS1)
+#define __LVDS1_PRIMARY__
+#elif (CONFIG_ARMSTONEA9_MXCFB3 == DISPLAY_LVDS0)
+#define __LVDS0_PRIMARY__
+#elif (CONFIG_ARMSTONEA9_MXCFB3 == DISPLAY_LVDS1)
+#define __LVDS1_PRIMARY__
+#endif
+
 / {
 	aliases {
-#ifdef CONFIG_ARMSTONEA9_D0
 		mxcfb0 = &mxcfb0;
-#endif
-#ifdef CONFIG_ARMSTONEA9_D1
 		mxcfb1 = &mxcfb1;
-#endif
-#ifdef CONFIG_ARMSTONEA9_D2
 		mxcfb2 = &mxcfb2;
-#endif
-#ifdef CONFIG_ARMSTONEA9_D3
 		mxcfb3 = &mxcfb3;
-#endif
 #ifdef CONFIG_ARMSTONEA9_SGTL5000_AUDIO
 		i2c5 = &i2c_gpio;
 #endif
@@ -209,118 +324,133 @@
 	};
 #endif
 
-#ifdef CONFIG_ARMSTONEA9_D0
 	mxcfb0: fb@0 {
 		compatible = "fsl,mxc_sdc_fb";
-#ifdef CONFIG_ARMSTONEA9_D0_LCD
-		disp_dev = "lcd";
-		interface_pix_fmt = "RGB666";
-		int_clk = <1>;
-#endif
-#ifdef CONFIG_ARMSTONEA9_D0_HDMI
-		disp_dev = "hdmi";
-		interface_pix_fmt = "RGB24";
-		int_clk = <0>;
-#endif
-#ifdef CONFIG_ARMSTONEA9_D0_LVDS
-		disp_dev = "ldb";
-		interface_pix_fmt = "RGB666";
-		int_clk = <1>;
-#endif
-		mode_str = CONFIG_ARMSTONEA9_D0_MODE_STR;
-		default_bpp = <16>;
 		late_init = <0>;
+#if (CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_LCD)
+		disp_dev = "lcd";
+		default_bpp = <CONFIG_ARMSTONEA9_LCD_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_LCD_PIX_FMT;
+		int_clk = <1>;
+		mode_str = CONFIG_ARMSTONEA9_LCD_MODE_STR;
+#elif (CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_HDMI)
+		disp_dev = "hdmi";
+		default_bpp = <CONFIG_ARMSTONEA9_HDMI_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_HDMI_PIX_FMT;
+		int_clk = <0>;
+		mode_str = CONFIG_ARMSTONEA9_HDMI_MODE_STR;
+#elif (CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_LVDS0)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_ARMSTONEA9_LVDS0_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_LVDS0_PIX_FMT;
+		int_clk = <1>;
+#elif (CONFIG_ARMSTONEA9_MXCFB0 == DISPLAY_LVDS1)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_ARMSTONEA9_LVDS1_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_LVDS1_PIX_FMT;
+		int_clk = <1>;
+#else
 		status = "disabled";
-	};
 #endif
+	};
 
-#ifdef CONFIG_ARMSTONEA9_D1
 	mxcfb1: fb@1 {
 		compatible = "fsl,mxc_sdc_fb";
-#ifdef CONFIG_ARMSTONEA9_D1_LCD
-		disp_dev = "lcd";
-		interface_pix_fmt = "RGB666";
-		int_clk = <1>;
-#endif
-#ifdef CONFIG_ARMSTONEA9_D1_HDMI
-		disp_dev = "hdmi";
-		interface_pix_fmt = "RGB24";
-		int_clk = <0>;
-#endif
-#ifdef CONFIG_ARMSTONEA9_D1_LVDS
-		disp_dev = "ldb";
-		interface_pix_fmt = "RGB666";
-		int_clk = <1>;
-#endif
-		mode_str = CONFIG_ARMSTONEA9_D1_MODE_STR;
-		default_bpp = <24>;
 		late_init = <0>;
+#if (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_LCD)
+		disp_dev = "lcd";
+		default_bpp = <CONFIG_ARMSTONEA9_LCD_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_LCD_PIX_FMT;
+		int_clk = <1>;
+		mode_str = CONFIG_ARMSTONEA9_LCD_MODE_STR;
+#elif (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_HDMI)
+		disp_dev = "hdmi";
+		default_bpp = <CONFIG_ARMSTONEA9_HDMI_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_HDMI_PIX_FMT;
+		int_clk = <0>;
+		mode_str = CONFIG_ARMSTONEA9_HDMI_MODE_STR;
+#elif (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_LVDS0)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_ARMSTONEA9_LVDS0_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_LVDS0_PIX_FMT;
+		int_clk = <1>;
+#elif (CONFIG_ARMSTONEA9_MXCFB1 == DISPLAY_LVDS1)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_ARMSTONEA9_LVDS1_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_LVDS1_PIX_FMT;
+		int_clk = <1>;
+#else
 		status = "disabled";
-	};
 #endif
+	};
 
-#ifdef CONFIG_ARMSTONEA9_D2
 	mxcfb2: fb@2 {
 		compatible = "fsl,mxc_sdc_fb";
-#ifdef CONFIG_ARMSTONEA9_D2_LCD
-		disp_dev = "lcd";
-		interface_pix_fmt = "RGB666";
-		int_clk = <1>;
-#endif
-#ifdef CONFIG_ARMSTONEA9_D2_HDMI
-		disp_dev = "hdmi";
-		interface_pix_fmt = "RGB24";
-		int_clk = <0>;
-#endif
-#ifdef CONFIG_ARMSTONEA9_D2_LVDS
-		disp_dev = "ldb";
-		interface_pix_fmt = "RGB666";
-		int_clk = <1>;
-#endif
-		mode_str = CONFIG_ARMSTONEA9_D2_MODE_STR;
-		default_bpp = <24>;
 		late_init = <0>;
+#if (CONFIG_ARMSTONEA9_MXCFB2 == DISPLAY_LCD)
+		disp_dev = "lcd";
+		default_bpp = <CONFIG_ARMSTONEA9_LCD_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_LCD_PIX_FMT;
+		int_clk = <1>;
+		mode_str = CONFIG_ARMSTONEA9_LCD_MODE_STR;
+#elif (CONFIG_ARMSTONEA9_MXCFB2 == DISPLAY_HDMI)
+		disp_dev = "hdmi";
+		default_bpp = <CONFIG_ARMSTONEA9_HDMI_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_HDMI_PIX_FMT;
+		int_clk = <0>;
+		mode_str = CONFIG_ARMSTONEA9_HDMI_MODE_STR;
+#elif (CONFIG_ARMSTONEA9_MXCFB2 == DISPLAY_LVDS0)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_ARMSTONEA9_LVDS0_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_LVDS0_PIX_FMT;
+		int_clk = <1>;
+#elif (CONFIG_ARMSTONEA9_MXCFB2 == DISPLAY_LVDS1)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_ARMSTONEA9_LVDS1_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_LVDS1_PIX_FMT;
+		int_clk = <1>;
+#else
 		status = "disabled";
-	};
 #endif
+	};
 
-#ifdef CONFIG_ARMSTONEA9_D3
 	mxcfb3: fb@3 {
 		compatible = "fsl,mxc_sdc_fb";
-#ifdef CONFIG_ARMSTONEA9_D3_LCD
-		disp_dev = "lcd";
-		interface_pix_fmt = "RGB666";
-		int_clk = <1>;
-#endif
-#ifdef CONFIG_ARMSTONEA9_D3_HDMI
-		disp_dev = "hdmi";
-		interface_pix_fmt = "RGB24";
-		int_clk = <0>;
-#endif
-#ifdef CONFIG_ARMSTONEA9_D3_LVDS
-		disp_dev = "ldb";
-		interface_pix_fmt = "RGB666";
-		int_clk = <0>;
-#endif
-		mode_str = CONFIG_ARMSTONEA9_D3_MODE_STR;
-		default_bpp = <16>;
 		late_init = <0>;
+#if (CONFIG_ARMSTONEA9_MXCFB3 == DISPLAY_LCD)
+		disp_dev = "lcd";
+		default_bpp = <CONFIG_ARMSTONEA9_LCD_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_LCD_PIX_FMT;
+		int_clk = <1>;
+		mode_str = CONFIG_ARMSTONEA9_LCD_MODE_STR;
+#elif (CONFIG_ARMSTONEA9_MXCFB3 == DISPLAY_HDMI)
+		disp_dev = "hdmi";
+		default_bpp = <CONFIG_ARMSTONEA9_HDMI_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_HDMI_PIX_FMT;
+		int_clk = <0>;
+		mode_str = CONFIG_ARMSTONEA9_HDMI_MODE_STR;
+#elif (CONFIG_ARMSTONEA9_MXCFB3 == DISPLAY_LVDS0)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_ARMSTONEA9_LVDS0_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_LVDS0_PIX_FMT;
+		int_clk = <1>;
+#elif (CONFIG_ARMSTONEA9_MXCFB3 == DISPLAY_LVDS1)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_ARMSTONEA9_LVDS1_BPP>;
+		interface_pix_fmt = CONFIG_ARMSTONEA9_LVDS1_PIX_FMT;
+		int_clk = <1>;
+#else
 		status = "disabled";
-	};
 #endif
+	};
 
-#ifdef CONFIG_ARMSTONEA9_LCD
-	lcd@0 {
+	lcd: lcd@0 {
 		compatible = "fsl,lcd";
 		power-supply = <&reg_vlcd>;
-		ipu_id = <0>;
-		disp_id = <0>;
-		default_ifmt = "BGR666";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_ipu1_ctrl &pinctrl_ipu1_dat>;
-		status = "okay";
+		status = "disabled";
 	};
-#endif
 
 	/* RGB-LCD backlight PWM on RGB adapter */
 	backlight_lcd {
@@ -480,6 +610,14 @@
 
 #ifdef CONFIG_ARMSTONEA9_HDMI_AUDIO
 &hdmi_audio {
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_HDMI_CEC
+&hdmi_cec {
+//###	pinctrl-names = "default";
+//###	pinctrl-0 = <&pinctrl_hdmi_cec_1>;
 	status = "okay";
 };
 #endif
@@ -914,69 +1052,114 @@
 };
 #endif /* CONFIG_ARMSTONEA9_SD_A */
 
-#ifdef CONFIG_ARMSTONEA9_LVDS
-&ldb {
-	power_supply = <&reg_vlcd>;
-	ipu_id = <1>;
+#ifdef CONFIG_ARMSTONEA9_LCD
+&lcd {
+	/* LCD on armStoneA9 is always on IPU1 (id=0), DI0 */
+	ipu_id = <0>;
+	disp_id = <0>;
+	default_ifmt = CONFIG_ARMSTONEA9_LCD_PIX_FMT;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_ARMSTONEA9_HDMI
+&hdmi_core {
+#ifdef CONFIG_ARMSTONEA9_USE_ONE_IPU
+	/*
+	 * When using one IPU (id=0):
+	 * HDMI can go to DI1, unless LVDS1 is also active. In this case LVDS1
+	 * must go to DI1 and HDMI to DI0.
+	 */	 
+	ipu_id = <0>;
+#if (__HDMI_ON_0_OR_1__ && __LVDS1_ON_0_OR_1__)
+	disp_id = <0>;
+#else
 	disp_id = <1>;
-	ext_ref = <1>;
-	sec_ipu_id = <1>;
-	sec_disp_id = <0>;
+#endif
+#else /* !CONFIG_ARMSTONEA9_USE_ONE_IPU */
+	/*
+	 * When using two IPUs:
+ 	 * HDMI can always go to DI1. If HDMI is on MXCFB0 and LCD on MXCFB1,
+	 * or vice versa, or HDMI is on MXCFB2 and LCD is on MXCFB3, or vice
+	 * versa, then HDMI has to go to IPU2 (id=1), otherwise to IPU1 (id=0).
+	 */
+	disp_id = <1>;
+#if ((__HDMI_ON_0_OR_1__ && __LCD_ON_0_OR_1__) \
+    || (__HDMI_ON_2_OR_3__ && __LCD_ON_2_OR_3__))
+	ipu_id = <1>;
+#else
+	ipu_id = <0>;
+#endif
+#endif /* CONFIG_ARMSTONEA9_USE_ONE_IPU */
+	status = "okay";
+};
+#endif
+
+#if (defined(CONFIG_ARMSTONEA9_LVDS0) || defined(CONFIG_ARMSTONEA9_LVDS1))
+&ldb {
+	ext_ref;
+#if defined(CONFIG_ARMSTONEA9_LVDS_SPLIT_MODE)
+	split-mode;
+#elif defined(CONFIG_ARMSTONEA9_LVDS_DUAL_MODE)
+	dual-mode;
+#endif
+	power-supply = <&reg_vlcd>;
 	status = "okay";
 
+#ifdef CONFIG_ARMSTONEA9_LVDS0
+	/* LVDS0 must always go to DI0 of an IPU! */
 	lvds-channel@0 {
-		fsl,data-mapping = "spwg";
-		fsl,data-width = <18>;
+		reg = <0>;
+#ifdef CONFIG_ARMSTONEA9_USE_ONE_IPU
+		crtc = "ipu1-di0";
+#else
+		crtc = "ipu2-di0";
+#endif
+		fsl,data-mapping = CONFIG_ARMSTONEA9_LVDS0_MAPPING;
+		fsl,data-width = <CONFIG_ARMSTONEA9_LVDS0_DATA_WIDTH>;
+#ifdef __LVDS0_PRIMARY__
 		primary;
-		status = "disabled";
+#endif
+		status = "okay";
 
 		display-timings {
 			native-mode = <&timing0>;
-			timing0: wvga {
-				clock-frequency = <33500000>;
-				hactive = <800>;
-				vactive = <480>;
-				hfront-porch = <40>;
-				hback-porch = <88>;
-				hsync-len = <128>;
-				vback-porch = <33>;
-				vfront-porch = <10>;
-				vsync-len = <2>;
-				hsync-active = <0>;
-				vsync-active = <0>;
-				de-active = <1>;
-				pixelclk-active = <0>;
-			};
+			timing0: CONFIG_ARMSTONEA9_LVDS0_TIMING;
 		};
 	};
+#endif
 
+#ifdef CONFIG_ARMSTONEA9_LVDS1
+	/* LVDS1 must always go to DI1 of an IPU! */
 	lvds-channel@1 {
-		fsl,data-mapping = "spwg";
-		fsl,data-width = <18>;
+#if defined(CONFIG_ARMSTONEA9_LVDS_DUAL_MODE) \
+	|| defined(CONFIG_ARMSTONEA9_LVDS_SPLIT_MODE)
+		reg = <0>;
+#else
+		reg = <1>;
+#endif
+#if (defined(CONFIG_ARMSTONEA9_USE_ONE_IPU) \
+    || (__LVDS0_ON_0_OR_1__ && __LVDS1_ON_0_OR_1__) \
+    || (__LVDS0_ON_2_OR_3__ && __LVDS1_ON_2_OR_3__))
+		crtc = "ipu1-di1";
+#else
+		crtc = "ipu2-di1";
+#endif
+		fsl,data-mapping = CONFIG_ARMSTONEA9_LVDS1_MAPPING;
+		fsl,data-width = <CONFIG_ARMSTONEA9_LVDS1_DATA_WIDTH>;
+#ifdef __LVDS1_PRIMARY__
 		primary;
-		status = "disabled";
+#endif
+		status = "okay";
 
 		display-timings {
 			native-mode = <&timing1>;
-			timing1: wvga {
-				clock-frequency = <33500000>;
-				hactive = <800>;
-				vactive = <480>;
-				hfront-porch = <40>;
-				hback-porch = <88>;
-				hsync-len = <128>;
-				vback-porch = <33>;
-				vfront-porch = <10>;
-				vsync-len = <2>;
-				hsync-active = <0>;
-				vsync-active = <0>;
-				de-active = <1>;
-				pixelclk-active = <0>;
-			};
+			timing1: CONFIG_ARMSTONEA9_LVDS1_TIMING;
 		};
 	};
-};
 #endif
+};
+#endif /* CONFIG_ARMSTONEA9_LVDS0 || CONFIG_ARMSTONEA9_LVDS1 */
 
 #if 0 // not tested
 &pcie {

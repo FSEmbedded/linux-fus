@@ -11,70 +11,104 @@
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_ARMSTONEA9R2_BOARD_REVISION	100
 
-/* The following display config will be converted to Kconfig in the future */
-/* Define this if you have at least one display (D0) */
-#define CONFIG_ARMSTONEA9R2_D0
-/* Define this if you have a second display (D1) */
-//#define CONFIG_ARMSTONEA9R2_D1
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_HDMI	1	/* DVI/HDMI via HDMI connector */
+#define DISPLAY_LVDS0	2	/* LVDS channel 0 */
+#define DISPLAY_LVDS1	3	/* LVDS channel 1 */
 
-/* CONFIGURE DISPLAY 0 */
-#ifdef CONFIG_ARMSTONEA9R2_D0
-/* Activate exactly one entry for the type of display D0 */
-#define CONFIG_ARMSTONEA9R2_D0_LVDS				// LVDS
-//#define CONFIG_ARMSTONEA9R2_D0_HDMI				// HDMI
 /*
- * Define a mode_str entry for display D0 (depends on display type above)
- * See the following files for possible values:
- *   LVDS: drivers/video/mxc/ldb.c
- *   HDMI: drivers/video/fbdev/mxc/mxc_hdmi.c (actually fetched from panel via EDID)
+ * Set the display configuration:
+ *
+ * - If you have no display, set both settings to DISPLAY_NONE.
+ * - If you have one display, set MXCFB0 to one of the display types above
+ *   and leave MXCFB1 at DISPLAY_NONE.
+ * - If you have two displays, set both settings to a display type from above.
+ *   You have to use different types for the two displays.
+ *
+ * The first display will also get a video overlay, so MXCFB0 will use /dev/fb0
+ * and /dev/fb1 and MXCFB1 will use /dev/fb2.
  */
-#ifdef CONFIG_ARMSTONEA9R2_D0_LVDS
-	#define CONFIG_ARMSTONEA9R2_D0_MODE_STR "LDB-WVGA"		// LVDS
-#elif defined(CONFIG_ARMSTONEA9R2_D0_HDMI)
-	#define CONFIG_ARMSTONEA9R2_D0_MODE_STR "1920x1080M@60"	// HDMI
-#endif
-#endif // CONFIG_ARMSTONEA9R2_D0
+#define CONFIG_ARMSTONEA9R2_MXCFB0	DISPLAY_LVDS0
+#define CONFIG_ARMSTONEA9R2_MXCFB1	DISPLAY_NONE
 
-/* CONFIGURE DISPLAY 1 */
-#ifdef CONFIG_ARMSTONEA9R2_D1
-/* Activate exactly one entry for the type of display D1 */
-#define CONFIG_ARMSTONEA9R2_D1_LVDS				// LVDS
-//#define CONFIG_ARMSTONEA9R2_D1_HDMI				// HDMI
+/* i.MX6 Solo and DualLite only have one IPU, do not change */
+#define CONFIG_ARMSTONEA9R2_USE_ONE_IPU
 
-/* Define a mode_str entry for display D1 (see comment for D0 above) */
-#ifdef CONFIG_ARMSTONEA9R2_D1_LVDS
-	#define CONFIG_ARMSTONEA9R2_D1_MODE_STR "LDB-WVGA"		// LVDS
-#elif defined(CONFIG_ARMSTONEA9R2_D1_HDMI)
-	#define CONFIG_ARMSTONEA9R2_D1_MODE_STR "1920x1080M@60"	// HDMI
-#endif
-#endif // CONFIG_ARMSTONEA9R2_D1
+/* Configure HDMI settings here (ignored if HDMI is not used) */
+#define CONFIG_ARMSTONEA9R2_HDMI_BPP		24
+#define CONFIG_ARMSTONEA9R2_HDMI_PIX_FMT	"RGB24"
+#define CONFIG_ARMSTONEA9R2_HDMI_MODE_STR	"1920x1080M@60"
 
-/* CONFIGURE LVDS MULTIDISPLAY*/
-/* Two LVDS displays act as two independent displays (with two fb) by default.
-   Apart from this  can choose between dual-mode and split-mode */
-#if defined(CONFIG_ARMSTONEA9R2_D0_LVDS) && defined(CONFIG_ARMSTONEA9R2_D1_LVDS)
-/* one LVDS display per channel, one framebuffer for both */
-//#define CONFIG_ARMSTONEA9R2_LVDS_DUAL_MODE
-/* two channels for 'split-mode-display', one framebuffer */
+/*
+ * Configure LVDS0 settings here (ignored if LVDS0 is not used)
+ * Mapping:
+ *
+ * - "spwg":  18 bpp or 24 bpp, in case of 24 bpp, bits 6 and 7 of each color
+ *            are encoded on fourth LVDS differential data pair
+ * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
+ *            all other data bits on all four differential data pairs
+ */
+#define CONFIG_ARMSTONEA9R2_LVDS0_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9R2_LVDS0_BPP		24
+#define CONFIG_ARMSTONEA9R2_LVDS0_PIX_FMT	"RGB666"
+#define CONFIG_ARMSTONEA9R2_LVDS0_DATA_WIDTH	18
+#define CONFIG_ARMSTONEA9R2_LVDS0_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+
+/*
+ * Configure LVDS1 settings here (ignored if LVDS1 is not used)
+ * For mapping value see above.
+ */
+#define CONFIG_ARMSTONEA9R2_LVDS1_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9R2_LVDS1_BPP		24
+#define CONFIG_ARMSTONEA9R2_LVDS1_PIX_FMT	"RGB666"
+#define CONFIG_ARMSTONEA9R2_LVDS1_DATA_WIDTH	18
+#define CONFIG_ARMSTONEA9R2_LVDS1_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+
+/*
+ * Define this for a two-channel display, i.e. one display, one framebuffer,
+ * but two LVDS channels, even pixels from one channel, odd pixels from the
+ * other channel. Only define either DISPLAY_LVDS0 or DISPLAY_LVDS1 in this
+ * case, using the full display resolution.
+ */
 //#define CONFIG_ARMSTONEA9R2_LVDS_SPLIT_MODE
-#endif
 
-/* Do some settings to make configurations easier */
-#if defined(CONFIG_ARMSTONEA9R2_D0_HDMI) || defined(CONFIG_ARMSTONEA9R2_D1_HDMI)
-#define CONFIG_ARMSTONEA9R2_HDMI // activates HDMI node
-#endif
-
-#if defined(CONFIG_ARMSTONEA9R2_D0_LVDS) || defined(CONFIG_ARMSTONEA9R2_D1_LVDS)
-#define CONFIG_ARMSTONEA9R2_LVDS // activates LVDS node
-#define CONFIG_ARMSTONEA9R2_LVDS_3_3_V //LVDS with 3.3 V
-//#define CONFIG_ARMSTONEA9R2_LVDS_5_0_V //LVDS with 5.0 V
-#endif
-
-/* HDMI */
-#ifdef CONFIG_ARMSTONEA9R2_HDMI
-#define CONFIG_ARMSTONEA9R2_HDMI_AUDIO
-#define CONFIG_ARMSTONEA9R2_HDMI_CEC
-#endif
+/*
+ * Define this if you have two similar displays (same resolution and timings),
+ * one on each LVDS channel. The display content of the framebuffer is shown
+ * on both displays simultaneously (cloned). Only define either DISPLAY_LVDS0
+ * or DISPLAY_LVDS1 in this case, using the resolution of one of the displays.
+ */
+//#define CONFIG_ARMSTONEA9R2_LVDS_DUAL_MODE
 
 /*
  * Configure touch screen:
@@ -137,51 +171,6 @@
 	model = "F&S i.MX6 Solo/DualLite armStoneA9R2";
 	compatible = "fsl,imx6dl-armstonea9r2", "fsl,imx6dl";
 };
-
-#ifdef CONFIG_ARMSTONEA9R2_LVDS
-&ldb {
-	ext_ref;
-#ifdef CONFIG_ARMSTONEA9R2_LVDS_DUAL_MODE
-	dual-mode;
-#endif
-#ifdef CONFIG_ARMSTONEA9R2_LVDS_SPLIT_MODE
-	split-mode;
-#endif
-
-	lvds-channel@0 {		//default LVDS uses di0
-		crtc = "ipu1-di0";
-		reg = <0>;
-		status = "okay";
-	};
-#ifdef CONFIG_ARMSTONEA9R2_D1_LVDS		//if both LVDS channels are used,
-	lvds-channel@1 {		//dual and split mode ignore this node
-		crtc = "ipu1-di1";
-		reg = <1>;
-		status = "okay";
-	};
-#endif
-};
-#endif
-
-#ifdef CONFIG_ARMSTONEA9R2_HDMI
-&hdmi_core {
-	ipu_id = <0>;
-	disp_id = <1>;
-	status = "okay";
-};
-#endif
-
-#ifdef CONFIG_ARMSTONEA9R2_D0
-&mxcfb0 {
-	status = "okay";
-};
-#endif
-
-#ifdef CONFIG_ARMSTONEA9R2_D1
-&mxcfb1 {
-	status = "okay";
-};
-#endif
 
 /* i.MX6 Solo and DualLite have a PXP engine */
 &pxp {
