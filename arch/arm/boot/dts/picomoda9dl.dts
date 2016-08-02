@@ -1,0 +1,161 @@
+/*
+ * Copyright (C) 2016 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOMODA9_BOARD_REVISION	110
+
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_LCD	1	/* LCD via RGB adapter */
+#define DISPLAY_HDMI	2	/* DVI/HDMI via HDMI connector */
+#define DISPLAY_LVDS0	3	/* LVDS channel 0 */
+
+/*
+ * Set the display configuration:
+ *
+ * Due to hardware specification you can only use either LCD or HDMI at the
+ * same time. Furthermore we only have one LVDS channel.
+ *
+ * - If you have no display, set both settings to DISPLAY_NONE.
+ * - If you have one display, set MXCFB0 to one of the display types above
+ *   and leave MXCFB1 at DISPLAY_NONE.
+ * - If you have two displays, set both settings to a display type from above.
+ *   You have to use different types for the two displays.
+ *
+ * The first display will also get a video overlay, so MXCFB0 will use /dev/fb0
+ * and /dev/fb1 and MXCFB1 will use /dev/fb2.
+ */
+#define CONFIG_PICOMODA9_MXCFB0		DISPLAY_LVDS0
+#define CONFIG_PICOMODA9_MXCFB1		DISPLAY_NONE
+
+/* i.MX6 Solo and DualLite only have one IPU, do not change */
+#define CONFIG_PICOMODA9_USE_ONE_IPU
+
+/*
+ * Configure LCD settings here (ignored if LCD is not used);
+ * see drivers/video/fbdev/mxc/mxc_lcdif.c for possible LCD mode strings
+ */
+#define CONFIG_PICOMODA9_LCD_BPP	16
+#define CONFIG_PICOMODA9_LCD_PIX_FMT	"BGR666"
+#define CONFIG_PICOMODA9_LCD_MODE_STR	"LCD-ET070080"
+
+/* Configure HDMI settings here (ignored if HDMI is not used) */
+#define CONFIG_PICOMODA9_HDMI_BPP	24
+#define CONFIG_PICOMODA9_HDMI_PIX_FMT	"RGB24"
+#define CONFIG_PICOMODA9_HDMI_MODE_STR	"1920x1080M@60"
+
+/*
+ * Configure LVDS0 settings here (ignored if LVDS0 is not used)
+ * Mapping:
+ *
+ * - "spwg":  18 bpp or 24 bpp, in case of 24 bpp, bits 6 and 7 of each color
+ *            are encoded on fourth LVDS differential data pair
+ * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
+ *            all other data bits on all four differential data pairs
+ */
+#define CONFIG_PICOMODA9_LVDS0_MAPPING		"spwg"
+#define CONFIG_PICOMODA9_LVDS0_BPP		24
+#define CONFIG_PICOMODA9_LVDS0_PIX_FMT		"RGB666"
+#define CONFIG_PICOMODA9_LVDS0_DATA_WIDTH	18
+#define CONFIG_PICOMODA9_LVDS0_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+
+/*
+ * Define this if your LVDS display requires 5V I/O logic voltage. Default is
+ * 3.3V. ATTENTION: Setting 5V on a 3.3V display may damage the display!
+ * Remark: This setting requires board revision 1.21 or newer; older board
+ * revisions only support 3.3V.
+ */
+//#define CONFIG_PICOMODA9_5V_LVDS
+
+/*
+ * Configure touch screen:
+ *
+ * - 4-wire/5-wire analog resistive touch, touch controller on SKIT
+ * - 4-wire/5-wire analog resistive touch, touch controller on RGB LCD adapter
+ * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
+ * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ *
+ * On PicoMODA9, all touches use the same interrupt line and I2C bus, so do not
+ * select more than one entry! Select none if you do not need touch support.
+ */
+#define CONFIG_PICOMODA9_4WTOUCH_SX8655_ONBOARD
+//#define CONFIG_PICOMODA9_CAPTOUCH_MXT224
+//#define CONFIG_PICOMODA9_CAPTOUCH_FT5x06
+
+/* CMA: Set 320 MB for Continuous Memory Allocator */
+#define CONFIG_PICOMODA9_CMA_SIZE		0x14000000
+
+/* NAND */
+#define CONFIG_PICOMODA9_NAND
+
+/* AUDIO */
+#define CONFIG_PICOMODA9_SGTL5000_AUDIO
+
+/* digital camera interface */
+/* You can only use digital camera if no HDMI and LCD display is active. So
+ * CONFIG_PICOMODA9_LCD and CONFIG_PICOMODA9_HDMI must be disabled.
+ */
+//#define CONFIG_PICOMODA9_PARALLEL_INTERFACE
+
+/* CAN_B */
+/* Can only be used if CONFIG_PICOMODA9_HDMI and
+ * CONFIG_PICOMODA9_PARALLEL_INTERFACE are disabled. */
+//#define CONFIG_PICOMODA9_CAN_B
+
+/* SD-A: On-board Micro-SD card slot */
+#define CONFIG_PICOMODA9_SD_A
+/* SD-B: ext. SD card slot (normal-sized SD card slot on SKIT) */
+#define CONFIG_PICOMODA9_SD_B
+
+/* I2C */
+#define CONFIG_PICOMODA9_I2C_A
+#define CONFIG_PICOMODA9_I2C_B
+#define CONFIG_PICOMODA9_I2C_C
+
+/* SPI */
+#define CONFIG_PICOMODA9_SPI_A
+
+/* UART */
+#define CONFIG_PICOMODA9_UART_A
+#define CONFIG_PICOMODA9_UART_B
+#define CONFIG_PICOMODA9_UART_C
+/* UART_A_RTSCTS default, UART_D optional. If you want to use UART_D
+ * instead of UART_A_RTSCTS you need R91 & R93. If you want to use UART_D
+ * instead of CAN1 you need R90 & R92. */
+#define CONFIG_PICOMODA9_UART_A_RTSCTS
+#define CONFIG_PICOMODA9_CAN_A
+//#define CONFIG_PICOMODA9_UART_D
+
+#include "imx6dl.dtsi"
+#include "picomoda9qdl.dtsi"
+
+/ {
+	model = "F&S i.MX6 DualLite picoModA9 module";
+	compatible = "fsl,imx6dl-picomoda9", "fsl,imx6dl";
+};
+
+/* i.MX6 Solo and DualLite have a PXP engine */
+&pxp {
+	status = "okay";
+};
