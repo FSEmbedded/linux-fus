@@ -149,6 +149,9 @@ quiet_cmd_ihex2fw  = IHEX2FW $@
 quiet_cmd_h16tofw  = H16TOFW $@
       cmd_h16tofw  = $(objtree)/$(obj)/ihex2fw -w $< $@
 
+quiet_cmd_copy_fw = COPY    $@
+      cmd_copy_fw = cat $< >$@ || (rm -f $@ && echo false)
+
 quiet_cmd_fwbin = MK_FW   $@
       cmd_fwbin = FWNAME="$(patsubst firmware/%.gen.S,%,$@)";		     \
 		  FWSTR="$(subst /,_,$(subst .,_,$(subst -,_,$(patsubst	     \
@@ -194,6 +197,11 @@ $(patsubst %,$(obj)/%.gen.o, $(fw-external-y)): $(obj)/%.gen.o: $(fwdir)/%
 # where binaries are frowned upon. They are directly converted with objcopy.
 $(obj)/%: $(obj)/%.ihex
 	$(call cmd,ihex)
+
+# .copy is used when the "firmware" is a text file (like a configuration
+# file) and just needs to be copied from the original file
+$(obj)/%: $(obj)/%.copy
+	$(call cmd,copy_fw)
 
 # Don't depend on ihex2fw if we're installing and it already exists.
 # Putting it after | in the dependencies doesn't seem sufficient when
