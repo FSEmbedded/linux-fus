@@ -41,7 +41,17 @@
 #include "hardware.h"
 
 #if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
+#if 1
+static int dp83848_phy_fixup(struct phy_device *dev)
+{
+	u16 val;
 
+	val = phy_read(dev, 0x19);
+	val &= ~(0x1 << 5);
+	phy_write(dev, 0x19, val);
+	return 0;
+}
+#endif
 /* For imx6q sabrelite board: set KSZ9021RN RGMII pad skew */
 static int ksz9021rn_phy_fixup(struct phy_device *phydev)
 {
@@ -151,6 +161,7 @@ static int ar8035_phy_fixup(struct phy_device *dev)
 	return 0;
 }
 
+#define PHY_ID_DP83848 	0x20005c90
 #define PHY_ID_AR8035 0x004dd072
 
 static void __init imx6q_enet_phy_init(void)
@@ -160,6 +171,8 @@ static void __init imx6q_enet_phy_init(void)
 				ksz9021rn_phy_fixup);
 		phy_register_fixup_for_uid(PHY_ID_KSZ9031, MICREL_PHY_ID_MASK,
 				ksz9031rn_phy_fixup);
+		phy_register_fixup_for_uid(PHY_ID_DP83848, 0xfffffff0,
+					   dp83848_phy_fixup);
 		phy_register_fixup_for_uid(PHY_ID_AR8031, 0xffffffff,
 				ar8031_phy_fixup);
 		phy_register_fixup_for_uid(PHY_ID_AR8035, 0xffffffef,
