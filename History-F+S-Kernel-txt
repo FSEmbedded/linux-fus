@@ -3,10 +3,82 @@ Version History for Linux Kernel on F&S Vybrid Boards and Modules
 
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
+linux-4.1.15-fsimx6-V3.0 (08.08.2016)
+-------------------------------------
+Supported Boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, efusA7UL
+Not tested:       efusA9X, BemA9X, CubeA7UL
+
+- Add ft5x06 touch to BemA9, fix I2C pad settings
+- Improve pca963x driver, reduce compiler warnings
+- Fix the cache handling on SGTL5000 to allow suspend/resume
+- Add suspend/resume to mxs-dma-ext.c
+- Add suspend/resume to gpmi-nand-fus.c
+- Add i.MX7 support to F&S version mxs-dma-ext.c
+- Improve F&S GPMI nand driver to allow suspend/resume
+- Use MMC_UNSAFE_RESUME as default behavior for SD/MMC in suspend/resume
+- Remove compiler warnings on fsimx6, fsimx6sx, fsimx6ul, prepare for GCC-5.2
+- Remove IMX6UL_CLK_AIPSTZ3 from i.MX6UL clock tree, this CPU has no AIPS3
+- Make compilation of i.MX6 platforms without FEC possible
+- Let CONFIG_MXS_DMA_EXT select CONFIG_STMP_DEVICE
+- Add daisy chain settings to imx6ul-pinfunc.h (backport from 4.1.15 kernel)
+- Add vmmc regulators to device trees of some F&S boards
+- Add mono2both property to SGTL5000 sound codec
+- Fix audio playback with double frequency, mono 32bit
+- Add bdinfo support for fsimx6
+- Optimize fsimx6ul configuration, remove other CPU types
+- Add Bosch bme280 multisensor
+- Add gpio based infrared transmitter
+- Improve wl12xx driver, backport device tree settings from kernel 4.1
+- In several steps rebase to Freescale/NXP kernel rel_imx_4.1.15_1.0.0_ga
+- Fix support for fsimx6ul and fsimx6sx on kernel 4.1.15
+- Add STMicroelectronics hts221 multisensor
+- Add device tree and improve defconfig for CubeA7UL (fsimx6ul)
+- Fix double declaration in wl12xx driver
+- Remove '+' suffix appended to kernel name if built in unclean directory
+- Modify efusA9 device tree to work on kernel 4.1.15
+- Add missing pinctrl for LVDS VBL_ON on efusA9X
+- Add display support for efusA9
+- Add device trees for armStoneA9
+- Support up to four displays on efusA9 and armStoneA9
+- Add SATA support for efusA9 Q/D and armStoneA9 Q/D
+- Add SX8655 touch support
+- Add vqmmc regulators to device trees to have SD/MMC working again
+- Add device trees for armStoneA9r2
+- Rebase to Freescale/NXP rel_imx_4.1.15_1.1.0_ga
+- Rebase to Freescale/NXP rel_imx_4.1.15_1.1.1_patch
+- Move declaration of mmc_sdio_force_remove() to core.h
+- On armStoneA9 remove port I2C7 again
+- Add CMA configuration to device trees of all F&S boards
+- Use F&S DDR3 settings, otherwise newer armStoneA9 board revisions will fail
+- Add some displays to drivers/video/fbdev/mxc/mxc_lcdif.c
+- Add status LEDs to efusA9, armStoneA9 and armStoneA9r2 device trees
+- On leds-pca963x driver, improve handling when configured as PWM
+- Prepare armStoneA9 device trees for PMIC usage
+- Rename F&S device trees, drop architecture prefix, add "q" or "dl" on fsimx6
+- Add atmel/mxt224.cfg to firmware directory, use on F&S device trees
+- Fix coding style and tabulation on Focaltech ft5x06_ts_v2 driver
+- Clean up ft5x06_ts_v2 driver, improve configuration via device tree
+- Remove dubious update feature from ft5x06_ts_v2 driver, rename to ft5x06_ts
+- Update ft5x06 device tree settings for all F&S boards
+- Move fsimx6sx iomuxc device tree settings to end of file
+- Clean up all F&S device trees
+- Ignore chip revision of Micrel KSZ8081 PHY in fixup code on i.MX6UL
+- Fix a couple of spelling errors in mxc_hdmi.c
+- Implement new display configuration for armStoneA9, armStoneA9r2, efusA9
+- Add device trees for PicoMODA9
+- Add phy fixup for DP83848 ethernet phy on PicoMODA9 to set correct LED mode
+- Add copy method for firmware files, rename mxt224.cfg to mxt224.cfg.copy
+- By default use LCD on efusA9, armStoneA9 and LVDS0 on armStoneA9r2, PicoMODA9
+- Use RGB666 for LCD on PicoMODA9, not BGR666
+- Synchronize device trees for PicoMODA9 with other F&S boards
+- Add "q" or "dl" to board_name in bdinfo
+
+
+
 linux-3.14.52-fsimx6sx-V1.0 (19.02.2016)
 ----------------------------------------
 Supported Boards: efusA9X, BemA9X
-Not tested: efusA7UL, efusA9
+Not tested:       efusA7UL, efusA9
 
 - Improve pca963x LED driver, support configuration of outputs as PWM and GPIO
 - Improve touch configuration, only one touch at a time on efusA9X and efusA7UL
@@ -22,6 +94,7 @@ Not tested: efusA7UL, efusA9
 - Support ENET clock output on i.MX6-SoloX and i.MX6UL (fsl,ref-clock-out)
 - Remove CMA size to 128MB on fsimx6sx, required for BemA9X
 - Improve device tree for efusA9X and efusA7UL
+
 
 
 linux-3.14.38-fsimx6ul-V1.0 (25.11.2015)
