@@ -139,8 +139,8 @@ wvga {					\
  * select more than one entry! Select none if you do not need touch support.
  */
 //#define CONFIG_EFUSA9_4WTOUCH_SX8655_ONBOARD
-#define CONFIG_EFUSA9_4WTOUCH_SX8655_RGBADAPTER
-//#define CONFIG_EFUSA9_CAPTOUCH_MXT224
+//#define CONFIG_EFUSA9_4WTOUCH_SX8655_RGBADAPTER
+#define CONFIG_EFUSA9_CAPTOUCH_MXT224
 //#define CONFIG_EFUSA9_CAPTOUCH_FT5x06
 
 /* CMA: Set 320 MB for Continuous Memory Allocator */
