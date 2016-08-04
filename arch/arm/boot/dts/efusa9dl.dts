@@ -29,8 +29,8 @@
  * The first display will also get a video overlay, so MXCFB0 will use /dev/fb0
  * and /dev/fb1 and MXCFB1 will use /dev/fb2.
  */
-#define CONFIG_EFUSA9_MXCFB0		DISPLAY_LVDS0
-#define CONFIG_EFUSA9_MXCFB1		DISPLAY_LCD
+#define CONFIG_EFUSA9_MXCFB0		DISPLAY_LCD
+#define CONFIG_EFUSA9_MXCFB1		DISPLAY_NONE
 
 /* i.MX6 Solo and DualLite only have one IPU, do not change */
 #define CONFIG_EFUSA9_USE_ONE_IPU
@@ -139,8 +139,8 @@ wvga {					\
  * select more than one entry! Select none if you do not need touch support.
  */
 //#define CONFIG_EFUSA9_4WTOUCH_SX8655_ONBOARD
-//#define CONFIG_EFUSA9_4WTOUCH_SX8655_RGBADAPTER
-#define CONFIG_EFUSA9_CAPTOUCH_MXT224
+#define CONFIG_EFUSA9_4WTOUCH_SX8655_RGBADAPTER
+//#define CONFIG_EFUSA9_CAPTOUCH_MXT224
 //#define CONFIG_EFUSA9_CAPTOUCH_FT5x06
 
 /* CMA: Set 320 MB for Continuous Memory Allocator */

@@ -111,8 +111,8 @@ wvga {					\
  * On PicoMODA9, all touches use the same interrupt line and I2C bus, so do not
  * select more than one entry! Select none if you do not need touch support.
  */
-#define CONFIG_PICOMODA9_4WTOUCH_SX8655_ONBOARD
-//#define CONFIG_PICOMODA9_CAPTOUCH_MXT224
+//#define CONFIG_PICOMODA9_4WTOUCH_SX8655_ONBOARD
+#define CONFIG_PICOMODA9_CAPTOUCH_MXT224
 //#define CONFIG_PICOMODA9_CAPTOUCH_FT5x06
 
 /* CMA: Set 320 MB for Continuous Memory Allocator */

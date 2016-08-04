@@ -41,8 +41,8 @@
  * set CONFIG_EFUSA9_USE_ONE_IPU below. Then only MXCFB0 will get a video
  * overlay and uses /dev/fb0 and /dev/fb1, and MXCFB1 will only use /dev/fb2.
  */
-#define CONFIG_EFUSA9_MXCFB0		DISPLAY_LVDS0
-#define CONFIG_EFUSA9_MXCFB1		DISPLAY_LCD
+#define CONFIG_EFUSA9_MXCFB0		DISPLAY_LCD
+#define CONFIG_EFUSA9_MXCFB1		DISPLAY_NONE
 #define CONFIG_EFUSA9_MXCFB2		DISPLAY_NONE
 #define CONFIG_EFUSA9_MXCFB3		DISPLAY_NONE
 
@@ -159,8 +159,8 @@ wvga {					\
  * select more than one entry! Select none if you do not need touch support.
  */
 //#define CONFIG_EFUSA9_4WTOUCH_SX8655_ONBOARD
-//#define CONFIG_EFUSA9_4WTOUCH_SX8655_RGBADAPTER
-#define CONFIG_EFUSA9_CAPTOUCH_MXT224
+#define CONFIG_EFUSA9_4WTOUCH_SX8655_RGBADAPTER
+//#define CONFIG_EFUSA9_CAPTOUCH_MXT224
 //#define CONFIG_EFUSA9_CAPTOUCH_FT5x06
 
 /* CMA: Set 320 MB for Continuous Memory Allocator */
