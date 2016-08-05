@@ -42,7 +42,7 @@
  * see drivers/video/fbdev/mxc/mxc_lcdif.c for possible LCD mode strings
  */
 #define CONFIG_PICOMODA9_LCD_BPP	16
-#define CONFIG_PICOMODA9_LCD_PIX_FMT	"BGR666"
+#define CONFIG_PICOMODA9_LCD_PIX_FMT	"RGB666"
 #define CONFIG_PICOMODA9_LCD_MODE_STR	"LCD-ET070080"
 
 /* Configure HDMI settings here (ignored if HDMI is not used) */
