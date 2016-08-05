@@ -155,10 +155,10 @@ wvga {					\
 /* SD-CARD - SD_A is micro SD */
 #define CONFIG_ARMSTONEA9_SD_A
 
-/* I2C */
+/* I2C (I2C_C breaks armStone standard and is disabled by default) */
 #define CONFIG_ARMSTONEA9_I2C_A
 #define CONFIG_ARMSTONEA9_I2C_B
-#define CONFIG_ARMSTONEA9_I2C_C
+//#define CONFIG_ARMSTONEA9_I2C_C
 
 /* SPI */
 #define CONFIG_ARMSTONEA9_SPI_A

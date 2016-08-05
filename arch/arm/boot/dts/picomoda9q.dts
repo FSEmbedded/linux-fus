@@ -19,10 +19,10 @@
 /*
  * Set the display configuration:
  *
- * Due to hardware specification you can only use either LCD or HDMI at the
+ * Due to hardware limitations you can only use either LCD or HDMI at the
  * same time. Furthermore we only have one LVDS channel. Based on this
- * specifications you can connect at most 2 displays on PicoMODA9. Either one
- * LVDS and one HDMI display or one LVDS and one LCD display.
+ * specifications you can connect at most two displays on PicoMODA9. Either
+ * one LVDS and one HDMI display or one LVDS and one LCD display.
  *
  * - If you have no display, set both settings to DISPLAY_NONE.
  * - If you have one display, set MXCFB0 to one of the display types above and
@@ -54,7 +54,7 @@
  * see drivers/video/fbdev/mxc/mxc_lcdif.c for possible LCD mode strings
  */
 #define CONFIG_PICOMODA9_LCD_BPP	16
-#define CONFIG_PICOMODA9_LCD_PIX_FMT	"BGR666"
+#define CONFIG_PICOMODA9_LCD_PIX_FMT	"RGB666"
 #define CONFIG_PICOMODA9_LCD_MODE_STR	"LCD-ET070080"
 
 /* Configure HDMI settings here (ignored if HDMI is not used) */
@@ -93,18 +93,9 @@ wvga {					\
 }
 
 /*
- * Define this if your LVDS display requires 5V I/O logic voltage. Default is
- * 3.3V. ATTENTION: Setting 5V on a 3.3V display may damage the display!
- * Remark: This setting requires board revision 1.21 or newer; older board
- * revisions only support 3.3V.
- */
-//#define CONFIG_PICOMODA9_5V_LVDS
-
-/*
  * Configure touch screen:
  *
- * - 4-wire/5-wire analog resistive touch, touch controller on SKIT
- * - 4-wire/5-wire analog resistive touch, touch controller on RGB LCD adapter
+ * - 4-wire/5-wire analog resistive touch, touch controller on-board
  * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
  * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
  *
@@ -116,7 +107,7 @@ wvga {					\
 //#define CONFIG_PICOMODA9_CAPTOUCH_FT5x06
 
 /* CMA: Set 320 MB for Continuous Memory Allocator */
-#define CONFIG_PICOMODA9_CMA_SIZE		0x14000000
+#define CONFIG_PICOMODA9_CMA_SIZE	0x14000000
 
 /* NAND */
 #define CONFIG_PICOMODA9_NAND
@@ -124,15 +115,15 @@ wvga {					\
 /* AUDIO */
 #define CONFIG_PICOMODA9_SGTL5000_AUDIO
 
-/* digital camera interface */
+/* Parallel digital camera interface */
 /* You can only use digital camera if no HDMI and LCD display is active. So
  * CONFIG_PICOMODA9_LCD and CONFIG_PICOMODA9_HDMI must be disabled.
  */
-//#define CONFIG_PICOMODA9_PARALLEL_INTERFACE
+//#define CONFIG_PICOMODA9_PARALLEL_CAMERA
 
 /* CAN_B */
 /* Can only be used if CONFIG_PICOMODA9_HDMI and
- * CONFIG_PICOMODA9_PARALLEL_INTERFACE are disabled. */
+ * CONFIG_PICOMODA9_PARALLEL_CAMERA are disabled. */
 //#define CONFIG_PICOMODA9_CAN_B
 
 /* SD-A: On-board Micro-SD card slot */
@@ -163,88 +154,6 @@ wvga {					\
 #include "picomoda9qdl.dtsi"
 
 / {
-	model = "F&S i.MX6 Quad picoModA9 module";
+	model = "F&S i.MX6 Dual/Quad PicoMODA9 module";
 	compatible = "fsl,imx6q-picomoda9", "fsl,imx6q";
 };
-
-#ifdef CONFIG_PICOMODA9_LVDS
-&ldb {
-	ext_ref;
-
-#ifdef CONFIG_PICOMODA9_D2 		// 3 or 4 displays
-#if defined(CONFIG_PICOMODA9_LCD) && defined(CONFIG_PICOMODA9_HDMI) &&\
-    !defined(CONFIG_PICOMODA9_D3) 	// 3 displays: LCD, HDMI and LVDS
-	lvds-channel@0 {
-		crtc = "ipu2-di0";
-		reg = <0>;
-		status = "okay";
-	};
-#else	// remaining combinations with 3 or 4 displays
-	lvds-channel@0 {
-		crtc = "ipu2-di0";
-		reg = <0>;
-		status = "okay";
-	};
-	lvds-channel@1 {
-		crtc = "ipu2-di1";
-		reg = <1>;
-		status = "okay";
-	};
-#endif
-#else // 1 or 2 displays
-
-#ifdef CONFIG_PICOMODA9_LCD		//if LCD is enabled too, LVDS uses di1
-	lvds-channel@0 {
-		crtc = "ipu1-di1"; 	//ipu1-di1 means ipu 0, di1
-		reg = <0>;
-		status = "okay";
-	};
-#else
-	lvds-channel@0 {		//default LVDS uses di0
-		crtc = "ipu1-di0";
-		reg = <0>;
-		status = "okay";
-	};
-#endif
-#ifdef CONFIG_PICOMODA9_D1_LVDS	//if both LVDS channels are used
-	lvds-channel@1 {		//dual and split mode ignore this node
-		crtc = "ipu1-di1";
-		reg = <1>;
-		status = "okay";
-	};
-#endif
-#endif // 1 or 2 displays
-};
-#endif
-
-#ifdef CONFIG_PICOMODA9_HDMI
-&hdmi_core {
-	ipu_id = <0>;
-	disp_id = <1>;
-	status = "okay";
-};
-#endif
-
-#ifdef CONFIG_PICOMODA9_D0
-&mxcfb0 {
-	status = "okay";
-};
-#endif
-
-#ifdef CONFIG_PICOMODA9_D1
-&mxcfb1 {
-	status = "okay";
-};
-#endif
-
-#ifdef CONFIG_PICOMODA9_D2
-&mxcfb2 {
-	status = "okay";
-};
-#endif
-
-#ifdef CONFIG_PICOMODA9_D3
-&mxcfb3 {
-	status = "okay";
-};
-#endif

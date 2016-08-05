@@ -19,7 +19,7 @@
 /*
  * Set the display configuration:
  *
- * Due to hardware specification you can only use either LCD or HDMI at the
+ * Due to hardware limitations you can only use either LCD or HDMI at the
  * same time. Furthermore we only have one LVDS channel.
  *
  * - If you have no display, set both settings to DISPLAY_NONE.
@@ -81,18 +81,9 @@ wvga {					\
 }
 
 /*
- * Define this if your LVDS display requires 5V I/O logic voltage. Default is
- * 3.3V. ATTENTION: Setting 5V on a 3.3V display may damage the display!
- * Remark: This setting requires board revision 1.21 or newer; older board
- * revisions only support 3.3V.
- */
-//#define CONFIG_PICOMODA9_5V_LVDS
-
-/*
  * Configure touch screen:
  *
- * - 4-wire/5-wire analog resistive touch, touch controller on SKIT
- * - 4-wire/5-wire analog resistive touch, touch controller on RGB LCD adapter
+ * - 4-wire/5-wire analog resistive touch, touch controller on-board
  * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
  * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
  *
@@ -104,7 +95,7 @@ wvga {					\
 //#define CONFIG_PICOMODA9_CAPTOUCH_FT5x06
 
 /* CMA: Set 320 MB for Continuous Memory Allocator */
-#define CONFIG_PICOMODA9_CMA_SIZE		0x14000000
+#define CONFIG_PICOMODA9_CMA_SIZE	0x14000000
 
 /* NAND */
 #define CONFIG_PICOMODA9_NAND
@@ -112,15 +103,15 @@ wvga {					\
 /* AUDIO */
 #define CONFIG_PICOMODA9_SGTL5000_AUDIO
 
-/* digital camera interface */
+/* Parallel digital camera interface */
 /* You can only use digital camera if no HDMI and LCD display is active. So
  * CONFIG_PICOMODA9_LCD and CONFIG_PICOMODA9_HDMI must be disabled.
  */
-//#define CONFIG_PICOMODA9_PARALLEL_INTERFACE
+//#define CONFIG_PICOMODA9_PARALLEL_CAMERA
 
 /* CAN_B */
 /* Can only be used if CONFIG_PICOMODA9_HDMI and
- * CONFIG_PICOMODA9_PARALLEL_INTERFACE are disabled. */
+ * CONFIG_PICOMODA9_PARALLEL_CAMERA are disabled. */
 //#define CONFIG_PICOMODA9_CAN_B
 
 /* SD-A: On-board Micro-SD card slot */
@@ -151,7 +142,7 @@ wvga {					\
 #include "picomoda9qdl.dtsi"
 
 / {
-	model = "F&S i.MX6 DualLite picoModA9 module";
+	model = "F&S i.MX6 Solo/DualLite PicoMODA9 module";
 	compatible = "fsl,imx6dl-picomoda9", "fsl,imx6dl";
 };
 

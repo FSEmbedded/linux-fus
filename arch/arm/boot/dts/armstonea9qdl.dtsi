@@ -529,7 +529,7 @@
 #define CONFIG_ARMSTONEA9_CMA_SIZE 0x14000000
 #endif
 &cma {
-	size = <CONFIG_ARMSTONEA9_CMA_SIZE>; 
+	size = <CONFIG_ARMSTONEA9_CMA_SIZE>;
 };
 
 #if defined(CONFIG_ARMSTONEA9_SGTL5000_AUDIO) || \
@@ -1071,7 +1071,7 @@
 	 * When using one IPU (id=0):
 	 * HDMI can go to DI1, unless LVDS1 is also active. In this case LVDS1
 	 * must go to DI1 and HDMI to DI0.
-	 */	 
+	 */
 	ipu_id = <0>;
 #if (__HDMI_ON_0_OR_1__ && __LVDS1_ON_0_OR_1__)
 	disp_id = <0>;

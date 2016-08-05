@@ -50,7 +50,7 @@
  * Define this if you only want to use one IPU. This means that you can use
  * at most two displays and only the first display can have a video overlay.
  * If you want to have more than two displays or if you want to have two
- * displays with a video oberlay each, then you need to use both IPUs of the
+ * displays with a video overlay each, then you need to use both IPUs of the
  * i.MX6 Dual/Quad CPU.
  */
 //#define CONFIG_ARMSTONEA9_USE_ONE_IPU
@@ -178,10 +178,10 @@ wvga {					\
 /* SATA */
 #define CONFIG_ARMSTONEA9_SATA
 
-/* I2C */
+/* I2C (I2C_C breaks armStone standard and is disabled by default) */
 #define CONFIG_ARMSTONEA9_I2C_A
 #define CONFIG_ARMSTONEA9_I2C_B
-#define CONFIG_ARMSTONEA9_I2C_C
+//#define CONFIG_ARMSTONEA9_I2C_C
 
 /* SPI */
 #define CONFIG_ARMSTONEA9_SPI_A
