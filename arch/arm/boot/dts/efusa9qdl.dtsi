@@ -276,7 +276,7 @@
 	};
 
 	/* F&S board information */
-	bdinfo {
+	bdinfo: bdinfo {
 		compatible = "bdinfo";
 		board_name = "efusa9";
 		ecc_strength = "8";

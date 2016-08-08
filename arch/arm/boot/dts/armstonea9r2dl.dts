@@ -172,6 +172,10 @@ wvga {					\
 	compatible = "fsl,imx6dl-armstonea9r2", "fsl,imx6dl";
 };
 
+&bdinfo {
+	board_name = "armstonea9r2dl";
+};
+
 /* i.MX6 Solo and DualLite have a PXP engine */
 &pxp {
 	status = "okay";

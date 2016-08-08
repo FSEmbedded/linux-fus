@@ -215,6 +215,10 @@ wvga {					\
 	compatible = "fus,imx6q-efusa9", "fsl,imx6q";
 };
 
+&bdinfo {
+	board_name = "efusa9q";
+};
+
 /* i.MX6 Dual and Quad can have SATA */
 #ifdef CONFIG_EFUSA9_SATA
 &sata{

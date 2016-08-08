@@ -157,3 +157,7 @@ wvga {					\
 	model = "F&S i.MX6 Dual/Quad PicoMODA9 module";
 	compatible = "fsl,imx6q-picomoda9", "fsl,imx6q";
 };
+
+&bdinfo {
+	board_name = "picomoda9q";
+};

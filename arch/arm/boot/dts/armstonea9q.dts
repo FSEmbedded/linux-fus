@@ -199,6 +199,10 @@ wvga {					\
 	compatible = "fsl,imx6q-armstonea9", "fsl,imx6q";
 };
 
+&bdinfo {
+	board_name = "armstonea9q";
+};
+
 /* i.MX6 Dual and Quad can have SATA */
 #ifdef CONFIG_ARMSTONEA9_SATA
 &sata{

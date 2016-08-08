@@ -192,6 +192,10 @@ wvga {					\
 	compatible = "fsl,imx6dl-efusa9", "fsl,imx6dl";
 };
 
+&bdinfo {
+	board_name = "efusa9dl";
+};
+
 /* i.MX6 Solo and DualLite have a PXP engine */
 &pxp {
 	status = "okay";

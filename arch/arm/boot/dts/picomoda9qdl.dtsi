@@ -281,7 +281,7 @@
 	};
 
 	/* F&S board information */
-	bdinfo {
+	bdinfo: bdinfo {
 		compatible = "bdinfo";
 		board_name = "picomoda9";
 		ecc_strength = "40";

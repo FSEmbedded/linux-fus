@@ -264,7 +264,7 @@
 	};
 
 	/* F&S board information */
-	bdinfo {
+	bdinfo: bdinfo {
 		compatible = "bdinfo";
 		board_name = "armstonea9";
 		ecc_strength = "8";
