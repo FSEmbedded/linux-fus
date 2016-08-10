@@ -620,6 +620,13 @@ config TOUCHSCREEN_FT5X06
 	  To compile this driver as a module, choose M here: the
 	  module will be called ft5x06_ts.
 
+config TOUCHSCREEN_ESMT
+	tristate "ESMT i2c touchscreen (from URT UMOH-9113MD-5T display)"
+	depends on I2C
+	help
+	  To use a ESMT touchscreen, say Y.
+	  Then select one of the versions. You can also say M here. Then
+	  you can select either version or both to be built as a module.
 
 config TOUCHSCREEN_MIGOR
 	tristate "Renesas MIGO-R touchscreen"

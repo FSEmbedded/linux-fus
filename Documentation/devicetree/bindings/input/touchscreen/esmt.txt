@@ -1,0 +1,41 @@
+ESMT pcaptouch driver
+=====================================
+
+Required properties:
+
+ - compatible:  "esmt_ts"
+
+ - reg:         	I2C slave address of the chip (0x5d)
+ - interrupt-parent: 	a phandle pointing to the interrupt controller
+			serving the interrupt for this chip
+ - interrupts:       	interrupt specification for the touchdetect
+			interrupt
+
+Optional properties:
+
+ -touchscreen-size-x:	allows setting touchscreen size x.
+
+ -touchscreen-size-y:	allows setting touchscreen size y.
+
+ - touch_num:   	allows setting the number of touch point in the range
+			from 0 to 10.
+
+ - swap-xy:     	allows switching the x and y coordinates.
+
+ - x-rev:		allows reverse the x coordinate.
+
+ - y-rev:		allows reverse the y coordinate.
+
+ - reset-gpios: 	GPIO specification for the RESET input.
+
+Example:
+	esmt@5d {
+		compatible = "esmt_ts";
+		reg = <0x5d>;
+		touchscreen-size-x = <1280>;
+		touchscreen-size-y = <800>;
+		touch_num = <10>;
+		swap-xy;
+		interrupt-parent = <&gpio1>;
+		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
+	};
