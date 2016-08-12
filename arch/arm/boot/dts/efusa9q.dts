@@ -189,7 +189,7 @@ wvga {					\
 #define CONFIG_EFUSA9_SATA
 
 /* EMMC */
-//#define CONFIG_EFUSA9_EMMC
+#define CONFIG_EFUSA9_EMMC
 
 /* I2C */
 #define CONFIG_EFUSA9_I2C_A

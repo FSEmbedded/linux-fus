@@ -245,9 +245,6 @@
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			regulator-always-on;
-			/* remove below line to enable this regulator */
-			status="disabled";
-			//status="okay";
 		};
 #endif
 
@@ -962,33 +959,14 @@
 #endif /* CONFIG_EFUSA9_SD_A */
 
 #ifdef CONFIG_EFUSA9_EMMC
-/* emmc doesn't work currently */
 &usdhc3 {
-	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc3>;
-	pinctrl-1 = <&pinctrl_usdhc3_100mhz>;
-	pinctrl-2 = <&pinctrl_usdhc3_200mhz>;
-	/*
-	 * Due to board issue, we can not use external regulator for card slot
-	 * by default since the card power is shared with card detect pullup.
-	 * Disabling the vmmc regulator will cause unexpected card detect
-	 * interrupts.
-	 * HW rework is needed to fix this isssue. Remove R695 first, then you
-	 * can open below line to enable the using of external regulator.
-	 * Then you will be able to power off the card during suspend. This is
-	 * especially needed for a SD3.0 card re-enumeration working on UHS mode
-	 * Note: reg_sd3_vmmc is also need to be enabled
-	 */
-	/* vmmc-supply = <&reg_sd3_vmmc>; */
-	bus-width = <4>;
-	//no-1-8-v;
-	//broken-cd;
+	vmmc-supply = <&reg_sd3_vmmc>;
+	bus-width = <8>;
+	no-1-8-v;
 	non-removable;
-	//cap-mmc-highspeed;
-	keep-power-in-suspend;
-	enable-sdio-wakeup;
 	status = "okay";
-	//status = "disabled";
 };
 #endif /* CONFIG_EFUSA9_EMMC */
 
@@ -1132,9 +1110,6 @@
 				MX6QDL_PAD_GPIO_4__GPIO1_IO04		0x17059
 				/* SD2_WP pin */
 				MX6QDL_PAD_GPIO_2__GPIO1_IO02		0x80000000
-
-				/* reset emmc */
-				MX6QDL_PAD_SD3_RST__GPIO7_IO08		0x1f051
 				/* camera powerdown - active high */
 				MX6QDL_PAD_CSI0_DAT6__GPIO5_IO24	0x17059
 				/* camera reset - active low */
@@ -1472,46 +1447,18 @@
 #ifdef CONFIG_EFUSA9_EMMC
 		pinctrl_usdhc3: usdhc3grp {
 			fsl,pins = <
-				MX6QDL_PAD_SD3_CMD__SD3_CMD		0x17051
-				MX6QDL_PAD_SD3_CLK__SD3_CLK		0x10051
-				MX6QDL_PAD_SD3_DAT0__SD3_DATA0		0x17051
-				MX6QDL_PAD_SD3_DAT1__SD3_DATA1		0x17051
-				MX6QDL_PAD_SD3_DAT2__SD3_DATA2		0x17051
-				MX6QDL_PAD_SD3_DAT3__SD3_DATA3		0x17051
-				MX6QDL_PAD_SD3_DAT4__SD3_DATA4		0x17051
-				MX6QDL_PAD_SD3_DAT5__SD3_DATA5		0x17051
-				MX6QDL_PAD_SD3_DAT6__SD3_DATA6		0x17051
-				MX6QDL_PAD_SD3_DAT7__SD3_DATA7		0x17051
-			>;
-		};
-
-		pinctrl_usdhc3_100mhz: usdhc3grp100mhz {
-			fsl,pins = <
-				MX6QDL_PAD_SD3_CMD__SD3_CMD		0x170b1
-				MX6QDL_PAD_SD3_CLK__SD3_CLK		0x100b1
-				MX6QDL_PAD_SD3_DAT0__SD3_DATA0		0x170b1
-				MX6QDL_PAD_SD3_DAT1__SD3_DATA1		0x170b1
-				MX6QDL_PAD_SD3_DAT2__SD3_DATA2		0x170b1
-				MX6QDL_PAD_SD3_DAT3__SD3_DATA3		0x170b1
-				MX6QDL_PAD_SD3_DAT4__SD3_DATA4		0x170b1
-				MX6QDL_PAD_SD3_DAT5__SD3_DATA5		0x170b1
-				MX6QDL_PAD_SD3_DAT6__SD3_DATA6		0x170b1
-				MX6QDL_PAD_SD3_DAT7__SD3_DATA7		0x170b1
-			>;
-		};
-
-		pinctrl_usdhc3_200mhz: usdhc3grp200mhz {
-			fsl,pins = <
-				MX6QDL_PAD_SD3_CMD__SD3_CMD		0x170f1
-				MX6QDL_PAD_SD3_CLK__SD3_CLK		0x100f1
-				MX6QDL_PAD_SD3_DAT0__SD3_DATA0		0x170f1
-				MX6QDL_PAD_SD3_DAT1__SD3_DATA1		0x170f1
-				MX6QDL_PAD_SD3_DAT2__SD3_DATA2		0x170f1
-				MX6QDL_PAD_SD3_DAT3__SD3_DATA3		0x170f1
-				MX6QDL_PAD_SD3_DAT4__SD3_DATA4		0x170f1
-				MX6QDL_PAD_SD3_DAT5__SD3_DATA5		0x170f1
-				MX6QDL_PAD_SD3_DAT6__SD3_DATA6		0x170f1
-				MX6QDL_PAD_SD3_DAT7__SD3_DATA7		0x170f1
+				MX6QDL_PAD_SD3_CMD__SD3_CMD		0x17071
+				MX6QDL_PAD_SD3_CLK__SD3_CLK		0x10071
+				MX6QDL_PAD_SD3_DAT0__SD3_DATA0		0x17071
+				MX6QDL_PAD_SD3_DAT1__SD3_DATA1		0x17071
+				MX6QDL_PAD_SD3_DAT2__SD3_DATA2		0x17071
+				MX6QDL_PAD_SD3_DAT3__SD3_DATA3		0x17071
+				MX6QDL_PAD_SD3_DAT4__SD3_DATA4		0x17071
+				MX6QDL_PAD_SD3_DAT5__SD3_DATA5		0x17071
+				MX6QDL_PAD_SD3_DAT6__SD3_DATA6		0x17071
+				MX6QDL_PAD_SD3_DAT7__SD3_DATA7		0x17071
+				/* Reset eMMC, active low */
+				MX6QDL_PAD_SD3_RST__SD3_RESET		0x1B071
 			>;
 		};
 #endif /* CONFIG_EFUSA9_EMMC */
