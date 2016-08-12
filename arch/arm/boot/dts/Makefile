@@ -284,7 +284,7 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6dl-udoo.dtb \
 	imx6dl-sabresd-enetirq.dtb \
 	imx6dl-wandboard.dtb \
-	picmoda9dl.dtb \
+	picomoda9dl.dtb \
 	efusa9dl.dtb \
 	armstonea9dl.dtb \
 	armstonea9r2dl.dtb \
