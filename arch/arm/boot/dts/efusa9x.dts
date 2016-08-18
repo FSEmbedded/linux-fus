@@ -7,6 +7,8 @@
  */
 
 #define CONFIG_EFUSA9X_WLAN
+#define CONFIG_EFUSA9X_ETH0
+#define CONFIG_EFUSA9X_ETH1
 
 /* Please select only one of the following touch devices. Make sure that the
    corresponding touchscreen driver is activated in the kernel */
@@ -273,42 +275,46 @@
 };
 #endif
 
+#ifdef CONFIG_EFUSA9X_ETH0
 &fec1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet1_1>;
 	phy-mode = "rgmii";
-//###	phy-handle = <&ethphy1>;
-//###	pinctrl-assert-gpios = <&max7322 0 GPIO_ACTIVE_HIGH>;
+	phy-handle = <&ethphy0>;
+	phy-supply = <&reg_vref_3v3>;
 	fsl,magic-packet;
 	status = "okay";
 
-#if 0
+	/* The MDIO bus on FEC1 holds both PHYs */
 	mdio {
 		#address-cells = <1>;
 		#size-cells = <0>;
 
 		ethphy0: ethernet-phy@4 {
-//###			compatible = "ethernet-phy-ieee802.3-c22";
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <4>;
 		};
 
+#ifdef CONFIG_EFUSA9X_ETH1
 		ethphy1: ethernet-phy@5 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <5>;
 		};
-	};
 #endif
+	};
 };
+#endif /* CONFIG_EFUSA9X_ETH0 */
 
+#ifdef CONFIG_EFUSA9X_ETH1
 &fec2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet2_1>;
 	phy-mode = "rgmii";
-//###	phy-handle = <&ethphy0>;
+	phy-handle = <&ethphy1>;
 	fsl,magic-packet;
 	status = "okay";
 };
+#endif /* CONFIG_EFUSA9X_ETH1 */
 
 &flexcan1 {
 	pinctrl-names = "default";
@@ -893,10 +899,14 @@
 			>;
 		};
 
+#ifdef CONFIG_EFUSA9X_ETH0
 		pinctrl_enet1_1: enet1grp-1 {
 			fsl,pins = <
+				/* MDIO */
 				MX6SX_PAD_ENET2_CRS__ENET1_MDIO		0xa0b1
 				MX6SX_PAD_ENET2_COL__ENET1_MDC		0xa0b1
+
+				/* FEC1 */
 				MX6SX_PAD_ENET2_RX_CLK__ENET2_REF_CLK_25M 0xa0b9
 				MX6SX_PAD_ENET1_TX_CLK__ENET1_REF_CLK1	0xa0b1
 				MX6SX_PAD_RGMII1_TXC__ENET1_RGMII_TXC	0xa0b9
@@ -913,9 +923,12 @@
 				MX6SX_PAD_RGMII1_RX_CTL__ENET1_RX_EN	0x3081
 			>;
 		};
+#endif
 
+#ifdef CONFIG_EFUSA9X_ETH1
 		pinctrl_enet2_1: enet2grp-1 {
 			fsl,pins = <
+				/* FEC2 uses MDIO bus from FEC1 */
 				MX6SX_PAD_RGMII2_TXC__ENET2_RGMII_TXC	0xa0b9
 				MX6SX_PAD_RGMII2_TD0__ENET2_TX_DATA_0	0xa0b1
 				MX6SX_PAD_RGMII2_TD1__ENET2_TX_DATA_1	0xa0b1
@@ -930,6 +943,7 @@
 				MX6SX_PAD_RGMII2_RX_CTL__ENET2_RX_EN	0x3081
 			>;
 		};
+#endif
 
 		pinctrl_lcdif1_1: lcd1grp-1 {
 			fsl,pins = <

@@ -55,6 +55,8 @@ static void __init imx6ul_enet_clk_init(void)
 
 static int ksz8081_phy_fixup(struct phy_device *dev)
 {
+	/* Do not use PHY address 0 for broadcast, switch LED to show link and
+	   activity and activate correct clock speed */
 	if (dev && dev->interface == PHY_INTERFACE_MODE_MII) {
 		phy_write(dev, 0x1f, 0x8100);
 		phy_write(dev, 0x16, 0x201);
@@ -71,6 +73,14 @@ static void __init imx6ul_enet_phy_init(void)
 	phy_register_fixup_for_uid(PHY_ID_KSZ8081, MICREL_PHY_ID_MASK,
 				   ksz8081_phy_fixup);
 }
+
+static inline void imx6ul_enet_init(void)
+{
+	imx6ul_enet_clk_init();
+	imx6ul_enet_phy_init();
+	imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ul-ocotp");
+}
+#endif /* CONFIG_FEC || CONFIG_FEC_MODULE */
 
 #define OCOTP_CFG3			0x440
 #define OCOTP_CFG3_SPEED_SHIFT		16
@@ -141,14 +151,6 @@ static void __init imx6ul_opp_init(void)
 put_node:
 	of_node_put(np);
 }
-
-static inline void imx6ul_enet_init(void)
-{
-	imx6ul_enet_clk_init();
-	imx6ul_enet_phy_init();
-	imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ul-ocotp");
-}
-#endif /* CONFIG_FEC || CONFIG_FEC_MODULE */
 
 static void __init imx6ul_init_machine(void)
 {

@@ -228,8 +228,6 @@ MODULE_PARM_DESC(macaddr, "FEC Ethernet MAC address");
 	((addr >= txq->tso_hdrs_dma) && \
 	(addr < txq->tso_hdrs_dma + txq->tx_ring_size * TSO_HEADER_SIZE))
 
-static int mii_cnt;
-
 static inline
 struct bufdesc *fec_enet_get_nextdesc(struct bufdesc *bdp,
 				      struct fec_enet_private *fep,
@@ -1923,9 +1921,9 @@ failed_clk_ptp:
 	if (fep->clk_enet_out)
 		clk_disable_unprepare(fep->clk_enet_out);
 failed_clk_enet_out:
-		clk_disable_unprepare(fep->clk_ipg);
+	clk_disable_unprepare(fep->clk_ipg);
 failed_clk_ipg:
-		clk_disable_unprepare(fep->clk_ahb);
+	clk_disable_unprepare(fep->clk_ahb);
 
 	return ret;
 }
@@ -2016,40 +2014,11 @@ static int fec_enet_mii_probe(struct net_device *ndev)
 
 static int fec_enet_mii_init(struct platform_device *pdev)
 {
-	static struct mii_bus *fec0_mii_bus;
-	static int *fec_mii_bus_share;
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct fec_enet_private *fep = netdev_priv(ndev);
 	struct device_node *node;
 	int err = -ENXIO, i;
 	u32 mii_speed, holdtime;
-
-	/*
-	 * The i.MX28 dual fec interfaces are not equal.
-	 * Here are the differences:
-	 *
-	 *  - fec0 supports MII & RMII modes while fec1 only supports RMII
-	 *  - fec0 acts as the 1588 time master while fec1 is slave
-	 *  - external phys can only be configured by fec0
-	 *
-	 * That is to say fec1 can not work independently. It only works
-	 * when fec0 is working. The reason behind this design is that the
-	 * second interface is added primarily for Switch mode.
-	 *
-	 * Because of the last point above, both phys are attached on fec0
-	 * mdio interface in board design, and need to be configured by
-	 * fec0 mii_bus.
-	 */
-	if ((fep->quirks & FEC_QUIRK_ENET_MAC) && fep->dev_id > 0) {
-		/* fec1 uses fec0 mii_bus */
-		if (mii_cnt && fec0_mii_bus) {
-			fep->mii_bus = fec0_mii_bus;
-			*fec_mii_bus_share = FEC0_MII_BUS_SHARE_TRUE;
-			mii_cnt++;
-			return 0;
-		}
-		return -ENOENT;
-	}
 
 	fep->mii_timeout = 0;
 
@@ -2124,13 +2093,7 @@ static int fec_enet_mii_init(struct platform_device *pdev)
 	if (err)
 		goto err_out_free_mdio_irq;
 
-	mii_cnt++;
-
-	/* save fec0 mii_bus */
-	if (fep->quirks & FEC_QUIRK_ENET_MAC) {
-		fec0_mii_bus = fep->mii_bus;
-		fec_mii_bus_share = &fep->mii_bus_share;
-	}
+	fep->have_own_mii_bus = 1;
 
 	return 0;
 
@@ -2144,11 +2107,12 @@ err_out:
 
 static void fec_enet_mii_remove(struct fec_enet_private *fep)
 {
-	if (--mii_cnt == 0) {
+	if (fep->have_own_mii_bus) {
 		mdiobus_unregister(fep->mii_bus);
 		kfree(fep->mii_bus->irq);
 		mdiobus_free(fep->mii_bus);
 	}
+	fep->mii_bus = NULL;
 }
 
 static int fec_enet_get_settings(struct net_device *ndev,
@@ -3435,6 +3399,31 @@ static void fec_enet_of_parse_stop_mode(struct platform_device *pdev)
 	fep->gpr.req_bit = out_val[2];
 }
 
+/*
+ * Determine the MDIO bus of the phy-handle. If the MDIO bus is not a child of
+ * this FEC, then check if the MDIO bus is already probed and usable. If not,
+ * defer probing of this FEC until the MDIO bus is available. This is
+ * necessary if the PHY for this FEC is located on the MDIO bus of another FEC
+ * that was not probed yet.
+ */
+static struct mii_bus *fec_check_mii_bus(struct device_node *phy_node,
+					 struct device_node *fec_node)
+{
+	struct mii_bus *mii_bus = NULL;
+	struct device_node *mii_bus_node = of_get_parent(phy_node);
+
+	if (mii_bus_node) {
+		if (mii_bus_node->parent != fec_node) {
+			mii_bus = of_mdio_find_bus(mii_bus_node);
+			if (!mii_bus)
+				mii_bus = ERR_PTR(-EPROBE_DEFER);
+		}
+		of_node_put(mii_bus_node);
+	}
+
+	return mii_bus;
+}
+
 static int
 fec_probe(struct platform_device *pdev)
 {
@@ -3448,14 +3437,24 @@ fec_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node, *phy_node;
 	int num_tx_qs;
 	int num_rx_qs;
+	struct mii_bus *mii_bus;
+
+	phy_node = of_parse_phandle(np, "phy-handle", 0);
+	mii_bus = fec_check_mii_bus(phy_node, np);
+	if (IS_ERR(mii_bus)) {
+		ret = PTR_ERR(mii_bus);	/* -EPROBE_DEFER */
+		goto failed_check_mii_bus;
+	}
 
 	fec_enet_get_queue_num(pdev, &num_tx_qs, &num_rx_qs);
 
 	/* Init network device */
 	ndev = alloc_etherdev_mqs(sizeof(struct fec_enet_private),
 				  num_tx_qs, num_rx_qs);
-	if (!ndev)
-		return -ENOMEM;
+	if (!ndev) {
+		ret = -ENOMEM;
+		goto failed_alloc;
+	}
 
 	SET_NETDEV_DEV(ndev, &pdev->dev);
 
@@ -3488,7 +3487,13 @@ fec_probe(struct platform_device *pdev)
 	}
 
 	fep->pdev = pdev;
-	fep->dev_id = dev_id++;
+
+	/* Get the device ID of the ethernet%d alias name */
+	fep->dev_id = of_alias_get_id(np, "ethernet");
+	if (fep->dev_id < 0)
+		fep->dev_id = dev_id++;
+	if (fep->dev_id >= 0)
+		sprintf(ndev->name, "eth%d", fep->dev_id);
 
 	platform_set_drvdata(pdev, ndev);
 
@@ -3497,7 +3502,6 @@ fec_probe(struct platform_device *pdev)
 	if (of_get_property(np, "fsl,magic-packet", NULL))
 		fep->wol_flag |= FEC_WOL_HAS_MAGIC_PACKET;
 
-	phy_node = of_parse_phandle(np, "phy-handle", 0);
 	if (!phy_node && of_phy_is_fixed_link(np)) {
 		ret = of_phy_register_fixed_link(np);
 		if (ret < 0) {
@@ -3603,9 +3607,23 @@ fec_probe(struct platform_device *pdev)
 		fep->wake_irq = fep->irq[0];
 
 	init_completion(&fep->mdio_done);
-	ret = fec_enet_mii_init(pdev);
-	if (ret)
-		goto failed_mii_init;
+
+	/*
+	 * If the PHY is on the MDIO bus of a different FEC and is already
+	 * available, use this MDIO bus directly. Otherwise look for the MDIO
+	 * bus now.
+	 *
+	 * Remark: MDIO transfers only need the ipg clock, which is common for
+	 * all FEC devices. Therefore we can also access a PHY that is located
+	 * on the MDIO bus of another FEC. No additional clocks are necessary.
+	 */
+	if (mii_bus)
+		fep->mii_bus = mii_bus;
+	else {
+		ret = fec_enet_mii_init(pdev);
+		if (ret)
+			goto failed_mii_init;
+	}
 
 	/* Carrier starts down, phylib will bring it up */
 	netif_carrier_off(ndev);
@@ -3637,9 +3655,11 @@ failed_regulator:
 	fec_enet_clk_enable(ndev, false);
 failed_clk:
 failed_phy:
-	of_node_put(phy_node);
 failed_ioremap:
 	free_netdev(ndev);
+failed_alloc:
+failed_check_mii_bus:
+	of_node_put(phy_node);
 
 	return ret;
 }

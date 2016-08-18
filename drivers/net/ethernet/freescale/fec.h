@@ -522,6 +522,7 @@ struct fec_enet_private {
 	int	dev_id;
 
 	/* Phylib and MDIO interface */
+	int	have_own_mii_bus;
 	struct	mii_bus *mii_bus;
 	struct	phy_device *phy_dev;
 	int	mii_timeout;
