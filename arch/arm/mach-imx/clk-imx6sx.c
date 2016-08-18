@@ -236,7 +236,6 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	clks[IMX6SX_CLK_PLL3_USB_OTG]  = imx_clk_gate("pll3_usb_otg",  "pll3_bypass", base + 0x10, 13);
 	clks[IMX6SX_CLK_PLL4_AUDIO]    = imx_clk_gate("pll4_audio",    "pll4_bypass", base + 0x70, 13);
 	clks[IMX6SX_CLK_PLL5_VIDEO]    = imx_clk_gate("pll5_video",    "pll5_bypass", base + 0xa0, 13);
-	clks[IMX6SX_CLK_PLL6_ENET]     = imx_clk_gate("pll6_enet",     "pll6_bypass", base + 0xe0, 13);
 	clks[IMX6SX_CLK_PLL7_USB_HOST] = imx_clk_gate("pll7_usb_host", "pll7_bypass", base + 0x20, 13);
 
 	/*
@@ -264,16 +263,17 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	clks[IMX6SX_CLK_LVDS1_IN]  = imx_clk_gate_exclusive("lvds1_in",  "anaclk1",   base + 0x160, 12, BIT(10));
 	clks[IMX6SX_CLK_LVDS2_IN]  = imx_clk_gate_exclusive("lvds2_in",  "anaclk2",   base + 0x160, 13, BIT(11));
 
-	clks[IMX6SX_CLK_ENET_REF] = clk_register_divider_table(NULL, "enet_ref", "pll6_enet", 0,
+	clks[IMX6SX_CLK_ENET_DIV] = clk_register_divider_table(NULL, "enet_div", "pll6_bypass", 0,
 			base + 0xe0, 0, 2, 0, clk_enet_ref_table,
 			&imx_ccm_lock);
-	clks[IMX6SX_CLK_ENET2_REF] = clk_register_divider_table(NULL, "enet2_ref", "pll6_enet", 0,
+	clks[IMX6SX_CLK_ENET2_DIV] = clk_register_divider_table(NULL, "enet2_div", "pll6_bypass", 0,
 			base + 0xe0, 2, 2, 0, clk_enet_ref_table,
 			&imx_ccm_lock);
-	clks[IMX6SX_CLK_ENET2_REF_125M] = imx_clk_gate("enet2_ref_125m", "enet2_ref", base + 0xe0, 20);
+	clks[IMX6SX_CLK_ENET_REF]     = imx_clk_gate("enet_ref",     "enet_div", base + 0xe0, 13);
+	clks[IMX6SX_CLK_ENET2_REF] = imx_clk_gate("enet2_ref", "enet2_div", base + 0xe0, 20);
 
-	clks[IMX6SX_CLK_ENET_PTP_REF] = imx_clk_fixed_factor("enet_ptp_ref", "pll6_enet", 1, 20);
-	clks[IMX6SX_CLK_ENET_PTP] = imx_clk_gate("enet_ptp_25m", "enet_ptp_ref", base + 0xe0, 21);
+	clks[IMX6SX_CLK_ENET_PTP_DIV] = imx_clk_fixed_factor("enet_ptp_div", "pll6_bypass", 1, 20);
+	clks[IMX6SX_CLK_ENET_PTP] = imx_clk_gate("enet_ptp_25m", "enet_ptp_div", base + 0xe0, 21);
 
 	/*                                       name              parent_name     reg           idx */
 	clks[IMX6SX_CLK_PLL2_PFD0] = imx_clk_pfd("pll2_pfd0_352m", "pll2_bus",     base + 0x100, 0);

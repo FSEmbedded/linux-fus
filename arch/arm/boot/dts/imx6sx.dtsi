@@ -1115,7 +1115,7 @@
 				clocks = <&clks IMX6SX_CLK_ENET>,
 					 <&clks IMX6SX_CLK_ENET_AHB>,
 					 <&clks IMX6SX_CLK_ENET_PTP>,
-					 <&clks IMX6SX_CLK_ENET2_REF_125M>,
+					 <&clks IMX6SX_CLK_ENET2_REF>,
 					 <&clks IMX6SX_CLK_ENET_PTP>;
 				clock-names = "ipg", "ahb", "ptp",
 					      "enet_clk_ref", "enet_out";
