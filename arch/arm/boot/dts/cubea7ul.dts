@@ -1,15 +1,16 @@
 /*
- * Copyright (C) 2015 Freescale Semiconductor, Inc.
+ * Copyright (C) 2016 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
 
-#define CONFIG_CUBEA7UL_NAND
-
 /* CMA: Set 64 MB for Continuous Memory Allocator */
 #define CONFIG_CUBEA7UL_CMA_SIZE 0x4000000
+
+/* NAND */
+#define CONFIG_CUBEA7UL_NAND
 
 /dts-v1/;
 
@@ -135,7 +136,7 @@
 
 	};
 
-	/* -------------------- BOARD INFO -------------------- */
+	/* F&S board information */
 	bdinfo {
 		compatible = "bdinfo";
 		board_name = "cubeA7UL";

@@ -1,20 +1,60 @@
 /*
- * Copyright (C) 2015 Freescale Semiconductor, Inc.
+ * Copyright (C) 2016 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
 
-#define CONFIG_EFUSA7UL_WLAN
-#define CONFIG_EFUSA7UL_NAND
-//#define CONFIG_EFUSA7UL_SD_A_CDWP
+/dts-v1/;
 
-#define CONFIG_EFUSA7UL_ETH0
-#define CONFIG_EFUSA7UL_ETH1
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_EFUSA7UL_BOARD_REVISION	110
 
-/* Please select only one of the following touch devices. Make sure that the
-   corresponding touchscreen driver is activated in the kernel */
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_LCD	1	/* LCD via RGB adapter */
+
+/*
+ * Set the display configuration:
+ *
+ * - If you have no display, set LCDIF0 to DISPLAY_NONE.
+ * - If you have a display, set LCDIF0 to DISPLAY_LCD.
+ */
+#define CONFIG_EFUSA7UL_LCDIF0		DISPLAY_LCD
+
+/*
+ * Configure LCD settings here (ignored if LCD is not used)
+ */
+#define CONFIG_EFUSA7UL_LCD_BPP		16
+#define CONFIG_EFUSA7UL_LCD_BUS_WIDTH	18
+#define CONFIG_EFUSA7UL_LCD_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+
+/*
+ * Configure touch screen:
+ *
+ * - 4-wire/5-wire analog resistive touch, touch controller on SKIT
+ * - 4-wire/5-wire analog resistive touch, touch controller on RGB LCD adapter
+ * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
+ * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ *
+ * On efusA7UL, all touches use the same interrupt line and I2C bus, so do not
+ * select more than one entry! Select none if you do not need touch support.
+ */
 //#define CONFIG_EFUSA7UL_4WTOUCH_SX8655_ONBOARD
 #define CONFIG_EFUSA7UL_4WTOUCH_SX8655_RGBADAPTER
 //#define CONFIG_EFUSA7UL_CAPTOUCH_MXT224
@@ -23,8 +63,17 @@
 /* CMA: Set 64 MB for Continuous Memory Allocator */
 #define CONFIG_EFUSA7UL_CMA_SIZE 0x4000000
 
+/* NAND */
+#define CONFIG_EFUSA7UL_NAND
 
-/dts-v1/;
+/* Network */
+#define CONFIG_EFUSA7UL_WLAN
+#define CONFIG_EFUSA7UL_ETH0
+#define CONFIG_EFUSA7UL_ETH1
+
+/* SD-Card - On SKIT: SD_A is micro SD, SD_B is normalsize SD */
+//#define CONFIG_EFUSA7UL_SD_A_CDWP
+
 
 #include <dt-bindings/input/input.h>
 #include "imx6ul.dtsi"
@@ -147,7 +196,6 @@
 		};
 	};
 
-#if 1 //###
 	sound-sgtl5000 {
 		compatible = "fsl,imx-audio-sgtl5000";
 		cpu-dai = <&sai2>;
@@ -159,7 +207,6 @@
 //###			"Line Out Jack", "LINE_OUT",
 			"Headphone Jack", "HP_OUT";
 	};
-#endif
 
 	/* Bitbanging I2C */
 	i2c_gpio: i2c_gpio {
@@ -176,7 +223,7 @@
 		#size-cells = <0>;
 	};
 
-	/* -------------------- BOARD INFO -------------------- */
+	/* F&S board information */
 	bdinfo {
 		compatible = "bdinfo";
 		board_name = "efusA7UL";
@@ -196,6 +243,7 @@
 };
 
 &clks {
+	/* Set audio clock rate, output on CKO1 */
 	assigned-clocks = <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>,
 			  <&clks IMX6UL_CLK_SAI2_SEL>,
 			  <&clks IMX6UL_CLK_SAI2>,
@@ -288,40 +336,33 @@
 	fsl,ldo-bypass = <0>; /* DCDC, ldo-enable */
 };
 
+#if CONFIG_EFUSA7UL_LCDIF0
 &lcdif {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcdif_dat
 		     &pinctrl_lcdif_ctrl>;
 	lcd-supply = <&reg_lcd>;
 	display = <&display0>;
-	/* efusA7UL Rev 1.00 needs 5, later revisions need 0 */
-	pattern = <5>;		/* RGB=0, RBG=1, GBR=2, GRB=3, BRG=4, BGR=5 */
+	/* Display bus pattern: RGB=0, RBG=1, GBR=2, GRB=3, BRG=4, BGR=5
+	   efusA7UL Rev 1.00 needs 5, later revisions need 0 */
+#if CONFIG_EFUSA7UL_BOARD_REVISION < 110
+	pattern = <5>;		/* BGR */
+#else
+	pattern = <0>;		/* RGB */
+#endif
 	status = "okay";
 
 	display0: display {
-		bits-per-pixel = <16>;
-		bus-width = <18>;
+		bits-per-pixel = <CONFIG_EFUSA7UL_LCD_BPP>;
+		bus-width = <CONFIG_EFUSA7UL_LCD_BUS_WIDTH>;
 
 		display-timings {
 			native-mode = <&timing0>;
-			timing0: wvga {
-				clock-frequency = <33500000>;
-				hactive = <800>;
-				vactive = <480>;
-				hfront-porch = <40>;
-				hback-porch = <88>;
-				hsync-len = <128>;
-				vback-porch = <33>;
-				vfront-porch =<10>;
-				vsync-len = <2>;
-				hsync-active = <0>;
-				vsync-active = <0>;
-				de-active = <1>;
-				pixelclk-active = <0>;
-			};
+			timing0: CONFIG_EFUSA7UL_LCD_TIMING;
 		};
 	};
 };
+#endif /* CONFIG_EFUSA7UL_LCDIF0 */
 
 &pwm1 {
 	pinctrl-names = "default";
@@ -342,13 +383,6 @@
 &sai2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai2>;
-#if 0 //### already assigned in &clks above
-	assigned-clocks = <&clks IMX6UL_CLK_SAI2_SEL>,
-			  <&clks IMX6UL_CLK_SAI2>;
-	assigned-clock-parents = <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>;
-//###	assigned-clock-rates = <0>, <12288000>;
-	assigned-clock-rates = <0>, <24576000>;
-#endif
 	status = "okay";
 };
 
@@ -573,19 +607,11 @@
 	sgtl5000: sgtl5000@0a {
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
-		//###clocks = <&clks IMX6UL_CLK_SAI2>;
-		//###clocks = <&clks IMX6UL_CLK_PLL42>;
 		mono2both;
 		clocks = <&clks IMX6UL_CLK_CKO>;
 		VDDA-supply = <&reg_sgtl5000_vdda>;
 		VDDIO-supply = <&reg_sgtl5000_vddio>;
 		VDDD-supply = <&reg_sgtl5000_vddd>;
-#if 0 //### Already assigned in &clks above
-		assigned-clocks = <&clks IMX6UL_CLK_CKO1_SEL>,
-				  <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>;
-		assigned-clock-parents = <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>;
-		assigned-clock-rates = <0>, <24576000>;
-#endif
 	};
 
 	rtc8565@51 {
@@ -696,9 +722,6 @@
 				MX6UL_PAD_SNVS_TAMPER4__GPIO5_IO04	0x80000000
 				/* VCFL */
 				MX6UL_PAD_SNVS_TAMPER5__GPIO5_IO05	0x80000000
-#if 0 //###
-				MX6UL_PAD_LCD_RESET__WDOG1_WDOG_ANY	0x30b0
-#endif
 			>;
 		};
 
@@ -937,7 +960,6 @@
 				MX6UL_PAD_JTAG_TCK__SAI2_RX_DATA	0x11088
 //###				MX6UL_PAD_JTAG_TMS__SAI2_MCLK		0x17088
 //###				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
-//###				MX6UL_PAD_JTAG_TMS__GPIO1_IO11		0x80000000
 			>;
 		};
 

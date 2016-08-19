@@ -1,17 +1,94 @@
 /*
- * Copyright (C) 2015 F&S Elektronik Systeme GmbH
+ * Copyright (C) 2016 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
 
-#define CONFIG_EFUSA9X_WLAN
-#define CONFIG_EFUSA9X_ETH0
-#define CONFIG_EFUSA9X_ETH1
+/dts-v1/;
 
-/* Please select only one of the following touch devices. Make sure that the
-   corresponding touchscreen driver is activated in the kernel */
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_EFUSA9_BOARD_REVISION	110
+
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_LCD	1	/* LCD via RGB adapter */
+#define DISPLAY_LVDS	2	/* LVDS */
+
+/*
+ * Set the display configuration:
+ *
+ * - If you have no display, set both settings to DISPLAY_NONE.
+ * - If you have one display, set LCDIF0 to one of the display types above
+ *   and leave LCDIF1 at DISPLAY_NONE.
+ * - If you have two displays, set LCDIF0 to DISPLAY_LCD and LCDIF1 to
+ *   DISPLAY_LVDS.
+ */
+#define CONFIG_EFUSA9X_LCDIF0		DISPLAY_LCD
+#define CONFIG_EFUSA9X_LCDIF1		DISPLAY_NONE
+
+/*
+ * Configure LCD settings here (ignored if LCD is not used)
+ */
+#define CONFIG_EFUSA9X_LCD_BPP		16
+#define CONFIG_EFUSA9X_LCD_BUS_WIDTH	18
+#define CONFIG_EFUSA9X_LCD_TIMING \
+lcd_wvga {				\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+
+/*
+ * Configure LVDS settings here (ignored if LVDS is not used)
+ * Mapping:
+ *
+ * - "spwg":  18 bpp or 24 bpp, in case of 24 bpp, bits 6 and 7 of each color
+ *            are encoded on fourth LVDS differential data pair
+ * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
+ *            all other data bits on all four differential data pairs
+ */
+#define CONFIG_EFUSA9X_LVDS_MAPPING	"spwg"
+#define CONFIG_EFUSA9X_LVDS_BPP		16
+#define CONFIG_EFUSA9X_LVDS_BUS_WIDTH	18
+#define CONFIG_EFUSA9X_LVDS_TIMING \
+lvds_wvga {				\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+
+/*
+ * Configure touch screen:
+ *
+ * - 4-wire/5-wire analog resistive touch, touch controller on SKIT
+ * - 4-wire/5-wire analog resistive touch, touch controller on RGB LCD adapter
+ * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
+ * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ *
+ * On efusA9X, all touches use the same interrupt line and I2C bus, so do not
+ * select more than one entry! Select none if you do not need touch support.
+ */
 //#define CONFIG_EFUSA9X_4WTOUCH_SX8655_ONBOARD
 #define CONFIG_EFUSA9X_4WTOUCH_SX8655_RGBADAPTER
 //#define CONFIG_EFUSA9X_CAPTOUCH_MXT224
@@ -20,7 +97,10 @@
 /* CMA: Set 320 MB for Continuous Memory Allocator */
 #define CONFIG_EFUSA9X_CMA_SIZE 0x14000000
 
-/dts-v1/;
+/* Network */
+#define CONFIG_EFUSA9X_WLAN
+#define CONFIG_EFUSA9X_ETH0
+#define CONFIG_EFUSA9X_ETH1
 
 /* If UART_C uses RTS, we can only have one CS on SPI_B; if UART_C does
    not need RTS, we can have a second CS on SPI_B */
@@ -28,10 +108,12 @@
 
 #include "imx6sx.dtsi"
 #include <dt-bindings/pwm/pwm.h>
+
 / {
 	model = "F&S efusA9X";
 	compatible = "fus,imx6sx-efusa9x", "fsl,imx6sx";
 
+#if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LCD
 	backlight_lcd {
 		compatible = "pwm-backlight";
 		pwms = <&pca963x 1 640000 PWM_POLARITY_INVERTED>;
@@ -41,7 +123,10 @@
 		default-brightness-level = <14>;
 		fb-names = "mxs-lcdif1";
 	};
+#endif
 
+#if ((CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS) \
+	|| (CONFIG_EFUSA9X_LCDIF1 == DISPLAY_LVDS))
 	backlight_ldb {
 		compatible = "pwm-backlight";
 		pwms = <&pwm6 0 5000000>;
@@ -49,8 +134,13 @@
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
+#if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS
+		fb-names = "mxs-lcdif1";
+#else
 		fb-names = "mxs-lcdif2";
+#endif
 	};
+#endif
 
 	clocks {
 		codec_osc: anaclk2 {
@@ -221,7 +311,7 @@
 			"Headphone Jack", "HP_OUT";
 	};
 
-	/* -------------------- BOARD INFO -------------------- */
+	/* F&S board information */
 	bdinfo {
 		compatible = "bdinfo";
 		board_name = "efusa9x";
@@ -553,37 +643,41 @@
 	status = "okay";
 };
 
+#if CONFIG_EFUSA9X_LCDIF0
+/* The first lcdif can be used with LCD or LVDS */
 &lcdif1 {
 	display = <&display0>;			/* Remove when already active */
+#if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS
+	disp-dev = "ldb";
+#endif
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcdif1_1>;	/* Remove when already active */
 	lcd-supply = <&reg_disp_3v3>;
 	status = "okay";
 
 	display0: display {
-		bits-per-pixel = <16>;
-		bus-width = <18>;
+#if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LCD
+		bits-per-pixel = <CONFIG_EFUSA9X_LCD_BPP>;
+		bus-width = <CONFIG_EFUSA9X_LCD_BUS_WIDTH>;
 		display-timings {
-			native-mode = <&timing_lcd_wvga>;
-			timing_lcd_wvga: lcd_wvga {
-				clock-frequency = <33500000>;
-				hactive = <800>;
-				vactive = <480>;
-				hfront-porch = <40>;
-				hback-porch = <88>;
-				hsync-len = <128>;
-				vback-porch = <33>;
-				vfront-porch = <10>;
-				vsync-len = <2>;
-				hsync-active = <0>;
-				vsync-active = <0>;
-				de-active = <1>;
-				pixelclk-active = <0>;
-			};
+			native-mode = <&timing_lcd>;
+			timing_lcd: CONFIG_EFUSA9X_LCD_TIMING;
 		};
+#endif
+#if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS
+		bits-per-pixel = <CONFIG_EFUSA9X_LVDS_BPP>;
+		bus-width = <CONFIG_EFUSA9X_LVDS_BUS_WIDTH>;
+		display-timings {
+			native-mode = <&timing_lvds>;
+			timing_lvds: CONFIG_EFUSA9X_LVDS_TIMING;
+		};
+#endif
 	};
 };
+#endif /* CONFIG_EFUSA9X_LCDIF0 */
 
+#if CONFIG_EFUSA9X_LCDIF1
+/* On efusA9X, the second lcdif can only be used with LVDS */
 &lcdif2 {
 	display = <&display1>;
 	disp-dev = "ldb";
@@ -591,58 +685,38 @@
 	status = "okay";
 
 	display1: display {
-		bits-per-pixel = <16>;
-		bus-width = <18>;
+		bits-per-pixel = <CONFIG_EFUSA9X_LVDS_BPP>;
+		bus-width = <CONFIG_EFUSA9X_LVDS_BUS_WIDTH>;
 		display-timings {
-			native-mode = <&timing_ldb_wvga_copy>;
-			timing_ldb_wvga_copy: ldb_wvga_copy {
-				clock-frequency = <33500000>;
-				hactive = <800>;
-				vactive = <480>;
-				hfront-porch = <40>;
-				hback-porch = <88>;
-				hsync-len = <128>;
-				vback-porch = <33>;
-				vfront-porch = <10>;
-				vsync-len = <2>;
-				hsync-active = <0>;
-				vsync-active = <0>;
-				de-active = <1>;
-				pixelclk-active = <0>;
-			};
+			native-mode = <&timing_lvds>;
+			timing_lvds: CONFIG_EFUSA9X_LVDS_TIMING;
 		};
 	};
 };
+#endif /* CONFIG_EFUSA9X_LCDIF1 */
 
+#if ((CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS) \
+	|| (CONFIG_EFUSA9X_LCDIF1 == DISPLAY_LVDS))
 &ldb {
 	status = "okay";
 
 	lvds-channel@0 {
-		fsl,data-mapping = "spwg";
-		fsl,data-width = <18>;
+		fsl,data-mapping = CONFIG_EFUSA9X_LVDS_MAPPING;
+		fsl,data-width = <CONFIG_EFUSA9X_LVDS_BUS_WIDTH>;
+#if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS
+		crtc = "lcdif1";
+#else
 		crtc = "lcdif2";
+#endif
 		status = "okay";
 
 		display-timings {
-			native-mode = <&timing_ldb_wvga>;
-			timing_ldb_wvga: ldb_wvga {
-				clock-frequency = <33500000>;
-				hactive = <800>;
-				vactive = <480>;
-				hfront-porch = <40>;
-				hback-porch = <88>;
-				hsync-len = <128>;
-				vback-porch = <33>;
-				vfront-porch = <10>;
-				vsync-len = <2>;
-				hsync-active = <0>;
-				vsync-active = <0>;
-				de-active = <1>;
-				pixelclk-active = <0>;
-			};
+			native-mode = <&timing_ldb>;
+			timing_ldb: CONFIG_EFUSA9X_LVDS_TIMING;
 		};
 	};
 };
+#endif /* DISPLAY_LVDS */
 
 #if 0 //###
 &pcie {
