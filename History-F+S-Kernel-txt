@@ -3,6 +3,13 @@ Version History for Linux Kernel on F&S Vybrid Boards and Modules
 
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
+linux-4.1.5-fsimx6sx-V2.0 (20.08.2016)
+--------------------------------------
+
+No changes.
+
+
+
 linux-4.1.5-fsimx6ul-V2.0 (19.08.2016)
 --------------------------------------
 Supported Boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, efusA7UL,
