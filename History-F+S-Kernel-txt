@@ -3,6 +3,24 @@ Version History for Linux Kernel on F&S Vybrid Boards and Modules
 
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
+linux-4.1.5-fsimx6ul-V2.0 (19.08.2016)
+--------------------------------------
+Supported Boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, efusA7UL,
+                  efusA9X, CubeA7UL
+Not tested:       BemA9X
+
+- Add esmt pcap touch
+- Fix spelling error for picomoda9dl.dtb in arch/arm/boot/dts/Makefile
+- Add HID Multitouch to defconfigs for fsimx6, fsimx6ul, fsimx6sx
+- Improve eMMC support on efusA9
+- Add support for second ethernet port on fsimx6ul and fsimxsx
+- Fix ethernet clock chains in i.MX6UL and i.MX6SX clock trees
+- Remove i.MX6Q, i.MX6SL, i.MX7D CPU types from fsimx6sx_defconfig
+- Go back to mxsfb.c and ldb.c from kernel 3.14.52 to get LVDS working again
+- Add new display configuration method for fsimx6ul and fsimx6sx
+
+
+
 linux-4.1.15-fsimx6-V3.0 (08.08.2016)
 -------------------------------------
 Supported Boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, efusA7UL
