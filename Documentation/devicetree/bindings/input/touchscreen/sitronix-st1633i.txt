@@ -1,0 +1,31 @@
+SITRONIX st1633i pcaptouch driver
+=====================================
+
+Required properties:
+
+ - compatible:  "sitronix"
+
+ - reg:         	I2C slave address of the chip (0x55)
+ - interrupt-parent: 	a phandle pointing to the interrupt controller
+			serving the interrupt for this chip
+ - interrupts:       	interrupt specification for the touchdetect
+			interrupt
+ - reset-gpio: 		GPIO specification for the RESET input.
+
+Optional properties:
+
+ - swap-xy:     	allows switching the x and y coordinates.
+
+ - x-rev:		allows reverse the x coordinate.
+
+ - y-rev:		allows reverse the y coordinate.
+
+Example:
+	st1633i@55 {
+		compatible = "sitronix";
+		reg = <0x55>;
+		swap-xy;
+		interrupt-parent = <&gpio1>;
+		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
+	};

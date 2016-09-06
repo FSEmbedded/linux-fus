@@ -628,6 +628,14 @@ config TOUCHSCREEN_ESMT
 	  Then select one of the versions. You can also say M here. Then
 	  you can select either version or both to be built as a module.
 
+config TOUCHSCREEN_ST1633I
+	tristate "Sitronix st1633i i2c touchscreen (from URT UMSH-8596MD display)"
+	depends on I2C
+	help
+	  To use a Sitronix st1633i touchscreen, say Y.
+	  Then select one of the versions. You can also say M here. Then
+	  you can select either version or both to be built as a module.
+
 config TOUCHSCREEN_MIGOR
 	tristate "Renesas MIGO-R touchscreen"
 	depends on SH_MIGOR && I2C
