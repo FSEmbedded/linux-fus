@@ -1,0 +1,159 @@
+/*
+ * Copyright 2016 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#include <dt-bindings/pwm/pwm.h>
+
+
+
+/ {
+
+	memory {
+		reg = <0x10000000 0x40000000>;
+	};
+
+	regulators {
+		compatible = "simple-bus";
+	};
+
+	/* F&S board information */
+	bdinfo: bdinfo {
+		compatible = "bdinfo";
+		board_name = "qblissa9";
+		ecc_strength = "8";
+	};
+
+};
+
+
+#if 0
+&cma {
+	size = <CONFIG_QBLISSA9_CMA_SIZE>;
+};
+#endif
+
+
+
+#if 0
+&clks {
+	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
+			  <&clks IMX6QDL_CLK_SSI1_SEL>,
+			  <&clks IMX6QDL_CLK_SSI1>,
+			  <&clks IMX6QDL_CLK_CKO2_SEL>,
+			  <&clks IMX6QDL_CLK_CKO>;
+
+	assigned-clock-parents = <0>,
+				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
+				 <0>,
+				 <&clks IMX6QDL_CLK_SSI1>,
+				 <&clks IMX6QDL_CLK_CKO2>;
+//###	assigned-clock-rates = <786432000>, <0>, <24576000>;
+	assigned-clock-rates = <786432000>, <0>, <12288000>;
+};
+#endif
+
+&gpc {
+	fsl,cpu_pupscr_sw2iso = <0xf>;
+	fsl,cpu_pupscr_sw = <0xf>;
+	fsl,cpu_pdnscr_iso2sw = <0x1>;
+	fsl,cpu_pdnscr_iso = <0x1>;
+	/* more information how to ldo-bypass look at pfuze comment in i2c2 */
+	fsl,ldo-bypass = <0>; /* use ldo-bypass, u-boot will check it and configure */
+	fsl,wdog-reset = <1>; /* watchdog select of reset source */
+};
+
+&dma_apbh {
+	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
+	compatible = "fus,imx6-dma-apbh", "fus,imx28-dma-apbh";
+};
+
+#ifdef CONFIG_QBLISSA9_NAND
+&gpmi {
+	/* Switch to F&S implementation of GPMI NAND driver */
+	compatible = "fus,imx6q-gpmi-nand";
+	pinctrl-names = "default";
+//###	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
+	fus,skipblocks = <2>;
+	fus,chunk1k;
+	fus,ecc_strength = <8>;		/* Spare area 64 bytes */
+	//fus,ecc_strength = <40>;	/* Spare area 224 bytes */
+	status = "okay";
+};
+#endif
+
+
+
+
+
+
+#ifdef CONFIG_QBLISSA9_UART_B
+/* UART2 on pins 185-188 (debug port B)*/
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart2_1>;
+	fsl,uart-has-rtscts;
+	status = "okay";
+};
+#endif /* CONFIG_QBLISSA9_UART_B */
+
+
+
+
+
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog_1>;
+
+	imx6qdl-qblissa9  {
+		/* Pin configs that don't belong anywhere else */
+		pinctrl_hog_1: hoggrp-1 {
+			fsl,pins = <
+				
+				/* WDOG1 */
+				MX6QDL_PAD_GPIO_9__WDOG1_B		0x80000000
+
+				/* RTC_IRQ */
+				MX6QDL_PAD_ENET_TX_EN__GPIO1_IO28	0xb0b0
+			>;
+		};
+
+#if 0
+		/* Pins already set in bootloader */
+		pinctrl_gpmi_nand_1: gpmi-nand-1 {
+			fsl,pins = <
+				MX6QDL_PAD_NANDF_CLE__NAND_CLE		0xb0b1
+				MX6QDL_PAD_NANDF_ALE__NAND_ALE		0xb0b1
+				MX6QDL_PAD_NANDF_WP_B__NAND_WP_B	0xb0b1
+				MX6QDL_PAD_NANDF_RB0__NAND_READY_B	0xb000
+				MX6QDL_PAD_NANDF_CS0__NAND_CE0_B	0xb0b1
+				MX6QDL_PAD_SD4_CMD__NAND_RE_B		0xb0b1
+				MX6QDL_PAD_SD4_CLK__NAND_WE_B		0xb0b1
+				MX6QDL_PAD_NANDF_D0__NAND_DATA00	0xb0b1
+				MX6QDL_PAD_NANDF_D1__NAND_DATA01	0xb0b1
+				MX6QDL_PAD_NANDF_D2__NAND_DATA02	0xb0b1
+				MX6QDL_PAD_NANDF_D3__NAND_DATA03	0xb0b1
+				MX6QDL_PAD_NANDF_D4__NAND_DATA04	0xb0b1
+				MX6QDL_PAD_NANDF_D5__NAND_DATA05	0xb0b1
+				MX6QDL_PAD_NANDF_D6__NAND_DATA06	0xb0b1
+				MX6QDL_PAD_NANDF_D7__NAND_DATA07	0xb0b1
+			>;
+		};
+#endif
+#ifdef CONFIG_QBLISSA9_UART_B
+		/* UART2 on pins 185-188 (port B)*/
+		pinctrl_uart2_1: uart2grp-1{
+			fsl,pins = <
+				MX6QDL_PAD_EIM_D26__UART2_TX_DATA	0x1b0b1
+				MX6QDL_PAD_EIM_D27__UART2_RX_DATA	0x1b0b1
+				MX6QDL_PAD_EIM_D28__UART2_CTS_B		0x1b0b1
+				MX6QDL_PAD_EIM_D29__UART2_RTS_B		0x1b0b1
+			>;
+		};
+#endif /* CONFIG_QBLISSA9_UART_B */
+
+	};
+};

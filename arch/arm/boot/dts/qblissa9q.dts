@@ -1,0 +1,31 @@
+/*
+ * Copyright (C) 2016 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+#if 0
+/* CMA: Set 320 MB for Continuous Memory Allocator */
+#define CONFIG_QBLISSA9_CMA_SIZE	0x14000000
+#endif
+
+/* NAND */
+#define CONFIG_QBLISSA9_NAND
+
+/* UART */
+//#define CONFIG_QBLISSA9_UART_A
+#define CONFIG_QBLISSA9_UART_B
+//#define CONFIG_QBLISSA9_UART_C
+
+#include "imx6q.dtsi"
+#include "qblissa9qdl.dtsi"
+
+/ {
+	model = "F&S i.MX6 Dual/Quad QBlissA9";
+	compatible = "fsl,imx6q-qblissa9", "fsl,imx6q";
+};
+
