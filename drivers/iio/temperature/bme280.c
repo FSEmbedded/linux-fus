@@ -975,7 +975,7 @@ static int bme280_init(struct bme280_t *bme280)
 	/* read Chip Id */
 	bme280->chip_id = i2c_smbus_read_byte_data(bme280->client,
 							BME280_CHIP_ID_REG);
-	if(bme280->chip_id < 0)
+	if(bme280->chip_id != 0x60)
 		return -ENODEV;
 	/* readout bme280 calibparam structure */
 	bme280_get_calib_param(bme280);
@@ -1293,6 +1293,9 @@ static int bme280_probe(struct i2c_client *client,
 	int ret;
 	struct iio_dev *indio_dev;
 	struct bme280_t *bme280_chip;
+
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
+		return -ENODEV;
 
 	bme280_chip = devm_kzalloc(&client->dev, sizeof(*bme280_chip),
 								GFP_KERNEL);
