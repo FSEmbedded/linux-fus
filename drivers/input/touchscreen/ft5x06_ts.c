@@ -111,6 +111,7 @@ struct ft5x0x_ts_data {
 	int may_wakeup;			/* Touch may wake us up */
 	struct mutex mutex;
 	int threshold;
+	int swap_xy;
 };
 
 /* The defaults should result in a working touch, override with device tree */
@@ -344,11 +345,18 @@ static irqreturn_t ft5x0x_ts_ist(int irq, void *dev_id)
 		input_mt_report_slot_state(input_dev, MT_TOOL_FINGER, down);
 		if (!down)
 			continue;
-
-		input_report_abs(input_dev, ABS_MT_POSITION_X,
-				 ((p[0] << 8) | p[1]) & 0xFFF);
-		input_report_abs(input_dev, ABS_MT_POSITION_Y,
-				 ((p[2] << 8) | p[3]) & 0xFFF);
+		if(tsdata->swap_xy) {
+			input_report_abs(input_dev, ABS_MT_POSITION_Y,
+					((p[0] << 8) | p[1]) & 0xFFF);
+			input_report_abs(input_dev, ABS_MT_POSITION_X,
+					((p[2] << 8) | p[3]) & 0xFFF);
+		}
+		else {
+			input_report_abs(input_dev, ABS_MT_POSITION_X,
+					((p[0] << 8) | p[1]) & 0xFFF);
+			input_report_abs(input_dev, ABS_MT_POSITION_Y,
+					((p[2] << 8) | p[3]) & 0xFFF);
+		}
 		input_report_abs(input_dev, ABS_MT_WIDTH_MAJOR, 1);
 	}
 	input_mt_report_pointer_emulation(input_dev, true);
@@ -400,6 +408,7 @@ static int ft5x0x_i2c_ts_probe_dt(struct ft5x0x_ts_data *tsdata)
 	}
 	if (of_property_read_u32(np, "threshold", &val) == 0)
 		tsdata->threshold = val;
+	tsdata->swap_xy = of_property_read_bool(np, "swap-xy");
 
 	return 0;
 }
