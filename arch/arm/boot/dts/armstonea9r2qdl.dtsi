@@ -425,18 +425,16 @@
 
 &clks {
 	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
-			  <&clks IMX6QDL_CLK_SSI1_SEL>,
-			  <&clks IMX6QDL_CLK_SSI1>,
-			  <&clks IMX6QDL_CLK_CKO2_SEL>,
+			  <&clks IMX6QDL_CLK_CKO1_SEL>,
+			  <&clks IMX6QDL_CLK_CKO1_PODF>,
 			  <&clks IMX6QDL_CLK_CKO>;
 
 	assigned-clock-parents = <0>,
 				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 				 <0>,
-				 <&clks IMX6QDL_CLK_SSI1>,
-				 <&clks IMX6QDL_CLK_CKO2>;
-//###	assigned-clock-rates = <786432000>, <0>, <24576000>;
-	assigned-clock-rates = <786432000>, <0>, <12288000>;
+				 <&clks IMX6QDL_CLK_CKO1>;
+
+	assigned-clock-rates = <98304000>, <98304000>, <12288000>;
 };
 
 #ifdef CONFIG_ARMSTONEA9R2_SPI_FLASH
