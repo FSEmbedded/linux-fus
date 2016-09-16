@@ -691,6 +691,9 @@ static void ov5640_standby(s32 enable)
 
 static void ov5640_reset(void)
 {
+	if (rst_gpio < 0 || pwn_gpio < 0)
+		return;
+
 	/* camera reset */
 	gpio_set_value(rst_gpio, 1);
 
@@ -1997,12 +2000,15 @@ static int ov5640_probe(struct i2c_client *client,
 	rst_gpio = of_get_named_gpio(dev->of_node, "rst-gpios", 0);
 	if (!gpio_is_valid(rst_gpio)) {
 		dev_warn(dev, "no sensor reset pin available");
-		return -EINVAL;
-	}
-	retval = devm_gpio_request_one(dev, rst_gpio, GPIOF_OUT_INIT_HIGH,
+		rst_gpio = -1;
+	} else {
+		retval = devm_gpio_request_one(dev, rst_gpio, GPIOF_OUT_INIT_HIGH,
 					"ov5640_mipi_reset");
-	if (retval < 0)
-		return retval;
+		if (retval < 0) {
+			dev_warn(dev, "Failed to set reset pin\n");
+			return retval;
+		}
+	}
 
 	/* Set initial values for the sensor struct. */
 	memset(&ov5640_data, 0, sizeof(ov5640_data));

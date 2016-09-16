@@ -582,7 +582,7 @@
 		};
 #endif
 
-#if 0
+
 /* If you want to use mipi camera you have to check the clock because cko2
  * is used by sgtl5000 audio driver so you have to change the &clk node to
  * ck01. Therefore you have to set PLL_AUDIO, CCM_ANALOG_MISC2n[MSB:LSB] */
@@ -598,14 +598,15 @@
 						rev B board is VGEN5 */
 		DVDD-supply = <&reg_camera_dvdd>;  /* 1.5v*/
 		pwn-gpios = <&gpio5 24 GPIO_ACTIVE_HIGH>;
-		/* not available */
-		rst-gpios = <&gpio5 23 GPIO_ACTIVE_LOW>;
+		/* With our camera adapter we dont need a reset pin because the
+		 * reset will be automatically generated on our adapter. Other
+		 * cameras maybe need a gpio to perform a reset. */
+		/* rst-gpios = <dummy>; */
 		csi_id = <1>;
 		mclk = <24000000>;
 		mclk_source = <0>;
 	};
 #endif /* CONFIG_ARMSTONEA9R2_SERIAL_CAMERA */
-#endif
 };
 #endif /* CONFIG_ARMSTONEA9R2_I2C_C */
 
@@ -718,7 +719,7 @@
 };
 #endif
 
-#if 0
+
 #ifdef CONFIG_ARMSTONEA9R2_SERIAL_CAMERA
 &mipi_csi {
 	status = "okay";
@@ -728,7 +729,7 @@
 	lanes = <2>;
 };
 #endif
-#endif
+
 
 #ifdef CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO
 &ssi1 {
@@ -963,8 +964,10 @@
 
 				/* Audio clock 24MHz */
 				MX6QDL_PAD_GPIO_0__CCM_CLKO1		0x130b0
+
 				/* Camera clock, ref. ov564x_mipi */
-				//MX6QDL_PAD_NANDF_CS2__CCM_CLKO2	0x130b0
+				MX6QDL_PAD_NANDF_CS2__CCM_CLKO2		0x130b0
+				MX6QDL_PAD_CSI0_DAT6__GPIO5_IO24	0x17059
 
 				/* VLCD_ON and 5V_3V3 (external Pull Up)
 				 * for reg_vlcd */
