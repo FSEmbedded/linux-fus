@@ -59,12 +59,12 @@
  * Configure LCD settings here (ignored if LCD is not used);
  * see drivers/video/fbdev/mxc/mxc_lcdif.c for possible LCD mode strings
  */
-#define CONFIG_EFUSA9_LCD_BPP		16
+#define CONFIG_EFUSA9_LCD_BPP		32
 #define CONFIG_EFUSA9_LCD_PIX_FMT	"BGR666"
 #define CONFIG_EFUSA9_LCD_MODE_STR	"LCD-ET070080"
 
 /* Configure HDMI settings here (ignored if HDMI is not used) */
-#define CONFIG_EFUSA9_HDMI_BPP		24
+#define CONFIG_EFUSA9_HDMI_BPP		32
 #define CONFIG_EFUSA9_HDMI_PIX_FMT	"RGB24"
 #define CONFIG_EFUSA9_HDMI_MODE_STR	"1920x1080M@60"
 
@@ -78,7 +78,7 @@
  *            all other data bits on all four differential data pairs
  */
 #define CONFIG_EFUSA9_LVDS0_MAPPING	"spwg"
-#define CONFIG_EFUSA9_LVDS0_BPP		24
+#define CONFIG_EFUSA9_LVDS0_BPP		32
 #define CONFIG_EFUSA9_LVDS0_PIX_FMT	"RGB666"
 #define CONFIG_EFUSA9_LVDS0_DATA_WIDTH	18
 #define CONFIG_EFUSA9_LVDS0_TIMING \
@@ -103,7 +103,7 @@ wvga {					\
  * For mapping value see above.
  */
 #define CONFIG_EFUSA9_LVDS1_MAPPING	"spwg"
-#define CONFIG_EFUSA9_LVDS1_BPP		24
+#define CONFIG_EFUSA9_LVDS1_BPP		32
 #define CONFIG_EFUSA9_LVDS1_PIX_FMT	"RGB666"
 #define CONFIG_EFUSA9_LVDS1_DATA_WIDTH	18
 #define CONFIG_EFUSA9_LVDS1_TIMING \

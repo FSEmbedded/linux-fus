@@ -25,7 +25,7 @@
 /*
  * Configure LCD settings here (ignored if LCD is not used)
  */
-#define CONFIG_EFUSA7UL_LCD_BPP		16
+#define CONFIG_EFUSA7UL_LCD_BPP		32
 #define CONFIG_EFUSA7UL_LCD_BUS_WIDTH	18
 #define CONFIG_EFUSA7UL_LCD_TIMING \
 wvga {					\

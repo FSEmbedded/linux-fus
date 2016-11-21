@@ -30,7 +30,7 @@
 /*
  * Configure LCD settings here (ignored if LCD is not used)
  */
-#define CONFIG_EFUSA9X_LCD_BPP		16
+#define CONFIG_EFUSA9X_LCD_BPP		32
 #define CONFIG_EFUSA9X_LCD_BUS_WIDTH	18
 #define CONFIG_EFUSA9X_LCD_TIMING \
 lcd_wvga {				\
@@ -59,7 +59,7 @@ lcd_wvga {				\
  *            all other data bits on all four differential data pairs
  */
 #define CONFIG_EFUSA9X_LVDS_MAPPING	"spwg"
-#define CONFIG_EFUSA9X_LVDS_BPP		16
+#define CONFIG_EFUSA9X_LVDS_BPP		32
 #define CONFIG_EFUSA9X_LVDS_BUS_WIDTH	18
 #define CONFIG_EFUSA9X_LVDS_TIMING \
 lvds_wvga {				\
