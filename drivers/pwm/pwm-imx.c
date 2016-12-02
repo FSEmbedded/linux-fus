@@ -160,6 +160,10 @@ static int imx_pwm_config_v2(struct pwm_chip *chip,
 	do_div(c, period_ns);
 	duty_cycles = c;
 
+	/* invert polarity */
+	if (pwm->polarity)
+		duty_cycles = period_cycles - duty_cycles;
+
 	/*
 	 * according to imx pwm RM, the real period value should be
 	 * PERIOD value in PWMPR plus 2.
@@ -239,11 +243,19 @@ static void imx_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
 	clk_disable_unprepare(imx->clk_per);
 }
 
+static int imx_set_polarity(struct pwm_chip *chip, struct pwm_device *pwm,
+						enum pwm_polarity polarity)
+{
+	/* Everything we need is set by the core function */
+	return 0;
+};
+
 static struct pwm_ops imx_pwm_ops = {
 	.enable = imx_pwm_enable,
 	.disable = imx_pwm_disable,
 	.config = imx_pwm_config,
 	.owner = THIS_MODULE,
+	.set_polarity = imx_set_polarity,
 };
 
 struct imx_pwm_data {
@@ -271,12 +283,18 @@ MODULE_DEVICE_TABLE(of, imx_pwm_dt_ids);
 
 static int imx_pwm_probe(struct platform_device *pdev)
 {
+	struct device_node *np = pdev->dev.of_node;
 	const struct of_device_id *of_id =
 			of_match_device(imx_pwm_dt_ids, &pdev->dev);
 	const struct imx_pwm_data *data;
 	struct imx_chip *imx;
 	struct resource *r;
-	int ret = 0;
+	int ret = 0, i = 0;
+
+	if (!np) {
+		dev_err(&pdev->dev, "can't get the platform data\n");
+		return -EINVAL;
+	}
 
 	if (!of_id)
 		return -ENODEV;
@@ -313,6 +331,20 @@ static int imx_pwm_probe(struct platform_device *pdev)
 	data = of_id->data;
 	imx->config = data->config;
 	imx->set_enable = data->set_enable;
+
+	/* set xlate according to cell size found in device tree */
+	ret = of_property_read_u32(np, "#pwm-cells", &i);
+	if (ret < 0)
+		return ret;	 
+	
+	/* 
+	 * We support 2 and 3 pwm cells. One case we handle here, the other case
+	 * is automatically handled in of_pwmchip_add() in drivers/pwm/core.c.
+	 */
+	if (i == 3) {
+		imx->chip.of_xlate = of_pwm_xlate_with_flags;
+		imx->chip.of_pwm_n_cells = 3;
+	}
 
 	ret = pwmchip_add(&imx->chip);
 	if (ret < 0)
