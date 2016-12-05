@@ -35,9 +35,8 @@ lcd_wvga {				\
 #define CONFIG_PICOCOMA9X_4WTOUCH_SX8655_ONBOARD /* SX8655 res. touch */
 
 
-/* CMA */	//ONLY 256 WORKS => otherwise xserver fails//
-//#define CONFIG_PICOCOMA9X_CMA_SIZE 0x8000000 /* 128MB continues mem allocator*/
-#define CONFIG_PICOCOMA9X_CMA_SIZE 0x16000000  /* 256MB continues mem allocator*/
+/* CMA */
+#define CONFIG_PICOCOMA9X_CMA_SIZE 0xA000000  /* 160MB continues mem allocator*/
 
 
 /* ETH1 */
@@ -51,7 +50,7 @@ lcd_wvga {				\
  * AUDIO below.
  * PCOMnet SKIT is designed for PicoCOM with two ethernet and no audio.
  */
-//#define CONFIG_PICOCOMA9X_ETH_2
+#define CONFIG_PICOCOMA9X_ETH_2
 //#define CONFIG_PICOCOMA9X_AUDIO	//default	//NOT TESTED//
 
 
@@ -63,7 +62,7 @@ lcd_wvga {				\
  * CAN1 below.
  */
 //#define CONFIG_PICOCOMA9X_I2C_1	//NOT TESTED//
-//#define CONFIG_PICOCOMA9X_CAN_1	//default
+#define CONFIG_PICOCOMA9X_CAN_1	//default
 
 /* 
  * IC24 / CAN2
@@ -72,7 +71,7 @@ lcd_wvga {				\
  * If you want to use the pins for CAN2 nevertheless define CAN2 instead of
  * I2C4 below.
  */
-//#define CONFIG_PICOCOMA9X_I2C_4	//default
+#define CONFIG_PICOCOMA9X_I2C_4	//default
 //#define CONFIG_PICOCOMA9X_CAN_2			//NOT TESTED//
 
 
@@ -101,8 +100,6 @@ lcd_wvga {				\
 // #define CONFIG_PICOCOMA9X_UART_3	//NOT TESTED//
 #define CONFIG_PICOCOMA9X_UART_4
 //#define CONFIG_PICOCOMA9X_UART_5	//NOT TESTED//
-
-
 
 //further devices without defines:
 // pwm4		//NOT TESTED//
