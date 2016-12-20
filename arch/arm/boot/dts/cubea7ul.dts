@@ -9,16 +9,13 @@
 /* CMA: Set 64 MB for Continuous Memory Allocator */
 #define CONFIG_CUBEA7UL_CMA_SIZE 0x4000000
 
-/* NAND */
-#define CONFIG_CUBEA7UL_NAND
-
 /dts-v1/;
 
 #include <dt-bindings/input/input.h>
 #include "imx6ul.dtsi"
 
 / {
-	model = "F&S cubeA7UL";
+	model = "F&S CubeA7UL";
 	compatible = "fsl,imx6ul-cubea7ul", "fsl,imx6ul";
 
 #if 0
@@ -139,12 +136,12 @@
 	/* F&S board information */
 	bdinfo {
 		compatible = "bdinfo";
-		board_name = "cubeA7UL";
+		board_name = "CubeA7UL";
 		ecc_strength = "8";
 	};
 };
 
-/* RAM size for Continues Memory Allocator */
+/* RAM size for Continuous Memory Allocator */
 &cma {
 	size = <CONFIG_CUBEA7UL_CMA_SIZE>;
 };
@@ -312,7 +309,6 @@
 	compatible = "fus,imx6ul-dma-apbh", "fus,imx28-dma-apbh";
 };
 
-#ifdef CONFIG_CUBEA7UL_NAND
 &gpmi {
 	/* Switch to F&S implementation of GPMI NAND driver */
 	compatible = "fus,imx6ul-gpmi-nand", "fus,imx6sx-gpmi-nand";
@@ -323,15 +319,13 @@
 	fus,ecc_strength = <8>;
 	status = "okay";
 };
-#endif
+
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog_1>;
 	efusa7ul {
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
-/*###*/				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
-
 				/* MIC_IN */
 				MX6UL_PAD_GPIO1_IO04__GPIO1_IO04	0x00000
 
@@ -444,7 +438,7 @@
 				MX6UL_PAD_LCD_DATA03__I2C4_SCL		0x4001b8b0
 			>;
 		};
-#ifdef CONFIG_CUBEA7UL_NAND
+
 		pinctrl_gpmi_nand_1: gpmi-nand-1 {
 #if 0
 			/* Already configured in NBoot/U-Boot */
@@ -468,7 +462,7 @@
 			>;
 #endif
 		};
-#endif
+
 		pinctrl_csi: csigrp-0 {
 			fsl,pins = <
 				MX6UL_PAD_LCD_DATA13__GPIO3_IO18	0x80000000 //CSI_PWDN
