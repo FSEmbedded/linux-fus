@@ -357,9 +357,8 @@
 							"fsl,imx51-ssi";
 					reg = <0x02028000 0x4000>;
 					interrupts = <0 46 IRQ_TYPE_LEVEL_HIGH>;
-					clocks = <&clks IMX6QDL_CLK_SSI1_IPG>,
-						 <&clks IMX6QDL_CLK_SSI1>;
-					clock-names = "ipg", "baud";
+					clocks = <&clks IMX6QDL_CLK_SSI1>;
+					clock-names = "baud";
 					dmas = <&sdma 37 22 0>,
 					       <&sdma 38 22 0>;
 					dma-names = "rx", "tx";
