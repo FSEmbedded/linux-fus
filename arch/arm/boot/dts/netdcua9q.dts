@@ -1,0 +1,225 @@
+/*
+ * Copyright (C) 2016 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_NETDCUA9_BOARD_REVISION	100
+
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_LCD	1	/* LCD via RGB adapter */
+#define DISPLAY_HDMI	2	/* DVI/HDMI via HDMI connector */
+#define DISPLAY_LVDS0	3	/* LVDS channel 0 */
+#define DISPLAY_LVDS1	4	/* LVDS channel 1 */
+
+/*
+ * Set the display configuration:
+ *
+ * - If you have no display, set all four settings to DISPLAY_NONE.
+ * - If you have one display, set MXCFB0 to one of the display types above and
+ *   leave the other settings at DISPLAY_NONE.
+ * - If you have two displays, set MXCFB0 and MXCFB1 to a display type from
+ *   above and leave the other two at DISPLAY_NONE.
+ * - If you have three displays, set MXCFB0, MXCFB1 and MXCFB2 to a display
+ *   type from above and leave MXCFB3 at DISPLAY_NONE.
+ * - If you have four displays, set all four settings to a valid display type.
+ *
+ * You have to use a different type for each display. If you want two LVDS
+ * displays, set one to DISPLAY_LVDS0 and the other to DISPLAY_LVDS1. This
+ * corresponds to the LVDS channel where the display is connected to.
+ *
+ * The first two displays will also get a video overlay, so MXCFB0 will use
+ * /dev/fb0 and /dev/fb1, MXCFB1 will use /dev/fb2 and /dev/fb3, MXCFB2 will
+ * use /dev/fb4 and MXCFB3 will use /dev/fb5. If you want to restrict the
+ * display output to one IPU (i.MX6 Dual/Quad has two IPUs), for example for
+ * energy saving reasons, you must not use more than two displays and you must
+ * set CONFIG_NETDCUA9_USE_ONE_IPU below. Then only MXCFB0 will get a video
+ * overlay and uses /dev/fb0 and /dev/fb1, and MXCFB1 will only use /dev/fb2.
+ */
+#define CONFIG_NETDCUA9_MXCFB0		DISPLAY_LCD
+#define CONFIG_NETDCUA9_MXCFB1		DISPLAY_NONE
+#define CONFIG_NETDCUA9_MXCFB2		DISPLAY_NONE
+#define CONFIG_NETDCUA9_MXCFB3		DISPLAY_NONE
+
+/*
+ * Define this if you only want to use one IPU. This means that you can use
+ * at most two displays and only the first display can have a video overlay.
+ * If you want to have more than two displays or if you want to have two
+ * displays with a video overlay each, then you need to use both IPUs of the
+ * i.MX6 Dual/Quad CPU.
+ */
+//#define CONFIG_NETDCUA9_USE_ONE_IPU
+
+/*
+ * Configure LCD settings here (ignored if LCD is not used);
+ * see drivers/video/fbdev/mxc/mxc_lcdif.c for possible LCD mode strings
+ */
+#define CONFIG_NETDCUA9_LCD_BPP		32
+#define CONFIG_NETDCUA9_LCD_PIX_FMT	"RGB24"
+#define CONFIG_NETDCUA9_LCD_MODE_STR	"LCD-ET070080"
+
+/* Configure HDMI settings here (ignored if HDMI is not used) */
+#define CONFIG_NETDCUA9_HDMI_BPP		24
+#define CONFIG_NETDCUA9_HDMI_PIX_FMT	"RGB24"
+#define CONFIG_NETDCUA9_HDMI_MODE_STR	"1920x1080M@60"
+
+/*
+ * Configure LVDS0 settings here (ignored if LVDS0 is not used)
+ * Mapping:
+ *
+ * - "spwg":  18 bpp or 24 bpp, in case of 24 bpp, bits 6 and 7 of each color
+ *            are encoded on fourth LVDS differential data pair
+ * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
+ *            all other data bits on all four differential data pairs
+ */
+#define CONFIG_NETDCUA9_LVDS0_MAPPING	"spwg"
+#define CONFIG_NETDCUA9_LVDS0_BPP		24
+#define CONFIG_NETDCUA9_LVDS0_PIX_FMT	"RGB666"
+#define CONFIG_NETDCUA9_LVDS0_DATA_WIDTH	18
+#define CONFIG_NETDCUA9_LVDS0_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+
+/*
+ * Configure LVDS1 settings here (ignored if LVDS1 is not used)
+ * For mapping value see above.
+ */
+#define CONFIG_NETDCUA9_LVDS1_MAPPING	"spwg"
+#define CONFIG_NETDCUA9_LVDS1_BPP		24
+#define CONFIG_NETDCUA9_LVDS1_PIX_FMT	"RGB666"
+#define CONFIG_NETDCUA9_LVDS1_DATA_WIDTH	18
+#define CONFIG_NETDCUA9_LVDS1_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+
+/*
+ * Define this for a two-channel display, i.e. one display, one framebuffer,
+ * but two LVDS channels, even pixels from one channel, odd pixels from the
+ * other channel. Only define either DISPLAY_LVDS0 or DISPLAY_LVDS1 in this
+ * case, using the full display resolution.
+ */
+//#define CONFIG_NETDCUA9_LVDS_SPLIT_MODE
+
+/*
+ * Define this if you have two similar displays (same resolution and timings),
+ * one on each LVDS channel. The display content of the framebuffer is shown
+ * on both displays simultaneously (cloned). Only define either DISPLAY_LVDS0
+ * or DISPLAY_LVDS1 in this case, using the resolution of one of the displays.
+ */
+//#define CONFIG_NETDCUA9_LVDS_DUAL_MODE
+
+/*
+ * Define this if your LVDS display requires 5V I/O logic voltage. Default is
+ * 3.3V. ATTENTION: Setting 5V on a 3.3V display may damage the display!
+ * Remark: This setting requires board revision 1.21 or newer; older board
+ * revisions only support 3.3V.
+ */
+//#define CONFIG_NETDCUA9_5V_LVDS
+
+/*
+ * Configure touch screen:
+ *
+ * - 4-wire/5-wire analog resistive touch, touch controller is optional
+  * - PCAP touch based on Maxtouch controller (MXT224, etc), on Touch Connector
+ * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ *
+ * On netdcuA9, all touches use the same interrupt line and I2C bus, so do not
+ * select more than one entry! Select none if you do not need touch support.
+ */
+//#define CONFIG_NETDCUA9_CAPTOUCH_MXT224
+//#define CONFIG_NETDCUA9_CAPTOUCH_FT5x06
+
+/* CMA: Set 320 MB for Continuous Memory Allocator */
+#define CONFIG_NETDCUA9_CMA_SIZE		0x14000000
+
+/* NAND */
+#define CONFIG_NETDCUA9_NAND
+
+/* AUDIO */
+#define CONFIG_NETDCUA9_WM9715_AUDIO
+
+#if 0 //### todo
+/* Camera connected */
+//#define CONFIG_NETDCUA9_CAMERA
+
+/* Camera on parallel CSI interface */
+//#define CONFIG_NETDCUA9_PARALLEL_CAMERA
+
+/* Camera on serial MIPI CSI interface */
+//#define CONFIG_NETDCUA9_SERIAL_CAMERA
+#endif
+
+/* SD-CARD - SD_A is SD card slot */
+#define CONFIG_NETDCUA9_SD_A
+
+/* EMMC */
+//#define CONFIG_NETDCUA9_EMMC
+
+/* SPI */
+#define CONFIG_NETDCUA9_SPI_A
+
+/* I2C */
+/* I2C_A for touchscreen onboard */
+#define CONFIG_NETDCUA9_I2C_A
+/* I2C_C for camera connector and onboard devices */
+#define CONFIG_NETDCUA9_I2C_C
+#ifndef CONFIG_NETDCUA9_SPI_A
+/* I2C_B on connector J5 */
+#define CONFIG_NETDCUA9_I2C_B
+#endif
+
+/* UART */
+/* UART_A debug port */
+#define CONFIG_NETDCUA9_UART_A
+/* UART_B on J7 */
+#define CONFIG_NETDCUA9_UART_B
+/* if you want to use UART_B for RS485 activate define, pins on 22,24 on J1 */
+//#define CONFIG_NETDCUA9_UART_B_RS485
+#define CONFIG_NETDCUA9_UART_C
+
+//### todo
+/* ETHERNET 2 */
+//#define CONFIG_NETDCUA9_ETHERNET_2
+
+#include "imx6q.dtsi"
+#include "netdcua9qdl.dtsi"
+
+/ {
+	model = "F&S i.MX6 Dual/Quad netdcuA9 module";
+	compatible = "fus,imx6q-netdcua9", "fsl,imx6q";
+};
+
+&bdinfo {
+	board_name = "netdcua9q";
+};
