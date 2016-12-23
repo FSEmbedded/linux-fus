@@ -355,6 +355,18 @@ config SND_SOC_IMX_MC13783
 	select SND_SOC_MC13783
 	select SND_SOC_IMX_PCM_DMA
 
+config SND_SOC_FSL_FUS_WM9715
+	tristate "SoC Audio support for i.MX boards with WM9715"
+	depends on OF
+	select SND_SOC_AC97_BUS
+	select SND_SOC_WM9712
+	select SND_SOC_IMX_AUDMUX
+	select SND_SOC_IMX_PCM_DMA
+	select SND_SOC_FSL_SSI
+	help
+	  Say Y if you want to add support for SoC audio on an i.MX board with
+	  a wm9715 codec.
+
 config SND_SOC_FSL_ASOC_CARD
 	tristate "Generic ASoC Sound Card with ASRC support"
 	depends on OF && I2C
