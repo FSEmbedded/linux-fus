@@ -27,6 +27,7 @@
 #include <linux/phy.h>
 #include <linux/eeprom_93cx6.h>
 #include <linux/slab.h>
+#include <linux/of.h>
 
 #include <net/ax88796.h>
 
@@ -99,6 +100,12 @@ struct ax_device {
 	unsigned int irqflags;
 
 	u32 reg_offsets[0x20];
+
+	unsigned int	 wordlength;	/* 1 or 2 (8 or 16 Bit)*/
+	unsigned int	 dcr_val;	/* default value for DCR */
+	unsigned int	 gpoc_val;	/* default value for GPOC */
+	unsigned int	 flags;		/* flags in include/net/ax88796.h */
+	unsigned int	 dev_id;	/* eth id */
 };
 
 static inline struct ax_device *to_ax_dev(struct net_device *dev)
@@ -382,7 +389,7 @@ static void ax_phy_switch(struct net_device *dev, int on)
 	struct ei_device *ei_local = netdev_priv(dev);
 	struct ax_device *ax = to_ax_dev(dev);
 
-	u8 reg_gpoc =  ax->plat->gpoc_val;
+	u8 reg_gpoc =  ax->gpoc_val;
 
 	if (!!on)
 		reg_gpoc &= ~AX_GPOC_PPDSET;
@@ -674,8 +681,8 @@ static void ax_initial_setup(struct net_device *dev, struct ei_device *ei_local)
 	ei_outb(E8390_NODMA + E8390_PAGE0 + E8390_STOP, ioaddr + E8390_CMD);
 
 	/* set to byte access */
-	ei_outb(ax->plat->dcr_val & ~1, ioaddr + EN0_DCFG);
-	ei_outb(ax->plat->gpoc_val, ioaddr + EI_SHIFT(0x17));
+	ei_outb(ax->dcr_val & ~1, ioaddr + EN0_DCFG);
+	ei_outb(ax->gpoc_val, ioaddr + EI_SHIFT(0x17));
 }
 
 /*
@@ -706,7 +713,7 @@ static int ax_init_dev(struct net_device *dev)
 
 	/* read the mac from the card prom if we need it */
 
-	if (ax->plat->flags & AXFLG_HAS_EEPROM) {
+	if (ax->flags & AXFLG_HAS_EEPROM) {
 		unsigned char SA_prom[32];
 
 		for (i = 0; i < sizeof(SA_prom); i += 2) {
@@ -714,7 +721,7 @@ static int ax_init_dev(struct net_device *dev)
 			SA_prom[i + 1] = ei_inb(ioaddr + NE_DATAPORT);
 		}
 
-		if (ax->plat->wordlength == 2)
+		if (ax->wordlength == 2)
 			for (i = 0; i < 16; i++)
 				SA_prom[i] = SA_prom[i+i];
 
@@ -722,7 +729,7 @@ static int ax_init_dev(struct net_device *dev)
 	}
 
 #ifdef CONFIG_AX88796_93CX6
-	if (ax->plat->flags & AXFLG_HAS_93CX6) {
+	if (ax->flags & AXFLG_HAS_93CX6) {
 		unsigned char mac_addr[ETH_ALEN];
 		struct eeprom_93cx6 eeprom;
 
@@ -738,9 +745,9 @@ static int ax_init_dev(struct net_device *dev)
 		memcpy(dev->dev_addr, mac_addr, ETH_ALEN);
 	}
 #endif
-	if (ax->plat->wordlength == 2) {
+	if (ax->wordlength == 2) {
 		/* We must set the 8390 for word mode. */
-		ei_outb(ax->plat->dcr_val, ei_local->mem + EN0_DCFG);
+		ei_outb(ax->dcr_val, ei_local->mem + EN0_DCFG);
 		start_page = NESM_START_PG;
 		stop_page = NESM_STOP_PG;
 	} else {
@@ -749,7 +756,7 @@ static int ax_init_dev(struct net_device *dev)
 	}
 
 	/* load the mac-address from the device */
-	if (ax->plat->flags & AXFLG_MAC_FROMDEV) {
+	if (ax->flags & AXFLG_MAC_FROMDEV) {
 		ei_outb(E8390_NODMA + E8390_PAGE1 + E8390_STOP,
 			ei_local->mem + E8390_CMD); /* 0x61 */
 		for (i = 0; i < ETH_ALEN; i++)
@@ -757,7 +764,7 @@ static int ax_init_dev(struct net_device *dev)
 				ei_inb(ioaddr + EN1_PHYS_SHIFT(i));
 	}
 
-	if ((ax->plat->flags & AXFLG_MAC_FROMPLATFORM) &&
+	if ((ax->flags & AXFLG_MAC_FROMPLATFORM) &&
 	    ax->plat->mac_addr)
 		memcpy(dev->dev_addr, ax->plat->mac_addr, ETH_ALEN);
 
@@ -766,7 +773,7 @@ static int ax_init_dev(struct net_device *dev)
 	ei_local->name = "AX88796";
 	ei_local->tx_start_page = start_page;
 	ei_local->stop_page = stop_page;
-	ei_local->word16 = (ax->plat->wordlength == 2);
+	ei_local->word16 = (ax->wordlength == 2);
 	ei_local->rx_start_page = start_page + TX_PAGES;
 
 #ifdef PACKETBUF_MEMSIZE
@@ -789,6 +796,9 @@ static int ax_init_dev(struct net_device *dev)
 		goto out_irq;
 
 	ax_NS8390_init(dev, 0);
+
+	if (ax->dev_id >= 0)
+		sprintf(dev->name, "eth%d", ax->dev_id);
 
 	ret = register_netdev(dev);
 	if (ret)
@@ -832,6 +842,52 @@ static int ax_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static int ax_probe_dt(struct ax_device *ax, struct ei_device *ei_local, struct platform_device *pdev)
+{
+	struct device_node *np = pdev->dev.of_node;
+	int val = 0;
+
+	ax->flags = 0;
+
+	if(of_property_read_u32(np, "rcr_val", &val) == 0)
+		ei_local->rxcr_base = val;
+	else {
+		dev_err(&pdev->dev, "no rcr value specified\n");
+		return -ENXIO;
+	}
+	if(of_property_read_u32(np, "dcr_val", &val) == 0) {
+		ax->dcr_val = val;
+	}
+	else {
+		dev_err(&pdev->dev, "no dcr value specified\n");
+		return -ENXIO;
+	}
+	if(of_property_read_u32(np, "wordlength", &val) == 0)
+		ax->wordlength = val;
+	else {
+		dev_err(&pdev->dev, "no wordlength specified\n");
+		return -ENXIO;
+	}
+	if(of_property_read_u32(np, "gpoc_val", &val) == 0)
+		ax->gpoc_val = val;
+	else {
+		ax->gpoc_val = 0x19;
+	}
+
+	ax->dev_id = of_alias_get_id(np, "ethernet");
+	if (ax->dev_id < 0)
+		ax->dev_id = -1;
+
+	if (of_property_read_bool(np, "has-eeprom"))
+		ax->flags |= AXFLG_HAS_EEPROM;
+	if (of_property_read_bool(np, "mac-from-dev"))
+		ax->flags |= AXFLG_MAC_FROMDEV;
+	if (of_property_read_bool(np, "has-93cx6"))
+		ax->flags |= AXFLG_HAS_93CX6;
+
+	return 0;
+}
+
 /*
  * ax_probe
  *
@@ -860,8 +916,21 @@ static int ax_probe(struct platform_device *pdev)
 	ax->plat = dev_get_platdata(&pdev->dev);
 	platform_set_drvdata(pdev, dev);
 
-	ei_local->rxcr_base = ax->plat->rcr_val;
-
+	if(ax->plat) {
+		ei_local->rxcr_base = ax->plat->rcr_val;
+		ax->dcr_val = ax->plat->dcr_val;
+		ax->wordlength = ax->plat->wordlength;
+		ax->gpoc_val = ax->plat->gpoc_val;
+		ax->flags = ax->plat->flags;
+	}
+	else {
+		ret = ax_probe_dt(ax, ei_local, pdev);
+		if (ret) {
+			dev_err(&pdev->dev,
+				"DT probe failed and no platform data present\n");
+			goto exit_mem;
+		}
+	}
 	/* find the platform resources */
 	irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (!irq) {
@@ -886,7 +955,7 @@ static int ax_probe(struct platform_device *pdev)
 	 * setup the register offsets from either the platform data or
 	 * by using the size of the resource provided
 	 */
-	if (ax->plat->reg_offsets)
+	if (ax->plat && ax->plat->reg_offsets)
 		ei_local->reg_offset = ax->plat->reg_offsets;
 	else {
 		ei_local->reg_offset = ax->reg_offsets;
@@ -913,7 +982,7 @@ static int ax_probe(struct platform_device *pdev)
 	/* look for reset area */
 	mem2 = platform_get_resource(pdev, IORESOURCE_MEM, 1);
 	if (!mem2) {
-		if (!ax->plat->reg_offsets) {
+		if (!ax->plat || !ax->plat->reg_offsets) {
 			for (ret = 0; ret < 0x20; ret++)
 				ax->reg_offsets[ret] = (mem_size / 0x20) * ret;
 		}
@@ -997,9 +1066,15 @@ static int ax_resume(struct platform_device *pdev)
 #define ax_resume NULL
 #endif
 
+static const struct of_device_id ax88796_of_match[] = {
+	{ .compatible = "asix,ax88796-eth" },
+	{},
+};
+
 static struct platform_driver axdrv = {
 	.driver	= {
 		.name		= "ax88796",
+		.of_match_table = of_match_ptr(ax88796_of_match),
 	},
 	.probe		= ax_probe,
 	.remove		= ax_remove,

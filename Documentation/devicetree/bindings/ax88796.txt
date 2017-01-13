@@ -1,0 +1,35 @@
+* ASIX AX88796 Ethernet Controller
+
+Required properties:
+- compatible : Should be "asix,ax88796-eth"
+- reg :        Address and length of the register set for the device
+- interrupts : Should contain fec interrupt
+- rcr_val:     Set value RXCR for struct ei_device.
+- dcr_val:     Set value for Data Configuration Register 0x0 byte-wide
+               transfer, 0x1 word-wide transfer.
+- wordlength:  Set the register access length. 1 is 8 bit, 2 is 16 bit.
+
+Optional properties:
+- gpoc_val:    Set Back-pressure Jam Limit Count (BJLC) default is 0x19.
+- flags:       Flags can be: has-eeprom, mac-from-dev, has-93cx6.
+
+Example:
+
+	ax88796: ax88796 {
+		compatible = "asix,ax88796-eth";
+		reg = <1 0 0x40>;
+		reset-supply = <&reg_ax88796>;
+		pme-supply = <&reg_ax88796_pme>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_ax88796>;
+		interrupt-parent = <&gpio3>;
+		interrupts = <14 IRQ_TYPE_EDGE_FALLING>;
+		rcr_val = <0x40>;
+		dcr_val = <0x1>;
+		gpoc_val = <0x19>;
+		wordlength = <2>;
+		mac-from-dev;
+
+		fsl,weim-cs-timing = <0x00020001 0x00000000 0x16000202
+					0x00000002 0x16002082 0x00000000>;
+	};

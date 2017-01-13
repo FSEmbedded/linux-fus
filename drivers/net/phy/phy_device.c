@@ -1090,8 +1090,16 @@ static int gen10g_read_status(struct phy_device *phydev)
 int genphy_soft_reset(struct phy_device *phydev)
 {
 	int ret;
+	u16 val;
 
-	ret = phy_write(phydev, MII_BMCR, BMCR_RESET);
+	/* some phys need to set more bits than only the soft_reset bit so
+	 * thats why we first read the phy control register and keep this bits
+	 * and add the soft_reset bit on it.
+	 */
+	val = phy_read(phydev, MII_BMCR);
+	val |= BMCR_RESET;
+
+	ret = phy_write(phydev, MII_BMCR, val);
 	if (ret < 0)
 		return ret;
 
