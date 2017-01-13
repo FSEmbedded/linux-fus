@@ -137,7 +137,7 @@
 		mxcfb1 = &mxcfb1;
 		mxcfb2 = &mxcfb2;
 		mxcfb3 = &mxcfb3;
-		//ethernet1 = &ax88796;
+		ethernet1 = &ax88796;
 	};
 
 	memory {
@@ -206,13 +206,7 @@
 			regulator-max-microvolt = <3300000>;
 		};
 #endif
-		reg_ax88796_pme: regulator_ax88796_pme {
-			compatible = "regulator-fixed";
-			regulator-name = "ax88796b";
-			gpio = <&gpio3 15 GPIO_ACTIVE_HIGH>;
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-		};
+
 #ifdef CONFIG_NETDCUA9_EMMC
 		/* eMMC */
 		reg_sd3_vmmc: sd3_vmmc{
@@ -248,7 +242,14 @@
 		};
 #endif /* CONFIG_NETDCUA9_CAMERA */
 #endif
-#if 0 //### todo
+		reg_ax88796_pme: regulator_ax88796_pme {
+			compatible = "regulator-fixed";
+			regulator-name = "ax88796b";
+			gpio = <&gpio3 15 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+		};
+
 		reg_ax88796: regulator_ax88796 {
 			compatible = "regulator-fixed";
 			regulator-name = "ax88796";
@@ -256,7 +257,6 @@
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 		};
-#endif
 	};
 
 	/* F&S board information */
@@ -265,20 +265,6 @@
 		board_name = "netdcua9";
 		ecc_strength = "8";
 	};
-
-#if 0 //### todo
-	ax88796 {
-		compatible = "ax88796";
-		reg = <0x0c000000 0x40>;
-		interrupt-parent = <&gpio3>;
-		interrupts = <14 IRQ_TYPE_EDGE_FALLING>;
-		rcr_val = <0x40>;
-		//dcr_val = <0x48>;
-		//wordlength = <2>;
-		//ram_addr = <0x08000000>;
-		//mem_size = <64>;
-	};
-#endif
 
 #ifdef CONFIG_NETDCUA9_WM9715_AUDIO
 	sound {
@@ -773,7 +759,6 @@
 };
 #endif /* CONFIG_NETDCUA9_EMMC */
 
-#if 0 //### todo
 /* chipselect des eim auf cs 0 und cs 1 teilen */
 &weim {
 	#address-cells = <2>;
@@ -783,7 +768,7 @@
 	fsl,weim-cs-gpr = <&gpr>;
 
 	ax88796: ax88796 {
-		compatible = "ax88796";
+		compatible = "asix,ax88796-eth";
 		reg = <1 0 0x40>;
 		reset-supply = <&reg_ax88796>;
 		pme-supply = <&reg_ax88796_pme>;
@@ -792,15 +777,15 @@
 		interrupt-parent = <&gpio3>;
 		interrupts = <14 IRQ_TYPE_EDGE_FALLING>;
 		rcr_val = <0x40>;
-		dcr_val = <0x48>;
-		gpoc_val = <0x0>;
+		dcr_val = <0x1>;
+		gpoc_val = <0x19>;
 		wordlength = <2>;
+		mac-from-dev;
 
 		fsl,weim-cs-timing = <0x00020001 0x00000000 0x16000202
 					0x00000002 0x16002082 0x00000000>;
 	};
 };
-#endif
 
 #ifdef CONFIG_NETDCUA9_LCD
 &lcd {
@@ -1040,7 +1025,6 @@
 	};
 #endif
 
-#if 0 //### todo
 		pinctrl_ax88796: ax88796grp {
 			fsl,pins = <
 				/* AX88796B Ethernet 2 */
@@ -1048,7 +1032,7 @@
 				MX6QDL_PAD_EIM_CS1__EIM_CS1_B		0x00b0
 				MX6QDL_PAD_EIM_RW__EIM_RW		0x00b0
 				/* AX88796B Ethernet 2 IRQ */
-				MX6QDL_PAD_EIM_DA14__GPIO3_IO14		0x30b0
+				MX6QDL_PAD_EIM_DA14__GPIO3_IO14		0xb0b0
 				MX6QDL_PAD_EIM_DA15__GPIO3_IO15		0x30b0
 				/* AX88796B Ethernet 2 RESET */
 				MX6QDL_PAD_GPIO_3__GPIO1_IO03		0xb0b0
@@ -1078,7 +1062,7 @@
 				MX6QDL_PAD_EIM_D31__EIM_DATA31		0xb0b0
 			>;
 		};
-#endif
+
 #ifdef CONFIG_NETDCUA9_SPI_A
 		/* ECSPI1  SPI_A */
 		pinctrl_ecspi1_1: ecspi1grp {

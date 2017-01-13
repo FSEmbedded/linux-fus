@@ -208,10 +208,6 @@ wvga {					\
 //#define CONFIG_NETDCUA9_UART_B_RS485
 #define CONFIG_NETDCUA9_UART_C
 
-//### todo
-/* ETHERNET 2 */
-//#define CONFIG_NETDCUA9_ETHERNET_2
-
 #include "imx6q.dtsi"
 #include "netdcua9qdl.dtsi"
 
