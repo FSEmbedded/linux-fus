@@ -39,7 +39,8 @@ static void __init imx6ul_enet_clk_init(void)
 	np = of_find_node_by_path("/soc/aips-bus@02100000/ethernet@02188000");
 	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
-				   0, IMX6UL_GPR1_ENET1_CLK_OUTPUT);
+				   IMX6UL_GPR1_ENET1_CLK_OUTPUT,
+				   IMX6UL_GPR1_ENET1_CLK_OUTPUT);
 	else
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				   IMX6UL_GPR1_ENET1_CLK_OUTPUT, 0);
@@ -47,7 +48,8 @@ static void __init imx6ul_enet_clk_init(void)
 	np = of_find_node_by_path("/soc/aips-bus@02000000/ethernet@020b4000");
 	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
-				   0, IMX6UL_GPR1_ENET2_CLK_OUTPUT);
+				   IMX6UL_GPR1_ENET2_CLK_OUTPUT,
+				   IMX6UL_GPR1_ENET2_CLK_OUTPUT);
 	else
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				   IMX6UL_GPR1_ENET2_CLK_OUTPUT, 0);
