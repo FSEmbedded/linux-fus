@@ -493,21 +493,26 @@ wvga {					\
 		led@0 {
 			reg = <0>;
 			label = "0-PWRCTL";
+			type = "GPIO";
 			default-on;
 			active-high;
 		};
 		led@1 {
 			reg = <1>;
 			label = "1-LEDCTRL";
+			type = "PWM";
 			default-on;
 		};
 		led@2 {
 			reg = <2>;
 			label = "2-ROTATE";
+			type = "GPIO";
+			active-high;
 		};
 		led@3 {
 			reg = <3>;
 			label = "3-unused";
+			type = "LED";
 		};
 	};
 
