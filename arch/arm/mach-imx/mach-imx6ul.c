@@ -82,6 +82,45 @@ static inline void imx6ul_enet_init(void)
 }
 #endif /* CONFIG_FEC || CONFIG_FEC_MODULE */
 
+#if defined(CONFIG_SND_SOC_FSL_SAI) || defined(CONFIG_SND_SOC_FSL_SAI_MODULE)
+static void imx6ul_sai_init(void)
+{
+	struct regmap *gpr;
+	struct device_node *np;
+
+	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6ul-iomuxc-gpr");
+	if (IS_ERR(gpr)) {
+		pr_err("failed to find fsl,imx6ul-iomux-gpr regmap\n");
+		return;
+	}
+
+	/* Set MCLK direction depending on fsl,mclk-out property */
+	np = of_find_node_by_path("/soc/aips-bus@02000000/spba-bus@02000000/sai@02028000");
+	if (np && of_get_property(np, "fsl,mclk-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				IMX6UL_GPR1_SAI1_MCLK_DIR, IMX6UL_GPR1_SAI1_MCLK_DIR);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				IMX6UL_GPR1_SAI1_MCLK_DIR, 0);
+
+	np = of_find_node_by_path("/soc/aips-bus@02000000/spba-bus@02000000/sai@0202c000");
+	if (np && of_get_property(np, "fsl,mclk-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				IMX6UL_GPR1_SAI2_MCLK_DIR, IMX6UL_GPR1_SAI2_MCLK_DIR);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				IMX6UL_GPR1_SAI2_MCLK_DIR, 0);
+
+	np = of_find_node_by_path("/soc/aips-bus@02000000/spba-bus@02000000/sai@02030000");
+	if (np && of_get_property(np, "fsl,mclk-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				IMX6UL_GPR1_SAI3_MCLK_DIR, IMX6UL_GPR1_SAI3_MCLK_DIR);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				IMX6UL_GPR1_SAI3_MCLK_DIR, 0);
+}
+#endif
+
 #define OCOTP_CFG3			0x440
 #define OCOTP_CFG3_SPEED_SHIFT		16
 #define OCOTP_CFG3_SPEED_696MHZ		0x2
@@ -164,6 +203,9 @@ static void __init imx6ul_init_machine(void)
 
 #if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 	imx6ul_enet_init();
+#endif
+#if defined(CONFIG_SND_SOC_FSL_SAI) || defined(CONFIG_SND_SOC_FSL_SAI_MODULE)
+	imx6ul_sai_init();
 #endif
 	imx_anatop_init();
 	imx6ul_pm_init();
