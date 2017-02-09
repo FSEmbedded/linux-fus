@@ -384,6 +384,7 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	efusa7ul.dtb \
 	picocom1.2.dtb \
 	cubea7ul.dtb \
+	gar1.dtb \
 	imx6ul-9x9-evk.dtb \
 	imx6ul-9x9-evk-btwifi.dtb \
 	imx6ul-9x9-evk-csi.dtb \
