@@ -9,17 +9,17 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 100 for board rev. 1.00 */
-#define CONFIG_GAR1A7UL_BOARD_REVISION	100
+#define CONFIG_GAR1_BOARD_REVISION	100
 
 /* CMA: Set 64 MB for Continuous Memory Allocator */
-#define CONFIG_GAR1A7UL_CMA_SIZE 0x4000000
+#define CONFIG_GAR1_CMA_SIZE 0x4000000
 
 /* NAND */
-#define CONFIG_GAR1A7UL_NAND
+#define CONFIG_GAR1_NAND
 
 /* Network */
-#define CONFIG_GAR1A7UL_ETH0
-#define CONFIG_GAR1A7UL_ETH1
+#define CONFIG_GAR1_ETH0
+#define CONFIG_GAR1_ETH1
 
 #include <dt-bindings/input/input.h>
 #include "imx6ul.dtsi"
@@ -104,7 +104,7 @@
 
 /* RAM size for Continues Memory Allocator */
 &cma {
-	size = <CONFIG_GAR1A7UL_CMA_SIZE>;
+	size = <CONFIG_GAR1_CMA_SIZE>;
 };
 
 &cpu0 {
@@ -113,7 +113,7 @@
 	fsl,arm-soc-shared = <0>;
 };
 
-#ifdef CONFIG_GAR1A7UL_ETH0
+#ifdef CONFIG_GAR1_ETH0
 &fec1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet1>;
@@ -135,7 +135,7 @@
 			reg = <1>;
 		};
 
-#ifdef CONFIG_GAR1A7UL_ETH1
+#ifdef CONFIG_GAR1_ETH1
 		ethphy1: ethernet-phy@17 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <17>;
@@ -143,9 +143,9 @@
 #endif
 	};
 };
-#endif /* CONFIG_GAR1A7UL_ETH0 */
+#endif /* CONFIG_GAR1_ETH0 */
 
-#ifdef CONFIG_GAR1A7UL_ETH1
+#ifdef CONFIG_GAR1_ETH1
 &fec2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet2>;
@@ -158,7 +158,7 @@
 	fsl,ref-clock-out;
 	status = "okay";
 };
-#endif /* CONFIG_GAR1A7UL_ETH1 */
+#endif /* CONFIG_GAR1_ETH1 */
 
 &gpc {
 	fsl,cpu_pupscr_sw2iso = <0x2>;
@@ -256,7 +256,7 @@
 	compatible = "fus,imx6ul-dma-apbh", "fus,imx28-dma-apbh";
 };
 
-#ifdef CONFIG_GAR1A7UL_NAND
+#ifdef CONFIG_GAR1_NAND
 &gpmi {
 	/* Switch to F&S implementation of GPMI NAND driver */
 	compatible = "fus,imx6ul-gpmi-nand", "fus,imx6q-gpmi-nand";
@@ -272,7 +272,7 @@
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog_1>;
-	GAR1A7UL {
+	GAR1 {
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
 				/* LED1_Test */
@@ -293,7 +293,7 @@
 			>;
 		};
 
-#ifdef CONFIG_GAR1A7UL_ETH0
+#ifdef CONFIG_GAR1_ETH0
 		pinctrl_enet1: enet1grp {
 			fsl,pins = <
 				/* MDIO */
@@ -314,7 +314,7 @@
 		};
 #endif
 
-#ifdef CONFIG_GAR1A7UL_ETH1
+#ifdef CONFIG_GAR1_ETH1
 		pinctrl_enet2: enet2grp {
 			fsl,pins = <
 				/* FEC2 */
@@ -414,7 +414,7 @@
 			>;
 		};
 
-#ifdef CONFIG_GAR1A7UL_NAND
+#ifdef CONFIG_GAR1_NAND
 #if 0
 		pinctrl_gpmi_nand_1: gpmi-nand-1 {
 			/* Already configured in NBoot/U-Boot */
