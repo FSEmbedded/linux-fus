@@ -128,8 +128,6 @@
 #define CTRL1_IRQ_STATUS_SHIFT			8
 
 #define CTRL2_OUTSTANDING_REQS__REQ_16		(3 << 21)
-#define CTRL2_ODD_LINE_PATTERN__BGR		(5 << 16)
-#define CTRL2_EVEN_LINE_PATTERN__BGR		(5 << 12)
 
 #define TRANSFER_COUNT_SET_VCOUNT(x)	(((x) & 0xffff) << 16)
 #define TRANSFER_COUNT_GET_VCOUNT(x)	(((x) >> 16) & 0xffff)
@@ -210,6 +208,7 @@ struct mxsfb_info {
 	void __iomem *base;	/* registers */
 	u32 sync;		/* record display timing polarities */
 	u32 pattern;		/* RGB reordering on LCD interface */
+	u32 size;		/* Framebuffer size */
 	unsigned allocated_size;
 	int enabled;
 	unsigned ld_intf_width;
@@ -218,8 +217,7 @@ struct mxsfb_info {
 	struct regulator *reg_lcd;
 	bool wait4vsync;
 	struct completion vsync_complete;
-	ktime_t vsync_nf_timestamp;
-	struct semaphore flip_sem;
+	struct completion flip_complete;
 	int cur_blank;
 	int restore_blank;
 	char disp_dev[32];
@@ -396,7 +394,6 @@ static irqreturn_t mxsfb_irq_handler(int irq, void *dev_id)
 		writel(CTRL1_VSYNC_EDGE_IRQ_EN,
 			     host->base + LCDC_CTRL1 + REG_CLR);
 		host->wait4vsync = 0;
-		host->vsync_nf_timestamp = ktime_get();
 		complete(&host->vsync_complete);
 	}
 
@@ -405,7 +402,7 @@ static irqreturn_t mxsfb_irq_handler(int irq, void *dev_id)
 				host->base + LCDC_CTRL1 + REG_CLR);
 		writel(CTRL1_CUR_FRAME_DONE_IRQ_EN,
 			     host->base + LCDC_CTRL1 + REG_CLR);
-		up(&host->flip_sem);
+		complete(&host->flip_complete);
 	}
 
 	if (acked_status & CTRL1_UNDERFLOW_IRQ)
@@ -637,23 +634,12 @@ static int mxsfb_set_par(struct fb_info *fb_info)
 		mxsfb_disable_controller(fb_info);
 	}
 
-	sema_init(&host->flip_sem, 1);
-
 	/* clear the FIFOs */
 	writel(CTRL1_FIFO_CLEAR, host->base + LCDC_CTRL1 + REG_SET);
 
 	line_size =  fb_info->var.xres * (fb_info->var.bits_per_pixel >> 3);
 	fb_info->fix.line_length = line_size;
 	fb_size = fb_info->var.yres_virtual * line_size;
-
-	/* Reallocate memory */
-	if (!fb_info->fix.smem_start || (fb_size > fb_info->fix.smem_len)) {
-		if (fb_info->fix.smem_start)
-			mxsfb_unmap_videomem(fb_info);
-
-		if (mxsfb_map_videomem(fb_info) < 0)
-			return -ENOMEM;
-	}
 
 	ctrl = CTRL_BYPASS_COUNT | CTRL_MASTER |
 		CTRL_SET_BUS_WIDTH(host->ld_intf_width);
@@ -829,16 +815,7 @@ static int mxsfb_ioctl(struct fb_info *fb_info, unsigned int cmd,
 
 	switch (cmd) {
 	case MXCFB_WAIT_FOR_VSYNC:
-		{
-			long long timestamp;
-			struct mxsfb_info *host = to_imxfb_host(fb_info);
-			ret = mxsfb_wait_for_vsync(fb_info);
-			timestamp = ktime_to_ns(host->vsync_nf_timestamp);
-			if ((ret == 0) && copy_to_user((void *)arg,
-					&timestamp, sizeof(timestamp))) {
-			    ret = -EFAULT;
-			}
-		}
+		ret = mxsfb_wait_for_vsync(fb_info);
 		break;
 	default:
 		break;
@@ -857,8 +834,10 @@ static int mxsfb_blank(int blank, struct fb_info *fb_info)
 	case FB_BLANK_VSYNC_SUSPEND:
 	case FB_BLANK_HSYNC_SUSPEND:
 	case FB_BLANK_NORMAL:
-		if (host->enabled)
+		if (host->enabled) {
 			mxsfb_disable_controller(fb_info);
+			pm_runtime_put_sync_suspend(&host->pdev->dev);
+		}
 
 		clk_disable_disp_axi(host);
 		clk_disable_axi(host);
@@ -866,6 +845,7 @@ static int mxsfb_blank(int blank, struct fb_info *fb_info)
 
 	case FB_BLANK_UNBLANK:
 		if (!host->enabled) {
+			pm_runtime_get_sync(&host->pdev->dev);
 			mxsfb_set_par(&host->fb_info);
 			mxsfb_enable_controller(fb_info);
 		}
@@ -877,6 +857,7 @@ static int mxsfb_blank(int blank, struct fb_info *fb_info)
 static int mxsfb_pan_display(struct fb_var_screeninfo *var,
 		struct fb_info *fb_info)
 {
+	int ret = 0;
 	struct mxsfb_info *host = to_imxfb_host(fb_info);
 	unsigned offset;
 
@@ -899,12 +880,9 @@ static int mxsfb_pan_display(struct fb_var_screeninfo *var,
 	clk_enable_axi(host);
 	clk_enable_disp_axi(host);
 
-	offset = fb_info->fix.line_length * var->yoffset;
+	init_completion(&host->flip_complete);
 
-	if (down_timeout(&host->flip_sem, HZ / 2)) {
-		dev_err(fb_info->device, "timeout when waiting for flip irq\n");
-		return -ETIMEDOUT;
-	}
+	offset = fb_info->fix.line_length * var->yoffset;
 
 	/* update on next VSYNC */
 	writel(fb_info->fix.smem_start + offset,
@@ -912,6 +890,13 @@ static int mxsfb_pan_display(struct fb_var_screeninfo *var,
 
 	writel(CTRL1_CUR_FRAME_DONE_IRQ_EN,
 		host->base + LCDC_CTRL1 + REG_SET);
+
+	ret = wait_for_completion_timeout(&host->flip_complete, HZ / 2);
+	if (!ret) {
+		dev_err(fb_info->device,
+			"mxs wait for pan flip timeout\n");
+		return -ETIMEDOUT;
+	}
 
 	return 0;
 }
@@ -1045,6 +1030,7 @@ static int mxsfb_restore_mode(struct mxsfb_info *host)
 
 	line_count = fb_info->fix.smem_len / fb_info->fix.line_length;
 	fb_info->fix.ypanstep = 1;
+	fb_info->fix.ywrapstep = 1;
 
 	clk_prepare_enable(host->clk_pix);
 	host->enabled = 1;
@@ -1060,7 +1046,7 @@ static int mxsfb_init_fbinfo_dt(struct mxsfb_info *host)
 	struct device_node *np = host->pdev->dev.of_node;
 	struct device_node *display_np;
 	struct device_node *timings_np;
-	struct display_timings *timings;
+	struct display_timings *timings = NULL;
 	const char *disp_dev;
 	u32 width;
 	int i;
@@ -1072,6 +1058,11 @@ static int mxsfb_init_fbinfo_dt(struct mxsfb_info *host)
 	ret = of_property_read_u32(np, "pattern", &host->pattern);
 	if ((ret < 0) || (host->pattern > 5))
 		host->pattern = 0;
+
+	/* read framebuffer_size */
+	ret = of_property_read_u32(np, "framebuffer_size", &host->size);
+	if (ret < 0)
+		host->size = 0;
 
 	display_np = of_parse_phandle(np, "display", 0);
 	if (!display_np) {
@@ -1171,6 +1162,8 @@ static int mxsfb_init_fbinfo_dt(struct mxsfb_info *host)
 put_timings_node:
 	of_node_put(timings_np);
 put_display_node:
+	if (timings)
+		kfree(timings);
 	of_node_put(display_np);
 	return ret;
 }
@@ -1186,6 +1179,7 @@ static int mxsfb_init_fbinfo(struct mxsfb_info *host)
 	fb_info->flags = FBINFO_FLAG_DEFAULT | FBINFO_READS_FAST;
 	fb_info->fix.type = FB_TYPE_PACKED_PIXELS;
 	fb_info->fix.ypanstep = 1;
+	fb_info->fix.ywrapstep = 1;
 	fb_info->fix.visual = FB_VISUAL_TRUECOLOR,
 	fb_info->fix.accel = FB_ACCEL_NONE;
 
@@ -1198,10 +1192,12 @@ static int mxsfb_init_fbinfo(struct mxsfb_info *host)
 	else
 		sprintf(fb_info->fix.id, "mxs-lcdif%d", host->id);
 
-	/* first video mode in the modelist as default video mode  */
-	modelist = list_first_entry(&fb_info->modelist,
-			struct fb_modelist, list);
-	fb_videomode_to_var(var, &modelist->mode);
+	if (!list_empty(&fb_info->modelist)) {
+		/* first video mode in the modelist as default video mode  */
+		modelist = list_first_entry(&fb_info->modelist,
+				struct fb_modelist, list);
+		fb_videomode_to_var(var, &modelist->mode);
+	}
 	/* save the sync value getting from dtb */
 	host->sync = fb_info->var.sync;
 
@@ -1215,6 +1211,11 @@ static int mxsfb_init_fbinfo(struct mxsfb_info *host)
 
 	fb_info->fix.line_length =
 		fb_info->var.xres * (fb_info->var.bits_per_pixel >> 3);
+	/* set framebuffer size from DT if available */
+	if(host->size > 0)
+		fb_info->fix.smem_len = host->size;
+	else
+		fb_info->fix.smem_len = SZ_32M;
 
 	/* Memory allocation for framebuffer */
 	if (mxsfb_map_videomem(fb_info) < 0)
@@ -1438,6 +1439,7 @@ static int mxsfb_probe(struct platform_device *pdev)
 		writel(0, host->base + LCDC_CTRL);
 		mxsfb_set_par(fb_info);
 		mxsfb_enable_controller(fb_info);
+		pm_runtime_get_sync(&host->pdev->dev);
 	}
 
 	ret = register_framebuffer(fb_info);
@@ -1502,13 +1504,15 @@ static void mxsfb_shutdown(struct platform_device *pdev)
 	 * Force stop the LCD controller as keeping it running during reboot
 	 * might interfere with the BootROM's boot mode pads sampling.
 	 */
-	writel(CTRL_RUN, host->base + LCDC_CTRL + REG_CLR);
-	writel(CTRL_MASTER, host->base + LCDC_CTRL + REG_CLR);
+	if (host->cur_blank == FB_BLANK_UNBLANK) {
+		writel(CTRL_RUN, host->base + LCDC_CTRL + REG_CLR);
+		writel(CTRL_MASTER, host->base + LCDC_CTRL + REG_CLR);
+	}
 	clk_disable_disp_axi(host);
 	clk_disable_axi(host);
 }
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 static int mxsfb_runtime_suspend(struct device *dev)
 {
 	release_bus_freq(BUS_FREQ_HIGH);
@@ -1524,12 +1528,7 @@ static int mxsfb_runtime_resume(struct device *dev)
 
 	return 0;
 }
-#else
-#define	mxsfb_runtime_suspend	NULL
-#define	mxsfb_runtime_resume	NULL
-#endif
 
-#ifdef CONFIG_PM
 static int mxsfb_suspend(struct device *pdev)
 {
 	struct fb_info *fb_info = dev_get_drvdata(pdev);
@@ -1542,6 +1541,9 @@ static int mxsfb_suspend(struct device *pdev)
 	mxsfb_blank(FB_BLANK_POWERDOWN, fb_info);
 	host->restore_blank = saved_blank;
 	console_unlock();
+
+	pinctrl_pm_select_sleep_state(pdev);
+
 	return 0;
 }
 
@@ -1549,6 +1551,8 @@ static int mxsfb_resume(struct device *pdev)
 {
 	struct fb_info *fb_info = dev_get_drvdata(pdev);
 	struct mxsfb_info *host = to_imxfb_host(fb_info);
+
+	pinctrl_pm_select_default_state(pdev);
 
 	console_lock();
 	mxsfb_blank(host->restore_blank, fb_info);
@@ -1558,6 +1562,9 @@ static int mxsfb_resume(struct device *pdev)
 	return 0;
 }
 #else
+#define	mxsfb_runtime_suspend	NULL
+#define	mxsfb_runtime_resume	NULL
+
 #define	mxsfb_suspend	NULL
 #define	mxsfb_resume	NULL
 #endif
