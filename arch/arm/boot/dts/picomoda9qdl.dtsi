@@ -284,7 +284,8 @@
 	bdinfo: bdinfo {
 		compatible = "bdinfo";
 		board_name = "picomoda9";
-		ecc_strength = "40";
+		//ecc_strength = "40";
+		ecc_strength = "8";
 	};
 
 #if defined(CONFIG_PICOMODA9_HDMI) && !defined(CONFIG_PICOMODA9_LCD)
@@ -777,8 +778,8 @@
 	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
 	fus,skipblocks = <2>;
 	fus,chunk1k;
-	//fus,ecc_strength = <8>; 	/* Spare area 64 bytes */
-	fus,ecc_strength = <40>;	/* Spare area 224 bytes i.MX6 */
+	fus,ecc_strength = <8>; 	/* Spare area 64 bytes */
+	//fus,ecc_strength = <40>;	/* Spare area 224 bytes i.MX6 */
 	status = "okay";
 };
 #endif
