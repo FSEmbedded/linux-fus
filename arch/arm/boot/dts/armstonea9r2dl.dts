@@ -116,12 +116,16 @@ wvga {					\
  * - 4-wire/5-wire analog resistive touch (SX8655), on Touch Connector
  * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
  * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ * - PCAP touch based on Sitronix controller (ST1633i), on Touch Connector
+ * - PCAP touch based on Ilink controller (ILI12xx), on Touch Connector
  *
  * Select none if you do not need touch support.
  */
 //#define CONFIG_ARMSTONEA9R2_4WTOUCH_SX8655
 #define CONFIG_ARMSTONEA9R2_CAPTOUCH_MXT224
 //#define CONFIG_ARMSTONEA9R2_CAPTOUCH_FT5x06
+//#define CONFIG_ARMSTONEA9R2_CAPTOUCH_SITRONIX
+//#define CONFIG_ARMSTONEA9R2_CAPTOUCH_ILINK
 
 /* CMA: Set 320 MB for Continuous Memory Allocator */
 #define CONFIG_ARMSTONEA9R2_CMA_SIZE	0x14000000

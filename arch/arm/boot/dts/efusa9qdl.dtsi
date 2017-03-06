@@ -748,6 +748,7 @@
 			type = "LED";
 		};
 	};
+
 #ifdef CONFIG_EFUSA9_4WTOUCH_SX8655_ONBOARD
 	/* 4/5 wire analog resistive touch, controller on efus SKIT */
 	sx8654@48 {
@@ -805,6 +806,29 @@
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
 		atmel,cfg_name = "atmel/mxt224.cfg";
 		atmel,reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
+	};
+#endif
+
+#ifdef CONFIG_EFUSA9_CAPTOUCH_SITRONIX
+	/* Sitronix PCAP touch on Touch-Connector (I2C) */
+	st1633i@48 {
+		compatible = "sitronix";
+		reg = <0x48>;
+		swap-xy;
+		interrupt-parent = <&gpio1>;
+		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
+	};
+#endif
+
+#ifdef CONFIG_EFUSA9_CAPTOUCH_ILINK
+	/* Ilink PCAP touch on Touch-Connector (I2C) */
+	ili210x@41 {
+		compatible = "Ilink,ili210x";
+		reg = <0x41>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
 	};
 #endif
 };
