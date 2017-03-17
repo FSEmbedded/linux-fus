@@ -83,7 +83,7 @@
 			regulator-always-on;
 		};
 /* use OTG_PWR instead of regulator */
-#if 0
+#if 1
 		reg_usb_otg2_vbus: usb_otg2_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg_vbus";
@@ -220,8 +220,7 @@
 };
 
 &usbotg2 {
-	/* use OTG_PWR instead of regulator */
-	//vbus-supply = <&reg_usb_otg2_vbus>;
+	vbus-supply = <&reg_usb_otg2_vbus>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg2>;
 	dr_mode = "host";
@@ -385,10 +384,9 @@
 				MX6UL_PAD_SD1_DATA0__GPIO2_IO18		0x0b0b0
 				/* mPCIe_WAKE */
 				MX6UL_PAD_SD1_DATA2__GPIO2_IO20		0x0b0b0
-				/* mPCIe_USB_PWR */
-				MX6UL_PAD_SD1_DATA1__USB_OTG2_PWR	0x000b0
-				/* use OTG_PWR instead of regulator */
-				//MX6UL_PAD_SD1_DATA1__GPIO2_IO19	0x030b0
+				/* GPIO for regulator */
+				//MX6UL_PAD_SD1_DATA1__GPIO2_IO19		0x0b0b0
+				MX6UL_PAD_SD1_DATA1__GPIO2_IO19		0x030b0
 			>;
 		};
 
