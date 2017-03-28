@@ -140,6 +140,7 @@ struct sgtl5000_priv {
 	struct clk *mclk;
 	int revision;
 	int mono2both;
+	int no_standby;
 	u8 micbias_resistor;
 	u8 micbias_voltage;
 };
@@ -175,6 +176,30 @@ static int mic_bias_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static void power_vag_up(struct snd_soc_codec *codec)
+{
+	snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
+		SGTL5000_VAG_POWERUP, SGTL5000_VAG_POWERUP);
+}
+
+
+static void power_vag_down(struct snd_soc_codec *codec)
+{
+	const u32 mask = SGTL5000_DAC_POWERUP | SGTL5000_ADC_POWERUP;
+	
+	/*
+	 * Don't clear VAG_POWERUP, when both DAC and ADC are
+	 * operational to prevent inadvertently starving the
+	 * other one of them.
+	 */
+	if ((snd_soc_read(codec, SGTL5000_CHIP_ANA_POWER) &
+			mask) != mask) {
+		snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
+			SGTL5000_VAG_POWERUP, 0);
+		msleep(400);
+	}
+}
+
 /*
  * As manual described, ADC/DAC only works when VAG powerup,
  * So enabled VAG before ADC/DAC up.
@@ -184,26 +209,19 @@ static int power_vag_event(struct snd_soc_dapm_widget *w,
 	struct snd_kcontrol *kcontrol, int event)
 {
 	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
-	const u32 mask = SGTL5000_DAC_POWERUP | SGTL5000_ADC_POWERUP;
+	
+	struct sgtl5000_priv *sgtl5000 = snd_soc_codec_get_drvdata(codec);
+	if(sgtl5000->no_standby)
+	{
+		return 0;
+	}
 
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
-		snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
-			SGTL5000_VAG_POWERUP, SGTL5000_VAG_POWERUP);
+		power_vag_up(codec);
 		break;
-
 	case SND_SOC_DAPM_PRE_PMD:
-		/*
-		 * Don't clear VAG_POWERUP, when both DAC and ADC are
-		 * operational to prevent inadvertently starving the
-		 * other one of them.
-		 */
-		if ((snd_soc_read(codec, SGTL5000_CHIP_ANA_POWER) &
-				mask) != mask) {
-			snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
-				SGTL5000_VAG_POWERUP, 0);
-			msleep(400);
-		}
+		power_vag_down(codec);
 		break;
 	default:
 		break;
@@ -1259,17 +1277,20 @@ static int sgtl5000_enable_regulators(struct snd_soc_codec *codec)
 	for (i = 0; i < ARRAY_SIZE(sgtl5000->supplies); i++)
 		sgtl5000->supplies[i].supply = supply_names[i];
 
-	/* External VDDD only works before revision 0x11 */
-	if (sgtl5000->revision < 0x11) {
-		vddd = regulator_get_optional(codec->dev, "VDDD");
-		if (IS_ERR(vddd)) {
-			/* See if it's just not registered yet */
-			if (PTR_ERR(vddd) == -EPROBE_DEFER)
-				return -EPROBE_DEFER;
-		} else {
-			external_vddd = 1;
-			regulator_put(vddd);
-		}
+	/* 
+	 * Official NXP documentation recommends using externel VDDD and not the
+	 * internal LDO due to the SGTL5000 erratum ER1. This also applies to 
+	 * revisions >=0x11! Set VDDD as default for all revisions. LDO stays as
+	 * fallback
+	*/ 
+	vddd = regulator_get_optional(codec->dev, "VDDD");
+	if (IS_ERR(vddd)) {
+		/* See if it's just not registered yet */
+		if (PTR_ERR(vddd) == -EPROBE_DEFER)
+			return -EPROBE_DEFER;
+	} else {
+		external_vddd = 1;
+		regulator_put(vddd);
 	}
 
 	if (!external_vddd) {
@@ -1317,9 +1338,9 @@ static int sgtl5000_probe(struct snd_soc_codec *codec)
 	if (ret)
 		goto err;
 
-	/* enable small pop, introduce 400ms delay in turning off */
+	/* enable small pop, introduce 200ms delay in turning off */
 	snd_soc_update_bits(codec, SGTL5000_CHIP_REF_CTRL,
-				SGTL5000_SMALL_POP, 1);
+				SGTL5000_SMALL_POP, 0);
 
 	/* disable short cut detector */
 	snd_soc_write(codec, SGTL5000_CHIP_SHORT_CTRL, 0);
@@ -1359,6 +1380,17 @@ static int sgtl5000_probe(struct snd_soc_codec *codec)
 	 */
 	snd_soc_write(codec, SGTL5000_DAP_CTRL, 0);
 
+	snd_soc_dapm_force_enable_pin(&codec->dapm, "LO");
+	snd_soc_dapm_force_enable_pin(&codec->dapm, "HP");
+
+	snd_soc_dapm_sync(&codec->dapm);
+
+	/* if 'no_standby' is used power up manually on startup
+ 	 * and keep the widget active */
+	if(sgtl5000->no_standby)
+	{
+		power_vag_up(codec);
+	}
 	return 0;
 
 err:
@@ -1374,6 +1406,10 @@ err:
 static int sgtl5000_remove(struct snd_soc_codec *codec)
 {
 	struct sgtl5000_priv *sgtl5000 = snd_soc_codec_get_drvdata(codec);
+	
+	/* if 'no_standby' is used power down manually on driver remove */
+	if(sgtl5000->no_standby)
+		power_vag_down(codec);
 
 	regulator_bulk_disable(ARRAY_SIZE(sgtl5000->supplies),
 						sgtl5000->supplies);
@@ -1449,6 +1485,9 @@ static int sgtl5000_dt_init(const struct i2c_client *client,
 	if (of_property_read_bool(np, "mono2both"))
 		sgtl5000->mono2both = 1;
 
+	if (of_property_read_bool(np, "no-standby"))
+		sgtl5000->no_standby = 1;
+	
 	if (!of_property_read_u32(np,
 		"micbias-resistor-k-ohms", &value)) {
 		switch (value) {

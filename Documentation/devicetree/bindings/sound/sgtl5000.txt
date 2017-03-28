@@ -26,6 +26,10 @@ Optional properties:
 - mono2both : Instead of just playing mono sound on the left channel, copy
               it to both channels
 
+- no-standby: keep DAP active all the time for line out and headphone.
+              With this setting sounds can be played immediately without getting
+              the early signal lost in a ramp.
+
 - VDDD-supply : the regulator provider of VDDD
 
 Example:
