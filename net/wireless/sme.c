@@ -675,6 +675,7 @@ void __cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
 	nl80211_send_connect_result(wiphy_to_rdev(wdev->wiphy), dev,
 				    bssid, req_ie, req_ie_len,
 				    resp_ie, resp_ie_len,
+				    NULL, 0, 0, 0, NULL, 0, NULL,
 				    status, GFP_KERNEL);
 
 #ifdef CONFIG_CFG80211_WEXT
@@ -762,56 +763,89 @@ void __cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
 }
 
 /* Consumes bss object one way or another */
-void cfg80211_connect_bss(struct net_device *dev, const u8 *bssid,
-			  struct cfg80211_bss *bss, const u8 *req_ie,
-			  size_t req_ie_len, const u8 *resp_ie,
-			  size_t resp_ie_len, int status, gfp_t gfp)
+void cfg80211_connect_done(struct net_device *dev,
+		struct cfg80211_connect_resp_params *params,
+		gfp_t gfp)
 {
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wdev->wiphy);
 	struct cfg80211_event *ev;
 	unsigned long flags;
+	u8 *next;
 
-	if (bss) {
+	if (params->bss) {
 		/* Make sure the bss entry provided by the driver is valid. */
-		struct cfg80211_internal_bss *ibss = bss_from_pub(bss);
+		struct cfg80211_internal_bss *ibss = bss_from_pub(params->bss);
 
 		if (WARN_ON(list_empty(&ibss->list))) {
-			cfg80211_put_bss(wdev->wiphy, bss);
+			cfg80211_put_bss(wdev->wiphy, params->bss);
 			return;
 		}
 	}
 
-	ev = kzalloc(sizeof(*ev) + req_ie_len + resp_ie_len, gfp);
+	ev = kzalloc(sizeof(*ev) + (params->bssid ? ETH_ALEN : 0) +
+			params->req_ie_len + params->resp_ie_len +
+			params->fils_kek_len + params->pmk_len +
+			(params->pmkid ? WLAN_PMKID_LEN : 0), gfp);
 	if (!ev) {
-		cfg80211_put_bss(wdev->wiphy, bss);
+		cfg80211_put_bss(wdev->wiphy, params->bss);
 		return;
 	}
 
 	ev->type = EVENT_CONNECT_RESULT;
-	if (bssid)
-		memcpy(ev->cr.bssid, bssid, ETH_ALEN);
-	if (req_ie_len) {
-		ev->cr.req_ie = ((u8 *)ev) + sizeof(*ev);
-		ev->cr.req_ie_len = req_ie_len;
-		memcpy((void *)ev->cr.req_ie, req_ie, req_ie_len);
+	next = ((u8 *)ev) + sizeof(*ev);
+	if (params->bssid) {
+		ev->cr.bssid = next;
+		memcpy((void *)ev->cr.bssid, params->bssid, ETH_ALEN);
+		next += ETH_ALEN;
 	}
-	if (resp_ie_len) {
-		ev->cr.resp_ie = ((u8 *)ev) + sizeof(*ev) + req_ie_len;
-		ev->cr.resp_ie_len = resp_ie_len;
-		memcpy((void *)ev->cr.resp_ie, resp_ie, resp_ie_len);
+	if (params->req_ie_len) {
+		ev->cr.req_ie = next;
+		ev->cr.req_ie_len = params->req_ie_len;
+		memcpy((void *)ev->cr.req_ie, params->req_ie,
+				params->req_ie_len);
+		next += params->req_ie_len;
 	}
-	if (bss)
-		cfg80211_hold_bss(bss_from_pub(bss));
-	ev->cr.bss = bss;
-	ev->cr.status = status;
+	if (params->resp_ie_len) {
+		ev->cr.resp_ie = next;
+		ev->cr.resp_ie_len = params->resp_ie_len;
+		memcpy((void *)ev->cr.resp_ie, params->resp_ie,
+				params->resp_ie_len);
+		next += params->resp_ie_len;
+	}
+	if (params->fils_kek_len) {
+		ev->cr.fils_kek = next;
+		ev->cr.fils_kek_len = params->fils_kek_len;
+		memcpy((void *)ev->cr.fils_kek, params->fils_kek,
+				params->fils_kek_len);
+		next += params->fils_kek_len;
+	}
+	if (params->pmk_len) {
+		ev->cr.pmk = next;
+		ev->cr.pmk_len = params->pmk_len;
+		memcpy((void *)ev->cr.pmk, params->pmk, params->pmk_len);
+		next += params->pmk_len;
+	}
+	if (params->pmkid) {
+		ev->cr.pmkid = next;
+		memcpy((void *)ev->cr.pmkid, params->pmkid, WLAN_PMKID_LEN);
+		next += WLAN_PMKID_LEN;
+	}
+	ev->cr.update_erp_next_seq_num = params->update_erp_next_seq_num;
+	if (params->update_erp_next_seq_num)
+		ev->cr.fils_erp_next_seq_num = params->fils_erp_next_seq_num;
+	if (params->bss)
+		cfg80211_hold_bss(bss_from_pub(params->bss));
+	ev->cr.bss = params->bss;
+	ev->cr.status = params->status;
+	ev->cr.timeout_reason = params->timeout_reason;
 
 	spin_lock_irqsave(&wdev->event_lock, flags);
 	list_add_tail(&ev->list, &wdev->event_list);
 	spin_unlock_irqrestore(&wdev->event_lock, flags);
 	queue_work(cfg80211_wq, &rdev->event_work);
 }
-EXPORT_SYMBOL(cfg80211_connect_bss);
+EXPORT_SYMBOL(cfg80211_connect_done);
 
 /* Consumes bss object one way or another */
 void __cfg80211_roamed(struct wireless_dev *wdev,
