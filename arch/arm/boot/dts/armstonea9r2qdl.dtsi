@@ -742,7 +742,6 @@
 };
 #endif
 
-
 #ifdef CONFIG_ARMSTONEA9R2_SERIAL_CAMERA
 &mipi_csi {
 	status = "okay";
@@ -752,7 +751,6 @@
 	lanes = <2>;
 };
 #endif
-
 
 #ifdef CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO
 &ssi1 {
@@ -979,11 +977,11 @@
 				/* RS232, these pins for the level converter
 				 * with these pins you can maybe save more
 				 * current, not implemented yet */
-				MX6QDL_PAD_EIM_BCLK__GPIO6_IO31		0x80000000
-				MX6QDL_PAD_EIM_WAIT__GPIO5_IO00		0x80000000
+				MX6QDL_PAD_EIM_BCLK__GPIO6_IO31		0x30b0
+				MX6QDL_PAD_EIM_WAIT__GPIO5_IO00		0x30b0
 
 				/* USB_HUB_RESET, U-Boot set the pads */
-				MX6QDL_PAD_EIM_EB1__GPIO2_IO29		0x80000000
+				MX6QDL_PAD_EIM_EB1__GPIO2_IO29		0x30b0
 
 				/* Audio clock 24MHz */
 				MX6QDL_PAD_GPIO_0__CCM_CLKO1		0x130b0
@@ -1040,7 +1038,7 @@
 		pinctrl_ecspi1_cs: ecspi1cs {
 			fsl,pins = <
 				/* ECSPI1_SS0 - slave (chip) select 0 */
-				MX6QDL_PAD_EIM_EB2__GPIO2_IO30		0x80000000
+				MX6QDL_PAD_EIM_EB2__GPIO2_IO30		0x1b0b0
 			>;
 		};
 #endif /* CONFIG_ARMSTONEA9R2_SPI_FLASH */
@@ -1057,7 +1055,7 @@
 		pinctrl_ecspi2_cs: ecspi2cs {
 			fsl,pins = <
 				/* ECSPI2_SS0 - slave (chip) select 0 */
-				MX6QDL_PAD_EIM_RW__GPIO2_IO26		0x80000000
+				MX6QDL_PAD_EIM_RW__GPIO2_IO26		0x1b0b0
 			>;
 		};
 #endif /* CONFIG_ARMSTONEA9R2_SPI_A */
@@ -1074,7 +1072,7 @@
 		pinctrl_ecspi3_cs: ecspi3cs {
 			fsl,pins = <
 				/* ECSPI3_SS0 - slave (chip) select 0 */
-				MX6QDL_PAD_DISP0_DAT3__ECSPI3_SS0	0x80000000
+				MX6QDL_PAD_DISP0_DAT3__ECSPI3_SS0	0x1b0b0
 			>;
 		};
 #endif /* CONFIG_ARMSTONEA9R2_SPI_B */
@@ -1280,13 +1278,13 @@
 				MX6QDL_PAD_EIM_D25__GPIO3_IO25		0x80000000
 				/* columns */
 				MX6QDL_PAD_DISP0_DAT0__GPIO4_IO21	0x80000000
-				MX6QDL_PAD_EIM_DA0__GPIO3_IO00		0x80000000
-				MX6QDL_PAD_DISP0_DAT3__GPIO4_IO24	0x80000000
-				MX6QDL_PAD_EIM_DA1__GPIO3_IO01		0x80000000
+				MX6QDL_PAD_EIM_DA0__GPIO3_IO00		0x30b0
+				MX6QDL_PAD_EIM_DA1__GPIO3_IO01		0x30b0
+				MX6QDL_PAD_EIM_DA2__GPIO3_IO02		0x30b0
+				MX6QDL_PAD_EIM_DA3__GPIO3_IO03		0x30b0
 				MX6QDL_PAD_DISP0_DAT1__GPIO4_IO22	0x80000000
-				MX6QDL_PAD_EIM_DA2__GPIO3_IO02		0x80000000
 				MX6QDL_PAD_DISP0_DAT2__GPIO4_IO23	0x80000000
-				MX6QDL_PAD_EIM_DA3__GPIO3_IO03		0x80000000
+				MX6QDL_PAD_DISP0_DAT3__GPIO4_IO24	0x80000000
 			>;
 		};
 #endif

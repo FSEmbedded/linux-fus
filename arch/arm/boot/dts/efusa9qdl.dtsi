@@ -1238,9 +1238,9 @@
 		pinctrl_ecspi2_cs: ecspi2cs {
 			fsl,pins = <
 				/* ECSPI2_SS0 - slave (chip) select 0 */
-				MX6QDL_PAD_EIM_RW__GPIO2_IO26		0x80000000
+				MX6QDL_PAD_EIM_RW__GPIO2_IO26		0x1b0b0
 				/* ECSPI2_SS1  - slave (chip) select 1 */
-				MX6QDL_PAD_EIM_LBA__GPIO2_IO27		0x80000000
+				MX6QDL_PAD_EIM_LBA__GPIO2_IO27		0x1b0b0
 			>;
 		};
 
@@ -1250,11 +1250,13 @@
 				MX6QDL_PAD_GPIO_7__GPIO1_IO07		0x80000000
 			>;
 		};
+
 		pinctrl_espi2_2_irq: espi2_2_intgrp {
 			fsl,pins = <
 				MX6QDL_PAD_GPIO_8__GPIO1_IO08		0x80000000
 			>;
 		};
+
 #endif /* CONFIG_EFUSA9_SPI_A */
 
 #ifdef CONFIG_EFUSA9_SPI_B
@@ -1270,19 +1272,21 @@
 		pinctrl_ecspi1_cs: ecspi1cs {
 			fsl,pins = <
 				/* ECSPI1_SS0  - SPI Flash slave (chip) select */
-				MX6QDL_PAD_EIM_EB2__GPIO2_IO30		0x80000000
+				MX6QDL_PAD_EIM_EB2__GPIO2_IO30		0x1b0b0
 				/* ECSPI1_SS2  - slave (chip) select 1 */
-				MX6QDL_PAD_EIM_D24__GPIO3_IO24		0x80000000
+				MX6QDL_PAD_EIM_D24__GPIO3_IO24		0x1b0b0
 				/* ECSPI1_SS3  - slave (chip) select 2 */
-				MX6QDL_PAD_EIM_D25__GPIO3_IO25		0x80000000
+				MX6QDL_PAD_EIM_D25__GPIO3_IO25		0x1b0b0
 			>;
 		};
+
 		/* IRQs for SPI_B */
 		pinctrl_espi1_1_irq: espi1_1_intgrp {
 			fsl,pins = <
 				MX6QDL_PAD_GPIO_5__GPIO1_IO05		0x80000000
 			>;
 		};
+
 		pinctrl_espi1_2_irq: espi1_2_intgrp {
 			fsl,pins = <
 				MX6QDL_PAD_GPIO_6__GPIO1_IO06		0x80000000
