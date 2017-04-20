@@ -360,6 +360,7 @@ dtb-$(CONFIG_SOC_IMX6SX) += \
 	imx6sx-sdb-lcdif1.dtb \
 	efusa9x.dtb \
 	bema9x.dtb \
+	picocoma9x.dtb \
 	imx6sx-sdb-ldo.dtb	\
 	imx6sx-sdb-m4.dtb \
 	imx6sx-sdb-mqs.dtb \
