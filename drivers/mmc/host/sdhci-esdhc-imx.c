@@ -645,8 +645,8 @@ static void esdhc_writeb_le(struct sdhci_host *host, u8 val, int reg)
 		if (esdhc_is_usdhc(imx_data)) {
 			/* the tuning bits should be kept during reset */
 			new_val = readl(host->ioaddr + ESDHC_MIX_CTRL);
-			writel(new_val & ESDHC_MIX_CTRL_TUNING_MASK,
-					host->ioaddr + ESDHC_MIX_CTRL);
+			new_val &= ((1 << 31) | ESDHC_MIX_CTRL_TUNING_MASK);
+			writel(new_val, host->ioaddr + ESDHC_MIX_CTRL);
 			imx_data->is_ddr = 0;
 		}
 	}
@@ -691,8 +691,7 @@ static inline void esdhc_pltfm_set_clock(struct sdhci_host *host,
 		pre_div = 1;
 
 	temp = sdhci_readl(host, ESDHC_SYSTEM_CONTROL);
-	temp &= ~(ESDHC_CLOCK_IPGEN | ESDHC_CLOCK_HCKEN | ESDHC_CLOCK_PEREN
-		| ESDHC_CLOCK_MASK);
+	temp &= ~(ESDHC_CLOCK_IPGEN | ESDHC_CLOCK_HCKEN | ESDHC_CLOCK_PEREN);
 	sdhci_writel(host, temp, ESDHC_SYSTEM_CONTROL);
 
 	while (host_clock / pre_div / 16 > clock && pre_div < 256)
@@ -712,6 +711,7 @@ static inline void esdhc_pltfm_set_clock(struct sdhci_host *host,
 	div--;
 
 	temp = sdhci_readl(host, ESDHC_SYSTEM_CONTROL);
+	temp &=	~ESDHC_CLOCK_MASK;
 	temp |= (ESDHC_CLOCK_IPGEN | ESDHC_CLOCK_HCKEN | ESDHC_CLOCK_PEREN
 		| (div << ESDHC_DIVIDER_SHIFT)
 		| (pre_div << ESDHC_PREDIV_SHIFT));
@@ -965,7 +965,7 @@ static void esdhc_hw_reset(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct pltfm_imx_data *imx_data = pltfm_host->priv;
-	u16 ctrl;
+	u32 ctrl;
 
 	sdhci_reset(host, SDHCI_RESET_ALL);
 
@@ -997,10 +997,10 @@ static void esdhc_set_timeout(struct sdhci_host *host, struct mmc_command *cmd)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct pltfm_imx_data *imx_data = pltfm_host->priv;
+	u32 val = esdhc_is_usdhc(imx_data) ? 0xF : 0xE;
 
 	/* use maximum timeout counter */
-	sdhci_writeb(host, esdhc_is_usdhc(imx_data) ? 0xF : 0xE,
-			SDHCI_TIMEOUT_CONTROL);
+	esdhc_clrset_le(host, 0xF << 16, val << 16, ESDHC_SYSTEM_CONTROL);
 }
 
 static struct sdhci_ops sdhci_esdhc_ops = {
