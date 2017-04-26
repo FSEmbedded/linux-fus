@@ -96,6 +96,19 @@
 
 	};
 
+	/* DEFAULT key */
+	gpio_keys {
+		compatible = "gpio-keys";
+ 		#address-cells = <1>;
+		#size-cells = <0>;
+
+		defaultkey {
+			label = "DEFAULT key";
+			linux,code = <KEY_SETUP>;
+			gpios = <&gpio1 24 GPIO_ACTIVE_LOW>;
+		};
+	};
+
 	/* F&S board information */
 	bdinfo {
 		compatible = "bdinfo";
@@ -223,6 +236,9 @@
 
 				/* BT_EN */
 				MX6UL_PAD_LCD_DATA09__GPIO3_IO14	0x3020
+
+				/* DEFAULT key */
+				MX6UL_PAD_UART3_TX_DATA__GPIO1_IO24	0xF020
 			>;
 		};
 
