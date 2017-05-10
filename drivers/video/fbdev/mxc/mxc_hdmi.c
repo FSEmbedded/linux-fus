@@ -158,6 +158,7 @@ struct mxc_hdmi {
 	u8 edid[HDMI_EDID_LEN];
 	bool fb_reg;
 	bool cable_plugin;
+	bool hpd_active_low;
 	u8  blank;
 	bool dft_mode_set;
 	char *dft_mode_str;
@@ -2009,15 +2010,11 @@ static void hotplug_worker(struct work_struct *work)
 	/* check cable status */
 	if (phy_int_stat & HDMI_IH_PHY_STAT0_HPD) {
 		/* cable connection changes */
-		if (phy_int_pol & HDMI_PHY_HPD) {
+		if ((!hdmi->hpd_active_low && (phy_int_pol & HDMI_PHY_HPD))
+				|| (hdmi->hpd_active_low && !(phy_int_pol & HDMI_PHY_HPD))) {
 			/* Plugin event */
 			dev_dbg(&hdmi->pdev->dev, "EVENT=plugin\n");
 			mxc_hdmi_cable_connected(hdmi);
-
-			/* Make HPD intr active low to capture unplug event */
-			val = hdmi_readb(HDMI_PHY_POL0);
-			val &= ~HDMI_PHY_HPD;
-			hdmi_writeb(val, HDMI_PHY_POL0);
 
 			hdmi_set_cable_state(1);
 
@@ -2026,26 +2023,27 @@ static void hotplug_worker(struct work_struct *work)
 #ifdef CONFIG_MXC_HDMI_CEC
 			mxc_hdmi_cec_handle(0x80);
 #endif
-		} else if (!(phy_int_pol & HDMI_PHY_HPD)) {
+		}
+
+		else {
 			/* Plugout event */
 			dev_dbg(&hdmi->pdev->dev, "EVENT=plugout\n");
 			hdmi_set_cable_state(0);
 			mxc_hdmi_abort_stream();
 			mxc_hdmi_cable_disconnected(hdmi);
 
-			/* Make HPD intr active high to capture plugin event */
-			val = hdmi_readb(HDMI_PHY_POL0);
-			val |= HDMI_PHY_HPD;
-			hdmi_writeb(val, HDMI_PHY_POL0);
-
 			sprintf(event_string, "EVENT=plugout");
 			kobject_uevent_env(&hdmi->pdev->dev.kobj, KOBJ_CHANGE, envp);
 #ifdef CONFIG_MXC_HDMI_CEC
 			mxc_hdmi_cec_handle(0x100);
-#endif
 
-		} else
-			dev_dbg(&hdmi->pdev->dev, "EVENT=none?\n");
+#endif
+		}
+
+		/* Invert HPD trigger polarity: from plug to unplug and vice versa */
+		val = hdmi_readb(HDMI_PHY_POL0);
+		val ^= HDMI_PHY_HPD;
+		hdmi_writeb(val, HDMI_PHY_POL0);
 	}
 
 	/* Lock here to ensure full powerdown sequence
@@ -2447,6 +2445,9 @@ static void hdmi_get_of_property(struct mxc_hdmi *hdmi)
 	if (ret)
 		dev_dbg(&pdev->dev, "No board specific HDMI PHY cksymtx\n");
 
+	/* Hot plug detect (HPD) may be active low */
+	hdmi->hpd_active_low = of_property_read_bool(np, "hpd-active-low");
+
 	/* Specific phy config */
 	hdmi->phy_config.reg_cksymtx = phy_reg_cksymtx;
 	hdmi->phy_config.reg_vlev = phy_reg_vlev;
@@ -2614,7 +2615,10 @@ static int mxc_hdmi_disp_init(struct mxc_dispdrv_handle *disp,
 
 	/* Configure registers related to HDMI interrupt
 	 * generation before registering IRQ. */
-	hdmi_writeb(HDMI_PHY_HPD, HDMI_PHY_POL0);
+	if (hdmi->hpd_active_low)
+		hdmi_writeb(0, HDMI_PHY_POL0);
+	else
+		hdmi_writeb(HDMI_PHY_HPD, HDMI_PHY_POL0);
 
 	/* Clear Hotplug interrupts */
 	hdmi_writeb(HDMI_IH_PHY_STAT0_HPD, HDMI_IH_PHY_STAT0);
