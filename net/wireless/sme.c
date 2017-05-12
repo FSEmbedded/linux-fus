@@ -247,7 +247,7 @@ void cfg80211_conn_work(struct work_struct *work)
 		if (cfg80211_conn_do_work(wdev)) {
 			__cfg80211_connect_result(
 					wdev->netdev, bssid,
-					NULL, 0, NULL, 0, -1, false, NULL);
+					NULL, 0, NULL, 0, -1, false, NULL, NULL);
 		}
 		wdev_unlock(wdev);
 	}
@@ -352,7 +352,7 @@ void cfg80211_sme_rx_auth(struct wireless_dev *wdev, const u8 *buf, size_t len)
 	} else if (status_code != WLAN_STATUS_SUCCESS) {
 		__cfg80211_connect_result(wdev->netdev, mgmt->bssid,
 					  NULL, 0, NULL, 0,
-					  status_code, false, NULL);
+					  status_code, false, NULL, NULL);
 	} else if (wdev->conn->state == CFG80211_CONN_AUTHENTICATING) {
 		wdev->conn->state = CFG80211_CONN_ASSOCIATE_NEXT;
 		schedule_work(&rdev->conn_work);
@@ -656,7 +656,8 @@ void __cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
 			       const u8 *req_ie, size_t req_ie_len,
 			       const u8 *resp_ie, size_t resp_ie_len,
 			       int status, bool wextev,
-			       struct cfg80211_bss *bss)
+			       struct cfg80211_bss *bss,
+                   struct cfg80211_connect_resp_params *cr)
 {
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	const u8 *country_ie;
@@ -672,11 +673,22 @@ void __cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
 		return;
 	}
 
-	nl80211_send_connect_result(wiphy_to_rdev(wdev->wiphy), dev,
+    if (cr && cr->fils_kek_len) {
+	    nl80211_send_connect_result(wiphy_to_rdev(wdev->wiphy), dev,
+				    bssid, req_ie, req_ie_len,
+				    resp_ie, resp_ie_len,
+				    cr->fils_kek, cr->fils_kek_len,
+                    cr->update_erp_next_seq_num,
+                    cr->fils_erp_next_seq_num,
+                    cr->pmk, cr->pmk_len, cr->pmkid,
+				    status, GFP_KERNEL);
+    }else {
+	    nl80211_send_connect_result(wiphy_to_rdev(wdev->wiphy), dev,
 				    bssid, req_ie, req_ie_len,
 				    resp_ie, resp_ie_len,
 				    NULL, 0, 0, 0, NULL, 0, NULL,
 				    status, GFP_KERNEL);
+    }
 
 #ifdef CONFIG_CFG80211_WEXT
 	if (wextev) {
