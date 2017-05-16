@@ -1,3 +1,4 @@
+
 /*
  * Copyright 2016 F&S Elektronik Systeme GmbH
  *
@@ -8,9 +9,88 @@
 
 #include <dt-bindings/pwm/pwm.h>
 
+/* Do we have HDMI? */
+#if ((CONFIG_QBLISSA9_MXCFB0 == DISPLAY_HDMI) \
+    || (CONFIG_QBLISSA9_MXCFB1 == DISPLAY_HDMI) \
+    || (CONFIG_QBLISSA9_MXCFB2 == DISPLAY_HDMI) \
+    || (CONFIG_QBLISSA9_MXCFB3 == DISPLAY_HDMI))
+#define CONFIG_QBLISSA9_HDMI
+#define CONFIG_QBLISSA9_HDMI_AUDIO
+#define CONFIG_QBLISSA9_HDMI_CEC
+#if ((CONFIG_QBLISSA9_MXCFB0 == DISPLAY_HDMI) \
+    || (CONFIG_QBLISSA9_MXCFB1 == DISPLAY_HDMI))
+#define __HDMI_ON_0_OR_1__	1
+#define __HDMI_ON_2_OR_3__	0
+#else
+#define __HDMI_ON_0_OR_1__	0
+#define __HDMI_ON_2_OR_3__	1
+#endif
+#endif
 
+/* Do we have LVDS0? */
+#if ((CONFIG_QBLISSA9_MXCFB0 == DISPLAY_LVDS0) \
+    || (CONFIG_QBLISSA9_MXCFB1 == DISPLAY_LVDS0) \
+    || (CONFIG_QBLISSA9_MXCFB2 == DISPLAY_LVDS0) \
+    || (CONFIG_QBLISSA9_MXCFB3 == DISPLAY_LVDS0))
+#define CONFIG_QBLISSA9_LVDS0
+#if ((CONFIG_QBLISSA9_MXCFB0 == DISPLAY_LVDS0) \
+    || (CONFIG_QBLISSA9_MXCFB1 == DISPLAY_LVDS0))
+#define __LVDS0_ON_0_OR_1__	1
+#define __LVDS0_ON_2_OR_3__	0
+#else
+#define __LVDS0_ON_0_OR_1__	0
+#define __LVDS0_ON_2_OR_3__	1
+#endif
+#endif
+
+/* Do we have LVDS1? */
+#if ((CONFIG_QBLISSA9_MXCFB0 == DISPLAY_LVDS1) \
+    || (CONFIG_QBLISSA9_MXCFB1 == DISPLAY_LVDS1) \
+    || (CONFIG_QBLISSA9_MXCFB2 == DISPLAY_LVDS1) \
+    || (CONFIG_QBLISSA9_MXCFB3 == DISPLAY_LVDS1))
+#define CONFIG_QBLISSA9_LVDS1
+#if ((CONFIG_QBLISSA9_MXCFB0 == DISPLAY_LVDS1) \
+    || (CONFIG_QBLISSA9_MXCFB1 == DISPLAY_LVDS1))
+#define __LVDS1_ON_0_OR_1__	1
+#define __LVDS1_ON_2_OR_3__	0
+#else
+#define __LVDS1_ON_0_OR_1__	0
+#define __LVDS1_ON_2_OR_3__	1
+#endif
+#endif
+
+/* Check which LVDS will be the primary display */
+#if (CONFIG_QBLISSA9_MXCFB0 == DISPLAY_LVDS0)
+#define __LVDS0_PRIMARY__
+#elif (CONFIG_QBLISSA9_MXCFB0 == DISPLAY_LVDS1)
+#define __LVDS1_PRIMARY__
+#elif (CONFIG_QBLISSA9_MXCFB1 == DISPLAY_LVDS0)
+#define __LVDS0_PRIMARY__
+#elif (CONFIG_QBLISSA9_MXCFB1 == DISPLAY_LVDS1)
+#define __LVDS1_PRIMARY__
+#elif (CONFIG_QBLISSA9__MXCFB2 == DISPLAY_LVDS0)
+#define __LVDS0_PRIMARY__
+#elif (CONFIG_QBLISSA9_MXCFB2 == DISPLAY_LVDS1)
+#define __LVDS1_PRIMARY__
+#elif (CONFIG_QBLISSA9_MXCFB3 == DISPLAY_LVDS0)
+#define __LVDS0_PRIMARY__
+#elif (CONFIG_QBLISSA9_MXCFB3 == DISPLAY_LVDS1)
+#define __LVDS1_PRIMARY__
+#endif
 
 / {
+	aliases {
+		mxcfb0 = &mxcfb0;
+		mxcfb1 = &mxcfb1;
+		mxcfb2 = &mxcfb2;
+		mxcfb3 = &mxcfb3;
+#ifdef CONFIG_QBLISSA9_HDMI
+		i2c6 = &i2c_gpio_hdmi;
+#endif
+#ifdef CONFIG_QBLISSA9_SERIAL_CAMERA
+		i2c7 = &i2c_gpio_cam1;
+#endif
+		};
 
 	memory {
 		reg = <0x10000000 0x40000000>;
@@ -18,6 +98,94 @@
 
 	regulators {
 		compatible = "simple-bus";
+
+		reg_vref_3v3: regulator_3v3 {
+			compatible = "regulator-fixed";
+			regulator-name = "vref-3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		reg_usb_otg_vbus: usb_otg_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_otg_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio3 22 GPIO_ACTIVE_LOW>;
+			/* pmic */
+			//vin-supply = <&swbst_reg>;
+		};
+
+		reg_usb_h1_vbus: usb_h1_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_h1_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			/* No way to switch USB1_H1_VBUS power */
+			// gpio = <&gpio1 29 0>;
+			// enable-active-high;
+			/* pmic */
+			//vin-supply = <&swbst_reg>;
+		};
+
+#ifdef CONFIG_QBLISSA9_WLAN
+		reg_wlan_vmmc_1v8: regulator_wlan {
+			compatible = "regulator-fixed";
+			regulator-name = "vmmc-wlan-1v8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-always-on;
+		};
+#endif
+
+		/* backlight ldb */
+		reg_ldb_bl: backlight_ldb {
+			compatible = "regulator-fixed";
+			regulator-name = "ldb-bl";
+			gpio = <&gpio2 8 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+
+		/* LCD power on voltage */
+		reg_vlcd: vlcd {
+			compatible = "regulator-fixed";
+			regulator-name = "VLCD";
+			gpio = <&gpio2 11 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+		};
+
+		/* CAN */
+		reg_can: regulator_can {
+			compatible = "regulator-fixed";
+			regulator-name = "can";
+		};
+
+#ifdef CONFIG_QBLISSA9_CAMERA
+		reg_camera_dovdd: camera_dovdd {
+			compatible = "regulator-fixed";
+			regulator-name = "DOVDD-supply";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+
+		reg_camera_avdd: camera_avdd {
+			compatible = "regulator-fixed";
+			regulator-name = "VAVDD-supply";
+			regulator-min-microvolt = <2800000>;
+			regulator-max-microvolt = <2800000>;
+		};
+
+		reg_camera_dvdd: camera_dvdd {
+			compatible = "regulator-fixed";
+			regulator-name = "DVDD-supply";
+			regulator-min-microvolt = <1500000>;
+			regulator-max-microvolt = <1500000>;
+		};
+#endif /* CONFIG_QBLISSA9_CAMERA */
 	};
 
 	/* F&S board information */
@@ -27,8 +195,197 @@
 		ecc_strength = "8";
 	};
 
-};
+#ifdef CONFIG_QBLISSA9_HDMI
+	i2c_gpio_hdmi: i2c-gpio-hdmi {
+		compatible = "i2c-gpio";
+		gpios = <&gpio2 14 GPIO_ACTIVE_HIGH /* sda */
+			 &gpio2 15 GPIO_ACTIVE_HIGH /* scl */
+			>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_i2c6_gpio>;
+		//i2c-gpio,sda-open-drain;
+		//i2c-gpio,scl-open-drain;
+		i2c-gpio,delay-us = <2>;	/* ~100 kHz */
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+#endif
 
+#ifdef CONFIG_QBLISSA9_SERIAL_CAMERA
+	i2c_gpio_cam1: i2c-gpio-cam1 {
+		compatible = "i2c-gpio";
+		gpios = <&gpio4 21 GPIO_ACTIVE_HIGH /* sda */
+			 &gpio4 22 GPIO_ACTIVE_HIGH /* scl */
+			>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_i2c7_gpio>;
+		i2c-gpio,delay-us = <2>;	/* ~100 kHz */
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+#endif
+
+#ifdef CONFIG_QBLISSA9_WM9715_AUDIO
+	sound {
+		compatible = "fus,imx-audio-wm9715";
+		fus,model = "F&S Audio WM9715";
+		audio-cpu = <&ssi1>;
+		clocks = <&clks IMX6QDL_CLK_DUMMY>;
+		mux-int-port = <1>;  /* SSI1=1, SSI2=2, SSI3=7 */
+		mux-ext-port = <6>;
+	};
+#endif
+
+#ifdef CONFIG_QBLISSA9_HDMI_AUDIO
+	sound-hdmi {
+		compatible = "fsl,imx6q-audio-hdmi",
+			"fsl,imx-audio-hdmi";
+		model = "imx-audio-hdmi";
+		hdmi-controller = <&hdmi_audio>;
+	};
+#endif
+
+	mxcfb0: fb@0 {
+		compatible = "fsl,mxc_sdc_fb";
+		late_init = <0>;
+#if (CONFIG_QBLISSA9_MXCFB0 == DISPLAY_HDMI)
+		disp_dev = "hdmi";
+		default_bpp = <CONFIG_QBLISSA9_HDMI_BPP>;
+		interface_pix_fmt = CONFIG_QBLISSA9_HDMI_PIX_FMT;
+		int_clk = <0>;
+		mode_str = CONFIG_QBLISSA9_HDMI_MODE_STR;
+#elif (CONFIG_QBLISSA9_MXCFB0 == DISPLAY_LVDS0)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_QBLISSA9_LVDS0_BPP>;
+		interface_pix_fmt = CONFIG_QBLISSA9_LVDS0_PIX_FMT;
+		int_clk = <1>;
+#elif (CONFIG_QBLISSA9_MXCFB0 == DISPLAY_LVDS1)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_QBLISSA9_LVDS1_BPP>;
+		interface_pix_fmt = CONFIG_QBLISSA9_LVDS1_PIX_FMT;
+		int_clk = <1>;
+#else
+		status = "disabled";
+#endif
+	};
+
+	mxcfb1: fb@1 {
+		compatible = "fsl,mxc_sdc_fb";
+		late_init = <0>;
+#if (CONFIG_QBLISSA9_MXCFB1 == DISPLAY_HDMI)
+		disp_dev = "hdmi";
+		default_bpp = <CONFIG_QBLISSA9_HDMI_BPP>;
+		interface_pix_fmt = CONFIG_QBLISSA9_HDMI_PIX_FMT;
+		int_clk = <0>;
+		mode_str = CONFIG_QBLISSA9_HDMI_MODE_STR;
+#elif (CONFIG_QBLISSA9_MXCFB1 == DISPLAY_LVDS0)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_QBLISSA9_LVDS0_BPP>;
+		interface_pix_fmt = CONFIG_QBLISSA9_LVDS0_PIX_FMT;
+		int_clk = <1>;
+#elif (CONFIG_QBLISSA9_MXCFB1 == DISPLAY_LVDS1)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_QBLISSA9_LVDS1_BPP>;
+		interface_pix_fmt = CONFIG_QBLISSA9_LVDS1_PIX_FMT;
+		int_clk = <1>;
+#else
+		status = "disabled";
+#endif
+	};
+
+	mxcfb2: fb@2 {
+		compatible = "fsl,mxc_sdc_fb";
+		late_init = <0>;
+#if (CONFIG_QBLISSA9_MXCFB2 == DISPLAY_HDMI)
+		disp_dev = "hdmi";
+		default_bpp = <CONFIG_QBLISSA9_HDMI_BPP>;
+		interface_pix_fmt = CONFIG_QBLISSA9_HDMI_PIX_FMT;
+		int_clk = <0>;
+		mode_str = CONFIG_QBLISSA9_HDMI_MODE_STR;
+#elif (CONFIG_QBLISSA9_MXCFB2 == DISPLAY_LVDS0)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_QBLISSA9_LVDS0_BPP>;
+		interface_pix_fmt = CONFIG_QBLISSA9_LVDS0_PIX_FMT;
+		int_clk = <1>;
+#elif (CONFIG_QBLISSA9_MXCFB2 == DISPLAY_LVDS1)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_QBLISSA9_LVDS1_BPP>;
+		interface_pix_fmt = CONFIG_QBLISSA9_LVDS1_PIX_FMT;
+		int_clk = <1>;
+#else
+		status = "disabled";
+#endif
+	};
+
+	mxcfb3: fb@3 {
+		compatible = "fsl,mxc_sdc_fb";
+		late_init = <0>;
+#if (CONFIG_QBLISSA9_MXCFB3 == DISPLAY_HDMI)
+		disp_dev = "hdmi";
+		default_bpp = <CONFIG_QBLISSA9_HDMI_BPP>;
+		interface_pix_fmt = CONFIG_QBLISSA9_HDMI_PIX_FMT;
+		int_clk = <0>;
+		mode_str = CONFIG_QBLISSA9_HDMI_MODE_STR;
+#elif (CONFIG_QBLISSA9_MXCFB3 == DISPLAY_LVDS0)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_QBLISSA9_LVDS0_BPP>;
+		interface_pix_fmt = CONFIG_QBLISSA9_LVDS0_PIX_FMT;
+		int_clk = <1>;
+#elif (CONFIG_QBLISSA9_MXCFB3 == DISPLAY_LVDS1)
+		disp_dev = "ldb";
+		default_bpp = <CONFIG_QBLISSA9_LVDS1_BPP>;
+		interface_pix_fmt = CONFIG_QBLISSA9_LVDS1_PIX_FMT;
+		int_clk = <1>;
+#else
+		status = "disabled";
+#endif
+	};
+
+	/* LVDS backlight PWM (PWM3) */
+	backlight_ldb {
+		compatible = "pwm-backlight";
+		pwms = <&pwm3 0 5000000>;
+		power-supply = <&reg_ldb_bl>;
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+		fb-names = "mxs-lcdif1";
+	};
+
+	/* Serial MIPI camera interface */
+#ifdef CONFIG_QBLISSA9_SERIAL_CAMERA
+	v4l2_cap_0 {
+		compatible = "fsl,imx6q-v4l2-capture";
+		ipu_id = <0>;
+		csi_id = <1>;
+		mclk_source = <0>;
+		status = "okay";
+	};
+
+	v4l2_out {
+		compatible = "fsl,mxc_v4l2_output";
+		status = "okay";
+	};
+#endif
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_status_leds>;
+
+		status_1 {
+			label = "Status1";
+			gpios = <&gpio4 6 GPIO_ACTIVE_HIGH>;
+			default-state = "keep";
+		};
+
+		status_2 {
+			label = "Status2";
+			gpios = <&gpio4 7 GPIO_ACTIVE_HIGH>;
+			default-state = "keep";
+		};
+	};
+};
 
 #if 0
 &cma {
@@ -36,25 +393,84 @@
 };
 #endif
 
+#ifdef CONFIG_QBLISSA9_WM9715_AUDIO
+&audmux {
+	status = "okay";
+};
+#endif
 
-
+/* if you want to use the pmic controller you have to set the arm-supply and
+ * the soc-supply to the regulator of the pmic. Look pfuze comment.*/
 #if 0
+&cpu0 {
+	arm-supply = <&sw1a_reg>;
+	soc-supply = <&sw1c_reg>;
+};
+#endif
+
 &clks {
 	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 			  <&clks IMX6QDL_CLK_SSI1_SEL>,
-			  <&clks IMX6QDL_CLK_SSI1>,
-			  <&clks IMX6QDL_CLK_CKO2_SEL>,
-			  <&clks IMX6QDL_CLK_CKO>;
+			  <&clks IMX6QDL_CLK_SSI1>;
 
 	assigned-clock-parents = <0>,
-				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
-				 <0>,
-				 <&clks IMX6QDL_CLK_SSI1>,
-				 <&clks IMX6QDL_CLK_CKO2>;
-//###	assigned-clock-rates = <786432000>, <0>, <24576000>;
-	assigned-clock-rates = <786432000>, <0>, <12288000>;
+				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>;
+
+	assigned-clock-rates = <98304000>, <98304000>, <12288000>;
 };
-#endif
+
+#ifdef CONFIG_QBLISSA9_SPI_FLASH
+&ecspi1 {
+	fsl,spi-num-chipselects = <1>;
+	cs-gpios = <&gpio2 30 GPIO_ACTIVE_HIGH>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi1_1 &pinctrl_ecspi1_cs>;
+	status = "okay";
+
+	spidev@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+	};
+};
+#endif /* CONFIG_QBLISSA9_SPI_FLASH */
+
+#ifdef CONFIG_QBLISSA9_SPI_A
+/* SPI_A (2x CS) */
+&ecspi2 {
+	fsl,spi-num-chipselects = <2>;
+	cs-gpios = <&gpio2 26 0>,
+		<&gpio2 27 0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi2_1 &pinctrl_ecspi2_cs>;
+	status = "okay";
+
+	spidev@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+	};
+};
+#endif /* CONFIG_QBLISSA9_SPI_A */
+
+&fec {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_enet>;
+	phy-mode = "rgmii";
+	status = "okay";
+};
+
+/* CANRX X16 Pin 3 & CANTX Pin 4 */
+&can1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_flexcan_a>;
+	xceiver-supply = <&reg_can>;
+	status = "okay";
+};
 
 &gpc {
 	fsl,cpu_pupscr_sw2iso = <0xf>;
@@ -64,6 +480,273 @@
 	/* more information how to ldo-bypass look at pfuze comment in i2c2 */
 	fsl,ldo-bypass = <0>; /* use ldo-bypass, u-boot will check it and configure */
 	fsl,wdog-reset = <1>; /* watchdog select of reset source */
+};
+
+#ifdef CONFIG_QBLISSA9_HDMI_AUDIO
+&hdmi_audio {
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_QBLISSA9_HDMI_CEC
+&hdmi_cec {
+//###	pinctrl-names = "default";
+//###	pinctrl-0 = <&pinctrl_hdmi_cec_1>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_QBLISSA9_HDMI
+&hdmi_video {
+	fsl,phy_reg_vlev = <0x0294>;
+	fsl,phy_reg_cksymtx = <0x800d>;
+	hpd-active-low;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_QBLISSA9_I2C_C
+&i2c1 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c1>;
+	status = "okay";
+	/* define ADC here */
+};
+#endif /* CONFIG_QBLISSA9_I2C_C */
+
+#ifdef CONFIG_QBLISSA9_I2C_B
+&i2c2{
+	clock-frequency = <200000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c2>;
+	status = "okay";
+
+	rtc8565@51 {
+		compatible = "nxp,pcf8565", "nxp,pcf8563";
+		reg = <0x51>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
+	};
+/* if you want to use pmic you have to set these regulators. But the pmic
+ * control register will be set by the UBoot so if you want use it you have to
+ * implement that the pmu_reg_core register will be set to "Power FET switched
+ * full on", because this set the bypass, so the pmic controlls the CPU.
+ */
+#if 0
+	pmic: pfuze100@08 {
+		compatible = "fsl,pfuze100";
+		reg = <0x08>;
+
+		regulators {
+			sw1a_reg: sw1ab {
+				regulator-min-microvolt = <300000>;
+				regulator-max-microvolt = <1875000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-ramp-delay = <6250>;
+			};
+
+			sw1c_reg: sw1c {
+				regulator-min-microvolt = <300000>;
+				regulator-max-microvolt = <1875000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-ramp-delay = <6250>;
+			};
+
+			sw2_reg: sw2 {
+				//regulator-min-microvolt = <800000>;
+				regulator-min-microvolt = <400000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-ramp-delay = <6250>;
+			};
+
+			sw3a_reg: sw3a {
+				regulator-min-microvolt = <400000>;
+				//regulator-max-microvolt = <1975000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+			};
+
+			sw3b_reg: sw3b {
+				regulator-min-microvolt = <400000>;
+				//regulator-max-microvolt = <1975000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+			};
+
+			sw4_reg: sw4 {
+				//regulator-min-microvolt = <800000>;
+				regulator-min-microvolt = <400000>;
+				regulator-max-microvolt = <3300000>;
+			};
+
+			swbst_reg: swbst {
+				regulator-min-microvolt = <5000000>;
+				regulator-max-microvolt = <5150000>;
+			};
+
+			snvs_reg: vsnvs {
+				regulator-min-microvolt = <1000000>;
+				regulator-max-microvolt = <3000000>;
+				regulator-boot-on;
+				regulator-always-on;
+			};
+
+			vref_reg: vrefddr {
+				regulator-boot-on;
+				regulator-always-on;
+			};
+
+			vgen1_reg: vgen1 {
+				regulator-min-microvolt = <800000>;
+				regulator-max-microvolt = <1550000>;
+			};
+
+			vgen2_reg: vgen2 {
+				regulator-min-microvolt = <800000>;
+				regulator-max-microvolt = <1550000>;
+			};
+
+			vgen3_reg: vgen3 {
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <3300000>;
+			};
+
+			vgen4_reg: vgen4 {
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-always-on;
+			};
+
+			vgen5_reg: vgen5 {
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-always-on;
+			};
+
+			vgen6_reg: vgen6 {
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-always-on;
+			};
+		};
+	};
+#endif
+};
+#endif /* CONFIG_QBLISSA9_I2C_B */
+
+#ifdef CONFIG_QBLISSA9_I2C_A
+&i2c3 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c3>;
+	status = "okay";
+
+#ifdef CONFIG_QBLISSA9_4WTOUCH_SX8655
+	/* 4/5 wire analog resistive touch, controller on QBLISS SKIT */
+	sx8654@49 {
+		compatible = "semtech,sx8654";
+		reg = <0x49>;
+		touchrate = <0x30>;
+		powdly = <0x06>;
+		filt = <0x02>;
+		setdly = <0x08>;
+		pinctrl-names = "default";
+		/* RESET and IRQ pins must be chosen by the Customer */
+		//interrupt-parent = <&gpio2>;
+		//interrupts = <27 IRQ_TYPE_EDGE_FALLING>;
+		//reset-gpio = <&gpio2 26 GPIO_ACTIVE_HIGH>;
+	};
+#endif
+
+#ifdef CONFIG_QBLISSA9_CAPTOUCH_FT5x06
+	/* F&S driver V3.0 on Touch Connector (I2C) */
+	ft5x06_ts@38 {
+		compatible = "FocalTech,ft5306";
+		reg = <0x38>;
+		fingers = <2>;
+		touchscreen-size-x = <800>;
+		touchscreen-size-y = <480>;
+		threshold = <25>;
+		/* RESET and IRQ pins must be chosen by the Customer */
+		//interrupt-parent = <&gpio2>;
+		//interrupts = <27 IRQ_TYPE_EDGE_FALLING>;
+		//reset-gpios = <&gpio2 26 GPIO_ACTIVE_HIGH>;
+		linux,wakeup;
+	};
+#endif
+
+#ifdef CONFIG_QBLISSA9_CAPTOUCH_MXT224
+	/* Atmel PCAP touch on Touch Connector (I2C) */
+	mxt224@4a {
+		compatible = "atmel,maxtouch";
+		reg = <0x4a>;
+		/* RESET and IRQ pins must be chosen by the Customer */
+		//interrupt-parent = <&gpio2>;
+		//interrupts = <27 IRQ_TYPE_EDGE_FALLING>;
+		atmel,cfg_name = "atmel/mxt224.cfg";
+		//atmel,reset-gpio = <&gpio2 26 GPIO_ACTIVE_HIGH>;
+	};
+#endif
+};
+#endif /* CONFIG_QBLISSA9_I2C_A */
+
+#ifdef CONFIG_QBLISSA9_HDMI
+&i2c_gpio_hdmi {
+	hdmi: edid@50 {
+		compatible = "fsl,imx6-hdmi-i2c";
+		reg = <0x50>;
+	};
+};
+#endif
+
+#if 0 /* NOT TESTED */
+#ifdef CONFIG_QBLISSA9_SERIAL_CAMERA
+&i2c_gpio_cam1 {
+	ov564x_mipi: ov564x_mipi@3c {
+	compatible = "ovti,ov564x_mipi";
+	reg = <0x3c>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ipu1_2>;
+	clocks = <&clks 201>;
+	clock-names = "csi_mclk";
+	DOVDD-supply = <&reg_camera_dovdd>;
+	AVDD-supply = <&reg_camera_avdd>;
+	DVDD-supply = <&reg_camera_dvdd>;
+	pwdn-gpios = <&gpio5 24 GPIO_ACTIVE_HIGH>;
+	rst-gpios = <&gpio5 23 GPIO_ACTIVE_HIGH>;
+	csi_id = <1>;
+	mclk = <24000000>;
+	mclk_source = <0>;
+	};
+};
+#endif
+#endif
+
+/* PWM_B (Pin 196) */
+&pwm1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm1_1>;
+	status = "okay";
+};
+
+/* Backlight PWM (X6 Pin 8) */
+&pwm3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm3_1>;
+	status = "okay";
+};
+
+&pwm4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm4_1>;
+	status = "okay";
 };
 
 &dma_apbh {
@@ -85,10 +768,37 @@
 };
 #endif
 
+#ifdef CONFIG_QBLISSA9_SERIAL_CAMERA
+&mipi_csi {
+	status = "okay";
+	ipu_id = <0>;
+	csi_id = <1>;
+	v_channel = <0>;
+	lanes = <2>;
+};
+#endif
 
+#ifdef CONFIG_QBLISSA9_WM9715_AUDIO
+&ssi1 {
+	fsl,mode = "ac97-slave";
+	cell-index = <0>;
+	pinctrl-names = "ac97-running", "ac97-reset", "ac97-warm-reset";
+	pinctrl-0 = <&pinctrl_ac97_running>;
+	pinctrl-1 = <&pinctrl_ac97_reset>;
+	pinctrl-2 = <&pinctrl_ac97_warm_reset>;
+	ac97-gpios = <&gpio4 19 0 &gpio4 18 0 &gpio4 16 0>;
+	status = "okay";
+};
+#endif
 
-
-
+#ifdef CONFIG_QBLISSA9_UART_A
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1_1>;
+	fsl,uart-has-rtscts;
+	status = "okay";
+};
+#endif
 
 #ifdef CONFIG_QBLISSA9_UART_B
 /* UART2 on pins 185-188 (debug port B)*/
@@ -100,9 +810,174 @@
 };
 #endif /* CONFIG_QBLISSA9_UART_B */
 
+#ifdef CONFIG_QBLISSA9_UART_C
+/* UART3 TX/RX on pins 23, 25 (port C) */
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3_1>;
+	fsl,uart-has-rtscts;
+	status = "okay";
+};
+#endif /* CONFIG_QBLISSA9_UART_C */
 
+#ifdef CONFIG_QBLISSA9_UART_E
+&uart5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart5_1>;
+	status = "okay";
+};
+#endif /* CONFIG_QBLISSA9_UART_E */
 
+&usbh1 {
+	vbus-supply = <&reg_usb_h1_vbus>;
+	status = "okay";
+};
 
+&usbotg {
+	vbus-supply = <&reg_usb_otg_vbus>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg>;
+	disable-over-current;
+	dr_mode = "peripheral";
+	status = "okay";
+};
+
+#if 0 /* NOT TESTED */
+#ifdef CONFIG_QBLISSA9_WLAN
+&usdhc1 {
+	/* on-board WLAN/BT */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc1>;
+	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;
+	vqmmc-supply = <&reg_wlan_vmmc_1v8>;
+	non-removable;
+	keep-power-in-suspend;
+	enable-sdio-wakeup;
+	status = "okay";
+	en-gpios=<&gpio1 10 GPIO_ACTIVE_HIGH>,
+	<&gpio1 11 GPIO_ACTIVE_HIGH>;
+	irq-gpios=<&gpio1 15 GPIO_ACTIVE_HIGH>;
+	cd-gpios = <&gpio1 1 GPIO_ACTIVE_LOW>;
+};
+#endif
+#endif
+
+#ifdef CONFIG_QBLISSA9_SD_A
+&usdhc3 {
+	/* Micro-SD-Card-Slot, CD is active low */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc3>;
+	no-1-8-v;
+	/* Use 8 data lines for eMMC */
+	bus-width = <8>;
+	non-removable;
+	vmmc-supply = <&reg_vref_3v3>;
+	status = "okay";
+	cd-gpios = <&gpio6 15 GPIO_ACTIVE_LOW>;
+	wp-gpios = <&gpio1 13 GPIO_ACTIVE_HIGH>;
+};
+#endif /* CONFIG_QBLISSA9_SD_A */
+
+&pcie {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pcie>;
+	//power-on-gpio = <&gpio6 16 GPIO_ACTIVE_LOW>;
+	reset-gpio = <&gpio4 31 GPIO_ACTIVE_HIGH>;
+	status = "okay";
+};
+
+#ifdef CONFIG_QBLISSA9_HDMI
+&hdmi_core {
+#ifdef CONFIG_QBLISSA9_USE_ONE_IPU
+	/*
+	 * When using one IPU (id=0):
+	 * HDMI can go to DI1, unless LVDS1 is also active. In this case LVDS1
+	 * must go to DI1 and HDMI to DI0.
+	 */
+	ipu_id = <0>;
+#if (__HDMI_ON_0_OR_1__ && __LVDS1_ON_0_OR_1__)
+	disp_id = <0>;
+#else
+	disp_id = <1>;
+#endif
+#else /* !CONFIG_QBLISSA9_USE_ONE_IPU */
+	/*
+	 * When using two IPUs:
+ 	 * HDMI can always go to IPU2 (id=1), DI1.
+	 */
+	disp_id = <1>;
+	ipu_id = <0>;
+#endif /* CONFIG_QBLISSA9_USE_ONE_IPU */
+	status = "okay";
+};
+#endif
+
+#if (defined(CONFIG_QBLISSA9_LVDS0) || defined(CONFIG_QBLISSA9_LVDS1))
+&ldb {
+	ext_ref;
+#if defined(CONFIG_QBLISSA9_LVDS_SPLIT_MODE)
+	split-mode;
+#elif defined(CONFIG_QBLISSA9_LVDS_DUAL_MODE)
+	dual-mode;
+#endif
+	power-supply = <&reg_vlcd>;
+	status = "okay";
+
+#ifdef CONFIG_QBLISSA9_LVDS0
+	/* LVDS0 must always go to DI0 of an IPU! */
+	lvds-channel@0 {
+		reg = <0>;
+#ifdef CONFIG_QBLISSA9_USE_ONE_IPU
+		crtc = "ipu1-di0";
+#else
+		crtc = "ipu2-di0";
+#endif
+		fsl,data-mapping = CONFIG_QBLISSA9_LVDS0_MAPPING;
+		fsl,data-width = <CONFIG_QBLISSA9_LVDS0_DATA_WIDTH>;
+#ifdef __LVDS0_PRIMARY__
+		primary;
+#endif
+		status = "okay";
+
+		display-timings {
+			native-mode = <&timing0>;
+			timing0: CONFIG_QBLISSA9_LVDS0_TIMING;
+		};
+	};
+#endif
+
+#ifdef CONFIG_QBLISSA9_LVDS1
+	/* LVDS1 must always go to DI1 of an IPU! */
+	lvds-channel@1 {
+#if defined(CONFIG_QBLISSA9_LVDS_DUAL_MODE) \
+	|| defined(CONFIG_QBLISSA9_LVDS_SPLIT_MODE)
+		reg = <0>;
+#else
+		reg = <1>;
+#endif
+#if (defined(CONFIG_QBLISSA9_USE_ONE_IPU) \
+	|| (__LVDS0_ON_0_OR_1__ && __LVDS1_ON_0_OR_1__) \
+	|| (__LVDS0_ON_2_OR_3__ && __LVDS1_ON_2_OR_3__))
+		crtc = "ipu1-di1";
+#else
+		crtc = "ipu2-di1";
+#endif
+		fsl,data-mapping = CONFIG_QBLISSA9_LVDS1_MAPPING;
+		fsl,data-width = <CONFIG_QBLISSA9_LVDS1_DATA_WIDTH>;
+#ifdef __LVDS1_PRIMARY__
+		primary;
+#endif
+		status = "okay";
+
+		display-timings {
+			native-mode = <&timing1>;
+			timing1: CONFIG_QBLISSA9_LVDS1_TIMING;
+		};
+	};
+#endif
+};
+#endif /* CONFIG_QBLISSA9_LVDS0 || CONFIG_QBLISSA9_LVDS1 */
 
 &iomuxc {
 	pinctrl-names = "default";
@@ -112,17 +987,67 @@
 		/* Pin configs that don't belong anywhere else */
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
-				
 				/* WDOG1 */
-				MX6QDL_PAD_GPIO_9__WDOG1_B		0x80000000
-
+				MX6QDL_PAD_GPIO_9__WDOG1_B		0xb0b0
 				/* RTC_IRQ */
 				MX6QDL_PAD_ENET_TX_EN__GPIO1_IO28	0xb0b0
+				MX6QDL_PAD_EIM_WAIT__GPIO5_IO00		0x30b0
+				MX6QDL_PAD_EIM_A18__GPIO2_IO20		0x30b0
+				MX6QDL_PAD_EIM_EB0__GPIO2_IO28		0x30b0
+				MX6QDL_PAD_EIM_EB1__GPIO2_IO29		0x30b0
+				MX6QDL_PAD_EIM_DA0__GPIO3_IO00		0x30b0
+				MX6QDL_PAD_EIM_DA1__GPIO3_IO01		0x30b0
+				MX6QDL_PAD_EIM_DA2__GPIO3_IO02		0x30b0
+				MX6QDL_PAD_EIM_DA3__GPIO3_IO03		0x30b0
+				MX6QDL_PAD_EIM_DA4__GPIO3_IO04		0x30b0
+				MX6QDL_PAD_EIM_DA5__GPIO3_IO05		0x30b0
+				MX6QDL_PAD_EIM_DA6__GPIO3_IO06		0x30b0
+				MX6QDL_PAD_EIM_DA7__GPIO3_IO07		0x30b0
+				MX6QDL_PAD_EIM_DA8__GPIO3_IO08		0x30b0
+				MX6QDL_PAD_EIM_DA9__GPIO3_IO09		0x30b0
+				MX6QDL_PAD_EIM_DA10__GPIO3_IO10		0x30b0
+				MX6QDL_PAD_EIM_DA11__GPIO3_IO11		0x30b0
+				MX6QDL_PAD_EIM_DA12__GPIO3_IO12		0x30b0
+				MX6QDL_PAD_EIM_DA13__GPIO3_IO13		0x30b0
+				MX6QDL_PAD_EIM_DA14__GPIO3_IO14		0x30b0
+				MX6QDL_PAD_EIM_DA15__GPIO3_IO15		0x30b0
+				/* SLEEP S5*/
+				MX6QDL_PAD_KEY_COL2__GPIO4_IO10		0xb0b0
+				/* SUSPEND */
+				MX6QDL_PAD_KEY_ROW2__GPIO4_IO11		0xb0b0
+				/* DIGON */
+				MX6QDL_PAD_SD4_DAT3__GPIO2_IO11		0x30b0
+				/* LDDC_DATA */
+				MX6QDL_PAD_SD4_DAT4__GPIO2_IO12		0x30b0
+				/* LDDC_CLK */
+				MX6QDL_PAD_SD4_DAT5__GPIO2_IO13		0x30b0
+				/* USB_OC01* /
+				MX6QDL_PAD_EIM_D21__GPIO3_IO21		0xb0b0
+				/* FAN_TACHOIN */
+				MX6QDL_PAD_GPIO_2__GPIO1_IO02		0x30b0
+				/* LID_BTNJ */
+				MX6QDL_PAD_GPIO_4__GPIO1_IO04		0x30b0
+				/* SLP_BTNJ */
+				MX6QDL_PAD_GPIO_5__GPIO1_IO05		0x30b0
+				/* BATLOWJ */
+				MX6QDL_PAD_GPIO_6__GPIO1_IO06		0x30b0
+				/* THRMn */
+				MX6QDL_PAD_GPIO_7__GPIO1_IO07		0xb0b0
+				/* WAKEJ_EXT */
+				MX6QDL_PAD_GPIO_8__GPIO1_IO08		0x30b0
+				/* WDOUT_ENn */
+				MX6QDL_PAD_GPIO_9__GPIO1_IO09		0xb0b0
+				/*USB_HUB_RESET_B */
+				MX6QDL_PAD_GPIO_17__GPIO7_IO12		0x30b0
+				/* ATA_ACTn */
+				MX6QDL_PAD_GPIO_18__GPIO7_IO13		0xb0b0
+				/* BACKLIGHT_On */
+				MX6QDL_PAD_SD4_DAT0__GPIO2_IO08		0x30b0
 			>;
 		};
 
-#if 0
 		/* Pins already set in bootloader */
+#if 0
 		pinctrl_gpmi_nand_1: gpmi-nand-1 {
 			fsl,pins = <
 				MX6QDL_PAD_NANDF_CLE__NAND_CLE		0xb0b1
@@ -143,6 +1068,56 @@
 			>;
 		};
 #endif
+
+#ifdef CONFIG_QBLISSA9_SPI_FLASH
+		/* ECSPI1 - SPI flash */
+		pinctrl_ecspi1_1: ecspi1grp {
+			fsl,pins = <
+				MX6QDL_PAD_EIM_D17__ECSPI1_MISO		0x100b1
+				MX6QDL_PAD_EIM_D18__ECSPI1_MOSI		0x100b1
+				MX6QDL_PAD_EIM_D16__ECSPI1_SCLK		0x100b1
+			>;
+		};
+
+		pinctrl_ecspi1_cs: ecspi1cs {
+			fsl,pins = <
+				/* ECSPI1_SS0 - slave (chip) select 0 */
+				MX6QDL_PAD_EIM_EB2__GPIO2_IO30		0x1b0b0
+			>;
+		};
+#endif /* CONFIG_QBLISSA9_SPI_FLASH */
+
+#ifdef CONFIG_QBLISSA9_SPI_A
+		/* ECSPI2 - SPI_A */
+		pinctrl_ecspi2_1: ecspi2grp {
+			fsl,pins = <
+				MX6QDL_PAD_EIM_OE__ECSPI2_MISO 		0x100b1
+				MX6QDL_PAD_EIM_CS1__ECSPI2_MOSI		0x100b1
+				MX6QDL_PAD_EIM_CS0__ECSPI2_SCLK		0x100b1
+			>;
+		};
+
+		pinctrl_ecspi2_cs: ecspi2cs {
+			fsl,pins = <
+				/* ECSPI2_SS0 - slave (chip) select 0 */
+				MX6QDL_PAD_EIM_RW__GPIO2_IO26		0x1b0b0
+				/* ECSPI2_SS1  - slave (chip) select 1 */
+				MX6QDL_PAD_EIM_LBA__GPIO2_IO27		0x1b0b0
+			>;
+		};
+#endif
+
+#ifdef CONFIG_QBLISSA9_UART_A
+		pinctrl_uart1_1: uart1grp-1{
+			fsl,pins = <
+				MX6QDL_PAD_CSI0_DAT10__UART1_TX_DATA	0x1b0b1
+				MX6QDL_PAD_CSI0_DAT11__UART1_RX_DATA	0x1b0b1
+				MX6QDL_PAD_EIM_D19__UART1_RTS_B		0x1b0b1
+				MX6QDL_PAD_EIM_D20__UART1_CTS_B		0x1b0b1
+			>;
+		};
+#endif
+
 #ifdef CONFIG_QBLISSA9_UART_B
 		/* UART2 on pins 185-188 (port B)*/
 		pinctrl_uart2_1: uart2grp-1{
@@ -155,5 +1130,240 @@
 		};
 #endif /* CONFIG_QBLISSA9_UART_B */
 
+#ifdef CONFIG_QBLISSA9_UART_C
+		/* UART3 on pins 36, 38 (port C) */
+		pinctrl_uart3_1: uart3grp-1{
+			fsl,pins = <
+				MX6QDL_PAD_EIM_D24__UART3_TX_DATA	0x1b0b1
+				MX6QDL_PAD_EIM_D25__UART3_RX_DATA	0x1b0b1
+				MX6QDL_PAD_EIM_EB3__UART3_RTS_B		0x1b0b1
+				MX6QDL_PAD_EIM_D23__UART3_CTS_B		0x1b0b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_QBLISSA9_UART_E
+		pinctrl_uart5_1: uart5grp-1{
+			fsl,pins = <
+				MX6QDL_PAD_KEY_COL1__UART5_TX_DATA	0x1b0b1
+				MX6QDL_PAD_KEY_ROW1__UART5_RX_DATA	0x1b0b1
+			>;
+		};
+#endif
+
+		pinctrl_flexcan_a: flexcan2grp {
+			fsl,pins = <
+				MX6QDL_PAD_KEY_COL4__FLEXCAN2_TX	0x1b020
+				MX6QDL_PAD_KEY_ROW4__FLEXCAN2_RX	0x1b020
+			>;
+		};
+
+		pinctrl_usbotg: usbotggrp {
+			fsl,pins = <
+				/* USB OTG PWR */
+				MX6QDL_PAD_EIM_D22__GPIO3_IO22		0x000b0
+				MX6QDL_PAD_ENET_RX_ER__USB_OTG_ID 	0x17059
+			>;
+		};
+
+#ifdef CONFIG_QBLISSA9_WM9715_AUDIO
+		pinctrl_ac97_running: ac97_running {
+			fsl,pins = <
+				MX6QDL_PAD_DI0_PIN2__AUD6_TXD		0x170b9
+				MX6QDL_PAD_DI0_PIN3__AUD6_TXFS		0x170b9
+				MX6QDL_PAD_DI0_PIN4__AUD6_RXD		0x120f9
+				MX6QDL_PAD_DI0_PIN15__AUD6_TXC		0x120f9
+				MX6QDL_PAD_DI0_DISP_CLK__GPIO4_IO16	0x1b0b0
+			>;
+		};
+
+		pinctrl_ac97_warm_reset: ac97_warm_reset {
+			fsl,pins = <
+				MX6QDL_PAD_DI0_PIN2__AUD6_TXD		0x170b9
+				MX6QDL_PAD_DI0_PIN3__GPIO4_IO19		0x170b9
+				MX6QDL_PAD_DI0_PIN4__AUD6_RXD		0x120f9
+				MX6QDL_PAD_DI0_PIN15__AUD6_TXC		0x120f9
+				MX6QDL_PAD_DI0_DISP_CLK__GPIO4_IO16	0x1b0b0
+			>;
+		};
+
+		pinctrl_ac97_reset: ac97_reset {
+			fsl,pins = <
+				MX6QDL_PAD_DI0_PIN2__GPIO4_IO18		0x170b9
+				MX6QDL_PAD_DI0_PIN3__GPIO4_IO19		0x170b9
+				MX6QDL_PAD_DI0_PIN4__AUD6_RXD		0x120f9
+				MX6QDL_PAD_DI0_PIN15__AUD6_TXC		0x120f9
+				MX6QDL_PAD_DI0_DISP_CLK__GPIO4_IO16	0x1b0b0
+			>;
+		};
+#endif
+
+		pinctrl_enet: enetgrp {
+			fsl,pins = <
+				MX6QDL_PAD_ENET_MDIO__ENET_MDIO		0x1b0b0
+				MX6QDL_PAD_ENET_MDC__ENET_MDC		0x1b0b0
+				MX6QDL_PAD_RGMII_TXC__RGMII_TXC		0x1b0b0
+				MX6QDL_PAD_RGMII_TD0__RGMII_TD0		0x1b0b0
+				MX6QDL_PAD_RGMII_TD1__RGMII_TD1		0x1b0b0
+				MX6QDL_PAD_RGMII_TD2__RGMII_TD2		0x1b0b0
+				MX6QDL_PAD_RGMII_TD3__RGMII_TD3		0x1b0b0
+				MX6QDL_PAD_RGMII_TX_CTL__RGMII_TX_CTL	0x1b0b0
+				MX6QDL_PAD_ENET_REF_CLK__ENET_TX_CLK	0x1b0b0
+				MX6QDL_PAD_RGMII_RXC__RGMII_RXC		0x1b0b0
+				MX6QDL_PAD_RGMII_RD0__RGMII_RD0		0x1b0b0
+				MX6QDL_PAD_RGMII_RD1__RGMII_RD1		0x1b0b0
+				MX6QDL_PAD_RGMII_RD2__RGMII_RD2		0x1b0b0
+				MX6QDL_PAD_RGMII_RD3__RGMII_RD3		0x1b0b0
+				MX6QDL_PAD_RGMII_RX_CTL__RGMII_RX_CTL	0x1b0b0
+				/* Phy interrupt IO pin*/
+				MX6QDL_PAD_GPIO_19__GPIO4_IO05		0x4001b0a8
+				/* Phy reset IO pin*/
+				MX6QDL_PAD_ENET_CRS_DV__GPIO1_IO25	0x4001b0a8
+			>;
+		};
+
+#if 0 /* NOT TESTED */
+#ifdef CONFIG_QBLISSA9_WLAN
+		pinctrl_usdhc1:usdhc1grp {
+			fsl,pins = <
+				MX6QDL_PAD_SD1_CMD__SD1_CMD		0x17059
+				MX6QDL_PAD_SD1_CLK__SD1_CLK		0x10071
+				MX6QDL_PAD_SD1_DAT0__SD1_DATA0		0x17059
+				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x17059
+				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x17059
+				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x17059
+				MX6QDL_PAD_ENET_RXD0__ESAI_TX_HF_CLK	0x10071
+				MX6QDL_PAD_SD2_CMD__GPIO1_IO11		0x30b0
+				MX6QDL_PAD_SD2_CLK__GPIO1_IO10		0x30b0
+				MX6QDL_PAD_SD2_DAT0__GPIO1_IO15		0x30b0
+			>;
+		};
+#endif
+#endif
+
+#ifdef CONFIG_QBLISSA9_SD_A
+		pinctrl_usdhc3: usdhc3grp {
+			fsl,pins = <
+				MX6QDL_PAD_SD3_CMD__SD3_CMD		0x17071
+				MX6QDL_PAD_SD3_CLK__SD3_CLK		0x10071
+				MX6QDL_PAD_SD3_DAT0__SD3_DATA0		0x17071
+				MX6QDL_PAD_SD3_DAT1__SD3_DATA1		0x17071
+				MX6QDL_PAD_SD3_DAT2__SD3_DATA2		0x17071
+				MX6QDL_PAD_SD3_DAT3__SD3_DATA3		0x17071
+				MX6QDL_PAD_SD3_DAT4__SD3_DATA4		0x17071
+				MX6QDL_PAD_SD3_DAT5__SD3_DATA5		0x17071
+				MX6QDL_PAD_SD3_DAT6__SD3_DATA6		0x17071
+				MX6QDL_PAD_SD3_DAT7__SD3_DATA7		0x17071
+				/* Reset eMMC, active low */
+				MX6QDL_PAD_SD3_RST__GPIO7_IO08		0xb060
+				/* CD */
+				MX6QDL_PAD_NANDF_CS2__GPIO6_IO15	0xb060
+				/* WP */
+				MX6QDL_PAD_SD2_DAT2__GPIO1_IO13		0x30b0
+			>;
+		};
+#endif
+#ifdef CONFIG_QBLISSA9_I2C_C
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <
+				MX6QDL_PAD_CSI0_DAT8__I2C1_SDA		0x4001b8b1
+				MX6QDL_PAD_CSI0_DAT9__I2C1_SCL	0x4001b8b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_QBLISSA9_I2C_B
+		/* I2C2 as I2C port B  (PMIC, RTC) */
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <
+				MX6QDL_PAD_KEY_COL3__GPIO4_IO12		0x4001b8b1
+				MX6QDL_PAD_KEY_ROW3__GPIO4_IO13		0x4001b8b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_QBLISSA9_I2C_A
+		/* I2C_A: Feature Connector (SKIT) */
+		pinctrl_i2c3: i2c3grp-1 {
+			fsl,pins = <
+				MX6QDL_PAD_GPIO_3__I2C3_SCL		0x4001b8b1
+				MX6QDL_PAD_GPIO_16__I2C3_SDA		0x4001b8b1
+				/* if AD Converter */
+				//MX6QDL_PAD_SD4_DAT4__GPIO2_IO12	0x80000000
+			>;
+		};
+#endif
+
+#ifdef CONFIG_QBLISSA9_HDMI
+		pinctrl_i2c6_gpio: i2c6_gpio_grp {
+			fsl,pins = <
+				MX6QDL_PAD_SD4_DAT6__GPIO2_IO14		0x3039
+				MX6QDL_PAD_SD4_DAT7__GPIO2_IO15		0x3039
+			>;
+		};
+#endif
+
+#ifdef CONFIG_QBLISSA9_SERIAL_CAMERA
+		pinctrl_i2c7_gpio: i2c7_gpio_grp {
+			fsl,pins = <
+				MX6QDL_PAD_DISP0_DAT0__GPIO4_IO21	0x7048
+				MX6QDL_PAD_DISP0_DAT1__GPIO4_IO22	0x7048
+			>;
+		};
+
+		pinctrl_ipu1_2: ipu1grp-cam { /* serial camera */
+			fsl,pins = <
+				MX6QDL_PAD_CSI0_DAT12__IPU1_CSI0_DATA12	0x80000000
+				MX6QDL_PAD_CSI0_DAT13__IPU1_CSI0_DATA13	0x80000000
+				MX6QDL_PAD_CSI0_DAT14__IPU1_CSI0_DATA14	0x80000000
+				MX6QDL_PAD_CSI0_DAT15__IPU1_CSI0_DATA15	0x80000000
+				MX6QDL_PAD_CSI0_DAT16__IPU1_CSI0_DATA16	0x80000000
+				MX6QDL_PAD_CSI0_DAT17__IPU1_CSI0_DATA17	0x80000000
+				MX6QDL_PAD_CSI0_DAT18__IPU1_CSI0_DATA18	0x80000000
+				MX6QDL_PAD_CSI0_DAT19__IPU1_CSI0_DATA19	0x80000000
+				/*reset */
+				MX6QDL_PAD_CSI0_PIXCLK__IPU1_CSI0_PIXCLK 0x80000000
+				MX6QDL_PAD_CSI0_DATA_EN__IPU1_CSI0_DATA_EN 0x80000000
+				MX6QDL_PAD_CSI0_MCLK__IPU1_CSI0_HSYNC	0x80000000
+				MX6QDL_PAD_CSI0_VSYNC__IPU1_CSI0_VSYNC	0x80000000
+				MX6QDL_PAD_GPIO_0__CCM_CLKO1		0x170f9
+				MX6QDL_PAD_CSI0_DAT6__IPU1_CSI0_DATA06	0x80000000
+				MX6QDL_PAD_CSI0_DAT5__IPU1_CSI0_DATA05	0x80000000
+			>;
+		};
+#endif
+
+		pinctrl_pwm1_1: pwm1grp {
+			fsl,pins = <
+				MX6QDL_PAD_DISP0_DAT8__PWM1_OUT		0x110b0
+			>;
+		};
+
+		/* LVDS backlight control - PWM3 */
+		pinctrl_pwm3_1: pwm3grp {
+			fsl,pins = <
+				MX6QDL_PAD_SD4_DAT1__PWM3_OUT		0x110b0
+			>;
+		};
+
+		pinctrl_pwm4_1: pwm4grp {
+			fsl,pins = <
+				MX6QDL_PAD_SD4_DAT2__PWM4_OUT		0x110b0
+			>;
+		};
+
+		pinctrl_pcie: pciegrp {
+			fsl,pins = <
+				/* PCIe-RST */
+				MX6QDL_PAD_DISP0_DAT10__GPIO4_IO31	0x30b0
+			>;
+		};
+
+		pinctrl_status_leds: ledgrp {
+			fsl,pins = <
+				MX6QDL_PAD_KEY_COL0__GPIO4_IO06		0x30b0
+				MX6QDL_PAD_KEY_ROW0__GPIO4_IO07		0x30b0
+			>;
+		};
 	};
 };

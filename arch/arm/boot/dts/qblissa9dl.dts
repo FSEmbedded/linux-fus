@@ -20,40 +20,20 @@
 /*
  * Set the display configuration:
  *
- * - If you have no display, set all four settings to DISPLAY_NONE.
- * - If you have one display, set MXCFB0 to one of the display types above and
- *   leave the other settings at DISPLAY_NONE.
- * - If you have two displays, set MXCFB0 and MXCFB1 to a display type from
- *   above and leave the other two at DISPLAY_NONE.
- * - If you have three displays, set MXCFB0, MXCFB1 and MXCFB2 to a display
- *   type from above and leave MXCFB3 at DISPLAY_NONE.
- * - If you have four displays, set all four settings to a valid display type.
+ * - If you have no display, set both settings to DISPLAY_NONE.
+ * - If you have one display, set MXCFB0 to one of the display types above
+ *   and leave MXCFB1 at DISPLAY_NONE.
+ * - If you have two displays, set both settings to a display type from above.
+ *   You have to use different types for the two displays.
  *
- * You have to use a different type for each display. If you want two LVDS
- * displays, set one to DISPLAY_LVDS0 and the other to DISPLAY_LVDS1. This
- * corresponds to the LVDS channel where the display is connected to.
- *
- * The first two displays will also get a video overlay, so MXCFB0 will use
- * /dev/fb0 and /dev/fb1, MXCFB1 will use /dev/fb2 and /dev/fb3, MXCFB2 will
- * use /dev/fb4 and MXCFB3 will use /dev/fb5. If you want to restrict the
- * display output to one IPU (i.MX6 Dual/Quad has two IPUs), for example for
- * energy saving reasons, you must not use more than two displays and you must
- * set CONFIG_QBLISSA9_USE_ONE_IPU below. Then only MXCFB0 will get a video
- * overlay and uses /dev/fb0 and /dev/fb1, and MXCFB1 will only use /dev/fb2.
+ * The first display will also get a video overlay, so MXCFB0 will use /dev/fb0
+ * and /dev/fb1 and MXCFB1 will use /dev/fb2.
  */
 #define CONFIG_QBLISSA9_MXCFB0	DISPLAY_LVDS0
 #define CONFIG_QBLISSA9_MXCFB1	DISPLAY_NONE
-#define CONFIG_QBLISSA9_MXCFB2	DISPLAY_NONE
-#define CONFIG_QBLISSA9_MXCFB3	DISPLAY_NONE
 
-/*
- * Define this if you only want to use one IPU. This means that you can use
- * at most two displays and only the first display can have a video overlay.
- * If you want to have more than two displays or if you want to have two
- * displays with a video overlay each, then you need to use both IPUs of the
- * i.MX6 Dual/Quad CPU.
- */
-//#define CONFIG_QBLISSA9_USE_ONE_IPU
+/* i.MX6 Solo and DualLite only have one IPU, do not change */
+#define CONFIG_QBLISSA9_USE_ONE_IPU
 
 /* Configure HDMI settings here (ignored if HDMI is not used) */
 #define CONFIG_QBLISSA9_HDMI_BPP	32
@@ -134,7 +114,7 @@ wvga {					\
 /*
  * Configure touch screen:
  *
- * - 4-wire/5-wire analog resistive touch (SX8655), on Touch Connector
+ * - 4-wire/5-wire analog resistive touch, touch controller on SKIT
  * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
  * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
  *
@@ -164,8 +144,8 @@ wvga {					\
 /* WLAN */
 #define CONFIG_QBLISSA9_WLAN
 
-/* SD-CARD - SD_A is micro SD */
-#define CONFIG_QBLISSA9_SD_A
+/* SD-CARD - SD_C is micro SD */
+#define CONFIG_QBLISSA9_SD_C
 
 /* I2C */
 #define CONFIG_QBLISSA9_I2C_A
@@ -182,7 +162,7 @@ wvga {					\
 #define CONFIG_QBLISSA9_SPI_A
 //#define CONFIG_QBLISSA9_SPI_FLASH
 
-#include "imx6q.dtsi"
+#include "imx6dl.dtsi"
 #include "qblissa9qdl.dtsi"
 
 / {
@@ -191,9 +171,10 @@ wvga {					\
 };
 
 &bdinfo {
-	board_name = "qblissa9q";
+	board_name = "qblissa9dl";
 };
 
-&sata{
+/* i.MX6 Solo and DualLite have a PXP engine */
+&pxp {
 	status = "okay";
 };

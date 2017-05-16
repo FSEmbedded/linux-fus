@@ -289,6 +289,7 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	efusa9dl.dtb \
 	armstonea9dl.dtb \
 	armstonea9r2dl.dtb \
+	qblissa9dl.dtb \
 	imx6dl-wandboard-revb1.dtb \
 	imx6q-arm2.dtb \
 	imx6q-pop-arm2.dtb \
@@ -340,6 +341,7 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	efusa9q.dtb \
 	armstonea9q.dtb \
 	armstonea9r2q.dtb \
+	qblissa9q.dtb \
 	imx6q-wandboard-revb1.dtb
 dtb-$(CONFIG_SOC_IMX6SL) += \
 	imx6sl-evk.dtb \
