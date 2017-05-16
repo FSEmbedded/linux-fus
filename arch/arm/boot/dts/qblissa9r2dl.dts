@@ -1,0 +1,182 @@
+/*
+ * Copyright (C) 2016 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 100 for board rev. 1.00 */
+#define CONFIG_QBLISSA9R2_BOARD_REVISION	100
+
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_LCD	1	/* LCD via RGB adapter */
+#define DISPLAY_HDMI	2	/* DVI/HDMI via HDMI connector */
+#define DISPLAY_LVDS0	3	/* LVDS channel 0 */
+#define DISPLAY_LVDS1	4	/* LVDS channel 1 */
+
+/*
+ * Set the display configuration:
+ *
+ * - If you have no display, set both settings to DISPLAY_NONE.
+ * - If you have one display, set MXCFB0 to one of the display types above
+ *   and leave MXCFB1 at DISPLAY_NONE.
+ * - If you have two displays, set both settings to a display type from above.
+ *   You have to use different types for the two displays.
+ *
+ * The first display will also get a video overlay, so MXCFB0 will use /dev/fb0
+ * and /dev/fb1 and MXCFB1 will use /dev/fb2.
+ */
+#define CONFIG_QBLISSA9R2_MXCFB0	DISPLAY_LVDS0
+#define CONFIG_QBLISSA9R2_MXCFB1	DISPLAY_NONE
+
+/* i.MX6 Solo and DualLite only have one IPU, do not change */
+#define CONFIG_QBLISSA9R2_USE_ONE_IPU
+
+/* Configure HDMI settings here (ignored if HDMI is not used) */
+#define CONFIG_QBLISSA9R2_HDMI_BPP	32
+#define CONFIG_QBLISSA9R2_HDMI_PIX_FMT	"RGB24"
+#define CONFIG_QBLISSA9R2_HDMI_MODE_STR	"1920x1080M@60"
+
+/*
+ * Configure LVDS0 settings here (ignored if LVDS0 is not used)
+ * Mapping:
+ *
+ * - "spwg":  18 bpp or 24 bpp, in case of 24 bpp, bits 6 and 7 of each color
+ *            are encoded on fourth LVDS differential data pair
+ * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
+ *            all other data bits on all four differential data pairs
+ */
+#define CONFIG_QBLISSA9R2_LVDS0_MAPPING	"spwg"
+#define CONFIG_QBLISSA9R2_LVDS0_BPP	32
+#define CONFIG_QBLISSA9R2_LVDS0_PIX_FMT	"RGB666"
+#define CONFIG_QBLISSA9R2_LVDS0_DATA_WIDTH	18
+#define CONFIG_QBLISSA9R2_LVDS0_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+
+/*
+ * Configure LVDS1 settings here (ignored if LVDS1 is not used)
+ * For mapping value see above.
+ */
+#define CONFIG_QBLISSA9R2_LVDS1_MAPPING	"spwg"
+#define CONFIG_QBLISSA9R2_LVDS1_BPP	32
+#define CONFIG_QBLISSA9R2_LVDS1_PIX_FMT	"RGB666"
+#define CONFIG_QBLISSA9R2_LVDS1_DATA_WIDTH	18
+#define CONFIG_QBLISSA9R2_LVDS1_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+
+/*
+ * Define this for a two-channel display, i.e. one display, one framebuffer,
+ * but two LVDS channels, even pixels from one channel, odd pixels from the
+ * other channel. Only define either DISPLAY_LVDS0 or DISPLAY_LVDS1 in this
+ * case, using the full display resolution.
+ */
+//#define CONFIG_QBLISSA9R2_LVDS_SPLIT_MODE
+
+/*
+ * Define this if you have two similar displays (same resolution and timings),
+ * one on each LVDS channel. The display content of the framebuffer is shown
+ * on both displays simultaneously (cloned). Only define either DISPLAY_LVDS0
+ * or DISPLAY_LVDS1 in this case, using the resolution of one of the displays.
+ */
+//#define CONFIG_QBLISSA9R2_LVDS_DUAL_MODE
+
+/*
+ * Configure touch screen:
+ *
+ * - 4-wire/5-wire analog resistive touch, touch controller on SKIT
+ * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
+ * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ * Select none if you do not need touch support.
+ */
+//#define CONFIG_QBLISSA9R2_4WTOUCH_SX8655
+#define CONFIG_QBLISSA9R2_CAPTOUCH_MXT224
+//#define CONFIG_QBLISSA9R2_CAPTOUCH_FT5x06
+
+/* CMA: Set 320 MB for Continuous Memory Allocator */
+#define CONFIG_QBLISSA9R2_CMA_SIZE	0x14000000
+
+/* Camera connected */
+#define CONFIG_QBLISSA9R2_CAMERA
+#define CONFIG_QBLISSA9R2_HDMI_CEC
+#define CONFIG_QBLISSA9R2_HDMI
+
+/* Camera on serial MIPI CSI interface */
+#define CONFIG_QBLISSA9R2_SERIAL_CAMERA
+
+/* NAND */
+#define CONFIG_QBLISSA9R2_NAND
+
+/* AUDIO */
+#define CONFIG_QBLISSA9R2_WM9715_AUDIO
+
+/* WLAN */
+#define CONFIG_QBLISSA9R2_WLAN
+
+/* SD-CARD - SD_A is micro SD */
+#define CONFIG_QBLISSA9R2_SD_A
+
+/* SD-CARD - SD_C is eMMC */
+#define CONFIG_QBLISSA9R2_EMMC
+
+/* I2C */
+#define CONFIG_QBLISSA9R2_I2C_A
+#define CONFIG_QBLISSA9R2_I2C_B
+#define CONFIG_QBLISSA9R2_I2C_C
+
+/* UART */
+#define CONFIG_QBLISSA9R2_UART_A
+#define CONFIG_QBLISSA9R2_UART_C
+#define CONFIG_QBLISSA9R2_UART_D
+#define CONFIG_QBLISSA9R2_UART_E
+
+/* SPI */
+#define CONFIG_QBLISSA9R2_SPI_A
+//#define CONFIG_QBLISSA9R2_SPI_FLASH
+
+#include "imx6dl.dtsi"
+#include "qblissa9r2qdl.dtsi"
+
+/ {
+	model = "F&S i.MX6 Dual/Quad QBlissA9r2";
+	compatible = "fsl,imx6dl-qblissa9r2", "fsl,imx6dl";
+};
+
+&bdinfo {
+	board_name = "qblissa9r2dl";
+};
+
+/* i.MX6 Solo and DualLite have a PXP engine */
+&pxp {
+	status = "okay";
+};
