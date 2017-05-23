@@ -245,9 +245,12 @@ void cfg80211_conn_work(struct work_struct *work)
 			bssid = bssid_buf;
 		}
 		if (cfg80211_conn_do_work(wdev)) {
-			__cfg80211_connect_result(
-					wdev->netdev, bssid,
-					NULL, 0, NULL, 0, -1, false, NULL, NULL);
+            struct cfg80211_connect_resp_params cr;
+
+            memset(&cr, 0, sizeof(cr));
+            cr.status = -1;
+            cr.bssid = bssid;
+			__cfg80211_connect_result(wdev->netdev, &cr, false);
 		}
 		wdev_unlock(wdev);
 	}
@@ -350,9 +353,13 @@ void cfg80211_sme_rx_auth(struct wireless_dev *wdev, const u8 *buf, size_t len)
 		wdev->conn->state = CFG80211_CONN_AUTHENTICATE_NEXT;
 		schedule_work(&rdev->conn_work);
 	} else if (status_code != WLAN_STATUS_SUCCESS) {
-		__cfg80211_connect_result(wdev->netdev, mgmt->bssid,
-					  NULL, 0, NULL, 0,
-					  status_code, false, NULL, NULL);
+        struct cfg80211_connect_resp_params cr;
+
+        memset(&cr, 0, sizeof(cr));
+        cr.status = status_code;
+        cr.bssid = mgmt->bssid;
+        cr.timeout_reason = NL80211_TIMEOUT_UNSPECIFIED;
+		__cfg80211_connect_result(wdev->netdev, &cr, false);
 	} else if (wdev->conn->state == CFG80211_CONN_AUTHENTICATING) {
 		wdev->conn->state = CFG80211_CONN_ASSOCIATE_NEXT;
 		schedule_work(&rdev->conn_work);
@@ -652,12 +659,9 @@ static DECLARE_WORK(cfg80211_disconnect_work, disconnect_work);
  */
 
 /* This method must consume bss one way or another */
-void __cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
-			       const u8 *req_ie, size_t req_ie_len,
-			       const u8 *resp_ie, size_t resp_ie_len,
-			       int status, bool wextev,
-			       struct cfg80211_bss *bss,
-                   struct cfg80211_connect_resp_params *cr)
+void __cfg80211_connect_result(struct net_device *dev,
+                   struct cfg80211_connect_resp_params *cr,
+			       bool wextev)
 {
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	const u8 *country_ie;
@@ -669,60 +673,46 @@ void __cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
 
 	if (WARN_ON(wdev->iftype != NL80211_IFTYPE_STATION &&
 		    wdev->iftype != NL80211_IFTYPE_P2P_CLIENT)) {
-		cfg80211_put_bss(wdev->wiphy, bss);
+		cfg80211_put_bss(wdev->wiphy, cr->bss);
 		return;
 	}
 
-    if (cr && cr->fils_kek_len) {
-	    nl80211_send_connect_result(wiphy_to_rdev(wdev->wiphy), dev,
-				    bssid, req_ie, req_ie_len,
-				    resp_ie, resp_ie_len,
-				    cr->fils_kek, cr->fils_kek_len,
-                    cr->update_erp_next_seq_num,
-                    cr->fils_erp_next_seq_num,
-                    cr->pmk, cr->pmk_len, cr->pmkid,
-				    status, GFP_KERNEL);
-    }else {
-	    nl80211_send_connect_result(wiphy_to_rdev(wdev->wiphy), dev,
-				    bssid, req_ie, req_ie_len,
-				    resp_ie, resp_ie_len,
-				    NULL, 0, 0, 0, NULL, 0, NULL,
-				    status, GFP_KERNEL);
-    }
+    nl80211_send_connect_result(wiphy_to_rdev(wdev->wiphy), dev,
+                                cr, GFP_KERNEL);
 
 #ifdef CONFIG_CFG80211_WEXT
 	if (wextev) {
-		if (req_ie && status == WLAN_STATUS_SUCCESS) {
+		if (cr->req_ie && cr->status == WLAN_STATUS_SUCCESS) {
 			memset(&wrqu, 0, sizeof(wrqu));
-			wrqu.data.length = req_ie_len;
-			wireless_send_event(dev, IWEVASSOCREQIE, &wrqu, req_ie);
+			wrqu.data.length = cr->req_ie_len;
+			wireless_send_event(dev, IWEVASSOCREQIE, &wrqu, cr->req_ie);
 		}
 
-		if (resp_ie && status == WLAN_STATUS_SUCCESS) {
+		if (cr->resp_ie && cr->status == WLAN_STATUS_SUCCESS) {
 			memset(&wrqu, 0, sizeof(wrqu));
-			wrqu.data.length = resp_ie_len;
-			wireless_send_event(dev, IWEVASSOCRESPIE, &wrqu, resp_ie);
+			wrqu.data.length = cr->resp_ie_len;
+			wireless_send_event(dev, IWEVASSOCRESPIE, &wrqu, cr->resp_ie);
 		}
 
 		memset(&wrqu, 0, sizeof(wrqu));
 		wrqu.ap_addr.sa_family = ARPHRD_ETHER;
-		if (bssid && status == WLAN_STATUS_SUCCESS) {
-			memcpy(wrqu.ap_addr.sa_data, bssid, ETH_ALEN);
-			memcpy(wdev->wext.prev_bssid, bssid, ETH_ALEN);
+		if (cr->bssid && cr->status == WLAN_STATUS_SUCCESS) {
+			memcpy(wrqu.ap_addr.sa_data, cr->bssid, ETH_ALEN);
+			memcpy(wdev->wext.prev_bssid, cr->bssid, ETH_ALEN);
 			wdev->wext.prev_bssid_valid = true;
 		}
 		wireless_send_event(dev, SIOCGIWAP, &wrqu, NULL);
 	}
 #endif
 
-	if (!bss && (status == WLAN_STATUS_SUCCESS)) {
+	if (!cr->bss && (cr->status == WLAN_STATUS_SUCCESS)) {
 		WARN_ON_ONCE(!wiphy_to_rdev(wdev->wiphy)->ops->connect);
-		bss = cfg80211_get_bss(wdev->wiphy, NULL, bssid,
+		cr->bss = cfg80211_get_bss(wdev->wiphy, NULL, cr->bssid,
 				       wdev->ssid, wdev->ssid_len,
 				       wdev->conn_bss_type,
 				       IEEE80211_PRIVACY_ANY);
-		if (bss)
-			cfg80211_hold_bss(bss_from_pub(bss));
+		if (cr->bss)
+			cfg80211_hold_bss(bss_from_pub(cr->bss));
 	}
 
 	if (wdev->current_bss) {
@@ -731,28 +721,28 @@ void __cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
 		wdev->current_bss = NULL;
 	}
 
-	if (status != WLAN_STATUS_SUCCESS) {
+	if (cr->status != WLAN_STATUS_SUCCESS) {
 		kzfree(wdev->connect_keys);
 		wdev->connect_keys = NULL;
 		wdev->ssid_len = 0;
-		if (bss) {
-			cfg80211_unhold_bss(bss_from_pub(bss));
-			cfg80211_put_bss(wdev->wiphy, bss);
+		if (cr->bss) {
+			cfg80211_unhold_bss(bss_from_pub(cr->bss));
+			cfg80211_put_bss(wdev->wiphy, cr->bss);
 		}
 		cfg80211_sme_free(wdev);
 		return;
 	}
 
-	if (WARN_ON(!bss))
+	if (WARN_ON(!cr->bss))
 		return;
 
-	wdev->current_bss = bss_from_pub(bss);
+	wdev->current_bss = bss_from_pub(cr->bss);
 
 	if (!(wdev->wiphy->flags & WIPHY_FLAG_HAS_STATIC_WEP))
 		cfg80211_upload_connect_keys(wdev);
 
 	rcu_read_lock();
-	country_ie = ieee80211_bss_get_ie(bss, WLAN_EID_COUNTRY);
+	country_ie = ieee80211_bss_get_ie(cr->bss, WLAN_EID_COUNTRY);
 	if (!country_ie) {
 		rcu_read_unlock();
 		return;
@@ -769,7 +759,7 @@ void __cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
 	 * - country_ie + 2, the start of the country ie data, and
 	 * - and country_ie[1] which is the IE length
 	 */
-	regulatory_hint_country_ie(wdev->wiphy, bss->channel->band,
+	regulatory_hint_country_ie(wdev->wiphy, cr->bss->channel->band,
 				   country_ie + 2, country_ie[1]);
 	kfree(country_ie);
 }

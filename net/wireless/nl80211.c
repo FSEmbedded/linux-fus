@@ -13185,19 +13185,16 @@ void nl80211_send_assoc_timeout(struct cfg80211_registered_device *rdev,
 }
 
 void nl80211_send_connect_result(struct cfg80211_registered_device *rdev,
-				 struct net_device *netdev, const u8 *bssid,
-				 const u8 *req_ie, size_t req_ie_len,
-				 const u8 *resp_ie, size_t resp_ie_len,
-				 const u8 *fils_kek, size_t fils_kek_len,
-				 bool update_erp_next_seq_num,
-				 u16 fils_erp_next_seq_num, const u8 *pmk,
-				 size_t pmk_len, const u8 *pmkid,
-				 int status, gfp_t gfp)
+				 struct net_device *netdev,
+                 struct cfg80211_connect_resp_params *cr,
+                 gfp_t gfp)
 {
 	struct sk_buff *msg;
 	void *hdr;
 
-	msg = nlmsg_new(100 + req_ie_len + resp_ie_len, gfp);
+	msg = nlmsg_new(100 + cr->req_ie_len + cr->resp_ie_len +
+                    cr->fils_kek_len + cr->pmk_len +
+                    (cr->pmkid ? WLAN_PMKID_LEN : 0), gfp);
 	if (!msg)
 		return;
 
@@ -13209,25 +13206,25 @@ void nl80211_send_connect_result(struct cfg80211_registered_device *rdev,
 
 	if (nla_put_u32(msg, NL80211_ATTR_WIPHY, rdev->wiphy_idx) ||
 	    nla_put_u32(msg, NL80211_ATTR_IFINDEX, netdev->ifindex) ||
-	    (bssid && nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, bssid)) ||
+	    (cr->bssid && nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, cr->bssid)) ||
 	    nla_put_u16(msg, NL80211_ATTR_STATUS_CODE,
-			status < 0 ? WLAN_STATUS_UNSPECIFIED_FAILURE :
-			status) ||
-	    (status < 0 && nla_put_flag(msg, NL80211_ATTR_TIMED_OUT)) ||
-	    (req_ie &&
-	     nla_put(msg, NL80211_ATTR_REQ_IE, req_ie_len, req_ie)) ||
-	    (resp_ie &&
-	     nla_put(msg, NL80211_ATTR_RESP_IE, resp_ie_len, resp_ie)) ||
-	    (update_erp_next_seq_num &&
+			cr->status < 0 ? WLAN_STATUS_UNSPECIFIED_FAILURE :
+			cr->status) ||
+	    (cr->status < 0 && nla_put_flag(msg, NL80211_ATTR_TIMED_OUT)) ||
+	    (cr->req_ie &&
+	     nla_put(msg, NL80211_ATTR_REQ_IE, cr->req_ie_len, cr->req_ie)) ||
+	    (cr->resp_ie &&
+	     nla_put(msg, NL80211_ATTR_RESP_IE, cr->resp_ie_len, cr->resp_ie)) ||
+	    (cr->update_erp_next_seq_num &&
 	     nla_put_u16(msg, NL80211_ATTR_FILS_ERP_NEXT_SEQ_NUM,
-			 fils_erp_next_seq_num)) ||
-	    (status == WLAN_STATUS_SUCCESS &&
-	    ((fils_kek &&
-	     nla_put(msg, NL80211_ATTR_FILS_KEK, fils_kek_len, fils_kek)) ||
-	    (pmk &&
-	     nla_put(msg, NL80211_ATTR_PMK, pmk_len, pmk)) ||
-	    (pmkid &&
-	     nla_put(msg, NL80211_ATTR_PMKID, WLAN_PMKID_LEN, pmkid)))))
+			 cr->fils_erp_next_seq_num)) ||
+	    (cr->status == WLAN_STATUS_SUCCESS &&
+	    ((cr->fils_kek &&
+	     nla_put(msg, NL80211_ATTR_FILS_KEK, cr->fils_kek_len, cr->fils_kek)) ||
+	    (cr->pmk &&
+	     nla_put(msg, NL80211_ATTR_PMK, cr->pmk_len, cr->pmk)) ||
+	    (cr->pmkid &&
+	     nla_put(msg, NL80211_ATTR_PMKID, WLAN_PMKID_LEN, cr->pmkid)))))
 		goto nla_put_failure;
 
 	genlmsg_end(msg, hdr);
