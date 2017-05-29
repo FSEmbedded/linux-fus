@@ -1378,6 +1378,10 @@ static const struct hid_device_id mt_devices[] = {
 	{  .driver_data = MT_CLS_WIN_8,
 		HID_DEVICE(HID_BUS_ANY, HID_GROUP_MULTITOUCH_WIN_8,
 			HID_ANY_ID, HID_ANY_ID) },
+	/* ESMT MT device */
+	{.driver_data = MT_CLS_DEFAULT,
+		HID_USB_DEVICE(USB_VENDOR_ID_ESMT,
+			USB_DEVICE_ID_ESMT_C105) },
 	{ }
 };
 MODULE_DEVICE_TABLE(hid, mt_devices);
