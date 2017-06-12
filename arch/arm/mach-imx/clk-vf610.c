@@ -27,6 +27,7 @@
 #define CCM_CLPCR		(ccm_base + 0x2c)
 #define CCM_CISR		(ccm_base + 0x30)
 #define CCM_CIMR		(ccm_base + 0x34)
+#define CCM_CCOSR		(ccm_base + 0x38)
 #define CCM_CGPR		(ccm_base + 0x3c)
 #define CCM_CCGR0		(ccm_base + 0x40)
 #define CCM_CCGR1		(ccm_base + 0x44)
@@ -98,7 +99,28 @@ static const char *vadc_sels[]	= { "pll6_video_div", "pll3_usb_otg_div", "pll3_u
 /* FTM counter clock source, not module clock */
 static const char *ftm_ext_sels[]	= {"sirc_128k", "sxosc", "fxosc_half", "audio_ext", };
 static const char *ftm_fix_sels[]	= { "sxosc", "ipg_bus", };
+/* ### FIXME: The values with ? are not verified yet */
+static const char *cko1_sels[]	= { "qspi0", "dummy", "dummy", "dummy", "dummy", "dummy","pll4",
+				    "pll4_audio_div", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
+				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
+				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
+				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
+				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
+				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
+				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
+				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
+				      "dummy", };
 
+static const char *cko2_sels[]	= { "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
+				      "dummy", "dummy", "dummy", "dummy", "dummy", "sai2", "dummy",
+				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
+				      "dummy", "dummy", "dummy", "dummy", "dummy", "pll4",
+				      "pll4_audio_div", "dummy", "dummy", "dummy", "dummy", "dummy",
+				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
+				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
+				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
+				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
+				      "dummy", "dummy", "dummy", };
 
 static struct clk_div_table pll4_audio_div_table[] = {
 	{ .val = 0, .div = 1 },
@@ -272,6 +294,8 @@ static void __init vf610_clocks_init(struct device_node *ccm_node)
 
 	clk[VF610_CLK_I2C0] = imx_clk_gate2("i2c0", "ipg_bus", CCM_CCGR4, CCM_CCGRx_CGn(6));
 	clk[VF610_CLK_I2C1] = imx_clk_gate2("i2c1", "ipg_bus", CCM_CCGR4, CCM_CCGRx_CGn(7));
+	clk[VF610_CLK_I2C2] = imx_clk_gate2("i2c2", "ipg_bus", CCM_CCGR10, CCM_CCGRx_CGn(6));
+	clk[VF610_CLK_I2C3] = imx_clk_gate2("i2c3", "ipg_bus", CCM_CCGR10, CCM_CCGRx_CGn(7));
 
 	clk[VF610_CLK_DSPI0] = imx_clk_gate2("dspi0", "ipg_bus", CCM_CCGR0, CCM_CCGRx_CGn(12));
 	clk[VF610_CLK_DSPI1] = imx_clk_gate2("dspi1", "ipg_bus", CCM_CCGR0, CCM_CCGRx_CGn(13));
@@ -323,6 +347,15 @@ static void __init vf610_clocks_init(struct device_node *ccm_node)
 	clk[VF610_CLK_DCU1_EN] = imx_clk_gate("dcu1_en", "dcu1_sel", CCM_CSCDR3, 23);
 	clk[VF610_CLK_DCU1_DIV] = imx_clk_divider("dcu1_div", "dcu1_en", CCM_CSCDR3, 20, 3);
 	clk[VF610_CLK_DCU1] = imx_clk_gate2("dcu1", "dcu1_div", CCM_CCGR9, CCM_CCGRx_CGn(8));
+
+	clk[VF610_CLK_TCON0] = imx_clk_gate2("tcon0", "platform_bus", CCM_CCGR1, CCM_CCGRx_CGn(13));
+
+	clk[VF610_CLK_CKO1_SEL] = imx_clk_mux("cko1_sel", CCM_CCOSR, 0,  6, cko1_sels, ARRAY_SIZE(cko1_sels));
+	clk[VF610_CLK_CKO2_SEL] = imx_clk_mux("cko2_sel", CCM_CCOSR, 16, 6, cko2_sels, ARRAY_SIZE(cko2_sels));
+	clk[VF610_CLK_CKO1] = imx_clk_gate("cko1", "cko1_podf", CCM_CCOSR, 10);
+	clk[VF610_CLK_CKO2] = imx_clk_gate("cko2", "cko2_podf", CCM_CCOSR, 26);
+	clk[VF610_CLK_CKO1_PODF] = imx_clk_divider("cko1_podf", "cko1_sel", CCM_CCOSR, 6, 4);
+	clk[VF610_CLK_CKO2_PODF] = imx_clk_divider("cko2_podf", "cko2_sel", CCM_CCOSR, 22, 4);
 
 	clk[VF610_CLK_ESAI_SEL] = imx_clk_mux("esai_sel", CCM_CSCMR1, 20, 2, esai_sels, 4);
 	clk[VF610_CLK_ESAI_EN] = imx_clk_gate("esai_en", "esai_sel", CCM_CSCDR2, 30);
