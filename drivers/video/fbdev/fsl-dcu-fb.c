@@ -979,7 +979,7 @@ static int fsl_dcu_probe(struct platform_device *pdev)
 	struct resource *res;
 	int ret = 0;
 	int i;
-printk("###fsl_dcu_probe\n");
+
 	dcufb = devm_kzalloc(&pdev->dev,
 		sizeof(struct dcu_fb_data), GFP_KERNEL);
 	if (!dcufb)
@@ -1055,7 +1055,7 @@ printk("###fsl_dcu_probe\n");
 	}
 
 	reset_total_layers(mfbi->parent);
-	printk("###fsl_dcu_probe end\n");
+
 	return 0;
 
 failed_register_framebuffer:
