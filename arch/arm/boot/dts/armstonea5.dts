@@ -1,0 +1,752 @@
+/*
+ * Copyright (C) 2016 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_ARMSTONEA5_BOARD_REVISION	110
+
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_LCD	1	/* LCD via RGB adapter */
+#define DISPLAY_LVDS	2	/* LVDS */
+
+/*
+ * Set the display configuration:
+ *
+ * - If you have no display, set both settings to DISPLAY_NONE.
+ * - If you have one display, set LCDIF0 to one of the display types above
+ *   and leave LCDIF1 at DISPLAY_NONE.
+ * - If you have two displays, set LCDIF0 to DISPLAY_LCD and LCDIF1 to
+ *   DISPLAY_LVDS.
+ */
+#define CONFIG_ARMSTONEA5_LCDIF0		DISPLAY_LCD
+#define CONFIG_ARMSTONEA5_LCDIF1		DISPLAY_NONE
+
+/*
+ * Configure LCD settings here (ignored if LCD is not used)
+ */
+#define CONFIG_ARMSTONEA5_LCD_BPP	32
+#define CONFIG_ARMSTONEA5_LCD_BUS_WIDTH	18
+#define CONFIG_ARMSTONEA5_LCD_TIMING \
+lcd_wvga {				\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <1>;		\
+}
+
+/*
+ * Configure LVDS settings here (ignored if LVDS is not used)
+ * Mapping:
+ *
+ * - "spwg":  18 bpp or 24 bpp, in case of 24 bpp, bits 6 and 7 of each color
+ *            are encoded on fourth LVDS differential data pair
+ * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
+ *            all other data bits on all four differential data pairs
+ */
+#define CONFIG_ARMSTONEA5_LVDS_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA5_LVDS_BPP		32
+#define CONFIG_ARMSTONEA5_LVDS_BUS_WIDTH	18
+#define CONFIG_ARMSTONEA5_LVDS_TIMING \
+lvds_wvga {				\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+
+/*
+ * Configure touch screen:
+ *
+ * - 4-wire/5-wire analog resistive touch, touch controller on SKIT
+ * - 4-wire/5-wire analog resistive touch, touch controller on RGB LCD adapter
+ * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
+ * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ * - PCAP touch based on Sitronix controller (ST1633i), on Touch Connector
+ * - PCAP touch based on Ilink controller (ILI12xx), on Touch Connector
+ *
+ * On armstonea5, all touches use the same interrupt line and I2C bus, so do not
+ * select more than one entry! Select none if you do not need touch support.
+ */
+//#define CONFIG_ARMSTONEA5_4WTOUCH_SX8655_ONBOARD
+#define CONFIG_ARMSTONEA5_4WTOUCH_SX8655_RGBADAPTER
+//#define CONFIG_ARMSTONEA5_CAPTOUCH_MXT224
+//#define CONFIG_ARMSTONEA5_CAPTOUCH_FT5x06
+//#define CONFIG_ARMSTONEA5_CAPTOUCH_SITRONIX
+//#define CONFIG_ARMSTONEA5_CAPTOUCH_ILINK
+
+/* Network */
+#define CONFIG_ARMSTONEA5_ETH0
+#define CONFIG_ARMSTONEA5_ETH1
+
+/* AUDIO */
+//#define CONFIG_ARMSTONEA5_SGTL5000_AUDIO
+
+/* I2C */
+#define CONFIG_ARMSTONEA5_I2C_A
+
+/* UART */
+#define CONFIG_ARMSTONEA5_UART_A
+#define CONFIG_ARMSTONEA5_UART_B
+#define CONFIG_ARMSTONEA5_UART_C
+
+#include "vf610.dtsi"
+#include <dt-bindings/pwm/pwm.h>
+
+/ {
+	model = "F&S ArmStoneA5";
+	compatible = "fus,armstonea5", "fsl,vf610";
+
+	aliases {
+#ifdef CONFIG_ARMSTONEA5_SGTL5000_AUDIO
+		i2c4 = &i2c_gpio;
+#endif
+	};
+
+	memory {
+		reg = <0x80000000 0x80000000>;
+	};
+
+	backlight_lcd {
+		compatible = "pwm-backlight";
+		pwms = <&pca963x 1 640000 PWM_POLARITY_INVERTED>;
+		power-supply = <&reg_lcd_bl>;
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+		fb-names = "mxs-lcdif1";
+	};
+
+	/* LVDS backlight PWM on LVDS connector and backlight connector */
+	backlight_ldb {
+		compatible = "pwm-backlight";
+		pwms = <&pwm0 0 5000000 PWM_POLARITY_INVERTED>;
+		power-supply = <&reg_ldb_bl>;
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+		fb-names = "mxs-lcdif2";
+	};
+
+	regulators {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		reg_3p3v: regulator@0 {
+			compatible = "regulator-fixed";
+			reg = <0>;
+			regulator-name = "3P3V";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* CAN */
+		reg_can: regulator_can {
+			compatible = "regulator-fixed";
+			regulator-name = "can";
+		};
+
+		reg_lcd_bl: lcd-bl {
+			compatible = "regulator-fixed";
+			regulator-name = "lcd-bl";
+			gpio = <&pca963x 0 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+		};
+
+		reg_ldb_bl: backlight_ldb {
+			compatible = "regulator-fixed";
+			regulator-name = "ldb-bl";
+			gpio = <&gpio3 6 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+
+		/* LCD power on voltage */
+		reg_vlcd: vlcd {
+			compatible = "regulator-fixed";
+			regulator-name = "VLCD";
+			gpio = <&gpio3 12 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+		};
+
+#ifdef CONFIG_ARMSTONEA5_SGTL5000_AUDIO
+		/* SGTL5000 analog voltage */
+		reg_sgtl5000_vdda: sgtl5000_vdda {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDA-supply";
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 I/O voltage */
+		reg_sgtl5000_vddio: sgtl5000_vddio {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 internal digital voltage */
+		reg_sgtl5000_vddd: sgtl5000_vddd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDD-supply";
+			regulator-min-microvolt = <1500000>;
+			regulator-max-microvolt = <1500000>;
+			regulator-always-on;
+		};
+#endif /* CONFIG_ARMSTONEA5_SGTL5000_AUDIO */
+
+/* USB1_VBUS not connected */
+#if 0
+		reg_usb_h1_vbus: usb_h1_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_h1_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio3 15 0>;
+			enable-active-high;
+		};
+#endif
+		reg_vcc_3v3_mcu: regulator@1 {
+			compatible = "regulator-fixed";
+			reg = <1>;
+			regulator-name = "vcc_3v3_mcu";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+		};
+
+		reg_vref_3v3: regulator_3v3 {
+			compatible = "regulator-fixed";
+			regulator-name = "vref-3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+	};
+
+	/* F&S board information */
+	bdinfo: bdinfo {
+		compatible = "bdinfo";
+		board_name = "armstonea5";
+		ecc_strength = "8";
+	};
+
+#ifdef CONFIG_ARMSTONEA5_SGTL5000_AUDIO
+	i2c_gpio: i2c-gpio {
+		compatible = "i2c-gpio";
+		gpios = <&gpio3 23 GPIO_ACTIVE_HIGH /* sda */
+			 &gpio3 22 GPIO_ACTIVE_HIGH /* scl */
+			>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_i2c5_gpio>;
+//		i2c-gpio,sda-open-drain;
+//		i2c-gpio,scl-open-drain;
+		i2c-gpio,delay-us = <2>;        /* ~100 kHz */
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+
+	sound-sgtl5000 {
+		compatible = "fsl,imx-audio-sgtl5000";
+		cpu-dai = <&sai2>;
+		audio-codec = <&sgtl5000>;
+		model = "imx-sgtl5000";
+
+		audio-routing =
+//			"MIC_IN", "Mic Jack",
+			"Mic Jack", "Mic Bias",
+			"LINE_IN", "Line In Jack";
+//			"Line Out Jack", "LINE_OUT";
+	};
+#endif
+};
+
+&clks {
+	/* Set audio clock rate, output on CKO2 */
+	assigned-clocks = <&clks VF610_CLK_PLL4_BYPASS_SRC>,
+			<&clks VF610_CLK_SAI2_SEL>;
+#if 0
+			<&clks VF610_CLK_SAI2>,
+			<&clks VF610_CLK_CKO2_SEL>;
+#endif
+	assigned-clock-parents = <&clks VF610_CLK_FASK_CLK_SEL>,
+			<VF610_CLK_PLL4_MAIN_DIV>;
+#if 0
+			<0>,
+			<&clks VF610_CLK_SAI2>;
+#endif
+	assigned-clock-rates = <0>, <786432000>;//, <12288000>, <0>;
+};
+
+&can0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_can0>;
+	xceiver-supply = <&reg_can>;
+	status = "okay";
+};
+
+&can1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_can1>;
+	xceiver-supply = <&reg_can>;
+	status = "okay";
+};
+
+&dcu0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_dcu0>;
+	display = <&display>;
+	status = "okay";
+
+	display: display@0 {
+			bits-per-pixel = <CONFIG_ARMSTONEA5_LCD_BPP>;
+
+			display-timings {
+				native-mode = <&timing0>;
+				timing0: CONFIG_ARMSTONEA5_LCD_TIMING;
+			};
+	};
+};
+
+&dspi0 {
+	bus-num = <0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_dspi0>;
+	power-supply = <&reg_vlcd>;
+	status = "okay";
+
+	spidev@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+	};
+};
+
+&edma0 {
+	status = "okay";
+};
+
+&esdhc1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_esdhc1>;
+	bus-width = <4>;
+	cd-gpios = <&gpio4 6 GPIO_ACTIVE_LOW>;
+	status = "okay";
+};
+
+#ifdef CONFIG_ARMSTONEA5_ETH0
+&fec0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_fec0>;
+	phy-mode = "rmii";
+	phy-handle = <&ethphy0>;
+	phy-supply = <&reg_vref_3v3>;
+	fsl,ref-clock-out;
+	status = "okay";
+
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy0: ethernet-phy@0 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <0>;
+		};
+	};
+};
+#endif
+
+#ifdef CONFIG_ARMSTONEA5_ETH1
+&fec1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_fec1>;
+	phy-mode = "rmii";
+	phy-handle = <&ethphy1>;
+	phy-supply = <&reg_vref_3v3>;
+	fsl,ref-clock-out;
+	status = "okay";
+
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy1: ethernet-phy@0 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <0>;
+		};
+	};
+};
+#endif
+
+#ifdef CONFIG_ARMSTONEA5_SGTL5000_AUDIO
+/* I2C_C (Bitbanging): RTC (PCA8565), SGTL5000 (SKIT) */
+&i2c_gpio {
+		sgtl5000: sgtl5000@0a {
+			compatible = "fsl,sgtl5000";
+			reg = <0x0a>;
+			mono2both;
+			clocks = <&clks VF610_CLK_CKO2>;
+			VDDA-supply = <&reg_sgtl5000_vdda>;
+			VDDIO-supply = <&reg_sgtl5000_vddio>;
+			VDDD-supply = <&reg_sgtl5000_vddd>;
+		};
+};
+#endif /* CONFIG_ARMSTONEA5_SGTL5000_AUDIO */
+
+#ifdef CONFIG_ARMSTONEA5_I2C_A
+&i2c3 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c3>;
+	status = "okay";
+
+	pca963x: pca9632@60 {
+		compatible = "nxp,pca9632";
+		reg = <0x60>;
+		nxp,totem-pole;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#pwm-cells = <3>;
+		#gpio-cells = <2>;
+		led@0 {
+			reg = <0>;
+			label = "0-PWRCTL";
+			type = "GPIO";
+			default-on;
+			active-high;
+		};
+		led@1 {
+			reg = <1>;
+			label = "1-LEDCTRL";
+			type = "PWM";
+			default-on;
+		};
+		led@2 {
+			reg = <2>;
+			label = "2-ROTATE";
+			type = "GPIO";
+			active-high;
+		};
+		led@3 {
+			reg = <3>;
+			label = "3-unused";
+			type = "LED";
+		};
+	};
+
+#ifdef CONFIG_ARMSTONEA5_4WTOUCH_SX8655_ONBOARD
+	/* 4/5 wire analog resistive touch on Touch Connector (I2C) */
+	sx8654@48 {
+		compatible = "semtech,sx8654";
+		reg = <0x48>;
+		touchrate = <0x30>;
+		powdly = <0x06>;
+		filt = <0x02>;
+		setdly = <0x08>;
+		pinctrl-names = "default";
+		interrupt-parent = <&gpio1>;
+		interrupts = <3 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio1 2 GPIO_ACTIVE_LOW>;
+	};
+#endif
+
+#ifdef CONFIG_ARMSTONEA5_4WTOUCH_SX8655_RGBADAPTER
+	/* 4/5 wire analog resistive touch, on RGB LCD adapter */
+	sx8654@49 {
+		compatible = "semtech,sx8654";
+		reg = <0x49>;
+		touchrate = <0x30>;
+		powdly = <0x06>;
+		filt = <0x02>;
+		setdly = <0x08>;
+		pinctrl-names = "default";
+		interrupt-parent = <&gpio2>;
+		interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
+		//reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
+	};
+#endif
+
+};
+#endif
+
+&L2 {
+	arm,data-latency = <2 1 2>;
+	arm,tag-latency = <3 2 3>;
+};
+
+&pwm0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm0>;
+	status = "okay";
+};
+
+#ifdef CONFIG_ARMSTONEA5_SGTL5000_AUDIO
+&sai2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sai2>;
+	fsl,mclk-out;
+	status = "okay";
+};
+#endif
+
+&tcon0 {
+	status = "okay";
+};
+
+#ifdef CONFIG_ARMSTONEA5_UART_A
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_ARMSTONEA5_UART_B
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart2>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_ARMSTONEA5_UART_C
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3>;
+	status = "okay";
+};
+#endif
+
+&usbdev0 {
+	disable-over-current;
+	status = "okay";
+};
+
+&usbh1 {
+	status = "okay";
+};
+
+&usbmisc1 {
+	status = "okay";
+};
+
+&usbphy1 {
+	status = "okay";
+};
+
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog>;
+
+	armstonea5 {
+		/* Pin configs that don't belong anywhere else */
+		pinctrl_hog: hoggrp {
+			fsl,pins = <
+				/* VCFL_ON for backlight on */
+				VF610_PAD_PTC29__GPIO_102		0x2acc//0x13059
+				/* VLCD_ON for backlight on */
+				VF610_PAD_PTE3__GPIO_108		0x219c
+				/* USB1_VBUS n.c. */
+				//VF610_PAD_PTE6__GPIO_111		0x214c
+				/* i2c3_irqn */
+				VF610_PAD_PTE22__GPIO_127		0x219d
+				/* Touch IRQ */
+				VF610_PAD_PTB13__GPIO_35		0x219d
+				/* Touch RST */
+				VF610_PAD_PTB12__GPIO_34		0x219c
+				/* I2C3_IRQ2 */
+				VF610_PAD_PTD7__GPIO_86			0x219d
+			>;
+		};
+
+		pinctrl_can0: can0grp {
+			fsl,pins = <
+				VF610_PAD_PTB14__CAN0_RX		0x21e1
+				VF610_PAD_PTB15__CAN0_TX		0x21e2
+			>;
+		};
+
+		pinctrl_can1: can1grp {
+			fsl,pins = <
+				VF610_PAD_PTB16__CAN1_RX		0x21e1
+				VF610_PAD_PTB17__CAN1_TX		0x21e2
+			>;
+		};
+
+		pinctrl_dspi0: dspi0grp {
+			fsl,pins = <
+				VF610_PAD_PTB19__DSPI0_CS0		0x1182
+				VF610_PAD_PTB20__DSPI0_SIN		0x1181
+				VF610_PAD_PTB21__DSPI0_SOUT		0x1182
+				VF610_PAD_PTB22__DSPI0_SCK		0x1182
+			>;
+		};
+
+		pinctrl_esdhc1: esdhc1grp {
+			fsl,pins = <
+				VF610_PAD_PTA24__ESDHC1_CLK		0x31ef
+				VF610_PAD_PTA25__ESDHC1_CMD		0x31ef
+				VF610_PAD_PTA26__ESDHC1_DAT0		0x31ef
+				VF610_PAD_PTA27__ESDHC1_DAT1		0x31ef
+				VF610_PAD_PTA28__ESDHC1_DATA2		0x31ef
+				VF610_PAD_PTA29__ESDHC1_DAT3		0x31ef
+				VF610_PAD_PTA7__GPIO_134		0x219d
+			>;
+		};
+
+		pinctrl_fec0: fec0grp {
+			fsl,pins = <
+				VF610_PAD_PTA6__RMII_CLKIN		0xc1
+				VF610_PAD_PTC0__ENET_RMII0_MDC		0xc2
+				VF610_PAD_PTC1__ENET_RMII0_MDIO		0xc3
+				VF610_PAD_PTC2__ENET_RMII0_CRS		0xc1
+				VF610_PAD_PTC3__ENET_RMII0_RXD1		0xc1
+				VF610_PAD_PTC4__ENET_RMII0_RXD0		0xc1
+				VF610_PAD_PTC5__ENET_RMII0_RXER		0xc1
+				VF610_PAD_PTC6__ENET_RMII0_TXD1		0xc2
+				VF610_PAD_PTC7__ENET_RMII0_TXD0		0xc2
+				VF610_PAD_PTC8__ENET_RMII0_TXEN		0xc2
+			>;
+		};
+
+		pinctrl_fec1: fec1grp {
+			fsl,pins = <
+#ifndef CONFIG_ARMSTONEA5_ETH0
+				VF610_PAD_PTA6__RMII_CLKIN		0xc1
+#endif
+				VF610_PAD_PTC9__ENET_RMII1_MDC		0xc2
+				VF610_PAD_PTC10__ENET_RMII1_MDIO	0xc3
+				VF610_PAD_PTC11__ENET_RMII1_CRS		0xc1
+				VF610_PAD_PTC12__ENET_RMII_RXD1		0xc1
+				VF610_PAD_PTC13__ENET_RMII1_RXD0	0xc1
+				VF610_PAD_PTC14__ENET_RMII1_RXER	0xc1
+				VF610_PAD_PTC15__ENET_RMII1_TXD1	0xc2
+				VF610_PAD_PTC16__ENET_RMII1_TXD0	0xc2
+				VF610_PAD_PTC17__ENET_RMII1_TXEN	0xc2
+			>;
+		};
+
+#ifdef CONFIG_ARMSTONEA5_I2C_A
+		pinctrl_i2c3: i2c3_grp {
+			fsl,pins = <
+				VF610_PAD_PTA30__I2C3_SCL		0x37e7
+				VF610_PAD_PTA31__I2C3_SDA		0x37e7
+			>;
+		};
+#endif
+
+#ifdef CONFIG_ARMSTONEA5_SGTL5000_AUDIO
+		pinctrl_i2c5_gpio: i2c5_gpio_grp {
+			fsl,pins = <
+				VF610_PAD_PTE13__GPIO_118		0x219c
+				VF610_PAD_PTE14__GPIO_119		0x219c
+			>;
+		};
+#endif /* CONFIG_ARMSTONEA5_SGTL5000_AUDIO */
+
+		pinctrl_dcu0: dcu0grp {
+			fsl,pins = <
+				VF610_PAD_PTE0__DCU0_HSYNC		0x42
+				VF610_PAD_PTE1__DCU0_VSYNC		0x42
+				VF610_PAD_PTE2__DCU0_PCLK		0x42
+				VF610_PAD_PTE4__DCU0_DE			0x42
+				VF610_PAD_PTE7__DCU0_R2			0x42
+				VF610_PAD_PTE8__DCU0_R3			0x42
+				VF610_PAD_PTE9__DCU0_R4			0x42
+				VF610_PAD_PTE10__DCU0_R5		0x42
+				VF610_PAD_PTE11__DCU0_R6		0x42
+				VF610_PAD_PTE12__DCU0_R7		0x42
+				VF610_PAD_PTE15__DCU0_G2		0x42
+				VF610_PAD_PTE16__DCU0_G3		0x42
+				VF610_PAD_PTE17__DCU0_G4		0x42
+				VF610_PAD_PTE18__DCU0_G5		0x42
+				VF610_PAD_PTE19__DCU0_G6		0x42
+				VF610_PAD_PTE20__DCU0_G7		0x42
+				VF610_PAD_PTE23__DCU0_B2		0x42
+				VF610_PAD_PTE24__DCU0_B3		0x42
+				VF610_PAD_PTE25__DCU0_B4		0x42
+				VF610_PAD_PTE26__DCU0_B5		0x42
+				VF610_PAD_PTE27__DCU0_B6		0x42
+				VF610_PAD_PTE28__DCU0_B7		0x42
+			>;
+		};
+
+		/* LVDS backlight control - PWM0 */
+		pinctrl_pwm0: pwm0grp {
+			fsl,pins = <
+				VF610_PAD_PTB0__FTM0_CH0		0x1182
+			>;
+		};
+
+		pinctrl_sai2: sai2grp {
+			fsl,pins = <
+				VF610_PAD_PTA16__SAI2_TX_BCLK		0x02ed
+				VF610_PAD_PTA18__SAI2_TX_DATA		0x02ee
+				VF610_PAD_PTA19__SAI2_TX_SYNC		0x02ed
+				VF610_PAD_PTA22__SAI2_RX_DATA		0x02ed
+				VF610_PAD_PTB11__CKO2			0x1c1
+			>;
+		};
+
+#ifdef CONFIG_ARMSTONEA5_UART_A
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <
+				VF610_PAD_PTB4__UART1_TX		0x11a2
+				VF610_PAD_PTB5__UART1_RX		0x118d
+				VF610_PAD_PTB6__UART1_RTS		0x11a2
+				VF610_PAD_PTB7__UART1_CTS		0x118d
+			>;
+		};
+#endif
+
+#ifdef CONFIG_ARMSTONEA5_UART_B
+		pinctrl_uart2: uart2grp {
+			fsl,pins = <
+				VF610_PAD_PTD0__UART2_TX		0x11a2
+				VF610_PAD_PTD1__UART2_RX		0x118d
+			>;
+		};
+#endif
+
+#ifdef CONFIG_ARMSTONEA5_UART_C
+		pinctrl_uart3: uart3grp {
+			fsl,pins = <
+				VF610_PAD_PTA20__UART3_TX		0x11a2
+				VF610_PAD_PTA21__UART3_RX		0x118d
+			>;
+		};
+#endif
+	};
+};

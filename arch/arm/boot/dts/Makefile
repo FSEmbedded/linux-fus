@@ -426,7 +426,8 @@ dtb-$(CONFIG_SOC_VF610) += \
 	vf610-colibri-eval-v3.dtb \
 	imx6sx-sabreauto-m4.dtb \
 	vf610-cosmic.dtb \
-	vf610-twr.dtb
+	vf610-twr.dtb \
+	armstonea5.dtb
 dtb-$(CONFIG_ARCH_MXS) += \
 	imx23-evk.dtb \
 	imx23-olinuxino.dtb \
