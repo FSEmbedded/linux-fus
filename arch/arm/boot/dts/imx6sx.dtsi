@@ -477,6 +477,7 @@
 					 <&clks IMX6SX_CLK_PWM1>;
 				clock-names = "ipg", "per";
 				#pwm-cells = <2>;
+				status = "disabled";
 			};
 
 			pwm2: pwm@02084000 {
@@ -487,6 +488,7 @@
 					 <&clks IMX6SX_CLK_PWM2>;
 				clock-names = "ipg", "per";
 				#pwm-cells = <2>;
+				status = "disabled";
 			};
 
 			pwm3: pwm@02088000 {
@@ -497,6 +499,7 @@
 					 <&clks IMX6SX_CLK_PWM3>;
 				clock-names = "ipg", "per";
 				#pwm-cells = <2>;
+				status = "disabled";
 			};
 
 			pwm4: pwm@0208c000 {
@@ -507,6 +510,7 @@
 					 <&clks IMX6SX_CLK_PWM4>;
 				clock-names = "ipg", "per";
 				#pwm-cells = <2>;
+				status = "disabled";
 			};
 
 			flexcan1: can@02090000 {
@@ -1465,6 +1469,7 @@
 					 <&clks IMX6SX_CLK_PWM5>;
 				clock-names = "ipg", "per";
 				#pwm-cells = <2>;
+				status = "disabled";
 			};
 
 			pwm6: pwm@022a8000 {
@@ -1475,6 +1480,7 @@
 					 <&clks IMX6SX_CLK_PWM6>;
 				clock-names = "ipg", "per";
 				#pwm-cells = <2>;
+				status = "disabled";
 			};
 
 			pwm7: pwm@022ac000 {
@@ -1485,6 +1491,7 @@
 					 <&clks IMX6SX_CLK_PWM7>;
 				clock-names = "ipg", "per";
 				#pwm-cells = <2>;
+				status = "disabled";
 			};
 
 			pwm8: pwm@0022b0000 {
@@ -1495,6 +1502,7 @@
 					 <&clks IMX6SX_CLK_PWM8>;
 				clock-names = "ipg", "per";
 				#pwm-cells = <2>;
+				status = "disabled";
 			};
 		};
 
