@@ -65,6 +65,7 @@
 #define CFG80211_CONNECT_DONE 1
 /* Indicate backport support for FILS SK offload in cfg80211 */
 #define CFG80211_FILS_SK_OFFLOAD_SUPPORT 1
+#define CFG80211_CONNECT_BSS 1
 
 struct wiphy;
 
