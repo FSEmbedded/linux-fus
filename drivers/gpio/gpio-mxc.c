@@ -424,9 +424,11 @@ static int mxc_gpio_probe(struct platform_device *pdev)
 	if (port->irq < 0)
 		return port->irq;
 
-	/* disable the interrupt and clear the status */
-	writel(0, port->base + GPIO_IMR);
-	writel(~0, port->base + GPIO_ISR);
+	if (!of_property_read_bool(np, "keep-interrupts")) {
+		/* disable the interrupt and clear the status */
+		writel(0, port->base + GPIO_IMR);
+		writel(~0, port->base + GPIO_ISR);
+	}
 
 	if (mxc_gpio_hwtype == IMX21_GPIO) {
 		/*
