@@ -37,8 +37,8 @@ static const char *cko2_sels[]		= {
 	"dummy", "mmdc_p0_fast", "gpmi_io", "usdhc1", "dummy", "dummy",
 	"ecspi_podf", "dummy", "gpmi_bch_apb", "dummy", "dummy", "csi",
 	"dummy", "dummy", "osc", "dummy", "dummy", "usdhc2", "sai1", "sai2",
-	"sai3_podf", "dummy", "dummy", "can_podf", "dummy", "dummy", "dummy",
-	"qspi1", "eim_slow", "uart_podf", "spdif", "dummy",
+	"sai3_podf", "dummy", "dummy", "can_podf", "dummy", "qspi1", "dummy",
+	"eim_slow", "uart_podf", "spdif", "dummy", "dummy",
 };
 static const char *cko_sels[] = { "cko1", "cko2", };
 
