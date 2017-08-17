@@ -123,7 +123,10 @@ static u32 share_count_sai3;
 static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 {
 	struct device_node *np;
+	struct property *prop;
 	void __iomem *base;
+	const __be32 *p;
+	u32 val;
 	int i;
 
 	clks[IMX6UL_CLK_DUMMY] = imx_clk_fixed("dummy", 0);
@@ -454,6 +457,12 @@ static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 	if (IS_ENABLED(CONFIG_USB_MXS_PHY)) {
 		clk_prepare_enable(clks[IMX6UL_CLK_USBPHY1_GATE]);
 		clk_prepare_enable(clks[IMX6UL_CLK_USBPHY2_GATE]);
+	}
+
+	/* enable clocks at startup */
+	of_property_for_each_u32(np, "startup_clocks", prop, p, val) {
+		if(val > IMX6UL_CLK_DUMMY && val < IMX6UL_CLK_END)
+			clk_prepare_enable(clks[val]);
 	}
 
 	clk_set_parent(clks[IMX6UL_CLK_CAN_SEL], clks[IMX6UL_CLK_PLL3_60M]);
