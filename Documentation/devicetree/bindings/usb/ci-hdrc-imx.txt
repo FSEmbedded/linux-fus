@@ -16,6 +16,10 @@ Optional properties:
 - fsl,usbmisc: phandler of non-core register device, with one argument
   that indicate usb controller index
 - vbus-supply: regulator for vbus
+- pwr-active-high: if internal power pad function is used (not GPIO via a
+  regulator), set it to active high (default/reset value: active low)
+- over-current-active-low: set over current detect polarity to active low
+  (default/reset value: active high)
 - disable-over-current: disable over current detect
 - external-vbus-divider: enables off-chip resistor divider for Vbus
 - imx6-usb-charger-detection: enable imx6 usb charger detect function,
