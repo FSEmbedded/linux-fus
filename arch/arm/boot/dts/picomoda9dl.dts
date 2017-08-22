@@ -15,6 +15,7 @@
 #define DISPLAY_LCD	1	/* LCD via RGB adapter */
 #define DISPLAY_HDMI	2	/* DVI/HDMI via HDMI connector */
 #define DISPLAY_LVDS0	3	/* LVDS channel 0 */
+#define DISPLAY_LVDS1	4	/* LVDS channel 1 */
 
 /*
  * Set the display configuration:
@@ -108,18 +109,24 @@ wvga {					\
 #define CONFIG_PICOMODA9_SGTL5000_AUDIO
 
 /* Parallel digital camera interface */
-/* You can only use digital camera if no HDMI and LCD display is active. So
- * CONFIG_PICOMODA9_LCD and CONFIG_PICOMODA9_HDMI must be disabled.
+/* You can only use digital camera if !HDMI, !LCD, !CAN2, !UART_D_RTS/CTS
  */
 //#define CONFIG_PICOMODA9_PARALLEL_CAMERA
 
+/* CAN_A */
+#define CONFIG_PICOMODA9_CAN_A
+
 /* CAN_B */
-/* Can only be used if CONFIG_PICOMODA9_HDMI and
- * CONFIG_PICOMODA9_PARALLEL_CAMERA are disabled. */
+/* CAN_B only can be used if !CONFIG_PICOMODA9_HDMI, !CONFIG_PICOMODA9_PARALLEL_CAMERA,
+ * !CONFIG_PICOMODA9_UART_D_RTSCTS and HW revision > 100. */
 //#define CONFIG_PICOMODA9_CAN_B
 
-/* SD-A: On-board Micro-SD card slot */
+/* SD-A: For On-board Micro-SD card slot choose CONFIG_PICOMODA9_SD_A,
+ * optional is eMMC or WLAN it depends on HW revision. If you have these
+ * then deactivate CONFIG_PICOMODA9_SD_A and activate CONFIG_PICOMODA9_EMMC_WLAN */
 #define CONFIG_PICOMODA9_SD_A
+//#define CONFIG_PICOMODA9_EMMC_WLAN
+
 /* SD-B: ext. SD card slot (normal-sized SD card slot on SKIT) */
 #define CONFIG_PICOMODA9_SD_B
 
@@ -137,10 +144,11 @@ wvga {					\
 #define CONFIG_PICOMODA9_UART_C
 /* UART_A_RTSCTS default, UART_D optional. If you want to use UART_D
  * instead of UART_A_RTSCTS you need R91 & R93. If you want to use UART_D
- * instead of CAN1 you need R90 & R92. */
+ * instead of CAN1 you need R90 & R92. Also you can use UART_D_RTS/CTS if
+ * you not use CAN2, HDMI, Camera */
 #define CONFIG_PICOMODA9_UART_A_RTSCTS
-#define CONFIG_PICOMODA9_CAN_A
 //#define CONFIG_PICOMODA9_UART_D
+//#define CONFIG_PICOMODA9_UART_D_RTSCTS
 
 #include "imx6dl.dtsi"
 #include "picomoda9qdl.dtsi"

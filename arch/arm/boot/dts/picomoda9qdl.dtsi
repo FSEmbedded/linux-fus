@@ -13,20 +13,17 @@
  * because both devices would need to use display 0. But this can be simulated
  * by using LVDS1 instead of LVDS0 and activating Dual Mode.
  */
-#define DISPLAY_LVDS1	4	/* LVDS channel 1 */
 #ifdef CONFIG_PICOMODA9_USE_ONE_IPU
 #undef CONFIG_PICOMODA9_MXCFB2
 #undef CONFIG_PICOMODA9_MXCFB3
 
-#if ((CONFIG_PICOMODA9_MXCFB0 == DISPLAY_LCD) \
-	&& (CONFIG_PICOMODA9_MXCFB1 == DISPLAY_LVDS0))
+#if ((CONFIG_PICOMODA9_MXCFB0 == DISPLAY_LCD) && (CONFIG_PICOMODA9_MXCFB1 == DISPLAY_LVDS0))
 #undef CONFIG_PICOMODA9_MXCFB1
 #define CONFIG_PICOMODA9_MXCFB1		DISPLAY_LVDS1
 #define __MOVE_LVDS0_TO_LVDS1_DUAL_MODE__
 #endif
 
-#if ((CONFIG_PICOMODA9_MXCFB0 == DISPLAY_LVDS0) \
-	&& (CONFIG_PICOMODA9_MXCFB1 == DISPLAY_LCD))
+#if ((CONFIG_PICOMODA9_MXCFB0 == DISPLAY_LVDS0) && (CONFIG_PICOMODA9_MXCFB1 == DISPLAY_LCD))
 #undef CONFIG_PICOMODA9_MXCFB0
 #define CONFIG_PICOMODA9_MXCFB0		DISPLAY_LVDS1
 #define __MOVE_LVDS0_TO_LVDS1_DUAL_MODE__
@@ -140,11 +137,17 @@
 		mxcfb1 = &mxcfb1;
 		mxcfb2 = &mxcfb2;
 		mxcfb3 = &mxcfb3;
-#if defined(CONFIG_PICOMODA9_HDMI) && !defined(CONFIG_PICOMODA9_LCD)
+
+#if defined(CONFIG_PICOMODA9_HDMI) && !defined(CONFIG_PICOMODA9_LCD) \
+	&& !defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && \
+	!defined(CONFIG_PICOMODA9_CAN_B) && \
+	!defined(CONFIG_PICOMODA9_UART_D_RTSCTS)
 		i2c4 = &i2c_gpio_hdmi;
 #endif
-#if defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && \
-	!defined(CONFIG_PICOMODA9_LCD) && !defined(CONFIG_PICOMODA9_HDMI)
+
+#if defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && !defined(CONFIG_PICOMODA9_LCD) \
+	&& !defined(CONFIG_PICOMODA9_HDMI) && !defined (CONFIG_PICOMODA9_UART_D_RTSCTS) \
+	&& !defined(CONFIG_PICOMODA9_CAN_B) && (CONFIG_PICOMODA9_BOARD_REVISION > 100)
 		i2c5 = &i2c_gpio_camera_digital;
 #endif
 	};
@@ -155,6 +158,24 @@
 
 	regulators {
 		compatible = "simple-bus";
+
+		reg_vref_3v3: regulator_3v3 {
+			compatible = "regulator-fixed";
+			regulator-name = "vref-3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+#if defined (CONFIG_PICOMODA9_EMMC_WLAN) && (CONFIG_PICOMODA9_BOARD_REVISION == 100)
+		reg_wlan_vmmc_1v8: regulator_wlan {
+			compatible = "regulator-fixed";
+			regulator-name = "vmmc-wlan-1v8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-always-on;
+		};
+#endif
 
 		/* VBUS power if OTG used as HOST (R97 mounted) */
 		reg_usb_otg_vbus: usb_otg_vbus {
@@ -172,7 +193,11 @@
 			regulator-name = "usb_h1_vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
+#if (CONFIG_PICOMODA9_BOARD_REVISION > 100)
 			gpio = <&gpio1 5 0>;
+#else
+			gpio = <&gpio7 12 0>;
+#endif
 			enable-active-high;
 		};
 
@@ -187,7 +212,8 @@
 		};
 #endif
 
-#ifdef CONFIG_PICOMODA9_SGTL5000_AUDIO
+#if defined(CONFIG_PICOMODA9_SGTL5000_AUDIO) && \
+		(CONFIG_PICOMODA9_BOARD_REVISION > 100)
 		/* SGTL5000 analog voltage */
 		reg_sgtl5000_vdda: sgtl5000_vdda {
 			compatible = "regulator-fixed";
@@ -247,7 +273,7 @@
 			regulator-max-microvolt = <3300000>;
 		};
 
-#if defined(CONFIG_PICOMODA9_CAN_A) || (CONFIG_PICOMODA9_CAN_B)
+#if defined(CONFIG_PICOMODA9_CAN_A) || defined(CONFIG_PICOMODA9_CAN_B)
 		/* CAN */
 		reg_can: regulator_can {
 			compatible = "regulator-fixed";
@@ -255,8 +281,9 @@
 		};
 #endif
 
-#if defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && \
-	!defined(CONFIG_PICOMODA9_LCD) && !defined(CONFIG_PICOMODA9_HDMI)
+#if defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && !defined(CONFIG_PICOMODA9_LCD) \
+	&& !defined(CONFIG_PICOMODA9_HDMI) && !defined (CONFIG_PICOMODA9_UART_D_RTSCTS) \
+	&& !defined(CONFIG_PICOMODA9_CAN_B) && (CONFIG_PICOMODA9_BOARD_REVISION > 100)
 		reg_camera_dovdd: camera_dovdd {
 			compatible = "regulator-fixed";
 			regulator-name = "DOVDD-supply";
@@ -288,7 +315,10 @@
 		ecc_strength = "8";
 	};
 
-#if defined(CONFIG_PICOMODA9_HDMI) && !defined(CONFIG_PICOMODA9_LCD)
+#if defined(CONFIG_PICOMODA9_HDMI) && !defined(CONFIG_PICOMODA9_LCD) \
+	&& !defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && \
+	!defined(CONFIG_PICOMODA9_CAN_B) && \
+	!defined(CONFIG_PICOMODA9_UART_D_RTSCTS)
 	i2c_gpio_hdmi: i2c-gpio-hdmi {
 		compatible = "i2c-gpio";
 		gpios = <&gpio2 20 GPIO_ACTIVE_HIGH /* sda */
@@ -304,8 +334,9 @@
 	};
 #endif
 
-#if defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && \
-	!defined(CONFIG_PICOMODA9_LCD) && !defined(CONFIG_PICOMODA9_HDMI)
+#if defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && !defined(CONFIG_PICOMODA9_LCD) \
+	&& !defined(CONFIG_PICOMODA9_HDMI) && !defined (CONFIG_PICOMODA9_UART_D_RTSCTS) \
+	&& !defined(CONFIG_PICOMODA9_CAN_B) && (CONFIG_PICOMODA9_BOARD_REVISION > 100)
 	i2c_gpio_camera_digital: i2c-gpio-camera-digital {
 		compatible = "i2c-gpio";
 		gpios = <&gpio2 19 GPIO_ACTIVE_HIGH /* sda */
@@ -321,7 +352,8 @@
 	};
 #endif
 
-#ifdef CONFIG_PICOMODA9_SGTL5000_AUDIO
+#if defined(CONFIG_PICOMODA9_SGTL5000_AUDIO) && \
+		(CONFIG_PICOMODA9_BOARD_REVISION > 100)
 	sound {
 		compatible = "fsl,imx-audio-sgtl5000";
 		cpu-dai = <&ssi1>;
@@ -337,7 +369,10 @@
 	};
 #endif
 
-#if defined(CONFIG_PICOMODA9_HDMI_AUDIO) && !defined(CONFIG_PICOMODA9_LCD)
+#if defined(CONFIG_PICOMODA9_HDMI_AUDIO) && !defined(CONFIG_PICOMODA9_LCD) \
+	&& !defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && \
+	!defined(CONFIG_PICOMODA9_CAN_B) && \
+	!defined(CONFIG_PICOMODA9_UART_D_RTSCTS)
 	sound-hdmi {
 		compatible = "fsl,imx6q-audio-hdmi",
 			     "fsl,imx-audio-hdmi";
@@ -477,7 +512,11 @@
 	/* LDB/LCD backlight PWM (PWM3) */
 	ldb_lcd_backlight {
 		compatible = "pwm-backlight";
+#ifdef CONFIG_PICOMODA9_LCD
+		pwms = <&pwm3 0 5000000 PWM_POLARITY_INVERTED>;
+#else
 		pwms = <&pwm3 0 5000000>;
+#endif
 		power-supply = <&reg_bl>;
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
@@ -485,8 +524,9 @@
 		fb-names = "mxs-lcdif1";
 	};
 
-#if defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && \
-	!defined(CONFIG_PICOMODA9_LCD) && !defined(CONFIG_PICOMODA9_HDMI)
+#if defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && !defined(CONFIG_PICOMODA9_LCD) \
+	&& !defined(CONFIG_PICOMODA9_HDMI) && !defined (CONFIG_PICOMODA9_UART_D_RTSCTS) \
+	&& !defined(CONFIG_PICOMODA9_CAN_B) && (CONFIG_PICOMODA9_BOARD_REVISION > 100)
 	/* Parallel digital camera interface */
 	v4l2_cap_0 {
 		compatible = "fsl,imx6q-v4l2-capture";
@@ -509,15 +549,36 @@
 
 		status_1 {
 			label = "Status1";
+#if (CONFIG_PICOMODA9_BOARD_REVISION > 100)
 			gpios = <&gpio7 12 GPIO_ACTIVE_LOW>;
-			default-state = "keep";
+#else
+			gpios = <&gpio5 4 GPIO_ACTIVE_LOW>;
+#endif
+			default-state = "off";
 		};
 
 		status_2 {
 			label = "Status2";
+#if (CONFIG_PICOMODA9_BOARD_REVISION > 100)
 			gpios = <&gpio7 13 GPIO_ACTIVE_LOW>;
-			default-state = "keep";
+#else
+			gpios = <&gpio5 2 GPIO_ACTIVE_LOW>;
+#endif
+			default-state = "off";
 		};
+#if (CONFIG_PICOMODA9_BOARD_REVISION > 100)
+		status_3 {
+			label = "Status3";
+			gpios = <&gpio5 28 GPIO_ACTIVE_LOW>;
+			default-state = "off";
+		};
+
+		status_4 {
+			label = "Status4";
+			gpios = <&gpio5 29 GPIO_ACTIVE_LOW>;
+			default-state = "off";
+		};
+#endif
 	};
 };
 
@@ -529,7 +590,8 @@
 	size = <CONFIG_PICOMODA9_CMA_SIZE>;
 };
 
-#ifdef CONFIG_PICOMODA9_SGTL5000_AUDIO
+#if defined(CONFIG_PICOMODA9_SGTL5000_AUDIO) && \
+		(CONFIG_PICOMODA9_BOARD_REVISION > 100)
 &audmux {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_audmux_3>;
@@ -562,7 +624,20 @@
 	assigned-clocks = <&clks IMX6QDL_CLK_ENET_REF>;
 	assigned-clock-rates = <50000000>;
 	phy-mode = "rmii";
+	phy-handle = <&ethphy0>;
+	phy-supply = <&reg_vref_3v3>;
+	fsl,ref-clock-out;
 	status = "okay";
+
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy0: ethernet-phy@1 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <1>;
+		};
+	};
 };
 
 #ifdef CONFIG_PICOMODA9_CAN_A
@@ -575,9 +650,12 @@
 };
 #endif
 
-#if defined(CONFIG_PICOMODA9_CAN_B) && !defined(CONFIG_PICOMODA9_HDMI) && \
-				!defined(CONFIG_PICOMODA9_PARALLEL_CAMERA)
-/* CAN2 optional: only can be used if !HDMI & !CAMERA J1 pins 41/42 */
+
+#if defined(CONFIG_PICOMODA9_CAN_B) && (CONFIG_PICOMODA9_BOARD_REVISION > 100) && \
+	!defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && !defined(CONFIG_PICOMODA9_HDMI) \
+	&& !defined(CONFIG_PICOMODA9_UART_D_RTSCTS)
+/* CAN2 optional: only can be used if !HDMI & !CAMERA &!UART_D_RTSCTS & HW rev > 100
+ * J1 pins 41/42 */
 &can2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan_b>;
@@ -596,28 +674,42 @@
 	fsl,wdog-reset = <1>; /* watchdog select of reset source */
 };
 
-#if defined(CONFIG_PICOMODA9_HDMI_AUDIO) && !defined(CONFIG_PICOMODA9_LCD)
+#if defined(CONFIG_PICOMODA9_HDMI_AUDIO) && !defined(CONFIG_PICOMODA9_LCD) \
+	&& !defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && !defined(CONFIG_PICOMODA9_CAN_B) \
+	&& !defined(CONFIG_PICOMODA9_UART_D_RTSCTS)
 &hdmi_audio {
 	status = "okay";
 };
 #endif
 
-#if defined(CONFIG_PICOMODA9_HDMI) && !defined(CONFIG_PICOMODA9_LCD)
-&hdmi_video {
-	fsl,phy_reg_vlev = <0x0294>;
-	fsl,phy_reg_cksymtx = <0x800d>;
+#if defined(CONFIG_PICOMODA9_HDMI_CEC) && !defined(CONFIG_PICOMODA9_LCD) \
+	&& !defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && !defined(CONFIG_PICOMODA9_CAN_B) \
+	&& !defined(CONFIG_PICOMODA9_UART_D_RTSCTS)
+&hdmi_cec {
 	status = "okay";
 };
 #endif
 
-#ifdef CONFIG_PICOMODA9_I2C_C
+#if defined(CONFIG_PICOMODA9_HDMI) && !defined(CONFIG_PICOMODA9_LCD) && \
+	!defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && !defined(CONFIG_PICOMODA9_CAN_B) \
+	&& !defined(CONFIG_PICOMODA9_UART_D_RTSCTS)
+&hdmi_video {
+	fsl,phy_reg_vlev = <0x0294>;
+	fsl,phy_reg_cksymtx = <0x800d>;
+	hpd-active-low;
+	status = "okay";
+};
+#endif
+
+#if defined(CONFIG_PICOMODA9_I2C_C) && (CONFIG_PICOMODA9_BOARD_REVISION > 100)
 &i2c1 {
 	clock-frequency = <200000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
-#ifdef CONFIG_PICOMODA9_SGTL5000_AUDIO
+#if defined(CONFIG_PICOMODA9_SGTL5000_AUDIO) && \
+		(CONFIG_PICOMODA9_BOARD_REVISION > 100)
 	sgtl5000: sgtl5000@0a {
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
@@ -724,7 +816,9 @@
 };
 #endif /* CONFIG_PICOMODA9_I2C_A */
 
-#if defined(CONFIG_PICOMODA9_HDMI) && !defined(CONFIG_PICOMODA9_LCD)
+#if defined(CONFIG_PICOMODA9_HDMI) && !defined(CONFIG_PICOMODA9_LCD) && \
+	!defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && !defined(CONFIG_PICOMODA9_CAN_B) \
+	&& !defined(CONFIG_PICOMODA9_UART_D_RTSCTS)
 &i2c_gpio_hdmi {
 
 	hdmi: edid@50 {
@@ -734,8 +828,9 @@
 };
 #endif
 
-#if defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && \
-	!defined(CONFIG_PICOMODA9_LCD) && !defined(CONFIG_PICOMODA9_HDMI)
+#if defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && !defined(CONFIG_PICOMODA9_LCD) \
+	&& !defined(CONFIG_PICOMODA9_HDMI) && !defined (CONFIG_PICOMODA9_UART_D_RTSCTS) \
+	&& !defined(CONFIG_PICOMODA9_CAN_B) && (CONFIG_PICOMODA9_BOARD_REVISION > 100)
 &i2c_gpio_camera_digital {
 
 	ov9665: ov9665@30 {
@@ -743,7 +838,7 @@
 		reg = <0x30>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_ipu1_2>;
-		clocks = <&clks IMX6QDL_CLK_CKO>;
+		clocks = <&clks IMX6QDL_CLK_CKO2>;
 		clock-names = "csi_mclk";
 		DOVDD-supply = <&reg_camera_dovdd>; /* 1.8v */
 		AVDD-supply = <&reg_camera_avdd>;  /* 2.8v, rev C board is VGEN3
@@ -762,6 +857,9 @@
 &pwm3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm3_1>;
+#ifdef CONFIG_PICOMODA9_LCD
+	#pwm-cells = <3>;
+#endif
 	status = "okay";
 };
 
@@ -784,7 +882,8 @@
 };
 #endif
 
-#ifdef CONFIG_PICOMODA9_SGTL5000_AUDIO
+#if defined(CONFIG_PICOMODA9_SGTL5000_AUDIO) && \
+		(CONFIG_PICOMODA9_BOARD_REVISION > 100)
 &ssi1 {
 	fsl,mode = "i2s-slave";
 	status = "okay";
@@ -821,40 +920,58 @@
 };
 #endif /* CONFIG_PICOMODA9_UART_C */
 
-#if defined(CONFIG_PICOMODA9_UART_D) && (!defined(CONFIG_PICOMODA9_CAN_A) || \
-!defined(CONFIG_PICOMODA9_UART_A_RTSCTS))
+#if (defined(CONFIG_PICOMODA9_UART_D) && (!defined(CONFIG_PICOMODA9_CAN_A) || \
+	!defined(CONFIG_PICOMODA9_UART_A_RTSCTS))) || \
+	(defined(CONFIG_PICOMODA9_EMMC_WLAN) && (CONFIG_PICOMODA9_BOARD_REVISION == 100))
 /* UART5 instead of CAN_A || UART_A_RTS_CTS. Instead of CAN_A, pins were J1 5/6
    instead of UART_A_RTS_CTS pins were J1 19/20 */
 &uart5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart5_1>;
+#if ((CONFIG_PICOMODA9_BOARD_REVISION == 100) && defined(CONFIG_PICOMODA9_EMMC_WLAN)) || \
+	((CONFIG_PICOMODA9_BOARD_REVISION > 100) && defined(CONFIG_PICOMODA9_UART_D_RTSCTS) \
+	&& !defined(CONFIG_PICOMODA9_CAN_B) && !defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) \
+	&& !defined(CONFIG_PICOMODA9_HDMI))
+	fsl,uart-has-rtscts;
+#endif
 	status = "okay";
 };
 #endif /* CONFIG_PICOMODA9_UART_D */
 
 &usbh1 {
 	vbus-supply = <&reg_usb_h1_vbus>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbh1>;
 	status = "okay";
 };
 
 &usbotg {
-	vbus-supply = <&reg_usb_otg_vbus>;
+	dr_mode = "peripheral";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg>;
 	disable-over-current;
 	status = "okay";
 };
 
-#ifdef CONFIG_PICOMODA9_SD_A
+#if defined(CONFIG_PICOMODA9_EMMC_WLAN) || defined(CONFIG_PICOMODA9_SD_A)
 &usdhc1 {
-	/* On-board Micro-SD-Card-Slot, no CD */
+	/* On-board Micro-SD-Card-Slot, no CD or WLAN/EMMC */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc1>;
 	keep-power-in-suspend;
+	bus-width = <4>;
 	non-removable;
+	no-1-8-v;
+#ifdef CONFIG_PICOMODA9_EMMC_WLAN
+	vmmc-supply = <&reg_vref_3v3>;
+#if (CONFIG_PICOMODA9_BOARD_REVISION == 100)
+	enable-sdio-wakeup;
+	vqmmc-supply = <&reg_wlan_vmmc_1v8>;
+#endif
+#endif
 	status = "okay";
 };
-#endif /* CONFIG_PICOMODA9_SD_A */
+#endif /* CONFIG_PICOMODA9_EMMC || CONFIG_PICOMODA9_SD_A */
 
 #ifdef CONFIG_PICOMODA9_SD_B
 &usdhc2 {
@@ -984,9 +1101,13 @@
 		/* Pin configs that don't belong anywhere else */
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
+#if (CONFIG_PICOMODA9_BOARD_REVISION > 100)
 				/* Audio clock 24MHz */
 				MX6QDL_PAD_GPIO_0__CCM_CLKO1		0x130b0
-
+#else
+				/* LCD_R4 / Camera XMCLK */
+				MX6QDL_PAD_GPIO_0__GPIO1_IO00		0x00b0
+#endif
 				/* VLCD_ON for reg_vlcd */
 				MX6QDL_PAD_SD4_DAT3__GPIO2_IO11		0x13059
 
@@ -994,43 +1115,62 @@
 				MX6QDL_PAD_SD4_DAT0__GPIO2_IO08		0x13059
 
 				/* LCD_DEN */
-				MX6QDL_PAD_SD4_DAT4__GPIO2_IO12		0x80000000
+				MX6QDL_PAD_SD4_DAT4__GPIO2_IO12		0xb0b0
 
 				/* LCD_ENA */
 				MX6QDL_PAD_SD4_DAT5__GPIO2_IO13		0xb0b0
 
-				/* WDOG1 */
-				MX6QDL_PAD_GPIO_9__WDOG1_B		0x80000000
-
-				/* gpio */
-				MX6QDL_PAD_EIM_A21__GPIO2_IO17		0x80000000
-
 				/* SX8655 Resetn, ext. touch */
-				MX6QDL_PAD_GPIO_7__GPIO1_IO07		0x80000000
+				MX6QDL_PAD_GPIO_7__GPIO1_IO07		0xb0b0
 
 				/* SX8655 IRQn, ext. touch */
-				MX6QDL_PAD_GPIO_19__GPIO4_IO05		0x80000000
-
-				/* IRQn ext. touch */
-				MX6QDL_PAD_EIM_EB0__GPIO2_IO28		0x30b0
+				MX6QDL_PAD_GPIO_19__GPIO4_IO05		0xb0b0
 
 				/* RTC_IRQ */
 				MX6QDL_PAD_GPIO_6__GPIO1_IO06		0xb0b0
 
-				/* USB PWR_1 */
-				MX6QDL_PAD_GPIO_5__GPIO1_IO05		0x30b0
-
-				/* USB PWR_2 (If OTG is used as HOST) */
+				/* USB PWR_2 (not available rev. 1.00 HW bug) */
 				MX6QDL_PAD_GPIO_8__GPIO1_IO08		0x30b0
 
-				MX6QDL_PAD_EIM_LBA__GPIO2_IO27		0x30b0
-				MX6QDL_PAD_EIM_WAIT__GPIO5_IO00		0x30b0
-				MX6QDL_PAD_EIM_EB1__GPIO2_IO29		0x30b0
-				MX6QDL_PAD_DISP0_DAT18__GPIO5_IO12	0x80000000
-				MX6QDL_PAD_EIM_BCLK__GPIO6_IO31		0x30b0
+				MX6QDL_PAD_DISP0_DAT18__GPIO5_IO12	0x30b0
 
-				/* HDMI HP_H optional */
+				MX6QDL_PAD_EIM_LBA__GPIO2_IO27		0x30b0
+
+#if (CONFIG_PICOMODA9_BOARD_REVISION == 100)
+				/* GPIO 0 - GPIO 1 */
+				MX6QDL_PAD_EIM_A16__GPIO2_IO22		0x30b0
+				MX6QDL_PAD_EIM_A17__GPIO2_IO21		0x30b0
+#elif !defined(CONFIG_PICOMODA9_CAN_B)
+#ifndef CONFIG_PICOMODA9_PARALLEL_CAMERA
+				/* GPIO 1 */
+				MX6QDL_PAD_KEY_ROW4__GPIO4_IO15		0x30b0
+#endif
+#ifndef CONFIG_PICOMODA9_HDMI
+				/* GPIO 0 */
+				MX6QDL_PAD_KEY_COL4__GPIO4_IO14		0x30b0
+#endif
+#endif
+
+#ifndef CONFIG_PICOMODA9_HDMI
+				/* GPIO 2 */
+				MX6QDL_PAD_EIM_A18__GPIO2_IO20		0x30b0
+#endif
+#ifndef CONFIG_PICOMODA9_PARALLEL_CAMERA
+				/* GPIO 3 */
+				MX6QDL_PAD_EIM_A19__GPIO2_IO19		0x30b0
+#endif
+				/* GPIO 4 - GPIO 5 */
 				MX6QDL_PAD_EIM_A20__GPIO2_IO18		0x30b0
+				MX6QDL_PAD_EIM_A21__GPIO2_IO17		0x30b0
+
+				/* GPIO 8 - GPIO 9 */
+				MX6QDL_PAD_EIM_EB0__GPIO2_IO28		0x30b0
+				MX6QDL_PAD_EIM_EB1__GPIO2_IO29		0x30b0
+
+				/* FSBUS */
+				//MX6QDL_PAD_EIM_WAIT__GPIO5_IO00	0x30b0
+				/* WDOG1, value from UBoot, mounting option */
+				//MX6QDL_PAD_GPIO_9__WDOG1_B		0x8
 			>;
 		};
 
@@ -1091,24 +1231,24 @@
 		};
 
 #if defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && \
-	!defined(CONFIG_PICOMODA9_LCD) && !defined(CONFIG_PICOMODA9_HDMI)
+	!defined(CONFIG_PICOMODA9_LCD) && !defined(CONFIG_PICOMODA9_HDMI) \
+	&& (CONFIG_PICOMODA9_BOARD_REVISION > 100)
 		pinctrl_ipu1_2: ipu1grp-cam { /* parallel camera */
 			fsl,pins = <
-				MX6QDL_PAD_CSI0_DAT12__IPU1_CSI0_DATA12	0x80000000
-				MX6QDL_PAD_CSI0_DAT13__IPU1_CSI0_DATA13	0x80000000
-				MX6QDL_PAD_CSI0_DAT14__IPU1_CSI0_DATA14	0x80000000
-				MX6QDL_PAD_CSI0_DAT15__IPU1_CSI0_DATA15	0x80000000
-				MX6QDL_PAD_CSI0_DAT16__IPU1_CSI0_DATA16	0x80000000
-				MX6QDL_PAD_CSI0_DAT17__IPU1_CSI0_DATA17	0x80000000
-				MX6QDL_PAD_CSI0_DAT18__IPU1_CSI0_DATA18	0x80000000
-				MX6QDL_PAD_CSI0_DAT19__IPU1_CSI0_DATA19	0x80000000
-				/*reset */
-				MX6QDL_PAD_DISP0_DAT17__GPIO5_IO11	0xb0b0
+				MX6QDL_PAD_CSI0_DAT12__IPU1_CSI0_DATA12	0x1b0b0
+				MX6QDL_PAD_CSI0_DAT13__IPU1_CSI0_DATA13	0x1b0b0
+				MX6QDL_PAD_CSI0_DAT14__IPU1_CSI0_DATA14	0x1b0b0
+				MX6QDL_PAD_CSI0_DAT15__IPU1_CSI0_DATA15	0x1b0b0
+				MX6QDL_PAD_CSI0_DAT16__IPU1_CSI0_DATA16	0x1b0b0
+				MX6QDL_PAD_CSI0_DAT17__IPU1_CSI0_DATA17	0x1b0b0
+				MX6QDL_PAD_CSI0_DAT18__IPU1_CSI0_DATA18	0x1b0b0
+				MX6QDL_PAD_CSI0_DAT19__IPU1_CSI0_DATA19	0x1b0b0
+
 				MX6QDL_PAD_NANDF_CS2__CCM_CLKO2		0x170f9
-				MX6QDL_PAD_CSI0_PIXCLK__IPU1_CSI0_PIXCLK 0x80000000
-				MX6QDL_PAD_CSI0_DATA_EN__IPU1_CSI0_DATA_EN 0x80000000
-				MX6QDL_PAD_CSI0_MCLK__IPU1_CSI0_HSYNC	0x80000000
-				MX6QDL_PAD_CSI0_VSYNC__IPU1_CSI0_VSYNC	0x80000000
+				MX6QDL_PAD_CSI0_PIXCLK__IPU1_CSI0_PIXCLK 0x1b0b0
+				MX6QDL_PAD_CSI0_DATA_EN__IPU1_CSI0_DATA_EN 0x1b0b0
+				MX6QDL_PAD_CSI0_MCLK__IPU1_CSI0_HSYNC	0x1b0b0
+				MX6QDL_PAD_CSI0_VSYNC__IPU1_CSI0_VSYNC	0x1b0b0
 			>;
 		};
 #endif /* CONFIG_PICOMODA9_PARALLEL_CAMERA */
@@ -1125,7 +1265,7 @@
 		pinctrl_ecspi1_cs: ecspi1cs {
 			fsl,pins = <
 				/* ECSPI2_SS0 - slave (chip) select 0 */
-				MX6QDL_PAD_DISP0_DAT23__GPIO5_IO17	0x80000000
+				MX6QDL_PAD_DISP0_DAT23__GPIO5_IO17	0x1b0b0
 			>;
 		};
 #endif /* CONFIG_PICOMODA9_SPI_A */
@@ -1164,13 +1304,24 @@
 		};
 #endif /* CONFIG_PICOMODA9_UART_C */
 
-#if defined(CONFIG_PICOMODA9_UART_D) && (!defined(CONFIG_PICOMODA9_CAN_A) || \
-!defined(CONFIG_PICOMODA9_UART_A_RTSCTS))
+#if (defined(CONFIG_PICOMODA9_UART_D) && (!defined(CONFIG_PICOMODA9_CAN_A) || \
+!defined(CONFIG_PICOMODA9_UART_A_RTSCTS))) || (defined(CONFIG_PICOMODA9_EMMC_WLAN) \
+&& (CONFIG_PICOMODA9_BOARD_REVISION == 100))
 		/* UART5 */
 		pinctrl_uart5_1: uart5grp-1{
 			fsl,pins = <
 				MX6QDL_PAD_KEY_COL1__UART5_TX_DATA	0x1b0b1
 				MX6QDL_PAD_KEY_ROW1__UART5_RX_DATA	0x1b0b1
+				/* check if uart5 is mounted */
+				MX6QDL_PAD_SD3_RST__GPIO7_IO08		0xb0
+#if (CONFIG_PICOMODA9_BOARD_REVISION == 100)
+				MX6QDL_PAD_KEY_COL4__UART5_CTS_B	0x1b0b1
+ 				MX6QDL_PAD_KEY_ROW4__UART5_RTS_B	0x1b0b1
+#elif defined(CONFIG_PICOMODA9_UART_D_RTSCTS) && !defined(CONFIG_PICOMODA9_CAN_B) \
+	!defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && !defined(CONFIG_PICOMODA9_HDMI)
+				MX6QDL_PAD_KEY_COL4__UART5_RTS_B	0x1b0b1
+				MX6QDL_PAD_KEY_ROW4__UART5_CTS_B	0x1b0b1
+#endif
 			>;
 		};
 #endif /* CONFIG_PICOMODA9_UART_D */
@@ -1185,8 +1336,9 @@
 		};
 #endif
 
-#if defined(CONFIG_PICOMODA9_CAN_B) && !defined(CONFIG_PICOMODA9_HDMI) && \
-				!defined(CONFIG_PICOMODA9_PARALLEL_CAMERA)
+/* can2 optional on Connector pins (41+42) */
+#if defined (CONFIG_PICOMODA9_CAN_B) && !defined(CONFIG_PICOMODA9_HDMI) && \
+	!defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && (CONFIG_PICOMODA9_BOARD_REVISION > 100)
 		/* CAN B */
 		pinctrl_flexcan_b: flexcan2grp {
 			fsl,pins = <
@@ -1209,7 +1361,7 @@
 				MX6QDL_PAD_ENET_TXD1__ENET_TX_DATA1	0x1b0b0
 				MX6QDL_PAD_RGMII_TX_CTL__ENET_REF_CLK	0x4001b0b0
 				/* Phy reset IO pin */
-				MX6QDL_PAD_SD4_DAT2__GPIO2_IO10		0x80000000
+				MX6QDL_PAD_SD4_DAT2__GPIO2_IO10		0x0b0b0
 			>;
 		};
 
@@ -1233,7 +1385,7 @@
 		};
 #endif /* CONFIG_PICOMODA9_I2C_B */
 
-#ifdef CONFIG_PICOMODA9_I2C_C
+#if defined(CONFIG_PICOMODA9_I2C_C) && (CONFIG_PICOMODA9_BOARD_REVISION > 100)
 		pinctrl_i2c1: i2c1grp {
 			fsl,pins = <
 				MX6QDL_PAD_CSI0_DAT8__I2C1_SDA		0x4001b8b1
@@ -1242,7 +1394,7 @@
 		};
 #endif /* CONFIG_PICOMODA9_I2C_C */
 
-#ifdef CONFIG_PICOMODA9_SGTL5000_AUDIO
+#if defined(CONFIG_PICOMODA9_SGTL5000_AUDIO) && (CONFIG_PICOMODA9_BOARD_REVISION > 100)
 		pinctrl_audmux_3: audmux-3 {
 			fsl,pins = <
 				MX6QDL_PAD_CSI0_DAT4__AUD3_TXC		0x130b0
@@ -1253,7 +1405,9 @@
 		};
 #endif
 
-#if defined (CONFIG_PICOMODA9_HDMI) && !defined(CONFIG_PICOMODA9_LCD)
+#if defined (CONFIG_PICOMODA9_HDMI) && !defined(CONFIG_PICOMODA9_LCD) && \
+	!defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && !defined(CONFIG_PICOMODA9_CAN_B) \
+	&& !defined(CONFIG_PICOMODA9_UART_D_RTSCTS)
 	/* HDMI interface */
 		pinctrl_i2c4_gpio: i2c4_gpio_grp {
 			fsl,pins = <
@@ -1263,13 +1417,14 @@
 		};
 #endif
 
-#if defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && \
-	!defined(CONFIG_PICOMODA9_LCD) && !defined(CONFIG_PICOMODA9_HDMI)
+#if defined(CONFIG_PICOMODA9_PARALLEL_CAMERA) && !defined(CONFIG_PICOMODA9_LCD) \
+	&& !defined(CONFIG_PICOMODA9_HDMI) && !defined (CONFIG_PICOMODA9_UART_D_RTSCTS) \
+	&& !defined(CONFIG_PICOMODA9_CAN_B) && (CONFIG_PICOMODA9_BOARD_REVISION > 100)
 	/* Camera interface */
 		pinctrl_i2c5_gpio: i2c5_gpio_grp {
 			fsl,pins = <
-				MX6QDL_PAD_KEY_ROW4__GPIO4_IO15		0x70B1
-				MX6QDL_PAD_EIM_A19__GPIO2_IO19		0x70B1
+				MX6QDL_PAD_KEY_ROW4__GPIO4_IO15		0x70b1
+				MX6QDL_PAD_EIM_A19__GPIO2_IO19		0x70b1
 			>;
 		};
 #endif
@@ -1281,6 +1436,16 @@
 			>;
 		};
 
+		pinctrl_usbh1: usbh1grp {
+			fsl,pins = <
+#if (CONFIG_PICOMODA9_BOARD_REVISION > 100)
+				MX6QDL_PAD_GPIO_5__GPIO1_IO05		0x100b0
+#else
+				MX6QDL_PAD_GPIO_17__GPIO7_IO12		0x100b0
+#endif
+			>;
+		};
+
 		pinctrl_usbotg: usbotggrp {
 			fsl,pins = <
 			/* Choose R31 for low(gnd) or R32 for high (3.3 V) */
@@ -1288,37 +1453,38 @@
 			>;
 		};
 
-#ifdef CONFIG_PICOMODA9_SD_A
+/* Optional EMMC/WLAN, only 4-bit EMMC is supported */
+#if defined(CONFIG_PICOMODA9_EMMC_WLAN) || defined(CONFIG_PICOMODA9_SD_A)
 		pinctrl_usdhc1: usdhc1grp {
 			fsl,pins = <
+#ifdef CONFIG_PICOMODA9_EMMC_WLAN
+				MX6QDL_PAD_SD1_CLK__SD1_CLK		0x17071
+				MX6QDL_PAD_SD1_CMD__SD1_CMD		0x17071
+				MX6QDL_PAD_SD1_DAT0__SD1_DATA0		0x17071
+				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x17071
+				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x17071
+				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x17071
+#if (CONFIG_PICOMODA9_BOARD_REVISION > 100)
+				/* reset */
+				MX6QDL_PAD_NANDF_CS1__GPIO6_IO14   	0x1b071
+#else
+				/* WLAN_IRQ */
+				MX6QDL_PAD_SD3_CLK__GPIO7_IO03		0x1b0b0
+				/* WLAN_EN */
+				MX6QDL_PAD_SD3_DAT2__GPIO7_IO06		0x30b0
+				/* BT_EN */
+				MX6QDL_PAD_SD3_DAT3__GPIO7_IO07		0x30b0
+#endif
+#else
 				MX6QDL_PAD_SD1_CLK__SD1_CLK		0x1f031
 				MX6QDL_PAD_SD1_CMD__SD1_CMD		0x1f031
 				MX6QDL_PAD_SD1_DAT0__SD1_DATA0		0x1f031
 				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x1f031
 				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x1f031
 				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x1f031
-			>;
-		};
-
-/* Optional EMMC */
-#if 0
-		pinctrl_usdhc1: usdhc1grp {
-			fsl,pins = <
-				MX6QDL_PAD_SD1_CMD__SD1_CMD		0x17071
-				MX6QDL_PAD_SD1_CLK__SD1_CLK		0x10071
-				MX6QDL_PAD_SD1_DAT0__SD1_DATA0		0x17071
-				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x17071
-				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x17071
-				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x17071
-				MX6QDL_PAD_SD1_DAT4__SD1_DATA4		0x17071
-				MX6QDL_PAD_SD1_DAT5__SD1_DATA5		0x17071
-				MX6QDL_PAD_SD1_DAT6__SD1_DATA6		0x17071
-				MX6QDL_PAD_SD1_DAT7__SD1_DATA7		0x17071
-				/* reset emmc, RST active low */
-				MX6QDL_PAD_NANDF_CS1__GPIO6_IO14   	0x1B071
-			>;
-		};
 #endif
+			>;
+		};
 #endif /* CONFIG_PICOMODA9_SD_A */
 
 #ifdef CONFIG_PICOMODA9_SD_B
@@ -1334,7 +1500,7 @@
 				MX6QDL_PAD_GPIO_2__GPIO1_IO02		0xb060
 				/* RST active low */
 				MX6QDL_PAD_GPIO_4__GPIO1_IO04		0xb060
-				/* SD_PWR: pull_down = SD card has power*/
+				/* SD_PWR: pull_down = SD card has power */
 				MX6QDL_PAD_EIM_A22__GPIO2_IO16		0x30b0
 			>;
 		};
@@ -1357,6 +1523,7 @@
 				MX6QDL_PAD_EIM_DA15__GPIO3_IO15		0x30b0
 			>;
 		};
+
 		pinctrlxmdata: xmdatagrp {
 			fsl,pins = <
 				MX6QDL_PAD_EIM_D16__EIM_DATA16		0x80000000
@@ -1394,10 +1561,18 @@
 			>;
 	};
 #endif
+
 		pinctrl_status_leds: ledgrp {
 			fsl,pins = <
-				MX6QDL_PAD_GPIO_17__GPIO7_IO12		0x80000000
-				MX6QDL_PAD_GPIO_18__GPIO7_IO13		0x80000000
+#if (CONFIG_PICOMODA9_BOARD_REVISION > 100)
+				MX6QDL_PAD_GPIO_17__GPIO7_IO12		0xb0b0
+				MX6QDL_PAD_GPIO_18__GPIO7_IO13		0xb0b0
+				MX6QDL_PAD_CSI0_DAT10__GPIO5_IO28	0xb0b0
+				MX6QDL_PAD_CSI0_DAT11__GPIO5_IO29	0xb0b0
+#else
+				MX6QDL_PAD_EIM_A24__GPIO5_IO04		0xb0b0
+				MX6QDL_PAD_EIM_A25__GPIO5_IO02		0xb0b0
+#endif
 			>;
 		};
 	};
