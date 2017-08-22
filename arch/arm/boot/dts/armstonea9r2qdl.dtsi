@@ -972,7 +972,7 @@
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
 				/* GPIO 1 */
-				MX6QDL_PAD_EIM_D23__GPIO3_IO23		0x80000000
+				MX6QDL_PAD_EIM_D23__GPIO3_IO23		0x30b0
 
 				/* RS232, these pins for the level converter
 				 * with these pins you can maybe save more
@@ -993,7 +993,9 @@
 				/* VLCD_ON and 5V_3V3 (external Pull Up)
 				 * for reg_vlcd */
 				MX6QDL_PAD_SD4_DAT3__GPIO2_IO11		0x13059
-				MX6QDL_PAD_EIM_D30__GPIO3_IO30		0x80000000
+				/* external Pull Down 22k no pull/keeper
+				 * needed */
+				MX6QDL_PAD_EIM_D30__GPIO3_IO30		0x00b0
 
 				/* VBL_ON for backlight on */
 				MX6QDL_PAD_SD4_DAT0__GPIO2_IO08		0x13059
@@ -1185,7 +1187,7 @@
 				MX6QDL_PAD_GPIO_3__I2C3_SCL		0x4001b8b1
 				MX6QDL_PAD_GPIO_16__I2C3_SDA		0x4001b8b1
 				/* if AD Converter */
-				//MX6QDL_PAD_SD4_DAT4__GPIO2_IO12	0x80000000
+				//MX6QDL_PAD_SD4_DAT4__GPIO2_IO12	0xb0b0
 			>;
 		};
 #endif /* CONFIG_ARMSTONEA9R2_I2C_A */
@@ -1303,7 +1305,7 @@
 				MX6QDL_PAD_ENET_RXD0__GPIO1_IO27	0x1b0b0
 #else
 				/* WLAN_RESET, has external pull-up */
-				MX6QDL_PAD_ENET_RXD0__GPIO1_IO27	0x80000000
+				MX6QDL_PAD_ENET_RXD0__GPIO1_IO27	0x100b0
 #endif
 			>;
 		};
@@ -1351,8 +1353,8 @@
 
 		pinctrl_status_leds: ledgrp {
 			fsl,pins = <
-				MX6QDL_PAD_GPIO_17__GPIO7_IO12		0x80000000
-				MX6QDL_PAD_GPIO_18__GPIO7_IO13		0x80000000
+				MX6QDL_PAD_GPIO_17__GPIO7_IO12		0x30b0
+				MX6QDL_PAD_GPIO_18__GPIO7_IO13		0x30b0
 			>;
 		};
 	};
