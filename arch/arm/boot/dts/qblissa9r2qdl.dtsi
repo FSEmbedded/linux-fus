@@ -110,6 +110,8 @@
 			regulator-always-on;
 		};
 
+		/* USB_OTG_PWR handled by USB controller, no regulator needed */
+#if 0 //###
 		reg_usb_otg_vbus: usb_otg_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg_vbus";
@@ -117,16 +119,19 @@
 			regulator-max-microvolt = <5000000>;
 			gpio = <&gpio3 22 GPIO_ACTIVE_LOW>;
 		};
+#endif //###
 
+		/* USB_H1_PWR is always on, no regulator needed */
+#if 0 //###
 		reg_usb_h1_vbus: usb_h1_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_h1_vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
 			/* No way to switch USB1_H1_VBUS power */
-			// gpio = <&gpio1 29 0>;
-			// enable-active-high;
+			regulator-always-on;
 		};
+#endif //###
 
 #ifdef CONFIG_QBLISSA9R2_WLAN
 		reg_wlan_vmmc_1v8: regulator_wlan {
@@ -736,17 +741,23 @@
 };
 #endif /* CONFIG_QBLISSA9R2_UART_E */
 
-&usbh1 {
-	vbus-supply = <&reg_usb_h1_vbus>;
+&usbotg {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg>;
+//###	vbus-supply = <&reg_usb_otg_vbus>;
+#ifdef CONFIG_QBLISSA9R2_HAVE_USB_OTG_OC
+	over-current-active-low;
+#else
+	disable-over-current;
+#endif
 	status = "okay";
 };
 
-&usbotg {
-	vbus-supply = <&reg_usb_otg_vbus>;
+&usbh1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usbotg>;
+	pinctrl-0 = <&pinctrl_usbh1>;
+//###	vbus-supply = <&reg_usb_h1_vbus>;
 	disable-over-current;
-	dr_mode = "otg";
 	status = "okay";
 };
 
@@ -901,10 +912,6 @@
 		/* Pin configs that don't belong anywhere else */
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
-
-				/* USB_HUB_RESET, U-Boot set the pads */
-				MX6QDL_PAD_EIM_DA15__GPIO3_IO15		0xb0b0
-
 				/* VLCD_ON */
 				MX6QDL_PAD_SD4_DAT3__GPIO2_IO11		0x13059	
 
@@ -1060,9 +1067,23 @@
 
 		pinctrl_usbotg: usbotggrp {
 			fsl,pins = <
-				/* USB OTG PWR */
-				MX6QDL_PAD_EIM_D22__GPIO3_IO22		0x000b0
-				MX6QDL_PAD_ENET_RX_ER__USB_OTG_ID 	0x17059
+				/* USB_OTG_PWR, active low */
+//###				MX6QDL_PAD_EIM_D22__GPIO3_IO22		0x0b030
+				MX6QDL_PAD_EIM_D22__USB_OTG_PWR		0x0b030
+#ifdef CONFIG_QBLISSA9R2_HAVE_USB_OTG_OC
+				/* USB_OTG_OC (part of USB_OC01), active low */
+				MX6QDL_PAD_EIM_D21__USB_OTG_OC		0x1b000
+#endif
+				/* USB_OTG_ID: low: host, open: device */
+				MX6QDL_PAD_ENET_RX_ER__USB_OTG_ID 	0x1b000
+			>;
+		};
+
+		pinctrl_usbh1: usbh1grp {
+			fsl,pins = <
+				/* USB hub reset line, active low */
+				MX6QDL_PAD_EIM_DA15__GPIO3_IO15		0x0b0b0
+				/* USB H1 host power is always on */
 			>;
 		};
 

@@ -153,6 +153,9 @@ wvga {					\
 /* NAND */
 #define CONFIG_EFUSA9_NAND
 
+/* USB OTG has over-current detection on OC pin */
+#define CONFIG_EFUSA9_HAVE_USB_OTG_OC
+
 /* AUDIO */
 #define CONFIG_EFUSA9_SGTL5000_AUDIO
 

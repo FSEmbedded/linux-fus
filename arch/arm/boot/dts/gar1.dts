@@ -86,8 +86,20 @@
 			regulator-max-microvolt = <3300000>;
 			regulator-always-on;
 		};
-/* use OTG_PWR instead of regulator */
-#if 1
+
+		/* USB_OTG1_PWR is always on, no regulator needed */
+#if 0 //###
+		reg_usb_otg1_vbus: usb_otg1_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_otg1_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			regulator-always-on;
+		};
+#endif //###
+
+		/* USB_OTG2_PWR done by USB controller, no regulator needed */
+#if 0
 		reg_usb_otg2_vbus: usb_otg2_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg_vbus";
@@ -222,14 +234,18 @@
 &usbotg1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg1>;
+//###	vbus-supply = <&reg_usb_otg1_vbus>;
+	disable-over-current;
 	status = "okay";
 };
 
 &usbotg2 {
-	vbus-supply = <&reg_usb_otg2_vbus>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg2>;
+//###	vbus-supply = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
+	pwr-active-high;
+	disable-over-current;
 	status = "okay";
 };
 
@@ -380,19 +396,20 @@
 
 		pinctrl_usbotg1: usbotg1grp {
 			fsl,pins = <
-				MX6UL_PAD_GPIO1_IO00__ANATOP_OTG1_ID 	0x17059
+				/* USB_OTG1_ID: low: host, open: device */
+				MX6UL_PAD_GPIO1_IO00__ANATOP_OTG1_ID 	0x1b000
 			>;
 		};
 
 		pinctrl_usbotg2: usbotg2grp {
 			fsl,pins = <
+				/* USB_OTG1_PWR, active high */
+//###				MX6UL_PAD_SD1_DATA1__GPIO2_IO19		0x03030
+				MX6UL_PAD_SD1_DATA1__USB_OTG2_PWR	0x03030
 				/* mPCIe_RST */
-				MX6UL_PAD_SD1_DATA0__GPIO2_IO18		0x0b0b0
+				MX6UL_PAD_SD1_DATA0__GPIO2_IO18		0x0b030
 				/* mPCIe_WAKE */
-				MX6UL_PAD_SD1_DATA2__GPIO2_IO20		0x0b0b0
-				/* GPIO for regulator */
-				//MX6UL_PAD_SD1_DATA1__GPIO2_IO19		0x0b0b0
-				MX6UL_PAD_SD1_DATA1__GPIO2_IO19		0x030b0
+				MX6UL_PAD_SD1_DATA2__GPIO2_IO20		0x0b030
 			>;
 		};
 

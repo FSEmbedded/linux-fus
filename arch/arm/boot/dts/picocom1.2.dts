@@ -91,6 +91,8 @@ chosen {
 			regulator-always-on;
 		};
 
+		/* USB_OTG1_PWR done by USB controller, no regulator needed */
+#if 0 //###
 		reg_usb_otg1_vbus: usb_otg1_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg1_vbus";
@@ -99,15 +101,19 @@ chosen {
 			gpio = <&gpio2 8 0>;
 			enable-active-high;
 		};
+#endif //###
 
-		reg_usb_h1_vbus: usb_h1_vbus {
+		/* USB_OTG2_PWR done by USB controller, no regulator needed */
+#if 0 //###
+		reg_usb_otg2_vbus: usb_otg2_vbus {
 			compatible = "regulator-fixed";
-			regulator-name = "usb_h1_vbus";
+			regulator-name = "usb_otg2_vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
 			gpio = <&gpio2 12 0>;
 			enable-active-high;
 		};
+#endif //###
 
 #ifdef CONFIG_PICOCOM1_2_SGTL5000
 		/* SGTL5000 analog voltage */
@@ -377,20 +383,25 @@ chosen {
 };
 
 &usbotg1 {
-	/* VBUS is not connected at picocom stinf., but maybe the customer
-	 * can connect the VBUS pin
-	 */
-	//vbus-supply = <&reg_usb_otg1_vbus>;
+	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usb_otg1>;
+#ifdef CONFIG_PICOCOM1_2_OTG_HOST
+	dr_mode = "host";
+//###	vbus-supply = <&reg_usb_otg1_vbus>;
+	pwr-active-high;
+	disable-over-current;
+#else
 	dr_mode = "peripheral";
+#endif
 	status = "okay";
 };
 
 &usbotg2 {
-	vbus-supply = <&reg_usb_h1_vbus>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usb_otg2>;
+//###	vbus-supply = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
+	pwr-active-high;
 	disable-over-current;
 	status = "okay";
 };
@@ -667,13 +678,16 @@ pinctrl_pwm3: pwm3grp {
 
 		pinctrl_usb_otg1: usb_otg1grp {
 			fsl,pins = <
-				MX6UL_PAD_ENET2_RX_DATA0__GPIO2_IO08	0x030b0
-			>;
+				/* USB_OTG1_PWR, active high */
+//###				MX6UL_PAD_ENET2_RX_DATA0__GPIO2_IO08	0x030b0
+				MX6UL_PAD_ENET2_RX_DATA0__USB_OTG1_PWR	0x030b0			>;
 		};
 
 		pinctrl_usb_otg2: usb_otg2grp {
 			fsl,pins = <
-				MX6UL_PAD_ENET2_TX_DATA1__GPIO2_IO12	0x030b0
+				/* USB_OTG2_PWR, active high */
+//###				MX6UL_PAD_ENET2_TX_DATA1__GPIO2_IO12	0x030b0
+				MX6UL_PAD_ENET2_TX_DATA1__USB_OTG2_PWR	0x030b0
 			>;
 		};
 

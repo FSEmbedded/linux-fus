@@ -137,6 +137,9 @@ wvga {					\
 /* NAND */
 #define CONFIG_QBLISSA9R2_NAND
 
+/* USB OTG has over-current detection on OC pin */
+#define CONFIG_QBLISSA9R2_HAVE_USB_OTG_OC
+
 /* AUDIO */
 #define CONFIG_QBLISSA9R2_WM9715_AUDIO
 

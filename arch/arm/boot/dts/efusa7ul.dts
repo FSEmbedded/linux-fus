@@ -75,6 +75,9 @@ wvga {					\
 #define CONFIG_EFUSA7UL_ETH0
 #define CONFIG_EFUSA7UL_ETH1
 
+/* USB OTG1 has over-current detection on OC pin */
+#define CONFIG_EFUSA7UL_HAVE_USB_OTG1_OC
+
 /* SD-Card - On SKIT: SD_A is micro SD, SD_B is normalsize SD */
 //#define CONFIG_EFUSA7UL_SD_A_CDWP
 
@@ -164,6 +167,19 @@ wvga {					\
 			regulator-always-on;
 		};
 
+		/* USB_OTG1_PWR done by USB controller, no regulator needed */
+#if 0 //###
+		reg_usb_otg1_vbus: usb_otg1_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_otg1_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio1 4 0>;
+		};
+#endif //###
+
+		/* USB_OTG2_PWR is always on, no regulator needed */
+#if 0 //###
 		reg_usb_otg2_vbus: usb_otg2_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg2_vbus";
@@ -171,6 +187,7 @@ wvga {					\
 			regulator-max-microvolt = <5000000>;
 			regulator-always-on;
 		};
+#endif //###
 
 		/* SGTL5000 analog voltage */
 		reg_sgtl5000_vdda: sgtl5000_vdda {
@@ -421,13 +438,24 @@ wvga {					\
 };
 
 &usbotg1 {
-	dr_mode = "peripheral";
+	/* On efus-SKIT, OTG power is active low */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg1>;
+//###	vbus-supply = <&reg_usb_otg1_vbus>;
+#ifdef CONFIG_EFUSA7UL_HAVE_USB_OTG1_OC
+	over-current-active-low;
+#else
+	disable-over-current;
+#endif
 	status = "okay";
 };
 
 &usbotg2 {
-	vbus-supply = <&reg_usb_otg2_vbus>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg2>;
+//###	vbus-supply = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
+	pwr-active-high;
 	disable-over-current;
 	status = "okay";
 };
@@ -818,6 +846,26 @@ wvga {					\
 			fsl,pins = <
 				MX6UL_PAD_UART2_RTS_B__FLEXCAN2_RX	0x1b020
 				MX6UL_PAD_UART2_CTS_B__FLEXCAN2_TX	0x1b020
+			>;
+		};
+
+		pinctrl_usbotg1: usbotg1grp {
+			fsl,pins = <
+				/* USB_OTG1_PWR, active low */
+//###				MX6UL_PAD_GPIO1_IO04__GPIO1_IO04	0x0b030
+				MX6UL_PAD_GPIO1_IO04__USB_OTG1_PWR	0x0b030
+#ifdef CONFIG_EFUSA7UL_HAVE_USB_OTG1_OC
+				/* USB_OTG1_OC, active low */
+				MX6UL_PAD_GPIO1_IO01__USB_OTG1_OC	0x1b000
+#endif
+				/* USB_OTG1_ID: low: host, open: device */
+				MX6UL_PAD_GPIO1_IO00__ANATOP_OTG1_ID	0x1b000
+			>;
+		};
+
+		pinctrl_usbotg2: usbotg2grp {
+			fsl,pins = <
+				/* USB_OTG2_PWR is always on */
 			>;
 		};
 

@@ -95,15 +95,10 @@ pwmleds {
 			regulator-always-on;
 		};
 
-		reg_usb_otg1_vbus: usb_otg1_vbus {
-			compatible = "regulator-fixed";
-			regulator-name = "usb_otg1_vbus";
-			regulator-min-microvolt = <5000000>;
-			regulator-max-microvolt = <5000000>;
-//			gpio = <&gpio1 9 0>;
-			enable-active-high;
-		};
+		/* USB_OTG1 only usable in device mode, no regulator needed */
 
+		/* USB_OTG2_PWR done by USB controller, no regulator needed */
+#if 0 //###
 		reg_usb_otg2_vbus: usb_otg2_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg2_vbus";
@@ -112,6 +107,7 @@ pwmleds {
 			gpio = <&gpio1 12 0>;
 			enable-active-high;
 		};
+#endif //###
 	};
 
 
@@ -238,19 +234,19 @@ pwmleds {
 
 /* USB device */
 &usbotg1 {
-	/* signals don't use mulitplexer, so no pinctrl here */
-	vbus-supply = <&reg_usb_otg1_vbus>;
 	dr_mode = "peripheral";
-	pinctrl-names = "default";
 	status = "okay";
 };
 
 
 /* USB host */
 &usbotg2 {
-	vbus-supply = <&reg_usb_otg2_vbus>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg2>;
+//###	vbus-supply = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
-	pinctrl-0 = <&pinctrl_usbotg2_1>;
+	pwr-active-high;
+	disable-over-current;
 	status = "okay";
 };
 
@@ -452,9 +448,11 @@ pwmleds {
 		};
 
 
-		pinctrl_usbotg2_1: usbotg2grp-1 {
+		pinctrl_usbotg2: usbotg2grp {
 			fsl,pins = <
-				MX6SX_PAD_GPIO1_IO12__GPIO1_IO_12	0x80000000
+				/* USB_OTG2_PWR, active high */
+//###				MX6SX_PAD_GPIO1_IO12__GPIO1_IO_12	0x03030
+				MX6SX_PAD_GPIO1_IO12__USB_OTG2_PWR	0x03030
 			>;
 		};
 

@@ -157,14 +157,20 @@
 			regulator-always-on;
 		};
 
+#ifdef CONFIG_NETDCUA9_OTG_HOST
+		/* USB_OTG_PWR only available as GPIO, use regulator */
 		reg_usb_otg_vbus: usb_otg_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg_vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
 			gpio = <&gpio1 9 0>;
+			enable-active-high;
 		};
+#endif
 
+		/* USB_H1_PWR handled by USB controller, no regulator needed */
+#if 0 //###
 		reg_usb_h1_vbus: usb_h1_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_h1_vbus";
@@ -173,6 +179,7 @@
 			gpio = <&gpio1 0 0>;
 			enable-active-high;
 		};
+#endif //###
 
 		reg_ldb_bl: backlight_ldb {
 			compatible = "regulator-fixed";
@@ -764,15 +771,24 @@
 };
 #endif /* CONFIG_NETDCUA9_UART_B */
 
-&usbh1 {
-	vbus-supply = <&reg_usb_h1_vbus>;
+&usbotg {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg>;
+#ifdef CONFIG_NETDCUA9_OTG_HOST
+	dr_mode = "host";
+	vbus-supply = <&reg_usb_otg_vbus>;
+	disable-over-current;
+#else
+	dr_mode = "peripheral";
+#endif
 	status = "okay";
 };
 
-&usbotg {
-	vbus-supply = <&reg_usb_otg_vbus>;
+&usbh1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usbotg>;
+	pinctrl-0 = <&pinctrl_usbh1>;
+//###	vbus-supply = <&reg_usb_h1_vbus>;
+	pwr-active-high;
 	disable-over-current;
 	status = "okay";
 };
@@ -961,8 +977,6 @@
 				MX6QDL_PAD_GPIO_7__GPIO1_IO07		0xb0b0
 				/* I2C2 RST */
 				MX6QDL_PAD_GPIO_8__GPIO1_IO08		0xb0b0
-				/* USBH1 */
-				MX6QDL_PAD_GPIO_0__GPIO1_IO00		0x30b0
 			>;
 		};
 
@@ -1181,8 +1195,17 @@
 
 		pinctrl_usbotg: usbotggrp {
 			fsl,pins = <
-				/* USB OTG PWR */
-				MX6QDL_PAD_GPIO_9__GPIO1_IO09	 	0x30b0
+#ifdef CONFIG_NETDCUA9_OTG_HOST
+				/* USB_OTG_PWR */
+				MX6QDL_PAD_GPIO_9__GPIO1_IO09	 	0x03030
+#endif
+			>;
+		};
+
+		pinctrl_usbh1: usbh1grp {
+			fsl,pins = <
+				/* USB_H1_PWR*/
+				MX6QDL_PAD_GPIO_0__USB_H1_PWR		0x03030
 			>;
 		};
 

@@ -69,19 +69,27 @@
 			regulator-always-on;
 		};
 
+		/* USB_OTG1_PWR is always on, no regulator needed */
+#if 0 //###
 		reg_usb_otg1_vbus: usb_otg1_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg1_vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
+			regulator-always-on;
 		};
+#endif
 
+		/* USB_OTG2_PWR is always on, no regulator needed */
+#if 0 //###
 		reg_usb_otg2_vbus: usb_otg2_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg2_vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
+			regulator-always-on;
 		};
+#endif //###
 	};
 
 	/* F&S board information */
@@ -472,19 +480,17 @@
 };
 
 &usbotg1 {
-	/* This should be only device but optional as otg thats why we
-	 * configured this pin as otg because device mode work anyway
-	 */
-	vbus-supply = <&reg_usb_otg1_vbus>;
-	dr_mode = "otg";
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usbotg1_1>;
+	pinctrl-0 = <&pinctrl_usbotg1>;
+//###	vbus-supply = <&reg_usb_otg1_vbus>;
+	disable-over-current;
 	status = "okay";
 };
 
 &usbotg2 {
-	vbus-supply = <&reg_usb_otg2_vbus>;
+//###	vbus-supply = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
+	disable-over-current;
 	status = "okay";
 };
 
@@ -777,9 +783,10 @@
 			>;
 		};
 
-		pinctrl_usbotg1_1: usbotg1grp-1 {
+		pinctrl_usbotg1: usbotg1grp {
 			fsl,pins = <
-				MX6SX_PAD_QSPI1A_DATA1__ANATOP_OTG1_ID	0x17059
+				/* USB_OTG1_ID: low: host, open: device */
+				MX6SX_PAD_QSPI1A_DATA1__ANATOP_OTG1_ID	0x1b000
 			>;
 		};
 

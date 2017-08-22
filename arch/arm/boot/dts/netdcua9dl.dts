@@ -150,6 +150,9 @@ wvga {					\
 /* NAND */
 #define CONFIG_NETDCUA9_NAND
 
+/* USB OTG port (no ID signal, default is device, set to host if required) */
+//#define CONFIG_NETDCUA9_OTG_HOST
+
 /* AUDIO */
 #define CONFIG_NETDCUA9_WM9715_AUDIO
 

@@ -107,27 +107,32 @@
 			regulator-always-on;
 		};
 
+		/* USB_OTG_PWR handled by USB controller, no regulator needed */
+#if 0 //###
 		reg_usb_otg_vbus: usb_otg_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg_vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
-			gpio = <&gpio3 22 GPIO_ACTIVE_LOW>;
-			/* pmic */
-			//vin-supply = <&swbst_reg>;
+			/* Switchable starting with board rev. 1.30 */
+#if CONFIG_QBLISSA9_BOARD_REVISION < 130
+			regulator-always-on;
+#else
+			gpio = <&gpio3 22 GPIO_ACTIVE_HIGH>;
+#endif
 		};
+#endif //###
 
+		/* USB_H1_PWR is always on, no regulator needed */
+#if 0 //###
 		reg_usb_h1_vbus: usb_h1_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_h1_vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
 			/* No way to switch USB1_H1_VBUS power */
-			// gpio = <&gpio1 29 0>;
-			// enable-active-high;
-			/* pmic */
-			//vin-supply = <&swbst_reg>;
 		};
+#endif //###
 
 #ifdef CONFIG_QBLISSA9_WLAN
 		reg_wlan_vmmc_1v8: regulator_wlan {
@@ -828,17 +833,23 @@
 };
 #endif /* CONFIG_QBLISSA9_UART_E */
 
-&usbh1 {
-	vbus-supply = <&reg_usb_h1_vbus>;
+&usbotg {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg>;
+//###	vbus-supply = <&reg_usb_otg_vbus>;
+#ifdef CONFIG_QBLISSA9_HAVE_USB_OTG_OC
+	over-current-active-low;
+#else
+	disable-over-current;
+#endif
 	status = "okay";
 };
 
-&usbotg {
-	vbus-supply = <&reg_usb_otg_vbus>;
+&usbh1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usbotg>;
+	pinctrl-0 = <&pinctrl_usbh1>;
+//###	vbus-supply = <&reg_usb_h1_vbus>;
 	disable-over-current;
-	dr_mode = "peripheral";
 	status = "okay";
 };
 
@@ -1021,8 +1032,6 @@
 				MX6QDL_PAD_SD4_DAT4__GPIO2_IO12		0x30b0
 				/* LDDC_CLK */
 				MX6QDL_PAD_SD4_DAT5__GPIO2_IO13		0x30b0
-				/* USB_OC01* /
-				MX6QDL_PAD_EIM_D21__GPIO3_IO21		0xb0b0
 				/* FAN_TACHOIN */
 				MX6QDL_PAD_GPIO_2__GPIO1_IO02		0x30b0
 				/* LID_BTNJ */
@@ -1037,8 +1046,6 @@
 				MX6QDL_PAD_GPIO_8__GPIO1_IO08		0x30b0
 				/* WDOUT_ENn */
 				MX6QDL_PAD_GPIO_9__GPIO1_IO09		0xb0b0
-				/*USB_HUB_RESET_B */
-				MX6QDL_PAD_GPIO_17__GPIO7_IO12		0x30b0
 				/* ATA_ACTn */
 				MX6QDL_PAD_GPIO_18__GPIO7_IO13		0xb0b0
 				/* BACKLIGHT_On */
@@ -1160,9 +1167,23 @@
 
 		pinctrl_usbotg: usbotggrp {
 			fsl,pins = <
-				/* USB OTG PWR */
-				MX6QDL_PAD_EIM_D22__GPIO3_IO22		0x000b0
-				MX6QDL_PAD_ENET_RX_ER__USB_OTG_ID 	0x17059
+				/* USB OTG PWR, active low */
+//###				MX6QDL_PAD_EIM_D22__GPIO3_IO22		0x0b030
+				MX6QDL_PAD_EIM_D22__USB_OTG_PWR		0x0b030
+#ifdef CONFIG_QBLISSA9R2_HAVE_USB_OTG_OC
+				/* USB_OTG_OC (part of USB_OC01), active low */
+				MX6QDL_PAD_EIM_D21__USB_OTG_OC		0x1b000
+#endif
+				/* USB_OTG_ID: low: host, open: device */
+				MX6QDL_PAD_ENET_RX_ER__USB_OTG_ID 	0x1b000
+			>;
+		};
+
+		pinctrl_usbh1: usbh1grp {
+			fsl,pins = <
+				/* USB hub reset line, active low */
+				MX6QDL_PAD_GPIO_17__GPIO7_IO12		0x0b0b0
+				/* USB H1 host power is always on */
 			>;
 		};
 

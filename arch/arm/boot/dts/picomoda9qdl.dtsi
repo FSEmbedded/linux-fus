@@ -17,13 +17,15 @@
 #undef CONFIG_PICOMODA9_MXCFB2
 #undef CONFIG_PICOMODA9_MXCFB3
 
-#if ((CONFIG_PICOMODA9_MXCFB0 == DISPLAY_LCD) && (CONFIG_PICOMODA9_MXCFB1 == DISPLAY_LVDS0))
+#if ((CONFIG_PICOMODA9_MXCFB0 == DISPLAY_LCD) \
+	&& (CONFIG_PICOMODA9_MXCFB1 == DISPLAY_LVDS0))
 #undef CONFIG_PICOMODA9_MXCFB1
 #define CONFIG_PICOMODA9_MXCFB1		DISPLAY_LVDS1
 #define __MOVE_LVDS0_TO_LVDS1_DUAL_MODE__
 #endif
 
-#if ((CONFIG_PICOMODA9_MXCFB0 == DISPLAY_LVDS0) && (CONFIG_PICOMODA9_MXCFB1 == DISPLAY_LCD))
+#if ((CONFIG_PICOMODA9_MXCFB0 == DISPLAY_LVDS0) \
+	&& (CONFIG_PICOMODA9_MXCFB1 == DISPLAY_LCD))
 #undef CONFIG_PICOMODA9_MXCFB0
 #define CONFIG_PICOMODA9_MXCFB0		DISPLAY_LVDS1
 #define __MOVE_LVDS0_TO_LVDS1_DUAL_MODE__
@@ -177,7 +179,8 @@
 		};
 #endif
 
-		/* VBUS power if OTG used as HOST (R97 mounted) */
+		/* VBUS power if OTG used as HOST; only available as GPIO,
+		   use regulator */
 		reg_usb_otg_vbus: usb_otg_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg_vbus";
@@ -187,16 +190,17 @@
 			enable-active-high;
 		};
 
-		/* VBUS power for USB1 (HOST) */
+		/* VBUS power for USB1 (HOST), only available as GPIO,
+		   use regulator; this pin changed with board rev. 1.10 */
 		reg_usb_h1_vbus: usb_h1_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_h1_vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
-#if (CONFIG_PICOMODA9_BOARD_REVISION > 100)
-			gpio = <&gpio1 5 0>;
-#else
+#if CONFIG_PICOMODA9_BOARD_REVISION < 110
 			gpio = <&gpio7 12 0>;
+#else
+			gpio = <&gpio1 5 0>;
 #endif
 			enable-active-high;
 		};
@@ -938,17 +942,22 @@
 };
 #endif /* CONFIG_PICOMODA9_UART_D */
 
-&usbh1 {
-	vbus-supply = <&reg_usb_h1_vbus>;
+/* USB OTG port can be used as host or as device. On PicoMODA9 this is a
+   hardware option, so either only the one or the other is possible. But the
+   ID pin is set correctly to the appropriate hardware setting, so we can keep
+   OTG mode here. */
+&usbotg {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usbh1>;
+	pinctrl-0 = <&pinctrl_usbotg>;
+	vbus-supply = <&reg_usb_otg_vbus>;
+	disable-over-current;
 	status = "okay";
 };
 
-&usbotg {
-	dr_mode = "peripheral";
+&usbh1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usbotg>;
+	pinctrl-0 = <&pinctrl_usbh1>;
+	vbus-supply = <&reg_usb_h1_vbus>;
 	disable-over-current;
 	status = "okay";
 };
@@ -1128,11 +1137,6 @@
 
 				/* RTC_IRQ */
 				MX6QDL_PAD_GPIO_6__GPIO1_IO06		0xb0b0
-
-				/* USB PWR_2 (not available rev. 1.00 HW bug) */
-				MX6QDL_PAD_GPIO_8__GPIO1_IO08		0x30b0
-
-				MX6QDL_PAD_DISP0_DAT18__GPIO5_IO12	0x30b0
 
 				MX6QDL_PAD_EIM_LBA__GPIO2_IO27		0x30b0
 
@@ -1436,20 +1440,23 @@
 			>;
 		};
 
-		pinctrl_usbh1: usbh1grp {
+		pinctrl_usbotg: usbotggrp {
 			fsl,pins = <
-#if (CONFIG_PICOMODA9_BOARD_REVISION > 100)
-				MX6QDL_PAD_GPIO_5__GPIO1_IO05		0x100b0
-#else
-				MX6QDL_PAD_GPIO_17__GPIO7_IO12		0x100b0
-#endif
+				/* USB PWR_2 (If OTG is used as HOST) */
+				MX6QDL_PAD_GPIO_8__GPIO1_IO08		0x0b030
+				/* USB_OTG_ID: low: host, open: device */
+				MX6QDL_PAD_GPIO_1__USB_OTG_ID		0x1b000
 			>;
 		};
 
-		pinctrl_usbotg: usbotggrp {
+		pinctrl_usbh1: usbh1grp {
 			fsl,pins = <
-			/* Choose R31 for low(gnd) or R32 for high (3.3 V) */
-				MX6QDL_PAD_GPIO_1__USB_OTG_ID		0x17059
+				/* USB PWR_1 */
+#if CONFIG_PICOMODA9_BOARD_REVISION < 110
+				MX6QDL_PAD_GPIO_17__GPIO7_IO12		0x030b0
+#else
+				MX6QDL_PAD_GPIO_5__GPIO1_IO05		0x030b0
+#endif
 			>;
 		};
 

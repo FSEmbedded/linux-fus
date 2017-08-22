@@ -106,6 +106,9 @@ lvds_wvga {				\
 #define CONFIG_EFUSA9X_ETH0
 #define CONFIG_EFUSA9X_ETH1
 
+/* USB OTG1 has over-current detection on OC pin */
+#define CONFIG_EFUSA9X_HAVE_USB_OTG1_OC
+
 /* If UART_C uses RTS, we can only have one CS on SPI_B; if UART_C does
    not need RTS, we can have a second CS on SPI_B */
 #define CONFIG_EFUSA9X_UART_C_RTS
@@ -282,6 +285,8 @@ lvds_wvga {				\
 		};
 #endif
 
+		/* USB_OTG1_PWR done by USB controller, no regulator needed */
+#if 0 //###
 		reg_usb_otg1_vbus: usb_otg1_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg1_vbus";
@@ -290,7 +295,10 @@ lvds_wvga {				\
 			gpio = <&gpio1 9 0>;
 			enable-active-high;
 		};
+#endif //###
 
+		/* USB_OTG2_PWR done by USB controller, no regulator needed */
+#if 0 //###
 		reg_usb_otg2_vbus: usb_otg2_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg2_vbus";
@@ -299,6 +307,7 @@ lvds_wvga {				\
 			gpio = <&gpio1 12 0>;
 			enable-active-high;
 		};
+#endif //###
 	};
 
 	sound-sgtl5000 {
@@ -788,17 +797,24 @@ lvds_wvga {				\
 };
 
 &usbotg1 {
-	vbus-supply = <&reg_usb_otg1_vbus>;
-	dr_mode = "peripheral";
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usbotg1_1>;
+	pinctrl-0 = <&pinctrl_usbotg1>;
+//###	vbus-supply = <&reg_usb_otg1_vbus>;
+#ifdef CONFIG_EFUSA9X_HAVE_USB_OTG1_OC
+	over-current-active-low;
+#else
+	disable-over-current;
+#endif
 	status = "okay";
 };
 
 &usbotg2 {
-	vbus-supply = <&reg_usb_otg2_vbus>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg2>;
+//###	vbus-supply = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
-	pinctrl-0 = <&pinctrl_usbotg2_1>;
+	pwr-active-high;
+	disable-over-current;
 	status = "okay";
 };
 
@@ -1212,17 +1228,25 @@ lvds_wvga {				\
 			>;
 		};
 
-		pinctrl_usbotg1_1: usbotg1grp-1 {
+		pinctrl_usbotg1: usbotg1grp {
 			fsl,pins = <
-				MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9	0x80000000
-				MX6SX_PAD_GPIO1_IO10__ANATOP_OTG1_ID	0x17059
+				/* USB_OTG1_PWR, active low */
+//###				MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9	0x0b030
+				MX6SX_PAD_GPIO1_IO09__USB_OTG1_PWR	0x0b030
+#ifdef CONFIG_EFUSA9X_HAVE_USB_OTG1_OC
+				/* USB_OTG1_OC, active low */
+				MX6SX_PAD_GPIO1_IO08__USB_OTG1_OC	0x1b000
+#endif
+				/* USB_OTG1_ID: low: host, open: device */
+				MX6SX_PAD_GPIO1_IO10__ANATOP_OTG1_ID	0x1b000
 			>;
 		};
 
-		pinctrl_usbotg2_1: usbotg2grp-1 {
+		pinctrl_usbotg2: usbotg2grp {
 			fsl,pins = <
-				 MX6SX_PAD_GPIO1_IO12__GPIO1_IO_12	0x80000000
-//###				 MX6SX_PAD_GPIO1_IO12__USB_OTG2_PWR	0x80000000
+				/* USB_OTG2_PWR, active high */
+//###				MX6SX_PAD_GPIO1_IO12__GPIO1_IO_12	0x03030
+				MX6SX_PAD_GPIO1_IO12__USB_OTG2_PWR	0x03030
 			>;
 		};
 

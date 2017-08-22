@@ -87,6 +87,8 @@
 			regulator-always-on;
 		};
 
+		/* USB_OTG_PWR handled by USB controller, no regulator needed */
+#if 0 //###
 		reg_usb_otg_vbus: usb_otg_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg_vbus";
@@ -94,16 +96,19 @@
 			regulator-max-microvolt = <5000000>;
 			gpio = <&gpio3 22 GPIO_ACTIVE_LOW>;
 		};
+#endif //###
 
+		/* USB_H1_PWR is always on, no regulator needed */
+#if 0 //###
 		reg_usb_h1_vbus: usb_h1_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_h1_vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
 			/* No way to switch USB1_H1_VBUS power */
-			// gpio = <&gpio1 29 0>;
-			// enable-active-high;
+			regulator-always-on;
 		};
+#endif //###
 
 #ifdef CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO
 		/* SGTL5000 analog voltage */
@@ -807,17 +812,19 @@
 };
 #endif /* CONFIG_ARMSTONEA9R2_UART_E */
 
-&usbh1 {
-	vbus-supply = <&reg_usb_h1_vbus>;
+&usbotg {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg>;
+//###	vbus-supply = <&reg_usb_otg_vbus>;
+	disable-over-current;
 	status = "okay";
 };
 
-&usbotg {
-	vbus-supply = <&reg_usb_otg_vbus>;
+&usbh1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usbotg>;
+	pinctrl-0 = <&pinctrl_usbh1>;
+//###	vbus-supply = <&reg_usb_h1_vbus>;
 	disable-over-current;
-	dr_mode = "otg";
 	status = "okay";
 };
 
@@ -979,9 +986,6 @@
 				 * current, not implemented yet */
 				MX6QDL_PAD_EIM_BCLK__GPIO6_IO31		0x30b0
 				MX6QDL_PAD_EIM_WAIT__GPIO5_IO00		0x30b0
-
-				/* USB_HUB_RESET, U-Boot set the pads */
-				MX6QDL_PAD_EIM_EB1__GPIO2_IO29		0x30b0
 
 				/* Audio clock 24MHz */
 				MX6QDL_PAD_GPIO_0__CCM_CLKO1		0x130b0
@@ -1150,9 +1154,19 @@
 
 		pinctrl_usbotg: usbotggrp {
 			fsl,pins = <
-				/* USB OTG PWR */
-				MX6QDL_PAD_EIM_D22__GPIO3_IO22		0x000b0
-				MX6QDL_PAD_ENET_RX_ER__USB_OTG_ID 	0x17059
+				/* USB_OTG_PWR, active low */
+//###				MX6QDL_PAD_EIM_D22__GPIO3_IO22		0x0b030
+				MX6QDL_PAD_EIM_D22__USB_OTG_PWR		0x0b030
+				/* USB_OTG_ID: low: host, open: device */
+				MX6QDL_PAD_ENET_RX_ER__USB_OTG_ID 	0x1b000
+			>;
+		};
+
+		pinctrl_usbh1: usbh1grp {
+			fsl,pins = <
+				/* USB hub reset line, active low */
+				MX6QDL_PAD_EIM_EB1__GPIO2_IO29		0x0b0b0
+				/* USB H1 host power is always on */
 			>;
 		};
 
