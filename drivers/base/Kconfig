@@ -213,6 +213,17 @@ config DEBUG_DEVRES
 
 	  If you are unsure about this, Say N here.
 
+config AUXILIARY_CORE
+	bool "Support Auxiliary Core (/sys/devices/system/cpu/aux_core)"
+	depends on SOC_IMX6SX
+	default n
+	help
+	  The auxiliary core supports to start stop and load the auxiliary core
+	  from the linux. It is in a subdirectory of /sys.
+
+	  If you are not using a board or module from F&S Elektronik Systeme,
+	  you can safely say N.
+
 config SYS_HYPERVISOR
 	bool
 	default n

@@ -1,0 +1,71 @@
+Auxiliary Core Sysfs Interface for Userspace
+=============================================
+
+This file describes how you can use the auxiliary core from the Userspace.
+
+
+Paths in Sysfs
+--------------
+There are three kinds of entry in /sys/devices/system/cpu/aux_core:
+
+   -	Control interfaces used to get userspace control over auxiliary core;
+
+   -	The file/programm which you want to start in the auxiliary core; and
+
+   -	the address were the file should be loaded (default is tcm).
+
+The control interfaces have the following read/write attributes:
+
+    /sys/devices/system/cpu/aux_core
+
+    	"bootaux" ... read:
+		  you will get the status of the clock, and the status of
+		  the core.
+		  Example:  "cat bootaux" will give you the Status of the
+		  auxiliary core.
+
+		  ... write:
+		  you can write several commands to the bootaux file:
+		  pause: this will disable the auxiliary core clock so the
+		         programm which is running will be paused.
+		  start: this will enable the auxiliary core clock so the
+		         programm which is paused will be continued.
+		  stop:  this will disable the auxiliary core itself and the
+		         clock.
+		  reset: this will hold the auxiliary core in reset so you
+		         can download a new programm to the auxiliary core
+		  run:   this will start the auxiliary core at the address
+		         which is given in the variable mem_addr.
+		  address: this will start the auxiliary core at the address
+		         which is given in the transfer parameter.
+
+		Example:  "echo start > bootaux", "echo pause > bootaux",
+		          "echo stop > bootaux", "echo reset > bootaux",
+		          "echo run > bootaux", "echo 0x7f8000 > bootaux"
+
+The file/programm have the following read/write attributes:
+
+    /sys/devices/system/cpu/aux_core
+
+	"mem" ... read:
+	      read the last file/programm which you have loaded
+	      Example: "cat mem" -> hello_world.bin
+
+	      ... write:
+	      write the file/programm which you want to load. Attention:
+	      you have to set an absolut path. No relative paths are allowed.
+	      Example: "echo /root/hello_world.bin > mem"
+
+The address have the following read/write attributes:
+
+    /sys/devices/system/cpu/aux_core
+
+    	"mem_addr" ... read:
+		   reads the address were the file/programm will be started.
+		   Default is the tcm.
+		   Example: "cat mem_addr" -> 0x7f8000
+
+    	           ... write:
+    	           write the address were the file/programm will be stored.
+    	           Example: "echo 0x7f8000 > mem_addr"
+

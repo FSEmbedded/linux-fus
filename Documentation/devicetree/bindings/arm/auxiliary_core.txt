@@ -1,0 +1,21 @@
+Auxiliary Core
+=================
+
+Required properties:
+
+ - compatible: must be "auxiliaray-core"
+ - clocks:     clock for the auxiliary core
+
+
+Example:
+/ {
+	...
+	...
+	...
+
+	/* F&S auxiliary core driver */
+	auxiliary_core {
+		compatible = "auxiliary-core";
+		clocks = <&clks IMX6SX_CLK_M4>;
+	};
+};
