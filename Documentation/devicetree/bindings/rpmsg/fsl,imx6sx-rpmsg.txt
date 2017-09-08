@@ -1,0 +1,20 @@
+Freescale i.MX6 SoloX RPMsg Node
+
+Required properties:
+- compatible : should be : "fsl,imx6sx-rpmsg"
+
+Optional properties:
+- vring-buffer-address0 : start adresse for the first ring buffer, should be
+			  0x9FFF0000 (RAM 512 MB) or 0xBFFF0000
+			  (RAM >= 1024 MB)
+- vring-buffer-address1 : start adresse for the second ring buffer, should be
+			  0x9FFF0000 (RAM 512 MB) or 0xBFFF0000
+			  (RAM >= 1024 MB)
+
+Example:
+
+&rpmsg {
+    compatible = "fsl,imx6sx-rpmsg";
+    vring-buffer-address0 = <0x9FFF0000>;
+    vring-buffer-address1 = <0x9FFF8000>;
+  };

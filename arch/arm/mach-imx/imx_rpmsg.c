@@ -280,6 +280,7 @@ MODULE_DEVICE_TABLE(of, imx_rpmsg_dt_ids);
 static int imx_rpmsg_probe(struct platform_device *pdev)
 {
 	int i, ret = 0;
+        uint32_t vring0, vring1;
 	struct device_node *np = pdev->dev.of_node;
 
 	for (i = 0; i < ARRAY_SIZE(imx_rpmsg_vprocs); i++) {
@@ -288,10 +289,22 @@ static int imx_rpmsg_probe(struct platform_device *pdev)
 		if (!strcmp(rpdev->rproc_name, "m4")) {
 			ret = of_device_is_compatible(np, "fsl,imx7d-rpmsg");
 			ret |= of_device_is_compatible(np, "fsl,imx6sx-rpmsg");
-			if (ret) {
-				/* hardcodes here now. */
-				rpdev->vring[0] = 0xBFFF0000;
-				rpdev->vring[1] = 0xBFFF8000;
+                        if (ret) {
+                                /* Read start address for ring buffer from
+                                 * device tree
+                                 */
+                                if (!of_property_read_u32(np,
+                                        "vring-buffer-address0", &vring0) &&
+                                    !of_property_read_u32(np,
+                                        "vring-buffer-address1", &vring1)) {
+                                        rpdev->vring[0] = vring0;
+                                        rpdev->vring[1] = vring1;
+                                } else {
+                                        /* hardcodes here now. */
+                                        rpdev->vring[0] = 0xBFFF0000;
+                                        rpdev->vring[1] = 0xBFFF8000;
+                                }
+
 			}
 		} else {
 			break;
