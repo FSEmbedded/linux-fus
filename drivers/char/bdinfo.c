@@ -91,6 +91,7 @@ static int __init bdinfo_alloc(struct platform_device *pdev)
 	p = bdi.kattr;
 
 	for (i = 0; i < bdi.acount; i++) {
+		sysfs_attr_init(&(p->attr));
 		p->attr.name = bdi.prop_name[i];
 		p->attr.mode = bdi.mode;
 		p->show = bdinfo_show;
