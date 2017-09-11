@@ -126,6 +126,9 @@ static ssize_t bootaux_store(struct kobject *kobj,
 		writel_relaxed(val, src_base_addr);
 	} else if (!strcmp(value, "start")) {
 		clk_prepare_enable(ac.clk);
+		val = readl_relaxed(src_base_addr);
+		val |= ENABLE_M4_CORE;
+		writel_relaxed(val, src_base_addr);
 	} else {
 		if (!strcmp(value, "run")) {
 			addr = ac.mem_addr;
@@ -192,13 +195,15 @@ static ssize_t mem_store(struct kobject *kobj,
 	struct kstat stat;
 	void __iomem *mem_base_addr = NULL;
 	char *raw_fmts =  NULL;
-	mm_segment_t fs;
+	mm_segment_t fs = 0;
 	int logstrs_size = 0;
 	int error = 0;
 	int len = 0;
 
-	if(!__clk_is_enabled(ac.clk))
+	if(!__clk_is_enabled(ac.clk)) {
 		dev_err(&ac.pdev->dev, "auxiliary core clock is not enabled! \n");
+		goto fail;
+	}
 
 	len  = strnlen(buf, PATH_MAX);
 	if (len && buf[len - 1] != '\n')
@@ -248,13 +253,14 @@ static ssize_t mem_store(struct kobject *kobj,
 
 
 fail:
-	if (raw_fmts) {
+	if (raw_fmts)
 		kfree(raw_fmts);
-		raw_fmts = NULL;
-	}
-	if (!IS_ERR(filep))
+
+	if (!IS_ERR(filep) && filep)
 		filp_close(filep, NULL);
-	set_fs(fs);
+
+	if (fs)
+		set_fs(fs);
 
 	return count;
 }
