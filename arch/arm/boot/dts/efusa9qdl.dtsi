@@ -647,6 +647,7 @@
 	sgtl5000: sgtl5000@0a {
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
+		mono2both;
 		/* derived from IMX6QDL_CLK_CKO2 */
 		clocks = <&clks IMX6QDL_CLK_CKO>;
 		VDDA-supply = <&reg_sgtl5000_vdda>;
