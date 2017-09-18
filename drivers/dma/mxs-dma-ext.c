@@ -18,6 +18,7 @@
 #include <linux/sched.h>
 #include <linux/semaphore.h>
 #include <linux/device.h>
+#include <linux/genalloc.h>
 #include <linux/dma-mapping.h>
 #include <linux/slab.h>
 #include <linux/platform_device.h>
@@ -61,7 +62,7 @@
 	(((dma_is_apbh(d) && apbh_is_old(d)) ? 0x080 : 0x140) + (n) * 0x70)
 #define HW_APBX_CHn_DEBUG1(d, n) (0x150 + (n) * 0x70)
 
-#define CCW_BLOCK_SIZE	(4 * PAGE_SIZE)
+#define CCW_BLOCK_SIZE	(PAGE_SIZE)
 #define NUM_CCW	(int)(CCW_BLOCK_SIZE / sizeof(struct mxs_dma_ccw))
 
 struct mxs_dma_chan {
@@ -102,6 +103,8 @@ struct mxs_dma_engine {
 	struct mxs_dma_chan		mxs_chans[MXS_DMA_CHANNELS];
 	struct platform_device		*pdev;
 	unsigned int			nr_channels;
+	bool				use_iram;
+	struct gen_pool 		*iram_pool;
 };
 
 struct mxs_dma_type {
@@ -383,9 +386,16 @@ static int mxs_dma_ext_alloc_chan_resources(struct dma_chan *chan)
 	int ret;
 	int i, n;
 
-	mxs_chan->ccw = dma_alloc_coherent(mxs_dma->dma_device.dev,
-				CCW_BLOCK_SIZE, &mxs_chan->ccw_phys,
-				GFP_KERNEL);
+	if (mxs_dma->use_iram) {
+		mxs_chan->ccw = gen_pool_dma_alloc(mxs_dma->iram_pool,
+						   CCW_BLOCK_SIZE,
+						   &mxs_chan->ccw_phys);
+	} else {
+		mxs_chan->ccw = dma_alloc_coherent(mxs_dma->dma_device.dev,
+						   CCW_BLOCK_SIZE,
+						   &mxs_chan->ccw_phys,
+						   GFP_KERNEL);
+	}
 	if (!mxs_chan->ccw) {
 		ret = -ENOMEM;
 		goto err_alloc;
@@ -438,8 +448,13 @@ err_clk_unprepare:
 err_clk:
 	free_irq(mxs_chan->chan_irq, mxs_dma);
 err_irq:
-	dma_free_coherent(mxs_dma->dma_device.dev, CCW_BLOCK_SIZE,
-			mxs_chan->ccw, mxs_chan->ccw_phys);
+	if (mxs_dma->use_iram) {
+		gen_pool_free(mxs_dma->iram_pool, (unsigned long)mxs_chan->ccw,
+			      CCW_BLOCK_SIZE);
+	} else {
+		dma_free_coherent(mxs_dma->dma_device.dev, CCW_BLOCK_SIZE,
+				  mxs_chan->ccw, mxs_chan->ccw_phys);
+	}
 err_alloc:
 	return ret;
 }
@@ -453,13 +468,18 @@ static void mxs_dma_ext_free_chan_resources(struct dma_chan *chan)
 
 	free_irq(mxs_chan->chan_irq, mxs_dma);
 
-	dma_free_coherent(mxs_dma->dma_device.dev, CCW_BLOCK_SIZE,
-			mxs_chan->ccw, mxs_chan->ccw_phys);
-
 	if (mxs_dma->dev_id == IMX7D_DMA)
 		clk_disable_unprepare(mxs_dma->clk_io);
 
 	clk_disable_unprepare(mxs_dma->clk);
+
+	if (mxs_dma->use_iram) {
+		gen_pool_free(mxs_dma->iram_pool, (unsigned long)mxs_chan->ccw,
+			      CCW_BLOCK_SIZE);
+	} else {
+		dma_free_coherent(mxs_dma->dma_device.dev, CCW_BLOCK_SIZE,
+				  mxs_chan->ccw, mxs_chan->ccw_phys);
+	}
 }
 
 /*
@@ -682,6 +702,12 @@ static int __init mxs_dma_ext_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	mxs_dma->iram_pool = of_get_named_gen_pool(np, "iram", 0);
+	if (!mxs_dma->iram_pool)
+		dev_warn(&pdev->dev, "no iram assigned, using external mem\n");
+	else
+		mxs_dma->use_iram = true;
+
 	of_id = of_match_device(mxs_dma_ext_dt_ids, &pdev->dev);
 	if (of_id)
 		id_entry = of_id->data;
@@ -777,38 +803,6 @@ static int __init mxs_dma_ext_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int mxs_dma_ext_runtime_suspend(struct device *dev)
-{
-	struct mxs_dma_engine *mxs_dma = dev_get_drvdata(dev);
-
-	if (mxs_dma->dev_id == IMX7D_DMA)
-		clk_disable(mxs_dma->clk_io);
-	clk_disable(mxs_dma->clk);
-	return 0;
-}
-
-static int mxs_dma_ext_runtime_resume(struct device *dev)
-{
-	struct mxs_dma_engine *mxs_dma = dev_get_drvdata(dev);
-	int ret;
-
-	ret = clk_enable(mxs_dma->clk);
-	if (ret < 0) {
-		dev_err(dev, "clk_enable failed: %d\n", ret);
-		return ret;
-	}
-	if (mxs_dma->dev_id == IMX7D_DMA) {
-		ret = clk_enable(mxs_dma->clk_io);
-		if (ret < 0) {
-			dev_err(dev, "clk_enable (clk_io) failed: %d\n", ret);
-			clk_disable(mxs_dma->clk);
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
 static int mxs_dma_ext_pm_suspend(struct device *dev)
 {
 	/*
@@ -830,7 +824,6 @@ static int mxs_dma_ext_pm_resume(struct device *dev)
 }
 
 static const struct dev_pm_ops mxs_dma_ext_pm_ops = {
-	SET_RUNTIME_PM_OPS(mxs_dma_ext_runtime_suspend, mxs_dma_ext_runtime_resume, NULL)
 	SET_SYSTEM_SLEEP_PM_OPS(mxs_dma_ext_pm_suspend, mxs_dma_ext_pm_resume)
 };
 
