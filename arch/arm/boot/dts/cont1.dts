@@ -108,6 +108,18 @@
 &dma_apbh {
 	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
 	compatible = "fus,imx6sx-dma-apbh", "fus,imx28-dma-apbh";
+	iram = <&ocram>;
+};
+
+&gpmi {
+	/* Switch to F&S implementation of GPMI NAND driver */
+	compatible = "fus,imx6sx-gpmi-nand";
+	pinctrl-names = "default";
+//###	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
+	fus,skipblocks = <2>;
+	fus,chunk1k;
+	fus,ecc_strength = <8>;		/* Spare area 64 bytes */
+	status = "okay";
 };
 
 #ifdef CONFIG_CONT1_SPI_A
@@ -366,17 +378,6 @@
 //###	trx-en-gpio = <&max7310_b 5 GPIO_ACTIVE_HIGH>;
 //###	trx-stby-gpio = <&max7310_b 4 GPIO_ACTIVE_HIGH>;
 //###	trx-wakeup-gpio = <&max7310_b 7 GPIO_ACTIVE_HIGH>;
-	status = "okay";
-};
-
-&gpmi {
-	/* Switch to F&S implementation of GPMI NAND driver */
-	compatible = "fus,imx6sx-gpmi-nand";
-	pinctrl-names = "default";
-//###	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
-	fus,skipblocks = <2>;
-	fus,chunk1k;
-	fus,ecc_strength = <8>;		/* Spare area 64 bytes */
 	status = "okay";
 };
 

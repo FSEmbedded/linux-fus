@@ -733,6 +733,7 @@ wvga {					\
 &dma_apbh {
 	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
 	compatible = "fus,imx6ul-dma-apbh", "fus,imx28-dma-apbh";
+	iram = <&ocram>;
 };
 
 #ifdef CONFIG_EFUSA7UL_NAND

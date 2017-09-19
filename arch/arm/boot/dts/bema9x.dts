@@ -306,6 +306,7 @@ pwmleds {
 &dma_apbh {
 	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
 	compatible = "fus,imx6sx-dma-apbh", "fus,imx28-dma-apbh";
+	iram = <&ocram>;
 };
 
 &gpmi {

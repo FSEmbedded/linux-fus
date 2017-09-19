@@ -676,6 +676,7 @@
 &dma_apbh {
 	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
 	compatible = "fus,imx6-dma-apbh", "fus,imx28-dma-apbh";
+	iram = <&ocram>;
 };
 
 #ifdef CONFIG_QBLISSA9R2_NAND
