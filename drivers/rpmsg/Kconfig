@@ -16,4 +16,12 @@ config IMX_RPMSG_TTY
 	default m
 	depends on RPMSG && m
 
+config FS_RPMSG
+  bool "Driver for the Cortex-M4 demo 'fs_adc_i2c_rpmsg_demo'"
+  default n
+  depends on RPMSG
+	help
+    This driver provides an interface under /sys/imx_rpmsg to retrieve
+    the values send by the fs_adc_i2c_rpmsg_demo from the Cortex-M4
+
 endmenu
