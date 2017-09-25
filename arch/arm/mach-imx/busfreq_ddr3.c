@@ -84,6 +84,8 @@ static void __iomem *iomux_base;
 static void __iomem *gic_dist_base;
 
 static int ddr_settings_size;
+static int dll_settings_size;
+static int calib_settings_size;
 static int iomux_settings_size;
 static int curr_ddr_rate;
 
@@ -130,13 +132,36 @@ extern void __iomem *imx_scu_base;
 #endif
 
 unsigned long ddr3_dll_mx6sx[][2] = {
-	{0x0c, 0x0},
-	{0x10, 0x0},
-	{0x1C, 0x04008032},
-	{0x1C, 0x00048031},
-	{0x1C, 0x05208030},
-	{0x1C, 0x04008040},
-	{0x818, 0x0},
+	{0x0c, 0x0},		/* MMDC0_MDCFG0 */
+	{0x10, 0x0},		/* MMDC0_MDCFG1 */
+#if 1
+	/* F&S Settings from NBoot (on 400 MHz DDR3 clock). Values going to
+	 * offset 0x1C (MMDC0_MPSCR) are written for both chip selects.
+	 *
+	 * Before the next values are set, ddr3_freq_imx6sx.S adds here:
+	 *   0x1C, 0x00028031: MR1: DLL on, ODT off, OD Impedance RZQ/7
+	 *   0x1C, 0x09208030: MR0: WR8, Reset DLL, CL6, BL8
+	 */
+	{0x1C, 0x00008032},	/* MR2: Rtt_WR=off, CWL5, Full Array */
+	{0x1C, 0x00008033},	/* MR3: Normal DRAM operation */
+	/* 
+	 * Before the next values are set, ddr3_freq_imx6sx.S adds here:
+	 *   0x1C, 0x00428031: MR1: DLL on, ODT RZQ/2, OD Impedance RZQ/7
+	 */
+	{0x1C, 0x00008031},	/* MR1: DLL on, ODT off, OD Impedance RZQ/6 */
+	{0x1C, 0x05208030},	/* MR0: WR6, Reset DLL, CL6, BL8 */
+	/* 
+	 * Before the next values are set, ddr3_freq_imx6sx.S adds here:
+	 *   0x1C, 0x04008040: ZQ calibration (long)
+	 */
+#else
+	/* Original NXP settings, ODT on */
+	{0x1C, 0x04008032},	/* MR2: Rtt_WR=RZQ/2, CWL5, Full Array */
+	{0x1C, 0x00048031},	/* MR1: DLL on, Rtt_Nom=RZQ/4, Imped. RZQ/6 */
+	{0x1C, 0x05208030},	/* MR0: WR6, Reset DLL, CL6, BL8 */
+	{0x1C, 0x04008040},	/* ZQ calibration (long) */
+#endif
+	{0x818, 0x0},		/* MMDC0_PODTCTRL */
 };
 
 unsigned long ddr3_calibration_mx6sx[][2] = {
@@ -159,14 +184,28 @@ unsigned long iomux_offsets_mx6ul[][2] = {
 };
 
 unsigned long ddr3_dll_mx6q[][2] = {
-	{0x0c, 0x0},
-	{0x10, 0x0},
+	{0x0c, 0x0},		/* MMDC0_MDCFG0 */
+	{0x10, 0x0},		/* MMDC0_MDCFG1 */
 #if 1
-	/* F&S Settings from NBoot */
-	{0x1C, 0x02088032},
-	{0x1C, 0x00008033},
-	{0x1C, 0x00408031},
-	{0x1C, 0x09308030},
+	/* F&S Settings from NBoot (on 528 MHz DDR3 clock). Values going to
+	 * offset 0x1C (MMDC0_MPSCR) are written for both chip selects.
+	 *
+	 * Before the next values are set, ddr3_freq_imx6.S adds here:
+	 *   0x1C, 0x00048031: MR1: DLL on, Rtt_Nom=RZQ/4, OD Imp. RZQ/6
+	 *   0x1C, 0x09408030: MR0: WR8, Reset DLL, CL8, BL8
+	 */
+	{0x1C, 0x00008032},	/* MR2: Rtt_WR=off, CWL5, Full Array */
+	{0x1C, 0x00008033},	/* MR3: Normal DRAM operation */
+	/* 
+	 * Before the next values are set, ddr3_freq_imx6sx.S adds here:
+	 *   0x1C, 0x00428031: MR1: DLL on, ODT RZQ/2, OD Impedance RZQ/7
+	 */
+	{0x1C, 0x00008031},	/* MR1: DLL on, ODT off, OD Impedance RZQ/6 */
+	{0x1C, 0x09308030},	/* MR0: WR8, Reset DLL, CL7, BL8 */
+	/* 
+	 * Before the next values are set, ddr3_freq_imx6sx.S adds here:
+	 *   0x1C, 0x04008040: ZQ calibration (long)
+	 */
 #else
 	/* Original NXP settings */
 	{0x1C, 0x04088032},
@@ -174,7 +213,8 @@ unsigned long ddr3_dll_mx6q[][2] = {
 	{0x1C, 0x08408030},
 	{0x1C, 0x08408038},
 #endif
-	{0x818, 0x0},
+	{0x818, 0x0},		/* MMDC0_PODTCTRL, value also written to
+				   MMDC1_PODTCTRL (Offset 0x4818) */
 };
 
 unsigned long ddr3_calibration[][2] = {
@@ -200,14 +240,28 @@ unsigned long iomux_offsets_mx6q[][2] = {
 };
 
 unsigned long ddr3_dll_mx6dl[][2] = {
-	{0x0c, 0x0},
-	{0x10, 0x0},
+	{0x0c, 0x0},		/* MMDC0_MDCFG0 */
+	{0x10, 0x0},		/* MMDC0_MDCFG1 */
 #if 1
-	/* F&S Settings from NBoot */
-	{0x1C, 0x00008032},
-	{0x1C, 0x00008033},
-	{0x1C, 0x00008031},
-	{0x1C, 0x05208030},
+	/* F&S Settings from NBoot (on 400 MHz DDR3 clock). Values going to
+	 * offset 0x1C (MMDC0_MPSCR) are written for both chip selects.
+	 *
+	 * Before the next values are set, ddr3_freq_imx6.S adds here:
+	 *   0x1C, 0x00048031: MR1: DLL on, Rtt_Nom=RZQ/4, OD Imp. RZQ/6
+	 *   0x1C, 0x09408030: MR0: WR8, Reset DLL, CL8, BL8
+	 */
+	{0x1C, 0x00008032},	/* MR2: Rtt_WR=off, CWL5, Full Array */
+	{0x1C, 0x00008033},	/* MR3: Normal DRAM operation */
+	/* 
+	 * Before the next values are set, ddr3_freq_imx6sx.S adds here:
+	 *   0x1C, 0x00428031: MR1: DLL on, ODT RZQ/2, OD Impedance RZQ/7
+	 */
+	{0x1C, 0x00008031},	/* MR1: DLL on, ODT off, OD Impedance RZQ/6 */
+	{0x1C, 0x05208030},	/* MR0: WR6, Reset DLL, CL6, BL8 */
+	/* 
+	 * Before the next values are set, ddr3_freq_imx6sx.S adds here:
+	 *   0x1C, 0x04008040: ZQ calibration (long)
+	 */
 #else
 	/* Original NXP settings */
 	{0x1C, 0x04008032},
@@ -215,7 +269,8 @@ unsigned long ddr3_dll_mx6dl[][2] = {
 	{0x1C, 0x07208030},
 	{0x1C, 0x07208038},
 #endif
-	{0x818, 0x0},
+	{0x818, 0x0},		/* MMDC0_PODTCTRL, value also written to
+				   MMDC1_PODTCTRL (Offset 0x4818) */
 };
 
 unsigned long iomux_offsets_mx6dl[][2] = {
@@ -290,10 +345,11 @@ int update_ddr_freq_imx_smp(int ddr_rate)
 		if ((mode == BUS_FREQ_LOW) || (mode == BUS_FREQ_AUDIO))
 			dll_off = true;
 
-		iram_ddr_settings[0][0] = ddr_settings_size;
+		iram_ddr_settings[0][0] = dll_settings_size;
+		iram_ddr_settings[0][1] = calib_settings_size;
 		iram_iomux_settings[0][0] = iomux_settings_size;
 		if (ddr_rate == ddr_normal_rate) {
-			for (i = 0; i < iram_ddr_settings[0][0]; i++) {
+			for (i = 0; i < ddr_settings_size; i++) {
 				iram_ddr_settings[i + 1][0] =
 						normal_mmdc_settings[i][0];
 				iram_ddr_settings[i + 1][1] =
@@ -407,9 +463,10 @@ int update_ddr_freq_imx6_up(int ddr_rate)
 		dll_off = true;
 
 	imx6_busfreq_info->dll_off = dll_off;
-	iram_ddr_settings[0][0] = ddr_settings_size;
+	iram_ddr_settings[0][0] = dll_settings_size;
+	iram_ddr_settings[0][1] = calib_settings_size;
 	iram_iomux_settings[0][0] = iomux_settings_size;
-	for (i = 0; i < iram_ddr_settings[0][0]; i++) {
+	for (i = 0; i < ddr_settings_size; i++) {
 		iram_ddr_settings[i + 1][0] =
 				normal_mmdc_settings[i][0];
 		iram_ddr_settings[i + 1][1] =
@@ -533,8 +590,9 @@ int init_mmdc_ddr3_settings_imx6_up(struct platform_device *busfreq_pdev)
 	iomux_base = of_iomap(node, 0);
 	WARN(!iomux_base, "unable to map iomux registers\n");
 
-	ddr_settings_size = ARRAY_SIZE(ddr3_dll_mx6sx) +
-		ARRAY_SIZE(ddr3_calibration_mx6sx);
+	dll_settings_size = ARRAY_SIZE(ddr3_dll_mx6sx);
+	calib_settings_size = ARRAY_SIZE(ddr3_calibration_mx6sx);
+	ddr_settings_size = dll_settings_size + calib_settings_size;
 
 	normal_mmdc_settings = kmalloc((ddr_settings_size * 8), GFP_KERNEL);
 	memcpy(normal_mmdc_settings, ddr3_dll_mx6sx,
@@ -650,11 +708,11 @@ int init_mmdc_ddr3_settings_imx6_smp(struct platform_device *busfreq_pdev)
 	WARN(!gic_dist_base, "unable to map gic dist registers\n");
 
 	if (cpu_is_imx6q())
-		ddr_settings_size = ARRAY_SIZE(ddr3_dll_mx6q) +
-			ARRAY_SIZE(ddr3_calibration);
+		dll_settings_size = ARRAY_SIZE(ddr3_dll_mx6q);
 	if (cpu_is_imx6dl())
-		ddr_settings_size = ARRAY_SIZE(ddr3_dll_mx6dl) +
-			ARRAY_SIZE(ddr3_calibration);
+		dll_settings_size = ARRAY_SIZE(ddr3_dll_mx6dl);
+	calib_settings_size = ARRAY_SIZE(ddr3_calibration);
+	ddr_settings_size = dll_settings_size + calib_settings_size;
 
 	normal_mmdc_settings = kmalloc((ddr_settings_size * 8), GFP_KERNEL);
 	if (cpu_is_imx6q()) {

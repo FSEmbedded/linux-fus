@@ -623,7 +623,7 @@ int set_low_bus_freq(void)
 		 * the conditions still remain the same.
 		 */
 		schedule_delayed_work(&low_bus_freq_handler,
-					usecs_to_jiffies(3000000));
+					usecs_to_jiffies(1000000));
 	return 0;
 }
 
@@ -1115,6 +1115,10 @@ static int busfreq_probe(struct platform_device *pdev)
 	cur_bus_freq_mode = BUS_FREQ_HIGH;
 
 	bus_freq_scaling_is_active = 1;
+	if (of_property_read_bool(pdev->dev.of_node, "disable-scaling")) {
+		bus_freq_scaling_is_active = 0;
+		dev_info(busfreq_dev, "Bus frequency scaling disabled\n");
+	}
 	bus_freq_scaling_initialized = 1;
 
 	ddr_low_rate = LPAPM_CLK;

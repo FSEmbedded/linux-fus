@@ -60,6 +60,19 @@
 
 	.endm
 
+	.macro set_next_val
+
+	/* if value goes to MDSCR, store for both chip selects */
+	ldr	r0, [r8, #0x0]
+	ldr	r3, [r8, #0x4]
+	str	r3, [r5, r0]
+	cmp	r0, #MMDC0_MDSCR
+	orreq	r3, r3, #8
+	streq	r3, [r5, r0]
+	add	r8, r8, #8
+
+	.endm
+
 	.macro	switch_to_528MHz
 
 	/* check if periph_clk_sel is already set */
@@ -659,13 +672,18 @@ cont_1:
 	orr	r0, r0, #0x4
 	str	r0, [r5, #MMDC0_MDCF1]
 
-	ldr	r0, =0x00011680
+	ldr	r0, [r5, #MMDC0_MDMISC]
+	bic	r0, r0, #(0x3 << 16) /* walat = 0x1 */
+	orr	r0, r0, #(0x1 << 16)
+	bic	r0, r0, #(0x7 << 6)  /* ralat = 0x2 */
+	orr	r0, r0, #(0x2 << 6)
 	str	r0, [r5, #MMDC0_MDMISC]
 
 	/* enable dqs pull down in the IOMUX. */
 	ldr	r1, [r11]
 	add	r11, r11, #8
-	ldr	r2, =0x3028
+//###	ldr	r2, =0x3028
+	ldr	r2, =0xF038
 update_iomux:
 	ldr	r0, [r11, #0x0]
 	ldr	r3, [r7, r0]
@@ -702,6 +720,8 @@ update_iomux:
 
 	/* Bypass the automatic MU by setting the mu_byp_en */
 	ldr	r2, [r5, #MMDC0_MPMUR0]
+	ldr	r0, =0x3ff
+	bic	r2, r2, r0
 	orr	r2, r2, #0x400
 	orr	r2, r2, r10
 	str	r2, [r5, #MMDC0_MPMUR0]
@@ -790,7 +810,9 @@ poll_dvfs_clear_2:
 	cmp	r9, #0
 	beq	update_calibration_only
 
-	ldr	r0, =0xa1390003
+	/* issue zq calibration command */
+	ldr	r0, [r5, #MMDC0_MPZQHWCTRL]
+	orr	r0, r0, #0x3
 	str	r0, [r5, #MMDC0_MPZQHWCTRL]
 	ldr	r2, =MMDC1_MPZQHWCTRL
 	str	r0, [r5, r2]
@@ -835,21 +857,10 @@ update_iomux1:
 	bgt	update_iomux1
 
 	/* config MMDC timings to 528MHz. */
-	ldr	r9, [r8]
+	ldr	r9, [r8, #4]		/* keep calib_settings_size in r9 */
 	add	r8, r8, #8
-	ldr	r0, [r8, #0x0]
-	ldr	r3, [r8, #0x4]
-	str	r3, [r5, r0]
-	add	r8, r8, #8
-
-	ldr	r0, [r8, #0x0]
-	ldr	r3, [r8, #0x4]
-	str	r3, [r5, r0]
-	add	r8, r8, #8
-
-	/* update MISC register: WALAT, RALAT */
-	ldr	r0, =0x00001740
-	str	r0, [r5, #MMDC0_MDMISC]
+	set_next_val
+	set_next_val
 
 	/* configure ddr devices to dll on, odt. */
 	ldr	r0, =0x00048031
@@ -891,15 +902,8 @@ cont8:
 	cmp	r1, #0
 	bgt	delay8
 
-	ldr	r0, [r8, #0x0]
-	ldr	r3, [r8, #0x4]
-	str	r3, [r5, r0]
-	add	r8, r8, #8
-
-	ldr	r0, [r8, #0x0]
-	ldr	r3, [r8, #0x4]
-	str	r3, [r5, r0]
-	add	r8, r8, #8
+	set_next_val
+	set_next_val
 
 	ldr	r0, =0x00428031
 	str	r0, [r5, #MMDC0_MDSCR]
@@ -907,15 +911,8 @@ cont8:
 	ldr	r0, =0x00428039
 	str	r0, [r5, #MMDC0_MDSCR]
 
-	ldr	r0, [r8, #0x0]
-	ldr	r3, [r8, #0x4]
-	str	r3, [r5, r0]
-	add	r8, r8, #8
-
-	ldr	r0, [r8, #0x0]
-	ldr	r3, [r8, #0x4]
-	str	r3, [r5, r0]
-	add	r8, r8, #8
+	set_next_val
+	set_next_val
 
 	/* issue a zq command. */
 	ldr	r0, =0x04008040
@@ -925,11 +922,7 @@ cont8:
 	str	r0, [r5, #MMDC0_MDSCR]
 
 	/* MMDC ODT enable. */
-	ldr	r0, [r8, #0x0]
-	ldr	r3, [r8, #0x4]
-	str	r3, [r5, r0]
-	add	r8, r8, #8
-
+	set_next_val
 	ldr	r2, =0x4818
 	str	r3, [r5, r2]
 
@@ -951,26 +944,25 @@ cont15:
 	orr	r0, r0, #(0x55 << 8)
 	str	r0, [r5, #MMDC0_MDPDC]
 
-	b	update_calibration
-
-update_calibration_only:
-	ldr	r1, [r8]
-	sub	r1, r1, #7
-	add	r8, r8, #64
+	/* calib_settings_size still in r9 */
 	b	update_calib
 
-update_calibration:
-	/* write the new calibration values. */
-	mov	r1, r9
-	sub	r1, r1, #7
+update_calibration_only:
+	/* update r8 to point to calibration data*/
+	ldr	r1, [r8]		/* dll_settings_size */
+	ldr	r9, [r8, #0x4]		/* calib_settings_size */
+	add	r1, r1, #1		/* skip also first entry (sizes) */
+	lsl	r1, r1, #3		/* multiply by 8 (size of one entry) */
+	add	r8, r8, r1
 
+	/* write the new calibration values. */
 update_calib:
 	ldr	r0, [r8, #0x0]
 	ldr	r3, [r8, #0x4]
 	str	r3, [r5, r0]
 	add	r8, r8, #8
-	sub	r1, r1, #1
-	cmp	r1, #0
+	sub	r9, r9, #1
+	cmp	r9, #0
 	bgt	update_calib
 
 	/* perform a force measurement. */
