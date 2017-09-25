@@ -16,6 +16,22 @@
 #define DISPLAY_LVDS	2	/* LVDS */
 
 /*
+ *  M4
+ *
+ * Some nodes have to be protected from being reconfigured by the Cortex-A9,
+ * so uncomment the following define if you want to use them on Cortex-M4 side
+ * These modules will be unavailable under Linux if you use the M4:
+ * - CAN2
+ * - SPI_B
+ * - I2C2
+ * - UART3
+ * - PWM5/SPI_A_CS1
+ * - EPIT1
+ * - RPMGS
+ */
+ //#define SUPPORT_M4
+
+/*
  * Set the display configuration:
  *
  * - If you have no display, set both settings to DISPLAY_NONE.
@@ -362,6 +378,39 @@ lvds_wvga {				\
 	assigned-clock-parents = <&clks IMX6SX_CLK_LVDS2_IN>,
 				 <&clks IMX6SX_PLL4_BYPASS_SRC>;
 	assigned-clock-rates = <0>, <0>, <24576000>;
+/* Needed for low power mode to tell A9 which clocks might be shared
+   with M4 */
+#ifdef SUPPORT_M4
+	  fsl,shared-clks-number = <0x23>;
+	  fsl,shared-clks-index = <IMX6SX_CLK_PLL2_BUS IMX6SX_CLK_PLL2_PFD0
+				   IMX6SX_CLK_PLL2_PFD2 IMX6SX_CLK_PLL3_USB_OTG
+				   IMX6SX_CLK_PLL3_PFD1 IMX6SX_CLK_PLL3_PFD2
+				   IMX6SX_CLK_PLL3_PFD3 IMX6SX_CLK_PLL4_AUDIO
+				   IMX6SX_CLK_PLL5_VIDEO
+				   IMX6SX_CLK_OCRAM IMX6SX_CLK_CAN1_SERIAL
+				   IMX6SX_CLK_CAN1_IPG IMX6SX_CLK_CAN2_SERIAL
+				   IMX6SX_CLK_CAN2_IPG IMX6SX_CLK_CANFD
+				   IMX6SX_CLK_ECSPI1 IMX6SX_CLK_ECSPI2
+				   IMX6SX_CLK_ECSPI3 IMX6SX_CLK_ECSPI4
+				   IMX6SX_CLK_ECSPI5 IMX6SX_CLK_QSPI1
+				   IMX6SX_CLK_QSPI2 IMX6SX_CLK_SSI1
+				   IMX6SX_CLK_SSI2 IMX6SX_CLK_SSI3
+				   IMX6SX_CLK_UART_SERIAL IMX6SX_CLK_UART_IPG
+				   IMX6SX_CLK_PERIPH_CLK2_SEL IMX6SX_CLK_DUMMY
+				   IMX6SX_CLK_I2C1 IMX6SX_CLK_I2C2
+				   IMX6SX_CLK_I2C3 IMX6SX_CLK_I2C4
+				   IMX6SX_CLK_EPIT1 IMX6SX_CLK_EPIT2>;
+	fsl,shared-mem-addr = <0x91F000>;
+	fsl,shared-mem-size = <0x1000>;
+#endif
+};
+
+&epit1{
+#ifdef SUPPORT_M4
+	status = "disabled";
+#else
+	status = "okay";
+#endif
 };
 
 #if 0
@@ -434,8 +483,19 @@ lvds_wvga {				\
 //###	trx-en-gpio = <&max7310_b 5 GPIO_ACTIVE_HIGH>;
 //###	trx-stby-gpio = <&max7310_b 4 GPIO_ACTIVE_HIGH>;
 //###	trx-wakeup-gpio = <&max7310_b 7 GPIO_ACTIVE_HIGH>;
+#ifdef SUPPORT_M4
+	status = "disabled";
+#else
 	status = "okay";
+#endif
 };
+
+/* Keep interrupts on GPIO3 if M4 already owns it */
+#ifdef SUPPORT_M4
+&gpio3 {
+	keep-interrupts;
+};
+#endif
 
 /* I2C_C */
 &i2c1 {
@@ -512,7 +572,11 @@ lvds_wvga {				\
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2_1>;
+#ifdef SUPPORT_M4
+	status = "disabled";
+#else
 	status = "okay";
+#endif
 
 	pca963x: pca9632@60 {
 		compatible = "nxp,pca9632";
@@ -775,7 +839,12 @@ lvds_wvga {				\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3_1>;
 	fsl,uart-has-rtscts;
+
+#ifdef SUPPORT_M4
+	status = "disabled";
+#else
 	status = "okay";
+#endif
 };
 
 &uart5 {
@@ -904,7 +973,11 @@ lvds_wvga {				\
 	cs-gpios = <&gpio4 28 0>, <&gpio4 18 0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi5>;
+#ifdef SUPPORT_M4
+	status = "disabled";
+#else
 	status = "okay";
+#endif
 
 	spidev@0 {
 		#address-cells = <1>;
@@ -936,7 +1009,11 @@ lvds_wvga {				\
 #endif
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi1>;
+#ifdef SUPPORT_M4
+	status = "disabled";
+#else
 	status = "okay";
+#endif
 
 	spidev@0 {
 		#address-cells = <1>;
@@ -983,6 +1060,16 @@ lvds_wvga {				\
 			remote-endpoint = <&csi2_ep>;
 		};
 	};
+};
+
+&rpmsg {
+	vring-buffer-address0 = <0x9FFF0000>;
+	vring-buffer-address1 = <0x9FFF8000>;
+#ifdef SUPPORT_M4
+	status = "okay";
+#else
+	status = "disabled";
+#endif
 };
 
 &iomuxc {
