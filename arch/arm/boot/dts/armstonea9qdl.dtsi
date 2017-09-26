@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 F&S Elektronik Systeme GmbH
+ * Copyright 2016-2017 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -315,8 +315,7 @@
 
 #ifdef CONFIG_ARMSTONEA9_HDMI_AUDIO
 	sound-hdmi {
-		compatible = "fsl,imx6q-audio-hdmi",
-			     "fsl,imx-audio-hdmi";
+		compatible = "fsl,imx6q-audio-hdmi", "fsl,imx-audio-hdmi";
 		model = "imx-audio-hdmi";
 		hdmi-controller = <&hdmi_audio>;
 	};
@@ -520,7 +519,7 @@
 	};
 };
 
-/* RAM size for Continues Memory Allocator; if not defined, use 320 MB */
+/* RAM size for Continuous Memory Allocator; if not defined, use 320 MB */
 #ifndef CONFIG_ARMSTONEA9_CMA_SIZE
 #define CONFIG_ARMSTONEA9_CMA_SIZE 0x14000000
 #endif
@@ -1119,7 +1118,7 @@
 #else /* !CONFIG_ARMSTONEA9_USE_ONE_IPU */
 	/*
 	 * When using two IPUs:
- 	 * HDMI can always go to DI1. If HDMI is on MXCFB0 and LCD on MXCFB1,
+	 * HDMI can always go to DI1. If HDMI is on MXCFB0 and LCD on MXCFB1,
 	 * or vice versa, or HDMI is on MXCFB2 and LCD is on MXCFB3, or vice
 	 * versa, then HDMI has to go to IPU2 (id=1), otherwise to IPU1 (id=0).
 	 */
@@ -1230,10 +1229,10 @@
 				MX6QDL_PAD_SD4_DAT0__GPIO2_IO08		0x13059
 
 				/* WDOG1, value from NBoot */
-				MX6QDL_PAD_GPIO_9__WDOG1_B		0x8
+				MX6QDL_PAD_GPIO_9__WDOG1_B		0x00008
 
 				/* I2C2_IRQn (SX8655, ext. touch) */
-				MX6QDL_PAD_ENET_TXD0__GPIO1_IO30	0xb0b0
+				MX6QDL_PAD_ENET_TXD0__GPIO1_IO30	0x0b0b0
 
 				/* camera powerdown - active high */
 				MX6QDL_PAD_CSI0_DAT6__GPIO5_IO24	0x17059
@@ -1242,7 +1241,7 @@
 				MX6QDL_PAD_CSI0_DAT5__GPIO5_IO23	0x17059
 
 				/* RTC_IRQ */
-				MX6QDL_PAD_ENET_TX_EN__GPIO1_IO28	0xb0b0
+				MX6QDL_PAD_ENET_TX_EN__GPIO1_IO28	0x0b0b0
 			>;
 		};
 
@@ -1250,21 +1249,21 @@
 		/* Pins already set in bootloader */
 		pinctrl_gpmi_nand_1: gpmi-nand-1 {
 			fsl,pins = <
-				MX6QDL_PAD_NANDF_CLE__NAND_CLE		0xb0b1
-				MX6QDL_PAD_NANDF_ALE__NAND_ALE		0xb0b1
-				MX6QDL_PAD_NANDF_WP_B__NAND_WP_B	0xb0b1
-				MX6QDL_PAD_NANDF_RB0__NAND_READY_B	0xb000
-				MX6QDL_PAD_NANDF_CS0__NAND_CE0_B	0xb0b1
-				MX6QDL_PAD_SD4_CMD__NAND_RE_B		0xb0b1
-				MX6QDL_PAD_SD4_CLK__NAND_WE_B		0xb0b1
-				MX6QDL_PAD_NANDF_D0__NAND_DATA00	0xb0b1
-				MX6QDL_PAD_NANDF_D1__NAND_DATA01	0xb0b1
-				MX6QDL_PAD_NANDF_D2__NAND_DATA02	0xb0b1
-				MX6QDL_PAD_NANDF_D3__NAND_DATA03	0xb0b1
-				MX6QDL_PAD_NANDF_D4__NAND_DATA04	0xb0b1
-				MX6QDL_PAD_NANDF_D5__NAND_DATA05	0xb0b1
-				MX6QDL_PAD_NANDF_D6__NAND_DATA06	0xb0b1
-				MX6QDL_PAD_NANDF_D7__NAND_DATA07	0xb0b1
+				MX6QDL_PAD_NANDF_CLE__NAND_CLE		0x0b0b1
+				MX6QDL_PAD_NANDF_ALE__NAND_ALE		0x0b0b1
+				MX6QDL_PAD_NANDF_WP_B__NAND_WP_B	0x0b0b1
+				MX6QDL_PAD_NANDF_RB0__NAND_READY_B	0x0b000
+				MX6QDL_PAD_NANDF_CS0__NAND_CE0_B	0x0b0b1
+				MX6QDL_PAD_SD4_CMD__NAND_RE_B		0x0b0b1
+				MX6QDL_PAD_SD4_CLK__NAND_WE_B		0x0b0b1
+				MX6QDL_PAD_NANDF_D0__NAND_DATA00	0x0b0b1
+				MX6QDL_PAD_NANDF_D1__NAND_DATA01	0x0b0b1
+				MX6QDL_PAD_NANDF_D2__NAND_DATA02	0x0b0b1
+				MX6QDL_PAD_NANDF_D3__NAND_DATA03	0x0b0b1
+				MX6QDL_PAD_NANDF_D4__NAND_DATA04	0x0b0b1
+				MX6QDL_PAD_NANDF_D5__NAND_DATA05	0x0b0b1
+				MX6QDL_PAD_NANDF_D6__NAND_DATA06	0x0b0b1
+				MX6QDL_PAD_NANDF_D7__NAND_DATA07	0x0b0b1
 			>;
 		};
 #endif
@@ -1381,7 +1380,7 @@
 		pinctrl_usbotg: usbotggrp {
 			fsl,pins = <
 				/* USB_OTG_ID: low: host, open: device */
-				MX6QDL_PAD_ENET_RX_ER__USB_OTG_ID 	0x1b000
+				MX6QDL_PAD_ENET_RX_ER__USB_OTG_ID	0x1b000
 				/* USB OTG host power is always on */
 			>;
 		};
@@ -1473,8 +1472,8 @@
 		/* HDMI interface */
 		pinctrl_i2c6_gpio: i2c6_gpio_grp {
 			fsl,pins = <
-				MX6QDL_PAD_SD4_DAT6__GPIO2_IO14		0x70B1
-				MX6QDL_PAD_SD4_DAT7__GPIO2_IO15		0x70B1
+				MX6QDL_PAD_SD4_DAT6__GPIO2_IO14		0x070b1
+				MX6QDL_PAD_SD4_DAT7__GPIO2_IO15		0x070b1
 			>;
 		};
 #endif
@@ -1517,7 +1516,7 @@
 				MX6QDL_PAD_SD3_DAT2__SD3_DATA2		0x17051
 				MX6QDL_PAD_SD3_DAT3__SD3_DATA3		0x17051
 				/* RST is active low */
-				MX6QDL_PAD_SD3_RST__GPIO7_IO08		0xb060
+				MX6QDL_PAD_SD3_RST__GPIO7_IO08		0x0b060
 			>;
 		};
 #endif /* CONFIG_ARMSTONEA9_SD_A */
@@ -1535,8 +1534,8 @@
 
 		pinctrl_status_leds: ledgrp {
 			fsl,pins = <
-				MX6QDL_PAD_KEY_COL0__GPIO4_IO06		0x30b0
-				MX6QDL_PAD_KEY_ROW0__GPIO4_IO07		0x30b0
+				MX6QDL_PAD_KEY_COL0__GPIO4_IO06		0x030b0
+				MX6QDL_PAD_KEY_ROW0__GPIO4_IO07		0x030b0
 			>;
 		};
 	};

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 F&S Elektronik Systeme GmbH
+ * Copyright (C) 2016-2017 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -76,7 +76,7 @@
 #define CONFIG_QBLISSA9R2_LVDS0_TIMING \
 wvga {					\
 	clock-frequency = <33500000>;	\
-	hactive = <800>;  		\
+	hactive = <800>;		\
 	vactive = <480>;		\
 	hfront-porch = <40>;		\
 	hback-porch = <88>;		\
@@ -101,7 +101,7 @@ wvga {					\
 #define CONFIG_QBLISSA9R2_LVDS1_TIMING \
 wvga {					\
 	clock-frequency = <33500000>;	\
-	hactive = <800>;  		\
+	hactive = <800>;		\
 	vactive = <480>;		\
 	hfront-porch = <40>;		\
 	hback-porch = <88>;		\

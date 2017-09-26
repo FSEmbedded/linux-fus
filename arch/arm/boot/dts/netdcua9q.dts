@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 F&S Elektronik Systeme GmbH
+ * Copyright (C) 2016-2017 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -64,7 +64,7 @@
 #define CONFIG_NETDCUA9_LCD_MODE_STR	"LCD-ET070080"
 
 /* Configure HDMI settings here (ignored if HDMI is not used) */
-#define CONFIG_NETDCUA9_HDMI_BPP		24
+#define CONFIG_NETDCUA9_HDMI_BPP	24
 #define CONFIG_NETDCUA9_HDMI_PIX_FMT	"RGB24"
 #define CONFIG_NETDCUA9_HDMI_MODE_STR	"1920x1080M@60"
 
@@ -78,13 +78,13 @@
  *            all other data bits on all four differential data pairs
  */
 #define CONFIG_NETDCUA9_LVDS0_MAPPING	"spwg"
-#define CONFIG_NETDCUA9_LVDS0_BPP		24
+#define CONFIG_NETDCUA9_LVDS0_BPP	24
 #define CONFIG_NETDCUA9_LVDS0_PIX_FMT	"RGB666"
 #define CONFIG_NETDCUA9_LVDS0_DATA_WIDTH	18
 #define CONFIG_NETDCUA9_LVDS0_TIMING \
 wvga {					\
 	clock-frequency = <33500000>;	\
-	hactive = <800>;  		\
+	hactive = <800>;		\
 	vactive = <480>;		\
 	hfront-porch = <40>;		\
 	hback-porch = <88>;		\
@@ -103,13 +103,13 @@ wvga {					\
  * For mapping value see above.
  */
 #define CONFIG_NETDCUA9_LVDS1_MAPPING	"spwg"
-#define CONFIG_NETDCUA9_LVDS1_BPP		24
+#define CONFIG_NETDCUA9_LVDS1_BPP	24
 #define CONFIG_NETDCUA9_LVDS1_PIX_FMT	"RGB666"
 #define CONFIG_NETDCUA9_LVDS1_DATA_WIDTH	18
 #define CONFIG_NETDCUA9_LVDS1_TIMING \
 wvga {					\
 	clock-frequency = <33500000>;	\
-	hactive = <800>;  		\
+	hactive = <800>;		\
 	vactive = <480>;		\
 	hfront-porch = <40>;		\
 	hback-porch = <88>;		\
@@ -165,7 +165,7 @@ wvga {					\
 //#define CONFIG_NETDCUA9_CAPTOUCH_ILINK
 
 /* CMA: Set 320 MB for Continuous Memory Allocator */
-#define CONFIG_NETDCUA9_CMA_SIZE		0x14000000
+#define CONFIG_NETDCUA9_CMA_SIZE	0x14000000
 
 /* NAND */
 #define CONFIG_NETDCUA9_NAND

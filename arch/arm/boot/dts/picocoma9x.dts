@@ -1,10 +1,12 @@
 /*
- * Copyright (C) 2015 F&S Elektronik Systeme GmbH
+ * Copyright (C) 2016-2017 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+
+/dts-v1/;
 
 /*
  * Configure LCD settings here (ignored if LCD is not used)
@@ -32,8 +34,8 @@ lcd_wvga {				\
 /* TOUCH */
 #define CONFIG_PICOCOMA9X_4WTOUCH_SX8655_ONBOARD /* SX8655 res. touch */
 
-/* CMA */
-#define CONFIG_PICOCOMA9X_CMA_SIZE 0xA000000 /* 160MB continues memory allocator */
+/* CMA: Set 160 MB for Continuous Memory Allocator */
+#define CONFIG_PICOCOMA9X_CMA_SIZE 0x0A000000
 
 /* ETH1 */
 #define CONFIG_PICOCOMA9X_ETH_1
@@ -90,7 +92,7 @@ lcd_wvga {				\
 /* USB HOST */
 #define CONFIG_PICOCOMA9X_USB_HOST
 
-/* 
+/*
  * UART
  *
  * PicoCOM standard knows UART_A and UART_B/UART_C combinations.
@@ -110,8 +112,6 @@ lcd_wvga {				\
 //#define CONFIG_PICOCOMA9X_UART_B_RS485
 //#define CONFIG_PICOCOMA9X_UART_C
 #endif
-
-/dts-v1/;
 
 #include "imx6sx.dtsi"
 #include <dt-bindings/pwm/pwm.h>
@@ -237,7 +237,7 @@ lcd_wvga {				\
 	};
 #endif
 
-	/* -------------------- BOARD INFO -------------------- */
+	/* F&S board information */
 	bdinfo {
 		compatible = "bdinfo";
 		board_name = "picocoma9x";
@@ -444,7 +444,8 @@ lcd_wvga {				\
 &uart3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3_1>;
-#if defined(CONFIG_PICOCOMA9X_UART_B_RTSCTS) || defined(CONFIG_PICOCOMA9X_UART_B_RS485)
+#if defined(CONFIG_PICOCOMA9X_UART_B_RTSCTS) \
+	|| defined(CONFIG_PICOCOMA9X_UART_B_RS485)
 	fsl,uart-has-rtscts;
 #endif
 	status = "okay";
@@ -526,7 +527,7 @@ lcd_wvga {				\
 };
 
 
-/* SPI on J3 on PCOMnet SKIT, caution: chip select and MOSI are interconverted 
+/* SPI on J3 on PCOMnet SKIT, caution: chip select and MOSI are swapped
    in Rev. 1.10 and 1.11 (Pin 4 and 6 on J3) */
 #ifdef CONFIG_PICOCOMA9X_SPI
 &ecspi1 {
@@ -571,48 +572,48 @@ lcd_wvga {				\
 
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
-			
-				/* VBL_ON active low */	
+
+				/* VBL_ON active low */
 				MX6SX_PAD_LCD1_DATA23__GPIO3_IO_24	0x80000000
 
 				/* VLCD_ON active low */
-				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x000130b1
+				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x130b1
 
-				/* LCD_DEN, gpio for display standby */ 
-				MX6SX_PAD_LCD1_DATA22__GPIO3_IO_23	0x000130b1
+				/* LCD_DEN, gpio for display standby */
+				MX6SX_PAD_LCD1_DATA22__GPIO3_IO_23	0x130b1
 
 				/* BootGPIO */
-				MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9	0x0001b0b1
+				MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9	0x1b0b1
 
-				/* TOUCH INTERUPT*/ 
+				/* TOUCH INTERUPT*/
 				MX6SX_PAD_GPIO1_IO04__GPIO1_IO_4	0x80000000
 
 				/* Reset for external touches on I2C3 */
 				MX6SX_PAD_GPIO1_IO02__GPIO1_IO_2	0x80000000
 
 				/* DVS */
-				MX6SX_PAD_QSPI1B_DQS__GPIO4_IO_28	0x0001b0b1
+				MX6SX_PAD_QSPI1B_DQS__GPIO4_IO_28	0x1b0b1
 			>;
 		};
 
 #ifdef CONFIG_PICOCOMA9X_ETH_1
 		pinctrl_enet1_1: enet1grp-1 {
 			fsl,pins = <
-				/* gpio to reset phy, activated in uboot */
-//				MX6SX_PAD_ENET2_CRS__GPIO2_IO_7		0xa0b1
+				/* GPIO to reset phy, activated in uboot */
+//				MX6SX_PAD_ENET2_CRS__GPIO2_IO_7		0x0a0b1
 				/* 50MHz base clock from CPU to PHY */
 				MX6SX_PAD_GPIO1_IO05__ENET1_REF_CLK1	0x400000a1
 				/* MDIO */
-				MX6SX_PAD_ENET1_MDC__ENET1_MDC		0xa0b1
-				MX6SX_PAD_ENET1_MDIO__ENET1_MDIO	0xa0b1
-				/* fec1 */
-				MX6SX_PAD_RGMII1_TD0__ENET1_TX_DATA_0	0xa0b1
-				MX6SX_PAD_RGMII1_TD1__ENET1_TX_DATA_1	0xa0b1
-				MX6SX_PAD_RGMII1_TX_CTL__ENET1_TX_EN	0xa0b1
-				MX6SX_PAD_RGMII1_RXC__ENET1_RX_ER	0x3081
-				MX6SX_PAD_RGMII1_RD0__ENET1_RX_DATA_0	0x3081
-				MX6SX_PAD_RGMII1_RD1__ENET1_RX_DATA_1	0x3081
-				MX6SX_PAD_RGMII1_RX_CTL__ENET1_RX_EN	0x3081
+				MX6SX_PAD_ENET1_MDC__ENET1_MDC		0x0a0b1
+				MX6SX_PAD_ENET1_MDIO__ENET1_MDIO	0x0a0b1
+				/* FEC1 */
+				MX6SX_PAD_RGMII1_TD0__ENET1_TX_DATA_0	0x0a0b1
+				MX6SX_PAD_RGMII1_TD1__ENET1_TX_DATA_1	0x0a0b1
+				MX6SX_PAD_RGMII1_TX_CTL__ENET1_TX_EN	0x0a0b1
+				MX6SX_PAD_RGMII1_RXC__ENET1_RX_ER	0x03081
+				MX6SX_PAD_RGMII1_RD0__ENET1_RX_DATA_0	0x03081
+				MX6SX_PAD_RGMII1_RD1__ENET1_RX_DATA_1	0x03081
+				MX6SX_PAD_RGMII1_RX_CTL__ENET1_RX_EN	0x03081
 			>;
 		};
 #endif
@@ -621,20 +622,20 @@ lcd_wvga {				\
 		pinctrl_enet2_1: enet2grp-1 {
 			fsl,pins = <
 				/* gpio to reset phy, activated in uboot */
-				MX6SX_PAD_ENET2_CRS__GPIO2_IO_7		0xa0b1
+				MX6SX_PAD_ENET2_CRS__GPIO2_IO_7		0x0a0b1
 				/* 50MHz base clock from CPU to PHY */
 				MX6SX_PAD_ENET2_TX_CLK__ENET2_REF_CLK2	0x400000a1
 				/* MDIO */
-				MX6SX_PAD_ENET1_COL__ENET2_MDC		0xa0b1
-				MX6SX_PAD_ENET1_CRS__ENET2_MDIO		0xa0b1
+				MX6SX_PAD_ENET1_COL__ENET2_MDC		0x0a0b1
+				MX6SX_PAD_ENET1_CRS__ENET2_MDIO		0x0a0b1
 				/* fec2 */
-				MX6SX_PAD_RGMII2_TD0__ENET2_TX_DATA_0	0xa0b1
-				MX6SX_PAD_RGMII2_TD1__ENET2_TX_DATA_1	0xa0b1
-				MX6SX_PAD_RGMII2_TX_CTL__ENET2_TX_EN	0xa0b1
-				MX6SX_PAD_RGMII2_RD0__ENET2_RX_DATA_0	0x3081
-				MX6SX_PAD_RGMII2_RD1__ENET2_RX_DATA_1	0x3081
-				MX6SX_PAD_RGMII2_RXC__ENET2_RX_ER	0x3081
-				MX6SX_PAD_RGMII2_RX_CTL__ENET2_RX_EN	0x3081
+				MX6SX_PAD_RGMII2_TD0__ENET2_TX_DATA_0	0x0a0b1
+				MX6SX_PAD_RGMII2_TD1__ENET2_TX_DATA_1	0x0a0b1
+				MX6SX_PAD_RGMII2_TX_CTL__ENET2_TX_EN	0x0a0b1
+				MX6SX_PAD_RGMII2_RD0__ENET2_RX_DATA_0	0x03081
+				MX6SX_PAD_RGMII2_RD1__ENET2_RX_DATA_1	0x03081
+				MX6SX_PAD_RGMII2_RXC__ENET2_RX_ER	0x03081
+				MX6SX_PAD_RGMII2_RX_CTL__ENET2_RX_EN	0x03081
 			>;
 		};
 #endif
@@ -642,32 +643,32 @@ lcd_wvga {				\
 #ifdef CONFIG_PICOCOMA9X_LCD
 		pinctrl_lcdif1_1: lcd1grp-1 {
 			fsl,pins = <
-				MX6SX_PAD_LCD1_CLK__LCDIF1_CLK		0x00b0
+				MX6SX_PAD_LCD1_CLK__LCDIF1_CLK		0x000b0
 				/* only for 18 bit needed, then you must not use
 				Hsync / Vsync! Use DE Signal instead */
-				/*MX6SX_PAD_LCD1_DATA00__LCDIF1_DATA_0	0x00b0*/
-				MX6SX_PAD_LCD1_DATA01__LCDIF1_DATA_1	0x00b0
-				MX6SX_PAD_LCD1_DATA02__LCDIF1_DATA_2	0x00b0
-				MX6SX_PAD_LCD1_DATA03__LCDIF1_DATA_3	0x00b0
-				MX6SX_PAD_LCD1_DATA04__LCDIF1_DATA_4	0x00b0
-				MX6SX_PAD_LCD1_DATA05__LCDIF1_DATA_5	0x00b0
-				MX6SX_PAD_LCD1_DATA06__LCDIF1_DATA_6	0x00b0
-				MX6SX_PAD_LCD1_DATA07__LCDIF1_DATA_7	0x00b0
-				MX6SX_PAD_LCD1_DATA08__LCDIF1_DATA_8	0x00b0
-				MX6SX_PAD_LCD1_DATA09__LCDIF1_DATA_9	0x00b0
-				MX6SX_PAD_LCD1_DATA10__LCDIF1_DATA_10	0x00b0
-				MX6SX_PAD_LCD1_DATA11__LCDIF1_DATA_11	0x00b0
+				/*MX6SX_PAD_LCD1_DATA00__LCDIF1_DATA_0	0x000b0*/
+				MX6SX_PAD_LCD1_DATA01__LCDIF1_DATA_1	0x000b0
+				MX6SX_PAD_LCD1_DATA02__LCDIF1_DATA_2	0x000b0
+				MX6SX_PAD_LCD1_DATA03__LCDIF1_DATA_3	0x000b0
+				MX6SX_PAD_LCD1_DATA04__LCDIF1_DATA_4	0x000b0
+				MX6SX_PAD_LCD1_DATA05__LCDIF1_DATA_5	0x000b0
+				MX6SX_PAD_LCD1_DATA06__LCDIF1_DATA_6	0x000b0
+				MX6SX_PAD_LCD1_DATA07__LCDIF1_DATA_7	0x000b0
+				MX6SX_PAD_LCD1_DATA08__LCDIF1_DATA_8	0x000b0
+				MX6SX_PAD_LCD1_DATA09__LCDIF1_DATA_9	0x000b0
+				MX6SX_PAD_LCD1_DATA10__LCDIF1_DATA_10	0x000b0
+				MX6SX_PAD_LCD1_DATA11__LCDIF1_DATA_11	0x000b0
 				/* only for 18 bit needed, then you must not use
 				Hsync / Vsync! Use DE Signal instead */
-				/*MX6SX_PAD_LCD1_DATA12__LCDIF1_DATA_12	0x00b0*/
-				MX6SX_PAD_LCD1_DATA13__LCDIF1_DATA_13	0x00b0
-				MX6SX_PAD_LCD1_DATA14__LCDIF1_DATA_14	0x00b0
-				MX6SX_PAD_LCD1_DATA15__LCDIF1_DATA_15	0x00b0
-				MX6SX_PAD_LCD1_DATA16__LCDIF1_DATA_16	0x00b0
-				MX6SX_PAD_LCD1_DATA17__LCDIF1_DATA_17	0x00b0
-				MX6SX_PAD_LCD1_ENABLE__LCDIF1_ENABLE	0x00b0
-				MX6SX_PAD_LCD1_HSYNC__LCDIF1_HSYNC	0x00b0
-				MX6SX_PAD_LCD1_VSYNC__LCDIF1_VSYNC	0x00b0
+				/*MX6SX_PAD_LCD1_DATA12__LCDIF1_DATA_12	0x000b0*/
+				MX6SX_PAD_LCD1_DATA13__LCDIF1_DATA_13	0x000b0
+				MX6SX_PAD_LCD1_DATA14__LCDIF1_DATA_14	0x000b0
+				MX6SX_PAD_LCD1_DATA15__LCDIF1_DATA_15	0x000b0
+				MX6SX_PAD_LCD1_DATA16__LCDIF1_DATA_16	0x000b0
+				MX6SX_PAD_LCD1_DATA17__LCDIF1_DATA_17	0x000b0
+				MX6SX_PAD_LCD1_ENABLE__LCDIF1_ENABLE	0x000b0
+				MX6SX_PAD_LCD1_HSYNC__LCDIF1_HSYNC	0x000b0
+				MX6SX_PAD_LCD1_VSYNC__LCDIF1_VSYNC	0x000b0
 			>;
 		};
 #endif
@@ -709,7 +710,7 @@ lcd_wvga {				\
 #ifdef CONFIG_PICOCOMA9X_I2C_4
 		pinctrl_i2c4_1: i2c4grp-1 {
 			fsl,pins = <
-				MX6SX_PAD_SD3_DATA0__I2C4_SCL 		0x4001b8b1
+				MX6SX_PAD_SD3_DATA0__I2C4_SCL		0x4001b8b1
 				MX6SX_PAD_SD3_DATA1__I2C4_SDA		0x4001b8b1
 			>;
 		};
@@ -729,11 +730,11 @@ lcd_wvga {				\
 #ifdef CONFIG_PICOCOMA9X_AUDIO
 		pinctrl_audmux: audmuxgrp {
 			fsl,pins = <
-				MX6SX_PAD_ENET1_COL__AUDMUX_AUD4_TXC		0x130b0
-				MX6SX_PAD_ENET1_CRS__AUDMUX_AUD4_TXD		0x130b0
-				MX6SX_PAD_ENET1_TX_CLK__AUDMUX_AUD4_RXD		0x110b0
-				MX6SX_PAD_ENET1_RX_CLK__AUDMUX_AUD4_TXFS	0x130b0
-				MX6SX_PAD_GPIO1_IO07__AUDMUX_MCLK		0x130b0
+				MX6SX_PAD_ENET1_COL__AUDMUX_AUD4_TXC	0x130b0
+				MX6SX_PAD_ENET1_CRS__AUDMUX_AUD4_TXD	0x130b0
+				MX6SX_PAD_ENET1_TX_CLK__AUDMUX_AUD4_RXD	0x110b0
+				MX6SX_PAD_ENET1_RX_CLK__AUDMUX_AUD4_TXFS 0x130b0
+				MX6SX_PAD_GPIO1_IO07__AUDMUX_MCLK	0x130b0
 			>;
 		};
 #endif
@@ -758,7 +759,8 @@ lcd_wvga {				\
 #ifdef CONFIG_PICOCOMA9X_UART_B_RTSCTS
 				MX6SX_PAD_QSPI1B_DATA1__UART3_RTS_B	0x1b0b1
 #endif
-#if defined(CONFIG_PICOCOMA9X_UART_B_RTSCTS) || defined(CONFIG_PICOCOMA9X_UART_B_RS485)
+#if defined(CONFIG_PICOCOMA9X_UART_B_RTSCTS) \
+	|| defined(CONFIG_PICOCOMA9X_UART_B_RS485)
 				MX6SX_PAD_QSPI1B_DATA0__UART3_CTS_B	0x1b0b1
 #endif
 			>;
@@ -810,7 +812,7 @@ lcd_wvga {				\
 				MX6SX_PAD_SD2_DATA2__USDHC2_DATA2	0x17071
 				MX6SX_PAD_SD2_DATA3__USDHC2_DATA3	0x17071
 				MX6SX_PAD_GPIO1_IO06__USDHC2_CD_B	0x17071
-				/*card detect and  WLAN IRQ on PCOMnet*/
+				/* Card detect and WLAN IRQ on PCOMnet */
 				//MX6SX_PAD_GPIO1_IO06__GPIO1_IO_6	0x80000000
 			>;
 		};
@@ -831,7 +833,7 @@ lcd_wvga {				\
 				MX6SX_PAD_SD4_DATA5__USDHC4_DATA5	0x17071
 				MX6SX_PAD_SD4_DATA6__USDHC4_DATA6	0x17071
 				MX6SX_PAD_SD4_DATA7__USDHC4_DATA7	0x17071
-				/*card detect */
+				/* Card Detect (CD) */
 				MX6SX_PAD_KEY_COL2__USDHC4_CD_B		0x17071
 			>;
 		};

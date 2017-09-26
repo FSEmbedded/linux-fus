@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 F&S Elektronik Systeme GmbH
+ * Copyright 2016-2017 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -251,8 +251,7 @@
 
 #ifdef CONFIG_ARMSTONEA9R2_HDMI_AUDIO
 	sound-hdmi {
-		compatible = "fsl,imx6q-audio-hdmi",
-			     "fsl,imx-audio-hdmi";
+		compatible = "fsl,imx6q-audio-hdmi", "fsl,imx-audio-hdmi";
 		model = "imx-audio-hdmi";
 		hdmi-controller = <&hdmi_audio>;
 	};
@@ -411,7 +410,7 @@
 
 };
 
-/* RAM size for Continues Memory Allocator; if not defined, use 320 MB */
+/* RAM size for Continuous Memory Allocator; if not defined, use 320 MB */
 #ifndef CONFIG_ARMSTONEA9R2_CMA_SIZE
 #define CONFIG_ARMSTONEA9R2_CMA_SIZE 0x14000000
 #endif
@@ -890,7 +889,7 @@
 	 * When using one IPU (id=0):
 	 * HDMI can go to DI1, unless LVDS1 is also active. In this case LVDS1
 	 * must go to DI1 and HDMI to DI0.
-	 */	 
+	 */
 	ipu_id = <0>;
 #if (__HDMI_ON_0_OR_1__ && __LVDS1_ON_0_OR_1__)
 	disp_id = <0>;
@@ -900,7 +899,7 @@
 #else /* !CONFIG_ARMSTONEA9R2_USE_ONE_IPU */
 	/*
 	 * When using two IPUs:
- 	 * HDMI can always go to IPU2 (id=1), DI1.
+	 * HDMI can always go to IPU2 (id=1), DI1.
 	 */
 	disp_id = <1>;
 	ipu_id = <0>;
@@ -994,13 +993,13 @@
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
 				/* GPIO 1 */
-				MX6QDL_PAD_EIM_D23__GPIO3_IO23		0x30b0
+				MX6QDL_PAD_EIM_D23__GPIO3_IO23		0x030b0
 
 				/* RS232, these pins for the level converter
 				 * with these pins you can maybe save more
 				 * current, not implemented yet */
-				MX6QDL_PAD_EIM_BCLK__GPIO6_IO31		0x30b0
-				MX6QDL_PAD_EIM_WAIT__GPIO5_IO00		0x30b0
+				MX6QDL_PAD_EIM_BCLK__GPIO6_IO31		0x030b0
+				MX6QDL_PAD_EIM_WAIT__GPIO5_IO00		0x030b0
 
 				/* Audio clock 24MHz */
 				MX6QDL_PAD_GPIO_0__CCM_CLKO1		0x130b0
@@ -1014,13 +1013,13 @@
 				MX6QDL_PAD_SD4_DAT3__GPIO2_IO11		0x13059
 				/* external Pull Down 22k no pull/keeper
 				 * needed */
-				MX6QDL_PAD_EIM_D30__GPIO3_IO30		0x00b0
+				MX6QDL_PAD_EIM_D30__GPIO3_IO30		0x000b0
 
 				/* VBL_ON for backlight on */
 				MX6QDL_PAD_SD4_DAT0__GPIO2_IO08		0x13059
 
 				/* RTC_IRQ */
-				MX6QDL_PAD_ENET_TX_EN__GPIO1_IO28	0xb0b0
+				MX6QDL_PAD_ENET_TX_EN__GPIO1_IO28	0x0b0b0
 			>;
 		};
 
@@ -1028,21 +1027,21 @@
 		/* Pins already set in bootloader */
 		pinctrl_gpmi_nand_1: gpmi-nand-1 {
 			fsl,pins = <
-				MX6QDL_PAD_NANDF_CLE__NAND_CLE		0xb0b1
-				MX6QDL_PAD_NANDF_ALE__NAND_ALE		0xb0b1
-				MX6QDL_PAD_NANDF_WP_B__NAND_WP_B	0xb0b1
-				MX6QDL_PAD_NANDF_RB0__NAND_READY_B	0xb000
-				MX6QDL_PAD_NANDF_CS0__NAND_CE0_B	0xb0b1
-				MX6QDL_PAD_SD4_CMD__NAND_RE_B		0xb0b1
-				MX6QDL_PAD_SD4_CLK__NAND_WE_B		0xb0b1
-				MX6QDL_PAD_NANDF_D0__NAND_DATA00	0xb0b1
-				MX6QDL_PAD_NANDF_D1__NAND_DATA01	0xb0b1
-				MX6QDL_PAD_NANDF_D2__NAND_DATA02	0xb0b1
-				MX6QDL_PAD_NANDF_D3__NAND_DATA03	0xb0b1
-				MX6QDL_PAD_NANDF_D4__NAND_DATA04	0xb0b1
-				MX6QDL_PAD_NANDF_D5__NAND_DATA05	0xb0b1
-				MX6QDL_PAD_NANDF_D6__NAND_DATA06	0xb0b1
-				MX6QDL_PAD_NANDF_D7__NAND_DATA07	0xb0b1
+				MX6QDL_PAD_NANDF_CLE__NAND_CLE		0x0b0b1
+				MX6QDL_PAD_NANDF_ALE__NAND_ALE		0x0b0b1
+				MX6QDL_PAD_NANDF_WP_B__NAND_WP_B	0x0b0b1
+				MX6QDL_PAD_NANDF_RB0__NAND_READY_B	0x0b000
+				MX6QDL_PAD_NANDF_CS0__NAND_CE0_B	0x0b0b1
+				MX6QDL_PAD_SD4_CMD__NAND_RE_B		0x0b0b1
+				MX6QDL_PAD_SD4_CLK__NAND_WE_B		0x0b0b1
+				MX6QDL_PAD_NANDF_D0__NAND_DATA00	0x0b0b1
+				MX6QDL_PAD_NANDF_D1__NAND_DATA01	0x0b0b1
+				MX6QDL_PAD_NANDF_D2__NAND_DATA02	0x0b0b1
+				MX6QDL_PAD_NANDF_D3__NAND_DATA03	0x0b0b1
+				MX6QDL_PAD_NANDF_D4__NAND_DATA04	0x0b0b1
+				MX6QDL_PAD_NANDF_D5__NAND_DATA05	0x0b0b1
+				MX6QDL_PAD_NANDF_D6__NAND_DATA06	0x0b0b1
+				MX6QDL_PAD_NANDF_D7__NAND_DATA07	0x0b0b1
 			>;
 		};
 #endif
@@ -1216,7 +1215,7 @@
 				MX6QDL_PAD_GPIO_3__I2C3_SCL		0x4001b8b1
 				MX6QDL_PAD_GPIO_16__I2C3_SDA		0x4001b8b1
 				/* if AD Converter */
-				//MX6QDL_PAD_SD4_DAT4__GPIO2_IO12	0xb0b0
+				//MX6QDL_PAD_SD4_DAT4__GPIO2_IO12	0x0b0b0
 			>;
 		};
 #endif /* CONFIG_ARMSTONEA9R2_I2C_A */
@@ -1243,8 +1242,8 @@
 
 		pinctrl_i2c5_gpio: i2c5_gpio_grp {
 			fsl,pins = <
-				MX6QDL_PAD_SD4_DAT6__GPIO2_IO14		0x70B1
-				MX6QDL_PAD_SD4_DAT7__GPIO2_IO15		0x70B1
+				MX6QDL_PAD_SD4_DAT6__GPIO2_IO14		0x070b1
+				MX6QDL_PAD_SD4_DAT7__GPIO2_IO15		0x070b1
 			>;
 		};
 
@@ -1309,10 +1308,10 @@
 				MX6QDL_PAD_EIM_D25__GPIO3_IO25		0x80000000
 				/* columns */
 				MX6QDL_PAD_DISP0_DAT0__GPIO4_IO21	0x80000000
-				MX6QDL_PAD_EIM_DA0__GPIO3_IO00		0x30b0
-				MX6QDL_PAD_EIM_DA1__GPIO3_IO01		0x30b0
-				MX6QDL_PAD_EIM_DA2__GPIO3_IO02		0x30b0
-				MX6QDL_PAD_EIM_DA3__GPIO3_IO03		0x30b0
+				MX6QDL_PAD_EIM_DA0__GPIO3_IO00		0x030b0
+				MX6QDL_PAD_EIM_DA1__GPIO3_IO01		0x030b0
+				MX6QDL_PAD_EIM_DA2__GPIO3_IO02		0x030b0
+				MX6QDL_PAD_EIM_DA3__GPIO3_IO03		0x030b0
 				MX6QDL_PAD_DISP0_DAT1__GPIO4_IO22	0x80000000
 				MX6QDL_PAD_DISP0_DAT2__GPIO4_IO23	0x80000000
 				MX6QDL_PAD_DISP0_DAT3__GPIO4_IO24	0x80000000
@@ -1382,8 +1381,8 @@
 
 		pinctrl_status_leds: ledgrp {
 			fsl,pins = <
-				MX6QDL_PAD_GPIO_17__GPIO7_IO12		0x30b0
-				MX6QDL_PAD_GPIO_18__GPIO7_IO13		0x30b0
+				MX6QDL_PAD_GPIO_17__GPIO7_IO12		0x030b0
+				MX6QDL_PAD_GPIO_18__GPIO7_IO13		0x030b0
 			>;
 		};
 	};
