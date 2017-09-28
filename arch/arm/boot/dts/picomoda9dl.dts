@@ -15,7 +15,6 @@
 #define DISPLAY_LCD	1	/* LCD via RGB adapter */
 #define DISPLAY_HDMI	2	/* DVI/HDMI via HDMI connector */
 #define DISPLAY_LVDS0	3	/* LVDS channel 0 */
-#define DISPLAY_LVDS1	4	/* LVDS channel 1 */
 
 /*
  * Set the display configuration:
@@ -108,26 +107,30 @@ wvga {					\
 /* AUDIO */
 #define CONFIG_PICOMODA9_SGTL5000_AUDIO
 
-/* Parallel digital camera interface */
-/* You can only use digital camera if !HDMI, !LCD, !CAN2, !UART_D_RTS/CTS
+/*
+ * Parallel digital camera interface; this is a hardware option where the
+ * camera signals replace some LCD signals. So camera can not be used together
+ * with LCD, only HDMI. The camera also requires an I2C port on pins 41+43, so
+ * CAN_B and UART_D_RTS also can not be used in this case.
  */
 //#define CONFIG_PICOMODA9_PARALLEL_CAMERA
 
 /* CAN_A */
 #define CONFIG_PICOMODA9_CAN_A
 
-/* CAN_B */
-/* CAN_B only can be used if !CONFIG_PICOMODA9_HDMI, !CONFIG_PICOMODA9_PARALLEL_CAMERA,
- * !CONFIG_PICOMODA9_UART_D_RTSCTS and HW revision > 100. */
+/*
+ * CAN_B on pins 41+42; can only be used with Board Revision 1.10 or newer and
+ * when none of HDMI, Parallel Camera and RTS/CTS on UART_D is active.
+ */ 
 //#define CONFIG_PICOMODA9_CAN_B
 
-/* SD-A: For On-board Micro-SD card slot choose CONFIG_PICOMODA9_SD_A,
- * optional is eMMC or WLAN it depends on HW revision. If you have these
- * then deactivate CONFIG_PICOMODA9_SD_A and activate CONFIG_PICOMODA9_EMMC_WLAN */
+/*
+ * SD_A: On-board Micro-SD card slot. Starting with board revision 1.10, this
+ * may optionally be on-board eMMC memory instead of the SD card slot.
+ */
 #define CONFIG_PICOMODA9_SD_A
-//#define CONFIG_PICOMODA9_EMMC_WLAN
 
-/* SD-B: ext. SD card slot (normal-sized SD card slot on SKIT) */
+/* SD_B: ext. SD card slot (normal-sized SD card slot on SKIT) */
 #define CONFIG_PICOMODA9_SD_B
 
 /* I2C */
@@ -142,12 +145,17 @@ wvga {					\
 #define CONFIG_PICOMODA9_UART_A
 #define CONFIG_PICOMODA9_UART_B
 #define CONFIG_PICOMODA9_UART_C
-/* UART_A_RTSCTS default, UART_D optional. If you want to use UART_D
- * instead of UART_A_RTSCTS you need R91 & R93. If you want to use UART_D
- * instead of CAN1 you need R90 & R92. Also you can use UART_D_RTS/CTS if
- * you not use CAN2, HDMI, Camera */
+
+/*
+ * UART_D is optional and needs hardware modifications. You can either have
+ * UART_D instead of UART_A_RTS/CTS on pins 19+20 or instead of CAN_A on pins
+ * 5+6. If board revision is at least 1.10 and you also do not need CAN_B,
+ * HDMI and Camera, then UART_D can even have RTS/CTS on pins 41+42. If you
+ * just need RTS (e.g. for RS485), then HDMI in parallel is still OK.
+ */
 #define CONFIG_PICOMODA9_UART_A_RTSCTS
 //#define CONFIG_PICOMODA9_UART_D
+//#define CONFIG_PICOMODA9_UART_D_RS485
 //#define CONFIG_PICOMODA9_UART_D_RTSCTS
 
 #include "imx6dl.dtsi"
