@@ -8,11 +8,25 @@
 
 /dts-v1/;
 
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOMA9X_BOARD_REVISION	111
+
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_LCD	1	/* LCD via RGB adapter */
+
+/*
+ * Set the display configuration:
+ *
+ * - If you have no display, set LCDIF0 to DISPLAY_NONE.
+ * - If you have a display, set LCDIF0 to DISPLAY_LCD.
+ */
+#define CONFIG_PICOCOMA9X_LCDIF0	DISPLAY_LCD
+
 /*
  * Configure LCD settings here (ignored if LCD is not used)
  */
 #define CONFIG_PICOCOMA9X_LCD /* enable LCD nodes */
-#define CONFIG_PICOCOMA9X_LCD_BPP	16
+#define CONFIG_PICOCOMA9X_LCD_BPP	32
 #define CONFIG_PICOCOMA9X_LCD_BUS_WIDTH	18
 #define CONFIG_PICOCOMA9X_LCD_TIMING \
 lcd_wvga {				\
@@ -31,60 +45,60 @@ lcd_wvga {				\
 	pixelclk-active = <0>;		\
 }
 
+/*
+ * On PicoCOMA9X, you can either use 16 bpp (RGB565) and HSYNC/VSYNC (default)
+ * or 18 bpp (RGB666) and DE synchronization. In this case the two additional
+ * color signals replace the HSYNC/VSYNC signals. Activate the following line
+ * if you want to use 18 bpp and DE.
+ */
+//#define CONFIG_PICOCOMA9X_LCD_18BPP_DE
+
 /* TOUCH */
 #define CONFIG_PICOCOMA9X_4WTOUCH_SX8655_ONBOARD /* SX8655 res. touch */
 
 /* CMA: Set 160 MB for Continuous Memory Allocator */
 #define CONFIG_PICOCOMA9X_CMA_SIZE 0x0A000000
 
-/* ETH1 */
-#define CONFIG_PICOCOMA9X_ETH_1
+/* ETH_A */
+#define CONFIG_PICOCOMA9X_ETH_A
 
 /*
- * ETH2 / AUDIO
- *
- * PicoCOM standard only knows AUDIO.
- * If you want to use the pins for ETH2 nevertheless define ETH2 instead of
- * AUDIO below.
- * PCOMnet SKIT is designed for PicoCOM with two Ethernets and no audio.
+ * ETH_B, this is a hardware option. ETH_B replaces the audio signals, so no
+ * audio is possible if ETH_B is available. The PicoCOMA9X version with 2x ETH
+ * is mainly meant for the PCOMnetA9X.
  */
-//#define CONFIG_PICOCOMA9X_ETH_2
+//#define CONFIG_PICOCOMA9X_ETH_B
+
+/* AUDIO; not available if ETH_B is equipped (see above) */
 #define CONFIG_PICOCOMA9X_AUDIO
 
-/* PCOMnet SKIT can be equipped with WLAN and/or Bluetooth chip,
-   WLAN is connected to SDCARD pins and Bluetooth to UART_B. */
+/*
+ * WLAN/BLUETOOTH; the PCOMnet carrier board can be equipped with a WLAN only
+ * or a combined WLAN/Bluetooth chip. WLAN is connected via SD-Card pins and
+ * Bluetooth via UART_B. */
 //#define CONFIG_PICOCOMA9X_WLAN
 //#define CONFIG_PICOCOMA9X_BLUETOOTH
-/*
- * CAN1 / I2c1
- *
- * PicoCOM standard only knows CAN.
- * If you want to use the pins for I2C nevertheless define I2C1 instead of
- * CAN1 below.
- */
-#define CONFIG_PICOCOMA9X_CAN_1
-//#define CONFIG_PICOCOMA9X_I2C_1
 
-/*
- * IC24 / CAN2
- *
- * PicoCOM standard only knows I2C.
- * If you want to use the pins for CAN2 nevertheless define CAN2 instead of
- * I2C4 below.
- */
- #define CONFIG_PICOCOMA9X_I2C_4
- //#define CONFIG_PICOCOMA9X_CAN_2
+/* CAN_A on pins 30+31 */
+#define CONFIG_PICOCOMA9X_CAN_A
 
-/* SPI
- * See remark at &ecspi1 node
- */
-#define CONFIG_PICOCOMA9X_SPI
+/* CAN_B: You can use a second CAN port on pins 32+33 instead of I2C_A */
+//#define CONFIG_PICOCOMA9X_CAN_B
 
-/* SD CARD */
-#define CONFIG_PICOCOMA9X_SDCARD
+/* I2C_A on pins 32/33 */
+#define CONFIG_PICOCOMA9X_I2C_A
 
-/* EMMC */
-//#define CONFIG_PICOCOMA9X_EMMC
+/* I2C_B: You can have a second I2C port on pins 30+31 instead of CAN_A */
+//#define CONFIG_PICOCOMA9X_I2C_B
+
+/* SPI_A on pins 26-29 */
+#define CONFIG_PICOCOMA9X_SPI_A
+
+/* SD_A on pins 34-39, optional CD is on pin 12 */
+#define CONFIG_PICOCOMA9X_SD_A
+
+/* On-board EMMC */
+#define CONFIG_PICOCOMA9X_EMMC
 
 /* USB DEVICE */
 #define CONFIG_PICOCOMA9X_USB_DEVICE
@@ -92,32 +106,63 @@ lcd_wvga {				\
 /* USB HOST */
 #define CONFIG_PICOCOMA9X_USB_HOST
 
-/*
- * UART
- *
- * PicoCOM standard knows UART_A and UART_B/UART_C combinations.
- * Default serial tty is running on UART_A
- * UART_B can be used with RTS/CTS, RTS only (RS485) or without RTS/CTS.
- * If RTS/CTS is not used, an additional UART_C with RX/TX is available.
- */
-
-/* UART_A */
+/* UART_A TXD/RXD on pins 17/18, RTS/CTS on pins 69/11 */
 #define CONFIG_PICOCOMA9X_UART_A
+#define CONFIG_PICOCOMA9X_UART_A_RTSCTS
 
-/* UART_B */
+/* UART_B TXD/RXD on pins 13/14, RTS/CTS on pins 15/16 */
 #define CONFIG_PICOCOMA9X_UART_B
-#ifndef CONFIG_PICOCOMA9X_BLUETOOTH
-/* Define only at most one of the following */
 #define CONFIG_PICOCOMA9X_UART_B_RTSCTS
 //#define CONFIG_PICOCOMA9X_UART_B_RS485
+
+/*
+ * UART_C: You can have a third UART port with TXD/RXD on pins 15/16 if RTS/CTS
+ * of UART_B are not needed.
+ */
 //#define CONFIG_PICOCOMA9X_UART_C
+
+/* Do some sanity checks */
+
+/* If ETH_B is equipped, audio will not work */
+#ifdef CONFIG_PICOCOMA9X_ETH_B
+#undef CONFIG_PICOCOMA9X_AUDIO
 #endif
+
+/* CAN_A takes precedence over I2C_B */
+#ifdef CONFIG_PICOCOMA9X_CAN_A
+#undef CONFIG_PICOCOMA9X_I2C_B
+#endif
+
+/* I2C_A takes precedence over CAN_B */
+#ifdef CONFIG_PICOCOMA9X_I2C_A
+#undef CONFIG_PICOCOMA9X_CAN_B
+#endif
+
+/* If bluetooth is active, UART_B should use RTS/CTS */
+#ifdef CONFIG_PICOCOMA9X_BLUETOOTH
+#ifndef CONFIG_PICOCOMA9X_UART_B_RTSCTS
+#define CONFIG_PICOCOMA9X_UART_B_RTSCTS
+#endif
+#endif
+
+/* If RTS/CTS on UART_B are both active, setting RS485 is not necessary */
+#ifdef CONFIG_PICOCOMA9X_UART_B_RTSCTS
+#undef CONFIG_PICOCOMA9X_UART_B_RS485
+#endif
+
+/* UART_C is only possible if UART_B has no RTS/CTS */
+#if defined(CONFIG_PICOCOMA9X_UART_B_RTSCTS) \
+	|| defined(CONFIG_PICOCOMA9X_UART_B_RS485)
+#undef CONFIG_PICOCOMA9X_UART_C
+#endif
+
+
 
 #include "imx6sx.dtsi"
 #include <dt-bindings/pwm/pwm.h>
 
 / {
-	model = "F&S picocomA9X";
+	model = "F&S PicoCOMA9X";
 	compatible = "fus,imx6sx-picocoma9x", "fsl,imx6sx";
 
 	backlight_lcd {
@@ -251,7 +296,7 @@ lcd_wvga {				\
 	size = <CONFIG_PICOCOMA9X_CMA_SIZE>;
 };
 
-#ifdef CONFIG_PICOCOMA9X_ETH_1
+#ifdef CONFIG_PICOCOMA9X_ETH_A
 &fec1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet1_1>;
@@ -280,7 +325,7 @@ lcd_wvga {				\
 };
 #endif
 
-#ifdef CONFIG_PICOCOMA9X_ETH_2
+#ifdef CONFIG_PICOCOMA9X_ETH_B
 &fec2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet2_1>;
@@ -309,7 +354,7 @@ lcd_wvga {				\
 };
 #endif
 
-#ifdef CONFIG_PICOCOMA9X_CAN_1
+#ifdef CONFIG_PICOCOMA9X_CAN_A
 &flexcan1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1_1>;
@@ -318,7 +363,7 @@ lcd_wvga {				\
 };
 #endif
 
-#ifdef CONFIG_PICOCOMA9X_CAN_2
+#ifdef CONFIG_PICOCOMA9X_CAN_B
 &flexcan2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2_1>;
@@ -326,7 +371,7 @@ lcd_wvga {				\
 };
 #endif
 
-#ifdef CONFIG_PICOCOMA9X_I2C_1
+#ifdef CONFIG_PICOCOMA9X_I2C_B
 &i2c1 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
@@ -378,7 +423,7 @@ lcd_wvga {				\
 #endif
 };
 
-#ifdef CONFIG_PICOCOMA9X_I2C_4
+#ifdef CONFIG_PICOCOMA9X_I2C_A
 &i2c4 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
@@ -409,15 +454,15 @@ lcd_wvga {				\
 	assigned-clock-rates = <0>, <0>, <24576000>;
 };
 
-#ifdef CONFIG_PICOCOMA9X_LCD
+#if (CONFIG_PICOCOMA9X_LCDIF0 == DISPLAY_LCD)
 &lcdif1 {
-	display = <&display0>;			/* Remove when already active */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcdif1_1>;	/* Remove when already active */
+	display = <&display0>;			/* Remove when already active */
 	lcd-supply = <&reg_lcd_3v3>;
 	status = "okay";
 
-	display0: display {
+	display0: lcd {
 		bits-per-pixel = <CONFIG_PICOCOMA9X_LCD_BPP>;
 		bus-width = <CONFIG_PICOCOMA9X_LCD_BUS_WIDTH>;
 		display-timings {
@@ -439,7 +484,7 @@ lcd_wvga {				\
 };
 #endif
 
-/* UART_B: J3 CON-26Pol on PCOMnet SKIT for RS485; or WLAN/BT */
+/* UART_B */
 #ifdef CONFIG_PICOCOMA9X_UART_B
 &uart3 {
 	pinctrl-names = "default";
@@ -484,7 +529,7 @@ lcd_wvga {				\
 #endif
 
 /* SD Card */
-#ifdef CONFIG_PICOCOMA9X_SDCARD
+#ifdef CONFIG_PICOCOMA9X_SD_A
 &usdhc2 {
 	/* External normal sized SD clot on efus SKIT */
 	pinctrl-names = "default";
@@ -510,7 +555,7 @@ lcd_wvga {				\
 #endif
 
 /* PWM4 - available if second phy is not assembled*/
-#ifndef CONFIG_PICOCOMA9X_ETH_2
+#ifndef CONFIG_PICOCOMA9X_ETH_B
 &pwm4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm4_0>;
@@ -527,9 +572,11 @@ lcd_wvga {				\
 };
 
 
-/* SPI on J3 on PCOMnet SKIT, caution: chip select and MOSI are swapped
-   in Rev. 1.10 and 1.11 (Pin 4 and 6 on J3) */
-#ifdef CONFIG_PICOCOMA9X_SPI
+/*
+ * SPI_A is ECSPI1. Please note: in board revisions 1.00 and 1.1x, SPI_A_MOSI
+ * (pin 27) and SPI_A_CS0 (29) are swapped, be careful
+ */
+#ifdef CONFIG_PICOCOMA9X_SPI_A
 &ecspi1 {
 	fsl,spi-num-chipselects = <1>;
 	cs-gpios = <&gpio2 16 0>;
@@ -596,7 +643,7 @@ lcd_wvga {				\
 			>;
 		};
 
-#ifdef CONFIG_PICOCOMA9X_ETH_1
+#ifdef CONFIG_PICOCOMA9X_ETH_A
 		pinctrl_enet1_1: enet1grp-1 {
 			fsl,pins = <
 				/* GPIO to reset phy, activated in uboot */
@@ -618,7 +665,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOMA9X_ETH_2
+#ifdef CONFIG_PICOCOMA9X_ETH_B
 		pinctrl_enet2_1: enet2grp-1 {
 			fsl,pins = <
 				/* gpio to reset phy, activated in uboot */
@@ -644,9 +691,6 @@ lcd_wvga {				\
 		pinctrl_lcdif1_1: lcd1grp-1 {
 			fsl,pins = <
 				MX6SX_PAD_LCD1_CLK__LCDIF1_CLK		0x000b0
-				/* only for 18 bit needed, then you must not use
-				Hsync / Vsync! Use DE Signal instead */
-				/*MX6SX_PAD_LCD1_DATA00__LCDIF1_DATA_0	0x000b0*/
 				MX6SX_PAD_LCD1_DATA01__LCDIF1_DATA_1	0x000b0
 				MX6SX_PAD_LCD1_DATA02__LCDIF1_DATA_2	0x000b0
 				MX6SX_PAD_LCD1_DATA03__LCDIF1_DATA_3	0x000b0
@@ -658,22 +702,24 @@ lcd_wvga {				\
 				MX6SX_PAD_LCD1_DATA09__LCDIF1_DATA_9	0x000b0
 				MX6SX_PAD_LCD1_DATA10__LCDIF1_DATA_10	0x000b0
 				MX6SX_PAD_LCD1_DATA11__LCDIF1_DATA_11	0x000b0
-				/* only for 18 bit needed, then you must not use
-				Hsync / Vsync! Use DE Signal instead */
-				/*MX6SX_PAD_LCD1_DATA12__LCDIF1_DATA_12	0x000b0*/
 				MX6SX_PAD_LCD1_DATA13__LCDIF1_DATA_13	0x000b0
 				MX6SX_PAD_LCD1_DATA14__LCDIF1_DATA_14	0x000b0
 				MX6SX_PAD_LCD1_DATA15__LCDIF1_DATA_15	0x000b0
 				MX6SX_PAD_LCD1_DATA16__LCDIF1_DATA_16	0x000b0
 				MX6SX_PAD_LCD1_DATA17__LCDIF1_DATA_17	0x000b0
 				MX6SX_PAD_LCD1_ENABLE__LCDIF1_ENABLE	0x000b0
+#ifdef CONFIG_PICOCOMA9X_LCD_18BPP_DE
+				MX6SX_PAD_LCD1_DATA00__LCDIF1_DATA_0	0x000b0
+				MX6SX_PAD_LCD1_DATA12__LCDIF1_DATA_12	0x000b0
+#else
 				MX6SX_PAD_LCD1_HSYNC__LCDIF1_HSYNC	0x000b0
 				MX6SX_PAD_LCD1_VSYNC__LCDIF1_VSYNC	0x000b0
+#endif
 			>;
 		};
 #endif
 
-#ifdef CONFIG_PICOCOMA9X_CAN_1
+#ifdef CONFIG_PICOCOMA9X_CAN_A
 		pinctrl_flexcan1_1: flexcan1grp-1 {
 			fsl,pins = <
 				MX6SX_PAD_SD3_DATA5__CAN1_TX		0x1b020
@@ -682,7 +728,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOMA9X_CAN_2
+#ifdef CONFIG_PICOCOMA9X_CAN_B
 		pinctrl_flexcan2_1: flexcan2grp-1 {
 			fsl,pins = <
 				MX6SX_PAD_SD3_DATA4__CAN2_RX		0x1b020
@@ -691,7 +737,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOMA9X_I2C_1
+#ifdef CONFIG_PICOCOMA9X_I2C_B
 		pinctrl_i2c1_1: i2c1grp-1 {
 			fsl,pins = <
 				MX6SX_PAD_GPIO1_IO00__I2C1_SCL		0x4001b8b1
@@ -707,7 +753,7 @@ lcd_wvga {				\
 			>;
 		};
 
-#ifdef CONFIG_PICOCOMA9X_I2C_4
+#ifdef CONFIG_PICOCOMA9X_I2C_A
 		pinctrl_i2c4_1: i2c4grp-1 {
 			fsl,pins = <
 				MX6SX_PAD_SD3_DATA0__I2C4_SCL		0x4001b8b1
@@ -716,7 +762,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOMA9X_SPI
+#ifdef CONFIG_PICOCOMA9X_SPI_A
 		pinctrl_ecspi1: ecspi1grp_1 {
 			fsl,pins = <
 				MX6SX_PAD_KEY_COL0__ECSPI1_SCLK		0x100b1
@@ -776,7 +822,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifndef CONFIG_PICOCOMA9X_ETH_2
+#ifndef CONFIG_PICOCOMA9X_ETH_B
 		pinctrl_pwm4_0: pwm4grp-0 {
 			fsl,pins = <
 				MX6SX_PAD_GPIO1_IO13__PWM4_OUT		0x110b0
@@ -801,7 +847,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOMA9X_SDCARD
+#ifdef CONFIG_PICOCOMA9X_SD_A
 		/* SD card and WLAN (via sdio port expander)*/
 		pinctrl_usdhc2_1: usdhc2grp-1 {
 			fsl,pins = <
