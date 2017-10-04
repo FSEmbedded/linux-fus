@@ -184,14 +184,14 @@ pwmleds {
 };
 
 &lcdif1 {
-	display = <&display0>;			/* Remove when already active */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcdif1_1>;	/* Remove when already active */
+	display = <&display0>;			/* Remove when already active */
 	lcd-supply = <&reg_lcd_3v3>;
 	status = "okay";
 
-	display0: display {
-		bits-per-pixel = <16>;
+	display0: lcd {
+		bits-per-pixel = <32>;
 		bus-width = <18>;
 		display-timings {
 			native-mode = <&timing0>;

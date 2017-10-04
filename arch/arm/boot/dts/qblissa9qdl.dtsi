@@ -390,17 +390,13 @@
 	};
 };
 
-#if 0
+/* RAM size for Continuous Memory Allocator; if not defined, use 320 MB */
+#ifndef CONFIG_QBLISSA9_CMA_SIZE
+#define CONFIG_QBLISSA9_CMA_SIZE 0x14000000
+#endif
 &cma {
 	size = <CONFIG_QBLISSA9_CMA_SIZE>;
 };
-#endif
-
-#ifdef CONFIG_QBLISSA9_WM9715_AUDIO
-&audmux {
-	status = "okay";
-};
-#endif
 
 /* if you want to use the pmic controller you have to set the arm-supply and
  * the soc-supply to the regulator of the pmic. Look pfuze comment.*/
@@ -797,6 +793,10 @@
 #endif
 
 #ifdef CONFIG_QBLISSA9_WM9715_AUDIO
+&audmux {
+	status = "okay";
+};
+
 &ssi1 {
 	fsl,mode = "ac97-slave";
 	cell-index = <0>;

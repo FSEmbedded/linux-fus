@@ -433,14 +433,14 @@ lcd_wvga {				\
 #endif
 
 #ifdef CONFIG_PICOCOMA9X_AUDIO
-&ssi1 {
-	fsl,mode = "i2s-slave";
-	status = "okay";
-};
-
 &audmux {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_audmux>;
+	status = "okay";
+};
+
+&ssi1 {
+	fsl,mode = "i2s-slave";
 	status = "okay";
 };
 #endif

@@ -428,12 +428,6 @@
 	size = <CONFIG_QBLISSA9R2_CMA_SIZE>;
 };
 
-#ifdef CONFIG_QBLISSA9R2_WM9715_AUDIO
-&audmux {
-	status = "okay";
-};
-#endif
-
 &clks {
 	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 			  <&clks IMX6QDL_CLK_SSI1_SEL>,
@@ -476,6 +470,14 @@
 		compatible = "linux,spidev";
 		spi-max-frequency = <20000000>;
 		reg = <0>;
+	};
+
+	spidev@1 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <1>;
 	};
 };
 #endif /* CONFIG_QBLISSA9R2_SPI_A */
@@ -702,6 +704,10 @@
 #endif
 
 #ifdef CONFIG_QBLISSA9R2_WM9715_AUDIO
+&audmux {
+	status = "okay";
+};
+
 &ssi1 {
 	fsl,mode = "ac97-slave";
 	cell-index = <0>;
@@ -715,7 +721,7 @@
 #endif
 
 #ifdef CONFIG_QBLISSA9R2_UART_A
-/* UART2 TX/RX on pins 13, 15 RTS/CTS on 19,21 */
+/* UART2 TX/RX on pins 171/177, RTS/CTS on pins 172/178 */
 &uart2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2_1>;
@@ -725,7 +731,7 @@
 #endif /* CONFIG_QBLISSA9R2_UART_A */
 
 #ifdef CONFIG_QBLISSA9R2_UART_C
-/* UART3 TX/RX on pins 23, 25 (port C) */
+/* UART3 either WLAN/BT, or TX/RX on pins 163/161, RTS/CTS on pins 164/162 */
 &uart3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3_1>;
@@ -735,7 +741,7 @@
 #endif /* CONFIG_QBLISSA9R2_UART_C */
 
 #ifdef CONFIG_QBLISSA9R2_UART_D
-/* UART4 on pins 55-58 (debug port A)*/
+/* UART4 TX/RX on pins 209/208, no RTS/CTS */
 &uart4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart4_1>;
@@ -744,7 +750,7 @@
 #endif /* CONFIG_QBLISSA9R2_UART_D */
 
 #ifdef CONFIG_QBLISSA9R2_UART_E
-/* UART5 RX/TX on pins 36, 38 (port E) */
+/* UART5 TX/RX on pins 186/185, RTS/CTS on pins 188/187 (debug port) */
 &uart5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart5_1>;
@@ -1027,7 +1033,7 @@
 #endif
 
 #ifdef CONFIG_QBLISSA9R2_UART_A
-		/* UART2 on pins 55-58 (debug port A)*/
+		/* UART2 on pins 171/172/177/178 */
 		pinctrl_uart2_1: uart2grp-1{
 			fsl,pins = <
 				MX6QDL_PAD_EIM_D26__UART2_TX_DATA	0x1b0b1
@@ -1039,7 +1045,7 @@
 #endif
 
 #ifdef CONFIG_QBLISSA9R2_UART_C
-		/* UART3 on pins 36, 38 (port C) */
+		/* UART3 either on WLAN/BT or pins 161-164 */
 		pinctrl_uart3_1: uart3grp-1{
 			fsl,pins = <
 				MX6QDL_PAD_EIM_D24__UART3_TX_DATA	0x1b0b1
@@ -1060,7 +1066,7 @@
 #endif
 
 #ifdef CONFIG_QBLISSA9R2_UART_E
-		/* UART5 on pins 36, 38 (port C) */
+		/* UART5 on pins 185-188 (debug port) */
 		pinctrl_uart5_1: uart5grp-1{
 			fsl,pins = <
 				MX6QDL_PAD_KEY_COL1__UART5_TX_DATA	0x1b0b1
@@ -1164,6 +1170,8 @@
 				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x17059
 				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x17059
 				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x17059
+				/* WLAN_RESET with external pull-down */
+				MX6QDL_PAD_ENET_RXD1__GPIO1_IO26	0x100b0
 			>;
 		};
 
@@ -1175,6 +1183,8 @@
 				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x170b9
 				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x170b9
 				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x170b9
+				/* WLAN_RESET with external pull-down */
+				MX6QDL_PAD_ENET_RXD1__GPIO1_IO26	0x100b0
 			>;
 		};
 
@@ -1186,6 +1196,8 @@
 				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x170f9
 				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x170f9
 				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x170f9
+				/* WLAN_RESET with external pull-down */
+				MX6QDL_PAD_ENET_RXD1__GPIO1_IO26	0x100b0
 			>;
 		};
 #endif

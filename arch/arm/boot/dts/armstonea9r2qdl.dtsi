@@ -418,15 +418,6 @@
 	size = <CONFIG_ARMSTONEA9R2_CMA_SIZE>;
 };
 
-#if defined(CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO) || \
-	defined(CONFIG_ARMSTONEA9R2_HDMI_AUDIO)
-&audmux {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_audmux_4>;
-	status = "okay";
-};
-#endif
-
 &clks {
 	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 			  <&clks IMX6QDL_CLK_CKO1_SEL>,
@@ -772,6 +763,12 @@
 #endif
 
 #ifdef CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO
+&audmux {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_audmux_4>;
+	status = "okay";
+};
+
 &ssi1 {
 	fsl,mode = "i2s-slave";
 	status = "okay";
@@ -1247,8 +1244,7 @@
 			>;
 		};
 
-#if defined(CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO) || \
-	defined(CONFIG_ARMSTONEA9R2_HDMI_AUDIO)
+#if defined(CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO)
 		pinctrl_audmux_4: audmux-4 {
 			fsl,pins = <
 				MX6QDL_PAD_DISP0_DAT20__AUD4_TXC	0x130b0

@@ -358,23 +358,19 @@ wvga {					\
 	fsl,ldo-bypass = <0>; /* DCDC, ldo-enable */
 };
 
-#if CONFIG_EFUSA7UL_LCDIF0
+#if (CONFIG_EFUSA7UL_LCDIF0 == DISPLAY_LCD)
 &lcdif {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcdif_dat
 		     &pinctrl_lcdif_ctrl>;
-	lcd-supply = <&reg_lcd>;
 	display = <&display0>;
-	/* Display bus pattern: RGB=0, RBG=1, GBR=2, GRB=3, BRG=4, BGR=5
-	   efusA7UL Rev 1.00 needs 5, later revisions need 0 */
-#if CONFIG_EFUSA7UL_BOARD_REVISION < 110
-	pattern = <5>;		/* BGR */
-#else
-	pattern = <0>;		/* RGB */
-#endif
+	/* Display bus pattern: RGB=0, RBG=1, GBR=2, GRB=3, BRG=4, BGR=5;
+	   efusA7UL has BGR in all board revisions. */
+	pattern = <5>;
+	lcd-supply = <&reg_lcd>;
 	status = "okay";
 
-	display0: display {
+	display0: lcd {
 		bits-per-pixel = <CONFIG_EFUSA7UL_LCD_BPP>;
 		bus-width = <CONFIG_EFUSA7UL_LCD_BUS_WIDTH>;
 
@@ -384,7 +380,7 @@ wvga {					\
 		};
 	};
 };
-#endif /* CONFIG_EFUSA7UL_LCDIF0 */
+#endif /* CONFIG_EFUSA7UL_LCDIF0 == DISPLAY_LCD */
 
 &pwm1 {
 	pinctrl-names = "default";

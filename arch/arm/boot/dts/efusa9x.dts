@@ -9,7 +9,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_EFUSA9_BOARD_REVISION	110
+#define CONFIG_EFUSA9X_BOARD_REVISION	110
 
 #define DISPLAY_NONE	0	/* No display on this port */
 #define DISPLAY_LCD	1	/* LCD via RGB adapter */
@@ -129,8 +129,19 @@ lvds_wvga {				\
    not need RTS, we can have a second CS on SPI_B */
 #define CONFIG_EFUSA9X_UART_C_RTS
 
+/* Parallel camera */
+#define CONFIG_EFUSA9X_PARALLEL_CAMERA
+
+/* Analog camera */
+#define CONFIG_EFUSA9X_ANALOG_CAMERA
+
 #include "imx6sx.dtsi"
 #include <dt-bindings/pwm/pwm.h>
+
+/* Do some sanity checks */
+#if (CONFIG_EFUSA9X_BOARD_REVISION < 120)
+#undef CONFIG_EFUSA9X_PARALLEL_CAMERA
+#endif
 
 / {
 	model = "F&S efusA9X";
@@ -238,6 +249,7 @@ lvds_wvga {				\
 			enable-active-high;
 		};
 
+#ifdef CONFIG_EFUSA9X_PARALLEL_CAMERA
 		reg_camera_dovdd: camera_dovdd {
 			compatible = "regulator-fixed";
 			regulator-name = "DOVDD-supply";
@@ -258,6 +270,7 @@ lvds_wvga {				\
 			regulator-min-microvolt = <1500000>;
 			regulator-max-microvolt = <1500000>;
 		};
+#endif
 
 #if 0
 		reg_atmel_mxt_vdd: atmel_mxt_vdd {
@@ -352,12 +365,6 @@ lvds_wvga {				\
 &adc2 {
 	vref-supply = <&reg_vref_3v3>;
 	num-channels = <2>;
-	status = "okay";
-};
-
-&audmux {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_audmux_6>;
 	status = "okay";
 };
 
@@ -532,7 +539,7 @@ lvds_wvga {				\
 	};
 #endif
 
-#if 1
+#ifdef CONFIG_EFUSA9X_PARALLEL_CAMERA
 	ov9665: ov9665@30 {
 		compatible = "ovti,ov9665";
 		reg = <0x30>;
@@ -729,6 +736,12 @@ lvds_wvga {				\
 };
 
 
+&audmux {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_audmux_6>;
+	status = "okay";
+};
+
 &ssi1 {
 //###	fsl,mode = "i2s-master";
 	fsl,mode = "i2s-slave";
@@ -738,16 +751,16 @@ lvds_wvga {				\
 #if CONFIG_EFUSA9X_LCDIF0
 /* The first lcdif can be used with LCD or LVDS */
 &lcdif1 {
-	display = <&display0>;			/* Remove when already active */
 #if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS
 	disp-dev = "ldb";
 #endif
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcdif1_1>;	/* Remove when already active */
+	display = <&display0>;			/* Remove when already active */
 	lcd-supply = <&reg_disp_3v3>;
 	status = "okay";
 
-	display0: display {
+	display0: lcd {
 #if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LCD
 		bits-per-pixel = <CONFIG_EFUSA9X_LCD_BPP>;
 		bus-width = <CONFIG_EFUSA9X_LCD_BUS_WIDTH>;
@@ -776,7 +789,7 @@ lvds_wvga {				\
 	lcd-supply = <&reg_disp_3v3>;
 	status = "okay";
 
-	display1: display {
+	display1: ldb {
 		bits-per-pixel = <CONFIG_EFUSA9X_LVDS_BPP>;
 		bus-width = <CONFIG_EFUSA9X_LVDS_BUS_WIDTH>;
 		display-timings {
@@ -906,9 +919,8 @@ lvds_wvga {				\
 	status = "okay";
 };
 
-#if 0
 &usdhc4 {
-	/* On-board EMMC */
+	/* On-board EMMC (optional) */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc4_3>;
 	bus-width = <8>;
@@ -917,15 +929,12 @@ lvds_wvga {				\
 	vmmc-supply = <&reg_vref_3v3>;
 	status = "okay";
 };
-#endif
 
-#if 0 //###
-&pwm4 {
+&pwm5 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_pwm4_0>;
+	pinctrl-0 = <&pinctrl_pwm5_0>;
 	status = "okay";
 };
-#endif //###
 
 &pwm6 {
 	pinctrl-names = "default";
@@ -937,6 +946,7 @@ lvds_wvga {				\
 	status = "okay";
 };
 
+#ifdef CONFIG_EFUSA9X_PARALLEL_CAMERA
 &csi1 {
 	status = "okay";
 
@@ -946,7 +956,9 @@ lvds_wvga {				\
 		};
 	};
 };
+#endif
 
+#ifdef CONFIG_EFUSA9X_ANALOG_CAMERA
 &csi2 {
 	status = "okay";
 	port {
@@ -955,6 +967,18 @@ lvds_wvga {				\
 		};
 	};
 };
+
+&vadc {
+	vadc_in = <0>;
+	csi_id = <1>;
+	status = "okay";
+	port {
+		vadc_ep: endpoint {
+			remote-endpoint = <&csi2_ep>;
+		};
+	};
+};
+#endif
 
 /* SPI_A */
 &ecspi5 {
@@ -1040,17 +1064,6 @@ lvds_wvga {				\
 	fus,ecc_strength = <8>;		/* Spare area 64 bytes */
 //###	fus,ecc_strength = <52>;	/* Spare area 224 bytes */
 	status = "okay";
-};
-
-&vadc {
-	vadc_in = <0>;
-	csi_id = <1>;
-	status = "okay";
-	port {
-		vadc_ep: endpoint {
-			remote-endpoint = <&csi2_ep>;
-		};
-	};
 };
 
 &rpmsg {
@@ -1253,13 +1266,11 @@ lvds_wvga {				\
 			>;
 		};
 
-#if 0 //###
-		pinctrl_pwm4_0: pwm4grp-0 {
+		pinctrl_pwm5_0: pwm5grp-0 {
 			fsl,pins = <
-				MX6SX_PAD_SD1_DATA1__PWM4_OUT		0x110b0
+				MX6SX_PAD_LCD1_DATA23__PWM5_OUT		0x110b0
 			>;
 		};
-#endif //###
 
 		pinctrl_pwm6_0: pwm6grp-0 {
 			fsl,pins = <
@@ -1370,8 +1381,7 @@ lvds_wvga {				\
 				MX6SX_PAD_SD4_DATA5__USDHC4_DATA5	0x17071
 				MX6SX_PAD_SD4_DATA6__USDHC4_DATA6	0x17071
 				MX6SX_PAD_SD4_DATA7__USDHC4_DATA7	0x17071
-//###				MX6SX_PAD_SD4_RESET_B__USDHC4_RESET_B	0x17071 //???
-				MX6SX_PAD_SD4_RESET_B__GPIO6_IO_22	0x80000000 //???
+				MX6SX_PAD_SD4_RESET_B__USDHC4_RESET_B	0x17071
 			>;
 		};
 

@@ -186,7 +186,7 @@
 		reg_ldb_bl: backlight_ldb {
 			compatible = "regulator-fixed";
 			regulator-name = "ldb-bl";
-			gpio = <&gpio2 8 GPIO_ACTIVE_HIGH>;	//### TODO check pin
+			gpio = <&gpio2 8 GPIO_ACTIVE_HIGH>;
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
@@ -492,12 +492,6 @@
 	size = <CONFIG_NETDCUA9_CMA_SIZE>;
 };
 
-#ifdef CONFIG_NETDCUA9_WM9715_AUDIO
-&audmux {
-	status = "okay";
-};
-#endif
-
 &clks {
 	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 			  <&clks IMX6QDL_CLK_CKO1_SEL>,
@@ -731,6 +725,10 @@
 #endif
 
 #ifdef CONFIG_NETDCUA9_WM9715_AUDIO
+&audmux {
+	status = "okay";
+};
+
 &ssi1 {
 	fsl,mode = "ac97-slave";
 	cell-index = <0>;
