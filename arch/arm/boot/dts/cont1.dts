@@ -105,6 +105,12 @@
 	size = <CONFIG_CONT1_CMA_SIZE>;
 };
 
+&busfreq {
+	/* Disable bus frequency scaling, because reducing bus frequency to
+	   24 MHz does not work with all types of DDR3 RAM */
+	disable-scaling;
+};
+
 &dma_apbh {
 	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
 	compatible = "fus,imx6sx-dma-apbh", "fus,imx28-dma-apbh";

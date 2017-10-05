@@ -527,6 +527,12 @@
 	size = <CONFIG_ARMSTONEA9_CMA_SIZE>;
 };
 
+&busfreq {
+	/* Disable bus frequency scaling, because reducing bus frequency to
+	   24 MHz does not work with all types of DDR3 RAM */
+	disable-scaling;
+};
+
 /* if you want to use the pmic controller you have to set the arm-supply and
  * the soc-supply to the regulator of the pmic. Look pfuze comment.*/
 #if 0

@@ -296,6 +296,12 @@ lcd_wvga {				\
 	size = <CONFIG_PICOCOMA9X_CMA_SIZE>;
 };
 
+&busfreq {
+	/* Disable bus frequency scaling, because reducing bus frequency to
+	   24 MHz does not work with all types of DDR3 RAM */
+	disable-scaling;
+};
+
 #ifdef CONFIG_PICOCOMA9X_ETH_A
 &fec1 {
 	pinctrl-names = "default";

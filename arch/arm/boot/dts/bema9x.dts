@@ -125,6 +125,12 @@ pwmleds {
 	size = <CONFIG_BEMA9X_CMA_SIZE>;
 };
 
+&busfreq {
+	/* Disable bus frequency scaling, because reducing bus frequency to
+	   24 MHz does not work with all types of DDR3 RAM */
+	disable-scaling;
+};
+
 &fec1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet1_1>;

@@ -158,6 +158,12 @@
 	size = <CONFIG_CUBEA7UL_CMA_SIZE>;
 };
 
+&busfreq {
+	/* Disable bus frequency scaling, because reducing bus frequency to
+	   24 MHz does not work with all types of DDR3 RAM */
+	disable-scaling;
+};
+
 &cpu0 {
 	arm-supply = <&reg_arm>;
 	soc-supply = <&reg_soc>;

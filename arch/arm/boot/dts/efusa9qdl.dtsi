@@ -519,6 +519,12 @@
 	size = <CONFIG_EFUSA9_CMA_SIZE>;
 };
 
+&busfreq {
+	/* Disable bus frequency scaling, because reducing bus frequency to
+	   24 MHz does not work with all types of DDR3 RAM */
+	disable-scaling;
+};
+
 #ifdef CONFIG_EFUSA9_SPI_B
 /* SPI_B (3x CS) */
 &ecspi1 {

@@ -609,6 +609,12 @@
 	size = <CONFIG_PICOMODA9_CMA_SIZE>;
 };
 
+&busfreq {
+	/* Disable bus frequency scaling, because reducing bus frequency to
+	   24 MHz does not work with all types of DDR3 RAM */
+	disable-scaling;
+};
+
 #ifdef CONFIG_PICOMODA9_SPI_A
 /* SPI_A (2x CS), J1 pins 1-4 */
 &ecspi1 {
