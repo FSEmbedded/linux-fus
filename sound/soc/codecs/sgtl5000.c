@@ -186,7 +186,7 @@ static void power_vag_up(struct snd_soc_codec *codec)
 static void power_vag_down(struct snd_soc_codec *codec)
 {
 	const u32 mask = SGTL5000_DAC_POWERUP | SGTL5000_ADC_POWERUP;
-	
+
 	/*
 	 * Don't clear VAG_POWERUP, when both DAC and ADC are
 	 * operational to prevent inadvertently starving the
@@ -209,12 +209,10 @@ static int power_vag_event(struct snd_soc_dapm_widget *w,
 	struct snd_kcontrol *kcontrol, int event)
 {
 	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
-	
+
 	struct sgtl5000_priv *sgtl5000 = snd_soc_codec_get_drvdata(codec);
-	if(sgtl5000->no_standby)
-	{
+	if (sgtl5000->no_standby)
 		return 0;
-	}
 
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
@@ -1277,12 +1275,19 @@ static int sgtl5000_enable_regulators(struct snd_soc_codec *codec)
 	for (i = 0; i < ARRAY_SIZE(sgtl5000->supplies); i++)
 		sgtl5000->supplies[i].supply = supply_names[i];
 
-	/* 
-	 * Official NXP documentation recommends using externel VDDD and not the
-	 * internal LDO due to the SGTL5000 erratum ER1. This also applies to 
+#if 0
+	/*
+	 * FIXME: When using this code, the SGTL5000 is not detected every
+	 * second time when warm-starting the board with the reset button.
+	 * We have to check this again. In the meantime, we revert to the old
+	 * code.
+	 */
+	/*
+	 * Official NXP documentation recommends using external VDDD and not the
+	 * internal LDO due to the SGTL5000 erratum ER1. This also applies to
 	 * revisions >=0x11! Set VDDD as default for all revisions. LDO stays as
-	 * fallback
-	*/ 
+	 * fallback.
+	 */
 	vddd = regulator_get_optional(codec->dev, "VDDD");
 	if (IS_ERR(vddd)) {
 		/* See if it's just not registered yet */
@@ -1292,6 +1297,20 @@ static int sgtl5000_enable_regulators(struct snd_soc_codec *codec)
 		external_vddd = 1;
 		regulator_put(vddd);
 	}
+#else
+	/* External VDDD only works before revision 0x11 */
+	if (sgtl5000->revision < 0x11) {
+		vddd = regulator_get_optional(codec->dev, "VDDD");
+		if (IS_ERR(vddd)) {
+			/* See if it's just not registered yet */
+			if (PTR_ERR(vddd) == -EPROBE_DEFER)
+				return -EPROBE_DEFER;
+		} else {
+			external_vddd = 1;
+			regulator_put(vddd);
+		}
+	}
+#endif
 
 	if (!external_vddd) {
 		ret = sgtl5000_replace_vddd_with_ldo(codec);
@@ -1380,15 +1399,14 @@ static int sgtl5000_probe(struct snd_soc_codec *codec)
 	 */
 	snd_soc_write(codec, SGTL5000_DAP_CTRL, 0);
 
-	snd_soc_dapm_force_enable_pin(&codec->dapm, "LO");
-	snd_soc_dapm_force_enable_pin(&codec->dapm, "HP");
-
-	snd_soc_dapm_sync(&codec->dapm);
-
 	/* if 'no_standby' is used power up manually on startup
  	 * and keep the widget active */
-	if(sgtl5000->no_standby)
-	{
+	if (sgtl5000->no_standby) {
+		snd_soc_dapm_force_enable_pin(&codec->dapm, "LO");
+		snd_soc_dapm_force_enable_pin(&codec->dapm, "HP");
+
+		snd_soc_dapm_sync(&codec->dapm);
+
 		power_vag_up(codec);
 	}
 	return 0;
@@ -1406,9 +1424,9 @@ err:
 static int sgtl5000_remove(struct snd_soc_codec *codec)
 {
 	struct sgtl5000_priv *sgtl5000 = snd_soc_codec_get_drvdata(codec);
-	
+
 	/* if 'no_standby' is used power down manually on driver remove */
-	if(sgtl5000->no_standby)
+	if (sgtl5000->no_standby)
 		power_vag_down(codec);
 
 	regulator_bulk_disable(ARRAY_SIZE(sgtl5000->supplies),
@@ -1487,7 +1505,7 @@ static int sgtl5000_dt_init(const struct i2c_client *client,
 
 	if (of_property_read_bool(np, "no-standby"))
 		sgtl5000->no_standby = 1;
-	
+
 	if (!of_property_read_u32(np,
 		"micbias-resistor-k-ohms", &value)) {
 		switch (value) {
