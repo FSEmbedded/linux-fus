@@ -22,21 +22,13 @@
 #define MSG   "Discovery-Channel"
 #define ELEM  (10)      /* Number of elements in Buffer (max 500) */
 
-struct imx_rpmsg {
-        unsigned int  msg_buf[ELEM];
-        struct kobj_attribute *kattr;
-        struct attribute_group attr_group;
-        struct kobject *imx_rpmsg_kobj;
-        struct platform_device *pdev;
-} irpmsg;
-
-struct ring_buff {
+static struct ring_buff {
 	spinlock_t lock;
+        unsigned int  msg_buf[ELEM];
 	unsigned int * rd_ptr;
         unsigned int * wr_ptr;
         char full;
 } rbuff;
-
 
 /* Read function. */
 static ssize_t imx_rpmsg_show(struct kobject *kobj,
@@ -56,8 +48,8 @@ static ssize_t imx_rpmsg_show(struct kobject *kobj,
 		rbuff.rd_ptr++;
         	rbuff.full = 0;
 	 /* Ringbuffer*/
-		if (rbuff.rd_ptr >= irpmsg.msg_buf + ELEM) {
-                	rbuff.rd_ptr = irpmsg.msg_buf;
+		if (rbuff.rd_ptr >= rbuff.msg_buf + ELEM) {
+                	rbuff.rd_ptr = rbuff.msg_buf;
          	}
 		if (rbuff.rd_ptr != rbuff.wr_ptr)
 			pos += snprintf(buf + pos, PAGE_SIZE - pos, ", ");
@@ -92,30 +84,29 @@ static void imx_rpmsg_callback(struct rpmsg_channel *rpdev,
 	rbuff.wr_ptr++;
 
 	/* Ringbuffer*/
-	if (rbuff.wr_ptr >= irpmsg.msg_buf + ELEM) {
-		rbuff.wr_ptr = irpmsg.msg_buf;
+	if (rbuff.wr_ptr >= rbuff.msg_buf + ELEM) {
+		rbuff.wr_ptr = rbuff.msg_buf;
 		rbuff.full = 1;
         }
         /* Ringbuffer*/
-        if (rbuff.rd_ptr >= irpmsg.msg_buf + ELEM) {
-       		rbuff.rd_ptr = irpmsg.msg_buf;
+        if (rbuff.rd_ptr >= rbuff.msg_buf + ELEM) {
+       		rbuff.rd_ptr = rbuff.msg_buf;
 	}
 	spin_unlock(&rbuff.lock);
 }
 
-
-static void imx_rpmsg_remove(struct rpmsg_channel *rpdev)
-{
-        dev_info(&rpdev->dev, "imx_rpmsg_driver is removed\n");
-        if (irpmsg.imx_rpmsg_kobj) {
-                kobject_put(irpmsg.imx_rpmsg_kobj);
-                irpmsg.imx_rpmsg_kobj = NULL;
-        }
-}
+/* Set sysfs attributes */
+static struct kobj_attribute kobj_attribute =__ATTR(buffer, 0400,
+						    imx_rpmsg_show, NULL);
 
 static int imx_rpmsg_probe(struct rpmsg_channel *rpdev)
 {
         int err;
+   	/* Create sysfs file */
+        if (sysfs_create_file(&rpdev->dev.kobj,&kobj_attribute.attr)) {
+                dev_err(&rpdev->dev, "Cannot create group!\n");
+                return -ENOMEM;
+        }
 
         /* Inform Cortex-M4 about our existence; this will kick off the demo */
         dev_info(&rpdev->dev, "New channel: 0x%x -> 0x%x!\n",
@@ -128,6 +119,10 @@ static int imx_rpmsg_probe(struct rpmsg_channel *rpdev)
         return 0;
 }
 
+static void imx_rpmsg_remove(struct rpmsg_channel *rpdev)
+{
+	sysfs_remove_file(&rpdev->dev.kobj,&kobj_attribute.attr);
+}
 static struct rpmsg_driver imx_rpmsg_driver = {
         .drv.name   = KBUILD_MODNAME,
         .drv.owner  = THIS_MODULE,
@@ -137,13 +132,6 @@ static struct rpmsg_driver imx_rpmsg_driver = {
         .remove     = imx_rpmsg_remove,
 };
 
-static struct kobj_attribute kattr[] = {
-        {
-                .attr = {.name = "buffer", .mode = 0400 },
-                .show = imx_rpmsg_show,
-                .store = NULL,
-        },
-};
 
 static int __init imx_rpmsg_init(void)
 {
@@ -151,36 +139,8 @@ static int __init imx_rpmsg_init(void)
         if (register_rpmsg_driver(&imx_rpmsg_driver))
                 return -ENOMEM;
 
-        /* Alloc memory for attribute */
-        memset(&irpmsg.attr_group, 0, sizeof(struct attribute_group));
-        irpmsg.attr_group.attrs = kzalloc(2 * sizeof(struct attribute *),
-                        GFP_KERNEL);
-        if (!irpmsg.attr_group.attrs) {
-                dev_err(&irpmsg.pdev->dev,
-                                "Cannot allocate attribute pointers!\n");
-                return -ENOMEM;
-        }
-
-        irpmsg.attr_group.attrs[0] = &kattr[0].attr;
-        irpmsg.attr_group.attrs[1] = NULL;
-
-        /* Create /sys/fs_rpmsg */
-        irpmsg.imx_rpmsg_kobj = kobject_create_and_add("fs_rpmsg", NULL);
-        if (!irpmsg.imx_rpmsg_kobj) {
-                dev_err(&irpmsg.pdev->dev, "Cannot create kobject!\n");
-                return -ENOMEM;
-        }
-
-        /* Create attributes */
-        if (sysfs_create_group(irpmsg.imx_rpmsg_kobj, &irpmsg.attr_group)) {
-                dev_err(&irpmsg.pdev->dev, "Cannot create group!\n");
-                kobject_put(irpmsg.imx_rpmsg_kobj);
-                irpmsg.imx_rpmsg_kobj = NULL;
-                return -ENOMEM;
-        }
-
-	rbuff.rd_ptr = irpmsg.msg_buf;
-	rbuff.wr_ptr = irpmsg.msg_buf;
+	rbuff.rd_ptr = rbuff.msg_buf;
+	rbuff.wr_ptr = rbuff.msg_buf;
 	rbuff.full = 0;
 
         return 0;
@@ -193,6 +153,6 @@ static void __exit imx_rpmsg_exit(void)
 }
 module_exit(imx_rpmsg_exit);
 
-MODULE_AUTHOR("Manuel-Tobias Csapo @F&S Elektronik Systeme <csapo@fs-net.de>");
+MODULE_AUTHOR("F&S Elektronik Systeme");
 MODULE_DESCRIPTION("Driver for accessing RPMsg content via sysfs");
 MODULE_LICENSE("GPL");

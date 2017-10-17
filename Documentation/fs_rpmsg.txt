@@ -5,13 +5,13 @@ This file describes how you can read the fs_rpmsg driver of the fs_adc_i2c_rpmsg
 
 Paths in Sysfs
 --------------
-The driver creates an /sys/fs_rpmsg/buffer entry.
+The driver creates an /sys/bus/rpmsg/drivers/fs_rpmsg/rpmsg0/buffer entry.
 
-By performing "cat /sys/fs_rpmsg/buffer" you will get an output of the current ringbuffer on your console.
+By performing "cat /sys/bus/rpmsg/drivers/fs_rpmsg/rpmsg0/buffer" you will get an output of the current ringbuffer on your console.
 
 Writing into the buffer is not possible.
 
 Example: 
 
-# cat /sys/fs_rpmsg/buffer
+# cat /sys/bus/rpmsg/drivers/fs_rpmsg/rpmsg0/buffer
 3.30V, 3.30V, 3.30V, 3.30V, 3.30V, 2.99V, 2.57V, 2.57V, 2.57V, 2.63V
