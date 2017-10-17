@@ -118,6 +118,8 @@ struct rpmsg_channel_info {
 /* Address 53 is reserved for advertising remote services */
 #define RPMSG_NS_ADDR			(53)
 
+/* Define to Print_hex_dump to KERN_DEBUG */
+#undef DEBUG_HEX_DUMP
 /* sysfs show configuration fields */
 #define rpmsg_show_attr(field, path, format_string)			\
 static ssize_t								\
@@ -751,9 +753,13 @@ int rpmsg_send_offchannel_raw(struct rpmsg_channel *rpdev, u32 src, u32 dst,
 	dev_dbg(dev, "TX From 0x%x, To 0x%x, Len %d, Flags %d, Reserved %d\n",
 					msg->src, msg->dst, msg->len,
 					msg->flags, msg->reserved);
+//###
+#ifdef DEBUG_HEX_DUMP
+
 	print_hex_dump(KERN_DEBUG, "rpmsg_virtio TX: ", DUMP_PREFIX_NONE, 16, 1,
 					msg, sizeof(*msg) + msg->len, true);
-
+#endif
+//###
 	sg_init_one(&sg, msg, sizeof(*msg) + len);
 
 	mutex_lock(&vrp->tx_lock);
@@ -788,9 +794,12 @@ static int rpmsg_recv_single(struct virtproc_info *vrp, struct device *dev,
 	dev_dbg(dev, "From: 0x%x, To: 0x%x, Len: %d, Flags: %d, Reserved: %d\n",
 					msg->src, msg->dst, msg->len,
 					msg->flags, msg->reserved);
+//###
+#ifdef DEBUG_HEX_DUMP
 	print_hex_dump(KERN_DEBUG, "rpmsg_virtio RX: ", DUMP_PREFIX_NONE, 16, 1,
 					msg, sizeof(*msg) + msg->len, true);
-
+#endif
+//###
 	/*
 	 * We currently use fixed-sized buffers, so trivially sanitize
 	 * the reported payload length.
@@ -899,11 +908,13 @@ static void rpmsg_ns_cb(struct rpmsg_channel *rpdev, void *data, int len,
 	struct virtproc_info *vrp = priv;
 	struct device *dev = &vrp->vdev->dev;
 	int ret;
-
+//###
+#ifdef DEBUG_HEX_DUMP
 	print_hex_dump(KERN_DEBUG, "NS announcement: ",
 			DUMP_PREFIX_NONE, 16, 1,
 			data, len, true);
-
+#endif
+//###
 	if (len != sizeof(*msg)) {
 		dev_err(dev, "malformed ns msg (%d)\n", len);
 		return;
