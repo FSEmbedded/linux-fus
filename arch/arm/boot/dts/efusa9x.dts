@@ -158,7 +158,7 @@ lvds_wvga {				\
 #define CONFIG_EFUSA9X_ANALOG_CAMERA
 
 /*
- * SD_A - External SD port with CD/WP.
+ * SD_A - External SD port with Card Detect (CD) and Write Protect (WP)
  * On board revisions before 1.20: only available if WLAN is not equipped.
  * On board revisions since 1.20: only available if eMMC is not equipped.
  * On efus SKIT: external port is Micro-SD card slot with CD but without WP
@@ -168,7 +168,7 @@ lvds_wvga {				\
 //#define CONFIG_EFUSA9X_SD_A_WP
 
 /*
- * SD_B - External SD port with CD/WP
+ * SD_B - External SD port with Card Detect (CD) and Write Protect (WP)
  * On efus SKIT: external port is normal-sized SD card slot with CD and WP
  */
 #define CONFIG_EFUSA9X_SD_B
@@ -183,8 +183,8 @@ lvds_wvga {				\
  * - UART_B: used for debug output/UART examples
  * - SPI_B:  MISO/MOSI/CLK/CS1 used in SPI examples
  * - CAN_B:  TX/RX used in CAN examples
- * - I2C_A:  SCL/SDA used in I2C examples
- * - I2C_A:  IRQ used as KEY input
+ * - I2C_B:  SCL/SDA used in I2C examples
+ * - I2C_B:  IRQ used as KEY input
  * - PWM_A:  used as LED output
  *
  * In addition the following pins are already predefined in FreeRTOS to be used
@@ -193,18 +193,18 @@ lvds_wvga {				\
  *
  * - SPI_A:  MISO/MOSI/CLK/CS1/CS2
  * - CAN_A:  TX/RX
- * - I2C_B:  SCL/SDA
+ * - I2C_A:  SCL/SDA
  * - BL_CTL: (PWM)
  */
 #ifdef SUPPORT_M4
 #undef CONFIG_EFUSA9X_UART_B
 #undef CONFIG_EFUSA9X_SPI_B
 #undef CONFIG_EFUSA9X_CAN_B
-#undef CONFIG_EFUSA9X_I2C_A
+#undef CONFIG_EFUSA9X_I2C_B
 #undef CONFIG_EFUSA9X_PWM_A
 //#undef CONFIG_EFUSA9X_SPI_A
 //#undef CONFIG_EFUSA9X_CAN_A
-//#undef CONFIG_EFUSA9X_I2C_B
+//#undef CONFIG_EFUSA9X_I2C_A
 //#undef CONFIG_EFUSA9X_BL_CTRL
 #endif
 
@@ -234,12 +234,12 @@ lvds_wvga {				\
 
 /* If UART_B is not used, also RTS/CTS may not be used */
 #ifndef CONFIG_EFUSA9X_UART_B
-#undef CONFIG_EFUSA9X_UART_B_RTS/CTS
+#undef CONFIG_EFUSA9X_UART_B_RTSCTS
 #endif
 
 /* If UART_C is not used, also RTS/CTS may not be used */
 #ifndef CONFIG_EFUSA9X_UART_C
-#undef CONFIG_EFUSA9X_UART_C_RTS/CTS
+#undef CONFIG_EFUSA9X_UART_C_RTSCTS
 #endif
 
 
@@ -250,6 +250,7 @@ lvds_wvga {				\
 	model = "F&S efusA9X";
 	compatible = "fus,imx6sx-efusa9x", "fsl,imx6sx";
 
+#ifdef CONFIG_EFUSA9X_I2C_A
 #if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LCD
 	backlight_lcd {
 		compatible = "pwm-backlight";
@@ -260,6 +261,7 @@ lvds_wvga {				\
 		default-brightness-level = <14>;
 		fb-names = "mxs-lcdif1";
 	};
+#endif
 #endif
 
 #ifdef CONFIG_EFUSA9X_BL_CTRL
@@ -342,7 +344,7 @@ lvds_wvga {				\
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
 		};
-
+#ifdef CONFIG_EFUSA9X_I2C_A
 		reg_lcd_bl: lcd-bl {
 			compatible = "regulator-fixed";
 			regulator-name = "lcd-bl";
@@ -350,7 +352,7 @@ lvds_wvga {				\
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 		};
-
+#endif
 		reg_ldb_bl: ldb-bl {
 			compatible = "regulator-fixed";
 			regulator-name = "ldb-bl";
@@ -404,16 +406,6 @@ lvds_wvga {				\
 			regulator-max-microvolt = <3300000>;
 			regulator-always-on;
 		};
-
-#if defined(CONFIG_EFUSA9X_WLAN) && (CONFIG_EFUSA9X_BOARD_REVISION < 120)
-		reg_wlan_1v8: regulator_wlan {
-			compatible = "regulator-fixed";
-			regulator-name = "vmmc-wlan-1v8";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			regulator-always-on;
-		};
-#endif
 
 		/* USB_OTG1_PWR done by USB controller, no regulator needed */
 #if 0 //###
@@ -494,27 +486,45 @@ lvds_wvga {				\
 	assigned-clock-rates = <0>, <0>, <24576000>;
 /* Needed for low power mode to tell A9 which clocks might be shared with M4 */
 #ifdef SUPPORT_M4
-	  fsl,shared-clks-number = <0x23>;
-	  fsl,shared-clks-index = <IMX6SX_CLK_PLL2_BUS IMX6SX_CLK_PLL2_PFD0
-				   IMX6SX_CLK_PLL2_PFD2 IMX6SX_CLK_PLL3_USB_OTG
-				   IMX6SX_CLK_PLL3_PFD1 IMX6SX_CLK_PLL3_PFD2
-				   IMX6SX_CLK_PLL3_PFD3 IMX6SX_CLK_PLL4_AUDIO
-				   IMX6SX_CLK_PLL5_VIDEO
-				   IMX6SX_CLK_OCRAM IMX6SX_CLK_CAN1_SERIAL
-				   IMX6SX_CLK_CAN1_IPG IMX6SX_CLK_CAN2_SERIAL
-				   IMX6SX_CLK_CAN2_IPG IMX6SX_CLK_CANFD
-				   IMX6SX_CLK_ECSPI1 IMX6SX_CLK_ECSPI2
-				   IMX6SX_CLK_ECSPI3 IMX6SX_CLK_ECSPI4
-				   IMX6SX_CLK_ECSPI5 IMX6SX_CLK_QSPI1
-				   IMX6SX_CLK_QSPI2 IMX6SX_CLK_SSI1
-				   IMX6SX_CLK_SSI2 IMX6SX_CLK_SSI3
-				   IMX6SX_CLK_UART_SERIAL IMX6SX_CLK_UART_IPG
-				   IMX6SX_CLK_PERIPH_CLK2_SEL IMX6SX_CLK_DUMMY
-				   IMX6SX_CLK_I2C1 IMX6SX_CLK_I2C2
-				   IMX6SX_CLK_I2C3 IMX6SX_CLK_I2C4
-				   IMX6SX_CLK_EPIT1 IMX6SX_CLK_EPIT2>;
+	/* Shared memory in OCRAM, keep clear from Linux */
 	fsl,shared-mem-addr = <0x91F000>;
 	fsl,shared-mem-size = <0x1000>;
+	fsl,shared-clks-number = <0x23>;
+	fsl,shared-clks-index = <IMX6SX_CLK_PLL2_BUS
+				 IMX6SX_CLK_PLL2_PFD0
+				 IMX6SX_CLK_PLL2_PFD2
+				 IMX6SX_CLK_PLL3_USB_OTG
+				 IMX6SX_CLK_PLL3_PFD1
+				 IMX6SX_CLK_PLL3_PFD2
+				 IMX6SX_CLK_PLL3_PFD3
+				 IMX6SX_CLK_PLL4_AUDIO
+				 IMX6SX_CLK_PLL5_VIDEO
+				 IMX6SX_CLK_OCRAM
+				 IMX6SX_CLK_CAN1_SERIAL
+				 IMX6SX_CLK_CAN1_IPG
+				 IMX6SX_CLK_CAN2_SERIAL
+				 IMX6SX_CLK_CAN2_IPG
+				 IMX6SX_CLK_CANFD
+				 IMX6SX_CLK_ECSPI1
+				 IMX6SX_CLK_ECSPI2
+				 IMX6SX_CLK_ECSPI3
+				 IMX6SX_CLK_ECSPI4
+				 IMX6SX_CLK_ECSPI5
+				 IMX6SX_CLK_QSPI1
+				 IMX6SX_CLK_QSPI2
+				 IMX6SX_CLK_SSI1
+				 IMX6SX_CLK_SSI2
+				 IMX6SX_CLK_SSI3
+				 IMX6SX_CLK_UART_SERIAL
+				 IMX6SX_CLK_UART_IPG
+				 IMX6SX_CLK_PERIPH_CLK2_SEL
+				 IMX6SX_CLK_DUMMY
+				 IMX6SX_CLK_I2C1
+				 IMX6SX_CLK_I2C2
+				 IMX6SX_CLK_I2C3
+				 IMX6SX_CLK_I2C4
+				 IMX6SX_CLK_EPIT1
+				 IMX6SX_CLK_EPIT2>;
 #endif
 };
 
@@ -526,14 +536,18 @@ lvds_wvga {				\
 
 /* rpmsg is used for communication between Cortex-A9 and Cortex-M4 cores */
 &rpmsg {
-	vring-buffer-address0 = <0x9FFF0000>;
-	vring-buffer-address1 = <0x9FFF8000>;
+	vring-buffer-address0 = <0xBFFF0000>;
+	vring-buffer-address1 = <0xBFFF8000>;
 	status = "okay";
 };
 
-/* Keep interrupts on GPIO3 if M4 already owns it */
-&gpio3 {
+/* Keep interrupts on GPIO7 if M4 already owns it */
+&gpio7 {
 	keep-interrupts;
+};
+
+&ocram {
+	reg = <0x00901000 0xf000>;
 };
 #endif
 
@@ -1048,13 +1062,13 @@ lvds_wvga {				\
 	pinctrl-0 = <&pinctrl_usdhc1_wlan>;
 	bus-width = <4>;
 	/* WLAN is non-removable, but CD tells us if it is equipped or not */
+#if (CONFIG_EFUSA9X_BOARD_REVISION < 110)
+	non-removable;
+#else
 	cd-gpios = <&gpio1 2 GPIO_ACTIVE_LOW>;
 	//non-removable;
-#if (CONFIG_EFUSA9X_BOARD_REVISION < 120)
-	vmmc-supply = <&reg_wlan_1v8>;
-#else
-	vmmc-supply = <&reg_vref_3v3>;
 #endif
+	vmmc-supply = <&reg_vref_3v3>;
 	vqmmc-supply = <&reg_vref_3v3>;
 	voltage-ranges = <3300 3300>;
 	no-1-8-v;
@@ -1117,12 +1131,12 @@ lvds_wvga {				\
 &usdhc2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc2_sd_b>;
-#ifdef CONFIG_EFUSA9X_SD_A_CD
+#ifdef CONFIG_EFUSA9X_SD_B_CD
 	cd-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;
 #else
 	non-removable;
 #endif
-#ifdef CONFIG_EFUSA9X_SD_A_WP
+#ifdef CONFIG_EFUSA9X_SD_B_WP
 	wp-gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>;
 #endif
 	bus-width = <4>;
@@ -1141,10 +1155,13 @@ lvds_wvga {				\
 	/* On-board EMMC (optional) */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc4_emmc>;
-	bus-width = <8>;
-	no-1-8-v;
 	non-removable;
+	bus-width = <8>;
 	vmmc-supply = <&reg_vref_3v3>;
+	vqmmc-supply = <&reg_vref_3v3>;
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+	keep-power-in-suspend;
 	status = "okay";
 };
 #endif
