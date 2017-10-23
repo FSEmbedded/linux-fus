@@ -11,6 +11,9 @@
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_PICOCOMA9X_BOARD_REVISION	111
 
+/* Activate this if you want to use the Cortex-M4 core */
+//#define SUPPORT_M4
+
 #define DISPLAY_NONE	0	/* No display on this port */
 #define DISPLAY_LCD	1	/* LCD via RGB adapter */
 
@@ -121,7 +124,21 @@ lcd_wvga {				\
  */
 //#define CONFIG_PICOCOMA9X_UART_C
 
-/* Do some sanity checks */
+/* Check for invalid CONFIG combinations */
+
+/*
+ * Exclude devices from Linux that are used by the Cortex-M4 RTOS examples
+ * - SPI_A pins used as GPIOs in diffrent examples and in SPI examples
+ * - CAN_A used in CAN examples
+ * - I2C_A used in I2C examples
+ * - UART_B used in debug output/UART examples
+ */
+#ifdef SUPPORT_M4
+#undef CONFIG_PICOCOMA9X_CAN_A
+#undef CONFIG_PICOCOMA9X_I2C_A
+#undef CONFIG_PICOCOMA9X_UART_B
+#undef CONFIG_PICOCOMA9X_SPI_A
+#endif
 
 /* If ETH_B is equipped, audio will not work */
 #ifdef CONFIG_PICOCOMA9X_ETH_B
@@ -458,7 +475,72 @@ lcd_wvga {				\
 	assigned-clock-parents = <&clks IMX6SX_CLK_LVDS2_IN>,
 				 <&clks IMX6SX_PLL4_BYPASS_SRC>;
 	assigned-clock-rates = <0>, <0>, <24576000>;
+/* Needed for low power mode to tell A9 which clocks might be shared with M4 */
+#ifdef SUPPORT_M4
+	/* Shared memory in OCRAM, keep clear from Linux */
+	fsl,shared-mem-addr = <0x91F000>;
+	fsl,shared-mem-size = <0x1000>;
+        fsl,shared-clks-number = <0x23>;
+        fsl,shared-clks-index = <IMX6SX_CLK_PLL2_BUS
+				 IMX6SX_CLK_PLL2_PFD0
+                        	 IMX6SX_CLK_PLL2_PFD2
+				 IMX6SX_CLK_PLL3_USB_OTG
+                        	 IMX6SX_CLK_PLL3_PFD1
+				 IMX6SX_CLK_PLL3_PFD2
+                        	 IMX6SX_CLK_PLL3_PFD3
+				 IMX6SX_CLK_PLL4_AUDIO
+                        	 IMX6SX_CLK_PLL5_VIDEO
+                        	 IMX6SX_CLK_OCRAM
+				 IMX6SX_CLK_CAN1_SERIAL
+                        	 IMX6SX_CLK_CAN1_IPG
+				 IMX6SX_CLK_CAN2_SERIAL
+                        	 IMX6SX_CLK_CAN2_IPG
+				 IMX6SX_CLK_CANFD
+                        	 IMX6SX_CLK_ECSPI1
+				 IMX6SX_CLK_ECSPI2
+                        	 IMX6SX_CLK_ECSPI3
+				 IMX6SX_CLK_ECSPI4
+                        	 IMX6SX_CLK_ECSPI5
+				 IMX6SX_CLK_QSPI1
+                        	 IMX6SX_CLK_QSPI2
+				 IMX6SX_CLK_SSI1
+                        	 IMX6SX_CLK_SSI2
+				 IMX6SX_CLK_SSI3
+                        	 IMX6SX_CLK_UART_SERIAL
+				 IMX6SX_CLK_UART_IPG
+                        	 IMX6SX_CLK_PERIPH_CLK2_SEL
+				 IMX6SX_CLK_DUMMY
+                        	 IMX6SX_CLK_I2C1
+				 IMX6SX_CLK_I2C2
+                        	 IMX6SX_CLK_I2C3
+				 IMX6SX_CLK_I2C4
+                        	 IMX6SX_CLK_EPIT1
+				 IMX6SX_CLK_EPIT2>;
+#endif
 };
+
+#ifdef SUPPORT_M4
+/* epit1 is used by Cortex-M4 examples for timing purposes */
+&epit1{
+        status = "disabled";
+};
+
+/* rpmsg is used for communication between Cortex-A9 and Cortex-M4 cores */
+&rpmsg {
+	vring-buffer-address0 = <0xBFFF0000>;
+	vring-buffer-address1 = <0xBFFF8000>;
+	status = "okay";
+};
+
+/* Keep interrupts on GPIO2 if M4 already owns it */
+&gpio2 {
+        keep-interrupts;
+};
+
+&ocram {
+        reg = <0x00901000 0xf000>;
+};
+#endif
 
 #if (CONFIG_PICOCOMA9X_LCDIF0 == DISPLAY_LCD)
 &lcdif1 {
@@ -752,7 +834,7 @@ lcd_wvga {				\
 		};
 #endif
 
-		pinctrl_i2c3_1: i2c1grp-1 {
+		pinctrl_i2c3_1: i2c3grp-1 {
 			fsl,pins = <
 				MX6SX_PAD_KEY_COL4__I2C3_SCL		0x4001b8b1
 				MX6SX_PAD_KEY_ROW4__I2C3_SDA		0x4001b8b1
