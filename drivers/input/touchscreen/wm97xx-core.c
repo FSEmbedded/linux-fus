@@ -524,7 +524,7 @@ static int wm97xx_ts_input_open(struct input_dev *idev)
 	if (wm->pen_irq)
 		wm97xx_init_pen_irq(wm);
 	else
-		dev_err(wm->dev, "No IRQ specified\n");
+		dev_dbg(wm->dev, "No IRQ specified\n");
 
 	/* If we either don't have an interrupt for pen down events or
 	 * failed to acquire it then we need to poll.
