@@ -1765,7 +1765,7 @@ static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *host,
 			ret = regulator_set_voltage(mmc->supply.vqmmc, 2700000,
 						    3600000);
 			if (ret) {
-				pr_warn("%s: Switching to 3.3V signalling voltage failed\n",
+				pr_debug("%s: Switching to 3.3V signalling voltage failed\n",
 					mmc_hostname(mmc));
 				return -EIO;
 			}
@@ -1790,7 +1790,7 @@ static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *host,
 			ret = regulator_set_voltage(mmc->supply.vqmmc,
 					1700000, 1950000);
 			if (ret) {
-				pr_warn("%s: Switching to 1.8V signalling voltage failed\n",
+				pr_debug("%s: Switching to 1.8V signalling voltage failed\n",
 					mmc_hostname(mmc));
 				return -EIO;
 			}
@@ -1821,7 +1821,7 @@ static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *host,
 			ret = regulator_set_voltage(mmc->supply.vqmmc, 1100000,
 						    1300000);
 			if (ret) {
-				pr_warn("%s: Switching to 1.2V signalling voltage failed\n",
+				pr_debug("%s: Switching to 1.2V signalling voltage failed\n",
 					mmc_hostname(mmc));
 				return -EIO;
 			}
