@@ -217,6 +217,7 @@ struct pltfm_imx_data {
 		WAIT_FOR_INT,        /* sent CMD12, waiting for response INT */
 	} multiblock_status;
 	u32 is_ddr;
+	unsigned int uhs;
 };
 
 static const struct platform_device_id imx_esdhc_devtype[] = {
@@ -843,6 +844,10 @@ static int esdhc_change_pinstate(struct sdhci_host *host,
 		IS_ERR(imx_data->pins_200mhz))
 		return -EINVAL;
 
+	if (uhs == imx_data->uhs)
+		return 0;
+	imx_data->uhs = uhs;
+
 	switch (uhs) {
 	case MMC_TIMING_UHS_SDR50:
 	case MMC_TIMING_UHS_DDR50:
@@ -1192,6 +1197,7 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 		goto free_sdhci;
 	}
 
+	imx_data->uhs = MMC_TIMING_LEGACY;
 	imx_data->socdata = of_id ? of_id->data : (struct esdhc_soc_data *)
 						  pdev->id_entry->driver_data;
 	pltfm_host->priv = imx_data;
