@@ -8,32 +8,113 @@
 
 /dts-v1/;
 
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOM1_2_BOARD_REVISION	100
+
 /* CMA: Set 64 MB for Continuous Memory Allocator */
 #define CONFIG_PICOCOM1_2_CMA_SIZE 0x4000000
 
-/* NAND */
-#define CONFIG_PICOCOM1_2_NAND
+/* Ethernet, pins 1-4/71 */
+#define CONFIG_PICOCOM1_2_ETH_A
 
-/* Network */
-#define CONFIG_PICOCOM1_2_ETH0
+/* WLAN/BLUETOOTH */
+#define CONFIG_PICOCOM1_2_WLAN
+//#define CONFIG_PICOCOM1_2_BLUETOOTH
 
-/* UART_C or SD CD/WP pins, undefine UART_C if you want to use
- * SD CD/WP pins
+/*
+ * USB Device/OTG, pins 21/22/23. Set CONFIG_PICOCOM1_2_USB_OTG_HOST, if you
+ * want to use OTG as a second host port, PWR is on pin 29 then.
+ * ### TODO: Add support for role switch, ID is available on pin 17 as option.
  */
-#define CONFIG_PICOCOM1_2_UART_C_RTSCTS
+#define CONFIG_PICOCOM1_2_USB_OTG
+//#define CONFIG_PICOCOM1_2_USB_OTG_HOST
 
-/* SPI_B or UART_E, undefine SPI_B if you want to use UART_E */
+/* USB Host, pins 19/20, PWR on pin 24 */
+#define CONFIG_PICOCOM1_2_USB_HOST
+
+/* CAN: CAN_A on pins 51/52, CAN_B on pins 53/54 */
+#define CONFIG_PICOCOM1_2_CAN_A
+#define CONFIG_PICOCOM1_2_CAN_B
+
+/* I2C: I2C_A on pins 32/33, I2C_B on pins 12/11 */
+#define CONFIG_PICOCOM1_2_I2C_A
+#define CONFIG_PICOCOM1_2_I2C_B
+
+/* PWM: PWM_A on pin 74, PWM_B on pin 75, PWM_C on pin 76, PWM_D on pin 70 */
+#define CONFIG_PICOCOM1_2_PWM_A
+#define CONFIG_PICOCOM1_2_PWM_B
+#define CONFIG_PICOCOM1_2_PWM_C
+#define CONFIG_PICOCOM1_2_PWM_D
+
+/*
+ * UART:
+ * - UART_A with TXD/RXD/RTS/CTS on pins 17/18/49/50
+ * - UART_B with TXD/RXD/RTS/CTS on pins 13-16
+ * - UART_C with TXD/RXD/RTS/CTS on pins 43/44/41/40,
+ * - UART_D with TXD/RXD/RTS/CTS on pins 45-48
+ * - UART_E with TXD/RXD only on pins 67/68,
+ * - UART_F with TXD/RXD/RTS/CTS on pins 63-66 (available if SPI_B is not used)
+ * Comment the line with the RTSCTS macro if you just need TXD/RXD on a port
+ */
+#define CONFIG_PICOCOM1_2_UART_A
+#define CONFIG_PICOCOM1_2_UART_A_RTSCTS
+#define CONFIG_PICOCOM1_2_UART_B
+#define CONFIG_PICOCOM1_2_UART_B_RTSCTS
+#define CONFIG_PICOCOM1_2_UART_C
+#define CONFIG_PICOCOM1_2_UART_C_RTSCTS
+#define CONFIG_PICOCOM1_2_UART_D
+#define CONFIG_PICOCOM1_2_UART_D_RTSCTS
+#define CONFIG_PICOCOM1_2_UART_E
+//#define CONFIG_PICOCOM1_2_UART_F
+//#define CONFIG_PICOCOM1_2_UART_F_RTSCTS
+
+/* SPI: SPI_A (3x CS) on pins 55-60, SPI_B (1x CS) on pins 63-66 */
+#define CONFIG_PICOCOM1_2_SPI_A
 #define CONFIG_PICOCOM1_2_SPI_B
 
-/* Audio devices */
-#define CONFIG_PICOCOM1_2_SGTL5000
+/* Audio: Codec (SGTL5000) on pins 77-80 */
+#define CONFIG_PICOCOM1_2_AUDIO
 
-/* MQS is not supported in F&S standard and is not tested */
+/*
+ * MQS (Medium Quality Sound, playback only) on pins 77/78 is a hardware option
+ * and only available if the SGTL5000 audio codec is not equipped.
+ */
 //#define CONFIG_PICOCOM1_2_MQS
 
-/* Either PWM or ADC can be used */
-#define CONFIG_PICOCOM1_2_PWM
-//#define CONFIG_PICOCOM1_2_ADC
+/*
+ * SD-Card, pins 34-39, CD on pin 40, WP on pin 41
+ * The PicoCOM1 SKIT does not support CD and WP.
+ */
+#define CONFIG_PICOCOM1_2_SD_A
+//#define CONFIG_PICOCOM1_2_SD_A_CD
+//#define CONFIG_PICOCOM1_2_SD_A_WP
+
+/*
+ * ADC, pins 74-76. These pins are shared with PWM_A to PWM_C, so undefine the
+ * PWM configs if you want to use them for analog input, otherwise you will
+ * only measure the PWM level and the PWM output will work against the input.
+ */
+#define CONFIG_PICOCOM1_2_ADC
+
+
+/* Check for invalid CONFIG combinations */
+
+/* If SPI_B is active, UART_F can not be used */
+#ifdef CONFIG_PICOCOM1_2_SPI_B
+#undef CONFIG_PICOCOM1_2_UART_F
+#undef CONFIG_PICOCOM1_2_UART_F_RTSCTS
+#endif
+
+/* If UART_C uses RTS/CTS, CD and WP for SD_A can not be used */
+#ifdef CONFIG_PICOCOM1_2_UART_C_RTSCTS
+#undef CONFIG_PICOCOM1_2_SD_A_CD
+#undef CONFIG_PICOCOM1_2_SD_A_WP
+#endif
+
+/* If SGTL5000 audio is available, MQS audio can not be used */
+#ifdef CONFIG_PICOCOM1_2_AUDIO
+#undef CONFIG_PICOCOM1_2_MQS
+#endif
 
 #include <dt-bindings/input/input.h>
 #include "imx6ul.dtsi"
@@ -74,7 +155,7 @@ chosen {
 		};
 
 #ifdef CONFIG_PICOCOM1_2_WLAN
-		reg_wlan_vmmc_1v8: regulator_wlan {
+		reg_wlan_1v8: regulator_wlan {
 			compatible = "regulator-fixed";
 			regulator-name = "vmmc-wlan-1v8";
 			regulator-min-microvolt = <1800000>;
@@ -115,7 +196,7 @@ chosen {
 		};
 #endif //###
 
-#ifdef CONFIG_PICOCOM1_2_SGTL5000
+#ifdef CONFIG_PICOCOM1_2_AUDIO
 		/* SGTL5000 analog voltage */
 		reg_sgtl5000_vdda: sgtl5000_vdda {
 			compatible = "regulator-fixed";
@@ -145,7 +226,7 @@ chosen {
 #endif
 	};
 
-#ifdef CONFIG_PICOCOM1_2_SGTL5000
+#ifdef CONFIG_PICOCOM1_2_AUDIO
 	sound-sgtl5000 {
 		compatible = "fsl,imx-audio-sgtl5000";
 		cpu-dai = <&sai1>;
@@ -160,7 +241,7 @@ chosen {
 	};
 #endif
 
-#if defined(CONFIG_PICOCOM1_2_MQS) && !defined(CONFIG_PICOCOM1_2_SGTL5000)
+#ifdef CONFIG_PICOCOM1_2_MQS
 	sound-mqs {
 		compatible = "fsl,imx-audio-mqs";
 		model = "mqs-audio";
@@ -170,7 +251,7 @@ chosen {
 	};
 #endif
 
-	/* Bitbanging I2C_C */
+	/* Internal I2C (bitbanging) */
 	i2c_gpio: i2c_gpio {
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_i2c_gpio>;
@@ -238,14 +319,18 @@ chosen {
 			<&clks IMX6UL_CLK_PLL4_AUDIO_DIV>,
 			<0>;
 
-#if defined(CONFIG_PICOCOM1_2_MQS) && !defined(CONFIG_PICOCOM1_2_SGTL5000)
+#ifdef CONFIG_PICOCOM1_2_MQS
 	assigned-clock-rates = <786432000>, <0>, <24576000>;
-#elif define CONFIG_PICOCOM1_2_SGTL5000
+#elif defined(CONFIG_PICOCOM1_2_AUDIO)
 	assigned-clock-rates = <786432000>, <0>, <12288000>;
 #endif
 };
 
-#ifdef CONFIG_PICOCOM1_2_ETH0
+&pxp {
+	status = "okay";
+};
+
+#ifdef CONFIG_PICOCOM1_2_ETH_A
 &fec1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet1>;
@@ -269,40 +354,61 @@ chosen {
 };
 #endif
 
+#ifdef CONFIG_PICOCOM1_2_CAN_A
 &flexcan1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1>;
 	xceiver-supply = <&reg_can>;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_PICOCOM1_2_CAN_B
 &flexcan2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
 	xceiver-supply = <&reg_can>;
 	status = "okay";
 };
+#endif
 
-#ifdef CONFIG_PICOCOM1_2_PWM
+#ifdef CONFIG_PICOCOM1_2_PWM_A
+/* PWM_A implemented by PWM1 */
 &pwm1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm1>;
 	status = "okay";
 };
+#endif
 
-&pwm2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_pwm2>;
-	status = "okay";
-};
-
+#ifdef CONFIG_PICOCOM1_2_PWM_B
+/* PWM_B implemented by PWM4 */
 &pwm4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm4>;
 	status = "okay";
 };
+#endif
 
-#elif CONFIG_PICOCOM1_2_ADC
+#ifdef CONFIG_PICOCOM1_2_PWM_C
+/* PWM_C implemented by PWM2 */
+&pwm2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm2>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOM1_2_PWM_D
+/* PWM_D implemented by PWM3 */
+&pwm3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm3>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOM1_2_ADC
 &adc1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_adc1>;
@@ -312,24 +418,42 @@ chosen {
 };
 #endif
 
-&pwm3 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_pwm3>;
-	status = "okay";
-};
-
-&pxp {
-	status = "okay";
-};
-
+#if defined(CONFIG_PICOCOM1_2_AUDIO) || defined(CONFIG_PICOCOM1_2_MQS)
+/* SAI1 is needed by SGTL5000 codec and by MQS audio */
 &sai1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai1>;
 	fsl,mclk-out;
 	status = "okay";
 };
+#endif
 
-/* UART_C */
+#ifdef CONFIG_PICOCOM1_2_UART_A
+/* UART_A implemented by UART3 */
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3>;
+#ifdef CONFIG_PICOCOM1_2_UART_A_RTSCTS
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOM1_2_UART_B
+/* UART_B implemented by UART2 */
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart2>;
+#ifdef CONFIG_PICOCOM1_2_UART_B_RTSCTS
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOM1_2_UART_C
+/* UART_C implemented by UART1 */
 &uart1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1>;
@@ -338,60 +462,57 @@ chosen {
 #endif
 	status = "okay";
 };
+#endif
 
-/* UART_B */
-&uart2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart2>;
-	fsl,uart-has-rtscts;
-	status = "okay";
-};
-
-/* UART_A */
-&uart3 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart3>;
-	fsl,uart-has-rtscts;
-	status = "okay";
-};
-
-/* UART_D */
+#ifdef CONFIG_PICOCOM1_2_UART_D
+/* UART_D implemented by UART4 */
 &uart4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart4>;
+#ifdef CONFIG_PICOCOM1_2_UART_D_RTSCTS
 	fsl,uart-has-rtscts;
+#endif
 	status = "okay";
 };
+#endif
 
-/* UART_E */
-#ifndef CONFIG_PICOCOM1_2_SPI_B
+#ifdef CONFIG_PICOCOM1_2_UART_E
+/* UART_E implemented by UART7, no RTS/CTS */
+&uart7 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart7>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOM1_2_UART_F
+/* UART_F implemented by UART5 */
 &uart5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart5>;
+#ifdef CONFIG_PICOCOM1_2_UART_F_RTSCTS
 	fsl,uart-has-rtscts;
+#endif
 	status = "okay";
 };
-
 #endif
 
+#ifdef CONFIG_PICOCOM1_2_BLUETOOTH
+/* UART6 is used to communicate with bluetooth */
 &uart6 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart6>;
 	fsl,uart-has-rtscts;
 	status = "okay";
 };
+#endif
 
-/* UART_F */
-&uart7 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart7>;
-	status = "okay";
-};
-
+#ifdef CONFIG_PICOCOM1_2_USB_OTG
+/* USB Device/OTG, may be used as second host */
 &usbotg1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usb_otg1>;
-#ifdef CONFIG_PICOCOM1_2_OTG_HOST
+#ifdef CONFIG_PICOCOM1_2_USB_OTG_HOST
 	dr_mode = "host";
 //###	vbus-supply = <&reg_usb_otg1_vbus>;
 	pwr-active-high;
@@ -401,7 +522,10 @@ chosen {
 #endif
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_PICOCOM1_2_USB_HOST
+/* USB host is implemented by OTG2 */
 &usbotg2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usb_otg2>;
@@ -411,57 +535,73 @@ chosen {
 	disable-over-current;
 	status = "okay";
 };
+#endif
 
 #ifdef CONFIG_PICOCOM1_2_WLAN
-/* on-board WLAN */
+/* On-board WLAN uses USDHC1 */
 &usdhc1 {
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
 	pinctrl-0 = <&pinctrl_usdhc1>;
 	pinctrl-1 = <&pinctrl_usdhc1_100mhz>;
 	pinctrl-2 = <&pinctrl_usdhc1_200mhz>;
-	bus-width = <4>;
-	vmmc-supply = <&reg_vref_3v3>;
 	non-removable;
+	bus-width = <4>;
+	vmmc-supply = <&reg_wlan_1v8>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
 	keep-power-in-suspend;
 	enable-sdio-wakeup;
-	vqmmc-supply = <&reg_wlan_vmmc_1v8>;
 	status = "okay";
 };
 #endif
 
+#ifdef CONFIG_PICOCOM1_2_SD_A
+/* SD_A implemented by USDHC2 */
 &usdhc2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc2>;
-	bus-width = <4>;
-#ifndef CONFIG_PICOCOM1_2_UART_C_RTSCTS
+#ifdef CONFIG_PICOCOM1_2_SD_A_CD
 	cd-gpios = <&gpio1 19 GPIO_ACTIVE_LOW>;
-	wp-gpios = <&gpio1 18 0>;
-else
+#else
 	non-removable;
 #endif
+#ifdef CONFIG_PICOCOM1_2_SD_A_WP
+	wp-gpios = <&gpio1 18 GPIO_ACTIVE_HIGH>;
+#endif
+	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
 	no-1-8-v;
+	keep-power-in-suspend;
 	status = "okay";
 };
+#endif
 
-/* I2C_A: Feature Connector (SKIT) */
-&i2c1 {
-	clock-frequency = <100000>;
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c1>;
-	status = "okay";
-};
-
-/* I2C_B: Feature Connector (SKIT) */
+#ifdef CONFIG_PICOCOM1_2_I2C_A
+/* I2C_A implemented by I2C2 */
 &i2c2 {
 	clock_frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 };
+#endif
 
-/* I2C_C (Bitbanging): RTC (PCA8565), SGTL5000 (SKIT) */
+#ifdef CONFIG_PICOCOM1_2_I2C_B
+/* I2C_B implemented by I2C1 */
+&i2c1 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c1>;
+	status = "okay";
+};
+#endif
+
+/* Internal I2C (bitbanging): RTC (PCA8565), SGTL5000 (SKIT) */
 &i2c_gpio {
-#ifdef CONFIG_PICOCOM1_2_SGTL5000
+#ifdef CONFIG_PICOCOM1_2_AUDIO
 	sgtl5000: sgtl5000@0a {
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
@@ -472,6 +612,7 @@ else
 		VDDD-supply = <&reg_sgtl5000_vddd>;
 	};
 #endif
+
 	rtc8565@51 {
 		compatible = "nxp,pcf8565", "nxp,pcf8563";
 		reg = <0x51>;
@@ -480,7 +621,7 @@ else
 	};
 };
 
-#if defined(CONFIG_PICOCOM1_2_MQS) && !defined(CONFIG_PICOCOM1_2_SGTL5000)
+#ifdef CONFIG_PICOCOM1_2_MQS
 &mqs {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_mqs>;
@@ -495,15 +636,13 @@ else
 };
 #endif
 
-/* SPI_A (3x CS) */
+#ifdef CONFIG_PICOCOM1_2_SPI_A
+/* SPI_A (3x CS) imlpemented by ECSPI1 */
 &ecspi1 {
-	fsl,spi-num-chipselects = <3>;
-	cs-gpios = <&gpio4 26 0>,
-		   <&gpio3 10 0>,
-		   <&gpio3 11 0>;
-
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi1 &pinctrl_ecspi1_cs>;
+	cs-gpios = <&gpio4 26 0>, <&gpio3 10 0>, <&gpio3 11 0>;
+	fsl,spi-num-chipselects = <3>;
 	status = "okay";
 
 	spidev@0 {
@@ -513,15 +652,32 @@ else
 		spi-max-frequency = <20000000>;
 		reg = <0>;
 	};
+
+	spidev@1 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <1>;
+	};
+
+	spidev@2 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <2>;
+	};
 };
+#endif
 
 #ifdef CONFIG_PICOCOM1_2_SPI_B
 /* SPI_B (1x CS) */
 &ecspi2 {
-	fsl,spi-num-chipselects = <1>;
-	cs-gpios = <&gpio4 22 0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi2>;
+	cs-gpios = <&gpio4 22 0>;
+	fsl,spi-num-chipselects = <1>;
 	status = "okay";
 
 	spidev@0 {
@@ -540,7 +696,6 @@ else
 	iram = <&ocram>;
 };
 
-#ifdef CONFIG_PICOCOM1_2_NAND
 &gpmi {
 	/* Switch to F&S implementation of GPMI NAND driver */
 	compatible = "fus,imx6ul-gpmi-nand", "fus,imx6q-gpmi-nand";
@@ -551,7 +706,6 @@ else
 	fus,ecc_strength = <8>;
 	status = "okay";
 };
-#endif
 
 &iomuxc {
 	pinctrl-names = "default";
@@ -561,7 +715,6 @@ else
 		pinctrl_hog_1: hoggrp-1 {
 				fsl,pins = <
 /*###*/				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
-				MX6UL_PAD_LCD_DATA00__SAI1_MCLK		0x17088
 				//MX6UL_PAD_SNVS_TAMPER7__GPIO5_IO07	0x0b0b0
 				/* GPIO1 - GPIO5 */
 				MX6UL_PAD_LCD_DATA12__GPIO3_IO17	0x030b0
@@ -573,7 +726,7 @@ else
 
 };
 
-#ifdef CONFIG_PICOCOM1_2_ETH0
+#ifdef CONFIG_PICOCOM1_2_ETH_A
 		pinctrl_enet1: enet1grp {
 			fsl,pins = <
 				/* MDIO */
@@ -596,39 +749,57 @@ else
 		};
 #endif
 
+#ifdef CONFIG_PICOCOM1_2_CAN_A
 		pinctrl_flexcan1: flexcan1grp{
 			fsl,pins = <
 				MX6UL_PAD_LCD_DATA08__FLEXCAN1_TX	0x1b020
 				MX6UL_PAD_LCD_DATA09__FLEXCAN1_RX	0x1b020
 			>;
 		};
+#endif
 
+#ifdef CONFIG_PICOCOM1_2_CAN_B
 		pinctrl_flexcan2: flexcan2grp{
 			fsl,pins = <
 				MX6UL_PAD_LCD_DATA10__FLEXCAN2_TX	0x1b020
 				MX6UL_PAD_LCD_DATA11__FLEXCAN2_RX	0x1b020
 			>;
 		};
+#endif
 
-#ifdef CONFIG_PICOCOM1_2_PWM
+#ifdef CONFIG_PICOCOM1_2_PWM_A
 		pinctrl_pwm1: pwm1grp {
 			fsl,pins = <
 				MX6UL_PAD_GPIO1_IO08__PWM1_OUT		0x110b0
 			>;
 		};
+#endif
 
-		pinctrl_pwm2: pwm2grp {
-			fsl,pins = <
-				MX6UL_PAD_GPIO1_IO09__PWM2_OUT		0x110b0
-			>;
-		};
-
+#ifdef CONFIG_PICOCOM1_2_PWM_B
 		pinctrl_pwm4: pwm4grp {
 			fsl,pins = <
 				MX6UL_PAD_GPIO1_IO05__PWM4_OUT		0x110b0
 			>;
 		};
-#elif CONFIG_PICOCOM1_2_ADC
+#endif
+
+#ifdef CONFIG_PICOCOM1_2_PWM_C
+		pinctrl_pwm2: pwm2grp {
+			fsl,pins = <
+				MX6UL_PAD_GPIO1_IO09__PWM2_OUT		0x110b0
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOM1_2_PWM_D
+		pinctrl_pwm3: pwm3grp {
+			fsl,pins = <
+				MX6UL_PAD_GPIO1_IO04__PWM3_OUT		0x110b0
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOM1_2_ADC
 		pinctrl_adc1: adc1grp {
 			fsl,pins = <
 				MX6UL_PAD_GPIO1_IO05__GPIO1_IO05	0x000b0
@@ -638,12 +809,33 @@ else
 		};
 #endif
 
-pinctrl_pwm3: pwm3grp {
+#ifdef CONFIG_PICOCOM1_2_UART_A
+		pinctrl_uart3: uart3grp {
 			fsl,pins = <
-				MX6UL_PAD_GPIO1_IO04__PWM3_OUT		0x110b0
+				MX6UL_PAD_UART3_TX_DATA__UART3_DCE_TX	0x1b0b1
+				MX6UL_PAD_UART3_RX_DATA__UART3_DCE_RX	0x1b0b1
+#ifdef CONFIG_PICOCOM1_2_UART_A_RTSCTS
+				MX6UL_PAD_UART3_RTS_B__UART3_DCE_RTS	0x1b0b1
+				MX6UL_PAD_UART3_CTS_B__UART3_DCE_CTS	0x1b0b1
+#endif
 			>;
 		};
+#endif
 
+#ifdef CONFIG_PICOCOM1_2_UART_B
+		pinctrl_uart2: uart2grp {
+			fsl,pins = <
+				MX6UL_PAD_UART2_TX_DATA__UART2_DCE_TX	0x1b0b1
+				MX6UL_PAD_UART2_RX_DATA__UART2_DCE_RX	0x1b0b1
+#ifdef CONFIG_PICOCOM1_2_UART_B_RTSCTS
+				MX6UL_PAD_UART2_RTS_B__UART2_DCE_RTS	0x1b0b1
+				MX6UL_PAD_UART2_CTS_B__UART2_DCE_CTS	0x1b0b1
+#endif
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOM1_2_UART_C
 		pinctrl_uart1: uart1grp {
 			fsl,pins = <
 				MX6UL_PAD_UART1_TX_DATA__UART1_DCE_TX	0x1b0b1
@@ -655,61 +847,44 @@ pinctrl_pwm3: pwm3grp {
 #endif
 			>;
 		};
+#endif
 
-		pinctrl_uart2: uart2grp {
-			fsl,pins = <
-				MX6UL_PAD_UART2_TX_DATA__UART2_DCE_TX	0x1b0b1
-				MX6UL_PAD_UART2_RX_DATA__UART2_DCE_RX	0x1b0b1
-				MX6UL_PAD_UART2_RTS_B__UART2_DCE_RTS	0x1b0b1
-				MX6UL_PAD_UART2_CTS_B__UART2_DCE_CTS	0x1b0b1
-			>;
-		};
-
-		pinctrl_uart3: uart3grp {
-			fsl,pins = <
-				MX6UL_PAD_UART3_TX_DATA__UART3_DCE_TX	0x1b0b1
-				MX6UL_PAD_UART3_RX_DATA__UART3_DCE_RX	0x1b0b1
-				MX6UL_PAD_UART3_RTS_B__UART3_DCE_RTS	0x1b0b1
-				MX6UL_PAD_UART3_CTS_B__UART3_DCE_CTS	0x1b0b1
-			>;
-		};
-
+#ifdef CONFIG_PICOCOM1_2_UART_D
 		pinctrl_uart4: uart4grp {
 			fsl,pins = <
 				MX6UL_PAD_LCD_CLK__UART4_DCE_TX		0x1b0b1
 				MX6UL_PAD_LCD_ENABLE__UART4_DCE_RX	0x1b0b1
+#ifdef CONFIG_PICOCOM1_2_UART_D_RTSCTS
 				MX6UL_PAD_LCD_HSYNC__UART4_DCE_CTS	0x1b0b1
 				MX6UL_PAD_LCD_VSYNC__UART4_DCE_RTS	0x1b0b1
-			>;
-		};
-
-		pinctrl_usb_otg1: usb_otg1grp {
-			fsl,pins = <
-				/* USB_OTG1_PWR, active high */
-//###				MX6UL_PAD_ENET2_RX_DATA0__GPIO2_IO08	0x030b0
-				MX6UL_PAD_ENET2_RX_DATA0__USB_OTG1_PWR	0x030b0
-			>;
-		};
-
-		pinctrl_usb_otg2: usb_otg2grp {
-			fsl,pins = <
-				/* USB_OTG2_PWR, active high */
-//###				MX6UL_PAD_ENET2_TX_DATA1__GPIO2_IO12	0x030b0
-				MX6UL_PAD_ENET2_TX_DATA1__USB_OTG2_PWR	0x030b0
-			>;
-		};
-
-#ifndef CONFIG_PICOCOM1_2_SPI_B
-		pinctrl_uart5: uart5grp {
-			fsl,pins = <
-				MX6UL_PAD_CSI_DATA00__UART5_DCE_TX	0x1b0b1
-				MX6UL_PAD_CSI_DATA01__UART5_DCE_RX	0x1b0b1
-				MX6UL_PAD_CSI_DATA02__UART5_DTE_CTS	0x1b0b1
-				MX6UL_PAD_CSI_DATA03__UART5_DTE_RTS	0x1b0b1
+#endif
 			>;
 		};
 #endif
 
+#ifdef CONFIG_PICOCOM1_2_UART_E
+		pinctrl_uart7: uart7grp {
+			fsl,pins = <
+				MX6UL_PAD_LCD_DATA16__UART7_DCE_TX	0x1b0b1
+				MX6UL_PAD_LCD_DATA17__UART7_DCE_RX	0x1b0b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOM1_2_UART_F
+		pinctrl_uart5: uart5grp {
+			fsl,pins = <
+				MX6UL_PAD_CSI_DATA00__UART5_DCE_TX	0x1b0b1
+				MX6UL_PAD_CSI_DATA01__UART5_DCE_RX	0x1b0b1
+#ifdef CONFIG_PICOCOM1_2_UART_F_RTSCTS
+				MX6UL_PAD_CSI_DATA02__UART5_DTE_CTS	0x1b0b1
+				MX6UL_PAD_CSI_DATA03__UART5_DTE_RTS	0x1b0b1
+#endif
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOM1_2_BLUETOOTH
 		pinctrl_uart6: uart6grp {
 			fsl,pins = <
 				MX6UL_PAD_CSI_MCLK__UART6_DCE_TX	0x1b0b1
@@ -718,23 +893,39 @@ pinctrl_pwm3: pwm3grp {
 				MX6UL_PAD_CSI_HSYNC__UART6_DTE_RTS	0x1b0b1
 			>;
 		};
+#endif
 
-		pinctrl_uart7: uart7grp {
+#ifdef CONFIG_PICOCOM1_2_USB_OTG
+		pinctrl_usb_otg1: usb_otg1grp {
 			fsl,pins = <
-				MX6UL_PAD_LCD_DATA16__UART7_DCE_TX	0x1b0b1
-				MX6UL_PAD_LCD_DATA17__UART7_DCE_RX	0x1b0b1
+#ifdef CONFIG_PICOCOM1_2_USB_OTG_HOST
+				/* USB_OTG1_PWR, active high */
+//###				MX6UL_PAD_ENET2_RX_DATA0__GPIO2_IO08	0x030b0
+				MX6UL_PAD_ENET2_RX_DATA0__USB_OTG1_PWR	0x030b0
+#endif
 			>;
 		};
+#endif
+
+#ifdef CONFIG_PICOCOM1_2_USB_HOST
+		pinctrl_usb_otg2: usb_otg2grp {
+			fsl,pins = <
+				/* USB_OTG2_PWR, active high */
+//###				MX6UL_PAD_ENET2_TX_DATA1__GPIO2_IO12	0x030b0
+				MX6UL_PAD_ENET2_TX_DATA1__USB_OTG2_PWR	0x030b0
+			>;
+		};
+#endif
 
 #ifdef CONFIG_PICOCOM1_2_WLAN
 		pinctrl_usdhc1: usdhc1grp {
 			fsl,pins = <
-				MX6UL_PAD_SD1_CMD__USDHC1_CMD		0x17059
-				MX6UL_PAD_SD1_CLK__USDHC1_CLK		0x10071
-				MX6UL_PAD_SD1_DATA0__USDHC1_DATA0	0x17059
-				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x17059
-				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x17059
-				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x17059
+				MX6UL_PAD_SD1_CMD__USDHC1_CMD		0x17099
+				MX6UL_PAD_SD1_CLK__USDHC1_CLK		0x10091
+				MX6UL_PAD_SD1_DATA0__USDHC1_DATA0	0x17099
+				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x17099
+				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x17099
+				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x17099
 			>;
 		};
 
@@ -761,57 +952,71 @@ pinctrl_pwm3: pwm3grp {
 		};
 #endif
 
+#ifdef CONFIG_PICOCOM1_2_SD_A
 		pinctrl_usdhc2: usdhc2grp {
 			fsl,pins = <
-				MX6UL_PAD_LCD_DATA19__USDHC2_CLK	0x10069
-				MX6UL_PAD_LCD_DATA18__USDHC2_CMD	0x17059
-				MX6UL_PAD_LCD_DATA20__USDHC2_DATA0	0x17059
-				MX6UL_PAD_LCD_DATA21__USDHC2_DATA1	0x17059
-				MX6UL_PAD_LCD_DATA22__USDHC2_DATA2	0x17059
-				MX6UL_PAD_LCD_DATA23__USDHC2_DATA3	0x17059
-
-#ifndef CONFIG_PICOCOM1_2_UART_C_RTSCTS
-				/* SD_CD */
-				MX6UL_PAD_UART1_RTS_B__GPIO1_IO19	0x17059
-				/* SD_WP */
-				MX6UL_PAD_UART1_CTS_B__GPIO1_IO18	0x13059
+				MX6UL_PAD_LCD_DATA18__USDHC2_CMD	0x170b1
+				MX6UL_PAD_LCD_DATA19__USDHC2_CLK	0x100b1
+				MX6UL_PAD_LCD_DATA20__USDHC2_DATA0	0x170b1
+				MX6UL_PAD_LCD_DATA21__USDHC2_DATA1	0x170b1
+				MX6UL_PAD_LCD_DATA22__USDHC2_DATA2	0x170b1
+				MX6UL_PAD_LCD_DATA23__USDHC2_DATA3	0x170b1
+#ifdef CONFIG_PICOCOM1_2_SD_A_CD
+				/* Card Detect (CD), active low (pull-up) */
+				MX6UL_PAD_UART1_RTS_B__GPIO1_IO19	0x17000
+#endif
+#ifdef CONFIG_PICOCOM1_2_SD_A_WP
+				/*
+				 * Write Protect (WP), active high (pull-up)
+				 * lock:   WP switch open, pulled high
+				 * unlock: WP switch closed, connects to GND
+				 */
+				MX6UL_PAD_UART1_CTS_B__GPIO1_IO18	0x17000
 #endif
 			>;
 		};
+#endif
 
-		pinctrl_i2c1: i2c1grp {
-			fsl,pins = <
-				MX6UL_PAD_UART4_TX_DATA__I2C1_SCL	0x4001b8b0
-				MX6UL_PAD_UART4_RX_DATA__I2C1_SDA	0x4001b8b0
-			>;
-		};
-
+#ifdef CONFIG_PICOCOM1_2_I2C_A
 		pinctrl_i2c2: i2c2grp {
 			fsl,pins = <
 				MX6UL_PAD_UART5_TX_DATA__I2C2_SCL	0x4001b8b0
 				MX6UL_PAD_UART5_RX_DATA__I2C2_SDA	0x4001b8b0
 			>;
 		};
+#endif
+
+#ifdef CONFIG_PICOCOM1_2_I2C_B
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <
+				MX6UL_PAD_UART4_TX_DATA__I2C1_SCL	0x4001b8b0
+				MX6UL_PAD_UART4_RX_DATA__I2C1_SDA	0x4001b8b0
+			>;
+		};
+#endif
 
 		pinctrl_i2c_gpio: i2c_gpio_grp {
 			fsl,pins = <
 				MX6UL_PAD_SNVS_TAMPER9__GPIO5_IO09	0x4001b0b0
 				MX6UL_PAD_SNVS_TAMPER8__GPIO5_IO08	0x4001b0b0
+				/* RTC IRQ (unused) */
 				MX6UL_PAD_SNVS_TAMPER7__GPIO5_IO07	0x4001b0b0
 			>;
 		};
 
+#if defined(CONFIG_PICOCOM1_2_AUDIO) || defined(CONFIG_PICOCOM1_2_MQS)
 		pinctrl_sai1: sai1grp {
 			fsl,pins = <
-				//MX6UL_PAD_LCD_DATA00__SAI1_MCLK	0x17088
+				MX6UL_PAD_LCD_DATA00__SAI1_MCLK		0x17088
 				MX6UL_PAD_LCD_DATA01__SAI1_TX_SYNC	0x17088
 				MX6UL_PAD_LCD_DATA02__SAI1_TX_BCLK	0x17088
 				MX6UL_PAD_LCD_DATA03__SAI1_RX_DATA	0x17088
 				MX6UL_PAD_LCD_DATA04__SAI1_TX_DATA	0x17088
 			>;
 		};
+#endif
 
-#if defined(CONFIG_PICOCOM1_2_MQS) && !defined(CONFIG_PICOCOM1_2_SGTL5000)
+#ifdef CONFIG_PICOCOM1_2_MQS
 		pinctrl_mqs: mqsgrp {
 			fsl,pins = <
 				MX6UL_PAD_GPIO1_IO00__MQS_RIGHT		0x120b0
@@ -820,6 +1025,7 @@ pinctrl_pwm3: pwm3grp {
 		};
 #endif
 
+#ifdef CONFIG_PICOCOM1_2_SPI_A
 		pinctrl_ecspi1: ecspi1grp {
 			fsl,pins = <
 				MX6UL_PAD_CSI_DATA04__ECSPI1_SCLK	0x100b1
@@ -835,7 +1041,9 @@ pinctrl_pwm3: pwm3grp {
 				MX6UL_PAD_LCD_DATA06__GPIO3_IO11	0x80000000
 			>;
 		};
+#endif
 
+#ifdef CONFIG_PICOCOM1_2_SPI_B
 		pinctrl_ecspi2: ecspi2grp {
 			fsl,pins = <
 				MX6UL_PAD_CSI_DATA00__ECSPI2_SCLK	0x100b1
@@ -844,8 +1052,8 @@ pinctrl_pwm3: pwm3grp {
 				MX6UL_PAD_CSI_DATA03__ECSPI2_MISO	0x100b1
 			>;
 		};
+#endif
 
-#ifdef CONFIG_PICOCOM1_2_NAND
 #if 0
 		pinctrl_gpmi_nand_1: gpmi-nand-1 {
 			/* Already configured in NBoot/U-Boot */
@@ -868,7 +1076,6 @@ pinctrl_pwm3: pwm3grp {
 				MX6UL_PAD_NAND_DATA07__RAWNAND_DATA07	0x0b0b1
 			>;
 		};
-#endif
 #endif
 
 		pinctrl_status_leds: ledgrp {
