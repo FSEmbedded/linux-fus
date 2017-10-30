@@ -674,7 +674,7 @@ wvga {					\
 	};
 #endif
 
-#ifdef CONFIG_EFUSA9X_CAPTOUCH_SITRONIX
+#ifdef CONFIG_EFUSA7UL_CAPTOUCH_SITRONIX
 	/* Sitronix PCAP touch on Touch-Connector (I2C) */
 	st1633i@48 {
 		compatible = "sitronix";
@@ -685,7 +685,7 @@ wvga {					\
 	};
 #endif
 
-#ifdef CONFIG_EFUSA9X_CAPTOUCH_ILINK
+#ifdef CONFIG_EFUSA7UL_CAPTOUCH_ILINK
 	/* Ilink PCAP touch on Touch-Connector (I2C) */
 	ili210x@41 {
 		compatible = "Ilink,ili210x";
