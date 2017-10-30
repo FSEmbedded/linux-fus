@@ -140,9 +140,9 @@
 #endif /* CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO */
 
 #ifdef CONFIG_ARMSTONEA9R2_WLAN
-		reg_wlan_vmmc_1v8: regulator_wlan {
+		reg_wlan_1v8: regulator_wlan {
 			compatible = "regulator-fixed";
-			regulator-name = "vmmc-wlan-1v8";
+			regulator-name = "vqmmc-wlan-1v8";
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
 			regulator-always-on;
@@ -850,14 +850,16 @@
 	/* on-board WLAN/BT */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc1>;
+	/* WLAN is non-removable, but CD tells us if it is equipped or not */
+	cd-gpios = <&gpio1 1 GPIO_ACTIVE_LOW>;
+	//non-removable;
 	bus-width = <4>;
-	vmmc-supply = <&reg_vref_3v3>;
-	vqmmc-supply = <&reg_wlan_vmmc_1v8>;
-	non-removable;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_wlan_1v8>;	/* VDD_IO */
+	voltage-ranges = <1800 1800>;
 	keep-power-in-suspend;
 	enable-sdio-wakeup;
 	mmc-pwrseq = <&sdhci1_pwrseq>;
-
 	status = "okay";
 };
 #endif
@@ -868,6 +870,12 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc2>;
 	cd-gpios = <&gpio1 4 GPIO_ACTIVE_LOW>;
+	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+	keep-power-in-suspend;
 	status = "okay";
 };
 #endif /* CONFIG_ARMSTONEA9R2_SD_A */
@@ -876,11 +884,13 @@
 &usdhc3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc3>;
-	no-1-8-v;
-	/* Use 8 data lines for eMMC */
-	bus-width = <8>;
 	non-removable;
-	vmmc-supply = <&reg_vref_3v3>;
+	bus-width = <8>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+	keep-power-in-suspend;
 	status = "okay";
 };
 #endif
@@ -1320,17 +1330,19 @@
 			>;
 		};
 #endif
+
+#ifdef CONFIG_ARMSTONEA9R2_WLAN
 		pinctrl_usdhc1:usdhc1grp {
 			fsl,pins = <
-				MX6QDL_PAD_SD1_CMD__SD1_CMD		0x17071
-				MX6QDL_PAD_SD1_CLK__SD1_CLK		0x10071
-				MX6QDL_PAD_SD1_DAT0__SD1_DATA0		0x17071
-				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x17071
-				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x17071
-				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x17071
-				/* SD1_CD */
+				MX6QDL_PAD_SD1_CMD__SD1_CMD		0x17091
+				MX6QDL_PAD_SD1_CLK__SD1_CLK		0x10091
+				MX6QDL_PAD_SD1_DAT0__SD1_DATA0		0x17091
+				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x17091
+				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x17091
+				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x17091
+				/* CD, active low */
 				MX6QDL_PAD_GPIO_1__GPIO1_IO01		0x17000
-#ifdef CONFIG_ARMSTONEA9R2_REV100
+#if (CONFIG_ARMSTONEA9R2_BOARD_REVISION < 110)
 				/* WLAN_RESET, use internal pull-up */
 				MX6QDL_PAD_ENET_RXD0__GPIO1_IO27	0x1b0b0
 #else
@@ -1339,15 +1351,19 @@
 #endif
 			>;
 		};
+#endif /* CONFIG_ARMSTONEA9R2_WLAN */
+
 #ifdef CONFIG_ARMSTONEA9R2_SD_A
 		pinctrl_usdhc2: usdhc2grp {
 			fsl,pins = <
-				MX6QDL_PAD_SD2_CMD__SD2_CMD		0x17051
-				MX6QDL_PAD_SD2_CLK__SD2_CLK		0x10051
-				MX6QDL_PAD_SD2_DAT0__SD2_DATA0		0x17051
-				MX6QDL_PAD_SD2_DAT1__SD2_DATA1		0x17051
-				MX6QDL_PAD_SD2_DAT2__SD2_DATA2		0x17051
-				MX6QDL_PAD_SD2_DAT3__SD2_DATA3		0x17051
+				MX6QDL_PAD_SD2_CMD__SD2_CMD		0x170b1
+				MX6QDL_PAD_SD2_CLK__SD2_CLK		0x100b1
+				MX6QDL_PAD_SD2_DAT0__SD2_DATA0		0x170b1
+				MX6QDL_PAD_SD2_DAT1__SD2_DATA1		0x170b1
+				MX6QDL_PAD_SD2_DAT2__SD2_DATA2		0x170b1
+				MX6QDL_PAD_SD2_DAT3__SD2_DATA3		0x170b1
+				/* Card Detect (CD), active low (pull-up) */
+				MX6QDL_PAD_GPIO_4__GPIO1_IO04		0x17000
 			>;
 		};
 #endif /* CONFIG_ARMSTONEA9R2_SD_A */
@@ -1355,21 +1371,22 @@
 #ifdef CONFIG_ARMSTONEA9R2_EMMC
 		pinctrl_usdhc3: usdhc3grp {
 			fsl,pins = <
-				MX6QDL_PAD_SD3_CMD__SD3_CMD		0x17071
-				MX6QDL_PAD_SD3_CLK__SD3_CLK		0x10071
-				MX6QDL_PAD_SD3_DAT0__SD3_DATA0		0x17071
-				MX6QDL_PAD_SD3_DAT1__SD3_DATA1		0x17071
-				MX6QDL_PAD_SD3_DAT2__SD3_DATA2		0x17071
-				MX6QDL_PAD_SD3_DAT3__SD3_DATA3		0x17071
-				MX6QDL_PAD_SD3_DAT4__SD3_DATA4		0x17071
-				MX6QDL_PAD_SD3_DAT5__SD3_DATA5		0x17071
-				MX6QDL_PAD_SD3_DAT6__SD3_DATA6		0x17071
-				MX6QDL_PAD_SD3_DAT7__SD3_DATA7		0x17071
+				MX6QDL_PAD_SD3_CMD__SD3_CMD		0x17091
+				MX6QDL_PAD_SD3_CLK__SD3_CLK		0x10091
+				MX6QDL_PAD_SD3_DAT0__SD3_DATA0		0x17091
+				MX6QDL_PAD_SD3_DAT1__SD3_DATA1		0x17091
+				MX6QDL_PAD_SD3_DAT2__SD3_DATA2		0x17091
+				MX6QDL_PAD_SD3_DAT3__SD3_DATA3		0x17091
+				MX6QDL_PAD_SD3_DAT4__SD3_DATA4		0x17091
+				MX6QDL_PAD_SD3_DAT5__SD3_DATA5		0x17091
+				MX6QDL_PAD_SD3_DAT6__SD3_DATA6		0x17091
+				MX6QDL_PAD_SD3_DAT7__SD3_DATA7		0x17091
 				/* Reset eMMC, active low */
-				MX6QDL_PAD_SD3_RST__SD3_RESET		0x1B071
+				MX6QDL_PAD_SD3_RST__SD3_RESET		0x17091
 			>;
 		};
 #endif /* CONFIG_ARMSTONEA9R2_EMMC */
+
 		pinctrl_pcie: pciegrp {
 			fsl,pins = <
 				/* PCIe-DIS */

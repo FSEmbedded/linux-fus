@@ -70,6 +70,9 @@ wvga {					\
 /* NAND */
 #define CONFIG_EFUSA7UL_NAND
 
+/* EMMC */
+#define CONFIG_EFUSA7UL_EMMC
+
 /* Network */
 #define CONFIG_EFUSA7UL_WLAN
 #define CONFIG_EFUSA7UL_ETH0
@@ -78,9 +81,66 @@ wvga {					\
 /* USB OTG1 has over-current detection on OC pin */
 #define CONFIG_EFUSA7UL_HAVE_USB_OTG1_OC
 
-/* SD-Card - On SKIT: SD_A is micro SD, SD_B is normalsize SD */
-//#define CONFIG_EFUSA7UL_SD_A_CDWP
+/*
+ * SD_A - External SD port with CD/WP; only available if WLAN is not equipped
+ * On efus SKIT: external port is Micro-SD card slot with CD but without WP
+ */
+#define CONFIG_EFUSA7UL_SD_A
+#define CONFIG_EFUSA7UL_SD_A_CD
+//#define CONFIG_EFUSA7UL_SD_A_WP
 
+/*
+ * SD_B - External SD port; only available if eMMC is not equipped
+ * On efus SKIT: external port is normal-sized SD card slot with CD and WP
+ * CD and WP are only available on SD_B if WLAN is equipped but not eMMC.
+ */
+#define CONFIG_EFUSA7UL_SD_B
+#define CONFIG_EFUSA7UL_SD_B_CD
+#define CONFIG_EFUSA7UL_SD_B_WP
+
+/* Check for invalid CONFIG combinations */
+
+/* On board revisions before 1.10, CD and WP could only be on SD_A */
+#if (CONFIG_EFUSA7UL_BOARD_REVISION < 110)
+#undef CONFIG_EFUSA7UL_SD_B_CD
+#undef CONFIG_EFUSA7UL_SD_B_WP
+#endif
+
+/* If WLAN is equipped, SD_A is used internally, so no CD or WP on SD_A */
+#ifdef CONFIG_EFUSA7UL_WLAN
+#undef CONFIG_EFUSA7UL_SD_A_CD
+#undef CONFIG_EFUSA7UL_SD_A_WP
+#ifndef CONFIG_EFUSA7UL_SD_A
+#define CONFIG_EFUSA7UL_SD_A
+#endif
+#endif
+
+/* If eMMC is equipped, SD_B is used internally, so no CD or WP on SD_B */
+#ifdef CONFIG_EFUSA7UL_EMMC
+#undef CONFIG_EFUSA7UL_SD_B_CD
+#undef CONFIG_EFUSA7UL_SD_B_WP
+#ifndef CONFIG_EFUSA7UL_SD_B
+#define CONFIG_EFUSA7UL_SD_B
+#endif
+#endif
+
+/* If neither WLAN nor eMMC is equipped, CD and WP are both on SD_A */
+#if !defined(CONFIG_EFUSA7UL_WLAN) && !defined(CONFIG_EFUSA7UL_EMMC)
+#undef CONFIG_EFUSA7UL_SD_B_CD
+#undef CONFIG_EFUSA7UL_SD_B_WP
+#endif
+
+/* If SD_A is not active, also CD and WP may not be used */
+#ifndef CONFIG_EFUSA7UL_SD_A
+#undef CONFIG_EFUSA7UL_SD_A_CD
+#undef CONFIG_EFUSA7UL_SD_A_WP
+#endif
+
+/* If SD_B is not active, also CD and WP may not be used */
+#ifndef CONFIG_EFUSA7UL_SD_B
+#undef CONFIG_EFUSA7UL_SD_B_CD
+#undef CONFIG_EFUSA7UL_SD_B_WP
+#endif
 
 #include <dt-bindings/input/input.h>
 #include "imx6ul.dtsi"
@@ -149,16 +209,6 @@ wvga {					\
 			gpio = <&gpio5 5 0>;
 			enable-active-high;
 		};
-
-#ifdef CONFIG_EFUSA7UL_WLAN
-		reg_wlan_vmmc_1v8: regulator_wlan {
-			compatible = "regulator-fixed";
-			regulator-name = "vmmc-wlan-1v8";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			regulator-always-on;
-		};
-#endif
 
 		reg_dvfs: regulator_dvfs {
 			compatible = "regulator-fixed";
@@ -463,53 +513,62 @@ wvga {					\
 	status = "okay";
 };
 
+/* ### TODO: U-Boot should overwrite the device tree settings for SD_A and SD_B
+   depending on the hardware actually found on the running board */
+#ifdef CONFIG_EFUSA7UL_SD_A
 /* Either on-board WLAN or SD_A (Micro-SD slot on SKIT) */
 &usdhc1 {
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
-	pinctrl-0 = <&pinctrl_usdhc1>;
-	pinctrl-1 = <&pinctrl_usdhc1_100mhz>;
-	pinctrl-2 = <&pinctrl_usdhc1_200mhz>;
-	bus-width = <4>;
-	vmmc-supply = <&reg_vref_3v3>;
-#ifdef CONFIG_EFUSA7UL_WLAN
-	non-removable;
-	keep-power-in-suspend;
-	enable-sdio-wakeup;
-	vqmmc-supply = <&reg_wlan_vmmc_1v8>;
-#else
-#ifdef CONFIG_EFUSA7UL_SD_A_CDWP
+	pinctrl-0 = <&pinctrl_usdhc1        &pinctrl_usdhc1_cdwp>;
+	pinctrl-1 = <&pinctrl_usdhc1_100mhz &pinctrl_usdhc1_cdwp>;
+	pinctrl-2 = <&pinctrl_usdhc1_200mhz &pinctrl_usdhc1_cdwp>;
+#ifdef CONFIG_EFUSA7UL_SD_A_CD
 	cd-gpios = <&gpio1 19 GPIO_ACTIVE_LOW>;
-	wp-gpios = <&gpio1 18 0>;
 #else
 	non-removable;
 #endif
+#ifdef CONFIG_EFUSA7UL_SD_A_WP
+	wp-gpios = <&gpio1 18 GPIO_ACTIVE_HIGH>;
 #endif
+	bus-width = <4>;
+#ifdef CONFIG_EFUSA7UL_WLAN
+	enable-sdio-wakeup;
+#endif
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+	keep-power-in-suspend;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_EFUSA7UL_SD_B
 /* Either on-board eMMC or SD_B (normal sized SD slot on SKIT) */
 &usdhc2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc2>;
-	no-1-8-v;
-#ifdef CONFIG_EFUSA7UL_NAND
-	/* Only 4 data lines for SD_B or eMMC available */
-	bus-width = <4>;
-#else
-	/* Use 8 data lines for eMMC */
-	bus-width = <8>;
-#endif
-	/* ### TODO: set non-removable only if eMMC or board rev 1.00;
-	   actually U-Boot should overwrite this property at boot time */
-#ifdef CONFIG_EFUSA7UL_SD_A_CDWP
-	non-removable;
-#else
+#ifdef CONFIG_EFUSA7UL_SD_B_CD
 	cd-gpios = <&gpio1 19 GPIO_ACTIVE_LOW>;
-	wp-gpios = <&gpio1 18 0>;
+#else
+	non-removable;
 #endif
-	vmmc-supply = <&reg_vref_3v3>;
+#ifdef CONFIG_EFUSA7UL_SD_B_WP
+	wp-gpios = <&gpio1 18 GPIO_ACTIVE_HIGH>;
+#endif
+#if defined(CONFIG_EFUSA7UL_EMMC) && !defined(CONFIG_EFUSA7UL_NAND)
+	bus-width = <8>;	/* Without NAND, eMMC may use 8 data lines */
+#else
+	bus-width = <4>;	/* Only 4-bit eMMC or external SD port */
+#endif
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+	keep-power-in-suspend;
 	status = "okay";
 };
+#endif
 
 /* I2C_A: RGB-Connector (SKIT -> SX8655, LED-driver PCA9632), Touch Connector
    (SKIT -> FT5x06, MXT), SX8655 (SKIT), Feature Connector (SKIT) */
@@ -760,15 +819,6 @@ wvga {					\
 			fsl,pins = <
 /*###*/				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
 
-				/* SD_A Card Detect (CD) pin */
-				MX6UL_PAD_UART1_RTS_B__GPIO1_IO19	0x17059
-
-				/* SD_A Write Protect (WP) pin */
-				MX6UL_PAD_UART1_CTS_B__GPIO1_IO18	0x17059
-
-				/* SD_A Reset (for eMMC) */
-				MX6UL_PAD_GPIO1_IO09__GPIO1_IO09	0x17059
-
 				/* I2C_A IRQ (ext. touch, etc.) */
 				MX6UL_PAD_SNVS_TAMPER0__GPIO5_IO00	0x0b0b0
 
@@ -949,14 +999,15 @@ wvga {					\
 			>;
 		};
 
+#ifdef CONFIG_EFUSA7UL_SD_A
 		pinctrl_usdhc1: usdhc1grp {
 			fsl,pins = <
-				MX6UL_PAD_SD1_CMD__USDHC1_CMD		0x17059
-				MX6UL_PAD_SD1_CLK__USDHC1_CLK		0x10071
-				MX6UL_PAD_SD1_DATA0__USDHC1_DATA0	0x17059
-				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x17059
-				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x17059
-				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x17059
+				MX6UL_PAD_SD1_CMD__USDHC1_CMD		0x170b1
+				MX6UL_PAD_SD1_CLK__USDHC1_CLK		0x100b1
+				MX6UL_PAD_SD1_DATA0__USDHC1_DATA0	0x170b1
+				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x170b1
+				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x170b1
+				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x170b1
 			>;
 		};
 
@@ -982,23 +1033,66 @@ wvga {					\
 			>;
 		};
 
-		pinctrl_usdhc2: usdhc2grp {
+		pinctrl_usdhc1_cdwp: usdhc1grp-cdwp {
 			fsl,pins = <
-				MX6UL_PAD_LCD_DATA19__USDHC2_CLK	0x10069
-				MX6UL_PAD_LCD_DATA18__USDHC2_CMD	0x17059
-				MX6UL_PAD_LCD_DATA20__USDHC2_DATA0	0x17059
-				MX6UL_PAD_LCD_DATA21__USDHC2_DATA1	0x17059
-				MX6UL_PAD_LCD_DATA22__USDHC2_DATA2	0x17059
-				MX6UL_PAD_LCD_DATA23__USDHC2_DATA3	0x17059
-#ifndef CONFIG_EFUSA7UL_NAND
-				/* If no NAND, use 8 data lines on eMMC */
-				MX6UL_PAD_NAND_DATA04__USDHC2_DATA4	0x17059
-				MX6UL_PAD_NAND_DATA05__USDHC2_DATA5	0x17059
-				MX6UL_PAD_NAND_DATA06__USDHC2_DATA6	0x17059
-				MX6UL_PAD_NAND_DATA07__USDHC2_DATA7	0x17059
+#ifdef CONFIG_EFUSA7UL_SD_A_CD
+				/* Card Detect (CD), active low (pull-up) */
+				MX6UL_PAD_UART1_RTS_B__GPIO1_IO19	0x17000
+#endif
+#ifdef CONFIG_EFUSA7UL_SD_A_WP
+				/*
+				 * Write Protect (WP), active high (pull-up)
+				 * lock:   WP switch open, pulled high
+				 * unlock: WP switch closed, connects to GND
+				 */
+				MX6UL_PAD_UART1_CTS_B__GPIO1_IO18	0x17000
 #endif
 			>;
 		};
+#endif /* CONFIG_EFUSA7UL_SD_A */
+
+#ifdef CONFIG_EFUSA7UL_SD_B
+		pinctrl_usdhc2: usdhc2grp {
+			fsl,pins = <
+#ifdef CONFIG_EFUSA7UL_EMMC
+				MX6UL_PAD_LCD_DATA18__USDHC2_CMD	0x17091
+				MX6UL_PAD_LCD_DATA19__USDHC2_CLK	0x10091
+				MX6UL_PAD_LCD_DATA20__USDHC2_DATA0	0x17091
+				MX6UL_PAD_LCD_DATA21__USDHC2_DATA1	0x17091
+				MX6UL_PAD_LCD_DATA22__USDHC2_DATA2	0x17091
+				MX6UL_PAD_LCD_DATA23__USDHC2_DATA3	0x17091
+#ifndef CONFIG_EFUSA7UL_NAND
+				/* If no NAND, use 8 data lines on eMMC */
+				MX6UL_PAD_NAND_DATA04__USDHC2_DATA4	0x17091
+				MX6UL_PAD_NAND_DATA05__USDHC2_DATA5	0x17091
+				MX6UL_PAD_NAND_DATA06__USDHC2_DATA6	0x17091
+				MX6UL_PAD_NAND_DATA07__USDHC2_DATA7	0x17091
+#endif
+				/* Reset (for eMMC) */
+				MX6UL_PAD_GPIO1_IO09__USDHC2_RESET_B	0x17091
+#else /* !CONFIG_EFUSA7UL_EMMC */
+				MX6UL_PAD_LCD_DATA18__USDHC2_CMD	0x170b1
+				MX6UL_PAD_LCD_DATA19__USDHC2_CLK	0x100b1
+				MX6UL_PAD_LCD_DATA20__USDHC2_DATA0	0x170b1
+				MX6UL_PAD_LCD_DATA21__USDHC2_DATA1	0x170b1
+				MX6UL_PAD_LCD_DATA22__USDHC2_DATA2	0x170b1
+				MX6UL_PAD_LCD_DATA23__USDHC2_DATA3	0x170b1
+#ifdef CONFIG_EFUSA7UL_SD_B_CD
+				/* Card Detect (CD), active low (pull-up) */
+				MX6UL_PAD_UART1_RTS_B__GPIO1_IO19	0x17000
+#endif
+#ifdef CONFIG_EFUSA7UL_SD_B_WP
+				/*
+				 * Write Protect (WP), active high (pull-up)
+				 * lock:   WP switch open, pulled high
+				 * unlock: WP switch closed, connects to GND
+				 */
+				MX6UL_PAD_UART1_CTS_B__GPIO1_IO18	0x17000
+#endif
+#endif
+			>;
+		};
+#endif /* CONFIG_EFUSA7UL_SD_B */
 
 		pinctrl_i2c1: i2c1grp {
 			fsl,pins = <

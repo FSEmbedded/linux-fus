@@ -168,9 +168,21 @@ wvga {					\
 /* Camera on serial MIPI CSI interface */
 #define CONFIG_EFUSA9_SERIAL_CAMERA
 
-/* SD-CARD - On SKIT: SD_A is micro SD, SD_B is normalsize SD */
+/*
+ * SD_A - External SD port with Card Detect (CD) and Write Protect (WP)
+ * On efus SKIT: external port is Micro SD card slot with CD but without WP
+ */
 #define CONFIG_EFUSA9_SD_A
+#define CONFIG_EFUSA9_SD_A_CD
+//#define CONFIG_EFUSA9_SD_A_WP
+
+/*
+ * SD_B - External SD port with Card Detect (CD) and Write Protect (WP)
+ * On efus SKIT: external port is normal-sized SD card slot with CD and WP
+ */
 #define CONFIG_EFUSA9_SD_B
+#define CONFIG_EFUSA9_SD_B_CD
+#define CONFIG_EFUSA9_SD_B_WP
 
 /* EMMC */
 #define CONFIG_EFUSA9_EMMC

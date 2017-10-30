@@ -77,6 +77,15 @@
 #define __LVDS1_PRIMARY__
 #endif
 
+/* Check for invalid CONFIG combinations */
+
+/* If SD_A is not active, also CD, WP and bus width may not be used */
+#ifndef CONFIG_QBLISSA9_SD_A
+#undef CONFIG_QBLISSA9_SD_A_CD
+#undef CONFIG_QBLISSA9_SD_A_WP
+#undef CONFIG_QBLISSA9_SD_A_8BIT
+#endif
+
 / {
 	aliases {
 		mxcfb0 = &mxcfb0;
@@ -134,9 +143,9 @@
 #endif //###
 
 #ifdef CONFIG_QBLISSA9_WLAN
-		reg_wlan_vmmc_1v8: regulator_wlan {
+		reg_wlan_1v8: regulator_wlan {
 			compatible = "regulator-fixed";
-			regulator-name = "vmmc-wlan-1v8";
+			regulator-name = "vqmmc-wlan-1v8";
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
 			regulator-always-on;
@@ -878,17 +887,17 @@
 	/* on-board WLAN/BT */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc1>;
-	bus-width = <4>;
-	vmmc-supply = <&reg_vref_3v3>;
-	vqmmc-supply = <&reg_wlan_vmmc_1v8>;
 	non-removable;
+	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_wlan_1v8>;	/* VDD_IO */
+	voltage-ranges = <1800 1800>;
 	keep-power-in-suspend;
 	enable-sdio-wakeup;
-	status = "okay";
-	en-gpios=<&gpio1 10 GPIO_ACTIVE_HIGH>,
-	<&gpio1 11 GPIO_ACTIVE_HIGH>;
+	en-gpios=<&gpio1 10 GPIO_ACTIVE_HIGH>, <&gpio1 11 GPIO_ACTIVE_HIGH>;
 	irq-gpios=<&gpio1 15 GPIO_ACTIVE_HIGH>;
 	cd-gpios = <&gpio1 1 GPIO_ACTIVE_LOW>;
+	status = "okay";
 };
 #endif
 #endif
@@ -898,14 +907,24 @@
 	/* Micro-SD-Card-Slot, CD is active low */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc3>;
-	no-1-8-v;
-	/* Use 8 data lines for eMMC */
-	bus-width = <8>;
-	non-removable;
-	vmmc-supply = <&reg_vref_3v3>;
-	status = "okay";
+#ifdef CONFIG_QBLISSA9_SD_A_CD
 	cd-gpios = <&gpio6 15 GPIO_ACTIVE_LOW>;
+#else
+	non-removable;
+#endif
+#ifdef CONFIG_QBLISSA9_SD_A_WP
 	wp-gpios = <&gpio1 13 GPIO_ACTIVE_HIGH>;
+#endif
+#ifdef CONFIG_QBLISSA9_SD_A_8BIT
+	bus-width = <8>;		/* For example eMMC */
+#else
+	bus-width = <4>;
+#endif
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	no-1-8-v;
+	keep-power-in-suspend;
+	status = "okay";
 };
 #endif /* CONFIG_QBLISSA9_SD_A */
 
@@ -1266,13 +1285,13 @@
 #ifdef CONFIG_QBLISSA9_WLAN
 		pinctrl_usdhc1:usdhc1grp {
 			fsl,pins = <
-				MX6QDL_PAD_SD1_CMD__SD1_CMD		0x17059
-				MX6QDL_PAD_SD1_CLK__SD1_CLK		0x10071
-				MX6QDL_PAD_SD1_DAT0__SD1_DATA0		0x17059
-				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x17059
-				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x17059
-				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x17059
-				MX6QDL_PAD_ENET_RXD0__ESAI_TX_HF_CLK	0x10071
+				MX6QDL_PAD_SD1_CMD__SD1_CMD		0x17091
+				MX6QDL_PAD_SD1_CLK__SD1_CLK		0x10091
+				MX6QDL_PAD_SD1_DAT0__SD1_DATA0		0x17091
+				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x17091
+				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x17091
+				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x17091
+				MX6QDL_PAD_ENET_RXD0__ESAI_TX_HF_CLK	0x10091
 				MX6QDL_PAD_SD2_CMD__GPIO1_IO11		0x030b0
 				MX6QDL_PAD_SD2_CLK__GPIO1_IO10		0x030b0
 				MX6QDL_PAD_SD2_DAT0__GPIO1_IO15		0x030b0
@@ -1284,22 +1303,32 @@
 #ifdef CONFIG_QBLISSA9_SD_A
 		pinctrl_usdhc3: usdhc3grp {
 			fsl,pins = <
-				MX6QDL_PAD_SD3_CMD__SD3_CMD		0x17071
-				MX6QDL_PAD_SD3_CLK__SD3_CLK		0x10071
-				MX6QDL_PAD_SD3_DAT0__SD3_DATA0		0x17071
-				MX6QDL_PAD_SD3_DAT1__SD3_DATA1		0x17071
-				MX6QDL_PAD_SD3_DAT2__SD3_DATA2		0x17071
-				MX6QDL_PAD_SD3_DAT3__SD3_DATA3		0x17071
-				MX6QDL_PAD_SD3_DAT4__SD3_DATA4		0x17071
-				MX6QDL_PAD_SD3_DAT5__SD3_DATA5		0x17071
-				MX6QDL_PAD_SD3_DAT6__SD3_DATA6		0x17071
-				MX6QDL_PAD_SD3_DAT7__SD3_DATA7		0x17071
+				MX6QDL_PAD_SD3_CMD__SD3_CMD		0x170b1
+				MX6QDL_PAD_SD3_CLK__SD3_CLK		0x100b1
+				MX6QDL_PAD_SD3_DAT0__SD3_DATA0		0x170b1
+				MX6QDL_PAD_SD3_DAT1__SD3_DATA1		0x170b1
+				MX6QDL_PAD_SD3_DAT2__SD3_DATA2		0x170b1
+				MX6QDL_PAD_SD3_DAT3__SD3_DATA3		0x170b1
+#ifdef CONFIG_QBLISSA9_SD_A_8BIT
+				MX6QDL_PAD_SD3_DAT4__SD3_DATA4		0x170b1
+				MX6QDL_PAD_SD3_DAT5__SD3_DATA5		0x170b1
+				MX6QDL_PAD_SD3_DAT6__SD3_DATA6		0x170b1
+				MX6QDL_PAD_SD3_DAT7__SD3_DATA7		0x170b1
+#endif
 				/* Reset eMMC, active low */
-				MX6QDL_PAD_SD3_RST__GPIO7_IO08		0x0b060
-				/* CD */
-				MX6QDL_PAD_NANDF_CS2__GPIO6_IO15	0x0b060
-				/* WP */
-				MX6QDL_PAD_SD2_DAT2__GPIO1_IO13		0x030b0
+				MX6QDL_PAD_SD3_RST__GPIO7_IO08		0x170b1
+#ifdef CONFIG_QBLISSA9_SD_A_CD
+				/* Card Detect (CD), active low (pull-up) */
+				MX6QDL_PAD_NANDF_CS2__GPIO6_IO15	0x17000
+#endif
+#ifdef CONFIG_QBLISSA9_SD_A_WP
+				/*
+				 * Write Protect (WP), active high (pull-up)
+				 * lock:   WP switch open, pulled high
+				 * unlock: WP switch closed, connects to GND
+				 */
+				MX6QDL_PAD_SD2_DAT2__GPIO1_IO13		0x17000
+#endif
 			>;
 		};
 #endif

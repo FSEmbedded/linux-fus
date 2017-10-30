@@ -137,7 +137,7 @@
 #define __LVDS1_PRIMARY__
 #endif
 
-/* Do some additional sanity checks */
+/* Check for invalid CONFIG combinations */
 
 /* Before board revision 1.10, some features were not available */
 #if CONFIG_PICOMODA9_BOARD_REVISION < 110
@@ -171,6 +171,18 @@
 #ifdef CONFIG_PICOMODA9_CAN_B
 #undef CONFIG_PICOMODA9_UART_D_RTSCTS
 #undef CONFIG_PICOMODA9_UART_D_RS485
+#endif
+
+/* If eMMC is available, SD_A can not be used */
+#ifdef CONFIG_PICOMODA9_EMMC
+#undef CONFIG_PICOMODA9_SD_A
+#endif
+
+/* If SD_B is not active, also CD, WP and PWR pins must not be used */
+#ifndef CONFIG_PICOMODA9_SD_B
+#undef CONFIG_PICOMODA9_SD_B_CD
+#undef CONFIG_PICOMODA9_SD_B_WP
+#undef CONFIG_PICOMODA9_SD_B_PWR
 #endif
 
 / {
@@ -230,14 +242,13 @@
 			enable-active-high;
 		};
 
-#ifdef CONFIG_PICOMODA9_SD_B
-		reg_usdhc2_pwr: usdhc2_pwr {
+#ifdef CONFIG_PICOMODA9_SD_B_PWR
+		reg_sd_b_pwr: usdhc2_pwr {
 			compatible = "regulator-fixed";
 			regulator-name = "usdhc2_pwr";
-			gpio = <&gpio2 16 GPIO_ACTIVE_HIGH>;
+			gpio = <&gpio2 16 GPIO_ACTIVE_LOW>;
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
-			enable-active-high;
 		};
 #endif
 
@@ -963,28 +974,43 @@
 	status = "okay";
 };
 
-#ifdef CONFIG_PICOMODA9_SD_A
+#if defined(CONFIG_PICOMODA9_SD_A) || defined(CONFIG_PICOMODA9_EMMC)
 &usdhc1 {
 	/* On-board Micro-SD-Card-Slot (without CD) or eMMC (only 4 bit) */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc1>;
-	keep-power-in-suspend;
-	bus-width = <4>;
 	non-removable;
+	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
 	no-1-8-v;
-	vmmc-supply = <&reg_vref_3v3>;
+	keep-power-in-suspend;
 	status = "okay";
 };
-#endif /* CONFIG_PICOMODA9_SD_A */
+#endif /* CONFIG_PICOMODA9_SD_A || CONFIG_PICOMODA9_EMMC */
 
 #ifdef CONFIG_PICOMODA9_SD_B
 &usdhc2 {
 	/* SD-Card-Slot on carrier board, CD is active low */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc2>;
-	power-supply =<&reg_usdhc2_pwr>;
+#ifdef CONFIG_PICOMODA9_SD_B_CD
 	cd-gpios = <&gpio1 4 GPIO_ACTIVE_LOW>;
+#else
+	non-removable;
+#endif
+#ifdef CONFIG_PICOMODA9_SD_B_WP
 	wp-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;
+#endif
+#ifdef CONFIG_PICOMODA9_SD_B_PWR
+	vmmc-supply = <&reg_sd_b_pwr>;	/* VDD */
+#else
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+#endif
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
 	keep-power-in-suspend;
 	status = "okay";
 };
@@ -1170,6 +1196,10 @@
 				/* GPIO 4 - GPIO 5 */
 				MX6QDL_PAD_EIM_A20__GPIO2_IO18		0x400030b0
 				MX6QDL_PAD_EIM_A21__GPIO2_IO17		0x400030b0
+#ifndef CONFIG_PICOMODA9_SD_B_PWR
+				/* GPIO 6 */
+				MX6QDL_PAD_EIM_A22__GPIO2_IO16		0x400030b0
+#endif
 
 				/* GPIO 8 - GPIO 9 */
 				MX6QDL_PAD_EIM_EB0__GPIO2_IO28		0x400030b0
@@ -1456,18 +1486,34 @@
 			>;
 		};
 
-#ifdef CONFIG_PICOMODA9_SD_A
-		/* On-board Micro-SD slot or optional eMMC (only 4 bit) */
+#ifdef CONFIG_PICOMODA9_EMMC
+		/* On-board eMMC (only 4 bit) */
 		pinctrl_usdhc1: usdhc1grp {
 			fsl,pins = <
-				MX6QDL_PAD_SD1_CLK__SD1_CLK		0x17071
-				MX6QDL_PAD_SD1_CMD__SD1_CMD		0x17071
-				MX6QDL_PAD_SD1_DAT0__SD1_DATA0		0x17071
-				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x17071
-				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x17071
-				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x17071
+				MX6QDL_PAD_SD1_CLK__SD1_CLK		0x17091
+				MX6QDL_PAD_SD1_CMD__SD1_CMD		0x17091
+				MX6QDL_PAD_SD1_DAT0__SD1_DATA0		0x17091
+				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x17091
+				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x17091
+				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x17091
 				/* reset */
-				MX6QDL_PAD_NANDF_CS1__GPIO6_IO14	0x1b071
+				MX6QDL_PAD_NANDF_CS1__GPIO6_IO14	0x17091
+			>;
+		};
+#endif /* CONFIG_PICOMODA9_EMMC */
+
+#ifdef CONFIG_PICOMODA9_SD_A
+		/* On-board Micro-SD */
+		pinctrl_usdhc1: usdhc1grp {
+			fsl,pins = <
+				MX6QDL_PAD_SD1_CLK__SD1_CLK		0x170b1
+				MX6QDL_PAD_SD1_CMD__SD1_CMD		0x170b1
+				MX6QDL_PAD_SD1_DAT0__SD1_DATA0		0x170b1
+				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x170b1
+				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x170b1
+				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x170b1
+				/* reset */
+				MX6QDL_PAD_NANDF_CS1__GPIO6_IO14	0x170b1
 			>;
 		};
 #endif /* CONFIG_PICOMODA9_SD_A */
@@ -1481,12 +1527,18 @@
 				MX6QDL_PAD_SD2_DAT1__SD2_DATA1		0x17051
 				MX6QDL_PAD_SD2_DAT2__SD2_DATA2		0x17051
 				MX6QDL_PAD_SD2_DAT3__SD2_DATA3		0x17051
-				/* WP */
-				MX6QDL_PAD_GPIO_2__GPIO1_IO02		0x0b060
-				/* RST active low */
-				MX6QDL_PAD_GPIO_4__GPIO1_IO04		0x0b060
-				/* SD_PWR: pull_down = SD card has power */
-				MX6QDL_PAD_EIM_A22__GPIO2_IO16		0x030b0
+#ifdef CONFIG_PICOMODA9_SD_B_CD
+				/* CD, active low */
+				MX6QDL_PAD_GPIO_4__GPIO1_IO04		0x1b060
+#endif
+#ifdef CONFIG_PICOMODA9_SD_B_WP
+				/* WP, active high */
+				MX6QDL_PAD_GPIO_2__GPIO1_IO02		0x1b060
+#endif
+#ifdef CONFIG_PICOMODA9_SD_B_PWR
+				/* PWR, active low */
+				MX6QDL_PAD_EIM_A22__GPIO2_IO16		0x0b0b0
+#endif
 			>;
 		};
 #endif /* CONFIG_PICOMODA9_SD_B */

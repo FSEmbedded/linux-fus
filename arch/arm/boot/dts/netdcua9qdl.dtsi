@@ -807,12 +807,14 @@
 	/* SD-Card-Slot, CD is active low, WP is active high */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc1_1>;
-	bus-width = <4>;
 	cd-gpios = <&gpio1 1 GPIO_ACTIVE_LOW>;
 	wp-gpios = <&gpio4 20 GPIO_ACTIVE_HIGH>;
+	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
 	no-1-8-v;
 	keep-power-in-suspend;
-	enable-sdio-wakeup;
 	status = "okay";
 };
 #endif /* CONFIG_NETDCUA9_SD_A */
@@ -821,10 +823,13 @@
 &usdhc3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc3>;
-	vmmc-supply = <&reg_sd3_vmmc>;
-	bus-width = <8>;
-	no-1-8-v;
 	non-removable;
+	bus-width = <8>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+	keep-power-in-suspend;
 	status = "okay";
 };
 #endif /* CONFIG_NETDCUA9_EMMC */
@@ -1238,16 +1243,20 @@
 		/* USDHC1 - SD A */
 		pinctrl_usdhc1_1: usdhc1grp {
 			fsl,pins = <
-				MX6QDL_PAD_SD1_CMD__SD1_CMD		0x17071
-				MX6QDL_PAD_SD1_CLK__SD1_CLK		0x10071
-				MX6QDL_PAD_SD1_DAT0__SD1_DATA0		0x17071
-				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x17071
-				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x17071
-				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x17071
-				/* SD1_CD pin */
-				MX6QDL_PAD_GPIO_1__GPIO1_IO01		0x17059
-				/* SD2_WP pin */
-				MX6QDL_PAD_DI0_PIN4__GPIO4_IO20		0x0b060
+				MX6QDL_PAD_SD1_CMD__SD1_CMD		0x170b1
+				MX6QDL_PAD_SD1_CLK__SD1_CLK		0x100b1
+				MX6QDL_PAD_SD1_DAT0__SD1_DATA0		0x170b1
+				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x170b1
+				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x170b1
+				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x170b1
+				/* Card Detect (CD), active low (pull-up) */
+				MX6QDL_PAD_GPIO_1__GPIO1_IO01		0x17000
+				/*
+				 * Write Protect (WP), active high (pull-up)
+				 * lock:   WP switch open, pulled high
+				 * unlock: WP switch closed, connects to GND
+				 */
+				MX6QDL_PAD_DI0_PIN4__GPIO4_IO20		0x17000
 			>;
 		};
 #endif /* CONFIG_NETDCUA9_SD_A */

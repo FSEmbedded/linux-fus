@@ -1090,6 +1090,11 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc3>;
 	cd-gpios = <&gpio6 15 GPIO_ACTIVE_LOW>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+	keep-power-in-suspend;
 	status = "okay";
 };
 #endif /* CONFIG_ARMSTONEA9_SD_A */
@@ -1518,7 +1523,9 @@
 				MX6QDL_PAD_SD3_DAT2__SD3_DATA2		0x17051
 				MX6QDL_PAD_SD3_DAT3__SD3_DATA3		0x17051
 				/* RST is active low */
-				MX6QDL_PAD_SD3_RST__GPIO7_IO08		0x0b060
+				MX6QDL_PAD_SD3_RST__GPIO7_IO08		0x1b060
+				/* Card Detect (CD), active low (pull-up) */
+				MX6QDL_PAD_NANDF_CS2__GPIO6_IO15	0x17000
 			>;
 		};
 #endif /* CONFIG_ARMSTONEA9_SD_A */

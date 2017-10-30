@@ -78,7 +78,8 @@ lcd_wvga {				\
 /*
  * WLAN/BLUETOOTH; the PCOMnet carrier board can be equipped with a WLAN only
  * or a combined WLAN/Bluetooth chip. WLAN is connected via SD-Card pins and
- * Bluetooth via UART_B. */
+ * Bluetooth via UART_B.
+ */
 //#define CONFIG_PICOCOMA9X_WLAN
 //#define CONFIG_PICOCOMA9X_BLUETOOTH
 
@@ -99,6 +100,7 @@ lcd_wvga {				\
 
 /* SD_A on pins 34-39, optional CD is on pin 12 */
 #define CONFIG_PICOCOMA9X_SD_A
+#define CONFIG_PICOCOMA9X_SD_A_CD
 
 /* On-board EMMC */
 #define CONFIG_PICOCOMA9X_EMMC
@@ -127,11 +129,12 @@ lcd_wvga {				\
 /* Check for invalid CONFIG combinations */
 
 /*
- * Exclude devices from Linux that are used by the Cortex-M4 RTOS examples
- * - SPI_A pins used as GPIOs in diffrent examples and in SPI examples
+ * Exclude devices from Linux that are used by the Cortex-M4 FreeRTOS examples
+ *
+ * - UART_B used for debug output/UART examples
+ * - SPI_A pins used as GPIOs in different examples and in SPI examples
  * - CAN_A used in CAN examples
  * - I2C_A used in I2C examples
- * - UART_B used in debug output/UART examples
  */
 #ifdef SUPPORT_M4
 #undef CONFIG_PICOCOMA9X_CAN_A
@@ -173,6 +176,13 @@ lcd_wvga {				\
 #undef CONFIG_PICOCOMA9X_UART_C
 #endif
 
+/* If WLAN is available on PCOMnet via SD_A, the CD signal is used as IRQ */
+#ifdef CONFIG_PICOCOMA9X_WLAN
+#undef CONFIG_PICOCOMA9X_SD_A_CD
+#ifndef CONFIG_PICOCOMA9X_SD_A
+#define CONFIG_PICOCOMA9X_SD_A
+#endif
+#endif
 
 
 #include "imx6sx.dtsi"
@@ -260,13 +270,15 @@ lcd_wvga {				\
 			regulator-max-microvolt = <3300000>;
 		};
 
-		reg_wlan_vmmc_1v8: regulator_wlan {
+#ifdef CONFIG_PICOCOMA9X_WLAN
+		reg_wlan_1v8: regulator_wlan {
 			compatible = "regulator-fixed";
-			regulator-name = "vmmc-wlan-1v8";
+			regulator-name = "vqmmc-wlan-1v8";
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
 			regulator-always-on;
 		};
+#endif
 
 		/* USB_OTG1 only usable in device mode, no regulator needed */
 
@@ -619,12 +631,26 @@ lcd_wvga {				\
 /* SD Card */
 #ifdef CONFIG_PICOCOMA9X_SD_A
 &usdhc2 {
-	/* External normal sized SD clot on efus SKIT */
+	/* External normal-sized SD slot on efus SKIT */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc2_1>;
-	bus-width = <4>;
+#ifdef CONFIG_PICOCOMA9X_SD_A_CD
 	cd-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;
-	vmmc-supply = <&reg_vref_3v3>;
+#else
+	non-removable;
+#endif
+	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+#ifdef CONFIG_PICOCOMA9X_WLAN
+	vqmmc-supply = <&reg_wlan_1v8>;	/* VDD_IO */
+	voltage-ranges = <1800 1800>;
+	enable-sdio-wakeup;
+#else
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+#endif
+	keep-power-in-suspend;
 	status = "okay";
 };
 #endif
@@ -634,10 +660,15 @@ lcd_wvga {				\
 &usdhc4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc4_1>;
+	/* eMMC is non-removable, but CD tells us if it is equipped or not */
+	cd-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;
+	//non-removable;
 	bus-width = <8>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
 	no-1-8-v;
-	non-removable;
-	vmmc-supply = <&reg_vref_3v3>;
+	keep-power-in-suspend;
 	status = "okay";
 };
 #endif
@@ -936,18 +967,23 @@ lcd_wvga {				\
 #endif
 
 #ifdef CONFIG_PICOCOMA9X_SD_A
-		/* SD card and WLAN (via sdio port expander)*/
+		/* SD card (may be WLAN on PCOMnet carrier board) */
 		pinctrl_usdhc2_1: usdhc2grp-1 {
 			fsl,pins = <
-				MX6SX_PAD_SD2_CMD__USDHC2_CMD		0x17071
-				MX6SX_PAD_SD2_CLK__USDHC2_CLK		0x10071
-				MX6SX_PAD_SD2_DATA0__USDHC2_DATA0	0x17071
-				MX6SX_PAD_SD2_DATA1__USDHC2_DATA1	0x17071
-				MX6SX_PAD_SD2_DATA2__USDHC2_DATA2	0x17071
-				MX6SX_PAD_SD2_DATA3__USDHC2_DATA3	0x17071
-				MX6SX_PAD_GPIO1_IO06__USDHC2_CD_B	0x17071
-				/* Card detect and WLAN IRQ on PCOMnet */
-				//MX6SX_PAD_GPIO1_IO06__GPIO1_IO_6	0x80000000
+				MX6SX_PAD_SD2_CMD__USDHC2_CMD		0x170b1
+				MX6SX_PAD_SD2_CLK__USDHC2_CLK		0x100b1
+				MX6SX_PAD_SD2_DATA0__USDHC2_DATA0	0x170b1
+				MX6SX_PAD_SD2_DATA1__USDHC2_DATA1	0x170b1
+				MX6SX_PAD_SD2_DATA2__USDHC2_DATA2	0x170b1
+				MX6SX_PAD_SD2_DATA3__USDHC2_DATA3	0x170b1
+#ifdef CONFIG_PICOCOMA9X_SD_A_CD
+				/* Card Detect (CD), active low (pull-up) */
+				MX6SX_PAD_GPIO1_IO06__GPIO1_IO_6	0x17000
+#endif
+#ifdef CONFIG_PICOCOMA9X_WLAN
+				/* WLAN IRQ, active low */
+				MX6SX_PAD_GPIO1_IO06__GPIO1_IO_6	0x17000
+#endif
 			>;
 		};
 #endif
@@ -956,19 +992,19 @@ lcd_wvga {				\
 		/* EMMC */
 		pinctrl_usdhc4_1: usdhc4grp-1 {
 			fsl,pins = <
-				MX6SX_PAD_SD4_CLK__USDHC4_CLK		0x10071
-				MX6SX_PAD_SD4_CMD__USDHC4_CMD		0x17071
-				MX6SX_PAD_SD4_RESET_B__USDHC4_RESET_B	0x10071
-				MX6SX_PAD_SD4_DATA0__USDHC4_DATA0	0x17071
-				MX6SX_PAD_SD4_DATA1__USDHC4_DATA1	0x17071
-				MX6SX_PAD_SD4_DATA2__USDHC4_DATA2	0x17071
-				MX6SX_PAD_SD4_DATA3__USDHC4_DATA3	0x17071
-				MX6SX_PAD_SD4_DATA4__USDHC4_DATA4	0x17071
-				MX6SX_PAD_SD4_DATA5__USDHC4_DATA5	0x17071
-				MX6SX_PAD_SD4_DATA6__USDHC4_DATA6	0x17071
-				MX6SX_PAD_SD4_DATA7__USDHC4_DATA7	0x17071
+				MX6SX_PAD_SD4_CMD__USDHC4_CMD		0x17091
+				MX6SX_PAD_SD4_CLK__USDHC4_CLK		0x10091
+				MX6SX_PAD_SD4_RESET_B__USDHC4_RESET_B	0x10091
+				MX6SX_PAD_SD4_DATA0__USDHC4_DATA0	0x17091
+				MX6SX_PAD_SD4_DATA1__USDHC4_DATA1	0x17091
+				MX6SX_PAD_SD4_DATA2__USDHC4_DATA2	0x17091
+				MX6SX_PAD_SD4_DATA3__USDHC4_DATA3	0x17091
+				MX6SX_PAD_SD4_DATA4__USDHC4_DATA4	0x17091
+				MX6SX_PAD_SD4_DATA5__USDHC4_DATA5	0x17091
+				MX6SX_PAD_SD4_DATA6__USDHC4_DATA6	0x17091
+				MX6SX_PAD_SD4_DATA7__USDHC4_DATA7	0x17091
 				/* Card Detect (CD) */
-				MX6SX_PAD_KEY_COL2__USDHC4_CD_B		0x17071
+				MX6SX_PAD_KEY_COL2__GPIO2_IO_12		0x17000
 			>;
 		};
 #endif

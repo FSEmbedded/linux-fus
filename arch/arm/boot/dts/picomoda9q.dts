@@ -118,6 +118,9 @@ wvga {					\
 /* NAND */
 #define CONFIG_PICOMODA9_NAND
 
+/* EMMC; optionally available starting with board revision 1.10 */
+#define CONFIG_PICOMODA9_EMMC
+
 /* AUDIO */
 #define CONFIG_PICOMODA9_SGTL5000_AUDIO
 
@@ -140,13 +143,16 @@ wvga {					\
 //#define CONFIG_PICOMODA9_CAN_B
 
 /*
- * SD_A: On-board Micro-SD card slot. Starting with board revision 1.10, this
- * may optionally be on-board eMMC memory instead of the SD card slot.
+ * SD_A: On-board Micro-SD card slot, no CD, no WP. Starting with board rev.
+ * 1.10, this port is only available if no on-board eMMC is installed.
  */
 #define CONFIG_PICOMODA9_SD_A
 
-/* SD_B: ext. SD card slot (normal-sized SD card slot on SKIT) */
+/* SD_B: ext. SD card slot (on SKIT: normal-sized SD card slot, CD, WP, PWR) */
 #define CONFIG_PICOMODA9_SD_B
+#define CONFIG_PICOMODA9_SD_B_CD
+#define CONFIG_PICOMODA9_SD_B_WP
+#define CONFIG_PICOMODA9_SD_B_PWR
 
 /* I2C */
 #define CONFIG_PICOMODA9_I2C_A

@@ -506,11 +506,14 @@
 	/* Micro-SD slot on CONT1 */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc2_1>;
-	bus-width = <4>;
 	cd-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;
-	/* n.c. */
-	//wp-gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>;
-	vmmc-supply = <&reg_vref_3v3>;
+	//wp-gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>; /* not connected */
+	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+	keep-power-in-suspend;
 	status = "okay";
 };
 
@@ -807,9 +810,13 @@
 				MX6SX_PAD_SD2_DATA1__USDHC2_DATA1	0x17071
 				MX6SX_PAD_SD2_DATA2__USDHC2_DATA2	0x17071
 				MX6SX_PAD_SD2_DATA3__USDHC2_DATA3	0x17071
-				/* CD */
+				/* Card Detect (CD), active low (pull-up) */
 				MX6SX_PAD_GPIO1_IO06__GPIO1_IO_6	0x17000
-				/* WP */
+				/*
+				 * Write Protect (WP), active high (pull-up)
+				 * lock:   WP switch open, pulled high
+				 * unlock: WP switch closed, connects to GND
+				 */
 				MX6SX_PAD_GPIO1_IO07__GPIO1_IO_7	0x17000
 			>;
 		};

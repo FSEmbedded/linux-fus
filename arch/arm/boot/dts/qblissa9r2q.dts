@@ -167,10 +167,12 @@ wvga {					\
 /* WLAN */
 #define CONFIG_QBLISSA9R2_WLAN
 
-/* SD-CARD - SD_A is micro SD */
+/* SD_A - On SKIT: Micro-SD Card Slot, CD always low, WP unused, 4 bit */
 #define CONFIG_QBLISSA9R2_SD_A
+//#define CONFIG_QBLISSA9R2_SD_A_CD
+//#define CONFIG_QBLISSA9R2_SD_A_WP
 
-/* SD-CARD - SD_C is eMMC */
+/* EMMC */
 #define CONFIG_QBLISSA9R2_EMMC
 
 /* I2C */

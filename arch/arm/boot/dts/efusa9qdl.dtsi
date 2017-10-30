@@ -131,6 +131,20 @@
 #define __LVDS1_PRIMARY__
 #endif
 
+/* Check for invalid CONFIG combinations */
+
+/* If SD_A is not active, also CD and WP may not be used */
+#ifndef CONFIG_EFUSA9_SD_A
+#undef CONFIG_EFUSA9_SD_A_CD
+#undef CONFIG_EFUSA9_SD_A_WP
+#endif
+
+/* If SD_B is not active, also CD and WP may not be used */
+#ifndef CONFIG_EFUSA9_SD_B
+#undef CONFIG_EFUSA9_SD_B_CD
+#undef CONFIG_EFUSA9_SD_B_WP
+#endif
+
 / {
 	aliases {
 		mxcfb0 = &mxcfb0;
@@ -248,16 +262,6 @@
 			compatible = "regulator-fixed";
 			regulator-name = "can";
 		};
-#ifdef CONFIG_EFUSA9_EMMC
-		/* eMMC */
-		reg_sd3_vmmc: sd3_vmmc{
-			compatible = "regulator-fixed";
-			regulator-name = "P3V3_SDa_SWITCHED";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			regulator-always-on;
-		};
-#endif
 
 #ifdef CONFIG_EFUSA9_CAMERA
 		reg_camera_dovdd: camera_dovdd {
@@ -983,20 +987,24 @@
 
 #ifdef CONFIG_EFUSA9_SD_A
 &usdhc1 {
-	/* Micro-SD-Card-Slot, CD is active high */
+	/* On efus SKIT this is a Micro-SD card slot, CD active high, no WP */
 	pinctrl-names = "default";
-	// ### Use CD & WP as SDHC controller pins
-	// pinctrl-0 = <&pinctrl_usdhc1_2>;
-	// fsl,cd-controller;
-	// fsl,wp-controller;
-	// ### Use CD & WP as GPIO
 	pinctrl-0 = <&pinctrl_usdhc1_1>;
-	bus-width = <4>;
+#ifdef CONFIG_EFUSA9_SD_A_CD
 	cd-gpios = <&gpio1 1 GPIO_ACTIVE_LOW>;
-	//wp-gpios = <&gpio4 20 GPIO_ACTIVE_HIGH>;
+#else
+	non-removable;
+#endif
+#ifdef CONFIG_EFUSA9_SD_A_WP
+	wp-gpios = <&gpio4 20 GPIO_ACTIVE_HIGH>;
+#endif
+	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
 	no-1-8-v;
 	keep-power-in-suspend;
-	enable-sdio-wakeup;
+	//enable-sdio-wakeup;
 	status = "okay";
 };
 #endif /* CONFIG_EFUSA9_SD_A */
@@ -1005,30 +1013,36 @@
 &usdhc2 {
 	/* SD-Card-Slot, CD is active low */
 	pinctrl-names = "default";
-	// ### Use CD & WP as SDHC controller pins
-	// pinctrl-0 = <&pinctrl_usdhc2_3>;
-	// fsl,cd-controller;
-	// fsl,wp-controller;
-	// ### Use CD & WP as GPIO
 	pinctrl-0 = <&pinctrl_usdhc2_2>;
-	bus-width = <4>;
+#ifdef CONFIG_EFUSA9_SD_B_CD
 	cd-gpios = <&gpio1 4 GPIO_ACTIVE_LOW>;
+#else
+	non-removable;
+#endif
+#ifdef CONFIG_EFUSA9_SD_B_WP
 	wp-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;
+#endif
+	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
 	no-1-8-v;
 	keep-power-in-suspend;
-	enable-sdio-wakeup;
+	//enable-sdio-wakeup;
 	status = "okay";
 };
-#endif /* CONFIG_EFUSA9_SD_A */
+#endif /* CONFIG_EFUSA9_SD_B */
 
 #ifdef CONFIG_EFUSA9_EMMC
 &usdhc3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc3>;
-	vmmc-supply = <&reg_sd3_vmmc>;
-	bus-width = <8>;
-	no-1-8-v;
 	non-removable;
+	bus-width = <8>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
 	status = "okay";
 };
 #endif /* CONFIG_EFUSA9_EMMC */
@@ -1165,14 +1179,6 @@
 				MX6QDL_PAD_SD4_DAT0__GPIO2_IO08		0x13059
 				/* WDOG1 */
 				MX6QDL_PAD_GPIO_9__WDOG1_B		0x80000000
-				/* SD1_CD pin */
-				MX6QDL_PAD_GPIO_1__GPIO1_IO01		0x17059
-				/* SD2_WP pin */
-				MX6QDL_PAD_DI0_PIN4__GPIO4_IO20		0x80000000
-				 /* SD2_CD pin */
-				MX6QDL_PAD_GPIO_4__GPIO1_IO04		0x17059
-				/* SD2_WP pin */
-				MX6QDL_PAD_GPIO_2__GPIO1_IO02		0x80000000
 				/* camera powerdown - active high */
 				MX6QDL_PAD_CSI0_DAT6__GPIO5_IO24	0x17059
 				/* camera reset - active low */
@@ -1438,12 +1444,24 @@
 		/* USDHC1 - SD A */
 		pinctrl_usdhc1_1: usdhc1grp {
 			fsl,pins = <
-				MX6QDL_PAD_SD1_CMD__SD1_CMD		0x17071
-				MX6QDL_PAD_SD1_CLK__SD1_CLK		0x10071
-				MX6QDL_PAD_SD1_DAT0__SD1_DATA0		0x17071
-				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x17071
-				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x17071
-				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x17071
+				MX6QDL_PAD_SD1_CMD__SD1_CMD		0x170b1
+				MX6QDL_PAD_SD1_CLK__SD1_CLK		0x100b1
+				MX6QDL_PAD_SD1_DAT0__SD1_DATA0		0x170b1
+				MX6QDL_PAD_SD1_DAT1__SD1_DATA1		0x170b1
+				MX6QDL_PAD_SD1_DAT2__SD1_DATA2		0x170b1
+				MX6QDL_PAD_SD1_DAT3__SD1_DATA3		0x170b1
+#ifdef CONFIG_EFUSA9_SD_A_CD
+				/* Card Detect (CD), active low (pull-up) */
+				MX6QDL_PAD_GPIO_1__GPIO1_IO01		0x17000
+#endif
+#ifdef CONFIG_EFUSA9_SD_A_WP
+				/*
+				 * Write Protect (WP), active high (pull-up)
+				 * lock:   WP switch open, pulled high
+				 * unlock: WP switch closed, connects to GND
+				 */
+				MX6QDL_PAD_DI0_PIN4__GPIO4_IO20		0x17000
+#endif
 			>;
 		};
 #endif /* CONFIG_EFUSA9_SD_A */
@@ -1452,15 +1470,46 @@
 		/* USDHC2 - SD B */
 		pinctrl_usdhc2_2: usdhc2grp {
 			fsl,pins = <
-				MX6QDL_PAD_SD2_CMD__SD2_CMD		0x17071
-				MX6QDL_PAD_SD2_CLK__SD2_CLK		0x10071
-				MX6QDL_PAD_SD2_DAT0__SD2_DATA0		0x17071
-				MX6QDL_PAD_SD2_DAT1__SD2_DATA1		0x17071
-				MX6QDL_PAD_SD2_DAT2__SD2_DATA2		0x17071
-				MX6QDL_PAD_SD2_DAT3__SD2_DATA3		0x17071
+				MX6QDL_PAD_SD2_CMD__SD2_CMD		0x170b1
+				MX6QDL_PAD_SD2_CLK__SD2_CLK		0x100b1
+				MX6QDL_PAD_SD2_DAT0__SD2_DATA0		0x170b1
+				MX6QDL_PAD_SD2_DAT1__SD2_DATA1		0x170b1
+				MX6QDL_PAD_SD2_DAT2__SD2_DATA2		0x170b1
+				MX6QDL_PAD_SD2_DAT3__SD2_DATA3		0x170b1
+#ifdef CONFIG_EFUSA9_SD_B_CD
+				/* Card Detect (CD), active low (pull-up) */
+				MX6QDL_PAD_GPIO_4__GPIO1_IO04		0x17000
+#endif
+#ifdef CONFIG_EFUSA9_SD_B_WP
+				/*
+				 * Write Protect (WP), active high (pull-up)
+				 * lock:   WP switch open, pulled high
+				 * unlock: WP switch closed, connects to GND
+				 */
+				MX6QDL_PAD_GPIO_2__GPIO1_IO02		0x17000
+#endif
 			>;
 		};
 #endif /* CONFIG_EFUSA9_SD_B */
+
+#ifdef CONFIG_EFUSA9_EMMC
+		pinctrl_usdhc3: usdhc3grp {
+			fsl,pins = <
+				MX6QDL_PAD_SD3_CMD__SD3_CMD		0x17091
+				MX6QDL_PAD_SD3_CLK__SD3_CLK		0x10091
+				MX6QDL_PAD_SD3_DAT0__SD3_DATA0		0x17091
+				MX6QDL_PAD_SD3_DAT1__SD3_DATA1		0x17091
+				MX6QDL_PAD_SD3_DAT2__SD3_DATA2		0x17091
+				MX6QDL_PAD_SD3_DAT3__SD3_DATA3		0x17091
+				MX6QDL_PAD_SD3_DAT4__SD3_DATA4		0x17091
+				MX6QDL_PAD_SD3_DAT5__SD3_DATA5		0x17091
+				MX6QDL_PAD_SD3_DAT6__SD3_DATA6		0x17091
+				MX6QDL_PAD_SD3_DAT7__SD3_DATA7		0x17091
+				/* Reset eMMC, active low */
+				MX6QDL_PAD_SD3_RST__SD3_RESET		0x17091
+			>;
+		};
+#endif /* CONFIG_EFUSA9_EMMC */
 
 #ifdef CONFIG_EFUSA9_I2C_C
 		/* I2C_C: RTC (PCA8565), LVDS-Connector, SGTL5000 (SKIT),
@@ -1525,25 +1574,6 @@
 			>;
 		};
 #endif /* CONFIG_EFUSA9_HDMI_CEC */
-
-#ifdef CONFIG_EFUSA9_EMMC
-		pinctrl_usdhc3: usdhc3grp {
-			fsl,pins = <
-				MX6QDL_PAD_SD3_CMD__SD3_CMD		0x17071
-				MX6QDL_PAD_SD3_CLK__SD3_CLK		0x10071
-				MX6QDL_PAD_SD3_DAT0__SD3_DATA0		0x17071
-				MX6QDL_PAD_SD3_DAT1__SD3_DATA1		0x17071
-				MX6QDL_PAD_SD3_DAT2__SD3_DATA2		0x17071
-				MX6QDL_PAD_SD3_DAT3__SD3_DATA3		0x17071
-				MX6QDL_PAD_SD3_DAT4__SD3_DATA4		0x17071
-				MX6QDL_PAD_SD3_DAT5__SD3_DATA5		0x17071
-				MX6QDL_PAD_SD3_DAT6__SD3_DATA6		0x17071
-				MX6QDL_PAD_SD3_DAT7__SD3_DATA7		0x17071
-				/* Reset eMMC, active low */
-				MX6QDL_PAD_SD3_RST__SD3_RESET		0x1B071
-			>;
-		};
-#endif /* CONFIG_EFUSA9_EMMC */
 
 		pinctrl_status_leds: ledgrp {
 			fsl,pins = <
