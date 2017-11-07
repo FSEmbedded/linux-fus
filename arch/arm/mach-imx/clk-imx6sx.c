@@ -661,7 +661,8 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	if (uart_from_osc)
 		imx_clk_set_parent(clks[IMX6SX_CLK_UART_SEL], clks[IMX6SX_CLK_OSC]);
 
-	if (!imx_src_is_m4_enabled())
+	/* Only set parent of can_sel clock if the Cortex M4 has not done it already */
+	if (clk_get_parent(clks[IMX6SX_CLK_CAN_SEL]) == clks[IMX6SX_CLK_DUMMY])
 		/* default parent of can_sel clock is invalid, manually set it here */
 		imx_clk_set_parent(clks[IMX6SX_CLK_CAN_SEL], clks[IMX6SX_CLK_PLL3_60M]);
 
