@@ -175,6 +175,7 @@
 #endif
 			states = <5000000 0x1
 				3300000 0x0>;
+			enable-active-high;
 		};
 
 		/* CAN */
@@ -929,7 +930,7 @@
 #elif defined(CONFIG_ARMSTONEA9R2_LVDS_DUAL_MODE)
 	dual-mode;
 #endif
-	power-supply = <&reg_vlcd>;
+	ldb-supply = <&reg_vlcd>;
 	status = "okay";
 
 #ifdef CONFIG_ARMSTONEA9R2_LVDS0

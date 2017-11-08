@@ -244,6 +244,7 @@
 			gpio = <&gpio2 11 GPIO_ACTIVE_HIGH>;
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
+			enable-active-high;
 		};
 
 #ifdef CONFIG_EFUSA9_5V_LVDS
@@ -439,7 +440,7 @@
 
 	lcd: lcd@0 {
 		compatible = "fsl,lcd";
-		power-supply = <&reg_vlcd>;
+		lcd-supply = <&reg_vlcd>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_ipu1_ctrl &pinctrl_ipu1_dat>;
 		status = "disabled";
@@ -1099,7 +1100,7 @@
 #elif defined(CONFIG_EFUSA9_LVDS_DUAL_MODE)
 	dual-mode;
 #endif
-	power-supply = <&reg_vlcd>;
+	ldb-supply = <&reg_vlcd>;
 	status = "okay";
 
 #ifdef CONFIG_EFUSA9_LVDS0
