@@ -114,26 +114,27 @@ wvga {					\
 /*
  * Configure touch screen:
  *
- * - 4-wire/5-wire analog resistive touch, touch controller on SKIT
- * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
- * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ * - 4-wire analog resisitive touch (WM9715), on AC97 port
+ * - 4-wire/5-wire analog resistive touch (SX8655), on SMB/I2C port
+ * - PCAP touch based on Maxtouch controller (MXT224, etc.), on SMB/I2C port
+ * - PCAP touch based on Focaltech controller (FT5x06), on SMB/I2C port
+ * - PCAP touch based on Sitronix controller (ST1633i), on SMB/I2C port
+ * - PCAP touch based on Ilink controller (ILI12xx), on SMB/I2C port
  *
  * Select none if you do not need touch support.
  */
+#define CONFIG_QBLISSA9_4WTOUCH_WM9715
 //#define CONFIG_QBLISSA9_4WTOUCH_SX8655
-#define CONFIG_QBLISSA9_CAPTOUCH_MXT224
+//#define CONFIG_QBLISSA9_CAPTOUCH_MXT224
 //#define CONFIG_QBLISSA9_CAPTOUCH_FT5x06
+//#define CONFIG_QBLISSA9_CAPTOUCH_SITRONIX
+//#define CONFIG_QBLISSA9_CAPTOUCH_ILINK
 
 /* CMA: Set 320 MB for Continuous Memory Allocator */
 #define CONFIG_QBLISSA9_CMA_SIZE	0x14000000
 
-/* Camera connected */
-#define CONFIG_QBLISSA9_CAMERA
-#define CONFIG_QBLISSA9_HDMI_CEC
-#define CONFIG_QBLISSA9_HDMI
-
-/* Camera on serial MIPI CSI interface */
-#define CONFIG_QBLISSA9_SERIAL_CAMERA
+/* Camera on parallel CSI interface */
+#define CONFIG_QBLISSA9_PARALLEL_CAMERA
 
 /* NAND */
 #define CONFIG_QBLISSA9_NAND
@@ -144,8 +145,9 @@ wvga {					\
 /* AUDIO */
 #define CONFIG_QBLISSA9_WM9715_AUDIO
 
-/* WLAN */
+/* WLAN/BLUETOOTH */
 #define CONFIG_QBLISSA9_WLAN
+#define CONFIG_QBLISSA9_BLUETOOTH
 
 /* SD_A - On SKIT: Micro-SD Card Slot, CD always low, WP unused, 4 bit */
 #define CONFIG_QBLISSA9_SD_A
@@ -153,20 +155,39 @@ wvga {					\
 //#define CONFIG_QBLISSA9_SD_A_WP
 //#define CONFIG_QBLISSA9_SD_A_8BIT
 
-/* I2C */
+/* I2C_A: SDA/SCL on pins 68/66 (this is also on pins 126/128!) */
 #define CONFIG_QBLISSA9_I2C_A
+
+/* I2C_B: SDA/SCL/IRQ on pins 62/60/64 (SMB) */
 #define CONFIG_QBLISSA9_I2C_B
+
+/* I2C_C: SDA/SCL on pins 125/127 (instead of LVDS_DID) */
 #define CONFIG_QBLISSA9_I2C_C
 
-/* UART */
+/*
+ * UART_A: TXD/RXD on 171/177, RTS/CTS on pins 172/178 (also TXD/RDX on pins
+ * 163/161, RTS/CTS on pins 164/162; this is a hardware option)
+ */
 #define CONFIG_QBLISSA9_UART_A
+
+/* UART_B: TXD/RXD on pins 209/208, no RTS/CTS */
 #define CONFIG_QBLISSA9_UART_B
+
+/* UART_C: TXD/RXD on pins 186/185, RTS/CTS on pins 188/187 */
 #define CONFIG_QBLISSA9_UART_C
-#define CONFIG_QBLISSA9_UART_E
 
 /* SPI */
 #define CONFIG_QBLISSA9_SPI_A
 //#define CONFIG_QBLISSA9_SPI_FLASH
+
+/* PWM_A/LVDS_BLT_CTRL on pin 123 */
+#define CONFIG_QBLISSA9R2_PWM_A
+
+/* PWM_B/FAN_PWMOUT on pin 196 */
+#define CONFIG_QBLISSA9R2_PWM_B
+
+/* PWM_C/SPKR on pin 194 */
+#define CONFIG_QBLISSA9R2_PWM_C
 
 #include "imx6dl.dtsi"
 #include "qblissa9qdl.dtsi"
