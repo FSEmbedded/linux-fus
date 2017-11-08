@@ -206,13 +206,15 @@ wvga {					\
 #define CONFIG_NETDCUA9_I2C_B
 #endif
 
-/* UART */
-/* UART_A debug port */
+/* UART_A on pins 3/4/5/6 on J1 (debug port) */
 #define CONFIG_NETDCUA9_UART_A
-/* UART_B on J7 */
+#define CONFIG_NETDCUA9_UART_A_RTSCTS
+
+/* UART_B on pins 9/10 on J7 or RS485 on pins 20/24 on J1 */
 #define CONFIG_NETDCUA9_UART_B
-/* if you want to use UART_B for RS485 activate define, pins on 22,24 on J1 */
 //#define CONFIG_NETDCUA9_UART_B_RS485
+
+/* UART_C on pins 12/14 on J5 */
 #define CONFIG_NETDCUA9_UART_C
 
 #include "imx6q.dtsi"

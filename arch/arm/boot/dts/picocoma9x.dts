@@ -579,7 +579,9 @@ lcd_wvga {				\
 	/* UART_A: TXD, RXD,  U$1 CON-10Pol on PCOMnet SKIT, default tty */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart4_1>;
-	fsl;
+#ifdef CONFIG_PICOCOMA9X_UART_A_RTSCTS
+	fsl,uart-has-rtscts;
+#endif
 	status = "okay";
 };
 #endif

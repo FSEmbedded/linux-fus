@@ -743,6 +743,19 @@
 };
 #endif /* CONFIG_NETDCUA9_UART_A */
 
+#ifdef CONFIG_NETDCUA9_UART_B
+/* UART5 on pins 9/10 on J7 (port B) or RS485 on pins 20/24 on J1 */
+&uart5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart5>;
+#ifdef CONFIG_NETDCUA9_UART_B_RS485
+	rs485-supply = <&reg_rs485>;
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif /* CONFIG_NETDCUA9_UART_B */
+
 #ifdef CONFIG_NETDCUA9_UART_C
 /* UART4 on pins 12/14 on J5 (port C) */
 &uart4 {
@@ -751,19 +764,6 @@
 	status = "okay";
 };
 #endif /* CONFIG_NETDCUA9_UART_C */
-
-#ifdef CONFIG_NETDCUA9_UART_B
-/* UART5 on pins 9/10 on J7 (port B)*/
-&uart5 {
-#ifdef CONFIG_NETDCUA9_UART_B_RS485
-	rs485-supply = <&reg_rs485>;
-#endif
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart5>;
-	fsl,uart-has-rtscts;
-	status = "okay";
-};
-#endif /* CONFIG_NETDCUA9_UART_B */
 
 &usbotg {
 	pinctrl-names = "default";
@@ -1151,16 +1151,6 @@
 		};
 #endif /* CONFIG_NETDCUA9_UART_B */
 
-#ifdef CONFIG_NETDCUA9_UART_C
-		/* UART4 on pins 12, 14 on J5 (port C) */
-		pinctrl_uart4: uart4grp {
-			fsl,pins = <
-				MX6QDL_PAD_KEY_COL0__UART4_TX_DATA	0x1b0b1
-				MX6QDL_PAD_KEY_ROW0__UART4_RX_DATA	0x1b0b1
-			>;
-		};
-#endif /* CONFIG_NETDCUA9_UART_C */
-
 #ifdef CONFIG_NETDCUA9_UART_B
 		/* UART5 on pins 9, 10 on J7  (port B)*/
 		pinctrl_uart5: uart5grp {
@@ -1174,6 +1164,16 @@
 			>;
 		};
 #endif /* CONFIG_NETDCUA9_UART_B */
+
+#ifdef CONFIG_NETDCUA9_UART_C
+		/* UART4 on pins 12, 14 on J5 (port C) */
+		pinctrl_uart4: uart4grp {
+			fsl,pins = <
+				MX6QDL_PAD_KEY_COL0__UART4_TX_DATA	0x1b0b1
+				MX6QDL_PAD_KEY_ROW0__UART4_RX_DATA	0x1b0b1
+			>;
+		};
+#endif /* CONFIG_NETDCUA9_UART_C */
 
 		/* CAN1 */
 		pinctrl_flexcan1: flexcan1grp {

@@ -122,7 +122,7 @@ wvga {					\
 /*
  * Configure touch screen:
  *
- * - 4-wire/5-wire analog resistive touch, touch controller on RGB LCD adapter
+ * - 4-wire/5-wire analog resistive touch (SX8655), on RGB LCD adapter
  * - 4-wire/5-wire analog resistive touch (SX8655), on Touch Connector
  * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
  * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
@@ -169,6 +169,7 @@ wvga {					\
 
 /* UART */
 #define CONFIG_ARMSTONEA9_UART_A
+#define CONFIG_ARMSTONEA9_UART_A_RTSCTS
 #define CONFIG_ARMSTONEA9_UART_B
 #define CONFIG_ARMSTONEA9_UART_C
 

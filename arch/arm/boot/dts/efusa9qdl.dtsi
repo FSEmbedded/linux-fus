@@ -926,26 +926,6 @@
 };
 #endif /* CONFIG_EFUSA9_SGTL5000_AUDIO */
 
-#ifdef CONFIG_EFUSA9_UART_C
-/* UART1 on pins 17, 15, 19, 21 (port C)*/
-&uart1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart1_1>;
-	fsl,uart-has-rtscts;
-	status = "okay";
-};
-#endif
-
-#ifdef CONFIG_EFUSA9_UART_B
-/* UART2 on pins 104, 102, 106, 108 (port B)*/
-&uart2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart2_1>;
-	fsl,uart-has-rtscts;
-	status = "okay";
-};
-#endif /* CONFIG_EFUSA9_UART_B */
-
 #ifdef CONFIG_EFUSA9_UART_A
 /* UART4 (ttymxc3) on pins 94, 92 (debug port A) */
 &uart4 {
@@ -954,6 +934,30 @@
 	status = "okay";
 };
 #endif /* CONFIG_EFUSA9_UART_A */
+
+#ifdef CONFIG_EFUSA9_UART_B
+/* UART2 on pins 104, 102, 106, 108 (port B)*/
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart2_1>;
+#ifdef CONFIG_EFUSA9_UART_B_RTSCTS
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif /* CONFIG_EFUSA9_UART_B */
+
+#ifdef CONFIG_EFUSA9_UART_C
+/* UART1 on pins 17, 15, 19, 21 (port C)*/
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1_1>;
+#ifdef CONFIG_EFUSA9_UART_C_RTSCTS
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif
 
 #ifdef CONFIG_EFUSA9_UART_D
 /* UART5 on pins 98/96  (port D)*/
@@ -1339,6 +1343,30 @@
 		};
 #endif /* CONFIG_EFUSA9_SPI_B */
 
+#ifdef CONFIG_EFUSA9_UART_A
+		/* UART4 (ttymxc3) on pins 94, 92 (debug port A) */
+		pinctrl_uart4_1: uart4grp-1{
+			fsl,pins = <
+				MX6QDL_PAD_KEY_COL0__UART4_TX_DATA	0x1b0b1
+				MX6QDL_PAD_KEY_ROW0__UART4_RX_DATA	0x1b0b1
+			>;
+		};
+#endif /* CONFIG_EFUSA9_UART_A */
+
+#ifdef CONFIG_EFUSA9_UART_B
+		/* UART2 on pins 104, 102, 106, 108 (port B)*/
+		pinctrl_uart2_1: uart2grp-1{
+			fsl,pins = <
+				MX6QDL_PAD_EIM_D26__UART2_TX_DATA	0x1b0b1
+				MX6QDL_PAD_EIM_D27__UART2_RX_DATA	0x1b0b1
+#ifdef CONFIG_EFUSA9_UART_B_RTSCTS
+				MX6QDL_PAD_EIM_D28__UART2_CTS_B		0x1b0b1
+				MX6QDL_PAD_EIM_D29__UART2_RTS_B		0x1b0b1
+#endif /* CONFIG_EFUSA9_UART_B_RTSCTS */
+			>;
+		};
+#endif /* CONFIG_EFUSA9_UART_B */
+
 #ifdef CONFIG_EFUSA9_UART_C
 		/* UART1 on pins 17, 15, 19, 21 (port C)*/
 		pinctrl_uart1_1: uart1grp-1{
@@ -1355,24 +1383,7 @@
 		};
 #endif /* CONFIG_EFUSA9_UART_C */
 
-		/* UART2 on pins 104, 102, 106, 108 (port B)*/
-		pinctrl_uart2_1: uart2grp-1{
-			fsl,pins = <
-				MX6QDL_PAD_EIM_D26__UART2_TX_DATA	0x1b0b1
-				MX6QDL_PAD_EIM_D27__UART2_RX_DATA	0x1b0b1
-#ifdef CONFIG_EFUSA9_UART_B_RTSCTS
-				MX6QDL_PAD_EIM_D28__UART2_CTS_B		0x1b0b1
-				MX6QDL_PAD_EIM_D29__UART2_RTS_B		0x1b0b1
-#endif /* CONFIG_EFUSA9_UART_B_RTSCTS */
-			>;
-		};
-		/* UART4 (ttymxc3) on pins 94, 92 (debug port A) */
-		pinctrl_uart4_1: uart4grp-1{
-			fsl,pins = <
-				MX6QDL_PAD_KEY_COL0__UART4_TX_DATA	0x1b0b1
-				MX6QDL_PAD_KEY_ROW0__UART4_RX_DATA	0x1b0b1
-			>;
-		};
+#ifdef CONFIG_EFUSA9_UART_D
 		/* UART5 on pins 98/96  (port D)*/
 		pinctrl_uart5_1: uart5grp-1{
 			fsl,pins = <
@@ -1380,6 +1391,7 @@
 				MX6QDL_PAD_KEY_ROW1__UART5_RX_DATA	0x1b0b1
 			>;
 		};
+#endif /* CONFIG_EFUSA9_UART_D */
 
 		/* CAN2 - CAN B */
 		pinctrl_flexcan1_1: flexcan1grp {

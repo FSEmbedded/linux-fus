@@ -782,25 +782,29 @@
 };
 #endif /* CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO */
 
-#ifdef CONFIG_ARMSTONEA9R2_UART_B
-/* UART1 TX/RX on pins 18,20 RTS/CTS on 22,24 */
-&uart1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart1_1>;
-	fsl,uart-has-rtscts;
-	status = "okay";
-};
-#endif /* CONFIG_ARMSTONEA9R2_UART_B */
-
 #ifdef CONFIG_ARMSTONEA9R2_UART_A
 /* UART2 TX/RX on pins 13,15 RTS/CTS on 19,21 */
 &uart2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2_1>;
+#ifdef CONFIG_ARMSTONEA9R2_UART_A_RTSCTS
 	fsl,uart-has-rtscts;
+#endif
 	status = "okay";
 };
 #endif /* CONFIG_ARMSTONEA9R2_UART_A */
+
+#ifdef CONFIG_ARMSTONEA9R2_UART_B
+/* UART1 TX/RX on pins 18,20 RTS/CTS on 22,24 */
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1_1>;
+#ifdef CONFIG_ARMSTONEA9R2_UART_B_RTSCTS
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif /* CONFIG_ARMSTONEA9R2_UART_B */
 
 #ifdef CONFIG_ARMSTONEA9R2_UART_C
 /* UART3 TX/RX on pins 23, 25 (port C) */
@@ -816,7 +820,9 @@
 &uart4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart4_1>;
+#ifdef CONFIG_ARMSTONEA9R2_UART_D_RTSCTS
 	fsl,uart-has-rtscts;
+#endif
 	status = "okay";
 };
 #endif /* CONFIG_ARMSTONEA9R2_UART_D */
@@ -1111,6 +1117,20 @@
 		};
 #endif /* CONFIG_ARMSTONEA9R2_SPI_B */
 
+#ifdef CONFIG_ARMSTONEA9R2_UART_A
+		/* UART2 on pins 55-58 (debug port A)*/
+		pinctrl_uart2_1: uart2grp-1{
+			fsl,pins = <
+				MX6QDL_PAD_EIM_D26__UART2_TX_DATA	0x1b0b1
+				MX6QDL_PAD_EIM_D27__UART2_RX_DATA	0x1b0b1
+#ifdef CONFIG_ARMSTONEA9R2_UART_A_RTSCTS
+				MX6QDL_PAD_EIM_D28__UART2_CTS_B		0x1b0b1
+				MX6QDL_PAD_EIM_D29__UART2_RTS_B		0x1b0b1
+#endif /* CONFIG_ARMSTONEA9R2_UART_A_RTSCTS */
+			>;
+		};
+#endif /* CONFIG_ARMSTONEA9R2_UART_A */
+
 #ifdef CONFIG_ARMSTONEA9R2_UART_B
 		/* UART1 on pins 13, 15 (port B)*/
 		pinctrl_uart1_1: uart1grp-1{
@@ -1125,18 +1145,7 @@
 		};
 #endif /* CONFIG_ARMSTONEA9R2_UART_B */
 
-		/* UART2 on pins 55-58 (debug port A)*/
-		pinctrl_uart2_1: uart2grp-1{
-			fsl,pins = <
-				MX6QDL_PAD_EIM_D26__UART2_TX_DATA	0x1b0b1
-				MX6QDL_PAD_EIM_D27__UART2_RX_DATA	0x1b0b1
-#ifdef CONFIG_ARMSTONEA9R2_UART_A_RTSCTS
-				MX6QDL_PAD_EIM_D28__UART2_CTS_B		0x1b0b1
-				MX6QDL_PAD_EIM_D29__UART2_RTS_B		0x1b0b1
-#endif /* CONFIG_ARMSTONEA9R2_UART_A_RTSCTS */
-			>;
-		};
-
+#ifdef CONFIG_ARMSTONEA9R2_UART_C
 		/* UART3 on pins 36, 38 (port C) */
 		pinctrl_uart3_1: uart3grp-1{
 			fsl,pins = <
@@ -1144,7 +1153,9 @@
 				MX6QDL_PAD_EIM_D25__UART3_RX_DATA	0x1b0b1
 			>;
 		};
+#endif /* CONFIG_ARMSTONEA9R2_UART_C */
 
+#ifdef CONFIG_ARMSTONEA9R2_UART_D
 		pinctrl_uart4_1: uart4grp-1{
 			fsl,pins = <
 				MX6QDL_PAD_KEY_COL0__UART4_TX_DATA	0x1b0b1
@@ -1155,7 +1166,9 @@
 #endif /* CONFIG_ARMSTONEA9R2_UART_D_RTSCTS */
 			>;
 		};
+#endif /* CONFIG_ARMSTONEA9R2_UART_D */
 
+#ifdef CONFIG_ARMSTONEA9R2_UART_E
 		/* UART5 on pins 36, 38 (port C) */
 		pinctrl_uart5_1: uart5grp-1{
 			fsl,pins = <
@@ -1163,6 +1176,7 @@
 				MX6QDL_PAD_KEY_ROW1__UART5_RX_DATA	0x1b0b1
 			>;
 		};
+#endif /* CONFIG_ARMSTONEA9R2_UART_E */
 
 		/* CAN A */
 		pinctrl_flexcan_a: flexcan2grp {
