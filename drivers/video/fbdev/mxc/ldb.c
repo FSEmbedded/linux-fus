@@ -31,6 +31,7 @@
 #include <linux/types.h>
 #include <video/of_videomode.h>
 #include <video/videomode.h>
+#include <linux/regulator/consumer.h>
 #include "mxc_dispdrv.h"
 
 #define DRIVER_NAME	"ldb"
@@ -110,6 +111,8 @@ struct ldb_data {
 	struct clk *div_3_5_clk[2];
 	struct clk *div_7_clk[2];
 	struct clk *div_sel_clk[2];
+	struct regulator *reg_ldb;
+	int enabled;
 };
 
 static const struct crtc_mux imx6q_lvds0_crtc_mux[] = {
@@ -515,7 +518,7 @@ static int ldb_enable(struct mxc_dispdrv_handle *mddh,
 	struct ldb_chan chan;
 	struct device *dev = ldb->dev;
 	struct bus_mux bus_mux;
-	int ret = 0, id = 0, chno, other_chno;
+	int ret = 0, id = 0, chno, other_chno, temp=0;
 
 	ret = find_ldb_chno(ldb, fbi, &chno);
 	if (ret < 0)
@@ -524,6 +527,15 @@ static int ldb_enable(struct mxc_dispdrv_handle *mddh,
 	chan = ldb->chan[chno];
 
 	bus_mux = ldb->buses[chno];
+
+	if (ldb->reg_ldb) {
+		ret = regulator_enable(ldb->reg_ldb);
+		if (ret) {
+			dev_err(dev,
+				"ldb regulator enable failed:	%d\n", ret);
+			return ret;
+		}
+	}
 
 	if (ldb->spl_mode || ldb->dual_mode) {
 		other_chno = chno ? 0 : 1;
@@ -535,9 +547,17 @@ static int ldb_enable(struct mxc_dispdrv_handle *mddh,
 		/* no pre-muxing, such as mx53 */
 		ret = get_di_clk_id(chan, &id);
 		if (ret < 0) {
+			temp = ret;
 			dev_err(dev, "failed to get ch%d di clk id\n",
 				chan.chno);
-			return ret;
+			if (ldb->reg_ldb) {
+				ret = regulator_disable(ldb->reg_ldb);
+				if (ret)
+					dev_err(dev,
+						"ldb regulator disable failed: %d\n",
+						ret);
+			}
+			return temp;
 		}
 
 		ldb->ctrl |= id ?
@@ -551,7 +571,7 @@ static int ldb_enable(struct mxc_dispdrv_handle *mddh,
 			ldb->ctrl |= chno ? LDB_CH1_MODE_EN_TO_DI1 :
 					    LDB_CH0_MODE_EN_TO_DI0;
 	}
-
+	ldb->enabled = 1;
 	regmap_write(ldb->regmap, ldb->ctrl_reg, ldb->ctrl);
 	return 0;
 }
@@ -575,6 +595,17 @@ static void ldb_disable(struct mxc_dispdrv_handle *mddh,
 				      LDB_CH0_MODE_MASK);
 	}
 
+	if (ldb->reg_ldb) {
+		if (ldb->enabled == 1) {
+			ret = regulator_disable(ldb->reg_ldb);
+			if (ret)
+				dev_err(ldb->dev,
+					"ldb regulator disable failed: %d\n",
+					ret);
+		}
+	}
+
+	ldb->enabled = 0;
 	regmap_write(ldb->regmap, ldb->ctrl_reg, ldb->ctrl);
 	return;
 }
@@ -763,6 +794,12 @@ static int ldb_probe(struct platform_device *pdev)
 		}
 	}
 
+	ldb->enabled = 0;
+	ldb->reg_ldb = devm_regulator_get(&pdev->dev, "ldb");
+	if (IS_ERR(ldb->reg_ldb)) {
+		ldb->reg_ldb = NULL;
+	}
+
 	for_each_child_of_node(np, child) {
 		struct ldb_chan *chan;
 		enum crtc crtc;
@@ -898,6 +935,13 @@ static int ldb_remove(struct platform_device *pdev)
 
 	mxc_dispdrv_puthandle(ldb->mddh);
 	mxc_dispdrv_unregister(ldb->mddh);
+
+	if (ldb->enabled) {
+		int chno = ldb->chan[ldb->primary_chno].is_used ?
+		!ldb->primary_chno : ldb->primary_chno;
+
+		ldb_disable(ldb->mddh,ldb->chan[chno].fbi);
+	}
 	return 0;
 }
 

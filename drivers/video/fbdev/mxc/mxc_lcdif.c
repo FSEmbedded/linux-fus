@@ -19,6 +19,7 @@
 #include <linux/of_device.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
+#include <linux/regulator/consumer.h>
 
 #include "mxc_dispdrv.h"
 
@@ -31,6 +32,8 @@ struct mxc_lcd_platform_data {
 struct mxc_lcdif_data {
 	struct platform_device *pdev;
 	struct mxc_dispdrv_handle *disp_lcdif;
+	struct regulator *reg_lcd;
+	int enabled;
 };
 
 #define DISPDRV_LCD	"lcd"
@@ -111,6 +114,15 @@ static int lcdif_init(struct mxc_dispdrv_handle *disp,
 	if (ret < 0)
 		return ret;
 
+	if (lcdif->reg_lcd) {
+		ret = regulator_enable(lcdif->reg_lcd);
+		if (ret) {
+			dev_err(&lcdif->pdev->dev,
+				"lcd regulator enable failed:	%d\n", ret);
+			return ret;
+		}
+	}
+
 	ret = fb_find_mode(&setting->fbi->var, setting->fbi, setting->dft_mode_str,
 				modedb, modedb_sz, NULL, setting->default_bpp);
 	if (!ret) {
@@ -128,13 +140,25 @@ static int lcdif_init(struct mxc_dispdrv_handle *disp,
 			break;
 		}
 	}
+	lcdif->enabled = 1;
 
 	return ret;
 }
 
 void lcdif_deinit(struct mxc_dispdrv_handle *disp)
 {
-	/*TODO*/
+	struct mxc_lcdif_data *lcdif = mxc_dispdrv_getdata(disp);
+	int ret;
+
+	if(lcdif->enabled == 1) {
+		if (lcdif->reg_lcd) {
+			ret = regulator_disable(lcdif->reg_lcd);
+			if (ret)
+				dev_err(&lcdif->pdev->dev,
+					"lcd regulator disable failed: %d\n", ret);
+		}
+	}
+	lcdif->enabled = 0;
 }
 
 static struct mxc_dispdrv_driver lcdif_drv = {
@@ -232,6 +256,12 @@ static int mxc_lcdif_probe(struct platform_device *pdev)
 		return PTR_ERR(pinctrl);
 	}
 
+	lcdif->enabled = 0;
+	lcdif->reg_lcd = devm_regulator_get(&pdev->dev, "lcd");
+	if (IS_ERR(lcdif->reg_lcd)) {
+		lcdif->reg_lcd = NULL;
+	}
+
 	lcdif->pdev = pdev;
 	lcdif->disp_lcdif = mxc_dispdrv_register(&lcdif_drv);
 	mxc_dispdrv_setdata(lcdif->disp_lcdif, lcdif);
@@ -245,6 +275,10 @@ static int mxc_lcdif_probe(struct platform_device *pdev)
 static int mxc_lcdif_remove(struct platform_device *pdev)
 {
 	struct mxc_lcdif_data *lcdif = dev_get_drvdata(&pdev->dev);
+
+	if(lcdif->enabled == 1) {
+		lcdif_deinit(lcdif->disp_lcdif);
+	}
 
 	mxc_dispdrv_puthandle(lcdif->disp_lcdif);
 	mxc_dispdrv_unregister(lcdif->disp_lcdif);
