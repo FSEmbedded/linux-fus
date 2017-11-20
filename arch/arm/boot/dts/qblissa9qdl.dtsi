@@ -510,10 +510,10 @@
 	};
 };
 
-/* CANRX X16 Pin 3 & CANTX Pin 4 */
-&can1 {
+/* CAN_A implemented by FLEXCAN2 */
+&can2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_flexcan_a>;
+	pinctrl-0 = <&pinctrl_flexcan2>;
 	xceiver-supply = <&reg_can>;
 	status = "okay";
 };
@@ -553,7 +553,7 @@
 
 /* I2C2 is used for internal communication (RTC, PMIC), always active */
 &i2c2{
-	clock-frequency = <200000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
@@ -804,7 +804,7 @@
 };
 #endif
 
-#ifdef CONFIG_QBLISSA9R2_PWM_A
+#ifdef CONFIG_QBLISSA9_PWM_A
 /* PWM_A/LVDS_BLT_CTRL, pin 123 */
 &pwm3 {
 	pinctrl-names = "default";
@@ -814,7 +814,7 @@
 #endif
 
 
-#ifdef CONFIG_QBLISSA9R2_PWM_B
+#ifdef CONFIG_QBLISSA9_PWM_B
 /* PWM_B/FAN_PWMOUT, pin 196 */
 &pwm1 {
 	pinctrl-names = "default";
@@ -823,7 +823,7 @@
 };
 #endif
 
-#ifdef CONFIG_QBLISSA9R2_PWM_C
+#ifdef CONFIG_QBLISSA9_PWM_C
 /* PWM_C/SPKR, pin 194 */
 &pwm4 {
 	pinctrl-names = "default";
@@ -912,6 +912,12 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg>;
 //###	vbus-supply = <&reg_usb_otg_vbus>;
+	/* OTG ID pin has an issue; so set host or device role manually */
+#ifdef CONFIG_QBLISSA9_USB_OTG_HOST
+	dr_mode = "host";
+#else
+	dr_mode = "peripheral";
+#endif
 #ifdef CONFIG_QBLISSA9_HAVE_USB_OTG_OC
 	over-current-active-low;
 #else
@@ -1224,7 +1230,7 @@
 		};
 #endif
 
-		pinctrl_flexcan_a: flexcan2grp {
+		pinctrl_flexcan2: flexcan2grp {
 			fsl,pins = <
 				MX6QDL_PAD_KEY_COL4__FLEXCAN2_TX	0x1b020
 				MX6QDL_PAD_KEY_ROW4__FLEXCAN2_RX	0x1b020
@@ -1236,7 +1242,7 @@
 				/* USB OTG PWR, active low */
 //###				MX6QDL_PAD_EIM_D22__GPIO3_IO22		0x0b030
 				MX6QDL_PAD_EIM_D22__USB_OTG_PWR		0x0b030
-#ifdef CONFIG_QBLISSA9R2_HAVE_USB_OTG_OC
+#ifdef CONFIG_QBLISSA9_HAVE_USB_OTG_OC
 				/* USB_OTG_OC (part of USB_OC01), active low */
 				MX6QDL_PAD_EIM_D21__USB_OTG_OC		0x1b000
 #endif
@@ -1440,7 +1446,7 @@
 		};
 #endif /* CONFIG_QBLISSA9_PARALLEL_CAMERA */
 
-#ifdef CONFIG_QBLISSA9R2_PWM_A
+#ifdef CONFIG_QBLISSA9_PWM_A
 		pinctrl_pwm3: pwm3grp {
 			fsl,pins = <
 				MX6QDL_PAD_SD4_DAT1__PWM3_OUT		0x110b0
@@ -1448,7 +1454,7 @@
 		};
 #endif
 
-#ifdef CONFIG_QBLISSA9R2_PWM_B
+#ifdef CONFIG_QBLISSA9_PWM_B
 		pinctrl_pwm1: pwm1grp {
 			fsl,pins = <
 				MX6QDL_PAD_DISP0_DAT8__PWM1_OUT		0x110b0
@@ -1456,7 +1462,7 @@
 		};
 #endif
 
-#ifdef CONFIG_QBLISSA9R2_PWM_C
+#ifdef CONFIG_QBLISSA9_PWM_C
 		pinctrl_pwm4: pwm4grp {
 			fsl,pins = <
 				MX6QDL_PAD_SD4_DAT2__PWM4_OUT		0x110b0

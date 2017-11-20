@@ -541,10 +541,10 @@
 	};
 };
 
-/* CANRX X16 Pin 3 & CANTX Pin 4 */
+/* CAN_A implemented by FLEXCAN1 */
 &can1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_flexcan_a>;
+	pinctrl-0 = <&pinctrl_flexcan1>;
 	xceiver-supply = <&reg_can>;
 	status = "okay";
 };
@@ -583,7 +583,7 @@
 
 /* I2C1 is used internally (RTC, EEPROM) and for cameras, always active */
 &i2c1{
-	clock-frequency = <200000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
@@ -628,7 +628,7 @@
 #ifdef CONFIG_QBLISSA9R2_I2C_B
 /* I2C_B is implemented via I2C2 (SMB, with IRQ, used for touches) */
 &i2c2 {
-	clock-frequency = <200000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
@@ -1182,7 +1182,7 @@
 		};
 #endif
 
-		pinctrl_flexcan_a: flexcan2grp {
+		pinctrl_flexcan1: flexcan1grp {
 			fsl,pins = <
 				MX6QDL_PAD_KEY_COL2__FLEXCAN1_TX	0x1b020
 				MX6QDL_PAD_KEY_ROW2__FLEXCAN1_RX	0x1b020

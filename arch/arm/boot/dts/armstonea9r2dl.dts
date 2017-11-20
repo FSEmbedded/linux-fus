@@ -172,7 +172,7 @@ wvga {					\
 #include "armstonea9r2qdl.dtsi"
 
 / {
-	model = "F&S i.MX6 Solo/DualLite armStoneA9R2";
+	model = "F&S i.MX6 Solo/DualLite armStoneA9r2";
 	compatible = "fsl,imx6dl-armstonea9r2", "fsl,imx6dl";
 };
 

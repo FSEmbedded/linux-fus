@@ -410,10 +410,18 @@
 		status = "disabled";
 	};
 
-	/* LVDS backlight PWM on backlight connector */
-	backlight_ldb {
+	/* LCD/LVDS backlight PWM on backlight connector */
+	backlight_lcd_ldb {
 		compatible = "pwm-backlight";
-		pwms = <&pwm3 0 5000000>;
+/* We have one PWM for both backlights, but with the LVDS Display we need PWM
+ * inverted and with the LCD Display we need PWM normal. So we have to do a
+ * differentiation
+ */
+#ifdef CONFIG_NETDCUA9_LCD
+		pwms = <&pwm3 0 5000000 PWM_POLARITY_INVERTED>;
+#else
+		pwms = <&pwm3 0 5000000 0>;
+#endif
 		power-supply = <&reg_ldb_bl>;
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
@@ -566,7 +574,7 @@
 
 #ifdef CONFIG_NETDCUA9_I2C_C
 &i2c1 {
-	clock-frequency = <200000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
@@ -604,7 +612,7 @@
 
 #ifdef CONFIG_NETDCUA9_I2C_A
 &i2c2 {
-	clock-frequency = <200000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
@@ -675,6 +683,7 @@
 &pwm3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm3>;
+	#pwm-cells = <3>;
 	status = "okay";
 };
 

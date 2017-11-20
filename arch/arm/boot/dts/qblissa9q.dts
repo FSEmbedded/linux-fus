@@ -159,15 +159,18 @@ wvga {					\
 /* NAND */
 #define CONFIG_QBLISSA9_NAND
 
-/* USB OTG has over-current detection on OC pin */
+/* Set if USB OTG has over-current detection on OC pin */
 #define CONFIG_QBLISSA9_HAVE_USB_OTG_OC
+
+/* Set if USB OTG should run in host mode */
+//#define CONFIG_QBLISSA9_USB_OTG_HOST
 
 /* AUDIO */
 #define CONFIG_QBLISSA9_WM9715_AUDIO
 
 /* WLAN/BLUETOOTH */
-#define CONFIG_QBLISSA9_WLAN
-#define CONFIG_QBLISSA9_BLUETOOTH
+//#define CONFIG_QBLISSA9_WLAN
+//#define CONFIG_QBLISSA9_BLUETOOTH
 
 /* SD_A - On SKIT: Micro-SD Card Slot, CD always low, WP unused, 4 bit */
 #define CONFIG_QBLISSA9_SD_A
@@ -201,13 +204,13 @@ wvga {					\
 //#define CONFIG_QBLISSA9_SPI_FLASH
 
 /* PWM_A/LVDS_BLT_CTRL on pin 123 */
-#define CONFIG_QBLISSA9R2_PWM_A
+#define CONFIG_QBLISSA9_PWM_A
 
 /* PWM_B/FAN_PWMOUT on pin 196 */
-#define CONFIG_QBLISSA9R2_PWM_B
+#define CONFIG_QBLISSA9_PWM_B
 
 /* PWM_C/SPKR on pin 194 */
-#define CONFIG_QBLISSA9R2_PWM_C
+#define CONFIG_QBLISSA9_PWM_C
 
 #include "imx6q.dtsi"
 #include "qblissa9qdl.dtsi"

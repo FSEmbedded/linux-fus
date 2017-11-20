@@ -642,7 +642,7 @@
 #ifdef CONFIG_ARMSTONEA9_I2C_C
 /* Additional I2C bus on feature connector pins 18, 26 */
 &i2c1 {
-	clock-frequency = <200000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
@@ -693,7 +693,7 @@
 
 #ifdef CONFIG_ARMSTONEA9_I2C_B
 &i2c2 {
-	clock-frequency = <200000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
@@ -1243,7 +1243,10 @@
 				MX6QDL_PAD_GPIO_9__WDOG1_B		0x00008
 
 				/* I2C2_IRQn (SX8655, ext. touch) */
-				MX6QDL_PAD_ENET_TXD0__GPIO1_IO30	0x0b0b0
+				MX6QDL_PAD_ENET_TXD0__GPIO1_IO30	0x070b0
+
+				/* I2C2_RSTn (SX8655, ext. touch) */
+				MX6QDL_PAD_ENET_TXD1__GPIO1_IO29	0x070b0
 
 				/* camera powerdown - active high */
 				MX6QDL_PAD_CSI0_DAT6__GPIO5_IO24	0x17059
@@ -1456,8 +1459,8 @@
 		/* I2C_C: additonal bus on pins 18 and 26 */
 		pinctrl_i2c1: i2c1grp {
 			fsl,pins = <
-				MX6QDL_PAD_CSI0_DAT8__I2C1_SDA		0x4001b8b1
-				MX6QDL_PAD_CSI0_DAT9__I2C1_SCL		0x4001b8b1
+				MX6QDL_PAD_CSI0_DAT8__I2C1_SDA		0x4001f8b1
+				MX6QDL_PAD_CSI0_DAT9__I2C1_SCL		0x4001f8b1
 			>;
 		};
 #endif /* CONFIG_ARMSTONEA9_I2C_C */

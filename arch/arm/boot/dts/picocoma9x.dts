@@ -532,8 +532,12 @@ lcd_wvga {				\
 };
 
 #ifdef SUPPORT_M4
-/* epit1 is used by Cortex-M4 examples for timing purposes */
+/* epit1 and epit2 are used by Cortex-M4 examples for timing purposes */
 &epit1{
+        status = "disabled";
+};
+
+&epit2{
         status = "disabled";
 };
 

@@ -67,7 +67,6 @@
 #endif
 
 /* Do we have HDMI? On PicoMODA9, HDMI and LCD can not be active in parallel */
-#ifdef CONFIG_PICOMOD_LCD
 #if ((CONFIG_PICOMODA9_MXCFB0 == DISPLAY_HDMI) \
     || (CONFIG_PICOMODA9_MXCFB1 == DISPLAY_HDMI) \
     || (CONFIG_PICOMODA9_MXCFB2 == DISPLAY_HDMI) \
@@ -84,7 +83,6 @@
 #define __HDMI_ON_2_OR_3__	1
 #endif
 #endif
-#endif /* CONFIG_PICOMODA9_LCD */
 
 /* Do we have LVDS0? */
 #if ((CONFIG_PICOMODA9_MXCFB0 == DISPLAY_LVDS0) \
@@ -723,7 +721,7 @@
 
 #ifdef CONFIG_PICOMODA9_I2C_C
 &i2c1 {
-	clock-frequency = <200000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
@@ -745,7 +743,7 @@
 
 #ifdef CONFIG_PICOMODA9_I2C_B
 &i2c2 {
-	clock-frequency = <200000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";

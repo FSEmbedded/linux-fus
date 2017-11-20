@@ -427,16 +427,18 @@
 
 &clks {
 	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
-			  <&clks IMX6QDL_CLK_CKO1_SEL>,
-			  <&clks IMX6QDL_CLK_CKO1_PODF>,
+			  <&clks IMX6QDL_CLK_SSI1_SEL>,
+			  <&clks IMX6QDL_CLK_SSI1>,
+			  <&clks IMX6QDL_CLK_CKO2_SEL>,
 			  <&clks IMX6QDL_CLK_CKO>;
 
 	assigned-clock-parents = <0>,
 				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 				 <0>,
-				 <&clks IMX6QDL_CLK_CKO1>;
-
-	assigned-clock-rates = <98304000>, <98304000>, <12288000>;
+				 <&clks IMX6QDL_CLK_SSI1>,
+				 <&clks IMX6QDL_CLK_CKO2>;
+//###	assigned-clock-rates = <786432000>, <0>, <24576000>;
+	assigned-clock-rates = <786432000>, <0>, <12288000>;
 };
 
 #ifdef CONFIG_ARMSTONEA9R2_SPI_FLASH
@@ -567,7 +569,7 @@
 #ifdef CONFIG_ARMSTONEA9R2_I2C_C
 /* additional bus on pins 18, 26 */
 &i2c1 {
-	clock-frequency = <200000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
@@ -628,7 +630,7 @@
 
 #ifdef CONFIG_ARMSTONEA9R2_I2C_B
 &i2c2 {
-	clock-frequency = <200000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
@@ -816,7 +818,7 @@
 #endif /* CONFIG_ARMSTONEA9R2_UART_C */
 
 #ifdef CONFIG_ARMSTONEA9R2_UART_D
-/* UART4 on pins 55-58 (debug port A)*/
+/* UART4 on pins 55-58 (debug port D)*/
 &uart4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart4_1>;
