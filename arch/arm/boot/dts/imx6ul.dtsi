@@ -732,6 +732,7 @@
 					regmap = <&snvs>;
 					offset = <0x34>;
 					interrupts = <GIC_SPI 19 IRQ_TYPE_LEVEL_HIGH>, <GIC_SPI 20 IRQ_TYPE_LEVEL_HIGH>;
+					status = "disabled";
 				};
 
 				snvs_poweroff: snvs-poweroff {

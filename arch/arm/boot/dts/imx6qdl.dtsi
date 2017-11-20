@@ -806,6 +806,7 @@
 					offset = <0x34>;
 					interrupts = <0 19 IRQ_TYPE_LEVEL_HIGH>,
 						     <0 20 IRQ_TYPE_LEVEL_HIGH>;
+					status = "disabled";
 				};
 
 				snvs_poweroff: snvs-poweroff {
