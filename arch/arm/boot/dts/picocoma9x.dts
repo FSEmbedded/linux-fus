@@ -740,13 +740,12 @@ lcd_wvga {				\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
- 	imx6x-bema9x {
-
+ 	picocoma9x {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 
 				/* VBL_ON active low */
-				MX6SX_PAD_LCD1_DATA23__GPIO3_IO_24	0x80000000
+				MX6SX_PAD_LCD1_DATA23__GPIO3_IO_24	0x1b0b0
 
 				/* VLCD_ON active low */
 				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x130b1
@@ -757,14 +756,23 @@ lcd_wvga {				\
 				/* BootGPIO */
 				MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9	0x1b0b1
 
+#if (CONFIG_PICOCOMA9X_BOARD_REVISION < 110)
 				/* TOUCH INTERUPT*/
-				MX6SX_PAD_GPIO1_IO04__GPIO1_IO_4	0x80000000
-
+				MX6SX_PAD_GPIO1_IO03__GPIO1_IO_3	0x1b0b0
+				/* RTC IRQ */
+				MX6SX_PAD_GPIO1_IO04__GPIO1_IO_4	0x1b0b0
+#else
+				/* TOUCH INTERUPT*/
+				MX6SX_PAD_GPIO1_IO04__GPIO1_IO_4	0x1b0b0
+				/* RTC IRQ */
+				MX6SX_PAD_GPIO1_IO08__GPIO1_IO_8	0x1b0b0
+#endif
 				/* Reset for external touches on I2C3 */
-				MX6SX_PAD_GPIO1_IO02__GPIO1_IO_2	0x80000000
-
+				MX6SX_PAD_GPIO1_IO02__GPIO1_IO_2	0x1b0b0
+#if (CONFIG_PICOCOMA9X_BOARD_REVISION >= 110)
 				/* DVS */
 				MX6SX_PAD_QSPI1B_DQS__GPIO4_IO_28	0x1b0b1
+#endif
 			>;
 		};
 
