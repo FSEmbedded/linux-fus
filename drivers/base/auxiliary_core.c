@@ -49,9 +49,82 @@ struct auxiliary_core {
 	char *path;
 } ac;
 
+/* For the bootaux command we implemented a state machine to switch between
+ * the different modes. Below you find the bit coding for the state machine.
+ * The different states will be set in the arch_auxiliary_core_set function and
+ * to get the current state you can use the function arch_auxiliary_core_get.
+ * If we get a undefined state we will immediately set the state to aux_off.
+ */
+/******************************************************************************
+****************|              bit coding             | state |****************
+-------------------------------------------------------------------------------
+****************| assert_reset | m4_clock | m4_enable | state |****************
+===============================================================================
+****************|       1      |     0    |     0     |    off    |************
+****************|       1      |     1    |     1     |  stopped  |************
+****************|       0      |     1    |     1     |  running  |************
+****************|       0      |     0    |     1     |  paused   |************
+****************|       0      |     0    |     0     | undefined |************
+****************|       0      |     1    |     0     | undefined |************
+****************|       1      |     0    |     1     | undefined |************
+****************|       1      |     1    |     0     | undefined |************
+*******************************************************************************
+**|   transitions    |   state   |            transitions             |********
+*******************************************************************************
+                      -----------
+                      |   OFF   |
+                      -----------
+          |          |           ^           ^                   ^
+          |    Start |           |  off      |                   |
+          |          v           |           |                   |
+          |           -----------            |                   |
+    run/  |           | Stopped |            | off               |
+    addr  |           -----------            |                   |
+          |          |           ^           |           ^       |
+          | run/addr |           | stop      |           |       | off
+          v          v           |                       |       |
+                      -----------                        |       |
+                      | Running |                        | stop  |
+                      -----------                        |       |
+                     |           ^                       |       |
+               pause |           | continue              |       |
+                     v           | run/addr (restart)    |       |
+                      -----------
+                      | Paused  |
+                      -----------
+******************************************************************************/
+enum aux_state {
+	aux_off,
+	aux_stopped,
+	aux_running,
+	aux_paused,
+	aux_undefined,
+};
 
-static ssize_t bootaux_show(struct kobject *kobj,
-				      struct kobj_attribute *attr, char *buf)
+int arch_auxiliary_core_set_reset_address(u32 boot_private_data)
+{
+	void __iomem *tcm_base_addr = NULL;
+	void __iomem *mem_base_addr = NULL;
+
+	if (!boot_private_data)
+		return 1;
+
+	if (boot_private_data != M4_BOOTROM_BASE_ADDR) {
+		/* FIXME: we are mapping a register were mutual
+		* exclusion of the register not be guaranteed
+		*/
+		tcm_base_addr = ioremap(M4_BOOTROM_BASE_ADDR, SZ_8);
+		mem_base_addr = ioremap(boot_private_data, SZ_8);
+		memcpy(tcm_base_addr, mem_base_addr, 8);
+
+		iounmap(tcm_base_addr);
+		iounmap(mem_base_addr);
+	}
+
+	return 0;
+}
+
+void arch_auxiliary_core_set(u32 core_id, enum aux_state old_state, enum aux_state new_state)
 {
 	/* FIXME: we are mapping a register were mutual exclusion of the
 	 *        register not be guaranteed
@@ -59,12 +132,100 @@ static ssize_t bootaux_show(struct kobject *kobj,
 	void __iomem *src_base_addr = ioremap(MX6Q_SRC_BASE_ADDR, SZ_4);
 	u32 val = 0;
 
+	if ((new_state == aux_off || new_state == aux_stopped) && old_state != aux_off && old_state != aux_stopped) {
+		/* Assert SW reset, i.e. stop M4 if running */
+		val = readl_relaxed(src_base_addr);
+		val |= ASSERT_RESET;
+		writel_relaxed(val, src_base_addr);
+	}
+
+	if (new_state == aux_off && old_state != aux_off) {
+		/* Disable M4 */
+		val = readl_relaxed(src_base_addr);
+		val &= ~ENABLE_M4_CORE;
+		writel_relaxed(val, src_base_addr);
+	}
+
+	if ((new_state == aux_off || new_state == aux_paused) && old_state != aux_off && old_state != aux_paused) {
+		/* Disable M4 clock */
+		if (__clk_is_enabled(ac.clk))
+			clk_disable_unprepare(ac.clk);
+	}
+
+	if ((new_state == aux_stopped || new_state == aux_running) && old_state != aux_stopped && old_state != aux_running) {
+		/* Enable M4 clock */
+		clk_prepare_enable(ac.clk);
+	}
+
+	if (!(new_state == aux_off) && !(old_state != aux_off)) {
+		/* Enable M4 */
+		val = readl_relaxed(src_base_addr);
+		val |= ENABLE_M4_CORE;
+		writel_relaxed(val, src_base_addr);
+	}
+
+	if ((new_state == aux_running || new_state == aux_paused) && old_state != aux_running && old_state != aux_paused) {
+		/* Assert SW reset, i.e. stop M4 if running */
+		val = readl_relaxed(src_base_addr);
+		val &= ~ASSERT_RESET;
+		writel_relaxed(val, src_base_addr);
+	}
+
+	iounmap(src_base_addr);
+}
+
+enum aux_state arch_auxiliary_core_get(u32 core_id)
+{
+	/* FIXME: we are mapping a register were mutual exclusion of the
+	 *        register not be guaranteed
+	 */
+	void __iomem *src_base_addr = ioremap(MX6Q_SRC_BASE_ADDR, SZ_4);
+	u32 val = 0;
+	int flags = 0;
+
 	val = readl_relaxed(src_base_addr);
+	if (val & ASSERT_RESET)
+		flags |= 0x4;
+	if (val & ENABLE_M4_CORE)
+		flags |= 0x1;
 	iounmap(src_base_addr);
 
-	return sprintf(buf, "Auxiliary clock %sabled, auxiliary core %s\n",
-		       __clk_is_enabled(ac.clk) ? "en" : "dis", val &
-					ASSERT_RESET ? "stopped" : "running");
+	if(__clk_is_enabled(ac.clk))
+		flags |= 0x2;
+
+	switch (flags)
+	{
+		case 0x4:
+			return aux_off;
+		case 0x7:
+			return aux_stopped;
+		case 0x3:
+			return aux_running;
+		case 0x1:
+			return aux_paused;
+	}
+
+	return aux_undefined;
+}
+
+static ssize_t bootaux_show(struct kobject *kobj,
+				      struct kobj_attribute *attr, char *buf)
+{
+	const char *state_name[] = {"off", "stopped", "running", "paused"};
+	enum aux_state old_state;
+	enum aux_state new_state;
+
+	old_state = arch_auxiliary_core_get(0);
+	if (old_state == aux_undefined) {
+		new_state = aux_off;
+		arch_auxiliary_core_set(0, old_state, new_state);
+		new_state = arch_auxiliary_core_get(0);
+	}
+	else
+		new_state = old_state;
+
+	/* Print auxiliary core state */
+	return sprintf(buf, "auxiliary core %s\n", state_name[new_state]);
 }
 
 static ssize_t mem_show(struct kobject *kobj,
@@ -86,13 +247,12 @@ static ssize_t mem_addr_show(struct kobject *kobj,
 static ssize_t bootaux_store(struct kobject *kobj,
 		struct kobj_attribute *attr, const char *buf, size_t count)
 {
-	void __iomem *src_base_addr = NULL;
-	void __iomem *tcm_base_addr = NULL;
-	void __iomem *mem_base_addr = NULL;
+	const char *state_name[] = {"off", "stopped", "running", "paused"};
 	unsigned int addr = 0;
 	int ret = 0, len = 0;
 	char *value;
-	u32 val = 0;
+	enum aux_state old_state;
+	enum aux_state new_state;
 
 	/* if \n is at the end of the string then replace it through \0 */
 	len  = strnlen(buf, MAX_INPUT);
@@ -102,88 +262,52 @@ static ssize_t bootaux_store(struct kobject *kobj,
 	memcpy(value, buf, len - 1);
 	value[len - 1] = '\0';
 
-	/* FIXME: we are mapping a register were mutual exclusion of the
-	 *        register not be guaranteed
-	 */
-	src_base_addr = ioremap(MX6Q_SRC_BASE_ADDR, SZ_4);
+	old_state = arch_auxiliary_core_get(0);
+	if (old_state == aux_undefined) {
+		new_state = aux_off;
+		arch_auxiliary_core_set(0, old_state, new_state);
+		old_state = new_state;
+	}
 
-	if (!strcmp(value, "pause")) {
-		clk_disable_unprepare(ac.clk);
-	} else if (!strcmp(value, "stop")) {
-		clk_disable_unprepare(ac.clk);
-		/* assert reset */
-		val = readl_relaxed(src_base_addr);
-		val |= ASSERT_RESET;
-		writel_relaxed(val, src_base_addr);
-		/* disable M4 core */
-		val = readl_relaxed(src_base_addr);
-		val &= ~ENABLE_M4_CORE;
-		writel_relaxed(val, src_base_addr);
-	} else if (!strcmp(value, "reset")) {
-		/* assert reset */
-		val = readl_relaxed(src_base_addr);
-		val |= ASSERT_RESET;
-		writel_relaxed(val, src_base_addr);
-	} else if (!strcmp(value, "start")) {
-		clk_prepare_enable(ac.clk);
-		val = readl_relaxed(src_base_addr);
-		val |= ENABLE_M4_CORE;
-		writel_relaxed(val, src_base_addr);
-	} else {
-		if (!strcmp(value, "run")) {
+	if (!strcmp(value, "start") && (old_state == aux_off))
+		new_state = aux_stopped;
+	else if (!strcmp(value, "stop"))
+		new_state = aux_stopped;
+	else if (!strcmp(value, "pause") && (old_state == aux_running))
+		new_state = aux_paused;
+	else if (!strcmp(value, "continue") && (old_state == aux_paused))
+		new_state = aux_running;
+	else if (!strcmp(value, "off"))
+		new_state = aux_off;
+	else if (!strcmp(value, "run") || (buf[0] >= '0' && buf[0] <= '9'))
+	{
+		if(!strcmp(value, "run"))
 			addr = ac.mem_addr;
-		} else {
+		else {
 			ret = kstrtouint(buf, 0, &addr);
 			if (ret) {
-				iounmap(src_base_addr);
-				return ret;
-			}
-		}
-		/* read assert sw reset */
-		val = readl_relaxed(src_base_addr);
-		if (val & ASSERT_RESET) {
-			dev_info(&ac.pdev->dev, "Starting auxiliary core at "
-							"0x%08x ... \n", addr);
-			if (!addr) {
-				dev_err(&ac.pdev->dev, "failed wrong "
-								"address \n");
-				iounmap(src_base_addr);
+				dev_err(&ac.pdev->dev, "Bad address\n");
 				return -EFAULT;
 			}
-
-			if(!__clk_is_enabled(ac.clk))
-				clk_prepare_enable(ac.clk);
-
-			if (addr != M4_BOOTROM_BASE_ADDR) {
-				/* FIXME: we are mapping a register were mutual
-				 * exclusion of the register not be guaranteed
-				 */
-				tcm_base_addr = ioremap(M4_BOOTROM_BASE_ADDR,
-									SZ_8);
-				mem_base_addr = ioremap(addr, SZ_8);
-				memcpy(tcm_base_addr, mem_base_addr, 8);
-			}
-
-			/* Enable M4 */
-			val = readl_relaxed(src_base_addr);
-			val |= ENABLE_M4_CORE;
-			writel_relaxed(val, src_base_addr);
-
-			/* Clear SW Reset */
-			val = readl_relaxed(src_base_addr);
-			val &= ~ASSERT_RESET;
-			writel_relaxed(val, src_base_addr);
 		}
-		else {
-			dev_info(&ac.pdev->dev, "Auxiliary core is already "
-								"up \n");
+		new_state = aux_stopped;
+		arch_auxiliary_core_set(0, old_state, new_state);
+
+		ret = arch_auxiliary_core_set_reset_address(addr);
+		if (ret) {
+			dev_err(&ac.pdev->dev, "Bad address\n");
+			return -EFAULT;
 		}
+		old_state = new_state;
+		new_state = aux_running;
 	}
-	iounmap(src_base_addr);
-	if (tcm_base_addr != NULL)
-		iounmap(tcm_base_addr);
-	if (mem_base_addr != NULL)
-		iounmap(mem_base_addr);
+	else {
+		dev_err(&ac.pdev->dev, "Command %s unknown or not allowed if"
+		            " auxiliary core %s!\n", buf, state_name[old_state]);
+		return -EFAULT;
+	}
+
+	arch_auxiliary_core_set(0, old_state, new_state);
 
 	return count;
 }
@@ -334,7 +458,6 @@ static int auxiliary_core_init(struct platform_device *pdev)
 		ac.clk = NULL;
 		return -EINVAL;
 	}
-	clk_prepare_enable(ac.clk);
 
 	return 0;
 }

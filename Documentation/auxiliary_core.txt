@@ -14,6 +14,57 @@ There are three kinds of entry in /sys/devices/system/cpu/aux_core:
 
    -	the address were the file should be loaded (default is tcm).
 
+The auxiliary core will be treated as a state machine. The following states
+are available:
+- aux_off
+- aux_stopped
+- aux_running
+- aux_paused
+- (aux_undefined)
+Normally you cant reach state undefined only maybe at a restart when we dont
+know which state is currently set. Thats why the driver immediately check if
+the state is undefined it will be automatically set to state aux_off. Below
+you will find the bit coding and a state diagram.
+
+/******************************************************************************
+****************|              bit coding             | state |****************
+-------------------------------------------------------------------------------
+****************| assert_reset | m4_clock | m4_enable | state |****************
+===============================================================================
+****************|       1      |     0    |     0     |    off    |************
+****************|       1      |     1    |     1     |  stopped  |************
+****************|       0      |     1    |     1     |  running  |************
+****************|       0      |     0    |     1     |  paused   |************
+****************|       0      |     0    |     0     | undefined |************
+****************|       0      |     1    |     0     | undefined |************
+****************|       1      |     0    |     1     | undefined |************
+****************|       1      |     1    |     0     | undefined |************
+*******************************************************************************
+**|   transitions    |   state   |            transitions             |********
+*******************************************************************************
+                      -----------
+                      |   OFF   |
+                      -----------
+          |          |           ^           ^                   ^
+          |    Start |           |  off      |                   |
+          |          v           |           |                   |
+          |           -----------            |                   |
+    run/  |           | Stopped |            | off               |
+    addr  |           -----------            |                   |
+          |          |           ^           |           ^       |
+          | run/addr |           | stop      |           |       | off
+          v          v           |                       |       |
+                      -----------                        |       |
+                      | Running |                        | stop  |
+                      -----------                        |       |
+                     |           ^                       |       |
+               pause |           | continue              |       |
+                     v           | run/addr (restart)    |       |
+                      -----------
+                      | Paused  |
+                      -----------
+******************************************************************************/
+
 The control interfaces have the following read/write attributes:
 
     /sys/devices/system/cpu/aux_core
@@ -26,21 +77,28 @@ The control interfaces have the following read/write attributes:
 
 		  ... write:
 		  you can write several commands to the bootaux file:
-		  pause: this will disable the auxiliary core clock so the
-		         programm which is running will be paused.
-		  start: this will enable the auxiliary core clock so the
-		         programm which is paused will be continued.
-		  stop:  this will disable the auxiliary core itself and the
-		         clock.
-		  reset: this will hold the auxiliary core in reset so you
-		         can download a new programm to the auxiliary core
+		  pause: this transition will disable the auxiliary core clock
+		         so the programm which is running will be paused. The
+		         Core is set to state aux_paused.
+		  start: this transition will only work if you are in the state
+		         off. With start transition you can come to the state
+		         aux_stop. The difference between these two states are
+		         that the M4_Clock will be enabled.
+		  stop:  this will disable the auxiliary core itself and set
+		         the reset bit (hold M4 in reset). You are in the state
+		         aux_stopped.
+		  off:   this transition will disable the M4 Clock, disable M4
+		         itself and enable the reset bit. You are in the state
+		         aux_off.
 		  run:   this will start the auxiliary core at the address
-		         which is given in the variable mem_addr.
+		         which is given in the variable mem_addr. After that
+		         you are in the state aux_running.
 		  address: this will start the auxiliary core at the address
-		         which is given in the transfer parameter.
+		         which is given in the transfer parameter. After that
+		         you are in the state aux_running.
 
 		Example:  "echo start > bootaux", "echo pause > bootaux",
-		          "echo stop > bootaux", "echo reset > bootaux",
+		          "echo stop > bootaux", "echo off > bootaux",
 		          "echo run > bootaux", "echo 0x7f8000 > bootaux"
 
 The file/programm have the following read/write attributes:
