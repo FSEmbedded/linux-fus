@@ -318,6 +318,13 @@ lcd_wvga {				\
 		ecc_strength = "8";
 	};
 
+#ifdef SUPPORT_M4
+	/* F&S auxiliary core driver */
+	auxiliary_core {
+		compatible = "auxiliary-core";
+		clocks = <&clks IMX6SX_CLK_M4>;
+	};
+#endif
 };
 
 /* RAM size for Continues Memory Allocator */

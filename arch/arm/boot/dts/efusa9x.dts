@@ -18,6 +18,9 @@
 #define DISPLAY_LCD	1	/* LCD via RGB adapter */
 #define DISPLAY_LVDS	2	/* LVDS */
 
+/* VLCDON used to enable or disable a display */
+#define CONFIG_EFUSA9X_VLCDON
+
 /*
  * Set the display configuration:
  *
@@ -80,6 +83,14 @@ lvds_wvga {				\
 	de-active = <1>;		\
 	pixelclk-active = <0>;		\
 }
+
+/*
+ * Define this if your LVDS display requires 5V I/O logic voltage. Default is
+ * 3.3V. ATTENTION: Setting 5V on a 3.3V display may damage the display!
+ * Remark: This setting requires board revision 1.10 or newer; older board
+ * revisions only support 3.3V.
+ */
+//#define CONFIG_EFUSA9X_5V_LVDS
 
 /*
  * Configure touch screen:
@@ -211,6 +222,7 @@ lvds_wvga {				\
 /* On board revisions before 1.20, parallel camera does not work correctly */
 #if (CONFIG_EFUSA9X_BOARD_REVISION < 120)
 #undef CONFIG_EFUSA9X_PARALLEL_CAMERA
+#undef CONFIG_EFUSA9X_VLCDON
 #endif
 
 /* On board revisions before 1.20, if WLAN is equipped, SD_A is not available */
@@ -336,6 +348,16 @@ lvds_wvga {				\
 		};
 #endif
 
+#ifdef CONFIG_EFUSA9X_VLCDON
+		reg_vlcdon: vlcdon {
+			compatible = "regulator-fixed";
+			regulator-name = "VLCDON";
+			gpio = <&gpio1 11 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+#endif
 		reg_disp_3v3: disp-3v3 {
 			compatible = "regulator-fixed";
 			regulator-name = "disp-3v3";
@@ -343,7 +365,23 @@ lvds_wvga {				\
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
+#ifdef CONFIG_EFUSA9X_VLCDON
+			vin-supply = <&reg_vlcdon>;
+#endif
 		};
+
+#if defined(CONFIG_EFUSA9X_5V_LVDS) && (CONFIG_EFUSA9X_BOARD_REVISION >= 110)
+		/* Switching LVDS power from 3.3V to 5V is available since
+		   board rev. 1.10; on earlier board revisions, this GPIO is
+		   not connected and has no effect */
+		reg_disp_5V: disp-5V {
+			compatible = "regulator-fixed";
+			regulator-name = "VLCD-5V";
+			gpio = <&gpio2 5 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+#endif
+
 #ifdef CONFIG_EFUSA9X_I2C_A
 		reg_lcd_bl: lcd-bl {
 			compatible = "regulator-fixed";
@@ -452,6 +490,14 @@ lvds_wvga {				\
 		board_name = "efusa9x";
 		ecc_strength = "8";
 	};
+
+#ifdef SUPPORT_M4
+	/* F&S auxiliary core driver */
+	auxiliary_core {
+		compatible = "auxiliary-core";
+		clocks = <&clks IMX6SX_CLK_M4>;
+	};
+#endif
 };
 
 /* RAM size for Continues Memory Allocator */
@@ -884,11 +930,12 @@ lvds_wvga {				\
 #if CONFIG_EFUSA9X_LCDIF0 != DISPLAY_NONE
 /* The first lcdif can be used with LCD or LVDS */
 &lcdif1 {
-#if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS
+#if (CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS)
 	disp-dev = "ldb";
-#endif
+#elif (CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LCD)
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcdif1>;		/* Remove when already active */
+#endif
 	display = <&display0>;			/* Remove when already active */
 	lcd-supply = <&reg_disp_3v3>;
 	status = "okay";
@@ -1337,12 +1384,28 @@ lvds_wvga {				\
 				MX6SX_PAD_LCD1_DATA19__GPIO3_IO_20	0x17059
 				/* VLCD_ON */
 				MX6SX_PAD_LCD1_DATA18__GPIO3_IO_19	0x17059
+#ifdef CONFIG_EFUSA9X_VLCDON
+				/* VLCDON can be used to enable/disable display */
+				MX6SX_PAD_GPIO1_IO11__GPIO1_IO_11	0x13059
+#elif (CONFIG_EFUSA9X_BOARD_REVISION >= 120)
+				/* I2C1_IRQn */
+				MX6SX_PAD_GPIO1_IO11__GPIO1_IO_11	0x0b0b0
+#endif
 				/* I2C2_IRQn (SX8655, ext. touch) */
-				MX6SX_PAD_SD3_CLK__GPIO7_IO_0		0x80000000
+				MX6SX_PAD_SD3_CLK__GPIO7_IO_0		0x0b0b0
 				/* RESETOUTn */
-				MX6SX_PAD_ENET1_CRS__GPIO2_IO_1		0x80000000
+				MX6SX_PAD_ENET1_CRS__GPIO2_IO_1		0x0b0b0
 				/* Reset for external touches on I2C_A */
-				MX6SX_PAD_LCD1_DATA20__GPIO3_IO_21	0x80000000
+				MX6SX_PAD_LCD1_DATA20__GPIO3_IO_21	0x0b0b0
+#if (CONFIG_EFUSA9X_BOARD_REVISION >= 110)
+				MX6SX_PAD_ENET1_TX_CLK__GPIO2_IO_5	0x030b0
+#endif
+				/* PHY_RST */
+				MX6SX_PAD_ENET1_MDC__GPIO2_IO_2		0x1b0b0
+#if (CONFIG_EFUSA9X_BOARD_REVISION >= 120)
+				/* DVS */
+				MX6SX_PAD_USB_H_STROBE__GPIO7_IO_11	0x130b0
+#endif
 			>;
 		};
 
@@ -1404,7 +1467,7 @@ lvds_wvga {				\
 		};
 #endif
 
-#if CONFIG_EFUSA9X_LCDIF0 != DISPLAY_NONE
+#if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LCD
 		pinctrl_lcdif1: lcd1grp {
 			fsl,pins = <
 				MX6SX_PAD_LCD1_CLK__LCDIF1_CLK		0x000b0
@@ -1514,8 +1577,8 @@ lvds_wvga {				\
 				MX6SX_PAD_QSPI1B_SS1_B__ECSPI5_SCLK	0x100b1
 				MX6SX_PAD_QSPI1A_DQS__ECSPI5_MOSI	0x100b1
 				MX6SX_PAD_QSPI1A_SS1_B__ECSPI5_MISO	0x100b1
-				MX6SX_PAD_QSPI1B_DQS__GPIO4_IO_28	0x80000000
-				MX6SX_PAD_QSPI1A_DATA2__GPIO4_IO_18	0x80000000
+				MX6SX_PAD_QSPI1B_DQS__GPIO4_IO_28	0x1b0b0
+				MX6SX_PAD_QSPI1A_DATA2__GPIO4_IO_18	0x1b0b0
 			>;
 		};
 #endif
@@ -1526,9 +1589,9 @@ lvds_wvga {				\
 				MX6SX_PAD_QSPI1A_SCLK__ECSPI1_SCLK	0x100b1
 				MX6SX_PAD_QSPI1A_DATA0__ECSPI1_MOSI	0x100b1
 				MX6SX_PAD_QSPI1A_DATA1__ECSPI1_MISO	0x100b1
-				MX6SX_PAD_QSPI1A_SS0_B__GPIO4_IO_22	0x80000000
+				MX6SX_PAD_QSPI1A_SS0_B__GPIO4_IO_22	0x1b0b0
 #if !defined(CONFIG_EFUSA9X_BLUETOOTH) && !defined(CONFIG_EFUSA9X_UART_C_RTSCTS)
-				MX6SX_PAD_KEY_ROW2__GPIO2_IO_17		0x80000000
+				MX6SX_PAD_KEY_ROW2__GPIO2_IO_17		0x1b0b0
 #endif
 			>;
 		};
@@ -1663,6 +1726,10 @@ lvds_wvga {				\
 				MX6SX_PAD_SD1_DATA3__USDHC1_DATA3	0x17091
 				/* CD */
 				MX6SX_PAD_GPIO1_IO02__GPIO1_IO_2	0x17000
+#if (CONFIG_EFUSA9X_BOARD_REVISION >= 120)
+				/* WLANBT_EN */
+				MX6SX_PAD_GPIO1_IO03__GPIO1_IO_3	0x1b0b0
+#endif
 			>;
 		};
 #endif
@@ -1780,10 +1847,14 @@ lvds_wvga {				\
 				MX6SX_PAD_CSI_DATA05__CSI1_DATA_7	0x11080
 				MX6SX_PAD_CSI_DATA06__CSI1_DATA_8	0x11080
 				MX6SX_PAD_CSI_DATA07__CSI1_DATA_9	0x11080
+#if !defined(CONFIG_EFUSA9X_SPI_B)
+				MX6SX_PAD_QSPI1A_SS0_B__CSI1_DATA_0	0x11080
+				MX6SX_PAD_QSPI1A_SCLK__CSI1_DATA_1	0x11080
+#endif
 				/* Reset */
 				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x17038
 				/* PWDN */
-				MX6SX_PAD_CSI_HSYNC__GPIO1_IO_22	0x17038
+				MX6SX_PAD_USB_H_DATA__GPIO7_IO_10	0x17038
 			>;
 		};
 #endif
