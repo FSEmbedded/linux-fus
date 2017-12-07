@@ -20,6 +20,7 @@
 #include <linux/of_platform.h>
 #include <linux/nwpserial.h>
 #include <linux/clk.h>
+#include <linux/of_gpio.h>
 
 #include "8250/8250.h"
 
@@ -50,6 +51,30 @@ static inline void tegra_serial_handle_break(struct uart_port *port)
 {
 }
 #endif
+
+int of_platform_setup_port_specifics(struct device_node *np, struct uart_port
+		*port, int port_type, bool auto_flow_control)
+{
+	struct uart_8250_port port8250;
+	u32 prop;
+
+	/* Check for shifted address mapping */
+	if (of_property_read_u32(np, "reg-offset", &prop) == 0)
+		port->mapbase += prop;
+	port->irq = irq_of_parse_and_map(np, 0);
+
+	memset(&port8250, 0, sizeof(port8250));
+	port->type = port_type;
+	port8250.port = *port;
+
+	if (port->fifosize)
+		port8250.capabilities = UART_CAP_FIFO;
+
+	if (auto_flow_control)
+		port8250.capabilities |= UART_CAP_AFE;
+
+	return serial8250_register_8250_port(&port8250);
+}
 
 /*
  * Fill a struct uart_port for a given device node
@@ -91,10 +116,6 @@ static int of_platform_serial_setup(struct platform_device *ofdev,
 	port->mapbase = resource.start;
 	port->mapsize = resource_size(&resource);
 
-	/* Check for shifted address mapping */
-	if (of_property_read_u32(np, "reg-offset", &prop) == 0)
-		port->mapbase += prop;
-
 	/* Check for registers offset within the devices address range */
 	if (of_property_read_u32(np, "reg-shift", &prop) == 0)
 		port->regshift = prop;
@@ -108,7 +129,6 @@ static int of_platform_serial_setup(struct platform_device *ofdev,
 	if (ret >= 0)
 		port->line = ret;
 
-	port->irq = irq_of_parse_and_map(np, 0);
 	port->iotype = UPIO_MEM;
 	if (of_property_read_u32(np, "reg-io-width", &prop) == 0) {
 		switch (prop) {
@@ -163,8 +183,13 @@ static int of_platform_serial_probe(struct platform_device *ofdev)
 	const struct of_device_id *match;
 	struct of_serial_info *info;
 	struct uart_port port;
+	struct device_node *child;
 	int port_type;
 	int ret;
+	int gpio;
+	int count;
+	bool auto_flow_control = false;
+	resource_size_t	parent_mapbase;
 
 	match = of_match_device(of_platform_serial_table, &ofdev->dev);
 	if (!match)
@@ -186,19 +211,32 @@ static int of_platform_serial_probe(struct platform_device *ofdev)
 #ifdef CONFIG_SERIAL_8250
 	case PORT_8250 ... PORT_MAX_8250:
 	{
-		struct uart_8250_port port8250;
-		memset(&port8250, 0, sizeof(port8250));
-		port.type = port_type;
-		port8250.port = port;
+		 /* Deactivate reset state 16554 chip is currently in.
+		  * Reset state is caused by strong internal pull up */
+		gpio = of_get_named_gpio(ofdev->dev.of_node, "reset-gpio", 0);
+		if (gpio > 0)
+			gpio_direction_output(gpio, 0);
 
-		if (port.fifosize)
-			port8250.capabilities = UART_CAP_FIFO;
+		count =  of_get_available_child_count(ofdev->dev.of_node);
+		if (of_property_read_bool(ofdev->dev.of_node,"auto-flow-control"))
+			auto_flow_control = true;
 
-		if (of_property_read_bool(ofdev->dev.of_node,
-					  "auto-flow-control"))
-			port8250.capabilities |= UART_CAP_AFE;
-
-		ret = serial8250_register_8250_port(&port8250);
+		if (count > 0) {
+			/* backup original mapbase without offset */
+			parent_mapbase = port.mapbase;
+			/* loop over children, fill individual port settings */
+			for_each_available_child_of_node \
+			(ofdev->dev.of_node, child) {
+				port.mapbase = parent_mapbase;
+				ret = of_platform_setup_port_specifics(child,
+					&port, port_type, auto_flow_control);
+			}
+		} else {
+			/* no children, get settings directly from node,
+			 * create only one port */
+			ret = of_platform_setup_port_specifics(ofdev->dev.
+				of_node, &port, port_type, auto_flow_control);
+		}
 		break;
 	}
 #endif
