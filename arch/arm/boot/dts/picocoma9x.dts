@@ -56,6 +56,9 @@ lcd_wvga {				\
  */
 //#define CONFIG_PICOCOMA9X_LCD_18BPP_DE
 
+/* GPU is only available on CPU variants MCIMX6X3... and MCIMX6X4... */
+#define CONFIG_PICOCOMA9X_GPU
+
 /* TOUCH */
 #define CONFIG_PICOCOMA9X_4WTOUCH_SX8655_ONBOARD /* SX8655 res. touch */
 
@@ -581,6 +584,12 @@ lcd_wvga {				\
 			timing_lcd: CONFIG_PICOCOMA9X_LCD_TIMING;
 		};
 	};
+};
+#endif
+
+#ifndef CONFIG_PICOCOMA9X_GPU
+&gpu {
+	status = "disabled";
 };
 #endif
 

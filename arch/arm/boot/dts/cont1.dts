@@ -388,9 +388,7 @@
 	status = "okay";
 };
 
-/* CONT1 CPU doesnt support 2D&3D GPU, thats why we have to disable gpu,
- * otherwise the CPU hangs up because the driver cant access the register
- */
+/* This board uses CPU variant MCIMX6X2EVN10 which does not have a GPU */
 &gpu {
 	status = "disabled";
 };
