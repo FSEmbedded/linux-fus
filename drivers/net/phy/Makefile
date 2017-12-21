@@ -2,6 +2,7 @@
 
 libphy-objs			:= phy.o phy_device.o mdio_bus.o
 
+obj-$(CONFIG_LED_TRIGGER_PHY)	+= phy_led_triggers.o
 obj-$(CONFIG_PHYLIB)		+= libphy.o
 obj-$(CONFIG_MARVELL_PHY)	+= marvell.o
 obj-$(CONFIG_DAVICOM_PHY)	+= davicom.o
