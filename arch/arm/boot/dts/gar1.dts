@@ -69,6 +69,24 @@
 		};
 	};
 
+	gpioleds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_led>;
+
+		fec0-led {
+			label = "eth1-led";
+			gpios = <&gpio3 0 GPIO_ACTIVE_LOW>;
+			linux,default-trigger = "20b4000.ethernet:01:100Mbps";
+		};
+
+		fec1-led {
+			label = "eth0-led";
+			gpios = <&gpio3 1 GPIO_ACTIVE_LOW>;
+			linux,default-trigger = "20b4000.ethernet:11:100Mbps";
+		};
+	};
+
 	pxp_v4l2 {
 		compatible = "fsl,imx6ul-pxp-v4l2", "fsl,imx6sx-pxp-v4l2",
 			     "fsl,imx6sl-pxp-v4l2";
@@ -360,6 +378,13 @@
 			>;
 		};
 #endif
+
+		pinctrl_led: ledgrp {
+			fsl,pins = <
+				MX6UL_PAD_LCD_CLK__GPIO3_IO00		0x1b059
+				MX6UL_PAD_LCD_ENABLE__GPIO3_IO01 	0x1b059
+			>;
+		};
 
 		pinctrl_pwm1: pwm1grp {
 			fsl,pins = <
