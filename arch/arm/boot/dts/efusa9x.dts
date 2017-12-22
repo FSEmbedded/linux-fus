@@ -134,6 +134,9 @@ lvds_wvga {				\
 #define CONFIG_EFUSA9X_USB_OTG1_OC
 #define CONFIG_EFUSA9X_USB_HOST
 
+/* PCIe */
+//#define CONFIG_EFUSA9X_PCIE
+
 /* CAN */
 #define CONFIG_EFUSA9X_CAN_A
 #define CONFIG_EFUSA9X_CAN_B
@@ -1018,12 +1021,14 @@ lvds_wvga {				\
 };
 #endif
 
-#if 0 //### TODO
+#ifdef CONFIG_EFUSA9X_PCIE
 &pcie {
-	reset-gpio = <&max7310_b 3 0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pcie>;
+	reset-gpio = <&gpio2 1 0>;
 	status = "okay";
 };
-#endif //###
+#endif
 
 #ifdef CONFIG_EFUSA9X_UART_A
 /* UART_A implemented via UART1; TXD, RXD only; efus SKIT: RS232-level */
@@ -1408,6 +1413,15 @@ lvds_wvga {				\
 #endif
 			>;
 		};
+
+#ifdef CONFIG_EFUSA9X_PCIE
+		pinctrl_pcie: pciegrp {
+			fsl,pins = <
+				/* PCIE_WAKEn */
+				MX6SX_PAD_ENET1_COL__GPIO2_IO_0 0x10b0
+			>;
+		};
+#endif
 
 #ifdef CONFIG_EFUSA9X_AUDIO
 		pinctrl_audmux_6: audmux-6 {
