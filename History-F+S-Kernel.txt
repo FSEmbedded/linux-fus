@@ -3,19 +3,24 @@ Version History for Linux Kernel on F&S Vybrid Boards and Modules
 
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
-linux-4.1.5-fsimx6sx-V2.1 (13.12.2017)
+linux-4.1.5-fsimx6sx-V2.1 (08.01.2018)
 --------------------------------------
 Supported Boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
                   QBlissA9, QBlissA9r2, efusA7UL, CubeA7UL, Cube2.0,
                   PicoCOM1.2, GAR1, efusA9X, PicoCOMA9X, CONT1
-Not tested:       BemA9X
+Not tested:       -
 
 - Improve PicoCOMA9X device tree pinmux settings
 - Make bootaux command similar to U-Boot: start/stop/pause/continue/run
 - Improve efusA9X, PicoCOMA9X device tree and fsimx6sx_defconfig
 - Fix support for 8250-16550 UART to use 4 ports
+- Add phy led trigger
+- Use phy led trigger to gar1.dts
 - Change fsimx6sx/ul_defconfig to support Silex WLAN
 - Add option to anable/disable GPU on PicoCOMA9X
+- Add support for PCIe on efusA9X
+- Add CONFIG_FIXED_PHY to fsimx6sx_defconfig
+- Add missing status = "okay"; for SPI_A on efusA9X
 
 
 
