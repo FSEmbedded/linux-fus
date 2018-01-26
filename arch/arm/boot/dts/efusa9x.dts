@@ -127,7 +127,7 @@ lvds_wvga {				\
 
 /* WLAN/BLUETOOTH; either WLAN-only or combined WLAN/Bluetooth chip */
 #define CONFIG_EFUSA9X_WLAN
-//#define CONFIG_EFUSA9X_BLUETOOTH
+#define CONFIG_EFUSA9X_BLUETOOTH
 
 /* USB - USB OTG1 has over-current detection on OC pin */
 #define CONFIG_EFUSA9X_USB_OTG1
@@ -473,6 +473,7 @@ lvds_wvga {				\
 #endif //###
 	};
 
+#ifdef CONFIG_EFUSA9X_AUDIO
 	sound-sgtl5000 {
 		compatible = "fsl,imx-audio-sgtl5000";
 		cpu-dai = <&ssi1>;
@@ -486,6 +487,7 @@ lvds_wvga {				\
 //###			"Line Out Jack", "LINE_OUT",
 			"Headphone Jack", "HP_OUT";
 	};
+#endif
 
 	/* F&S board information */
 	bdinfo {
@@ -852,6 +854,7 @@ lvds_wvga {				\
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
+#ifdef CONFIG_EFUSA9X_AUDIO
 	sgtl5000: sgtl5000@0a {
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
@@ -861,6 +864,7 @@ lvds_wvga {				\
 		VDDIO-supply = <&reg_sgtl5000_vddio>;
 		VDDD-supply = <&reg_sgtl5000_vddd>;
 	};
+#endif
 
 	rtc8565@51 {
 		compatible = "nxp,pcf8565", "nxp,pcf8563";
