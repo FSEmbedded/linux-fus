@@ -50,7 +50,11 @@ EXPORT_SYMBOL(phy_device_free);
 
 static void phy_device_release(struct device *dev)
 {
-	kfree(to_phy_device(dev));
+	struct phy_device *phydev = to_phy_device(dev);
+
+	led_trigger_unregister_simple(phydev->led);
+
+	kfree(phydev);
 }
 
 enum genphy_driver {
@@ -202,6 +206,8 @@ struct phy_device *phy_device_create(struct mii_bus *bus, int addr, int phy_id,
 	request_module(MDIO_MODULE_PREFIX MDIO_ID_FMT, MDIO_ID_ARGS(phy_id));
 
 	device_initialize(&dev->dev);
+
+	led_trigger_register_simple(dev_name(&dev->dev), &dev->led);
 
 	return dev;
 }

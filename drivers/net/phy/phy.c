@@ -36,6 +36,7 @@
 #include <linux/io.h>
 #include <linux/uaccess.h>
 #include <linux/atomic.h>
+#include <linux/leds.h>
 
 #include <asm/irq.h>
 
@@ -66,12 +67,14 @@ static const char *phy_speed_to_str(int speed)
 void phy_print_status(struct phy_device *phydev)
 {
 	if (phydev->link) {
+		led_trigger_event(phydev->led, LED_FULL);
 		netdev_info(phydev->attached_dev,
 			"Link is Up - %s/%s - flow control %s\n",
 			phy_speed_to_str(phydev->speed),
 			DUPLEX_FULL == phydev->duplex ? "Full" : "Half",
 			phydev->pause ? "rx/tx" : "off");
 	} else	{
+		led_trigger_event(phydev->led, LED_OFF);
 		netdev_info(phydev->attached_dev, "Link is Down\n");
 	}
 }
@@ -726,12 +729,27 @@ phy_err:
 	phy_error(phydev);
 }
 
+/* F&S: PHY_HALTED part of phy_state_machine(), also needed by phy_stop() */
+static bool phy_halt(struct phy_device *phydev)
+{
+	if (!phydev->link)
+		return false;
+
+	phydev->link = 0;
+	netif_carrier_off(phydev->attached_dev);
+	phydev->adjust_link(phydev->attached_dev);
+
+	return true;
+}
+
 /**
  * phy_stop - Bring down the PHY link, and stop checking the status
  * @phydev: target phy_device struct
  */
 void phy_stop(struct phy_device *phydev)
 {
+	bool do_suspend = false;
+
 	mutex_lock(&phydev->lock);
 
 	if (PHY_HALTED == phydev->state)
@@ -747,8 +765,20 @@ void phy_stop(struct phy_device *phydev)
 
 	phydev->state = PHY_HALTED;
 
+	/*
+	 * F&S: Instead of indirectly calling phy_state_machine() with
+	 * flush_scheduled_work() later, which does not work (see comment
+	 * below), simply call the halt part of the state machine and suspend
+	 * the PHY if necessary.
+	 */
+	do_suspend = phy_halt(phydev);
+
 out_unlock:
 	mutex_unlock(&phydev->lock);
+
+	/* F&S: Suspend the PHY without holding the mutex. */
+	if (do_suspend)
+		phy_suspend(phydev);
 
 	/* Cannot call flush_scheduled_work() here as desired because
 	 * of rtnl_lock(), but PHY_HALTED shall guarantee phy_change()
@@ -926,13 +956,9 @@ void phy_state_machine(struct work_struct *work)
 						   PHY_INTERRUPT_ENABLED);
 		break;
 	case PHY_HALTED:
-		if (phydev->link) {
-			phydev->link = 0;
-			netif_carrier_off(phydev->attached_dev);
-			phydev->adjust_link(phydev->attached_dev);
-			phy_led_trigger_change_speed(phydev);
-			do_suspend = true;
-		}
+		/* F&S: moved to phy_halt(), code needed in phy_stop(), too */
+		do_suspend = phy_halt(phydev);
+		phy_led_trigger_change_speed(phydev);
 		break;
 	case PHY_RESUMING:
 		if (AUTONEG_ENABLE == phydev->autoneg) {

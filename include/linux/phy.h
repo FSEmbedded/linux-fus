@@ -22,6 +22,7 @@
 #include <linux/timer.h>
 #include <linux/workqueue.h>
 #include <linux/mod_devicetable.h>
+#include <linux/leds.h>
 
 #include <linux/atomic.h>
 
@@ -403,6 +404,7 @@ struct phy_device {
 
 	/* The most recently read link state */
 	int link;
+	struct led_trigger *led;
 
 	/* Enabled Interrupts */
 	u32 interrupts;

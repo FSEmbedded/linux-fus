@@ -1769,6 +1769,8 @@ static void fec_enet_adjust_link(struct net_device *ndev)
 	 * and ignore the event.
 	 */
 	if (!netif_running(ndev) || !netif_device_present(ndev)) {
+		if (fep->link)
+			status_change = 1;
 		fep->link = 0;
 	} else if (phy_dev->link) {
 		if (!fep->link) {
