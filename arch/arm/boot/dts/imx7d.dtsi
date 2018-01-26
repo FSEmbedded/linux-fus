@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 Freescale Semiconductor, Inc.
+ * Copyright 2015-2016 Freescale Semiconductor, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -678,7 +678,7 @@
 					compatible = "syscon-poweroff";
 					regmap = <&snvs>;
 					offset = <0x38>;
-					mask = <0x60>;
+					mask = <0x61>;
 				};
 			};
 
@@ -709,6 +709,7 @@
 				fsl,mf-mix-wakeup-irq = <0x54010000 0xc00 0x0 0x1040640>;
 				mipi-phy-supply = <&reg_1p0d>;
 				pcie-phy-supply = <&reg_1p0d>;
+				vcc-supply = <&reg_1p2>;
 			};
 		};
 
@@ -844,8 +845,8 @@
 				interrupts = <GIC_SPI 8 IRQ_TYPE_LEVEL_HIGH>,
 					<GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>;
 				reg = <0x30700000 0x10000>;
-				clocks = <&clks IMX7D_CLK_DUMMY>;
-				clock-names = "pxp-axi";
+				clocks = <&clks IMX7D_PXP_IPG_CLK>, <&clks IMX7D_PXP_AXI_CLK>;
+				clock-names = "pxp_ipg", "pxp_axi";
 				status = "disabled";
 			};
 
