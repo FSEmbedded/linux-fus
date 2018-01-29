@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2007, 2010-2015 Freescale Semiconductor, Inc. All Rights Reserved.
+ * Copyright 2004-2007, 2010-2016 Freescale Semiconductor, Inc. All Rights Reserved.
  * Copyright (C) 2008 Juergen Beisert (kernel@pengutronix.de)
  *
  * This program is free software; you can redistribute it and/or
@@ -39,6 +39,7 @@
 #define MXC_CPU_IMX6SX		0x62
 #define MXC_CPU_IMX6Q		0x63
 #define MXC_CPU_IMX6UL		0x64
+#define MXC_CPU_IMX6ULL		0x65
 #define MXC_CPU_IMX7D		0x72
 #define MXC_ARCH_CA7		0xc07
 
@@ -198,8 +199,14 @@ static inline bool cpu_is_imx6ul(void)
 {
 	return __mxc_cpu_type == MXC_CPU_IMX6UL;
 }
+static inline bool cpu_is_imx6ull(void)
+{
+	return __mxc_cpu_type == MXC_CPU_IMX6ULL;
+}
+
 #else
 #define cpu_is_imx6ul() 0
+#define cpu_is_imx6ull() 0
 #endif
 
 #ifdef CONFIG_SOC_IMX6Q
@@ -214,7 +221,7 @@ static inline bool cpu_is_imx6q(void)
 static inline bool cpu_is_imx6(void)
 {
 	return cpu_is_imx6q() || cpu_is_imx6dl() || cpu_is_imx6sl()
-		|| cpu_is_imx6sx() || cpu_is_imx6ul();
+		|| cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull();
 }
 
 #ifdef CONFIG_SOC_IMX7D

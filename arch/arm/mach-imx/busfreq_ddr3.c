@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2015 Freescale Semiconductor, Inc. All Rights Reserved.
+ * Copyright (C) 2011-2016 Freescale Semiconductor, Inc. All Rights Reserved.
  */
 
 /*
@@ -162,6 +162,7 @@ unsigned long ddr3_dll_mx6sx[][2] = {
 	{0x1C, 0x04008040},	/* ZQ calibration (long) */
 #endif
 	{0x818, 0x0},		/* MMDC0_PODTCTRL */
+	{0x18, 0x0},
 };
 
 unsigned long ddr3_calibration_mx6sx[][2] = {
@@ -215,6 +216,7 @@ unsigned long ddr3_dll_mx6q[][2] = {
 #endif
 	{0x818, 0x0},		/* MMDC0_PODTCTRL, value also written to
 				   MMDC1_PODTCTRL (Offset 0x4818) */
+	{0x18, 0x0},
 };
 
 unsigned long ddr3_calibration[][2] = {
@@ -271,6 +273,7 @@ unsigned long ddr3_dll_mx6dl[][2] = {
 #endif
 	{0x818, 0x0},		/* MMDC0_PODTCTRL, value also written to
 				   MMDC1_PODTCTRL (Offset 0x4818) */
+	{0x18, 0x0},
 };
 
 unsigned long iomux_offsets_mx6dl[][2] = {
@@ -613,7 +616,7 @@ int init_mmdc_ddr3_settings_imx6_up(struct platform_device *busfreq_pdev)
 				+ normal_mmdc_settings[i][0]);
 	}
 
-	if (cpu_is_imx6ul())
+	if (cpu_is_imx6ul() || cpu_is_imx6ull())
 		iomux_settings_size = ARRAY_SIZE(iomux_offsets_mx6ul);
 	else
 		iomux_settings_size = ARRAY_SIZE(iomux_offsets_mx6sx);
@@ -640,7 +643,7 @@ int init_mmdc_ddr3_settings_imx6_up(struct platform_device *busfreq_pdev)
 	}
 
 	for (i = 0; i < iomux_settings_size; i++) {
-		if (cpu_is_imx6ul()) {
+		if (cpu_is_imx6ul() || cpu_is_imx6ull()) {
 			iomux_offsets_mx6ul[i][1] =
 			readl_relaxed(iomux_base +
 				iomux_offsets_mx6ul[i][0]);
