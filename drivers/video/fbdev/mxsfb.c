@@ -846,7 +846,7 @@ static int mxsfb_blank(int blank, struct fb_info *fb_info)
 		if (!host->enabled) {
 			pm_runtime_get_sync(&host->pdev->dev);
 
-			writel(0, host->base + LCDC_CTRL);
+//###			writel(0, host->base + LCDC_CTRL);
 			mxsfb_set_par(host->fb_info);
 			mxsfb_enable_controller(fb_info);
 		}

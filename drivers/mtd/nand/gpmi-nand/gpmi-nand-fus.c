@@ -78,6 +78,7 @@
 #define GPMI_IS_MX6SX(x)	((x)->devdata->type == IS_MX6SX)
 #define GPMI_IS_MX7D(x)		((x)->devdata->type == IS_MX7D)
 #define GPMI_IS_MX6UL(x)	((x)->devdata->type == IS_MX6UL)
+/* i.MX6UL version also works for i.MX6ULL */
 
 #define GPMI_IS_MX6(x)		(GPMI_IS_MX6Q(x) || GPMI_IS_MX6QP(x)\
 	   || GPMI_IS_MX6SX(x) || GPMI_IS_MX6UL(x))

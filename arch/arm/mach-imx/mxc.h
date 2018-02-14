@@ -199,15 +199,19 @@ static inline bool cpu_is_imx6ul(void)
 {
 	return __mxc_cpu_type == MXC_CPU_IMX6UL;
 }
+#else
+#define cpu_is_imx6ul() 0
+#endif
+
+#ifdef CONFIG_SOC_IMX6ULL
 static inline bool cpu_is_imx6ull(void)
 {
 	return __mxc_cpu_type == MXC_CPU_IMX6ULL;
 }
-
 #else
-#define cpu_is_imx6ul() 0
 #define cpu_is_imx6ull() 0
 #endif
+
 
 #ifdef CONFIG_SOC_IMX6Q
 static inline bool cpu_is_imx6q(void)
