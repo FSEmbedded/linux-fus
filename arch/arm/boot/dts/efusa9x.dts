@@ -601,6 +601,13 @@ lvds_wvga {				\
 	keep-interrupts;
 };
 
+/*
+ * OCRAM usage (128KB):
+ *   0x00900000 - 0x00900FFF: Cortex-A9/Linux: CPU idle + bus frequency code
+ *   0x00901000 - 0x0090FFFF: Cortex-A9/Linux: DMA descriptors, GPU
+ *   0x00910000 - 0x0091EFFF: Cortex-M4/FreeRTOS: Code/Data
+ *   0x0091F000 - 0x0091FFFF: Cortex-A9+M4: Shared memory for shared clocks
+ */
 &ocram {
 	reg = <0x00901000 0xf000>;
 };

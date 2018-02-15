@@ -98,6 +98,12 @@
 		board_name = "cont1";
 		ecc_strength = "8";
 	};
+
+	/* F&S auxiliary core driver */
+	auxiliary_core {
+		compatible = "auxiliary-core";
+		clocks = <&clks IMX6SX_CLK_M4>;
+	};
 };
 
 /* RAM size for Continues Memory Allocator */
@@ -109,6 +115,77 @@
 	/* Disable bus frequency scaling, because reducing bus frequency to
 	   24 MHz does not work with all types of DDR3 RAM */
 	disable-scaling;
+};
+
+&clks {
+	/* Shared memory in OCRAM, keep clear from Linux */
+	fsl,shared-mem-addr = <0x91F000>;
+	fsl,shared-mem-size = <0x1000>;
+	fsl,shared-clks-number = <0x23>;
+	fsl,shared-clks-index = <IMX6SX_CLK_PLL2_BUS
+				 IMX6SX_CLK_PLL2_PFD0
+				 IMX6SX_CLK_PLL2_PFD2
+				 IMX6SX_CLK_PLL3_USB_OTG
+				 IMX6SX_CLK_PLL3_PFD1
+				 IMX6SX_CLK_PLL3_PFD2
+				 IMX6SX_CLK_PLL3_PFD3
+				 IMX6SX_CLK_PLL4_AUDIO
+				 IMX6SX_CLK_PLL5_VIDEO
+				 IMX6SX_CLK_OCRAM
+				 IMX6SX_CLK_CAN1_SERIAL
+				 IMX6SX_CLK_CAN1_IPG
+				 IMX6SX_CLK_CAN2_SERIAL
+				 IMX6SX_CLK_CAN2_IPG
+				 IMX6SX_CLK_CANFD
+				 IMX6SX_CLK_ECSPI1
+				 IMX6SX_CLK_ECSPI2
+				 IMX6SX_CLK_ECSPI3
+				 IMX6SX_CLK_ECSPI4
+				 IMX6SX_CLK_ECSPI5
+				 IMX6SX_CLK_QSPI1
+				 IMX6SX_CLK_QSPI2
+				 IMX6SX_CLK_SSI1
+				 IMX6SX_CLK_SSI2
+				 IMX6SX_CLK_SSI3
+				 IMX6SX_CLK_UART_SERIAL
+				 IMX6SX_CLK_UART_IPG
+				 IMX6SX_CLK_PERIPH_CLK2_SEL
+				 IMX6SX_CLK_DUMMY
+				 IMX6SX_CLK_I2C1
+				 IMX6SX_CLK_I2C2
+				 IMX6SX_CLK_I2C3
+				 IMX6SX_CLK_I2C4
+				 IMX6SX_CLK_EPIT1
+				 IMX6SX_CLK_EPIT2>;
+};
+
+/* epit1 and epit2 may be used by Cortex-M4 examples for timing purposes; they are
+   not used in Linux anyway */
+&epit1{
+	status = "disabled";
+};
+
+&epit2{
+	status = "disabled";
+};
+
+/* rpmsg is used for communication between Cortex-A9 and Cortex-M4 cores */
+&rpmsg{
+	/* The ring buffer addresses are automatically updated in current U-Boot */
+	vring-buffer-address0 = <0xBFFF0000>;
+	vring-buffer-address1 = <0xBFFF8000>;
+	status = "okay";
+};
+
+/*
+ * OCRAM usage (128KB):
+ *   0x00900000 - 0x00900FFF: Cortex-A9/Linux: CPU idle + bus frequency code
+ *   0x00901000 - 0x0090FFFF: Cortex-A9/Linux: DMA descriptors, GPU
+ *   0x00910000 - 0x0091EFFF: Cortex-M4/FreeRTOS: Code/Data
+ *   0x0091F000 - 0x0091FFFF: Cortex-A9+M4: Shared memory for shared clocks
+ */
+&ocram {
+	reg = <0x00901000 0xf000>;
 };
 
 &dma_apbh {
@@ -216,7 +293,7 @@
 &ecspi4 {
 	/* SPI_A: 5x CS */
 	fsl,spi-num-chipselects = <5>;
-	cs-gpios = <&gpio7 4 0>, <&gpio3 1 0>, <&gpio3 2 0>, \
+	cs-gpios = <&gpio7 4 0>, <&gpio3 1 0>, <&gpio3 2 0>,
 		   <&gpio3 3 0>, <&gpio3 4 0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi4>;
@@ -474,7 +551,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3_1>;
 	fsl,uart-has-rtscts;
-	status = "okay";
+	status = "disabled";		/* Used on Cortex-M4 */
 };
 
 /* UART_C: TXD, RXD, RTS, CTS, TTL-level on B2B connector */
