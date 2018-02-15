@@ -1,15 +1,23 @@
 /*
- * Copyright (C) 2016-2017 F&S Elektronik Systeme GmbH
+ * Copyright (C) 2016-2018 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
+ *
+ * The F&S efusA7UL module is available with i.MX6UL and i.MX6ULL CPU. So we
+ * need two different device trees. This is the version for i.MX6UL. The other
+ * variant is given in efusa7ull.dts. However as most device tree settings are
+ * the same in both cases, the other variant simply adds a definition for macro
+ * CONFIG_EFUSA7UL_ULL and includes this file here. So actually this file here
+ * is for both variants and any differences between i.MX6UL and i.MX6ULL can be
+ * decided depending on whether CONFIG_EFUSA7UL_ULL is defined or not.
  */
 
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_EFUSA7UL_BOARD_REVISION	110
+#define CONFIG_EFUSA7UL_BOARD_REVISION	122
 
 #define DISPLAY_NONE	0	/* No display on this port */
 #define DISPLAY_LCD	1	/* LCD via RGB adapter */
@@ -143,7 +151,13 @@ wvga {					\
 #endif
 
 #include <dt-bindings/input/input.h>
+#include <dt-bindings/pwm/pwm.h>
+
+#ifdef CONFIG_EFUSA7UL_ULL
+#include "imx6ull.dtsi"
+#else
 #include "imx6ul.dtsi"
+#endif
 
 / {
 	model = "F&S efusA7UL";
@@ -162,6 +176,16 @@ wvga {					\
 		reg = <0x80000000 0x80000000>;
 	};
 
+	backlight_lcd {
+		compatible = "pwm-backlight";
+		pwms = <&pca963x 1 640000 PWM_POLARITY_INVERTED>;
+		power-supply = <&reg_lcd_bl>;
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+		fb-names = "mxs-lcdif0";
+	};
+
 	backlight {
 		compatible = "pwm-backlight";
 		pwms = <&pwm1 0 5000000>;
@@ -169,7 +193,7 @@ wvga {					\
 				     73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
 		power-supply = <&reg_backlight>;
-		status = "okay";
+		fb-names = "mxs-lcdif0";
 	};
 
 	pxp_v4l2 {
@@ -191,6 +215,17 @@ wvga {					\
 			regulator-always-on;
 		};
 
+#if defined(CONFIG_EFUSA7UL_WLAN) && (CONFIG_EFUSA7UL_BOARD_REVISION >= 120)
+		reg_vdd_wlan: wlan_reset {
+			compatible = "regulator-fixed";
+			regulator-name = "wlan-reset";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			gpio = <&ioexp 0 0>;
+			enable-active-high;
+		};
+#endif
+
 		reg_can: regulator_can {
 			compatible = "regulator-fixed";
 			regulator-name = "can";
@@ -201,6 +236,14 @@ wvga {					\
 			regulator-name = "lcd";
 			gpio = <&gpio5 4 0>;
 			enable-active-high;
+		};
+
+		reg_lcd_bl: lcd-bl {
+			compatible = "regulator-fixed";
+			regulator-name = "lcd-bl";
+			gpio = <&pca963x 0 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
 		};
 
 		reg_backlight: regulator_backlight {
@@ -321,18 +364,13 @@ wvga {					\
 };
 
 &clks {
-	/* Set audio clock rate, output on CKO1 */
+	/* Set audio clock rate */
 	assigned-clocks = <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>,
 			  <&clks IMX6UL_CLK_SAI2_SEL>,
-			  <&clks IMX6UL_CLK_SAI2>,
-			  <&clks IMX6UL_CLK_CKO2_SEL>,
-			  <&clks IMX6UL_CLK_CKO>;
-
+			  <&clks IMX6UL_CLK_SAI2>;
 	assigned-clock-parents = <0>,
 				 <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>,
-				 <0>,
-				 <&clks IMX6UL_CLK_SAI2>,
-				 <&clks IMX6UL_CLK_CKO2>;
+				 <0>;
 //###	assigned-clock-rates = <786432000>, <0>, <24576000>;
 	assigned-clock-rates = <786432000>, <0>, <12288000>;
 };
@@ -457,6 +495,7 @@ wvga {					\
 &sai2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai2>;
+	fsl,mclk-out;
 	status = "okay";
 };
 
@@ -534,7 +573,11 @@ wvga {					\
 #ifdef CONFIG_EFUSA7UL_WLAN
 	enable-sdio-wakeup;
 #endif
+#if defined(CONFIG_EFUSA7UL_WLAN) && (CONFIG_EFUSA7UL_BOARD_REVISION >= 120)
+	vmmc-supply = <&reg_vdd_wlan>;	/* VDD misused for RESET_WLAN/BT */
+#else
 	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+#endif
 	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
 	voltage-ranges = <3300 3300>;
 	no-1-8-v;
@@ -578,12 +621,14 @@ wvga {					\
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
-	pca9632@60 {
+	pca963x: pca9632@60 {
 		compatible = "nxp,pca9632";
 		reg = <0x60>;
 		nxp,totem-pole;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		#pwm-cells = <3>;
+		#gpio-cells = <2>;
 		led@0 {
 			reg = <0>;
 			label = "0-PWRCTL";
@@ -722,13 +767,21 @@ wvga {					\
 #endif
 };
 
-/* I2C_C (Bitbanging): RTC (PCA8565), SGTL5000 (SKIT) */
+/* I2C_C (Bitbanging): RTC (PCA8565), SGTL5000 (SKIT), IO-Expander (PCA9536) */
 &i2c_gpio {
+#if (CONFIG_EFUSA7UL_BOARD_REVISION >= 120)
+	/* IO0: RESETWLANn, IO1: RESETOUTn, IO2: RESETLVDSn, IO3: USB_H1_PWR */
+	ioexp: pca9536@41 {
+		#gpio-cells = <2>;
+		compatible = "nxp,pca9536";
+		reg = <0x41>;
+	};
+#endif
 	sgtl5000: sgtl5000@0a {
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
 		mono2both;
-		clocks = <&clks IMX6UL_CLK_CKO>;
+		clocks = <&clks IMX6UL_CLK_SAI2>;
 		VDDA-supply = <&reg_sgtl5000_vdda>;
 		VDDIO-supply = <&reg_sgtl5000_vddio>;
 		VDDD-supply = <&reg_sgtl5000_vddd>;
@@ -817,7 +870,7 @@ wvga {					\
 	efusa7ul {
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
-/*###*/				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
+				MX6UL_PAD_JTAG_TMS__SAI2_MCLK		0x17088
 
 				/* I2C_A IRQ (ext. touch, etc.) */
 				MX6UL_PAD_SNVS_TAMPER0__GPIO5_IO00	0x0b0b0
@@ -1134,8 +1187,9 @@ wvga {					\
 			fsl,pins = <
 				MX6UL_PAD_JTAG_TDI__SAI2_TX_BCLK	0x17088
 				MX6UL_PAD_JTAG_TDO__SAI2_TX_SYNC	0x17088
-				MX6UL_PAD_JTAG_TRST_B__SAI2_TX_DATA	0x11088
-				MX6UL_PAD_JTAG_TCK__SAI2_RX_DATA	0x11088
+				MX6UL_PAD_JTAG_TRST_B__SAI2_TX_DATA	0x17088
+				MX6UL_PAD_JTAG_TCK__SAI2_RX_DATA	0x17088
+				/* Clock needs to be set globally, see hog */
 //###				MX6UL_PAD_JTAG_TMS__SAI2_MCLK		0x17088
 //###				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
 			>;

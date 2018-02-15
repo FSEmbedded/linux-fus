@@ -1,0 +1,17 @@
+/*
+ * Copyright (C) 2018 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * The F&S efusA7UL module is available with i.MX6UL and i.MX6ULL CPU. So we
+ * need two different device trees. This is the version for i.MX6ULL. However
+ * as most device tree settings are the same in both cases, we simply add the
+ * macro CONFIG_EFUSA7UL_ULL here and include the regular device tree for the
+ * i.MX6UL variant. Differences between i.MX6UL and i.MX6ULL can then be made
+ * there by looking at this macro.
+ */
+
+#define CONFIG_EFUSA7UL_ULL
+#include "efusa7ul.dts"
