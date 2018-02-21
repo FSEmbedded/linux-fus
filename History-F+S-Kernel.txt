@@ -3,6 +3,31 @@ Version History for Linux Kernel on F&S Vybrid Boards and Modules
 
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
+
+linux-4.1.5-fsimx6ul-V2.1 (21.02.2018)
+--------------------------------------
+Supported Boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, efusA7UL, CubeA7UL, Cube2.0,
+                  PicoCOM1.2, GAR1, efusA9X, PicoCOMA9X, CONT1
+Not tested:       -
+
+- Add checks to efusa9x.dts to avoid errors when not using audio
+- Add LED trigger to show link up/down status for ethernet PHY
+- Update to rel_imx_4.1.15_1.2.0_ga (Add support for i.MX7D)
+- Update to rel_imx_4.1.15_2.0.0_ga (Initial support for i.MX6ULL)
+- Update to rel_imx_4.1.15_2.0.1_patch
+- Update to rel_imx_4.1.15_2.0.2_patch (Support for i.MX6ULL 800 MHz)
+- Update to rel_imx_4.1.15_2.0.3_patch (Support for i.MX6ULL 900 MHz)
+- Revert bad display settings on efusA7UL
+- Backport differing pad settings for i.MX6ULL from rel_imx_4.9.x_1.0.0_ga
+- Improve i.MX6ULL settings
+- Add efusa7ull.dts and support for efusA7UL board rev 1.22
+- Keep cont1.dts in sync with other fsimx6sx boards
+- Re-enable operating points for 792 and 900 MHz on i.MX6ULL
+- Add i.MX6ULL to fsimx6ul_defconfig
+
+
+
 linux-4.1.5-fsimx6sx-V2.1 (08.01.2018)
 --------------------------------------
 Supported Boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
