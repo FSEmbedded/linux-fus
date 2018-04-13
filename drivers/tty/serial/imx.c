@@ -234,6 +234,7 @@ struct imx_port {
 	struct dma_chan		*dma_chan_rx, *dma_chan_tx;
 	struct scatterlist	tx_sgl[2];
 	struct imx_dma_rxbuf	rx_buf;
+	unsigned int		rx_fifo_trig;
 	unsigned int		tx_bytes;
 	unsigned int		dma_tx_nents;
 	struct delayed_work	tsk_dma_tx;
@@ -852,7 +853,7 @@ static int imx_setup_ufcr(struct imx_port *sport, unsigned int mode)
 	if (uart_console(&sport->port))
 		rx_fifo_trig = RXTL;
 	else
-		rx_fifo_trig = RXTL_UART;
+		rx_fifo_trig = sport->rx_fifo_trig;
 
 	/* set receiver / transmitter trigger level */
 	val = readl(sport->port.membase + UFCR) & (UFCR_RFDIV | UFCR_DCEDTE);
@@ -1014,7 +1015,7 @@ static int imx_uart_dma_init(struct imx_port *sport)
 	slave_config.direction = DMA_DEV_TO_MEM;
 	slave_config.src_addr = sport->port.mapbase + URXD0;
 	slave_config.src_addr_width = DMA_SLAVE_BUSWIDTH_1_BYTE;
-	slave_config.src_maxburst = RXTL_UART;
+	slave_config.src_maxburst = sport->rx_fifo_trig;
 	ret = dmaengine_slave_config(sport->dma_chan_rx, &slave_config);
 	if (ret) {
 		dev_err(dev, "error in RX dma configuration.\n");
@@ -1939,6 +1940,8 @@ static int serial_imx_probe_dt(struct imx_port *sport,
 	if (of_get_property(np, "fsl,dte-mode", NULL))
 		sport->dte_mode = 1;
 
+	of_property_read_u32(np, "fsl,rx_fifo_trig", &sport->rx_fifo_trig);
+
 	sport->devdata = of_id->data;
 
 	return 0;
@@ -1978,6 +1981,7 @@ static int serial_imx_probe(struct platform_device *pdev)
 	if (!sport)
 		return -ENOMEM;
 
+	sport->rx_fifo_trig = RXTL_UART;
 	ret = serial_imx_probe_dt(sport, pdev);
 	if (ret > 0)
 		serial_imx_probe_pdata(sport, pdev);
