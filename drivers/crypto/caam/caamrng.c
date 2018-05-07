@@ -364,7 +364,7 @@ static int __init caam_rng_init(void)
 	struct device_node *dev_node;
 	struct platform_device *pdev;
 	struct device *ctrldev;
-	void *priv;
+	struct caam_drv_private *priv;
 	int err;
 
 	dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
@@ -391,17 +391,23 @@ static int __init caam_rng_init(void)
 	if (!priv)
 		return -ENODEV;
 
+	/* Check for an instantiated RNG before registration */
+	if (!(rd_reg32(&priv->ctrl->perfmon.cha_num_ls) & CHA_ID_LS_RNG_MASK))
+		return -ENODEV;
+
 	dev = caam_jr_alloc();
 	if (IS_ERR(dev)) {
 		pr_err("Job Ring Device allocation for transform failed\n");
 		return PTR_ERR(dev);
 	}
-	rng_ctx = kmalloc(sizeof(struct caam_rng_ctx), GFP_DMA);
-	if (!rng_ctx)
-		return -ENOMEM;
+	rng_ctx = kmalloc(sizeof(*rng_ctx), GFP_DMA);
+	if (!rng_ctx) {
+		err = -ENOMEM;
+		goto free_caam_alloc;
+	}
 	err = caam_init_rng(rng_ctx, dev);
 	if (err)
-		return err;
+		goto free_rng_ctx;
 
 #ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_RNG_TEST
 	self_test(&caam_rng);
@@ -409,6 +415,12 @@ static int __init caam_rng_init(void)
 
 	dev_info(dev, "registering rng-caam\n");
 	return hwrng_register(&caam_rng);
+
+free_rng_ctx:
+	kfree(rng_ctx);
+free_caam_alloc:
+	caam_jr_free(dev);
+	return err;
 }
 
 module_init(caam_rng_init);

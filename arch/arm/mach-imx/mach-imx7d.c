@@ -7,14 +7,15 @@
  */
 
 #include <linux/irqchip.h>
+#include <linux/mfd/syscon.h>
+#include <linux/mfd/syscon/imx7-iomuxc-gpr.h>
 #include <linux/of_platform.h>
-#include <asm/mach/arch.h>
-#include <asm/mach/map.h>
 #include <linux/phy.h>
 #include <linux/pm_opp.h>
 #include <linux/regmap.h>
-#include <linux/mfd/syscon.h>
-#include <linux/mfd/syscon/imx7-iomuxc-gpr.h>
+
+#include <asm/mach/arch.h>
+#include <asm/mach/map.h>
 
 #include "common.h"
 #include "cpuidle.h"
@@ -61,17 +62,15 @@ static int bcm54220_phy_fixup(struct phy_device *dev)
 	return 0;
 }
 
-#define PHY_ID_AR8031   0x004dd074
+#define PHY_ID_AR8031	0x004dd074
 #define PHY_ID_BCM54220	0x600d8589
-#define PHY_ID_BCM5422x	0x600d8599
+
 static void __init imx7d_enet_phy_init(void)
 {
 	if (IS_BUILTIN(CONFIG_PHYLIB)) {
 		phy_register_fixup_for_uid(PHY_ID_AR8031, 0xffffffff,
 					   ar8031_phy_fixup);
 		phy_register_fixup_for_uid(PHY_ID_BCM54220, 0xffffffff,
-					   bcm54220_phy_fixup);
-		phy_register_fixup_for_uid(PHY_ID_BCM5422x, 0xffffffff,
 					   bcm54220_phy_fixup);
 	}
 }

@@ -31,7 +31,44 @@
  */
 u32 hw_read_otgsc(struct ci_hdrc *ci, u32 mask)
 {
-	return hw_read(ci, OP_OTGSC, mask);
+	struct ci_hdrc_cable *cable;
+	u32 val = hw_read(ci, OP_OTGSC, mask);
+
+	/*
+	 * If using extcon framework for VBUS and/or ID signal
+	 * detection overwrite OTGSC register value
+	 */
+	cable = &ci->platdata->vbus_extcon;
+	if (!IS_ERR(cable->edev)) {
+		if (cable->changed)
+			val |= OTGSC_BSVIS;
+		else
+			val &= ~OTGSC_BSVIS;
+
+		cable->changed = false;
+
+		if (cable->state)
+			val |= OTGSC_BSV;
+		else
+			val &= ~OTGSC_BSV;
+	}
+
+	cable = &ci->platdata->id_extcon;
+	if (!IS_ERR(cable->edev)) {
+		if (cable->changed)
+			val |= OTGSC_IDIS;
+		else
+			val &= ~OTGSC_IDIS;
+
+		cable->changed = false;
+
+		if (cable->state)
+			val |= OTGSC_ID;
+		else
+			val &= ~OTGSC_ID;
+	}
+
+	return val;
 }
 
 /**
@@ -220,7 +257,7 @@ static void ci_otg_work(struct work_struct *work)
 int ci_hdrc_otg_init(struct ci_hdrc *ci)
 {
 	INIT_WORK(&ci->work, ci_otg_work);
-	ci->wq = create_singlethread_workqueue("ci_otg");
+	ci->wq = create_freezable_workqueue("ci_otg");
 	if (!ci->wq) {
 		dev_err(ci->dev, "can't create workqueue\n");
 		return -ENODEV;

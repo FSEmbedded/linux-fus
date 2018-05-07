@@ -41,7 +41,6 @@ struct caam_drv_private_jr {
 	struct device		*dev;
 	int ridx;
 	struct caam_job_ring __iomem *rregs;	/* JobR's register space */
-	struct tasklet_struct irqtask;
 	int irq;			/* One per queue */
 
 	/* Number of scatterlist crypt transforms active on the JobR */
@@ -93,12 +92,10 @@ struct caam_drv_private {
 				   Handles of the RNG4 block are initialized
 				   by this driver */
 
-#ifdef CONFIG_ARM
 	struct clk *caam_ipg;
 	struct clk *caam_mem;
 	struct clk *caam_aclk;
 	struct clk *caam_emi_slow;
-#endif
 
 	/*
 	 * debugfs entries for developer view into driver/device

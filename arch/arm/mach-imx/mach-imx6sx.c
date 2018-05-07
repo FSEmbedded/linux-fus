@@ -81,7 +81,7 @@ static void __init imx6sx_init_machine(void)
 	if (parent == NULL)
 		pr_warn("failed to initialize soc device\n");
 
-	of_platform_populate(NULL, of_default_bus_match_table, NULL, parent);
+	of_platform_default_populate(NULL, NULL, parent);
 
 	imx6sx_enet_init();
 	imx_anatop_init();
@@ -95,6 +95,7 @@ static void __init imx6sx_init_irq(void)
 	imx_init_l2cache();
 	imx_src_init();
 	irqchip_init();
+	imx6_pm_ccm_init("fsl,imx6sx-ccm");
 }
 
 static void __init imx6sx_init_late(void)
@@ -118,7 +119,8 @@ static const char * const imx6sx_dt_compat[] __initconst = {
 };
 
 DT_MACHINE_START(IMX6SX, "Freescale i.MX6 SoloX (Device Tree)")
-	.map_io		= imx6sx_map_io,
+	.l2c_aux_val 	= 0,
+	.l2c_aux_mask	= ~0,
 	.init_irq	= imx6sx_init_irq,
 	.init_machine	= imx6sx_init_machine,
 	.dt_compat	= imx6sx_dt_compat,

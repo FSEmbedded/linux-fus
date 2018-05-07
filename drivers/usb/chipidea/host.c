@@ -100,11 +100,14 @@ static int ehci_ci_reset(struct usb_hcd *hcd)
 {
 	struct device *dev = hcd->self.controller;
 	struct ci_hdrc *ci = dev_get_drvdata(dev);
+	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
 	int ret;
 
 	ret = ehci_setup(hcd);
 	if (ret)
 		return ret;
+
+	ehci->need_io_watchdog = 0;
 
 	ci_platform_configure(ci);
 
@@ -372,6 +375,8 @@ static void host_stop(struct ci_hdrc *ci)
 
 	if (hcd) {
 		usb_remove_hcd(hcd);
+		ci->role = CI_ROLE_END;
+		synchronize_irq(ci->irq);
 		usb_put_hcd(hcd);
 		if (ci->platdata->reg_vbus && !ci_otg_is_fsm_mode(ci) &&
 			(ci->platdata->flags & CI_HDRC_TURN_VBUS_EARLY_ON))
@@ -380,21 +385,7 @@ static void host_stop(struct ci_hdrc *ci)
 			hcd->self.is_b_host = 0;
 	}
 	ci->hcd = NULL;
-}
-
-bool ci_hdrc_host_has_device(struct ci_hdrc *ci)
-{
-	struct usb_device *roothub;
-	int i;
-
-	if ((ci->role == CI_ROLE_HOST) && ci->hcd) {
-		roothub = ci->hcd->self.root_hub;
-		for (i = 0; i < roothub->maxchild; ++i) {
-			if (usb_hub_find_child(roothub, (i + 1)))
-				return true;
-		}
-	}
-	return false;
+	ci->otg.host = NULL;
 }
 
 static void ci_hdrc_host_save_for_power_lost(struct ci_hdrc *ci)

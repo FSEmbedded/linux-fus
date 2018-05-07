@@ -22,31 +22,24 @@ struct device_node;
 enum mxc_cpu_pwr_mode;
 struct of_device_id;
 
-void mx1_map_io(void);
 void mx21_map_io(void);
 void mx27_map_io(void);
 void mx31_map_io(void);
 void mx35_map_io(void);
-void imx1_init_early(void);
 void imx21_init_early(void);
 void imx27_init_early(void);
 void imx31_init_early(void);
 void imx35_init_early(void);
 void mxc_init_irq(void __iomem *);
-void tzic_init_irq(void);
-void mx1_init_irq(void);
 void mx21_init_irq(void);
 void mx27_init_irq(void);
 void mx31_init_irq(void);
 void mx35_init_irq(void);
-void imx1_soc_init(void);
 void imx21_soc_init(void);
 void imx27_soc_init(void);
 void imx31_soc_init(void);
 void imx35_soc_init(void);
 void epit_timer_init(void __iomem *base, int irq);
-void mxc_timer_init(void __iomem *, int);
-int mx1_clocks_init(unsigned long fref);
 int mx21_clocks_init(unsigned long lref, unsigned long fref);
 int mx27_clocks_init(unsigned long fref);
 int mx31_clocks_init(unsigned long fref);
@@ -58,13 +51,11 @@ void mxc_set_cpu_type(unsigned int type);
 void mxc_set_arch_type(unsigned int type);
 void mxc_restart(enum reboot_mode, const char *);
 void mxc_arch_reset_init(void __iomem *);
-int mx51_revision(void);
-int mx53_revision(void);
+void imx1_reset_init(void __iomem *);
 void imx_set_aips(void __iomem *);
 void imx_aips_allow_unprivileged_access(const char *compat);
 int mxc_device_init(void);
 void imx_set_soc_revision(unsigned int rev);
-unsigned int imx_get_soc_revision(void);
 void imx_init_revision_from_anatop(void);
 struct device *imx_soc_device_init(void);
 void imx6_enable_rbc(bool enable);
@@ -113,7 +104,6 @@ enum mx3_cpu_pwr_mode {
 };
 
 void mx3_cpu_lp_set(enum mx3_cpu_pwr_mode mode);
-void imx_print_silicon_rev(const char *cpu, int srev);
 
 void imx_enable_cpu(int cpu, bool enable);
 void imx_set_cpu_jump(int cpu, void *jump_addr);
@@ -162,8 +152,8 @@ void imx_gpc_hwirq_unmask(unsigned int hwirq);
 void imx_anatop_init(void);
 void imx_anatop_pre_suspend(void);
 void imx_anatop_post_resume(void);
-int imx6q_set_lpm(enum mxc_cpu_pwr_mode mode);
-void imx6q_set_int_mem_clk_lpm(bool enable);
+int imx6_set_lpm(enum mxc_cpu_pwr_mode mode);
+void imx6_set_int_mem_clk_lpm(bool enable);
 void imx6sl_set_wait_clk(bool enter);
 void imx6_enet_mac_init(const char *enet_compat, const char *ocotp_compat);
 #ifdef CONFIG_HAVE_IMX_MMDC
@@ -188,18 +178,19 @@ bool imx_gpc_usb_wakeup_enabled(void);
 
 #ifdef CONFIG_SUSPEND
 void v7_cpu_resume(void);
-void ca7_cpu_resume(void);
+void imx53_suspend(void __iomem *ocram_vbase);
+extern const u32 imx53_suspend_sz;
 void imx6_suspend(void __iomem *ocram_vbase);
 void imx7_suspend(void __iomem *ocram_vbase);
 #else
 static inline void v7_cpu_resume(void) {}
-static inline void ca7_cpu_resume(void) {}
+static inline void imx53_suspend(void __iomem *ocram_vbase) {}
+static const u32 imx53_suspend_sz;
 static inline void imx6_suspend(void __iomem *ocram_vbase) {}
 static inline void imx7_suspend(void __iomem *ocram_vbase) {}
 #endif
 
-void imx7_pm_init(void);
-void imx7d_pm_init(void);
+void imx6_pm_ccm_init(const char *ccm_compat);
 void imx6q_pm_init(void);
 void imx6dl_pm_init(void);
 void imx6sl_pm_init(void);
@@ -211,11 +202,9 @@ void imx6q_pm_set_ccm_base(void __iomem *base);
 #ifdef CONFIG_PM
 void imx51_pm_init(void);
 void imx53_pm_init(void);
-void imx5_pm_set_ccm_base(void __iomem *base);
 #else
 static inline void imx51_pm_init(void) {}
 static inline void imx53_pm_init(void) {}
-static inline void imx5_pm_set_ccm_base(void __iomem *base) {}
 #endif
 
 #ifdef CONFIG_NEON
@@ -230,7 +219,7 @@ void imx_init_l2cache(void);
 static inline void imx_init_l2cache(void) {}
 #endif
 
-extern struct smp_operations imx_smp_ops;
-extern struct smp_operations ls1021a_smp_ops;
+extern const struct smp_operations imx_smp_ops;
+extern const struct smp_operations ls1021a_smp_ops;
 
 #endif

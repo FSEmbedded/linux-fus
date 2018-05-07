@@ -1,9 +1,31 @@
 * USB2 ChipIdea USB controller for ci13xxx
 
 Required properties:
-- compatible: should be "chipidea,usb2"
+- compatible: should be one of:
+	"fsl,imx23-usb"
+	"fsl,imx27-usb"
+	"fsl,imx28-usb"
+	"fsl,imx6q-usb"
+	"fsl,imx6sl-usb"
+	"fsl,imx6sx-usb"
+	"fsl,imx6ul-usb"
+	"fsl,imx7d-usb"
+	"lsi,zevio-usb"
+	"qcom,ci-hdrc"
+	"chipidea,usb2"
+	"xlnx,zynq-usb-2.20a"
 - reg: base address and length of the registers
 - interrupts: interrupt for the USB controller
+
+Recommended properies:
+- phy_type: the type of the phy connected to the core. Should be one
+  of "utmi", "utmi_wide", "ulpi", "serial" or "hsic". Without this
+  property the PORTSC register won't be touched.
+- dr_mode: One of "host", "peripheral" or "otg". Defaults to "otg"
+
+Deprecated properties:
+- usb-phy:      phandle for the PHY device. Use "phys" instead.
+- fsl,usbphy: phandle of usb phy that connects to the port. Use "phys" instead.
 
 Optional properties:
 - clocks: reference to the USB clock
@@ -59,6 +81,8 @@ i.mx specific properties
 - fsl,usbmisc: phandler of non-core register device, with one
   argument that indicate usb controller index
 - disable-over-current: disable over current detect
+- over-current-active-high: over current signal polarity is high active,
+  typically over current signal polarity is low active.
 - external-vbus-divider: enables off-chip resistor divider for Vbus
 
 Example:
@@ -71,9 +95,11 @@ Example:
 		phys = <&usb_phy0>;
 		phy-names = "usb-phy";
 		vbus-supply = <&reg_usb0_vbus>;
-		gadget-itc-setting = <0x4>; /* 4 micro-frames */
+		itc-setting = <0x4>; /* 4 micro-frames */
 		 /* Incremental burst of unspecified length */
 		ahb-burst-config = <0x0>;
 		tx-burst-size-dword = <0x10>; /* 64 bytes */
 		rx-burst-size-dword = <0x10>;
+		extcon = <0>, <&usb_id>;
+		phy-clkgate-delay-us = <400>;
 	};

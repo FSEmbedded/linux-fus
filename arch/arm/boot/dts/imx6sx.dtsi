@@ -219,6 +219,16 @@
 			arm,data-latency = <4 2 3>;
 		};
 
+		gpu: gpu@01800000 {
+			compatible = "vivante,gc";
+			reg = <0x01800000 0x4000>;
+			interrupts = <GIC_SPI 10 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&clks IMX6SX_CLK_GPU>,
+				 <&clks IMX6SX_CLK_GPU>,
+				 <&clks IMX6SX_CLK_GPU>;
+			clock-names = "bus", "core", "shader";
+		};
+
 		dma_apbh: dma-apbh@01804000 {
 			compatible = "fsl,imx6sx-dma-apbh", "fsl,imx28-dma-apbh";
 			reg = <0x01804000 0x2000>;
@@ -315,7 +325,7 @@
 						      "rxtx1", "rxtx2",
 						      "rxtx3", "rxtx4",
 						      "rxtx5", "rxtx6",
-						      "rxtx7", "dma";
+						      "rxtx7", "spba";
 					status = "disabled";
 				};
 
@@ -553,6 +563,7 @@
 				#gpio-cells = <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
+				gpio-ranges = <&iomuxc 0 5 26>;
 			};
 
 			gpio2: gpio@020a0000 {
@@ -564,6 +575,7 @@
 				#gpio-cells = <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
+				gpio-ranges = <&iomuxc 0 31 20>;
 			};
 
 			gpio3: gpio@020a4000 {
@@ -575,6 +587,7 @@
 				#gpio-cells = <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
+				gpio-ranges = <&iomuxc 0 51 29>;
 			};
 
 			gpio4: gpio@020a8000 {
@@ -586,6 +599,7 @@
 				#gpio-cells = <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
+				gpio-ranges = <&iomuxc 0 80 32>;
 			};
 
 			gpio5: gpio@020ac000 {
@@ -597,6 +611,7 @@
 				#gpio-cells = <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
+				gpio-ranges = <&iomuxc 0 112 24>;
 			};
 
 			gpio6: gpio@020b0000 {
@@ -608,6 +623,7 @@
 				#gpio-cells = <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
+				gpio-ranges = <&iomuxc 0 136 12>, <&iomuxc 12 158 11>;
 			};
 
 			gpio7: gpio@020b4000 {
@@ -619,6 +635,7 @@
 				#gpio-cells = <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
+				gpio-ranges = <&iomuxc 0 148 10>, <&iomuxc 10 169 2>;
 			};
 
 			mqs: mqs {
@@ -668,7 +685,7 @@
 					     <GIC_SPI 54 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 127 IRQ_TYPE_LEVEL_HIGH>;
 
-				regulator-1p1@110 {
+				regulator-1p1 {
 					compatible = "fsl,anatop-regulator";
 					regulator-name = "vdd1p1";
 					regulator-min-microvolt = <800000>;
@@ -697,7 +714,7 @@
 					anatop-enable-bit = <0>;
 				};
 
-				regulator-2p5@130 {
+				regulator-2p5 {
 					compatible = "fsl,anatop-regulator";
 					regulator-name = "vdd2p5";
 					regulator-min-microvolt = <2100000>;
@@ -712,7 +729,7 @@
 					anatop-enable-bit = <0>;
 				};
 
-				reg_arm: regulator-vddcore@140 {
+				reg_arm: regulator-vddcore {
 					compatible = "fsl,anatop-regulator";
 					regulator-name = "vddarm";
 					regulator-min-microvolt = <725000>;
@@ -745,7 +762,7 @@
 					anatop-max-voltage = <1450000>;
 				};
 
-				reg_soc: regulator-vddsoc@140 {
+				reg_soc: regulator-vddsoc {
 					compatible = "fsl,anatop-regulator";
 					regulator-name = "vddsoc";
 					regulator-min-microvolt = <725000>;
@@ -824,7 +841,7 @@
 					regmap = <&snvs>;
 					interrupts = <GIC_SPI 4 IRQ_TYPE_LEVEL_HIGH>;
 					linux,keycode = <KEY_POWER>;
-					wakeup;
+					wakeup-source;
 				};
 			};
 
@@ -1175,8 +1192,7 @@
 					 <&clks 0>, <&clks 0>;
 				clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 				dma-names = "rx", "tx";
-				dmas = <&sdma 33 23 0>, <&sdma 34 23 0>;
-				dma-source = <&gpr 0 17 0 18>;
+				dmas = <&sdma 33 24 0>, <&sdma 34 24 0>;
 				status = "disabled";
 			};
 
@@ -1395,6 +1411,8 @@
 				clocks = <&clks IMX6SX_CLK_IPG>;
 				num-channels = <4>;
 				clock-names = "adc";
+				fsl,adck-max-frequency = <30000000>, <40000000>,
+							 <20000000>;
 				status = "disabled";
                         };
 
@@ -1405,6 +1423,8 @@
 				clocks = <&clks IMX6SX_CLK_IPG>;
 				num-channels = <4>;
 				clock-names = "adc";
+				fsl,adck-max-frequency = <30000000>, <40000000>,
+							 <20000000>;
 				status = "disabled";
                         };
 
@@ -1528,5 +1548,10 @@
 			power-domains = <&gpc 2>;
 			status = "disabled";
 		};
+	};
+
+	gpu-subsystem {
+		compatible = "fsl,imx-gpu-subsystem";
+		cores = <&gpu>;
 	};
 };

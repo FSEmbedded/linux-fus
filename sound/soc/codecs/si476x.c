@@ -208,26 +208,7 @@ out:
 	return err;
 }
 
-static int si476x_codec_startup(struct snd_pcm_substream *substream,
-					struct snd_soc_dai *dai) {
-	struct si476x_core *core = i2c_mfd_cell_to_core(dai->dev);
-
-	if (!si476x_core_is_powered_up(core))
-		si476x_core_set_power_state(core, SI476X_POWER_UP_FULL);
-	return 0;
-}
-
-static void si476x_codec_shutdown(struct snd_pcm_substream *substream,
-					struct snd_soc_dai *dai) {
-	struct si476x_core *core = i2c_mfd_cell_to_core(dai->dev);
-
-	if (si476x_core_is_powered_up(core))
-		si476x_core_set_power_state(core, SI476X_POWER_DOWN);
-}
-
-static struct snd_soc_dai_ops si476x_dai_ops = {
-	.startup        = si476x_codec_startup,
-	.shutdown       = si476x_codec_shutdown,
+static const struct snd_soc_dai_ops si476x_dai_ops = {
 	.hw_params	= si476x_codec_hw_params,
 	.set_fmt	= si476x_codec_set_dai_fmt,
 };
@@ -257,10 +238,12 @@ static struct regmap *si476x_get_regmap(struct device *dev)
 
 static struct snd_soc_codec_driver soc_codec_dev_si476x = {
 	.get_regmap = si476x_get_regmap,
-	.dapm_widgets = si476x_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(si476x_dapm_widgets),
-	.dapm_routes = si476x_dapm_routes,
-	.num_dapm_routes = ARRAY_SIZE(si476x_dapm_routes),
+	.component_driver = {
+		.dapm_widgets		= si476x_dapm_widgets,
+		.num_dapm_widgets	= ARRAY_SIZE(si476x_dapm_widgets),
+		.dapm_routes		= si476x_dapm_routes,
+		.num_dapm_routes	= ARRAY_SIZE(si476x_dapm_routes),
+	},
 };
 
 static int si476x_platform_probe(struct platform_device *pdev)

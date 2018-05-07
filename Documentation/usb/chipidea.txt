@@ -3,12 +3,17 @@
 To show how to demo OTG HNP and SRP functions via sys input files
 with 2 Freescale i.MX6Q sabre SD boards.
 
-1.1 How to enable OTG HNP and SRP
+1.1 How to enable OTG FSM
 ---------------------------------------
-Pass otg-rev to be 0x0200, remove srp-disable and hnp-disable in dts like below:
-dr_mode = "otg";
-otg-rev = <0x0200>;
-adp-disable;
+1.1.1 Select CONFIG_USB_OTG_FSM in menuconfig, rebuild kernel
+Image and modules. If you want to check some internal
+variables for otg fsm, mount debugfs, there are 2 files
+which can show otg fsm variables and some controller registers value:
+cat /sys/kernel/debug/ci_hdrc.0/otg
+cat /sys/kernel/debug/ci_hdrc.0/registers
+1.1.2 Add below entries in your dts file for your controller node
+	otg-rev = <0x0200>;
+	adp-disable;
 
 1.2 HNP and SRP test operations
 -------------------
@@ -32,6 +37,11 @@ adp-disable;
 
    or, on B-device:
    echo 0 > /sys/bus/platform/devices/ci_hdrc.0/inputs/b_bus_req
+
+   or, by introducing HNP polling, B-Host can know when A-peripheral wish
+   to be host role, so this role switch also can be trigged in A-peripheral
+   side by answering the polling from B-Host, this can be done on A-device:
+   echo 1 > /sys/bus/platform/devices/ci_hdrc.0/inputs/a_bus_req
 
    A-device should switch back to host and enumrate B-device.
 
