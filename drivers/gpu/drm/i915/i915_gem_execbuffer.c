@@ -1362,7 +1362,6 @@ i915_gem_execbuffer_move_to_active(struct list_head *vmas,
 		u32 old_read = obj->base.read_domains;
 		u32 old_write = obj->base.write_domain;
 
-		obj->dirty = 1; /* be paranoid  */
 		obj->base.write_domain = obj->base.pending_write_domain;
 		if (obj->base.write_domain)
 			vma->exec_entry->flags |= EXEC_OBJECT_WRITE;

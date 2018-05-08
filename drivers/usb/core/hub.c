@@ -2222,6 +2222,12 @@ static int usb_enumerate_device_otg(struct usb_device *udev)
 									err);
 				bus->b_hnp_enable = 0;
 			}
+
+			if (bus->otg_fsm) {
+				bus->otg_fsm->b_hnp_enable = 1;
+				if (bus->b_hnp_enable)
+					bus->otg_fsm->a_set_b_hnp_en = 1;
+			}
 		} else if (desc->bLength == sizeof
 				(struct usb_otg_descriptor)) {
 			/* Set a_alt_hnp_support for legacy otg device */

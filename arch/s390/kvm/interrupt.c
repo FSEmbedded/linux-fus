@@ -1278,10 +1278,6 @@ static int __inject_sigp_emergency(struct kvm_vcpu *vcpu,
 	if (kvm_get_vcpu_by_id(vcpu->kvm, irq->u.emerg.code) == NULL)
 		return -EINVAL;
 
-	/* sending vcpu invalid */
-	if (kvm_get_vcpu_by_id(vcpu->kvm, irq->u.emerg.code) == NULL)
-		return -EINVAL;
-
 	set_bit(irq->u.emerg.code, li->sigp_emerg_pending);
 	set_bit(IRQ_PEND_EXT_EMERGENCY, &li->pending_irqs);
 	atomic_or(CPUSTAT_EXT_INT, li->cpuflags);

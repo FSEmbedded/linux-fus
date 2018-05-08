@@ -1532,17 +1532,10 @@ void x2apic_setup(void)
 static __init void x2apic_disable(void)
 {
 	u32 x2apic_id, state = x2apic_state;
-<<<<<<< HEAD
 
 	x2apic_mode = 0;
 	x2apic_state = X2APIC_DISABLED;
 
-=======
-
-	x2apic_mode = 0;
-	x2apic_state = X2APIC_DISABLED;
-
->>>>>>> origin/linux-4.9.x
 	if (state != X2APIC_ON)
 		return;
 

@@ -1516,9 +1516,6 @@ int arizona_dev_init(struct arizona *arizona)
 	pm_runtime_set_autosuspend_delay(arizona->dev, 100);
 	pm_runtime_use_autosuspend(arizona->dev);
 
-	pm_runtime_set_autosuspend_delay(arizona->dev, 100);
-	pm_runtime_use_autosuspend(arizona->dev);
-
 	arizona_request_irq(arizona, ARIZONA_IRQ_CLKGEN_ERR, "CLKGEN error",
 			    arizona_clkgen_err, arizona);
 	arizona_request_irq(arizona, ARIZONA_IRQ_OVERCLOCKED, "Overclocked",

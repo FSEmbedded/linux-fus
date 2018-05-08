@@ -43,6 +43,15 @@
 #include "imx6q.dtsi"
 
 / {
+	aliases {
+		pre0 = &pre1;
+		pre1 = &pre2;
+		pre2 = &pre3;
+		pre3 = &pre4;
+		prg0 = &prg1;
+		prg1 = &prg2;
+	};
+
 	soc {
 		ocram2: sram@00940000 {
 			compatible = "mmio-sram";
@@ -87,7 +96,7 @@
 				reg = <0x021c8000 0x1000>;
 				clocks = <&clks IMX6QDL_CLK_PRE0>;
 				interrupts = <0 90 IRQ_TYPE_EDGE_RISING>;
-				ocram = <&ocram_2>;
+				ocram = <&ocram2>;
 				status = "disabled";
 			};
 
@@ -96,7 +105,7 @@
 				reg = <0x021c9000 0x1000>;
 				clocks = <&clks IMX6QDL_CLK_PRE1>;
 				interrupts = <0 97 IRQ_TYPE_EDGE_RISING>;
-				ocram = <&ocram_2>;
+				ocram = <&ocram2>;
 				status = "disabled";
 			};
 
@@ -105,7 +114,7 @@
 				reg = <0x021ca000 0x1000>;
 				clocks = <&clks IMX6QDL_CLK_PRE2>;
 				interrupts = <0 98 IRQ_TYPE_EDGE_RISING>;
-				ocram = <&ocram_3>;
+				ocram = <&ocram3>;
 				status = "disabled";
 			};
 
@@ -114,7 +123,7 @@
 				reg = <0x021cb000 0x1000>;
 				clocks = <&clks IMX6QDL_CLK_PRE3>;
 				interrupts = <0 99 IRQ_TYPE_EDGE_RISING>;
-				ocram = <&ocram_3>;
+				ocram = <&ocram3>;
 				status = "disabled";
 			};
 
@@ -170,3 +179,4 @@
 &ldb {
 	compatible = "fsl,imx6qp-ldb", "fsl,imx6q-ldb", "fsl,imx53-ldb";
 };
+

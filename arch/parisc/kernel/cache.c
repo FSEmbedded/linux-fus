@@ -406,7 +406,7 @@ void __init parisc_setup_cache_timing(void)
 	flush_tlb_all();
 	alltime = mfctl(16) - alltime;
 
-	size = PAGE_SIZE;
+	size = 0;
 	start = (unsigned long) _text;
 	rangetime = mfctl(16);
 	while (start < (unsigned long) _end) {
@@ -471,7 +471,6 @@ int __flush_tlb_range(unsigned long sid, unsigned long start,
 		flush_tlb_all();
 		return 1;
 	}
-<<<<<<< HEAD
 
 	/* Purge TLB entries for small ranges using the pdtlb and
 	   pitlb instructions.  These instructions execute locally
@@ -487,23 +486,6 @@ int __flush_tlb_range(unsigned long sid, unsigned long start,
 		return 0;
 	}
 
-=======
-
-	/* Purge TLB entries for small ranges using the pdtlb and
-	   pitlb instructions.  These instructions execute locally
-	   but cause a purge request to be broadcast to other TLBs.  */
-	if (likely(!split_tlb)) {
-		while (start < end) {
-			purge_tlb_start(flags);
-			mtsp(sid, 1);
-			pdtlb(start);
-			purge_tlb_end(flags);
-			start += PAGE_SIZE;
-		}
-		return 0;
-	}
-
->>>>>>> origin/linux-4.9.x
 	/* split TLB case */
 	while (start < end) {
 		purge_tlb_start(flags);

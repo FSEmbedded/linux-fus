@@ -915,20 +915,6 @@ static int usbduxsigma_ao_cmd(struct comedi_device *dev,
 	 */
 	devpriv->ao_timer = cmd->scan_begin_arg / 1000000;
 
-	if (cmd->convert_src == TRIG_TIMER) {
-		/*
-		 * timing of the conversion itself: every 125 us
-		 * at high speed (not used yet)
-		 */
-		devpriv->ao_timer = cmd->convert_arg / 125000;
-	} else {
-		/*
-		 * timing of the scan: every 1ms
-		 * we get all channels at once
-		 */
-		devpriv->ao_timer = cmd->scan_begin_arg / 1000000;
-	}
-
 	devpriv->ao_counter = devpriv->ao_timer;
 
 	if (cmd->start_src == TRIG_NOW) {

@@ -339,8 +339,6 @@ static int __init vgem_init(void)
 		goto out;
 	}
 
-	drm_dev_set_unique(vgem_device, "vgem");
-
 	ret  = drm_dev_register(vgem_device, 0);
 	if (ret)
 		goto out_unref;

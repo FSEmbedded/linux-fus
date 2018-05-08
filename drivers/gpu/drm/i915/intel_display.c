@@ -17004,7 +17004,6 @@ void intel_modeset_gem_init(struct drm_device *dev)
 
 	intel_init_gt_powersave(dev_priv);
 
->>>>>>> origin/linux-4.9.x
 	intel_modeset_init_hw(dev);
 
 	intel_setup_overlay(dev_priv);

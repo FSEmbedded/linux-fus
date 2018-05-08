@@ -584,8 +584,6 @@ void mmc_wait_for_req_done(struct mmc_host *host, struct mmc_request *mrq)
 	}
 
 	mmc_retune_release(host);
-<<<<<<< HEAD
-=======
 }
 EXPORT_SYMBOL(mmc_wait_for_req_done);
 
@@ -1799,44 +1797,6 @@ int mmc_select_drive_strength(struct mmc_card *card, unsigned int max_dtr,
 						host_drv_type,
 						card_drv_type,
 						drv_type);
-}
-
-int mmc_select_drive_strength(struct mmc_card *card, unsigned int max_dtr,
-			      int card_drv_type, int *drv_type)
-{
-	struct mmc_host *host = card->host;
-	int host_drv_type = SD_DRIVER_TYPE_B;
-	int drive_strength;
-
-	*drv_type = 0;
-
-	if (!host->ops->select_drive_strength)
-		return 0;
-
-	/* Use SD definition of driver strength for hosts */
-	if (host->caps & MMC_CAP_DRIVER_TYPE_A)
-		host_drv_type |= SD_DRIVER_TYPE_A;
-
-	if (host->caps & MMC_CAP_DRIVER_TYPE_C)
-		host_drv_type |= SD_DRIVER_TYPE_C;
-
-	if (host->caps & MMC_CAP_DRIVER_TYPE_D)
-		host_drv_type |= SD_DRIVER_TYPE_D;
-
-	/*
-	 * The drive strength that the hardware can support
-	 * depends on the board design.  Pass the appropriate
-	 * information and let the hardware specific code
-	 * return what is possible given the options
-	 */
-	mmc_host_clk_hold(host);
-	drive_strength = host->ops->select_drive_strength(card, max_dtr,
-							  host_drv_type,
-							  card_drv_type,
-							  drv_type);
-	mmc_host_clk_release(host);
-
-	return drive_strength;
 }
 
 /*
@@ -3108,6 +3068,8 @@ static void mmc_of_reserve_idx(void)
 static int __init mmc_init(void)
 {
 	int ret;
+
+	mmc_of_reserve_idx();
 
 	ret = mmc_register_bus();
 	if (ret)

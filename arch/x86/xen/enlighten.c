@@ -36,10 +36,6 @@
 
 #include <linux/kexec.h>
 
-#ifdef CONFIG_KEXEC
-#include <linux/kexec.h>
-#endif
-
 #include <xen/xen.h>
 #include <xen/events.h>
 #include <xen/interface/xen.h>

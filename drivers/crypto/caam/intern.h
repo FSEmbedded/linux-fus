@@ -2,7 +2,7 @@
  * CAAM/SEC 4.x driver backend
  * Private/internal definitions between modules
  *
- * Copyright 2008-2015 Freescale Semiconductor, Inc.
+ * Copyright 2008-2011 Freescale Semiconductor, Inc.
  *
  */
 
@@ -68,6 +68,13 @@ struct caam_drv_private {
 	struct device *smdev;
 	struct platform_device **jrpdev; /* Alloc'ed array per sub-device */
 	struct platform_device *pdev;
+
+	/*
+	 * ERA of the CAAM block,
+	 * -ENOTSUPP if no era version was supplied or detected.
+	 */
+#define IMX_ERR005766_ERA 4	/* ERA affected by i.mx AXI errata */
+	int era;
 
 	/* Physical-presence section */
 	struct caam_ctrl __iomem *ctrl; /* controller region */

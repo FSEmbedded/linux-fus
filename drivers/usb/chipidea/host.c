@@ -388,6 +388,21 @@ static void host_stop(struct ci_hdrc *ci)
 	ci->otg.host = NULL;
 }
 
+bool ci_hdrc_host_has_device(struct ci_hdrc *ci)
+{
+	struct usb_device *roothub;
+	int i;
+
+	if ((ci->role == CI_ROLE_HOST) && ci->hcd) {
+		roothub = ci->hcd->self.root_hub;
+		for (i = 0; i < roothub->maxchild; ++i) {
+			if (usb_hub_find_child(roothub, (i + 1)))
+				return true;
+		}
+	}
+	return false;
+}
+
 static void ci_hdrc_host_save_for_power_lost(struct ci_hdrc *ci)
 {
 	struct ehci_hcd *ehci;
@@ -416,6 +431,12 @@ static void ci_hdrc_host_restore_from_power_lost(struct ci_hdrc *ci)
 	struct ehci_hcd *ehci;
 	unsigned long   flags;
 	u32 tmp;
+	int step_ms;
+	/*
+	 * If the vbus is off during system suspend, most of devices will pull
+	 * DP up within 200ms when they see vbus, set 1000ms for safety.
+	 */
+	int timeout_ms = 1000;
 
 	if (!ci->hcd)
 		return;
@@ -443,6 +464,15 @@ static void ci_hdrc_host_restore_from_power_lost(struct ci_hdrc *ci)
 	tmp |= CMD_RUN;
 	ehci_writel(ehci, tmp, &ehci->regs->command);
 	spin_unlock_irqrestore(&ehci->lock, flags);
+
+	if (!(ci->pm_portsc & PORTSC_CCS))
+		return;
+
+	for (step_ms = 0; step_ms < timeout_ms; step_ms += 25) {
+		if (ehci_readl(ehci, &ehci->regs->port_status[0]) & PORTSC_CCS)
+			break;
+		msleep(25);
+	}
 }
 
 static void ci_hdrc_host_suspend(struct ci_hdrc *ci)

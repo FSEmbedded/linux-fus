@@ -66,9 +66,6 @@ startup_64:
 	 * tables and then reload them.
 	 */
 
-	/* Sanitize CPU configuration */
-	call verify_cpu
-
 	/*
 	 * Setup stack for verify_cpu(). "-8" because initial_stack is defined
 	 * this way, see below. Our best guess is a NULL ptr for stack
@@ -304,8 +301,6 @@ ENTRY(secondary_startup_64)
 	pushq	%rax		# target address in negative space
 	lretq
 ENDPROC(secondary_startup_64)
-
-#include "verify_cpu.S"
 
 #include "verify_cpu.S"
 

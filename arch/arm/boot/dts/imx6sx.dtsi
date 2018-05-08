@@ -219,16 +219,6 @@
 			arm,data-latency = <4 2 3>;
 		};
 
-		gpu: gpu@01800000 {
-			compatible = "vivante,gc";
-			reg = <0x01800000 0x4000>;
-			interrupts = <GIC_SPI 10 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&clks IMX6SX_CLK_GPU>,
-				 <&clks IMX6SX_CLK_GPU>,
-				 <&clks IMX6SX_CLK_GPU>;
-			clock-names = "bus", "core", "shader";
-		};
-
 		dma_apbh: dma-apbh@01804000 {
 			compatible = "fsl,imx6sx-dma-apbh", "fsl,imx28-dma-apbh";
 			reg = <0x01804000 0x2000>;
@@ -408,7 +398,7 @@
 						 <&clks IMX6SX_CLK_ESAI_IPG>,
 						 <&clks IMX6SX_CLK_SPBA>;
 					clock-names = "core", "mem", "extal",
-						      "fsys", "dma";
+						      "fsys", "spba";
 					dmas = <&sdma 23 21 0>,
 					       <&sdma 24 21 0>;
 					dma-names = "rx", "tx";
@@ -472,7 +462,7 @@
 						"asrck_1", "asrck_2", "asrck_3", "asrck_4",
 						"asrck_5", "asrck_6", "asrck_7", "asrck_8",
 						"asrck_9", "asrck_a", "asrck_b", "asrck_c",
-						"asrck_d", "asrck_e", "asrck_f", "dma";
+						"asrck_d", "asrck_e", "asrck_f", "spba";
 					dmas = <&sdma 17 23 1>, <&sdma 18 23 1>, <&sdma 19 23 1>,
 						<&sdma 20 23 1>, <&sdma 21 23 1>, <&sdma 22 23 1>;
 					dma-names = "rxa", "rxb", "rxc",
@@ -943,9 +933,11 @@
 				#size-cells = <1>;
 				reg = <0x2100000 0x40000>;
 				ranges = <0 0x2100000 0x40000>;
-				clocks = <&clks IMX6SX_CLK_CAAM_MEM>, <&clks IMX6SX_CLK_CAAM_ACLK>,
-				         <&clks IMX6SX_CLK_CAAM_IPG> ,<&clks IMX6SX_CLK_EIM_SLOW>;
-				clock-names = "caam_mem", "caam_aclk", "caam_ipg", "caam_emi_slow";
+				clocks = <&clks IMX6SX_CLK_CAAM_MEM>,
+					 <&clks IMX6SX_CLK_CAAM_ACLK>,
+					 <&clks IMX6SX_CLK_CAAM_IPG>,
+					 <&clks IMX6SX_CLK_EIM_SLOW>;
+				clock-names = "mem", "aclk", "ipg", "emi_slow";
 
 				sec_jr0: jr0@1000 {
 					compatible = "fsl,sec-v4.0-job-ring";
@@ -1546,6 +1538,7 @@
 			clock-names = "pcie", "pcie_bus", "pcie_phy", "pcie_inbound_axi";
 			pcie-phy-supply = <&reg_pcie_phy>;
 			power-domains = <&gpc 2>;
+			fsl,max-link-speed = <2>;
 			status = "disabled";
 		};
 	};

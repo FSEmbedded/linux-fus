@@ -1,6 +1,7 @@
 /*
  * Copyright 2011-2015 Freescale Semiconductor, Inc.
  * Copyright 2011 Linaro Ltd.
+ * Copyright 2017 NXP.
  *
  * The code contained herein is licensed under the GNU General Public
  * License. You may obtain a copy of the GNU General Public License
@@ -247,7 +248,9 @@ static void __init imx6q_csi_mux_init(void)
 	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6q-iomuxc-gpr");
 	if (!IS_ERR(gpr)) {
 		if (of_machine_is_compatible("fsl,imx6q-sabresd") ||
-			of_machine_is_compatible("fsl,imx6q-sabreauto"))
+			of_machine_is_compatible("fsl,imx6q-sabreauto") ||
+			of_machine_is_compatible("fsl,imx6qp-sabresd") ||
+			of_machine_is_compatible("fsl,imx6qp-sabreauto"))
 			regmap_update_bits(gpr, IOMUXC_GPR1, 1 << 19, 1 << 19);
 		else if (of_machine_is_compatible("fsl,imx6dl-sabresd") ||
 			 of_machine_is_compatible("fsl,imx6dl-sabreauto"))
@@ -308,7 +311,7 @@ static inline void imx6q_enet_init(void)
 	imx6_enet_mac_init("fsl,imx6q-fec", "fsl,imx6q-ocotp");
 	imx6q_enet_phy_init();
 	imx6q_1588_init();
-	if (cpu_is_imx6q() && imx_get_soc_revision() == IMX_CHIP_REVISION_2_0)
+	if (cpu_is_imx6q() && imx_get_soc_revision() >= IMX_CHIP_REVISION_2_0)
 		imx6q_enet_clk_sel();
 }
 
@@ -316,7 +319,7 @@ static void __init imx6q_init_machine(void)
 {
 	struct device *parent;
 
-	if (cpu_is_imx6q() && imx_get_soc_revision() == IMX_CHIP_REVISION_2_0)
+	if (cpu_is_imx6q() && imx_get_soc_revision() >= IMX_CHIP_REVISION_2_0)
 		imx_print_silicon_rev("i.MX6QP", IMX_CHIP_REVISION_1_0);
 	else
 		imx_print_silicon_rev(cpu_is_imx6dl() ? "i.MX6DL" : "i.MX6Q",
@@ -326,7 +329,7 @@ static void __init imx6q_init_machine(void)
 	if (parent == NULL)
 		pr_warn("failed to initialize soc device\n");
 
-	of_platform_populate(NULL, of_default_bus_match_table, NULL, parent);
+	of_platform_default_populate(NULL, NULL, parent);
 
 	imx6q_enet_init();
 	imx_anatop_init();

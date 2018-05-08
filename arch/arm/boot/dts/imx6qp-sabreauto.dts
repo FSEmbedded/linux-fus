@@ -50,6 +50,40 @@
 	compatible = "fsl,imx6qp-sabreauto", "fsl,imx6qp";
 };
 
+&ldb {
+	lvds-channel@0 {
+		crtc = "ipu2-di0";
+	};
+
+	lvds-channel@1 {
+		crtc = "ipu2-di1";
+	};
+};
+
+&mxcfb1 {
+	prefetch;
+	status = "okay";
+};
+
+&mxcfb2 {
+	prefetch;
+	status = "okay";
+};
+
+&mxcfb3 {
+	prefetch;
+	status = "okay";
+};
+
+&mxcfb4 {
+	prefetch;
+	status = "okay";
+};
+
+&fec {
+	pinctrl-assert-gpios = <&max7322 0 GPIO_ACTIVE_HIGH>;
+};
+
 &i2c2 {
 	max7322: gpio@68 {
 		compatible = "maxim,max7322";
@@ -105,4 +139,3 @@
 &vgen3_reg {
 	regulator-always-on;
 };
-

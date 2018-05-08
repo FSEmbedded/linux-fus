@@ -23,7 +23,6 @@
 #define SEC4_SG_OFFSET_MASK	0x00001fff
 
 struct sec4_sg_entry {
-#ifdef CONFIG_64BIT
 	u64 ptr;
 	u32 len;
 	u32 bpid_offset;

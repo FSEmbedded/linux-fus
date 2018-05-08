@@ -1498,9 +1498,6 @@ static void its_irq_domain_activate(struct irq_domain *domain,
 	/* Bind the LPI to the first possible CPU */
 	its_dev->event_map.col_map[event] = cpumask_first(cpu_mask);
 
-	/* Bind the LPI to the first possible CPU */
-	its_dev->event_map.col_map[event] = cpumask_first(cpu_online_mask);
-
 	/* Map the GIC IRQ and event to the device */
 	its_send_mapvi(its_dev, d->hwirq, event);
 }

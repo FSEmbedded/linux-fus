@@ -3,7 +3,8 @@
  * influence from lart.c (Abraham Van Der Merwe) and mtd_dataflash.c
  *
  * Copyright (C) 2005, Intec Automation Inc.
- * Copyright (C) 2014-2015 Freescale Semiconductor, Inc.
+ * Copyright (C) 2014-2016 Freescale Semiconductor, Inc.
+ * Copyright 2017 NXP
  *
  * This code is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -75,6 +76,7 @@ struct flash_info {
 					 * bit. Must be used with
 					 * SPI_NOR_HAS_LOCK.
 					 */
+#define	SPI_NOR_DDR_QUAD_READ	BIT(10)  /* Flash supports DDR Quad Read */
 };
 
 #define JEDEC_MFR(info)	((info)->id[0])
@@ -145,20 +147,22 @@ static int read_cr(struct spi_nor *nor)
  */
 static inline int spi_nor_read_dummy_cycles(struct spi_nor *nor)
 {
-	u32 dummy;
-
 	switch (nor->flash_read) {
 	case SPI_NOR_DDR_QUAD:
+	{
+		struct device_node *np = spi_nor_get_flash_node(nor);
+		u32 dummy;
+
 		/*
 		* The m25p80.c can not support the DDR quad read.
 		* We set the dummy cycles to 8 by default. The SPI NOR
 		* controller driver can set it in its child DT node.
 		* We parse it out here.
 		*/
-		if (nor->np && !of_property_read_u32(nor->np,
-				"spi-nor,ddr-quad-read-dummy", &dummy)) {
+		if (!of_property_read_u32(np, "spi-nor,ddr-quad-read-dummy",
+					 &dummy))
 			return dummy;
-		}
+	}
 	case SPI_NOR_FAST:
 	case SPI_NOR_DUAL:
 	case SPI_NOR_QUAD:
@@ -882,6 +886,7 @@ static const struct flash_info spi_nor_ids[] = {
 	{ "mx25l3255e",  INFO(0xc29e16, 0, 64 * 1024,  64, SECT_4K) },
 	{ "mx25l6405d",  INFO(0xc22017, 0, 64 * 1024, 128, SECT_4K) },
 	{ "mx25u6435f",  INFO(0xc22537, 0, 64 * 1024, 128, SECT_4K) },
+	{ "mx25r6435f",  INFO(0xc22817, 0, 64 * 1024, 128, 0) },
 	{ "mx25l12805d", INFO(0xc22018, 0, 64 * 1024, 256, 0) },
 	{ "mx25l12855e", INFO(0xc22618, 0, 64 * 1024, 256, 0) },
 	{ "mx25l25635e", INFO(0xc22019, 0, 64 * 1024, 512, 0) },
@@ -897,7 +902,7 @@ static const struct flash_info spi_nor_ids[] = {
 	{ "n25q064a",    INFO(0x20bb17, 0, 64 * 1024,  128, SECT_4K | SPI_NOR_QUAD_READ) },
 	{ "n25q128a11",  INFO(0x20bb18, 0, 64 * 1024,  256, SECT_4K | SPI_NOR_QUAD_READ) },
 	{ "n25q128a13",  INFO(0x20ba18, 0, 64 * 1024,  256, SECT_4K | SPI_NOR_QUAD_READ) },
-	{ "n25q256a",    INFO(0x20ba19, 0, 64 * 1024,  512, SECT_4K | SPI_NOR_QUAD_READ) },
+	{ "n25q256a",    INFO(0x20ba19, 0, 64 * 1024,  512, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_DDR_QUAD_READ) },
 	{ "n25q512a",    INFO(0x20bb20, 0, 64 * 1024, 1024, SECT_4K | USE_FSR | SPI_NOR_QUAD_READ) },
 	{ "n25q512ax3",  INFO(0x20ba20, 0, 64 * 1024, 1024, SECT_4K | USE_FSR | SPI_NOR_QUAD_READ) },
 	{ "n25q00",      INFO(0x20ba21, 0, 64 * 1024, 2048, SECT_4K | USE_FSR | SPI_NOR_QUAD_READ) },
@@ -919,10 +924,10 @@ static const struct flash_info spi_nor_ids[] = {
 	{ "s70fl01gs",  INFO(0x010221, 0x4d00, 256 * 1024, 256, 0) },
 	{ "s25sl12800", INFO(0x012018, 0x0300, 256 * 1024,  64, 0) },
 	{ "s25sl12801", INFO(0x012018, 0x0301,  64 * 1024, 256, 0) },
-	{ "s25fl128s",	INFO6(0x012018, 0x4d0180, 64 * 1024, 256, SPI_NOR_QUAD_READ) },
+	{ "s25fl128s",	INFO6(0x012018, 0x4d0180, 64 * 1024, 256, SECT_4K | SPI_NOR_QUAD_READ) },
 	{ "s25fl128s",	INFO(0x012018, 0x4d0180, 64 * 1024, 256, SPI_NOR_QUAD_READ | SPI_NOR_DDR_QUAD_READ) },
-	{ "s25fl129p0", INFO(0x012018, 0x4d00, 256 * 1024,  64, 0) },
-	{ "s25fl129p1", INFO(0x012018, 0x4d01,  64 * 1024, 256, 0) },
+	{ "s25fl129p0", INFO(0x012018, 0x4d00, 256 * 1024,  64, SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
+	{ "s25fl129p1", INFO(0x012018, 0x4d01,  64 * 1024, 256, SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
 	{ "s25sl004a",  INFO(0x010212,      0,  64 * 1024,   8, 0) },
 	{ "s25sl008a",  INFO(0x010213,      0,  64 * 1024,  16, 0) },
 	{ "s25sl016a",  INFO(0x010214,      0,  64 * 1024,  32, 0) },
@@ -1187,9 +1192,6 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 		ssize_t written;
 
 		page_offset = (to + i) & (nor->page_size - 1);
-		WARN_ONCE(page_offset,
-			  "Writing at offset %zu into a NOR page. Writing partial pages may decrease reliability and increase wear of NOR flash.",
-			  page_offset);
 		/* the size of data remaining on the first page */
 		page_remain = min_t(size_t,
 				    nor->page_size - page_offset, len - i);
@@ -1278,6 +1280,35 @@ static int spansion_quad_enable(struct spi_nor *nor)
 	}
 
 	return 0;
+}
+
+static int set_ddr_quad_mode(struct spi_nor *nor, const struct flash_info *info)
+{
+	int status;
+
+	switch (JEDEC_MFR(info)) {
+	case CFI_MFR_AMD: /* Spansion, actually */
+		status = spansion_quad_enable(nor);
+		if (status) {
+			dev_err(nor->dev,
+				"Spansion DDR quad-read not enabled\n");
+			return status;
+		}
+		return status;
+	case CFI_MFR_MACRONIX:
+		status = macronix_quad_enable(nor);
+		if (status) {
+			dev_err(nor->dev,
+				"Macronix DDR quad-read not enabled\n");
+			return status;
+		}
+		return status;
+	case CFI_MFR_ST: /* Micron, actually */
+		/* DTR quad read works with the Extended SPI protocol. */
+		return 0;
+	default:
+		return -EINVAL;
+	}
 }
 
 static int set_quad_mode(struct spi_nor *nor, const struct flash_info *info)

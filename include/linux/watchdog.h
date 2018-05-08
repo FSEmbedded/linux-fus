@@ -177,12 +177,6 @@ static inline bool watchdog_pretimeout_invalid(struct watchdog_device *wdd,
 	return t && wdd->timeout && t >= wdd->timeout;
 }
 
-/* Use the following function to check if a pretimeout value is invalid */
-static inline bool watchdog_pretimeout_invalid(struct watchdog_device *wdd, unsigned int t)
-{
-	return ((wdd->timeout != 0) && (t >= wdd->timeout));
-}
-
 /* Use the following functions to manipulate watchdog driver specific data */
 static inline void watchdog_set_drvdata(struct watchdog_device *wdd, void *data)
 {

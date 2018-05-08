@@ -79,7 +79,6 @@ int rockchip_gem_mmap_buf(struct drm_gem_object *obj,
 {
 	int ret;
 
-	mutex_lock(&drm->struct_mutex);
 	ret = drm_gem_mmap_obj(obj, obj->size, vma);
 	if (ret)
 		return ret;

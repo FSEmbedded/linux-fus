@@ -93,10 +93,6 @@ find_section(const void *_bdb, int section_id)
 		current_size = _get_blocksize(base + index);
 		index += 3;
 
-		/* The MIPI Sequence Block v3+ has a separate size field. */
-		if (current_id == BDB_MIPI_SEQUENCE && *(base + index) >= 3)
-			current_size = *((const u32 *)(base + index + 1));
-
 		if (index + current_size > total)
 			return NULL;
 

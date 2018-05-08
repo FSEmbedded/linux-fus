@@ -714,7 +714,6 @@
 				compatible = "fsl,sec-v4.0-mon", "syscon", "simple-mfd";
 				reg = <0x020cc000 0x4000>;
 
->>>>>>> origin/linux-4.9.x
 				snvs_rtc: snvs-rtc-lp {
 					compatible = "fsl,sec-v4.0-mon-rtc-lp";
 					regmap = <&snvs>;
@@ -779,7 +778,7 @@
 			};
 
 			csi: csi@020e4000 {
-				compatible = "fsl,imx6s-csi";
+				compatible = "fsl,imx6sl-csi";
 				reg = <0x020e4000 0x4000>;
 				interrupts = <0 7 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&clks IMX6SL_CLK_DUMMY>,

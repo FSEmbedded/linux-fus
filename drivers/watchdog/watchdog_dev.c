@@ -376,37 +376,6 @@ static int watchdog_set_pretimeout(struct watchdog_device *wdd,
 }
 
 /*
- *	watchdog_set_pretimeout: set the watchdog timer pretimeout
- *	@wddev: the watchdog device to set the timeout for
- *	@timeout: pretimeout to set in seconds
- */
-
-static int watchdog_set_pretimeout(struct watchdog_device *wddev,
-							unsigned int timeout)
-{
-	int err;
-
-	if ((wddev->ops->set_pretimeout == NULL) ||
-	    !(wddev->info->options & WDIOF_PRETIMEOUT))
-		return -EOPNOTSUPP;
-	if (watchdog_pretimeout_invalid(wddev, timeout))
-		return -EINVAL;
-
-	mutex_lock(&wddev->lock);
-
-	if (test_bit(WDOG_UNREGISTERED, &wddev->status)) {
-		err = -ENODEV;
-		goto out_timeout;
-	}
-
-	err = wddev->ops->set_pretimeout(wddev, timeout);
-
-out_timeout:
-	mutex_unlock(&wddev->lock);
-	return err;
-}
-
-/*
  *	watchdog_get_timeleft: wrapper to get the time left before a reboot
  *	@wdd: the watchdog device to get the remaining time from
  *	@timeleft: the time that's left

@@ -126,15 +126,8 @@ static int restore_sigcontext(struct pt_regs *regs,
 		COPY(r15);
 #endif /* CONFIG_X86_64 */
 
-#ifdef CONFIG_X86_32
 		COPY_SEG_CPL3(cs);
 		COPY_SEG_CPL3(ss);
-#else /* !CONFIG_X86_32 */
-		/* Kernel saves and restores only the CS segment register on signals,
-		 * which is the bare minimum needed to allow mixed 32/64-bit code.
-		 * App's signal handler can save/restore other segments if needed. */
-		COPY_SEG_CPL3(cs);
-#endif /* CONFIG_X86_32 */
 
 #ifdef CONFIG_X86_64
 		/*

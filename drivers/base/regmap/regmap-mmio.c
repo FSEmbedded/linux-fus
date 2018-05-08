@@ -277,6 +277,41 @@ static struct regmap_mmio_context *regmap_mmio_gen_context(struct device *dev,
 			ret = -EINVAL;
 			goto err_free;
 		}
+		break;
+	case REGMAP_ENDIAN_BIG:
+#ifdef __BIG_ENDIAN
+	case REGMAP_ENDIAN_NATIVE:
+#endif
+		switch (config->val_bits) {
+		case 8:
+			ctx->reg_read = regmap_mmio_read8;
+			ctx->reg_write = regmap_mmio_write8;
+			break;
+		case 16:
+			ctx->reg_read = regmap_mmio_read16be;
+			ctx->reg_write = regmap_mmio_write16be;
+			break;
+		case 32:
+			ctx->reg_read = regmap_mmio_read32be;
+			ctx->reg_write = regmap_mmio_write32be;
+			break;
+		default:
+			ret = -EINVAL;
+			goto err_free;
+		}
+		break;
+	default:
+		ret = -EINVAL;
+		goto err_free;
+	}
+
+	ctx->clk = clk_get(dev, clk_id);
+	if (!IS_ERR(ctx->clk)) {
+		ret = clk_prepare(ctx->clk);
+		if (ret < 0) {
+			clk_put(ctx->clk);
+			goto err_free;
+		}
 	} else {
 		ctx->clk = NULL;
 	}

@@ -1600,6 +1600,8 @@ static int ata_eh_read_log_10h(struct ata_device *dev,
 	tf->hob_lbah = buf[10];
 	tf->nsect = buf[12];
 	tf->hob_nsect = buf[13];
+	if (ata_id_has_ncq_autosense(dev->id))
+		tf->auxiliary = buf[14] << 16 | buf[15] << 8 | buf[16];
 
 	return 0;
 }
@@ -2657,14 +2659,15 @@ static void ata_eh_link_report(struct ata_link *link)
 
 #ifdef CONFIG_ATA_VERBOSE_ERROR
 		if (res->command & (ATA_BUSY | ATA_DRDY | ATA_DF | ATA_DRQ |
-				    ATA_ERR)) {
+				    ATA_SENSE | ATA_ERR)) {
 			if (res->command & ATA_BUSY)
 				ata_dev_err(qc->dev, "status: { Busy }\n");
 			else
-				ata_dev_err(qc->dev, "status: { %s%s%s%s}\n",
+				ata_dev_err(qc->dev, "status: { %s%s%s%s%s}\n",
 				  res->command & ATA_DRDY ? "DRDY " : "",
 				  res->command & ATA_DF ? "DF " : "",
 				  res->command & ATA_DRQ ? "DRQ " : "",
+				  res->command & ATA_SENSE ? "SENSE " : "",
 				  res->command & ATA_ERR ? "ERR " : "");
 		}
 

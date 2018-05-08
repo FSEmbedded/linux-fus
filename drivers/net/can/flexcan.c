@@ -33,10 +33,12 @@
 #include <linux/list.h>
 #include <linux/mfd/syscon.h>
 #include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
+#include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
+#include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
 #include <linux/regmap.h>
 
@@ -274,8 +276,8 @@ struct flexcan_priv {
 	struct flexcan_platform_data *pdata;
 	const struct flexcan_devtype_data *devtype_data;
 	struct regulator *reg_xceiver;
-	struct flexcan_stop_mode stm;
 	int id;
+	struct flexcan_stop_mode stm;
 };
 
 static struct flexcan_devtype_data fsl_p1010_devtype_data = {
@@ -334,7 +336,7 @@ static inline void flexcan_write(u32 val, void __iomem *addr)
 static inline void flexcan_enter_stop_mode(struct flexcan_priv *priv)
 {
 	/* enable stop request */
-	if (priv->devtype_data->features & FLEXCAN_HAS_V10_FEATURES)
+	if (priv->devtype_data->quirks & FLEXCAN_QUIRK_DISABLE_RXFG)
 		regmap_update_bits(priv->stm.gpr, priv->stm.req_gpr,
 			1 << priv->stm.req_bit, 1 << priv->stm.req_bit);
 }
@@ -342,7 +344,7 @@ static inline void flexcan_enter_stop_mode(struct flexcan_priv *priv)
 static inline void flexcan_exit_stop_mode(struct flexcan_priv *priv)
 {
 	/* remove stop request */
-	if (priv->devtype_data->features & FLEXCAN_HAS_V10_FEATURES)
+	if (priv->devtype_data->quirks & FLEXCAN_QUIRK_DISABLE_RXFG)
 		regmap_update_bits(priv->stm.gpr, priv->stm.req_gpr,
 			1 << priv->stm.req_bit, 0);
 }
@@ -769,6 +771,9 @@ static irqreturn_t flexcan_irq(int irq, void *dev_id)
 	if (reg_esr & FLEXCAN_ESR_ALL_INT)
 		flexcan_write(reg_esr & FLEXCAN_ESR_ALL_INT, &regs->esr);
 
+	if (reg_esr & FLEXCAN_ESR_WAK_INT)
+		flexcan_exit_stop_mode(priv);
+
 	/* schedule NAPI in case of:
 	 * - rx IRQ
 	 * - state change IRQ
@@ -883,6 +888,7 @@ static int flexcan_chip_start(struct net_device *dev)
 	 * disable local echo
 	 * choose format C
 	 * set max mailbox number
+	 * enable self wakeup
 	 */
 	reg_mcr = flexcan_read(&regs->mcr);
 	reg_mcr &= ~FLEXCAN_MCR_MAXMB(0xff);
@@ -1335,12 +1341,13 @@ static int flexcan_probe(struct platform_device *pdev)
 
 	devm_can_led_init(dev);
 
-	if (priv->devtype_data->features & FLEXCAN_HAS_V10_FEATURES) {
+	if (priv->devtype_data->quirks & FLEXCAN_QUIRK_DISABLE_RXFG) {
 		err = flexcan_of_parse_stop_mode(pdev);
 		if (err) {
 			wakeup = 0;
 			dev_dbg(&pdev->dev, "failed to parse stop-mode\n");
 		}
+
 	}
 
 	device_set_wakeup_capable(&pdev->dev, wakeup);
@@ -1373,9 +1380,6 @@ static int __maybe_unused flexcan_suspend(struct device *device)
 	struct flexcan_priv *priv = netdev_priv(dev);
 
 	if (netif_running(dev)) {
-		err = flexcan_chip_disable(priv);
-		if (err)
-			return err;
 		netif_stop_queue(dev);
 		netif_device_detach(dev);
 		/*

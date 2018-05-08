@@ -168,90 +168,6 @@ static void mmc_retune_timer(unsigned long data)
 	mmc_retune_needed(host);
 }
 
-void mmc_retune_enable(struct mmc_host *host)
-{
-	host->can_retune = 1;
-	if (host->retune_period)
-		mod_timer(&host->retune_timer,
-			  jiffies + host->retune_period * HZ);
-}
-
-void mmc_retune_disable(struct mmc_host *host)
-{
-	host->can_retune = 0;
-	del_timer_sync(&host->retune_timer);
-	host->retune_now = 0;
-	host->need_retune = 0;
-}
-
-void mmc_retune_timer_stop(struct mmc_host *host)
-{
-	del_timer_sync(&host->retune_timer);
-}
-EXPORT_SYMBOL(mmc_retune_timer_stop);
-
-void mmc_retune_hold(struct mmc_host *host)
-{
-	if (!host->hold_retune)
-		host->retune_now = 1;
-	host->hold_retune += 1;
-}
-
-void mmc_retune_release(struct mmc_host *host)
-{
-	if (host->hold_retune)
-		host->hold_retune -= 1;
-	else
-		WARN_ON(1);
-}
-
-int mmc_retune(struct mmc_host *host)
-{
-	bool return_to_hs400 = false;
-	int err;
-
-	if (host->retune_now)
-		host->retune_now = 0;
-	else
-		return 0;
-
-	if (!host->need_retune || host->doing_retune || !host->card)
-		return 0;
-
-	host->need_retune = 0;
-
-	host->doing_retune = 1;
-
-	if (host->ios.timing == MMC_TIMING_MMC_HS400) {
-		err = mmc_hs400_to_hs200(host->card);
-		if (err)
-			goto out;
-
-		return_to_hs400 = true;
-
-		if (host->ops->prepare_hs400_tuning)
-			host->ops->prepare_hs400_tuning(host, &host->ios);
-	}
-
-	err = mmc_execute_tuning(host->card);
-	if (err)
-		goto out;
-
-	if (return_to_hs400)
-		err = mmc_hs200_to_hs400(host->card);
-out:
-	host->doing_retune = 0;
-
-	return err;
-}
-
-static void mmc_retune_timer(unsigned long data)
-{
-	struct mmc_host *host = (struct mmc_host *)data;
-
-	mmc_retune_needed(host);
-}
-
 /**
  *	mmc_of_parse() - parse host's device-tree node
  *	@host: host whose node should be parsed.
@@ -387,6 +303,8 @@ int mmc_of_parse(struct mmc_host *host)
 	if (of_property_read_bool(np, "wakeup-source") ||
 	    of_property_read_bool(np, "enable-sdio-wakeup")) /* legacy */
 		host->pm_caps |= MMC_PM_WAKE_SDIO_IRQ;
+	if (of_get_property(np, "pm-ignore-notify", NULL))
+		host->pm_caps |= MMC_PM_IGNORE_PM_NOTIFY;
 	if (of_property_read_bool(np, "mmc-ddr-1_8v"))
 		host->caps |= MMC_CAP_1_8V_DDR;
 	if (of_property_read_bool(np, "mmc-ddr-1_2v"))
@@ -442,6 +360,7 @@ struct mmc_host *mmc_alloc_host(int extra, struct device *dev)
 
 	/* scanning will be enabled when we're ready */
 	host->rescan_disable = 1;
+	host->parent = dev;
 
 again:
 	if (!ida_pre_get(&mmc_host_ida, GFP_KERNEL)) {
@@ -450,7 +369,24 @@ again:
 	}
 
 	spin_lock(&mmc_host_lock);
-	err = ida_get_new(&mmc_host_ida, &host->index);
+
+	alias_id = mmc_get_reserved_index(host);
+	if (alias_id >= 0) {
+		min_idx = alias_id;
+		max_idx = alias_id + 1;
+	} else {
+		min_idx = mmc_first_nonreserved_index();
+		max_idx = 0;
+	}
+
+	err = ida_get_new_above(&mmc_host_ida, min_idx, &host->index);
+	if (!err) {
+		if (host->index > max_idx) {
+			ida_remove(&mmc_host_ida, host->index);
+			err = -ENOSPC;
+		}
+	}
+
 	spin_unlock(&mmc_host_lock);
 
 	if (err == -EAGAIN) {
@@ -520,7 +456,7 @@ int mmc_add_host(struct mmc_host *host)
 
 	mmc_start_host(host);
 	if (!(host->pm_caps& MMC_PM_IGNORE_PM_NOTIFY))
-		register_pm_notifier(&host->pm_notify);
+		mmc_register_pm_notifier(host);
 
 	return 0;
 }
@@ -538,7 +474,7 @@ EXPORT_SYMBOL(mmc_add_host);
 void mmc_remove_host(struct mmc_host *host)
 {
 	if (!(host->pm_caps& MMC_PM_IGNORE_PM_NOTIFY))
-		unregister_pm_notifier(&host->pm_notify);
+		mmc_unregister_pm_notifier(host);
 	mmc_stop_host(host);
 
 #ifdef CONFIG_DEBUG_FS

@@ -740,9 +740,6 @@ static void radeon_audio_dp_mode_set(struct drm_encoder *encoder,
 	struct radeon_encoder_atom_dig *dig = radeon_encoder->enc_priv;
 	struct drm_connector *connector = radeon_get_connector_for_encoder(encoder);
 
-	if (!connector)
-		return;
-
 	if (!dig || !dig->afmt)
 		return;
 

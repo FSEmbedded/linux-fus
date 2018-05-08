@@ -97,7 +97,7 @@ static int imx6_idle_finish(unsigned long val)
 	 * just call flush_cache_all() is fine.
 	 */
 	flush_cache_all();
-	cpu_do_idle();
+	imx6sx_wfi_in_iram_fn(wfi_iram_base);
 
 	return 0;
 }
@@ -107,8 +107,9 @@ static int imx6sx_enter_wait(struct cpuidle_device *dev,
 {
 	int mode = get_bus_freq_mode();
 
-	imx6q_set_lpm(WAIT_UNCLOCKED);
+	imx6_set_lpm(WAIT_UNCLOCKED);
 	if ((index == 1) || ((mode != BUS_FREQ_LOW) && index == 2)) {
+		index = 1;
 		cpu_do_idle();
 	} else {
 			/* Need to notify there is a cpu pm operation. */
@@ -219,7 +220,7 @@ int __init imx6sx_cpuidle_init(void)
 		&imx6sx_low_power_idle, wfi_code_size);
 #endif
 
-	imx6q_set_int_mem_clk_lpm(true);
+	imx6_set_int_mem_clk_lpm(true);
 
 	if (imx_get_soc_revision() >= IMX_CHIP_REVISION_1_2) {
 		/*

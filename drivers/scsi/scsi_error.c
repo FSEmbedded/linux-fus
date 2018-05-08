@@ -2201,15 +2201,12 @@ int scsi_error_handler(void *data)
 		if (kthread_should_stop())
 			break;
 
-<<<<<<< HEAD
 		/*
 		 * Do not go to sleep, when there is host_failed when the
 		 * one-PRD per command workaroud is tiggered.
 		 * Because that ata/scsi subsystem maybe hang, when CD_ROM
 		 * and HDD are accessed simultaneously.
 		 */
-=======
->>>>>>> origin/linux-4.9.x
 		if ((shost->host_failed == 0 && shost->host_eh_scheduled == 0) ||
 		    ((shost->host_failed != atomic_read(&shost->host_busy)) &&
 		    (sg_io_buffer_hack == NULL) && (shost->host_failed > 0))) {

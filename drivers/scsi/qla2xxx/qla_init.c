@@ -2964,7 +2964,6 @@ qla2x00_rport_del(void *data)
 	fc_port_t *fcport = data;
 	struct fc_rport *rport;
 	unsigned long flags;
-	unsigned long vha_flags;
 
 	spin_lock_irqsave(fcport->vha->host->host_lock, flags);
 	rport = fcport->drport ? fcport->drport: fcport->rport;

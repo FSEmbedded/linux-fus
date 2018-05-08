@@ -195,7 +195,7 @@ static inline bool bbm_in_data_chunk(struct gpmi_nand_data *this,
 		unsigned int *chunk_num)
 {
 	struct bch_geometry *geo = &this->bch_geometry;
-	struct mtd_info *mtd = &this->mtd;
+	struct mtd_info *mtd = &this->nand.mtd;
 	unsigned int i, j;
 
 	if (geo->ecc_chunk0_size != geo->ecc_chunkn_size) {
@@ -342,8 +342,8 @@ static int set_geometry_by_ecc_info(struct gpmi_nand_data *this)
 static int set_geometry_for_large_oob(struct gpmi_nand_data *this)
 {
 	struct bch_geometry *geo = &this->bch_geometry;
-	struct mtd_info *mtd = &this->mtd;
-	struct nand_chip *chip = mtd->priv;
+	struct mtd_info *mtd = &this->nand.mtd;
+	struct nand_chip *chip = mtd_to_nand(mtd);
 	unsigned int block_mark_bit_offset;
 	unsigned int max_ecc;
 	unsigned int bbm_chunk;
@@ -498,7 +498,7 @@ static int legacy_set_geometry(struct gpmi_nand_data *this)
 	if (!gpmi_check_ecc(this)) {
 		dev_err(this->dev,
 			"ecc strength: %d cannot be supported by the controller (%d)\n"
-			"try to use minimum ecc strength that NAND chip required\n",
+			"try to use maximum ecc strength that NAND chip required\n",
 			geo->ecc_strength,
 			this->devdata->bch_max_ecc_strength);
 		return -EINVAL;
@@ -580,8 +580,8 @@ static int legacy_set_geometry(struct gpmi_nand_data *this)
 
 int common_nfc_set_geometry(struct gpmi_nand_data *this)
 {
-	struct mtd_info *mtd = &this->mtd;
-	struct nand_chip *chip = mtd->priv;
+	struct mtd_info *mtd = &this->nand.mtd;
+	struct nand_chip *chip = mtd_to_nand(mtd);
 
 	if (chip->ecc_strength_ds > this->devdata->bch_max_ecc_strength) {
 		dev_err(this->dev,
@@ -1238,61 +1238,6 @@ static void block_mark_swapping(struct gpmi_nand_data *this,
 	p[1] = (p[1] & mask) | (from_oob >> (8 - bit));
 }
 
-static bool gpmi_erased_check(struct gpmi_nand_data *this,
-			unsigned char *data, unsigned int chunk, int page,
-			unsigned int *max_bitflips)
-{
-	struct nand_chip *chip = &this->nand;
-	struct mtd_info	*mtd = &this->mtd;
-	struct bch_geometry *geo = &this->bch_geometry;
-	int base = geo->ecc_chunkn_size * chunk;
-	unsigned int flip_bits = 0, flip_bits_noecc = 0;
-	uint64_t *buf = (uint64_t *)this->data_buffer_dma;
-	unsigned int threshold;
-	int i;
-
-	threshold = geo->gf_len / 2;
-	if (threshold > geo->ecc_strength)
-		threshold = geo->ecc_strength;
-
-	/* Count bitflips */
-	for (i = 0; i < geo->ecc_chunkn_size; i++) {
-		flip_bits += hweight8(~data[base + i]);
-		if (flip_bits > threshold)
-			return false;
-	}
-
-	/*
-	 * Read out the whole page with ECC disabled, and check it again,
-	 * This is more strict then just read out a chunk, and it makes
-	 * the code more simple.
-	 */
-	chip->cmdfunc(mtd, NAND_CMD_READ0, 0, page);
-	chip->read_buf(mtd, (uint8_t *)buf, mtd->writesize);
-
-	/* Count the bitflips for the no ECC buffer */
-	for (i = 0; i < mtd->writesize / 8; i++) {
-		flip_bits_noecc += hweight64(~buf[i]);
-		if (flip_bits_noecc > threshold)
-			return false;
-	}
-
-	/* Tell the upper layer the bitflips we corrected. */
-	mtd->ecc_stats.corrected += flip_bits;
-	*max_bitflips = max_t(unsigned int, *max_bitflips, flip_bits);
-
-	/*
-	 * The geo->payload_size maybe not equal to the page size
-	 * when the Subpage-Read is enabled.
-	 */
-	memset(data, 0xff, geo->payload_size);
-
-	dev_dbg(this->dev, "The page(%d) is an erased page(%d,%d,%d,%d).\n",
-		page, chunk, threshold, flip_bits, flip_bits_noecc);
-
-	return true;
-}
-
 static int gpmi_ecc_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 				uint8_t *buf, int oob_required, int page)
 {
@@ -1356,9 +1301,16 @@ static int gpmi_ecc_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 			continue;
 		}
 
+		if (*status == STATUS_UNCORRECTABLE) {
+			int eccbits = nfc_geo->ecc_strength * nfc_geo->gf_len;
+			u8 *eccbuf = this->raw_buffer;
+			int offset, bitoffset;
+			int eccbytes;
+			int flips;
+
 			/* Read ECC bytes into our internal raw_buffer */
 			offset = nfc_geo->metadata_size * 8;
-			offset += ((8 * nfc_geo->ecc_chunk_size) + eccbits) * (i + 1);
+			offset += ((8 * nfc_geo->ecc_chunkn_size) + eccbits) * (i + 1);
 			offset -= eccbits;
 			bitoffset = offset % 8;
 			eccbytes = DIV_ROUND_UP(offset + eccbits, 8);
@@ -1395,16 +1347,16 @@ static int gpmi_ecc_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 			if (i == 0) {
 				/* The first block includes metadata */
 				flips = nand_check_erased_ecc_chunk(
-						buf + i * nfc_geo->ecc_chunk_size,
-						nfc_geo->ecc_chunk_size,
+						buf + i * nfc_geo->ecc_chunkn_size,
+						nfc_geo->ecc_chunkn_size,
 						eccbuf, eccbytes,
 						auxiliary_virt,
 						nfc_geo->metadata_size,
 						nfc_geo->ecc_strength);
 			} else {
 				flips = nand_check_erased_ecc_chunk(
-						buf + i * nfc_geo->ecc_chunk_size,
-						nfc_geo->ecc_chunk_size,
+						buf + i * nfc_geo->ecc_chunkn_size,
+						nfc_geo->ecc_chunkn_size,
 						eccbuf, eccbytes,
 						NULL, 0,
 						nfc_geo->ecc_strength);
@@ -1439,11 +1391,6 @@ static int gpmi_ecc_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 		memset(chip->oob_poi, ~0, mtd->oobsize);
 		chip->oob_poi[0] = ((uint8_t *) auxiliary_virt)[0];
 	}
-
-	read_page_swap_end(this, buf, nfc_geo->payload_size,
-			this->payload_virt, this->payload_phys,
-			nfc_geo->payload_size,
-			payload_virt, payload_phys);
 
 	/* if bitflip occurred in erased page, change data to all 0xff */
 	if (flag)
@@ -2378,6 +2325,10 @@ static int gpmi_nand_init(struct gpmi_nand_data *this)
 		if (of_property_read_bool(this->dev->of_node,
 						"fsl,no-blockmark-swap"))
 			this->swap_block_mark = false;
+
+		if (of_property_read_bool(this->dev->of_node,
+				"fsl,legacy-bch-geometry"))
+			this->legacy_bch_geometry = true;
 	}
 	dev_dbg(this->dev, "Blockmark swapping %sabled\n",
 		this->swap_block_mark ? "en" : "dis");

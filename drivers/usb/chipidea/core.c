@@ -516,38 +516,6 @@ int hw_device_reset(struct ci_hdrc *ci)
 	return 0;
 }
 
-/**
- * hw_wait_reg: wait the register value
- *
- * Sometimes, it needs to wait register value before going on.
- * Eg, when switch to device mode, the vbus value should be lower
- * than OTGSC_BSV before connects to host.
- *
- * @ci: the controller
- * @reg: register index
- * @mask: mast bit
- * @value: the bit value to wait
- * @timeout_ms: timeout in millisecond
- *
- * This function returns an error code if timeout
- */
-int hw_wait_reg(struct ci_hdrc *ci, enum ci_hw_regs reg, u32 mask,
-				u32 value, unsigned int timeout_ms)
-{
-	unsigned long elapse = jiffies + msecs_to_jiffies(timeout_ms);
-
-	while (hw_read(ci, reg, mask) != value) {
-		if (time_after(jiffies, elapse)) {
-			dev_err(ci->dev, "timeout waiting for %08x in %d\n",
-					mask, reg);
-			return -ETIMEDOUT;
-		}
-		msleep(20);
-	}
-
-	return 0;
-}
-
 static irqreturn_t ci_irq(int irq, void *data)
 {
 	struct ci_hdrc *ci = data;
@@ -555,6 +523,13 @@ static irqreturn_t ci_irq(int irq, void *data)
 	u32 otgsc = 0;
 
 	if (ci->in_lpm) {
+		/*
+		 * If we already have a wakeup irq pending there,
+		 * let's just return to wait resume finished firstly.
+		 */
+		if (ci->wakeup_int)
+			return IRQ_HANDLED;
+
 		disable_irq_nosync(irq);
 		ci->wakeup_int = true;
 		pm_runtime_get(ci->dev);
@@ -601,35 +576,14 @@ static irqreturn_t ci_irq(int irq, void *data)
 	return ret;
 }
 
-static int ci_vbus_notifier(struct notifier_block *nb, unsigned long event,
-			    void *ptr)
+static int ci_cable_notifier(struct notifier_block *nb, unsigned long event,
+			     void *ptr)
 {
-	struct ci_hdrc_cable *vbus = container_of(nb, struct ci_hdrc_cable, nb);
-	struct ci_hdrc *ci = vbus->ci;
+	struct ci_hdrc_cable *cbl = container_of(nb, struct ci_hdrc_cable, nb);
+	struct ci_hdrc *ci = cbl->ci;
 
-	if (event)
-		vbus->state = true;
-	else
-		vbus->state = false;
-
-	vbus->changed = true;
-
-	ci_irq(ci->irq, ci);
-	return NOTIFY_DONE;
-}
-
-static int ci_id_notifier(struct notifier_block *nb, unsigned long event,
-			  void *ptr)
-{
-	struct ci_hdrc_cable *id = container_of(nb, struct ci_hdrc_cable, nb);
-	struct ci_hdrc *ci = id->ci;
-
-	if (event)
-		id->state = false;
-	else
-		id->state = true;
-
-	id->changed = true;
+	cbl->connected = event;
+	cbl->changed = true;
 
 	ci_irq(ci->irq, ci);
 	return NOTIFY_DONE;
@@ -738,27 +692,27 @@ static int ci_get_platdata(struct device *dev,
 	}
 
 	cable = &platdata->vbus_extcon;
-	cable->nb.notifier_call = ci_vbus_notifier;
+	cable->nb.notifier_call = ci_cable_notifier;
 	cable->edev = ext_vbus;
 
 	if (!IS_ERR(ext_vbus)) {
-		ret = extcon_get_cable_state_(cable->edev, EXTCON_USB);
+		ret = extcon_get_state(cable->edev, EXTCON_USB);
 		if (ret)
-			cable->state = true;
+			cable->connected = true;
 		else
-			cable->state = false;
+			cable->connected = false;
 	}
 
 	cable = &platdata->id_extcon;
-	cable->nb.notifier_call = ci_id_notifier;
+	cable->nb.notifier_call = ci_cable_notifier;
 	cable->edev = ext_id;
 
 	if (!IS_ERR(ext_id)) {
-		ret = extcon_get_cable_state_(cable->edev, EXTCON_USB_HOST);
+		ret = extcon_get_state(cable->edev, EXTCON_USB_HOST);
 		if (ret)
-			cable->state = false;
+			cable->connected = true;
 		else
-			cable->state = true;
+			cable->connected = false;
 	}
 	return 0;
 }
@@ -771,8 +725,8 @@ static int ci_extcon_register(struct ci_hdrc *ci)
 	id = &ci->platdata->id_extcon;
 	id->ci = ci;
 	if (!IS_ERR(id->edev)) {
-		ret = extcon_register_notifier(id->edev, EXTCON_USB_HOST,
-					       &id->nb);
+		ret = devm_extcon_register_notifier(ci->dev, id->edev,
+						EXTCON_USB_HOST, &id->nb);
 		if (ret < 0) {
 			dev_err(ci->dev, "register ID failed\n");
 			return ret;
@@ -782,31 +736,15 @@ static int ci_extcon_register(struct ci_hdrc *ci)
 	vbus = &ci->platdata->vbus_extcon;
 	vbus->ci = ci;
 	if (!IS_ERR(vbus->edev)) {
-		ret = extcon_register_notifier(vbus->edev, EXTCON_USB,
-					       &vbus->nb);
+		ret = devm_extcon_register_notifier(ci->dev, vbus->edev,
+						EXTCON_USB, &vbus->nb);
 		if (ret < 0) {
-			extcon_unregister_notifier(id->edev, EXTCON_USB_HOST,
-						   &id->nb);
 			dev_err(ci->dev, "register VBUS failed\n");
 			return ret;
 		}
 	}
 
 	return 0;
-}
-
-static void ci_extcon_unregister(struct ci_hdrc *ci)
-{
-	struct ci_hdrc_cable *cable;
-
-	cable = &ci->platdata->id_extcon;
-	if (!IS_ERR(cable->edev))
-		extcon_unregister_notifier(cable->edev, EXTCON_USB_HOST,
-					   &cable->nb);
-
-	cable = &ci->platdata->vbus_extcon;
-	if (!IS_ERR(cable->edev))
-		extcon_unregister_notifier(cable->edev, EXTCON_USB, &cable->nb);
 }
 
 static DEFINE_IDA(ci_ida);
@@ -1109,12 +1047,12 @@ static int ci_hdrc_probe(struct platform_device *pdev)
 
 	/* Init workqueue for controller power lost handling */
 	INIT_WORK(&ci->power_lost_work, ci_power_lost_work);
+	mutex_init(&ci->mutex);
 
 	ret = dbg_create_files(ci);
 	if (!ret)
 		return 0;
 
-	ci_extcon_unregister(ci);
 stop:
 	ci_role_destroy(ci);
 deinit_phy:
@@ -1134,7 +1072,6 @@ static int ci_hdrc_remove(struct platform_device *pdev)
 	}
 
 	dbg_remove_files(ci);
-	ci_extcon_unregister(ci);
 	ci_role_destroy(ci);
 	ci_hdrc_enter_lpm(ci, true);
 	ci_usb_phy_exit(ci);
@@ -1179,6 +1116,29 @@ static void ci_controller_suspend(struct ci_hdrc *ci)
 	enable_irq(ci->irq);
 }
 
+/*
+ * Handle the wakeup interrupt triggered by extcon connector
+ * We need to call ci_irq again for extcon since the first
+ * interrupt (wakeup int) only let the controller be out of
+ * low power mode, but not handle any interrupts.
+ */
+static void ci_extcon_wakeup_int(struct ci_hdrc *ci)
+{
+	struct ci_hdrc_cable *cable_id, *cable_vbus;
+	u32 otgsc = hw_read_otgsc(ci, ~0);
+
+	cable_id = &ci->platdata->id_extcon;
+	cable_vbus = &ci->platdata->vbus_extcon;
+
+	if (!IS_ERR(cable_id->edev) && ci->is_otg &&
+		(otgsc & OTGSC_IDIE) && (otgsc & OTGSC_IDIS))
+		ci_irq(ci->irq, ci);
+
+	if (!IS_ERR(cable_vbus->edev) && ci->is_otg &&
+		(otgsc & OTGSC_BSVIE) && (otgsc & OTGSC_BSVIS))
+		ci_irq(ci->irq, ci);
+}
+
 static int ci_controller_resume(struct device *dev)
 {
 	struct ci_hdrc *ci = dev_get_drvdata(dev);
@@ -1205,6 +1165,7 @@ static int ci_controller_resume(struct device *dev)
 		enable_irq(ci->irq);
 		if (ci_otg_is_fsm_mode(ci))
 			ci_otg_fsm_wakeup_by_srp(ci);
+		ci_extcon_wakeup_int(ci);
 	}
 
 	return 0;

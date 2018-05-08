@@ -465,7 +465,6 @@ int __clk_mux_determine_rate_closest(struct clk_hw *hw,
 EXPORT_SYMBOL_GPL(__clk_mux_determine_rate_closest);
 
 /***        clk api        ***/
->>>>>>> origin/linux-4.9.x
 
 static void clk_core_unprepare(struct clk_core *core)
 {
@@ -812,29 +811,64 @@ static int clk_disable_unused(void)
 	if (clk_ignore_unused) {
 		pr_warn("clk: Not disabling unused clocks\n");
 		return 0;
+	}
 
-	return clk_core_round_rate_nolock(hw->core, rate, min_rate, max_rate);
+	clk_prepare_lock();
+
+	hlist_for_each_entry(core, &clk_root_list, child_node)
+		clk_disable_unused_subtree(core);
+
+	hlist_for_each_entry(core, &clk_orphan_list, child_node)
+		clk_disable_unused_subtree(core);
+
+	hlist_for_each_entry(core, &clk_root_list, child_node)
+		clk_unprepare_unused_subtree(core);
+
+	hlist_for_each_entry(core, &clk_orphan_list, child_node)
+		clk_unprepare_unused_subtree(core);
+
+	clk_prepare_unlock();
+
+	return 0;
 }
-EXPORT_SYMBOL_GPL(__clk_determine_rate);
+late_initcall_sync(clk_disable_unused);
 
-/**
- * __clk_round_rate - round the given rate for a clk
- * @clk: round the rate of this clock
- * @rate: the rate which is to be rounded
- *
- * Caller must hold prepare_lock.  Useful for clk_ops such as .set_rate
- */
-unsigned long __clk_round_rate(struct clk *clk, unsigned long rate)
+static int clk_core_round_rate_nolock(struct clk_core *core,
+				      struct clk_rate_request *req)
 {
-	unsigned long min_rate;
-	unsigned long max_rate;
+	struct clk_core *parent;
+	long rate;
 
-	if (!clk)
+	lockdep_assert_held(&prepare_lock);
+
+	if (!core)
 		return 0;
 
-	clk_core_get_boundaries(clk->core, &min_rate, &max_rate);
+	parent = core->parent;
+	if (parent) {
+		req->best_parent_hw = parent->hw;
+		req->best_parent_rate = parent->rate;
+	} else {
+		req->best_parent_hw = NULL;
+		req->best_parent_rate = 0;
+	}
 
-	return clk_core_round_rate_nolock(clk->core, rate, min_rate, max_rate);
+	if (core->ops->determine_rate) {
+		return core->ops->determine_rate(core->hw, req);
+	} else if (core->ops->round_rate) {
+		rate = core->ops->round_rate(core->hw, req->rate,
+					     &req->best_parent_rate);
+		if (rate < 0)
+			return rate;
+
+		req->rate = rate;
+	} else if (core->flags & CLK_SET_RATE_PARENT) {
+		return clk_core_round_rate_nolock(parent, req);
+	} else {
+		req->rate = core->rate;
+	}
+
+	return 0;
 }
 
 /**
@@ -1155,9 +1189,6 @@ static struct clk_core *__clk_set_parent_before(struct clk_core *core,
 	 * hardware and software states.
 	 *
 	 * See also: Comment for clk_set_parent() below.
-	 *
-	 * 2. enable two parents clock for .set_parent() operation if finding
-	 * flag CLK_SET_PARENT_ON
 	 */
 
 	/* enable old_parent & parent if CLK_OPS_PARENT_ENABLE is set */

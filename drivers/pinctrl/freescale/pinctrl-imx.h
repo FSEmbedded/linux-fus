@@ -1,7 +1,7 @@
 /*
  * IMX pinmux core definitions
  *
- * Copyright (C) 2012-2015 Freescale Semiconductor, Inc.
+ * Copyright (C) 2012 Freescale Semiconductor, Inc.
  * Copyright (C) 2012 Linaro Ltd.
  *
  * Author: Dong Aisheng <dong.aisheng@linaro.org>
@@ -83,10 +83,12 @@ struct imx_pinctrl_soc_info {
 	unsigned int nfunctions;
 	unsigned int flags;
 	const char *gpr_compatible;
+	unsigned int mux_mask;
 };
 
 #define SHARE_MUX_CONF_REG	0x1
 #define ZERO_OFFSET_VALID	0x2
+#define CONFIG_IBE_OBE		0x4
 
 #define NO_MUX		0x0
 #define NO_PAD		0x0

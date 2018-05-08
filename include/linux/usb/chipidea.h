@@ -12,16 +12,18 @@ struct ci_hdrc;
 
 /**
  * struct ci_hdrc_cable - structure for external connector cable state tracking
- * @state: current state of the line
+ * @connected: true if cable is connected, false otherwise
  * @changed: set to true when extcon event happen
+ * @enabled: set to true if we've enabled the vbus or id interrupt
  * @edev: device which generate events
  * @ci: driver state of the chipidea device
  * @nb: hold event notification callback
  * @conn: used for notification registration
  */
 struct ci_hdrc_cable {
-	bool				state;
+	bool				connected;
 	bool				changed;
+	bool				enabled;
 	struct extcon_dev		*edev;
 	struct ci_hdrc			*ci;
 	struct notifier_block		nb;
@@ -57,6 +59,8 @@ struct ci_hdrc_platform_data {
 #define CI_HDRC_OVERRIDE_RX_BURST	BIT(11)
 #define CI_HDRC_IMX_EHCI_QUIRK		BIT(12)
 #define CI_HDRC_IMX_IS_HSIC		BIT(13)
+/* need request pmqos during low power */
+#define CI_HDRC_PMQOS			BIT(14)
 	enum usb_dr_mode	dr_mode;
 #define CI_HDRC_CONTROLLER_RESET_EVENT		0
 #define CI_HDRC_CONTROLLER_STOPPED_EVENT	1

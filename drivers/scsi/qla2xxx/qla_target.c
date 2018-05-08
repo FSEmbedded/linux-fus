@@ -1081,6 +1081,7 @@ qlt_fc_port_deleted(struct scsi_qla_host *vha, fc_port_t *fcport, int max_gen)
 {
 	struct qla_tgt *tgt = vha->vha_tgt.qla_tgt;
 	struct qla_tgt_sess *sess;
+	unsigned long flags;
 
 	if (!vha->hw->tgt.tgt_ops)
 		return;

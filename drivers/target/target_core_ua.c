@@ -46,7 +46,7 @@ target_scsi3_ua_check(struct se_cmd *cmd)
 		return 0;
 
 	nacl = sess->se_node_acl;
-	if (!nacl || !nacl->device_list)
+	if (!nacl)
 		return 0;
 
 	rcu_read_lock();
@@ -218,7 +218,7 @@ void core_scsi3_ua_for_check_condition(
 		return;
 
 	nacl = sess->se_node_acl;
-	if (!nacl || !nacl->device_list)
+	if (!nacl)
 		return;
 
 	rcu_read_lock();
@@ -290,7 +290,7 @@ int core_scsi3_ua_clear_for_request_sense(
 		return -EINVAL;
 
 	nacl = sess->se_node_acl;
-	if (!nacl || !nacl->device_list)
+	if (!nacl)
 		return -EINVAL;
 
 	rcu_read_lock();

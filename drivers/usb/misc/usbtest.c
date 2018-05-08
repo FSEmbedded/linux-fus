@@ -2515,8 +2515,6 @@ usbtest_do_ioctl(struct usb_interface *intf, struct usbtest_param_32 *param)
 		retval = test_queue(dev, param,
 				dev->in_pipe, NULL, 0);
 		break;
-<<<<<<< HEAD
-=======
 	}
 	return retval;
 }

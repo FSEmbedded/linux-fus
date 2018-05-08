@@ -17,11 +17,6 @@ void mxc_set_cpu_type(unsigned int type)
 	__mxc_cpu_type = type;
 }
 
-void mxc_set_arch_type(unsigned int type)
-{
-	__mxc_arch_type = type;
-}
-
 void imx_set_soc_revision(unsigned int rev)
 {
 	imx_soc_revision = rev;
@@ -131,7 +126,7 @@ struct device * __init imx_soc_device_init(void)
 		soc_id = "i.MX6SX";
 		break;
 	case MXC_CPU_IMX6Q:
-		if (imx_get_soc_revision() == IMX_CHIP_REVISION_2_0)
+		if (imx_get_soc_revision() >= IMX_CHIP_REVISION_2_0)
 			soc_id = "i.MX6QP";
 		else
 			soc_id = "i.MX6Q";
@@ -144,6 +139,12 @@ struct device * __init imx_soc_device_init(void)
 		break;
 	case MXC_CPU_IMX7D:
 		soc_id = "i.MX7D";
+		break;
+	case MXC_CPU_IMX6SLL:
+		soc_id = "i.MX6SLL";
+		break;
+	case MXC_CPU_IMX7ULP:
+		soc_id = "i.MX7ULP";
 		break;
 	default:
 		soc_id = "Unknown";

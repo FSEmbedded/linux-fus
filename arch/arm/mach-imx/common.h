@@ -1,5 +1,6 @@
 /*
  * Copyright 2004-2016 Freescale Semiconductor, Inc. All Rights Reserved.
+ * Copyright 2017 NXP
  */
 
 /*
@@ -12,6 +13,7 @@
 #define __ASM_ARCH_MXC_COMMON_H__
 
 #include <linux/reboot.h>
+#include <soc/imx/src.h>
 
 struct irq_data;
 struct platform_device;
@@ -48,7 +50,6 @@ int mx31_clocks_init_dt(void);
 struct platform_device *mxc_register_gpio(char *name, int id,
 	resource_size_t iobase, resource_size_t iosize, int irq, int irq_high);
 void mxc_set_cpu_type(unsigned int type);
-void mxc_set_arch_type(unsigned int type);
 void mxc_restart(enum reboot_mode, const char *);
 void mxc_arch_reset_init(void __iomem *);
 void imx1_reset_init(void __iomem *);
@@ -63,6 +64,8 @@ void imx_gpc_check_dt(void);
 void imx_gpc_set_arm_power_in_lpm(bool power_off);
 void imx_gpc_set_arm_power_up_timing(u32 sw2iso, u32 sw);
 void imx_gpc_set_arm_power_down_timing(u32 sw2iso, u32 sw);
+void imx25_pm_init(void);
+void imx27_pm_init(void);
 unsigned int imx_gpc_is_mf_mix_off(void);
 void imx6sx_set_m4_highfreq(bool high_freq);
 void imx_mu_enable_m4_irqs_in_gic(bool enable);
@@ -75,8 +78,6 @@ static inline unsigned int imx_gpc_is_m4_sleeping(void) { return 0; }
 #endif
 void imx_gpc_hold_m4_in_sleep(void);
 void imx_gpc_release_m4_in_sleep(void);
-int imx_update_shared_mem(struct clk_hw *hw, bool enable);
-bool imx_src_is_m4_enabled(void);
 void mcc_receive_from_mu_buffer(unsigned int index, unsigned int *data);
 void mcc_send_via_mu_buffer(unsigned int index, unsigned int data);
 bool imx_mu_is_m4_in_low_freq(void);
@@ -103,6 +104,17 @@ enum mx3_cpu_pwr_mode {
 	MX3_SLEEP,
 };
 
+enum imx7ulp_cpu_pwr_mode {
+	HSRUN,
+	RUN,
+	VLPR,
+	WAIT,
+	VLPW,
+	STOP,
+	VLPS,
+	VLLS,
+};
+
 void mx3_cpu_lp_set(enum mx3_cpu_pwr_mode mode);
 
 void imx_enable_cpu(int cpu, bool enable);
@@ -119,6 +131,7 @@ static inline void imx_smp_prepare(void) {}
 #endif
 void imx6_pm_map_io(void);
 void imx7_pm_map_io(void);
+void imx7ulp_pm_map_io(void);
 void imx_src_init(void);
 void imx_gpc_pre_suspend(bool arm_power_off);
 void imx_gpc_post_resume(void);
@@ -137,7 +150,7 @@ void imx_gpcv2_add_m4_wake_up_irq(u32 hwirq, bool enable);
 #else
 static inline int imx_gpcv2_mf_power_on(unsigned int irq, unsigned int on) { return 0; }
 static inline void imx_gpcv2_set_core1_pdn_pup_by_software(bool pdn) {}
-static void imx_gpcv2_add_m4_wake_up_irq(u32 hwirq, bool enable) {}
+static inline void imx_gpcv2_add_m4_wake_up_irq(u32 hwirq, bool enable) {}
 #endif
 void __init imx_gpcv2_check_dt(void);
 void imx_gpcv2_set_lpm_mode(enum mxc_cpu_pwr_mode mode);
@@ -156,10 +169,13 @@ int imx6_set_lpm(enum mxc_cpu_pwr_mode mode);
 void imx6_set_int_mem_clk_lpm(bool enable);
 void imx6sl_set_wait_clk(bool enter);
 void imx6_enet_mac_init(const char *enet_compat, const char *ocotp_compat);
+int imx7ulp_set_lpm(enum imx7ulp_cpu_pwr_mode mode);
 #ifdef CONFIG_HAVE_IMX_MMDC
 int imx_mmdc_get_ddr_type(void);
+int imx_mmdc_get_lpddr2_2ch_mode(void);
 #else
 static inline int imx_mmdc_get_ddr_type(void) { return 0; }
+static inline int imx_mmdc_get_lpddr2_2ch_mode(void) { return 0; }
 #endif
 #ifdef CONFIG_HAVE_IMX_DDRC
 int imx_ddrc_get_ddr_type(void);
@@ -174,21 +190,30 @@ void imx6sx_low_power_idle(void);
 void imx6ul_low_power_idle(void);
 void imx6ull_low_power_idle(void);
 void imx6sl_low_power_idle(void);
+void imx6sll_low_power_idle(void);
 bool imx_gpc_usb_wakeup_enabled(void);
+bool imx_gpc_enet_wakeup_enabled(void);
 
 #ifdef CONFIG_SUSPEND
 void v7_cpu_resume(void);
+void ca7_cpu_resume(void);
 void imx53_suspend(void __iomem *ocram_vbase);
 extern const u32 imx53_suspend_sz;
+void imx7ulp_cpu_resume(void);
 void imx6_suspend(void __iomem *ocram_vbase);
 void imx7_suspend(void __iomem *ocram_vbase);
+void imx7ulp_suspend(void __iomem *ocram_vbase);
 #else
 static inline void v7_cpu_resume(void) {}
+static inline void ca7_cpu_resume(void) {}
 static inline void imx53_suspend(void __iomem *ocram_vbase) {}
 static const u32 imx53_suspend_sz;
+static inline void imx7ulp_cpu_resume(void) {}
 static inline void imx6_suspend(void __iomem *ocram_vbase) {}
 static inline void imx7_suspend(void __iomem *ocram_vbase) {}
+static inline void imx7ulp_suspend(void __iomem *ocram_vbase) {}
 #endif
+void pm_shutdown_notify_m4(void);
 
 void imx6_pm_ccm_init(const char *ccm_compat);
 void imx6q_pm_init(void);
@@ -197,6 +222,9 @@ void imx6sl_pm_init(void);
 void imx6sx_pm_init(void);
 void imx6ul_pm_init(void);
 void imx6ull_pm_init(void);
+void imx7d_pm_init(void);
+void imx7ulp_pm_init(void);
+void imx7ulp_enable_nmi(void);
 void imx6q_pm_set_ccm_base(void __iomem *base);
 
 #ifdef CONFIG_PM
@@ -221,5 +249,7 @@ static inline void imx_init_l2cache(void) {}
 
 extern const struct smp_operations imx_smp_ops;
 extern const struct smp_operations ls1021a_smp_ops;
+
+extern bool uart_from_osc;
 
 #endif

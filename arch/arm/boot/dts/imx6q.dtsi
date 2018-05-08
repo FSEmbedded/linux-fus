@@ -113,7 +113,7 @@
                 gpu@00130000 {
 			compatible = "fsl,imx6q-gpu";
 			reg = <0x00130000 0x4000>, <0x00134000 0x4000>,
-			      <0x02204000 0x4000>, <0x0 0x0>,
+			      <0x02204000 0x4000>, <0x10000000 0x0>,
 			      <0x0 0x8000000>;
 			reg-names = "iobase_3d", "iobase_2d",
 				    "iobase_vg", "phys_baseaddr",
@@ -203,9 +203,18 @@
 				     <0 7 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&clks IMX6QDL_CLK_IPU2>,
 				 <&clks IMX6QDL_CLK_IPU2_DI0>,
-				 <&clks IMX6QDL_CLK_IPU2_DI1>;
-			clock-names = "bus", "di0", "di1";
+				 <&clks IMX6QDL_CLK_IPU2_DI1>,
+				 <&clks IMX6QDL_CLK_IPU2_DI0_SEL>,
+				 <&clks IMX6QDL_CLK_IPU2_DI1_SEL>,
+				 <&clks IMX6QDL_CLK_LDB_DI0>,
+				 <&clks IMX6QDL_CLK_LDB_DI1>;
+			clock-names = "bus",
+				      "di0", "di1",
+				      "di0_sel", "di1_sel",
+				      "ldb_di0", "ldb_di1";
+
 			resets = <&src 4>;
+			bypass_reset = <0>;
 
 			ipu2_csi0: port@0 {
 				reg = <0>;
@@ -348,6 +357,61 @@
 		      "ldb_di0_div_7", "ldb_di1_div_7",
 		      "ldb_di0_div_sel", "ldb_di1_div_sel";
 
+	lvds-channel@0 {
+		port@2 {
+			reg = <2>;
+
+			lvds0_mux_2: endpoint {
+				remote-endpoint = <&ipu2_di0_lvds0>;
+			};
+		};
+
+		port@3 {
+			reg = <3>;
+
+			lvds0_mux_3: endpoint {
+				remote-endpoint = <&ipu2_di1_lvds0>;
+			};
+		};
+	};
+
+	lvds-channel@1 {
+		port@2 {
+			reg = <2>;
+
+			lvds1_mux_2: endpoint {
+				remote-endpoint = <&ipu2_di0_lvds1>;
+			};
+		};
+
+		port@3 {
+			reg = <3>;
+
+			lvds1_mux_3: endpoint {
+				remote-endpoint = <&ipu2_di1_lvds1>;
+			};
+		};
+	};
+};
+
+&mipi_dsi {
+	ports {
+		port@2 {
+			reg = <2>;
+
+			mipi_mux_2: endpoint {
+				remote-endpoint = <&ipu2_di0_mipi>;
+			};
+		};
+
+		port@3 {
+			reg = <3>;
+
+			mipi_mux_3: endpoint {
+				remote-endpoint = <&ipu2_di1_mipi>;
+			};
+		};
+	};
 };
 
 &vpu {

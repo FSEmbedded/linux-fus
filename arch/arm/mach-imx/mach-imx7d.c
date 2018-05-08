@@ -5,7 +5,6 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-
 #include <linux/irqchip.h>
 #include <linux/mfd/syscon.h>
 #include <linux/mfd/syscon/imx7-iomuxc-gpr.h>
@@ -132,7 +131,7 @@ static void __init imx7d_init_machine(void)
 	if (parent == NULL)
 		pr_warn("failed to initialize soc device\n");
 
-	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
+	of_platform_default_populate(NULL, NULL, parent);
 	imx7d_pm_init();
 	imx_anatop_init();
 	imx7d_enet_init();
@@ -157,11 +156,6 @@ static void __init imx7d_init_late(void)
 	imx7d_cpuidle_init();
 }
 
-static const char *imx7d_dt_compat[] __initconst = {
-	"fsl,imx7d",
-	NULL,
-};
-
 static void __init imx7d_map_io(void)
 {
 	debug_ll_io_init();
@@ -169,8 +163,14 @@ static void __init imx7d_map_io(void)
 	imx_busfreq_map_io();
 }
 
+static const char *const imx7d_dt_compat[] __initconst = {
+	"fsl,imx7d",
+	"fsl,imx7s",
+	NULL,
+};
+
 DT_MACHINE_START(IMX7D, "Freescale i.MX7 Dual (Device Tree)")
-	.map_io		= imx7d_map_io,
+	.map_io         = imx7d_map_io,
 	.smp            = smp_ops(imx_smp_ops),
 	.init_irq	= imx7d_init_irq,
 	.init_machine	= imx7d_init_machine,

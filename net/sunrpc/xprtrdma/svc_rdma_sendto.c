@@ -569,13 +569,6 @@ static int send_reply(struct svcxprt_rdma *rdma,
 	}
 	rqstp->rq_next_page = rqstp->rq_respages + 1;
 
-	/* The loop above bumps sc_dma_used for each sge. The
-	 * xdr_buf.tail gets a separate sge, but resides in the
-	 * same page as xdr_buf.head. Don't count it twice.
-	 */
-	if (sge_no > ctxt->count)
-		atomic_dec(&rdma->sc_dma_used);
-
 	if (sge_no > rdma->sc_max_sge) {
 		pr_err("svcrdma: Too many sges (%d)\n", sge_no);
 		goto err;

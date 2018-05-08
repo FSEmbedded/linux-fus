@@ -3,6 +3,7 @@
  *
  *  Copyright (C) 2010 Wolfram Sang, Pengutronix e.K. <w.sang@pengutronix.de>
  *  Copyright (C) 2015 Freescale Semiconductor, Inc.
+ *  Copyright 2017 NXP.
  *
  * some parts adapted by similar drivers from Darius Augulis and Vladimir
  * Zapolskiy, additional improvements by Wim Van Sebroeck.
@@ -56,18 +57,12 @@
 #define IMX2_WDT_WICR_WTIS	BIT(14)		/* -> Interrupt Status */
 #define IMX2_WDT_WICR_WICT	0xFF		/* -> Interrupt Count Timeout */
 
-#define IMX2_WDT_WICR		0x06		/*Interrupt Control Register*/
-#define IMX2_WDT_WICR_WIE	(1 << 15)	/* -> Interrupt Enable */
-#define IMX2_WDT_WICR_WTIS	(1 << 14)	/* -> Interrupt Status */
-#define IMX2_WDT_WICR_WICT	(0xFF << 0)	/* -> Watchdog Interrupt Timeout Field */
-
 #define IMX2_WDT_WMCR		0x08		/* Misc Register */
 
 #define IMX2_WDT_MAX_TIME	128
 #define IMX2_WDT_DEFAULT_TIME	60		/* in seconds */
 
 #define WDOG_SEC_TO_COUNT(s)	((s * 2 - 1) << 8)
-#define WDOG_SEC_TO_PRECOUNT(s)	(s * 2)		/* set WDOG pre timeout count*/
 
 struct imx2_wdt_device {
 	struct clk *clk;
@@ -89,7 +84,7 @@ MODULE_PARM_DESC(timeout, "Watchdog timeout in seconds (default="
 
 static const struct watchdog_info imx2_wdt_info = {
 	.identity = "imx2+ watchdog",
-	.options = WDIOF_KEEPALIVEPING | WDIOF_SETTIMEOUT | WDIOF_MAGICCLOSE | WDIOF_PRETIMEOUT,
+	.options = WDIOF_KEEPALIVEPING | WDIOF_SETTIMEOUT | WDIOF_MAGICCLOSE,
 };
 
 static const struct watchdog_info imx2_wdt_pretimeout_info = {
@@ -97,6 +92,26 @@ static const struct watchdog_info imx2_wdt_pretimeout_info = {
 	.options = WDIOF_KEEPALIVEPING | WDIOF_SETTIMEOUT | WDIOF_MAGICCLOSE |
 		   WDIOF_PRETIMEOUT,
 };
+
+static int imx2_wdt_ping(struct watchdog_device *wdog)
+{
+	struct imx2_wdt_device *wdev = watchdog_get_drvdata(wdog);
+
+	regmap_write(wdev->regmap, IMX2_WDT_WSR, IMX2_WDT_SEQ1);
+	regmap_write(wdev->regmap, IMX2_WDT_WSR, IMX2_WDT_SEQ2);
+	return 0;
+}
+
+
+static inline bool imx2_wdt_is_running(struct imx2_wdt_device *wdev)
+{
+	u32 val;
+
+	regmap_read(wdev->regmap, IMX2_WDT_WCR, &val);
+
+	return val & IMX2_WDT_WCR_WDE;
+}
+
 
 static int imx2_wdt_restart(struct watchdog_device *wdog, unsigned long action,
 			    void *data)
@@ -112,6 +127,10 @@ static int imx2_wdt_restart(struct watchdog_device *wdog, unsigned long action,
 
 	/* Assert SRS signal */
 	regmap_write(wdev->regmap, IMX2_WDT_WCR, wcr_enable);
+
+	if (imx2_wdt_is_running(wdev))
+		imx2_wdt_ping(wdog);
+
 	/*
 	 * Due to imx6q errata ERR004346 (WDOG: WDOG SRS bit requires to be
 	 * written twice), we add another two writes to ensure there must be at
@@ -123,7 +142,9 @@ static int imx2_wdt_restart(struct watchdog_device *wdog, unsigned long action,
 	regmap_write(wdev->regmap, IMX2_WDT_WCR, wcr_enable);
 
 	/* wait for reset to assert... */
-	mdelay(500);
+	mdelay(100);
+	dev_err(wdog->parent, "failed to assert %s reset, trying with timeout\n",
+		wdev->ext_reset ? "external" : "internal");
 
 	return 0;
 }
@@ -157,24 +178,6 @@ static inline void imx2_wdt_setup(struct watchdog_device *wdog)
 	regmap_write(wdev->regmap, IMX2_WDT_WCR, val);
 }
 
-static inline bool imx2_wdt_is_running(struct imx2_wdt_device *wdev)
-{
-	u32 val;
-
-	regmap_read(wdev->regmap, IMX2_WDT_WCR, &val);
-
-	return val & IMX2_WDT_WCR_WDE;
-}
-
-static int imx2_wdt_ping(struct watchdog_device *wdog)
-{
-	struct imx2_wdt_device *wdev = watchdog_get_drvdata(wdog);
-
-	regmap_write(wdev->regmap, IMX2_WDT_WSR, IMX2_WDT_SEQ1);
-	regmap_write(wdev->regmap, IMX2_WDT_WSR, IMX2_WDT_SEQ2);
-	return 0;
-}
-
 static int imx2_wdt_set_timeout(struct watchdog_device *wdog,
 				unsigned int new_timeout)
 {
@@ -184,9 +187,6 @@ static int imx2_wdt_set_timeout(struct watchdog_device *wdog,
 
 	regmap_update_bits(wdev->regmap, IMX2_WDT_WCR, IMX2_WDT_WCR_WT,
 			   WDOG_SEC_TO_COUNT(new_timeout));
-
-	wdog->timeout = new_timeout;
-
 	return 0;
 }
 
@@ -233,51 +233,6 @@ static int imx2_wdt_start(struct watchdog_device *wdog)
 	return imx2_wdt_ping(wdog);
 }
 
-static int imx2_wdt_check_pretimeout_set(struct imx2_wdt_device *wdev)
-{
-	u32 val;
-
-	regmap_read(wdev->regmap, IMX2_WDT_WICR, &val);
-	return (val & IMX2_WDT_WICR_WIE) ? 1 : 0;
-}
-
-static int imx2_wdt_set_pretimeout(struct watchdog_device *wdog, unsigned int new_timeout)
-{
-	struct imx2_wdt_device *wdev = watchdog_get_drvdata(wdog);
-	u32 val;
-
-	regmap_read(wdev->regmap, IMX2_WDT_WICR, &val);
-	/* set the new pre-timeout value in the WSR */
-	val &= ~IMX2_WDT_WICR_WICT;
-	val |= WDOG_SEC_TO_PRECOUNT(new_timeout);
-
-	if (!imx2_wdt_check_pretimeout_set(wdev))
-		val |= IMX2_WDT_WICR_WIE;	/*enable*/
-
-	regmap_write(wdev->regmap, IMX2_WDT_WICR, val);
-
-	wdog->pretimeout = new_timeout;
-
-	return 0;
-}
-
-static irqreturn_t imx2_wdt_isr(int irq, void *dev_id)
-{
-	struct platform_device *pdev = dev_id;
-	struct watchdog_device *wdog = platform_get_drvdata(pdev);
-	struct imx2_wdt_device *wdev = watchdog_get_drvdata(wdog);
-	u32 val;
-
-	regmap_read(wdev->regmap, IMX2_WDT_WICR, &val);
-	if (val & IMX2_WDT_WICR_WTIS) {
-		/*clear interrupt status bit*/
-		regmap_write(wdev->regmap, IMX2_WDT_WICR, val);
-		dev_warn(&pdev->dev, "watchdog pre-timeout:%d, %d Seconds remained\n", \
-			 wdog->pretimeout, wdog->timeout-wdog->pretimeout);
-	}
-	return IRQ_HANDLED;
-}
-
 static const struct watchdog_ops imx2_wdt_ops = {
 	.owner = THIS_MODULE,
 	.start = imx2_wdt_start,
@@ -301,9 +256,7 @@ static int __init imx2_wdt_probe(struct platform_device *pdev)
 	struct resource *res;
 	void __iomem *base;
 	int ret;
-	int irq;
 	u32 val;
-	struct device_node *of_node = pdev->dev.of_node;
 
 	wdev = devm_kzalloc(&pdev->dev, sizeof(*wdev), GFP_KERNEL);
 	if (!wdev)
@@ -325,19 +278,6 @@ static int __init imx2_wdt_probe(struct platform_device *pdev)
 	if (IS_ERR(wdev->clk)) {
 		dev_err(&pdev->dev, "can't get Watchdog clock\n");
 		return PTR_ERR(wdev->clk);
-	}
-
-	irq = platform_get_irq(pdev, 0);
-	ret = devm_request_irq(&pdev->dev, irq, imx2_wdt_isr, 0,
-			       dev_name(&pdev->dev), pdev);
-	if (ret) {
-		dev_err(&pdev->dev, "can't get irq %d\n", irq);
-		return ret;
-	}
-
-	if (of_get_property(of_node, "fsl,wdog_b", NULL)) {
-		wdev->wdog_b = true;
-		dev_info(&pdev->dev, "use WDOG_B to reboot.\n");
 	}
 
 	wdog			= &wdev->wdog;

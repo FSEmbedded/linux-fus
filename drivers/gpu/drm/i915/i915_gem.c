@@ -2581,7 +2581,6 @@ static void i915_gem_reset_engine(struct intel_engine_cs *engine)
 	struct drm_i915_gem_request *request;
 	struct i915_gem_context *incomplete_ctx;
 	bool ring_hung;
->>>>>>> origin/linux-4.9.x
 
 	/* Ensure irq handler finishes, and not run again. */
 	tasklet_kill(&engine->irq_tasklet);

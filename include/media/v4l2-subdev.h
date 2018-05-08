@@ -97,6 +97,7 @@ struct v4l2_decode_vbi_line {
 /*
  * Core ops: it is highly recommended to implement at least these ops:
  *
+ * g_chip_ident
  * log_status
  * g_register
  * s_register

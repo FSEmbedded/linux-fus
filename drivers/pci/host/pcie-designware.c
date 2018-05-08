@@ -241,7 +241,8 @@ static void dw_pcie_prog_outbound_atu(struct pcie_port *pp, int index,
 		if (val == PCIE_ATU_ENABLE)
 			return;
 
-		usleep_range(LINK_WAIT_IATU_MIN, LINK_WAIT_IATU_MAX);
+		if (!IS_ENABLED(CONFIG_PCI_IMX6))
+			usleep_range(LINK_WAIT_IATU_MIN, LINK_WAIT_IATU_MAX);
 	}
 	dev_err(pp->dev, "iATU is not being enabled\n");
 }
@@ -889,11 +890,6 @@ void dw_pcie_setup_rc(struct pcie_port *pp)
 	val |= 0x00010100;
 	dw_pcie_writel_rc(pp, PCI_PRIMARY_BUS, val);
 
-	/* program correct class for RC */
-	dw_pcie_readl_rc(pp, PCI_CLASS_REVISION, &val);
-	val |= PCI_CLASS_BRIDGE_PCI << 16;
-	dw_pcie_writel_rc(pp, val, PCI_CLASS_REVISION);
-
 	/* setup command register */
 	val = dw_pcie_readl_rc(pp, PCI_COMMAND);
 	val &= 0xffff0000;
@@ -912,9 +908,11 @@ void dw_pcie_setup_rc(struct pcie_port *pp)
 		dev_dbg(pp->dev, "iATU unroll: %s\n",
 			pp->iatu_unroll_enabled ? "enabled" : "disabled");
 
-		dw_pcie_prog_outbound_atu(pp, PCIE_ATU_REGION_INDEX0,
-					  PCIE_ATU_TYPE_MEM, pp->mem_base,
-					  pp->mem_bus_addr, pp->mem_size);
+		if (!IS_ENABLED(CONFIG_EP_MODE_IN_EP_RC_SYS)
+			&& !IS_ENABLED(CONFIG_RC_MODE_IN_EP_RC_SYS))
+			dw_pcie_prog_outbound_atu(pp, PCIE_ATU_REGION_INDEX0,
+						  PCIE_ATU_TYPE_MEM, pp->mem_base,
+						  pp->mem_bus_addr, pp->mem_size);
 		if (pp->num_viewport > 2)
 			dw_pcie_prog_outbound_atu(pp, PCIE_ATU_REGION_INDEX2,
 						  PCIE_ATU_TYPE_IO, pp->io_base,

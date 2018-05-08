@@ -165,7 +165,7 @@ int gpmi_init(struct gpmi_nand_data *this)
 	ret = pm_runtime_get_sync(this->dev);
 	if (ret < 0) {
 		dev_err(this->dev, "Failed to enable clock\n");
-		goto err_out;
+		return ret;
 	}
 
 	ret = gpmi_reset_block(r->gpmi_regs, false);
@@ -200,12 +200,10 @@ int gpmi_init(struct gpmi_nand_data *this)
 	 */
 	writel(BM_GPMI_CTRL1_DECOUPLE_CS, r->gpmi_regs + HW_GPMI_CTRL1_SET);
 
+err_out:
 	pm_runtime_mark_last_busy(this->dev);
 	pm_runtime_put_autosuspend(this->dev);
 
-	return 0;
-err_out:
-	gpmi_disable_clk(this);
 	return ret;
 }
 
@@ -313,7 +311,7 @@ int bch_set_geometry(struct gpmi_nand_data *this)
 	ret = pm_runtime_get_sync(this->dev);
 	if (ret < 0) {
 		dev_err(this->dev, "Failed to enable clock\n");
-		goto err_out;
+		return ret;
 	}
 
 	/*
@@ -354,12 +352,10 @@ int bch_set_geometry(struct gpmi_nand_data *this)
 	writel(BM_BCH_CTRL_COMPLETE_IRQ_EN,
 				r->bch_regs + HW_BCH_CTRL_SET);
 
+err_out:
 	pm_runtime_mark_last_busy(this->dev);
 	pm_runtime_put_autosuspend(this->dev);
 
-	return 0;
-err_out:
-	gpmi_disable_clk(this);
 	return ret;
 }
 

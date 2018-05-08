@@ -25,6 +25,7 @@ obj-$(CONFIG_MXC_DEBUG_BOARD) += 3ds_debugboard.o
 ifeq ($(CONFIG_CPU_IDLE),y)
 obj-$(CONFIG_SOC_IMX5) += cpuidle-imx5.o
 obj-$(CONFIG_SOC_IMX6Q) += cpuidle-imx6q.o
+obj-$(CONFIG_SOC_IMX7ULP) += cpuidle-imx7ulp.o
 AFLAGS_imx6sl_low_power_idle.o :=-Wa,-march=armv7-a
 obj-$(CONFIG_SOC_IMX6SL) += cpuidle-imx6sl.o imx6sl_low_power_idle.o
 AFLAGS_imx6sx_low_power_idle.o :=-Wa,-march=armv7-a
@@ -33,6 +34,8 @@ AFLAGS_imx6ul_low_power_idle.o :=-Wa,-march=armv7-a
 obj-$(CONFIG_SOC_IMX6UL) += cpuidle-imx6ul.o imx6ul_low_power_idle.o
 AFLAGS_imx6ull_low_power_idle.o :=-Wa,-march=armv7-a
 obj-$(CONFIG_SOC_IMX6ULL) += imx6ull_low_power_idle.o
+AFLAGS_imx6sll_low_power_idle.o :=-Wa,-march=armv7-a
+obj-$(CONFIG_SOC_IMX6SLL) += cpuidle-imx6sll.o imx6sll_low_power_idle.o
 AFLAGS_imx7d_low_power_idle.o :=-Wa,-march=armv7-a
 obj-$(CONFIG_SOC_IMX7D) += cpuidle-imx7d.o imx7d_low_power_idle.o
 endif
@@ -80,7 +83,6 @@ obj-$(CONFIG_HAVE_IMX_MMDC) += mmdc.o
 obj-$(CONFIG_HAVE_IMX_DDRC) += ddrc.o
 obj-$(CONFIG_HAVE_IMX_SRC) += src.o
 obj-$(CONFIG_HAVE_IMX_MU) += mu.o
-obj-$(CONFIG_HAVE_IMX_RPMSG) += imx_rpmsg.o
 ifneq ($(CONFIG_SOC_IMX6)$(CONFIG_SOC_IMX7)$(CONFIG_SOC_LS1021A),)
 AFLAGS_headsmp.o :=-Wa,-march=armv7-a
 obj-$(CONFIG_SMP) += headsmp.o platsmp.o
@@ -90,29 +92,36 @@ obj-y += busfreq_lpddr2.o busfreq-imx.o busfreq_ddr3.o
 AFLAGS_ddr3_freq_imx6.o :=-Wa,-march=armv7-a
 AFLAGS_smp_wfe_imx6.o :=-Wa,-march=armv7-a
 AFLAGS_lpddr2_freq_imx6q.o :=-Wa,-march=armv7-a
-obj-$(CONFIG_SOC_IMX6Q) += clk-imx6q.o mach-imx6q.o ddr3_freq_imx6.o \
-			smp_wfe_imx6.o lpddr2_freq_imx6q.o
+obj-$(CONFIG_SOC_IMX6Q) += mach-imx6q.o ddr3_freq_imx6.o smp_wfe_imx6.o \
+			   lpddr2_freq_imx6q.o
 AFLAGS_lpddr2_freq_imx6.o :=-Wa,-march=armv7-a
-obj-$(CONFIG_SOC_IMX6SL) += clk-imx6sl.o mach-imx6sl.o lpddr2_freq_imx6.o
+obj-$(CONFIG_SOC_IMX6SL) += mach-imx6sl.o lpddr2_freq_imx6.o
+AFLAGS_lpddr2_freq_imx6sll.o :=-Wa,-march=armv7-a
+obj-$(CONFIG_SOC_IMX6SLL) += mach-imx6sl.o lpddr2_freq_imx6sll.o
 AFLAGS_ddr3_freq_imx6sx.o :=-Wa,-march=armv7-a
 AFLAGS_lpddr2_freq_imx6sx.o :=-Wa,-march=armv7-a
-obj-$(CONFIG_SOC_IMX6SX) += clk-imx6sx.o mach-imx6sx.o ddr3_freq_imx6sx.o \
+obj-$(CONFIG_SOC_IMX6SX) += mach-imx6sx.o ddr3_freq_imx6sx.o \
 			    lpddr2_freq_imx6sx.o
-obj-$(CONFIG_SOC_IMX6UL) += clk-imx6ul.o mach-imx6ul.o ddr3_freq_imx6sx.o \
+obj-$(CONFIG_SOC_IMX6UL) += mach-imx6ul.o ddr3_freq_imx6sx.o \
 			    lpddr2_freq_imx6sx.o
-obj-$(CONFIG_SOC_IMX7D) += clk-imx7d.o mach-imx7d.o
+obj-$(CONFIG_SOC_IMX7D) += mach-imx7d.o
+obj-$(CONFIG_SOC_IMX7ULP) += mach-imx7ulp.o pm-imx7ulp.o pm-rpmsg.o
 
 ifeq ($(CONFIG_SUSPEND),y)
 AFLAGS_suspend-imx6.o :=-Wa,-march=armv7-a
 AFLAGS_suspend-imx7.o :=-Wa,-march=armv7-a
+AFLAGS_suspend-imx7ulp.o :=-Wa,-march=armv7-a
 obj-$(CONFIG_SOC_IMX6) += suspend-imx6.o
-obj-$(CONFIG_SOC_IMX7) += suspend-imx7.o
+obj-$(CONFIG_SOC_IMX7D) += suspend-imx7.o
+obj-$(CONFIG_SOC_IMX53) += suspend-imx53.o
+obj-$(CONFIG_SOC_IMX7ULP) += suspend-imx7ulp.o
 endif
 obj-$(CONFIG_SOC_IMX6) += pm-imx6.o
 AFLAGS_smp_wfe.o :=-Wa,-march=armv7-a
 AFLAGS_ddr3_freq_imx7d.o :=-Wa,-march=armv7-a
 AFLAGS_lpddr3_freq_imx.o :=-Wa,-march=armv7-a
-obj-$(CONFIG_SOC_IMX7) += pm-imx7.o  ddr3_freq_imx7d.o smp_wfe.o lpddr3_freq_imx.o
+obj-$(CONFIG_SOC_IMX7D) += pm-imx7.o ddr3_freq_imx7d.o smp_wfe.o \
+			   lpddr3_freq_imx.o
 
 obj-$(CONFIG_SOC_IMX1) += mach-imx1.o
 obj-$(CONFIG_SOC_IMX50) += mach-imx50.o

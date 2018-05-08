@@ -1,7 +1,7 @@
 /*
  * Core driver for the imx pin controller
  *
- * Copyright (C) 2012-2016 Freescale Semiconductor, Inc.
+ * Copyright (C) 2012 Freescale Semiconductor, Inc.
  * Copyright (C) 2012 Linaro Ltd.
  *
  * Author: Dong Aisheng <dong.aisheng@linaro.org>
@@ -33,6 +33,8 @@
 #define IMX_NO_PAD_CTL	0x80000000	/* no pin config need */
 #define IMX_PAD_SION 0x40000000		/* set SION */
 
+#define IOMUXC_IBE	(1 << 16)
+#define IOMUXC_OBE	(1 << 17)
 /**
  * @dev: a pointer back to containing device
  * @base: the offset to the controller in virtual memory
@@ -204,6 +206,7 @@ static int imx_pmx_set(struct pinctrl_dev *pctldev, unsigned selector,
 
 	for (i = 0; i < npins; i++) {
 		struct imx_pin *pin = &grp->pins[i];
+		u32 mux_shift = info->mux_mask ? ffs(info->mux_mask) - 1 : 0;
 		pin_id = pin->pin;
 		pin_reg = &info->pin_regs[pin_id];
 
@@ -216,8 +219,8 @@ static int imx_pmx_set(struct pinctrl_dev *pctldev, unsigned selector,
 		if (info->flags & SHARE_MUX_CONF_REG) {
 			u32 reg;
 			reg = readl(ipctl->base + pin_reg->mux_reg);
-			reg &= ~(0x7 << 20);
-			reg |= (pin->mux_mode << 20);
+			reg &= ~info->mux_mask;
+			reg |= (pin->mux_mode << mux_shift);
 			writel(reg, ipctl->base + pin_reg->mux_reg);
 		} else {
 			writel(pin->mux_mode, ipctl->base + pin_reg->mux_reg);
@@ -311,7 +314,7 @@ static int imx_pmx_gpio_request_enable(struct pinctrl_dev *pctldev,
 	struct imx_pin_group *grp;
 	struct imx_pin *imx_pin;
 	unsigned int pin, group;
-	u32 reg;
+	u32 reg, mux_shift;
 
 	/* Currently implementation only for shared mux/conf register */
 	if (!(info->flags & SHARE_MUX_CONF_REG))
@@ -326,7 +329,7 @@ static int imx_pmx_gpio_request_enable(struct pinctrl_dev *pctldev,
 		grp = &info->groups[group];
 		for (pin = 0; pin < grp->npins; pin++) {
 			imx_pin = &grp->pins[pin];
-			if (imx_pin->pin == offset && !imx_pin->mux_mode)
+			if (imx_pin->pin == offset)
 				goto mux_pin;
 		}
 	}
@@ -335,7 +338,10 @@ static int imx_pmx_gpio_request_enable(struct pinctrl_dev *pctldev,
 
 mux_pin:
 	reg = readl(ipctl->base + pin_reg->mux_reg);
-	reg &= ~(0x7 << 20);
+	reg &= ~info->mux_mask;
+	mux_shift = info->mux_mask ? ffs(info->mux_mask) - 1 : 0;
+	reg |= (imx_pin->mux_mode << mux_shift);
+	imx_pin->config &= ~info->mux_mask;
 	reg |= imx_pin->config;
 	writel(reg, ipctl->base + pin_reg->mux_reg);
 
@@ -376,8 +382,8 @@ static int imx_pmx_gpio_set_direction(struct pinctrl_dev *pctldev,
 	u32 reg;
 
 	/*
-	 * Only Vybrid has the input/output buffer enable flags (IBE/OBE)
-	 * They are part of the shared mux/conf register.
+	 * Only Vybrid and i.MX7ULP have the input/output buffer enable
+	 * flags (IBE/OBE) They are part of the shared mux/conf register.
 	 */
 	if (!(info->flags & SHARE_MUX_CONF_REG))
 		return 0;
@@ -388,10 +394,21 @@ static int imx_pmx_gpio_set_direction(struct pinctrl_dev *pctldev,
 
 	/* IBE always enabled allows us to read the value "on the wire" */
 	reg = readl(ipctl->base + pin_reg->mux_reg);
-	if (input)
-		reg &= ~0x2;
-	else
-		reg |= 0x2;
+	if (input) {
+		if (info->flags & CONFIG_IBE_OBE) {
+			reg &= ~IOMUXC_OBE;
+			reg |= IOMUXC_IBE;
+		} else {
+			reg &= ~0x2;
+		}
+	} else {
+		if (info->flags & CONFIG_IBE_OBE) {
+			reg &= ~IOMUXC_IBE;
+			reg |= IOMUXC_OBE;
+		} else {
+			reg |= 0x2;
+		}
+	}
 	writel(reg, ipctl->base + pin_reg->mux_reg);
 
 	return 0;
@@ -423,7 +440,7 @@ static int imx_pinconf_get(struct pinctrl_dev *pctldev,
 	*config = readl(ipctl->base + pin_reg->conf_reg);
 
 	if (info->flags & SHARE_MUX_CONF_REG)
-		*config &= 0xffff;
+		*config &= ~info->mux_mask;
 
 	return 0;
 }
@@ -450,7 +467,7 @@ static int imx_pinconf_set(struct pinctrl_dev *pctldev,
 		if (info->flags & SHARE_MUX_CONF_REG) {
 			u32 reg;
 			reg = readl(ipctl->base + pin_reg->conf_reg);
-			reg &= ~0xffff;
+			reg &= info->mux_mask;
 			reg |= configs[i];
 			writel(reg, ipctl->base + pin_reg->conf_reg);
 		} else {
@@ -576,7 +593,7 @@ static int imx_pinctrl_parse_groups(struct device_node *np,
 			conf_reg = mux_reg;
 		} else {
 			conf_reg = be32_to_cpu(*list++);
-			if (!(info->flags & ZERO_OFFSET_VALID) && !conf_reg)
+			if (!conf_reg)
 				conf_reg = -1;
 		}
 
@@ -754,6 +771,9 @@ int imx_pinctrl_probe(struct platform_device *pdev,
 	if (IS_ERR(ipctl->base))
 		return PTR_ERR(ipctl->base);
 
+	/* only for share mux and conf reg */
+	of_property_read_u32(dev_np, "fsl,mux_mask", &info->mux_mask);
+
 	if (of_property_read_bool(dev_np, "fsl,input-sel")) {
 		np = of_parse_phandle(dev_np, "fsl,input-sel", 0);
 		if (!np) {
@@ -822,13 +842,4 @@ int imx_pinctrl_resume(struct device *dev)
                return -EINVAL;
 
        return pinctrl_force_default(ipctl->pctl);
-}
-
-int imx_pinctrl_remove(struct platform_device *pdev)
-{
-	struct imx_pinctrl *ipctl = platform_get_drvdata(pdev);
-
-	pinctrl_unregister(ipctl->pctl);
-
-	return 0;
 }

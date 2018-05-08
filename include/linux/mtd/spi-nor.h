@@ -133,8 +133,6 @@ enum spi_nor_option_flags {
  * @mtd:		point to a mtd_info structure
  * @lock:		the lock for the read/write/erase/lock/unlock operations
  * @dev:		point to a spi device, or a spi nor controller device.
- * @np:			If exit, it points to a device_node which stands for the
- *			SPI NOR flash child node.
  * @page_size:		the page size of the SPI NOR
  * @addr_width:		number of address bytes
  * @erase_opcode:	the opcode for erasing a sector
@@ -166,7 +164,6 @@ struct spi_nor {
 	struct mtd_info		mtd;
 	struct mutex		lock;
 	struct device		*dev;
-	struct device_node	*np;
 	u32			page_size;
 	u8			addr_width;
 	u8			erase_opcode;

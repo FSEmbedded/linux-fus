@@ -158,10 +158,6 @@
 #define NFC_ECC_PAT_FOUND(x)	BIT(x + 16)
 #define NFC_ECC_ERR_CNT(b, x)	(((x) >> (((b) % 4) * 8)) & 0xff)
 
-/* NFC_USER_DATA helper macros */
-#define NFC_BUF_TO_USER_DATA(buf)	((buf)[0] | ((buf)[1] << 8) | \
-					((buf)[2] << 16) | ((buf)[3] << 24))
-
 #define NFC_DEFAULT_TIMEOUT_MS	1000
 
 #define NFC_SRAM_SIZE		1024

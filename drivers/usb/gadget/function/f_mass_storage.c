@@ -3559,23 +3559,12 @@ static struct usb_function *fsg_alloc(struct usb_function_instance *fi)
 	struct fsg_opts *opts = fsg_opts_from_func_inst(fi);
 	struct fsg_common *common = opts->common;
 	struct fsg_dev *fsg;
-	unsigned nluns, i;
 
 	fsg = kzalloc(sizeof(*fsg), GFP_KERNEL);
 	if (unlikely(!fsg))
 		return ERR_PTR(-ENOMEM);
 
 	mutex_lock(&opts->lock);
-	if (!opts->refcnt) {
-		for (nluns = i = 0; i < FSG_MAX_LUNS; ++i)
-			if (common->luns[i])
-				nluns = i + 1;
-		if (!nluns)
-			pr_warn("No LUNS defined, continuing anyway\n");
-		else
-			common->nluns = nluns;
-		pr_info("Number of LUNs=%u\n", common->nluns);
-	}
 	opts->refcnt++;
 	mutex_unlock(&opts->lock);
 

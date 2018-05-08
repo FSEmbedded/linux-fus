@@ -1,7 +1,7 @@
 /*
  * caam - Freescale FSL CAAM support for crypto API
  *
- * Copyright (C) 2008-2015 Freescale Semiconductor, Inc.
+ * Copyright 2008-2011 Freescale Semiconductor, Inc.
  *
  * Based on talitos crypto API driver.
  *
@@ -162,6 +162,9 @@ struct caam_aead_alg {
 	struct caam_alg_entry caam;
 	bool registered;
 };
+
+static uint8_t *ecb_zero_iv;
+static dma_addr_t ecb_ziv_dma;
 
 /* Set DK bit in class 1 operation if shared */
 static inline void append_dec_op1(u32 *desc, u32 type)
@@ -647,8 +650,6 @@ skip_enc:
 		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
 		       desc_bytes(desc), 1);
 #endif
-	dma_sync_single_for_cpu(jrdev, ctx->sh_desc_dec_dma, desc_bytes(desc),
-				DMA_TO_DEVICE);
 
 	if (!alg->caam.geniv)
 		goto skip_givenc;
@@ -758,8 +759,6 @@ copy_iv:
 		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
 		       desc_bytes(desc), 1);
 #endif
-	dma_sync_single_for_cpu(jrdev, ctx->sh_desc_givenc_dma,
-				desc_bytes(desc), DMA_TO_DEVICE);
 
 skip_givenc:
 	return 0;
@@ -1384,9 +1383,6 @@ static int aead_setkey(struct crypto_aead *aead,
 		       DUMP_PREFIX_ADDRESS, 16, 4, ctx->key,
 		       ctx->split_key_pad_len + keys.enckeylen, 1);
 #endif
-	dma_sync_single_for_device(jrdev, ctx->key_dma,
-				   ctx->split_key_pad_len + keys.enckeylen,
-				   DMA_TO_DEVICE);
 
 	ctx->enckeylen = keys.enckeylen;
 
@@ -1559,7 +1555,6 @@ static int ablkcipher_setkey(struct crypto_ablkcipher *ablkcipher,
 		return -ENOMEM;
 	}
 	ctx->enckeylen = keylen;
-	dma_sync_single_for_device(jrdev, ctx->key_dma, keylen, DMA_TO_DEVICE);
 
 	/* ablkcipher_encrypt shared descriptor */
 	desc = ctx->sh_desc_enc;
@@ -1619,9 +1614,6 @@ static int ablkcipher_setkey(struct crypto_ablkcipher *ablkcipher,
 		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
 		       desc_bytes(desc), 1);
 #endif
-	dma_sync_single_for_device(jrdev, ctx->sh_desc_enc_dma,
-				   desc_bytes(desc), DMA_TO_DEVICE);
-
 	/* ablkcipher_decrypt shared descriptor */
 	desc = ctx->sh_desc_dec;
 
@@ -1762,11 +1754,36 @@ static int ablkcipher_setkey(struct crypto_ablkcipher *ablkcipher,
 		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
 		       desc_bytes(desc), 1);
 #endif
-	dma_sync_single_for_device(jrdev, ctx->sh_desc_dec_dma,
-				   desc_bytes(desc), DMA_TO_DEVICE);
 
 	return ret;
 }
+
+
+static int ablkcipher_des_setkey(struct crypto_ablkcipher *ablkcipher,
+				 const u8 *key, unsigned int keylen)
+{
+	u32 tmp[DES_EXPKEY_WORDS];
+	u32 flags;
+	int ret;
+
+	if (keylen != DES_KEY_SIZE) {
+		crypto_ablkcipher_set_flags(ablkcipher,
+					    CRYPTO_TFM_RES_BAD_KEY_LEN);
+		return -EINVAL;
+	}
+
+	ret = des_ekey(tmp, key);
+
+	flags = crypto_ablkcipher_get_flags(ablkcipher);
+	if (!ret && (flags & CRYPTO_TFM_REQ_WEAK_KEY)) {
+		crypto_ablkcipher_set_flags(ablkcipher,
+					    CRYPTO_TFM_RES_WEAK_KEY);
+		return -EINVAL;
+	}
+
+	return ablkcipher_setkey(ablkcipher, key, keylen);
+}
+
 
 static int xts_ablkcipher_setkey(struct crypto_ablkcipher *ablkcipher,
 				 const u8 *key, unsigned int keylen)
@@ -2027,10 +2044,13 @@ static void ablkcipher_encrypt_done(struct device *jrdev, u32 *desc, u32 err,
 {
 	struct ablkcipher_request *req = context;
 	struct ablkcipher_edesc *edesc;
-#ifdef DEBUG
 	struct crypto_ablkcipher *ablkcipher = crypto_ablkcipher_reqtfm(req);
+	struct caam_ctx *ctx = crypto_ablkcipher_ctx(ablkcipher);
+	int bsize = crypto_ablkcipher_blocksize(ablkcipher);
 	int ivsize = crypto_ablkcipher_ivsize(ablkcipher);
+	size_t ivcopy = min_t(size_t, bsize, ivsize);
 
+#ifdef DEBUG
 	dev_err(jrdev, "%s %d: err 0x%x\n", __func__, __LINE__, err);
 #endif
 
@@ -2051,6 +2071,12 @@ static void ablkcipher_encrypt_done(struct device *jrdev, u32 *desc, u32 err,
 
 	ablkcipher_unmap(jrdev, edesc, req);
 	kfree(edesc);
+
+	/* Pass IV along for cbc */
+	if ((ctx->class1_alg_type & OP_ALG_AAI_MASK) == OP_ALG_AAI_CBC) {
+		scatterwalk_map_and_copy(req->info, req->dst,
+					 req->nbytes - bsize, ivcopy, 0);
+	}
 
 	ablkcipher_request_complete(req, err);
 }
@@ -2367,7 +2393,6 @@ static struct aead_edesc *aead_edesc_alloc(struct aead_request *req,
 	sec4_sg_len += dst_nents;
 
 	sec4_sg_bytes = sec4_sg_len * sizeof(struct sec4_sg_entry);
-	dma_sync_single_for_device(jrdev, iv_dma, ivsize, DMA_TO_DEVICE);
 
 	/* allocate space for base edesc and hw desc commands, link tables */
 	edesc = kzalloc(sizeof(*edesc) + desc_bytes + sec4_sg_bytes,
@@ -2625,6 +2650,7 @@ static struct ablkcipher_edesc *ablkcipher_edesc_alloc(struct ablkcipher_request
 	int sgc;
 	int ivsize = crypto_ablkcipher_ivsize(ablkcipher);
 	int sec4_sg_index;
+	uint32_t c1_alg_typ = ctx->class1_alg_type;
 
 	src_nents = sg_count(req->src, req->nbytes);
 
@@ -2641,12 +2667,18 @@ static struct ablkcipher_edesc *ablkcipher_edesc_alloc(struct ablkcipher_request
 				 DMA_FROM_DEVICE);
 	}
 
-	iv_dma = dma_map_single(jrdev, req->info, ivsize, DMA_TO_DEVICE);
-	if (dma_mapping_error(jrdev, iv_dma)) {
-		dev_err(jrdev, "unable to map IV\n");
-		return ERR_PTR(-ENOMEM);
+	if ((!req->info && ivsize) &&
+	    ((c1_alg_typ & OP_ALG_ALGSEL_MASK) == OP_ALG_ALGSEL_AES) &&
+	    ((c1_alg_typ & OP_ALG_AAI_MASK) == OP_ALG_AAI_ECB)) {
+		iv_dma = ecb_ziv_dma;
+	} else {
+		iv_dma = dma_map_single(jrdev, req->info, ivsize,
+					DMA_TO_DEVICE);
+		if (dma_mapping_error(jrdev, iv_dma)) {
+			dev_err(jrdev, "unable to map IV\n");
+			return ERR_PTR(-ENOMEM);
+		}
 	}
-	dma_sync_single_for_device(jrdev, iv_dma, ivsize, DMA_TO_DEVICE);
 
 	/*
 	 * Check if iv can be contiguous with source and destination.
@@ -2688,16 +2720,12 @@ static struct ablkcipher_edesc *ablkcipher_edesc_alloc(struct ablkcipher_request
 
 	edesc->sec4_sg_dma = dma_map_single(jrdev, edesc->sec4_sg,
 					    sec4_sg_bytes, DMA_TO_DEVICE);
-
 	if (dma_mapping_error(jrdev, edesc->sec4_sg_dma)) {
 		dev_err(jrdev, "unable to map S/G table\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
 	edesc->iv_dma = iv_dma;
-
-	dma_sync_single_for_device(jrdev, edesc->sec4_sg_dma, sec4_sg_bytes,
-				   DMA_TO_DEVICE);
 
 #ifdef DEBUG
 	print_hex_dump(KERN_ERR, "ablkcipher sec4_sg@"__stringify(__LINE__)": ",
@@ -2960,6 +2988,22 @@ static struct caam_alg_template driver_algs[] = {
 		.class1_alg_type = OP_ALG_ALGSEL_AES | OP_ALG_AAI_CBC,
 	},
 	{
+		.name = "ecb(aes)",
+		.driver_name = "ecb-aes-caam",
+		.blocksize = AES_BLOCK_SIZE,
+		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
+		.template_ablkcipher = {
+			.setkey = ablkcipher_setkey,
+			.encrypt = ablkcipher_encrypt,
+			.decrypt = ablkcipher_decrypt,
+			.geniv = "eseqiv",
+			.min_keysize = AES_MIN_KEY_SIZE,
+			.max_keysize = AES_MAX_KEY_SIZE,
+			.ivsize = AES_BLOCK_SIZE,
+			},
+		.class1_alg_type = OP_ALG_ALGSEL_AES | OP_ALG_AAI_ECB,
+	},
+	{
 		.name = "cbc(des3_ede)",
 		.driver_name = "cbc-3des-caam",
 		.blocksize = DES3_EDE_BLOCK_SIZE,
@@ -2977,6 +3021,22 @@ static struct caam_alg_template driver_algs[] = {
 		.class1_alg_type = OP_ALG_ALGSEL_3DES | OP_ALG_AAI_CBC,
 	},
 	{
+		.name = "ecb(des3_ede)",
+		.driver_name = "ecb-des3-caam",
+		.blocksize = DES3_EDE_BLOCK_SIZE,
+		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
+		.template_ablkcipher = {
+			.setkey = ablkcipher_setkey,
+			.encrypt = ablkcipher_encrypt,
+			.decrypt = ablkcipher_decrypt,
+			.geniv = "eseqiv",
+			.min_keysize = DES3_EDE_KEY_SIZE,
+			.max_keysize = DES3_EDE_KEY_SIZE,
+			.ivsize = DES3_EDE_BLOCK_SIZE,
+			},
+		.class1_alg_type = OP_ALG_ALGSEL_3DES | OP_ALG_AAI_ECB,
+	},
+	{
 		.name = "cbc(des)",
 		.driver_name = "cbc-des-caam",
 		.blocksize = DES_BLOCK_SIZE,
@@ -2992,6 +3052,22 @@ static struct caam_alg_template driver_algs[] = {
 			.ivsize = DES_BLOCK_SIZE,
 			},
 		.class1_alg_type = OP_ALG_ALGSEL_DES | OP_ALG_AAI_CBC,
+	},
+	{
+		.name = "ecb(des)",
+		.driver_name = "ecb-des-caam",
+		.blocksize = DES_BLOCK_SIZE,
+		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
+		.template_ablkcipher = {
+			.setkey = ablkcipher_des_setkey,
+			.encrypt = ablkcipher_encrypt,
+			.decrypt = ablkcipher_decrypt,
+			.geniv = "eseqiv",
+			.min_keysize = DES_KEY_SIZE,
+			.max_keysize = DES_KEY_SIZE,
+			.ivsize = DES_BLOCK_SIZE,
+		},
+		.class1_alg_type = OP_ALG_ALGSEL_DES | OP_ALG_AAI_ECB,
 	},
 	{
 		.name = "ctr(aes)",
@@ -3044,6 +3120,23 @@ static struct caam_alg_template driver_algs[] = {
 			},
 		.class1_alg_type = OP_ALG_ALGSEL_AES | OP_ALG_AAI_XTS,
 	},
+	{
+		.name = "ecb(arc4)",
+		.driver_name = "ecb-arc4-caam",
+		.blocksize = ARC4_BLOCK_SIZE,
+		.type = CRYPTO_ALG_TYPE_ABLKCIPHER,
+		.template_ablkcipher = {
+			.setkey = ablkcipher_setkey,
+			.encrypt = ablkcipher_encrypt,
+			.decrypt = ablkcipher_decrypt,
+			.geniv = "eseqiv",
+			.min_keysize = ARC4_MIN_KEY_SIZE,
+			.max_keysize = ARC4_MAX_KEY_SIZE,
+			.ivsize = ARC4_BLOCK_SIZE,
+		},
+		.class1_alg_type = OP_ALG_ALGSEL_ARC4 | OP_ALG_AAI_ECB
+	},
+
 };
 
 static struct caam_aead_alg driver_aeads[] = {
@@ -4459,10 +4552,35 @@ static void caam_aead_exit(struct crypto_aead *tfm)
 
 static void __exit caam_algapi_exit(void)
 {
-
+	struct device_node *dev_node;
+	struct platform_device *pdev;
+	struct device *ctrldev;
 	struct caam_crypto_alg *t_alg, *n;
 	int i;
 
+	if (!ecb_zero_iv)
+		goto skip_ecb_ziv;
+
+	dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
+	if (!dev_node) {
+		dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec4.0");
+		if (!dev_node)
+			goto skip_ecb_ziv;
+	}
+
+	pdev = of_find_device_by_node(dev_node);
+
+	if (!pdev) {
+		of_node_put(dev_node);
+		goto skip_ecb_ziv;
+	}
+
+	ctrldev = &pdev->dev;
+
+	dma_unmap_single(ctrldev, ecb_ziv_dma, AES_BLOCK_SIZE, DMA_TO_DEVICE);
+	kfree(ecb_zero_iv);
+
+skip_ecb_ziv:
 	for (i = 0; i < ARRAY_SIZE(driver_aeads); i++) {
 		struct caam_aead_alg *t_alg = driver_aeads + i;
 
@@ -4567,14 +4685,24 @@ static int __init caam_algapi_init(void)
 
 	ctrldev = &pdev->dev;
 	priv = dev_get_drvdata(ctrldev);
+	of_node_put(dev_node);
 
 	/*
 	 * If priv is NULL, it's probably because the caam driver wasn't
 	 * properly initialized (e.g. RNG4 init failed). Thus, bail out here.
 	 */
-	if (!priv) {
-		of_node_put(dev_node);
+	if (!priv)
 		return -ENODEV;
+
+	ecb_zero_iv = kzalloc(AES_BLOCK_SIZE, GFP_KERNEL);
+	if (!ecb_zero_iv)
+		return -ENOMEM;
+
+	ecb_ziv_dma = dma_map_single(ctrldev, ecb_zero_iv, AES_BLOCK_SIZE,
+				      DMA_TO_DEVICE);
+	if (dma_mapping_error(ctrldev, ecb_ziv_dma)) {
+		kfree(ecb_zero_iv);
+		return -ENOMEM;
 	}
 
 	INIT_LIST_HEAD(&alg_list);
@@ -4686,7 +4814,6 @@ static int __init caam_algapi_init(void)
 	if (registered)
 		pr_info("caam algorithms registered in /proc/crypto\n");
 
-	of_node_put(dev_node);
 	return err;
 }
 

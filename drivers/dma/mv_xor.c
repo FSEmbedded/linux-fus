@@ -286,7 +286,6 @@ static void mv_chan_slot_cleanup(struct mv_xor_chan *mv_chan)
 			/* break if we did cleaned the current */
 			if (iter->async_tx.phys == current_desc) {
 				current_cleaned = 1;
-<<<<<<< HEAD
 				break;
 			}
 		} else {
@@ -294,15 +293,6 @@ static void mv_chan_slot_cleanup(struct mv_xor_chan *mv_chan)
 				current_cleaned = 0;
 				break;
 			}
-=======
-				break;
-			}
-		} else {
-			if (iter->async_tx.phys == current_desc) {
-				current_cleaned = 0;
-				break;
-			}
->>>>>>> origin/linux-4.9.x
 		}
 	}
 

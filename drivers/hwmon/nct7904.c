@@ -358,7 +358,6 @@ static int nct7904_write(struct device *dev, enum hwmon_sensor_types type,
 		return -EOPNOTSUPP;
 	}
 }
->>>>>>> origin/linux-4.9.x
 
 static umode_t nct7904_is_visible(const void *data,
 				  enum hwmon_sensor_types type,

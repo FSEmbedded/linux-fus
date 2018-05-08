@@ -175,6 +175,18 @@
 			power-domains = <&gpc 1>;
 		};
 
+		ocrams: sram@00900000 {
+			compatible = "fsl,lpm-sram";
+			reg = <0x00900000 0x4000>;
+			clocks = <&clks IMX6QDL_CLK_OCRAM>;
+		};
+
+		ocrams_ddr: sram@00904000 {
+			compatible = "fsl,ddr-lpm-sram";
+			reg = <0x00904000 0x1000>;
+			clocks = <&clks IMX6QDL_CLK_OCRAM>;
+		};
+
 		timer@00a00600 {
 			compatible = "arm,cortex-a9-twd-timer";
 			reg = <0x00a00600 0x20>;
@@ -226,6 +238,7 @@
 				 <&clks IMX6QDL_CLK_LVDS1_GATE>,
 				 <&clks IMX6QDL_CLK_PCIE_REF_125M>;
 			clock-names = "pcie", "pcie_bus", "pcie_phy";
+			fsl,max-link-speed = <2>;
 			status = "disabled";
 		};
 
@@ -316,7 +329,7 @@
 					clocks = <&clks IMX6QDL_CLK_ECSPI1>,
 						 <&clks IMX6QDL_CLK_ECSPI1>;
 					clock-names = "ipg", "per";
-					dmas = <&sdma 3 8 1>, <&sdma 4 8 2>;
+					dmas = <&sdma 3 7 1>, <&sdma 4 7 2>;
 					dma-names = "rx", "tx";
 					status = "disabled";
 				};
@@ -330,7 +343,7 @@
 					clocks = <&clks IMX6QDL_CLK_ECSPI2>,
 						 <&clks IMX6QDL_CLK_ECSPI2>;
 					clock-names = "ipg", "per";
-					dmas = <&sdma 5 8 1>, <&sdma 6 8 2>;
+					dmas = <&sdma 5 7 1>, <&sdma 6 7 2>;
 					dma-names = "rx", "tx";
 					status = "disabled";
 				};
@@ -344,7 +357,7 @@
 					clocks = <&clks IMX6QDL_CLK_ECSPI3>,
 						 <&clks IMX6QDL_CLK_ECSPI3>;
 					clock-names = "ipg", "per";
-					dmas = <&sdma 7 8 1>, <&sdma 8 8 2>;
+					dmas = <&sdma 7 7 1>, <&sdma 8 7 2>;
 					dma-names = "rx", "tx";
 					status = "disabled";
 				};
@@ -358,7 +371,7 @@
 					clocks = <&clks IMX6QDL_CLK_ECSPI4>,
 						 <&clks IMX6QDL_CLK_ECSPI4>;
 					clock-names = "ipg", "per";
-					dmas = <&sdma 9 8 1>, <&sdma 10 8 2>;
+					dmas = <&sdma 9 7 1>, <&sdma 10 7 2>;
 					dma-names = "rx", "tx";
 					status = "disabled";
 				};
@@ -891,7 +904,8 @@
 					 <&clks IMX6QDL_CLK_GPU2D_CORE>,
 					 <&clks IMX6QDL_CLK_GPU2D_AXI>,
 					 <&clks IMX6QDL_CLK_OPENVG_AXI>,
-					 <&clks IMX6QDL_CLK_VPU_AXI>;
+					 <&clks IMX6QDL_CLK_VPU_AXI>,
+					 <&clks IMX6QDL_CLK_IPG>;
 				#power-domain-cells = <1>;
 			};
 
@@ -908,6 +922,7 @@
 			ldb: ldb@020e0008 {
 				#address-cells = <1>;
 				#size-cells = <0>;
+				compatible = "fsl,imx6q-ldb", "fsl,imx53-ldb";
 				gpr = <&gpr>;
 				status = "disabled";
 
@@ -916,6 +931,22 @@
 					#size-cells = <0>;
 					reg = <0>;
 					status = "disabled";
+
+					port@0 {
+						reg = <0>;
+
+						lvds0_mux_0: endpoint {
+							remote-endpoint = <&ipu1_di0_lvds0>;
+						};
+					};
+
+					port@1 {
+						reg = <1>;
+
+						lvds0_mux_1: endpoint {
+							remote-endpoint = <&ipu1_di1_lvds0>;
+						};
+					};
 				};
 
 				lvds-channel@1 {
@@ -982,14 +1013,17 @@
 			ranges;
 
 			crypto: caam@2100000 {
-                                compatible = "fsl,sec-v4.0";
-                                #address-cells = <1>;
-                                #size-cells = <1>;
-                                reg = <0x2100000 0x40000>;
-                                ranges = <0 0x2100000 0x40000>;
-                                interrupt-parent = <&intc>; /* interrupts = <0 92 0x4>; */
-                                clocks = <&clks IMX6QDL_CAAM_MEM>, <&clks IMX6QDL_CAAM_ACLK>, <&clks IMX6QDL_CAAM_IPG> ,<&clks IMX6QDL_CLK_EIM_SLOW>;
-                                clock-names = "caam_mem", "caam_aclk", "caam_ipg", "caam_emi_slow";
+				compatible = "fsl,sec-v4.0";
+				#address-cells = <1>;
+				#size-cells = <1>;
+				reg = <0x2100000 0x10000>;
+				ranges = <0 0x2100000 0x40000>;
+				interrupt-parent = <&intc>; /* interrupts = <0 92 0x4>; */
+				clocks = <&clks IMX6QDL_CLK_CAAM_MEM>,
+					 <&clks IMX6QDL_CLK_CAAM_ACLK>,
+					 <&clks IMX6QDL_CLK_CAAM_IPG>,
+					 <&clks IMX6QDL_CLK_EIM_SLOW>;
+				clock-names = "mem", "aclk", "ipg", "emi_slow";
 
 				sec_jr0: jr0@1000 {
 					compatible = "fsl,sec-v4.0-job-ring";
@@ -1233,7 +1267,7 @@
 				reg = <0x021dc000 0x4000>;
 				interrupts = <0 100 0x04>, <0 101 0x04>;
 				clocks = <&clks IMX6QDL_CLK_HSI_TX>,
-					 <&clks IMX6QDL_CLK_EMI_SEL>,
+					 <&clks IMX6QDL_CLK_EIM_SEL>,
 					 <&clks IMX6QDL_CLK_VIDEO_27M>;
 				/* Note: clks 138 is hsi_tx, however, the dphy_c
 				 * hsi_tx and pll_refclk use the same clk gate.
@@ -1246,6 +1280,28 @@
 
 			mipi@021e0000 { /* MIPI-DSI */
 				reg = <0x021e0000 0x4000>;
+				status = "disabled";
+
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					port@0 {
+						reg = <0>;
+
+						mipi_mux_0: endpoint {
+							remote-endpoint = <&ipu1_di0_mipi>;
+						};
+					};
+
+					port@1 {
+						reg = <1>;
+
+						mipi_mux_1: endpoint {
+							remote-endpoint = <&ipu1_di1_mipi>;
+						};
+					};
+				};
 			};
 
 			vdoa@021e4000 {
@@ -1321,6 +1377,7 @@
 				      "di0_sel", "di1_sel",
 				      "ldb_di0", "ldb_di1";
 			resets = <&src 2>;
+			bypass_reset = <0>;
 
 			ipu1_csi0: port@0 {
 				reg = <0>;

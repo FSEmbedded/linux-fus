@@ -10,8 +10,6 @@
 
 static unsigned long flag = PERF_FLAG_FD_CLOEXEC;
 
-#ifdef __GLIBC_PREREQ
-#if !__GLIBC_PREREQ(2, 6)
 int __weak sched_getcpu(void)
 {
 #ifdef __NR_getcpu
@@ -24,8 +22,6 @@ int __weak sched_getcpu(void)
 #endif
 	return -1;
 }
-#endif
-#endif
 
 static int perf_flag_probe(void)
 {

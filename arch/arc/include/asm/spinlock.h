@@ -250,14 +250,6 @@ static inline void arch_spin_lock(arch_spinlock_t *lock)
 	 */
 	smp_mb();
 
-	/*
-	 * This smp_mb() is technically superfluous, we only need the one
-	 * after the lock for providing the ACQUIRE semantics.
-	 * However doing the "right" thing was regressing hackbench
-	 * so keeping this, pending further investigation
-	 */
-	smp_mb();
-
 	__asm__ __volatile__(
 	"1:	ex  %0, [%1]		\n"
 	"	breq  %0, %2, 1b	\n"
@@ -280,8 +272,6 @@ static inline void arch_spin_lock(arch_spinlock_t *lock)
 static inline int arch_spin_trylock(arch_spinlock_t *lock)
 {
 	unsigned int val = __ARCH_SPIN_LOCK_LOCKED__;
-
-	smp_mb();
 
 	smp_mb();
 

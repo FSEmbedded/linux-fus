@@ -2889,11 +2889,18 @@ static void drm_dp_tx_work(struct work_struct *work)
 	mutex_unlock(&mgr->qlock);
 }
 
+static void drm_dp_free_mst_port(struct kref *kref)
+{
+	struct drm_dp_mst_port *port = container_of(kref, struct drm_dp_mst_port, kref);
+	kref_put(&port->parent->kref, drm_dp_free_mst_branch_device);
+	kfree(port);
+}
+
 static void drm_dp_destroy_connector_work(struct work_struct *work)
 {
 	struct drm_dp_mst_topology_mgr *mgr = container_of(work, struct drm_dp_mst_topology_mgr, destroy_connector_work);
-	struct drm_connector *connector;
-
+	struct drm_dp_mst_port *port;
+	bool send_hotplug = false;
 	/*
 	 * Not a regular list traverse as we have to drop the destroy
 	 * connector lock before destroying the connector, to avoid AB->BA

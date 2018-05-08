@@ -66,7 +66,29 @@ static int i2c_mux_master_xfer(struct i2c_adapter *adap,
 
 	ret = muxc->select(muxc, priv->chan_id);
 	if (ret >= 0)
-		ret = __i2c_transfer(parent, msgs, num);
+		ret = i2c_transfer(parent, msgs, num);
+	if (muxc->deselect)
+		muxc->deselect(muxc, priv->chan_id);
+
+	return ret;
+}
+
+static int __i2c_mux_smbus_xfer(struct i2c_adapter *adap,
+				u16 addr, unsigned short flags,
+				char read_write, u8 command,
+				int size, union i2c_smbus_data *data)
+{
+	struct i2c_mux_priv *priv = adap->algo_data;
+	struct i2c_mux_core *muxc = priv->muxc;
+	struct i2c_adapter *parent = muxc->parent;
+	int ret;
+
+	/* Select the right mux port and perform the transfer. */
+
+	ret = muxc->select(muxc, priv->chan_id);
+	if (ret >= 0)
+		ret = parent->algo->smbus_xfer(parent, addr, flags,
+					read_write, command, size, data);
 	if (muxc->deselect)
 		muxc->deselect(muxc, priv->chan_id);
 

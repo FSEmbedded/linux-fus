@@ -1,7 +1,7 @@
 /* * CAAM control-plane driver backend
  * Controller-level driver, kernel property detection, initialization
  *
- * Copyright 2008-2015 Freescale Semiconductor, Inc.
+ * Copyright 2008-2012 Freescale Semiconductor, Inc.
  */
 
 #include <linux/device.h>
@@ -393,25 +393,115 @@ static void kick_trng(struct platform_device *pdev, int ent_delay)
 	wr_reg32(&r4tst->rtmctl, val);
 }
 
-/**
- * caam_get_era() - Return the ERA of the SEC on SoC, based
- * on the SEC_VID register.
- * Returns the ERA number (1..4) or -ENOTSUPP if the ERA is unknown.
- * @caam_id - the value of the SEC_VID register
- **/
-int caam_get_era(u64 caam_id)
+static void detect_era(struct caam_drv_private *ctrlpriv)
 {
+	int ret, i;
+	u32 caam_era;
+	u32 caam_id_ms;
+	char *era_source;
 	struct device_node *caam_node;
-	int ret;
-	u32 prop;
+	struct sec_vid sec_vid;
+	static const struct {
+		u16 ip_id;
+		u8 maj_rev;
+		u8 era;
+	} caam_eras[] = {
+		{0x0A10, 1, 1},
+		{0x0A10, 2, 2},
+		{0x0A12, 1, 3},
+		{0x0A14, 1, 3},
+		{0x0A10, 3, 4},
+		{0x0A11, 1, 4},
+		{0x0A14, 2, 4},
+		{0x0A16, 1, 4},
+		{0x0A18, 1, 4},
+		{0x0A11, 2, 5},
+		{0x0A12, 2, 5},
+		{0x0A13, 1, 5},
+		{0x0A1C, 1, 5},
+		{0x0A12, 4, 6},
+		{0x0A13, 2, 6},
+		{0x0A16, 2, 6},
+		{0x0A17, 1, 6},
+		{0x0A18, 2, 6},
+		{0x0A1A, 1, 6},
+		{0x0A1C, 2, 6},
+		{0x0A14, 3, 7},
+		{0x0A10, 4, 8},
+		{0x0A11, 3, 8},
+		{0x0A11, 4, 8},
+		{0x0A12, 5, 8},
+		{0x0A16, 3, 8},
+	};
 
+	/* If the user or bootloader has set the property we'll use that */
 	caam_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
-	ret = of_property_read_u32(caam_node, "fsl,sec-era", &prop);
+	ret = of_property_read_u32(caam_node, "fsl,sec-era", &caam_era);
 	of_node_put(caam_node);
 
-	return ret ? -ENOTSUPP : prop;
+	if (!ret) {
+		era_source = "device tree";
+		goto era_found;
+	}
+
+	/* If ccbvid has the era, use that (era 6 and onwards) */
+	caam_era = rd_reg32(&ctrlpriv->ctrl->perfmon.ccb_id);
+	caam_era = caam_era >> CCB_VID_ERA_SHIFT & CCB_VID_ERA_MASK;
+
+	if (caam_era) {
+		era_source = "CCBVID";
+		goto era_found;
+	}
+
+	/* If we can match caamvid to known versions, use that */
+	caam_id_ms = rd_reg32(&ctrlpriv->ctrl->perfmon.caam_id_ms);
+	sec_vid.ip_id = caam_id_ms >> SEC_VID_IPID_SHIFT;
+	sec_vid.maj_rev = (caam_id_ms & SEC_VID_MAJ_MASK) >> SEC_VID_MAJ_SHIFT;
+
+	for (i = 0; i < ARRAY_SIZE(caam_eras); i++)
+		if (caam_eras[i].ip_id == sec_vid.ip_id &&
+		    caam_eras[i].maj_rev == sec_vid.maj_rev) {
+			caam_era = caam_eras[i].era;
+			era_source = "CAAMVID";
+			goto era_found;
+		}
+
+	ctrlpriv->era = -ENOTSUPP;
+	return;
+
+era_found:
+	ctrlpriv->era = caam_era;
+	dev_info(&ctrlpriv->pdev->dev, "ERA source: %s.\n", era_source);
 }
-EXPORT_SYMBOL(caam_get_era);
+
+static void handle_imx6_err005766(struct caam_drv_private *ctrlpriv)
+{
+	/*
+	 * ERRATA:  mx6 devices have an issue wherein AXI bus transactions
+	 * may not occur in the correct order. This isn't a problem running
+	 * single descriptors, but can be if running multiple concurrent
+	 * descriptors. Reworking the driver to throttle to single requests
+	 * is impractical, thus the workaround is to limit the AXI pipeline
+	 * to a depth of 1 (from it's default of 4) to preclude this situation
+	 * from occurring.
+	 */
+
+	u32 mcr_val;
+
+	if (ctrlpriv->era != IMX_ERR005766_ERA)
+		return;
+
+	if (of_machine_is_compatible("fsl,imx6q") ||
+	    of_machine_is_compatible("fsl,imx6dl") ||
+	    of_machine_is_compatible("fsl,imx6qp")) {
+		dev_info(&ctrlpriv->pdev->dev,
+			 "AXI pipeline throttling enabled.\n");
+		mcr_val = rd_reg32(&ctrlpriv->ctrl->mcr);
+		wr_reg32(&ctrlpriv->ctrl->mcr,
+			 (mcr_val & ~(MCFGR_AXIPIPE_MASK)) |
+			 ((1 << MCFGR_AXIPIPE_SHIFT) & MCFGR_AXIPIPE_MASK));
+	}
+}
 
 #ifdef CONFIG_DEBUG_FS
 static int caam_debugfs_u64_get(void *data, u64 *val)
@@ -467,57 +557,63 @@ static int caam_probe(struct platform_device *pdev)
 	}
 	ctrlpriv->caam_ipg = clk;
 
-	clk = caam_drv_identify_clk(&pdev->dev, "mem");
-	if (IS_ERR(clk)) {
-		ret = PTR_ERR(clk);
-		dev_err(&pdev->dev,
-			"can't identify CAAM mem clk: %d\n", ret);
-		return ret;
-	}
-	ctrlpriv->caam_mem = clk;
-
-	clk = caam_drv_identify_clk(&pdev->dev, "aclk");
-	if (IS_ERR(clk)) {
-		ret = PTR_ERR(clk);
-		dev_err(&pdev->dev,
-			"can't identify CAAM aclk clk: %d\n", ret);
-		return ret;
-	}
-	ctrlpriv->caam_aclk = clk;
-
-	clk = caam_drv_identify_clk(&pdev->dev, "emi_slow");
-	if (IS_ERR(clk)) {
-		ret = PTR_ERR(clk);
-		dev_err(&pdev->dev,
-			"can't identify CAAM emi_slow clk: %d\n", ret);
-		return ret;
-	}
-	ctrlpriv->caam_emi_slow = clk;
-
 	ret = clk_prepare_enable(ctrlpriv->caam_ipg);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "can't enable CAAM ipg clock: %d\n", ret);
 		return ret;
 	}
 
-	ret = clk_prepare_enable(ctrlpriv->caam_mem);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "can't enable CAAM secure mem clock: %d\n",
-			ret);
-		goto disable_caam_ipg;
+	clk = caam_drv_identify_clk(&pdev->dev, "aclk");
+	if (IS_ERR(clk)) {
+		ret = PTR_ERR(clk);
+		dev_err(&pdev->dev,
+			"can't identify CAAM aclk clk: %d\n", ret);
+		goto disable_clocks;
 	}
+	ctrlpriv->caam_aclk = clk;
 
 	ret = clk_prepare_enable(ctrlpriv->caam_aclk);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "can't enable CAAM aclk clock: %d\n", ret);
-		goto disable_caam_mem;
+		dev_err(&pdev->dev, "can't enable CAAM aclk clock: %d\n",
+			ret);
+		goto disable_clocks;
 	}
 
-	ret = clk_prepare_enable(ctrlpriv->caam_emi_slow);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "can't enable CAAM emi slow clock: %d\n",
-			ret);
-		goto disable_caam_aclk;
+	if (!(of_find_compatible_node(NULL, NULL, "fsl,imx7d-caam"))) {
+
+		clk = caam_drv_identify_clk(&pdev->dev, "mem");
+		if (IS_ERR(clk)) {
+			ret = PTR_ERR(clk);
+			dev_err(&pdev->dev,
+				"can't identify CAAM mem clk: %d\n", ret);
+			goto disable_clocks;
+		}
+		ctrlpriv->caam_mem = clk;
+
+		ret = clk_prepare_enable(ctrlpriv->caam_mem);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "can't enable CAAM secure mem clock: %d\n",
+				ret);
+			goto disable_clocks;
+		}
+
+		if (!(of_find_compatible_node(NULL, NULL, "fsl,imx6ul-caam"))) {
+			clk = caam_drv_identify_clk(&pdev->dev, "emi_slow");
+			if (IS_ERR(clk)) {
+				ret = PTR_ERR(clk);
+				dev_err(&pdev->dev,
+					"can't identify CAAM emi_slow clk: %d\n", ret);
+				goto disable_clocks;
+			}
+			ctrlpriv->caam_emi_slow = clk;
+
+			ret = clk_prepare_enable(ctrlpriv->caam_emi_slow);
+			if (ret < 0) {
+				dev_err(&pdev->dev, "can't enable CAAM emi slow clock: %d\n",
+					ret);
+				goto disable_clocks;
+			}
+		}
 	}
 
 	/* Get configuration properties from device tree */
@@ -526,7 +622,7 @@ static int caam_probe(struct platform_device *pdev)
 	if (ctrl == NULL) {
 		dev_err(dev, "caam: of_iomap() failed\n");
 		ret = -ENOMEM;
-		goto disable_caam_emi_slow;
+		goto disable_clocks;
 	}
 
 	caam_little_end = !(bool)(rd_reg32(&ctrl->perfmon.status) &
@@ -536,6 +632,26 @@ static int caam_probe(struct platform_device *pdev)
 	comp_params = rd_reg32(&ctrl->perfmon.comp_parms_ms);
 	pg_size = (comp_params & CTPR_MS_PG_SZ_MASK) >> CTPR_MS_PG_SZ_SHIFT;
 
+	/* Allocating the BLOCK_OFFSET based on the supported page size on
+	 * the platform
+	 */
+	if (pg_size == 0)
+		BLOCK_OFFSET = PG_SIZE_4K;
+	else
+		BLOCK_OFFSET = PG_SIZE_64K;
+
+	ctrlpriv->ctrl = (struct caam_ctrl __force *)ctrl;
+	ctrlpriv->assure = (struct caam_assurance __force *)
+			   ((uint8_t *)ctrl +
+			    BLOCK_OFFSET * ASSURE_BLOCK_NUMBER
+			   );
+	ctrlpriv->deco = (struct caam_deco __force *)
+			 ((uint8_t *)ctrl +
+			 BLOCK_OFFSET * DECO_BLOCK_NUMBER
+			 );
+
+	detect_era(ctrlpriv);
+
 	/* Get CAAM-SM node and of_iomap() and save */
 	np = of_find_compatible_node(NULL, NULL, "fsl,imx6q-caam-sm");
 	if (!np)
@@ -543,114 +659,6 @@ static int caam_probe(struct platform_device *pdev)
 
 	ctrlpriv->sm_base = of_iomap(np, 0);
 	ctrlpriv->sm_size = 0x3fff;
-
-/*
- * ARM targets tend to have clock control subsystems that can
- * enable/disable clocking to our device. Turn clocking on to proceed
- */
-#ifdef CONFIG_ARM
-	ctrlpriv->caam_ipg = devm_clk_get(&ctrlpriv->pdev->dev, "caam_ipg");
-	if (IS_ERR(ctrlpriv->caam_ipg)) {
-		ret = PTR_ERR(ctrlpriv->caam_ipg);
-		dev_err(&ctrlpriv->pdev->dev,
-			"can't identify CAAM ipg clk: %d\n", ret);
-		return -ENODEV;
-	}
-	ret = clk_prepare(ctrlpriv->caam_ipg);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "can't prepare CAAM ipg clock: %d\n", ret);
-		return -ENODEV;
-	}
-	ret = clk_enable(ctrlpriv->caam_ipg);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "can't enable CAAM ipg clock: %d\n", ret);
-		return -ENODEV;
-	}
-
-	pr_debug("%s caam_ipg clock:%d\n", __func__,
-			 (int)clk_get_rate(ctrlpriv->caam_ipg));
-
-	ctrlpriv->caam_aclk = devm_clk_get(&ctrlpriv->pdev->dev, "caam_aclk");
-	if (IS_ERR(ctrlpriv->caam_aclk)) {
-		ret = PTR_ERR(ctrlpriv->caam_aclk);
-		dev_err(&ctrlpriv->pdev->dev,
-			"can't identify CAAM aclk clk: %d\n", ret);
-			return -ENODEV;
-	}
-	ret = clk_prepare(ctrlpriv->caam_aclk);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "can't prepare CAAM aclk clock: %d\n", ret);
-		return -ENODEV;
-	}
-	ret = clk_enable(ctrlpriv->caam_aclk);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "can't enable CAAM aclk clock: %d\n", ret);
-			return -ENODEV;
-	}
-	pr_debug("%s caam_aclk clock:%d\n", __func__,
-			(int)clk_get_rate(ctrlpriv->caam_aclk));
-
-	/* imx7d only has two caam clock */
-	if (!(of_find_compatible_node(NULL, NULL, "fsl,imx7d-caam"))) {
-		ctrlpriv->caam_mem = devm_clk_get(&ctrlpriv->pdev->dev,
-						  "caam_mem");
-		if (IS_ERR(ctrlpriv->caam_mem)) {
-			ret = PTR_ERR(ctrlpriv->caam_mem);
-			dev_err(&ctrlpriv->pdev->dev,
-					"can't identify CAAM secure mem clk: %d\n",
-					ret);
-			return -ENODEV;
-		}
-		ret = clk_prepare(ctrlpriv->caam_mem);
-		if (ret < 0) {
-			dev_err(&pdev->dev, "can't prepare CAAM secure mem clock: %d\n",
-					ret);
-			return -ENODEV;
-		}
-		ret = clk_enable(ctrlpriv->caam_mem);
-		if (ret < 0) {
-			dev_err(&pdev->dev, "can't enable CAAM secure mem clock: %d\n",
-					ret);
-			return -ENODEV;
-		}
-		pr_debug("%s caam_mem clock:%d\n", __func__,
-				 (int)clk_get_rate(ctrlpriv->caam_mem));
-
-		if (!(of_find_compatible_node(NULL, NULL, "fsl,imx6ul-caam"))) {
-			ctrlpriv->caam_emi_slow = devm_clk_get(&ctrlpriv->pdev->dev,
-							       "caam_emi_slow");
-			ret = clk_prepare_enable(ctrlpriv->caam_emi_slow);
-			if (ret < 0) {
-				dev_err(&pdev->dev,
-					"can'to prepare CAAM emi slow clock: %d\n",
-					ret);
-				return -ENODEV;
-			}
-		}
-	}
-#endif
-
-	/* Finding the page size for using the CTPR_MS register */
-        comp_params = rd_reg32(&ctrl->perfmon.comp_parms_ms);
-        pg_size = (comp_params & CTPR_MS_PG_SZ_MASK) >> CTPR_MS_PG_SZ_SHIFT;
-
-        /* Allocating the BLOCK_OFFSET based on the supported page size on
-         * the platform
-         */
-        if (pg_size == 0)
-                BLOCK_OFFSET = PG_SIZE_4K;
-        else
-                BLOCK_OFFSET = PG_SIZE_64K;
-
-        ctrlpriv->ctrl = (struct caam_ctrl __force *)ctrl;
-        ctrlpriv->assure = (struct caam_assurance __force *)
-                           ((uint8_t *)ctrl +
-                            BLOCK_OFFSET * ASSURE_BLOCK_NUMBER
-                           );
-        ctrlpriv->deco = (struct caam_deco __force *)
-                         ((uint8_t *)ctrl +
-                         BLOCK_OFFSET * DECO_BLOCK_NUMBER
-                         );
 
 	/*
 	 * Enable DECO watchdogs and, if this is a PHYS_ADDR_T_64BIT kernel,
@@ -661,20 +669,7 @@ static int caam_probe(struct platform_device *pdev)
 		      MCFGR_WDENABLE | MCFGR_LARGE_BURST |
 		      (sizeof(dma_addr_t) == sizeof(u64) ? MCFGR_LONG_PTR : 0));
 
-#ifdef CONFIG_ARCH_MX6
-	/*
-	 * ERRATA:  mx6 devices have an issue wherein AXI bus transactions
-	 * may not occur in the correct order. This isn't a problem running
-	 * single descriptors, but can be if running multiple concurrent
-	 * descriptors. Reworking the driver to throttle to single requests
-	 * is impractical, thus the workaround is to limit the AXI pipeline
-	 * to a depth of 1 (from it's default of 4) to preclude this situation
-	 * from occurring.
-	 */
-	wr_reg32(&topregs->ctrl.mcr,
-		 (rd_reg32(&topregs->ctrl.mcr) & ~(MCFGR_AXIPIPE_MASK)) |
-		 ((1 << MCFGR_AXIPIPE_SHIFT) & MCFGR_AXIPIPE_MASK));
-#endif
+	handle_imx6_err005766(ctrlpriv);
 
 	/*
 	 *  Read the Compile Time paramters and SCFGR to determine
@@ -841,9 +836,8 @@ static int caam_probe(struct platform_device *pdev)
 	caam_id = (u64)rd_reg32(&ctrl->perfmon.caam_id_ms) << 32 |
 		  (u64)rd_reg32(&ctrl->perfmon.caam_id_ls);
 
-	/* Report "alive" for developer to see */
 	dev_info(dev, "device ID = 0x%016llx (Era %d)\n", caam_id,
-		 caam_get_era(caam_id));
+		 ctrlpriv->era);
 
 	dev_info(dev, "job rings = %d, qi = %d\n",
 		 ctrlpriv->total_jobrs, ctrlpriv->qi_present);
@@ -947,13 +941,10 @@ caam_remove:
 
 iounmap_ctrl:
 	iounmap(ctrl);
-disable_caam_emi_slow:
+disable_clocks:
 	clk_disable_unprepare(ctrlpriv->caam_emi_slow);
-disable_caam_aclk:
 	clk_disable_unprepare(ctrlpriv->caam_aclk);
-disable_caam_mem:
 	clk_disable_unprepare(ctrlpriv->caam_mem);
-disable_caam_ipg:
 	clk_disable_unprepare(ctrlpriv->caam_ipg);
 	return ret;
 }
