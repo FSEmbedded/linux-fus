@@ -1117,6 +1117,7 @@ static int mxcfb_set_par(struct fb_info *fbi)
 	int ov_pos_ret = 0;
 	struct mxcfb_info *mxc_fbi_fg = NULL;
 	bool ovfbi_enable = false, on_the_fly;
+	ipu_channel_params_t params;
 
 	if (ipu_ch_param_bad_alpha_pos(fbi_to_pixfmt(fbi, true)) &&
 	    mxc_fbi->alpha_chan_en) {
@@ -1153,6 +1154,18 @@ static int mxcfb_set_par(struct fb_info *fbi)
 	if (on_the_fly)
 		dev_dbg(fbi->device, "Reconfiguring framebuffer on the fly\n");
 
+	if (mxc_fbi->ipu_ch == MEM_DC_SYNC) {
+		params.mem_dc_sync.di = mxc_fbi->ipu_di;
+	} else {
+		params.mem_dp_bg_sync.di = mxc_fbi->ipu_di;
+	}
+
+	if ((mxc_fbi->ipu_di_pix_fmt == IPU_PIX_FMT_BT656) || (mxc_fbi->ipu_di_pix_fmt == IPU_PIX_FMT_BT1120)) {
+		if (!on_the_fly && mxc_fbi->dispdrv && mxc_fbi->dispdrv->drv->disable)
+			mxc_fbi->dispdrv->drv->disable(mxc_fbi->dispdrv, fbi);
+	}
+
+retry:
 	if (ovfbi_enable) {
 		ov_pos_ret = ipu_disp_get_window_pos(
 						mxc_fbi_fg->ipu, mxc_fbi_fg->ipu_ch,
@@ -1167,7 +1180,7 @@ static int mxcfb_set_par(struct fb_info *fbi)
 			ipu_clear_irq(mxc_fbi_fg->ipu, mxc_fbi_fg->ipu_ch_nf_irq);
 			ipu_disable_irq(mxc_fbi_fg->ipu, mxc_fbi_fg->ipu_ch_nf_irq);
 			ipu_disable_channel(mxc_fbi_fg->ipu, mxc_fbi_fg->ipu_ch, true);
-			ipu_uninit_channel(mxc_fbi_fg->ipu, mxc_fbi_fg->ipu_ch);
+			ipu_uninit_channel(mxc_fbi_fg->ipu, mxc_fbi_fg->ipu_ch, NULL);
 			if (mxc_fbi_fg->cur_prefetch) {
 				ipu_prg_disable(mxc_fbi_fg->ipu_id, mxc_fbi_fg->pre_num);
 				ipu_pre_disable(mxc_fbi_fg->pre_num);
@@ -1182,7 +1195,7 @@ static int mxcfb_set_par(struct fb_info *fbi)
 		ipu_clear_irq(mxc_fbi->ipu, mxc_fbi->ipu_ch_nf_irq);
 		ipu_disable_irq(mxc_fbi->ipu, mxc_fbi->ipu_ch_nf_irq);
 		ipu_disable_channel(mxc_fbi->ipu, mxc_fbi->ipu_ch, true);
-		ipu_uninit_channel(mxc_fbi->ipu, mxc_fbi->ipu_ch);
+		ipu_uninit_channel(mxc_fbi->ipu, mxc_fbi->ipu_ch, &params);
 		if (mxc_fbi->cur_prefetch) {
 			ipu_prg_disable(mxc_fbi->ipu_id, mxc_fbi->pre_num);
 			ipu_pre_disable(mxc_fbi->pre_num);
@@ -1341,7 +1354,7 @@ static int mxcfb_set_par(struct fb_info *fbi)
 	retval = _setup_disp_channel2(fbi);
 	if (retval) {
 		if (!on_the_fly)
-			ipu_uninit_channel(mxc_fbi->ipu, mxc_fbi->ipu_ch);
+			ipu_uninit_channel(mxc_fbi->ipu, mxc_fbi->ipu_ch, &params);
 		return retval;
 	}
 
@@ -1352,8 +1365,8 @@ static int mxcfb_set_par(struct fb_info *fbi)
 					ov_pos_x, ov_pos_y);
 		retval = _setup_disp_channel2(mxc_fbi->ovfbi);
 		if (retval) {
-			ipu_uninit_channel(mxc_fbi_fg->ipu, mxc_fbi_fg->ipu_ch);
-			ipu_uninit_channel(mxc_fbi->ipu, mxc_fbi->ipu_ch);
+			ipu_uninit_channel(mxc_fbi_fg->ipu, mxc_fbi_fg->ipu_ch, NULL);
+			ipu_uninit_channel(mxc_fbi->ipu, mxc_fbi->ipu_ch, &params);
 			return retval;
 		}
 	}
@@ -1362,6 +1375,21 @@ static int mxcfb_set_par(struct fb_info *fbi)
 		ipu_enable_channel(mxc_fbi->ipu, mxc_fbi->ipu_ch);
 		if (ovfbi_enable)
 			ipu_enable_channel(mxc_fbi_fg->ipu, mxc_fbi_fg->ipu_ch);
+	}
+
+	if (fbi->var.vmode & FB_VMODE_INTERLACED) {
+		/* When BT656 or BT1120 output is the second display on same IPU, sometimes enable it will get sync display error.
+		*	It is because the already running display has the high priority, IPU will service it first, this may break the BT656
+		*	initialization progress in IPU, but BT656 output will be impact with such short broken. Use retry as the workaround.
+		*/
+		if ((mxc_fbi->ipu_di_pix_fmt == IPU_PIX_FMT_BT656) || (mxc_fbi->ipu_di_pix_fmt == IPU_PIX_FMT_BT1120)) {
+			if (!on_the_fly && ipu_check_disp_channel_error(mxc_fbi->ipu, mxc_fbi->ipu_ch, mxc_fbi->ipu_di)) {
+				dev_warn(fbi->device,
+					"IPU Warning - enable ipu %d, di %d failed, retry.\n",
+					mxc_fbi->ipu_id, mxc_fbi->ipu_di);
+				goto retry;
+			}
+		}
 	}
 
 	if (!on_the_fly && mxc_fbi->dispdrv && mxc_fbi->dispdrv->drv->enable) {
@@ -1390,10 +1418,17 @@ static int _swap_channels(struct fb_info *fbi_from,
 	struct fb_info *ovfbi;
 	struct mxcfb_info *mxc_fbi_from = (struct mxcfb_info *)fbi_from->par;
 	struct mxcfb_info *mxc_fbi_to = (struct mxcfb_info *)fbi_to->par;
+	ipu_channel_params_t params;
+
+	if (mxc_fbi_to->ipu_ch == MEM_DC_SYNC) {
+		params.mem_dc_sync.di = mxc_fbi_to->ipu_di;
+	} else {
+		params.mem_dp_bg_sync.di = mxc_fbi_to->ipu_di;
+	}
 
 	if (both_on) {
 		ipu_disable_channel(mxc_fbi_to->ipu, mxc_fbi_to->ipu_ch, true);
-		ipu_uninit_channel(mxc_fbi_to->ipu, mxc_fbi_to->ipu_ch);
+		ipu_uninit_channel(mxc_fbi_to->ipu, mxc_fbi_to->ipu_ch, &params);
 	}
 
 	/* switch the mxc fbi parameters */
@@ -1417,7 +1452,7 @@ static int _swap_channels(struct fb_info *fbi_from,
 
 	/* switch between dp and dc, disable old idmac, enable new idmac */
 	retval = ipu_swap_channel(mxc_fbi_from->ipu, old_ch, mxc_fbi_from->ipu_ch);
-	ipu_uninit_channel(mxc_fbi_from->ipu, old_ch);
+	ipu_uninit_channel(mxc_fbi_from->ipu, old_ch, &params);
 
 	if (both_on) {
 		_setup_disp_channel1(fbi_to);
@@ -2309,6 +2344,7 @@ static int mxcfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 static int mxcfb_blank(int blank, struct fb_info *info)
 {
 	struct mxcfb_info *mxc_fbi = (struct mxcfb_info *)info->par;
+	ipu_channel_params_t params;
 	int ret = 0;
 
 	dev_dbg(info->device, "blank = %d\n", blank);
@@ -2331,7 +2367,12 @@ static int mxcfb_blank(int blank, struct fb_info *info)
 		ipu_disable_channel(mxc_fbi->ipu, mxc_fbi->ipu_ch, true);
 		if (mxc_fbi->ipu_di >= 0)
 			ipu_uninit_sync_panel(mxc_fbi->ipu, mxc_fbi->ipu_di);
-		ipu_uninit_channel(mxc_fbi->ipu, mxc_fbi->ipu_ch);
+		if (mxc_fbi->ipu_ch == MEM_DC_SYNC) {
+			params.mem_dc_sync.di = mxc_fbi->ipu_di;
+		} else {
+			params.mem_dp_bg_sync.di = mxc_fbi->ipu_di;
+		}
+		ipu_uninit_channel(mxc_fbi->ipu, mxc_fbi->ipu_ch, &params);
 		if (mxc_fbi->cur_prefetch) {
 			ipu_prg_disable(mxc_fbi->ipu_id, mxc_fbi->pre_num);
 			ipu_pre_disable(mxc_fbi->pre_num);
@@ -3086,6 +3127,10 @@ static int mxcfb_option_setup(struct platform_device *pdev, struct fb_info *fbi)
 				pdata->interface_pix_fmt = IPU_PIX_FMT_YVYU;
 			else if (!strncmp(opt+3, "VYUY16", 6))
 				pdata->interface_pix_fmt = IPU_PIX_FMT_VYUY;
+			else if (!strncmp(opt+3, "BT656", 5))
+				pdata->interface_pix_fmt = IPU_PIX_FMT_BT656;
+			else if (!strncmp(opt+3, "BT1120", 6))
+				pdata->interface_pix_fmt = IPU_PIX_FMT_BT1120;
 		} else if (!strncmp(opt, "fbpix=", 6)) {
 			if (!strncmp(opt+6, "RGB24", 5))
 				fb_pix_fmt = IPU_PIX_FMT_RGB24;
@@ -3141,6 +3186,7 @@ static int mxcfb_register(struct fb_info *fbi)
 	char bg0_id[] = "DISP3 BG";
 	char bg1_id[] = "DISP3 BG - DI1";
 	char fg_id[] = "DISP3 FG";
+	ipu_channel_params_t params;
 
 	if (mxcfbi->ipu_di == 0) {
 		bg0_id[4] += mxcfbi->ipu_id;
@@ -3238,7 +3284,12 @@ err5:
 		else {
 			ipu_disable_channel(mxcfbi->ipu, mxcfbi->ipu_ch,
 					    true);
-			ipu_uninit_channel(mxcfbi->ipu, mxcfbi->ipu_ch);
+			if (mxcfbi->ipu_ch == MEM_DC_SYNC) {
+				params.mem_dc_sync.di = mxcfbi->ipu_di;
+			} else {
+				params.mem_dp_bg_sync.di = mxcfbi->ipu_di;
+			}
+			ipu_uninit_channel(mxcfbi->ipu, mxcfbi->ipu_ch, &params);
 		}
 		console_unlock();
 	}
@@ -3422,7 +3473,11 @@ static int mxcfb_get_of_property(struct platform_device *pdev,
 	else if (!strncmp(pixfmt, "YVYU16", 6))
 		plat_data->interface_pix_fmt = IPU_PIX_FMT_YVYU;
 	else if (!strncmp(pixfmt, "VYUY16", 6))
-				plat_data->interface_pix_fmt = IPU_PIX_FMT_VYUY;
+		plat_data->interface_pix_fmt = IPU_PIX_FMT_VYUY;
+	else if (!strncmp(pixfmt, "BT656", 5))
+		plat_data->interface_pix_fmt = IPU_PIX_FMT_BT656;
+	else if (!strncmp(pixfmt, "BT1120", 6))
+		plat_data->interface_pix_fmt = IPU_PIX_FMT_BT1120;
 	else {
 		dev_err(&pdev->dev, "err interface_pix_fmt!\n");
 		return -ENOENT;

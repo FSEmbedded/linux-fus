@@ -275,6 +275,8 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6dl-sabreauto-gpmi-weim.dtb \
 	imx6dl-sabrelite.dtb \
 	imx6dl-sabresd.dtb \
+	imx6dl-sabresd-bt656.dtb \
+	imx6dl-sabresd-bt1120.dtb \
 	imx6dl-sabresd-btwifi.dtb \
 	imx6dl-sabresd-hdcp.dtb \
 	imx6dl-sabresd-ldo.dtb \
@@ -326,6 +328,8 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6qp-sabresd-ldo-pcie-cert.dtb \
 	imx6q-sabrelite.dtb \
 	imx6q-sabresd.dtb \
+	imx6q-sabresd-bt656.dtb \
+	imx6q-sabresd-bt1120.dtb \
 	imx6q-sabresd-btwifi.dtb \
 	imx6q-sabresd-hdcp.dtb \
 	imx6q-sabresd-ldo.dtb \
