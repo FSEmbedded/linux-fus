@@ -16,6 +16,7 @@
 #define DISPLAY_HDMI	2	/* DVI/HDMI via HDMI connector */
 #define DISPLAY_LVDS0	3	/* LVDS channel 0 */
 #define DISPLAY_LVDS1	4	/* LVDS channel 1 */
+#define DISPLAY_BT656	5	/* BT656 via ADV739x */
 
 /*
  * Set the display configuration:
@@ -62,6 +63,14 @@
 #define CONFIG_ARMSTONEA9_LCD_BPP	32
 #define CONFIG_ARMSTONEA9_LCD_PIX_FMT	"RGB666"
 #define CONFIG_ARMSTONEA9_LCD_MODE_STR	"LCD-ET070080"
+
+/*
+ * Configure BT656 settings here (ignored if BT656 is not used);
+ * see drivers/video/fbdev/mxc/mxc_bt656.c for possible mode strings
+ */
+#define CONFIG_ARMSTONEA9_BT656_BPP	32
+#define CONFIG_ARMSTONEA9_BT656_PIX_FMT	"BT656"
+#define CONFIG_ARMSTONEA9_BT656_MODE_STR	"BT656-PAL"
 
 /* Configure HDMI settings here (ignored if HDMI is not used) */
 #define CONFIG_ARMSTONEA9_HDMI_BPP	32

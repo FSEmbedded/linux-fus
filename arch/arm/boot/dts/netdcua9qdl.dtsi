@@ -17,15 +17,17 @@
 #undef CONFIG_NETDCUA9_MXCFB2
 #undef CONFIG_NETDCUA9_MXCFB3
 
-#if ((CONFIG_NETDCUA9_MXCFB0 == DISPLAY_LCD) \
-    && (CONFIG_NETDCUA9_MXCFB1 == DISPLAY_LVDS0))
+#if (((CONFIG_NETDCUA9_MXCFB0 == DISPLAY_LCD) \
+      || (CONFIG_NETDCUA9_MXCFB0 == DISPLAY_BT656)) \
+     && (CONFIG_NETDCUA9_MXCFB1 == DISPLAY_LVDS0))
 #undef CONFIG_NETDCUA9_MXCFB1
 #define CONFIG_NETDCUA9_MXCFB1		DISPLAY_LVDS1
 #define __MOVE_LVDS0_TO_LVDS1_DUAL_MODE__
 #endif
 
 #if ((CONFIG_NETDCUA9_MXCFB0 == DISPLAY_LVDS0) \
-    && (CONFIG_NETDCUA9_MXCFB1 == DISPLAY_LCD))
+     && ((CONFIG_NETDCUA9_MXCFB1 == DISPLAY_LCD) \
+         || (CONFIG_NETDCUA9_MXCFB1) == DISPLAY_BT656))
 #undef CONFIG_NETDCUA9_MXCFB0
 #define CONFIG_NETDCUA9_MXCFB0		DISPLAY_LVDS1
 #define __MOVE_LVDS0_TO_LVDS1_DUAL_MODE__
@@ -61,6 +63,22 @@
 #else
 #define __LCD_ON_0_OR_1__	0
 #define __LCD_ON_2_OR_3__	1
+#endif
+#endif
+
+/* Do we have BT656? */
+#if ((CONFIG_NETDCUA9_MXCFB0 == DISPLAY_BT656) \
+    || (CONFIG_NETDCUA9_MXCFB1 == DISPLAY_BT656) \
+    || (CONFIG_NETDCUA9_MXCFB2 == DISPLAY_BT656) \
+    || (CONFIG_NETDCUA9_MXCFB3 == DISPLAY_BT656))
+#define CONFIG_NETDCUA9_BT656
+#if ((CONFIG_NETDCUA9_MXCFB0 == DISPLAY_BT656) \
+    || (CONFIG_NETDCUA9_MXCFB1 == DISPLAY_BT656))
+#define __BT656_ON_0_OR_1__	1
+#define __BT656_ON_2_OR_3__	0
+#else
+#define __BT656_ON_0_OR_1__	0
+#define __BT656_ON_2_OR_3__	1
 #endif
 #endif
 
@@ -291,6 +309,13 @@
 		interface_pix_fmt = CONFIG_NETDCUA9_LCD_PIX_FMT;
 		int_clk = <1>;
 		mode_str = CONFIG_NETDCUA9_LCD_MODE_STR;
+#elif (CONFIG_NETDCUA9_MXCFB0 == DISPLAY_BT656)
+		disp_dev = "bt656";
+		default_bpp = <CONFIG_NETDCUA9_BT656_BPP>;
+		interface_pix_fmt = CONFIG_NETDCUA9_BT656_PIX_FMT;
+		int_clk = <0>;
+		mode_str = CONFIG_NETDCUA9_BT656_MODE_STR;
+		clock-frequency = <27000000>;
 #elif (CONFIG_NETDCUA9_MXCFB0 == DISPLAY_HDMI)
 		disp_dev = "hdmi";
 		default_bpp = <CONFIG_NETDCUA9_HDMI_BPP>;
@@ -321,6 +346,13 @@
 		interface_pix_fmt = CONFIG_NETDCUA9_LCD_PIX_FMT;
 		int_clk = <1>;
 		mode_str = CONFIG_NETDCUA9_LCD_MODE_STR;
+#elif (CONFIG_NETDCUA9_MXCFB1 == DISPLAY_BT656)
+		disp_dev = "bt656";
+		default_bpp = <CONFIG_NETDCUA9_BT656_BPP>;
+		interface_pix_fmt = CONFIG_NETDCUA9_BT656_PIX_FMT;
+		int_clk = <0>;
+		mode_str = CONFIG_NETDCUA9_BT656_MODE_STR;
+		clock-frequency = <27000000>;
 #elif (CONFIG_NETDCUA9_MXCFB1 == DISPLAY_HDMI)
 		disp_dev = "hdmi";
 		default_bpp = <CONFIG_NETDCUA9_HDMI_BPP>;
@@ -351,6 +383,13 @@
 		interface_pix_fmt = CONFIG_NETDCUA9_LCD_PIX_FMT;
 		int_clk = <1>;
 		mode_str = CONFIG_NETDCUA9_LCD_MODE_STR;
+#elif (CONFIG_NETDCUA9_MXCFB2 == DISPLAY_BT656)
+		disp_dev = "bt656";
+		default_bpp = <CONFIG_NETDCUA9_BT656_BPP>;
+		interface_pix_fmt = CONFIG_NETDCUA9_BT656_PIX_FMT;
+		int_clk = <0>;
+		mode_str = CONFIG_NETDCUA9_BT656_MODE_STR;
+		clock-frequency = <27000000>;
 #elif (CONFIG_NETDCUA9_MXCFB2 == DISPLAY_HDMI)
 		disp_dev = "hdmi";
 		default_bpp = <CONFIG_NETDCUA9_HDMI_BPP>;
@@ -381,6 +420,13 @@
 		interface_pix_fmt = CONFIG_NETDCUA9_LCD_PIX_FMT;
 		int_clk = <1>;
 		mode_str = CONFIG_NETDCUA9_LCD_MODE_STR;
+#elif (CONFIG_NETDCUA9_MXCFB3 == DISPLAY_BT656)
+		disp_dev = "bt656";
+		default_bpp = <CONFIG_NETDCUA9_BT656_BPP>;
+		interface_pix_fmt = CONFIG_NETDCUA9_BT656_PIX_FMT;
+		int_clk = <0>;
+		mode_str = CONFIG_NETDCUA9_BT656_MODE_STR;
+		clock-frequency = <27000000>;
 #elif (CONFIG_NETDCUA9_MXCFB3 == DISPLAY_HDMI)
 		disp_dev = "hdmi";
 		default_bpp = <CONFIG_NETDCUA9_HDMI_BPP>;
@@ -402,6 +448,7 @@
 #endif
 	};
 
+#ifdef CONFIG_NETDCUA9_LCD
 	lcd: lcd@0 {
 		compatible = "fsl,lcd";
 		lcd-supply = <&reg_vlcd>;
@@ -409,6 +456,17 @@
 		pinctrl-0 = <&pinctrl_ipu1_ctrl &pinctrl_ipu1_dat>;
 		status = "disabled";
 	};
+#endif
+
+#ifdef CONFIG_NETDCUA9_BT656
+	bt656: bt656@0 {
+		compatible = "fsl,bt656";
+		default_ifmt = "BT656";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_ipu1_bt656>;
+		status = "disabled";
+	};
+#endif
 
 	/* LCD/LVDS backlight PWM on backlight connector */
 	backlight_lcd_ldb {
@@ -616,6 +674,17 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
+
+#ifdef CONFIG_NETDCUA9_BT656	
+	adv739x@2b {
+		compatible = "adv739x";
+		reg = <0x2b>;
+		pinctrl-names = "default", "enable";
+		default_ifmt = "BT656";	//###???
+		ipu_id = <0>;		//###???
+		disp_id = <0>;		//###???
+	};
+#endif
 
 #ifdef CONFIG_NETDCUA9_CAPTOUCH_MXT224
 	/* Atmel PCAP touch on Touch-Connector (I2C) */
@@ -865,6 +934,16 @@
 };
 #endif
 
+#ifdef CONFIG_NETDCUA9_BT656
+&bt656 {
+	/* BT656 on efusA9 is always on IPU1 (id=0), DI0 */
+	ipu_id = <0>;
+	disp_id = <0>;
+	default_ifmt = CONFIG_NETDCUA9_BT656_PIX_FMT;
+	status = "okay";
+};
+#endif
+
 #if (defined(CONFIG_NETDCUA9_LVDS0) || defined(CONFIG_NETDCUA9_LVDS1))
 &ldb {
 	ext_ref;
@@ -1009,6 +1088,7 @@
 		};
 #endif
 
+#ifdef CONFIG_NETDCUA9_LCD
 		/* LCD interface */
 		pinctrl_ipu1_ctrl: ipu1grp-1 {
 			fsl,pins = <
@@ -1048,6 +1128,23 @@
 				MX6QDL_PAD_DISP0_DAT23__IPU1_DISP0_DATA23  0x10
 			>;
 		};
+#endif
+
+#ifdef CONFIG_NETDCUA9_BT656
+		pinctrl_ipu1_bt656: ipu1grp-3 {
+			fsl,pins = <
+				MX6QDL_PAD_DI0_DISP_CLK__IPU1_DI0_DISP_CLK 0x10
+				MX6QDL_PAD_DISP0_DAT0__IPU1_DISP0_DATA00   0x10
+				MX6QDL_PAD_DISP0_DAT1__IPU1_DISP0_DATA01   0x10
+				MX6QDL_PAD_DISP0_DAT2__IPU1_DISP0_DATA02   0x10
+				MX6QDL_PAD_DISP0_DAT3__IPU1_DISP0_DATA03   0x10
+				MX6QDL_PAD_DISP0_DAT4__IPU1_DISP0_DATA04   0x10
+				MX6QDL_PAD_DISP0_DAT5__IPU1_DISP0_DATA05   0x10
+				MX6QDL_PAD_DISP0_DAT6__IPU1_DISP0_DATA06   0x10
+				MX6QDL_PAD_DISP0_DAT7__IPU1_DISP0_DATA07   0x10			
+			>;
+		};
+#endif
 
 #if 0 //### todo
 #ifdef CONFIG_NETDCUA9_PARALLEL_CAMERA
