@@ -7,6 +7,7 @@
  * Based on ADV7343 driver,
  *
  * Copyright (C) 2009 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2018 F&S Elektronik Systeme GmbH - http://www.fs-net.de
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -69,7 +70,7 @@ struct adv739x_std_info {
 #define ADV739X_SD_HUE_ADJUST		(0xA0)
 #define ADV739X_SD_BRIGHTNESS_WSS	(0xA1)
 
-/* Default values for the registers */
+/* Common default values for the registers */
 #define ADV739X_POWER_MODE_REG_DEFAULT		(0x10)
 #define ADV739X_HD_MODE_REG1_DEFAULT		(0x3C)	/* Changed Default
 							   720p EAV/SAV code*/
@@ -89,36 +90,29 @@ struct adv739x_std_info {
 
 #define ADV739X_SD_CGMS_WSS0_DEFAULT		(0x10)
 
-#ifdef ADV7393_MODE_NTSC
-#define ADV739X_SD_MODE_REG1_DEFAULT		(0x10)
-#define ADV739X_SD_MODE_REG2_DEFAULT		(0xC9)
-#define ADV739X_SD_MODE_REG3_DEFAULT		(0x00)
-#define ADV739X_SD_MODE_REG4_DEFAULT		(0x00)
-#define ADV739X_SD_MODE_REG5_DEFAULT		(0x02)
-#define ADV739X_SD_MODE_REG6_DEFAULT		(0x8C)
-#define ADV739X_SD_MODE_REG7_DEFAULT		(0x14)
-#define ADV739X_SD_MODE_REG8_DEFAULT		(0x00)
+/* Registers for ADV7391 only, start with PAL */
+#define ADV7391_SD_MODE_REG1_DEFAULT		(0x11)
+#define ADV7391_SD_MODE_REG2_DEFAULT		(0xC3)
+#define ADV7391_SD_MODE_REG3_DEFAULT		(0x00)
+#define ADV7391_SD_MODE_REG4_DEFAULT		(0x00)
+#define ADV7391_SD_MODE_REG5_DEFAULT		(0x02)
+#define ADV7391_SD_MODE_REG6_DEFAULT		(0x00)
+#define ADV7391_SD_MODE_REG7_DEFAULT		(0x00)
+#define ADV7391_SD_MODE_REG8_DEFAULT		(0x00)
 
-#define ADV739X_SD_TIMING_REG0_DEFAULT		(0x0C)
+#define ADV7391_SD_TIMING_REG0_DEFAULT		(0x08)
 
-#else /* ADV7391_MODE_PAL */
+/* Registers for ADV7393 only, start with NTSC */
+#define ADV7393_SD_MODE_REG1_DEFAULT		(0x10)
+#define ADV7393_SD_MODE_REG2_DEFAULT		(0xC9)
+#define ADV7393_SD_MODE_REG3_DEFAULT		(0x00)
+#define ADV7393_SD_MODE_REG4_DEFAULT		(0x00)
+#define ADV7393_SD_MODE_REG5_DEFAULT		(0x02)
+#define ADV7393_SD_MODE_REG6_DEFAULT		(0x8C)
+#define ADV7393_SD_MODE_REG7_DEFAULT		(0x14)
+#define ADV7393_SD_MODE_REG8_DEFAULT		(0x00)
 
-#define ADV739X_FSC_REG0_DEFAULT		(0xCB)
-#define ADV739X_FSC_REG1_DEFAULT		(0x8A)
-#define ADV739X_FSC_REG2_DEFAULT		(0x09)
-#define ADV739X_FSC_REG3_DEFAULT		(0x2A)
-
-#define ADV739X_SD_MODE_REG1_DEFAULT		(0x11)
-#define ADV739X_SD_MODE_REG2_DEFAULT		(0xC3)
-#define ADV739X_SD_MODE_REG3_DEFAULT		(0x00)
-#define ADV739X_SD_MODE_REG4_DEFAULT		(0x00)
-#define ADV739X_SD_MODE_REG5_DEFAULT		(0x02)
-#define ADV739X_SD_MODE_REG6_DEFAULT		(0x00)
-#define ADV739X_SD_MODE_REG7_DEFAULT		(0x00)
-#define ADV739X_SD_MODE_REG8_DEFAULT		(0x00)
-
-#define ADV739X_SD_TIMING_REG0_DEFAULT		(0x08)
-#endif
+#define ADV7393_SD_TIMING_REG0_DEFAULT		(0x0C)
 
 /* Bit masks for Mode Select Register */
 #define INPUT_MODE_MASK			(0x70)

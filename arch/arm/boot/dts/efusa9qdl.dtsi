@@ -838,12 +838,8 @@
 
 #ifdef CONFIG_EFUSA9_BT656
 	adv739x@2b {
-		compatible = "adv739x";
+		compatible = "adi,adv7391";
 		reg = <0x2b>;
-		pinctrl-names = "default", "enable";
-		default_ifmt = "BT656";	//###???
-		ipu_id = <0>;		//###???
-		disp_id = <0>;		//###???
 	};
 #endif
 

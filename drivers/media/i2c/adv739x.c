@@ -9,6 +9,7 @@
  * Based on ADV7343 driver,
  *
  * Copyright (C) 2009 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2018 F&S Elektronik Systeme GmbH - http://www.fs-net.de
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -44,6 +45,96 @@ static bool debug;
 module_param(debug, bool, 0644);
 MODULE_PARM_DESC(debug, "Debug level 0-1");
 
+struct adv739x_reg_val {
+	u8 reg;
+	u8 val;
+};
+
+static const struct adv739x_reg_val adv7391_init_reg_val[] = {
+	{ADV739X_SOFT_RESET, ADV739X_SOFT_RESET_DEFAULT},
+	{ADV739X_POWER_MODE_REG, ADV739X_POWER_MODE_REG_DEFAULT},
+
+	{ADV739X_HD_MODE_REG1, ADV739X_HD_MODE_REG1_DEFAULT},
+	{ADV739X_HD_MODE_REG2, ADV739X_HD_MODE_REG2_DEFAULT},
+	{ADV739X_HD_MODE_REG3, ADV739X_HD_MODE_REG3_DEFAULT},
+	{ADV739X_HD_MODE_REG4, ADV739X_HD_MODE_REG4_DEFAULT},
+	{ADV739X_HD_MODE_REG5, ADV739X_HD_MODE_REG5_DEFAULT},
+	{ADV739X_HD_MODE_REG6, ADV739X_HD_MODE_REG6_DEFAULT},
+	{ADV739X_HD_MODE_REG7, ADV739X_HD_MODE_REG7_DEFAULT},
+
+	{ADV739X_SD_MODE_REG1, ADV7391_SD_MODE_REG1_DEFAULT},
+	{ADV739X_SD_MODE_REG2, ADV7391_SD_MODE_REG2_DEFAULT},
+	{ADV739X_SD_MODE_REG3, ADV7391_SD_MODE_REG3_DEFAULT},
+	{ADV739X_SD_MODE_REG4, ADV7391_SD_MODE_REG4_DEFAULT},
+	{ADV739X_SD_MODE_REG5, ADV7391_SD_MODE_REG5_DEFAULT},
+	{ADV739X_SD_MODE_REG6, ADV7391_SD_MODE_REG6_DEFAULT},
+	{ADV739X_SD_MODE_REG7, ADV7391_SD_MODE_REG7_DEFAULT},
+	{ADV739X_SD_MODE_REG8, ADV7391_SD_MODE_REG8_DEFAULT},
+
+	{ADV739X_SD_TIMING_REG0, ADV7391_SD_TIMING_REG0_DEFAULT},
+
+	{ADV739X_SD_HUE_ADJUST, ADV739X_SD_HUE_ADJUST_DEFAULT},
+	{ADV739X_SD_CGMS_WSS0, ADV739X_SD_CGMS_WSS0_DEFAULT},
+	{ADV739X_SD_BRIGHTNESS_WSS, ADV739X_SD_BRIGHTNESS_WSS_DEFAULT},
+};
+
+static const struct adv739x_reg_val adv7393_init_reg_val[] = {
+	{ADV739X_SOFT_RESET, ADV739X_SOFT_RESET_DEFAULT},
+	{ADV739X_POWER_MODE_REG, ADV739X_POWER_MODE_REG_DEFAULT},
+
+	{ADV739X_HD_MODE_REG1, ADV739X_HD_MODE_REG1_DEFAULT},
+	{ADV739X_HD_MODE_REG2, ADV739X_HD_MODE_REG2_DEFAULT},
+	{ADV739X_HD_MODE_REG3, ADV739X_HD_MODE_REG3_DEFAULT},
+	{ADV739X_HD_MODE_REG4, ADV739X_HD_MODE_REG4_DEFAULT},
+	{ADV739X_HD_MODE_REG5, ADV739X_HD_MODE_REG5_DEFAULT},
+	{ADV739X_HD_MODE_REG6, ADV739X_HD_MODE_REG6_DEFAULT},
+	{ADV739X_HD_MODE_REG7, ADV739X_HD_MODE_REG7_DEFAULT},
+
+	{ADV739X_SD_MODE_REG1, ADV7393_SD_MODE_REG1_DEFAULT},
+	{ADV739X_SD_MODE_REG2, ADV7393_SD_MODE_REG2_DEFAULT},
+	{ADV739X_SD_MODE_REG3, ADV7393_SD_MODE_REG3_DEFAULT},
+	{ADV739X_SD_MODE_REG4, ADV7393_SD_MODE_REG4_DEFAULT},
+	{ADV739X_SD_MODE_REG5, ADV7393_SD_MODE_REG5_DEFAULT},
+	{ADV739X_SD_MODE_REG6, ADV7393_SD_MODE_REG6_DEFAULT},
+	{ADV739X_SD_MODE_REG7, ADV7393_SD_MODE_REG7_DEFAULT},
+	{ADV739X_SD_MODE_REG8, ADV7393_SD_MODE_REG8_DEFAULT},
+
+	{ADV739X_SD_TIMING_REG0, ADV7393_SD_TIMING_REG0_DEFAULT},
+
+	{ADV739X_SD_HUE_ADJUST, ADV739X_SD_HUE_ADJUST_DEFAULT},
+	{ADV739X_SD_CGMS_WSS0, ADV739X_SD_CGMS_WSS0_DEFAULT},
+	{ADV739X_SD_BRIGHTNESS_WSS, ADV739X_SD_BRIGHTNESS_WSS_DEFAULT},
+};
+
+enum adv739x_chips {
+	ADV7391,
+	ADV7393,
+
+	ADV739X_COUNT			/* Last entry */
+};
+
+struct adv739x_info_type {
+	enum adv739x_chips chip;
+	const char *name;
+	const struct adv739x_reg_val *init_reg_vals;
+	unsigned int init_reg_val_count;
+};
+
+static const struct adv739x_info_type adv739x_info[ADV739X_COUNT] = {
+	[ADV7391] = {
+		.chip = ADV7391,
+		.name = "ADV7391",
+		.init_reg_vals = &adv7391_init_reg_val[0],
+		.init_reg_val_count = ARRAY_SIZE(adv7391_init_reg_val),
+	},
+	[ADV7393] = {
+		.chip = ADV7393,
+		.name = "ADV7393",
+		.init_reg_vals = &adv7393_init_reg_val[0],
+		.init_reg_val_count = ARRAY_SIZE(adv7393_init_reg_val),
+	},
+};
+
 struct adv739x_state {
 	struct v4l2_subdev sd;
 	struct v4l2_ctrl_handler hdl;
@@ -55,6 +146,7 @@ struct adv739x_state {
 	u8 reg82;
 	u32 output;
 	v4l2_std_id std;
+	const struct adv739x_info_type *devdata;
 };
 
 static inline struct adv739x_state *to_state(struct v4l2_subdev *sd)
@@ -73,34 +165,6 @@ static inline int adv739x_write(struct v4l2_subdev *sd, u8 reg, u8 value)
 
 	return i2c_smbus_write_byte_data(client, reg, value);
 }
-
-static const u8 adv739x_init_reg_val[] = {
-	ADV739X_SOFT_RESET, ADV739X_SOFT_RESET_DEFAULT,
-	ADV739X_POWER_MODE_REG, ADV739X_POWER_MODE_REG_DEFAULT,
-
-	ADV739X_HD_MODE_REG1, ADV739X_HD_MODE_REG1_DEFAULT,
-	ADV739X_HD_MODE_REG2, ADV739X_HD_MODE_REG2_DEFAULT,
-	ADV739X_HD_MODE_REG3, ADV739X_HD_MODE_REG3_DEFAULT,
-	ADV739X_HD_MODE_REG4, ADV739X_HD_MODE_REG4_DEFAULT,
-	ADV739X_HD_MODE_REG5, ADV739X_HD_MODE_REG5_DEFAULT,
-	ADV739X_HD_MODE_REG6, ADV739X_HD_MODE_REG6_DEFAULT,
-	ADV739X_HD_MODE_REG7, ADV739X_HD_MODE_REG7_DEFAULT,
-
-	ADV739X_SD_MODE_REG1, ADV739X_SD_MODE_REG1_DEFAULT,
-	ADV739X_SD_MODE_REG2, ADV739X_SD_MODE_REG2_DEFAULT,
-	ADV739X_SD_MODE_REG3, ADV739X_SD_MODE_REG3_DEFAULT,
-	ADV739X_SD_MODE_REG4, ADV739X_SD_MODE_REG4_DEFAULT,
-	ADV739X_SD_MODE_REG5, ADV739X_SD_MODE_REG5_DEFAULT,
-	ADV739X_SD_MODE_REG6, ADV739X_SD_MODE_REG6_DEFAULT,
-	ADV739X_SD_MODE_REG7, ADV739X_SD_MODE_REG7_DEFAULT,
-	ADV739X_SD_MODE_REG8, ADV739X_SD_MODE_REG8_DEFAULT,
-
-	ADV739X_SD_TIMING_REG0, ADV739X_SD_TIMING_REG0_DEFAULT,
-
-	ADV739X_SD_HUE_ADJUST, ADV739X_SD_HUE_ADJUST_DEFAULT,
-	ADV739X_SD_CGMS_WSS0, ADV739X_SD_CGMS_WSS0_DEFAULT,
-	ADV739X_SD_BRIGHTNESS_WSS, ADV739X_SD_BRIGHTNESS_WSS_DEFAULT,
-};
 
 /*
  * 			    2^32
@@ -361,11 +425,11 @@ static int adv739x_initialize(struct v4l2_subdev *sd)
 	struct adv739x_state *state = to_state(sd);
 	int err = 0;
 	int i;
+	const struct adv739x_reg_val *regval;
 
-	for (i = 0; i < ARRAY_SIZE(adv739x_init_reg_val); i += 2) {
-
-		err = adv739x_write(sd, adv739x_init_reg_val[i],
-					adv739x_init_reg_val[i+1]);
+	regval = state->devdata->init_reg_vals;
+	for (i = 0; i < state->devdata->init_reg_val_count; i++) {
+		err = adv739x_write(sd, regval[i].reg, regval[i].val);
 		if (err) {
 			v4l2_err(sd, "Error initializing\n");
 			return err;
@@ -388,29 +452,72 @@ static int adv739x_initialize(struct v4l2_subdev *sd)
 	return err;
 }
 
+
+static const struct i2c_device_id adv739x_id[] = {
+	{"adv739x", 0},
+	{},
+};
+
+static const struct of_device_id adv739x_id_table[] = {
+	{
+		.compatible = "adi,adv7391",
+		.data = &adv739x_info[ADV7391],
+	}, {
+		.compatible = "adi,adv7393",
+		.data = &adv739x_info[ADV7393],
+	}, { /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(i2c, adv739x_id_table);
+
+static int adv739x_parse_dt(struct adv739x_state *state)
+{
+	/*
+	 * This function can be used to read parameters from the device tree
+	 * node, e.g. whether to start in NTSC or PAL mode.
+	 */
+
+	return 0;
+}
+
 static int adv739x_probe(struct i2c_client *client,
 				const struct i2c_device_id *id)
 {
 	struct adv739x_state *state;
 	int err;
+	const struct of_device_id *of_id;
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_SMBUS_BYTE_DATA))
-		return -ENODEV;
-
-	v4l_info(client, "chip found @ 0x%x (%s)\n",
-			client->addr << 1, client->adapter->name);
+		return -EIO;
 
 	state = devm_kzalloc(&client->dev, sizeof(*state), GFP_KERNEL);
 	if (state == NULL)
 		return -ENOMEM;
 
+	if (IS_ENABLED(CONFIG_OF) && client->dev.of_node) {
+		of_id = of_match_node(adv739x_id_table, client->dev.of_node);
+		err = adv739x_parse_dt(state);
+		if (err < 0) {
+			v4l_err(client, "DT parsing error\n");
+			return err;
+		}
+		state->devdata = of_id->data;
+	} else
+		state->devdata = &adv739x_info[ADV7393];
+
+	v4l_info(client, "detecting %s @ 0x%x (%s)\n", state->devdata->name,
+		 client->addr << 1, client->adapter->name);
+
 	state->reg00	= ADV739X_POWER_MODE_REG_DEFAULT;
 	state->reg01	= 0x00;
 	state->reg02	= 0x20;
 	state->reg35	= ADV739X_HD_MODE_REG6_DEFAULT;
-	state->reg80	= ADV739X_SD_MODE_REG1_DEFAULT;
-	state->reg82	= ADV739X_SD_MODE_REG2_DEFAULT;
-
+	if (state->devdata->chip == ADV7391) {
+		state->reg80	= ADV7391_SD_MODE_REG1_DEFAULT;
+		state->reg82	= ADV7391_SD_MODE_REG2_DEFAULT;
+	} else {
+		state->reg80	= ADV7393_SD_MODE_REG1_DEFAULT;
+		state->reg82	= ADV7393_SD_MODE_REG2_DEFAULT;
+	}
 	state->output = ADV739X_COMPOSITE_ID;
 	state->std = V4L2_STD_PAL;
 
@@ -454,17 +561,11 @@ static int adv739x_remove(struct i2c_client *client)
 
 	return 0;
 }
-
-static const struct i2c_device_id adv739x_id[] = {
-	{"adv739x", 0},
-	{},
-};
-MODULE_DEVICE_TABLE(i2c, adv739x_id);
-
 static struct i2c_driver adv739x_driver = {
 	.driver = {
 		.owner	= THIS_MODULE,
 		.name	= "adv739x",
+		.of_match_table = adv739x_id_table,
 	},
 	.probe		= adv739x_probe,
 	.remove		= adv739x_remove,
