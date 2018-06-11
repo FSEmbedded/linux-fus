@@ -1262,6 +1262,12 @@ static int adv7180_probe(struct i2c_client *client,
 		return ret;
 	}
 
+	ret = of_property_read_u32(dev->of_node, "ipu_id",
+					&(adv7180_data.sen.ipu_id));
+	if (ret) {
+		adv7180_data.sen.ipu_id = 0;
+	}
+
 	ret = of_property_read_u32(dev->of_node, "csi_id",
 					&(adv7180_data.sen.csi));
 	if (ret) {

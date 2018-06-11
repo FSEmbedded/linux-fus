@@ -161,13 +161,16 @@ EXPORT_SYMBOL(mipi_csi2_set_lanes);
  * @return      Returns setted value
  */
 unsigned int mipi_csi2_set_datatype(struct mipi_csi2_info *info,
-					unsigned int datatype)
+					unsigned int v_channel, unsigned int datatype)
 {
 	unsigned int dtype;
 
+	if (v_channel >= MAX_VIRTUAL_CHAN_NUM)
+		return 0;
+
 	_mipi_csi2_lock(info);
-	info->datatype = datatype;
-	dtype = info->datatype;
+	info->mipi_chan[v_channel].datatype = datatype;
+	dtype = info->mipi_chan[v_channel].datatype;
 	_mipi_csi2_unlock(info);
 
 	return dtype;
@@ -180,12 +183,16 @@ EXPORT_SYMBOL(mipi_csi2_set_datatype);
  * @param	info		mipi csi2 hander
  * @return      Returns mipi data type
  */
-unsigned int mipi_csi2_get_datatype(struct mipi_csi2_info *info)
+unsigned int mipi_csi2_get_datatype(struct mipi_csi2_info *info, 
+					unsigned int v_channel)
 {
 	unsigned int dtype;
 
+	if (v_channel >= MAX_VIRTUAL_CHAN_NUM)
+		return 0;
+
 	_mipi_csi2_lock(info);
-	dtype = info->datatype;
+	dtype = info->mipi_chan[v_channel].datatype;
 	_mipi_csi2_unlock(info);
 
 	return dtype;
@@ -274,10 +281,15 @@ EXPORT_SYMBOL(mipi_csi2_pixelclk_disable);
  * This function is called to power on mipi csi2.
  *
  * @param	info		mipi csi2 hander
+ *           	mipi_lane_bps	mipi csi2 data rate for each data lane, Mbps.
+ *                    It should be MIPI clock * 2 for DDR mode mipi clock.
  * @return      Returns 0 on success or negative error code on fail
  */
-int mipi_csi2_reset(struct mipi_csi2_info *info)
+int mipi_csi2_reset(struct mipi_csi2_info *info, int mipi_lane_bps)
 {
+	int value;
+	
+	dev_info(&info->pdev->dev, "mipi_csi2_reset: mipi_lane_bps = %d Mbps\n", mipi_lane_bps);
 	_mipi_csi2_lock(info);
 
 	mipi_csi2_write(info, 0x0, MIPI_CSI2_PHY_SHUTDOWNZ);
@@ -290,7 +302,67 @@ int mipi_csi2_reset(struct mipi_csi2_info *info)
 	mipi_csi2_write(info, 0x00000002, MIPI_CSI2_PHY_TST_CTRL0);
 	mipi_csi2_write(info, 0x00010044, MIPI_CSI2_PHY_TST_CTRL1);
 	mipi_csi2_write(info, 0x00000000, MIPI_CSI2_PHY_TST_CTRL0);
-	mipi_csi2_write(info, 0x00000014, MIPI_CSI2_PHY_TST_CTRL1);
+	if (mipi_lane_bps < 90)
+		value = 0x00;
+	else if (mipi_lane_bps < 100)
+		value = 0x20;
+	else if (mipi_lane_bps < 110)
+		value = 0x40;
+	else if (mipi_lane_bps < 125)
+		value = 0x02;
+	else if (mipi_lane_bps < 140)
+		value = 0x22;
+	else if (mipi_lane_bps < 150)
+		value = 0x42;
+	else if (mipi_lane_bps < 160)
+		value = 0x04;
+	else if (mipi_lane_bps < 180)
+		value = 0x24;
+	else if (mipi_lane_bps < 200)
+		value = 0x44;
+	else if (mipi_lane_bps < 210)
+		value = 0x06;
+	else if (mipi_lane_bps < 240)
+		value = 0x26;
+	else if (mipi_lane_bps < 250)
+		value = 0x46;
+	else if (mipi_lane_bps < 270)
+		value = 0x08;
+	else if (mipi_lane_bps < 300)
+		value = 0x28;
+	else if (mipi_lane_bps < 330)
+		value = 0x48;
+	else if (mipi_lane_bps < 360)
+		value = 0x2a;
+	else if (mipi_lane_bps < 400)
+		value = 0x4a;
+	else if (mipi_lane_bps < 450)
+		value = 0x0c;
+	else if (mipi_lane_bps < 500)
+		value = 0x2c;
+	else if (mipi_lane_bps < 550)
+		value = 0x0e;
+	else if (mipi_lane_bps < 600)
+		value = 0x2e;
+	else if (mipi_lane_bps < 650)
+		value = 0x10;
+	else if (mipi_lane_bps < 700)
+		value = 0x30;
+	else if (mipi_lane_bps < 750)
+		value = 0x12;
+	else if (mipi_lane_bps < 800)
+		value = 0x32;
+	else if (mipi_lane_bps < 850)
+		value = 0x14;
+	else if (mipi_lane_bps < 900)
+		value = 0x34;
+	else if (mipi_lane_bps < 950)
+		value = 0x54;
+	else
+		value = 0x74;
+	dev_info(&info->pdev->dev, "mipi_csi2_reset: value = 0x%x.\n", value);
+
+	mipi_csi2_write(info, value, MIPI_CSI2_PHY_TST_CTRL1);
 	mipi_csi2_write(info, 0x00000002, MIPI_CSI2_PHY_TST_CTRL0);
 	mipi_csi2_write(info, 0x00000000, MIPI_CSI2_PHY_TST_CTRL0);
 
@@ -320,12 +392,12 @@ EXPORT_SYMBOL(mipi_csi2_get_info);
  *
  * @return      Returns mipi csi2 bind ipu num
  */
-int mipi_csi2_get_bind_ipu(struct mipi_csi2_info *info)
+int mipi_csi2_get_bind_ipu(struct mipi_csi2_info *info, unsigned int v_channel)
 {
 	int ipu_id;
 
 	_mipi_csi2_lock(info);
-	ipu_id = info->ipu_id;
+	ipu_id = info->mipi_chan[v_channel].ipu_id;
 	_mipi_csi2_unlock(info);
 
 	return ipu_id;
@@ -337,34 +409,17 @@ EXPORT_SYMBOL(mipi_csi2_get_bind_ipu);
  *
  * @return      Returns mipi csi2 bind csi num
  */
-unsigned int mipi_csi2_get_bind_csi(struct mipi_csi2_info *info)
+unsigned int mipi_csi2_get_bind_csi(struct mipi_csi2_info *info, unsigned int v_channel)
 {
 	unsigned int csi_id;
 
 	_mipi_csi2_lock(info);
-	csi_id = info->csi_id;
+	csi_id = info->mipi_chan[v_channel].csi_id;
 	_mipi_csi2_unlock(info);
 
 	return csi_id;
 }
 EXPORT_SYMBOL(mipi_csi2_get_bind_csi);
-
-/*!
- * This function is called to get mipi csi2 virtual channel.
- *
- * @return      Returns mipi csi2 virtual channel num
- */
-unsigned int mipi_csi2_get_virtual_channel(struct mipi_csi2_info *info)
-{
-	unsigned int v_channel;
-
-	_mipi_csi2_lock(info);
-	v_channel = info->v_channel;
-	_mipi_csi2_unlock(info);
-
-	return v_channel;
-}
-EXPORT_SYMBOL(mipi_csi2_get_virtual_channel);
 
 /**
  * This function is called by the driver framework to initialize the MIPI CSI2
@@ -378,10 +433,10 @@ EXPORT_SYMBOL(mipi_csi2_get_virtual_channel);
 static int mipi_csi2_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct device_node *np = pdev->dev.of_node;
+	struct device_node *np = pdev->dev.of_node, *child;
 	struct resource *res;
 	u32 mipi_csi2_dphy_ver;
-	int ret;
+	int ret, v_channel;
 
 	gmipi_csi2 = kmalloc(sizeof(struct mipi_csi2_info), GFP_KERNEL);
 	if (!gmipi_csi2) {
@@ -389,36 +444,56 @@ static int mipi_csi2_probe(struct platform_device *pdev)
 		goto alloc_failed;
 	}
 
-	ret = of_property_read_u32(np, "ipu_id", &(gmipi_csi2->ipu_id));
-	if (ret) {
-		dev_err(&pdev->dev, "ipu_id missing or invalid\n");
-		goto err;
-	}
-
-	ret = of_property_read_u32(np, "csi_id", &(gmipi_csi2->csi_id));
-	if (ret) {
-		dev_err(&pdev->dev, "csi_id missing or invalid\n");
-		goto err;
-	}
-
-	ret = of_property_read_u32(np, "v_channel", &(gmipi_csi2->v_channel));
-	if (ret) {
-		dev_err(&pdev->dev, "v_channel missing or invalid\n");
-		goto err;
-	}
-
 	ret = of_property_read_u32(np, "lanes", &(gmipi_csi2->lanes));
 	if (ret) {
 		dev_err(&pdev->dev, "lanes missing or invalid\n");
 		goto err;
 	}
-
-	if ((gmipi_csi2->ipu_id < 0) || (gmipi_csi2->ipu_id > 1) ||
-		(gmipi_csi2->csi_id > 1) || (gmipi_csi2->v_channel > 3) ||
-		(gmipi_csi2->lanes > 4)) {
-		dev_err(&pdev->dev, "invalid param for mipi csi2!\n");
+	if (gmipi_csi2->lanes > 4) {
+		dev_err(&pdev->dev, "invalid lanes for mipi csi2!\n");
 		ret = -EINVAL;
 		goto err;
+	}
+
+	for_each_child_of_node(np, child) {
+		struct mipi_csi2_chan *chan;
+
+		if (!of_device_is_available(child))
+			continue;
+
+		ret = of_property_read_u32(child, "v_channel", &v_channel);
+		if (ret) {
+			dev_err(&pdev->dev, "v_channel missing\n");
+			goto err;
+		}
+
+		if (v_channel > 3) {
+			dev_err(&pdev->dev, "v_channel invalid\n");
+			ret = -EINVAL;
+			goto err;
+		}
+
+		chan = &(gmipi_csi2->mipi_chan[v_channel]);
+
+		ret = of_property_read_u32(child, "ipu_id", &(gmipi_csi2->mipi_chan[v_channel].ipu_id));
+		if (ret) {
+			dev_err(&pdev->dev, "ipu_id missing or invalid\n");
+			goto err;
+		}
+
+		ret = of_property_read_u32(child, "csi_id", &(gmipi_csi2->mipi_chan[v_channel].csi_id));
+		if (ret) {
+			dev_err(&pdev->dev, "csi_id missing or invalid\n");
+			goto err;
+		}
+
+		if ((gmipi_csi2->mipi_chan[v_channel].ipu_id < 0) || 
+			(gmipi_csi2->mipi_chan[v_channel].ipu_id > 1) ||
+			(gmipi_csi2->mipi_chan[v_channel].csi_id > 1)) {
+			dev_err(&pdev->dev, "invalid param for mipi csi2!\n");
+			ret = -EINVAL;
+			goto err;
+		}
 	}
 
 	/* initialize mutex */

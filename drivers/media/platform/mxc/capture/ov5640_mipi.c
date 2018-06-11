@@ -1317,7 +1317,7 @@ static int ov5640_init_mode(enum ov5640_frame_rate frame_rate,
 {
 	struct reg_value *pModeSetting = NULL;
 	s32 ArySize = 0;
-	int retval = 0;
+	int retval = 0, lanes;
 	void *mipi_csi2_info;
 	u32 mipi_reg, msec_wait4stable = 0;
 	enum ov5640_downsize_mode dn_mode, orig_dn_mode;
@@ -1345,16 +1345,16 @@ static int ov5640_init_mode(enum ov5640_frame_rate frame_rate,
 		return -1;
 	}
 
-	mipi_csi2_set_lanes(mipi_csi2_info);
+	lanes = mipi_csi2_set_lanes(mipi_csi2_info);
 
 	/*Only reset MIPI CSI2 HW at sensor initialize*/
 	if (mode == ov5640_mode_INIT)
-		mipi_csi2_reset(mipi_csi2_info);
+		mipi_csi2_reset(mipi_csi2_info, 1536 / (lanes + 1));  //Total data rate / lane numbers, Pixel clock 96MHz * 16 bits per pixel = 1536 Mbps.
 
 	if (ov5640_data.pix.pixelformat == V4L2_PIX_FMT_UYVY)
-		mipi_csi2_set_datatype(mipi_csi2_info, MIPI_DT_YUV422);
+		mipi_csi2_set_datatype(mipi_csi2_info, ov5640_data.v_channel, MIPI_DT_YUV422);
 	else if (ov5640_data.pix.pixelformat == V4L2_PIX_FMT_RGB565)
-		mipi_csi2_set_datatype(mipi_csi2_info, MIPI_DT_RGB565);
+		mipi_csi2_set_datatype(mipi_csi2_info, ov5640_data.v_channel, MIPI_DT_RGB565);
 	else
 		pr_err("currently this sensor format can not be supported!\n");
 
@@ -1390,7 +1390,7 @@ static int ov5640_init_mode(enum ov5640_frame_rate frame_rate,
 	OV5640_set_AE_target(AE_Target);
 	OV5640_get_light_freq();
 	OV5640_set_bandingfilter();
-	ov5640_set_virtual_channel(ov5640_data.csi);
+	ov5640_set_virtual_channel(ov5640_data.v_channel);
 
 	/* add delay to wait for sensor stable */
 	if (mode == ov5640_mode_QSXGA_2592_1944) {
@@ -1413,7 +1413,7 @@ static int ov5640_init_mode(enum ov5640_frame_rate frame_rate,
 
 		/* wait for mipi sensor ready */
 		mipi_reg = mipi_csi2_dphy_status(mipi_csi2_info);
-		while ((mipi_reg == 0x200) && (i < 10)) {
+		while (((mipi_reg & 0x700) != 0x300) && (i < 10)) {
 			mipi_reg = mipi_csi2_dphy_status(mipi_csi2_info);
 			i++;
 			msleep(10);
@@ -2034,10 +2034,23 @@ static int ov5640_probe(struct i2c_client *client,
 		return retval;
 	}
 
+	retval = of_property_read_u32(dev->of_node, "ipu_id",
+					&(ov5640_data.ipu_id));
+	if (retval) {
+		ov5640_data.ipu_id = 0;
+	}
+
 	retval = of_property_read_u32(dev->of_node, "csi_id",
 					&(ov5640_data.csi));
 	if (retval) {
 		dev_err(dev, "csi id missing or invalid\n");
+		return retval;
+	}
+
+	retval = of_property_read_u32(dev->of_node, "v_channel_id",
+					&(ov5640_data.v_channel));
+	if (retval) {
+		dev_err(dev, "virtual channel id missing or invalid\n");
 		return retval;
 	}
 
@@ -2053,6 +2066,7 @@ static int ov5640_probe(struct i2c_client *client,
 	ov5640_data.streamcap.capturemode = 0;
 	ov5640_data.streamcap.timeperframe.denominator = DEFAULT_FPS;
 	ov5640_data.streamcap.timeperframe.numerator = 1;
+	ov5640_data.is_mipi = 1;
 
 	ov5640_power_on(dev);
 

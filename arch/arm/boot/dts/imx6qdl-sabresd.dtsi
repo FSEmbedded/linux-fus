@@ -422,6 +422,7 @@
 		DVDD-supply = <&vgen2_reg>;  /* 1.5v*/
 		pwn-gpios = <&gpio1 16 1>;   /* active low: SD1_DAT0 */
 		rst-gpios = <&gpio1 17 0>;   /* active high: SD1_DAT1 */
+		ipu_id = <0>;
 		csi_id = <0>;
 		mclk = <24000000>;
 		mclk_source = <0>;
@@ -568,7 +569,9 @@
 		DVDD-supply = <&vgen2_reg>;  /* 1.5v*/
 		pwn-gpios = <&gpio1 19 1>;   /* active low: SD1_CLK */
 		rst-gpios = <&gpio1 20 0>;   /* active high: SD1_DAT2 */
+		ipu_id = <0>;
 		csi_id = <1>;
+		v_channel_id = <3>;
 		mclk = <24000000>;
 		mclk_source = <0>;
 	};
@@ -954,10 +957,14 @@
 
 &mipi_csi {
 	status = "okay";
-	ipu_id = <0>;
-	csi_id = <1>;
-	v_channel = <0>;
 	lanes = <2>;
+
+	mipi-csi2-channel@0 {
+		ipu_id = <0>;
+		csi_id = <1>;
+		v_channel = <3>;
+		status = "okay";
+	};
 };
 
 &mipi_dsi {

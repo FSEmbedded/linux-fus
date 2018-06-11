@@ -572,6 +572,7 @@
 		DVDD-supply = <&reg_3p3v>;  /* 1.8v */
 		PVDD-supply = <&reg_3p3v>;  /* 1.8v */
 		pwn-gpios = <&max7310_b 2 0>;
+		ipu_id = <0>;
 		csi_id = <0>;
 		mclk = <24000000>;
 		mclk_source = <0>;

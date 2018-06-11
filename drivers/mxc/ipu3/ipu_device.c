@@ -213,6 +213,7 @@ struct task_set {
  */
 #define	VDOA_MODE	0x8
 #define	VDOA_BAND_MODE	0x10
+#define VDI_ONLY_MODE	0x20
 	u8	mode;
 #define IC_VF	0x1
 #define IC_PP	0x2
@@ -1142,6 +1143,11 @@ static int check_task(struct ipu_task_entry *t)
 	if (t->input.deinterlace.enable) {
 		t->set.mode &= ~IC_MODE;
 		t->set.mode |= VDI_MODE;
+		if ((t->input.crop.w == t->output.crop.w) &&
+				(t->input.crop.h == t->output.crop.h) &&
+				(need_csc(t->input.format, t->output.format) == false) &&
+				(t->output.rotate == IPU_ROTATE_NONE))
+			t->set.mode |= VDI_ONLY_MODE;
 	}
 	if ((IPU_PIX_FMT_TILED_NV12 == t->input.format) ||
 		(IPU_PIX_FMT_TILED_NV12F == t->input.format)) {
@@ -1190,8 +1196,7 @@ static int check_task(struct ipu_task_entry *t)
 	}
 
 	if (t->set.mode == NULL_MODE) {
-		ret = IPU_CHECK_ERR_PROC_NO_NEED;
-		goto done;
+		t->set.mode |= IC_MODE;  /* IC memcpy */
 	}
 
 	if ((t->set.i_uoff % 8) || (t->set.i_voff % 8))
@@ -2722,7 +2727,7 @@ static void do_task(struct ipu_task_entry *t)
 		t->set.ic_chan = MEM_PRP_VF_MEM;
 		dev_dbg(ipu->dev, "[0x%p]ic channel MEM_PRP_VF_MEM\n", (void *)t);
 	} else if (t->set.task & VDI_VF) {
-		if (t->set.mode & VDOA_BAND_MODE) {
+		if ((t->set.mode & VDOA_BAND_MODE) || (t->set.mode & VDI_ONLY_MODE)) {
 			t->set.ic_chan = MEM_VDI_MEM;
 			if (deinterlace_3_field(t)) {
 				t->set.vdi_ic_p_chan = MEM_VDI_MEM_P;
