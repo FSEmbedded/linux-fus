@@ -39,17 +39,31 @@
 #define CHIP_ID_79985		0x85
 #define CHIP_ID_79987		0x87
 
+#define ISL7998X_STD_NTSC	0
+#define ISL7998X_STD_PAL	1
+#define ISL7998X_STD_SECAM	2
+#define ISL7998X_STD_NTSC_443	3
+#define ISL7998X_STD_PAL_M	4
+#define ISL7998X_STD_PAL_CN	5
+#define ISL7998X_STD_PAL_60	6
+#define ISL7998X_STD_AUTO	7
+
+#define ISL7997X_FRAME_TYPES	2
+
 #define SENSOR_NUM 4
 
-unsigned int g_isl7998x_width = 720;
-unsigned int g_isl7998x_field_height = 240;
-unsigned int g_isl7998x_frame_height = 480;
+static struct isl7998x_frametype {
+	unsigned int width;
+	unsigned int height;
+	unsigned int rate;
+} g_isl7998x_frametype[ISL7997X_FRAME_TYPES];
 
 /*!
  * Maintains the information on the current state of the sesor.
  */
 static struct sensor_data isl7998x_data[SENSOR_NUM];
 static unsigned int chip_id = 0;
+static unsigned int sensor_on;		/* One bit for each sensor */
 
 static int isl7998x_probe(struct i2c_client *adapter,
 				const struct i2c_device_id *device_id);
@@ -114,13 +128,50 @@ static int isl7998x_write_reg(u8 reg, u8 val)
 	return 0;
 }
 
-static int isl7998x_hardware_init(struct sensor_data *sensor)
+/* Update sensor info for frame type and frame rate */
+static void isl7998x_update_sensor(struct sensor_data *sensor, int i)
 {
-	int retval = 0;
+	sensor->streamcap.timeperframe.denominator =
+						g_isl7998x_frametype[i].rate;
+	sensor->streamcap.timeperframe.numerator = 1;
+	sensor->pix.width = g_isl7998x_frametype[i].width;
+	sensor->pix.height = g_isl7998x_frametype[i].height;
+
+	/* Do we need to set bytesperline, screensize, etc.? */
+}
+
+/* Get index for frametype array corresponding to given std_mode */
+static int isl7998x_get_frametype_index(int std_mode)
+{
+	if ((std_mode == ISL7998X_STD_PAL)
+	    || (std_mode == ISL7998X_STD_PAL_CN)
+	    || (std_mode == ISL7998X_STD_SECAM))
+		return 1;		/* 720x576@25 */
+
+	return 0;			/* 720x480@30 (also PAL-M/PAL-60) */
+}
+
+/* Update frame size and frame rate according to currently active standard. */
+static int isl7998x_update_mode(struct sensor_data *sensor)
+{
+	int std_mode;
+
+	isl7998x_write_reg(0xFF, sensor->v_channel + 1);
+	std_mode = isl7998x_read_reg(0x1C);
+	if (std_mode < 0)
+		return std_mode;
+
+	std_mode = (std_mode >> 4) & 0x07;
+	isl7998x_update_sensor(sensor, isl7998x_get_frametype_index(std_mode));
+
+	return 0;
+}
+
+static int isl7998x_start_mipi(struct sensor_data *sensor)
+{
 	void *mipi_csi2_info;
 	u32 mipi_reg;
 	int i, lanes;
-	u8 reg;
 
 	mipi_csi2_info = mipi_csi2_get_info();
 
@@ -145,6 +196,22 @@ static int isl7998x_hardware_init(struct sensor_data *sensor)
 		return -1;
 	}
 
+	/* Page 0: Set clock */
+	isl7998x_write_reg(0xFF, 0x00);
+	if (lanes == 1)
+		isl7998x_write_reg(0x0B, 0x41);
+	else
+		isl7998x_write_reg(0x0B, 0x40);
+
+	/* Page 5: Power up PLL and MIPI */
+	isl7998x_write_reg(0xFF, 0x05);
+	isl7998x_write_reg(0x34, 0x18);
+	isl7998x_write_reg(0x35, 0x00);
+	if (lanes == 1)
+		isl7998x_write_reg(0x00, 0x02);
+	else
+		isl7998x_write_reg(0x00, 0x01);
+
 	/* Only reset MIPI CSI2 HW at sensor initialize */
 	/* 13.5MHz pixel clock (720*480@30fps) * 16 bits per pixel (YUV422) = 216Mbps mipi data rate for each camera */
 	mipi_csi2_reset(mipi_csi2_info, (216 * SENSOR_NUM) / (lanes + 1));
@@ -155,15 +222,59 @@ static int isl7998x_hardware_init(struct sensor_data *sensor)
 	} else
 		pr_err("currently this sensor format can not be supported!\n");
 
+	i = 0;
+
+	/* wait for mipi stable */
+	mipi_reg = mipi_csi2_get_error1(mipi_csi2_info);
+	while ((mipi_reg != 0x0) && (i < 10)) {
+		mipi_reg = mipi_csi2_get_error1(mipi_csi2_info);
+		i++;
+		msleep(10);
+	}
+
+	if (i >= 10) {
+		pr_err("mipi csi2 can not reveive data correctly! MIPI_CSI_ERR1 = 0x%x.\n", mipi_reg);
+		return -1;
+	}
+
+	return 0;
+}
+
+static void isl7998x_stop_mipi(struct sensor_data *sensor)
+{
+	void *mipi_csi2_info;
+
+	mipi_csi2_info = mipi_csi2_get_info();
+
+	/* disable mipi csi2 */
+	if (!mipi_csi2_info)
+		return;
+
+	if (mipi_csi2_get_status(mipi_csi2_info)) {
+		mipi_csi2_disable(mipi_csi2_info);
+
+		/* Page 5: power down PLL and MIPI */
+		isl7998x_write_reg(0xFF, 0x05);
+		isl7998x_write_reg(0x34, 0x02);
+		isl7998x_write_reg(0x35, 0x31);
+		isl7998x_write_reg(0x00, 0x82);
+	}
+}
+
+
+static void isl7998x_hardware_init(unsigned int std_mode)
+{
 	// Init the isl7998x
 	if (chip_id == CHIP_ID_79985) {
 		// Page 0
 		isl7998x_write_reg(0xFF, 0x00);
 		isl7998x_write_reg(0x03, 0x00);
+#if 0
 		if (lanes == 1)
 			isl7998x_write_reg(0x0B, 0x41);
 		else
 			isl7998x_write_reg(0x0B, 0x40);
+#endif
 		isl7998x_write_reg(0x0D, 0xC9);
 		isl7998x_write_reg(0x0E, 0xC9);
 		isl7998x_write_reg(0x10, 0x01);
@@ -173,29 +284,21 @@ static int isl7998x_hardware_init(struct sensor_data *sensor)
 		isl7998x_write_reg(0x14, 0x00);
 		isl7998x_write_reg(0xFF, 0x00);
 
-		// Page 1
-		isl7998x_write_reg(0xFF, 0x01);
+		// Page 1-4 for all decoders
+		isl7998x_write_reg(0xFF, 0x0F);
 		isl7998x_write_reg(0x2F, 0xE6);
 		isl7998x_write_reg(0x33, 0x85);
-		isl7998x_write_reg(0xFF, 0x01);
-
-		// Page 2
-		isl7998x_write_reg(0xFF, 0x02);
-		isl7998x_write_reg(0x2F, 0xE6);
-		isl7998x_write_reg(0x33, 0x85);
-		isl7998x_write_reg(0xFF, 0x02);
-
-		// Page 3
-		isl7998x_write_reg(0xFF, 0x03);
-		isl7998x_write_reg(0x2F, 0xE6);
-		isl7998x_write_reg(0x33, 0x85);
-		isl7998x_write_reg(0xFF, 0x03);
-
-		// Page 4
-		isl7998x_write_reg(0xFF, 0x04);
-		isl7998x_write_reg(0x2F, 0xE6);
-		isl7998x_write_reg(0x33, 0x85);
-		isl7998x_write_reg(0xFF, 0x04);
+		/* PAL-shadow register: VACTIVE=288 lines */
+		isl7998x_write_reg(0x1C, 0x01);
+		isl7998x_write_reg(0x07, 0x12);
+		isl7998x_write_reg(0x09, 0x20);
+		/* NTSC: VACTIVE=240 lines */
+		isl7998x_write_reg(0x1C, 0x00);
+		isl7998x_write_reg(0x07, 0x02);
+		isl7998x_write_reg(0x08, 0x12);
+		isl7998x_write_reg(0x09, 0xF0);
+		isl7998x_write_reg(0xFF, 0x0F);
+		isl7998x_write_reg(0x1C, std_mode);
 
 		// Page 5
 		isl7998x_write_reg(0xFF, 0x05);
@@ -232,10 +335,10 @@ static int isl7998x_hardware_init(struct sensor_data *sensor)
 		isl7998x_write_reg(0x1F, 0x02);
 		isl7998x_write_reg(0x20, 0x00);
 		isl7998x_write_reg(0x21, 0x0C);
-		isl7998x_write_reg(0x22, 0x00);
-		isl7998x_write_reg(0x23, 0x00);
-		isl7998x_write_reg(0x24, 0x00);
-		isl7998x_write_reg(0x25, 0xF0);
+//read-only	isl7998x_write_reg(0x22, 0x00);
+//unknown reg.	isl7998x_write_reg(0x23, 0x00);
+//read-only	isl7998x_write_reg(0x24, 0x00);
+//read-only	isl7998x_write_reg(0x25, 0xF0);
 		isl7998x_write_reg(0x26, 0x00);
 		isl7998x_write_reg(0x27, 0x00);
 		isl7998x_write_reg(0x28, 0x01);
@@ -250,20 +353,20 @@ static int isl7998x_hardware_init(struct sensor_data *sensor)
 		isl7998x_write_reg(0x31, 0x00);
 		isl7998x_write_reg(0x32, 0x00);
 		isl7998x_write_reg(0x33, 0xC0);
+		isl7998x_write_reg(0x36, 0x00);
+
+#if 0
 		isl7998x_write_reg(0x34, 0x18);
 		isl7998x_write_reg(0x35, 0x00);
-		isl7998x_write_reg(0x36, 0x00);
 		if (lanes == 1)
 			isl7998x_write_reg(0x00, 0x02);
 		else
 			isl7998x_write_reg(0x00, 0x01);
+#endif
 		isl7998x_write_reg(0xFF, 0x05);
 	} else if (chip_id == CHIP_ID_79987) {
 		// Page 5
 		isl7998x_write_reg(0xFF, 0x05);
-		reg = isl7998x_read_reg(0x00);
-		reg &= ~0x80;
-		isl7998x_write_reg(0x00, reg);  /* clear PowerDown */
 
 		// Page 0
 		isl7998x_write_reg(0xFF, 0x00);
@@ -307,18 +410,27 @@ static int isl7998x_hardware_init(struct sensor_data *sensor)
 		isl7998x_write_reg(0x31, 0x00);
 		isl7998x_write_reg(0x32, 0x00);
 		isl7998x_write_reg(0x33, 0xC0);
-		isl7998x_write_reg(0x34, 0x18);
-		isl7998x_write_reg(0x36, 0x00);
 
 		// Page 0
 		isl7998x_write_reg(0xFF, 0x00);
 		isl7998x_write_reg(0x02, 0x10);  /* clear CReset_CH1 ~ Reset_CH4 */
 
+		// Page 1-4 for all decoders
 		isl7998x_write_reg(0xFF, 0x0F);
-		isl7998x_write_reg(0x08, 0x14);
 		isl7998x_write_reg(0x2F, 0xE6);
 		isl7998x_write_reg(0x33, 0x85);
+		/* PAL-shadow register: VACTIVE=288 lines */
+		isl7998x_write_reg(0x1C, 0x01);
+		isl7998x_write_reg(0x07, 0x12);
+		isl7998x_write_reg(0x09, 0x20);
+		/* NTSC: VACTIVE=240 lines */
+		isl7998x_write_reg(0x1C, 0x00);
+		isl7998x_write_reg(0x07, 0x02);
+//###		isl7998x_write_reg(0x08, 0x12);
+		isl7998x_write_reg(0x08, 0x14);
+		isl7998x_write_reg(0x09, 0xF0);
 		isl7998x_write_reg(0x45, 0x11);
+		isl7998x_write_reg(0x1C, std_mode);
 		isl7998x_write_reg(0xE7, 0x00);
 
 		// Page 0
@@ -327,17 +439,9 @@ static int isl7998x_hardware_init(struct sensor_data *sensor)
 		isl7998x_write_reg(0x08, 0x1F);
 		isl7998x_write_reg(0x09, 0x43);
 		isl7998x_write_reg(0x0A, 0x4F);
-		if (lanes == 1)
-			isl7998x_write_reg(0x0B, 0x41);
-		else
-			isl7998x_write_reg(0x0B, 0x40);
 
 		// Page 5
 		isl7998x_write_reg(0xFF, 0x05);
-		if (lanes == 1)
-			isl7998x_write_reg(0x00, 0x02);
-		else
-			isl7998x_write_reg(0x00, 0x01);
 //		isl7998x_write_reg(0x01, 0x05);  //For field mode
 		isl7998x_write_reg(0x01, 0x25);  //For frame mode
 		isl7998x_write_reg(0x02, 0xA0);
@@ -390,42 +494,6 @@ static int isl7998x_hardware_init(struct sensor_data *sensor)
 		isl7998x_write_reg(0xFF, 0x00);
 		isl7998x_write_reg(0x02, 0x00);  /* clear Reset */
 	}
-
-	msleep(10);
-
-	if (mipi_csi2_info) {
-		i = 0;
-
-		/* wait for mipi sensor ready */
-		mipi_reg = mipi_csi2_dphy_status(mipi_csi2_info);
-		while (((mipi_reg & 0x700) != 0x300) && (i < 10)) {
-			mipi_reg = mipi_csi2_dphy_status(mipi_csi2_info);
-			i++;
-			msleep(50);
-		}
-
-		if (i >= 10) {
-			pr_err("mipi csi2 can not receive sensor clk! MIPI_CSI_PHY_STATE = 0x%x.\n", mipi_reg);
-			return -1;
-		}
-
-		i = 0;
-
-		/* wait for mipi stable */
-		mipi_reg = mipi_csi2_get_error1(mipi_csi2_info);
-		while ((mipi_reg != 0x0) && (i < 10)) {
-			mipi_reg = mipi_csi2_get_error1(mipi_csi2_info);
-			i++;
-			msleep(10);
-		}
-
-		if (i >= 10) {
-			pr_err("mipi csi2 can not reveive data correctly! MIPI_CSI_ERR1 = 0x%x.\n", mipi_reg);
-			return -1;
-		}
-	}
-
-	return retval;
 }
 
 /* --------------- IOCTL functions from v4l2_int_ioctl_desc --------------- */
@@ -476,37 +544,19 @@ static int ioctl_s_power(struct v4l2_int_device *s, int on)
 static int ioctl_g_parm(struct v4l2_int_device *s, struct v4l2_streamparm *a)
 {
 	struct sensor_data *sensor = s->priv;
-	struct v4l2_captureparm *cparm = &a->parm.capture;
-	int ret = 0;
+	struct v4l2_captureparm *cparm;
 
-	switch (a->type) {
-	/* This is the only case currently handled. */
-	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
-		memset(a, 0, sizeof(*a));
-		a->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-		cparm->capability = sensor->streamcap.capability;
-		cparm->timeperframe = sensor->streamcap.timeperframe;
-		cparm->capturemode = sensor->streamcap.capturemode;
-		ret = 0;
-		break;
+	if (a->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
+		return -EINVAL;
 
-	/* These are all the possible cases. */
-	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
-	case V4L2_BUF_TYPE_VIDEO_OVERLAY:
-	case V4L2_BUF_TYPE_VBI_CAPTURE:
-	case V4L2_BUF_TYPE_VBI_OUTPUT:
-	case V4L2_BUF_TYPE_SLICED_VBI_CAPTURE:
-	case V4L2_BUF_TYPE_SLICED_VBI_OUTPUT:
-		ret = -EINVAL;
-		break;
+	isl7998x_update_mode(sensor);
+	memset(a, 0, sizeof(*a));
+	cparm = &a->parm.capture;
+	cparm->capability = sensor->streamcap.capability;
+	cparm->timeperframe = sensor->streamcap.timeperframe;
+	cparm->capturemode = sensor->streamcap.capturemode;
 
-	default:
-		pr_debug("   type is unknown - %d\n", a->type);
-		ret = -EINVAL;
-		break;
-	}
-
-	return ret;
+	return 0;
 }
 
 /*!
@@ -520,33 +570,19 @@ static int ioctl_g_parm(struct v4l2_int_device *s, struct v4l2_streamparm *a)
  */
 static int ioctl_s_parm(struct v4l2_int_device *s, struct v4l2_streamparm *a)
 {
-	int ret = 0;
+	struct sensor_data *sensor = s->priv;
+	struct v4l2_fract *tpf;
 
-	switch (a->type) {
-	/* This is the only case currently handled. */
-	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
-		break;
+	if (a->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
+		return -EINVAL;
 
-	/* These are all the possible cases. */
-	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
-	case V4L2_BUF_TYPE_VIDEO_OVERLAY:
-	case V4L2_BUF_TYPE_VBI_CAPTURE:
-	case V4L2_BUF_TYPE_VBI_OUTPUT:
-	case V4L2_BUF_TYPE_SLICED_VBI_CAPTURE:
-	case V4L2_BUF_TYPE_SLICED_VBI_OUTPUT:
-		pr_debug("   type is not " \
-			"V4L2_BUF_TYPE_VIDEO_CAPTURE but %d\n",
-			a->type);
-		ret = -EINVAL;
-		break;
+	isl7998x_update_mode(sensor);
+	tpf = &a->parm.capture.timeperframe;
+	if ((tpf->denominator != sensor->streamcap.timeperframe.denominator)
+	    || (tpf->numerator != sensor->streamcap.timeperframe.numerator))
+		return -EINVAL;
 
-	default:
-		pr_debug("   type is unknown - %d\n", a->type);
-		ret = -EINVAL;
-		break;
-	}
-
-	return ret;
+	return 0;
 }
 
 /*!
@@ -561,30 +597,32 @@ static int ioctl_g_fmt_cap(struct v4l2_int_device *s, struct v4l2_format *f)
 {
 	struct sensor_data *sensor = s->priv;
 
-	f->fmt.pix = sensor->pix;
+	isl7998x_update_mode(sensor);
+	if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
+		f->fmt.pix = sensor->pix;
 
-	return 0;
-}
-
-static int ioctl_try_fmt_cap(struct v4l2_int_device *s, struct v4l2_format *f)
-{
-	struct sensor_data *sensor = s->priv;
-
-	if (sensor->i2c_client != NULL) {
-		g_isl7998x_width =  f->fmt.pix.width;
-		if (chip_id == CHIP_ID_79987)
-			g_isl7998x_frame_height =  f->fmt.pix.height;
-		else if (chip_id == CHIP_ID_79985)
-			g_isl7998x_field_height =  f->fmt.pix.height;
+		return 0;
 	}
-	sensor->pix.width = g_isl7998x_width;
-	if (chip_id == CHIP_ID_79987)
-		sensor->pix.height = g_isl7998x_frame_height;
-	else if (chip_id == CHIP_ID_79985)
-		sensor->pix.height = g_isl7998x_field_height;
+	/*
+	 * V4L2_BUF_TYPE_PRIVATE is misused for video standard because there
+	 * is no interface function to pass this information between the slave
+	 * and the master capture driver in mxc_v4l2_capture.c. However the
+	 * mxc_v4l2_capture driver is not really interested in the TV
+	 * standard, it just needs a hint for the resolution and frame rate to
+	 * manipulate buffer croppings. So return V4L2_STD_PAL for all
+	 * standards with 720x576@50 and V4L2_STD_NTSC for all standards with
+	 * 720x480@60.
+	 */
+	if (f->type == V4L2_BUF_TYPE_PRIVATE) {
+		if (sensor->streamcap.timeperframe.denominator == 50)
+			f->fmt.pix.pixelformat = V4L2_STD_PAL;
+		else
+			f->fmt.pix.pixelformat = V4L2_STD_NTSC;
 
-	ioctl_dev_init(s);
-	return 0;
+		return 0;
+	}
+
+	return -EINVAL;
 }
 
 /*!
@@ -636,9 +674,16 @@ static int ioctl_enum_framesizes(struct v4l2_int_device *s,
 	if (fsize->index > 0)
 		return -EINVAL;
 
-	fsize->pixel_format = sensor->pix.pixelformat;
+#if 0 // imxv4l2src passes a bad pixelformat in some cases, so skip test
+	if (fsize->pixel_format != sensor->pix.pixelformat)
+		return -EINVAL;
+#endif
+
+	isl7998x_update_mode(sensor);
+
 	fsize->discrete.width = sensor->pix.width;
 	fsize->discrete.height = sensor->pix.height;
+
 	return 0;
 }
 
@@ -653,18 +698,18 @@ static int ioctl_enum_framesizes(struct v4l2_int_device *s,
 static int ioctl_enum_frameintervals(struct v4l2_int_device *s,
 					 struct v4l2_frmivalenum *fival)
 {
+	struct sensor_data *sensor = s->priv;
+
 	if (fival->index > 0)
 		return -EINVAL;
-
-	if (fival->pixel_format == 0 || fival->width == 0 ||
-			fival->height == 0) {
-		pr_warning("Please assign pixelformat, width and height.\n");
+	if (fival->pixel_format != sensor->pix.pixelformat)
 		return -EINVAL;
-	}
+	if ((fival->width != sensor->pix.width)
+	    || (fival->height != sensor->pix.height))
+		return -EINVAL;
 
 	fival->type = V4L2_FRMIVAL_TYPE_DISCRETE;
-	fival->discrete.numerator = 1;
-	fival->discrete.denominator = 30;
+	fival->discrete = sensor->streamcap.timeperframe;
 
 	return 0;
 }
@@ -725,27 +770,18 @@ static int ioctl_enum_fmt_cap(struct v4l2_int_device *s,
 static int ioctl_dev_init(struct v4l2_int_device *s)
 {
 	struct sensor_data *sensor = s->priv;
-	int ret = 0;
-	void *mipi_csi2_info;
+	int ret;
 
 	sensor->on = true;
 
-	if (sensor->i2c_client != NULL) {
-		mipi_csi2_info = mipi_csi2_get_info();
-
-		/* enable mipi csi2 */
-		if (mipi_csi2_info)
-			mipi_csi2_enable(mipi_csi2_info);
-		else {
-			printk(KERN_ERR "%s() in %s: Fail to get mipi_csi2_info!\n",
-			       __func__, __FILE__);
-			return -EPERM;
-		}
-
-		ret = isl7998x_hardware_init(sensor);
+	if (!sensor_on && (sensor->i2c_client != NULL)) {
+		ret = isl7998x_start_mipi(sensor);
+		if (ret < 0)
+			return ret;
 	}
+	sensor_on |= 1 << sensor->v_channel;
 
-	return ret;
+	return 0;
 }
 
 /*!
@@ -757,16 +793,10 @@ static int ioctl_dev_init(struct v4l2_int_device *s)
 static int ioctl_dev_exit(struct v4l2_int_device *s)
 {
 	struct sensor_data *sensor = s->priv;
-	void *mipi_csi2_info;
 
-	if (sensor->i2c_client != NULL) {
-		mipi_csi2_info = mipi_csi2_get_info();
-
-		/* disable mipi csi2 */
-		if (mipi_csi2_info)
-			if (mipi_csi2_get_status(mipi_csi2_info))
-				mipi_csi2_disable(mipi_csi2_info);
-	}
+	sensor_on &= ~(1 << sensor->v_channel);
+	if (!sensor_on && sensor->i2c_client != NULL)
+		isl7998x_stop_mipi(sensor);
 
 	return 0;
 }
@@ -786,8 +816,8 @@ static struct v4l2_int_ioctl_desc isl7998x_ioctl_desc[] = {
 	{vidioc_int_init_num, (v4l2_int_ioctl_func *) ioctl_init},
 	{vidioc_int_enum_fmt_cap_num,
 				(v4l2_int_ioctl_func *) ioctl_enum_fmt_cap},
-	{vidioc_int_try_fmt_cap_num,
-				(v4l2_int_ioctl_func *)ioctl_try_fmt_cap},
+/*	{vidioc_int_try_fmt_cap_num,
+				(v4l2_int_ioctl_func *)ioctl_try_fmt_cap}, */
 	{vidioc_int_g_fmt_cap_num, (v4l2_int_ioctl_func *) ioctl_g_fmt_cap},
 /*	{vidioc_int_s_fmt_cap_num, (v4l2_int_ioctl_func *) ioctl_s_fmt_cap}, */
 	{vidioc_int_g_parm_num, (v4l2_int_ioctl_func *) ioctl_g_parm},
@@ -873,66 +903,93 @@ static int isl7998x_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
 	struct device *dev = &client->dev;
+	struct sensor_data *sensor = &isl7998x_data[0];
 	int retval;
+	const char *name;
+	const char *standard;
+	unsigned int std_mode;
 
 	/* Set initial values for the sensor struct. */
-	memset(&isl7998x_data[0], 0, sizeof(isl7998x_data[0]));
-	isl7998x_data[0].sensor_clk = devm_clk_get(dev, "csi_mclk");
-	if (IS_ERR(isl7998x_data[0].sensor_clk)) {
+	memset(sensor, 0, sizeof(*sensor));
+	sensor->sensor_clk = devm_clk_get(dev, "csi_mclk");
+	if (IS_ERR(sensor->sensor_clk)) {
 		/* assuming clock enabled by default */
-		isl7998x_data[0].sensor_clk = NULL;
+		sensor->sensor_clk = NULL;
 		dev_err(dev, "clock-frequency missing or invalid\n");
-		return PTR_ERR(isl7998x_data[0].sensor_clk);
+		return PTR_ERR(sensor->sensor_clk);
 	}
 
-	retval = of_property_read_u32(dev->of_node, "mclk",
-					&(isl7998x_data[0].mclk));
+	retval = of_property_read_u32(dev->of_node, "mclk", &(sensor->mclk));
 	if (retval) {
 		dev_err(dev, "mclk missing or invalid\n");
 		return retval;
 	}
 
-	retval = of_property_read_u32(dev->of_node, "mclk_source",
-					(u32 *) &(isl7998x_data[0].mclk_source));
-	if (retval) {
-		dev_err(dev, "mclk_source missing or invalid\n");
-		return retval;
+	/* Get video standard to use, auto detection by default */
+	std_mode = ISL7998X_STD_AUTO;
+	if (!of_property_read_string(dev->of_node, "standard", &standard)) {
+		if (!strcmp(standard, "NTSC"))
+			std_mode = ISL7998X_STD_NTSC;
+		else if (!strcmp(standard, "PAL"))
+			std_mode = ISL7998X_STD_PAL;
+		else if (!strcmp(standard, "SECAM"))
+			std_mode = ISL7998X_STD_SECAM;
+		else if (!strcmp(standard, "NTSC-4.43"))
+			std_mode = ISL7998X_STD_NTSC_443;
+		else if (!strcmp(standard, "PAL-M"))
+			std_mode = ISL7998X_STD_PAL_M;
+		else if (!strcmp(standard, "PAL-CN"))
+			std_mode = ISL7998X_STD_PAL_CN;
+		else if (!strcmp(standard, "PAL-60"))
+			std_mode = ISL7998X_STD_PAL_60;
+		else if (strcmp(standard, "AUTO"))
+			pr_warning("Invalid video standard %s,"
+				   " using AUTO detection\n", standard);
 	}
 
-	retval = of_property_read_u32(dev->of_node, "csi_id",
-					&(isl7998x_data[0].csi));
-	if (retval) {
-		dev_err(dev, "csi id missing or invalid\n");
-		return retval;
-	}
+	clk_prepare_enable(sensor->sensor_clk);
 
-	clk_prepare_enable(isl7998x_data[0].sensor_clk);
-
-	isl7998x_data[0].i2c_client = client;
-	isl7998x_data[0].pix.pixelformat = V4L2_PIX_FMT_UYVY;
-	isl7998x_data[0].streamcap.capturemode = 0;
-	isl7998x_data[0].streamcap.timeperframe.denominator = 30;
-	isl7998x_data[0].streamcap.timeperframe.numerator = 1;
-	isl7998x_data[0].is_mipi = 1;
+	sensor->i2c_client = client;
 
 	isl7998x_write_reg(0xFF, 0x00);
 	chip_id = isl7998x_read_reg(0x00);
 	if ((chip_id != CHIP_ID_79985) && (chip_id != CHIP_ID_79987)) {
 		pr_warning("isl7998x is not found, chip id reg 0x00 = 0x%x.\n", chip_id);
-		clk_disable_unprepare(isl7998x_data[0].sensor_clk);
+		clk_disable_unprepare(sensor->sensor_clk);
 		return -ENODEV;
 	}
 
-	isl7998x_data[0].pix.width = g_isl7998x_width;
 	if (chip_id == CHIP_ID_79987) {
-		isl7998x_data[0].pix.height = g_isl7998x_frame_height;
-		isl7998x_data[0].is_mipi_interlaced = 1;
-	} else if (chip_id == CHIP_ID_79985)
-		isl7998x_data[0].pix.height = g_isl7998x_field_height;
+		name = "ISL79987";
+		g_isl7998x_frametype[0].width = 720;
+		g_isl7998x_frametype[0].height = 480;
+		g_isl7998x_frametype[1].width = 720;
+		g_isl7998x_frametype[1].height = 576;
+		g_isl7998x_frametype[0].rate = 30;
+		g_isl7998x_frametype[1].rate = 25;
+		sensor->pix.field = V4L2_FIELD_INTERLACED;
+		sensor->is_mipi_interlaced = 1;
+	} else if (chip_id == CHIP_ID_79985) {
+		name = "ISL79985";
+		g_isl7998x_frametype[0].width = 720;
+		g_isl7998x_frametype[0].height = 240;
+		g_isl7998x_frametype[1].width = 720;
+		g_isl7998x_frametype[1].height = 288;
+		g_isl7998x_frametype[0].rate = 60;
+		g_isl7998x_frametype[1].rate = 50;
+		sensor->pix.field = V4L2_FIELD_ALTERNATE;
+	}
 
-	memcpy(&isl7998x_data[1], &isl7998x_data[0], sizeof(struct sensor_data));
-	memcpy(&isl7998x_data[2], &isl7998x_data[0], sizeof(struct sensor_data));
-	memcpy(&isl7998x_data[3], &isl7998x_data[0], sizeof(struct sensor_data));
+	sensor->pix.pixelformat = V4L2_PIX_FMT_UYVY;
+	sensor->pix.priv = 1;
+	sensor->streamcap.capability = V4L2_CAP_TIMEPERFRAME;
+	sensor->streamcap.capturemode = 0;
+	sensor->is_mipi = 1;
+	isl7998x_update_sensor(sensor, isl7998x_get_frametype_index(std_mode));
+
+	memcpy(&isl7998x_data[1], sensor, sizeof(struct sensor_data));
+	memcpy(&isl7998x_data[2], sensor, sizeof(struct sensor_data));
+	memcpy(&isl7998x_data[3], sensor, sizeof(struct sensor_data));
 
 	isl7998x_data[1].i2c_client = NULL;
 	isl7998x_data[2].i2c_client = NULL;
@@ -958,14 +1015,17 @@ static int isl7998x_probe(struct i2c_client *client,
 	isl7998x_int_device[1].priv = &isl7998x_data[1];
 	isl7998x_int_device[2].priv = &isl7998x_data[2];
 	isl7998x_int_device[3].priv = &isl7998x_data[3];
+
+	isl7998x_hardware_init(std_mode);
+
 	v4l2_int_device_register(&isl7998x_int_device[0]);
 	v4l2_int_device_register(&isl7998x_int_device[1]);
 	v4l2_int_device_register(&isl7998x_int_device[2]);
 	retval = v4l2_int_device_register(&isl7998x_int_device[3]);
 
-	clk_disable_unprepare(isl7998x_data[0].sensor_clk);
+	clk_disable_unprepare(sensor->sensor_clk);
 
-	pr_info("isl7998x_mipi is found\n");
+	pr_info("isl7998x_mipi (%s) is found\n", name);
 	return retval;
 }
 
