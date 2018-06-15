@@ -254,7 +254,7 @@
 			regulator-name = "can";
 		};
 
-#ifdef CONFIG_ARMSTONEA9_CAMERA
+#ifdef CONFIG_ARMSTONEA9_PARALLEL_CAMERA
 		reg_camera_dovdd: camera_dovdd {
 			compatible = "regulator-fixed";
 			regulator-name = "DOVDD-supply";
@@ -275,7 +275,7 @@
 			regulator-min-microvolt = <1500000>;
 			regulator-max-microvolt = <1500000>;
 		};
-#endif /* CONFIG_ARMSTONEA9_CAMERA */
+#endif /* CONFIG_ARMSTONEA9_PARALLEL_CAMERA */
 	};
 
 	/* F&S board information */
@@ -530,7 +530,6 @@
 		fb-names = "mxs-lcdif2";
 	};
 
-#ifdef CONFIG_ARMSTONEA9_CAMERA
 #ifdef CONFIG_ARMSTONEA9_PARALLEL_CAMERA
 	/* Parallel digital camera interface */
 	v4l2_cap_0 {
@@ -540,18 +539,6 @@
 		mclk_source = <0>;
 		status = "okay";
 	};
-#endif
-
-#ifdef CONFIG_ARMSTONEA9_SERIAL_CAMERA
-	/* Serial MIPI camera interface */
-	v4l2_cap_1 {
-		compatible = "fsl,imx6q-v4l2-capture";
-		ipu_id = <0>;
-		csi_id = <1>;
-		mclk_source = <0>;
-		status = "okay";
-	};
-#endif
 
 	v4l2_out {
 		compatible = "fsl,mxc_v4l2_output";
@@ -704,28 +691,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
-
-#if 0
-#ifdef CONFIG_ARMSTONEA9_SERIAL_CAMERA
-	ov564x_mipi: ov564x_mipi@3c {
-		compatible = "ovti,ov564x_mipi";
-		reg = <0x3c>;
-		/* derived from IMX6QDL_CLK_CKO2 */
-		clocks = <&clks IMX6QDL_CLK_CKO>;
-		clock-names = "csi_mclk";
-		DOVDD-supply = <&reg_camera_dovdd>; /* 1.8v */
-		AVDD-supply = <&reg_camera_avdd>;  /* 2.8v, rev C board is VGEN3
-						rev B board is VGEN5 */
-		DVDD-supply = <&reg_camera_dvdd>;  /* 1.5v*/
-		pwn-gpios = <&gpio5 24 GPIO_ACTIVE_HIGH>;
-		/* not available */
-		rst-gpios = <&gpio5 23 GPIO_ACTIVE_LOW>;
-		csi_id = <1>;
-		mclk = <24000000>;
-		mclk_source = <0>;
-	};
-#endif /* CONFIG_ARMSTONEA9_SERIAL_CAMERA */
-#endif
 
 #ifdef CONFIG_ARMSTONEA9_PARALLEL_CAMERA
 	ov9665: ov9665@30 {
@@ -1080,16 +1045,6 @@
 	fus,ecc_strength = <8>;		/* Spare area 64 bytes */
 	//fus,ecc_strength = <40>;	/* Spare area 224 bytes */
 	status = "okay";
-};
-#endif
-
-#ifdef CONFIG_ARMSTONEA9_SERIAL_CAMERA
-&mipi_csi {
-	status = "okay";
-	ipu_id = <0>;
-	csi_id = <1>;
-	v_channel = <0>;
-	lanes = <2>;
 };
 #endif
 

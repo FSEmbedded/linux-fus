@@ -257,7 +257,7 @@
 #endif
 
 #if 0 //### todo
-#ifdef CONFIG_NETDCUA9_CAMERA
+#ifdef CONFIG_NETDCUA9_PARALLEL_CAMERA
 		reg_camera_dovdd: camera_dovdd {
 			compatible = "regulator-fixed";
 			regulator-name = "DOVDD-supply";
@@ -278,7 +278,7 @@
 			regulator-min-microvolt = <1500000>;
 			regulator-max-microvolt = <1500000>;
 		};
-#endif /* CONFIG_NETDCUA9_CAMERA */
+#endif /* CONFIG_NETDCUA9_PARALLEL_CAMERA */
 #endif
 	};
 
@@ -488,7 +488,6 @@
 	};
 
 #if 0 //### todo
-#ifdef CONFIG_NETDCUA9_CAMERA
 #ifdef CONFIG_NETDCUA9_PARALLEL_CAMERA
 	/* Parallel digital camera interface */
 	v4l2_cap_0 {
@@ -498,18 +497,6 @@
 		mclk_source = <0>;
 		status = "okay";
 	};
-#endif
-
-#ifdef CONFIG_NETDCUA9_SERIAL_CAMERA
-	/* Serial MIPI camera interface */
-	v4l2_cap_1 {
-		compatible = "fsl,imx6q-v4l2-capture";
-		ipu_id = <0>;
-		csi_id = <1>;
-		mclk_source = <0>;
-		status = "okay";
-	};
-#endif
 
 	v4l2_out {
 		compatible = "fsl,mxc_v4l2_output";
@@ -776,18 +763,6 @@
 //###	fus,ecc_strength = <40>;	/* Spare area 224 bytes */
 	status = "okay";
 };
-#endif
-
-#if 0 //### todo
-#ifdef CONFIG_NETDCUA9_SERIAL_CAMERA
-&mipi_csi {
-	status = "okay";
-	ipu_id = <0>;
-	csi_id = <1>;
-	v_channel = <0>;
-	lanes = <2>;
-};
-#endif
 #endif
 
 #ifdef CONFIG_NETDCUA9_WM9715_AUDIO
@@ -1378,7 +1353,7 @@
 		};
 
 #ifdef CONFIG_NETDCUA9_I2C_C
-		/* I2C_A: RTC (PCA8565), Camera analog */
+		/* I2C_A: RTC (PCA8565), parallel camera */
 		pinctrl_i2c1: i2c1grp-1 {
 			fsl,pins = <
 				MX6QDL_PAD_CSI0_DAT8__I2C1_SDA		0x4001b8b1

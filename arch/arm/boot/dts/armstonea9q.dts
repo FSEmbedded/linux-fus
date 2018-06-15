@@ -176,14 +176,8 @@ wvga {					\
 /* AUDIO */
 #define CONFIG_ARMSTONEA9_SGTL5000_AUDIO
 
-/* Camera connected */
-#define CONFIG_ARMSTONEA9_CAMERA
-
 /* Camera on parallel CSI interface */
 //#define CONFIG_ARMSTONEA9_PARALLEL_CAMERA
-
-/* Camera on serial MIPI CSI interface */
-#define CONFIG_ARMSTONEA9_SERIAL_CAMERA
 
 /* SD-CARD - SD_A is micro SD */
 #define CONFIG_ARMSTONEA9_SD_A

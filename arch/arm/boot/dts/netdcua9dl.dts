@@ -166,14 +166,8 @@ wvga {					\
 #define CONFIG_NETDCUA9_WM9715_AUDIO
 
 #if 0 //### todo
-/* Camera connected */
-//#define CONFIG_NETDCUA9_CAMERA
-
 /* Camera on parallel CSI interface */
 //#define CONFIG_NETDCUA9_PARALLEL_CAMERA
-
-/* Camera on serial MIPI CSI interface */
-//#define CONFIG_NETDCUA9_SERIAL_CAMERA
 #endif
 
 /* SD-CARD - SD_A is SD card slot */

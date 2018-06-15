@@ -529,8 +529,7 @@
 	};
 
 #ifdef CONFIG_EFUSA9_CAMERA
-#ifdef CONFIG_EFUSA9_PARALLEL_CAMERA
-	/* Parallel digital camera interface */
+	/* First capture device, for parallel camera or first MIPI channel */
 	v4l2_cap_0 {
 		compatible = "fsl,imx6q-v4l2-capture";
 		ipu_id = <0>;
@@ -538,10 +537,9 @@
 		mclk_source = <0>;
 		status = "okay";
 	};
-#endif
 
 #ifdef CONFIG_EFUSA9_SERIAL_CAMERA
-	/* Serial MIPI camera interface */
+	/* Second capture device, for second MIPI channel */
 	v4l2_cap_1 {
 		compatible = "fsl,imx6q-v4l2-capture";
 		ipu_id = <0>;
@@ -751,8 +749,8 @@
 		interrupt-parent = <&gpio1>;
 		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
 	};
-#if 0 	//### FIXME
 #ifdef CONFIG_EFUSA9_SERIAL_CAMERA
+#ifdef CONFIG_EFUSA9_MIPI_CAMERA_OV564X
 	ov564x_mipi: ov564x_mipi@3c {
 		compatible = "ovti,ov564x_mipi";
 		reg = <0x3c>;
@@ -766,12 +764,21 @@
 		pwn-gpios = <&gpio5 24 GPIO_ACTIVE_HIGH>;
 		/* not available */
 		rst-gpios = <&gpio5 23 GPIO_ACTIVE_LOW>;
-		csi_id = <1>;
+		csi_id = <0>;
 		mclk = <24000000>;
 		mclk_source = <0>;
 	};
+#endif
+#ifdef CONFIG_EFUSA9_MIPI_CAMERA_ISL7998X
+	isl7998x_mipi: isl7998x_mipi@44 {
+		compatible = "intersil,isl7998x_mipi";
+		reg = <0x44>;
+		clocks = <&clks IMX6QDL_CLK_CKO2>;
+		clock-names = "csi_mclk";
+		mclk = <27000000>;
+	};
+#endif
 #endif /*  CONFIG_EFUSA9_SERIAL_CAMERA */
-#endif //### FIXME
 
 #ifdef CONFIG_EFUSA9_PARALLEL_CAMERA
 	ov9665: ov9665@30 {
@@ -973,10 +980,21 @@
 #ifdef CONFIG_EFUSA9_SERIAL_CAMERA
 &mipi_csi {
 	status = "okay";
-	ipu_id = <0>;
-	csi_id = <1>;
-	v_channel = <0>;
 	lanes = <2>;
+
+	mipi-csi-channel@0 {
+		ipu_id = <0>;
+		csi_id = <0>;
+		v_channel = <0>;
+		status = "okay";
+	};
+
+	mipi-csi-channel@1 {
+		ipu_id = <0>;
+		csi_id = <1>;
+		v_channel = <1>;
+		status = "okay";
+	};
 };
 #endif
 
