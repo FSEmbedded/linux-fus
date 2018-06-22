@@ -43,7 +43,6 @@
 #include <linux/busfreq-imx.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
-#include <linux/of_mtd.h>
 #include "gpmi-regs.h"
 #include "bch-regs.h"
 
@@ -392,7 +391,39 @@ struct timing_threshod {
  *                            Bit        2112 Bytes total
  */
 
-static struct nand_ecclayout gpmi_nand_fus_ecclayout;
+static int gpmi_ooblayout_fus_ecc(struct mtd_info *mtd, int section,
+			      struct mtd_oob_region *oobregion)
+{
+	struct nand_chip *chip = mtd_to_nand(mtd);
+
+	if (section)
+		return -ERANGE;
+
+	oobregion->offset = mtd->oobsize - chip->ecc.bytes;
+	oobregion->length = chip->ecc.bytes;
+
+	return 0;
+}
+
+static int gpmi_ooblayout_fus_free(struct mtd_info *mtd, int section,
+			       struct mtd_oob_region *oobregion)
+{
+	struct nand_chip *chip = mtd_to_nand(mtd);
+
+	if (section)
+		return -ERANGE;
+
+	/* The available oob size we have. */
+	oobregion->offset = 4;
+	oobregion->length = mtd->oobsize - chip->ecc.bytes - 4;
+
+	return 0;
+}
+
+static const struct mtd_ooblayout_ops gpmi_ooblayout_fus_ops = {
+	.ecc = gpmi_ooblayout_fus_ecc,
+	.free = gpmi_ooblayout_fus_free,
+};
 
 static const struct gpmi_devdata gpmi_devdata_imx6q = {
 	.type = IS_MX6Q,
@@ -433,8 +464,8 @@ static struct dma_chan *get_dma_chan(struct gpmi_nand_data *priv);
 static void gpmi_dump_info(struct gpmi_nand_data *this)
 {
 	struct resources *r = &this->resources;
-	struct mtd_info *mtd = &this->mtd;
 	struct nand_chip *chip = &this->nand;
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	u32 reg;
 	int i;
 
@@ -968,8 +999,8 @@ static int bch_set_geometry(struct gpmi_nand_data *priv, unsigned int oobavail,
 			    unsigned int index)
 {
 	struct resources *r = &priv->resources;
-	struct mtd_info *mtd = &priv->mtd;
 	struct nand_chip *chip = &priv->nand;
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	unsigned int layout0, layout1;
 	int ret;
 
@@ -1651,7 +1682,7 @@ static int enable_edo_mode(struct gpmi_nand_data *this, int mode)
 {
 	struct resources  *r = &this->resources;
 	struct nand_chip *nand = &this->nand;
-	struct mtd_info	 *mtd = &this->mtd;
+	struct mtd_info *mtd = nand_to_mtd(nand);
 	uint8_t feature[ONFI_SUBFEATURE_PARAM_LEN] = {};
 	unsigned long rate;
 	int ret;
@@ -2695,7 +2726,7 @@ static int gpmi_fus_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
  * Write a page to NAND without ECC
  */
 static int gpmi_fus_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
-				   const uint8_t *buf, int oob_required)
+				   const uint8_t *buf, int oob_required, int page)
 {
 	struct gpmi_nand_data *priv = chip->priv;
 
@@ -2912,7 +2943,7 @@ static int gpmi_fus_read_page(struct mtd_info *mtd, struct nand_chip *chip,
  * Write a page to NAND with ECC.
  */
 static int gpmi_fus_write_page(struct mtd_info *mtd, struct nand_chip *chip,
-			       const uint8_t *buf, int oob_required)
+			       const uint8_t *buf, int oob_required, int page)
 {
 	struct gpmi_nand_data *priv = chip->priv;
 	struct resources *r = &priv->resources;
@@ -3048,7 +3079,7 @@ static int gpmi_fus_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 
 static void gpmi_fus_exit(struct gpmi_nand_data *priv)
 {
-	struct mtd_info *mtd = &priv->mtd;
+	struct mtd_info *mtd = nand_to_mtd(&priv->nand);
 
 	nand_release(mtd);
 
@@ -3066,15 +3097,14 @@ static void gpmi_fus_exit(struct gpmi_nand_data *priv)
 
 static int gpmi_fus_init(struct gpmi_nand_data *priv)
 {
-	struct mtd_info  *mtd = &priv->mtd;
 	struct nand_chip *chip = &priv->nand;
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	int ret;
 	unsigned int chunk_shift;
 	unsigned int ecc_strength;
 	unsigned int skipblocks;
 	unsigned int oobavail;
 	unsigned int ecc_bytes;
-	unsigned int i;
 	struct mtd_part_parser_data ppdata = {};
 
 	/* init current chip */
@@ -3146,13 +3176,7 @@ static int gpmi_fus_init(struct gpmi_nand_data *priv)
 	ecc_bytes = ecc_strength * chip->ecc.steps * priv->gf_len / 8;
 	chip->ecc.bytes = ecc_bytes;
 	oobavail = mtd->oobsize - ecc_bytes - 4;
-	chip->ecc.layout = &gpmi_nand_fus_ecclayout;
-	chip->ecc.layout->oobfree[0].offset = 4;
-	chip->ecc.layout->oobfree[0].length = oobavail;
-	chip->ecc.layout->oobfree[1].length = 0; /* Sentinel */
-	chip->ecc.layout->eccbytes = ecc_bytes;
-	for (i = 0; i < ecc_bytes; i++)
-		chip->ecc.layout->eccpos[i] = oobavail + 4 + i;
+	mtd_set_ooblayout(mtd, &gpmi_ooblayout_fus_ops);
 
 	mtd->oobavail = oobavail;
 	mtd->ecc_strength = ecc_strength;
@@ -3229,7 +3253,6 @@ static int gpmi_fus_init(struct gpmi_nand_data *priv)
 	}
 
 	/* Parse MTD partition table and register MTD device */
-	ppdata.of_node = priv->pdev->dev.of_node;
 	ret = mtd_device_parse_register(mtd, NULL, &ppdata, NULL, 0);
 	if (!ret)
 		return 0;
