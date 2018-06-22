@@ -16,8 +16,6 @@
 
 / {
 	aliases {
-		can0 = &flexcan1;
-		can1 = &flexcan2;
 		ethernet0 = &fec1;
 		ethernet1 = &fec2;
 		gpio0 = &gpio1;

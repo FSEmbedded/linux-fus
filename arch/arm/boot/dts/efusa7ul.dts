@@ -429,14 +429,22 @@ wvga {					\
 };
 #endif /* CONFIG_EFUSA7UL_ETH1 */
 
+#ifdef CONFIG_EFUSA7UL_ULL
 &flexcan1 {
+#else
+&can1 {
+#endif
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1>;
 	xceiver-supply = <&reg_can>;
 	status = "okay";
 };
 
+#ifdef CONFIG_EFUSA7UL_ULL
 &flexcan2 {
+#else
+&can2 {
+#endif
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
 	xceiver-supply = <&reg_can>;
