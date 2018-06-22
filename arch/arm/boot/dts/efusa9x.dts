@@ -798,6 +798,8 @@ lvds_wvga {				\
 		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
 		interrupt-parent = <&gpio7>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		x-rev;
+		y-rev;
 	};
 #endif
 

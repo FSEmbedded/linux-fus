@@ -805,6 +805,8 @@
 		interrupt-parent = <&gpio1>;
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
+		x-rev;
+		y-rev;
 	};
 #endif
 
