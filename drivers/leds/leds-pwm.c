@@ -26,7 +26,7 @@
 struct led_pwm_data {
 	struct led_classdev	cdev;
 	struct pwm_device	*pwm;
-	unsigned int		active_low;
+	unsigned int		flags;
 	unsigned int		period;
 	int			duty;
 	bool			can_sleep;
@@ -57,10 +57,15 @@ static void led_pwm_set(struct led_classdev *led_cdev,
 	unsigned int max = led_dat->cdev.max_brightness;
 	unsigned long long duty =  led_dat->period;
 
+	if (led_dat->flags & LED_PWM_FLAGS_GAMMA_2) {
+		/* Use Gamma = 2.0 (i.e. square function) */
+		brightness *= brightness;
+		max *= max;
+	}
 	duty *= brightness;
 	do_div(duty, max);
 
-	if (led_dat->active_low)
+	if (led_dat->flags & LED_PWM_FLAGS_ACTIVE_LOW)
 		duty = led_dat->period - duty;
 
 	led_dat->duty = duty;
@@ -94,7 +99,7 @@ static int led_pwm_add(struct device *dev, struct led_pwm_priv *priv,
 	struct pwm_args pargs;
 	int ret;
 
-	led_data->active_low = led->active_low;
+	led_data->flags = led->flags;
 	led_data->cdev.name = led->name;
 	led_data->cdev.default_trigger = led->default_trigger;
 	led_data->cdev.brightness = LED_OFF;
@@ -156,7 +161,11 @@ static int led_pwm_create_of(struct device *dev, struct led_pwm_priv *priv)
 
 		led.default_trigger = of_get_property(child,
 						"linux,default-trigger", NULL);
-		led.active_low = of_property_read_bool(child, "active-low");
+		led.flags = 0;
+		if (of_property_read_bool(child, "active-low"))
+			led.flags |= LED_PWM_FLAGS_ACTIVE_LOW;
+		if (of_property_read_bool(child, "gamma2"))
+			led.flags |= LED_PWM_FLAGS_GAMMA_2;
 		of_property_read_u32(child, "max-brightness",
 				     &led.max_brightness);
 

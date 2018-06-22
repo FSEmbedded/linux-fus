@@ -162,7 +162,7 @@ static int imx_pwm_config_v2(struct pwm_chip *chip,
 	duty_cycles = c;
 
 	/* invert polarity */
-	if (pwm->polarity)
+	if (pwm->args.polarity)
 		duty_cycles = period_cycles - duty_cycles;
 
 	/*
