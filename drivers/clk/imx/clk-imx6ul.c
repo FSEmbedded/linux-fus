@@ -26,6 +26,22 @@
 #define BM_CCM_CCDR_MMDC_CH0_MASK	(0x2 << 16)
 #define CCDR	0x4
 
+/* ### FIXME: The values with ? are not verified yet */
+static const char *cko1_sels[]		= {
+	"pll3_usb_otg"/*?*/, "pll2_bus"/*?*/, "pll1_sys"/*?*/,
+	"pll5_video_div"/*?*/, "dummy", "axi", "enfc_podf", "dummy",
+	"sim_sel", "dummy", "lcdif_sel", "ahb", "ipg", "perclk", "ckil",
+	"pll4_audio_div",
+};
+static const char *cko2_sels[]		= {
+	"dummy", "mmdc_p0_fast", "gpmi_io", "usdhc1", "dummy", "dummy",
+	"ecspi_podf", "dummy", "gpmi_bch_apb", "dummy", "dummy", "csi",
+	"dummy", "dummy", "osc", "dummy", "dummy", "usdhc2", "sai1", "sai2",
+	"sai3_podf", "dummy", "dummy", "can_podf", "dummy", "qspi1", "dummy",
+	"eim_slow", "uart_podf", "spdif", "dummy", "dummy",
+};
+static const char *cko_sels[] = { "cko1", "cko2", };
+
 static const char *pll_bypass_src_sels[] = { "osc", "dummy", };
 static const char *pll1_bypass_sels[] = { "pll1", "pll1_bypass_src", };
 static const char *pll2_bypass_sels[] = { "pll2", "pll2_bypass_src", };
@@ -80,7 +96,7 @@ static int const clks_init_on[] __initconst = {
 	IMX6UL_CLK_MMDC_P0_FAST, IMX6UL_CLK_MMDC_P0_IPG,
 };
 
-static struct clk_div_table clk_enet_ref_table[] = {
+static struct clk_div_table clk_enet_div_table[] = {
 	{ .val = 0, .div = 20, },
 	{ .val = 1, .div = 10, },
 	{ .val = 2, .div = 5, },
@@ -113,17 +129,29 @@ static u32 share_count_esai;
 static inline int clk_on_imx6ul(void)
 {
 	return of_machine_is_compatible("fsl,imx6ul");
+/* ### FIXME: the following code would be faster but we have no access to
+ * arch/arm/mach-imx/mxc.h.
+ */
+	
+	//return cpu_is_imx6ul();
 }
 
 static inline int clk_on_imx6ull(void)
 {
 	return of_machine_is_compatible("fsl,imx6ull");
+/* ### FIXME: the following code would be faster but we have no access to
+ * arch/arm/mach-imx/mxc.h.
+ */
+	//return cpu_is_imx6ull();
 }
 
 static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 {
 	struct device_node *np;
+	struct property *prop;
 	void __iomem *base;
+	const __be32 *p;
+	u32 val;
 	int i;
 
 	clks[IMX6UL_CLK_DUMMY] = imx_clk_fixed("dummy", 0);
@@ -177,7 +205,6 @@ static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 	clks[IMX6UL_CLK_PLL3_USB_OTG]	= imx_clk_gate("pll3_usb_otg",	"pll3_bypass", base + 0x10, 13);
 	clks[IMX6UL_CLK_PLL4_AUDIO]	= imx_clk_gate("pll4_audio",	"pll4_bypass", base + 0x70, 13);
 	clks[IMX6UL_CLK_PLL5_VIDEO]	= imx_clk_gate("pll5_video",	"pll5_bypass", base + 0xa0, 13);
-	clks[IMX6UL_CLK_PLL6_ENET]	= imx_clk_gate("pll6_enet",	"pll6_bypass", base + 0xe0, 13);
 	clks[IMX6UL_CLK_PLL7_USB_HOST]	= imx_clk_gate("pll7_usb_host",	"pll7_bypass", base + 0x20, 13);
 
 	/*
@@ -206,14 +233,15 @@ static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 	clks[IMX6UL_CLK_PLL3_PFD2] = imx_clk_pfd("pll3_pfd2_508m", "pll3_usb_otg", base + 0xf0,	 2);
 	clks[IMX6UL_CLK_PLL3_PFD3] = imx_clk_pfd("pll3_pfd3_454m", "pll3_usb_otg", base + 0xf0,	 3);
 
-	clks[IMX6UL_CLK_ENET_REF] = clk_register_divider_table(NULL, "enet_ref", "pll6_enet", 0,
-			base + 0xe0, 0, 2, 0, clk_enet_ref_table, &imx_ccm_lock);
-	clks[IMX6UL_CLK_ENET2_REF] = clk_register_divider_table(NULL, "enet2_ref", "pll6_enet", 0,
-			base + 0xe0, 2, 2, 0, clk_enet_ref_table, &imx_ccm_lock);
+	clks[IMX6UL_CLK_ENET_DIV] = clk_register_divider_table(NULL, "enet_div", "pll6_bypass", 0,
+			base + 0xe0, 0, 2, 0, clk_enet_div_table, &imx_ccm_lock);
+	clks[IMX6UL_CLK_ENET2_DIV] = clk_register_divider_table(NULL, "enet2_div", "pll6_bypass", 0,
+			base + 0xe0, 2, 2, 0, clk_enet_div_table, &imx_ccm_lock);
 
-	clks[IMX6UL_CLK_ENET2_REF_125M] = imx_clk_gate("enet_ref_125m", "enet2_ref", base + 0xe0, 20);
-	clks[IMX6UL_CLK_ENET_PTP_REF]	= imx_clk_fixed_factor("enet_ptp_ref", "pll6_enet", 1, 20);
-	clks[IMX6UL_CLK_ENET_PTP]	= imx_clk_gate("enet_ptp", "enet_ptp_ref", base + 0xe0, 21);
+	clks[IMX6UL_CLK_ENET_REF] = imx_clk_gate("enet_ref", "enet_div", base + 0xe0, 13);
+	clks[IMX6UL_CLK_ENET2_REF] = imx_clk_gate("enet2_ref", "enet2_div", base + 0xe0, 20);
+	clks[IMX6UL_CLK_ENET_PTP_DIV] 	= imx_clk_fixed_factor("enet_ptp_div", "pll6_bypass", 1, 20);
+	clks[IMX6UL_CLK_ENET_PTP] 	= imx_clk_gate("enet_ptp", "enet_ptp_div", base + 0xe0, 21);
 
 	clks[IMX6UL_CLK_PLL4_POST_DIV]  = clk_register_divider_table(NULL, "pll4_post_div", "pll4_audio",
 		 CLK_SET_RATE_PARENT | CLK_SET_RATE_GATE, base + 0x70, 19, 2, 0, post_div_table, &imx_ccm_lock);
@@ -275,6 +303,10 @@ static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 	clks[IMX6UL_CLK_LDB_DI0_DIV_SEL]  = imx_clk_mux("ldb_di0", base + 0x20, 10, 1, ldb_di0_div_sels, ARRAY_SIZE(ldb_di0_div_sels));
 	clks[IMX6UL_CLK_LDB_DI1_DIV_SEL]  = imx_clk_mux("ldb_di1", base + 0x20, 11, 1, ldb_di1_div_sels, ARRAY_SIZE(ldb_di1_div_sels));
 
+	clks[IMX6UL_CLK_CKO1_SEL]	  = imx_clk_mux("cko1_sel",	base + 0x60, 0, 4, cko1_sels, ARRAY_SIZE(cko1_sels));
+	clks[IMX6UL_CLK_CKO2_SEL]	  = imx_clk_mux("cko2_sel",	base + 0x60, 16, 5, cko2_sels, ARRAY_SIZE(cko2_sels));
+	clks[IMX6UL_CLK_CKO]		  = imx_clk_mux("cko",		base + 0x60, 8, 1, cko_sels, ARRAY_SIZE(cko_sels));
+
 	clks[IMX6UL_CLK_LDB_DI0_DIV_3_5] = imx_clk_fixed_factor("ldb_di0_div_3_5", "ldb_di0_sel", 2, 7);
 	clks[IMX6UL_CLK_LDB_DI0_DIV_7]	 = imx_clk_fixed_factor("ldb_di0_div_7",   "ldb_di0_sel", 1, 7);
 	clks[IMX6UL_CLK_LDB_DI1_DIV_3_5] = imx_clk_fixed_factor("ldb_di1_div_3_5", "qspi1_sel", 2, 7);
@@ -317,6 +349,8 @@ static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 	clks[IMX6UL_CLK_ECSPI_PODF]	= imx_clk_divider("ecspi_podf",	   "ecspi_sel",		base + 0x38, 19, 6);
 	clks[IMX6UL_CLK_LCDIF_PRED]	= imx_clk_divider("lcdif_pred",	   "lcdif_pre_sel",	base + 0x38, 12, 3);
 	clks[IMX6UL_CLK_CSI_PODF]       = imx_clk_divider("csi_podf",      "csi_sel",           base + 0x3c, 11, 3);
+	clks[IMX6UL_CLK_CKO1_PODF]      = imx_clk_divider("cko1_podf",     "cko1_sel",          base + 0x60, 4, 3);
+	clks[IMX6UL_CLK_CKO2_PODF]      = imx_clk_divider("cko2_podf",     "cko2_sel",          base + 0x60, 21, 3);
 
 	clks[IMX6UL_CLK_ARM]		= imx_clk_busy_divider("arm",	    "pll1_sw",	base +	0x10, 0,  3,  base + 0x48, 16);
 	clks[IMX6UL_CLK_MMDC_PODF]	= imx_clk_busy_divider("mmdc_podf", "periph2",	base +  0x14, 3,  3,  base + 0x48, 2);
@@ -449,6 +483,9 @@ static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 	clks[IMX6UL_CLK_PWM6]		= imx_clk_gate2("pwm6",		"perclk",	 base +	0x80,	28);
 	clks[IMX6UL_CLK_PWM7]		= imx_clk_gate2("pwm7",		"perclk",	 base + 0x80,	30);
 
+	clks[IMX6UL_CLK_CKO1]		= imx_clk_gate("cko1",		"cko1_podf",	 base + 0x60,	7);
+	clks[IMX6UL_CLK_CKO2]		= imx_clk_gate("cko2",		"cko2_podf",	 base + 0x60,	24);
+
 	/* mask handshake of mmdc */
 	writel_relaxed(BM_CCM_CCDR_MMDC_CH0_MASK, base + CCDR);
 
@@ -485,8 +522,8 @@ static void __init imx6ul_clocks_init(struct device_node *ccm_node)
         else
 		imx_clk_set_parent(clks[IMX6UL_CLK_UART_SEL], clks[IMX6UL_CLK_PLL3_80M]);
 
-	clk_set_rate(clks[IMX6UL_CLK_ENET_REF], 50000000);
-	clk_set_rate(clks[IMX6UL_CLK_ENET2_REF], 50000000);
+	clk_set_rate(clks[IMX6UL_CLK_ENET_DIV], 50000000);
+	clk_set_rate(clks[IMX6UL_CLK_ENET2_DIV], 50000000);
 	clk_set_rate(clks[IMX6UL_CLK_CSI], 24000000);
 	clk_set_rate(clks[IMX6UL_CLK_PLL3_PFD2], 320000000);
 
@@ -497,6 +534,12 @@ static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 	if (IS_ENABLED(CONFIG_USB_MXS_PHY)) {
 		clk_prepare_enable(clks[IMX6UL_CLK_USBPHY1_GATE]);
 		clk_prepare_enable(clks[IMX6UL_CLK_USBPHY2_GATE]);
+	}
+
+	/* enable clocks at startup */
+	of_property_for_each_u32(np, "startup_clocks", prop, p, val) {
+		if(val > IMX6UL_CLK_DUMMY && val < IMX6UL_CLK_END)
+			clk_prepare_enable(clks[val]);
 	}
 
 	clk_set_parent(clks[IMX6UL_CLK_CAN_SEL], clks[IMX6UL_CLK_PLL3_60M]);

@@ -151,7 +151,7 @@
 		interrupt-parent = <&gpc>;
 		ranges;
 
-		busfreq {
+		busfreq: busfreq {
 			compatible = "fsl,imx_busfreq";
 			clocks = <&clks IMX6UL_CLK_PLL2_PFD2>, <&clks IMX6UL_CLK_PLL2_198M>,
 				 <&clks IMX6UL_CLK_PLL2_BUS>, <&clks IMX6UL_CLK_ARM>,
@@ -610,8 +610,8 @@
 				clocks = <&clks IMX6UL_CLK_ENET>,
 					 <&clks IMX6UL_CLK_ENET_AHB>,
 					 <&clks IMX6UL_CLK_ENET_PTP>,
-					 <&clks IMX6UL_CLK_ENET2_REF_125M>,
-					 <&clks IMX6UL_CLK_ENET2_REF_125M>;
+					 <&clks IMX6UL_CLK_ENET2_REF>,
+					 <&clks IMX6UL_CLK_ENET2_REF>;
 				clock-names = "ipg", "ahb", "ptp",
 					      "enet_clk_ref", "enet_out";
 				stop-mode = <&gpr 0x10 4>;
@@ -753,6 +753,7 @@
 					offset = <0x34>;
 					interrupts = <GIC_SPI 19 IRQ_TYPE_LEVEL_HIGH>,
 						     <GIC_SPI 20 IRQ_TYPE_LEVEL_HIGH>;
+					status = "disabled";
 				};
 
 				snvs_poweroff: snvs-poweroff {

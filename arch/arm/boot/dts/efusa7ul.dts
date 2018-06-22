@@ -161,7 +161,11 @@ wvga {					\
 
 / {
 	model = "F&S efusA7UL";
+#ifdef CONFIG_EFUSA7UL_ULL
+	compatible = "fsl,imx6ul-efusa7ul", "fsl,imx6ull";
+#else
 	compatible = "fsl,imx6ul-efusa7ul", "fsl,imx6ul";
+#endif
 
 	aliases {
 		i2c5 = &i2c_gpio;
