@@ -246,6 +246,8 @@ struct mxsfb_info {
 	bool clk_disp_axi_enabled;
 	void __iomem *base;	/* registers */
 	u32 sync;		/* record display timing polarities */
+	u32 pattern;		/* RGB reordering on LCD interface */
+	u32 size;		/* Framebuffer size */
 	unsigned allocated_size;
 	int enabled;
 	unsigned ld_intf_width;
@@ -724,7 +726,8 @@ static void mxsfb_enable_controller(struct fb_info *fb_info)
 	}
 	clk_enable_pix(host);
 
-	writel(CTRL2_OUTSTANDING_REQS__REQ_16,
+	writel(CTRL2_OUTSTANDING_REQS__REQ_16
+	       | (host->pattern << 16) | (host->pattern << 12),
 		host->base + LCDC_V4_CTRL2 + REG_SET);
 
 	/* if it was disabled, re-enable the mode again */
@@ -778,6 +781,7 @@ static void mxsfb_disable_controller(struct fb_info *fb_info)
 	reg = readl(host->base + LCDC_VDCTRL4);
 	writel(reg & ~VDCTRL4_SYNC_SIGNALS_ON, host->base + LCDC_VDCTRL4);
 
+	clk_disable_pix(host);
 	host->enabled = 0;
 
 	if (host->reg_lcd) {
@@ -1291,6 +1295,16 @@ static int mxsfb_init_fbinfo_dt(struct mxsfb_info *host)
 
 	host->id = of_alias_get_id(np, "lcdif");
 
+	/* RGB=0, RBG=1, GBR=2, GRB=3, BRG=4, BGR=5 */
+	ret = of_property_read_u32(np, "pattern", &host->pattern);
+	if ((ret < 0) || (host->pattern > 5))
+		host->pattern = 0;
+
+	/* read framebuffer_size */
+	ret = of_property_read_u32(np, "framebuffer_size", &host->size);
+	if (ret < 0)
+		host->size = 0;
+
 	display_np = of_parse_phandle(np, "display", 0);
 	if (!display_np) {
 		dev_err(dev, "failed to find display phandle\n");
@@ -1340,7 +1354,24 @@ static int mxsfb_init_fbinfo_dt(struct mxsfb_info *host)
 		}
 
 		/* Timing is from encoder driver */
-		goto put_display_node;
+
+		/*
+		 * ### FIXME ### 06.08.2015 HK:
+		 *
+		 * Before mxsfb_probe() calls mxsfb_init_fbinfo(), which in
+		 * turn calls us here, fb_info was newly allocated and the
+		 * modelist initialized to an empty list. However our caller
+		 * mxsfb_init_fbinfo() expects us to fill the modelist,
+		 * because it will immediately try to allocate the framebuffer
+		 * after we return. So if we return here already, the modelist
+		 * is still empty and framebuffer allocation will/may fail due
+		 * to some uninitialized values (e.g. resolution).
+		 *
+		 * We work around this by not returning here and duplicating
+		 * the dislpay/timing information from the ldb device tree
+		 * entry also in the lcdif entry. This must be fixed!
+		 */
+//###		goto put_display_node;
 	}
 
 	timings = of_get_display_timings(display_np);
@@ -1428,7 +1459,11 @@ static int mxsfb_init_fbinfo(struct mxsfb_info *host)
 
 	fb_info->fix.line_length =
 		fb_info->var.xres * (fb_info->var.bits_per_pixel >> 3);
-	fb_info->fix.smem_len = SZ_32M;
+	/* set framebuffer size from DT if available */
+	if(host->size > 0)
+		fb_info->fix.smem_len = host->size;
+	else
+		fb_info->fix.smem_len = SZ_32M;
 
 	/* Memory allocation for framebuffer */
 	if (mxsfb_map_videomem(fb_info) < 0)
@@ -1443,6 +1478,7 @@ static int mxsfb_init_fbinfo(struct mxsfb_info *host)
 static int mxsfb_dispdrv_init(struct platform_device *pdev,
 			      struct fb_info *fbi)
 {
+#if IS_ENABLED(CONFIG_FB_MXC_SYNC_PANEL)
 	struct mxsfb_info *host = fbi->par;
 	struct mxc_dispdrv_setting setting;
 	struct device *dev = &pdev->dev;
@@ -1477,7 +1513,7 @@ static int mxsfb_dispdrv_init(struct platform_device *pdev,
 	} else
 		dev_info(dev, "registered mxc display driver %s\n",
 			 disp_dev);
-
+#endif
 	return 0;
 }
 
