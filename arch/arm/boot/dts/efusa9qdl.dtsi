@@ -679,7 +679,7 @@
 	};
 #endif
 #ifdef CONFIG_EFUSA9_HDMI
-	hdmi: edid@50 {
+	hdmi_edid: edid@50 {
 		compatible = "fsl,imx6-hdmi-i2c";
 		reg = <0x50>;
 	};
