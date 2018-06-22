@@ -38,6 +38,7 @@
 /* default value of sgtl5000 registers */
 static const struct reg_default sgtl5000_reg_defaults[] = {
 	{ SGTL5000_CHIP_DIG_POWER,		0x0000 },
+	{ SGTL5000_CHIP_CLK_CTRL,		0x0008 },
 	{ SGTL5000_CHIP_I2S_CTRL,		0x0010 },
 	{ SGTL5000_CHIP_SSS_CTRL,		0x0010 },
 	{ SGTL5000_CHIP_ADCDAC_CTRL,		0x020c },
@@ -46,10 +47,12 @@ static const struct reg_default sgtl5000_reg_defaults[] = {
 	{ SGTL5000_CHIP_ANA_ADC_CTRL,		0x0000 },
 	{ SGTL5000_CHIP_ANA_HP_CTRL,		0x1818 },
 	{ SGTL5000_CHIP_ANA_CTRL,		0x0111 },
+	{ SGTL5000_CHIP_LINREG_CTRL,		0x0000 },
 	{ SGTL5000_CHIP_REF_CTRL,		0x0000 },
 	{ SGTL5000_CHIP_MIC_CTRL,		0x0000 },
 	{ SGTL5000_CHIP_LINE_OUT_CTRL,		0x0000 },
 	{ SGTL5000_CHIP_LINE_OUT_VOL,		0x0404 },
+	{ SGTL5000_CHIP_ANA_POWER,		0x7060 },
 	{ SGTL5000_CHIP_PLL_CTRL,		0x5000 },
 	{ SGTL5000_CHIP_CLK_TOP_CTRL,		0x0000 },
 	{ SGTL5000_CHIP_ANA_STATUS,		0x0000 },
@@ -109,6 +112,8 @@ struct sgtl5000_priv {
 	struct regmap *regmap;
 	struct clk *mclk;
 	int revision;
+	int mono2both;
+	int no_standby;
 	u8 micbias_resistor;
 	u8 micbias_voltage;
 };
@@ -144,6 +149,30 @@ static int mic_bias_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static void power_vag_up(struct snd_soc_codec *codec)
+{
+	snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
+		SGTL5000_VAG_POWERUP, SGTL5000_VAG_POWERUP);
+}
+
+
+static void power_vag_down(struct snd_soc_codec *codec)
+{
+	const u32 mask = SGTL5000_DAC_POWERUP | SGTL5000_ADC_POWERUP;
+
+	/*
+	 * Don't clear VAG_POWERUP, when both DAC and ADC are
+	 * operational to prevent inadvertently starving the
+	 * other one of them.
+	 */
+	if ((snd_soc_read(codec, SGTL5000_CHIP_ANA_POWER) &
+			mask) != mask) {
+		snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
+			SGTL5000_VAG_POWERUP, 0);
+		msleep(400);
+	}
+}
+
 /*
  * As manual described, ADC/DAC only works when VAG powerup,
  * So enabled VAG before ADC/DAC up.
@@ -153,27 +182,19 @@ static int power_vag_event(struct snd_soc_dapm_widget *w,
 	struct snd_kcontrol *kcontrol, int event)
 {
 	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
-	const u32 mask = SGTL5000_DAC_POWERUP | SGTL5000_ADC_POWERUP;
+
+	struct sgtl5000_priv *sgtl5000 = snd_soc_codec_get_drvdata(codec);
+	if (sgtl5000->no_standby)
+		return 0;
 
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
-		snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
-			SGTL5000_VAG_POWERUP, SGTL5000_VAG_POWERUP);
+		power_vag_up(codec);
 		msleep(400);
 		break;
 
 	case SND_SOC_DAPM_PRE_PMD:
-		/*
-		 * Don't clear VAG_POWERUP, when both DAC and ADC are
-		 * operational to prevent inadvertently starving the
-		 * other one of them.
-		 */
-		if ((snd_soc_read(codec, SGTL5000_CHIP_ANA_POWER) &
-				mask) != mask) {
-			snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
-				SGTL5000_VAG_POWERUP, 0);
-			msleep(400);
-		}
+		power_vag_down(codec);
 		break;
 	default:
 		break;
@@ -710,14 +731,24 @@ static int sgtl5000_pcm_hw_params(struct snd_pcm_substream *substream,
 		return -EFAULT;
 	}
 
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		stereo = SGTL5000_DAC_STEREO;
-	else
-		stereo = SGTL5000_ADC_STEREO;
-
-	/* set mono to save power */
-	snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER, stereo,
-			channels == 1 ? 0 : stereo);
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if (sgtl5000->mono2both) {
+			/* In case of mono, copy left to right channel */
+			stereo = (channels == 1) ? SGTL5000_MONO_DAC : 0;
+			snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_TEST2,
+					    SGTL5000_MONO_DAC, stereo);
+		} else {
+			/* set mono for playback to save power */
+			stereo = (channels == 1) ? 0 : SGTL5000_DAC_STEREO;
+			snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
+					    SGTL5000_DAC_STEREO, stereo);
+		}
+	} else {
+		/* set mono for capture to save power */
+		stereo = (channels == 1) ? 0 : SGTL5000_ADC_STEREO;
+		snd_soc_update_bits(codec, SGTL5000_CHIP_ANA_POWER,
+				    SGTL5000_ADC_STEREO, stereo);
+	}
 
 	/* set codec clock base on lrclk */
 	ret = sgtl5000_set_clock(codec, params_rate(params));
@@ -1096,9 +1127,9 @@ static int sgtl5000_probe(struct snd_soc_codec *codec)
 	if (ret)
 		goto err;
 
-	/* enable small pop, introduce 400ms delay in turning off */
+	/* enable small pop, introduce 200ms delay in turning off */
 	snd_soc_update_bits(codec, SGTL5000_CHIP_REF_CTRL,
-				SGTL5000_SMALL_POP, 1);
+				SGTL5000_SMALL_POP, 0);
 
 	/* disable short cut detector */
 	snd_soc_write(codec, SGTL5000_CHIP_SHORT_CTRL, 0);
@@ -1138,6 +1169,17 @@ static int sgtl5000_probe(struct snd_soc_codec *codec)
 	 */
 	snd_soc_write(codec, SGTL5000_DAP_CTRL, 0);
 
+	/* if 'no_standby' is used power up manually on startup
+ 	 * and keep the widget active */
+	if (sgtl5000->no_standby) {
+		snd_soc_dapm_force_enable_pin(snd_soc_component_get_dapm(&codec->component), "LO");
+		snd_soc_dapm_force_enable_pin(snd_soc_component_get_dapm(&codec->component), "HP");
+
+		//snd_soc_dapm_sync(&codec->dapm);
+		snd_soc_dapm_sync(snd_soc_component_get_dapm(&codec->component));
+
+		power_vag_up(codec);
+	}
 	return 0;
 
 err:
@@ -1146,6 +1188,11 @@ err:
 
 static int sgtl5000_remove(struct snd_soc_codec *codec)
 {
+	struct sgtl5000_priv *sgtl5000 = snd_soc_codec_get_drvdata(codec);
+
+	/* if 'no_standby' is used power down manually on driver remove */
+	if (sgtl5000->no_standby)
+		power_vag_down(codec);
 	return 0;
 }
 
@@ -1204,6 +1251,71 @@ static void sgtl5000_fill_defaults(struct i2c_client *client)
 	}
 }
 
+#if IS_ENABLED(CONFIG_OF)
+static int sgtl5000_dt_init(const struct i2c_client *client,
+			    struct sgtl5000_priv *sgtl5000)
+{
+	struct device_node *np = client->dev.of_node;
+	u32 value;
+
+	if (!np)
+		return 0;
+
+	if (of_property_read_bool(np, "mono2both"))
+		sgtl5000->mono2both = 1;
+
+	if (of_property_read_bool(np, "no-standby"))
+		sgtl5000->no_standby = 1;
+
+	if (!of_property_read_u32(np,
+		"micbias-resistor-k-ohms", &value)) {
+		switch (value) {
+		case SGTL5000_MICBIAS_OFF:
+			sgtl5000->micbias_resistor = 0;
+			break;
+		case SGTL5000_MICBIAS_2K:
+			sgtl5000->micbias_resistor = 1;
+			break;
+		case SGTL5000_MICBIAS_4K:
+			sgtl5000->micbias_resistor = 2;
+			break;
+		case SGTL5000_MICBIAS_8K:
+			sgtl5000->micbias_resistor = 3;
+			break;
+		default:
+			sgtl5000->micbias_resistor = 2;
+			dev_err(&client->dev,
+				"Unsuitable MicBias resistor\n");
+		}
+	} else {
+		/* default is 4Kohms */
+		sgtl5000->micbias_resistor = 2;
+	}
+	if (!of_property_read_u32(np,
+		"micbias-voltage-m-volts", &value)) {
+		/* 1250mV => 0 */
+		/* steps of 250mV */
+		if ((value >= 1250) && (value <= 3000))
+			sgtl5000->micbias_voltage = (value / 250) - 5;
+		else {
+			sgtl5000->micbias_voltage = 0;
+			dev_err(&client->dev,
+				"Unsuitable MicBias resistor\n");
+		}
+	} else {
+		sgtl5000->micbias_voltage = 0;
+	}
+
+	return 0;
+}
+#else
+static inline int sgtl5000_dt_init(struct i2c_client *client,
+				   struct sgtl5000_priv *sgtl5000)
+{
+	return 0;
+}
+#endif
+
 static int sgtl5000_i2c_probe(struct i2c_client *client,
 			      const struct i2c_device_id *id)
 {
@@ -1216,6 +1328,10 @@ static int sgtl5000_i2c_probe(struct i2c_client *client,
 	sgtl5000 = devm_kzalloc(&client->dev, sizeof(*sgtl5000), GFP_KERNEL);
 	if (!sgtl5000)
 		return -ENOMEM;
+
+	ret = sgtl5000_dt_init(client, sgtl5000);
+	if (ret < 0)
+		return ret;
 
 	i2c_set_clientdata(client, sgtl5000);
 
