@@ -973,9 +973,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg>;
 //###	vbus-supply = <&reg_usb_otg_vbus>;
-#ifdef CONFIG_EFUSA9_HAVE_USB_OTG_OC
-	over-current-active-low;
-#else
+#ifndef CONFIG_EFUSA9_HAVE_USB_OTG_OC
 	disable-over-current;
 #endif
 	status = "okay";

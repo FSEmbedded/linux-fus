@@ -389,7 +389,7 @@ lvds_wvga {				\
 		reg_lcd_bl: lcd-bl {
 			compatible = "regulator-fixed";
 			regulator-name = "lcd-bl";
-			gpio = <&pca963x 0 0>;
+			gpio = <&pca963x 0 GPIO_ACTIVE_HIGH>;
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 		};
@@ -1101,9 +1101,7 @@ lvds_wvga {				\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg1>;
 //###	vbus-supply = <&reg_usb_otg1_vbus>;
-#ifdef CONFIG_EFUSA9X_USB_OTG1_OC
-	over-current-active-low;
-#else
+#ifndef CONFIG_EFUSA9X_USB_OTG1_OC
 	disable-over-current;
 #endif
 	status = "okay";

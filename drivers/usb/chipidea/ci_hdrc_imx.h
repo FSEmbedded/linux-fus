@@ -44,6 +44,7 @@ struct imx_usbmisc_data {
 	struct regmap *anatop;
 	struct usb_charger *charger;
 
+	unsigned int pwr_active_high:1;	/* power polarity is active high */
 	unsigned int disable_oc:1; /* over current detect disabled */
 	unsigned int oc_polarity:1; /* over current polarity if oc enabled */
 	unsigned int evdo:1; /* set external vbus divider option */
