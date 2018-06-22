@@ -6,6 +6,12 @@ Required properties:
 - interrupt-parent: the phandle for the interrupt controller
 - interrupts: touch controller interrupt
 
+Optional properties:
+- swap-xy:     	allows switching the x and y coordinates.
+- x-rev:	allows reverse the x coordinate.
+- y-rev:	allows reverse the y coordinate.
+
+ 
 Example:
 
 	sx8654@48 {
@@ -13,4 +19,6 @@ Example:
 		reg = <0x48>;
 		interrupt-parent = <&gpio6>;
 		interrupts = <3 IRQ_TYPE_EDGE_FALLING>;
+		x-rev;
+		y-rev;
 	};
