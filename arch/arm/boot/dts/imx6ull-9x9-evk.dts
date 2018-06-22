@@ -82,6 +82,7 @@
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			gpio = <&gpio1 9 GPIO_ACTIVE_HIGH>;
+			off-on-delay = <20000>;
 			enable-active-high;
 		};
 	};
@@ -94,7 +95,7 @@
 		audio-codec = <&codec>;
 		asrc-controller = <&asrc>;
 		codec-master;
-		gpr = <&gpr>;
+		gpr = <&gpr 4 0x100000 0x100000>;
 		/*
                  * hp-det = <hp-det-pin hp-det-polarity>;
 		 * hp-det-pin: JD1 JD2  or JD3
@@ -172,9 +173,17 @@
 		396000	1175000
 		198000	1175000
 	>;
-	arm-supply = <&sw1c_reg>;
-	soc-supply = <&sw1c_reg>;
 	fsl,arm-soc-shared = <1>;
+};
+
+&reg_arm {
+	vin-supply = <&sw1c_reg>;
+	regulator-allow-bypass;
+};
+
+&reg_soc {
+	vin-supply = <&sw1c_reg>;
+	regulator-allow-bypass;
 };
 
 &csi {
@@ -237,7 +246,6 @@
 	fsl,cpu_pupscr_sw = <0x0>;
 	fsl,cpu_pdnscr_iso2sw = <0x1>;
 	fsl,cpu_pdnscr_iso = <0x1>;
-	fsl,wdog-reset = <1>; /* watchdog select of reset source */
 	fsl,ldo-bypass = <1>;
 };
 
@@ -801,5 +809,5 @@
 &wdog1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_wdog>;
-	fsl,wdog_b;
+	fsl,ext-reset-output;
 };

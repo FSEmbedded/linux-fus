@@ -7,6 +7,14 @@ Required properties:
 
 - clocks : the clock provider of SYS_MCLK
 
+- VDDA-supply : the regulator provider of VDDA
+
+- VDDIO-supply: the regulator provider of VDDIO
+
+Optional properties:
+
+- VDDD-supply : the regulator provider of VDDD
+
 - micbias-resistor-k-ohms : the bias resistor to be used in kOmhs
 	The resistor can take values of 2k, 4k or 8k.
 	If set to 0 it will be off.
@@ -15,22 +23,8 @@ Required properties:
 
 - micbias-voltage-m-volts : the bias voltage to be used in mVolts
 	The voltage can take values from 1.25V to 3V by 250mV steps
-	If this node is not mentionned or the value is unknown, then
+	If this node is not mentioned or the value is unknown, then
 	the value is set to 1.25V.
-
-- VDDA-supply : the regulator provider of VDDA
-
-- VDDIO-supply: the regulator provider of VDDIO
-
-Optional properties:
-- mono2both : Instead of just playing mono sound on the left channel, copy
-              it to both channels
-
-- no-standby: keep DAP active all the time for line out and headphone.
-              With this setting sounds can be played immediately without getting
-              the early signal lost in a ramp.
-
-- VDDD-supply : the regulator provider of VDDD
 
 Example:
 
@@ -38,7 +32,6 @@ codec: sgtl5000@0a {
 	compatible = "fsl,sgtl5000";
 	reg = <0x0a>;
 	clocks = <&clks 150>;
-	mono2both;
 	micbias-resistor-k-ohms = <2>;
 	micbias-voltage-m-volts = <2250>;
 	VDDA-supply = <&reg_3p3v>;

@@ -22,13 +22,11 @@
 #include <linux/pwm.h>
 #include <linux/leds_pwm.h>
 #include <linux/slab.h>
-#include <linux/workqueue.h>
 
 struct led_pwm_data {
 	struct led_classdev	cdev;
 	struct pwm_device	*pwm;
-	struct work_struct	work;
-	unsigned int		flags;
+	unsigned int		active_low;
 	unsigned int		period;
 	int			duty;
 	bool			can_sleep;
@@ -51,14 +49,6 @@ static void __led_pwm_set(struct led_pwm_data *led_dat)
 		pwm_enable(led_dat->pwm);
 }
 
-static void led_pwm_work(struct work_struct *work)
-{
-	struct led_pwm_data *led_dat =
-		container_of(work, struct led_pwm_data, work);
-
-	__led_pwm_set(led_dat);
-}
-
 static void led_pwm_set(struct led_classdev *led_cdev,
 	enum led_brightness brightness)
 {
@@ -67,23 +57,22 @@ static void led_pwm_set(struct led_classdev *led_cdev,
 	unsigned int max = led_dat->cdev.max_brightness;
 	unsigned long long duty =  led_dat->period;
 
-	if (led_dat->flags & LED_PWM_FLAGS_GAMMA_2) {
-		/* Use Gamma = 2.0 (i.e. square function) */
-		brightness *= brightness;
-		max *= max;
-	}
 	duty *= brightness;
 	do_div(duty, max);
 
-	if (led_dat->flags & LED_PWM_FLAGS_ACTIVE_LOW)
+	if (led_dat->active_low)
 		duty = led_dat->period - duty;
 
 	led_dat->duty = duty;
 
-	if (led_dat->can_sleep)
-		schedule_work(&led_dat->work);
-	else
-		__led_pwm_set(led_dat);
+	__led_pwm_set(led_dat);
+}
+
+static int led_pwm_set_blocking(struct led_classdev *led_cdev,
+	enum led_brightness brightness)
+{
+	led_pwm_set(led_cdev, brightness);
+	return 0;
 }
 
 static inline size_t sizeof_pwm_leds_priv(int num_leds)
@@ -94,23 +83,20 @@ static inline size_t sizeof_pwm_leds_priv(int num_leds)
 
 static void led_pwm_cleanup(struct led_pwm_priv *priv)
 {
-	while (priv->num_leds--) {
+	while (priv->num_leds--)
 		led_classdev_unregister(&priv->leds[priv->num_leds].cdev);
-		if (priv->leds[priv->num_leds].can_sleep)
-			cancel_work_sync(&priv->leds[priv->num_leds].work);
-	}
 }
 
 static int led_pwm_add(struct device *dev, struct led_pwm_priv *priv,
 		       struct led_pwm *led, struct device_node *child)
 {
 	struct led_pwm_data *led_data = &priv->leds[priv->num_leds];
+	struct pwm_args pargs;
 	int ret;
 
-	led_data->flags = led->flags;
+	led_data->active_low = led->active_low;
 	led_data->cdev.name = led->name;
 	led_data->cdev.default_trigger = led->default_trigger;
-	led_data->cdev.brightness_set = led_pwm_set;
 	led_data->cdev.brightness = LED_OFF;
 	led_data->cdev.max_brightness = led->max_brightness;
 	led_data->cdev.flags = LED_CORE_SUSPENDRESUME;
@@ -127,16 +113,27 @@ static int led_pwm_add(struct device *dev, struct led_pwm_priv *priv,
 	}
 
 	led_data->can_sleep = pwm_can_sleep(led_data->pwm);
-	if (led_data->can_sleep)
-		INIT_WORK(&led_data->work, led_pwm_work);
+	if (!led_data->can_sleep)
+		led_data->cdev.brightness_set = led_pwm_set;
+	else
+		led_data->cdev.brightness_set_blocking = led_pwm_set_blocking;
 
-	led_data->period = pwm_get_period(led_data->pwm);
+	/*
+	 * FIXME: pwm_apply_args() should be removed when switching to the
+	 * atomic PWM API.
+	 */
+	pwm_apply_args(led_data->pwm);
+
+	pwm_get_args(led_data->pwm, &pargs);
+
+	led_data->period = pargs.period;
 	if (!led_data->period && (led->pwm_period_ns > 0))
 		led_data->period = led->pwm_period_ns;
 
 	ret = led_classdev_register(dev, &led_data->cdev);
 	if (ret == 0) {
 		priv->num_leds++;
+		led_pwm_set(&led_data->cdev, led_data->cdev.brightness);
 	} else {
 		dev_err(dev, "failed to register PWM led for %s: %d\n",
 			led->name, ret);
@@ -159,11 +156,7 @@ static int led_pwm_create_of(struct device *dev, struct led_pwm_priv *priv)
 
 		led.default_trigger = of_get_property(child,
 						"linux,default-trigger", NULL);
-		led.flags = 0;
-		if (of_property_read_bool(child, "active-low"))
-			led.flags |= LED_PWM_FLAGS_ACTIVE_LOW;
-		if (of_property_read_bool(child, "gamma2"))
-			led.flags |= LED_PWM_FLAGS_GAMMA_2;
+		led.active_low = of_property_read_bool(child, "active-low");
 		of_property_read_u32(child, "max-brightness",
 				     &led.max_brightness);
 
@@ -245,6 +238,6 @@ static struct platform_driver led_pwm_driver = {
 module_platform_driver(led_pwm_driver);
 
 MODULE_AUTHOR("Luotao Fu <l.fu@pengutronix.de>");
-MODULE_DESCRIPTION("PWM LED driver for PXA");
-MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("generic PWM LED driver");
+MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:leds-pwm");

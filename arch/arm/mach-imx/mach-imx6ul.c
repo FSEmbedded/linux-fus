@@ -5,19 +5,15 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-#include <linux/fec.h>
-#include <linux/gpio.h>
 #include <linux/irqchip.h>
 #include <linux/mfd/syscon.h>
 #include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
-#include <linux/netdevice.h>
+#include <linux/micrel_phy.h>
 #include <linux/of_address.h>
-#include <linux/of_gpio.h>
 #include <linux/of_platform.h>
 #include <linux/phy.h>
 #include <linux/pm_opp.h>
 #include <linux/regmap.h>
-#include <linux/micrel_phy.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 
@@ -25,46 +21,26 @@
 #include "cpuidle.h"
 #include "hardware.h"
 
-#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 static void __init imx6ul_enet_clk_init(void)
 {
 	struct regmap *gpr;
-	struct device_node *np;
 
 	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6ul-iomuxc-gpr");
-	if (IS_ERR(gpr)) {
+	if (!IS_ERR(gpr))
+		regmap_update_bits(gpr, IOMUXC_GPR1, IMX6UL_GPR1_ENET_CLK_DIR,
+				   IMX6UL_GPR1_ENET_CLK_OUTPUT);
+	else
 		pr_err("failed to find fsl,imx6ul-iomux-gpr regmap\n");
-		return;
-	}
 
-	np = of_find_node_by_path("/soc/aips-bus@02100000/ethernet@02188000");
-	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				   IMX6UL_GPR1_ENET1_CLK_OUTPUT,
-				   IMX6UL_GPR1_ENET1_CLK_OUTPUT);
-	else
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				   IMX6UL_GPR1_ENET1_CLK_OUTPUT, 0);
-
-	np = of_find_node_by_path("/soc/aips-bus@02000000/ethernet@020b4000");
-	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				   IMX6UL_GPR1_ENET2_CLK_OUTPUT,
-				   IMX6UL_GPR1_ENET2_CLK_OUTPUT);
-	else
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				   IMX6UL_GPR1_ENET2_CLK_OUTPUT, 0);
 }
 
 static int ksz8081_phy_fixup(struct phy_device *dev)
 {
-	/* Do not use PHY address 0 for broadcast, switch LED to show link and
-	   activity and activate correct clock speed */
 	if (dev && dev->interface == PHY_INTERFACE_MODE_MII) {
-		phy_write(dev, 0x1f, 0x8100);
+		phy_write(dev, 0x1f, 0x8110);
 		phy_write(dev, 0x16, 0x201);
 	} else if (dev && dev->interface == PHY_INTERFACE_MODE_RMII) {
-		phy_write(dev, 0x1f, 0x8180);
+		phy_write(dev, 0x1f, 0x8190);
 		phy_write(dev, 0x16, 0x202);
 	}
 
@@ -73,59 +49,25 @@ static int ksz8081_phy_fixup(struct phy_device *dev)
 
 static void __init imx6ul_enet_phy_init(void)
 {
-	phy_register_fixup_for_uid(PHY_ID_KSZ8081, MICREL_PHY_ID_MASK,
+	if (IS_BUILTIN(CONFIG_PHYLIB)) {
+		/*
+		 * i.MX6UL EVK board RevA, RevB, RevC all use KSZ8081
+		 * Silicon revision 00, the PHY ID is 0x00221560, pass our
+		 * test with the phy fixup.
+		 */
+		phy_register_fixup(PHY_ANY_ID, PHY_ID_KSZ8081, 0xffffffff,
 				   ksz8081_phy_fixup);
-}
 
-static inline void imx6ul_enet_init(void)
-{
-	imx6ul_enet_clk_init();
-	imx6ul_enet_phy_init();
-	if (cpu_is_imx6ul())
-		imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ul-ocotp");
-	else
-		imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ull-ocotp");
-}
-#endif /* CONFIG_FEC || CONFIG_FEC_MODULE */
-
-#if defined(CONFIG_SND_SOC_FSL_SAI) || defined(CONFIG_SND_SOC_FSL_SAI_MODULE)
-static void imx6ul_sai_init(void)
-{
-	struct regmap *gpr;
-	struct device_node *np;
-
-	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6ul-iomuxc-gpr");
-	if (IS_ERR(gpr)) {
-		pr_err("failed to find fsl,imx6ul-iomux-gpr regmap\n");
-		return;
+		/*
+		 * i.MX6UL EVK board RevC1 board use KSZ8081
+		 * Silicon revision 01, the PHY ID is 0x00221561.
+		 * This silicon revision still need the phy fixup setting.
+		 */
+		#define PHY_ID_KSZ8081_MNRN61	0x00221561
+		phy_register_fixup(PHY_ANY_ID, PHY_ID_KSZ8081_MNRN61,
+				   0xffffffff, ksz8081_phy_fixup);
 	}
-
-	/* Set MCLK direction depending on fsl,mclk-out property */
-	np = of_find_node_by_path("/soc/aips-bus@02000000/spba-bus@02000000/sai@02028000");
-	if (np && of_get_property(np, "fsl,mclk-out", NULL))
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				IMX6UL_GPR1_SAI1_MCLK_DIR, IMX6UL_GPR1_SAI1_MCLK_DIR);
-	else
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				IMX6UL_GPR1_SAI1_MCLK_DIR, 0);
-
-	np = of_find_node_by_path("/soc/aips-bus@02000000/spba-bus@02000000/sai@0202c000");
-	if (np && of_get_property(np, "fsl,mclk-out", NULL))
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				IMX6UL_GPR1_SAI2_MCLK_DIR, IMX6UL_GPR1_SAI2_MCLK_DIR);
-	else
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				IMX6UL_GPR1_SAI2_MCLK_DIR, 0);
-
-	np = of_find_node_by_path("/soc/aips-bus@02000000/spba-bus@02000000/sai@02030000");
-	if (np && of_get_property(np, "fsl,mclk-out", NULL))
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				IMX6UL_GPR1_SAI3_MCLK_DIR, IMX6UL_GPR1_SAI3_MCLK_DIR);
-	else
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				IMX6UL_GPR1_SAI3_MCLK_DIR, 0);
 }
-#endif
 
 #define OCOTP_CFG3			0x440
 #define OCOTP_CFG3_SPEED_SHIFT		16
@@ -204,7 +146,7 @@ static void __init imx6ul_opp_init(void)
 		return;
 	}
 
-	if (of_init_opp_table(cpu_dev)) {
+	if (dev_pm_opp_of_add_table(cpu_dev)) {
 		pr_warn("failed to init OPP table\n");
 		goto put_node;
 	}
@@ -215,6 +157,16 @@ put_node:
 	of_node_put(np);
 }
 
+static inline void imx6ul_enet_init(void)
+{
+	imx6ul_enet_clk_init();
+	imx6ul_enet_phy_init();
+	if (cpu_is_imx6ul())
+		imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ul-ocotp");
+	else
+		imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ull-ocotp");
+}
+
 static void __init imx6ul_init_machine(void)
 {
 	struct device *parent;
@@ -223,14 +175,8 @@ static void __init imx6ul_init_machine(void)
 	if (parent == NULL)
 		pr_warn("failed to initialize soc device\n");
 
-	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
-
-#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
+	of_platform_default_populate(NULL, NULL, parent);
 	imx6ul_enet_init();
-#endif
-#if defined(CONFIG_SND_SOC_FSL_SAI) || defined(CONFIG_SND_SOC_FSL_SAI_MODULE)
-	imx6ul_sai_init();
-#endif
 	imx_anatop_init();
 	imx6ul_pm_init();
 }
@@ -241,6 +187,7 @@ static void __init imx6ul_init_irq(void)
 	imx_init_revision_from_anatop();
 	imx_src_init();
 	irqchip_init();
+	imx6_pm_ccm_init("fsl,imx6ul-ccm");
 }
 
 static void __init imx6ul_init_late(void)
@@ -260,13 +207,13 @@ static void __init imx6ul_map_io(void)
 	imx_busfreq_map_io();
 }
 
-static const char *imx6ul_dt_compat[] __initconst = {
+static const char * const imx6ul_dt_compat[] __initconst = {
 	"fsl,imx6ul",
 	"fsl,imx6ull",
 	NULL,
 };
 
-DT_MACHINE_START(IMX6UL, "Freescale i.MX6 Ultralite (Device Tree)")
+DT_MACHINE_START(IMX6UL, "Freescale i.MX6 UltraLite (Device Tree)")
 	.map_io		= imx6ul_map_io,
 	.init_irq	= imx6ul_init_irq,
 	.init_machine	= imx6ul_init_machine,
