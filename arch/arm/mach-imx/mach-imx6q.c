@@ -42,7 +42,6 @@
 #include "hardware.h"
 
 #if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
-#if 1
 static int dp83848_phy_fixup(struct phy_device *dev)
 {
 	u16 val;
@@ -52,7 +51,7 @@ static int dp83848_phy_fixup(struct phy_device *dev)
 	phy_write(dev, 0x19, val);
 	return 0;
 }
-#endif
+
 /* For imx6q sabrelite board: set KSZ9021RN RGMII pad skew */
 static int ksz9021rn_phy_fixup(struct phy_device *phydev)
 {
@@ -93,34 +92,6 @@ static int ksz9031rn_phy_fixup(struct phy_device *dev)
 
 	return 0;
 }
-
-/*
- * fixup for PLX PEX8909 bridge to configure GPIO1-7 as output High
- * as they are used for slots1-7 PERST#
- */
-static void ventana_pciesw_early_fixup(struct pci_dev *dev)
-{
-	u32 dw;
-
-	if (!of_machine_is_compatible("gw,ventana"))
-		return;
-
-	if (dev->devfn != 0)
-		return;
-
-	pci_read_config_dword(dev, 0x62c, &dw);
-	dw |= 0xaaa8; // GPIO1-7 outputs
-	pci_write_config_dword(dev, 0x62c, dw);
-
-	pci_read_config_dword(dev, 0x644, &dw);
-	dw |= 0xfe;   // GPIO1-7 output high
-	pci_write_config_dword(dev, 0x644, dw);
-
-	msleep(100);
-}
-DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLX, 0x8609, ventana_pciesw_early_fixup);
-DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLX, 0x8606, ventana_pciesw_early_fixup);
-DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLX, 0x8604, ventana_pciesw_early_fixup);
 
 static int ar8031_phy_fixup(struct phy_device *dev)
 {
@@ -245,6 +216,56 @@ put_node:
 	of_node_put(np);
 }
 
+static void __init imx6q_enet_clk_sel(void)
+{
+	struct regmap *gpr;
+
+	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6q-iomuxc-gpr");
+	if (!IS_ERR(gpr))
+		regmap_update_bits(gpr, IOMUXC_GPR5,
+				   IMX6Q_GPR5_ENET_TX_CLK_SEL, IMX6Q_GPR5_ENET_TX_CLK_SEL);
+	else
+		pr_err("failed to find fsl,imx6q-iomux-gpr regmap\n");
+}
+
+static inline void imx6q_enet_init(void)
+{
+	imx6_enet_mac_init("fsl,imx6q-fec", "fsl,imx6q-ocotp");
+	imx6q_enet_phy_init();
+	imx6q_1588_init();
+	if (cpu_is_imx6q() && imx_get_soc_revision() == IMX_CHIP_REVISION_2_0)
+		imx6q_enet_clk_sel();
+}
+#endif /* CONFIG_FEC || CONFIG_FEC_MODULE */
+
+/*
+ * fixup for PLX PEX8909 bridge to configure GPIO1-7 as output High
+ * as they are used for slots1-7 PERST#
+ */
+static void ventana_pciesw_early_fixup(struct pci_dev *dev)
+{
+	u32 dw;
+
+	if (!of_machine_is_compatible("gw,ventana"))
+		return;
+
+	if (dev->devfn != 0)
+		return;
+
+	pci_read_config_dword(dev, 0x62c, &dw);
+	dw |= 0xaaa8; // GPIO1-7 outputs
+	pci_write_config_dword(dev, 0x62c, dw);
+
+	pci_read_config_dword(dev, 0x644, &dw);
+	dw |= 0xfe;   // GPIO1-7 output high
+	pci_write_config_dword(dev, 0x644, dw);
+
+	msleep(100);
+}
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLX, 0x8609, ventana_pciesw_early_fixup);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLX, 0x8606, ventana_pciesw_early_fixup);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_PLX, 0x8604, ventana_pciesw_early_fixup);
+
 static void __init imx6q_csi_mux_init(void)
 {
 	/*
@@ -309,27 +330,6 @@ static void __init imx6q_axi_init(void)
 	}
 }
 
-static void __init imx6q_enet_clk_sel(void)
-{
-	struct regmap *gpr;
-
-	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6q-iomuxc-gpr");
-	if (!IS_ERR(gpr))
-		regmap_update_bits(gpr, IOMUXC_GPR5,
-				   IMX6Q_GPR5_ENET_TX_CLK_SEL, IMX6Q_GPR5_ENET_TX_CLK_SEL);
-	else
-		pr_err("failed to find fsl,imx6q-iomux-gpr regmap\n");
-}
-
-static inline void imx6q_enet_init(void)
-{
-	imx6_enet_mac_init("fsl,imx6q-fec", "fsl,imx6q-ocotp");
-	imx6q_enet_phy_init();
-	imx6q_1588_init();
-	if (cpu_is_imx6q() && imx_get_soc_revision() >= IMX_CHIP_REVISION_2_0)
-		imx6q_enet_clk_sel();
-}
-
 static void __init imx6q_init_machine(void)
 {
 	struct device *parent;
@@ -346,7 +346,9 @@ static void __init imx6q_init_machine(void)
 
 	of_platform_default_populate(NULL, NULL, parent);
 
+#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 	imx6q_enet_init();
+#endif
 	imx_anatop_init();
 	imx6q_csi_mux_init();
 	cpu_is_imx6q() ?  imx6q_pm_init() : imx6dl_pm_init();

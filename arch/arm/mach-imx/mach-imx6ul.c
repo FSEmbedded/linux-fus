@@ -21,26 +21,46 @@
 #include "cpuidle.h"
 #include "hardware.h"
 
+#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 static void __init imx6ul_enet_clk_init(void)
 {
 	struct regmap *gpr;
+	struct device_node *np;
 
 	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6ul-iomuxc-gpr");
-	if (!IS_ERR(gpr))
-		regmap_update_bits(gpr, IOMUXC_GPR1, IMX6UL_GPR1_ENET_CLK_DIR,
-				   IMX6UL_GPR1_ENET_CLK_OUTPUT);
-	else
+	if (IS_ERR(gpr)) {
 		pr_err("failed to find fsl,imx6ul-iomux-gpr regmap\n");
+		return;
+	}
 
+	np = of_find_node_by_path("/soc/aips-bus@02100000/ethernet@02188000");
+	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   IMX6UL_GPR1_ENET1_CLK_OUTPUT,
+				   IMX6UL_GPR1_ENET1_CLK_OUTPUT);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   IMX6UL_GPR1_ENET1_CLK_OUTPUT, 0);
+
+	np = of_find_node_by_path("/soc/aips-bus@02000000/ethernet@020b4000");
+	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   IMX6UL_GPR1_ENET2_CLK_OUTPUT,
+				   IMX6UL_GPR1_ENET2_CLK_OUTPUT);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   IMX6UL_GPR1_ENET2_CLK_OUTPUT, 0);
 }
 
 static int ksz8081_phy_fixup(struct phy_device *dev)
 {
+	/* Do not use PHY address 0 for broadcast, switch LED to show link and
+	   activity and activate correct clock speed */
 	if (dev && dev->interface == PHY_INTERFACE_MODE_MII) {
-		phy_write(dev, 0x1f, 0x8110);
+		phy_write(dev, 0x1f, 0x8100);
 		phy_write(dev, 0x16, 0x201);
 	} else if (dev && dev->interface == PHY_INTERFACE_MODE_RMII) {
-		phy_write(dev, 0x1f, 0x8190);
+		phy_write(dev, 0x1f, 0x8180);
 		phy_write(dev, 0x16, 0x202);
 	}
 
@@ -49,25 +69,59 @@ static int ksz8081_phy_fixup(struct phy_device *dev)
 
 static void __init imx6ul_enet_phy_init(void)
 {
-	if (IS_BUILTIN(CONFIG_PHYLIB)) {
-		/*
-		 * i.MX6UL EVK board RevA, RevB, RevC all use KSZ8081
-		 * Silicon revision 00, the PHY ID is 0x00221560, pass our
-		 * test with the phy fixup.
-		 */
-		phy_register_fixup(PHY_ANY_ID, PHY_ID_KSZ8081, 0xffffffff,
+	phy_register_fixup_for_uid(PHY_ID_KSZ8081, MICREL_PHY_ID_MASK,
 				   ksz8081_phy_fixup);
-
-		/*
-		 * i.MX6UL EVK board RevC1 board use KSZ8081
-		 * Silicon revision 01, the PHY ID is 0x00221561.
-		 * This silicon revision still need the phy fixup setting.
-		 */
-		#define PHY_ID_KSZ8081_MNRN61	0x00221561
-		phy_register_fixup(PHY_ANY_ID, PHY_ID_KSZ8081_MNRN61,
-				   0xffffffff, ksz8081_phy_fixup);
-	}
 }
+
+static inline void imx6ul_enet_init(void)
+{
+	imx6ul_enet_clk_init();
+	imx6ul_enet_phy_init();
+	if (cpu_is_imx6ul())
+		imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ul-ocotp");
+	else
+		imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ull-ocotp");
+}
+#endif /* CONFIG_FEC || CONFIG_FEC_MODULE */
+
+#if defined(CONFIG_SND_SOC_FSL_SAI) || defined(CONFIG_SND_SOC_FSL_SAI_MODULE)
+static void imx6ul_sai_init(void)
+{
+	struct regmap *gpr;
+	struct device_node *np;
+
+	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6ul-iomuxc-gpr");
+	if (IS_ERR(gpr)) {
+		pr_err("failed to find fsl,imx6ul-iomux-gpr regmap\n");
+		return;
+	}
+
+	/* Set MCLK direction depending on fsl,mclk-out property */
+	np = of_find_node_by_path("/soc/aips-bus@02000000/spba-bus@02000000/sai@02028000");
+	if (np && of_get_property(np, "fsl,mclk-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				IMX6UL_GPR1_SAI1_MCLK_DIR, IMX6UL_GPR1_SAI1_MCLK_DIR);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				IMX6UL_GPR1_SAI1_MCLK_DIR, 0);
+
+	np = of_find_node_by_path("/soc/aips-bus@02000000/spba-bus@02000000/sai@0202c000");
+	if (np && of_get_property(np, "fsl,mclk-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				IMX6UL_GPR1_SAI2_MCLK_DIR, IMX6UL_GPR1_SAI2_MCLK_DIR);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				IMX6UL_GPR1_SAI2_MCLK_DIR, 0);
+
+	np = of_find_node_by_path("/soc/aips-bus@02000000/spba-bus@02000000/sai@02030000");
+	if (np && of_get_property(np, "fsl,mclk-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				IMX6UL_GPR1_SAI3_MCLK_DIR, IMX6UL_GPR1_SAI3_MCLK_DIR);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				IMX6UL_GPR1_SAI3_MCLK_DIR, 0);
+}
+#endif
 
 #define OCOTP_CFG3			0x440
 #define OCOTP_CFG3_SPEED_SHIFT		16
@@ -157,16 +211,6 @@ put_node:
 	of_node_put(np);
 }
 
-static inline void imx6ul_enet_init(void)
-{
-	imx6ul_enet_clk_init();
-	imx6ul_enet_phy_init();
-	if (cpu_is_imx6ul())
-		imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ul-ocotp");
-	else
-		imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ull-ocotp");
-}
-
 static void __init imx6ul_init_machine(void)
 {
 	struct device *parent;
@@ -176,7 +220,13 @@ static void __init imx6ul_init_machine(void)
 		pr_warn("failed to initialize soc device\n");
 
 	of_platform_default_populate(NULL, NULL, parent);
+
+#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 	imx6ul_enet_init();
+#endif
+#if defined(CONFIG_SND_SOC_FSL_SAI) || defined(CONFIG_SND_SOC_FSL_SAI_MODULE)
+	imx6ul_sai_init();
+#endif
 	imx_anatop_init();
 	imx6ul_pm_init();
 }

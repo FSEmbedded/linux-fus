@@ -26,6 +26,8 @@ static void mmd_write_reg(struct phy_device *dev, int device, int reg, int val)
 	phy_write(dev, 0x0e, val);
 }
 
+#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
+
 static int ksz9031rn_phy_fixup(struct phy_device *dev)
 {
 	/*
@@ -109,6 +111,7 @@ static inline void imx6sx_enet_init(void)
 	imx6sx_enet_phy_init();
 	imx6sx_enet_clk_sel();
 }
+#endif /* CONFIG_FEC || CONFIG_FEC_MODULE */
 
 static void __init imx6sx_init_machine(void)
 {
@@ -120,7 +123,9 @@ static void __init imx6sx_init_machine(void)
 
 	of_platform_default_populate(NULL, NULL, parent);
 
+#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 	imx6sx_enet_init();
+#endif
 	imx_anatop_init();
 	imx6sx_pm_init();
 }

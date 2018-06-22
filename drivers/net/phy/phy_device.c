@@ -379,7 +379,7 @@ struct phy_device *phy_device_create(struct mii_bus *bus, int addr, int phy_id,
 
 	device_initialize(&mdiodev->dev);
 
-	led_trigger_register_simple(dev_name(&dev->dev), &dev->led);
+	led_trigger_register_simple(dev_name(&mdiodev->dev), &dev->led);
 
 	return dev;
 }
