@@ -26,14 +26,9 @@
 #include <linux/platform_data/atmel_mxt_ts.h>
 #include <linux/input/mt.h>
 #include <linux/interrupt.h>
-#include <linux/irq.h>
 #include <linux/of.h>
-#include <linux/of_gpio.h>
 #include <linux/slab.h>
 #include <asm/unaligned.h>
-#include <linux/regulator/consumer.h>
-#include <linux/gpio.h>
-#include <linux/workqueue.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-ioctl.h>
 #include <media/videobuf2-v4l2.h>
@@ -78,10 +73,7 @@
 #define MXT_SPT_DIGITIZER_T43		43
 #define MXT_SPT_MESSAGECOUNT_T44	44
 #define MXT_SPT_CTECONFIG_T46		46
-#define MXT_PROCI_ACTIVE_STYLUS_T63	63
-#define MXT_SPT_DYNAMICCONFIGURATIONCONTAINER_T71 71
 #define MXT_TOUCH_MULTITOUCHSCREEN_T100 100
-#define MXT_PROCI_ACTIVESTYLUS_T107	107
 
 /* MXT_GEN_MESSAGE_T5 object */
 #define MXT_RPTID_NOMSG		0xff
@@ -140,7 +132,6 @@ struct t9_range {
 /* MXT_SPT_COMMSCONFIG_T18 */
 #define MXT_COMMS_CTRL		0
 #define MXT_COMMS_CMD		1
-#define MXT_COMMS_RETRIGEN      BIT(6)
 
 /* MXT_DEBUG_DIAGNOSTIC_T37 */
 #define MXT_DIAGNOSTIC_PAGEUP	0x01
@@ -165,22 +156,6 @@ struct t37_debug {
 #define MXT_RESET_VALUE		0x01
 #define MXT_BACKUP_VALUE	0x55
 
-/* Define for MXT_PROCI_TOUCHSUPPRESSION_T42 */
-#define MXT_T42_MSG_TCHSUP	BIT(0)
-
-/* T63 Stylus */
-#define MXT_T63_STYLUS_PRESS	BIT(0)
-#define MXT_T63_STYLUS_RELEASE	BIT(1)
-#define MXT_T63_STYLUS_MOVE		BIT(2)
-#define MXT_T63_STYLUS_SUPPRESS	BIT(3)
-
-#define MXT_T63_STYLUS_DETECT	BIT(4)
-#define MXT_T63_STYLUS_TIP		BIT(5)
-#define MXT_T63_STYLUS_ERASER	BIT(6)
-#define MXT_T63_STYLUS_BARREL	BIT(7)
-
-#define MXT_T63_STYLUS_PRESSURE_MASK	0x3F
-
 /* T100 Multiple Touch Touchscreen */
 #define MXT_T100_CTRL		0
 #define MXT_T100_CFG1		1
@@ -204,7 +179,6 @@ struct t37_debug {
 enum t100_type {
 	MXT_T100_TYPE_FINGER		= 1,
 	MXT_T100_TYPE_PASSIVE_STYLUS	= 2,
-	MXT_T100_TYPE_ACTIVE_STYLUS	= 3,
 	MXT_T100_TYPE_HOVERING_FINGER	= 4,
 	MXT_T100_TYPE_GLOVE		= 5,
 	MXT_T100_TYPE_LARGE_TOUCH	= 6,
@@ -216,16 +190,6 @@ enum t100_type {
 #define MXT_TOUCH_MAJOR_DEFAULT		1
 #define MXT_PRESSURE_DEFAULT		1
 
-/* Gen2 Active Stylus */
-#define MXT_T107_STYLUS_STYAUX		42
-#define MXT_T107_STYLUS_STYAUX_PRESSURE	BIT(0)
-#define MXT_T107_STYLUS_STYAUX_PEAK	BIT(4)
-
-#define MXT_T107_STYLUS_HOVER		BIT(0)
-#define MXT_T107_STYLUS_TIPSWITCH	BIT(1)
-#define MXT_T107_STYLUS_BUTTON0		BIT(2)
-#define MXT_T107_STYLUS_BUTTON1		BIT(3)
-
 /* Delay times */
 #define MXT_BACKUP_TIME		50	/* msec */
 #define MXT_RESET_TIME		200	/* msec */
@@ -233,11 +197,6 @@ enum t100_type {
 #define MXT_CRC_TIMEOUT		1000	/* msec */
 #define MXT_FW_RESET_TIME	3000	/* msec */
 #define MXT_FW_CHG_TIMEOUT	300	/* msec */
-#define MXT_WAKEUP_TIME		25	/* msec */
-#define MXT_REGULATOR_DELAY	150	/* msec */
-#define MXT_CHG_DELAY	        100	/* msec */
-#define MXT_POWERON_DELAY	150	/* msec */
-#define MXT_BOOTLOADER_WAIT	36E5	/* 1 minute */
 
 /* Command to unlock bootloader */
 #define MXT_UNLOCK_CMD_MSB	0xaa
@@ -258,8 +217,6 @@ enum t100_type {
 #define MXT_MAX_AREA		0xff
 
 #define MXT_PIXELS_PER_MM	20
-
-#define DEBUG_MSG_MAX		200
 
 struct mxt_info {
 	u8 family_id;
@@ -409,7 +366,6 @@ static bool mxt_object_readable(unsigned int type)
 	case MXT_SPT_USERDATA_T38:
 	case MXT_SPT_DIGITIZER_T43:
 	case MXT_SPT_CTECONFIG_T46:
-	case MXT_SPT_DYNAMICCONFIGURATIONCONTAINER_T71:
 		return true;
 	default:
 		return false;
