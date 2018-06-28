@@ -26,14 +26,19 @@
 #define mipi_dbg(fmt, ...)
 #endif
 
+#define MAX_VIRTUAL_CHAN_NUM	4
+
+struct mipi_csi2_chan {
+	int		ipu_id;
+	unsigned int	csi_id;
+	unsigned int	datatype;
+};
+
 /* driver private data */
 struct mipi_csi2_info {
 	bool		mipi_en;
-	int		ipu_id;
-	unsigned int	csi_id;
-	unsigned int	v_channel;
 	unsigned int	lanes;
-	unsigned int	datatype;
+	struct mipi_csi2_chan mipi_chan[MAX_VIRTUAL_CHAN_NUM];
 	struct clk	*cfg_clk;
 	struct clk	*dphy_clk;
 	struct clk	*pixel_clk;

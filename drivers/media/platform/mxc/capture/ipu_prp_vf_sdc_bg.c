@@ -158,17 +158,16 @@ static int prpvf_start(void *private)
 	mipi_csi2_info = mipi_csi2_get_info();
 
 	if (mipi_csi2_info) {
-		if (mipi_csi2_get_status(mipi_csi2_info)) {
-			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info);
-			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info);
+		if (mipi_csi2_get_status(mipi_csi2_info) && cam->is_mipi_cam) {
+			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info, cam->mipi_v_channel);
+			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info, cam->mipi_v_channel);
 
 			if (cam->ipu == ipu_get_soc(ipu_id)
 				&& cam->csi == csi_id) {
 				vf.csi_prp_vf_mem.mipi_en = true;
-				vf.csi_prp_vf_mem.mipi_vc =
-				mipi_csi2_get_virtual_channel(mipi_csi2_info);
+				vf.csi_prp_vf_mem.mipi_vc = cam->mipi_v_channel;
 				vf.csi_prp_vf_mem.mipi_id =
-				mipi_csi2_get_datatype(mipi_csi2_info);
+				mipi_csi2_get_datatype(mipi_csi2_info, cam->mipi_v_channel);
 
 				mipi_csi2_pixelclk_enable(mipi_csi2_info);
 			} else {
@@ -313,9 +312,9 @@ static int prpvf_start(void *private)
 out_1:
 	ipu_free_irq(cam->ipu, IPU_IRQ_PRP_VF_OUT_EOF, NULL);
 out_2:
-	ipu_uninit_channel(cam->ipu, MEM_ROT_VF_MEM);
+	ipu_uninit_channel(cam->ipu, MEM_ROT_VF_MEM, NULL);
 out_3:
-	ipu_uninit_channel(cam->ipu, CSI_PRP_VF_MEM);
+	ipu_uninit_channel(cam->ipu, CSI_PRP_VF_MEM, NULL);
 out_4:
 	if (cam->vf_bufs_vaddr[0]) {
 		dma_free_coherent(0, cam->vf_bufs_size[0],
@@ -368,16 +367,16 @@ static int prpvf_stop(void *private)
 
 	ipu_disable_channel(cam->ipu, CSI_PRP_VF_MEM, true);
 	ipu_disable_channel(cam->ipu, MEM_ROT_VF_MEM, true);
-	ipu_uninit_channel(cam->ipu, CSI_PRP_VF_MEM);
-	ipu_uninit_channel(cam->ipu, MEM_ROT_VF_MEM);
+	ipu_uninit_channel(cam->ipu, CSI_PRP_VF_MEM, NULL);
+	ipu_uninit_channel(cam->ipu, MEM_ROT_VF_MEM, NULL);
 
 #ifdef CONFIG_MXC_MIPI_CSI2
 	mipi_csi2_info = mipi_csi2_get_info();
 
 	if (mipi_csi2_info) {
-		if (mipi_csi2_get_status(mipi_csi2_info)) {
-			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info);
-			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info);
+		if (mipi_csi2_get_status(mipi_csi2_info) && cam->is_mipi_cam) {
+			ipu_id = mipi_csi2_get_bind_ipu(mipi_csi2_info, cam->mipi_v_channel);
+			csi_id = mipi_csi2_get_bind_csi(mipi_csi2_info, cam->mipi_v_channel);
 
 			if (cam->ipu == ipu_get_soc(ipu_id)
 				&& cam->csi == csi_id)

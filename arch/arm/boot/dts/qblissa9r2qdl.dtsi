@@ -419,7 +419,17 @@
 
 	/* Serial MIPI camera interface */
 #ifdef CONFIG_QBLISSA9R2_SERIAL_CAMERA
+	/* First capture device for first MIPI channel */
 	v4l2_cap_0 {
+		compatible = "fsl,imx6q-v4l2-capture";
+		ipu_id = <0>;
+		csi_id = <0>;
+		mclk_source = <0>;
+		status = "okay";
+	};
+
+	/* Second capture device, for second MIPI channel */
+	v4l2_cap_1 {
 		compatible = "fsl,imx6q-v4l2-capture";
 		ipu_id = <0>;
 		csi_id = <1>;
@@ -596,6 +606,7 @@
 	};
 
 #ifdef CONFIG_QBLISSA9R2_SERIAL_CAMERA
+#ifdef CONFIG_QBLISSA9R2_MIPI_CAMERA_OV564X
 	ov564x_mipi: ov564x_mipi@3c {
 		compatible = "ovti,ov564x_mipi";
 		reg = <0x3c>;
@@ -606,10 +617,20 @@
 		DVDD-supply = <&reg_camera_dvdd>;
 		en-gpios = <&gpio5 24 GPIO_ACTIVE_LOW>;
 		rst-gpios = <&gpio5 23 GPIO_ACTIVE_LOW>;
-		csi_id = <1>;
+		csi_id = <0>;
 		mclk = <24000000>;
 		mclk_source = <0>;
 	};
+#endif
+#ifdef CONFIG_QBLISSA9R2_MIPI_CAMERA_ISL7998X
+	isl7998x_mipi: isl7998x_mipi@44 {
+		compatible = "intersil,isl7998x_mipi";
+		reg = <0x44>;
+		clocks = <&clks IMX6QDL_CLK_CKO2>;
+		clock-names = "csi_mclk";
+		mclk = <27000000>;
+	};
+#endif
 #endif
 };
 
@@ -782,10 +803,21 @@
 #ifdef CONFIG_QBLISSA9R2_SERIAL_CAMERA
 &mipi_csi {
 	status = "okay";
-	ipu_id = <0>;
-	csi_id = <1>;
-	v_channel = <0>;
 	lanes = <2>;
+
+	mipi-csi-channel@0 {
+		ipu_id = <0>;
+		csi_id = <0>;
+		v_channel = <0>;
+		status = "okay";
+	};
+
+	mipi-csi-channel@1 {
+		ipu_id = <0>;
+		csi_id = <1>;
+		v_channel = <1>;
+		status = "okay";
+	};
 };
 #endif
 

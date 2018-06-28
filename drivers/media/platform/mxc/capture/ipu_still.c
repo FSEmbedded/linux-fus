@@ -68,12 +68,22 @@ static irqreturn_t prp_csi_eof_callback(int irq, void *dev_id)
 static irqreturn_t prp_still_callback(int irq, void *dev_id)
 {
 	cam_data *cam = (cam_data *) dev_id;
+	ipu_channel_t csi_channel;
+
+#ifdef CONFIG_MXC_IPU_V1
+	csi_channel = CSI_MEM;
+#else
+	if (cam->csi == 1)
+		csi_channel = CSI_MEM1;
+	else
+		csi_channel = CSI_MEM0;
+#endif
 
 	callback_eof_flag++;
 	if (callback_eof_flag < 5) {
 #ifndef CONFIG_MXC_IPU_V1
 		buffer_num = (buffer_num == 0) ? 1 : 0;
-		ipu_select_buffer(cam->ipu, CSI_MEM,
+		ipu_select_buffer(cam->ipu, csi_channel,
 				  IPU_OUTPUT_BUFFER, buffer_num);
 #endif
 	} else {
@@ -96,6 +106,21 @@ static int prp_still_start(void *private)
 	u32 pixel_fmt;
 	int err;
 	ipu_channel_params_t params;
+	ipu_channel_t csi_channel;
+
+#ifdef CONFIG_MXC_IPU_V1
+	csi_channel = CSI_MEM;
+#else
+	uint32_t irq;
+
+	if (cam->csi == 1) {
+		csi_channel = CSI_MEM1;
+		irq = IPU_IRQ_CSI1_OUT_EOF;
+	} else {
+		csi_channel = CSI_MEM0;
+		irq = IPU_IRQ_CSI0_OUT_EOF;
+	}
+#endif
 
 	if (cam->v2f.fmt.pix.pixelformat == V4L2_PIX_FMT_YUV420)
 		pixel_fmt = IPU_PIX_FMT_YUV420P;
@@ -123,11 +148,11 @@ static int prp_still_start(void *private)
 	}
 
 	memset(&params, 0, sizeof(params));
-	err = ipu_init_channel(cam->ipu, CSI_MEM, &params);
+	err = ipu_init_channel(cam->ipu, csi_channel, &params);
 	if (err != 0)
 		return err;
 
-	err = ipu_init_channel_buffer(cam->ipu, CSI_MEM, IPU_OUTPUT_BUFFER,
+	err = ipu_init_channel_buffer(cam->ipu, csi_channel, IPU_OUTPUT_BUFFER,
 				      pixel_fmt, cam->v2f.fmt.pix.width,
 				      cam->v2f.fmt.pix.height,
 				      cam->v2f.fmt.pix.width, IPU_ROTATE_NONE,
@@ -157,8 +182,8 @@ static int prp_still_start(void *private)
 	callback_eof_flag = 0;
 	buffer_num = 0;
 
-	ipu_clear_irq(cam->ipu, IPU_IRQ_CSI0_OUT_EOF);
-	err = ipu_request_irq(cam->ipu, IPU_IRQ_CSI0_OUT_EOF,
+	ipu_clear_irq(cam->ipu, irq);
+	err = ipu_request_irq(cam->ipu, irq,
 			      prp_still_callback,
 			      0, "Mxc Camera", cam);
 	if (err != 0) {
@@ -166,8 +191,8 @@ static int prp_still_start(void *private)
 		return err;
 	}
 
-	ipu_select_buffer(cam->ipu, CSI_MEM, IPU_OUTPUT_BUFFER, 0);
-	ipu_enable_channel(cam->ipu, CSI_MEM);
+	ipu_select_buffer(cam->ipu, csi_channel, IPU_OUTPUT_BUFFER, 0);
+	ipu_enable_channel(cam->ipu, csi_channel);
 	ipu_enable_csi(cam->ipu, cam->csi);
 #endif
 
@@ -184,17 +209,29 @@ static int prp_still_stop(void *private)
 {
 	cam_data *cam = (cam_data *) private;
 	int err = 0;
+	ipu_channel_t csi_channel;
 
 #ifdef CONFIG_MXC_IPU_V1
+	csi_channel = CSI_MEM;
 	ipu_free_irq(IPU_IRQ_SENSOR_EOF, NULL);
 	ipu_free_irq(IPU_IRQ_SENSOR_OUT_EOF, cam);
 #else
-	ipu_free_irq(cam->ipu, IPU_IRQ_CSI0_OUT_EOF, cam);
+	uint32_t irq;
+
+	if (cam->csi == 1) {
+		csi_channel = CSI_MEM1;
+		irq = IPU_IRQ_CSI1_OUT_EOF;
+	} else {
+		csi_channel = CSI_MEM0;
+		irq = IPU_IRQ_CSI0_OUT_EOF;
+	}
+
+	ipu_free_irq(cam->ipu, irq, cam);
 #endif
 
 	ipu_disable_csi(cam->ipu, cam->csi);
-	ipu_disable_channel(cam->ipu, CSI_MEM, true);
-	ipu_uninit_channel(cam->ipu, CSI_MEM);
+	ipu_disable_channel(cam->ipu, csi_channel, true);
+	ipu_uninit_channel(cam->ipu, csi_channel, NULL);
 
 	return err;
 }

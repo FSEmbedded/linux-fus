@@ -4138,6 +4138,12 @@ static int ov5642_probe(struct i2c_client *client,
 		return retval;
 	}
 
+	retval = of_property_read_u32(dev->of_node, "ipu_id",
+					&(ov5642_data.ipu_id));
+	if (retval) {
+		ov5642_data.ipu_id = 0;
+	}
+
 	retval = of_property_read_u32(dev->of_node, "csi_id",
 					&(ov5642_data.csi));
 	if (retval) {

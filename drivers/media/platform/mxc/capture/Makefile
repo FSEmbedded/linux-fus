@@ -21,4 +21,7 @@ obj-$(CONFIG_MXC_CAMERA_OV5640_MIPI) += ov5640_camera_mipi_int.o
 adv7180_tvin-objs := adv7180.o
 obj-$(CONFIG_MXC_TVIN_ADV7180) += adv7180_tvin.o
 
+isl7998x_tvin_mipi-objs := isl7998x_mipi.o
+obj-$(CONFIG_MXC_TVIN_ISL7998X_MIPI) += isl7998x_tvin_mipi.o
+
 obj-$(CONFIG_VIDEO_V4L2_MXC_INT_DEVICE) += v4l2-int-device.o
