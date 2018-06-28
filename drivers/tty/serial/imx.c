@@ -2072,8 +2072,6 @@ static int serial_imx_probe_dt(struct imx_port *sport,
 
 	of_property_read_u32(np, "fsl,rx_fifo_trig", &sport->rx_fifo_trig);
 
-	sport->devdata = of_id->data;
-
 	return 0;
 }
 #else

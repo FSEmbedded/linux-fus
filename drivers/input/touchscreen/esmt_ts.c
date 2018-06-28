@@ -58,6 +58,7 @@ struct esmt_i2c_data {
 	struct i2c_client *client;
 	struct work_struct get_work;
 	struct input_dev *input_dev;
+	struct touchscreen_properties prop;
 	int reset_pin;
 	char phys[32];
 	int fingers;
@@ -787,7 +788,7 @@ static int esmt_i2c_msg_probe(struct i2c_client *client,
 						data->touch_num - 1, 0, 0);
 
 	/* Parse touchscreen-size-x, touchscreen-size-y, etc */
-	touchscreen_parse_of_params(input_dev);
+	touchscreen_parse_properties(input_dev, true, &data->prop);
 	dev_info(&client->dev, "Setting resolution to %d x %d\n",
 		 input_abs_get_max(input_dev, ABS_MT_POSITION_X),
 		 input_abs_get_max(input_dev, ABS_MT_POSITION_Y));
