@@ -129,6 +129,13 @@ enum sgtl5000_micbias_resistor {
 	SGTL5000_MICBIAS_8K = 8,
 };
 
+enum  {
+	I2S_LRCLK_STRENGTH_DISABLE,
+	I2S_LRCLK_STRENGTH_LOW,
+	I2S_LRCLK_STRENGTH_MEDIUM,
+	I2S_LRCLK_STRENGTH_HIGH,
+};
+
 /* sgtl5000 private structure in codec */
 struct sgtl5000_priv {
 	int sysclk;	/* sysclk rate */
@@ -143,6 +150,7 @@ struct sgtl5000_priv {
 	int no_standby;
 	u8 micbias_resistor;
 	u8 micbias_voltage;
+	u8 lrclk_strength;
 };
 
 /*
@@ -1346,6 +1354,7 @@ err_ldo_remove:
 static int sgtl5000_probe(struct snd_soc_codec *codec)
 {
 	int ret;
+	u16 reg;
 	struct sgtl5000_priv *sgtl5000 = snd_soc_codec_get_drvdata(codec);
 
 	ret = sgtl5000_enable_regulators(codec);
@@ -1379,7 +1388,8 @@ static int sgtl5000_probe(struct snd_soc_codec *codec)
 			SGTL5000_DAC_MUTE_RIGHT |
 			SGTL5000_DAC_MUTE_LEFT);
 
-	snd_soc_write(codec, SGTL5000_CHIP_PAD_STRENGTH, 0x015f);
+	reg = (sgtl5000->lrclk_strength << SGTL5000_PAD_I2S_LRCLK_SHIFT | 0x5f);
+	snd_soc_write(codec, SGTL5000_CHIP_PAD_STRENGTH, reg);
 
 	snd_soc_write(codec, SGTL5000_CHIP_ANA_CTRL,
 			SGTL5000_HP_ZCD_EN |
@@ -1560,6 +1570,8 @@ static int sgtl5000_i2c_probe(struct i2c_client *client,
 {
 	struct sgtl5000_priv *sgtl5000;
 	int ret, reg, rev;
+	struct device_node *np = client->dev.of_node;
+	u32 value;
 
 	sgtl5000 = devm_kzalloc(&client->dev, sizeof(*sgtl5000), GFP_KERNEL);
 	if (!sgtl5000)
@@ -1611,6 +1623,13 @@ static int sgtl5000_i2c_probe(struct i2c_client *client,
 	sgtl5000->revision = rev;
 
 	i2c_set_clientdata(client, sgtl5000);
+
+	sgtl5000->lrclk_strength = I2S_LRCLK_STRENGTH_LOW;
+	if (!of_property_read_u32(np, "lrclk-strength", &value)) {
+		if (value > I2S_LRCLK_STRENGTH_HIGH)
+			value = I2S_LRCLK_STRENGTH_LOW;
+		sgtl5000->lrclk_strength = value;
+	}
 
 	/* Ensure sgtl5000 will start with sane register values */
 	ret = sgtl5000_fill_defaults(sgtl5000);
