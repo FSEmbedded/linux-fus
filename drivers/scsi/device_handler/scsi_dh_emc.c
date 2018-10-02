@@ -452,7 +452,7 @@ static int clariion_prep_fn(struct scsi_device *sdev, struct request *req)
 
 	if (h->lun_state != CLARIION_LUN_OWNED) {
 		ret = BLKPREP_KILL;
-		req->cmd_flags |= REQ_QUIET;
+		req->rq_flags |= RQF_QUIET;
 	}
 	return ret;
 
@@ -461,7 +461,7 @@ static int clariion_prep_fn(struct scsi_device *sdev, struct request *req)
 static int clariion_std_inquiry(struct scsi_device *sdev,
 				struct clariion_dh_data *csdev)
 {
-	int err;
+	int err = SCSI_DH_OK;
 	char *sp_model;
 
 	err = send_inquiry_cmd(sdev, 0, csdev);

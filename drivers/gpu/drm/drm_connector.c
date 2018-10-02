@@ -225,6 +225,7 @@ int drm_connector_init(struct drm_device *dev,
 
 	INIT_LIST_HEAD(&connector->probed_modes);
 	INIT_LIST_HEAD(&connector->modes);
+	mutex_init(&connector->mutex);
 	connector->edid_blob_ptr = NULL;
 	connector->status = connector_status_unknown;
 
@@ -242,6 +243,14 @@ int drm_connector_init(struct drm_device *dev,
 
 	drm_object_attach_property(&connector->base,
 				      config->dpms_property, 0);
+
+	drm_object_attach_property(&connector->base,
+				   config->link_status_property,
+				   0);
+
+	drm_object_attach_property(&connector->base,
+				   config->non_desktop_property,
+				   0);
 
 	if (drm_core_check_feature(dev, DRIVER_ATOMIC)) {
 		drm_object_attach_property(&connector->base, config->prop_crtc_id, 0);
@@ -359,6 +368,8 @@ void drm_connector_cleanup(struct drm_connector *connector)
 		connector->funcs->atomic_destroy_state(connector,
 						       connector->state);
 
+	mutex_destroy(&connector->mutex);
+
 	memset(connector, 0, sizeof(*connector));
 }
 EXPORT_SYMBOL(drm_connector_cleanup);
@@ -374,14 +385,18 @@ EXPORT_SYMBOL(drm_connector_cleanup);
  */
 int drm_connector_register(struct drm_connector *connector)
 {
-	int ret;
+	int ret = 0;
 
-	if (connector->registered)
+	if (!connector->dev->registered)
 		return 0;
+
+	mutex_lock(&connector->mutex);
+	if (connector->registered)
+		goto unlock;
 
 	ret = drm_sysfs_connector_add(connector);
 	if (ret)
-		return ret;
+		goto unlock;
 
 	ret = drm_debugfs_connector_add(connector);
 	if (ret) {
@@ -397,12 +412,14 @@ int drm_connector_register(struct drm_connector *connector)
 	drm_mode_object_register(connector->dev, &connector->base);
 
 	connector->registered = true;
-	return 0;
+	goto unlock;
 
 err_debugfs:
 	drm_debugfs_connector_remove(connector);
 err_sysfs:
 	drm_sysfs_connector_remove(connector);
+unlock:
+	mutex_unlock(&connector->mutex);
 	return ret;
 }
 EXPORT_SYMBOL(drm_connector_register);
@@ -415,8 +432,11 @@ EXPORT_SYMBOL(drm_connector_register);
  */
 void drm_connector_unregister(struct drm_connector *connector)
 {
-	if (!connector->registered)
+	mutex_lock(&connector->mutex);
+	if (!connector->registered) {
+		mutex_unlock(&connector->mutex);
 		return;
+	}
 
 	if (connector->funcs->early_unregister)
 		connector->funcs->early_unregister(connector);
@@ -425,6 +445,7 @@ void drm_connector_unregister(struct drm_connector *connector)
 	drm_debugfs_connector_remove(connector);
 
 	connector->registered = false;
+	mutex_unlock(&connector->mutex);
 }
 EXPORT_SYMBOL(drm_connector_unregister);
 
@@ -505,6 +526,12 @@ static const struct drm_prop_enum_list drm_dpms_enum_list[] = {
 	{ DRM_MODE_DPMS_OFF, "Off" }
 };
 DRM_ENUM_NAME_FN(drm_get_dpms_name, drm_dpms_enum_list)
+
+static const struct drm_prop_enum_list drm_link_status_enum_list[] = {
+	{ DRM_MODE_LINK_STATUS_GOOD, "Good" },
+	{ DRM_MODE_LINK_STATUS_BAD, "Bad" },
+};
+DRM_ENUM_NAME_FN(drm_get_link_status_name, drm_link_status_enum_list)
 
 /**
  * drm_display_info_set_bus_formats - set the supported bus formats
@@ -621,6 +648,25 @@ int drm_connector_create_standard_properties(struct drm_device *dev)
 	if (!prop)
 		return -ENOMEM;
 	dev->mode_config.tile_property = prop;
+
+	prop = drm_property_create(dev, DRM_MODE_PROP_BLOB,
+				   "HDR_SOURCE_METADATA", 0);
+
+	if (!prop)
+		return -ENOMEM;
+	dev->mode_config.hdr_source_metadata_property = prop;
+
+	prop = drm_property_create_enum(dev, 0, "link-status",
+					drm_link_status_enum_list,
+					ARRAY_SIZE(drm_link_status_enum_list));
+	if (!prop)
+		return -ENOMEM;
+	dev->mode_config.link_status_property = prop;
+
+	prop = drm_property_create_bool(dev, DRM_MODE_PROP_IMMUTABLE, "non-desktop");
+	if (!prop)
+		return -ENOMEM;
+	dev->mode_config.non_desktop_property = prop;
 
 	return 0;
 }
@@ -941,6 +987,10 @@ int drm_mode_connector_update_edid_property(struct drm_connector *connector,
 	if (edid)
 		size = EDID_LENGTH * (1 + edid->extensions);
 
+	drm_object_property_set_value(&connector->base,
+				      dev->mode_config.non_desktop_property,
+			              connector->display_info.non_desktop);
+
 	ret = drm_property_replace_global_blob(dev,
 					       &connector->edid_blob_ptr,
 	                                       size,
@@ -950,6 +1000,36 @@ int drm_mode_connector_update_edid_property(struct drm_connector *connector,
 	return ret;
 }
 EXPORT_SYMBOL(drm_mode_connector_update_edid_property);
+
+/**
+ * drm_mode_connector_set_link_status_property - Set link status property of a connector
+ * @connector: drm connector
+ * @link_status: new value of link status property (0: Good, 1: Bad)
+ *
+ * In usual working scenario, this link status property will always be set to
+ * "GOOD". If something fails during or after a mode set, the kernel driver
+ * may set this link status property to "BAD". The caller then needs to send a
+ * hotplug uevent for userspace to re-check the valid modes through
+ * GET_CONNECTOR_IOCTL and retry modeset.
+ *
+ * Note: Drivers cannot rely on userspace to support this property and
+ * issue a modeset. As such, they may choose to handle issues (like
+ * re-training a link) without userspace's intervention.
+ *
+ * The reason for adding this property is to handle link training failures, but
+ * it is not limited to DP or link training. For example, if we implement
+ * asynchronous setcrtc, this property can be used to report any failures in that.
+ */
+void drm_mode_connector_set_link_status_property(struct drm_connector *connector,
+						 uint64_t link_status)
+{
+	struct drm_device *dev = connector->dev;
+
+	drm_modeset_lock(&dev->mode_config.connection_mutex, NULL);
+	connector->state->link_status = link_status;
+	drm_modeset_unlock(&dev->mode_config.connection_mutex);
+}
+EXPORT_SYMBOL(drm_mode_connector_set_link_status_property);
 
 int drm_mode_connector_set_obj_prop(struct drm_mode_object *obj,
 				    struct drm_property *property,
@@ -1030,7 +1110,7 @@ int drm_mode_getconnector(struct drm_device *dev, void *data,
 
 	mutex_lock(&dev->mode_config.mutex);
 
-	connector = drm_connector_lookup(dev, out_resp->connector_id);
+	connector = drm_connector_lookup(dev, file_priv, out_resp->connector_id);
 	if (!connector) {
 		ret = -ENOENT;
 		goto out_unlock;

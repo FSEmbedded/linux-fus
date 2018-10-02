@@ -15,7 +15,7 @@ drm-y       :=	drm_auth.o drm_bufs.o drm_cache.o \
 		drm_modeset_lock.o drm_atomic.o drm_bridge.o \
 		drm_framebuffer.o drm_connector.o drm_blend.o \
 		drm_encoder.o drm_mode_object.o drm_property.o \
-		drm_plane.o drm_color_mgmt.o
+		drm_plane.o drm_color_mgmt.o drm_lease.o
 
 drm-$(CONFIG_COMPAT) += drm_ioc32.o
 drm-$(CONFIG_DRM_GEM_CMA_HELPER) += drm_gem_cma_helper.o
@@ -27,7 +27,8 @@ drm-$(CONFIG_AGP) += drm_agpsupport.o
 drm_kms_helper-y := drm_crtc_helper.o drm_dp_helper.o drm_probe_helper.o \
 		drm_plane_helper.o drm_dp_mst_topology.o drm_atomic_helper.o \
 		drm_kms_helper_common.o drm_dp_dual_mode_helper.o \
-		drm_simple_kms_helper.o drm_modeset_helper.o
+		drm_simple_kms_helper.o drm_modeset_helper.o \
+		drm_scdc_helper.o
 
 drm_kms_helper-$(CONFIG_DRM_LOAD_EDID_FIRMWARE) += drm_edid_load.o
 drm_kms_helper-$(CONFIG_DRM_FBDEV_EMULATION) += drm_fb_helper.o
@@ -78,12 +79,13 @@ obj-$(CONFIG_DRM_VIRTIO_GPU) += virtio/
 obj-$(CONFIG_DRM_MSM) += msm/
 obj-$(CONFIG_DRM_TEGRA) += tegra/
 obj-$(CONFIG_DRM_STI) += sti/
-obj-$(CONFIG_DRM_IMX) += imx/
 obj-$(CONFIG_DRM_MEDIATEK) += mediatek/
 obj-y			+= i2c/
 obj-y			+= panel/
 obj-y			+= bridge/
 obj-$(CONFIG_DRM_FSL_DCU) += fsl-dcu/
+obj-$(CONFIG_DRM_IMX) += imx/
 obj-$(CONFIG_DRM_ETNAVIV) += etnaviv/
 obj-$(CONFIG_DRM_ARCPGU)+= arc/
 obj-y			+= hisilicon/
+obj-$(CONFIG_DRM_MXSFB)	+= mxsfb/

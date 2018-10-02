@@ -28,6 +28,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/interrupt.h>
 
 #include <linux/mmc/card.h>
 #include <linux/mmc/core.h>
@@ -461,11 +462,9 @@ static void msdc_prepare_data(struct msdc_host *host, struct mmc_request *mrq)
 	struct mmc_data *data = mrq->data;
 
 	if (!(data->host_cookie & MSDC_PREPARE_FLAG)) {
-		bool read = (data->flags & MMC_DATA_READ) != 0;
-
 		data->host_cookie |= MSDC_PREPARE_FLAG;
 		data->sg_count = dma_map_sg(host->dev, data->sg, data->sg_len,
-					   read ? DMA_FROM_DEVICE : DMA_TO_DEVICE);
+					    mmc_get_dma_dir(data));
 	}
 }
 
@@ -477,10 +476,8 @@ static void msdc_unprepare_data(struct msdc_host *host, struct mmc_request *mrq)
 		return;
 
 	if (data->host_cookie & MSDC_PREPARE_FLAG) {
-		bool read = (data->flags & MMC_DATA_READ) != 0;
-
 		dma_unmap_sg(host->dev, data->sg, data->sg_len,
-			     read ? DMA_FROM_DEVICE : DMA_TO_DEVICE);
+			     mmc_get_dma_dir(data));
 		data->host_cookie &= ~MSDC_PREPARE_FLAG;
 	}
 }
@@ -579,7 +576,7 @@ static void msdc_set_mclk(struct msdc_host *host, unsigned char timing, u32 hz)
 		}
 	}
 	sdr_set_field(host->base + MSDC_CFG, MSDC_CFG_CKMOD | MSDC_CFG_CKDIV,
-			(mode << 8) | (div % 0xff));
+		      (mode << 8) | div);
 	sdr_set_bits(host->base + MSDC_CFG, MSDC_CFG_CKPDN);
 	while (!(readl(host->base + MSDC_CFG) & MSDC_CFG_CKSTB))
 		cpu_relax();
@@ -927,8 +924,7 @@ static void msdc_ops_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		msdc_start_command(host, mrq, mrq->cmd);
 }
 
-static void msdc_pre_req(struct mmc_host *mmc, struct mmc_request *mrq,
-		bool is_first_req)
+static void msdc_pre_req(struct mmc_host *mmc, struct mmc_request *mrq)
 {
 	struct msdc_host *host = mmc_priv(mmc);
 	struct mmc_data *data = mrq->data;
@@ -1562,7 +1558,7 @@ static int msdc_drv_probe(struct platform_device *pdev)
 	host->src_clk_freq = clk_get_rate(host->src_clk);
 	/* Set host parameters to mmc */
 	mmc->ops = &mt_msdc_ops;
-	mmc->f_min = host->src_clk_freq / (4 * 255);
+	mmc->f_min = DIV_ROUND_UP(host->src_clk_freq, 4 * 255);
 
 	mmc->caps |= MMC_CAP_ERASE | MMC_CAP_CMD23;
 	/* MMC core transfer sizes tunable parameters */

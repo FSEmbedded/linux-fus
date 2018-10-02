@@ -42,6 +42,7 @@
 #include <linux/dma-mapping.h>
 
 #include <asm/irq.h>
+#include <linux/busfreq-imx.h>
 #include <linux/platform_data/serial-imx.h>
 #include <linux/platform_data/dma-imx.h>
 
@@ -505,15 +506,20 @@ static void dma_tx_callback(void *data)
 	struct circ_buf *xmit = &sport->port.state->xmit;
 	unsigned long flags;
 
-	dma_unmap_sg(sport->port.dev, sgl, sport->dma_tx_nents, DMA_TO_DEVICE);
-
-	sport->dma_is_txing = 0;
-
 	/* update the stat */
 	spin_lock_irqsave(&sport->port.lock, flags);
+	/* user call .flush() before the code slice coming */
+	if (!sport->dma_is_txing) {
+		spin_unlock_irqrestore(&sport->port.lock, flags);
+		return;
+	}
+	sport->dma_is_txing = 0;
+
 	xmit->tail = (xmit->tail + sport->tx_bytes) & (UART_XMIT_SIZE - 1);
 	sport->port.icount.tx += sport->tx_bytes;
 	spin_unlock_irqrestore(&sport->port.lock, flags);
+
+	dma_unmap_sg(sport->port.dev, sgl, sport->dma_tx_nents, DMA_TO_DEVICE);
 
 	dev_dbg(sport->port.dev, "we finish the TX DMA.\n");
 
@@ -540,6 +546,7 @@ static void dma_tx_work(struct work_struct *w)
 	struct dma_chan	*chan = sport->dma_chan_tx;
 	struct device *dev = sport->port.dev;
 	unsigned long flags;
+	unsigned long temp;
 	int ret;
 
 	if (test_and_set_bit(DMA_TX_IS_WORKING, &sport->flags))
@@ -581,6 +588,10 @@ static void dma_tx_work(struct work_struct *w)
 		sport->dma_is_txing = 1;
 		dmaengine_submit(desc);
 		dma_async_issue_pending(chan);
+
+		temp = readl(sport->port.membase + UCR1);
+		temp |= UCR1_TDMAEN;
+		writel(temp, sport->port.membase + UCR1);
 		return;
 	}
 	spin_unlock_irqrestore(&sport->port.lock, flags);
@@ -1117,6 +1128,9 @@ static void imx_uart_dma_exit(struct imx_port *sport)
 		sport->dma_chan_tx = NULL;
 	}
 
+	if (sport->dma_is_inited)
+		release_bus_freq(BUS_FREQ_HIGH);
+
 	sport->dma_is_inited = 0;
 }
 
@@ -1176,6 +1190,7 @@ static int imx_uart_dma_init(struct imx_port *sport)
 	}
 
 	sport->dma_is_inited = 1;
+	request_bus_freq(BUS_FREQ_HIGH);
 
 	return 0;
 err:
@@ -1422,7 +1437,9 @@ static void imx_flush_buffer(struct uart_port *port)
 		temp = readl(sport->port.membase + UCR1);
 		temp &= ~UCR1_TDMAEN;
 		writel(temp, sport->port.membase + UCR1);
-		sport->dma_is_txing = false;
+		sport->dma_is_txing = 0;
+		clear_bit(DMA_TX_IS_WORKING, &sport->flags);
+		smp_mb__after_atomic();
 	}
 
 	/*
@@ -2225,9 +2242,12 @@ static int serial_imx_remove(struct platform_device *pdev)
 
 static void serial_imx_restore_context(struct imx_port *sport)
 {
+	unsigned long flags = 0;
+
 	if (!sport->context_saved)
 		return;
 
+	spin_lock_irqsave(&sport->port.lock, flags);
 	writel(sport->saved_reg[4], sport->port.membase + UFCR);
 	writel(sport->saved_reg[5], sport->port.membase + UESC);
 	writel(sport->saved_reg[6], sport->port.membase + UTIM);
@@ -2239,11 +2259,15 @@ static void serial_imx_restore_context(struct imx_port *sport)
 	writel(sport->saved_reg[2], sport->port.membase + UCR3);
 	writel(sport->saved_reg[3], sport->port.membase + UCR4);
 	sport->context_saved = false;
+	spin_unlock_irqrestore(&sport->port.lock, flags);
 }
 
 static void serial_imx_save_context(struct imx_port *sport)
 {
+	unsigned long flags = 0;
+
 	/* Save necessary regs */
+	spin_lock_irqsave(&sport->port.lock, flags);
 	sport->saved_reg[0] = readl(sport->port.membase + UCR1);
 	sport->saved_reg[1] = readl(sport->port.membase + UCR2);
 	sport->saved_reg[2] = readl(sport->port.membase + UCR3);
@@ -2255,11 +2279,19 @@ static void serial_imx_save_context(struct imx_port *sport)
 	sport->saved_reg[8] = readl(sport->port.membase + UBMR);
 	sport->saved_reg[9] = readl(sport->port.membase + IMX21_UTS);
 	sport->context_saved = true;
+
+	if (uart_console(&sport->port) && sport->port.sysrq)
+		sport->saved_reg[0] |= UCR1_RRDYEN;
+	spin_unlock_irqrestore(&sport->port.lock, flags);
 }
 
 static void serial_imx_enable_wakeup(struct imx_port *sport, bool on)
 {
 	unsigned int val;
+
+	val = readl(sport->port.membase + USR1);
+	if (val & (USR1_AWAKE | USR1_RTSD))
+		writel(USR1_AWAKE | USR1_RTSD, sport->port.membase + USR1);
 
 	val = readl(sport->port.membase + UCR3);
 	if (on)
@@ -2304,7 +2336,6 @@ static int imx_serial_port_resume_noirq(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct imx_port *sport = platform_get_drvdata(pdev);
-	unsigned int val;
 	int ret;
 
 	pinctrl_pm_select_default_state(dev);
@@ -2317,9 +2348,6 @@ static int imx_serial_port_resume_noirq(struct device *dev)
 
 	/* disable wakeup from i.MX UART */
 	serial_imx_enable_wakeup(sport, false);
-	val = readl(sport->port.membase + USR1);
-	if (val & (USR1_AWAKE | USR1_RTSD))
-		writel(USR1_AWAKE | USR1_RTSD, sport->port.membase + USR1);
 
 	clk_disable(sport->clk_ipg);
 
