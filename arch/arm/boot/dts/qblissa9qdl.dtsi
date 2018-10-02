@@ -448,7 +448,13 @@
 	assigned-clock-parents = <0>,
 				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>;
 
-	assigned-clock-rates = <98304000>, <98304000>, <12288000>;
+	/*
+	 * The Audio-PLL (PLL4) must have at least 650MHz. The PLL post divider
+	 * can divide by 1, 2 and 4, which means the lowest possible frequency
+	 * is 162.5 MHz. Use 196.608 MHz, which is a multiple of 24.576 MHz.
+	 * This is in turn a multiple of the commonly used audio bit rates.
+	 */
+	assigned-clock-rates = <196608000>, <196608000>, <24576000>;
 };
 
 #ifdef CONFIG_QBLISSA9_SPI_FLASH

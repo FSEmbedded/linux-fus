@@ -434,20 +434,33 @@
 	disable-scaling;
 };
 
+/* CKO (via CKO1): 24.576 MHz for Audio Codec, CKO2: 24 MHz for Camera. */
 &clks {
 	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
-			  <&clks IMX6QDL_CLK_SSI1_SEL>,
-			  <&clks IMX6QDL_CLK_SSI1>,
-			  <&clks IMX6QDL_CLK_CKO2_SEL>,
-			  <&clks IMX6QDL_CLK_CKO>;
+			  <&clks IMX6QDL_CLK_CKO1_SEL>,
+			  <&clks IMX6QDL_CLK_CKO1_PODF>,
+			  <&clks IMX6QDL_CLK_CKO>,
+			  <&clks IMX6QDL_CLK_CKO2_SEL>;
 
 	assigned-clock-parents = <0>,
 				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 				 <0>,
-				 <&clks IMX6QDL_CLK_SSI1>,
-				 <&clks IMX6QDL_CLK_CKO2>;
-//###	assigned-clock-rates = <786432000>, <0>, <24576000>;
-	assigned-clock-rates = <786432000>, <0>, <12288000>;
+				 <&clks IMX6QDL_CLK_CKO1>,
+ 				 <&clks IMX6QDL_CLK_OSC>;
+
+	/*
+	 * The Audio-PLL (PLL4) must have at least 650MHz. The PLL post divider
+	 * can divide by 1, 2 and 4, which means the lowest possible frequency
+	 * is 162.5 MHz. The largest PODF divider for CKO1 is 8, so we do not
+	 * get below 20 MHz. Use 24.576 MHz as this is a multiple of the most
+	 * commonly used bit rates.
+	 *
+	 * Remark: Solo and DualLite have an additional divider that also can
+	 * divide by 1, 2 and 4. So here we could go down to 12.288 MHz, but
+	 * better keep the code common for all boards.
+	 */
+	//assigned-clock-rates = <98304000>, <98304000>, <12288000>, <24000000>;
+	assigned-clock-rates = <196608000>, <196608000>, <24576000>, <24000000>;
 };
 
 #ifdef CONFIG_ARMSTONEA9R2_SPI_FLASH
@@ -599,14 +612,15 @@
 
 #ifdef CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO
 	sgtl5000: sgtl5000@0a {
-			compatible = "fsl,sgtl5000";
-			reg = <0x0a>;
-			mono2both;
-			clocks = <&clks IMX6QDL_CLK_CKO>;
-			VDDA-supply = <&reg_sgtl5000_vdda>;
-			VDDIO-supply = <&reg_sgtl5000_vddio>;
-			VDDD-supply = <&reg_sgtl5000_vddd>;
-		};
+		compatible = "fsl,sgtl5000";
+		reg = <0x0a>;
+		mono2both;
+		lrclk-strength = <3>;
+		clocks = <&clks IMX6QDL_CLK_CKO>;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+	};
 #endif
 
 
@@ -630,16 +644,16 @@
 		 * cameras maybe need a gpio to perform a reset. */
 		/* rst-gpios = <dummy>; */
 		csi_id = <0>;
-		mclk = <24000000>;
+		mclk = <24000000>;		/* OSC out */
 		mclk_source = <0>;
 	};
 #ifdef CONFIG_ARMSTONEA9R2_MIPI_CAMERA_ISL7998X
 	isl7998x_mipi: isl7998x_mipi@44 {
 		compatible = "intersil,isl7998x_mipi";
 		reg = <0x44>;
-		clocks = <&clks IMX6QDL_CLK_CKO2>;
+		clocks = <&clks IMX6QDL_CLK_CKO2>;	/* Dummy */
 		clock-names = "csi_mclk";
-		mclk = <27000000>;
+		mclk = <27000000>;		/* Has own oscillator */
 	};
 #endif
 #endif /* CONFIG_ARMSTONEA9R2_SERIAL_CAMERA */

@@ -548,7 +548,7 @@
 				 <0>,
 				 <&clks IMX6QDL_CLK_CKO1>;
 
-	assigned-clock-rates = <98304000>, <98304000>, <12288000>;
+	assigned-clock-rates = <196608000>, <196608000>, <24576000>;
 };
 
 #ifdef CONFIG_NETDCUA9_SPI_A
