@@ -593,6 +593,7 @@
 	fsl,phy_reg_vlev = <0x0294>;
 	fsl,phy_reg_cksymtx = <0x800d>;
 	hpd-active-low;
+	force-dvi-mode;
 	status = "okay";
 };
 #endif
