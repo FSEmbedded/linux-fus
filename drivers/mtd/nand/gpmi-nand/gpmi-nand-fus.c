@@ -77,11 +77,13 @@
 #define GPMI_IS_MX6SX(x)	((x)->devdata->type == IS_MX6SX)
 #define GPMI_IS_MX7D(x)		((x)->devdata->type == IS_MX7D)
 #define GPMI_IS_MX6UL(x)	((x)->devdata->type == IS_MX6UL)
+#define GPMI_IS_MX8QXP(x)	((x)->devdata->type == IS_MX8QXP)
 /* i.MX6UL version also works for i.MX6ULL */
 
 #define GPMI_IS_MX6(x)		(GPMI_IS_MX6Q(x) || GPMI_IS_MX6QP(x)\
 	   || GPMI_IS_MX6SX(x) || GPMI_IS_MX6UL(x))
 #define GPMI_IS_MX7(x)		(GPMI_IS_MX7D(x))
+#define GPMI_IS_MX8(x)		(GPMI_IS_MX8QXP(x))
 
 
 #define GPMI_CLK_MAX 5 /* MX6Q needs five clocks */
@@ -142,7 +144,8 @@ enum gpmi_type {
 	IS_MX6QP,
 	IS_MX6SX,
 	IS_MX7D,
-	IS_MX6UL
+	IS_MX6UL,
+	IS_MX8QXP
 };
 
 struct gpmi_devdata {

@@ -58,8 +58,10 @@ static int dwc3_of_simple_clk_init(struct dwc3_of_simple *simple, int count)
 
 		clk = of_clk_get(np, i);
 		if (IS_ERR(clk)) {
-			while (--i >= 0)
+			while (--i >= 0) {
+				clk_disable_unprepare(simple->clks[i]);
 				clk_put(simple->clks[i]);
+			}
 			return PTR_ERR(clk);
 		}
 
@@ -177,6 +179,7 @@ static const struct of_device_id of_dwc3_simple_match[] = {
 	{ .compatible = "rockchip,rk3399-dwc3" },
 	{ .compatible = "xlnx,zynqmp-dwc3" },
 	{ .compatible = "cavium,octeon-7130-usb-uctl" },
+	{ .compatible = "fsl, imx8mq-dwc3" },
 	{ /* Sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, of_dwc3_simple_match);

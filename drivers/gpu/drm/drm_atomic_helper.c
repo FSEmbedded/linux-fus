@@ -362,7 +362,7 @@ mode_fixup(struct drm_atomic_state *state)
 	struct drm_connector *connector;
 	struct drm_connector_state *conn_state;
 	int i;
-	bool ret;
+	int ret;
 
 	for_each_crtc_in_state(state, crtc, crtc_state, i) {
 		if (!crtc_state->mode_changed &&
@@ -518,6 +518,13 @@ drm_atomic_helper_check_modeset(struct drm_device *dev,
 					       connector_state);
 		if (ret)
 			return ret;
+		if (connector->state->crtc) {
+			crtc_state = drm_atomic_get_existing_crtc_state(state,
+									connector->state->crtc);
+			if (connector->state->link_status !=
+			    connector_state->link_status)
+				crtc_state->connectors_changed = true;
+		}
 	}
 
 	/*
@@ -1382,6 +1389,15 @@ static int stall_checks(struct drm_crtc *crtc, bool nonblock)
 	return ret < 0 ? ret : 0;
 }
 
+void release_crtc_commit(struct completion *completion)
+{
+	struct drm_crtc_commit *commit = container_of(completion,
+						      typeof(*commit),
+						      flip_done);
+
+	drm_crtc_commit_put(commit);
+}
+
 /**
  * drm_atomic_helper_setup_commit - setup possibly nonblocking commit
  * @state: new modeset state to be committed
@@ -1474,6 +1490,8 @@ int drm_atomic_helper_setup_commit(struct drm_atomic_state *state,
 		}
 
 		crtc_state->event->base.completion = &commit->flip_done;
+		crtc_state->event->base.completion_release = release_crtc_commit;
+		drm_crtc_commit_get(commit);
 	}
 
 	return 0;
@@ -2260,6 +2278,8 @@ static int update_output_state(struct drm_atomic_state *state,
 								NULL);
 			if (ret)
 				return ret;
+			/* Make sure legacy setCrtc always re-trains */
+			conn_state->link_status = DRM_LINK_STATUS_GOOD;
 		}
 	}
 
@@ -2302,6 +2322,12 @@ static int update_output_state(struct drm_atomic_state *state,
  * @set: mode set configuration
  *
  * Provides a default crtc set_config handler using the atomic driver interface.
+ *
+ * NOTE: For backwards compatibility with old userspace this automatically
+ * resets the "link-status" property to GOOD, to force any link
+ * re-training. The SETCRTC ioctl does not define whether an update does
+ * need a full modeset or just a plane update, hence we're allowed to do
+ * that. See also drm_mode_connector_set_link_status_property().
  *
  * Returns:
  * Returns 0 on success, negative errno numbers on failure.
@@ -2946,7 +2972,7 @@ struct drm_encoder *
 drm_atomic_helper_best_encoder(struct drm_connector *connector)
 {
 	WARN_ON(connector->encoder_ids[1]);
-	return drm_encoder_find(connector->dev, connector->encoder_ids[0]);
+	return drm_encoder_find(connector->dev, NULL, connector->encoder_ids[0]);
 }
 EXPORT_SYMBOL(drm_atomic_helper_best_encoder);
 
@@ -3232,6 +3258,10 @@ __drm_atomic_helper_connector_duplicate_state(struct drm_connector *connector,
 	memcpy(state, connector->state, sizeof(*state));
 	if (state->crtc)
 		drm_connector_reference(connector);
+	if (state->hdr_source_metadata_blob_ptr)
+		drm_property_reference_blob(state->hdr_source_metadata_blob_ptr);
+
+	state->hdr_metadata_changed = false;
 }
 EXPORT_SYMBOL(__drm_atomic_helper_connector_duplicate_state);
 
@@ -3359,6 +3389,8 @@ __drm_atomic_helper_connector_destroy_state(struct drm_connector_state *state)
 	 */
 	if (state->crtc)
 		drm_connector_unreference(state->connector);
+	if (state->hdr_source_metadata_blob_ptr)
+		drm_property_unreference_blob(state->hdr_source_metadata_blob_ptr);
 }
 EXPORT_SYMBOL(__drm_atomic_helper_connector_destroy_state);
 

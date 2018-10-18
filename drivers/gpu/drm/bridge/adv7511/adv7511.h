@@ -294,12 +294,17 @@ struct adv7511_video_config {
 enum adv7511_type {
 	ADV7511,
 	ADV7533,
+	ADV7535,
 };
 
 struct adv7511 {
 	struct i2c_client *i2c_main;
 	struct i2c_client *i2c_edid;
 	struct i2c_client *i2c_cec;
+
+	u32 addr_cec;
+	u32 addr_edid;
+	u32 addr_pkt;
 
 	struct regmap *regmap;
 	struct regmap *regmap_cec;
@@ -315,6 +320,8 @@ struct adv7511 {
 	bool edid_read;
 
 	wait_queue_head_t wq;
+	struct work_struct hpd_work;
+
 	struct drm_bridge bridge;
 	struct drm_connector connector;
 
@@ -331,6 +338,7 @@ struct adv7511 {
 	struct device_node *host_node;
 	struct mipi_dsi_device *dsi;
 	u8 num_dsi_lanes;
+	u8 channel_id;
 	bool use_timing_gen;
 
 	enum adv7511_type type;
