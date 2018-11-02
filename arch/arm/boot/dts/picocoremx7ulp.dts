@@ -1,0 +1,857 @@
+/*
+ * Copyright 2016 Freescale Semiconductor, Inc.
+ * Copyright 2017-2018 NXP.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+#include "imx7ulp.dtsi"
+#include <dt-bindings/input/input.h>
+
+/* GPIO numbers
+ *
+ * IOMUXC1 handles ports C - F
+ * They are represented by GPIO0 - GPIO3
+ * gpio0 == PTC
+ * gpio1 == PTD
+ * gpio2 == PTE
+ * gpio3 == PTF
+ */
+
+#define DISPLAY_NONE		0	/* No display on this port */
+#define DISPLAY_MIPI_DSI	1	/* MIPI_DSI via RGB adapter */
+
+/*
+ * Set the display configuration:
+ *
+ * - If you have no display, set LCDIF to DISPLAY_NONE.
+ * - If you have a display, set LCDIF to DISPLAY_MIPI_DSI.
+ */
+//### TODO check if how its working
+//#define CONFIG_PICOCOREMX7ULP_LCDIF	DISPLAY_MIPI_DSI
+
+/*
+ * Configure touch screen:
+ *
+ * - 4-wire/5-wire analog resistive touch, touch controller on SKIT
+ * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
+ * - PCAP touch based on Sitronix controller (ST1633i), on Touch Connector
+ * - PCAP touch based on Ilink controller (ILI12xx), on Touch Connector
+ *
+ * On picocoremx7ulp, all touches use the same interrupt line and I2C bus, so do not
+ * select more than one entry! Select none if you do not need touch support.
+ */
+//#define CONFIG_PICOCOREMX7ULP_4WTOUCH_SX8655_ONBOARD
+//#define CONFIG_PICOCOREMX7ULP_CAPTOUCH_MXT224
+//#define CONFIG_PICOCOREMX7ULP_CAPTOUCH_SITRONIX
+//#define CONFIG_PICOCOREMX7ULP_CAPTOUCH_ILINK
+
+/* WLAN */
+#define CONFIG_PICOCOREMX7ULP_WLAN
+
+/* SD card */
+//#define CONFIG_PICOCOREMX7ULP_SD
+//#define CONFIG_PICOCOREMX7ULP_SD_CD
+//#define CONFIG_PICOCOREMX7ULP_SD_WP
+
+/* Audio: Codec (SGTL5000) on pins 77-80 */
+// TODO: check if it works on lpi2c0, thought its only available from M4 core
+//#define CONFIG_PICOCOREMX7ULP_AUDIO
+
+/* I2C */
+#define CONFIG_PICOCOREMX7ULP_I2C_A
+#define CONFIG_PICOCOREMX7ULP_I2C_B
+#define CONFIG_PICOCOREMX7ULP_I2C_C
+
+/* SPI_A */
+#define CONFIG_PICOCOREMX7ULP_SPI_A
+
+/* QSPI_A */
+#define CONFIG_PICOCOREMX7ULP_QSPI_A
+
+/* UART */
+#define CONFIG_PICOCOREMX7ULP_UART_A
+#define CONFIG_PICOCOREMX7ULP_UART_B
+#define CONFIG_PICOCOREMX7ULP_UART_C
+#define CONFIG_PICOCOREMX7ULP_UART_D
+
+/* On-board EMMC */
+#define CONFIG_PICOCOREMX7ULP_EMMC
+
+/* Check for invalid CONFIG combinations */
+
+/* WLAN and SD can't be used at the same time */
+#if (defined(CONFIG_PICOCOREMX7ULP_SD) && defined(CONFIG_PICOCOREMX7ULP_WLAN))
+#undef CONFIG_PICOCOREMX7ULP_SD
+#endif
+
+/ {
+	model = "F&S PicoCoreMX7ULP";
+	compatible = "fsl,imx7ulp-evk", "fsl,imx7ulp";
+
+	chosen {
+		bootargs = "console=ttyLP0,115200 earlycon=lpuart32,0x402D0000,115200";
+		stdout-path = &lpuart4;
+	};
+
+
+	memory {
+		device_type = "memory";
+		reg = <0x60000000 0x40000000>;
+	};
+
+	backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pwm0 1 5000000>;
+		brightness-levels = <0 4 8 16 32 64 128 255>;
+		default-brightness-level = <6>;
+		status = "okay";
+	};
+
+#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
+	mipi_dsi_reset: mipi-dsi-reset {
+		compatible = "gpio-reset";
+		reset-gpios = <&gpio_ptc 19 GPIO_ACTIVE_LOW>;
+		reset-delay-us = <1000>;
+		#reset-cells = <0>;
+	};
+#endif
+
+	regulators {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+#ifdef CONFIG_PICOCOREMX7ULP_WLAN
+		wlreg_on: fixedregulator@100 {
+			compatible = "regulator-fixed";
+			regulator-name = "wlreg_on";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			gpio = <&gpio_pte 6 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+#endif
+
+		reg_usb_otg1_vbus: usb_otg1_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_otg1_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio_ptc 0 GPIO_ACTIVE_LOW>;
+		};
+
+		reg_vsd_3v3: regulator@1 {
+			compatible = "regulator-fixed";
+			reg = <1>;
+			regulator-name = "VSD_3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+	};
+
+	/* TODO check node */
+	pf1550-rpmsg {
+		compatible = "fsl,pf1550-rpmsg";
+		sw1_reg: SW1 {
+				regulator-name = "SW1";
+				regulator-min-microvolt = <600000>;
+				regulator-max-microvolt = <1387500>;
+				regulator-boot-on;
+				regulator-always-on;
+		};
+
+		sw2_reg: SW2 {
+				regulator-name = "SW2";
+				regulator-min-microvolt = <600000>;
+				regulator-max-microvolt = <1387500>;
+				regulator-boot-on;
+				regulator-always-on;
+		};
+
+		sw3_reg: SW3 {
+				regulator-name = "SW3";
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+		};
+
+		vref_reg: VREFDDR {
+				regulator-name = "VREFDDR";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <1200000>;
+				regulator-boot-on;
+				regulator-always-on;
+		};
+
+		vldo1_reg: LDO1 {
+				regulator-name = "LDO1";
+				regulator-min-microvolt = <750000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-always-on;
+		};
+
+		vldo2_reg: LDO2 {
+				regulator-name = "LDO2";
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-always-on;
+		};
+
+		vldo3_reg: LDO3 {
+				regulator-name = "LDO3";
+				regulator-min-microvolt = <750000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-always-on;
+		};
+#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
+		/* SGTL5000 analog voltage */
+		reg_sgtl5000_vdda: sgtl5000_vdda {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDA-supply";
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 I/O voltage */
+		reg_sgtl5000_vddio: sgtl5000_vddio {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 internal digital voltage */
+		reg_sgtl5000_vddd: sgtl5000_vddd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDD-supply";
+			regulator-min-microvolt = <1350000>;
+			regulator-max-microvolt = <1350000>;
+			regulator-always-on;
+		};
+#endif
+	};
+// sgtl5000
+#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
+	sound-sgtl5000 {
+		compatible = "fsl,imx-audio-sgtl5000";
+		cpu-dai = <&sai0>;
+		audio-codec = <&sgtl5000>;
+		model = "imx-sgtl5000";
+
+		audio-routing =
+		"LINE_IN", "Line In Jack",
+		//"MIC_IN", "Mic Jack",
+		//"Line Out Jack", "LINE_OUT",
+		"Headphone Jack", "HP_OUT";
+	};
+#endif
+
+// necessary for buildroot
+	/* F&S board information */
+	bdinfo {
+		compatible = "bdinfo";
+		board_name = "PicoCoreMX7ULP";
+		login_tty = "ttyLP0";
+		login_speed = "115200";
+		//ecc_strength = "8";
+	};
+};
+
+&cpu0 {
+	arm-supply= <&sw1_reg>;
+};
+
+// kernel panic if its enabled. Maybe caused by old CPU revision
+&crypto {
+	status = "disabled";
+};
+
+#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
+&lcdif {
+	disp-dev = "mipi_dsi_northwest";
+	display = <&display0>;
+	lcd-supply = <&reg_vsd_3v3>;
+	status = "okay";
+
+	display0: display@0 {
+		bits-per-pixel = <24>; 
+		bus-width = <24>;
+		display-timings {
+			native-mode = <&timing0>;
+			timing0: timing0 {
+			 clock-frequency = <33500000>;
+			 hactive = <800>;
+			 vactive = <480>;
+			 hfront-porch = <210>;
+			 hback-porch = <26>;
+			 hsync-len = <20>;
+			 vback-porch = <21>;
+			 vfront-porch = <22>;
+			 vsync-len = <2>;
+			 hsync-active = <0>;
+			 vsync-active = <0>;
+			 de-active = <1>;
+			 pixelclk-active = <0>;
+			};
+		};
+	};
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_QSPI_A
+&qspi1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_qspi1_1>;
+	status = "okay";
+
+	flash: s25fs512s@0 {
+		compatible = "spansion,s25fs512s";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		reg = <0>;
+		spi-max-frequency = <20000000>;
+	};
+};
+#endif
+
+#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
+&mipi_dsi {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_mipi_dsi_reset>;
+	pinctrl-1 = <&pinctrl_mipi_dsi_reset>;
+	lcd_panel = "TRULY-WVGA-TFT3P5581E"; 
+	resets = <&mipi_dsi_reset>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_UART_A
+&lpuart4 { /* console */
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_lpuart4>;
+	pinctrl-1 = <&pinctrl_lpuart4>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_UART_B
+&lpuart5 {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_lpuart5>;
+	pinctrl-1 = <&pinctrl_lpuart5>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_UART_C
+&lpuart6 {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_lpuart6>;
+	pinctrl-1 = <&pinctrl_lpuart6>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_UART_D
+&lpuart7 {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_lpuart7>;
+	pinctrl-1 = <&pinctrl_lpuart7>;
+	status = "okay";
+};
+#endif
+
+&pwm0 {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_pwm0>;
+	pinctrl-1 = <&pinctrl_pwm0>;
+	status = "okay";
+};
+
+#ifdef CONFIG_PICOCOREMX7ULP_EMMC
+&usdhc0 { /* emmc */
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_usdhc0_8bit>;
+	pinctrl-1 = <&pinctrl_usdhc0_8bit>;
+	non-removable;
+	bus-width = <8>;
+	keep-power-in-suspend;
+	status = "okay";
+};
+#endif
+
+#if (defined(CONFIG_PICOCOREMX7ULP_SD) || defined(CONFIG_PICOCOREMX7ULP_WLAN))
+&usdhc1 { /* sd card  or wlan */
+	pinctrl-names = "default", "state_100mhz", "state_200mhz", "sleep";
+	pinctrl-0 = <&pinctrl_usdhc1 &pinctrl_usdhc1_rst>;
+	pinctrl-1 = <&pinctrl_usdhc1 &pinctrl_usdhc1_rst>;
+	pinctrl-2 = <&pinctrl_usdhc1 &pinctrl_usdhc1_rst>;
+	pinctrl-3 = <&pinctrl_usdhc1 &pinctrl_usdhc1_rst>;
+	bus-width = <4>;
+	vqmmc-supply = <&reg_vsd_3v3>;
+#ifdef CONFIG_PICOCOREMX7ULP_WLAN
+	vmmc-supply = <&wlreg_on>; /* VDD misused for RESET_WLAN/BT */
+	non-removable;
+	wifi-host; /* needed for BCM wifi cards */
+	enable-sdio-wakeup;
+#endif
+#ifdef CONFIG_PICOCOREMX7ULP_SD_CD
+	cd-gpios = <&gpio_pte 13 GPIO_ACTIVE_HIGH>;
+	vmmc-supply = <&reg_vsd_3v3>;
+#endif
+	keep-power-in-suspend;
+	status = "okay";
+};
+#endif
+
+&usbotg1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg1>;
+	vbus-supply = <&reg_usb_otg1_vbus>;
+	srp-disable;
+	hnp-disable;
+	adp-disable;
+	status = "okay";
+};
+
+&usbphy1 {
+	tx-d-cal = <0xc>;
+};
+
+#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
+&lpi2c0 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lpi2c0>;
+	status = "okay";
+
+	sgtl5000: sgtl5000@0a {
+		compatible = "fsl,sgtl5000";
+		reg = <0x0a>;
+		clocks = <&clks_m4 IMX7ULP_CM4_CLK_SAI0_SEL>;
+		// F&S advance which is not implemented here
+		//mono2both;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+	};
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_I2C_A
+&lpi2c5 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_lpi2c5>;
+	pinctrl-1 = <&pinctrl_lpi2c5>;
+	status = "okay";
+#if 0
+#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
+	/* TC358752 DSI --> RGB de-serializer on i2c5 */
+	pitouchscreen: panel@0b {
+		compatible = "tc358762";
+		reg = <0x0b>;
+		clocks = <&clks IMX7ULP_CLK_DSI>;
+		clock-names = "mipi_dsi_clk";
+	};
+#endif
+#endif
+};
+#endif
+
+/* TODO check node */
+#ifdef CONFIG_PICOCOREMX7ULP_I2C_B
+&lpi2c7 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	pinctrl-names = "default",  "sleep";
+	pinctrl-0 = <&pinctrl_lpi2c7>;
+	pinctrl-1 = <&pinctrl_lpi2c7>;
+	clock-frequency = <100000>;
+	status = "okay";
+
+	//TODO: check if atmel firmware works
+#ifdef CONFIG_PICOCOREMX7ULP_CAPTOUCH_MXT224
+	mxt224@4a {
+		compatible = "atmel,maxtouch";
+		reg = <0x4a>;
+		interrupt-parent = <&gpio_ptf>;
+		interrupts = <0 2>;
+		atmel,cfg_name = "atmel/mxt224.cfg";
+		atmel,reset-gpio = <&gpio_ptf 1 GPIO_ACTIVE_LOW>;
+#if 0
+		atmel,suspend-mode = <2>;
+		vdd = <&reg_atmel_mxt_vdd>;
+		avdd = <&reg_atmel_mxt_avdd>;
+#endif
+	};
+#endif
+
+	/* Touch driver SX8654 */
+#ifdef CONFIG_PICOCOREMX7ULP_4WTOUCH_SX8655_ONBOARD
+	sx8654@48 {
+		compatible = "semtech,sx8654";
+		reg = <0x48>;
+		touchrate = <0x30>;
+		powdly = <0x06>;
+		filt = <0x02>;
+		setdly = <0x08>;
+		pinctrl-names = "default";
+		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
+		interrupt-parent = <&gpio_ptf>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+	};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_CAPTOUCH_SITRONIX
+	/* Sitronix PCAP touch on Touch-Connector (I2C) */
+	st1633i@48 {
+		compatible = "sitronix";
+		reg = <0x48>;
+		swap-xy;
+		interrupt-parent = <&gpio_ptf>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio_ptf 1 GPIO_ACTIVE_LOW>;
+	};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_CAPTOUCH_ILINK
+	/* Ilink PCAP touch on Touch-Connector (I2C) */
+	ili210x@41 {
+		compatible = "Ilink,ili210x";
+		reg = <0x41>;
+		interrupt-parent = <&gpio_ptf>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio_ptf 1 GPIO_ACTIVE_LOW>;
+	};
+#endif
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_SPI_A
+&lpspi3 {
+	fsl,spi-num-chipselects = <1>;
+	cs-gpios = <&gpio_ptf 19 0>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_lpspi3>;
+	pinctrl-1 = <&pinctrl_lpspi3>;
+	status = "okay";
+
+	spidev@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		reg = <0>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+	};
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
+&sai0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sai0>;
+	assigned-clocks = <&clks_m4 IMX7ULP_CM4_CLK_SAI0_SEL>,
+			  <&clks_m4 IMX7ULP_CM4_CLK_SAI0_DIV>;
+	assigned-clock-parents = <&clks_m4 IMX7ULP_CM4_CLK_APLL_PFD0_PRE_DIV>;
+	assigned-clock-rates = <0>, <12288000>;
+	fsl,dataline = <0x1 0x1>;
+	status = "okay";
+};
+#endif
+
+/* iomxuc pad settings PTA - PTB */
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog_0>;
+	status = "okay";
+
+	imx7ulp-evk { //TODO: check node name and subnodes
+		pinctrl_hog_0: hoggrp-0 {
+			fsl,pins = <
+				/* pins for the M4-Core */
+#if 0
+				/* GPIOs -> default low for M4 */
+				/* 3.3 V */
+				IMX7ULP_PAD_PTA12__PTA12	0x00002
+				IMX7ULP_PAD_PTA13__PTA13	0x00002
+				IMX7ULP_PAD_PTA14__PTA14	0x00002
+				IMX7ULP_PAD_PTA15__PTA15	0x00002
+				IMX7ULP_PAD_PTA23__PTA23	0x00002
+				IMX7ULP_PAD_PTA31__PTA31	0x00002
+
+				/* 1.8 V */
+				IMX7ULP_PAD_PTB1__PTB1		0x00002
+				IMX7ULP_PAD_PTB2__PTB2		0x00002
+				IMX7ULP_PAD_PTB3__PTB3		0x00002
+				IMX7ULP_PAD_PTB9__PTB9		0x00002
+				IMX7ULP_PAD_PTB10__PTB10	0x00002
+				IMX7ULP_PAD_PTB11__PTB11	0x00002
+				IMX7ULP_PAD_PTB14__PTB14	0x00002
+
+				/* BATT_ADC_IN */
+				/* low active, pull low to measure battery
+				 * kernel doesnt boot with this settings */
+				IMX7ULP_PAD_PTA3__PTA3		0x00003
+				/* input measure battery voltage */
+				IMX7ULP_PAD_PTA20__ADC0_CH7A	0x00000
+
+				/* M4_PER_EN -> default high */
+				IMX7ULP_PAD_PTA21__PTA21	0x00003
+
+				/* EWM_OUT_B */
+				IMX7ULP_PAD_PTA22__PTA22	0x20000
+
+				/* A7_POW_EN -> default low so A7 is working */
+				IMX7ULP_PAD_PTA25__PTA25	0x00002
+
+				/* PTB4 bootmode0 */
+				IMX7ULP_PAD_PTB4__PTB4		0x00000
+
+				/* PTB5 bootmode1 */
+				IMX7ULP_PAD_PTB5__PTB5		0x00000
+
+				/* DDR_SW_EN# default low */
+				IMX7ULP_PAD_PTB6__PTB6		0x00002
+
+				/* PMIC INT# input */
+				IMX7ULP_PAD_PTB7__PTB7		0x00000
+#endif
+
+				/* AUD_PWR_EN active high -> default high */
+				IMX7ULP_PAD_PTA24__PTA24	0x00003
+			>;
+		};
+
+#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
+		pinctrl_sai0: sai0_grp {
+			fsl,pins = <
+				IMX7ULP_PAD_PTA4__I2S0_MCLK	0x00700
+				IMX7ULP_PAD_PTA5__I2S0_TX_BCLK	0x00700
+				IMX7ULP_PAD_PTA2__I2S0_RXD0	0x00700
+				IMX7ULP_PAD_PTA6__I2S0_TX_FS	0x00700
+				IMX7ULP_PAD_PTA7__I2S0_TXD0	0x00700
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_QSPI_A
+		pinctrl_qspi1_1: qspi1grp_1 {
+			fsl,pins = <
+				IMX7ULP_PAD_PTB8__QSPIA_SS0_B	0x00043
+				IMX7ULP_PAD_PTB15__QSPIA_SCLK	0x00043
+				IMX7ULP_PAD_PTB16__QSPIA_DATA3	0x00043
+				IMX7ULP_PAD_PTB17__QSPIA_DATA2	0x00043
+				IMX7ULP_PAD_PTB18__QSPIA_DATA1	0x00043
+				IMX7ULP_PAD_PTB19__QSPIA_DATA0	0x00043
+			>;
+		};
+#endif
+	};
+};
+
+/* iomxuc pad settings PTC - PTF */
+&iomuxc1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog_1>;
+
+	imx7ulp-evk { //TODO: check node name and subnodes
+		pinctrl_hog_1: hoggrp-1 {
+			fsl,pins = <
+				/* TP 5 */
+				IMX7ULP_PAD_PTC1__PTC1		0x00002
+
+				/* GPIOs -> default low for A7 */
+				/* 1.8 V */
+				IMX7ULP_PAD_PTC9__PTC9		0x00002
+				IMX7ULP_PAD_PTC11__PTC11	0x00002
+				IMX7ULP_PAD_PTC12__PTC12	0x00002
+				IMX7ULP_PAD_PTC13__PTC13	0x00002
+				IMX7ULP_PAD_PTC14__PTC14	0x00002
+				IMX7ULP_PAD_PTC15__PTC15	0x00002
+				IMX7ULP_PAD_PTC16__PTC16	0x00002
+				IMX7ULP_PAD_PTC17__PTC17	0x00002
+				IMX7ULP_PAD_PTC18__PTC18	0x00002
+
+				/* 3.3 V */
+				IMX7ULP_PAD_PTF3__PTF3		0x00002
+				IMX7ULP_PAD_PTF4__PTF4		0x00002
+				IMX7ULP_PAD_PTF5__PTF5		0x00002
+				IMX7ULP_PAD_PTF6__PTF6		0x00002
+				IMX7ULP_PAD_PTF7__PTF7		0x00002
+				IMX7ULP_PAD_PTF8__PTF8		0x00002
+				IMX7ULP_PAD_PTF9__PTF9		0x00002
+				IMX7ULP_PAD_PTF10__PTF10	0x00002
+				IMX7ULP_PAD_PTF11__PTF11	0x00002
+
+				/* I2C7n IRQ */
+				IMX7ULP_PAD_PTF0__PTF0		0x10003
+
+				/* I2C7n RST */
+				IMX7ULP_PAD_PTF1__PTF1		0x20003
+
+				/* USHC1_VSEL */
+			//	IMX7ULP_PAD_PTE14__SDHC1_VS	0x43
+			>;
+		};
+
+		pinctrl_pwm0: pwm0_grp {
+			fsl,pins = <
+				IMX7ULP_PAD_PTF2__TPM4_CH1	0x00003
+			>;
+		};
+
+#ifdef CONFIG_PICOCOREMX7ULP_UART_A
+		pinctrl_lpuart4: lpuart4grp {
+			fsl,pins = <
+				IMX7ULP_PAD_PTC2__LPUART4_TX	0x00003
+				IMX7ULP_PAD_PTC3__LPUART4_RX	0x00003
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_UART_B
+		pinctrl_lpuart5: lpuart5grp {
+			fsl,pins = <
+				IMX7ULP_PAD_PTC6__LPUART5_TX	0x00003
+				IMX7ULP_PAD_PTC7__LPUART5_RX	0x00003
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_UART_C
+		pinctrl_lpuart6: lpuart6grp {
+			fsl,pins = <
+				IMX7ULP_PAD_PTE10__LPUART6_TX	0x00003
+				IMX7ULP_PAD_PTE11__LPUART6_RX	0x00003
+				IMX7ULP_PAD_PTE8__LPUART6_CTS_B	0x00003
+				IMX7ULP_PAD_PTE9__LPUART6_RTS_B	0x00003
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_UART_D
+		pinctrl_lpuart7: lpuart7grp {
+			fsl,pins = <
+				IMX7ULP_PAD_PTF14__LPUART7_TX	0x00003
+ 				IMX7ULP_PAD_PTF15__LPUART7_RX	0x00003
+			>;
+		};
+#endif
+
+#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
+		pinctrl_mipi_dsi_reset: mipi_dsi_reset_grp {
+			fsl,pins = <
+				//IMX7ULP_PAD_PTC19__PTC19	0x20003
+				IMX7ULP_PAD_PTC19__PTC19	0x00003
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_I2C_A
+		pinctrl_lpi2c5: lpi2c5grp {
+			fsl,pins = <
+				IMX7ULP_PAD_PTC4__LPI2C5_SCL	0x00027
+				IMX7ULP_PAD_PTC5__LPI2C5_SDA	0x00027
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_I2C_B
+		pinctrl_lpi2c7: lpi2c7grp {
+			fsl,pins = <
+				IMX7ULP_PAD_PTF12__LPI2C7_SCL	0x00027
+				IMX7ULP_PAD_PTF13__LPI2C7_SDA	0x00027
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_SPI_A
+		pinctrl_lpspi3: lpspi3grp {
+			fsl,pins = <
+				IMX7ULP_PAD_PTF16__LPSPI3_SIN	0x00000
+				IMX7ULP_PAD_PTF17__LPSPI3_SOUT	0x00000
+				IMX7ULP_PAD_PTF18__LPSPI3_SCK	0x00000
+				IMX7ULP_PAD_PTF19__LPSPI3_PCS0	0x00000
+				//IMX7ULP_PAD_PTF19__PTF19	0x20000
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_EMMC
+		/* emmc */
+		pinctrl_usdhc0_8bit: usdhc0grp_8bit {
+			fsl,pins = <
+				IMX7ULP_PAD_PTD1__SDHC0_CMD	0x00043
+				IMX7ULP_PAD_PTD2__SDHC0_CLK	0x00043
+				IMX7ULP_PAD_PTD3__SDHC0_D7	0x00043
+				IMX7ULP_PAD_PTD4__SDHC0_D6	0x00043
+				IMX7ULP_PAD_PTD5__SDHC0_D5	0x00043
+				IMX7ULP_PAD_PTD6__SDHC0_D4	0x00043
+				IMX7ULP_PAD_PTD7__SDHC0_D3	0x00043
+				IMX7ULP_PAD_PTD8__SDHC0_D2	0x00043
+				IMX7ULP_PAD_PTD9__SDHC0_D1	0x00043
+				IMX7ULP_PAD_PTD10__SDHC0_D0	0x00043
+				/* CD pin - n.c. */
+				IMX7ULP_PAD_PTC10__PTC10	0x10002
+				/* nRST */
+				IMX7ULP_PAD_PTD0__PTD0		0x00003
+			>;
+		};
+#endif
+
+#if (defined(CONFIG_PICOCOREMX7ULP_SD) || defined(CONFIG_PICOCOREMX7ULP_WLAN))
+		pinctrl_usdhc1: usdhc1grp {
+			fsl,pins = <
+				IMX7ULP_PAD_PTE3__SDHC1_CMD	0x00803
+				IMX7ULP_PAD_PTE2__SDHC1_CLK	0x00800
+				IMX7ULP_PAD_PTE1__SDHC1_D0	0x00803
+				IMX7ULP_PAD_PTE0__SDHC1_D1	0x00803
+				IMX7ULP_PAD_PTE5__SDHC1_D2	0x00803
+				IMX7ULP_PAD_PTE4__SDHC1_D3	0x00803
+			>;
+		};
+
+		pinctrl_usdhc1_rst: usdhc1grp_rst {
+			fsl,pins = <
+#ifdef CONFIG_PICOCOREMX7ULP_WLAN
+				/* WL_REG_ON */
+				IMX7ULP_PAD_PTE6__PTE6		0x20002
+				/* WL_WAKE */
+				IMX7ULP_PAD_PTE13__PTE13	0x10002
+#endif
+#ifdef CONFIG_PICOCOREMX7ULP_SD_CD
+				/* USDHC1 card detect */
+				IMX7ULP_PAD_PTE13__PTE13	0x10003
+#endif
+#ifdef CONFIG_PICOCOREMX7ULP_SD_WP
+				/* USDHC1 WP */
+				IMX7ULP_PAD_PTE12__PTE12	0x10003
+#endif
+			>;
+		};
+#endif
+
+		pinctrl_usbotg1: usbotg1grp {
+			fsl,pins = <
+				/* USB otg Power enable */
+				IMX7ULP_PAD_PTC0__PTC0		0x20003
+				/* USB_OTG1_ID: low: host, open: device */
+				IMX7ULP_PAD_PTC8__PTC8		0x00003
+			>;
+		};
+	};
+};
