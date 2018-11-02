@@ -66,7 +66,9 @@ static int high_bus_count, med_bus_count, audio_bus_count, low_bus_count;
 static unsigned int ddr_low_rate;
 static int cur_bus_freq_mode;
 static u32 org_arm_rate;
+#if defined(CONFIG_SOC_IMX6ULL) || defined(CONFIG_SOC_IMX6SLL)
 static int origin_arm_volt, origin_soc_volt;
+#endif
 
 extern unsigned long iram_tlb_phys_addr;
 extern int unsigned long iram_tlb_base_addr;
@@ -160,6 +162,7 @@ int unregister_busfreq_notifier(struct notifier_block *nb)
 }
 EXPORT_SYMBOL(unregister_busfreq_notifier);
 
+#if defined(CONFIG_SOC_IMX6ULL) || defined(CONFIG_SOC_IMX6SLL)
 static struct clk *origin_step_parent;
 
 /*
@@ -208,7 +211,7 @@ static void imx6ull_lower_cpu_rate(bool enter)
 		clk_set_parent(pll1_bypass_clk, pll1_clk);
 	}
 }
-
+#endif
 /*
  * enter_lpm_imx6_up and exit_lpm_imx6_up is used by
  * i.MX6SX/i.MX6UL for entering and exiting lpm mode.
@@ -254,9 +257,10 @@ static void enter_lpm_imx6_up(void)
 				clk_set_rate(mmdc_clk, HIGH_AUDIO_CLK);
 		}
 
+#if defined(CONFIG_SOC_IMX6ULL) || defined(CONFIG_SOC_IMX6SLL)
 		if ((cpu_is_imx6ull() || cpu_is_imx6sll()) && low_bus_freq_mode)
 			imx6ull_lower_cpu_rate(false);
-
+#endif
 		audio_bus_freq_mode = 1;
 		low_bus_freq_mode = 0;
 		cur_bus_freq_mode = BUS_FREQ_AUDIO;
@@ -272,8 +276,10 @@ static void enter_lpm_imx6_up(void)
 		if (audio_bus_freq_mode)
 			clk_disable_unprepare(pll2_400_clk);
 
+#if defined(CONFIG_SOC_IMX6ULL) || defined(CONFIG_SOC_IMX6SLL)
 		if (cpu_is_imx6ull() || cpu_is_imx6sll())
 			imx6ull_lower_cpu_rate(true);
+#endif
 
 		low_bus_freq_mode = 1;
 		audio_bus_freq_mode = 0;
@@ -338,8 +344,10 @@ static void enter_lpm_imx6_smp(void)
 
 static void exit_lpm_imx6_up(void)
 {
+#if defined(CONFIG_SOC_IMX6ULL) || defined(CONFIG_SOC_IMX6SLL)
 	if ((cpu_is_imx6ull() || cpu_is_imx6sll()) && low_bus_freq_mode)
 		imx6ull_lower_cpu_rate(false);
+#endif
 
 	clk_prepare_enable(pll2_400_clk);
 
