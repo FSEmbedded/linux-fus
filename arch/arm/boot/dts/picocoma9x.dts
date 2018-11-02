@@ -690,7 +690,7 @@ lcd_wvga {				\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc4_1>;
 	/* eMMC is non-removable, but CD tells us if it is equipped or not */
-	cd-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;
+	cd-gpios = <&gpio2 12 GPIO_ACTIVE_LOW>;
 	//non-removable;
 	bus-width = <8>;
 	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
