@@ -308,7 +308,7 @@ static ssize_t bootaux_store(struct kobject *kobj,
 	}
 
 	arch_auxiliary_core_set(0, old_state, new_state);
-
+	kfree(value);
 	return count;
 }
 
