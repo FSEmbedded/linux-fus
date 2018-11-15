@@ -12,6 +12,13 @@
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_PICOCOREMX6UL_BOARD_REVISION	100
 
+/* PicocoreMX6UL is delivered with ULL by default. So CONFIG_PICOCOREMX6UL_ULL
+ * must be defined. Differences exist at tamper and boot pins. They are in
+ * IOMUXC at IMX6UL but in SNVS section on IMX6ULL 
+ * At the moment there is no PicoCOREMX6UL with UL CPU (only ULL), but we
+ * keep both options cleanly seperated here*/
+#define CONFIG_PICOCOREMX6UL_ULL
+
 #define DISPLAY_NONE	0	/* No display on this port */
 #define DISPLAY_LCD	1	/* LCD via RGB adapter */
 
@@ -103,11 +110,19 @@ wvga {					\
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/pwm/pwm.h>
 
+#ifdef CONFIG_PICOCOREMX6UL_ULL
 #include "imx6ull.dtsi"
+#else
+#include "imx6ul.dtsi"
+#endif
 
 / {
 	model = "F&S PicoCoreMX6UL";
-	compatible = "fsl,imx6ul-picocoremx6ul", "fsl,imx6ull";
+#ifdef CONFIG_PICOCOREMX6UL_ULL
+	compatible = "fsl,imx6ull-picocoremx6ull", "fsl,imx6ull";
+#else
+	compatible = "fsl,imx6ul-picocoremx6ul", "fsl,imx6ul";
+#endif
 
 	aliases {
 	};
@@ -530,7 +545,11 @@ wvga {					\
 
 &usbotg1 {
 	pinctrl-names = "default";
+#ifdef CONFIG_PICOCOREMX6UL_ULL
+	pinctrl-0 = <&pinctrl_usbotg1 &pinctrl_usbotg1_snvs>;
+#else
 	pinctrl-0 = <&pinctrl_usbotg1>;
+#endif
 	vbus-wakeup = <&reg_usb_otg1_vbus>;
 	status = "okay";
 };
@@ -583,23 +602,63 @@ wvga {					\
 };
 #endif
 
+#ifdef CONFIG_PICOCOREMX6UL_ULL
+&iomuxc_snvs {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_snvs_1>;
+	picocoremx6ull {
+		pinctrl_snvs_1: snvsgrp-1 {
+			fsl,pins = <
+				/* gpio to reset phy, activated in uboot */
+				MX6ULL_PAD_BOOT_MODE1__GPIO5_IO11	0x070b1
+
+				/* I2C-4 IRQ (ext. touch, etc.) */
+				MX6ULL_PAD_SNVS_TAMPER0__GPIO5_IO00 	0x0b0b0
+			>;
+		};
+
+		pinctrl_i2c_gpio: i2c_gpio_grp {
+			fsl,pins = <
+				MX6ULL_PAD_SNVS_TAMPER8__GPIO5_IO08	0x4001b0b0
+				MX6ULL_PAD_SNVS_TAMPER9__GPIO5_IO09	0x4001b0b0
+			>;
+		};
+
+		pinctrl_usbotg1_snvs: usbotg1grp {
+			fsl,pins = <
+				/* USB_OTG1_PWR, active low */
+				MX6ULL_PAD_SNVS_TAMPER3__GPIO5_IO03	0x0b030
+			>;
+		};
+
+		pinctrl_usbotg2: usbotg2grp {
+			fsl,pins = <
+				/* USB_OTG2_PWR */
+				MX6ULL_PAD_SNVS_TAMPER2__GPIO5_IO02	0x0b030
+			>;
+		};
+	};
+};
+#endif
+
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog_1>;
 	picocoremx6ull {
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
-				/* I2C-4 IRQ (ext. touch, etc.) */
-				MX6ULL_PAD_SNVS_TAMPER0__GPIO5_IO00 	0x0b0b0
-
-				MX6UL_PAD_JTAG_TMS__SAI2_MCLK		0x17088
-
+#ifndef CONFIG_PICOCOREMX6UL_ULL
 				/* gpio to reset phy, activated in uboot */
-				MX6ULL_PAD_BOOT_MODE1__GPIO5_IO11	0x070b1 //ULL
-				//MX6UL_PAD_BOOT_MODE1__GPIO5_IO11	0x070b1 //UL
+				MX6UL_PAD_BOOT_MODE1__GPIO5_IO11	0x070b1
 
+				/* I2C-4 IRQ (ext. touch, etc.) */
+				MX6UL_PAD_SNVS_TAMPER0__GPIO5_IO00 	0x0b0b0
+#endif
 				/* VLCD */
 				MX6UL_PAD_LCD_RESET__GPIO3_IO04		0x0b0b0
+
+				MX6UL_PAD_JTAG_TMS__SAI2_MCLK		0x17088
+//###				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
 			>;
 		};
 
@@ -667,14 +726,14 @@ wvga {					\
 			>;
 		};
 
+#ifndef CONFIG_PICOCOREMX6UL_ULL
 		pinctrl_i2c_gpio: i2c_gpio_grp {
 			fsl,pins = <
-			//###	MX6ULL_PAD_SNVS_TAMPER8__GPIO5_IO08	0x4001b8b0
-			//###	MX6ULL_PAD_SNVS_TAMPER9__GPIO5_IO09	0x4001b8b0
-				MX6ULL_PAD_SNVS_TAMPER8__GPIO5_IO08	0x4001b0b0
-				MX6ULL_PAD_SNVS_TAMPER9__GPIO5_IO09	0x4001b0b0
+				MX6UL_PAD_SNVS_TAMPER8__GPIO5_IO08 	0x4001b0b0
+				MX6UL_PAD_SNVS_TAMPER9__GPIO5_IO09 	0x4001b0b0
 			>;
 		};
+#endif
 
 		pinctrl_i2c4: i2c1grp {
 			fsl,pins = <
@@ -736,9 +795,7 @@ wvga {					\
 				MX6UL_PAD_JTAG_TDO__SAI2_TX_SYNC	0x17088
 				MX6UL_PAD_JTAG_TRST_B__SAI2_TX_DATA	0x17088
 				MX6UL_PAD_JTAG_TCK__SAI2_RX_DATA	0x17088
-				/* Clock needs to be set globally, see hog */
-//###				MX6UL_PAD_JTAG_TMS__SAI2_MCLK		0x17088
-//###				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
+				/* Clock needs to be set globally */
 			>;
 		};
 
@@ -774,17 +831,12 @@ wvga {					\
 
 		pinctrl_usbotg1: usbotg1grp {
 			fsl,pins = <
-				/* USB_OTG1_PWR, active low */
-				MX6ULL_PAD_SNVS_TAMPER3__GPIO5_IO03	0x0b030
 				/* USB_OTG1_ID: low: host, open: device */
 				MX6UL_PAD_GPIO1_IO00__ANATOP_OTG1_ID	0x1b000
-			>;
-		};
-
-		pinctrl_usbotg2: usbotg2grp {
-			fsl,pins = <
-				/* USB_OTG2_PWR */
-				MX6ULL_PAD_SNVS_TAMPER2__GPIO5_IO02	0x0b030
+#ifndef CONFIG_PICOCOREMX6UL_ULL
+				/* USB_OTG1_PWR, active low */
+				MX6UL_PAD_SNVS_TAMPER3__GPIO5_IO03 	0x0b030
+#endif
 			>;
 		};
 
