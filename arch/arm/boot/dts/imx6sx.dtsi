@@ -1466,7 +1466,7 @@
 				dma-names = "rx", "tx";
 				status = "disabled";
 			};
-
+			
 			sema4: sema4@02290000 { /* sema4 */
 				compatible = "fsl,imx6sx-sema4";
 				reg = <0x02290000 0x4000>;
