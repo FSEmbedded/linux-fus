@@ -590,9 +590,15 @@ lvds_wvga {				\
 };
 
 /* rpmsg is used for communication between Cortex-A9 and Cortex-M4 cores */
-&rpmsg {
-	vring-buffer-address0 = <0xBFFF0000>;
-	vring-buffer-address1 = <0xBFFF8000>;
+
+&rpmsg{
+	/*
+	 * 64K for one rpmsg instance, default using 2 rpmsg instances:
+	 * --0x9FF00000~0x9FF0FFFF: pmic,pm,audio,keys,gpio,sensor
+	 * --0x9FF10000~0x9FF1FFFF: pingpong,virtual tty
+	 */
+	vdev-nums = <1>;
+	reg = <0xBFFF0000 0x10000>;
 	status = "okay";
 };
 

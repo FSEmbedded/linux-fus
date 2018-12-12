@@ -876,6 +876,51 @@ wvga {					\
 };
 #endif
 
+#ifdef CONFIG_EFUSA7UL_ULL
+&iomuxc_snvs {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_snvs_1>;
+	efusa7ul {
+		pinctrl_snvs_1: snvsgrp-1 {
+			fsl,pins = <
+				/* I2C_A IRQ (ext. touch, etc.) */
+				MX6ULL_PAD_SNVS_TAMPER0__GPIO5_IO00	0x0b0b0
+
+				/* I2C_B IRQ (ext. touch, etc.) */
+				MX6ULL_PAD_SNVS_TAMPER1__GPIO5_IO01	0x0b0b0
+
+				/* I2C_A Reset (ext. touch, etc.) */
+				MX6ULL_PAD_SNVS_TAMPER2__GPIO5_IO02	0x0b0b0
+
+				/* I2C_B Reset (ext. touch, etc.) */
+				MX6ULL_PAD_SNVS_TAMPER3__GPIO5_IO03	0x0b0b0
+
+				/* VLCD */
+				MX6ULL_PAD_SNVS_TAMPER4__GPIO5_IO04	0x030b0
+
+				/* VCFL */
+				MX6ULL_PAD_SNVS_TAMPER5__GPIO5_IO05	0x030b0
+
+				/* ECSPI1 IRQ */
+				MX6ULL_PAD_SNVS_TAMPER6__GPIO5_IO06	0x0b0b0
+
+				/* ECSPI2 IRQ */
+				MX6ULL_PAD_SNVS_TAMPER7__GPIO5_IO07	0x0b0b0
+			>;
+		};
+
+		pinctrl_i2c_gpio: i2c_gpio_grp {
+			fsl,pins = <
+//###				MX6ULL_PAD_SNVS_TAMPER9__GPIO5_IO09	0x4001b8b0
+//###				MX6ULL_PAD_SNVS_TAMPER8__GPIO5_IO08	0x4001b8b0
+				MX6ULL_PAD_SNVS_TAMPER9__GPIO5_IO09	0x4001b0b0
+				MX6ULL_PAD_SNVS_TAMPER8__GPIO5_IO08	0x4001b0b0
+			>;
+		};
+	};
+};
+#endif
+
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog_1>;
@@ -883,7 +928,7 @@ wvga {					\
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
 				MX6UL_PAD_JTAG_TMS__SAI2_MCLK		0x17088
-
+#ifndef CONFIG_EFUSA7UL_ULL
 				/* I2C_A IRQ (ext. touch, etc.) */
 				MX6UL_PAD_SNVS_TAMPER0__GPIO5_IO00	0x0b0b0
 
@@ -901,6 +946,7 @@ wvga {					\
 
 				/* VCFL */
 				MX6UL_PAD_SNVS_TAMPER5__GPIO5_IO05	0x030b0
+#endif
 			>;
 		};
 
@@ -1173,6 +1219,7 @@ wvga {					\
 			>;
 		};
 
+#ifndef CONFIG_EFUSA7UL_ULL
 		pinctrl_i2c_gpio: i2c_gpio_grp {
 			fsl,pins = <
 //###				MX6UL_PAD_SNVS_TAMPER9__GPIO5_IO09	0x4001b8b0
@@ -1181,6 +1228,7 @@ wvga {					\
 				MX6UL_PAD_SNVS_TAMPER8__GPIO5_IO08	0x4001b0b0
 			>;
 		};
+#endif
 
 #if 0 //### TODO
 		pinctrl_qspi: qspigrp {
@@ -1213,9 +1261,10 @@ wvga {					\
 				MX6UL_PAD_CSI_DATA05__GPIO4_IO26	0x1b0b0
 				MX6UL_PAD_CSI_DATA06__ECSPI1_MOSI	0x100b1
 				MX6UL_PAD_CSI_DATA07__ECSPI1_MISO	0x100b1
-
+#ifndef CONFIG_EFUSA7UL_ULL
 				/* IRQ */
 				MX6UL_PAD_SNVS_TAMPER6__GPIO5_IO06	0x0b0b0
+#endif
 			>;
 		};
 
@@ -1225,9 +1274,10 @@ wvga {					\
 				MX6UL_PAD_UART4_RX_DATA__GPIO1_IO29	0x1b0b0
 				MX6UL_PAD_UART5_TX_DATA__ECSPI2_MOSI	0x100b1
 				MX6UL_PAD_UART5_RX_DATA__ECSPI2_MISO	0x100b1
-
+#ifndef CONFIG_EFUSA7UL_ULL
 				/* IRQ */
 				MX6UL_PAD_SNVS_TAMPER7__GPIO5_IO07	0x0b0b0
+#endif
 			>;
 		};
 
