@@ -598,12 +598,14 @@
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
+#if (CONFIG_QBLISSA9R2_BOARD_REVISION < 110)
 	rtc8565@51 {
 		compatible = "nxp,pcf8565", "nxp,pcf8563";
 		reg = <0x51>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
 	};
+#endif
 
 #ifdef CONFIG_QBLISSA9R2_SERIAL_CAMERA
 #ifdef CONFIG_QBLISSA9R2_MIPI_CAMERA_OV564X
@@ -653,6 +655,15 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
+
+#if (CONFIG_QBLISSA9R2_BOARD_REVISION >= 110)
+	rtc8565@51 {
+		compatible = "nxp,pcf8565", "nxp,pcf8563";
+		reg = <0x51>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
+	};
+#endif
 
 #ifdef CONFIG_QBLISSA9R2_4WTOUCH_SX8655
 	/* 4/5 wire analog resistive touch */
