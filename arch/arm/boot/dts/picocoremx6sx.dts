@@ -9,7 +9,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_PICOCOREA9X_BOARD_REVISION	110
+#define CONFIG_PICOCOREMX6SX_BOARD_REVISION	110
 
 /* Activate this if you want to use the Cortex-M4 core */
 // #define SUPPORT_M4
@@ -23,14 +23,14 @@
  * - If you have no display, set LCDIF0 to DISPLAY_NONE.
  * - If you have a display, set LCDIF0 to DISPLAY_LCD.
  */
-#define CONFIG_PICOCOREA9X_LCDIF0		DISPLAY_LCD
+#define CONFIG_PICOCOREMX6SX_LCDIF0		DISPLAY_LCD
 
 /*
  * Configure LCD settings here (ignored if LCD is not used)
  */
-#define CONFIG_PICOCOREA9X_LCD_BPP		32
-#define CONFIG_PICOCOREA9X_LCD_BUS_WIDTH	24
-#define CONFIG_PICOCOREA9X_LCD_TIMING \
+#define CONFIG_PICOCOREMX6SX_LCD_BPP		32
+#define CONFIG_PICOCOREMX6SX_LCD_BUS_WIDTH	24
+#define CONFIG_PICOCOREMX6SX_LCD_TIMING \
 lcd_wvga {				\
 	clock-frequency = <33500000>;	\
 	hactive = <800>;  		\
@@ -60,65 +60,65 @@ lcd_wvga {				\
  * On picocore bb, all touches use the same interrupt line and I2C bus, so do not
  * select more than one entry! Select none if you do not need touch support.
  */
-//#define CONFIG_PICOCOREA9X_4WTOUCH_SX8655_ONBOARD
-#define CONFIG_PICOCOREA9X_4WTOUCH_SX8655_RGBADAPTER
-//#define CONFIG_PICOCOREA9X_CAPTOUCH_MXT224
-//#define CONFIG_PICOCOREA9X_CAPTOUCH_FT5x06
-//#define CONFIG_PICOCOREA9X_CAPTOUCH_SITRONIX
-//#define CONFIG_PICOCOREA9X_CAPTOUCH_ILINK
+//#define CONFIG_PICOCOREMX6SX_4WTOUCH_SX8655_ONBOARD
+#define CONFIG_PICOCOREMX6SX_4WTOUCH_SX8655_RGBADAPTER
+//#define CONFIG_PICOCOREMX6SX_CAPTOUCH_MXT224
+//#define CONFIG_PICOCOREMX6SX_CAPTOUCH_FT5x06
+//#define CONFIG_PICOCOREMX6SX_CAPTOUCH_SITRONIX
+//#define CONFIG_PICOCOREMX6SX_CAPTOUCH_ILINK
 
 /* CMA: Set 320 MB for Continuous Memory Allocator */
-#define CONFIG_PICOCOREA9X_CMA_SIZE 0x14000000
+#define CONFIG_PICOCOREMX6SX_CMA_SIZE 0x14000000
 
 /* On-board NAND */
-#define CONFIG_PICOCOREA9X_NAND
+#define CONFIG_PICOCOREMX6SX_NAND
 
 /* Network */
-#define CONFIG_PICOCOREA9X_ETH0
-#define CONFIG_PICOCOREA9X_ETH1
+#define CONFIG_PICOCOREMX6SX_ETH0
+#define CONFIG_PICOCOREMX6SX_ETH1
 
 /* USB - USB OTG1 has over-current detection on OC pin */
-#define CONFIG_PICOCOREA9X_USB_OTG1
-#define CONFIG_PICOCOREA9X_USB_HOST
+#define CONFIG_PICOCOREMX6SX_USB_OTG1
+#define CONFIG_PICOCOREMX6SX_USB_HOST
 
 /* CAN */
-#define CONFIG_PICOCOREA9X_CAN_A
+#define CONFIG_PICOCOREMX6SX_CAN_A
 
 /* I2C */
-#define CONFIG_PICOCOREA9X_I2C_A
-#define CONFIG_PICOCOREA9X_I2C_B
-#define CONFIG_PICOCOREA9X_I2C_C
+#define CONFIG_PICOCOREMX6SX_I2C_A
+#define CONFIG_PICOCOREMX6SX_I2C_B
+#define CONFIG_PICOCOREMX6SX_I2C_C
 
 /* PWM and backlight brightness */
-#define CONFIG_PICOCOREA9X_BL_CTRL
+#define CONFIG_PICOCOREMX6SX_BL_CTRL
 
 /* UART; UART_C is only available if Bluetooth is not equipped */
-#define CONFIG_PICOCOREA9X_UART_A
-#define CONFIG_PICOCOREA9X_UART_B
-#define CONFIG_PICOCOREA9X_UART_C
-// #define CONFIG_PICOCOREA9X_UART_C_RTSCTS
-#define CONFIG_PICOCOREA9X_UART_D
-#define CONFIG_PICOCOREA9X_UART_SD_A_DAT
-// #define CONFIG_PICOCOREA9X_UART_SD_A_DAT_RTSCTS
+#define CONFIG_PICOCOREMX6SX_UART_A
+#define CONFIG_PICOCOREMX6SX_UART_B
+#define CONFIG_PICOCOREMX6SX_UART_C
+// #define CONFIG_PICOCOREMX6SX_UART_C_RTSCTS
+#define CONFIG_PICOCOREMX6SX_UART_D
+#define CONFIG_PICOCOREMX6SX_UART_SD_A_DAT
+// #define CONFIG_PICOCOREMX6SX_UART_SD_A_DAT_RTSCTS
 
 /* SPI; SPI_B can only use CS2 if UART_C does not use RTS */
-#define CONFIG_PICOCOREA9X_SPI_A
+#define CONFIG_PICOCOREMX6SX_SPI_A
 
 /* Audio */
-#define CONFIG_PICOCOREA9X_AUDIO
+#define CONFIG_PICOCOREMX6SX_AUDIO
 
 /*
  * SD_A - External SD port with Card Detect (CD) and Write Protect (WP)
  * On picocore baseboard: external port is Micro-SD card slot with CD but without WP
  */
-#define CONFIG_PICOCOREA9X_SD_A
-#define CONFIG_PICOCOREA9X_SD_A_CD
-//#define CONFIG_PICOCOREA9X_SD_A_WP
+#define CONFIG_PICOCOREMX6SX_SD_A
+#define CONFIG_PICOCOREMX6SX_SD_A_CD
+//#define CONFIG_PICOCOREMX6SX_SD_A_WP
 
 /*
  * SD_B - Internal SD port for EMMC
  */
-#define CONFIG_PICOCOREA9X_EMMC
+#define CONFIG_PICOCOREMX6SX_EMMC
 
 /* Check for invalid CONFIG combinations */
 
@@ -139,16 +139,16 @@ lcd_wvga {				\
  * - BL_CTL: (PWM)
  */
 #ifdef SUPPORT_M4
-#undef CONFIG_PICOCOREA9X_UART_B
-#undef CONFIG_PICOCOREA9X_SPI_A
-#undef CONFIG_PICOCOREA9X_CAN_A
-#undef CONFIG_PICOCOREA9X_I2C_A
-#undef CONFIG_PICOCOREA9X_BL_CTRL
+#undef CONFIG_PICOCOREMX6SX_UART_B
+#undef CONFIG_PICOCOREMX6SX_SPI_A
+#undef CONFIG_PICOCOREMX6SX_CAN_A
+#undef CONFIG_PICOCOREMX6SX_I2C_A
+#undef CONFIG_PICOCOREMX6SX_BL_CTRL
 #endif
 
 /* If UART_C is not used, also RTS/CTS may not be used */
-#ifndef CONFIG_PICOCOREA9X_UART_C
-#undef CONFIG_PICOCOREA9X_UART_C_RTSCTS
+#ifndef CONFIG_PICOCOREMX6SX_UART_C
+#undef CONFIG_PICOCOREMX6SX_UART_C_RTSCTS
 #endif
 
 
@@ -159,8 +159,8 @@ lcd_wvga {				\
 	model = "F&S picocoreMX6SX";
 	compatible = "fus,imx6sx-picocoremx6sx", "fsl,imx6sx";
 
-#ifdef CONFIG_PICOCOREA9X_I2C_B
-#if CONFIG_PICOCOREA9X_LCDIF0 == DISPLAY_LCD
+#ifdef CONFIG_PICOCOREMX6SX_I2C_B
+#if CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD
 	backlight_lcd {
 		compatible = "pwm-backlight";
 		pwms = <&pca963x 1 640000 PWM_POLARITY_INVERTED>;
@@ -195,7 +195,7 @@ lcd_wvga {				\
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-#ifdef CONFIG_PICOCOREA9X_AUDIO
+#ifdef CONFIG_PICOCOREMX6SX_AUDIO
 		/* SGTL5000 analog voltage */
 		reg_sgtl5000_vdda: sgtl5000_vdda {
 			compatible = "regulator-fixed";
@@ -233,7 +233,7 @@ lcd_wvga {				\
 			enable-active-high;
 		};
 
-#ifdef CONFIG_PICOCOREA9X_I2C_B
+#ifdef CONFIG_PICOCOREMX6SX_I2C_B
 		reg_lcd_bl: lcd-bl {
 			compatible = "regulator-fixed";
 			regulator-name = "lcd-bl";
@@ -290,7 +290,7 @@ lcd_wvga {				\
 	};
 
 
-#ifdef CONFIG_PICOCOREA9X_AUDIO
+#ifdef CONFIG_PICOCOREMX6SX_AUDIO
 	sound-sgtl5000 {
 		compatible = "fsl,imx-audio-sgtl5000";
 		cpu-dai = <&ssi1>;
@@ -324,7 +324,7 @@ lcd_wvga {				\
 
 /* RAM size for Continues Memory Allocator */
 &cma {
-	size = <CONFIG_PICOCOREA9X_CMA_SIZE>;
+	size = <CONFIG_PICOCOREMX6SX_CMA_SIZE>;
 };
 
 &busfreq {
@@ -437,7 +437,7 @@ lcd_wvga {				\
 };
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_ETH0
+#ifdef CONFIG_PICOCOREMX6SX_ETH0
 &fec1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet1>;
@@ -457,7 +457,7 @@ lcd_wvga {				\
 			reg = <4>;
 		};
 
-#ifdef CONFIG_PICOCOREA9X_ETH1
+#ifdef CONFIG_PICOCOREMX6SX_ETH1
 		ethphy1: ethernet-phy@5 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <5>;
@@ -465,9 +465,9 @@ lcd_wvga {				\
 #endif
 	};
 };
-#endif /* CONFIG_PICOCOREA9X_ETH0 */
+#endif /* CONFIG_PICOCOREMX6SX_ETH0 */
 
-#ifdef CONFIG_PICOCOREA9X_ETH1
+#ifdef CONFIG_PICOCOREMX6SX_ETH1
 &fec2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet2>;
@@ -476,9 +476,9 @@ lcd_wvga {				\
 	fsl,magic-packet;
 	status = "okay";
 };
-#endif /* CONFIG_PICOCOREA9X_ETH1 */
+#endif /* CONFIG_PICOCOREMX6SX_ETH1 */
 
-#ifdef CONFIG_PICOCOREA9X_CAN_A
+#ifdef CONFIG_PICOCOREMX6SX_CAN_A
 &flexcan1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1>;
@@ -489,7 +489,7 @@ lcd_wvga {				\
 };
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_I2C_A
+#ifdef CONFIG_PICOCOREMX6SX_I2C_A
 
 &i2c4 {
 	clock-frequency = <100000>;
@@ -498,9 +498,9 @@ lcd_wvga {				\
 	status = "okay";
 };
 
-#endif /* CONFIG_PICOCOREA9X_I2C_A */
+#endif /* CONFIG_PICOCOREMX6SX_I2C_A */
 
-#ifdef CONFIG_PICOCOREA9X_I2C_B
+#ifdef CONFIG_PICOCOREMX6SX_I2C_B
 
 /*
  * I2C_A implemented via I2C2
@@ -546,7 +546,7 @@ lcd_wvga {				\
 		};
 	};
 
-#ifdef CONFIG_PICOCOREA9X_CAPTOUCH_MXT224
+#ifdef CONFIG_PICOCOREMX6SX_CAPTOUCH_MXT224
 	mxt224@4a {
 		compatible = "atmel,maxtouch";
 		reg = <0x4a>;
@@ -577,7 +577,7 @@ lcd_wvga {				\
 	};
 #else
 
-#ifdef CONFIG_PICOCOREA9X_CAPTOUCH_FT5x06
+#ifdef CONFIG_PICOCOREMX6SX_CAPTOUCH_FT5x06
 	/* F&S driver V3.0 */
 	ft5x06_ts@38 {
 		compatible = "FocalTech,ft5306";
@@ -596,7 +596,7 @@ lcd_wvga {				\
 #endif
 
 	/* Touch driver SX8654 */
-#ifdef CONFIG_PICOCOREA9X_4WTOUCH_SX8655_ONBOARD
+#ifdef CONFIG_PICOCOREMX6SX_4WTOUCH_SX8655_ONBOARD
 	sx8654@48 {
 		compatible = "semtech,sx8654";
 		reg = <0x48>;
@@ -611,7 +611,7 @@ lcd_wvga {				\
 	};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_4WTOUCH_SX8655_RGBADAPTER
+#ifdef CONFIG_PICOCOREMX6SX_4WTOUCH_SX8655_RGBADAPTER
 	sx8654@49 {
 		compatible = "semtech,sx8654";
 		reg = <0x49>;
@@ -629,7 +629,7 @@ lcd_wvga {				\
 #endif
 
 
-#ifdef CONFIG_PICOCOREA9X_CAPTOUCH_SITRONIX
+#ifdef CONFIG_PICOCOREMX6SX_CAPTOUCH_SITRONIX
 	/* Sitronix PCAP touch on Touch-Connector (I2C) */
 	st1633i@48 {
 		compatible = "sitronix";
@@ -641,7 +641,7 @@ lcd_wvga {				\
 	};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_CAPTOUCH_ILINK
+#ifdef CONFIG_PICOCOREMX6SX_CAPTOUCH_ILINK
 	/* Ilink PCAP touch on Touch-Connector (I2C) */
 	ili210x@41 {
 		compatible = "Ilink,ili210x";
@@ -662,10 +662,10 @@ lcd_wvga {				\
 	};
 #endif
 };
-#endif /* CONFIG_PICOCOREA9X_I2C_B */
+#endif /* CONFIG_PICOCOREMX6SX_I2C_B */
 
 
-#ifdef CONFIG_PICOCOREA9X_I2C_C
+#ifdef CONFIG_PICOCOREMX6SX_I2C_C
 /*
  * I2C_C implemented via I2C1; used for on-board RTC, on-board LVDS connector;
  * On picocore bb: Audio Codec (SGTL5000), HDMI
@@ -676,7 +676,7 @@ lcd_wvga {				\
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
-#ifdef CONFIG_PICOCOREA9X_AUDIO
+#ifdef CONFIG_PICOCOREMX6SX_AUDIO
 	sgtl5000: sgtl5000@0a {
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
@@ -717,9 +717,9 @@ lcd_wvga {				\
 #endif
 
 };
-#endif /* CONFIG_PICOCOREA9X_I2C_C */
+#endif /* CONFIG_PICOCOREMX6SX_I2C_C */
 
-#ifdef CONFIG_PICOCOREA9X_AUDIO
+#ifdef CONFIG_PICOCOREMX6SX_AUDIO
 &audmux {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_audmux_4>;
@@ -731,9 +731,9 @@ lcd_wvga {				\
 	fsl,mode = "i2s-slave";
 	status = "okay";
 };
-#endif /* CONFIG_PICOCOREA9X_AUDIO */
+#endif /* CONFIG_PICOCOREMX6SX_AUDIO */
 
-#if (CONFIG_PICOCOREA9X_LCDIF0 == DISPLAY_LCD)
+#if (CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD)
 &lcdif1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcdif1>;		/* Remove when already active */
@@ -743,66 +743,66 @@ lcd_wvga {				\
 	status = "okay";
 
 	display0: lcd {
-		bits-per-pixel = <CONFIG_PICOCOREA9X_LCD_BPP>;
-		bus-width = <CONFIG_PICOCOREA9X_LCD_BUS_WIDTH>;
+		bits-per-pixel = <CONFIG_PICOCOREMX6SX_LCD_BPP>;
+		bus-width = <CONFIG_PICOCOREMX6SX_LCD_BUS_WIDTH>;
 
 		display-timings {
 			native-mode = <&timing0>;
-			timing0: CONFIG_PICOCOREA9X_LCD_TIMING;
+			timing0: CONFIG_PICOCOREMX6SX_LCD_TIMING;
 		};
 	};
 };
-#endif /* CONFIG_PICOCOREA9X_LCDIF0 */
+#endif /* CONFIG_PICOCOREMX6SX_LCDIF0 */
 
-#ifdef CONFIG_PICOCOREA9X_UART_A
+#ifdef CONFIG_PICOCOREMX6SX_UART_A
 /* UART_A implemented by UART1; TXD, RXD only; */
 &uart1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1>;
 	status = "okay";
 };
-#endif /* CONFIG_PICOCOREA9X_UART_A */
+#endif /* CONFIG_PICOCOREMX6SX_UART_A */
 
-#ifdef CONFIG_PICOCOREA9X_UART_B
+#ifdef CONFIG_PICOCOREMX6SX_UART_B
 /* UART_B implemented by UART3: TXD, RXD only; */
 &uart3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3>;
 	status = "okay";
 };
-#endif /* CONFIG_PICOCOREA9X_UART_B */
+#endif /* CONFIG_PICOCOREMX6SX_UART_B */
 
-#ifdef CONFIG_PICOCOREA9X_UART_C
+#ifdef CONFIG_PICOCOREMX6SX_UART_C
 /* UART_D implemeted by UART4: TXD, RXD,  RTS, CTS; */
 &uart4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart4>;
 	status = "okay";
 };
-#endif /* CONFIG_PICOCOREA9X_UART_C */
+#endif /* CONFIG_PICOCOREMX6SX_UART_C */
 
-#ifdef CONFIG_PICOCOREA9X_UART_D
+#ifdef CONFIG_PICOCOREMX6SX_UART_D
 /* UART_D implemeted by UART2: TXD, RXD only; */
 &uart2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2>;
 	status = "okay";
 };
-#endif /* CONFIG_PICOCOREA9X_UART_D */
+#endif /* CONFIG_PICOCOREMX6SX_UART_D */
 
-#ifdef CONFIG_PICOCOREA9X_UART_SD_A_DAT
+#ifdef CONFIG_PICOCOREMX6SX_UART_SD_A_DAT
 /*  UART_SDA_A_DAT implemented by UART5: TXD, RXD, RTS, CTS; */
 &uart5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart5>;
-#ifdef CONFIG_PICOCOREA9X_UART_SD_A_DAT_RTSCTS
+#ifdef CONFIG_PICOCOREMX6SX_UART_SD_A_DAT_RTSCTS
 	fsl,uart-has-rtscts;
 #endif
 	status = "okay";
 };
-#endif /* CONFIG_PICOCOREA9X_UART_SD_A_DAT */
+#endif /* CONFIG_PICOCOREMX6SX_UART_SD_A_DAT */
 
-#ifdef CONFIG_PICOCOREA9X_USB_OTG1
+#ifdef CONFIG_PICOCOREMX6SX_USB_OTG1
 &usbotg1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg1>;
@@ -811,7 +811,7 @@ lcd_wvga {				\
 };
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_USB_HOST
+#ifdef CONFIG_PICOCOREMX6SX_USB_HOST
 &usbotg2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg2>;
@@ -825,17 +825,17 @@ lcd_wvga {				\
 
 
 
-#ifdef CONFIG_PICOCOREA9X_SD_A
+#ifdef CONFIG_PICOCOREMX6SX_SD_A
 /* SD_A implemented via USDHC4 on board revisions since 1.20 */
 &usdhc4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc4_sd_a>;
-#ifdef CONFIG_PICOCOREA9X_SD_A_CD
+#ifdef CONFIG_PICOCOREMX6SX_SD_A_CD
 	cd-gpios = <&gpio2 12 GPIO_ACTIVE_LOW>;
 #else
 	non-removable;
 #endif
-#ifdef CONFIG_PICOCOREA9X_SD_A_WP
+#ifdef CONFIG_PICOCOREMX6SX_SD_A_WP
 	wp-gpios = <&gpio2 17 GPIO_ACTIVE_HIGH>;
 #endif
 	bus-width = <4>;
@@ -846,9 +846,9 @@ lcd_wvga {				\
 	keep-power-in-suspend;
 	status = "okay";
 };
-#endif /* CONFIG_PICOCOREA9X_SD_A */
+#endif /* CONFIG_PICOCOREMX6SX_SD_A */
 
-#ifdef CONFIG_PICOCOREA9X_EMMC
+#ifdef CONFIG_PICOCOREMX6SX_EMMC
 /* EMMC implemented via USDHC2 */
 &usdhc2 {
 	pinctrl-names = "default";
@@ -863,20 +863,20 @@ lcd_wvga {				\
 };
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_BL_CTRL
+#ifdef CONFIG_PICOCOREMX6SX_BL_CTRL
 /* Backlight PWM implemented by PWM6 */
 &pwm6 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm6>;
 	status = "okay";
 };
-#endif /* CONFIG_PICOCOREA9X_BL_CTRL */
+#endif /* CONFIG_PICOCOREMX6SX_BL_CTRL */
 
 &pxp {
 	status = "disabled";
 };
 
-#ifdef CONFIG_PICOCOREA9X_SPI_A
+#ifdef CONFIG_PICOCOREMX6SX_SPI_A
 /* SPI_A implemented via ECSPI5, 1x CS */
 &ecspi5 {
 	pinctrl-names = "default";
@@ -893,9 +893,9 @@ lcd_wvga {				\
 		reg = <0>;
 	};
 };
-#endif /* CONFIG_PICOCOREA9X_SPI_A */
+#endif /* CONFIG_PICOCOREMX6SX_SPI_A */
 
-#ifdef CONFIG_PICOCOREA9X_NAND
+#ifdef CONFIG_PICOCOREMX6SX_NAND
 &dma_apbh {
 	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
 	compatible = "fus,imx6sx-dma-apbh", "fus,imx28-dma-apbh";
@@ -913,7 +913,7 @@ lcd_wvga {				\
 //###	fus,ecc_strength = <52>;	/* Spare area 224 bytes */
 	status = "okay";
 };
-#endif /* CONFIG_PICOCOREA9X_NAND */
+#endif /* CONFIG_PICOCOREMX6SX_NAND */
 
 &iomuxc {
 	pinctrl-names = "default";
@@ -954,7 +954,7 @@ lcd_wvga {				\
 			>;
 		};
 
-#ifdef CONFIG_PICOCOREA9X_AUDIO
+#ifdef CONFIG_PICOCOREMX6SX_AUDIO
 		pinctrl_audmux_4: audmux-4 {
 			fsl,pins = <
 				MX6SX_PAD_ENET1_COL__AUDMUX_AUD4_TXC	0x130b0
@@ -966,7 +966,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_ETH0
+#ifdef CONFIG_PICOCOREMX6SX_ETH0
 		pinctrl_enet1: enet1grp {
 			fsl,pins = <
 				/* MDIO */
@@ -992,7 +992,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_ETH1
+#ifdef CONFIG_PICOCOREMX6SX_ETH1
 		pinctrl_enet2: enet2grp {
 			fsl,pins = <
 				/* FEC2 uses MDIO bus from FEC1 */
@@ -1012,7 +1012,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#if CONFIG_PICOCOREA9X_LCDIF0 == DISPLAY_LCD
+#if CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD
 		pinctrl_lcdif1: lcdgrp {
 			fsl,pins = <
 				MX6SX_PAD_LCD1_CLK__LCDIF1_CLK		0x000b0
@@ -1047,7 +1047,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_CAN_A
+#ifdef CONFIG_PICOCOREMX6SX_CAN_A
 		pinctrl_flexcan1: flexcan1grp {
 			fsl,pins = <
 				MX6SX_PAD_SD3_DATA5__CAN1_TX		0x1b020
@@ -1080,7 +1080,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_I2C_A
+#ifdef CONFIG_PICOCOREMX6SX_I2C_A
 		/* I2C_A: RGB-Connector (SKIT -> SX8655, LED-driver PCA9632),
 		   Touch Connector (SKIT -> FT5x06, MXT), SX8655 (SKIT),
 		   Feature Connector (SKIT) */
@@ -1092,7 +1092,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_I2C_B
+#ifdef CONFIG_PICOCOREMX6SX_I2C_B
 		/* I2C_A: RGB-Connector (SKIT -> SX8655, LED-driver PCA9632),
 		   Touch Connector (SKIT -> FT5x06, MXT), SX8655 (SKIT),
 		   Feature Connector (SKIT) */
@@ -1104,7 +1104,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_I2C_C
+#ifdef CONFIG_PICOCOREMX6SX_I2C_C
 		/* I2C_C: RTC (PCA8565), LVDS-Connector, SGTL5000 (SKIT) */
 		pinctrl_i2c1: i2c1grp {
 			fsl,pins = <
@@ -1114,7 +1114,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_SPI_A
+#ifdef CONFIG_PICOCOREMX6SX_SPI_A
 		pinctrl_ecspi5: ecspi5grp {
 			fsl,pins = <
 				MX6SX_PAD_QSPI1B_SS1_B__ECSPI5_SCLK	0x100b1
@@ -1125,16 +1125,16 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_BL_CTRL
+#ifdef CONFIG_PICOCOREMX6SX_BL_CTRL
 		/* Backlight PWM implemented by PWM6 */
 		pinctrl_pwm6: pwm6grp {
 			fsl,pins = <
 				MX6SX_PAD_GPIO1_IO11__PWM2_OUT		0x110b0
 			>;
 		};
-#endif /* CONFIG_PICOCOREA9X_BL_CTRL */
+#endif /* CONFIG_PICOCOREMX6SX_BL_CTRL */
 
-#ifdef CONFIG_PICOCOREA9X_UART_A
+#ifdef CONFIG_PICOCOREMX6SX_UART_A
 		pinctrl_uart1: uart1grp {
 			fsl,pins = <
 				MX6SX_PAD_GPIO1_IO04__UART1_TX		0x1b0b1
@@ -1143,7 +1143,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_UART_B
+#ifdef CONFIG_PICOCOREMX6SX_UART_B
 		pinctrl_uart3: uart3grp {
 			fsl,pins = <
 				MX6SX_PAD_QSPI1B_SS0_B__UART3_TX	0x1b0b1
@@ -1152,12 +1152,12 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_UART_C
+#ifdef CONFIG_PICOCOREMX6SX_UART_C
 		pinctrl_uart4: uart4grp {
 			fsl,pins = <
 				MX6SX_PAD_SD3_DATA3__UART4_RX		0x1b0b1
 				MX6SX_PAD_SD3_CMD__UART4_TX			0x1b0b1
-#ifdef CONFIG_PICOCOREA9X_UART_C_RTSCTS
+#ifdef CONFIG_PICOCOREMX6SX_UART_C_RTSCTS
 		//		MX6SX_PAD_SD3_DATA2__UART4_CTS_B	0x1b0b1
 		//		MX6SX_PAD_SD3_CLK__UART4_RTS_B		0x1b0b1
 				MX6SX_PAD_SD3_CLK__UART4_CTS_B		0x1b0b1
@@ -1167,7 +1167,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_UART_D
+#ifdef CONFIG_PICOCOREMX6SX_UART_D
 		pinctrl_uart2: uart2grp {
 			fsl,pins = <
 				MX6SX_PAD_GPIO1_IO06__UART2_TX		0x1b0b1
@@ -1176,12 +1176,12 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_UART_SD_A_DAT
+#ifdef CONFIG_PICOCOREMX6SX_UART_SD_A_DAT
 		pinctrl_uart5: uart5grp {
 			fsl,pins = <
 				MX6SX_PAD_SD4_DATA4__UART5_RX		0x1b0b1
 				MX6SX_PAD_SD4_DATA5__UART5_TX		0x1b0b1
-#ifdef CONFIG_PICOCOREA9X_UART_SD_A_DAT_RTSCTS
+#ifdef CONFIG_PICOCOREMX6SX_UART_SD_A_DAT_RTSCTS
 				MX6SX_PAD_SD4_DATA7__UART5_CTS_B	0x1b0b1
 				MX6SX_PAD_SD4_DATA6__UART5_RTS_B	0x1b0b1
 #endif
@@ -1189,7 +1189,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_USB_OTG1
+#ifdef CONFIG_PICOCOREMX6SX_USB_OTG1
 		pinctrl_usbotg1: usbotg1grp {
 			fsl,pins = <
 				/* USB_OTG1_PWR, active low */
@@ -1201,7 +1201,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_USB_HOST
+#ifdef CONFIG_PICOCOREMX6SX_USB_HOST
 		pinctrl_usbotg2: usbotg2grp {
 			fsl,pins = <
 				/* USB_OTG2_PWR, active high */
@@ -1211,7 +1211,7 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREA9X_SD_A
+#ifdef CONFIG_PICOCOREMX6SX_SD_A
 
 		/* Micro-SD slot on q-SKIT if eMMC not equipped */
 		pinctrl_usdhc4_sd_a: usdhc4grp-sd_a {
@@ -1225,11 +1225,11 @@ lcd_wvga {				\
 				MX6SX_PAD_SD4_RESET_B__USDHC4_RESET_B	0x17091
 //				MX6SX_PAD_KEY_ROW1__USDHC4_VSELECT
 
-#ifdef CONFIG_PICOCOREA9X_SD_A_CD
+#ifdef CONFIG_PICOCOREMX6SX_SD_A_CD
 				/* Card Detect (CD), active low (pull-up) */
 				MX6SX_PAD_KEY_COL2__GPIO2_IO_12		0x17000
 #endif
-#ifdef CONFIG_PICOCOREA9X_SD_A_WP
+#ifdef CONFIG_PICOCOREMX6SX_SD_A_WP
 				/*
 				 * Write Protect (WP), active high (pull-up)
 				 * lock:   WP switch open, pulled high
@@ -1239,9 +1239,9 @@ lcd_wvga {				\
 #endif
 			>;
 		};
-#endif /* CONFIG_PICOCOREA9X_SD_A */
+#endif /* CONFIG_PICOCOREMX6SX_SD_A */
 
-#ifdef CONFIG_PICOCOREA9X_EMMC
+#ifdef CONFIG_PICOCOREMX6SX_EMMC
 		/* EMC */
 		pinctrl_usdhc2_emmc: usdhc2grp-emmc {
 			fsl,pins = <
