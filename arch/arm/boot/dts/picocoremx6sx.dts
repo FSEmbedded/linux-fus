@@ -86,6 +86,7 @@ lcd_wvga {				\
 
 /* I2C */
 #define CONFIG_PICOCOREA9X_I2C_A
+#define CONFIG_PICOCOREA9X_I2C_B
 #define CONFIG_PICOCOREA9X_I2C_C
 
 /* PWM and backlight brightness */
@@ -158,7 +159,7 @@ lcd_wvga {				\
 	model = "F&S picocoreMX6SX";
 	compatible = "fus,imx6sx-picocoremx6sx", "fsl,imx6sx";
 
-#ifdef CONFIG_PICOCOREA9X_I2C_A
+#ifdef CONFIG_PICOCOREA9X_I2C_B
 #if CONFIG_PICOCOREA9X_LCDIF0 == DISPLAY_LCD
 	backlight_lcd {
 		compatible = "pwm-backlight";
@@ -232,7 +233,7 @@ lcd_wvga {				\
 			enable-active-high;
 		};
 
-#ifdef CONFIG_PICOCOREA9X_I2C_A
+#ifdef CONFIG_PICOCOREA9X_I2C_B
 		reg_lcd_bl: lcd-bl {
 			compatible = "regulator-fixed";
 			regulator-name = "lcd-bl";
@@ -497,6 +498,10 @@ lcd_wvga {				\
 	status = "okay";
 };
 
+#endif /* CONFIG_PICOCOREA9X_I2C_A */
+
+#ifdef CONFIG_PICOCOREA9X_I2C_B
+
 /*
  * I2C_A implemented via I2C2
  * On picocore bb: RGB adapter, SX8655, touch connnector, feature connector
@@ -657,7 +662,7 @@ lcd_wvga {				\
 	};
 #endif
 };
-#endif /* CONFIG_PICOCOREA9X_I2C_A */
+#endif /* CONFIG_PICOCOREA9X_I2C_B */
 
 
 #ifdef CONFIG_PICOCOREA9X_I2C_C
@@ -1079,16 +1084,22 @@ lcd_wvga {				\
 		/* I2C_A: RGB-Connector (SKIT -> SX8655, LED-driver PCA9632),
 		   Touch Connector (SKIT -> FT5x06, MXT), SX8655 (SKIT),
 		   Feature Connector (SKIT) */
-		pinctrl_i2c2: i2c2grp {
-			fsl,pins = <
-				MX6SX_PAD_GPIO1_IO03__I2C2_SDA	0x4001b8b1
-				MX6SX_PAD_GPIO1_IO02__I2C2_SCL	0x4001b8b1
-			>;
-			};
 		pinctrl_i2c4: i2c4grp {
 			fsl,pins = <
 				MX6SX_PAD_SD3_DATA0__I2C4_SCL	0x4001b8b1
 				MX6SX_PAD_SD3_DATA1__I2C4_SDA	0x4001b8b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREA9X_I2C_B
+		/* I2C_A: RGB-Connector (SKIT -> SX8655, LED-driver PCA9632),
+		   Touch Connector (SKIT -> FT5x06, MXT), SX8655 (SKIT),
+		   Feature Connector (SKIT) */
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO03__I2C2_SDA	0x4001b8b1
+				MX6SX_PAD_GPIO1_IO02__I2C2_SCL	0x4001b8b1
 			>;
 		};
 #endif
