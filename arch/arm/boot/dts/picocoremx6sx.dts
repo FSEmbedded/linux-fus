@@ -420,8 +420,8 @@ lcd_wvga {				\
 	status = "okay";
 };
 
-/* Keep interrupts on GPIO7 if M4 already owns it */
-&gpio7 {
+/* Keep interrupts on GPIO4 if M4 already owns it */
+&gpio4 {
 	keep-interrupts;
 };
 
@@ -917,40 +917,48 @@ lcd_wvga {				\
 
 &iomuxc {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_hog>;
+	pinctrl-0 =
+#ifndef SUPPORT_M4
+					<&pinctrl_m4_hog>,
+#endif
+					<&pinctrl_hog>;
 
 	picocoremx6sx {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
-				MX6SX_PAD_QSPI1A_SS0_B__GPIO4_IO_22	0x1b0b0
 				MX6SX_PAD_ENET2_TX_CLK__GPIO2_IO_9	0x030b0
 				MX6SX_PAD_KEY_COL0__GPIO2_IO_10		0x030b0
 				MX6SX_PAD_KEY_COL3__GPIO2_IO_13		0x030b0
 				MX6SX_PAD_KEY_COL4__GPIO2_IO_14		0x030b0
 				MX6SX_PAD_KEY_ROW0__GPIO2_IO_15		0x030b0
 				MX6SX_PAD_GPIO1_IO08__GPIO1_IO_8	0x0b0b0
-//###			MX6SX_PAD_GPIO1_IO13__GPIO1_IO_13	TESTPOINT
-
-				MX6SX_PAD_QSPI1A_SCLK__GPIO4_IO_21	0x030b0
 				MX6SX_PAD_QSPI1A_DATA0__GPIO4_IO_16	0x030b0
-				MX6SX_PAD_QSPI1A_DATA1__GPIO4_IO_17	0x030b0
-				MX6SX_PAD_QSPI1A_DATA2__GPIO4_IO_18	0x030b0
-				MX6SX_PAD_QSPI1A_DATA3__GPIO4_IO_19	0x030b0
 				MX6SX_PAD_QSPI1B_DATA0__GPIO4_IO_24	0x030b0
-				MX6SX_PAD_QSPI1B_DATA1__GPIO4_IO_25	0x030b0
-				MX6SX_PAD_QSPI1B_DATA2__GPIO4_IO_26	0x030b0
-				MX6SX_PAD_QSPI1B_DATA3__GPIO4_IO_27	0x030b0
 				MX6SX_PAD_SD3_DATA4__GPIO7_IO_6		0x030b0
 				MX6SX_PAD_SD3_DATA6__GPIO7_IO_8		0x030b0
 
 				/* VLCD_ON */
 				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x17059
 
-//				/* PHY_RST */
+				/* PHY_RST */
 				MX6SX_PAD_ENET1_MDC__GPIO2_IO_2		0x0b0b0
 
 				/* DVS */
 				MX6SX_PAD_USB_H_STROBE__GPIO7_IO_11	0x130b0
+			>;
+		};
+
+		pinctrl_m4_hog: m4_hoggrp {
+			fsl,pins = <
+				MX6SX_PAD_QSPI1A_DATA1__GPIO4_IO_17	0x030b0
+				MX6SX_PAD_QSPI1A_DATA2__GPIO4_IO_18	0x030b0
+				MX6SX_PAD_QSPI1A_DATA3__GPIO4_IO_19	0x030b0
+				MX6SX_PAD_QSPI1A_SCLK__GPIO4_IO_21	0x030b0
+				MX6SX_PAD_QSPI1A_SS0_B__GPIO4_IO_22	0x1b0b0
+				MX6SX_PAD_QSPI1B_DATA1__GPIO4_IO_25	0x030b0
+				MX6SX_PAD_QSPI1B_DATA2__GPIO4_IO_26	0x030b0
+				MX6SX_PAD_QSPI1B_DATA3__GPIO4_IO_27	0x030b0
+
 			>;
 		};
 

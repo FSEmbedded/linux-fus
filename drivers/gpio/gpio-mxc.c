@@ -484,11 +484,6 @@ static int mxc_gpio_probe(struct platform_device *pdev)
 	port->irq = platform_get_irq(pdev, 0);
 	if (port->irq < 0)
 		return port->irq;
-	if (!of_property_read_bool(np, "keep-interrupts")) {
-		/* disable the interrupt and clear the status */
-		writel(0, port->base + GPIO_IMR);
-		writel(~0, port->base + GPIO_ISR);
-	}
 
 	/* the controller clock is optional */
 	port->clk = devm_clk_get(&pdev->dev, NULL);
@@ -506,10 +501,11 @@ static int mxc_gpio_probe(struct platform_device *pdev)
 	err = pm_runtime_get_sync(&pdev->dev);
 	if (err < 0)
 		goto out_pm_dis;
-
-	/* disable the interrupt and clear the status */
-	writel(0, port->base + GPIO_IMR);
-	writel(~0, port->base + GPIO_ISR);
+	if (!of_property_read_bool(np, "keep-interrupts")) {
+		/* disable the interrupt and clear the status */
+		writel(0, port->base + GPIO_IMR);
+		writel(~0, port->base + GPIO_ISR);
+	}
 
 	if (mxc_gpio_hwtype == IMX21_GPIO) {
 		/*
