@@ -56,9 +56,9 @@
 #define CONFIG_PICOCOREMX7ULP_WLAN
 
 /* SD card */
-//#define CONFIG_PICOCOREMX7ULP_SD
-//#define CONFIG_PICOCOREMX7ULP_SD_CD
-//#define CONFIG_PICOCOREMX7ULP_SD_WP
+#define CONFIG_PICOCOREMX7ULP_SD
+#define CONFIG_PICOCOREMX7ULP_SD_CD
+#define CONFIG_PICOCOREMX7ULP_SD_WP
 
 /* Audio: Codec (SGTL5000) on pins 77-80 */
 // TODO: check if it works on lpi2c0, thought its only available from M4 core
@@ -73,7 +73,8 @@
 #define CONFIG_PICOCOREMX7ULP_SPI_A
 
 /* QSPI_A */
-#define CONFIG_PICOCOREMX7ULP_QSPI_A
+//### TODO: not tested yet
+//#define CONFIG_PICOCOREMX7ULP_QSPI_A
 
 /* UART */
 #define CONFIG_PICOCOREMX7ULP_UART_A
@@ -87,8 +88,10 @@
 /* Check for invalid CONFIG combinations */
 
 /* WLAN and SD can't be used at the same time */
-#if (defined(CONFIG_PICOCOREMX7ULP_SD) && defined(CONFIG_PICOCOREMX7ULP_WLAN))
+#ifdef CONFIG_PICOCOREMX7ULP_WLAN
 #undef CONFIG_PICOCOREMX7ULP_SD
+#undef CONFIG_PICOCOREMX7ULP_SD_CD
+#undef CONFIG_PICOCOREMX7ULP_SD_WP
 #endif
 
 / {
@@ -259,14 +262,12 @@
 	};
 #endif
 
-// necessary for buildroot
 	/* F&S board information */
 	bdinfo {
 		compatible = "bdinfo";
 		board_name = "PicoCoreMX7ULP";
 		login_tty = "ttyLP0";
 		login_speed = "115200";
-		//ecc_strength = "8";
 	};
 };
 
@@ -487,11 +488,6 @@
 		interrupts = <0 2>;
 		atmel,cfg_name = "atmel/mxt224.cfg";
 		atmel,reset-gpio = <&gpio_ptf 1 GPIO_ACTIVE_LOW>;
-#if 0
-		atmel,suspend-mode = <2>;
-		vdd = <&reg_atmel_mxt_vdd>;
-		avdd = <&reg_atmel_mxt_avdd>;
-#endif
 	};
 #endif
 
@@ -505,7 +501,6 @@
 		filt = <0x02>;
 		setdly = <0x08>;
 		pinctrl-names = "default";
-		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
 		interrupt-parent = <&gpio_ptf>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
 	};
@@ -660,8 +655,10 @@
 				IMX7ULP_PAD_PTB7__PTB7		0x00000
 #endif
 
+#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
 				/* AUD_PWR_EN active high -> default high */
 				IMX7ULP_PAD_PTA24__PTA24	0x00003
+#endif
 			>;
 		};
 
