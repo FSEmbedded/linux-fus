@@ -18,6 +18,7 @@
 #include <linux/mxcfb.h>
 #include <video/of_display_timing.h>
 #include <video/videomode.h>
+#include <linux/of_gpio.h>
 
 #include "mipi_dsi.h"
 
@@ -91,6 +92,7 @@ struct tc358762_info {
 	struct fb_videomode *fb_vmode;
 	struct device_node *remote;
 	struct tc358762_reg_info reg_info;
+	int reset_pin;
 };
 
 static int tc358762_read_reg(struct i2c_client *client,
@@ -516,6 +518,8 @@ static int tc358762_init_disp_dt(struct tc358762_info *info)
 	struct display_timings *timings = NULL;
 	int ret = 0;
 
+	info->reset_pin = of_get_named_gpio(np, "reset-gpio", 0);
+
 	ret = of_property_read_u32(np, "data-lanes-num",
 				   &info->reg_info.mipi_lane);
 	if (ret < 0)
@@ -614,6 +618,15 @@ static int tc358762_probe(struct i2c_client *client,
 	ret = tc358762_init_disp_dt(info);
 	if (ret < 0)
 		return ret;
+
+	/* Toggle reset pin if given */
+	if (gpio_is_valid(info->reset_pin)) {
+		devm_gpio_request_one(dev, info->reset_pin,
+				      GPIOF_OUT_INIT_LOW, "tc358762");
+		/* minium 50ns */
+		udelay(1);
+		gpio_set_value(info->reset_pin, 1);
+	}
 
 	if ((ret = tc358762_detect(client, NULL)))
 		return ret;

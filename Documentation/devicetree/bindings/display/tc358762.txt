@@ -25,6 +25,7 @@ Required properties:
 Optional properties:
 
 - data-lanes-num: 	Number of data lanes from MIPI Perihperie.
+- reset-gpio:		reset gpio
 
 Required nodes:
 
