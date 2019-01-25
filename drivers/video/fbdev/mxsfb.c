@@ -205,6 +205,7 @@ struct mxsfb_devdata {
 	unsigned hs_wdth_shift;
 	unsigned ipversion;
 	u32 flags;
+	u32 quirk;
 };
 
 struct mxsfb_layer;
@@ -279,6 +280,7 @@ struct mxsfb_info {
 #define MXSFB_FLAG_NULL		0x0
 #define MXSFB_FLAG_BUSFREQ	0x1
 #define MXSFB_FLAG_PMQOS	0x2
+#define MXSFB_QUIRK_DISABLE_CLOCK 0x1
 
 static const struct mxsfb_devdata mxsfb_devdata[] = {
 	[MXSFB_V3] = {
@@ -290,6 +292,7 @@ static const struct mxsfb_devdata mxsfb_devdata[] = {
 		.hs_wdth_shift = 24,
 		.ipversion = 3,
 		.flags = MXSFB_FLAG_NULL,
+		.quirk = 0,
 	},
 	[MXSFB_V4] = {
 		.transfer_count = LCDC_V4_TRANSFER_COUNT,
@@ -300,6 +303,7 @@ static const struct mxsfb_devdata mxsfb_devdata[] = {
 		.hs_wdth_shift = 18,
 		.ipversion = 4,
 		.flags = MXSFB_FLAG_BUSFREQ,
+		.quirk = MXSFB_QUIRK_DISABLE_CLOCK,
 	},
 	[MXSFB_V5] = {
 		.transfer_count = LCDC_V4_TRANSFER_COUNT,
@@ -310,6 +314,7 @@ static const struct mxsfb_devdata mxsfb_devdata[] = {
 		.hs_wdth_shift = 18,
 		.ipversion = 4,
 		.flags = MXSFB_FLAG_PMQOS,
+		.quirk = 0,
 	},
 };
 
@@ -792,7 +797,14 @@ static void mxsfb_disable_controller(struct fb_info *fb_info)
 	reg = readl(host->base + LCDC_VDCTRL4);
 	writel(reg & ~VDCTRL4_SYNC_SIGNALS_ON, host->base + LCDC_VDCTRL4);
 
-	clk_disable_pix(host);
+	//### TODO check how its work correctly
+	/* If you set clk_disable_pix, then the i.MX7ULP CPU doesnt boot
+	 * and hang. If If we completly delete this lvds display on i.MX6SX CPU
+	 * doesn´t work anymore.
+	 */
+	if (host->devdata->quirk & MXSFB_QUIRK_DISABLE_CLOCK)
+		clk_disable_pix(host);
+
 	host->enabled = 0;
 
 	if (host->reg_lcd) {
@@ -1103,7 +1115,6 @@ static int mxsfb_blank(int blank, struct fb_info *fb_info)
 
 		if (!host->enabled) {
 			pm_runtime_get_sync(&host->pdev->dev);
-
 			writel(0, host->base + LCDC_CTRL);
 			mxsfb_set_par(host->fb_info);
 			mxsfb_enable_controller(fb_info);
