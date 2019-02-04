@@ -160,6 +160,40 @@
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
 		};
+
+#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
+		/* SGTL5000 analog voltage */
+		reg_sgtl5000_vdda: sgtl5000_vdda {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDA-supply";
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 I/O voltage */
+		reg_sgtl5000_vddio: sgtl5000_vddio {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 internal digital voltage */
+		reg_sgtl5000_vddd: sgtl5000_vddd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDD-supply";
+			regulator-min-microvolt = <1350000>;
+			regulator-max-microvolt = <1350000>;
+			regulator-always-on;
+		};
+#endif
+	};
+
+	extcon_usb1: extcon_usb1 {
+		compatible = "linux,extcon-usb-gpio";
+		id-gpio = <&gpio_ptc 8 GPIO_ACTIVE_HIGH>;
 	};
 
 	/* TODO check node */
@@ -411,6 +445,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg1>;
 	vbus-supply = <&reg_usb_otg1_vbus>;
+	extcon = <0>, <&extcon_usb1>;
 	srp-disable;
 	hnp-disable;
 	adp-disable;
@@ -603,7 +638,7 @@
 	pinctrl-0 = <&pinctrl_hog_0>;
 	status = "okay";
 
-	imx7ulp-evk { //TODO: check node name and subnodes
+	picocoremx7ulp { //TODO: check node name and subnodes
 		pinctrl_hog_0: hoggrp-0 {
 			fsl,pins = <
 				/* pins for the M4-Core */
@@ -694,7 +729,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog_1>;
 
-	imx7ulp-evk { //TODO: check node name and subnodes
+	picocoremx7ulp { //TODO: check node name and subnodes
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
 				/* TP 5 */
@@ -879,7 +914,7 @@
 				/* USB otg Power enable */
 				IMX7ULP_PAD_PTC0__PTC0		0x20003
 				/* USB_OTG1_ID: low: host, open: device */
-				IMX7ULP_PAD_PTC8__PTC8		0x00003
+				IMX7ULP_PAD_PTC8__PTC8		0x10003
 			>;
 		};
 	};
