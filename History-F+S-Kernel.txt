@@ -1,25 +1,79 @@
-Version History for Linux Kernel on F&S Vybrid Boards and Modules
-=================================================================
+Version History for Linux Kernel on i.MX based F&S Boards and Modules
+=====================================================================
 
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
+linux-4.9.88-picocoremx6ul-B2019.03 (13.03.2019)
+------------------------------------------------
+Supported Boards: PicoCoreMX6UL
+Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, efusA7UL, CubeA7UL, Cube2.0,
+                  PicoCOM1.2, GAR1, efusA9X, PicoCOMA9X, PicoCoreMX6SX,
+                  CONT1, PicoCoreMX7ULP, armStoneA5, NetDCUA5, PicoCOMA5,
+                  CUBEA5, AGATEWAY, HGATEWAY
+
+- Add SD1_VSEL to picocoremx6ull.dts to support UHS SD cards
 
 
-linux-fsimx7ulp-B2019.02-pre (25.02.2019)
------------------------------------------
+
+linux-4.9.88-fsimx7ulp-B2019.02-pre (25.02.2019)
+------------------------------------------------
 Supported Boards: PicoCoreMX7ULP
-Not tested:       -
+Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, efusA7UL, CubeA7UL, Cube2.0,
+                  PicoCOM1.2, PicoCoreMX6UL, GAR1, efusA9X,
+		  PicoCOMA9X, PicoCoreMX6SX, CONT1, armStoneA5, NetDCUA5,
+		  PicoCOMA5, CUBEA5, AGATEWAY, HGATEWAY
 
-- Improve picocoremx7ulp.dts
-- Improve fsimx7ulp_defconfig
-- Support LCD display on picocoremx7ulp
-- Improve TC358762 driver - support reset gpio pin
-- Improve mipi_dsi_northwest driver - get DT disp params
-- Support new F&S Tux logo on fsimx7ulp_defconfig
-- Improve mxsfb driver support i.MX6 & i.MX7
-- Add support for Toshiba TC358762 DSI to RGB converter
-- Adapt fs_rpmsg example to new rpmsg API
+- Add property fsl,rx_fifo_trig to i.MX6 UART driver
+- On i.MX6, add support for BT656 and BT1120 output on IPU
+- Add support for ADV7391 video encoder
+- Add analog video output to fsimx6, using BT656+ADV7391
+- Improve adv739x driver to allow setting chip type
+- On i.MX6, add support for 4-channel camera input ISL79985/79987
+- Add support for ISL7998X 4x camera MIPI decoder on fsimx6
+- Add PAL/NTSC support for isl7998x_mipi.c, improve driver
+- Add more network features to fsimx6/ul/sx defconfigs
+- Add bluetooth support to fsimx6sx/ul
+- Update to rel_imx_4.9.11_1.0.0_ga
+- Improve semtech sx8654 driver support reverse coordinates
+- Fix compiler errors after merge of several files
+- Add Support for PicoCOMA7
+- Use new F&S Tux logo when booting
+- Use spinlock in isl7998x_mipi driver
+- Update to rel_imx_4.9.88_2.0.0_ga
+- Add picocoremx6ull.dts
+- Improve armstonea5 device tree
+- PicoCOMA9X: correct reference to EMMC card detect
+- Improve CPU specific function calls in busfreq-imx.c
 - Add support for PicoCoreMX7ULP
+- Fix auxiliary_core driver memory leak
+- Add DMA mode to IMX6SX_CLK_ECSPI5
+- imx6sx: deactivate usbphy_nop1 per default
+- Add device tree: picocorea9x
+- Improve picocoremx6ull.dts - audio and UL/ULL variant
+- Fix nand flash error - enable edo mode
+- Correct distinction between UL and ULL
+- Adapt fs_rpmsg example to new rpmsg API
+- Fix efusa9x/picocoma9x rpmsg-vring entries
+- Improve RTC support on qblissa9r2
+- Renamed picocorea9x.dts to picocoremx6sx.dts
+- Add picocoremx6sx M4-support
+- Fix two bugs in M4 support regarding the kernel update to 4.9.88
+- Add support for Toshiba TC358762 DSI to RGB converter
+- Improve mxsfb driver support i.MX6 & i.MX7
+- Support new F&S Tux logo on fsimx7ulp_defconfig
+- Improve mipi_dsi_northwest driver - get DT disp params
+- Improve TC358762 driver - support reset gpio pin
+- Support LCD display on picocoremx7ulp
+- Improve fsimx7ulp_defconfig
+- Improve picocoremx7ulp.dts
+- Add Power_Reset to fsimx7ulp_defconfig
+- Improve fsimx7ulp_defconfig WLAN module
+- Support for USB-Device in PicoCoreMX7ULP
+- Improve picocoremx7ulp
+- Add support for RTC PCF85063 to fsimx6ul_defconfig
+- Improve PicoCoreMX7ULP device tree
 
 
 
