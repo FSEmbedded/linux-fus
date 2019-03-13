@@ -155,6 +155,21 @@ wvga {					\
 			regulator-always-on;
 		};
 
+		mmciv: gpio-regulator {
+			compatible = "regulator-gpio";
+
+			regulator-name = "mmci-gpio-supply";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-type = "voltage";
+			regulator-boot-on;
+			regulator-always-on;
+			gpios = <&gpio5 1 GPIO_ACTIVE_HIGH>;
+			states = <1800000 0x1
+				  3300000 0x0>;
+			enable-active-high;
+		};
+
 		reg_can: regulator_can {
 			compatible = "regulator-fixed";
 			regulator-name = "can";
@@ -580,9 +595,9 @@ wvga {					\
 	wp-gpios = <&gpio1 18 GPIO_ACTIVE_HIGH>;
 #endif
 	bus-width = <4>;
-	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
-	voltage-ranges = <3300 3300>;
-	no-1-8-v;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&mmciv>;	/* VDD_IO */
+	voltage-ranges = <1800 3300>;
 	keep-power-in-suspend;
 	status = "okay";
 };
@@ -614,6 +629,14 @@ wvga {					\
 
 				/* I2C-4 IRQ (ext. touch, etc.) */
 				MX6ULL_PAD_SNVS_TAMPER0__GPIO5_IO00 	0x0b0b0
+
+				/* GPIO´s */
+				MX6ULL_PAD_SNVS_TAMPER4__GPIO5_IO04	0x030b0
+				MX6ULL_PAD_SNVS_TAMPER5__GPIO5_IO05	0x030b0
+				MX6ULL_PAD_SNVS_TAMPER6__GPIO5_IO06	0x030b0
+
+				/* VSEL SD_A */
+ 				MX6ULL_PAD_SNVS_TAMPER1__GPIO5_IO01	0x400030b0
 			>;
 		};
 
@@ -659,6 +682,25 @@ wvga {					\
 
 				MX6UL_PAD_JTAG_TMS__SAI2_MCLK		0x17088
 //###				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
+#ifdef CONFIG_PICOCOREMX6UL_EMMC
+				/* GPIO´s */
+				MX6UL_PAD_NAND_WP_B__GPIO4_IO11		0x030b0
+				MX6UL_PAD_NAND_READY_B__GPIO4_IO12	0x030b0
+				MX6UL_PAD_NAND_CE0_B__GPIO4_IO13	0x030b0
+				MX6UL_PAD_NAND_CLE__GPIO4_IO15		0x030b0
+				MX6UL_PAD_NAND_DQS__GPIO4_IO16		0x030b0
+#endif
+				/* GPIO´s */
+				MX6UL_PAD_CSI_DATA04__GPIO4_IO25	0x030b0
+				MX6UL_PAD_CSI_DATA05__GPIO4_IO26	0x030b0
+				MX6UL_PAD_CSI_DATA06__GPIO4_IO27	0x030b0
+				MX6UL_PAD_CSI_DATA07__GPIO4_IO28	0x030b0
+				MX6UL_PAD_UART3_RTS_B__GPIO1_IO27	0x030b0
+				MX6UL_PAD_UART3_CTS_B__GPIO1_IO26	0x030b0
+				MX6UL_PAD_GPIO1_IO04__GPIO1_IO04	0x030b0
+				MX6UL_PAD_GPIO1_IO02__GPIO1_IO02	0x030b0
+				MX6UL_PAD_GPIO1_IO03__GPIO1_IO03	0x030b0
+				MX6UL_PAD_GPIO1_IO01__GPIO1_IO01	0x030b0
 			>;
 		};
 
@@ -849,6 +891,7 @@ wvga {					\
 				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x170b1
 				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x170b1
 				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x170b1
+				MX6UL_PAD_GPIO1_IO09__USDHC1_RESET_B	0x17091
 			>;
 		};
 
@@ -860,6 +903,7 @@ wvga {					\
 				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x170b9
 				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x170b9
 				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x170b9
+				MX6UL_PAD_GPIO1_IO09__USDHC1_RESET_B	0x17091
 			>;
 		};
 
@@ -871,6 +915,7 @@ wvga {					\
 				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x170f9
 				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x170f9
 				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x170f9
+				MX6UL_PAD_GPIO1_IO09__USDHC1_RESET_B	0x17091
 			>;
 		};
 
