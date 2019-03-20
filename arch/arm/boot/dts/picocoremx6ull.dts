@@ -225,6 +225,7 @@ wvga {					\
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
 			gpio = <&gpio5 3 0>;
+			enable-active-high;
 		};
 
 		reg_usb_otg2_vbus: usb_otg2_vbus {
@@ -565,7 +566,7 @@ wvga {					\
 #else
 	pinctrl-0 = <&pinctrl_usbotg1>;
 #endif
-	vbus-wakeup = <&reg_usb_otg1_vbus>;
+	vbus-supply = <&reg_usb_otg1_vbus>;
 	status = "okay";
 };
 
@@ -649,8 +650,8 @@ wvga {					\
 
 		pinctrl_usbotg1_snvs: usbotg1grp {
 			fsl,pins = <
-				/* USB_OTG1_PWR, active low */
-				MX6ULL_PAD_SNVS_TAMPER3__GPIO5_IO03	0x0b030
+				/* USB_OTG1_PWR, active high */
+				MX6ULL_PAD_SNVS_TAMPER3__GPIO5_IO03	0x03030
 			>;
 		};
 
@@ -876,8 +877,8 @@ wvga {					\
 				/* USB_OTG1_ID: low: host, open: device */
 				MX6UL_PAD_GPIO1_IO00__ANATOP_OTG1_ID	0x1b000
 #ifndef CONFIG_PICOCOREMX6UL_ULL
-				/* USB_OTG1_PWR, active low */
-				MX6UL_PAD_SNVS_TAMPER3__GPIO5_IO03 	0x0b030
+				/* USB_OTG1_PWR, active high */
+				MX6UL_PAD_SNVS_TAMPER3__GPIO5_IO03 	0x03030
 #endif
 			>;
 		};
