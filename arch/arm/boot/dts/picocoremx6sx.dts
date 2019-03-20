@@ -15,7 +15,7 @@
 // #define SUPPORT_M4
 
 #define DISPLAY_NONE	0	/* No display on this port */
-#define DISPLAY_LCD		1	/* LCD via RGB adapter */
+#define DISPLAY_LCD	1	/* LCD via RGB adapter */
 
 /*
  * Set the display configuration:
@@ -73,11 +73,14 @@ lcd_wvga {				\
 /* On-board NAND */
 #define CONFIG_PICOCOREMX6SX_NAND
 
+/* EMMC - SD_B - Internal SD port */
+#define CONFIG_PICOCOREMX6SX_EMMC
+
 /* Network */
 #define CONFIG_PICOCOREMX6SX_ETH0
 #define CONFIG_PICOCOREMX6SX_ETH1
 
-/* USB - USB OTG1 has over-current detection on OC pin */
+/* USB */
 #define CONFIG_PICOCOREMX6SX_USB_OTG1
 #define CONFIG_PICOCOREMX6SX_USB_HOST
 
@@ -89,17 +92,21 @@ lcd_wvga {				\
 #define CONFIG_PICOCOREMX6SX_I2C_B
 #define CONFIG_PICOCOREMX6SX_I2C_C
 
+/* ADC */
+#define CONFIG_PICOCOREMX6SX_ADC_A
+#define CONFIG_PICOCOREMX6SX_ADC_B
+
 /* PWM and backlight brightness */
 #define CONFIG_PICOCOREMX6SX_BL_CTRL
 
-/* UART; UART_C is only available if Bluetooth is not equipped */
+/* UART */
 #define CONFIG_PICOCOREMX6SX_UART_A
 #define CONFIG_PICOCOREMX6SX_UART_B
 #define CONFIG_PICOCOREMX6SX_UART_C
-// #define CONFIG_PICOCOREMX6SX_UART_C_RTSCTS
+#define CONFIG_PICOCOREMX6SX_UART_C_RTSCTS
 #define CONFIG_PICOCOREMX6SX_UART_D
-#define CONFIG_PICOCOREMX6SX_UART_SD_A_DAT
-// #define CONFIG_PICOCOREMX6SX_UART_SD_A_DAT_RTSCTS
+#define CONFIG_PICOCOREMX6SX_UART_E
+#define CONFIG_PICOCOREMX6SX_UART_E_RTSCTS
 
 /* SPI; SPI_B can only use CS2 if UART_C does not use RTS */
 #define CONFIG_PICOCOREMX6SX_SPI_A
@@ -114,11 +121,6 @@ lcd_wvga {				\
 #define CONFIG_PICOCOREMX6SX_SD_A
 #define CONFIG_PICOCOREMX6SX_SD_A_CD
 //#define CONFIG_PICOCOREMX6SX_SD_A_WP
-
-/*
- * SD_B - Internal SD port for EMMC
- */
-#define CONFIG_PICOCOREMX6SX_EMMC
 
 /* Check for invalid CONFIG combinations */
 
@@ -151,6 +153,11 @@ lcd_wvga {				\
 #undef CONFIG_PICOCOREMX6SX_UART_C_RTSCTS
 #endif
 
+/* IF NAND is used, eMMC can´t be used */
+#ifdef CONFIG_PICOCOREMX6SX_NAND
+#undef CONFIG_PICOCOREMX6SX_EMMC
+#endif
+
 
 #include "imx6sx.dtsi"
 #include <dt-bindings/pwm/pwm.h>
@@ -159,8 +166,7 @@ lcd_wvga {				\
 	model = "F&S picocoreMX6SX";
 	compatible = "fus,imx6sx-picocoremx6sx", "fsl,imx6sx";
 
-#ifdef CONFIG_PICOCOREMX6SX_I2C_B
-#if CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD
+#if defined(CONFIG_PICOCOREMX6SX_I2C_B) && (CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD)
 	backlight_lcd {
 		compatible = "pwm-backlight";
 		pwms = <&pca963x 1 640000 PWM_POLARITY_INVERTED>;
@@ -170,7 +176,6 @@ lcd_wvga {				\
 		default-brightness-level = <14>;
 		fb-names = "mxs-lcdif0";
 	};
-#endif
 #endif
 
 	clocks {
@@ -187,7 +192,7 @@ lcd_wvga {				\
 
 	pxp_v4l2_out {
 		compatible = "fsl,imx6sx-pxp-v4l2", "fsl,imx6sl-pxp-v4l2";
-		status = "disabled";
+		status = "okay";
 	};
 
 	regulators {
@@ -224,6 +229,7 @@ lcd_wvga {				\
 		};
 #endif
 
+#if (CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD)
 		reg_disp_3v3: disp-3v3 {
 			compatible = "regulator-fixed";
 			regulator-name = "disp-3v3";
@@ -232,8 +238,9 @@ lcd_wvga {				\
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
 		};
+#endif
 
-#ifdef CONFIG_PICOCOREMX6SX_I2C_B
+#if defined(CONFIG_PICOCOREMX6SX_I2C_B) && (CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD)
 		reg_lcd_bl: lcd-bl {
 			compatible = "regulator-fixed";
 			regulator-name = "lcd-bl";
@@ -266,7 +273,14 @@ lcd_wvga {				\
 			regulator-always-on;
 		};
 
-#if 0
+#ifdef CONFIG_PICOCOREMX6SX_CAN_A
+		reg_can: regulator_can {
+			compatible = "regulator-fixed";
+			regulator-name = "can";
+		};
+#endif /* CONFIG_PICOCOREMX6SX_CAN_A */
+
+#ifdef CONFIG_PICOCOREMX6SX_USB_OTG1
 		/* USB_OTG1_PWR done by USB controller, no regulator needed */
 		reg_usb_otg1_vbus: usb_otg1_vbus {
 			compatible = "regulator-fixed";
@@ -276,7 +290,9 @@ lcd_wvga {				\
 			gpio = <&gpio1 9 0>;
 			enable-active-high;
 		};
+#endif /* CONFIG_PICOCOREMX6SX_USB_OTG1 */
 
+#if 0
 		/* USB_OTG2_PWR done by USB controller, no regulator needed */
 		reg_usb_otg2_vbus: usb_otg2_vbus {
 			compatible = "regulator-fixed";
@@ -482,15 +498,12 @@ lcd_wvga {				\
 &flexcan1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1>;
-//###	trx-en-gpio = <&max7310_b 5 GPIO_ACTIVE_HIGH>;
-//###	trx-stby-gpio = <&max7310_b 4 GPIO_ACTIVE_HIGH>;
-//###	trx-wakeup-gpio = <&max7310_b 7 GPIO_ACTIVE_HIGH>;
+	xceiver-supply = <&reg_can>;
 	status = "okay";
 };
 #endif
 
 #ifdef CONFIG_PICOCOREMX6SX_I2C_A
-
 &i2c4 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
@@ -501,7 +514,6 @@ lcd_wvga {				\
 #endif /* CONFIG_PICOCOREMX6SX_I2C_A */
 
 #ifdef CONFIG_PICOCOREMX6SX_I2C_B
-
 /*
  * I2C_A implemented via I2C2
  * On picocore bb: RGB adapter, SX8655, touch connnector, feature connector
@@ -790,12 +802,12 @@ lcd_wvga {				\
 };
 #endif /* CONFIG_PICOCOREMX6SX_UART_D */
 
-#ifdef CONFIG_PICOCOREMX6SX_UART_SD_A_DAT
+#ifdef CONFIG_PICOCOREMX6SX_UART_E
 /*  UART_SDA_A_DAT implemented by UART5: TXD, RXD, RTS, CTS; */
 &uart5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart5>;
-#ifdef CONFIG_PICOCOREMX6SX_UART_SD_A_DAT_RTSCTS
+#ifdef CONFIG_PICOCOREMX6SX_UART_E_RTSCTS
 	fsl,uart-has-rtscts;
 #endif
 	status = "okay";
@@ -806,7 +818,7 @@ lcd_wvga {				\
 &usbotg1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg1>;
-//	vbus-supply = <&reg_usb_otg1_vbus>;
+	vbus-supply = <&reg_usb_otg1_vbus>;
 	status = "okay";
 };
 #endif
@@ -823,13 +835,13 @@ lcd_wvga {				\
 };
 #endif
 
-
-
 #ifdef CONFIG_PICOCOREMX6SX_SD_A
 /* SD_A implemented via USDHC4 on board revisions since 1.20 */
 &usdhc4 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usdhc4_sd_a>;
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-0 = <&pinctrl_usdhc4_sd_a &pinctrl_usdhc4_cdwp>;
+	pinctrl-1 = <&pinctrl_usdhc4_sd_a_100mhz &pinctrl_usdhc4_cdwp>;
+	pinctrl-2 = <&pinctrl_usdhc4_sd_a_200mhz &pinctrl_usdhc4_cdwp>;
 #ifdef CONFIG_PICOCOREMX6SX_SD_A_CD
 	cd-gpios = <&gpio2 12 GPIO_ACTIVE_LOW>;
 #else
@@ -840,9 +852,6 @@ lcd_wvga {				\
 #endif
 	bus-width = <4>;
 	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
-	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
-	voltage-ranges = <3300 3300>;
-	no-1-8-v;
 	keep-power-in-suspend;
 	status = "okay";
 };
@@ -859,7 +868,7 @@ lcd_wvga {				\
 	voltage-ranges = <3300 3300>;
 	no-1-8-v;
 	keep-power-in-suspend;
-	status = "disabled";
+	status = "okay";
 };
 #endif
 
@@ -872,8 +881,22 @@ lcd_wvga {				\
 };
 #endif /* CONFIG_PICOCOREMX6SX_BL_CTRL */
 
+#ifdef CONFIG_PICOCOREMX6SX_ADC_A
+&adc1 {
+	vref-supply = <&reg_vref_3v3>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6SX_ADC_B
+&adc2 {
+	vref-supply = <&reg_vref_3v3>;
+	status = "okay";
+};
+#endif
+
 &pxp {
-	status = "disabled";
+	status = "okay";
 };
 
 #ifdef CONFIG_PICOCOREMX6SX_SPI_A
@@ -926,16 +949,22 @@ lcd_wvga {				\
 	picocoremx6sx {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
+				/* GPIO */
 				MX6SX_PAD_ENET2_TX_CLK__GPIO2_IO_9	0x030b0
 				MX6SX_PAD_KEY_COL0__GPIO2_IO_10		0x030b0
+				MX6SX_PAD_KEY_COL1__GPIO2_IO_11		0x030b0
 				MX6SX_PAD_KEY_COL3__GPIO2_IO_13		0x030b0
 				MX6SX_PAD_KEY_COL4__GPIO2_IO_14		0x030b0
 				MX6SX_PAD_KEY_ROW0__GPIO2_IO_15		0x030b0
-				MX6SX_PAD_GPIO1_IO08__GPIO1_IO_8	0x0b0b0
+				MX6SX_PAD_KEY_ROW3__GPIO2_IO_18		0x030b0
+				MX6SX_PAD_KEY_ROW4__GPIO2_IO_19		0x030b0
 				MX6SX_PAD_QSPI1A_DATA0__GPIO4_IO_16	0x030b0
 				MX6SX_PAD_QSPI1B_DATA0__GPIO4_IO_24	0x030b0
 				MX6SX_PAD_SD3_DATA4__GPIO7_IO_6		0x030b0
 				MX6SX_PAD_SD3_DATA6__GPIO7_IO_8		0x030b0
+
+				/* I2C2 IRQn */
+				MX6SX_PAD_GPIO1_IO08__GPIO1_IO_8	0x0b0b0
 
 				/* VLCD_ON */
 				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x17059
@@ -954,7 +983,7 @@ lcd_wvga {				\
 				MX6SX_PAD_QSPI1A_DATA2__GPIO4_IO_18	0x030b0
 				MX6SX_PAD_QSPI1A_DATA3__GPIO4_IO_19	0x030b0
 				MX6SX_PAD_QSPI1A_SCLK__GPIO4_IO_21	0x030b0
-				MX6SX_PAD_QSPI1A_SS0_B__GPIO4_IO_22	0x1b0b0
+				MX6SX_PAD_QSPI1A_SS0_B__GPIO4_IO_22	0x030b0
 				MX6SX_PAD_QSPI1B_DATA1__GPIO4_IO_25	0x030b0
 				MX6SX_PAD_QSPI1B_DATA2__GPIO4_IO_26	0x030b0
 				MX6SX_PAD_QSPI1B_DATA3__GPIO4_IO_27	0x030b0
@@ -969,7 +998,7 @@ lcd_wvga {				\
 				MX6SX_PAD_ENET1_CRS__AUDMUX_AUD4_TXD	0x130b0
 				MX6SX_PAD_ENET1_TX_CLK__AUDMUX_AUD4_RXD 0x130b0
 				MX6SX_PAD_ENET1_RX_CLK__AUDMUX_AUD4_TXFS 0x130b0
-				MX6SX_PAD_ENET1_MDIO__AUDMUX_MCLK		0x130b0
+				MX6SX_PAD_ENET1_MDIO__AUDMUX_MCLK	0x130b0
 			>;
 		};
 #endif
@@ -1094,8 +1123,8 @@ lcd_wvga {				\
 		   Feature Connector (SKIT) */
 		pinctrl_i2c4: i2c4grp {
 			fsl,pins = <
-				MX6SX_PAD_SD3_DATA0__I2C4_SCL	0x4001b8b1
-				MX6SX_PAD_SD3_DATA1__I2C4_SDA	0x4001b8b1
+				MX6SX_PAD_SD3_DATA0__I2C4_SCL		0x4001b8b1
+				MX6SX_PAD_SD3_DATA1__I2C4_SDA		0x4001b8b1
 			>;
 		};
 #endif
@@ -1106,8 +1135,8 @@ lcd_wvga {				\
 		   Feature Connector (SKIT) */
 		pinctrl_i2c2: i2c2grp {
 			fsl,pins = <
-				MX6SX_PAD_GPIO1_IO03__I2C2_SDA	0x4001b8b1
-				MX6SX_PAD_GPIO1_IO02__I2C2_SCL	0x4001b8b1
+				MX6SX_PAD_GPIO1_IO03__I2C2_SDA		0x4001b8b1
+				MX6SX_PAD_GPIO1_IO02__I2C2_SCL		0x4001b8b1
 			>;
 		};
 #endif
@@ -1164,12 +1193,10 @@ lcd_wvga {				\
 		pinctrl_uart4: uart4grp {
 			fsl,pins = <
 				MX6SX_PAD_SD3_DATA3__UART4_RX		0x1b0b1
-				MX6SX_PAD_SD3_CMD__UART4_TX			0x1b0b1
+				MX6SX_PAD_SD3_CMD__UART4_TX		0x1b0b1
 #ifdef CONFIG_PICOCOREMX6SX_UART_C_RTSCTS
-		//		MX6SX_PAD_SD3_DATA2__UART4_CTS_B	0x1b0b1
-		//		MX6SX_PAD_SD3_CLK__UART4_RTS_B		0x1b0b1
-				MX6SX_PAD_SD3_CLK__UART4_CTS_B		0x1b0b1
-				MX6SX_PAD_SD3_DATA2__UART4_RTS_B	0x1b0b1
+				MX6SX_PAD_SD3_DATA2__UART4_CTS_B	0x1b0b1
+				MX6SX_PAD_SD3_CLK__UART4_RTS_B		0x1b0b1
 #endif
 			>;
 		};
@@ -1184,14 +1211,14 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREMX6SX_UART_SD_A_DAT
+#ifdef CONFIG_PICOCOREMX6SX_UART_E
 		pinctrl_uart5: uart5grp {
 			fsl,pins = <
 				MX6SX_PAD_SD4_DATA4__UART5_RX		0x1b0b1
 				MX6SX_PAD_SD4_DATA5__UART5_TX		0x1b0b1
-#ifdef CONFIG_PICOCOREMX6SX_UART_SD_A_DAT_RTSCTS
-				MX6SX_PAD_SD4_DATA7__UART5_CTS_B	0x1b0b1
-				MX6SX_PAD_SD4_DATA6__UART5_RTS_B	0x1b0b1
+#ifdef CONFIG_PICOCOREMX6SX_UART_E_RTSCTS
+				MX6SX_PAD_SD4_DATA6__UART5_CTS_B	0x1b0b1
+				MX6SX_PAD_SD4_DATA7__UART5_RTS_B	0x1b0b1
 #endif
 			>;
 		};
@@ -1200,9 +1227,10 @@ lcd_wvga {				\
 #ifdef CONFIG_PICOCOREMX6SX_USB_OTG1
 		pinctrl_usbotg1: usbotg1grp {
 			fsl,pins = <
-				/* USB_OTG1_PWR, active low */
-//###			MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9	0x0b030
-				MX6SX_PAD_GPIO1_IO09__USB_OTG1_PWR	0x0b030
+				/* USB_OTG1_PWR, active high */
+				MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9	0x03030
+/* USB_OTG1_PWR doesnt work through HW design, need to set as GPIO */
+//###				MX6SX_PAD_GPIO1_IO09__USB_OTG1_PWR	0x03030
 				/* USB_OTG1_ID: low: host, open: device */
 				MX6SX_PAD_GPIO1_IO10__ANATOP_OTG1_ID	0x1b000
 			>;
@@ -1220,8 +1248,7 @@ lcd_wvga {				\
 #endif
 
 #ifdef CONFIG_PICOCOREMX6SX_SD_A
-
-		/* Micro-SD slot on q-SKIT if eMMC not equipped */
+		/* Micro-SD slot on PicoCOREBBRGB-SKIT */
 		pinctrl_usdhc4_sd_a: usdhc4grp-sd_a {
 			fsl,pins = <
 				MX6SX_PAD_SD4_CMD__USDHC4_CMD		0x170b1
@@ -1231,8 +1258,35 @@ lcd_wvga {				\
 				MX6SX_PAD_SD4_DATA2__USDHC4_DATA2	0x170b1
 				MX6SX_PAD_SD4_DATA3__USDHC4_DATA3	0x170b1
 				MX6SX_PAD_SD4_RESET_B__USDHC4_RESET_B	0x17091
-//				MX6SX_PAD_KEY_ROW1__USDHC4_VSELECT
+			>;
+		};
 
+		pinctrl_usdhc4_sd_a_100mhz: usdhc4grp-sd_a_100mhz {
+			fsl,pins = <
+				MX6SX_PAD_SD4_CMD__USDHC4_CMD		0x1f0b9
+				MX6SX_PAD_SD4_CLK__USDHC4_CLK		0x100b9
+				MX6SX_PAD_SD4_DATA0__USDHC4_DATA0	0x1f0b9
+				MX6SX_PAD_SD4_DATA1__USDHC4_DATA1	0x170b9
+				MX6SX_PAD_SD4_DATA2__USDHC4_DATA2	0x170b9
+				MX6SX_PAD_SD4_DATA3__USDHC4_DATA3	0x170b9
+				MX6SX_PAD_SD4_RESET_B__USDHC4_RESET_B	0x17091
+			>;
+		};
+
+		pinctrl_usdhc4_sd_a_200mhz: usdhc4grp-sd_a_200mhz {
+			fsl,pins = <
+				MX6SX_PAD_SD4_CMD__USDHC4_CMD		0x1f0f9
+				MX6SX_PAD_SD4_CLK__USDHC4_CLK		0x100f9
+				MX6SX_PAD_SD4_DATA0__USDHC4_DATA0	0x1f0f9
+				MX6SX_PAD_SD4_DATA1__USDHC4_DATA1	0x170f9
+				MX6SX_PAD_SD4_DATA2__USDHC4_DATA2	0x170f9
+				MX6SX_PAD_SD4_DATA3__USDHC4_DATA3	0x170f9
+				MX6SX_PAD_SD4_RESET_B__USDHC4_RESET_B	0x17091
+			>;
+		};
+
+		pinctrl_usdhc4_cdwp: usdhc4grp-cdwp {
+			fsl,pins = <
 #ifdef CONFIG_PICOCOREMX6SX_SD_A_CD
 				/* Card Detect (CD), active low (pull-up) */
 				MX6SX_PAD_KEY_COL2__GPIO2_IO_12		0x17000
@@ -1245,6 +1299,8 @@ lcd_wvga {				\
 				 */
 				MX6SX_PAD_KEY_ROW2__GPIO2_IO_17		0x17000
 #endif
+				/* SD_A VSEL */
+				MX6SX_PAD_KEY_ROW1__USDHC4_VSELECT	0x170b1
 			>;
 		};
 #endif /* CONFIG_PICOCOREMX6SX_SD_A */
@@ -1253,12 +1309,17 @@ lcd_wvga {				\
 		/* EMC */
 		pinctrl_usdhc2_emmc: usdhc2grp-emmc {
 			fsl,pins = <
-				MX6SX_PAD_SD2_CMD__USDHC2_CMD		0x170b1
-				MX6SX_PAD_SD2_CLK__USDHC2_CLK		0x100b1
-				MX6SX_PAD_SD2_DATA0__USDHC2_DATA0	0x170b1
-				MX6SX_PAD_SD2_DATA1__USDHC2_DATA1	0x170b1
-				MX6SX_PAD_SD2_DATA2__USDHC2_DATA2	0x170b1
-				MX6SX_PAD_SD2_DATA3__USDHC2_DATA3	0x170b1
+				MX6SX_PAD_SD2_CMD__USDHC2_CMD		0x17091
+				MX6SX_PAD_SD2_CLK__USDHC2_CLK		0x17091
+				MX6SX_PAD_SD2_DATA0__USDHC2_DATA0	0x17091
+				MX6SX_PAD_SD2_DATA1__USDHC2_DATA1	0x17091
+				MX6SX_PAD_SD2_DATA2__USDHC2_DATA2	0x17091
+				MX6SX_PAD_SD2_DATA3__USDHC2_DATA3	0x17091
+				MX6SX_PAD_NAND_DATA04__USDHC2_DATA4	0x17091
+				MX6SX_PAD_NAND_DATA05__USDHC2_DATA5	0x17091
+				MX6SX_PAD_NAND_DATA06__USDHC2_DATA6	0x17091
+				MX6SX_PAD_NAND_DATA07__USDHC2_DATA7	0x17091
+				MX6SX_PAD_NAND_RE_B__USDHC2_RESET_B	0x17091
 			>;
 		};
 #endif
