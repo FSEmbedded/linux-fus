@@ -3,6 +3,19 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
+linux-4.9.88-picocoremx6sx-B2019.03 (21.03.2019)
+------------------------------------------------
+Supported boards: PicoCoreMX6SX, PicoCoreMX6UL
+Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, efusA7UL, CubeA7UL, Cube2.0,
+                  PicoCOM1.2, GAR1, efusA9X, PicoCOMA9X, CONT1, CUBEA5
+                  armStoneA5, NetDCUA5, PicoCOMA5, AGATEWAY, HGATEWAY
+
+- Improve picocoremx6sx device-tree - rework
+- Improve picocoremx6ul device-tree usb otg1 support
+
+
+
 linux-4.9.88-picocoremx6ul-B2019.03 (13.03.2019)
 ------------------------------------------------
 Supported Boards: PicoCoreMX6UL
@@ -22,8 +35,8 @@ Supported Boards: PicoCoreMX7ULP
 Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
                   QBlissA9, QBlissA9r2, efusA7UL, CubeA7UL, Cube2.0,
                   PicoCOM1.2, PicoCoreMX6UL, GAR1, efusA9X,
-		  PicoCOMA9X, PicoCoreMX6SX, CONT1, armStoneA5, NetDCUA5,
-		  PicoCOMA5, CUBEA5, AGATEWAY, HGATEWAY
+                  PicoCOMA9X, PicoCoreMX6SX, CONT1, armStoneA5, NetDCUA5,
+                  PicoCOMA5, CUBEA5, AGATEWAY, HGATEWAY
 
 - Add property fsl,rx_fifo_trig to i.MX6 UART driver
 - On i.MX6, add support for BT656 and BT1120 output on IPU
