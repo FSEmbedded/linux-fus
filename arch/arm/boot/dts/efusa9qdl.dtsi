@@ -547,6 +547,26 @@
 		mclk_source = <0>;
 		status = "okay";
 	};
+
+#ifndef CONFIG_EFUSA9_USE_ONE_IPU
+	/* Third capture device, for third MIPI channel */
+	v4l2_cap_2 {
+		compatible = "fsl,imx6q-v4l2-capture";
+		ipu_id = <1>;
+		csi_id = <0>;
+		mclk_source = <0>;
+		status = "okay";
+	};
+
+	/* Fourth capture device, for fourth MIPI channel */
+	v4l2_cap_3 {
+		compatible = "fsl,imx6q-v4l2-capture";
+		ipu_id = <1>;
+		csi_id = <1>;
+		mclk_source = <0>;
+		status = "okay";
+	};
+#endif
 #endif
 
 	v4l2_out {
@@ -1023,6 +1043,22 @@
 		v_channel = <1>;
 		status = "okay";
 	};
+
+#ifndef CONFIG_EFUSA9_USE_ONE_IPU
+	mipi-csi-channel@2 {
+		ipu_id = <1>;
+		csi_id = <0>;
+		v_channel = <2>;
+		status = "okay";
+	};
+
+	mipi-csi-channel@3 {
+		ipu_id = <1>;
+		csi_id = <1>;
+		v_channel = <3>;
+		status = "okay";
+	};
+#endif
 };
 #endif
 
