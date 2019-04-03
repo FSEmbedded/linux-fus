@@ -1336,11 +1336,6 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 			if (ret < 0)
 				goto put_display_node;
 
-			if (!(vm.flags & DISPLAY_FLAGS_DE_HIGH))
-				fb_vm.sync |= FB_SYNC_OE_LOW_ACT;
-			if (vm.flags & DISPLAY_FLAGS_PIXDATA_NEGEDGE)
-				fb_vm.sync |= FB_SYNC_CLK_LAT_FALL;
-
 			mipi_dsi->mode = devm_kzalloc(&pdev->dev,
 						sizeof(struct fb_videomode),
 						GFP_KERNEL);
