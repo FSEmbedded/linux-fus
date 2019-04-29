@@ -62,6 +62,7 @@
 #define IMX21_ONEMS 0xb0 /* One Millisecond register */
 #define IMX1_UTS 0xd0 /* UART Test Register on i.mx1 */
 #define IMX21_UTS 0xb4 /* UART Test Register on all other i.mx*/
+#define UMCR  0xb8 /* UART RS-485 Mode Control Register */
 
 /* UART Control Register Bit Fields.*/
 #define URXD_DUMMY_READ (1<<16)
@@ -144,6 +145,7 @@
 #define USR1_RXDS	 (1<<6)	 /* Receiver idle interrupt flag */
 #define USR1_AIRINT	 (1<<5)	 /* Async IR wake interrupt flag */
 #define USR1_AWAKE	 (1<<4)	 /* Aysnc wake interrupt flag */
+#define USR1_SAD	 (1<<3)	 /* RS-485 address detect interrupt flag */
 #define USR2_ADET	 (1<<15) /* Auto baud rate detect complete */
 #define USR2_TXFE	 (1<<14) /* Transmit buffer FIFO empty */
 #define USR2_DTRF	 (1<<13) /* DTR edge interrupt flag */
@@ -162,6 +164,10 @@
 #define UTS_TXFULL	 (1<<4)	 /* TxFIFO full */
 #define UTS_RXFULL	 (1<<3)	 /* RxFIFO full */
 #define UTS_SOFTRST	 (1<<0)	 /* Software reset */
+#define UMCR_SADEN	 (1<<3)  /* RS-485 Slave Address Detected Interrupt Enable */
+#define UMCR_TXB8	 (1<<2)  /* Transmit RS-485 bit 8 (the ninth bit or 9th bit) */
+#define UMCR_SLAM	 (1<<1)  /* RS-485 Slave Address Detect Mode Selection */
+#define UMCR_MDEN	 (1<<0)  /* 9-bit data or Multidrop Mode (RS-485) Enable */
 
 /* We've been assigned a range on the "Low-density serial ports" major */
 #define SERIAL_IMX_MAJOR	207
@@ -756,6 +762,13 @@ static irqreturn_t imx_int(int irq, void *dev_id)
 	if (sts & USR1_AWAKE)
 		writel(USR1_AWAKE, sport->port.membase + USR1);
 
+	if (sts & USR1_SAD) {
+		writel(USR1_SAD, sport->port.membase + USR1);
+		if (sts & USR1_PARITYERR)
+			writel(USR1_PARITYERR, sport->port.membase + USR1);
+		imx_rxint(irq, dev_id);
+	}
+
 	if (sts2 & USR2_ORE) {
 		dev_err(sport->port.dev, "Rx FIFO overrun\n");
 		sport->port.icount.overrun++;
@@ -1302,7 +1315,7 @@ imx_set_termios(struct uart_port *port, struct ktermios *termios,
 {
 	struct imx_port *sport = (struct imx_port *)port;
 	unsigned long flags;
-	unsigned int ucr2, old_ucr1, old_txrxen, baud, quot;
+	unsigned int umcr, ucr2, old_ucr1, old_txrxen, baud, quot;
 	unsigned int old_csize = old ? old->c_cflag & CSIZE : CS8;
 	unsigned int div, ufcr;
 	unsigned long num, denom;
@@ -1347,10 +1360,18 @@ imx_set_termios(struct uart_port *port, struct ktermios *termios,
 		if (!(port->rs485.flags & SER_RS485_RTS_AFTER_SEND))
 			ucr2 |= UCR2_CTS;
 
+	/* stop bits */
 	if (termios->c_cflag & CSTOPB)
 		ucr2 |= UCR2_STPB;
+
+	/* parity */
 	if (termios->c_cflag & PARENB) {
 		ucr2 |= UCR2_PREN;
+		if (termios->c_cflag & CMSPAR) {	/* Mark or Space parity */
+			umcr |= UMCR_SADEN | UMCR_MDEN;
+			if (termios->c_cflag & PARODD)
+				umcr |= UMCR_TXB8;
+		}
 		if (termios->c_cflag & PARODD)
 			ucr2 |= UCR2_PROE;
 	}
@@ -1451,6 +1472,10 @@ imx_set_termios(struct uart_port *port, struct ktermios *termios,
 
 	/* set the parity, stop bits and data size */
 	writel(ucr2 | old_txrxen, sport->port.membase + UCR2);
+
+	/* set RS-485 mode and ninth bit */
+	if (termios->c_cflag & CMSPAR)
+		writel(umcr, sport->port.membase + UMCR);
 
 	if (UART_ENABLE_MS(&sport->port, termios->c_cflag))
 		imx_enable_ms(&sport->port);
