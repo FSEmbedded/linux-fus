@@ -979,13 +979,17 @@
 };
 #endif /* CONFIG_QBLISSA9_SD_A */
 
+#ifdef CONFIG_QBLISSA9_PCIE
 &pcie {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcie>;
-	//power-on-gpio = <&gpio6 16 GPIO_ACTIVE_LOW>;
-	reset-gpio = <&gpio4 31 GPIO_ACTIVE_HIGH>;
+#if (CONFIG_QBLISSA9_BOARD_REVISION >= 120)
+	power-on-gpio = <&gpio1 8 GPIO_ACTIVE_LOW>;
+#endif
+	reset-gpio = <&gpio4 31 GPIO_ACTIVE_LOW>;
 	status = "okay";
 };
+#endif
 
 #ifdef CONFIG_QBLISSA9_HDMI
 &hdmi_core {
@@ -1468,13 +1472,17 @@
 		};
 #endif
 
+#ifdef CONFIG_QBLISSA9_PCIE
 		pinctrl_pcie: pciegrp {
 			fsl,pins = <
+#if (CONFIG_QBLISSA9_BOARD_REVISION >= 120)
 				/* PCIE_WAKE */
-				MX6QDL_PAD_GPIO_8__GPIO1_IO08		0x17000
+				MX6QDL_PAD_GPIO_8__GPIO1_IO08		0x1b0b0
+#endif
 				/* PCIE_RST: see above in Hog */
 			>;
 		};
+#endif
 
 		pinctrl_status_leds: ledgrp {
 			fsl,pins = <

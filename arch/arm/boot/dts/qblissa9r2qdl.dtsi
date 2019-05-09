@@ -965,6 +965,7 @@
 };
 #endif
 
+#ifdef CONFIG_QBLISSA9R2_PCIE
 &pcie {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcie>;
@@ -972,6 +973,7 @@
 	reset-gpio = <&gpio6 14 GPIO_ACTIVE_LOW>;
 	status = "okay";
 };
+#endif
 
 #ifdef CONFIG_QBLISSA9R2_HDMI
 &hdmi_core {
@@ -1489,13 +1491,15 @@
 		};
 #endif
 
+#ifdef CONFIG_QBLISSA9R2_PCIE
 		pinctrl_pcie: pciegrp {
 			fsl,pins = <
 				/* PCIE_WAKE */
-				MX6QDL_PAD_NANDF_CS3__GPIO6_IO16	0x17000
+				MX6QDL_PAD_NANDF_CS3__GPIO6_IO16	0x1b0b0
 				/* PCIE_RST: see above in Hog */
 			>;
 		};
+#endif /* CONFIG_QBLISSA9R2_PCIE */
 
 #ifdef CONFIG_QBLISSA9R2_HDMI_CEC
 		pinctrl_hdmi_cec_1: hdmicecgrp {

@@ -161,6 +161,9 @@ wvga {					\
 /* EMMC */
 #define CONFIG_QBLISSA9R2_EMMC
 
+/* PCIe */
+//#define CONFIG_QBLISSA9R2_PCIE
+
 /* I2C_A: SDA/SCL on pins 68/66 */
 #define CONFIG_QBLISSA9R2_I2C_A
 

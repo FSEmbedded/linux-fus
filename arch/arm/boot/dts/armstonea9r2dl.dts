@@ -149,6 +149,9 @@ wvga {					\
 /* WLAN */
 #define CONFIG_ARMSTONEA9R2_WLAN
 
+/* PCIe */
+//#define CONFIG_ARMSTONEA9R2_PCIE
+
 /* EMMC */
 #define CONFIG_ARMSTONEA9R2_EMMC
 

@@ -1243,7 +1243,7 @@
 };
 #endif /* CONFIG_ARMSTONEA9_LVDS0 || CONFIG_ARMSTONEA9_LVDS1 */
 
-#if 0 // not tested
+#ifdef CONFIG_ARMSTONEA9_PCIE
 &pcie {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcie>;
@@ -1590,6 +1590,7 @@
 		};
 #endif /* CONFIG_ARMSTONEA9_SD_A */
 
+#ifdef CONFIG_ARMSTONEA9_PCIE
 		pinctrl_pcie: pciegrp {
 			fsl,pins = <
 				/* PCIe-DIS */
@@ -1600,6 +1601,7 @@
 				MX6QDL_PAD_NANDF_CS3__GPIO6_IO16	0x1b0b0
 			>;
 		};
+#endif/* CONFIG_ARMSTONEA9_PCIE */
 
 		pinctrl_status_leds: ledgrp {
 			fsl,pins = <

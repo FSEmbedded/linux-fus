@@ -178,6 +178,9 @@ wvga {					\
 //#define CONFIG_QBLISSA9_SD_A_WP
 //#define CONFIG_QBLISSA9_SD_A_8BIT
 
+/* PCIe */
+//#define CONFIG_QBLISSA9_PCIE
+
 /* I2C_A: SDA/SCL on pins 68/66 (this is also on pins 126/128!) */
 #define CONFIG_QBLISSA9_I2C_A
 

@@ -1257,6 +1257,20 @@
 };
 #endif /* CONFIG_EFUSA9_LVDS0 || CONFIG_EFUSA9_LVDS1 */
 
+#ifdef CONFIG_EFUSA9_PCIE
+&pcie {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pcie>;
+	power-on-gpio = <&gpio6 16 GPIO_ACTIVE_LOW>;
+#if (CONFIG_EFUSA9_BOARD_REVISION >= 120)
+	reset-gpio = <&gpio6 14 GPIO_ACTIVE_LOW>;
+#else
+	reset-gpio = <&gpio6 15 GPIO_ACTIVE_LOW>;
+#endif
+	status = "okay";
+};
+#endif
+
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog_1>;
@@ -1700,6 +1714,21 @@
 			>;
 		};
 #endif /* CONFIG_EFUSA9_HDMI_CEC */
+
+#ifdef CONFIG_EFUSA9_PCIE
+		pinctrl_pcie: pciegrp {
+			fsl,pins = <
+				/* PCIe-RST */
+#if (CONFIG_EFUSA9_BOARD_REVISION >= 120)
+				MX6QDL_PAD_NANDF_CS1__GPIO6_IO14	0x1b0b0
+#else
+				MX6QDL_PAD_NANDF_CS2__GPIO6_IO15	0x1b0b0
+#endif
+				/* PCIe-WAKE */
+				MX6QDL_PAD_NANDF_CS3__GPIO6_IO16	0x1b0b0
+			>;
+		};
+#endif/* CONFIG_EFUSA9_PCIE */
 
 		pinctrl_status_leds: ledgrp {
 			fsl,pins = <
