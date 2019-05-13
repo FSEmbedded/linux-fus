@@ -35,9 +35,16 @@
 /* i.MX6 Solo and DualLite only have one IPU, do not change */
 #define CONFIG_QBLISSA9R2_USE_ONE_IPU
 
-/* Configure HDMI settings here (ignored if HDMI is not used) */
+/*
+ * Configure HDMI settings here (ignored if HDMI is not used).
+ *
+ * Remark:
+ * To make HDMI work on the F&S SKIT baseboard, pixel format BGR24 is needed.
+ * On a standard Qseven baseboard, RGB24 is correct. Please change if required.
+ */
 #define CONFIG_QBLISSA9R2_HDMI_BPP	32
-#define CONFIG_QBLISSA9R2_HDMI_PIX_FMT	"RGB24"
+#define CONFIG_QBLISSA9R2_HDMI_PIX_FMT	"BGR24"
+//#define CONFIG_QBLISSA9R2_HDMI_PIX_FMT	"RGB24"
 #define CONFIG_QBLISSA9R2_HDMI_MODE_STR	"1920x1080M@60"
 
 /*
