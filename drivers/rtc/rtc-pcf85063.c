@@ -27,6 +27,7 @@
 */
 
 #define PCF85063_REG_CTRL1		0x00 /* status */
+#define PCF85063_REG_CTRL1_CAP_12_5PF	BIT(0)
 #define PCF85063_REG_CTRL1_STOP		BIT(5)
 #define PCF85063_REG_CTRL2		0x01
 
@@ -54,8 +55,7 @@ static int pcf85063_stop_clock(struct i2c_client *client, u8 *ctrl1)
 	/* stop the clock */
 	ret |= PCF85063_REG_CTRL1_STOP;
 
-	ret = i2c_smbus_write_byte_data(client, PCF85063_REG_CTRL1, ret);
-	if (ret < 0) {
+	if (i2c_smbus_write_byte_data(client, PCF85063_REG_CTRL1, ret) < 0) {
 		dev_err(&client->dev, "Failing to stop the clock\n");
 		return -EIO;
 	}
@@ -70,7 +70,7 @@ static int pcf85063_start_clock(struct i2c_client *client, u8 ctrl1)
 	s32 ret;
 
 	/* start the clock */
-	ctrl1 &= PCF85063_REG_CTRL1_STOP;
+	ctrl1 &= ~PCF85063_REG_CTRL1_STOP;
 
 	ret = i2c_smbus_write_byte_data(client, PCF85063_REG_CTRL1, ctrl1);
 	if (ret < 0) {
@@ -123,8 +123,10 @@ static int pcf85063_set_datetime(struct i2c_client *client, struct rtc_time *tm)
 	u8 regs[7];
 	u8 ctrl1;
 
-	if ((tm->tm_year < 100) || (tm->tm_year > 199))
+	if ((tm->tm_year < 100) || (tm->tm_year > 199)) {
+		dev_err(&client->dev, "Invalid year (2000..2099)\n");
 		return -EINVAL;
+	}
 
 	/*
 	 * to accurately set the time, reset the divider chain and keep it in
@@ -187,6 +189,53 @@ static const struct rtc_class_ops pcf85063_rtc_ops = {
 	.set_time	= pcf85063_rtc_set_time
 };
 
+#if IS_ENABLED(CONFIG_OF)
+static int pcf85063_dt_init(struct i2c_client *client)
+{
+	struct device_node *np = client->dev.of_node;
+	u8 ctrl1, new;
+
+	/*
+	 * After changing the CAP_SEL bit, the RTC needs some time until the
+	 * oscillator is stable again. This means the OS flag (in the seconds
+	 * register) is asserted. If the time is set (clearing the OS flag)
+	 * before the oscillator is stable, the OS bit will be asserted again.
+	 *
+	 * There are three cases:
+	 *
+	 * 1. OS flag clear, device tree is unchanged: this is a no-op here
+	 * 2. OS flag clear, device tree is changed: OS flag will be set to
+	 *    indicate an inaccurate time value because of the time base change
+	 * 3. OS flag asserted: this was a power loss anyway so the action
+	 *    here does no additional harm
+	 *
+	 * In cases 2 and 3, when the clock is started much later by setting
+	 * the time (e.g. hwclock --systohc), the oscillator should be stable
+	 * again and the OS flag should stay clear.
+	 */
+	ctrl1 = i2c_smbus_read_byte_data(client, PCF85063_REG_CTRL1);
+	if (ctrl1 < 0) {
+		dev_err(&client->dev, "Failing to read CTRL1\n");
+		return -EIO;
+	}
+	if (of_property_read_bool(np, "cap_12_5pf"))
+		new = ctrl1 | PCF85063_REG_CTRL1_CAP_12_5PF;
+	else
+		new = ctrl1 & ~PCF85063_REG_CTRL1_CAP_12_5PF;
+	if (new != ctrl1) {
+		dev_info(&client->dev, "Set CAP_SEL to %spF\n",
+			 (new & PCF85063_REG_CTRL1_CAP_12_5PF) ? "12.5" : "7");
+		if (i2c_smbus_write_byte_data(client,
+					      PCF85063_REG_CTRL1, new) < 0) {
+			dev_err(&client->dev, "Failing to write CTRL1\n");
+			return -EIO;
+		}
+	}
+
+	return 0;
+}
+#endif
+
 static int pcf85063_probe(struct i2c_client *client,
 				const struct i2c_device_id *id)
 {
@@ -196,6 +245,15 @@ static int pcf85063_probe(struct i2c_client *client,
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
 		return -ENODEV;
+
+#if IS_ENABLED(CONFIG_OF)
+	{
+		int ret = pcf85063_dt_init(client);
+
+		if (ret < 0)
+			return ret;
+	}
+#endif
 
 	rtc = devm_rtc_device_register(&client->dev,
 				       pcf85063_driver.driver.name,
