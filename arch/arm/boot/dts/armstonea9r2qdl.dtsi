@@ -520,7 +520,7 @@
 };
 
 /* CANRX2 J13 Pin 3 & CANTX2 Pin 4 */
-&can1 {
+&flexcan1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan_b>;
 	xceiver-supply = <&reg_can>;
@@ -528,7 +528,7 @@
 };
 
 /* CANRX1 Pin 63 & CANTX1 Pin 64 */
-&can2 {
+&flexcan2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan_a>;
 	xceiver-supply = <&reg_can>;

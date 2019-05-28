@@ -8,7 +8,7 @@
 
 #include "imx6q-sabreauto.dts"
 
-&can1{
+&flexcan1{
 	status = "okay";
 };
 

@@ -19,8 +19,8 @@
 / {
 	aliases {
 		ethernet0 = &fec;
-		can0 = &can1;
-		can1 = &can2;
+		can0 = &flexcan1;
+		can1 = &flexcan2;
 		gpio0 = &gpio1;
 		gpio1 = &gpio2;
 		gpio2 = &gpio3;
@@ -562,7 +562,7 @@
 				status = "disabled";
 			};
 
-			can1: flexcan@02090000 {
+			flexcan1: can@02090000 {
 				compatible = "fsl,imx6q-flexcan";
 				reg = <0x02090000 0x4000>;
 				interrupts = <0 110 IRQ_TYPE_LEVEL_HIGH>;
@@ -573,7 +573,7 @@
 				status = "disabled";
 			};
 
-			can2: flexcan@02094000 {
+			flexcan2: can@02094000 {
 				compatible = "fsl,imx6q-flexcan";
 				reg = <0x02094000 0x4000>;
 				interrupts = <0 111 IRQ_TYPE_LEVEL_HIGH>;

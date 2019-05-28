@@ -12,7 +12,7 @@
 	status = "disabled";
 };
 
-&can2 {
+&flexcan2 {
 	status = "okay";
 };
 

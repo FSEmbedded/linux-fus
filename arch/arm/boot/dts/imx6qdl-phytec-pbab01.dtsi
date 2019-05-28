@@ -118,7 +118,7 @@
 	};
 };
 
-&can1 {
+&flexcan1 {
 	status = "okay";
 };
 

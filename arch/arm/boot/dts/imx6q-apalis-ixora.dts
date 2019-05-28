@@ -177,11 +177,11 @@
 	status = "okay";
 };
 
-&can1 {
+&flexcan1 {
 	status = "okay";
 };
 
-&can2 {
+&flexcan2 {
 	status = "okay";
 };
 

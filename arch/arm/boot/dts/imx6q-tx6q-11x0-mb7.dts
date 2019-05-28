@@ -99,11 +99,11 @@
 	};
 };
 
-&can1 {
+&flexcan1 {
 	status = "disabled";
 };
 
-&can2 {
+&flexcan2 {
 	xceiver-supply = <&reg_3v3>;
 };
 

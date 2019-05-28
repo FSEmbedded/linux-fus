@@ -50,11 +50,11 @@
 	compatible = "engicam,imx6ul-geam", "fsl,imx6ul";
 };
 
-&can1 {
+&flexcan1 {
 	status = "okay";
 };
 
-&can2 {
+&flexcan2 {
 	status = "okay";
 };
 

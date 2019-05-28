@@ -511,7 +511,7 @@
 };
 
 /* CAN_A implemented by FLEXCAN2 */
-&can2 {
+&flexcan2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
 	xceiver-supply = <&reg_can>;
@@ -770,7 +770,7 @@
 
 #ifdef CONFIG_QBLISSA9_HDMI
 &i2c_gpio_hdmi {
-	hdmi: edid@50 {
+	hdmi_edid: edid@50 {
 		compatible = "fsl,imx6-hdmi-i2c";
 		reg = <0x50>;
 	};

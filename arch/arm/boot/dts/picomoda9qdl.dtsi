@@ -669,7 +669,7 @@
 
 #ifdef CONFIG_PICOMODA9_CAN_A
 /* CAN_A on J1 pins 5/6 */
-&can1 {
+&flexcan1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan_a>;
 	xceiver-supply = <&reg_can>;
@@ -680,7 +680,7 @@
 
 #ifdef CONFIG_PICOMODA9_CAN_B
 /* CAN_B on J1 pins 41/42 (hardware option) */
-&can2 {
+&flexcan2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan_b>;
 	xceiver-supply = <&reg_can>;

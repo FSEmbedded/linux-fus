@@ -600,7 +600,7 @@
 };
 
 /* CANRX1 Pin 63 & CANTX1 Pin 64 */
-&can2 {
+&flexcan2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan_a>;
 	xceiver-supply = <&reg_can>;
