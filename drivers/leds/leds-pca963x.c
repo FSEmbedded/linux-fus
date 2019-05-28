@@ -455,7 +455,7 @@ static int pca963x_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	 * When PWM is off, do not change the hardware, just save the new
 	 * period_ns and duty_ns (already done in PWM infrastructure).
 	 */
-	if (!test_bit(PWMF_ENABLED, &pwm->flags))
+	if (!pwm->state.enabled)
 		return 0;
 
 	pca963x_chip = container_of(chip, struct pca963x, chip);
@@ -465,8 +465,8 @@ static int pca963x_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 		return 1;
 	}
 
-	calc = (u8)((duty_ns * 255 + 127) / pwm->period);
-	if (pwm->polarity == PWM_POLARITY_NORMAL)
+	calc = (u8)((duty_ns * 255 + 127) / pwm->state.period);
+	if (pwm->state.polarity == PWM_POLARITY_NORMAL)
 		calc = 255 - calc;
 
 	if (calc == 255)
@@ -497,19 +497,19 @@ static int pca963x_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 static int pca963x_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm)
 {
 	/* Activate PWM with the current duty_ns value */
-	return pca963x_pwm_config(chip, pwm, pwm->duty_cycle, pwm->period);
+	return pca963x_pwm_config(chip, pwm, pwm->state.duty_cycle, pwm->state.period);
 }
 
 static void pca963x_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
 {
 	/* Switch backlight off (duty_ns = 0) */
-	pca963x_pwm_config(chip, pwm, 0, pwm->period);
+	pca963x_pwm_config(chip, pwm, 0, pwm->state.period);
 }
 
 static int pca963x_pwm_set_polarity(struct pwm_chip *chip,
 			struct pwm_device *pwm, enum pwm_polarity polarity)
 {
-	pwm->polarity = polarity;
+	pwm->state.polarity = polarity;
 
 	return 0;
 }
@@ -536,20 +536,20 @@ static int pca963x_pwm_request(struct pwm_chip *chip, struct pwm_device *pwm)
 	/* fixed frequency signal 1.5625kHz */
 	pwm->label = pca963x_chip->leds[pwm->hwpwm].name;
 	pwm->flags  = pca963x_chip->leds[pwm->hwpwm].flags;
-	pwm->period = 640000;
+	pwm->state.period = 640000;
 
 	if(pwm->flags & PCA963X_FLAGS_ACTIVE_HIGH)
-		pwm->polarity = PWM_POLARITY_NORMAL;
+		pwm->state.polarity = PWM_POLARITY_NORMAL;
 	else
-		pwm->polarity = PWM_POLARITY_INVERSED;
+		pwm->state.polarity = PWM_POLARITY_INVERSED;
 
 	if((pca963x_chip->leds[pwm->hwpwm].flags & PCA963X_FLAGS_DEFAULT_ON &&
-	pwm->polarity == PWM_POLARITY_NORMAL) ||
+	pwm->state.polarity == PWM_POLARITY_NORMAL) ||
 	(!(pca963x_chip->leds[pwm->hwpwm].flags & PCA963X_FLAGS_DEFAULT_ON) &&
-				pwm->polarity == PWM_POLARITY_INVERSED))
-		pwm->duty_cycle = pwm->period;
+				pwm->state.polarity == PWM_POLARITY_INVERSED))
+		pwm->state.duty_cycle = pwm->state.period;
 	else
-		pwm->duty_cycle = 0;
+		pwm->state.duty_cycle = 0;
 
 	return err;
 }
@@ -607,13 +607,14 @@ static int pca963x_gpio_direction_output(struct gpio_chip *chip,
 	return 0;
 }
 
+#if 0 //### FIXME: Do we need this?
 static int pca963x_gpio_request(struct gpio_chip *chip, unsigned offset)
 {
 	int value = 0;
 	struct pca963x *pca963x_chip;
 	pca963x_chip = container_of(chip, struct pca963x, gchip);
 
-	if(pca963x_chip->leds[offset].type != 2)
+	if(pca963x_chip->leds[offset].type != GPIO)
 		return -ENODEV;
 
 	if(!(pca963x_chip->leds[offset].flags & PCA963X_FLAGS_ACTIVE_HIGH))
@@ -627,9 +628,10 @@ static int pca963x_gpio_request(struct gpio_chip *chip, unsigned offset)
 
 	return 0;
 }
+#endif //###
 
 const struct gpio_chip pca963x_gpio_ops = {
-	.request	= pca963x_gpio_request,
+//###	.request	= pca963x_gpio_request, // ### FIXME: Do we need this?
 	.get		= pca963x_gpio_get,
 	.set		= pca963x_gpio_set,
 	.direction_output = pca963x_gpio_direction_output,
@@ -728,7 +730,7 @@ static int pca963x_probe(struct i2c_client *client,
 		pca963x_chip->gchip = pca963x_gpio_ops;
 		pca963x_chip->gchip.label = client->name;
 		pca963x_chip->gchip.ngpio = 4;
-		pca963x_chip->gchip.dev = &client->dev;
+		pca963x_chip->gchip.parent = &client->dev;
 		pca963x_chip->gchip.base = -1;
 		err = gpiochip_add(&pca963x_chip->gchip);
 		if(err < 0) {

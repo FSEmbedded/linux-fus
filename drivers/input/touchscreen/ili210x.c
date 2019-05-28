@@ -304,7 +304,7 @@ static ssize_t ili210x_calibrate(struct device *dev,
 
 	return count;
 }
-static DEVICE_ATTR(calibrate, 0644, NULL, ili210x_calibrate);
+static DEVICE_ATTR(calibrate, S_IWUSR, NULL, ili210x_calibrate);
 
 static struct attribute *ili210x_attributes[] = {
 	&dev_attr_calibrate.attr,
@@ -404,7 +404,7 @@ static int ili210x_i2c_probe(struct i2c_client *client,
 		len = sizeof(struct panel_info_v2);
 	error = ili210x_read_reg(client, REG_PANEL_INFO, &panel, len);
 	if (error) {
-		dev_err(dev, "Failed to get panel informations, err: %d\n",
+		dev_err(dev, "Failed to get panel information, err: %d\n",
 			error);
 		return error;
 	}
@@ -492,7 +492,7 @@ static int ili210x_i2c_probe(struct i2c_client *client,
 
 	error = input_register_device(priv->input);
 	if (error) {
-		dev_err(dev, "Cannot regiser input device, err: %d\n", error);
+		dev_err(dev, "Cannot register input device, err: %d\n", error);
 		goto err_remove_sysfs;
 	}
 
@@ -567,7 +567,6 @@ MODULE_DEVICE_TABLE(of, ili210x_of_match);
 static struct i2c_driver ili210x_ts_driver = {
 	.driver = {
 		.name = "ili210x_i2c",
-		.owner = THIS_MODULE,
 		.of_match_table = of_match_ptr(ili210x_of_match),
 		.pm = &ili210x_i2c_pm,
 	},

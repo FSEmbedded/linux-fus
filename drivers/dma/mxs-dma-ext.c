@@ -702,7 +702,7 @@ static int __init mxs_dma_ext_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	mxs_dma->iram_pool = of_get_named_gen_pool(np, "iram", 0);
+	mxs_dma->iram_pool = of_gen_pool_get(np, "iram", 0);
 	if (!mxs_dma->iram_pool)
 		dev_warn(&pdev->dev, "no iram assigned, using external mem\n");
 	else

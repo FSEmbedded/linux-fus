@@ -105,6 +105,7 @@ enum ft5x0x_ts_regs {
 struct ft5x0x_ts_data {
 	struct input_dev *input_dev;
 	struct i2c_client *client;
+	struct touchscreen_properties prop;
 	int fingers;			/* Number of supported fingers */
 	int reset_pin;			/* GPIO for reset line */
 	int wake_pin;			/* GPIO for wake-up line */
@@ -495,7 +496,7 @@ ft5x0x_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	set_bit(BTN_TOUCH, input_dev->keybit);
 
 	/* Parse touchscreen-size-x, touchscreen-size-y, etc */
-	touchscreen_parse_of_params(input_dev);
+	touchscreen_parse_properties(input_dev, true, &tsdata->prop);
 	dev_info(&client->dev, "Setting resolution to %d x %d\n",
 		 input_abs_get_max(input_dev, ABS_MT_POSITION_X),
 		 input_abs_get_max(input_dev, ABS_MT_POSITION_Y));

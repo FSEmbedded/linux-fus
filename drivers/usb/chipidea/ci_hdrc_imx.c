@@ -24,6 +24,7 @@
 #include <linux/mfd/syscon.h>
 #include <linux/regulator/consumer.h>
 #include <linux/busfreq-imx.h>
+#include <linux/pm_qos.h>
 
 #include "ci.h"
 #include "ci_hdrc_imx.h"
@@ -31,6 +32,11 @@
 struct ci_hdrc_imx_platform_flag {
 	unsigned int flags;
 	bool runtime_pm;
+};
+
+static const struct ci_hdrc_imx_platform_flag imx23_usb_data = {
+	.flags = CI_HDRC_TURN_VBUS_EARLY_ON |
+		CI_HDRC_DISABLE_STREAMING,
 };
 
 static const struct ci_hdrc_imx_platform_flag imx27_usb_data = {
@@ -67,15 +73,21 @@ static const struct ci_hdrc_imx_platform_flag imx6sx_usb_data = {
 
 static const struct ci_hdrc_imx_platform_flag imx6ul_usb_data = {
 	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM |
-		CI_HDRC_TURN_VBUS_EARLY_ON |
-		CI_HDRC_IMX_EHCI_QUIRK,
+		CI_HDRC_TURN_VBUS_EARLY_ON,
 };
 
 static const struct ci_hdrc_imx_platform_flag imx7d_usb_data = {
 	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM,
 };
 
+static const struct ci_hdrc_imx_platform_flag imx7ulp_usb_data = {
+	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM |
+		CI_HDRC_IMX_EHCI_QUIRK |
+		CI_HDRC_PMQOS,
+};
+
 static const struct of_device_id ci_hdrc_imx_dt_ids[] = {
+	{ .compatible = "fsl,imx23-usb", .data = &imx23_usb_data},
 	{ .compatible = "fsl,imx28-usb", .data = &imx28_usb_data},
 	{ .compatible = "fsl,imx27-usb", .data = &imx27_usb_data},
 	{ .compatible = "fsl,imx6q-usb", .data = &imx6q_usb_data},
@@ -83,6 +95,7 @@ static const struct of_device_id ci_hdrc_imx_dt_ids[] = {
 	{ .compatible = "fsl,imx6sx-usb", .data = &imx6sx_usb_data},
 	{ .compatible = "fsl,imx6ul-usb", .data = &imx6ul_usb_data},
 	{ .compatible = "fsl,imx7d-usb", .data = &imx7d_usb_data},
+	{ .compatible = "fsl,imx7ulp-usb", .data = &imx7ulp_usb_data},
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, ci_hdrc_imx_dt_ids);
@@ -107,6 +120,7 @@ struct ci_hdrc_imx_data {
 	struct clk *clk_ahb;
 	struct clk *clk_per;
 	/* --------------------------------- */
+	struct pm_qos_request pm_qos_req;
 };
 
 static char *imx_usb_charger_supplied_to[] = {
@@ -456,11 +470,16 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 		.notify_event	= ci_hdrc_imx_notify_event,
 	};
 	int ret;
-	const struct of_device_id *of_id =
-			of_match_device(ci_hdrc_imx_dt_ids, &pdev->dev);
-	const struct ci_hdrc_imx_platform_flag *imx_platform_flag = of_id->data;
+	const struct of_device_id *of_id;
+	const struct ci_hdrc_imx_platform_flag *imx_platform_flag;
 	struct device_node *np = pdev->dev.of_node;
 	struct pinctrl_state *pinctrl_hsic_idle;
+
+	of_id = of_match_device(ci_hdrc_imx_dt_ids, &pdev->dev);
+	if (!of_id)
+		return -ENODEV;
+
+	imx_platform_flag = of_id->data;
 
 	data = devm_kzalloc(&pdev->dev, sizeof(*data), GFP_KERNEL);
 	if (!data)
@@ -469,6 +488,7 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, data);
 
 	data->data = imx_platform_flag;
+	pdata.flags |= imx_platform_flag->flags;
 	data->usbmisc_data = usbmisc_get_init_data(&pdev->dev);
 	if (IS_ERR(data->usbmisc_data))
 		return PTR_ERR(data->usbmisc_data);
@@ -507,6 +527,10 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 		return ret;
 
 	request_bus_freq(BUS_FREQ_HIGH);
+	if (pdata.flags & CI_HDRC_PMQOS)
+		pm_qos_add_request(&data->pm_qos_req,
+			PM_QOS_CPU_DMA_LATENCY, 0);
+
 	ret = imx_prepare_enable_clks(&pdev->dev);
 	if (ret)
 		goto err_bus_freq;
@@ -521,16 +545,11 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 	}
 
 	pdata.usb_phy = data->phy;
-	pdata.flags |= imx_platform_flag->flags;
 	if (pdata.flags & CI_HDRC_SUPPORTS_RUNTIME_PM)
 		data->supports_runtime_pm = true;
 
-	ret = dma_coerce_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
-	if (ret)
-		goto err_clk;
-
-	if (data->usbmisc_data && data->usbmisc_data->index > 1 &&
-					(imx_has_hsic_con(data))) {
+	if (data->usbmisc_data && data->usbmisc_data->index > 1
+	    && (imx_has_hsic_con(data))) {
 		pdata.flags |= CI_HDRC_IMX_IS_HSIC;
 		data->hsic_pad_regulator = devm_regulator_get(&pdev->dev,
 									"pad");
@@ -595,9 +614,9 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 				&pdata);
 	if (IS_ERR(data->ci_pdev)) {
 		ret = PTR_ERR(data->ci_pdev);
-		dev_err(&pdev->dev,
-			"Can't register ci_hdrc platform device, err=%d\n",
-			ret);
+		if (ret != -EPROBE_DEFER)
+			dev_err(&pdev->dev,
+				"ci_hdrc_add_device failed, err=%d\n", ret);
 		goto disable_hsic_regulator;
 	}
 
@@ -635,6 +654,8 @@ disable_hsic_regulator:
 err_clk:
 	imx_disable_unprepare_clks(&pdev->dev);
 err_bus_freq:
+	if (pdata.flags & CI_HDRC_PMQOS)
+		pm_qos_remove_request(&data->pm_qos_req);
 	release_bus_freq(BUS_FREQ_HIGH);
 	return ret;
 }
@@ -650,11 +671,18 @@ static int ci_hdrc_imx_remove(struct platform_device *pdev)
 	}
 	ci_hdrc_remove_device(data->ci_pdev);
 	imx_disable_unprepare_clks(&pdev->dev);
+	if (data->data->flags & CI_HDRC_PMQOS)
+		pm_qos_remove_request(&data->pm_qos_req);
 	release_bus_freq(BUS_FREQ_HIGH);
 	if (data->hsic_pad_regulator)
 		regulator_disable(data->hsic_pad_regulator);
 
 	return 0;
+}
+
+static void ci_hdrc_imx_shutdown(struct platform_device *pdev)
+{
+	ci_hdrc_imx_remove(pdev);
 }
 
 #ifdef CONFIG_PM
@@ -675,6 +703,8 @@ static int imx_controller_suspend(struct device *dev)
 	}
 
 	imx_disable_unprepare_clks(dev);
+	if (data->data->flags & CI_HDRC_PMQOS)
+		pm_qos_remove_request(&data->pm_qos_req);
 	release_bus_freq(BUS_FREQ_HIGH);
 	data->in_lpm = true;
 
@@ -694,9 +724,12 @@ static int imx_controller_resume(struct device *dev)
 	}
 
 	request_bus_freq(BUS_FREQ_HIGH);
+	if (data->data->flags & CI_HDRC_PMQOS)
+		pm_qos_add_request(&data->pm_qos_req,
+			PM_QOS_CPU_DMA_LATENCY, 0);
 	ret = imx_prepare_enable_clks(dev);
 	if (ret)
-		return ret;
+		goto err_bus_freq;
 
 	data->in_lpm = false;
 
@@ -728,6 +761,10 @@ hsic_set_clk_fail:
 	imx_usbmisc_set_wakeup(data->usbmisc_data, true);
 clk_disable:
 	imx_disable_unprepare_clks(dev);
+err_bus_freq:
+	if (data->data->flags & CI_HDRC_PMQOS)
+		pm_qos_remove_request(&data->pm_qos_req);
+	release_bus_freq(BUS_FREQ_HIGH);
 	return ret;
 }
 
@@ -804,6 +841,7 @@ static const struct dev_pm_ops ci_hdrc_imx_pm_ops = {
 static struct platform_driver ci_hdrc_imx_driver = {
 	.probe = ci_hdrc_imx_probe,
 	.remove = ci_hdrc_imx_remove,
+	.shutdown = ci_hdrc_imx_shutdown,
 	.driver = {
 		.name = "imx_usb",
 		.of_match_table = ci_hdrc_imx_dt_ids,
