@@ -10,6 +10,9 @@ Optional properties:
 - fsl,irda-mode : Indicate the uart supports irda mode
 - fsl,dte-mode : Indicate the uart works in DTE mode. The uart works
                   in DCE mode by default.
+- fsl,rx_fifo_trig : Level when the receice FIFO triggers the interrupt
+                     or DMA request (default 16, or 1 on console). Maximum
+                     value is 32.
 
 Note: Each uart controller should have an alias correctly numbered
 in "aliases" node.

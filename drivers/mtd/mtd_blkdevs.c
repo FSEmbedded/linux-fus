@@ -102,6 +102,7 @@ static int do_blktrans_request(struct mtd_blktrans_ops *tr,
 			if (tr->readsect(dev, block, buf))
 				return -EIO;
 		rq_flush_dcache_pages(req);
+		return 0;
 	} else {
 		if (!tr->writesect)
 			return -EIO;
@@ -110,9 +111,8 @@ static int do_blktrans_request(struct mtd_blktrans_ops *tr,
 		for (; nsect > 0; nsect--, block++, buf += tr->blksize)
 			if (tr->writesect(dev, block, buf))
 				return -EIO;
+		return 0;
 	}
-
-	return 0;
 }
 
 int mtd_blktrans_cease_background(struct mtd_blktrans_dev *dev)

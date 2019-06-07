@@ -3458,7 +3458,6 @@ fec_probe(struct platform_device *pdev)
 		ret = PTR_ERR(mii_bus);	/* -EPROBE_DEFER */
 		goto failed_check_mii_bus;
 	}
-
 	of_dma_configure(&pdev->dev, np);
 
 	fec_enet_get_queue_num(pdev, &num_tx_qs, &num_rx_qs);

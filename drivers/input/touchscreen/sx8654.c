@@ -79,6 +79,8 @@
 
 #define MAX_12BIT			((1 << 12) - 1)
 
+#define MAX_TOUCH_RESOLUTION		0xFFF
+
 struct sx8654 {
 	struct input_dev *input;
 	struct i2c_client *client;
@@ -86,6 +88,9 @@ struct sx8654 {
 	int powdly;
 	int filt;
 	int setdly;
+	int x_rev;
+	int y_rev;
+	int xy_swap;
 };
 
 static irqreturn_t sx8654_irq(int irq, void *handle)
@@ -124,8 +129,19 @@ static irqreturn_t sx8654_irq(int irq, void *handle)
 		x = ((data[0] & 0xf) << 8) | (data[1]);
 		y = ((data[2] & 0xf) << 8) | (data[3]);
 
-		input_report_abs(sx8654->input, ABS_X, x);
-		input_report_abs(sx8654->input, ABS_Y, y);
+		if (sx8654->x_rev)
+			x = MAX_TOUCH_RESOLUTION - x;
+		if (sx8654->y_rev)
+			y = MAX_TOUCH_RESOLUTION - y;
+		
+		if (sx8654->xy_swap) {
+			input_report_abs(sx8654->input, ABS_X, y);
+			input_report_abs(sx8654->input, ABS_Y, x);
+		}
+		else {
+			input_report_abs(sx8654->input, ABS_X, x);
+			input_report_abs(sx8654->input, ABS_Y, y);
+		}
 		input_report_key(sx8654->input, BTN_TOUCH, 1);
 		input_sync(sx8654->input);
 
@@ -337,6 +353,10 @@ static int sx8654_probe_dt(struct device *dev,
 		tsdata->filt = val;
 	if (of_property_read_u32(np, "setdly", &val) == 0)
 		tsdata->setdly = val;
+
+	tsdata->x_rev = of_property_read_bool(np, "x-rev");
+	tsdata->y_rev = of_property_read_bool(np, "y-rev");
+	tsdata->xy_swap = of_property_read_bool(np, "swap-xy");
 
 	return 0;
 }

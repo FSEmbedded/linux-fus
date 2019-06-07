@@ -161,7 +161,11 @@ wvga {					\
 
 / {
 	model = "F&S efusA7UL";
+#ifdef CONFIG_EFUSA7UL_ULL
+	compatible = "fsl,imx6ul-efusa7ul", "fsl,imx6ull";
+#else
 	compatible = "fsl,imx6ul-efusa7ul", "fsl,imx6ul";
+#endif
 
 	aliases {
 		i2c5 = &i2c_gpio;
@@ -429,14 +433,22 @@ wvga {					\
 };
 #endif /* CONFIG_EFUSA7UL_ETH1 */
 
+#ifdef CONFIG_EFUSA7UL_ULL
 &flexcan1 {
+#else
+&can1 {
+#endif
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1>;
 	xceiver-supply = <&reg_can>;
 	status = "okay";
 };
 
+#ifdef CONFIG_EFUSA7UL_ULL
 &flexcan2 {
+#else
+&can2 {
+#endif
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
 	xceiver-supply = <&reg_can>;
@@ -534,9 +546,7 @@ wvga {					\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg1>;
 //###	vbus-supply = <&reg_usb_otg1_vbus>;
-#ifdef CONFIG_EFUSA7UL_HAVE_USB_OTG1_OC
-	over-current-active-low;
-#else
+#ifndef CONFIG_EFUSA7UL_HAVE_USB_OTG1_OC
 	disable-over-current;
 #endif
 	status = "okay";
@@ -684,6 +694,8 @@ wvga {					\
 		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
 		interrupt-parent = <&gpio5>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		x-rev;
+		y-rev;
 	};
 #endif
 

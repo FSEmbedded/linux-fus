@@ -389,7 +389,7 @@ lvds_wvga {				\
 		reg_lcd_bl: lcd-bl {
 			compatible = "regulator-fixed";
 			regulator-name = "lcd-bl";
-			gpio = <&pca963x 0 0>;
+			gpio = <&pca963x 0 GPIO_ACTIVE_HIGH>;
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 		};
@@ -798,6 +798,8 @@ lvds_wvga {				\
 		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
 		interrupt-parent = <&gpio7>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		x-rev;
+		y-rev;
 	};
 #endif
 
@@ -1101,9 +1103,7 @@ lvds_wvga {				\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg1>;
 //###	vbus-supply = <&reg_usb_otg1_vbus>;
-#ifdef CONFIG_EFUSA9X_USB_OTG1_OC
-	over-current-active-low;
-#else
+#ifndef CONFIG_EFUSA9X_USB_OTG1_OC
 	disable-over-current;
 #endif
 	status = "okay";
@@ -1456,7 +1456,7 @@ lvds_wvga {				\
 
 				/* FEC1 */
 				MX6SX_PAD_ENET2_RX_CLK__ENET2_REF_CLK_25M 0x0a0b9
-				MX6SX_PAD_ENET1_TX_CLK__ENET1_REF_CLK1	0x0a0b1
+//				MX6SX_PAD_ENET1_TX_CLK__ENET1_REF_CLK1	0x0a0b1
 				MX6SX_PAD_RGMII1_TXC__ENET1_RGMII_TXC	0x0a0b9
 				MX6SX_PAD_RGMII1_TD0__ENET1_TX_DATA_0	0x0a0b1
 				MX6SX_PAD_RGMII1_TD1__ENET1_TX_DATA_1	0x0a0b1

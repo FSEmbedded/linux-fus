@@ -1,5 +1,5 @@
 /*
- * ADV7393 encoder related structure and register definitions
+ * ADV739X encoder related structure and register definitions
  *
  * Copyright (C) 2010-2012 ADVANSEE - http://www.advansee.com/
  * Benoît Thébaudeau <benoit.thebaudeau@advansee.com>
@@ -7,6 +7,7 @@
  * Based on ADV7343 driver,
  *
  * Copyright (C) 2009 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2018 F&S Elektronik Systeme GmbH - http://www.fs-net.de
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -18,74 +19,90 @@
  * GNU General Public License for more details.
  */
 
-#ifndef ADV7393_REGS_H
-#define ADV7393_REGS_H
+#ifndef ADV739X_REGS_H
+#define ADV739X_REGS_H
 
-struct adv7393_std_info {
+struct adv739x_std_info {
 	u32 standard_val3;
 	u32 fsc_val;
 	v4l2_std_id stdid;
 };
 
+#define ADV7391_MODE_PAL
+//#define ADV7393_MODE_NTSC
+
 /* Register offset macros */
-#define ADV7393_POWER_MODE_REG		(0x00)
-#define ADV7393_MODE_SELECT_REG		(0x01)
-#define ADV7393_MODE_REG0		(0x02)
+#define ADV739X_POWER_MODE_REG		(0x00)
+#define ADV739X_MODE_SELECT_REG		(0x01)
+#define ADV739X_MODE_REG0		(0x02)
 
-#define ADV7393_DAC123_OUTPUT_LEVEL	(0x0B)
+#define ADV739X_DAC123_OUTPUT_LEVEL	(0x0B)
 
-#define ADV7393_SOFT_RESET		(0x17)
+#define ADV739X_SOFT_RESET		(0x17)
 
-#define ADV7393_HD_MODE_REG1		(0x30)
-#define ADV7393_HD_MODE_REG2		(0x31)
-#define ADV7393_HD_MODE_REG3		(0x32)
-#define ADV7393_HD_MODE_REG4		(0x33)
-#define ADV7393_HD_MODE_REG5		(0x34)
-#define ADV7393_HD_MODE_REG6		(0x35)
+#define ADV739X_HD_MODE_REG1		(0x30)
+#define ADV739X_HD_MODE_REG2		(0x31)
+#define ADV739X_HD_MODE_REG3		(0x32)
+#define ADV739X_HD_MODE_REG4		(0x33)
+#define ADV739X_HD_MODE_REG5		(0x34)
+#define ADV739X_HD_MODE_REG6		(0x35)
 
-#define ADV7393_HD_MODE_REG7		(0x39)
+#define ADV739X_HD_MODE_REG7		(0x39)
 
-#define ADV7393_SD_MODE_REG1		(0x80)
-#define ADV7393_SD_MODE_REG2		(0x82)
-#define ADV7393_SD_MODE_REG3		(0x83)
-#define ADV7393_SD_MODE_REG4		(0x84)
-#define ADV7393_SD_MODE_REG5		(0x86)
-#define ADV7393_SD_MODE_REG6		(0x87)
-#define ADV7393_SD_MODE_REG7		(0x88)
-#define ADV7393_SD_MODE_REG8		(0x89)
+#define ADV739X_SD_MODE_REG1		(0x80)
+#define ADV739X_SD_MODE_REG2		(0x82)
+#define ADV739X_SD_MODE_REG3		(0x83)
+#define ADV739X_SD_MODE_REG4		(0x84)
+#define ADV739X_SD_MODE_REG5		(0x86)
+#define ADV739X_SD_MODE_REG6		(0x87)
+#define ADV739X_SD_MODE_REG7		(0x88)
+#define ADV739X_SD_MODE_REG8		(0x89)
 
-#define ADV7393_SD_TIMING_REG0		(0x8A)
+#define ADV739X_SD_TIMING_REG0		(0x8A)
 
-#define ADV7393_FSC_REG0		(0x8C)
-#define ADV7393_FSC_REG1		(0x8D)
-#define ADV7393_FSC_REG2		(0x8E)
-#define ADV7393_FSC_REG3		(0x8F)
+#define ADV739X_FSC_REG0		(0x8C)
+#define ADV739X_FSC_REG1		(0x8D)
+#define ADV739X_FSC_REG2		(0x8E)
+#define ADV739X_FSC_REG3		(0x8F)
 
-#define ADV7393_SD_CGMS_WSS0		(0x99)
+#define ADV739X_SD_CGMS_WSS0		(0x99)
 
-#define ADV7393_SD_HUE_ADJUST		(0xA0)
-#define ADV7393_SD_BRIGHTNESS_WSS	(0xA1)
+#define ADV739X_SD_HUE_ADJUST		(0xA0)
+#define ADV739X_SD_BRIGHTNESS_WSS	(0xA1)
 
-/* Default values for the registers */
-#define ADV7393_POWER_MODE_REG_DEFAULT		(0x10)
-#define ADV7393_HD_MODE_REG1_DEFAULT		(0x3C)	/* Changed Default
+/* Common default values for the registers */
+#define ADV739X_POWER_MODE_REG_DEFAULT		(0x10)
+#define ADV739X_HD_MODE_REG1_DEFAULT		(0x3C)	/* Changed Default
 							   720p EAV/SAV code*/
-#define ADV7393_HD_MODE_REG2_DEFAULT		(0x01)	/* Changed Pixel data
+#define ADV739X_HD_MODE_REG2_DEFAULT		(0x01)	/* Changed Pixel data
 							   valid */
-#define ADV7393_HD_MODE_REG3_DEFAULT		(0x00)	/* Color delay 0 clks */
-#define ADV7393_HD_MODE_REG4_DEFAULT		(0xEC)	/* Changed */
-#define ADV7393_HD_MODE_REG5_DEFAULT		(0x08)
-#define ADV7393_HD_MODE_REG6_DEFAULT		(0x00)
-#define ADV7393_HD_MODE_REG7_DEFAULT		(0x00)
-#define ADV7393_SOFT_RESET_DEFAULT		(0x02)
-#define ADV7393_COMPOSITE_POWER_VALUE		(0x10)
-#define ADV7393_COMPONENT_POWER_VALUE		(0x1C)
-#define ADV7393_SVIDEO_POWER_VALUE		(0x0C)
-#define ADV7393_SD_HUE_ADJUST_DEFAULT		(0x80)
-#define ADV7393_SD_BRIGHTNESS_WSS_DEFAULT	(0x00)
+#define ADV739X_HD_MODE_REG3_DEFAULT		(0x00)	/* Color delay 0 clks */
+#define ADV739X_HD_MODE_REG4_DEFAULT		(0xEC)	/* Changed */
+#define ADV739X_HD_MODE_REG5_DEFAULT		(0x08)
+#define ADV739X_HD_MODE_REG6_DEFAULT		(0x00)
+#define ADV739X_HD_MODE_REG7_DEFAULT		(0x00)
+#define ADV739X_SOFT_RESET_DEFAULT		(0x02)
+#define ADV739X_COMPOSITE_POWER_VALUE		(0x10)
+#define ADV739X_COMPONENT_POWER_VALUE		(0x1C)
+#define ADV739X_SVIDEO_POWER_VALUE		(0x0C)
+#define ADV739X_SD_HUE_ADJUST_DEFAULT		(0x80)
+#define ADV739X_SD_BRIGHTNESS_WSS_DEFAULT	(0x00)
 
-#define ADV7393_SD_CGMS_WSS0_DEFAULT		(0x10)
+#define ADV739X_SD_CGMS_WSS0_DEFAULT		(0x10)
 
+/* Registers for ADV7391 only, start with PAL */
+#define ADV7391_SD_MODE_REG1_DEFAULT		(0x11)
+#define ADV7391_SD_MODE_REG2_DEFAULT		(0xC3)
+#define ADV7391_SD_MODE_REG3_DEFAULT		(0x00)
+#define ADV7391_SD_MODE_REG4_DEFAULT		(0x00)
+#define ADV7391_SD_MODE_REG5_DEFAULT		(0x02)
+#define ADV7391_SD_MODE_REG6_DEFAULT		(0x00)
+#define ADV7391_SD_MODE_REG7_DEFAULT		(0x00)
+#define ADV7391_SD_MODE_REG8_DEFAULT		(0x00)
+
+#define ADV7391_SD_TIMING_REG0_DEFAULT		(0x08)
+
+/* Registers for ADV7393 only, start with NTSC */
 #define ADV7393_SD_MODE_REG1_DEFAULT		(0x10)
 #define ADV7393_SD_MODE_REG2_DEFAULT		(0xC9)
 #define ADV7393_SD_MODE_REG3_DEFAULT		(0x00)
@@ -175,14 +192,14 @@ struct adv7393_std_info {
 #define HD_ADPT_FLTR_EN		(0x80)
 #define HD_ADPT_FLTR_DI		(0x7F)
 
-#define ADV7393_BRIGHTNESS_MAX	(63)
-#define ADV7393_BRIGHTNESS_MIN	(-64)
-#define ADV7393_BRIGHTNESS_DEF	(0)
-#define ADV7393_HUE_MAX		(127)
-#define ADV7393_HUE_MIN		(-128)
-#define ADV7393_HUE_DEF		(0)
-#define ADV7393_GAIN_MAX	(64)
-#define ADV7393_GAIN_MIN	(-64)
-#define ADV7393_GAIN_DEF	(0)
+#define ADV739X_BRIGHTNESS_MAX	(63)
+#define ADV739X_BRIGHTNESS_MIN	(-64)
+#define ADV739X_BRIGHTNESS_DEF	(0)
+#define ADV739X_HUE_MAX		(127)
+#define ADV739X_HUE_MIN		(-128)
+#define ADV739X_HUE_DEF		(0)
+#define ADV739X_GAIN_MAX	(64)
+#define ADV739X_GAIN_MIN	(-64)
+#define ADV739X_GAIN_DEF	(0)
 
 #endif

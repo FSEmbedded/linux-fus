@@ -352,6 +352,8 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6dl-sabreauto-gpmi-weim.dtb \
 	imx6dl-sabrelite.dtb \
 	imx6dl-sabresd.dtb \
+	imx6dl-sabresd-bt656.dtb \
+	imx6dl-sabresd-bt1120.dtb \
 	imx6dl-sabresd-btwifi.dtb \
 	imx6dl-sabresd-hdcp.dtb \
 	imx6dl-sabresd-ldo.dtb \
@@ -424,6 +426,8 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6q-sabreauto-gpmi-weim.dtb \
 	imx6q-sabrelite.dtb \
 	imx6q-sabresd.dtb \
+	imx6q-sabresd-bt656.dtb \
+	imx6q-sabresd-bt1120.dtb \
 	imx6q-sabresd-btwifi.dtb \
 	imx6q-sabresd-hdcp.dtb \
 	imx6q-sabresd-ldo.dtb \
@@ -521,6 +525,7 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	imx6ul-14x14-evk-pf1550.dtb \
 	efusa7ul.dtb \
 	picocom1.2.dtb \
+	picocoma7.dtb \
 	cubea7ul.dtb \
 	gar1.dtb \
 	imx6ul-9x9-evk.dtb \

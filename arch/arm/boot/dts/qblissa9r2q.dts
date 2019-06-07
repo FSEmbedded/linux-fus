@@ -156,6 +156,10 @@ wvga {					\
 /* Camera on serial MIPI CSI interface */
 #define CONFIG_QBLISSA9R2_SERIAL_CAMERA
 
+/* Select one of the following MIPI cameras */
+//#define CONFIG_QBLISSA9R2_MIPI_CAMERA_OV564X
+#define CONFIG_QBLISSA9R2_MIPI_CAMERA_ISL7998X
+
 /* NAND */
 #define CONFIG_QBLISSA9R2_NAND
 

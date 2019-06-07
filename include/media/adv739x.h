@@ -1,10 +1,10 @@
 /*
- * ADV7393 header file
+ * ADV739X header file
  *
  * Copyright (C) 2010-2012 ADVANSEE - http://www.advansee.com/
  * Benoît Thébaudeau <benoit.thebaudeau@advansee.com>
  *
- * Based on ADV7343 driver,
+ * Based on ADV734X driver,
  *
  * Copyright (C) 2009 Texas Instruments Incorporated - http://www.ti.com/
  *
@@ -18,11 +18,11 @@
  * GNU General Public License for more details.
  */
 
-#ifndef ADV7393_H
-#define ADV7393_H
+#ifndef ADV739X_H
+#define ADV739X_H
 
-#define ADV7393_COMPOSITE_ID	(0)
-#define ADV7393_COMPONENT_ID	(1)
-#define ADV7393_SVIDEO_ID	(2)
+#define ADV739X_COMPOSITE_ID	(0)
+#define ADV739X_COMPONENT_ID	(1)
+#define ADV739X_SVIDEO_ID	(2)
 
-#endif				/* End of #ifndef ADV7393_H */
+#endif				/* End of #ifndef ADV739X_H */

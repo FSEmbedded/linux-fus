@@ -84,8 +84,6 @@ static void __iomem *iomux_base;
 static void __iomem *gic_dist_base;
 
 static int ddr_settings_size;
-static int dll_settings_size;
-static int calib_settings_size;
 static int iomux_settings_size;
 static int curr_ddr_rate;
 
@@ -348,11 +346,10 @@ int update_ddr_freq_imx_smp(int ddr_rate)
 		if ((mode == BUS_FREQ_LOW) || (mode == BUS_FREQ_AUDIO))
 			dll_off = true;
 
-		iram_ddr_settings[0][0] = dll_settings_size;
-		iram_ddr_settings[0][1] = calib_settings_size;
+		iram_ddr_settings[0][0] = ddr_settings_size;
 		iram_iomux_settings[0][0] = iomux_settings_size;
 		if (ddr_rate == ddr_normal_rate) {
-			for (i = 0; i < ddr_settings_size; i++) {
+			for (i = 0; i < iram_ddr_settings[0][0]; i++) {
 				iram_ddr_settings[i + 1][0] =
 						normal_mmdc_settings[i][0];
 				iram_ddr_settings[i + 1][1] =
@@ -466,10 +463,9 @@ int update_ddr_freq_imx6_up(int ddr_rate)
 		dll_off = true;
 
 	imx6_busfreq_info->dll_off = dll_off;
-	iram_ddr_settings[0][0] = dll_settings_size;
-	iram_ddr_settings[0][1] = calib_settings_size;
+	iram_ddr_settings[0][0] = ddr_settings_size;
 	iram_iomux_settings[0][0] = iomux_settings_size;
-	for (i = 0; i < ddr_settings_size; i++) {
+	for (i = 0; i < iram_ddr_settings[0][0]; i++) {
 		iram_ddr_settings[i + 1][0] =
 				normal_mmdc_settings[i][0];
 		iram_ddr_settings[i + 1][1] =
@@ -593,9 +589,8 @@ int init_mmdc_ddr3_settings_imx6_up(struct platform_device *busfreq_pdev)
 	iomux_base = of_iomap(node, 0);
 	WARN(!iomux_base, "unable to map iomux registers\n");
 
-	dll_settings_size = ARRAY_SIZE(ddr3_dll_mx6sx);
-	calib_settings_size = ARRAY_SIZE(ddr3_calibration_mx6sx);
-	ddr_settings_size = dll_settings_size + calib_settings_size;
+	ddr_settings_size = ARRAY_SIZE(ddr3_dll_mx6sx) +
+		ARRAY_SIZE(ddr3_calibration_mx6sx);
 
 	normal_mmdc_settings = kmalloc((ddr_settings_size * 8), GFP_KERNEL);
 	memcpy(normal_mmdc_settings, ddr3_dll_mx6sx,
@@ -711,11 +706,11 @@ int init_mmdc_ddr3_settings_imx6_smp(struct platform_device *busfreq_pdev)
 	WARN(!gic_dist_base, "unable to map gic dist registers\n");
 
 	if (cpu_is_imx6q())
-		dll_settings_size = ARRAY_SIZE(ddr3_dll_mx6q);
+		ddr_settings_size = ARRAY_SIZE(ddr3_dll_mx6q) +
+			ARRAY_SIZE(ddr3_calibration);
 	if (cpu_is_imx6dl())
-		dll_settings_size = ARRAY_SIZE(ddr3_dll_mx6dl);
-	calib_settings_size = ARRAY_SIZE(ddr3_calibration);
-	ddr_settings_size = dll_settings_size + calib_settings_size;
+		ddr_settings_size = ARRAY_SIZE(ddr3_dll_mx6dl) +
+			ARRAY_SIZE(ddr3_calibration);
 
 	normal_mmdc_settings = kmalloc((ddr_settings_size * 8), GFP_KERNEL);
 	if (cpu_is_imx6q()) {

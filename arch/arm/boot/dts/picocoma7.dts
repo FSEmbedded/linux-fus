@@ -1,0 +1,657 @@
+/*
+ * Copyright (C) 2017-2018 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+ /dts-v1/;
+
+ /* Set board revision as 3-digit number, e.g. 100 for board rev. 1.00 */
+#define CONFIG_PICOCOMA7_BOARD_REVISION	100
+
+ /* CMA: Set 64 MB for Continuous Memory Allocator */
+#define CONFIG_PICOCOMA7_CMA_SIZE 0x4000000
+
+/* Ethernet, pins 1-4*/
+#define CONFIG_PICOCOMA7_ETH_A
+
+/* USB Host, pins 19/20, PWR on pin 24 */
+#define CONFIG_PICOCOMA7_USB_HOST
+
+/* CAN: CAN_A on pins 51/52 */
+#define CONFIG_PICOCOMA7_CAN_A
+#define CONFIG_PICOCOMA7_CAN_B
+
+/*
+ * UART:
+ * - UART_B with TXD/RXD/RTS/CTS on pins 13-16
+ * - UART_F with TXD/RXD on pins 17-18
+ * Comment the line with the RTSCTS macro if you just need TXD/RXD on a port
+ */
+
+#define CONFIG_PICOCOMA7_UART_B
+#define CONFIG_PICOCOMA7_UART_B_RTSCTS
+#define CONFIG_PICOCOMA7_UART_F
+
+/*SPI_B (1x CS) on pins 26-29 */
+#define CONFIG_PICOCOMA7_SPI_B
+
+/* Audio: Codec (SGTL5000) on pins 77-80 */
+#define CONFIG_PICOCOMA7_AUDIO
+//#define CONFIG_PICOCOMA7_MQS
+
+#ifdef CONFIG_PICOCOMA7_AUDIO
+#undef CONFIG_PICOCOMA7_MQS
+#endif
+
+/*
+ * SD-Card, pins 34-39, CD on pin 40, WP on pin 41
+ * The PicoCOM1 SKIT does not support CD and WP.
+ */
+#define  CONFIG_PICOCOMA7_SD_B
+
+
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_LCD	1	/* LCD via RGB adapter */
+
+/*
+ * Set the display configuration:
+ *
+ * - If you have no display, set LCDIF0 to DISPLAY_NONE.
+ * - If you have a display, set LCDIF0 to DISPLAY_LCD.
+ */
+#define CONFIG_PICOCOMA7_LCDIF0	DISPLAY_LCD
+
+/*
+ * Configure LCD settings here (ignored if LCD is not used)
+ */
+#define CONFIG_PICOCOMA7_LCD /* enable LCD nodes */
+#define CONFIG_PICOCOMA7_LCD_BPP	32
+#define CONFIG_PICOCOMA7_LCD_BUS_WIDTH	18
+#define CONFIG_PICOCOMA7_LCD_TIMING \
+lcd_wvga {				\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+
+/*
+ * On PicoCOMA7, you can either use 16 bpp (RGB565) and HSYNC/VSYNC (default)
+ * or 18 bpp (RGB666) and DE synchronization. In this case the two additional
+ * color signals replace the HSYNC/VSYNC signals. Activate the following line
+ * if you want to use 18 bpp and DE.
+ */
+//#define CONFIG_PICOCOMA7_LCD_18BPP_DE
+
+/* GPU is only available on CPU variants MCIMX6X3... and MCIMX6X4... */
+#define CONFIG_PICOCOMA7_GPU
+
+/* TOUCH */
+#define CONFIG_PICOCOMA7_4WTOUCH_SX8655_ONBOARD /* SX8655 res. touch */
+
+#include <dt-bindings/input/input.h>
+#include "imx6ull.dtsi"
+
+/ {
+	model = "F&S PicoCOMA7";
+	compatible = "fsl,imx6ul-picocoma7", "fsl,imx6ull";
+#if 0
+chosen {
+		stdout-path = &uart1;
+	};
+#endif
+
+	memory {
+		reg = <0x80000000 0x80000000>;
+	};
+
+	regulators {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		reg_vref_3v3: regulator_3v3 {
+			compatible = "regulator-fixed";
+			regulator-name = "vref-3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		reg_can: regulator_can {
+			compatible = "regulator-fixed";
+			regulator-name = "can";
+		};
+
+		reg_dvfs: regulator_dvfs {
+			compatible = "regulator-fixed";
+			regulator-min-microvolt = <1325000>;
+			regulator-max-microvolt = <1325000>;
+			regulator-name = "dvfs";
+			regulator-always-on;
+		};
+
+#ifdef CONFIG_PICOCOMA7_AUDIO
+
+		/* SGTL5000 analog voltage */
+		reg_sgtl5000_vdda: sgtl5000_vdda {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDA-supply";
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 I/O voltage */
+		reg_sgtl5000_vddio: sgtl5000_vddio {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 internal digital voltage */
+		reg_sgtl5000_vddd: sgtl5000_vddd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDD-supply";
+			regulator-min-microvolt = <1350000>;
+			regulator-max-microvolt = <1350000>;
+			regulator-always-on;
+		};
+
+#endif
+		reg_usb_otg2_vbus: usb_otg2_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_h1_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio1 28 0>;
+			enable-active-high;
+		};
+
+		reg_lcd: regulator_lcd {
+			compatible = "regulator-fixed";
+			regulator-name = "lcd";
+			gpio = <&gpio3 25 0>;
+			enable-active-high;
+		};
+
+#ifdef CONFIG_PICOCOMA7_AUDIO
+		sound-sgtl5000 {
+			compatible = "fsl,imx-audio-sgtl5000";
+			cpu-dai = <&sai1>;
+			audio-codec = <&sgtl5000>;
+			model = "imx-sgtl5000";
+
+			audio-routing =
+			"LINE_IN", "Line In Jack",
+			//"MIC_IN", "Mic Jack",
+			//"Line Out Jack", "LINE_OUT",
+			"Headphone Jack", "HP_OUT";
+	};
+#endif
+
+#ifdef CONFIG_PICOCOMA7_MQS
+		sound-mqs {
+			compatible = "fsl,imx-audio-mqs";
+			model = "mqs-audio";
+			cpu-dai = <&sai1>;
+			asrc-controller = <&asrc>;
+			audio-codec = <&mqs>;
+	};
+#endif
+
+
+	/* F&S board information */
+		bdinfo {
+			compatible = "bdinfo";
+			board_name = "PicoCOMA7";
+			ecc_strength = "8";
+	};
+
+		leds {
+			compatible = "gpio-leds";
+			pinctrl-names = "default";
+			pinctrl-0 = <&pinctrl_status_leds>;
+
+		status_1 {
+			label = "Status1";
+			gpios = <&gpio5 0 GPIO_ACTIVE_HIGH>;
+			default-state = "keep";
+		};
+
+		status_2 {
+			label = "Status2";
+			gpios = <&gpio5 1 GPIO_ACTIVE_HIGH>;
+			default-state = "keep";
+		};
+	};
+};
+};
+
+#if defined(CONFIG_PICOCOMA7_AUDIO) || defined(CONFIG_PICOCOMA7_MQS)
+&sai1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sai1>;
+	fsl,mclk-out;
+	status = "okay";
+};
+#endif
+
+#if 0
+/* UART_A implemented by UART3 */
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOMA7_UART_B
+/* UART_B implemented by UART2 */
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart2>;
+	fsl,uart-has-rtscts;
+
+	status = "okay";
+};
+#endif
+
+
+#ifdef CONFIG_PICOCOMA7_UART_F
+/* UART_F implemented by UART5 */
+&uart5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart5>;
+	status = "okay";
+};
+#endif
+
+
+#if (CONFIG_PICOCOMA7_LCDIF0 == DISPLAY_LCD)
+&lcdif {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lcdif_dat
+		     &pinctrl_lcdif_ctrl>;
+	display = <&display0>;
+	pattern = <5>;
+	lcd-supply = <&reg_lcd>;
+	status = "okay";
+
+	display0: lcd {
+		bits-per-pixel = <CONFIG_PICOCOMA7_LCD_BPP>;
+		bus-width = <CONFIG_PICOCOMA7_LCD_BUS_WIDTH>;
+
+		display-timings {
+			native-mode = <&timing0>;
+			timing0: CONFIG_PICOCOMA7_LCD_TIMING;
+		};
+	};
+};
+#endif /* CONFIG_PICOCOMA7_LCDIF0 == DISPLAY_LCD */
+
+#ifdef CONFIG_PICOCOMA7_CAN_A
+&flexcan1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_flexcan1>;
+	xceiver-supply = <&reg_can>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOMA7_CAN_B
+&flexcan2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_flexcan2>;
+	xceiver-supply = <&reg_can>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOMA7_USB_HOST
+&usbotg2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usb_otg2>;
+	vbus-supply = <&reg_usb_otg2_vbus>;
+	dr_mode = "host";
+	pwr-active-high;
+	disable-over-current;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOMA7_SPI_B
+&ecspi2 {
+	fsl,spi-num-chipselects = <1>;
+	cs-gpios = <&gpio1 29 0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi2>;
+	status = "okay";
+
+	spidev@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+	};
+};
+#endif
+
+#ifdef CONFIG_PICOCOMA7_SD_B
+&usdhc1 {
+	/* On-board Micro-SD-Card-Slot (without CD) or eMMC (only 4 bit) */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc1>;
+	non-removable;
+	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+	keep-power-in-suspend;
+	status = "okay";
+};
+#endif
+
+/* I2C3 to RTC and SGTL5000 */
+&i2c3 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c3>;
+	status = "okay";
+
+#ifdef CONFIG_PICOCOMA7_AUDIO
+	sgtl5000: sgtl5000@0a {
+		compatible = "fsl,sgtl5000";
+		reg = <0x0a>;
+		mono2both;
+		clocks = <&clks IMX6UL_CLK_SAI1>;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+	};
+#endif
+
+	rtc8565@51 {
+		compatible = "nxp,pcf8565", "nxp,pcf8563";
+		reg = <0x51>;
+		interrupt-parent = <&gpio5>;
+		interrupts = <7 IRQ_TYPE_EDGE_FALLING>;
+	};
+
+};
+
+#ifdef CONFIG_PICOCOMA7_ETH_A
+&fec1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_enet1>;
+	assigned-clocks = <&clks IMX6UL_CLK_ENET_REF>;
+	assigned-clock-rates = <50000000>;
+	phy-mode = "rmii";
+	phy-handle = <&ethphy0>;
+	phy-supply = <&reg_vref_3v3>;
+	fsl,ref-clock-out;
+	status = "okay";
+
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy0: ethernet-phy@0 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <1>;
+		};
+	};
+};
+#endif
+
+/* RAM size for Continues Memory Allocator */
+&cma {
+	size = <CONFIG_PICOCOMA7_CMA_SIZE>;
+};
+
+&busfreq {
+	/* Disable bus frequency scaling, because reducing bus frequency to
+	   24 MHz does not work with all types of DDR3 RAM */
+	disable-scaling;
+};
+
+&cpu0 {
+	arm-supply = <&reg_arm>;
+	soc-supply = <&reg_soc>;
+	dc-supply = <&reg_dvfs>;
+};
+
+
+&clks {
+	/* Set audio clock rate, output on CKO1 */
+	assigned-clocks = <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>,
+			<&clks IMX6UL_CLK_SAI1_SEL>,
+			<&clks IMX6UL_CLK_SAI1>;
+
+	assigned-clock-parents =<0>,
+			<&clks IMX6UL_CLK_PLL4_AUDIO_DIV>,
+			<0>;
+
+#ifdef CONFIG_PICOCOMA7_MQS
+	assigned-clock-rates = <786432000>, <0>, <24576000>;
+#elif defined(CONFIG_PICOCOMA7_AUDIO)
+	assigned-clock-rates = <786432000>, <0>, <12288000>;
+#endif
+};
+
+&pxp {
+	status = "okay";
+};
+
+&dma_apbh {
+	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
+	compatible = "fus,imx6ul-dma-apbh", "fus,imx28-dma-apbh";
+	iram = <&ocram>;
+};
+
+&gpmi {
+	/* Switch to F&S implementation of GPMI NAND driver */
+	compatible = "fus,imx6ul-gpmi-nand", "fus,imx6q-gpmi-nand";
+	pinctrl-names = "default";
+//###	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
+	fus,skipblocks = <2>;
+	fus,chunk1k;
+	fus,ecc_strength = <8>;
+	status = "okay";
+};
+
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog_1>;
+	picocoma7 {
+
+		pinctrl_hog_1: hoggrp-1 {
+				fsl,pins = <
+/*###*/				//MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
+				//MX6UL_PAD_SNVS_TAMPER7__GPIO5_IO07	0x0b0b0
+				/* GPIO1 - GPIO5 */
+				MX6UL_PAD_GPIO1_IO01__GPIO1_IO01  		0x0b0b0
+				MX6UL_PAD_GPIO1_IO02__GPIO1_IO02		0x0b0b0
+				MX6UL_PAD_GPIO1_IO03__GPIO1_IO03		0x0b0b0
+				MX6UL_PAD_GPIO1_IO04__GPIO1_IO04		0x0b0b0
+			>;
+
+};
+
+#ifdef CONFIG_PICOCOMA7_UART_B
+		pinctrl_uart2: uart2grp {
+			fsl,pins = <
+				MX6UL_PAD_UART2_TX_DATA__UART2_DCE_TX	0x1b0b1
+				MX6UL_PAD_UART2_RX_DATA__UART2_DCE_RX	0x1b0b1
+#ifdef CONFIG_PICOCOMA7_UART_B_RTSCTS
+				MX6UL_PAD_UART3_TX_DATA__UART2_DTE_RTS	0x1b0b1
+				MX6UL_PAD_UART3_RX_DATA__UART2_DTE_CTS	0x1b0b1
+#endif
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOMA7_UART_F
+		pinctrl_uart5: uart5grp {
+			fsl,pins = <
+				MX6UL_PAD_UART5_TX_DATA__UART5_DCE_TX	0x1b0b1
+				MX6UL_PAD_UART5_RX_DATA__UART5_DCE_RX	0x1b0b1
+				//MX6UL_PAD_GPIO1_IO09__UART5_DTE_RTS     0x1b0b1
+			>;
+		};
+#endif
+
+#if defined(CONFIG_PICOCOMA7_AUDIO) || defined(CONFIG_PICOCOMA7_MQS)
+		pinctrl_sai1: sai1grp {
+			fsl,pins = <
+				MX6UL_PAD_CSI_DATA01__SAI1_MCLK		0x17088
+				MX6UL_PAD_CSI_DATA04__SAI1_TX_SYNC	0x17088
+				MX6UL_PAD_CSI_DATA05__SAI1_TX_BCLK	0x17088
+				MX6UL_PAD_CSI_DATA06__SAI1_RX_DATA	0x17088
+				MX6UL_PAD_CSI_DATA07__SAI1_TX_DATA	0x17088
+			>;
+		};
+#endif
+
+		pinctrl_i2c3: i2c3grp {
+			fsl,pins = <
+				MX6UL_PAD_UART1_TX_DATA__I2C3_SCL	0x4001b8b0
+				MX6UL_PAD_UART1_RX_DATA__I2C3_SDA	0x4001b8b0
+
+				/* RTC IRQ (unused) */
+				//MX6UL_PAD_SNVS_TAMPER7__GPIO5_IO07	0x4001b0b0
+			>;
+		};
+
+#ifdef CONFIG_PICOCOMA7_SD_B
+		pinctrl_usdhc1: usdhc1grp {
+			fsl,pins = <
+				MX6UL_PAD_SD1_CMD__USDHC1_CMD		0x170b1
+				MX6UL_PAD_SD1_CLK__USDHC1_CLK		0x100b1
+				MX6UL_PAD_SD1_DATA0__USDHC1_DATA0	0x170b1
+				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x170b1
+				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x170b1
+				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x170b1
+			>;
+		};
+#endif
+
+
+#ifdef CONFIG_PICOCOMA7_CAN_A
+		pinctrl_flexcan1: flexcan1grp{
+			fsl,pins = <
+				MX6UL_PAD_UART3_RTS_B__FLEXCAN1_RX	0x1b020
+				MX6UL_PAD_UART3_CTS_B__FLEXCAN1_TX	0x1b020
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOMA7_CAN_B
+		pinctrl_flexcan2: flexcan2grp{
+			fsl,pins = <
+				MX6UL_PAD_UART2_RTS_B__FLEXCAN2_RX	0x1b020
+				MX6UL_PAD_UART2_CTS_B__FLEXCAN2_TX	0x1b020
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOMA7_SPI_B
+		pinctrl_ecspi2: ecspi2grp {
+			fsl,pins = <
+				MX6UL_PAD_CSI_DATA00__ECSPI2_SCLK	0x100b1
+				MX6UL_PAD_UART4_RX_DATA__GPIO1_IO29	0x1b0b0
+				MX6UL_PAD_CSI_DATA02__ECSPI2_MOSI	0x100b1
+				MX6UL_PAD_CSI_DATA03__ECSPI2_MISO	0x100b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOMA7_USB_HOST
+		pinctrl_usb_otg2: usb_otg2grp {
+			fsl,pins = <
+				/* USB_OTG2_PWR, active high */
+//###				MX6UL_PAD_ENET2_TX_DATA1__GPIO2_IO12	0x030b0
+				MX6UL_PAD_UART4_TX_DATA__GPIO1_IO28	0x030b0
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOMA7_ETH_A
+		pinctrl_enet1: enet1grp {
+			fsl,pins = <
+				/* MDIO */
+				MX6UL_PAD_GPIO1_IO07__ENET1_MDC		0x1b0b0
+				MX6UL_PAD_GPIO1_IO06__ENET1_MDIO	0x1b829
+
+				/* FEC1 */
+				MX6UL_PAD_ENET1_RX_EN__ENET1_RX_EN	0x1b0b0
+				MX6UL_PAD_ENET1_RX_ER__ENET1_RX_ER	0x1b0b0
+				MX6UL_PAD_ENET1_RX_DATA1__ENET1_RDATA01	0x1b0b0
+				MX6UL_PAD_ENET1_RX_DATA0__ENET1_RDATA00	0x1b0b0
+				MX6UL_PAD_ENET1_TX_EN__ENET1_TX_EN	0x1b0b0
+				MX6UL_PAD_ENET1_TX_DATA1__ENET1_TDATA01	0x1b0b0
+				MX6UL_PAD_ENET1_TX_DATA0__ENET1_TDATA00	0x1b0b0
+				MX6UL_PAD_ENET1_TX_CLK__ENET1_REF_CLK1	0x4001b0b0
+
+				/* phy reset */
+				MX6UL_PAD_SNVS_TAMPER5__GPIO5_IO05	0x0b0b0
+			>;
+		};
+#endif
+
+		pinctrl_lcdif_dat: lcdifdatgrp {
+			fsl,pins = <
+				MX6UL_PAD_LCD_DATA00__LCDIF_DATA00	0x00079
+				MX6UL_PAD_LCD_DATA01__LCDIF_DATA01	0x00079
+				MX6UL_PAD_LCD_DATA02__LCDIF_DATA02	0x00079
+				MX6UL_PAD_LCD_DATA03__LCDIF_DATA03	0x00079
+				MX6UL_PAD_LCD_DATA04__LCDIF_DATA04	0x00079
+				MX6UL_PAD_LCD_DATA05__LCDIF_DATA05	0x00079
+				MX6UL_PAD_LCD_DATA06__LCDIF_DATA06	0x00079
+				MX6UL_PAD_LCD_DATA07__LCDIF_DATA07	0x00079
+				MX6UL_PAD_LCD_DATA08__LCDIF_DATA08	0x00079
+				MX6UL_PAD_LCD_DATA09__LCDIF_DATA09	0x00079
+				MX6UL_PAD_LCD_DATA10__LCDIF_DATA10	0x00079
+				MX6UL_PAD_LCD_DATA11__LCDIF_DATA11	0x00079
+				MX6UL_PAD_LCD_DATA12__LCDIF_DATA12	0x00079
+				MX6UL_PAD_LCD_DATA13__LCDIF_DATA13	0x00079
+				MX6UL_PAD_LCD_DATA14__LCDIF_DATA14	0x00079
+				MX6UL_PAD_LCD_DATA15__LCDIF_DATA15	0x00079
+				MX6UL_PAD_LCD_DATA16__LCDIF_DATA16	0x00079
+				MX6UL_PAD_LCD_DATA17__LCDIF_DATA17	0x00079
+			>;
+		};
+
+		pinctrl_lcdif_ctrl: lcdifctrlgrp {
+			fsl,pins = <
+				MX6UL_PAD_LCD_CLK__LCDIF_CLK		0x00079
+				MX6UL_PAD_LCD_ENABLE__LCDIF_ENABLE	0x00079
+				MX6UL_PAD_LCD_HSYNC__LCDIF_HSYNC	0x00079
+				MX6UL_PAD_LCD_VSYNC__LCDIF_VSYNC	0x00079
+			>;
+		};
+
+		pinctrl_status_leds: ledgrp {
+			fsl,pins = <
+				MX6UL_PAD_SNVS_TAMPER0__GPIO5_IO00	0x030b0
+				MX6UL_PAD_SNVS_TAMPER1__GPIO5_IO01	0x030b0
+			>;
+		};
+	};
+};
