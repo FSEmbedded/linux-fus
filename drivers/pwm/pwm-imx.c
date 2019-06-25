@@ -210,13 +210,20 @@ static int imx_pwm_config(struct pwm_chip *chip,
 	struct imx_chip *imx = to_imx_chip(chip);
 	int ret;
 
-	ret = clk_prepare_enable(imx->clk_ipg);
+	ret = clk_prepare_enable(imx->clk_per);
 	if (ret)
 		return ret;
+
+	ret = clk_prepare_enable(imx->clk_ipg);
+	if (ret) {
+		clk_disable_unprepare(imx->clk_per);
+		return ret;
+	}
 
 	ret = imx->config(chip, pwm, duty_ns, period_ns);
 
 	clk_disable_unprepare(imx->clk_ipg);
+	clk_disable_unprepare(imx->clk_per);
 
 	return ret;
 }
@@ -230,6 +237,12 @@ static int imx_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm)
 	if (ret)
 		return ret;
 
+	ret = clk_prepare_enable(imx->clk_ipg);
+	if (ret) {
+		clk_disable_unprepare(imx->clk_per);
+		return ret;
+	}
+
 	imx->set_enable(chip, true);
 
 	return 0;
@@ -241,6 +254,7 @@ static void imx_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
 
 	imx->set_enable(chip, false);
 
+	clk_disable_unprepare(imx->clk_ipg);
 	clk_disable_unprepare(imx->clk_per);
 }
 

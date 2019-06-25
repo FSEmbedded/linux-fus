@@ -57,7 +57,8 @@ static struct tracer_flags blk_tracer_flags = {
 };
 
 /* Global reference count of probes */
-static atomic_t blk_probes_ref = ATOMIC_INIT(0);
+static DEFINE_MUTEX(blk_probe_mutex);
+static int blk_probes_ref;
 
 static void blk_register_tracepoints(void);
 static void blk_unregister_tracepoints(void);
@@ -306,11 +307,26 @@ static void blk_trace_free(struct blk_trace *bt)
 	kfree(bt);
 }
 
+static void get_probe_ref(void)
+{
+	mutex_lock(&blk_probe_mutex);
+	if (++blk_probes_ref == 1)
+		blk_register_tracepoints();
+	mutex_unlock(&blk_probe_mutex);
+}
+
+static void put_probe_ref(void)
+{
+	mutex_lock(&blk_probe_mutex);
+	if (!--blk_probes_ref)
+		blk_unregister_tracepoints();
+	mutex_unlock(&blk_probe_mutex);
+}
+
 static void blk_trace_cleanup(struct blk_trace *bt)
 {
 	blk_trace_free(bt);
-	if (atomic_dec_and_test(&blk_probes_ref))
-		blk_unregister_tracepoints();
+	put_probe_ref();
 }
 
 int blk_trace_remove(struct request_queue *q)
@@ -522,8 +538,7 @@ int do_blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 	if (cmpxchg(&q->blk_trace, NULL, bt))
 		goto err;
 
-	if (atomic_inc_return(&blk_probes_ref) == 1)
-		blk_register_tracepoints();
+	get_probe_ref();
 
 	return 0;
 err:
@@ -1469,9 +1484,7 @@ static int blk_trace_remove_queue(struct request_queue *q)
 	if (bt == NULL)
 		return -EINVAL;
 
-	if (atomic_dec_and_test(&blk_probes_ref))
-		blk_unregister_tracepoints();
-
+	put_probe_ref();
 	blk_trace_free(bt);
 	return 0;
 }
@@ -1502,8 +1515,7 @@ static int blk_trace_setup_queue(struct request_queue *q,
 	if (cmpxchg(&q->blk_trace, NULL, bt))
 		goto free_bt;
 
-	if (atomic_inc_return(&blk_probes_ref) == 1)
-		blk_register_tracepoints();
+	get_probe_ref();
 	return 0;
 
 free_bt:
@@ -1777,14 +1789,14 @@ void blk_dump_cmd(char *buf, struct request *rq)
 	}
 }
 
-void blk_fill_rwbs(char *rwbs, int op, u32 rw, int bytes)
+void blk_fill_rwbs(char *rwbs, unsigned int op, int bytes)
 {
 	int i = 0;
 
-	if (rw & REQ_PREFLUSH)
+	if (op & REQ_PREFLUSH)
 		rwbs[i++] = 'F';
 
-	switch (op) {
+	switch (op & REQ_OP_MASK) {
 	case REQ_OP_WRITE:
 	case REQ_OP_WRITE_SAME:
 		rwbs[i++] = 'W';
@@ -1806,13 +1818,13 @@ void blk_fill_rwbs(char *rwbs, int op, u32 rw, int bytes)
 		rwbs[i++] = 'N';
 	}
 
-	if (rw & REQ_FUA)
+	if (op & REQ_FUA)
 		rwbs[i++] = 'F';
-	if (rw & REQ_RAHEAD)
+	if (op & REQ_RAHEAD)
 		rwbs[i++] = 'A';
-	if (rw & REQ_SYNC)
+	if (op & REQ_SYNC)
 		rwbs[i++] = 'S';
-	if (rw & REQ_META)
+	if (op & REQ_META)
 		rwbs[i++] = 'M';
 
 	rwbs[i] = '\0';

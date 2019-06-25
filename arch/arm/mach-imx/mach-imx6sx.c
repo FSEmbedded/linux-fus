@@ -29,8 +29,6 @@ static void mmd_write_reg(struct phy_device *dev, int device, int reg, int val)
 	phy_write(dev, 0x0e, val);
 }
 
-#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
-
 static int ksz9031rn_phy_fixup(struct phy_device *dev)
 {
 	/*
@@ -96,16 +94,31 @@ static void __init imx6sx_enet_phy_init(void)
 static void __init imx6sx_enet_clk_sel(void)
 {
 	struct regmap *gpr;
+	struct device_node *np;
 
 	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6sx-iomuxc-gpr");
-	if (!IS_ERR(gpr)) {
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				   IMX6SX_GPR1_FEC_CLOCK_MUX_SEL_MASK, 0);
-		regmap_update_bits(gpr, IOMUXC_GPR1,
-				   IMX6SX_GPR1_FEC_CLOCK_PAD_DIR_MASK, 0);
-	} else {
+	if (IS_ERR(gpr)) {
 		pr_err("failed to find fsl,imx6sx-iomux-gpr regmap\n");
+		return;
 	}
+
+	np = of_find_node_by_path("/soc/aips-bus@02100000/ethernet@02188000");
+	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   IMX6SX_GPR1_ENET1_CLOCK_MASK,
+				   IMX6SX_GPR1_ENET1_CLOCK_MASK);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   IMX6SX_GPR1_ENET1_CLOCK_MASK, 0);
+
+	np = of_find_node_by_path("/soc/aips-bus@02100000/ethernet@021b4000");
+	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   IMX6SX_GPR1_ENET2_CLOCK_MASK,
+				   IMX6SX_GPR1_ENET2_CLOCK_MASK);
+	else
+		regmap_update_bits(gpr, IOMUXC_GPR1,
+				   IMX6SX_GPR1_ENET2_CLOCK_MASK, 0);
 }
 
 static inline void imx6sx_enet_init(void)

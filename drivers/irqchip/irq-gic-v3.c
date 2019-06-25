@@ -62,6 +62,8 @@ struct gic_chip_data {
 static struct gic_chip_data gic_data __read_mostly;
 static struct static_key supports_deactivate = STATIC_KEY_INIT_TRUE;
 
+static void __iomem *iomuxc_gpr_base;
+
 static struct gic_kvm_info gic_v3_kvm_info;
 
 #define gic_data_rdist()		(this_cpu_ptr(gic_data.rdists.rdist))
@@ -608,6 +610,7 @@ static void gic_send_sgi(u64 cluster_id, u16 tlist, unsigned int irq)
 static void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 {
 	int cpu;
+	u32 val;
 
 	if (WARN_ON(irq >= 16))
 		return;
@@ -616,7 +619,7 @@ static void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 	 * Ensure that stores to Normal memory are visible to the
 	 * other CPUs before issuing the IPI.
 	 */
-	smp_wmb();
+	wmb();
 
 	for_each_cpu(cpu, mask) {
 		unsigned long cluster_id = cpu_logical_map(cpu) & ~0xffUL;
@@ -624,8 +627,18 @@ static void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 
 		tlist = gic_compute_target_list(&cpu, mask, cluster_id);
 		gic_send_sgi(cluster_id, tlist, irq);
-	}
 
+		if (iomuxc_gpr_base) {
+			/* pending the IRQ32 to wakeup the core */
+			val = readl_relaxed(iomuxc_gpr_base + 0x4);
+			val |= (1 << 12);
+			writel_relaxed(val, iomuxc_gpr_base + 0x4);
+			/* delay for a while to make sure cores wakeup done */
+			udelay(50);
+			val &= ~(1 << 12);
+			writel_relaxed(val, iomuxc_gpr_base + 0x4);
+		}
+	}
 	/* Force the above writes to ICC_SGI1R_EL1 to be executed */
 	isb();
 }
@@ -645,6 +658,9 @@ static int gic_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
 	void __iomem *reg;
 	int enabled;
 	u64 val;
+
+	if (cpu >= nr_cpu_ids)
+		return -EINVAL;
 
 	if (gic_irq_in_rdist(d))
 		return -EINVAL;
@@ -1019,18 +1035,18 @@ static void __init gic_populate_ppi_partitions(struct device_node *gic_node)
 	int nr_parts;
 	struct partition_affinity *parts;
 
-	parts_node = of_find_node_by_name(gic_node, "ppi-partitions");
+	parts_node = of_get_child_by_name(gic_node, "ppi-partitions");
 	if (!parts_node)
 		return;
 
 	nr_parts = of_get_child_count(parts_node);
 
 	if (!nr_parts)
-		return;
+		goto out_put_node;
 
 	parts = kzalloc(sizeof(*parts) * nr_parts, GFP_KERNEL);
 	if (WARN_ON(!parts))
-		return;
+		goto out_put_node;
 
 	for_each_child_of_node(parts_node, child_part) {
 		struct partition_affinity *part;
@@ -1097,6 +1113,9 @@ static void __init gic_populate_ppi_partitions(struct device_node *gic_node)
 
 		gic_data.ppi_descs[i] = desc;
 	}
+
+out_put_node:
+	of_node_put(parts_node);
 }
 
 static void __init gic_of_setup_kvm_info(struct device_node *node)
@@ -1167,6 +1186,12 @@ static int __init gic_of_init(struct device_node *node, struct device_node *pare
 			goto out_unmap_rdist;
 		}
 		rdist_regs[i].phys_base = res.start;
+	}
+
+	if (of_machine_is_compatible("fsl,imx8mq")) {
+		/* sw workaround for IPI can't wakeup CORE
+		   ERRATA(ERR011171) on i.MX8MQ */
+		iomuxc_gpr_base = of_iomap(node, 2);
 	}
 
 	if (of_property_read_u64(node, "redistributor-stride", &redist_stride))

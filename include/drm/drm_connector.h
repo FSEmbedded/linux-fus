@@ -86,6 +86,90 @@ enum subpixel_order {
 	SubPixelVerticalRGB,
 	SubPixelVerticalBGR,
 	SubPixelNone,
+
+};
+
+/**
+ * struct drm_scrambling: sink's scrambling support.
+ */
+struct drm_scrambling {
+	/**
+	 * @supported: scrambling supported for rates > 340 Mhz.
+	 */
+	bool supported;
+	/**
+	 * @low_rates: scrambling supported for rates <= 340 Mhz.
+	 */
+	bool low_rates;
+};
+
+/*
+ * struct drm_scdc - Information about scdc capabilities of a HDMI 2.0 sink
+ *
+ * Provides SCDC register support and capabilities related information on a
+ * HDMI 2.0 sink. In case of a HDMI 1.4 sink, all parameter must be 0.
+ */
+struct drm_scdc {
+	/**
+	 * @supported: status control & data channel present.
+	 */
+	bool supported;
+	/**
+	 * @read_request: sink is capable of generating scdc read request.
+	 */
+	bool read_request;
+	/**
+	 * @scrambling: sink's scrambling capabilities
+	 */
+	struct drm_scrambling scrambling;
+};
+
+
+/**
+ * struct drm_hdmi_info - runtime information about the connected HDMI sink
+ *
+ * Describes if a given display supports advanced HDMI 2.0 features.
+ * This information is available in CEA-861-F extension blocks (like HF-VSDB).
+ */
+struct drm_hdmi_info {
+	struct drm_scdc scdc;
+	/* Colorimerty info from EDID */
+	u32 colorimetry;
+	/* Panel HDR capabilities */
+	struct hdr_static_metadata hdr_panel_metadata;
+
+	/**
+	 * @y420_vdb_modes: bitmap of modes which can support ycbcr420
+	 * output only (not normal RGB/YCBCR444/422 outputs). There are total
+	 * 107 VICs defined by CEA-861-F spec, so the size is 128 bits to map
+	 * upto 128 VICs;
+	 */
+	unsigned long y420_vdb_modes[BITS_TO_LONGS(128)];
+
+	/**
+	 * @y420_cmdb_modes: bitmap of modes which can support ycbcr420
+	 * output also, along with normal HDMI outputs. There are total 107
+	 * VICs defined by CEA-861-F spec, so the size is 128 bits to map upto
+	 * 128 VICs;
+	 */
+	unsigned long y420_cmdb_modes[BITS_TO_LONGS(128)];
+
+	/** @y420_cmdb_map: bitmap of SVD index, to extraxt vcb modes */
+	u64 y420_cmdb_map;
+
+	/** @y420_dc_modes: bitmap of deep color support index */
+	u8 y420_dc_modes;
+};
+
+/**
+ * enum drm_link_status - connector's link_status property value
+ *
+ * This enum is used as the connector's link status property value.
+ * It is set to the values defined in uapi.
+ */
+enum drm_link_status {
+	DRM_LINK_STATUS_GOOD = DRM_MODE_LINK_STATUS_GOOD,
+	DRM_LINK_STATUS_BAD = DRM_MODE_LINK_STATUS_BAD,
 };
 
 /**
@@ -133,6 +217,7 @@ struct drm_display_info {
 #define DRM_COLOR_FORMAT_RGB444		(1<<0)
 #define DRM_COLOR_FORMAT_YCRCB444	(1<<1)
 #define DRM_COLOR_FORMAT_YCRCB422	(1<<2)
+#define DRM_COLOR_FORMAT_YCRCB420	(1<<3)
 
 	/**
 	 * @color_formats: HDMI Color formats, selects between RGB and YCrCb
@@ -187,6 +272,16 @@ struct drm_display_info {
 	 * @cea_rev: CEA revision of the HDMI sink.
 	 */
 	u8 cea_rev;
+
+	/**
+	 * @non_desktop: Non desktop display (HMD)
+	 */
+	bool non_desktop;
+
+	/**
+	 * @hdmi: advance features of a HDMI sink.
+	 */
+	struct drm_hdmi_info hdmi;
 };
 
 int drm_display_info_set_bus_formats(struct drm_display_info *info,
@@ -212,7 +307,20 @@ struct drm_connector_state {
 
 	struct drm_encoder *best_encoder;
 
+	/**
+	 * @link_status: Connector link_status to keep track of whether link is
+	 * GOOD or BAD to notify userspace if retraining is necessary.
+	 */
+	enum drm_link_status link_status;
+
 	struct drm_atomic_state *state;
+
+	/**
+	 * @metadata_blob_ptr:
+	 * DRM blob property for HDR metadata
+	 */
+	struct drm_property_blob *hdr_source_metadata_blob_ptr;
+	bool hdr_metadata_changed : 1;
 };
 
 /**
@@ -345,6 +453,8 @@ struct drm_connector_funcs {
 	 * core drm connector interfaces. Everything added from this callback
 	 * should be unregistered in the early_unregister callback.
 	 *
+	 * This is called while holding drm_connector->mutex.
+	 *
 	 * Returns:
 	 *
 	 * 0 on success, or a negative error code on failure.
@@ -359,6 +469,8 @@ struct drm_connector_funcs {
 	 * late_register(). It is called from drm_connector_unregister(),
 	 * early in the driver unload sequence to disable userspace access
 	 * before data structures are torndown.
+	 *
+	 * This is called while holding drm_connector->mutex.
 	 */
 	void (*early_unregister)(struct drm_connector *connector);
 
@@ -511,7 +623,6 @@ struct drm_cmdline_mode {
  * @interlace_allowed: can this connector handle interlaced modes?
  * @doublescan_allowed: can this connector handle doublescan?
  * @stereo_allowed: can this connector handle stereo modes?
- * @registered: is this connector exposed (registered) with userspace?
  * @modes: modes available on this connector (from fill_modes() + user)
  * @status: one of the drm_connector_status enums (connected, not, or unknown)
  * @probed_modes: list of modes derived directly from the display
@@ -560,6 +671,13 @@ struct drm_connector {
 	char *name;
 
 	/**
+	 * @mutex: Lock for general connector state, but currently only protects
+	 * @registered. Most of the connector state is still protected by the
+	 * mutex in &drm_mode_config.
+	 */
+	struct mutex mutex;
+
+	/**
 	 * @index: Compacted connector index, which matches the position inside
 	 * the mode_config.list for drivers not supporting hot-add/removing. Can
 	 * be used as an array index. It is invariant over the lifetime of the
@@ -572,6 +690,19 @@ struct drm_connector {
 	bool interlace_allowed;
 	bool doublescan_allowed;
 	bool stereo_allowed;
+
+	/**
+	 * @ycbcr_420_allowed : This bool indicates if this connector is
+	 * capable of handling YCBCR 420 output. While parsing the EDID
+	 * blocks, its very helpful to know, if the source is capable of
+	 * handling YCBCR 420 outputs.
+	 */
+	bool ycbcr_420_allowed;
+
+	/**
+	 * @registered: Is this connector exposed (registered) with userspace?
+	 * Protected by @mutex.
+	 */
 	bool registered;
 	struct list_head modes; /* list of modes on this connector */
 
@@ -682,6 +813,9 @@ struct drm_connector {
 	uint8_t num_h_tile, num_v_tile;
 	uint8_t tile_h_loc, tile_v_loc;
 	uint16_t tile_h_size, tile_v_size;
+
+	/* HDR metdata */
+	struct hdr_static_metadata *hdr_source_metadata;
 };
 
 #define obj_to_connector(x) container_of(x, struct drm_connector, base)
@@ -710,10 +844,11 @@ static inline unsigned drm_connector_index(struct drm_connector *connector)
  * add takes a reference to it.
  */
 static inline struct drm_connector *drm_connector_lookup(struct drm_device *dev,
-		uint32_t id)
+							 struct drm_file *file_priv,
+							 uint32_t id)
 {
 	struct drm_mode_object *mo;
-	mo = drm_mode_object_find(dev, id, DRM_MODE_OBJECT_CONNECTOR);
+	mo = drm_mode_object_find(dev, file_priv, id, DRM_MODE_OBJECT_CONNECTOR);
 	return mo ? obj_to_connector(mo) : NULL;
 }
 
@@ -760,6 +895,8 @@ int drm_mode_connector_set_path_property(struct drm_connector *connector,
 int drm_mode_connector_set_tile_property(struct drm_connector *connector);
 int drm_mode_connector_update_edid_property(struct drm_connector *connector,
 					    const struct edid *edid);
+void drm_mode_connector_set_link_status_property(struct drm_connector *connector,
+						 uint64_t link_status);
 
 /**
  * drm_for_each_connector - iterate over all connectors

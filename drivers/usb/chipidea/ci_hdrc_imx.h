@@ -48,6 +48,7 @@ struct imx_usbmisc_data {
 	unsigned int oc_active_low:1;	/* over current detect is active low */
 	unsigned int disable_oc:1; /* over current detect disabled */
 	unsigned int evdo:1; /* set external vbus divider option */
+	unsigned int hsic:1; /* HSIC controlller */
 	/*
 	 * Specifies the delay between powering up the xtal 24MHz clock
 	 * and release the clock to the digital logic inside the analog block
