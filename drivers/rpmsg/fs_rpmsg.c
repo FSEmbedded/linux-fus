@@ -68,7 +68,7 @@ static struct rpmsg_device_id imx_rpmsg_id_table[] = {
 MODULE_DEVICE_TABLE(rpmsg, imx_rpmsg_id_table);
 
 /* RPMsg part */
-static void imx_rpmsg_callback(struct rpmsg_channel *rpdev,
+static int imx_rpmsg_callback(struct rpmsg_device *rpdev,
                 void *data,
                 int len,
                 void *priv,
@@ -93,13 +93,14 @@ static void imx_rpmsg_callback(struct rpmsg_channel *rpdev,
        		rbuff.rd_ptr = rbuff.msg_buf;
 	}
 	spin_unlock(&rbuff.lock);
+	return 0;
 }
 
 /* Set sysfs attributes */
 static struct kobj_attribute kobj_attribute =__ATTR(buffer, 0400,
 						    imx_rpmsg_show, NULL);
 
-static int imx_rpmsg_probe(struct rpmsg_channel *rpdev)
+static int imx_rpmsg_probe(struct rpmsg_device *rpdev)
 {
         int err;
    	/* Create sysfs file */
@@ -107,19 +108,22 @@ static int imx_rpmsg_probe(struct rpmsg_channel *rpdev)
                 dev_err(&rpdev->dev, "Cannot create group!\n");
                 return -ENOMEM;
         }
+		dev_info(&rpdev->dev, "new channel: 0x%x -> 0x%x!\n",
+				rpdev->src, rpdev->dst);
 
-        /* Inform Cortex-M4 about our existence; this will kick off the demo */
-        dev_info(&rpdev->dev, "New channel: 0x%x -> 0x%x!\n",
-                        rpdev->src, rpdev->dst);
-        err = rpmsg_send(rpdev, MSG, strlen(MSG));
-        if (err) {
-                dev_err(&rpdev->dev, "rpmsg_send failed: %d\n", err);
-                return err;
-        }
+		/*
+		 * send a message to our remote processor, and tell remote
+		 * processor about this channel
+		 */
+		err = rpmsg_send(rpdev->ept, MSG, strlen(MSG));
+		if (err) {
+			dev_err(&rpdev->dev, "rpmsg_send failed: %d\n", err);
+			return err;
+		}
         return 0;
 }
 
-static void imx_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void imx_rpmsg_remove(struct rpmsg_device *rpdev)
 {
 	sysfs_remove_file(&rpdev->dev.kobj,&kobj_attribute.attr);
 }

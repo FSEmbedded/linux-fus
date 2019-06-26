@@ -683,6 +683,32 @@
 	disable-scaling;
 };
 
+&clks {
+	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
+			  <&clks IMX6QDL_CLK_CKO1_SEL>,
+			  <&clks IMX6QDL_CLK_CKO1_PODF>,
+			  <&clks IMX6QDL_CLK_CKO>;
+
+	assigned-clock-parents = <0>,
+				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
+				 <0>,
+				 <&clks IMX6QDL_CLK_CKO1>;
+
+	/*
+	 * The Audio-PLL (PLL4) must have at least 650MHz. The PLL post divider
+	 * can divide by 1, 2 and 4, which means the lowest possible frequency
+	 * is 162.5 MHz. The largest PODF divider for CKO1 is 8, so we do not
+	 * get below 20 MHz. Use 24.576 MHz as this is a multiple of the most
+	 * commonly used bit rates.
+	 *
+	 * Remark: Solo and DualLite have an additional divider that also can
+	 * divide by 1, 2 and 4. So here we could go down to 12.288 MHz, but
+	 * better keep the code common for all boards.
+	 */
+	//assigned-clock-rates = <98304000>, <98304000>, <12288000>;
+	assigned-clock-rates = <196608000>, <196608000>, <24576000>;
+};
+
 #ifdef CONFIG_PICOMODA9_SPI_A
 /* SPI_A (2x CS), J1 pins 1-4 */
 &ecspi1 {
@@ -773,6 +799,7 @@
 	fsl,phy_reg_vlev = <0x0294>;
 	fsl,phy_reg_cksymtx = <0x800d>;
 	hpd-active-low;
+	force-dvi-mode;
 	status = "okay";
 };
 #endif
@@ -789,7 +816,7 @@
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
 		mono2both;
-		/* derived from IMX6QDL_CLK_CKO2 */
+		lrclk-strength = <3>;
 		clocks = <&clks IMX6QDL_CLK_CKO>;
 		VDDA-supply = <&reg_sgtl5000_vdda>;
 		VDDIO-supply = <&reg_sgtl5000_vddio>;

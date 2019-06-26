@@ -159,6 +159,7 @@ struct mxc_hdmi {
 	bool fb_reg;
 	bool cable_plugin;
 	bool hpd_active_low;
+	bool force_dvi;
 	u8  blank;
 	bool dft_mode_set;
 	char *dft_mode_str;
@@ -2185,7 +2186,7 @@ static void mxc_hdmi_setup(struct mxc_hdmi *hdmi, unsigned long event)
 	hdmi_disable_overflow_interrupts();
 
 	dev_dbg(&hdmi->pdev->dev, "CEA mode used vic=%d\n", hdmi->vic);
-	if (hdmi->edid_cfg.hdmi_cap)
+	if (hdmi->edid_cfg.hdmi_cap && !hdmi->force_dvi)
 		hdmi->hdmi_data.video_mode.mDVI = false;
 	else {
 		dev_dbg(&hdmi->pdev->dev, "CEA mode vic=%d work in DVI\n", hdmi->vic);
@@ -2460,6 +2461,9 @@ static void hdmi_get_of_property(struct mxc_hdmi *hdmi)
 	/* Hot plug detect (HPD) may be active low */
 	hdmi->hpd_active_low = of_property_read_bool(np, "hpd-active-low");
 
+	/* User may want to force the video mode to DVI instead of HDMI */
+	hdmi->force_dvi = of_property_read_bool(np, "force-dvi-mode");
+
 	/* Specific phy config */
 	hdmi->phy_config.reg_cksymtx = phy_reg_cksymtx;
 	hdmi->phy_config.reg_vlev = phy_reg_vlev;
@@ -2499,7 +2503,8 @@ static int mxc_hdmi_disp_init(struct mxc_dispdrv_handle *disp,
 	if (ret < 0)
 		return ret;
 
-	setting->if_fmt = IPU_PIX_FMT_RGB24;
+	if (!setting->if_fmt)
+		setting->if_fmt = IPU_PIX_FMT_RGB24;
 
 	hdmi->dft_mode_str = setting->dft_mode_str;
 	hdmi->default_bpp = setting->default_bpp;

@@ -588,6 +588,18 @@
 };
 #endif
 
+#ifndef CONFIG_ARMSTONEA9_PARALLEL_CAMERA
+/*
+ * CKO is shared for Audio and Camera. So if camera is in use, we output
+ * 24 MHz on CKO and use audio codec PLL to create bit clock. If camera is not
+ * in use, we can output 12.288 MHz which is better suited for audio bit clock
+ * because it avoids the need for the codec PLL in most cases.
+ *
+ * Remark:
+ * The version below internally uses CKO2 to create signal CKO. If we ever
+ * need CKO2 elsewhere, there is a different way with just CKO1 but with a
+ * restriction to 24.576 MHz on Dual/Quad. See netdcua9qdl.dtsi/efusa9qdl.dtsi.
+ */
 &clks {
 	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 			  <&clks IMX6QDL_CLK_SSI1_SEL>,
@@ -603,6 +615,7 @@
 //###	assigned-clock-rates = <786432000>, <0>, <24576000>;
 	assigned-clock-rates = <786432000>, <0>, <12288000>;
 };
+#endif
 
 #ifdef CONFIG_ARMSTONEA9_SPI_A
 /* SPI_A (2x CS) */
@@ -680,6 +693,7 @@
 &hdmi_video {
 	fsl,phy_reg_vlev = <0x0294>;
 	fsl,phy_reg_cksymtx = <0x800d>;
+	force-dvi-mode;
 	status = "okay";
 };
 #endif
@@ -981,15 +995,16 @@
 #ifdef CONFIG_ARMSTONEA9_SGTL5000_AUDIO
 /* I2C_C (Bitbanging): RTC (PCA8565), SGTL5000 (SKIT) */
 &i2c_gpio {
-		sgtl5000: sgtl5000@0a {
-			compatible = "fsl,sgtl5000";
-			reg = <0x0a>;
-			mono2both;
-			clocks = <&clks IMX6QDL_CLK_CKO>;
-			VDDA-supply = <&reg_sgtl5000_vdda>;
-			VDDIO-supply = <&reg_sgtl5000_vddio>;
-			VDDD-supply = <&reg_sgtl5000_vddd>;
-		};
+	sgtl5000: sgtl5000@0a {
+		compatible = "fsl,sgtl5000";
+		reg = <0x0a>;
+		mono2both;
+		lrclk-strength = <3>;
+		clocks = <&clks IMX6QDL_CLK_CKO>;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+	};
 };
 #endif /* CONFIG_ARMSTONEA9_SGTL5000_AUDIO */
 
@@ -1243,7 +1258,7 @@
 };
 #endif /* CONFIG_ARMSTONEA9_LVDS0 || CONFIG_ARMSTONEA9_LVDS1 */
 
-#if 0 // not tested
+#ifdef CONFIG_ARMSTONEA9_PCIE
 &pcie {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcie>;
@@ -1590,6 +1605,7 @@
 		};
 #endif /* CONFIG_ARMSTONEA9_SD_A */
 
+#ifdef CONFIG_ARMSTONEA9_PCIE
 		pinctrl_pcie: pciegrp {
 			fsl,pins = <
 				/* PCIe-DIS */
@@ -1600,6 +1616,7 @@
 				MX6QDL_PAD_NANDF_CS3__GPIO6_IO16	0x1b0b0
 			>;
 		};
+#endif/* CONFIG_ARMSTONEA9_PCIE */
 
 		pinctrl_status_leds: ledgrp {
 			fsl,pins = <

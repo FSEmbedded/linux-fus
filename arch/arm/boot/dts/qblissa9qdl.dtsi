@@ -448,7 +448,13 @@
 	assigned-clock-parents = <0>,
 				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>;
 
-	assigned-clock-rates = <98304000>, <98304000>, <12288000>;
+	/*
+	 * The Audio-PLL (PLL4) must have at least 650MHz. The PLL post divider
+	 * can divide by 1, 2 and 4, which means the lowest possible frequency
+	 * is 162.5 MHz. Use 196.608 MHz, which is a multiple of 24.576 MHz.
+	 * This is in turn a multiple of the commonly used audio bit rates.
+	 */
+	assigned-clock-rates = <196608000>, <196608000>, <24576000>;
 };
 
 #ifdef CONFIG_QBLISSA9_SPI_FLASH
@@ -547,6 +553,7 @@
 	fsl,phy_reg_vlev = <0x0294>;
 	fsl,phy_reg_cksymtx = <0x800d>;
 	hpd-active-low;
+	force-dvi-mode;
 	status = "okay";
 };
 #endif
@@ -979,13 +986,17 @@
 };
 #endif /* CONFIG_QBLISSA9_SD_A */
 
+#ifdef CONFIG_QBLISSA9_PCIE
 &pcie {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcie>;
-	//power-on-gpio = <&gpio6 16 GPIO_ACTIVE_LOW>;
-	reset-gpio = <&gpio4 31 GPIO_ACTIVE_HIGH>;
+#if (CONFIG_QBLISSA9_BOARD_REVISION >= 120)
+	power-on-gpio = <&gpio1 8 GPIO_ACTIVE_LOW>;
+#endif
+	reset-gpio = <&gpio4 31 GPIO_ACTIVE_LOW>;
 	status = "okay";
 };
+#endif
 
 #ifdef CONFIG_QBLISSA9_HDMI
 &hdmi_core {
@@ -1468,13 +1479,17 @@
 		};
 #endif
 
+#ifdef CONFIG_QBLISSA9_PCIE
 		pinctrl_pcie: pciegrp {
 			fsl,pins = <
+#if (CONFIG_QBLISSA9_BOARD_REVISION >= 120)
 				/* PCIE_WAKE */
-				MX6QDL_PAD_GPIO_8__GPIO1_IO08		0x17000
+				MX6QDL_PAD_GPIO_8__GPIO1_IO08		0x1b0b0
+#endif
 				/* PCIE_RST: see above in Hog */
 			>;
 		};
+#endif
 
 		pinctrl_status_leds: ledgrp {
 			fsl,pins = <

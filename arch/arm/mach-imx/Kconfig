@@ -575,6 +575,7 @@ config SOC_IMX7
 	select ARM_GIC
 	select HAVE_IMX_MU
 	select HAVE_IMX_RPMSG
+	select HAVE_IMX_SRC
 	select RPMSG
 
 config SOC_IMX7D
@@ -586,7 +587,6 @@ config SOC_IMX7D
 	select HAVE_IMX_ANATOP
 	select HAVE_IMX_MMDC
 	select HAVE_IMX_DDRC
-	select HAVE_IMX_SRC
 	select KEYBOARD_SNVS_PWRKEY
 	select HAVE_IMX_GPCV2
 	select ARM_ERRATA_814220

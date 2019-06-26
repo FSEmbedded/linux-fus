@@ -8,6 +8,7 @@ obj-$(CONFIG_FB_MXC_LDB) += ldb.o
 obj-$(CONFIG_FB_MXC_HDMI)			+= mxc_hdmi.o
 obj-$(CONFIG_FB_MXC_EDID)			+= mxc_edid.o
 obj-$(CONFIG_FB_MXC_ADV7535)			+= adv7535.o
+obj-$(CONFIG_FB_MXC_TC358762)			+= tc358762.o
 obj-$(CONFIG_FB_MXC_BT656) += mxc_bt656if.o
 obj-$(CONFIG_FB_MXC_DISP_FRAMEWORK)		+= mxc_dispdrv.o
 obj-$(CONFIG_FB_MXC_SYNC_PANEL)			+= mxc_lcdif.o mxc_ipuv3_fb.o

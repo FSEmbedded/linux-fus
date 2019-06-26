@@ -29,6 +29,8 @@
 		serial2 = &lpuart6;
 		serial3 = &lpuart7;
 		usbphy0 = &usbphy1;
+		spi0 = &lpspi2;
+		spi1 = &lpspi3;
 	};
 
 	cpus {

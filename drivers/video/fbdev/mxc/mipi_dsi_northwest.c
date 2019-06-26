@@ -44,6 +44,8 @@
 #include <video/mipi_display.h>
 #include <video/mxc_edid.h>
 #include <linux/mfd/syscon.h>
+#include <video/of_display_timing.h>
+#include <video/videomode.h>
 
 #include "mipi_dsi.h"
 
@@ -1228,6 +1230,10 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct mipi_dsi_info *mipi_dsi;
 	struct device_node *endpoint = NULL, *remote;
+	struct device_node *display_np;
+	struct display_timings *timings = NULL;
+	struct videomode vm;
+	struct fb_videomode fb_vm;
 	struct resource *res;
 	const char *lcd_panel;
 	int ret = 0;
@@ -1315,20 +1321,45 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 		if (!remote)
 			return -EINVAL;
 
-		ret = of_property_read_u32(remote, "video-mode", &vmode_index);
-		if ((ret < 0) || (vmode_index >= ARRAY_SIZE(mxc_cea_mode)))
-			return -EINVAL;
-		mipi_dsi->vmode_index = vmode_index;
+		display_np = of_parse_phandle(remote, "display", 0);
+		if (display_np) {
+			timings = of_get_display_timings(display_np);
+			if (!timings) {
+				dev_err(&pdev->dev, "failed to get display timings\n");
+				ret = -ENOENT;
+				goto put_display_node;
+			}
+			ret = videomode_from_timings(timings, &vm, 0);
+			if (ret < 0)
+				goto put_display_node;
+			ret = fb_videomode_from_videomode(&vm, &fb_vm);
+			if (ret < 0)
+				goto put_display_node;
 
-		mipi_dsi->mode = devm_kzalloc(&pdev->dev,
-					      sizeof(struct fb_videomode),
-					      GFP_KERNEL);
-		if (!mipi_dsi->mode)
-			return -ENOMEM;
+			mipi_dsi->mode = devm_kzalloc(&pdev->dev,
+						sizeof(struct fb_videomode),
+						GFP_KERNEL);
+			if (!mipi_dsi->mode) {
+				of_node_put(display_np);
+				return -ENOMEM;
+			}
+			memcpy(mipi_dsi->mode, &fb_vm, sizeof(struct fb_videomode));
+			of_node_put(display_np);
+		} else {
+			ret = of_property_read_u32(remote, "video-mode", &vmode_index);
+			if ((ret < 0) || (vmode_index >= ARRAY_SIZE(mxc_cea_mode)))
+				return -EINVAL;
+			mipi_dsi->vmode_index = vmode_index;
 
-		memcpy(mipi_dsi->mode, &mxc_cea_mode[vmode_index],
-		       sizeof(struct fb_videomode));
+			mipi_dsi->mode = devm_kzalloc(&pdev->dev,
+						sizeof(struct fb_videomode),
+						GFP_KERNEL);
+			if (!mipi_dsi->mode)
+				return -ENOMEM;
 
+			memcpy(mipi_dsi->mode, &mxc_cea_mode[vmode_index],
+			sizeof(struct fb_videomode));
+		}
 		ret = of_property_read_u32(remote, "dsi-traffic-mode",
 					   &mipi_dsi->traffic_mode);
 		if (ret < 0 || mipi_dsi->traffic_mode > 2) {
@@ -1387,6 +1418,9 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 dispdrv_reg_fail:
 	if (mipi_dsi->lcd_panel)
 		kfree(mipi_dsi->lcd_panel);
+put_display_node:
+	if (display_np)
+		of_node_put(display_np);
 	return ret;
 }
 

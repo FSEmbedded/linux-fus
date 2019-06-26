@@ -1,0 +1,70 @@
+CMOS Digital Integrated Circout Silicon Monolithic TC358762
+------------------------------------------------------------
+
+The TC358762 is a de-serializer chip. The serial data stream is supplied by the
+baseband prcoessor via the DSI 1.01 interface. TC358762 chip de-serializes the
+stream into a parallel one. The parallel output bus can be either a DPI or a
+DBI bus. The usage of either DPI or DBI bus is mutually exclusive.
+
+Required properties:
+
+- compatible: 		Should be one "toshiba,tc358762"
+- reg: 			I2C slave address
+- ref-clk:		Clock of external Oszilator
+- dsi-traffic-mode:	0 = Non Burst with Sync Pulse, 1 = Non Burst with Sync
+			Event, 2 = Burst Mode
+- bpp:			bits per pixel 24 = RGB888, 18 = RGB666, 16 = RGB565
+- tlpx:			time low power transmitter, get this information from
+			your MIPI-DSI Peripherie (reference manual)
+-ths-prepare:		high-speed prepare timer, get this information from
+			your MIPI-DSI Peripherie (reference manual)
+-ths-zero:		high-speed zero timer, get this information from
+			your MIPI-DSI Peripherie (reference manual)
+- display:		phandle to display node (see below for details)
+
+Optional properties:
+
+- data-lanes-num: 	Number of data lanes from MIPI Perihperie.
+- reset-gpio:		reset gpio
+
+Required nodes:
+
+The TC358762 has a video port. The connection is modelled using the OF
+graph bindings specified in Documentation/devicetree/bindings/graph.txt.
+
+- Video port 0 for the RGB, YUV or DSI input. The remote endpoint phandle
+  should be a reference to a valid mipi_dsi_host device node.
+
+
+Example
+-------
+
+	tc358762: tc358762@0b {
+		compatible = "toshiba,tc358762";
+		reg = <0x0b>;
+		ref-clk = <24000>;
+		dsi-traffic-mode = <0>;
+		bpp = <24>;
+		tlpx = <50>;
+		ths-prepare = <75>;
+		ths-zero = <124>;
+
+		display = <&display0>;
+		status = "okay";
+
+		port {
+			dsi_to_rgb: endpoint {
+				remote-endpoint = <&mipi_dsi_ep>;
+			};
+		};
+	};
+
+	&mipi_dsi_host {
+		status = "okay";
+
+		port {
+			mipi_dsi_ep: endpoint {
+				remote-endpoint = <&dsi_to_rgb>;
+			};
+		};
+	};

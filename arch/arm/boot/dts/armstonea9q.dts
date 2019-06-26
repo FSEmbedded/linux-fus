@@ -182,6 +182,9 @@ wvga {					\
 /* SD-CARD - SD_A is micro SD */
 #define CONFIG_ARMSTONEA9_SD_A
 
+/* PCIe */
+//#define CONFIG_ARMSTONEA9_PCIE
+
 /* SATA */
 #define CONFIG_ARMSTONEA9_SATA
 

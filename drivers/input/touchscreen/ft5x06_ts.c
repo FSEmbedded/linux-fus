@@ -113,6 +113,8 @@ struct ft5x0x_ts_data {
 	struct mutex mutex;
 	int threshold;
 	int swap_xy;
+	int x_rev;
+	int y_rev;
 };
 
 /* The defaults should result in a working touch, override with device tree */
@@ -334,6 +336,7 @@ static irqreturn_t ft5x0x_ts_ist(int irq, void *dev_id)
 		unsigned int finger_id;
 		unsigned int touch_event;
 		bool down;
+		int x,y;
 
 		finger_id = p[2] >> 4;
 		if (finger_id >= tsdata->fingers)
@@ -346,17 +349,22 @@ static irqreturn_t ft5x0x_ts_ist(int irq, void *dev_id)
 		input_mt_report_slot_state(input_dev, MT_TOOL_FINGER, down);
 		if (!down)
 			continue;
+
+		x = ((p[0] << 8) | p[1]) & 0xFFF;
+		y = ((p[2] << 8) | p[3]) & 0xFFF;
+
+		if (tsdata->x_rev)
+			x =  input_abs_get_max(input_dev, ABS_MT_POSITION_X) - x;
+		if (tsdata->y_rev)
+			y =  input_abs_get_max(input_dev, ABS_MT_POSITION_Y) - y;
+
 		if(tsdata->swap_xy) {
-			input_report_abs(input_dev, ABS_MT_POSITION_Y,
-					((p[0] << 8) | p[1]) & 0xFFF);
-			input_report_abs(input_dev, ABS_MT_POSITION_X,
-					((p[2] << 8) | p[3]) & 0xFFF);
+			input_report_abs(input_dev, ABS_MT_POSITION_Y, x);
+			input_report_abs(input_dev, ABS_MT_POSITION_X, y);
 		}
 		else {
-			input_report_abs(input_dev, ABS_MT_POSITION_X,
-					((p[0] << 8) | p[1]) & 0xFFF);
-			input_report_abs(input_dev, ABS_MT_POSITION_Y,
-					((p[2] << 8) | p[3]) & 0xFFF);
+			input_report_abs(input_dev, ABS_MT_POSITION_X, x);
+			input_report_abs(input_dev, ABS_MT_POSITION_Y, y);
 		}
 		input_report_abs(input_dev, ABS_MT_WIDTH_MAJOR, 1);
 	}
@@ -410,6 +418,8 @@ static int ft5x0x_i2c_ts_probe_dt(struct ft5x0x_ts_data *tsdata)
 	if (of_property_read_u32(np, "threshold", &val) == 0)
 		tsdata->threshold = val;
 	tsdata->swap_xy = of_property_read_bool(np, "swap-xy");
+	tsdata->x_rev = of_property_read_bool(np, "x-rev");
+	tsdata->y_rev = of_property_read_bool(np, "y-rev");
 
 	return 0;
 }

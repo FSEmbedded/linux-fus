@@ -64,6 +64,7 @@ static struct isl7998x_frametype {
 static struct sensor_data isl7998x_data[SENSOR_NUM];
 static unsigned int chip_id = 0;
 static unsigned int sensor_on;		/* One bit for each sensor */
+static spinlock_t lock;
 
 static int isl7998x_probe(struct i2c_client *adapter,
 				const struct i2c_device_id *device_id);
@@ -774,12 +775,15 @@ static int ioctl_dev_init(struct v4l2_int_device *s)
 
 	sensor->on = true;
 
-	if (!sensor_on && (sensor->i2c_client != NULL)) {
+	spin_lock(&lock);
+	if (!sensor_on) {
+		sensor_on |= 1 << sensor->v_channel;
+		spin_unlock(&lock);
 		ret = isl7998x_start_mipi(sensor);
 		if (ret < 0)
 			return ret;
-	}
-	sensor_on |= 1 << sensor->v_channel;
+	} else
+		spin_unlock(&lock);
 
 	return 0;
 }
@@ -794,9 +798,13 @@ static int ioctl_dev_exit(struct v4l2_int_device *s)
 {
 	struct sensor_data *sensor = s->priv;
 
+	spin_lock(&lock);
 	sensor_on &= ~(1 << sensor->v_channel);
-	if (!sensor_on && sensor->i2c_client != NULL)
+	if (!sensor_on) {
+		spin_unlock(&lock);
 		isl7998x_stop_mipi(sensor);
+	} else
+		spin_unlock(&lock);
 
 	return 0;
 }
@@ -908,6 +916,8 @@ static int isl7998x_probe(struct i2c_client *client,
 	const char *name;
 	const char *standard;
 	unsigned int std_mode;
+
+	spin_lock_init(&lock);
 
 	/* Set initial values for the sensor struct. */
 	memset(sensor, 0, sizeof(*sensor));

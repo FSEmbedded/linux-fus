@@ -55,9 +55,17 @@
  */
 //#define CONFIG_QBLISSA9_USE_ONE_IPU
 
-/* Configure HDMI settings here (ignored if HDMI is not used) */
+/*
+ * Configure HDMI settings here (ignored if HDMI is not used).
+ *
+ * Remark:
+ * On the F&S SKIT baseboard, pixel format RGB24 is correct. However due to a
+ * hardware bug on QBlissA9, pixel format BGR24 is needed to make HDMI work on
+ * a standard Qseven baseboard (in DVI mode). Please change if required.
+ */
 #define CONFIG_QBLISSA9_HDMI_BPP	32
 #define CONFIG_QBLISSA9_HDMI_PIX_FMT	"RGB24"
+//#define CONFIG_QBLISSA9_HDMI_PIX_FMT	"BGR24"
 #define CONFIG_QBLISSA9_HDMI_MODE_STR	"1920x1080M@60"
 
 /*
@@ -177,6 +185,9 @@ wvga {					\
 //#define CONFIG_QBLISSA9_SD_A_CD
 //#define CONFIG_QBLISSA9_SD_A_WP
 //#define CONFIG_QBLISSA9_SD_A_8BIT
+
+/* PCIe */
+//#define CONFIG_QBLISSA9_PCIE
 
 /* I2C_A: SDA/SCL on pins 68/66 (this is also on pins 126/128!) */
 #define CONFIG_QBLISSA9_I2C_A

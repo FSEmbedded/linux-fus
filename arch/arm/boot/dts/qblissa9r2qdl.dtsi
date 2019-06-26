@@ -437,6 +437,26 @@
 		status = "okay";
 	};
 
+#ifndef CONFIG_QBLISSA9R2_USE_ONE_IPU
+	/* Third capture device, for third MIPI channel */
+	v4l2_cap_2 {
+		compatible = "fsl,imx6q-v4l2-capture";
+		ipu_id = <1>;
+		csi_id = <0>;
+		mclk_source = <0>;
+		status = "okay";
+	};
+
+	/* Fourth capture device, for fourth MIPI channel */
+	v4l2_cap_3 {
+		compatible = "fsl,imx6q-v4l2-capture";
+		ipu_id = <1>;
+		csi_id = <1>;
+		mclk_source = <0>;
+		status = "okay";
+	};
+#endif
+
 	v4l2_out {
 		compatible = "fsl,mxc_v4l2_output";
 		status = "okay";
@@ -482,7 +502,13 @@
 			  <&clks IMX6QDL_CLK_SSI1>;
 	assigned-clock-parents = <0>,
 				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>;
-	assigned-clock-rates = <98304000>, <98304000>, <12288000>;
+	/*
+	 * The Audio-PLL (PLL4) must have at least 650MHz. The PLL post divider
+	 * can divide by 1, 2 and 4, which means the lowest possible frequency
+	 * is 162.5 MHz. Use 196.608 MHz, which is a multiple of 24.576 MHz.
+	 * This is in turn a multiple of the commonly used audio bit rates.
+	 */
+	assigned-clock-rates = <196608000>, <196608000>, <24576000>;
 };
 
 #ifdef CONFIG_QBLISSA9R2_SPI_FLASH
@@ -587,6 +613,7 @@
 	fsl,phy_reg_vlev = <0x0294>;
 	fsl,phy_reg_cksymtx = <0x800d>;
 	hpd-active-low;
+	force-dvi-mode;
 	status = "okay";
 };
 #endif
@@ -598,12 +625,14 @@
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
+#if (CONFIG_QBLISSA9R2_BOARD_REVISION < 110)
 	rtc8565@51 {
 		compatible = "nxp,pcf8565", "nxp,pcf8563";
 		reg = <0x51>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
 	};
+#endif
 
 #ifdef CONFIG_QBLISSA9R2_SERIAL_CAMERA
 #ifdef CONFIG_QBLISSA9R2_MIPI_CAMERA_OV564X
@@ -653,6 +682,15 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
+
+#if (CONFIG_QBLISSA9R2_BOARD_REVISION >= 110)
+	rtc8565@51 {
+		compatible = "nxp,pcf8565", "nxp,pcf8563";
+		reg = <0x51>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
+	};
+#endif
 
 #ifdef CONFIG_QBLISSA9R2_4WTOUCH_SX8655
 	/* 4/5 wire analog resistive touch */
@@ -818,6 +856,22 @@
 		v_channel = <1>;
 		status = "okay";
 	};
+
+#ifndef CONFIG_QBLISSA9R2_USE_ONE_IPU
+	mipi-csi-channel@2 {
+		ipu_id = <1>;
+		csi_id = <0>;
+		v_channel = <2>;
+		status = "okay";
+	};
+
+	mipi-csi-channel@3 {
+		ipu_id = <1>;
+		csi_id = <1>;
+		v_channel = <3>;
+		status = "okay";
+	};
+#endif
 };
 #endif
 
@@ -954,6 +1008,7 @@
 };
 #endif
 
+#ifdef CONFIG_QBLISSA9R2_PCIE
 &pcie {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcie>;
@@ -961,6 +1016,7 @@
 	reset-gpio = <&gpio6 14 GPIO_ACTIVE_LOW>;
 	status = "okay";
 };
+#endif
 
 #ifdef CONFIG_QBLISSA9R2_HDMI
 &hdmi_core {
@@ -1478,13 +1534,15 @@
 		};
 #endif
 
+#ifdef CONFIG_QBLISSA9R2_PCIE
 		pinctrl_pcie: pciegrp {
 			fsl,pins = <
 				/* PCIE_WAKE */
-				MX6QDL_PAD_NANDF_CS3__GPIO6_IO16	0x17000
+				MX6QDL_PAD_NANDF_CS3__GPIO6_IO16	0x1b0b0
 				/* PCIE_RST: see above in Hog */
 			>;
 		};
+#endif /* CONFIG_QBLISSA9R2_PCIE */
 
 #ifdef CONFIG_QBLISSA9R2_HDMI_CEC
 		pinctrl_hdmi_cec_1: hdmicecgrp {

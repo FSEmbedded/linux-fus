@@ -492,6 +492,7 @@ static int imx_rpmsg_probe(struct platform_device *pdev)
 		MU_SetFn(rpdev->mu_base, 1);
 	} else {
 		MU_EnableRxFullInt(rpdev->mu_base, 1);
+		MU_EnableRxFullInt(rpdev->mu_base, 0);
 	}
 	BLOCKING_INIT_NOTIFIER_HEAD(&(rpdev->notifier));
 
