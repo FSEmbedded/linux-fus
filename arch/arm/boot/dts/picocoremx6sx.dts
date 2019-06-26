@@ -820,6 +820,7 @@ lcd_wvga {				\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg1>;
 	vbus-supply = <&reg_usb_otg1_vbus>;
+	disable-over-current;
 	status = "okay";
 };
 #endif

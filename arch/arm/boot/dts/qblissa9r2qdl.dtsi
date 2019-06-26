@@ -935,7 +935,9 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg>;
 //###	vbus-supply = <&reg_usb_otg_vbus>;
-#ifndef CONFIG_QBLISSA9R2_HAVE_USB_OTG_OC
+#ifdef CONFIG_QBLISSA9R2_HAVE_USB_OTG_OC
+	over-current-active-low;
+#else
 	disable-over-current;
 #endif
 	status = "okay";

@@ -415,10 +415,16 @@ static int usbmisc_imx6q_init(struct imx_usbmisc_data *data)
 	reg = readl(usbmisc->base + data->index * 4);
 	if (data->pwr_active_high)
 		reg |= MX6_BM_PWR_POLARITY;
+	else
+		reg &= ~MX6_BM_PWR_POLARITY;
 	if (data->oc_active_low)
 		reg |= MX6_BM_OVER_CUR_POLARITY;
+	else
+		reg &= ~MX6_BM_OVER_CUR_POLARITY;
 	if (data->disable_oc)
 		reg |= MX6_BM_OVER_CUR_DIS;
+	else
+		reg &= ~MX6_BM_OVER_CUR_DIS;
 	writel(reg, usbmisc->base + data->index * 4);
 
 	/* SoC non-burst setting */
@@ -548,10 +554,16 @@ static int usbmisc_imx7d_init(struct imx_usbmisc_data *data)
 	reg = readl(usbmisc->base);
 	if (data->pwr_active_high)
 		reg |= MX6_BM_PWR_POLARITY;
+	else
+		reg &= ~MX6_BM_PWR_POLARITY;
 	if (data->oc_active_low)
 		reg |= MX6_BM_OVER_CUR_POLARITY;
+	else
+		reg &= ~MX6_BM_OVER_CUR_POLARITY;
 	if (data->disable_oc)
 		reg |= MX6_BM_OVER_CUR_DIS;
+	else
+		reg &= MX6_BM_OVER_CUR_DIS;
 	writel(reg, usbmisc->base);
 
 	/* SoC non-burst setting */

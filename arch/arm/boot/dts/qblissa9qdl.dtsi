@@ -925,7 +925,9 @@
 #else
 	dr_mode = "peripheral";
 #endif
-#ifndef CONFIG_QBLISSA9_HAVE_USB_OTG_OC
+#ifdef CONFIG_QBLISSA9_HAVE_USB_OTG_OC
+	over-current-active-low;
+#else
 	disable-over-current;
 #endif
 	status = "okay";

@@ -568,6 +568,7 @@ wvga {					\
 	pinctrl-0 = <&pinctrl_usbotg1>;
 #endif
 	vbus-supply = <&reg_usb_otg1_vbus>;
+	disable-over-current;
 	status = "okay";
 };
 
@@ -577,6 +578,7 @@ wvga {					\
 	//vbus-supply = <&reg_usb_otg2_vbus>;
 	vbus-wakeup = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
+	disable-over-current;
 	pwr-active-high;
 	status = "okay";
 };

@@ -1109,7 +1109,9 @@ lvds_wvga {				\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg1>;
 //###	vbus-supply = <&reg_usb_otg1_vbus>;
-#ifndef CONFIG_EFUSA9X_USB_OTG1_OC
+#ifdef CONFIG_EFUSA9X_USB_OTG1_OC
+	over-current-active-low;
+#else
 	disable-over-current;
 #endif
 	status = "okay";

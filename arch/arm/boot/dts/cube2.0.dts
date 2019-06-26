@@ -184,6 +184,7 @@
 	dr_mode = "host";
 #ifdef CONFIG_CUBE2_0_HAVE_USB_OTG2_PWR_OC
 	pwr-active-high;
+	over-current-active-low;
 #else
 	disable-over-current;
 #endif
