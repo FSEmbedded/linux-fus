@@ -269,7 +269,7 @@ lvds_wvga {				\
 #if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LCD
 	backlight_lcd {
 		compatible = "pwm-backlight";
-		pwms = <&pca963x 1 640000 PWM_POLARITY_INVERTED>;
+		pwms = <&pca963x 1 640000 0>;
 		power-supply = <&reg_lcd_bl>;
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
@@ -389,9 +389,10 @@ lvds_wvga {				\
 		reg_lcd_bl: lcd-bl {
 			compatible = "regulator-fixed";
 			regulator-name = "lcd-bl";
-			gpio = <&pca963x 0 GPIO_ACTIVE_HIGH>;
+			gpio = <&pca963x 0 0>;
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
+			enable-active-high;
 		};
 #endif
 		reg_ldb_bl: ldb-bl {
@@ -705,25 +706,27 @@ lvds_wvga {				\
 			reg = <0>;
 			label = "0-PWRCTL";
 			type = "GPIO";
-			default-on;
+			default-on;		/* or: keep-value */
 			active-high;
 		};
 		led@1 {
 			reg = <1>;
 			label = "1-LEDCTRL";
 			type = "PWM";
-			default-on;
+			default-on;		/* or: keep-value */
+			active-low;
 		};
 		led@2 {
 			reg = <2>;
 			label = "2-ROTATE";
 			type = "GPIO";
-			active-high;
+			active-high;		/* optionally: keep value */
 		};
 		led@3 {
 			reg = <3>;
 			label = "3-unused";
 			type = "LED";
+			active-low;
 		};
 	};
 
