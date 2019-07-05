@@ -558,7 +558,7 @@ MODULE_DEVICE_TABLE(i2c, ili210x_i2c_id);
 
 #ifdef CONFIG_OF
 static const struct of_device_id ili210x_of_match[] = {
-	{ .compatible = "Ilink,ili210x", },
+	{ .compatible = "Ilitek,ili210x", },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, ili210x_of_match);

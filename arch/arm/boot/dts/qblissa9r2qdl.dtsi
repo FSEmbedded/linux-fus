@@ -748,10 +748,10 @@
 	};
 #endif
 
-#ifdef CONFIG_QBLISSA9R2_CAPTOUCH_ILINK
-	/* Ilink PCAP touch */
+#ifdef CONFIG_QBLISSA9R2_CAPTOUCH_ILITEK
+	/* Ilitek PCAP touch */
 	ili210x@41 {
-		compatible = "Ilink,ili210x";
+		compatible = "Ilitek,ili210x";
 		reg = <0x41>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;

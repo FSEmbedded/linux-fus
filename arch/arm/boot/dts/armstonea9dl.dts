@@ -59,17 +59,17 @@
 
 /*
  * Configure LVDS0 settings here (ignored if LVDS0 is not used)
- * Mapping:
+ * Mapping (refers to LVDS_DATA_WIDTH, not LVDS_BPP):
  *
  * - "spwg":  18 bpp or 24 bpp, in case of 24 bpp, bits 6 and 7 of each color
  *            are encoded on fourth LVDS differential data pair
  * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
  *            all other data bits on all four differential data pairs
  */
-#define CONFIG_ARMSTONEA9_LVDS0_MAPPING	"spwg"
 #define CONFIG_ARMSTONEA9_LVDS0_BPP	32
 #define CONFIG_ARMSTONEA9_LVDS0_PIX_FMT	"RGB666"
 #define CONFIG_ARMSTONEA9_LVDS0_DATA_WIDTH	18
+#define CONFIG_ARMSTONEA9_LVDS0_MAPPING	"spwg"
 #define CONFIG_ARMSTONEA9_LVDS0_TIMING \
 wvga {					\
 	clock-frequency = <33500000>;	\
@@ -91,10 +91,10 @@ wvga {					\
  * Configure LVDS1 settings here (ignored if LVDS1 is not used)
  * For mapping value see above.
  */
-#define CONFIG_ARMSTONEA9_LVDS1_MAPPING	"spwg"
 #define CONFIG_ARMSTONEA9_LVDS1_BPP	32
 #define CONFIG_ARMSTONEA9_LVDS1_PIX_FMT	"RGB666"
 #define CONFIG_ARMSTONEA9_LVDS1_DATA_WIDTH	18
+#define CONFIG_ARMSTONEA9_LVDS1_MAPPING	"spwg"
 #define CONFIG_ARMSTONEA9_LVDS1_TIMING \
 wvga {					\
 	clock-frequency = <33500000>;	\
@@ -136,7 +136,7 @@ wvga {					\
  * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
  * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
  * - PCAP touch based on Sitronix controller (ST1633i), on Touch Connector
- * - PCAP touch based on Ilink controller (ILI12xx), on Touch Connector
+ * - PCAP touch based on Ilitek controller (ILI12xx), on Touch Connector
  *
  * Select none if you do not need touch support.
  */
@@ -145,7 +145,7 @@ wvga {					\
 //#define CONFIG_ARMSTONEA9_CAPTOUCH_MXT224
 //#define CONFIG_ARMSTONEA9_CAPTOUCH_FT5x06
 //#define CONFIG_ARMSTONEA9_CAPTOUCH_SITRONIX
-//#define CONFIG_ARMSTONEA9_CAPTOUCH_ILINK
+//#define CONFIG_ARMSTONEA9_CAPTOUCH_ILITEK
 
 /* CMA: Set 320 MB for Continuous Memory Allocator */
 #define CONFIG_ARMSTONEA9_CMA_SIZE	0x14000000
