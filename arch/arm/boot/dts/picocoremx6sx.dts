@@ -60,7 +60,6 @@ lcd_wvga {				\
  * On picocore bb, all touches use the same interrupt line and I2C bus, so do not
  * select more than one entry! Select none if you do not need touch support.
  */
-//#define CONFIG_PICOCOREMX6SX_4WTOUCH_SX8655_ONBOARD
 #define CONFIG_PICOCOREMX6SX_4WTOUCH_SX8655_RGBADAPTER
 //#define CONFIG_PICOCOREMX6SX_CAPTOUCH_MXT224
 //#define CONFIG_PICOCOREMX6SX_CAPTOUCH_FT5x06
@@ -610,21 +609,6 @@ lcd_wvga {				\
 #endif
 
 	/* Touch driver SX8654 */
-#ifdef CONFIG_PICOCOREMX6SX_4WTOUCH_SX8655_ONBOARD
-	sx8654@48 {
-		compatible = "semtech,sx8654";
-		reg = <0x48>;
-		touchrate = <0x30>;
-		powdly = <0x06>;
-		filt = <0x02>;
-		setdly = <0x08>;
-		pinctrl-names = "default";
-		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
-		interrupt-parent = <&gpio7>;
-		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
-	};
-#endif
-
 #ifdef CONFIG_PICOCOREMX6SX_4WTOUCH_SX8655_RGBADAPTER
 	sx8654@49 {
 		compatible = "semtech,sx8654";
