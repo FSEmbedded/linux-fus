@@ -529,6 +529,7 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	picocoma7.dtb \
 	picocoremx6ul.dtb \
 	cubea7ul.dtb \
+	cube2.0.dtb \
 	gar1.dtb \
 	imx6ul-9x9-evk.dtb \
 	imx6ul-9x9-evk-btwifi.dtb \
@@ -559,6 +560,7 @@ dtb-$(CONFIG_SOC_IMX6ULL) += \
 	imx6ull-14x14-evk-gpmi-weim.dtb \
 	imx6ull-14x14-evk-usb-certi.dtb \
 	efusa7ull.dtb \
+	cube2.0ull.dtb \
 	picocoremx6ull.dtb \
 	imx6ull-9x9-evk.dtb \
 	imx6ull-9x9-evk-btwifi.dtb \
