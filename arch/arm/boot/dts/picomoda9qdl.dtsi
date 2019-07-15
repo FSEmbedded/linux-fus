@@ -1006,7 +1006,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1_1>;
 #ifdef CONFIG_PICOMODA9_UART_A_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };
@@ -1039,7 +1039,7 @@
 	pinctrl-0 = <&pinctrl_uart5_1>;
 #if defined(CONFIG_PICOMODA9_UART_D_RTSCTS) \
 	|| defined(CONFIG_PICOMODA9_UART_D_RS485)
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };

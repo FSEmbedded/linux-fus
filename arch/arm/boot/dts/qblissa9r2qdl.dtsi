@@ -897,7 +897,7 @@
 &uart2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2_1>;
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 	status = "okay";
 };
 #endif /* CONFIG_QBLISSA9R2_UART_A */
@@ -916,7 +916,7 @@
 &uart5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart5_1>;
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 	status = "okay";
 };
 #endif /* CONFIG_QBLISSA9R2_UART_C */
@@ -926,7 +926,7 @@
 &uart3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3_1>;
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 	status = "okay";
 };
 #endif /* CONFIG_QBLISSA9R2_UART_D || CONFIG_QBLISSA9R2_BLUETOOTH */

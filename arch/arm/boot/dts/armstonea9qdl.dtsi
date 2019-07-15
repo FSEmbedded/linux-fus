@@ -1087,7 +1087,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2_1>;
 #ifdef CONFIG_ARMSTONEA9_UART_A_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };

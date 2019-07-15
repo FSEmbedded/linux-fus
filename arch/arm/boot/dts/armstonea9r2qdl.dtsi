@@ -870,7 +870,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2_1>;
 #ifdef CONFIG_ARMSTONEA9R2_UART_A_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };
@@ -882,7 +882,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1_1>;
 #ifdef CONFIG_ARMSTONEA9R2_UART_B_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };
@@ -903,7 +903,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart4_1>;
 #ifdef CONFIG_ARMSTONEA9R2_UART_D_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };

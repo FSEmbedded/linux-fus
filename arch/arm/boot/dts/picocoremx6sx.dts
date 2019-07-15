@@ -795,7 +795,7 @@ lcd_wvga {				\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart5>;
 #ifdef CONFIG_PICOCOREMX6SX_UART_E_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };

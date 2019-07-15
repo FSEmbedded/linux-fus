@@ -434,7 +434,7 @@ chosen {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3>;
 #ifdef CONFIG_PICOCOM1_2_UART_A_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };
@@ -446,7 +446,7 @@ chosen {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2>;
 #ifdef CONFIG_PICOCOM1_2_UART_B_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };
@@ -458,7 +458,7 @@ chosen {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1>;
 #ifdef CONFIG_PICOCOM1_2_UART_C_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };
@@ -470,7 +470,7 @@ chosen {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart4>;
 #ifdef CONFIG_PICOCOM1_2_UART_D_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };
@@ -491,7 +491,7 @@ chosen {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart5>;
 #ifdef CONFIG_PICOCOM1_2_UART_F_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };
@@ -502,7 +502,7 @@ chosen {
 &uart6 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart6>;
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 	status = "okay";
 };
 #endif

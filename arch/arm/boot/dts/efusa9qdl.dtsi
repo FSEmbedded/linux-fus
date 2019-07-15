@@ -1095,7 +1095,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2_1>;
 #ifdef CONFIG_EFUSA9_UART_B_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };
@@ -1107,7 +1107,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1_1>;
 #ifdef CONFIG_EFUSA9_UART_C_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };

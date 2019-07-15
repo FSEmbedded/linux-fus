@@ -226,7 +226,7 @@ pwmleds {
 	/* UART_A: TXD, RXD, RTS CTS, COM2 on SKIT */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3_1>;
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 	status = "okay";
 };
 

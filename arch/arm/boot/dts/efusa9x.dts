@@ -1067,7 +1067,7 @@ lvds_wvga {				\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3>;
 #ifdef CONFIG_EFUSA9X_UART_B_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };
@@ -1082,7 +1082,7 @@ lvds_wvga {				\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart5>;
 #ifdef CONFIG_EFUSA9X_UART_C_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };
@@ -1102,7 +1102,7 @@ lvds_wvga {				\
 &uart5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart5_bt>;
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 	status = "okay";
 };
 #endif /* CONFIG_EFUSA9X_BLUETOOTH */

@@ -612,7 +612,7 @@ lcd_wvga {				\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart4_1>;
 #ifdef CONFIG_PICOCOMA9X_UART_A_RTSCTS
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };
@@ -625,7 +625,7 @@ lcd_wvga {				\
 	pinctrl-0 = <&pinctrl_uart3_1>;
 #if defined(CONFIG_PICOCOMA9X_UART_B_RTSCTS) \
 	|| defined(CONFIG_PICOCOMA9X_UART_B_RS485)
-	fsl,uart-has-rtscts;
+	uart-has-rtscts;
 #endif
 	status = "okay";
 };
