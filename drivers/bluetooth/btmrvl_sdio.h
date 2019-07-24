@@ -42,7 +42,7 @@
 			* SDIO_BLOCK_SIZE)
 
 /* The number of times to try when polling for status */
-#define MAX_POLL_TRIES			100
+#define MAX_POLL_TRIES			10
 
 /* Max retry number of CMD53 write */
 #define MAX_WRITE_IOMEM_RETRY		2

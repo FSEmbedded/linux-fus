@@ -84,7 +84,7 @@ static int btmrvl_sdio_probe_of(struct device *dev,
 
 	if (!dev->of_node ||
 	    !of_match_node(btmrvl_sdio_of_match_table, dev->of_node)) {
-		pr_err("sdio platform data not available");
+		pr_err("sdio platform data not available\n");
 		return -1;
 	}
 
@@ -1126,6 +1126,7 @@ static int btmrvl_sdio_download_fw(struct btmrvl_sdio_card *card)
 	int ret;
 	u8 fws0;
 	int pollnum = MAX_POLL_TRIES;
+	bool host_claimed;
 
 	if (!card || !card->func) {
 		BT_ERR("card or function is NULL!");
@@ -1138,6 +1139,7 @@ static int btmrvl_sdio_download_fw(struct btmrvl_sdio_card *card)
 	}
 
 	sdio_claim_host(card->func);
+	host_claimed = true;
 
 	/* Check if other function driver is downloading the firmware */
 	fws0 = sdio_readb(card->func, card->reg->card_fw_status0, &ret);
@@ -1151,6 +1153,9 @@ static int btmrvl_sdio_download_fw(struct btmrvl_sdio_card *card)
 
 		/* Give other function more time to download the firmware */
 		pollnum *= 10;
+		/* Release host or other function can not work */
+		host_claimed = false;
+		sdio_release_host(card->func);
 	} else {
 		if (card->helper) {
 			ret = btmrvl_sdio_download_helper(card);
@@ -1177,13 +1182,12 @@ static int btmrvl_sdio_download_fw(struct btmrvl_sdio_card *card)
 		ret = -ETIMEDOUT;
 		goto done;
 	}
-
-	sdio_release_host(card->func);
-
-	return 0;
+	ret = 0;
 
 done:
-	sdio_release_host(card->func);
+	if (host_claimed)
+		sdio_release_host(card->func);
+
 	return ret;
 }
 

@@ -1453,7 +1453,7 @@
 				/* WLAN_RESET, use internal pull-up */
 				MX6QDL_PAD_ENET_RXD0__GPIO1_IO27	0x1b0b0
 #else
-				/* WLAN_RESET, has external pull-up */
+				/* WLAN_RESET, has external pull-down */
 				MX6QDL_PAD_ENET_RXD0__GPIO1_IO27	0x100b0
 #endif
 			>;
