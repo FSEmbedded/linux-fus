@@ -58,6 +58,12 @@
 #define CONFIG_ARMSTONEA9_HDMI_MODE_STR	"1920x1080M@60"
 
 /*
+ * F&S has changed the default LVDS display. To use the previous settings
+ * activate the following define.
+ */
+//#define DISPLAY_LVDS_CHIMEI
+
+/*
  * Configure LVDS0 settings here (ignored if LVDS0 is not used)
  * Mapping (refers to LVDS_DATA_WIDTH, not LVDS_BPP):
  *
@@ -66,6 +72,28 @@
  * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
  *            all other data bits on all four differential data pairs
  */
+#ifndef DISPLAY_LVDS_CHIMEI
+#define CONFIG_ARMSTONEA9_LVDS0_BPP	32
+#define CONFIG_ARMSTONEA9_LVDS0_PIX_FMT	"RGB24"
+#define CONFIG_ARMSTONEA9_LVDS0_DATA_WIDTH	24
+#define CONFIG_ARMSTONEA9_LVDS0_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9_LVDS0_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <4>;		\
+	hback-porch = <44>;		\
+	hsync-len = <2>;		\
+	vback-porch = <21>;		\
+	vfront-porch = <11>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#else
 #define CONFIG_ARMSTONEA9_LVDS0_BPP	32
 #define CONFIG_ARMSTONEA9_LVDS0_PIX_FMT	"RGB666"
 #define CONFIG_ARMSTONEA9_LVDS0_DATA_WIDTH	18
@@ -86,11 +114,34 @@ wvga {					\
 	de-active = <1>;		\
 	pixelclk-active = <0>;		\
 }
+#endif
 
 /*
  * Configure LVDS1 settings here (ignored if LVDS1 is not used)
  * For mapping value see above.
  */
+#ifndef DISPLAY_LVDS_CHIMEI
+#define CONFIG_ARMSTONEA9_LVDS1_BPP	32
+#define CONFIG_ARMSTONEA9_LVDS1_PIX_FMT	"RGB24"
+#define CONFIG_ARMSTONEA9_LVDS1_DATA_WIDTH	24
+#define CONFIG_ARMSTONEA9_LVDS1_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9_LVDS1_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <4>;		\
+	hback-porch = <44>;		\
+	hsync-len = <2>;		\
+	vback-porch = <21>;		\
+	vfront-porch = <11>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#else
 #define CONFIG_ARMSTONEA9_LVDS1_BPP	32
 #define CONFIG_ARMSTONEA9_LVDS1_PIX_FMT	"RGB666"
 #define CONFIG_ARMSTONEA9_LVDS1_DATA_WIDTH	18
@@ -111,6 +162,7 @@ wvga {					\
 	de-active = <1>;		\
 	pixelclk-active = <0>;		\
 }
+#endif
 
 /*
  * Define this for a two-channel display, i.e. one display, one framebuffer,

@@ -478,11 +478,20 @@
 #ifdef CONFIG_NETDCUA9_LCD
 		pwms = <&pwm3 0 5000000 PWM_POLARITY_INVERTED>;
 #else
+#ifndef DISPLAY_LVDS_CHIMEI
+		pwms = <&pwm3 0 250000 PWM_POLARITY_INVERTED>;
+#else
 		pwms = <&pwm3 0 5000000 0>;
 #endif
+#endif
 		power-supply = <&reg_ldb_bl>;
+#if !defined(DISPLAY_LVDS_CHIMEI) && !defined(CONFIG_NETDCUA9_LCD)
+		brightness-levels = <135 143 151 159 167 175 183 191
+				     199 207 215 223 231 239 247 255>;
+#else
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
+#endif
 		default-brightness-level = <14>;
 		fb-names = "mxs-lcdif2";
 	};
@@ -693,6 +702,8 @@
 		interrupt-parent = <&gpio1>;
 		interrupts = <7 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpios = <&gpio1 8 GPIO_ACTIVE_LOW>;
+		x-rev;
+		y-rev;
 		linux,wakeup;
 	};
 #endif

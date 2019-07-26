@@ -604,11 +604,20 @@
 #ifdef CONFIG_PICOMODA9_LCD
 		pwms = <&pwm3 0 5000000 PWM_POLARITY_INVERTED>;
 #else
-		pwms = <&pwm3 0 5000000>;
+#ifndef DISPLAY_LVDS_CHIMEI
+		pwms = <&pwm3 0 250000 PWM_POLARITY_INVERTED>;
+#else
+		pwms = <&pwm3 0 5000000 0>;
+#endif
 #endif
 		power-supply = <&reg_bl>;
+#if !defined(DISPLAY_LVDS_CHIMEI) && !defined(CONFIG_PICOMODA9_LCD)
+		brightness-levels = <135 143 151 159 167 175 183 191
+				     199 207 215 223 231 239 247 255>;
+#else
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
+#endif
 		default-brightness-level = <14>;
 		fb-names = "mxs-lcdif1";
 	};
@@ -885,6 +894,8 @@
 		interrupt-parent = <&gpio2>;
 		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
 		//no reset gpio
+		x-rev;
+		y-rev;
 		linux,wakeup;
 	};
 #endif
@@ -961,9 +972,7 @@
 &pwm3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm3_1>;
-#ifdef CONFIG_PICOMODA9_LCD
 	#pwm-cells = <3>;
-#endif
 	status = "okay";
 };
 
@@ -1303,7 +1312,7 @@
 #endif
 
 				/* GPIO 8 - GPIO 9 */
-				MX6QDL_PAD_EIM_EB0__GPIO2_IO28		0x400030b0
+				MX6QDL_PAD_EIM_EB0__GPIO2_IO28		0x1b0b0
 				MX6QDL_PAD_EIM_EB1__GPIO2_IO29		0x400030b0
 			>;
 		};

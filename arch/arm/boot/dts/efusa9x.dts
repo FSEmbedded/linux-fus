@@ -56,6 +56,12 @@ lcd_wvga {				\
 }
 
 /*
+ * F&S has changed the default LVDS display. To use the previous settings
+ * activate the following define.
+ */
+//#define DISPLAY_LVDS_CHIMEI
+
+/*
  * Configure LVDS settings here (ignored if LVDS is not used)
  * Mapping (refers to LVDS_BUS_WIDTH, not LVDS_BPP):
  *
@@ -64,6 +70,27 @@ lcd_wvga {				\
  * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
  *            all other data bits on all four differential data pairs
  */
+#ifndef DISPLAY_LVDS_CHIMEI
+#define CONFIG_EFUSA9X_LVDS_BPP		32
+#define CONFIG_EFUSA9X_LVDS_BUS_WIDTH	24
+#define CONFIG_EFUSA9X_LVDS_MAPPING	"spwg"
+#define CONFIG_EFUSA9X_LVDS_TIMING \
+lvds_wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <4>;		\
+	hback-porch = <44>;		\
+	hsync-len = <2>;		\
+	vback-porch = <21>;		\
+	vfront-porch = <11>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#else
 #define CONFIG_EFUSA9X_LVDS_BPP		32
 #define CONFIG_EFUSA9X_LVDS_BUS_WIDTH	18
 #define CONFIG_EFUSA9X_LVDS_MAPPING	"spwg"
@@ -83,6 +110,7 @@ lvds_wvga {				\
 	de-active = <1>;		\
 	pixelclk-active = <0>;		\
 }
+#endif
 
 /*
  * Define this if your LVDS display requires 5V I/O logic voltage. Default is
@@ -285,13 +313,26 @@ lvds_wvga {				\
 	backlight_ldb {
 		compatible = "pwm-backlight";
 #if (CONFIG_EFUSA9X_BOARD_REVISION < 111)
-		pwms = <&pwm2 0 5000000>;
+#ifndef DISPLAY_LVDS_CHIMEI
+		pwms = <&pwm2 0 250000 PWM_POLARITY_INVERTED>;
 #else
-		pwms = <&pwm6 0 5000000>;
+		pwms = <&pwm2 0 5000000 0>;
+#endif
+#else
+#ifndef DISPLAY_LVDS_CHIMEI
+		pwms = <&pwm6 0 250000 PWM_POLARITY_INVERTED>;
+#else
+		pwms = <&pwm6 0 5000000 0>;
+#endif
 #endif
 		power-supply = <&reg_ldb_bl>;
+#ifndef DISPLAY_LVDS_CHIMEI
+		brightness-levels = <135 143 151 159 167 175 183 191
+				     199 207 215 223 231 239 247 255>;
+#else
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
+#endif
 		default-brightness-level = <14>;
 #if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS
 		fb-names = "mxs-lcdif0";
@@ -773,6 +814,8 @@ lvds_wvga {				\
 		interrupt-parent = <&gpio7>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpios = <&gpio3 21 GPIO_ACTIVE_LOW>;
+		x-rev;
+		y-rev;
 		linux,wakeup;
 	};
 #endif
@@ -1268,6 +1311,7 @@ lvds_wvga {				\
 &pwm2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm2>;
+	#pwm-cells = <3>;
 	status = "okay";
 };
 #else
@@ -1275,6 +1319,7 @@ lvds_wvga {				\
 &pwm6 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm6>;
+	#pwm-cells = <3>;
 	status = "okay";
 };
 #endif

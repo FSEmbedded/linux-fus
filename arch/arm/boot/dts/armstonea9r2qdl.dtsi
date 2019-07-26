@@ -333,10 +333,16 @@
 	/* LVDS backlight PWM (PWM3) */
 	backlight_ldb {
 		compatible = "pwm-backlight";
-		pwms = <&pwm3 0 5000000>;
 		power-supply = <&reg_ldb_bl>;
+#ifndef DISPLAY_LVDS_CHIMEI
+		pwms = <&pwm3 0 250000 PWM_POLARITY_INVERTED>;
+		brightness-levels = <135 143 151 159 167 175 183 191
+				     199 207 215 223 231 239 247 255>;
+#else
+		pwms = <&pwm3 0 5000000 0>;
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
+#endif
 		default-brightness-level = <14>;
 		fb-names = "mxs-lcdif1";
 	};
@@ -716,6 +722,8 @@
 		interrupt-parent = <&gpio1>;
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpios = <&gpio1 29 GPIO_ACTIVE_LOW>;
+		x-rev;
+		y-rev;
 		linux,wakeup;
 	};
 #endif
@@ -784,6 +792,7 @@
 &pwm3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm3_1>;
+	#pwm-cells = <3>;
 	status = "okay";
 };
 
@@ -1200,7 +1209,7 @@
 #endif /* CONFIG_ARMSTONEA9R2_SPI_B */
 
 #ifdef CONFIG_ARMSTONEA9R2_UART_A
-		/* UART2 on pins 55-58 (debug port A)*/
+		/* UART2 on pins 19,21,23,25 */
 		pinctrl_uart2_1: uart2grp-1{
 			fsl,pins = <
 				MX6QDL_PAD_EIM_D26__UART2_TX_DATA	0x1b0b1
@@ -1238,6 +1247,7 @@
 #endif /* CONFIG_ARMSTONEA9R2_UART_C */
 
 #ifdef CONFIG_ARMSTONEA9R2_UART_D
+		/* UART2 on pins 55-58 (debug port D)*/
 		pinctrl_uart4_1: uart4grp-1{
 			fsl,pins = <
 				MX6QDL_PAD_KEY_COL0__UART4_TX_DATA	0x1b0b1
