@@ -305,7 +305,17 @@
 			gpio = <&gpio2 13 GPIO_ACTIVE_LOW>;
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
-			enable-active-high;
+			regulator-always-on;
+		};
+
+		/* lcd data enable */
+		reg_lcd_den: lcd_den {
+			compatible = "regulator-fixed";
+			regulator-name = "lcd-den";
+			gpio = <&gpio2 12 GPIO_ACTIVE_LOW>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
 		};
 #endif
 
@@ -582,6 +592,8 @@
 	lcd: lcd@0 {
 		compatible = "fsl,lcd";
 		lcd-supply = <&reg_vlcd>;
+		ena-supply = <&reg_lcd_ena>;
+		den-supply = <&reg_lcd_den>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_ipu1_ctrl &pinctrl_ipu1_dat>;
 		status = "disabled";
