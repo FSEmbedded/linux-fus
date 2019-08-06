@@ -271,13 +271,13 @@
 };
 
 /* kernel panic if its enabled - Job Ring error
- * error doesn´t occur if CONFIG_SOC_MX6Q is set
+ * error doesn´t occur if CONFIG_SOC_MX6Q is set.
+ * In Kernel 4.14.98 it works without CONFIG_SOC_MX6Q.
+ * Remove CONFIG_SOC_MX6Q if kernel version is >= 4.14.98
  */
-#if (CONFIG_PICOCOREMX7ULP_BOARD_REVISION <= 120)
 &crypto {
-	status = "disabled";
+	status = "okay";
 };
-#endif
 
 #if (CONFIG_PICOCOREMX7ULP_LCDIF != DISPLAY_NONE)
 &lcdif {
