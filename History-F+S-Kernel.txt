@@ -3,6 +3,58 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
+linux-4.9.88-fsimx6-B2019.08 (15.08.2019)
+-----------------------------------------
+Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, CubeA7UL, Cube2.0
+Not tested:       efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, efusA9X,
+                  PicoCOMA9X, PicoCoreMX6SX, CONT1, CUBEA5, armStoneA5,
+                  NetDCUA5, PicoCOMA5, AGATEWAY, HGATEWAY
+
+- New merge for rel_imx_4.9.11_1.0.0_ga
+- Handle flexcan names in a common way in device trees
+- New merge for rel_imx_4.9.88_2.0.0_ga
+- Have new minimal defconfigs for fsimx6/sx/ul
+- Improve mipi_dsi_northwest driver flag interpretation
+- Improve picocoremx7ulp device-tree - add mipi-dsi display support
+- Add i.MX6 PCIe driver to defconfig
+- Add PCIe support for all F&S i.MX6 boards
+- Add Marvell WIFI PCIe driver to fsimx6_defconfig
+- Improve PCI_IMX6 driver activation for fsimx6sx_defconfig
+- Add property lrclk-strength to SGTL5000 device tree node
+- fsimx6: Fix audio clock rates, set lrclk-strength for SGTL5000
+- fsimx6: HDMI: Use DVI mode, do not overwrite pixel format
+- Add support for 3rd and 4th camera for ISL7998x on fsimx6
+- Add CMSPAR option to IMX UART
+- Improve focaltech ft5x06 driver - support reverse coordinates
+- Support Azurewave-CM276NF for fsimx7ulp_defconfig
+- Add support for picocoremx7ulp rev. 1.20 and remove old revisions
+- Fix Ethernet clock in mach-imx6sx.c
+- Add 12.5pF setting for RTC PCF85063TP, fix two bugs
+- Handle USB over-current polarity
+- Split picocoremx6ull.dts into UL and ULL version
+- Re-factor driver for PCA963X (leds-pca963x.c)
+- Change F&S device trees to use new leds-pca963x driver
+- Update to newest Atmel MXT touch driver
+- Add cube2.0ull.dts
+- Clarify F&S device tree settings (LVDS, Ilitek, audio clock)
+- Fix default touches for PicoCoreMX6UL/SX
+- Replace deprecated fsl,uart-has-rtscts in F&S device trees
+- Add new default LVDS display FS-J070WVTC0211 to F&S devicetrees
+- Improve PicoModA9 device-tree settings for LCD supply regulator
+- Revert RTC PCF8563 driver to previous version
+- Speed up firmware download in btmrvl_sdio.c
+- Add UART_C for board revision 1.40 of GAR1
+- Add config file for atmel mxt224e version 2 touch
+- Add disable-over-current flag to picocoremx7ulp device-tree
+- Add support for crypto unit in picocoremx7ulp
+- Turn off -Wattribute-alias to support GCC 8
+- Backport minimal compiler_attributes.h to support GCC 9
+- Disable user space firmware loader helper from F&S defconfigs
+- Remove support for BT-AMP on Marvell SD8787 Bluetooth
+
+
+
 linux-4.9.88-picocoremx6sx-B2019.03 (21.03.2019)
 ------------------------------------------------
 Supported boards: PicoCoreMX6SX, PicoCoreMX6UL
