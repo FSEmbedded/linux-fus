@@ -1498,6 +1498,15 @@ static int btmrvl_sdio_probe(struct sdio_func *func,
 	BT_INFO("vendor=0x%x, device=0x%x, class=%d, fn=%d",
 			id->vendor, id->device, id->class, func->num);
 
+	//### SD8787 firmware does not support BT-AMP (device type 0x911b),
+	//### this causes long timeouts and non-working WLAN
+	//### FIXME: This is a dirty hack, should be configurable via DT
+	if (id->device == 0x911b) {
+		BT_INFO("skip BT-AMP, not supported by firmware");
+		return -ENXIO;
+	}
+	//###
+
 	card = devm_kzalloc(&func->dev, sizeof(*card), GFP_KERNEL);
 	if (!card)
 		return -ENOMEM;
