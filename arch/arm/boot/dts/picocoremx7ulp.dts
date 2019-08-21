@@ -23,9 +23,7 @@
 
 #define DISPLAY_NONE		0	/* No display on this port */
 #define DISPLAY_LCD		1	/* Via MIPI_DSI 2 RGB converter */
-//### TODO: tested with NXP MIPI-DSI display but no reset pin defined for
-//### TODO: mipi-dsi waiting for HW redesign
-//#define DISPLAY_MIPI_DSI	2	/* MIPI_DSI display */
+#define DISPLAY_MIPI_DSI	2	/* MIPI_DSI display */
 
 /*
  * Set the display configuration:
@@ -34,7 +32,7 @@
  * - If you have a RGB display, set LCDIF to DISPLAY_LCD.
  * - If you have a MIPI DSI display, set LCDIF to DISPLAY_MIPI_DSI.
  */
-#define CONFIG_PICOCOREMX7ULP_LCDIF	DISPLAY_LCD
+#define CONFIG_PICOCOREMX7ULP_LCDIF	DISPLAY_MIPI_DSI
 
 /*
  * Configure touch screen:
@@ -287,7 +285,11 @@
 	status = "okay";
 
 	display0: display@0 {
+#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_LCD)
 		bits-per-pixel = <32>;
+#else
+		bits-per-pixel = <16>;
+#endif
 		bus-width = <24>;
 #if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_LCD)
 		display-timings {
@@ -609,8 +611,7 @@
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_mipi_dsi_reset>;
 	pinctrl-1 = <&pinctrl_mipi_dsi_reset>;
-	lcd_panel = "TRULY-WVGA-TFT3P5581E";
-	/* ### TODO: no reset pin defined */
+	lcd_panel = "YES-OPTOELECTRONICS-YTC310KLAA";
 	resets = <&mipi_dsi_reset>;
 #endif
 };
