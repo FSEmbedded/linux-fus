@@ -96,6 +96,7 @@ lcd_wvga {				\
 #define CONFIG_PICOCOREMX6SX_ADC_B
 
 /* PWM and backlight brightness */
+#define CONFIG_PICOCOREMX6SX_PWM_A
 #define CONFIG_PICOCOREMX6SX_BL_CTRL
 
 /* UART */
@@ -860,6 +861,15 @@ lcd_wvga {				\
 };
 #endif
 
+#ifdef CONFIG_PICOCOREMX6SX_PWM_A
+/* PWM_A implemented by PWM4 */
+&pwm4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm4>;
+	status = "okay";
+};
+#endif /* CONFIG_PICOCOREMX6SX_PWM_A */
+
 #ifdef CONFIG_PICOCOREMX6SX_BL_CTRL
 /* Backlight PWM implemented by PWM6 */
 &pwm6 {
@@ -1149,6 +1159,15 @@ lcd_wvga {				\
 			>;
 		};
 #endif
+
+#ifdef CONFIG_PICOCOREMX6SX_PWM_A
+		/* PWM_A implemented by PWM4 */
+		pinctrl_pwm4: pwm4grp {
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO13__PWM4_OUT		0x110b0
+			>;
+		};
+#endif /* CONFIG_PICOCOREMX6SX_PWM_A */
 
 #ifdef CONFIG_PICOCOREMX6SX_BL_CTRL
 		/* Backlight PWM implemented by PWM6 */
