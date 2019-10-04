@@ -3807,7 +3807,7 @@ fec_probe(struct platform_device *pdev)
 	 */
 	if (mii_bus)
 		fep->mii_bus = mii_bus;
-	else {
+	else if (!fep->fixed_link) {
 		ret = fec_enet_mii_init(pdev);
 		if (ret)
 			goto failed_mii_init;
