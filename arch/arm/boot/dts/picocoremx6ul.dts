@@ -89,6 +89,30 @@ wvga {					\
 #define CONFIG_PICOCOREMX6UL_ETH0
 #define CONFIG_PICOCOREMX6UL_ETH1
 
+/* USB */
+#define CONFIG_PICOCOREMX6UL_USB_OTG1
+#define CONFIG_PICOCOREMX6UL_USB_HOST
+
+/* CAN */
+#define CONFIG_PICOCOREMX6UL_CAN_A
+
+/* I2C */
+#define CONFIG_PICOCOREMX6UL_I2C_A
+#define CONFIG_PICOCOREMX6UL_I2C_B
+#define CONFIG_PICOCOREMX6UL_I2C_C
+
+/* UART */
+#define CONFIG_PICOCOREMX6UL_UART_A
+#define CONFIG_PICOCOREMX6UL_UART_B
+#define CONFIG_PICOCOREMX6UL_UART_C
+#define CONFIG_PICOCOREMX6UL_UART_C_RTSCTS
+#define CONFIG_PICOCOREMX6UL_UART_D
+
+#define CONFIG_PICOCOREMX6UL_SPI_A
+
+/* Audio */
+#define CONFIG_PICOCOREMX6UL_AUDIO
+
 /*
  * SD_A - External SD port with CD/WP
  * on PCoreBB microSD slot with CD
@@ -134,6 +158,7 @@ wvga {					\
 		reg = <0x80000000 0x80000000>;
 	};
 
+#if defined(CONFIG_PICOCOREMX6UL_I2C_B) && (CONFIG_PICOCOREMX6UL_LCDIF0 == DISPLAY_LCD)
 	backlight_lcd {
 		compatible = "pwm-backlight";
 		pwms = <&pca963x 1 640000 0>;
@@ -143,6 +168,7 @@ wvga {					\
 		default-brightness-level = <14>;
 		fb-names = "mxs-lcdif0";
 	};
+#endif
 
 	regulators {
 		compatible = "simple-bus";
@@ -157,6 +183,7 @@ wvga {					\
 			regulator-always-on;
 		};
 
+#ifdef CONFIG_PICOCOREMX6UL_SD_A
 		mmciv: gpio-regulator {
 			compatible = "regulator-gpio";
 
@@ -171,12 +198,16 @@ wvga {					\
 				  3300000 0x0>;
 			enable-active-high;
 		};
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_CAN_A
 		reg_can: regulator_can {
 			compatible = "regulator-fixed";
 			regulator-name = "can";
 		};
+#endif
 
+#if (CONFIG_PICOCOREMX6UL_LCDIF0 == DISPLAY_LCD)
 		/* VLCD */
 		reg_lcd: regulator_lcd {
 			compatible = "regulator-fixed";
@@ -184,7 +215,9 @@ wvga {					\
 			gpio = <&gpio3 4 0>;
 			enable-active-high;
 		};
+#endif
 
+#if defined(CONFIG_PICOCOREMX6UL_I2C_B) && (CONFIG_PICOCOREMX6UL_LCDIF0 == DISPLAY_LCD)
 		/* I2C driven pca963x backlight control */
 		reg_lcd_bl: lcd-bl {
 			compatible = "regulator-fixed";
@@ -194,7 +227,9 @@ wvga {					\
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
 		};
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_AUDIO
 		/* SGTL5000 analog voltage */
 		reg_sgtl5000_vdda: sgtl5000_vdda {
 			compatible = "regulator-fixed";
@@ -221,7 +256,9 @@ wvga {					\
 			regulator-max-microvolt = <1500000>;
 			regulator-always-on;
 		};
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_USB_OTG1
 		reg_usb_otg1_vbus: usb_otg1_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg1_vbus";
@@ -230,7 +267,9 @@ wvga {					\
 			gpio = <&gpio5 3 0>;
 			enable-active-high;
 		};
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_USB_HOST
 		reg_usb_otg2_vbus: usb_otg2_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg2_vbus";
@@ -239,7 +278,9 @@ wvga {					\
 			gpio = <&gpio5 2 0>;
 		};
 	};
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_I2C_C
 	/* Bitbanging I2C */
 	i2c_gpio: i2c_gpio {
 		pinctrl-names = "default";
@@ -254,7 +295,9 @@ wvga {					\
 		#address-cells = <1>;
 		#size-cells = <0>;
 	};
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_AUDIO
 	sound-sgtl5000 {
 		compatible = "fsl,imx-audio-sgtl5000";
 		cpu-dai = <&sai2>;
@@ -266,6 +309,7 @@ wvga {					\
 //###			"Line Out Jack", "LINE_OUT",
 			"Headphone Jack", "HP_OUT";
 	};
+#endif
 
 	/* F&S board information */
 	bdinfo {
@@ -274,11 +318,6 @@ wvga {					\
 	};
 
 };
-
-
-
-
-
 
 /* RAM size for Continues Memory Allocator */
 &cma {
@@ -329,6 +368,7 @@ wvga {					\
 };
 #endif
 
+#ifdef CONFIG_PICOCOREMX6UL_SPI_A
 &ecspi2 {
 	fsl,spi-num-chipselects = <1>;
 	cs-gpios = <&gpio1 29 0>;
@@ -344,6 +384,7 @@ wvga {					\
 		reg = <0>;
 	};
 };
+#endif
 
 #ifdef CONFIG_PICOCOREMX6UL_ETH0
 &fec1 {
@@ -399,29 +440,30 @@ wvga {					\
 };
 #endif /* CONFIG_PICOCOREMX6UL_ETH1 */
 
+#ifdef CONFIG_PICOCOREMX6UL_CAN_A
 &flexcan2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
 	xceiver-supply = <&reg_can>;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_I2C_A
 &i2c2 {
 	clock_frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 };
+#endif
 
-
-
+#ifdef CONFIG_PICOCOREMX6UL_I2C_B
 &i2c4 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c4>;
 	status = "okay";
-
-
 
 	pca963x: pca9632@60 {
 		compatible = "nxp,pca9632";
@@ -549,10 +591,11 @@ wvga {					\
 	};
 #endif
 };
+#endif
 
-
+#ifdef CONFIG_PICOCOREMX6UL_I2C_C
 &i2c_gpio {
-
+#ifdef CONFIG_PICOCOREMX6UL_AUDIO
 	sgtl5000: sgtl5000@0a {
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
@@ -562,6 +605,7 @@ wvga {					\
 		VDDIO-supply = <&reg_sgtl5000_vddio>;
 		VDDD-supply = <&reg_sgtl5000_vddd>;
 	};
+#endif
 
 	rtc85063@51 {
 		compatible = "nxp,pcf85063";
@@ -569,6 +613,7 @@ wvga {					\
 		cap_12_5pf;
 	};
 };
+#endif
 
 #if (CONFIG_PICOCOREMX6UL_LCDIF0 == DISPLAY_LCD)
 &lcdif {
@@ -600,42 +645,55 @@ wvga {					\
 	status = "okay";
 };
 
+#ifdef CONFIG_PICOCOREMX6UL_AUDIO
 &sai2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai2>;
 	fsl,mclk-out;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_UART_A
 /* UART_A (debug port on A7 ) on J12 */
 &uart1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1>;
 	status = "okay";
 };
+#endif
 
-/* UART_M on J13 pin 3,5 (RS232) */
+#ifdef CONFIG_PICOCOREMX6UL_UART_B
+/* UART_B on J13 pin 3,5 (RS232) */
 &uart3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3>;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_UART_C
 /* (SKIT pin descriptions = uart4); on J8 pin 42,44,46,48 */
 &uart5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart5>;
+#ifdef CONFIG_PICOCOREMX6UL_UART_C_RTSCTS
 	uart-has-rtscts;
+#endif
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_UART_D
 /* (SKIT pin description = uart2); on J8 pin 38,40 */
 &uart6 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart6>;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_USB_OTG1
 &usbotg1 {
 	pinctrl-names = "default";
 #ifdef CONFIG_PICOCOREMX6UL_ULL
@@ -647,7 +705,9 @@ wvga {					\
 	disable-over-current;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_USB_HOST
 &usbotg2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg2>;
@@ -658,6 +718,7 @@ wvga {					\
 	pwr-active-high;
 	status = "okay";
 };
+#endif
 
 #ifdef CONFIG_PICOCOREMX6UL_SD_A
 /* SD_A (Micro-SD slot on SKIT) */
@@ -720,26 +781,32 @@ wvga {					\
 			>;
 		};
 
+#ifdef CONFIG_PICOCOREMX6UL_I2C_C
 		pinctrl_i2c_gpio: i2c_gpio_grp {
 			fsl,pins = <
 				MX6ULL_PAD_SNVS_TAMPER8__GPIO5_IO08	0x4001b0b0
 				MX6ULL_PAD_SNVS_TAMPER9__GPIO5_IO09	0x4001b0b0
 			>;
 		};
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_USB_OTG1
 		pinctrl_usbotg1_snvs: usbotg1grp {
 			fsl,pins = <
 				/* USB_OTG1_PWR, active high */
 				MX6ULL_PAD_SNVS_TAMPER3__GPIO5_IO03	0x03030
 			>;
 		};
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_USB_HOST
 		pinctrl_usbotg2: usbotg2grp {
 			fsl,pins = <
 				/* USB_OTG2_PWR */
 				MX6ULL_PAD_SNVS_TAMPER2__GPIO5_IO02	0x0b030
 			>;
 		};
+#endif
 	};
 };
 #endif
@@ -784,6 +851,7 @@ wvga {					\
 			>;
 		};
 
+#ifdef CONFIG_PICOCOREMX6UL_SPI_A
 		pinctrl_ecspi2: ecspi2grp {
 			fsl,pins = <
 				MX6UL_PAD_UART4_TX_DATA__ECSPI2_SCLK	0x100b1
@@ -792,6 +860,7 @@ wvga {					\
 				MX6UL_PAD_UART5_RX_DATA__ECSPI2_MISO	0x100b1
 			>;
 		};
+#endif
 
 #ifdef CONFIG_PICOCOREMX6UL_ETH0
 		pinctrl_enet1: enet1grp {
@@ -834,21 +903,25 @@ wvga {					\
 	       };
 #endif
 
+#ifdef CONFIG_PICOCOREMX6UL_CAN_A
 		pinctrl_flexcan2: flexcan2grp{
 			fsl,pins = <
 				MX6UL_PAD_UART2_RTS_B__FLEXCAN2_RX	0x1b020
 				MX6UL_PAD_UART2_CTS_B__FLEXCAN2_TX	0x1b020
 			>;
 		};
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_I2C_A
 		pinctrl_i2c2: i2c2grp {
 			fsl,pins = <
 				MX6UL_PAD_CSI_HSYNC__I2C2_SCL		0x4001b8b0
 				MX6UL_PAD_CSI_VSYNC__I2C2_SDA		0x4001b8b0
 			>;
 		};
+#endif
 
-#ifndef CONFIG_PICOCOREMX6UL_ULL
+#if !defined(CONFIG_PICOCOREMX6UL_ULL) && defined(CONFIG_PICOCOREMX6UL_I2C_C)
 		pinctrl_i2c_gpio: i2c_gpio_grp {
 			fsl,pins = <
 				MX6UL_PAD_SNVS_TAMPER8__GPIO5_IO08 	0x4001b0b0
@@ -857,12 +930,14 @@ wvga {					\
 		};
 #endif
 
+#ifdef CONFIG_PICOCOREMX6UL_I2C_B
 		pinctrl_i2c4: i2c1grp {
 			fsl,pins = <
 				MX6UL_PAD_UART2_TX_DATA__I2C4_SCL	0x4001b8b0
 				MX6UL_PAD_UART2_RX_DATA__I2C4_SDA	0x4001b8b0
 			>;
 		};
+#endif
 
 #if (CONFIG_PICOCOREMX6UL_LCDIF0 == DISPLAY_LCD)
 		pinctrl_lcdif_dat: lcdifdatgrp {
@@ -911,6 +986,7 @@ wvga {					\
 			>;
 		};
 
+#ifdef CONFIG_PICOCOREMX6UL_AUDIO
 		pinctrl_sai2: sai2grp {
 			fsl,pins = <
 				MX6UL_PAD_JTAG_TDI__SAI2_TX_BCLK	0x17088
@@ -920,37 +996,49 @@ wvga {					\
 				/* Clock needs to be set globally */
 			>;
 		};
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_UART_A
 		pinctrl_uart1: uart1grp {
 			fsl,pins = <
 				MX6UL_PAD_UART1_TX_DATA__UART1_DCE_TX	0x1b0b1
 				MX6UL_PAD_UART1_RX_DATA__UART1_DCE_RX	0x1b0b1
 			>;
 		};
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_UART_B
 		pinctrl_uart3: uart2grp {
 			fsl,pins = <
 				MX6UL_PAD_UART3_TX_DATA__UART3_DCE_TX	0x1b0b1
 				MX6UL_PAD_UART3_RX_DATA__UART3_DCE_RX	0x1b0b1
 			>;
 		};
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_UART_C
 		pinctrl_uart5: uart5grp {
 			fsl,pins = <
 				MX6UL_PAD_CSI_DATA00__UART5_DCE_TX	0x1b0b1
 				MX6UL_PAD_CSI_DATA01__UART5_DCE_RX	0x1b0b1
+#ifdef CONFIG_PICOCOREMX6UL_UART_C_RTSCTS
 				MX6UL_PAD_CSI_DATA02__UART5_DTE_CTS	0x1b0b1
 				MX6UL_PAD_CSI_DATA03__UART5_DTE_RTS	0x1b0b1
+#endif
 			>;
 		};
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_UART_D
 		pinctrl_uart6: uart6grp {
 			fsl,pins = <
 				MX6UL_PAD_CSI_MCLK__UART6_DCE_TX	0x1b0b1
 				MX6UL_PAD_CSI_PIXCLK__UART6_DCE_RX	0x1b0b1
 			>;
 		};
+#endif
 
+#ifdef CONFIG_PICOCOREMX6UL_USB_OTG1
 		pinctrl_usbotg1: usbotg1grp {
 			fsl,pins = <
 				/* USB_OTG1_ID: low: host, open: device */
@@ -961,8 +1049,9 @@ wvga {					\
 #endif
 			>;
 		};
+#endif
 
-#ifndef CONFIG_PICOCOREMX6UL_ULL
+#if !defined(CONFIG_PICOCOREMX6UL_ULL) && defined(CONFIG_PICOCOREMX6UL_USB_HOST)
 		pinctrl_usbotg2: usbotg2grp {
 			fsl,pins = <
 				/* USB_OTG2_PWR */
