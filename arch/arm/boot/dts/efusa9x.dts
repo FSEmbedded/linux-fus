@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 F&S Elektronik Systeme GmbH
+ * Copyright (C) 2016-2019 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -9,7 +9,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_EFUSA9X_BOARD_REVISION	111
+#define CONFIG_EFUSA9X_BOARD_REVISION	122
 
 /* Activate this if you want to use the Cortex-M4 core */
 //#define SUPPORT_M4

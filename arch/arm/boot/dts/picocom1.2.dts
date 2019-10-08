@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 F&S Elektronik Systeme GmbH
+ * Copyright (C) 2016-2019 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -114,6 +114,13 @@
 /* If SGTL5000 audio is available, MQS audio can not be used */
 #ifdef CONFIG_PICOCOM1_2_AUDIO
 #undef CONFIG_PICOCOM1_2_MQS
+#endif
+
+/* If ADC is available, PWM_A - PWM_C can not be used */
+#ifdef CONFIG_PICOCOM1_2_ADC
+#undef CONFIG_PICOCOM1_2_PWM_A
+#undef CONFIG_PICOCOM1_2_PWM_B
+#undef CONFIG_PICOCOM1_2_PWM_C
 #endif
 
 #include <dt-bindings/input/input.h>
