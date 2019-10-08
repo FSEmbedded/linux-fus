@@ -9,7 +9,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_PICOCOREMX6SX_BOARD_REVISION	110
+#define CONFIG_PICOCOREMX6SX_BOARD_REVISION	120
 
 /* Activate this if you want to use the Cortex-M4 core */
 // #define SUPPORT_M4
@@ -692,30 +692,6 @@ lcd_wvga {				\
 		reg = <0x51>;
 		cap_12_5pf;
 	};
-
-#if 0
-	ov5640: ov5640@3c {
-		compatible = "ovti,ov5640";
-		reg = <0x3c>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_csi1>;
-		clocks = <&clks IMX6SX_CLK_CSI>;
-		clock-names = "csi_mclk";
-		AVDD-supply = <&vgen3_reg>;  /* 2.8v */
-		DVDD-supply = <&vgen2_reg>;  /* 1.5v*/
-		pwn-gpios = <&gpio1 22 0>;
-		rst-gpios = <&gpio3 27 0>;
-		csi_id = <0>;
-		mclk = <24000000>;
-		mclk_source = <0>;
-		port {
-			ov5640_ep: endpoint {
-				remote-endpoint = <&csi1_ep>;
-			};
-		};
-	};
-#endif
-
 };
 #endif /* CONFIG_PICOCOREMX6SX_I2C_C */
 
@@ -1313,7 +1289,7 @@ lcd_wvga {				\
 #endif /* CONFIG_PICOCOREMX6SX_SD_A */
 
 #ifdef CONFIG_PICOCOREMX6SX_EMMC
-		/* EMC */
+		/* EMMC */
 		pinctrl_usdhc2_emmc: usdhc2grp-emmc {
 			fsl,pins = <
 				MX6SX_PAD_SD2_CMD__USDHC2_CMD		0x17091
