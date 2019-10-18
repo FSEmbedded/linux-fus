@@ -26,9 +26,8 @@
 #include "fsl_rpmsg_i2s.h"
 #include "imx-pcm.h"
 
-#define FSL_RPMSG_I2S_RATES	(SNDRV_PCM_RATE_8000|SNDRV_PCM_RATE_16000|\
-				SNDRV_PCM_RATE_48000)
-#define FSL_RPMSG_I2S_FORMATS	SNDRV_PCM_FMTBIT_S16_LE
+#define FSL_RPMSG_I2S_RATES	(SNDRV_PCM_RATE_8000_48000)
+#define FSL_RPMSG_I2S_FORMATS	(SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE)
 
 static int i2s_send_message(struct i2s_rpmsg_s *msg,
 			       struct i2s_info *info)
