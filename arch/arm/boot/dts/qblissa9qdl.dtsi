@@ -734,7 +734,7 @@
 		threshold = <25>;
 		interrupt-parent = <&gpio4>;
 		interrupts = <23 IRQ_TYPE_EDGE_FALLING>;
-		reset-gpio = <&gpio4 31 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&gpio4 31 GPIO_ACTIVE_LOW>;
 		x-rev;
 		y-rev;
 		linux,wakeup;
