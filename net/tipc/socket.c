@@ -709,11 +709,11 @@ static unsigned int tipc_poll(struct file *file, struct socket *sock,
 
 	switch (sk->sk_state) {
 	case TIPC_ESTABLISHED:
+	case TIPC_CONNECTING:
 		if (!tsk->cong_link_cnt && !tsk_conn_cong(tsk))
 			mask |= POLLOUT;
 		/* fall thru' */
 	case TIPC_LISTEN:
-	case TIPC_CONNECTING:
 		if (!skb_queue_empty(&sk->sk_receive_queue))
 			mask |= (POLLIN | POLLRDNORM);
 		break;
@@ -1063,8 +1063,10 @@ static int __tipc_sendstream(struct socket *sock, struct msghdr *m, size_t dlen)
 	/* Handle implicit connection setup */
 	if (unlikely(dest)) {
 		rc = __tipc_sendmsg(sock, m, dlen);
-		if (dlen && (dlen == rc))
+		if (dlen && dlen == rc) {
+			tsk->peer_caps = tipc_node_get_capabilities(net, dnode);
 			tsk->snt_unacked = tsk_inc(tsk, dlen + msg_hdr_sz(hdr));
+		}
 		return rc;
 	}
 
@@ -2268,6 +2270,8 @@ void tipc_sk_reinit(struct net *net)
 walk_stop:
 		rhashtable_walk_stop(&iter);
 	} while (tsk == ERR_PTR(-EAGAIN));
+
+	rhashtable_walk_exit(&iter);
 }
 
 static struct tipc_sock *tipc_sk_lookup(struct net *net, u32 portid)

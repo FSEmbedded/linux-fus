@@ -1910,14 +1910,20 @@ static irqreturn_t e1000_msix_other(int __always_unused irq, void *data)
 	struct net_device *netdev = data;
 	struct e1000_adapter *adapter = netdev_priv(netdev);
 	struct e1000_hw *hw = &adapter->hw;
+	u32 icr = er32(ICR);
 
-	hw->mac.get_link_status = true;
+	if (icr & adapter->eiac_mask)
+		ew32(ICS, (icr & adapter->eiac_mask));
 
-	/* guard against interrupt when we're going down */
-	if (!test_bit(__E1000_DOWN, &adapter->state)) {
-		mod_timer(&adapter->watchdog_timer, jiffies + 1);
-		ew32(IMS, E1000_IMS_OTHER);
+	if (icr & E1000_ICR_LSC) {
+		hw->mac.get_link_status = true;
+		/* guard against interrupt when we're going down */
+		if (!test_bit(__E1000_DOWN, &adapter->state))
+			mod_timer(&adapter->watchdog_timer, jiffies + 1);
 	}
+
+	if (!test_bit(__E1000_DOWN, &adapter->state))
+		ew32(IMS, E1000_IMS_OTHER | IMS_OTHER_MASK);
 
 	return IRQ_HANDLED;
 }
@@ -2020,7 +2026,6 @@ static void e1000_configure_msix(struct e1000_adapter *adapter)
 		       hw->hw_addr + E1000_EITR_82574(vector));
 	else
 		writel(1, hw->hw_addr + E1000_EITR_82574(vector));
-	adapter->eiac_mask |= E1000_IMS_OTHER;
 
 	/* Cause Tx interrupts on every write back */
 	ivar |= BIT(31);
@@ -2245,7 +2250,8 @@ static void e1000_irq_enable(struct e1000_adapter *adapter)
 
 	if (adapter->msix_entries) {
 		ew32(EIAC_82574, adapter->eiac_mask & E1000_EIAC_MASK_82574);
-		ew32(IMS, adapter->eiac_mask | E1000_IMS_LSC);
+		ew32(IMS, adapter->eiac_mask | E1000_IMS_OTHER |
+		     IMS_OTHER_MASK);
 	} else if (hw->mac.type >= e1000_pch_lpt) {
 		ew32(IMS, IMS_ENABLE_MASK | E1000_IMS_ECCER);
 	} else {
@@ -2313,8 +2319,8 @@ static int e1000_alloc_ring_dma(struct e1000_adapter *adapter,
 {
 	struct pci_dev *pdev = adapter->pdev;
 
-	ring->desc = dma_alloc_coherent(&pdev->dev, ring->size, &ring->dma,
-					GFP_KERNEL);
+	ring->desc = dma_zalloc_coherent(&pdev->dev, ring->size, &ring->dma,
+					 GFP_KERNEL);
 	if (!ring->desc)
 		return -ENOMEM;
 
@@ -3004,8 +3010,8 @@ static void e1000_configure_tx(struct e1000_adapter *adapter)
 
 	hw->mac.ops.config_collision_dist(hw);
 
-	/* SPT and CNP Si errata workaround to avoid data corruption */
-	if (hw->mac.type >= e1000_pch_spt) {
+	/* SPT and KBL Si errata workaround to avoid data corruption */
+	if (hw->mac.type == e1000_pch_spt) {
 		u32 reg_val;
 
 		reg_val = er32(IOSFPC);
@@ -3013,7 +3019,12 @@ static void e1000_configure_tx(struct e1000_adapter *adapter)
 		ew32(IOSFPC, reg_val);
 
 		reg_val = er32(TARC(0));
-		reg_val |= E1000_TARC0_CB_MULTIQ_3_REQ;
+		/* SPT and KBL Si errata workaround to avoid Tx hang.
+		 * Dropping the number of outstanding requests from
+		 * 3 to 2 in order to avoid a buffer overrun.
+		 */
+		reg_val &= ~E1000_TARC0_CB_MULTIQ_3_REQ;
+		reg_val |= E1000_TARC0_CB_MULTIQ_2_REQ;
 		ew32(TARC(0), reg_val);
 	}
 }
@@ -3536,15 +3547,12 @@ s32 e1000e_get_base_timinca(struct e1000_adapter *adapter, u32 *timinca)
 		}
 		break;
 	case e1000_pch_spt:
-		if (er32(TSYNCRXCTL) & E1000_TSYNCRXCTL_SYSCFI) {
-			/* Stable 24MHz frequency */
-			incperiod = INCPERIOD_24MHZ;
-			incvalue = INCVALUE_24MHZ;
-			shift = INCVALUE_SHIFT_24MHZ;
-			adapter->cc.shift = shift;
-			break;
-		}
-		return -EINVAL;
+		/* Stable 24MHz frequency */
+		incperiod = INCPERIOD_24MHZ;
+		incvalue = INCVALUE_24MHZ;
+		shift = INCVALUE_SHIFT_24MHZ;
+		adapter->cc.shift = shift;
+		break;
 	case e1000_pch_cnp:
 		if (er32(TSYNCRXCTL) & E1000_TSYNCRXCTL_SYSCFI) {
 			/* Stable 24MHz frequency */
@@ -4204,7 +4212,7 @@ static void e1000e_trigger_lsc(struct e1000_adapter *adapter)
 	struct e1000_hw *hw = &adapter->hw;
 
 	if (adapter->msix_entries)
-		ew32(ICS, E1000_ICS_OTHER);
+		ew32(ICS, E1000_ICS_LSC | E1000_ICS_OTHER);
 	else
 		ew32(ICS, E1000_ICS_LSC);
 }
@@ -5099,7 +5107,7 @@ static bool e1000e_has_link(struct e1000_adapter *adapter)
 		break;
 	}
 
-	if ((ret_val == E1000_ERR_PHY) && (hw->phy.type == e1000_phy_igp_3) &&
+	if ((ret_val == -E1000_ERR_PHY) && (hw->phy.type == e1000_phy_igp_3) &&
 	    (er32(CTRL) & E1000_PHY_CTRL_GBE_DISABLE)) {
 		/* See e1000_kmrn_lock_loss_workaround_ich8lan() */
 		e_info("Gigabit has been disabled, downgrading speed\n");

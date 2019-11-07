@@ -456,7 +456,7 @@ static inline int ena_alloc_rx_page(struct ena_ring *rx_ring,
 		return -ENOMEM;
 	}
 
-	dma = dma_map_page(rx_ring->dev, page, 0, PAGE_SIZE,
+	dma = dma_map_page(rx_ring->dev, page, 0, ENA_PAGE_SIZE,
 			   DMA_FROM_DEVICE);
 	if (unlikely(dma_mapping_error(rx_ring->dev, dma))) {
 		u64_stats_update_begin(&rx_ring->syncp);
@@ -473,7 +473,7 @@ static inline int ena_alloc_rx_page(struct ena_ring *rx_ring,
 	rx_info->page_offset = 0;
 	ena_buf = &rx_info->ena_buf;
 	ena_buf->paddr = dma;
-	ena_buf->len = PAGE_SIZE;
+	ena_buf->len = ENA_PAGE_SIZE;
 
 	return 0;
 }
@@ -490,7 +490,7 @@ static void ena_free_rx_page(struct ena_ring *rx_ring,
 		return;
 	}
 
-	dma_unmap_page(rx_ring->dev, ena_buf->paddr, PAGE_SIZE,
+	dma_unmap_page(rx_ring->dev, ena_buf->paddr, ENA_PAGE_SIZE,
 		       DMA_FROM_DEVICE);
 
 	__free_page(page);
@@ -910,10 +910,10 @@ static struct sk_buff *ena_rx_skb(struct ena_ring *rx_ring,
 	do {
 		dma_unmap_page(rx_ring->dev,
 			       dma_unmap_addr(&rx_info->ena_buf, paddr),
-			       PAGE_SIZE, DMA_FROM_DEVICE);
+			       ENA_PAGE_SIZE, DMA_FROM_DEVICE);
 
 		skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags, rx_info->page,
-				rx_info->page_offset, len, PAGE_SIZE);
+				rx_info->page_offset, len, ENA_PAGE_SIZE);
 
 		netif_dbg(rx_ring->adapter, rx_status, rx_ring->netdev,
 			  "rx skb updated. len %d. data_len %d\n",
@@ -1565,7 +1565,7 @@ static int ena_rss_configure(struct ena_adapter *adapter)
 
 static int ena_up_complete(struct ena_adapter *adapter)
 {
-	int rc, i;
+	int rc;
 
 	rc = ena_rss_configure(adapter);
 	if (rc)
@@ -1583,17 +1583,6 @@ static int ena_up_complete(struct ena_adapter *adapter)
 	ena_restore_ethtool_params(adapter);
 
 	ena_napi_enable_all(adapter);
-
-	/* Enable completion queues interrupt */
-	for (i = 0; i < adapter->num_queues; i++)
-		ena_unmask_interrupt(&adapter->tx_ring[i],
-				     &adapter->rx_ring[i]);
-
-	/* schedule napi in case we had pending packets
-	 * from the last time we disable napi
-	 */
-	for (i = 0; i < adapter->num_queues; i++)
-		napi_schedule(&adapter->ena_napi[i].napi);
 
 	return 0;
 }
@@ -1731,7 +1720,7 @@ create_err:
 
 static int ena_up(struct ena_adapter *adapter)
 {
-	int rc;
+	int rc, i;
 
 	netdev_dbg(adapter->netdev, "%s\n", __func__);
 
@@ -1773,6 +1762,17 @@ static int ena_up(struct ena_adapter *adapter)
 	u64_stats_update_end(&adapter->syncp);
 
 	set_bit(ENA_FLAG_DEV_UP, &adapter->flags);
+
+	/* Enable completion queues interrupt */
+	for (i = 0; i < adapter->num_queues; i++)
+		ena_unmask_interrupt(&adapter->tx_ring[i],
+				     &adapter->rx_ring[i]);
+
+	/* schedule napi in case we had pending packets
+	 * from the last time we disable napi
+	 */
+	for (i = 0; i < adapter->num_queues; i++)
+		napi_schedule(&adapter->ena_napi[i].napi);
 
 	return rc;
 

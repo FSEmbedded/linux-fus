@@ -708,6 +708,7 @@ struct vmbus_channel {
 	u8 monitor_bit;
 
 	bool rescind; /* got rescind msg */
+	struct completion rescind_event;
 
 	u32 ringbuffer_gpadlhandle;
 
@@ -1024,6 +1025,8 @@ extern int vmbus_establish_gpadl(struct vmbus_channel *channel,
 
 extern int vmbus_teardown_gpadl(struct vmbus_channel *channel,
 				     u32 gpadl_handle);
+
+void vmbus_reset_channel_cb(struct vmbus_channel *channel);
 
 extern int vmbus_recvpacket(struct vmbus_channel *channel,
 				  void *buffer,

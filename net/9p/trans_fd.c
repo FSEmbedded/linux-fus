@@ -185,6 +185,8 @@ static void p9_mux_poll_stop(struct p9_conn *m)
 	spin_lock_irqsave(&p9_poll_lock, flags);
 	list_del_init(&m->poll_pending_link);
 	spin_unlock_irqrestore(&p9_poll_lock, flags);
+
+	flush_work(&p9_poll_work);
 }
 
 /**
@@ -197,15 +199,14 @@ static void p9_mux_poll_stop(struct p9_conn *m)
 static void p9_conn_cancel(struct p9_conn *m, int err)
 {
 	struct p9_req_t *req, *rtmp;
-	unsigned long flags;
 	LIST_HEAD(cancel_list);
 
 	p9_debug(P9_DEBUG_ERROR, "mux %p err %d\n", m, err);
 
-	spin_lock_irqsave(&m->client->lock, flags);
+	spin_lock(&m->client->lock);
 
 	if (m->err) {
-		spin_unlock_irqrestore(&m->client->lock, flags);
+		spin_unlock(&m->client->lock);
 		return;
 	}
 
@@ -217,7 +218,6 @@ static void p9_conn_cancel(struct p9_conn *m, int err)
 	list_for_each_entry_safe(req, rtmp, &m->unsent_req_list, req_list) {
 		list_move(&req->req_list, &cancel_list);
 	}
-	spin_unlock_irqrestore(&m->client->lock, flags);
 
 	list_for_each_entry_safe(req, rtmp, &cancel_list, req_list) {
 		p9_debug(P9_DEBUG_ERROR, "call back req %p\n", req);
@@ -226,6 +226,7 @@ static void p9_conn_cancel(struct p9_conn *m, int err)
 			req->t_err = err;
 		p9_client_cb(m->client, req, REQ_STATUS_ERROR);
 	}
+	spin_unlock(&m->client->lock);
 }
 
 static int
@@ -383,8 +384,9 @@ static void p9_read_work(struct work_struct *work)
 		if (m->req->status != REQ_STATUS_ERROR)
 			status = REQ_STATUS_RCVD;
 		list_del(&m->req->req_list);
-		spin_unlock(&m->client->lock);
+		/* update req->status while holding client->lock  */
 		p9_client_cb(m->client, m->req, status);
+		spin_unlock(&m->client->lock);
 		m->rc.sdata = NULL;
 		m->rc.offset = 0;
 		m->rc.capacity = 0;
@@ -724,12 +726,12 @@ static int p9_fd_show_options(struct seq_file *m, struct p9_client *clnt)
 {
 	if (clnt->trans_mod == &p9_tcp_trans) {
 		if (clnt->trans_opts.tcp.port != P9_PORT)
-			seq_printf(m, "port=%u", clnt->trans_opts.tcp.port);
+			seq_printf(m, ",port=%u", clnt->trans_opts.tcp.port);
 	} else if (clnt->trans_mod == &p9_fd_trans) {
 		if (clnt->trans_opts.fd.rfd != ~0)
-			seq_printf(m, "rfd=%u", clnt->trans_opts.fd.rfd);
+			seq_printf(m, ",rfd=%u", clnt->trans_opts.fd.rfd);
 		if (clnt->trans_opts.fd.wfd != ~0)
-			seq_printf(m, "wfd=%u", clnt->trans_opts.fd.wfd);
+			seq_printf(m, ",wfd=%u", clnt->trans_opts.fd.wfd);
 	}
 	return 0;
 }
@@ -951,7 +953,7 @@ p9_fd_create_tcp(struct p9_client *client, const char *addr, char *args)
 	if (err < 0)
 		return err;
 
-	if (valid_ipaddr4(addr) < 0)
+	if (addr == NULL || valid_ipaddr4(addr) < 0)
 		return -EINVAL;
 
 	csocket = NULL;
@@ -1000,6 +1002,9 @@ p9_fd_create_unix(struct p9_client *client, const char *addr, char *args)
 	struct sockaddr_un sun_server;
 
 	csocket = NULL;
+
+	if (addr == NULL)
+		return -EINVAL;
 
 	if (strlen(addr) >= UNIX_PATH_MAX) {
 		pr_err("%s (%d): address too long: %s\n",
