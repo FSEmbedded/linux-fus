@@ -172,10 +172,10 @@
 #define UTS_TXFULL	 (1<<4)	 /* TxFIFO full */
 #define UTS_RXFULL	 (1<<3)	 /* RxFIFO full */
 #define UTS_SOFTRST	 (1<<0)	 /* Software reset */
-#define UMCR_SADEN	 (1<<3)  /* RS-485 Slave Address Detected Interrupt Enable */
-#define UMCR_TXB8	 (1<<2)  /* Transmit RS-485 bit 8 (the ninth bit or 9th bit) */
-#define UMCR_SLAM	 (1<<1)  /* RS-485 Slave Address Detect Mode Selection */
-#define UMCR_MDEN	 (1<<0)  /* 9-bit data or Multidrop Mode (RS-485) Enable */
+#define UMCR_SADEN	 (1<<3)  /* RS-485 Slave Address Detected IRQ Enable */
+#define UMCR_TXB8	 (1<<2)  /* Transmit RS-485 bit 8 (i.e. 9 bits) */
+#define UMCR_SLAM	 (1<<1)  /* RS-485 Slave Address Detect Mode */
+#define UMCR_MDEN	 (1<<0)  /* 9-bit data/Multidrop Mode (RS-485) Enable */
 
 /* We've been assigned a range on the "Low-density serial ports" major */
 #define SERIAL_IMX_MAJOR	207
@@ -1486,7 +1486,7 @@ imx_set_termios(struct uart_port *port, struct ktermios *termios,
 {
 	struct imx_port *sport = (struct imx_port *)port;
 	unsigned long flags;
-	unsigned long umcr, ucr2, old_ucr1, old_txrxen, baud, quot;
+	unsigned long umcr = 0, ucr2, old_ucr1, old_txrxen, baud, quot;
 	unsigned int old_csize = old ? old->c_cflag & CSIZE : CS8;
 	unsigned int div, ufcr;
 	unsigned long num, denom;
@@ -1543,8 +1543,9 @@ imx_set_termios(struct uart_port *port, struct ktermios *termios,
 	/* parity */
 	if (termios->c_cflag & PARENB) {
 		ucr2 |= UCR2_PREN;
-		if (termios->c_cflag & CMSPAR) {	/* Mark or Space parity */
-			umcr |= UMCR_SADEN | UMCR_MDEN;
+		if (termios->c_cflag & CMSPAR) {
+			/* Mark or Space parity */
+			umcr = UMCR_SADEN | UMCR_MDEN;
 			if (termios->c_cflag & PARODD)
 				umcr |= UMCR_TXB8;
 		}

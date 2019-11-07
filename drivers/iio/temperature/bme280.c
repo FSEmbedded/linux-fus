@@ -3,7 +3,7 @@
 * Copyright (C) 2013 - 2015 Bosch Sensortec GmbH
 *
 * bme280.c
-* Date: 2015/03/27
+* Date: 07.11.2019 15:37:26 (HK)
 * Revision: 2.0.4(Pressure and Temperature compensation code revision is 1.1
 *               and Humidity compensation code revision is 1.0)
 *
@@ -255,36 +255,36 @@ u32 bme280_compensate_pressure_int32(struct bme280_t *bme280,
 	v_pressure_u32 =
 	(((u32)(((s32)1048576) - v_uncomp_pressure_s32)
 	- (v_x2_u32 >> BME280_SHIFT_BIT_POSITION_BY_12_BITS))) * 3125;
-	if (v_pressure_u32
-	< 0x80000000)
+	if (v_pressure_u32 < 0x80000000) {
 		/* Avoid exception caused by division by zero */
-		if (v_x1_u32 != 0)
+		if (v_x1_u32 != 0) {
 			v_pressure_u32 =
 			(v_pressure_u32
 			<< BME280_SHIFT_BIT_POSITION_BY_01_BIT) /
 			((u32)v_x1_u32);
-		else
+		} else
 			return 0;
-	else
+	} else {
 		/* Avoid exception caused by division by zero */
-		if (v_x1_u32 != 0)
+		if (v_x1_u32 != 0) {
 			v_pressure_u32 = (v_pressure_u32
 			/ (u32)v_x1_u32) * 2;
-		else
+		} else
 			return 0;
+	}
 
-		v_x1_u32 = (((s32)bme280->cal_param.dig_P9) *
-		((s32)(((v_pressure_u32 >> BME280_SHIFT_BIT_POSITION_BY_03_BITS)
-		* (v_pressure_u32 >> BME280_SHIFT_BIT_POSITION_BY_03_BITS))
-		>> BME280_SHIFT_BIT_POSITION_BY_13_BITS)))
-		>> BME280_SHIFT_BIT_POSITION_BY_12_BITS;
-		v_x2_u32 = (((s32)(v_pressure_u32
-		>> BME280_SHIFT_BIT_POSITION_BY_02_BITS)) *
-		((s32)bme280->cal_param.dig_P8))
-		>> BME280_SHIFT_BIT_POSITION_BY_13_BITS;
-		v_pressure_u32 = (u32)((s32)v_pressure_u32 +
-		((v_x1_u32 + v_x2_u32 + bme280->cal_param.dig_P7)
-		>> BME280_SHIFT_BIT_POSITION_BY_04_BITS));
+	v_x1_u32 = (((s32)bme280->cal_param.dig_P9) *
+	((s32)(((v_pressure_u32 >> BME280_SHIFT_BIT_POSITION_BY_03_BITS)
+	* (v_pressure_u32 >> BME280_SHIFT_BIT_POSITION_BY_03_BITS))
+	>> BME280_SHIFT_BIT_POSITION_BY_13_BITS)))
+	>> BME280_SHIFT_BIT_POSITION_BY_12_BITS;
+	v_x2_u32 = (((s32)(v_pressure_u32
+	>> BME280_SHIFT_BIT_POSITION_BY_02_BITS)) *
+	((s32)bme280->cal_param.dig_P8))
+	>> BME280_SHIFT_BIT_POSITION_BY_13_BITS;
+	v_pressure_u32 = (u32)((s32)v_pressure_u32 +
+	((v_x1_u32 + v_x2_u32 + bme280->cal_param.dig_P7)
+	>> BME280_SHIFT_BIT_POSITION_BY_04_BITS));
 
 	return v_pressure_u32;
 }

@@ -115,8 +115,9 @@ static int fus_wm9715_probe(struct platform_device *pdev)
 
 	data->mclk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(data->mclk)) {
+		ret = PTR_ERR(data->mclk);
 		dev_err(&pdev->dev, "Failed to get mclock: %d\n", ret);
-		return PTR_ERR(data->mclk);
+		return ret;
 	}
 
 	ret = clk_prepare_enable(data->mclk);
