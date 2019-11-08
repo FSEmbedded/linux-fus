@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2016 Freescale Semiconductor, Inc.
+ * Copyright (C) 2011-2012 Freescale Semiconductor, Inc.
  *
  * The code contained herein is licensed under the GNU General Public
  * License. You may obtain a copy of the GNU General Public License
@@ -53,23 +53,11 @@ static u32 rtc_read_lp_counter(struct snvs_rtc_data *data)
 	u32 val;
 
 	do {
-		regmap_read(data->regmap, data->offset + SNVS_LPSRTCMR, &val);
-		read1 = val;
-		read1 <<= 32;
-		regmap_read(data->regmap, data->offset + SNVS_LPSRTCLR, &val);
-		read1 |= val;
-
-		regmap_read(data->regmap, data->offset + SNVS_LPSRTCMR, &val);
-		read2 = val;
-		read2 <<= 32;
-		regmap_read(data->regmap, data->offset + SNVS_LPSRTCLR, &val);
-		read2 |= val;
-	/*
-	 * when CPU/BUS are running at low speed, there is chance that
-	 * we never get same value during two consecutive read, so here
-	 * we only compare the second value.
-	 */
-	} while ((read1 >> CNTR_TO_SECS_SH) != (read2 >> CNTR_TO_SECS_SH));
+		read2 = read1;
+		read1 = rtc_read_lpsrt(data);
+	} while (read1 != read2 && --timeout);
+	if (!timeout)
+		dev_err(&data->rtc->dev, "Timeout trying to get valid LPSRT Counter read\n");
 
 	/* Convert 47-bit counter to 32-bit raw second count */
 	return (u32) (read1 >> CNTR_TO_SECS_SH);
