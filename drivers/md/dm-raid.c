@@ -3875,8 +3875,6 @@ static int raid_preresume(struct dm_target *ti)
 	return r;
 }
 
-#define RESUME_STAY_FROZEN_FLAGS (CTR_FLAG_DELTA_DISKS | CTR_FLAG_DATA_OFFSET)
-
 static void raid_resume(struct dm_target *ti)
 {
 	struct raid_set *rs = ti->private;

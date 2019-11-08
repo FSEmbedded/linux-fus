@@ -148,7 +148,13 @@ _NewQueue(
     gcmkONERROR(gckOS_GetPhysicalAddress(
         Command->os,
         Command->logical,
-       &physical
+        &physical
+        ));
+
+    gcmkVERIFY_OK(gckOS_CPUPhysicalToGPUPhysical(
+        Command->os,
+        physical,
+        &physical
         ));
 
     gcmkSAFECASTPHYSADDRT(Command->physical, physical);
@@ -601,6 +607,8 @@ _DumpKernelCommandBuffer(
         entry = Command->queues[i].logical;
 
         gckOS_GetPhysicalAddress(Command->os, entry, &physical);
+
+        gckOS_CPUPhysicalToGPUPhysical(Command->os, physical, &physical);
 
         gcmkPRINT("Kernel command buffer %d\n", i);
 
@@ -1132,6 +1140,7 @@ gckCOMMAND_Construct(
             gcmkONERROR(gckOS_AllocateNonPagedMemory(
                 os,
                 gcvFALSE,
+                gcvALLOC_FLAG_CONTIGUOUS,
                 &pageSize,
                 &command->queues[i].physical,
                 &command->queues[i].logical
@@ -1781,7 +1790,6 @@ gckCOMMAND_Commit(
 
 #if !gcdNULL_DRIVER
     gcsCONTEXT_PTR contextBuffer;
-    struct _gcoCMDBUF _commandBufferObject;
     gctPHYS_ADDR_T commandBufferPhysical;
     gctUINT8_PTR commandBufferLogical = gcvNULL;
     gctUINT32 commandBufferAddress = 0;
@@ -1895,7 +1903,8 @@ gckCOMMAND_Commit(
 #else
     if (needCopy)
     {
-        commandBufferObject = &_commandBufferObject;
+        gcmkONERROR(gckOS_Allocate(Command->os, gcmSIZEOF(struct _gcoCMDBUF), &pointer));
+        commandBufferObject = pointer;
 
         gcmkONERROR(gckOS_CopyFromUserData(
             Command->os,
@@ -1991,6 +2000,7 @@ gckCOMMAND_Commit(
         commandBufferLogical,
         &commandBufferPhysical
         ));
+
 #else
     /* Get the physical address. */
     gcmkONERROR(gckOS_UserLogicalToPhysical(
@@ -2538,19 +2548,6 @@ gckCOMMAND_Commit(
     gcmkONERROR(gckCOMMAND_ExitCommit(Command, gcvFALSE));
     commitEntered = gcvFALSE;
 
-    if  ((Command->kernel->hardware->options.gpuProfiler == gcvTRUE) &&
-         (Command->kernel->profileEnable == gcvTRUE))
-    {
-        gcmkONERROR(gckCOMMAND_Stall(Command, gcvTRUE));
-
-        if (Command->currContext)
-        {
-            gcmkONERROR(gckHARDWARE_UpdateContextProfile(
-                        hardware,
-                        Command->currContext));
-        }
-    }
-
     if (status == gcvSTATUS_INTERRUPTED)
     {
         gcmkTRACE(
@@ -2590,6 +2587,10 @@ gckCOMMAND_Commit(
 
         commandBufferMapped = gcvFALSE;
     }
+    else if (needCopy)
+    {
+        gcmkONERROR(gckOS_Free(Command->os, commandBufferObject));
+    }
 
     /* Return status. */
     gcmkFOOTER();
@@ -2628,6 +2629,10 @@ OnError:
             gcmSIZEOF(struct _gcoCMDBUF),
             commandBufferObject
             ));
+    }
+    else if (needCopy)
+    {
+        gcmkVERIFY_OK(gckOS_Free(Command->os, commandBufferObject));
     }
 
     /* Return status. */
@@ -3009,7 +3014,7 @@ gckCOMMAND_Stall(
     do
     {
         /* Wait for the signal. */
-        status = gckOS_WaitSignal(os, signal, gcvTRUE, gcdGPU_ADVANCETIMER);
+        status = gckOS_WaitSignal(os, signal, !FromPower, gcdGPU_ADVANCETIMER);
 
         if (status == gcvSTATUS_TIMEOUT)
         {

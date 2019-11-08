@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 NXP
+ * Copyright (C) 2017-2018 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -16,7 +16,10 @@
 #include <linux/bitops.h>
 #include <linux/io.h>
 #include <linux/clk.h>
+#include <linux/of.h>
 #include <linux/delay.h>
+#include <linux/platform_device.h>
+#include <linux/interrupt.h>
 #include <drm/drm_fourcc.h>
 
 #include <video/imx-dcss.h>
@@ -128,6 +131,7 @@ struct dcss_dtg_priv {
 	u32 ctx_id;
 
 	bool in_use;
+	bool hdmi_output;
 
 	u32 dis_ulc_x;
 	u32 dis_ulc_y;
@@ -135,6 +139,9 @@ struct dcss_dtg_priv {
 	u32 control_status;
 	u32 alpha;
 	u32 use_global;
+
+	int ctxld_kick_irq;
+	bool ctxld_kick_irq_en;
 
 	/*
 	 * This will be passed on by DRM CRTC so that we can signal when DTG has
@@ -169,9 +176,56 @@ void dcss_dtg_dump_regs(struct seq_file *s, void *data)
 }
 #endif
 
+static irqreturn_t dcss_dtg_irq_handler(int irq, void *data)
+{
+	struct dcss_dtg_priv *dtg = data;
+	u32 status;
+
+	status = dcss_readl(dtg->base_reg + DCSS_DTG_INT_STATUS);
+
+	dcss_ctxld_kick(dtg->dcss);
+
+	dcss_writel(status & LINE0_IRQ, dtg->base_reg + DCSS_DTG_INT_CONTROL);
+
+	return IRQ_HANDLED;
+}
+
+static int dcss_dtg_irq_config(struct dcss_dtg_priv *dtg)
+{
+	struct dcss_soc *dcss = dtg->dcss;
+	struct platform_device *pdev = to_platform_device(dcss->dev);
+	int ret;
+
+	dtg->ctxld_kick_irq = platform_get_irq_byname(pdev, "ctxld_kick");
+	if (dtg->ctxld_kick_irq < 0) {
+		dev_err(dcss->dev, "dtg: can't get line2 irq number\n");
+		return dtg->ctxld_kick_irq;
+	}
+
+	ret = devm_request_irq(dcss->dev, dtg->ctxld_kick_irq,
+			       dcss_dtg_irq_handler,
+			       IRQF_TRIGGER_HIGH,
+			       "dcss_ctxld_kick", dtg);
+	if (ret) {
+		dev_err(dcss->dev, "dtg: irq request failed.\n");
+		return ret;
+	}
+
+	disable_irq(dtg->ctxld_kick_irq);
+
+	dtg->ctxld_kick_irq_en = false;
+
+	dcss_update(LINE0_IRQ, LINE0_IRQ, dtg->base_reg + DCSS_DTG_INT_MASK);
+
+	return 0;
+}
+
 int dcss_dtg_init(struct dcss_soc *dcss, unsigned long dtg_base)
 {
+	struct device_node *node = dcss->dev->of_node;
 	struct dcss_dtg_priv *dtg;
+	int len;
+	const char *disp_dev;
 
 	dtg = devm_kzalloc(dcss->dev, sizeof(*dtg), GFP_KERNEL);
 	if (!dtg)
@@ -192,13 +246,17 @@ int dcss_dtg_init(struct dcss_soc *dcss, unsigned long dtg_base)
 	dtg->ctx_id = CTX_DB;
 #endif
 
+	disp_dev = of_get_property(node, "disp-dev", &len);
+	if (!disp_dev || !strncmp(disp_dev, "hdmi_disp", 9))
+		dtg->hdmi_output = true;
+
 	dtg->alpha = 255;
 	dtg->use_global = 0;
 
 	dtg->control_status |= OVL_DATA_MODE | BLENDER_VIDEO_ALPHA_SEL |
 		((dtg->alpha << DEFAULT_FG_ALPHA_POS) & DEFAULT_FG_ALPHA_MASK);
 
-	return 0;
+	return dcss_dtg_irq_config(dtg);
 }
 
 void dcss_dtg_exit(struct dcss_soc *dcss)
@@ -215,6 +273,8 @@ void dcss_dtg_sync_set(struct dcss_soc *dcss, struct videomode *vm)
 	u16 dtg_lrc_x, dtg_lrc_y;
 	u16 dis_ulc_x, dis_ulc_y;
 	u16 dis_lrc_x, dis_lrc_y;
+	u32 sb_ctxld_trig, db_ctxld_trig;
+	u32 actual_clk;
 
 	dev_dbg(dcss->dev, "hfront_porch = %d\n", vm->hfront_porch);
 	dev_dbg(dcss->dev, "hback_porch = %d\n", vm->hback_porch);
@@ -224,6 +284,7 @@ void dcss_dtg_sync_set(struct dcss_soc *dcss, struct videomode *vm)
 	dev_dbg(dcss->dev, "vback_porch = %d\n", vm->vback_porch);
 	dev_dbg(dcss->dev, "vsync_len = %d\n", vm->vsync_len);
 	dev_dbg(dcss->dev, "vactive = %d\n", vm->vactive);
+	dev_dbg(dcss->dev, "pixelclock = %lu\n", vm->pixelclock);
 
 	dtg_lrc_x = vm->hfront_porch + vm->hback_porch + vm->hsync_len +
 		    vm->hactive - 1;
@@ -235,13 +296,27 @@ void dcss_dtg_sync_set(struct dcss_soc *dcss, struct videomode *vm)
 	dis_lrc_y = vm->vsync_len + vm->vfront_porch + vm->vback_porch +
 		    vm->vactive - 1;
 
-	clk_disable_unprepare(dcss->pout_clk);
-	clk_disable_unprepare(dcss->pdiv_clk);
-	clk_set_rate(dcss->pdiv_clk, vm->pixelclock);
-	clk_prepare_enable(dcss->pdiv_clk);
-	clk_prepare_enable(dcss->pout_clk);
+	if (dtg->hdmi_output) {
+		dcss_pll_disable(dcss);
+		dcss_pll_set_rate(dcss, vm->pixelclock, 2, &actual_clk);
+		dcss_pll_enable(dcss);
+	} else {
+		clk_disable_unprepare(dcss->pout_clk);
+		clk_disable_unprepare(dcss->pdiv_clk);
+		clk_set_rate(dcss->pdiv_clk, vm->pixelclock);
+		actual_clk = clk_get_rate(dcss->pdiv_clk);
+		clk_prepare_enable(dcss->pdiv_clk);
+		clk_prepare_enable(dcss->pout_clk);
+	}
 
-	msleep(500);
+	if (vm->pixelclock != actual_clk) {
+		dev_info(dcss->dev,
+			 "pixel clock set to %u Hz instead of %lu Hz, error is %d Hz\n",
+			 actual_clk, vm->pixelclock,
+			 (int)actual_clk - (int)vm->pixelclock);
+	}
+
+	msleep(50);
 
 	dcss_dtg_write(dtg, ((dtg_lrc_y << TC_Y_POS) | dtg_lrc_x),
 		       DCSS_DTG_TC_DTG);
@@ -253,14 +328,18 @@ void dcss_dtg_sync_set(struct dcss_soc *dcss, struct videomode *vm)
 	dtg->dis_ulc_x = dis_ulc_x;
 	dtg->dis_ulc_y = dis_ulc_y;
 
-	/*
-	 * If the dis_ulc_y is too small, then the context loader will not have
-	 * time to load the DB context. This happens with LCD panels which have
-	 * small vfront_porch, vback_porch and/or vsync_len.
-	 */
-	dcss_dtg_write(dtg, ((0 << TC_CTXLD_SB_Y_POS) & TC_CTXLD_SB_Y_MASK) |
-			(dis_ulc_y < 50 ? 50 : dis_ulc_y),
-			DCSS_DTG_TC_CTXLD);
+	sb_ctxld_trig = ((0 * dis_lrc_y / 100) << TC_CTXLD_SB_Y_POS) &
+							TC_CTXLD_SB_Y_MASK;
+	db_ctxld_trig = ((99 * dis_lrc_y / 100) << TC_CTXLD_DB_Y_POS) &
+							TC_CTXLD_DB_Y_MASK;
+
+	dcss_dtg_write(dtg, sb_ctxld_trig | db_ctxld_trig, DCSS_DTG_TC_CTXLD);
+
+	/* vblank trigger */
+	dcss_dtg_write(dtg, 0, DCSS_DTG_LINE1_INT);
+
+	/* CTXLD trigger */
+	dcss_dtg_write(dtg, ((90 * dis_lrc_y) / 100) << 16, DCSS_DTG_LINE0_INT);
 }
 EXPORT_SYMBOL(dcss_dtg_sync_set);
 
@@ -422,14 +501,51 @@ EXPORT_SYMBOL(dcss_dtg_ch_enable);
 
 void dcss_dtg_vblank_irq_enable(struct dcss_soc *dcss, bool en)
 {
-	void __iomem *reg;
 	struct dcss_dtg_priv *dtg = dcss->dtg_priv;
-	u32 val = en ? LINE0_IRQ : 0;
+	u32 status;
 
-	reg = dtg->base_reg + DCSS_DTG_INT_MASK;
+	dcss_update(LINE1_IRQ, LINE1_IRQ, dtg->base_reg + DCSS_DTG_INT_MASK);
 
-	dcss_update(val, LINE0_IRQ, reg);
+	dcss_dpr_irq_enable(dcss, en);
+
+	if (en) {
+		status = dcss_readl(dtg->base_reg + DCSS_DTG_INT_STATUS);
+		dcss_writel(status & LINE1_IRQ,
+			    dtg->base_reg + DCSS_DTG_INT_CONTROL);
+	}
 }
+
+void dcss_dtg_ctxld_kick_irq_enable(struct dcss_soc *dcss, bool en)
+{
+	struct dcss_dtg_priv *dtg = dcss->dtg_priv;
+	u32 status;
+
+	/* need to keep the CTXLD kick interrupt ON if DTRC is used */
+	if (!en && (dcss_dtrc_is_running(dcss, 1) ||
+		    dcss_dtrc_is_running(dcss, 2)))
+		return;
+
+	if (en) {
+		status = dcss_readl(dtg->base_reg + DCSS_DTG_INT_STATUS);
+
+		if (!dtg->ctxld_kick_irq_en) {
+			dcss_writel(status & LINE0_IRQ,
+				    dtg->base_reg + DCSS_DTG_INT_CONTROL);
+			enable_irq(dtg->ctxld_kick_irq);
+			dtg->ctxld_kick_irq_en = true;
+			return;
+		}
+
+		return;
+	}
+
+	if (!dtg->ctxld_kick_irq_en)
+		return;
+
+	disable_irq_nosync(dtg->ctxld_kick_irq);
+	dtg->ctxld_kick_irq_en = false;
+}
+EXPORT_SYMBOL(dcss_dtg_ctxld_kick_irq_enable);
 
 void dcss_dtg_vblank_irq_clear(struct dcss_soc *dcss)
 {
@@ -438,5 +554,5 @@ void dcss_dtg_vblank_irq_clear(struct dcss_soc *dcss)
 
 	reg = dtg->base_reg + DCSS_DTG_INT_CONTROL;
 
-	dcss_update(LINE0_IRQ, LINE0_IRQ, reg);
+	dcss_update(LINE1_IRQ, LINE1_IRQ, reg);
 }

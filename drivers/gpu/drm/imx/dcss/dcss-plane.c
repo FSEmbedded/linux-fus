@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 NXP
+ * Copyright 2017-2018 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -18,8 +18,10 @@
 #include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_atomic.h>
+#include <linux/dma-buf.h>
 
 #include "video/imx-dcss.h"
+#include "video/viv-metadata.h"
 #include "dcss-plane.h"
 #include "dcss-crtc.h"
 
@@ -61,6 +63,7 @@ static const u64 dcss_video_format_modifiers[] = {
 	DRM_FORMAT_MOD_VSI_G1_TILED,
 	DRM_FORMAT_MOD_VSI_G2_TILED,
 	DRM_FORMAT_MOD_VSI_G2_TILED_COMPRESSED,
+	DRM_FORMAT_MOD_LINEAR,
 	DRM_FORMAT_MOD_INVALID,
 };
 
@@ -149,11 +152,12 @@ static bool dcss_plane_format_mod_supported(struct drm_plane *plane,
 		case DRM_FORMAT_NV12:
 		case DRM_FORMAT_NV21:
 		case DRM_FORMAT_P010:
-			return modifier == DRM_FORMAT_MOD_VSI_G1_TILED ||
+			return modifier == DRM_FORMAT_MOD_LINEAR ||
+			       modifier == DRM_FORMAT_MOD_VSI_G1_TILED ||
 			       modifier == DRM_FORMAT_MOD_VSI_G2_TILED ||
 			       modifier == DRM_FORMAT_MOD_VSI_G2_TILED_COMPRESSED;
 		default:
-			return false;
+			return modifier == DRM_FORMAT_MOD_LINEAR;
 		}
 		break;
 	default:
@@ -168,11 +172,41 @@ static const struct drm_plane_funcs dcss_plane_funcs = {
 	.reset		= drm_atomic_helper_plane_reset,
 	.atomic_duplicate_state	= drm_atomic_helper_plane_duplicate_state,
 	.atomic_destroy_state	= drm_atomic_helper_plane_destroy_state,
-	.set_property = drm_atomic_helper_plane_set_property,
 	.atomic_set_property = dcss_plane_atomic_set_property,
 	.atomic_get_property = dcss_plane_atomic_get_property,
 	.format_mod_supported = dcss_plane_format_mod_supported,
 };
+
+static bool dcss_plane_can_rotate(u32 pixel_format, bool mod_present,
+				  u64 modifier, unsigned int rotation)
+{
+	enum dcss_color_space cs = dcss_drm_fourcc_to_colorspace(pixel_format);
+	bool linear_format = !mod_present ||
+			     (mod_present && modifier == DRM_FORMAT_MOD_LINEAR);
+	u32 supported_rotation = DRM_MODE_ROTATE_0;
+
+	if (cs == DCSS_COLORSPACE_RGB && linear_format)
+		supported_rotation = DRM_MODE_ROTATE_0 | DRM_MODE_ROTATE_180 |
+				     DRM_MODE_REFLECT_MASK;
+	else if (cs == DCSS_COLORSPACE_RGB &&
+		 modifier == DRM_FORMAT_MOD_VIVANTE_TILED)
+		supported_rotation = DRM_MODE_ROTATE_MASK |
+				     DRM_MODE_REFLECT_MASK;
+	else if (cs == DCSS_COLORSPACE_RGB &&
+		 modifier == DRM_FORMAT_MOD_VIVANTE_SUPER_TILED_FC)
+		supported_rotation = DRM_MODE_ROTATE_0 | DRM_MODE_ROTATE_180 |
+				     DRM_MODE_REFLECT_MASK;
+	else if (cs == DCSS_COLORSPACE_YUV && linear_format &&
+		 (pixel_format == DRM_FORMAT_NV12 ||
+		 pixel_format == DRM_FORMAT_NV21))
+		supported_rotation = DRM_MODE_ROTATE_0 | DRM_MODE_ROTATE_180 |
+				     DRM_MODE_REFLECT_MASK;
+	else if (cs == DCSS_COLORSPACE_YUV && linear_format &&
+		 pixel_format == DRM_FORMAT_P010)
+		supported_rotation = DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_Y;
+
+	return !!(rotation & supported_rotation);
+}
 
 static int dcss_plane_atomic_check(struct drm_plane *plane,
 				   struct drm_plane_state *state)
@@ -184,11 +218,8 @@ static int dcss_plane_atomic_check(struct drm_plane *plane,
 	int hdisplay, vdisplay;
 	struct drm_rect crtc_rect, disp_rect;
 
-	if (!fb)
+	if (!fb || !state->crtc)
 		return 0;
-
-	if (!state->crtc)
-		return -EINVAL;
 
 	cma_obj = drm_fb_cma_get_gem_obj(fb, 0);
 	WARN_ON(!cma_obj);
@@ -210,8 +241,20 @@ static int dcss_plane_atomic_check(struct drm_plane *plane,
 	disp_rect.y2 = vdisplay;
 
 	/* make sure the crtc is visible */
-	if (!drm_rect_intersect(&crtc_rect, &disp_rect))
+	if (!drm_rect_intersect(&crtc_rect, &disp_rect)) {
+		state->visible = false;
+		return 0;
+	}
+
+	state->visible = true;
+
+	if (!dcss_plane_can_rotate(fb->format->format,
+				   !!(fb->flags & DRM_MODE_FB_MODIFIERS),
+				   fb->modifier,
+				   state->rotation)) {
+		DRM_ERROR("requested rotation is not allowed!\n");
 		return -EINVAL;
+	}
 
 	/* cropping is only available on overlay planes when DTRC is used */
 	if (state->crtc_x < 0 || state->crtc_y < 0 ||
@@ -219,7 +262,9 @@ static int dcss_plane_atomic_check(struct drm_plane *plane,
 	    state->crtc_y + state->crtc_h > vdisplay) {
 		if (plane->type == DRM_PLANE_TYPE_PRIMARY)
 			return -EINVAL;
-		else if (!(fb->flags & DRM_MODE_FB_MODIFIERS))
+		else if (!(fb->flags & DRM_MODE_FB_MODIFIERS) ||
+			 (fb->flags & DRM_MODE_FB_MODIFIERS &&
+			  fb->modifier == DRM_FORMAT_MOD_LINEAR))
 			return -EINVAL;
 	}
 
@@ -232,13 +277,30 @@ static int dcss_plane_atomic_check(struct drm_plane *plane,
 
 	if ((fb->flags & DRM_MODE_FB_MODIFIERS) &&
 	    !plane->funcs->format_mod_supported(plane,
-				fb->pixel_format,
-				fb->modifier[0])) {
-		DRM_INFO("Invalid modifier: %llx", fb->modifier[0]);
+				fb->format->format,
+				fb->modifier)) {
+		DRM_INFO("Invalid modifier: %llx", fb->modifier);
 		return -EINVAL;
 	}
 
 	return 0;
+}
+
+static struct drm_gem_object *dcss_plane_gem_import(struct drm_device *dev,
+						    struct dma_buf *dma_buf)
+{
+	struct drm_gem_object *obj;
+
+	if (IS_ERR(dma_buf))
+		return ERR_CAST(dma_buf);
+
+	mutex_lock(&dev->object_name_lock);
+
+	obj = dev->driver->gem_prime_import(dev, dma_buf);
+
+	mutex_unlock(&dev->object_name_lock);
+
+	return obj;
 }
 
 static void dcss_plane_atomic_set_base(struct dcss_plane *dcss_plane)
@@ -251,17 +313,19 @@ static void dcss_plane_atomic_set_base(struct dcss_plane *dcss_plane)
 	unsigned long p1_ba, p2_ba;
 	dma_addr_t caddr;
 	bool modifiers_present = !!(fb->flags & DRM_MODE_FB_MODIFIERS);
-	u32 pix_format = state->fb->pixel_format;
+	u32 pix_format = state->fb->format->format;
+	bool compressed = true;
+	uint32_t compressed_format = 0;
 
 	BUG_ON(!cma_obj);
 
 	p1_ba = cma_obj->paddr + fb->offsets[0] +
 		fb->pitches[0] * (state->src_y >> 16) +
-		(fb->bits_per_pixel >> 3) * (state->src_x >> 16);
+		fb->format->cpp[0] * (state->src_x >> 16);
 
 	p2_ba = cma_obj->paddr + fb->offsets[1] +
 		fb->pitches[1] * (state->src_y >> 16) +
-		(fb->bits_per_pixel >> 3) * (state->src_x >> 16);
+		fb->format->cpp[0] * (state->src_x >> 16);
 
 	dcss_dpr_addr_set(dcss_plane->dcss, dcss_plane->ch_num, p1_ba, p2_ba,
 			  fb->pitches[0]);
@@ -278,9 +342,9 @@ static void dcss_plane_atomic_set_base(struct dcss_plane *dcss_plane)
 			dcss_dec400d_set_format_mod(dcss_plane->dcss,
 					pix_format,
 					mod_idx,
-					fb->modifier[mod_idx]);
+					fb->modifier);
 
-		switch (fb->modifier[0]) {
+		switch (fb->modifier) {
 		case DRM_FORMAT_MOD_LINEAR:
 		case DRM_FORMAT_MOD_VIVANTE_TILED:
 		case DRM_FORMAT_MOD_VIVANTE_SUPER_TILED:
@@ -288,8 +352,38 @@ static void dcss_plane_atomic_set_base(struct dcss_plane *dcss_plane)
 			dcss_dec400d_bypass(dcss_plane->dcss);
 			return;
 		case DRM_FORMAT_MOD_VIVANTE_SUPER_TILED_FC:
-			caddr = cma_obj->paddr + ALIGN(fb->height, 64) * fb->pitches[0];
-			dcss_dec400d_read_config(dcss_plane->dcss, 0, true);
+			do {
+				struct dma_buf *dma_buf = cma_obj->base.dma_buf;
+				struct drm_gem_object *gem_obj;
+					_VIV_VIDMEM_METADATA *mdata;
+
+				if (!dma_buf) {
+					caddr = cma_obj->paddr + ALIGN(fb->height, 64) * fb->pitches[0];
+					break;
+				}
+
+				mdata = dma_buf->priv;
+				if (!mdata || mdata->magic != VIV_VIDMEM_METADATA_MAGIC) {
+					return;
+				}
+				compressed = mdata->compressed ? true : false;
+				compressed_format = mdata->compress_format;
+
+				gem_obj = dcss_plane_gem_import(plane->dev, mdata->ts_dma_buf);
+				if (IS_ERR(gem_obj)) {
+					return;
+				}
+
+				caddr = to_drm_gem_cma_obj(gem_obj)->paddr;
+
+				/* release gem_obj */
+				drm_gem_object_unreference_unlocked(gem_obj);
+
+				dcss_dec400d_fast_clear_config(dcss_plane->dcss,
+						mdata->fc_value,
+						mdata->fc_enabled);
+			} while (0);
+			dcss_dec400d_read_config(dcss_plane->dcss, 0, compressed, compressed_format);
 			dcss_dec400d_addr_set(dcss_plane->dcss, p1_ba, caddr);
 			break;
 		default:
@@ -300,6 +394,7 @@ static void dcss_plane_atomic_set_base(struct dcss_plane *dcss_plane)
 		break;
 	case DRM_PLANE_TYPE_OVERLAY:
 		if (!modifiers_present ||
+		    (modifiers_present && fb->modifier == DRM_FORMAT_MOD_LINEAR) ||
 		    (pix_format != DRM_FORMAT_NV12 &&
 		     pix_format != DRM_FORMAT_NV21 &&
 		     pix_format != DRM_FORMAT_P010)) {
@@ -308,7 +403,7 @@ static void dcss_plane_atomic_set_base(struct dcss_plane *dcss_plane)
 		}
 
 		dcss_dtrc_set_format_mod(dcss_plane->dcss, dcss_plane->ch_num,
-					 fb->modifier[0]);
+					 fb->modifier);
 		dcss_dtrc_addr_set(dcss_plane->dcss, dcss_plane->ch_num,
 				   p1_ba, p2_ba, dcss_plane->dtrc_table_ofs_val);
 		break;
@@ -332,8 +427,9 @@ static bool dcss_plane_needs_setup(struct drm_plane_state *state,
 	       state->src_y  != old_state->src_y  ||
 	       state->src_w  != old_state->src_w  ||
 	       state->src_h  != old_state->src_h  ||
-	       fb->pixel_format != old_fb->pixel_format ||
-	       fb->modifier[0] != old_fb->modifier[0];
+	       fb->format->format != old_fb->format->format ||
+	       fb->modifier  != old_fb->modifier ||
+	       state->rotation != old_state->rotation;
 }
 
 static void dcss_plane_adjust(struct drm_rect *dis_rect,
@@ -376,17 +472,21 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
 	struct drm_plane_state *state = plane->state;
 	struct dcss_plane *dcss_plane = to_dcss_plane(plane);
 	struct drm_framebuffer *fb = state->fb;
-	u32 pixel_format = state->fb->pixel_format;
-	struct drm_crtc_state *crtc_state = state->crtc->state;
-	bool modifiers_present = !!(fb->flags & DRM_MODE_FB_MODIFIERS);
+	u32 pixel_format;
+	struct drm_crtc_state *crtc_state;
+	bool modifiers_present;
 	u32 src_w, src_h, adj_w, adj_h;
 	struct drm_rect disp, crtc, src, old_src;
 	u32 scaler_w, scaler_h;
 	struct dcss_hdr10_pipe_cfg ipipe_cfg, opipe_cfg;
 	bool enable = true;
 
-	if (!state->fb)
+	if (!fb || !state->crtc || !state->visible)
 		return;
+
+	pixel_format = state->fb->format->format;
+	crtc_state = state->crtc->state;
+	modifiers_present = !!(fb->flags & DRM_MODE_FB_MODIFIERS);
 
 	if (old_state->fb && !drm_atomic_crtc_needs_modeset(crtc_state) &&
 	    !dcss_plane_needs_setup(state, old_state) &&
@@ -433,6 +533,10 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
 	adj_w = src.x2 - src.x1;
 	adj_h = src.y2 - src.y1;
 
+	if (plane->type == DRM_PLANE_TYPE_OVERLAY &&
+	    modifiers_present && fb->modifier == DRM_FORMAT_MOD_LINEAR)
+		modifiers_present = false;
+
 	dcss_dpr_format_set(dcss_plane->dcss, dcss_plane->ch_num, pixel_format,
 				modifiers_present);
 	if (!modifiers_present)
@@ -442,13 +546,15 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
 	else
 		dcss_dpr_tile_derive(dcss_plane->dcss,
 				     dcss_plane->ch_num,
-				     fb->modifier[0]);
+				     fb->modifier);
 
 	dcss_dpr_set_res(dcss_plane->dcss, dcss_plane->ch_num,
 			 src_w, src_h, adj_w, adj_h);
+	dcss_dpr_set_rotation(dcss_plane->dcss, dcss_plane->ch_num,
+			      state->rotation);
 	dcss_plane_atomic_set_base(dcss_plane);
 
-	if (fb->modifier[0] == DRM_FORMAT_MOD_VSI_G2_TILED_COMPRESSED) {
+	if (fb->modifier == DRM_FORMAT_MOD_VSI_G2_TILED_COMPRESSED) {
 		scaler_w = src.x1 ? adj_w : src_w;
 		scaler_h = src.y1 ? adj_h : src_h;
 	} else {
@@ -524,6 +630,7 @@ static void dcss_plane_atomic_disable(struct drm_plane *plane,
 }
 
 static const struct drm_plane_helper_funcs dcss_plane_helper_funcs = {
+	.prepare_fb = drm_fb_cma_prepare_fb,
 	.atomic_check = dcss_plane_atomic_check,
 	.atomic_update = dcss_plane_atomic_update,
 	.atomic_disable = dcss_plane_atomic_disable,
@@ -571,6 +678,15 @@ struct dcss_plane *dcss_plane_init(struct drm_device *drm,
 	ret = drm_plane_create_zpos_immutable_property(&dcss_plane->base, zpos);
 	if (ret)
 		return ERR_PTR(ret);
+
+	drm_plane_create_rotation_property(&dcss_plane->base,
+					   DRM_MODE_ROTATE_0,
+					   DRM_MODE_ROTATE_0   |
+					   DRM_MODE_ROTATE_90  |
+					   DRM_MODE_ROTATE_180 |
+					   DRM_MODE_ROTATE_270 |
+					   DRM_MODE_REFLECT_X  |
+					   DRM_MODE_REFLECT_Y);
 
 	dcss_plane->ch_num = 2 - zpos;
 	dcss_plane->alpha_val = 255;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 NXP
+ * Copyright 2018 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -37,10 +37,6 @@
 #define DPHY_CO				0x2c
 #define DPHY_LOCK			0x30
 #define DPHY_LOCK_BYP			0x34
-#define DPHY_TX_RCAL			0x38
-#define DPHY_AUTO_PD_EN			0x3c
-#define DPHY_RXLPRP			0x40
-#define DPHY_RXCDRP			0x44
 
 #define MBPS(x) ((x) * 1000000)
 
@@ -67,19 +63,26 @@ struct pll_divider {
 	u32 co;
 };
 
+struct devtype {
+	bool have_sc;
+	u8 reg_tx_rcal;
+	u8 reg_auto_pd_en;
+	u8 reg_rxlprp;
+	u8 reg_rxcdrp;
+	u8 reg_rxhs_settle;
+	u8 reg_bypass_pll;
+};
+
 struct mixel_mipi_phy_priv {
 	struct device	*dev;
 	void __iomem	*base;
-	bool		have_sc;
+	const struct devtype	*plat_data;
 	sc_rsrc_t	mipi_id;
 	struct pll_divider divider;
 	struct mutex	lock;
 	unsigned long	data_rate;
 };
 
-struct devtype {
-	bool have_sc;
-};
 
 static inline u32 phy_read(struct phy *phy, unsigned int reg)
 {
@@ -204,60 +207,143 @@ static int mixel_mipi_phy_enable(struct phy *phy, u32 reset)
 static void mixel_phy_set_prg_regs(struct phy *phy)
 {
 	struct mixel_mipi_phy_priv *priv = phy_get_drvdata(phy);
-	u32 step;
-	u32 step_num;
-	u32 step_max;
+	unsigned int hs_reg;
 
-	/* MC_PRG_HS_PREPARE */
-	if (priv->data_rate > MBPS(1000))
-		phy_write(phy, 0x01, DPHY_MC_PRG_HS_PREPARE);
-	else
-		phy_write(phy, 0x00, DPHY_MC_PRG_HS_PREPARE);
+	/* MC_PRG_HS_PREPARE = 1.0 * Ttxescape if DPHY_MC_PRG_HS_PREPARE = 0
+	 *
+	 * MC_PRG_HS_PREPARE = 1.5 * Ttxescape if DPHY_MC_PRG_HS_PREPARE = 1
+	 *
+	 * Assume Ftxescape is 18-20 MHz with DPHY_MC_PRG_HS_PREPARE = 0,
+	 * this gives 55-50 ns.
+	 * The specification is 38 to 95 ns.
+	 */
+	phy_write(phy, 0x00, DPHY_MC_PRG_HS_PREPARE);
 
-	/* M_PRG_HS_PREPARE */
-	if (priv->data_rate > MBPS(250))
-		phy_write(phy, 0x00, DPHY_M_PRG_HS_PREPARE);
-	else
+	/* PRG_HS_PREPARE
+	 * for  PRG_HS_PREPARE = 00, THS-PREPARE = 1   * TxClkEsc Period
+	 *      PRG_HS_PREPARE = 01, THS-PREPARE = 1.5 * TxClkEsc Period
+	 *      PRG_HS_PREPARE = 10, THS-PREPARE = 2   * TxClkEsc Period
+	 *      PRG_HS_PREPARE = 11, THS-PREPARE = 2.5 * TxClkEsc Period
+	 *
+	 *      The specification for THS-PREPARE is
+	 *	     Min (40ns + 4*UI)
+	 *           Max 85ns +6*UI
+	 */
+	if (priv->data_rate <= MBPS(61))
+		phy_write(phy, 0x03, DPHY_M_PRG_HS_PREPARE);
+	else if (priv->data_rate <= MBPS(90))
+		phy_write(phy, 0x02, DPHY_M_PRG_HS_PREPARE);
+	else if (priv->data_rate <= MBPS(500))
 		phy_write(phy, 0x01, DPHY_M_PRG_HS_PREPARE);
-
-	/* MC_PRG_HS_ZERO */
-	step_max = 48;
-	step = (DATA_RATE_MAX_SPEED - DATA_RATE_MIN_SPEED) / step_max;
-	step_num = ((priv->data_rate - DATA_RATE_MIN_SPEED) / step) + 1;
-	phy_write(phy, step_num, DPHY_MC_PRG_HS_ZERO);
-
-	/* M_PRG_HS_ZERO */
-	if (priv->data_rate < MBPS(1000))
-		phy_write(phy, 0x09, DPHY_M_PRG_HS_ZERO);
 	else
-		phy_write(phy, 0x10, DPHY_M_PRG_HS_ZERO);
+		phy_write(phy, 0x00, DPHY_M_PRG_HS_PREPARE);
 
-	/* MC_PRG_HS_TRAIL and M_PRG_HS_TRAIL */
-	if (priv->data_rate < MBPS(1000)) {
-		phy_write(phy, 0x05, DPHY_MC_PRG_HS_TRAIL);
-		phy_write(phy, 0x05, DPHY_M_PRG_HS_TRAIL);
-	} else if (priv->data_rate < MBPS(1500)) {
-		phy_write(phy, 0x0C, DPHY_MC_PRG_HS_TRAIL);
-		phy_write(phy, 0x0C, DPHY_M_PRG_HS_TRAIL);
-	} else {
-		phy_write(phy, 0x0F, DPHY_MC_PRG_HS_TRAIL);
-		phy_write(phy, 0x0F, DPHY_M_PRG_HS_TRAIL);
-	}
+	/* MC_PRG_HS_ZERO
+	 *
+	 *  T-CLK-ZERO = ( MC_PRG_HS_ZERO + 3) * (TxByteClkHS Period)
+	 *
+	 *  The minimum specification for THS-PREPARE is 262 ns.
+	 *
+	 */
+	hs_reg =
+		/* simplified equation y = .034x - 2.5
+		 *
+		 * This a linear interpolation of the values from the
+		 * PHY user guide
+		 */
+		(34 * (priv->data_rate/1000000) - 2500) / 1000;
+
+	if (hs_reg < 1)
+		hs_reg = 1;
+	phy_write(phy, hs_reg, DPHY_MC_PRG_HS_ZERO);
+
+	/* M_PRG_HS_ZERO
+	 *
+	 *  TT-HS-ZERO =(M_PRG_HS_ZERO + 6) * (TxByteClkHS Period)
+	 *
+	 *  The minimum specification for THS-ZERO 105ns + 6*UI.
+	 *
+	 */
+	hs_reg =
+		/* simplified equation y = .0144x - 4.75
+		 *
+		 * This a linear interpolation of the values from the
+		 * PHY user guide
+		 */
+
+		(144 * (priv->data_rate/1000000) - 47500) / 10000;
+
+	if (hs_reg < 1)
+		hs_reg = 1;
+	phy_write(phy, hs_reg, DPHY_M_PRG_HS_ZERO);
+
+	/* MC_PRG_HS_TRAIL and M_PRG_HS_TRAIL
+	 *
+	 *  THS-TRAIL =(PRG_HS_TRAIL) * (TxByteClkHS Period)
+	 *
+	 *  The specification for THS-TRAIL is
+	 *	     Min     (60ns   + 4*UI)
+	 *           Typical (82.5ns + 8*UI)
+	 *           Max     (105ns  + 12*UI)
+	 *
+	 */
+
+	hs_reg =
+		/* simplified equation y = .0103x + 1
+		 *
+		 * This a linear interpolation of the values from the
+		 * PHY user guide
+		 */
+		(103 * (priv->data_rate/1000000) + 10000) / 10000;
+
+	if (hs_reg > 15)
+		hs_reg = 15;
+	if (hs_reg < 1)
+		hs_reg = 1;
+
+	phy_write(phy, hs_reg, DPHY_MC_PRG_HS_TRAIL);
+	phy_write(phy, hs_reg, DPHY_M_PRG_HS_TRAIL);
+
+	/* M_PRG_RXHS_SETTLE */
+	if (priv->plat_data->reg_rxhs_settle == 0xFF)
+		return;
+	if (priv->data_rate < MBPS(80))
+		phy_write(phy, 0x0d, priv->plat_data->reg_rxhs_settle);
+	else if (priv->data_rate < MBPS(90))
+		phy_write(phy, 0x0c, priv->plat_data->reg_rxhs_settle);
+	else if (priv->data_rate < MBPS(125))
+		phy_write(phy, 0x0b, priv->plat_data->reg_rxhs_settle);
+	else if (priv->data_rate < MBPS(150))
+		phy_write(phy, 0x0a, priv->plat_data->reg_rxhs_settle);
+	else if (priv->data_rate < MBPS(225))
+		phy_write(phy, 0x09, priv->plat_data->reg_rxhs_settle);
+	else if (priv->data_rate < MBPS(500))
+		phy_write(phy, 0x08, priv->plat_data->reg_rxhs_settle);
+	else
+		phy_write(phy, 0x07, priv->plat_data->reg_rxhs_settle);
+
 }
 
-int mixel_mipi_phy_init(struct phy *phy)
+static int mixel_mipi_phy_init(struct phy *phy)
 {
 	struct mixel_mipi_phy_priv *priv = dev_get_drvdata(phy->dev.parent);
 
 	mutex_lock(&priv->lock);
 
+	phy_write(phy, PWR_OFF, DPHY_PD_PLL);
+	phy_write(phy, PWR_OFF, DPHY_PD_DPHY);
+
 	mixel_phy_set_prg_regs(phy);
 
 	phy_write(phy, 0x00, DPHY_LOCK_BYP);
-	phy_write(phy, 0x01, DPHY_TX_RCAL);
-	phy_write(phy, 0x00, DPHY_AUTO_PD_EN);
-	phy_write(phy, 0x01, DPHY_RXLPRP);
-	phy_write(phy, 0x01, DPHY_RXCDRP);
+	if (priv->plat_data->reg_tx_rcal != 0xFF)
+		phy_write(phy, 0x01, priv->plat_data->reg_tx_rcal);
+	if (priv->plat_data->reg_auto_pd_en != 0xFF)
+		phy_write(phy, 0x00, priv->plat_data->reg_auto_pd_en);
+	if (priv->plat_data->reg_rxlprp != 0xFF)
+		phy_write(phy, 0x02, priv->plat_data->reg_rxlprp);
+	if (priv->plat_data->reg_rxcdrp != 0xFF)
+		phy_write(phy, 0x02, priv->plat_data->reg_rxcdrp);
 	phy_write(phy, 0x25, DPHY_TST);
 
 	/* VCO = REF_CLK * CM / CN * CO */
@@ -280,7 +366,7 @@ int mixel_mipi_phy_init(struct phy *phy)
 	return 0;
 }
 
-int mixel_mipi_phy_exit(struct phy *phy)
+static int mixel_mipi_phy_exit(struct phy *phy)
 {
 	phy_write(phy, 0, DPHY_CM);
 	phy_write(phy, 0, DPHY_CN);
@@ -297,7 +383,6 @@ static int mixel_mipi_phy_power_on(struct phy *phy)
 
 	mutex_lock(&priv->lock);
 
-	phy_write(phy, PWR_ON, DPHY_PD_DPHY);
 	phy_write(phy, PWR_ON, DPHY_PD_PLL);
 
 	timeout = 100;
@@ -305,12 +390,17 @@ static int mixel_mipi_phy_power_on(struct phy *phy)
 		udelay(10);
 		if (--timeout == 0) {
 			dev_err(&phy->dev, "Could not get DPHY lock!\n");
+			phy_write(phy, PWR_OFF, DPHY_PD_PLL);
 			mutex_unlock(&priv->lock);
 			return -EINVAL;
 		}
 	}
+	dev_dbg(&phy->dev, "DPHY lock acquired after %d tries\n",
+		(100 - timeout));
 
-	if (priv->have_sc)
+	phy_write(phy, PWR_ON, DPHY_PD_DPHY);
+
+	if (priv->plat_data->have_sc)
 		ret = mixel_mipi_phy_enable(phy, 1);
 
 	mutex_unlock(&priv->lock);
@@ -328,7 +418,7 @@ static int mixel_mipi_phy_power_off(struct phy *phy)
 	phy_write(phy, PWR_OFF, DPHY_PD_PLL);
 	phy_write(phy, PWR_OFF, DPHY_PD_DPHY);
 
-	if (priv->have_sc)
+	if (priv->plat_data->have_sc)
 		ret = mixel_mipi_phy_enable(phy, 0);
 
 	mutex_unlock(&priv->lock);
@@ -344,9 +434,33 @@ static const struct phy_ops mixel_mipi_phy_ops = {
 	.owner = THIS_MODULE,
 };
 
-static struct devtype imx8qm_dev = { .have_sc = true };
-static struct devtype imx8qxp_dev = { .have_sc = true };
-static struct devtype imx8mq_dev = { .have_sc = false };
+static struct devtype imx8qm_dev = {
+	.have_sc = true,
+	.reg_tx_rcal = 0xFF,
+	.reg_auto_pd_en = 0x38,
+	.reg_rxlprp = 0x3c,
+	.reg_rxcdrp = 0x40,
+	.reg_rxhs_settle = 0x44,
+	.reg_bypass_pll = 0xFF,
+};
+static struct devtype imx8qxp_dev = {
+	.have_sc = true,
+	.reg_tx_rcal = 0xFF,
+	.reg_auto_pd_en = 0x38,
+	.reg_rxlprp = 0x3c,
+	.reg_rxcdrp = 0x40,
+	.reg_rxhs_settle = 0x44,
+	.reg_bypass_pll = 0xFF,
+};
+static struct devtype imx8mq_dev = {
+	.have_sc = false,
+	.reg_tx_rcal = 0x38,
+	.reg_auto_pd_en = 0x3c,
+	.reg_rxlprp = 0x40,
+	.reg_rxcdrp = 0x44,
+	.reg_rxhs_settle = 0x48,
+	.reg_bypass_pll = 0x4c,
+};
 
 static const struct of_device_id mixel_mipi_phy_of_match[] = {
 	{ .compatible = "mixel,imx8qm-mipi-dsi-phy", .data = &imx8qm_dev },
@@ -362,12 +476,11 @@ static int mixel_mipi_phy_probe(struct platform_device *pdev)
 	struct device_node *np = dev->of_node;
 	const struct of_device_id *of_id =
 		of_match_device(mixel_mipi_phy_of_match, dev);
-	const struct devtype *devtype = of_id->data;
 	struct phy_provider *phy_provider;
 	struct mixel_mipi_phy_priv *priv;
 	struct resource *res;
 	struct phy *phy;
-	u32 phy_id = 0;
+	int phy_id = 0;
 
 	if (!np)
 		return -ENODEV;
@@ -384,7 +497,7 @@ static int mixel_mipi_phy_probe(struct platform_device *pdev)
 	if (IS_ERR(priv->base))
 		return PTR_ERR(priv->base);
 
-	priv->have_sc = devtype->have_sc;
+	priv->plat_data = of_id->data;
 
 	phy_id = of_alias_get_id(np, "dsi_phy");
 	if (phy_id < 0) {

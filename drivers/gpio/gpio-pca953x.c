@@ -21,6 +21,7 @@
 #include <linux/of_platform.h>
 #include <linux/platform_data/pca953x.h>
 #include <linux/regulator/consumer.h>
+#include <linux/reset.h>
 #include <linux/slab.h>
 
 #include <asm/unaligned.h>

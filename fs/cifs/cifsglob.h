@@ -1370,12 +1370,6 @@ struct close_cancelled_open {
 	struct work_struct      work;
 };
 
-struct close_cancelled_open {
-	struct cifs_fid         fid;
-	struct cifs_tcon        *tcon;
-	struct work_struct      work;
-};
-
 /*	Make code in transport.c a little cleaner by moving
 	update of optional stats into function below */
 #ifdef CONFIG_CIFS_STATS2

@@ -539,7 +539,7 @@ static void setup_buf_timer(struct mxc_vout_output *vout,
 		expiry_time = timeval_to_ktime(vb->ts);
 
 	now = hrtimer_cb_get_time(&vout->timer);
-	if ((now.tv64 > expiry_time.tv64)) {
+	if (ktime_after(now, expiry_time)) {
 		v4l2_dbg(1, debug, vout->vfd->v4l2_dev,
 				"warning: timer timeout already expired.\n");
 		expiry_time = now;
@@ -548,7 +548,7 @@ static void setup_buf_timer(struct mxc_vout_output *vout,
 	hrtimer_start(&vout->timer, expiry_time, HRTIMER_MODE_ABS);
 
 	v4l2_dbg(1, debug, vout->vfd->v4l2_dev, "timer handler next "
-		"schedule: %lldnsecs\n", expiry_time.tv64);
+		"schedule: %lldnsecs\n", ktime_to_ns(expiry_time));
 }
 
 static int show_buf(struct mxc_vout_output *vout, int idx,

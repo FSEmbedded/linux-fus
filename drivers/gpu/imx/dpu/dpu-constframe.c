@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017-2018 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -53,6 +53,11 @@ struct dpu_constframe {
 	shadow_load_req_t shdlreq;
 };
 
+static inline u32 dpu_cf_read(struct dpu_constframe *cf, unsigned int offset)
+{
+	return readl(cf->base + offset);
+}
+
 static inline void dpu_cf_write(struct dpu_constframe *cf, u32 value,
 				unsigned int offset)
 {
@@ -83,6 +88,38 @@ void constframe_framedimensions(struct dpu_constframe *cf, unsigned int w,
 	mutex_unlock(&cf->mutex);
 }
 EXPORT_SYMBOL_GPL(constframe_framedimensions);
+
+void constframe_framedimensions_copy_prim(struct dpu_constframe *cf)
+{
+	struct dpu_constframe *prim_cf = NULL;
+	unsigned int prim_id;
+	int i;
+	u32 val;
+
+	if (cf->id != 0 && cf->id != 1) {
+		dev_warn(cf->dpu->dev, "ConstFrame%d is not a secondary one\n",
+								cf->id);
+		return;
+	}
+
+	prim_id = cf->id + 4;
+
+	for (i = 0; i < ARRAY_SIZE(cf_ids); i++)
+		if (cf_ids[i] == prim_id)
+			prim_cf = cf->dpu->cf_priv[i];
+
+	if (!prim_cf) {
+		dev_warn(cf->dpu->dev, "cannot find ConstFrame%d's primary peer\n",
+								cf->id);
+		return;
+	}
+
+	mutex_lock(&cf->mutex);
+	val = dpu_cf_read(prim_cf, FRAMEDIMENSIONS);
+	dpu_cf_write(cf, val, FRAMEDIMENSIONS);
+	mutex_unlock(&cf->mutex);
+}
+EXPORT_SYMBOL_GPL(constframe_framedimensions_copy_prim);
 
 void constframe_constantcolor(struct dpu_constframe *cf, unsigned int r,
 			      unsigned int g, unsigned int b, unsigned int a)
@@ -149,12 +186,12 @@ struct dpu_constframe *dpu_cf_get(struct dpu_soc *dpu, int id)
 	mutex_lock(&cf->mutex);
 
 	if (cf->inuse) {
-		cf = ERR_PTR(-EBUSY);
-		goto out;
+		mutex_unlock(&cf->mutex);
+		return ERR_PTR(-EBUSY);
 	}
 
 	cf->inuse = true;
-out:
+
 	mutex_unlock(&cf->mutex);
 
 	return cf;
@@ -170,6 +207,19 @@ void dpu_cf_put(struct dpu_constframe *cf)
 	mutex_unlock(&cf->mutex);
 }
 EXPORT_SYMBOL_GPL(dpu_cf_put);
+
+struct dpu_constframe *dpu_aux_cf_peek(struct dpu_constframe *cf)
+{
+	unsigned int aux_id = cf->id ^ 1;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(cf_ids); i++)
+		if (cf_ids[i] == aux_id)
+			return cf->dpu->cf_priv[i];
+
+	return NULL;
+}
+EXPORT_SYMBOL_GPL(dpu_aux_cf_peek);
 
 void _dpu_cf_init(struct dpu_soc *dpu, unsigned int id)
 {
@@ -207,6 +257,9 @@ int dpu_cf_init(struct dpu_soc *dpu, unsigned int id,
 	for (i = 0; i < ARRAY_SIZE(cf_ids); i++)
 		if (cf_ids[i] == id)
 			break;
+
+	if (i == ARRAY_SIZE(cf_ids))
+		return -EINVAL;
 
 	dpu->cf_priv[i] = cf;
 

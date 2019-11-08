@@ -373,6 +373,13 @@ static int genpd_power_off(struct generic_pm_domain *genpd, bool one_dev_on,
 	if (genpd->gov && genpd->gov->power_down_ok) {
 		if (!genpd->gov->power_down_ok(&genpd->domain))
 			return -EAGAIN;
+	} else {
+		/*
+		 * if no valid state idx specified by governor, we use
+		 * the default state_idx 0 to enter in case the domain
+		 * has multi low power states.
+		 */
+		genpd->state_idx = 0;
 	}
 
 	if (genpd->power_off) {
@@ -380,6 +387,10 @@ static int genpd_power_off(struct generic_pm_domain *genpd, bool one_dev_on,
 
 		if (atomic_read(&genpd->sd_count) > 0)
 			return -EBUSY;
+
+		if (!genpd->device_count)
+			/* Choose the deepest state if no devices using this domain */
+			genpd->state_idx = genpd->state_count - 1;
 
 		/*
 		 * If sd_count > 0 at this point, one of the subdomains hasn't
@@ -801,7 +812,20 @@ static void genpd_sync_power_off(struct generic_pm_domain *genpd, bool use_lock,
 {
 	struct gpd_link *link;
 
-	if (!genpd_status_on(genpd) || genpd_is_always_on(genpd))
+	/*
+	 * Give the power domain a chance to switch to the deepest state in
+	 * case it's already off but in an intermediate low power state.
+	 * Due to power domain is alway off, so no need to check device wakeup
+	 * here anymore
+	 */
+
+	genpd->state_idx_saved = genpd->state_idx;
+
+	if (genpd_is_always_on(genpd))
+		return;
+
+	if (!genpd_status_on(genpd) &&
+	    genpd->state_idx == (genpd->state_count - 1))
 		return;
 
 	if (genpd->suspended_count != genpd->device_count

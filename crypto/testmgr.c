@@ -46,6 +46,8 @@ MODULE_PARM_DESC(notests, "disable crypto self-tests");
 /* a perfect nop */
 int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 {
+	printk_once(KERN_INFO "alg: self-tests disabled by "
+		"CONFIG_CRYPTO_MANAGER_DISABLE_TESTS\n");
 	return 0;
 }
 
@@ -3371,7 +3373,7 @@ static const struct alg_test_desc alg_test_descs[] = {
 			}
 		}
 	}, {
-		.alg = "rfc4543(gcm(aes))-disabled",
+		.alg = "rfc4543(gcm(aes))",
 		.test = alg_test_aead,
 		.suite = {
 			.aead = {

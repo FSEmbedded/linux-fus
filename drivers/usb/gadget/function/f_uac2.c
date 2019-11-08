@@ -598,7 +598,7 @@ afunc_bind(struct usb_configuration *cfg, struct usb_function *fn)
 	agdev->params.req_number = uac2_opts->req_number;
 	ret = g_audio_setup(agdev, "UAC2 PCM", "UAC2_Gadget");
 	if (ret)
-		goto err;
+		goto err_free_descs;
 	return 0;
 
 err_free_descs:

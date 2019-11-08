@@ -21,3 +21,7 @@
 &fec2 {
 	status = "okay";
 };
+
+&ethphy1 {
+	status = "okay";
+};

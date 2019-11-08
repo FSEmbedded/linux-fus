@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017-2018 NXP
  *
  * The code contained herein is licensed under the GNU General Public
  * License. You may obtain a copy of the GNU General Public License
@@ -516,6 +516,13 @@ static int imx7ulp_pm_enter(suspend_state_t state)
 	return 0;
 }
 
+/* Put CA7 into VLLS mode before M4 power off CA7 */
+void imx7ulp_poweroff(void)
+{
+	imx7ulp_set_lpm(VLLS);
+	cpu_suspend(0, imx7ulp_suspend_finish);
+}
+
 static int imx7ulp_pm_valid(suspend_state_t state)
 {
 	return (state == PM_SUSPEND_STANDBY || state == PM_SUSPEND_MEM);
@@ -567,9 +574,6 @@ static int __init imx7ulp_dt_find_lpsram(unsigned long node, const char *uname,
 
 void __init imx7ulp_pm_map_io(void)
 {
-	if (psci_ops.cpu_suspend) {
-		return;
-	}
 	/*
 	 * Get the address of IRAM or OCRAM to be used by the low
 	 * power code from the device tree.
@@ -581,9 +585,6 @@ void __init imx7ulp_pm_map_io(void)
 		pr_warn("No valid ocram available for suspend/resume!\n");
 		return;
 	}
-
-	/* Set all entries to 0 except first 3 words reserved for M4. */
-	memset((void *)iram_tlb_base_addr, 0, MX7ULP_IRAM_TLB_SIZE);
 }
 
 void __init imx7ulp_pm_common_init(const struct imx7ulp_pm_socdata
@@ -603,6 +604,9 @@ void __init imx7ulp_pm_common_init(const struct imx7ulp_pm_socdata
 		aips4_base = ioremap(MX7ULP_AIPS4_BASE_ADDR, SZ_1M);
 		aips5_base = ioremap(MX7ULP_AIPS5_BASE_ADDR, SZ_1M);
 	} else {
+		/* Set all entries to 0 except first 3 words reserved for M4. */
+		memset((void *)iram_tlb_base_addr, 0, MX7ULP_IRAM_TLB_SIZE);
+
 		/*
 		 * Make sure the IRAM virtual address has a mapping in the IRAM
 		 * page table.

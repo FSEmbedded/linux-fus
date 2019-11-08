@@ -13,7 +13,6 @@
 #include <linux/cpufreq.h>
 #include <linux/err.h>
 #include <linux/module.h>
-#include <linux/slab.h>
 #include <linux/of.h>
 #include <linux/pm_opp.h>
 #include <linux/platform_device.h>
@@ -42,9 +41,9 @@ static struct clk *step_clk;
 static struct clk *pll2_pfd2_396m_clk;
 
 /* clk used by i.MX6UL */
-static struct clk *pll1_bypass;
-static struct clk *pll1_bypass_src;
-static struct clk *pll1;
+static struct clk *pll1_bypass_clk;
+static struct clk *pll1_bypass_src_clk;
+static struct clk *pll1_clk;
 static struct clk *pll2_bus_clk;
 static struct clk *secondary_sel_clk;
 
@@ -52,7 +51,7 @@ static struct device *cpu_dev;
 static bool free_opp;
 static struct cpufreq_frequency_table *freq_table;
 static unsigned int transition_latency;
-static struct mutex set_cpufreq_lock;
+
 static u32 *imx6_soc_volt;
 static u32 soc_opp_count;
 static bool ignore_dc_reg;
@@ -64,9 +63,7 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 	unsigned long freq_hz, volt, volt_old;
 	unsigned int old_freq, new_freq;
 	bool pll1_sys_temp_enabled = false;
-	int ret;
-
-	mutex_lock(&set_cpufreq_lock);
+	int ret, ret1;
 
 	new_freq = freq_table[index].frequency;
 	freq_hz = new_freq * 1000;
@@ -79,14 +76,12 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 	 * when exit from low bus mode.
 	 */
 	if (old_freq == FREQ_24_MHZ && new_freq == FREQ_198_MHZ) {
-		mutex_unlock(&set_cpufreq_lock);
 		return 0;
 	};
 
 	opp = dev_pm_opp_find_freq_ceil(cpu_dev, &freq_hz);
 	if (IS_ERR(opp)) {
 		dev_err(cpu_dev, "failed to find OPP for %ld\n", freq_hz);
-		mutex_unlock(&set_cpufreq_lock);
 		return PTR_ERR(opp);
 	}
 
@@ -115,21 +110,18 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 			ret = regulator_set_voltage_tol(pu_reg, imx6_soc_volt[index], 0);
 			if (ret) {
 				dev_err(cpu_dev, "failed to scale vddpu up: %d\n", ret);
-				mutex_unlock(&set_cpufreq_lock);
 				return ret;
 			}
 		}
 		ret = regulator_set_voltage_tol(soc_reg, imx6_soc_volt[index], 0);
 		if (ret) {
 			dev_err(cpu_dev, "failed to scale vddsoc up: %d\n", ret);
-			mutex_unlock(&set_cpufreq_lock);
 			return ret;
 		}
 		ret = regulator_set_voltage_tol(arm_reg, volt, 0);
 		if (ret) {
 			dev_err(cpu_dev,
 				"failed to scale vddarm up: %d\n", ret);
-			mutex_unlock(&set_cpufreq_lock);
 			return ret;
 		}
 	}
@@ -146,7 +138,8 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 	 *  - Disable pll2_pfd2_396m_clk
 	 */
 	if (of_machine_is_compatible("fsl,imx6ul") ||
-	    of_machine_is_compatible("fsl,imx6ull")) {
+	    of_machine_is_compatible("fsl,imx6ull") ||
+	    of_machine_is_compatible("fsl,imx6ulz")) {
 		/*
 		 * When changing pll1_sw_clk's parent to pll1_sys_clk,
 		 * CPU may run at higher than 528MHz, this will lead to
@@ -163,7 +156,7 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 		clk_set_parent(step_clk, secondary_sel_clk);
 		clk_set_parent(pll1_sw_clk, step_clk);
 		if (freq_hz > clk_get_rate(pll2_bus_clk)) {
-			clk_set_rate(pll1, new_freq * 1000);
+			clk_set_rate(pll1_clk, new_freq * 1000);
 			clk_set_parent(pll1_sw_clk, pll1_sys_clk);
 		}
 	} else {
@@ -175,12 +168,13 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 			 * change rate done to pll1_sys_clk done below
 			 * can propagate up to pll1.
 			 */
-			clk_set_parent(pll1_bypass, pll1);
+			clk_set_parent(pll1_bypass_clk, pll1_clk);
 			clk_set_rate(pll1_sys_clk, new_freq * 1000);
 			clk_set_parent(pll1_sw_clk, pll1_sys_clk);
 		} else {
 			/* pll1_sys needs to be enabled for divider rate change to work. */
 			pll1_sys_temp_enabled = true;
+			clk_set_parent(pll1_bypass_clk, pll1_bypass_src_clk);
 			clk_prepare_enable(pll1_sys_clk);
 		}
 	}
@@ -189,8 +183,12 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 	ret = clk_set_rate(arm_clk, new_freq * 1000);
 	if (ret) {
 		dev_err(cpu_dev, "failed to set clock rate: %d\n", ret);
-		regulator_set_voltage_tol(arm_reg, volt_old, 0);
-		mutex_unlock(&set_cpufreq_lock);
+		ret1 = regulator_set_voltage_tol(arm_reg, volt_old, 0);
+		if (ret1) {
+			dev_err(cpu_dev,
+				"failed to restore vddarm: %d\n", ret1);
+			return ret1;
+		}
 		return ret;
 	}
 
@@ -230,7 +228,6 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 		release_bus_freq(BUS_FREQ_HIGH);
 	}
 
-	mutex_unlock(&set_cpufreq_lock);
 	return 0;
 }
 
@@ -239,10 +236,20 @@ static int imx6q_cpufreq_init(struct cpufreq_policy *policy)
 	int ret;
 
 	policy->clk = arm_clk;
+	policy->cur = clk_get_rate(arm_clk) / 1000;
 	ret = cpufreq_generic_init(policy, freq_table, transition_latency);
 	policy->suspend_freq = policy->max;
+	if (ret) {
+		dev_err(cpu_dev, "imx6 cpufreq init failed!\n");
+		return ret;
+	}
+	if (low_power_run_support && policy->cur > freq_table[0].frequency) {
+		request_bus_freq(BUS_FREQ_HIGH);
+	} else if (policy->cur > FREQ_396_MHZ) {
+		request_bus_freq(BUS_FREQ_HIGH);
+	}
 
-	return ret;
+	return 0;
 }
 
 static struct cpufreq_driver imx6q_cpufreq_driver = {
@@ -259,39 +266,32 @@ static struct cpufreq_driver imx6q_cpufreq_driver = {
 static int imx6_cpufreq_pm_notify(struct notifier_block *nb,
 	unsigned long event, void *dummy)
 {
-	struct cpufreq_policy *data = cpufreq_cpu_get(0);
-	static u32 cpufreq_policy_min_pre_suspend;
-
-	/*
-	 * During suspend/resume, When cpufreq driver try to increase
-	 * voltage/freq, it needs to control I2C/SPI to communicate
-	 * with external PMIC to adjust voltage, but these I2C/SPI
-	 * devices may be already suspended, to avoid such scenario,
-	 * we just increase cpufreq to highest setpoint before suspend.
-	 */
-	if (!data)
-		return NOTIFY_BAD;
+	int ret;
 
 	switch (event) {
 	case PM_SUSPEND_PREPARE:
-		cpufreq_policy_min_pre_suspend = data->user_policy.min;
-		data->user_policy.min = data->user_policy.max;
-
-		if (!IS_ERR(dc_reg) && !ignore_dc_reg)
-			regulator_set_voltage_tol(dc_reg, DC_VOLTAGE_MAX, 0);
+		if (!IS_ERR(dc_reg) && !ignore_dc_reg) {
+			ret = regulator_set_voltage_tol(dc_reg, DC_VOLTAGE_MAX, 0);
+			if (ret) {
+				dev_err(cpu_dev,
+					"failed to scale dc_reg to max: %d\n", ret);
+				return ret;
+			}
+		}
 		break;
 	case PM_POST_SUSPEND:
-		data->user_policy.min = cpufreq_policy_min_pre_suspend;
-
-		if (!IS_ERR(dc_reg) && !ignore_dc_reg)
-			regulator_set_voltage_tol(dc_reg, DC_VOLTAGE_MIN, 0);
+		if (!IS_ERR(dc_reg) && !ignore_dc_reg) {
+			ret = regulator_set_voltage_tol(dc_reg, DC_VOLTAGE_MIN, 0);
+			if (ret) {
+				dev_err(cpu_dev,
+					"failed to scale dc_reg to min: %d\n", ret);
+				return ret;
+			}
+		}
 		break;
 	default:
 		break;
 	}
-
-	cpufreq_update_policy(0);
-	cpufreq_cpu_put(data);
 
 	return NOTIFY_OK;
 }
@@ -329,19 +329,20 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 	pll1_sw_clk = clk_get(cpu_dev, "pll1_sw");
 	step_clk = clk_get(cpu_dev, "step");
 	pll2_pfd2_396m_clk = clk_get(cpu_dev, "pll2_pfd2_396m");
-	pll1 = clk_get(cpu_dev, "pll1");
-	pll1_bypass = clk_get(cpu_dev, "pll1_bypass");
-	pll1_bypass_src = clk_get(cpu_dev, "pll1_bypass_src");
+	pll1_clk = clk_get(cpu_dev, "pll1");
+	pll1_bypass_clk = clk_get(cpu_dev, "pll1_bypass");
+	pll1_bypass_src_clk = clk_get(cpu_dev, "pll1_bypass_src");
 	if (IS_ERR(arm_clk) || IS_ERR(pll1_sys_clk) || IS_ERR(pll1_sw_clk) ||
-	    IS_ERR(step_clk) || IS_ERR(pll2_pfd2_396m_clk) || IS_ERR(pll1) ||
-	    IS_ERR(pll1_bypass) || IS_ERR(pll1_bypass_src)) {
+	    IS_ERR(step_clk) || IS_ERR(pll2_pfd2_396m_clk) || IS_ERR(pll1_clk) ||
+	    IS_ERR(pll1_bypass_clk) || IS_ERR(pll1_bypass_src_clk)) {
 		dev_err(cpu_dev, "failed to get clocks\n");
 		ret = -ENOENT;
 		goto put_clk;
 	}
 
 	if (of_machine_is_compatible("fsl,imx6ul") ||
-	    of_machine_is_compatible("fsl,imx6ull")) {
+	    of_machine_is_compatible("fsl,imx6ull") ||
+	    of_machine_is_compatible("fsl,imx6ulz")) {
 		pll2_bus_clk = clk_get(cpu_dev, "pll2_bus");
 		secondary_sel_clk = clk_get(cpu_dev, "secondary_sel");
 		if (IS_ERR(pll2_bus_clk) || IS_ERR(secondary_sel_clk)) {
@@ -368,15 +369,12 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 		goto put_reg;
 	}
 	if (IS_ERR(arm_reg) || IS_ERR(soc_reg)) {
-		ret = IS_ERR(arm_reg)?PTR_ERR(arm_reg):PTR_ERR(soc_reg);
-		if (ret == -EPROBE_DEFER)
-			dev_warn(cpu_dev, "regulators not ready, retry\n");
-		else
-			dev_err(cpu_dev, "failed to get regulators: %d\n", ret);
+		dev_err(cpu_dev, "failed to get regulators\n");
+		ret = -ENOENT;
 		goto put_reg;
 	}
 
-	dc_reg = regulator_get_optional(cpu_dev, "dc");
+	dc_reg = devm_regulator_get_optional(cpu_dev, "dc");
 
 	/*
 	 * soc_reg sync  with arm_reg if arm shares the same regulator
@@ -428,11 +426,17 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 	 */
 	if (freq_table[num - 1].frequency > FREQ_528_MHZ)
 		ignore_dc_reg = true;
-	if (!IS_ERR(dc_reg) && !ignore_dc_reg)
-		regulator_set_voltage_tol(dc_reg, DC_VOLTAGE_MIN, 0);
+	if (!IS_ERR(dc_reg) && !ignore_dc_reg) {
+		ret = regulator_set_voltage_tol(dc_reg, DC_VOLTAGE_MIN, 0);
+		if (ret) {
+			dev_err(cpu_dev,
+				"failed to scale dc_reg to min: %d\n", ret);
+			return ret;
+		}
+	}
 
 	/* Make imx6_soc_volt array's size same as arm opp number */
-	imx6_soc_volt = kzalloc(sizeof(*imx6_soc_volt) * num, GFP_KERNEL);
+	imx6_soc_volt = devm_kzalloc(cpu_dev, sizeof(*imx6_soc_volt) * num, GFP_KERNEL);
 	if (imx6_soc_volt == NULL) {
 		ret = -ENOMEM;
 		goto free_freq_table;
@@ -519,8 +523,6 @@ soc_opp_out:
 	if (ret > 0)
 		transition_latency += ret * 1000;
 
-	mutex_init(&set_cpufreq_lock);
-
 	ret = cpufreq_register_driver(&imx6q_cpufreq_driver);
 	if (ret) {
 		dev_err(cpu_dev, "failed register driver: %d\n", ret);
@@ -530,11 +532,9 @@ soc_opp_out:
 	register_pm_notifier(&imx6_cpufreq_pm_notifier);
 
 	of_node_put(np);
-	dev_info(cpu_dev, "Registered imx6q-cpufreq\n");
 	return 0;
 
 free_freq_table:
-	kfree(imx6_soc_volt);
 	dev_pm_opp_free_cpufreq_table(cpu_dev, &freq_table);
 out_free_opp:
 	if (free_opp)
@@ -546,8 +546,6 @@ put_reg:
 		regulator_put(pu_reg);
 	if (!IS_ERR(soc_reg))
 		regulator_put(soc_reg);
-	if (!IS_ERR(dc_reg))
-		regulator_put(dc_reg);
 put_clk:
 	if (!IS_ERR(arm_clk))
 		clk_put(arm_clk);
@@ -559,12 +557,12 @@ put_clk:
 		clk_put(step_clk);
 	if (!IS_ERR(pll2_pfd2_396m_clk))
 		clk_put(pll2_pfd2_396m_clk);
-	if (!IS_ERR(pll1))
-		clk_put(pll1);
-	if (!IS_ERR(pll1_bypass))
-		clk_put(pll1_bypass);
-	if (!IS_ERR(pll1_bypass_src))
-		clk_put(pll1_bypass_src);
+	if (!IS_ERR(pll1_clk))
+		clk_put(pll1_clk);
+	if (!IS_ERR(pll1_bypass_clk))
+		clk_put(pll1_bypass_clk);
+	if (!IS_ERR(pll1_bypass_src_clk))
+		clk_put(pll1_bypass_src_clk);
 	if (!IS_ERR(pll2_bus_clk))
 		clk_put(pll2_bus_clk);
 	if (!IS_ERR(secondary_sel_clk))
@@ -576,7 +574,6 @@ put_clk:
 static int imx6q_cpufreq_remove(struct platform_device *pdev)
 {
 	cpufreq_unregister_driver(&imx6q_cpufreq_driver);
-	kfree(imx6_soc_volt);
 	dev_pm_opp_free_cpufreq_table(cpu_dev, &freq_table);
 	if (free_opp)
 		dev_pm_opp_of_remove_table(cpu_dev);
@@ -584,15 +581,10 @@ static int imx6q_cpufreq_remove(struct platform_device *pdev)
 	if (!IS_ERR(pu_reg))
 		regulator_put(pu_reg);
 	regulator_put(soc_reg);
-	if (!IS_ERR(dc_reg))
-		regulator_put(dc_reg);
 	clk_put(arm_clk);
 	clk_put(pll1_sys_clk);
 	clk_put(pll1_sw_clk);
 	clk_put(step_clk);
-	clk_put(pll1);
-	clk_put(pll1_bypass);
-	clk_put(pll1_bypass_src);
 	clk_put(pll2_pfd2_396m_clk);
 	clk_put(pll2_bus_clk);
 	clk_put(secondary_sel_clk);

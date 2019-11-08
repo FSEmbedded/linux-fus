@@ -122,6 +122,9 @@ unsigned long divider_recalc_rate(struct clk_hw *hw, unsigned long parent_rate,
 {
 	unsigned int div;
 
+	if (flags & CLK_DIVIDER_ZERO_GATE && !val)
+		return 0;
+
 	div = _get_div(table, val, flags, width);
 	if (!div) {
 		WARN(!(flags & CLK_DIVIDER_ALLOW_ZERO),

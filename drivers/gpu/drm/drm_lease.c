@@ -66,8 +66,8 @@ _drm_find_lessee(struct drm_master *master, int lessee_id)
  * Checks if the specified master holds a lease on the object. Return
  * value:
  *
- *     true            'master' holds a lease on (or owns) the object
- *     false           'master' does not hold a lease.
+ *	true		'master' holds a lease on (or owns) the object
+ *	false		'master' does not hold a lease.
  */
 static int _drm_lease_held_master(struct drm_master *master, int id)
 {
@@ -85,8 +85,8 @@ static int _drm_lease_held_master(struct drm_master *master, int id)
  * Checks if any lessee of 'master' holds a lease on 'id'. Return
  * value:
  *
- *     true            Some lessee holds a lease on the object.
- *     false           No lessee has a lease on the object.
+ *	true		Some lessee holds a lease on the object.
+ *	false		No lessee has a lease on the object.
  */
 static bool _drm_has_leased(struct drm_master *master, int id)
 {
@@ -107,8 +107,8 @@ static bool _drm_has_leased(struct drm_master *master, int id)
  * Checks if the specified master holds a lease on the object. Return
  * value:
  *
- *     true            'master' holds a lease on (or owns) the object
- *     false           'master' does not hold a lease.
+ *	true		'master' holds a lease on (or owns) the object
+ *	false		'master' does not hold a lease.
  */
 bool _drm_lease_held(struct drm_file *file_priv, int id)
 {
@@ -127,8 +127,8 @@ EXPORT_SYMBOL(_drm_lease_held);
  * Checks if the specified master holds a lease on the object. Return
  * value:
  *
- *     true            'master' holds a lease on (or owns) the object
- *     false           'master' does not hold a lease.
+ *	true		'master' holds a lease on (or owns) the object
+ *	false		'master' does not hold a lease.
  */
 bool drm_lease_held(struct drm_file *file_priv, int id)
 {
@@ -195,11 +195,11 @@ EXPORT_SYMBOL(drm_lease_filter_crtcs);
  * make sure all of the desired objects can be leased, atomically
  * leasing them to the new drmmaster.
  *
- *     ERR_PTR(-EACCESS)       some other master holds the title to any object
- *     ERR_PTR(-ENOENT)        some object is not a valid DRM object for this device
- *     ERR_PTR(-EBUSY)         some other lessee holds title to this object
- *     ERR_PTR(-EEXIST)        same object specified more than once in the provided list
- *     ERR_PTR(-ENOMEM)        allocation failed
+ * 	ERR_PTR(-EACCESS)	some other master holds the title to any object
+ * 	ERR_PTR(-ENOENT)	some object is not a valid DRM object for this device
+ * 	ERR_PTR(-EBUSY)		some other lessee holds title to this object
+ *	ERR_PTR(-EEXIST)	same object specified more than once in the provided list
+ *	ERR_PTR(-ENOMEM)	allocation failed
  */
 static struct drm_master *drm_lease_create(struct drm_master *lessor, struct idr *leases)
 {
@@ -288,6 +288,7 @@ void drm_lease_destroy(struct drm_master *master)
 		DRM_DEBUG_LEASE("remove master %d from device list of lessees\n", master->lessee_id);
 		idr_remove(&(drm_lease_owner(master)->lessee_idr), master->lessee_id);
 	}
+
 	/* Remove this master from any lessee list it may be on */
 	list_del(&master->lessee_list);
 
@@ -397,7 +398,7 @@ static int fill_object_idr(struct drm_device *dev,
 	u32 o;
 	int ret;
 	objects = kcalloc(object_count, sizeof(struct drm_mode_object *),
-			GFP_KERNEL);
+			  GFP_KERNEL);
 	if (!objects)
 		return -ENOMEM;
 
@@ -410,8 +411,8 @@ static int fill_object_idr(struct drm_device *dev,
 		}
 
 		objects[o] = drm_mode_object_find(dev, lessor_priv,
-				object_ids[o],
-				DRM_MODE_OBJECT_ANY);
+						  object_ids[o],
+						  DRM_MODE_OBJECT_ANY);
 		if (!objects[o]) {
 			ret = -ENOENT;
 			goto out_free_objects;
@@ -422,6 +423,7 @@ static int fill_object_idr(struct drm_device *dev,
 			goto out_free_objects;
 		}
 	}
+
 	ret = validate_lease(dev, lessor_priv, object_count, objects);
 	if (ret)
 		goto out_free_objects;
@@ -470,7 +472,7 @@ static int fill_object_idr(struct drm_device *dev,
 out_free_objects:
 	for (o = 0; o < object_count; o++) {
 		if (objects[o])
-			drm_mode_object_unreference(objects[o]);
+			drm_mode_object_put(objects[o]);
 	}
 	kfree(objects);
 	return ret;
@@ -527,7 +529,7 @@ int drm_mode_create_lease_ioctl(struct drm_device *dev,
 
 	/* fill and validate the object idr */
 	ret = fill_object_idr(dev, lessor_priv, &leases,
-			object_count, object_ids);
+			      object_count, object_ids);
 	kfree(object_ids);
 	if (ret) {
 		idr_destroy(&leases);
@@ -553,8 +555,8 @@ int drm_mode_create_lease_ioctl(struct drm_device *dev,
 	DRM_DEBUG_LEASE("Allocating lease file\n");
 	path_get(&lessor_file->f_path);
 	lessee_file = alloc_file(&lessor_file->f_path,
-			lessor_file->f_mode,
-			fops_get(lessor_file->f_inode->i_fop));
+				 lessor_file->f_mode,
+				 fops_get(lessor_file->f_inode->i_fop));
 
 	if (IS_ERR(lessee_file)) {
 		ret = PTR_ERR(lessee_file);
@@ -613,7 +615,7 @@ out_leases:
  */
 
 int drm_mode_list_lessees_ioctl(struct drm_device *dev,
-				void *data, struct drm_file *lessor_priv)
+			       void *data, struct drm_file *lessor_priv)
 {
 	struct drm_mode_list_lessees *arg = data;
 	__u32 __user *lessee_ids = (__u32 __user *) (uintptr_t) (arg->lessees_ptr);

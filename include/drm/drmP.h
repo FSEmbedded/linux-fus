@@ -136,6 +136,7 @@ struct pci_controller;
 #define DRM_UT_ATOMIC		0x10
 #define DRM_UT_VBL		0x20
 #define DRM_UT_STATE		0x40
+#define DRM_UT_LEASE		0x80
 
 /***********************************************************************/
 /** \name DRM template customization defaults */

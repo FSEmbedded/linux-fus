@@ -191,12 +191,8 @@ xfs_bmap_worst_indlen(
 	int		maxrecs;	/* maximum record count at this level */
 	xfs_mount_t	*mp;		/* mount structure */
 	xfs_filblks_t	rval;		/* return value */
-	xfs_filblks_t   orig_len;
 
 	mp = ip->i_mount;
-
-	/* Calculate the worst-case size of the bmbt. */
-	orig_len = len;
 	maxrecs = mp->m_bmap_dmxr[0];
 	for (level = 0, rval = 0;
 	     level < XFS_BM_MAXLEVELS(mp, XFS_DATA_FORK);
@@ -204,20 +200,12 @@ xfs_bmap_worst_indlen(
 		len += maxrecs - 1;
 		do_div(len, maxrecs);
 		rval += len;
-		if (len == 1) {
-			rval += XFS_BM_MAXLEVELS(mp, XFS_DATA_FORK) -
+		if (len == 1)
+			return rval + XFS_BM_MAXLEVELS(mp, XFS_DATA_FORK) -
 				level - 1;
-			break;
-		}
 		if (level == 0)
 			maxrecs = mp->m_bmap_dmxr[1];
 	}
-
-	/* Calculate the worst-case size of the rmapbt. */
-	if (xfs_sb_version_hasrmapbt(&mp->m_sb))
-		rval += 1 + xfs_rmapbt_calc_size(mp, orig_len) +
-				mp->m_rmap_maxlevels;
-
 	return rval;
 }
 
@@ -763,7 +751,6 @@ xfs_bmap_extents_to_btree(
 		args.fsbno = XFS_INO_TO_FSB(mp, ip->i_ino);
 	} else if (dfops->dop_low) {
 		args.type = XFS_ALLOCTYPE_START_BNO;
-try_another_ag:
 		args.fsbno = *firstblock;
 	} else {
 		args.type = XFS_ALLOCTYPE_NEAR_BNO;
@@ -778,11 +765,6 @@ try_another_ag:
 		return error;
 	}
 
-	if (WARN_ON_ONCE(args.fsbno == NULLFSBLOCK)) {
-		xfs_iroot_realloc(ip, -1, whichfork);
-		xfs_btree_del_cursor(cur, XFS_BTREE_ERROR);
-		return -ENOSPC;
-	}
 	if (WARN_ON_ONCE(args.fsbno == NULLFSBLOCK)) {
 		xfs_iroot_realloc(ip, -1, whichfork);
 		xfs_btree_del_cursor(cur, XFS_BTREE_ERROR);
@@ -6518,15 +6500,6 @@ xfs_bmap_finish_one(
 {
 	xfs_fsblock_t			firstfsb;
 	int				error = 0;
-
-	/*
-	 * firstfsb is tied to the transaction lifetime and is used to
-	 * ensure correct AG locking order and schedule work item
-	 * continuations.  XFS_BUI_MAX_FAST_EXTENTS (== 1) restricts us
-	 * to only making one bmap call per transaction, so it should
-	 * be safe to have it as a local variable here.
-	 */
-	firstfsb = NULLFSBLOCK;
 
 	/*
 	 * firstfsb is tied to the transaction lifetime and is used to

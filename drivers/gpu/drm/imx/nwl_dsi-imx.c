@@ -92,6 +92,7 @@ struct imx_mipi_dsi {
 	u32				instance;
 	u32				sync_pol;
 	u32				power_on_delay;
+	bool				no_clk_reset;
 	bool				enabled;
 	bool				suspended;
 };
@@ -112,7 +113,7 @@ enum imx_ext_regs {
 
 struct devtype {
 	int (*poweron)(struct imx_mipi_dsi *);
-	int (*poweroff)(struct imx_mipi_dsi *);
+	void (*poweroff)(struct imx_mipi_dsi *);
 	u32 ext_regs; /* required external registers */
 	u32 tx_ulps_reg;
 	u32 pxl2dpi_reg;
@@ -121,7 +122,7 @@ struct devtype {
 };
 
 static int imx8qm_dsi_poweron(struct imx_mipi_dsi *dsi);
-static int imx8qm_dsi_poweroff(struct imx_mipi_dsi *dsi);
+static void imx8qm_dsi_poweroff(struct imx_mipi_dsi *dsi);
 static struct devtype imx8qm_dev = {
 	.poweron = &imx8qm_dsi_poweron,
 	.poweroff = &imx8qm_dsi_poweroff,
@@ -138,7 +139,7 @@ static struct devtype imx8qm_dev = {
 };
 
 static int imx8qxp_dsi_poweron(struct imx_mipi_dsi *dsi);
-static int imx8qxp_dsi_poweroff(struct imx_mipi_dsi *dsi);
+static void imx8qxp_dsi_poweroff(struct imx_mipi_dsi *dsi);
 static struct devtype imx8qxp_dev = {
 	.poweron = &imx8qxp_dsi_poweron,
 	.poweroff = &imx8qxp_dsi_poweroff,
@@ -155,7 +156,7 @@ static struct devtype imx8qxp_dev = {
 };
 
 static int imx8mq_dsi_poweron(struct imx_mipi_dsi *dsi);
-static int imx8mq_dsi_poweroff(struct imx_mipi_dsi *dsi);
+static void imx8mq_dsi_poweroff(struct imx_mipi_dsi *dsi);
 static struct devtype imx8mq_dev = {
 	.poweron = &imx8mq_dsi_poweron,
 	.poweroff = &imx8mq_dsi_poweroff,
@@ -260,6 +261,27 @@ static int imx8q_dsi_poweron(struct imx_mipi_dsi *dsi, bool v2)
 			     mipi_id,
 			     dc_id);
 
+	if (v2) {
+		sci_err = sc_misc_set_control(ipc_handle,
+				mipi_id, SC_C_MODE, 0);
+		if (sci_err != SC_ERR_NONE)
+			DRM_DEV_ERROR(dev,
+				      "Failed to set SC_C_MODE (%d)\n",
+				      sci_err);
+		sci_err = sc_misc_set_control(ipc_handle,
+				mipi_id, SC_C_DUAL_MODE, 0);
+		if (sci_err != SC_ERR_NONE)
+			DRM_DEV_ERROR(dev,
+				      "Failed to set SC_C_DUAL_MODE (%d)\n",
+				      sci_err);
+		sci_err = sc_misc_set_control(ipc_handle,
+				mipi_id, SC_C_PXL_LINK_SEL, 0);
+		if (sci_err != SC_ERR_NONE)
+			DRM_DEV_ERROR(dev,
+				     "Failed to set SC_C_PXL_LINK_SEL (%d)\n",
+				     sci_err);
+	}
+
 	/* Initialize Pixel Link */
 	mipi_ctrl = (v2 && inst)?PXL_ADDR(2):PXL_ADDR(1);
 	sci_err = sc_misc_set_control(ipc_handle,
@@ -303,27 +325,6 @@ static int imx8q_dsi_poweron(struct imx_mipi_dsi *dsi, bool v2)
 		goto err_ipc;
 	}
 
-	if (v2) {
-		sci_err = sc_misc_set_control(ipc_handle,
-				mipi_id, SC_C_MODE, 0);
-		if (sci_err != SC_ERR_NONE)
-			DRM_DEV_ERROR(dev,
-				      "Failed to set SC_C_MODE (%d)\n",
-				      sci_err);
-		sci_err = sc_misc_set_control(ipc_handle,
-				mipi_id, SC_C_DUAL_MODE, 0);
-		if (sci_err != SC_ERR_NONE)
-			DRM_DEV_ERROR(dev,
-				      "Failed to set SC_C_DUAL_MODE (%d)\n",
-				      sci_err);
-		sci_err = sc_misc_set_control(ipc_handle,
-				mipi_id, SC_C_PXL_LINK_SEL, inst);
-		if (sci_err != SC_ERR_NONE)
-			DRM_DEV_ERROR(dev,
-				     "Failed to set SC_C_PXL_LINK_SEL (%d)\n",
-				     sci_err);
-	}
-
 	/* Assert DPI and MIPI bits */
 	sci_err = sc_misc_set_control(ipc_handle,
 				      mipi_id,
@@ -364,7 +365,7 @@ err_ipc:
 	return ret;
 }
 
-static int imx8q_dsi_poweroff(struct imx_mipi_dsi *dsi, bool v2)
+static void imx8q_dsi_poweroff(struct imx_mipi_dsi *dsi, bool v2)
 {
 	struct device *dev = dsi->dev;
 	sc_err_t sci_err = 0;
@@ -372,46 +373,47 @@ static int imx8q_dsi_poweroff(struct imx_mipi_dsi *dsi, bool v2)
 	u32 mu_id;
 	u32 inst = dsi->instance;
 	sc_rsrc_t mipi_id, dc_id;
+	sc_ctrl_t mipi_ctrl;
 
-	mipi_id = (inst)?SC_R_MIPI_1:SC_R_MIPI_0;
-	if (v2)
-		dc_id = SC_R_DC_0;
-	else
-		dc_id = (inst)?SC_R_DC_1:SC_R_DC_0;
+	mipi_id = inst?MIPI_ID(1):MIPI_ID(0);
+	dc_id = (!v2 && inst)?DC_ID(1):DC_ID(0);
 
 	/* Deassert DPI and MIPI bits */
-	if (sc_ipc_getMuID(&mu_id) == SC_ERR_NONE &&
-	    sc_ipc_open(&ipc_handle, mu_id) == SC_ERR_NONE) {
-		sci_err = sc_misc_set_control(ipc_handle,
-				mipi_id, SC_C_DPI_RESET, 0);
-		if (sci_err != SC_ERR_NONE)
-			DRM_DEV_ERROR(dev,
-				"Failed to deassert DPI reset (%d)\n",
-				sci_err);
+	if (sc_ipc_getMuID(&mu_id) != SC_ERR_NONE ||
+	    sc_ipc_open(&ipc_handle, mu_id) != SC_ERR_NONE)
+		return;
 
-		sci_err = sc_misc_set_control(ipc_handle,
-				mipi_id, SC_C_MIPI_RESET, 0);
-		if (sci_err != SC_ERR_NONE)
-			DRM_DEV_ERROR(dev,
-				"Failed to deassert MIPI reset (%d)\n",
-				sci_err);
+	sci_err = sc_misc_set_control(ipc_handle,
+			mipi_id, SC_C_DPI_RESET, 0);
+	if (sci_err != SC_ERR_NONE)
+		DRM_DEV_ERROR(dev,
+			"Failed to deassert DPI reset (%d)\n",
+			sci_err);
 
-		sci_err = sc_misc_set_control(ipc_handle,
-				dc_id, SC_C_SYNC_CTRL0, 0);
-		if (sci_err != SC_ERR_NONE)
-			DRM_DEV_ERROR(dev,
-				"Failed to reset SC_C_SYNC_CTRL0 (%d)\n",
-				sci_err);
+	sci_err = sc_misc_set_control(ipc_handle,
+			mipi_id, SC_C_MIPI_RESET, 0);
+	if (sci_err != SC_ERR_NONE)
+		DRM_DEV_ERROR(dev,
+			"Failed to deassert MIPI reset (%d)\n",
+			sci_err);
 
-		sci_err = sc_misc_set_control(ipc_handle,
-				dc_id, SC_C_PXL_LINK_MST1_VLD, 0);
-		if (sci_err != SC_ERR_NONE)
-			DRM_DEV_ERROR(dev,
-				"Failed to reset SC_C_SYNC_CTRL0 (%d)\n",
-				sci_err);
-	}
+	mipi_ctrl = (v2 && inst)?SYNC_CTRL(1):SYNC_CTRL(0);
+	sci_err = sc_misc_set_control(ipc_handle,
+			dc_id, mipi_ctrl, 0);
+	if (sci_err != SC_ERR_NONE)
+		DRM_DEV_ERROR(dev,
+			"Failed to reset SC_C_SYNC_CTRL0 (%d)\n",
+			sci_err);
 
-	return 0;
+	mipi_ctrl = (v2 && inst)?PXL_VLD(2):PXL_VLD(1);
+	sci_err = sc_misc_set_control(ipc_handle,
+			dc_id, mipi_ctrl, 0);
+	if (sci_err != SC_ERR_NONE)
+		DRM_DEV_ERROR(dev,
+			"Failed to reset SC_C_SYNC_CTRL0 (%d)\n",
+			sci_err);
+
+	sc_ipc_close(ipc_handle);
 }
 
 static int imx8qm_dsi_poweron(struct imx_mipi_dsi *dsi)
@@ -419,7 +421,7 @@ static int imx8qm_dsi_poweron(struct imx_mipi_dsi *dsi)
 	return imx8q_dsi_poweron(dsi, false);
 }
 
-static int imx8qm_dsi_poweroff(struct imx_mipi_dsi *dsi)
+static void imx8qm_dsi_poweroff(struct imx_mipi_dsi *dsi)
 {
 	return imx8q_dsi_poweroff(dsi, false);
 }
@@ -429,7 +431,7 @@ static int imx8qxp_dsi_poweron(struct imx_mipi_dsi *dsi)
 	return imx8q_dsi_poweron(dsi, true);
 }
 
-static int imx8qxp_dsi_poweroff(struct imx_mipi_dsi *dsi)
+static void imx8qxp_dsi_poweroff(struct imx_mipi_dsi *dsi)
 {
 	return imx8q_dsi_poweroff(dsi, true);
 }
@@ -448,7 +450,7 @@ static int imx8mq_dsi_poweron(struct imx_mipi_dsi *dsi)
 	return 0;
 }
 
-static int imx8mq_dsi_poweroff(struct imx_mipi_dsi *dsi)
+static void imx8mq_dsi_poweroff(struct imx_mipi_dsi *dsi)
 {
 	regmap_update_bits(dsi->reset, SRC_MIPIPHY_RCR,
 			   PCLK_RESET_N, 0);
@@ -458,8 +460,6 @@ static int imx8mq_dsi_poweroff(struct imx_mipi_dsi *dsi)
 			   RESET_BYTE_N, 0);
 	regmap_update_bits(dsi->reset, SRC_MIPIPHY_RCR,
 			   DPI_RESET_N, 0);
-
-	return 0;
 }
 
 static void imx_nwl_dsi_enable(struct imx_mipi_dsi *dsi)
@@ -534,7 +534,8 @@ static void imx_nwl_dsi_disable(struct imx_mipi_dsi *dsi)
 
 	DRM_DEV_DEBUG_DRIVER(dev, "id = %s\n", (dsi->instance)?"DSI1":"DSI0");
 
-	devtype->poweroff(dsi);
+	if (!dsi->no_clk_reset)
+		devtype->poweroff(dsi);
 
 	imx_nwl_dsi_set_clocks(dsi, false);
 
@@ -702,13 +703,10 @@ static int imx_nwl_dsi_bridge_attach(struct drm_bridge *bridge)
 	}
 
 	/* Attach the next bridge in chain */
-	nwl_dsi_add_bridge(encoder, dsi->next_bridge);
-	ret = drm_bridge_attach(encoder->dev, dsi->next_bridge);
-	if (ret) {
+	ret = drm_bridge_attach(encoder, dsi->next_bridge, bridge);
+	if (ret)
 		DRM_DEV_ERROR(dsi->dev, "Failed to attach bridge! (%d)\n",
 			      ret);
-		nwl_dsi_del_bridge(encoder, dsi->next_bridge);
-	}
 
 	return ret;
 }
@@ -719,8 +717,10 @@ static void imx_nwl_dsi_bridge_detach(struct drm_bridge *bridge)
 
 	DRM_DEV_DEBUG_DRIVER(dsi->dev, "id = %s\n",
 			     (dsi->instance)?"DSI1":"DSI0");
-	drm_bridge_detach(dsi->next_bridge);
-	nwl_dsi_del_bridge(dsi->next_bridge->encoder, dsi->next_bridge);
+	/*
+	 * The next bridge in chain will be automatically detached, there is
+	 * no need for us to detach it.
+	 */
 }
 
 static const struct drm_bridge_funcs imx_nwl_dsi_bridge_funcs = {
@@ -828,6 +828,8 @@ static int imx_nwl_dsi_parse_of(struct device *dev, bool as_bridge)
 		   IMX8MQ_GPR13_MIPI_MUX_SEL,
 		   mux_val);
 
+	dsi->no_clk_reset = of_property_read_bool(np, "no_clk_reset");
+
 	return 0;
 }
 
@@ -874,7 +876,7 @@ static int imx_nwl_dsi_bind(struct device *dev,
 
 	dsi->next_bridge->encoder = &dsi->encoder;
 	dsi->encoder.bridge = dsi->next_bridge;
-	ret = drm_bridge_attach(dsi->encoder.dev, dsi->next_bridge);
+	ret = drm_bridge_attach(&dsi->encoder, dsi->next_bridge, NULL);
 	if (ret)
 		drm_encoder_cleanup(&dsi->encoder);
 
@@ -896,8 +898,6 @@ static void imx_nwl_dsi_unbind(struct device *dev,
 	 */
 	if (dsi->next_bridge)
 		next_bridge = of_drm_find_bridge(dsi->next_bridge->of_node);
-	if (next_bridge)
-		drm_bridge_detach(next_bridge);
 	dsi->next_bridge = next_bridge;
 
 	if (dsi->enabled)
@@ -906,6 +906,7 @@ static void imx_nwl_dsi_unbind(struct device *dev,
 	if (dsi->encoder.dev)
 		drm_encoder_cleanup(&dsi->encoder);
 
+	pm_runtime_disable(dev);
 }
 
 static const struct component_ops imx_nwl_dsi_component_ops = {

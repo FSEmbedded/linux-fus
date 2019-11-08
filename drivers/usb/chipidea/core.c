@@ -690,6 +690,12 @@ static int ci_get_platdata(struct device *dev,
 	if (of_find_property(dev->of_node, "non-zero-ttctrl-ttha", NULL))
 		platdata->flags |= CI_HDRC_SET_NON_ZERO_TTHA;
 
+	/* "imx-usb-charger-detection is legacy compatible */
+	if (of_find_property(dev->of_node, "phy-charger-detection", NULL) ||
+		of_find_property(dev->of_node, "imx-usb-charger-detection",
+			NULL))
+		platdata->flags |= CI_HDRC_PHY_CHARGER_DETECTION;
+
 	ext_id = ERR_PTR(-ENODEV);
 	ext_vbus = ERR_PTR(-ENODEV);
 	if (of_property_read_bool(dev->of_node, "extcon")) {
@@ -843,8 +849,6 @@ EXPORT_SYMBOL_GPL(ci_hdrc_query_available_role);
 
 static inline void ci_role_destroy(struct ci_hdrc *ci)
 {
-	ci_hdrc_gadget_destroy(ci);
-	ci_hdrc_host_destroy(ci);
 	if (ci->is_otg && ci->roles[CI_ROLE_GADGET])
 		ci_hdrc_otg_destroy(ci);
 	ci_hdrc_gadget_destroy(ci);
@@ -919,6 +923,55 @@ static struct attribute *ci_attrs[] = {
 static const struct attribute_group ci_attr_group = {
 	.attrs = ci_attrs,
 };
+
+static enum ci_role ci_get_role(struct ci_hdrc *ci)
+{
+	if (ci->roles[CI_ROLE_HOST] && ci->roles[CI_ROLE_GADGET]) {
+		if (ci->is_otg) {
+			hw_write_otgsc(ci, OTGSC_IDIE, OTGSC_IDIE);
+			return ci_otg_role(ci);
+		} else {
+			/*
+			 * If the controller is not OTG capable, but support
+			 * role switch, the defalt role is gadget, and the
+			 * user can switch it through debugfs.
+			 */
+			return CI_ROLE_GADGET;
+		}
+	} else {
+		return ci->roles[CI_ROLE_HOST]
+			? CI_ROLE_HOST
+			: CI_ROLE_GADGET;
+	}
+}
+
+static void ci_start_new_role(struct ci_hdrc *ci)
+{
+	enum ci_role role = ci_get_role(ci);
+
+	if (ci->role != role) {
+		ci_handle_id_switch(ci);
+	} else if (role == CI_ROLE_GADGET) {
+		if (ci->vbus_active)
+			usb_gadget_vbus_disconnect(&ci->gadget);
+		ci_handle_vbus_connected(ci);
+	}
+}
+
+static void ci_power_lost_work(struct work_struct *work)
+{
+	struct ci_hdrc *ci = container_of(work, struct ci_hdrc,
+						power_lost_work);
+
+	disable_irq_nosync(ci->irq);
+	pm_runtime_get_sync(ci->dev);
+	if (!ci_otg_is_fsm_mode(ci))
+		ci_start_new_role(ci);
+	else
+		ci_hdrc_otg_fsm_restart(ci);
+	pm_runtime_put_sync(ci->dev);
+	enable_irq(ci->irq);
+}
 
 static int ci_hdrc_probe(struct platform_device *pdev)
 {
@@ -1043,8 +1096,11 @@ static int ci_hdrc_probe(struct platform_device *pdev)
 
 	ci->role = ci_get_role(ci);
 	/* only update vbus status for peripheral */
-	if (ci->role == CI_ROLE_GADGET)
+	if (ci->role == CI_ROLE_GADGET) {
+		/* Let DP pull down if it isn't currently */
+		hw_write(ci, OP_USBCMD, USBCMD_RS, 0);
 		ci_handle_vbus_connected(ci);
+	}
 
 	if (!ci_otg_is_fsm_mode(ci)) {
 		ret = ci_role_start(ci, ci->role);
@@ -1076,6 +1132,9 @@ static int ci_hdrc_probe(struct platform_device *pdev)
 		ci_hdrc_otg_fsm_start(ci);
 
 	device_set_wakeup_capable(&pdev->dev, true);
+
+	mutex_init(&ci->mutex);
+
 	ret = dbg_create_files(ci);
 	if (ret)
 		goto stop;
@@ -1084,8 +1143,19 @@ static int ci_hdrc_probe(struct platform_device *pdev)
 	if (ret)
 		goto remove_debug;
 
+	/* Init workqueue for controller power lost handling */
+	ci->power_lost_wq = create_freezable_workqueue("ci_power_lost");
+	if (!ci->power_lost_wq) {
+		dev_err(ci->dev, "can't create power_lost workqueue\n");
+		goto remove_sys_group;
+	}
+
+	INIT_WORK(&ci->power_lost_work, ci_power_lost_work);
+
 	return 0;
 
+remove_sys_group:
+	sysfs_remove_group(&ci->dev->kobj, &ci_attr_group);
 remove_debug:
 	dbg_remove_files(ci);
 stop:
@@ -1113,6 +1183,8 @@ static int ci_hdrc_remove(struct platform_device *pdev)
 		pm_runtime_put_noidle(&pdev->dev);
 	}
 
+	flush_workqueue(ci->power_lost_wq);
+	destroy_workqueue(ci->power_lost_wq);
 	dbg_remove_files(ci);
 	sysfs_remove_group(&ci->dev->kobj, &ci_attr_group);
 	ci_role_destroy(ci);
@@ -1224,6 +1296,7 @@ static int ci_suspend(struct device *dev)
 {
 	struct ci_hdrc *ci = dev_get_drvdata(dev);
 
+	flush_workqueue(ci->power_lost_wq);
 	if (ci->wq)
 		flush_workqueue(ci->wq);
 	/*
@@ -1289,10 +1362,8 @@ static int ci_resume(struct device *dev)
 	if (ci->role != CI_ROLE_END && ci_role(ci)->resume)
 		ci_role(ci)->resume(ci, power_lost);
 
-	if (power_lost) {
-		disable_irq_nosync(ci->irq);
-		schedule_work(&ci->power_lost_work);
-	}
+	if (power_lost)
+		queue_work(ci->power_lost_wq, &ci->power_lost_work);
 
 	if (ci->supports_runtime_pm) {
 		pm_runtime_disable(dev);

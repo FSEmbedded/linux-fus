@@ -94,12 +94,8 @@ out_data:
 	return NULL;
 }
 
-static void free_apic_chip_data(unsigned int virq, struct apic_chip_data *data)
+static void free_apic_chip_data(struct apic_chip_data *data)
 {
-#ifdef	CONFIG_X86_IO_APIC
-	if (virq  < nr_legacy_irqs())
-		legacy_irq_data[virq] = NULL;
-#endif
 	if (data) {
 		free_cpumask_var(data->domain);
 		free_cpumask_var(data->old_domain);
@@ -330,7 +326,11 @@ static void x86_vector_free_irqs(struct irq_domain *domain,
 			apic_data = irq_data->chip_data;
 			irq_domain_reset_irq_data(irq_data);
 			raw_spin_unlock_irqrestore(&vector_lock, flags);
-			free_apic_chip_data(virq + i, apic_data);
+			free_apic_chip_data(apic_data);
+#ifdef	CONFIG_X86_IO_APIC
+			if (virq + i < nr_legacy_irqs())
+				legacy_irq_data[virq + i] = NULL;
+#endif
 		}
 	}
 }

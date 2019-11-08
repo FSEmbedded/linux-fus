@@ -8,6 +8,14 @@
 
 #include "imx6qp-sabresd.dts"
 
+&wdog1 {
+	status = "okay";
+};
+
+&wdog2 {
+	status = "disabled";
+};
+
 &gpc {
 	/* use ldo-enable, u-boot will check it and configure */
 	fsl,ldo-bypass = <0>;

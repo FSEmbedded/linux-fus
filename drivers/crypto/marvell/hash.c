@@ -716,15 +716,6 @@ static int mv_cesa_ahash_dma_req_init(struct ahash_request *req)
 		basereq->chain.first->flags |= CESA_TDMA_SET_STATE;
 	}
 
-	if (set_state) {
-		/*
-		 * Put the CESA_TDMA_SET_STATE flag on the first tdma desc to
-		 * let the step logic know that the IVDIG registers should be
-		 * explicitly set before launching a TDMA chain.
-		 */
-		basereq->chain.first->flags |= CESA_TDMA_SET_STATE;
-	}
-
 	return 0;
 
 err_free_tdma:

@@ -157,6 +157,11 @@ struct drm_hdmi_info {
 
 	/** @y420_dc_modes: bitmap of deep color support index */
 	u8 y420_dc_modes;
+
+	/* Colorimerty info from EDID */
+	u32 colorimetry;
+	/* Panel HDR capabilities */
+	struct hdr_static_metadata hdr_panel_metadata;
 };
 
 /**
@@ -281,6 +286,11 @@ struct drm_display_info {
 	u8 cea_rev;
 
 	/**
+	 * @non_desktop: Non desktop display (HMD)
+	 */
+	bool non_desktop;
+
+	/**
 	 * @hdmi: advance features of a HDMI sink.
 	 */
 	struct drm_hdmi_info hdmi;
@@ -363,6 +373,13 @@ struct drm_connector_state {
 	 * upscaling, mostly used for built-in panels.
 	 */
 	unsigned int scaling_mode;
+
+	/**
+	 * @metadata_blob_ptr:
+	 * DRM blob property for HDR metadata
+	 */
+	struct drm_property_blob *hdr_source_metadata_blob_ptr;
+	bool hdr_metadata_changed : 1;
 };
 
 /**
@@ -936,8 +953,8 @@ static inline unsigned drm_connector_index(struct drm_connector *connector)
  * add takes a reference to it.
  */
 static inline struct drm_connector *drm_connector_lookup(struct drm_device *dev,
-							 struct drm_file *file_priv,
-							 uint32_t id)
+		struct drm_file *file_priv,
+		uint32_t id)
 {
 	struct drm_mode_object *mo;
 	mo = drm_mode_object_find(dev, file_priv, id, DRM_MODE_OBJECT_CONNECTOR);

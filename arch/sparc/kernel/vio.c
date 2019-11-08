@@ -349,11 +349,9 @@ static struct vio_dev *vio_create_one(struct mdesc_handle *hp, u64 mp,
 	if (!id) {
 		dev_set_name(&vdev->dev, "%s", type);
 		vdev->dev_no = ~(u64)0;
-		vdev->id = ~(u64)0;
 	} else if (!cfg_handle) {
 		dev_set_name(&vdev->dev, "%s-%llu", type, *id);
 		vdev->dev_no = *id;
-		vdev->id = ~(u64)0;
 	} else {
 		dev_set_name(&vdev->dev, "%s-%llu-%llu", type,
 			     *cfg_handle, *id);
@@ -428,7 +426,6 @@ struct vio_remove_node_data {
 
 static int vio_md_node_match(struct device *dev, void *arg)
 {
-	struct vio_md_node_query *query = (struct vio_md_node_query *) arg;
 	struct vio_dev *vdev = to_vio_dev(dev);
 	struct vio_remove_node_data *node_data;
 	u64 node;

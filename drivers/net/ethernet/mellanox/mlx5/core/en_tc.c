@@ -2165,8 +2165,6 @@ int mlx5e_stats_flower(struct mlx5e_priv *priv,
 
 	tcf_exts_stats_update(f->exts, bytes, packets, lastuse);
 
-	preempt_enable();
-
 	return 0;
 }
 

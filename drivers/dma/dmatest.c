@@ -161,12 +161,6 @@ struct dmatest_done {
 	wait_queue_head_t	*wait;
 };
 
-/* poor man's completion - we want to use wait_event_freezable() on it */
-struct dmatest_done {
-	bool			done;
-	wait_queue_head_t	*wait;
-};
-
 struct dmatest_thread {
 	struct list_head	node;
 	struct dmatest_info	*info;

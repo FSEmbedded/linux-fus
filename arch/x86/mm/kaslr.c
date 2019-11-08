@@ -173,8 +173,8 @@ static void __meminit init_trampoline_pud(void)
 		*pud_tramp = *pud;
 	}
 
-	/* Avoid set_pgd(), in case it's complicated by CONFIG_PAGE_TABLE_ISOLATION */
-	trampoline_pgd_entry = __pgd(_KERNPG_TABLE | __pa(pud_page_tramp));
+	set_pgd(&trampoline_pgd_entry,
+		__pgd(_KERNPG_TABLE | __pa(pud_page_tramp)));
 }
 
 static void __meminit init_trampoline_p4d(void)

@@ -185,28 +185,6 @@ static int rockchip_pwm_enable(struct pwm_chip *chip,
 	return 0;
 }
 
-static int rockchip_pwm_enable(struct pwm_chip *chip,
-			 struct pwm_device *pwm,
-			 bool enable,
-			 enum pwm_polarity polarity)
-{
-	struct rockchip_pwm_chip *pc = to_rockchip_pwm_chip(chip);
-	int ret;
-
-	if (enable) {
-		ret = clk_enable(pc->clk);
-		if (ret)
-			return ret;
-	}
-
-	pc->data->set_enable(chip, pwm, enable, polarity);
-
-	if (!enable)
-		clk_disable(pc->clk);
-
-	return 0;
-}
-
 static int rockchip_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 			      struct pwm_state *state)
 {

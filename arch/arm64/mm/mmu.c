@@ -417,16 +417,6 @@ void __init mark_linear_text_alias_ro(void)
 			    PAGE_KERNEL_RO);
 }
 
-void __init mark_linear_text_alias_ro(void)
-{
-	/*
-	 * Remove the write permissions from the linear alias of .text/.rodata
-	 */
-	create_mapping_late(__pa_symbol(_text), (unsigned long)lm_alias(_text),
-			    (unsigned long)__init_begin - (unsigned long)_text,
-			    PAGE_KERNEL_RO);
-}
-
 static void __init map_mem(pgd_t *pgd)
 {
 	phys_addr_t kernel_start = __pa_symbol(_text);

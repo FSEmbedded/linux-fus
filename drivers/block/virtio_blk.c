@@ -61,7 +61,6 @@ struct virtblk_req {
 #endif
 	struct virtio_blk_outhdr out_hdr;
 	u8 status;
-	u8 sense[SCSI_SENSE_BUFFERSIZE];
 	struct scatterlist sg[];
 };
 

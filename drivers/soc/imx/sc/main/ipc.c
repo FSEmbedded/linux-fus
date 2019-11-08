@@ -6,6 +6,7 @@
  */
 
 /* Includes */
+#include <linux/arm-smccc.h>
 #include <linux/err.h>
 #include <linux/kernel.h>
 #include <linux/of.h>
@@ -16,7 +17,9 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/mx8_mu.h>
+#include <linux/syscore_ops.h>
 
+#include <soc/imx/fsl_hvc.h>
 #include <soc/imx8/sc/svc/irq/api.h>
 #include <soc/imx8/sc/ipc.h>
 #include <soc/imx8/sc/sci.h>
@@ -51,8 +54,10 @@ EXPORT_SYMBOL(sc_pm_set_clock_rate);
 /*--------------------------------------------------------------------------*/
 /* RPC command/response                                                     */
 /*--------------------------------------------------------------------------*/
-void sc_call_rpc(sc_ipc_t handle, sc_rpc_msg_t *msg, bool no_resp)
+void sc_call_rpc(sc_ipc_t handle, sc_rpc_msg_t *msg, sc_bool_t no_resp)
 {
+	struct arm_smccc_res res;
+
 	if (in_interrupt()) {
 		pr_warn("Cannot make SC IPC calls from an interrupt context\n");
 		dump_stack();
@@ -60,9 +65,16 @@ void sc_call_rpc(sc_ipc_t handle, sc_rpc_msg_t *msg, bool no_resp)
 	}
 	mutex_lock(&scu_mu_mutex);
 
-	sc_ipc_write(handle, msg);
-	if (!no_resp)
-		sc_ipc_read(handle, msg);
+	if (xen_initial_domain()) {
+		arm_smccc_hvc(FSL_HVC_SC, (uint64_t)msg, no_resp, 0, 0, 0, 0,
+			      0, &res);
+		if (res.a0)
+			printk("Error FSL_HVC_SC %ld\n", res.a0);
+	} else {
+		sc_ipc_write(handle, msg);
+		if (!no_resp)
+			sc_ipc_read(handle, msg);
+	}
 
 	mutex_unlock(&scu_mu_mutex);
 }
@@ -202,7 +214,7 @@ void sc_ipc_read(sc_ipc_t handle, void *data)
  *
  * This function will block if the outgoing buffer is full.
  */
-void sc_ipc_write(sc_ipc_t handle, void *data)
+void sc_ipc_write(sc_ipc_t handle, const void *data)
 {
 	uint32_t *base;
 	uint8_t count = 0;
@@ -259,7 +271,7 @@ static void scu_mu_work_handler(struct work_struct *work)
 	 * the right group for itself, return directly if not.
 	 */
 	for (i = 0; i < SC_IRQ_NUM_GROUP; i++) {
-		sciErr = sc_irq_status(mu_ipcHandle, SC_R_MU_0A, i,
+		sciErr = sc_irq_status(mu_ipcHandle, SC_R_MU_1A, i,
 					&irq_status);
 		/* no irq? */
 		if (!irq_status)
@@ -282,6 +294,19 @@ static irqreturn_t imx8_scu_mu_isr(int irq, void *param)
 	}
 	return IRQ_HANDLED;
 }
+
+static void imx8_mu_resume(void)
+{
+	int i;
+
+	MU_Init(mu_base_virtaddr);
+	for (i = 0; i < MU_RR_COUNT; i++)
+		MU_EnableGeneralInt(mu_base_virtaddr, i);
+}
+
+struct syscore_ops imx8_mu_syscore_ops = {
+	.resume = imx8_mu_resume,
+};
 
 /*Initialization of the MU code. */
 int __init imx8_mu_init(void)
@@ -320,9 +345,7 @@ int __init imx8_mu_init(void)
 			return err;
 		}
 
-		err = irq_set_irq_wake(irq, 1);
-		if (err)
-			pr_err("imx8mu_init: set_irq_wake failed: %d\n", err);
+		irq_set_irq_wake(irq, 1);
 	}
 
 	if (!scu_mu_init) {
@@ -349,39 +372,46 @@ int __init imx8_mu_init(void)
 	};
 
 	/* Request for the high temp interrupt. */
-	sciErr = sc_irq_enable(mu_ipcHandle, SC_R_MU_0A, SC_IRQ_GROUP_TEMP,
+	sciErr = sc_irq_enable(mu_ipcHandle, SC_R_MU_1A, SC_IRQ_GROUP_TEMP,
 			       SC_IRQ_TEMP_PMIC0_HIGH, true);
 
 	if (sciErr)
 		pr_info("Cannot request PMIC0_TEMP interrupt\n");
 
 	/* Request for the high temp interrupt. */
-	sciErr = sc_irq_enable(mu_ipcHandle, SC_R_MU_0A, SC_IRQ_GROUP_TEMP,
+	sciErr = sc_irq_enable(mu_ipcHandle, SC_R_MU_1A, SC_IRQ_GROUP_TEMP,
 			       SC_IRQ_TEMP_PMIC1_HIGH, true);
 
 	if (sciErr)
 		pr_info("Cannot request PMIC1_TEMP interrupt\n");
 
 	/* Request for the rtc alarm interrupt. */
-	sciErr = sc_irq_enable(mu_ipcHandle, SC_R_MU_0A, SC_IRQ_GROUP_RTC,
+	sciErr = sc_irq_enable(mu_ipcHandle, SC_R_MU_1A, SC_IRQ_GROUP_RTC,
 			       SC_IRQ_RTC, true);
 
 	if (sciErr)
 		pr_info("Cannot request ALARM_RTC interrupt\n");
 
 	/* Request for the ON/OFF interrupt. */
-	sciErr = sc_irq_enable(mu_ipcHandle, SC_R_MU_0A, SC_IRQ_GROUP_WAKE,
+	sciErr = sc_irq_enable(mu_ipcHandle, SC_R_MU_1A, SC_IRQ_GROUP_WAKE,
 			       SC_IRQ_BUTTON, true);
 
 	if (sciErr)
 		pr_info("Cannot request ON/OFF interrupt\n");
 
 	/* Request for the watchdog interrupt. */
-	sciErr = sc_irq_enable(mu_ipcHandle, SC_R_MU_0A, SC_IRQ_GROUP_WDOG,
+	sciErr = sc_irq_enable(mu_ipcHandle, SC_R_MU_1A, SC_IRQ_GROUP_WDOG,
 			       SC_IRQ_WDOG, true);
 
 	if (sciErr)
 		pr_info("Cannot request WDOG interrupt\n");
+
+	sciErr = sc_irq_enable(mu_ipcHandle, SC_R_MU_1A, SC_IRQ_GROUP_WAKE,
+			       SC_IRQ_PAD, true);
+	if (sciErr)
+		pr_info("Cannot request PAD interrupt\n");
+
+	register_syscore_ops(&imx8_mu_syscore_ops);
 
 	pr_info("*****Initialized MU\n");
 	return scu_mu_id;

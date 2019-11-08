@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 NXP
+ * Copyright (C) 2017-2018 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -40,6 +40,7 @@ struct dcss_devtype {
 	u32 dtrc_ofs;
 	u32 dec400d_ofs;
 	u32 hdr10_ofs;
+	u32 pll_base;
 };
 
 static struct dcss_devtype dcss_type_imx8m = {
@@ -55,6 +56,7 @@ static struct dcss_devtype dcss_type_imx8m = {
 	.dtrc_ofs = 0x16000,
 	.dec400d_ofs = 0x15000,
 	.hdr10_ofs = 0x00000,
+	.pll_base = 0x30360000,
 };
 
 enum dcss_color_space dcss_drm_fourcc_to_colorspace(u32 drm_fourcc)
@@ -274,7 +276,7 @@ static int dcss_clks_init(struct dcss_soc *dcss)
 		{"axi",   &dcss->axi_clk},
 		{"pix_div", &dcss->pdiv_clk},
 		{"pix_out", &dcss->pout_clk},
-		{"rtrm",  &dcss->apb_clk},
+		{"rtrm",  &dcss->rtrm_clk},
 		{"dtrc",  &dcss->dtrc_clk},
 	};
 
@@ -310,11 +312,13 @@ static void dcss_clocks_enable(struct dcss_soc *dcss, bool en)
 		clk_prepare_enable(dcss->dtrc_clk);
 		clk_prepare_enable(dcss->pdiv_clk);
 		clk_prepare_enable(dcss->pout_clk);
+		dcss_pll_enable(dcss);
 	}
 
 	if (!en && dcss->clks_on) {
 		clk_disable_unprepare(dcss->pout_clk);
 		clk_disable_unprepare(dcss->pdiv_clk);
+		dcss_pll_disable(dcss);
 		clk_disable_unprepare(dcss->dtrc_clk);
 		clk_disable_unprepare(dcss->rtrm_clk);
 		clk_disable_unprepare(dcss->apb_clk);
@@ -326,9 +330,132 @@ static void dcss_clocks_enable(struct dcss_soc *dcss, bool en)
 
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>
+#include <linux/slab.h>
+#include <linux/sched/clock.h>
+
+static unsigned int dcss_tracing;
+EXPORT_SYMBOL(dcss_tracing);
+
+module_param_named(tracing, dcss_tracing, int, 0600);
+
+struct dcss_trace {
+	u64 seq;
+	u64 time_ns;
+	u64 tag;
+	struct list_head node;
+};
+
+static LIST_HEAD(dcss_trace_list);
+static spinlock_t lock;
+static u64 seq;
+
+void dcss_trace_write(u64 tag)
+{
+	struct dcss_trace *trace;
+	unsigned long flags;
+
+	if (!dcss_tracing)
+		return;
+
+	trace = kzalloc(sizeof(*trace), GFP_ATOMIC);
+	if (!trace)
+		return;
+
+	trace->time_ns = local_clock();
+	trace->tag = tag;
+	trace->seq = seq;
+
+	spin_lock_irqsave(&lock, flags);
+	list_add_tail(&trace->node, &dcss_trace_list);
+	seq++;
+	spin_unlock_irqrestore(&lock, flags);
+}
+EXPORT_SYMBOL(dcss_trace_write);
+
+static int dcss_trace_dump_show(struct seq_file *s, void *data)
+{
+	struct dcss_trace *trace = data;
+
+	if (trace)
+		seq_printf(s, "%lld %lld %lld\n",
+			   trace->seq, trace->time_ns, trace->tag);
+
+	return 0;
+}
+
+static void *dcss_trace_dump_start(struct seq_file *s, loff_t *pos)
+{
+	unsigned long flags;
+	struct dcss_trace *trace = NULL;
+
+	spin_lock_irqsave(&lock, flags);
+	if (!list_empty(&dcss_trace_list)) {
+		trace = list_first_entry(&dcss_trace_list,
+					 struct dcss_trace, node);
+		goto exit;
+	}
+
+exit:
+	spin_unlock_irqrestore(&lock, flags);
+	return trace;
+}
+
+static void *dcss_trace_dump_next(struct seq_file *s, void *v, loff_t *pos)
+{
+	unsigned long flags;
+	struct dcss_trace *next_trace = NULL;
+	struct dcss_trace *trace = v;
+
+	++*pos;
+	spin_lock_irqsave(&lock, flags);
+	if (!list_is_last(&trace->node, &dcss_trace_list)) {
+		next_trace = list_entry(trace->node.next,
+					struct dcss_trace, node);
+		goto exit;
+	}
+
+exit:
+	spin_unlock_irqrestore(&lock, flags);
+	return next_trace;
+}
+
+static void dcss_trace_dump_stop(struct seq_file *s, void *v)
+{
+	unsigned long flags;
+	struct dcss_trace *trace, *tmp;
+	struct dcss_trace *last_trace = v;
+
+	spin_lock_irqsave(&lock, flags);
+	if (!list_empty(&dcss_trace_list)) {
+		list_for_each_entry_safe(trace, tmp, &dcss_trace_list, node) {
+			if (last_trace && trace->seq >= last_trace->seq)
+				break;
+
+			list_del(&trace->node);
+			kfree(trace);
+		}
+	}
+	spin_unlock_irqrestore(&lock, flags);
+}
+
+static const struct seq_operations dcss_trace_seq_ops = {
+	.start = dcss_trace_dump_start,
+	.next = dcss_trace_dump_next,
+	.stop = dcss_trace_dump_stop,
+	.show = dcss_trace_dump_show,
+};
+
+static int dcss_trace_dump_open(struct inode *inode, struct file *file)
+{
+	return seq_open(file, &dcss_trace_seq_ops);
+}
 
 static int dcss_dump_regs_show(struct seq_file *s, void *data)
 {
+	struct dcss_soc *dcss = s->private;
+
+	pm_runtime_get_sync(dcss->dev);
+
 	dcss_blkctl_dump_regs(s, s->private);
 	dcss_dtrc_dump_regs(s, s->private);
 	dcss_dpr_dump_regs(s, s->private);
@@ -339,6 +466,8 @@ static int dcss_dump_regs_show(struct seq_file *s, void *data)
 	dcss_ss_dump_regs(s, s->private);
 	dcss_hdr10_dump_regs(s, s->private);
 	dcss_ctxld_dump_regs(s, s->private);
+
+	pm_runtime_put_sync(dcss->dev);
 
 	return 0;
 }
@@ -374,6 +503,13 @@ static const struct file_operations dcss_dump_ctx_fops = {
 	.release	= single_release,
 };
 
+static const struct file_operations dcss_dump_trace_fops = {
+	.open		= dcss_trace_dump_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= seq_release,
+};
+
 static void dcss_debugfs_init(struct dcss_soc *dcss)
 {
 	struct dentry *d, *root;
@@ -392,6 +528,11 @@ static void dcss_debugfs_init(struct dcss_soc *dcss)
 	if (!d)
 		goto err;
 
+	d = debugfs_create_file("dump_trace_log", 0444, root, dcss,
+				&dcss_dump_trace_fops);
+	if (!d)
+		goto err;
+
 	return;
 
 err:
@@ -401,6 +542,11 @@ err:
 static void dcss_debugfs_init(struct dcss_soc *dcss)
 {
 }
+
+void dcss_trace_write(u64 tag)
+{
+}
+EXPORT_SYMBOL(dcss_trace_write);
 #endif
 
 static void dcss_bus_freq(struct dcss_soc *dcss, bool en)
@@ -441,6 +587,12 @@ static int dcss_probe(struct platform_device *pdev)
 	dcss->devtype = devtype;
 
 	platform_set_drvdata(pdev, dcss);
+
+	ret = dcss_pll_init(dcss, dcss->devtype->pll_base);
+	if (ret) {
+		dev_err(&pdev->dev, "DCSS PLL initialization failed\n");
+		return ret;
+	}
 
 	ret = dcss_clks_init(dcss);
 	if (ret) {
@@ -492,8 +644,6 @@ static int dcss_suspend(struct device *dev)
 
 	dcss_clocks_enable(dcss, false);
 
-	pm_qos_remove_request(&dcss->pm_qos_req);
-
 	dcss_bus_freq(dcss, false);
 
 	return 0;
@@ -508,8 +658,6 @@ static int dcss_resume(struct device *dev)
 		return 0;
 
 	dcss_bus_freq(dcss, true);
-
-	pm_qos_add_request(&dcss->pm_qos_req, PM_QOS_CPU_DMA_LATENCY, 0);
 
 	dcss_clocks_enable(dcss, true);
 
@@ -534,8 +682,6 @@ static int dcss_runtime_suspend(struct device *dev)
 
 	dcss_clocks_enable(dcss, false);
 
-	pm_qos_remove_request(&dcss->pm_qos_req);
-
 	dcss_bus_freq(dcss, false);
 
 	return 0;
@@ -547,8 +693,6 @@ static int dcss_runtime_resume(struct device *dev)
 	struct dcss_soc *dcss = platform_get_drvdata(pdev);
 
 	dcss_bus_freq(dcss, true);
-
-	pm_qos_add_request(&dcss->pm_qos_req, PM_QOS_CPU_DMA_LATENCY, 0);
 
 	dcss_clocks_enable(dcss, true);
 

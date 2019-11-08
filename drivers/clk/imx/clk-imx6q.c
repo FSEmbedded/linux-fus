@@ -241,12 +241,22 @@ static void of_assigned_ldb_sels(struct device_node *node,
 #define CCM_CCDR		0x04
 #define CCM_CCSR		0x0c
 #define CCM_CS2CDR		0x2c
+#define CCM_CSCDR3		0x3c
+#define CCM_CCGR0		0x68
+#define CCM_CCGR3		0x74
+
+#define ANATOP_PLL3_PFD		0xf0
+
 
 #define CCDR_MMDC_CH1_MASK		BIT(16)
 #define CCSR_PLL3_SW_CLK_SEL		BIT(0)
 
 #define CS2CDR_LDB_DI0_CLK_SEL_SHIFT	9
 #define CS2CDR_LDB_DI1_CLK_SEL_SHIFT	12
+
+#define OCOTP_CFG3			0x440
+#define OCOTP_CFG3_SPEED_SHIFT		16
+#define OCOTP_CFG3_SPEED_1P2GHZ		0x3
 
 static void __init imx6q_mmdc_ch1_mask_handshake(void __iomem *ccm_base)
 {
@@ -394,6 +404,62 @@ static void init_ldb_clks(struct device_node *np, void __iomem *ccm_base)
 #define PFD1_CLKGATE		BIT(15)
 #define PFD2_CLKGATE		BIT(23)
 #define PFD3_CLKGATE		BIT(31)
+
+/*
+ * workaround for ERR010579, when switching the clock source of IPU clock
+ * root in CCM. even setting CCGR3[CG0]=0x0 to gate off clock before
+ * switching, IPU may hang due to no IPU clock from CCM.
+ */
+static void __init init_ipu_clk(void __iomem *anatop_base)
+{
+	u32 val, origin_podf;
+
+	/* gate off the IPU1_IPU clock */
+	val = readl_relaxed(ccm_base + CCM_CCGR3);
+	val &= ~0x3;
+	writel_relaxed(val, ccm_base + CCM_CCGR3);
+
+	/* gate off IPU DCIC1/2 clocks */
+	val = readl_relaxed(ccm_base + CCM_CCGR0);
+	val &= ~(0xf << 24);
+	writel_relaxed(val, ccm_base + CCM_CCGR0);
+
+	/* set IPU_PODF to 3'b000 */
+	val = readl_relaxed(ccm_base + CCM_CSCDR3);
+	origin_podf = val & (0x7 << 11);
+	val &= ~(0x7 << 11);
+	writel_relaxed(val, ccm_base + CCM_CSCDR3);
+
+	/* disable PLL3_PFD1 */
+	val = readl_relaxed(anatop_base + ANATOP_PLL3_PFD);
+	val &= ~(0x1 << 15);
+	writel_relaxed(val, anatop_base + ANATOP_PLL3_PFD);
+
+	/* switch IPU_SEL clock to PLL3_PFD1 */
+	val = readl_relaxed(ccm_base + CCM_CSCDR3);
+	val |= (0x3 << 9);
+	writel_relaxed(val, ccm_base + CCM_CSCDR3);
+
+	 /* restore the IPU PODF*/
+	val = readl_relaxed(ccm_base + CCM_CSCDR3);
+	val |= origin_podf;
+	writel_relaxed(val, ccm_base + CCM_CSCDR3);
+
+	/* enable PLL3_PFD1 */
+	val = readl_relaxed(anatop_base + ANATOP_PLL3_PFD);
+	val |= (0x1 << 15);
+	writel_relaxed(val, anatop_base + ANATOP_PLL3_PFD);
+
+	/* enable IPU1_IPU clock */
+	val = readl_relaxed(ccm_base + CCM_CCGR3);
+	val |= 0x3;
+	writel_relaxed(val, ccm_base + CCM_CCGR3);
+
+	/* enable IPU DCIC1/2 clock */
+	val = readl_relaxed(ccm_base + CCM_CCGR0);
+	val |= (0xf << 24);
+	writel_relaxed(val, ccm_base + CCM_CCGR0);
+}
 
 static void disable_anatop_clocks(void __iomem *anatop_base)
 {
@@ -597,14 +663,13 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 	clk[IMX6QDL_CLK_IPU1_SEL]         = imx_clk_mux("ipu1_sel",         base + 0x3c, 9,  2, ipu_sels,          ARRAY_SIZE(ipu_sels));
 	clk[IMX6QDL_CLK_IPU2_SEL]         = imx_clk_mux("ipu2_sel",         base + 0x3c, 14, 2, ipu_sels,          ARRAY_SIZE(ipu_sels));
 
-	disable_anatop_clocks(anatop_base);
-
-	imx6q_mmdc_ch1_mask_handshake(base);
-
 	if (clk_on_imx6qp()) {
 		clk[IMX6QDL_CLK_LDB_DI0_SEL]      = imx_clk_mux_flags("ldb_di0_sel", base + 0x2c, 9,  3, ldb_di_sels,      ARRAY_SIZE(ldb_di_sels), CLK_SET_RATE_PARENT);
 		clk[IMX6QDL_CLK_LDB_DI1_SEL]      = imx_clk_mux_flags("ldb_di1_sel", base + 0x2c, 12, 3, ldb_di_sels,      ARRAY_SIZE(ldb_di_sels), CLK_SET_RATE_PARENT);
 	} else {
+		disable_anatop_clocks(anatop_base);
+
+		imx6q_mmdc_ch1_mask_handshake(base);
 		/*
 		 * The LDB_DI0/1_SEL muxes are registered read-only due to a hardware
 		 * bug. Set the muxes to the requested values before registering the
@@ -615,6 +680,8 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 		clk[IMX6QDL_CLK_LDB_DI0_SEL]      = imx_clk_mux_ldb("ldb_di0_sel", base + 0x2c, 9,  3, ldb_di_sels,      ARRAY_SIZE(ldb_di_sels));
 		clk[IMX6QDL_CLK_LDB_DI1_SEL]      = imx_clk_mux_ldb("ldb_di1_sel", base + 0x2c, 12, 3, ldb_di_sels,      ARRAY_SIZE(ldb_di_sels));
 	}
+	clk[IMX6QDL_CLK_LDB_DI0_DIV_SEL]  = imx_clk_mux_flags("ldb_di0_div_sel", base + 0x20, 10, 1, ldb_di0_div_sels, ARRAY_SIZE(ldb_di0_div_sels), CLK_SET_RATE_PARENT);
+	clk[IMX6QDL_CLK_LDB_DI1_DIV_SEL]  = imx_clk_mux_flags("ldb_di1_div_sel", base + 0x20, 11, 1, ldb_di1_div_sels, ARRAY_SIZE(ldb_di1_div_sels), CLK_SET_RATE_PARENT);
 	clk[IMX6QDL_CLK_IPU1_DI0_PRE_SEL] = imx_clk_mux_flags("ipu1_di0_pre_sel", base + 0x34, 6,  3, ipu_di_pre_sels,   ARRAY_SIZE(ipu_di_pre_sels), CLK_SET_RATE_PARENT);
 	clk[IMX6QDL_CLK_IPU1_DI1_PRE_SEL] = imx_clk_mux_flags("ipu1_di1_pre_sel", base + 0x34, 15, 3, ipu_di_pre_sels,   ARRAY_SIZE(ipu_di_pre_sels), CLK_SET_RATE_PARENT);
 	clk[IMX6QDL_CLK_IPU2_DI0_PRE_SEL] = imx_clk_mux_flags("ipu2_di0_pre_sel", base + 0x38, 6,  3, ipu_di_pre_sels,   ARRAY_SIZE(ipu_di_pre_sels), CLK_SET_RATE_PARENT);
@@ -776,7 +843,7 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 	clk[IMX6QDL_CLK_GPU2D_CORE] = imx_clk_gate2("gpu2d_core", "gpu2d_core_podf", base + 0x6c, 24);
 	clk[IMX6QDL_CLK_GPU3D_CORE]   = imx_clk_gate2("gpu3d_core",    "gpu3d_core_podf",   base + 0x6c, 26);
 	clk[IMX6QDL_CLK_HDMI_IAHB]    = imx_clk_gate2("hdmi_iahb",     "ahb",               base + 0x70, 0);
-	clk[IMX6QDL_CLK_HDMI_ISFR]    = imx_clk_gate2("hdmi_isfr",     "mipi_core_cfg",     base + 0x70, 4);
+	clk[IMX6QDL_CLK_HDMI_ISFR]    = imx_clk_gate2("hdmi_isfr",     "pll3_pfd1_540m",    base + 0x70, 4);
 	clk[IMX6QDL_CLK_I2C1]         = imx_clk_gate2("i2c1",          "ipg_per",           base + 0x70, 6);
 	clk[IMX6QDL_CLK_I2C2]         = imx_clk_gate2("i2c2",          "ipg_per",           base + 0x70, 8);
 	clk[IMX6QDL_CLK_I2C3]         = imx_clk_gate2("i2c3",          "ipg_per",           base + 0x70, 10);

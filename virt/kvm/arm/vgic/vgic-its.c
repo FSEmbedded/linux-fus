@@ -1333,8 +1333,10 @@ static void vgic_mmio_write_its_cwriter(struct kvm *kvm, struct vgic_its *its,
 
 	mutex_lock(&its->cmd_lock);
 
-	/* Commands are only processed when the ITS is enabled. */
-	if (!its->enabled)
+	reg = update_64bit_reg(its->cwriter, addr & 7, len, val);
+	reg = ITS_CMD_OFFSET(reg);
+	if (reg >= ITS_CMD_BUFFER_SIZE(its->cbaser)) {
+		mutex_unlock(&its->cmd_lock);
 		return;
 	}
 	its->cwriter = reg;

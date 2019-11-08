@@ -206,7 +206,7 @@
 
 		caam_sm: caam-sm@00100000 {
 			compatible = "fsl,imx7d-caam-sm", "fsl,imx6q-caam-sm";
-			reg = <0x00100000 0x3fff>;
+			reg = <0x00100000 0x8000>;
 		};
 
 		irq_sec_vio: caam_secvio {
@@ -760,8 +760,8 @@
 					compatible = "syscon-poweroff";
 					regmap = <&snvs>;
 					offset = <0x38>;
-					value = <0x60>;
-					mask = <0x60>;
+					value = <0x61>;
+					mask = <0x61>;
 					status = "disabled";
 				};
 
@@ -902,7 +902,7 @@
 				ranges = <0 0x2140000 0x3c000>;
 				interrupts = <GIC_SPI 48 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&clks IMX6UL_CLK_CAAM_IPG>, <&clks IMX6UL_CLK_CAAM_ACLK>,
-				       	 <&clks IMX6UL_CLK_CAAM_MEM>;
+					 <&clks IMX6UL_CLK_CAAM_MEM>;
 				clock-names = "ipg", "aclk", "mem";
 
 				sec_ctrl: ctrl@0 {
@@ -1068,10 +1068,44 @@
 				reg = <0x021b0000 0x4000>;
 			};
 
+			sim2: sim@021b4000 {
+				compatible = "fsl,imx6ul-sim";
+				reg = <0x021b4000 0x4000>;
+				interrupts = <GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH>;
+				clocks = <&clks IMX6UL_CLK_SIM2>;
+				clock-names = "sim";
+				status = "disabled";
+			};
+
+			weim: weim@021b8000 {
+				compatible = "fsl,imx6ul-weim", "fsl,imx6q-weim";
+				reg = <0x021b8000 0x4000>;
+				interrupts = <GIC_SPI 14 IRQ_TYPE_LEVEL_HIGH>;
+				clocks = <&clks IMX6UL_CLK_DUMMY>;
+			};
+
 			ocotp: ocotp-ctrl@021bc000 {
 				compatible = "fsl,imx6ul-ocotp", "syscon";
 				reg = <0x021bc000 0x4000>;
 				clocks = <&clks IMX6UL_CLK_OCOTP>;
+			};
+
+			csu: csu@021c0000 {
+				compatible = "fsl,imx6ul-csu";
+				reg = <0x021c0000 0x4000>;
+				interrupts = <GIC_SPI 21 IRQ_TYPE_LEVEL_HIGH>;
+				status = "disabled";
+			};
+
+			csi: csi@021c4000 {
+				compatible = "fsl,imx6ul-csi", "fsl,imx6s-csi";
+				reg = <0x021c4000 0x4000>;
+				interrupts = <GIC_SPI 7 IRQ_TYPE_LEVEL_HIGH>;
+				clocks = <&clks IMX6UL_CLK_DUMMY>,
+					<&clks IMX6UL_CLK_CSI>,
+					<&clks IMX6UL_CLK_DUMMY>;
+				clock-names = "disp-axi", "csi_mclk", "disp_dcic";
+				status = "disabled";
 			};
 
 			lcdif: lcdif@021c8000 {

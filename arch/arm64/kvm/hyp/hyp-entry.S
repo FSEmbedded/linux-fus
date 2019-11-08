@@ -147,20 +147,6 @@ wa_epilogue:
 	add	sp, sp, #16
 	eret
 
-el1_hvc_guest:
-	/*
-	 * Fastest possible path for ARM_SMCCC_ARCH_WORKAROUND_1.
-	 * The workaround has already been applied on the host,
-	 * so let's quickly get back to the guest. We don't bother
-	 * restoring x1, as it can be clobbered anyway.
-	 */
-	ldr	x1, [sp]				// Guest's x0
-	eor	w1, w1, #ARM_SMCCC_ARCH_WORKAROUND_1
-	cbnz	w1, el1_trap
-	mov	x0, x1
-	add	sp, sp, #16
-	eret
-
 el1_trap:
 	get_vcpu_ptr	x1, x0
 

@@ -37,7 +37,6 @@
 #include <linux/memblock.h>
 #include <linux/memory.h>
 #include <linux/nmi.h>
-#include <linux/debugfs.h>
 
 #include <asm/debugfs.h>
 #include <asm/io.h>

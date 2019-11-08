@@ -16,7 +16,6 @@
 #include <linux/of_irq.h>
 #include <linux/clk.h>
 #include <linux/reset.h>
-#include <linux/slab.h>
 
 #define TIM_CR1		0x00
 #define TIM_DIER	0x0c

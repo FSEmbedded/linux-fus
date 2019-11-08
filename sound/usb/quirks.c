@@ -1186,19 +1186,6 @@ static bool is_itf_usb_dsd_3alts_dac(unsigned int id)
 	return false;
 }
 
-/* TEAC UD-501/UD-503/NT-503 USB DACs need a vendor cmd to switch
- * between PCM/DOP and native DSD mode
- */
-static bool is_teac_dsd_dac(unsigned int id)
-{
-	switch (id) {
-	case USB_ID(0x0644, 0x8043): /* TEAC UD-501/UD-503/NT-503 */
-	case USB_ID(0x0644, 0x8044): /* Esoteric D-05X */
-		return true;
-	}
-	return false;
-}
-
 int snd_usb_select_mode_quirk(struct snd_usb_substream *subs,
 			      struct audioformat *fmt)
 {

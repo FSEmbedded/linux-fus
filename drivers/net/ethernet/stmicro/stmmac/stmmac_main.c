@@ -366,7 +366,6 @@ bool stmmac_eee_init(struct stmmac_priv *priv)
 	struct net_device *ndev = priv->dev;
 	int interface = priv->plat->interface;
 	unsigned long flags;
-	int interface = priv->plat->interface;
 	bool ret = false;
 
 	if ((interface != PHY_INTERFACE_MODE_MII) &&

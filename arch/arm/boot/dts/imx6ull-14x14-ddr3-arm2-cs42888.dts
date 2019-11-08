@@ -85,8 +85,8 @@
 &esai {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_esai>;
-	assigned-clocks = <&clks IMX6UL_CLK_ESAI_SEL>,
-		          <&clks IMX6UL_CLK_ESAI_EXTAL>;
+	assigned-clocks = <&clks IMX6ULL_CLK_ESAI_SEL>,
+		          <&clks IMX6ULL_CLK_ESAI_EXTAL>;
 	assigned-clock-parents = <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>;
 	assigned-clock-rates = <0>, <24576000>;
 	status = "okay";

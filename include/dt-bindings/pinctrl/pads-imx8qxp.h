@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017-2018 NXP
  *
  * SPDX-License-Identifier:     GPL-2.0+
  */
@@ -9,14 +9,12 @@
  * Header file used to configure SoC pad list.
  */
 
-#ifndef _SC_PADS_H
-#define _SC_PADS_H
+#ifndef SC_PADS_H
+#define SC_PADS_H
 
 /* Includes */
 
 /* Defines */
-
-#define SC_P_ALL            UINT16_MAX	/* All pads */
 
 /*!
  * @name Pad Definitions
@@ -328,6 +326,7 @@
 #define SC_P_ENET0_RGMII_TXD3_CONN_MLB_SIG                      SC_P_ENET0_RGMII_TXD3              1
 #define SC_P_ENET0_RGMII_TXD3_CONN_NAND_RE_B                    SC_P_ENET0_RGMII_TXD3              2
 #define SC_P_ENET0_RGMII_TXD3_LSIO_GPIO5_IO02                   SC_P_ENET0_RGMII_TXD3              4
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_ENET_ENETB0_PAD              SC_P_COMP_CTL_GPIO_1V8_3V3_ENET_ENETB0	0
 #define SC_P_ENET0_RGMII_RXC_CONN_ENET0_RGMII_RXC               SC_P_ENET0_RGMII_RXC               0
 #define SC_P_ENET0_RGMII_RXC_CONN_MLB_DATA                      SC_P_ENET0_RGMII_RXC               1
 #define SC_P_ENET0_RGMII_RXC_CONN_NAND_WE_B                     SC_P_ENET0_RGMII_RXC               2
@@ -350,6 +349,7 @@
 #define SC_P_ENET0_RGMII_RXD3_CONN_NAND_ALE                     SC_P_ENET0_RGMII_RXD3              2
 #define SC_P_ENET0_RGMII_RXD3_CONN_USDHC1_DATA3                 SC_P_ENET0_RGMII_RXD3              3
 #define SC_P_ENET0_RGMII_RXD3_LSIO_GPIO5_IO08                   SC_P_ENET0_RGMII_RXD3              4
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_ENET_ENETB1_PAD              SC_P_COMP_CTL_GPIO_1V8_3V3_ENET_ENETB1	0
 #define SC_P_ENET0_REFCLK_125M_25M_CONN_ENET0_REFCLK_125M_25M   SC_P_ENET0_REFCLK_125M_25M         0
 #define SC_P_ENET0_REFCLK_125M_25M_CONN_ENET0_PPS               SC_P_ENET0_REFCLK_125M_25M         1
 #define SC_P_ENET0_REFCLK_125M_25M_CONN_ENET1_PPS               SC_P_ENET0_REFCLK_125M_25M         2
@@ -769,4 +769,4 @@
 #define SC_P_QSPI0B_SS1_B_LSIO_GPIO3_IO24                       SC_P_QSPI0B_SS1_B                  4
 /*@}*/
 
-#endif				/* _SC_PADS_H */
+#endif				/* SC_PADS_H */

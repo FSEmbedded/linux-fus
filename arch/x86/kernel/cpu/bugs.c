@@ -58,15 +58,6 @@ void __init check_bugs(void)
 {
 	identify_boot_cpu();
 
-	if (!IS_ENABLED(CONFIG_SMP)) {
-		pr_info("CPU: ");
-		print_cpu_info(&boot_cpu_data);
-	}
-
-	/* Select the proper spectre mitigation before patching alternatives */
-	spectre_v2_select_mitigation();
-
-#ifdef CONFIG_X86_32
 	/*
 	 * identify_boot_cpu() initialized SMT support information, let the
 	 * core code know.

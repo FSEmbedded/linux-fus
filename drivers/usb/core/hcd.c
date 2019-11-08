@@ -1077,7 +1077,6 @@ static void usb_deregister_bus (struct usb_bus *bus)
 static int register_root_hub(struct usb_hcd *hcd)
 {
 	struct device *parent_dev = hcd->self.controller;
-	struct device *sysdev = hcd->self.sysdev;
 	struct usb_device *usb_dev = hcd->self.root_hub;
 	const int devnum = 1;
 	int retval;

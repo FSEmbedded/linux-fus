@@ -83,7 +83,6 @@ struct drm_master {
 	struct drm_lock_data lock;
 	void *driver_priv;
 
-
 	/* Tree of display resource leases, each of which is a drm_master struct
 	 * All of these get activated simultaneously, so drm_device master points
 	 * at the top of the tree (for which lessor is NULL). Protected by
@@ -91,7 +90,7 @@ struct drm_master {
 	 */
 
 	struct drm_master *lessor;
-	int     lessee_id;
+	int	lessee_id;
 	struct list_head lessee_list;
 	struct list_head lessees;
 	struct idr leases;
@@ -103,4 +102,5 @@ void drm_master_put(struct drm_master **master);
 bool drm_is_current_master(struct drm_file *fpriv);
 
 struct drm_master *drm_master_create(struct drm_device *dev);
+
 #endif

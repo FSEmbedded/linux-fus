@@ -268,9 +268,9 @@ static int anatop_regulator_probe(struct platform_device *pdev)
 	initdata->supply_regulator = "vin";
 	sreg->initdata = initdata;
 
-	if (strcmp(sreg->name, "vddpu") == 0)
+	if (strcmp(rdesc->name, "vddpu") == 0)
 		vddpu = sreg;
-	else if (strcmp(sreg->name, "vddsoc") == 0)
+	else if (strcmp(rdesc->name, "vddsoc") == 0)
 		vddsoc = sreg;
 
 	anatop_np = of_get_parent(np);
@@ -371,7 +371,7 @@ static int anatop_regulator_probe(struct platform_device *pdev)
 			sreg->sel = 22;
 
 		/* set the default voltage of the pcie phy to be 1.100v */
-		if (!sreg->sel && !strcmp(rdesc->name, "vddpcie"))
+		if (!sreg->sel && !strcmp(rdesc->name, "vddpcie-phy"))
 			sreg->sel = 0x10;
 
 		if (!sreg->bypass && !sreg->sel) {

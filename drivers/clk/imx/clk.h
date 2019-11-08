@@ -27,10 +27,32 @@ enum imx_pllv1_type {
 	IMX_PLLV1_IMX35,
 };
 
+enum imx_int_pll_type {
+	PLL_1416X,
+	PLL_1443X,
+};
+
 enum imx_sccg_pll_type {
 	SCCG_PLL1,
 	SCCG_PLL2,
 };
+
+/* NOTE: Rate table should be kept sorted in descending order. */
+struct imx_int_pll_rate_table {
+	unsigned int rate;
+	unsigned int pdiv;
+	unsigned int mdiv;
+	unsigned int sdiv;
+	unsigned int kdiv;
+};
+
+struct imx_int_pll_clk {
+	enum imx_int_pll_type type;
+	const struct imx_int_pll_rate_table *rate_table;
+	int flags;
+};
+
+struct clk *imx_clk_int_pll(const char *name, const char *parent_name, void __iomem *base, const struct imx_int_pll_clk *pll_clk);
 
 struct clk *imx_clk_pllv1(enum imx_pllv1_type type, const char *name,
 		const char *parent, void __iomem *base);
@@ -52,6 +74,44 @@ enum imx_pllv3_type {
 	IMX_PLLV3_ENET_IMX7,
 	IMX_PLLV3_SYS_VF610,
 	IMX_PLLV3_DDR_IMX7,
+	IMX_PLLV3_AV_IMX7,
+	IMX_PLLV3_PLL2,
+};
+
+/*
+ * frac_divider, found on i.MX7ULP PCC module.
+ * the output clock of the fractional divider is:
+ * Divider output clock = Input clock * (FRAC + 1)
+ * / (DIV + 1)
+ */
+struct clk_frac_divider {
+	struct clk_hw	hw;
+	void __iomem	*reg;
+	u8		mshift;
+	u8		mwidth;
+	u32		mmask;
+	u8		nshift;
+	u8		nwidth;
+	u32		nmask;
+};
+
+#define MAX_SHARED_CLK_NUMBER		100
+#define SHARED_MEM_MAGIC_NUMBER		0x12345678
+#define MCC_POWER_SHMEM_NUMBER		(6)
+
+struct imx_shared_clk {
+	struct clk *self;
+	struct clk *parent;
+	void *m4_clk;
+	void *m4_clk_parent;
+	u8 ca9_enabled;
+	u8 cm4_enabled;
+};
+
+struct imx_shared_mem {
+	u32 ca9_valid;
+	u32 cm4_valid;
+	struct imx_shared_clk imx_clk[MAX_SHARED_CLK_NUMBER];
 };
 
 struct clk *imx_clk_pllv3(enum imx_pllv3_type type, const char *name,
@@ -309,10 +369,25 @@ static inline int clk_on_imx6sx(void)
 	return of_machine_is_compatible("fsl,imx6sx");
 }
 
-struct clk *imx_clk_composite(const char *name, const char **parent_name,
+struct clk *imx7ulp_clk_composite(const char *name, const char **parent_name,
 			      int num_parents, bool mux_present, bool rate_present,
 			      bool gate_present, void __iomem *reg);
 
 struct clk *imx_clk_pfdv2(const char *name, const char *parent_name,
 			  void __iomem *reg, u8 idx);
+
+struct clk *imx8m_clk_composite_flags(const char *name, const char **parent_names,
+		int num_parents, void __iomem *reg, unsigned long flags);
+
+#define __imx8m_clk_composite(name, parent_names, reg, flags) \
+	imx8m_clk_composite_flags(name, parent_names, \
+		ARRAY_SIZE(parent_names), reg, \
+		flags | CLK_SET_RATE_NO_REPARENT | CLK_OPS_PARENT_ENABLE)
+
+#define imx8m_clk_composite(name, parent_names, reg) \
+	__imx8m_clk_composite(name, parent_names, reg, 0)
+
+#define imx8m_clk_composite_critical(name, parent_names, reg) \
+	__imx8m_clk_composite(name, parent_names, reg, CLK_IS_CRITICAL)
+
 #endif

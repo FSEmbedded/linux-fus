@@ -834,12 +834,11 @@ struct drm_mode_list_lessees {
 	__u32 count_lessees;
 	__u32 pad;
 
-	/**
-	 * Pointer to lessees. pointer to __u64 array of lessee ids
+	/** Pointer to lessees.
+	 * pointer to __u64 array of lessee ids
 	 */
 	__u64 lessees_ptr;
 };
-
 
 /**
  * Get leased objects
@@ -865,10 +864,10 @@ struct drm_mode_get_lease {
  * Revoke lease
  */
 struct drm_mode_revoke_lease {
-	/** Unique ID of lessee */
+	/** Unique ID of lessee
+	 */
 	__u32 lessee_id;
 };
-
 
 #if defined(__cplusplus)
 }

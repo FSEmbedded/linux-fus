@@ -5,9 +5,9 @@
  */
 
 #include "compat.h"
-#include "intern.h"
 #include "secvio.h"
 #include "regs.h"
+#include "intern.h"
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>

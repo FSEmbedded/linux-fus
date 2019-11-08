@@ -80,9 +80,6 @@ static const unsigned short normal_i2c[] = {
 /* SMBUS register */
 #define SMBUS_STMOUT		BIT(7)  /* SMBus time-out, active low */
 
-/* SMBUS register */
-#define SMBUS_STMOUT		BIT(7)  /* SMBus time-out, active low */
-
 /* Supported chips */
 
 /* Analog Devices */

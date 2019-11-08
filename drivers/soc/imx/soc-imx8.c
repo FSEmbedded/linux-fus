@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017-2018 NXP
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -24,6 +24,7 @@
 #include <linux/platform_device.h>
 #include <linux/of.h>
 
+#include <soc/imx8/sc/types.h>
 #include <soc/imx8/sc/sci.h>
 #include <soc/imx8/soc.h>
 #include <soc/imx/revision.h>
@@ -148,7 +149,7 @@ static u32 imx8qm_soc_revision(void)
 {
 	u32 rev = imx_init_revision_from_scu();
 
-	if (rev == IMX_CHIP_REVISION_1_0)
+	if (rev == IMX_CHIP_REVISION_1_0 || rev == IMX_CHIP_REVISION_1_1)
 		TKT340553_SW_WORKAROUND = true;
 
 	return rev;
@@ -198,6 +199,12 @@ static u32 imx8mq_soc_revision(void)
 	return imx_init_revision_from_atf();
 }
 
+static u32 imx8mm_soc_revision(void)
+{
+	imx8_soc_uid = imx8mq_soc_get_soc_uid();
+	return imx_init_revision_from_atf();
+}
+
 static struct imx8_soc_data imx8qm_soc_data = {
 	.name = "i.MX8QM",
 	.soc_revision = imx8qm_soc_revision,
@@ -213,10 +220,16 @@ static struct imx8_soc_data imx8mq_soc_data = {
 	.soc_revision = imx8mq_soc_revision,
 };
 
+static struct imx8_soc_data imx8mm_soc_data = {
+	.name = "i.MX8MM",
+	.soc_revision = imx8mm_soc_revision,
+};
+
 static const struct of_device_id imx8_soc_match[] = {
 	{ .compatible = "fsl,imx8qm", .data = &imx8qm_soc_data, },
 	{ .compatible = "fsl,imx8qxp", .data = &imx8qxp_soc_data, },
 	{ .compatible = "fsl,imx8mq", .data = &imx8mq_soc_data, },
+	{ .compatible = "fsl,imx8mm", .data = &imx8mm_soc_data, },
 	{ }
 };
 
@@ -266,29 +279,19 @@ static struct device_attribute imx8_uid =
 
 static void __init imx8mq_noc_init(void)
 {
-	struct device_node *np;
-	const char *status;
-	int statlen;
 	struct arm_smccc_res res;
 
-	np = of_find_compatible_node(NULL, NULL, "fsl,imx8mq-lcdif");
-	if (!np)
-		return;
-
-	status = of_get_property(np, "status", &statlen);
-	if (status == NULL)
-		return;
-
-	if (statlen > 0) {
-		if (!strcmp(status, "disabled"))
-			return;
-	}
-
 	pr_info("Config NOC for VPU and CPU\n");
-	arm_smccc_smc(FSL_SIP_NOC, FSL_SIP_NOC_LCDIF, 0,
-			0, 0, 0, 0, 0, &res);
+
+	arm_smccc_smc(FSL_SIP_NOC, FSL_SIP_NOC_PRIORITY, NOC_CPU_PRIORITY,
+			0x80000300, 0, 0, 0, 0, &res);
 	if (res.a0)
-		pr_err("Config NOC for VPU and CPU fail!\n");
+		pr_err("Config NOC for CPU fail!\n");
+
+	arm_smccc_smc(FSL_SIP_NOC, FSL_SIP_NOC_PRIORITY, NOC_VPU_PRIORITY,
+			0x80000300, 0, 0, 0, 0, &res);
+	if (res.a0)
+		pr_err("Config NOC for VPU fail!\n");
 }
 
 static int __init imx8_soc_init(void)
@@ -296,6 +299,7 @@ static int __init imx8_soc_init(void)
 	struct soc_device_attribute *soc_dev_attr;
 	struct soc_device *soc_dev;
 	u32 soc_rev;
+	int ret;
 
 	soc_dev_attr = kzalloc(sizeof(*soc_dev_attr), GFP_KERNEL);
 	if (!soc_dev_attr)
@@ -319,7 +323,11 @@ static int __init imx8_soc_init(void)
 	if (IS_ERR(soc_dev))
 		goto free_rev;
 
-	device_create_file(soc_device_to_device(soc_dev), &imx8_uid);
+	ret = device_create_file(soc_device_to_device(soc_dev), &imx8_uid);
+	if (ret) {
+		pr_err("could not register sysfs entry\n");
+		return ret;
+	}
 
 	if (of_machine_is_compatible("fsl,imx8mq"))
 		imx8mq_noc_init();
@@ -410,7 +418,8 @@ static void __init imx8mq_opp_init(void)
 		goto put_node;
 	}
 
-	imx8mq_opp_check_speed_grading(cpu_dev);
+	if (of_machine_is_compatible("fsl,imx8mq"))
+		imx8mq_opp_check_speed_grading(cpu_dev);
 
 put_node:
 	of_node_put(np);
@@ -418,7 +427,8 @@ put_node:
 
 static int __init imx8_register_cpufreq(void)
 {
-	if (of_machine_is_compatible("fsl,imx8mq")) {
+	if (of_machine_is_compatible("fsl,imx8mq") ||
+		of_machine_is_compatible("fsl,imx8mm")) {
 		imx8mq_opp_init();
 		platform_device_register_simple("imx8mq-cpufreq", -1, NULL, 0);
 	} else {

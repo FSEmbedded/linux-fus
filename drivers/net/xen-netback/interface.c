@@ -241,7 +241,7 @@ static struct net_device_stats *xenvif_get_stats(struct net_device *dev)
 	num_queues = READ_ONCE(vif->num_queues);
 
 	/* Aggregate tx and rx stats from each queue */
-	for (index = 0; index < vif->num_queues; ++index) {
+	for (index = 0; index < num_queues; ++index) {
 		queue = &vif->queues[index];
 		rx_bytes += queue->stats.rx_bytes;
 		rx_packets += queue->stats.rx_packets;

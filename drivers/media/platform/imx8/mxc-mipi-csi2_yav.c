@@ -31,7 +31,7 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/videodev2.h>
-#include <media/v4l2-of.h>
+#include <media/v4l2-fwnode.h>
 #include <media/v4l2-subdev.h>
 #include <media/v4l2-device.h>
 
@@ -406,11 +406,10 @@ static int mipi_csi2_set_fmt(struct v4l2_subdev *sd,
 
 	if (fmt->format.width * fmt->format.height > 720 * 480) {
 		csi2dev->hs_settle = rxhs_settle[1];
-		csi2dev->send_level = 0x300;
 	} else {
 		csi2dev->hs_settle = rxhs_settle[0];
-		csi2dev->send_level = 0x240;
 	}
+	csi2dev->send_level = 64;
 
 	return v4l2_subdev_call(sensor_sd, pad, set_fmt, NULL, fmt);
 }
@@ -464,7 +463,7 @@ static int mipi_csi2_parse_dt(struct mxc_mipi_csi2_dev *csi2dev)
 {
 	struct device *dev = &csi2dev->pdev->dev;
 	struct device_node *node = dev->of_node;
-	struct v4l2_of_endpoint endpoint;
+	struct v4l2_fwnode_endpoint endpoint;
 	u32 i;
 
 	csi2dev->id = of_alias_get_id(node, "csi");
@@ -478,7 +477,7 @@ static int mipi_csi2_parse_dt(struct mxc_mipi_csi2_dev *csi2dev)
 	}
 
 	/* Get port node */
-	v4l2_of_parse_endpoint(node, &endpoint);
+	v4l2_fwnode_endpoint_parse(of_fwnode_handle(node), &endpoint);
 
 	csi2dev->num_lanes = endpoint.bus.mipi_csi2.num_data_lanes;
 	for (i = 0; i < csi2dev->num_lanes; i++)
@@ -502,7 +501,7 @@ static int subdev_notifier_bound(struct v4l2_async_notifier *notifier,
 	struct mxc_mipi_csi2_dev *csi2dev = notifier_to_mipi_dev(notifier);
 
 	/* Find platform data for this sensor subdev */
-	if (csi2dev->asd.match.of.node == subdev->dev->of_node)
+	if (csi2dev->asd.match.fwnode.fwnode == of_fwnode_handle(subdev->dev->of_node))
 		csi2dev->sensor_sd = subdev;
 
 	if (subdev == NULL)
@@ -542,8 +541,8 @@ static int mipi_csis_subdev_host(struct mxc_mipi_csi2_dev *csi2dev)
 				  "Remote device at %s XXX found\n",
 				  port->full_name);
 
-		csi2dev->asd.match_type = V4L2_ASYNC_MATCH_OF;
-		csi2dev->asd.match.of.node = rem;
+		csi2dev->asd.match_type = V4L2_ASYNC_MATCH_FWNODE;
+		csi2dev->asd.match.fwnode.fwnode = of_fwnode_handle(rem);
 		csi2dev->async_subdevs[0] = &csi2dev->asd;
 
 		of_node_put(rem);

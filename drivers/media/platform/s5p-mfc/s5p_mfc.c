@@ -972,8 +972,6 @@ static int s5p_mfc_release(struct file *file)
 			mfc_debug(2, "Shutting down clock\n");
 			s5p_mfc_clock_off();
 		}
-		mfc_debug(2, "Shutting down clock\n");
-		s5p_mfc_clock_off();
 	}
 	if (dev)
 		dev->ctx[ctx->num] = NULL;

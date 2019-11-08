@@ -389,6 +389,9 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6dl-sabreauto-gpmi-weim.dtb \
 	imx6dl-sabrelite.dtb \
 	imx6dl-sabresd.dtb \
+	imx6dl-sabresd-btwifi.dtb \
+	imx6dl-sabresd-hdcp.dtb \
+	imx6dl-sabresd-ldo.dtb \
 	imx6dl-savageboard.dtb \
 	imx6dl-ts4900.dtb \
 	imx6dl-tx6dl-comtft.dtb \
@@ -402,6 +405,18 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6dl-sabresd-enetirq.dtb \
 	imx6dl-wandboard.dtb \
 	imx6dl-wandboard-revb1.dtb \
+	imx6dqscm-1gb-qwks-rev2-fix-ldo.dtb \
+	imx6dqscm-1gb-qwks-rev2-interleave-android-ldo.dtb \
+	imx6dqscm-1gb-qwks-rev2-wifi-fix-ldo.dtb \
+	imx6dqscm-1gb-qwks-rev2-hdcp-fix-ldo.dtb \
+	imx6dqscm-1gb-evb-fix-ldo.dtb \
+	imx6dqscm-1gb-evb-interleave-android-ldo.dtb \
+	imx6dqscm-1gb-evb-btwifi-fix-ldo.dtb \
+	imx6dqscm-1gb-evb-enetirq-fix-ldo.dtb \
+	imx6dqscm-1gb-evb-hdcp-fix-ldo.dtb \
+	imx6dqscm-1gb-qwks-rev3-fix-ldo.dtb \
+	imx6dqscm-1gb-qwks-rev3-hdcp-fix-ldo.dtb \
+	imx6dqscm-1gb-qwks-rev3-btwifi-fix-ldo.dtb \
 	imx6q-apalis-eval.dtb \
 	imx6q-apalis-ixora.dtb \
 	imx6q-apalis-ixora-v1.1.dtb \
@@ -450,6 +465,10 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6q-sabreauto-gpmi-weim.dtb \
 	imx6q-sabrelite.dtb \
 	imx6q-sabresd.dtb \
+	imx6q-sabresd-btwifi.dtb \
+	imx6q-sabresd-hdcp.dtb \
+	imx6q-sabresd-ldo.dtb \
+	imx6q-sabresd-enetirq.dtb \
 	imx6q-savageboard.dtb \
 	imx6q-sbc6x.dtb \
 	imx6q-tbs2910.dtb \
@@ -469,7 +488,14 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	imx6qp-nitrogen6_max.dtb \
 	imx6qp-nitrogen6_som2.dtb \
 	imx6qp-sabreauto.dtb \
+	imx6qp-sabreauto-ecspi.dtb \
+	imx6qp-sabreauto-flexcan1.dtb \
+	imx6qp-sabreauto-gpmi-weim.dtb \
 	imx6qp-sabresd.dtb \
+	imx6qp-sabresd-btwifi.dtb \
+	imx6qp-sabresd-hdcp.dtb \
+	imx6qp-sabresd-ldo.dtb \
+	imx6qp-sabresd-ldo-pcie-cert.dtb \
 	imx6qp-zii-rdu2.dtb
 dtb-$(CONFIG_SOC_IMX6SL) += \
 	imx6sl-evk.dtb \
@@ -484,13 +510,40 @@ dtb-$(CONFIG_SOC_IMX6SX) += \
 	imx6sx-sabreauto.dtb \
 	imx6sx-sabreauto-m4.dtb \
 	imx6sx-sdb-reva.dtb \
+	imx6sx-sdb-reva-ldo.dtb \
 	imx6sx-sdb-sai.dtb \
 	imx6sx-sdb.dtb \
+	imx6sx-sdb-btwifi.dtb \
+	imx6sx-sdb-emmc.dtb \
+	imx6sx-sdb-lcdif1.dtb \
+	imx6sx-sdb-ldo.dtb \
+	imx6sx-sdb-m4.dtb \
+	imx6sx-sdb-mqs.dtb \
+	imx6sx-19x19-arm2.dtb \
+	imx6sx-19x19-arm2-ldo.dtb \
+	imx6sx-19x19-arm2-csi.dtb \
+	imx6sx-19x19-arm2-gpmi-weim.dtb \
 	imx6sx-udoo-neo-basic.dtb \
 	imx6sx-udoo-neo-extended.dtb \
-	imx6sx-udoo-neo-full.dtb
+	imx6sx-udoo-neo-full.dtb \
+	imx6sxscm-1gb-evb-ldo.dtb \
+	imx6sxscm-1gb-evb-lcdif1-ldo.dtb \
+	imx6sxscm-1gb-evb-m4-ldo.dtb \
+	imx6sxscm-1gb-evb-mqs-ldo.dtb \
+	imx6sxscm-1gb-evb-sai-ldo.dtb \
+	imx6sxscm-1gb-evb-btwifi-ldo.dtb \
+	imx6sxscm-epop-evb-ldo.dtb \
+	imx6sxscm-epop-evb-m4-ldo.dtb
 dtb-$(CONFIG_SOC_IMX6UL) += \
 	imx6ul-14x14-evk.dtb \
+	imx6ul-14x14-evk-btwifi.dtb \
+	imx6ul-14x14-evk-btwifi-oob.dtb \
+	imx6ul-14x14-evk-csi.dtb \
+	imx6ul-14x14-evk-emmc.dtb \
+	imx6ul-14x14-evk-ecspi.dtb \
+	imx6ul-14x14-evk-ecspi-slave.dtb \
+	imx6ul-14x14-evk-gpmi-weim.dtb \
+	imx6ul-14x14-evk-usb-certi.dtb \
 	imx6ul-geam.dtb \
 	imx6ul-isiot-emmc.dtb \
 	imx6ul-isiot-nand.dtb \
@@ -500,7 +553,61 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	imx6ul-tx6ul-0010.dtb \
 	imx6ul-tx6ul-0011.dtb \
 	imx6ul-tx6ul-mainboard.dtb \
-	imx6ull-14x14-evk.dtb
+	imx6ul-14x14-ddr3-arm2.dtb \
+	imx6ul-14x14-ddr3-arm2-emmc.dtb	\
+	imx6ul-14x14-ddr3-arm2-flexcan2.dtb \
+	imx6ul-14x14-ddr3-arm2-gpmi-weim.dtb \
+	imx6ul-14x14-ddr3-arm2-mqs.dtb \
+	imx6ul-14x14-ddr3-arm2-spdif.dtb \
+	imx6ul-14x14-ddr3-arm2-wm8958.dtb \
+	imx6ul-14x14-lpddr2-arm2.dtb \
+	imx6ul-14x14-evk-pf1550.dtb \
+	imx6ul-9x9-evk.dtb \
+	imx6ul-9x9-evk-csi.dtb \
+	imx6ul-9x9-evk-btwifi.dtb \
+	imx6ul-9x9-evk-btwifi-oob.dtb \
+	imx6ul-9x9-evk-ldo.dtb
+dtb-$(CONFIG_SOC_IMX6ULL) += \
+	imx6ull-14x14-ddr3-arm2.dtb \
+	imx6ull-14x14-ddr3-arm2-adc.dtb \
+	imx6ull-14x14-ddr3-arm2-cs42888.dtb \
+	imx6ull-14x14-ddr3-arm2-ecspi.dtb \
+	imx6ull-14x14-ddr3-arm2-emmc.dtb \
+	imx6ull-14x14-ddr3-arm2-epdc.dtb \
+	imx6ull-14x14-ddr3-arm2-flexcan2.dtb \
+	imx6ull-14x14-ddr3-arm2-gpmi-weim.dtb \
+	imx6ull-14x14-ddr3-arm2-lcdif.dtb \
+	imx6ull-14x14-ddr3-arm2-ldo.dtb \
+	imx6ull-14x14-ddr3-arm2-qspi.dtb \
+	imx6ull-14x14-ddr3-arm2-qspi-all.dtb \
+	imx6ull-14x14-ddr3-arm2-tsc.dtb \
+	imx6ull-14x14-ddr3-arm2-uart2.dtb \
+	imx6ull-14x14-ddr3-arm2-usb.dtb \
+	imx6ull-14x14-ddr3-arm2-wm8958.dtb \
+	imx6ull-14x14-evk.dtb \
+	imx6ull-14x14-evk-btwifi.dtb \
+	imx6ull-14x14-evk-btwifi-oob.dtb \
+	imx6ull-14x14-evk-emmc.dtb \
+	imx6ull-14x14-evk-gpmi-weim.dtb \
+	imx6ull-14x14-evk-usb-certi.dtb \
+	imx6ull-9x9-evk.dtb \
+	imx6ull-9x9-evk-btwifi.dtb \
+	imx6ull-9x9-evk-btwifi-oob.dtb \
+	imx6ull-9x9-evk-ldo.dtb		\
+	imx6ulz-14x14-evk.dtb \
+	imx6ulz-14x14-evk-btwifi.dtb \
+	imx6ulz-14x14-evk-btwifi-oob.dtb \
+	imx6ulz-14x14-evk-emmc.dtb \
+	imx6ulz-14x14-evk-gpmi-weim.dtb
+dtb-$(CONFIG_SOC_IMX6SLL) += \
+	imx6sll-lpddr2-arm2.dtb \
+	imx6sll-lpddr3-arm2.dtb \
+	imx6sll-lpddr3-arm2-csi.dtb \
+	imx6sll-lpddr3-arm2-ecspi.dtb \
+	imx6sll-lpddr3-arm2-spdif.dtb \
+	imx6sll-evk.dtb \
+	imx6sll-evk-reva.dtb \
+	imx6sll-evk-btwifi.dtb
 dtb-$(CONFIG_SOC_IMX7D) += \
 	imx7d-cl-som-imx7.dtb \
 	imx7d-colibri-eval-v3.dtb \
@@ -508,25 +615,10 @@ dtb-$(CONFIG_SOC_IMX7D) += \
 	imx7d-pico.dtb \
 	imx7d-sbc-imx7.dtb \
 	imx7d-sdb.dtb \
-	imx7d-sdb-sht11.dtb \
-	imx7s-colibri-eval-v3.dtb \
-	imx7s-warp.dtb \
-	imx7d-12x12-lpddr3-arm2.dtb \
-	imx7d-12x12-lpddr3-arm2-m4.dtb \
-	imx7d-12x12-ddr3-arm2.dtb \
-	imx7d-12x12-lpddr3-arm2-ecspi.dtb \
-	imx7d-12x12-lpddr3-arm2-enet2.dtb \
-	imx7d-12x12-lpddr3-arm2-flexcan.dtb \
-	imx7d-12x12-lpddr3-arm2-mipi_dsi.dtb \
-	imx7d-12x12-lpddr3-arm2-qspi.dtb \
-	imx7d-12x12-lpddr3-arm2-sai.dtb \
-	imx7d-12x12-lpddr3-arm2-mqs.dtb \
-	imx7d-12x12-lpddr3-arm2-pcie.dtb \
-	imx7d-19x19-lpddr2-arm2.dtb \
-	imx7d-sdb.dtb \
 	imx7d-sdb-epdc.dtb \
 	imx7d-sdb-gpmi-weim.dtb \
 	imx7d-sdb-m4.dtb \
+	imx7d-sdb-sht11.dtb \
 	imx7d-sdb-qspi.dtb \
 	imx7d-sdb-mipi-dsi.dtb \
 	imx7d-sdb-reva.dtb \
@@ -536,10 +628,25 @@ dtb-$(CONFIG_SOC_IMX7D) += \
 	imx7d-sdb-reva-m4.dtb \
 	imx7d-sdb-reva-qspi.dtb \
 	imx7d-sdb-reva-touch.dtb \
-	imx7d-sdb-reva-wm8960.dtb
+	imx7d-sdb-reva-wm8960.dtb \
+	imx7s-colibri-eval-v3.dtb \
+	imx7s-warp.dtb \
+	imx7d-12x12-ddr3-arm2.dtb \
+	imx7d-12x12-lpddr3-arm2.dtb \
+	imx7d-12x12-lpddr3-arm2-m4.dtb \
+	imx7d-12x12-lpddr3-arm2-ecspi.dtb \
+	imx7d-12x12-lpddr3-arm2-enet2.dtb \
+	imx7d-12x12-lpddr3-arm2-flexcan.dtb \
+	imx7d-12x12-lpddr3-arm2-mipi_dsi.dtb \
+	imx7d-12x12-lpddr3-arm2-qspi.dtb \
+	imx7d-12x12-lpddr3-arm2-sai.dtb \
+	imx7d-12x12-lpddr3-arm2-mqs.dtb \
+	imx7d-12x12-lpddr3-arm2-pcie.dtb \
+	imx7d-19x19-lpddr2-arm2.dtb
 dtb-$(CONFIG_SOC_IMX7ULP) += \
 	imx7ulp-14x14-arm2.dtb \
 	imx7ulp-evk.dtb \
+	imx7ulp-evk-spi-slave.dtb \
 	imx7ulp-evk-emmc.dtb \
 	imx7ulp-evk-emmc-qspi.dtb \
 	imx7ulp-evk-ft5416.dtb \

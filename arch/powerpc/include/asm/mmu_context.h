@@ -93,18 +93,6 @@ static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 #define switch_mm_irqs_off switch_mm_irqs_off
 
 
-static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
-			     struct task_struct *tsk)
-{
-	unsigned long flags;
-
-	local_irq_save(flags);
-	switch_mm_irqs_off(prev, next, tsk);
-	local_irq_restore(flags);
-}
-#define switch_mm_irqs_off switch_mm_irqs_off
-
-
 #define deactivate_mm(tsk,mm)	do { } while (0)
 
 /*

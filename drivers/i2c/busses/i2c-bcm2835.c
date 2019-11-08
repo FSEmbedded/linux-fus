@@ -254,11 +254,6 @@ static irqreturn_t bcm2835_i2c_isr(int this_irq, void *data)
 		return IRQ_HANDLED;
 	}
 
-	if (val & BCM2835_I2C_S_RXR) {
-		bcm2835_drain_rxfifo(i2c_dev);
-		return IRQ_HANDLED;
-	}
-
 	return IRQ_NONE;
 
 complete:

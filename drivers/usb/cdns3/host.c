@@ -26,6 +26,7 @@
 
 #include "core.h"
 #include "host-export.h"
+#include "cdns3-nxp-reg-def.h"
 
 static struct hc_driver __read_mostly xhci_cdns3_hc_driver;
 
@@ -56,14 +57,36 @@ static int xhci_cdns3_setup(struct usb_hcd *hcd)
 	return 0;
 }
 
-static const struct xhci_driver_overrides xhci_cdns3_overrides __initconst = {
-	.extra_priv_size = sizeof(struct xhci_hcd),
-	.reset = xhci_cdns3_setup,
-};
-
 struct cdns3_host {
 	struct device dev;
 	struct usb_hcd *hcd;
+	struct cdns3 *cdns;
+};
+
+static int xhci_cdns3_bus_suspend(struct usb_hcd *hcd)
+{
+	struct device *dev = hcd->self.controller;
+	struct cdns3_host *host = container_of(dev, struct cdns3_host, dev);
+	struct cdns3 *cdns = host->cdns;
+	void __iomem *xhci_regs = cdns->xhci_regs;
+	u32 value;
+	int ret;
+
+	ret = xhci_bus_suspend(hcd);
+	if (ret)
+		return ret;
+
+	value = readl(xhci_regs + XECP_AUX_CTRL_REG1);
+	value |= CFG_RXDET_P3_EN;
+	writel(value, xhci_regs + XECP_AUX_CTRL_REG1);
+
+	return 0;
+}
+
+static const struct xhci_driver_overrides xhci_cdns3_overrides __initconst = {
+	.extra_priv_size = sizeof(struct xhci_hcd),
+	.reset = xhci_cdns3_setup,
+	.bus_suspend = xhci_cdns3_bus_suspend,
 };
 
 static irqreturn_t cdns3_host_irq(struct cdns3 *cdns)
@@ -107,6 +130,7 @@ static int cdns3_host_start(struct cdns3 *cdns)
 	dev->parent = cdns->dev;
 	dev_set_name(dev, "xhci-cdns3");
 	cdns->host_dev = dev;
+	host->cdns = cdns;
 	ret = device_register(dev);
 	if (ret)
 		goto err1;
@@ -186,16 +210,19 @@ err1:
 static void cdns3_host_stop(struct cdns3 *cdns)
 {
 	struct device *dev = cdns->host_dev;
-	struct usb_hcd	*hcd;
+	struct usb_hcd	*hcd, *shared_hcd;
 	struct xhci_hcd	*xhci;
 
 	if (dev) {
 		hcd = dev_get_drvdata(dev);
 		xhci = hcd_to_xhci(hcd);
-		usb_remove_hcd(xhci->shared_hcd);
+		shared_hcd = xhci->shared_hcd;
+		xhci->xhc_state |= XHCI_STATE_REMOVING;
+		usb_remove_hcd(shared_hcd);
+		xhci->shared_hcd = NULL;
 		usb_remove_hcd(hcd);
 		synchronize_irq(cdns->irq);
-		usb_put_hcd(xhci->shared_hcd);
+		usb_put_hcd(shared_hcd);
 		usb_put_hcd(hcd);
 		cdns->host_dev = NULL;
 		pm_runtime_set_suspended(dev);

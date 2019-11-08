@@ -105,40 +105,11 @@ int imx_pmx_set_one_pin_mem(struct imx_pinctrl *ipctl, struct imx_pin *pin)
 	return 0;
 }
 
-int imx_pmx_backend_gpio_set_direction_mem(struct pinctrl_dev *pctldev,
-	   struct pinctrl_gpio_range *range, unsigned offset, bool input)
-{
-	struct imx_pinctrl *ipctl = pinctrl_dev_get_drvdata(pctldev);
-	const struct imx_pinctrl_soc_info *info = ipctl->info;
-	const struct imx_pin_reg *pin_reg;
-	u32 reg;
-
-	/*
-	 * Only Vybrid and iMX ULP has the input/output buffer enable flags
-	 * (IBE/OBE) They are part of the shared mux/conf register.
-	 */
-	if (!(info->flags & SHARE_MUX_CONF_REG))
-		return 0;
-
-	pin_reg = &info->pin_regs[offset];
-	if (pin_reg->mux_reg == -1)
-		return -EINVAL;
-
-	reg = readl(ipctl->base + pin_reg->mux_reg);
-	if (input)
-		reg = (reg & ~info->obe_bit) | info->ibe_bit;
-	else
-		reg = (reg & ~info->ibe_bit) | info->obe_bit;
-	writel(reg, ipctl->base + pin_reg->mux_reg);
-
-	return 0;
-}
-
 int imx_pinconf_backend_get_mem(struct pinctrl_dev *pctldev,
 			    unsigned pin_id, unsigned long *config)
 {
 	struct imx_pinctrl *ipctl = pinctrl_dev_get_drvdata(pctldev);
-	const struct imx_pinctrl_soc_info *info = ipctl->info;
+	struct imx_pinctrl_soc_info *info = ipctl->info;
 	const struct imx_pin_reg *pin_reg = &info->pin_regs[pin_id];
 
 	if (pin_reg->conf_reg == -1) {
@@ -160,7 +131,7 @@ int imx_pinconf_backend_set_mem(struct pinctrl_dev *pctldev,
 			    unsigned num_configs)
 {
 	struct imx_pinctrl *ipctl = pinctrl_dev_get_drvdata(pctldev);
-	const struct imx_pinctrl_soc_info *info = ipctl->info;
+	struct imx_pinctrl_soc_info *info = ipctl->info;
 	const struct imx_pin_reg *pin_reg = &info->pin_regs[pin_id];
 	int i;
 
@@ -194,7 +165,7 @@ int imx_pinconf_backend_set_mem(struct pinctrl_dev *pctldev,
 
 int imx_pinctrl_parse_pin_mem(struct imx_pinctrl_soc_info *info,
 			  unsigned int *grp_pin_id, struct imx_pin *pin,
-			  const __be32 **list_p)
+			  const __be32 **list_p, u32 generic_config)
 {
 	struct imx_pin_memmap *pin_memmap = &pin->pin_conf.pin_memmap;
 	u32 mux_reg = be32_to_cpu(*((*list_p)++));
@@ -221,11 +192,18 @@ int imx_pinctrl_parse_pin_mem(struct imx_pinctrl_soc_info *info,
 	pin_memmap->mux_mode = be32_to_cpu(*((*list_p)++));
 	pin_memmap->input_val = be32_to_cpu((*(*list_p)++));
 
-	/* SION bit is in mux register */
-	config = be32_to_cpu(*((*list_p)++));
-	if (config & IMX_PAD_SION)
-		pin_memmap->mux_mode |= IOMUXC_CONFIG_SION;
-	pin_memmap->config = config & ~IMX_PAD_SION;
+	if (info->generic_pinconf) {
+		/* generic pin config decoded */
+		pin_memmap->config = generic_config;
+	} else {
+		/* legacy pin config read from devicetree */
+		config = be32_to_cpu(*((*list_p)++));
+
+		/* SION bit is in mux register */
+		if (config & IMX_PAD_SION)
+			pin_memmap->mux_mode |= IOMUXC_CONFIG_SION;
+		pin_memmap->config = config & ~IMX_PAD_SION;
+	}
 
 	dev_dbg(info->dev, "%s: 0x%x 0x%08lx", info->pins[pin_id].name,
 			pin_memmap->mux_mode, pin_memmap->config);

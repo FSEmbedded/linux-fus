@@ -351,8 +351,6 @@ void iounmap(volatile void __iomem *addr)
 
 	mmiotrace_iounmap(addr);
 
-	mmiotrace_iounmap(addr);
-
 	addr = (volatile void __iomem *)
 		(PAGE_MASK & (unsigned long __force)addr);
 

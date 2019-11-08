@@ -367,12 +367,6 @@ static int mpls_forward(struct sk_buff *skb, struct net_device *dev,
 
 	skb_orphan(skb);
 
-	/* Pop the label */
-	skb_pull(skb, sizeof(*hdr));
-	skb_reset_network_header(skb);
-
-	skb_orphan(skb);
-
 	if (skb_warn_if_lro(skb))
 		goto err;
 

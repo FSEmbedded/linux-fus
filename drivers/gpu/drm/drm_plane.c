@@ -462,38 +462,45 @@ int drm_mode_getplane_res(struct drm_device *dev, void *data,
 	struct drm_mode_config *config;
 	struct drm_plane *plane;
 	uint32_t __user *plane_ptr;
-	int count = 0;
+	int copied = 0;
+	unsigned num_planes;
 
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
 		return -EINVAL;
 
 	config = &dev->mode_config;
-	plane_ptr = u64_to_user_ptr(plane_resp->plane_id_ptr);
+
+	if (file_priv->universal_planes)
+		num_planes = config->num_total_plane;
+	else
+		num_planes = config->num_overlay_plane;
 
 	/*
 	 * This ioctl is called twice, once to determine how much space is
 	 * needed, and the 2nd time to fill it.
 	 */
+	if (num_planes &&
+	    (plane_resp->count_planes >= num_planes)) {
+		plane_ptr = (uint32_t __user *)(unsigned long)plane_resp->plane_id_ptr;
 
-	/* Plane lists are invariant, no locking needed. */
-	drm_for_each_plane(plane, dev) {
-		/*
-		 * Unless userspace set the 'universal planes'
-		 * capability bit, only advertise overlays.
-		 */
-		if (plane->type != DRM_PLANE_TYPE_OVERLAY &&
-		    !file_priv->universal_planes)
-			continue;
+		/* Plane lists are invariant, no locking needed. */
+		drm_for_each_plane(plane, dev) {
+			/*
+			 * Unless userspace set the 'universal planes'
+			 * capability bit, only advertise overlays.
+			 */
+			if (plane->type != DRM_PLANE_TYPE_OVERLAY &&
+			    !file_priv->universal_planes)
+				continue;
 
-		if (drm_lease_held(file_priv, plane->base.id)) {
-			if (count < plane_resp->count_planes &&
-			    put_user(plane->base.id, plane_ptr + count))
-				return -EFAULT;
-
-			count++;
+			if (drm_lease_held(file_priv, plane->base.id)) {
+				if (put_user(plane->base.id, plane_ptr + copied))
+					return -EFAULT;
+				copied++;
+			}
 		}
 	}
-	plane_resp->count_planes = count;
+	plane_resp->count_planes = num_planes;
 
 	return 0;
 }
@@ -513,9 +520,9 @@ int drm_mode_getplane(struct drm_device *dev, void *data,
 		return -ENOENT;
 
 	drm_modeset_lock(&plane->mutex, NULL);
-	if (plane->state && plane->state->crtc)
+	if (plane->state && plane->state->crtc && drm_lease_held(file_priv, plane->state->crtc->base.id))
 		plane_resp->crtc_id = plane->state->crtc->base.id;
-	else if (!plane->state && plane->crtc)
+	else if (!plane->state && plane->crtc && drm_lease_held(file_priv, plane->crtc->base.id))
 		plane_resp->crtc_id = plane->crtc->base.id;
 	else
 		plane_resp->crtc_id = 0;
@@ -531,6 +538,7 @@ int drm_mode_getplane(struct drm_device *dev, void *data,
 	plane_resp->plane_id = plane->base.id;
 	plane_resp->possible_crtcs = drm_lease_filter_crtcs(file_priv,
 							    plane->possible_crtcs);
+
 	plane_resp->gamma_size = 0;
 
 	/*

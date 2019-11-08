@@ -365,10 +365,6 @@ if major == 1 and minor < 6:
 # table, it isn't displayed well. So, for now, let's use boring
 # black and white notes.
 
-# Fix reference escape troubles with Sphinx 1.4.x
-if major == 1 and minor > 3:
-    latex_elements['preamble']  += '\\renewcommand*{\\DUrole}[2]{ #2 }\n'
-
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).

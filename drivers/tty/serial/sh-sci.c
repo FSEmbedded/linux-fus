@@ -2430,10 +2430,6 @@ done:
 		 */
 		udelay(DIV_ROUND_UP(10 * 1000000, baud));
 	}
-	if (port->flags & UPF_HARD_FLOW) {
-		/* Refresh (Auto) RTS */
-		sci_set_mctrl(port, port->mctrl);
-	}
 
 	/*
 	 * Calculate delay for 2 DMA buffers (4 FIFO).

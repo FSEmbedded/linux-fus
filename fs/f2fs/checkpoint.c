@@ -809,11 +809,6 @@ int get_valid_checkpoint(struct f2fs_sb_info *sbi)
 	else
 		sbi->cur_cp_pack = 2;
 
-	if (cur_page == cp1)
-		sbi->cur_cp_pack = 1;
-	else
-		sbi->cur_cp_pack = 2;
-
 	if (cp_blks <= 1)
 		goto done;
 

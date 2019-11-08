@@ -25,7 +25,6 @@
 #include <asm/setup.h>
 #include <asm/security_features.h>
 #include <asm/firmware.h>
-#include <asm/setup.h>
 
 struct fixup_entry {
 	unsigned long	mask;

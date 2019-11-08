@@ -148,6 +148,7 @@ config DRM_KMS_CMA_HELPER
 config DRM_VM
 	bool
 	depends on DRM && MMU
+	default y
 
 source "drivers/gpu/drm/i2c/Kconfig"
 

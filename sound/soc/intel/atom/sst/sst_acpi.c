@@ -452,10 +452,6 @@ static struct sst_acpi_mach byt_thinkpad_10 = {
 	.pdata = &byt_rvp_platform_data,
 };
 
-static struct sst_acpi_mach byt_thinkpad_10 = {
-	"10EC5640", "cht-bsw-rt5672", "intel/fw_sst_0f28.bin", "cht-bsw", NULL,
-	                                                        &byt_rvp_platform_data };
-
 static struct sst_acpi_mach *cht_quirk(void *arg)
 {
 	struct sst_acpi_mach *mach = arg;

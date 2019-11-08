@@ -174,8 +174,11 @@ static int fsl_asrc_dmaconfig(struct fsl_asrc_pair *pair, struct dma_chan *chan,
 		slave_config.direction = DMA_MEM_TO_DEV;
 		slave_config.dst_addr = dma_addr;
 		slave_config.dst_addr_width = buswidth;
-		slave_config.dst_maxburst =
-			m2m->watermark[IN] * pair->channels;
+		if (asrc_priv->dma_type == DMA_SDMA)
+			slave_config.dst_maxburst =
+				m2m->watermark[IN] * pair->channels;
+		else
+			slave_config.dst_maxburst = 1;
 	} else {
 		slave_config.direction = DMA_DEV_TO_MEM;
 		slave_config.src_addr = dma_addr;
@@ -279,8 +282,14 @@ static int fsl_asrc_prepare_io_buffer(struct fsl_asrc_pair *pair,
 		return -EFAULT;
 
 	*dma_len = buf_len;
-	if (dir == OUT)
+	if (dir == OUT) {
 		*dma_len -= last_period_size * word_size * pair->channels;
+		*dma_len = *dma_len / (word_size * pair->channels) *
+				(word_size * pair->channels);
+		if (asrc_priv->dma_type == DMA_EDMA)
+			*dma_len = *dma_len / (word_size * pair->channels * m2m->watermark[OUT])
+					* (word_size * pair->channels * m2m->watermark[OUT]);
+	}
 
 	*sg_nodes = *dma_len / ASRC_MAX_BUFFER_SIZE + 1;
 
@@ -320,7 +329,7 @@ int fsl_asrc_process_buffer_pre(struct completion *complete,
 		return -ETIME;
 	} else if (signal_pending(current)) {
 		pr_err("%sput task forcibly aborted\n", DIR_STR(dir));
-		return -EBUSY;
+		return -ERESTARTSYS;
 	}
 
 	return 0;
@@ -552,12 +561,7 @@ static long fsl_asrc_ioctl_config_pair(struct fsl_asrc_pair *pair,
 	m2m->rate[IN] = config.input_sample_rate;
 	m2m->rate[OUT] = config.output_sample_rate;
 
-	if (m2m->rate[OUT] >= m2m->rate[IN] * 8)
-		m2m->last_period_size = (m2m->rate[OUT] / m2m->rate[IN]) * 5;
-	else if (m2m->rate[OUT] > m2m->rate[IN])
-		m2m->last_period_size = ASRC_OUTPUT_LAST_SAMPLE_MAX;
-	else
-		m2m->last_period_size = ASRC_OUTPUT_LAST_SAMPLE;
+	m2m->last_period_size = ASRC_OUTPUT_LAST_SAMPLE;
 
 	ret = fsl_allocate_dma_buf(pair);
 	if (ret) {
@@ -623,6 +627,68 @@ static long fsl_asrc_ioctl_release_pair(struct fsl_asrc_pair *pair,
 	return 0;
 }
 
+static long fsl_asrc_calc_last_period_size(struct fsl_asrc_pair *pair,
+					struct asrc_convert_buffer *pbuf)
+{
+	struct fsl_asrc_m2m *m2m = pair->private;
+	struct fsl_asrc *asrc_priv = pair->asrc_priv;
+	unsigned int out_length;
+	unsigned int in_width, out_width;
+	unsigned int channels = pair->channels;
+	unsigned int in_samples, out_samples;
+	unsigned int last_period_size;
+	unsigned int remain;
+
+	switch (m2m->word_width[IN]) {
+	case ASRC_WIDTH_24_BIT:
+		in_width = 4;
+		break;
+	case ASRC_WIDTH_16_BIT:
+		in_width = 2;
+		break;
+	case ASRC_WIDTH_8_BIT:
+		in_width = 1;
+		break;
+	default:
+		in_width = 2;
+		break;
+	}
+
+	switch (m2m->word_width[OUT]) {
+	case ASRC_WIDTH_24_BIT:
+		out_width = 4;
+		break;
+	case ASRC_WIDTH_16_BIT:
+		out_width = 2;
+		break;
+	case ASRC_WIDTH_8_BIT:
+		out_width = 1;
+		break;
+	default:
+		out_width = 2;
+		break;
+	}
+
+	in_samples = pbuf->input_buffer_length / (in_width * channels);
+
+	out_samples = (m2m->rate[OUT] * in_samples / m2m->rate[IN]);
+
+	out_length = out_samples * out_width * channels;
+
+	last_period_size = pbuf->output_buffer_length / (out_width * channels)
+					- out_samples;
+
+	m2m->last_period_size = last_period_size + 1 + ASRC_OUTPUT_LAST_SAMPLE;
+
+	if (asrc_priv->dma_type == DMA_EDMA) {
+		remain = pbuf->output_buffer_length % (out_width * channels * m2m->watermark[OUT]);
+		if (remain)
+			m2m->last_period_size += remain / (out_width * channels);
+	}
+
+	return 0;
+}
+
 static long fsl_asrc_ioctl_convert(struct fsl_asrc_pair *pair,
 				   void __user *user)
 {
@@ -637,6 +703,8 @@ static long fsl_asrc_ioctl_convert(struct fsl_asrc_pair *pair,
 		pair_err("failed to get buf from user space: %ld\n", ret);
 		return ret;
 	}
+
+	fsl_asrc_calc_last_period_size(pair, &buf);
 
 	ret = fsl_asrc_prepare_buffer(pair, &buf);
 	if (ret) {
@@ -655,7 +723,8 @@ static long fsl_asrc_ioctl_convert(struct fsl_asrc_pair *pair,
 
 	ret = fsl_asrc_process_buffer(pair, &buf);
 	if (ret) {
-		pair_err("failed to process buffer: %ld\n", ret);
+		if (ret != -ERESTARTSYS)
+			pair_err("failed to process buffer: %ld\n", ret);
 		return ret;
 	}
 
@@ -949,6 +1018,31 @@ static void fsl_asrc_m2m_suspend(struct fsl_asrc *asrc_priv)
 				dmaengine_terminate_all(pair->dma_chan[OUT]);
 			fsl_asrc_output_dma_callback((void *)pair);
 		}
+
+		spin_unlock_irqrestore(&asrc_priv->lock, lock_flags);
+	}
+}
+
+static void fsl_asrc_m2m_resume(struct fsl_asrc *asrc_priv)
+{
+	struct fsl_asrc_pair *pair;
+	struct fsl_asrc_m2m *m2m;
+	unsigned long lock_flags;
+	enum asrc_pair_index index;
+	int i, j;
+
+	for (i = 0; i < ASRC_PAIR_MAX_NUM; i++) {
+		spin_lock_irqsave(&asrc_priv->lock, lock_flags);
+		pair = asrc_priv->pair[i];
+		if (!pair || !pair->private) {
+			spin_unlock_irqrestore(&asrc_priv->lock, lock_flags);
+			continue;
+		}
+		m2m = pair->private;
+		index = pair->index;
+
+		for (j = 0; j < pair->channels * 4; j++)
+			regmap_write(asrc_priv->regmap, REG_ASRDI(index), 0);
 
 		spin_unlock_irqrestore(&asrc_priv->lock, lock_flags);
 	}

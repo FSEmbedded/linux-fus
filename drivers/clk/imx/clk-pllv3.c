@@ -506,6 +506,11 @@ struct clk *imx_clk_pllv3(enum imx_pllv3_type type, const char *name,
 	case IMX_PLLV3_SYS_VF610:
 		ops = &clk_pllv3_vf610_ops;
 		break;
+	case IMX_PLLV3_PLL2:
+		pll->num_offset = PLL_PLL2_NUM_OFFSET;
+		pll->denom_offset = PLL_PLL2_DENOM_OFFSET;
+		ops = &clk_pllv3_pll2_ops;
+		break;
 	case IMX_PLLV3_USB_VF610:
 		pll->div_shift = 1;
 	case IMX_PLLV3_USB:

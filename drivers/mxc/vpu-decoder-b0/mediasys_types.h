@@ -61,8 +61,8 @@ typedef unsigned long u_int64;
 typedef unsigned int BOOL;
 #define FALSE 0
 #define TRUE 1
-#define VPU_MAX_NUM_STREAMS 4
-#define VID_API_NUM_STREAMS 4
+#define VPU_MAX_NUM_STREAMS 8
+#define VID_API_NUM_STREAMS 8
 #define VID_API_MAX_BUF_PER_STR 3
 #define VID_API_MAX_NUM_MVC_VIEWS 4
 #define MEDIAIP_MAX_NUM_MALONES 2
@@ -75,6 +75,7 @@ typedef unsigned int BOOL;
 #define MEDIAIP_MAX_NUM_TIMER_IRQ_SLOTS 4
 #define VID_API_COMMAND_LIMIT    64
 #define VID_API_MESSAGE_LIMIT    256
+#define MSG_WORD_LENGTH 3
 
 #define API_CMD_AVAILABLE            0x0
 #define API_CMD_INCOMPLETE           0x1
@@ -161,6 +162,9 @@ typedef enum {
 	VID_API_CMD_DBG_DUMP_LOG      = 0x1F,
 	/* Begin Encode CMDs */
 	VID_API_CMD_YUV_READY         = 0x20,
+
+	VID_API_CMD_FIRM_RESET        = 0x40,
+
 #if BOOT_ARCH == REBOOT
 	VID_API_CMD_SNAPSHOT          = 0xAA,
 	VID_API_CMD_ROLL_SNAPSHOT     = 0xAB,
@@ -197,7 +201,7 @@ typedef enum {
 	VID_API_EVENT_RET_PING        = 0x14,      /* Temp here - rationalise debug events at bottom */
 	VID_API_EVENT_QMETER          = 0x15,
 	VID_API_EVENT_STR_FMT_CHANGE  = 0x16,
-	VID_API_EVENT_MIPS_XCPT       = 0x17,
+	VID_API_EVENT_FIRMWARE_XCPT   = 0x17,
 	VID_API_EVENT_START_DONE      = 0x18,
 	VID_API_EVENT_STOPPED         = 0x19,
 	VID_API_EVENT_ABORT_DONE      = 0x1A,
@@ -212,6 +216,7 @@ typedef enum {
 	VID_API_EVENT_DBG_FIFO_DUMP   = 0x23,
 	VID_API_EVENT_DEC_CHECK_RES   = 0x24,
 	VID_API_EVENT_DEC_CFG_INFO    = 0x25,
+	VID_API_EVENT_SNAPSHOT_DONE   = 0x40,
 	VID_API_EVENT_INVALID         = 0xFF
 
 } TB_API_DEC_EVENT;
@@ -484,6 +489,11 @@ typedef struct {
 	u_int32 uMVCNumViews;
 	u_int32 uMVCViewList[VID_API_MAX_NUM_MVC_VIEWS];
 	u_int32 uFBCInUse;
+	u_int32 uFrameCropValid;
+	u_int32 uFrameCropLeftOffset;
+	u_int32 uFrameCropRightOffset;
+	u_int32 uFrameCropTopOffset;
+	u_int32 uFrameCropBottomOffset;
 
 } MediaIPFW_Video_SeqInfo;
 
@@ -539,7 +549,7 @@ typedef struct {
 	u_int32 uFourCC;
 	u_int32 uCodecVersion;
 	u_int32 uFrameRate;
-	u_int32 bbd_logo_width;
+	u_int32 uEnableDbgLog;
 	u_int32 bbd_lum_thr;
 	u_int32 bbd_coring;
 	u_int32 bbd_s_thr_row;
@@ -628,7 +638,7 @@ typedef struct {
 	u_int32 uHeapBase;
 	u_int32 uHeapSize;
 
-	u_int32 uFSLCacheBaseAddr;
+	u_int32 uFSLCacheBaseAddr[2];
 
 } MEDIAIP_FW_SYSTEM_CONFIG, *pMEDIAIP_FW_SYSTEM_CONFIG;
 

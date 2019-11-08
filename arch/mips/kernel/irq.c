@@ -27,8 +27,6 @@
 
 void *irq_stack[NR_CPUS];
 
-void *irq_stack[NR_CPUS];
-
 /*
  * 'what should we do if we get a hw irq event on an illegal vector'.
  * each architecture has to answer this themselves.

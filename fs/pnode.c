@@ -497,17 +497,6 @@ static void umount_list(struct list_head *to_umount,
 			else
 				umount_one(child, to_umount);
 		}
-		if (parent != mnt->mnt_parent)
-			mnt_change_mountpoint(parent, mp, mnt);
-	}
-}
-
-static void cleanup_umount_visitations(struct list_head *visited)
-{
-	while (!list_empty(visited)) {
-		struct mount *mnt =
-			list_first_entry(visited, struct mount, mnt_umounting);
-		list_del_init(&mnt->mnt_umounting);
 	}
 }
 

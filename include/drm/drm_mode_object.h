@@ -156,5 +156,4 @@ void drm_object_attach_property(struct drm_mode_object *obj,
 				uint64_t init_val);
 
 bool drm_mode_object_lease_required(uint32_t type);
-
 #endif

@@ -36,7 +36,6 @@
 #include <asm/thread_info.h>
 #include <asm/asm-uaccess.h>
 #include <asm/unistd.h>
-#include <asm/kernel-pgtable.h>
 
 /*
  * Context tracking subsystem.  Used to instrument transitions
@@ -521,6 +520,10 @@ ENDPROC(el0_error_invalid)
 el0_fiq_invalid_compat:
 	inv_entry 0, BAD_FIQ, 32
 ENDPROC(el0_fiq_invalid_compat)
+
+el0_error_invalid_compat:
+	inv_entry 0, BAD_ERROR, 32
+ENDPROC(el0_error_invalid_compat)
 #endif
 
 el1_sync_invalid:
@@ -731,10 +734,6 @@ el0_svc_compat:
 el0_irq_compat:
 	kernel_entry 0, 32
 	b	el0_irq_naked
-
-el0_error_compat:
-	kernel_entry 0, 32
-	b	el0_error_naked
 #endif
 
 el0_da:
@@ -864,28 +863,6 @@ el0_irq_naked:
 #endif
 	b	ret_to_user
 ENDPROC(el0_irq)
-
-el1_error:
-	kernel_entry 1
-	mrs	x1, esr_el1
-	enable_dbg
-	mov	x0, sp
-	bl	do_serror
-	kernel_exit 1
-ENDPROC(el1_error)
-
-el0_error:
-	kernel_entry 0
-el0_error_naked:
-	mrs	x1, esr_el1
-	enable_dbg
-	mov	x0, sp
-	bl	do_serror
-	enable_dbg_and_irq
-	ct_user_exit
-	b	ret_to_user
-ENDPROC(el0_error)
-
 
 /*
  * This is the fast syscall return path.  We do as little as possible here,

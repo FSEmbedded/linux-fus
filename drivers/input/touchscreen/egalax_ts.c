@@ -248,17 +248,15 @@ static int egalax_ts_probe(struct i2c_client *client,
 			     ABS_MT_POSITION_Y, 0, EGALAX_MAX_Y, 0, 0);
 	input_mt_init_slots(input_dev, MAX_SUPPORT_POINTS, 0);
 
-	error = devm_request_threaded_irq(&client->dev, client->irq, NULL,
-					  egalax_ts_interrupt,
-					  IRQF_TRIGGER_LOW | IRQF_ONESHOT,
-					  "egalax_ts", ts);
-	if (error < 0) {
-		dev_err(&client->dev, "Failed to register interrupt\n");
+	error = egalax_irq_request(ts);
+	if (error)
 		return error;
 
 	error = input_register_device(ts->input_dev);
 	if (error)
 		return error;
+
+	i2c_set_clientdata(client, ts);
 
 	return 0;
 }

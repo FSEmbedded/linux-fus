@@ -1014,7 +1014,6 @@ static long ibmvscsis_ready_for_suspend(struct scsi_info *vscsi, bool idle)
 				     (crq->format != RESUME_FROM_SUSP)))
 			pr_err("Invalid element in CRQ after Prepare for Suspend");
 	}
-}
 
 	vscsi->flags &= ~(PREP_FOR_SUSPEND_PENDING | PREP_FOR_SUSPEND_ABORTED);
 

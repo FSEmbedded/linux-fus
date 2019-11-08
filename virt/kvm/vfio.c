@@ -311,8 +311,7 @@ static int kvm_vfio_set_group(struct kvm_device *dev, long attr, u64 arg)
 		mutex_lock(&kv->lock);
 
 		list_for_each_entry(kvg, &kv->group_list, node) {
-			if (!kvm_vfio_external_group_match_file(kvg->vfio_group,
-								f.file))
+			if (kvg->vfio_group != vfio_group)
 				continue;
 
 			ret = kvm_spapr_tce_attach_iommu_group(dev->kvm,

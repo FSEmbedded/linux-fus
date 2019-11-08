@@ -8732,7 +8732,6 @@ static void tg3_free_consistent(struct tg3 *tp)
 				  tp->hw_stats, tp->stats_mapping);
 		tp->hw_stats = NULL;
 	}
-	tg3_full_unlock(tp);
 }
 
 /*

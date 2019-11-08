@@ -767,50 +767,6 @@ static struct cpuidle_state tangier_cstates[] = {
 	{
 		.enter = NULL }
 };
-static struct cpuidle_state tangier_cstates[] = {
-	{
-		.name = "C1-TNG",
-		.desc = "MWAIT 0x00",
-		.flags = MWAIT2flg(0x00),
-		.exit_latency = 1,
-		.target_residency = 4,
-		.enter = &intel_idle,
-		.enter_freeze = intel_idle_freeze, },
-	{
-		.name = "C4-TNG",
-		.desc = "MWAIT 0x30",
-		.flags = MWAIT2flg(0x30) | CPUIDLE_FLAG_TLB_FLUSHED,
-		.exit_latency = 100,
-		.target_residency = 400,
-		.enter = &intel_idle,
-		.enter_freeze = intel_idle_freeze, },
-	{
-		.name = "C6-TNG",
-		.desc = "MWAIT 0x52",
-		.flags = MWAIT2flg(0x52) | CPUIDLE_FLAG_TLB_FLUSHED,
-		.exit_latency = 140,
-		.target_residency = 560,
-		.enter = &intel_idle,
-		.enter_freeze = intel_idle_freeze, },
-	{
-		.name = "C7-TNG",
-		.desc = "MWAIT 0x60",
-		.flags = MWAIT2flg(0x60) | CPUIDLE_FLAG_TLB_FLUSHED,
-		.exit_latency = 1200,
-		.target_residency = 4000,
-		.enter = &intel_idle,
-		.enter_freeze = intel_idle_freeze, },
-	{
-		.name = "C9-TNG",
-		.desc = "MWAIT 0x64",
-		.flags = MWAIT2flg(0x64) | CPUIDLE_FLAG_TLB_FLUSHED,
-		.exit_latency = 10000,
-		.target_residency = 20000,
-		.enter = &intel_idle,
-		.enter_freeze = intel_idle_freeze, },
-	{
-		.enter = NULL }
-};
 static struct cpuidle_state avn_cstates[] = {
 	{
 		.name = "C1",

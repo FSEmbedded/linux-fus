@@ -24,7 +24,6 @@
 #include <linux/delay.h>
 #include <linux/wait.h>
 #include <linux/pr.h>
-#include <linux/vmalloc.h>
 
 #define DM_MSG_PREFIX "core"
 

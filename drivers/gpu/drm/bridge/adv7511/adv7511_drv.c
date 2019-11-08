@@ -384,7 +384,7 @@ static void __adv7511_power_off(struct adv7511 *adv7511)
 static void adv7511_power_off(struct adv7511 *adv7511)
 {
 	__adv7511_power_off(adv7511);
-	if (adv7511->type == ADV7533)
+	if (adv7511->type == ADV7533 || adv7511->type == ADV7535)
 		adv7533_dsi_power_off(adv7511);
 	adv7511->powered = false;
 }
@@ -414,17 +414,16 @@ static bool adv7511_hpd(struct adv7511 *adv7511)
 static void adv7511_hpd_work(struct work_struct *work)
 {
 	struct adv7511 *adv7511 = container_of(work, struct adv7511, hpd_work);
-	enum drm_connector_status status;
+	enum drm_connector_status status = connector_status_disconnected;
 	unsigned int val;
 	int ret;
 
 	ret = regmap_read(adv7511->regmap, ADV7511_REG_STATUS, &val);
-	if (ret < 0)
-		status = connector_status_disconnected;
-	else if (val & ADV7511_STATUS_HPD)
+	if (ret >= 0 && (val & ADV7511_STATUS_HPD))
 		status = connector_status_connected;
-	else
-		status = connector_status_disconnected;
+
+	DRM_DEV_DEBUG_DRIVER(adv7511->connector.kdev, "HDMI HPD event: %s\n",
+		drm_get_connector_status_name(status));
 
 	/*
 	 * The bridge resets its registers on unplug. So when we get a plug
@@ -852,6 +851,18 @@ static void adv7511_bridge_mode_set(struct drm_bridge *bridge,
 	adv7511_mode_set(adv, mode, adj_mode);
 }
 
+static bool adv7511_bridge_mode_fixup(struct drm_bridge *bridge,
+				      const struct drm_display_mode *mode,
+				      struct drm_display_mode *adjusted_mode)
+{
+	struct adv7511 *adv = bridge_to_adv7511(bridge);
+
+	if (adv->type == ADV7533 || adv->type == ADV7535)
+		return adv7533_mode_fixup(adv, adjusted_mode);
+
+	return true;
+}
+
 static int adv7511_bridge_attach(struct drm_bridge *bridge)
 {
 	struct adv7511 *adv = bridge_to_adv7511(bridge);
@@ -889,6 +900,7 @@ static const struct drm_bridge_funcs adv7511_bridge_funcs = {
 	.enable = adv7511_bridge_enable,
 	.disable = adv7511_bridge_disable,
 	.mode_set = adv7511_bridge_mode_set,
+	.mode_fixup = adv7511_bridge_mode_fixup,
 	.attach = adv7511_bridge_attach,
 };
 
@@ -1079,6 +1091,21 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 		return ret;
 	}
 
+	if (adv7511->addr_cec != 0)
+		cec_i2c_addr = adv7511->addr_cec << 1;
+	else
+		adv7511->addr_cec = cec_i2c_addr >> 1;
+
+	if (adv7511->addr_edid != 0)
+		edid_i2c_addr = adv7511->addr_edid << 1;
+	else
+		adv7511->addr_edid = edid_i2c_addr >> 1;
+
+	if (adv7511->addr_pkt != 0)
+		pkt_i2c_addr = adv7511->addr_pkt << 1;
+	else
+		adv7511->addr_pkt = pkt_i2c_addr >> 1;
+
 	/*
 	 * The power down GPIO is optional. If present, toggle it from active to
 	 * inactive to wake up the encoder.
@@ -1174,6 +1201,44 @@ err_i2c_unregister_edid:
 	i2c_unregister_device(adv7511->i2c_edid);
 uninit_regulators:
 	adv7511_uninit_regulators(adv7511);
+#if IS_ENABLED(CONFIG_OF_DYNAMIC)
+	endpoint = of_graph_get_next_endpoint(dev->of_node, NULL);
+	if (endpoint)
+		remote_node = of_graph_get_remote_port_parent(endpoint);
+
+	if (remote_node) {
+		int num_endpoints = 0;
+
+		/*
+		 * Remote node should have two endpoints (input and output: us)
+		 * If remote node has more than two endpoints, probably that it
+		 * has more outputs, so there is no need to disable it.
+		 */
+		endpoint = NULL;
+		while ((endpoint = of_graph_get_next_endpoint(remote_node,
+							      endpoint)))
+			num_endpoints++;
+
+		if (num_endpoints > 2) {
+			of_node_put(remote_node);
+			return ret;
+		}
+
+		prop = devm_kzalloc(dev, sizeof(*prop), GFP_KERNEL);
+		prop->name = devm_kstrdup(dev, "status", GFP_KERNEL);
+		prop->value = devm_kstrdup(dev, "disabled", GFP_KERNEL);
+		prop->length = 9;
+		of_changeset_init(&ocs);
+		of_changeset_update_property(&ocs, remote_node, prop);
+		ret = of_changeset_apply(&ocs);
+		if (!ret)
+			dev_warn(dev,
+				"Probe failed. Remote port '%s' disabled\n",
+				remote_node->full_name);
+
+		of_node_put(remote_node);
+	};
+#endif
 
 	return ret;
 }
@@ -1193,9 +1258,10 @@ static int adv7511_remove(struct i2c_client *i2c)
 
 	adv7511_audio_exit(adv7511);
 
-	i2c_unregister_device(adv7511->i2c_edid);
-
-	kfree(adv7511->edid);
+	if (adv7511->i2c_edid) {
+		i2c_unregister_device(adv7511->i2c_edid);
+		kfree(adv7511->edid);
+	}
 
 	return 0;
 }

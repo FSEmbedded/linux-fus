@@ -29,18 +29,10 @@
 #include <video/imx-ipu-v3.h>
 #include <video/dpu.h>
 #include <video/imx-dcss.h>
+#include <video/imx-lcdif.h>
 
 #include "imx-drm.h"
-#include "ipuv3-plane.h"
-
-#define MAX_CRTC	4
-
-struct imx_drm_device {
-	struct drm_device			*drm;
-	unsigned int				pipes;
-	struct drm_fbdev_cma			*fbhelper;
-	struct drm_atomic_state			*state;
-};
+#include "ipuv3/ipuv3-plane.h"
 
 #if IS_ENABLED(CONFIG_DRM_FBDEV_EMULATION)
 static int legacyfb_depth = 16;
@@ -68,86 +60,6 @@ void imx_drm_encoder_destroy(struct drm_encoder *encoder)
 	drm_encoder_cleanup(encoder);
 }
 EXPORT_SYMBOL_GPL(imx_drm_encoder_destroy);
-
-static void imx_drm_output_poll_changed(struct drm_device *drm)
-{
-	struct imx_drm_device *imxdrm = drm->dev_private;
-
-	drm_fbdev_cma_hotplug_event(imxdrm->fbhelper);
-}
-
-static int imx_drm_atomic_check(struct drm_device *dev,
-				struct drm_atomic_state *state)
-{
-	int ret;
-
-	ret = drm_atomic_helper_check_modeset(dev, state);
-	if (ret)
-		return ret;
-
-	ret = drm_atomic_helper_check_planes(dev, state);
-	if (ret)
-		return ret;
-
-	/*
-	 * Check modeset again in case crtc_state->mode_changed is
-	 * updated in plane's ->atomic_check callback.
-	 */
-	ret = drm_atomic_helper_check_modeset(dev, state);
-	if (ret)
-		return ret;
-
-	/* Assign PRG/PRE channels and check if all constrains are satisfied. */
-	ret = ipu_planes_assign_pre(dev, state);
-	if (ret)
-		return ret;
-
-	return ret;
-}
-
-static const struct drm_mode_config_funcs imx_drm_mode_config_funcs = {
-	.fb_create = drm_fb_cma_create,
-	.output_poll_changed = imx_drm_output_poll_changed,
-	.atomic_check = imx_drm_atomic_check,
-	.atomic_commit = drm_atomic_helper_commit,
-};
-
-static void imx_drm_atomic_commit_tail(struct drm_atomic_state *state)
-{
-	struct drm_device *dev = state->dev;
-	struct drm_plane *plane;
-	struct drm_plane_state *old_plane_state, *new_plane_state;
-	bool plane_disabling = false;
-	int i;
-
-	drm_atomic_helper_commit_modeset_disables(dev, state);
-
-	drm_atomic_helper_commit_planes(dev, state,
-				DRM_PLANE_COMMIT_ACTIVE_ONLY |
-				DRM_PLANE_COMMIT_NO_DISABLE_AFTER_MODESET);
-
-	drm_atomic_helper_commit_modeset_enables(dev, state);
-
-	for_each_oldnew_plane_in_state(state, plane, old_plane_state, new_plane_state, i) {
-		if (drm_atomic_plane_disabling(old_plane_state, new_plane_state))
-			plane_disabling = true;
-	}
-
-	if (plane_disabling) {
-		drm_atomic_helper_wait_for_vblanks(dev, state);
-
-		for_each_old_plane_in_state(state, plane, old_plane_state, i)
-			ipu_plane_disable_deferred(plane);
-
-	}
-
-	drm_atomic_helper_commit_hw_done(state);
-}
-
-static const struct drm_mode_config_helper_funcs imx_drm_mode_config_helpers = {
-	.atomic_commit_tail = imx_drm_atomic_commit_tail,
-};
-
 
 int imx_drm_encoder_parse_of(struct drm_device *drm,
 	struct drm_encoder *encoder, struct device_node *np)
@@ -219,6 +131,18 @@ static int compare_of(struct device *dev, void *data)
 		return pdata->of_node == np;
 	}  else if (strcmp(dev->driver->name, "imx-dcss-crtc") == 0) {
 		struct dcss_client_platformdata *pdata = dev->platform_data;
+
+		return pdata->of_node == np;
+	} else if (strcmp(dev->driver->name, "imx-lcdif-crtc") == 0) {
+		struct lcdif_client_platformdata *pdata = dev->platform_data;
+#if IS_ENABLED(CONFIG_DRM_FBDEV_EMULATION)
+		/* set legacyfb_depth to be 32 for lcdif, since
+		 * default format of the connectors attached to
+		 * lcdif is usually RGB888
+		 */
+		if (pdata->of_node == np)
+			legacyfb_depth = 32;
+#endif
 
 		return pdata->of_node == np;
 	}
@@ -361,6 +285,14 @@ static int imx_drm_bind(struct device *dev)
 	imxdrm->drm = drm;
 	drm->dev_private = imxdrm;
 
+	imxdrm->wq = alloc_ordered_workqueue("imxdrm", 0);
+	if (!imxdrm->wq) {
+		ret = -ENOMEM;
+		goto err_unref;
+	}
+
+	init_waitqueue_head(&imxdrm->commit.wait);
+
 	/*
 	 * enable drm irq mode.
 	 * - with irq_enabled = true, we can use the vblank feature.
@@ -412,6 +344,10 @@ static int imx_drm_bind(struct device *dev)
 		dev_warn(dev, "Invalid legacyfb_depth.  Defaulting to 16bpp\n");
 		legacyfb_depth = 16;
 	}
+
+	if (legacyfb_depth == 16 && has_dcss(dev))
+		legacyfb_depth = 32;
+
 	imxdrm->fbhelper = drm_fbdev_cma_init(drm, legacyfb_depth, MAX_CRTC);
 	if (IS_ERR(imxdrm->fbhelper)) {
 		ret = PTR_ERR(imxdrm->fbhelper);
@@ -437,7 +373,9 @@ err_unbind:
 #endif
 	component_unbind_all(drm->dev, drm);
 err_kms:
+	dev_set_drvdata(dev, NULL);
 	drm_mode_config_cleanup(drm);
+	destroy_workqueue(imxdrm->wq);
 err_unref:
 	drm_dev_unref(drm);
 
@@ -452,6 +390,8 @@ static void imx_drm_unbind(struct device *dev)
 	if (has_dpu(dev))
 		imx_drm_driver.driver_features &= ~DRIVER_RENDER;
 
+	flush_workqueue(imxdrm->wq);
+
 	drm_dev_unregister(drm);
 
 	drm_kms_helper_poll_fini(drm);
@@ -463,6 +403,8 @@ static void imx_drm_unbind(struct device *dev)
 
 	component_unbind_all(drm->dev, drm);
 	dev_set_drvdata(dev, NULL);
+
+	destroy_workqueue(imxdrm->wq);
 
 	drm_dev_unref(drm);
 }
@@ -550,23 +492,7 @@ static struct platform_driver imx_drm_pdrv = {
 		.of_match_table = imx_drm_dt_ids,
 	},
 };
-
-static struct platform_driver * const drivers[] = {
-	&imx_drm_pdrv,
-	&ipu_drm_driver,
-};
-
-static int __init imx_drm_init(void)
-{
-	return platform_register_drivers(drivers, ARRAY_SIZE(drivers));
-}
-module_init(imx_drm_init);
-
-static void __exit imx_drm_exit(void)
-{
-	platform_unregister_drivers(drivers, ARRAY_SIZE(drivers));
-}
-module_exit(imx_drm_exit);
+module_platform_driver(imx_drm_pdrv);
 
 MODULE_AUTHOR("Sascha Hauer <s.hauer@pengutronix.de>");
 MODULE_DESCRIPTION("i.MX drm driver core");

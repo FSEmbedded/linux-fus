@@ -14,8 +14,6 @@
 #include <asm/irqflags.h>
 #include <asm/asm.h>
 #include <asm/smap.h>
-#include <asm/pgtable_types.h>
-#include <asm/kaiser.h>
 #include <linux/linkage.h>
 #include <linux/err.h>
 
@@ -339,7 +337,7 @@ ENTRY(entry_INT80_compat)
 	 */
 	ASM_CLAC			/* Do this early to minimize exposure */
 	SWAPGS
-	SWITCH_KERNEL_CR3_NO_STACK
+
 	/*
 	 * User tracing code (ptrace or signal handlers) might assume that
 	 * the saved RAX contains a 32-bit number when we're invoking a 32-bit

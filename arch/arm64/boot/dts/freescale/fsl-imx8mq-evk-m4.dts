@@ -26,10 +26,6 @@
 		};
 
 	};
-
-	sound-wm8524 {
-		status = "disabled";
-	};
 };
 
 &gpt1 {
@@ -53,13 +49,5 @@
 };
 
 &wdog3{
-	status = "disabled";
-};
-
-&sai2 {
-	status = "disabled";
-};
-
-&qspi {
 	status = "disabled";
 };

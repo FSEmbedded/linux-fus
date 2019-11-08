@@ -1662,7 +1662,7 @@ static bool radeon_connector_encoder_is_hbr2(struct drm_connector *connector)
 		if (connector->encoder_ids[i] == 0)
 			break;
 
-		encoder = drm_encoder_find(connector->dev, connector->encoder_ids[i]);
+		encoder = drm_encoder_find(connector->dev, NULL, connector->encoder_ids[i]);
 		if (!encoder)
 			continue;
 

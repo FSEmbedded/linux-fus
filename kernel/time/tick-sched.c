@@ -679,11 +679,6 @@ static inline bool local_timer_softirq_pending(void)
 	return local_softirq_pending() & BIT(TIMER_SOFTIRQ);
 }
 
-static inline bool local_timer_softirq_pending(void)
-{
-	return local_softirq_pending() & TIMER_SOFTIRQ;
-}
-
 static ktime_t tick_nohz_stop_sched_tick(struct tick_sched *ts,
 					 ktime_t now, int cpu)
 {

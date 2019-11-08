@@ -1607,6 +1607,11 @@ static void handle_port_status(struct xhci_hcd *xhci,
 	if ((major_revision == 0x03) != (hcd->speed >= HCD_USB3))
 		hcd = xhci->shared_hcd;
 
+	if (!hcd) {
+		bogus_port_status = true;
+		goto cleanup;
+	}
+
 	if (major_revision == 0) {
 		xhci_warn(xhci, "Event for port %u not in "
 				"Extended Capabilities, ignoring.\n",
@@ -2023,12 +2028,9 @@ static int process_ctrl_td(struct xhci_hcd *xhci, struct xhci_td *td,
 
 	switch (trb_comp_code) {
 	case COMP_SUCCESS:
-		if (trb_type != TRB_STATUS) {
-			xhci_warn(xhci, "WARN: Success on ctrl %s TRB without IOC set?\n",
+		if (trb_type != TRB_STATUS)
+			xhci_dbg(xhci, "Success on ctrl %s TRB without IOC set?\n",
 				  (trb_type == TRB_DATA) ? "data" : "setup");
-			*status = -ESHUTDOWN;
-			break;
-		}
 		*status = 0;
 		break;
 	case COMP_SHORT_PACKET:
@@ -3505,19 +3507,13 @@ int xhci_submit_single_step_set_feature(struct usb_hcd *hcd,
 
 	/* urb_priv will be free after transcation has completed */
 	urb_priv = kzalloc(sizeof(struct urb_priv) +
-			sizeof(struct xhci_td *), GFP_KERNEL);
+			sizeof(struct xhci_td), GFP_KERNEL);
 	if (!urb_priv)
 		return -ENOMEM;
 
-	td = kzalloc(sizeof(struct xhci_td), GFP_KERNEL);
-	if (!td) {
-		kfree(urb_priv);
-		return -ENOMEM;
-	}
-
-	urb_priv->td[0] = td;
-	urb_priv->length = 1;
-	urb_priv->td_cnt = 0;
+	td = &urb_priv->td[0];
+	urb_priv->num_tds = 1;
+	urb_priv->num_tds_done = 0;
 	urb->hcpriv = urb_priv;
 
 	ep_ring = xhci_urb_to_transfer_ring(xhci, urb);

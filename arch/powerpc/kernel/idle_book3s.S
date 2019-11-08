@@ -9,7 +9,6 @@
  */
 
 #include <linux/threads.h>
-#include <asm/exception-64s.h>
 #include <asm/processor.h>
 #include <asm/page.h>
 #include <asm/cputable.h>

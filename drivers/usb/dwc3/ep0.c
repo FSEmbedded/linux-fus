@@ -76,7 +76,6 @@ static int dwc3_ep0_start_trans(struct dwc3_ep *dep)
 
 	if (dep->flags & DWC3_EP_BUSY)
 		return 0;
-	}
 
 	dwc = dep->dwc;
 

@@ -232,7 +232,6 @@ pset_fwnode_property_read_string_array(const struct fwnode_handle *fwnode,
 	return pset_prop_read_string_array(to_pset_node(fwnode), propname,
 					   val, nval);
 }
-EXPORT_SYMBOL_GPL(dev_fwnode);
 
 static const struct fwnode_operations pset_fwnode_ops = {
 	.property_present = pset_fwnode_property_present,

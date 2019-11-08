@@ -230,12 +230,6 @@ static long afu_ioctl_start_work(struct cxl_context *ctx,
 	 */
 	cxl_ctx_get();
 
-	/*
-	 * Increment driver use count. Enables global TLBIs for hash
-	 * and callbacks to handle the segment table
-	 */
-	cxl_ctx_get();
-
 	trace_cxl_attach(ctx, work.work_element_descriptor, work.num_interrupts, amr);
 
 	if ((rc = cxl_ops->attach_process(ctx, false, work.work_element_descriptor,

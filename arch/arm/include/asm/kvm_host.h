@@ -324,10 +324,4 @@ static inline int kvm_arm_have_ssbd(void)
 	return KVM_SSBD_UNKNOWN;
 }
 
-static inline bool kvm_arm_harden_branch_predictor(void)
-{
-	/* No way to detect it yet, pretend it is not there. */
-	return false;
-}
-
 #endif /* __ARM_KVM_HOST_H__ */

@@ -127,8 +127,12 @@ enum gpmi_type {
 	IS_MX23,
 	IS_MX28,
 	IS_MX6Q,
+	IS_MX6QP,
 	IS_MX6SX,
 	IS_MX7D,
+	IS_MX6UL,
+	IS_MX6ULL,
+	IS_MX8QXP,
 };
 
 struct gpmi_devdata {
@@ -318,7 +322,12 @@ void gpmi_copy_bits(u8 *dst, size_t dst_bit_off,
 #define GPMI_IS_MX6QP(x)	((x)->devdata->type == IS_MX6QP)
 #define GPMI_IS_MX6SX(x)	((x)->devdata->type == IS_MX6SX)
 #define GPMI_IS_MX7D(x)		((x)->devdata->type == IS_MX7D)
+#define GPMI_IS_MX6UL(x)	((x)->devdata->type == IS_MX6UL)
+#define GPMI_IS_MX6ULL(x)	((x)->devdata->type == IS_MX6ULL)
+#define GPMI_IS_MX8QXP(x)	((x)->devdata->type == IS_MX8QXP)
 
-#define GPMI_IS_MX6(x)		(GPMI_IS_MX6Q(x) || GPMI_IS_MX6SX(x) || \
+#define GPMI_IS_MX6(x)		(GPMI_IS_MX6Q(x) || GPMI_IS_MX6QP(x) || GPMI_IS_MX6SX(x) || \
+                                 GPMI_IS_MX6UL(x) || GPMI_IS_MX6ULL(x) || \
 				 GPMI_IS_MX7D(x))
+#define GPMI_IS_MX8(x)		(GPMI_IS_MX8QXP(x))
 #endif

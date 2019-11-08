@@ -52,12 +52,15 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <linux/kernel.h>
+#include <linux/errno.h>
 #include "vpu_encoder_rpc.h"
 
 void rpc_init_shared_memory_encoder(struct shared_addr *This,
 		unsigned long long base_phy_addr,
 		void *base_virt_addr,
-		u_int32 total_size)
+		u_int32 total_size,
+		u32 *actual_size)
 {
 	pENC_RPC_HOST_IFACE pSharedInterface;
 	unsigned int phy_addr;
@@ -100,12 +103,12 @@ void rpc_init_shared_memory_encoder(struct shared_addr *This,
 
 	phy_addr += MSG_SIZE;
 
-	for (i = 0; i < VPU_MAX_NUM_STREAMS; i++) {
+	for (i = 0; i < VID_API_NUM_STREAMS; i++) {
 		pSharedInterface->pEncCtrlInterface[i] = phy_addr;
 		phy_addr += sizeof(MEDIA_ENC_API_CONTROL_INTERFACE);
 	}
 
-	for (i = 0; i < VPU_MAX_NUM_STREAMS; i++) {
+	for (i = 0; i < VID_API_NUM_STREAMS; i++) {
 		temp_addr = pSharedInterface->pEncCtrlInterface[i];
 		pEncCtrlInterface = (pMEDIA_ENC_API_CONTROL_INTERFACE)(temp_addr + This->base_offset);
 		pEncCtrlInterface->pEncYUVBufferDesc = phy_addr;
@@ -123,9 +126,11 @@ void rpc_init_shared_memory_encoder(struct shared_addr *This,
 		pEncCtrlInterface->pEncDSAStatus = phy_addr;
 		phy_addr += sizeof(ENC_DSA_STATUS_t);
 	}
+	if (actual_size)
+		*actual_size = phy_addr - base_phy_addr;
 }
 
-void rpc_set_system_cfg_value_encoder(void *Interface, u_int32 regs_base)
+void rpc_set_system_cfg_value_encoder(void *Interface, u_int32 regs_base, u_int32 core_id)
 {
 	pENC_RPC_HOST_IFACE pSharedInterface;
 	MEDIAIP_FW_SYSTEM_CONFIG *pSystemCfg;
@@ -136,7 +141,10 @@ void rpc_set_system_cfg_value_encoder(void *Interface, u_int32 regs_base)
 	pSystemCfg->uWindsorIrqPin[0x0][0x0] = 0x4; // PAL_IRQ_WINDSOR_LOW
 	pSystemCfg->uWindsorIrqPin[0x0][0x1] = 0x5; // PAL_IRQ_WINDSOR_HI
 	pSystemCfg->uMaloneBaseAddress[0] = (unsigned int)(regs_base + 0x180000);
-	pSystemCfg->uWindsorBaseAddress[0] = (unsigned int)(regs_base + 0x800000);
+	if (core_id == 0)
+		pSystemCfg->uWindsorBaseAddress[0] = (unsigned int)(regs_base + 0x800000);
+	else
+		pSystemCfg->uWindsorBaseAddress[0] = (unsigned int)(regs_base + 0xa00000);
 	pSystemCfg->uMaloneBaseAddress[0x1] = 0x0;
 	pSystemCfg->uHifOffset[0x0] = 0x1C000;
 	pSystemCfg->uHifOffset[0x1] = 0x0;
@@ -144,7 +152,8 @@ void rpc_set_system_cfg_value_encoder(void *Interface, u_int32 regs_base)
 	pSystemCfg->uDPVBaseAddr = 0x0;
 	pSystemCfg->uDPVIrqPin = 0x0;
 	pSystemCfg->uPixIfBaseAddr = (unsigned int)(regs_base + 0x180000 + 0x20000);
-	pSystemCfg->uFSLCacheBaseAddr = (unsigned int)(regs_base + 0x60000);
+	pSystemCfg->uFSLCacheBaseAddr[0] = (unsigned int)(regs_base + 0x60000);
+	pSystemCfg->uFSLCacheBaseAddr[1] = (unsigned int)(regs_base + 0x68000);
 }
 
 u_int32 rpc_MediaIPFW_Video_buffer_space_check_encoder(BUFFER_DESCRIPTOR_TYPE *pBufDesc,
@@ -203,6 +212,8 @@ static void rpc_update_cmd_buffer_ptr_encoder(BUFFER_DESCRIPTOR_TYPE *pCmdDesc)
 {
 	u_int32 uWritePtr;
 
+	/*avoid sw reset fail*/
+	mb();
 	uWritePtr = pCmdDesc->wptr + 4;
 	if (uWritePtr >= pCmdDesc->end)
 		uWritePtr = pCmdDesc->start;
@@ -221,6 +232,7 @@ void rpc_send_cmd_buf_encoder(struct shared_addr *This,
 	u_int32 i;
 	u_int32 *cmdword = (u_int32 *)(This->cmd_mem_vir+pCmdDesc->wptr - pCmdDesc->start);
 
+	*cmdword = 0;
 	*cmdword |= ((idx & 0x000000ff) << 24);
 	*cmdword |= ((cmdnum & 0x000000ff) << 16);
 	*cmdword |= ((cmdid & 0x00003fff) << 0);
@@ -279,20 +291,158 @@ static void rpc_update_msg_buffer_ptr_encoder(BUFFER_DESCRIPTOR_TYPE *pMsgDesc)
 	pMsgDesc->rptr = uReadPtr;
 }
 
-void rpc_receive_msg_buf_encoder(struct shared_addr *This, struct event_msg *msg)
+u32 rpc_read_msg_u32(struct shared_addr *shared_mem)
 {
-	unsigned int i;
-	pENC_RPC_HOST_IFACE pSharedInterface = (pENC_RPC_HOST_IFACE)This->shared_mem_vir;
-	BUFFER_DESCRIPTOR_TYPE *pMsgDesc = &pSharedInterface->StreamMsgBufferDesc;
-	u_int32 msgword = *((u_int32 *)(This->msg_mem_vir+pMsgDesc->rptr - pMsgDesc->start));
+	u32 msgword;
+	u32 *ptr = NULL;
+	pENC_RPC_HOST_IFACE iface = NULL;
+	BUFFER_DESCRIPTOR_TYPE *msg_buf = NULL;
 
+	if (!shared_mem)
+		return 0;
+
+	iface = shared_mem->pSharedInterface;
+	msg_buf = &iface->StreamMsgBufferDesc;
+	ptr = shared_mem->msg_mem_vir + msg_buf->rptr - msg_buf->start;
+	rpc_update_msg_buffer_ptr_encoder(msg_buf);
+	msgword = *ptr;
+
+	return msgword;
+}
+
+int rpc_read_msg_array(struct shared_addr *shared_mem, u32 *buf, u32 number)
+{
+	int i;
+	u32 val;
+
+	if (!shared_mem)
+		return -EINVAL;
+
+	for (i = 0; i < number; i++) {
+		val = rpc_read_msg_u32(shared_mem);
+		if (buf)
+			buf[i] = val;
+	}
+
+	return 0;
+}
+
+int rpc_get_msg_header(struct shared_addr *shared_mem, struct msg_header *msg)
+{
+	u32 msgword;
+
+	if (!shared_mem || !msg)
+		return -EINVAL;
+
+	msgword = rpc_read_msg_u32(shared_mem);
 	msg->idx = ((msgword & 0xff000000) >> 24);
 	msg->msgnum = ((msgword & 0x00ff0000) >> 16);
 	msg->msgid = ((msgword & 0x00003fff) >> 0);
-	rpc_update_msg_buffer_ptr_encoder(pMsgDesc);
 
-	for (i = 0; i < msg->msgnum; i++) {
-		msg->msgdata[i] = *((u_int32 *)(This->msg_mem_vir+pMsgDesc->rptr - pMsgDesc->start));
-		rpc_update_msg_buffer_ptr_encoder(pMsgDesc);
-	}
+	return 0;
+}
+
+static void *phy_to_virt(u_int32 src, unsigned long long offset)
+{
+	void *result;
+
+	result = (void *)(src + offset);
+	return result;
+}
+
+#define GET_CTRL_INTERFACE_MEMBER(shared_mem, index, name, member) \
+	do {\
+		pENC_RPC_HOST_IFACE iface = shared_mem->pSharedInterface; \
+		pMEDIA_ENC_API_CONTROL_INTERFACE ctrl_interface =\
+			phy_to_virt(iface->pEncCtrlInterface[index],\
+					shared_mem->base_offset);\
+		name = phy_to_virt(ctrl_interface->member,\
+				shared_mem->base_offset);\
+	} while (0)
+
+pMEDIAIP_ENC_YUV_BUFFER_DESC rpc_get_yuv_buffer_desc(
+		struct shared_addr *shared_mem, int index)
+{
+	pMEDIAIP_ENC_YUV_BUFFER_DESC desc = NULL;
+
+	GET_CTRL_INTERFACE_MEMBER(shared_mem, index, desc, pEncYUVBufferDesc);
+
+	return desc;
+}
+
+pBUFFER_DESCRIPTOR_TYPE rpc_get_stream_buffer_desc(
+		struct shared_addr *shared_mem, int index)
+{
+	pBUFFER_DESCRIPTOR_TYPE desc = NULL;
+
+	GET_CTRL_INTERFACE_MEMBER(shared_mem, index,
+				desc, pEncStreamBufferDesc);
+
+	return desc;
+}
+
+pMEDIAIP_ENC_EXPERT_MODE_PARAM rpc_get_expert_mode_param(
+		struct shared_addr *shared_mem, int index)
+{
+	pMEDIAIP_ENC_EXPERT_MODE_PARAM param = NULL;
+
+	GET_CTRL_INTERFACE_MEMBER(shared_mem, index,
+				param, pEncExpertModeParam);
+
+	return param;
+}
+
+pMEDIAIP_ENC_PARAM rpc_get_enc_param(
+		struct shared_addr *shared_mem, int index)
+{
+	pMEDIAIP_ENC_PARAM param = NULL;
+
+	GET_CTRL_INTERFACE_MEMBER(shared_mem, index, param, pEncParam);
+
+	return param;
+}
+
+pMEDIAIP_ENC_MEM_POOL rpc_get_mem_pool(
+		struct shared_addr *shared_mem, int index)
+{
+	pMEDIAIP_ENC_MEM_POOL pool = NULL;
+
+	GET_CTRL_INTERFACE_MEMBER(shared_mem, index, pool, pEncMemPool);
+
+	return pool;
+}
+
+pENC_ENCODING_STATUS rpc_get_encoding_status(
+		struct shared_addr *shared_mem, int index)
+{
+	pENC_ENCODING_STATUS encoding_status = NULL;
+
+	GET_CTRL_INTERFACE_MEMBER(shared_mem, index,
+				encoding_status, pEncEncodingStatus);
+
+	return encoding_status;
+}
+
+pENC_DSA_STATUS_t rpc_get_dsa_status(struct shared_addr *shared_mem, int index)
+{
+	pENC_DSA_STATUS_t dsa_status = NULL;
+
+	GET_CTRL_INTERFACE_MEMBER(shared_mem, index, dsa_status, pEncDSAStatus);
+
+	return dsa_status;
+}
+
+void rpc_set_print_buffer(struct shared_addr *shared_mem,
+				unsigned long print_phy_addr, u32 size)
+{
+	pENC_RPC_HOST_IFACE pSharedInterface;
+	pBUFFER_DESCRIPTOR_TYPE debugBufDesc;
+
+
+	pSharedInterface = shared_mem->pSharedInterface;
+	debugBufDesc = &pSharedInterface->DebugBufferDesc;
+
+	debugBufDesc->start = print_phy_addr;
+	debugBufDesc->end = debugBufDesc->start + size;
+	debugBufDesc->wptr = debugBufDesc->rptr = debugBufDesc->start;
 }

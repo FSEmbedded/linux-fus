@@ -37,5 +37,4 @@ Example:
 		anatop-min-bit-val = <1>;
 		anatop-min-voltage = <725000>;
 		anatop-max-voltage = <1300000>;
-		anatop-enable-bit = <0>;
 	};

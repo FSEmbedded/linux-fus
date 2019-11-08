@@ -18,10 +18,15 @@ struct platform_device;
 
 struct imx_drm_device {
 	struct drm_device			*drm;
-	struct imx_drm_crtc			*crtc[MAX_CRTC];
 	unsigned int				pipes;
 	struct drm_fbdev_cma			*fbhelper;
 	struct drm_atomic_state			*state;
+
+	struct workqueue_struct *wq;
+	struct {
+		wait_queue_head_t wait;
+		bool pending;
+	} commit;
 };
 
 struct imx_crtc_state {
@@ -39,8 +44,6 @@ static inline struct imx_crtc_state *to_imx_crtc_state(struct drm_crtc_state *s)
 int imx_drm_init_drm(struct platform_device *pdev,
 		int preferred_bpp);
 int imx_drm_exit_drm(void);
-
-extern struct platform_driver ipu_drm_driver;
 
 void imx_drm_mode_config_init(struct drm_device *drm);
 

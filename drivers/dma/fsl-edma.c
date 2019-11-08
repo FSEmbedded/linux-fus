@@ -377,6 +377,7 @@ static int fsl_edma_terminate_all(struct dma_chan *chan)
 	fsl_edma_disable_request(fsl_chan);
 	fsl_chan->edesc = NULL;
 	fsl_chan->idle = true;
+	fsl_chan->vchan.cyclic = NULL;
 	vchan_get_all_descriptors(&fsl_chan->vchan, &head);
 	spin_unlock_irqrestore(&fsl_chan->vchan.lock, flags);
 	vchan_dma_desc_free_list(&fsl_chan->vchan, &head);
@@ -949,7 +950,7 @@ static void fsl_disable_clocks(struct fsl_edma_engine *fsl_edma, int nr_clocks)
 {
 	int i;
 
-	for (i = 0; i < nr_clocks; i++)
+	for (i = 0; i < fsl_edma->dmamux_nr; i++)
 		clk_disable_unprepare(fsl_edma->muxclk[i]);
 
 	if (fsl_edma->dmaclk)
@@ -994,6 +995,13 @@ fsl_edma2_irq_init(struct platform_device *pdev,
 	}
 
 	return 0;
+}
+
+static void fsl_edma_synchronize(struct dma_chan *chan)
+{
+	struct fsl_edma_chan *fsl_chan = to_fsl_edma_chan(chan);
+
+	vchan_synchronize(&fsl_chan->vchan);
 }
 
 static int fsl_edma_probe(struct platform_device *pdev)
@@ -1123,6 +1131,7 @@ static int fsl_edma_probe(struct platform_device *pdev)
 	fsl_edma->dma_dev.device_resume = fsl_edma_device_resume;
 	fsl_edma->dma_dev.device_terminate_all = fsl_edma_terminate_all;
 	fsl_edma->dma_dev.device_issue_pending = fsl_edma_issue_pending;
+	fsl_edma->dma_dev.device_synchronize = fsl_edma_synchronize;
 
 	fsl_edma->dma_dev.src_addr_widths = FSL_EDMA_BUSWIDTHS;
 	fsl_edma->dma_dev.dst_addr_widths = FSL_EDMA_BUSWIDTHS;
@@ -1174,6 +1183,56 @@ static int fsl_edma_remove(struct platform_device *pdev)
 	of_dma_controller_free(np);
 	dma_async_device_unregister(&fsl_edma->dma_dev);
 	fsl_disable_clocks(fsl_edma, DMAMUX_NR);
+
+	return 0;
+}
+
+static int fsl_edma_register_save(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct fsl_edma_engine *fsl_edma = platform_get_drvdata(pdev);
+	int i, j;
+
+	if (!(fsl_edma->quirks & FSL_EDMA_QUIRK_VLLS_MODE))
+		return 0;
+
+	/* save regs */
+	fsl_edma->edma_regs[0] =
+		edma_readl(fsl_edma, fsl_edma->membase + EDMA_CR);
+	fsl_edma->edma_regs[1] =
+		edma_readl(fsl_edma, fsl_edma->membase + EDMA_ERQ);
+	fsl_edma->edma_regs[2] =
+		edma_readl(fsl_edma, fsl_edma->membase + EDMA_EEI);
+	for (i = 0; i < fsl_edma->dmamux_nr; i++)
+		for (j = 0; j < fsl_edma->n_chans; j++)
+			fsl_edma->dmamux_regs[i * fsl_edma->n_chans + j] =
+				edma_readl(fsl_edma,
+					fsl_edma->muxbase[i] + j * 4);
+
+	return 0;
+}
+
+static int fsl_edma_register_restore(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct fsl_edma_engine *fsl_edma = platform_get_drvdata(pdev);
+	int i, j;
+
+	if (!(fsl_edma->quirks & FSL_EDMA_QUIRK_VLLS_MODE))
+		return 0;
+
+	/* restore the regs */
+	for (i = 0; i < fsl_edma->dmamux_nr; i++)
+		for (j = 0; j < fsl_edma->n_chans; j++)
+			edma_writel(fsl_edma,
+			  fsl_edma->dmamux_regs[i * fsl_edma->n_chans + j],
+			  fsl_edma->muxbase[i] + j * 4);
+	edma_writel(fsl_edma, fsl_edma->edma_regs[1],
+			fsl_edma->membase + EDMA_ERQ);
+	edma_writel(fsl_edma, fsl_edma->edma_regs[2],
+			fsl_edma->membase + EDMA_EEI);
+	edma_writel(fsl_edma, fsl_edma->edma_regs[0],
+			fsl_edma->membase + EDMA_CR);
 
 	return 0;
 }

@@ -561,7 +561,6 @@ void dcss_hdr10_exit(struct dcss_soc *dcss)
 
 static u32 dcss_hdr10_get_bpc(u32 pix_format)
 {
-	int bpp;
 	u32 depth, bpc;
 
 	switch (pix_format) {
@@ -582,7 +581,7 @@ static u32 dcss_hdr10_get_bpc(u32 pix_format)
 		break;
 
 	default:
-		drm_fb_get_bpp_depth(pix_format, &depth, &bpp);
+		depth = drm_format_info(pix_format)->depth;
 		bpc = depth == 30 ? 10 : 8;
 		break;
 	}

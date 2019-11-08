@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017-2018 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -25,7 +25,6 @@ struct dpu_bliteng {
 	void __iomem *base;
 	s32 id;
 	struct mutex mutex;
-	bool inuse;
 	s32 irq_store9_shdload;
 	s32 irq_store9_framecomplete;
 	s32 irq_store9_seqcomplete;
@@ -38,6 +37,11 @@ struct dpu_bliteng {
 	struct dpu_soc *dpu;
 
 	struct dprc *dprc[2];
+
+	bool start;
+	bool sync;
+
+	u64 modifier;
 };
 
 #endif

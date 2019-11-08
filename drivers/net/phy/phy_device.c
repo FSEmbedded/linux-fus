@@ -305,7 +305,7 @@ static int phy_needs_fixup(struct phy_device *phydev, struct phy_fixup *fixup)
 }
 
 /* Runs any matching fixups for this phydev */
-int phy_scan_fixups(struct phy_device *phydev)
+static int phy_scan_fixups(struct phy_device *phydev)
 {
 	struct phy_fixup *fixup;
 
@@ -325,7 +325,6 @@ int phy_scan_fixups(struct phy_device *phydev)
 
 	return 0;
 }
-EXPORT_SYMBOL(phy_scan_fixups);
 
 static int phy_bus_match(struct device *dev, struct device_driver *drv)
 {
@@ -1126,8 +1125,6 @@ void phy_detach(struct phy_device *phydev)
 
 	module_put(phydev->mdio.dev.driver->owner);
 
-	module_put(phydev->mdio.dev.driver->owner);
-
 	/* If the device had no specific driver before (i.e. - it
 	 * was using the generic driver), we unbind the device
 	 * from the generic driver so that there's a chance a
@@ -1441,8 +1438,9 @@ int genphy_config_aneg(struct phy_device *phydev)
 	/* Only restart aneg if we are advertising something different
 	 * than we were before.
 	 */
-	if (changed > 0)
-		return genphy_restart_aneg(phydev);
+	result = genphy_config_aneg_check(phydev);
+	if (result > 0)
+		result = genphy_restart_aneg(phydev);
 
 	return 0;
 }

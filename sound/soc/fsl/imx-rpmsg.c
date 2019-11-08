@@ -29,11 +29,21 @@ struct imx_rpmsg_data {
 	struct snd_soc_card card;
 };
 
+static const struct snd_soc_dapm_widget imx_wm8960_dapm_widgets[] = {
+	SND_SOC_DAPM_HP("Headphone Jack", NULL),
+	SND_SOC_DAPM_SPK("Ext Spk", NULL),
+	SND_SOC_DAPM_MIC("Mic Jack", NULL),
+	SND_SOC_DAPM_MIC("Main MIC", NULL),
+};
+
 static int imx_rpmsg_probe(struct platform_device *pdev)
 {
 	struct device_node *cpu_np;
 	struct platform_device *cpu_pdev;
 	struct imx_rpmsg_data *data;
+	struct fsl_rpmsg_i2s         *rpmsg_i2s;
+	struct snd_soc_dai_link_component dlc = { 0 };
+	struct snd_soc_dai *codec_dai;
 	int ret;
 
 	cpu_np = of_parse_phandle(pdev->dev.of_node, "cpu-dai", 0);
@@ -56,25 +66,73 @@ static int imx_rpmsg_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
+	rpmsg_i2s = platform_get_drvdata(cpu_pdev);
+
 	data->dai[0].name = "rpmsg hifi";
 	data->dai[0].stream_name = "rpmsg hifi";
-	data->dai[0].codec_dai_name = "rpmsg-wm8960-hifi";
-	data->dai[0].codec_name = "rpmsg-audio-codec";
-	data->dai[0].cpu_dai_name = dev_name(&cpu_pdev->dev);
-	data->dai[0].platform_of_node = cpu_np;
-	data->dai[0].playback_only = false;
-	data->dai[0].capture_only = false;
 	data->dai[0].dai_fmt = SND_SOC_DAIFMT_I2S |
 			    SND_SOC_DAIFMT_NB_NF |
 			    SND_SOC_DAIFMT_CBM_CFM;
+
+	if (rpmsg_i2s->codec_wm8960) {
+		data->dai[0].codec_dai_name = "rpmsg-wm8960-hifi";
+		data->dai[0].codec_name = "rpmsg-audio-codec-wm8960";
+	}
+
+	if (rpmsg_i2s->codec_dummy) {
+		data->dai[0].codec_dai_name = "snd-soc-dummy-dai";
+		data->dai[0].codec_name = "snd-soc-dummy";
+	}
+
+	if (rpmsg_i2s->codec_ak4497) {
+		data->dai[0].codec_dai_name = "rpmsg-ak4497-aif";
+		data->dai[0].codec_name = "rpmsg-audio-codec-ak4497";
+		data->dai[0].dai_fmt = SND_SOC_DAIFMT_I2S |
+			    SND_SOC_DAIFMT_NB_NF |
+			    SND_SOC_DAIFMT_CBS_CFS;
+	}
+
+	dlc.name = data->dai[0].codec_name;
+	dlc.dai_name = data->dai[0].codec_dai_name;
+	codec_dai = snd_soc_find_dai(&dlc);
+	if (!codec_dai)
+		return -ENODEV;
+
+	data->dai[0].cpu_dai_name = dev_name(&cpu_pdev->dev);
+	data->dai[0].platform_of_node = cpu_np;
+	data->dai[0].playback_only = true;
+	data->dai[0].capture_only = true;
 	data->card.num_links = 1;
 	data->card.dai_link = data->dai;
+
+	if (of_property_read_bool(pdev->dev.of_node, "rpmsg-out"))
+		data->dai[0].capture_only = false;
+
+	if (of_property_read_bool(pdev->dev.of_node, "rpmsg-in"))
+		data->dai[0].playback_only = false;
+
+	if (data->dai[0].playback_only && data->dai[0].capture_only) {
+		dev_err(&pdev->dev, "no enabled rpmsg DAI link\n");
+		ret = -EINVAL;
+		goto fail;
+	}
 
 	data->card.dev = &pdev->dev;
 	data->card.owner = THIS_MODULE;
 	ret = snd_soc_of_parse_card_name(&data->card, "model");
 	if (ret)
 		goto fail;
+
+	if (rpmsg_i2s->codec_wm8960) {
+		ret = snd_soc_of_parse_audio_routing(&data->card,
+						"audio-routing");
+		if (ret)
+			goto fail;
+
+		data->card.dapm_widgets = imx_wm8960_dapm_widgets;
+		data->card.num_dapm_widgets =
+				ARRAY_SIZE(imx_wm8960_dapm_widgets);
+	}
 
 	platform_set_drvdata(pdev, &data->card);
 	snd_soc_card_set_drvdata(&data->card, data);

@@ -522,7 +522,7 @@ CDN_API_STATUS CDN_API_DPTX_Set_VIC(state_struct *state,
 
 	MSA_HORIZONTAL_1_Param =
 	    mode->hsync_end - mode->hsync_start +
-	    ((mode->flags & DRM_MODE_FLAG_NHSYNC ? 0 : 1) << 15) + (mode->hdisplay << 16);
+	    ((mode->flags & DRM_MODE_FLAG_NHSYNC ? 1 : 0) << 15) + (mode->hdisplay << 16);
 
 	MSA_VERTICAL_0_Param =
 	    (mode->flags & DRM_MODE_FLAG_INTERLACE ? (mode->vtotal / 2) : mode->vtotal) +
@@ -530,7 +530,7 @@ CDN_API_STATUS CDN_API_DPTX_Set_VIC(state_struct *state,
 
 	MSA_VERTICAL_1_Param =
 	    (mode->vsync_end - mode->vsync_start +
-		 ((mode->flags & DRM_MODE_FLAG_NVSYNC ? 0 : 1) << 15)) +
+		 ((mode->flags & DRM_MODE_FLAG_NVSYNC ? 1 : 0) << 15)) +
 		((mode->flags & DRM_MODE_FLAG_INTERLACE ? mode->vdisplay / 2 : mode->vdisplay) << 16);
 
 	DP_HORIZONTAL_ADDR_Param = (mode->hdisplay << 16) + mode->hsync;
@@ -901,6 +901,49 @@ CDN_API_STATUS CDN_API_DPTX_ForceLanes_blocking(state_struct *state,
 				 preemphasis_l1, voltageSwing_l2,
 				 preemphasis_l2, voltageSwing_l3,
 				 preemphasis_l3, pattern, ssc));
+}
+
+CDN_API_STATUS CDN_API_DPTX_SetPhyCoefficients(state_struct *state,
+						u16 mgnfsValues[4][4],
+						u16 cpostValues[4][4])
+{
+	if (!state->running) {
+		if (!internal_apb_available(state))
+			return CDN_BSY;
+		internal_tx_mkfullmsg(state, MB_MODULE_ID_DP_TX, DPTX_SET_PHY_COEFFICIENTS, 20,
+							2, mgnfsValues[0][0],
+							2, mgnfsValues[0][1],
+							2, mgnfsValues[0][2],
+							2, mgnfsValues[0][3],
+							2, mgnfsValues[1][0],
+							2, mgnfsValues[1][1],
+							2, mgnfsValues[1][2],
+							2, mgnfsValues[2][0],
+							2, mgnfsValues[2][1],
+							2, mgnfsValues[3][0],
+							2, cpostValues[0][0],
+							2, cpostValues[0][1],
+							2, cpostValues[0][2],
+							2, cpostValues[0][3],
+							2, cpostValues[1][0],
+							2, cpostValues[1][1],
+							2, cpostValues[1][2],
+							2, cpostValues[2][0],
+							2, cpostValues[2][1],
+							2, cpostValues[3][0]);
+		state->bus_type = CDN_BUS_TYPE_APB;
+		return CDN_STARTED;
+	}
+	internal_process_messages(state);
+	return CDN_OK;
+}
+
+CDN_API_STATUS CDN_API_DPTX_SetPhyCoefficients_blocking(state_struct *state,
+								u16 mgnfsValues[4][4],
+								u16 cpostValues[4][4])
+{
+	internal_block_function(&state->mutex,
+			CDN_API_DPTX_SetPhyCoefficients(state, mgnfsValues, cpostValues));
 }
 
 CDN_API_STATUS CDN_API_DPTX_SetDbg(state_struct *state, uint32_t dbg_cfg)

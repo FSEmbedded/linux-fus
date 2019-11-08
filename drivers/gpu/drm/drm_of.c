@@ -90,7 +90,8 @@ void drm_of_component_match_add(struct device *master,
 EXPORT_SYMBOL_GPL(drm_of_component_match_add);
 
 /**
- * drm_of_component_probe - Generic probe function for a component based master
+ * drm_of_component_probe_with_match - Generic probe function with match
+ *                                     entries for a component based master
  * @dev: master device containing the OF node
  * @match: component match pointer provided to store matches
  * @compare_of: compare function used for matching components

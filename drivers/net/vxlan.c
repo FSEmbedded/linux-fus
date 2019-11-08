@@ -2101,7 +2101,6 @@ static void vxlan_xmit_one(struct sk_buff *skb, struct net_device *dev,
 
 	info = skb_tunnel_info(skb);
 
-	rcu_read_lock();
 	if (rdst) {
 		dst = &rdst->remote_ip;
 		if (vxlan_addr_any(dst)) {

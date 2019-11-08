@@ -68,7 +68,7 @@ static u64 notrace sysctr_read_sched_clock(void)
 	return sysctr_read_counter();
 }
 
-static cycle_t sysctr_clocksourc_read(struct clocksource *cs)
+static u64 sysctr_clocksourc_read(struct clocksource *cs)
 {
 	return sysctr_read_counter();
 }

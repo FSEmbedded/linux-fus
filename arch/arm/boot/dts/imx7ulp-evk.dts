@@ -61,8 +61,8 @@
 			compatible = "regulator-fixed";
 			reg = <0>;
 			pinctrl-names = "default", "sleep";
-			pinctrl-0 = <&pinctrl_usb_otg1>;
-			pinctrl-1 = <&pinctrl_usb_otg1>;
+			pinctrl-0 = <&pinctrl_usbotg1_vbus>;
+			pinctrl-1 = <&pinctrl_usbotg1_vbus>;
 			regulator-name = "usb_otg1_vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
@@ -77,6 +77,7 @@
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			gpio = <&gpio_ptd 0 GPIO_ACTIVE_HIGH>;
+			off-on-delay = <20000>;
 			enable-active-high;
 		};
 
@@ -90,14 +91,6 @@
 			startup-delay-us = <100>;
 			enable-active-high;
 		};
-	};
-
-	extcon_usb1: extcon_usb1 {
-		compatible = "linux,extcon-usb-gpio";
-		id-gpio = <&gpio_ptc 13 GPIO_ACTIVE_HIGH>;
-		pinctrl-names = "default", "sleep";
-		pinctrl-0 = <&pinctrl_extcon_usb1>;
-		pinctrl-1 = <&pinctrl_extcon_usb1>;
 	};
 
 	pf1550-rpmsg {
@@ -213,6 +206,23 @@
 		compatible = "fsl,imx-audio-rpmsg";
 		model = "rpmsg-audio";
 		cpu-dai = <&rpmsg_i2s>;
+		rpmsg-out;
+		rpmsg-in;
+		audio-routing =
+			"Headphone Jack", "HP_L",
+			"Headphone Jack", "HP_R",
+			"Ext Spk", "SPK_LP",
+			"Ext Spk", "SPK_LN",
+			"Ext Spk", "SPK_RP",
+			"Ext Spk", "SPK_RN",
+			"LINPUT2", "Mic Jack",
+			"LINPUT3", "Mic Jack",
+			"RINPUT1", "Main MIC",
+			"RINPUT2", "Main MIC",
+			"Mic Jack", "MICB",
+			"Main MIC", "MICB",
+			"Playback", "CPU-Playback",
+			"CPU-Capture", "Capture";
 	};
 };
 
@@ -239,8 +249,8 @@
 
 		pinctrl_lpi2c5: lpi2c5grp {
 			fsl,pins = <
-				IMX7ULP_PAD_PTC4__LPI2C5_SCL       0x27
-				IMX7ULP_PAD_PTC5__LPI2C5_SDA       0x27
+				IMX7ULP_PAD_PTC4__LPI2C5_SCL	0x27
+				IMX7ULP_PAD_PTC5__LPI2C5_SDA	0x27
 			>;
 		};
 
@@ -263,7 +273,7 @@
 				IMX7ULP_PAD_PTE11__LPUART6_RX	0x3
 				IMX7ULP_PAD_PTE9__LPUART6_RTS_B	0x3
 				IMX7ULP_PAD_PTE8__LPUART6_CTS_B	0x3
-				IMX7ULP_PAD_PTE7__PTE7		0x20000 /* BT_REG_ON */
+				IMX7ULP_PAD_PTE7__PTE7		0x20000	/* BT_REG_ON */
 			>;
 		};
 
@@ -284,8 +294,8 @@
 				IMX7ULP_PAD_PTD8__SDHC0_D2	0x43
 				IMX7ULP_PAD_PTD9__SDHC0_D1	0x43
 				IMX7ULP_PAD_PTD10__SDHC0_D0	0x43
-				IMX7ULP_PAD_PTC10__PTC10	0x10000		/* USDHC0 CD */
-				IMX7ULP_PAD_PTD0__PTD0		0x20000		/* USDHC0 RST */
+				IMX7ULP_PAD_PTC10__PTC10	0x10000	/* USDHC0 CD */
+				IMX7ULP_PAD_PTD0__PTD0		0x20000	/* USDHC0 RST */
 			>;
 		};
 
@@ -314,22 +324,22 @@
 
 		pinctrl_lpspi3: lpspi3grp {
 			fsl,pins = <
-				IMX7ULP_PAD_PTF16__LPSPI3_SIN      0x0
-				IMX7ULP_PAD_PTF17__LPSPI3_SOUT     0x0
-				IMX7ULP_PAD_PTF18__LPSPI3_SCK      0x0
-				IMX7ULP_PAD_PTF19__LPSPI3_PCS0     0x0
+				IMX7ULP_PAD_PTF16__LPSPI3_SIN	0x0
+				IMX7ULP_PAD_PTF17__LPSPI3_SOUT	0x0
+				IMX7ULP_PAD_PTF18__LPSPI3_SCK	0x0
+				IMX7ULP_PAD_PTF19__LPSPI3_PCS0	0x0
 			>;
 		};
 
-		pinctrl_usb_otg1: usbotg1grp {
+		pinctrl_usbotg1_vbus: otg1vbusgrp {
 			fsl,pins = <
 				IMX7ULP_PAD_PTC0__PTC0		0x20000
 			>;
 		};
 
-		pinctrl_extcon_usb1: extcon1grp {
+		pinctrl_usbotg1_id: otg1idgrp {
 			fsl,pins = <
-				IMX7ULP_PAD_PTC13__PTC13	0x10003
+				IMX7ULP_PAD_PTC13__USB0_ID	0x10003
 			>;
 		};
 
@@ -342,27 +352,27 @@
 
 		pinctrl_usdhc1: usdhc1grp {
 			fsl,pins = <
-				IMX7ULP_PAD_PTE3__SDHC1_CMD		0x43
-				IMX7ULP_PAD_PTE2__SDHC1_CLK		0x10042
-				IMX7ULP_PAD_PTE1__SDHC1_D0		0x43
-				IMX7ULP_PAD_PTE0__SDHC1_D1		0x43
-				IMX7ULP_PAD_PTE5__SDHC1_D2		0x43
-				IMX7ULP_PAD_PTE4__SDHC1_D3		0x43
+				IMX7ULP_PAD_PTE3__SDHC1_CMD	0x43
+				IMX7ULP_PAD_PTE2__SDHC1_CLK	0x10042
+				IMX7ULP_PAD_PTE1__SDHC1_D0	0x43
+				IMX7ULP_PAD_PTE0__SDHC1_D1	0x43
+				IMX7ULP_PAD_PTE5__SDHC1_D2	0x43
+				IMX7ULP_PAD_PTE4__SDHC1_D3	0x43
 			>;
 		};
 
 		pinctrl_usdhc1_rst: usdhc1grp_rst {
 			fsl,pins = <
-				IMX7ULP_PAD_PTE11__PTE11		0x20000		/* USDHC1 RST */
-				IMX7ULP_PAD_PTE13__PTE13		0x10003		/* USDHC1 CD */
-				IMX7ULP_PAD_PTE12__PTE12		0x10003		/* USDHC1 WP */
-				IMX7ULP_PAD_PTE14__SDHC1_VS		0x43		/* USDHC1 VSEL */
+				IMX7ULP_PAD_PTE11__PTE11	0x20000	/* USDHC1 RST */
+				IMX7ULP_PAD_PTE13__PTE13	0x10003	/* USDHC1 CD */
+				IMX7ULP_PAD_PTE12__PTE12	0x10003	/* USDHC1 WP */
+				IMX7ULP_PAD_PTE14__SDHC1_VS	0x43	/* USDHC1 VSEL */
 			>;
 		};
 
 		pinctrl_dsi_hdmi: dsi_hdmi_grp {
 			fsl,pins = <
-				IMX7ULP_PAD_PTC18__PTC18		0x10003		/* DSI_HDMI_INT */
+				IMX7ULP_PAD_PTC18__PTC18	0x10003	/* DSI_HDMI_INT */
 			>;
 		};
 	};
@@ -529,7 +539,9 @@
 
 &usbotg1 {
 	vbus-supply = <&reg_usb_otg1_vbus>;
-	extcon = <0>, <&extcon_usb1>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_usbotg1_id>;
+	pinctrl-1 = <&pinctrl_usbotg1_id>;
 	srp-disable;
 	hnp-disable;
 	adp-disable;
@@ -537,7 +549,7 @@
 };
 
 &usbphy1 {
-	tx-d-cal = <0xc>;
+	fsl,tx-d-cal = <88>;
 };
 
 &usdhc0 {

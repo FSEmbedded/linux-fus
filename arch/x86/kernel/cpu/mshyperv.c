@@ -163,26 +163,6 @@ static unsigned long hv_get_tsc_khz(void)
 	return freq / 1000;
 }
 
-#ifdef CONFIG_X86_LOCAL_APIC
-/*
- * Prior to WS2016 Debug-VM sends NMIs to all CPUs which makes
- * it dificult to process CHANNELMSG_UNLOAD in case of crash. Handle
- * unknown NMI on the first CPU which gets it.
- */
-static int hv_nmi_unknown(unsigned int val, struct pt_regs *regs)
-{
-	static atomic_t nmi_cpu = ATOMIC_INIT(-1);
-
-	if (!unknown_nmi_panic)
-		return NMI_DONE;
-
-	if (atomic_cmpxchg(&nmi_cpu, -1, raw_smp_processor_id()) != -1)
-		return NMI_HANDLED;
-
-	return NMI_DONE;
-}
-#endif
-
 static void __init ms_hyperv_init_platform(void)
 {
 	int hv_host_info_eax;

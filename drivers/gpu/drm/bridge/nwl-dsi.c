@@ -207,6 +207,7 @@ struct nwl_mipi_dsi {
 	u32				lanes;
 	u32				vc;
 	unsigned long			dsi_mode_flags;
+	bool				no_clk_reset;
 	bool				enabled;
 };
 
@@ -268,60 +269,6 @@ static enum dpi_pixel_format nwl_dsi_get_dpi_pixel_format(
 		return DPI_FMT_24_BIT;
 	}
 }
-
-/* Adds a bridge to encoder bridge chain */
-bool nwl_dsi_add_bridge(struct drm_encoder *encoder,
-			struct drm_bridge *next_bridge)
-{
-	struct drm_bridge *bridge = encoder->bridge;
-
-	if (!next_bridge)
-		return false;
-
-	next_bridge->encoder = encoder;
-	if (!bridge) {
-		encoder->bridge = bridge;
-		return true;
-	}
-
-	while (bridge != next_bridge && bridge->next)
-		bridge = bridge->next;
-
-	/* Avoid adding an existing bridge to the chain */
-	if (bridge == next_bridge) {
-		next_bridge->encoder = NULL;
-		return false;
-	}
-
-	bridge->next = next_bridge;
-	return true;
-}
-EXPORT_SYMBOL_GPL(nwl_dsi_add_bridge);
-
-/* Removes last bridge from encoder bridge chain */
-bool nwl_dsi_del_bridge(struct drm_encoder *encoder,
-			struct drm_bridge *bridge)
-{
-	struct drm_bridge *b = encoder->bridge;
-	struct drm_bridge *prev = NULL;
-
-	if (!b || !bridge)
-		return false;
-
-	while (b->next) {
-		prev = b;
-		b = b->next;
-	}
-
-	bridge->encoder = NULL;
-	if (prev)
-		prev->next = NULL;
-	else
-		encoder->bridge = NULL;
-
-	return true;
-}
-EXPORT_SYMBOL_GPL(nwl_dsi_del_bridge);
 
 unsigned long nwl_dsi_get_bit_clock(struct drm_bridge *bridge,
 	unsigned long pixclock)
@@ -748,7 +695,7 @@ static bool nwl_dsi_read_packet(struct nwl_mipi_dsi *dsi, u32 status)
 			payload[1] = (val >>  8) & 0xff;
 			++xfer->rx_len;
 			/* Fall through */
-		case 0:
+		case 1:
 			payload[0] = (val >>  0) & 0xff;
 			++xfer->rx_len;
 			break;
@@ -937,7 +884,6 @@ static int nwl_dsi_connector_get_modes(struct drm_connector *connector)
 }
 
 static const struct drm_connector_funcs nwl_dsi_connector_funcs = {
-	.dpms = drm_atomic_helper_connector_dpms,
 	.detect = nwl_dsi_connector_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.destroy = drm_connector_cleanup,
@@ -981,21 +927,6 @@ static int nwl_dsi_create_connector(struct drm_device *drm,
 	return 0;
 }
 
-static int nwl_dsi_attach_next_bridge(struct drm_encoder *encoder,
-				      struct drm_bridge *bridge)
-{
-	int ret = 0;
-
-	/* Attach the next bridge in chain */
-	if (!nwl_dsi_add_bridge(encoder, bridge))
-		return -EEXIST;
-	ret = drm_bridge_attach(encoder->dev, bridge);
-	if (ret)
-		nwl_dsi_del_bridge(encoder, bridge);
-
-	return ret;
-}
-
 static int nwl_dsi_bridge_attach(struct drm_bridge *bridge)
 {
 	struct nwl_mipi_dsi *dsi = bridge->driver_private;
@@ -1029,7 +960,7 @@ static int nwl_dsi_bridge_attach(struct drm_bridge *bridge)
 		}
 
 		dsi->next_bridge = of_drm_find_bridge(remote_node);
-		ret = nwl_dsi_attach_next_bridge(encoder, dsi->next_bridge);
+		ret = drm_bridge_attach(encoder, dsi->next_bridge, bridge);
 		if (ret)
 			dsi->next_bridge = NULL;
 		of_node_put(remote_node);
@@ -1058,8 +989,6 @@ static void nwl_dsi_bridge_detach(struct drm_bridge *bridge)
 		drm_connector_cleanup(&dsi->connector);
 		dsi->panel = NULL;
 	} else if (dsi->next_bridge) {
-		drm_bridge_detach(dsi->next_bridge);
-		nwl_dsi_del_bridge(dsi->next_bridge->encoder, dsi->next_bridge);
 		dsi->next_bridge = NULL;
 	}
 	if (dsi->host.dev)
@@ -1080,6 +1009,8 @@ static void nwl_dsi_bridge_enable(struct drm_bridge *bridge)
 		return;
 	}
 
+	pm_runtime_get_sync(dev);
+
 	ret = devm_request_irq(dev, dsi->irq,
 			       nwl_dsi_irq_handler, 0, IRQ_NAME, dsi);
 	if (ret < 0) {
@@ -1090,34 +1021,47 @@ static void nwl_dsi_bridge_enable(struct drm_bridge *bridge)
 
 	nwl_dsi_enable_clocks(dsi, CLK_PHY_REF | CLK_TX_ESC);
 
-	nwl_dsi_config_host(dsi);
-	nwl_dsi_config_dpi(dsi);
-
 	phy_init(dsi->phy);
 
 	ret = phy_power_on(dsi->phy);
 	if (ret < 0) {
 		DRM_DEV_ERROR(dev, "Failed to power on DPHY (%d)\n", ret);
-		return;
+		goto phy_err;
 	}
 
 	nwl_dsi_init_interrupts(dsi);
+	nwl_dsi_config_dpi(dsi);
 
 	if (dsi->panel && drm_panel_prepare(dsi->panel)) {
 		DRM_DEV_ERROR(dev, "Failed to setup panel\n");
-		return;
+		goto prepare_err;
+	}
+
+	nwl_dsi_config_host(dsi);
+
+	if (dsi->panel && drm_panel_enable(dsi->panel)) {
+		DRM_DEV_ERROR(dev, "Failed to enable panel\n");
+		drm_panel_unprepare(dsi->panel);
+		goto enable_err;
 	}
 
 	if (dsi->dsi_mode_flags & MIPI_DSI_CLOCK_NON_CONTINUOUS)
 		nwl_dsi_write(dsi, CFG_NONCONTINUOUS_CLK, 0x00);
 
-	if (dsi->panel && drm_panel_enable(dsi->panel)) {
-		DRM_DEV_ERROR(dev, "Failed to enable panel\n");
-		drm_panel_unprepare(dsi->panel);
-		return;
-	}
-
 	dsi->enabled = true;
+
+	return;
+
+enable_err:
+	drm_panel_unprepare(dsi->panel);
+
+prepare_err:
+	phy_power_off(dsi->phy);
+
+phy_err:
+	phy_exit(dsi->phy);
+	nwl_dsi_disable_clocks(dsi, CLK_PHY_REF | CLK_TX_ESC);
+	devm_free_irq(dev, dsi->irq, dsi);
 }
 
 static void nwl_dsi_bridge_disable(struct drm_bridge *bridge)
@@ -1136,11 +1080,15 @@ static void nwl_dsi_bridge_disable(struct drm_bridge *bridge)
 		drm_panel_unprepare(dsi->panel);
 	}
 
-	nwl_dsi_disable_clocks(dsi, CLK_PHY_REF | CLK_TX_ESC);
-	devm_free_irq(dev, dsi->irq, dsi);
-
 	phy_power_off(dsi->phy);
 	phy_exit(dsi->phy);
+
+	if (!dsi->no_clk_reset)
+		nwl_dsi_disable_clocks(dsi, CLK_PHY_REF | CLK_TX_ESC);
+
+	devm_free_irq(dev, dsi->irq, dsi);
+
+	pm_runtime_put_sync(dev);
 
 	dsi->enabled = false;
 }
@@ -1222,6 +1170,10 @@ static int nwl_dsi_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
+	pm_runtime_enable(dev);
+
+	dsi->no_clk_reset = of_property_read_bool(dev->of_node, "no_clk_reset");
+
 	dsi->dev = dev;
 	platform_set_drvdata(pdev, dsi);
 
@@ -1241,6 +1193,8 @@ static int nwl_dsi_remove(struct platform_device *pdev)
 	struct nwl_mipi_dsi *dsi = platform_get_drvdata(pdev);
 
 	drm_bridge_remove(&dsi->bridge);
+
+	pm_runtime_disable(&pdev->dev);
 
 	return 0;
 }

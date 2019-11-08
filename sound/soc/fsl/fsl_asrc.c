@@ -18,6 +18,8 @@
 #include <linux/of_platform.h>
 #include <linux/platform_data/dma-imx.h>
 #include <linux/pm_runtime.h>
+#include <linux/miscdevice.h>
+#include <linux/sched/signal.h>
 #include <sound/dmaengine_pcm.h>
 #include <sound/pcm_params.h>
 
@@ -539,28 +541,59 @@ struct dma_chan *fsl_asrc_get_dma_channel(struct fsl_asrc_pair *pair, bool dir)
 }
 EXPORT_SYMBOL_GPL(fsl_asrc_get_dma_channel);
 
-static int fsl_asrc_select_clk(struct fsl_asrc *asrc_priv, int rate, int index)
+static int fsl_asrc_select_clk(struct fsl_asrc *asrc_priv,
+				struct fsl_asrc_pair *pair,
+				int in_rate,
+				int out_rate)
 {
+	struct asrc_config *config = pair->config;
 	int clk_rate;
 	int clk_index;
-	int i = 0;
+	int i = 0, j = 0;
+	int rate[2];
+	int select_clk[2];
+	bool clk_sel[2];
+
+	rate[0] = in_rate;
+	rate[1] = out_rate;
 
 	/*select proper clock for asrc p2p mode*/
-	for (i = 0; i < CLK_MAP_NUM; i++) {
-		clk_index = asrc_priv->clk_map[index][i];
-		clk_rate = clk_get_rate(asrc_priv->asrck_clk[clk_index]);
-		if (clk_rate != 0 && clk_rate/rate <= 1024 &&
-						clk_rate%rate == 0)
-			break;
+	for (j = 0; j < 2; j++) {
+		for (i = 0; i < CLK_MAP_NUM; i++) {
+			clk_index = asrc_priv->clk_map[j][i];
+			clk_rate = clk_get_rate(asrc_priv->asrck_clk[clk_index]);
+			if (clk_rate != 0 && (clk_rate / rate[j]) <= 1024 &&
+						(clk_rate % rate[j]) == 0)
+				break;
+		}
+
+		if (i == CLK_MAP_NUM) {
+			select_clk[j] = OUTCLK_ASRCK1_CLK;
+			clk_sel[j] = false;
+		} else {
+			select_clk[j] = i;
+			clk_sel[j] = true;
+		}
 	}
 
-	if (i == CLK_MAP_NUM)
-		clk_index = index ? OUTCLK_ASRCK1_CLK : INCLK_NONE;
-	else
-		clk_index = i;
+	if (clk_sel[0] != true || clk_sel[1] != true)
+		select_clk[IN] = INCLK_NONE;
 
+	config->inclk = select_clk[IN];
+	config->outclk = select_clk[OUT];
 
-	return clk_index;
+	/*
+	 * FIXME: workaroud for 176400/192000 with 8 channel input case
+	 * the output sample rate is 48kHz.
+	 * with ideal ratio mode, the asrc seems has performance issue
+	 * that the output sound is not correct. so switch to non-ideal
+	 * ratio mode
+	 */
+	if (config->channel_num >= 8 && config->input_sample_rate >= 176400
+		&& config->inclk == INCLK_NONE)
+		config->inclk = INCLK_ASRCK1_CLK;
+
+	return 0;
 }
 
 static int fsl_asrc_dai_hw_params(struct snd_pcm_substream *substream,
@@ -582,7 +615,7 @@ static int fsl_asrc_dai_hw_params(struct snd_pcm_substream *substream,
 		return ret;
 	}
 
-	asrc_priv->pair_streams |= BIT(substream->stream);
+	pair->pair_streams |= BIT(substream->stream);
 	pair->config = &config;
 
 	if (width == 16)
@@ -604,10 +637,13 @@ static int fsl_asrc_dai_hw_params(struct snd_pcm_substream *substream,
 		config.input_sample_rate  = rate;
 		config.output_sample_rate = asrc_priv->asrc_rate;
 
-		config.inclk = fsl_asrc_select_clk(asrc_priv,
-				config.input_sample_rate, IN);
-		config.outclk = fsl_asrc_select_clk(asrc_priv,
-				config.output_sample_rate, OUT);
+		ret = fsl_asrc_select_clk(asrc_priv, pair,
+				config.input_sample_rate,
+				config.output_sample_rate);
+		if (ret) {
+			dev_err(dai->dev, "fail to select clock\n");
+			return ret;
+		}
 
 		ret = fsl_asrc_config_pair(pair, false, true);
 		if (ret) {
@@ -621,10 +657,13 @@ static int fsl_asrc_dai_hw_params(struct snd_pcm_substream *substream,
 		config.input_sample_rate  = asrc_priv->asrc_rate;
 		config.output_sample_rate = rate;
 
-		config.inclk = fsl_asrc_select_clk(asrc_priv,
-				config.input_sample_rate, IN);
-		config.outclk = fsl_asrc_select_clk(asrc_priv,
-				config.output_sample_rate, OUT);
+		ret = fsl_asrc_select_clk(asrc_priv, pair,
+				config.input_sample_rate,
+				config.output_sample_rate);
+		if (ret) {
+			dev_err(dai->dev, "fail to select clock\n");
+			return ret;
+		}
 
 		ret = fsl_asrc_config_pair(pair, true, false);
 		if (ret) {
@@ -639,14 +678,12 @@ static int fsl_asrc_dai_hw_params(struct snd_pcm_substream *substream,
 static int fsl_asrc_dai_hw_free(struct snd_pcm_substream *substream,
 				struct snd_soc_dai *dai)
 {
-	struct fsl_asrc *asrc_priv = snd_soc_dai_get_drvdata(dai);
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct fsl_asrc_pair *pair = runtime->private_data;
 
-	if (asrc_priv->pair_streams & BIT(substream->stream)) {
-		if (pair)
-			fsl_asrc_release_pair(pair);
-		asrc_priv->pair_streams &= ~BIT(substream->stream);
+	if (pair && (pair->pair_streams & BIT(substream->stream))) {
+		fsl_asrc_release_pair(pair);
+		pair->pair_streams &= ~BIT(substream->stream);
 	}
 
 	return 0;
@@ -678,7 +715,28 @@ static int fsl_asrc_dai_trigger(struct snd_pcm_substream *substream, int cmd,
 	return 0;
 }
 
+static int fsl_asrc_dai_startup(struct snd_pcm_substream *substream,
+			    struct snd_soc_dai *cpu_dai)
+{
+	struct fsl_asrc *asrc_priv   = snd_soc_dai_get_drvdata(cpu_dai);
+
+	asrc_priv->substream[substream->stream] = substream;
+
+	return snd_pcm_hw_constraint_list(substream->runtime, 0,
+			SNDRV_PCM_HW_PARAM_RATE, &fsl_asrc_rate_constraints);
+}
+
+static void fsl_asrc_dai_shutdown(struct snd_pcm_substream *substream,
+			    struct snd_soc_dai *cpu_dai)
+{
+	struct fsl_asrc *asrc_priv   = snd_soc_dai_get_drvdata(cpu_dai);
+
+	asrc_priv->substream[substream->stream] = NULL;
+}
+
 static const struct snd_soc_dai_ops fsl_asrc_dai_ops = {
+	.startup      = fsl_asrc_dai_startup,
+	.shutdown     = fsl_asrc_dai_shutdown,
 	.hw_params    = fsl_asrc_dai_hw_params,
 	.hw_free      = fsl_asrc_dai_hw_free,
 	.trigger      = fsl_asrc_dai_trigger,
@@ -1086,24 +1144,28 @@ static int fsl_asrc_probe(struct platform_device *pdev)
 				sizeof(asrc_priv->name) - 1);
 		asrc_priv->clk_map[IN] = input_clk_map_imx35;
 		asrc_priv->clk_map[OUT] = output_clk_map_imx35;
+		asrc_priv->dma_type = DMA_SDMA;
 	} else if (of_device_is_compatible(np, "fsl,imx53-asrc")) {
 		asrc_priv->channel_bits = 4;
 		strncpy(asrc_priv->name, "mxc_asrc",
 				sizeof(asrc_priv->name) - 1);
 		asrc_priv->clk_map[IN] = input_clk_map_imx53;
 		asrc_priv->clk_map[OUT] = output_clk_map_imx53;
+		asrc_priv->dma_type = DMA_SDMA;
 	} else if (of_device_is_compatible(np, "fsl,imx8qm-asrc0")) {
 		asrc_priv->channel_bits = 4;
 		strncpy(asrc_priv->name, "mxc_asrc",
 				sizeof(asrc_priv->name) - 1);
 		asrc_priv->clk_map[IN] = input_clk_map_imx8_0;
 		asrc_priv->clk_map[OUT] = output_clk_map_imx8_0;
+		asrc_priv->dma_type = DMA_EDMA;
 	} else if (of_device_is_compatible(np, "fsl,imx8qm-asrc1")) {
 		asrc_priv->channel_bits = 4;
 		strncpy(asrc_priv->name, "mxc_asrc1",
 				sizeof(asrc_priv->name) - 1);
 		asrc_priv->clk_map[IN] = input_clk_map_imx8_1;
 		asrc_priv->clk_map[OUT] = output_clk_map_imx8_1;
+		asrc_priv->dma_type = DMA_EDMA;
 	}
 
 	ret = fsl_asrc_init(asrc_priv);
@@ -1172,6 +1234,8 @@ static int fsl_asrc_runtime_resume(struct device *dev)
 	struct fsl_asrc *asrc_priv = dev_get_drvdata(dev);
 	int i, ret;
 	u32 asrctr;
+	u32 reg;
+	int retry = 10;
 
 	ret = clk_prepare_enable(asrc_priv->mem_clk);
 	if (ret)
@@ -1207,6 +1271,13 @@ static int fsl_asrc_runtime_resume(struct device *dev)
 	/* Restart enabled pairs */
 	regmap_update_bits(asrc_priv->regmap, REG_ASRCTR,
 			   ASRCTR_ASRCEi_ALL_MASK, asrctr);
+
+	/* Wait for status of initialization */
+	do {
+		udelay(5);
+		regmap_read(asrc_priv->regmap, REG_ASRCFG, &reg);
+		reg = (reg >> ASRCFG_INIRQi_SHIFT(0)) & 0x7;
+	} while (!(reg == ((asrctr & 0xE) >> 1)) && --retry);
 
 	return 0;
 
@@ -1258,9 +1329,12 @@ static int fsl_asrc_suspend(struct device *dev)
 
 static int fsl_asrc_resume(struct device *dev)
 {
+	struct fsl_asrc *asrc_priv = dev_get_drvdata(dev);
 	int ret;
 
 	ret = pm_runtime_force_resume(dev);
+
+	fsl_asrc_m2m_resume(asrc_priv);
 
 	return ret;
 }

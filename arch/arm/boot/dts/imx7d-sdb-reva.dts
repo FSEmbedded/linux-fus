@@ -9,21 +9,18 @@
 #include "imx7d-sdb.dts"
 
 / {
-	regulators {
-		reg_usb_otg2_vbus: regulator@1 {
-			gpio = <&gpio4 7 GPIO_ACTIVE_HIGH>;
-		};
+	reg_usb_otg2_vbus: regulator-usb-otg2-vbus {
+		gpio = <&gpio4 7 GPIO_ACTIVE_HIGH>;
+	};
 
-		reg_pcie: regulator@2 {
-			compatible = "regulator-fixed";
-			reg = <2>;
-			regulator-name = "MPCIE_3V3";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			gpio = <&gpio_spi 6 GPIO_ACTIVE_HIGH>;
-			regulator-always-on;
-			enable-active-high;
-		};
+	reg_pcie: regulator-pcie {
+		compatible = "regulator-fixed";
+		regulator-name = "MPCIE_3V3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		gpio = <&extended_io 6 GPIO_ACTIVE_HIGH>;
+		regulator-always-on;
+		enable-active-high;
 	};
 
 	sound-hdmi {
@@ -37,7 +34,7 @@
 
 &epdc {
 	pinctrl-0 = <&pinctrl_epdc0>;
-	en-gpios = <&gpio_spi 5 GPIO_ACTIVE_LOW>;
+	en-gpios = <&extended_io 5 GPIO_ACTIVE_LOW>;
 };
 
 &fec2 {
@@ -47,7 +44,7 @@
 
 &i2c4 {
 	ov5647_mipi: ov5647_mipi@36 {
-		pwn-gpios = <&gpio_spi 7 GPIO_ACTIVE_HIGH>;
+		pwn-gpios = <&extended_io 7 GPIO_ACTIVE_HIGH>;
 	};
 };
 

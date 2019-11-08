@@ -712,14 +712,6 @@ static void push_pseudo_header(struct sk_buff *skb, const char *daddr)
 	memcpy(phdr->hwaddr, daddr, INFINIBAND_ALEN);
 }
 
-static void push_pseudo_header(struct sk_buff *skb, const char *daddr)
-{
-	struct ipoib_pseudo_header *phdr;
-
-	phdr = (struct ipoib_pseudo_header *)skb_push(skb, sizeof(*phdr));
-	memcpy(phdr->hwaddr, daddr, INFINIBAND_ALEN);
-}
-
 void ipoib_flush_paths(struct net_device *dev)
 {
 	struct ipoib_dev_priv *priv = ipoib_priv(dev);

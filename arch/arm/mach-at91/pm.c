@@ -335,22 +335,6 @@ static void sama5d3_ddr_standby(void)
 	at91_ramc_write(0, AT91_DDRSDRC_LPR, saved_lpr0);
 }
 
-static void sama5d3_ddr_standby(void)
-{
-	u32 lpr0;
-	u32 saved_lpr0;
-
-	saved_lpr0 = at91_ramc_read(0, AT91_DDRSDRC_LPR);
-	lpr0 = saved_lpr0 & ~AT91_DDRSDRC_LPCB;
-	lpr0 |= AT91_DDRSDRC_LPCB_POWER_DOWN;
-
-	at91_ramc_write(0, AT91_DDRSDRC_LPR, lpr0);
-
-	cpu_do_idle();
-
-	at91_ramc_write(0, AT91_DDRSDRC_LPR, saved_lpr0);
-}
-
 /* We manage both DDRAM/SDRAM controllers, we need more than one value to
  * remember.
  */

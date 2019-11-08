@@ -934,8 +934,6 @@ static int mxl111sf_init(struct dvb_usb_device *d)
 
 	mutex_init(&state->msg_lock);
 
-	mutex_init(&state->msg_lock);
-
 	ret = get_chip_info(state);
 	if (mxl_fail(ret))
 		pr_err("failed to get chip info during probe");

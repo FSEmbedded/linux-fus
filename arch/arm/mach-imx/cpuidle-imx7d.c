@@ -157,6 +157,7 @@ static int imx7d_enter_low_power_idle(struct cpuidle_device *dev,
 {
 	int mode = get_bus_freq_mode();
 
+
 	if ((index == 1) || ((mode != BUS_FREQ_LOW) && index == 2)) {
 		index = 1;
 		if (atomic_inc_return(&master_wait) == num_online_cpus())
@@ -199,6 +200,7 @@ psci_skip_lpi_flow:
 			cpu_pm_exit();
 		} else {
 			imx_pen_lock(dev->cpu);
+			cpuidle_pm_info->num_online_cpus = num_online_cpus();
 			++cpuidle_pm_info->num_lpi_cpus;
 			cpu_pm_enter();
 			if (cpuidle_pm_info->num_lpi_cpus ==
@@ -210,7 +212,6 @@ psci_skip_lpi_flow:
 				 * any additional IPIs.
 				 */
 				if (imx7d_gic_sgis_pending()) {
-					atomic_dec(&master_lpi);
 					index = -1;
 					goto skip_lpi_flow;
 				}
@@ -268,24 +269,6 @@ static struct cpuidle_driver imx7d_cpuidle_driver = {
 	.state_count = 3,
 	.safe_state_index = 0,
 };
-
-#ifdef CONFIG_HOTPLUG_CPU
-static int cpu_hotplug_notify(struct notifier_block *self,
-				  unsigned long action, void *hcpu)
-{
-	switch (action) {
-	case CPU_DEAD:
-	case CPU_ONLINE:
-		cpuidle_pm_info->num_online_cpus = num_online_cpus();
-		break;
-	}
-	return NOTIFY_OK;
-}
-
-static struct notifier_block __refdata cpu_hotplug_notifier = {
-	.notifier_call = cpu_hotplug_notify,
-};
-#endif
 
 int imx7d_enable_rcosc(void)
 {
@@ -395,9 +378,6 @@ int __init imx7d_cpuidle_init(void)
 
 	imx7d_enable_rcosc();
 
-#ifdef CONFIG_HOTPLUG_CPU
-	register_hotcpu_notifier(&cpu_hotplug_notifier);
-#endif
 	/* code size should include cpuidle_pm_info size */
 	if (!psci_ops.cpu_suspend) {
 		imx7d_wfi_in_iram_fn = (void *)fncpy(wfi_iram_base +

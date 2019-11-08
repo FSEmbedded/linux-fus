@@ -1868,7 +1868,6 @@ static int build_dentry_path(struct dentry *dentry, struct inode *dir,
 			     int *pfreepath)
 {
 	char *path;
-	struct inode *dir;
 
 	rcu_read_lock();
 	if (!dir)

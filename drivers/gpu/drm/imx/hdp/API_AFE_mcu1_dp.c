@@ -48,21 +48,20 @@
 #include "API_AFE_mcu1_dp.h"
 #include "../../../../mxc/hdp/all.h"
 
-u8 AFE_check_rate_supported(ENUM_AFE_LINK_RATE rate)
-{
-	switch (rate) {
-	case AFE_LINK_RATE_1_6:
-	case AFE_LINK_RATE_2_1:
-	case AFE_LINK_RATE_2_4:
-	case AFE_LINK_RATE_2_7:
-	case AFE_LINK_RATE_3_2:
-	case AFE_LINK_RATE_4_3:
-	case AFE_LINK_RATE_5_4:
-		return 1;
-	default:
-		return 0;
-	}
-}
+/* values of TX_TXCC_MGNFS_MULT_000 register for [voltage_swing][pre_emphasis]
+ * 0xFF means, that the combination is forbidden.
+static u16 mgnfsValues[4][4] = {{0x2B, 0x19, 0x0E, 0x02},
+						{0x21, 0x10, 0x01, 0xFF},
+						{0x18, 0x02, 0xFF, 0xFF},
+						{0x04, 0xFF, 0xFF, 0xFF}};
+
+* values of TX_TXCC_CPOST_MULT_00 register for [voltage_swing][pre_emphasis]
+* 0xFF means, that the combination is forbidden.
+static u16 cpostValues[4][4] = {{0x00, 0x14, 0x21, 0x29},
+						{0x00, 0x15, 0x20, 0xFF},
+						{0x00, 0x15, 0xFF, 0xFF},
+						{0x00, 0xFF, 0xFF, 0xFF}};
+*/
 
 static void AFE_WriteReg(state_struct *state, ENUM_AFE_LINK_RATE link_rate,
 			 unsigned int addr,
@@ -103,7 +102,7 @@ static void AFE_WriteReg(state_struct *state, ENUM_AFE_LINK_RATE link_rate,
 	}
 }
 
-void phy_cfg_24mhz(state_struct *state, int num_lanes)
+static void phy_cfg_24mhz(state_struct *state, int num_lanes)
 {
 	int k;
 
@@ -115,7 +114,9 @@ void phy_cfg_24mhz(state_struct *state, int num_lanes)
 }
 
 /* Valid for 24 MHz only */
-void phy_cfg_dp_pll0(state_struct *state, int num_lanes, ENUM_AFE_LINK_RATE link_rate)
+static void phy_cfg_dp_pll0(state_struct *state,
+			    int num_lanes,
+			    ENUM_AFE_LINK_RATE link_rate)
 {
 	int k;
 	volatile u16 rdata;
@@ -236,7 +237,7 @@ void phy_cfg_dp_pll0(state_struct *state, int num_lanes, ENUM_AFE_LINK_RATE link
 	}
 }
 
-void phy_cfg_dp_ln(state_struct *state, int num_lanes)
+static void phy_cfg_dp_ln(state_struct *state, int num_lanes)
 {
 	int k;
 	u16 rdata;
@@ -261,7 +262,7 @@ void phy_cfg_dp_ln(state_struct *state, int num_lanes)
 	}
 }
 
-u16 aux_cal_cfg(state_struct *state, u16 prev_calib_code)
+static u16 aux_cal_cfg(state_struct *state, u16 prev_calib_code)
 {
 	u16 txpu_calib_code;
 	u16 txpd_calib_code;
@@ -292,7 +293,7 @@ u16 aux_cal_cfg(state_struct *state, u16 prev_calib_code)
 	return new_calib_code;
 }
 
-void aux_cfg(state_struct *state)
+static void aux_cfg(state_struct *state)
 {
 	volatile u16 rdata;
 

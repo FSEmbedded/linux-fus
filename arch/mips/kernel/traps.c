@@ -52,7 +52,6 @@
 #include <asm/idle.h>
 #include <asm/mips-cps.h>
 #include <asm/mips-r2-to-r6-emul.h>
-#include <asm/mips-cm.h>
 #include <asm/mipsregs.h>
 #include <asm/mipsmtregs.h>
 #include <asm/module.h>

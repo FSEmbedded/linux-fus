@@ -154,21 +154,6 @@ static int platform_pci_probe(struct pci_dev *pdev,
 		}
 	}
 
-	if (!xen_have_vector_callback) {
-		ret = xen_allocate_irq(pdev);
-		if (ret) {
-			dev_warn(&pdev->dev, "request_irq failed err=%d\n", ret);
-			goto out;
-		}
-		callback_via = get_callback_via(pdev);
-		ret = xen_set_callback_via(callback_via);
-		if (ret) {
-			dev_warn(&pdev->dev, "Unable to set the evtchn callback "
-					 "err=%d\n", ret);
-			goto out;
-		}
-	}
-
 	max_nr_gframes = gnttab_max_grant_frames();
 	grant_frames = alloc_xen_mmio(PAGE_SIZE * max_nr_gframes);
 	ret = gnttab_setup_auto_xlat_frames(grant_frames);

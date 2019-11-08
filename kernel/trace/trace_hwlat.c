@@ -267,7 +267,7 @@ out:
 static struct cpumask save_cpumask;
 static bool disable_migrate;
 
-static void move_to_next_cpu(bool initmask)
+static void move_to_next_cpu(void)
 {
 	struct cpumask *current_mask = &save_cpumask;
 	int next_cpu;
@@ -316,12 +316,10 @@ static void move_to_next_cpu(bool initmask)
 static int kthread_fn(void *data)
 {
 	u64 interval;
-	bool initmask = true;
 
 	while (!kthread_should_stop()) {
 
-		move_to_next_cpu(initmask);
-		initmask = false;
+		move_to_next_cpu();
 
 		local_irq_disable();
 		get_sample();

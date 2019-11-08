@@ -654,20 +654,6 @@ usb_endpoint_maxp_mult(const struct usb_endpoint_descriptor *epd)
 	return USB_EP_MAXP_MULT(maxp) + 1;
 }
 
-/**
- * usb_endpoint_maxp_mult - get endpoint's transactional opportunities
- * @epd: endpoint to be checked
- *
- * Return @epd's wMaxPacketSize[12:11] + 1
- */
-static inline int
-usb_endpoint_maxp_mult(const struct usb_endpoint_descriptor *epd)
-{
-	int maxp = __le16_to_cpu(epd->wMaxPacketSize);
-
-	return USB_EP_MAXP_MULT(maxp) + 1;
-}
-
 static inline int usb_endpoint_interrupt_type(
 		const struct usb_endpoint_descriptor *epd)
 {

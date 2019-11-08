@@ -26,6 +26,7 @@
 #include <linux/can/error.h>
 #include <linux/can/led.h>
 #include <linux/can/rx-offload.h>
+#include <linux/can/platform/flexcan.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
@@ -34,7 +35,6 @@
 #include <linux/list.h>
 #include <linux/mfd/syscon.h>
 #include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
-#include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
@@ -42,7 +42,10 @@
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
-#include <linux/regmap.h>
+
+#ifdef CONFIG_ARCH_MXC_ARM64
+#include <soc/imx8/sc/sci.h>
+#endif
 
 #define DRV_NAME			"flexcan"
 
@@ -68,6 +71,7 @@
 #define FLEXCAN_MCR_IRMQ		BIT(16)
 #define FLEXCAN_MCR_LPRIO_EN		BIT(13)
 #define FLEXCAN_MCR_AEN			BIT(12)
+#define FLEXCAN_MCR_FDEN		BIT(11)
 /* MCR_MAXMB: maximum used MBs is MAXMB + 1 */
 #define FLEXCAN_MCR_MAXMB(x)		((x) & 0x7f)
 #define FLEXCAN_MCR_IDAM_A		(0x0 << 8)
@@ -168,21 +172,28 @@
 #define FLEXCAN_FDCBT_FPSEG1(x)		(((x) & 0x07) << 5)
 #define FLEXCAN_FDCBT_FPSEG2(x)		((x) & 0x07)
 
-#define FLEXCAN_RX_BUF_ID		0
 /* FLEXCAN interrupt flag register (IFLAG) bits */
 /* Errata ERR005829 step7: Reserve first valid MB */
 #define FLEXCAN_TX_MB_RESERVED_OFF_FIFO	8
 #define FLEXCAN_TX_MB_OFF_FIFO		9
 #define FLEXCAN_TX_MB_RESERVED_OFF_TIMESTAMP	0
 #define FLEXCAN_TX_MB_OFF_TIMESTAMP		1
+#define FLEXCAN_TX_MB_RESERVED_OFF_TIMESTAMP_FD		0
+#define FLEXCAN_TX_MB_OFF_TIMESTAMP_FD		1
 #define FLEXCAN_RX_MB_OFF_TIMESTAMP_FIRST	(FLEXCAN_TX_MB_OFF_TIMESTAMP + 1)
 #define FLEXCAN_RX_MB_OFF_TIMESTAMP_LAST	63
+#define FLEXCAN_RX_MB_OFF_TIMESTAMP_FD_FIRST	(FLEXCAN_TX_MB_OFF_TIMESTAMP_FD + 1)
+#define FLEXCAN_RX_MB_OFF_TIMESTAMP_FD_LAST	13
 #define FLEXCAN_IFLAG_MB(x)		BIT(x)
 #define FLEXCAN_IFLAG_RX_FIFO_OVERFLOW	BIT(7)
 #define FLEXCAN_IFLAG_RX_FIFO_WARN	BIT(6)
 #define FLEXCAN_IFLAG_RX_FIFO_AVAILABLE	BIT(5)
 
 /* FLEXCAN message buffers */
+#define FLEXCAN_MB_CNT_EDL		BIT(31)
+#define FLEXCAN_MB_CNT_BRS		BIT(30)
+#define FLEXCAN_MB_CNT_ESI		BIT(29)
+
 #define FLEXCAN_MB_CODE_MASK		(0xf << 24)
 #define FLEXCAN_MB_CODE_RX_BUSY_BIT	(0x1 << 24)
 #define FLEXCAN_MB_CODE_RX_INACTIVE	(0x0 << 24)
@@ -190,6 +201,7 @@
 #define FLEXCAN_MB_CODE_RX_FULL		(0x2 << 24)
 #define FLEXCAN_MB_CODE_RX_OVERRUN	(0x6 << 24)
 #define FLEXCAN_MB_CODE_RX_RANSWER	(0xa << 24)
+
 #define FLEXCAN_MB_CODE_TX_INACTIVE	(0x8 << 24)
 #define FLEXCAN_MB_CODE_TX_ABORT	(0x9 << 24)
 #define FLEXCAN_MB_CODE_TX_DATA		(0xc << 24)
@@ -201,9 +213,9 @@
 #define FLEXCAN_MB_CNT_LENGTH(x)	(((x) & 0xf) << 16)
 #define FLEXCAN_MB_CNT_TIMESTAMP(x)	((x) & 0xffff)
 
-#define FLEXCAN_TIMEOUT_US		(50)
-
 #define FLEXCAN_FDCTRL_FDRATE		BIT(31)
+
+#define FLEXCAN_TIMEOUT_US		(50)
 
 /* FLEXCAN hardware feature flags
  *
@@ -225,7 +237,53 @@
 #define FLEXCAN_QUIRK_DISABLE_MECR	BIT(4) /* Disable Memory error detection */
 #define FLEXCAN_QUIRK_USE_OFF_TIMESTAMP	BIT(5) /* Use timestamp based offloading */
 #define FLEXCAN_QUIRK_BROKEN_PERR_STATE	BIT(6) /* No interrupt for error passive */
+#define FLEXCAN_QUIRK_TIMESTAMP_SUPPORT_FD BIT(7) /* Use timestamp then support can fd mode */
 
+/* Message Buffer */
+#define FLEXCAN_MB_CTRL		0x0
+#define FLEXCAN_MB_ID		0x4
+#define FLEXCAN_MB_DATA(n)	(0x8 + ((n) << 2))
+
+#define FLEXCAN_MB			0x80
+#define FLEXCAN_MB_NUM		64
+#define FLEXCAN_MB_FD_NUM	14
+#define FLEXCAN_MB_SIZE		16
+#define FLEXCAN_MB_FD_SIZE	72
+
+/* CAN FD Memory Partition
+ *
+ * When CAN FD is enabled, the FlexCAN RAM can be partitioned in
+ * blocks of 512 bytes. Each block can accommodate a number of
+ * Message Buffers which depends on the configuration provided
+ * by CAN_FDCTRL[MBDSRn] bit fields where we all set to 64 bytes
+ * per Message Buffer and 7 MBs per Block by default.
+ *
+ * There're two RAM blocks: RAM block 0,1
+ */
+#define FLEXCAN_CANFD_MB_OFFSET(n)	(((n) / 7) * 512 + ((n) % 7) * \
+					 FLEXCAN_MB_FD_SIZE)
+#define FLEXCAN_CANFD_MBDSR_MASK	0x6db0000
+#define FLEXCAN_CANFD_MBDSR_SHIFT	16
+#define FLEXCAN_CANFD_MBDSR_DEFAULT	0x6db
+
+/*
+ * NOTE:
+ * To minimize errors when processing FD frames, use the same value
+ * for FPRESDIV and PRESDIV (in CAN_CBT or CAN_CTRL1).
+ * For more details refer to the first NOTE in section CAN FD frames.
+ *
+ * CAN FD supported rates combinations
+ *
+ * Combination 1:
+ *  Bitrate: 225000 375000 400000 425000 500000 875000
+ *  Data rate: 1000000
+ *
+ * Combination 2:
+ *  Bitrate:	550000 600000 625000 650000 675000 750000 775000
+ *		800000 850000 925000 950000 975000 1000000
+ *  Data rate:	1500000 2000000 2500000 3000000 3500000 4000000
+ *		5000000
+ */
 
 /* Structure of the hardware registers */
 struct flexcan_regs {
@@ -252,18 +310,9 @@ struct flexcan_regs {
 	u32 crcr;		/* 0x44 */
 	u32 rxfgmask;		/* 0x48 */
 	u32 rxfir;		/* 0x4c */
-	u32 _reserved3[12];	/* 0x50 */
-	struct flexcan_mb mb[64];	/* 0x80 */
-	/* FIFO-mode:
-	 *			MB
-	 * 0x080...0x08f	0	RX message buffer
-	 * 0x090...0x0df	1-5	reserverd
-	 * 0x0e0...0x0ff	6-7	8 entry ID table
-	 *				(mx25, mx28, mx35, mx53)
-	 * 0x0e0...0x2df	6-7..37	8..128 entry ID table
-	 *				size conf'ed via ctrl2::RFFN
-	 *				(mx6, vf610)
-	 */
+	u32 cbt;		/* 0x50 */
+	u32 _reserved3[11];	/* 0x54 */
+	u32 _reserved8[64*4]; /* 0x80 */ /* 64 mailbox */
 	u32 _reserved4[256];	/* 0x480 */
 	u32 rximr[64];		/* 0x880 */
 	u32 _reserved5[24];	/* 0x980 */
@@ -277,6 +326,10 @@ struct flexcan_regs {
 	u32 rerrdr;		/* 0xaf4 */
 	u32 rerrsynr;		/* 0xaf8 */
 	u32 errsr;		/* 0xafc */
+	u32 _reserved7[64]; /* 0xb00 */
+	u32 fdctrl;		/* 0xc00 */
+	u32 fdcbt;		/* 0xc04 */
+	u32 fdcrc;		/* 0xc08 */
 };
 
 struct flexcan_devtype_data {
@@ -295,8 +348,8 @@ struct flexcan_priv {
 	struct can_rx_offload offload;
 
 	struct flexcan_regs __iomem *regs;
-	struct flexcan_mb __iomem *tx_mb;
-	struct flexcan_mb __iomem *tx_mb_reserved;
+	void __iomem *base;
+	u8 tx_mb_reserved_idx;
 	u8 tx_mb_idx;
 	u32 reg_ctrl_default;
 	u32 reg_imask1_default;
@@ -305,18 +358,21 @@ struct flexcan_priv {
 	struct device *dev;
 	struct clk *clk_ipg;
 	struct clk *clk_per;
+	struct flexcan_platform_data *pdata;
 	const struct flexcan_devtype_data *devtype_data;
 	struct regulator *reg_xceiver;
 	int id;
 	struct flexcan_stop_mode stm;
-
-	bool mb_mode;
-	u32 iflag_default;
-	/* Rx interrupt can be either Rx fifo or Rx buffer interrupt */
-	u32 rx_int;
+#ifdef CONFIG_ARCH_MXC_ARM64
+	sc_ipc_t ipc_handle;
+#endif
+	bool wakeup;
 
 	u32 mb_size;
 	u32 mb_num;
+
+	/* Selects the clock source to CAN Protocol Engine (PE), 1 by default*/
+	u32 clk_src;
 };
 
 static const struct flexcan_devtype_data fsl_p1010_devtype_data = {
@@ -331,6 +387,12 @@ static const struct flexcan_devtype_data fsl_imx28_devtype_data = {
 static const struct flexcan_devtype_data fsl_imx6q_devtype_data = {
 	.quirks = FLEXCAN_QUIRK_DISABLE_RXFG | FLEXCAN_QUIRK_ENABLE_EACEN_RRS |
 		FLEXCAN_QUIRK_USE_OFF_TIMESTAMP | FLEXCAN_QUIRK_BROKEN_PERR_STATE,
+};
+
+static struct flexcan_devtype_data fsl_imx8qm_devtype_data = {
+	.quirks = FLEXCAN_QUIRK_DISABLE_RXFG | FLEXCAN_QUIRK_ENABLE_EACEN_RRS |
+	    FLEXCAN_QUIRK_USE_OFF_TIMESTAMP | FLEXCAN_QUIRK_BROKEN_PERR_STATE |
+		FLEXCAN_QUIRK_TIMESTAMP_SUPPORT_FD,
 };
 
 static const struct flexcan_devtype_data fsl_vf610_devtype_data = {
@@ -381,27 +443,25 @@ static const struct can_bittiming_const flexcan_fd_data_bittiming_const = {
  * endianness.
  */
 #if defined(CONFIG_PPC)
-static inline u32 flexcan_read(const struct flexcan_priv *priv,
-			       enum flexcan_reg reg)
+static inline u32 flexcan_read(void __iomem *addr)
 {
-	return in_be32(priv->base + reg);
+	return in_be32(addr);
 }
 
-static inline void flexcan_write(const struct flexcan_priv *priv,
-				 enum flexcan_reg reg, u32 val)
+static inline void flexcan_write(u32 val, void __iomem *addr)
 {
-	out_be32(priv->base + reg, val);
+	out_be32(addr, val);
 }
 
 static inline u32 flexcan_mb_read(const struct flexcan_priv *priv,
 				  u32 index, unsigned int offset)
 {
 	if (priv->can.ctrlmode & CAN_CTRLMODE_FD)
-		return in_be32(priv->base + FLEXCAN_MB +
-			     FLEXCAN_CANFD_MB_OFFSET(index) + offset);
+		return in_be32(priv->base + FLEXCAN_MB + 
+					FLEXCAN_CANFD_MB_OFFSET(index) + offset);
 	else
-		return in_be32(priv->base + FLEXCAN_MB +
-			       priv->mb_size * index + offset);
+		return in_be32(priv->base + FLEXCAN_MB + 
+					priv->mb_size * index + offset);
 }
 
 static inline void flexcan_mb_write(const struct flexcan_priv *priv,
@@ -409,34 +469,32 @@ static inline void flexcan_mb_write(const struct flexcan_priv *priv,
 				    u32 val)
 {
 	if (priv->can.ctrlmode & CAN_CTRLMODE_FD)
-		out_be32(val, priv->base + FLEXCAN_MB +
-			 FLEXCAN_CANFD_MB_OFFSET(index) + offset);
+		out_be32(val, priv->base + FLEXCAN_MB + 
+					FLEXCAN_CANFD_MB_OFFSET(index) + offset);
 	else
-		out_be32(val, priv->base + FLEXCAN_MB +
-			 priv->mb_size * index + offset);
+		out_be32(val, priv->base + FLEXCAN_MB + 
+					priv->mb_size * index + offset);
 }
 #else
-static inline u32 flexcan_read(const struct flexcan_priv *priv,
-			       enum flexcan_reg reg)
+static inline u32 flexcan_read(void __iomem *addr)
 {
-	return readl(priv->base + reg);
+	return readl(addr);
 }
 
-static inline void flexcan_write(const struct flexcan_priv *priv,
-				 enum flexcan_reg reg, u32 val)
+static inline void flexcan_write(u32 val, void __iomem *addr)
 {
-	writel(val, priv->base + reg);
+	writel(val, addr);
 }
 
 static inline u32 flexcan_mb_read(const struct flexcan_priv *priv,
 				  u32 index, unsigned int offset)
 {
 	if (priv->can.ctrlmode & CAN_CTRLMODE_FD)
-		return readl(priv->base + FLEXCAN_MB +
-			     FLEXCAN_CANFD_MB_OFFSET(index) + offset);
+		return readl(priv->base + FLEXCAN_MB + 
+					FLEXCAN_CANFD_MB_OFFSET(index) + offset);
 	else
-		return readl(priv->base + FLEXCAN_MB +
-			     priv->mb_size * index + offset);
+		return readl(priv->base + FLEXCAN_MB + 
+					priv->mb_size * index + offset);
 }
 
 static inline void flexcan_mb_write(const struct flexcan_priv *priv,
@@ -444,11 +502,11 @@ static inline void flexcan_mb_write(const struct flexcan_priv *priv,
 				    u32 val)
 {
 	if (priv->can.ctrlmode & CAN_CTRLMODE_FD)
-		writel(val, priv->base + FLEXCAN_MB +
-		       FLEXCAN_CANFD_MB_OFFSET(index) + offset);
+		writel(val, priv->base + FLEXCAN_MB + 
+					FLEXCAN_CANFD_MB_OFFSET(index) + offset);
 	else
-		writel(val, priv->base + FLEXCAN_MB +
-		       priv->mb_size * index + offset);
+		writel(val, priv->base + FLEXCAN_MB + 
+					priv->mb_size * index + offset);
 }
 #endif
 
@@ -466,6 +524,95 @@ static inline void flexcan_error_irq_disable(const struct flexcan_priv *priv)
 	u32 reg_ctrl = (priv->reg_ctrl_default & ~FLEXCAN_CTRL_ERR_MSK);
 
 	flexcan_write(reg_ctrl, &regs->ctrl);
+}
+
+static int flexcan_clks_enable(const struct flexcan_priv *priv)
+{
+	int err;
+
+	err = clk_prepare_enable(priv->clk_ipg);
+	if (err)
+		return err;
+
+	err = clk_prepare_enable(priv->clk_per);
+	if (err)
+		clk_disable_unprepare(priv->clk_ipg);
+
+	return err;
+}
+
+static void flexcan_clks_disable(const struct flexcan_priv *priv)
+{
+	clk_disable_unprepare(priv->clk_ipg);
+	clk_disable_unprepare(priv->clk_per);
+}
+
+static void flexcan_wake_mask_enable(struct flexcan_priv *priv)
+{
+	struct flexcan_regs __iomem *regs = priv->regs;
+	u32 reg_mcr;
+
+	reg_mcr = flexcan_read(&regs->mcr);
+	reg_mcr |= FLEXCAN_MCR_WAK_MSK;
+	flexcan_write(reg_mcr, &regs->mcr);
+}
+
+static void flexcan_wake_mask_disable(struct flexcan_priv *priv)
+{
+	struct flexcan_regs __iomem *regs = priv->regs;
+	u32 reg_mcr;
+
+	reg_mcr = flexcan_read(&regs->mcr);
+	reg_mcr &= ~FLEXCAN_MCR_WAK_MSK;
+	flexcan_write(reg_mcr, &regs->mcr);
+}
+
+#ifdef CONFIG_ARCH_MXC_ARM64
+static void imx8_ipg_stop_enable(struct flexcan_priv *priv, bool enabled)
+{
+	struct device_node *np = priv->dev->of_node;
+	u32 rsrc_id, val;
+	int idx;
+
+	idx = of_alias_get_id(np, "can");
+	if (idx == 0)
+		rsrc_id = SC_R_CAN_0;
+	else if (idx == 1)
+		rsrc_id = SC_R_CAN_1;
+	else
+		rsrc_id = SC_R_CAN_2;
+
+	val = enabled ? 1 : 0;
+	sc_misc_set_control(priv->ipc_handle, rsrc_id, SC_C_IPG_STOP, val);
+}
+#else
+static void imx8_ipg_stop_enable(struct flexcan_priv *priv, bool enabled) {}
+#endif
+
+static inline void flexcan_enter_stop_mode(struct flexcan_priv *priv)
+{
+	/* enable stop request */
+	if (priv->stm.gpr) {
+		if (priv->devtype_data->quirks & FLEXCAN_QUIRK_DISABLE_RXFG)
+			regmap_update_bits(priv->stm.gpr, priv->stm.req_gpr,
+				1 << priv->stm.req_bit, 1 << priv->stm.req_bit);
+	} else {
+		if (priv->devtype_data->quirks & FLEXCAN_QUIRK_TIMESTAMP_SUPPORT_FD)
+			imx8_ipg_stop_enable(priv, true);
+	}
+}
+
+static inline void flexcan_exit_stop_mode(struct flexcan_priv *priv)
+{
+	/* remove stop request */
+	if (priv->stm.gpr) {
+		if (priv->devtype_data->quirks & FLEXCAN_QUIRK_DISABLE_RXFG)
+			regmap_update_bits(priv->stm.gpr, priv->stm.req_gpr,
+				1 << priv->stm.req_bit, 0);
+	} else {
+		if (priv->devtype_data->quirks & FLEXCAN_QUIRK_TIMESTAMP_SUPPORT_FD)
+			imx8_ipg_stop_enable(priv, false);
+	}
 }
 
 static inline int flexcan_transceiver_enable(const struct flexcan_priv *priv)
@@ -496,18 +643,18 @@ static inline int flexcan_transceiver_disable(const struct flexcan_priv *priv)
 
 static int flexcan_chip_enable(struct flexcan_priv *priv)
 {
+	struct flexcan_regs __iomem *regs = priv->regs;
 	unsigned int timeout = FLEXCAN_TIMEOUT_US / 10;
 	u32 reg;
 
-	reg = flexcan_read(priv, FLEXCAN_MCR);
+	reg = flexcan_read(&regs->mcr);
 	reg &= ~FLEXCAN_MCR_MDIS;
-	flexcan_write(priv, FLEXCAN_MCR, reg);
+	flexcan_write(reg, &regs->mcr);
 
-	while (timeout-- &&
-	       (flexcan_read(priv, FLEXCAN_MCR) & FLEXCAN_MCR_LPM_ACK))
+	while (timeout-- && (flexcan_read(&regs->mcr) & FLEXCAN_MCR_LPM_ACK))
 		udelay(10);
 
-	if (flexcan_read(priv, FLEXCAN_MCR) & FLEXCAN_MCR_LPM_ACK)
+	if (flexcan_read(&regs->mcr) & FLEXCAN_MCR_LPM_ACK)
 		return -ETIMEDOUT;
 
 	return 0;
@@ -515,18 +662,18 @@ static int flexcan_chip_enable(struct flexcan_priv *priv)
 
 static int flexcan_chip_disable(struct flexcan_priv *priv)
 {
+	struct flexcan_regs __iomem *regs = priv->regs;
 	unsigned int timeout = FLEXCAN_TIMEOUT_US / 10;
 	u32 reg;
 
-	reg = flexcan_read(priv, FLEXCAN_MCR);
+	reg = flexcan_read(&regs->mcr);
 	reg |= FLEXCAN_MCR_MDIS;
-	flexcan_write(priv, FLEXCAN_MCR, reg);
+	flexcan_write(reg, &regs->mcr);
 
-	while (timeout-- &&
-	       !(flexcan_read(priv, FLEXCAN_MCR) & FLEXCAN_MCR_LPM_ACK))
+	while (timeout-- && !(flexcan_read(&regs->mcr) & FLEXCAN_MCR_LPM_ACK))
 		udelay(10);
 
-	if (!(flexcan_read(priv, FLEXCAN_MCR) & FLEXCAN_MCR_LPM_ACK))
+	if (!(flexcan_read(&regs->mcr) & FLEXCAN_MCR_LPM_ACK))
 		return -ETIMEDOUT;
 
 	return 0;
@@ -534,18 +681,18 @@ static int flexcan_chip_disable(struct flexcan_priv *priv)
 
 static int flexcan_chip_freeze(struct flexcan_priv *priv)
 {
+	struct flexcan_regs __iomem *regs = priv->regs;
 	unsigned int timeout = 1000 * 1000 * 10 / priv->can.bittiming.bitrate;
 	u32 reg;
 
-	reg = flexcan_read(priv, FLEXCAN_MCR);
+	reg = flexcan_read(&regs->mcr);
 	reg |= FLEXCAN_MCR_HALT;
-	flexcan_write(priv, FLEXCAN_MCR, reg);
+	flexcan_write(reg, &regs->mcr);
 
-	while (timeout-- &&
-	       !(flexcan_read(priv, FLEXCAN_MCR) & FLEXCAN_MCR_FRZ_ACK))
+	while (timeout-- && !(flexcan_read(&regs->mcr) & FLEXCAN_MCR_FRZ_ACK))
 		udelay(100);
 
-	if (!(flexcan_read(priv, FLEXCAN_MCR) & FLEXCAN_MCR_FRZ_ACK))
+	if (!(flexcan_read(&regs->mcr) & FLEXCAN_MCR_FRZ_ACK))
 		return -ETIMEDOUT;
 
 	return 0;
@@ -553,18 +700,18 @@ static int flexcan_chip_freeze(struct flexcan_priv *priv)
 
 static int flexcan_chip_unfreeze(struct flexcan_priv *priv)
 {
+	struct flexcan_regs __iomem *regs = priv->regs;
 	unsigned int timeout = FLEXCAN_TIMEOUT_US / 10;
 	u32 reg;
 
-	reg = flexcan_read(priv, FLEXCAN_MCR);
+	reg = flexcan_read(&regs->mcr);
 	reg &= ~FLEXCAN_MCR_HALT;
-	flexcan_write(priv, FLEXCAN_MCR, reg);
+	flexcan_write(reg, &regs->mcr);
 
-	while (timeout-- &&
-	       (flexcan_read(priv, FLEXCAN_MCR) & FLEXCAN_MCR_FRZ_ACK))
+	while (timeout-- && (flexcan_read(&regs->mcr) & FLEXCAN_MCR_FRZ_ACK))
 		udelay(20);
 
-	if (flexcan_read(priv, FLEXCAN_MCR) & FLEXCAN_MCR_FRZ_ACK)
+	if (flexcan_read(&regs->mcr) & FLEXCAN_MCR_FRZ_ACK)
 		return -ETIMEDOUT;
 
 	return 0;
@@ -572,14 +719,14 @@ static int flexcan_chip_unfreeze(struct flexcan_priv *priv)
 
 static int flexcan_chip_softreset(struct flexcan_priv *priv)
 {
+	struct flexcan_regs __iomem *regs = priv->regs;
 	unsigned int timeout = FLEXCAN_TIMEOUT_US / 10;
 
-	flexcan_write(priv, FLEXCAN_MCR, FLEXCAN_MCR_SOFTRST);
-	while (timeout-- &&
-	       (flexcan_read(priv, FLEXCAN_MCR) & FLEXCAN_MCR_SOFTRST))
+	flexcan_write(FLEXCAN_MCR_SOFTRST, &regs->mcr);
+	while (timeout-- && (flexcan_read(&regs->mcr) & FLEXCAN_MCR_SOFTRST))
 		udelay(10);
 
-	if (flexcan_read(priv, FLEXCAN_MCR) & FLEXCAN_MCR_SOFTRST)
+	if (flexcan_read(&regs->mcr) & FLEXCAN_MCR_SOFTRST)
 		return -ETIMEDOUT;
 
 	return 0;
@@ -589,7 +736,8 @@ static int __flexcan_get_berr_counter(const struct net_device *dev,
 				      struct can_berr_counter *bec)
 {
 	const struct flexcan_priv *priv = netdev_priv(dev);
-	u32 reg = flexcan_read(priv, FLEXCAN_ECR);
+	struct flexcan_regs __iomem *regs = priv->regs;
+	u32 reg = flexcan_read(&regs->ecr);
 
 	bec->txerr = (reg >> 0) & 0xff;
 	bec->rxerr = (reg >> 8) & 0xff;
@@ -615,10 +763,12 @@ static int flexcan_get_berr_counter(const struct net_device *dev,
 static int flexcan_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	const struct flexcan_priv *priv = netdev_priv(dev);
-	struct can_frame *cf = (struct can_frame *)skb->data;
-	u32 can_id;
+	struct flexcan_regs __iomem *regs = priv->regs;
+	struct canfd_frame *cf = (struct canfd_frame *)skb->data;
+	u32 can_id, reg_fdctrl;
 	u32 data;
-	int i;
+	u32 ctrl = FLEXCAN_MB_CODE_TX_DATA | (can_len2dlc(cf->len) << 16);
+	u32 i;
 
 	if (can_dropped_invalid_skb(dev, skb))
 		return NETDEV_TX_OK;
@@ -635,27 +785,34 @@ static int flexcan_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (cf->can_id & CAN_RTR_FLAG)
 		ctrl |= FLEXCAN_MB_CNT_RTR;
 
-	if (cf->can_dlc > 0) {
-		data = be32_to_cpup((__be32 *)&cf->data[0]);
-		flexcan_write(data, &priv->tx_mb->data[0]);
-	}
-	if (cf->can_dlc > 4) {
-		data = be32_to_cpup((__be32 *)&cf->data[4]);
-		flexcan_write(data, &priv->tx_mb->data[1]);
+	for (i = 0; i < cf->len; i += 4) {
+		data = be32_to_cpup((__be32 *)&cf->data[i]);
+		flexcan_mb_write(priv, priv->tx_mb_idx, FLEXCAN_MB_DATA(i / 4), data);
 	}
 
 	can_put_echo_skb(skb, dev, 0);
 
-	flexcan_write(can_id, &priv->tx_mb->can_id);
-	flexcan_write(ctrl, &priv->tx_mb->can_ctrl);
+	if (priv->can.ctrlmode & CAN_CTRLMODE_FD) {
+		reg_fdctrl = flexcan_read(&regs->fdctrl) &
+						~FLEXCAN_FDCTRL_FDRATE;
+		if (cf->flags & CANFD_BRS) {
+			reg_fdctrl |= FLEXCAN_FDCTRL_FDRATE;
+			ctrl |= FLEXCAN_MB_CNT_BRS;
+		}
+		flexcan_write(reg_fdctrl, &regs->fdctrl);
+		ctrl |= FLEXCAN_MB_CNT_EDL;
+	}
+
+	flexcan_mb_write(priv, priv->tx_mb_idx, FLEXCAN_MB_ID, can_id);
+	flexcan_mb_write(priv, priv->tx_mb_idx, FLEXCAN_MB_CTRL, ctrl);
 
 	/* Errata ERR005829 step8:
 	 * Write twice INACTIVE(0x8) code to first MB.
 	 */
-	flexcan_write(FLEXCAN_MB_CODE_TX_INACTIVE,
-		      &priv->tx_mb_reserved->can_ctrl);
-	flexcan_write(FLEXCAN_MB_CODE_TX_INACTIVE,
-		      &priv->tx_mb_reserved->can_ctrl);
+	flexcan_mb_write(priv, priv->tx_mb_reserved_idx, FLEXCAN_MB_CTRL,
+				FLEXCAN_MB_CODE_TX_INACTIVE);
+	flexcan_mb_write(priv, priv->tx_mb_reserved_idx, FLEXCAN_MB_CTRL,
+				FLEXCAN_MB_CODE_TX_INACTIVE);
 
 	return NETDEV_TX_OK;
 }
@@ -761,19 +918,19 @@ static inline struct flexcan_priv *rx_offload_to_priv(struct can_rx_offload *off
 }
 
 static unsigned int flexcan_mailbox_read(struct can_rx_offload *offload,
-					 struct can_frame *cf,
+					 struct canfd_frame *cf,
 					 u32 *timestamp, unsigned int n)
 {
 	struct flexcan_priv *priv = rx_offload_to_priv(offload);
 	struct flexcan_regs __iomem *regs = priv->regs;
-	struct flexcan_mb __iomem *mb = &regs->mb[n];
 	u32 reg_ctrl, reg_id, reg_iflag1;
+	u32 i;
 
 	if (priv->devtype_data->quirks & FLEXCAN_QUIRK_USE_OFF_TIMESTAMP) {
 		u32 code;
 
 		do {
-			reg_ctrl = flexcan_read(&mb->can_ctrl);
+			reg_ctrl = flexcan_mb_read(priv, n, FLEXCAN_MB_CTRL);
 		} while (reg_ctrl & FLEXCAN_MB_CODE_RX_BUSY_BIT);
 
 		/* is this MB empty? */
@@ -792,13 +949,13 @@ static unsigned int flexcan_mailbox_read(struct can_rx_offload *offload,
 		if (!(reg_iflag1 & FLEXCAN_IFLAG_RX_FIFO_AVAILABLE))
 			return 0;
 
-		reg_ctrl = flexcan_read(&mb->can_ctrl);
+		reg_ctrl = flexcan_mb_read(priv, n, FLEXCAN_MB_CTRL);
 	}
 
 	/* increase timstamp to full 32 bit */
 	*timestamp = reg_ctrl << 16;
 
-	reg_id = flexcan_read(&mb->can_id);
+	reg_id = flexcan_mb_read(priv, n, FLEXCAN_MB_ID);
 	if (reg_ctrl & FLEXCAN_MB_CNT_IDE)
 		cf->can_id = ((reg_id >> 0) & CAN_EFF_MASK) | CAN_EFF_FLAG;
 	else
@@ -811,7 +968,7 @@ static unsigned int flexcan_mailbox_read(struct can_rx_offload *offload,
 
 	if (reg_ctrl & FLEXCAN_MB_CNT_ESI) {
 		cf->flags |= CANFD_ESI;
-		netdev_warn(dev, "ESI Error\n");
+		netdev_warn(priv->can.dev, "ESI Error\n");
 	}
 
 	if (!(reg_ctrl & FLEXCAN_MB_CNT_EDL) && reg_ctrl & FLEXCAN_MB_CNT_RTR) {
@@ -820,10 +977,9 @@ static unsigned int flexcan_mailbox_read(struct can_rx_offload *offload,
 		if (reg_ctrl & FLEXCAN_MB_CNT_BRS)
 			cf->flags |= CANFD_BRS;
 
-		for (i = 0; i < cf->len; i += 4)
-			*(__be32 *)(cf->data + i) =
-				cpu_to_be32(flexcan_mb_read(priv, index,
-					    FLEXCAN_MB_DATA(i / 4)));
+		for (i = 0; i < cf->len; i += 4) 
+			*(__be32 *)(cf->data + i) =	cpu_to_be32(flexcan_mb_read(priv,  
+							n, FLEXCAN_MB_DATA(i / 4)));
 	}
 
 	/* mark as read */
@@ -901,8 +1057,8 @@ static irqreturn_t flexcan_irq(int irq, void *dev_id)
 		can_led_event(dev, CAN_LED_EVENT_TX);
 
 		/* after sending a RTR frame MB is in RX mode */
-		flexcan_write(FLEXCAN_MB_CODE_TX_INACTIVE,
-			      &priv->tx_mb->can_ctrl);
+		flexcan_mb_write(priv, priv->tx_mb_idx, FLEXCAN_MB_CTRL,
+					FLEXCAN_MB_CODE_TX_INACTIVE);
 		flexcan_write(FLEXCAN_IFLAG_MB(priv->tx_mb_idx), &regs->iflag1);
 		netif_wake_queue(dev);
 	}
@@ -972,9 +1128,10 @@ static void flexcan_set_bittiming(struct net_device *dev)
 	const struct flexcan_priv *priv = netdev_priv(dev);
 	const struct can_bittiming *bt = &priv->can.bittiming;
 	const struct can_bittiming *dbt = &priv->can.data_bittiming;
+	struct flexcan_regs __iomem *regs = priv->regs;
 	u32 reg;
 
-	reg = flexcan_read(priv, FLEXCAN_CTRL);
+	reg = flexcan_read(&regs->ctrl);
 	reg &= ~(FLEXCAN_CTRL_LPB | FLEXCAN_CTRL_SMP | FLEXCAN_CTRL_LOM);
 	if (priv->can.ctrlmode & CAN_CTRLMODE_LOOPBACK)
 		reg |= FLEXCAN_CTRL_LPB;
@@ -982,7 +1139,7 @@ static void flexcan_set_bittiming(struct net_device *dev)
 		reg |= FLEXCAN_CTRL_LOM;
 	if (priv->can.ctrlmode & CAN_CTRLMODE_3_SAMPLES)
 		reg |= FLEXCAN_CTRL_SMP;
-	flexcan_write(priv, FLEXCAN_CTRL, reg);
+	flexcan_write(reg, &regs->ctrl);
 
 	if (priv->can.ctrlmode & CAN_CTRLMODE_FD) {
 		reg = FLEXCAN_CBT_EPRESDIV(bt->brp - 1) |
@@ -991,7 +1148,7 @@ static void flexcan_set_bittiming(struct net_device *dev)
 			FLEXCAN_CBT_ERJW(bt->sjw - 1) |
 			FLEXCAN_CBT_EPROPSEG(bt->prop_seg - 1) |
 			FLEXCAN_CBT_BTF;
-		flexcan_write(priv, FLEXCAN_CBT, reg);
+		flexcan_write(reg, &regs->cbt);
 
 		netdev_dbg(dev, "bt: prediv %d seg1 %d seg2 %d rjw %d propseg %d\n",
 				bt->brp - 1, bt->phase_seg1 - 1, bt->phase_seg2 - 1,
@@ -1002,7 +1159,7 @@ static void flexcan_set_bittiming(struct net_device *dev)
 			FLEXCAN_FDCBT_FPSEG2(dbt->phase_seg2 - 1) |
 			FLEXCAN_FDCBT_FRJW(dbt->sjw - 1) |
 			FLEXCAN_FDCBT_FPROPSEG(dbt->prop_seg);
-		flexcan_write(priv, FLEXCAN_FDCBT, reg);
+		flexcan_write(reg, &regs->fdcbt);
 
 		if (bt->brp != dbt->brp)
 			netdev_warn(dev, "PRESDIV not the same, may risk transfer errors\n");
@@ -1012,12 +1169,12 @@ static void flexcan_set_bittiming(struct net_device *dev)
 			   dbt->sjw - 1, dbt->prop_seg);
 
 		netdev_dbg(dev, "%s: mcr=0x%08x ctrl=0x%08x cbt=0x%08x fdcbt=0x%08x\n",
-			   __func__, flexcan_read(priv, FLEXCAN_MCR),
-			   flexcan_read(priv, FLEXCAN_CTRL),
-			   flexcan_read(priv, FLEXCAN_CBT),
-			   flexcan_read(priv, FLEXCAN_FDCBT));
+			   __func__, flexcan_read(&regs->mcr),
+			   flexcan_read(&regs->ctrl),
+			   flexcan_read(&regs->cbt),
+			   flexcan_read(&regs->fdcbt));	
 	} else {
-		reg = flexcan_read(priv, FLEXCAN_CTRL);
+		reg = flexcan_read(&regs->ctrl);
 		reg &= ~(FLEXCAN_CTRL_PRESDIV(0xff) |
 			 FLEXCAN_CTRL_RJW(0x3) |
 			 FLEXCAN_CTRL_PSEG1(0x7) |
@@ -1029,7 +1186,7 @@ static void flexcan_set_bittiming(struct net_device *dev)
 			FLEXCAN_CTRL_PSEG2(bt->phase_seg2 - 1) |
 			FLEXCAN_CTRL_RJW(bt->sjw - 1) |
 			FLEXCAN_CTRL_PROPSEG(bt->prop_seg - 1);
-		flexcan_write(priv, FLEXCAN_CTRL, reg);
+		flexcan_write(reg, &regs->ctrl);
 
 		netdev_dbg(dev, "bt: prediv %d seg1 %d seg2 %d rjw %d propseg %d\n",
 				bt->brp - 1, bt->phase_seg1 - 1, bt->phase_seg2 - 1,
@@ -1037,8 +1194,7 @@ static void flexcan_set_bittiming(struct net_device *dev)
 
 		/* print chip status */
 		netdev_dbg(dev, "%s: mcr=0x%08x ctrl=0x%08x\n", __func__,
-			   flexcan_read(priv, FLEXCAN_MCR),
-			   flexcan_read(priv, FLEXCAN_CTRL));
+			   flexcan_read(&regs->mcr), flexcan_read(&regs->ctrl));
 	}
 }
 
@@ -1050,6 +1206,7 @@ static void flexcan_set_bittiming(struct net_device *dev)
 static int flexcan_chip_start(struct net_device *dev)
 {
 	struct flexcan_priv *priv = netdev_priv(dev);
+	struct flexcan_regs __iomem *regs = priv->regs;
 	u32 reg_mcr, reg_ctrl, reg_ctrl2, reg_mecr, reg_fdctrl;
 	int err, i;
 
@@ -1076,9 +1233,8 @@ static int flexcan_chip_start(struct net_device *dev)
 	 * enable individual RX masking
 	 * choose format C
 	 * set max mailbox number
-	 * enable self wakeup
 	 */
-	reg_mcr = flexcan_read(priv, FLEXCAN_MCR);
+	reg_mcr = flexcan_read(&regs->mcr);
 	reg_mcr &= ~FLEXCAN_MCR_MAXMB(0xff);
 	reg_mcr |= FLEXCAN_MCR_FRZ | FLEXCAN_MCR_HALT | FLEXCAN_MCR_SUPV |
 		FLEXCAN_MCR_WRN_EN | FLEXCAN_MCR_SRX_DIS | FLEXCAN_MCR_IRMQ |
@@ -1091,8 +1247,12 @@ static int flexcan_chip_start(struct net_device *dev)
 		reg_mcr |= FLEXCAN_MCR_FEN |
 			FLEXCAN_MCR_MAXMB(priv->tx_mb_idx);
 	}
+
+	/* enable self wakeup */
+	reg_mcr |= FLEXCAN_MCR_SLF_WAK;
+
 	netdev_dbg(dev, "%s: writing mcr=0x%08x", __func__, reg_mcr);
-	flexcan_write(priv, FLEXCAN_MCR, reg_mcr);
+	flexcan_write(reg_mcr, &regs->mcr);
 
 	/* CTRL
 	 *
@@ -1105,7 +1265,7 @@ static int flexcan_chip_start(struct net_device *dev)
 	 * enable bus off interrupt
 	 * (== FLEXCAN_CTRL_ERR_STATE)
 	 */
-	reg_ctrl = flexcan_read(priv, FLEXCAN_CTRL);
+	reg_ctrl = flexcan_read(&regs->ctrl);
 	reg_ctrl &= ~FLEXCAN_CTRL_TSYN;
 	reg_ctrl |= FLEXCAN_CTRL_BOFF_REC | FLEXCAN_CTRL_LBUF |
 		FLEXCAN_CTRL_ERR_STATE;
@@ -1125,7 +1285,13 @@ static int flexcan_chip_start(struct net_device *dev)
 	/* leave interrupts disabled for now */
 	reg_ctrl &= ~FLEXCAN_CTRL_ERR_ALL;
 	netdev_dbg(dev, "%s: writing ctrl=0x%08x", __func__, reg_ctrl);
-	flexcan_write(priv, FLEXCAN_CTRL, reg_ctrl);
+	flexcan_write(reg_ctrl, &regs->ctrl);
+
+	if ((priv->devtype_data->quirks & FLEXCAN_QUIRK_ENABLE_EACEN_RRS)) {
+		reg_ctrl2 = flexcan_read(&regs->ctrl2);
+		reg_ctrl2 |= FLEXCAN_CTRL2_EACEN | FLEXCAN_CTRL2_RRS;
+		flexcan_write(reg_ctrl2, &regs->ctrl2);
+	}
 
 	/* CAN FD initialization
 	 *
@@ -1142,13 +1308,13 @@ static int flexcan_chip_start(struct net_device *dev)
 	}
 
 	if (priv->can.ctrlmode & CAN_CTRLMODE_FD) {
-		reg_fdctrl = flexcan_read(priv, FLEXCAN_FDCTRL) &
+		reg_fdctrl = flexcan_read(&regs->fdctrl) &
 			     ~FLEXCAN_CANFD_MBDSR_MASK;
 		reg_fdctrl |= FLEXCAN_CANFD_MBDSR_DEFAULT <<
 			      FLEXCAN_CANFD_MBDSR_SHIFT;
-		flexcan_write(priv, FLEXCAN_FDCTRL, reg_fdctrl);
-		reg_mcr = flexcan_read(priv, FLEXCAN_MCR);
-		flexcan_write(priv, FLEXCAN_MCR, reg_mcr | FLEXCAN_MCR_FDEN);
+		flexcan_write(reg_fdctrl, &regs->fdctrl);
+		reg_mcr = flexcan_read(&regs->mcr);
+		flexcan_write(reg_mcr | FLEXCAN_MCR_FDEN, &regs->mcr);
 
 		priv->mb_size = FLEXCAN_MB_FD_SIZE;
 		priv->mb_num = FLEXCAN_MB_FD_NUM;
@@ -1157,42 +1323,36 @@ static int flexcan_chip_start(struct net_device *dev)
 		priv->mb_num = FLEXCAN_MB_NUM;
 	}
 
-	if ((priv->devtype_data->quirks & FLEXCAN_QUIRK_ENABLE_EACEN_RRS)) {
-		reg_ctrl2 = flexcan_read(&regs->ctrl2);
-		reg_ctrl2 |= FLEXCAN_CTRL2_EACEN | FLEXCAN_CTRL2_RRS;
-		flexcan_write(reg_ctrl2, &regs->ctrl2);
-	}
-
 	/* clear and invalidate all mailboxes first */
-	for (i = priv->tx_mb_idx; i < ARRAY_SIZE(regs->mb); i++) {
-		flexcan_write(FLEXCAN_MB_CODE_RX_INACTIVE,
-			      &regs->mb[i].can_ctrl);
+	for (i = priv->tx_mb_idx; i < priv->mb_num ; i++) {
+		flexcan_mb_write(priv, i, FLEXCAN_MB_CTRL,
+					FLEXCAN_MB_CODE_RX_INACTIVE);
 	}
 
 	if (priv->devtype_data->quirks & FLEXCAN_QUIRK_USE_OFF_TIMESTAMP) {
 		for (i = priv->offload.mb_first; i <= priv->offload.mb_last; i++)
-			flexcan_write(FLEXCAN_MB_CODE_RX_EMPTY,
-				      &regs->mb[i].can_ctrl);
+			flexcan_mb_write(priv, i, FLEXCAN_MB_CTRL,
+						FLEXCAN_MB_CODE_RX_EMPTY);
 	}
 
 	/* Errata ERR005829: mark first TX mailbox as INACTIVE */
-	flexcan_write(FLEXCAN_MB_CODE_TX_INACTIVE,
-		      &priv->tx_mb_reserved->can_ctrl);
+	flexcan_mb_write(priv, priv->tx_mb_reserved_idx, FLEXCAN_MB_CTRL,
+					FLEXCAN_MB_CODE_TX_INACTIVE);
 
 	/* mark TX mailbox as INACTIVE */
-	flexcan_write(FLEXCAN_MB_CODE_TX_INACTIVE,
-		      &priv->tx_mb->can_ctrl);
+	flexcan_mb_write(priv, priv->tx_mb_idx, FLEXCAN_MB_CTRL,
+					FLEXCAN_MB_CODE_TX_INACTIVE);
 
 	/* acceptance mask/acceptance code (accept everything) */
-	flexcan_write(priv, FLEXCAN_RXGMASK, 0x0);
-	flexcan_write(priv, FLEXCAN_RX14MASK, 0x0);
-	flexcan_write(priv, FLEXCAN_RX15MASK, 0x0);
+	flexcan_write(0x0, &regs->rxgmask);
+	flexcan_write(0x0, &regs->rx14mask);
+	flexcan_write(0x0, &regs->rx15mask);
 
 	if (priv->devtype_data->quirks & FLEXCAN_QUIRK_DISABLE_RXFG)
-		flexcan_write(priv, FLEXCAN_RXFGMASK, 0x0);
+		flexcan_write(0x0, &regs->rxfgmask);
 
 	/* clear acceptance filters */
-	for (i = 0; i < ARRAY_SIZE(regs->mb); i++)
+	for (i = priv->tx_mb_idx; i < priv->mb_num ; i++)
 		flexcan_write(0, &regs->rximr[i]);
 
 	/* On Vybrid, disable memory error detection interrupts
@@ -1206,16 +1366,16 @@ static int flexcan_chip_start(struct net_device *dev)
 		 * and Correction of Memory Errors" to write to
 		 * MECR register
 		 */
-		reg_ctrl2 = flexcan_read(priv, FLEXCAN_CTRL2);
+		reg_ctrl2 = flexcan_read(&regs->ctrl2);
 		reg_ctrl2 |= FLEXCAN_CTRL2_ECRWRE;
-		flexcan_write(priv, FLEXCAN_CTRL2, reg_ctrl2);
+		flexcan_write(reg_ctrl2, &regs->ctrl2);
 
-		reg_mecr = flexcan_read(priv, FLEXCAN_MECR);
+		reg_mecr = flexcan_read(&regs->mecr);
 		reg_mecr &= ~FLEXCAN_MECR_ECRWRDIS;
-		flexcan_write(priv, FLEXCAN_MECR, reg_mecr);
+		flexcan_write(reg_mecr, &regs->mecr);
 		reg_mecr &= ~(FLEXCAN_MECR_NCEFAFRZ | FLEXCAN_MECR_HANCEI_MSK |
 			      FLEXCAN_MECR_FANCEI_MSK);
-		flexcan_write(priv, FLEXCAN_MECR, reg_mecr);
+		flexcan_write(reg_mecr, &regs->mecr);
 	}
 
 	err = flexcan_transceiver_enable(priv);
@@ -1238,8 +1398,7 @@ static int flexcan_chip_start(struct net_device *dev)
 
 	/* print chip status */
 	netdev_dbg(dev, "%s: reading mcr=0x%08x ctrl=0x%08x\n", __func__,
-		   flexcan_read(priv, FLEXCAN_MCR),
-		   flexcan_read(priv, FLEXCAN_CTRL));
+		   flexcan_read(&regs->mcr), flexcan_read(&regs->ctrl));
 
 	return 0;
 
@@ -1258,6 +1417,7 @@ static int flexcan_chip_start(struct net_device *dev)
 static void flexcan_chip_stop(struct net_device *dev)
 {
 	struct flexcan_priv *priv = netdev_priv(dev);
+	struct flexcan_regs __iomem *regs = priv->regs;
 
 	/* freeze + disable module */
 	flexcan_chip_freeze(priv);
@@ -1295,6 +1455,8 @@ static int flexcan_open(struct net_device *dev)
 	if (err)
 		goto out_free_irq;
 
+	device_set_wakeup_capable(priv->dev, priv->wakeup);
+
 	can_led_event(dev, CAN_LED_EVENT_OPEN);
 
 	can_rx_offload_enable(&priv->offload);
@@ -1324,6 +1486,8 @@ static int flexcan_close(struct net_device *dev)
 	free_irq(dev->irq, dev);
 
 	close_candev(dev);
+
+	device_set_wakeup_capable(priv->dev, false);
 
 	can_led_event(dev, CAN_LED_EVENT_STOP);
 
@@ -1362,43 +1526,40 @@ static const struct net_device_ops flexcan_netdev_ops = {
 static int register_flexcandev(struct net_device *dev)
 {
 	struct flexcan_priv *priv = netdev_priv(dev);
+	struct flexcan_regs __iomem *regs = priv->regs;
 	u32 reg, err;
 
 	/* select "bus clock", chip must be disabled */
 	err = flexcan_chip_disable(priv);
 	if (err)
 		return err;
-
-	reg = flexcan_read(priv, FLEXCAN_CTRL);
-	reg |= FLEXCAN_CTRL_CLK_SRC;
-	flexcan_write(priv, FLEXCAN_CTRL, reg);
+	
+	if (priv->clk_src) {
+		reg = flexcan_read(&regs->ctrl);
+		reg |= FLEXCAN_CTRL_CLK_SRC;
+		flexcan_write(reg, &regs->ctrl);
+	}
 
 	err = flexcan_chip_enable(priv);
 	if (err)
 		goto out_chip_disable;
 
 	/* set freeze, halt and activate FIFO, restrict register access */
-	reg = flexcan_read(priv, FLEXCAN_MCR);
+	reg = flexcan_read(&regs->mcr);
 	reg |= FLEXCAN_MCR_FRZ | FLEXCAN_MCR_HALT |
-	       FLEXCAN_MCR_SUPV;
-
-	if (!priv->mb_mode)
-		reg |= FLEXCAN_MCR_FEN;
-
-	flexcan_write(priv, FLEXCAN_MCR, reg);
+		FLEXCAN_MCR_FEN | FLEXCAN_MCR_SUPV;
+	flexcan_write(reg, &regs->mcr);
 
 	/* Currently we only support newer versions of this core
 	 * featuring a RX hardware FIFO (although this driver doesn't
 	 * make use of it on some cores). Older cores, found on some
 	 * Coldfire derivates are not tested.
 	 */
-	if (!priv->mb_mode) {
-		reg = flexcan_read(priv, FLEXCAN_MCR);
-		if (!(reg & FLEXCAN_MCR_FEN)) {
-			netdev_err(dev, "Could not enable RX FIFO, unsupported core\n");
-			err = -ENODEV;
-			goto out_chip_disable;
-		}
+	reg = flexcan_read(&regs->mcr);
+	if (!(reg & FLEXCAN_MCR_FEN)) {
+		netdev_err(dev, "Could not enable RX FIFO, unsupported core\n");
+		err = -ENODEV;
+		goto out_chip_disable;
 	}
 
 	err = register_candev(dev);
@@ -1414,6 +1575,34 @@ static void unregister_flexcandev(struct net_device *dev)
 {
 	unregister_candev(dev);
 }
+
+#ifdef CONFIG_ARCH_MXC_ARM64
+static int imx8_sc_ipc_fetch(struct platform_device *pdev)
+{
+	struct net_device *dev = platform_get_drvdata(pdev);
+	struct flexcan_priv *priv;
+	sc_err_t sc_err = SC_ERR_NONE;
+	u32 mu_id;
+
+	priv = netdev_priv(dev);
+
+	sc_err = sc_ipc_getMuID(&mu_id);
+	if (sc_err != SC_ERR_NONE) {
+		pr_err("FLEXCAN ipg stop: Get MU ID failed\n");
+		return sc_err;
+	}
+
+	sc_err = sc_ipc_open(&priv->ipc_handle, mu_id);
+	if (sc_err != SC_ERR_NONE) {
+		pr_err("FLEXCAN ipg stop: Open MU channel failed\n");
+		return sc_err;
+	}
+
+	return sc_err;
+}
+#else
+static int imx8_sc_ipc_fetch(struct platform_device *pdev) { return 0; }
+#endif
 
 static int flexcan_of_parse_stop_mode(struct platform_device *pdev)
 {
@@ -1491,10 +1680,10 @@ static int flexcan_probe(struct platform_device *pdev)
 	struct regulator *reg_xceiver;
 	struct resource *mem;
 	struct clk *clk_ipg = NULL, *clk_per = NULL;
-	void __iomem *regs;
+	struct flexcan_regs __iomem *regs;
 	int err, irq;
 	u32 clock_freq = 0;
-	int wakeup = 1;
+	u32 clk_src = 1;
 
 	reg_xceiver = devm_regulator_get(&pdev->dev, "xceiver");
 	if (PTR_ERR(reg_xceiver) == -EPROBE_DEFER)
@@ -1502,9 +1691,12 @@ static int flexcan_probe(struct platform_device *pdev)
 	else if (IS_ERR(reg_xceiver))
 		reg_xceiver = NULL;
 
-	if (pdev->dev.of_node)
+	if (pdev->dev.of_node) {
 		of_property_read_u32(pdev->dev.of_node,
 				     "clock-frequency", &clock_freq);
+		of_property_read_u32(pdev->dev.of_node,
+				   	 "clk-src", &clk_src);
+	}
 
 	if (!clock_freq) {
 		clk_ipg = devm_clk_get(&pdev->dev, "ipg");
@@ -1553,6 +1745,7 @@ static int flexcan_probe(struct platform_device *pdev)
 
 	priv = netdev_priv(dev);
 	priv->dev = &pdev->dev;
+	priv->clk_src = clk_src;
 	priv->can.clock.freq = clock_freq;
 	priv->can.bittiming_const = &flexcan_bittiming_const;
 	priv->can.data_bittiming_const = &flexcan_fd_data_bittiming_const;
@@ -1561,20 +1754,39 @@ static int flexcan_probe(struct platform_device *pdev)
 	priv->can.ctrlmode_supported = CAN_CTRLMODE_LOOPBACK |
 		CAN_CTRLMODE_LISTENONLY	| CAN_CTRLMODE_3_SAMPLES |
 		CAN_CTRLMODE_BERR_REPORTING;
+	priv->regs = regs;
 	priv->base = regs;
 	priv->clk_ipg = clk_ipg;
 	priv->clk_per = clk_per;
+	priv->pdata = dev_get_platdata(&pdev->dev);
 	priv->devtype_data = devtype_data;
 	priv->reg_xceiver = reg_xceiver;
+	priv->offload.is_canfd = false;
 
 	if (priv->devtype_data->quirks & FLEXCAN_QUIRK_USE_OFF_TIMESTAMP) {
-		priv->tx_mb_idx = FLEXCAN_TX_MB_OFF_TIMESTAMP;
-		priv->tx_mb_reserved = &regs->mb[FLEXCAN_TX_MB_RESERVED_OFF_TIMESTAMP];
+		if (priv->devtype_data->quirks & FLEXCAN_QUIRK_TIMESTAMP_SUPPORT_FD) {
+			if (!(of_find_property(np, "disable-fd-mode", NULL))) {
+				priv->can.ctrlmode_supported |= CAN_CTRLMODE_FD;
+				priv->can.bittiming_const = &flexcan_fd_bittiming_const;
+				priv->offload.is_canfd = true;
+			}
+
+			priv->tx_mb_reserved_idx = FLEXCAN_TX_MB_RESERVED_OFF_TIMESTAMP_FD;
+			priv->tx_mb_idx = FLEXCAN_TX_MB_OFF_TIMESTAMP_FD;
+		} else {
+			priv->tx_mb_reserved_idx = FLEXCAN_TX_MB_RESERVED_OFF_TIMESTAMP;
+			priv->tx_mb_idx = FLEXCAN_TX_MB_OFF_TIMESTAMP;
+		}
 	} else {
+		if (priv->devtype_data->quirks & FLEXCAN_QUIRK_TIMESTAMP_SUPPORT_FD) {
+			dev_err(&pdev->dev, "canfd mode can't work on fifo mode\n");
+			err = -EINVAL;
+			goto failed_offload;
+		}
+
+		priv->tx_mb_reserved_idx = FLEXCAN_TX_MB_RESERVED_OFF_FIFO;
 		priv->tx_mb_idx = FLEXCAN_TX_MB_OFF_FIFO;
-		priv->tx_mb_reserved = &regs->mb[FLEXCAN_TX_MB_RESERVED_OFF_FIFO];
 	}
-	priv->tx_mb = &regs->mb[priv->tx_mb_idx];
 
 	priv->reg_imask1_default = FLEXCAN_IFLAG_MB(priv->tx_mb_idx);
 	priv->reg_imask2_default = 0;
@@ -1584,8 +1796,13 @@ static int flexcan_probe(struct platform_device *pdev)
 	if (priv->devtype_data->quirks & FLEXCAN_QUIRK_USE_OFF_TIMESTAMP) {
 		u64 imask;
 
-		priv->offload.mb_first = FLEXCAN_RX_MB_OFF_TIMESTAMP_FIRST;
-		priv->offload.mb_last = FLEXCAN_RX_MB_OFF_TIMESTAMP_LAST;
+		if (priv->devtype_data->quirks & FLEXCAN_QUIRK_TIMESTAMP_SUPPORT_FD) {
+			priv->offload.mb_first = FLEXCAN_RX_MB_OFF_TIMESTAMP_FD_FIRST;
+			priv->offload.mb_last = FLEXCAN_RX_MB_OFF_TIMESTAMP_FD_LAST;
+		} else {
+			priv->offload.mb_first = FLEXCAN_RX_MB_OFF_TIMESTAMP_FIRST;
+			priv->offload.mb_last = FLEXCAN_RX_MB_OFF_TIMESTAMP_LAST;
+		}
 
 		imask = GENMASK_ULL(priv->offload.mb_last, priv->offload.mb_first);
 		priv->reg_imask1_default |= imask;
@@ -1599,29 +1816,6 @@ static int flexcan_probe(struct platform_device *pdev)
 	}
 	if (err)
 		goto failed_offload;
-
-	if (priv->devtype_data->quirks & FLEXCAN_QUIRK_DISABLE_RX_FIFO) {
-		priv->mb_mode = true;
-		priv->rx_int = FLEXCAN_RX_BUF_INT;
-		priv->iflag_default = FLEXCAN_IFLAG_DEFAULT_MB;
-	} else {
-		priv->mb_mode = false;
-		priv->rx_int = FLEXCAN_IFLAG_RX_FIFO_AVAILABLE;
-		priv->iflag_default = FLEXCAN_IFLAG_DEFAULT_FIFO;
-	}
-
-	if (priv->devtype_data->quirks & FLEXCAN_QUIRK_SUPPORT_CANFD) {
-		if (!(of_find_property(np, "disable-fd-mode", NULL))) {
-			priv->can.ctrlmode_supported |= CAN_CTRLMODE_FD;
-			priv->can.bittiming_const = &flexcan_fd_bittiming_const;
-			if (!(priv->devtype_data->quirks &
-			      FLEXCAN_QUIRK_DISABLE_RX_FIFO)) {
-				dev_err(&pdev->dev, "canfd mode can't work on fifo mode\n");
-				err = -EINVAL;
-				goto failed_register;
-			}
-		}
-	}
 
 	pm_runtime_enable(&pdev->dev);
 	err = pm_runtime_get_sync(&pdev->dev);
@@ -1638,26 +1832,33 @@ static int flexcan_probe(struct platform_device *pdev)
 
 	devm_can_led_init(dev);
 
-	if (priv->devtype_data->quirks & FLEXCAN_QUIRK_DISABLE_RXFG) {
+	priv->wakeup = true;
+	if (priv->devtype_data->quirks & FLEXCAN_QUIRK_TIMESTAMP_SUPPORT_FD) {
+		err = imx8_sc_ipc_fetch(pdev);
+		if (err) {
+			priv->wakeup = false;
+			dev_dbg(&pdev->dev, "failed to fetch scu ipc\n");
+		}
+	} else if (priv->devtype_data->quirks & FLEXCAN_QUIRK_DISABLE_RXFG) {
 		err = flexcan_of_parse_stop_mode(pdev);
 		if (err) {
-			wakeup = 0;
+			priv->wakeup = false;;
 			dev_dbg(&pdev->dev, "failed to parse stop-mode\n");
 		}
-
 	}
-
-	device_set_wakeup_capable(&pdev->dev, wakeup);
 
 	pm_runtime_put(&pdev->dev);
 
 	dev_info(&pdev->dev, "device registered (reg_base=%p, irq=%d)\n",
-		 priv->base, dev->irq);
+		 priv->regs, dev->irq);
 
 	return 0;
 
+ failed_rpm_put:
+	pm_runtime_put(priv->dev);
+ failed_rpm_disable:
+	pm_runtime_disable(&pdev->dev);
  failed_offload:
- failed_register:
 	free_candev(dev);
 
 	return err;
@@ -1668,7 +1869,11 @@ static int flexcan_remove(struct platform_device *pdev)
 	struct net_device *dev = platform_get_drvdata(pdev);
 	struct flexcan_priv *priv = netdev_priv(dev);
 
+#ifdef CONFIG_ARCH_MXC_ARM64
+	sc_ipc_close(priv->ipc_handle);
+#endif
 	unregister_flexcandev(dev);
+	pm_runtime_disable(&pdev->dev);
 	can_rx_offload_del(&priv->offload);
 	free_candev(dev);
 
@@ -1694,11 +1899,11 @@ static int __maybe_unused flexcan_suspend(struct device *device)
 		} else {
 			flexcan_chip_stop(dev);
 			ret = pm_runtime_force_suspend(device);
+
+			pinctrl_pm_select_sleep_state(device);
 		}
 	}
 	priv->can.state = CAN_STATE_SLEEPING;
-
-	pinctrl_pm_select_sleep_state(device);
 
 	return ret;
 }
@@ -1709,23 +1914,21 @@ static int __maybe_unused flexcan_resume(struct device *device)
 	struct flexcan_priv *priv = netdev_priv(dev);
 	int err = 0;
 
-	pinctrl_pm_select_default_state(device);
-
 	priv->can.state = CAN_STATE_ERROR_ACTIVE;
 	if (netif_running(dev)) {
-		err = pm_runtime_force_resume(device);
-		if (err)
-			return err;
-
 		netif_device_attach(dev);
 		netif_start_queue(dev);
 
 		if (device_may_wakeup(device)) {
-			disable_irq_wake(dev->irq);
-			flexcan_exit_stop_mode(priv);
-		}
+			flexcan_wake_mask_disable(priv);
+		} else {
+			pinctrl_pm_select_default_state(device);
 
-		err = flexcan_chip_start(dev);
+			err = pm_runtime_force_resume(device);
+			if (err)
+				return err;
+			err = flexcan_chip_start(dev);
+		}
 	}
 
 	return err;
@@ -1751,9 +1954,35 @@ static int __maybe_unused flexcan_runtime_resume(struct device *device)
 	return 0;
 }
 
+static int __maybe_unused flexcan_noirq_suspend(struct device *device)
+{
+	struct net_device *dev = dev_get_drvdata(device);
+	struct flexcan_priv *priv = netdev_priv(dev);
+
+	if (netif_running(dev) && device_may_wakeup(device)) {
+		flexcan_wake_mask_enable(priv);
+	}
+
+	return 0;
+}
+
+static int __maybe_unused flexcan_noirq_resume(struct device *device)
+{
+	struct net_device *dev = dev_get_drvdata(device);
+	struct flexcan_priv *priv = netdev_priv(dev);
+
+	if (netif_running(dev) && device_may_wakeup(device)) {
+		disable_irq_wake(dev->irq);
+		flexcan_exit_stop_mode(priv);
+	}
+
+	return 0;
+}
+
 static const struct dev_pm_ops flexcan_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(flexcan_suspend, flexcan_resume)
 	SET_RUNTIME_PM_OPS(flexcan_runtime_suspend, flexcan_runtime_resume, NULL)
+	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(flexcan_noirq_suspend, flexcan_noirq_resume)
 };
 
 static struct platform_driver flexcan_driver = {

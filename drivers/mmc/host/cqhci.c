@@ -76,7 +76,7 @@ static void setup_trans_desc(struct cqhci_host *cq_host, u8 tag)
 	if (cq_host->link_desc_len > 8)
 		*(link_temp + 8) = 0;
 
-	if (tag == DCMD_SLOT) {
+	if (tag == DCMD_SLOT && (cq_host->mmc->caps2 & MMC_CAP2_CQE_DCMD)) {
 		*link_temp = CQHCI_VALID(0) | CQHCI_ACT(0) | CQHCI_END(1);
 		return;
 	}
@@ -440,8 +440,8 @@ static int cqhci_dma_map(struct mmc_host *host, struct mmc_request *mrq)
 	return sg_count;
 }
 
-static void cqhci_set_tran_desc(u8 *desc, dma_addr_t addr, int len,
-				bool end, bool dma64)
+static void cqhci_set_tran_desc(u8 *desc, dma_addr_t addr, int len, bool end,
+				bool dma64)
 {
 	__le32 *attr = (__le32 __force *)desc;
 
@@ -453,9 +453,11 @@ static void cqhci_set_tran_desc(u8 *desc, dma_addr_t addr, int len,
 
 	if (dma64) {
 		__le64 *dataddr = (__le64 __force *)(desc + 4);
+
 		dataddr[0] = cpu_to_le64(addr);
 	} else {
 		__le32 *dataddr = (__le32 __force *)(desc + 4);
+
 		dataddr[0] = cpu_to_le32(addr);
 	}
 }
@@ -629,8 +631,8 @@ static void cqhci_recovery_needed(struct mmc_host *mmc, struct mmc_request *mrq,
 		cq_host->recovery_halt = true;
 		pr_debug("%s: cqhci: recovery needed\n", mmc_hostname(mmc));
 		wake_up(&cq_host->wait_queue);
-		if (notify && mmc->cqe_recovery_notifier)
-			mmc->cqe_recovery_notifier(mmc, mrq);
+		if (notify && mrq->recovery_notifier)
+			mrq->recovery_notifier(mrq);
 	}
 }
 

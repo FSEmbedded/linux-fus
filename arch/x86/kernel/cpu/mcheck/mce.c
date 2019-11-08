@@ -60,9 +60,6 @@ static DEFINE_MUTEX(mce_log_mutex);
 /* sysfs synchronization */
 static DEFINE_MUTEX(mce_sysfs_mutex);
 
-/* sysfs synchronization */
-static DEFINE_MUTEX(mce_sysfs_mutex);
-
 #define CREATE_TRACE_POINTS
 #include <trace/events/mce.h>
 

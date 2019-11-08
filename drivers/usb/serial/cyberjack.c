@@ -50,7 +50,6 @@
 #define CYBERJACK_PRODUCT_ID	0x0100
 
 /* Function prototypes */
-static int cyberjack_attach(struct usb_serial *serial);
 static int cyberjack_port_probe(struct usb_serial_port *port);
 static int cyberjack_port_remove(struct usb_serial_port *port);
 static int  cyberjack_open(struct tty_struct *tty,
@@ -101,14 +100,6 @@ struct cyberjack_private {
 	short		wrfilled;	/* Overall data size we already got */
 	short		wrsent;		/* Data already sent */
 };
-
-static int cyberjack_attach(struct usb_serial *serial)
-{
-	if (serial->num_bulk_out < serial->num_ports)
-		return -ENODEV;
-
-	return 0;
-}
 
 static int cyberjack_port_probe(struct usb_serial_port *port)
 {

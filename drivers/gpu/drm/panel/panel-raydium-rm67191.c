@@ -239,23 +239,61 @@ static int color_format_from_dsi_format(enum mipi_dsi_pixel_format format)
 static int rad_panel_prepare(struct drm_panel *panel)
 {
 	struct rad_panel *rad = to_rad_panel(panel);
-	struct mipi_dsi_device *dsi = rad->dsi;
-	struct device *dev = &dsi->dev;
-	int color_format = color_format_from_dsi_format(dsi->format);
-	int ret;
 
 	if (rad->prepared)
 		return 0;
 
-	DRM_DEV_DEBUG_DRIVER(dev, "\n");
-
 	if (rad->reset != NULL) {
-		gpiod_set_value(rad->reset, 1);
-		usleep_range(10000, 15000);
 		gpiod_set_value(rad->reset, 0);
 		usleep_range(5000, 10000);
 		gpiod_set_value(rad->reset, 1);
 		usleep_range(20000, 25000);
+	}
+
+	rad->prepared = true;
+
+	return 0;
+}
+
+static int rad_panel_unprepare(struct drm_panel *panel)
+{
+	struct rad_panel *rad = to_rad_panel(panel);
+	struct device *dev = &rad->dsi->dev;
+
+	if (!rad->prepared)
+		return 0;
+
+	if (rad->enabled) {
+		DRM_DEV_ERROR(dev, "Panel still enabled!\n");
+		return -EPERM;
+	}
+
+	if (rad->reset != NULL) {
+		gpiod_set_value(rad->reset, 0);
+		usleep_range(15000, 17000);
+		gpiod_set_value(rad->reset, 1);
+	}
+
+	rad->prepared = false;
+
+	return 0;
+}
+
+static int rad_panel_enable(struct drm_panel *panel)
+{
+	struct rad_panel *rad = to_rad_panel(panel);
+	struct mipi_dsi_device *dsi = rad->dsi;
+	struct device *dev = &dsi->dev;
+	int color_format = color_format_from_dsi_format(dsi->format);
+	u16 brightness;
+	int ret;
+
+	if (rad->enabled)
+		return 0;
+
+	if (!rad->prepared) {
+		DRM_DEV_ERROR(dev, "Panel not prepared!\n");
+		return -EPERM;
 	}
 
 	dsi->mode_flags |= MIPI_DSI_MODE_LPM;
@@ -307,7 +345,8 @@ static int rad_panel_prepare(struct drm_panel *panel)
 		goto fail;
 	}
 	/* Set display brightness */
-	ret = mipi_dsi_dcs_set_display_brightness(dsi, 0x20);
+	brightness = rad->backlight->props.brightness;
+	ret = mipi_dsi_dcs_set_display_brightness(dsi, brightness);
 	if (ret < 0) {
 		DRM_DEV_ERROR(dev, "Failed to set display brightness (%d)\n",
 			      ret);
@@ -328,7 +367,10 @@ static int rad_panel_prepare(struct drm_panel *panel)
 		goto fail;
 	}
 
-	rad->prepared = true;
+	rad->backlight->props.power = FB_BLANK_UNBLANK;
+	backlight_update_status(rad->backlight);
+
+	rad->enabled = true;
 
 	return 0;
 
@@ -339,69 +381,33 @@ fail:
 	return ret;
 }
 
-static int rad_panel_unprepare(struct drm_panel *panel)
+static int rad_panel_disable(struct drm_panel *panel)
 {
 	struct rad_panel *rad = to_rad_panel(panel);
 	struct mipi_dsi_device *dsi = rad->dsi;
 	struct device *dev = &dsi->dev;
 	int ret;
 
-	if (!rad->prepared)
+	if (!rad->enabled)
 		return 0;
-
-	DRM_DEV_DEBUG_DRIVER(dev, "\n");
 
 	dsi->mode_flags |= MIPI_DSI_MODE_LPM;
 
 	ret = mipi_dsi_dcs_set_display_off(dsi);
-	if (ret < 0)
+	if (ret < 0) {
 		DRM_DEV_ERROR(dev, "Failed to set display OFF (%d)\n", ret);
+		return ret;
+	}
 
 	usleep_range(5000, 10000);
 
 	ret = mipi_dsi_dcs_enter_sleep_mode(dsi);
-	if (ret < 0)
+	if (ret < 0) {
 		DRM_DEV_ERROR(dev, "Failed to enter sleep mode (%d)\n", ret);
-
-	usleep_range(10000, 15000);
-
-	if (rad->reset != NULL) {
-		gpiod_set_value(rad->reset, 0);
-		usleep_range(10000, 15000);
+		return ret;
 	}
 
-	rad->prepared = false;
-
-	return 0;
-}
-
-static int rad_panel_enable(struct drm_panel *panel)
-{
-	struct rad_panel *rad = to_rad_panel(panel);
-	struct device *dev = &rad->dsi->dev;
-
-	if (rad->enabled)
-		return 0;
-
-	DRM_DEV_DEBUG_DRIVER(dev, "\n");
-
-	rad->backlight->props.power = FB_BLANK_UNBLANK;
-	backlight_update_status(rad->backlight);
-
-	rad->enabled = true;
-
-	return 0;
-}
-
-static int rad_panel_disable(struct drm_panel *panel)
-{
-	struct rad_panel *rad = to_rad_panel(panel);
-	struct device *dev = &rad->dsi->dev;
-
-	if (!rad->enabled)
-		return 0;
-
-	DRM_DEV_DEBUG_DRIVER(dev, "\n");
+	usleep_range(10000, 15000);
 
 	rad->backlight->props.power = FB_BLANK_POWERDOWN;
 	backlight_update_status(rad->backlight);
@@ -538,6 +544,7 @@ static int rad_panel_probe(struct mipi_dsi_device *dsi)
 	struct rad_panel *panel;
 	struct backlight_properties bl_props;
 	int ret;
+	u32 video_mode;
 
 	panel = devm_kzalloc(&dsi->dev, sizeof(*panel), GFP_KERNEL);
 	if (!panel)
@@ -550,6 +557,27 @@ static int rad_panel_probe(struct mipi_dsi_device *dsi)
 	dsi->format = MIPI_DSI_FMT_RGB888;
 	dsi->mode_flags =  MIPI_DSI_MODE_VIDEO_HSE | MIPI_DSI_MODE_VIDEO |
 			   MIPI_DSI_CLOCK_NON_CONTINUOUS;
+
+	ret = of_property_read_u32(np, "video-mode", &video_mode);
+	if (!ret) {
+		switch (video_mode) {
+		case 0:
+			/* burst mode */
+			dsi->mode_flags |= MIPI_DSI_MODE_VIDEO_BURST;
+			break;
+		case 1:
+			/* non-burst mode with sync event */
+			break;
+		case 2:
+			/* non-burst mode with sync pulse */
+			dsi->mode_flags |= MIPI_DSI_MODE_VIDEO_SYNC_PULSE;
+			break;
+		default:
+			dev_warn(dev, "invalid video mode %d\n", video_mode);
+			break;
+
+		}
+	}
 
 	ret = of_property_read_u32(np, "dsi-lanes", &dsi->lanes);
 	if (ret < 0) {
@@ -620,11 +648,6 @@ static int rad_panel_remove(struct mipi_dsi_device *dsi)
 	struct device *dev = &dsi->dev;
 	int ret;
 
-	ret = rad_panel_unprepare(&rad->base);
-	ret |= rad_panel_disable(&rad->base);
-	if (ret < 0)
-		DRM_DEV_ERROR(dev, "Failed to disable panel (%d)\n", ret);
-
 	ret = mipi_dsi_detach(dsi);
 	if (ret < 0)
 		DRM_DEV_ERROR(dev, "Failed to detach from host (%d)\n",
@@ -642,8 +665,8 @@ static void rad_panel_shutdown(struct mipi_dsi_device *dsi)
 {
 	struct rad_panel *rad = mipi_dsi_get_drvdata(dsi);
 
-	rad_panel_unprepare(&rad->base);
 	rad_panel_disable(&rad->base);
+	rad_panel_unprepare(&rad->base);
 }
 
 static const struct of_device_id rad_of_match[] = {

@@ -99,7 +99,6 @@
 			clock-frequency = <792000000>;
 			clock-latency = <61036>; /* two CLK32 periods */
 			clocks = <&clks IMX7D_CLK_ARM>;
-			clock-names = "arm";
 		};
 	};
 
@@ -308,17 +307,16 @@
 			      <0x31002000 0x2000>,
 			      <0x31004000 0x2000>,
 			      <0x31006000 0x2000>;
-			interrupt-parent = <&intc>;
 		};
 
 		timer {
 			compatible = "arm,armv7-timer";
+			arm,cpu-registers-not-fw-configured;
 			interrupt-parent = <&intc>;
 			interrupts = <GIC_PPI 13 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>,
 				     <GIC_PPI 14 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>,
 				     <GIC_PPI 11 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>,
 				     <GIC_PPI 10 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>;
-			interrupt-parent = <&intc>;
 			clock-frequency = <8000000>;
 		};
 
@@ -328,23 +326,6 @@
 			#size-cells = <1>;
 			reg = <0x30000000 0x400000>;
 			ranges;
-
-			gpc: gpc@303a0000 {
-				compatible = "fsl,imx7d-gpc";
-				reg = <0x303a0000 0x1000>;
-				interrupt-controller;
-				interrupts = <GIC_SPI 87 IRQ_TYPE_LEVEL_HIGH>;
-				#interrupt-cells = <3>;
-				interrupt-parent = <&intc>;
-				fsl,mf-mix-wakeup-irq = <0x54010000 0xc00 0x0 0x1040640>;
-			};
-
-			pgc {
-				compatible = "fsl,imx7d-pgc";
-				mipi-phy-supply = <&reg_1p0d>;
-				pcie-phy-supply = <&reg_1p0d>;
-				vcc-supply = <&reg_1p2>;
-			};
 
 			gpio1: gpio@30200000 {
 				compatible = "fsl,imx7d-gpio", "fsl,imx35-gpio";
@@ -545,6 +526,20 @@
 					anatop-enable-bit = <0>;
 				};
 
+				reg_1p2: regulator-vdd1p2@220 {
+					 compatible = "fsl,anatop-regulator";
+					 regulator-name = "vdd1p2";
+					 regulator-min-microvolt = <1100000>;
+					 regulator-max-microvolt = <1300000>;
+					 anatop-reg-offset = <0x220>;
+					 anatop-vol-bit-shift = <8>;
+					 anatop-vol-bit-width = <5>;
+					 anatop-min-bit-val = <0x14>;
+					 anatop-min-voltage = <1100000>;
+					 anatop-max-voltage = <1300000>;
+					 anatop-enable-bit = <31>;
+				};
+
 			};
 
 			snvs: snvs@30370000 {
@@ -563,8 +558,8 @@
 					compatible = "syscon-poweroff";
 					regmap = <&snvs>;
 					offset = <0x38>;
-					value = <0x60>;
-					mask = <0x60>;
+					value = <0x61>;
+					mask = <0x61>;
 				};
 
 				snvs_pwrkey: snvs-powerkey {
@@ -587,7 +582,7 @@
 			};
 
 			src: src@30390000 {
-				compatible = "fsl,imx7d-src", "syscon";
+				compatible = "fsl,imx7d-src", "fsl,imx51-src", "syscon";
 				reg = <0x30390000 0x10000>;
 				interrupts = <GIC_SPI 89 IRQ_TYPE_LEVEL_HIGH>;
 				#reset-cells = <1>;
@@ -601,6 +596,10 @@
 				#interrupt-cells = <3>;
 				interrupt-parent = <&intc>;
 				#power-domain-cells = <1>;
+				fsl,mf-mix-wakeup-irq = <0x54010000 0xc00 0x0 0x1040640>;
+				mipi-phy-supply = <&reg_1p0d>;
+				pcie-phy-supply = <&reg_1p0d>;
+				vcc-supply = <&reg_1p2>;
 
 				pgc {
 					#address-cells = <1>;
@@ -649,6 +648,8 @@
 				clocks = <&clks IMX7D_ECSPI4_ROOT_CLK>,
 					<&clks IMX7D_ECSPI4_ROOT_CLK>;
 				clock-names = "ipg", "per";
+				dmas = <&sdma 6 7 1>, <&sdma 7 7 2>;
+				dma-names = "rx", "tx";
 				status = "disabled";
 			};
 
@@ -724,6 +725,8 @@
 				clocks = <&clks IMX7D_ECSPI1_ROOT_CLK>,
 					<&clks IMX7D_ECSPI1_ROOT_CLK>;
 				clock-names = "ipg", "per";
+				dmas = <&sdma 0 7 1>, <&sdma 1 7 2>;
+				dma-names = "rx", "tx";
 				status = "disabled";
 			};
 
@@ -736,6 +739,8 @@
 				clocks = <&clks IMX7D_ECSPI2_ROOT_CLK>,
 					<&clks IMX7D_ECSPI2_ROOT_CLK>;
 				clock-names = "ipg", "per";
+				dmas = <&sdma 2 7 1>, <&sdma 3 7 2>;
+				dma-names = "rx", "tx";
 				status = "disabled";
 			};
 
@@ -748,6 +753,8 @@
 				clocks = <&clks IMX7D_ECSPI3_ROOT_CLK>,
 					<&clks IMX7D_ECSPI3_ROOT_CLK>;
 				clock-names = "ipg", "per";
+				dmas = <&sdma 4 7 1>, <&sdma 5 7 2>;
+				dma-names = "rx", "tx";
 				status = "disabled";
 			};
 

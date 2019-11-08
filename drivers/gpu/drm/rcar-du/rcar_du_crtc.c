@@ -519,31 +519,6 @@ static void rcar_du_crtc_disable_planes(struct rcar_du_crtc *rcrtc)
 	drm_crtc_vblank_put(crtc);
 }
 
-static void rcar_du_crtc_disable_planes(struct rcar_du_crtc *rcrtc)
-{
-	struct rcar_du_device *rcdu = rcrtc->group->dev;
-	struct drm_crtc *crtc = &rcrtc->crtc;
-	u32 status;
-	/* Make sure vblank interrupts are enabled. */
-	drm_crtc_vblank_get(crtc);
-	/*
-	 * Disable planes and calculate how many vertical blanking interrupts we
-	 * have to wait for. If a vertical blanking interrupt has been triggered
-	 * but not processed yet, we don't know whether it occurred before or
-	 * after the planes got disabled. We thus have to wait for two vblank
-	 * interrupts in that case.
-	 */
-	spin_lock_irq(&rcrtc->vblank_lock);
-	rcar_du_group_write(rcrtc->group, rcrtc->index % 2 ? DS2PR : DS1PR, 0);
-	status = rcar_du_crtc_read(rcrtc, DSSR);
-	rcrtc->vblank_count = status & DSSR_VBK ? 2 : 1;
-	spin_unlock_irq(&rcrtc->vblank_lock);
-	if (!wait_event_timeout(rcrtc->vblank_wait, rcrtc->vblank_count == 0,
-				msecs_to_jiffies(100)))
-		dev_warn(rcdu->dev, "vertical blanking timeout\n");
-	drm_crtc_vblank_put(crtc);
-}
-
 static void rcar_du_crtc_stop(struct rcar_du_crtc *rcrtc)
 {
 	struct drm_crtc *crtc = &rcrtc->crtc;

@@ -2,8 +2,7 @@
  * Watchdog driver for IMX2 and later processors
  *
  *  Copyright (C) 2010 Wolfram Sang, Pengutronix e.K. <w.sang@pengutronix.de>
- *  Copyright (C) 2015 Freescale Semiconductor, Inc.
- *  Copyright 2017 NXP.
+ *  Copyright (C) 2014 Freescale Semiconductor, Inc.
  *
  * some parts adapted by similar drivers from Darius Augulis and Vladimir
  * Zapolskiy, additional improvements by Wim Van Sebroeck.
@@ -93,25 +92,8 @@ static const struct watchdog_info imx2_wdt_pretimeout_info = {
 		   WDIOF_PRETIMEOUT,
 };
 
-static int imx2_wdt_ping(struct watchdog_device *wdog)
-{
-	struct imx2_wdt_device *wdev = watchdog_get_drvdata(wdog);
-
-	regmap_write(wdev->regmap, IMX2_WDT_WSR, IMX2_WDT_SEQ1);
-	regmap_write(wdev->regmap, IMX2_WDT_WSR, IMX2_WDT_SEQ2);
-	return 0;
-}
-
-
-static inline bool imx2_wdt_is_running(struct imx2_wdt_device *wdev)
-{
-	u32 val;
-
-	regmap_read(wdev->regmap, IMX2_WDT_WCR, &val);
-
-	return val & IMX2_WDT_WCR_WDE;
-}
-
+static int imx2_wdt_ping(struct watchdog_device *wdog);
+static inline bool imx2_wdt_is_running(struct imx2_wdt_device *wdev);
 
 static int imx2_wdt_restart(struct watchdog_device *wdog, unsigned long action,
 			    void *data)
@@ -178,19 +160,28 @@ static inline void imx2_wdt_setup(struct watchdog_device *wdog)
 	regmap_write(wdev->regmap, IMX2_WDT_WCR, val);
 }
 
-static void __imx2_wdt_set_timeout(struct watchdog_device *wdog,
-				   unsigned int new_timeout)
+static inline bool imx2_wdt_is_running(struct imx2_wdt_device *wdev)
+{
+	u32 val;
+
+	regmap_read(wdev->regmap, IMX2_WDT_WCR, &val);
+
+	return val & IMX2_WDT_WCR_WDE;
+}
+
+static int imx2_wdt_ping(struct watchdog_device *wdog)
 {
 	struct imx2_wdt_device *wdev = watchdog_get_drvdata(wdog);
 
-	regmap_update_bits(wdev->regmap, IMX2_WDT_WCR, IMX2_WDT_WCR_WT,
-			   WDOG_SEC_TO_COUNT(new_timeout));
+	regmap_write(wdev->regmap, IMX2_WDT_WSR, IMX2_WDT_SEQ1);
+	regmap_write(wdev->regmap, IMX2_WDT_WSR, IMX2_WDT_SEQ2);
+	return 0;
 }
 
 static void __imx2_wdt_set_timeout(struct watchdog_device *wdog,
 				   unsigned int new_timeout)
 {
-	__imx2_wdt_set_timeout(wdog, new_timeout);
+	struct imx2_wdt_device *wdev = watchdog_get_drvdata(wdog);
 
 	regmap_update_bits(wdev->regmap, IMX2_WDT_WCR, IMX2_WDT_WCR_WT,
 			   WDOG_SEC_TO_COUNT(new_timeout));

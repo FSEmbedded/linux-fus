@@ -434,6 +434,7 @@ static int intel_gpio_request_enable(struct pinctrl_dev *pctldev,
 	struct intel_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
 	void __iomem *padcfg0;
 	unsigned long flags;
+	u32 value;
 
 	raw_spin_lock_irqsave(&pctrl->lock, flags);
 
@@ -933,8 +934,6 @@ static int intel_gpio_irq_type(struct irq_data *d, unsigned type)
 	}
 
 	raw_spin_lock_irqsave(&pctrl->lock, flags);
-
-	intel_gpio_set_gpio_mode(reg);
 
 	value = readl(reg);
 

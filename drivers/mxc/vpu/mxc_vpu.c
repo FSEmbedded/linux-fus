@@ -36,6 +36,7 @@
 #include <linux/io.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
+#include <linux/sched/signal.h>
 #include <linux/sched.h>
 #include <linux/vmalloc.h>
 #include <linux/regulator/consumer.h>

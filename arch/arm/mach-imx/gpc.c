@@ -1,7 +1,6 @@
 /*
  * Copyright 2011-2016 Freescale Semiconductor, Inc.
  * Copyright 2011 Linaro Ltd.
- * Copyright 2017 NXP.
  *
  * The code contained herein is licensed under the GNU General Public
  * License. You may obtain a copy of the GNU General Public License
@@ -21,16 +20,16 @@
 #include "common.h"
 #include "hardware.h"
 
+#define GPC_CNTR		0x000
+#define GPC_CNTR_L2_PGE		22
+
 #define GPC_IMR1		0x008
+#define GPC_PGC_MF_PDN		0x220
 #define GPC_PGC_CPU_PDN		0x2a0
 #define GPC_PGC_CPU_PUPSCR	0x2a4
 #define GPC_PGC_CPU_PDNSCR	0x2a8
 #define GPC_PGC_SW2ISO_SHIFT	0x8
 #define GPC_PGC_SW_SHIFT	0x0
-#define GPC_PGC_DISP_PGCR_OFFSET	0x240
-#define GPC_PGC_DISP_PUPSCR_OFFSET	0x244
-#define GPC_PGC_DISP_PDNSCR_OFFSET	0x248
-#define GPC_PGC_DISP_SR_OFFSET		0x24c
 #define GPC_M4_LPSR		0x2c
 #define GPC_M4_LPSR_M4_SLEEPING_SHIFT	4
 #define GPC_M4_LPSR_M4_SLEEPING_MASK	0x1
@@ -47,18 +46,22 @@
 #define IMR_NUM			4
 #define GPC_MAX_IRQS		(IMR_NUM * 32)
 
+/* for irq #74 and #75 */
+#define GPC_USB_VBUS_WAKEUP_IRQ_MASK		0xc00
+
+/* for irq #150 and #151 */
+#define GPC_ENET_WAKEUP_IRQ_MASK        0xC00000
+
 static void __iomem *gpc_base;
 static u32 gpc_wake_irqs[IMR_NUM];
 static u32 gpc_saved_imrs[IMR_NUM];
 static u32 gpc_mf_irqs[IMR_NUM];
 static u32 gpc_mf_request_on[IMR_NUM];
 static DEFINE_SPINLOCK(gpc_lock);
-static struct notifier_block nb_pcie;
-static struct pu_domain imx6q_pu_domain;
-static bool pu_on;      /* keep always on i.mx6qp */
-static void _imx6q_pm_pu_power_off(struct generic_pm_domain *genpd);
-static void _imx6q_pm_pu_power_on(struct generic_pm_domain *genpd);
-static struct clk *ipg;
+
+/* implemented in drivers/soc/imx/gpc.c */
+extern void _imx6_pm_pu_power_off(void);
+extern void _imx6_pm_pu_power_on(void);
 
 void imx_gpc_add_m4_wake_up_irq(u32 hwirq, bool enable)
 {
@@ -192,7 +195,7 @@ void imx_gpc_pre_suspend(bool arm_power_off)
 	int i;
 
 	if (cpu_is_imx6q() && imx_get_soc_revision() >= IMX_CHIP_REVISION_2_0)
-		_imx6q_pm_pu_power_off(&imx6q_pu_domain.base);
+		_imx6_pm_pu_power_off();
 
 	/* power down the mega-fast power domain */
 	if ((cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull()
@@ -215,7 +218,7 @@ void imx_gpc_post_resume(void)
 	int i;
 
 	if (cpu_is_imx6q() && imx_get_soc_revision() >= IMX_CHIP_REVISION_2_0)
-		_imx6q_pm_pu_power_on(&imx6q_pu_domain.base);
+		_imx6_pm_pu_power_on();
 
 	/* Keep ARM core powered on for other low-power modes */
 	imx_gpc_set_arm_power_in_lpm(false);
@@ -432,30 +435,6 @@ void imx_gpc_switch_pupscr_clk(bool flag)
 			  pupscr_sw2iso << GPC_PGC_CPU_SW2ISO_SHIFT;
 		writel_relaxed(pupscr, gpc_base + GPC_PGC_CPU_PUPSCR);
 	}
-}
-
-static int imx_pcie_regulator_notify(struct notifier_block *nb,
-					unsigned long event,
-					void *ignored)
-{
-	u32 value = readl_relaxed(gpc_base + GPC_CNTR);
-
-	switch (event) {
-	case REGULATOR_EVENT_PRE_DO_ENABLE:
-		value |= 1 << GPC_CNTR_PCIE_PHY_PDU_SHIFT;
-		writel_relaxed(value, gpc_base + GPC_CNTR);
-		break;
-	case REGULATOR_EVENT_PRE_DO_DISABLE:
-		value |= 1 << GPC_CNTR_PCIE_PHY_PDN_SHIFT;
-		writel_relaxed(value, gpc_base + GPC_CNTR);
-		writel_relaxed(PGC_PCIE_PHY_PDN_EN,
-				gpc_base + PGC_PCIE_PHY_CTRL);
-		break;
-	default:
-		break;
-	}
-
-	return NOTIFY_OK;
 }
 
 static int __init imx_gpc_init(struct device_node *node,

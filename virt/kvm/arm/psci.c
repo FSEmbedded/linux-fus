@@ -24,7 +24,6 @@
 #include <asm/cputype.h>
 #include <asm/kvm_emulate.h>
 #include <asm/kvm_host.h>
-#include <kvm/arm_psci.h>
 
 #include <kvm/arm_psci.h>
 

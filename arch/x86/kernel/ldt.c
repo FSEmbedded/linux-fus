@@ -22,7 +22,6 @@
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/uaccess.h>
-#include <linux/kaiser.h>
 
 #include <asm/ldt.h>
 #include <asm/tlb.h>
@@ -60,15 +59,6 @@ static void flush_ldt(void *__mm)
 	load_mm_ldt(mm);
 
 	refresh_ldt_segments();
-}
-
-static void __free_ldt_struct(struct ldt_struct *ldt)
-{
-	if (ldt->size * LDT_ENTRY_SIZE > PAGE_SIZE)
-		vfree(ldt->entries);
-	else
-		free_page((unsigned long)ldt->entries);
-	kfree(ldt);
 }
 
 /* The caller must call finalize_ldt_struct on the result. LDT starts zeroed. */

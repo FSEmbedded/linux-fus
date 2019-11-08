@@ -2071,16 +2071,6 @@ static int asus_wmi_fan_init(struct asus_wmi *asus)
 	return 0;
 }
 
-static bool ashs_present(void)
-{
-	int i = 0;
-	while (ashs_ids[i]) {
-		if (acpi_dev_found(ashs_ids[i++]))
-			return true;
-	}
-	return false;
-}
-
 /*
  * WMI Driver
  */

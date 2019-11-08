@@ -201,6 +201,41 @@ static void qoriq_tmu_init_device(struct qoriq_tmu_data *data)
 	tmu_write(data, TMR_DISABLE, &data->regs->tmr);
 }
 
+static int tmu_get_trend(void *p,
+	int trip, enum thermal_trend *trend)
+{
+	int trip_temp;
+	struct qoriq_tmu_data *data = p;
+
+	if (!data->tz)
+		return 0;
+
+	trip_temp = (trip == TMU_TRIP_PASSIVE) ? data->temp_passive :
+					     data->temp_critical;
+
+	if (data->tz->temperature >=
+		(trip_temp - TMU_TEMP_PASSIVE_COOL_DELTA))
+		*trend = THERMAL_TREND_RAISE_FULL;
+	else
+		*trend = THERMAL_TREND_DROP_FULL;
+
+	return 0;
+}
+
+static int tmu_set_trip_temp(void *p, int trip,
+			     int temp)
+{
+	struct qoriq_tmu_data *data = p;
+
+	if (trip == TMU_TRIP_CRITICAL)
+		data->temp_critical = temp;
+
+	if (trip == TMU_TRIP_PASSIVE)
+		data->temp_passive = temp;
+
+	return 0;
+}
+
 static const struct thermal_zone_of_device_ops tmu_tz_ops = {
 	.get_temp = tmu_get_temp,
 	.get_trend = tmu_get_trend,
@@ -210,6 +245,7 @@ static const struct thermal_zone_of_device_ops tmu_tz_ops = {
 static int qoriq_tmu_probe(struct platform_device *pdev)
 {
 	int ret;
+	const struct thermal_trip *trip;
 	struct qoriq_tmu_data *data;
 	struct device_node *np = pdev->dev.of_node;
 	u32 site = 0;
@@ -256,6 +292,34 @@ static int qoriq_tmu_probe(struct platform_device *pdev)
 			"Failed to register thermal zone device %d\n", ret);
 		goto err_tmu;
 	}
+
+	data->cdev = devfreq_cooling_register();
+	if (IS_ERR(data->cdev)) {
+		ret = PTR_ERR(data->cdev);
+		if (ret != -EPROBE_DEFER)
+			dev_err(&pdev->dev,
+				"failed to register devfreq cooling device: %d\n",
+				ret);
+		return ret;
+	}
+
+	ret = thermal_zone_bind_cooling_device(data->tz,
+		TMU_TRIP_PASSIVE,
+		data->cdev,
+		THERMAL_NO_LIMIT,
+		THERMAL_NO_LIMIT,
+		THERMAL_WEIGHT_DEFAULT);
+	if (ret) {
+		dev_err(&data->tz->device,
+			"binding zone %s with cdev %s failed:%d\n",
+			data->tz->type, data->cdev->type, ret);
+		devfreq_cooling_unregister(data->cdev);
+		return ret;
+	}
+
+	trip = of_thermal_get_trip_points(data->tz);
+	data->temp_passive = trip[0].temperature;
+	data->temp_critical = trip[1].temperature;
 
 	/* Enable monitoring */
 	site |= 0x1 << (15 - data->sensor_id);

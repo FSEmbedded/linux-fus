@@ -31,6 +31,7 @@ struct imx_wm8960_data {
 	struct clk *codec_clk;
 	unsigned int clk_frequency;
 	bool is_codec_master;
+	bool is_codec_rpmsg;
 	bool is_stream_in_use[2];
 	bool is_stream_opened[2];
 	struct regmap *gpr;
@@ -43,10 +44,8 @@ struct imx_priv {
 	enum of_gpio_flags hp_active_low;
 	enum of_gpio_flags mic_active_low;
 	bool is_headset_jack;
-	struct snd_kcontrol *headphone_kctl;
 	struct platform_device *pdev;
 	struct platform_device *asrc_pdev;
-	struct snd_card *snd_card;
 };
 
 static struct imx_priv card_priv;
@@ -91,7 +90,6 @@ static int hp_jack_status_check(void *data)
 			snd_soc_dapm_disable_pin(dapm, "Main MIC");
 		}
 		ret = imx_hp_jack_gpio.report;
-		snd_kctl_jack_report(priv->snd_card, priv->headphone_kctl, 1);
 	} else {
 		snd_soc_dapm_enable_pin(dapm, "Ext Spk");
 		if (priv->is_headset_jack) {
@@ -99,7 +97,6 @@ static int hp_jack_status_check(void *data)
 			snd_soc_dapm_enable_pin(dapm, "Main MIC");
 		}
 		ret = 0;
-		snd_kctl_jack_report(priv->snd_card, priv->headphone_kctl, 0);
 	}
 
 	return ret;
@@ -150,7 +147,7 @@ static int imx_wm8960_jack_init(struct snd_soc_card *card,
 	return 0;
 }
 
-static ssize_t show_headphone(struct device_driver *dev, char *buf)
+static ssize_t headphone_show(struct device_driver *dev, char *buf)
 {
 	struct imx_priv *priv = &card_priv;
 	int hp_status;
@@ -166,7 +163,7 @@ static ssize_t show_headphone(struct device_driver *dev, char *buf)
 	return strlen(buf);
 }
 
-static ssize_t show_micphone(struct device_driver *dev, char *buf)
+static ssize_t micphone_show(struct device_driver *dev, char *buf)
 {
 	struct imx_priv *priv = &card_priv;
 	int mic_status;
@@ -181,8 +178,8 @@ static ssize_t show_micphone(struct device_driver *dev, char *buf)
 
 	return strlen(buf);
 }
-static DRIVER_ATTR(headphone, S_IRUGO | S_IWUSR, show_headphone, NULL);
-static DRIVER_ATTR(micphone, S_IRUGO | S_IWUSR, show_micphone, NULL);
+static DRIVER_ATTR_RO(headphone);
+static DRIVER_ATTR_RO(micphone);
 
 static int imx_hifi_hw_params(struct snd_pcm_substream *substream,
 				     struct snd_pcm_hw_params *params)
@@ -445,28 +442,31 @@ static int of_parse_gpr(struct platform_device *pdev,
 
 static int imx_wm8960_probe(struct platform_device *pdev)
 {
-	struct device_node *cpu_np, *codec_np = NULL;
+	struct device_node *cpu_np = NULL, *codec_np = NULL;
 	struct platform_device *cpu_pdev;
 	struct imx_priv *priv = &card_priv;
-	struct i2c_client *codec_dev;
 	struct imx_wm8960_data *data;
 	struct platform_device *asrc_pdev = NULL;
 	struct device_node *asrc_np;
+	struct snd_soc_dai_link_component dlc = { 0 };
+	struct snd_soc_dai *codec_dai;
 	u32 width;
 	int ret;
 
 	priv->pdev = pdev;
 
-	cpu_np = of_parse_phandle(pdev->dev.of_node, "cpu-dai", 0);
-	if (!cpu_np) {
-		dev_err(&pdev->dev, "cpu dai phandle missing or invalid\n");
-		ret = -EINVAL;
+	data = devm_kzalloc(&pdev->dev, sizeof(*data), GFP_KERNEL);
+	if (!data) {
+		ret = -ENOMEM;
 		goto fail;
 	}
 
-	codec_np = of_parse_phandle(pdev->dev.of_node, "audio-codec", 0);
-	if (!codec_np) {
-		dev_err(&pdev->dev, "phandle missing or invalid\n");
+	if (of_property_read_bool(pdev->dev.of_node, "codec-rpmsg"))
+		data->is_codec_rpmsg = true;
+
+	cpu_np = of_parse_phandle(pdev->dev.of_node, "cpu-dai", 0);
+	if (!cpu_np) {
+		dev_err(&pdev->dev, "cpu dai phandle missing or invalid\n");
 		ret = -EINVAL;
 		goto fail;
 	}
@@ -478,28 +478,49 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
-	codec_dev = of_find_i2c_device_by_node(codec_np);
-	if (!codec_dev || !codec_dev->dev.driver) {
-		dev_err(&pdev->dev, "failed to find codec platform device\n");
+	codec_np = of_parse_phandle(pdev->dev.of_node, "audio-codec", 0);
+	if (!codec_np) {
+		dev_err(&pdev->dev, "phandle missing or invalid\n");
 		ret = -EINVAL;
 		goto fail;
 	}
 
-	data = devm_kzalloc(&pdev->dev, sizeof(*data), GFP_KERNEL);
-	if (!data) {
-		ret = -ENOMEM;
-		goto fail;
+	if (data->is_codec_rpmsg) {
+		struct platform_device *codec_dev;
+
+		codec_dev = of_find_device_by_node(codec_np);
+		if (!codec_dev || !codec_dev->dev.driver) {
+			dev_err(&pdev->dev, "failed to find codec platform device\n");
+			ret = -EINVAL;
+			goto fail;
+		}
+
+		data->codec_clk = devm_clk_get(&codec_dev->dev, "mclk");
+		if (IS_ERR(data->codec_clk)) {
+			ret = PTR_ERR(data->codec_clk);
+			dev_err(&pdev->dev, "failed to get codec clk: %d\n", ret);
+			goto fail;
+		}
+	} else {
+		struct i2c_client *codec_dev;
+
+		codec_dev = of_find_i2c_device_by_node(codec_np);
+		if (!codec_dev || !codec_dev->dev.driver) {
+			dev_err(&pdev->dev, "failed to find codec platform device\n");
+			ret = -EINVAL;
+			goto fail;
+		}
+
+		data->codec_clk = devm_clk_get(&codec_dev->dev, "mclk");
+		if (IS_ERR(data->codec_clk)) {
+			ret = PTR_ERR(data->codec_clk);
+			dev_err(&pdev->dev, "failed to get codec clk: %d\n", ret);
+			goto fail;
+		}
 	}
 
 	if (of_property_read_bool(pdev->dev.of_node, "codec-master"))
 		data->is_codec_master = true;
-
-	data->codec_clk = devm_clk_get(&codec_dev->dev, "mclk");
-	if (IS_ERR(data->codec_clk)) {
-		ret = PTR_ERR(data->codec_clk);
-		dev_err(&pdev->dev, "failed to get codec clk: %d\n", ret);
-		goto fail;
-	}
 
 	ret = of_parse_gpr(pdev, data);
 	if (ret)
@@ -515,7 +536,18 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 
 	data->card.dai_link = imx_wm8960_dai;
 
-	imx_wm8960_dai[0].codec_of_node	= codec_np;
+	if (data->is_codec_rpmsg) {
+		imx_wm8960_dai[0].codec_name     = "rpmsg-audio-codec-wm8960";
+		imx_wm8960_dai[0].codec_dai_name = "rpmsg-wm8960-hifi";
+
+		dlc.name = "rpmsg-audio-codec-wm8960";
+		dlc.dai_name = "rpmsg-wm8960-hifi";
+		codec_dai = snd_soc_find_dai(&dlc);
+		if (!codec_dai)
+			return -ENODEV;
+	} else
+		imx_wm8960_dai[0].codec_of_node	= codec_np;
+
 	imx_wm8960_dai[0].cpu_dai_name = dev_name(&cpu_pdev->dev);
 	imx_wm8960_dai[0].platform_of_node = cpu_np;
 
@@ -524,7 +556,11 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 	} else {
 		imx_wm8960_dai[1].cpu_of_node = asrc_np;
 		imx_wm8960_dai[1].platform_of_node = asrc_np;
-		imx_wm8960_dai[2].codec_of_node	= codec_np;
+		if (data->is_codec_rpmsg) {
+			imx_wm8960_dai[2].codec_name     = "rpmsg-audio-codec-wm8960";
+			imx_wm8960_dai[2].codec_dai_name = "rpmsg-wm8960-hifi";
+		} else
+			imx_wm8960_dai[2].codec_of_node	= codec_np;
 		imx_wm8960_dai[2].cpu_dai_name = dev_name(&cpu_pdev->dev);
 		data->card.num_links = 3;
 
@@ -571,8 +607,6 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
-	priv->snd_card = data->card.snd_card;
-
 	imx_hp_jack_gpio.gpio = of_get_named_gpio_flags(pdev->dev.of_node,
 			"hp-det-gpios", 0, &priv->hp_active_low);
 
@@ -585,15 +619,11 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 		priv->is_headset_jack = true;
 
 	if (gpio_is_valid(imx_hp_jack_gpio.gpio)) {
-		priv->headphone_kctl = snd_kctl_jack_new("Headphone", NULL);
-		ret = snd_ctl_add(priv->snd_card, priv->headphone_kctl);
-		if (ret)
-			dev_warn(&pdev->dev, "failed to create headphone jack kctl\n");
-
 		if (priv->is_headset_jack) {
 			imx_hp_jack_pin.mask |= SND_JACK_MICROPHONE;
 			imx_hp_jack_gpio.report |= SND_JACK_MICROPHONE;
 		}
+
 		imx_hp_jack_gpio.jack_status_check = hp_jack_status_check;
 		imx_hp_jack_gpio.data = &imx_hp_jack;
 		ret = imx_wm8960_jack_init(&data->card, &imx_hp_jack,

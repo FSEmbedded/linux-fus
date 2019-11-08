@@ -743,9 +743,6 @@ static int create_trace_kprobe(int argc, char **argv)
 			pr_info("Given offset is not valid for return probe.\n");
 			return -EINVAL;
 		}
-	} else if (is_return) {
-		pr_info("Return probe point must be a symbol.\n");
-		return -EINVAL;
 	}
 	argc -= 2; argv += 2;
 

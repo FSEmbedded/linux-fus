@@ -667,14 +667,12 @@ static int hdmi_dma_update_iec_header(struct snd_pcm_substream *substream)
  * frame bits.  So we have to copy the raw dma data from the ALSA buffer
  * to the DMA buffer, adding the frame information.
  */
-static int hdmi_dma_copy(struct snd_pcm_substream *substream, int channel,
-			snd_pcm_uframes_t pos, void __user *buf,
-			snd_pcm_uframes_t frames)
+static int hdmi_dma_copy_user(struct snd_pcm_substream *substream, int channel,
+			unsigned long pos_bytes, void __user *buf,
+			unsigned long count)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct hdmi_dma_priv *priv = runtime->private_data;
-	unsigned int count = frames_to_bytes(runtime, frames);
-	unsigned int pos_bytes = frames_to_bytes(runtime, pos);
 	u32 *hw_buf;
 	int subframe_idx;
 	u32 pcm_data;
@@ -1028,7 +1026,7 @@ static struct snd_pcm_ops imx_hdmi_dma_pcm_ops = {
 	.hw_free	= hdmi_dma_hw_free,
 	.trigger	= hdmi_dma_trigger,
 	.pointer	= hdmi_dma_pointer,
-	.copy		= hdmi_dma_copy,
+	.copy_user	= hdmi_dma_copy_user,
 };
 
 static int imx_hdmi_dma_pcm_new(struct snd_soc_pcm_runtime *rtd)

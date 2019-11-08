@@ -31,7 +31,6 @@
 #include <linux/clockchips.h>
 #include <asm/hyperv.h>
 #include <asm/mshyperv.h>
-#include <asm/nospec-branch.h>
 #include "hyperv_vmbus.h"
 
 /* The one and only */

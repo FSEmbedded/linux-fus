@@ -17,6 +17,7 @@
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <video/imx8-prefetch.h>
 
@@ -73,6 +74,7 @@ struct prg {
 	struct clk *clk_apb;
 	struct clk *clk_rtram;
 	bool is_auxiliary;
+	bool is_blit;
 };
 
 static DEFINE_MUTEX(prg_list_mutex);
@@ -90,8 +92,16 @@ static inline void prg_write(struct prg *prg, u32 value, unsigned int offset)
 
 static void prg_reset(struct prg *prg)
 {
+	if (prg->is_blit)
+		usleep_range(10, 20);
+
 	prg_write(prg, SOFTRST, PRG_CTRL + SET);
-	usleep_range(1000, 2000);
+
+	if (prg->is_blit)
+		usleep_range(10, 20);
+	else
+		usleep_range(1000, 2000);
+
 	prg_write(prg, SOFTRST, PRG_CTRL + CLR);
 }
 
@@ -120,6 +130,8 @@ void prg_configure(struct prg *prg, unsigned int width, unsigned int height,
 		   bool start)
 {
 	unsigned int burst_size;
+	unsigned int mt_w = 0, mt_h = 0;	/* w/h in a micro-tile */
+	unsigned long _baddr;
 	u32 val;
 
 	if (WARN_ON(!prg))
@@ -128,30 +140,68 @@ void prg_configure(struct prg *prg, unsigned int width, unsigned int height,
 	if (start)
 		prg_reset(prg);
 
+	/* prg finer cropping into micro-tile block - top/left start point */
+	switch (modifier) {
+	case DRM_FORMAT_MOD_NONE:
+		break;
+	case DRM_FORMAT_MOD_AMPHION_TILED:
+		mt_w = 8;
+		mt_h = 8;
+		break;
+	case DRM_FORMAT_MOD_VIVANTE_TILED:
+	case DRM_FORMAT_MOD_VIVANTE_SUPER_TILED:
+		mt_w = (bits_per_pixel == 16) ? 8 : 4;
+		mt_h = 4;
+		break;
+	default:
+		dev_err(prg->dev, "unsupported modifier 0x%016llx\n", modifier);
+		return;
+	}
+
+	if (modifier) {
+		x_offset %= mt_w;
+		y_offset %= mt_h;
+
+		/* consider x offset to calculate stride */
+		_baddr = baddr + (x_offset * (bits_per_pixel / 8));
+	} else {
+		x_offset = 0;
+		y_offset = 0;
+		_baddr = baddr;
+	}
+
 	/*
 	 * address TKT343664:
 	 * fetch unit base address has to align to burst_size
 	 */
-	burst_size = 1 << (ffs(baddr) - 1);
+	burst_size = 1 << (ffs(_baddr) - 1);
+	burst_size = round_up(burst_size, 8);
 	burst_size = min(burst_size, 128U);
 
 	/*
 	 * address TKT339017:
 	 * fixup for burst size vs stride mismatch
 	 */
-	stride = round_up(stride, burst_size);
+	if (modifier)
+		stride = round_up(stride + round_up(_baddr % 8, 8), burst_size);
+	else
+		stride = round_up(stride, burst_size);
 
 	/*
 	 * address TKT342628(part 1):
 	 * when prg stride is less or equals to burst size,
 	 * the auxiliary prg height needs to be a half
 	 */
-	if (prg->is_auxiliary && stride <= burst_size)
+	if (prg->is_auxiliary && stride <= burst_size) {
 		height /= 2;
+		if (modifier)
+			y_offset /= 2;
+	}
 
 	prg_write(prg, STRIDE(stride), PRG_STRIDE);
 	prg_write(prg, WIDTH(width), PRG_WIDTH);
 	prg_write(prg, HEIGHT(height), PRG_HEIGHT);
+	prg_write(prg, X(x_offset) | Y(y_offset), PRG_OFFSET);
 	prg_write(prg, baddr, PRG_BADDR);
 
 	val = prg_read(prg, PRG_CTRL);
@@ -225,22 +275,58 @@ bool prg_stride_supported(struct prg *prg, unsigned int stride)
 EXPORT_SYMBOL_GPL(prg_stride_supported);
 
 bool prg_stride_double_check(struct prg *prg,
+			     unsigned int width, unsigned int x_offset,
+			     unsigned int bits_per_pixel, u64 modifier,
 			     unsigned int stride, dma_addr_t baddr)
 {
 	unsigned int burst_size;
+	unsigned int mt_w = 0;	/* w in a micro-tile */
+	dma_addr_t _baddr;
+
+	if (WARN_ON(!prg))
+		return false;
+
+	/* prg finer cropping into micro-tile block - top/left start point */
+	switch (modifier) {
+	case DRM_FORMAT_MOD_NONE:
+		break;
+	case DRM_FORMAT_MOD_AMPHION_TILED:
+		mt_w = 8;
+		break;
+	case DRM_FORMAT_MOD_VIVANTE_TILED:
+	case DRM_FORMAT_MOD_VIVANTE_SUPER_TILED:
+		mt_w = (bits_per_pixel == 16) ? 8 : 4;
+		break;
+	default:
+		dev_err(prg->dev, "unsupported modifier 0x%016llx\n", modifier);
+		return false;
+	}
+
+	if (modifier) {
+		x_offset %= mt_w;
+
+		/* consider x offset to calculate stride */
+		_baddr = baddr + (x_offset * (bits_per_pixel / 8));
+	} else {
+		_baddr = baddr;
+	}
 
 	/*
 	 * address TKT343664:
 	 * fetch unit base address has to align to burst size
 	 */
-	burst_size = 1 << (ffs(baddr) - 1);
+	burst_size = 1 << (ffs(_baddr) - 1);
+	burst_size = round_up(burst_size, 8);
 	burst_size = min(burst_size, 128U);
 
 	/*
 	 * address TKT339017:
 	 * fixup for burst size vs stride mismatch
 	 */
-	stride = round_up(stride, burst_size);
+	if (modifier)
+		stride = round_up(stride + round_up(_baddr % 8, 8), burst_size);
+	else
+		stride = round_up(stride, burst_size);
 
 	return stride < 0x10000;
 }
@@ -250,17 +336,28 @@ void prg_set_auxiliary(struct prg *prg)
 {
 	if (WARN_ON(!prg))
 		return;
+
 	prg->is_auxiliary = true;
 }
 EXPORT_SYMBOL_GPL(prg_set_auxiliary);
 
-void prg_put_auxiliary(struct prg *prg)
+void prg_set_primary(struct prg *prg)
 {
 	if (WARN_ON(!prg))
 		return;
+
 	prg->is_auxiliary = false;
 }
-EXPORT_SYMBOL_GPL(prg_put_auxiliary);
+EXPORT_SYMBOL_GPL(prg_set_primary);
+
+void prg_set_blit(struct prg *prg)
+{
+	if (WARN_ON(!prg))
+		return;
+
+	prg->is_blit = true;
+}
+EXPORT_SYMBOL_GPL(prg_set_blit);
 
 struct prg *
 prg_lookup_by_phandle(struct device *dev, const char *name, int index)
@@ -282,6 +379,12 @@ prg_lookup_by_phandle(struct device *dev, const char *name, int index)
 	return NULL;
 }
 EXPORT_SYMBOL_GPL(prg_lookup_by_phandle);
+
+static const struct of_device_id prg_dt_ids[] = {
+	{ .compatible = "fsl,imx8qm-prg", },
+	{ .compatible = "fsl,imx8qxp-prg", },
+	{ /* sentinel */ },
+};
 
 static int prg_probe(struct platform_device *pdev)
 {
@@ -332,12 +435,6 @@ static int prg_remove(struct platform_device *pdev)
 
 	return 0;
 }
-
-static const struct of_device_id prg_dt_ids[] = {
-	{ .compatible = "fsl,imx8qm-prg", },
-	{ .compatible = "fsl,imx8qxp-prg", },
-	{ /* sentinel */ },
-};
 
 struct platform_driver prg_drv = {
 	.probe = prg_probe,

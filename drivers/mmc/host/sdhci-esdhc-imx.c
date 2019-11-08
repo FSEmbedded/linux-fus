@@ -150,8 +150,24 @@
 /* The IP supports HS400 mode */
 #define ESDHC_FLAG_HS400		BIT(9)
 
-/* A clock frequency higher than this rate requires strobe dll control */
-#define ESDHC_STROBE_DLL_CLK_FREQ	100000000
+/* The IP state got lost in low power mode */
+#define ESDHC_FLAG_STATE_LOST_IN_LPMODE	BIT(10)
+
+/* The IP has errata ERR010450
+ * uSDHC: Due to the I/O timing limit, for SDR mode, SD card clock can't
+ * exceed 150MHz, for DDR mode, SD card clock can't exceed 45MHz.
+ */
+#define ESDHC_FLAG_ERR010450		BIT(11)
+/* need request bus freq during low power */
+#define ESDHC_FLAG_BUSFREQ		BIT(12)
+/* need request pmqos during low power */
+#define ESDHC_FLAG_PMQOS		BIT(13)
+/* The IP supports HS400ES mode */
+#define ESDHC_FLAG_HS400_ES		BIT(14)
+/* The IP lost clock rate in PM_RUNTIME */
+#define ESDHC_FLAG_CLK_RATE_LOST_IN_PM_RUNTIME	BIT(15)
+/* The IP has Host Controller Interface for Command Queuing */
+#define ESDHC_FLAG_CQHCI               BIT(16)
 
 static struct mmc_host *wifi_mmc_host;
 void wifi_card_detect(bool on)
@@ -779,6 +795,13 @@ static inline void esdhc_pltfm_set_clock(struct sdhci_host *host,
 		| ESDHC_CLOCK_MASK);
 	sdhci_writel(host, temp, ESDHC_SYSTEM_CONTROL);
 
+	if (imx_data->socdata->flags & ESDHC_FLAG_ERR010450) {
+		if (imx_data->is_ddr)
+			clock = clock > 45000000 ? 45000000 : clock;
+		else
+			clock = clock > 150000000 ? 150000000 : clock;
+	}
+
 	while (host_clock / (16 * pre_div * ddr_pre_div) > clock &&
 			pre_div < 256)
 		pre_div *= 2;
@@ -964,8 +987,6 @@ static int esdhc_change_pinstate(struct sdhci_host *host,
  * edge of data_strobe line. Due to the time delay between CLK line and
  * data_strobe line, if the delay time is larger than one clock cycle,
  * then CLK and data_strobe line will be misaligned, read error shows up.
- * So when the CLK is higher than 100MHz, each clock cycle is short enough,
- * host should configure the delay target.
  */
 static void esdhc_set_strobe_dll(struct sdhci_host *host)
 {
@@ -974,40 +995,38 @@ static void esdhc_set_strobe_dll(struct sdhci_host *host)
 	u32 v;
 	u32 strobe_delay;
 
-	if (host->mmc->actual_clock > ESDHC_STROBE_DLL_CLK_FREQ) {
-		/* disable clock before enabling strobe dll */
-		writel(readl(host->ioaddr + ESDHC_VENDOR_SPEC) &
-		       ~ESDHC_VENDOR_SPEC_FRC_SDCLK_ON,
-		       host->ioaddr + ESDHC_VENDOR_SPEC);
+	/* disable clock before enabling strobe dll */
+	writel(readl(host->ioaddr + ESDHC_VENDOR_SPEC) &
+	       ~ESDHC_VENDOR_SPEC_FRC_SDCLK_ON,
+	       host->ioaddr + ESDHC_VENDOR_SPEC);
 
-		/* force a reset on strobe dll */
-		writel(ESDHC_STROBE_DLL_CTRL_RESET,
-			host->ioaddr + ESDHC_STROBE_DLL_CTRL);
-		/* clear the reset bit on strobe dll before any setting */
-		writel(0, host->ioaddr + ESDHC_STROBE_DLL_CTRL);
+	/* force a reset on strobe dll */
+	writel(ESDHC_STROBE_DLL_CTRL_RESET,
+		host->ioaddr + ESDHC_STROBE_DLL_CTRL);
+	/* clear the reset bit on strobe dll before any setting */
+	writel(0, host->ioaddr + ESDHC_STROBE_DLL_CTRL);
 
-		/*
-		 * enable strobe dll ctrl and adjust the delay target
-		 * for the uSDHC loopback read clock
-		 */
-		if (imx_data->boarddata.strobe_dll_delay_target)
-			strobe_delay = imx_data->boarddata.strobe_dll_delay_target;
-		else
-			strobe_delay = ESDHC_STROBE_DLL_CTRL_SLV_DLY_TARGET_DEFAULT;
-		v = ESDHC_STROBE_DLL_CTRL_ENABLE |
-			ESDHC_STROBE_DLL_CTRL_SLV_UPDATE_INT_DEFAULT |
-			(strobe_delay << ESDHC_STROBE_DLL_CTRL_SLV_DLY_TARGET_SHIFT);
-		writel(v, host->ioaddr + ESDHC_STROBE_DLL_CTRL);
-		/* wait 5us to make sure strobe dll status register stable */
-		udelay(5);
-		v = readl(host->ioaddr + ESDHC_STROBE_DLL_STATUS);
-		if (!(v & ESDHC_STROBE_DLL_STS_REF_LOCK))
-			dev_warn(mmc_dev(host->mmc),
-				"warning! HS400 strobe DLL status REF not lock!\n");
-		if (!(v & ESDHC_STROBE_DLL_STS_SLV_LOCK))
+	/*
+	 * enable strobe dll ctrl and adjust the delay target
+	 * for the uSDHC loopback read clock
+	 */
+	if (imx_data->boarddata.strobe_dll_delay_target)
+		strobe_delay = imx_data->boarddata.strobe_dll_delay_target;
+	else
+		strobe_delay = ESDHC_STROBE_DLL_CTRL_SLV_DLY_TARGET_DEFAULT;
+	v = ESDHC_STROBE_DLL_CTRL_ENABLE |
+		ESDHC_STROBE_DLL_CTRL_SLV_UPDATE_INT_DEFAULT |
+		(strobe_delay << ESDHC_STROBE_DLL_CTRL_SLV_DLY_TARGET_SHIFT);
+	writel(v, host->ioaddr + ESDHC_STROBE_DLL_CTRL);
+	/* wait 5us to make sure strobe dll status register stable */
+	udelay(5);
+	v = readl(host->ioaddr + ESDHC_STROBE_DLL_STATUS);
+	if (!(v & ESDHC_STROBE_DLL_STS_REF_LOCK))
+		dev_warn(mmc_dev(host->mmc),
+			"warning! HS400 strobe DLL status REF not lock!\n");
+	if (!(v & ESDHC_STROBE_DLL_STS_SLV_LOCK))
 			dev_warn(mmc_dev(host->mmc),
 				"warning! HS400 strobe DLL status SLV not lock!\n");
-	}
 }
 
 static void esdhc_reset_tuning(struct sdhci_host *host)
@@ -1078,7 +1097,6 @@ static void esdhc_set_uhs_signaling(struct sdhci_host *host, unsigned timing)
 		esdhc_set_strobe_dll(host);
 		break;
 	case MMC_TIMING_LEGACY:
-	default:
 		esdhc_reset_tuning(host);
 		break;
 	}
@@ -1300,18 +1318,14 @@ sdhci_esdhc_imx_probe_dt(struct platform_device *pdev,
 			     &boarddata->strobe_dll_delay_target);
 
 	if (of_find_property(np, "no-1-8-v", NULL))
-		boarddata->support_vsel = false;
-	else
-		boarddata->support_vsel = true;
+		host->quirks2 |= SDHCI_QUIRK2_NO_1_8_V;
 
 	if (of_property_read_u32(np, "fsl,delay-line", &boarddata->delay_line))
 		boarddata->delay_line = 0;
 
 	mmc_of_parse_voltage(np, &host->ocr_mask);
 
-	/* sdr50 and sdr104 need work on 1.8v signal voltage */
-	if ((boarddata->support_vsel) && esdhc_is_usdhc(imx_data) &&
-	    !IS_ERR(imx_data->pins_default)) {
+	if (esdhc_is_usdhc(imx_data) && !IS_ERR(imx_data->pins_default)) {
 		imx_data->pins_100mhz = pinctrl_lookup_state(imx_data->pinctrl,
 						ESDHC_PINCTRL_STATE_100MHZ);
 		imx_data->pins_200mhz = pinctrl_lookup_state(imx_data->pinctrl,
@@ -1451,6 +1465,14 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 
 	pltfm_host->clk = imx_data->clk_per;
 	pltfm_host->clock = clk_get_rate(pltfm_host->clk);
+
+	if (imx_data->socdata->flags & ESDHC_FLAG_BUSFREQ)
+		request_bus_freq(BUS_FREQ_HIGH);
+
+	if (imx_data->socdata->flags & ESDHC_FLAG_PMQOS)
+		pm_qos_add_request(&imx_data->pm_qos_req,
+			PM_QOS_CPU_DMA_LATENCY, 0);
+
 	err = clk_prepare_enable(imx_data->clk_per);
 	if (err)
 		goto free_sdhci;
@@ -1464,18 +1486,18 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 	imx_data->pinctrl = devm_pinctrl_get(&pdev->dev);
 	if (IS_ERR(imx_data->pinctrl)) {
 		err = PTR_ERR(imx_data->pinctrl);
-		goto disable_ahb_clk;
+		dev_warn(mmc_dev(host->mmc), "could not get pinctrl\n");
+		imx_data->pins_default = ERR_PTR(-EINVAL);
+	} else {
+		imx_data->pins_default = pinctrl_lookup_state(imx_data->pinctrl,
+							      PINCTRL_STATE_DEFAULT);
+		if (IS_ERR(imx_data->pins_default))
+			dev_warn(mmc_dev(host->mmc), "could not get default state\n");
 	}
-
-	imx_data->pins_default = pinctrl_lookup_state(imx_data->pinctrl,
-						PINCTRL_STATE_DEFAULT);
-	if (IS_ERR(imx_data->pins_default))
-		dev_warn(mmc_dev(host->mmc), "could not get default state\n");
 
 	if (esdhc_is_usdhc(imx_data)) {
 		host->quirks2 |= SDHCI_QUIRK2_PRESET_VALUE_BROKEN;
 		host->mmc->caps |= MMC_CAP_1_8V_DDR;
-
 		if (!(imx_data->socdata->flags & ESDHC_FLAG_HS200))
 			host->quirks2 |= SDHCI_QUIRK2_BROKEN_HS200;
 
@@ -1484,6 +1506,8 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 		writel(0x0, host->ioaddr + SDHCI_ACMD12_ERR);
 		writel(0x0, host->ioaddr + ESDHC_TUNE_CTRL_STATUS);
 	}
+
+	host->tuning_delay = 1;
 
 	if (imx_data->socdata->flags & ESDHC_FLAG_MAN_TUNING)
 		sdhci_esdhc_ops.platform_execute_tuning =
@@ -1506,7 +1530,7 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 		cq_host = devm_kzalloc(&pdev->dev, sizeof(*cq_host), GFP_KERNEL);
 		if (IS_ERR(cq_host)) {
 			err = PTR_ERR(cq_host);
-			goto disable_clk;
+			goto disable_ahb_clk;
 		}
 
 		cq_host->mmio = host->ioaddr + ESDHC_CQHCI_ADDR_OFFSET;
@@ -1514,7 +1538,7 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 
 		err = cqhci_init(cq_host, host->mmc, false);
 		if (err)
-			goto disable_clk;
+			goto disable_ahb_clk;
 	}
 
 	if (of_id)
@@ -1546,6 +1570,12 @@ disable_ipg_clk:
 	clk_disable_unprepare(imx_data->clk_ipg);
 disable_per_clk:
 	clk_disable_unprepare(imx_data->clk_per);
+
+	if (imx_data->socdata->flags & ESDHC_FLAG_BUSFREQ)
+		release_bus_freq(BUS_FREQ_HIGH);
+
+	if (imx_data->socdata->flags & ESDHC_FLAG_PMQOS)
+		pm_qos_remove_request(&imx_data->pm_qos_req);
 free_sdhci:
 	sdhci_pltfm_free(pdev);
 	return err;
@@ -1613,10 +1643,10 @@ static int sdhci_esdhc_suspend(struct device *dev)
 	}
 	clk_disable_unprepare(imx_data->clk_ahb);
 
-	if (host->tuning_mode != SDHCI_TUNING_MODE_3)
-		mmc_retune_needed(host->mmc);
+	pm_runtime_disable(dev);
+	pm_runtime_set_suspended(dev);
 
-	return sdhci_suspend_host(host);
+	return ret;
 }
 
 static int sdhci_esdhc_resume(struct device *dev)
@@ -1695,6 +1725,16 @@ static int sdhci_esdhc_runtime_resume(struct device *dev)
 	struct pltfm_imx_data *imx_data = sdhci_pltfm_priv(pltfm_host);
 	int err;
 
+	if (imx_data->socdata->flags & ESDHC_FLAG_BUSFREQ)
+		request_bus_freq(BUS_FREQ_HIGH);
+
+	if (imx_data->socdata->flags & ESDHC_FLAG_PMQOS)
+		pm_qos_add_request(&imx_data->pm_qos_req,
+			PM_QOS_CPU_DMA_LATENCY, 0);
+
+	if (imx_data->socdata->flags & ESDHC_FLAG_CLK_RATE_LOST_IN_PM_RUNTIME)
+		clk_set_rate(imx_data->clk_per, pltfm_host->clock);
+
 	if (!sdhci_sdio_irq_enabled(host)) {
 		err = clk_prepare_enable(imx_data->clk_per);
 		if (err)
@@ -1710,7 +1750,10 @@ static int sdhci_esdhc_runtime_resume(struct device *dev)
 	if (err)
 		goto disable_ahb_clk;
 
-	return 0;
+	if (host->mmc->caps2 & MMC_CAP2_CQE)
+		err = cqhci_resume(host->mmc);
+
+	return err;
 
 disable_ahb_clk:
 	clk_disable_unprepare(imx_data->clk_ahb);

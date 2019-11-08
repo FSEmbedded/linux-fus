@@ -24,6 +24,7 @@
 #include <linux/sched.h>
 #include <asm/cputype.h>
 #include <asm/mmu.h>
+#include <soc/imx8/soc.h>
 
 /*
  * Raw TLBI operations.
@@ -120,8 +121,12 @@ static inline void flush_tlb_mm(struct mm_struct *mm)
 	unsigned long asid = ASID(mm) << 48;
 
 	dsb(ishst);
-	__tlbi(aside1is, asid);
-	__tlbi_user(aside1is, asid);
+	if (TKT340553_SW_WORKAROUND && ASID(mm) >> 11) {
+		__tlbi(vmalle1is);
+	} else {
+		__tlbi(aside1is, asid);
+		__tlbi_user(aside1is, asid);
+	}
 	dsb(ish);
 }
 
@@ -131,8 +136,12 @@ static inline void flush_tlb_page(struct vm_area_struct *vma,
 	unsigned long addr = uaddr >> 12 | (ASID(vma->vm_mm) << 48);
 
 	dsb(ishst);
-	__tlbi(vale1is, addr);
-	__tlbi_user(vale1is, addr);
+	if (TKT340553_SW_WORKAROUND && (uaddr >> 36 || (ASID(vma->vm_mm) >> 12))) {
+		__tlbi(vmalle1is);
+	} else {
+		__tlbi(vale1is, addr);
+		__tlbi_user(vale1is, addr);
+	}
 	dsb(ish);
 }
 
@@ -162,7 +171,9 @@ static inline void __flush_tlb_range(struct vm_area_struct *vma,
 
 	dsb(ishst);
 	for (addr = start; addr < end; addr += 1 << (PAGE_SHIFT - 12)) {
-		if (last_level) {
+		if (TKT340553_SW_WORKAROUND && (addr & mask || (ASID(vma->vm_mm) >> 12))) {
+			__tlbi(vmalle1is);
+		} else if (last_level) {
 			__tlbi(vale1is, addr);
 			__tlbi_user(vale1is, addr);
 		} else {
@@ -211,8 +222,13 @@ static inline void __flush_tlb_pgtable(struct mm_struct *mm,
 {
 	unsigned long addr = uaddr >> 12 | (ASID(mm) << 48);
 
-	__tlbi(vae1is, addr);
-	__tlbi_user(vae1is, addr);
+	if (TKT340553_SW_WORKAROUND && (uaddr >> 36 || (ASID(mm) >> 12))) {
+		__tlbi(vmalle1is);
+	} else {
+		__tlbi(vae1is, addr);
+		__tlbi_user(vae1is, addr);
+	}
+
 	dsb(ish);
 }
 

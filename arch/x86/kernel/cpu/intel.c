@@ -197,19 +197,6 @@ static void early_init_intel(struct cpuinfo_x86 *c)
 		setup_clear_cpu_cap(X86_FEATURE_SPEC_CTRL_SSBD);
 	}
 
-	/* Now if any of them are set, check the blacklist and clear the lot */
-	if ((cpu_has(c, X86_FEATURE_SPEC_CTRL) ||
-	     cpu_has(c, X86_FEATURE_INTEL_STIBP) ||
-	     cpu_has(c, X86_FEATURE_IBRS) || cpu_has(c, X86_FEATURE_IBPB) ||
-	     cpu_has(c, X86_FEATURE_STIBP)) && bad_spectre_microcode(c)) {
-		pr_warn("Intel Spectre v2 broken microcode detected; disabling Speculation Control\n");
-		setup_clear_cpu_cap(X86_FEATURE_IBRS);
-		setup_clear_cpu_cap(X86_FEATURE_IBPB);
-		setup_clear_cpu_cap(X86_FEATURE_STIBP);
-		setup_clear_cpu_cap(X86_FEATURE_SPEC_CTRL);
-		setup_clear_cpu_cap(X86_FEATURE_INTEL_STIBP);
-	}
-
 	/*
 	 * Atom erratum AAE44/AAF40/AAG38/AAH41:
 	 *

@@ -245,6 +245,8 @@ struct imx_port {
 	struct imx_dma_rxbuf	rx_buf;
 	unsigned int		tx_bytes;
 	unsigned int		dma_tx_nents;
+	struct work_struct	tsk_dma_tx;
+	wait_queue_head_t	dma_wait;
 	unsigned int            saved_reg[10];
 	bool			context_saved;
 #define DMA_TX_IS_WORKING 1
@@ -524,13 +526,18 @@ static void dma_tx_callback(void *data)
 
 	dev_dbg(sport->port.dev, "we finish the TX DMA.\n");
 
-	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
-		uart_write_wakeup(&sport->port);
+	clear_bit(DMA_TX_IS_WORKING, &sport->flags);
+	smp_mb__after_atomic();
+	uart_write_wakeup(&sport->port);
 
 	if (!uart_circ_empty(xmit) && !uart_tx_stopped(&sport->port))
-		imx_dma_tx(sport);
+		schedule_work(&sport->tsk_dma_tx);
 
-	spin_unlock_irqrestore(&sport->port.lock, flags);
+	if (waitqueue_active(&sport->dma_wait)) {
+		wake_up(&sport->dma_wait);
+		dev_dbg(sport->port.dev, "exit in %s.\n", __func__);
+		return;
+	}
 }
 
 static void dma_tx_work(struct work_struct *w)
@@ -760,31 +767,6 @@ static void imx_disable_rx_int(struct imx_port *sport)
 	temp = readl(sport->port.membase + UCR4);
 	temp &= ~UCR4_OREN;
 	writel(temp, sport->port.membase + UCR4);
-}
-
-static void clear_rx_errors(struct imx_port *sport);
-static int start_rx_dma(struct imx_port *sport);
-/*
- * If the RXFIFO is filled with some data, and then we
- * arise a DMA operation to receive them.
- */
-static void imx_dma_rxint(struct imx_port *sport)
-{
-	unsigned long temp;
-	unsigned long flags;
-
-	spin_lock_irqsave(&sport->port.lock, flags);
-
-	temp = readl(sport->port.membase + USR2);
-	if ((temp & USR2_RDR) && !sport->dma_is_rxing) {
-
-		imx_disable_rx_int(sport);
-
-		/* tell the DMA to receive the data. */
-		start_rx_dma(sport);
-	}
-
-	spin_unlock_irqrestore(&sport->port.lock, flags);
 }
 
 /*
@@ -1244,6 +1226,9 @@ static void imx_enable_dma(struct imx_port *sport)
 {
 	unsigned long temp;
 
+	init_waitqueue_head(&sport->dma_wait);
+	sport->flags = 0;
+
 	/* set UCR1 */
 	temp = readl(sport->port.membase + UCR1);
 	temp |= UCR1_RDMAEN | UCR1_TDMAEN | UCR1_ATDMAEN |
@@ -1347,10 +1332,11 @@ static int imx_startup(struct uart_port *port)
 	writel(USR2_ORE, sport->port.membase + USR2);
 
 	temp = readl(sport->port.membase + UCR1);
-	temp |= UCR1_RRDYEN | UCR1_UARTEN;
+	if (!sport->dma_is_inited)
+		temp |= UCR1_RRDYEN;
 	if (sport->have_rtscts)
-			temp |= UCR1_RTSDEN;
-
+		temp |= UCR1_RTSDEN;
+	temp |= UCR1_UARTEN;
 	writel(temp, sport->port.membase + UCR1);
 
 	temp = readl(sport->port.membase + UCR4);

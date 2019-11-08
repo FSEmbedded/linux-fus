@@ -132,7 +132,7 @@ struct f2fs_dir_entry *find_target_dentry(struct fscrypt_name *fname,
 		    fscrypt_match_name(fname, d->filename[bit_pos],
 				       le16_to_cpu(de->name_len)))
 			goto found;
-not_match:
+
 		if (max_slots && max_len > *max_slots)
 			*max_slots = max_len;
 		max_len = 0;
@@ -192,13 +192,9 @@ static struct f2fs_dir_entry *find_in_level(struct inode *dir,
 		f2fs_put_page(dentry_page, 0);
 	}
 
-	/* This is to increase the speed of f2fs_create */
-	if (!de && room) {
-		F2FS_I(dir)->task = current;
-		if (F2FS_I(dir)->chash != namehash) {
-			F2FS_I(dir)->chash = namehash;
-			F2FS_I(dir)->clevel = level;
-		}
+	if (!de && room && F2FS_I(dir)->chash != namehash) {
+		F2FS_I(dir)->chash = namehash;
+		F2FS_I(dir)->clevel = level;
 	}
 
 	return de;

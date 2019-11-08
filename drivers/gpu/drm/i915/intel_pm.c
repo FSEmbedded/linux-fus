@@ -3557,21 +3557,6 @@ static bool skl_needs_memory_bw_wa(struct intel_atomic_state *state)
 	return false;
 }
 
-/*
- * FIXME: We still don't have the proper code detect if we need to apply the WA,
- * so assume we'll always need it in order to avoid underruns.
- */
-static bool skl_needs_memory_bw_wa(struct intel_atomic_state *state)
-{
-	struct drm_i915_private *dev_priv = to_i915(state->base.dev);
-
-	if (IS_SKYLAKE(dev_priv) || IS_BROXTON(dev_priv) ||
-	    IS_KABYLAKE(dev_priv))
-		return true;
-
-	return false;
-}
-
 static bool
 intel_has_sagv(struct drm_i915_private *dev_priv)
 {

@@ -435,7 +435,6 @@ void vmbus_free_channels(void)
 {
 	struct vmbus_channel *channel, *tmp;
 
-	mutex_lock(&vmbus_connection.channel_mutex);
 	list_for_each_entry_safe(channel, tmp, &vmbus_connection.chn_list,
 		listentry) {
 		/* hv_process_channel_removal() needs this */
@@ -443,7 +442,6 @@ void vmbus_free_channels(void)
 
 		vmbus_device_unregister(channel->device_obj);
 	}
-	mutex_unlock(&vmbus_connection.channel_mutex);
 }
 
 /*
@@ -904,8 +902,6 @@ static void vmbus_onoffer_rescind(struct vmbus_channel_message_header *hdr)
 	/*
 	 * At this point, the rescind handling can proceed safely.
 	 */
-
-	vmbus_rescind_cleanup(channel);
 
 	if (channel->device_obj) {
 		if (channel->chn_rescind_callback) {

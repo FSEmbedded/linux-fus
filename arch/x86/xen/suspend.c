@@ -20,8 +20,6 @@
 
 static DEFINE_PER_CPU(u64, spec_ctrl);
 
-static DEFINE_PER_CPU(u64, spec_ctrl);
-
 void xen_arch_pre_suspend(void)
 {
 	if (xen_pv_domain())

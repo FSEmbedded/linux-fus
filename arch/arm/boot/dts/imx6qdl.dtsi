@@ -89,7 +89,7 @@
 
 		caam_sm: caam-sm@00100000 {
 			compatible = "fsl,imx6q-caam-sm";
-			reg = <0x00100000 0x3fff>;
+			reg = <0x00100000 0x4000>;
 		};
 
 		dma_apbh: dma-apbh@00110000 {
@@ -521,7 +521,7 @@
 				iramsize = <0x21000>;
 				iram = <&ocram>;
 				resets = <&src 1>;
-				power-domains = <&gpc 1>;
+				power-domains = <&pd_pu>;
 			};
 
 			aipstz@0207c000 { /* AIPSTZ1 */
@@ -734,7 +734,7 @@
 					anatop-enable-bit = <0>;
 				};
 
-				reg_3p0: regulator-3p0@120 {
+				anatop_reg_3p0: regulator-3p0@120 {
 					compatible = "fsl,anatop-regulator";
 					regulator-name = "vdd3p0";
 					regulator-min-microvolt = <2625000>;
@@ -831,7 +831,7 @@
 				reg = <0x020c9000 0x1000>;
 				interrupts = <0 44 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&clks IMX6QDL_CLK_USBPHY1>;
-				phy-3p0-supply = <&reg_3p0>;
+				phy-3p0-supply = <&anatop_reg_3p0>;
 				fsl,anatop = <&anatop>;
 			};
 
@@ -840,7 +840,7 @@
 				reg = <0x020ca000 0x1000>;
 				interrupts = <0 45 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&clks IMX6QDL_CLK_USBPHY2>;
-				phy-3p0-supply = <&reg_3p0>;
+				phy-3p0-supply = <&anatop_reg_3p0>;
 				fsl,anatop = <&anatop>;
 			};
 
@@ -877,8 +877,8 @@
 					compatible = "syscon-poweroff";
 					regmap = <&snvs>;
 					offset = <0x38>;
-					value = <0x60>;
-					mask = <0x60>;
+					value = <0x61>;
+					mask = <0x61>;
 					status = "disabled";
 				};
 			};
@@ -1304,20 +1304,27 @@
 				status = "disabled";
 			};
 
-			mipi_csi: mipi@021dc000 {
-				compatible = "fsl,imx6-mipi-csi2";
+			mipi_csi: mipi_csi@021dc000 { /* MIPI-CSI */
+				compatible = "fsl,imx6q-mipi-csi2";
 				reg = <0x021dc000 0x4000>;
 				#address-cells = <1>;
 				#size-cells = <0>;
 				interrupts = <0 100 0x04>, <0 101 0x04>;
 				clocks = <&clks IMX6QDL_CLK_HSI_TX>,
-					 <&clks IMX6QDL_CLK_VIDEO_27M>,
-					 <&clks IMX6QDL_CLK_EIM_PODF>;
-				clock-names = "dphy", "ref", "pix";
+					 <&clks IMX6QDL_CLK_EIM_SEL>,
+					 <&clks IMX6QDL_CLK_VIDEO_27M>;
+				/* Note: clks 138 is hsi_tx, however, the dphy_c
+				 * hsi_tx and pll_refclk use the same clk gate.
+				 * In current clk driver, open/close clk gate do
+				 * use hsi_tx for a temporary debug purpose.
+				 */
+				clock-names = "dphy_clk", "pixel_clk", "cfg_clk";
 				status = "disabled";
 			};
 
-			mipi@021e0000 { /* MIPI-DSI */
+			mipi_dsi: mipi@021e0000 { /* MIPI-DSI */
+				#address-cells = <1>;
+				#size-cells = <0>;
 				reg = <0x021e0000 0x4000>;
 				status = "disabled";
 
@@ -1348,6 +1355,7 @@
 				reg = <0x021e4000 0x4000>;
 				interrupts = <0 18 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&clks IMX6QDL_CLK_VDOA>;
+				iram = <&ocram>;
 			};
 
 			uart2: serial@021e8000 {

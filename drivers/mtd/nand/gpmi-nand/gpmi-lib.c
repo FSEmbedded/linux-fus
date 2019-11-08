@@ -30,6 +30,9 @@
 #include "gpmi-regs.h"
 #include "bch-regs.h"
 
+/* export the bch geometry to dbgfs */
+static struct debugfs_blob_wrapper dbg_bch_geo;
+
 static struct timing_threshold timing_default_threshold = {
 	.max_data_setup_cycles       = (BM_GPMI_TIMING0_DATA_SETUP >>
 						BP_GPMI_TIMING0_DATA_SETUP),
@@ -339,7 +342,7 @@ int bch_set_geometry(struct gpmi_nand_data *this)
 			r->bch_regs + HW_BCH_FLASH0LAYOUT1);
 
 	/* Set erase threshold to ecc strength for mx6ul, mx6qp and mx7 */
-	if (GPMI_IS_MX6QP(this) || GPMI_IS_MX7(this) || GPMI_IS_MX6UL(this))
+	if (GPMI_IS_MX6QP(this) || GPMI_IS_MX7D(this) || GPMI_IS_MX6UL(this))
 		writel(BF_BCH_MODE_ERASE_THRESHOLD(ecc_strength),
 			r->bch_regs + HW_BCH_MODE);
 
@@ -1022,7 +1025,7 @@ int gpmi_extra_init(struct gpmi_nand_data *this)
 	struct nand_chip *chip = &this->nand;
 
 	/* Enable the asynchronous EDO feature. */
-	if ((GPMI_IS_MX6(this) || GPMI_IS_MX7(this) || GPMI_IS_MX8(this))
+	if ((GPMI_IS_MX6(this) || GPMI_IS_MX8(this))
 			&& chip->onfi_version) {
 		int mode = onfi_get_async_timing_mode(chip);
 
@@ -1147,12 +1150,12 @@ int gpmi_is_ready(struct gpmi_nand_data *this, unsigned chip)
 		mask = MX23_BM_GPMI_DEBUG_READY0 << chip;
 		reg = readl(r->gpmi_regs + HW_GPMI_DEBUG);
 	} else if (GPMI_IS_MX28(this) || GPMI_IS_MX6(this) ||
-			GPMI_IS_MX7(this) || GPMI_IS_MX8(this)) {
+			GPMI_IS_MX8(this)) {
 		/*
 		 * In the imx6, all the ready/busy pins are bound
 		 * together. So we only need to check chip 0.
 		 */
-		if (GPMI_IS_MX6(this) || GPMI_IS_MX7(this) || GPMI_IS_MX8(this))
+		if (GPMI_IS_MX6(this) || GPMI_IS_MX8(this))
 			chip = 0;
 
 		/* MX28 shares the same R/B register as MX6Q. */

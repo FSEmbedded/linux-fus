@@ -107,7 +107,7 @@ static const struct cpu_dev default_cpu = {
 
 static const struct cpu_dev *this_cpu = &default_cpu;
 
-DEFINE_PER_CPU_PAGE_ALIGNED_USER_MAPPED(struct gdt_page, gdt_page) = { .gdt = {
+DEFINE_PER_CPU_PAGE_ALIGNED(struct gdt_page, gdt_page) = { .gdt = {
 #ifdef CONFIG_X86_64
 	/*
 	 * We need valid kernel segments for data and code in long mode too
@@ -336,39 +336,6 @@ static __always_inline void setup_smap(struct cpuinfo_x86 *c)
 		cr4_clear_bits(X86_CR4_SMAP);
 #endif
 	}
-}
-
-static void setup_pcid(struct cpuinfo_x86 *c)
-{
-	if (cpu_has(c, X86_FEATURE_PCID)) {
-		if (cpu_has(c, X86_FEATURE_PGE) || kaiser_enabled) {
-			cr4_set_bits(X86_CR4_PCIDE);
-			/*
-			 * INVPCID has two "groups" of types:
-			 * 1/2: Invalidate an individual address
-			 * 3/4: Invalidate all contexts
-			 *
-			 * 1/2 take a PCID, but 3/4 do not.  So, 3/4
-			 * ignore the PCID argument in the descriptor.
-			 * But, we have to be careful not to call 1/2
-			 * with an actual non-zero PCID in them before
-			 * we do the above cr4_set_bits().
-			 */
-			if (cpu_has(c, X86_FEATURE_INVPCID))
-				set_cpu_cap(c, X86_FEATURE_INVPCID_SINGLE);
-		} else {
-			/*
-			 * flush_tlb_all(), as currently implemented, won't
-			 * work if PCID is on but PGE is not.  Since that
-			 * combination doesn't exist on real hardware, there's
-			 * no reason to try to fully support it, but it's
-			 * polite to avoid corrupting data if we're on
-			 * an improperly configured VM.
-			 */
-			clear_cpu_cap(c, X86_FEATURE_PCID);
-		}
-	}
-	kaiser_setup_pcid();
 }
 
 /*
@@ -1015,41 +982,6 @@ static void __init cpu_set_bug_bits(struct cpuinfo_x86 *c)
 	setup_force_cpu_bug(X86_BUG_L1TF);
 }
 
-static const __initconst struct x86_cpu_id cpu_no_speculation[] = {
-	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_CEDARVIEW,	X86_FEATURE_ANY },
-	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_CLOVERVIEW,	X86_FEATURE_ANY },
-	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_LINCROFT,	X86_FEATURE_ANY },
-	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_PENWELL,	X86_FEATURE_ANY },
-	{ X86_VENDOR_INTEL,	6, INTEL_FAM6_ATOM_PINEVIEW,	X86_FEATURE_ANY },
-	{ X86_VENDOR_CENTAUR,	5 },
-	{ X86_VENDOR_INTEL,	5 },
-	{ X86_VENDOR_NSC,	5 },
-	{ X86_VENDOR_ANY,	4 },
-	{}
-};
-
-static const __initconst struct x86_cpu_id cpu_no_meltdown[] = {
-	{ X86_VENDOR_AMD },
-	{}
-};
-
-static bool __init cpu_vulnerable_to_meltdown(struct cpuinfo_x86 *c)
-{
-	u64 ia32_cap = 0;
-
-	if (x86_match_cpu(cpu_no_meltdown))
-		return false;
-
-	if (cpu_has(c, X86_FEATURE_ARCH_CAPABILITIES))
-		rdmsrl(MSR_IA32_ARCH_CAPABILITIES, ia32_cap);
-
-	/* Rogue Data Cache Load? No! */
-	if (ia32_cap & ARCH_CAP_RDCL_NO)
-		return false;
-
-	return true;
-}
-
 /*
  * Do minimum CPU detection early.
  * Fields really needed: vendor, cpuid_level, family, model, mask,
@@ -1346,9 +1278,6 @@ static void identify_cpu(struct cpuinfo_x86 *c)
 	/* Set up SMEP/SMAP */
 	setup_smep(c);
 	setup_smap(c);
-
-	/* Set up PCID */
-	setup_pcid(c);
 
 	/*
 	 * The vendor-specific functions might have changed features.
@@ -1694,14 +1623,6 @@ void cpu_init(void)
 	 * try to read it.
 	 */
 	cr4_init_shadow();
-	if (!kaiser_enabled) {
-		/*
-		 * secondary_startup_64() deferred setting PGE in cr4:
-		 * probe_page_size_mask() sets it on the boot cpu,
-		 * but it needs to be set on each secondary cpu.
-		 */
-		cr4_set_bits(X86_CR4_PGE);
-	}
 
 	if (cpu)
 		load_ucode_ap();

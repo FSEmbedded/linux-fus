@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017-2018 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -48,7 +48,7 @@
 #define CURPIXELCNT			0x1C
 static u16 get_xval(u32 pixel_cnt)
 {
-	return pixel_cnt && 0xFF;
+	return pixel_cnt & 0xFFFF;
 }
 
 static u16 get_yval(u32 pixel_cnt)
@@ -177,6 +177,25 @@ void extdst_pixengcfg_div(struct dpu_extdst *ed, u16 div)
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_pixengcfg_div);
+
+void extdst_pixengcfg_syncmode_master(struct dpu_extdst *ed, bool enable)
+{
+	struct dpu_soc *dpu = ed->dpu;
+	u32 val;
+
+	if (!dpu->devtype->has_syncmode_fixup)
+		return;
+
+	mutex_lock(&ed->mutex);
+	val = dpu_pec_ed_read(ed, PIXENGCFG_STATIC);
+	if (enable)
+		val |= BIT(16);
+	else
+		val &= ~BIT(16);
+	dpu_pec_ed_write(ed, val, PIXENGCFG_STATIC);
+	mutex_unlock(&ed->mutex);
+}
+EXPORT_SYMBOL_GPL(extdst_pixengcfg_syncmode_master);
 
 int extdst_pixengcfg_src_sel(struct dpu_extdst *ed, extdst_src_sel_t src)
 {
@@ -401,6 +420,14 @@ u32 extdst_perfresult(struct dpu_extdst *ed)
 }
 EXPORT_SYMBOL_GPL(extdst_perfresult);
 
+bool extdst_is_master(struct dpu_extdst *ed)
+{
+	const struct dpu_devtype *devtype = ed->dpu->devtype;
+
+	return ed->id == devtype->master_stream_id;
+}
+EXPORT_SYMBOL_GPL(extdst_is_master);
+
 struct dpu_extdst *dpu_ed_get(struct dpu_soc *dpu, int id)
 {
 	struct dpu_extdst *ed;
@@ -418,12 +445,12 @@ struct dpu_extdst *dpu_ed_get(struct dpu_soc *dpu, int id)
 	mutex_lock(&ed->mutex);
 
 	if (ed->inuse) {
-		ed = ERR_PTR(-EBUSY);
-		goto out;
+		mutex_unlock(&ed->mutex);
+		return ERR_PTR(-EBUSY);
 	}
 
 	ed->inuse = true;
-out:
+
 	mutex_unlock(&ed->mutex);
 
 	return ed;
@@ -439,6 +466,19 @@ void dpu_ed_put(struct dpu_extdst *ed)
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(dpu_ed_put);
+
+struct dpu_extdst *dpu_aux_ed_peek(struct dpu_extdst *ed)
+{
+	unsigned int aux_id = ed->id ^ 1;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(ed_ids); i++)
+		if (ed_ids[i] == aux_id)
+			return ed->dpu->ed_priv[i];
+
+	return NULL;
+}
+EXPORT_SYMBOL_GPL(dpu_aux_ed_peek);
 
 void _dpu_ed_init(struct dpu_soc *dpu, unsigned int id)
 {
@@ -478,6 +518,9 @@ int dpu_ed_init(struct dpu_soc *dpu, unsigned int id,
 	for (i = 0; i < ARRAY_SIZE(ed_ids); i++)
 		if (ed_ids[i] == id)
 			break;
+
+	if (i == ARRAY_SIZE(ed_ids))
+		return -EINVAL;
 
 	dpu->ed_priv[i] = ed;
 

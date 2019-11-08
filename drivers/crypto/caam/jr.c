@@ -3,15 +3,12 @@
  * JobR backend functionality
  *
  * Copyright 2008-2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017-2018 NXP
  */
 
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
-#ifdef CONFIG_HAVE_IMX8_SOC
-#include <soc/imx/revision.h>
-#include <soc/imx8/soc.h>
-#endif
+
 #include "compat.h"
 #include "ctrl.h"
 #include "regs.h"
@@ -410,6 +407,10 @@ static int caam_jr_init(struct device *dev)
 
 	jrp = dev_get_drvdata(dev);
 
+	error = caam_reset_hw_jr(dev);
+	if (error)
+		goto out_kill_deq;
+
 	tasklet_init(&jrp->irqtask, caam_jr_dequeue, (unsigned long)dev);
 
 	/* Connect job ring interrupt handler. */
@@ -491,8 +492,10 @@ static int caam_jr_probe(struct platform_device *pdev)
 
 	jrdev = &pdev->dev;
 	jrpriv = devm_kmalloc(jrdev, sizeof(*jrpriv), GFP_KERNEL);
-	if (!jrpriv)
-		return -ENOMEM;
+	if (!jrpriv) {
+		error = -ENOMEM;
+		goto exit;
+	}
 
 	dev_set_drvdata(jrdev, jrpriv);
 
@@ -505,12 +508,18 @@ static int caam_jr_probe(struct platform_device *pdev)
 	ctrl = of_iomap(nprop, 0);
 	if (!ctrl) {
 		dev_err(jrdev, "of_iomap() failed\n");
-		return -ENOMEM;
+		error = -ENOMEM;
+		goto exit;
 	}
 
 	jrpriv->rregs = (struct caam_job_ring __iomem __force *)ctrl;
 
-	if (sizeof(dma_addr_t) == sizeof(u64)) {
+	if (of_machine_is_compatible("fsl,imx8mm") ||
+		of_machine_is_compatible("fsl,imx8qm") ||
+		of_machine_is_compatible("fsl,imx8qxp") ||
+		of_machine_is_compatible("fsl,imx8mq")) {
+		error = dma_set_mask_and_coherent(jrdev, DMA_BIT_MASK(32));
+	} else if (sizeof(dma_addr_t) == sizeof(u64)) {
 		if (caam_dpaa2)
 			error = dma_set_mask_and_coherent(jrdev,
 							  DMA_BIT_MASK(49));
@@ -527,8 +536,7 @@ static int caam_jr_probe(struct platform_device *pdev)
 	if (error) {
 		dev_err(jrdev, "dma_set_mask_and_coherent failed (%d)\n",
 			error);
-		iounmap(ctrl);
-		return error;
+		goto unmap_ctrl;
 	}
 
 	/* Identify the interrupt */
@@ -541,10 +549,8 @@ static int caam_jr_probe(struct platform_device *pdev)
 	/* Now do the platform independent part */
 	error = caam_jr_init(jrdev); /* now turn on hardware */
 	if (error) {
-		irq_dispose_mapping(jrpriv->irq);
-		iounmap(ctrl);
-		return error;
-    }
+		goto dispose_irq_mapping;
+	}
 
 	jrpriv->dev = jrdev;
 	spin_lock(&driver_data.jr_alloc_lock);
@@ -562,7 +568,8 @@ static int caam_jr_probe(struct platform_device *pdev)
 	if (list_empty(&driver_data.jr_list)) {
 		spin_unlock(&driver_data.jr_alloc_lock);
 		dev_err(jrdev, "jr_list is empty\n");
-		return -ENODEV;
+		error = -ENODEV;
+		goto dispose_irq_mapping;
 	}
 	jrppriv = list_first_entry(&driver_data.jr_list,
 		struct caam_drv_private_jr, list_node);
@@ -572,37 +579,29 @@ static int caam_jr_probe(struct platform_device *pdev)
 	 * then try to instantiate RNG
 	 */
 	if (jrppriv->ridx == jrpriv->ridx) {
-		if (of_machine_is_compatible("fsl,imx8qm") ||
-			of_machine_is_compatible("fsl,imx8qxp")) {
-			/*
-			 * This is a workaround for SOC REV_A0:
-			 * i.MX8QM and i.MX8QXP reach kernel level
-			 * with RNG un-instantiated. It is instantiated
-			 * here unlike REV_B0 and later.
-			 */
-#ifdef CONFIG_HAVE_IMX8_SOC
-			if (imx8_get_soc_revision() == IMX_CHIP_REVISION_1_0)
-				error = inst_rng_imx8(pdev);
-#endif /* CONFIG_HAVE_IMX8_SOC */
-		} else {
+		if (!of_machine_is_compatible("fsl,imx8qm") &&
+		    !of_machine_is_compatible("fsl,imx8qxp"))
 			/*
 			 * This call is done for legacy SOCs:
 			 * i.MX6 i.MX7 and i.MX8M (mScale).
 			 */
-			error = inst_rng_imx6(pdev);
-		}
+			error = inst_rng_imx(pdev);
 	}
-	if (error != 0) {
-#ifdef CONFIG_HAVE_IMX8_SOC
-		if (imx8_get_soc_revision() == IMX_CHIP_REVISION_1_0)
-			dev_err(jrdev,
-				"This is a known limitation on A0 SOC revision\n"
-				"RNG instantiation failed, CAAM needs a reboot\n");
-#endif /* CONFIG_HAVE_IMX8_SOC */
-		spin_lock(&driver_data.jr_alloc_lock);
-		list_del(&jrpriv->list_node);
-		spin_unlock(&driver_data.jr_alloc_lock);
-	}
+	if (error)
+		goto remove_jr_from_list;
+
+	goto exit;
+
+remove_jr_from_list:
+	spin_lock(&driver_data.jr_alloc_lock);
+	list_del(&jrpriv->list_node);
+	spin_unlock(&driver_data.jr_alloc_lock);
+dispose_irq_mapping:
+	irq_dispose_mapping(jrpriv->irq);
+unmap_ctrl:
+	iounmap(ctrl);
+
+exit:
 	return error;
 }
 
@@ -628,6 +627,10 @@ static int caam_jr_resume(struct device *dev)
 
 	return 0;
 }
+
+static SIMPLE_DEV_PM_OPS(caam_jr_pm_ops, caam_jr_suspend,
+			 caam_jr_resume);
+#endif
 
 static const struct of_device_id caam_jr_match[] = {
 	{

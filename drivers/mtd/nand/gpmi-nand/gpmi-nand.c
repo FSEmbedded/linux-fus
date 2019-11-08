@@ -1,7 +1,7 @@
 /*
  * Freescale GPMI NAND Flash Driver
  *
- * Copyright (C) 2010-2016 Freescale Semiconductor, Inc.
+ * Copyright (C) 2010-2015 Freescale Semiconductor, Inc.
  * Copyright (C) 2008 Embedded Alley Solutions, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -127,11 +127,21 @@ static const struct gpmi_devdata gpmi_devdata_imx6qp = {
 	.type = IS_MX6QP,
 	.bch_max_ecc_strength = 40,
 	.max_chain_delay = 12,
+	.clks = gpmi_clks_for_mx6,
+	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx6),
 };
 
 static const struct gpmi_devdata gpmi_devdata_imx6sx = {
 	.type = IS_MX6SX,
 	.bch_max_ecc_strength = 62,
+	.max_chain_delay = 12,
+	.clks = gpmi_clks_for_mx6,
+	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx6),
+};
+
+static const struct gpmi_devdata gpmi_devdata_imx6ul = {
+	.type = IS_MX6UL,
+	.bch_max_ecc_strength = 40,
 	.max_chain_delay = 12,
 	.clks = gpmi_clks_for_mx6,
 	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx6),
@@ -149,28 +159,24 @@ static const struct gpmi_devdata gpmi_devdata_imx7d = {
 	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx7d),
 };
 
-static const struct gpmi_devdata gpmi_devdata_imx7d = {
-	.type = IS_MX7D,
-	.bch_max_ecc_strength = 62,
-	.max_chain_delay = 12,
-};
-
-static const struct gpmi_devdata gpmi_devdata_imx6ul = {
-	.type = IS_MX6UL,
-	.bch_max_ecc_strength = 40,
-	.max_chain_delay = 12,
-};
-
 static const struct gpmi_devdata gpmi_devdata_imx6ull = {
 	.type = IS_MX6ULL,
 	.bch_max_ecc_strength = 40,
 	.max_chain_delay = 12,
+	.clks = gpmi_clks_for_mx6,
+	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx6),
+};
+
+static const char * gpmi_clks_for_mx8qxp[GPMI_CLK_MAX] = {
+	"gpmi_apb", "gpmi_bch", "gpmi_apb_bch",
 };
 
 static const struct gpmi_devdata gpmi_devdata_imx8qxp = {
 	.type = IS_MX8QXP,
 	.bch_max_ecc_strength = 62,
 	.max_chain_delay = 12,
+	.clks = gpmi_clks_for_mx8qxp,
+	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx8qxp),
 };
 
 static irqreturn_t bch_irq(int irq, void *cookie)
@@ -854,7 +860,7 @@ static int gpmi_get_clks(struct gpmi_nand_data *this)
 		r->clock[i] = clk;
 	}
 
-	if (GPMI_IS_MX6(this) || GPMI_IS_MX7(this) || GPMI_IS_MX8(this))
+	if (GPMI_IS_MX6(this) || GPMI_IS_MX8(this))
 		/*
 		 * Set the default value for the gpmi clock.
 		 *
@@ -1299,7 +1305,7 @@ static int gpmi_ecc_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 			continue;
 
 		if (*status == STATUS_ERASED) {
-			if (GPMI_IS_MX6QP(this) || GPMI_IS_MX7(this) ||
+			if (GPMI_IS_MX6QP(this) || GPMI_IS_MX7D(this) ||
 						GPMI_IS_MX6UL(this))
 				if (readl(bch_regs + HW_BCH_DEBUG1))
 					flag = 1;
@@ -1492,7 +1498,7 @@ static int gpmi_ecc_read_subpage(struct mtd_info *mtd, struct nand_chip *chip,
 
 	/* set chunk0 size if meta size is 0 */
 	if (!meta) {
-		if (GPMI_IS_MX6(this) || GPMI_IS_MX7(this) || GPMI_IS_MX8(this))
+		if (GPMI_IS_MX6(this) || GPMI_IS_MX8(this))
 			r1_new &= ~MX6Q_BM_BCH_FLASH0LAYOUT0_DATA0_SIZE;
 		else
 			r1_new &= ~BM_BCH_FLASH0LAYOUT0_DATA0_SIZE;
@@ -2260,7 +2266,7 @@ static int gpmi_init_last(struct gpmi_nand_data *this)
 	 *  (1) the chip is imx6, and
 	 *  (2) the size of the ECC parity is byte aligned.
 	 */
-	if ((GPMI_IS_MX6(this) || GPMI_IS_MX7(this) || GPMI_IS_MX8(this)) &&
+	if ((GPMI_IS_MX6(this) || GPMI_IS_MX8(this)) &&
 		((bch_geo->gf_len * bch_geo->ecc_strength) % 8) == 0) {
 		ecc->read_subpage = gpmi_ecc_read_subpage;
 		chip->options |= NAND_SUBPAGE_READ;
@@ -2316,8 +2322,7 @@ static int gpmi_nand_init(struct gpmi_nand_data *this)
 	if (ret)
 		goto err_out;
 
-	ret = nand_scan_ident(mtd, GPMI_IS_MX6(this) || GPMI_IS_MX7(this)\
-			      || GPMI_IS_MX8(this) ? 2 : 1, NULL);
+	ret = nand_scan_ident(mtd, (GPMI_IS_MX6(this) || GPMI_IS_MX8(this)) ? 2 : 1, NULL);
 	if (ret)
 		goto err_out;
 
@@ -2380,8 +2385,17 @@ static const struct of_device_id gpmi_nand_id_table[] = {
 		.compatible = "fsl,imx6sx-gpmi-nand",
 		.data = &gpmi_devdata_imx6sx,
 	}, {
+		.compatible = "fsl,imx6ul-gpmi-nand",
+		.data = (void *)&gpmi_devdata_imx6ul,
+	}, {
 		.compatible = "fsl,imx7d-gpmi-nand",
 		.data = &gpmi_devdata_imx7d,
+	}, {
+		.compatible = "fsl,imx6ull-gpmi-nand",
+		.data = &gpmi_devdata_imx6ull,
+	}, {
+		.compatible = "fsl,imx8qxp-gpmi-nand",
+		.data = &gpmi_devdata_imx8qxp,
 	}, {}
 };
 MODULE_DEVICE_TABLE(of, gpmi_nand_id_table);
@@ -2418,16 +2432,19 @@ static int gpmi_nand_probe(struct platform_device *pdev)
 
 	ret = init_hardware(this);
 	if (ret)
-		goto exit_nfc_init;
+		goto exit_rpm;
 
 	ret = gpmi_nand_init(this);
 	if (ret)
-		goto exit_nfc_init;
+		goto exit_rpm;
 
 	dev_info(this->dev, "driver registered.\n");
 
 	return 0;
 
+exit_rpm:
+	pm_runtime_dont_use_autosuspend(this->dev);
+	pm_runtime_disable(this->dev);
 exit_nfc_init:
 	release_resources(this);
 exit_acquire_resources:
@@ -2439,8 +2456,10 @@ static int gpmi_nand_remove(struct platform_device *pdev)
 {
 	struct gpmi_nand_data *this = platform_get_drvdata(pdev);
 
+	release_bus_freq(BUS_FREQ_HIGH);
 	nand_release(nand_to_mtd(&this->nand));
 	gpmi_free_dma_buffer(this);
+	pm_runtime_disable(this->dev);
 	release_resources(this);
 	return 0;
 }

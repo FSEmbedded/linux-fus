@@ -2482,8 +2482,6 @@ enum pci_board_num_t {
 
 	pbn_b0_4_1250000,
 
-	pbn_b0_4_1250000,
-
 	pbn_b0_2_1843200,
 	pbn_b0_4_1843200,
 
@@ -2678,13 +2676,6 @@ static struct pciserial_board pci_boards[] = {
 		.flags		= FL_BASE0,
 		.num_ports	= 4,
 		.base_baud	= 1152000,
-		.uart_offset	= 8,
-	},
-
-	[pbn_b0_4_1250000] = {
-		.flags		= FL_BASE0,
-		.num_ports	= 4,
-		.base_baud	= 1250000,
 		.uart_offset	= 8,
 	},
 

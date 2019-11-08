@@ -111,7 +111,7 @@
 			fsl,max_ddr_freq = <528000000>;
 		};
 
-                gpu@00130000 {
+                gpu: gpu@00130000 {
 			compatible = "fsl,imx6q-gpu";
 			reg = <0x00130000 0x4000>, <0x00134000 0x4000>,
 			      <0x02204000 0x4000>, <0x10000000 0x0>,
@@ -131,7 +131,7 @@
 				      "gpu3d_clk", "gpu3d_shader_clk";
 			resets = <&src 0>, <&src 3>, <&src 3>;
 			reset-names = "gpu3d", "gpu2d", "gpuvg";
-			power-domains = <&gpc 1>;
+			power-domains = <&pd_pu>;
 		};
 
 		ocram: sram@00905000 {

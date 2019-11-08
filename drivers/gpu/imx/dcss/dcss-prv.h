@@ -1,3 +1,17 @@
+/*
+ * Copyright (C) 2017-2018 NXP
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the
+ * Free Software Foundation; either version 2 of the License, or (at your
+ * option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * for more details.
+ */
+
 #ifndef __DCSS_PRV_H__
 #define __DCSS_PRV_H__
 
@@ -47,6 +61,7 @@ struct dcss_soc {
 	struct dcss_dec400d_priv *dec400d_priv;
 	struct dcss_wrscl_priv *wrscl_priv;
 	struct dcss_rdsrc_priv *rdsrc_priv;
+	struct dcss_pll_priv *pll_priv;
 
 	struct clk *apb_clk;
 	struct clk *axi_clk;
@@ -80,10 +95,13 @@ int dcss_ctxld_resume(struct dcss_soc *dcss);
 int dcss_ctxld_suspend(struct dcss_soc *dcss);
 void dcss_ctxld_write_irqsafe(struct dcss_soc *dcss, u32 ctx_id, u32 val,
 			      u32 reg_ofs);
+void dcss_ctxld_kick(struct dcss_soc *dcss);
 
 /* DPR */
 int dcss_dpr_init(struct dcss_soc *dcss, unsigned long dpr_base);
 void dcss_dpr_exit(struct dcss_soc *dcss);
+void dcss_dpr_write_sysctrl(struct dcss_soc *dcss);
+void dcss_dpr_irq_enable(struct dcss_soc *dcss, bool en);
 
 /* DTG */
 int dcss_dtg_init(struct dcss_soc *dcss, unsigned long dtg_base);
@@ -103,6 +121,7 @@ void dcss_hdr10_cfg(struct dcss_soc *dcss);
 /* SCALER */
 int dcss_scaler_init(struct dcss_soc *dcss, unsigned long scaler_base);
 void dcss_scaler_exit(struct dcss_soc *dcss);
+void dcss_scaler_write_sclctrl(struct dcss_soc *dcss);
 
 /* DTRC */
 int dcss_dtrc_init(struct dcss_soc *dcss, unsigned long dtrc_base);
@@ -172,5 +191,13 @@ void dcss_ctxld_dump_regs(struct seq_file *s, void *data);
 void dcss_hdr10_dump_regs(struct seq_file *s, void *data);
 void dcss_wrscl_dump_regs(struct seq_file *s, void *data);
 void dcss_rdsrc_dump_regs(struct seq_file *s, void *data);
+
+/* DCSS PLL */
+int dcss_pll_init(struct dcss_soc *dcss, unsigned long pll_base);
+void dcss_pll_exit(struct dcss_soc *dcss);
+int dcss_pll_set_rate(struct dcss_soc *dcss, u32 freq, u32 ref_clk,
+		      u32 *actual_freq);
+int dcss_pll_enable(struct dcss_soc *dcss);
+int dcss_pll_disable(struct dcss_soc *dcss);
 
 #endif /* __DCSS_PRV_H__ */

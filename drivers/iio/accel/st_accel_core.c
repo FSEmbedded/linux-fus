@@ -158,14 +158,6 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 			.addr = 0x23,
 			.mask = 0x80,
 		},
-		/*
-		 * Data Alignment Setting - needs to be set to get
-		 * left-justified data like all other sensors.
-		 */
-		.das = {
-			.addr = 0x21,
-			.mask = 0x01,
-		},
 		.drdy_irq = {
 			.addr = 0x22,
 			.mask_int1 = 0x10,

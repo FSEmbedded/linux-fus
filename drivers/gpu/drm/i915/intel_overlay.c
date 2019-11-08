@@ -352,8 +352,6 @@ static int intel_overlay_continue(struct intel_overlay *overlay,
 
 	intel_overlay_flip_prepare(overlay, vma);
 
-	intel_overlay_flip_prepare(overlay, vma);
-
 	intel_overlay_submit_request(overlay, req, NULL);
 
 	return 0;
@@ -435,8 +433,6 @@ static int intel_overlay_off(struct intel_overlay *overlay)
 	*cs++ = MI_WAIT_FOR_EVENT | MI_WAIT_FOR_OVERLAY_FLIP;
 
 	intel_ring_advance(req, cs);
-
-	intel_overlay_flip_prepare(overlay, NULL);
 
 	intel_overlay_flip_prepare(overlay, NULL);
 

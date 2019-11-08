@@ -21,6 +21,7 @@
 #include <linux/slab.h>
 #include <linux/acpi.h>
 #include <linux/busfreq-imx.h>
+#include <linux/usb/of.h>
 
 #include "xhci.h"
 #include "xhci-plat.h"
@@ -267,6 +268,9 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	if (device_property_read_bool(sysdev, "usb3-lpm-capable"))
 		xhci->quirks |= XHCI_LPM_SUPPORT;
 
+	if (device_property_read_bool(sysdev, "usb3-resume-missing-cas"))
+		xhci->quirks |= XHCI_MISSING_CAS;
+
 	if (device_property_read_bool(&pdev->dev, "quirk-broken-port-ped"))
 		xhci->quirks |= XHCI_BROKEN_PORT_PED;
 
@@ -283,6 +287,8 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	}
 
 	request_bus_freq(BUS_FREQ_HIGH);
+	hcd->tpl_support = of_usb_host_tpl_support(sysdev->of_node);
+	xhci->shared_hcd->tpl_support = hcd->tpl_support;
 
 	ret = usb_add_hcd(hcd, irq, IRQF_SHARED);
 	if (ret)
@@ -297,12 +303,6 @@ static int xhci_plat_probe(struct platform_device *pdev)
 
 	device_enable_async_suspend(&pdev->dev);
 	pm_runtime_put_noidle(&pdev->dev);
-
-	/*
-	 * Prevent runtime pm from being on as default, users should enable
-	 * runtime pm using power/control in sysfs.
-	 */
-	pm_runtime_forbid(&pdev->dev);
 
 	return 0;
 
@@ -336,18 +336,23 @@ static int xhci_plat_remove(struct platform_device *dev)
 	struct usb_hcd	*hcd = platform_get_drvdata(dev);
 	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
 	struct clk *clk = xhci->clk;
+	struct usb_hcd *shared_hcd = xhci->shared_hcd;
 
 	xhci->xhc_state |= XHCI_STATE_REMOVING;
 
-	usb_remove_hcd(xhci->shared_hcd);
+	usb_remove_hcd(shared_hcd);
+	xhci->shared_hcd = NULL;
 	usb_phy_shutdown(hcd->usb_phy);
 
 	usb_remove_hcd(hcd);
-	usb_put_hcd(xhci->shared_hcd);
+	usb_put_hcd(shared_hcd);
 
 	if (!IS_ERR(clk))
 		clk_disable_unprepare(clk);
 	usb_put_hcd(hcd);
+
+	if (!pm_runtime_suspended(&dev->dev))
+		release_bus_freq(BUS_FREQ_HIGH);
 
 	pm_runtime_set_suspended(&dev->dev);
 	pm_runtime_disable(&dev->dev);
@@ -386,34 +391,15 @@ static int __maybe_unused xhci_plat_resume(struct device *dev)
 
 static int __maybe_unused xhci_plat_runtime_suspend(struct device *dev)
 {
-	struct usb_hcd  *hcd = dev_get_drvdata(dev);
-	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
-
-	return xhci_suspend(xhci, true);
-}
-
-static int __maybe_unused xhci_plat_runtime_resume(struct device *dev)
-{
-	struct usb_hcd  *hcd = dev_get_drvdata(dev);
-	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
-
-	return xhci_resume(xhci, 0);
-}
-#endif /* CONFIG_PM_SLEEP */
-
-#ifdef CONFIG_PM
-static int xhci_plat_runtime_suspend(struct device *dev)
-{
 	release_bus_freq(BUS_FREQ_HIGH);
 	return 0;
 }
 
-static int xhci_plat_runtime_resume(struct device *dev)
+static int __maybe_unused xhci_plat_runtime_resume(struct device *dev)
 {
 	request_bus_freq(BUS_FREQ_HIGH);
 	return 0;
 }
-#endif /* CONFIG_PM */
 
 static const struct dev_pm_ops xhci_plat_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(xhci_plat_suspend, xhci_plat_resume)
@@ -433,7 +419,6 @@ MODULE_DEVICE_TABLE(acpi, usb_xhci_acpi_match);
 static struct platform_driver usb_xhci_driver = {
 	.probe	= xhci_plat_probe,
 	.remove	= xhci_plat_remove,
-	.shutdown	= usb_hcd_platform_shutdown,
 	.driver	= {
 		.name = "xhci-hcd",
 		.pm = &xhci_plat_pm_ops,

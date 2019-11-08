@@ -1313,13 +1313,6 @@ static unsigned int __bpf_prog_ret0(const void *ctx,
 }
 #endif
 
-#else
-static unsigned int __bpf_prog_ret0(void *ctx, const struct bpf_insn *insn)
-{
-	return 0;
-}
-#endif
-
 bool bpf_prog_array_compatible(struct bpf_array *array,
 			       const struct bpf_prog *fp)
 {

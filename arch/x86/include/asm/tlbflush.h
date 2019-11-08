@@ -412,7 +412,7 @@ static inline void __native_flush_tlb_global(void)
 {
 	unsigned long cr4, flags;
 
-	if (this_cpu_has(X86_FEATURE_INVPCID)) {
+	if (static_cpu_has(X86_FEATURE_INVPCID)) {
 		/*
 		 * Using INVPCID is considerably faster than a pair of writes
 		 * to CR4 sandwiched inside an IRQ flag save/restore.

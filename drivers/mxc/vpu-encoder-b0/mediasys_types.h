@@ -62,8 +62,7 @@ typedef unsigned int BOOL;
 typedef int int32;
 #define FALSE 0
 #define TRUE 1
-#define VPU_MAX_NUM_STREAMS 4
-#define VID_API_NUM_STREAMS 4
+#define VID_API_NUM_STREAMS 8
 #define VID_API_MAX_BUF_PER_STR 3
 #define VID_API_MAX_NUM_MVC_VIEWS 4
 #define MEDIAIP_MAX_NUM_MALONES 2
@@ -102,10 +101,13 @@ typedef enum {
 	GTB_ENC_CMD_LOCK_SCHEDULER,
 	GTB_ENC_CMD_UNLOCK_SCHEDULER,
 	GTB_ENC_CMD_CONFIGURE_CODEC,
-	GTB_ENC_CMD_DEAD_MARK
+	GTB_ENC_CMD_DEAD_MARK,
+	GTB_ENC_CMD_FIRM_RESET,
+	GTB_ENC_CMD_RESERVED
 } GTB_ENC_CMD;
 
 typedef enum {
+	VID_API_EVENT_UNDEFINED = 0x0,
 	VID_API_ENC_EVENT_RESET_DONE = 0x1,
 	VID_API_ENC_EVENT_START_DONE,
 	VID_API_ENC_EVENT_STOP_DONE,
@@ -114,8 +116,9 @@ typedef enum {
 	VID_API_ENC_EVENT_FRAME_DONE,
 	VID_API_ENC_EVENT_FRAME_RELEASE,
 	VID_API_ENC_EVENT_PARA_UPD_DONE,
-	VID_API_ENC_EVENT_MEM_REQUEST
-
+	VID_API_ENC_EVENT_MEM_REQUEST,
+	VID_API_ENC_EVENT_FIRMWARE_XCPT,
+	VID_API_ENC_EVENT_RESERVED
 } ENC_TB_API_ENC_EVENT;
 
 typedef enum {
@@ -139,7 +142,6 @@ typedef struct {
 	u_int32                    uRefFrmSize;
 	u_int32                    uRefFrmNum;
 	u_int32                    uActBufSize;
-	u_int32                    uAlignmentMask;
 } MEDIAIP_ENC_MEM_REQ_DATA, *pMEDIAIP_ENC_MEM_REQ_DATA;
 
 typedef struct {
@@ -266,7 +268,7 @@ typedef struct {
 	u_int32 uHeapBase;
 	u_int32 uHeapSize;
 
-	u_int32 uFSLCacheBaseAddr;
+	u_int32 uFSLCacheBaseAddr[2];
 
 } MEDIAIP_FW_SYSTEM_CONFIG, *pMEDIAIP_FW_SYSTEM_CONFIG;
 
@@ -275,7 +277,7 @@ typedef struct {
 	u_int32   uLumaBase;
 	u_int32   uChromaBase;
 	u_int32   uParamIdx;
-
+	u_int32   uKeyFrame;
 } MEDIAIP_ENC_YUV_BUFFER_DESC, *pMEDIAIP_ENC_YUV_BUFFER_DESC;
 
 typedef struct {
@@ -605,6 +607,7 @@ typedef enum {
 typedef struct {
 	MEDIAIP_ENC_FMT           eCodecMode;
 	MEDIAIP_ENC_PROFILE       eProfile;
+	u_int32                   uLevel;
 
 	MEDIAIP_ENC_MEM_RESOURCE  tEncMemDesc;
 
@@ -660,17 +663,18 @@ typedef struct {
 } MEDIA_ENC_API_CONTROL_INTERFACE, *pMEDIA_ENC_API_CONTROL_INTERFACE;
 
 typedef struct {
-	u_int32                                FwExecBaseAddr;
-	u_int32                                FwExecAreaSize;
-	BUFFER_DESCRIPTOR_TYPE                 StreamCmdBufferDesc;
-	BUFFER_DESCRIPTOR_TYPE                 StreamMsgBufferDesc;
-	u_int32                                StreamCmdIntEnable[VID_API_NUM_STREAMS];
-	u_int32                                FWVersion;
-	u_int32                                uMVDFWOffset;
-	u_int32                                uMaxEncoderStreams;
-	u_int32                                pEncCtrlInterface[VID_API_NUM_STREAMS];
-	MEDIAIP_FW_SYSTEM_CONFIG               sSystemCfg;
-	u_int32                                uApiVersion;
+	u_int32					FwExecBaseAddr;
+	u_int32					FwExecAreaSize;
+	BUFFER_DESCRIPTOR_TYPE			StreamCmdBufferDesc;
+	BUFFER_DESCRIPTOR_TYPE			StreamMsgBufferDesc;
+	u_int32					StreamCmdIntEnable[VID_API_NUM_STREAMS];
+	u_int32					FWVersion;
+	u_int32					uMVDFWOffset;
+	u_int32					uMaxEncoderStreams;
+	u_int32					pEncCtrlInterface[VID_API_NUM_STREAMS];
+	MEDIAIP_FW_SYSTEM_CONFIG		sSystemCfg;
+	u_int32					uApiVersion;
+	BUFFER_DESCRIPTOR_TYPE			DebugBufferDesc;
 } ENC_RPC_HOST_IFACE, *pENC_RPC_HOST_IFACE;
 
 #define SCB_XREG_SLV_BASE                               0x00000000

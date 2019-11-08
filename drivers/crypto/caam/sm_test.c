@@ -21,6 +21,7 @@
  */
 
 #include "compat.h"
+#include "regs.h"
 #include "intern.h"
 #include "desc.h"
 #include "error.h"

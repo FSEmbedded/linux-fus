@@ -310,6 +310,41 @@ static int mma8450_probe(struct i2c_client *c,
 		return err;
 	}
 
+	mutex_init(&m->mma8450_lock);
+
+	err = mma8450_open(idev);
+	if (err) {
+		dev_err(&c->dev, "failed to initialize mma8450\n");
+		goto err_unreg_dev;
+	}
+
+	err = sysfs_create_group(&c->dev.kobj, &mma8450_attr_group);
+	if (err) {
+		dev_err(&c->dev, "create device file failed!\n");
+		err = -EINVAL;
+		goto err_close;
+	}
+
+	return 0;
+
+err_close:
+	mma8450_close(idev);
+err_unreg_dev:
+	mutex_destroy(&m->mma8450_lock);
+	input_unregister_polled_device(idev);
+	return err;
+}
+
+static int mma8450_remove(struct i2c_client *c)
+{
+	struct mma8450 *m = i2c_get_clientdata(c);
+	struct input_polled_dev *idev = m->idev;
+
+	sysfs_remove_group(&c->dev.kobj, &mma8450_attr_group);
+	mma8450_close(idev);
+	mutex_destroy(&m->mma8450_lock);
+	input_unregister_polled_device(idev);
+
 	return 0;
 }
 

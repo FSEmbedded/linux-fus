@@ -1114,11 +1114,7 @@ idtentry machine_check		do_mce			has_error_code=0	paranoid=1
 /*
  * Save all registers in pt_regs, and switch gs if needed.
  * Use slow, but surefire "are we in kernel?" check.
- *
- * Return: ebx=0: needs swapgs but not SWITCH_USER_CR3 in paranoid_exit
- *         ebx=1: needs neither swapgs nor SWITCH_USER_CR3 in paranoid_exit
- *         ebx=2: needs both swapgs and SWITCH_USER_CR3 in paranoid_exit
- *         ebx=3: needs SWITCH_USER_CR3 but not swapgs in paranoid_exit
+ * Return: ebx=0: need swapgs on exit, ebx=1: otherwise
  */
 ENTRY(paranoid_entry)
 	UNWIND_HINT_FUNC
@@ -1149,10 +1145,7 @@ END(paranoid_entry)
  * be complicated.  Fortunately, we there's no good reason
  * to try to handle preemption here.
  *
- * On entry: ebx=0: needs swapgs but not SWITCH_USER_CR3
- *           ebx=1: needs neither swapgs nor SWITCH_USER_CR3
- *           ebx=2: needs both swapgs and SWITCH_USER_CR3
- *           ebx=3: needs SWITCH_USER_CR3 but not swapgs
+ * On entry, ebx is "no swapgs" flag (1: don't need swapgs, 0: need it)
  */
 ENTRY(paranoid_exit)
 	UNWIND_HINT_REGS
@@ -1361,28 +1354,7 @@ ENTRY(nmi)
 
 	movq	%rsp, %rdi
 	movq	$-1, %rsi
-#ifdef CONFIG_PAGE_TABLE_ISOLATION
-	/* Unconditionally use kernel CR3 for do_nmi() */
-	/* %rax is saved above, so OK to clobber here */
-	ALTERNATIVE "jmp 2f", "movq %cr3, %rax", X86_FEATURE_KAISER
-	/* If PCID enabled, NOFLUSH now and NOFLUSH on return */
-	ALTERNATIVE "", "bts $63, %rax", X86_FEATURE_PCID
-	pushq	%rax
-	/* mask off "user" bit of pgd address and 12 PCID bits: */
-	andq	$(~(X86_CR3_PCID_ASID_MASK | KAISER_SHADOW_PGD_OFFSET)), %rax
-	movq	%rax, %cr3
-2:
-#endif
 	call	do_nmi
-
-#ifdef CONFIG_PAGE_TABLE_ISOLATION
-	/*
-	 * Unconditionally restore CR3.  I know we return to
-	 * kernel code that needs user CR3, but do we ever return
-	 * to "user mode" where we need the kernel CR3?
-	 */
-	ALTERNATIVE "", "popq %rax; movq %rax, %cr3", X86_FEATURE_KAISER
-#endif
 
 	/*
 	 * Return back to user mode.  We must *not* do the normal exit
@@ -1583,12 +1555,11 @@ end_repeat_nmi:
 	pushq	$-1				/* ORIG_RAX: no syscall to restart */
 
 	/*
-	 * Use the same approach as paranoid_entry to handle SWAPGS, but
-	 * without CR3 handling since we do that differently in NMIs.  No
-	 * need to use paranoid_exit as we should not be calling schedule
-	 * in NMI context.  Even with normal interrupts enabled. An NMI
-	 * should not be setting NEED_RESCHED or anything that normal
-	 * interrupts and exceptions might do.
+	 * Use paranoid_entry to handle SWAPGS, but no need to use paranoid_exit
+	 * as we should not be calling schedule in NMI context.
+	 * Even with normal interrupts enabled. An NMI should not be
+	 * setting NEED_RESCHED or anything that normal interrupts and
+	 * exceptions might do.
 	 */
 	call	paranoid_entry
 	UNWIND_HINT_REGS
@@ -1596,20 +1567,6 @@ end_repeat_nmi:
 	/* paranoidentry do_nmi, 0; without TRACE_IRQS_OFF */
 	movq	%rsp, %rdi
 	movq	$-1, %rsi
-#ifdef CONFIG_PAGE_TABLE_ISOLATION
-	/* Unconditionally use kernel CR3 for do_nmi() */
-	/* %rax is saved above, so OK to clobber here */
-	ALTERNATIVE "jmp 2f", "movq %cr3, %rax", X86_FEATURE_KAISER
-	/* If PCID enabled, NOFLUSH now and NOFLUSH on return */
-	ALTERNATIVE "", "bts $63, %rax", X86_FEATURE_PCID
-	pushq	%rax
-	/* mask off "user" bit of pgd address and 12 PCID bits: */
-	andq	$(~(X86_CR3_PCID_ASID_MASK | KAISER_SHADOW_PGD_OFFSET)), %rax
-	movq	%rax, %cr3
-2:
-#endif
-
-	/* paranoidentry do_nmi, 0; without TRACE_IRQS_OFF */
 	call	do_nmi
 
 	RESTORE_CR3 scratch_reg=%r15 save_reg=%r14
@@ -1617,7 +1574,6 @@ end_repeat_nmi:
 	testl	%ebx, %ebx			/* swapgs needed? */
 	jnz	nmi_restore
 nmi_swapgs:
-	/* We fixed up CR3 above, so no need to switch it here */
 	SWAPGS_UNSAFE_STACK
 nmi_restore:
 	POP_REGS

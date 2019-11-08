@@ -1054,8 +1054,6 @@ static int mlx5e_get_link_ksettings(struct net_device *netdev,
 
 	mlx5_query_port_pause(mdev, &rx_pause, &tx_pause);
 
-	mlx5_query_port_pause(mdev, &rx_pause, &tx_pause);
-
 	ethtool_link_ksettings_zero_link_mode(link_ksettings, supported);
 	ethtool_link_ksettings_zero_link_mode(link_ksettings, advertising);
 

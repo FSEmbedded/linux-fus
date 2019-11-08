@@ -238,6 +238,9 @@ void xhci_print_run_regs(struct xhci_hcd *xhci)
 	xhci_dbg(xhci, "  %p: Microframe index = 0x%x\n",
 			&xhci->run_regs->microframe_index,
 			(unsigned int) temp);
+	if (xhci->quirks & XHCI_SKIP_ACCESS_RESERVED_REG)
+		return;
+
 	for (i = 0; i < 7; i++) {
 		temp = readl(&xhci->run_regs->rsvd[i]);
 		if (temp != XHCI_INIT_VALUE)

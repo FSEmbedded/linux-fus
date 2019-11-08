@@ -151,8 +151,6 @@ static struct fib6_node *node_alloc(void)
 
 static void node_free_immediate(struct fib6_node *fn)
 {
-	struct fib6_node *fn = container_of(head, struct fib6_node, rcu);
-
 	kmem_cache_free(fib6_node_kmem, fn);
 }
 
@@ -192,12 +190,6 @@ void rt6_free_pcpu(struct rt6_info *non_pcpu_rt)
 	non_pcpu_rt->rt6i_pcpu = NULL;
 }
 EXPORT_SYMBOL_GPL(rt6_free_pcpu);
-
-static void fib6_free_table(struct fib6_table *table)
-{
-	inetpeer_invalidate_tree(&table->tb6_peers);
-	kfree(table);
-}
 
 static void fib6_free_table(struct fib6_table *table)
 {

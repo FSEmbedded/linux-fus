@@ -192,6 +192,30 @@ void dwc3_set_mode(struct dwc3 *dwc, u32 mode)
 	queue_work(system_freezable_wq, &dwc->drd_work);
 }
 
+static int dwc3_set_suspend_clk(struct dwc3 *dwc)
+{
+	u32 reg, scale;
+
+	/*
+	 * DWC3_GCTL.PWRDNSCALE: The USB3 suspend_clk input replaces
+	 * pipe3_rx_pclk as a clock source to a small part of the USB3
+	 * core that operates when the SS PHY is in its lowest power
+	 * (P3) state, and therefore does not provide a clock.
+	 * The Power Down Scale field specifies how many suspend_clk
+	 * periods fit into a 16 kHz clock period. When performing the
+	 * division, round up the remainder.
+	 */
+	if (!device_property_read_u32(dwc->dev, "snps,power-down-scale",
+								&scale)) {
+		reg = dwc3_readl(dwc->regs, DWC3_GCTL);
+		reg &= ~(DWC3_GCTL_PWRDNSCALE_MASK);
+		reg |= DWC3_GCTL_PWRDNSCALE(scale);
+		dwc3_writel(dwc->regs, DWC3_GCTL, reg);
+	}
+
+	return 0;
+}
+
 u32 dwc3_core_fifo_space(struct dwc3_ep *dep, u8 type)
 {
 	struct dwc3		*dwc = dep->dwc;
@@ -807,6 +831,9 @@ static int dwc3_core_init(struct dwc3 *dwc)
 		dwc->ulpi_ready = true;
 	}
 
+	/* Set suspend_clk */
+	dwc3_set_suspend_clk(dwc);
+
 	if (!dwc->phys_ready) {
 		ret = dwc3_core_get_phy(dwc);
 		if (ret)
@@ -970,6 +997,7 @@ static int dwc3_core_init_mode(struct dwc3 *dwc)
 
 	switch (dwc->dr_mode) {
 	case USB_DR_MODE_PERIPHERAL:
+		dwc->current_dr_role = DWC3_GCTL_PRTCAP_DEVICE;
 		dwc3_set_prtcap(dwc, DWC3_GCTL_PRTCAP_DEVICE);
 
 		if (dwc->usb2_phy)
@@ -985,6 +1013,7 @@ static int dwc3_core_init_mode(struct dwc3 *dwc)
 		}
 		break;
 	case USB_DR_MODE_HOST:
+		dwc->current_dr_role = DWC3_GCTL_PRTCAP_HOST;
 		dwc3_set_prtcap(dwc, DWC3_GCTL_PRTCAP_HOST);
 
 		if (dwc->usb2_phy)
@@ -1226,6 +1255,19 @@ static int dwc3_probe(struct platform_device *pdev)
 	dwc->regs_size	= resource_size(res);
 
 	dwc3_get_properties(dwc);
+
+	if (dwc->dr_mode == USB_DR_MODE_OTG) {
+		dwc->otg_caps.otg_rev = 0x0300;
+		dwc->otg_caps.hnp_support = true;
+		dwc->otg_caps.srp_support = true;
+		dwc->otg_caps.adp_support = true;
+
+		/* Update otg capabilities by DT properties */
+		ret = of_usb_update_otg_caps(dev->of_node,
+					&dwc->otg_caps);
+		if (ret)
+			goto err0;
+	}
 
 	platform_set_drvdata(pdev, dwc);
 	dwc3_cache_hwparams(dwc);

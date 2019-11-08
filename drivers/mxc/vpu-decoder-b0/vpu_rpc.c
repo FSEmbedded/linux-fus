@@ -52,6 +52,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <linux/uaccess.h>
+#include <linux/fs.h>
 #include "vpu_rpc.h"
 
 void rpc_init_shared_memory(struct shared_addr *This,
@@ -133,12 +135,19 @@ void rpc_init_shared_memory(struct shared_addr *This,
 
 	phy_addr += QMETER_SIZE;
 	pDebugBufferDesc = &pSharedInterface->DebugBufferDesc;
-	pDebugBufferDesc->uWrPtr = phy_addr;
+	pDebugBufferDesc->uWrPtr = base_phy_addr + M0_PRINT_OFFSET;
 	pDebugBufferDesc->uRdPtr = pDebugBufferDesc->uWrPtr;
 	pDebugBufferDesc->uStart = pDebugBufferDesc->uWrPtr;
 	pDebugBufferDesc->uEnd = pDebugBufferDesc->uStart + DEBUG_SIZE;
 
-	phy_addr += DEBUG_SIZE;
+	This->dbglog_mem_phy = phy_addr;
+	This->dbglog_mem_vir = This->qmeter_mem_vir + QMETER_SIZE;
+
+	pSharedInterface->DbgLogDesc.uDecStatusLogBase = This->dbglog_mem_phy;
+	pSharedInterface->DbgLogDesc.uDecStatusLogSize = DBGLOG_SIZE;
+	phy_addr += DBGLOG_SIZE;
+
+//	phy_addr += sizeof(MediaIPFW_Video_BufDesc);
 	for (i = 0; i < VPU_MAX_NUM_STREAMS; i++) {
 		pEngAccessBufferDesc = &pSharedInterface->EngAccessBufferDesc[i];
 		pEngAccessBufferDesc->uWrPtr = phy_addr;
@@ -197,7 +206,8 @@ void rpc_set_system_cfg_value(void *Interface, u_int32 regs_base)
 	pSystemCfg->uDPVBaseAddr = 0x0;
 	pSystemCfg->uDPVIrqPin = 0x0;
 	pSystemCfg->uPixIfBaseAddr = (unsigned int)(regs_base + 0x180000 + 0x20000);
-	pSystemCfg->uFSLCacheBaseAddr = (unsigned int)(regs_base + 0x60000);
+	pSystemCfg->uFSLCacheBaseAddr[0] = (unsigned int)(regs_base + 0x60000);
+	pSystemCfg->uFSLCacheBaseAddr[1] = (unsigned int)(regs_base + 0x68000);
 }
 
 u_int32 rpc_MediaIPFW_Video_buffer_space_check(MediaIPFW_Video_BufDesc *pBufDesc,
@@ -256,6 +266,7 @@ static void rpc_update_cmd_buffer_ptr(MediaIPFW_Video_BufDesc *pCmdDesc)
 {
 	u_int32 uWritePtr;
 
+	mb();
 	uWritePtr = pCmdDesc->uWrPtr + 4;
 	if (uWritePtr >= pCmdDesc->uEnd)
 		uWritePtr = pCmdDesc->uStart;
@@ -327,6 +338,7 @@ static void rpc_update_msg_buffer_ptr(MediaIPFW_Video_BufDesc *pMsgDesc)
 {
 	u_int32 uReadPtr;
 
+	mb();
 	uReadPtr = pMsgDesc->uRdPtr + 4;
 	if (uReadPtr >= pMsgDesc->uEnd)
 		uReadPtr = pMsgDesc->uStart;

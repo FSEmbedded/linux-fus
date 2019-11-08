@@ -92,23 +92,41 @@ struct shared_addr {
 	unsigned long long base_offset;
 };
 
-struct event_msg {
-	u_int32 idx;
-	u_int32 msgnum;
-	u_int32 msgid;
-	u_int32 msgdata[LOCAL_MSG_NUM];
+struct msg_header {
+	u32 idx;
+	u32 msgnum;
+	u32 msgid;
 };
 
 void rpc_init_shared_memory_encoder(struct shared_addr *This,
 		unsigned long long base_phy_addr,
 		void *base_virt_addr,
-		u_int32 total_size);
-void rpc_set_system_cfg_value_encoder(void *Interface, u_int32 regs_base);
+		u_int32 total_size,
+		u32 *actual_size);
+void rpc_set_system_cfg_value_encoder(void *Interface, u_int32 regs_base, u_int32 core_id);
 void rpc_send_cmd_buf_encoder(struct shared_addr *This,
 		u_int32 idx,
 		u_int32 cmdid,
 		u_int32 cmdnum,
 		u_int32 *local_cmddata);
-void rpc_receive_msg_buf_encoder(struct shared_addr *This, struct event_msg *msg);
+u32 rpc_read_msg_u32(struct shared_addr *shared_mem);
+int rpc_read_msg_array(struct shared_addr *shared_mem, u32 *buf, u32 number);
+int rpc_get_msg_header(struct shared_addr *shared_mem, struct msg_header *msg);
+
+pMEDIAIP_ENC_YUV_BUFFER_DESC rpc_get_yuv_buffer_desc(
+		struct shared_addr *shared_mem, int index);
+pBUFFER_DESCRIPTOR_TYPE rpc_get_stream_buffer_desc(
+		struct shared_addr *shared_mem, int index);
+pMEDIAIP_ENC_EXPERT_MODE_PARAM rpc_get_expert_mode_param(
+		struct shared_addr *shared_mem, int index);
+pMEDIAIP_ENC_PARAM rpc_get_enc_param(
+		struct shared_addr *shared_mem, int index);
+pMEDIAIP_ENC_MEM_POOL rpc_get_mem_pool(
+		struct shared_addr *shared_mem, int index);
+pENC_ENCODING_STATUS rpc_get_encoding_status(
+		struct shared_addr *shared_mem, int index);
+pENC_DSA_STATUS_t rpc_get_dsa_status(struct shared_addr *shared_mem, int index);
+void rpc_set_print_buffer(struct shared_addr *shared_mem,
+				unsigned long print_phy_addr, u32 size);
 
 #endif

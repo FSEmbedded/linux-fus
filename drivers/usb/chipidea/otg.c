@@ -207,26 +207,10 @@ static int hw_wait_vbus_lower_bsv(struct ci_hdrc *ci)
 	return 0;
 }
 
-static void ci_handle_id_switch(struct ci_hdrc *ci)
-{
-	unsigned long elapse = jiffies + msecs_to_jiffies(5000);
-	u32 mask = OTGSC_BSV;
-
-	while (hw_read_otgsc(ci, mask)) {
-		if (time_after(jiffies, elapse)) {
-			dev_err(ci->dev, "timeout waiting for %08x in OTGSC\n",
-					mask);
-			return -ETIMEDOUT;
-		}
-		msleep(20);
-	}
-
-	return 0;
-}
-
 void ci_handle_id_switch(struct ci_hdrc *ci)
 {
 	enum ci_role role;
+	int ret = 0;
 
 	mutex_lock(&ci->mutex);
 	role = ci_otg_role(ci);
@@ -245,12 +229,28 @@ void ci_handle_id_switch(struct ci_hdrc *ci)
 			 * care vbus on the board, since it will not affect
 			 * external connector status.
 			 */
-			hw_wait_vbus_lower_bsv(ci);
+			ret = hw_wait_vbus_lower_bsv(ci);
+		else if (ci->vbus_active)
+			/*
+			 * If the role switch happens(e.g. during
+			 * system sleep), and we lose vbus drop
+			 * event, disconnect gadget for it before
+			 * start host.
+			 */
+		       usb_gadget_vbus_disconnect(&ci->gadget);
 
 		ci_role_start(ci, role);
 		/* vbus change may have already occurred */
 		if (role == CI_ROLE_GADGET)
 			ci_handle_vbus_change(ci);
+
+		/*
+		 * If the role switch happens(e.g. during system
+		 * sleep) and vbus keeps on afterwards, we connect
+		 * gadget as vbus connect event lost.
+		 */
+		if (ret == -ETIMEDOUT)
+			usb_gadget_vbus_connect(&ci->gadget);
 	}
 	mutex_unlock(&ci->mutex);
 }

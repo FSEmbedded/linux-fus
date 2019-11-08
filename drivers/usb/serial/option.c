@@ -565,10 +565,6 @@ static void option_instat_callback(struct urb *urb);
 #define RSVD(ifnum)	((BIT(ifnum) & 0xff) << 0)
 
 
-static const struct option_blacklist_info yuga_clm920_nc5_blacklist = {
-	.reserved = BIT(1) | BIT(4),
-};
-
 static const struct usb_device_id option_ids[] = {
 	{ USB_DEVICE(OPTION_VENDOR_ID, OPTION_PRODUCT_COLT) },
 	{ USB_DEVICE(OPTION_VENDOR_ID, OPTION_PRODUCT_RICOLA) },

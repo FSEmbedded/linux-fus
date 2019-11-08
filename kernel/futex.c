@@ -1890,9 +1890,6 @@ static int futex_requeue(u32 __user *uaddr1, unsigned int flags,
 	if (!IS_ENABLED(CONFIG_FUTEX_PI) && requeue_pi)
 		return -ENOSYS;
 
-	if (nr_wake < 0 || nr_requeue < 0)
-		return -EINVAL;
-
 	if (requeue_pi) {
 		/*
 		 * Requeue PI only works on two distinct uaddrs. This

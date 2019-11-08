@@ -677,11 +677,6 @@ static inline unsigned int i_blocksize(const struct inode *node)
 	return (1 << node->i_blkbits);
 }
 
-static inline unsigned int i_blocksize(const struct inode *node)
-{
-	return (1 << node->i_blkbits);
-}
-
 static inline int inode_unhashed(struct inode *inode)
 {
 	return hlist_unhashed(&inode->i_hash);

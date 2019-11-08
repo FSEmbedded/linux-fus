@@ -3737,12 +3737,6 @@ static int ext4_cross_rename(struct inode *old_dir, struct dentry *old_dentry,
 	     !fscrypt_has_encryption_key(new_dir)))
 		return -ENOKEY;
 
-	if ((ext4_encrypted_inode(old_dir) &&
-	     !fscrypt_has_encryption_key(old_dir)) ||
-	    (ext4_encrypted_inode(new_dir) &&
-	     !fscrypt_has_encryption_key(new_dir)))
-		return -ENOKEY;
-
 	if ((ext4_encrypted_inode(old_dir) ||
 	     ext4_encrypted_inode(new_dir)) &&
 	    (old_dir != new_dir) &&
