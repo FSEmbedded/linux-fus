@@ -63,6 +63,7 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 	struct dev_pm_opp *opp;
 	unsigned long freq_hz, volt, volt_old;
 	unsigned int old_freq, new_freq;
+	bool pll1_sys_temp_enabled = false;
 	int ret;
 
 	mutex_lock(&set_cpufreq_lock);
@@ -82,17 +83,16 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 		return 0;
 	};
 
-	rcu_read_lock();
 	opp = dev_pm_opp_find_freq_ceil(cpu_dev, &freq_hz);
 	if (IS_ERR(opp)) {
-		rcu_read_unlock();
 		dev_err(cpu_dev, "failed to find OPP for %ld\n", freq_hz);
 		mutex_unlock(&set_cpufreq_lock);
 		return PTR_ERR(opp);
 	}
 
 	volt = dev_pm_opp_get_voltage(opp);
-	rcu_read_unlock();
+	dev_pm_opp_put(opp);
+
 	volt_old = regulator_get_voltage(arm_reg);
 
 	dev_dbg(cpu_dev, "%u MHz, %ld mV --> %u MHz, %ld mV\n",
@@ -179,11 +179,9 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 			clk_set_rate(pll1_sys_clk, new_freq * 1000);
 			clk_set_parent(pll1_sw_clk, pll1_sys_clk);
 		} else {
-			/*
-			 * Need to ensure that PLL1 is bypassed and enabled
-			 * before ARM-PODF is set.
-			 */
-			clk_set_parent(pll1_bypass, pll1_bypass_src);
+			/* pll1_sys needs to be enabled for divider rate change to work. */
+			pll1_sys_temp_enabled = true;
+			clk_prepare_enable(pll1_sys_clk);
 		}
 	}
 
@@ -195,6 +193,10 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 		mutex_unlock(&set_cpufreq_lock);
 		return ret;
 	}
+
+	/* PLL1 is only needed until after ARM-PODF is set. */
+	if (pll1_sys_temp_enabled)
+		clk_disable_unprepare(pll1_sys_clk);
 
 	/* scaling down?  scale voltage after frequency */
 	if (new_freq < old_freq) {
@@ -237,20 +239,10 @@ static int imx6q_cpufreq_init(struct cpufreq_policy *policy)
 	int ret;
 
 	policy->clk = arm_clk;
-	policy->cur = clk_get_rate(arm_clk) / 1000;
-
 	ret = cpufreq_generic_init(policy, freq_table, transition_latency);
-	if (ret) {
-		dev_err(cpu_dev, "imx6 cpufreq init failed!\n");
-		return ret;
-	}
-	if (low_power_run_support && policy->cur > freq_table[0].frequency) {
-		request_bus_freq(BUS_FREQ_HIGH);
-	} else if (policy->cur > FREQ_396_MHZ) {
-		request_bus_freq(BUS_FREQ_HIGH);
-	}
+	policy->suspend_freq = policy->max;
 
-	return 0;
+	return ret;
 }
 
 static struct cpufreq_driver imx6q_cpufreq_driver = {
@@ -261,6 +253,7 @@ static struct cpufreq_driver imx6q_cpufreq_driver = {
 	.init = imx6q_cpufreq_init,
 	.name = "imx6q-cpufreq",
 	.attr = cpufreq_generic_attr,
+	.suspend = cpufreq_generic_suspend,
 };
 
 static int imx6_cpufreq_pm_notify(struct notifier_block *nb,
@@ -367,6 +360,13 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 	arm_reg = regulator_get(cpu_dev, "arm");
 	pu_reg = regulator_get_optional(cpu_dev, "pu");
 	soc_reg = regulator_get(cpu_dev, "soc");
+	if (PTR_ERR(arm_reg) == -EPROBE_DEFER ||
+			PTR_ERR(soc_reg) == -EPROBE_DEFER ||
+			PTR_ERR(pu_reg) == -EPROBE_DEFER) {
+		ret = -EPROBE_DEFER;
+		dev_dbg(cpu_dev, "regulators not ready, defer\n");
+		goto put_reg;
+	}
 	if (IS_ERR(arm_reg) || IS_ERR(soc_reg)) {
 		ret = IS_ERR(arm_reg)?PTR_ERR(arm_reg):PTR_ERR(soc_reg);
 		if (ret == -EPROBE_DEFER)
@@ -419,7 +419,7 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 	ret = dev_pm_opp_init_cpufreq_table(cpu_dev, &freq_table);
 	if (ret) {
 		dev_err(cpu_dev, "failed to init cpufreq table: %d\n", ret);
-		goto put_reg;
+		goto out_free_opp;
 	}
 
 	/*
@@ -506,14 +506,15 @@ soc_opp_out:
 	 * freq_table initialised from OPP is therefore sorted in the
 	 * same order.
 	 */
-	rcu_read_lock();
 	opp = dev_pm_opp_find_freq_exact(cpu_dev,
 				  freq_table[0].frequency * 1000, true);
 	min_volt = dev_pm_opp_get_voltage(opp);
+	dev_pm_opp_put(opp);
 	opp = dev_pm_opp_find_freq_exact(cpu_dev,
 				  freq_table[--num].frequency * 1000, true);
 	max_volt = dev_pm_opp_get_voltage(opp);
-	rcu_read_unlock();
+	dev_pm_opp_put(opp);
+
 	ret = regulator_set_voltage_time(arm_reg, min_volt, max_volt);
 	if (ret > 0)
 		transition_latency += ret * 1000;

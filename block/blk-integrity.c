@@ -384,12 +384,12 @@ static struct kobj_type integrity_ktype = {
 	.sysfs_ops	= &integrity_ops,
 };
 
-static int blk_integrity_nop_fn(struct blk_integrity_iter *iter)
+static blk_status_t blk_integrity_nop_fn(struct blk_integrity_iter *iter)
 {
-	return 0;
+	return BLK_STS_OK;
 }
 
-static struct blk_integrity_profile nop_profile = {
+static const struct blk_integrity_profile nop_profile = {
 	.name = "nop",
 	.generate_fn = blk_integrity_nop_fn,
 	.verify_fn = blk_integrity_nop_fn,
@@ -418,7 +418,7 @@ void blk_integrity_register(struct gendisk *disk, struct blk_integrity *template
 	bi->tuple_size = template->tuple_size;
 	bi->tag_size = template->tag_size;
 
-	disk->queue->backing_dev_info.capabilities |= BDI_CAP_STABLE_WRITES;
+	disk->queue->backing_dev_info->capabilities |= BDI_CAP_STABLE_WRITES;
 }
 EXPORT_SYMBOL(blk_integrity_register);
 
@@ -431,7 +431,7 @@ EXPORT_SYMBOL(blk_integrity_register);
  */
 void blk_integrity_unregister(struct gendisk *disk)
 {
-	disk->queue->backing_dev_info.capabilities &= ~BDI_CAP_STABLE_WRITES;
+	disk->queue->backing_dev_info->capabilities &= ~BDI_CAP_STABLE_WRITES;
 	memset(&disk->queue->integrity, 0, sizeof(struct blk_integrity));
 }
 EXPORT_SYMBOL(blk_integrity_unregister);

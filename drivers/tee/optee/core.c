@@ -187,12 +187,12 @@ static int optee_open(struct tee_context *ctx)
 	if (teedev == optee->supp_teedev) {
 		bool busy = true;
 
-		mutex_lock(&optee->supp.mutex);
+		mutex_lock(&optee->supp.ctx_mutex);
 		if (!optee->supp.ctx) {
 			busy = false;
 			optee->supp.ctx = ctx;
 		}
-		mutex_unlock(&optee->supp.mutex);
+		mutex_unlock(&optee->supp.ctx_mutex);
 		if (busy) {
 			kfree(ctxdata);
 			return -EBUSY;
@@ -252,8 +252,11 @@ static void optee_release(struct tee_context *ctx)
 
 	ctx->data = NULL;
 
-	if (teedev == optee->supp_teedev)
-		optee_supp_release(&optee->supp);
+	if (teedev == optee->supp_teedev) {
+		mutex_lock(&optee->supp.ctx_mutex);
+		optee->supp.ctx = NULL;
+		mutex_unlock(&optee->supp.ctx_mutex);
+	}
 }
 
 static const struct tee_driver_ops optee_ops = {

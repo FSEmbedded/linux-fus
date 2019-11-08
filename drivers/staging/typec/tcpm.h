@@ -19,9 +19,6 @@
 #include <linux/usb/typec.h>
 #include "pd.h"
 
-/* VBUS off level should be lower than it */
-#define TCPM_VBUS_PRESENT_LEVEL		600
-
 enum typec_cc_status {
 	TYPEC_CC_OPEN,
 	TYPEC_CC_RA,
@@ -37,7 +34,8 @@ enum typec_cc_polarity {
 };
 
 /* Time to wait for TCPC to complete transmit */
-#define PD_T_TCPC_TX_TIMEOUT  100
+#define PD_T_TCPC_TX_TIMEOUT	100		/* in ms	*/
+#define PD_ROLE_SWAP_TIMEOUT	(MSEC_PER_SEC * 10)
 
 enum tcpm_transmit_status {
 	TCPC_TX_SUCCESS = 0,
@@ -57,11 +55,14 @@ enum tcpm_transmit_type {
 };
 
 struct tcpc_config {
-	u32 *src_pdo;
+	const u32 *src_pdo;
 	unsigned int nr_src_pdo;
 
-	u32 *snk_pdo;
+	const u32 *snk_pdo;
 	unsigned int nr_snk_pdo;
+
+	const u32 *snk_vdo;
+	unsigned int nr_snk_vdo;
 
 	unsigned int max_snk_mv;
 	unsigned int max_snk_ma;
@@ -72,7 +73,7 @@ struct tcpc_config {
 	enum typec_role default_role;
 	bool try_role_hw;	/* try.{src,snk} implemented in hardware */
 
-	struct typec_altmode_desc *alt_modes;
+	const struct typec_altmode_desc *alt_modes;
 };
 
 enum tcpc_usb_switch {
@@ -104,12 +105,17 @@ struct tcpc_mux_dev {
 };
 
 struct tcpc_dev {
-	struct tcpc_config *config;
+	const struct tcpc_config *config;
 
 	int (*init)(struct tcpc_dev *dev);
 	int (*get_vbus)(struct tcpc_dev *dev);
-	/* Optional, get the vbus voltage(mv) */
-	unsigned int (*get_vbus_vol)(struct tcpc_dev *dev);
+	/*
+	 * This optional callback gets called by the tcpm core when configured
+	 * as a snk and cc=Rp-def. This allows the tcpm to provide a fallback
+	 * current-limit detection method for the cc=Rp-def case. E.g. some
+	 * tcpcs may include BC1.2 charger detection and use that in this case.
+	 */
+	int (*get_current_limit)(struct tcpc_dev *dev);
 	int (*set_cc)(struct tcpc_dev *dev, enum typec_cc_status cc);
 	int (*get_cc)(struct tcpc_dev *dev, enum typec_cc_status *cc1,
 		      enum typec_cc_status *cc2);
@@ -122,16 +128,10 @@ struct tcpc_dev {
 	int (*set_roles)(struct tcpc_dev *dev, bool attached,
 			 enum typec_role role, enum typec_data_role data);
 	int (*start_drp_toggling)(struct tcpc_dev *dev,
-				  enum typec_cc_status cc, int attach);
+				  enum typec_cc_status cc);
 	int (*try_role)(struct tcpc_dev *dev, int role);
 	int (*pd_transmit)(struct tcpc_dev *dev, enum tcpm_transmit_type type,
 			   const struct pd_message *msg);
-	int (*vbus_detect)(struct tcpc_dev *dev, bool enable);
-	int (*vbus_discharge)(struct tcpc_dev *tcpc, bool enable);
-	void (*bist_mode)(struct tcpc_dev *tcpc, bool enable);
-	int (*ss_mux_sel)(struct tcpc_dev *dev,
-				enum typec_cc_polarity polarity);
-
 	struct tcpc_mux_dev *mux;
 };
 
@@ -157,6 +157,5 @@ void tcpm_pd_transmit_complete(struct tcpm_port *port,
 			       enum tcpm_transmit_status status);
 void tcpm_pd_hard_reset(struct tcpm_port *port);
 void tcpm_tcpc_reset(struct tcpm_port *port);
-void tcpm_vbus_low_alarm(struct tcpm_port *port);
 
 #endif /* __LINUX_USB_TCPM_H */

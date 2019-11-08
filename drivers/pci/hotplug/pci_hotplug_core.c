@@ -23,6 +23,9 @@
  *
  * Send feedback to <kristen.c.accardi@intel.com>
  *
+ * Authors:
+ *   Greg Kroah-Hartman <greg@kroah.com>
+ *   Scott Murray <scottm@somanetworks.com>
  */
 
 #include <linux/module.h>	/* try_module_get & module_put */
@@ -39,7 +42,7 @@
 #include <linux/mutex.h>
 #include <linux/pci.h>
 #include <linux/pci_hotplug.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include "../pci.h"
 #include "cpci_hotplug.h"
 
@@ -50,14 +53,8 @@
 #define info(format, arg...) printk(KERN_INFO "%s: " format, MY_NAME, ## arg)
 #define warn(format, arg...) printk(KERN_WARNING "%s: " format, MY_NAME, ## arg)
 
-
 /* local variables */
 static bool debug;
-
-#define DRIVER_VERSION	"0.5"
-#define DRIVER_AUTHOR	"Greg Kroah-Hartman <greg@kroah.com>, Scott Murray <scottm@somanetworks.com>"
-#define DRIVER_DESC	"PCI Hot Plug PCI Core"
-
 
 static LIST_HEAD(pci_hotplug_slot_list);
 static DEFINE_MUTEX(pci_hp_mutex);
@@ -455,8 +452,17 @@ int __pci_hp_register(struct hotplug_slot *slot, struct pci_bus *bus,
 	list_add(&slot->slot_list, &pci_hotplug_slot_list);
 
 	result = fs_add_slot(pci_slot);
+	if (result)
+		goto err_list_del;
+
 	kobject_uevent(&pci_slot->kobj, KOBJ_ADD);
 	dbg("Added slot %s to the list\n", name);
+	goto out;
+
+err_list_del:
+	list_del(&slot->slot_list);
+	pci_slot->hotplug = NULL;
+	pci_destroy_slot(pci_slot);
 out:
 	mutex_unlock(&pci_hp_mutex);
 	return result;
@@ -534,7 +540,6 @@ static int __init pci_hotplug_init(void)
 		return result;
 	}
 
-	info(DRIVER_DESC " version: " DRIVER_VERSION "\n");
 	return result;
 }
 device_initcall(pci_hotplug_init);

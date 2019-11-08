@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 
 #ifndef __LINUX_USB_TYPEC_H
 #define __LINUX_USB_TYPEC_H
@@ -24,7 +25,6 @@ enum typec_port_type {
 	TYPEC_PORT_DFP,
 	TYPEC_PORT_UFP,
 	TYPEC_PORT_DRP,
-	TYPEC_PORT_TYPE_UNKNOWN,
 };
 
 enum typec_plug_type {
@@ -43,7 +43,6 @@ enum typec_data_role {
 enum typec_role {
 	TYPEC_SINK,
 	TYPEC_SOURCE,
-	TYPEC_ROLE_UNKNOWN,
 };
 
 enum typec_pwr_opmode {
@@ -119,13 +118,13 @@ struct typec_altmode_desc {
 
 struct typec_altmode
 *typec_partner_register_altmode(struct typec_partner *partner,
-				struct typec_altmode_desc *desc);
+				const struct typec_altmode_desc *desc);
 struct typec_altmode
 *typec_plug_register_altmode(struct typec_plug *plug,
-			     struct typec_altmode_desc *desc);
+			     const struct typec_altmode_desc *desc);
 struct typec_altmode
 *typec_port_register_altmode(struct typec_port *port,
-			     struct typec_altmode_desc *desc);
+			     const struct typec_altmode_desc *desc);
 void typec_unregister_altmode(struct typec_altmode *altmode);
 
 struct typec_port *typec_altmode2port(struct typec_altmode *alt);
@@ -192,6 +191,7 @@ struct typec_partner_desc {
  * @pr_set: Set Power Role
  * @vconn_set: Set VCONN Role
  * @activate_mode: Enter/exit given Alternate Mode
+ * @port_type_set: Set port type
  *
  * Static capabilities of a single USB Type-C port.
  */
@@ -216,6 +216,9 @@ struct typec_capability {
 
 	int		(*activate_mode)(const struct typec_capability *,
 					 int mode, int activate);
+	int		(*port_type_set)(const struct typec_capability *,
+					enum typec_port_type);
+
 };
 
 /* Specific to try_role(). Indicates the user want's to clear the preference. */
@@ -241,7 +244,5 @@ void typec_set_data_role(struct typec_port *port, enum typec_data_role role);
 void typec_set_pwr_role(struct typec_port *port, enum typec_role role);
 void typec_set_vconn_role(struct typec_port *port, enum typec_role role);
 void typec_set_pwr_opmode(struct typec_port *port, enum typec_pwr_opmode mode);
-enum typec_port_type typec_get_port_type(struct device *dev);
-enum typec_role typec_get_power_role(struct device *dev);
 
 #endif /* __LINUX_USB_TYPEC_H */

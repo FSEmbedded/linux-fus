@@ -255,12 +255,12 @@ static int seq_free_client1(struct snd_seq_client *client)
 
 	if (!client)
 		return 0;
-	snd_seq_delete_all_ports(client);
-	snd_seq_queue_client_leave(client->number);
 	spin_lock_irqsave(&clients_lock, flags);
 	clienttablock[client->number] = 1;
 	clienttab[client->number] = NULL;
 	spin_unlock_irqrestore(&clients_lock, flags);
+	snd_seq_delete_all_ports(client);
+	snd_seq_queue_client_leave(client->number);
 	snd_use_lock_sync(&client->use_lock);
 	snd_seq_queue_client_termination(client->number);
 	if (client->pool)
@@ -1675,7 +1675,6 @@ int snd_seq_set_queue_tempo(int client, struct snd_seq_queue_tempo *tempo)
 		return -EPERM;
 	return snd_seq_queue_timer_set_tempo(tempo->queue, client, tempo);
 }
-
 EXPORT_SYMBOL(snd_seq_set_queue_tempo);
 
 static int snd_seq_ioctl_set_queue_tempo(struct snd_seq_client *client,
@@ -2002,7 +2001,8 @@ static int snd_seq_ioctl_query_next_client(struct snd_seq_client *client,
 	struct snd_seq_client *cptr = NULL;
 
 	/* search for next client */
-	info->client++;
+	if (info->client < INT_MAX)
+		info->client++;
 	if (info->client < 0)
 		info->client = 0;
 	for (; info->client < SNDRV_SEQ_MAX_CLIENTS; info->client++) {
@@ -2212,7 +2212,6 @@ int snd_seq_create_kernel_client(struct snd_card *card, int client_index,
 	/* return client number to caller */
 	return client->number;
 }
-
 EXPORT_SYMBOL(snd_seq_create_kernel_client);
 
 /* exported to kernel modules */
@@ -2231,7 +2230,6 @@ int snd_seq_delete_kernel_client(int client)
 	kfree(ptr);
 	return 0;
 }
-
 EXPORT_SYMBOL(snd_seq_delete_kernel_client);
 
 /* skeleton to enqueue event, called from snd_seq_kernel_client_enqueue
@@ -2282,7 +2280,6 @@ int snd_seq_kernel_client_enqueue(int client, struct snd_seq_event * ev,
 {
 	return kernel_client_enqueue(client, ev, NULL, 0, atomic, hop);
 }
-
 EXPORT_SYMBOL(snd_seq_kernel_client_enqueue);
 
 /*
@@ -2296,7 +2293,6 @@ int snd_seq_kernel_client_enqueue_blocking(int client, struct snd_seq_event * ev
 {
 	return kernel_client_enqueue(client, ev, file, 1, atomic, hop);
 }
-
 EXPORT_SYMBOL(snd_seq_kernel_client_enqueue_blocking);
 
 /* 
@@ -2334,7 +2330,6 @@ int snd_seq_kernel_client_dispatch(int client, struct snd_seq_event * ev,
 	snd_seq_client_unlock(cptr);
 	return result;
 }
-
 EXPORT_SYMBOL(snd_seq_kernel_client_dispatch);
 
 /**
@@ -2367,7 +2362,6 @@ int snd_seq_kernel_client_ctl(int clientid, unsigned int cmd, void *arg)
 		 cmd, _IOC_TYPE(cmd), _IOC_NR(cmd));
 	return -ENOTTY;
 }
-
 EXPORT_SYMBOL(snd_seq_kernel_client_ctl);
 
 /* exported (for OSS emulator) */
@@ -2385,7 +2379,6 @@ int snd_seq_kernel_client_write_poll(int clientid, struct file *file, poll_table
 		return 1;
 	return 0;
 }
-
 EXPORT_SYMBOL(snd_seq_kernel_client_write_poll);
 
 /*---------------------------------------------------------------------------*/

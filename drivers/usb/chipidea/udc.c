@@ -365,7 +365,7 @@ static int add_td_to_list(struct ci_hw_ep *hwep, struct ci_hw_req *hwreq,
 		if (hwreq->req.length == 0
 				|| hwreq->req.length % hwep->ep.maxpacket)
 			mul++;
-		node->ptr->token |= mul << __ffs(TD_MULTO);
+		node->ptr->token |= cpu_to_le32(mul << __ffs(TD_MULTO));
 	}
 
 	temp = (u32) (hwreq->req.dma + hwreq->req.actual);
@@ -505,7 +505,7 @@ static int _hardware_enqueue(struct ci_hw_ep *hwep, struct ci_hw_req *hwreq)
 		if (hwreq->req.length == 0
 				|| hwreq->req.length % hwep->ep.maxpacket)
 			mul++;
-		hwep->qh.ptr->cap |= mul << __ffs(QH_MULT);
+		hwep->qh.ptr->cap |= cpu_to_le32(mul << __ffs(QH_MULT));
 	}
 
 	ret = hw_ep_prime(ci, hwep->num, hwep->dir,
@@ -530,7 +530,7 @@ static void free_pending_td(struct ci_hw_ep *hwep)
 static int reprime_dtd(struct ci_hdrc *ci, struct ci_hw_ep *hwep,
 					   struct td_node *node)
 {
-	hwep->qh.ptr->td.next = node->dma;
+	hwep->qh.ptr->td.next = cpu_to_le32(node->dma);
 	hwep->qh.ptr->td.token &=
 		cpu_to_le32(~(TD_STATUS_HALTED | TD_STATUS_ACTIVE));
 
@@ -828,7 +828,7 @@ static int _ep_queue(struct usb_ep *ep, struct usb_request *req,
 	}
 
 	if (usb_endpoint_xfer_isoc(hwep->ep.desc) &&
-	    hwreq->req.length > (1 + hwep->ep.mult) * hwep->ep.maxpacket) {
+	    hwreq->req.length > hwep->ep.mult * hwep->ep.maxpacket) {
 		dev_err(hwep->ci->dev, "request length too big for isochronous\n");
 		return -EMSGSIZE;
 	}
@@ -960,7 +960,6 @@ isr_setup_status_complete(struct usb_ep *ep, struct usb_request *req)
  */
 static int isr_setup_status_phase(struct ci_hdrc *ci)
 {
-	int retval;
 	struct ci_hw_ep *hwep;
 
 	/*
@@ -976,9 +975,7 @@ static int isr_setup_status_phase(struct ci_hdrc *ci)
 	ci->status->context = ci;
 	ci->status->complete = isr_setup_status_complete;
 
-	retval = _ep_queue(&hwep->ep, ci->status, GFP_ATOMIC);
-
-	return retval;
+	return _ep_queue(&hwep->ep, ci->status, GFP_ATOMIC);
 }
 
 /**
@@ -1300,8 +1297,8 @@ static int ep_enable(struct usb_ep *ep,
 	hwep->num  = usb_endpoint_num(desc);
 	hwep->type = usb_endpoint_type(desc);
 
-	hwep->ep.maxpacket = usb_endpoint_maxp(desc) & 0x07ff;
-	hwep->ep.mult = QH_ISO_MULT(usb_endpoint_maxp(desc));
+	hwep->ep.maxpacket = usb_endpoint_maxp(desc);
+	hwep->ep.mult = usb_endpoint_maxp_mult(desc);
 
 	if (hwep->type == USB_ENDPOINT_XFER_CONTROL)
 		cap |= QH_IOS;
@@ -1805,8 +1802,18 @@ static int ci_udc_start(struct usb_gadget *gadget,
 		return retval;
 	}
 
-	if (ci->vbus_active)
-		ci_hdrc_gadget_connect(&ci->gadget, 1);
+	pm_runtime_get_sync(&ci->gadget.dev);
+	if (ci->vbus_active) {
+		hw_device_reset(ci);
+	} else {
+		usb_udc_vbus_handler(&ci->gadget, false);
+		pm_runtime_put_sync(&ci->gadget.dev);
+		return retval;
+	}
+
+	retval = hw_device_state(ci, ci->ep0out->qh.dma);
+	if (retval)
+		pm_runtime_put_sync(&ci->gadget.dev);
 
 	return retval;
 }
@@ -1839,10 +1846,10 @@ static int ci_udc_stop(struct usb_gadget *gadget)
 
 	if (ci->vbus_active) {
 		hw_device_state(ci, 0);
+		spin_unlock_irqrestore(&ci->lock, flags);
 		if (ci->platdata->notify_event)
 			ci->platdata->notify_event(ci,
 			CI_HDRC_CONTROLLER_STOPPED_EVENT);
-		spin_unlock_irqrestore(&ci->lock, flags);
 		_gadget_stop_activity(&ci->gadget);
 		spin_lock_irqsave(&ci->lock, flags);
 		pm_runtime_put(&ci->gadget.dev);
@@ -1891,9 +1898,6 @@ static irqreturn_t udc_irq(struct ci_hdrc *ci)
 		if (USBi_PCI & intr) {
 			ci->gadget.speed = hw_port_is_high_speed(ci) ?
 				USB_SPEED_HIGH : USB_SPEED_FULL;
-			if (ci->usb_phy)
-				usb_phy_set_event(ci->usb_phy,
-					USB_EVENT_ENUMERATED);
 			if (ci->suspended) {
 				if (ci->driver->resume) {
 					spin_unlock(&ci->lock);
@@ -1945,6 +1949,9 @@ static int udc_start(struct ci_hdrc *ci)
 	ci->gadget.max_speed    = USB_SPEED_HIGH;
 	ci->gadget.name         = ci->platdata->name;
 	ci->gadget.otg_caps	= otg_caps;
+
+	if (ci->platdata->flags & CI_HDRC_REQUIRES_ALIGNED_DMA)
+		ci->gadget.quirk_avoids_skb_reserve = 1;
 
 	if (ci->is_otg && (otg_caps->hnp_support || otg_caps->srp_support ||
 						otg_caps->adp_support))
@@ -2096,6 +2103,8 @@ static void udc_id_switch_for_host(struct ci_hdrc *ci)
 			ci->fsm.otg->state == OTG_STATE_B_IDLE ||
 			ci->fsm.otg->state == OTG_STATE_UNDEFINED)
 		hw_write_otgsc(ci, OTGSC_BSVIE | OTGSC_BSVIS, OTGSC_BSVIS);
+
+	ci->vbus_active = 0;
 }
 
 static void udc_suspend_for_power_lost(struct ci_hdrc *ci)

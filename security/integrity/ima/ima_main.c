@@ -16,6 +16,9 @@
  *	implements the IMA hooks: ima_bprm_check, ima_file_mmap,
  *	and ima_file_check.
  */
+
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/module.h>
 #include <linux/file.h>
 #include <linux/binfmts.h>
@@ -313,7 +316,7 @@ int ima_bprm_check(struct linux_binprm *bprm)
 /**
  * ima_path_check - based on policy, collect/store measurement.
  * @file: pointer to the file to be measured
- * @mask: contains MAY_READ, MAY_WRITE or MAY_EXECUTE
+ * @mask: contains MAY_READ, MAY_WRITE, MAY_EXEC or MAY_APPEND
  *
  * Measure files based on the ima_must_measure() policy decision.
  *
@@ -323,8 +326,8 @@ int ima_bprm_check(struct linux_binprm *bprm)
 int ima_file_check(struct file *file, int mask, int opened)
 {
 	return process_measurement(file, NULL, 0,
-				   mask & (MAY_READ | MAY_WRITE | MAY_EXEC),
-				   FILE_CHECK, opened);
+				   mask & (MAY_READ | MAY_WRITE | MAY_EXEC |
+					   MAY_APPEND), FILE_CHECK, opened);
 }
 EXPORT_SYMBOL_GPL(ima_file_check);
 
@@ -376,6 +379,7 @@ int ima_read_file(struct file *file, enum kernel_read_file_id read_id)
 
 static int read_idmap[READING_MAX_ID] = {
 	[READING_FIRMWARE] = FIRMWARE_CHECK,
+	[READING_FIRMWARE_PREALLOC_BUFFER] = FIRMWARE_CHECK,
 	[READING_MODULE] = MODULE_CHECK,
 	[READING_KEXEC_IMAGE] = KEXEC_KERNEL_CHECK,
 	[READING_KEXEC_INITRAMFS] = KEXEC_INITRAMFS_CHECK,
@@ -424,8 +428,19 @@ static int __init init_ima(void)
 {
 	int error;
 
+	ima_init_template_list();
 	hash_setup(CONFIG_IMA_DEFAULT_HASH);
 	error = ima_init();
+
+	if (error && strcmp(hash_algo_name[ima_hash_algo],
+			    CONFIG_IMA_DEFAULT_HASH) != 0) {
+		pr_info("Allocating %s failed, going to use default hash algorithm %s\n",
+			hash_algo_name[ima_hash_algo], CONFIG_IMA_DEFAULT_HASH);
+		hash_setup_done = 0;
+		hash_setup(CONFIG_IMA_DEFAULT_HASH);
+		error = ima_init();
+	}
+
 	if (!error) {
 		ima_initialized = 1;
 		ima_update_policy_flag();

@@ -121,6 +121,26 @@ static int axp288_adc_read_channel(int *val, unsigned long address,
 	return IIO_VAL_INT;
 }
 
+static int axp288_adc_set_ts(struct regmap *regmap, unsigned int mode,
+				unsigned long address)
+{
+	int ret;
+
+	/* channels other than GPADC do not need to switch TS pin */
+	if (address != AXP288_GP_ADC_H)
+		return 0;
+
+	ret = regmap_write(regmap, AXP288_ADC_TS_PIN_CTRL, mode);
+	if (ret)
+		return ret;
+
+	/* When switching to the GPADC pin give things some time to settle */
+	if (mode == AXP288_ADC_TS_PIN_GPADC)
+		usleep_range(6000, 10000);
+
+	return 0;
+}
+
 static int axp288_adc_read_raw(struct iio_dev *indio_dev,
 			struct iio_chan_spec const *chan,
 			int *val, int *val2, long mask)

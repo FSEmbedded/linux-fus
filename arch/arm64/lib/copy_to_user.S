@@ -17,7 +17,7 @@
 #include <linux/linkage.h>
 
 #include <asm/cache.h>
-#include <asm/uaccess.h>
+#include <asm/asm-uaccess.h>
 
 /*
  * Copy to user space from a kernel buffer (alignment handled by the hardware)
@@ -63,10 +63,10 @@
 
 end	.req	x5
 ENTRY(__arch_copy_to_user)
-	uaccess_enable_not_uao x3, x4
+	uaccess_enable_not_uao x3, x4, x5
 	add	end, x0, x2
 #include "copy_template.S"
-	uaccess_disable_not_uao x3
+	uaccess_disable_not_uao x3, x4
 	mov	x0, #0
 	ret
 ENDPROC(__arch_copy_to_user)

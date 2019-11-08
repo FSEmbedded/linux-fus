@@ -50,11 +50,10 @@ static u32 vhost_transport_get_local_cid(void)
 	return VHOST_VSOCK_DEFAULT_HOST_CID;
 }
 
-static struct vhost_vsock *vhost_vsock_get(u32 guest_cid)
+static struct vhost_vsock *__vhost_vsock_get(u32 guest_cid)
 {
 	struct vhost_vsock *vsock;
 
-	spin_lock_bh(&vhost_vsock_lock);
 	list_for_each_entry(vsock, &vhost_vsock_list, list) {
 		u32 other_cid = vsock->guest_cid;
 
@@ -63,13 +62,22 @@ static struct vhost_vsock *vhost_vsock_get(u32 guest_cid)
 			continue;
 
 		if (other_cid == guest_cid) {
-			spin_unlock_bh(&vhost_vsock_lock);
 			return vsock;
 		}
 	}
-	spin_unlock_bh(&vhost_vsock_lock);
 
 	return NULL;
+}
+
+static struct vhost_vsock *vhost_vsock_get(u32 guest_cid)
+{
+	struct vhost_vsock *vsock;
+
+	spin_lock_bh(&vhost_vsock_lock);
+	vsock = __vhost_vsock_get(guest_cid);
+	spin_unlock_bh(&vhost_vsock_lock);
+
+	return vsock;
 }
 
 static void
@@ -168,6 +176,11 @@ vhost_transport_do_send_pkt(struct vhost_vsock *vsock,
 				restart_tx = true;
 		}
 
+		/* Deliver to monitoring devices all correctly transmitted
+		 * packets.
+		 */
+		virtio_transport_deliver_tap_pkt(pkt);
+
 		virtio_transport_free_pkt(pkt);
 	}
 	if (added)
@@ -195,7 +208,6 @@ static int
 vhost_transport_send_pkt(struct virtio_vsock_pkt *pkt)
 {
 	struct vhost_vsock *vsock;
-	struct vhost_virtqueue *vq;
 	int len = pkt->len;
 
 	/* Find the vhost_vsock according to guest context id  */
@@ -204,8 +216,6 @@ vhost_transport_send_pkt(struct virtio_vsock_pkt *pkt)
 		virtio_transport_free_pkt(pkt);
 		return -ENODEV;
 	}
-
-	vq = &vsock->vqs[VSOCK_VQ_RX];
 
 	if (pkt->reply)
 		atomic_inc(&vsock->queued_replies);
@@ -378,6 +388,9 @@ static void vhost_vsock_handle_tx_kick(struct vhost_work *work)
 
 		len = pkt->len;
 
+		/* Deliver to monitoring devices all received packets */
+		virtio_transport_deliver_tap_pkt(pkt);
+
 		/* Only accept correctly addressed packets */
 		if (le64_to_cpu(pkt->hdr.src_cid) == vsock->guest_cid)
 			virtio_transport_recv_pkt(pkt);
@@ -495,12 +508,9 @@ static int vhost_vsock_dev_open(struct inode *inode, struct file *file)
 	/* This struct is large and allocation could fail, fall back to vmalloc
 	 * if there is no other way.
 	 */
-	vsock = kzalloc(sizeof(*vsock), GFP_KERNEL | __GFP_NOWARN | __GFP_REPEAT);
-	if (!vsock) {
-		vsock = vmalloc(sizeof(*vsock));
-		if (!vsock)
-			return -ENOMEM;
-	}
+	vsock = kvmalloc(sizeof(*vsock), GFP_KERNEL | __GFP_RETRY_MAYFAIL);
+	if (!vsock)
+		return -ENOMEM;
 
 	vqs = kmalloc_array(ARRAY_SIZE(vsock->vqs), sizeof(*vqs), GFP_KERNEL);
 	if (!vqs) {
@@ -607,11 +617,12 @@ static int vhost_vsock_set_cid(struct vhost_vsock *vsock, u64 guest_cid)
 		return -EINVAL;
 
 	/* Refuse if CID is already in use */
-	other = vhost_vsock_get(guest_cid);
-	if (other && other != vsock)
-		return -EADDRINUSE;
-
 	spin_lock_bh(&vhost_vsock_lock);
+	other = __vhost_vsock_get(guest_cid);
+	if (other && other != vsock) {
+		spin_unlock_bh(&vhost_vsock_lock);
+		return -EADDRINUSE;
+	}
 	vsock->guest_cid = guest_cid;
 	spin_unlock_bh(&vhost_vsock_lock);
 
@@ -695,7 +706,7 @@ static const struct file_operations vhost_vsock_fops = {
 };
 
 static struct miscdevice vhost_vsock_misc = {
-	.minor = MISC_DYNAMIC_MINOR,
+	.minor = VHOST_VSOCK_MINOR,
 	.name = "vhost-vsock",
 	.fops = &vhost_vsock_fops,
 };
@@ -767,3 +778,5 @@ module_exit(vhost_vsock_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Asias He");
 MODULE_DESCRIPTION("vhost transport for vsock ");
+MODULE_ALIAS_MISCDEV(VHOST_VSOCK_MINOR);
+MODULE_ALIAS("devname:vhost-vsock");

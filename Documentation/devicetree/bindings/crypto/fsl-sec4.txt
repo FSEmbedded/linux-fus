@@ -120,17 +120,14 @@ PROPERTIES
       Definition: A list of clock name strings in the same order as the
           clocks property.
 
-   - first-jr-index
-      Usage: required only for i.MX8QM and i.MX8QXP
-      Value type: <u32>
-      Definition: Specifies the first job ring index assigned to kernel
-          to read aliased register since CAAM page 0 is not accessible.
-
-   Note: All other standard properties (see the ePAPR) are allowed
-   but are optional.
+   Note: All other standard properties (see the Devicetree Specification)
+   are allowed but are optional.
 
 
 EXAMPLE
+
+iMX6QDL/SX requires four clocks
+
 	crypto@300000 {
 		compatible = "fsl,sec-v4.0";
 		fsl,sec-era = <2>;
@@ -145,6 +142,23 @@ EXAMPLE
 			 <&clks IMX6QDL_CLK_CAAM_IPG>,
 			 <&clks IMX6QDL_CLK_EIM_SLOW>;
 		clock-names = "mem", "aclk", "ipg", "emi_slow";
+	};
+
+
+iMX6UL does only require three clocks
+
+	crypto: caam@2140000 {
+		compatible = "fsl,sec-v4.0";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		reg = <0x2140000 0x3c000>;
+		ranges = <0 0x2140000 0x3c000>;
+		interrupts = <GIC_SPI 48 IRQ_TYPE_LEVEL_HIGH>;
+
+		clocks = <&clks IMX6UL_CLK_CAAM_MEM>,
+			 <&clks IMX6UL_CLK_CAAM_ACLK>,
+			 <&clks IMX6UL_CLK_CAAM_IPG>;
+		clock-names = "mem", "aclk", "ipg";
 	};
 
 =====================================================================

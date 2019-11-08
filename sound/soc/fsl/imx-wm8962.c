@@ -38,7 +38,6 @@ struct imx_wm8962_data {
 	struct snd_soc_card card;
 	char codec_dai_name[DAI_NAME_SIZE];
 	char platform_name[DAI_NAME_SIZE];
-	struct clk *codec_clk;
 	unsigned int clk_frequency;
 	bool is_codec_master;
 };
@@ -52,15 +51,9 @@ struct imx_priv {
 	bool dmic_mono;
 	struct snd_soc_codec *codec;
 	struct platform_device *pdev;
-	struct snd_pcm_substream *first_stream;
-	struct snd_pcm_substream *second_stream;
-	struct snd_kcontrol *headphone_kctl;
-	struct snd_card *snd_card;
-	struct platform_device *asrc_pdev;
-	u32 asrc_rate;
-	u32 asrc_format;
+	int sample_rate;
+	snd_pcm_format_t sample_format;
 };
-static struct imx_priv card_priv;
 
 #ifdef CONFIG_SND_SOC_IMX_WM8962_ANDROID
 static int sample_rate = 44100;
@@ -187,44 +180,14 @@ static const struct snd_soc_dapm_widget imx_wm8962_dapm_widgets[] = {
 	SND_SOC_DAPM_MIC("DMIC", NULL),
 };
 
-static u32 imx_wm8962_rates[] = {32000, 48000, 96000};
-static struct snd_pcm_hw_constraint_list imx_wm8962_rate_constraints = {
-	.count = ARRAY_SIZE(imx_wm8962_rates),
-	.list = imx_wm8962_rates,
-};
-
-static int imx_hifi_startup(struct snd_pcm_substream *substream)
-{
-	struct snd_pcm_runtime *runtime = substream->runtime;
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_card *card = rtd->card;
-	struct imx_wm8962_data *data = snd_soc_card_get_drvdata(card);
-	int ret;
-
-	if (!data->is_codec_master) {
-		ret = snd_pcm_hw_constraint_list(runtime, 0,
-				SNDRV_PCM_HW_PARAM_RATE,
-				&imx_wm8962_rate_constraints);
-		if (ret)
-			return ret;
-	}
-
-	return 0;
-}
-
-#ifdef CONFIG_SND_SOC_IMX_WM8962_ANDROID
 static int imx_hifi_hw_params(struct snd_pcm_substream *substream,
 			struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	struct imx_priv *priv = &card_priv;
-	struct device *dev = &priv->pdev->dev;
-	u32 dai_format;
-	int ret = 0;
+	struct imx_priv *priv = snd_soc_card_get_drvdata(rtd->card);
 
-	sample_rate = params_rate(params);
-	sample_format = params_format(params);
+	priv->sample_rate = params_rate(params);
+	priv->sample_format = params_format(params);
 
 	if (data->is_codec_master)
 		dai_format = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
@@ -243,8 +206,7 @@ static int imx_hifi_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static struct snd_soc_ops imx_hifi_ops = {
-	.startup = imx_hifi_startup,
+static const struct snd_soc_ops imx_hifi_ops = {
 	.hw_params = imx_hifi_hw_params,
 };
 
@@ -252,8 +214,9 @@ static int imx_wm8962_set_bias_level(struct snd_soc_card *card,
 					struct snd_soc_dapm_context *dapm,
 					enum snd_soc_bias_level level)
 {
-	struct snd_soc_dai *codec_dai = card->rtd[0].codec_dai;
-	struct imx_priv *priv = &card_priv;
+	struct snd_soc_pcm_runtime *rtd;
+	struct snd_soc_dai *codec_dai;
+	struct imx_priv *priv = snd_soc_card_get_drvdata(card);
 	struct imx_wm8962_data *data = snd_soc_card_get_drvdata(card);
 	struct device *dev = &priv->pdev->dev;
 	unsigned int pll_out;
@@ -267,11 +230,10 @@ static int imx_wm8962_set_bias_level(struct snd_soc_card *card,
 	switch (level) {
 	case SND_SOC_BIAS_PREPARE:
 		if (dapm->bias_level == SND_SOC_BIAS_STANDBY) {
-			if (sample_format == SNDRV_PCM_FORMAT_S24_LE
-				|| sample_format == SNDRV_PCM_FORMAT_S20_3LE)
-				pll_out = sample_rate * 384;
+			if (priv->sample_format == SNDRV_PCM_FORMAT_S24_LE)
+				pll_out = priv->sample_rate * 384;
 			else
-				pll_out = sample_rate * 256;
+				pll_out = priv->sample_rate * 256;
 
 			ret = snd_soc_dai_set_pll(codec_dai, WM8962_FLL,
 					WM8962_FLL_MCLK, data->clk_frequency,
@@ -529,7 +491,7 @@ static int imx_wm8962_late_probe(struct snd_soc_card *card)
 {
 	struct snd_soc_pcm_runtime *rtd;
 	struct snd_soc_dai *codec_dai;
-	struct imx_priv *priv = &card_priv;
+	struct imx_priv *priv = snd_soc_card_get_drvdata(card);
 	struct imx_wm8962_data *data = snd_soc_card_get_drvdata(card);
 	struct device *dev = &priv->pdev->dev;
 	int ret;
@@ -567,38 +529,25 @@ static int be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 static int imx_wm8962_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
-	struct device_node *cpu_np = NULL, *codec_np = NULL;
-	struct platform_device *cpu_pdev;
-	struct imx_priv *priv = &card_priv;
+	struct device_node *ssi_np, *codec_np;
+	struct platform_device *ssi_pdev;
 	struct i2c_client *codec_dev;
 	struct imx_wm8962_data *data;
-	int int_port, ext_port, tmp_port;
+	struct imx_priv *priv;
+	struct clk *codec_clk;
+	int int_port, ext_port;
 	int ret;
 	struct platform_device *asrc_pdev = NULL;
 	struct device_node *asrc_np;
 	u32 width;
 
+	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
+	if (!priv)
+		return -ENOMEM;
+
 	priv->pdev = pdev;
-	priv->asrc_pdev = NULL;
-
-	data = devm_kzalloc(&pdev->dev, sizeof(*data), GFP_KERNEL);
-	if (!data) {
-		ret = -ENOMEM;
-		goto fail;
-	}
-
-	if (of_property_read_bool(pdev->dev.of_node, "codec-master"))
-		data->is_codec_master = true;
-
-	cpu_np = of_parse_phandle(pdev->dev.of_node, "cpu-dai", 0);
-	if (!cpu_np) {
-		dev_err(&pdev->dev, "cpu dai phandle missing or invalid\n");
-		ret = -EINVAL;
-		goto fail;
-	}
-
-	if (!strstr(cpu_np->name, "ssi"))
-		goto audmux_bypass;
+	priv->sample_rate = 44100;
+	priv->sample_format = SNDRV_PCM_FORMAT_S16_LE;
 
 	ret = of_property_read_u32(np, "mux-int-port", &int_port);
 	if (ret) {
@@ -669,81 +618,15 @@ audmux_bypass:
 		priv->asrc_pdev = asrc_pdev;
 	}
 
-	priv->first_stream = NULL;
-	priv->second_stream = NULL;
-
-	data->codec_clk = devm_clk_get(&codec_dev->dev, NULL);
-	if (IS_ERR(data->codec_clk)) {
-		ret = PTR_ERR(data->codec_clk);
+	codec_clk = clk_get(&codec_dev->dev, NULL);
+	if (IS_ERR(codec_clk)) {
+		ret = PTR_ERR(codec_clk);
 		dev_err(&codec_dev->dev, "failed to get codec clk: %d\n", ret);
 		goto fail;
 	}
 
-	priv->amic_mono = of_property_read_bool(codec_np, "amic-mono");
-	priv->dmic_mono = of_property_read_bool(codec_np, "dmic-mono");
-
-	priv->hp_gpio = of_get_named_gpio_flags(np, "hp-det-gpios", 0,
-				(enum of_gpio_flags *)&priv->hp_active_low);
-	priv->mic_gpio = of_get_named_gpio_flags(np, "mic-det-gpios", 0,
-				(enum of_gpio_flags *)&priv->mic_active_low);
-
-	data->dai[0].name = "HiFi";
-	data->dai[0].stream_name = "HiFi";
-	data->dai[0].codec_dai_name = "wm8962";
-	data->dai[0].codec_of_node = codec_np;
-	data->dai[0].cpu_dai_name = dev_name(&cpu_pdev->dev);
-	data->dai[0].platform_of_node = cpu_np;
-	data->dai[0].ops = &imx_hifi_ops;
-	data->dai[0].dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF;
-	if (data->is_codec_master)
-		data->dai[0].dai_fmt |= SND_SOC_DAIFMT_CBM_CFM;
-	else
-		data->dai[0].dai_fmt |= SND_SOC_DAIFMT_CBS_CFS;
-
-	data->card.num_links = 1;
-
-	if (asrc_pdev) {
-		data->dai[0].ignore_pmdown_time = 1;
-		data->dai[1].name = "HiFi-ASRC-FE";
-		data->dai[1].stream_name = "HiFi-ASRC-FE";
-		data->dai[1].codec_name = "snd-soc-dummy";
-		data->dai[1].codec_dai_name = "snd-soc-dummy-dai";
-		data->dai[1].cpu_of_node = asrc_np;
-		data->dai[1].platform_of_node = asrc_np;
-		data->dai[1].dynamic = 1;
-		data->dai[1].ignore_pmdown_time = 1;
-		data->dai[1].dpcm_playback = 1;
-		data->dai[1].dpcm_capture = 1;
-		data->dai[1].dpcm_merged_chan = 1;
-
-		data->dai[2].name = "HiFi-ASRC-BE";
-		data->dai[2].stream_name = "HiFi-ASRC-BE";
-		data->dai[2].codec_dai_name = "wm8962";
-		data->dai[2].codec_of_node = codec_np;
-		data->dai[2].cpu_dai_name = dev_name(&cpu_pdev->dev);
-		data->dai[2].platform_name = "snd-soc-dummy";
-		data->dai[2].ops = &imx_hifi_ops;
-		data->dai[2].be_hw_params_fixup = be_hw_params_fixup;
-		data->dai[2].no_pcm = 1;
-		data->dai[2].ignore_pmdown_time = 1;
-		data->dai[2].dpcm_playback = 1;
-		data->dai[2].dpcm_capture = 1;
-		data->card.num_links = 3;
-
-		ret = of_property_read_u32(asrc_np, "fsl,asrc-rate",
-						&priv->asrc_rate);
-		if (ret) {
-			dev_err(&pdev->dev, "failed to get output rate\n");
-			ret = -EINVAL;
-			goto fail;
-		}
-
-		ret = of_property_read_u32(asrc_np, "fsl,asrc-width", &width);
-		if (ret) {
-			dev_err(&pdev->dev, "failed to get output rate\n");
-			ret = -EINVAL;
-			goto fail;
-		}
+	data->clk_frequency = clk_get_rate(codec_clk);
+	clk_put(codec_clk);
 
 		if (width == 24)
 			priv->asrc_format = SNDRV_PCM_FORMAT_S24_LE;
@@ -758,6 +641,7 @@ audmux_bypass:
 	ret = snd_soc_of_parse_audio_routing(&data->card, "audio-routing");
 	if (ret)
 		goto fail;
+	data->card.num_links = 1;
 	data->card.owner = THIS_MODULE;
 	data->card.dai_link = data->dai;
 	data->card.dapm_widgets = imx_wm8962_dapm_widgets;
@@ -777,48 +661,11 @@ audmux_bypass:
 		goto fail;
 	}
 
-	priv->snd_card = data->card.snd_card;
-	priv->headphone_kctl = snd_kctl_jack_new("Headphone", NULL);
-	ret = snd_ctl_add(data->card.snd_card, priv->headphone_kctl);
-	if (ret)
-		goto fail;
-
-	imx_wm8962_gpio_init(&data->card);
-
-	if (gpio_is_valid(priv->hp_gpio)) {
-		ret = driver_create_file(pdev->dev.driver, &driver_attr_headphone);
-		if (ret) {
-			dev_err(&pdev->dev, "create hp attr failed (%d)\n", ret);
-			goto fail_hp;
-		}
-	}
-
-	if (gpio_is_valid(priv->mic_gpio)) {
-		ret = driver_create_file(pdev->dev.driver, &driver_attr_microphone);
-		if (ret) {
-			dev_err(&pdev->dev, "create mic attr failed (%d)\n", ret);
-			goto fail_mic;
-		}
-	}
-
-	goto fail;
-
-fail_mic:
-	driver_remove_file(pdev->dev.driver, &driver_attr_headphone);
-fail_hp:
 fail:
 	of_node_put(cpu_np);
 	of_node_put(codec_np);
 
 	return ret;
-}
-
-static int imx_wm8962_remove(struct platform_device *pdev)
-{
-	driver_remove_file(pdev->dev.driver, &driver_attr_microphone);
-	driver_remove_file(pdev->dev.driver, &driver_attr_headphone);
-
-	return 0;
 }
 
 static const struct of_device_id imx_wm8962_dt_ids[] = {
@@ -834,7 +681,6 @@ static struct platform_driver imx_wm8962_driver = {
 		.of_match_table = imx_wm8962_dt_ids,
 	},
 	.probe = imx_wm8962_probe,
-	.remove = imx_wm8962_remove,
 };
 module_platform_driver(imx_wm8962_driver);
 

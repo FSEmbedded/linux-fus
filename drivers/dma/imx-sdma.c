@@ -345,6 +345,9 @@ struct sdma_channel {
 	unsigned int			event_id0;
 	unsigned int			event_id1;
 	enum dma_slave_buswidth		word_size;
+	unsigned int			buf_tail;
+	unsigned int			buf_ptail;
+	unsigned int			num_bd;
 	unsigned int			period_len;
 	unsigned int			pc_from_device, pc_to_device;
 	unsigned int			device_to_device;
@@ -803,8 +806,17 @@ static void sdma_update_channel_loop(struct sdma_channel *sdmac)
 		sdmac->chn_real_count = bd->mode.count;
 		bd->mode.status |= BD_DONE;
 		bd->mode.count = sdmac->period_len;
-		desc->buf_ptail = desc->buf_tail;
-		desc->buf_tail = (desc->buf_tail + 1) % desc->num_bd;
+		sdmac->buf_ptail = sdmac->buf_tail;
+		sdmac->buf_tail = (sdmac->buf_tail + 1) % sdmac->num_bd;
+
+		/*
+		 * The callback is called from the interrupt context in order
+		 * to reduce latency and to avoid the risk of altering the
+		 * SDMA transaction status by the time the client tasklet is
+		 * executed.
+		 */
+
+		dmaengine_desc_get_callback_invoke(&sdmac->desc, NULL);
 
 		if (error)
 			sdmac->status = old_status;
@@ -1091,6 +1103,21 @@ static int sdma_disable_channel(struct dma_chan *chan)
 
 	writel_relaxed(BIT(channel), sdma->regs + SDMA_H_STATSTOP);
 	sdmac->status = DMA_ERROR;
+
+	return 0;
+}
+
+static int sdma_disable_channel_with_delay(struct dma_chan *chan)
+{
+	sdma_disable_channel(chan);
+
+	/*
+	 * According to NXP R&D team a delay of one BD SDMA cost time
+	 * (maximum is 1ms) should be added after disable of the channel
+	 * bit, to ensure SDMA core has really been stopped after SDMA
+	 * clients call .device_terminate_all.
+	 */
+	mdelay(1);
 
 	return 0;
 }
@@ -1565,9 +1592,9 @@ static struct dma_async_tx_descriptor *sdma_prep_memcpy(
 	dev_dbg(sdma->dev, "memcpy: %pad->%pad, len=%zu, channel=%d.\n",
 		&dma_src, &dma_dst, len, channel);
 
-	desc = sdma_transfer_init(sdmac, DMA_MEM_TO_MEM, len / SDMA_BD_MAX_CNT + 1);
-	if (!desc)
-		goto err_out;
+	sdmac->buf_tail = 0;
+	sdmac->buf_ptail = 0;
+	sdmac->chn_real_count = 0;
 
 	do {
 		count = min_t(size_t, len, SDMA_BD_MAX_CNT);
@@ -1737,6 +1764,9 @@ static struct dma_async_tx_descriptor *sdma_prep_dma_cyclic(
 	if (!desc)
 		goto err_out;
 
+	sdmac->buf_tail = 0;
+	sdmac->buf_ptail = 0;
+	sdmac->chn_real_count = 0;
 	sdmac->period_len = period_len;
 	sdmac->flags |= IMX_DMA_SG_LOOP;
 
@@ -1744,14 +1774,10 @@ static struct dma_async_tx_descriptor *sdma_prep_dma_cyclic(
 	if (sdmac->peripheral_type == IMX_DMATYPE_HDMI)
 		return vchan_tx_prep(&sdmac->vc, &desc->vd, flags);
 
-	desc->buf_tail = 0;
-	desc->buf_ptail = 0;
-	sdmac->chn_real_count = 0;
-
-	if (period_len > SDMA_BD_MAX_CNT) {
+	if (period_len > 0xffff) {
 		dev_err(sdma->dev, "SDMA channel %d: maximum period size exceeded: %zu > %d\n",
-				channel, period_len, SDMA_BD_MAX_CNT);
-		goto err_bd_out;
+				channel, period_len, 0xffff);
+		goto err_out;
 	}
 
 	if (sdmac->peripheral_type == IMX_DMATYPE_UART)
@@ -1776,8 +1802,8 @@ static struct dma_async_tx_descriptor *sdma_prep_dma_cyclic(
 		if (i + 1 == num_periods)
 			param |= BD_WRAP;
 
-		dev_dbg(sdma->dev, "entry %d: count: %zd dma: %pad %s%s\n",
-				i, period_len, &dma_addr,
+		dev_dbg(sdma->dev, "entry %d: count: %zu dma: %#llx %s%s\n",
+				i, period_len, (u64)dma_addr,
 				param & BD_WRAP ? "wrap" : "",
 				param & BD_INTR ? " intr" : "");
 
@@ -1852,29 +1878,10 @@ static enum dma_status sdma_tx_status(struct dma_chan *chan,
 	enum dma_status ret;
 	unsigned long flags;
 
-	ret = dma_cookie_status(chan, cookie, txstate);
-	if (!txstate) {
-		return ret;
-	} else if (ret == DMA_COMPLETE) {
-		spin_lock_irqsave(&sdmac->vc.lock, flags);
-		txstate->residue = sdmac->chn_count - sdmac->chn_real_count;
-		spin_unlock_irqrestore(&sdmac->vc.lock, flags);
-		return ret;
-	}
-
-	spin_lock_irqsave(&sdmac->vc.lock, flags);
-	vd = vchan_find_desc(&sdmac->vc, cookie);
-	desc = to_sdma_desc(&vd->tx);
-	if (vd) {
-		if ((sdmac->flags & IMX_DMA_SG_LOOP)) {
-			if (sdmac->peripheral_type != IMX_DMATYPE_UART)
-				residue = (desc->num_bd - desc->buf_ptail) *
-					   sdmac->period_len - sdmac->chn_real_count;
-			else
-				residue = sdmac->chn_count - sdmac->chn_real_count;
-		} else
-			residue = sdmac->chn_count;
-	} else if (sdmac->desc && sdmac->desc->vd.tx.cookie == cookie)
+	if (sdmac->flags & IMX_DMA_SG_LOOP)
+		residue = (sdmac->num_bd - sdmac->buf_ptail) *
+			   sdmac->period_len - sdmac->chn_real_count;
+	else
 		residue = sdmac->chn_count - sdmac->chn_real_count;
 	else
 		residue = 0;
@@ -2259,19 +2266,26 @@ static int sdma_probe(struct platform_device *pdev)
 	if (IS_ERR(sdma->clk_ahb))
 		return PTR_ERR(sdma->clk_ahb);
 
-	clk_prepare(sdma->clk_ipg);
-	clk_prepare(sdma->clk_ahb);
+	ret = clk_prepare(sdma->clk_ipg);
+	if (ret)
+		return ret;
+
+	ret = clk_prepare(sdma->clk_ahb);
+	if (ret)
+		goto err_clk;
 
 	ret = devm_request_irq(&pdev->dev, irq, sdma_int_handler, 0, "sdma",
 			       sdma);
 	if (ret)
-		return ret;
+		goto err_irq;
 
 	sdma->irq = irq;
 
 	sdma->script_addrs = kzalloc(sizeof(*sdma->script_addrs), GFP_KERNEL);
-	if (!sdma->script_addrs)
-		return -ENOMEM;
+	if (!sdma->script_addrs) {
+		ret = -ENOMEM;
+		goto err_irq;
+	}
 
 	/* initially no scripts available */
 	saddr_arr = (s32 *)sdma->script_addrs;
@@ -2352,15 +2366,11 @@ static int sdma_probe(struct platform_device *pdev)
 	sdma->dma_device.device_prep_slave_sg = sdma_prep_slave_sg;
 	sdma->dma_device.device_prep_dma_cyclic = sdma_prep_dma_cyclic;
 	sdma->dma_device.device_config = sdma_config;
-	sdma->dma_device.device_terminate_all = sdma_terminate_all;
-	sdma->dma_device.device_pause = sdma_channel_pause;
-	sdma->dma_device.device_resume = sdma_channel_resume;
-	sdma->dma_device.src_addr_widths = SDMA_DMA_BUSWIDTHS;
-	sdma->dma_device.dst_addr_widths = SDMA_DMA_BUSWIDTHS;
-	sdma->dma_device.directions = SDMA_DMA_DIRECTIONS;
-	sdma->dma_device.residue_granularity = DMA_RESIDUE_GRANULARITY_BURST;
-	sdma->dma_device.device_prep_dma_memcpy = sdma_prep_memcpy;
-	sdma->dma_device.device_prep_dma_sg = sdma_prep_memcpy_sg;
+	sdma->dma_device.device_terminate_all = sdma_disable_channel_with_delay;
+	sdma->dma_device.src_addr_widths = BIT(DMA_SLAVE_BUSWIDTH_4_BYTES);
+	sdma->dma_device.dst_addr_widths = BIT(DMA_SLAVE_BUSWIDTH_4_BYTES);
+	sdma->dma_device.directions = BIT(DMA_DEV_TO_MEM) | BIT(DMA_MEM_TO_DEV);
+	sdma->dma_device.residue_granularity = DMA_RESIDUE_GRANULARITY_SEGMENT;
 	sdma->dma_device.device_issue_pending = sdma_issue_pending;
 	sdma->dma_device.dev->dma_parms = &sdma->dma_parms;
 	sdma->dma_device.copy_align = 2;
@@ -2398,6 +2408,10 @@ err_register:
 	dma_async_device_unregister(&sdma->dma_device);
 err_init:
 	kfree(sdma->script_addrs);
+err_irq:
+	clk_unprepare(sdma->clk_ahb);
+err_clk:
+	clk_unprepare(sdma->clk_ipg);
 	return ret;
 }
 
@@ -2409,6 +2423,8 @@ static int sdma_remove(struct platform_device *pdev)
 	devm_free_irq(&pdev->dev, sdma->irq, sdma);
 	dma_async_device_unregister(&sdma->dma_device);
 	kfree(sdma->script_addrs);
+	clk_unprepare(sdma->clk_ahb);
+	clk_unprepare(sdma->clk_ipg);
 	/* Kill the tasklet */
 	for (i = 0; i < MAX_DMA_CHANNELS; i++) {
 		struct sdma_channel *sdmac = &sdma->channel[i];

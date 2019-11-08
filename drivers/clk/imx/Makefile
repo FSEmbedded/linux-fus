@@ -1,4 +1,6 @@
-obj-$(CONFIG_ARM)   += \
+# SPDX-License-Identifier: GPL-2.0
+
+obj-y += \
 	clk.o \
 	clk-busy.o \
 	clk-cpu.o \

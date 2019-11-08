@@ -949,7 +949,7 @@ static void fsl_disable_clocks(struct fsl_edma_engine *fsl_edma, int nr_clocks)
 {
 	int i;
 
-	for (i = 0; i < fsl_edma->dmamux_nr; i++)
+	for (i = 0; i < nr_clocks; i++)
 		clk_disable_unprepare(fsl_edma->muxclk[i]);
 
 	if (fsl_edma->dmaclk)
@@ -1174,56 +1174,6 @@ static int fsl_edma_remove(struct platform_device *pdev)
 	of_dma_controller_free(np);
 	dma_async_device_unregister(&fsl_edma->dma_dev);
 	fsl_disable_clocks(fsl_edma, DMAMUX_NR);
-
-	return 0;
-}
-
-static int fsl_edma_register_save(struct device *dev)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct fsl_edma_engine *fsl_edma = platform_get_drvdata(pdev);
-	int i, j;
-
-	if (!(fsl_edma->quirks & FSL_EDMA_QUIRK_VLLS_MODE))
-		return 0;
-
-	/* save regs */
-	fsl_edma->edma_regs[0] =
-		edma_readl(fsl_edma, fsl_edma->membase + EDMA_CR);
-	fsl_edma->edma_regs[1] =
-		edma_readl(fsl_edma, fsl_edma->membase + EDMA_ERQ);
-	fsl_edma->edma_regs[2] =
-		edma_readl(fsl_edma, fsl_edma->membase + EDMA_EEI);
-	for (i = 0; i < fsl_edma->dmamux_nr; i++)
-		for (j = 0; j < fsl_edma->n_chans; j++)
-			fsl_edma->dmamux_regs[i * fsl_edma->n_chans + j] =
-				edma_readl(fsl_edma,
-					fsl_edma->muxbase[i] + j * 4);
-
-	return 0;
-}
-
-static int fsl_edma_register_restore(struct device *dev)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct fsl_edma_engine *fsl_edma = platform_get_drvdata(pdev);
-	int i, j;
-
-	if (!(fsl_edma->quirks & FSL_EDMA_QUIRK_VLLS_MODE))
-		return 0;
-
-	/* restore the regs */
-	for (i = 0; i < fsl_edma->dmamux_nr; i++)
-		for (j = 0; j < fsl_edma->n_chans; j++)
-			edma_writel(fsl_edma,
-			  fsl_edma->dmamux_regs[i * fsl_edma->n_chans + j],
-			  fsl_edma->muxbase[i] + j * 4);
-	edma_writel(fsl_edma, fsl_edma->edma_regs[1],
-			fsl_edma->membase + EDMA_ERQ);
-	edma_writel(fsl_edma, fsl_edma->edma_regs[2],
-			fsl_edma->membase + EDMA_EEI);
-	edma_writel(fsl_edma, fsl_edma->edma_regs[0],
-			fsl_edma->membase + EDMA_CR);
 
 	return 0;
 }

@@ -50,6 +50,7 @@
 #define PFUZE100_REVID		0x3
 #define PFUZE100_FABID		0x4
 
+#define PFUZE100_COINVOL	0x1a
 #define PFUZE100_SW1ABVOL	0x20
 #define PFUZE100_SW1CVOL	0x2e
 #define PFUZE100_SW2VOL		0x35
@@ -93,11 +94,8 @@ static const int pfuze100_vsnvs[] = {
 	1000000, 1100000, 1200000, 1300000, 1500000, 1800000, 3000000,
 };
 
-static const int pfuze3000_sw1a[] = {
-	700000, 725000, 750000, 775000, 800000, 825000, 850000, 875000,
-	900000, 925000, 950000, 975000, 1000000, 1025000, 1050000, 1075000,
-	1100000, 1125000, 1150000, 1175000, 1200000, 1225000, 1250000, 1275000,
-	1300000, 1325000, 1350000, 1375000, 1400000, 1425000, 1800000, 3300000,
+static const int pfuze100_coin[] = {
+	2500000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000,
 };
 
 static const int pfuze3000_sw2lo[] = {
@@ -145,7 +143,7 @@ static int pfuze100_set_ramp_delay(struct regulator_dev *rdev, int ramp_delay)
 	return ret;
 }
 
-static struct regulator_ops pfuze100_ldo_regulator_ops = {
+static const struct regulator_ops pfuze100_ldo_regulator_ops = {
 	.enable = regulator_enable_regmap,
 	.disable = regulator_disable_regmap,
 	.is_enabled = regulator_is_enabled_regmap,
@@ -154,17 +152,14 @@ static struct regulator_ops pfuze100_ldo_regulator_ops = {
 	.get_voltage_sel = regulator_get_voltage_sel_regmap,
 };
 
-static struct regulator_ops pfuze100_fixed_regulator_ops = {
+static const struct regulator_ops pfuze100_fixed_regulator_ops = {
 	.enable = regulator_enable_regmap,
 	.disable = regulator_disable_regmap,
 	.is_enabled = regulator_is_enabled_regmap,
 	.list_voltage = regulator_list_voltage_linear,
 };
 
-static struct regulator_ops pfuze100_sw_regulator_ops = {
-	.enable = regulator_enable_regmap,
-	.disable = regulator_disable_regmap,
-	.is_enabled = regulator_is_enabled_regmap,
+static const struct regulator_ops pfuze100_sw_regulator_ops = {
 	.list_voltage = regulator_list_voltage_linear,
 	.set_voltage_sel = regulator_set_voltage_sel_regmap,
 	.get_voltage_sel = regulator_get_voltage_sel_regmap,
@@ -172,7 +167,7 @@ static struct regulator_ops pfuze100_sw_regulator_ops = {
 	.set_ramp_delay = pfuze100_set_ramp_delay,
 };
 
-static struct regulator_ops pfuze100_swb_regulator_ops = {
+static const struct regulator_ops pfuze100_swb_regulator_ops = {
 	.enable = regulator_enable_regmap,
 	.disable = regulator_disable_regmap,
 	.is_enabled = regulator_is_enabled_regmap,
@@ -256,6 +251,23 @@ static struct regulator_ops pfuze100_swb_regulator_ops = {
 		},	\
 		.stby_reg = (base),	\
 		.stby_mask = 0x20,	\
+	}
+
+#define PFUZE100_COIN_REG(_chip, _name, base, mask, voltages)	\
+	[_chip ## _ ##  _name] = {	\
+		.desc = {	\
+			.name = #_name,	\
+			.n_voltages = ARRAY_SIZE(voltages),	\
+			.ops = &pfuze100_swb_regulator_ops,	\
+			.type = REGULATOR_VOLTAGE,	\
+			.id = _chip ## _ ## _name,	\
+			.owner = THIS_MODULE,	\
+			.volt_table = voltages,	\
+			.vsel_reg = (base),	\
+			.vsel_mask = (mask),	\
+			.enable_reg = (base),	\
+			.enable_mask = 0x8,	\
+		},	\
 	}
 
 #define PFUZE3000_VCC_REG(_chip, _name, base, min, max, step)	{	\
@@ -345,6 +357,7 @@ static struct pfuze_regulator pfuze200_regulators[] = {
 	PFUZE100_VGEN_REG(PFUZE200, VGEN4, PFUZE100_VGEN4VOL, 1800000, 3300000, 100000),
 	PFUZE100_VGEN_REG(PFUZE200, VGEN5, PFUZE100_VGEN5VOL, 1800000, 3300000, 100000),
 	PFUZE100_VGEN_REG(PFUZE200, VGEN6, PFUZE100_VGEN6VOL, 1800000, 3300000, 100000),
+	PFUZE100_COIN_REG(PFUZE200, COIN, PFUZE100_COINVOL, 0x7, pfuze100_coin),
 };
 
 static struct pfuze_regulator pfuze3000_regulators[] = {
@@ -399,6 +412,7 @@ static struct of_regulator_match pfuze200_matches[] = {
 	{ .name = "vgen4",	},
 	{ .name = "vgen5",	},
 	{ .name = "vgen6",	},
+	{ .name = "coin",	},
 };
 
 /* PFUZE3000 */

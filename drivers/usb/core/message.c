@@ -1,5 +1,8 @@
 /*
  * message.c - synchronous message handling
+ *
+ * Released under the GPLv2 only.
+ * SPDX-License-Identifier: GPL-2.0
  */
 
 #include <linux/pci.h>	/* for scatterlist macros */
@@ -119,12 +122,11 @@ static int usb_internal_control_msg(struct usb_device *usb_dev,
  * This function sends a simple control message to a specified endpoint and
  * waits for the message to complete, or timeout.
  *
- * Don't use this function from within an interrupt context, like a bottom half
- * handler.  If you need an asynchronous message, or need to send a message
- * from within interrupt context, use usb_submit_urb().
- * If a thread in your driver uses this call, make sure your disconnect()
- * method can wait for it to complete.  Since you don't have a handle on the
- * URB used, you can't cancel the request.
+ * Don't use this function from within an interrupt context. If you need
+ * an asynchronous message, or need to send a message from within interrupt
+ * context, use usb_submit_urb(). If a thread in your driver uses this call,
+ * make sure your disconnect() method can wait for it to complete. Since you
+ * don't have a handle on the URB used, you can't cancel the request.
  *
  * Return: If successful, the number of bytes transferred. Otherwise, a negative
  * error number.
@@ -174,12 +176,11 @@ EXPORT_SYMBOL_GPL(usb_control_msg);
  * This function sends a simple interrupt message to a specified endpoint and
  * waits for the message to complete, or timeout.
  *
- * Don't use this function from within an interrupt context, like a bottom half
- * handler.  If you need an asynchronous message, or need to send a message
- * from within interrupt context, use usb_submit_urb() If a thread in your
- * driver uses this call, make sure your disconnect() method can wait for it to
- * complete.  Since you don't have a handle on the URB used, you can't cancel
- * the request.
+ * Don't use this function from within an interrupt context. If you need
+ * an asynchronous message, or need to send a message from within interrupt
+ * context, use usb_submit_urb() If a thread in your driver uses this call,
+ * make sure your disconnect() method can wait for it to complete. Since you
+ * don't have a handle on the URB used, you can't cancel the request.
  *
  * Return:
  * If successful, 0. Otherwise a negative error number. The number of actual
@@ -208,12 +209,11 @@ EXPORT_SYMBOL_GPL(usb_interrupt_msg);
  * This function sends a simple bulk message to a specified endpoint
  * and waits for the message to complete, or timeout.
  *
- * Don't use this function from within an interrupt context, like a bottom half
- * handler.  If you need an asynchronous message, or need to send a message
- * from within interrupt context, use usb_submit_urb() If a thread in your
- * driver uses this call, make sure your disconnect() method can wait for it to
- * complete.  Since you don't have a handle on the URB used, you can't cancel
- * the request.
+ * Don't use this function from within an interrupt context. If you need
+ * an asynchronous message, or need to send a message from within interrupt
+ * context, use usb_submit_urb() If a thread in your driver uses this call,
+ * make sure your disconnect() method can wait for it to complete. Since you
+ * don't have a handle on the URB used, you can't cancel the request.
  *
  * Because there is no usb_interrupt_msg() and no USBDEVFS_INTERRUPT ioctl,
  * users are forced to abuse this routine by using it to submit URBs for
@@ -478,6 +478,7 @@ EXPORT_SYMBOL_GPL(usb_sg_init);
  * significantly improve USB throughput.
  *
  * There are three kinds of completion for this function.
+ *
  * (1) success, where io->status is zero.  The number of io->bytes
  *     transferred is as requested.
  * (2) error, where io->status is a negative errno value.  The number
@@ -1279,6 +1280,11 @@ void usb_enable_interface(struct usb_device *dev,
  * is submitted that needs that bandwidth.  Some other operating systems
  * allocate bandwidth early, when a configuration is chosen.
  *
+ * xHCI reserves bandwidth and configures the alternate setting in
+ * usb_hcd_alloc_bandwidth(). If it fails the original interface altsetting
+ * may be disabled. Drivers cannot rely on any particular alternate
+ * setting being in effect after a failure.
+ *
  * This call is synchronous, and may not be used in an interrupt context.
  * Also, drivers must not change altsettings while urbs are scheduled for
  * endpoints in that interface; all such urbs must first be completed
@@ -1314,6 +1320,12 @@ int usb_set_interface(struct usb_device *dev, int interface, int alternate)
 			 alternate);
 		return -EINVAL;
 	}
+	/*
+	 * usb3 hosts configure the interface in usb_hcd_alloc_bandwidth,
+	 * including freeing dropped endpoint ring buffers.
+	 * Make sure the interface endpoints are flushed before that
+	 */
+	usb_disable_interface(dev, iface, false);
 
 	/* Make sure we have enough bandwidth for this alternate interface.
 	 * Remove the current alt setting and add the new alt setting.

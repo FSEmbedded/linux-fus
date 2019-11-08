@@ -224,7 +224,7 @@ static void dmm_txn_append(struct dmm_txn *txn, struct pat_area *area,
 	int rows = (1 + area->y1 - area->y0);
 	int i = columns*rows;
 
-	pat = alloc_dma(txn, sizeof(struct pat), &pat_pa);
+	pat = alloc_dma(txn, sizeof(*pat), &pat_pa);
 
 	if (txn->last_pat)
 		txn->last_pat->next_pa = (uint32_t)pat_pa;
@@ -298,7 +298,12 @@ static int dmm_txn_commit(struct dmm_txn *txn, bool wait)
 				msecs_to_jiffies(100))) {
 			dev_err(dmm->dev, "timed out waiting for done\n");
 			ret = -ETIMEDOUT;
+			goto cleanup;
 		}
+
+		/* Check the engine status before continue */
+		ret = wait_status(engine, DMM_PATSTATUS_READY |
+				  DMM_PATSTATUS_VALID | DMM_PATSTATUS_DONE);
 	}
 
 cleanup:
@@ -384,11 +389,15 @@ int tiler_unpin(struct tiler_block *block)
 struct tiler_block *tiler_reserve_2d(enum tiler_fmt fmt, uint16_t w,
 		uint16_t h, uint16_t align)
 {
-	struct tiler_block *block = kzalloc(sizeof(*block), GFP_KERNEL);
+	struct tiler_block *block;
 	u32 min_align = 128;
 	int ret;
 	unsigned long flags;
-	size_t slot_bytes;
+	u32 slot_bytes;
+
+	block = kzalloc(sizeof(*block), GFP_KERNEL);
+	if (!block)
+		return ERR_PTR(-ENOMEM);
 
 	BUG_ON(!validfmt(fmt));
 
@@ -736,7 +745,7 @@ static int omap_dmm_probe(struct platform_device *dev)
 
 	/* alloc engines */
 	omap_dmm->engines = kcalloc(omap_dmm->num_engines,
-				    sizeof(struct refill_engine), GFP_KERNEL);
+				    sizeof(*omap_dmm->engines), GFP_KERNEL);
 	if (!omap_dmm->engines) {
 		ret = -ENOMEM;
 		goto fail;

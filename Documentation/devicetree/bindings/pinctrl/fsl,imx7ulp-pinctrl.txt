@@ -1,33 +1,61 @@
 * Freescale i.MX7ULP IOMUX Controller
 
-Please refer to fsl,imx-pinctrl.txt in this directory for common binding part
-and usage.
+i.MX 7ULP has three IOMUXC instances: IOMUXC0 for M4 ports, IOMUXC1 for A7
+ports and IOMUXC DDR for DDR interface.
+
+Note:
+This binding doc is only for the IOMUXC1 support in A7 Domain and it only
+supports generic pin config.
+
+Please also refer pinctrl-bindings.txt in this directory for generic pinctrl
+binding.
+
+=== Pin Controller Node ===
 
 Required properties:
-- compatible: "fsl,imx7ulp-iomuxc-0" or "fsl,imx7ulp-iomuxc-1"
-- fsl,pins: two integers array, represents a group of pins mux and config
-  setting. The format is fsl,pins = <PIN_FUNC_ID CONFIG>, PIN_FUNC_ID is a
-  pin working on a specific function, CONFIG is the pad setting value like
-  pull-up for this pin. Please refer to imx7ulp datasheet for the valid pad
-  config settings.
+- compatible:	"fsl,imx7ulp-iomuxc1"
+- reg:		Should contain the base physical address and size of the iomuxc
+		registers.
 
-NOTE: i.MX7ULP PIN_FUNC_ID consists of 4 integers as it shares one mux and
-config register as follows:
-<mux_conf_reg input_reg mux_mode input_val>
+=== Pin Configuration Node ===
+- pinmux: One integers array, represents a group of pins mux setting.
+	The format is pinmux = <PIN_FUNC_ID>, PIN_FUNC_ID is a pin working on
+	a specific function.
 
-CONFIG bits definition:
-PAD_CTL_OBE			(1 << 17)
-PAD_CTL_IBE			(1 << 16)
-PAD_CTL_LK			(1 << 15)
-PAD_CTL_DSE_HIGH		(1 << 6)
-PAD_CTL_DSE_STD			(0 << 6)
-PAD_CTL_ODE_OPEN_DRAIN		(1 << 5)
-PAD_CTL_ODE_PUSH_PULL		(0 << 5)
-PAD_CTL_SRE_SLOW		(1 << 2)
-PAD_CTL_SRE_STD			(0 << 2)
-PAD_CTL_PE_PULL			(1 << 1)
-PAD_CTL_PS_UP			(1 << 0)
-PAD_CTL_PS_DOWN			(0 << 0)
+	NOTE: i.MX7ULP PIN_FUNC_ID consists of 4 integers as it shares one mux
+	and config register as follows:
+	<mux_conf_reg input_reg mux_mode input_val>
 
-Refer to imx7ulp-pinfunc.h in device tree source folder for all available
-imx7ulp PIN_FUNC_ID.
+	Refer to imx7ulp-pinfunc.h in in device tree source folder for all
+	available imx7ulp PIN_FUNC_ID.
+
+Optional Properties:
+- drive-strength		Integer. Controls Drive Strength
+					0: Standard
+					1: Hi Driver
+- drive-push-pull		Bool. Enable Pin Push-pull
+- drive-open-drain		Bool. Enable Pin Open-drian
+- slew-rate:			Integer. Controls Slew Rate
+					0: Standard
+					1: Slow
+- bias-disable:			Bool. Pull disabled
+- bias-pull-down:		Bool. Pull down on pin
+- bias-pull-up:			Bool. Pull up on pin
+
+Examples:
+#include "imx7ulp-pinfunc.h"
+
+/* Pin Controller Node */
+iomuxc1: iomuxc@40ac0000 {
+	compatible = "fsl,imx7ulp-iomuxc1";
+	reg = <0x40ac0000 0x1000>;
+
+	/* Pin Configuration Node */
+	pinctrl_lpuart4: lpuart4grp {
+		pinmux = <
+			IMX7ULP_PAD_PTC3__LPUART4_RX
+			IMX7ULP_PAD_PTC2__LPUART4_TX
+		>;
+		bias-pull-up;
+	};
+};

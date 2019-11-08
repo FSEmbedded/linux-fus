@@ -65,5 +65,4 @@ spdif: spdif@02004000 {
 		"rxtx7";
 
 	big-endian;
-	status = "okay";
 };

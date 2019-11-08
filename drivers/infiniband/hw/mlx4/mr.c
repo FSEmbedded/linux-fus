@@ -107,7 +107,7 @@ int mlx4_ib_umem_write_mtt(struct mlx4_ib_dev *dev, struct mlx4_mtt *mtt,
 		len = sg_dma_len(sg) >> mtt->page_shift;
 		for (k = 0; k < len; ++k) {
 			pages[i++] = sg_dma_address(sg) +
-				umem->page_size * k;
+				(k << umem->page_shift);
 			/*
 			 * Be friendly to mlx4_write_mtt() and
 			 * pass it chunks of appropriate size.
@@ -131,6 +131,40 @@ out:
 	return err;
 }
 
+static struct ib_umem *mlx4_get_umem_mr(struct ib_ucontext *context, u64 start,
+					u64 length, u64 virt_addr,
+					int access_flags)
+{
+	/*
+	 * Force registering the memory as writable if the underlying pages
+	 * are writable.  This is so rereg can change the access permissions
+	 * from readable to writable without having to run through ib_umem_get
+	 * again
+	 */
+	if (!ib_access_writable(access_flags)) {
+		struct vm_area_struct *vma;
+
+		down_read(&current->mm->mmap_sem);
+		/*
+		 * FIXME: Ideally this would iterate over all the vmas that
+		 * cover the memory, but for now it requires a single vma to
+		 * entirely cover the MR to support RO mappings.
+		 */
+		vma = find_vma(current->mm, start);
+		if (vma && vma->vm_end >= start + length &&
+		    vma->vm_start <= start) {
+			if (vma->vm_flags & VM_WRITE)
+				access_flags |= IB_ACCESS_LOCAL_WRITE;
+		} else {
+			access_flags |= IB_ACCESS_LOCAL_WRITE;
+		}
+
+		up_read(&current->mm->mmap_sem);
+	}
+
+	return ib_umem_get(context, start, length, access_flags, 0);
+}
+
 struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 				  u64 virt_addr, int access_flags,
 				  struct ib_udata *udata)
@@ -145,17 +179,15 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 	if (!mr)
 		return ERR_PTR(-ENOMEM);
 
-	/* Force registering the memory as writable. */
-	/* Used for memory re-registeration. HCA protects the access */
-	mr->umem = ib_umem_get(pd->uobject->context, start, length,
-			       access_flags | IB_ACCESS_LOCAL_WRITE, 0);
+	mr->umem = mlx4_get_umem_mr(pd->uobject->context, start, length,
+				    virt_addr, access_flags);
 	if (IS_ERR(mr->umem)) {
 		err = PTR_ERR(mr->umem);
 		goto err_free;
 	}
 
 	n = ib_umem_page_count(mr->umem);
-	shift = ilog2(mr->umem->page_size);
+	shift = mr->umem->page_shift;
 
 	err = mlx4_mr_alloc(dev->dev, to_mpd(pd)->pdn, virt_addr, length,
 			    convert_access(access_flags), n, shift, &mr->mmr);
@@ -215,6 +247,12 @@ int mlx4_ib_rereg_user_mr(struct ib_mr *mr, int flags,
 	}
 
 	if (flags & IB_MR_REREG_ACCESS) {
+		if (ib_access_writable(mr_access_flags) &&
+		    !mmr->umem->writable) {
+			err = -EPERM;
+			goto release_mpt_entry;
+		}
+
 		err = mlx4_mr_hw_change_access(dev->dev, *pmpt_entry,
 					       convert_access(mr_access_flags));
 
@@ -228,10 +266,9 @@ int mlx4_ib_rereg_user_mr(struct ib_mr *mr, int flags,
 
 		mlx4_mr_rereg_mem_cleanup(dev->dev, &mmr->mmr);
 		ib_umem_release(mmr->umem);
-		mmr->umem = ib_umem_get(mr->uobject->context, start, length,
-					mr_access_flags |
-					IB_ACCESS_LOCAL_WRITE,
-					0);
+		mmr->umem =
+			mlx4_get_umem_mr(mr->uobject->context, start, length,
+					 virt_addr, mr_access_flags);
 		if (IS_ERR(mmr->umem)) {
 			err = PTR_ERR(mmr->umem);
 			/* Prevent mlx4_ib_dereg_mr from free'ing invalid pointer */
@@ -239,7 +276,7 @@ int mlx4_ib_rereg_user_mr(struct ib_mr *mr, int flags,
 			goto release_mpt_entry;
 		}
 		n = ib_umem_page_count(mmr->umem);
-		shift = ilog2(mmr->umem->page_size);
+		shift = mmr->umem->page_shift;
 
 		err = mlx4_mr_rereg_mem_write(dev->dev, &mmr->mmr,
 					      virt_addr, length, n, shift,
@@ -292,10 +329,10 @@ mlx4_alloc_priv_pages(struct ib_device *device,
 	if (!mr->pages)
 		return -ENOMEM;
 
-	mr->page_map = dma_map_single(device->dma_device, mr->pages,
+	mr->page_map = dma_map_single(device->dev.parent, mr->pages,
 				      mr->page_map_size, DMA_TO_DEVICE);
 
-	if (dma_mapping_error(device->dma_device, mr->page_map)) {
+	if (dma_mapping_error(device->dev.parent, mr->page_map)) {
 		ret = -ENOMEM;
 		goto err;
 	}
@@ -313,7 +350,7 @@ mlx4_free_priv_pages(struct mlx4_ib_mr *mr)
 	if (mr->pages) {
 		struct ib_device *device = mr->ibmr.device;
 
-		dma_unmap_single(device->dma_device, mr->page_map,
+		dma_unmap_single(device->dev.parent, mr->page_map,
 				 mr->page_map_size, DMA_TO_DEVICE);
 		free_page((unsigned long)mr->pages);
 		mr->pages = NULL;

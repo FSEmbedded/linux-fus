@@ -373,8 +373,10 @@ static int keyspan_pda_get_modem_info(struct usb_serial *serial,
 			     3, /* get pins */
 			     USB_TYPE_VENDOR|USB_RECIP_INTERFACE|USB_DIR_IN,
 			     0, 0, data, 1, 2000);
-	if (rc >= 0)
+	if (rc == 1)
 		*value = *data;
+	else if (rc >= 0)
+		rc = -EIO;
 
 	kfree(data);
 	return rc;
@@ -784,6 +786,8 @@ static struct usb_serial_driver keyspan_pda_device = {
 	.description =		"Keyspan PDA",
 	.id_table =		id_table_std,
 	.num_ports =		1,
+	.num_bulk_out =		1,
+	.num_interrupt_in =	1,
 	.dtr_rts =		keyspan_pda_dtr_rts,
 	.open =			keyspan_pda_open,
 	.close =		keyspan_pda_close,

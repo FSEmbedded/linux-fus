@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __PERF_HIST_H
 #define __PERF_HIST_H
 
@@ -22,6 +23,7 @@ enum hist_filter {
 	HIST_FILTER__GUEST,
 	HIST_FILTER__HOST,
 	HIST_FILTER__SOCKET,
+	HIST_FILTER__C2C,
 };
 
 enum hist_column {
@@ -29,6 +31,7 @@ enum hist_column {
 	HISTC_DSO,
 	HISTC_THREAD,
 	HISTC_COMM,
+	HISTC_CGROUP_ID,
 	HISTC_PARENT,
 	HISTC_CPU,
 	HISTC_SOCKET,
@@ -45,6 +48,7 @@ enum hist_column {
 	HISTC_GLOBAL_WEIGHT,
 	HISTC_MEM_DADDR_SYMBOL,
 	HISTC_MEM_DADDR_DSO,
+	HISTC_MEM_PHYS_DADDR,
 	HISTC_MEM_LOCKED,
 	HISTC_MEM_TLB,
 	HISTC_MEM_LVL,
@@ -56,6 +60,7 @@ enum hist_column {
 	HISTC_SRCLINE_FROM,
 	HISTC_SRCLINE_TO,
 	HISTC_TRACE,
+	HISTC_SYM_SIZE,
 	HISTC_NR_COLS, /* Last entry */
 };
 
@@ -102,7 +107,6 @@ struct hist_entry_iter {
 	int curr;
 
 	bool hide_unresolved;
-	int max_stack;
 
 	struct perf_evsel *evsel;
 	struct perf_sample *sample;

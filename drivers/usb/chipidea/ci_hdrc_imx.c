@@ -19,6 +19,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/dma-mapping.h>
 #include <linux/usb/chipidea.h>
+#include <linux/usb/of.h>
 #include <linux/clk.h>
 #include <linux/of_device.h>
 #include <linux/regmap.h>
@@ -191,25 +192,8 @@ static struct imx_usbmisc_data *usbmisc_get_init_data(struct device *dev)
 	if (of_find_property(np, "external-vbus-divider", NULL))
 		data->evdo = 1;
 
-	if (of_find_property(np, "osc-clkgate-delay", NULL)) {
-		ret = of_property_read_u32(np, "osc-clkgate-delay",
-			&data->osc_clkgate_delay);
-		if (ret) {
-			dev_err(dev,
-				"failed to get osc-clkgate-delay value\n");
-			return ERR_PTR(ret);
-		}
-		/*
-		 * 0 <= osc_clkgate_delay <=7
-		 * - 0x0 (default) is 0.5ms,
-		 * - 0x1-0x7: 1-7ms
-		 */
-		if (data->osc_clkgate_delay > 7) {
-			dev_err(dev,
-				"value of osc-clkgate-delay is incorrect\n");
-			return ERR_PTR(-EINVAL);
-		}
-	}
+	if (of_usb_get_phy_mode(np) == USBPHY_INTERFACE_MODE_ULPI)
+		data->ulpi = 1;
 
 	return data;
 }

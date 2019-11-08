@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /****************************************************************************/
 
 /*
@@ -380,8 +381,8 @@ struct bufdesc_ex {
 #define FEC_ENET_TS_AVAIL       ((uint)0x00010000)
 #define FEC_ENET_TS_TIMER       ((uint)0x00008000)
 
-#define FEC_DEFAULT_IMASK (FEC_ENET_TXF | FEC_ENET_RXF | FEC_ENET_MII | FEC_ENET_TS_TIMER)
-#define FEC_NAPI_IMASK	(FEC_ENET_MII | FEC_ENET_TS_TIMER)
+#define FEC_DEFAULT_IMASK (FEC_ENET_TXF | FEC_ENET_RXF | FEC_ENET_MII)
+#define FEC_NAPI_IMASK	FEC_ENET_MII
 #define FEC_RX_DISABLED_IMASK (FEC_DEFAULT_IMASK & (~FEC_ENET_RXF))
 
 #define FEC_ENET_ETHEREN	((uint)0x00000002)
@@ -456,30 +457,10 @@ struct bufdesc_ex {
 #define FEC_QUIRK_HAS_COALESCE		(1 << 13)
 /* Interrupt doesn't wake CPU from deep idle */
 #define FEC_QUIRK_ERR006687		(1 << 14)
-/*
- * i.MX6Q/DL ENET cannot wake up system in wait mode because ENET tx & rx
- * interrupt signal don't connect to GPC. So use pm qos to avoid cpu enter
- * to wait mode.
+/* The MIB counters should be cleared and enabled during
+ * initialisation.
  */
-#define FEC_QUIRK_BUG_WAITMODE		(1 << 15)
-
-/* PHY fixup flag define */
-#define FEC_QUIRK_AR8031_FIXUP		(1 << 16)
-
-/* i.MX8QM/QXP ENET IP version add new feture to generate delayed TXC/RXC
- * as an alternative option to make sure it can work well with various PHYs.
- * - For the implementation of delayed TXC, ENET will take synchronized 250/125MHz
- *   clocks to generate 2ns delay by registering original TXC with positive edge
- *   of inverted 250MHz clock.
- * - For the implementation of delayed RXC, there will be buffers in the subsystem
- *   level. The exact length of delay buffers will be decided when closing I/O timing.
- */
-#define FEC_QUIRK_DELAYED_CLKS_SUPPORT	(1 << 17)
-/* i.MX8MQ ENET IP version add new feature to support IEEE 802.3az EEE
- * standard. For the transmission, MAC supply two user registers to set
- * Sleep (TS) and Wake (TW) time.
- */
-#define FEC_QUIRK_HAS_EEE		(1 << 18)
+#define FEC_QUIRK_MIB_CLEAR		(1 << 15)
 
 struct bufdesc_prop {
 	int qid;

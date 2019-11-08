@@ -482,7 +482,7 @@ static void tegra_xusb_mbox_handle(struct tegra_xusb *tegra,
 	unsigned long mask;
 	unsigned int port;
 	bool idle, enable;
-	int err;
+	int err = 0;
 
 	memset(&rsp, 0, sizeof(rsp));
 
@@ -1308,7 +1308,6 @@ static int tegra_xhci_setup(struct usb_hcd *hcd)
 }
 
 static const struct xhci_driver_overrides tegra_xhci_overrides __initconst = {
-	.extra_priv_size = sizeof(struct xhci_hcd),
 	.reset = tegra_xhci_setup,
 };
 

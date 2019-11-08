@@ -4,9 +4,11 @@
 #include <linux/swap.h>
 #include <linux/memblock.h>
 #include <linux/bootmem.h>	/* for max_low_pfn */
+#include <linux/swapfile.h>
+#include <linux/swapops.h>
 
-#include <asm/cacheflush.h>
-#include <asm/e820.h>
+#include <asm/set_memory.h>
+#include <asm/e820/api.h>
 #include <asm/init.h>
 #include <asm/page.h>
 #include <asm/page_types.h>
@@ -18,6 +20,9 @@
 #include <asm/dma.h>		/* for MAX_DMA_PFN */
 #include <asm/microcode.h>
 #include <asm/kaslr.h>
+#include <asm/hypervisor.h>
+#include <asm/cpufeature.h>
+#include <asm/pti.h>
 
 /*
  * We need to define the tracepoints somewhere, and tlb.c
@@ -90,8 +95,7 @@ __ref void *alloc_low_pages(unsigned int num)
 		unsigned int order;
 
 		order = get_order((unsigned long)num << PAGE_SHIFT);
-		return (void *)__get_free_pages(GFP_ATOMIC | __GFP_NOTRACK |
-						__GFP_ZERO, order);
+		return (void *)__get_free_pages(GFP_ATOMIC | __GFP_ZERO, order);
 	}
 
 	if ((pgt_buf_end + num) > pgt_buf_top || !can_use_brk_pgt) {
@@ -159,29 +163,34 @@ struct map_range {
 
 static int page_size_mask;
 
+static void enable_global_pages(void)
+{
+	if (!static_cpu_has(X86_FEATURE_PTI))
+		__supported_pte_mask |= _PAGE_GLOBAL;
+}
+
 static void __init probe_page_size_mask(void)
 {
-#if !defined(CONFIG_KMEMCHECK)
 	/*
-	 * For CONFIG_KMEMCHECK or pagealloc debugging, identity mapping will
-	 * use small pages.
+	 * For pagealloc debugging, identity mapping will use small pages.
 	 * This will simplify cpa(), which otherwise needs to support splitting
 	 * large pages into small in interrupt context, etc.
 	 */
 	if (boot_cpu_has(X86_FEATURE_PSE) && !debug_pagealloc_enabled())
 		page_size_mask |= 1 << PG_LEVEL_2M;
-#endif
+	else
+		direct_gbpages = 0;
 
 	/* Enable PSE if available */
 	if (boot_cpu_has(X86_FEATURE_PSE))
 		cr4_set_bits_and_update_boot(X86_CR4_PSE);
 
 	/* Enable PGE if available */
-	if (boot_cpu_has(X86_FEATURE_PGE) && !kaiser_enabled) {
+	__supported_pte_mask &= ~_PAGE_GLOBAL;
+	if (boot_cpu_has(X86_FEATURE_PGE)) {
 		cr4_set_bits_and_update_boot(X86_CR4_PGE);
-		__supported_pte_mask |= _PAGE_GLOBAL;
-	} else
-		__supported_pte_mask &= ~_PAGE_GLOBAL;
+		enable_global_pages();
+	}
 
 	/* Enable 1 GB linear kernel mappings if available: */
 	if (direct_gbpages && boot_cpu_has(X86_FEATURE_GBPAGES)) {
@@ -189,6 +198,48 @@ static void __init probe_page_size_mask(void)
 		page_size_mask |= 1 << PG_LEVEL_1G;
 	} else {
 		direct_gbpages = 0;
+	}
+}
+
+static void setup_pcid(void)
+{
+	if (!IS_ENABLED(CONFIG_X86_64))
+		return;
+
+	if (!boot_cpu_has(X86_FEATURE_PCID))
+		return;
+
+	if (boot_cpu_has(X86_FEATURE_PGE)) {
+		/*
+		 * This can't be cr4_set_bits_and_update_boot() -- the
+		 * trampoline code can't handle CR4.PCIDE and it wouldn't
+		 * do any good anyway.  Despite the name,
+		 * cr4_set_bits_and_update_boot() doesn't actually cause
+		 * the bits in question to remain set all the way through
+		 * the secondary boot asm.
+		 *
+		 * Instead, we brute-force it and set CR4.PCIDE manually in
+		 * start_secondary().
+		 */
+		cr4_set_bits(X86_CR4_PCIDE);
+
+		/*
+		 * INVPCID's single-context modes (2/3) only work if we set
+		 * X86_CR4_PCIDE, *and* we INVPCID support.  It's unusable
+		 * on systems that have X86_CR4_PCIDE clear, or that have
+		 * no INVPCID support at all.
+		 */
+		if (boot_cpu_has(X86_FEATURE_INVPCID))
+			setup_force_cpu_cap(X86_FEATURE_INVPCID_SINGLE);
+	} else {
+		/*
+		 * flush_tlb_all(), as currently implemented, won't work if
+		 * PCID is on but PGE is not.  Since that combination
+		 * doesn't exist on real hardware, there's no reason to try
+		 * to fully support it, but it's polite to avoid corrupting
+		 * data if we're on an improperly configured VM.
+		 */
+		setup_clear_cpu_cap(X86_FEATURE_PCID);
 	}
 }
 
@@ -373,14 +424,14 @@ static int __meminit split_mem_range(struct map_range *mr, int nr_range,
 	return nr_range;
 }
 
-struct range pfn_mapped[E820_X_MAX];
+struct range pfn_mapped[E820_MAX_ENTRIES];
 int nr_pfn_mapped;
 
 static void add_pfn_range_mapped(unsigned long start_pfn, unsigned long end_pfn)
 {
-	nr_pfn_mapped = add_range_with_merge(pfn_mapped, E820_X_MAX,
+	nr_pfn_mapped = add_range_with_merge(pfn_mapped, E820_MAX_ENTRIES,
 					     nr_pfn_mapped, start_pfn, end_pfn);
-	nr_pfn_mapped = clean_sort_range(pfn_mapped, E820_X_MAX);
+	nr_pfn_mapped = clean_sort_range(pfn_mapped, E820_MAX_ENTRIES);
 
 	max_pfn_mapped = max(max_pfn_mapped, end_pfn);
 
@@ -430,7 +481,7 @@ unsigned long __ref init_memory_mapping(unsigned long start,
 
 /*
  * We need to iterate through the E820 memory map and create direct mappings
- * for only E820_RAM and E820_KERN_RESERVED regions. We cannot simply
+ * for only E820_TYPE_RAM and E820_KERN_RESERVED regions. We cannot simply
  * create direct mappings for all pfns from [0 to max_low_pfn) and
  * [4GB to max_pfn) because of possible memory holes in high addresses
  * that cannot be marked as UC by fixed/variable range MTRRs.
@@ -590,7 +641,9 @@ void __init init_mem_mapping(void)
 {
 	unsigned long end;
 
+	pti_check_boottime_disable();
 	probe_page_size_mask();
+	setup_pcid();
 
 #ifdef CONFIG_X86_64
 	end = max_pfn << PAGE_SHIFT;
@@ -636,6 +689,8 @@ void __init init_mem_mapping(void)
 	load_cr3(swapper_pg_dir);
 	__flush_tlb_all();
 
+	x86_init.hyper.init_mem_mapping();
+
 	early_memtest(0, max_pfn_mapped << PAGE_SHIFT);
 }
 
@@ -653,7 +708,9 @@ void __init init_mem_mapping(void)
  */
 int devmem_is_allowed(unsigned long pagenr)
 {
-	if (page_is_ram(pagenr)) {
+	if (region_intersects(PFN_PHYS(pagenr), PAGE_SIZE,
+				IORESOURCE_SYSTEM_RAM, IORES_DESC_NONE)
+			!= REGION_DISJOINT) {
 		/*
 		 * For disallowed memory regions in the low 1MB range,
 		 * request that the page be shown as all zeros.
@@ -720,7 +777,7 @@ void free_init_pages(char *what, unsigned long begin, unsigned long end)
 
 void __ref free_initmem(void)
 {
-	e820_reallocate_tables();
+	e820__reallocate_tables();
 
 	free_init_pages("unused kernel",
 			(unsigned long)(&__init_begin),
@@ -743,6 +800,53 @@ void __init free_initrd_mem(unsigned long start, unsigned long end)
 }
 #endif
 
+/*
+ * Calculate the precise size of the DMA zone (first 16 MB of RAM),
+ * and pass it to the MM layer - to help it set zone watermarks more
+ * accurately.
+ *
+ * Done on 64-bit systems only for the time being, although 32-bit systems
+ * might benefit from this as well.
+ */
+void __init memblock_find_dma_reserve(void)
+{
+#ifdef CONFIG_X86_64
+	u64 nr_pages = 0, nr_free_pages = 0;
+	unsigned long start_pfn, end_pfn;
+	phys_addr_t start_addr, end_addr;
+	int i;
+	u64 u;
+
+	/*
+	 * Iterate over all memory ranges (free and reserved ones alike),
+	 * to calculate the total number of pages in the first 16 MB of RAM:
+	 */
+	nr_pages = 0;
+	for_each_mem_pfn_range(i, MAX_NUMNODES, &start_pfn, &end_pfn, NULL) {
+		start_pfn = min(start_pfn, MAX_DMA_PFN);
+		end_pfn   = min(end_pfn,   MAX_DMA_PFN);
+
+		nr_pages += end_pfn - start_pfn;
+	}
+
+	/*
+	 * Iterate over free memory ranges to calculate the number of free
+	 * pages in the DMA zone, while not counting potential partial
+	 * pages at the beginning or the end of the range:
+	 */
+	nr_free_pages = 0;
+	for_each_free_mem_range(u, NUMA_NO_NODE, MEMBLOCK_NONE, &start_addr, &end_addr, NULL) {
+		start_pfn = min_t(unsigned long, PFN_UP(start_addr), MAX_DMA_PFN);
+		end_pfn   = min_t(unsigned long, PFN_DOWN(end_addr), MAX_DMA_PFN);
+
+		if (start_pfn < end_pfn)
+			nr_free_pages += end_pfn - start_pfn;
+	}
+
+	set_dma_reserve(nr_pages - nr_free_pages);
+#endif
+}
+
 void __init zone_sizes_init(void)
 {
 	unsigned long max_zone_pfns[MAX_NR_ZONES];
@@ -763,9 +867,9 @@ void __init zone_sizes_init(void)
 	free_area_init_nodes(max_zone_pfns);
 }
 
-DEFINE_PER_CPU_SHARED_ALIGNED(struct tlb_state, cpu_tlbstate) = {
-	.active_mm = &init_mm,
-	.state = 0,
+__visible DEFINE_PER_CPU_SHARED_ALIGNED(struct tlb_state, cpu_tlbstate) = {
+	.loaded_mm = &init_mm,
+	.next_asid = 1,
 	.cr4 = ~0UL,	/* fail hard if we screw up cr4 shadow initialization */
 };
 EXPORT_PER_CPU_SYMBOL(cpu_tlbstate);
@@ -778,3 +882,26 @@ void update_cache_mode_entry(unsigned entry, enum page_cache_mode cache)
 	__cachemode2pte_tbl[cache] = __cm_idx2pte(entry);
 	__pte2cachemode_tbl[entry] = cache;
 }
+
+#ifdef CONFIG_SWAP
+unsigned long max_swapfile_size(void)
+{
+	unsigned long pages;
+
+	pages = generic_max_swapfile_size();
+
+	if (boot_cpu_has_bug(X86_BUG_L1TF)) {
+		/* Limit the swap file size to MAX_PA/2 for L1TF workaround */
+		unsigned long long l1tf_limit = l1tf_pfn_limit();
+		/*
+		 * We encode swap offsets also with 3 bits below those for pfn
+		 * which makes the usable limit higher.
+		 */
+#if CONFIG_PGTABLE_LEVELS > 2
+		l1tf_limit <<= PAGE_SHIFT - SWP_OFFSET_FIRST_BIT;
+#endif
+		pages = min_t(unsigned long long, l1tf_limit, pages);
+	}
+	return pages;
+}
+#endif

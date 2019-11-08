@@ -32,58 +32,97 @@
 #include <asm/machdep.h>
 #include <asm/firmware.h>
 #include <asm/xics.h>
+#include <asm/xive.h>
 #include <asm/opal.h>
 #include <asm/kexec.h>
 #include <asm/smp.h>
-#include <asm/tm.h>
 #include <asm/setup.h>
+#include <asm/security_features.h>
 
 #include "powernv.h"
+
+
+static bool fw_feature_is(const char *state, const char *name,
+			  struct device_node *fw_features)
+{
+	struct device_node *np;
+	bool rc = false;
+
+	np = of_get_child_by_name(fw_features, name);
+	if (np) {
+		rc = of_property_read_bool(np, state);
+		of_node_put(np);
+	}
+
+	return rc;
+}
+
+static void init_fw_feat_flags(struct device_node *np)
+{
+	if (fw_feature_is("enabled", "inst-spec-barrier-ori31,31,0", np))
+		security_ftr_set(SEC_FTR_SPEC_BAR_ORI31);
+
+	if (fw_feature_is("enabled", "fw-bcctrl-serialized", np))
+		security_ftr_set(SEC_FTR_BCCTRL_SERIALISED);
+
+	if (fw_feature_is("enabled", "inst-l1d-flush-ori30,30,0", np))
+		security_ftr_set(SEC_FTR_L1D_FLUSH_ORI30);
+
+	if (fw_feature_is("enabled", "inst-l1d-flush-trig2", np))
+		security_ftr_set(SEC_FTR_L1D_FLUSH_TRIG2);
+
+	if (fw_feature_is("enabled", "fw-l1d-thread-split", np))
+		security_ftr_set(SEC_FTR_L1D_THREAD_PRIV);
+
+	if (fw_feature_is("enabled", "fw-count-cache-disabled", np))
+		security_ftr_set(SEC_FTR_COUNT_CACHE_DISABLED);
+
+	/*
+	 * The features below are enabled by default, so we instead look to see
+	 * if firmware has *disabled* them, and clear them if so.
+	 */
+	if (fw_feature_is("disabled", "speculation-policy-favor-security", np))
+		security_ftr_clear(SEC_FTR_FAVOUR_SECURITY);
+
+	if (fw_feature_is("disabled", "needs-l1d-flush-msr-pr-0-to-1", np))
+		security_ftr_clear(SEC_FTR_L1D_FLUSH_PR);
+
+	if (fw_feature_is("disabled", "needs-l1d-flush-msr-hv-1-to-0", np))
+		security_ftr_clear(SEC_FTR_L1D_FLUSH_HV);
+
+	if (fw_feature_is("disabled", "needs-spec-barrier-for-bound-checks", np))
+		security_ftr_clear(SEC_FTR_BNDS_CHK_SPEC_BAR);
+}
 
 static void pnv_setup_rfi_flush(void)
 {
 	struct device_node *np, *fw_features;
 	enum l1d_flush_type type;
-	int enable;
+	bool enable;
 
 	/* Default to fallback in case fw-features are not available */
 	type = L1D_FLUSH_FALLBACK;
-	enable = 1;
 
 	np = of_find_node_by_name(NULL, "ibm,opal");
 	fw_features = of_get_child_by_name(np, "fw-features");
 	of_node_put(np);
 
 	if (fw_features) {
-		np = of_get_child_by_name(fw_features, "inst-l1d-flush-trig2");
-		if (np && of_property_read_bool(np, "enabled"))
+		init_fw_feat_flags(fw_features);
+		of_node_put(fw_features);
+
+		if (security_ftr_enabled(SEC_FTR_L1D_FLUSH_TRIG2))
 			type = L1D_FLUSH_MTTRIG;
 
-		of_node_put(np);
-
-		np = of_get_child_by_name(fw_features, "inst-l1d-flush-ori30,30,0");
-		if (np && of_property_read_bool(np, "enabled"))
+		if (security_ftr_enabled(SEC_FTR_L1D_FLUSH_ORI30))
 			type = L1D_FLUSH_ORI;
-
-		of_node_put(np);
-
-		/* Enable unless firmware says NOT to */
-		enable = 2;
-		np = of_get_child_by_name(fw_features, "needs-l1d-flush-msr-hv-1-to-0");
-		if (np && of_property_read_bool(np, "disabled"))
-			enable--;
-
-		of_node_put(np);
-
-		np = of_get_child_by_name(fw_features, "needs-l1d-flush-msr-pr-0-to-1");
-		if (np && of_property_read_bool(np, "disabled"))
-			enable--;
-
-		of_node_put(np);
-		of_node_put(fw_features);
 	}
 
-	setup_rfi_flush(type, enable > 0);
+	enable = security_ftr_enabled(SEC_FTR_FAVOUR_SECURITY) && \
+		 (security_ftr_enabled(SEC_FTR_L1D_FLUSH_PR)   || \
+		  security_ftr_enabled(SEC_FTR_L1D_FLUSH_HV));
+
+	setup_rfi_flush(type, enable);
 }
 
 static void __init pnv_setup_arch(void)
@@ -91,6 +130,7 @@ static void __init pnv_setup_arch(void)
 	set_arch_panic_timeout(10, ARCH_PANIC_TIMEOUT);
 
 	pnv_setup_rfi_flush();
+	setup_stf_barrier();
 
 	/* Initialize SMP */
 	pnv_smp_init();
@@ -126,7 +166,9 @@ static void __init pnv_init(void)
 
 static void __init pnv_init_IRQ(void)
 {
-	xics_init();
+	/* Try using a XIVE if available, otherwise use a XICS */
+	if (!xive_native_init())
+		xics_init();
 
 	WARN_ON(!ppc_md.get_irq);
 }
@@ -145,6 +187,10 @@ static void pnv_show_cpuinfo(struct seq_file *m)
 	else
 		seq_printf(m, "firmware\t: BML\n");
 	of_node_put(root);
+	if (radix_enabled())
+		seq_printf(m, "MMU\t\t: Radix\n");
+	else
+		seq_printf(m, "MMU\t\t: Hash\n");
 }
 
 static void pnv_prepare_going_down(void)
@@ -224,7 +270,7 @@ static void pnv_shutdown(void)
 	opal_shutdown();
 }
 
-#ifdef CONFIG_KEXEC
+#ifdef CONFIG_KEXEC_CORE
 static void pnv_kexec_wait_secondaries_down(void)
 {
 	int my_cpu, i, notified = -1;
@@ -268,10 +314,14 @@ static void pnv_kexec_wait_secondaries_down(void)
 
 static void pnv_kexec_cpu_down(int crash_shutdown, int secondary)
 {
-	xics_kexec_teardown_cpu(secondary);
+	u64 reinit_flags;
+
+	if (xive_enabled())
+		xive_kexec_teardown_cpu(secondary);
+	else
+		xics_kexec_teardown_cpu(secondary);
 
 	/* On OPAL, we return all CPUs to firmware */
-
 	if (!firmware_has_feature(FW_FEATURE_OPAL))
 		return;
 
@@ -287,20 +337,39 @@ static void pnv_kexec_cpu_down(int crash_shutdown, int secondary)
 		/* Primary waits for the secondaries to have reached OPAL */
 		pnv_kexec_wait_secondaries_down();
 
+		/* Switch XIVE back to emulation mode */
+		if (xive_enabled())
+			xive_shutdown();
+
 		/*
 		 * We might be running as little-endian - now that interrupts
 		 * are disabled, reset the HILE bit to big-endian so we don't
 		 * take interrupts in the wrong endian later
+		 *
+		 * We reinit to enable both radix and hash on P9 to ensure
+		 * the mode used by the next kernel is always supported.
 		 */
-		opal_reinit_cpus(OPAL_REINIT_CPUS_HILE_BE);
+		reinit_flags = OPAL_REINIT_CPUS_HILE_BE;
+		if (cpu_has_feature(CPU_FTR_ARCH_300))
+			reinit_flags |= OPAL_REINIT_CPUS_MMU_RADIX |
+				OPAL_REINIT_CPUS_MMU_HASH;
+		opal_reinit_cpus(reinit_flags);
 	}
 }
-#endif /* CONFIG_KEXEC */
+#endif /* CONFIG_KEXEC_CORE */
 
 #ifdef CONFIG_MEMORY_HOTPLUG_SPARSE
 static unsigned long pnv_memory_block_size(void)
 {
-	return 256UL * 1024 * 1024;
+	/*
+	 * We map the kernel linear region with 1GB large pages on radix. For
+	 * memory hot unplug to work our memory block size must be at least
+	 * this size.
+	 */
+	if (radix_enabled())
+		return 1UL * 1024 * 1024 * 1024;
+	else
+		return 256UL * 1024 * 1024;
 }
 #endif
 
@@ -361,7 +430,7 @@ define_machine(powernv) {
 	.machine_shutdown	= pnv_shutdown,
 	.power_save             = NULL,
 	.calibrate_decr		= generic_calibrate_decr,
-#ifdef CONFIG_KEXEC
+#ifdef CONFIG_KEXEC_CORE
 	.kexec_cpu_down		= pnv_kexec_cpu_down,
 #endif
 #ifdef CONFIG_MEMORY_HOTPLUG_SPARSE

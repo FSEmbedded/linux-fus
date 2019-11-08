@@ -156,6 +156,12 @@ struct mmc_request {
 	struct completion	completion;
 	struct completion	cmd_completion;
 	void			(*done)(struct mmc_request *);/* completion function */
+	/*
+	 * Notify uppers layers (e.g. mmc block driver) that recovery is needed
+	 * due to an error associated with the mmc_request. Currently used only
+	 * by CQE.
+	 */
+	void			(*recovery_notifier)(struct mmc_request *);
 	struct mmc_host		*host;
 
 	/* Allow other commands during this ongoing data transfer or busy wait */
@@ -165,19 +171,10 @@ struct mmc_request {
 };
 
 struct mmc_card;
-struct mmc_async_req;
 
-struct mmc_async_req *mmc_start_areq(struct mmc_host *host,
-				struct mmc_async_req *areq,
-				enum mmc_blk_status *ret_stat);
 void mmc_wait_for_req(struct mmc_host *host, struct mmc_request *mrq);
 int mmc_wait_for_cmd(struct mmc_host *host, struct mmc_command *cmd,
 		int retries);
-
-int mmc_cqe_start_req(struct mmc_host *host, struct mmc_request *mrq);
-void mmc_cqe_request_done(struct mmc_host *host, struct mmc_request *mrq);
-void mmc_cqe_post_req(struct mmc_host *host, struct mmc_request *mrq);
-int mmc_cqe_recovery(struct mmc_host *host);
 
 int mmc_hw_reset(struct mmc_host *host);
 void mmc_set_data_timeout(struct mmc_data *data, const struct mmc_card *card);

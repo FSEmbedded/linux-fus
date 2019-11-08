@@ -26,7 +26,7 @@ static bool nfacct_mt(const struct sk_buff *skb, struct xt_action_param *par)
 
 	nfnl_acct_update(skb, info->nfacct);
 
-	overquota = nfnl_acct_overquota(par->net, skb, info->nfacct);
+	overquota = nfnl_acct_overquota(xt_net(par), skb, info->nfacct);
 
 	return overquota == NFACCT_UNDERQUOTA ? false : true;
 }
@@ -62,6 +62,7 @@ static struct xt_match nfacct_mt_reg __read_mostly = {
 	.match      = nfacct_mt,
 	.destroy    = nfacct_mt_destroy,
 	.matchsize  = sizeof(struct xt_nfacct_match_info),
+	.usersize   = offsetof(struct xt_nfacct_match_info, nfacct),
 	.me         = THIS_MODULE,
 };
 

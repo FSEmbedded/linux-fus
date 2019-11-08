@@ -488,6 +488,8 @@ static struct usb_serial_driver spcp8x5_device = {
 	},
 	.id_table		= id_table,
 	.num_ports		= 1,
+	.num_bulk_in		= 1,
+	.num_bulk_out		= 1,
 	.open			= spcp8x5_open,
 	.dtr_rts		= spcp8x5_dtr_rts,
 	.carrier_raised		= spcp8x5_carrier_raised,

@@ -12,9 +12,19 @@
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include "imx6sx-pinfunc.h"
-#include "skeleton.dtsi"
 
 / {
+	#address-cells = <1>;
+	#size-cells = <1>;
+	/*
+	 * The decompressor and also some bootloaders rely on a
+	 * pre-existing /chosen node to be available to insert the
+	 * command line and merge other ATAGS info.
+	 * Also for U-Boot there must be a pre-existing /memory node.
+	 */
+	chosen {};
+	memory { device_type = "memory"; reg = <0 0>; };
+
 	aliases {
 		can0 = &flexcan1;
 		can1 = &flexcan2;
@@ -832,7 +842,8 @@
 					compatible = "syscon-poweroff";
 					regmap = <&snvs>;
 					offset = <0x38>;
-					mask = <0x61>;
+					value = <0x60>;
+					mask = <0x60>;
 					status = "disabled";
 				};
 
@@ -1038,7 +1049,7 @@
 				stop-mode = <&gpr 0x10 3>;
 				fsl,wakeup_irq = <0>;
 				status = "disabled";
-                        };
+			};
 
 			mlb: mlb@0218c000 {
 				compatible = "fsl,imx6sx-mlb50";
@@ -1155,10 +1166,14 @@
 			};
 
 			weim: weim@021b8000 {
+				#address-cells = <2>;
+				#size-cells = <1>;
 				compatible = "fsl,imx6sx-weim", "fsl,imx6q-weim";
 				reg = <0x021b8000 0x4000>;
 				interrupts = <GIC_SPI 14 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&clks IMX6SX_CLK_EIM_SLOW>;
+				fsl,weim-cs-gpr = <&gpr>;
+				status = "disabled";
 			};
 
 			ocotp: ocotp@021bc000 {
@@ -1381,7 +1396,7 @@
 				lcdif1: lcdif@02220000 {
 					compatible = "fsl,imx6sx-lcdif", "fsl,imx28-lcdif";
 					reg = <0x02220000 0x4000>;
-					interrupts = <GIC_SPI 5 IRQ_TYPE_LEVEL_HIGH>;
+					interrupts = <GIC_SPI 5 IRQ_TYPE_EDGE_RISING>;
 					clocks = <&clks IMX6SX_CLK_LCDIF1_PIX>,
 						 <&clks IMX6SX_CLK_LCDIF_APB>,
 						 <&clks IMX6SX_CLK_DISPLAY_AXI>;
@@ -1393,7 +1408,7 @@
 				lcdif2: lcdif@02224000 {
 					compatible = "fsl,imx6sx-lcdif", "fsl,imx28-lcdif";
 					reg = <0x02224000 0x4000>;
-					interrupts = <GIC_SPI 6 IRQ_TYPE_LEVEL_HIGH>;
+					interrupts = <GIC_SPI 6 IRQ_TYPE_EDGE_RISING>;
 					clocks = <&clks IMX6SX_CLK_LCDIF2_PIX>,
 						 <&clks IMX6SX_CLK_LCDIF_APB>,
 						 <&clks IMX6SX_CLK_DISPLAY_AXI>;
@@ -1425,7 +1440,7 @@
 				fsl,adck-max-frequency = <30000000>, <40000000>,
 							 <20000000>;
 				status = "disabled";
-                        };
+			};
 
 			adc2: adc@02284000 {
 				compatible = "fsl,imx6sx-adc", "fsl,vf610-adc";
@@ -1437,7 +1452,7 @@
 				fsl,adck-max-frequency = <30000000>, <40000000>,
 							 <20000000>;
 				status = "disabled";
-                        };
+			};
 
 			wdog3: wdog@02288000 {
 				compatible = "fsl,imx6sx-wdt", "fsl,imx21-wdt";
@@ -1532,25 +1547,24 @@
 			};
 		};
 
-		pcie: pcie@0x08000000 {
+		pcie: pcie@8ffc000 {
 			compatible = "fsl,imx6sx-pcie", "snps,dw-pcie";
 			reg = <0x08ffc000 0x4000>, <0x08f00000 0x80000>;
 			reg-names = "dbi", "config";
 			#address-cells = <3>;
 			#size-cells = <2>;
 			device_type = "pci";
-			ranges = <0x81000000 0 0          0x08f80000 0 0x00010000 /* downstream I/O */
-				  0x82000000 0 0x08000000 0x08000000 0 0x00f00000>; /* non-prefetchable memory */
+				  /* configuration space */
+			ranges = <0x00000800 0 0x08f00000 0x08f00000 0 0x00080000
+				  /* downstream I/O */
+				  0x81000000 0 0          0x08f80000 0 0x00010000
+				  /* non-prefetchable memory */
+				  0x82000000 0 0x08000000 0x08000000 0 0x00f00000>;
+			bus-range = <0x00 0xff>;
 			num-lanes = <1>;
 			interrupts = <GIC_SPI 120 IRQ_TYPE_LEVEL_HIGH>;
-			interrupt-names = "msi";
-			#interrupt-cells = <1>;
-			interrupt-map-mask = <0 0 0 0x7>;
-			interrupt-map = <0 0 0 1 &intc GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>,
-			                <0 0 0 2 &intc GIC_SPI 122 IRQ_TYPE_LEVEL_HIGH>,
-			                <0 0 0 3 &intc GIC_SPI 121 IRQ_TYPE_LEVEL_HIGH>,
-			                <0 0 0 4 &intc GIC_SPI 120 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&clks IMX6SX_CLK_PCIE_AXI>,
+			clocks = <&clks IMX6SX_CLK_PCIE_REF_125M>,
+				 <&clks IMX6SX_CLK_PCIE_AXI>,
 				 <&clks IMX6SX_CLK_LVDS1_OUT>,
 				 <&clks IMX6SX_CLK_PCIE_REF_125M>,
 				 <&clks IMX6SX_CLK_DISPLAY_AXI>;

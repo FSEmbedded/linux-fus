@@ -482,6 +482,8 @@
 	.macro		tlb_unlock0	spc,tmp
 #ifdef CONFIG_SMP
 	or,COND(=)	%r0,\spc,%r0
+	sync
+	or,COND(=)	%r0,\spc,%r0
 	stw             \spc,0(\tmp)
 #endif
 	.endm
@@ -1384,7 +1386,7 @@ nadtlb_nullify:
 
 	/* 
 		When there is no translation for the probe address then we
-		must nullify the insn and return zero in the target regsiter.
+		must nullify the insn and return zero in the target register.
 		This will indicate to the calling code that it does not have 
 		write/read privileges to this address.
 

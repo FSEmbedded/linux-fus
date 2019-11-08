@@ -23,7 +23,6 @@
 
 #include <linux/sched.h>
 #include <asm/cputype.h>
-#include <soc/imx8/soc.h>
 #include <asm/mmu.h>
 
 /*
@@ -38,9 +37,21 @@
  * not. The macros handles invoking the asm with or without the
  * register argument as appropriate.
  */
-#define __TLBI_0(op, arg)		asm ("tlbi " #op)
-#define __TLBI_1(op, arg)		asm ("tlbi " #op ", %0" : : "r" (arg))
-#define __TLBI_N(op, arg, n, ...)	__TLBI_##n(op, arg)
+#define __TLBI_0(op, arg) asm ("tlbi " #op "\n"				       \
+		   ALTERNATIVE("nop\n			nop",		       \
+			       "dsb ish\n		tlbi " #op,	       \
+			       ARM64_WORKAROUND_REPEAT_TLBI,		       \
+			       CONFIG_QCOM_FALKOR_ERRATUM_1009)		       \
+			    : : )
+
+#define __TLBI_1(op, arg) asm ("tlbi " #op ", %0\n"			       \
+		   ALTERNATIVE("nop\n			nop",		       \
+			       "dsb ish\n		tlbi " #op ", %0",     \
+			       ARM64_WORKAROUND_REPEAT_TLBI,		       \
+			       CONFIG_QCOM_FALKOR_ERRATUM_1009)		       \
+			    : : "r" (arg))
+
+#define __TLBI_N(op, arg, n, ...) __TLBI_##n(op, arg)
 
 #define __tlbi(op, ...)		__TLBI_N(op, ##__VA_ARGS__, 1, 0)
 
@@ -109,12 +120,8 @@ static inline void flush_tlb_mm(struct mm_struct *mm)
 	unsigned long asid = ASID(mm) << 48;
 
 	dsb(ishst);
-	if (TKT340553_SW_WORKAROUND && ASID(mm) >> 11)
-		__tlbi(vmalle1is);
-	else {
-		__tlbi(aside1is, asid);
-		__tlbi_user(aside1is, asid);
-	}
+	__tlbi(aside1is, asid);
+	__tlbi_user(aside1is, asid);
 	dsb(ish);
 }
 
@@ -124,12 +131,8 @@ static inline void flush_tlb_page(struct vm_area_struct *vma,
 	unsigned long addr = uaddr >> 12 | (ASID(vma->vm_mm) << 48);
 
 	dsb(ishst);
-	if (TKT340553_SW_WORKAROUND && (uaddr >> 36 || (ASID(vma->vm_mm) >> 12)))
-		__tlbi(vmalle1is);
-	else {
-		__tlbi(vale1is, addr);
-		__tlbi_user(vale1is, addr);
-	}
+	__tlbi(vale1is, addr);
+	__tlbi_user(vale1is, addr);
 	dsb(ish);
 }
 
@@ -159,13 +162,10 @@ static inline void __flush_tlb_range(struct vm_area_struct *vma,
 
 	dsb(ishst);
 	for (addr = start; addr < end; addr += 1 << (PAGE_SHIFT - 12)) {
-		if (TKT340553_SW_WORKAROUND && (addr & mask || (ASID(vma->vm_mm) >> 12)))
-			__tlbi(vmalle1is);
-		else if (last_level) {
+		if (last_level) {
 			__tlbi(vale1is, addr);
 			__tlbi_user(vale1is, addr);
-		}
-		else {
+		} else {
 			__tlbi(vae1is, addr);
 			__tlbi_user(vae1is, addr);
 		}
@@ -211,13 +211,8 @@ static inline void __flush_tlb_pgtable(struct mm_struct *mm,
 {
 	unsigned long addr = uaddr >> 12 | (ASID(mm) << 48);
 
-	if (TKT340553_SW_WORKAROUND && (uaddr >> 36 || (ASID(mm) >> 12)))
-		__tlbi(vmalle1is);
-	else {
-		__tlbi(vae1is, addr);
-		__tlbi_user(vae1is, addr);
-	}
-
+	__tlbi(vae1is, addr);
+	__tlbi_user(vae1is, addr);
 	dsb(ish);
 }
 

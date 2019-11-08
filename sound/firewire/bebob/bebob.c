@@ -172,12 +172,12 @@ get_saffire_spec(struct fw_unit *unit)
 static bool
 check_audiophile_booted(struct fw_unit *unit)
 {
-	char name[24] = {0};
+	char name[28] = {0};
 
 	if (fw_csr_string(unit->directory, CSR_MODEL, name, sizeof(name)) < 0)
 		return false;
 
-	return strncmp(name, "FW Audiophile Bootloader", 15) != 0;
+	return strncmp(name, "FW Audiophile Bootloader", 24) != 0;
 }
 
 static void
@@ -263,6 +263,8 @@ do_registration(struct work_struct *work)
 error:
 	mutex_unlock(&devices_mutex);
 	snd_bebob_stream_destroy_duplex(bebob);
+	kfree(bebob->maudio_special_quirk);
+	bebob->maudio_special_quirk = NULL;
 	snd_card_free(bebob->card);
 	dev_info(&bebob->unit->device,
 		 "Sound card registration failed: %d\n", err);

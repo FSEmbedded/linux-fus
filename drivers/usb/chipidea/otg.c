@@ -207,6 +207,23 @@ static int hw_wait_vbus_lower_bsv(struct ci_hdrc *ci)
 	return 0;
 }
 
+static void ci_handle_id_switch(struct ci_hdrc *ci)
+{
+	unsigned long elapse = jiffies + msecs_to_jiffies(5000);
+	u32 mask = OTGSC_BSV;
+
+	while (hw_read_otgsc(ci, mask)) {
+		if (time_after(jiffies, elapse)) {
+			dev_err(ci->dev, "timeout waiting for %08x in OTGSC\n",
+					mask);
+			return -ETIMEDOUT;
+		}
+		msleep(20);
+	}
+
+	return 0;
+}
+
 void ci_handle_id_switch(struct ci_hdrc *ci)
 {
 	enum ci_role role;

@@ -398,13 +398,6 @@ static int listen_all_addrinfo(struct addrinfo *ai_head, int sockfdlist[],
 		 * (see do_standalone_mode()) */
 		usbip_net_set_v6only(sock);
 
-		if (sock >= FD_SETSIZE) {
-			err("FD_SETSIZE: %s: sock=%d, max=%d",
-			    ai_buf, sock, FD_SETSIZE);
-			close(sock);
-			continue;
-		}
-
 		ret = bind(sock, ai->ai_addr, ai->ai_addrlen);
 		if (ret < 0) {
 			err("bind: %s: %d (%s)",
@@ -463,7 +456,7 @@ static void set_signal(void)
 	sigaction(SIGTERM, &act, NULL);
 	sigaction(SIGINT, &act, NULL);
 	act.sa_handler = SIG_IGN;
-	sigaction(SIGCLD, &act, NULL);
+	sigaction(SIGCHLD, &act, NULL);
 }
 
 static const char *pid_file;

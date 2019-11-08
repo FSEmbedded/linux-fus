@@ -8,7 +8,7 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, version 2 of the License.
  *
- * See Documentation/security/keys-trusted-encrypted.txt
+ * See Documentation/security/keys/trusted-encrypted.rst
  */
 
 #include <crypto/hash_info.h>
@@ -1139,12 +1139,12 @@ out:
 static long trusted_read(const struct key *key, char __user *buffer,
 			 size_t buflen)
 {
-	struct trusted_key_payload *p;
+	const struct trusted_key_payload *p;
 	char *ascii_buf;
 	char *bufp;
 	int i;
 
-	p = rcu_dereference_key(key);
+	p = dereference_key_locked(key);
 	if (!p)
 		return -EINVAL;
 

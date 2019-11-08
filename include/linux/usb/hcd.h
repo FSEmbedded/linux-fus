@@ -468,7 +468,7 @@ static inline int ehset_single_step_set_feature(struct usb_hcd *hcd, int port)
 }
 #endif /* CONFIG_USB_HCD_TEST_MODE */
 
-#ifdef CONFIG_PCI
+#ifdef CONFIG_USB_PCI
 struct pci_dev;
 struct pci_device_id;
 extern int usb_hcd_pci_probe(struct pci_dev *dev,
@@ -481,7 +481,7 @@ extern int usb_hcd_amd_remote_wakeup_quirk(struct pci_dev *dev);
 #ifdef CONFIG_PM
 extern const struct dev_pm_ops usb_hcd_pci_pm_ops;
 #endif
-#endif /* CONFIG_PCI */
+#endif /* CONFIG_USB_PCI */
 
 /* pci-ish (pdev null is ok) buffer alloc/mapping support */
 void usb_init_pool_max(void);
@@ -581,21 +581,22 @@ extern void usb_ep0_reinit(struct usb_device *);
 	((USB_DIR_OUT|USB_TYPE_STANDARD|USB_RECIP_ENDPOINT)<<8)
 
 /* class requests from the USB 2.0 hub spec, table 11-15 */
+#define HUB_CLASS_REQ(dir, type, request) ((((dir) | (type)) << 8) | (request))
 /* GetBusState and SetHubDescriptor are optional, omitted */
-#define ClearHubFeature		(0x2000 | USB_REQ_CLEAR_FEATURE)
-#define ClearPortFeature	(0x2300 | USB_REQ_CLEAR_FEATURE)
-#define GetHubDescriptor	(0xa000 | USB_REQ_GET_DESCRIPTOR)
-#define GetHubStatus		(0xa000 | USB_REQ_GET_STATUS)
-#define GetPortStatus		(0xa300 | USB_REQ_GET_STATUS)
-#define SetHubFeature		(0x2000 | USB_REQ_SET_FEATURE)
-#define SetPortFeature		(0x2300 | USB_REQ_SET_FEATURE)
+#define ClearHubFeature		HUB_CLASS_REQ(USB_DIR_OUT, USB_RT_HUB, USB_REQ_CLEAR_FEATURE)
+#define ClearPortFeature	HUB_CLASS_REQ(USB_DIR_OUT, USB_RT_PORT, USB_REQ_CLEAR_FEATURE)
+#define GetHubDescriptor	HUB_CLASS_REQ(USB_DIR_IN, USB_RT_HUB, USB_REQ_GET_DESCRIPTOR)
+#define GetHubStatus		HUB_CLASS_REQ(USB_DIR_IN, USB_RT_HUB, USB_REQ_GET_STATUS)
+#define GetPortStatus		HUB_CLASS_REQ(USB_DIR_IN, USB_RT_PORT, USB_REQ_GET_STATUS)
+#define SetHubFeature		HUB_CLASS_REQ(USB_DIR_OUT, USB_RT_HUB, USB_REQ_SET_FEATURE)
+#define SetPortFeature		HUB_CLASS_REQ(USB_DIR_OUT, USB_RT_PORT, USB_REQ_SET_FEATURE)
 
 
 /*-------------------------------------------------------------------------*/
 
 /* class requests from USB 3.1 hub spec, table 10-7 */
-#define SetHubDepth		(0x2000 | HUB_SET_DEPTH)
-#define GetPortErrorCount	(0xa300 | HUB_GET_PORT_ERR_COUNT)
+#define SetHubDepth		HUB_CLASS_REQ(USB_DIR_OUT, USB_RT_HUB, HUB_SET_DEPTH)
+#define GetPortErrorCount	HUB_CLASS_REQ(USB_DIR_IN, USB_RT_PORT, HUB_GET_PORT_ERR_COUNT)
 
 /*
  * Generic bandwidth allocation constants/support

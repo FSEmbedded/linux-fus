@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __MACH_IMX_CLK_H
 #define __MACH_IMX_CLK_H
 
@@ -49,44 +50,8 @@ enum imx_pllv3_type {
 	IMX_PLLV3_AV,
 	IMX_PLLV3_ENET,
 	IMX_PLLV3_ENET_IMX7,
-	IMX_PLLV3_AV_IMX7,
-	IMX_PLLV3_PLL2,
-};
-
-/*
- * frac_divider, found on i.MX7ULP PCC module.
- * the output clock of the fractional divider is:
- * Divider output clock = Input clock * (FRAC + 1)
- * / (DIV + 1)
- */
-struct clk_frac_divider {
-	struct clk_hw	hw;
-	void __iomem	*reg;
-	u8		mshift;
-	u8		mwidth;
-	u32		mmask;
-	u8		nshift;
-	u8		nwidth;
-	u32		nmask;
-};
-
-#define MAX_SHARED_CLK_NUMBER		100
-#define SHARED_MEM_MAGIC_NUMBER		0x12345678
-#define MCC_POWER_SHMEM_NUMBER		(6)
-
-struct imx_shared_clk {
-	struct clk *self;
-	struct clk *parent;
-	void *m4_clk;
-	void *m4_clk_parent;
-	u8 ca9_enabled;
-	u8 cm4_enabled;
-};
-
-struct imx_shared_mem {
-	u32 ca9_valid;
-	u32 cm4_valid;
-	struct imx_shared_clk imx_clk[MAX_SHARED_CLK_NUMBER];
+	IMX_PLLV3_SYS_VF610,
+	IMX_PLLV3_DDR_IMX7,
 };
 
 struct clk *imx_clk_pllv3(enum imx_pllv3_type type, const char *name,

@@ -204,7 +204,7 @@
 #define QUADSPI_LUT_NUM		64
 
 /* SEQID -- we can have 16 seqids at most. */
-#define SEQID_QUAD_READ		0
+#define SEQID_READ		0
 #define SEQID_WREN		1
 #define SEQID_WRDI		2
 #define SEQID_RDSR		3
@@ -269,7 +269,7 @@ struct fsl_qspi_devtype_data {
 	int driver_data;
 };
 
-static struct fsl_qspi_devtype_data vybrid_data = {
+static const struct fsl_qspi_devtype_data vybrid_data = {
 	.devtype = FSL_QUADSPI_VYBRID,
 	.rxfifo = 128,
 	.txfifo = 64,
@@ -277,7 +277,7 @@ static struct fsl_qspi_devtype_data vybrid_data = {
 	.driver_data = QUADSPI_QUIRK_SWAP_ENDIAN,
 };
 
-static struct fsl_qspi_devtype_data imx6sx_data = {
+static const struct fsl_qspi_devtype_data imx6sx_data = {
 	.devtype = FSL_QUADSPI_IMX6SX,
 	.rxfifo = 128,
 	.txfifo = 512,
@@ -286,7 +286,7 @@ static struct fsl_qspi_devtype_data imx6sx_data = {
 		       | QUADSPI_QUIRK_TKT245618,
 };
 
-static struct fsl_qspi_devtype_data imx7d_data = {
+static const struct fsl_qspi_devtype_data imx7d_data = {
 	.devtype = FSL_QUADSPI_IMX7D,
 	.rxfifo = 512,
 	.txfifo = 512,
@@ -295,7 +295,7 @@ static struct fsl_qspi_devtype_data imx7d_data = {
 		       | QUADSPI_QUIRK_4X_INT_CLK,
 };
 
-static struct fsl_qspi_devtype_data imx6ul_data = {
+static const struct fsl_qspi_devtype_data imx6ul_data = {
 	.devtype = FSL_QUADSPI_IMX6UL,
 	.rxfifo = 128,
 	.txfifo = 512,
@@ -435,8 +435,12 @@ static void fsl_qspi_init_lut(struct fsl_qspi *q)
 	struct spi_nor *nor = &q->nor[0];
 	u8 addrlen = (nor->addr_width == 3) ? ADDR24BIT : ADDR32BIT;
 	u32 lut_base;
-	u8 op, dm;
 	int i;
+
+	struct spi_nor *nor = &q->nor[0];
+	u8 addrlen = (nor->addr_width == 3) ? ADDR24BIT : ADDR32BIT;
+	u8 read_op = nor->read_opcode;
+	u8 read_dm = nor->read_dummy;
 
 	fsl_qspi_unlock_lut(q);
 
@@ -444,25 +448,13 @@ static void fsl_qspi_init_lut(struct fsl_qspi *q)
 	for (i = 0; i < QUADSPI_LUT_NUM; i++)
 		qspi_writel(q, 0, base + QUADSPI_LUT_BASE + i * 4);
 
-	/* Quad Read and DDR Quad Read*/
-	lut_base = SEQID_QUAD_READ * 4;
-	op = nor->read_opcode;
-	dm = nor->read_dummy;
-	if (nor->flash_read == SPI_NOR_QUAD) {
-		if (op == SPINOR_OP_READ_1_1_4 || op == SPINOR_OP_READ4_1_1_4) {
-			/* read mode : 1-1-4 */
-			qspi_writel(q, LUT0(CMD, PAD1, op) | LUT1(ADDR, PAD1, addrlen),
-				    base + QUADSPI_LUT(lut_base));
+	/* Read */
+	lut_base = SEQID_READ * 4;
 
-			qspi_writel(q, LUT0(DUMMY, PAD1, dm) | LUT1(FSL_READ, PAD4, rxfifo),
-				    base + QUADSPI_LUT(lut_base + 1));
-		} else {
-			dev_err(nor->dev, "Unsupported opcode : 0x%.2x\n", op);
-		}
-	} else if (nor->flash_read == SPI_NOR_NORMAL) {
-		writel(LUT0(CMD, PAD1, op) | LUT1(ADDR, PAD1, addrlen),
+	qspi_writel(q, LUT0(CMD, PAD1, read_op) | LUT1(ADDR, PAD1, addrlen),
 			base + QUADSPI_LUT(lut_base));
-		writel(LUT0(FSL_READ, PAD1, rxfifo) | LUT1(JMP_ON_CS, PAD1, 0),
+	qspi_writel(q, LUT0(DUMMY, PAD1, read_dm) |
+		    LUT1(FSL_READ, PAD4, rxfifo),
 			base + QUADSPI_LUT(lut_base + 1));
 	} else if (nor->flash_read == SPI_NOR_DDR_QUAD) {
 		if (op == SPINOR_OP_READ_1_4_4_D ||
@@ -503,8 +495,10 @@ static void fsl_qspi_init_lut(struct fsl_qspi *q)
 
 	/* Page Program */
 	lut_base = SEQID_PP * 4;
-	qspi_writel(q, LUT0(CMD, PAD1, nor->program_opcode) | LUT1(ADDR, PAD1, addrlen),
-		    base + QUADSPI_LUT(lut_base));
+
+	qspi_writel(q, LUT0(CMD, PAD1, nor->program_opcode) |
+		    LUT1(ADDR, PAD1, addrlen),
+			base + QUADSPI_LUT(lut_base));
 	qspi_writel(q, LUT0(FSL_WRITE, PAD1, 0),
 			base + QUADSPI_LUT(lut_base + 1));
 
@@ -516,8 +510,10 @@ static void fsl_qspi_init_lut(struct fsl_qspi *q)
 
 	/* Erase a sector */
 	lut_base = SEQID_SE * 4;
-	qspi_writel(q, LUT0(CMD, PAD1, nor->erase_opcode) | LUT1(ADDR, PAD1, addrlen),
-		    base + QUADSPI_LUT(lut_base));
+
+	qspi_writel(q, LUT0(CMD, PAD1, nor->erase_opcode) |
+		    LUT1(ADDR, PAD1, addrlen),
+			base + QUADSPI_LUT(lut_base));
 
 	/* Erase the whole chip */
 	lut_base = SEQID_CHIP_ERASE * 4;
@@ -635,8 +631,7 @@ static int fsl_qspi_get_seqid(struct fsl_qspi *q, u8 cmd)
 	case SPINOR_OP_READ4_1_4_4_D:
 	case SPINOR_OP_READ4_1_1_4:
 	case SPINOR_OP_READ_1_1_4:
-	case SPINOR_OP_READ:
-		return SEQID_QUAD_READ;
+		return SEQID_READ;
 	case SPINOR_OP_WREN:
 		return SEQID_WREN;
 	case SPINOR_OP_WRDI:
@@ -1189,6 +1184,10 @@ static void fsl_qspi_unprep(struct spi_nor *nor, enum spi_nor_ops ops)
 
 static int fsl_qspi_probe(struct platform_device *pdev)
 {
+	const struct spi_nor_hwcaps hwcaps = {
+		.mask = SNOR_HWCAPS_READ_1_1_4 |
+			SNOR_HWCAPS_PP,
+	};
 	struct device_node *np = pdev->dev.of_node;
 	struct device *dev = &pdev->dev;
 	struct fsl_qspi *q;
@@ -1321,7 +1320,7 @@ static int fsl_qspi_probe(struct platform_device *pdev)
 		/* set the chip address for READID */
 		fsl_qspi_set_base_addr(q, nor);
 
-		ret = spi_nor_scan(nor, NULL, mode);
+		ret = spi_nor_scan(nor, NULL, &hwcaps);
 		if (ret)
 			goto mutex_failed;
 

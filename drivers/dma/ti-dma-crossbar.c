@@ -54,7 +54,15 @@ struct ti_am335x_xbar_map {
 
 static inline void ti_am335x_xbar_write(void __iomem *iomem, int event, u8 val)
 {
-	writeb_relaxed(val, iomem + event);
+	/*
+	 * TPCC_EVT_MUX_60_63 register layout is different than the
+	 * rest, in the sense, that event 63 is mapped to lowest byte
+	 * and event 60 is mapped to highest, handle it separately.
+	 */
+	if (event >= 60 && event <= 63)
+		writeb_relaxed(val, iomem + (63 - event % 4));
+	else
+		writeb_relaxed(val, iomem + event);
 }
 
 static void ti_am335x_xbar_free(struct device *dev, void *route_data)
@@ -309,7 +317,7 @@ static const struct of_device_id ti_dra7_master_match[] = {
 static inline void ti_dra7_xbar_reserve(int offset, int len, unsigned long *p)
 {
 	for (; len > 0; len--)
-		clear_bit(offset + (len - 1), p);
+		set_bit(offset + (len - 1), p);
 }
 
 static int ti_dra7_xbar_probe(struct platform_device *pdev)

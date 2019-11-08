@@ -452,7 +452,7 @@ static int fsl_asrc_config_pair(struct fsl_asrc_pair *pair, bool p2p_in, bool p2
 	fsl_asrc_set_watermarks(pair, ASRC_INPUTFIFO_THRESHOLD,
 				ASRC_INPUTFIFO_THRESHOLD);
 
-	/* Configure the followings only for Ideal Ratio mode */
+	/* Configure the following only for Ideal Ratio mode */
 	if (!ideal)
 		return 0;
 
@@ -678,28 +678,7 @@ static int fsl_asrc_dai_trigger(struct snd_pcm_substream *substream, int cmd,
 	return 0;
 }
 
-static int fsl_asrc_dai_startup(struct snd_pcm_substream *substream,
-			    struct snd_soc_dai *cpu_dai)
-{
-	struct fsl_asrc *asrc_priv   = snd_soc_dai_get_drvdata(cpu_dai);
-
-	asrc_priv->substream[substream->stream] = substream;
-
-	return snd_pcm_hw_constraint_list(substream->runtime, 0,
-			SNDRV_PCM_HW_PARAM_RATE, &fsl_asrc_rate_constraints);
-}
-
-static void fsl_asrc_dai_shutdown(struct snd_pcm_substream *substream,
-			    struct snd_soc_dai *cpu_dai)
-{
-	struct fsl_asrc *asrc_priv   = snd_soc_dai_get_drvdata(cpu_dai);
-
-	asrc_priv->substream[substream->stream] = NULL;
-}
-
-static struct snd_soc_dai_ops fsl_asrc_dai_ops = {
-	.startup      = fsl_asrc_dai_startup,
-	.shutdown     = fsl_asrc_dai_shutdown,
+static const struct snd_soc_dai_ops fsl_asrc_dai_ops = {
 	.hw_params    = fsl_asrc_dai_hw_params,
 	.hw_free      = fsl_asrc_dai_hw_free,
 	.trigger      = fsl_asrc_dai_trigger,
