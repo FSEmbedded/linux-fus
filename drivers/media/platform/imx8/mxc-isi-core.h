@@ -241,7 +241,6 @@ struct mxc_isi_m2m_dev {
 	unsigned int	alphaen:1;
 
 	unsigned int aborting;
-	unsigned int read_done;
 	unsigned int frame_count;
 
 	struct list_head		out_active;
@@ -276,6 +275,7 @@ struct mxc_isi_cap_dev {
 struct mxc_isi_dev {
 	spinlock_t				slock;
 	struct mutex			lock;
+	struct mutex			m2m_lock;
 	wait_queue_head_t		irq_queue;
 
 	int						id;
@@ -290,6 +290,7 @@ struct mxc_isi_dev {
 
 	u32 interface[MAX_PORTS];
 	u32 flags;
+	u32 skip_m2m;
 	u8 chain_buf;
 
 	atomic_t open_count;
@@ -310,6 +311,7 @@ struct mxc_isi_dev {
 	unsigned int		deinterlace:1;
 	unsigned int		parallel_csi:1;
 	unsigned int		is_m2m:1;
+	unsigned int		is_streaming:1;
 
 	struct mxc_isi_ctrls ctrls;
 	u8			alpha;		/* goable alpha */
