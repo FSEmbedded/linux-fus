@@ -3,6 +3,36 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
+
+linux-4.9.88-fsimx6ul-B2019.11 (15.11.2019)
+-------------------------------------------
+Supported boards: efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2,
+                  CubeA7UL, Cube2.0
+Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6SX,
+                  CONT1, CUBEA5, armStoneA5, NetDCUA5, PicoCOMA5, AGATEWAY,
+                  HGATEWAY
+
+- Add support for mipi display YTC310KLAA
+- Add YTC310KLAA mipi display to fsimx7ulp
+- imx6ull: VDD_SOC_CAP -> changed voltage from 1.175V to 1.25V
+- Add PWM_A to PicoCoreMX6SX device-tree
+- Improve picocoremx6ul.dts - add defines for HW units
+- Improve picocoremx6sx.dts - increment board revision
+- Improve F&S i.MX6SX/UL device-trees - Update Copyright
+- fec_main: Do not init MII bus in case of fixed link
+- Add DP83848 Ethernet PHY to fsimx6ul_defconfig
+- Add devicetree for GAR2
+- Improve fsimx7ulp VLLS state by turning of LPDDR-IOs correctly
+- Add audio support for imx7ULP via rpmsg-audio
+- Fix DT for efusA9, QBlissA9 and QBlissA9r2 for ft5x06_ts.c
+- Fixup device-trees before fsimx6ul release
+- Add mainline patches to remove compiler warnings with gcc-8
+- Remove compiler warnings with gcc-8 in F&S specific files
+- Fix clock enabling in pxp_dma_v3.c, add to fsimx6ul
+
+
+
 linux-4.9.88-fsimx6-B2019.08 (15.08.2019)
 -----------------------------------------
 Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
