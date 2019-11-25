@@ -95,6 +95,7 @@ struct imx_mipi_dsi {
 	bool				no_clk_reset;
 	bool				enabled;
 	bool				suspended;
+	bool				best_match;
 };
 
 struct clk_config {
@@ -491,7 +492,7 @@ static void imx_nwl_dsi_enable(struct imx_mipi_dsi *dsi)
 		mixel_phy_mipi_set_phy_speed(dsi->phy,
 			bit_clk,
 			dsi->phyref_rate,
-			false);
+			dsi->best_match);
 		dsi->bit_clk = bit_clk;
 	}
 
@@ -592,7 +593,7 @@ static int imx_nwl_try_phy_speed(struct imx_mipi_dsi *dsi,
 		ret = mixel_phy_mipi_set_phy_speed(dsi->phy,
 			bit_clk,
 			dsi->phyref_rate,
-			false);
+			dsi->best_match);
 		/* Pick the first non-failing rate */
 		if (!ret)
 			break;
@@ -795,6 +796,7 @@ static int imx_nwl_dsi_parse_of(struct device *dev, bool as_bridge)
 
 	of_property_read_u32(np, "sync-pol", &dsi->sync_pol);
 	of_property_read_u32(np, "pwr-delay", &dsi->power_on_delay);
+	dsi->best_match = of_property_read_bool(np, "best-match");
 
 	/* Look for optional regmaps */
 	dsi->csr = syscon_regmap_lookup_by_phandle(np, "csr");
