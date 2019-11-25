@@ -109,6 +109,16 @@ config FSL_OTP
 
 	  If unsure, it is safe to say Y.
 
+config BDINFO
+	bool "Support F&S Board Information System (/sys/bdinfo)"
+	default n
+	help
+	  The Board Information System reads board specific data and presents
+	  it in a subdirectory of /sys.
+
+	  If you are not using a board or module from F&S Elektronik Systeme,
+	  you can safely say N.
+
 config PRINTER
 	tristate "Parallel printer support"
 	depends on PARPORT
