@@ -587,7 +587,7 @@
 		};
 
 		rpmsg: rpmsg{
-			compatible = "fsl,imx8qm-rpmsg";
+			compatible = "fsl,imx8mq-rpmsg";
 			status = "disabled";
 		};
 	};
@@ -602,7 +602,7 @@
 	};
 
 	dispmix_gpr: display-gpr@32e28000 {
-		compatible = "fsl, imx8mm-iomuxc-gpr", "syscon";
+		compatible = "fsl,imx8mm-iomuxc-gpr", "syscon";
 		reg = <0x0 0x32e28000 0x0 0x100>;
 	};
 
@@ -1276,8 +1276,8 @@
 	operating-points = <
 		/* kHz    uV */
 		1800000 1000000
-		1600000 900000
-		1200000 800000
+		1600000 950000
+		1200000 850000
 	>;
 	clocks = <&clk IMX8MM_CLK_A53_DIV>, <&clk IMX8MM_CLK_A53_SRC>,
 		<&clk IMX8MM_ARM_PLL>, <&clk IMX8MM_ARM_PLL_OUT>,
