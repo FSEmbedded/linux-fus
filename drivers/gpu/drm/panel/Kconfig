@@ -134,5 +134,14 @@ config DRM_PANEL_RAYDIUM_RM67191
 	help
 	  Say Y here if you want to enable support for Raydium RM67191 FHD
 	  (1080x1920) DSI panel.
+	  
+config DRM_PANEL_NOVATEK_NT35521
+	tristate "Novatek NT35521 panel"
+	depends on OF
+	depends on DRM_MIPI_DSI
+	depends on BACKLIGHT_CLASS_DEVICE
+	help
+	  Say Y here if you want to enable support for Novatek NT35521
+	  (800x1280) DSI panel.
 
 endmenu
