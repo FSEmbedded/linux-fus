@@ -6,7 +6,9 @@ dtb-$(CONFIG_ARCH_FSL_IMX8QM) += armstonemx8m.dtb \
 								armstonemx8m-lcdif-sn65dsi84-g101ice-l01.dtb
 
 dtb-$(CONFIG_ARCH_FSL_IMX8MM) += picocoremx8mm.dtb \
-								picocoremx8mm-bbdsi.dtb
+								picocoremx8mm-bbdsi.dtb \
+								picocoremx8mm-lcdif-tc358764-g070y2-l01.dtb \
+								picocoremx8mm-lcdif-tc358764-j070wvtc0211.dtb
 always		:= $(dtb-y)
 subdir-y	:= $(dts-dirs)
 clean-files	:= *.dtb
