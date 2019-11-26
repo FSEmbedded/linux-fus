@@ -925,6 +925,8 @@ lvds_wvga {				\
 	rtc8565@51 {
 		compatible = "nxp,pcf8565", "nxp,pcf8563";
 		reg = <0x51>;
+		interrupt-parent = <&gpio2>;
+		interrupts = <4 IRQ_TYPE_EDGE_FALLING>;
 	};
 
 #if 0
@@ -1474,6 +1476,8 @@ lvds_wvga {				\
 				/* DVS */
 				MX6SX_PAD_USB_H_STROBE__GPIO7_IO_11	0x130b0
 #endif
+				/* RTC IRQ */
+				MX6SX_PAD_ENET1_RX_CLK__GPIO2_IO_4	0x0b0b0
 			>;
 		};
 
