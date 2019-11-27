@@ -178,6 +178,18 @@ lcd_wvga {				\
 	};
 #endif
 
+#if defined(CONFIG_PICOCOREMX6SX_BL_CTRL) && (CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD)
+	backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pwm2 0 5000000 0>;
+		power-supply = <&reg_lcd_bl>;
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+		fb-names = "mxs-lcdif0";
+	};
+#endif
+
 	clocks {
 		codec_osc: anaclk2 {
 			#clock-cells = <0>;
@@ -847,10 +859,10 @@ lcd_wvga {				\
 #endif /* CONFIG_PICOCOREMX6SX_PWM_A */
 
 #ifdef CONFIG_PICOCOREMX6SX_BL_CTRL
-/* Backlight PWM implemented by PWM6 */
-&pwm6 {
+/* Backlight PWM implemented by PWM2 */
+&pwm2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_pwm6>;
+	pinctrl-0 = <&pinctrl_pwm2>;
 	status = "okay";
 };
 #endif /* CONFIG_PICOCOREMX6SX_BL_CTRL */
@@ -1146,8 +1158,8 @@ lcd_wvga {				\
 #endif /* CONFIG_PICOCOREMX6SX_PWM_A */
 
 #ifdef CONFIG_PICOCOREMX6SX_BL_CTRL
-		/* Backlight PWM implemented by PWM6 */
-		pinctrl_pwm6: pwm6grp {
+		/* Backlight PWM implemented by PWM2 */
+		pinctrl_pwm2: pwm2grp {
 			fsl,pins = <
 				MX6SX_PAD_GPIO1_IO11__PWM2_OUT		0x110b0
 			>;
