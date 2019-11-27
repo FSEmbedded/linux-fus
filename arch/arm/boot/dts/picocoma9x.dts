@@ -776,7 +776,7 @@ lcd_wvga {				\
 				MX6SX_PAD_LCD1_DATA23__GPIO3_IO_24	0x1b0b0
 
 				/* VLCD_ON active low */
-				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x130b1
+				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x1b0b1
 
 				/* LCD_DEN, gpio for display standby */
 				MX6SX_PAD_LCD1_DATA22__GPIO3_IO_23	0x130b1

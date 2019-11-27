@@ -822,6 +822,16 @@ wvga {					\
 #endif
 				/* VLCD */
 				MX6UL_PAD_LCD_RESET__GPIO3_IO04		0x030b0
+				/* HW-Bug:
+				 * on PicoCoreBBRGB revision 1.20 is a HW bug, VLCD_ON
+				 * provides the voltage for pca9632. So if the pca9632 is
+				 * initializing, VLCD_ON is low and the initialization fails.
+				 * There is a hotfix to prevent this. The VLCD_ON pin must
+				 * be internally configured with a pull-up so we have a high
+				 * at startup and the chip can be initialized. Activate the
+				 * line below to enable this hotfix and disable line above.
+				 */
+				 /* MX6UL_PAD_LCD_RESET__GPIO3_IO04	0x0b0b0 */
 
 				MX6UL_PAD_JTAG_TMS__SAI2_MCLK		0x17088
 //###				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
