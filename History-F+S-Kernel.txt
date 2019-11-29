@@ -4,6 +4,26 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
 
+linux-4.9.88-fsimx6sx-B2019.11 (29.11.2019)
+-------------------------------------------
+Supported boards: efusA9X, PicoCOMA9X, PicoCoreMX6SX, CONT1, efusA7UL,
+                  PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2, CubeA7UL, Cube2.0
+Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, CUBEA5, armStoneA5, NetDCUA5,
+                  PicoCOMA5, AGATEWAY, HGATEWAY
+
+- Support gstreamer imxv4l2sink with PXP on fsimx6sx
+- Add RTC IRQ settings on efusA9 and efusA9X
+- Add check for valid memory-region to auxcore-driver
+- Improve cont1 device tree - update board revision
+- Improve fsimx6sx/fsimx6ul device-trees
+- Improve picocoremx6sx device tree - fix bl_pwm
+- Improve PicoCoreMX6SX/UL device-tree - VLCD_ON pin
+- Remove rpmsg message from efusa9x.dts
+- Add missing RTS/CTS for UART_C on PicoCoreMX6SX
+
+
+
 linux-4.9.88-fsimx6ul-B2019.11 (15.11.2019)
 -------------------------------------------
 Supported boards: efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2,
