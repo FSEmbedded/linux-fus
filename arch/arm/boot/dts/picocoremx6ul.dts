@@ -822,16 +822,25 @@ wvga {					\
 #endif
 				/* VLCD */
 				MX6UL_PAD_LCD_RESET__GPIO3_IO04		0x030b0
-				/* HW-Bug:
-				 * on PicoCoreBBRGB revision 1.20 is a HW bug, VLCD_ON
-				 * provides the voltage for pca9632. So if the pca9632 is
-				 * initializing, VLCD_ON is low and the initialization fails.
-				 * There is a hotfix to prevent this. The VLCD_ON pin must
-				 * be internally configured with a pull-up so we have a high
-				 * at startup and the chip can be initialized. Activate the
-				 * line below to enable this hotfix and disable line above.
+				/* ### HW-Bug:
+				 * There is a hardware bug on the Starterkit
+				 * baseboard PicoCoreBBRGB Rev 1.20. Instead of
+				 * constantly being powered, the PCA9632 chip on
+				 * the RGB display adapter, responsible for LCD
+				 * logic power and backlight brightness, depends
+				 * on VLCD_ON itself. Because VLCD_ON is low on
+				 * startup, the PCA9632 chip is not powered and
+				 * can not be initialized, causing the display
+				 * to fail.
+				 * By disabling the line above and enabling the
+				 * line below, you can use a workaround that
+				 * keeps VLCD_ON high at startup. Then the
+				 * display will work (with some restrictions).
+				 * Please note that this is not a bug on the
+				 * PicoCoreMX6UL module itself, only on the
+				 * Starterkit baseboard.
 				 */
-				 /* MX6UL_PAD_LCD_RESET__GPIO3_IO04	0x0b0b0 */
+				//MX6UL_PAD_LCD_RESET__GPIO3_IO04	0x0b0b0
 
 				MX6UL_PAD_JTAG_TMS__SAI2_MCLK		0x17088
 //###				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088

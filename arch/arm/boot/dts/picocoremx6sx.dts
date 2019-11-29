@@ -50,7 +50,6 @@ lcd_wvga {				\
 /*
  * Configure touch screen:
  *
- * - 4-wire/5-wire analog resistive touch, touch controller on SKIT
  * - 4-wire/5-wire analog resistive touch, touch controller on RGB LCD adapter
  * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
  * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
@@ -116,7 +115,7 @@ lcd_wvga {				\
 
 /*
  * SD_A - External SD port with Card Detect (CD) and Write Protect (WP)
- * On picocore baseboard: external port is Micro-SD card slot with CD but without WP
+ * On PicoCore baseboard, this is the Micro-SD card slot with CD but without WP
  */
 #define CONFIG_PICOCOREMX6SX_SD_A
 #define CONFIG_PICOCOREMX6SX_SD_A_CD
@@ -743,7 +742,7 @@ lcd_wvga {				\
 #endif /* CONFIG_PICOCOREMX6SX_LCDIF0 */
 
 #ifdef CONFIG_PICOCOREMX6SX_UART_A
-/* UART_A implemented by UART1; TXD, RXD only; */
+/* UART_A implemented by UART1: TXD, RXD only */
 &uart1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1>;
@@ -752,7 +751,7 @@ lcd_wvga {				\
 #endif /* CONFIG_PICOCOREMX6SX_UART_A */
 
 #ifdef CONFIG_PICOCOREMX6SX_UART_B
-/* UART_B implemented by UART3: TXD, RXD only; */
+/* UART_B implemented by UART3: TXD, RXD only */
 &uart3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3>;
@@ -761,16 +760,19 @@ lcd_wvga {				\
 #endif /* CONFIG_PICOCOREMX6SX_UART_B */
 
 #ifdef CONFIG_PICOCOREMX6SX_UART_C
-/* UART_D implemeted by UART4: TXD, RXD,  RTS, CTS; */
+/* UART_C implemented by UART4: TXD, RXD,  RTS, CTS */
 &uart4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart4>;
+#ifdef CONFIG_PICOCOREMX6SX_UART_C_RTSCTS
+	uart-has-rtscts;
+#endif
 	status = "okay";
 };
 #endif /* CONFIG_PICOCOREMX6SX_UART_C */
 
 #ifdef CONFIG_PICOCOREMX6SX_UART_D
-/* UART_D implemeted by UART2: TXD, RXD only; */
+/* UART_D implemented by UART2: TXD, RXD only */
 &uart2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2>;
@@ -779,7 +781,7 @@ lcd_wvga {				\
 #endif /* CONFIG_PICOCOREMX6SX_UART_D */
 
 #ifdef CONFIG_PICOCOREMX6SX_UART_E
-/*  UART_SDA_A_DAT implemented by UART5: TXD, RXD, RTS, CTS; */
+/*  UART_E implemented by UART5: TXD, RXD, RTS, CTS */
 &uart5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart5>;
@@ -788,7 +790,7 @@ lcd_wvga {				\
 #endif
 	status = "okay";
 };
-#endif /* CONFIG_PICOCOREMX6SX_UART_SD_A_DAT */
+#endif /* CONFIG_PICOCOREMX6SX_UART_E */
 
 #ifdef CONFIG_PICOCOREMX6SX_USB_OTG1
 &usbotg1 {
@@ -954,16 +956,25 @@ lcd_wvga {				\
 
 				/* VLCD_ON - active high */
 				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x130b0
-				/* HW-Bug:
-				 * on PicoCoreBBRGB revision 1.20 is a HW bug, VLCD_ON
-				 * provides the voltage for pca9632. So if the pca9632 is
-				 * initializing, VLCD_ON is low and the initialization fails.
-				 * There is a hotfix to prevent this. The VLCD_ON pin must
-				 * be internally configured with a pull-up so we have a high
-				 * at startup and the chip can be initialized. Activate the
-				 * line below to enable this hotfix and disable line above.
+				/* ### HW-Bug:
+				 * There is a hardware bug on the Starterkit
+				 * baseboard PicoCoreBBRGB Rev 1.20. Instead of
+				 * constantly being powered, the PCA9632 chip on
+				 * the RGB display adapter, responsible for LCD
+				 * logic power and backlight brightness, depends
+				 * on VLCD_ON itself. Because VLCD_ON is low on
+				 * startup, the PCA9632 chip is not powered and
+				 * can not be initialized, causing the display
+				 * to fail.
+				 * By disabling the line above and enabling the
+				 * line below, you can use a workaround that
+				 * keeps VLCD_ON high at startup. Then the
+				 * display will work (with some restrictions).
+				 * Please note that this is not a bug on the
+				 * PicoCoreMX6SX module itself, only on the
+				 * Starterkit baseboard.
 				 */
-				 /* MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x1b0b0 */
+				//MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x1b0b0
 
 				/* PHY_RST */
 				MX6SX_PAD_ENET1_MDC__GPIO2_IO_2		0x0b0b0
