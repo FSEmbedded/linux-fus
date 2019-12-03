@@ -671,6 +671,7 @@
 		 * cameras maybe need a gpio to perform a reset. */
 		/* rst-gpios = <dummy>; */
 		csi_id = <0>;
+		v_channel_id = <0>;
 		mclk = <24000000>;		/* OSC out */
 		mclk_source = <0>;
 	};
