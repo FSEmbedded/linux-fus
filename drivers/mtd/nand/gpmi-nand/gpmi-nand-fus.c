@@ -3381,8 +3381,10 @@ static int gpmi_nand_fus_pm_resume(struct device *dev)
 		return ret;
 	}
 
+
 	/* re-init the BCH registers */
-	ret = bch_set_geometry(this, this->mtd.oobavail, 0);
+	struct mtd_info *mtd = nand_to_mtd(&this->nand);
+	ret = bch_set_geometry(this, mtd->oobavail, 0);
 	if (ret) {
 		dev_err(this->dev, "Error setting BCH : %d\n", ret);
 		return ret;
