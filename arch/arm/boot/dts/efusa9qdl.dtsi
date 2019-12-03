@@ -820,6 +820,7 @@
 		/* not available */
 		rst-gpios = <&gpio5 23 GPIO_ACTIVE_LOW>;
 		csi_id = <0>;
+		v_channel_id = <0>;
 		mclk = <24000000>;
 		mclk_source = <0>;
 	};
