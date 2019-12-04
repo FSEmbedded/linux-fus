@@ -182,7 +182,6 @@ struct gpmi_nand_data {
 
 	/* MTD / NAND */
 	struct nand_chip	nand;
-	struct mtd_info		mtd;
 
 	/* General-use Variables */
 	int			current_chip;
@@ -2390,10 +2389,6 @@ static int acquire_resources(struct gpmi_nand_data *this)
 	if (ret)
 		goto exit_regs;
 
-	ret = acquire_dma_channels(this);
-	if (ret)
-		goto exit_regs;
-
 	ret = gpmi_get_clks(this);
 	if (ret)
 		goto exit_clock;
@@ -3355,23 +3350,27 @@ static int gpmi_nand_fus_remove(struct platform_device *pdev)
 
 static int gpmi_nand_fus_pm_suspend(struct device *dev)
 {
-	struct gpmi_nand_data *this = dev_get_drvdata(dev);
-
-	release_dma_channels(this);
+	int ret;
 	pinctrl_pm_select_sleep_state(dev);
-	return 0;
+	ret = pm_runtime_force_suspend(dev);
+
+	return ret;
 }
 
 static int gpmi_nand_fus_pm_resume(struct device *dev)
 {
 	struct gpmi_nand_data *this = dev_get_drvdata(dev);
+	struct mtd_info *mtd = nand_to_mtd(&this->nand);
+
 	int ret;
+	/* enable clock, acquire dma */
+	ret = pm_runtime_force_resume(dev);
+	if (ret) {
+		dev_err(this->dev, "Error in resume: %d\n", ret);
+		return ret;
+	}
 
 	pinctrl_pm_select_default_state(dev);
-
-	ret = acquire_dma_channels(this);
-	if (ret < 0)
-		return ret;
 
 	/* re-init the GPMI registers */
 	this->flags &= ~GPMI_TIMING_INIT_OK;
@@ -3381,9 +3380,7 @@ static int gpmi_nand_fus_pm_resume(struct device *dev)
 		return ret;
 	}
 
-
 	/* re-init the BCH registers */
-	struct mtd_info *mtd = nand_to_mtd(&this->nand);
 	ret = bch_set_geometry(this, mtd->oobavail, 0);
 	if (ret) {
 		dev_err(this->dev, "Error setting BCH : %d\n", ret);
@@ -3402,6 +3399,7 @@ int gpmi_nand_fus_runtime_suspend(struct device *dev)
 
 	gpmi_enable_clk(this, false);
 	release_bus_freq(BUS_FREQ_HIGH);
+	release_dma_channels(this);
 
 	return 0;
 }
@@ -3416,6 +3414,9 @@ int gpmi_nand_fus_runtime_resume(struct device *dev)
 		return ret;
 
 	request_bus_freq(BUS_FREQ_HIGH);
+	ret = acquire_dma_channels(this);
+	if (ret < 0)
+		return ret;
 
 	return 0;
 }
