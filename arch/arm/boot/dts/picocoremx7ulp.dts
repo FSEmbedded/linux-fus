@@ -32,7 +32,7 @@
  * - If you have a RGB display, set LCDIF to DISPLAY_LCD.
  * - If you have a MIPI DSI display, set LCDIF to DISPLAY_MIPI_DSI.
  */
-#define CONFIG_PICOCOREMX7ULP_LCDIF	DISPLAY_MIPI_DSI
+#define CONFIG_PICOCOREMX7ULP_LCDIF	DISPLAY_NONE
 
 /*
  * Configure touch screen:
@@ -58,10 +58,6 @@
 #define CONFIG_PICOCOREMX7ULP_SD_CD
 #define CONFIG_PICOCOREMX7ULP_SD_WP
 
-/* Audio: Codec (SGTL5000) on pins 77-80 */
-// TODO: check if it works on lpi2c0, thought its only available from M4 core
-//#define CONFIG_PICOCOREMX7ULP_AUDIO
-
 /* I2C */
 #define CONFIG_PICOCOREMX7ULP_I2C_A
 #define CONFIG_PICOCOREMX7ULP_I2C_B
@@ -69,10 +65,6 @@
 
 /* SPI_A */
 #define CONFIG_PICOCOREMX7ULP_SPI_A
-
-/* QSPI_A */
-//### TODO: not tested yet
-//#define CONFIG_PICOCOREMX7ULP_QSPI_A
 
 /* UART */
 #define CONFIG_PICOCOREMX7ULP_UART_A
@@ -153,35 +145,6 @@
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
 		};
-
-#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
-		/* SGTL5000 analog voltage */
-		reg_sgtl5000_vdda: sgtl5000_vdda {
-			compatible = "regulator-fixed";
-			regulator-name = "VDDA-supply";
-			regulator-min-microvolt = <3000000>;
-			regulator-max-microvolt = <3000000>;
-			regulator-always-on;
-		};
-
-		/* SGTL5000 I/O voltage */
-		reg_sgtl5000_vddio: sgtl5000_vddio {
-			compatible = "regulator-fixed";
-			regulator-name = "VDDIO-supply";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			regulator-always-on;
-		};
-
-		/* SGTL5000 internal digital voltage */
-		reg_sgtl5000_vddd: sgtl5000_vddd {
-			compatible = "regulator-fixed";
-			regulator-name = "VDDD-supply";
-			regulator-min-microvolt = <1350000>;
-			regulator-max-microvolt = <1350000>;
-			regulator-always-on;
-		};
-#endif
 	};
 
 	extcon_usb1: extcon_usb1 {
@@ -192,7 +155,6 @@
 		pinctrl-1 = <&pinctrl_extcon_usb1>;
 	};
 
-	/* TODO check node */
 	pf1550-rpmsg {
 		compatible = "fsl,pf1550-rpmsg";
 		sw1_reg: SW1 {
@@ -265,25 +227,11 @@
 		cpu-dai = <&rpmsg_i2s>;
 	};
 
-#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
-	sound-sgtl5000 {
-		compatible = "fsl,imx-audio-sgtl5000";
-		cpu-dai = <&sai0>;
-		audio-codec = <&sgtl5000>;
-		model = "imx-sgtl5000";
-
-		audio-routing =
-		"LINE_IN", "Line In Jack",
-		//"MIC_IN", "Mic Jack",
-		//"Line Out Jack", "LINE_OUT",
-		"Headphone Jack", "HP_OUT";
-	};
-#endif
-
 	/* F&S board information */
 	bdinfo {
 		compatible = "bdinfo";
 		board_name = "PicoCoreMX7ULP";
+		arch = "fsimx7ulp";
 	};
 };
 
@@ -353,22 +301,6 @@
 			};
 		};
 #endif
-	};
-};
-#endif
-
-#ifdef CONFIG_PICOCOREMX7ULP_QSPI_A
-&qspi1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_qspi1_1>;
-	status = "okay";
-
-	flash: s25fs512s@0 {
-		compatible = "spansion,s25fs512s";
-		#address-cells = <1>;
-		#size-cells = <1>;
-		reg = <0>;
-		spi-max-frequency = <20000000>;
 	};
 };
 #endif
@@ -480,27 +412,6 @@
 &usbphy1 {
 	tx-d-cal = <0xc>;
 };
-
-#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
-&lpi2c0 {
-	#address-cells = <1>;
-	#size-cells = <0>;
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_lpi2c0>;
-	status = "okay";
-
-	sgtl5000: sgtl5000@0a {
-		compatible = "fsl,sgtl5000";
-		reg = <0x0a>;
-		clocks = <&clks_m4 IMX7ULP_CM4_CLK_SAI0_SEL>;
-		// F&S advance which is not implemented here
-		//mono2both;
-		VDDA-supply = <&reg_sgtl5000_vdda>;
-		VDDIO-supply = <&reg_sgtl5000_vddio>;
-		VDDD-supply = <&reg_sgtl5000_vddd>;
-	};
-};
-#endif
 
 #ifdef CONFIG_PICOCOREMX7ULP_I2C_A
 &lpi2c5 {
@@ -644,118 +555,12 @@
 };
 #endif
 
-#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
-&sai0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_sai0>;
-	assigned-clocks = <&clks_m4 IMX7ULP_CM4_CLK_SAI0_SEL>,
-			  <&clks_m4 IMX7ULP_CM4_CLK_SAI0_DIV>;
-	assigned-clock-parents = <&clks_m4 IMX7ULP_CM4_CLK_APLL_PFD0_PRE_DIV>;
-	assigned-clock-rates = <0>, <12288000>;
-	fsl,dataline = <0x1 0x1>;
-	status = "okay";
-};
-#endif
-
-/* iomxuc pad settings PTA - PTB */
-&iomuxc {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_hog_0>;
-	status = "okay";
-
-	picocoremx7ulp { //TODO: check node name and subnodes
-		pinctrl_hog_0: hoggrp-0 {
-			fsl,pins = <
-				/* pins for the M4-Core - should be set by
-				 * M4 */
-#if 0
-				/* GPIOs -> default low for M4 */
-				/* 3.3 V */
-				IMX7ULP_PAD_PTA12__PTA12	0x00002
-				IMX7ULP_PAD_PTA13__PTA13	0x00002
-				IMX7ULP_PAD_PTA14__PTA14	0x00002
-				IMX7ULP_PAD_PTA15__PTA15	0x00002
-				IMX7ULP_PAD_PTA23__PTA23	0x00002
-				IMX7ULP_PAD_PTA31__PTA31	0x00002
-
-				/* 1.8 V */
-				IMX7ULP_PAD_PTB1__PTB1		0x00002
-				IMX7ULP_PAD_PTB2__PTB2		0x00002
-				IMX7ULP_PAD_PTB3__PTB3		0x00002
-				IMX7ULP_PAD_PTB9__PTB9		0x00002
-				IMX7ULP_PAD_PTB10__PTB10	0x00002
-				IMX7ULP_PAD_PTB11__PTB11	0x00002
-				IMX7ULP_PAD_PTB14__PTB14	0x00002
-
-				/* BATT_ADC_IN */
-				/* low active, pull low to measure battery
-				 * kernel doesnt boot with this settings */
-				IMX7ULP_PAD_PTA3__PTA3		0x00003
-				/* input measure battery voltage */
-				IMX7ULP_PAD_PTA20__ADC0_CH7A	0x00000
-
-				/* M4_PER_EN -> default high */
-				IMX7ULP_PAD_PTA21__PTA21	0x00003
-
-				/* EWM_OUT_B */
-				IMX7ULP_PAD_PTA22__PTA22	0x20000
-
-				/* A7_POW_EN -> default low so A7 is working */
-				IMX7ULP_PAD_PTA25__PTA25	0x00002
-
-				/* PTB4 bootmode0 */
-				IMX7ULP_PAD_PTB4__PTB4		0x00000
-
-				/* PTB5 bootmode1 */
-				IMX7ULP_PAD_PTB5__PTB5		0x00000
-
-				/* DDR_SW_EN# default low */
-				IMX7ULP_PAD_PTB6__PTB6		0x00002
-
-				/* PMIC INT# input */
-				IMX7ULP_PAD_PTB7__PTB7		0x00000
-#endif
-
-#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
-				/* AUD_PWR_EN active high -> default high */
-				IMX7ULP_PAD_PTA24__PTA24	0x00003
-#endif
-			>;
-		};
-
-#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
-		pinctrl_sai0: sai0_grp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTA4__I2S0_MCLK	0x00700
-				IMX7ULP_PAD_PTA5__I2S0_TX_BCLK	0x00700
-				IMX7ULP_PAD_PTA2__I2S0_RXD0	0x00700
-				IMX7ULP_PAD_PTA6__I2S0_TX_FS	0x00700
-				IMX7ULP_PAD_PTA7__I2S0_TXD0	0x00700
-			>;
-		};
-#endif
-
-#ifdef CONFIG_PICOCOREMX7ULP_QSPI_A
-		pinctrl_qspi1_1: qspi1grp_1 {
-			fsl,pins = <
-				IMX7ULP_PAD_PTB8__QSPIA_SS0_B	0x00043
-				IMX7ULP_PAD_PTB15__QSPIA_SCLK	0x00043
-				IMX7ULP_PAD_PTB16__QSPIA_DATA3	0x00043
-				IMX7ULP_PAD_PTB17__QSPIA_DATA2	0x00043
-				IMX7ULP_PAD_PTB18__QSPIA_DATA1	0x00043
-				IMX7ULP_PAD_PTB19__QSPIA_DATA0	0x00043
-			>;
-		};
-#endif
-	};
-};
-
 /* iomxuc pad settings PTC - PTF */
 &iomuxc1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog_1>;
 
-	picocoremx7ulp { //TODO: check node name and subnodes
+	picocoremx7ulp {
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
 				/* TP 5 */
@@ -861,7 +666,6 @@
 #if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
 		pinctrl_mipi_dsi_reset: mipi_dsi_reset_grp {
 			fsl,pins = <
-				/* ### TODO: no reset pin defined */
 				IMX7ULP_PAD_PTC19__PTC19	0x20003
 			>;
 		};
@@ -892,13 +696,11 @@
 				IMX7ULP_PAD_PTF17__LPSPI3_SOUT	0x00000
 				IMX7ULP_PAD_PTF18__LPSPI3_SCK	0x00000
 				IMX7ULP_PAD_PTF19__LPSPI3_PCS0	0x00000
-				//IMX7ULP_PAD_PTF19__PTF19	0x20000
 			>;
 		};
 #endif
 
 #ifdef CONFIG_PICOCOREMX7ULP_EMMC
-		/* emmc */
 		pinctrl_usdhc0_8bit: usdhc0grp_8bit {
 			fsl,pins = <
 				IMX7ULP_PAD_PTD1__SDHC0_CMD	0x00043
