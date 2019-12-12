@@ -547,17 +547,40 @@
 };
 
 &clks {
-	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
+	assigned-clocks =
+#ifdef CONFIG_NETDCUA9_LVDS0_CLK
+			  <&clks IMX6QDL_CLK_LDB_DI0_SEL>,
+#endif
+#ifdef CONFIG_NETDCUA9_LVDS1_CLK
+			  <&clks IMX6QDL_CLK_LDB_DI1_SEL>,
+#endif
+			  <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 			  <&clks IMX6QDL_CLK_CKO1_SEL>,
 			  <&clks IMX6QDL_CLK_CKO1_PODF>,
 			  <&clks IMX6QDL_CLK_CKO>;
 
-	assigned-clock-parents = <0>,
+	assigned-clock-parents =
+#ifdef CONFIG_NETDCUA9_LVDS0_CLK
+				 <&clks CONFIG_NETDCUA9_LVDS0_CLK>,
+#endif
+#ifdef CONFIG_NETDCUA9_LVDS1_CLK
+				 <&clks CONFIG_NETDCUA9_LVDS1_CLK>,
+#endif
+			         <0>,
 				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 				 <0>,
 				 <&clks IMX6QDL_CLK_CKO1>;
 
-	assigned-clock-rates = <196608000>, <196608000>, <24576000>;
+	assigned-clock-rates =
+#ifdef CONFIG_NETDCUA9_LVDS0_CLK
+				<0>,
+#endif
+#ifdef CONFIG_NETDCUA9_LVDS1_CLK
+				<0>,
+#endif
+				<196608000>,
+				<196608000>,
+				<24576000>;
 };
 
 #ifdef CONFIG_NETDCUA9_SPI_A

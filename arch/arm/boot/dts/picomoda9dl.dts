@@ -119,6 +119,16 @@ wvga {					\
 #endif
 
 /*
+ * Depending on the needed pixel clock speed, the LVDS clock source must be
+ * selected accordingly. If pixelclock is between 38.7 MHz and 113 MHz,
+ * PLL2_PFD0 is sufficient. Otherwise PLL5 has to be used. If you have
+ * activated the display in U-Boot already and want to keep these settings in
+ * Linux, de-activate both lines.
+ */
+//#define CONFIG_PICOMODA9_LVDS0_CLK  IMX6QDL_CLK_PLL2_PFD0_352M
+#define CONFIG_PICOMODA9_LVDS0_CLK  IMX6QDL_CLK_PLL5_VIDEO_DIV
+
+/*
  * Configure touch screen:
  *
  * - 4-wire/5-wire analog resistive touch, touch controller on-board
