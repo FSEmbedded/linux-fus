@@ -165,6 +165,19 @@ wvga {					\
 #endif
 
 /*
+ * Depending on the needed pixel clock speed, the LVDS clock source must be
+ * selected accordingly. If pixelclock is between 38.7 MHz and 113 MHz,
+ * PLL2_PFD0 is sufficient. Otherwise PLL5 has to be used. If you have two
+ * LVDS displays with different clock requirements, set one to PLL2_PFD0 and the
+ * other to PLL5. If you have activated the displays in U-Boot already and want
+ * to keep these settings in Linux, de-activate all four lines.
+ */
+//#define CONFIG_NETDCUA9_LVDS0_CLK  IMX6QDL_CLK_PLL2_PFD0_352M
+#define CONFIG_NETDCUA9_LVDS0_CLK  IMX6QDL_CLK_PLL5_VIDEO_DIV
+//#define CONFIG_NETDCUA9_LVDS1_CLK  IMX6QDL_CLK_PLL2_PFD0_352M
+#define CONFIG_NETDCUA9_LVDS1_CLK  IMX6QDL_CLK_PLL5_VIDEO_DIV
+
+/*
  * Define this for a two-channel display, i.e. one display, one framebuffer,
  * but two LVDS channels, even pixels from one channel, odd pixels from the
  * other channel. Only define either DISPLAY_LVDS0 or DISPLAY_LVDS1 in this

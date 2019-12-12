@@ -462,13 +462,27 @@
 
 /* CKO (via CKO1): 24.576 MHz for Audio Codec, CKO2: 24 MHz for Camera. */
 &clks {
-	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
+	assigned-clocks =
+#ifdef CONFIG_ARMSTONEA9R2_LVDS0_CLK
+			  <&clks IMX6QDL_CLK_LDB_DI0_SEL>,
+#endif
+#ifdef CONFIG_ARMSTONEA9R2_LVDS1_CLK
+			  <&clks IMX6QDL_CLK_LDB_DI1_SEL>,
+#endif
+			  <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 			  <&clks IMX6QDL_CLK_CKO1_SEL>,
 			  <&clks IMX6QDL_CLK_CKO1_PODF>,
 			  <&clks IMX6QDL_CLK_CKO>,
 			  <&clks IMX6QDL_CLK_CKO2_SEL>;
 
-	assigned-clock-parents = <0>,
+	assigned-clock-parents =
+#ifdef CONFIG_ARMSTONEA9R2_LVDS0_CLK
+				 <&clks CONFIG_ARMSTONEA9R2_LVDS0_CLK>,
+#endif
+#ifdef CONFIG_ARMSTONEA9R2_LVDS1_CLK
+				 <&clks CONFIG_ARMSTONEA9R2_LVDS1_CLK>,
+#endif
+				 <0>,
 				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 				 <0>,
 				 <&clks IMX6QDL_CLK_CKO1>,
@@ -482,11 +496,25 @@
 	 * commonly used bit rates.
 	 *
 	 * Remark: Solo and DualLite have an additional divider that also can
-	 * divide by 1, 2 and 4. So here we could go down to 12.288 MHz, but
-	 * better keep the code common for all boards.
+	 * divide by 1, 2 and 4. So here we can go down to 12.288 MHz.
 	 */
-	//assigned-clock-rates = <98304000>, <98304000>, <12288000>, <24000000>;
-	assigned-clock-rates = <196608000>, <196608000>, <24576000>, <24000000>;
+	assigned-clock-rates =
+#ifdef CONFIG_ARMSTONEA9R2_LVDS0_CLK
+			      <0>,
+#endif
+#ifdef CONFIG_ARMSTONEA9R2_LVDS1_CLK
+			      <0>,
+#endif
+#ifdef CONFIG_ARMSTONEA9R2_AUDIO_12M288
+			      <98304000>,	/* Audio with 12.288 MHz */
+			      <98304000>,
+			      <12288000>,
+#else
+			      <196608000>,	/* Audio with 24.576 MHz */
+			      <196608000>,
+			      <24576000>,
+#endif
+			      <24000000>;
 };
 
 #ifdef CONFIG_ARMSTONEA9R2_SPI_FLASH

@@ -447,11 +447,25 @@
 #endif
 
 &clks {
-	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
+	assigned-clocks =
+#ifdef CONFIG_QBLISSA9_LVDS0_CLK
+			  <&clks IMX6QDL_CLK_LDB_DI0_SEL>,
+#endif
+#ifdef CONFIG_QBLISSA9_LVDS1_CLK
+			  <&clks IMX6QDL_CLK_LDB_DI1_SEL>,
+#endif
+			  <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 			  <&clks IMX6QDL_CLK_SSI1_SEL>,
 			  <&clks IMX6QDL_CLK_SSI1>;
 
-	assigned-clock-parents = <0>,
+	assigned-clock-parents =
+#ifdef CONFIG_QBLISSA9_LVDS0_CLK
+				 <&clks CONFIG_QBLISSA9_LVDS0_CLK>,
+#endif
+#ifdef CONFIG_QBLISSA9_LVDS1_CLK
+				 <&clks CONFIG_QBLISSA9_LVDS1_CLK>,
+#endif
+			         <0>,
 				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>;
 
 	/*
@@ -460,7 +474,16 @@
 	 * is 162.5 MHz. Use 196.608 MHz, which is a multiple of 24.576 MHz.
 	 * This is in turn a multiple of the commonly used audio bit rates.
 	 */
-	assigned-clock-rates = <196608000>, <196608000>, <24576000>;
+	assigned-clock-rates =
+#ifdef CONFIG_QBLISSA9_LVDS0_CLK
+				<0>,
+#endif
+#ifdef CONFIG_QBLISSA9_LVDS1_CLK
+				<0>,
+#endif
+				<196608000>,
+				<196608000>,
+				<24576000>;
 };
 
 #ifdef CONFIG_QBLISSA9_SPI_FLASH
