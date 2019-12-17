@@ -22,17 +22,15 @@
  */
 
 #define DISPLAY_NONE		0	/* No display on this port */
-#define DISPLAY_LCD		1	/* Via MIPI_DSI 2 RGB converter */
-#define DISPLAY_MIPI_DSI	2	/* MIPI_DSI display */
+#define DISPLAY_MIPI_DSI	1	/* MIPI_DSI display */
 
 /*
  * Set the display configuration:
  *
  * - If you have no display, set LCDIF to DISPLAY_NONE.
- * - If you have a RGB display, set LCDIF to DISPLAY_LCD.
  * - If you have a MIPI DSI display, set LCDIF to DISPLAY_MIPI_DSI.
  */
-#define CONFIG_PICOCOREMX7ULP_LCDIF	DISPLAY_NONE
+#define CONFIG_PICOCOREMX7ULP_LCDIF	DISPLAY_MIPI_DSI
 
 /*
  * Configure touch screen:
@@ -116,7 +114,8 @@
 		compatible = "gpio-reset";
 		/* ### TODO: no reset pin defined */
 		reset-gpios = <&gpio_ptc 19 GPIO_ACTIVE_LOW>;
-		reset-delay-us = <1000>;
+		reset-delay-us = <20>;
+		reset-post-delay-ms =<1>;
 		#reset-cells = <0>;
 	};
 #endif
@@ -248,40 +247,17 @@
 	status = "okay";
 };
 
-#if (CONFIG_PICOCOREMX7ULP_LCDIF != DISPLAY_NONE)
+#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
 &lcdif {
 	disp-dev = "mipi_dsi_northwest";
 	display = <&display0>;
-	lcd-supply = <&reg_vsd_3v3>;
 	status = "okay";
-
+	/* This is a dummy definition for a display, needed by the mxsfb driver.
+	   These values will get overwritten by the panel-specific values, defined in the
+	   respective mipi driver file */
 	display0: display@0 {
-#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_LCD)
-		bits-per-pixel = <32>;
-#else
 		bits-per-pixel = <16>;
-#endif
 		bus-width = <24>;
-#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_LCD)
-		display-timings {
-			native-mode = <&timing0>;
-			timing0: timing0 {
-			clock-frequency = <29400000>;
-			hactive = <800>;
-			vactive = <480>;
-			hfront-porch = <210>;
-			hback-porch = <26>;
-			hsync-len = <20>;
-			vback-porch = <21>;
-			vfront-porch = <22>;
-			vsync-len = <2>;
-			hsync-active = <0>;
-			vsync-active = <0>;
-			de-active = <1>;
-			pixelclk-active = <0>;
-			};
-		};
-#elif(CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
 		display-timings {
 			native-mode = <&timing0>;
 			timing0: timing0 {
@@ -300,7 +276,6 @@
 			pixelclk-active = <0>;
 			};
 		};
-#endif
 	};
 };
 #endif
@@ -421,21 +396,6 @@
 	pinctrl-0 = <&pinctrl_lpi2c5>;
 	pinctrl-1 = <&pinctrl_lpi2c5>;
 	status = "okay";
-
-#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_LCD)
-	/* TC358752 DSI --> RGB de-serializer on i2c5 */
-	tc358762: tc358762@0b {
-		compatible = "toshiba,tc358762";
-		reg = <0x0b>;
-		ref-clk = <24000>;
-		dsi-traffic-mode = <0>;
-		bpp = <24>;
-		tlpx = <50>;
-		ths-prepare = <75>;
-		ths-zero = <124>;
-		reset-gpio = <&gpio_ptc 19 GPIO_ACTIVE_LOW>;
-	};
-#endif
 };
 #endif
 
@@ -523,35 +483,14 @@
 };
 #endif
 
-#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_LCD)
-&tc358762 {
-	display = <&display0>;
-	status = "okay";
-
-	port {
-		dsi_to_rgb: endpoint {
-			remote-endpoint = <&mipi_dsi_ep>;
-		};
-	};
-};
-#endif
-
-#if (CONFIG_PICOCOREMX7ULP_LCDIF != DISPLAY_NONE)
+#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
 &mipi_dsi {
 	status = "okay";
-#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_LCD)
-	port {
-		mipi_dsi_ep: endpoint {
-			remote-endpoint = <&dsi_to_rgb>;
-		};
-	};
-#elif(CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_mipi_dsi_reset>;
 	pinctrl-1 = <&pinctrl_mipi_dsi_reset>;
-	lcd_panel = "YES-OPTOELECTRONICS-YTC310KLAA";
+	lcd_panel = "TIANMA_PANEL_TM050JDHG33";
 	resets = <&mipi_dsi_reset>;
-#endif
 };
 #endif
 
@@ -609,7 +548,7 @@
 				/* I2C7n RST */
 				IMX7ULP_PAD_PTF1__PTF1		0x20003
 
-#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_LCD)
+#if (CONFIG_PICOCOREMX7ULP_LCDIF == MIPI_DSI)
 				/* TC358762 RST */
 				IMX7ULP_PAD_PTC19__PTC19	0x20002
 #endif
