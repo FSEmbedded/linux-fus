@@ -48,6 +48,26 @@ Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
 
 
 
+linux-4.9.88-fsimx7ulp-B2019.12 (18.12.2019)
+--------------------------------------------
+Supported boards: PicoCoreMX7ULP
+Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6SX,
+                  CONT1, efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2,
+                  CubeA7UL, Cube2.0CUBEA5, armStoneA5, NetDCUA5, PicoCOMA5,
+                  AGATEWAY, HGATEWAY
+
+- Fix Ubis crashes after resume from suspend
+- Fix ov564x_mipi devicetree entry
+- Improve mxs-dma driver by adding runtime_suspend support
+- Improve USB settings of picocoremx7ulp.dts
+- Improve picocoremx7ulp device-tree
+- Add support for mipi display TM050JDHG33
+- Improve picocoremx7ulp devicetree, set new default MIPI display
+- Improve picocormx7ulp lpi2c5 node
+
+
+
 linux-4.9.88-fsimx6sx-B2019.11 (29.11.2019)
 -------------------------------------------
 Supported boards: efusA9X, PicoCOMA9X, PicoCoreMX6SX, CONT1, efusA7UL,
