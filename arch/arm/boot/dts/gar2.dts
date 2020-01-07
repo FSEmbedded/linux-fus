@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 F&S Elektronik Systeme GmbH
+ * Copyright (C) 2020 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -9,7 +9,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 100 for board rev. 1.00 */
-#define CONFIG_GAR2_BOARD_REVISION	100
+#define CONFIG_GAR2_BOARD_REVISION	110
 
 /* CMA: Set 64 MB for Continuous Memory Allocator */
 #define CONFIG_GAR2_CMA_SIZE 0x4000000
@@ -85,6 +85,23 @@
 			gpios = <&gpio3 1 GPIO_ACTIVE_LOW>;
 			linux,default-trigger = "20b4000.ethernet:11:100Mbps";
 		};
+
+#if (CONFIG_GAR2_BOARD_REVISION > 100)
+		pwm5 {
+			label = "pwm5-led";
+			gpios = <&gpio3 19 GPIO_ACTIVE_HIGH>;
+		};
+
+		pwm6 {
+			label = "pwm6-led";
+			gpios = <&gpio3 21 GPIO_ACTIVE_HIGH>;
+		};
+
+		pwm7 {
+			label = "pwm7-led";
+			gpios = <&gpio3 23 GPIO_ACTIVE_HIGH>;
+		};
+#endif
 	};
 
 	pxp_v4l2 {
@@ -397,6 +414,11 @@
 			fsl,pins = <
 				MX6UL_PAD_LCD_CLK__GPIO3_IO00		0x1b059
 				MX6UL_PAD_LCD_ENABLE__GPIO3_IO01 	0x1b059
+#if (CONFIG_GAR2_BOARD_REVISION > 100)
+				MX6UL_PAD_LCD_DATA14__GPIO3_IO19	0x130b0
+				MX6UL_PAD_LCD_DATA16__GPIO3_IO21	0x130b0
+				MX6UL_PAD_LCD_DATA18__GPIO3_IO23	0x130b0
+#endif
 			>;
 		};
 
