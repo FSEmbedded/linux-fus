@@ -8,6 +8,8 @@
 
 #include "picocoremx8mm-bbdsi.dts"
 
+#define CONFIG_PICOCOREMX8MM_INVERTED_XY
+
 &lcdif {
 	status = "okay";
 	/* important to overwrite max-res otherwise DRM lcdif will fail to find a suitable connector */
@@ -83,9 +85,19 @@
 	focaltech@38 {
 		compatible = "focaltech,fts";
 		reg = <0x38>;
+#if (CONFIG_PICOCOREMX8MM_BOARD_REVISION==100)
 		interrupt-parent = <&gpio1>;
 		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
 		focaltech,irq-gpio = <&gpio1 2 IRQ_TYPE_EDGE_FALLING>;
+#else
+		interrupt-parent = <&gpio4>;
+		interrupts = <31 IRQ_TYPE_EDGE_FALLING>;
+		focaltech,irq-gpio = <&gpio4 31 IRQ_TYPE_EDGE_FALLING>;
+#endif
+#ifdef CONFIG_PICOCOREMX8MM_INVERTED_XY
+		focaltech,touchscreen-inverted-x;
+		focaltech,touchscreen-inverted-y;
+#endif
 		focaltech,reset-gpio = <&gpio1 1 GPIO_ACTIVE_LOW>;
 		focaltech,num-max-touches = <10>;
 		focaltech,display-coords = <0 0 800 480>;
