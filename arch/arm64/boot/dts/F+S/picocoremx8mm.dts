@@ -23,7 +23,8 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_PICOCOREMX8MM_BOARD_REVISION	100
+//#define CONFIG_PICOCOREMX8MM_BOARD_REVISION	100
+#define CONFIG_PICOCOREMX8MM_BOARD_REVISION	110
 
 /* MIPI DSI */
 #define CONFIG_PICOCOREMX8MM_MIPI_DSI
@@ -81,11 +82,11 @@
 #define CONFIG_PICOCOREMX8MM_UART_D
 
 #define CONFIG_PICOCOREMX8MM_SPI_A
-//#define CONFIG_PICOCOREMX8MM_SPI_B
+#define CONFIG_PICOCOREMX8MM_SPI_B
 
 /* Audio */
 //### TODO not tested yet:
-//#define CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
+#define CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
 //#define CONFIG_PICOCOREMX8MM_AUDIO_2
 //#define CONFIG_PICOCOREMX8MM_AUDIO_3
 //#define CONFIG_PICOCOREMX8MM_AUDIO_4
@@ -297,12 +298,10 @@
 
 };
 
-#if 0
 &clk {
 	assigned-clocks = <&clk IMX8MM_AUDIO_PLL1>, <&clk IMX8MM_AUDIO_PLL2>;
 	assigned-clock-rates = <786432000>, <722534400>;
 };
-#endif
 
 #ifdef CONFIG_PICOCOREMX8MM_I2C_A
 &i2c1 {
@@ -345,9 +344,12 @@
 #ifdef CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
 	sgtl5000: sgtl5000@0a {
 		compatible = "fsl,sgtl5000";
+		/* MCLK is needed for i2c sgtl driver */
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_sgtl5000>;
 		reg = <0x0a>;
 		mono2both;
-		clocks = <&clk IMX8MM_CLK_CLKO1_DIV>;
+		clocks = <&clk IMX8MM_CLK_SAI1_DIV>;
 		VDDA-supply = <&reg_sgtl5000_vdda>;
 		VDDIO-supply = <&reg_sgtl5000_vddio>;
 		VDDD-supply = <&reg_sgtl5000_vddd>;
@@ -557,15 +559,17 @@
 
 #ifdef CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
 &sai1 {
+	#sound-dai-cells = <0>; 
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai1>;
 	assigned-clocks = <&clk IMX8MM_CLK_SAI1_SRC>,
-			<&clk IMX8MM_CLK_SAI1_DIV>;
+			<&clk IMX8MM_CLK_SAI1_ROOT>;
 	assigned-clock-parents = <&clk IMX8MM_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <0>, <24576000>;
 
 	status = "okay";
 };
+
 #endif
 
 #ifdef CONFIG_PICOCOREMX8MM_AUDIO_2
@@ -633,10 +637,12 @@
 
 #ifdef CONFIG_PICOCOREMX8MM_SPI_A
 &ecspi1 {
+	#address-cells = <1>;
+	#size-cells = <0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi1>;
 	fsl,spi-num-chipselects = <1>;
-	cs-gpios = <&gpio5 9 0>;
+	cs-gpios = <&gpio5 9 GPIO_ACTIVE_LOW>;
 	status = "okay";
 };
 #endif
@@ -902,8 +908,12 @@
 //				MX8MM_IOMUXC_GPIO1_IO08_GPIO1_IO8		0x00104
 				MX8MM_IOMUXC_GPIO1_IO09_GPIO1_IO9		0x00104
 				/* I2C_B_IRQ */
+#if (CONFIG_PICOCOREMX8MM_BOARD_REVISION==100)
 				MX8MM_IOMUXC_GPIO1_IO02_GPIO1_IO2		0x00144
-				/* I2C_B_RST */
+#else
+				MX8MM_IOMUXC_SAI3_TXFS_GPIO4_IO31		0x00144
+#endif
+				/* GPIO_J1_7, MIPI_RESET  */
 				MX8MM_IOMUXC_GPIO1_IO01_GPIO1_IO1		0x00144
 				/* VLCD_ON for reg_vlcd */
 				MX8MM_IOMUXC_SAI3_RXFS_GPIO4_IO28		0x00192
@@ -1081,11 +1091,16 @@
 #ifdef CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
 		pinctrl_sai1: sai1grp {
 			fsl,pins = <
-				MX8MM_IOMUXC_SAI1_MCLK_SAI1_MCLK		0x000d6
 				MX8MM_IOMUXC_SAI1_TXFS_SAI1_TX_SYNC		0x000d6
 				MX8MM_IOMUXC_SAI1_TXC_SAI1_TX_BCLK		0x000d6
 				MX8MM_IOMUXC_SAI1_TXD0_SAI1_TX_DATA0		0x000d6
 				MX8MM_IOMUXC_SAI1_RXD0_SAI1_RX_DATA0		0x000d6
+			>;
+		};
+
+		pinctrl_sgtl5000: sgtl5000grp {
+			fsl,pins = <
+				MX8MM_IOMUXC_SAI1_MCLK_SAI1_MCLK		0x000d6
 			>;
 		};
 #endif
@@ -1356,8 +1371,13 @@
 
 		pinctrl_wdog: wdoggrp {
 			fsl,pins = <
-				MX8MM_IOMUXC_SAI1_RXD7_GPIO4_IO9		0x000c6
+#if (CONFIG_PICOCOREMX8MM_BOARD_REVISION==100)
+				MX8MM_IOMUXC_SAI1_RXD7_GPIO4_IO9		    0x000c6
+#else
+				MX8MM_IOMUXC_GPIO1_IO02_WDOG1_WDOG_B		0x000c6
+#endif
 			>;
 		};
+
 	};
 };
