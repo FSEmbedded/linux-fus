@@ -258,7 +258,7 @@ lvds_wvga {				\
 	bdinfo: bdinfo {
 		compatible = "bdinfo";
 		board_name = "armstonea5";
-		ecc_strength = "8";
+		ecc_mode = "5";
 	};
 
 #ifdef CONFIG_ARMSTONEA5_SGTL5000_AUDIO
@@ -306,6 +306,11 @@ lvds_wvga {				\
 			<&clks VF610_CLK_SAI2>;
 #endif
 	assigned-clock-rates = <0>, <786432000>;//, <12288000>, <0>;
+
+&nfc {
+	compatible = "fus,vf610-nfc";
+	fus,ecc-mode = <5>;
+	status = "okay";
 };
 
 &can0 {

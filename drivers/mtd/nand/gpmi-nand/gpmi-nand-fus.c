@@ -3441,6 +3441,6 @@ static struct platform_driver gpmi_nand_fus_driver = {
 
 module_platform_driver(gpmi_nand_fus_driver);
 
-MODULE_AUTHOR("Freescale Semiconductor, Inc.");
-MODULE_DESCRIPTION("i.MX GPMI NAND Flash Controller Driver");
+MODULE_AUTHOR("F&S Elektronik Systeme GmbH");
+MODULE_DESCRIPTION("F&S i.MX GPMI NAND Flash Controller Driver");
 MODULE_LICENSE("GPL");

@@ -481,6 +481,17 @@ config MTD_NAND_VF610_NFC
 	  correction is supported. Hardware ECC is only enabled through
 	  device tree.
 
+config MTD_NAND_VF610_NFC_FUS
+	tristate "Support for Freescale NFC for VF610 (F&S version)"
+	depends on (SOC_VF610 || COMPILE_TEST)
+	depends on HAS_IOMEM
+	depends on !MTD_NAND_VF610_NFC
+	help
+	  Enables support for NAND Flash Controller on Vybrid processor.
+	  With 2k pages and 64 bytes or more of OOB, hardware ECC with
+	  up to 32-bit error correction is supported. On F&S boards, use
+	  this version, not the regular MTD_NAND_VF610_NFC.
+
 config MTD_NAND_MXC
 	tristate "MXC NAND support"
 	depends on ARCH_MXC
