@@ -506,12 +506,11 @@
 		mclk_source = <0>;
 		status = "okay";
 	};
-
+#endif
 	v4l2_out {
 		compatible = "fsl,mxc_v4l2_output";
 		status = "okay";
 	};
-#endif
 #endif
 	leds {
 		compatible = "gpio-leds";
