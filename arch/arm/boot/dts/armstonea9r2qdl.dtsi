@@ -385,12 +385,12 @@
 		status = "okay";
 	};
 #endif
+#endif
 
 	v4l2_out {
 		compatible = "fsl,mxc_v4l2_output";
 		status = "okay";
 	};
-#endif
 
 	leds {
 		compatible = "gpio-leds";
