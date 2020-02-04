@@ -268,6 +268,7 @@ struct pltfm_imx_data {
 	struct clk *clk_ipg;
 	struct clk *clk_ahb;
 	struct clk *clk_per;
+	struct clk *clk_extra;		/* Additional clock, e.g. for WLAN */
 	enum {
 		NO_CMD_PENDING,      /* no multiblock command pending*/
 		MULTIBLK_IN_PROCESS, /* exact multiblock cmd in process */
@@ -1457,6 +1458,10 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 		goto free_sdhci;
 	}
 
+	imx_data->clk_extra = devm_clk_get(&pdev->dev, "extra");
+	if (IS_ERR(imx_data->clk_extra))
+		imx_data->clk_extra = NULL;
+
 	pltfm_host->clk = imx_data->clk_per;
 	pltfm_host->clock = clk_get_rate(pltfm_host->clk);
 
@@ -1467,6 +1472,7 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 		pm_qos_add_request(&imx_data->pm_qos_req,
 			PM_QOS_CPU_DMA_LATENCY, 0);
 
+	clk_prepare_enable(imx_data->clk_extra);
 	clk_prepare_enable(imx_data->clk_per);
 	clk_prepare_enable(imx_data->clk_ipg);
 	clk_prepare_enable(imx_data->clk_ahb);
@@ -1588,6 +1594,7 @@ static int sdhci_esdhc_imx_remove(struct platform_device *pdev)
 	clk_disable_unprepare(imx_data->clk_per);
 	clk_disable_unprepare(imx_data->clk_ipg);
 	clk_disable_unprepare(imx_data->clk_ahb);
+	clk_disable_unprepare(imx_data->clk_extra);
 	if (imx_data->socdata->flags & ESDHC_FLAG_BUSFREQ)
 		release_bus_freq(BUS_FREQ_HIGH);
 
