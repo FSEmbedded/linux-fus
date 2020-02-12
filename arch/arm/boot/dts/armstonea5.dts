@@ -645,6 +645,14 @@ lvds_wvga {				\
 	status = "okay";
 };
 
+&usbmisc0 {
+	status = "okay";
+};
+
+&usbphy0 {
+	status = "okay";
+};
+
 &usbh1 {
 	status = "okay";
 };
