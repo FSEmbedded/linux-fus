@@ -13,6 +13,8 @@ Optional properties:
 - fsl,rx_fifo_trig : Level when the receice FIFO triggers the interrupt
                      or DMA request (default 16, or 1 on console). Maximum
                      value is 32.
+- no-dma: Disables dma for this uart. The uart is now interrupt-driven,
+          does not buffer the received data and supports parity check.
 
 Note: Each uart controller should have an alias correctly numbered
 in "aliases" node.
