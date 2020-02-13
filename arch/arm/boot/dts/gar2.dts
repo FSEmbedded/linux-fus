@@ -87,18 +87,18 @@
 		};
 
 #if (CONFIG_GAR2_BOARD_REVISION > 100)
-		pwm5 {
-			label = "pwm5-led";
+		c-red-led {
+			label = "c-red-led";
 			gpios = <&gpio3 19 GPIO_ACTIVE_HIGH>;
 		};
 
-		pwm6 {
-			label = "pwm6-led";
+		c-green-led {
+			label = "c-green-led";
 			gpios = <&gpio3 21 GPIO_ACTIVE_HIGH>;
 		};
 
-		pwm7 {
-			label = "pwm7-led";
+		c-blue-led {
+			label = "c-blue-led";
 			gpios = <&gpio3 23 GPIO_ACTIVE_HIGH>;
 		};
 #endif
@@ -345,17 +345,25 @@
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog_1>;
-	GAR1 {
+	GAR2 {
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
+				/* LED0_Test */
+				MX6UL_PAD_GPIO1_IO01__GPIO1_IO01	0x0f0b0
 				/* LED1_Test */
-				MX6UL_PAD_GPIO1_IO04__GPIO1_IO04	0x80000000
+				MX6UL_PAD_GPIO1_IO04__GPIO1_IO04	0x0f0b0
 				/* LED2_Test */
-				MX6UL_PAD_GPIO1_IO05__GPIO1_IO05	0x80000000
+				MX6UL_PAD_GPIO1_IO05__GPIO1_IO05	0x0f0b0
 				/* LED3_Test */
-				MX6UL_PAD_GPIO1_IO08__GPIO1_IO08	0x80000000
+				MX6UL_PAD_GPIO1_IO08__GPIO1_IO08	0x0f0b0
 				/* LED4_Test */
-				MX6UL_PAD_GPIO1_IO09__GPIO1_IO09	0x80000000
+				MX6UL_PAD_GPIO1_IO09__GPIO1_IO09	0x0f0b0
+				/* LED5_Test */
+				MX6UL_PAD_LCD_DATA15__GPIO3_IO20	0x0f0b0
+				/* LED6_Test */
+				MX6UL_PAD_LCD_DATA17__GPIO3_IO22	0x0f0b0
+				/* LED7_Test */
+				MX6UL_PAD_LCD_DATA19__GPIO3_IO24	0x0f0b0
 				/* GPIO0 - GPIO3 */
 				MX6UL_PAD_UART3_RTS_B__GPIO1_IO27	0x000b0
 				MX6UL_PAD_UART3_CTS_B__GPIO1_IO26	0x000b0
