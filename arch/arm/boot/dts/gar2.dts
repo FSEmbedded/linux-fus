@@ -75,15 +75,15 @@
 		pinctrl-0 = <&pinctrl_led>;
 
 		fec0-led {
-			label = "eth1-led";
+			label = "eth0-led";
 			gpios = <&gpio3 0 GPIO_ACTIVE_LOW>;
-			linux,default-trigger = "20b4000.ethernet:01:100Mbps";
+			linux,default-trigger = "2188000.ethernet-1:01";
 		};
 
 		fec1-led {
-			label = "eth0-led";
+			label = "eth1-led";
 			gpios = <&gpio3 1 GPIO_ACTIVE_LOW>;
-			linux,default-trigger = "20b4000.ethernet:11:100Mbps";
+			linux,default-trigger = "fixed-0:00";
 		};
 
 #if (CONFIG_GAR2_BOARD_REVISION > 100)
