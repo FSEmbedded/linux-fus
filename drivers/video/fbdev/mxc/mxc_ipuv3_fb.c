@@ -81,6 +81,7 @@ struct mxcfb_info {
 	bool resolve;
 	bool prefetch;
 	bool on_the_fly;
+	u32 unblank_delay;
 	uint32_t final_pfmt;
 	unsigned long gpu_sec_buf_off;
 	unsigned long base;
@@ -1410,6 +1411,9 @@ retry:
 					     fbi_to_pixfmt(fbi, false);
 	mxc_fbi->cur_fb_pfmt = fbi_to_pixfmt(fbi, true);
 	mxc_fbi->cur_prefetch = mxc_fbi->prefetch;
+
+	if (mxc_fbi->unblank_delay)
+		msleep(mxc_fbi->unblank_delay);
 
 	return retval;
 }
@@ -3467,6 +3471,7 @@ static int mxcfb_get_of_property(struct platform_device *pdev,
 	int len;
 	u32 bpp, int_clk;
 	u32 late_init;
+	u32 unblank_delay = 0;
 
 	err = of_property_read_string(np, "disp_dev", &disp_dev);
 	if (err < 0) {
@@ -3496,6 +3501,9 @@ static int mxcfb_get_of_property(struct platform_device *pdev,
 		dev_dbg(&pdev->dev, "get of property late_init fail\n");
 		return err;
 	}
+	err = of_property_read_u32(np, "unblank_delay", &unblank_delay);
+	if (err)
+		unblank_delay = 0;
 
 	plat_data->prefetch = of_property_read_bool(np, "prefetch");
 
@@ -3539,6 +3547,7 @@ static int mxcfb_get_of_property(struct platform_device *pdev,
 	plat_data->default_bpp = bpp;
 	plat_data->int_clk = (bool)int_clk;
 	plat_data->late_init = (bool)late_init;
+	plat_data->unblank_delay = unblank_delay;
 	return err;
 }
 
@@ -3591,6 +3600,7 @@ static int mxcfb_probe(struct platform_device *pdev)
 	mxcfbi = (struct mxcfb_info *)fbi->par;
 	mxcfbi->ipu_int_clk = plat_data->int_clk;
 	mxcfbi->late_init = plat_data->late_init;
+	mxcfbi->unblank_delay = plat_data->unblank_delay;
 	mxcfbi->first_set_par = true;
 	mxcfbi->prefetch = plat_data->prefetch;
 	mxcfbi->pre_num = -1;
