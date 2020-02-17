@@ -40,6 +40,13 @@ Required properties for fb:
 	YVYV		IPU_PIX_FMT_YVYU
 	VYUY		IPU_PIX_FMT_VYUY
 
+Optional properties for fb:
+- unblank_delay : delay (in ms) to wait after the framebuffer is
+  unblanked before the backlight is enabled; this can be used to
+  suppress undefined display content, e.g. a white flash, that may be
+  visible before the display actually has synchronized to the new
+  settings.
+
 Required properties for display:
 - compatible : should be "fsl,lcd" for lcd panel
 - reg : the register address range if necessary to have.
