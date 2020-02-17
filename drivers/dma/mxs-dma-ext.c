@@ -725,9 +725,9 @@ static int __init mxs_dma_ext_probe(struct platform_device *pdev)
 	mxs_dma->base = devm_ioremap_resource(&pdev->dev, iores);
 	if (IS_ERR(mxs_dma->base))
 		return PTR_ERR(mxs_dma->base);
-		mxs_dma->clk = devm_clk_get(&pdev->dev, NULL);
-		if (IS_ERR(mxs_dma->clk))
-			return PTR_ERR(mxs_dma->clk);
+	mxs_dma->clk = devm_clk_get(&pdev->dev, NULL);
+	if (IS_ERR(mxs_dma->clk))
+		return PTR_ERR(mxs_dma->clk);
 	dma_cap_set(DMA_SLAVE, mxs_dma->dma_device.cap_mask);
 
 	INIT_LIST_HEAD(&mxs_dma->dma_device.channels);
