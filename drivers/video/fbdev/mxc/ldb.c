@@ -330,7 +330,30 @@ static int ldb_init(struct mxc_dispdrv_handle *mddh,
 
 	setting->crtc = chan->crtc;
 
+	if (ldb->reg_ldb) {
+		int ret = regulator_enable(ldb->reg_ldb);
+		if (ret)
+			dev_err(dev, "ldb regulator enable failed: %d\n", ret);
+	}
+	ldb->enabled = 1;
+
 	return 0;
+}
+
+void ldb_deinit(struct mxc_dispdrv_handle *disp)
+{
+	struct ldb_data *ldb = mxc_dispdrv_getdata(disp);
+	int ret;
+
+	if (ldb->enabled == 1) {
+		if (ldb->reg_ldb) {
+			ret = regulator_disable(ldb->reg_ldb);
+			if (ret)
+				dev_err(ldb->dev,
+					"ldb regulator disable failed: %d\n", ret);
+		}
+	}
+	ldb->enabled = 0;
 }
 
 static int get_di_clk_id(struct ldb_chan chan, int *id)
@@ -520,15 +543,6 @@ static int ldb_enable(struct mxc_dispdrv_handle *mddh,
 
 	bus_mux = ldb->buses[chno];
 
-	if (ldb->reg_ldb) {
-		ret = regulator_enable(ldb->reg_ldb);
-		if (ret) {
-			dev_err(dev,
-				"ldb regulator enable failed:	%d\n", ret);
-			return ret;
-		}
-	}
-
 	if (ldb->spl_mode || ldb->dual_mode) {
 		other_chno = chno ? 0 : 1;
 		clk_prepare_enable(ldb->ldb_di_clk[other_chno]);
@@ -542,13 +556,6 @@ static int ldb_enable(struct mxc_dispdrv_handle *mddh,
 			temp = ret;
 			dev_err(dev, "failed to get ch%d di clk id\n",
 				chan.chno);
-			if (ldb->reg_ldb) {
-				ret = regulator_disable(ldb->reg_ldb);
-				if (ret)
-					dev_err(dev,
-						"ldb regulator disable failed: %d\n",
-						ret);
-			}
 			return temp;
 		}
 
@@ -563,7 +570,6 @@ static int ldb_enable(struct mxc_dispdrv_handle *mddh,
 			ldb->ctrl |= chno ? LDB_CH1_MODE_EN_TO_DI1 :
 					    LDB_CH0_MODE_EN_TO_DI0;
 	}
-	ldb->enabled = 1;
 	regmap_write(ldb->regmap, ldb->ctrl_reg, ldb->ctrl);
 	return 0;
 }
@@ -587,17 +593,6 @@ static void ldb_disable(struct mxc_dispdrv_handle *mddh,
 				      LDB_CH0_MODE_MASK);
 	}
 
-	if (ldb->reg_ldb) {
-		if (ldb->enabled == 1) {
-			ret = regulator_disable(ldb->reg_ldb);
-			if (ret)
-				dev_err(ldb->dev,
-					"ldb regulator disable failed: %d\n",
-					ret);
-		}
-	}
-
-	ldb->enabled = 0;
 	regmap_write(ldb->regmap, ldb->ctrl_reg, ldb->ctrl);
 	return;
 }
@@ -605,6 +600,7 @@ static void ldb_disable(struct mxc_dispdrv_handle *mddh,
 static struct mxc_dispdrv_driver ldb_drv = {
 	.name		= DRIVER_NAME,
 	.init		= ldb_init,
+	.deinit		= ldb_deinit,
 	.setup		= ldb_setup,
 	.enable		= ldb_enable,
 	.disable	= ldb_disable
