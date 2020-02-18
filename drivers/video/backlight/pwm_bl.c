@@ -298,8 +298,17 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 		 * phandle link pointing to the backlight node, it is safe to
 		 * assume that another driver will enable the backlight at the
 		 * appropriate time. Therefore, if it is disabled, keep it so.
+		 *
+		 * 18.02.2020 F&S: The backlight should always be switched by
+		 * FB_BLANK notifications. By default, the backlight should be
+		 * off until the display is enabled, too. Only in the special
+		 * case when the display was enabled by the bootloader
+		 * already, then it should start in enabled state. So the
+		 * check for an active GPIO (or an active regulator some lines
+		 * below) should be done in any case, not only when the
+		 * backlight is referenced by a phandle.
 		 */
-		if (node && node->phandle &&
+		if (/*node && node->phandle &&*/
 		    gpiod_get_direction(pb->enable_gpio) == GPIOF_DIR_OUT &&
 		    gpiod_get_value(pb->enable_gpio) == 0)
 			initial_blank = FB_BLANK_POWERDOWN;
@@ -313,7 +322,7 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 		goto err_alloc;
 	}
 
-	if (node && node->phandle && !regulator_is_enabled(pb->power_supply))
+	if (/*node && node->phandle &&*/ !regulator_is_enabled(pb->power_supply))
 		initial_blank = FB_BLANK_POWERDOWN;
 
 	pb->pwm = devm_pwm_get(&pdev->dev, NULL);
@@ -372,7 +381,13 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 	}
 
 	bl->props.brightness = data->dft_brightness;
-	bl->props.power = initial_blank;
+	/*
+	 * 18.02.2020 F&S: If the power disabled here, then the backlight will
+	 * not come to life by an FB_BLANK_UNBLANK notification. So use the
+	 * fb_blank entry as this is doing what is intended here.
+	 */
+//	bl->props.power = initial_blank;
+	bl->props.fb_blank = initial_blank;
 	backlight_update_status(bl);
 
 	platform_set_drvdata(pdev, bl);
