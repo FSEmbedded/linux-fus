@@ -1,0 +1,614 @@
+/*
+ * Copyright (C) 2020 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_AGATEWAY_BOARD_REVISION	110
+
+/* AUDIO */
+#define CONFIG_AGATEWAY_SGTL5000_AUDIO
+
+/* Use UART3 for console (define) or ZWave (undef) */
+//#define CONFIG_AGATEWAY_USE_CONSOLE
+
+
+#include "vf610.dtsi"
+#include <dt-bindings/pwm/pwm.h>
+#include <dt-bindings/input/input.h>
+
+/ {
+	model = "F&S AGATEWAY";
+	compatible = "fus,agateway", "fsl,vf610";
+
+	aliases {
+#ifdef CONFIG_AGATEWAY_SGTL5000_AUDIO
+		i2c4 = &i2c_gpio;
+#endif
+	};
+
+	memory {
+		reg = <0x80000000 0x80000000>;
+	};
+
+	regulators {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		reg_3p3v: regulator@0 {
+			compatible = "regulator-fixed";
+			reg = <0>;
+			regulator-name = "3P3V";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		wlan_en_reg: regulator_wl_en {
+			compatible = "regulator-fixed";
+			regulator-name = "WLAN";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			gpio = <&gpio3 2 0>;
+			enable-active-high;
+			startup-delay-us = <70000>;
+		};
+
+		reg_wlan_1v8: reg_wlan_1v8 {
+			compatible = "regulator-fixed";
+			regulator-name = "VQMMC WLAN_1V8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-always-on;
+		};
+
+#ifdef CONFIG_AGATEWAY_SGTL5000_AUDIO
+		/* SGTL5000 analog voltage */
+		reg_sgtl5000_vdda: sgtl5000_vdda {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDA-supply";
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 I/O voltage */
+		reg_sgtl5000_vddio: sgtl5000_vddio {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 internal digital voltage */
+		reg_sgtl5000_vddd: sgtl5000_vddd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDD-supply";
+			regulator-min-microvolt = <1500000>;
+			regulator-max-microvolt = <1500000>;
+			regulator-always-on;
+		};
+#endif /* CONFIG_AGATEWAY_SGTL5000_AUDIO */
+
+		reg_usb_h1_vbus: usb_h1_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_h1_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio3 15 0>;
+			enable-active-high;
+		};
+
+		reg_vcc_3v3_mcu: regulator@1 {
+			compatible = "regulator-fixed";
+			reg = <1>;
+			regulator-name = "vcc_3v3_mcu";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+		};
+
+		reg_vref_3v3: regulator_3v3 {
+			compatible = "regulator-fixed";
+			regulator-name = "vref-3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+	};
+
+        ethclock: ethclock {
+                compatible = "fixed-clock";
+                #clock-cells = <0>;
+                clock-frequency = <50000000>;
+        };
+
+	/* DEFAULT key */
+	gpio_keys {
+		compatible = "gpio-keys";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		defaultkey {
+			label = "DEFAULT key";
+			linux,code = <KEY_SETUP>;
+			gpios = <&gpio3 31 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	/* F&S board information */
+	bdinfo: bdinfo {
+		compatible = "bdinfo";
+	};
+
+#ifdef CONFIG_AGATEWAY_SGTL5000_AUDIO
+	i2c_gpio: i2c-gpio {
+		compatible = "i2c-gpio";
+		gpios = <&gpio3 23 GPIO_ACTIVE_HIGH /* sda */
+			 &gpio3 22 GPIO_ACTIVE_HIGH /* scl */
+			>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_i2c4_gpio>;
+//		i2c-gpio,sda-open-drain;
+//		i2c-gpio,scl-open-drain;
+		i2c-gpio,delay-us = <2>;        /* ~100 kHz */
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+
+	sound-sgtl5000 {
+		compatible = "fsl,imx-audio-sgtl5000";
+		cpu-dai = <&sai2>;
+		audio-codec = <&sgtl5000>;
+		model = "imx-sgtl5000";
+
+		audio-routing =
+//			"MIC_IN", "Mic Jack",
+			"Mic Jack", "Mic Bias",
+			"LINE_IN", "Line In Jack";
+//			"Line Out Jack", "LINE_OUT";
+	};
+#endif
+
+	pwmleds {
+		compatible = "pwm-leds";
+		leds_pwm {
+			label = "led_dim";
+			pwms = <&pwm1 0 1000000 PWM_POLARITY_INVERTED>;
+			max-brightness = <255>;
+			gamma2;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_status_leds>;
+
+		status_1 {
+			label = "green";
+			gpios = <&gpio3 7 GPIO_ACTIVE_LOW>;
+			default-state = "keep";
+		};
+
+		status_2 {
+			label = "yellow";
+			gpios = <&gpio3 8 GPIO_ACTIVE_LOW>;
+			default-state = "keep";
+		};
+
+		power {
+			label = "power";
+			gpios = <&gpio3 16 GPIO_ACTIVE_LOW>;
+		};
+
+		lan {
+			label = "lan";
+			gpios = <&gpio3 17 GPIO_ACTIVE_LOW>;
+		};
+
+		wlan0 {
+			label = "wlan0";
+			gpios = <&gpio3 18 GPIO_ACTIVE_LOW>;
+		};
+
+		wlan1 {
+			label = "wlan1";
+			gpios = <&gpio3 19 GPIO_ACTIVE_LOW>;
+		};
+
+		wlan2 {
+			label = "wlan2";
+			gpios = <&gpio3 20 GPIO_ACTIVE_LOW>;
+		};
+
+		wlan3 {
+			label = "wlan3";
+			gpios = <&gpio3 21 GPIO_ACTIVE_LOW>;
+		};
+
+		gsm0 {
+			label = "gsm0";
+			gpios = <&gpio3 24 GPIO_ACTIVE_LOW>;
+		};
+
+		gsm1 {
+			label = "gsm1";
+			gpios = <&gpio3 25 GPIO_ACTIVE_LOW>;
+		};
+
+		gsm2 {
+			label = "gsm2";
+			gpios = <&gpio3 26 GPIO_ACTIVE_LOW>;
+		};
+
+		gsm3 {
+			label = "gsm3";
+			gpios = <&gpio3 27 GPIO_ACTIVE_LOW>;
+		};
+
+		enocean {
+			label = "enocean";
+			gpios = <&gpio3 28 GPIO_ACTIVE_LOW>;
+		};
+
+		zwave {
+			label = "zwave";
+			gpios = <&gpio3 29 GPIO_ACTIVE_LOW>;
+		};
+
+		zigbee {
+			label = "zigbee";
+			gpios = <&gpio4 0 GPIO_ACTIVE_LOW>;
+		};
+
+		mbus {
+			label = "mbus";
+			gpios = <&gpio4 1 GPIO_ACTIVE_LOW>;
+		};
+	};
+};
+
+/*
+ * The Audio-PLL (PLL4) is set to 1179.648 MHz by default. This can be divided
+ * by 16 with the PLL4_CLK_DIV to get 73.728 MHz and further by 3 or 6 with
+ * SAI2_DIV or CKO2_DIV to get 24.576 MHz or 12.288 Mhz, which are multiples of
+ * the most commonly used bit rates. Use CKO2 by default.
+ */
+&clks {
+	assigned-clocks =
+			<&clks VF610_CLK_PLL4_MAIN_DIV>,
+			<&clks VF610_CLK_CKO2_SEL>,
+			<&clks VF610_CLK_CKO2_PODF>;
+
+	assigned-clock-parents =
+			<0>,
+			<&clks VF610_CLK_PLL4_MAIN_DIV>;
+
+	assigned-clock-rates =
+			<73728000>,
+			<0>,
+			<12288000>;			/* or <24576000> */
+};
+
+&nfc {
+	compatible = "fus,vf610-nfc";
+	fus,ecc-mode = <5>;
+	status = "okay";
+};
+
+&edma0 {
+	status = "okay";
+};
+
+/* SD card slot with Card Detect */
+&esdhc0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_esdhc0>;
+	bus-width = <4>;
+	cd-gpios = <&gpio1 19 GPIO_ACTIVE_LOW>;
+	cap-power-off-card;
+	vmmc-supply = <&reg_3p3v>;
+	vqmmc-supply = <&reg_3p3v>;
+	voltage-ranges = <3300 3300>;
+	keep-power-in-suspend;
+	enable-sdio-wakeup;
+	status = "okay";
+};
+
+
+/* The WLAN chip needs a 32768 Hz clock on CKO1. */
+&esdhc1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_esdhc1>;
+	bus-width = <4>;
+	non-removable;
+	cap-power-off-card;
+	vmmc-supply = <&wlan_en_reg>;	/* VDD, misused for WLAN_EN */
+	vqmmc-supply = <&reg_wlan_1v8>;	/* VDD_IO */
+	voltage-ranges = <1800 1800>;
+	keep-power-in-suspend;
+	enable-sdio-wakeup;
+#if 1
+	clocks = <&clks VF610_CLK_IPG_BUS>,
+		<&clks VF610_CLK_PLATFORM_BUS>,
+		<&clks VF610_CLK_ESDHC1>,
+		<&clks VF610_CLK_CKO1>;
+	clock-names = "ipg", "ahb", "per", "extra";
+#endif
+	assigned-clocks =
+			<&clks VF610_CLK_CKO1_SEL>,
+			<&clks VF610_CLK_CKO1_PODF>,
+			<&clks VF610_CLK_CKO1>;
+	assigned-clock-parents =
+			<&clks VF610_CLK_SXOSC>,
+			<0>,
+			<0>;
+	assigned-clock-rates =
+			<0>,
+			<0>,
+			<32768>;
+	status = "okay";
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	wlcore: wlcore@2 {
+		compatible = "ti,wl1271";
+		reg = <2>;
+		interrupt-parent = <&gpio3>;
+		interrupts = <0 IRQ_TYPE_LEVEL_HIGH>;
+		ref-clock-frequency = <38400000>;
+		clocks = <&clks VF610_CLK_CKO1>;
+		clock-names = "slowclk";
+	};
+};
+
+&fec1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_fec1>;
+	phy-mode = "rmii";
+	phy-handle = <&ethphy1>;
+	phy-supply = <&reg_3p3v>;
+	status = "okay";
+
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy1: ethernet-phy@0 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <0>;
+			clocks = <&ethclock>;
+			clock-names = "rmii-ref";
+			micrel,led-mode = <0>;
+		};
+	};
+};
+
+#ifdef CONFIG_AGATEWAY_SGTL5000_AUDIO
+/* I2C_C (Bitbanging): RTC (PCA8565), SGTL5000 (SKIT) */
+&i2c_gpio {
+	sgtl5000: sgtl5000@0a {
+		compatible = "fsl,sgtl5000";
+		reg = <0x0a>;
+		mono2both;
+		clocks = <&clks VF610_CLK_CKO2>;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+	};
+};
+#endif /* CONFIG_AGATEWAY_SGTL5000_AUDIO */
+
+&L2 {
+	arm,data-latency = <2 1 2>;
+	arm,tag-latency = <3 2 3>;
+};
+
+&pwm1 {
+	status = "okay";
+};
+
+#ifdef CONFIG_AGATEWAY_SGTL5000_AUDIO
+&sai2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sai2>;
+	fsl,mclk-out;
+	status = "okay";
+};
+#endif
+
+&tcon0 {
+	status = "okay";
+};
+
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1>;
+	uart-has-rtscts;
+	status = "okay";
+};
+
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart2>;
+	status = "okay";
+};
+
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3>;
+	status = "okay";
+};
+
+&usbdev0 {
+	disable-over-current;
+	status = "okay";
+};
+
+&usbmisc0 {
+	status = "okay";
+};
+
+&usbphy0 {
+	status = "okay";
+};
+
+&usbh1 {
+	vbus-supply = <&reg_usb_h1_vbus>;
+	status = "okay";
+};
+
+&usbmisc1 {
+	status = "okay";
+};
+
+&usbphy1 {
+	status = "okay";
+};
+
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog>;
+
+	agateway {
+		/* Pin configs that don't belong anywhere else */
+		pinctrl_hog: hoggrp {
+			fsl,pins = <
+				/* USB1_VBUS */
+				VF610_PAD_PTE6__GPIO_111		0x214c
+				/* USB1_OC */
+				//VF610_PAD_PTC29_USB1_OCn		0x214c
+				/* DEFAULT button */
+				VF610_PAD_PTE22__GPIO_127		0x219d
+			>;
+		};
+
+		pinctrl_status_leds: ledgrp {
+			fsl,pins = <
+				/* Status LEDs */
+				VF610_PAD_PTC30__GPIO_103		0x01cf
+				VF610_PAD_PTC31__GPIO_104		0x01cf
+				/* Globally dimmable-LEDs */
+				VF610_PAD_PTE7__GPIO_112		0x058d
+				VF610_PAD_PTE8__GPIO_113		0x058d
+				VF610_PAD_PTE9__GPIO_114		0x058d
+				VF610_PAD_PTE10__GPIO_115		0x058d
+				VF610_PAD_PTE11__GPIO_116		0x058d
+				VF610_PAD_PTE12__GPIO_117		0x058d
+				VF610_PAD_PTE15__GPIO_120		0x058d
+				VF610_PAD_PTE16__GPIO_121		0x058d
+				VF610_PAD_PTE17__GPIO_122		0x058d
+				VF610_PAD_PTE18__GPIO_123		0x058d
+				VF610_PAD_PTE19__GPIO_124		0x058d
+				VF610_PAD_PTE20__GPIO_125		0x058d
+				VF610_PAD_PTE23__GPIO_128		0x058d
+				VF610_PAD_PTE24__GPIO_129		0x058d
+				/* PWM port to dim LEDs */
+				VF610_PAD_PTB8__FTM1_CH0		0x0182
+			>;
+		};
+
+		pinctrl_esdhc0: esdhc0grp {
+			fsl,pins = <
+				VF610_PAD_PTC0__ESDHC0_CLK		0x31ef
+				VF610_PAD_PTC1__ESDHC0_CMD		0x31ef
+				VF610_PAD_PTC2__ESDHC0_DAT0		0x31ef
+				VF610_PAD_PTC3__ESDHC0_DAT1		0x31ef
+				VF610_PAD_PTC4__ESDHC0_DAT2		0x31ef
+				VF610_PAD_PTC5__ESDHC0_DAT3		0x31ef
+				/* CD */
+				VF610_PAD_PTC6__GPIO_51			0x01c1
+			>;
+		};
+
+		pinctrl_esdhc1: esdhc1grp {
+			fsl,pins = <
+				VF610_PAD_PTA24__ESDHC1_CLK		0x31ef
+				VF610_PAD_PTA25__ESDHC1_CMD		0x31ef
+				VF610_PAD_PTA26__ESDHC1_DAT0		0x31ef
+				VF610_PAD_PTA27__ESDHC1_DAT1		0x31ef
+				VF610_PAD_PTA28__ESDHC1_DAT2		0x31ef
+				VF610_PAD_PTA29__ESDHC1_DAT3		0x31ef
+				/* WLAN 32kHz clock */
+				VF610_PAD_PTB10__CKO1			0x01c2
+				/* WLAN_IRQ */
+				VF610_PAD_PTB26__GPIO_96		0x01dd
+				/* WLAN_EN */
+				VF610_PAD_PTB28__GPIO_98		0x01ce
+			>;
+		};
+
+		pinctrl_fec1: fec1grp {
+			fsl,pins = <
+				VF610_PAD_PTA6__RMII_CLKIN		0xc1
+				VF610_PAD_PTC9__ENET_RMII1_MDC		0xc2
+				VF610_PAD_PTC10__ENET_RMII1_MDIO	0xc3
+				VF610_PAD_PTC11__ENET_RMII1_CRS		0xc1
+				VF610_PAD_PTC12__ENET_RMII1_RXD1	0xc1
+				VF610_PAD_PTC13__ENET_RMII1_RXD0	0xc1
+				VF610_PAD_PTC14__ENET_RMII1_RXER	0xc1
+				VF610_PAD_PTC15__ENET_RMII1_TXD1	0xc2
+				VF610_PAD_PTC16__ENET_RMII1_TXD0	0xc2
+				VF610_PAD_PTC17__ENET_RMII1_TXEN	0xc2
+			>;
+		};
+
+
+#ifdef CONFIG_AGATEWAY_SGTL5000_AUDIO
+		pinctrl_i2c4_gpio: i2c4_gpio_grp {
+			fsl,pins = <
+				VF610_PAD_PTE13__GPIO_118		0x219c
+				VF610_PAD_PTE14__GPIO_119		0x219c
+			>;
+		};
+
+		pinctrl_sai2: sai2grp {
+			fsl,pins = <
+				VF610_PAD_PTA16__SAI2_TX_BCLK		0x02ed
+				VF610_PAD_PTA18__SAI2_TX_DATA		0x02ee
+				VF610_PAD_PTA19__SAI2_TX_SYNC		0x02ed
+				VF610_PAD_PTA22__SAI2_RX_DATA		0x02ed
+				VF610_PAD_PTB11__CKO2			0x01c1
+			>;
+		};
+#endif /* CONFIG_AGATEWAY_SGTL5000_AUDIO */
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <
+				VF610_PAD_PTB4__UART1_TX		0x11ae
+				VF610_PAD_PTB5__UART1_RX		0x11ad
+				VF610_PAD_PTB6__UART1_RTS		0x11ae
+				VF610_PAD_PTB7__UART1_CTS		0x11ad
+			>;
+		};
+
+		pinctrl_uart2: uart2grp {
+			fsl,pins = <
+				VF610_PAD_PTD0__UART2_TX		0x11ae
+				VF610_PAD_PTD1__UART2_RX		0x11ad
+			>;
+		};
+
+		pinctrl_uart3: uart3grp {
+			fsl,pins = <
+#ifdef CONFIG_AGATEWAY_USE_CONSOLE
+				/* UART3 as console on PTA30/31 */
+				VF610_PAD_PTA30__UART3_TX		0x11ae
+				VF610_PAD_PTA31__UART3_RX		0x11ad
+#else
+				/* UART3 for ZWave on PTA20/21 */
+				VF610_PAD_PTA20__UART3_TX		0x11ae
+				VF610_PAD_PTA21__UART3_RX		0x11ad
+#endif
+			>;
+		};
+	};
+};
