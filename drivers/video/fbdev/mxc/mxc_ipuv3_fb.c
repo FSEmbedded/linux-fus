@@ -3502,9 +3502,10 @@ static int mxcfb_get_of_property(struct platform_device *pdev,
 		return err;
 	}
 	err = of_property_read_u32(np, "unblank_delay", &unblank_delay);
-	if (err)
+	if (err) {
 		unblank_delay = 0;
-
+		err = 0;
+	}
 	plat_data->prefetch = of_property_read_bool(np, "prefetch");
 
 	if (!strncmp(pixfmt, "RGB24", 5))
