@@ -27,6 +27,8 @@
 	compatible = "fus,agateway", "fsl,vf610";
 
 	aliases {
+		ethernet0 = &fec1;
+		ethernet1 = &fec0;
 #ifdef CONFIG_AGATEWAY_SGTL5000_AUDIO
 		i2c4 = &i2c_gpio;
 #endif
