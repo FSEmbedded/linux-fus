@@ -1492,6 +1492,17 @@ config SENSORS_ADS1015
 	  This driver can also be built as a module.  If so, the module
 	  will be called ads1015.
 
+config SENSORS_ADS1118
+	tristate "Texas Instruments ADS1018/ADS1118"
+	depends on SPI
+	help
+	  If you say yes here you get support for Texas Instruments
+	  ADS1118 16-bit 4-input ADC device and temperature sensor,
+	  and the 12-bit ADS1018.
+
+	  This driver can also be built as a module.  If so, the module
+	  will be called ads1118.
+
 config SENSORS_ADS7828
 	tristate "Texas Instruments ADS7828 and compatibles"
 	depends on I2C

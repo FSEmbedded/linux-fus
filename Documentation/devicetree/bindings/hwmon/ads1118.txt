@@ -1,0 +1,81 @@
+ADS1118 (SPI)
+
+The ADS1118 is 16-bit analog to digital converter with 4 inputs and a
+temperature sensor.
+The ADS1018 is a 12-bit version of the chip.
+
+The inputs can be single ended or differential pair combinations.
+
+Each channel, 0 - 4 may be configured as a single ended adc input.
+Channel 0 may be configured differentially with channel 1.
+Channels 0, 1, or 2 may be configured differentially with channel 3.
+
+To set up a differential pair, the lower channel should be have
+the ti,differential-endpoint property set to the higher channel in the pair.
+
+Each channel can be configured individually:
+ - fullscale voltage range values are +/- microvolts
+    6144000, 4096000, 2048000, 1024000, 512000, or 256000
+
+ - data_rate in samples per second
+    - for the ads1018:
+      128, 250, 490, 920, 1600, 2400, or 3300
+    - for the ads1118:
+      8, 16, 32, 64, 128, 250, or 860
+
+The sensor contains an internal pullup register to keep the data output
+high when not in use. This may be disabled, but is enabled by default.
+
+1) The /ads1118 node
+
+  Required properties:
+
+   - compatible : must be "ti,ads1018" or "ti,ads1118"
+   - spi-cpha : spi phase set to 1 (spi polarity is 0)
+   - reg : the spi chipselect address
+   - #address-cells : must be <1>
+   - #size-cells : must be <0>
+
+  Optional properties:
+
+   - ti,tempsensor: enable the temperature sensor
+   - ti,pullup-disable: disable the internal pullup resistor
+
+  The node contains child nodes for each channel that the platform uses.
+
+2) channel nodes
+
+  Required properties:
+
+   - reg : the channel number (0, 1, 2, or 3)
+
+  Optional properties:
+
+   - ti,differential-endpoint: differential second endpoint.
+   - ti,fullscale: fullscale range in +/- microvolts
+   - ti,datarate : the converter data rate in samples / second
+
+  Example ADS1118 node:
+
+	ads1118@0 {
+		compatible = "ti,ads1118";
+		spi-max-frequency = <2450000>;
+		reg = <0>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		ti,tempsensor;
+		voltage0@0 {
+			reg = <0>;
+			ti,fullscale = <6144000>;
+			ti,datarate = <860>;
+			ti,differential-endpoint = <1>;
+		};
+		voltage1@3 {
+			reg = <3>;
+			ti,fullscale = <6144000>;
+			ti,datarate = <475>;
+		};
+	};
+
+For the above example, The temperature sensor is enabled as well as
+channels 0 and 1 in differential mode, and channel 3 single ended.
