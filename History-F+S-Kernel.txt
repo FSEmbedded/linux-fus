@@ -3,6 +3,44 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
+linux-4.9.88-fsimx6-Y2020.03 (20.03.2020)
+-----------------------------------------
+Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2,
+Not tested:       efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, efusA9X,
+                  PicoCOMA9X, PicoCoreMX6SX, CONT1, CUBEA5, armStoneA5,
+                  NetDCUA5, PicoCOMA5, AGATEWAY, HGATEWAY,  CubeA7UL, Cube2.0,
+                  PicoCoreMX7ULP
+
+- Add LED support for gar2.dts
+- Add LVDS clock source and audio clock speed selection to fsimx6 boards
+- Fix video output dependency from enabled camera on imx6 boards
+- Fix clock problems on Vybrid
+- Rename VF610_PAD_PTA28__ESDHC1_DATA2 to VF610_PAD_PTA28__ESDHC1_DAT2
+- Make fsvybrid_defconfig more similar to other fs... defconfigs
+- Add F&S NAND driver vf610_nfc_fus
+- Add support for UART, ETH, LEDs and audio to armStoneA5
+- Add optional clock to sdhci-esdhc-imx.c
+- Add device tree for CubeA5
+- Add cube_defconfig for all Cube boards
+- Improve LED naming and iomux setup for GAR2
+- Improve imx-uart driver
+- Fix USB device port settings on fsvybrid
+- Add cont1.dtb to arch/arm/boot/dts/Makefile
+- Add device tree for AGATEWAY
+- Fix indentation in mxs-dma-ext.c to avoid compiler warning
+- Fix Ethernet LED trigger settings for GAR2
+- Handle several fb references in PWM backlight driver
+- Use meaningful framebuffer names im mxc_ipuv3_fb.c
+- Add device tree property unblank_delay to mxc_ipuv3_fb.c
+- Handle initial state in pwm_bl.c more consistently
+- Do not switch ldb regulator too often on i.MX6 platforms
+- Fix mxcfb driver probe fail
+- Fix wrong framebuffer name in devicetree for picomoda9
+- Add support for LCD-MI0700AJT
+- Add support for armstonea9r2 revision 1.20
+
+
 
 linux-4.9.88-fsimx7ulp-B2019.12 (18.12.2019)
 --------------------------------------------
