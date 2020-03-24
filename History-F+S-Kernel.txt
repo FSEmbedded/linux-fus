@@ -48,6 +48,17 @@ Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
 
 
 
+linux-4.9.88-fsimx6x-Y2020.03 (24.03.2020)
+-------------------------------------------
+Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6SX,
+                  CONT1
+Not tested:       efusA7UL, PicoCoreMX6UL, PicoCOM1.2, GAR1, CUBEA5, armStoneA5,
+                  NetDCUA5, PicoCOMA5, AGATEWAY, HGATEWAY,CubeA7UL, Cube2.0
+
+
+
+
 linux-4.9.88-fsimx6-Y2020.03 (20.03.2020)
 -----------------------------------------
 Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
