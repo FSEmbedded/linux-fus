@@ -831,6 +831,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm3>;
 	#pwm-cells = <3>;
+	keep-power;		/* Necessary if PWM is inverted */
 	status = "okay";
 };
 #endif
@@ -840,6 +841,7 @@
 &pwm4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm4>;
+	keep-power;		/* Necessary if PWM is inverted */
 	status = "okay";
 };
 #endif
@@ -849,6 +851,7 @@
 &pwm1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm1>;
+	keep-power;		/* Necessary if PWM is inverted */
 	status = "okay";
 };
 #endif

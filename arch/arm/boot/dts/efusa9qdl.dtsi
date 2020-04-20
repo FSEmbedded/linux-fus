@@ -1038,12 +1038,14 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm3_1>;
 	#pwm-cells = <3>;
+	keep-power;		/* Necessary if PWM is inverted */
 	status = "okay";
 };
 
 &pwm4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm4_1>;
+	keep-power;		/* Necessary if PWM is inverted */
 	status = "okay";
 };
 

@@ -712,6 +712,7 @@ lcd_wvga {				\
 &pwm4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm4_0>;
+	keep-power;		/* Necessary if PWM is inverted */
 	status = "okay";
 };
 #endif
@@ -721,6 +722,7 @@ lcd_wvga {				\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm7_0>;
 	#pwm-cells = <3>;
+	keep-power;		/* Necessary if PWM is inverted */
 	status = "okay";
 };
 
