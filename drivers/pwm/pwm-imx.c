@@ -38,6 +38,7 @@
 #define MX3_PWMCR_DOZEEN		(1 << 24)
 #define MX3_PWMCR_WAITEN		(1 << 23)
 #define MX3_PWMCR_DBGEN			(1 << 22)
+#define MX3_PWMCR_POUTC			(1 << 18)
 #define MX3_PWMCR_CLKSRC_IPG_HIGH	(2 << 16)
 #define MX3_PWMCR_CLKSRC_IPG		(1 << 16)
 #define MX3_PWMCR_SWR			(1 << 3)
@@ -161,10 +162,6 @@ static int imx_pwm_config_v2(struct pwm_chip *chip,
 	do_div(c, period_ns);
 	duty_cycles = c;
 
-	/* invert polarity */
-	if (pwm->args.polarity)
-		duty_cycles = period_cycles - duty_cycles;
-
 	/*
 	 * according to imx pwm RM, the real period value should be
 	 * PERIOD value in PWMPR plus 2.
@@ -183,6 +180,9 @@ static int imx_pwm_config_v2(struct pwm_chip *chip,
 
 	if (enable)
 		cr |= MX3_PWMCR_EN;
+
+	if (pwm->state.polarity)
+		cr |= MX3_PWMCR_POUTC;
 
 	writel(cr, imx->mmio_base + MX3_PWMCR);
 
