@@ -54,6 +54,8 @@ struct imx_chip {
 
 	void __iomem	*mmio_base;
 
+	int keep_power;
+
 	struct pwm_chip	chip;
 
 	int (*config)(struct pwm_chip *chip,
@@ -178,7 +180,7 @@ static int imx_pwm_config_v2(struct pwm_chip *chip,
 		MX3_PWMCR_DOZEEN | MX3_PWMCR_WAITEN |
 		MX3_PWMCR_DBGEN | MX3_PWMCR_CLKSRC_IPG_HIGH;
 
-	if (enable)
+	if (enable | imx->keep_power)
 		cr |= MX3_PWMCR_EN;
 
 	if (pwm->state.polarity)
@@ -252,7 +254,8 @@ static void imx_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
 {
 	struct imx_chip *imx = to_imx_chip(chip);
 
-	imx->set_enable(chip, false);
+	if (!imx->keep_power)
+		imx->set_enable(chip, false);
 
 	clk_disable_unprepare(imx->clk_ipg);
 	clk_disable_unprepare(imx->clk_per);
@@ -350,8 +353,13 @@ static int imx_pwm_probe(struct platform_device *pdev)
 	/* set xlate according to cell size found in device tree */
 	ret = of_property_read_u32(np, "#pwm-cells", &i);
 	if (ret < 0)
-		return ret;	 
-	
+		return ret;
+
+	if (of_property_read_bool(np, "keep-power"))
+		imx->keep_power = 1;
+	else
+		imx->keep_power = 0;
+
 	/* 
 	 * We support 2 and 3 pwm cells. One case we handle here, the other case
 	 * is automatically handled in of_pwmchip_add() in drivers/pwm/core.c.
