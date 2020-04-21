@@ -3,14 +3,35 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
+linux-4.9.88-fsimx6-B2020.04 (21.04.2020)
+------------------------------------------
+Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, armStoneA5, Cube2.0, CubeA5,
+                  AGATEWAY
+Not tested:       efusA9X, PicoCOMA9X, PicoCoreMX6SX, PicoCoreMX7ULP,
+                  CONT1, efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2,
+                  CubeA7UL, NetDCUA5, PicoCOMA5, HGATEWAY
+
+- Swap eth0 and eth1 on AGATEWAY
+- Add support for A/D-Converter ADS1118
+- Improve pwm-imx driver - invert polarity via register
+- Improve pwm-imx driver - invert polarity via register
+- Support both PWM polarities for all F&S boards
+- Update TI wireless driver wlxxxx to kernel 4.9.217
+- Remove debug messages in Vybrid NAND driver
+
+
+
 linux-4.9.88-fsimx7ulp-Y2020.03 (30.03.2020)
 -------------------------------------------
 Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
                   QBlissA9, QBlissA9r2, efusA9X,  PicoCOMA9X, PicoCoreMX6SX,
                   CONT1, efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2
-				  PicoCoreMX7ULP
-Not tested:       CUBEA5, armStoneA5,
-                  NetDCUA5, PicoCOMA5, AGATEWAY, HGATEWAY,CubeA7UL, Cube2.0
+                  PicoCoreMX7ULP
+Not tested:       CUBEA5, armStoneA5, NetDCUA5, PicoCOMA5, AGATEWAY,
+                  HGATEWAY, CubeA7UL, Cube2.0
+
+(no changes)
 
 
 
@@ -19,8 +40,8 @@ linux-4.9.88-fsimx6ul-Y2020.03 (27.03.2020)
 Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
                   QBlissA9, QBlissA9r2, efusA9X,  PicoCOMA9X, PicoCoreMX6SX,
                   CONT1, efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2
-Not tested:       CUBEA5, armStoneA5,
-                  NetDCUA5, PicoCOMA5, AGATEWAY, HGATEWAY,CubeA7UL, Cube2.0
+Not tested:       CUBEA5, armStoneA5, NetDCUA5, PicoCOMA5, AGATEWAY,
+                  HGATEWAY, CubeA7UL, Cube2.0
 
 - Fix  wrong framebuffer name in devicetree for picocoremx6ul & efusa7ull
 - Fix Gar1/2 i2c1 default speed
@@ -35,6 +56,7 @@ Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
 Not tested:       efusA7UL, PicoCoreMX6UL, PicoCOM1.2, GAR1, CUBEA5, armStoneA5,
                   NetDCUA5, PicoCOMA5, AGATEWAY, HGATEWAY,CubeA7UL, Cube2.0
 
+(no changes)
 
 
 
