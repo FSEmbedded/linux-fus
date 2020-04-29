@@ -3,12 +3,12 @@
  */
 
 /*
- * The code contained herein is licensed under the GNU Lesser General
- * Public License.  You may obtain a copy of the GNU Lesser General
- * Public License Version 2.1 or later at the following locations:
+ * The code contained herein is licensed under the GNU General Public
+ * License. You may obtain a copy of the GNU General Public License
+ * Version 2 or later at the following locations:
  *
- * http://www.opensource.org/licenses/lgpl-license.html
- * http://www.gnu.org/copyleft/lgpl.html
+ * http://www.opensource.org/licenses/gpl-license.html
+ * http://www.gnu.org/copyleft/gpl.html
  */
 
 /*!
@@ -20,6 +20,7 @@
 #ifndef __VPU_B0_H
 #define __VPU_B0_H
 
+#include <linux/version.h>
 #include <linux/irqreturn.h>
 #include <linux/mutex.h>
 #include <linux/videodev2.h>
@@ -27,10 +28,16 @@
 #include <media/v4l2-device.h>
 #include <media/v4l2-fh.h>
 #include <media/videobuf2-v4l2.h>
+#ifdef CONFIG_IMX_SCU
+#include <linux/firmware/imx/ipc.h>
+#include <linux/firmware/imx/svc/misc.h>
+#else
 #include <soc/imx8/sc/svc/irq/api.h>
 #include <soc/imx8/sc/ipc.h>
 #include <soc/imx8/sc/sci.h>
+#endif
 #include <linux/mx8_mu.h>
+#include <linux/mailbox_client.h>
 #include <media/v4l2-event.h>
 #include <linux/kfifo.h>
 #include "vpu_rpc.h"
@@ -56,8 +63,9 @@ extern unsigned int vpu_dbg_level_decoder;
 #define MAX_MBI_NUM 18 // same with MEDIA_PLAYER_MAX_MBI_UNIT defined in firmware
 #define MAX_TIMEOUT_COUNT 10
 #define VPU_REG_BASE 0x40000000
+#define VPU_MAX_STEP_STRING_LENGTH 40
+#define VPU_DISABLE_BITS (0x7)
 
-#define V4L2_MAX_CTRLS 12
 #define V4L2_PIX_FMT_NV12_10BIT    v4l2_fourcc('N', 'T', '1', '2') /*  Y/CbCr 4:2:0 for 10bit  */
 #define INVALID_FRAME_DEPTH -1
 #define DECODER_NODE_NUMBER 12 // use /dev/video12 as vpu decoder
@@ -150,6 +158,8 @@ typedef enum{
 #define V4L2_CID_USER_FRAME_FULLRANGE		(V4L2_CID_USER_BASE + 0x1107)
 #define V4L2_CID_USER_FRAME_VUIPRESENT		(V4L2_CID_USER_BASE + 0x1108)
 
+#define V4L2_CID_USER_STREAM_INPUT_MODE		(V4L2_CID_USER_BASE + 0x1109)
+
 #define IMX_V4L2_DEC_CMD_START		(0x09000000)
 #define IMX_V4L2_DEC_CMD_RESET		(IMX_V4L2_DEC_CMD_START + 1)
 
@@ -212,12 +222,11 @@ struct queue_data {
 	unsigned int width;
 	unsigned int height;
 	unsigned int stride;
-	unsigned int bytesperline;
+	unsigned int field;
 	unsigned int num_planes;
 	unsigned int sizeimage[2];
 	unsigned int fourcc;
 	unsigned int vdec_std;
-	struct v4l2_rect rect;
 	int buf_type; // v4l2_buf_type
 	bool vb2_q_inited;
 	struct vb2_queue vb2_q;    // vb2 queue
@@ -229,6 +238,7 @@ struct queue_data {
 	unsigned long dqbuf_count;
 	unsigned long process_count;
 	bool enable;
+	struct vpu_ctx *ctx;
 };
 
 struct print_buf_desc {
@@ -239,6 +249,20 @@ struct print_buf_desc {
 	u32 read;
 	u32 write;
 	char buffer[0];
+};
+
+#ifdef CONFIG_IMX_SCU
+struct vpu_imx_sc_msg_misc {
+	struct imx_sc_rpc_msg hdr;
+	u32 word;
+} __packed;
+#endif
+
+struct vpu_sc_chan {
+	struct vpu_dev *dev;
+	char name[20];
+	struct mbox_client cl;
+	struct mbox_chan *ch;
 };
 
 struct vpu_ctx;
@@ -266,7 +290,6 @@ struct vpu_dev {
 	struct work_struct msg_work;
 	unsigned long instance_mask;
 	unsigned long hang_mask; //this is used to deal with hang issue to reset firmware
-	sc_ipc_t mu_ipcHandle;
 	struct clk *vpu_clk;
 	void __iomem *mu_base_virtaddr;
 	unsigned int vpu_mu_id;
@@ -289,6 +312,20 @@ struct vpu_dev {
 	int precheck_next[64];
 	int precheck_num;
 	char precheck_content[1024];
+
+	struct kfifo mu_msg_fifo;
+	u_int32 vpu_irq;
+
+	/* reserve for kernel version 5.4 or later */
+	struct vpu_sc_chan sc_chan_tx0;
+	struct vpu_sc_chan sc_chan_tx1;
+	struct vpu_sc_chan sc_chan_rx;
+	struct device *pd_vpu;
+	struct device *pd_dec;
+	struct device *pd_mu;
+	struct device_link *pd_vpu_link;
+	struct device_link *pd_dec_link;
+	struct device_link *pd_mu_link;
 };
 
 struct vpu_statistic {
@@ -296,6 +333,7 @@ struct vpu_statistic {
 	unsigned long event[VID_API_EVENT_DEC_CFG_INFO + 2];
 	unsigned long current_cmd;
 	unsigned long current_event;
+	unsigned long skipped_frame_count;
 	struct timespec ts_cmd;
 	struct timespec ts_event;
 	atomic64_t total_dma_size;
@@ -320,13 +358,6 @@ struct vpu_dec_cmd_request {
 
 struct vpu_dec_perf_time {
 	u_int64 open_time;
-	u_int64 last_time;
-	u_int64 first_feed_interv;
-	u_int64 start_cmd_interv;
-	u_int64 start_done_interv;
-	u_int64 seq_hdr_found_interv;
-	u_int64 first_decoded_interv;
-	u_int64 first_ready_interv;
 
 	u_int64 first_decoded_time;
 	u_int64 last_decoded_time;
@@ -337,6 +368,12 @@ struct vpu_dec_perf_time {
 	u_int64 last_ready_time;
 	u_int64 cur_ready_interv;
 	u_int64 ready_fps;
+};
+
+struct vpu_dec_perf_queue {
+	struct list_head list;
+	char str[VPU_MAX_STEP_STRING_LENGTH];
+	u_int64 time;
 };
 
 struct vpu_ctx {
@@ -355,7 +392,6 @@ struct vpu_ctx {
 	char flow_name[64];
 	struct device_attribute dev_attr_instance_perf;
 	char perf_name[64];
-	struct v4l2_ctrl *ctrls[V4L2_MAX_CTRLS];
 	struct v4l2_ctrl_handler ctrl_handler;
 	bool ctrl_inited;
 	struct list_head log_q;
@@ -372,19 +408,21 @@ struct vpu_ctx {
 	MediaIPFW_Video_SeqInfo seqinfo;
 	bool b_dis_reorder;
 	bool b_firstseq;
-	bool start_flag;
 	bool wait_rst_done;
 	bool wait_res_change_done;
+	bool seek_flag;
 	bool firmware_stopped;
 	bool firmware_finished;
 	bool eos_stop_received;
 	bool eos_stop_added;
 	bool ctx_released;
 	bool start_code_bypass;
+	STREAM_INPUT_MODE stream_input_mode;
 	bool hang_status;
 	bool fifo_low;
 	bool frame_decoded;
 	bool first_dump_data_flag;
+	bool first_data_flag;
 	u32 req_frame_count;
 	u_int32 mbi_count;
 	u_int32 mbi_size;
@@ -427,6 +465,12 @@ struct vpu_ctx {
 	struct mutex cmd_lock;
 
 	struct vpu_dec_perf_time perf_time;
+	int res_change_occu_count;
+	int res_change_send_count;
+	int res_change_done_count;
+
+	struct list_head perf_q;
+	struct mutex perf_lock;
 };
 
 #define LVL_WARN		(1 << 0)
@@ -444,12 +488,12 @@ struct vpu_ctx {
 #define LVL_BIT_FLOW		(1 << 13)
 #define LVL_BIT_FRAME_COUNT	(1 << 14)
 
-#define vpu_err(fmt, arg...) pr_info("[VPU Decoder]\t " fmt, ## arg)
+#define vpu_err(fmt, arg...) pr_info("[VPU Decoder] " fmt, ## arg)
 
 #define vpu_dbg(level, fmt, arg...) \
 	do { \
-		if (vpu_dbg_level_decoder & level) \
-			pr_info("[VPU Decoder]\t " fmt, ## arg); \
+		if (vpu_dbg_level_decoder & (level)) \
+			pr_info("[VPU Decoder] " fmt, ## arg); \
 	} while (0)
 
 #define V4L2_NXP_BUF_FLAG_CODECCONFIG		0x00200000
