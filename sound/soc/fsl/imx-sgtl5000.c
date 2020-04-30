@@ -55,7 +55,7 @@ static const struct snd_soc_dapm_widget imx_sgtl5000_dapm_widgets[] = {
 	SND_SOC_DAPM_SPK("Ext Spk", NULL),
 };
 
-static int imx_sgtl5000_probe(struct platform_device *pdev)
+static int imx_sgtl5000_audmux_config(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	int int_port, ext_port;
