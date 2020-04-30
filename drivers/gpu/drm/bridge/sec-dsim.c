@@ -1806,6 +1806,8 @@ int sec_mipi_dsim_bind(struct device *dev, struct device *master, void *data,
 	struct drm_connector *connector;
 	struct sec_mipi_dsim *dsim;
 
+	dev_dbg(dev, "sec-dsim bridge bind begin\n");
+
 	dsim = devm_kzalloc(dev, sizeof(*dsim), GFP_KERNEL);
 	if (!dsim) {
 		dev_err(dev, "Unable to allocate 'dsim'\n");
@@ -1929,6 +1931,8 @@ int sec_mipi_dsim_bind(struct device *dev, struct device *master, void *data,
 		if (ret)
 			goto cleanup_connector;
 	}
+
+	dev_dbg(dev, "sec-dsim bridge bind end\n");
 
 	return 0;
 
