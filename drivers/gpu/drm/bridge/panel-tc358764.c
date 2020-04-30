@@ -324,9 +324,11 @@ static int tc358764_panel_enable(struct drm_panel *panel)
 static int tc358764_panel_disable(struct drm_panel *panel)
 {
 	struct tc358764 *ctx = panel_to_tc358764(panel);
+#if 0
 	struct mipi_dsi_device *dsi = ctx->dsi;
 	struct device *dev = &dsi->dev;
 	int ret;
+#endif
 
 	if (!ctx->enabled)
 		return 0;
@@ -349,9 +351,6 @@ static int tc358764_panel_disable(struct drm_panel *panel)
 
 	usleep_range(60000, 70000);
 
-#endif
-
-#if 0
 	rad->backlight->props.power = FB_BLANK_POWERDOWN;
 	backlight_update_status(rad->backlight);
 #endif

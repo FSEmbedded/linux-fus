@@ -38,9 +38,9 @@
 #include <video/videomode.h>
 
 struct panel_desc {
-	struct drm_display_mode *modes;
+	const struct drm_display_mode *modes;
 	unsigned int num_modes;
-	struct display_timing *timings;
+	const struct display_timing *timings;
 	unsigned int num_timings;
 
 	unsigned int bpc;
@@ -2281,7 +2281,7 @@ static int panel_simple_platform_probe(struct platform_device *pdev)
 	if (!id)
 		return -ENODEV;
 
-	return panel_simple_probe(&pdev->dev, id->data);
+	return panel_simple_probe(&pdev->dev,(struct panel_desc *)id->data);
 }
 
 static int panel_simple_platform_remove(struct platform_device *pdev)
@@ -2579,7 +2579,7 @@ static int panel_simple_dsi_probe(struct mipi_dsi_device *dsi)
 	if (!desc) {
 		pr_err("%s: use default dt node\n", of_node_full_name(np));
 		desc = (struct panel_desc_dsi*)id->data;
-        dsi_flags = desc->flags;
+		dsi_flags = desc->flags;
 		dsi_format = desc->format;
 		dsi_lanes = desc->lanes;
 	} else {
@@ -2614,8 +2614,11 @@ static int panel_simple_dsi_remove(struct mipi_dsi_device *dsi)
 	if (id) {
 		panel = dev_get_drvdata(&dsi->dev);
 		if (panel->desc != id->data) {
-			if (panel->desc->modes)
-				drm_mode_destroy(panel->base.drm, panel->desc->modes);
+			if (panel->desc->modes) {
+			  struct drm_display_mode *mode =
+			    (struct drm_display_mode *)panel->desc->modes;
+			  drm_mode_destroy(panel->base.drm, mode);
+			}
 			kfree(panel->desc);
 		}
 	} else {
