@@ -23,10 +23,10 @@
 		interrupt-parent = <&gpio1>;
 		interrupts = <9 IRQ_TYPE_EDGE_FALLING>;
 		spi-max-frequency = <10000000>;
-        mcp2515_clk: oscillator {
+                mcp2515_clk: oscillator {
 			#clock-cells = <0>;
-            compatible = "fixed-clock";
-            clock-frequency = <20000000>; //20MHz
+                        compatible = "fixed-clock";
+                        clock-frequency = <20000000>; //20MHz
 		};  
 	};
 

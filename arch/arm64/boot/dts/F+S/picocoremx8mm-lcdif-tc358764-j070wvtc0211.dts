@@ -20,11 +20,11 @@
 &mipi_dsi {
 	status = "okay";
 
-	clocks = <&clk IMX8MM_CLK_DSI_CORE_DIV>,
-			 <&clk IMX8MM_CLK_DSI_PHY_REF_DIV>, <&clk IMX8MM_CLK_CLKO2_DIV>;
+	clocks = <&clk IMX8MM_CLK_DSI_CORE>,
+			 <&clk IMX8MM_CLK_DSI_PHY_REF>, <&clk IMX8MM_CLK_CLKO2>;
 	clock-names = "cfg", "pll-ref";
-	assigned-clocks = <&clk IMX8MM_CLK_DSI_CORE_SRC>,
-				  <&clk IMX8MM_CLK_DSI_PHY_REF_SRC>, <&clk IMX8MM_CLK_CLKO2_SRC>;
+	assigned-clocks = <&clk IMX8MM_CLK_DSI_CORE>,
+				  <&clk IMX8MM_CLK_DSI_PHY_REF>, <&clk IMX8MM_CLK_CLKO2>;
 	assigned-clock-parents = <&clk IMX8MM_SYS_PLL1_266M>,
 					 <&clk IMX8MM_VIDEO_PLL1_OUT>, <&clk IMX8MM_SYS_PLL2_200M>;
 	assigned-clock-rates = <266000000>, <27000000>, <200000000>;
@@ -36,7 +36,7 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_mipi_dsi_en>;
 
-		clocks = <&clk IMX8MM_CLK_CLKO2_DIV>;
+		clocks = <&clk IMX8MM_CLK_CLKO2>;
 		reset-gpios = <&gpio1 13 GPIO_ACTIVE_LOW>;
 		clock-names = "ext-clk";
 		ext-clk-rate = <33500000>;
@@ -112,7 +112,7 @@
 		compatible = "toshiba,tc358764";
 		reg = <0xf>;
 
-		clocks = <&clk IMX8MM_CLK_CLKO2_DIV>;
+		clocks = <&clk IMX8MM_CLK_CLKO2>;
 		clock-names = "ref";
 
 		reg,address = < /* dsi basic parameters in lp mode */
