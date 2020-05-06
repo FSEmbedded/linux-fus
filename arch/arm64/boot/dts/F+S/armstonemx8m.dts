@@ -45,8 +45,8 @@
  * SD_A - External SD port with Card Detect (CD) and Write Protect (WP).
  * 		  WP is fix low.
  */
-#define CONFIG_ARMSTONEMX8M_SD_A
-#define CONFIG_ARMSTONEMX8M_SD_A_CD
+//#define CONFIG_ARMSTONEMX8M_SD_A
+//#define CONFIG_ARMSTONEMX8M_SD_A_CD
 
 /* PWM and backlight brightness */
 #define CONFIG_ARMSTONEMX8M_PWM_A
@@ -68,7 +68,7 @@
 
 /* SPI  */
 //### TODO: CS on wrong pin 
-//#define CONFIG_ARMSTONEMX8M_SPI_B
+#define CONFIG_ARMSTONEMX8M_SPI_B
 
 /* Audio */
 #define CONFIG_ARMSTONEMX8M_SGTL5000_AUDIO
@@ -94,7 +94,6 @@
 	bdinfo {
 		compatible = "bdinfo";
 		board_name = "armStoneMX8M";
-		login_tty  = "ttymxc1";
 	};
 
 	chosen {

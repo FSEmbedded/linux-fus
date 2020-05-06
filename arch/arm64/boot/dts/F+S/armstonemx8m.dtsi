@@ -37,7 +37,6 @@
 	bdinfo {
 		compatible = "bdinfo";
 		board_name = "armStoneMX8M";
-		login_tty  = "ttymxc1";
 	};
 
 	regulators {
