@@ -71,8 +71,10 @@
 //#define CONFIG_ARMSTONEMX8M_SPI_B
 
 /* Audio */
-//### TODO: mclk is on wrong pin:
-//#define CONFIG_ARMSTONEMX8M_SGTL5000_AUDIO
+#define CONFIG_ARMSTONEMX8M_SGTL5000_AUDIO
+//### TODO: clko1 is on wrong pin.
+//          use default sai2_mclk.
+//#define CONFIG_ARMSTONEMX8M_SGTL5000_AUDIO_MCLK_CLKO1
 
 /* Camera on serial MIPI CSI interface */
 #define CONFIG_ARMSTONEMX8M_SERIAL_CAMERA
