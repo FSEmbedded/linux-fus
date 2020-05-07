@@ -948,22 +948,6 @@
 				#address-cells = <1>;
 				#size-cells = <0>;
 				wakeup-irq = <337>;
-
-				pd_dma2_chan2: PD_LPSPI1_RX {
-					reg = <SC_R_DMA_2_CH2>;
-					power-domains =<&pd_dma_lpspi1>;
-					#power-domain-cells = <0>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-
-					pd_dma2_chan3: PD_LPSPI1_TX {
-						reg = <SC_R_DMA_2_CH3>;
-						power-domains =<&pd_dma2_chan2>;
-						#power-domain-cells = <0>;
-						#address-cells = <1>;
-						#size-cells = <0>;
-					};
-				};
 			};
 			pd_dma2_chan2: PD_LPSPI1_RX {
 				reg = <SC_R_DMA_2_CH2>;
@@ -998,22 +982,6 @@
 				#address-cells = <1>;
 				#size-cells = <0>;
 				wakeup-irq = <339>;
-
-				pd_dma2_chan6: PD_LPSPI3_RX {
-					reg = <SC_R_DMA_2_CH6>;
-					power-domains =<&pd_dma_lpspi3>;
-					#power-domain-cells = <0>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-
-					pd_dma2_chan7: PD_LPSPI3_TX {
-						reg = <SC_R_DMA_2_CH7>;
-						power-domains =<&pd_dma2_chan6>;
-						#power-domain-cells = <0>;
-						#address-cells = <1>;
-						#size-cells = <0>;
-					};
-				};
 			};
 			pd_dma2_chan6: PD_LPSPI3_RX {
 				reg = <SC_R_DMA_2_CH6>;
