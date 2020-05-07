@@ -945,8 +945,6 @@
 				reg = <SC_R_SPI_1>;
 				#power-domain-cells = <0>;
 				power-domains = <&pd_dma>;
-				#address-cells = <1>;
-				#size-cells = <0>;
 				wakeup-irq = <337>;
 			};
 			pd_dma2_chan2: PD_LPSPI1_RX {
@@ -979,8 +977,6 @@
 				reg = <SC_R_SPI_3>;
 				#power-domain-cells = <0>;
 				power-domains = <&pd_dma>;
-				#address-cells = <1>;
-				#size-cells = <0>;
 				wakeup-irq = <339>;
 			};
 			pd_dma2_chan6: PD_LPSPI3_RX {
@@ -2703,7 +2699,7 @@
 		clock-names = "per", "ipg";
 		assigned-clocks = <&clk IMX8QXP_SPI1_CLK>;
 		assigned-clock-rates = <20000000>;
-		power-domains = <&pd_dma2_chan3>;
+		power-domains = <&pd_dma_lpspi1>;
 		dma-names = "tx","rx";
 		dmas = <&edma2 3 0 0>, <&edma2 2 0 1>;
 		status = "disabled";
@@ -2735,7 +2731,7 @@
 		clock-names = "per", "ipg";
 		assigned-clocks = <&clk IMX8QXP_SPI3_CLK>;
 		assigned-clock-rates = <20000000>;
-		power-domains = <&pd_dma2_chan7>;
+		power-domains = <&pd_dma_lpspi3>;
 		dma-names = "tx","rx";
 		dmas = <&edma2 7 0 0>, <&edma2 6 0 1>;
 		status = "disabled";
