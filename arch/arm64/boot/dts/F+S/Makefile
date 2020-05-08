@@ -9,7 +9,8 @@ dtb-$(CONFIG_ARCH_FSL_IMX8MM) += picocoremx8mm.dtb \
 								picocoremx8mm-bbdsi.dtb \
 								picocoremx8mm-lcdif-tc358764-g070y2-l01.dtb \
 								picocoremx8mm-lcdif-tc358764-j070wvtc0211.dtb \
-								picocoremx8mm-lcdif-g050tan01.dtb
+								picocoremx8mm-lcdif-g050tan01.dtb \
+								picocoremx8mm-lcdif-adp-mipi2lvds1-j070wvtc0211-single-display.dtb
 
 dtb-$(CONFIG_ARCH_FSL_IMX8QXP) += efusmx8x.dtb
 

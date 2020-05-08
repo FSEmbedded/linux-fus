@@ -2478,6 +2478,7 @@ static struct panel_desc_dsi innolux_g070y2_l01_dsi = {
 			.width = 152,
 			.height = 91,
 		},
+        .bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_SPWG,
 		.bus_flags = DRM_BUS_FLAG_DE_HIGH,
 	},
 	.flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST | MIPI_DSI_MODE_VIDEO_SYNC_PULSE,
@@ -2520,6 +2521,38 @@ static struct panel_desc_dsi innolux_g101ice_l01_dsi = {
 	.lanes = 4,
 };
 
+static struct drm_display_mode fs_j070wvtc0211_mode = {
+	.clock = 33300000,
+	.hdisplay = 800,
+	.hsync_start = 800 + 1,
+	.hsync_end = 800 + 1 + 209,
+	.htotal = 800 + 1 + 209 + 46,
+	.vdisplay = 480,
+	.vsync_start = 480 + 1,
+	.vsync_end = 480 + 1 + 21,
+	.vtotal = 480 + 1 + 21 + 23,
+	.vrefresh = 60,
+	.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC
+};
+
+static struct panel_desc_dsi fs_j070wvtc0211_dsi = {
+	.desc = {
+		.modes = &fs_j070wvtc0211_mode,
+		.num_modes = 1,
+		.bpc = 8,
+		.size = {
+			.width = 154,
+			.height = 85,
+		},
+        .bus_format = MEDIA_BUS_FMT_RGB888_1X24,
+		.bus_flags = DRM_BUS_FLAG_DE_HIGH,
+	},
+	.flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST | MIPI_DSI_MODE_VIDEO_SYNC_PULSE,
+	.format = MIPI_DSI_FMT_RGB888,
+	.lanes = 4,
+};
+
+
 static const struct of_device_id dsi_of_match[] = {
 	{
 		.compatible = "auo,b080uan01",
@@ -2542,6 +2575,9 @@ static const struct of_device_id dsi_of_match[] = {
 	}, {
 		.compatible = "innolux,g101ice-l01-dsi",
 		.data = &innolux_g101ice_l01_dsi
+	}, {
+		.compatible = "fs,j070wvtc0211-dsi",
+		.data = &fs_j070wvtc0211_dsi
 	},{
 		/* sentinel */
 	}
