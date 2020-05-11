@@ -605,7 +605,7 @@
 	};
 
 	dispmix_gpr: display-gpr@32e28000 {
-		compatible = "fsl, imx8mm-iomuxc-gpr", "syscon";
+		compatible = "fsl,imx8mm-iomuxc-gpr", "syscon";
 		reg = <0x0 0x32e28000 0x0 0x100>;
 	};
 

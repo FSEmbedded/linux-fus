@@ -1220,48 +1220,90 @@ static int lpuart_config_rs485(struct uart_port *port,
 	struct lpuart_port *sport = container_of(port,
 			struct lpuart_port, port);
 
-	u8 modem = readb(sport->port.membase + UARTMODEM) &
-		~(UARTMODEM_TXRTSPOL | UARTMODEM_TXRTSE);
-	writeb(modem, sport->port.membase + UARTMODEM);
+/*** TODO-2019-11-22-KM: Hotfix for RS485 support. Should be removed, when official support is released. ***/
 
-	/* clear unsupported configurations */
-	rs485->delay_rts_before_send = 0;
-	rs485->delay_rts_after_send = 0;
-	rs485->flags &= ~SER_RS485_RX_DURING_TX;
+	if (lpuart_is_32(sport)){
+		u32 modir = lpuart32_read(&sport->port, UARTMODIR) &
+			~(UARTMODIR_TXRTSPOL | UARTMODIR_TXRTSE);
+		lpuart32_write(&sport->port, modir, UARTMODIR);
 
-	if (rs485->flags & SER_RS485_ENABLED) {
-		/* Enable auto RS-485 RTS mode */
-		modem |= UARTMODEM_TXRTSE;
+		/* clear unsupported configurations */
+		rs485->delay_rts_before_send = 0;
+		rs485->delay_rts_after_send = 0;
+		rs485->flags &= ~SER_RS485_RX_DURING_TX;
 
-		/*
-		 * RTS needs to be logic HIGH either during transer _or_ after
-		 * transfer, other variants are not supported by the hardware.
-		 */
+		if (rs485->flags & SER_RS485_ENABLED) {
+			/* Enable auto RS-485 RTS mode */
+			modir |= UARTMODIR_TXRTSE;
 
-		if (!(rs485->flags & (SER_RS485_RTS_ON_SEND |
-				SER_RS485_RTS_AFTER_SEND)))
-			rs485->flags |= SER_RS485_RTS_ON_SEND;
+			/*
+			 * RTS needs to be logic HIGH either during transer _or_ after
+			 * transfer, other variants are not supported by the hardware.
+			 */
 
-		if (rs485->flags & SER_RS485_RTS_ON_SEND &&
-				rs485->flags & SER_RS485_RTS_AFTER_SEND)
-			rs485->flags &= ~SER_RS485_RTS_AFTER_SEND;
+			if (!(rs485->flags & (SER_RS485_RTS_ON_SEND |
+					SER_RS485_RTS_AFTER_SEND)))
+				rs485->flags |= SER_RS485_RTS_ON_SEND;
 
-		/*
-		 * The hardware defaults to RTS logic HIGH while transfer.
-		 * Switch polarity in case RTS shall be logic HIGH
-		 * after transfer.
-		 * Note: UART is assumed to be active high.
-		 */
-		if (rs485->flags & SER_RS485_RTS_ON_SEND)
-			modem &= ~UARTMODEM_TXRTSPOL;
-		else if (rs485->flags & SER_RS485_RTS_AFTER_SEND)
-			modem |= UARTMODEM_TXRTSPOL;
+			if (rs485->flags & SER_RS485_RTS_ON_SEND &&
+					rs485->flags & SER_RS485_RTS_AFTER_SEND)
+				rs485->flags &= ~SER_RS485_RTS_AFTER_SEND;
+
+			if (rs485->flags & SER_RS485_RTS_ON_SEND)
+				modir |= UARTMODIR_TXRTSPOL;
+			else if (rs485->flags & SER_RS485_RTS_AFTER_SEND)
+				modir &= ~UARTMODIR_TXRTSPOL;
+		}
+
+		/* Store the new configuration */
+		sport->port.rs485 = *rs485;
+
+		lpuart32_write(&sport->port, modir, UARTMODIR);
 	}
+	else {
+		u8 modem = readb(sport->port.membase + UARTMODEM) &
+			~(UARTMODEM_TXRTSPOL | UARTMODEM_TXRTSE);
+		writeb(modem, sport->port.membase + UARTMODEM);
 
-	/* Store the new configuration */
-	sport->port.rs485 = *rs485;
+		/* clear unsupported configurations */
+		rs485->delay_rts_before_send = 0;
+		rs485->delay_rts_after_send = 0;
+		rs485->flags &= ~SER_RS485_RX_DURING_TX;
 
-	writeb(modem, sport->port.membase + UARTMODEM);
+		if (rs485->flags & SER_RS485_ENABLED) {
+			/* Enable auto RS-485 RTS mode */
+			modem |= UARTMODEM_TXRTSE;
+
+			/*
+			 * RTS needs to be logic HIGH either during transer _or_ after
+			 * transfer, other variants are not supported by the hardware.
+			 */
+
+			if (!(rs485->flags & (SER_RS485_RTS_ON_SEND |
+					SER_RS485_RTS_AFTER_SEND)))
+				rs485->flags |= SER_RS485_RTS_ON_SEND;
+
+			if (rs485->flags & SER_RS485_RTS_ON_SEND &&
+					rs485->flags & SER_RS485_RTS_AFTER_SEND)
+				rs485->flags &= ~SER_RS485_RTS_AFTER_SEND;
+
+			/*
+			 * The hardware defaults to RTS logic HIGH while transfer.
+			 * Switch polarity in case RTS shall be logic HIGH
+			 * after transfer.
+			 * Note: UART is assumed to be active high.
+			 */
+			if (rs485->flags & SER_RS485_RTS_ON_SEND)
+				modem &= ~UARTMODEM_TXRTSPOL;
+			else if (rs485->flags & SER_RS485_RTS_AFTER_SEND)
+				modem |= UARTMODEM_TXRTSPOL;
+		}
+
+		/* Store the new configuration */
+		sport->port.rs485 = *rs485;
+
+		writeb(modem, sport->port.membase + UARTMODEM);
+	}
 	return 0;
 }
 
@@ -2480,7 +2522,7 @@ static int lpuart_probe(struct platform_device *pdev)
 		sport->port.ops = &lpuart_pops;
 	sport->port.flags = UPF_BOOT_AUTOCONF;
 
-	if (!lpuart_is_32(sport))
+	if (!lpuart_is_32(sport) || of_property_read_bool(np, "linux,rs485-enabled"))
 		sport->port.rs485_config = lpuart_config_rs485;
 
 	sport->ipg_clk = devm_clk_get(&pdev->dev, "ipg");
@@ -2558,11 +2600,17 @@ static int lpuart_probe(struct platform_device *pdev)
 	if (!sport->dma_rx_chan)
 		dev_info(sport->port.dev, "NO DMA rx channel, run at cpu mode\n");
 
-	if (!lpuart_is_32(sport) &&
-		of_property_read_bool(np, "linux,rs485-enabled-at-boot-time")) {
+	if(of_property_read_bool(np, "linux,rs485-enabled-at-boot-time")){
 		sport->port.rs485.flags |= SER_RS485_ENABLED;
 		sport->port.rs485.flags |= SER_RS485_RTS_ON_SEND;
-		writeb(UARTMODEM_TXRTSE, sport->port.membase + UARTMODEM);
+		if (!lpuart_is_32(sport)){
+			writeb(UARTMODEM_TXRTSE, sport->port.membase + UARTMODEM);
+		}
+		else {
+			cr_32 = lpuart32_read(&sport->port, UARTMODIR);
+			cr_32 |= UARTMODIR_TXRTSE;
+			lpuart32_write(&sport->port, cr_32, UARTMODIR);
+		}
 	}
 
 	return 0;

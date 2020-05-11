@@ -169,6 +169,13 @@ static void imx_ldb_ch_set_bus_format(struct imx_ldb_channel *imx_ldb_ch,
 
 	switch (bus_format) {
 	case MEDIA_BUS_FMT_RGB666_1X7X3_SPWG:
+/* HOTFIX F+S KM 2019-12-11: VESA standard is wrong for 18 bit and JEIDA standard can be used (equals VESA for 18 bit) */
+/*                           LVDS Channel 1 won't be changed by setting LDB_BIT_MAP_CH1_JEIDA ???                      */
+		if (imx_ldb_ch->chno == 0 || dual)
+			ldb->ldb_ctrl |= LDB_BIT_MAP_CH0_JEIDA;
+		break;
+		if (imx_ldb_ch->chno == 1 || dual)
+			ldb->ldb_ctrl |= LDB_BIT_MAP_CH1_JEIDA;
 		break;
 	case MEDIA_BUS_FMT_RGB888_1X7X4_SPWG:
 		if (imx_ldb_ch->chno == 0 || dual)

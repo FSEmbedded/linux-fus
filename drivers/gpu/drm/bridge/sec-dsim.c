@@ -1277,7 +1277,7 @@ int sec_mipi_dsim_check_pll_out(void *driver_private,
 
 	if (bit_clk * 1000 > pdata->max_data_rate) {
 		dev_err(dsim->dev,
-			"reuest bit clk freq exceeds lane's maximum value\n");
+			"request bit clk freq exceeds lane's maximum value\n");
 		return -EINVAL;
 	}
 

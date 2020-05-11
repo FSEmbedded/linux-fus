@@ -241,6 +241,8 @@
 
 #define IMX8MM_CLK_SIM_HSIO			223
 
-#define IMX8MM_CLK_END				224
+#define IMX8MM_CLK_CLKO2			224
+
+#define IMX8MM_CLK_END				225
 
 #endif

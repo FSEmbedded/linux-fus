@@ -34,15 +34,15 @@
  * 0 <= S[2:0] <=  5, -32768 <= K[15:0] <= 32767
  *
  */
-
+ // values from ref. man.
 const struct sec_mipi_dsim_pll pll_1432x = {
-	.p	= { .min = 1,		.max = 63,	},
-	.m	= { .min = 64,		.max = 1023,	},
-	.s	= { .min = 0,		.max = 5,	},
-	.k	= { .min = 0,		.max = 32768,	},	/* abs(k) */
-	.fin	= { .min = 6000,	.max = 300000,	},	/* in KHz */
-	.fpref	= { .min = 2000,	.max = 30000,	},	/* in KHz */
-	.fvco	= { .min = 1050000,	.max = 2100000,	},	/* in KHz */
+        .p	= { .min = 1,		.max = 33,	},
+        .m	= { .min = 25,		.max = 125,	},
+        .s	= { .min = 0,		.max = 3,	},
+        .k	= { .min = 0,		.max = 0,	},	/* abs(k) */
+        .fin	= { .min = 6000,	.max = 200000,	},	/* in KHz */
+        .fpref	= { .min = 6000,	.max = 12000,	},	/* in KHz */
+        .fvco	= { .min = 350000,	.max = 750000,	},	/* in KHz */
 };
 
 #endif

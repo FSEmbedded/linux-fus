@@ -1,0 +1,104 @@
+/*
+ * Copyright (C) 2016 Freescale Semiconductor, Inc.
+ * Copyright 2017 NXP
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_ARMSTONEMX8M_BOARD_REVISION	100
+
+/* On-board NAND */
+#define CONFIG_ARMSTONEMX8M_NAND
+
+/* On-board eMMC */
+#define CONFIG_ARMSTONEMX8M_EMMC
+
+/* Network */
+#define CONFIG_ARMSTONEMX8M_ETH_A
+
+/* WLAN/BLUETOOTH; either WLAN-only or combined WLAN/Bluetooth chip */
+//#define CONFIG_ARMSTONEMX8M_WLAN
+
+/* PCIe */
+#define CONFIG_ARMSTONEMX8M_PCIE
+
+/* CAN */
+
+/* I2C */
+#define CONFIG_ARMSTONEMX8M_I2C_A
+#define CONFIG_ARMSTONEMX8M_I2C_B
+#define CONFIG_ARMSTONEMX8M_I2C_C
+#define CONFIG_ARMSTONEMX8M_I2C_D
+
+/*
+ * SD_A - External SD port with Card Detect (CD) and Write Protect (WP).
+ * 		  WP is fix low.
+ */
+//#define CONFIG_ARMSTONEMX8M_SD_A
+//#define CONFIG_ARMSTONEMX8M_SD_A_CD
+
+/* PWM and backlight brightness */
+#define CONFIG_ARMSTONEMX8M_PWM_A
+#define CONFIG_ARMSTONEMX8M_PWM_B
+#define CONFIG_ARMSTONEMX8M_PWM_C
+#define CONFIG_ARMSTONEMX8M_BL_CTRL
+
+/* UART */
+#define CONFIG_ARMSTONEMX8M_UART_A
+#define CONFIG_ARMSTONEMX8M_UART_A_RTSCTS
+
+#define CONFIG_ARMSTONEMX8M_UART_B
+
+#define CONFIG_ARMSTONEMX8M_UART_C
+#define CONFIG_ARMSTONEMX8M_UART_C_RTSCTS
+
+#define CONFIG_ARMSTONEMX8M_UART_D
+#define CONFIG_ARMSTONEMX8M_UART_D_RTSCTS
+
+/* SPI  */
+//### TODO: CS on wrong pin
+#define CONFIG_ARMSTONEMX8M_SPI_B
+
+/* Audio */
+#define CONFIG_ARMSTONEMX8M_SGTL5000_AUDIO
+//### TODO: clko1 is on wrong pin.
+//          use default sai2_mclk.
+//#define CONFIG_ARMSTONEMX8M_SGTL5000_AUDIO_MCLK_CLKO1
+
+/* Camera on serial MIPI CSI interface */
+#define CONFIG_ARMSTONEMX8M_SERIAL_CAMERA
+#define CONFIG_ARMSTONEMX8M_SERIAL_CAMERA_EXTCLK
+
+
+
+
+#include "../freescale/fsl-imx8mq.dtsi"
+#include "armstonemx8m.dtsi"
+
+/ {
+	model = "Freescale i.MX8MQ armStoneMX8M";
+	compatible = "fsl,fsimx8m", "fsl,imx8mq";
+
+	/* -------------------- BOARD INFO -------------------- */
+	bdinfo {
+		compatible = "bdinfo";
+		board_name = "armStoneMX8M";
+	};
+
+	chosen {
+		bootargs = "console=ttymxc1,115200 earlycon=ec_imx6q,0x30890000,115200";
+		stdout-path = &uart2;
+	};
+
+};

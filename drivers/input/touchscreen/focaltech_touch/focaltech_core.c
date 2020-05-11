@@ -723,6 +723,12 @@ static int fts_read_touchdata(struct fts_ts_data *data)
 		event->au8_touch_event[i] =
 		    buf[FTS_TOUCH_EVENT_POS + FTS_ONE_TCH_LEN * i] >> 6;
 
+		if (data->pdata->invert_x)
+			event->au16_x[i] = data->pdata->x_max - event->au16_x[i];
+
+		if (data->pdata->invert_y)
+			event->au16_y[i] = data->pdata->y_max - event->au16_y[i];
+
 		if (data->pdata->swap)
 			swap(event->au16_x[i], event->au16_y[i]);
 
@@ -985,6 +991,8 @@ static int fts_parse_dt(struct device *dev, struct fts_ts_platform_data *pdata)
 		pdata->max_touch_number = FTS_MAX_POINTS;
 	}
 
+	pdata->invert_x = of_property_read_bool(np, "focaltech,touchscreen-inverted-x");
+	pdata->invert_y = of_property_read_bool(np, "focaltech,touchscreen-inverted-y");
 	pdata->swap = of_property_read_bool(np, "focaltech,swap-xy");
 	pdata->scaling_down_half = of_property_read_bool(np,
 					"focaltech,scaling-down-half");
