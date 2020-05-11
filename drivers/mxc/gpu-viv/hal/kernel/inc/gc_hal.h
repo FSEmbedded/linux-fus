@@ -76,18 +76,18 @@ extern "C" {
 
 /* Alignment with a non-power of two value. */
 #define gcmALIGN_NP2(n, align) \
-( \
+(\
     ((n) + (align) - 1) - (((n) + (align) - 1) % (align)) \
 )
 
 /* Alignment with a power of two value. */
 #define gcmALIGN(n, align) \
-( \
+(\
     ((n) + ((align) - 1)) & ~((align) - 1) \
 )
 
 #define gcmALIGN_BASE(n, align) \
-( \
+(\
     ((n) & ~((align) - 1)) \
 )
 
@@ -96,12 +96,12 @@ extern "C" {
 \******************************************************************************/
 
 #define gcmSIZEOF(a) \
-( \
+(\
     (gctSIZE_T) (sizeof(a)) \
 )
 
 #define gcmCOUNTOF(a) \
-( \
+(\
     sizeof(a) / sizeof(a[0]) \
 )
 
@@ -118,22 +118,22 @@ extern "C" {
         gckKERNEL_DeleteName(kernel, gcmALL_TO_UINT32(na))
 
 #define gcmALL_TO_UINT32(t) \
-( \
+(\
     (gctUINT32) (gctUINTPTR_T) (t)\
 )
 
 #define gcmPTR_TO_UINT64(p) \
-( \
+(\
     (gctUINT64) (gctUINTPTR_T) (p)\
 )
 
 #define gcmUINT64_TO_PTR(u) \
-( \
+(\
     (gctPOINTER) (gctUINTPTR_T) (u)\
 )
 
 #define gcmUINT64_TO_TYPE(u, t) \
-( \
+(\
     (t) (gctUINTPTR_T) (u)\
 )
 
@@ -457,6 +457,7 @@ gceSTATUS
 gckOS_AllocateNonPagedMemory(
     IN gckOS Os,
     IN gctBOOL InUserSpace,
+    IN gctUINT32 Flag,
     IN OUT gctSIZE_T * Bytes,
     OUT gctPHYS_ADDR * Physical,
     OUT gctPOINTER * Logical
@@ -511,6 +512,15 @@ gckOS_UserLogicalToPhysical(
     IN gckOS Os,
     IN gctPOINTER Logical,
     OUT gctPHYS_ADDR_T * Address
+    );
+
+
+/*  Map a physical address into kernel space.*/
+gceSTATUS
+gckOS_MapPhysicalToKernelSpace(
+    IN gckOS Os,
+    IN gckVIDMEM_NODE NodeObject,
+    OUT gctPOINTER * Logical
     );
 
 /* Map physical memory. */
@@ -573,6 +583,20 @@ gckOS_WriteRegisterEx(
     IN gctUINT32 Data
     );
 
+#ifdef __QNXNTO__
+static gcmINLINE gceSTATUS
+gckOS_WriteMemory(
+    IN gckOS Os,
+    IN gctPOINTER Address,
+    IN gctUINT32 Data
+    )
+{
+    /* Write memory. */
+    *(gctUINT32 *)Address = Data;
+    return gcvSTATUS_OK;
+}
+
+#else
 /* Write data to a 32-bit memory location. */
 gceSTATUS
 gckOS_WriteMemory(
@@ -580,6 +604,7 @@ gckOS_WriteMemory(
     IN gctPOINTER Address,
     IN gctUINT32 Data
     );
+#endif
 
 /* Map physical memory into the process space. */
 gceSTATUS
@@ -1300,7 +1325,7 @@ gckOS_CacheClean(
     gckOS Os,
     gctUINT32 ProcessID,
     gctPHYS_ADDR Handle,
-    gctPHYS_ADDR_T Physical,
+    gctSIZE_T Offset,
     gctPOINTER Logical,
     gctSIZE_T Bytes
     );
@@ -1310,7 +1335,7 @@ gckOS_CacheFlush(
     gckOS Os,
     gctUINT32 ProcessID,
     gctPHYS_ADDR Handle,
-    gctPHYS_ADDR_T Physical,
+    gctSIZE_T Offset,
     gctPOINTER Logical,
     gctSIZE_T Bytes
     );
@@ -1320,7 +1345,7 @@ gckOS_CacheInvalidate(
     gckOS Os,
     gctUINT32 ProcessID,
     gctPHYS_ADDR Handle,
-    gctPHYS_ADDR_T Physical,
+    gctSIZE_T Offset,
     gctPOINTER Logical,
     gctSIZE_T Bytes
     );
@@ -1813,9 +1838,9 @@ gceSTATUS
 gckKERNEL_QueryVidMemPoolNodes(
     gckKERNEL            Kernel,
     gcePOOL              Pool,
-    gctUINT32          * TotalSize,     /* sum of the sizes of the contiguous blocks (i.e. total memory used at current time) : to be filled by the called function */
-    gcsContiguousBlock * MemoryBlocks,  /* previously allocated by the calling function : to be filled by the called function */
-    gctUINT32            NumMaxBlocks,  /* provided by the calling function */
+    gctUINT32          * TotalSize, /* sum of the sizes of the contiguous blocks (i.e. total memory used at current time) : to be filled by the called function */
+    gcsContiguousBlock * MemoryBlocks, /* previously allocated by the calling function : to be filled by the called function */
+    gctUINT32            NumMaxBlocks, /* provided by the calling function */
     gctUINT32          * NumBlocks      /* actual number of contiguous blocks : to be filled by the called function */
     );
 
@@ -2825,3 +2850,5 @@ gckOS_DumpParam(
 #endif
 
 #endif /* __gc_hal_h_ */
+
+

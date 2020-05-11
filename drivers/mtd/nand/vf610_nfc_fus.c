@@ -16,13 +16,14 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/mtd/mtd.h>
-#include <linux/mtd/nand.h>
+#include <linux/mtd/rawnand.h>
 #include <linux/mtd/partitions.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/platform_data/vf610_nfc_fus.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/nmi.h>
 
 #define	DRV_NAME		"vf610_nfc_fus"
 #define	DRV_VERSION		"V3.0"

@@ -19,6 +19,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/dma-mapping.h>
 #include <linux/usb/chipidea.h>
+#include <linux/usb/of.h>
 #include <linux/clk.h>
 #include <linux/of_device.h>
 #include <linux/regmap.h>
@@ -79,7 +80,8 @@ static const struct ci_hdrc_imx_platform_flag imx6ul_usb_data = {
 };
 
 static const struct ci_hdrc_imx_platform_flag imx7d_usb_data = {
-	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM,
+	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM |
+		CI_HDRC_HOST_SUSP_PHY_LPM,
 };
 
 static const struct ci_hdrc_imx_platform_flag imx7ulp_usb_data = {
@@ -89,6 +91,10 @@ static const struct ci_hdrc_imx_platform_flag imx7ulp_usb_data = {
 };
 
 static const struct ci_hdrc_imx_platform_flag imx8qm_usb_data = {
+	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM,
+};
+
+static const struct ci_hdrc_imx_platform_flag imx8mm_usb_data = {
 	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM,
 };
 
@@ -103,6 +109,7 @@ static const struct of_device_id ci_hdrc_imx_dt_ids[] = {
 	{ .compatible = "fsl,imx7d-usb", .data = &imx7d_usb_data},
 	{ .compatible = "fsl,imx7ulp-usb", .data = &imx7ulp_usb_data},
 	{ .compatible = "fsl,imx8qm-usb", .data = &imx8qm_usb_data},
+	{ .compatible = "fsl,imx8mm-usb", .data = &imx8mm_usb_data},
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, ci_hdrc_imx_dt_ids);
@@ -114,8 +121,6 @@ struct ci_hdrc_imx_data {
 	struct imx_usbmisc_data *usbmisc_data;
 	bool supports_runtime_pm;
 	bool in_lpm;
-	bool imx_usb_charger_detection;
-	struct usb_charger charger;
 	struct regmap *anatop;
 	struct pinctrl *pinctrl;
 	struct pinctrl_state *pinctrl_hsic_active;
@@ -128,16 +133,6 @@ struct ci_hdrc_imx_data {
 	struct clk *clk_per;
 	/* --------------------------------- */
 	struct pm_qos_request pm_qos_req;
-};
-
-static char *imx_usb_charger_supplied_to[] = {
-	"imx_usb_charger",
-};
-
-static enum power_supply_property imx_usb_charger_power_props[] = {
-	POWER_SUPPLY_PROP_PRESENT,	/* Charger detected */
-	POWER_SUPPLY_PROP_ONLINE,	/* VBUS online */
-	POWER_SUPPLY_PROP_CURRENT_MAX,	/* Maximum current in mA */
 };
 
 /* Common functions shared by usbmisc drivers */
@@ -194,6 +189,9 @@ static struct imx_usbmisc_data *usbmisc_get_init_data(struct device *dev)
 	if (of_find_property(np, "external-vbus-divider", NULL))
 		data->evdo = 1;
 
+	if (of_usb_get_phy_mode(np) == USBPHY_INTERFACE_MODE_ULPI)
+		data->ulpi = 1;
+
 	if (of_find_property(np, "osc-clkgate-delay", NULL)) {
 		ret = of_property_read_u32(np, "osc-clkgate-delay",
 			&data->osc_clkgate_delay);
@@ -213,6 +211,11 @@ static struct imx_usbmisc_data *usbmisc_get_init_data(struct device *dev)
 			return ERR_PTR(-EINVAL);
 		}
 	}
+
+	of_property_read_u32(np, "picophy,pre-emp-curr-control",
+			&data->emp_curr_control);
+	of_property_read_u32(np, "picophy,dc-vol-level-adjust",
+			&data->dc_vol_level_adjust);
 
 	return data;
 }
@@ -320,27 +323,14 @@ static int ci_hdrc_imx_notify_event(struct ci_hdrc *ci, unsigned event)
 	struct device *dev = ci->dev->parent;
 	struct ci_hdrc_imx_data *data = dev_get_drvdata(dev);
 	int ret = 0;
+	struct imx_usbmisc_data *mdata = data->usbmisc_data;
 
 	switch (event) {
 	case CI_HDRC_CONTROLLER_VBUS_EVENT:
-		if (data->usbmisc_data && ci->vbus_active) {
-			if (data->imx_usb_charger_detection) {
-				ret = imx_usbmisc_charger_detection(
-					data->usbmisc_data, true);
-				if (!ret && data->charger.psy_desc.type !=
-							POWER_SUPPLY_TYPE_USB)
-					ret = CI_HDRC_NOTIFY_RET_DEFER_EVENT;
-			}
-		} else if (data->usbmisc_data && !ci->vbus_active) {
-			if (data->imx_usb_charger_detection)
-				ret = imx_usbmisc_charger_detection(
-					data->usbmisc_data, false);
-		}
-		break;
-	case CI_HDRC_CONTROLLER_CHARGER_POST_EVENT:
-		if (!data->imx_usb_charger_detection)
-			return ret;
-		imx_usbmisc_charger_secondary_detection(data->usbmisc_data);
+		if (ci->vbus_active)
+			ret = imx_usbmisc_charger_detection(mdata, true);
+		else
+			ret = imx_usbmisc_charger_detection(mdata, false);
 		break;
 	case CI_HDRC_IMX_HSIC_ACTIVE_EVENT:
 		if (!IS_ERR(data->pinctrl) &&
@@ -379,70 +369,6 @@ static int ci_hdrc_imx_notify_event(struct ci_hdrc *ci, unsigned event)
 	}
 
 	return ret;
-}
-
-static int imx_usb_charger_get_property(struct power_supply *psy,
-				enum power_supply_property psp,
-				union power_supply_propval *val)
-{
-	struct usb_charger *charger =
-		container_of(psy->desc, struct usb_charger, psy_desc);
-
-	switch (psp) {
-	case POWER_SUPPLY_PROP_PRESENT:
-		val->intval = charger->present;
-		break;
-	case POWER_SUPPLY_PROP_ONLINE:
-		val->intval = charger->online;
-		break;
-	case POWER_SUPPLY_PROP_CURRENT_MAX:
-		val->intval = charger->max_current;
-		break;
-	default:
-		return -EINVAL;
-	}
-	return 0;
-}
-
-/*
- * imx_usb_register_charger - register a USB charger
- * @charger: the charger to be initialized
- * @name: name for the power supply
-
- * Registers a power supply for the charger. The USB Controller
- * driver will call this after filling struct usb_charger.
- */
-static int imx_usb_register_charger(struct usb_charger *charger,
-		const char *name)
-{
-	struct power_supply_desc	*desc = &charger->psy_desc;
-
-	if (!charger->dev)
-		return -EINVAL;
-
-	if (name)
-		desc->name = name;
-	else
-		desc->name = "imx_usb_charger";
-
-	charger->bc = BATTERY_CHARGING_SPEC_1_2;
-	mutex_init(&charger->lock);
-
-	desc->type		= POWER_SUPPLY_TYPE_MAINS;
-	desc->properties	= imx_usb_charger_power_props;
-	desc->num_properties	= ARRAY_SIZE(imx_usb_charger_power_props);
-	desc->get_property	= imx_usb_charger_get_property;
-
-	charger->psy = devm_power_supply_register(charger->dev,
-						&charger->psy_desc, NULL);
-	if (IS_ERR(charger->psy))
-		return PTR_ERR(charger->psy);
-
-	charger->psy->supplied_to	= imx_usb_charger_supplied_to;
-	charger->psy->num_supplicants	= sizeof(imx_usb_charger_supplied_to)
-					/ sizeof(char *);
-
-	return 0;
 }
 
 static int ci_hdrc_imx_probe(struct platform_device *pdev)
@@ -530,6 +456,7 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 	}
 
 	pdata.usb_phy = data->phy;
+	data->usbmisc_data->usb_phy = data->phy;
 	if (pdata.flags & CI_HDRC_SUPPORTS_RUNTIME_PM)
 		data->supports_runtime_pm = true;
 
@@ -574,19 +501,6 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 			goto disable_hsic_regulator;
 		}
 		data->usbmisc_data->anatop = data->anatop;
-	}
-
-	if (of_find_property(np, "imx-usb-charger-detection", NULL) &&
-							data->usbmisc_data) {
-		data->imx_usb_charger_detection = true;
-		data->charger.dev = dev;
-		data->usbmisc_data->charger = &data->charger;
-		ret = imx_usb_register_charger(&data->charger,
-						"imx_usb_charger");
-		if (ret && ret != -ENODEV)
-			goto disable_hsic_regulator;
-		if (!ret)
-			dev_dbg(dev, "USB Charger is created\n");
 	}
 
 	ret = imx_usbmisc_init(data->usbmisc_data);
@@ -686,6 +600,14 @@ static int imx_controller_suspend(struct device *dev)
 				"usbmisc hsic_set_clk failed, ret=%d\n", ret);
 			return ret;
 		}
+
+	}
+
+	ret = imx_usbmisc_vbus_comparator_on(data->usbmisc_data, false);
+	if (ret) {
+		dev_err(dev,
+			"vbus comparator off failed, ret=%d\n", ret);
+		return ret;
 	}
 
 	imx_disable_unprepare_clks(dev);
@@ -733,6 +655,13 @@ static int imx_controller_resume(struct device *dev)
 		goto clk_disable;
 	}
 
+	ret = imx_usbmisc_vbus_comparator_on(data->usbmisc_data, true);
+	if (ret) {
+		dev_err(dev,
+			"vbus comparator on failed, ret=%d\n", ret);
+		goto vbus_comparator_off;
+	}
+
 	ret = imx_usbmisc_hsic_set_clk(data->usbmisc_data, true);
 	if (ret) {
 		dev_err(dev, "usbmisc hsic_set_clk failed, ret=%d\n", ret);
@@ -742,6 +671,8 @@ static int imx_controller_resume(struct device *dev)
 	return 0;
 
 hsic_set_clk_fail:
+	imx_usbmisc_vbus_comparator_on(data->usbmisc_data, false);
+vbus_comparator_off:
 	imx_usbmisc_set_wakeup(data->usbmisc_data, true);
 clk_disable:
 	imx_disable_unprepare_clks(dev);
@@ -772,7 +703,12 @@ static int ci_hdrc_imx_suspend(struct device *dev)
 		}
 	}
 
-	return imx_controller_suspend(dev);
+	ret = imx_controller_suspend(dev);
+	if (ret)
+		return ret;
+
+	pinctrl_pm_select_sleep_state(dev);
+	return ret;
 }
 
 static int ci_hdrc_imx_resume(struct device *dev)
@@ -780,6 +716,7 @@ static int ci_hdrc_imx_resume(struct device *dev)
 	struct ci_hdrc_imx_data *data = dev_get_drvdata(dev);
 	int ret;
 
+	pinctrl_pm_select_default_state(dev);
 	ret = imx_controller_resume(dev);
 	if (!ret && data->supports_runtime_pm) {
 		pm_runtime_disable(dev);

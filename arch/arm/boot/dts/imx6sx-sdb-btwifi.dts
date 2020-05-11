@@ -23,23 +23,9 @@
 		#reset-cells = <0>;
 	};
 
-	regulators {
-		wlreg_on: fixedregulator@100 {
-			compatible = "regulator-fixed";
-			regulator-min-microvolt = <5000000>;
-			regulator-max-microvolt = <5000000>;
-			regulator-name = "wlreg_on";
-			gpio = <&gpio6 10 0>;
-			startup-delay-us = <100>;
-			enable-active-high;
-		};
-	};
-
-	bcmdhd_wlan_0: bcmdhd_wlan@0 {
-		compatible = "android,bcmdhd_wlan";
-		/* WL_HOST_WAKE: SD2_DAT1 (gpio6 9) */
-		gpios = <&gpio6 9 0>;
-		wlreg_on-supply = <&wlreg_on>;
+	usdhc3_pwrseq: usdhc3_pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		reset-gpios = <&gpio6 10 GPIO_ACTIVE_LOW>;
 	};
 };
 
@@ -108,13 +94,20 @@
 };
 
 &usdhc3 {
+	#address-cells = <1>;
+	#size-cells = <0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_wifi>;
 	bus-width = <4>;
 	no-1-8-v;	/* force 3.3V VIO */
 	non-removable;
-	cd-post;
+	mmc-pwrseq = <&usdhc3_pwrseq>;
 	pm-ignore-notify;
-	wifi-host;	/* pull in card detect mechanism for BCMDHD driver */
+	cap-power-off-card;
 	status = "okay";
+
+	brcmf: bcrmf@1 {
+		reg = <1>;
+		compatible = "brcm,bcm4329-fmac";
+	};
 };

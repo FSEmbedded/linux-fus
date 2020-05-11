@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 NXP
+ * Copyright 2017-2019 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -335,6 +335,21 @@ struct it6263 {
 	bool split_mode;
 };
 
+struct it6263_minimode {
+	int hdisplay;
+	int vdisplay;
+	int vrefresh;
+};
+
+static const struct it6263_minimode it6263_bad_mode_db[] = {
+	{1600, 900,  60},
+	{1280, 1024, 60},
+	{1280, 720,  30},
+	{1280, 720,  25},
+	{1280, 720,  24},
+	{1152, 864,  75},
+};
+
 static inline struct it6263 *bridge_to_it6263(struct drm_bridge *bridge)
 {
 	return container_of(bridge, struct it6263, bridge);
@@ -380,27 +395,104 @@ static void it6263_reset(struct it6263 *it6263)
 	usleep_range(5000, 6000);
 }
 
+static void it6263_lvds_reset(struct it6263 *it6263)
+{
+	/* AFE PLL reset */
+	lvds_update_bits(it6263, LVDS_REG_PLL, 0x1, 0x0);
+	usleep_range(1000, 2000);
+	lvds_update_bits(it6263, LVDS_REG_PLL, 0x1, 0x1);
+
+	/* pclk reset */
+	lvds_update_bits(it6263, LVDS_REG_SW_RST,
+				SOFT_PCLK_DM_RST, SOFT_PCLK_DM_RST);
+	usleep_range(1000, 2000);
+	lvds_update_bits(it6263, LVDS_REG_SW_RST, SOFT_PCLK_DM_RST, 0x0);
+
+	usleep_range(1000, 2000);
+}
+
+static void it6263_lvds_set_interface(struct it6263 *it6263)
+{
+	/* color depth */
+	lvds_update_bits(it6263, LVDS_REG_MODE, LVDS_COLOR_DEPTH,
+						LVDS_COLOR_DEPTH_24);
+
+	/* jeida mapping */
+	lvds_update_bits(it6263, LVDS_REG_MODE, LVDS_OUT_MAP, JEIDA);
+
+	if (it6263->split_mode) {
+		lvds_update_bits(it6263, LVDS_REG_MODE, DMODE, SPLIT_MODE);
+		lvds_update_bits(it6263, LVDS_REG_52, BIT(1), BIT(1));
+	} else {
+		lvds_update_bits(it6263, LVDS_REG_MODE, DMODE, SINGLE_MODE);
+		lvds_update_bits(it6263, LVDS_REG_52, BIT(1), 0);
+	}
+}
+
+static void it6263_lvds_set_afe(struct it6263 *it6263)
+{
+	struct regmap *regmap = it6263->lvds_regmap;
+
+	regmap_write(regmap, LVDS_REG_AFE_3E, 0xaa);
+	regmap_write(regmap, LVDS_REG_AFE_3F, 0x02);
+	regmap_write(regmap, LVDS_REG_AFE_47, 0xaa);
+	regmap_write(regmap, LVDS_REG_AFE_48, 0x02);
+	regmap_write(regmap, LVDS_REG_AFE_4F, 0x11);
+
+	lvds_update_bits(it6263, LVDS_REG_PLL, 0x07, 0);
+}
+
+static void it6263_lvds_config(struct it6263 *it6263)
+{
+	it6263_lvds_reset(it6263);
+	it6263_lvds_set_interface(it6263);
+	it6263_lvds_set_afe(it6263);
+}
+
+static void it6263_hdmi_config(struct it6263 *it6263)
+{
+	regmap_write(it6263->hdmi_regmap, HDMI_REG_INPUT_MODE, IN_RGB);
+
+	hdmi_update_bits(it6263, HDMI_REG_GCP, HDMI_COLOR_DEPTH,
+						HDMI_COLOR_DEPTH_24);
+}
+
+static bool it6263_hpd_is_connected(struct it6263 *it6263)
+{
+	unsigned int status;
+
+	regmap_read(it6263->hdmi_regmap, HDMI_REG_SYS_STATUS, &status);
+
+	return !!(status & HPDETECT);
+}
+
 static enum drm_connector_status
 it6263_connector_detect(struct drm_connector *connector, bool force)
 {
 	struct it6263 *it6263 = connector_to_it6263(connector);
-	unsigned int status;
 	int i;
 
-	/*
-	 * FIXME: We read status tens of times to workaround
-	 * cable detection failure issue at boot time on some
-	 * platforms.
-	 */
-	for (i = 0; i < 90; i++)
-		regmap_read(it6263->hdmi_regmap, HDMI_REG_SYS_STATUS, &status);
+	if (force) {
+		/*
+		 * FIXME: We read status tens of times to workaround
+		 * cable detection failure issue at boot time on some
+		 * platforms.
+		 * Spin on this for up to one second.
+		 */
+		for (i = 0; i < 100; i++) {
+			if (it6263_hpd_is_connected(it6263))
+				return connector_status_connected;
+			usleep_range(5000, 10000);
+		}
+	} else {
+		if (it6263_hpd_is_connected(it6263))
+			return connector_status_connected;
+	}
 
-	return (status & HPDETECT) ? connector_status_connected :
-					connector_status_disconnected;
+	return connector_status_disconnected;
 }
 
 static const struct drm_connector_funcs it6263_connector_funcs = {
-	.dpms = drm_atomic_helper_connector_dpms,
 	.detect = it6263_connector_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.destroy = drm_connector_cleanup,
@@ -501,11 +593,22 @@ static int it6263_get_modes(struct drm_connector *connector)
 	return num;
 }
 
-enum drm_mode_status it6263_mode_valid(struct drm_connector *connector,
-					struct drm_display_mode *mode)
+static enum drm_mode_status it6263_mode_valid(struct drm_connector *connector,
+					      struct drm_display_mode *mode)
 {
+	const struct it6263_minimode *m;
+	int i, vrefresh = drm_mode_vrefresh(mode);
+
 	if (mode->clock > 150000)
 		return MODE_CLOCK_HIGH;
+
+	for (i = 0; i < ARRAY_SIZE(it6263_bad_mode_db); i++) {
+		m = &it6263_bad_mode_db[i];
+		if ((mode->hdisplay == m->hdisplay) &&
+		    (mode->vdisplay == m->vdisplay) &&
+		    (vrefresh == m->vrefresh))
+			return MODE_BAD;
+	}
 
 	return MODE_OK;
 }
@@ -536,6 +639,8 @@ static void it6263_bridge_enable(struct drm_bridge *bridge)
 	struct regmap *regmap = it6263->hdmi_regmap;
 	unsigned long timeout;
 	unsigned int status;
+	bool is_stable = false;
+	int i;
 
 	regmap_write(it6263->hdmi_regmap, HDMI_REG_BANK_CTRL, BANK_SEL(1));
 	/* set the color space to RGB in the AVI packet */
@@ -548,12 +653,26 @@ static void it6263_bridge_enable(struct drm_bridge *bridge)
 	usleep_range(1000, 2000);
 	hdmi_update_bits(it6263, HDMI_REG_SW_RST, SOFTV_RST, 0);
 
-	timeout = jiffies + msecs_to_jiffies(500);
-	do {
-		regmap_read(regmap, HDMI_REG_SYS_STATUS, &status);
-	} while (!(status & TXVIDSTABLE) && time_before(jiffies, timeout));
+	/* reconfigure LVDS and retry several times in case video is instable */
+	for (i = 0; i < 3; i++) {
+		timeout = jiffies + msecs_to_jiffies(500);
+		do {
+			regmap_read(regmap, HDMI_REG_SYS_STATUS, &status);
+		} while (!(status & TXVIDSTABLE) &&
+					time_before(jiffies, timeout));
 
-	if (!(status & TXVIDSTABLE))
+		if (status & TXVIDSTABLE) {
+			is_stable = true;
+			break;
+		}
+
+		it6263_lvds_config(it6263);
+
+		dev_dbg(&it6263->hdmi_i2c->dev,
+					"retry to lock input video %d\n", i);
+	}
+
+	if (!is_stable)
 		dev_warn(&it6263->hdmi_i2c->dev,
 				"failed to wait for video stable\n");
 
@@ -704,61 +823,6 @@ static int it6263_check_chipid(struct it6263 *it6263)
 	return ret;
 }
 
-static void it6263_lvds_reset(struct it6263 *it6263)
-{
-	/* AFE PLL reset */
-	lvds_update_bits(it6263, LVDS_REG_PLL, 0x1, 0x0);
-	usleep_range(1000, 2000);
-	lvds_update_bits(it6263, LVDS_REG_PLL, 0x1, 0x1);
-
-	/* pclk reset */
-	lvds_update_bits(it6263, LVDS_REG_SW_RST,
-				SOFT_PCLK_DM_RST, SOFT_PCLK_DM_RST);
-	usleep_range(1000, 2000);
-	lvds_update_bits(it6263, LVDS_REG_SW_RST, SOFT_PCLK_DM_RST, 0x0);
-
-	usleep_range(1000, 2000);
-}
-
-static void it6263_lvds_set_interface(struct it6263 *it6263)
-{
-	/* color depth */
-	lvds_update_bits(it6263, LVDS_REG_MODE, LVDS_COLOR_DEPTH,
-						LVDS_COLOR_DEPTH_24);
-
-	/* jeida mapping */
-	lvds_update_bits(it6263, LVDS_REG_MODE, LVDS_OUT_MAP, JEIDA);
-
-	if (it6263->split_mode) {
-		lvds_update_bits(it6263, LVDS_REG_MODE, DMODE, SPLIT_MODE);
-		lvds_update_bits(it6263, LVDS_REG_52, BIT(1), BIT(1));
-	} else {
-		lvds_update_bits(it6263, LVDS_REG_MODE, DMODE, SINGLE_MODE);
-		lvds_update_bits(it6263, LVDS_REG_52, BIT(1), 0);
-	}
-}
-
-static void it6263_lvds_set_afe(struct it6263 *it6263)
-{
-	struct regmap *regmap = it6263->lvds_regmap;
-
-	regmap_write(regmap, LVDS_REG_AFE_3E, 0xaa);
-	regmap_write(regmap, LVDS_REG_AFE_3F, 0x02);
-	regmap_write(regmap, LVDS_REG_AFE_47, 0xaa);
-	regmap_write(regmap, LVDS_REG_AFE_48, 0x02);
-	regmap_write(regmap, LVDS_REG_AFE_4F, 0x11);
-
-	lvds_update_bits(it6263, LVDS_REG_PLL, 0x07, 0);
-}
-
-static void it6263_hdmi_config(struct it6263 *it6263)
-{
-	regmap_write(it6263->hdmi_regmap, HDMI_REG_INPUT_MODE, IN_RGB);
-
-	hdmi_update_bits(it6263, HDMI_REG_GCP, HDMI_COLOR_DEPTH,
-						HDMI_COLOR_DEPTH_24);
-}
-
 static const struct regmap_range it6263_hdmi_volatile_ranges[] = {
 	{ .range_min = 0, .range_max = 0x1ff },
 };
@@ -791,10 +855,6 @@ static const struct regmap_config it6263_lvds_regmap_config = {
 	.cache_type = REGCACHE_NONE,
 };
 
-static const struct i2c_board_info it6263_lvds_i2c = {
-	I2C_BOARD_INFO("it6263_LVDS_i2c", LVDS_INPUT_CTRL_I2C_ADDR),
-};
-
 static int it6263_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
@@ -815,7 +875,8 @@ static int it6263_probe(struct i2c_client *client,
 	it6263->split_mode = of_property_read_bool(np, "split-mode");
 
 	it6263->hdmi_i2c = client;
-	it6263->lvds_i2c = i2c_new_device(client->adapter, &it6263_lvds_i2c);
+	it6263->lvds_i2c = i2c_new_dummy(client->adapter,
+						LVDS_INPUT_CTRL_I2C_ADDR);
 	if (!it6263->lvds_i2c) {
 		ret = -ENODEV;
 		goto of_reconfig;
@@ -873,9 +934,7 @@ static int it6263_probe(struct i2c_client *client,
 	if (ret)
 		goto unregister_lvds_i2c;
 
-	it6263_lvds_reset(it6263);
-	it6263_lvds_set_interface(it6263);
-	it6263_lvds_set_afe(it6263);
+	it6263_lvds_config(it6263);
 	it6263_hdmi_config(it6263);
 
 	it6263->bridge.funcs = &it6263_bridge_funcs;

@@ -12,5 +12,5 @@ Example:
 
 codec: wm8524@0 {
 	compatible = "wlf,wm8524";
-	wlf,mute-gpios = <&gpio1 8 GPIO_ACTIVE_LOW>
+	wlf,mute-gpios = <&gpio1 8 GPIO_ACTIVE_LOW>;
 };

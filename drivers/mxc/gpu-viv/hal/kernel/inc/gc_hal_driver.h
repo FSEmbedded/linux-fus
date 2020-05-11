@@ -86,6 +86,7 @@ typedef enum _gceHAL_COMMAND_CODES
     /* Generic query. */
     gcvHAL_QUERY_VIDEO_MEMORY,
     gcvHAL_QUERY_CHIP_IDENTITY,
+    gcvHAL_QUERY_CHIP_FREQUENCY,
 
     /* Contiguous memory. */
     gcvHAL_ALLOCATE_NON_PAGED_MEMORY,
@@ -94,8 +95,8 @@ typedef enum _gceHAL_COMMAND_CODES
     gcvHAL_FREE_CONTIGUOUS_MEMORY,
 
     /* Video memory allocation. */
-    gcvHAL_ALLOCATE_VIDEO_MEMORY,           /* Enforced alignment. */
-    gcvHAL_ALLOCATE_LINEAR_VIDEO_MEMORY,    /* No alignment. */
+    gcvHAL_ALLOCATE_VIDEO_MEMORY, /* Enforced alignment. */
+    gcvHAL_ALLOCATE_LINEAR_VIDEO_MEMORY, /* No alignment. */
     gcvHAL_RELEASE_VIDEO_MEMORY,
 
     /* Physical-to-logical mapping. */
@@ -226,6 +227,7 @@ typedef enum _gceHAL_COMMAND_CODES
      */
     gcvHAL_GET_GRAPHIC_BUFFER_FD,
 
+
     gcvHAL_SET_VIDEO_MEMORY_METADATA,
 
     /* Connect a video node to an OS native fd. */
@@ -239,6 +241,9 @@ typedef enum _gceHAL_COMMAND_CODES
 
     /* Wait until GPU finishes access to a resource. */
     gcvHAL_WAIT_FENCE,
+
+    /* Mutex Operation. */
+    gcvHAL_DEVICE_MUTEX,
 
 #if gcdDEC_ENABLE_AHB
     gcvHAL_DEC300_READ,
@@ -285,6 +290,15 @@ typedef struct _gcsUSER_MEMORY_DESC
     gcsEXTERNAL_MEMORY_INFO    externalMemoryInfo;
 }
 gcsUSER_MEMORY_DESC;
+
+
+enum
+{
+    /* GPU can't issue more that 32bit physical address */
+    gcvPLATFORM_FLAG_LIMIT_4G_ADDRESS = 1 << 0,
+
+    gcvPLATFORM_FLAG_IMX_MM           = 1 << 1,
+};
 
 
 #define gcdMAX_FLAT_MAPPING_COUNT           16
@@ -368,6 +382,8 @@ typedef struct _gcsHAL_QUERY_CHIP_IDENTITY
 
     /* Customer ID. */
     gctUINT32                   customerID;
+
+    gctUINT32                   platformFlagBits;
 }
 gcsHAL_QUERY_CHIP_IDENTITY;
 
@@ -414,6 +430,9 @@ typedef struct _gcsHAL_INTERFACE
     /* Ignore information from TSL when doing IO control */
     gctBOOL                     ignoreTLS;
 
+    /* The mutext already acquired */
+    IN gctBOOL                  commitMutex;
+
     /* Union of command structures. */
     union _u
     {
@@ -454,6 +473,13 @@ typedef struct _gcsHAL_INTERFACE
 
         /* gcvHAL_QUERY_CHIP_IDENTITY */
         gcsHAL_QUERY_CHIP_IDENTITY      QueryChipIdentity;
+
+        struct _gcsHAL_QUERY_CHIP_FREQUENCY
+        {
+            OUT gctUINT32               mcClk;
+            OUT gctUINT32               shClk;
+        }
+        QueryChipFrequency;
 
         /* gcvHAL_MAP_MEMORY */
         struct _gcsHAL_MAP_MEMORY
@@ -1238,11 +1264,12 @@ typedef struct _gcsHAL_INTERFACE
             IN gctUINT64                shBuf;
 
             /* A signal. */
-            IN gctUINT32                signal;
+            IN gctUINT64                signal;
 
             OUT gctINT32                fd;
         }
         GetGraphicBufferFd;
+
 
         struct _gcsHAL_VIDEO_MEMORY_METADATA
         {
@@ -1351,6 +1378,14 @@ typedef struct _gcsHAL_INTERFACE
         }
         BottomHalfUnlockVideoMemory;
 
+        /* gcvHAL_DEVICE_MUTEX: */
+        struct _gcsHAL_DEVICE_MUTEX
+        {
+            /* Lock or Release device mutex. */
+            gctBOOL                     isMutexLocked;
+        }
+        DeviceMutex;
+
         gcsHAL_QUERY_CHIP_OPTIONS QueryChipOptions;
     }
     u;
@@ -1363,3 +1398,5 @@ gcsHAL_INTERFACE;
 #endif
 
 #endif /* __gc_hal_driver_h_ */
+
+

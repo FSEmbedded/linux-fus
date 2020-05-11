@@ -17,7 +17,7 @@
 #ifndef __DRIVERS_MTD_NAND_GPMI_NAND_H
 #define __DRIVERS_MTD_NAND_GPMI_NAND_H
 
-#include <linux/mtd/nand.h>
+#include <linux/mtd/rawnand.h>
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
 #include <linux/dmaengine.h>
@@ -139,6 +139,8 @@ struct gpmi_devdata {
 	enum gpmi_type type;
 	int bch_max_ecc_strength;
 	int max_chain_delay; /* See the async EDO mode */
+	const char * const *clks;
+	const int clks_count;
 };
 
 struct gpmi_nand_data {
@@ -242,7 +244,7 @@ struct gpmi_nfc_hardware_timing {
 };
 
 /**
- * struct timing_threshod - Timing threshold
+ * struct timing_threshold - Timing threshold
  * @max_data_setup_cycles:       The maximum number of data setup cycles that
  *                               can be expressed in the hardware.
  * @internal_data_setup_in_ns:   The time, in ns, that the NFC hardware requires
@@ -264,7 +266,7 @@ struct gpmi_nfc_hardware_timing {
  *                               progress, this is the clock frequency during
  *                               the most recent I/O transaction.
  */
-struct timing_threshod {
+struct timing_threshold {
 	const unsigned int      max_chip_count;
 	const unsigned int      max_data_setup_cycles;
 	const unsigned int      internal_data_setup_in_ns;
@@ -324,8 +326,8 @@ void gpmi_copy_bits(u8 *dst, size_t dst_bit_off,
 #define GPMI_IS_MX6ULL(x)	((x)->devdata->type == IS_MX6ULL)
 #define GPMI_IS_MX8QXP(x)	((x)->devdata->type == IS_MX8QXP)
 
-#define GPMI_IS_MX6(x)		(GPMI_IS_MX6Q(x) || GPMI_IS_MX6QP(x)\
-	   || GPMI_IS_MX6SX(x) || GPMI_IS_MX6UL(x) || GPMI_IS_MX6ULL(x))
-#define GPMI_IS_MX7(x)		(GPMI_IS_MX7D(x))
+#define GPMI_IS_MX6(x)		(GPMI_IS_MX6Q(x) || GPMI_IS_MX6QP(x) || GPMI_IS_MX6SX(x) || \
+                                 GPMI_IS_MX6UL(x) || GPMI_IS_MX6ULL(x) || \
+				 GPMI_IS_MX7D(x))
 #define GPMI_IS_MX8(x)		(GPMI_IS_MX8QXP(x))
 #endif

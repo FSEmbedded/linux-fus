@@ -29,18 +29,10 @@
 #include <video/imx-ipu-v3.h>
 #include <video/dpu.h>
 #include <video/imx-dcss.h>
+#include <video/imx-lcdif.h>
 
 #include "imx-drm.h"
-
-struct imx_drm_component {
-	struct device_node *of_node;
-	struct list_head list;
-};
-
-struct imx_drm_crtc {
-	struct drm_crtc				*crtc;
-	struct imx_drm_crtc_helper_funcs	imx_drm_helper_funcs;
-};
+#include "ipuv3/ipuv3-plane.h"
 
 #if IS_ENABLED(CONFIG_DRM_FBDEV_EMULATION)
 static int legacyfb_depth = 16;
@@ -54,51 +46,7 @@ static void imx_drm_driver_lastclose(struct drm_device *drm)
 	drm_fbdev_cma_restore_mode(imxdrm->fbhelper);
 }
 
-static int imx_drm_enable_vblank(struct drm_device *drm, unsigned int pipe)
-{
-	struct imx_drm_device *imxdrm = drm->dev_private;
-	struct imx_drm_crtc *imx_drm_crtc = imxdrm->crtc[pipe];
-	int ret;
-
-	if (!imx_drm_crtc)
-		return -EINVAL;
-
-	if (!imx_drm_crtc->imx_drm_helper_funcs.enable_vblank)
-		return -ENOSYS;
-
-	ret = imx_drm_crtc->imx_drm_helper_funcs.enable_vblank(
-			imx_drm_crtc->crtc);
-
-	return ret;
-}
-
-static void imx_drm_disable_vblank(struct drm_device *drm, unsigned int pipe)
-{
-	struct imx_drm_device *imxdrm = drm->dev_private;
-	struct imx_drm_crtc *imx_drm_crtc = imxdrm->crtc[pipe];
-
-	if (!imx_drm_crtc)
-		return;
-
-	if (!imx_drm_crtc->imx_drm_helper_funcs.disable_vblank)
-		return;
-
-	imx_drm_crtc->imx_drm_helper_funcs.disable_vblank(imx_drm_crtc->crtc);
-}
-
-static const struct file_operations imx_drm_driver_fops = {
-	.owner = THIS_MODULE,
-	.open = drm_open,
-	.release = drm_release,
-	.unlocked_ioctl = drm_ioctl,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl = drm_compat_ioctl,
-#endif
-	.mmap = drm_gem_cma_mmap,
-	.poll = drm_poll,
-	.read = drm_read,
-	.llseek = noop_llseek,
-};
+DEFINE_DRM_GEM_CMA_FOPS(imx_drm_driver_fops);
 
 void imx_drm_connector_destroy(struct drm_connector *connector)
 {
@@ -112,68 +60,6 @@ void imx_drm_encoder_destroy(struct drm_encoder *encoder)
 	drm_encoder_cleanup(encoder);
 }
 EXPORT_SYMBOL_GPL(imx_drm_encoder_destroy);
-
-/*
- * imx_drm_add_crtc - add a new crtc
- */
-int imx_drm_add_crtc(struct drm_device *drm, struct drm_crtc *crtc,
-		struct imx_drm_crtc **new_crtc, struct drm_plane *primary_plane,
-		const struct imx_drm_crtc_helper_funcs *imx_drm_helper_funcs,
-		struct device_node *port)
-{
-	struct imx_drm_device *imxdrm = drm->dev_private;
-	struct imx_drm_crtc *imx_drm_crtc;
-
-	/*
-	 * The vblank arrays are dimensioned by MAX_CRTC - we can't
-	 * pass IDs greater than this to those functions.
-	 */
-	if (imxdrm->pipes >= MAX_CRTC)
-		return -EINVAL;
-
-	if (imxdrm->drm->open_count)
-		return -EBUSY;
-
-	imx_drm_crtc = kzalloc(sizeof(*imx_drm_crtc), GFP_KERNEL);
-	if (!imx_drm_crtc)
-		return -ENOMEM;
-
-	imx_drm_crtc->imx_drm_helper_funcs = *imx_drm_helper_funcs;
-	imx_drm_crtc->crtc = crtc;
-
-	crtc->port = port;
-
-	imxdrm->crtc[imxdrm->pipes++] = imx_drm_crtc;
-
-	*new_crtc = imx_drm_crtc;
-
-	drm_crtc_helper_add(crtc,
-			imx_drm_crtc->imx_drm_helper_funcs.crtc_helper_funcs);
-
-	drm_crtc_init_with_planes(drm, crtc, primary_plane, NULL,
-			imx_drm_crtc->imx_drm_helper_funcs.crtc_funcs, NULL);
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(imx_drm_add_crtc);
-
-/*
- * imx_drm_remove_crtc - remove a crtc
- */
-int imx_drm_remove_crtc(struct imx_drm_crtc *imx_drm_crtc)
-{
-	struct imx_drm_device *imxdrm = imx_drm_crtc->crtc->dev->dev_private;
-	unsigned int pipe = drm_crtc_index(imx_drm_crtc->crtc);
-
-	drm_crtc_cleanup(imx_drm_crtc->crtc);
-
-	imxdrm->crtc[pipe] = NULL;
-
-	kfree(imx_drm_crtc);
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(imx_drm_remove_crtc);
 
 int imx_drm_encoder_parse_of(struct drm_device *drm,
 	struct drm_encoder *encoder, struct device_node *np)
@@ -209,8 +95,6 @@ static struct drm_driver imx_drm_driver = {
 	.gem_free_object_unlocked = drm_gem_cma_free_object,
 	.gem_vm_ops		= &drm_gem_cma_vm_ops,
 	.dumb_create		= drm_gem_cma_dumb_create,
-	.dumb_map_offset	= drm_gem_cma_dumb_map_offset,
-	.dumb_destroy		= drm_gem_dumb_destroy,
 
 	.prime_handle_to_fd	= drm_gem_prime_handle_to_fd,
 	.prime_fd_to_handle	= drm_gem_prime_fd_to_handle,
@@ -221,9 +105,6 @@ static struct drm_driver imx_drm_driver = {
 	.gem_prime_vmap		= drm_gem_cma_prime_vmap,
 	.gem_prime_vunmap	= drm_gem_cma_prime_vunmap,
 	.gem_prime_mmap		= drm_gem_cma_prime_mmap,
-	.get_vblank_counter	= drm_vblank_no_hw_counter,
-	.enable_vblank		= imx_drm_enable_vblank,
-	.disable_vblank		= imx_drm_disable_vblank,
 	.ioctls			= imx_drm_ioctls,
 	.num_ioctls		= ARRAY_SIZE(imx_drm_ioctls),
 	.fops			= &imx_drm_driver_fops,
@@ -250,6 +131,18 @@ static int compare_of(struct device *dev, void *data)
 		return pdata->of_node == np;
 	}  else if (strcmp(dev->driver->name, "imx-dcss-crtc") == 0) {
 		struct dcss_client_platformdata *pdata = dev->platform_data;
+
+		return pdata->of_node == np;
+	} else if (strcmp(dev->driver->name, "imx-lcdif-crtc") == 0) {
+		struct lcdif_client_platformdata *pdata = dev->platform_data;
+#if IS_ENABLED(CONFIG_DRM_FBDEV_EMULATION)
+		/* set legacyfb_depth to be 32 for lcdif, since
+		 * default format of the connectors attached to
+		 * lcdif is usually RGB888
+		 */
+		if (pdata->of_node == np)
+			legacyfb_depth = 32;
+#endif
 
 		return pdata->of_node == np;
 	}
@@ -392,6 +285,27 @@ static int imx_drm_bind(struct device *dev)
 	imxdrm->drm = drm;
 	drm->dev_private = imxdrm;
 
+	if (has_dpu(dev)) {
+		imxdrm->dpu_nonblock_commit_wq =
+				alloc_workqueue("dpu_nonblock_commit_wq",
+						WQ_UNBOUND | WQ_FREEZABLE, 0);
+		if (!imxdrm->dpu_nonblock_commit_wq) {
+			ret = -ENOMEM;
+			goto err_wq;
+		}
+	}
+
+	if (has_dcss(dev)) {
+		imxdrm->dcss_nonblock_commit_wq =
+			alloc_ordered_workqueue("dcss_nonblock_commit_wq", 0);
+		if (!imxdrm->dcss_nonblock_commit_wq) {
+			ret = -ENOMEM;
+			goto err_wq;
+		}
+	}
+
+	init_waitqueue_head(&imxdrm->commit.wait);
+
 	/*
 	 * enable drm irq mode.
 	 * - with irq_enabled = true, we can use the vblank feature.
@@ -408,8 +322,8 @@ static int imx_drm_bind(struct device *dev)
 	 * this value would be used to check framebuffer size limitation
 	 * at drm_mode_addfb().
 	 */
-	drm->mode_config.min_width = 64;
-	drm->mode_config.min_height = 64;
+	drm->mode_config.min_width = 1;
+	drm->mode_config.min_height = 1;
 	drm->mode_config.max_width = 4096;
 	drm->mode_config.max_height = 4096;
 
@@ -429,7 +343,7 @@ static int imx_drm_bind(struct device *dev)
 	/* Now try and bind all our sub-components */
 	ret = component_bind_all(dev, drm);
 	if (ret)
-		goto err_vblank;
+		goto err_kms;
 
 	drm_mode_config_reset(drm);
 
@@ -447,8 +361,7 @@ static int imx_drm_bind(struct device *dev)
 	if (legacyfb_depth == 16 && has_dcss(dev))
 		legacyfb_depth = 32;
 
-	imxdrm->fbhelper = drm_fbdev_cma_init(drm, legacyfb_depth,
-				drm->mode_config.num_crtc, MAX_CRTC);
+	imxdrm->fbhelper = drm_fbdev_cma_init(drm, legacyfb_depth, MAX_CRTC);
 	if (IS_ERR(imxdrm->fbhelper)) {
 		ret = PTR_ERR(imxdrm->fbhelper);
 		imxdrm->fbhelper = NULL;
@@ -472,11 +385,14 @@ err_fbhelper:
 err_unbind:
 #endif
 	component_unbind_all(drm->dev, drm);
-err_vblank:
-	dev_set_drvdata(dev, NULL);
-	drm_vblank_cleanup(drm);
 err_kms:
+	dev_set_drvdata(dev, NULL);
 	drm_mode_config_cleanup(drm);
+err_wq:
+	if (imxdrm->dcss_nonblock_commit_wq)
+		destroy_workqueue(imxdrm->dcss_nonblock_commit_wq);
+	if (imxdrm->dpu_nonblock_commit_wq)
+		destroy_workqueue(imxdrm->dpu_nonblock_commit_wq);
 err_unref:
 	drm_dev_unref(drm);
 
@@ -488,8 +404,13 @@ static void imx_drm_unbind(struct device *dev)
 	struct drm_device *drm = dev_get_drvdata(dev);
 	struct imx_drm_device *imxdrm = drm->dev_private;
 
-	if (has_dpu(dev))
+	if (has_dpu(dev)) {
 		imx_drm_driver.driver_features &= ~DRIVER_RENDER;
+		flush_workqueue(imxdrm->dpu_nonblock_commit_wq);
+	}
+
+	if (has_dcss(dev))
+		flush_workqueue(imxdrm->dcss_nonblock_commit_wq);
 
 	drm_dev_unregister(drm);
 
@@ -502,6 +423,12 @@ static void imx_drm_unbind(struct device *dev)
 
 	component_unbind_all(drm->dev, drm);
 	dev_set_drvdata(dev, NULL);
+
+	if (has_dpu(dev))
+		destroy_workqueue(imxdrm->dpu_nonblock_commit_wq);
+
+	if (has_dcss(dev))
+		destroy_workqueue(imxdrm->dcss_nonblock_commit_wq);
 
 	drm_dev_unref(drm);
 }

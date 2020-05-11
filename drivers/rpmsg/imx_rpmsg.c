@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017-2018 NXP
  *
  * derived from the omap-rpmsg implementation.
  *
@@ -13,6 +13,7 @@
  */
 
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -22,6 +23,7 @@
 #include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
+#include <linux/of_reserved_mem.h>
 #include <linux/platform_device.h>
 #include <linux/rpmsg.h>
 #include <linux/slab.h>
@@ -31,15 +33,20 @@
 #include <linux/virtio_ring.h>
 #include <linux/imx_rpmsg.h>
 #include <linux/mx8_mu.h>
+#ifdef CONFIG_ARCH_MXC_ARM64
+#include <soc/imx8/sc/sci.h>
+#include <soc/imx8/sc/svc/irq/api.h>
+#endif
+#include "rpmsg_internal.h"
 
 enum imx_rpmsg_variants {
 	IMX6SX,
 	IMX7D,
 	IMX7ULP,
+	IMX8MQ,
 	IMX8QXP,
 	IMX8QM,
 };
-static enum imx_rpmsg_variants variant;
 
 struct imx_virdev {
 	struct virtio_device vdev;
@@ -47,15 +54,20 @@ struct imx_virdev {
 	struct virtqueue *vq[2];
 	int base_vq_id;
 	int num_of_vqs;
+	u32 vproc_id;
 	struct notifier_block nb;
 };
 
 struct imx_rpmsg_vproc {
 	char *rproc_name;
 	struct mutex lock;
+	struct clk *mu_clk;
+	enum imx_rpmsg_variants variant;
 	int vdev_nums;
-#define MAX_VDEV_NUMS	8
-	struct imx_virdev ivdev[MAX_VDEV_NUMS];
+	int first_notify;
+	u32 none_suspend;
+#define MAX_VDEV_NUMS  8
+	struct imx_virdev *ivdev[MAX_VDEV_NUMS];
 	void __iomem *mu_base;
 	struct delayed_work rpmsg_work;
 	struct blocking_notifier_head notifier;
@@ -64,7 +76,10 @@ struct imx_rpmsg_vproc {
 	u32 in_idx;
 	u32 out_idx;
 	u32 core_id;
+	u32 mub_partition;
+	struct notifier_block *pnotifier;
 	spinlock_t mu_lock;
+	struct platform_device *pdev;
 };
 
 /*
@@ -90,7 +105,14 @@ struct imx_rpmsg_vproc {
 				RPMSG_VRING_ALIGN), PAGE_SIZE)) * PAGE_SIZE)
 
 #define to_imx_virdev(vd) container_of(vd, struct imx_virdev, vdev)
-#define to_imx_rpdev(vd, id) container_of(vd, struct imx_rpmsg_vproc, ivdev[id])
+
+/* Flag 0 of ASR, 1 indicated that remote processor is ready */
+#define REMOTE_IS_READY			BIT(0)
+/*
+ * The time consumption by remote ready is less than 1ms in the
+ * evaluation. Set the max wait timeout as 50ms here.
+ */
+#define REMOTE_READY_WAIT_MAX_RETRIES	500
 
 struct imx_rpmsg_vq_info {
 	__u16 num;	/* number of entries in the virtio_ring */
@@ -98,6 +120,13 @@ struct imx_rpmsg_vq_info {
 	void *addr;	/* address where we mapped the virtio ring */
 	struct imx_rpmsg_vproc *rpdev;
 };
+
+static int imx_rpmsg_partion_notify0(struct notifier_block *nb,
+				unsigned long event, void *group);
+static int imx_rpmsg_partion_notify1(struct notifier_block *nb,
+				unsigned long event, void *group);
+
+static struct imx_rpmsg_vproc imx_rpmsg_vprocs[];
 
 static u64 imx_rpmsg_get_features(struct virtio_device *vdev)
 {
@@ -120,8 +149,24 @@ static bool imx_rpmsg_notify(struct virtqueue *vq)
 
 	mu_rpmsg = rpvq->vq_id << 16;
 	mutex_lock(&rpvq->rpdev->lock);
-	/* send the index of the triggered virtqueue as the mu payload */
-	MU_SendMessage(rpvq->rpdev->mu_base, 1, mu_rpmsg);
+	/*
+	 * Send the index of the triggered virtqueue as the mu payload.
+	 * Use the timeout MU send message here.
+	 * Since that M4 core may not be loaded, and the first MSG may
+	 * not be handled by M4 when multi-vdev is enabled.
+	 * To make sure that the message wound't be discarded when M4
+	 * is running normally or in the suspend mode. Only use
+	 * the timeout mechanism by the first notify when the vdev is
+	 * registered.
+	 * ~14ms is required by M4 ready to process the MU message from
+	 * cold boot. Set the wait time 20ms here.
+	 */
+	if (unlikely(rpvq->rpdev->first_notify > 0)) {
+		rpvq->rpdev->first_notify--;
+		MU_SendMessageTimeout(rpvq->rpdev->mu_base, 1, mu_rpmsg, 2000);
+	} else {
+		MU_SendMessage(rpvq->rpdev->mu_base, 1, mu_rpmsg);
+	}
 	mutex_unlock(&rpvq->rpdev->lock);
 
 	return true;
@@ -182,11 +227,12 @@ static int imx_mu_rpmsg_unregister_nb(struct imx_rpmsg_vproc *rpdev,
 static struct virtqueue *rp_find_vq(struct virtio_device *vdev,
 				    unsigned int index,
 				    void (*callback)(struct virtqueue *vq),
-				    const char *name)
+				    const char *name,
+				    bool ctx)
 {
 	struct imx_virdev *virdev = to_imx_virdev(vdev);
-	struct imx_rpmsg_vproc *rpdev = to_imx_rpdev(virdev,
-						     virdev->base_vq_id / 2);
+	int id = virdev->vproc_id;
+	struct imx_rpmsg_vproc *rpdev = &imx_rpmsg_vprocs[id];
 	struct imx_rpmsg_vq_info *rpvq;
 	struct virtqueue *vq;
 	int err;
@@ -209,7 +255,9 @@ static struct virtqueue *rp_find_vq(struct virtio_device *vdev,
 					rpvq->addr);
 
 	vq = vring_new_virtqueue(index, RPMSG_NUM_BUFS / 2, RPMSG_VRING_ALIGN,
-			vdev, true, rpvq->addr, imx_rpmsg_notify, callback,
+			vdev, true, ctx,
+			rpvq->addr,
+			imx_rpmsg_notify, callback,
 			name);
 	if (!vq) {
 		pr_err("vring_new_virtqueue failed\n");
@@ -238,8 +286,8 @@ static void imx_rpmsg_del_vqs(struct virtio_device *vdev)
 {
 	struct virtqueue *vq, *n;
 	struct imx_virdev *virdev = to_imx_virdev(vdev);
-	struct imx_rpmsg_vproc *rpdev = to_imx_rpdev(virdev,
-						     virdev->base_vq_id / 2);
+	int id = virdev->vproc_id;
+	struct imx_rpmsg_vproc *rpdev = &imx_rpmsg_vprocs[id];
 
 	list_for_each_entry_safe(vq, n, &vdev->vqs, list) {
 		struct imx_rpmsg_vq_info *rpvq = vq->priv;
@@ -256,11 +304,13 @@ static void imx_rpmsg_del_vqs(struct virtio_device *vdev)
 static int imx_rpmsg_find_vqs(struct virtio_device *vdev, unsigned int nvqs,
 		       struct virtqueue *vqs[],
 		       vq_callback_t *callbacks[],
-		       const char * const names[])
+		       const char * const names[],
+		       const bool *ctx,
+		       struct irq_affinity *desc)
 {
 	struct imx_virdev *virdev = to_imx_virdev(vdev);
-	struct imx_rpmsg_vproc *rpdev = to_imx_rpdev(virdev,
-						     virdev->base_vq_id / 2);
+	int id = virdev->vproc_id;
+	struct imx_rpmsg_vproc *rpdev = &imx_rpmsg_vprocs[id];
 	int i, err;
 
 	/* we maintain two virtqueues per remote processor (for RX and TX) */
@@ -268,7 +318,8 @@ static int imx_rpmsg_find_vqs(struct virtio_device *vdev, unsigned int nvqs,
 		return -EINVAL;
 
 	for (i = 0; i < nvqs; ++i) {
-		vqs[i] = rp_find_vq(vdev, i, callbacks[i], names[i]);
+		vqs[i] = rp_find_vq(vdev, i, callbacks[i], names[i],
+				ctx ? ctx[i] : false);
 		if (IS_ERR(vqs[i])) {
 			err = PTR_ERR(vqs[i]);
 			goto error;
@@ -317,12 +368,23 @@ static struct virtio_config_ops imx_rpmsg_config_ops = {
 	.get_status	= imx_rpmsg_get_status,
 };
 
+static struct notifier_block imx_rpmsg_partion_notifier[] = {
+	{
+		.notifier_call = imx_rpmsg_partion_notify0,
+	},
+	{
+		.notifier_call = imx_rpmsg_partion_notify1,
+	},
+};
+
 static struct imx_rpmsg_vproc imx_rpmsg_vprocs[] = {
 	{
 		.rproc_name	= "m4",
+		.pnotifier	= &imx_rpmsg_partion_notifier[0],
 	},
 	{
 		.rproc_name	= "m4",
+		.pnotifier	= &imx_rpmsg_partion_notifier[1],
 	},
 };
 
@@ -330,6 +392,7 @@ static const struct of_device_id imx_rpmsg_dt_ids[] = {
 	{ .compatible = "fsl,imx6sx-rpmsg",  .data = (void *)IMX6SX, },
 	{ .compatible = "fsl,imx7d-rpmsg",   .data = (void *)IMX7D, },
 	{ .compatible = "fsl,imx7ulp-rpmsg", .data = (void *)IMX7ULP, },
+	{ .compatible = "fsl,imx8mq-rpmsg", .data = (void *)IMX8MQ, },
 	{ .compatible = "fsl,imx8qxp-rpmsg", .data = (void *)IMX8QXP, },
 	{ .compatible = "fsl,imx8qm-rpmsg", .data = (void *)IMX8QM, },
 	{ /* sentinel */ }
@@ -350,8 +413,13 @@ static int set_vring_phy_buf(struct platform_device *pdev,
 		start = res->start;
 		end = res->start + size;
 		for (i = 0; i < vdev_nums; i++) {
-			rpdev->ivdev[i].vring[0] = start;
-			rpdev->ivdev[i].vring[1] = start +
+			rpdev->ivdev[i] = kzalloc(sizeof(struct imx_virdev),
+							GFP_KERNEL);
+			if (!rpdev->ivdev[i])
+				return -ENOMEM;
+
+			rpdev->ivdev[i]->vring[0] = start;
+			rpdev->ivdev[i]->vring[1] = start +
 						   0x8000;
 			start += 0x10000;
 			if (start > end) {
@@ -424,22 +492,119 @@ static irqreturn_t imx_mu_rpmsg_isr(int irq, void *param)
 	return IRQ_HANDLED;
 }
 
+static int imx_rpmsg_mu_init(struct imx_rpmsg_vproc *rpdev)
+{
+	int ret = 0;
+
+	/*
+	 * bit26 is used by rpmsg channels.
+	 * bit0 of MX7ULP_MU_CR used to let m4 to know MU is ready now
+	 */
+	MU_Init(rpdev->mu_base);
+	if (rpdev->variant == IMX7ULP) {
+		MU_EnableRxFullInt(rpdev->mu_base, 1);
+		ret = MU_SetFn(rpdev->mu_base, 1);
+	} else {
+		MU_EnableRxFullInt(rpdev->mu_base, 1);
+	}
+
+	return ret;
+}
+
+void imx_rpmsg_restore(struct imx_rpmsg_vproc *rpdev)
+{
+	int i;
+	u32 flags = 0;
+	int vdev_nums = rpdev->vdev_nums;
+
+	for (i = 0; i < vdev_nums; i++) {
+		unregister_virtio_device(&rpdev->ivdev[i]->vdev);
+		kfree(rpdev->ivdev[i]);
+	}
+
+	/* Make a double check that remote processor is ready or not */
+	for (i = 0; i < REMOTE_READY_WAIT_MAX_RETRIES; i++) {
+		if (rpdev->none_suspend)
+			flags = MU_ReadStatus(rpdev->mu_base);
+		if (flags & REMOTE_IS_READY)
+			break;
+		usleep_range(100, 200);
+	}
+	if (unlikely((flags & REMOTE_IS_READY) == 0)) {
+		pr_err("Wait for remote ready timeout, assume it's dead.\n");
+		/*
+		 * In order to make the codes to be robust and back compatible.
+		 * When wait remote ready timeout, use the MU_SendMessageTimeout
+		 * to send the first kick-off message when register the vdev.
+		 */
+		rpdev->first_notify = rpdev->vdev_nums;
+	}
+
+	/* Allocate and setup ivdev again to register virtio devices */
+	if (set_vring_phy_buf(rpdev->pdev, rpdev, rpdev->vdev_nums))
+		pr_err("No vring buffer.\n");
+
+	for (i = 0; i < vdev_nums; i++) {
+		rpdev->ivdev[i]->vdev.id.device = VIRTIO_ID_RPMSG;
+		rpdev->ivdev[i]->vdev.config = &imx_rpmsg_config_ops;
+		rpdev->ivdev[i]->vdev.dev.parent = &rpdev->pdev->dev;
+		rpdev->ivdev[i]->vdev.dev.release = imx_rpmsg_vproc_release;
+		rpdev->ivdev[i]->base_vq_id = i * 2;
+		rpdev->ivdev[i]->vproc_id = rpdev->core_id;
+
+		if (register_virtio_device(&rpdev->ivdev[i]->vdev))
+			pr_err("%s failed to register rpdev.\n", __func__);
+	}
+}
+
+static int imx_rpmsg_partion_notify0(struct notifier_block *nb,
+				      unsigned long event, void *group)
+{
+#ifdef CONFIG_ARCH_MXC_ARM64
+	struct imx_rpmsg_vproc *rpdev = &imx_rpmsg_vprocs[0];
+
+	/* Ignore other irqs */
+	if (!((event & BIT(rpdev->mub_partition)) &&
+		(*(sc_irq_group_t *)group == SC_IRQ_GROUP_REBOOTED)))
+		return 0;
+
+	imx_rpmsg_restore(rpdev);
+	pr_info("Patition%d reset!\n", rpdev->mub_partition);
+#endif
+	return 0;
+}
+
+static int imx_rpmsg_partion_notify1(struct notifier_block *nb,
+				      unsigned long event, void *group)
+{
+#ifdef CONFIG_ARCH_MXC_ARM64
+	struct imx_rpmsg_vproc *rpdev = &imx_rpmsg_vprocs[1];
+
+	/* Ignore other irqs */
+	if (!((event & BIT(rpdev->mub_partition)) &&
+		(*(sc_irq_group_t *)group == SC_IRQ_GROUP_REBOOTED)))
+		return 0;
+
+	imx_rpmsg_restore(rpdev);
+	pr_info("Patition%d reset!\n", rpdev->mub_partition);
+#endif
+	return 0;
+}
+
 static int imx_rpmsg_probe(struct platform_device *pdev)
 {
 	int core_id, j, ret = 0;
 	u32 irq;
-	struct clk *clk;
 	struct device_node *np_mu;
 	struct device *dev = &pdev->dev;
 	struct device_node *np = pdev->dev.of_node;
 	struct imx_rpmsg_vproc *rpdev;
 
-	variant = (enum imx_rpmsg_variants)of_device_get_match_data(dev);
-
 	if (of_property_read_u32(np, "multi-core-id", &core_id))
 		core_id = 0;
 	rpdev = &imx_rpmsg_vprocs[core_id];
 	rpdev->core_id = core_id;
+	rpdev->variant = (enum imx_rpmsg_variants)of_device_get_match_data(dev);
 
 	/* Initialize the mu unit used by rpmsg */
 	if (rpdev->core_id == 1)
@@ -454,7 +619,9 @@ static int imx_rpmsg_probe(struct platform_device *pdev)
 	rpdev->mu_base = of_iomap(np_mu, 0);
 	WARN_ON(!rpdev->mu_base);
 
-	if (variant == IMX7ULP)
+	spin_lock_init(&rpdev->mu_lock);
+
+	if (rpdev->variant == IMX7ULP)
 		irq = of_irq_get(np_mu, 1);
 	else
 		irq = of_irq_get(np_mu, 0);
@@ -468,32 +635,27 @@ static int imx_rpmsg_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	if (variant == IMX7D || variant == IMX8QXP || variant == IMX8QM) {
-		clk = of_clk_get(np_mu, 0);
-		if (IS_ERR(clk)) {
+	if (rpdev->variant == IMX6SX || rpdev->variant == IMX7ULP) {
+		rpdev->mu_clk = NULL;
+	} else {
+		rpdev->mu_clk = of_clk_get(np_mu, 0);
+		if (IS_ERR(rpdev->mu_clk)) {
 			pr_err("mu clock source missing or invalid\n");
-			return PTR_ERR(clk);
+			return PTR_ERR(rpdev->mu_clk);
 		}
-		ret = clk_prepare_enable(clk);
+		ret = clk_prepare_enable(rpdev->mu_clk);
 		if (ret) {
 			pr_err("unable to enable mu clock\n");
 			return ret;
 		}
 	}
 
-	INIT_DELAYED_WORK(&(rpdev->rpmsg_work), rpmsg_work_handler);
-	/*
-	 * bit26 is used by rpmsg channels.
-	 * bit0 of MX7ULP_MU_CR used to let m4 to know MU is ready now
-	 */
-	MU_Init(rpdev->mu_base);
-	if (variant == IMX7ULP) {
-		MU_EnableRxFullInt(rpdev->mu_base, 1);
-		MU_SetFn(rpdev->mu_base, 1);
-	} else {
-		MU_EnableRxFullInt(rpdev->mu_base, 1);
-		MU_EnableRxFullInt(rpdev->mu_base, 0);
+	ret = imx_rpmsg_mu_init(rpdev);
+	if (ret) {
+		pr_err("unable to initialize mu module.\n");
+		goto vdev_err_out;
 	}
+	INIT_DELAYED_WORK(&(rpdev->rpmsg_work), rpmsg_work_handler);
 	BLOCKING_INIT_NOTIFIER_HEAD(&(rpdev->notifier));
 
 	pr_info("MU is ready for cross core communication!\n");
@@ -503,49 +665,156 @@ static int imx_rpmsg_probe(struct platform_device *pdev)
 		rpdev->vdev_nums = 1;
 	if (rpdev->vdev_nums > MAX_VDEV_NUMS) {
 		pr_err("vdev-nums exceed the max %d\n", MAX_VDEV_NUMS);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto vdev_err_out;
 	}
+	rpdev->first_notify = rpdev->vdev_nums;
 
 	if (!strcmp(rpdev->rproc_name, "m4")) {
 		ret = set_vring_phy_buf(pdev, rpdev,
 					rpdev->vdev_nums);
 		if (ret) {
 			pr_err("No vring buffer.\n");
-			return -ENOMEM;
+			ret = -ENOMEM;
+			goto vdev_err_out;
 		}
 	} else {
 		pr_err("No remote m4 processor.\n");
-		return -ENODEV;
+		ret = -ENODEV;
+		goto vdev_err_out;
 	}
 
+
+	if (rpdev->variant == IMX8QM || rpdev->variant == IMX8QXP) {
+		if (of_reserved_mem_device_init(&pdev->dev)) {
+			dev_err(&pdev->dev,
+			"dev doesn't have specific DMA pool.\n");
+			ret = -ENOMEM;
+			goto vdev_err_out;
+		}
+	}
 	for (j = 0; j < rpdev->vdev_nums; j++) {
 		pr_debug("%s rpdev%d vdev%d: vring0 0x%x, vring1 0x%x\n",
 			 __func__, rpdev->core_id, rpdev->vdev_nums,
-			 rpdev->ivdev[j].vring[0],
-			 rpdev->ivdev[j].vring[1]);
-		rpdev->ivdev[j].vdev.id.device = VIRTIO_ID_RPMSG;
-		rpdev->ivdev[j].vdev.config = &imx_rpmsg_config_ops;
-		rpdev->ivdev[j].vdev.dev.parent = &pdev->dev;
-		rpdev->ivdev[j].vdev.dev.release = imx_rpmsg_vproc_release;
-		rpdev->ivdev[j].base_vq_id = j * 2;
+			 rpdev->ivdev[j]->vring[0],
+			 rpdev->ivdev[j]->vring[1]);
+		rpdev->ivdev[j]->vdev.id.device = VIRTIO_ID_RPMSG;
+		rpdev->ivdev[j]->vdev.config = &imx_rpmsg_config_ops;
+		rpdev->pdev = pdev;
+		rpdev->ivdev[j]->vdev.dev.parent = &pdev->dev;
+		rpdev->ivdev[j]->vdev.dev.release = imx_rpmsg_vproc_release;
+		rpdev->ivdev[j]->base_vq_id = j * 2;
+		rpdev->ivdev[j]->vproc_id = rpdev->core_id;
 
-		ret = register_virtio_device(&rpdev->ivdev[j].vdev);
+		ret = register_virtio_device(&rpdev->ivdev[j]->vdev);
 		if (ret) {
 			pr_err("%s failed to register rpdev: %d\n",
 					__func__, ret);
-			return ret;
+			goto err_out;
+		}
+	}
+
+	platform_set_drvdata(pdev, rpdev);
+
+#ifdef CONFIG_ARCH_MXC_ARM64
+	if (rpdev->variant == IMX8QXP || rpdev->variant == IMX8QM) {
+		uint32_t mu_id;
+		sc_err_t sciErr;
+		static sc_ipc_t mu_ipchandle;
+		uint32_t irq_status;
+
+		/* Get muB partition id and enable irq in SCFW then */
+		if (of_property_read_u32(np, "mub-partition",
+					&rpdev->mub_partition))
+			rpdev->mub_partition = 3; /* default partition 3 */
+
+		sciErr = sc_ipc_getMuID(&mu_id);
+		if (sciErr != SC_ERR_NONE) {
+			pr_err("can't obtain mu id: %d\n", sciErr);
+			return sciErr;
 		}
 
+		sciErr = sc_ipc_open(&mu_ipchandle, mu_id);
+
+		if (sciErr != SC_ERR_NONE) {
+			pr_err("can't get ipc handler: %d\n", sciErr);
+			return sciErr;
+		};
+
+		/* Clear any pending partition reset interrupt during
+		 * rpmsg probe.
+		 */
+		sciErr = sc_irq_status(mu_ipchandle, SC_R_MU_1A,
+				       SC_IRQ_GROUP_REBOOTED,
+				       &irq_status);
+		if (sciErr != SC_ERR_NONE)
+			pr_info("Cannot get partition reboot interrupt status\n");
+
+		/* Request for the partition reset interrupt. */
+		sciErr = sc_irq_enable(mu_ipchandle, SC_R_MU_1A,
+				       SC_IRQ_GROUP_REBOOTED,
+				       BIT(rpdev->mub_partition), true);
+		if (sciErr)
+			pr_info("Cannot request partition reset interrupt\n");
+
+		return register_scu_notifier(rpdev->pnotifier);
+
 	}
+#endif
+
+	return ret;
+
+err_out:
+	if (rpdev->variant == IMX8QM || rpdev->variant == IMX8QXP)
+		of_reserved_mem_device_release(&pdev->dev);
+vdev_err_out:
+	if (rpdev->mu_clk)
+		clk_disable_unprepare(rpdev->mu_clk);
+	return ret;
+}
+
+#ifdef CONFIG_PM_SLEEP
+static int imx_rpmsg_noirq_suspend(struct device *dev)
+{
+	struct imx_rpmsg_vproc *rpdev = dev_get_drvdata(dev);
+
+	rpdev->none_suspend = 0;
+	if (rpdev->mu_clk)
+		clk_disable_unprepare(rpdev->mu_clk);
+
+	return 0;
+}
+
+static int imx_rpmsg_noirq_resume(struct device *dev)
+{
+	struct imx_rpmsg_vproc *rpdev = dev_get_drvdata(dev);
+	int ret;
+
+	if (rpdev->mu_clk) {
+		ret = clk_prepare_enable(rpdev->mu_clk);
+		if (ret) {
+			pr_err("unable to enable mu clock\n");
+			return ret;
+		}
+	}
+	ret = imx_rpmsg_mu_init(rpdev);
+	rpdev->none_suspend = 1;
 
 	return ret;
 }
+#endif
+
+static const struct dev_pm_ops imx_rpmsg_pm_ops = {
+	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(imx_rpmsg_noirq_suspend,
+				      imx_rpmsg_noirq_resume)
+};
 
 static struct platform_driver imx_rpmsg_driver = {
 	.driver = {
 		   .owner = THIS_MODULE,
 		   .name = "imx-rpmsg",
 		   .of_match_table = imx_rpmsg_dt_ids,
+		   .pm = &imx_rpmsg_pm_ops,
 		   },
 	.probe = imx_rpmsg_probe,
 };
@@ -566,4 +835,4 @@ static int __init imx_rpmsg_init(void)
 MODULE_AUTHOR("Freescale Semiconductor, Inc.");
 MODULE_DESCRIPTION("iMX remote processor messaging virtio device");
 MODULE_LICENSE("GPL v2");
-subsys_initcall(imx_rpmsg_init);
+arch_initcall(imx_rpmsg_init);

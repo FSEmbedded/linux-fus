@@ -127,10 +127,10 @@ void imx_set_cpu_jump(int cpu, void *jump_addr)
 	spin_lock(&src_lock);
 	cpu = cpu_logical_map(cpu);
 	if (cpu_is_imx7d())
-		writel_relaxed(virt_to_phys(jump_addr),
+		writel_relaxed(__pa_symbol(jump_addr),
 			src_base + SRC_GPR1_V2 + cpu * 8);
 	else
-		writel_relaxed(virt_to_phys(jump_addr),
+		writel_relaxed(__pa_symbol(jump_addr),
 			src_base + SRC_GPR1 + cpu * 8);
 	spin_unlock(&src_lock);
 }

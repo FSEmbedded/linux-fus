@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 NXP
+ * Copyright (C) 2017-2018 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -25,7 +25,6 @@
 static struct device *cpu_dev;
 static bool free_opp;
 static struct cpufreq_frequency_table *freq_table;
-static struct mutex set_cpufreq_lock;
 static unsigned int transition_latency;
 static struct clk *a53_clk;
 static struct clk *arm_a53_src_clk;
@@ -34,29 +33,26 @@ static struct clk *arm_pll_out_clk;
 static struct clk *sys1_pll_800m_clk;
 struct thermal_cooling_device *cdev;
 static struct regulator *dc_reg;
+static struct regulator *arm_reg;
 
 static int imx8mq_set_target(struct cpufreq_policy *policy, unsigned int index)
 {
 	struct dev_pm_opp *opp;
-	unsigned long freq_hz;
+	unsigned long freq_hz, volt;
 	unsigned int old_freq, new_freq;
 	int ret;
-
-	mutex_lock(&set_cpufreq_lock);
 
 	new_freq = freq_table[index].frequency;
 	freq_hz = new_freq * 1000;
 	old_freq = policy->cur;
 
-	rcu_read_lock();
 	opp = dev_pm_opp_find_freq_ceil(cpu_dev, &freq_hz);
 	if (IS_ERR(opp)) {
-		rcu_read_unlock();
 		dev_err(cpu_dev, "failed to find OPP for %ld\n", freq_hz);
-		mutex_unlock(&set_cpufreq_lock);
 		return PTR_ERR(opp);
 	}
-	rcu_read_unlock();
+	volt = dev_pm_opp_get_voltage(opp);
+	dev_pm_opp_put(opp);
 
 	dev_dbg(cpu_dev, "%u MHz --> %u MHz\n",
 		old_freq / 1000, new_freq / 1000);
@@ -66,7 +62,16 @@ static int imx8mq_set_target(struct cpufreq_policy *policy, unsigned int index)
 			ret = regulator_set_voltage_tol(dc_reg, DC_VOLTAGE_MAX, 0);
 			if (ret) {
 				dev_err(cpu_dev, "failed to scale dc_reg up: %d\n", ret);
-				mutex_unlock(&set_cpufreq_lock);
+				return ret;
+			}
+		}
+	}
+
+	if (new_freq > old_freq) {
+		if (!IS_ERR(arm_reg)) {
+			ret = regulator_set_voltage_tol(arm_reg, volt, 0);
+			if (ret) {
+				dev_err(cpu_dev, "failed to scale arm_reg up: %d\n", ret);
 				return ret;
 			}
 		}
@@ -81,7 +86,16 @@ static int imx8mq_set_target(struct cpufreq_policy *policy, unsigned int index)
 			ret = regulator_set_voltage_tol(dc_reg, DC_VOLTAGE_MIN, 0);
 			if (ret) {
 				dev_err(cpu_dev, "failed to scale dc_reg down: %d\n", ret);
-				mutex_unlock(&set_cpufreq_lock);
+				return ret;
+			}
+		}
+	}
+
+	if (new_freq < old_freq) {
+		if (!IS_ERR(arm_reg)) {
+			ret = regulator_set_voltage_tol(arm_reg, volt, 0);
+			if (ret) {
+				dev_err(cpu_dev, "failed to scale arm_reg down: %d\n", ret);
 				return ret;
 			}
 		}
@@ -92,7 +106,6 @@ static int imx8mq_set_target(struct cpufreq_policy *policy, unsigned int index)
 	if (ret)
 		dev_err(cpu_dev, "failed to set clock rate: %d\n", ret);
 
-	mutex_unlock(&set_cpufreq_lock);
 	return ret;
 }
 
@@ -101,8 +114,7 @@ static void imx8mq_cpufreq_ready(struct cpufreq_policy *policy)
 	struct device_node *np = of_get_cpu_node(policy->cpu, NULL);
 
 	if (of_find_property(np, "#cooling-cells", NULL)) {
-		cdev = of_cpufreq_cooling_register(np,
-			policy->related_cpus);
+		cdev = of_cpufreq_cooling_register(np, policy);
 
 		if (IS_ERR(cdev) && PTR_ERR(cdev) != -ENOSYS) {
 			pr_err("cpu%d is not running as cooling device: %ld\n",
@@ -178,6 +190,7 @@ static int imx8mq_cpufreq_probe(struct platform_device *pdev)
 	}
 
 	dc_reg = regulator_get_optional(cpu_dev, "dc");
+	arm_reg = regulator_get_optional(cpu_dev, "arm");
 
 	/*
 	 * We expect an OPP table supplied by platform.
@@ -201,8 +214,6 @@ static int imx8mq_cpufreq_probe(struct platform_device *pdev)
 
 	if (of_property_read_u32(np, "clock-latency", &transition_latency))
 		transition_latency = CPUFREQ_ETERNAL;
-
-	mutex_init(&set_cpufreq_lock);
 
 	ret = cpufreq_register_driver(&imx8mq_cpufreq_driver);
 	if (ret) {

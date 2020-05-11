@@ -46,36 +46,17 @@
  *    Daryll Strauss <daryll@valinux.com>
  *    Gareth Hughes <gareth@valinux.com>
  */
-
+#include <linux/component.h>
 #include <linux/version.h>
 #include <linux/module.h>
+#include <drm/drmP.h>
+#include <drm/drm_pciids.h>
+#include <drm/drm_legacy.h>
 
-#include "drmP.h"
 #include "vivante_drv.h"
 
-#include "drm_pciids.h"
-#include "drm_legacy.h"
-
-static char platformdevicename[] = "Vivante GCCore";
+static char platformdevicename[] = "platform:Vivante GCCore";
 static struct platform_device *pplatformdev;
-
-
-int viv_set_busid(struct drm_device *dev, struct drm_master *master)
-{
-	int id;
-
-        id = dev->platformdev->id;
-        if (id < 0)
-                id = 0;
-
-        master->unique = kasprintf(GFP_KERNEL, "platform:%s:%02d",
-                                                dev->platformdev->name, id);
-        if (!master->unique)
-                return -ENOMEM;
-
-        master->unique_len = strlen(master->unique);
-        return 0;
-}
 
 static const struct file_operations viv_driver_fops = {
 	.owner = THIS_MODULE,
@@ -89,7 +70,6 @@ static const struct file_operations viv_driver_fops = {
 
 static struct drm_driver driver = {
 	.fops = &viv_driver_fops,
-	.set_busid = viv_set_busid,
 	.name = DRIVER_NAME,
 	.desc = DRIVER_DESC,
 	.date = DRIVER_DATE,
@@ -98,6 +78,35 @@ static struct drm_driver driver = {
 	.patchlevel = DRIVER_PATCHLEVEL,
 	.driver_features = DRIVER_LEGACY,
 };
+
+static int drm_get_platform_dev(struct platform_device *platdev,
+				struct drm_driver *driver)
+{
+	struct drm_device *dev;
+	int ret;
+
+	DRM_DEBUG("\n");
+
+	dev = drm_dev_alloc(driver, &platdev->dev);
+	if (IS_ERR(dev))
+		return PTR_ERR(dev);
+
+	dev_set_drvdata(&platdev->dev, dev);
+
+	ret = drm_dev_register(dev, 0);
+	if (ret)
+		goto err_free;
+
+	DRM_INFO("Initialized %s %d.%d.%d %s on minor %d\n",
+		 driver->name, driver->major, driver->minor, driver->patchlevel,
+		 driver->date, dev->primary->index);
+
+	return 0;
+
+err_free:
+	drm_dev_unref(dev);
+	return ret;
+}
 
 static int __init vivante_init(void)
 {
@@ -108,10 +117,11 @@ static int __init vivante_init(void)
 	if (pplatformdev == NULL)
 		printk(KERN_ERR"Platform device is null\n");
 
-	retcode = drm_platform_init(&driver, pplatformdev);
+	retcode = drm_get_platform_dev(pplatformdev, &driver);
 
 	return retcode;
 }
+module_init(vivante_init);
 
 static void __exit vivante_exit(void)
 {
@@ -122,10 +132,9 @@ static void __exit vivante_exit(void)
 		pplatformdev = NULL;
 	}
 }
-
-module_init(vivante_init);
 module_exit(vivante_exit);
 
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_LICENSE("GPL and additional rights");
+MODULE_ALIAS("platform:Vivante GCCore");

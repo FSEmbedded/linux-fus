@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017-2019 NXP
  *
  * SPDX-License-Identifier:     GPL-2.0+
  */
@@ -9,14 +9,12 @@
  * Header file used to configure SoC pad list.
  */
 
-#ifndef _SC_PADS_H
-#define _SC_PADS_H
+#ifndef SC_PADS_H
+#define SC_PADS_H
 
 /* Includes */
 
 /* Defines */
-
-#define SC_P_ALL            UINT16_MAX	/* All pads */
 
 /*!
  * @name Pad Definitions
@@ -421,7 +419,6 @@
 #define SC_P_SPDIF0_EXT_CLK_ADMA_LCDIF_D12                      SC_P_SPDIF0_EXT_CLK                2
 #define SC_P_SPDIF0_EXT_CLK_CONN_ENET1_REFCLK_125M_25M          SC_P_SPDIF0_EXT_CLK                3
 #define SC_P_SPDIF0_EXT_CLK_LSIO_GPIO0_IO12                     SC_P_SPDIF0_EXT_CLK                4
-#define SC_P_COMP_CTL_GPIO_1V8_3V3_GPIORHB_PAD			SC_P_COMP_CTL_GPIO_1V8_3V3_GPIORHB 0
 #define SC_P_SPI3_SCK_ADMA_SPI3_SCK                             SC_P_SPI3_SCK                      0
 #define SC_P_SPI3_SCK_ADMA_LCDIF_D13                            SC_P_SPI3_SCK                      2
 #define SC_P_SPI3_SCK_LSIO_GPIO0_IO13                           SC_P_SPI3_SCK                      4
@@ -769,4 +766,28 @@
 #define SC_P_QSPI0B_SS1_B_LSIO_GPIO3_IO24                       SC_P_QSPI0B_SS1_B                  4
 /*@}*/
 
-#endif				/* _SC_PADS_H */
+/*!
+ * @name Fake Pad Mux Definitions
+ * format: name padid 0
+ */
+/*@{*/
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_PCIESEP_PAD          SC_P_COMP_CTL_GPIO_1V8_3V3_PCIESEP         0
+#define SC_P_COMP_CTL_GPIO_3V3_USB3IO_PAD               SC_P_COMP_CTL_GPIO_3V3_USB3IO              0
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_SD1FIX0_PAD          SC_P_COMP_CTL_GPIO_1V8_3V3_SD1FIX0         0
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_SD1FIX1_PAD          SC_P_COMP_CTL_GPIO_1V8_3V3_SD1FIX1         0
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_VSELSEP_PAD          SC_P_COMP_CTL_GPIO_1V8_3V3_VSELSEP         0
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_VSEL3_PAD            SC_P_COMP_CTL_GPIO_1V8_3V3_VSEL3           0
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_ENET_ENETB0_PAD      SC_P_COMP_CTL_GPIO_1V8_3V3_ENET_ENETB0     0
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_ENET_ENETB1_PAD      SC_P_COMP_CTL_GPIO_1V8_3V3_ENET_ENETB1     0
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_GPIOCT_PAD           SC_P_COMP_CTL_GPIO_1V8_3V3_GPIOCT          0
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_GPIORHB_PAD          SC_P_COMP_CTL_GPIO_1V8_3V3_GPIORHB         0
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_GPIORHK_PAD          SC_P_COMP_CTL_GPIO_1V8_3V3_GPIORHK         0
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_GPIORHT_PAD          SC_P_COMP_CTL_GPIO_1V8_3V3_GPIORHT         0
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_GPIOLH_PAD           SC_P_COMP_CTL_GPIO_1V8_3V3_GPIOLH          0
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_MIPIDSIGPIO_PAD      SC_P_COMP_CTL_GPIO_1V8_3V3_MIPIDSIGPIO     0
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_GPIORHD_PAD          SC_P_COMP_CTL_GPIO_1V8_3V3_GPIORHD         0
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_QSPI0A_PAD           SC_P_COMP_CTL_GPIO_1V8_3V3_QSPI0A          0
+#define SC_P_COMP_CTL_GPIO_1V8_3V3_QSPI0B_PAD           SC_P_COMP_CTL_GPIO_1V8_3V3_QSPI0B          0
+/*@}*/
+
+#endif				/* SC_PADS_H */

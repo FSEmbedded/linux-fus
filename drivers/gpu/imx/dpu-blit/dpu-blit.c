@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017-2018 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -42,7 +42,7 @@ static void dpu_cs_wait_fifo_space(struct dpu_bliteng *dpu_be)
 {
 	while ((dpu_be_read(dpu_be, CMDSEQ_STATUS) &
 		CMDSEQ_STATUS_FIFOSPACE_MASK) < CMDSEQ_FIFO_SPACE_THRESHOLD)
-		usleep_range(1000, 2000);
+		usleep_range(30, 50);
 }
 
 static void dpu_cs_wait_idle(struct dpu_bliteng *dpu_be)
@@ -107,43 +107,59 @@ void dpu_be_configure_prefetch(struct dpu_bliteng *dpu_be,
 			       u32 stride, u32 format, u64 modifier,
 			       u64 baddr, u64 uv_addr)
 {
-	static bool start = true;
-	static bool need_handle_start;
 	struct dprc *dprc;
+	bool dprc_en=false;
 
 	/* Enable DPR, dprc1 is connected to plane0 */
 	dprc = dpu_be->dprc[1];
 
+	/*
+	 * Force sync command sequncer in conditions:
+	 * 1. tile work with dprc/prg (baddr)
+	 * 2. switch tile to linear (!start)
+	 */
+	if (!dpu_be->start || baddr) {
+		dpu_be_wait(dpu_be);
+	}
+
+	dpu_be->sync = true;
+
 	if (baddr == 0x0) {
-		dprc_disable(dprc);
-		start = true;
+		if (!dpu_be->start) {
+			dprc_disable(dprc, false);
+			dpu_be->start = true;
+		}
 		return;
 	}
 
-	dpu_be_wait(dpu_be);
-
-	if (need_handle_start) {
-		dprc_first_frame_handle(dprc);
-		need_handle_start = false;
+	if (dpu_be->modifier != modifier && !dpu_be->start) {
+		dprc_disable(dprc, false);
+		dprc_en = true;
 	}
+
+	dpu_be->modifier = modifier;
 
 	dprc_configure(dprc, 0,
 		       width, height,
 		       x_offset, y_offset,
 		       stride, format, modifier,
 		       baddr, uv_addr,
-		       start, start);
+		       dpu_be->start,
+		       dpu_be->start,
+		       false);
 
-	if (start)
+	if (dpu_be->start)
+		dprc_gasket_shadow_disable(dprc);
+	else
+		dprc_gasket_shadow_enable(dprc);
+
+	if (dpu_be->start || dprc_en) {
 		dprc_enable(dprc);
+	}
 
 	dprc_reg_update(dprc);
 
-	if (start) {
-		need_handle_start = true;
-	}
-
-	start = false;
+	dpu_be->start = false;
 }
 EXPORT_SYMBOL(dpu_be_configure_prefetch);
 
@@ -188,13 +204,6 @@ EXPORT_SYMBOL(dpu_bliteng_set_dev);
 int dpu_be_get(struct dpu_bliteng *dpu_be)
 {
 	mutex_lock(&dpu_be->mutex);
-	if (dpu_be->inuse) {
-		mutex_unlock(&dpu_be->mutex);
-		return -EBUSY;
-	}
-
-	dpu_be->inuse = true;
-	mutex_unlock(&dpu_be->mutex);
 
 	return 0;
 }
@@ -202,10 +211,6 @@ EXPORT_SYMBOL(dpu_be_get);
 
 void dpu_be_put(struct dpu_bliteng *dpu_be)
 {
-	mutex_lock(&dpu_be->mutex);
-
-	dpu_be->inuse = false;
-
 	mutex_unlock(&dpu_be->mutex);
 }
 EXPORT_SYMBOL(dpu_be_put);
@@ -233,21 +238,29 @@ EXPORT_SYMBOL(dpu_be_blit);
 #define STORE9_SEQCOMPLETE_IRQ_MASK	(1U<<STORE9_SEQCOMPLETE_IRQ)
 void dpu_be_wait(struct dpu_bliteng *dpu_be)
 {
-	dpu_be_write(dpu_be, 0x10, PIXENGCFG_STORE9_TRIGGER);
+	if (!dpu_be->sync) return;
+
+	dpu_cs_wait_fifo_space(dpu_be);
+
+	dpu_be_write(dpu_be, 0x14000001, CMDSEQ_HIF);
+	dpu_be_write(dpu_be, PIXENGCFG_STORE9_TRIGGER, CMDSEQ_HIF);
+	dpu_be_write(dpu_be, 0x10, CMDSEQ_HIF);
 
 	while ((dpu_be_read(dpu_be, COMCTRL_INTERRUPTSTATUS0) &
 		STORE9_SEQCOMPLETE_IRQ_MASK) == 0)
-		usleep_range(1000, 2000);
+		usleep_range(30, 50);
 
 	dpu_be_write(dpu_be, STORE9_SEQCOMPLETE_IRQ_MASK,
 		COMCTRL_INTERRUPTCLEAR0);
+
+	dpu_be->sync = false;
 }
 EXPORT_SYMBOL(dpu_be_wait);
 
 static void dpu_be_init_units(struct dpu_bliteng *dpu_be)
 {
 	u32 staticcontrol;
-	u32 pixengcfg_unit_static, pixengcfg_unit_dynamic;
+	u32 pixengcfg_unit_dynamic;
 
 	staticcontrol =
 	1 << FETCHDECODE9_STATICCONTROL_SHDEN_SHIFT |
@@ -297,18 +310,6 @@ static void dpu_be_init_units(struct dpu_bliteng *dpu_be)
 	0 << STORE9_STATICCONTROL_BASEADDRESSAUTOUPDATE_SHIFT |
 	STORE9_STATICCONTROL_RESET_VALUE;
 	dpu_be_write(dpu_be, staticcontrol, STORE9_STATICCONTROL);
-
-	/* Safety_Pixengcfg Static */
-	pixengcfg_unit_static =
-	1 << PIXENGCFG_STORE9_STATIC_STORE9_SHDEN_SHIFT |
-	0 << PIXENGCFG_STORE9_STATIC_STORE9_POWERDOWN_SHIFT |
-	PIXENGCFG_STORE9_STATIC_STORE9_SYNC_MODE__SINGLE <<
-	PIXENGCFG_STORE9_STATIC_STORE9_SYNC_MODE_SHIFT |
-	PIXENGCFG_STORE9_STATIC_STORE9_SW_RESET__OPERATION <<
-	PIXENGCFG_STORE9_STATIC_STORE9_SW_RESET_SHIFT |
-	PIXENGCFG_DIVIDER_RESET <<
-	PIXENGCFG_STORE9_STATIC_STORE9_DIV_SHIFT;
-	dpu_be_write(dpu_be, pixengcfg_unit_static, PIXENGCFG_STORE9_STATIC);
 
 	/* Safety_Pixengcfg Dynamic */
 	pixengcfg_unit_dynamic =
@@ -377,7 +378,7 @@ int dpu_bliteng_init(struct dpu_bliteng *dpu_bliteng)
 	dpu_base = res->start;
 
 	/* remap with bigger size */
-	base = devm_ioremap(dpu->dev, dpu_base, 64*SZ_1K);
+	base = devm_ioremap(dpu->dev, dpu_base, COMMAND_BUFFER_SIZE);
 	dpu_bliteng->base = base;
 	dpu_bliteng->dpu = dpu;
 
@@ -398,12 +399,26 @@ int dpu_bliteng_init(struct dpu_bliteng *dpu_bliteng)
 	dpu_bliteng->dprc[0] = dpu_be_dprc_get(dpu, 0);
 	dpu_bliteng->dprc[1] = dpu_be_dprc_get(dpu, 1);
 
+	dprc_disable(dpu_bliteng->dprc[0], false);
+	dprc_disable(dpu_bliteng->dprc[1], false);
+
+	dpu_bliteng->start = true;
+	dpu_bliteng->sync = false;
+
+	dpu_bliteng->modifier = 0;
+
 	return 0;
 }
 EXPORT_SYMBOL_GPL(dpu_bliteng_init);
 
 void dpu_bliteng_fini(struct dpu_bliteng *dpu_bliteng)
 {
+	/* LockUnlock and LockUnlockHIF */
+	dpu_be_write(dpu_bliteng, CMDSEQ_LOCKUNLOCKHIF_LOCKUNLOCKHIF__LOCK_KEY,
+		CMDSEQ_LOCKUNLOCKHIF);
+	dpu_be_write(dpu_bliteng, CMDSEQ_LOCKUNLOCK_LOCKUNLOCK__LOCK_KEY,
+		CMDSEQ_LOCKUNLOCK);
+
 	kfree(dpu_bliteng->cmd_list);
 
 	if (dpu_bliteng->buffer_addr_virt)

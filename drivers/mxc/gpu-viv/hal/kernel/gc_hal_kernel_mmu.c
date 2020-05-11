@@ -638,6 +638,8 @@ _AllocateStlb(
 
     gcmkONERROR(gckOS_GetPhysicalAddress(Os, stlb->logical, &stlb->physBase));
 
+    gcmkVERIFY_OK(gckOS_CPUPhysicalToGPUPhysical(Os, stlb->physBase, &stlb->physBase));
+
 #if gcdUSE_MMU_EXCEPTION
     _FillPageTable(stlb->logical, stlb->size / 4, gcdMMU_STLB_EXCEPTION);
 #else
@@ -885,6 +887,8 @@ _FillFlatMapping(
         /* Need allocate a new chunk of stlbs */
         if (totalNewStlbs)
         {
+            gctUINT32 allocFlag = gcvALLOC_FLAG_CONTIGUOUS;
+
             gcmkONERROR(
                 gckOS_Allocate(Mmu->os,
                                sizeof(struct _gcsMMU_STLB_CHUNK),
@@ -897,17 +901,29 @@ _FillFlatMapping(
             newStlbChunk->size = gcdMMU_STLB_64K_SIZE * newStlbChunk->mtlbEntryNum;
             newStlbChunk->pageCount = 0;
             newStlbChunk->mtlbIndex = firstMtlbEntry;
+
+#if gcdENABLE_CACHEABLE_COMMAND_BUFFER
+            allocFlag |= gcvALLOC_FLAG_CACHEABLE;
+#endif
+
             gcmkONERROR(
-                    gckOS_AllocateContiguous(Mmu->os,
-                                             gcvFALSE,
-                                             &newStlbChunk->size,
-                                             &newStlbChunk->physical,
-                                             (gctPOINTER)&newStlbChunk->logical));
+                    gckOS_AllocateNonPagedMemory(Mmu->os,
+                                                 gcvFALSE,
+                                                 allocFlag,
+                                                 &newStlbChunk->size,
+                                                 &newStlbChunk->physical,
+                                                 (gctPOINTER)&newStlbChunk->logical));
+
             gcmkONERROR(gckOS_ZeroMemory(newStlbChunk->logical, newStlbChunk->size));
 
             gcmkONERROR(gckOS_GetPhysicalAddress(
                 Mmu->os,
                 newStlbChunk->logical,
+                &physical));
+
+            gcmkVERIFY_OK(gckOS_CPUPhysicalToGPUPhysical(
+                Mmu->os,
+                physical,
                 &physical));
 
             gcmkSAFECASTPHYSADDRT(newStlbChunk->physBase, physical);
@@ -1007,6 +1023,16 @@ _FillFlatMapping(
                 sStart++;
                 curStlbChunk->pageCount++;
             }
+
+            /* Flush STLB table. */
+            gcmkONERROR(gckOS_CacheClean(
+                Mmu->os,
+                0,
+                curStlbChunk->physical,
+                0,
+                curStlbChunk->logical,
+                curStlbChunk->size
+                ));
 
             sStart = 0;
             ++mStart;
@@ -1115,6 +1141,7 @@ _SetupDynamicSpace(
     gcsADDRESS_AREA_PTR area = &Mmu->area[0];
     gcsADDRESS_AREA_PTR areaSecure = &Mmu->area[gcvADDRESS_AREA_SECURE];
     gctUINT32 secureAreaSize = 0;
+    gctUINT32 allocFlag = gcvALLOC_FLAG_CONTIGUOUS;
 
     /* Find all the free address space. */
     gcmkONERROR(_CollectFreeSpace(Mmu, &nodeArray, &nodeArraySize));
@@ -1154,9 +1181,14 @@ _SetupDynamicSpace(
     /* Setup normal address area. */
     gcmkONERROR(_SetupAddressArea(Mmu->os, area, numEntries));
 
+#if gcdENABLE_CACHEABLE_COMMAND_BUFFER
+    allocFlag |= gcvALLOC_FLAG_CACHEABLE;
+#endif
+
     /* Construct Slave TLB. */
-    gcmkONERROR(gckOS_AllocateContiguous(Mmu->os,
+    gcmkONERROR(gckOS_AllocateNonPagedMemory(Mmu->os,
                 gcvFALSE,
+                allocFlag,
                 &area->pageTableSize,
                 &area->pageTablePhysical,
                 (gctPOINTER)&area->pageTableLogical));
@@ -1174,6 +1206,10 @@ _SetupDynamicSpace(
 
     gcmkONERROR(gckOS_GetPhysicalAddress(Mmu->os,
                 area->pageTableLogical,
+                &physical));
+
+    gcmkVERIFY_OK(gckOS_CPUPhysicalToGPUPhysical(Mmu->os,
+                physical,
                 &physical));
 
     gcmkSAFECASTPHYSADDRT(address, physical);
@@ -1311,6 +1347,7 @@ _Construct(
     gctUINT32 gpuAddress;
     gctPHYS_ADDR_T gpuPhysical;
     gcsADDRESS_AREA_PTR area = gcvNULL;
+    gctUINT32 allocFlag = gcvALLOC_FLAG_CONTIGUOUS;
 
     gcmkHEADER_ARG("Kernel=0x%x MmuSize=%lu", Kernel, MmuSize);
 
@@ -1352,7 +1389,6 @@ _Construct(
     /* Create the page table mutex. */
     gcmkONERROR(gckOS_CreateMutex(os, &mmu->pageTableMutex));
 
-
     if (hardware->mmuVersion == 0)
     {
         area->pageTableSize = MmuSize;
@@ -1364,9 +1400,14 @@ _Construct(
 
         area->mapLogical = pointer;
 
+#if gcdENABLE_CACHEABLE_COMMAND_BUFFER
+        allocFlag |= gcvALLOC_FLAG_CACHEABLE;
+#endif
+
         /* Construct page table read by GPU. */
-        gcmkONERROR(gckOS_AllocateContiguous(mmu->os,
+        gcmkONERROR(gckOS_AllocateNonPagedMemory(mmu->os,
                     gcvFALSE,
+                    allocFlag,
                     &area->pageTableSize,
                     &area->pageTablePhysical,
                     (gctPOINTER)&area->pageTableLogical));
@@ -1403,12 +1444,17 @@ _Construct(
         /* Allocate the 4K mode MTLB table. */
         mmu->mtlbSize = gcdMMU_MTLB_SIZE;
 
+#if gcdENABLE_CACHEABLE_COMMAND_BUFFER
+        allocFlag |= gcvALLOC_FLAG_CACHEABLE;
+#endif
+
         gcmkONERROR(
-            gckOS_AllocateContiguous(os,
-                                     gcvFALSE,
-                                     &mmu->mtlbSize,
-                                     &mmu->mtlbPhysical,
-                                     &pointer));
+            gckOS_AllocateNonPagedMemory(os,
+                                         gcvFALSE,
+                                         allocFlag,
+                                         &mmu->mtlbSize,
+                                         &mmu->mtlbPhysical,
+                                         &pointer));
 
         mmu->mtlbLogical = pointer;
 
@@ -1435,6 +1481,12 @@ _Construct(
             gcmkONERROR(gckOS_GetPhysicalAddress(
                 mmu->os,
                 Kernel->command->queues[i].logical,
+                &gpuPhysical
+                ));
+
+            gcmkVERIFY_OK(gckOS_CPUPhysicalToGPUPhysical(
+                mmu->os,
+                gpuPhysical,
                 &gpuPhysical
                 ));
 
@@ -1522,6 +1574,16 @@ _Construct(
 
         gcmkONERROR(_SetupDynamicSpace(mmu));
 #endif
+
+        /* Flush MTLB table. */
+        gcmkONERROR(gckOS_CacheClean(
+            os,
+            0,
+            mmu->mtlbPhysical,
+            0,
+            mmu->mtlbLogical,
+            mmu->mtlbSize
+            ));
     }
 
     mmu->safePageSize = 4096;
@@ -1534,8 +1596,15 @@ _Construct(
         &mmu->safePageLogical
         ));
 
-    gcmkONERROR(gckOS_GetPhysicalAddress(os,
+    gcmkONERROR(gckOS_GetPhysicalAddress(
+        os,
         mmu->safePageLogical,
+        &gpuPhysical
+        ));
+
+    gcmkVERIFY_OK(gckOS_CPUPhysicalToGPUPhysical(
+        os,
+        gpuPhysical,
         &gpuPhysical
         ));
 

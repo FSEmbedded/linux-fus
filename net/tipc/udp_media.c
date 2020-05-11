@@ -113,7 +113,7 @@ static void tipc_udp_media_addr_set(struct tipc_media_addr *addr,
 	memcpy(addr->value, ua, sizeof(struct udp_media_addr));
 
 	if (tipc_udp_is_mcast_addr(ua))
-		addr->broadcast = 1;
+		addr->broadcast = TIPC_BROADCAST_SUPPORT;
 }
 
 /* tipc_udp_addr2str - convert ip/udp address to string */
@@ -229,7 +229,7 @@ static int tipc_udp_send_msg(struct net *net, struct sk_buff *skb,
 		goto out;
 	}
 
-	if (!addr->broadcast || list_empty(&ub->rcast.list))
+	if (addr->broadcast != TIPC_REPLICAST_SUPPORT)
 		return tipc_udp_xmit(net, skb, ub, src, dst);
 
 	/* Replicast, send an skb to each configured IP address */
@@ -243,10 +243,8 @@ static int tipc_udp_send_msg(struct net *net, struct sk_buff *skb,
 		}
 
 		err = tipc_udp_xmit(net, _skb, ub, src, &rcast->addr);
-		if (err) {
-			kfree_skb(_skb);
+		if (err)
 			goto out;
-		}
 	}
 	err = 0;
 out:
@@ -296,7 +294,7 @@ static int tipc_udp_rcast_add(struct tipc_bearer *b,
 	else if (ntohs(addr->proto) == ETH_P_IPV6)
 		pr_info("New replicast peer: %pI6\n", &rcast->addr.ipv6);
 #endif
-
+	b->bcast_addr.broadcast = TIPC_REPLICAST_SUPPORT;
 	list_add_rcu(&rcast->list, &ub->rcast.list);
 	return 0;
 }
@@ -453,7 +451,7 @@ int tipc_udp_nl_dump_remoteip(struct sk_buff *skb, struct netlink_callback *cb)
 
 		err = nla_parse_nested(battrs, TIPC_NLA_BEARER_MAX,
 				       attrs[TIPC_NLA_BEARER],
-				       tipc_nl_bearer_policy);
+				       tipc_nl_bearer_policy, NULL);
 		if (err)
 			return err;
 
@@ -605,7 +603,8 @@ int tipc_udp_nl_bearer_add(struct tipc_bearer *b, struct nlattr *attr)
 	struct nlattr *opts[TIPC_NLA_UDP_MAX + 1];
 	struct udp_media_addr *dst;
 
-	if (nla_parse_nested(opts, TIPC_NLA_UDP_MAX, attr, tipc_nl_udp_policy))
+	if (nla_parse_nested(opts, TIPC_NLA_UDP_MAX, attr,
+			     tipc_nl_udp_policy, NULL))
 		return -EINVAL;
 
 	if (!opts[TIPC_NLA_UDP_REMOTE])
@@ -658,7 +657,7 @@ static int tipc_udp_enable(struct net *net, struct tipc_bearer *b,
 
 	if (nla_parse_nested(opts, TIPC_NLA_UDP_MAX,
 			     attrs[TIPC_NLA_BEARER_UDP_OPTS],
-			     tipc_nl_udp_policy))
+			     tipc_nl_udp_policy, NULL))
 		goto err;
 
 	if (!opts[TIPC_NLA_UDP_LOCAL] || !opts[TIPC_NLA_UDP_REMOTE]) {
@@ -676,8 +675,13 @@ static int tipc_udp_enable(struct net *net, struct tipc_bearer *b,
 	if (err)
 		goto err;
 
+	if (remote.proto != local.proto) {
+		err = -EINVAL;
+		goto err;
+	}
+
 	b->bcast_addr.media_id = TIPC_MEDIA_TYPE_UDP;
-	b->bcast_addr.broadcast = 1;
+	b->bcast_addr.broadcast = TIPC_BROADCAST_SUPPORT;
 	rcu_assign_pointer(b->media_ptr, ub);
 	rcu_assign_pointer(ub->bearer, b);
 	tipc_udp_media_addr_set(&b->addr, &local);

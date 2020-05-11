@@ -13,7 +13,11 @@
 #ifndef _FSL_ASRC_H
 #define _FSL_ASRC_H
 
+#include <sound/asound.h>
 #include <uapi/linux/mxc_asrc.h>
+#include <linux/miscdevice.h>
+
+#define ASRC_PAIR_MAX_NUM	(ASRC_PAIR_C + 1)
 
 #define IN	0
 #define OUT	1
@@ -26,7 +30,7 @@
 #define ASRC_DMA_BUFFER_SIZE		(1024 * 48 * 4)
 #define ASRC_MAX_BUFFER_SIZE		(1024 * 48)
 #define ASRC_OUTPUT_LAST_SAMPLE_MAX	32
-#define ASRC_OUTPUT_LAST_SAMPLE		16
+#define ASRC_OUTPUT_LAST_SAMPLE		4
 
 #define IDEAL_RATIO_RATE		1000000
 
@@ -291,6 +295,11 @@
 
 #define ASRC_CLK_MAX_NUM	16
 
+enum asrc_word_width {
+	ASRC_WIDTH_24_BIT = 0,
+	ASRC_WIDTH_16_BIT = 1,
+	ASRC_WIDTH_8_BIT  = 2,
+};
 
 struct dma_block {
 	void *dma_vaddr;
@@ -323,6 +332,7 @@ struct fsl_asrc_pair {
 	struct dma_chan *dma_chan[2];
 	struct imx_dma_data dma_data;
 	unsigned int pos;
+	unsigned int pair_streams;
 
 	void *private;
 };
@@ -366,14 +376,17 @@ struct fsl_asrc {
 	struct miscdevice asrc_miscdev;
 	unsigned int channel_bits;
 	unsigned int channel_avail;
-	unsigned int pair_streams;
 
 	int asrc_rate;
 	int asrc_width;
+	int dma_type;  /* 0 is sdma, 1 is edma */
 
 	u32 regcache_cfg;
 	char name[20];
 };
+
+#define DMA_SDMA 0
+#define DMA_EDMA 1
 
 extern struct snd_soc_platform_driver fsl_asrc_platform;
 struct dma_chan *fsl_asrc_get_dma_channel(struct fsl_asrc_pair *pair, bool dir);

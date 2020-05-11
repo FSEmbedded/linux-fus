@@ -248,8 +248,6 @@ static int egalax_ts_probe(struct i2c_client *client,
 			     ABS_MT_POSITION_Y, 0, EGALAX_MAX_Y, 0, 0);
 	input_mt_init_slots(input_dev, MAX_SUPPORT_POINTS, 0);
 
-	input_set_drvdata(input_dev, ts);
-
 	error = egalax_irq_request(ts);
 	if (error)
 		return error;
@@ -259,6 +257,7 @@ static int egalax_ts_probe(struct i2c_client *client,
 		return error;
 
 	i2c_set_clientdata(client, ts);
+
 	return 0;
 }
 

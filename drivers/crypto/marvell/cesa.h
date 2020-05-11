@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __MARVELL_CESA_H__
 #define __MARVELL_CESA_H__
 
@@ -278,7 +279,7 @@ struct mv_cesa_op_ctx {
 #define CESA_TDMA_DUMMY				0
 #define CESA_TDMA_DATA				1
 #define CESA_TDMA_OP				2
-#define CESA_TDMA_IV				3
+#define CESA_TDMA_RESULT			3
 
 /**
  * struct mv_cesa_tdma_desc - TDMA descriptor
@@ -394,7 +395,6 @@ struct mv_cesa_dev_dma {
 	struct dma_pool *op_pool;
 	struct dma_pool *cache_pool;
 	struct dma_pool *padding_pool;
-	struct dma_pool *iv_pool;
 };
 
 /**
@@ -764,7 +764,7 @@ static inline int mv_cesa_req_needs_cleanup(struct crypto_async_request *req,
 	 * the backlog and will be processed later. There's no need to
 	 * clean it up.
 	 */
-	if (ret == -EBUSY && req->flags & CRYPTO_TFM_REQ_MAY_BACKLOG)
+	if (ret == -EBUSY)
 		return false;
 
 	/* Request wasn't queued, we need to clean it up */
@@ -840,7 +840,7 @@ mv_cesa_tdma_desc_iter_init(struct mv_cesa_tdma_chain *chain)
 	memset(chain, 0, sizeof(*chain));
 }
 
-int mv_cesa_dma_add_iv_op(struct mv_cesa_tdma_chain *chain, dma_addr_t src,
+int mv_cesa_dma_add_result_op(struct mv_cesa_tdma_chain *chain, dma_addr_t src,
 			  u32 size, u32 flags, gfp_t gfp_flags);
 
 struct mv_cesa_op_ctx *mv_cesa_dma_add_op(struct mv_cesa_tdma_chain *chain,

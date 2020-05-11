@@ -321,6 +321,17 @@ int hdmi_vendor_infoframe_init(struct hdmi_vendor_infoframe *frame)
 }
 EXPORT_SYMBOL(hdmi_vendor_infoframe_init);
 
+static int hdmi_vendor_infoframe_length(const struct hdmi_vendor_infoframe *frame)
+{
+	/* for side by side (half) we also need to provide 3D_Ext_Data */
+	if (frame->s3d_struct >= HDMI_3D_STRUCTURE_SIDE_BY_SIDE_HALF)
+		return 6;
+	else if (frame->vic != 0 || frame->s3d_struct != HDMI_3D_STRUCTURE_INVALID)
+		return 5;
+	else
+		return 4;
+}
+
 /**
  * hdmi_vendor_infoframe_pack() - write a HDMI vendor infoframe to binary buffer
  * @frame: HDMI infoframe
@@ -341,19 +352,11 @@ ssize_t hdmi_vendor_infoframe_pack(struct hdmi_vendor_infoframe *frame,
 	u8 *ptr = buffer;
 	size_t length;
 
-	/* empty info frame */
-	if (frame->vic == 0 && frame->s3d_struct == HDMI_3D_STRUCTURE_INVALID)
-		return -EINVAL;
-
 	/* only one of those can be supplied */
 	if (frame->vic != 0 && frame->s3d_struct != HDMI_3D_STRUCTURE_INVALID)
 		return -EINVAL;
 
-	/* for side by side (half) we also need to provide 3D_Ext_Data */
-	if (frame->s3d_struct >= HDMI_3D_STRUCTURE_SIDE_BY_SIDE_HALF)
-		frame->length = 6;
-	else
-		frame->length = 5;
+	frame->length = hdmi_vendor_infoframe_length(frame);
 
 	length = HDMI_INFOFRAME_HEADER_SIZE + frame->length;
 
@@ -372,14 +375,16 @@ ssize_t hdmi_vendor_infoframe_pack(struct hdmi_vendor_infoframe *frame,
 	ptr[5] = 0x0c;
 	ptr[6] = 0x00;
 
-	if (frame->vic) {
-		ptr[7] = 0x1 << 5;	/* video format */
-		ptr[8] = frame->vic;
-	} else {
+	if (frame->s3d_struct != HDMI_3D_STRUCTURE_INVALID) {
 		ptr[7] = 0x2 << 5;	/* video format */
 		ptr[8] = (frame->s3d_struct & 0xf) << 4;
 		if (frame->s3d_struct >= HDMI_3D_STRUCTURE_SIDE_BY_SIDE_HALF)
 			ptr[9] = (frame->s3d_ext_data & 0xf) << 4;
+	} else if (frame->vic) {
+		ptr[7] = 0x1 << 5;	/* video format */
+		ptr[8] = frame->vic;
+	} else {
+		ptr[7] = 0x0 << 5;	/* video format */
 	}
 
 	hdmi_infoframe_set_checksum(buffer, length);
@@ -447,38 +452,38 @@ ssize_t hdmi_drm_infoframe_pack(struct hdmi_drm_infoframe *frame, void *buffer,
 	ptr[2] = frame->display_primaries_x[0] & 0xff;
 	ptr[3] = frame->display_primaries_x[0] >> 8;
 
-	ptr[4] = frame->display_primaries_x[1] & 0xff;
-	ptr[5] = frame->display_primaries_x[1] >> 8;
+	ptr[4] = frame->display_primaries_y[0] & 0xff;
+	ptr[5] = frame->display_primaries_y[0] >> 8;
 
-	ptr[6] = frame->display_primaries_x[2] & 0xff;
-	ptr[7] = frame->display_primaries_x[2] >> 8;
+	ptr[6] = frame->display_primaries_x[1] & 0xff;
+	ptr[7] = frame->display_primaries_x[1] >> 8;
 
-	ptr[9] = frame->display_primaries_y[0] & 0xff;
-	ptr[10] = frame->display_primaries_y[0] >> 8;
+	ptr[8] = frame->display_primaries_y[1] & 0xff;
+	ptr[9] = frame->display_primaries_y[1] >> 8;
 
-	ptr[11] = frame->display_primaries_y[1] & 0xff;
-	ptr[12] = frame->display_primaries_y[1] >> 8;
+	ptr[10] = frame->display_primaries_x[2] & 0xff;
+	ptr[11] = frame->display_primaries_x[2] >> 8;
 
-	ptr[13] = frame->display_primaries_y[2] & 0xff;
-	ptr[14] = frame->display_primaries_y[2] >> 8;
+	ptr[12] = frame->display_primaries_y[2] & 0xff;
+	ptr[13] = frame->display_primaries_y[2] >> 8;
 
-	ptr[15] = frame->white_point_x & 0xff;
-	ptr[16] = frame->white_point_x >> 8;
+	ptr[14] = frame->white_point_x & 0xff;
+	ptr[15] = frame->white_point_x >> 8;
 
-	ptr[17] = frame->white_point_y & 0xff;
-	ptr[18] = frame->white_point_y >> 8;
+	ptr[16] = frame->white_point_y & 0xff;
+	ptr[17] = frame->white_point_y >> 8;
 
-	ptr[19] = frame->max_mastering_display_luminance & 0xff;
-	ptr[20] = frame->max_mastering_display_luminance >> 8;
+	ptr[18] = frame->max_mastering_display_luminance & 0xff;
+	ptr[19] = frame->max_mastering_display_luminance >> 8;
 
-	ptr[21] = frame->min_mastering_display_luminance & 0xff;
-	ptr[22] = frame->min_mastering_display_luminance >> 8;
+	ptr[20] = frame->min_mastering_display_luminance & 0xff;
+	ptr[21] = frame->min_mastering_display_luminance >> 8;
 
-	ptr[23] = frame->max_cll & 0xff;
-	ptr[24] = frame->max_cll >> 8;
+	ptr[22] = frame->max_cll & 0xff;
+	ptr[23] = frame->max_cll >> 8;
 
-	ptr[25] = frame->max_fall & 0xff;
-	ptr[26] = frame->max_fall >> 8;
+	ptr[24] = frame->max_fall & 0xff;
+	ptr[25] = frame->max_fall >> 8;
 
 	hdmi_infoframe_set_checksum(buffer, length);
 
@@ -1303,7 +1308,7 @@ hdmi_vendor_any_infoframe_unpack(union hdmi_vendor_any_infoframe *frame,
 
 	if (ptr[0] != HDMI_INFOFRAME_TYPE_VENDOR ||
 	    ptr[1] != 1 ||
-	    (ptr[2] != 5 && ptr[2] != 6))
+	    (ptr[2] != 4 && ptr[2] != 5 && ptr[2] != 6))
 		return -EINVAL;
 
 	length = ptr[2];
@@ -1331,16 +1336,22 @@ hdmi_vendor_any_infoframe_unpack(union hdmi_vendor_any_infoframe *frame,
 
 	hvf->length = length;
 
-	if (hdmi_video_format == 0x1) {
-		hvf->vic = ptr[4];
-	} else if (hdmi_video_format == 0x2) {
+	if (hdmi_video_format == 0x2) {
+		if (length != 5 && length != 6)
+			return -EINVAL;
 		hvf->s3d_struct = ptr[4] >> 4;
 		if (hvf->s3d_struct >= HDMI_3D_STRUCTURE_SIDE_BY_SIDE_HALF) {
-			if (length == 6)
-				hvf->s3d_ext_data = ptr[5] >> 4;
-			else
+			if (length != 6)
 				return -EINVAL;
+			hvf->s3d_ext_data = ptr[5] >> 4;
 		}
+	} else if (hdmi_video_format == 0x1) {
+		if (length != 5)
+			return -EINVAL;
+		hvf->vic = ptr[4];
+	} else {
+		if (length != 4)
+			return -EINVAL;
 	}
 
 	return 0;

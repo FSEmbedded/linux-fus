@@ -6,7 +6,6 @@ Required properties:
 - interrupts : Should contain uart interrupt
 
 Optional properties:
-- uart-has-rtscts : Indicate the uart has rts and cts
 - fsl,irda-mode : Indicate the uart supports irda mode
 - fsl,dte-mode : Indicate the uart works in DTE mode. The uart works
                   in DCE mode by default.
@@ -15,6 +14,9 @@ Optional properties:
                      value is 32.
 - no-dma: Disables dma for this uart. The uart is now interrupt-driven,
           does not buffer the received data and supports parity check.
+
+Please check Documentation/devicetree/bindings/serial/serial.txt
+for the complete list of generic properties.
 
 Note: Each uart controller should have an alias correctly numbered
 in "aliases" node.

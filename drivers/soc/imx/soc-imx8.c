@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017-2018 NXP
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -24,6 +24,7 @@
 #include <linux/platform_device.h>
 #include <linux/of.h>
 
+#include <soc/imx8/sc/types.h>
 #include <soc/imx8/sc/sci.h>
 #include <soc/imx8/soc.h>
 #include <soc/imx/revision.h>
@@ -148,7 +149,7 @@ static u32 imx8qm_soc_revision(void)
 {
 	u32 rev = imx_init_revision_from_scu();
 
-	if (rev == IMX_CHIP_REVISION_1_0)
+	if (rev == IMX_CHIP_REVISION_1_0 || rev == IMX_CHIP_REVISION_1_1)
 		TKT340553_SW_WORKAROUND = true;
 
 	return rev;
@@ -198,6 +199,18 @@ static u32 imx8mq_soc_revision(void)
 	return imx_init_revision_from_atf();
 }
 
+static u32 imx8mm_soc_revision(void)
+{
+	imx8_soc_uid = imx8mq_soc_get_soc_uid();
+	return imx_init_revision_from_atf();
+}
+
+static u32 imx8mn_soc_revision(void)
+{
+	imx8_soc_uid = imx8mq_soc_get_soc_uid();
+	return imx_init_revision_from_atf();
+}
+
 static struct imx8_soc_data imx8qm_soc_data = {
 	.name = "i.MX8QM",
 	.soc_revision = imx8qm_soc_revision,
@@ -213,10 +226,22 @@ static struct imx8_soc_data imx8mq_soc_data = {
 	.soc_revision = imx8mq_soc_revision,
 };
 
+static struct imx8_soc_data imx8mm_soc_data = {
+	.name = "i.MX8MM",
+	.soc_revision = imx8mm_soc_revision,
+};
+
+static struct imx8_soc_data imx8mn_soc_data = {
+	.name = "i.MX8MN",
+	.soc_revision = imx8mn_soc_revision,
+};
+
 static const struct of_device_id imx8_soc_match[] = {
 	{ .compatible = "fsl,imx8qm", .data = &imx8qm_soc_data, },
 	{ .compatible = "fsl,imx8qxp", .data = &imx8qxp_soc_data, },
 	{ .compatible = "fsl,imx8mq", .data = &imx8mq_soc_data, },
+	{ .compatible = "fsl,imx8mm", .data = &imx8mm_soc_data, },
+	{ .compatible = "fsl,imx8mn", .data = &imx8mn_soc_data, },
 	{ }
 };
 
@@ -262,33 +287,23 @@ static ssize_t imx8_get_soc_uid(struct device *dev,
 }
 
 static struct device_attribute imx8_uid =
-	__ATTR(soc_uid, S_IRUGO, imx8_get_soc_uid, NULL);
+	__ATTR(soc_uid, 0444, imx8_get_soc_uid, NULL);
 
 static void __init imx8mq_noc_init(void)
 {
-	struct device_node *np;
-	const char *status;
-	int statlen;
 	struct arm_smccc_res res;
 
-	np = of_find_compatible_node(NULL, NULL, "fsl,imx8mq-lcdif");
-	if (!np)
-		return;
-
-	status = of_get_property(np, "status", &statlen);
-	if (status == NULL)
-		return;
-
-	if (statlen > 0) {
-		if (!strcmp(status, "disabled"))
-			return;
-	}
-
 	pr_info("Config NOC for VPU and CPU\n");
-	arm_smccc_smc(FSL_SIP_NOC, FSL_SIP_NOC_LCDIF, 0,
-			0, 0, 0, 0, 0, &res);
+
+	arm_smccc_smc(FSL_SIP_NOC, FSL_SIP_NOC_PRIORITY, NOC_CPU_PRIORITY,
+			0x80000300, 0, 0, 0, 0, &res);
 	if (res.a0)
-		pr_err("Config NOC for VPU and CPU fail!\n");
+		pr_err("Config NOC for CPU fail!\n");
+
+	arm_smccc_smc(FSL_SIP_NOC, FSL_SIP_NOC_PRIORITY, NOC_VPU_PRIORITY,
+			0x80000300, 0, 0, 0, 0, &res);
+	if (res.a0)
+		pr_err("Config NOC for VPU fail!\n");
 }
 
 static int __init imx8_soc_init(void)
@@ -296,6 +311,7 @@ static int __init imx8_soc_init(void)
 	struct soc_device_attribute *soc_dev_attr;
 	struct soc_device *soc_dev;
 	u32 soc_rev;
+	int ret;
 
 	soc_dev_attr = kzalloc(sizeof(*soc_dev_attr), GFP_KERNEL);
 	if (!soc_dev_attr)
@@ -319,7 +335,11 @@ static int __init imx8_soc_init(void)
 	if (IS_ERR(soc_dev))
 		goto free_rev;
 
-	device_create_file(soc_device_to_device(soc_dev), &imx8_uid);
+	ret = device_create_file(soc_device_to_device(soc_dev), &imx8_uid);
+	if (ret) {
+		pr_err("could not register sysfs entry\n");
+		return ret;
+	}
 
 	if (of_machine_is_compatible("fsl,imx8mq"))
 		imx8mq_noc_init();
@@ -335,7 +355,22 @@ free_soc:
 device_initcall(imx8_soc_init);
 
 #define OCOTP_CFG3			0x440
+#define OCOTP_CFG3_SPEED_GRADING_SHIFT	8
+#define OCOTP_CFG3_SPEED_GRADING_MASK	(0x7 << 8)
+#define OCOTP_CFG3_SPEED_GRADING_IMX8MN_MASK	(0x3F << 8)
+#define OCOTP_CFG3_SPEED_IMX8MN_1P5GHZ	0x8
+#define OCOTP_CFG3_SPEED_IMX8MN_1P4GHZ	0x9
+#define OCOTP_CFG3_SPEED_IMX8MN_1P2GHZ	0xb
+#define OCOTP_CFG3_SPEED_2GHZ		4
+#define OCOTP_CFG3_SPEED_1P8GHZ		3
+#define OCOTP_CFG3_SPEED_1P6GHZ		2
+#define OCOTP_CFG3_SPEED_1P2GHZ		1
+#define OCOTP_CFG3_SPEED_800MHZ		0
+#define OCOTP_CFG3_SPEED_1P0GHZ		1
+#define OCOTP_CFG3_SPEED_1P3GHZ		2
+#define OCOTP_CFG3_SPEED_1P5GHZ		3
 #define OCOTP_CFG3_MKT_SEGMENT_SHIFT	6
+#define OCOTP_CFG3_MKT_SEGMENT_MASK	(0x3 << 6)
 #define OCOTP_CFG3_CONSUMER		0
 #define OCOTP_CFG3_EXT_CONSUMER		1
 #define OCOTP_CFG3_INDUSTRIAL		2
@@ -345,7 +380,7 @@ static void __init imx8mq_opp_check_speed_grading(struct device *cpu_dev)
 {
 	struct device_node *np;
 	void __iomem *base;
-	u32 val;
+	u32 val, speed_grading;
 
 	np = of_find_compatible_node(NULL, NULL, "fsl,imx8mq-ocotp");
 	if (!np) {
@@ -359,6 +394,7 @@ static void __init imx8mq_opp_check_speed_grading(struct device *cpu_dev)
 		goto put_node;
 	}
 	val = readl_relaxed(base + OCOTP_CFG3);
+	speed_grading = (val >> OCOTP_CFG3_SPEED_GRADING_SHIFT) & 0x3;
 	val >>= OCOTP_CFG3_MKT_SEGMENT_SHIFT;
 	val &= 0x3;
 
@@ -368,12 +404,20 @@ static void __init imx8mq_opp_check_speed_grading(struct device *cpu_dev)
 			pr_warn("failed to disable 800MHz OPP!\n");
 		if (dev_pm_opp_disable(cpu_dev, 1300000000))
 			pr_warn("failed to disable 1.3GHz OPP!\n");
+		if (speed_grading != OCOTP_CFG3_SPEED_1P5GHZ) {
+			if (dev_pm_opp_disable(cpu_dev, 1500000000))
+				pr_warn("failed to disable 1.5GHz OPP!\n");
+		}
 		break;
 	case OCOTP_CFG3_INDUSTRIAL:
 		if (dev_pm_opp_disable(cpu_dev, 1000000000))
 			pr_warn("failed to disable 1GHz OPP!\n");
 		if (dev_pm_opp_disable(cpu_dev, 1500000000))
 			pr_warn("failed to disable 1.5GHz OPP!\n");
+		if (speed_grading != OCOTP_CFG3_SPEED_1P3GHZ) {
+			if (dev_pm_opp_disable(cpu_dev, 1300000000))
+				pr_warn("failed to disable 1.3GHz OPP!\n");
+		}
 		break;
 	default:
 		/* consumer part for default */
@@ -381,6 +425,112 @@ static void __init imx8mq_opp_check_speed_grading(struct device *cpu_dev)
 			pr_warn("failed to disable 800MHz OPP!\n");
 		if (dev_pm_opp_disable(cpu_dev, 1300000000))
 			pr_warn("failed to disable 1.3GHz OPP!\n");
+		if (speed_grading != OCOTP_CFG3_SPEED_1P5GHZ) {
+			if (dev_pm_opp_disable(cpu_dev, 1500000000))
+				pr_warn("failed to disable 1.5GHz OPP!\n");
+		}
+		break;
+	}
+
+	iounmap(base);
+
+put_node:
+	of_node_put(np);
+}
+
+static void __init imx8mm_opp_check_speed_grading(struct device *cpu_dev)
+{
+	struct device_node *np;
+	void __iomem *base;
+	u32 val, market;
+
+	np = of_find_compatible_node(NULL, NULL, "fsl,imx8mq-ocotp");
+	if (!np) {
+		pr_warn("failed to find ocotp node\n");
+		return;
+	}
+
+	base = of_iomap(np, 0);
+	if (!base) {
+		pr_warn("failed to map ocotp\n");
+		goto put_node;
+	}
+	val = readl_relaxed(base + OCOTP_CFG3);
+	/* market segment bit[7:6] */
+	market = (val & OCOTP_CFG3_MKT_SEGMENT_MASK)
+		>> OCOTP_CFG3_MKT_SEGMENT_SHIFT;
+	/* speed grading bit[10:8] */
+	val = (val & OCOTP_CFG3_SPEED_GRADING_MASK)
+		>> OCOTP_CFG3_SPEED_GRADING_SHIFT;
+
+	switch (market) {
+	case OCOTP_CFG3_CONSUMER:
+		if (val < OCOTP_CFG3_SPEED_1P8GHZ)
+			if (dev_pm_opp_disable(cpu_dev, 1800000000))
+				pr_warn("failed to disable 1.8GHz OPP!\n");
+		if (val < OCOTP_CFG3_SPEED_1P6GHZ)
+			if (dev_pm_opp_disable(cpu_dev, 1600000000))
+				pr_warn("failed to disable 1.6GHz OPP!\n");
+		break;
+	case OCOTP_CFG3_INDUSTRIAL:
+		if (dev_pm_opp_disable(cpu_dev, 1800000000))
+			pr_warn("failed to disable 1.8GHz OPP!\n");
+		if (val < OCOTP_CFG3_SPEED_1P6GHZ)
+			if (dev_pm_opp_disable(cpu_dev, 1600000000))
+				pr_warn("failed to disable 1.6GHz OPP!\n");
+		break;
+	default:
+		break;
+	}
+
+	iounmap(base);
+
+put_node:
+	of_node_put(np);
+}
+
+static void __init imx8mn_opp_check_speed_grading(struct device *cpu_dev)
+{
+	struct device_node *np;
+	void __iomem *base;
+	u32 val, market;
+
+	np = of_find_compatible_node(NULL, NULL, "fsl,imx8mq-ocotp");
+	if (!np) {
+		pr_warn("failed to find ocotp node\n");
+		return;
+	}
+
+	base = of_iomap(np, 0);
+	if (!base) {
+		pr_warn("failed to map ocotp\n");
+		goto put_node;
+	}
+	val = readl_relaxed(base + OCOTP_CFG3);
+	/* market segment bit[7:6] */
+	market = (val & OCOTP_CFG3_MKT_SEGMENT_MASK)
+		>> OCOTP_CFG3_MKT_SEGMENT_SHIFT;
+	/* speed grading bit[13:8] */
+	val = (val & OCOTP_CFG3_SPEED_GRADING_IMX8MN_MASK)
+		>> OCOTP_CFG3_SPEED_GRADING_SHIFT;
+
+	switch (market) {
+	case OCOTP_CFG3_CONSUMER:
+		if (val > OCOTP_CFG3_SPEED_IMX8MN_1P5GHZ)
+			if (dev_pm_opp_disable(cpu_dev, 1500000000))
+				pr_warn("failed to disable 1.5GHz OPP!\n");
+		if (val > OCOTP_CFG3_SPEED_IMX8MN_1P4GHZ)
+			if (dev_pm_opp_disable(cpu_dev, 1400000000))
+				pr_warn("failed to disable 1.4GHz OPP!\n");
+		break;
+	case OCOTP_CFG3_INDUSTRIAL:
+		if (dev_pm_opp_disable(cpu_dev, 1500000000))
+			pr_warn("failed to disable 1.5GHz OPP!\n");
+		if (val > OCOTP_CFG3_SPEED_IMX8MN_1P4GHZ)
+			if (dev_pm_opp_disable(cpu_dev, 1400000000))
+				pr_warn("failed to disable 1.4GHz OPP!\n");
+		break;
+	default:
 		break;
 	}
 
@@ -410,7 +560,12 @@ static void __init imx8mq_opp_init(void)
 		goto put_node;
 	}
 
-	imx8mq_opp_check_speed_grading(cpu_dev);
+	if (of_machine_is_compatible("fsl,imx8mq"))
+		imx8mq_opp_check_speed_grading(cpu_dev);
+	else if (of_machine_is_compatible("fsl,imx8mm"))
+		imx8mm_opp_check_speed_grading(cpu_dev);
+	else if (of_machine_is_compatible("fsl,imx8mn"))
+		imx8mn_opp_check_speed_grading(cpu_dev);
 
 put_node:
 	of_node_put(np);
@@ -418,7 +573,9 @@ put_node:
 
 static int __init imx8_register_cpufreq(void)
 {
-	if (of_machine_is_compatible("fsl,imx8mq")) {
+	if (of_machine_is_compatible("fsl,imx8mq") ||
+		of_machine_is_compatible("fsl,imx8mm") ||
+		of_machine_is_compatible("fsl,imx8mn")) {
 		imx8mq_opp_init();
 		platform_device_register_simple("imx8mq-cpufreq", -1, NULL, 0);
 	} else {
@@ -445,7 +602,96 @@ int check_m4_enabled(void)
 	m4_is_enabled = !!res.a0;
 
 	if (m4_is_enabled)
-		printk("M4 is started\n");
+		pr_info("M4 is started\n");
 
 	return 0;
+}
+
+#define IMX8MQ_FEATURE_BITS	0x450
+#define IMX8MQ_FEATURE_HDCP	(1<<27)
+
+static bool imx8mq_soc_is_hdcp_available(void)
+{
+	struct device_node *np;
+	void __iomem *base;
+
+	u32 val = 0xffffffff; /* HDCP disabled */
+
+	np = of_find_compatible_node(NULL, NULL, "fsl,imx8mq-ocotp");
+	if (!np) {
+		pr_warn("failed to find ocotp node\n");
+		return val;
+	}
+
+	base = of_iomap(np, 0);
+	if (!base) {
+		pr_warn("failed to map ocotp\n");
+		goto put_node;
+	}
+
+	val = readl_relaxed(base + IMX8MQ_FEATURE_BITS);
+	pr_debug("%s(), val 0x%08x  hdcp %u\n", __func__, val,
+		 (val & IMX8MQ_FEATURE_HDCP));
+
+	iounmap(base);
+
+put_node:
+	of_node_put(np);
+
+	if ((val & IMX8MQ_FEATURE_HDCP) == 0) {
+		pr_debug("HDCP is enabled\n");
+		return true;
+	}
+	pr_debug("HDCP is disabled\n");
+	return false;
+}
+
+#define IMX8QM_FEATURE_BITS	0x3
+#define IMX8QM_FEATURE_HDCP	(1<<3)
+
+static int imx8qm_soc_is_hdcp_available(void)
+{
+	sc_ipc_t mu_ipc;
+	sc_ipc_id_t mu_id;
+	uint32_t fuse = 0xffffffff;
+	int ret;
+
+	ret = sc_ipc_getMuID(&mu_id);
+	if (ret) {
+		pr_warn("sc_ipc_getMuID() can't obtain mu id SCI! %d\n",
+			ret);
+		return false;
+	}
+
+	ret = sc_ipc_open(&mu_ipc, mu_id);
+	if (ret) {
+		pr_warn("sc_ipc_getMuID() can't open MU channel to SCU! %d\n",
+			ret);
+		return false;
+	}
+
+	ret = sc_misc_otp_fuse_read(mu_ipc, IMX8QM_FEATURE_BITS, &fuse);
+	sc_ipc_close(mu_ipc);
+	if (ret) {
+		pr_warn("sc_misc_otp_fuse_read fail! %d\n", ret);
+		return false;
+	}
+
+	pr_debug("mu_id = %d, fuse[3] = 0x%x\n", mu_id, fuse);
+
+	if ((fuse & IMX8QM_FEATURE_HDCP) == 0) {
+		pr_debug("HDCP is enabled\n");
+		return true;
+	}
+	pr_debug("HDCP is disabled\n");
+	return false;
+}
+
+bool check_hdcp_enabled(void)
+{
+	if (cpu_is_imx8mq())
+		return imx8mq_soc_is_hdcp_available();
+	if (cpu_is_imx8qm())
+		return imx8qm_soc_is_hdcp_available();
+	return false;
 }

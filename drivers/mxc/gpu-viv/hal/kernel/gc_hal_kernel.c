@@ -82,6 +82,7 @@ gctCONST_STRING _DispatchText[] =
 {
     gcmDEFINE2TEXT(gcvHAL_QUERY_VIDEO_MEMORY),
     gcmDEFINE2TEXT(gcvHAL_QUERY_CHIP_IDENTITY),
+    gcmDEFINE2TEXT(gcvHAL_QUERY_CHIP_FREQUENCY),
     gcmDEFINE2TEXT(gcvHAL_ALLOCATE_NON_PAGED_MEMORY),
     gcmDEFINE2TEXT(gcvHAL_FREE_NON_PAGED_MEMORY),
     gcmDEFINE2TEXT(gcvHAL_ALLOCATE_CONTIGUOUS_MEMORY),
@@ -302,6 +303,8 @@ _MapCommandBuffer(
             Kernel->command->queues[i].logical,
             &physical
             ));
+
+        gcmkVERIFY_OK(gckOS_CPUPhysicalToGPUPhysical(Kernel->os, physical, &physical));
 
         gcmkSAFECASTPHYSADDRT(address, physical);
 
@@ -683,7 +686,7 @@ gckKERNEL_Construct(
     kernel->profileCleanRegister = gcvTRUE;
 #endif
 
-#if gcdANDROID_NATIVE_FENCE_SYNC
+#if gcdLINUX_SYNC_FILE
     gcmkONERROR(gckOS_CreateSyncTimeline(Os, Core, &kernel->timeline));
 #endif
 
@@ -850,6 +853,13 @@ gckKERNEL_Destroy(
         Kernel->monitorTimerStop = gcvTRUE;
     }
 
+    if (Kernel->monitorTimer)
+    {
+        /* Stop and destroy monitor timer. */
+        gcmkVERIFY_OK(gckOS_StopTimer(Kernel->os, Kernel->monitorTimer));
+        gcmkVERIFY_OK(gckOS_DestroyTimer(Kernel->os, Kernel->monitorTimer));
+    }
+
 #if gcdENABLE_VG
     if (Kernel->vg)
     {
@@ -922,7 +932,7 @@ gckKERNEL_Destroy(
     }
 #endif
 
-#if gcdANDROID_NATIVE_FENCE_SYNC
+#if gcdLINUX_SYNC_FILE
     if (Kernel->timeline)
     {
         gcmkVERIFY_OK(gckOS_DestroySyncTimeline(Kernel->os, Kernel->timeline));
@@ -935,12 +945,6 @@ gckKERNEL_Destroy(
         gcmkVERIFY_OK(gckKERNEL_SecurityClose(Kernel->securityChannel));
     }
 #endif
-
-    if (Kernel->monitorTimer)
-    {
-        gcmkVERIFY_OK(gckOS_StopTimer(Kernel->os, Kernel->monitorTimer));
-        gcmkVERIFY_OK(gckOS_DestroyTimer(Kernel->os, Kernel->monitorTimer));
-    }
 
     /* Mark the gckKERNEL object as unknown. */
     Kernel->object.type = gcvOBJ_UNKNOWN;
@@ -1686,16 +1690,47 @@ gckKERNEL_SetVidMemMetadata(
     }
     else
     {
+#ifdef gcdANDROID
+        if (nodeObj->metadata.ts_address == 0 && nodeObj->tsNode != NULL)
+        {
+            gctUINT32 Address = 0;
+            gctUINT32 Gid = 0;
+            gctUINT64 PhysicalAddress = 0;
+
+            gcmkONERROR(gckVIDMEM_Lock(Kernel,
+                    nodeObj->tsNode,
+                    gcvFALSE,
+                    &Address,
+                    &Gid,
+                    &PhysicalAddress));
+
+            nodeObj->metadata.ts_address = (
+                    PhysicalAddress + Kernel->hardware->baseAddress);
+            gcmkONERROR(gckVIDMEM_Unlock(Kernel,
+                    nodeObj->tsNode,
+                    gcvSURF_TYPE_UNKNOWN,
+                    gcvNULL));
+        }
+#else
         nodeObj->metadata.ts_fd             = Interface->u.SetVidMemMetadata.ts_fd;
-        if (nodeObj->metadata.ts_fd > 0)
+
+        if (nodeObj->metadata.ts_fd >= 0)
         {
             nodeObj->metadata.ts_dma_buf    = dma_buf_get(nodeObj->metadata.ts_fd);
+
             if (IS_ERR(nodeObj->metadata.ts_dma_buf))
             {
                 gcmkONERROR(gcvSTATUS_NOT_FOUND);
             }
+
             dma_buf_put(nodeObj->metadata.ts_dma_buf);
         }
+        else
+        {
+            nodeObj->metadata.ts_dma_buf    = NULL;
+        }
+#endif
+
         nodeObj->metadata.fc_enabled        = Interface->u.SetVidMemMetadata.fc_enabled;
         nodeObj->metadata.fc_value          = Interface->u.SetVidMemMetadata.fc_value;
         nodeObj->metadata.fc_value_upper    = Interface->u.SetVidMemMetadata.fc_value_upper;
@@ -1703,9 +1738,8 @@ gckKERNEL_SetVidMemMetadata(
         nodeObj->metadata.compress_format   = Interface->u.SetVidMemMetadata.compress_format;
     }
 
-    gcmkFOOTER();
-
 OnError:
+    gcmkFOOTER();
     return status;
 }
 
@@ -1911,6 +1945,93 @@ OnError:
     return status;
 }
 
+static gceSTATUS
+gckKERNEL_CacheOperation(
+    IN gckKERNEL Kernel,
+    IN gctUINT32 ProcessID,
+    IN gctUINT32 Node,
+    IN gceCACHEOPERATION Operation,
+    IN gctPOINTER Logical,
+    IN gctSIZE_T Bytes
+    )
+{
+    gceSTATUS status;
+    gckVIDMEM_NODE nodeObject = gcvNULL;
+    gcuVIDMEM_NODE_PTR node = gcvNULL;
+    void *memHandle;
+
+    gcmkHEADER_ARG("Kernel=%p pid=%u Node=%u op=%d Logical=%p Bytes=0x%lx",
+                   Kernel, ProcessID, Node, Operation, Logical, Bytes);
+
+    gcmkONERROR(gckVIDMEM_HANDLE_Lookup(Kernel,
+                                        ProcessID,
+                                        Node,
+                                        &nodeObject));
+
+    node = nodeObject->node;
+
+    if (node->VidMem.memory->object.type == gcvOBJ_VIDMEM)
+    {
+        static gctBOOL printed;
+
+        if (!printed)
+        {
+            printed = gcvTRUE;
+            gcmkPRINT("[galcore]: %s: Flush Video Memory", __FUNCTION__);
+        }
+
+        gcmkFOOTER_NO();
+        return gcvSTATUS_OK;
+    }
+    else
+    {
+        memHandle = node->Virtual.physical;
+    }
+
+    switch (Operation)
+    {
+    case gcvCACHE_FLUSH:
+        /* Clean and invalidate the cache. */
+        status = gckOS_CacheFlush(Kernel->os,
+                                  ProcessID,
+                                  memHandle,
+                                  gcvINVALID_PHYSICAL_ADDRESS,
+                                  Logical,
+                                  Bytes);
+        break;
+    case gcvCACHE_CLEAN:
+        /* Clean the cache. */
+        status = gckOS_CacheClean(Kernel->os,
+                                  ProcessID,
+                                  memHandle,
+                                  gcvINVALID_PHYSICAL_ADDRESS,
+                                  Logical,
+                                  Bytes);
+        break;
+    case gcvCACHE_INVALIDATE:
+        /* Invalidate the cache. */
+        status = gckOS_CacheInvalidate(Kernel->os,
+                                       ProcessID,
+                                       memHandle,
+                                       gcvINVALID_PHYSICAL_ADDRESS,
+                                       Logical,
+                                       Bytes);
+        break;
+
+    case gcvCACHE_MEMORY_BARRIER:
+        status = gckOS_MemoryBarrier(Kernel->os, Logical);
+        break;
+
+    default:
+        gcmkONERROR(gcvSTATUS_INVALID_ARGUMENT);
+        break;
+    }
+
+OnError:
+    gcmkFOOTER();
+    return status;
+}
+
 gceSTATUS
 gckKERNEL_WaitFence(
     IN gckKERNEL Kernel,
@@ -1943,6 +2064,28 @@ gckKERNEL_WaitFence(
         {
             fence = asyncCommand->fence;
         }
+
+#if USE_KERNEL_VIRTUAL_BUFFERS
+        if (Kernel->virtualCommandBuffer)
+        {
+            gckVIRTUAL_COMMAND_BUFFER_PTR commandBuffer = (gckVIRTUAL_COMMAND_BUFFER_PTR) fence->physical;
+
+            fence->physHandle = commandBuffer->virtualBuffer.physical;
+        }
+        else
+#endif
+        {
+            fence->physHandle = fence->physical;
+        }
+
+        gcmkONERROR(gckOS_CacheInvalidate(
+            Kernel->os,
+            0,
+            fence->physHandle,
+            0,
+            fence->logical,
+            8
+            ));
 
         if (sync->commitStamp <= *(gctUINT64_PTR)fence->logical)
         {
@@ -2150,7 +2293,6 @@ gckKERNEL_Dispatch(
     gcskSECURE_CACHE_PTR cache;
     gctPOINTER logical;
 #endif
-    gctUINT64 paddr = gcvINVALID_ADDRESS;
 #if !USE_NEW_LINUX_SIGNAL
     gctSIGNAL   signal;
 #endif
@@ -2209,6 +2351,15 @@ gckKERNEL_Dispatch(
                 &Interface->u.QueryChipIdentity));
         break;
 
+    case gcvHAL_QUERY_CHIP_FREQUENCY:
+        /* Query chip clock. */
+        gcmkONERROR(
+            gckHARDWARE_QueryFrequency(Kernel->hardware));
+
+        Interface->u.QueryChipFrequency.mcClk = Kernel->hardware->mcClk;
+        Interface->u.QueryChipFrequency.shClk = Kernel->hardware->shClk;
+        break;
+
     case gcvHAL_MAP_MEMORY:
         physical = gcmINT2PTR(Interface->u.MapMemory.physical);
 
@@ -2254,6 +2405,7 @@ gckKERNEL_Dispatch(
             gckOS_AllocateNonPagedMemory(
                 Kernel->os,
                 FromUser,
+                gcvALLOC_FLAG_CONTIGUOUS,
                 &bytes,
                 &physical,
                 &logical));
@@ -2428,12 +2580,15 @@ gckKERNEL_Dispatch(
         break;
 
     case gcvHAL_EVENT_COMMIT:
-        gcmkONERROR(gckOS_AcquireMutex(Kernel->os,
-            Kernel->device->commitMutex,
-            gcvINFINITE
-            ));
+        if (!Interface->commitMutex)
+        {
+            gcmkONERROR(gckOS_AcquireMutex(Kernel->os,
+                Kernel->device->commitMutex,
+                gcvINFINITE
+                ));
 
-        commitMutexAcquired = gcvTRUE;
+            commitMutexAcquired = gcvTRUE;
+        }
         /* Commit an event queue. */
         if (Interface->engine == gcvENGINE_BLT)
         {
@@ -2451,16 +2606,22 @@ gckKERNEL_Dispatch(
                 Kernel->eventObj, gcmUINT64_TO_PTR(Interface->u.Event.queue), gcvFALSE));
         }
 
-        gcmkONERROR(gckOS_ReleaseMutex(Kernel->os, Kernel->device->commitMutex));
-        commitMutexAcquired = gcvFALSE;
+        if (!Interface->commitMutex)
+        {
+            gcmkONERROR(gckOS_ReleaseMutex(Kernel->os, Kernel->device->commitMutex));
+            commitMutexAcquired = gcvFALSE;
+        }
         break;
 
     case gcvHAL_COMMIT:
-        gcmkONERROR(gckOS_AcquireMutex(Kernel->os,
-            Kernel->device->commitMutex,
-            gcvINFINITE
-            ));
-        commitMutexAcquired = gcvTRUE;
+        if (!Interface->commitMutex)
+        {
+            gcmkONERROR(gckOS_AcquireMutex(Kernel->os,
+                Kernel->device->commitMutex,
+                gcvINFINITE
+                ));
+            commitMutexAcquired = gcvTRUE;
+        }
 
         /* Commit a command and context buffer. */
         if (Interface->engine == gcvENGINE_BLT)
@@ -2486,10 +2647,10 @@ gckKERNEL_Dispatch(
         }
         else
         {
+            gctUINT32 i;
+
             if (Interface->u.Commit.count > 1 && Interface->engine == gcvENGINE_RENDER)
             {
-                gctUINT32 i;
-
                 for (i = 0; i < Interface->u.Commit.count; i++)
                 {
                     gceHARDWARE_TYPE type = Interface->hardwareType;
@@ -2530,8 +2691,6 @@ gckKERNEL_Dispatch(
 
             if (Interface->u.Commit.count > 1 && Interface->engine == gcvENGINE_RENDER)
             {
-                gctUINT32 i;
-
                 for (i = 1; i < Interface->u.Commit.count; i++)
                 {
                     gceHARDWARE_TYPE type = Interface->hardwareType;
@@ -2567,10 +2726,32 @@ gckKERNEL_Dispatch(
                     }
                 }
             }
-        }
-        gcmkONERROR(gckOS_ReleaseMutex(Kernel->os, Kernel->device->commitMutex));
-        commitMutexAcquired = gcvFALSE;
 
+            for (i = 0; i < Interface->u.Commit.count; i++)
+            {
+                gceHARDWARE_TYPE type = Interface->hardwareType;
+                gckKERNEL kernel = Device->map[type].kernels[i];
+
+                if  ((kernel->hardware->options.gpuProfiler == gcvTRUE) &&
+                     (kernel->profileEnable == gcvTRUE))
+                {
+                    gcmkONERROR(gckCOMMAND_Stall(kernel->command, gcvTRUE));
+
+                    if (kernel->command->currContext)
+                    {
+                        gcmkONERROR(gckHARDWARE_UpdateContextProfile(
+                                    kernel->hardware,
+                                    kernel->command->currContext));
+                    }
+                }
+            }
+        }
+
+        if (!Interface->commitMutex)
+        {
+            gcmkONERROR(gckOS_ReleaseMutex(Kernel->os, Kernel->device->commitMutex));
+            commitMutexAcquired = gcvFALSE;
+        }
         break;
 
     case gcvHAL_STALL:
@@ -2896,48 +3077,15 @@ gckKERNEL_Dispatch(
         break;
 
     case gcvHAL_CACHE:
-
         logical = gcmUINT64_TO_PTR(Interface->u.Cache.logical);
-
         bytes = (gctSIZE_T) Interface->u.Cache.bytes;
-        switch(Interface->u.Cache.operation)
-        {
-        case gcvCACHE_FLUSH:
-            /* Clean and invalidate the cache. */
-            status = gckOS_CacheFlush(Kernel->os,
-                                      processID,
-                                      physical,
-                                      paddr,
-                                      logical,
-                                      bytes);
-            break;
-        case gcvCACHE_CLEAN:
-            /* Clean the cache. */
-            status = gckOS_CacheClean(Kernel->os,
-                                      processID,
-                                      physical,
-                                      paddr,
-                                      logical,
-                                      bytes);
-            break;
-        case gcvCACHE_INVALIDATE:
-            /* Invalidate the cache. */
-            status = gckOS_CacheInvalidate(Kernel->os,
-                                           processID,
-                                           physical,
-                                           paddr,
-                                           logical,
-                                           bytes);
-            break;
 
-        case gcvCACHE_MEMORY_BARRIER:
-            status = gckOS_MemoryBarrier(Kernel->os,
-                                         logical);
-            break;
-        default:
-            status = gcvSTATUS_INVALID_ARGUMENT;
-            break;
-        }
+        gcmkONERROR(gckKERNEL_CacheOperation(Kernel,
+                                             processID,
+                                             Interface->u.Cache.node,
+                                             Interface->u.Cache.operation,
+                                             logical,
+                                             bytes));
         break;
 
     case gcvHAL_TIMESTAMP:
@@ -3041,6 +3189,24 @@ gckKERNEL_Dispatch(
                               gcmNAME_TO_PTR(Interface->u.Detach.context)));
 
         gcmRELEASE_NAME(Interface->u.Detach.context);
+        gcmkONERROR(gckOS_AcquireMutex(Kernel->os,
+             Kernel->device->commitMutex,
+             gcvINFINITE
+             ));
+
+        commitMutexAcquired = gcvTRUE;
+
+        gcmkONERROR(gckEVENT_Submit(
+            Kernel->eventObj,
+            gcvTRUE,
+            gcvFALSE
+            ));
+
+        gcmkONERROR(gckOS_ReleaseMutex(Kernel->os,
+            Kernel->device->commitMutex
+            ));
+
+        commitMutexAcquired = gcvFALSE;
         break;
 
     case gcvHAL_GET_FRAME_INFO:
@@ -3145,7 +3311,7 @@ gckKERNEL_Dispatch(
         gcmRELEASE_NAME(Interface->u.FreeVirtualCommandBuffer.physical);
         break;
 
-#if gcdANDROID_NATIVE_FENCE_SYNC
+#if gcdLINUX_SYNC_FILE
     case gcvHAL_CREATE_NATIVE_FENCE:
         {
             gctINT fenceFD;
@@ -3305,6 +3471,20 @@ gckKERNEL_Dispatch(
             Interface->u.WaitFence.handle,
             Interface->u.WaitFence.timeOut
             ));
+        break;
+
+    case gcvHAL_DEVICE_MUTEX:
+        if (Interface->u.DeviceMutex.isMutexLocked)
+        {
+            gcmkONERROR(gckOS_AcquireMutex(Kernel->os,
+                Kernel->device->commitMutex,
+                gcvINFINITE
+                ));
+        }
+        else
+        {
+            gcmkONERROR(gckOS_ReleaseMutex(Kernel->os, Kernel->device->commitMutex));
+        }
         break;
 
 #if gcdDEC_ENABLE_AHB
@@ -3618,6 +3798,8 @@ gckKERNEL_MapLogicalToPhysical(
             /* Map the logical address to a DMA address. */
             gcmkONERROR(
                 gckOS_GetPhysicalAddress(Kernel->os, *Data, &slot->dma));
+
+            gcmkVERIFY_OK(gckOS_CPUPhysicalToGPUPhysical(Kernel->os, slot->dma, &slot->dma));
         }
 
         /* Move slot to head of list. */
@@ -3726,6 +3908,8 @@ gckKERNEL_MapLogicalToPhysical(
             /* Map the logical address to a DMA address. */
             gcmkONERROR(
                 gckOS_GetPhysicalAddress(Kernel->os, *Data, &slot->dma));
+
+            gcmkVERIFY_OK(gckOS_CPUPhysicalToGPUPhysical(Kernel->os, slot->dma, &slot->dma));
         }
 
         /* Save time stamp. */
@@ -3781,6 +3965,8 @@ gckKERNEL_MapLogicalToPhysical(
             gcmkONERROR(
                 gckOS_GetPhysicalAddress(Kernel->os, *Data, &slot->dma));
 
+            gcmkVERIFY_OK(gckOS_CPUPhysicalToGPUPhysical(Kernel->os, slot->dma, &slot->dma));
+
             if (hash->nextHash != gcvNULL)
             {
                 gcmkTRACE_ZONE(gcvLEVEL_INFO, gcvZONE_KERNEL,
@@ -3828,6 +4014,8 @@ gckKERNEL_MapLogicalToPhysical(
             /* Map the logical address to a DMA address. */
             gcmkONERROR(
                 gckOS_GetPhysicalAddress(Kernel->os, *Data, &slot->dma));
+
+            gcmkVERIFY_OK(gckOS_CPUPhysicalToGPUPhysical(Kernel->os, slot->dma, &slot->dma));
         }
     }
 #endif
@@ -4485,7 +4673,7 @@ gckKERNEL_AllocateVirtualMemory(
     gctSIZE_T bytes                      = *Bytes;
     gckVIRTUAL_BUFFER_PTR buffer         = gcvNULL;
     gckMMU mmu                           = gcvNULL;
-    gctUINT32 flag = gcvALLOC_FLAG_NON_CONTIGUOUS;
+    gctUINT32 allocFlag                  = 0;
 
     gcmkHEADER_ARG("Os=0x%X InUserSpace=%d *Bytes=%lu",
         os, InUserSpace, gcmOPT_VALUE(Bytes));
@@ -4512,11 +4700,16 @@ gckKERNEL_AllocateVirtualMemory(
 
     buffer->bytes = bytes;
 
+#if gcdENABLE_CACHEABLE_COMMAND_BUFFER
+    allocFlag = gcvALLOC_FLAG_CACHEABLE;
+#endif
+
     if (NonPaged)
     {
         gcmkONERROR(gckOS_AllocateNonPagedMemory(
             os,
             InUserSpace,
+            allocFlag | gcvALLOC_FLAG_CONTIGUOUS,
             &bytes,
             &buffer->physical,
             &logical
@@ -4524,11 +4717,13 @@ gckKERNEL_AllocateVirtualMemory(
     }
     else
     {
-        gcmkONERROR(gckOS_AllocatePagedMemoryEx(os,
-            flag,
+        gcmkONERROR(gckOS_AllocatePagedMemoryEx(
+            os,
+            allocFlag | gcvALLOC_FLAG_NON_CONTIGUOUS,
             bytes,
             gcvNULL,
-            &buffer->physical));
+            &buffer->physical
+            ));
     }
 
     if (NonPaged)
@@ -5844,9 +6039,16 @@ gckFENCE_Create(
     else
 #endif
     {
+        gctUINT32 allocFlag = gcvALLOC_FLAG_CONTIGUOUS;
+
+#if gcdENABLE_CACHEABLE_COMMAND_BUFFER
+        allocFlag |= gcvALLOC_FLAG_CACHEABLE;
+#endif
+
         gcmkONERROR(gckOS_AllocateNonPagedMemory(
             Os,
             gcvFALSE,
+            allocFlag,
             &pageSize,
             &fence->physical,
             &fence->logical
@@ -6391,6 +6593,8 @@ gckKERNEL_MapInTrustApplicaiton(
                 logical,
                 &phys
                 ));
+
+            gcmkVERIFY_OK(gckOS_CPUPhysicalToGPUPhysical(Kernel->os, phys, &phys));
         }
 
         phys &= ~pageMask;

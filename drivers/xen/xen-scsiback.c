@@ -135,8 +135,7 @@ struct vscsibk_pend {
 
 	struct se_cmd se_cmd;
 
-	atomic_t tmr_complete;
-	wait_queue_head_t tmr_wait;
+	struct completion tmr_done;
 };
 
 #define VSCSI_DEFAULT_SESSION_TAGS	128
@@ -600,7 +599,7 @@ static void scsiback_device_action(struct vscsibk_pend *pending_req,
 	u64 unpacked_lun = pending_req->v2p->lun;
 	int rc, err = FAILED;
 
-	init_waitqueue_head(&pending_req->tmr_wait);
+	init_completion(&pending_req->tmr_done);
 
 	rc = target_submit_tmr(&pending_req->se_cmd, nexus->tvn_se_sess,
 			       &pending_req->sense_buffer[0],
@@ -609,14 +608,13 @@ static void scsiback_device_action(struct vscsibk_pend *pending_req,
 	if (rc)
 		goto err;
 
-	wait_event(pending_req->tmr_wait,
-		   atomic_read(&pending_req->tmr_complete));
+	wait_for_completion(&pending_req->tmr_done);
 
 	err = (se_cmd->se_tmr_req->response == TMR_FUNCTION_COMPLETE) ?
 		SUCCESS : FAILED;
 
 	scsiback_do_resp_with_sense(NULL, err, 0, pending_req);
-	transport_generic_free_cmd(&pending_req->se_cmd, 1);
+	transport_generic_free_cmd(&pending_req->se_cmd, 0);
 	return;
 
 err:
@@ -1014,6 +1012,7 @@ static void scsiback_do_add_lun(struct vscsibk_info *info, const char *state,
 {
 	struct v2p_entry *entry;
 	unsigned long flags;
+	int err;
 
 	if (try) {
 		spin_lock_irqsave(&info->v2p_lock, flags);
@@ -1029,8 +1028,11 @@ static void scsiback_do_add_lun(struct vscsibk_info *info, const char *state,
 			scsiback_del_translation_entry(info, vir);
 		}
 	} else if (!try) {
-		xenbus_printf(XBT_NIL, info->dev->nodename, state,
+		err = xenbus_printf(XBT_NIL, info->dev->nodename, state,
 			      "%d", XenbusStateClosed);
+		if (err)
+			xenbus_dev_error(info->dev, err,
+				"%s: writing %s", __func__, state);
 	}
 }
 
@@ -1069,8 +1071,11 @@ static void scsiback_do_1lun_hotplug(struct vscsibk_info *info, int op,
 	snprintf(str, sizeof(str), "vscsi-devs/%s/p-dev", ent);
 	val = xenbus_read(XBT_NIL, dev->nodename, str, NULL);
 	if (IS_ERR(val)) {
-		xenbus_printf(XBT_NIL, dev->nodename, state,
+		err = xenbus_printf(XBT_NIL, dev->nodename, state,
 			      "%d", XenbusStateClosed);
+		if (err)
+			xenbus_dev_error(info->dev, err,
+				"%s: writing %s", __func__, state);
 		return;
 	}
 	strlcpy(phy, val, VSCSI_NAMELEN);
@@ -1081,8 +1086,11 @@ static void scsiback_do_1lun_hotplug(struct vscsibk_info *info, int op,
 	err = xenbus_scanf(XBT_NIL, dev->nodename, str, "%u:%u:%u:%u",
 			   &vir.hst, &vir.chn, &vir.tgt, &vir.lun);
 	if (XENBUS_EXIST_ERR(err)) {
-		xenbus_printf(XBT_NIL, dev->nodename, state,
+		err = xenbus_printf(XBT_NIL, dev->nodename, state,
 			      "%d", XenbusStateClosed);
+		if (err)
+			xenbus_dev_error(info->dev, err,
+				"%s: writing %s", __func__, state);
 		return;
 	}
 
@@ -1443,8 +1451,7 @@ static void scsiback_queue_tm_rsp(struct se_cmd *se_cmd)
 	struct vscsibk_pend *pending_req = container_of(se_cmd,
 				struct vscsibk_pend, se_cmd);
 
-	atomic_set(&pending_req->tmr_complete, 1);
-	wake_up(&pending_req->tmr_wait);
+	complete(&pending_req->tmr_done);
 }
 
 static void scsiback_aborted_task(struct se_cmd *se_cmd)

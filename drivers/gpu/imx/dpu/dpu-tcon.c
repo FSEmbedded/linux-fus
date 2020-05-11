@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017-2019 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -20,6 +20,7 @@
 #include <linux/platform_device.h>
 #include <linux/types.h>
 #include <video/dpu.h>
+#include <video/imx8-pc.h>
 #include "dpu-prv.h"
 
 #define SSQCNTS			0
@@ -63,6 +64,7 @@ struct dpu_tcon {
 	int id;
 	bool inuse;
 	struct dpu_soc *dpu;
+	struct pc *pc;
 };
 
 static inline u32 dpu_tcon_read(struct dpu_tcon *tcon, unsigned int offset)
@@ -78,7 +80,6 @@ static inline void dpu_tcon_write(struct dpu_tcon *tcon, u32 value,
 
 int tcon_set_fmt(struct dpu_tcon *tcon, u32 bus_format)
 {
-	mutex_lock(&tcon->mutex);
 	switch (bus_format) {
 	case MEDIA_BUS_FMT_RGB888_1X24:
 		dpu_tcon_write(tcon, 0x19181716, MAPBIT3_0);
@@ -101,10 +102,8 @@ int tcon_set_fmt(struct dpu_tcon *tcon, u32 bus_format)
 		dpu_tcon_write(tcon, 0x00000908, MAPBIT31_28);
 		break;
 	default:
-		mutex_unlock(&tcon->mutex);
 		return -EINVAL;
 	}
-	mutex_unlock(&tcon->mutex);
 
 	return 0;
 }
@@ -115,19 +114,35 @@ void tcon_set_operation_mode(struct dpu_tcon *tcon)
 {
 	u32 val;
 
-	mutex_lock(&tcon->mutex);
 	val = dpu_tcon_read(tcon, TCON_CTRL);
 	val &= ~BYPASS;
 	dpu_tcon_write(tcon, val, TCON_CTRL);
-	mutex_unlock(&tcon->mutex);
 }
 EXPORT_SYMBOL_GPL(tcon_set_operation_mode);
 
-void tcon_cfg_videomode(struct dpu_tcon *tcon, struct drm_display_mode *m)
+void tcon_cfg_videomode(struct dpu_tcon *tcon,
+			struct drm_display_mode *m, bool side_by_side)
 {
+	struct dpu_soc *dpu = tcon->dpu;
+	const struct dpu_devtype *devtype = dpu->devtype;
 	u32 val;
+	int hdisplay, hsync_start, hsync_end;
+	int vdisplay, vsync_start, vsync_end;
+	int y;
 
-	mutex_lock(&tcon->mutex);
+	hdisplay = m->hdisplay;
+	vdisplay = m->vdisplay;
+	hsync_start = m->hsync_start;
+	vsync_start = m->vsync_start;
+	hsync_end = m->hsync_end;
+	vsync_end = m->vsync_end;
+
+	if (side_by_side) {
+		hdisplay /= 2;
+		hsync_start /= 2;
+		hsync_end /= 2;
+	}
+
 	/*
 	 * TKT320590:
 	 * Turn TCON into operation mode later after the first dumb frame is
@@ -138,22 +153,20 @@ void tcon_cfg_videomode(struct dpu_tcon *tcon, struct drm_display_mode *m)
 	dpu_tcon_write(tcon, val, TCON_CTRL);
 
 	/* dsp_control[0]: hsync */
-	dpu_tcon_write(tcon, X(m->hsync_start), SPGPOSON(0));
+	dpu_tcon_write(tcon, X(hsync_start), SPGPOSON(0));
 	dpu_tcon_write(tcon, 0xffff, SPGMASKON(0));
 
-	dpu_tcon_write(tcon, X(m->hsync_end), SPGPOSOFF(0));
+	dpu_tcon_write(tcon, X(hsync_end), SPGPOSOFF(0));
 	dpu_tcon_write(tcon, 0xffff, SPGMASKOFF(0));
 
 	dpu_tcon_write(tcon, 0x2, SMXSIGS(0));
 	dpu_tcon_write(tcon, 0x1, SMXFCTTABLE(0));
 
 	/* dsp_control[1]: vsync */
-	dpu_tcon_write(tcon, X(m->hsync_start) | Y(m->vsync_start - 1),
-								SPGPOSON(1));
+	dpu_tcon_write(tcon, X(hsync_start) | Y(vsync_start - 1), SPGPOSON(1));
 	dpu_tcon_write(tcon, 0x0, SPGMASKON(1));
 
-	dpu_tcon_write(tcon, X(m->hsync_start) | Y(m->vsync_end - 1),
-								SPGPOSOFF(1));
+	dpu_tcon_write(tcon, X(hsync_start) | Y(vsync_end - 1), SPGPOSOFF(1));
 	dpu_tcon_write(tcon, 0x0, SPGMASKOFF(1));
 
 	dpu_tcon_write(tcon, 0x3, SMXSIGS(1));
@@ -164,31 +177,80 @@ void tcon_cfg_videomode(struct dpu_tcon *tcon, struct drm_display_mode *m)
 	dpu_tcon_write(tcon, 0x0, SPGPOSON(2));
 	dpu_tcon_write(tcon, 0xffff, SPGMASKON(2));
 
-	dpu_tcon_write(tcon, X(m->hdisplay), SPGPOSOFF(2));
+	dpu_tcon_write(tcon, X(hdisplay), SPGPOSOFF(2));
 	dpu_tcon_write(tcon, 0xffff, SPGMASKOFF(2));
 
 	/* vertical */
 	dpu_tcon_write(tcon, 0x0, SPGPOSON(3));
 	dpu_tcon_write(tcon, 0x7fff0000, SPGMASKON(3));
 
-	dpu_tcon_write(tcon, Y(m->vdisplay), SPGPOSOFF(3));
+	dpu_tcon_write(tcon, Y(vdisplay), SPGPOSOFF(3));
 	dpu_tcon_write(tcon, 0x7fff0000, SPGMASKOFF(3));
 
 	dpu_tcon_write(tcon, 0x2c, SMXSIGS(2));
 	dpu_tcon_write(tcon, 0x8, SMXFCTTABLE(2));
 
 	/* dsp_control[3]: kachuck */
-	dpu_tcon_write(tcon, X(0xa) | Y(m->vdisplay), SPGPOSON(4));
+	y = vdisplay + 1;
+	/*
+	 * If sync mode fixup is present, the kachuck signal from slave tcon
+	 * should be one line later than the one from master tcon.
+	 */
+	if (side_by_side && tcon_is_slave(tcon) && devtype->has_syncmode_fixup)
+		y++;
+
+	dpu_tcon_write(tcon, X(0x0) | Y(y), SPGPOSON(4));
 	dpu_tcon_write(tcon, 0x0, SPGMASKON(4));
 
-	dpu_tcon_write(tcon, X(0x2a) | Y(m->vdisplay), SPGPOSOFF(4));
+	dpu_tcon_write(tcon, X(0x20) | Y(y), SPGPOSOFF(4));
 	dpu_tcon_write(tcon, 0x0, SPGMASKOFF(4));
 
 	dpu_tcon_write(tcon, 0x6, SMXSIGS(3));
 	dpu_tcon_write(tcon, 0x2, SMXFCTTABLE(3));
-	mutex_unlock(&tcon->mutex);
 }
 EXPORT_SYMBOL_GPL(tcon_cfg_videomode);
+
+bool tcon_is_master(struct dpu_tcon *tcon)
+{
+	const struct dpu_devtype *devtype = tcon->dpu->devtype;
+
+	return tcon->id == devtype->master_stream_id;
+}
+EXPORT_SYMBOL_GPL(tcon_is_master);
+
+bool tcon_is_slave(struct dpu_tcon *tcon)
+{
+	return !tcon_is_master(tcon);
+}
+EXPORT_SYMBOL_GPL(tcon_is_slave);
+
+void tcon_configure_pc(struct dpu_tcon *tcon, unsigned int di,
+			unsigned int frame_width, u32 mode, u32 format)
+{
+	if (WARN_ON(!tcon || !tcon->pc))
+		return;
+
+	pc_configure(tcon->pc, di, frame_width, mode, format);
+}
+EXPORT_SYMBOL_GPL(tcon_configure_pc);
+
+void tcon_enable_pc(struct dpu_tcon *tcon)
+{
+	if (WARN_ON(!tcon || !tcon->pc))
+		return;
+
+	pc_enable(tcon->pc);
+}
+EXPORT_SYMBOL_GPL(tcon_enable_pc);
+
+void tcon_disable_pc(struct dpu_tcon *tcon)
+{
+	if (WARN_ON(!tcon || !tcon->pc))
+		return;
+
+	pc_disable(tcon->pc);
+}
+EXPORT_SYMBOL_GPL(tcon_disable_pc);
 
 struct dpu_tcon *dpu_tcon_get(struct dpu_soc *dpu, int id)
 {
@@ -207,12 +269,12 @@ struct dpu_tcon *dpu_tcon_get(struct dpu_soc *dpu, int id)
 	mutex_lock(&tcon->mutex);
 
 	if (tcon->inuse) {
-		tcon = ERR_PTR(-EBUSY);
-		goto out;
+		mutex_unlock(&tcon->mutex);
+		return ERR_PTR(-EBUSY);
 	}
 
 	tcon->inuse = true;
-out:
+
 	mutex_unlock(&tcon->mutex);
 
 	return tcon;
@@ -228,6 +290,12 @@ void dpu_tcon_put(struct dpu_tcon *tcon)
 	mutex_unlock(&tcon->mutex);
 }
 EXPORT_SYMBOL_GPL(dpu_tcon_put);
+
+struct dpu_tcon *dpu_aux_tcon_peek(struct dpu_tcon *tcon)
+{
+	return tcon->dpu->tcon_priv[tcon->id ^ 1];
+}
+EXPORT_SYMBOL_GPL(dpu_aux_tcon_peek);
 
 void _dpu_tcon_init(struct dpu_soc *dpu, unsigned int id)
 {
@@ -249,7 +317,16 @@ int dpu_tcon_init(struct dpu_soc *dpu, unsigned int id,
 		return -ENOMEM;
 
 	tcon->dpu = dpu;
+	tcon->id = id;
 	mutex_init(&tcon->mutex);
 
 	return 0;
+}
+
+void tcon_get_pc(struct dpu_tcon *tcon, void *data)
+{
+	if (WARN_ON(!tcon))
+		return;
+
+	tcon->pc = data;
 }

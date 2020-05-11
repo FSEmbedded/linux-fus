@@ -6,7 +6,7 @@ Required properties:
     on Vybrid vf610 SoC with 8-bit register organization
   - "fsl,ls1021a-lpuart" for lpuart compatible with the one integrated
     on LS1021A SoC with 32-bit big-endian register organization
-  - "fsl,imx7ulp-lpuart" for lpuart  compatible with the one integrated
+  - "fsl,imx7ulp-lpuart" for lpuart compatible with the one integrated
     on i.MX7ULP SoC with 32-bit little-endian register organization
   - "fsl,imx8qm-lpuart"for lpuart  compatible with the one integrated
     on i.MX8QM SoC with 32-bit little-endian register organization, which

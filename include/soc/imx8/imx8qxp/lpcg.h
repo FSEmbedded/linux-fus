@@ -35,6 +35,15 @@
 #define		OCRAM_LPCG		0x5D590000
 #define		KPP_LPCG		0x5D5A0000
 #define		ROMCP_LPCG		0x5D500000
+#define		MU_5A_LPCG		0x5D600000
+#define		MU_6A_LPCG		0x5D610000
+#define		MU_7A_LPCG		0x5D620000
+#define		MU_8A_LPCG		0x5D630000
+#define		MU_9A_LPCG		0x5D640000
+#define		MU_10A_LPCG		0x5D650000
+#define		MU_11A_LPCG		0x5D660000
+#define		MU_12A_LPCG		0x5D670000
+#define		MU_13A_LPCG		0x5D680000
 
 /* HSIO SS */
 #define		CRR_5_LPCG		0x5F0F0000
@@ -149,7 +158,7 @@
 #define     AUD_GPT_8_LPCG          0x594E0000
 #define     AUD_GPT_9_LPCG          0x594F0000
 #define     AUD_GPT_10_LPCG         0x59500000
-#define     AUD_HIFI_LPCG           0x59580000
+#define     AUD_DSP_LPCG            0x59580000
 #define     AUD_OCRAM_LPCG          0x59590000
 #define     AUD_EDMA_0_LPCG         0x595f0000
 #define     AUD_ASRC_1_LPCG         0x59c00000

@@ -9,12 +9,21 @@
  */
 
 #include <dt-bindings/interrupt-controller/irq.h>
-#include <dt-bindings/interrupt-controller/arm-gic.h>
-#include "skeleton.dtsi"
 #include "imx6sl-pinfunc.h"
 #include <dt-bindings/clock/imx6sl-clock.h>
 
 / {
+	#address-cells = <1>;
+	#size-cells = <1>;
+	/*
+	 * The decompressor and also some bootloaders rely on a
+	 * pre-existing /chosen node to be available to insert the
+	 * command line and merge other ATAGS info.
+	 * Also for U-Boot there must be a pre-existing /memory node.
+	 */
+	chosen {};
+	memory { device_type = "memory"; reg = <0 0>; };
+
 	aliases {
 		ethernet0 = &fec;
 		gpio0 = &gpio1;
@@ -43,7 +52,7 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		cpu0: cpu@0 {
+		cpu@0 {
 			compatible = "arm,cortex-a9";
 			device_type = "cpu";
 			reg = <0x0>;
@@ -733,6 +742,7 @@
 					compatible = "syscon-poweroff";
 					regmap = <&snvs>;
 					offset = <0x38>;
+					value = <0x61>;
 					mask = <0x61>;
 					status = "disabled";
 				};
@@ -1013,8 +1023,12 @@
 			};
 
 			weim: weim@021b8000 {
+				#address-cells = <2>;
+				#size-cells = <1>;
 				reg = <0x021b8000 0x4000>;
 				interrupts = <0 14 IRQ_TYPE_LEVEL_HIGH>;
+				fsl,weim-cs-gpr = <&gpr>;
+				status = "disabled";
 			};
 
 			ocotp: ocotp@021bc000 {
@@ -1035,7 +1049,7 @@
 					  <0x80000000 0x0>, <0x0 0x8000000>;
 				reg-names = "iobase_2d", "iobase_vg",
 						"phys_baseaddr", "contiguous_mem";
-				interrupts = <GIC_SPI 10 IRQ_TYPE_LEVEL_HIGH>, <GIC_SPI 11 IRQ_TYPE_LEVEL_HIGH>;
+				interrupts = <0 10 IRQ_TYPE_LEVEL_HIGH>, <0 11 IRQ_TYPE_LEVEL_HIGH>;
 				interrupt-names = "irq_2d", "irq_vg";
 				clocks = <&clks IMX6SL_CLK_MMDC_ROOT>,
 						<&clks IMX6SL_CLK_MMDC_ROOT>,

@@ -4,7 +4,7 @@
  * This code is based on:
  * Author: Vitaly Wool <vital@embeddedalley.com>
  *
- * Copyright 2017 NXP
+ * Copyright 2017-2019 NXP
  * Copyright 2008-2015 Freescale Semiconductor, Inc. All Rights Reserved.
  * Copyright 2008 Embedded Alley Solutions, Inc All Rights Reserved.
  *
@@ -408,8 +408,6 @@ static const struct fb_bitfield def_rgb565[] = {
 };
 
 #ifdef CONFIG_FB_MXC_OVERLAY
-static u32 saved_as_ctrl;
-static u32 saved_as_next_buf;
 
 static const struct fb_bitfield def_argb555[] = {
 	[RED] = {
@@ -1115,6 +1113,7 @@ static int mxsfb_blank(int blank, struct fb_info *fb_info)
 
 		if (!host->enabled) {
 			pm_runtime_get_sync(&host->pdev->dev);
+
 			writel(0, host->base + LCDC_CTRL);
 			mxsfb_set_par(host->fb_info);
 			mxsfb_enable_controller(fb_info);
@@ -1263,7 +1262,9 @@ static int mxsfb_restore_mode(struct mxsfb_info *host)
 
 	fb_info->var.bits_per_pixel = bits_per_pixel;
 
-	vmode.pixclock = KHZ2PICOS(clk_get_rate(host->clk_pix) / 1000U);
+	vmode.pixclock = clk_get_rate(host->clk_pix) / 1000U;
+	if (vmode.pixclock)
+		vmode.pixclock = KHZ2PICOS(vmode.pixclock);
 	vmode.hsync_len = get_hsync_pulse_width(host, vdctrl2);
 	vmode.left_margin = GET_HOR_WAIT_CNT(vdctrl3) - vmode.hsync_len;
 	vmode.right_margin = VDCTRL2_GET_HSYNC_PERIOD(vdctrl2) - vmode.hsync_len -
@@ -1530,7 +1531,7 @@ static int mxsfb_dispdrv_init(struct platform_device *pdev,
 	disp_dev[strlen(host->disp_dev)] = '\0';
 
 	/* Use videomode name from dtb, if any given */
-	if (host->disp_videomode) {
+	if (host->disp_videomode[0]) {
 		setting.dft_mode_str = kmalloc(NAME_LEN, GFP_KERNEL);
 		if (setting.dft_mode_str) {
 			memset(setting.dft_mode_str, 0x0, NAME_LEN);
@@ -2186,6 +2187,10 @@ static void mxsfb_overlay_exit(struct mxsfb_info *fbi)
 	}
 }
 
+#ifdef CONFIG_PM_SLEEP
+static u32 saved_as_ctrl;
+static u32 saved_as_next_buf;
+
 static void mxsfb_overlay_resume(struct mxsfb_info *fbi)
 {
 	if (fbi->cur_blank != FB_BLANK_UNBLANK) {
@@ -2193,6 +2198,9 @@ static void mxsfb_overlay_resume(struct mxsfb_info *fbi)
 		clk_enable_axi(fbi);
 		clk_enable_disp_axi(fbi);
 	}
+
+	/* Pull LCDIF out of reset */
+	writel(0xc0000000, fbi->base + LCDC_CTRL + REG_CLR);
 
 	writel(saved_as_ctrl, fbi->base + LCDC_AS_CTRL);
 	writel(saved_as_next_buf, fbi->base + LCDC_AS_NEXT_BUF);
@@ -2222,11 +2230,11 @@ static void mxsfb_overlay_suspend(struct mxsfb_info *fbi)
 		clk_disable_pix(fbi);
 	}
 }
+#endif
+
 #else
 static void mxsfb_overlay_init(struct mxsfb_info *fbi) {}
 static void mxsfb_overlay_exit(struct mxsfb_info *fbi) {}
-static void mxsfb_overlay_resume(struct mxsfb_info *fbi) {}
-static void mxsfb_overlay_suspend(struct mxsfb_info *fbi) {}
 #endif
 
 static int mxsfb_probe(struct platform_device *pdev)
@@ -2479,7 +2487,9 @@ static int mxsfb_runtime_resume(struct device *dev)
 
 	return 0;
 }
+#endif
 
+#ifdef CONFIG_PM_SLEEP
 static int mxsfb_suspend(struct device *pdev)
 {
 	struct mxsfb_info *host = dev_get_drvdata(pdev);
@@ -2507,19 +2517,13 @@ static int mxsfb_resume(struct device *pdev)
 	pinctrl_pm_select_default_state(pdev);
 
 	console_lock();
+	mxsfb_overlay_resume(host);
 	mxsfb_blank(host->restore_blank, fb_info);
 	fb_set_suspend(fb_info, 0);
-	mxsfb_overlay_resume(host);
 	console_unlock();
 
 	return 0;
 }
-#else
-#define	mxsfb_runtime_suspend	NULL
-#define	mxsfb_runtime_resume	NULL
-
-#define	mxsfb_suspend	NULL
-#define	mxsfb_resume	NULL
 #endif
 
 static const struct dev_pm_ops mxsfb_pm_ops = {

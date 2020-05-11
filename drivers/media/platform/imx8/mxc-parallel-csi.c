@@ -28,7 +28,7 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/videodev2.h>
-#include <media/v4l2-of.h>
+#include <media/v4l2-fwnode.h>
 #include <media/v4l2-subdev.h>
 #include <media/v4l2-device.h>
 #include <soc/imx8/sc/sci.h>
@@ -193,7 +193,7 @@ static void mxc_pcsi_config_ctrl_reg1(struct mxc_parallel_csi_dev *pcsidev)
 
 	/* Config Pixel Width */
 	val = (CSI_CTRL_REG1_PIXEL_WIDTH(pcsidev->format.width - 1) |
-		CSI_CTRL_REG1_VSYNC_PULSE(3));
+		CSI_CTRL_REG1_VSYNC_PULSE(pcsidev->format.width << 1));
 	writel(val, pcsidev->csr_regs + CSI_CTRL_REG1);
 
 }
@@ -363,6 +363,30 @@ static int mxc_pcsi_set_fmt(struct v4l2_subdev *sd,
 			       struct v4l2_subdev_pad_config *cfg,
 			       struct v4l2_subdev_format *fmt)
 {
+	struct mxc_parallel_csi_dev *pcsidev = sd_to_mxc_pcsi_dev(sd);
+	struct v4l2_subdev *sen_sd;
+	struct media_pad *source_pad;
+	int ret;
+
+	/* Get remote source pad */
+	source_pad = mxc_pcsi_get_remote_sensor_pad(pcsidev);
+	if (source_pad == NULL) {
+		v4l2_err(&pcsidev->v4l2_dev, "%s, No remote pad found!\n", __func__);
+		return -EINVAL;
+	}
+
+	/* Get remote source pad subdev */
+	sen_sd = media_entity_to_v4l2_subdev(source_pad->entity);
+	if (sen_sd == NULL) {
+		v4l2_err(&pcsidev->v4l2_dev, "%s, No remote subdev found!\n", __func__);
+		return -EINVAL;
+	}
+
+	fmt->pad = source_pad->index;
+	ret = v4l2_subdev_call(sen_sd, pad, set_fmt, NULL, fmt);
+	if (ret < 0 && ret != -ENOIOCTLCMD)
+		return -EINVAL;
+
 	return 0;
 }
 
@@ -548,6 +572,8 @@ static int mxc_parallel_csi_probe(struct platform_device *pdev)
 	pcsidev->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	pcsidev->sd.entity.function = MEDIA_ENT_F_IO_V4L;
 
+	pcsidev->sd.dev = dev;
+
 	pcsidev->pads[MXC_PARALLEL_CSI_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
 	pcsidev->pads[MXC_PARALLEL_CSI_PAD_SOURCE].flags = MEDIA_PAD_FL_SOURCE;
 
@@ -578,98 +604,23 @@ static int mxc_parallel_csi_remove(struct platform_device *pdev)
 	struct mxc_parallel_csi_dev *pcsidev =
 			(struct mxc_parallel_csi_dev *)platform_get_drvdata(pdev);
 
-	pm_runtime_get_sync(&pdev->dev);
 	media_entity_cleanup(&pcsidev->sd.entity);
-	mxc_pcsi_clk_disable(pcsidev);
-	pm_runtime_put(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 
 	return 0;
 }
 
-static void parallel_csi_power_control(sc_pm_power_mode_t mode)
-{
-	sc_ipc_t ipcHndl;
-	sc_err_t sciErr;
-	uint32_t mu_id;
-
-	sciErr = sc_ipc_getMuID(&mu_id);
-	if (sciErr != SC_ERR_NONE) {
-		pr_err("Cannot obtain MU ID\n");
-		return;
-	}
-
-	sciErr = sc_ipc_open(&ipcHndl, mu_id);
-	if (sciErr != SC_ERR_NONE) {
-		pr_err("sc_ipc_open failed! (sciError = %d)\n", sciErr);
-		return;
-	}
-
-	sc_pm_set_resource_power_mode(ipcHndl, SC_R_PI_0, mode);
-
-	if (sciErr != SC_ERR_NONE)
-		pr_err("Set CI_PI resouce power mode failed! (sciError = %d)\n", sciErr);
-
-	msleep(10);
-
-	sc_ipc_close(mu_id);
-}
-
-static int parallel_csi_pm_suspend(struct device *dev)
+static int __maybe_unused parallel_csi_pm_suspend(struct device *dev)
 {
 	return pm_runtime_force_suspend(dev);
 }
 
-static int parallel_csi_pm_resume(struct device *dev)
+static int __maybe_unused parallel_csi_pm_resume(struct device *dev)
 {
-	struct mxc_parallel_csi_dev *pcsidev = dev_get_drvdata(dev);
-	int ret;
-
-	/* Power off CI_PI before set clock parent */
-	parallel_csi_power_control(SC_PM_PW_MODE_OFF);
-
-	pcsidev->clk_div = devm_clk_get(dev, "div");
-	if (IS_ERR(pcsidev->clk_div)) {
-		dev_err(dev, "%s: Get div clk fail\n", __func__);
-		return PTR_ERR(pcsidev->clk_div);
-	}
-
-	pcsidev->clk_sel = devm_clk_get(dev, "sel");
-	if (IS_ERR(pcsidev->clk_sel)) {
-		dev_err(dev, "%s: Get sel clk fail\n", __func__);
-		return PTR_ERR(pcsidev->clk_sel);
-	}
-
-	pcsidev->clk_dpll = devm_clk_get(dev, "dpll");
-	if (IS_ERR(pcsidev->clk_dpll)) {
-		dev_err(dev, "%s: Get DPLL clk fail\n", __func__);
-		return PTR_ERR(pcsidev->clk_dpll);
-	}
-
-	ret = clk_set_parent(pcsidev->clk_sel, pcsidev->clk_dpll);
-	if (ret < 0) {
-		dev_err(dev, "sel clk set parent fail\n");
-		return ret;
-	}
-
-	/* 160MHz for pixel and per clock */
-	ret = clk_set_rate(pcsidev->clk_div, 160000000);
-	if (ret < 0) {
-		dev_err(dev, "div clk set rate fail\n");
-		return ret;
-	}
-
-	/* Release parent clocks */
-	devm_clk_put(dev, pcsidev->clk_dpll);
-	devm_clk_put(dev, pcsidev->clk_sel);
-	devm_clk_put(dev, pcsidev->clk_div);
-
-	pm_runtime_enable(dev);
-
-	return 0;
+	return pm_runtime_force_resume(dev);
 }
 
-static int parallel_csi_runtime_suspend(struct device *dev)
+static int __maybe_unused parallel_csi_runtime_suspend(struct device *dev)
 {
 	struct mxc_parallel_csi_dev *pcsidev = dev_get_drvdata(dev);
 
@@ -678,7 +629,7 @@ static int parallel_csi_runtime_suspend(struct device *dev)
 	return 0;
 }
 
-static int parallel_csi_runtime_resume(struct device *dev)
+static int __maybe_unused parallel_csi_runtime_resume(struct device *dev)
 {
 	struct mxc_parallel_csi_dev *pcsidev = dev_get_drvdata(dev);
 	int ret;

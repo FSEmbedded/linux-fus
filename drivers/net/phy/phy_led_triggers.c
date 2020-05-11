@@ -78,7 +78,7 @@ static int phy_led_trigger_register(struct phy_device *phy,
 			 DIV_ROUND_CLOSEST(speed, 1000));
 
 	snprintf(plt->name, sizeof(plt->name), PHY_ID_FMT ":%s",
-		 phy->bus->id, phy->addr, name_suffix);
+		 phy->mdio.bus->id, phy->mdio.addr, name_suffix);
 	plt->trigger.name = plt->name;
 
 	return led_trigger_register(&plt->trigger);
@@ -99,7 +99,7 @@ int phy_led_triggers_register(struct phy_device *phy)
 	if (!phy->phy_num_led_triggers)
 		return 0;
 
-	phy->phy_led_triggers = devm_kzalloc(&phy->dev,
+	phy->phy_led_triggers = devm_kzalloc(&phy->mdio.dev,
 					    sizeof(struct phy_led_trigger) *
 						   phy->phy_num_led_triggers,
 					    GFP_KERNEL);
@@ -122,7 +122,7 @@ int phy_led_triggers_register(struct phy_device *phy)
 out_unreg:
 	while (i--)
 		phy_led_trigger_unregister(&phy->phy_led_triggers[i]);
-	devm_kfree(&phy->dev, phy->phy_led_triggers);
+	devm_kfree(&phy->mdio.dev, phy->phy_led_triggers);
 out_clear:
 	phy->phy_num_led_triggers = 0;
 	return err;

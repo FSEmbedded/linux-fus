@@ -42,20 +42,11 @@
 #include <asm/mach-types.h>
 #include <video/mxc_edid.h>
 
-#define SII_EDID_LEN	512
+#include "mxsfb_sii902x.h"
+
 #define DRV_NAME "sii902x"
 
-struct sii902x_data {
-	struct i2c_client *client;
-	struct delayed_work det_work;
-	struct fb_info *fbi;
-	struct mxc_edid_cfg edid_cfg;
-	u8 cable_plugin;
-	u8 edid[SII_EDID_LEN];
-	bool dft_mode_set;
-	const char *mode_str;
-	int bits_per_pixel;
-} sii902x;
+struct sii902x_data sii902x;
 
 static void sii902x_poweron(void);
 static void sii902x_poweroff(void);
@@ -329,19 +320,24 @@ static int sii902x_fb_event(struct notifier_block *nb, unsigned long val, void *
 	struct fb_event *event = v;
 	struct fb_info *fbi = event->info;
 
-	dev_dbg(&sii902x.client->dev, "%s event=0x%lx\n", __func__, val);
-
-	if (sii902x_in_init_state) {
-		if (val == FB_EVENT_FB_REGISTERED && !sii902x.fbi)
-			sii902x.fbi = fbi;
-
-		return 0;
+	/* Check if our FB just registered */
+	if (!sii902x.fbi && val == FB_EVENT_FB_REGISTERED &&
+			!strncmp(fbi->fix.id, "mxs-lcdif", 9)) {
+		pr_info("sii902x bound to %s from %s\n",
+				fbi->fix.id, dev_name(fbi->device));
+		sii902x.fbi = fbi;
 	}
+
+	/* Ignore if not our FB */
+	if (fbi != sii902x.fbi)
+		return 0;
+
+	/* Ignore if driver did not probe yet */
+	if (sii902x_in_init_state)
+		return 0;
 
 	switch (val) {
 	case FB_EVENT_FB_REGISTERED:
-		if (sii902x.fbi == NULL)
-			sii902x.fbi = fbi;
 		/* Manually trigger a plugin/plugout interrupter to check cable state */
 		schedule_delayed_work(&(sii902x.det_work), msecs_to_jiffies(50));
 
@@ -487,6 +483,10 @@ static int sii902x_probe(struct i2c_client *client,
 	}
 
 	sii902x_in_init_state = 0;
+
+	dev_set_drvdata(&sii902x.client->dev, &sii902x);
+
+	sii902x_register_audio_driver(&sii902x.client->dev);
 
 	return 0;
 }

@@ -16,6 +16,7 @@
 #define FSL_SIP_CONFIG_GPC_UNMASK	0x01
 #define FSL_SIP_CONFIG_GPC_SET_WAKE	0x02
 #define FSL_SIP_CONFIG_GPC_PM_DOMAIN	0x03
+#define FSL_SIP_CONFIG_GPC_CORE_WAKE	0x05
 
 #define FSL_SIP_CPUFREQ			0xC2000001
 #define FSL_SIP_SET_CPUFREQ		0x00
@@ -44,11 +45,6 @@
 #define IMX8MQ_PD_MIPI_CSI2	9
 #define IMX8MQ_PD_PCIE2		10
 
-#define SC_TIMER_WDOG_ACTION_PARTITION      0   /*!< Reset partition */
-#define SC_TIMER_WDOG_ACTION_WARM           1   /*!< Warm reset system */
-#define SC_TIMER_WDOG_ACTION_COLD           2   /*!< Cold reset system */
-#define SC_TIMER_WDOG_ACTION_BOARD          3   /*!< Reset board */
-
 #define FSL_SIP_DDR_DVFS		0xc2000004
 
 #define FSL_SIP_SRC			0xc2000005
@@ -59,5 +55,15 @@
 
 #define FSL_SIP_NOC			0xc2000008
 #define FSL_SIP_NOC_LCDIF		0x0
+#define FSL_SIP_NOC_PRIORITY		0x1
+#define NOC_GPU_PRIORITY		0x10
+#define NOC_DCSS_PRIORITY		0x11
+#define NOC_VPU_PRIORITY		0x12
+#define NOC_CPU_PRIORITY		0x13
+#define NOC_MIX_PRIORITY		0x14
+
+#define FSL_SIP_WAKEUP_SRC		0xc2000009
+#define FSL_SIP_WAKEUP_SRC_SCU		0x1
+#define FSL_SIP_WAKEUP_SRC_IRQSTEER	0x2
 
 #endif

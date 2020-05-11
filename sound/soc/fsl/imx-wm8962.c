@@ -54,8 +54,6 @@ struct imx_priv {
 	struct platform_device *pdev;
 	struct snd_pcm_substream *first_stream;
 	struct snd_pcm_substream *second_stream;
-	struct snd_kcontrol *headphone_kctl;
-	struct snd_card *snd_card;
 	struct platform_device *asrc_pdev;
 	u32 asrc_rate;
 	u32 asrc_format;
@@ -117,12 +115,10 @@ static int hpjack_status_check(void *data)
 		snprintf(buf, 32, "STATE=%d", 2);
 		snd_soc_dapm_disable_pin(snd_soc_codec_get_dapm(priv->codec), "Ext Spk");
 		ret = imx_hp_jack_gpio.report;
-		snd_kctl_jack_report(priv->snd_card, priv->headphone_kctl, 1);
 	} else {
 		snprintf(buf, 32, "STATE=%d", 0);
 		snd_soc_dapm_enable_pin(snd_soc_codec_get_dapm(priv->codec), "Ext Spk");
 		ret = 0;
-		snd_kctl_jack_report(priv->snd_card, priv->headphone_kctl, 0);
 	}
 
 	envp[0] = "NAME=headphone";
@@ -479,7 +475,7 @@ static int imx_wm8962_gpio_init(struct snd_soc_card *card)
 	return 0;
 }
 
-static ssize_t show_headphone(struct device_driver *dev, char *buf)
+static ssize_t headphone_show(struct device_driver *dev, char *buf)
 {
 	struct imx_priv *priv = &card_priv;
 	int hp_status;
@@ -500,9 +496,9 @@ static ssize_t show_headphone(struct device_driver *dev, char *buf)
 	return strlen(buf);
 }
 
-static DRIVER_ATTR(headphone, S_IRUGO | S_IWUSR, show_headphone, NULL);
+static DRIVER_ATTR_RO(headphone);
 
-static ssize_t show_mic(struct device_driver *dev, char *buf)
+static ssize_t microphone_show(struct device_driver *dev, char *buf)
 {
 	struct imx_priv *priv = &card_priv;
 	int mic_status;
@@ -523,7 +519,7 @@ static ssize_t show_mic(struct device_driver *dev, char *buf)
 	return strlen(buf);
 }
 
-static DRIVER_ATTR(microphone, S_IRUGO | S_IWUSR, show_mic, NULL);
+static DRIVER_ATTR_RO(microphone);
 
 static int imx_wm8962_late_probe(struct snd_soc_card *card)
 {
@@ -672,7 +668,7 @@ audmux_bypass:
 	priv->first_stream = NULL;
 	priv->second_stream = NULL;
 
-	data->codec_clk = devm_clk_get(&codec_dev->dev, NULL);
+	data->codec_clk = clk_get(&codec_dev->dev, NULL);
 	if (IS_ERR(data->codec_clk)) {
 		ret = PTR_ERR(data->codec_clk);
 		dev_err(&codec_dev->dev, "failed to get codec clk: %d\n", ret);
@@ -776,12 +772,6 @@ audmux_bypass:
 		dev_err(&pdev->dev, "snd_soc_register_card failed (%d)\n", ret);
 		goto fail;
 	}
-
-	priv->snd_card = data->card.snd_card;
-	priv->headphone_kctl = snd_kctl_jack_new("Headphone", NULL);
-	ret = snd_ctl_add(data->card.snd_card, priv->headphone_kctl);
-	if (ret)
-		goto fail;
 
 	imx_wm8962_gpio_init(&data->card);
 

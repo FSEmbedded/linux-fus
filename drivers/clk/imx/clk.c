@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/of.h>
@@ -103,6 +104,9 @@ void __init imx_register_uart_clocks(struct clk ** const clks[])
 
 static int __init imx_clk_disable_uart(void)
 {
+	if (imx_src_is_m4_enabled())
+		return 0;
+
 	if (imx_keep_uart_clocks && imx_uart_clocks) {
 		int i;
 

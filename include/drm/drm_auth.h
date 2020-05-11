@@ -28,15 +28,29 @@
 #ifndef _DRM_AUTH_H_
 #define _DRM_AUTH_H_
 
+/*
+ * Legacy DRI1 locking data structure. Only here instead of in drm_legacy.h for
+ * include ordering reasons.
+ *
+ * DO NOT USE.
+ */
+struct drm_lock_data {
+	struct drm_hw_lock *hw_lock;
+	struct drm_file *file_priv;
+	wait_queue_head_t lock_queue;
+	unsigned long lock_time;
+	spinlock_t spinlock;
+	uint32_t kernel_waiters;
+	uint32_t user_waiters;
+	int idle_has_lock;
+};
+
 /**
  * struct drm_master - drm master structure
  *
  * @refcount: Refcount for this master object.
  * @dev: Link back to the DRM device
- * @unique: Unique identifier: e.g. busid. Protected by drm_global_mutex.
- * @unique_len: Length of unique field. Protected by drm_global_mutex.
- * @magic_map: Map of used authentication tokens. Protected by struct_mutex.
- * @lock: DRI lock information.
+ * @lock: DRI1 lock information.
  * @driver_priv: Pointer to driver-private information.
  * @lessor: Lease holder
  * @lessee_id: id for lessees. Owners always have id 0
@@ -51,12 +65,23 @@
 struct drm_master {
 	struct kref refcount;
 	struct drm_device *dev;
+	/**
+	 * @unique: Unique identifier: e.g. busid. Protected by
+	 * &drm_device.master_mutex.
+	 */
 	char *unique;
+	/**
+	 * @unique_len: Length of unique field. Protected by
+	 * &drm_device.master_mutex.
+	 */
 	int unique_len;
+	/**
+	 * @magic_map: Map of used authentication tokens. Protected by
+	 * &drm_device.master_mutex.
+	 */
 	struct idr magic_map;
 	struct drm_lock_data lock;
 	void *driver_priv;
-
 
 	/* Tree of display resource leases, each of which is a drm_master struct
 	 * All of these get activated simultaneously, so drm_device master points
@@ -65,7 +90,7 @@ struct drm_master {
 	 */
 
 	struct drm_master *lessor;
-	int     lessee_id;
+	int	lessee_id;
 	struct list_head lessee_list;
 	struct list_head lessees;
 	struct idr leases;
@@ -77,4 +102,5 @@ void drm_master_put(struct drm_master **master);
 bool drm_is_current_master(struct drm_file *fpriv);
 
 struct drm_master *drm_master_create(struct drm_device *dev);
+
 #endif

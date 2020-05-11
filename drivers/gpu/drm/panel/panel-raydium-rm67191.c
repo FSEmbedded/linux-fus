@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * i.MX drm driver - Raydium MIPI-DSI panel driver
  *
@@ -25,14 +26,20 @@
 #include <video/of_videomode.h>
 #include <video/videomode.h>
 
-#define CMD_TABLE_LEN 2
-typedef u8 cmd_set_table[CMD_TABLE_LEN];
-
 /* Write Manufacture Command Set Control */
 #define WRMAUCCTR 0xFE
 
 /* Manufacturer Command Set pages (CMD2) */
-static const cmd_set_table manufacturer_cmd_set[] = {
+struct cmd_set_entry {
+	u8 cmd;
+	u8 param;
+};
+
+/*
+ * There is no description in the Reference Manual about these commands.
+ * We received them from vendor, so just use them as is.
+ */
+static const struct cmd_set_entry manufacturer_cmd_set[] = {
 	{0xFE, 0x0B},
 	{0x28, 0x40},
 	{0x29, 0x4F},
@@ -207,13 +214,14 @@ static inline struct rad_panel *to_rad_panel(struct drm_panel *panel)
 static int rad_panel_push_cmd_list(struct mipi_dsi_device *dsi)
 {
 	size_t i;
-	const u8 *cmd;
-	size_t count = sizeof(manufacturer_cmd_set) / CMD_TABLE_LEN;
+	size_t count = ARRAY_SIZE(manufacturer_cmd_set);
 	int ret = 0;
 
-	for (i = 0; i < count ; i++) {
-		cmd = manufacturer_cmd_set[i];
-		ret = mipi_dsi_generic_write(dsi, cmd, CMD_TABLE_LEN);
+	for (i = 0; i < count; i++) {
+		const struct cmd_set_entry *entry = &manufacturer_cmd_set[i];
+		u8 buffer[2] = { entry->cmd, entry->param };
+
+		ret = mipi_dsi_generic_write(dsi, &buffer, sizeof(buffer));
 		if (ret < 0)
 			return ret;
 	}
@@ -239,23 +247,61 @@ static int color_format_from_dsi_format(enum mipi_dsi_pixel_format format)
 static int rad_panel_prepare(struct drm_panel *panel)
 {
 	struct rad_panel *rad = to_rad_panel(panel);
-	struct mipi_dsi_device *dsi = rad->dsi;
-	struct device *dev = &dsi->dev;
-	int color_format = color_format_from_dsi_format(dsi->format);
-	int ret;
 
 	if (rad->prepared)
 		return 0;
 
-	DRM_DEV_DEBUG_DRIVER(dev, "\n");
-
 	if (rad->reset != NULL) {
-		gpiod_set_value(rad->reset, 1);
-		usleep_range(10000, 15000);
 		gpiod_set_value(rad->reset, 0);
 		usleep_range(5000, 10000);
 		gpiod_set_value(rad->reset, 1);
 		usleep_range(20000, 25000);
+	}
+
+	rad->prepared = true;
+
+	return 0;
+}
+
+static int rad_panel_unprepare(struct drm_panel *panel)
+{
+	struct rad_panel *rad = to_rad_panel(panel);
+	struct device *dev = &rad->dsi->dev;
+
+	if (!rad->prepared)
+		return 0;
+
+	if (rad->enabled) {
+		DRM_DEV_ERROR(dev, "Panel still enabled!\n");
+		return -EPERM;
+	}
+
+	if (rad->reset != NULL) {
+		gpiod_set_value(rad->reset, 0);
+		usleep_range(15000, 17000);
+		gpiod_set_value(rad->reset, 1);
+	}
+
+	rad->prepared = false;
+
+	return 0;
+}
+
+static int rad_panel_enable(struct drm_panel *panel)
+{
+	struct rad_panel *rad = to_rad_panel(panel);
+	struct mipi_dsi_device *dsi = rad->dsi;
+	struct device *dev = &dsi->dev;
+	int color_format = color_format_from_dsi_format(dsi->format);
+	u16 brightness;
+	int ret;
+
+	if (rad->enabled)
+		return 0;
+
+	if (!rad->prepared) {
+		DRM_DEV_ERROR(dev, "Panel not prepared!\n");
+		return -EPERM;
 	}
 
 	dsi->mode_flags |= MIPI_DSI_MODE_LPM;
@@ -278,7 +324,7 @@ static int rad_panel_prepare(struct drm_panel *panel)
 		goto fail;
 	}
 
-	usleep_range(10000, 15000);
+	usleep_range(15000, 17000);
 
 	/* Set DSI mode */
 	ret = mipi_dsi_generic_write(dsi, (u8[]){ 0xC2, 0x0B }, 2);
@@ -307,7 +353,8 @@ static int rad_panel_prepare(struct drm_panel *panel)
 		goto fail;
 	}
 	/* Set display brightness */
-	ret = mipi_dsi_dcs_set_display_brightness(dsi, 0x20);
+	brightness = rad->backlight->props.brightness;
+	ret = mipi_dsi_dcs_set_display_brightness(dsi, brightness);
 	if (ret < 0) {
 		DRM_DEV_ERROR(dev, "Failed to set display brightness (%d)\n",
 			      ret);
@@ -328,7 +375,9 @@ static int rad_panel_prepare(struct drm_panel *panel)
 		goto fail;
 	}
 
-	rad->prepared = true;
+	backlight_enable(rad->backlight);
+
+	rad->enabled = true;
 
 	return 0;
 
@@ -339,72 +388,35 @@ fail:
 	return ret;
 }
 
-static int rad_panel_unprepare(struct drm_panel *panel)
+static int rad_panel_disable(struct drm_panel *panel)
 {
 	struct rad_panel *rad = to_rad_panel(panel);
 	struct mipi_dsi_device *dsi = rad->dsi;
 	struct device *dev = &dsi->dev;
 	int ret;
 
-	if (!rad->prepared)
+	if (!rad->enabled)
 		return 0;
-
-	DRM_DEV_DEBUG_DRIVER(dev, "\n");
 
 	dsi->mode_flags |= MIPI_DSI_MODE_LPM;
 
+	backlight_disable(rad->backlight);
+
+	usleep_range(10000, 15000);
+
 	ret = mipi_dsi_dcs_set_display_off(dsi);
-	if (ret < 0)
+	if (ret < 0) {
 		DRM_DEV_ERROR(dev, "Failed to set display OFF (%d)\n", ret);
+		return ret;
+	}
 
 	usleep_range(5000, 10000);
 
 	ret = mipi_dsi_dcs_enter_sleep_mode(dsi);
-	if (ret < 0)
+	if (ret < 0) {
 		DRM_DEV_ERROR(dev, "Failed to enter sleep mode (%d)\n", ret);
-
-	usleep_range(10000, 15000);
-
-	if (rad->reset != NULL) {
-		gpiod_set_value(rad->reset, 0);
-		usleep_range(10000, 15000);
+		return ret;
 	}
-
-	rad->prepared = false;
-
-	return 0;
-}
-
-static int rad_panel_enable(struct drm_panel *panel)
-{
-	struct rad_panel *rad = to_rad_panel(panel);
-	struct device *dev = &rad->dsi->dev;
-
-	if (rad->enabled)
-		return 0;
-
-	DRM_DEV_DEBUG_DRIVER(dev, "\n");
-
-	rad->backlight->props.power = FB_BLANK_UNBLANK;
-	backlight_update_status(rad->backlight);
-
-	rad->enabled = true;
-
-	return 0;
-}
-
-static int rad_panel_disable(struct drm_panel *panel)
-{
-	struct rad_panel *rad = to_rad_panel(panel);
-	struct device *dev = &rad->dsi->dev;
-
-	if (!rad->enabled)
-		return 0;
-
-	DRM_DEV_DEBUG_DRIVER(dev, "\n");
-
-	rad->backlight->props.power = FB_BLANK_POWERDOWN;
-	backlight_update_status(rad->backlight);
 
 	rad->enabled = false;
 
@@ -538,6 +550,7 @@ static int rad_panel_probe(struct mipi_dsi_device *dsi)
 	struct rad_panel *panel;
 	struct backlight_properties bl_props;
 	int ret;
+	u32 video_mode;
 
 	panel = devm_kzalloc(&dsi->dev, sizeof(*panel), GFP_KERNEL);
 	if (!panel)
@@ -550,6 +563,27 @@ static int rad_panel_probe(struct mipi_dsi_device *dsi)
 	dsi->format = MIPI_DSI_FMT_RGB888;
 	dsi->mode_flags =  MIPI_DSI_MODE_VIDEO_HSE | MIPI_DSI_MODE_VIDEO |
 			   MIPI_DSI_CLOCK_NON_CONTINUOUS;
+
+	ret = of_property_read_u32(np, "video-mode", &video_mode);
+	if (!ret) {
+		switch (video_mode) {
+		case 0:
+			/* burst mode */
+			dsi->mode_flags |= MIPI_DSI_MODE_VIDEO_BURST;
+			break;
+		case 1:
+			/* non-burst mode with sync event */
+			break;
+		case 2:
+			/* non-burst mode with sync pulse */
+			dsi->mode_flags |= MIPI_DSI_MODE_VIDEO_SYNC_PULSE;
+			break;
+		default:
+			dev_warn(dev, "invalid video mode %d\n", video_mode);
+			break;
+
+		}
+	}
 
 	ret = of_property_read_u32(np, "dsi-lanes", &dsi->lanes);
 	if (ret < 0) {
@@ -601,6 +635,7 @@ static int rad_panel_probe(struct mipi_dsi_device *dsi)
 	drm_panel_init(&panel->base);
 	panel->base.funcs = &rad_panel_funcs;
 	panel->base.dev = dev;
+	dev_set_drvdata(dev, panel);
 
 	ret = drm_panel_add(&panel->base);
 
@@ -620,20 +655,12 @@ static int rad_panel_remove(struct mipi_dsi_device *dsi)
 	struct device *dev = &dsi->dev;
 	int ret;
 
-	ret = rad_panel_unprepare(&rad->base);
-	ret |= rad_panel_disable(&rad->base);
-	if (ret < 0)
-		DRM_DEV_ERROR(dev, "Failed to disable panel (%d)\n", ret);
-
 	ret = mipi_dsi_detach(dsi);
 	if (ret < 0)
 		DRM_DEV_ERROR(dev, "Failed to detach from host (%d)\n",
 			ret);
 
-	drm_panel_detach(&rad->base);
-
-	if (rad->base.dev)
-		drm_panel_remove(&rad->base);
+	drm_panel_remove(&rad->base);
 
 	return 0;
 }
@@ -642,9 +669,44 @@ static void rad_panel_shutdown(struct mipi_dsi_device *dsi)
 {
 	struct rad_panel *rad = mipi_dsi_get_drvdata(dsi);
 
-	rad_panel_unprepare(&rad->base);
 	rad_panel_disable(&rad->base);
+	rad_panel_unprepare(&rad->base);
 }
+
+#ifdef CONFIG_PM
+static int rad_panel_suspend(struct device *dev)
+{
+	struct rad_panel *rad = dev_get_drvdata(dev);
+
+	if (!rad->reset)
+		return 0;
+
+	devm_gpiod_put(dev, rad->reset);
+	rad->reset = NULL;
+
+	return 0;
+}
+
+static int rad_panel_resume(struct device *dev)
+{
+	struct rad_panel *rad = dev_get_drvdata(dev);
+
+	if (rad->reset)
+		return 0;
+
+	rad->reset = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
+	if (IS_ERR(rad->reset))
+		rad->reset = NULL;
+
+	return PTR_ERR_OR_ZERO(rad->reset);
+}
+
+#endif
+
+static const struct dev_pm_ops rad_pm_ops = {
+	SET_RUNTIME_PM_OPS(rad_panel_suspend, rad_panel_resume, NULL)
+	SET_SYSTEM_SLEEP_PM_OPS(rad_panel_suspend, rad_panel_resume)
+};
 
 static const struct of_device_id rad_of_match[] = {
 	{ .compatible = "raydium,rm67191", },
@@ -656,6 +718,7 @@ static struct mipi_dsi_driver rad_panel_driver = {
 	.driver = {
 		.name = "panel-raydium-rm67191",
 		.of_match_table = rad_of_match,
+		.pm	= &rad_pm_ops,
 	},
 	.probe = rad_panel_probe,
 	.remove = rad_panel_remove,
@@ -663,6 +726,6 @@ static struct mipi_dsi_driver rad_panel_driver = {
 };
 module_mipi_dsi_driver(rad_panel_driver);
 
-MODULE_AUTHOR("NXP Semiconductor");
-MODULE_DESCRIPTION("Raydium RM67191");
+MODULE_AUTHOR("Robert Chiras <robert.chiras@nxp.com>");
+MODULE_DESCRIPTION("DRM Driver for Raydium RM67191 MIPI DSI panel");
 MODULE_LICENSE("GPL v2");

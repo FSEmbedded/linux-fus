@@ -11,6 +11,7 @@
  * http://www.gnu.org/copyleft/gpl.html
  */
 
+#include <dt-bindings/clock/imx6qdl-clock.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
 
@@ -47,16 +48,6 @@
 
 	chosen {
 		stdout-path = &uart1;
-	};
-
-	leds {
-		compatible = "gpio-leds";
-
-		charger-led {
-			gpios = <&gpio1 2 0>;
-			linux,default-trigger = "max8903-charger-charging";
-			retain-state-suspended;
-		};
 	};
 
 	memory: memory {
@@ -261,6 +252,18 @@
 		status = "okay";
 	};
 
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_gpio_leds>;
+
+		charger-led {
+			gpios = <&gpio1 2 0>;
+			linux,default-trigger = "max8903-charger-charging";
+			retain-state-suspended;
+		};
+	};
+
 	v4l2_cap_0 {
 		compatible = "fsl,imx6q-v4l2-capture";
 		ipu_id = <0>;
@@ -283,6 +286,29 @@
 	};
 };
 
+&ipu1_csi0_from_ipu1_csi0_mux {
+	bus-width = <8>;
+	data-shift = <12>; /* Lines 19:12 used */
+	hsync-active = <1>;
+	vsync-active = <1>;
+};
+
+&ipu1_csi0_mux_from_parallel_sensor {
+	/* Downstream driver doesn't use endpoints */
+	/*
+	remote-endpoint = <&ov5642_to_ipu1_csi0_mux>;
+	 */
+};
+
+&ipu1_csi0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ipu1_csi0>;
+};
+
+&mipi_csi {
+	status = "okay";
+};
+
 &audmux {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_audmux>;
@@ -296,11 +322,7 @@
 				 <&clks IMX6QDL_CLK_PLL2_PFD0_352M>;
 };
 
-&clks {
-};
-
 &ecspi1 {
-	fsl,spi-num-chipselects = <1>;
 	cs-gpios = <&gpio4 9 0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi1>;
@@ -319,7 +341,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet>;
 	phy-mode = "rgmii";
-	phy-reset-gpios = <&gpio1 25 0>;
+	phy-reset-gpios = <&gpio1 25 GPIO_ACTIVE_LOW>;
 	fsl,magic-packet;
 	status = "okay";
 };
@@ -390,7 +412,7 @@
 			0x0000 /* 5:Default */
 		>;
 		amic-mono;
-       };
+	};
 
 	mma8451@1c {
 		compatible = "fsl,mma8451";
@@ -439,7 +461,7 @@
 		pinctrl-0 = <&pinctrl_i2c2_egalax_int>;
 		interrupt-parent = <&gpio6>;
 		interrupts = <8 2>;
-		wakeup-gpios = <&gpio6 8 GPIO_ACTIVE_HIGH>;
+		wakeup-gpios = <&gpio6 8 0>;
 	};
 
 	max11801@48 {
@@ -588,7 +610,7 @@
 		pinctrl-0 = <&pinctrl_i2c3_egalax_int>;
 		interrupt-parent = <&gpio6>;
 		interrupts = <7 2>;
-		wakeup-gpios = <&gpio6 7 GPIO_ACTIVE_HIGH>;
+		wakeup-gpios = <&gpio6 7 0>;
 	};
 
 	isl29023@44 {
@@ -800,6 +822,36 @@
 				MX6QDL_PAD_CSI0_VSYNC__IPU1_CSI0_VSYNC     0x80000000
 				MX6QDL_PAD_SD1_DAT1__GPIO1_IO17            0x80000000
 				MX6QDL_PAD_SD1_DAT0__GPIO1_IO16            0x80000000
+			>;
+		};
+
+		pinctrl_ipu1_csi0: ipu1csi0grp {
+			fsl,pins = <
+				MX6QDL_PAD_CSI0_DAT12__IPU1_CSI0_DATA12    0x1b0b0
+				MX6QDL_PAD_CSI0_DAT13__IPU1_CSI0_DATA13    0x1b0b0
+				MX6QDL_PAD_CSI0_DAT14__IPU1_CSI0_DATA14    0x1b0b0
+				MX6QDL_PAD_CSI0_DAT15__IPU1_CSI0_DATA15    0x1b0b0
+				MX6QDL_PAD_CSI0_DAT16__IPU1_CSI0_DATA16    0x1b0b0
+				MX6QDL_PAD_CSI0_DAT17__IPU1_CSI0_DATA17    0x1b0b0
+				MX6QDL_PAD_CSI0_DAT18__IPU1_CSI0_DATA18    0x1b0b0
+				MX6QDL_PAD_CSI0_DAT19__IPU1_CSI0_DATA19    0x1b0b0
+				MX6QDL_PAD_CSI0_PIXCLK__IPU1_CSI0_PIXCLK   0x1b0b0
+				MX6QDL_PAD_CSI0_MCLK__IPU1_CSI0_HSYNC      0x1b0b0
+				MX6QDL_PAD_CSI0_VSYNC__IPU1_CSI0_VSYNC     0x1b0b0
+			>;
+		};
+
+		pinctrl_ov5640: ov5640grp {
+			fsl,pins = <
+				MX6QDL_PAD_SD1_DAT2__GPIO1_IO19 0x1b0b0
+				MX6QDL_PAD_SD1_CLK__GPIO1_IO20  0x1b0b0
+			>;
+		};
+
+		pinctrl_ov5642: ov5642grp {
+			fsl,pins = <
+				MX6QDL_PAD_SD1_DAT0__GPIO1_IO16 0x1b0b0
+				MX6QDL_PAD_SD1_DAT1__GPIO1_IO17 0x1b0b0
 			>;
 		};
 
@@ -1045,11 +1097,11 @@
 };
 
 &usbphy1 {
-	tx-d-cal = <0x5>;
+	fsl,tx-d-cal = <106>;
 };
 
 &usbphy2 {
-	tx-d-cal = <0x5>;
+	fsl,tx-d-cal = <106>;
 };
 
 &usdhc2 {

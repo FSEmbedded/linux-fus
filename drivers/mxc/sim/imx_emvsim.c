@@ -72,6 +72,7 @@
 #define	SIM_STATE_RECEIVE_ERROR		9
 #define	SIM_STATE_RESET_SEQUENCY	10
 
+#define	SIM_CNTL_GPCNT_RESET		0
 #define	SIM_CNTL_GPCNT_CARD_CLK		1
 #define	SIM_CNTL_GPCNT_RCV_CLK		2
 #define	SIM_CNTL_GPCNT_ETU_CLK		3
@@ -90,6 +91,8 @@
 #define	EMV_RESET_LOW_CYCLES		40000
 #define	ATR_MAX_DELAY_CLK		46400
 #define	DIVISOR_VALUE			372
+#define	CWT_ADJUSTMENT			2
+#define	BGT_BWT_ADJUSTMENT		2
 
 #define	SIM_CNTL_GPCNT0_CLK_SEL_MASK	(3 << 10)
 #define	SIM_CNTL_GPCNT0_CLK_SEL(x)	((x & 3) << 10)
@@ -137,6 +140,7 @@
 #define	SIM_XMT_THRESHOLD_XTH(x)	((x & 0x0f) << 8)
 
 /* EMV_SIM_RX_STATUS */
+#define	RX_DATA		(1 << 4)
 #define	RDTF		(1 << 5)
 #define	CWT_ERR		(1 << 8)
 #define	RTE		(1 << 9)
@@ -194,6 +198,7 @@ struct emvsim_t {
 	spinlock_t lock;
 	u32 clk_rate;
 	u8 checking_ts_timing;
+	u8 tx_last_character;
 };
 
 static struct miscdevice emvsim_dev;
@@ -298,7 +303,7 @@ static void emvsim_mask_timer1_int(struct emvsim_t *emvsim)
 	__raw_writel(reg_data, emvsim->ioaddr + EMV_SIM_TX_STATUS);
 }
 
-static void emvsim_start_timer0(struct emvsim_t *emvsim, u8 clk_source)
+static void emvsim_set_gpctimer0_clk(struct emvsim_t *emvsim, u8 clk_source)
 {
 	u32 reg_data;
 
@@ -308,7 +313,7 @@ static void emvsim_start_timer0(struct emvsim_t *emvsim, u8 clk_source)
 	writel(reg_data, emvsim->ioaddr + EMV_SIM_CLKCFG);
 }
 
-static void emvsim_start_timer1(struct emvsim_t *emvsim, u8 clk_source)
+static void emvsim_set_gpctimer1_clk(struct emvsim_t *emvsim, u8 clk_source)
 {
 	u32 reg_data;
 
@@ -316,6 +321,17 @@ static void emvsim_start_timer1(struct emvsim_t *emvsim, u8 clk_source)
 	reg_data &= ~SIM_CNTL_GPCNT1_CLK_SEL_MASK;
 	reg_data |= SIM_CNTL_GPCNT1_CLK_SEL(clk_source);
 	writel(reg_data, emvsim->ioaddr + EMV_SIM_CLKCFG);
+}
+
+static void emvsim_reset_gpctimer(struct emvsim_t *emvsim)
+{
+	emvsim_set_gpctimer0_clk(emvsim, SIM_CNTL_GPCNT_RESET);
+	emvsim_set_gpctimer1_clk(emvsim, SIM_CNTL_GPCNT_RESET);
+
+	/* need a tx_en posedge to update gpctimer0 clk */
+	emvsim_set_tx(emvsim, 0);
+	emvsim_set_tx(emvsim, 1);
+	emvsim_set_tx(emvsim, 0);
 }
 
 static int emvsim_reset_low_timing(struct emvsim_t *emvsim, u32 clock_cycle)
@@ -329,7 +345,7 @@ static int emvsim_reset_low_timing(struct emvsim_t *emvsim, u32 clock_cycle)
 
 	emvsim_mask_timer0_int(emvsim);
 	__raw_writel(clock_cycle, emvsim->ioaddr + EMV_SIM_GPCNT0_VAL);
-	emvsim_start_timer0(emvsim, SIM_CNTL_GPCNT_CARD_CLK);
+	emvsim_set_gpctimer0_clk(emvsim, SIM_CNTL_GPCNT_CARD_CLK);
 	emvsim_set_tx(emvsim, 1);
 
 	reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_INT_MASK);
@@ -343,10 +359,6 @@ static int emvsim_reset_low_timing(struct emvsim_t *emvsim, u32 clock_cycle)
 		dev_err(emvsim_dev.parent, "Reset low GPC timout\n");
 		errval =  -SIM_E_TIMEOUT;
 	}
-
-	reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_INT_MASK);
-	reg_data |= GPCNT0_IM;
-	__raw_writel(reg_data, emvsim->ioaddr + EMV_SIM_INT_MASK);
 
 	return errval;
 }
@@ -393,13 +405,21 @@ static void emvsim_receive_atr_set(struct emvsim_t *emvsim)
 {
 	u32 reg_data;
 
-	emvsim_mask_timer0_int(emvsim);
+	/* GPCNT0 with Card clock is for ATR maximum delay
+	 * GPCNT1 with ETU clock is for ART maximum duration
+	 */
 	emvsim_mask_timer1_int(emvsim);
-	__raw_writel(ATR_MAX_DELAY_CLK, emvsim->ioaddr + EMV_SIM_GPCNT0_VAL);
-	__raw_writel(0xFFFF, emvsim->ioaddr + EMV_SIM_GPCNT1_VAL);
-	emvsim_start_timer0(emvsim, SIM_CNTL_GPCNT_CARD_CLK);
-	emvsim_start_timer1(emvsim, SIM_CNTL_GPCNT_ETU_CLK);
+	__raw_writel(0x0, emvsim->ioaddr + EMV_SIM_GPCNT1_VAL);
+	emvsim_set_gpctimer1_clk(emvsim, SIM_CNTL_GPCNT_ETU_CLK);
 	emvsim_set_rx(emvsim, 1);
+
+	/*Set the cwt timer.Refer the setting of ATR on EMV4.3 book*/
+	__raw_writel(ATR_MAX_CWT + CWT_ADJUSTMENT, emvsim->ioaddr + EMV_SIM_CWT_VAL);
+
+	reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_CTRL);
+	reg_data |= ICM;
+	reg_data |= CWT_EN;
+	__raw_writel(reg_data, emvsim->ioaddr + EMV_SIM_CTRL);
 
 	emvsim_set_nack(emvsim, 0);
 	emvsim->errval = 0;
@@ -408,16 +428,14 @@ static void emvsim_receive_atr_set(struct emvsim_t *emvsim)
 	emvsim->state = SIM_STATE_ATR_RECEIVING;
 
 	reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_INT_MASK);
-	reg_data &= ~(RDT_IM | GPCNT0_IM);
+	reg_data |= CWT_ERR_IM;
+	reg_data &= ~(RX_DATA_IM | GPCNT0_IM);
 	__raw_writel(reg_data, emvsim->ioaddr + EMV_SIM_INT_MASK);
 }
 
 static int32_t emvsim_check_rec_data(u32 *reg_data)
 {
 	s32 err = 0;
-
-	if (*reg_data & CWT_ERR)
-		err |= SIM_ERROR_CWT;
 
 	if (*reg_data & FEF)
 		err |= SIM_ERROR_FRAME;
@@ -428,23 +446,58 @@ static int32_t emvsim_check_rec_data(u32 *reg_data)
 	return err;
 }
 
+static void emvsim_enable_guardtime(struct emvsim_t *emvsim, int enable)
+{
+	/* transmitter: set Guard Time Value in ETU */
+	if (enable) {
+		if (emvsim->protocol_type == SIM_PROTOCOL_T0) {
+			/*
+			 * From EMV4.3, TotalETU = 12 + CGT.
+			 * If cgt equals 0xFF, TotalETU = 12.
+			 */
+			if (emvsim->timing_data.cgt == 0xFF)
+				__raw_writel(0, emvsim->ioaddr + EMV_SIM_TX_GETU);
+			else
+				__raw_writel(emvsim->timing_data.cgt,
+					     emvsim->ioaddr + EMV_SIM_TX_GETU);
+		} else if (emvsim->protocol_type == SIM_PROTOCOL_T1) {
+			/*
+			 * From EMV4.3, TotalETU = 12 + CGT.
+			 * If cgt equals 0xFF, TotalETU = 11.
+			 */
+			__raw_writel(emvsim->timing_data.cgt,
+				     emvsim->ioaddr + EMV_SIM_TX_GETU);
+		}
+	} else {
+		__raw_writel(0, emvsim->ioaddr + EMV_SIM_TX_GETU);
+	}
+}
+
 static void emvsim_xmt_fill_fifo(struct emvsim_t *emvsim)
 {
 	u32 reg_data;
 	u32 bytesleft, i;
 
-	reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_TX_STATUS);
-	bytesleft = SIM_TX_FIFO_DEPTH - ((reg_data >> 24) & 0x1F);
+	if (!emvsim->tx_last_character) {
+		reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_TX_STATUS);
+		bytesleft = SIM_TX_FIFO_DEPTH - ((reg_data >> 24) & 0x1F);
 
-	if (bytesleft > emvsim->xmt_remaining)
-		bytesleft = emvsim->xmt_remaining;
+		if (bytesleft > emvsim->xmt_remaining)
+			bytesleft = emvsim->xmt_remaining;
 
-	for (i = 0; i < bytesleft; i++) {
+		for (i = 0; i < bytesleft; i++) {
+			__raw_writel(emvsim->xmt_buffer[emvsim->xmt_pos],
+				     emvsim->ioaddr + EMV_SIM_TX_BUF);
+			emvsim->xmt_pos++;
+		};
+		emvsim->xmt_remaining -= bytesleft;
+	} else {
+		/* clear guard time before sending last character */
+		emvsim_enable_guardtime(emvsim, 0);
+
 		__raw_writel(emvsim->xmt_buffer[emvsim->xmt_pos],
 			     emvsim->ioaddr + EMV_SIM_TX_BUF);
-		emvsim->xmt_pos++;
-	};
-	emvsim->xmt_remaining -= bytesleft;
+	}
 };
 
 static void emvsim_rcv_read_fifo(struct emvsim_t *emvsim)
@@ -492,7 +545,7 @@ static void emvsim_tx_irq_enable(struct emvsim_t *emvsim)
 	__raw_writel(reg_val, emvsim->ioaddr + EMV_SIM_RX_STATUS);
 
 	reg_val = __raw_readl(emvsim->ioaddr + EMV_SIM_INT_MASK);
-	reg_val |= CWT_ERR_IM | BWT_ERR_IM | RX_DATA_IM | RDT_IM;
+	reg_val |= CWT_ERR_IM | BWT_ERR_IM | RX_DATA_IM | RNACK_IM;
 
 	if (emvsim->xmt_remaining != 0) {
 		reg_val &= ~TDT_IM;
@@ -524,12 +577,15 @@ static void emvsim_rx_irq_enable(struct emvsim_t *emvsim)
 {
 	u32 reg_data;
 
-	 /* Ensure the CWT timer is enabled */
-	emvsim_set_cwt(emvsim, 1);
+	/*Clear the TX&RX status, W1C */
+	reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_TX_STATUS);
+	__raw_writel(reg_data, emvsim->ioaddr + EMV_SIM_TX_STATUS);
+	reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_RX_STATUS);
+	__raw_writel(reg_data, emvsim->ioaddr + EMV_SIM_RX_STATUS);
 
 	reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_INT_MASK);
-	reg_data |= (TC_IM | TDT_IM | TNACK_IM);
-	reg_data &= ~(RDT_IM | CWT_ERR_IM | BWT_ERR_IM);
+	reg_data |= (TC_IM | TDT_IM | TNACK_IM | ETC_IM);
+	reg_data &= ~(RX_DATA_IM | CWT_ERR_IM | BWT_ERR_IM);
 
 	if (emvsim->protocol_type == SIM_PROTOCOL_T0 ||
 	    emvsim->nack_enable != 0)
@@ -545,7 +601,7 @@ static void emvsim_rx_irq_disable(struct emvsim_t *emvsim)
 	u32 reg_val;
 
 	reg_val = __raw_readl(emvsim->ioaddr + EMV_SIM_INT_MASK);
-	reg_val |= (RDT_IM | CWT_ERR_IM | BWT_ERR_IM | RNACK_IM);
+	reg_val |= (RX_DATA_IM | CWT_ERR_IM | BWT_ERR_IM | RNACK_IM);
 	__raw_writel(reg_val, emvsim->ioaddr + EMV_SIM_INT_MASK);
 }
 
@@ -556,45 +612,40 @@ static irqreturn_t emvsim_irq_handler(int irq, void *dev_id)
 
 	/* clear TX/RX interrupt status, W1C*/
 	tx_status  = __raw_readl(emvsim->ioaddr + EMV_SIM_TX_STATUS);
-	rx_status  = __raw_readl(emvsim->ioaddr + EMV_SIM_RX_STATUS);
+	rx_status  = __raw_readl(emvsim->ioaddr + EMV_SIM_RX_STATUS) & ~(PEF | FEF);
 	__raw_writel(tx_status, emvsim->ioaddr + EMV_SIM_TX_STATUS);
 	__raw_writel(rx_status, emvsim->ioaddr + EMV_SIM_RX_STATUS);
 
 	if (emvsim->state == SIM_STATE_ATR_RECEIVING &&
 	    emvsim->checking_ts_timing == 1) {
-		if ((tx_status & GPCNT0_TO) && !(rx_status & RDTF)) {
+		if ((tx_status & GPCNT0_TO) && !(rx_status & RX_DATA)) {
 			reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_CTRL);
 			reg_data &= ~CWT_EN;
 			__raw_writel(reg_data, emvsim->ioaddr + EMV_SIM_CTRL);
 
-			reg_data = __raw_readl(emvsim->ioaddr +
-					       EMV_SIM_INT_MASK);
-			reg_data |= (GPCNT0_IM | CWT_ERR_IM | RDT_IM);
-			__raw_writel(reg_data,
-				     emvsim->ioaddr + EMV_SIM_INT_MASK);
+			reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_INT_MASK);
+			reg_data |= (GPCNT0_IM | CWT_ERR_IM | RX_DATA_IM);
+			__raw_writel(reg_data, emvsim->ioaddr + EMV_SIM_INT_MASK);
 
 			emvsim->errval = SIM_ERROR_ATR_DELAY;
 			complete(&emvsim->xfer_done);
 			emvsim->checking_ts_timing = 0;
-		} else if (rx_status & RDTF) {
-			u8 rdt = SIM_RX_FIFO_DEPTH >> 1;
+		} else if (rx_status & RX_DATA) {
+			u8 rdt = 1;
 
 			emvsim_mask_timer0_int(emvsim);
+
 			emvsim_rcv_read_fifo(emvsim);
 
 			/* ATR each received byte will cost 12 ETU */
 			reg_data = ATR_MAX_DURATION - emvsim->rcv_count * 12;
-			__raw_writel(reg_data,
-				     emvsim->ioaddr + EMV_SIM_GPCNT1_VAL);
+			__raw_writel(reg_data,  emvsim->ioaddr + EMV_SIM_GPCNT1_VAL);
 
-			reg_data = __raw_readl(emvsim->ioaddr +
-					       EMV_SIM_INT_MASK);
-			reg_data &= ~(GPCNT1_IM | CWT_ERR_IM | RDT_IM);
-			__raw_writel(reg_data,
-				     emvsim->ioaddr + EMV_SIM_INT_MASK);
+			reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_INT_MASK);
+			reg_data &= ~(GPCNT1_IM | CWT_ERR_IM | RX_DATA_IM);
+			__raw_writel(reg_data, emvsim->ioaddr + EMV_SIM_INT_MASK);
 
-			reg_data = SIM_RCV_THRESHOLD_RTH(0) |
-				   SIM_RCV_THRESHOLD_RDT(rdt);
+			reg_data = SIM_RCV_THRESHOLD_RTH(0) | SIM_RCV_THRESHOLD_RDT(rdt);
 			__raw_writel(reg_data, emvsim->ioaddr + EMV_SIM_RX_THD);
 
 			/* ATR has arrived as EMV demands */
@@ -615,9 +666,9 @@ static irqreturn_t emvsim_irq_handler(int irq, void *dev_id)
 
 			reg_data = __raw_readl(emvsim->ioaddr +
 					       EMV_SIM_INT_MASK);
-			reg_data |= (GPCNT1_IM | CWT_ERR_IM | RDT_IM);
-			__raw_writel(reg_data,
-				     emvsim->ioaddr + EMV_SIM_INT_MASK);
+			reg_data |= (GPCNT1_IM | CWT_ERR_IM | RX_DATA_IM | GPCNT0_IM);
+			__raw_writel(reg_data, emvsim->ioaddr +
+				     EMV_SIM_INT_MASK);
 
 			if (tx_status & GPCNT1_TO)
 				emvsim->errval |= SIM_ERROR_ATR_TIMEROUT;
@@ -629,8 +680,7 @@ static irqreturn_t emvsim_irq_handler(int irq, void *dev_id)
 			emvsim->state = SIM_STATE_ATR_RECEIVED;
 
 			complete(&emvsim->xfer_done);
-		} else if (rx_status & RDTF) {
-			/* Receive Data Threshold Interrupt */
+		} else if (rx_status & RX_DATA) {
 			emvsim_rcv_read_fifo(emvsim);
 		}
 	}
@@ -665,7 +715,12 @@ static irqreturn_t emvsim_irq_handler(int irq, void *dev_id)
 				__raw_writel(reg_data, emvsim->ioaddr +
 					     EMV_SIM_INT_MASK);
 			}
-		} else if ((tx_status & TCF) && !emvsim->xmt_remaining) {
+		} else if ((tx_status & TCF) && !emvsim->xmt_remaining &&
+			   !emvsim->tx_last_character) {
+			emvsim->tx_last_character = 1;
+			emvsim_xmt_fill_fifo(emvsim);
+		} else if ((tx_status & TCF) && !emvsim->xmt_remaining &&
+			   emvsim->tx_last_character) {
 			emvsim_tx_irq_disable(emvsim);
 			emvsim_set_rx(emvsim, 1);
 			emvsim->state = SIM_STATE_XMT_DONE;
@@ -696,7 +751,7 @@ static irqreturn_t emvsim_irq_handler(int irq, void *dev_id)
 			complete(&emvsim->xfer_done);
 		}
 
-		if (rx_status & RDTF) {
+		if (rx_status & RX_DATA) {
 			emvsim_rcv_read_fifo(emvsim);
 			if (emvsim->is_fixed_len_rec &&
 			    emvsim->rcv_count >= emvsim->expected_rcv_cnt) {
@@ -734,7 +789,7 @@ static irqreturn_t emvsim_irq_handler(int irq, void *dev_id)
 		 (tx_status & GPCNT0_TO)) {
 		complete(&emvsim->xfer_done);
 		emvsim_mask_timer0_int(emvsim);
-	} else if (rx_status & RDTF) {
+	} else if (rx_status & RX_DATA) {
 		dev_err(emvsim_dev.parent,
 			"unexpected  status %d\n", emvsim->state);
 		emvsim_rcv_read_fifo(emvsim);
@@ -789,6 +844,10 @@ static void emvsim_cold_reset_sequency(struct emvsim_t *emvsim)
 	reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_PCSR);
 	reg_data |= SRST;
 	__raw_writel(reg_data, emvsim->ioaddr + EMV_SIM_PCSR);
+
+	emvsim_mask_timer0_int(emvsim);
+	__raw_writel(ATR_MAX_DELAY_CLK, emvsim->ioaddr +
+		     EMV_SIM_GPCNT0_VAL);
 };
 
 static void emvsim_deactivate(struct emvsim_t *emvsim)
@@ -843,12 +902,16 @@ static void emvsim_warm_reset_sequency(struct emvsim_t *emvsim)
 	reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_PCSR);
 	reg_data |= SRST;
 	__raw_writel(reg_data, emvsim->ioaddr + EMV_SIM_PCSR);
+
+	emvsim_mask_timer0_int(emvsim);
+	__raw_writel(ATR_MAX_DELAY_CLK, emvsim->ioaddr + EMV_SIM_GPCNT0_VAL);
 }
 
 static void emvsim_warm_reset(struct emvsim_t *emvsim)
 {
 	if (emvsim->present != SIM_PRESENT_REMOVED) {
 		emvsim_data_reset(emvsim);
+		emvsim_reset_gpctimer(emvsim);
 		emvsim_warm_reset_sequency(emvsim);
 		emvsim_receive_atr_set(emvsim);
 	} else {
@@ -941,48 +1004,32 @@ static void emvsim_set_timer_counter(struct emvsim_t *emvsim)
 	}
 
 	if (emvsim->timing_data.bgt != 0)
-		__raw_writel(emvsim->timing_data.bgt,
+		__raw_writel(emvsim->timing_data.bgt - BGT_BWT_ADJUSTMENT,
 			     emvsim->ioaddr + EMV_SIM_BGT_VAL);
 
 	if (emvsim->timing_data.cwt != 0)
-		__raw_writel(emvsim->timing_data.cwt,
+		__raw_writel(emvsim->timing_data.cwt + CWT_ADJUSTMENT,
 			     emvsim->ioaddr + EMV_SIM_CWT_VAL);
 
 	if (emvsim->timing_data.bwt != 0)
-		__raw_writel(emvsim->timing_data.bwt,
+		__raw_writel(emvsim->timing_data.bwt + BGT_BWT_ADJUSTMENT,
 			     emvsim->ioaddr + EMV_SIM_BWT_VAL);
 
-	/* 11 etu and 12 etu, T0: 12ETU; T1: 11ETU */
+	/* receiver: 12 etu and 11 etu, T0: 12ETU; T1: 11ETU */
 	if (emvsim->protocol_type == SIM_PROTOCOL_T0) {
-		/*
-		 * From EMV4.3 , T0 mode means 12 ETU. TotalETU=12+CGT.
-		 * If cgt equals 0xFF, TotalETU = 12
-		 */
 		reg = __raw_readl(emvsim->ioaddr + EMV_SIM_CTRL);
 		reg &= ~RCVR_11;
 		 __raw_writel(reg, emvsim->ioaddr + EMV_SIM_CTRL);
-
-		/* set Transmitter Guard Time Value in ETU */
-		if (emvsim->timing_data.cgt == 0xFF)
-			__raw_writel(0, emvsim->ioaddr + EMV_SIM_TX_GETU);
-		else
-			__raw_writel(emvsim->timing_data.cgt,
-				     emvsim->ioaddr + EMV_SIM_TX_GETU);
 	} else if (emvsim->protocol_type == SIM_PROTOCOL_T1) {
-		/* From EMV4.3 , T1 mode means 11 ETU. TotalETU=11+CGT */
 		reg = __raw_readl(emvsim->ioaddr + EMV_SIM_CTRL);
 		reg |= RCVR_11;
 		__raw_writel(reg, emvsim->ioaddr + EMV_SIM_CTRL);
-		__raw_writel(emvsim->timing_data.cgt,
-			     emvsim->ioaddr + EMV_SIM_TX_GETU);
 	}
 }
 
 static int emvsim_xmt_start(struct emvsim_t *emvsim)
 {
 	u32 reg_val;
-
-	emvsim->state = SIM_STATE_XMTING;
 
 	emvsim_set_baud_rate(emvsim);
 	if (emvsim->protocol_type == SIM_PROTOCOL_T0) {
@@ -995,6 +1042,7 @@ static int emvsim_xmt_start(struct emvsim_t *emvsim)
 	}
 
 	emvsim_set_timer_counter(emvsim);
+	emvsim_enable_guardtime(emvsim, 1);
 
 	if (emvsim->xmt_remaining != 0) {
 		reg_val = __raw_readl(emvsim->ioaddr + EMV_SIM_TX_THD);
@@ -1009,6 +1057,7 @@ static int emvsim_xmt_start(struct emvsim_t *emvsim)
 	emvsim_set_tx(emvsim, 1);
 	emvsim_xmt_fill_fifo(emvsim);
 	emvsim_tx_irq_enable(emvsim);
+	emvsim->state = SIM_STATE_XMTING;
 
 	return 0;
 }
@@ -1026,22 +1075,6 @@ static void emvsim_flush_fifo(struct emvsim_t *emvsim, u8 flush_tx, u8 flush_rx)
 	__raw_writel(reg_val, emvsim->ioaddr + EMV_SIM_CTRL);
 }
 
-static void emvsim_change_rcv_threshold(struct emvsim_t *emvsim)
-{
-	u32 rx_threshold = 0;
-	u32 reg_val = 0;
-
-	if (emvsim->is_fixed_len_rec) {
-		rx_threshold = emvsim->expected_rcv_cnt - emvsim->rcv_count;
-		if (rx_threshold > (SIM_RX_FIFO_DEPTH  >> 1))
-			rx_threshold = (SIM_RX_FIFO_DEPTH  >> 1);
-		reg_val = __raw_readl(emvsim->ioaddr + EMV_SIM_RX_THD);
-		reg_val &= ~(SIM_RCV_THRESHOLD_RDT_MASK);
-		reg_val |= SIM_RCV_THRESHOLD_RDT(rx_threshold);
-		__raw_writel(reg_val, emvsim->ioaddr + EMV_SIM_RX_THD);
-	}
-}
-
 static void emvsim_start_rcv(struct emvsim_t *emvsim)
 {
 	int rdt = 1;
@@ -1051,6 +1084,7 @@ static void emvsim_start_rcv(struct emvsim_t *emvsim)
 	emvsim_set_rx(emvsim, 1);
 	emvsim_set_baud_rate(emvsim);
 	emvsim_set_timer_counter(emvsim);
+	emvsim_enable_guardtime(emvsim, 0);
 	emvsim_set_cwt(emvsim, 1);
 	emvsim_set_bwt(emvsim, 1);
 
@@ -1138,12 +1172,15 @@ static long emvsim_ioctl(struct file *file,
 		timeout = wait_for_completion_interruptible_timeout(
 				&emvsim->xfer_done, emvsim->timeout);
 
+		emvsim_set_rx(emvsim, 0);
+		emvsim_set_tx(emvsim, 0);
+
 		reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_CTRL);
 		reg_data &= ~CWT_EN;
 		__raw_writel(reg_data, emvsim->ioaddr + EMV_SIM_CTRL);
 
 		reg_data = __raw_readl(emvsim->ioaddr + EMV_SIM_INT_MASK);
-		reg_data |= (GPCNT0_IM | CWT_ERR_IM);
+		reg_data |= (GPCNT0_IM | GPCNT1_IM | CWT_ERR_IM | RX_DATA_IM);
 		__raw_writel(reg_data, emvsim->ioaddr + EMV_SIM_INT_MASK);
 
 		if (timeout == 0) {
@@ -1222,6 +1259,15 @@ static long emvsim_ioctl(struct file *file,
 			errval = ret;
 			break;
 		}
+
+		/* last character must be transmitted separately due to it
+		 * can't has guard time.
+		 */
+		emvsim->xmt_remaining -= 1;
+		if (!emvsim->xmt_remaining)
+			emvsim->tx_last_character = 1;
+		else
+			emvsim->tx_last_character = 0;
 
 		emvsim_clear_rx_buf(emvsim);
 		emvsim_set_cwt(emvsim, 0);
@@ -1304,11 +1350,6 @@ static long emvsim_ioctl(struct file *file,
 		if (emvsim->state != SIM_STATE_RECEIVING)
 			emvsim_start_rcv(emvsim);
 
-		spin_lock_irqsave(&emvsim->lock, flags);
-		if (emvsim->is_fixed_len_rec &&
-		    emvsim->rcv_count < emvsim->expected_rcv_cnt)
-			emvsim_change_rcv_threshold(emvsim);
-		spin_unlock_irqrestore(&emvsim->lock, flags);
 		emvsim->timeout = RX_TIMEOUT * HZ;
 		timeout = wait_for_completion_interruptible_timeout(
 				&emvsim->xfer_done, emvsim->timeout);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 NXP
+ * Copyright (C) 2017-2018 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -18,6 +18,7 @@
 #include <linux/interrupt.h>
 #include <linux/sizes.h>
 #include <linux/io.h>
+#include <drm/drmP.h>
 #include <drm/drm_fourcc.h>
 
 #include <video/imx-dcss.h>
@@ -93,6 +94,9 @@
 #define   THRES_LOW_MASK			GENMASK(6, 4)
 #define   ABORT_SEL				BIT(7)
 
+#define TRACE_COMPLETION			(1LL << 48)
+#define TRACE_BUF_SUBMISSION 			(2LL << 48)
+
 struct dcss_dpr_ch {
 	void __iomem *base_reg;
 	u32 base_ofs;
@@ -111,9 +115,14 @@ struct dcss_dpr_ch {
 	u32 sys_ctrl;
 	u32 rtram_ctrl;
 
+	bool sys_ctrl_chgd;
+
 	u32 pitch;
 
 	bool use_dtrc;
+
+	int ch_num;
+	int irq;
 };
 
 struct dcss_dpr_priv {
@@ -170,6 +179,53 @@ void dcss_dpr_dump_regs(struct seq_file *s, void *data)
 }
 #endif
 
+static irqreturn_t dcss_dpr_irq_handler(int irq, void *data)
+{
+	struct dcss_dpr_ch *ch = data;
+
+	dcss_trace_module(TRACE_DPR, TRACE_COMPLETION | ch->ch_num);
+
+	dcss_clr(1, ch->base_reg + DCSS_DPR_IRQ_NONMASK_STATUS);
+
+	return IRQ_HANDLED;
+}
+
+static int dcss_dpr_irq_config(struct dcss_soc *dcss, int ch_num)
+{
+	struct platform_device *pdev = to_platform_device(dcss->dev);
+	struct dcss_dpr_priv *dpr = dcss->dpr_priv;
+	struct dcss_dpr_ch *ch = &dpr->ch[ch_num];
+	int ret;
+	char irq_name[20];
+
+	sprintf(irq_name, "dpr_dc_ch%d", ch_num);
+	irq_name[10] = 0;
+
+	ch->irq = platform_get_irq_byname(pdev, irq_name);
+	if (ch->irq < 0) {
+		dev_err(dcss->dev, "dpr: can't get DPR irq\n");
+		return ch->irq;
+	}
+
+	/* mask interrupts off */
+	dcss_set(0xff, ch->base_reg + DCSS_DPR_IRQ_MASK);
+
+	ret = devm_request_irq(dcss->dev, ch->irq,
+			       dcss_dpr_irq_handler,
+			       IRQF_TRIGGER_HIGH,
+			       "dcss-dpr", ch);
+	if (ret) {
+		dev_err(dcss->dev, "dpr: irq request failed.\n");
+		return ret;
+	}
+
+	disable_irq(ch->irq);
+
+	dcss_writel(0xfe, ch->base_reg + DCSS_DPR_IRQ_MASK);
+
+	return 0;
+}
+
 static int dcss_dpr_ch_init_all(struct dcss_soc *dcss, unsigned long dpr_base)
 {
 	struct dcss_dpr_priv *priv = dcss->dpr_priv;
@@ -187,6 +243,10 @@ static int dcss_dpr_ch_init_all(struct dcss_soc *dcss, unsigned long dpr_base)
 				i);
 			return -ENOMEM;
 		}
+
+		ch->ch_num = i;
+
+		dcss_dpr_irq_config(dcss, i);
 
 #if defined(USE_CTXLD)
 		ch->ctx_id = CTX_SB_HP;
@@ -279,6 +339,7 @@ void dcss_dpr_set_res(struct dcss_soc *dcss, int ch_num, u32 xres, u32 yres,
 
 	for (plane = 0; plane < max_planes; plane++) {
 		yres = plane == 1 ? yres >> 1 : yres;
+		adj_h = plane == 1 ? adj_h >> 1 : adj_h;
 
 		pix_x_wide = dcss_dpr_x_pix_wide_adjust(ch, xres, pix_format);
 		pix_y_high = dcss_dpr_y_pix_high_adjust(ch, yres, pix_format);
@@ -287,8 +348,8 @@ void dcss_dpr_set_res(struct dcss_soc *dcss, int ch_num, u32 xres, u32 yres,
 		if (pix_x_wide < adj_w)
 			pix_x_wide = adj_w;
 
-		if (pix_y_high != adj_h)
-			pix_y_high = plane == 0 ? adj_h : adj_h >> 1;
+		if (pix_y_high < adj_h)
+			pix_y_high = adj_h;
 
 		if (plane == 0)
 			ch->pitch = pix_x_wide;
@@ -309,6 +370,9 @@ void dcss_dpr_addr_set(struct dcss_soc *dcss, int ch_num, u32 luma_base_addr,
 {
 	struct dcss_dpr_ch *ch = &dcss->dpr_priv->ch[ch_num];
 
+	dcss_trace_module(TRACE_DPR, TRACE_BUF_SUBMISSION |
+			  ((u64)ch_num << 32) | luma_base_addr);
+
 	if (ch->use_dtrc) {
 		luma_base_addr = 0x0;
 		chroma_base_addr = 0x10000000;
@@ -326,7 +390,7 @@ void dcss_dpr_addr_set(struct dcss_soc *dcss, int ch_num, u32 luma_base_addr,
 		pitch = ch->pitch;
 
 	ch->frame_ctrl &= ~PITCH_MASK;
-	ch->frame_ctrl |= ((pitch << PITCH_POS) & PITCH_MASK);
+	ch->frame_ctrl |= (((u32)pitch << PITCH_POS) & PITCH_MASK);
 }
 EXPORT_SYMBOL(dcss_dpr_addr_set);
 
@@ -431,8 +495,7 @@ void dcss_dpr_enable(struct dcss_soc *dcss, int ch_num, bool en)
 	}
 
 	if (ch->sys_ctrl != sys_ctrl)
-		dcss_dpr_write(dpr, ch_num, sys_ctrl,
-			       DCSS_DPR_SYSTEM_CTRL0);
+		ch->sys_ctrl_chgd = true;
 
 	ch->sys_ctrl = sys_ctrl;
 }
@@ -504,9 +567,10 @@ static void dcss_dpr_rtram_set(struct dcss_soc *dcss, int ch_num,
 	ch->mode_ctrl |= (val & mask);
 
 	/* TODO: Should the thresholds be hardcoded? */
-	val = (3 << THRES_LOW_POS) & THRES_LOW_MASK;
+	val = (ch->rtram_4line_en ? 0 : NUM_ROWS_ACTIVE);
+	val |= (3 << THRES_LOW_POS) & THRES_LOW_MASK;
 	val |= (4 << THRES_HIGH_POS) & THRES_HIGH_MASK;
-	mask = THRES_LOW_MASK | THRES_HIGH_MASK;
+	mask = THRES_LOW_MASK | THRES_HIGH_MASK | NUM_ROWS_ACTIVE;
 
 	ch->rtram_ctrl &= ~mask;
 	ch->rtram_ctrl |= (val & mask);
@@ -561,7 +625,6 @@ static void dcss_dpr_setup_components(struct dcss_soc *dcss, int ch_num,
 static int dcss_dpr_get_bpp(u32 pix_format)
 {
 	int bpp;
-	unsigned int depth;
 
 	switch (pix_format) {
 	case DRM_FORMAT_NV12:
@@ -578,7 +641,7 @@ static int dcss_dpr_get_bpp(u32 pix_format)
 		break;
 
 	default:
-		drm_fb_get_bpp_depth(pix_format, &depth, &bpp);
+		bpp = drm_format_plane_cpp(pix_format, 0) * 8;
 		break;
 	}
 
@@ -628,6 +691,7 @@ void dcss_dpr_format_set(struct dcss_soc *dcss, int ch_num, u32 pix_format,
 			 bool modifiers_present)
 {
 	struct dcss_dpr_ch *ch = &dcss->dpr_priv->ch[ch_num];
+	struct drm_format_name_buf format_name;
 	enum dcss_color_space dcss_cs;
 
 	dcss_cs = dcss_drm_fourcc_to_colorspace(pix_format);
@@ -637,7 +701,7 @@ void dcss_dpr_format_set(struct dcss_soc *dcss, int ch_num, u32 pix_format,
 	ch->use_dtrc = ch_num && modifiers_present;
 
 	dev_dbg(dcss->dev, "pix_format = %s, colorspace = %d, bpp = %d\n",
-		drm_get_format_name(pix_format), dcss_cs, ch->bpp);
+		drm_get_format_name(pix_format, &format_name), dcss_cs, ch->bpp);
 
 	dcss_dpr_yuv_en(dcss, ch_num, dcss_cs == DCSS_COLORSPACE_YUV);
 
@@ -650,3 +714,58 @@ void dcss_dpr_format_set(struct dcss_soc *dcss, int ch_num, u32 pix_format,
 	dcss_dpr_rtram_set(dcss, ch_num, pix_format);
 }
 EXPORT_SYMBOL(dcss_dpr_format_set);
+
+void dcss_dpr_write_sysctrl(struct dcss_soc *dcss)
+{
+	int chnum;
+
+	for (chnum = 0; chnum < 3; chnum++) {
+		struct dcss_dpr_ch *ch = &dcss->dpr_priv->ch[chnum];
+
+		if (ch->sys_ctrl_chgd) {
+			dcss_ctxld_write_irqsafe(dcss, ch->ctx_id, ch->sys_ctrl,
+						 ch->base_ofs +
+						 DCSS_DPR_SYSTEM_CTRL0);
+			ch->sys_ctrl_chgd = false;
+		}
+	}
+}
+
+void dcss_dpr_irq_enable(struct dcss_soc *dcss, bool en)
+{
+	struct dcss_dpr_priv *dpr = dcss->dpr_priv;
+
+	if (!en) {
+		disable_irq_nosync(dpr->ch[0].irq);
+		disable_irq_nosync(dpr->ch[1].irq);
+		disable_irq_nosync(dpr->ch[2].irq);
+
+		return;
+	}
+
+	dcss_clr(1, dpr->ch[0].base_reg + DCSS_DPR_IRQ_NONMASK_STATUS);
+	dcss_clr(1, dpr->ch[1].base_reg + DCSS_DPR_IRQ_NONMASK_STATUS);
+	dcss_clr(1, dpr->ch[2].base_reg + DCSS_DPR_IRQ_NONMASK_STATUS);
+
+	enable_irq(dpr->ch[0].irq);
+	enable_irq(dpr->ch[1].irq);
+	enable_irq(dpr->ch[2].irq);
+}
+
+void dcss_dpr_set_rotation(struct dcss_soc *dcss, int ch_num, u32 rotation)
+{
+	struct dcss_dpr_ch *ch = &dcss->dpr_priv->ch[ch_num];
+
+	ch->frame_ctrl &= ~(HFLIP_EN | VFLIP_EN | ROT_ENC_MASK);
+
+	ch->frame_ctrl |= rotation & DRM_MODE_REFLECT_X ? HFLIP_EN : 0;
+	ch->frame_ctrl |= rotation & DRM_MODE_REFLECT_Y ? VFLIP_EN : 0;
+
+	if (rotation & DRM_MODE_ROTATE_90)
+		ch->frame_ctrl |= 1 << ROT_ENC_POS;
+	else if (rotation & DRM_MODE_ROTATE_180)
+		ch->frame_ctrl |= 2 << ROT_ENC_POS;
+	else if (rotation & DRM_MODE_ROTATE_270)
+		ch->frame_ctrl |= 3 << ROT_ENC_POS;
+}
+EXPORT_SYMBOL(dcss_dpr_set_rotation);

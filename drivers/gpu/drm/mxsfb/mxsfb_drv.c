@@ -19,6 +19,7 @@
 #include <linux/module.h>
 #include <linux/spinlock.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/component.h>
 #include <linux/list.h>
 #include <linux/of_device.h>
@@ -46,6 +47,10 @@
 /* The eLCDIF max possible CRTCs */
 #define MAX_CRTCS 1
 
+/* Maximum Video PLL frequency */
+#define MAX_PLL_FREQ 1200000000
+/* Mininum pixel clock in Hz */
+#define MIN_PIX_CLK  74250000
 enum mxsfb_devtype {
 	MXSFB_V3,
 	MXSFB_V4,
@@ -103,18 +108,6 @@ drm_pipe_to_mxsfb_drm_private(struct drm_simple_display_pipe *pipe)
 	return container_of(pipe, struct mxsfb_drm_private, pipe);
 }
 
-void mxsfb_enable_axi_clk(struct mxsfb_drm_private *mxsfb)
-{
-	if (mxsfb->clk_axi)
-		clk_prepare_enable(mxsfb->clk_axi);
-}
-
-void mxsfb_disable_axi_clk(struct mxsfb_drm_private *mxsfb)
-{
-	if (mxsfb->clk_axi)
-		clk_disable_unprepare(mxsfb->clk_axi);
-}
-
 /**
  * mxsfb_atomic_helper_check - validate state object
  * @dev: DRM device
@@ -149,8 +142,8 @@ static int mxsfb_atomic_helper_check(struct drm_device *dev,
 			drm_atomic_get_plane_state(state, crtc->primary);
 		if (!primary_state || !primary_state->fb)
 			continue;
-		old_bpp = crtc->primary->old_fb->bits_per_pixel;
-		new_bpp = primary_state->fb->bits_per_pixel;
+		old_bpp = crtc->primary->old_fb->format->depth;
+		new_bpp = primary_state->fb->format->depth;
 		if (old_bpp != new_bpp) {
 			crtc_state->mode_changed = true;
 			DRM_DEBUG_ATOMIC(
@@ -166,6 +159,157 @@ static const struct drm_mode_config_funcs mxsfb_mode_config_funcs = {
 	.atomic_check		= mxsfb_atomic_helper_check,
 	.atomic_commit		= drm_atomic_helper_commit,
 };
+
+static const struct drm_mode_config_helper_funcs mxsfb_mode_config_helpers = {
+	.atomic_commit_tail = drm_atomic_helper_commit_tail_rpm,
+};
+
+static struct clk *mxsfb_find_src_clk(struct mxsfb_drm_private *mxsfb,
+	       int crtc_clock,
+	       unsigned long *out_rate)
+{
+	struct clk *src = NULL;
+	struct clk *p = mxsfb->clk;
+	struct clk *src_clk[MAX_CLK_SRC];
+	int num_src_clk = ARRAY_SIZE(mxsfb->clk_src);
+	unsigned long src_rate;
+	int i;
+
+	for (i = 0; i < num_src_clk; i++)
+		src_clk[i] = mxsfb->clk_src[i];
+
+	/*
+	 * First, check the current clock source and find the clock
+	 * selector
+	 */
+	while (p) {
+		struct clk *pp = clk_get_parent(p);
+
+		for (i = 0; i < num_src_clk; i++)
+			if (src_clk[i] && clk_is_match(pp, src_clk[i])) {
+				src = pp;
+				mxsfb->clk_sel = p;
+				src_clk[i] = NULL;
+				break;
+			}
+
+		if (src)
+			break;
+
+		p = pp;
+	}
+
+	while (!IS_ERR_OR_NULL(src)) {
+		/* Check if current rate satisfies our needs */
+		src_rate = clk_get_rate(src);
+		*out_rate = clk_get_rate(mxsfb->clk_pll);
+		if (!(*out_rate % crtc_clock))
+			break;
+
+		/* Find the highest rate that fits our needs */
+		*out_rate = crtc_clock * (MAX_PLL_FREQ / crtc_clock);
+		if (!(*out_rate % src_rate))
+			break;
+
+		/* Get the next clock source available */
+		src = NULL;
+		for (i = 0; i < num_src_clk; i++) {
+			if (IS_ERR_OR_NULL(src_clk[i]))
+				continue;
+			src = src_clk[i];
+			src_clk[i] = NULL;
+			break;
+		}
+	}
+
+	return src;
+}
+
+static enum drm_mode_status
+mxsfb_pipe_mode_valid(struct drm_crtc *crtc,
+		      const struct drm_display_mode *mode)
+{
+	struct drm_simple_display_pipe *pipe =
+	       container_of(crtc, struct drm_simple_display_pipe, crtc);
+	struct mxsfb_drm_private *mxsfb = drm_pipe_to_mxsfb_drm_private(pipe);
+	struct clk *src = NULL;
+	int clock = mode->clock * 1000;
+	int crtc_clock = mode->crtc_clock * 1000;
+	unsigned long out_rate;
+	struct mode_config *config;
+
+	/*
+	 * In order to verify possible clock sources we need to have at least
+	 * two of them.
+	 */
+	if (!mxsfb->clk_src[0] || !mxsfb->clk_src[1])
+		return MODE_OK;
+
+	/*
+	 * TODO: Currently, only modes with pixel clock higher or equal to
+	 * 74250kHz are working. Limit to these modes until we figure out how
+	 * to handle the rest of the display modes.
+	 */
+	if (clock < MIN_PIX_CLK)
+		return MODE_NOCLOCK;
+
+	if (!crtc_clock)
+		crtc_clock = clock;
+
+	DRM_DEV_DEBUG_DRIVER(mxsfb->dev, "Validating mode:\n");
+	drm_mode_debug_printmodeline(mode);
+	/* Skip saving the config again */
+	list_for_each_entry(config, &mxsfb->valid_modes, list)
+		if (config->clock == clock)
+			return MODE_OK;
+
+	src = mxsfb_find_src_clk(mxsfb, crtc_clock, &out_rate);
+
+	if (IS_ERR_OR_NULL(src))
+		return MODE_NOCLOCK;
+
+	clk_set_rate(mxsfb->clk_pll, out_rate);
+
+	/* Save this configuration for later use */
+	config = devm_kzalloc(mxsfb->dev,
+		 sizeof(struct mode_config), GFP_KERNEL);
+	config->clk_src = src;
+	config->out_rate = out_rate;
+	config->clock = clock;
+	config->mode_clock = crtc_clock;
+	list_add(&config->list, &mxsfb->valid_modes);
+
+	return MODE_OK;
+}
+
+static int mxsfb_pipe_check(struct drm_simple_display_pipe *pipe,
+		     struct drm_plane_state *plane_state,
+		     struct drm_crtc_state *crtc_state)
+{
+	struct mxsfb_drm_private *mxsfb = drm_pipe_to_mxsfb_drm_private(pipe);
+	struct drm_display_mode *mode = &crtc_state->mode;
+	struct mode_config *config;
+	struct clk *src;
+
+	DRM_DEV_DEBUG_DRIVER(mxsfb->dev, "Checking mode:\n");
+	drm_mode_debug_printmodeline(mode);
+
+	/* Make sure that current mode can get the required clock */
+	list_for_each_entry(config, &mxsfb->valid_modes, list)
+		if (config->clock == mode->clock * 1000) {
+			src = clk_get_parent(mxsfb->clk_sel);
+			if (!clk_is_match(src, config->clk_src))
+				clk_set_parent(mxsfb->clk_sel, config->clk_src);
+			if (clk_get_rate(mxsfb->clk_pll) != config->out_rate)
+				clk_set_rate(mxsfb->clk_pll, config->out_rate);
+			DRM_DEV_DEBUG_DRIVER(mxsfb->dev,
+				"pll rate: %ld (actual %ld)\n",
+				config->out_rate, clk_get_rate(mxsfb->clk_pll));
+			break;
+		}
+
+	return 0;
+}
 
 static void mxsfb_pipe_enable(struct drm_simple_display_pipe *pipe,
 			      struct drm_crtc_state *crtc_state)
@@ -191,24 +335,31 @@ static void mxsfb_pipe_enable(struct drm_simple_display_pipe *pipe,
 
 	drm_crtc_vblank_on(&mxsfb->pipe.crtc);
 
+	pm_runtime_get_sync(drm->dev);
+	drm_panel_prepare(mxsfb->panel);
 	mxsfb_crtc_enable(mxsfb);
-	pm_runtime_get_sync(mxsfb->dev);
+	drm_panel_enable(mxsfb->panel);
 }
 
 static void mxsfb_pipe_disable(struct drm_simple_display_pipe *pipe)
 {
 	struct mxsfb_drm_private *mxsfb = drm_pipe_to_mxsfb_drm_private(pipe);
+	struct drm_device *drm = pipe->plane.dev;
 	struct drm_crtc *crtc = &pipe->crtc;
+	struct drm_pending_vblank_event *event;
 
-	spin_lock_irq(&crtc->dev->event_lock);
-	if (crtc->state->event) {
-		drm_crtc_send_vblank_event(crtc, crtc->state->event);
-		crtc->state->event = NULL;
-	}
-	spin_unlock_irq(&crtc->dev->event_lock);
-
+	drm_panel_disable(mxsfb->panel);
 	mxsfb_crtc_disable(mxsfb);
-	pm_runtime_put_sync(mxsfb->dev);
+	drm_panel_unprepare(mxsfb->panel);
+	pm_runtime_put_sync(drm->dev);
+
+	spin_lock_irq(&drm->event_lock);
+	event = crtc->state->event;
+	if (event) {
+		crtc->state->event = NULL;
+		drm_crtc_send_vblank_event(crtc, event);
+	}
+	spin_unlock_irq(&drm->event_lock);
 
 	if (mxsfb->connector != &mxsfb->panel_connector)
 		mxsfb->connector = NULL;
@@ -230,7 +381,9 @@ static int mxsfb_pipe_prepare_fb(struct drm_simple_display_pipe *pipe,
 }
 #endif
 
-struct drm_simple_display_pipe_funcs mxsfb_funcs = {
+static struct drm_simple_display_pipe_funcs mxsfb_funcs = {
+	.mode_valid	= mxsfb_pipe_mode_valid,
+	.check		= mxsfb_pipe_check,
 	.enable		= mxsfb_pipe_enable,
 	.disable	= mxsfb_pipe_disable,
 	.update		= mxsfb_pipe_update,
@@ -262,7 +415,7 @@ static int mxsfb_load(struct drm_device *drm, unsigned long flags)
 	if (IS_ERR(mxsfb->base))
 		return PTR_ERR(mxsfb->base);
 
-	mxsfb->clk = devm_clk_get(drm->dev, NULL);
+	mxsfb->clk = devm_clk_get(drm->dev, "pix");
 	if (IS_ERR(mxsfb->clk))
 		return PTR_ERR(mxsfb->clk);
 
@@ -274,16 +427,28 @@ static int mxsfb_load(struct drm_device *drm, unsigned long flags)
 	if (IS_ERR(mxsfb->clk_disp_axi))
 		mxsfb->clk_disp_axi = NULL;
 
+	mxsfb->clk_pll = devm_clk_get(drm->dev, "video_pll");
+	if (IS_ERR(mxsfb->clk_pll))
+		mxsfb->clk_pll = NULL;
+
+	mxsfb->clk_src[0] = devm_clk_get(drm->dev, "osc_25");
+	if (IS_ERR(mxsfb->clk_src[0]))
+		mxsfb->clk_src[0] = NULL;
+
+	mxsfb->clk_src[1] = devm_clk_get(drm->dev, "osc_27");
+	if (IS_ERR(mxsfb->clk_src[1]))
+		mxsfb->clk_src[1] = NULL;
+
+	INIT_LIST_HEAD(&mxsfb->valid_modes);
+
 	ret = dma_set_mask_and_coherent(drm->dev, DMA_BIT_MASK(32));
 	if (ret)
 		return ret;
 
-	pm_runtime_enable(drm->dev);
-
 	ret = drm_vblank_init(drm, MAX_CRTCS);
 	if (ret < 0) {
 		dev_err(drm->dev, "Failed to initialise vblank\n");
-		goto err_vblank;
+		return ret;
 	}
 
 	/* Modeset init */
@@ -292,7 +457,7 @@ static int mxsfb_load(struct drm_device *drm, unsigned long flags)
 	ret = mxsfb_create_output(drm);
 	if (ret < 0) {
 		dev_err(drm->dev, "Failed to create outputs\n");
-		goto err_vblank;
+		return ret;
 	}
 
 	ret = drm_simple_display_pipe_init(drm, &mxsfb->pipe, &mxsfb_funcs,
@@ -300,7 +465,7 @@ static int mxsfb_load(struct drm_device *drm, unsigned long flags)
 			mxsfb->connector);
 	if (ret < 0) {
 		dev_err(drm->dev, "Cannot setup simple display pipe\n");
-		goto err_vblank;
+		return ret;
 	}
 
 	drm_crtc_vblank_off(&mxsfb->pipe.crtc);
@@ -317,14 +482,14 @@ static int mxsfb_load(struct drm_device *drm, unsigned long flags)
 		ret = drm_panel_attach(mxsfb->panel, mxsfb->connector);
 		if (ret) {
 			dev_err(drm->dev, "Cannot connect panel\n");
-			goto err_vblank;
+			return ret;
 		}
 	} else if (mxsfb->bridge) {
 		ret = drm_simple_display_pipe_attach_bridge(&mxsfb->pipe,
 				mxsfb->bridge);
 		if (ret) {
 			dev_err(drm->dev, "Cannot connect bridge\n");
-			goto err_vblank;
+			return ret;
 		}
 	}
 
@@ -340,12 +505,11 @@ static int mxsfb_load(struct drm_device *drm, unsigned long flags)
 	drm->mode_config.max_width	= max_res[0];
 	drm->mode_config.max_height	= max_res[1];
 	drm->mode_config.funcs		= &mxsfb_mode_config_funcs;
+	drm->mode_config.helper_private	= &mxsfb_mode_config_helpers;
 
 	drm_mode_config_reset(drm);
 
-	pm_runtime_get_sync(drm->dev);
 	ret = drm_irq_install(drm, platform_get_irq(pdev, 0));
-	pm_runtime_put_sync(drm->dev);
 
 	if (ret < 0) {
 		dev_err(drm->dev, "Failed to install IRQ handler\n");
@@ -354,9 +518,10 @@ static int mxsfb_load(struct drm_device *drm, unsigned long flags)
 
 	drm_kms_helper_poll_init(drm);
 
-	mxsfb->fbdev = drm_fbdev_cma_init(drm, 32, drm->mode_config.num_crtc,
+	mxsfb->fbdev = drm_fbdev_cma_init(drm, 32,
 					  drm->mode_config.num_connector);
 	if (IS_ERR(mxsfb->fbdev)) {
+		ret = PTR_ERR(mxsfb->fbdev);
 		mxsfb->fbdev = NULL;
 		dev_err(drm->dev, "Failed to init FB CMA area\n");
 		goto err_cma;
@@ -365,14 +530,14 @@ static int mxsfb_load(struct drm_device *drm, unsigned long flags)
 
 	drm_helper_hpd_irq_event(drm);
 
+	pm_runtime_enable(drm->dev);
+
 	return 0;
 
 err_cma:
 	drm_irq_uninstall(drm);
 err_irq:
 	drm_panel_detach(mxsfb->panel);
-err_vblank:
-	pm_runtime_disable(drm->dev);
 
 	return ret;
 }
@@ -380,17 +545,24 @@ err_vblank:
 static void mxsfb_unload(struct drm_device *drm)
 {
 	struct mxsfb_drm_private *mxsfb = drm->dev_private;
+	struct mode_config *config;
+	struct list_head *pos, *tmp;
 
 	if (mxsfb->fbdev)
 		drm_fbdev_cma_fini(mxsfb->fbdev);
 
 	drm_kms_helper_poll_fini(drm);
 	drm_mode_config_cleanup(drm);
-	drm_vblank_cleanup(drm);
 
 	pm_runtime_get_sync(drm->dev);
 	drm_irq_uninstall(drm);
 	pm_runtime_put_sync(drm->dev);
+
+	list_for_each_safe(pos, tmp, &mxsfb->valid_modes) {
+		config = list_entry(pos, struct mode_config, list);
+		list_del(pos);
+		devm_kfree(mxsfb->dev, config);
+	}
 
 	drm->dev_private = NULL;
 
@@ -407,25 +579,31 @@ static void mxsfb_lastclose(struct drm_device *drm)
 static int mxsfb_enable_vblank(struct drm_device *drm, unsigned int crtc)
 {
 	struct mxsfb_drm_private *mxsfb = drm->dev_private;
+	int ret = 0;
+
+	ret = clk_prepare_enable(mxsfb->clk_axi);
+	if (ret)
+		return ret;
 
 	/* Clear and enable VBLANK IRQ */
-	mxsfb_enable_axi_clk(mxsfb);
 	writel(CTRL1_CUR_FRAME_DONE_IRQ, mxsfb->base + LCDC_CTRL1 + REG_CLR);
 	writel(CTRL1_CUR_FRAME_DONE_IRQ_EN, mxsfb->base + LCDC_CTRL1 + REG_SET);
-	mxsfb_disable_axi_clk(mxsfb);
+	clk_disable_unprepare(mxsfb->clk_axi);
 
-	return 0;
+	return ret;
 }
 
 static void mxsfb_disable_vblank(struct drm_device *drm, unsigned int crtc)
 {
 	struct mxsfb_drm_private *mxsfb = drm->dev_private;
 
+	if (clk_prepare_enable(mxsfb->clk_axi))
+		return;
+
 	/* Disable and clear VBLANK IRQ */
-	mxsfb_enable_axi_clk(mxsfb);
 	writel(CTRL1_CUR_FRAME_DONE_IRQ_EN, mxsfb->base + LCDC_CTRL1 + REG_CLR);
 	writel(CTRL1_CUR_FRAME_DONE_IRQ, mxsfb->base + LCDC_CTRL1 + REG_CLR);
-	mxsfb_disable_axi_clk(mxsfb);
+	clk_disable_unprepare(mxsfb->clk_axi);
 }
 
 static void mxsfb_irq_preinstall(struct drm_device *drm)
@@ -439,7 +617,7 @@ static irqreturn_t mxsfb_irq_handler(int irq, void *data)
 	struct mxsfb_drm_private *mxsfb = drm->dev_private;
 	u32 reg;
 
-	mxsfb_enable_axi_clk(mxsfb);
+	clk_prepare_enable(mxsfb->clk_axi);
 
 	reg = readl(mxsfb->base + LCDC_CTRL1);
 
@@ -448,24 +626,12 @@ static irqreturn_t mxsfb_irq_handler(int irq, void *data)
 
 	writel(CTRL1_CUR_FRAME_DONE_IRQ, mxsfb->base + LCDC_CTRL1 + REG_CLR);
 
-	mxsfb_disable_axi_clk(mxsfb);
+	clk_disable_unprepare(mxsfb->clk_axi);
 
 	return IRQ_HANDLED;
 }
 
-static const struct file_operations fops = {
-	.owner		= THIS_MODULE,
-	.open		= drm_open,
-	.release	= drm_release,
-	.unlocked_ioctl	= drm_ioctl,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl	= drm_compat_ioctl,
-#endif
-	.poll		= drm_poll,
-	.read		= drm_read,
-	.llseek		= noop_llseek,
-	.mmap		= drm_gem_cma_mmap,
-};
+DEFINE_DRM_GEM_CMA_FOPS(fops);
 
 static struct drm_driver mxsfb_driver = {
 	.driver_features	= DRIVER_GEM | DRIVER_MODESET |
@@ -475,14 +641,11 @@ static struct drm_driver mxsfb_driver = {
 	.irq_handler		= mxsfb_irq_handler,
 	.irq_preinstall		= mxsfb_irq_preinstall,
 	.irq_uninstall		= mxsfb_irq_preinstall,
-	.get_vblank_counter	= drm_vblank_no_hw_counter,
 	.enable_vblank		= mxsfb_enable_vblank,
 	.disable_vblank		= mxsfb_disable_vblank,
-	.gem_free_object	= drm_gem_cma_free_object,
+	.gem_free_object_unlocked = drm_gem_cma_free_object,
 	.gem_vm_ops		= &drm_gem_cma_vm_ops,
 	.dumb_create		= drm_gem_cma_dumb_create,
-	.dumb_map_offset	= drm_gem_cma_dumb_map_offset,
-	.dumb_destroy		= drm_gem_dumb_destroy,
 	.prime_handle_to_fd	= drm_gem_prime_handle_to_fd,
 	.prime_fd_to_handle	= drm_gem_prime_fd_to_handle,
 	.gem_prime_export	= drm_gem_prime_export,
@@ -530,8 +693,8 @@ static int mxsfb_probe(struct platform_device *pdev)
 		pdev->id_entry = of_id->data;
 
 	drm = drm_dev_alloc(&mxsfb_driver, &pdev->dev);
-	if (!drm)
-		return -ENOMEM;
+	if (IS_ERR(drm))
+		return PTR_ERR(drm);
 
 	ret = mxsfb_load(drm, 0);
 	if (ret)
@@ -562,67 +725,23 @@ static int mxsfb_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM
-static int mxsfb_runtime_suspend(struct device *dev)
-{
-	struct drm_device *drm = dev_get_drvdata(dev);
-	struct mxsfb_drm_private *mxsfb = drm->dev_private;
-
-	if (!drm->registered)
-		return 0;
-
-	if (mxsfb->enabled) {
-		mxsfb_crtc_disable(mxsfb);
-		mxsfb->suspended = true;
-	}
-
-	return 0;
-}
-
-static int mxsfb_runtime_resume(struct device *dev)
-{
-	struct drm_device *drm = dev_get_drvdata(dev);
-	struct mxsfb_drm_private *mxsfb = drm->dev_private;
-
-	if (!drm->registered || !mxsfb->suspended)
-		return 0;
-
-	mxsfb_crtc_enable(mxsfb);
-	mxsfb->suspended = false;
-
-	return 0;
-}
-
+#ifdef CONFIG_PM_SLEEP
 static int mxsfb_suspend(struct device *dev)
 {
 	struct drm_device *drm = dev_get_drvdata(dev);
-	struct mxsfb_drm_private *mxsfb = drm->dev_private;
 
-	if (mxsfb->enabled) {
-		mxsfb_crtc_disable(mxsfb);
-		mxsfb->suspended = true;
-	}
-
-	return 0;
+	return drm_mode_config_helper_suspend(drm);
 }
 
 static int mxsfb_resume(struct device *dev)
 {
 	struct drm_device *drm = dev_get_drvdata(dev);
-	struct mxsfb_drm_private *mxsfb = drm->dev_private;
 
-	if (!mxsfb->suspended)
-		return 0;
-
-	mxsfb_crtc_enable(mxsfb);
-	mxsfb->suspended = false;
-
-	return 0;
+	return drm_mode_config_helper_resume(drm);
 }
 #endif
 
 static const struct dev_pm_ops mxsfb_pm_ops = {
-	SET_RUNTIME_PM_OPS(mxsfb_runtime_suspend, mxsfb_runtime_resume, NULL)
 	SET_SYSTEM_SLEEP_PM_OPS(mxsfb_suspend, mxsfb_resume)
 };
 
@@ -633,7 +752,7 @@ static struct platform_driver mxsfb_platform_driver = {
 	.driver	= {
 		.name		= "mxsfb_drm",
 		.of_match_table	= mxsfb_dt_ids,
-		.pm = &mxsfb_pm_ops,
+		.pm		= &mxsfb_pm_ops,
 	},
 };
 

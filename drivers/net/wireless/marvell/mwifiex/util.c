@@ -146,21 +146,6 @@ int mwifiex_init_fw_complete(struct mwifiex_adapter *adapter)
 }
 
 /*
- * Firmware shutdown complete callback handler.
- *
- * This function sets the hardware status to not ready and wakes up
- * the function waiting on the init wait queue for the firmware
- * shutdown to complete.
- */
-int mwifiex_shutdown_fw_complete(struct mwifiex_adapter *adapter)
-{
-	adapter->hw_status = MWIFIEX_HW_STATUS_NOT_READY;
-	adapter->init_wait_q_woken = true;
-	wake_up_interruptible(&adapter->init_wait_q);
-	return 0;
-}
-
-/*
  * This function sends init/shutdown command
  * to firmware.
  */
@@ -289,13 +274,13 @@ int mwifiex_debug_info_to_buffer(struct mwifiex_private *priv, char *buf,
 				val = *((u8 *)addr);
 				break;
 			case 2:
-				val = *((u16 *)addr);
+				val = get_unaligned((u16 *)addr);
 				break;
 			case 4:
-				val = *((u32 *)addr);
+				val = get_unaligned((u32 *)addr);
 				break;
 			case 8:
-				val = *((long long *)addr);
+				val = get_unaligned((long long *)addr);
 				break;
 			default:
 				val = -1;
@@ -723,12 +708,14 @@ void mwifiex_hist_data_set(struct mwifiex_private *priv, u8 rx_rate, s8 snr,
 			   s8 nflr)
 {
 	struct mwifiex_histogram_data *phist_data = priv->hist_data;
+	s8 nf   = -nflr;
+	s8 rssi = snr - nflr;
 
 	atomic_inc(&phist_data->num_samples);
 	atomic_inc(&phist_data->rx_rate[rx_rate]);
-	atomic_inc(&phist_data->snr[snr]);
-	atomic_inc(&phist_data->noise_flr[128 + nflr]);
-	atomic_inc(&phist_data->sig_str[nflr - snr]);
+	atomic_inc(&phist_data->snr[snr + 128]);
+	atomic_inc(&phist_data->noise_flr[nf + 128]);
+	atomic_inc(&phist_data->sig_str[rssi + 128]);
 }
 
 /* function to reset histogram data during init/reset */

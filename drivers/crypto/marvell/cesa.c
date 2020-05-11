@@ -183,8 +183,7 @@ int mv_cesa_queue_req(struct crypto_async_request *req,
 	spin_lock_bh(&engine->lock);
 	ret = crypto_enqueue_request(&engine->queue, req);
 	if ((mv_cesa_req_get_type(creq) == CESA_DMA_REQ) &&
-	    (ret == -EINPROGRESS ||
-	    (ret == -EBUSY && req->flags & CRYPTO_TFM_REQ_MAY_BACKLOG)))
+	    (ret == -EINPROGRESS || ret == -EBUSY))
 		mv_cesa_tdma_chain(engine, creq);
 	spin_unlock_bh(&engine->lock);
 
@@ -373,10 +372,6 @@ static int mv_cesa_dev_dma_init(struct mv_cesa_dev *cesa)
 
 	dma->padding_pool = dmam_pool_create("cesa_padding", dev, 72, 1, 0);
 	if (!dma->padding_pool)
-		return -ENOMEM;
-
-	dma->iv_pool = dmam_pool_create("cesa_iv", dev, 16, 1, 0);
-	if (!dma->iv_pool)
 		return -ENOMEM;
 
 	cesa->dma = dma;

@@ -257,7 +257,7 @@ ssize_t  sitronix_write(struct file *file, const char *buf, size_t count, loff_t
 	tmp = (char *)kmalloc(count,GFP_KERNEL);
 	if (tmp==NULL)
 		return -ENOMEM;
-	if (copy_from_user(tmp,buf,count)) {
+	if (raw_copy_from_user(tmp,buf,count)) {
 		kfree(tmp);
 		return -EFAULT;
 	}
@@ -288,7 +288,7 @@ ssize_t  sitronix_read(struct file *file, char *buf, size_t count, loff_t *ppos)
 
 	ret = i2c_master_recv(sitronix_ts_gpts.client, tmp, count);
 	if (ret >= 0)
-		ret = copy_to_user(buf,tmp,count)?-EFAULT:ret;
+		ret = raw_copy_to_user(buf,tmp,count)?-EFAULT:ret;
 	kfree(tmp);
 	return ret;
 }
@@ -320,14 +320,14 @@ long	 sitronix_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		case IOCTL_SMT_GET_DRIVER_REVISION:
 			UpgradeMsg("IOCTL_SMT_GET_DRIVER_REVISION\n");
 			temp[0] = SITRONIX_TOUCH_DRIVER_VERSION;
-			if(copy_to_user((uint8_t __user *)arg, &temp[0], 1)){
+			if(raw_copy_to_user((uint8_t __user *)arg, &temp[0], 1)){
 				UpgradeMsg("fail to get driver version\n");
 				retval = -EFAULT;
 			}
 			break;
 		case IOCTL_SMT_GET_FW_REVISION:
 			UpgradeMsg("IOCTL_SMT_GET_FW_REVISION\n");
-			if(copy_to_user((uint8_t __user *)arg, &(sitronix_ts_gpts.fw_revision[0]), 4))
+			if(raw_copy_to_user((uint8_t __user *)arg, &(sitronix_ts_gpts.fw_revision[0]), 4))
 					retval = -EFAULT;
 			break;
 		case IOCTL_SMT_ENABLE_IRQ:

@@ -36,6 +36,7 @@
 #include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/clk.h>
+#include <linux/ctype.h>
 #include <linux/device.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
@@ -56,16 +57,6 @@
 
 #include "fsl_ssi.h"
 #include "imx-pcm.h"
-
-/**
- * FSLSSI_I2S_RATES: sample rates supported by the I2S
- *
- * This driver currently only supports the SSI running in I2S slave mode,
- * which means the codec determines the sample rate.  Therefore, we tell
- * ALSA that we support all rates and let the codec driver decide what rates
- * are really supported.
- */
-#define FSLSSI_I2S_RATES SNDRV_PCM_RATE_CONTINUOUS
 
 /**
  * FSLSSI_I2S_FORMATS: audio formats supported by the SSI
@@ -243,6 +234,7 @@ struct fsl_ssi_private {
 	u8 i2s_mode;
 	bool use_dma;
 	bool use_dual_fifo;
+	bool use_dyna_fifo;
 	bool has_ipg_clk_name;
 	unsigned int fifo_depth;
 	struct fsl_ssi_rxtx_reg_val rxtx_reg_val;
@@ -686,7 +678,7 @@ static int fsl_ssi_startup(struct snd_pcm_substream *substream,
 	 * task from fifo0, fifo1 would be neglected at the end of each
 	 * period. But SSI would still access fifo1 with an invalid data.
 	 */
-	if (ssi_private->use_dual_fifo)
+	if (ssi_private->use_dual_fifo || ssi_private->use_dyna_fifo)
 		snd_pcm_hw_constraint_step(substream->runtime, 0,
 				SNDRV_PCM_HW_PARAM_PERIOD_SIZE, 2);
 
@@ -862,6 +854,7 @@ static int fsl_ssi_hw_params(struct snd_pcm_substream *substream,
 	u32 scr_val;
 	int enabled;
 	u8 i2smode = ssi_private->i2s_mode;
+	struct fsl_ssi_rxtx_reg_val *reg = &ssi_private->rxtx_reg_val;
 
 	if (fsl_ssi_is_i2s_master(ssi_private)) {
 		ret = fsl_ssi_set_bclk(substream, cpu_dai, hw_params);
@@ -922,6 +915,24 @@ static int fsl_ssi_hw_params(struct snd_pcm_substream *substream,
 	else
 		regmap_update_bits(regs, CCSR_SSI_SRCCR, CCSR_SSI_SxCCR_WL_MASK,
 				wl);
+
+	if (ssi_private->use_dyna_fifo) {
+		if (channels == 1) {
+			ssi_private->dma_params_tx.fifo_num  = 1;
+			ssi_private->dma_params_rx.fifo_num  = 1;
+			reg->rx.srcr &= ~CCSR_SSI_SRCR_RFEN1;
+			reg->tx.stcr &= ~CCSR_SSI_STCR_TFEN1;
+			reg->rx.scr  &= ~CCSR_SSI_SCR_TCH_EN;
+			reg->tx.scr  &= ~CCSR_SSI_SCR_TCH_EN;
+		} else {
+			ssi_private->dma_params_tx.fifo_num  = 2;
+			ssi_private->dma_params_rx.fifo_num  = 2;
+			reg->rx.srcr |= CCSR_SSI_SRCR_RFEN1;
+			reg->tx.stcr |= CCSR_SSI_STCR_TFEN1;
+			reg->rx.scr  |= CCSR_SSI_SCR_TCH_EN;
+			reg->tx.scr  |= CCSR_SSI_SCR_TCH_EN;
+		}
+	}
 
 	return 0;
 }
@@ -1224,14 +1235,14 @@ static struct snd_soc_dai_driver fsl_ssi_dai_template = {
 		.stream_name = "CPU-Playback",
 		.channels_min = 1,
 		.channels_max = 32,
-		.rates = FSLSSI_I2S_RATES,
+		.rates = SNDRV_PCM_RATE_CONTINUOUS,
 		.formats = FSLSSI_I2S_FORMATS,
 	},
 	.capture = {
 		.stream_name = "CPU-Capture",
 		.channels_min = 1,
 		.channels_max = 32,
-		.rates = FSLSSI_I2S_RATES,
+		.rates = SNDRV_PCM_RATE_CONTINUOUS,
 		.formats = FSLSSI_I2S_FORMATS,
 	},
 	.ops = &fsl_ssi_dai_ops,
@@ -1337,14 +1348,10 @@ static struct snd_ac97_bus_ops fsl_ssi_ac97_ops = {
  */
 static void make_lowercase(char *s)
 {
-	char *p = s;
-	char c;
-
-	while ((c = *p)) {
-		if ((c >= 'A') && (c <= 'Z'))
-			*p = c + ('a' - 'A');
-		p++;
-	}
+	if (!s)
+		return;
+	for (; *s; s++)
+		*s = tolower(*s);
 }
 
 static int fsl_ssi_imx_probe(struct platform_device *pdev,
@@ -1381,6 +1388,8 @@ static int fsl_ssi_imx_probe(struct platform_device *pdev,
 		dev_dbg(&pdev->dev, "could not get baud clock: %ld\n",
 			 PTR_ERR(ssi_private->baudclk));
 
+	ssi_private->dma_params_rx.chan_name = "rx";
+	ssi_private->dma_params_tx.chan_name = "tx";
 	ssi_private->dma_params_tx.maxburst = ssi_private->dma_maxburst;
 	ssi_private->dma_params_rx.maxburst = ssi_private->dma_maxburst;
 	ssi_private->dma_params_tx.addr = ssi_private->ssi_phys + CCSR_SSI_STX0;
@@ -1395,6 +1404,9 @@ static int fsl_ssi_imx_probe(struct platform_device *pdev,
 		ssi_private->dma_params_tx.maxburst &= ~0x1;
 		ssi_private->dma_params_rx.maxburst &= ~0x1;
 	}
+
+	if (ssi_private->use_dma && !ret && dmas[2] == IMX_DMATYPE_MULTI_SAI)
+		ssi_private->use_dyna_fifo = true;
 
 	if (of_property_read_u32(np, "fsl,dma-buffer-size", &buffer_size))
 		buffer_size = IMX_SSI_DMABUF_SIZE;
@@ -1419,7 +1431,7 @@ static int fsl_ssi_imx_probe(struct platform_device *pdev,
 		if (ret)
 			goto error_pcm;
 	} else {
-		ret = imx_pcm_dma_init(pdev, buffer_size);
+		ret = imx_pcm_platform_register(&pdev->dev);
 		if (ret)
 			goto error_pcm;
 	}
@@ -1461,10 +1473,8 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 
 	ssi_private = devm_kzalloc(&pdev->dev, sizeof(*ssi_private),
 			GFP_KERNEL);
-	if (!ssi_private) {
-		dev_err(&pdev->dev, "could not allocate DAI object\n");
+	if (!ssi_private)
 		return -ENOMEM;
-	}
 
 	ssi_private->soc = of_id->data;
 	ssi_private->dev = &pdev->dev;

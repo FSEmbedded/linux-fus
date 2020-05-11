@@ -10,7 +10,7 @@
 
 /* flexcan2 tx/rx pin conflicts with uart2 */
 
-&uart2{
+&uart2 {
 	status = "disabled";
 };
 

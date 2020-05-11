@@ -25,7 +25,7 @@
 
 
 /* sgtl5000 private structure in codec */
-struct sgtl5000_priv {
+struct rpmsg_sgtl5000_priv {
 	int sysclk;	/* sysclk rate */
 	int master;	/* i2s master or not */
 	int fmt;	/* i2s data format */
@@ -38,6 +38,7 @@ struct sgtl5000_priv {
 	u8 micbias_resistor;
 	u8 micbias_voltage;
 	u8 lrclk_strength;
+	struct fsl_rpmsg_i2s *rpmsg_i2s;
 };
 
 /*
@@ -189,6 +190,18 @@ static const struct snd_soc_dapm_route sgtl5000_dapm_routes[] = {
 	{"LINE_OUT", NULL, "LO"},
 	{"HP_OUT", NULL, "HP"},
 };
+
+static int sgtl5000_add_widgets(struct snd_soc_codec *codec)
+{
+	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
+
+	snd_soc_dapm_new_controls(dapm, sgtl5000_dapm_widgets,
+				  ARRAY_SIZE(sgtl5000_dapm_widgets));
+
+	snd_soc_dapm_add_routes(dapm, sgtl5000_dapm_routes, ARRAY_SIZE(sgtl5000_dapm_routes));
+
+	return 0;
+}
 
 /* custom function to fetch info of PCM playback volume */
 static int dac_info_volsw(struct snd_kcontrol *kcontrol,
@@ -374,73 +387,9 @@ static int sgtl5000_digital_mute(struct snd_soc_dai *codec_dai, int mute)
 	return 0;
 }
 
-static const struct snd_soc_dai_ops sgtl5000_ops = {
-	.digital_mute = sgtl5000_digital_mute,
-};
-
 #define RPMSG_RATES (SNDRV_PCM_RATE_8000_48000)
 
 #define RPMSG_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE )
-
-
-static struct snd_soc_dai_driver rpmsg_sgtl5000_codec_dai = {
-	.name = "rpmsg-sgtl5000-hifi",
-	.playback = {
-		.stream_name = "Playback",
-		.channels_min = 2,
-		.channels_max = 2,
-		.rates = RPMSG_RATES,
-		.formats = RPMSG_FORMATS,
-	},
-	.capture = {
-		.stream_name = "Capture",
-		.channels_min = 2,
-		.channels_max = 2,
-		.rates = RPMSG_RATES,
-		.formats = RPMSG_FORMATS,
-	},
-	.ops = &sgtl5000_ops,
-	.symmetric_rates = 1,
-};
-
-
-static unsigned int rpmsg_sgtl5000_read(struct snd_soc_codec *codec, unsigned int reg)
-{
-	struct fsl_rpmsg_i2s *rpmsg_i2s = snd_soc_codec_get_drvdata(codec);
-	struct i2s_info      *i2s_info =  &rpmsg_i2s->i2s_info;
-	struct i2s_rpmsg_s   *rpmsg = &i2s_info->send_msg[RPMSG_AUDIO_I2C];
-	int err, reg_val;
-
-	mutex_lock(&i2s_info->i2c_lock);
-	rpmsg->param.buffer_addr = reg;
-	rpmsg->header.cmd = GET_CODEC_VALUE;
-	err = i2s_info->send_message(rpmsg, i2s_info);
-	reg_val = rpmsg->param.buffer_size;
-	mutex_unlock(&i2s_info->i2c_lock);
-	if (err)
-		return 0;
-
-	return reg_val;
-}
-
-static int rpmsg_sgtl5000_write(struct snd_soc_codec *codec, unsigned int reg, unsigned int val)
-{
-	struct fsl_rpmsg_i2s *rpmsg_i2s = snd_soc_codec_get_drvdata(codec);
-	struct i2s_info      *i2s_info =  &rpmsg_i2s->i2s_info;
-	struct i2s_rpmsg_s   *rpmsg = &i2s_info->send_msg[RPMSG_AUDIO_I2C];
-	int err;
-
-	mutex_lock(&i2s_info->i2c_lock);
-	rpmsg->param.buffer_addr = reg;
-	rpmsg->param.buffer_size = val;
-	rpmsg->header.cmd = SET_CODEC_VALUE;
-	err = i2s_info->send_message(rpmsg, i2s_info);
-	mutex_unlock(&i2s_info->i2c_lock);
-	if (err)
-		return err;
-
-	return 0;
-}
 
 /*
  * This precalculated table contains all (vag_val * 100 / lo_calcntrl) results
@@ -589,11 +538,18 @@ static int sgtl5000_set_power_regs(struct snd_soc_codec *codec)
 	return 0;
 }
 
-static int rpmsg_sgtl5000_probe(struct snd_soc_codec *codec)
+static int sgtl5000_hw_params(struct snd_pcm_substream *substream,
+			    struct snd_pcm_hw_params *params,
+			    struct snd_soc_dai *dai)
 {
+	struct snd_soc_codec *codec = dai->codec;
 	int ret;
-		/* power up sgtl5000 */
+
+	/* power up sgtl5000 */
 	ret = sgtl5000_set_power_regs(codec);
+	if (ret)
+		return ret;
+
 
 	/* disable small pop, introduce 200ms delay in turning off */
 	snd_soc_update_bits(codec, SGTL5000_CHIP_REF_CTRL,
@@ -628,6 +584,78 @@ static int rpmsg_sgtl5000_probe(struct snd_soc_codec *codec)
 	/* Disable DAP */
 	snd_soc_write(codec, SGTL5000_DAP_CTRL, 0);
 
+	return ret;
+}
+
+static const struct snd_soc_dai_ops sgtl5000_ops = {
+	.hw_params = sgtl5000_hw_params,
+	.digital_mute = sgtl5000_digital_mute,
+};
+
+static struct snd_soc_dai_driver rpmsg_sgtl5000_codec_dai = {
+	.name = "rpmsg-sgtl5000-hifi",
+	.playback = {
+		.stream_name = "Playback",
+		.channels_min = 1,
+		.channels_max = 2,
+		.rates = RPMSG_RATES,
+		.formats = RPMSG_FORMATS,
+	},
+	.capture = {
+		.stream_name = "Capture",
+		.channels_min = 1,
+		.channels_max = 2,
+		.rates = RPMSG_RATES,
+		.formats = RPMSG_FORMATS,
+	},
+	.ops = &sgtl5000_ops,
+	.symmetric_rates = 1,
+};
+
+static int rpmsg_sgtl5000_probe(struct snd_soc_codec *codec)
+{
+	snd_soc_add_codec_controls(codec, rpmsg_sgtl5000_snd_controls,
+				     ARRAY_SIZE(rpmsg_sgtl5000_snd_controls));
+	sgtl5000_add_widgets(codec);
+
+	return 0;
+}
+
+static unsigned int rpmsg_sgtl5000_read(struct snd_soc_codec *codec, unsigned int reg)
+{
+	struct fsl_rpmsg_i2s *rpmsg_i2s = snd_soc_codec_get_drvdata(codec);
+	struct i2s_info      *i2s_info =  &rpmsg_i2s->i2s_info;
+	struct i2s_rpmsg_s   *rpmsg = &i2s_info->rpmsg[GET_CODEC_VALUE].send_msg;
+	int err, reg_val;
+
+	mutex_lock(&i2s_info->i2c_lock);
+	rpmsg->param.buffer_addr = reg;
+	rpmsg->header.cmd = GET_CODEC_VALUE;
+	err = i2s_info->send_message(&i2s_info->rpmsg[GET_CODEC_VALUE], i2s_info);
+	reg_val = i2s_info->rpmsg[GET_CODEC_VALUE].recv_msg.param.reg_data;
+	mutex_unlock(&i2s_info->i2c_lock);
+	if (err)
+		return -EIO;
+
+	return reg_val;
+}
+
+static int rpmsg_sgtl5000_write(struct snd_soc_codec *codec, unsigned int reg, unsigned int val)
+{
+	struct fsl_rpmsg_i2s *rpmsg_i2s = snd_soc_codec_get_drvdata(codec);
+	struct i2s_info      *i2s_info =  &rpmsg_i2s->i2s_info;
+	struct i2s_rpmsg_s   *rpmsg = &i2s_info->rpmsg[SET_CODEC_VALUE].send_msg;
+	int err;
+
+	mutex_lock(&i2s_info->i2c_lock);
+	rpmsg->param.buffer_addr = reg;
+	rpmsg->param.buffer_size = val;
+	rpmsg->header.cmd = SET_CODEC_VALUE;
+	err = i2s_info->send_message(&i2s_info->rpmsg[SET_CODEC_VALUE], i2s_info);
+	mutex_unlock(&i2s_info->i2c_lock);
+	if (err)
+		return -EIO;
+
 	return 0;
 }
 
@@ -635,32 +663,31 @@ static struct snd_soc_codec_driver rpmsg_sgtl5000_codec = {
 	.probe = rpmsg_sgtl5000_probe,
 	.read = rpmsg_sgtl5000_read,
 	.write = rpmsg_sgtl5000_write,
-	.component_driver = {
-		.controls		= rpmsg_sgtl5000_snd_controls,
-		.num_controls		= ARRAY_SIZE(rpmsg_sgtl5000_snd_controls),
-		.dapm_widgets		= sgtl5000_dapm_widgets,
-		.num_dapm_widgets	= ARRAY_SIZE(sgtl5000_dapm_widgets),
-		.dapm_routes		= sgtl5000_dapm_routes,
-		.num_dapm_routes	= ARRAY_SIZE(sgtl5000_dapm_routes),
-	},
 };
 
 static int rpmsg_sgtl5000_codec_probe(struct platform_device *pdev)
 {
-	struct device *dev = &pdev->dev;
 	struct fsl_rpmsg_i2s *rpmsg_i2s = dev_get_drvdata(pdev->dev.parent);
+	struct rpmsg_sgtl5000_priv *sgtl5000;
 	int ret;
-	ret = snd_soc_register_codec(dev,
+
+	sgtl5000 = devm_kzalloc(&pdev->dev, sizeof(struct rpmsg_sgtl5000_priv),
+			      GFP_KERNEL);
+	if (sgtl5000 == NULL)
+		return -ENOMEM;
+
+	sgtl5000->rpmsg_i2s = rpmsg_i2s;
+	dev_set_drvdata(&pdev->dev, rpmsg_i2s);
+
+	ret = snd_soc_register_codec(&pdev->dev,
 					&rpmsg_sgtl5000_codec,
 					&rpmsg_sgtl5000_codec_dai,
 					1);
 	if (ret) {
-		dev_err(dev, "%s: snd_soc_register_codec() failed (%d)\n",
+		dev_err(&pdev->dev, "%s: snd_soc_register_codec() failed (%d)\n",
 			__func__, ret);
 		return ret;
 	}
-
-	dev_set_drvdata(dev, rpmsg_i2s);
 
 	return 0;
 }
@@ -673,7 +700,7 @@ static int rpmsg_sgtl5000_codec_remove(struct platform_device *pdev)
 
 static struct platform_driver rpmsg_sgtl5000_codec_driver = {
 	.driver = {
-		.name = RPMSG_CODEC_DRV_NAME,
+		.name = RPMSG_CODEC_DRV_NAME_SGTL5000,
 	},
 	.probe = rpmsg_sgtl5000_codec_probe,
 	.remove = rpmsg_sgtl5000_codec_remove,

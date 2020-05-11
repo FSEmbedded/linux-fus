@@ -33,15 +33,16 @@
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/of_graph.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
+#include <linux/reset.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/videodev2.h>
-#include <media/v4l2-of.h>
 #include <media/v4l2-subdev.h>
 #include <media/v4l2-device.h>
 
@@ -273,6 +274,8 @@ struct csi_state {
 	void __iomem *regs;
 	struct clk *mipi_clk;
 	struct clk *phy_clk;
+	struct clk *disp_axi;
+	struct clk *disp_apb;
 	int irq;
 	u32 flags;
 
@@ -329,6 +332,8 @@ static const struct csis_pix_format mipi_csis_formats[] = {
 	}
 };
 
+typedef int (*mipi_csis_phy_reset_t)(struct csi_state *state);
+
 #define mipi_csis_write(__csis, __r, __v) writel(__v, __csis->regs + __r)
 #define mipi_csis_read(__csis, __r) readl(__csis->regs + __r)
 
@@ -382,6 +387,23 @@ static int mipi_csis_phy_init(struct csi_state *state)
 			1000000, 1000000);
 
 	return ret;
+}
+
+static int mipi_csis_phy_reset_mx8mm(struct csi_state *state)
+{
+	struct reset_control *phy_reset;
+
+	phy_reset = devm_reset_control_get_exclusive(state->dev, "csi,mipi_rst");
+	if (IS_ERR(phy_reset))
+		return PTR_ERR(phy_reset);
+
+	reset_control_assert(phy_reset);
+	usleep_range(10, 20);
+	reset_control_deassert(phy_reset);
+	usleep_range(10, 20);
+
+	return 0;
+
 }
 
 static int mipi_csis_phy_reset(struct csi_state *state)
@@ -522,12 +544,20 @@ static void mipi_csis_clk_enable(struct csi_state *state)
 {
 	clk_prepare_enable(state->mipi_clk);
 	clk_prepare_enable(state->phy_clk);
+	if (state->disp_axi)
+		clk_prepare_enable(state->disp_axi);
+	if (state->disp_apb)
+		clk_prepare_enable(state->disp_apb);
 }
 
 static void mipi_csis_clk_disable(struct csi_state *state)
 {
 	clk_disable_unprepare(state->mipi_clk);
 	clk_disable_unprepare(state->phy_clk);
+	if (state->disp_axi)
+		clk_disable_unprepare(state->disp_axi);
+	if (state->disp_apb)
+		clk_disable_unprepare(state->disp_apb);
 }
 
 static int mipi_csis_clk_get(struct csi_state *state)
@@ -545,6 +575,18 @@ static int mipi_csis_clk_get(struct csi_state *state)
 	if (IS_ERR(state->phy_clk)) {
 		dev_err(dev, "Could not get mipi phy clock\n");
 		return -ENODEV;
+	}
+
+	state->disp_axi = devm_clk_get(dev, "disp_axi");
+	if (IS_ERR(state->disp_axi)) {
+		dev_warn(dev, "Could not get disp_axi clock\n");
+		state->disp_axi = NULL;
+	}
+
+	state->disp_apb = devm_clk_get(dev, "disp_apb");
+	if (IS_ERR(state->disp_apb)) {
+		dev_warn(dev, "Could not get disp apb clock\n");
+		state->disp_apb = NULL;
 	}
 
 	/* Set clock rate */
@@ -895,7 +937,7 @@ static int subdev_notifier_bound(struct v4l2_async_notifier *notifier,
 	struct csi_state *state = notifier_to_mipi_dev(notifier);
 
 	/* Find platform data for this sensor subdev */
-	if (state->asd.match.of.node == subdev->dev->of_node)
+	if (state->asd.match.fwnode.fwnode == dev_fwnode(subdev->dev))
 		state->sensor_sd = subdev;
 
 	if (subdev == NULL)
@@ -970,8 +1012,8 @@ static int mipi_csis_subdev_host(struct csi_state *state)
 			return -1;
 		}
 
-		state->asd.match_type = V4L2_ASYNC_MATCH_OF;
-		state->asd.match.of.node = rem;
+		state->asd.match_type = V4L2_ASYNC_MATCH_FWNODE;
+		state->asd.match.fwnode.fwnode = of_fwnode_handle(rem);
 		state->async_subdevs[0] = &state->asd;
 
 		of_node_put(rem);
@@ -1027,6 +1069,8 @@ static int mipi_csis_probe(struct platform_device *pdev)
 	struct v4l2_subdev *mipi_sd;
 	struct resource *mem_res;
 	struct csi_state *state;
+	const struct of_device_id *of_id;
+	mipi_csis_phy_reset_t phy_reset_fn;
 	int ret = -ENOMEM;
 
 	state = devm_kzalloc(dev, sizeof(*state), GFP_KERNEL);
@@ -1051,7 +1095,11 @@ static int mipi_csis_probe(struct platform_device *pdev)
 	}
 
 	mipi_csis_phy_init(state);
-	mipi_csis_phy_reset(state);
+	of_id = of_match_node(mipi_csis_of_match, dev->of_node);
+	if (!of_id || !of_id->data)
+		return -EINVAL;
+
+	phy_reset_fn = of_id->data;
 
 	mem_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	state->regs = devm_ioremap_resource(dev, mem_res);
@@ -1069,6 +1117,8 @@ static int mipi_csis_probe(struct platform_device *pdev)
 		return ret;
 
 	mipi_csis_clk_enable(state);
+
+	phy_reset_fn(state);
 
 	ret = devm_request_irq(dev, state->irq, mipi_csis_irq_handler,
 			       0, dev_name(dev), state);
@@ -1184,6 +1234,14 @@ static int mipi_csis_pm_resume(struct device *dev, bool runtime)
 #ifdef CONFIG_PM_SLEEP
 static int mipi_csis_suspend(struct device *dev)
 {
+	struct platform_device *pdev = to_platform_device(dev);
+	struct csi_state *state = platform_get_drvdata(pdev);
+
+	if (state->flags & ST_STREAMING) {
+		dev_warn(dev, "running, prevent entering suspend.\n");
+		return -EAGAIN;
+	}
+
 	return mipi_csis_pm_suspend(dev, false);
 }
 
@@ -1226,7 +1284,12 @@ static const struct dev_pm_ops mipi_csis_pm_ops = {
 };
 
 static const struct of_device_id mipi_csis_of_match[] = {
-	{	.compatible = "fsl,imx7d-mipi-csi",},
+	{	.compatible = "fsl,imx7d-mipi-csi",
+		.data = (void *)&mipi_csis_phy_reset,
+	},
+	{	.compatible = "fsl,imx8mm-mipi-csi",
+		.data = (void *)&mipi_csis_phy_reset_mx8mm,
+	},
 	{ /* sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, mipi_csis_of_match);

@@ -2,6 +2,7 @@
  * caam - Freescale FSL CAAM support for hw_random
  *
  * Copyright 2011 Freescale Semiconductor, Inc.
+ * Copyright 2018 NXP
  *
  * Based on caamalg.c crypto API driver.
  *
@@ -52,7 +53,7 @@
 
 /* length of descriptors */
 #define DESC_JOB_O_LEN			(CAAM_CMD_SZ * 2 + CAAM_PTR_SZ * 2)
-#define DESC_RNG_LEN			(4 * CAAM_CMD_SZ)
+#define DESC_RNG_LEN			(3 * CAAM_CMD_SZ)
 
 /* Buffer, its dma address and lock */
 struct buf_data {
@@ -100,8 +101,7 @@ static void rng_done(struct device *jrdev, u32 *desc, u32 err, void *context)
 {
 	struct buf_data *bd;
 
-	bd = (struct buf_data *)((char *)desc -
-	      offsetof(struct buf_data, hw_desc));
+	bd = container_of(desc, struct buf_data, hw_desc[0]);
 
 	if (err)
 		caam_jr_strstatus(jrdev, err);
@@ -195,9 +195,6 @@ static inline int rng_create_sh_desc(struct caam_rng_ctx *ctx)
 	u32 *desc = ctx->sh_desc;
 
 	init_sh_desc(desc, HDR_SHARE_SERIAL);
-
-	/* Propagate errors from shared to job descriptor */
-	append_cmd(desc, SET_OK_NO_PROP_ERRORS | CMD_LOAD);
 
 	/* Generate random bytes */
 	append_operation(desc, OP_ALG_ALGSEL_RNG | OP_TYPE_CLASS1_ALG);
@@ -332,11 +329,7 @@ static int caam_init_rng(struct caam_rng_ctx *ctx, struct device *jrdev)
 	if (err)
 		return err;
 
-	err = caam_init_buf(ctx, 1);
-	if (err)
-		return err;
-
-	return 0;
+	return caam_init_buf(ctx, 1);
 }
 
 static struct hwrng caam_rng = {
@@ -387,13 +380,11 @@ static int __init caam_rng_init(void)
 		return -ENODEV;
 
 	/* Check for an instantiated RNG before registration */
-	if (priv->has_seco) {
-		int i = priv->first_jr_index;
-
-		cha_inst = rd_reg32(&priv->jr[i]->perfmon.cha_num_ls);
-	} else {
+	if (priv->has_seco)
+		cha_inst = rd_reg32(&priv->jr[0]->perfmon.cha_num_ls);
+	else
 		cha_inst = rd_reg32(&priv->ctrl->perfmon.cha_num_ls);
-	}
+
 	if (!(cha_inst & CHA_ID_LS_RNG_MASK))
 		return -ENODEV;
 
@@ -402,7 +393,7 @@ static int __init caam_rng_init(void)
 		pr_err("Job Ring Device allocation for transform failed\n");
 		return PTR_ERR(dev);
 	}
-	rng_ctx = kmalloc(sizeof(*rng_ctx), GFP_DMA);
+	rng_ctx = kmalloc(sizeof(*rng_ctx), GFP_DMA | GFP_KERNEL);
 	if (!rng_ctx) {
 		err = -ENOMEM;
 		goto free_caam_alloc;

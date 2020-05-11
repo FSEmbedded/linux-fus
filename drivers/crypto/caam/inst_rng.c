@@ -1,12 +1,12 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * CAAM RNG instantiation driver backend
  *
- * Copyright 2017-2018 NXP
+ * Copyright 2017-2019 NXP
  */
 
 #include <linux/device.h>
 #include <linux/of_address.h>
-#include <soc/imx8/sc/sci.h>
 #include <linux/wait.h>
 #include "compat.h"
 #include "regs.h"
@@ -155,8 +155,8 @@ static int instantiate_rng(int state_handle_mask, int gen_sk)
 		/* Try to run it through JR */
 		ret = run_descriptor_jr(desc, sh_idx);
 		if (ret)
-			pr_err("Failed to run desc  RNG4 SH%d status (0x%x)\n",
-			       sh_idx, ret);
+			pr_debug("Failed to run desc  RNG4 SH%d status (0x%x)\n",
+				 sh_idx, ret);
 		/* Clear the contents before recreating the descriptor */
 		memset(desc, 0x00, CAAM_CMD_SZ * 7);
 	}
@@ -191,7 +191,7 @@ int deinstantiate_rng(int state_handle_mask)
 		/*
 		 * If the corresponding bit is set, then it means the state
 		 * handle was initialized by us, and thus it needs to be
-		 * deintialized as well
+		 * deinitialized as well
 		 */
 		if ((1 << sh_idx) & state_handle_mask) {
 			/*
@@ -203,8 +203,8 @@ int deinstantiate_rng(int state_handle_mask)
 			/* Try to run it through JR */
 			ret = run_descriptor_jr(desc, sh_idx);
 			if (ret)
-				pr_err("Failed to run desc to deinstantiate RNG4 SH%d\n",
-					  sh_idx);
+				pr_debug("Failed to run desc to deinstantiate RNG4 SH%d\n",
+					 sh_idx);
 		}
 	}
 
@@ -230,7 +230,11 @@ static void kick_trng(struct device *ctrldev, int ent_delay)
 	r4tst = &ctrl->r4tst[0];
 
 	/* put RNG4 into program mode */
-	clrsetbits_32(&r4tst->rtmctl, 0, RTMCTL_PRGM);
+	/* Setting both RTMCTL:PRGM and RTMCTL:TRNG_ACC causes TRNG to
+	 * properly invalidate the entropy in the entropy register and
+	 * force re-generation.
+	 */
+	clrsetbits_32(&r4tst->rtmctl, 0, RTMCTL_PRGM | RTMCTL_ACC);
 
 	/*
 	 * Performance-wise, it does not make sense to
@@ -244,7 +248,7 @@ static void kick_trng(struct device *ctrldev, int ent_delay)
 	      >> RTSDCTL_ENT_DLY_SHIFT;
 	if (ent_delay <= val) {
 		/* put RNG4 into run mode */
-		clrsetbits_32(&r4tst->rtmctl, RTMCTL_PRGM, 0);
+		clrsetbits_32(&r4tst->rtmctl, RTMCTL_PRGM | RTMCTL_ACC, 0);
 		return;
 	}
 
@@ -264,16 +268,16 @@ static void kick_trng(struct device *ctrldev, int ent_delay)
 	 */
 	clrsetbits_32(&val, 0, RTMCTL_SAMP_MODE_RAW_ES_SC);
 	/* put RNG4 into run mode */
-	clrsetbits_32(&val, RTMCTL_PRGM, 0);
+	clrsetbits_32(&val, RTMCTL_PRGM | RTMCTL_ACC, 0);
 	/* write back the control register */
 	wr_reg32(&r4tst->rtmctl, val);
 }
 
 /*
- * inst_rng_imx6 - RNG instantiation function for i.MX6/7 platforms
+ * inst_rng_imx - RNG instantiation function for i.MX6/7/8m platforms
  * @pdev - pointer to the device
  */
-int inst_rng_imx6(struct platform_device *pdev)
+int inst_rng_imx(struct platform_device *pdev)
 {
 	struct device *ctrldev, *dev;
 	struct caam_drv_private *ctrlpriv;
@@ -286,23 +290,15 @@ int inst_rng_imx6(struct platform_device *pdev)
 	ctrlpriv = dev_get_drvdata(ctrldev);
 	ctrl = (struct caam_ctrl __iomem *)ctrlpriv->ctrl;
 
-#ifndef CONFIG_ARM64
-	/*
-	 * Check if the Secure Firmware is running,
-	 * check only for i.MX6 and i.MX7
-	 */
-	if (of_find_compatible_node(NULL, NULL, "linaro,optee-tz")) {
-		pr_info("RNG Instantation done by Secure Firmware\n");
-		return ret;
-	}
-#endif
-
 	cha_vid_ls = rd_reg32(&ctrl->perfmon.cha_id_ls);
+
 	/*
 	 * If SEC has RNG version >= 4 and RNG state handle has not been
 	 * already instantiated, do RNG instantiation
+	 * In case of DPAA 2.x, RNG is managed by MC firmware.
 	 */
-	if ((cha_vid_ls & CHA_ID_LS_RNG_MASK) >> CHA_ID_LS_RNG_SHIFT >= 4) {
+	if (!caam_dpaa2 &&
+		(cha_vid_ls & CHA_ID_LS_RNG_MASK) >> CHA_ID_LS_RNG_SHIFT >= 4) {
 		ctrlpriv->rng4_sh_init =
 			rd_reg32(&ctrl->r4tst[0].rdsta);
 		/*
@@ -359,43 +355,6 @@ int inst_rng_imx6(struct platform_device *pdev)
 		/* Enable RDB bit so that RNG works faster */
 		clrsetbits_32(&ctrl->scfgr, 0, SCFGR_RDBENABLE);
 	}
-	return ret;
-}
-
-/*
- * inst_rng_imx8 - RNG instantiation function for i.MX8 platforms
- * @pdev - pointer to the device
- */
-int inst_rng_imx8(struct platform_device *pdev)
-{
-	struct device *ctrldev, *dev;
-	struct caam_drv_private *ctrlpriv;
-	struct caam_ctrl __iomem *ctrl;
-	int ret = 0, rdx;
-	u32 cha_vid_ls;
-
-	dev = &pdev->dev;
-	ctrldev = pdev->dev.parent;
-	ctrlpriv = dev_get_drvdata(ctrldev);
-	ctrl = (struct caam_ctrl __iomem *)ctrlpriv->ctrl;
-
-	rdx = ctrlpriv->first_jr_index;
-	cha_vid_ls = rd_reg32(&ctrlpriv->jr[rdx]->perfmon.cha_id_ls);
-	/*
-	 * If SEC has RNG version >= 4 and RNG state handle has not been
-	 * already instantiated, do RNG instantiation
-	 */
-	if ((cha_vid_ls & CHA_ID_LS_RNG_MASK) >> CHA_ID_LS_RNG_SHIFT >= 4) {
-		/*
-		 * For i.MX8QM rev A0 the secure keys (TDKEK, JDKEK, TDSK),
-		 * are not * generated so gen_sk is set to 1.
-		 */
-		ret = instantiate_rng(0, 1);
-	}
-	/*
-	 * For i.MX8QM rev A0, SH0 and SH1 are instantiated here.
-	 */
-	ctrlpriv->rng4_sh_init = RDSTA_IFMASK;
 	return ret;
 }
 

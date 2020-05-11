@@ -61,13 +61,12 @@ static int nop_set_suspend(struct usb_phy *x, int suspend)
 {
 	struct usb_phy_generic *nop = dev_get_drvdata(x->dev);
 
-	if (IS_ERR(nop->clk))
-		return 0;
-
-	if (suspend)
-		clk_disable_unprepare(nop->clk);
-	else
-		clk_prepare_enable(nop->clk);
+	if (!IS_ERR(nop->clk)) {
+		if (suspend)
+			clk_disable_unprepare(nop->clk);
+		else
+			clk_prepare_enable(nop->clk);
+	}
 
 	return 0;
 }

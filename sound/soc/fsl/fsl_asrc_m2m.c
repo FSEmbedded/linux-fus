@@ -22,7 +22,7 @@ struct fsl_asrc_m2m {
 	unsigned int sg_nodes[2];
 	struct scatterlist sg[2][4];
 
-	enum asrc_word_width word_width[2];
+	snd_pcm_format_t word_format[2];
 	unsigned int rate[2];
 	unsigned int last_period_size;
 	u32 watermark[2];
@@ -80,26 +80,35 @@ static void fsl_asrc_read_last_FIFO(struct fsl_asrc_pair *pair)
 	struct fsl_asrc *asrc_priv = pair->asrc_priv;
 	enum asrc_pair_index index = pair->index;
 	struct dma_block *output = &m2m->dma_block[OUT];
-	u32 i, reg, size, t_size = 0;
-	u32 *reg24 = NULL;
+	u32 i, reg, size, t_size = 0, width;
+	u32 *reg32 = NULL;
 	u16 *reg16 = NULL;
+	u8  *reg24 = NULL;
 
-	if (m2m->word_width[OUT] == ASRC_WIDTH_24_BIT)
-		reg24 = output->dma_vaddr + output->length;
-	else
+	width = snd_pcm_format_physical_width(m2m->word_format[OUT]);
+
+	if (width == 32)
+		reg32 = output->dma_vaddr + output->length;
+	else if (width == 16)
 		reg16 = output->dma_vaddr + output->length;
+	else
+		reg24 = output->dma_vaddr + output->length;
 
 retry:
 	size = fsl_asrc_get_output_FIFO_size(pair);
 
 	for (i = 0; i < size * pair->channels; i++) {
 		regmap_read(asrc_priv->regmap, REG_ASRDO(index), &reg);
-		if (reg24) {
-			*(reg24) = reg;
-			reg24++;
-		} else {
+		if (reg32) {
+			*(reg32) = reg;
+			reg32++;
+		} else if (reg16) {
 			*(reg16) = (u16)reg;
 			reg16++;
+		} else {
+			*reg24++ = (u8)reg;
+			*reg24++ = (u8)(reg >> 8);
+			*reg24++ = (u8)(reg >> 16);
 		}
 	}
 	t_size += size;
@@ -110,10 +119,12 @@ retry:
 	if (t_size > m2m->last_period_size)
 		t_size = m2m->last_period_size;
 
-	if (reg24)
+	if (reg32)
 		output->length += t_size * pair->channels * 4;
-	else
+	else if (reg16)
 		output->length += t_size * pair->channels * 2;
+	else
+		output->length += t_size * pair->channels * 3;
 }
 
 static int fsl_allocate_dma_buf(struct fsl_asrc_pair *pair)
@@ -146,7 +157,7 @@ exit:
 
 static int fsl_asrc_dmaconfig(struct fsl_asrc_pair *pair, struct dma_chan *chan,
 			      u32 dma_addr, void *buf_addr, u32 buf_len,
-			      bool dir, enum asrc_word_width word_width)
+			      bool dir, snd_pcm_format_t word_format)
 {
 	struct dma_async_tx_descriptor *desc = pair->desc[dir];
 	struct fsl_asrc *asrc_priv = pair->asrc_priv;
@@ -158,11 +169,17 @@ static int fsl_asrc_dmaconfig(struct fsl_asrc_pair *pair, struct dma_chan *chan,
 	enum dma_slave_buswidth buswidth;
 	int ret, i;
 
-	switch (word_width) {
-	case ASRC_WIDTH_16_BIT:
+	switch (snd_pcm_format_physical_width(word_format)) {
+	case 8:
+		buswidth = DMA_SLAVE_BUSWIDTH_1_BYTE;
+		break;
+	case 16:
 		buswidth = DMA_SLAVE_BUSWIDTH_2_BYTES;
 		break;
-	case ASRC_WIDTH_24_BIT:
+	case 24:
+		buswidth = DMA_SLAVE_BUSWIDTH_3_BYTES;
+		break;
+	case 32:
 		buswidth = DMA_SLAVE_BUSWIDTH_4_BYTES;
 		break;
 	default:
@@ -174,14 +191,20 @@ static int fsl_asrc_dmaconfig(struct fsl_asrc_pair *pair, struct dma_chan *chan,
 		slave_config.direction = DMA_MEM_TO_DEV;
 		slave_config.dst_addr = dma_addr;
 		slave_config.dst_addr_width = buswidth;
-		slave_config.dst_maxburst =
-			m2m->watermark[IN] * pair->channels;
+		if (asrc_priv->dma_type == DMA_SDMA)
+			slave_config.dst_maxburst =
+				m2m->watermark[IN] * pair->channels;
+		else
+			slave_config.dst_maxburst = 1;
 	} else {
 		slave_config.direction = DMA_DEV_TO_MEM;
 		slave_config.src_addr = dma_addr;
 		slave_config.src_addr_width = buswidth;
-		slave_config.src_maxburst =
-			m2m->watermark[OUT] * pair->channels;
+		if (asrc_priv->dma_type == DMA_SDMA)
+			slave_config.src_maxburst =
+				m2m->watermark[OUT] * pair->channels;
+		else
+			slave_config.src_maxburst = 1;
 	}
 
 	ret = dmaengine_slave_config(chan, &slave_config);
@@ -240,7 +263,6 @@ static int fsl_asrc_prepare_io_buffer(struct fsl_asrc_pair *pair,
 	struct fsl_asrc_m2m *m2m = pair->private;
 	struct fsl_asrc *asrc_priv = pair->asrc_priv;
 	unsigned int *dma_len = &m2m->dma_block[dir].length;
-	enum asrc_word_width width = m2m->word_width[dir];
 	void *dma_vaddr = m2m->dma_block[dir].dma_vaddr;
 	struct dma_chan *dma_chan = pair->dma_chan[dir];
 	unsigned int buf_len, wm = m2m->watermark[dir];
@@ -261,10 +283,7 @@ static int fsl_asrc_prepare_io_buffer(struct fsl_asrc_pair *pair,
 		buf_len = pbuf->output_buffer_length;
 	}
 
-	if (width == ASRC_WIDTH_24_BIT)
-		word_size = 4;
-	else
-		word_size = 2;
+	word_size = snd_pcm_format_physical_width(m2m->word_format[dir]) / 8;
 
 	if (buf_len < word_size * pair->channels * wm ||
 	    buf_len > ASRC_DMA_BUFFER_SIZE ||
@@ -279,15 +298,21 @@ static int fsl_asrc_prepare_io_buffer(struct fsl_asrc_pair *pair,
 		return -EFAULT;
 
 	*dma_len = buf_len;
-	if (dir == OUT)
+	if (dir == OUT) {
 		*dma_len -= last_period_size * word_size * pair->channels;
+		*dma_len = *dma_len / (word_size * pair->channels) *
+				(word_size * pair->channels);
+		if (asrc_priv->dma_type == DMA_EDMA)
+			*dma_len = *dma_len / (word_size * pair->channels * m2m->watermark[OUT])
+					* (word_size * pair->channels * m2m->watermark[OUT]);
+	}
 
 	*sg_nodes = *dma_len / ASRC_MAX_BUFFER_SIZE + 1;
 
 	fifo_addr = asrc_priv->paddr + REG_ASRDx(dir, index);
 
 	return fsl_asrc_dmaconfig(pair, dma_chan, fifo_addr, dma_vaddr,
-				  *dma_len, dir, width);
+				  *dma_len, dir, m2m->word_format[dir]);
 }
 
 static int fsl_asrc_prepare_buffer(struct fsl_asrc_pair *pair,
@@ -320,7 +345,7 @@ int fsl_asrc_process_buffer_pre(struct completion *complete,
 		return -ETIME;
 	} else if (signal_pending(current)) {
 		pr_err("%sput task forcibly aborted\n", DIR_STR(dir));
-		return -EBUSY;
+		return -ERESTARTSYS;
 	}
 
 	return 0;
@@ -503,6 +528,12 @@ static long fsl_asrc_ioctl_req_pair(struct fsl_asrc_pair *pair,
 	pair->channels = req.chn_num;
 
 	req.index = pair->index;
+	req.supported_in_format = FSL_ASRC_FORMATS_TX;
+	req.supported_out_format = FSL_ASRC_FORMATS_RX;
+	if (asrc_priv->dma_type == DMA_EDMA) {
+		req.supported_in_format &= ~SNDRV_PCM_FMTBIT_S24_3LE;
+		req.supported_out_format &= ~SNDRV_PCM_FMTBIT_S24_3LE;
+	}
 
 	ret = copy_to_user(user, &req, sizeof(req));
 	if (ret) {
@@ -546,18 +577,13 @@ static long fsl_asrc_ioctl_config_pair(struct fsl_asrc_pair *pair,
 	m2m->dma_block[IN].length = ASRC_DMA_BUFFER_SIZE;
 	m2m->dma_block[OUT].length = ASRC_DMA_BUFFER_SIZE;
 
-	m2m->word_width[IN] = config.input_word_width;
-	m2m->word_width[OUT] = config.output_word_width;
+	m2m->word_format[IN] = config.input_format;
+	m2m->word_format[OUT] = config.output_format;
 
 	m2m->rate[IN] = config.input_sample_rate;
 	m2m->rate[OUT] = config.output_sample_rate;
 
-	if (m2m->rate[OUT] >= m2m->rate[IN] * 8)
-		m2m->last_period_size = (m2m->rate[OUT] / m2m->rate[IN]) * 5;
-	else if (m2m->rate[OUT] > m2m->rate[IN])
-		m2m->last_period_size = ASRC_OUTPUT_LAST_SAMPLE_MAX;
-	else
-		m2m->last_period_size = ASRC_OUTPUT_LAST_SAMPLE;
+	m2m->last_period_size = ASRC_OUTPUT_LAST_SAMPLE;
 
 	ret = fsl_allocate_dma_buf(pair);
 	if (ret) {
@@ -623,6 +649,41 @@ static long fsl_asrc_ioctl_release_pair(struct fsl_asrc_pair *pair,
 	return 0;
 }
 
+static long fsl_asrc_calc_last_period_size(struct fsl_asrc_pair *pair,
+					struct asrc_convert_buffer *pbuf)
+{
+	struct fsl_asrc_m2m *m2m = pair->private;
+	struct fsl_asrc *asrc_priv = pair->asrc_priv;
+	unsigned int out_length;
+	unsigned int in_width, out_width;
+	unsigned int channels = pair->channels;
+	unsigned int in_samples, out_samples;
+	unsigned int last_period_size;
+	unsigned int remain;
+
+	in_width = snd_pcm_format_physical_width(m2m->word_format[IN]) / 8;
+	out_width = snd_pcm_format_physical_width(m2m->word_format[OUT]) / 8;
+
+	in_samples = pbuf->input_buffer_length / (in_width * channels);
+
+	out_samples = (m2m->rate[OUT] * in_samples / m2m->rate[IN]);
+
+	out_length = out_samples * out_width * channels;
+
+	last_period_size = pbuf->output_buffer_length / (out_width * channels)
+					- out_samples;
+
+	m2m->last_period_size = last_period_size + 1 + ASRC_OUTPUT_LAST_SAMPLE;
+
+	if (asrc_priv->dma_type == DMA_EDMA) {
+		remain = pbuf->output_buffer_length % (out_width * channels * m2m->watermark[OUT]);
+		if (remain)
+			m2m->last_period_size += remain / (out_width * channels);
+	}
+
+	return 0;
+}
+
 static long fsl_asrc_ioctl_convert(struct fsl_asrc_pair *pair,
 				   void __user *user)
 {
@@ -637,6 +698,8 @@ static long fsl_asrc_ioctl_convert(struct fsl_asrc_pair *pair,
 		pair_err("failed to get buf from user space: %ld\n", ret);
 		return ret;
 	}
+
+	fsl_asrc_calc_last_period_size(pair, &buf);
 
 	ret = fsl_asrc_prepare_buffer(pair, &buf);
 	if (ret) {
@@ -655,7 +718,8 @@ static long fsl_asrc_ioctl_convert(struct fsl_asrc_pair *pair,
 
 	ret = fsl_asrc_process_buffer(pair, &buf);
 	if (ret) {
-		pair_err("failed to process buffer: %ld\n", ret);
+		if (ret != -ERESTARTSYS)
+			pair_err("failed to process buffer: %ld\n", ret);
 		return ret;
 	}
 
@@ -923,6 +987,7 @@ static int fsl_asrc_m2m_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
 static void fsl_asrc_m2m_suspend(struct fsl_asrc *asrc_priv)
 {
 	struct fsl_asrc_pair *pair;
@@ -953,3 +1018,29 @@ static void fsl_asrc_m2m_suspend(struct fsl_asrc *asrc_priv)
 		spin_unlock_irqrestore(&asrc_priv->lock, lock_flags);
 	}
 }
+
+static void fsl_asrc_m2m_resume(struct fsl_asrc *asrc_priv)
+{
+	struct fsl_asrc_pair *pair;
+	struct fsl_asrc_m2m *m2m;
+	unsigned long lock_flags;
+	enum asrc_pair_index index;
+	int i, j;
+
+	for (i = 0; i < ASRC_PAIR_MAX_NUM; i++) {
+		spin_lock_irqsave(&asrc_priv->lock, lock_flags);
+		pair = asrc_priv->pair[i];
+		if (!pair || !pair->private) {
+			spin_unlock_irqrestore(&asrc_priv->lock, lock_flags);
+			continue;
+		}
+		m2m = pair->private;
+		index = pair->index;
+
+		for (j = 0; j < pair->channels * 4; j++)
+			regmap_write(asrc_priv->regmap, REG_ASRDI(index), 0);
+
+		spin_unlock_irqrestore(&asrc_priv->lock, lock_flags);
+	}
+}
+#endif

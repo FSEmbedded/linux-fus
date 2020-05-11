@@ -41,9 +41,16 @@ extern "C" {
 /* 8 bpp Red */
 #define DRM_FORMAT_R8		fourcc_code('R', '8', ' ', ' ') /* [7:0] R */
 
+/* 16 bpp Red */
+#define DRM_FORMAT_R16		fourcc_code('R', '1', '6', ' ') /* [15:0] R little endian */
+
 /* 16 bpp RG */
 #define DRM_FORMAT_RG88		fourcc_code('R', 'G', '8', '8') /* [15:0] R:G 8:8 little endian */
 #define DRM_FORMAT_GR88		fourcc_code('G', 'R', '8', '8') /* [15:0] G:R 8:8 little endian */
+
+/* 32 bpp RG */
+#define DRM_FORMAT_RG1616	fourcc_code('R', 'G', '3', '2') /* [31:0] R:G 16:16 little endian */
+#define DRM_FORMAT_GR1616	fourcc_code('G', 'R', '3', '2') /* [31:0] G:R 16:16 little endian */
 
 /* 8 bpp RGB */
 #define DRM_FORMAT_RGB332	fourcc_code('R', 'G', 'B', '8') /* [7:0] R:G:B 3:3:2 */
@@ -105,6 +112,20 @@ extern "C" {
 #define DRM_FORMAT_VYUY		fourcc_code('V', 'Y', 'U', 'Y') /* [31:0] Y1:Cb0:Y0:Cr0 8:8:8:8 little endian */
 
 #define DRM_FORMAT_AYUV		fourcc_code('A', 'Y', 'U', 'V') /* [31:0] A:Y:Cb:Cr 8:8:8:8 little endian */
+
+/*
+ * 2 plane RGB + A
+ * index 0 = RGB plane, same format as the corresponding non _A8 format has
+ * index 1 = A plane, [7:0] A
+ */
+#define DRM_FORMAT_XRGB8888_A8	fourcc_code('X', 'R', 'A', '8')
+#define DRM_FORMAT_XBGR8888_A8	fourcc_code('X', 'B', 'A', '8')
+#define DRM_FORMAT_RGBX8888_A8	fourcc_code('R', 'X', 'A', '8')
+#define DRM_FORMAT_BGRX8888_A8	fourcc_code('B', 'X', 'A', '8')
+#define DRM_FORMAT_RGB888_A8	fourcc_code('R', '8', 'A', '8')
+#define DRM_FORMAT_BGR888_A8	fourcc_code('B', '8', 'A', '8')
+#define DRM_FORMAT_RGB565_A8	fourcc_code('R', '5', 'A', '8')
+#define DRM_FORMAT_BGR565_A8	fourcc_code('B', '5', 'A', '8')
 
 /*
  * 2 plane YCbCr
@@ -244,6 +265,26 @@ extern "C" {
  * in pixel depends on the pixel depth.
  */
 #define I915_FORMAT_MOD_Yf_TILED fourcc_mod_code(INTEL, 3)
+
+/*
+ * Intel color control surface (CCS) for render compression
+ *
+ * The framebuffer format must be one of the 8:8:8:8 RGB formats.
+ * The main surface will be plane index 0 and must be Y/Yf-tiled,
+ * the CCS will be plane index 1.
+ *
+ * Each CCS tile matches a 1024x512 pixel area of the main surface.
+ * To match certain aspects of the 3D hardware the CCS is
+ * considered to be made up of normal 128Bx32 Y tiles, Thus
+ * the CCS pitch must be specified in multiples of 128 bytes.
+ *
+ * In reality the CCS tile appears to be a 64Bx64 Y tile, composed
+ * of QWORD (8 bytes) chunks instead of OWORD (16 bytes) chunks.
+ * But that fact is not relevant unless the memory is accessed
+ * directly.
+ */
+#define I915_FORMAT_MOD_Y_TILED_CCS	fourcc_mod_code(INTEL, 4)
+#define I915_FORMAT_MOD_Yf_TILED_CCS	fourcc_mod_code(INTEL, 5)
 
 /*
  * Tiled, NV12MT, grouped in 64 (pixels) x 32 (lines) -sized macroblocks

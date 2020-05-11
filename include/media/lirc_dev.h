@@ -12,8 +12,6 @@
 #define MAX_IRCTL_DEVICES 8
 #define BUFLEN            16
 
-#define mod(n, div) ((n) % (div))
-
 #include <linux/slab.h>
 #include <linux/fs.h>
 #include <linux/ioctl.h>
@@ -88,11 +86,6 @@ static inline int lirc_buffer_full(struct lirc_buffer *buf)
 static inline int lirc_buffer_empty(struct lirc_buffer *buf)
 {
 	return !lirc_buffer_len(buf);
-}
-
-static inline int lirc_buffer_available(struct lirc_buffer *buf)
-{
-	return buf->size - (lirc_buffer_len(buf) / buf->chunk_size);
 }
 
 static inline unsigned int lirc_buffer_read(struct lirc_buffer *buf,
@@ -232,7 +225,4 @@ unsigned int lirc_dev_fop_poll(struct file *file, poll_table *wait);
 long lirc_dev_fop_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
 ssize_t lirc_dev_fop_read(struct file *file, char __user *buffer, size_t length,
 			  loff_t *ppos);
-ssize_t lirc_dev_fop_write(struct file *file, const char __user *buffer,
-			   size_t length, loff_t *ppos);
-
 #endif

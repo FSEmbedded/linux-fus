@@ -49,7 +49,7 @@ struct fakelb_phy {
 
 static int fakelb_hw_ed(struct ieee802154_hw *hw, u8 *level)
 {
-	BUG_ON(!level);
+	WARN_ON(!level);
 	*level = 0xbe;
 
 	return 0;
@@ -218,7 +218,7 @@ static int fakelb_probe(struct platform_device *pdev)
 			goto err_slave;
 	}
 
-	dev_info(&pdev->dev, "added ieee802154 hardware\n");
+	dev_info(&pdev->dev, "added %i fake ieee802154 hardware devices\n", numlbs);
 	return 0;
 
 err_slave:

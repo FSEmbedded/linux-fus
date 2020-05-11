@@ -337,7 +337,7 @@ static const struct sdhci_ops pxav3_sdhci_ops = {
 	.set_uhs_signaling = pxav3_set_uhs_signaling,
 };
 
-static struct sdhci_pltfm_data sdhci_pxav3_pdata = {
+static const struct sdhci_pltfm_data sdhci_pxav3_pdata = {
 	.quirks = SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK
 		| SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC
 		| SDHCI_QUIRK_32BIT_ADMA_SIZE
@@ -476,8 +476,6 @@ static int sdhci_pxav3_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to add host\n");
 		goto err_add_host;
 	}
-
-	platform_set_drvdata(pdev, host);
 
 	if (host->mmc->pm_caps & MMC_PM_WAKE_SDIO_IRQ)
 		device_init_wakeup(&pdev->dev, 1);

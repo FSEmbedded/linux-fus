@@ -87,7 +87,7 @@
 #define IPHETH_CARRIER_CHECK_TIMEOUT round_jiffies_relative(1 * HZ)
 #define IPHETH_CARRIER_ON       0x04
 
-static struct usb_device_id ipheth_table[] = {
+static const struct usb_device_id ipheth_table[] = {
 	{ USB_DEVICE_AND_INTERFACE_INFO(
 		USB_VENDOR_APPLE, USB_PRODUCT_IPHONE,
 		IPHETH_USBINTF_CLASS, IPHETH_USBINTF_SUBCLASS,
@@ -140,7 +140,6 @@ struct ipheth_device {
 	struct usb_device *udev;
 	struct usb_interface *intf;
 	struct net_device *net;
-	struct sk_buff *tx_skb;
 	struct urb *tx_urb;
 	struct urb *rx_urb;
 	unsigned char *tx_buf;
@@ -229,6 +228,7 @@ static void ipheth_rcvbulk_callback(struct urb *urb)
 	case -ENOENT:
 	case -ECONNRESET:
 	case -ESHUTDOWN:
+	case -EPROTO:
 		return;
 	case 0:
 		break;
@@ -253,7 +253,7 @@ static void ipheth_rcvbulk_callback(struct urb *urb)
 		return;
 	}
 
-	memcpy(skb_put(skb, len), buf, len);
+	skb_put_data(skb, buf, len);
 	skb->dev = dev->net;
 	skb->protocol = eth_type_trans(skb, dev->net);
 
@@ -280,7 +280,6 @@ static void ipheth_sndbulk_callback(struct urb *urb)
 		dev_err(&dev->intf->dev, "%s: urb status: %d\n",
 		__func__, status);
 
-	dev_kfree_skb_irq(dev->tx_skb);
 	netif_wake_queue(dev->net);
 }
 
@@ -410,7 +409,7 @@ static int ipheth_tx(struct sk_buff *skb, struct net_device *net)
 	if (skb->len > IPHETH_BUF_SIZE) {
 		WARN(1, "%s: skb too large: %d bytes\n", __func__, skb->len);
 		dev->net->stats.tx_dropped++;
-		dev_kfree_skb_irq(skb);
+		dev_kfree_skb_any(skb);
 		return NETDEV_TX_OK;
 	}
 
@@ -430,12 +429,11 @@ static int ipheth_tx(struct sk_buff *skb, struct net_device *net)
 		dev_err(&dev->intf->dev, "%s: usb_submit_urb: %d\n",
 			__func__, retval);
 		dev->net->stats.tx_errors++;
-		dev_kfree_skb_irq(skb);
+		dev_kfree_skb_any(skb);
 	} else {
-		dev->tx_skb = skb;
-
 		dev->net->stats.tx_packets++;
 		dev->net->stats.tx_bytes += skb->len;
+		dev_consume_skb_any(skb);
 		netif_stop_queue(net);
 	}
 

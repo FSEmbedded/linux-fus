@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017-2019 NXP
  *
  * SPDX-License-Identifier:     GPL-2.0+
  */
@@ -27,48 +27,52 @@
 
 /* Local Functions */
 
-sc_err_t sc_irq_enable(sc_ipc_t ipc, sc_rsrc_t resource,
-		       sc_irq_group_t group, uint32_t mask, bool enable)
+sc_err_t sc_irq_enable(sc_ipc_t ipc, sc_rsrc_t resource, sc_irq_group_t group,
+		       uint32_t mask, sc_bool_t enable)
 {
 	sc_rpc_msg_t msg;
-	uint8_t result;
+	sc_err_t err;
 
 	RPC_VER(&msg) = SC_RPC_VERSION;
-	RPC_SVC(&msg) = (uint8_t)SC_RPC_SVC_IRQ;
-	RPC_FUNC(&msg) = (uint8_t)IRQ_FUNC_ENABLE;
-	RPC_U32(&msg, 0) = mask;
-	RPC_U16(&msg, 4) = resource;
-	RPC_U8(&msg, 6) = group;
-	RPC_U8(&msg, 7) = (uint8_t)enable;
-	RPC_SIZE(&msg) = 3;
+	RPC_SIZE(&msg) = 3U;
+	RPC_SVC(&msg) = U8(SC_RPC_SVC_IRQ);
+	RPC_FUNC(&msg) = U8(IRQ_FUNC_ENABLE);
 
-	sc_call_rpc(ipc, &msg, false);
+	RPC_U32(&msg, 0U) = U32(mask);
+	RPC_U16(&msg, 4U) = U16(resource);
+	RPC_U8(&msg, 6U) = U8(group);
+	RPC_U8(&msg, 7U) = B2U8(enable);
 
-	result = RPC_R8(&msg);
-	return (sc_err_t)result;
+	sc_call_rpc(ipc, &msg, SC_FALSE);
+
+	err = (sc_err_t)RPC_R8(&msg);
+
+	return err;
 }
 
-sc_err_t sc_irq_status(sc_ipc_t ipc, sc_rsrc_t resource,
-		       sc_irq_group_t group, uint32_t *status)
+sc_err_t sc_irq_status(sc_ipc_t ipc, sc_rsrc_t resource, sc_irq_group_t group,
+		       uint32_t *status)
 {
 	sc_rpc_msg_t msg;
-	uint8_t result;
+	sc_err_t err;
 
 	RPC_VER(&msg) = SC_RPC_VERSION;
-	RPC_SVC(&msg) = (uint8_t)SC_RPC_SVC_IRQ;
-	RPC_FUNC(&msg) = (uint8_t)IRQ_FUNC_STATUS;
-	RPC_U16(&msg, 0) = resource;
-	RPC_U8(&msg, 2) = group;
-	RPC_SIZE(&msg) = 2;
+	RPC_SIZE(&msg) = 2U;
+	RPC_SVC(&msg) = U8(SC_RPC_SVC_IRQ);
+	RPC_FUNC(&msg) = U8(IRQ_FUNC_STATUS);
 
-	sc_call_rpc(ipc, &msg, false);
+	RPC_U16(&msg, 0U) = U16(resource);
+	RPC_U8(&msg, 2U) = U8(group);
+
+	sc_call_rpc(ipc, &msg, SC_FALSE);
+
+	err = (sc_err_t)RPC_R8(&msg);
 
 	if (status != NULL) {
-		*status = RPC_U32(&msg, 0);
+		*status = (uint32_t)RPC_U32(&msg, 0U);
 	}
 
-	result = RPC_R8(&msg);
-	return (sc_err_t)result;
+	return err;
 }
 
 /**@}*/

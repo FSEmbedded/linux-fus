@@ -46,7 +46,6 @@ int mx21_clocks_init(unsigned long lref, unsigned long fref);
 int mx27_clocks_init(unsigned long fref);
 int mx31_clocks_init(unsigned long fref);
 int mx35_clocks_init(void);
-int mx31_clocks_init_dt(void);
 struct platform_device *mxc_register_gpio(char *name, int id,
 	resource_size_t iobase, resource_size_t iosize, int irq, int irq_high);
 void mxc_set_cpu_type(unsigned int type);
@@ -213,7 +212,12 @@ static inline void imx6_suspend(void __iomem *ocram_vbase) {}
 static inline void imx7_suspend(void __iomem *ocram_vbase) {}
 static inline void imx7ulp_suspend(void __iomem *ocram_vbase) {}
 #endif
+
+#ifdef CONFIG_SOC_IMX7ULP
 void pm_shutdown_notify_m4(void);
+#else
+static inline void pm_shutdown_notify_m4(void) {}
+#endif
 
 void imx6_pm_ccm_init(const char *ccm_compat);
 void imx6q_pm_init(void);
@@ -225,6 +229,7 @@ void imx6ull_pm_init(void);
 void imx7d_pm_init(void);
 void imx7ulp_pm_init(void);
 void imx7ulp_enable_nmi(void);
+void imx7ulp_poweroff(void);
 void imx6q_pm_set_ccm_base(void __iomem *base);
 
 #ifdef CONFIG_PM

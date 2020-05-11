@@ -35,13 +35,17 @@
 #include <media/v4l2-ioctl.h>
 #include <media/v4l2-mem2mem.h>
 #include <media/videobuf2-core.h>
+#include <linux/mfd/syscon.h>
+#include <linux/regmap.h>
 
 #include "mxc-mipi-csi2.h"
+#include "mxc-mipi-csi2-sam.h"
 #include "mxc-isi-core.h"
 #include "mxc-isi-hw.h"
+#include "hdmi/mxc-hdmi-rx.h"
 
 #define MXC_MD_DRIVER_NAME	"mxc-md"
-#define MXC_MAX_MIPI_SENSORS 2
+#define MXC_MAX_SENSORS 3
 
 #define MJPEG_DEC_OF_NODE_NAME	"jpegdec"
 #define MJPEG_ENC_OF_NODE_NAME	"jpegenc"
@@ -52,7 +56,7 @@
 #define GRP_ID_MXC_SENSOR		(1 << 8)
 #define GRP_ID_MXC_ISI			(1 << 9)
 #define GRP_ID_MXC_MIPI_CSI2	(1 << 11)
-#define GRP_ID_MXC_HDMI_IN		(1 << 12)
+#define GRP_ID_MXC_HDMI_RX		(1 << 12)
 #define GRP_ID_MXC_MJPEG_DEC	(1 << 13)
 #define GRP_ID_MXC_MJPEG_ENC	(1 << 14)
 #define GRP_ID_MXC_PARALLEL_CSI (1 << 15)
@@ -61,18 +65,26 @@ enum mxc_subdev_index {
 	IDX_SENSOR,
 	IDX_ISI,
 	IDX_MIPI_CSI2,
-	IDX_HDMI_IN,
+	IDX_HDMI_RX,
 	IDX_MJPEG_ENC,
 	IDX_MJPEG_DEC,
 	IDX_PARALLEL_CSI,
 	IDX_MAX,
 };
 
+enum platform {
+	MXC_IMX8QM = 0,
+	MXC_IMX8QXP,
+	MXC_IMX8MN,
+	INVALID_SOC,
+};
+
 struct mxc_sensor_info {
 	int				id;
 	struct v4l2_subdev		*sd;
 	struct v4l2_async_subdev asd;
-//	struct mxc_isi_dev *host;
+	bool mipi_mode;
+	/* struct mxc_isi_dev *host; */
 };
 
 struct mxc_mjpeg_dec{
@@ -86,23 +98,28 @@ struct mxc_mjpeg_enc{
 };
 
 struct mxc_md {
-	struct mxc_isi_dev *mxc_isi[MXC_ISI_MAX_DEVS];
-	struct mxc_hdmi_in_dev *hdmi_in;
-	struct mxc_parallel_csi_dev *pcsidev;
-	struct mxc_mipi_csi2_dev *mipi_csi2[MXC_MIPI_CSI2_MAX_DEVS];
-	struct mxc_sensor_info sensor[MXC_MAX_MIPI_SENSORS];
-	struct mxc_mjpeg_dec  *mjpeg_dec;
-	struct mxc_mjpeg_enc  *mjpeg_enc;
+	struct mxc_isi_dev		*mxc_isi[MXC_ISI_MAX_DEVS];
+	struct mxc_hdmi_rx_dev		*hdmi_rx;
+	struct mxc_parallel_csi_dev	*pcsidev;
+	struct mxc_mipi_csi2_dev	*mipi_csi2[MXC_MIPI_CSI2_MAX_DEVS];
+	struct csi_state		*state[MXC_MIPI_CSI2_MAX_DEVS];
+	struct mxc_sensor_info		sensor[MXC_MAX_SENSORS];
+	struct mxc_mjpeg_dec		*mjpeg_dec;
+	struct mxc_mjpeg_enc		*mjpeg_enc;
 
-	int num_sensors;
+	int  link_status;
+	int  num_sensors;
+	u32  nr_isi;
 	bool parallel_csi;
 
-	struct media_device media_dev;
-	struct v4l2_device v4l2_dev;
-	struct platform_device *pdev;
+	struct media_device	media_dev;
+	struct v4l2_device	v4l2_dev;
+	struct platform_device	*pdev;
 
-	struct v4l2_async_notifier subdev_notifier;
-	struct v4l2_async_subdev *async_subdevs[MXC_MAX_MIPI_SENSORS];
+	struct v4l2_async_notifier	subdev_notifier;
+	struct v4l2_async_subdev	*async_subdevs[MXC_MAX_SENSORS];
+
+	enum platform plat;
 };
 
 static inline struct mxc_md *notifier_to_mxc_md(struct v4l2_async_notifier *n)

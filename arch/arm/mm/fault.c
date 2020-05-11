@@ -8,7 +8,7 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-#include <linux/module.h>
+#include <linux/extable.h>
 #include <linux/signal.h>
 #include <linux/mm.h>
 #include <linux/hardirq.h>
@@ -16,11 +16,11 @@
 #include <linux/kprobes.h>
 #include <linux/uaccess.h>
 #include <linux/page-flags.h>
-#include <linux/sched.h>
+#include <linux/sched/signal.h>
+#include <linux/sched/debug.h>
 #include <linux/highmem.h>
 #include <linux/perf_event.h>
 
-#include <asm/cp15.h>
 #include <asm/exception.h>
 #include <asm/pgtable.h>
 #include <asm/system_misc.h>
@@ -163,6 +163,9 @@ __do_user_fault(struct task_struct *tsk, unsigned long addr,
 		struct pt_regs *regs)
 {
 	struct siginfo si;
+
+	if (addr > TASK_SIZE)
+		harden_branch_predictor();
 
 #ifdef CONFIG_DEBUG_USER
 	if (((user_debug & UDBG_SEGV) && (sig == SIGSEGV)) ||
@@ -396,33 +399,9 @@ no_context:
 	__do_kernel_fault(mm, addr, fsr, regs);
 	return 0;
 }
-
-static int __maybe_unused
-do_pabt_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
-{
-#ifdef CONFIG_HARDEN_BRANCH_PREDICTOR
-	if (addr > TASK_SIZE) {
-		switch (read_cpuid_part()) {
-		case ARM_CPU_PART_CORTEX_A8:
-		case ARM_CPU_PART_CORTEX_A9:
-		case ARM_CPU_PART_CORTEX_A12:
-		case ARM_CPU_PART_CORTEX_A17:
-			write_sysreg(0, BPIALL);
-			break;
-		}
-	}
-#endif
-	return do_page_fault(addr, fsr, regs);
-}
 #else					/* CONFIG_MMU */
 static int
 do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
-{
-	return 0;
-}
-
-static int
-do_pabt_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 {
 	return 0;
 }

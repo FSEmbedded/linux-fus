@@ -67,6 +67,8 @@
 /* USB3_SSPHY_STATUS */
 #define PHY_REFCLK_REQ		(1 << 0)
 
+/* USB2_PHY_CTRL2 */
+#define IMX8QXP_C0_FLAG		0x0000000f
 
 /* PHY register definition */
 #define PHY_PMA_CMN_CTRL1			(0xC800 * 4)
@@ -168,5 +170,7 @@
 #define CFG_RXDET_P3_EN		(1 << 15)
 
 /* XECP_PM_PMCSR */
-#define PS_D0			(1 << 0)
+#define PS_MASK			(3 << 0)
+#define PS_D0			0
+#define PS_D1			(1 << 0)
 #endif /* __DRIVERS_USB_CDNS3_NXP_H */

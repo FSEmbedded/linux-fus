@@ -12,6 +12,7 @@ Required properties:
 	"fsl,imx7d-usb"
 	"fsl,imx7ulp-usb"
 	"fsl,imx8qm-usb"
+	"fsl,imx8mm-usb"
 	"lsi,zevio-usb"
 	"qcom,ci-hdrc"
 	"chipidea,usb2"
@@ -79,6 +80,7 @@ Optional properties:
   maximum_periodic_data_per_frame. The use case is multiple transactions, but
   less frame rate.
 - ci-disable-lpm: Some chipidea hardware need to disable low power mode
+- phy-charger-detection: enable USB PHY charger detection function
 
 i.mx specific properties
 - fsl,usbmisc: phandler of non-core register device, with one
@@ -102,6 +104,11 @@ i.mx specific properties
 - power-polarity-active-high: add this property if port power function of ehci
   is used to enable vbus, and the vbus power supply chip enable signal is high
   active.
+- picophy,pre-emp-curr-control: picophy is used for imx7d and imx845.
+  HS Treansmitter Pre-Emphasis Current Control may need to tune for USB signal
+  See USBNC_n_PHY_CFG1 for detail.
+- picophy,dc-vol-level-adjust: HS DC Voltage Level Adjustment may need to
+  turn for USB signal, see USBNC_n_PHY_CFG1 for detail.
 
 Examples:
 

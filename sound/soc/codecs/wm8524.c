@@ -46,7 +46,7 @@ static const struct snd_soc_dapm_route wm8524_dapm_routes[] = {
 	{ "LINEVOUTR", NULL, "DAC" },
 };
 
-static struct {
+static const struct {
 	int value;
 	int ratio;
 } lrclk_ratios[WM8524_NUM_RATES] = {
@@ -64,6 +64,7 @@ static int wm8524_startup(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_codec *codec = dai->codec;
 	struct wm8524_priv *wm8524 = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 
 	/* The set of sample rates that can be supported depends on the
 	 * MCLK supplied to the CODEC - enforce this.
@@ -74,11 +75,13 @@ static int wm8524_startup(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-	snd_pcm_hw_constraint_list(substream->runtime, 0,
-				   SNDRV_PCM_HW_PARAM_RATE,
-				   &wm8524->rate_constraint);
+	if (!rtd->dai_link->be_hw_params_fixup)
+		snd_pcm_hw_constraint_list(substream->runtime, 0,
+					   SNDRV_PCM_HW_PARAM_RATE,
+					   &wm8524->rate_constraint);
 
 	gpiod_set_value_cansleep(wm8524->mute, 1);
+
 	return 0;
 }
 
@@ -89,13 +92,6 @@ static void wm8524_shutdown(struct snd_pcm_substream *substream,
 	struct wm8524_priv *wm8524 = snd_soc_codec_get_drvdata(codec);
 
 	gpiod_set_value_cansleep(wm8524->mute, 0);
-}
-
-static int wm8524_hw_params(struct snd_pcm_substream *substream,
-			    struct snd_pcm_hw_params *params,
-			    struct snd_soc_dai *dai)
-{
-	return 0;
 }
 
 static int wm8524_set_dai_sysclk(struct snd_soc_dai *codec_dai,
@@ -124,7 +120,7 @@ static int wm8524_set_dai_sysclk(struct snd_soc_dai *codec_dai,
 		case 96000:
 		case 176400:
 		case 192000:
-			dev_err(codec->dev, "Supported sample rate: %dHz\n",
+			dev_dbg(codec->dev, "Supported sample rate: %dHz\n",
 				val);
 			wm8524->rate_constraint_list[j++] = val;
 			wm8524->rate_constraint.count++;
@@ -142,6 +138,20 @@ static int wm8524_set_dai_sysclk(struct snd_soc_dai *codec_dai,
 	return 0;
 }
 
+static int wm8524_set_fmt(struct snd_soc_dai *codec_dai, unsigned int fmt)
+{
+	fmt &= (SND_SOC_DAIFMT_FORMAT_MASK | SND_SOC_DAIFMT_INV_MASK |
+		SND_SOC_DAIFMT_MASTER_MASK);
+
+	if (fmt != (SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
+		    SND_SOC_DAIFMT_CBS_CFS)) {
+		dev_err(codec_dai->dev, "Invalid DAI format\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int wm8524_mute_stream(struct snd_soc_dai *dai, int mute, int stream)
 {
 	struct wm8524_priv *wm8524 = snd_soc_codec_get_drvdata(dai->codec);
@@ -154,13 +164,14 @@ static int wm8524_mute_stream(struct snd_soc_dai *dai, int mute, int stream)
 
 #define WM8524_RATES SNDRV_PCM_RATE_8000_192000
 
-#define WM8524_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE)
+#define WM8524_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE |\
+			SNDRV_PCM_FMTBIT_S32_LE)
 
 static const struct snd_soc_dai_ops wm8524_dai_ops = {
 	.startup	= wm8524_startup,
 	.shutdown	= wm8524_shutdown,
-	.hw_params	= wm8524_hw_params,
 	.set_sysclk	= wm8524_set_dai_sysclk,
+	.set_fmt	= wm8524_set_fmt,
 	.mute_stream	= wm8524_mute_stream,
 };
 
@@ -206,12 +217,14 @@ MODULE_DEVICE_TABLE(of, wm8524_of_match);
 
 static int wm8524_codec_probe(struct platform_device *pdev)
 {
+	struct wm8524_priv *wm8524;
 	int ret;
-	struct wm8524_priv *wm8524 = devm_kzalloc(&pdev->dev,
-						  sizeof(struct wm8524_priv),
+
+	wm8524 = devm_kzalloc(&pdev->dev, sizeof(struct wm8524_priv),
 						  GFP_KERNEL);
 	if (wm8524 == NULL)
 		return -ENOMEM;
+
 	platform_set_drvdata(pdev, wm8524);
 
 	wm8524->mute = devm_gpiod_get(&pdev->dev, "wlf,mute", GPIOD_OUT_LOW);
@@ -223,10 +236,8 @@ static int wm8524_codec_probe(struct platform_device *pdev)
 
 	ret =  snd_soc_register_codec(&pdev->dev,
 			&soc_codec_dev_wm8524, &wm8524_dai, 1);
-	if (ret < 0) {
+	if (ret < 0)
 		dev_err(&pdev->dev, "Failed to register codec: %d\n", ret);
-		snd_soc_unregister_platform(&pdev->dev);
-	}
 
 	return ret;
 }
@@ -242,7 +253,6 @@ static struct platform_driver wm8524_codec_driver = {
 	.remove		= wm8524_codec_remove,
 	.driver		= {
 		.name	= "wm8524-codec",
-		// TODO .pm = XXX;
 		.of_match_table = wm8524_of_match,
 	},
 };

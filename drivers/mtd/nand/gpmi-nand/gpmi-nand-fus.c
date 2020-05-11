@@ -34,7 +34,7 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/mtd/partitions.h>
-#include <linux/mtd/nand.h>
+#include <linux/mtd/rawnand.h>
 #include <linux/mxs-dma-ext.h>		/* struct mxs_dma_ccw, CCW_*, ... */
 #include <linux/platform_device.h>	/* GPMI_ */
 #include <linux/dma-mapping.h>		/* dma_alloc_coherent(), ... */

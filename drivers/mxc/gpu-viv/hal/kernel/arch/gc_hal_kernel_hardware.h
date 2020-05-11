@@ -215,6 +215,9 @@ struct _gckHARDWARE
     gctUINT32                   minFscaleValue;
     gctUINT                     waitCount;
 
+    gctUINT32                   mcClk;
+    gctUINT32                   shClk;
+
     gctPOINTER                  pendingEvent;
 
     /* Function used by gckHARDWARE. */
@@ -223,6 +226,7 @@ struct _gckHARDWARE
     gctSIZE_T                   mmuFuncBytes;
 
     gctPHYS_ADDR                auxFuncPhysical;
+    gctPHYS_ADDR                auxPhysHandle;
     gctPOINTER                  auxFuncLogical;
     gctUINT32                   auxFuncAddress;
     gctSIZE_T                   auxFuncBytes;
@@ -238,6 +242,7 @@ struct _gckHARDWARE
 
     gctPOINTER                  featureDatabase;
     gctBOOL                     hasAsyncFe;
+    gctBOOL                     hasL2Cache;
 
     gcsHARDWARE_SIGNATURE       signature;
 
@@ -333,6 +338,27 @@ gckHARDWARE_DummyDraw(
     IN gctUINT32 Address,
     IN gceDUMMY_DRAW_TYPE DummyDrawType,
     IN OUT gctUINT32 * Bytes
+    );
+
+gceSTATUS
+gckHARDWARE_EnterQueryClock(
+    IN gckHARDWARE Hardware,
+    OUT gctUINT64 *McStart,
+    OUT gctUINT64 *ShStart
+    );
+
+gceSTATUS
+gckHARDWARE_ExitQueryClock(
+    IN gckHARDWARE Hardware,
+    IN gctUINT64 McStart,
+    IN gctUINT64 ShStart,
+    OUT gctUINT32 *McClk,
+    OUT gctUINT32 *ShClk
+    );
+
+gceSTATUS
+gckHARDWARE_QueryFrequency(
+    IN gckHARDWARE Hardware
     );
 
 #define gcmkWRITE_MEMORY(logical, data) \

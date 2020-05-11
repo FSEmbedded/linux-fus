@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright (C) 2016-2017 Cadence Design Systems, Inc.
+ * Copyright (C) 2016-2018 Cadence Design Systems, Inc.
  * All rights reserved worldwide.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -62,6 +62,61 @@
  */
 typedef u8 CDN_API_PWR_MODE;
 typedef u32 CDN_EVENT;
+
+/**
+ * reply data struct for #CDN_API_DPTX_I2C_Read
+ */
+typedef struct
+{
+    /** buffer where data will be stored, will become invalid after next call to API */
+    u8  *buff;
+    int addr;
+    int size;
+} DPTX_I2C_Read_response;
+/**
+ *  \brief Cadence API for DP TX to read bytes using I2C-over-AUX
+ *
+ *  \param [in] numOfBytes - number of bytes to read
+ *  \param [in] addr - I2C slave address to read from, placed at bits 0-6 (without direction bit).
+ *  \param [in] mot - Whether (1) or not (0) to set MoT (Middle-of-Transaction) flag during the last I2C-over-AUX transaction handling this operation.
+ *  \param [out] resp - pointer to store response
+ *  \return status
+ *
+ */
+CDN_API_STATUS CDN_API_DPTX_I2C_Read(state_struct *state, u32 numOfBytes,
+						u8 addr, u8 mot, DPTX_I2C_Read_response *resp);
+/**
+ * blocking version of #CDN_API_DPTX_I2C_Read
+ */
+CDN_API_STATUS CDN_API_DPTX_I2C_Read_blocking(state_struct *state, u32 numOfBytes,
+						u8 addr, u8 mot, DPTX_I2C_Read_response *resp);
+
+/**
+ * reply data struct for #CDN_API_DPTX_I2C_Write
+ */
+typedef struct
+{
+    int addr;
+    int size;
+} DPTX_I2C_Write_response;
+/**
+ *  \brief Cadence API for DP TX to write bytes using I2C-over-AUX
+ *
+ *  \param [in] numOfBytes - number of bytes to write
+ *  \param [in] addr - I2C slave address to write to, placed at bits 0-6 (without direction bit).
+ *  \param [in] mot - Whether (1) or not (0) to set MoT (Middle-of-Transaction) flag during the last I2C-over-AUX transaction handling this operation.
+ *  \param [in] buff - buffer with the data to write
+ *  \param [out] resp - pointer to store response
+ *  \return status
+ *
+ */
+CDN_API_STATUS CDN_API_DPTX_I2C_Write(state_struct *state, u32 numOfBytes,
+						u8 addr, u8 mot, u8 *buff, DPTX_I2C_Write_response *resp);
+/**
+ * blocking version of #CDN_API_DPTX_I2C_Write
+ */
+CDN_API_STATUS CDN_API_DPTX_I2C_Write_blocking(state_struct *state, u32 numOfBytes,
+						u8 addr, u8 mot, u8 *buff, DPTX_I2C_Write_response *resp);
 
 /**
  * reply data struct for CDN_API_DPTX_READ_EDID
@@ -396,6 +451,17 @@ CDN_API_STATUS CDN_API_DPTX_GetLastAuxStatus_blocking(state_struct *state,
 						      u8 *resp);
 
 /**
+ * \brief Get status of latest I2C-over-AUX transaction.
+ *
+ * \param [out] resp - pointer to store response. 0 - I2C_ACK, 1 - I2C_NACK, 2 - I2C_DEFER.
+ */
+CDN_API_STATUS CDN_API_DPTX_GetLastI2cStatus(state_struct *state, u8 *resp);
+/**
+ * \brief blocking version of #CDN_API_DPTX_GetLastI2cStatus
+ */
+CDN_API_STATUS CDN_API_DPTX_GetLastI2cStatus_blocking(state_struct *state, u8 *resp);
+
+/**
  * \brief get current hpd status
  */
 
@@ -434,6 +500,32 @@ CDN_API_STATUS CDN_API_DPTX_ForceLanes_blocking(state_struct *state,
 						u8 voltageSwing_l3,
 						u8 preemphasis_l3, u8 pattern,
 						u8 ssc);
+/**
+ * \brief Set custom PHY coefficients (values) for voltage-swing and pre-emphasis related registers.
+ * \param [in] mgnfsValues Array of values to use for TX_TXCC_MGNFS_MULT_000 registers
+ * \param [in] cpostValues Array of values to use for TX_TXCC_CPOST_MULT_00 registers
+ *
+ * Each array shall contain set of values to be used for respective PHY register
+ * (if used PHY has such registers). First index represents voltage swing,
+ * second - pre-emphasis.
+ * For example, mgnfsValues[2][0] will be used for TX_TXCC_MGNFS_MULT_000
+ * register, for voltage swing level = 2 and pre-emphasis level = 0.
+ * Similarly, cpostValues[1][2] will be used for TX_TXCC_CPOST_MULT_00 register,
+ * for voltage swing level = 1 and pre-emphasis level = 2.
+ * Default values (one that Firmware starts with) can be acquired using
+ * API_DPTX_GetDefaultCoefficients() - if applicable for given PHY.
+ * Values, where sum of indexes (for voltage swing and pre-emphasis) are
+ * greater than 3 are ignored, as such levels are forbidden by DP standard.
+ */
+CDN_API_STATUS CDN_API_DPTX_SetPhyCoefficients(state_struct *state,
+						u16 mgnfsValues[4][4],
+						u16 cpostValues[4][4]);
+/**
+ * \brief blocking version of #CDN_API_DPTX_SetPhyCoefficients
+ */
+CDN_API_STATUS CDN_API_DPTX_SetPhyCoefficients_blocking(state_struct *state,
+						u16 mgnfsValues[4][4],
+						u16 cpostValues[4][4]);
 
 /**
  * \brief Sets DP TX debug related features.

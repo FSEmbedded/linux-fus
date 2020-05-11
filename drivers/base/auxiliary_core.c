@@ -402,7 +402,7 @@ static ssize_t mem_store(struct kobject *kobj,
 		goto fail;
 	}
 
-	error = vfs_getattr(&filep->f_path, &stat);
+	error = vfs_getattr(&filep->f_path, &stat, STATX_BASIC_STATS, AT_STATX_SYNC_AS_STAT);
 	if (error) {
 		dev_err(&ac.pdev->dev, "Failed to stat file %s \n",  ac.path);
 		goto fail;

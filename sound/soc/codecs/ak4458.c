@@ -32,8 +32,15 @@
 #include <sound/tlv.h>
 #include <sound/pcm_params.h>
 #include <linux/pm_runtime.h>
+#include <linux/regulator/consumer.h>
 
 #include "ak4458.h"
+
+#define AK4458_NUM_SUPPLIES 2
+static const char *ak4458_supply_names[AK4458_NUM_SUPPLIES] = {
+	"DVDD",
+	"AVDD",
+};
 
 /* AK4458 Codec Private Data */
 struct ak4458_priv {
@@ -48,6 +55,7 @@ struct ak4458_priv {
 	int fmt;
 	int slots;
 	int slot_width;
+	struct regulator_bulk_data supplies[AK4458_NUM_SUPPLIES];
 };
 
 static const struct reg_default ak4458_reg_defaults[] = {
@@ -608,6 +616,20 @@ static const struct snd_soc_dapm_route ak4458_intercon[] = {
 
 };
 
+static int ak4458_get_tdm_mode(struct ak4458_priv *ak4458)
+{
+	switch(ak4458->slots * ak4458->slot_width) {
+	case 128:
+		return 1;
+	case 256:
+		return 2;
+	case 512:
+		return 3;
+	default:
+		return 0;
+	}
+}
+
 static int ak4458_rstn_control(struct snd_soc_codec *codec, int bit)
 {
 	u8 rstn;
@@ -629,22 +651,66 @@ static int ak4458_hw_params(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_codec *codec = dai->codec;
 	struct ak4458_priv *ak4458 = snd_soc_codec_get_drvdata(codec);
-	u8 format;
+	u8 format, dsdsel0, dsdsel1, dchn;
 	int pcm_width = max(params_physical_width(params), ak4458->slot_width);
-	int ret;
+	int ret, dsd_bclk, channels, channels_max;
+	bool is_dsd = false;
 
 #ifdef AK4458_ACKS_USE_MANUAL_MODE
 	u8 dfs1, dfs2;
 #endif
 	int nfs1;
 
+	channels = params_channels(params);
+	channels_max = dai->driver->playback.channels_max;
+
 	dev_dbg(dai->dev, "%s(%d)\n", __func__, __LINE__);
+
+	switch (params_format(params)) {
+	case SNDRV_PCM_FORMAT_DSD_U8:
+	case SNDRV_PCM_FORMAT_DSD_U16_LE:
+	case SNDRV_PCM_FORMAT_DSD_U16_BE:
+	case SNDRV_PCM_FORMAT_DSD_U32_LE:
+	case SNDRV_PCM_FORMAT_DSD_U32_BE:
+		is_dsd = true;
+		dsd_bclk = params_rate(params) * params_physical_width(params);
+		break;
+	}
 
 	format = snd_soc_read(codec, AK4458_00_CONTROL1);
 	format &= ~AK4458_DIF_MASK;
 
 	nfs1 = params_rate(params);
 	ak4458->fs = nfs1;
+
+	dsdsel0 = snd_soc_read(codec, AK4458_06_DSD1);
+	dsdsel0 &= ~AK4458_DSDSEL_MASK;
+
+	dsdsel1 = snd_soc_read(codec, AK4458_09_DSD2);
+	dsdsel1 &= ~AK4458_DSDSEL_MASK;
+
+	if (is_dsd) {
+		switch (dsd_bclk) {
+		case 2822400:
+			dsdsel0 |= 0;
+			dsdsel1 |= 0;
+			break;
+		case 5644800:
+			dsdsel0 |= 1;
+			dsdsel1 |= 0;
+			break;
+		case 11289600:
+			dsdsel0 |= 0;
+			dsdsel1 |= 1;
+			break;
+		default:
+			dev_err(dai->dev, "DSD512 not supported.\n");
+			return -EINVAL;
+		}
+
+		snd_soc_write(codec, AK4458_06_DSD1, dsdsel0);
+		snd_soc_write(codec, AK4458_09_DSD2, dsdsel1);
+	}
 
 #ifdef AK4458_ACKS_USE_MANUAL_MODE
 	dfs1 = snd_soc_read(codec, AK4458_01_CONTROL2);
@@ -674,10 +740,12 @@ static int ak4458_hw_params(struct snd_pcm_substream *substream,
 		dfs1 |= AK4458_DFS01_192KHZ;
 		dfs2 |= AK4458_DFS2__192KHZ;
 		break;
+	case 352800:
 	case 384000:
 		dfs1 |= AK4458_DFS01_384KHZ;
 		dfs2 |= AK4458_DFS2__384KHZ;
 		break;
+	case 705600:
 	case 768000:
 		dfs1 |= AK4458_DFS01_768KHZ;
 		dfs2 |= AK4458_DFS2__768KHZ;
@@ -693,7 +761,7 @@ static int ak4458_hw_params(struct snd_pcm_substream *substream,
 	if (ret)
 		return ret;
 
-	ak4458_rstn_control(codec, 1);
+	ret = ak4458_rstn_control(codec, 1);
 	if (ret)
 		return ret;
 #else
@@ -716,6 +784,8 @@ static int ak4458_hw_params(struct snd_pcm_substream *substream,
 			format |= AK4458_DIF_32BIT_LSB;
 		else if (ak4458->fmt == SND_SOC_DAIFMT_DSP_B)
 			format |= AK4458_DIF_32BIT_MSB;
+		else if (ak4458->fmt == SND_SOC_DAIFMT_PDM)
+			format |= AK4458_DIF_32BIT_MSB;
 		else
 			return -EINVAL;
 		break;
@@ -724,6 +794,16 @@ static int ak4458_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	snd_soc_write(codec, AK4458_00_CONTROL1, format);
+
+	/**
+	 * Enable/disable Daisy Chain if in TDM mode and the number of played
+	 * channels is bigger than the maximum supported number of channels
+	 */
+	dchn = ak4458_get_tdm_mode(ak4458) &&
+		(ak4458->fmt == SND_SOC_DAIFMT_DSP_B) &&
+		(channels > channels_max ) ? AK4458_DCHAIN_MASK : 0;
+
+	snd_soc_update_bits(codec, AK4458_0B_CONTROL7, AK4458_DCHAIN_MASK, dchn);
 
 	ret = ak4458_rstn_control(codec, 0);
 	if (ret)
@@ -748,7 +828,7 @@ static int ak4458_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 {
 	struct snd_soc_codec *codec = dai->codec;
 	struct ak4458_priv *ak4458 = snd_soc_codec_get_drvdata(codec);
-	u8 format;
+	u8 format, dp = 0;
 	int ret;
 
 	/* set master/slave audio interface */
@@ -779,6 +859,10 @@ static int ak4458_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	case SND_SOC_DAIFMT_DSP_B:
 		ak4458->fmt = fmt & SND_SOC_DAIFMT_FORMAT_MASK;
 		break;
+	case SND_SOC_DAIFMT_PDM:
+		ak4458->fmt = fmt & SND_SOC_DAIFMT_FORMAT_MASK;
+		dp = AK4458_DP_MASK; /* DSD mode */;
+		break;
 	default:
 		dev_err(codec->dev, "Audio format 0x%02X unsupported\n",
 			fmt & SND_SOC_DAIFMT_FORMAT_MASK);
@@ -788,7 +872,9 @@ static int ak4458_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	/* set format */
 	dev_dbg(dai->dev, "%s(%d) addr 00H = %02X\n",
 		__func__, __LINE__, format);
+
 	snd_soc_write(codec, AK4458_00_CONTROL1, format);
+	snd_soc_update_bits(codec, AK4458_02_CONTROL3, AK4458_DP_MASK, dp);
 
 	ret = ak4458_rstn_control(codec, 0);
 	if (ret)
@@ -875,51 +961,27 @@ static int ak4458_set_dai_mute(struct snd_soc_dai *dai, int mute)
 static int ak4458_set_tdm_slot(struct snd_soc_dai *dai, unsigned int tx_mask,
 			       unsigned int rx_mask, int slots, int slot_width)
 {
-
 	struct snd_soc_codec *codec = dai->codec;
 	struct ak4458_priv *ak4458 = snd_soc_codec_get_drvdata(codec);
-	int tdm_mode = 0;
 	int reg;
 
 	ak4458->slots = slots;
 	ak4458->slot_width = slot_width;
 
-	switch(slots * slot_width) {
-	case 128:
-		tdm_mode = 1;
-		break;
-	case 256:
-		tdm_mode = 2;
-		break;
-	case 512:
-		tdm_mode = 3;
-		break;
-	default:
-		tdm_mode = 0;
-		break;
-	}
-
 	reg = snd_soc_read(codec, AK4458_0A_CONTROL6);
 	reg &= ~(0x3 << 6);
-	reg |= tdm_mode << 6;
+	reg |= ak4458_get_tdm_mode(ak4458) << 6;
 	snd_soc_write(codec, AK4458_0A_CONTROL6, reg);
 
 	return 0;
 }
 
-
-
-#define AK4458_RATES	(SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_11025 |\
-	SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_22050 |\
-	SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |\
-	SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_88200 |\
-	SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_176400 |\
-	SNDRV_PCM_RATE_192000)
-	/* | SNDRV_PCM_RATE_384000 | SNDRV_PCM_RATE_768000 */
-
 #define AK4458_FORMATS	(SNDRV_PCM_FMTBIT_S16_LE |\
 			 SNDRV_PCM_FMTBIT_S24_LE |\
-			 SNDRV_PCM_FMTBIT_S32_LE)
+			 SNDRV_PCM_FMTBIT_S32_LE |\
+			 SNDRV_PCM_FMTBIT_DSD_U8 |\
+			 SNDRV_PCM_FMTBIT_DSD_U16_LE |\
+			 SNDRV_PCM_FMTBIT_DSD_U32_LE)
 
 static const unsigned int ak4458_rates[] = {
 	8000, 11025,  16000, 22050,
@@ -936,7 +998,7 @@ static const struct snd_pcm_hw_constraint_list ak4458_rate_constraints = {
 
 static int ak4458_startup(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai) {
-		int ret;
+	int ret;
 
 	ret = snd_pcm_hw_constraint_list(substream->runtime, 0,
 		SNDRV_PCM_HW_PARAM_RATE, &ak4458_rate_constraints);
@@ -1109,6 +1171,7 @@ int ak4458_probe(struct device *dev, struct regmap *regmap)
 	struct ak4458_priv *ak4458;
 	struct device_node *np = dev->of_node;
 	int ret;
+	int i;
 
 	ak4458 = devm_kzalloc(dev, sizeof(*ak4458), GFP_KERNEL);
 	if (!ak4458)
@@ -1137,6 +1200,23 @@ int ak4458_probe(struct device *dev, struct regmap *regmap)
 			dev_err(dev, "unable to get mute gpio\n");
 			return ret;
 		}
+	}
+
+	for (i = 0; i < ARRAY_SIZE(ak4458->supplies); i++)
+		ak4458->supplies[i].supply = ak4458_supply_names[i];
+
+	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(ak4458->supplies),
+				 ak4458->supplies);
+	if (ret != 0) {
+		dev_err(dev, "Failed to request supplies: %d\n", ret);
+		return ret;
+	}
+
+	ret = regulator_bulk_enable(ARRAY_SIZE(ak4458->supplies),
+				    ak4458->supplies);
+	if (ret != 0) {
+		dev_err(dev, "Failed to enable supplies: %d\n", ret);
+		return ret;
 	}
 
 	ret = snd_soc_register_codec(dev, &soc_codec_dev_ak4458,

@@ -1,5 +1,6 @@
 /*
  * copyright (c) 2013 Freescale Semiconductor, Inc.
+ * Copyright 2018-2019 NXP
  * Freescale IMX AHCI SATA platform driver
  *
  * based on the AHCI SATA platform driver by Jeff Garzik and Anton Vorontsov
@@ -28,6 +29,9 @@
 #include <linux/mfd/syscon.h>
 #include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
 #include <linux/libata.h>
+#include <linux/hwmon.h>
+#include <linux/hwmon-sysfs.h>
+#include <linux/thermal.h>
 #include "ahci.h"
 
 #define DRV_NAME "ahci-imx"
@@ -53,9 +57,23 @@ enum {
 	IMX_CLOCK_RESET				= 0x7f3f,
 	IMX_CLOCK_RESET_RESET			= 1 << 0,
 	/* IMX8QM HSIO AHCI definitions */
-	IMX8QM_SATA_PHY_RX_IMPED_RATIO_OFFSET	= 0x03,
-	IMX8QM_SATA_PHY_TX_IMPED_RATIO_OFFSET	= 0x09,
-	IMX8QM_SATA_PHY_IMPED_RATIO_85OHM	= 0x6c,
+	IMX8QM_SATA_PHY_REG03_RX_IMPED_RATIO		= 0x03,
+	IMX8QM_SATA_PHY_REG09_TX_IMPED_RATIO		= 0x09,
+	IMX8QM_SATA_PHY_REG10_TX_POST_CURSOR_RATIO	= 0x0a,
+	IMX8QM_SATA_PHY_GEN1_TX_POST_CURSOR_RATIO	= 0x15,
+	IMX8QM_SATA_PHY_IMPED_RATIO_100OHM		= 0x5d,
+	IMX8QM_SATA_PHY_REG22_TX_POST_CURSOR_RATIO	= 0x16,
+	IMX8QM_SATA_PHY_GEN2_TX_POST_CURSOR_RATIO	= 0x00,
+	IMX8QM_SATA_PHY_REG24_TX_AMP_RATIO_MARGIN0	= 0x18,
+	IMX8QM_SATA_PHY_TX_AMP_RATIO_MARGIN0		= 0x64,
+	IMX8QM_SATA_PHY_REG25_TX_AMP_RATIO_MARGIN1	= 0x19,
+	IMX8QM_SATA_PHY_TX_AMP_RATIO_MARGIN1		= 0x70,
+	IMX8QM_SATA_PHY_REG26_TX_AMP_RATIO_MARGIN2	= 0x1a,
+	IMX8QM_SATA_PHY_TX_AMP_RATIO_MARGIN2		= 0x69,
+	IMX8QM_SATA_PHY_REG48_PMA_STATUS		= 0x30,
+	IMX8QM_SATA_PHY_REG48_PMA_RDY			= BIT(7),
+	IMX8QM_SATA_PHY_REG128_UPDATE_SETTING		= 0x80,
+	IMX8QM_SATA_PHY_UPDATE_SETTING			= 0x01,
 	IMX8QM_LPCG_PHYX2_OFFSET		= 0x00000,
 	IMX8QM_CSR_PHYX2_OFFSET			= 0x90000,
 	IMX8QM_CSR_PHYX1_OFFSET			= 0xa0000,
@@ -65,6 +83,26 @@ enum {
 	IMX8QM_CSR_SATA_OFFSET			= 0xd0000,
 	IMX8QM_CSR_PCIE_CTRL2_OFFSET		= 0x8,
 	IMX8QM_CSR_MISC_OFFSET			= 0xe0000,
+	/* IMX8QM SATA specific control registers */
+	IMX8QM_SATA_PPCFG_OFFSET			= 0xa8,
+	IMX8QM_SATA_PPCFG_FORCE_PHY_RDY			= BIT(20),
+	IMX8QM_SATA_PPCFG_BIST_PATTERN_MASK		= 0x7 << 21,
+	IMX8QM_SATA_PPCFG_BIST_PATTERN_OFFSET		= 21,
+	IMX8QM_SATA_PPCFG_BIST_PATTERN_EN		= BIT(24),
+	IMX8QM_SATA_PPCFG_BIST_PATTERN_NOALIGNS		= BIT(26),
+	IMX8QM_SATA_PP2CFG_OFFSET			= 0xac,
+	IMX8QM_SATA_PP2CFG_COMINIT_NEGATE_MIN		= 0x28 << 24,
+	IMX8QM_SATA_PP2CFG_COMINT_BURST_GAP		= 0x18 << 16,
+	IMX8QM_SATA_PP2CFG_COMINT_BURST_GAP_MAX		= 0x2b << 8,
+	IMX8QM_SATA_PP2CFG_COMINT_BURST_GAP_MIN		= 0x1b << 0,
+	IMX8QM_SATA_PP3CFG_OFFSET			= 0xb0,
+	IMX8QM_SATA_PP3CFG_COMWAKE_NEGATE_MIN		= 0x0e << 24,
+	IMX8QM_SATA_PP3CFG_COMWAKE_BURST_GAP		= 0x08 << 16,
+	IMX8QM_SATA_PP3CFG_COMWAKE_BURST_GAP_MAX	= 0x0f << 8,
+	IMX8QM_SATA_PP3CFG_COMWAKE_BURST_GAP_MIN	= 0x01 << 0,
+	IMX8QM_SATA_AHCI_VEND_PTC			= 0xc8,
+	IMX8QM_SATA_AHCI_VEND_PTC_RXWM_MASK		= 0x7f,
+	IMX8QM_SATA_AHCI_VEND_PTC_RXWM			= 0x29,
 
 	IMX8QM_LPCG_PHYX2_PCLK0_MASK		= (0x3 << 16),
 	IMX8QM_LPCG_PHYX2_PCLK1_MASK		= (0x3 << 20),
@@ -85,6 +123,8 @@ enum {
 	IMX8QM_MISC_CLKREQN_IN_OVERRIDE_0	= BIT(29),
 	IMX8QM_SATA_CTRL_RESET_N		= BIT(12),
 	IMX8QM_SATA_CTRL_EPCS_PHYRESET_N	= BIT(7),
+	IMX8QM_SATA_CTRL_EPCS_TXDEEMP_SEL	= BIT(6),
+	IMX8QM_SATA_CTRL_EPCS_TXDEEMP		= BIT(5),
 	IMX8QM_CTRL_BUTTON_RST_N		= BIT(21),
 	IMX8QM_CTRL_POWER_UP_RST_N		= BIT(23),
 	IMX8QM_CTRL_LTSSM_ENABLE		= BIT(4),
@@ -115,6 +155,7 @@ struct imx_ahci_priv {
 	bool first_time;
 	u32 phy_params;
 	u32 imped_ratio;
+	u32 ext_osc;
 };
 
 void *sg_io_buffer_hack;
@@ -122,6 +163,10 @@ void *sg_io_buffer_hack;
 static int ahci_imx_hotplug;
 module_param_named(hotplug, ahci_imx_hotplug, int, 0644);
 MODULE_PARM_DESC(hotplug, "AHCI IMX hot-plug support (0=Don't support, 1=support)");
+
+static int bist_enable;
+module_param_named(bist, bist_enable, int, 0644);
+MODULE_PARM_DESC(bist, "AHCI IMX bist mode enable(1 = enable)");
 
 static void ahci_imx_host_stop(struct ata_host *host);
 
@@ -264,6 +309,180 @@ static int imx_sata_phy_reset(struct ahci_host_priv *hpriv)
 	return timeout ? 0 : -ETIMEDOUT;
 }
 
+enum {
+	/* SATA PHY Register */
+	SATA_PHY_CR_CLOCK_CRCMP_LT_LIMIT = 0x0001,
+	SATA_PHY_CR_CLOCK_DAC_CTL = 0x0008,
+	SATA_PHY_CR_CLOCK_RTUNE_CTL = 0x0009,
+	SATA_PHY_CR_CLOCK_ADC_OUT = 0x000A,
+	SATA_PHY_CR_CLOCK_MPLL_TST = 0x0017,
+};
+
+static int read_adc_sum(void *dev, u16 rtune_ctl_reg, void __iomem * mmio)
+{
+	u16 adc_out_reg, read_sum;
+	u32 index, read_attempt;
+	const u32 attempt_limit = 100;
+
+	imx_phy_reg_addressing(SATA_PHY_CR_CLOCK_RTUNE_CTL, mmio);
+	imx_phy_reg_write(rtune_ctl_reg, mmio);
+
+	/* two dummy read */
+	index = 0;
+	read_attempt = 0;
+	adc_out_reg = 0;
+	imx_phy_reg_addressing(SATA_PHY_CR_CLOCK_ADC_OUT, mmio);
+	while (index < 2) {
+		imx_phy_reg_read(&adc_out_reg, mmio);
+		/* check if valid */
+		if (adc_out_reg & 0x400)
+			index++;
+
+		read_attempt++;
+		if (read_attempt > attempt_limit) {
+			dev_err(dev, "Read REG more than %d times!\n",
+				attempt_limit);
+			break;
+		}
+	}
+
+	index = 0;
+	read_attempt = 0;
+	read_sum = 0;
+	while (index < 80) {
+		imx_phy_reg_read(&adc_out_reg, mmio);
+		if (adc_out_reg & 0x400) {
+			read_sum = read_sum + (adc_out_reg & 0x3FF);
+			index++;
+		}
+		read_attempt++;
+		if (read_attempt > attempt_limit) {
+			dev_err(dev, "Read REG more than %d times!\n",
+				attempt_limit);
+			break;
+		}
+	}
+
+	/* Use the U32 to make 1000 precision */
+	return (read_sum * 1000) / 80;
+}
+
+/* SATA AHCI temperature monitor */
+static int sata_ahci_read_temperature(void *dev, int *temp)
+{
+	u16 mpll_test_reg, rtune_ctl_reg, dac_ctl_reg, read_sum;
+	u32 str1, str2, str3, str4;
+	int m1, m2, a;
+	struct ahci_host_priv *hpriv = dev_get_drvdata(dev);
+	void __iomem *mmio = hpriv->mmio;
+
+	/* check rd-wr to reg */
+	read_sum = 0;
+	imx_phy_reg_addressing(SATA_PHY_CR_CLOCK_CRCMP_LT_LIMIT, mmio);
+	imx_phy_reg_write(read_sum, mmio);
+	imx_phy_reg_read(&read_sum, mmio);
+	if ((read_sum & 0xffff) != 0)
+		dev_err(dev, "Read/Write REG error, 0x%x!\n", read_sum);
+
+	imx_phy_reg_write(0x5A5A, mmio);
+	imx_phy_reg_read(&read_sum, mmio);
+	if ((read_sum & 0xffff) != 0x5A5A)
+		dev_err(dev, "Read/Write REG error, 0x%x!\n", read_sum);
+
+	imx_phy_reg_write(0x1234, mmio);
+	imx_phy_reg_read(&read_sum, mmio);
+	if ((read_sum & 0xffff) != 0x1234)
+		dev_err(dev, "Read/Write REG error, 0x%x!\n", read_sum);
+
+	/* start temperature test */
+	imx_phy_reg_addressing(SATA_PHY_CR_CLOCK_MPLL_TST, mmio);
+	imx_phy_reg_read(&mpll_test_reg, mmio);
+	imx_phy_reg_addressing(SATA_PHY_CR_CLOCK_RTUNE_CTL, mmio);
+	imx_phy_reg_read(&rtune_ctl_reg, mmio);
+	imx_phy_reg_addressing(SATA_PHY_CR_CLOCK_DAC_CTL, mmio);
+	imx_phy_reg_read(&dac_ctl_reg, mmio);
+
+	/* mpll_tst.meas_iv   ([12:2]) */
+	str1 = (mpll_test_reg >> 2) & 0x7FF;
+	/* rtune_ctl.mode     ([1:0]) */
+	str2 = (rtune_ctl_reg) & 0x3;
+	/* dac_ctl.dac_mode   ([14:12]) */
+	str3 = (dac_ctl_reg >> 12)  & 0x7;
+	/* rtune_ctl.sel_atbp ([4]) */
+	str4 = (rtune_ctl_reg >> 4);
+
+	/* Calculate the m1 */
+	/* mpll_tst.meas_iv */
+	mpll_test_reg = (mpll_test_reg & 0xE03) | (512) << 2;
+	/* rtune_ctl.mode */
+	rtune_ctl_reg = (rtune_ctl_reg & 0xFFC) | (1);
+	/* dac_ctl.dac_mode */
+	dac_ctl_reg = (dac_ctl_reg & 0x8FF) | (4) << 12;
+	/* rtune_ctl.sel_atbp */
+	rtune_ctl_reg = (rtune_ctl_reg & 0xFEF) | (0) << 4;
+	imx_phy_reg_addressing(SATA_PHY_CR_CLOCK_MPLL_TST, mmio);
+	imx_phy_reg_write(mpll_test_reg, mmio);
+	imx_phy_reg_addressing(SATA_PHY_CR_CLOCK_DAC_CTL, mmio);
+	imx_phy_reg_write(dac_ctl_reg, mmio);
+	m1 = read_adc_sum(dev, rtune_ctl_reg, mmio);
+
+	/* Calculate the m2 */
+	/* rtune_ctl.sel_atbp */
+	rtune_ctl_reg = (rtune_ctl_reg & 0xFEF) | (1) << 4;
+	m2 = read_adc_sum(dev, rtune_ctl_reg, mmio);
+
+	/* restore the status  */
+	/* mpll_tst.meas_iv */
+	mpll_test_reg = (mpll_test_reg & 0xE03) | (str1) << 2;
+	/* rtune_ctl.mode */
+	rtune_ctl_reg = (rtune_ctl_reg & 0xFFC) | (str2);
+	/* dac_ctl.dac_mode */
+	dac_ctl_reg = (dac_ctl_reg & 0x8FF) | (str3) << 12;
+	/* rtune_ctl.sel_atbp */
+	rtune_ctl_reg = (rtune_ctl_reg & 0xFEF) | (str4) << 4;
+
+	imx_phy_reg_addressing(SATA_PHY_CR_CLOCK_MPLL_TST, mmio);
+	imx_phy_reg_write(mpll_test_reg, mmio);
+	imx_phy_reg_addressing(SATA_PHY_CR_CLOCK_DAC_CTL, mmio);
+	imx_phy_reg_write(dac_ctl_reg, mmio);
+	imx_phy_reg_addressing(SATA_PHY_CR_CLOCK_RTUNE_CTL, mmio);
+	imx_phy_reg_write(rtune_ctl_reg, mmio);
+
+	/* Compute temperature */
+	if (!(m2 / 1000))
+		m2 = 1000;
+	a = (m2 - m1) / (m2/1000);
+	*temp = ((-559) * a * a) / 1000 + (1379) * a + (-458000);
+
+	return 0;
+}
+
+static ssize_t sata_ahci_show_temp(struct device *dev,
+				   struct device_attribute *da,
+				   char *buf)
+{
+	unsigned int temp = 0;
+	int err;
+
+	err = sata_ahci_read_temperature(dev, &temp);
+	if (err < 0)
+		return err;
+
+	return sprintf(buf, "%u\n", temp);
+}
+
+static const struct thermal_zone_of_device_ops fsl_sata_ahci_of_thermal_ops = {
+	.get_temp = sata_ahci_read_temperature,
+};
+
+static SENSOR_DEVICE_ATTR(temp1_input, S_IRUGO, sata_ahci_show_temp, NULL, 0);
+
+static struct attribute *fsl_sata_ahci_attrs[] = {
+	&sensor_dev_attr_temp1_input.dev_attr.attr,
+	NULL
+};
+ATTRIBUTE_GROUPS(fsl_sata_ahci);
+
 static int imx8_sata_enable(struct ahci_host_priv *hpriv)
 {
 	u32 val, reg;
@@ -346,18 +565,32 @@ static int imx8_sata_enable(struct ahci_host_priv *hpriv)
 			IMX8QM_PHY_MODE_MASK,
 			IMX8QM_PHY_MODE_SATA);
 
-	/*
-	 * bit0 rx ena 1, bit1 tx ena 0
-	 * bit12 PHY_X1_EPCS_SEL 1.
-	 */
-	regmap_update_bits(imxpriv->gpr,
-			IMX8QM_CSR_MISC_OFFSET,
-			IMX8QM_MISC_IOB_RXENA,
-			IMX8QM_MISC_IOB_RXENA);
-	regmap_update_bits(imxpriv->gpr,
-			IMX8QM_CSR_MISC_OFFSET,
-			IMX8QM_MISC_IOB_TXENA,
-			0);
+	if (imxpriv->ext_osc) {
+		dev_info(dev, "external osc is used.\n");
+		/*
+		 * bit0 rx ena 1, bit1 tx ena 0
+		 * bit12 PHY_X1_EPCS_SEL 1.
+		 */
+		regmap_update_bits(imxpriv->gpr,
+				IMX8QM_CSR_MISC_OFFSET,
+				IMX8QM_MISC_IOB_RXENA,
+				IMX8QM_MISC_IOB_RXENA);
+		regmap_update_bits(imxpriv->gpr,
+				IMX8QM_CSR_MISC_OFFSET,
+				IMX8QM_MISC_IOB_TXENA,
+				0);
+	} else {
+		dev_info(dev, "internal pll is used.\n");
+		regmap_update_bits(imxpriv->gpr,
+				IMX8QM_CSR_MISC_OFFSET,
+				IMX8QM_MISC_IOB_RXENA,
+				0);
+		regmap_update_bits(imxpriv->gpr,
+				IMX8QM_CSR_MISC_OFFSET,
+				IMX8QM_MISC_IOB_TXENA,
+				IMX8QM_MISC_IOB_TXENA);
+
+	}
 	regmap_update_bits(imxpriv->gpr,
 			IMX8QM_CSR_MISC_OFFSET,
 			IMX8QM_MISC_PHYX1_EPCS_SEL,
@@ -391,6 +624,14 @@ static int imx8_sata_enable(struct ahci_host_priv *hpriv)
 			IMX8QM_CSR_SATA_OFFSET,
 			IMX8QM_SATA_CTRL_EPCS_PHYRESET_N,
 			IMX8QM_SATA_CTRL_EPCS_PHYRESET_N);
+	regmap_update_bits(imxpriv->gpr,
+			IMX8QM_CSR_SATA_OFFSET,
+			IMX8QM_SATA_CTRL_EPCS_TXDEEMP,
+			IMX8QM_SATA_CTRL_EPCS_TXDEEMP);
+	regmap_update_bits(imxpriv->gpr,
+			IMX8QM_CSR_SATA_OFFSET,
+			IMX8QM_SATA_CTRL_EPCS_TXDEEMP_SEL,
+			IMX8QM_SATA_CTRL_EPCS_TXDEEMP_SEL);
 
 	/* CTRL RST: SET -> delay 1 us -> CLEAR -> SET */
 	regmap_update_bits(imxpriv->gpr,
@@ -427,18 +668,68 @@ static int imx8_sata_enable(struct ahci_host_priv *hpriv)
 		dev_err(dev, "TX PLL of the PHY is not locked\n");
 		ret = -ENODEV;
 	} else {
+		for (i = 0; i < 1000; i++) {
+			reg = readb(imxpriv->phy_base +
+					IMX8QM_SATA_PHY_REG48_PMA_STATUS);
+			if (reg & IMX8QM_SATA_PHY_REG48_PMA_RDY)
+				break;
+			udelay(10);
+		}
+		if ((reg & IMX8QM_SATA_PHY_REG48_PMA_RDY) == 0) {
+			dev_err(dev, "Calibration is NOT finished.\n");
+			ret = -ENODEV;
+			goto err_out;
+		}
+
 		writeb(imxpriv->imped_ratio, imxpriv->phy_base
-				+ IMX8QM_SATA_PHY_RX_IMPED_RATIO_OFFSET);
+				+ IMX8QM_SATA_PHY_REG03_RX_IMPED_RATIO);
 		writeb(imxpriv->imped_ratio, imxpriv->phy_base
-				+ IMX8QM_SATA_PHY_TX_IMPED_RATIO_OFFSET);
+				+ IMX8QM_SATA_PHY_REG09_TX_IMPED_RATIO);
 		reg = readb(imxpriv->phy_base
-				+ IMX8QM_SATA_PHY_RX_IMPED_RATIO_OFFSET);
+				+ IMX8QM_SATA_PHY_REG03_RX_IMPED_RATIO);
 		if (unlikely(reg != imxpriv->imped_ratio))
 			dev_info(dev, "Can't set PHY RX impedance ratio.\n");
 		reg = readb(imxpriv->phy_base
-				+ IMX8QM_SATA_PHY_TX_IMPED_RATIO_OFFSET);
+				+ IMX8QM_SATA_PHY_REG09_TX_IMPED_RATIO);
 		if (unlikely(reg != imxpriv->imped_ratio))
 			dev_info(dev, "Can't set PHY TX impedance ratio.\n");
+
+		/* RxWaterMark setting */
+		val = readl(hpriv->mmio + IMX8QM_SATA_AHCI_VEND_PTC);
+		val &= ~IMX8QM_SATA_AHCI_VEND_PTC_RXWM_MASK;
+		val |= IMX8QM_SATA_AHCI_VEND_PTC_RXWM;
+		writel(val, hpriv->mmio + IMX8QM_SATA_AHCI_VEND_PTC);
+
+		/* Configure the tx_amplitude to pass the tests. */
+		writeb(IMX8QM_SATA_PHY_TX_AMP_RATIO_MARGIN0, imxpriv->phy_base +
+				IMX8QM_SATA_PHY_REG24_TX_AMP_RATIO_MARGIN0);
+		writeb(IMX8QM_SATA_PHY_TX_AMP_RATIO_MARGIN1, imxpriv->phy_base +
+				IMX8QM_SATA_PHY_REG25_TX_AMP_RATIO_MARGIN1);
+		writeb(IMX8QM_SATA_PHY_TX_AMP_RATIO_MARGIN2, imxpriv->phy_base +
+				IMX8QM_SATA_PHY_REG26_TX_AMP_RATIO_MARGIN2);
+
+		/* Adjust the OOB COMINIT/COMWAKE to pass the tests. */
+		writeb(IMX8QM_SATA_PHY_GEN1_TX_POST_CURSOR_RATIO,
+				imxpriv->phy_base +
+				IMX8QM_SATA_PHY_REG10_TX_POST_CURSOR_RATIO);
+		writeb(IMX8QM_SATA_PHY_GEN2_TX_POST_CURSOR_RATIO,
+				imxpriv->phy_base +
+				IMX8QM_SATA_PHY_REG22_TX_POST_CURSOR_RATIO);
+
+		writeb(IMX8QM_SATA_PHY_UPDATE_SETTING, imxpriv->phy_base +
+				IMX8QM_SATA_PHY_REG128_UPDATE_SETTING);
+
+		reg = IMX8QM_SATA_PP2CFG_COMINIT_NEGATE_MIN |
+			IMX8QM_SATA_PP2CFG_COMINT_BURST_GAP |
+			IMX8QM_SATA_PP2CFG_COMINT_BURST_GAP_MAX |
+			IMX8QM_SATA_PP2CFG_COMINT_BURST_GAP_MIN;
+		writel(reg, hpriv->mmio + IMX8QM_SATA_PP2CFG_OFFSET);
+		reg = IMX8QM_SATA_PP3CFG_COMWAKE_NEGATE_MIN |
+			IMX8QM_SATA_PP3CFG_COMWAKE_BURST_GAP |
+			IMX8QM_SATA_PP3CFG_COMWAKE_BURST_GAP_MAX |
+			IMX8QM_SATA_PP3CFG_COMWAKE_BURST_GAP_MIN;
+		writel(reg, hpriv->mmio + IMX8QM_SATA_PP3CFG_OFFSET);
+
 		usleep_range(50, 100);
 
 		/*
@@ -451,6 +742,7 @@ static int imx8_sata_enable(struct ahci_host_priv *hpriv)
 		return ret;
 	}
 
+err_out:
 	clk_disable_unprepare(imxpriv->phy_apbclk);
 disable_epcs_rx_clk:
 	clk_disable_unprepare(imxpriv->epcs_rx_clk);
@@ -810,14 +1102,15 @@ static int imx8_sata_probe(struct device *dev, struct imx_ahci_priv *imxpriv)
 	struct platform_device *pdev = imxpriv->ahci_pdev;
 	struct device_node *np = dev->of_node;
 
+	if (of_property_read_u32(np, "ext_osc", &imxpriv->ext_osc) < 0) {
+		dev_info(dev, "ext_osc is not specified.\n");
+		/* Use the external osc as ref clk defaultly. */
+		imxpriv->ext_osc = 1;
+	}
+
 	if (of_property_read_u32(np, "fsl,phy-imp", &imxpriv->imped_ratio)) {
-		/*
-		 * Regarding to the differnet Hw designs,
-		 * Set the impedance ratio to 0x6c when 85OHM is used.
-		 * Keep it to default value 0x80, when 100OHM is used.
-		 */
 		dev_info(dev, "phy impedance ratio is not specified.\n");
-		imxpriv->imped_ratio = IMX8QM_SATA_PHY_IMPED_RATIO_85OHM;
+		imxpriv->imped_ratio = IMX8QM_SATA_PHY_IMPED_RATIO_100OHM;
 	}
 	phy_res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "phy");
 	if (phy_res) {
@@ -886,6 +1179,105 @@ static int imx8_sata_probe(struct device *dev, struct imx_ahci_priv *imxpriv)
 	return 0;
 }
 
+static ssize_t imx_ahci_bist_pattern_info(struct device *dev,
+		struct device_attribute *devattr, char *buf)
+{
+	u32 bist_pattern;
+	struct ahci_host_priv *hpriv = dev_get_drvdata(dev);
+
+	bist_pattern = readl(hpriv->mmio + IMX8QM_SATA_PPCFG_OFFSET);
+	bist_pattern = bist_pattern & IMX8QM_SATA_PPCFG_BIST_PATTERN_MASK;
+	bist_pattern = bist_pattern >> IMX8QM_SATA_PPCFG_BIST_PATTERN_OFFSET;
+	return sprintf(buf, "imx-ahci-bist-pattern %s%s%s%s.\n",
+		       (BIT(0) << bist_pattern) & BIT(0) ? "LBP " : "",
+		       (BIT(0) << bist_pattern) & BIT(1) ? "LFTP " : "",
+		       (BIT(0) << bist_pattern) & BIT(2) ? "MFTP " : "",
+		       (BIT(0) << bist_pattern) & BIT(3) ? "HFTP " : "");
+}
+
+static ssize_t imx_ahci_bist_pattern(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret;
+	u32 bist_pattern, val, timeout;
+	struct ahci_host_priv *hpriv = dev_get_drvdata(dev);
+
+	ret = sscanf(buf, "%x\n", &bist_pattern);
+	if (ret != 1)
+		return -EINVAL;
+	if ((bist_pattern > 3)) {
+		dev_err(dev, "LBP 0, LFTP 1, MFTP 2, HFTP 3.\n");
+		return -1;
+	}
+	dev_info(dev, "Try to enable %s%s%s%s pattern.\n",
+	       (BIT(0) << bist_pattern) & BIT(0) ? "LBP " : "",
+	       (BIT(0) << bist_pattern) & BIT(1) ? "LFTP " : "",
+	       (BIT(0) << bist_pattern) & BIT(2) ? "MFTP " : "",
+	       (BIT(0) << bist_pattern) & BIT(3) ? "HFTP " : "");
+
+	dev_info(dev, "Clear BIST enable.\n");
+	val = readl(hpriv->mmio + IMX8QM_SATA_PPCFG_OFFSET);
+	writel(val & (~IMX8QM_SATA_PPCFG_BIST_PATTERN_EN),
+			hpriv->mmio + IMX8QM_SATA_PPCFG_OFFSET);
+
+	/* put device into listen mode, first set PxSCTL.DET to 0 */
+	dev_info(dev, "Turn off device detection.\n");
+	val = readl(hpriv->mmio + 0x100 + PORT_SCR_CTL);
+	writel(val & ~0xf, hpriv->mmio + 0x100 + PORT_SCR_CTL);
+
+	dev_info(dev, "Force phy ready, then wait.\n");
+	val = readl(hpriv->mmio + IMX8QM_SATA_PPCFG_OFFSET);
+	writel(val | IMX8QM_SATA_PPCFG_FORCE_PHY_RDY,
+			hpriv->mmio + IMX8QM_SATA_PPCFG_OFFSET);
+
+	timeout = 1000;
+	do {
+		val = readl(hpriv->mmio + 0x100 + PORT_SCR_STAT);
+		if ((val & 0xf) > 1)
+			break;
+		mdelay(1);
+	} while (--timeout);
+	if (timeout == 0)
+		dev_info(dev, "Error, wait for phy ready timeout.\n");
+	else
+		dev_info(dev, "Get phy ready, and Gen%d mode is set.\n",
+				(val & 0xF0) >> 4);
+
+	/* clear SError */
+	dev_info(dev, "Clear error reg.\n");
+	val = readl(hpriv->mmio + 0x100 + PORT_SCR_ERR);
+	writel(val, hpriv->mmio + 0x100 + PORT_SCR_ERR);
+
+	dev_info(dev, "Select BIST pattern.\n");
+	val = readl(hpriv->mmio + IMX8QM_SATA_PPCFG_OFFSET);
+	val &= (~IMX8QM_SATA_PPCFG_BIST_PATTERN_MASK);
+	val |= (bist_pattern << IMX8QM_SATA_PPCFG_BIST_PATTERN_OFFSET);
+	writel(val, hpriv->mmio + IMX8QM_SATA_PPCFG_OFFSET);
+
+	dev_info(dev, "Set no aligns in BIST pattern.\n");
+	val = readl(hpriv->mmio + IMX8QM_SATA_PPCFG_OFFSET);
+	writel(val | IMX8QM_SATA_PPCFG_BIST_PATTERN_NOALIGNS,
+			hpriv->mmio + IMX8QM_SATA_PPCFG_OFFSET);
+
+	dev_info(dev, "BIST enable.\n");
+	val = readl(hpriv->mmio + IMX8QM_SATA_PPCFG_OFFSET);
+	writel(val | IMX8QM_SATA_PPCFG_BIST_PATTERN_EN,
+			hpriv->mmio + IMX8QM_SATA_PPCFG_OFFSET);
+
+	return count;
+}
+
+static DEVICE_ATTR(ahci_bist_pattern, 0644, imx_ahci_bist_pattern_info,
+		imx_ahci_bist_pattern);
+
+static struct attribute *imx_ahci_attrs[] = {
+	&dev_attr_ahci_bist_pattern.attr,
+	NULL
+};
+
+static struct attribute_group imx_ahci_attrgroup = {
+	.attrs	= imx_ahci_attrs,
+};
 static int imx_ahci_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -955,6 +1347,25 @@ static int imx_ahci_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	if (imxpriv->type == AHCI_IMX53 &&
+	    IS_ENABLED(CONFIG_HWMON)) {
+		/* Add the temperature monitor */
+		struct device *hwmon_dev;
+
+		hwmon_dev =
+			devm_hwmon_device_register_with_groups(dev,
+							"sata_ahci",
+							hpriv,
+							fsl_sata_ahci_groups);
+		if (IS_ERR(hwmon_dev)) {
+			ret = PTR_ERR(hwmon_dev);
+			goto disable_clk;
+		}
+		devm_thermal_zone_of_sensor_register(hwmon_dev, 0, hwmon_dev,
+					     &fsl_sata_ahci_of_thermal_ops);
+		dev_info(dev, "%s: sensor 'sata_ahci'\n", dev_name(hwmon_dev));
+	}
+
 	ret = imx_sata_enable(hpriv);
 	if (ret)
 		goto disable_clk;
@@ -1007,12 +1418,32 @@ static int imx_ahci_probe(struct platform_device *pdev)
 		}
 	}
 
-	ret = ahci_platform_init_host(pdev, hpriv, &ahci_imx_port_info,
-				      &ahci_platform_sht);
-	if (ret)
-		goto disable_sata;
+	if (imxpriv->type == AHCI_IMX8QM && bist_enable) {
+		dev_info(dev, "AHCI SATA compliance test patterns.\n");
+		ret = clk_prepare_enable(imxpriv->phy_pclk0);
+		if (ret < 0)
+			dev_err(dev, "can't enable phy pclk0.\n");
+		ret = clk_prepare_enable(imxpriv->phy_pclk1);
+		if (ret < 0)
+			dev_err(dev, "can't enable phy pclk1.\n");
+		ret = clk_prepare_enable(imxpriv->phy_apbclk);
+		if (ret < 0)
+			dev_err(dev, "can't get sata_phy_apbclk clock.\n");
 
-	return 0;
+		dev_set_drvdata(dev, hpriv);
+		ret = sysfs_create_group(&pdev->dev.kobj, &imx_ahci_attrgroup);
+		if (ret)
+			ret = -EINVAL;
+		dev_info(dev, "Register AHCI SATA BIST sysfile callback.\n");
+	} else {
+
+		ret = ahci_platform_init_host(pdev, hpriv, &ahci_imx_port_info,
+					      &ahci_platform_sht);
+		if (ret)
+			goto disable_sata;
+	}
+
+	return ret;
 
 disable_sata:
 	imx_sata_disable(hpriv);

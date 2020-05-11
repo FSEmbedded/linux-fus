@@ -16,13 +16,16 @@
 #ifndef __ASM_MMU_H
 #define __ASM_MMU_H
 
+#define MMCF_AARCH32	0x1	/* mm context flag for AArch32 executables */
 #define USER_ASID_FLAG	(UL(1) << 48)
+#define TTBR_ASID_MASK	(UL(0xffff) << 48)
 
 #ifndef __ASSEMBLY__
 
 typedef struct {
 	atomic64_t	id;
 	void		*vdso;
+	unsigned long	flags;
 } mm_context_t;
 
 /*
@@ -35,7 +38,7 @@ typedef struct {
 static inline bool arm64_kernel_unmapped_at_el0(void)
 {
 	return IS_ENABLED(CONFIG_UNMAP_KERNEL_AT_EL0) &&
-	       cpus_have_cap(ARM64_UNMAP_KERNEL_AT_EL0);
+	       cpus_have_const_cap(ARM64_UNMAP_KERNEL_AT_EL0);
 }
 
 typedef void (*bp_hardening_cb_t)(void);
@@ -59,7 +62,7 @@ static inline void arm64_apply_bp_hardening(void)
 {
 	struct bp_hardening_data *d;
 
-	if (!cpus_have_cap(ARM64_HARDEN_BRANCH_PREDICTOR))
+	if (!cpus_have_const_cap(ARM64_HARDEN_BRANCH_PREDICTOR))
 		return;
 
 	d = arm64_get_bp_hardening_data();
@@ -81,7 +84,7 @@ extern void __iomem *early_io_map(phys_addr_t phys, unsigned long virt);
 extern void init_mem_pgprot(void);
 extern void create_pgd_mapping(struct mm_struct *mm, phys_addr_t phys,
 			       unsigned long virt, phys_addr_t size,
-			       pgprot_t prot, bool allow_block_mappings);
+			       pgprot_t prot, bool page_mappings_only);
 extern void *fixmap_remap_fdt(phys_addr_t dt_phys);
 extern void mark_linear_text_alias_ro(void);
 

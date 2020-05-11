@@ -236,7 +236,7 @@ static int tmu_set_trip_temp(void *p, int trip,
 	return 0;
 }
 
-static struct thermal_zone_of_device_ops tmu_tz_ops = {
+static const struct thermal_zone_of_device_ops tmu_tz_ops = {
 	.get_temp = tmu_get_temp,
 	.get_trend = tmu_get_trend,
 	.set_trip_temp = tmu_set_trip_temp,

@@ -65,13 +65,14 @@
 			clocks = <&clks IMX6QDL_CLK_OCRAM>;
 		};
 
-		pcie: pcie@0x01000000 {
+		pcie: pcie@1ffc000 {
 			compatible = "fsl,imx6qp-pcie", "snps,dw-pcie";
 			reg = <0x01ffc000 0x4000>, <0x01f00000 0x80000>;
 			reg-names = "dbi", "config";
 			#address-cells = <3>;
 			#size-cells = <2>;
 			device_type = "pci";
+			bus-range = <0x00 0xff>;
 			ranges = <0x81000000 0 0          0x01f80000 0 0x00010000 /* downstream I/O */
 				  0x82000000 0 0x01000000 0x01000000 0 0x00f00000>; /* non-prefetchable memory */
 			num-lanes = <1>;
@@ -176,7 +177,34 @@
 	};
 };
 
+&fec {
+	/delete-property/interrupts-extended;
+	interrupts = <0 118 IRQ_TYPE_LEVEL_HIGH>,
+		     <0 119 IRQ_TYPE_LEVEL_HIGH>;
+};
+
+&gpc {
+	compatible = "fsl,imx6qp-gpc", "fsl,imx6q-gpc";
+};
+
+&ipu1 {
+	compatible = "fsl,imx6qp-ipu", "fsl,imx6q-ipu";
+	fsl,prg = <&prg1>;
+};
+
+&ipu2 {
+	compatible = "fsl,imx6qp-ipu", "fsl,imx6q-ipu";
+	fsl,prg = <&prg2>;
+};
+
 &ldb {
 	compatible = "fsl,imx6qp-ldb", "fsl,imx6q-ldb", "fsl,imx53-ldb";
 };
 
+&mmdc0 {
+	compatible = "fsl,imx6qp-mmdc", "fsl,imx6q-mmdc";
+};
+
+&pcie {
+	compatible = "fsl,imx6qp-pcie", "snps,dw-pcie";
+};

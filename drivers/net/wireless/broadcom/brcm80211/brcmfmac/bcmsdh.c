@@ -21,6 +21,7 @@
 #include <linux/pci_ids.h>
 #include <linux/sched.h>
 #include <linux/completion.h>
+#include <linux/interrupt.h>
 #include <linux/scatterlist.h>
 #include <linux/mmc/sdio.h>
 #include <linux/mmc/core.h>
@@ -46,6 +47,7 @@
 #include "sdio.h"
 #include "core.h"
 #include "common.h"
+#include "cfg80211.h"
 
 #define SDIOH_API_ACCESS_RETRY_LIMIT	2
 
@@ -53,6 +55,7 @@
 
 #define SDIO_FUNC1_BLOCKSIZE		64
 #define SDIO_FUNC2_BLOCKSIZE		512
+#define SDIO_4373_FUNC2_BLOCKSIZE	256
 /* Maximum milliseconds to wait for F2 to come up */
 #define SDIO_WAIT_F2RDY	3000
 
@@ -107,12 +110,14 @@ int brcmf_sdiod_intr_register(struct brcmf_sdio_dev *sdiodev)
 	int ret = 0;
 	u8 data;
 	u32 addr, gpiocontrol;
-	unsigned long flags;
 
 	pdata = &sdiodev->settings->bus.sdio;
 	if (pdata->oob_irq_supported) {
 		brcmf_dbg(SDIO, "Enter, register OOB IRQ %d\n",
 			  pdata->oob_irq_nr);
+		spin_lock_init(&sdiodev->irq_en_lock);
+		sdiodev->irq_en = true;
+
 		ret = request_irq(pdata->oob_irq_nr, brcmf_sdiod_oob_irqhandler,
 				  pdata->oob_irq_flags, "brcmf_oob_intr",
 				  &sdiodev->func[1]->dev);
@@ -121,10 +126,6 @@ int brcmf_sdiod_intr_register(struct brcmf_sdio_dev *sdiodev)
 			return ret;
 		}
 		sdiodev->oob_irq_requested = true;
-		spin_lock_init(&sdiodev->irq_en_lock);
-		spin_lock_irqsave(&sdiodev->irq_en_lock, flags);
-		sdiodev->irq_en = true;
-		spin_unlock_irqrestore(&sdiodev->irq_en_lock, flags);
 
 		ret = enable_irq_wake(pdata->oob_irq_nr);
 		if (ret != 0) {
@@ -1039,6 +1040,7 @@ static void brcmf_sdiod_host_fixup(struct mmc_host *host)
 static int brcmf_sdiod_probe(struct brcmf_sdio_dev *sdiodev)
 {
 	int ret = 0;
+	unsigned int f2_blksz = SDIO_FUNC2_BLOCKSIZE;
 
 	sdiodev->num_funcs = 2;
 
@@ -1050,11 +1052,18 @@ static int brcmf_sdiod_probe(struct brcmf_sdio_dev *sdiodev)
 		sdio_release_host(sdiodev->func[1]);
 		goto out;
 	}
-	ret = sdio_set_block_size(sdiodev->func[2], SDIO_FUNC2_BLOCKSIZE);
+
+	if (sdiodev->func[0]->device == SDIO_DEVICE_ID_CYPRESS_4373) {
+		f2_blksz = SDIO_4373_FUNC2_BLOCKSIZE;
+	}
+
+	ret = sdio_set_block_size(sdiodev->func[2], f2_blksz);
 	if (ret) {
 		brcmf_err("Failed to set F2 blocksize\n");
 		sdio_release_host(sdiodev->func[1]);
 		goto out;
+	} else {
+		brcmf_dbg(SDIO, "set F2 blocksize to %d\n", f2_blksz);
 	}
 
 	/* increase F2 timeout */
@@ -1099,12 +1108,17 @@ static const struct sdio_device_id brcmf_sdmmc_ids[] = {
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_43340),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_43341),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_43362),
+ 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_43364),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_4335_4339),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_4339),
+	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_43428),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_43430),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_4345),
+	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_43455),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_4354),
 	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_BROADCOM_4356),
+	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_CYPRESS_4373),
+	BRCMF_SDIO_DEVICE(SDIO_DEVICE_ID_CYPRESS_43012),
 	{ /* end: all zeroes */ }
 };
 MODULE_DEVICE_TABLE(sdio, brcmf_sdmmc_ids);
@@ -1171,6 +1185,7 @@ static int brcmf_ops_sdio_probe(struct sdio_func *func,
 	dev_set_drvdata(&func->dev, bus_if);
 	dev_set_drvdata(&sdiodev->func[1]->dev, bus_if);
 	sdiodev->dev = &sdiodev->func[1]->dev;
+	dev_set_drvdata(&sdiodev->func[2]->dev, bus_if);
 
 	brcmf_sdiod_change_state(sdiodev, BRCMF_SDIOD_DOWN);
 
@@ -1187,6 +1202,7 @@ static int brcmf_ops_sdio_probe(struct sdio_func *func,
 fail:
 	dev_set_drvdata(&func->dev, NULL);
 	dev_set_drvdata(&sdiodev->func[1]->dev, NULL);
+	dev_set_drvdata(&sdiodev->func[2]->dev, NULL);
 	kfree(sdiodev->func[0]);
 	kfree(sdiodev);
 	kfree(bus_if);
@@ -1227,6 +1243,14 @@ static void brcmf_ops_sdio_remove(struct sdio_func *func)
 	brcmf_dbg(SDIO, "Exit\n");
 }
 
+static void brcmf_ops_sdio_shutdown(struct device *dev)
+{
+	struct sdio_func *func = container_of(dev, struct sdio_func, dev);
+
+	brcmf_ops_sdio_remove(func);
+	return;
+}
+
 void brcmf_sdio_wowl_config(struct device *dev, bool enabled)
 {
 	struct brcmf_bus *bus_if = dev_get_drvdata(dev);
@@ -1243,14 +1267,26 @@ static int brcmf_ops_sdio_suspend(struct device *dev)
 	struct brcmf_bus *bus_if;
 	struct brcmf_sdio_dev *sdiodev;
 	mmc_pm_flag_t sdio_flags;
+	struct brcmf_cfg80211_info *config;
+	int retry = BRCMF_PM_WAIT_MAXRETRY;
 
 	func = container_of(dev, struct sdio_func, dev);
+	bus_if = dev_get_drvdata(dev);
+	config = bus_if->drvr->config;
+
 	brcmf_dbg(SDIO, "Enter: F%d\n", func->num);
+
+	while (retry &&
+	       config->pm_state == BRCMF_CFG80211_PM_STATE_SUSPENDING) {
+		usleep_range(10000, 20000);
+		retry--;
+	}
+	if (!retry && config->pm_state == BRCMF_CFG80211_PM_STATE_SUSPENDING)
+		brcmf_err("timed out wait for cfg80211 suspended\n");
+
 	if (func->num != SDIO_FUNC_1)
 		return 0;
 
-
-	bus_if = dev_get_drvdata(dev);
 	sdiodev = bus_if->bus_priv.sdio;
 
 	brcmf_sdiod_freezer_on(sdiodev);
@@ -1298,6 +1334,7 @@ static struct sdio_driver brcmf_sdmmc_driver = {
 #ifdef CONFIG_PM_SLEEP
 		.pm = &brcmf_sdio_pm_ops,
 #endif	/* CONFIG_PM_SLEEP */
+		.shutdown = brcmf_ops_sdio_shutdown,
 	},
 };
 

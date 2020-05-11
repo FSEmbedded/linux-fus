@@ -13,6 +13,7 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/arm-smccc.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
 #include <linux/console.h>
@@ -30,22 +31,22 @@
 #include <linux/pm_clock.h>
 #include <linux/slab.h>
 #include <linux/syscore_ops.h>
+#include <linux/suspend.h>
 
+#include <soc/imx/fsl_sip.h>
 #include <soc/imx8/sc/sci.h>
 
 #include "pm-domain-imx8.h"
 
 static sc_ipc_t pm_ipc_handle;
-static sc_rsrc_t early_power_on_rsrc[] = {
-	SC_R_LAST, SC_R_LAST, SC_R_LAST, SC_R_LAST, SC_R_LAST,
-	SC_R_LAST, SC_R_LAST, SC_R_LAST, SC_R_LAST, SC_R_LAST,
-};
 static sc_rsrc_t rsrc_debug_console;
 
 #define IMX8_WU_MAX_IRQS	(((SC_R_LAST + 31) / 32 ) * 32 )
 static sc_rsrc_t irq2rsrc[IMX8_WU_MAX_IRQS];
 static sc_rsrc_t wakeup_rsrc_id[IMX8_WU_MAX_IRQS / 32];
+static bool check_subdomain_wakeup;
 static DEFINE_SPINLOCK(imx8_wu_lock);
+static DEFINE_MUTEX(rsrc_pm_list_lock);
 
 enum imx_pd_state {
 	PD_LP,
@@ -58,31 +59,116 @@ struct clk_stat {
 	unsigned long rate;
 };
 
+static bool is_resume_needed(struct generic_pm_domain *domain)
+{
+	struct gpd_link *link;
+	struct imx8_pm_domain *pd;
+	int ret;
+
+	pd = container_of(domain, struct imx8_pm_domain, pd);
+
+	/* keep resource power on if it is a wakeup source */
+	if ((1 << pd->rsrc_id % 32) & wakeup_rsrc_id[pd->rsrc_id / 32])
+		return true;
+
+	list_for_each_entry(link, &domain->master_links, master_node) {
+		ret = is_resume_needed(link->slave);
+		if (ret)
+			return ret;
+	}
+
+	return false;
+}
+
 static int imx8_pd_power(struct generic_pm_domain *domain, bool power_on)
 {
 	struct imx8_pm_domain *pd;
 	sc_err_t sci_err = SC_ERR_NONE;
+	unsigned int pd_state;
 
 	pd = container_of(domain, struct imx8_pm_domain, pd);
 
-	if (pd->rsrc_id == SC_R_LAST)
+	if (pd->rsrc_id == SC_R_NONE)
 		return 0;
-
 	/* keep uart console power on for no_console_suspend */
 	if (pd->rsrc_id == rsrc_debug_console &&
 		!console_suspend_enabled && !power_on)
 		return 0;
 
-	/* keep resource power on if it is a wakeup source */
-	if (!power_on && ((1 << pd->rsrc_id % 32) &
-		wakeup_rsrc_id[pd->rsrc_id / 32]))
+	if (!power_on && check_subdomain_wakeup)
+		if (is_resume_needed(domain))
+			return 0;
+
+	/*
+	 * Power domain with no device associated with it is handled
+	 * when the child power domain is powered off/lp.
+	 */
+	if (!power_on && !domain->device_count && pd->dev_attached)
 		return 0;
 
-	sci_err = sc_pm_set_resource_power_mode(pm_ipc_handle, pd->rsrc_id,
-		(power_on) ? SC_PM_PW_MODE_ON :
-		pd->pd.state_idx ? SC_PM_PW_MODE_OFF : SC_PM_PW_MODE_LP);
-	if (sci_err)
-		pr_err("Failed power operation on resource %d\n", pd->rsrc_id);
+	pd_state = pd->pd.state_idx;
+
+	if (power_on) {
+		sci_err = sc_pm_set_resource_power_mode(pm_ipc_handle,
+					pd->rsrc_id, SC_PM_PW_MODE_ON);
+		if (sci_err) {
+			pr_err("Failed power operation on resource %d sc_err %d\n",
+					pd->rsrc_id, sci_err);
+			return -EINVAL;
+		}
+	} else {
+		struct generic_pm_domain *cur_domain = domain, *master = NULL;
+		/*
+		 * Set the state of a parent power domain that has no device
+		 * associated with it to be the same as the child.
+		 * Walk up the power domain tree from the child node to the
+		 * top parent.
+		 */
+		while (!list_empty(&cur_domain->slave_links)) {
+			struct gpd_link *link;
+			pd = container_of(cur_domain, struct imx8_pm_domain, pd);
+			if ((cur_domain == domain) ||
+				((!cur_domain->device_count) &&
+				(atomic_read(&cur_domain->sd_count) <= 1))) {
+				sci_err = sc_pm_set_resource_power_mode(pm_ipc_handle,
+						pd->rsrc_id,
+						(pd_state) ? SC_PM_PW_MODE_OFF : SC_PM_PW_MODE_LP);
+				if (sci_err) {
+					pr_err("Failed power operation on resource %d sc_err %d\n",
+							pd->rsrc_id, sci_err);
+					return -EINVAL;
+				}
+			} else
+				break;
+
+			list_for_each_entry(link, &cur_domain->slave_links, slave_node)
+				master = link->master;
+
+			cur_domain = master;
+		}
+		/* Fix the state for the top parent or a node that has no slave domains */
+		pd = container_of(cur_domain, struct imx8_pm_domain, pd);
+		if ((cur_domain == domain) ||
+			((pd->rsrc_id != SC_R_NONE) &&
+			(!cur_domain->device_count) &&
+			(atomic_read(&cur_domain->sd_count) <= 1))) {
+			sci_err = sc_pm_set_resource_power_mode(pm_ipc_handle,
+						pd->rsrc_id,
+						(pd_state) ? SC_PM_PW_MODE_OFF : SC_PM_PW_MODE_LP);
+			if (sci_err) {
+				pr_err("Failed power operation on resource %d sc_err %d\n",
+						pd->rsrc_id, sci_err);
+				return -EINVAL;
+			}
+		}
+	}
+	/* keep HDMI TX resource power on */
+	if (power_on && (pd->rsrc_id == SC_R_HDMI ||
+					pd->rsrc_id == SC_R_HDMI_I2S ||
+					pd->rsrc_id == SC_R_HDMI_I2C_0 ||
+					pd->rsrc_id == SC_R_HDMI_PLL_0 ||
+					pd->rsrc_id == SC_R_HDMI_PLL_1))
+		pd->pd.flags |= GENPD_FLAG_ALWAYS_ON;
 
 	return 0;
 }
@@ -96,6 +182,8 @@ static int imx8_pd_power_on(struct generic_pm_domain *domain)
 	pd = container_of(domain, struct imx8_pm_domain, pd);
 
 	ret = imx8_pd_power(domain, true);
+	if (ret)
+		return ret;
 
 	if (!list_empty(&pd->clks) && (pd->pd.state_idx == PD_OFF)) {
 
@@ -169,7 +257,7 @@ static int imx8_pd_power_on(struct generic_pm_domain *domain)
 		}
 	}
 
-	return ret;
+	return 0;
 }
 
 static int imx8_pd_power_off(struct generic_pm_domain *domain)
@@ -209,6 +297,7 @@ static int imx8_attach_dev(struct generic_pm_domain *genpd, struct device *dev)
 
 	pd = container_of(genpd, struct imx8_pm_domain, pd);
 
+	pd->dev_attached = true;
 	num_clks = of_count_phandle_with_args(node, "assigned-clocks",
 						"#clock-cells");
 	if (num_clks == -EINVAL)
@@ -235,6 +324,7 @@ static int imx8_attach_dev(struct generic_pm_domain *genpd, struct device *dev)
 		if (!imx8_rsrc_clk)
 			return -ENOMEM;
 
+		imx8_rsrc_clk->dev = dev;
 		imx8_rsrc_clk->clk = of_clk_get_from_provider(&clkspec);
 		if (!IS_ERR(imx8_rsrc_clk->clk))
 			list_add_tail(&imx8_rsrc_clk->node, &pd->clks);
@@ -248,40 +338,66 @@ static void imx8_detach_dev(struct generic_pm_domain *genpd, struct device *dev)
 	struct imx8_pm_rsrc_clks *imx8_rsrc_clk, *tmp;
 
 	pd = container_of(genpd, struct imx8_pm_domain, pd);
+	pd->dev_attached = false;
 
 	/* Free all the clock entry nodes. */
 	if (list_empty(&pd->clks))
 		return;
 
 	list_for_each_entry_safe(imx8_rsrc_clk, tmp, &pd->clks, node) {
+		/* only delete those clocks belonged to this devive */
+		if (imx8_rsrc_clk->dev != dev)
+			continue;
 		list_del(&imx8_rsrc_clk->node);
 		devm_kfree(dev, imx8_rsrc_clk);
 	}
 }
 
-static void imx8_pm_domains_resume(void)
+static int imx8_pm_domains_suspend(void)
 {
-	sc_err_t sci_err = SC_ERR_NONE;
-	int i;
+	struct arm_smccc_res res;
+	unsigned int i;
 
-	for (i = 0; i < (sizeof(early_power_on_rsrc) /
-		sizeof(sc_rsrc_t)); i++) {
-		if (early_power_on_rsrc[i] != SC_R_LAST) {
-			sci_err = sc_pm_set_resource_power_mode(pm_ipc_handle,
-				early_power_on_rsrc[i], SC_PM_PW_MODE_ON);
-			if (sci_err != SC_ERR_NONE)
-				pr_err("fail to power on resource %d\n",
-					early_power_on_rsrc[i]);
+	for (i = 0; i < IMX8_WU_MAX_IRQS / 32; i++) {
+		if (wakeup_rsrc_id[i] != 0) {
+			arm_smccc_smc(FSL_SIP_WAKEUP_SRC,
+				FSL_SIP_WAKEUP_SRC_IRQSTEER, 0,
+				0, 0, 0, 0, 0, &res);
+			return 0;
 		}
 	}
+
+	arm_smccc_smc(FSL_SIP_WAKEUP_SRC,
+			FSL_SIP_WAKEUP_SRC_SCU, 0,
+			0, 0, 0, 0, 0, &res);
+
+	return 0;
 }
 
 struct syscore_ops imx8_pm_domains_syscore_ops = {
-	.resume = imx8_pm_domains_resume,
+	.suspend = imx8_pm_domains_suspend,
+};
+
+static int imx8_power_domain_pm_notify(struct notifier_block *nb, unsigned long event,
+	void *dummy)
+{
+	if (event == PM_SUSPEND_PREPARE)
+		check_subdomain_wakeup = true;
+	else if (event == PM_POST_SUSPEND)
+		check_subdomain_wakeup = false;
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block imx8_power_domain_pm_notifier = {
+	.notifier_call = imx8_power_domain_pm_notify,
 };
 
 static void imx8_pd_setup(struct imx8_pm_domain *pd)
 {
+	pd->pd.states = kzalloc(2 * sizeof(struct genpd_power_state), GFP_KERNEL);
+	BUG_ON(!pd->pd.states);
+
 	pd->pd.power_off = imx8_pd_power_off;
 	pd->pd.power_on = imx8_pd_power_on;
 	pd->pd.attach_dev = imx8_attach_dev;
@@ -293,13 +409,13 @@ static void imx8_pd_setup(struct imx8_pm_domain *pd)
 	pd->pd.states[1].power_on_latency_ns =  2500000;
 
 	pd->pd.state_count = 2;
+	pd->dev_attached = true;
 }
 
 static int __init imx8_add_pm_domains(struct device_node *parent,
 					struct generic_pm_domain *genpd_parent)
 {
 	struct device_node *np;
-	static int index;
 
 	for_each_child_of_node(parent, np) {
 		struct imx8_pm_domain *imx8_pd;
@@ -319,14 +435,8 @@ static int __init imx8_add_pm_domains(struct device_node *parent,
 		if (!of_property_read_u32(np, "reg", &rsrc_id))
 			imx8_pd->rsrc_id = rsrc_id;
 
-		if (imx8_pd->rsrc_id != SC_R_LAST) {
+		if (imx8_pd->rsrc_id != SC_R_NONE) {
 			imx8_pd_setup(imx8_pd);
-
-			if (of_property_read_bool(np, "early_power_on")
-				&& index < (sizeof(early_power_on_rsrc) /
-				sizeof(sc_rsrc_t))) {
-				early_power_on_rsrc[index++] = imx8_pd->rsrc_id;
-			}
 			if (of_property_read_bool(np, "debug_console"))
 				rsrc_debug_console = imx8_pd->rsrc_id;
 			if (!of_property_read_u32(np, "wakeup-irq",
@@ -377,7 +487,7 @@ static int __init imx8_init_pm_domains(void)
 		if (!of_property_read_u32(np, "reg", &rsrc_id))
 			imx8_pd->rsrc_id = rsrc_id;
 
-		if (imx8_pd->rsrc_id != SC_R_LAST)
+		if (imx8_pd->rsrc_id != SC_R_NONE)
 			imx8_pd_setup(imx8_pd);
 
 		INIT_LIST_HEAD(&imx8_pd->clks);
@@ -395,6 +505,7 @@ static int __init imx8_init_pm_domains(void)
 
 	sci_err = sc_ipc_open(&pm_ipc_handle, mu_id);
 	register_syscore_ops(&imx8_pm_domains_syscore_ops);
+	register_pm_notifier(&imx8_power_domain_pm_notifier);
 
 	return 0;
 }
@@ -503,3 +614,111 @@ static int __init imx8_wu_init(struct device_node *node,
 	return 0;
 }
 IRQCHIP_DECLARE(imx8_wakeup_unit, "fsl,imx8-wu", imx8_wu_init);
+
+/***        debugfs support        ***/
+
+#ifdef CONFIG_DEBUG_FS
+#include <linux/pm.h>
+#include <linux/device.h>
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
+#include <linux/init.h>
+#include <linux/kobject.h>
+
+#define SC_PM_PW_MODE_FAIL	(SC_PM_PW_MODE_ON + 1)
+static struct dentry *imx8_rsrc_pm_debugfs_dir;
+
+static int imx8_rsrc_pm_summary_one(struct seq_file *s,
+				sc_rsrc_t rsrc_id)
+{
+	static const char * const status_lookup[] = {
+		[SC_PM_PW_MODE_OFF] = "OFF",
+		[SC_PM_PW_MODE_STBY] = "STBY",
+		[SC_PM_PW_MODE_LP] = "LP",
+		[SC_PM_PW_MODE_ON] = "ON",
+		[SC_PM_PW_MODE_FAIL] = "FAIL",
+	};
+	sc_err_t sci_err = SC_ERR_NONE;
+	sc_pm_power_mode_t mode;
+	char state[16];
+
+	sci_err = sc_pm_get_resource_power_mode(pm_ipc_handle, rsrc_id, &mode);
+	if (sci_err) {
+		pr_debug("failed to get power mode on resource %d, ret %d\n",
+			rsrc_id, sci_err);
+		mode = SC_PM_PW_MODE_FAIL;
+	}
+
+	if (WARN_ON(mode >= ARRAY_SIZE(status_lookup)))
+		return 0;
+
+	snprintf(state, sizeof(state), "%s", status_lookup[mode]);
+	seq_printf(s, "%-30d  %-15s ", rsrc_id, state);
+	seq_puts(s, "\n");
+
+	return 0;
+}
+
+static int imx8_rsrc_pm_summary_show(struct seq_file *s, void *data)
+{
+	int ret = 0;
+	int i;
+
+	seq_puts(s, "resource_id                    power_mode\n");
+	seq_puts(s, "---------------------------------------------\n");
+
+	ret = mutex_lock_interruptible(&rsrc_pm_list_lock);
+	if (ret)
+		return -ERESTARTSYS;
+
+	for (i = 0; i < SC_R_LAST; i++) {
+		ret = imx8_rsrc_pm_summary_one(s, i);
+		if (ret)
+			break;
+	}
+	mutex_unlock(&rsrc_pm_list_lock);
+
+	return ret;
+}
+
+static int imx8_rsrc_pm_summary_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, imx8_rsrc_pm_summary_show, NULL);
+}
+
+static const struct file_operations imx8_rsrc_pm_summary_fops = {
+	.open = imx8_rsrc_pm_summary_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static int __init imx8_pm_debug_init(void)
+{
+	struct dentry *d;
+
+	/* skip for non-SCFW system */
+	if (!of_find_compatible_node(NULL, NULL, "nxp,imx8-pd"))
+		return 0;
+
+	imx8_rsrc_pm_debugfs_dir = debugfs_create_dir("imx_rsrc_pm", NULL);
+
+	if (!imx8_rsrc_pm_debugfs_dir)
+		return -ENOMEM;
+
+	d = debugfs_create_file("imx_rsrc_pm_summary", 0444,
+			imx8_rsrc_pm_debugfs_dir, NULL,
+			&imx8_rsrc_pm_summary_fops);
+	if (!d)
+		return -ENOMEM;
+
+	return 0;
+}
+late_initcall(imx8_pm_debug_init);
+
+static void __exit imx8_rsrc_pm_debug_exit(void)
+{
+	debugfs_remove_recursive(imx8_rsrc_pm_debugfs_dir);
+}
+__exitcall(imx8_rsrc_pm_debug_exit);
+#endif /* CONFIG_DEBUG_FS */

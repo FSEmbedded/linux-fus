@@ -26,6 +26,7 @@
 #include <linux/fs.h>
 #include <linux/types.h>
 #include <linux/highmem.h>
+#include <linux/bio.h>
 
 #include <cluster/masklog.h>
 
@@ -341,6 +342,7 @@ int ocfs2_read_blocks(struct ocfs2_caching_info *ci, u64 block, int nr,
 				 * for this bh as it's not marked locally
 				 * uptodate. */
 				status = -EIO;
+				clear_buffer_needs_validate(bh);
 				put_bh(bh);
 				bhs[i] = NULL;
 				continue;

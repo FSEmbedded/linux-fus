@@ -276,7 +276,7 @@ This define enables the use of VM for gckCommand and fence buffers.
 #       endif
 /*
     gcdDEBUG_OPTION_NONE_TEXTURE
-        When set to 1, the type of texture will be set to AQ_TEXTURE_SAMPLE_MODE_TYPE_NONE.
+        When set to 1, the type of texture will be set to 0x0.
 */
 #ifndef gcdDEBUG_OPTION_NONE_TEXTURE
 #           define gcdDEBUG_OPTION_NONE_TEXTURE                 0
@@ -741,28 +741,26 @@ This define enables the use of VM for gckCommand and fence buffers.
 #endif
 
 /*
-   gcdNONPAGED_MEMORY_CACHEABLE
+   gcdENABLE_CACHEABLE_COMMAND_BUFFER
 
-        When non-zero, non paged memory will be cacheable.
+        When non-zero, command buffer will be cacheable.
 */
-#ifndef gcdNONPAGED_MEMORY_CACHEABLE
-#   define gcdNONPAGED_MEMORY_CACHEABLE         0
+#ifndef gcdENABLE_CACHEABLE_COMMAND_BUFFER
+#   define gcdENABLE_CACHEABLE_COMMAND_BUFFER          0
 #endif
 
 /*
-   gcdNONPAGED_MEMORY_BUFFERABLE
+   gcdENABLE_BUFFERABLE_VIDEO_MEMORY
 
-        When non-zero, non paged memory will be bufferable.
-        gcdNONPAGED_MEMORY_BUFFERABLE and gcdNONPAGED_MEMORY_CACHEABLE
-        can't be set 1 at same time
+        When non-zero, all video memory will be bufferable by default.
 */
-#ifndef gcdNONPAGED_MEMORY_BUFFERABLE
-#   define gcdNONPAGED_MEMORY_BUFFERABLE        1
+#ifndef gcdENABLE_BUFFERABLE_VIDEO_MEMORY
+#   define gcdENABLE_BUFFERABLE_VIDEO_MEMORY           1
 #endif
 
 /*
     gcdENABLE_INFINITE_SPEED_HW
-            enable the Infinte HW , this is for 2D openVG
+            enable the Infinte HW, this is for 2D openVG
 */
 #ifndef gcdENABLE_INFINITE_SPEED_HW
 #   define gcdENABLE_INFINITE_SPEED_HW          0
@@ -986,6 +984,10 @@ This define enables the use of VM for gckCommand and fence buffers.
 #   define gcdANDROID_NATIVE_FENCE_SYNC         0
 #endif
 
+#ifndef gcdLINUX_SYNC_FILE
+#   define gcdLINUX_SYNC_FILE                   0
+#endif
+
 /*
     gcdANDROID_IMPLICIT_NATIVE_BUFFER_SYNC
 
@@ -1097,7 +1099,7 @@ This define enables the use of VM for gckCommand and fence buffers.
  */
 
 #ifndef gcdINTERRUPT_STATISTIC
-#if defined(LINUX) || defined(__QNXNTO__) || defined(UNDER_CE)
+#if defined(LINUX) || defined(__QNXNTO__) || defined(UNDER_CE) || defined(__VXWORKS__)
 #   define gcdINTERRUPT_STATISTIC               1
 #else
 #   define gcdINTERRUPT_STATISTIC               0
@@ -1402,3 +1404,5 @@ VIV:gcdUSE_MMU_EXCEPTION
 
 
 #endif /* __gc_hal_options_h_ */
+
+

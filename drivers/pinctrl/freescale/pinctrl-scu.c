@@ -93,7 +93,7 @@ int imx_pinconf_backend_set_scu(struct pinctrl_dev *pctldev, unsigned pin_id,
 
 int imx_pinctrl_parse_pin_scu(struct imx_pinctrl_soc_info *info,
 			  unsigned int *pin_id, struct imx_pin *pin,
-			  const __be32 **list_p)
+			  const __be32 **list_p, u32 generic_config)
 {
 	struct imx_pin_scu *pin_scu = &pin->pin_conf.pin_scu;
 

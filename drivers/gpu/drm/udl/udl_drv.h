@@ -100,7 +100,7 @@ int udl_submit_urb(struct drm_device *dev, struct urb *urb, size_t len);
 void udl_urb_completion(struct urb *urb);
 
 int udl_driver_load(struct drm_device *dev, unsigned long flags);
-int udl_driver_unload(struct drm_device *dev);
+void udl_driver_unload(struct drm_device *dev);
 
 int udl_fbdev_init(struct drm_device *dev);
 void udl_fbdev_cleanup(struct drm_device *dev);
@@ -110,7 +110,7 @@ udl_fb_user_fb_create(struct drm_device *dev,
 		      struct drm_file *file,
 		      const struct drm_mode_fb_cmd2 *mode_cmd);
 
-int udl_render_hline(struct drm_device *dev, int bpp, struct urb **urb_ptr,
+int udl_render_hline(struct drm_device *dev, int log_bpp, struct urb **urb_ptr,
 		     const char *front, char **urb_buf_ptr,
 		     u32 byte_offset, u32 device_byte_offset, u32 byte_width,
 		     int *ident_ptr, int *sent_ptr);
@@ -134,7 +134,7 @@ void udl_gem_put_pages(struct udl_gem_object *obj);
 int udl_gem_vmap(struct udl_gem_object *obj);
 void udl_gem_vunmap(struct udl_gem_object *obj);
 int udl_drm_gem_mmap(struct file *filp, struct vm_area_struct *vma);
-int udl_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf);
+int udl_gem_fault(struct vm_fault *vmf);
 
 int udl_handle_damage(struct udl_framebuffer *fb, int x, int y,
 		      int width, int height);

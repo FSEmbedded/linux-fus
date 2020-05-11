@@ -141,33 +141,7 @@ CDN_API_HDMITX_Set_Mode_blocking(state_struct *state,
 {
 	CDN_API_STATUS ret;
 	GENERAL_Read_Register_response resp;
-	HDMITX_TRANS_DATA data_in;
-	HDMITX_TRANS_DATA data_out;
 	u32 clk_reg_0, clk_reg_1;
-	u8 buff = 1;
-
-	/* enable/disable  scrambler; */
-	if (protocol == HDMI_TX_MODE_HDMI_2_0) {
-		if (character_rate >= 340000) {
-			buff = 3;	/* enable scrambling + TMDS_Bit_Clock_Ratio */
-		} else {
-			buff = 1;	/* enable scrambling */
-		}
-	} else {
-		buff = 0;	/* disable scrambling */
-	}
-
-	data_in.buff = &buff;
-	data_in.len = 1;
-	data_in.slave = 0x54;
-	data_in.offset = 0x20;	/* TMDS config */
-	/* Workaround for imx8qm DDC R/W failed issue */
-	if (!cpu_is_imx8qm()) {
-		ret = CDN_API_HDMITX_DDC_WRITE_blocking(state, &data_in, &data_out);
-		pr_info("CDN_API_HDMITX_DDC_WRITE_blocking ret = %d\n", ret);
-		if (ret != CDN_OK)
-			return ret;
-	}
 
 	ret = CDN_API_General_Read_Register_blocking(
 				state, ADDR_SOURCE_MHL_HD + (HDTX_CONTROLLER << 2), &resp);
@@ -361,7 +335,7 @@ CDN_API_STATUS CDN_API_HDMITX_SetVic_blocking(state_struct *state,
 		return ret;
 
 	/* Reset Data Enable */
-	CDN_API_General_Read_Register_blocking(state, ADDR_SOURCE_MHL_HD +
+	ret = CDN_API_General_Read_Register_blocking(state, ADDR_SOURCE_MHL_HD +
 					       (HDTX_CONTROLLER << 2), &resp);
 	if (ret != CDN_OK)
 		return ret;
@@ -434,6 +408,16 @@ CDN_API_STATUS CDN_API_HDMITX_SetVic_blocking(state_struct *state,
 	if (ret != CDN_OK)
 		return ret;
 	return ret;
+}
+
+CDN_API_STATUS CDN_API_HDMITX_Disable_GCP(state_struct *state)
+{
+	GENERAL_Read_Register_response resp;
+
+	CDN_API_General_Read_Register_blocking(state, ADDR_SOURCE_MHL_HD +(HDTX_CONTROLLER<<2), &resp);
+	resp.val = resp.val & (~F_GCP_EN(1));
+	return CDN_API_General_Write_Register_blocking(state,
+			ADDR_SOURCE_MHL_HD +(HDTX_CONTROLLER<<2), resp.val);
 }
 
 CDN_API_STATUS CDN_API_HDMITX_ForceColorDepth_blocking(state_struct *state,

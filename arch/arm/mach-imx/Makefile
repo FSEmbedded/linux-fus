@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0
 obj-y := cpu.o system.o irq-common.o common.o
 
 obj-$(CONFIG_SOC_IMX21) += mm-imx21.o
@@ -98,8 +99,8 @@ AFLAGS_lpddr2_freq_imx6.o :=-Wa,-march=armv7-a
 obj-$(CONFIG_SOC_IMX6SL) += mach-imx6sl.o lpddr2_freq_imx6.o
 AFLAGS_lpddr2_freq_imx6sll.o :=-Wa,-march=armv7-a
 obj-$(CONFIG_SOC_IMX6SLL) += mach-imx6sl.o lpddr2_freq_imx6sll.o
-AFLAGS_ddr3_freq_imx6sx.o :=-Wa,-march=armv7-a
 AFLAGS_lpddr2_freq_imx6sx.o :=-Wa,-march=armv7-a
+AFLAGS_ddr3_freq_imx6sx.o :=-Wa,-march=armv7-a
 obj-$(CONFIG_SOC_IMX6SX) += mach-imx6sx.o ddr3_freq_imx6sx.o \
 			    lpddr2_freq_imx6sx.o
 obj-$(CONFIG_SOC_IMX6UL) += mach-imx6ul.o ddr3_freq_imx6sx.o \
@@ -131,5 +132,10 @@ obj-$(CONFIG_SOC_IMX53) += mach-imx53.o
 obj-$(CONFIG_SOC_VF610) += mach-vf610.o
 
 obj-$(CONFIG_SOC_LS1021A) += mach-ls1021a.o
+
+ifneq ($(CONFIG_SOC_IMX6)$(CONFIG_SOC_IMX7),)
+# Bus frequency by OPTEE OS
+obj-$(CONFIG_OPTEE) += busfreq_optee.o
+endif
 
 obj-y += devices/

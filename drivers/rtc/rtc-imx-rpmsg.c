@@ -317,7 +317,6 @@ static int imx_rpmsg_rtc_probe(struct platform_device *pdev)
 		goto error_rtc_device_register;
 	}
 
-	platform_set_drvdata(pdev, &rtc_rpmsg);
 	ret = register_rpmsg_driver(&rtc_rpmsg_driver);
 	if (ret)
 		dev_err(&pdev->dev, "failed to register rpmsg for rtc: %d\n",
@@ -359,7 +358,7 @@ static const struct dev_pm_ops imx_rpmsg_rtc_pm_ops = {
 
 #else
 
-#define IMX8_RPMSG_RTC_PM_OPS	NULL
+#define IMX_RPMSG_RTC_PM_OPS	NULL
 
 #endif
 

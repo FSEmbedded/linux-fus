@@ -163,6 +163,7 @@ static void snd_virmidi_output_trigger(struct snd_rawmidi_substream *substream, 
 	int count, res;
 	unsigned char buf[32], *pbuf;
 	unsigned long flags;
+	bool check_resched = !in_atomic();
 
 	if (up) {
 		vmidi->trigger = 1;
@@ -174,12 +175,12 @@ static void snd_virmidi_output_trigger(struct snd_rawmidi_substream *substream, 
 			}
 			return;
 		}
+		spin_lock_irqsave(&substream->runtime->lock, flags);
 		if (vmidi->event.type != SNDRV_SEQ_EVENT_NONE) {
 			if (snd_seq_kernel_client_dispatch(vmidi->client, &vmidi->event, in_atomic(), 0) < 0)
-				return;
+				goto out;
 			vmidi->event.type = SNDRV_SEQ_EVENT_NONE;
 		}
-		spin_lock_irqsave(&substream->runtime->lock, flags);
 		while (1) {
 			count = __snd_rawmidi_transmit_peek(substream, buf, sizeof(buf));
 			if (count <= 0)
@@ -200,6 +201,15 @@ static void snd_virmidi_output_trigger(struct snd_rawmidi_substream *substream, 
 					vmidi->event.type = SNDRV_SEQ_EVENT_NONE;
 				}
 			}
+			if (!check_resched)
+				continue;
+			/* do temporary unlock & cond_resched() for avoiding
+			 * CPU soft lockup, which may happen via a write from
+			 * a huge rawmidi buffer
+			 */
+			spin_unlock_irqrestore(&substream->runtime->lock, flags);
+			cond_resched();
+			spin_lock_irqsave(&substream->runtime->lock, flags);
 		}
 	out:
 		spin_unlock_irqrestore(&substream->runtime->lock, flags);
@@ -359,13 +369,13 @@ static int snd_virmidi_unuse(void *private_data,
  *  Register functions
  */
 
-static struct snd_rawmidi_ops snd_virmidi_input_ops = {
+static const struct snd_rawmidi_ops snd_virmidi_input_ops = {
 	.open = snd_virmidi_input_open,
 	.close = snd_virmidi_input_close,
 	.trigger = snd_virmidi_input_trigger,
 };
 
-static struct snd_rawmidi_ops snd_virmidi_output_ops = {
+static const struct snd_rawmidi_ops snd_virmidi_output_ops = {
 	.open = snd_virmidi_output_open,
 	.close = snd_virmidi_output_close,
 	.trigger = snd_virmidi_output_trigger,
@@ -545,6 +555,7 @@ int snd_virmidi_new(struct snd_card *card, int device, struct snd_rawmidi **rrmi
 	*rrmidi = rmidi;
 	return 0;
 }
+EXPORT_SYMBOL(snd_virmidi_new);
 
 /*
  *  ENTRY functions
@@ -561,5 +572,3 @@ static void __exit alsa_virmidi_exit(void)
 
 module_init(alsa_virmidi_init)
 module_exit(alsa_virmidi_exit)
-
-EXPORT_SYMBOL(snd_virmidi_new);

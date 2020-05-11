@@ -2,6 +2,7 @@ Anatop Voltage regulators
 
 Required properties:
 - compatible: Must be "fsl,anatop-regulator"
+- regulator-name: A string used as a descriptive name for regulator outputs
 - anatop-reg-offset: Anatop MFD register offset
 - anatop-vol-bit-shift: Bit shift for the register
 - anatop-vol-bit-width: Number of bits used in the register
@@ -14,7 +15,7 @@ Optional properties:
 - anatop-delay-bit-shift: Bit shift for the step time register
 - anatop-delay-bit-width: Number of bits used in the step time register
 - vin-supply: The supply for this regulator
-- anatop-enable-bit: Regulator output offset bit, only for 3p0, 2p5, and 1p1.
+- anatop-enable-bit: Regulator enable bit offset
 
 Any property defined as part of the core regulator
 binding, defined in regulator.txt, can also be used.
@@ -36,5 +37,4 @@ Example:
 		anatop-min-bit-val = <1>;
 		anatop-min-voltage = <725000>;
 		anatop-max-voltage = <1300000>;
-		anatop-enable-bit = <0>;
 	};

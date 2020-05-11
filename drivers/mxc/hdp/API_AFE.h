@@ -83,6 +83,7 @@ typedef struct {
 	u32 value;
 	u8 lsb;
 	u8 msb;
+	u8 *label;
 } reg_field_t;
 
 u8 AFE_check_rate_supported(ENUM_AFE_LINK_RATE rate);
@@ -90,9 +91,21 @@ void Afe_write(state_struct *state, u32 offset, u16 val);
 u16 Afe_read(state_struct *state, u32 offset);
 void AFE_init(state_struct *state, int num_lanes,
 	      ENUM_AFE_LINK_RATE link_rate);
+void afe_init_t28hpc(state_struct *state, int num_lanes,
+	      ENUM_AFE_LINK_RATE link_rate);
 void AFE_power(state_struct *state, int num_lanes,
+	       ENUM_AFE_LINK_RATE link_rate);
+void afe_power_t28hpc(state_struct *state, int num_lanes,
 	       ENUM_AFE_LINK_RATE link_rate);
 void set_field_value(reg_field_t *reg_field, u32 value);
 int set_reg_value(reg_field_t reg_field);
-
+int inside(u32 value, u32 left_sharp_corner, u32 right_sharp_corner);
+int get_table_row_match_column(const u32 *array, u32 table_rows,
+			       u32 table_cols, u32 start_row,
+			       u32 column_to_search,
+			       u32 value_to_search_in_column);
+int get_table_row(const u32 *array, u32 table_rows,
+		  u32 table_cols, u32 variable_in_range,
+		  u32 range_min_column, u32 range_max_column,
+		  u32 column_to_search, u32 column_value);
 #endif

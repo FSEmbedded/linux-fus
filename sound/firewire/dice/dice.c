@@ -14,7 +14,7 @@ MODULE_LICENSE("GPL v2");
 #define OUI_WEISS		0x001c6a
 #define OUI_LOUD		0x000ff2
 #define OUI_FOCUSRITE		0x00130e
-#define OUI_TCELECTRONIC	0x001486
+#define OUI_TCELECTRONIC	0x000166
 
 #define DICE_CATEGORY_ID	0x04
 #define WEISS_CATEGORY_ID	0x00
@@ -26,7 +26,7 @@ MODULE_LICENSE("GPL v2");
  */
 static bool force_two_pcm_support(struct fw_unit *unit)
 {
-	const char *const models[] = {
+	static const char *const models[] = {
 		/* TC Electronic models. */
 		"StudioKonnekt48",
 		/* Focusrite models. */

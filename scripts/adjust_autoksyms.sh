@@ -59,6 +59,7 @@ cat > "$new_ksyms_file" << EOT
  */
 
 EOT
+[ "$(ls -A "$MODVERDIR")" ] &&
 sed -ns -e '3{s/ /\n/g;/^$/!p;}' "$MODVERDIR"/*.mod | sort -u |
 while read sym; do
 	if [ -n "$CONFIG_HAVE_UNDERSCORE_SYMBOL_PREFIX" ]; then
@@ -83,6 +84,13 @@ while read sympath; do
 	depfile="include/config/ksym/${sympath}.h"
 	mkdir -p "$(dirname "$depfile")"
 	touch "$depfile"
+	# Filesystems with coarse time precision may create timestamps
+	# equal to the one from a file that was very recently built and that
+	# needs to be rebuild. Let's guard against that by making sure our
+	# dep files are always newer than the first file we created here.
+	while [ ! "$depfile" -nt "$new_ksyms_file" ]; do
+		touch "$depfile"
+	done
 	echo $((count += 1))
 done | tail -1 )
 changed=${changed:-0}

@@ -1,7 +1,7 @@
 /*****************************************************************************
  *    The GPL License (GPL)
  *
- *    Copyright (c) 2015-2017, VeriSilicon Inc.
+ *    Copyright (c) 2015-2019, VeriSilicon Inc.
  *    Copyright (c) 2011-2014, Google Inc.
  *
  *    This program is free software; you can redistribute it and/or
@@ -159,7 +159,7 @@ MODULE_PARM_DESC(hantro_dbg, "Debug level (0-1)");
 	} while (0)
 
 
-static int hantrodec_major = -1; /* dynamic allocation */
+static int hantrodec_major; /* dynamic allocation */
 
 /* here's all the must remember stuff */
 typedef struct {
@@ -414,7 +414,7 @@ static void ReadCoreConfig(hantrodec_t *dev)
 			cfg[c] |= tmp ? 1 << DWL_CLIENT_TYPE_RV_DEC : 0;
 
 			/* Post-processor configuration */
-			reg = ioread32(dev->hwregs[c] + HANTROPP_SYNTH_CFG * 4);
+			//reg = ioread32(dev->hwregs[c] + HANTROPP_SYNTH_CFG * 4);
 		} else {
 			reg = ioread32(dev->hwregs[c] + HANTRODEC_SYNTH_CFG_2 * 4);
 
@@ -461,7 +461,8 @@ int GetDecCore(long Core, hantrodec_t *dev, struct file *filp)
 }
 
 int GetDecCoreAny(long *Core, hantrodec_t *dev, struct file *filp,
-			unsigned long format) {
+			unsigned long format)
+{
 	int success = 0;
 	long c;
 
@@ -479,7 +480,8 @@ int GetDecCoreAny(long *Core, hantrodec_t *dev, struct file *filp,
 	return success;
 }
 int GetDecCoreID(hantrodec_t *dev, struct file *filp,
-			unsigned long format) {
+			unsigned long format)
+{
 	long c;
 
 	int core_id = -1;
@@ -510,8 +512,6 @@ static int hantrodec_choose_core(int is_g1)
 
 	if (reg == NULL) {
 		pr_err("blk_ctl: failed to ioremap HW regs\n");
-		if (reg)
-			iounmap((void *)reg);
 		release_mem_region(blk_base, 0x1000);
 		return -EBUSY;
 	}
@@ -817,12 +817,13 @@ long WaitDecReadyAndRefreshRegs(hantrodec_t *dev, struct core_desc *Core)
 
 	PDEBUG("wait_event_interruptible DEC[%d]\n", id);
 
-	ret = wait_event_interruptible_timeout(dec_wait_queue, CheckDecIrq(dev, id), msecs_to_jiffies(200));
+	//ret = wait_event_interruptible_timeout(dec_wait_queue, CheckDecIrq(dev, id), msecs_to_jiffies(200));
+	ret = wait_event_timeout(dec_wait_queue, CheckDecIrq(dev, id), msecs_to_jiffies(200));
 	if (ret == -ERESTARTSYS) {
-		pr_err("DEC[%d]  failed to wait_event_interruptible interrupted\n", id);
+		pr_err("DEC[%d]  failed to wait_event interrupted\n", id);
 		return -ERESTARTSYS;
 	} else if (ret == 0) {
-		pr_err("DEC[%d]  wait_event_interruptible timeout\n", id);
+		pr_err("DEC[%d]  wait_event timeout\n", id);
 		timeout = 1;
 	}
 
@@ -1097,6 +1098,9 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd, unsigned long a
 			return -EFAULT;
 		}
 
+		if (Core.id >= hantrodec_data.cores)
+			return -EFAULT;
+
 		DecFlushRegs(&hantrodec_data, &Core);
 		break;
 	}
@@ -1109,6 +1113,9 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd, unsigned long a
 			pr_err("copy_from_user failed, returned %li\n", tmp);
 			return -EFAULT;
 		}
+
+		if (Core.id >= hantrodec_data.cores)
+			return -EFAULT;
 
 		PPFlushRegs(&hantrodec_data, &Core);
 		break;
@@ -1123,6 +1130,9 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd, unsigned long a
 			return -EFAULT;
 		}
 
+		if (Core.id >= hantrodec_data.cores)
+			return -EFAULT;
+
 		return DecRefreshRegs(&hantrodec_data, &Core);
 	}
 	case _IOC_NR(HANTRODEC_IOCS_PP_PULL_REG): {
@@ -1134,6 +1144,9 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd, unsigned long a
 			pr_err("copy_from_user failed, returned %li\n", tmp);
 			return -EFAULT;
 		}
+
+		if (Core.id >= hantrodec_data.cores)
+			return -EFAULT;
 
 		return PPRefreshRegs(&hantrodec_data, &Core);
 	}
@@ -1175,6 +1188,9 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd, unsigned long a
 			return -EFAULT;
 		}
 
+		if (Core.id >= hantrodec_data.cores)
+			return -EFAULT;
+
 		return WaitDecReadyAndRefreshRegs(&hantrodec_data, &Core);
 	}
 	case _IOC_NR(HANTRODEC_IOCX_PP_WAIT): {
@@ -1186,6 +1202,9 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd, unsigned long a
 			pr_err("copy_from_user failed, returned %li\n", tmp);
 			return -EFAULT;
 		}
+
+		if (Core.id >= hantrodec_data.cores)
+			return -EFAULT;
 
 		return WaitPPReadyAndRefreshRegs(&hantrodec_data, &Core);
 	}
@@ -1669,7 +1688,8 @@ irqreturn_t hantrodec_isr(int irq, void *dev_id)
 
 			dec_irq |= (1 << i);
 
-			wake_up_interruptible_all(&dec_wait_queue);
+			//wake_up_interruptible_all(&dec_wait_queue);
+			wake_up_all(&dec_wait_queue);
 			handled++;
 		}
 	}
@@ -1839,12 +1859,12 @@ static int hantro_dev_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM
-static int hantro_suspend(struct device *dev)
+static int __maybe_unused hantro_suspend(struct device *dev)
 {
 	pm_runtime_put_sync_suspend(dev);   //power off
 	return 0;
 }
-static int hantro_resume(struct device *dev)
+static int __maybe_unused hantro_resume(struct device *dev)
 {
 	pm_runtime_get_sync(dev);     //power on
 	hantro_ctrlblk_reset(dev);
@@ -1873,7 +1893,7 @@ static const struct of_device_id hantro_of_match[] = {
 	{ .compatible = "nxp,imx8mq-hantro", },
 	{/* sentinel */}
 };
-MODULE_DEVICE_TABLE(of, vpu_of_match);
+MODULE_DEVICE_TABLE(of, hantro_of_match);
 
 
 static struct platform_driver mxchantro_driver = {

@@ -33,7 +33,6 @@
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
-//#include <linux/input/sx8654.h>
 
 /* register addresses */
 #define I2C_REG_TOUCH0			0x00

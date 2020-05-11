@@ -77,8 +77,20 @@ gnet_stats_start_copy_compat(struct sk_buff *skb, int type, int tc_stats_type,
 		d->lock = lock;
 		spin_lock_bh(lock);
 	}
-	if (d->tail)
-		return gnet_stats_copy(d, type, NULL, 0, padattr);
+	if (d->tail) {
+		int ret = gnet_stats_copy(d, type, NULL, 0, padattr);
+
+		/* The initial attribute added in gnet_stats_copy() may be
+		 * preceded by a padding attribute, in which case d->tail will
+		 * end up pointing at the padding instead of the real attribute.
+		 * Fix this so gnet_stats_finish_copy() adjusts the length of
+		 * the right attribute.
+		 */
+		if (ret == 0 && d->tail->nla_type == padattr)
+			d->tail = (struct nlattr *)((char *)d->tail +
+						    NLA_ALIGN(d->tail->nla_len));
+		return ret;
+	}
 
 	return 0;
 }
@@ -194,8 +206,7 @@ EXPORT_SYMBOL(gnet_stats_copy_basic);
 /**
  * gnet_stats_copy_rate_est - copy rate estimator statistics into statistics TLV
  * @d: dumping handle
- * @b: basic statistics
- * @r: rate estimator statistics
+ * @rate_est: rate estimator
  *
  * Appends the rate estimator statistics to the top level TLV created by
  * gnet_stats_start_copy().
@@ -205,18 +216,17 @@ EXPORT_SYMBOL(gnet_stats_copy_basic);
  */
 int
 gnet_stats_copy_rate_est(struct gnet_dump *d,
-			 const struct gnet_stats_basic_packed *b,
-			 struct gnet_stats_rate_est64 *r)
+			 struct net_rate_estimator __rcu **rate_est)
 {
+	struct gnet_stats_rate_est64 sample;
 	struct gnet_stats_rate_est est;
 	int res;
 
-	if (b && !gen_estimator_active(b, r))
+	if (!gen_estimator_read(rate_est, &sample))
 		return 0;
-
-	est.bps = min_t(u64, UINT_MAX, r->bps);
+	est.bps = min_t(u64, UINT_MAX, sample.bps);
 	/* we have some time before reaching 2^32 packets per second */
-	est.pps = r->pps;
+	est.pps = sample.pps;
 
 	if (d->compat_tc_stats) {
 		d->tc_stats.bps = est.bps;
@@ -226,11 +236,11 @@ gnet_stats_copy_rate_est(struct gnet_dump *d,
 	if (d->tail) {
 		res = gnet_stats_copy(d, TCA_STATS_RATE_EST, &est, sizeof(est),
 				      TCA_STATS_PAD);
-		if (res < 0 || est.bps == r->bps)
+		if (res < 0 || est.bps == sample.bps)
 			return res;
 		/* emit 64bit stats only if needed */
-		return gnet_stats_copy(d, TCA_STATS_RATE_EST64, r, sizeof(*r),
-				       TCA_STATS_PAD);
+		return gnet_stats_copy(d, TCA_STATS_RATE_EST64, &sample,
+				       sizeof(sample), TCA_STATS_PAD);
 	}
 
 	return 0;

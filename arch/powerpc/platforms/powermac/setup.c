@@ -352,6 +352,7 @@ static int pmac_late_init(void)
 }
 machine_late_initcall(powermac, pmac_late_init);
 
+void note_bootable_part(dev_t dev, int part, int goodness);
 /*
  * This is __ref because we check for "initializing" before
  * touching any of the __init sensitive things and "initializing"
@@ -556,7 +557,7 @@ static int __init check_pmac_serial_console(void)
 		pr_debug(" can't find stdout package %s !\n", name);
 		return -ENODEV;
 	}
-	pr_debug("stdout is %s\n", prom_stdout->full_name);
+	pr_debug("stdout is %pOF\n", prom_stdout);
 
 	name = of_get_property(prom_stdout, "name", NULL);
 	if (!name) {

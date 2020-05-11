@@ -293,6 +293,8 @@ struct soc_platform
 
     const char *name;
     gcsPLATFORM_OPERATIONS* ops;
+    /* PLATFORM specific flags */
+    gctUINT32  flagBits;
 };
 
 #if USE_LINUX_PCIE

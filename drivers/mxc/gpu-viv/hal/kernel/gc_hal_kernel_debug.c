@@ -1835,8 +1835,13 @@ extern volatile unsigned g_nQnxInIsrs;
     atomic_sub(&g_nQnxInIsrs, 1); \
 }
 
-#else
+#elif defined(__VXWORKS__)
+#define gcmDEBUGPRINT(ArgumentSize, CopyMessage, Message) \
+{ \
+    printf(Message); \
+}
 
+#else
 #define gcmDEBUGPRINT(ArgumentSize, CopyMessage, Message) \
 { \
     gctARGUMENTS __arguments__; \
@@ -2031,6 +2036,7 @@ gckOS_DumpBuffer(
         if (Type != gcvDUMP_BUFFER_FROM_USER)
         {
             gcmkVERIFY_OK(gckOS_GetPhysicalAddress(Os, Buffer, &physical));
+            gcmkVERIFY_OK(gckOS_CPUPhysicalToGPUPhysical(Os, physical, &physical));
             gcmkSAFECASTPHYSADDRT(address, physical);
         }
         else

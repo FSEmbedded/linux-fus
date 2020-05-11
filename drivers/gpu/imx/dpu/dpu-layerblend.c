@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017-2018 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -13,6 +13,7 @@
  * for more details.
  */
 
+#include <drm/drm_blend.h>
 #include <linux/io.h>
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
@@ -57,29 +58,18 @@ static const lb_prim_sel_t prim_sels[] = {
 #define MODE_MASK				BIT(0)
 #define BLENDCONTROL				0x10
 #define ALPHA(a)				(((a) & 0xFF) << 16)
+#define PRIM_C_BLD_FUNC__ONE_MINUS_CONST_ALPHA	0x7
 #define PRIM_C_BLD_FUNC__ONE_MINUS_SEC_ALPHA	0x5
+#define PRIM_C_BLD_FUNC__ZERO			0x0
 #define SEC_C_BLD_FUNC__CONST_ALPHA		(0x6 << 4)
-#define PRIM_A_BLD_FUNC__ONE_MINUS_SEC_ALPHA	(0x5 << 8)
-#define SEC_A_BLD_FUNC__ONE			(0x1 << 12)
+#define SEC_C_BLD_FUNC__SEC_ALPHA		(0x4 << 4)
+#define PRIM_A_BLD_FUNC__ZERO			(0x0 << 8)
+#define SEC_A_BLD_FUNC__ZERO			(0x0 << 12)
 #define POSITION				0x14
 #define XPOS(x)					((x) & 0x7FFF)
 #define YPOS(y)					(((y) & 0x7FFF) << 16)
 #define PRIMCONTROLWORD				0x18
 #define SECCONTROLWORD				0x1C
-
-#define CONTROLWORD				0x18
-#define CURPIXELCNT				0x1C
-static u16 get_xval(u32 pixel_cnt)
-{
-	return pixel_cnt && 0xFF;
-}
-
-static u16 get_yval(u32 pixel_cnt)
-{
-	return pixel_cnt >> 16;
-}
-#define LASTPIXELCNT				0x20
-#define PERFCOUNTER				0x24
 
 struct dpu_layerblend {
 	void __iomem *pec_base;
@@ -233,15 +223,34 @@ void layerblend_control(struct dpu_layerblend *lb, lb_mode_t mode)
 }
 EXPORT_SYMBOL_GPL(layerblend_control);
 
-void layerblend_blendcontrol(struct dpu_layerblend *lb)
+void layerblend_blendcontrol(struct dpu_layerblend *lb, unsigned int zpos,
+			     unsigned int pixel_blend_mode, u16 alpha)
 {
-	u32 val;
+	u32 val = PRIM_A_BLD_FUNC__ZERO | SEC_A_BLD_FUNC__ZERO;
 
-	val = ALPHA(0xff) |
-	      PRIM_C_BLD_FUNC__ONE_MINUS_SEC_ALPHA |
-	      SEC_C_BLD_FUNC__CONST_ALPHA |
-	      PRIM_A_BLD_FUNC__ONE_MINUS_SEC_ALPHA |
-	      SEC_A_BLD_FUNC__ONE;
+	if (zpos == 0) {
+		val |= PRIM_C_BLD_FUNC__ZERO | SEC_C_BLD_FUNC__CONST_ALPHA;
+		alpha = DRM_BLEND_ALPHA_OPAQUE;
+	} else {
+		switch (pixel_blend_mode) {
+		case DRM_MODE_BLEND_PIXEL_NONE:
+			val |= PRIM_C_BLD_FUNC__ONE_MINUS_CONST_ALPHA |
+			       SEC_C_BLD_FUNC__CONST_ALPHA;
+			break;
+		case DRM_MODE_BLEND_PREMULTI:
+			val |= PRIM_C_BLD_FUNC__ONE_MINUS_SEC_ALPHA |
+			       SEC_C_BLD_FUNC__CONST_ALPHA;
+			break;
+		case DRM_MODE_BLEND_COVERAGE:
+			val |= PRIM_C_BLD_FUNC__ONE_MINUS_SEC_ALPHA |
+			       SEC_C_BLD_FUNC__SEC_ALPHA;
+			break;
+		default:
+			break;
+		}
+	}
+
+	val |= ALPHA(alpha >> 8);
 
 	mutex_lock(&lb->mutex);
 	dpu_lb_write(lb, val, BLENDCONTROL);
@@ -256,56 +265,6 @@ void layerblend_position(struct dpu_layerblend *lb, int x, int y)
 	mutex_unlock(&lb->mutex);
 }
 EXPORT_SYMBOL_GPL(layerblend_position);
-
-u32 layerblend_last_control_word(struct dpu_layerblend *lb)
-{
-	u32 val;
-
-	mutex_lock(&lb->mutex);
-	val = dpu_lb_read(lb, CONTROLWORD);
-	mutex_unlock(&lb->mutex);
-
-	return val;
-}
-EXPORT_SYMBOL_GPL(layerblend_last_control_word);
-
-void layerblend_pixel_cnt(struct dpu_layerblend *lb, u16 *x, u16 *y)
-{
-	u32 val;
-
-	mutex_lock(&lb->mutex);
-	val = dpu_lb_read(lb, CURPIXELCNT);
-	mutex_unlock(&lb->mutex);
-
-	*x = get_xval(val);
-	*y = get_yval(val);
-}
-EXPORT_SYMBOL_GPL(layerblend_pixel_cnt);
-
-void layerblend_last_pixel_cnt(struct dpu_layerblend *lb, u16 *x, u16 *y)
-{
-	u32 val;
-
-	mutex_lock(&lb->mutex);
-	val = dpu_lb_read(lb, LASTPIXELCNT);
-	mutex_unlock(&lb->mutex);
-
-	*x = get_xval(val);
-	*y = get_yval(val);
-}
-EXPORT_SYMBOL_GPL(layerblend_last_pixel_cnt);
-
-u32 layerblend_perfresult(struct dpu_layerblend *lb)
-{
-	u32 val;
-
-	mutex_lock(&lb->mutex);
-	val = dpu_lb_read(lb, PERFCOUNTER);
-	mutex_unlock(&lb->mutex);
-
-	return val;
-}
-EXPORT_SYMBOL_GPL(layerblend_perfresult);
 
 struct dpu_layerblend *dpu_lb_get(struct dpu_soc *dpu, int id)
 {
@@ -324,12 +283,12 @@ struct dpu_layerblend *dpu_lb_get(struct dpu_soc *dpu, int id)
 	mutex_lock(&lb->mutex);
 
 	if (lb->inuse) {
-		lb = ERR_PTR(-EBUSY);
-		goto out;
+		mutex_unlock(&lb->mutex);
+		return ERR_PTR(-EBUSY);
 	}
 
 	lb->inuse = true;
-out:
+
 	mutex_unlock(&lb->mutex);
 
 	return lb;

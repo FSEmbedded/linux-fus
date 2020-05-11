@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2010-2016 Freescale Semiconductor, Inc.
  *
- * Copyright 2017 NXP
+ * Copyright 2017-2018 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1148,6 +1148,7 @@ static uint8_t is_yuv(uint32_t format)
 	case PXP_PIX_FMT_VYUY:
 	case PXP_PIX_FMT_YUV444:
 	case PXP_PIX_FMT_YVU444:
+	case PXP_PIX_FMT_VUY444:
 		return 1;
 	case PXP_PIX_FMT_NV12:
 	case PXP_PIX_FMT_NV21:
@@ -1209,6 +1210,7 @@ static u32 get_bpp_from_fmt(u32 pix_fmt)
 	case PXP_PIX_FMT_BGRA32:
 	case PXP_PIX_FMT_YUV444:
 	case PXP_PIX_FMT_YVU444:
+	case PXP_PIX_FMT_VUY444:
 		bpp = 32;
 		break;
 	default:
@@ -1892,6 +1894,7 @@ static bool fmt_ps_support(uint32_t format)
 	case PXP_PIX_FMT_RGB565:
 	case PXP_PIX_FMT_YUV444:
 	case PXP_PIX_FMT_UYVY:
+	case PXP_PIX_FMT_VUY444:
 	/* need word byte swap */
 	case PXP_PIX_FMT_YUYV:
 	case PXP_PIX_FMT_VYUY:
@@ -2306,6 +2309,19 @@ static uint32_t ps_calc_scaling(struct pxp_pixmap *input,
 		}
 		scale.xscale = input->crop.width * 0x1000 /
 				(output->crop.width * decx);
+
+		/* A factor greater than 2 is not supported
+		 * with the bilinear filter, so correct it in
+		 * driver
+		 */
+		if (((scale.xscale >> BP_PXP_PS_SCALE_OFFSET) & 0x3) > 2) {
+			scale.xscale &= (~(0x3 << BP_PXP_PS_SCALE_OFFSET));
+			scale.xscale |= (0x2 << BP_PXP_PS_SCALE_OFFSET);
+			pr_warn("%s: scale.xscale is larger than 2, forcing to 2"
+					"input w/h=(%d,%d), output w/h=(%d, %d)\n",
+					__func__, input->crop.width, input->crop.height,
+					output->crop.width, output->crop.height);
+		}
 	} else {
 		if (!is_yuv(input->format) ||
 		    (is_yuv(input->format) == is_yuv(output->format)) ||
@@ -2343,6 +2359,19 @@ static uint32_t ps_calc_scaling(struct pxp_pixmap *input,
 		}
 		scale.yscale = input->crop.height * 0x1000 /
 				(output->crop.height * decy);
+
+		/* A factor greater than 2 is not supported
+		 * with the bilinear filter, so correct it in
+		 * driver
+		 */
+		if (((scale.yscale >> BP_PXP_PS_SCALE_OFFSET) & 0x3) > 2) {
+			scale.yscale &= (~(0x3 << BP_PXP_PS_SCALE_OFFSET));
+			scale.yscale |= (0x2 << BP_PXP_PS_SCALE_OFFSET);
+			pr_warn("%s: scale.yscale is larger than 2, forcing to 2"
+					"input w/h=(%d,%d), output w/h=(%d, %d)\n",
+					__func__, input->crop.width, input->crop.height,
+					output->crop.width, output->crop.height);
+		}
 	} else {
 		if ((input->crop.height > 1) && (output->crop.height > 1))
 			scale.yscale = (input->crop.height - 1) * 0x1000 /
@@ -2407,6 +2436,7 @@ static int pxp_ps_config(struct pxp_pixmap *input,
 
 	offset = input->crop.y * input->pitch +
 		 input->crop.x * (input->bpp >> 3);
+
 	pxp_writel(input->paddr + offset, HW_PXP_PS_BUF);
 
 	switch (is_yuv(input->format)) {
@@ -3697,6 +3727,7 @@ static void __pxpdma_dostart(struct pxp_channel *pxp_chan)
 	struct pxp_pixmap *input, *output;
 	int i = 0, ret;
 	bool combine_enable = false;
+	int delta_x, delta_y;
 
 	memset(&pxp->pxp_conf_state.s0_param, 0,  sizeof(struct pxp_layer_param));
 	memset(&pxp->pxp_conf_state.out_param, 0,  sizeof(struct pxp_layer_param));
@@ -3717,6 +3748,19 @@ static void __pxpdma_dostart(struct pxp_channel *pxp_chan)
 		alpha_blending_version = PXP_ALPHA_BLENDING_NONE;
 
 	pxp_legacy = (proc_data->pxp_legacy) ? true : false;
+
+	param = &pxp->pxp_conf_state.s0_param;
+	if (param->pixel_fmt == PXP_PIX_FMT_YUV420P ||
+	    param->pixel_fmt == PXP_PIX_FMT_YVU420P) {
+		delta_x = proc_data->srect.left - ALIGN_DOWN(proc_data->srect.left, 2);
+		delta_y = proc_data->srect.top - ALIGN_DOWN(proc_data->srect.top, 2);
+
+		proc_data->srect.left = ALIGN_DOWN(proc_data->srect.left, 2);
+		proc_data->srect.top  = ALIGN_DOWN(proc_data->srect.top, 2);
+
+		proc_data->srect.width  = proc_data->srect.width + delta_x;
+		proc_data->srect.height = proc_data->srect.height + delta_y;
+	}
 
 	/* Save PxP configuration */
 	list_for_each_entry(child, &desc->tx_list, list) {

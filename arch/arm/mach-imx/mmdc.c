@@ -85,7 +85,6 @@ static const struct of_device_id imx_mmdc_dt_ids[] = {
 	{ /* sentinel */ }
 };
 
-
 #ifdef CONFIG_PERF_EVENTS
 
 static enum cpuhp_state cpuhp_mmdc_state;

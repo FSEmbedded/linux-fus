@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  * Framework for buffer objects that can be shared across devices/subsystems.
  *
@@ -26,6 +27,10 @@ struct dma_buf_sync {
 	__u64 flags;
 };
 
+struct dma_buf_phys {
+	__u64 phys;
+};
+
 #define DMA_BUF_SYNC_READ      (1 << 0)
 #define DMA_BUF_SYNC_WRITE     (2 << 0)
 #define DMA_BUF_SYNC_RW        (DMA_BUF_SYNC_READ | DMA_BUF_SYNC_WRITE)
@@ -36,5 +41,6 @@ struct dma_buf_sync {
 
 #define DMA_BUF_BASE		'b'
 #define DMA_BUF_IOCTL_SYNC	_IOW(DMA_BUF_BASE, 0, struct dma_buf_sync)
+#define DMA_BUF_IOCTL_PHYS	_IOW(DMA_BUF_BASE, 1, struct dma_buf_phys)
 
 #endif

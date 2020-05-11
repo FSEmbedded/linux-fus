@@ -20,7 +20,7 @@
 #include <linux/gpio/driver.h>
 #include <linux/interrupt.h>
 #include <linux/i2c.h>
-#include <linux/i2c/max732x.h>
+#include <linux/platform_data/max732x.h>
 #include <linux/of.h>
 #include <linux/reset.h>
 
@@ -79,6 +79,12 @@
 #define INT_MERGED_MASK 0x3	/* Has interrupts, merged mask */
 
 #define INT_CAPS(x)	(((uint64_t)(x)) << 32)
+
+enum {
+	OUTPUT_MASK,
+	OUTPUT_VAL,
+	OUTPUT_NUM,
+};
 
 enum {
 	MAX7319,
@@ -521,20 +527,19 @@ static int max732x_irq_setup(struct max732x_chip *chip,
 				client->irq);
 			return ret;
 		}
-		ret =  gpiochip_irqchip_add(&chip->gpio_chip,
-					    &max732x_irq_chip,
-					    irq_base,
-					    handle_simple_irq,
-					    IRQ_TYPE_NONE);
+		ret =  gpiochip_irqchip_add_nested(&chip->gpio_chip,
+						   &max732x_irq_chip,
+						   irq_base,
+						   handle_simple_irq,
+						   IRQ_TYPE_NONE);
 		if (ret) {
 			dev_err(&client->dev,
 				"could not connect irqchip to gpiochip\n");
 			return ret;
 		}
-		gpiochip_set_chained_irqchip(&chip->gpio_chip,
-					     &max732x_irq_chip,
-					     client->irq,
-					     NULL);
+		gpiochip_set_nested_irqchip(&chip->gpio_chip,
+					    &max732x_irq_chip,
+					    client->irq);
 	}
 
 	return 0;
@@ -627,6 +632,8 @@ static int max732x_probe(struct i2c_client *client,
 	struct i2c_client *c;
 	uint16_t addr_a, addr_b;
 	int ret, nr_port;
+	u16 out_set[OUTPUT_NUM];
+	unsigned long mask, val;
 
 	pdata = dev_get_platdata(&client->dev);
 	node = client->dev.of_node;
@@ -712,6 +719,15 @@ static int max732x_probe(struct i2c_client *client,
 	}
 
 	i2c_set_clientdata(client, chip);
+
+	/* set the output IO default voltage */
+	if (!of_property_read_u16_array(node, "out-default", out_set,
+					ARRAY_SIZE(out_set))) {
+		mask = out_set[OUTPUT_MASK] & chip->dir_output;
+		val = out_set[OUTPUT_VAL];
+		max732x_gpio_set_multiple(&chip->gpio_chip, &mask, &val);
+	}
+
 	return 0;
 
 out_failed:

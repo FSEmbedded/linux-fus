@@ -1,7 +1,4 @@
-#
-# IMX Soc drivers
-#
-menu "NXP IMX SoC drivers"
+menu "i.MX SoC drivers"
 
 menuconfig ARCH_MXC_ARM64
 	bool "NXP i.MX family"
@@ -22,6 +19,7 @@ config ARCH_FSL_IMX8QXP
 	select HAVE_IMX_MU
 	select HAVE_IMX_RPMSG
 	select HAVE_IMX8_SOC
+	select CLKSRC_IMX_GPT
 
 config ARCH_FSL_IMX8MQ
 	bool "i.MX8MQ"
@@ -29,7 +27,20 @@ config ARCH_FSL_IMX8MQ
 	select HAVE_IMX_RPMSG
 	select HAVE_IMX8_SOC
 
+config ARCH_FSL_IMX8MM
+	bool "i.MX8MM"
+	select HAVE_IMX_MU
+	select HAVE_IMX_RPMSG
+	select HAVE_IMX8_SOC
+
 endif
+
+config IMX7_PM_DOMAINS
+	bool "i.MX7 PM domains"
+	depends on SOC_IMX7D || (COMPILE_TEST && OF)
+	depends on PM
+	select PM_GENERIC_DOMAINS
+	default y if SOC_IMX7D
 
 config HAVE_IMX_MU
 	bool
@@ -41,4 +52,17 @@ config HAVE_IMX_RPMSG
 	select RPMSG_VIRTIO
 	select RPMSG
 	bool
+
+config HAVE_IMX8_SECO
+	bool
+
+config SECVIO_SC
+	bool "NXP SC secvio support"
+	depends on ARCH_FSL_IMX8QXP || ARCH_FSL_IMX8QM
+	help
+	   If you say yes here you get support for the NXP SNVS security violation module. It includes the possibility to read information
+	   related to security violations and tampers. It also gives the
+	   possibility to register user callbacks when a security violation
+	   occurs.
+
 endmenu

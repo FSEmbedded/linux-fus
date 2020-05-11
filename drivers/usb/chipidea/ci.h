@@ -18,6 +18,8 @@
 #include <linux/usb.h>
 #include <linux/usb/gadget.h>
 #include <linux/usb/otg-fsm.h>
+#include <linux/usb/otg.h>
+#include <linux/ulpi/interface.h>
 
 /******************************************************************************
  * DEFINE
@@ -52,6 +54,7 @@ enum ci_hw_regs {
 	OP_ENDPTLISTADDR,
 	OP_TTCTRL,
 	OP_BURSTSIZE,
+	OP_ULPI_VIEWPORT,
 	OP_PORTSC,
 	OP_DEVLC,
 	OP_OTGSC,
@@ -192,6 +195,8 @@ struct hw_bank {
  * @test_mode: the selected test mode
  * @platdata: platform specific information supplied by parent device
  * @vbus_active: is VBUS active
+ * @ulpi: pointer to ULPI device, if any
+ * @ulpi_ops: ULPI read/write ops for this device
  * @phy: pointer to PHY, if any
  * @usb_phy: pointer to USB PHY, if any and if using the USB PHY framework
  * @hcd: pointer to usb_hcd for ehci host driver
@@ -206,6 +211,8 @@ struct hw_bank {
  * @wakeup_int: if wakeup interrupt occur
  * @rev: The revision number for controller
  * @mutex: protect code from concorrent running
+ * @power_lost_work: work item when controller power is lost
+ * @power_lost_wq: work queue for controller power is lost
  */
 struct ci_hdrc {
 	struct device			*dev;
@@ -244,6 +251,10 @@ struct ci_hdrc {
 
 	struct ci_hdrc_platform_data	*platdata;
 	int				vbus_active;
+#ifdef CONFIG_USB_CHIPIDEA_ULPI
+	struct ulpi			*ulpi;
+	struct ulpi_ops 		ulpi_ops;
+#endif
 	struct phy			*phy;
 	/* old usb_phy interface */
 	struct usb_phy			*usb_phy;
@@ -269,6 +280,7 @@ struct ci_hdrc {
 	u32				pm_portsc;
 	u32				pm_usbmode;
 	struct work_struct		power_lost_work;
+	struct workqueue_struct		*power_lost_wq;
 	struct mutex			mutex;
 };
 
@@ -455,6 +467,16 @@ static inline bool ci_otg_is_fsm_mode(struct ci_hdrc *ci)
 #endif
 }
 
+#if IS_ENABLED(CONFIG_USB_CHIPIDEA_ULPI)
+int ci_ulpi_init(struct ci_hdrc *ci);
+void ci_ulpi_exit(struct ci_hdrc *ci);
+int ci_ulpi_resume(struct ci_hdrc *ci);
+#else
+static inline int ci_ulpi_init(struct ci_hdrc *ci) { return 0; }
+static inline void ci_ulpi_exit(struct ci_hdrc *ci) { }
+static inline int ci_ulpi_resume(struct ci_hdrc *ci) { return 0; }
+#endif
+
 u32 hw_read_intr_enable(struct ci_hdrc *ci);
 
 u32 hw_read_intr_status(struct ci_hdrc *ci);
@@ -465,10 +487,14 @@ int hw_port_test_set(struct ci_hdrc *ci, u8 mode);
 
 u8 hw_port_test_get(struct ci_hdrc *ci);
 
+void hw_phymode_configure(struct ci_hdrc *ci);
+
 void ci_platform_configure(struct ci_hdrc *ci);
 int hw_controller_reset(struct ci_hdrc *ci);
 
 int dbg_create_files(struct ci_hdrc *ci);
 
 void dbg_remove_files(struct ci_hdrc *ci);
+
+void ci_hdrc_enter_lpm(struct ci_hdrc *ci, bool enable);
 #endif	/* __DRIVERS_USB_CHIPIDEA_CI_H */

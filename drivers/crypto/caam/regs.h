@@ -1,8 +1,9 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * CAAM hardware register-level view
  *
  * Copyright 2008-2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017-2019 NXP
  */
 
 #ifndef REGS_H
@@ -68,23 +69,24 @@
  */
 
 extern bool caam_little_end;
+extern bool caam_imx;
 
-#define caam_to_cpu(len)				\
-static inline u##len caam##len ## _to_cpu(u##len val)	\
-{							\
-	if (caam_little_end)				\
-		return le##len ## _to_cpu(val);		\
-	else						\
-		return be##len ## _to_cpu(val);		\
+#define caam_to_cpu(len)						\
+static inline u##len caam##len ## _to_cpu(u##len val)			\
+{									\
+	if (caam_little_end)						\
+		return le##len ## _to_cpu((__force __le##len)val);	\
+	else								\
+		return be##len ## _to_cpu((__force __be##len)val);	\
 }
 
-#define cpu_to_caam(len)				\
-static inline u##len cpu_to_caam##len(u##len val)	\
-{							\
-	if (caam_little_end)				\
-		return cpu_to_le##len(val);		\
-	else						\
-		return cpu_to_be##len(val);		\
+#define cpu_to_caam(len)					\
+static inline u##len cpu_to_caam##len(u##len val)		\
+{								\
+	if (caam_little_end)					\
+		return (__force u##len)cpu_to_le##len(val);	\
+	else							\
+		return (__force u##len)cpu_to_be##len(val);	\
 }
 
 caam_to_cpu(16)
@@ -155,13 +157,10 @@ static inline u64 rd_reg64(void __iomem *reg)
 #else /* CONFIG_64BIT */
 static inline void wr_reg64(void __iomem *reg, u64 data)
 {
-#ifndef CONFIG_CRYPTO_DEV_FSL_CAAM_IMX
-	if (caam_little_end) {
+	if (!caam_imx && caam_little_end) {
 		wr_reg32((u32 __iomem *)(reg) + 1, data >> 32);
 		wr_reg32((u32 __iomem *)(reg), data);
-	} else
-#endif
-	{
+	} else {
 		wr_reg32((u32 __iomem *)(reg), data >> 32);
 		wr_reg32((u32 __iomem *)(reg) + 1, data);
 	}
@@ -169,40 +168,58 @@ static inline void wr_reg64(void __iomem *reg, u64 data)
 
 static inline u64 rd_reg64(void __iomem *reg)
 {
-#ifndef CONFIG_CRYPTO_DEV_FSL_CAAM_IMX
-	if (caam_little_end)
+	if (!caam_imx && caam_little_end)
 		return ((u64)rd_reg32((u32 __iomem *)(reg) + 1) << 32 |
 			(u64)rd_reg32((u32 __iomem *)(reg)));
-	else
-#endif
-		return ((u64)rd_reg32((u32 __iomem *)(reg)) << 32 |
-			(u64)rd_reg32((u32 __iomem *)(reg) + 1));
+
+	return ((u64)rd_reg32((u32 __iomem *)(reg)) << 32 |
+		(u64)rd_reg32((u32 __iomem *)(reg) + 1));
 }
 #endif /* CONFIG_64BIT  */
 
-#if defined(CONFIG_ARCH_DMA_ADDR_T_64BIT) && !defined(CONFIG_HAVE_IMX8_SOC)
-#ifdef CONFIG_SOC_IMX7D
-#define cpu_to_caam_dma(value) \
-		(((u64)cpu_to_caam32(lower_32_bits(value)) << 32) | \
-		  (u64)cpu_to_caam32(upper_32_bits(value)))
-#define caam_dma_to_cpu(value) \
-		(((u64)caam32_to_cpu(lower_32_bits(value)) << 32) | \
-		  (u64)caam32_to_cpu(upper_32_bits(value)))
+static inline u64 cpu_to_caam_dma64(dma_addr_t value)
+{
+	if (caam_imx)
+#if IS_ENABLED(CONFIG_ARCH_DMA_ADDR_T_64BIT)
+		return (((u64)cpu_to_caam32(lower_32_bits(value)) << 32) |
+			 (u64)cpu_to_caam32(upper_32_bits(value)));
 #else
-#define cpu_to_caam_dma(value) cpu_to_caam64(value)
-#define caam_dma_to_cpu(value) caam64_to_cpu(value)
-#endif /* CONFIG_SOC_IMX7D */
+		return (u64)cpu_to_caam32(lower_32_bits(value)) << 32;
+#endif
+
+	return cpu_to_caam64(value);
+}
+
+static inline u64 caam_dma64_to_cpu(u64 value)
+{
+	if (caam_imx)
+		return (((u64)caam32_to_cpu(lower_32_bits(value)) << 32) |
+			 (u64)caam32_to_cpu(upper_32_bits(value)));
+
+	return caam64_to_cpu(value);
+}
+
+#if defined(CONFIG_ARCH_DMA_ADDR_T_64BIT) && !defined(CONFIG_HAVE_IMX8_SOC)
+#define cpu_to_caam_dma(value) cpu_to_caam_dma64(value)
+#define caam_dma_to_cpu(value) caam_dma64_to_cpu(value)
 #else
 #define cpu_to_caam_dma(value) cpu_to_caam32(value)
 #define caam_dma_to_cpu(value) caam32_to_cpu(value)
-#endif /* CONFIG_ARCH_DMA_ADDR_T_64BIT  */
+#endif /* CONFIG_ARCH_DMA_ADDR_T_64BIT */
 
-#ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_IMX
-#define cpu_to_caam_dma64(value) \
-		(((u64)cpu_to_caam32(lower_32_bits(value)) << 32) | \
-		 (u64)cpu_to_caam32(upper_32_bits(value)))
+/*
+ * On i.MX8 boards the arch is arm64 but the CAAM dma address size is
+ * 32 bits on 8MQ and 36 bits on 8QM and 8QXP.
+ * For 8QM and 8QXP there is a configurable field PS called pointer size
+ * in the MCFGR register to switch between 32 and 64 (default 32)
+ * But this register is only accessible by the SECO and is left to its
+ * default value.
+ * Here we set the CAAM dma address size to 32 bits for all i.MX8
+ */
+#ifdef CONFIG_HAVE_IMX8_SOC
+#define caam_dma_addr_t u32
 #else
-#define cpu_to_caam_dma64(value) cpu_to_caam64(value)
+#define caam_dma_addr_t dma_addr_t
 #endif
 
 /*
@@ -210,8 +227,7 @@ static inline u64 rd_reg64(void __iomem *reg)
  * Represents each entry in a JobR output ring
  */
 struct jr_outentry {
-	/* CAAM Pointer Size in MCFGR[PS] is 0 by default (32bits) */
-	u32 desc;/* Pointer to completed descriptor */
+	caam_dma_addr_t desc;/* Pointer to completed descriptor */
 	u32 jrstatus;	/* Status for completed descriptor */
 } __packed;
 
@@ -309,6 +325,7 @@ struct caam_perfmon {
 	u32 cha_rev_ls;		/* CRNR - CHA Rev No. Least significant half*/
 #define CTPR_MS_QI_SHIFT	25
 #define CTPR_MS_QI_MASK		(0x1ull << CTPR_MS_QI_SHIFT)
+#define CTPR_MS_DPAA2		BIT(13)
 #define CTPR_MS_VIRT_EN_INCL	0x00000001
 #define CTPR_MS_VIRT_EN_POR	0x00000002
 #define CTPR_MS_PG_SZ_MASK	0x10
@@ -409,12 +426,6 @@ struct masterid {
 	u32 liodn_ls;	/* LIODN for non-sequence and seq access */
 };
 
-/* Partition ID for DMA configuration */
-struct partid {
-	u32 rsvd1;
-	u32 pidr;	/* partition ID, DECO */
-};
-
 /* RNGB test mode (replicated twice in some configurations) */
 /* Padded out to 0x100 */
 struct rngtst {
@@ -450,7 +461,8 @@ struct rngtst {
 
 /* RNG4 TRNG test registers */
 struct rng4tst {
-#define RTMCTL_PRGM	0x00010000	/* 1 -> program mode, 0 -> run mode */
+#define RTMCTL_ACC  BIT(5)  /* TRNG access mode */
+#define RTMCTL_PRGM BIT(16) /* 1 -> program mode, 0 -> run mode */
 #define RTMCTL_SAMP_MODE_VON_NEUMANN_ES_SC	0 /* use von Neumann data in
 						     both entropy shifter and
 						     statistical checker */
@@ -527,7 +539,7 @@ struct caam_ctrl {
 	u32 deco_rsr;			/* DECORSR - Deco Request Source */
 	u32 rsvd11;
 	u32 deco_rq;			/* DECORR - DECO Request */
-	struct partid deco_mid[5];	/* DECOxLIODNR - 1 per DECO */
+	struct masterid deco_mid[5];	/* DECOxLIODNR - 1 per DECO */
 	u32 rsvd5[22];
 
 	/* DECO Availability/Reset Section			120-3ff */

@@ -217,7 +217,7 @@ u32 genwqe_crc32(u8 *buff, size_t len, u32 init)
 void *__genwqe_alloc_consistent(struct genwqe_dev *cd, size_t size,
 			       dma_addr_t *dma_handle)
 {
-	if (get_order(size) > MAX_ORDER)
+	if (get_order(size) >= MAX_ORDER)
 		return NULL;
 
 	return dma_zalloc_coherent(&cd->pci_dev->dev, size, dma_handle,
@@ -740,13 +740,10 @@ int genwqe_read_softreset(struct genwqe_dev *cd)
 int genwqe_set_interrupt_capability(struct genwqe_dev *cd, int count)
 {
 	int rc;
-	struct pci_dev *pci_dev = cd->pci_dev;
 
-	rc = pci_enable_msi_range(pci_dev, 1, count);
+	rc = pci_alloc_irq_vectors(cd->pci_dev, 1, count, PCI_IRQ_MSI);
 	if (rc < 0)
 		return rc;
-
-	cd->flags |= GENWQE_FLAG_MSI_ENABLED;
 	return 0;
 }
 
@@ -756,12 +753,7 @@ int genwqe_set_interrupt_capability(struct genwqe_dev *cd, int count)
  */
 void genwqe_reset_interrupt_capability(struct genwqe_dev *cd)
 {
-	struct pci_dev *pci_dev = cd->pci_dev;
-
-	if (cd->flags & GENWQE_FLAG_MSI_ENABLED) {
-		pci_disable_msi(pci_dev);
-		cd->flags &= ~GENWQE_FLAG_MSI_ENABLED;
-	}
+	pci_free_irq_vectors(cd->pci_dev);
 }
 
 /**

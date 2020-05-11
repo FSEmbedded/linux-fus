@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2018 NXP
+ * Copyright 2017-2019 NXP
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -27,12 +27,16 @@
 
 #include <drm/drm_dp_helper.h>
 #include "../../../../mxc/hdp/all.h"
-#include "imx-cec.h"
+#include "../../../../mxc/hdp-cec/imx-hdp-cec.h"
+#include "imx-hdcp-private.h"
+
+#define HDP_DUAL_MODE_MIN_PCLK_RATE	300000	/* KHz */
+#define HDP_SINGLE_MODE_MAX_WIDTH	1920
 
 /* For testing hdp firmware define DEBUG_FW_LOAD */
 #undef DEBUG_FW_LOAD
 #define PLL_1188MHZ (1188000000)
-#define PLL_675MHZ (675000000)
+#define PLL_800MHZ (800000000)
 
 #define HDP_TX_SS_LIS_BASE   0x0000
 #define HDP_TX_SS_CSR_BASE   0x1000
@@ -60,6 +64,11 @@
 #define HOTPLUG_DEBOUNCE_MS		200
 
 #define VIC_MODE_97_60Hz 97
+#define VIC_MODE_96_50Hz 96
+#define VIC_MODE_95_30Hz 95
+#define VIC_MODE_94_25Hz 94
+#define VIC_MODE_93_24Hz 93
+
 /**
  * imx_hdp_call - Calls a struct imx hdp_operations operation on
  *	an entity
@@ -87,17 +96,26 @@ struct hdp_clks;
 struct hdp_ops {
 	void (*fw_load)(state_struct *state);
 	int (*fw_init)(state_struct *state);
-	int (*phy_init)(state_struct *state, struct drm_display_mode *mode, int format, int color_depth);
-	void (*mode_set)(state_struct *state, struct drm_display_mode *mode, int format, int color_depth, int max_link);
+	int (*phy_init)(state_struct *state, struct drm_display_mode *mode,
+			int format, int color_depth);
+	void (*mode_set)(state_struct *state, struct drm_display_mode *mode,
+			 int format, int color_depth, int max_link);
+	bool (*mode_fixup)(state_struct *state,
+			   const struct drm_display_mode *mode,
+			   struct drm_display_mode *adjusted_mode);
 	int (*get_edid_block)(void *data, u8 *buf, u32 block, size_t len);
 	int (*get_hpd_state)(state_struct *state, u8 *hpd);
 	int (*write_hdr_metadata)(state_struct *state,
 				  union hdmi_infoframe *hdr_infoframe);
 
-	void (*phy_reset)(sc_ipc_t ipcHndl, u8 reset);
-	int (*pixel_link_init)(state_struct *state);
-	void (*pixel_link_deinit)(state_struct *state);
-	void (*pixel_link_mux)(state_struct *state, struct drm_display_mode *mode);
+	void (*phy_reset)(sc_ipc_t ipcHndl, struct hdp_mem *mem, u8 reset);
+	int (*pixel_link_validate)(state_struct *state);
+	int (*pixel_link_invalidate)(state_struct *state);
+	int (*pixel_link_sync_ctrl_enable)(state_struct *state);
+	int (*pixel_link_sync_ctrl_disable)(state_struct *state);
+	void (*pixel_link_mux)(state_struct *state,
+			       struct drm_display_mode *mode);
+	void (*pixel_engine_reset)(state_struct *state);
 
 	int (*clock_init)(struct hdp_clks *clks);
 	int (*ipg_clock_enable)(struct hdp_clks *clks);
@@ -106,14 +124,14 @@ struct hdp_ops {
 	int (*pixel_clock_enable)(struct hdp_clks *clks);
 	void (*pixel_clock_disable)(struct hdp_clks *clks);
 	void (*pixel_clock_set_rate)(struct hdp_clks *clks);
+	int (*pixel_clock_range)(struct drm_display_mode *mode);
 };
 
 struct hdp_devtype {
-	u8 is_edid;
-	u8 is_4kp60;
 	u8 audio_type;
 	struct hdp_ops *ops;
 	struct hdp_rw_func *rw;
+	u32 connector_type;
 };
 
 struct hdp_video {
@@ -192,16 +210,27 @@ struct imx_hdp {
 	struct drm_connector connector;
 	struct drm_encoder encoder;
 	struct drm_bridge bridge;
+	struct drm_device *drm_dev;
 
 	struct edid *edid;
 	char cable_state;
 
 	struct hdp_mem mem;
+	struct imx_hdcp hdcp;
 
-	u8 is_edid;
-	u8 is_4kp60;
 	u8 is_cec;
+	u8 is_edp;
+	u8 is_dp;
+	u8 is_digpll_dp_pclock;
+	u8 no_edid;
 	u8 audio_type;
+	u8 is_hdcp;
+	u32 dp_lane_mapping;
+	u32 dp_link_rate;
+	u32 dp_num_lanes;
+
+	u32 character_freq_khz;  /* character clock for hdmi */
+	u32 hdmi_type;
 
 	struct mutex mutex;		/* for state below and previous_mode */
 	enum drm_connector_force force;	/* mutex-protected force state */
@@ -238,5 +267,6 @@ void imx_hdp_register_audio_driver(struct device *dev);
 void imx_arc_power_up(state_struct *state);
 void imx_arc_calibrate(state_struct *state);
 void imx_arc_config(state_struct *state);
+int imx_hdcp_check_link(struct imx_hdp *hdp);
 
 #endif

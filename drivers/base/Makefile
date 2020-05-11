@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0
 # Makefile for the Linux device tree
 
 obj-y			:= component.o core.o bus.o dd.o syscore.o \
@@ -24,6 +25,9 @@ obj-$(CONFIG_PINCTRL) += pinctrl.o
 obj-$(CONFIG_DEV_COREDUMP) += devcoredump.o
 obj-$(CONFIG_GENERIC_MSI_IRQ_DOMAIN) += platform-msi.o
 obj-$(CONFIG_AUXILIARY_CORE) += auxiliary_core.o
+obj-$(CONFIG_GENERIC_ARCH_TOPOLOGY) += arch_topology.o
+
+obj-y			+= test/
 
 ccflags-$(CONFIG_DEBUG_DRIVER) := -DDEBUG
 
