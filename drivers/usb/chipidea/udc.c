@@ -1,13 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * udc.c - ChipIdea UDC driver
  *
  * Copyright (C) 2008 Chipidea - MIPS Technologies, Inc. All rights reserved.
  *
  * Author: David Lopo
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/delay.h>
@@ -1580,14 +1577,29 @@ static int ci_udc_vbus_session(struct usb_gadget *_gadget, int is_active)
 	ci->vbus_active = is_active;
 	spin_unlock_irqrestore(&ci->lock, flags);
 
-	if (ci->usb_phy) {
-		/* Charger Detection */
-		ci_usb_charger_connect(ci, is_active);
+	if (ci->usb_phy)
+		usb_phy_set_charger_state(ci->usb_phy, is_active ?
+			USB_CHARGER_PRESENT : USB_CHARGER_ABSENT);
 
-		if (is_active)
-			usb_phy_set_event(ci->usb_phy, USB_EVENT_VBUS);
-		else
-			usb_phy_set_event(ci->usb_phy, USB_EVENT_NONE);
+	if (gadget_ready) {
+		if (is_active) {
+			pm_runtime_get_sync(&_gadget->dev);
+			hw_device_reset(ci);
+			hw_device_state(ci, ci->ep0out->qh.dma);
+			usb_gadget_set_state(_gadget, USB_STATE_POWERED);
+			usb_udc_vbus_handler(_gadget, true);
+		} else {
+			usb_udc_vbus_handler(_gadget, false);
+			if (ci->driver)
+				ci->driver->disconnect(&ci->gadget);
+			hw_device_state(ci, 0);
+			if (ci->platdata->notify_event)
+				ci->platdata->notify_event(ci,
+				CI_HDRC_CONTROLLER_STOPPED_EVENT);
+			_gadget_stop_activity(&ci->gadget);
+			pm_runtime_put_sync(&_gadget->dev);
+			usb_gadget_set_state(_gadget, USB_STATE_NOTATTACHED);
+		}
 	}
 
 	if (ci->driver)

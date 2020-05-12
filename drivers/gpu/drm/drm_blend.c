@@ -107,52 +107,6 @@
  *	planes. Without this property the primary plane is always below the cursor
  *	plane, and ordering between all other planes is undefined.
  *
- * pixel blend mode:
- *	Pixel blend mode is set up with drm_plane_create_blend_mode_property().
- *	It adds a blend mode for alpha blending equation selection, describing
- *	how the pixels from the current plane are composited with the
- *	background.
- *
- *	 Three alpha blending equations are defined:
- *
- *	 "None":
- *		 Blend formula that ignores the pixel alpha::
- *
- *			 out.rgb = plane_alpha * fg.rgb +
- *				 (1 - plane_alpha) * bg.rgb
- *
- *	 "Pre-multiplied":
- *		 Blend formula that assumes the pixel color values
- *		 have been already pre-multiplied with the alpha
- *		 channel values::
- *
- *			 out.rgb = plane_alpha * fg.rgb +
- *				 (1 - (plane_alpha * fg.alpha)) * bg.rgb
- *
- *	 "Coverage":
- *		 Blend formula that assumes the pixel color values have not
- *		 been pre-multiplied and will do so when blending them to the
- *		 background color values::
- *
- *			 out.rgb = plane_alpha * fg.alpha * fg.rgb +
- *				 (1 - (plane_alpha * fg.alpha)) * bg.rgb
- *
- *	 Using the following symbols:
- *
- *	 "fg.rgb":
- *		 Each of the RGB component values from the plane's pixel
- *	 "fg.alpha":
- *		 Alpha component value from the plane's pixel. If the plane's
- *		 pixel format has no alpha component, then this is assumed to be
- *		 1.0. In these cases, this property has no effect, as all three
- *		 equations become equivalent.
- *	 "bg.rgb":
- *		 Each of the RGB component values from the background
- *	 "plane_alpha":
- *		 Plane alpha value set by the plane "alpha" property. If the
- *		 plane does not expose the "alpha" property, then this is
- *		 assumed to be 1.0
- *
  * Note that all the property extensions described here apply either to the
  * plane or the CRTC (e.g. for the background color, which currently is not
  * exposed and assumed to be black).

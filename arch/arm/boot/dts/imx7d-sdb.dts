@@ -1,44 +1,6 @@
-/*
- * Copyright (C) 2015 Freescale Semiconductor, Inc.
- *
- * This file is dual-licensed: you can use it either under the terms
- * of the GPL or the X11 license, at your option. Note that this dual
- * licensing only applies to this file, and not this project as a
- * whole.
- *
- *  a) This file is free software; you can redistribute it and/or
- *     modify it under the terms of the GNU General Public License as
- *     published by the Free Software Foundation; either version 2 of the
- *     License, or (at your option) any later version.
- *
- *     This file is distributed in the hope that it will be useful,
- *     but WITHOUT ANY WARRANTY; without even the implied warranty of
- *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *     GNU General Public License for more details.
- *
- * Or, alternatively,
- *
- *  b) Permission is hereby granted, free of charge, to any person
- *     obtaining a copy of this software and associated documentation
- *     files (the "Software"), to deal in the Software without
- *     restriction, including without limitation the rights to use,
- *     copy, modify, merge, publish, distribute, sublicense, and/or
- *     sell copies of the Software, and to permit persons to whom the
- *     Software is furnished to do so, subject to the following
- *     conditions:
- *
- *     The above copyright notice and this permission notice shall be
- *     included in all copies or substantial portions of the Software.
- *
- *     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- *     EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- *     OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- *     NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
- *     HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
- *     WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- *     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
- *     OTHER DEALINGS IN THE SOFTWARE.
- */
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+//
+// Copyright (C) 2015 Freescale Semiconductor, Inc.
 
 /dts-v1/;
 
@@ -52,15 +14,26 @@
 		stdout-path = &uart1;
 	};
 
-	memory {
+	memory@80000000 {
 		reg = <0x80000000 0x80000000>;
 	};
 
-	modem_reset: modem-reset {
-		compatible = "gpio-reset";
-		reset-gpios = <&gpio4 23 GPIO_ACTIVE_LOW>;
-		reset-delay-us = <1000>;
-		#reset-cells = <0>;
+	gpio-keys {
+		compatible = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_gpio_keys>;
+
+		volume-up {
+			label = "Volume Up";
+			gpios = <&gpio5 11 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_VOLUMEUP>;
+		};
+
+		volume-down {
+			label = "Volume Down";
+			gpios = <&gpio5 10 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_VOLUMEDOWN>;
+		};
 	};
 
 	spi4 {
@@ -139,10 +112,18 @@
 		status = "okay";
 	};
 
-	pxp_v4l2_out {
-		compatible = "fsl,imx7d-pxp-v4l2", "fsl,imx6sx-pxp-v4l2", "fsl,imx6sl-pxp-v4l2";
+	backlight: backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pwm1 0 5000000 0>;
+		brightness-levels = <0 4 8 16 32 64 128 255>;
+		default-brightness-level = <6>;
 		status = "okay";
 	};
+
+	panel {
+		compatible = "innolux,at043tn24";
+		backlight = <&backlight>;
+		power-supply = <&reg_lcd_3v3>;
 
 	sound {
 		compatible = "fsl,imx7d-evk-wm8960",
@@ -196,7 +177,7 @@
 };
 
 &cpu0 {
-	arm-supply = <&sw1a_reg>;
+	cpu-supply = <&sw1a_reg>;
 };
 
 &ecspi3 {
@@ -340,7 +321,7 @@
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
-	pmic: pfuze3000@08 {
+	pmic: pfuze3000@8 {
 		compatible = "fsl,pfuze3000";
 		reg = <0x08>;
 
@@ -436,16 +417,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
-
-	fxas2100x@20 {
-		compatible = "fsl,fxas2100x";
-		reg = <0x20>;
-	};
-
-	fxos8700@1e {
-		compatible = "fsl,fxos8700";
-		reg = <0x1e>;
-	};
 
 	mpl3115@60 {
 		compatible = "fsl,mpl3115";
@@ -887,38 +858,14 @@
 			>;
 		};
 
-		pinctrl_epdc0: epdcgrp0 {
-                        fsl,pins = <
-				MX7D_PAD_EPDC_DATA00__EPDC_DATA0  0x2
-				MX7D_PAD_EPDC_DATA01__EPDC_DATA1  0x2
-				MX7D_PAD_EPDC_DATA02__EPDC_DATA2  0x2
-				MX7D_PAD_EPDC_DATA03__EPDC_DATA3  0x2
-				MX7D_PAD_EPDC_DATA04__EPDC_DATA4  0x2
-				MX7D_PAD_EPDC_DATA05__EPDC_DATA5  0x2
-				MX7D_PAD_EPDC_DATA06__EPDC_DATA6  0x2
-				MX7D_PAD_EPDC_DATA07__EPDC_DATA7  0x2
-				MX7D_PAD_EPDC_DATA08__EPDC_DATA8  0x2
-				MX7D_PAD_EPDC_DATA09__EPDC_DATA9  0x2
-				MX7D_PAD_EPDC_DATA10__EPDC_DATA10 0x2
-				MX7D_PAD_EPDC_DATA11__EPDC_DATA11 0x2
-				MX7D_PAD_EPDC_DATA12__EPDC_DATA12 0x2
-				MX7D_PAD_EPDC_DATA13__EPDC_DATA13 0x2
-				MX7D_PAD_EPDC_DATA14__EPDC_DATA14 0x2
-				MX7D_PAD_EPDC_DATA15__EPDC_DATA15 0x2
-				MX7D_PAD_EPDC_SDCLK__EPDC_SDCLK   0x2
-				MX7D_PAD_EPDC_SDLE__EPDC_SDLE     0x2
-				MX7D_PAD_EPDC_SDOE__EPDC_SDOE     0x2
-				MX7D_PAD_EPDC_SDSHR__EPDC_SDSHR   0x2
-				MX7D_PAD_EPDC_SDCE0__EPDC_SDCE0   0x2
-				MX7D_PAD_EPDC_SDCE1__EPDC_SDCE1   0x2
-				MX7D_PAD_EPDC_GDCLK__EPDC_GDCLK   0x2
-				MX7D_PAD_EPDC_GDOE__EPDC_GDOE     0x2
-				MX7D_PAD_EPDC_GDRL__EPDC_GDRL     0x2
-				MX7D_PAD_EPDC_GDSP__EPDC_GDSP     0x2
-                        >;
-                };
+		pinctrl_gpio_keys: gpio_keysgrp {
+			fsl,pins = <
+				MX7D_PAD_SD2_RESET_B__GPIO5_IO11	0x59
+				MX7D_PAD_SD2_WP__GPIO5_IO10		0x59
+			>;
+		};
 
-		pinctrl_gpmi_nand_1: gpmi-nand-1 {
+		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				MX7D_PAD_SD3_CLK__NAND_CLE			0x71
 				MX7D_PAD_SD3_CMD__NAND_ALE			0x71
@@ -1240,6 +1187,12 @@
 	};
 };
 
+&pwm1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm1>;
+	status = "okay";
+};
+
 &iomuxc_lpsr {
 	pinctrl_wdog: wdoggrp {
 		fsl,pins = <
@@ -1247,9 +1200,9 @@
 		>;
 	};
 
-	pinctrl_backlight: backlightgrp {
+	pinctrl_pwm1: pwm1grp {
 		fsl,pins = <
-			MX7D_PAD_LPSR_GPIO1_IO01__GPIO1_IO1		0x110b0
+			MX7D_PAD_LPSR_GPIO1_IO01__PWM1_OUT		0x30
 		>;
 	};
 };

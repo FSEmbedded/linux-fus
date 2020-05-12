@@ -24,7 +24,6 @@
 #include <linux/sched.h>
 #include <asm/cputype.h>
 #include <asm/mmu.h>
-#include <soc/imx8/soc.h>
 
 /*
  * Raw TLBI operations.
@@ -60,6 +59,15 @@
 	if (arm64_kernel_unmapped_at_el0())					\
 		__tlbi(op, (arg) | USER_ASID_FLAG);				\
 } while (0)
+
+/* This macro creates a properly formatted VA operand for the TLBI */
+#define __TLBI_VADDR(addr, asid)				\
+	({							\
+		unsigned long __ta = (addr) >> 12;		\
+		__ta &= GENMASK_ULL(43, 0);			\
+		__ta |= (unsigned long)(asid) << 48;		\
+		__ta;						\
+	})
 
 /*
  *	TLB Management
@@ -118,30 +126,22 @@ static inline void flush_tlb_all(void)
 
 static inline void flush_tlb_mm(struct mm_struct *mm)
 {
-	unsigned long asid = ASID(mm) << 48;
+	unsigned long asid = __TLBI_VADDR(0, ASID(mm));
 
 	dsb(ishst);
-	if (TKT340553_SW_WORKAROUND) {
-		__tlbi(vmalle1is);
-	} else {
-		__tlbi(aside1is, asid);
-		__tlbi_user(aside1is, asid);
-	}
+	__tlbi(aside1is, asid);
+	__tlbi_user(aside1is, asid);
 	dsb(ish);
 }
 
 static inline void flush_tlb_page(struct vm_area_struct *vma,
 				  unsigned long uaddr)
 {
-	unsigned long addr = uaddr >> 12 | (ASID(vma->vm_mm) << 48);
+	unsigned long addr = __TLBI_VADDR(uaddr, ASID(vma->vm_mm));
 
 	dsb(ishst);
-	if (TKT340553_SW_WORKAROUND) {
-		__tlbi(vmalle1is);
-	} else {
-		__tlbi(vale1is, addr);
-		__tlbi_user(vale1is, addr);
-	}
+	__tlbi(vale1is, addr);
+	__tlbi_user(vale1is, addr);
 	dsb(ish);
 }
 
@@ -155,7 +155,7 @@ static inline void __flush_tlb_range(struct vm_area_struct *vma,
 				     unsigned long start, unsigned long end,
 				     bool last_level)
 {
-	unsigned long asid = ASID(vma->vm_mm) << 48;
+	unsigned long asid = ASID(vma->vm_mm);
 	unsigned long addr;
 	unsigned long mask = (1 << 20) - 1;
 
@@ -164,16 +164,12 @@ static inline void __flush_tlb_range(struct vm_area_struct *vma,
 		return;
 	}
 
-	start = asid | (start >> 12);
-	end = asid | (end >> 12);
-	mask <<= 24;
-
+	start = __TLBI_VADDR(start, asid);
+	end = __TLBI_VADDR(end, asid);
 
 	dsb(ishst);
 	for (addr = start; addr < end; addr += 1 << (PAGE_SHIFT - 12)) {
-		if (TKT340553_SW_WORKAROUND) {
-			__tlbi(vmalle1is);
-		} else if (last_level) {
+		if (last_level) {
 			__tlbi(vale1is, addr);
 			__tlbi_user(vale1is, addr);
 		} else {
@@ -199,8 +195,8 @@ static inline void flush_tlb_kernel_range(unsigned long start, unsigned long end
 		return;
 	}
 
-	start >>= 12;
-	end >>= 12;
+	start = __TLBI_VADDR(start, 0);
+	end = __TLBI_VADDR(end, 0);
 
 	dsb(ishst);
 	for (addr = start; addr < end; addr += 1 << (PAGE_SHIFT - 12)) {
@@ -220,18 +216,20 @@ static inline void flush_tlb_kernel_range(unsigned long start, unsigned long end
 static inline void __flush_tlb_pgtable(struct mm_struct *mm,
 				       unsigned long uaddr)
 {
-	unsigned long addr = uaddr >> 12 | (ASID(mm) << 48);
+	unsigned long addr = __TLBI_VADDR(uaddr, ASID(mm));
 
-	if (TKT340553_SW_WORKAROUND) {
-		__tlbi(vmalle1is);
-	} else {
-		__tlbi(vae1is, addr);
-		__tlbi_user(vae1is, addr);
-	}
-
+	__tlbi(vae1is, addr);
+	__tlbi_user(vae1is, addr);
 	dsb(ish);
 }
 
+static inline void __flush_tlb_kernel_pgtable(unsigned long kaddr)
+{
+	unsigned long addr = __TLBI_VADDR(kaddr, 0);
+
+	__tlbi(vaae1is, addr);
+	dsb(ish);
+}
 #endif
 
 #endif

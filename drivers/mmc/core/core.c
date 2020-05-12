@@ -50,9 +50,6 @@
 #include "sd_ops.h"
 #include "sdio_ops.h"
 
-/* If the device is not responding */
-#define MMC_CORE_TIMEOUT_MS	(10 * 60 * 1000) /* 10 minute timeout */
-
 /* The max erase timeout, used when host->max_busy_timeout isn't specified */
 #define MMC_ERASE_TIMEOUT_MS	(60 * 1000) /* 60 s */
 
@@ -107,7 +104,7 @@ static void mmc_should_fail_request(struct mmc_host *host,
 	if (!data)
 		return;
 
-	if (cmd->error || data->error ||
+	if ((cmd && cmd->error) || data->error ||
 	    !should_fail(&host->fail_mmc_request, data->blksz * data->blocks))
 		return;
 
@@ -350,6 +347,8 @@ int mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 {
 	int err;
 
+	init_completion(&mrq->cmd_completion);
+
 	mmc_retune_hold(host);
 
 	if (mmc_card_removed(host->card))
@@ -370,20 +369,6 @@ int mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 }
 EXPORT_SYMBOL(mmc_start_request);
 
-/*
- * mmc_wait_data_done() - done callback for data request
- * @mrq: done data request
- *
- * Wakes up mmc context, passed as a callback to host controller driver
- */
-static void mmc_wait_data_done(struct mmc_request *mrq)
-{
-	struct mmc_context_info *context_info = &mrq->host->context_info;
-
-	context_info->is_done_rcv = true;
-	wake_up_interruptible(&context_info->wait);
-}
-
 static void mmc_wait_done(struct mmc_request *mrq)
 {
 	complete(&mrq->completion);
@@ -401,37 +386,6 @@ static inline void mmc_wait_ongoing_tfr_cmd(struct mmc_host *host)
 		wait_for_completion(&ongoing_mrq->cmd_completion);
 }
 
-/*
- *__mmc_start_data_req() - starts data request
- * @host: MMC host to start the request
- * @mrq: data request to start
- *
- * Sets the done callback to be called when request is completed by the card.
- * Starts data mmc request execution
- * If an ongoing transfer is already in progress, wait for the command line
- * to become available before sending another command.
- */
-static int __mmc_start_data_req(struct mmc_host *host, struct mmc_request *mrq)
-{
-	int err;
-
-	mmc_wait_ongoing_tfr_cmd(host);
-
-	mrq->done = mmc_wait_data_done;
-	mrq->host = host;
-
-	init_completion(&mrq->cmd_completion);
-
-	err = mmc_start_request(host, mrq);
-	if (err) {
-		mrq->cmd->error = err;
-		mmc_complete_cmd(mrq);
-		mmc_wait_data_done(mrq);
-	}
-
-	return err;
-}
-
 static int __mmc_start_req(struct mmc_host *host, struct mmc_request *mrq)
 {
 	int err;
@@ -440,8 +394,6 @@ static int __mmc_start_req(struct mmc_host *host, struct mmc_request *mrq)
 
 	init_completion(&mrq->completion);
 	mrq->done = mmc_wait_done;
-
-	init_completion(&mrq->cmd_completion);
 
 	err = mmc_start_request(host, mrq);
 	if (err) {
@@ -659,131 +611,9 @@ EXPORT_SYMBOL(mmc_cqe_recovery);
  */
 bool mmc_is_req_done(struct mmc_host *host, struct mmc_request *mrq)
 {
-	if (host->areq)
-		return host->context_info.is_done_rcv;
-	else
-		return completion_done(&mrq->completion);
+	return completion_done(&mrq->completion);
 }
 EXPORT_SYMBOL(mmc_is_req_done);
-
-/**
- * mmc_finalize_areq() - finalize an asynchronous request
- * @host: MMC host to finalize any ongoing request on
- *
- * Returns the status of the ongoing asynchronous request, but
- * MMC_BLK_SUCCESS if no request was going on.
- */
-static enum mmc_blk_status mmc_finalize_areq(struct mmc_host *host)
-{
-	struct mmc_context_info *context_info = &host->context_info;
-	enum mmc_blk_status status;
-
-	if (!host->areq)
-		return MMC_BLK_SUCCESS;
-
-	while (1) {
-		wait_event_interruptible(context_info->wait,
-				(context_info->is_done_rcv ||
-				 context_info->is_new_req));
-
-		if (context_info->is_done_rcv) {
-			struct mmc_command *cmd;
-
-			context_info->is_done_rcv = false;
-			cmd = host->areq->mrq->cmd;
-
-			if (!cmd->error || !cmd->retries ||
-			    mmc_card_removed(host->card)) {
-				status = host->areq->err_check(host->card,
-							       host->areq);
-				break; /* return status */
-			} else {
-				mmc_retune_recheck(host);
-				pr_info("%s: req failed (CMD%u): %d, retrying...\n",
-					mmc_hostname(host),
-					cmd->opcode, cmd->error);
-				cmd->retries--;
-				cmd->error = 0;
-				__mmc_start_request(host, host->areq->mrq);
-				continue; /* wait for done/new event again */
-			}
-		}
-
-		return MMC_BLK_NEW_REQUEST;
-	}
-
-	mmc_retune_release(host);
-
-	/*
-	 * Check BKOPS urgency for each R1 response
-	 */
-	if (host->card && mmc_card_mmc(host->card) &&
-	    ((mmc_resp_type(host->areq->mrq->cmd) == MMC_RSP_R1) ||
-	     (mmc_resp_type(host->areq->mrq->cmd) == MMC_RSP_R1B)) &&
-	    (host->areq->mrq->cmd->resp[0] & R1_EXCEPTION_EVENT)) {
-		mmc_start_bkops(host->card, true);
-	}
-
-	return status;
-}
-
-/**
- *	mmc_start_areq - start an asynchronous request
- *	@host: MMC host to start command
- *	@areq: asynchronous request to start
- *	@ret_stat: out parameter for status
- *
- *	Start a new MMC custom command request for a host.
- *	If there is on ongoing async request wait for completion
- *	of that request and start the new one and return.
- *	Does not wait for the new request to complete.
- *
- *      Returns the completed request, NULL in case of none completed.
- *	Wait for the an ongoing request (previoulsy started) to complete and
- *	return the completed request. If there is no ongoing request, NULL
- *	is returned without waiting. NULL is not an error condition.
- */
-struct mmc_async_req *mmc_start_areq(struct mmc_host *host,
-				     struct mmc_async_req *areq,
-				     enum mmc_blk_status *ret_stat)
-{
-	enum mmc_blk_status status;
-	int start_err = 0;
-	struct mmc_async_req *previous = host->areq;
-
-	/* Prepare a new request */
-	if (areq)
-		mmc_pre_req(host, areq->mrq);
-
-	/* Finalize previous request */
-	status = mmc_finalize_areq(host);
-	if (ret_stat)
-		*ret_stat = status;
-
-	/* The previous request is still going on... */
-	if (status == MMC_BLK_NEW_REQUEST)
-		return NULL;
-
-	/* Fine so far, start the new request! */
-	if (status == MMC_BLK_SUCCESS && areq)
-		start_err = __mmc_start_data_req(host, areq->mrq);
-
-	/* Postprocess the old request at this point */
-	if (host->areq)
-		mmc_post_req(host, host->areq->mrq, 0);
-
-	/* Cancel a prepared request if it was not started. */
-	if ((status != MMC_BLK_SUCCESS || start_err) && areq)
-		mmc_post_req(host, areq->mrq, -EINVAL);
-
-	if (status != MMC_BLK_SUCCESS)
-		host->areq = NULL;
-	else
-		host->areq = areq;
-
-	return previous;
-}
-EXPORT_SYMBOL(mmc_start_areq);
 
 /**
  *	mmc_wait_for_req - start a request and wait for completion
@@ -1566,6 +1396,16 @@ EXPORT_SYMBOL_GPL(mmc_regulator_set_vqmmc);
 
 #endif /* CONFIG_REGULATOR */
 
+/**
+ * mmc_regulator_get_supply - try to get VMMC and VQMMC regulators for a host
+ * @mmc: the host to regulate
+ *
+ * Returns 0 or errno. errno should be handled, it is either a critical error
+ * or -EPROBE_DEFER. 0 means no critical error but it does not mean all
+ * regulators have been found because they all are optional. If you require
+ * certain regulators, you need to check separately in your driver if they got
+ * populated after calling this function.
+ */
 int mmc_regulator_get_supply(struct mmc_host *mmc)
 {
 	struct device *dev = mmc_dev(mmc);
@@ -1650,11 +1490,44 @@ int mmc_set_signal_voltage(struct mmc_host *host, int signal_voltage)
 
 }
 
+void mmc_set_initial_signal_voltage(struct mmc_host *host)
+{
+	/* Try to set signal voltage to 3.3V but fall back to 1.8v or 1.2v */
+	if (!mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_330))
+		dev_dbg(mmc_dev(host), "Initial signal voltage of 3.3v\n");
+	else if (!mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_180))
+		dev_dbg(mmc_dev(host), "Initial signal voltage of 1.8v\n");
+	else if (!mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_120))
+		dev_dbg(mmc_dev(host), "Initial signal voltage of 1.2v\n");
+}
+
+int mmc_host_set_uhs_voltage(struct mmc_host *host)
+{
+	u32 clock;
+
+	/*
+	 * During a signal voltage level switch, the clock must be gated
+	 * for 5 ms according to the SD spec
+	 */
+	clock = host->ios.clock;
+	host->ios.clock = 0;
+	mmc_set_ios(host);
+
+	if (mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_180))
+		return -EAGAIN;
+
+	/* Keep clock gated for at least 10 ms, though spec only says 5 ms */
+	mmc_delay(10);
+	host->ios.clock = clock;
+	mmc_set_ios(host);
+
+	return 0;
+}
+
 int mmc_set_uhs_voltage(struct mmc_host *host, u32 ocr)
 {
 	struct mmc_command cmd = {};
 	int err = 0;
-	u32 clock;
 
 	/*
 	 * If we cannot switch voltages, return failure so the caller
@@ -1686,15 +1559,8 @@ int mmc_set_uhs_voltage(struct mmc_host *host, u32 ocr)
 		err = -EAGAIN;
 		goto power_cycle;
 	}
-	/*
-	 * During a signal voltage level switch, the clock must be gated
-	 * for 5 ms according to the SD spec
-	 */
-	clock = host->ios.clock;
-	host->ios.clock = 0;
-	mmc_set_ios(host);
 
-	if (mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_180)) {
+	if (mmc_host_set_uhs_voltage(host)) {
 		/*
 		 * Voltages may not have been switched, but we've already
 		 * sent CMD11, so a power cycle is required anyway
@@ -1702,11 +1568,6 @@ int mmc_set_uhs_voltage(struct mmc_host *host, u32 ocr)
 		err = -EAGAIN;
 		goto power_cycle;
 	}
-
-	/* Keep clock gated for at least 10 ms, though spec only says 5 ms */
-	mmc_delay(10);
-	host->ios.clock = clock;
-	mmc_set_ios(host);
 
 	/* Wait for at least 1 ms according to spec */
 	mmc_delay(1);
@@ -1802,19 +1663,13 @@ void mmc_power_up(struct mmc_host *host, u32 ocr)
 	/* Set initial state and call mmc_set_ios */
 	mmc_set_initial_state(host);
 
-	/* Try to set signal voltage to 3.3V but fall back to 1.8v or 1.2v */
-	if (!mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_330))
-		dev_dbg(mmc_dev(host), "Initial signal voltage of 3.3v\n");
-	else if (!mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_180))
-		dev_dbg(mmc_dev(host), "Initial signal voltage of 1.8v\n");
-	else if (!mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_120))
-		dev_dbg(mmc_dev(host), "Initial signal voltage of 1.2v\n");
+	mmc_set_initial_signal_voltage(host);
 
 	/*
 	 * This delay should be sufficient to allow the power supply
 	 * to reach the minimum voltage.
 	 */
-	mmc_delay(10);
+	mmc_delay(host->ios.power_delay_ms);
 
 	mmc_pwrseq_post_power_on(host);
 
@@ -1827,7 +1682,7 @@ void mmc_power_up(struct mmc_host *host, u32 ocr)
 	 * This delay must be at least 74 clock sizes, or 1 ms, or the
 	 * time required to reach a stable voltage.
 	 */
-	mmc_delay(10);
+	mmc_delay(host->ios.power_delay_ms);
 }
 
 void mmc_power_off(struct mmc_host *host)
@@ -2123,6 +1978,7 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 	unsigned int qty = 0, busy_timeout = 0;
 	bool use_r1b_resp = false;
 	unsigned long timeout;
+	int loop_udelay=64, udelay_max=32768;
 	int err;
 
 	mmc_retune_hold(card->host);
@@ -2231,7 +2087,7 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 		cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
 		/* Do not retry else we can't see errors */
 		err = mmc_wait_for_cmd(card->host, &cmd, 0);
-		if (err || (cmd.resp[0] & 0xFDF92000)) {
+		if (err || R1_STATUS(cmd.resp[0])) {
 			pr_err("error %d requesting status %#x\n",
 				err, cmd.resp[0]);
 			err = -EIO;
@@ -2247,9 +2103,15 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 			err =  -EIO;
 			goto out;
 		}
+		if ((cmd.resp[0] & R1_READY_FOR_DATA) &&
+		    R1_CURRENT_STATE(cmd.resp[0]) != R1_STATE_PRG)
+			break;
 
-	} while (!(cmd.resp[0] & R1_READY_FOR_DATA) ||
-		 (R1_CURRENT_STATE(cmd.resp[0]) == R1_STATE_PRG));
+		usleep_range(loop_udelay, loop_udelay*2);
+		if (loop_udelay < udelay_max)
+			loop_udelay *= 2;
+	} while (1);
+
 out:
 	mmc_retune_release(card->host);
 	return err;
@@ -2527,7 +2389,7 @@ unsigned int mmc_calc_max_discard(struct mmc_card *card)
 	max_discard = mmc_do_calc_max_discard(card, MMC_ERASE_ARG);
 	if (mmc_can_trim(card)) {
 		max_trim = mmc_do_calc_max_discard(card, MMC_TRIM_ARG);
-		if (max_trim < max_discard)
+		if (max_trim < max_discard || max_discard == 0)
 			max_discard = max_trim;
 	} else if (max_discard < card->erase_size) {
 		max_discard = 0;
@@ -2591,21 +2453,45 @@ int mmc_hw_reset(struct mmc_host *host)
 		return -EINVAL;
 
 	mmc_bus_get(host);
-	if (!host->bus_ops || host->bus_dead || !host->bus_ops->reset) {
+	if (!host->bus_ops || host->bus_dead || !host->bus_ops->hw_reset) {
 		mmc_bus_put(host);
 		return -EOPNOTSUPP;
 	}
 
-	ret = host->bus_ops->reset(host);
+	ret = host->bus_ops->hw_reset(host);
 	mmc_bus_put(host);
 
 	if (ret)
-		pr_warn("%s: tried to reset card, got error %d\n",
+		pr_warn("%s: tried to HW reset card, got error %d\n",
 			mmc_hostname(host), ret);
 
 	return ret;
 }
 EXPORT_SYMBOL(mmc_hw_reset);
+
+int mmc_sw_reset(struct mmc_host *host)
+{
+	int ret;
+
+	if (!host->card)
+		return -EINVAL;
+
+	mmc_bus_get(host);
+	if (!host->bus_ops || host->bus_dead || !host->bus_ops->sw_reset) {
+		mmc_bus_put(host);
+		return -EOPNOTSUPP;
+	}
+
+	ret = host->bus_ops->sw_reset(host);
+	mmc_bus_put(host);
+
+	if (ret)
+		pr_warn("%s: tried to SW reset card, got error %d\n",
+			mmc_hostname(host), ret);
+
+	return ret;
+}
+EXPORT_SYMBOL(mmc_sw_reset);
 
 static int mmc_rescan_try_freq(struct mmc_host *host, unsigned freq)
 {
@@ -2812,8 +2698,7 @@ void mmc_start_host(struct mmc_host *host)
 void mmc_stop_host(struct mmc_host *host)
 {
 	if (host->slot.cd_irq >= 0) {
-		if (host->slot.cd_wake_enabled)
-			disable_irq_wake(host->slot.cd_irq);
+		mmc_gpio_set_cd_wake(host, false);
 		disable_irq(host->slot.cd_irq);
 	}
 
@@ -2840,52 +2725,6 @@ void mmc_stop_host(struct mmc_host *host)
 	mmc_power_off(host);
 	mmc_release_host(host);
 }
-
-int mmc_power_save_host(struct mmc_host *host)
-{
-	int ret = 0;
-
-	pr_debug("%s: %s: powering down\n", mmc_hostname(host), __func__);
-
-	mmc_bus_get(host);
-
-	if (!host->bus_ops || host->bus_dead) {
-		mmc_bus_put(host);
-		return -EINVAL;
-	}
-
-	if (host->bus_ops->power_save)
-		ret = host->bus_ops->power_save(host);
-
-	mmc_bus_put(host);
-
-	mmc_power_off(host);
-
-	return ret;
-}
-EXPORT_SYMBOL(mmc_power_save_host);
-
-int mmc_power_restore_host(struct mmc_host *host)
-{
-	int ret;
-
-	pr_debug("%s: %s: powering up\n", mmc_hostname(host), __func__);
-
-	mmc_bus_get(host);
-
-	if (!host->bus_ops || host->bus_dead) {
-		mmc_bus_put(host);
-		return -EINVAL;
-	}
-
-	mmc_power_up(host, host->card->ocr);
-	ret = host->bus_ops->power_restore(host);
-
-	mmc_bus_put(host);
-
-	return ret;
-}
-EXPORT_SYMBOL(mmc_power_restore_host);
 
 #ifdef CONFIG_PM_SLEEP
 /* Do the card removal on suspend if card is assumed removeable
@@ -2960,56 +2799,6 @@ void mmc_unregister_pm_notifier(struct mmc_host *host)
 	unregister_pm_notifier(&host->pm_notify);
 }
 #endif
-
-/**
- * mmc_init_context_info() - init synchronization context
- * @host: mmc host
- *
- * Init struct context_info needed to implement asynchronous
- * request mechanism, used by mmc core, host driver and mmc requests
- * supplier.
- */
-void mmc_init_context_info(struct mmc_host *host)
-{
-	host->context_info.is_new_req = false;
-	host->context_info.is_done_rcv = false;
-	host->context_info.is_waiting_last_req = false;
-	init_waitqueue_head(&host->context_info.wait);
-}
-
-/*
- * mmc_first_nonreserved_index() - get the first index that
- * is not reserved
- */
-int mmc_first_nonreserved_index(void)
-{
-	return __mmc_max_reserved_idx + 1;
-}
-EXPORT_SYMBOL(mmc_first_nonreserved_index);
-
-/*
- * mmc_get_reserved_index() - get the index reserved for this host
- * Return: The index reserved for this host or negative error value
- * 	   if no index is reserved for this host
- */
-int mmc_get_reserved_index(struct mmc_host *host)
-{
-	return of_alias_get_id(host->parent->of_node, "mmc");
-}
-EXPORT_SYMBOL(mmc_get_reserved_index);
-
-static void mmc_of_reserve_idx(void)
-{
-	int max;
-
-	max = of_alias_max_index("mmc");
-	if (max < 0)
-		return;
-
-	__mmc_max_reserved_idx = max;
-	pr_debug("MMC: reserving %d slots for of aliases\n",
-			__mmc_max_reserved_idx + 1);
-}
 
 static int __init mmc_init(void)
 {

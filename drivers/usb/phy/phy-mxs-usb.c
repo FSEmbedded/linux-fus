@@ -1,15 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2012-2016 Freescale Semiconductor, Inc.
  * Copyright 2017 NXP
  * Copyright (C) 2012 Marek Vasut <marex@denx.de>
  * on behalf of DENX Software Engineering GmbH
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
  */
 
 #include <linux/module.h>
@@ -675,29 +669,6 @@ static int mxs_phy_on_disconnect(struct usb_phy *phy,
 	return 0;
 }
 
-static int mxs_phy_on_suspend(struct usb_phy *phy,
-		enum usb_device_speed speed)
-{
-	struct mxs_phy *mxs_phy = to_mxs_phy(phy);
-
-	dev_dbg(phy->dev, "%s device has suspended\n",
-		(speed == USB_SPEED_HIGH) ? "HS" : "FS/LS");
-
-	/* delay 4ms to wait bus entering idle */
-	usleep_range(4000, 5000);
-
-	if (mxs_phy->data->flags & MXS_PHY_ABNORMAL_IN_SUSPEND) {
-		writel_relaxed(0xffffffff, phy->io_priv + HW_USBPHY_PWD);
-		writel_relaxed(0, phy->io_priv + HW_USBPHY_PWD);
-	}
-
-	if (speed == USB_SPEED_HIGH)
-		writel_relaxed(BM_USBPHY_CTRL_ENHOSTDISCONDETECT,
-				phy->io_priv + HW_USBPHY_CTRL_CLR);
-
-	return 0;
-}
-
 #define MXS_USB_CHARGER_DATA_CONTACT_TIMEOUT	100
 static int mxs_charger_data_contact_detect(struct mxs_phy *x)
 {
@@ -748,37 +719,6 @@ static int mxs_charger_data_contact_detect(struct mxs_phy *x)
 				ANADIG_USB1_CHRG_DETECT_CHK_CHRG_B);
 		return -ENXIO;
 	}
-	return 0;
-}
-
-/*
- * The resume signal must be finished here.
- */
-static int mxs_phy_on_resume(struct usb_phy *phy,
-		enum usb_device_speed speed)
-{
-	dev_dbg(phy->dev, "%s device has resumed\n",
-		(speed == USB_SPEED_HIGH) ? "HS" : "FS/LS");
-
-	if (speed == USB_SPEED_HIGH) {
-		/* Make sure the device has switched to High-Speed mode */
-		udelay(500);
-		writel_relaxed(BM_USBPHY_CTRL_ENHOSTDISCONDETECT,
-				phy->io_priv + HW_USBPHY_CTRL_SET);
-	}
-
-	return 0;
-}
-
-/*
- * Set the usb current role for phy.
- */
-static int mxs_phy_set_mode(struct usb_phy *phy,
-		enum usb_current_mode mode)
-{
-	struct mxs_phy *mxs_phy = to_mxs_phy(phy);
-
-	mxs_phy->mode = mode;
 
 	return 0;
 }
@@ -843,6 +783,9 @@ static enum usb_charger_type mxs_phy_charger_detect(struct usb_phy *phy)
 	void __iomem *base = phy->io_priv;
 	enum usb_charger_type chgr_type = UNKNOWN_TYPE;
 
+	if (!regmap)
+		return UNKNOWN_TYPE;
+
 	if (mxs_charger_data_contact_detect(mxs_phy))
 		return chgr_type;
 
@@ -864,115 +807,6 @@ static enum usb_charger_type mxs_phy_charger_detect(struct usb_phy *phy)
 				base + HW_USBPHY_DEBUG_SET);
 	}
 
-	return chgr_type;
-}
-
-static int mxs_phy_dcd_start(struct mxs_phy *mxs_phy)
-{
-	void __iomem *base = mxs_phy->phy.io_priv;
-	u32 value;
-
-	value = readl(base + DCD_CONTROL);
-	writel(value | DCD_CONTROL_SR, base + DCD_CONTROL);
-
-	if (!mxs_phy->clk_rate)
-		return -EINVAL;
-
-	value = readl(base + DCD_CONTROL);
-	writel(((mxs_phy->clk_rate / 1000000) << 2) | DCD_CLOCK_MHZ,
-		base + DCD_CLOCK);
-
-	value = readl(base + DCD_CONTROL);
-	value &= ~DCD_CONTROL_IE;
-	writel(value | DCD_CONTROL_BC12, base + DCD_CONTROL);
-
-	value = readl(base + DCD_CONTROL);
-	writel(value | DCD_CONTROL_START, base + DCD_CONTROL);
-
-	return 0;
-}
-
-
-#define DCD_CHARGING_DURTION 1000 /* One second according to BC 1.2 */
-static enum usb_charger_type mxs_phy_dcd_flow(struct usb_phy *phy)
-{
-	struct mxs_phy *mxs_phy = to_mxs_phy(phy);
-	void __iomem *base = mxs_phy->phy.io_priv;
-	u32 value;
-	int i = 0;
-	enum usb_charger_type chgr_type;
-
-	if (mxs_phy_dcd_start(mxs_phy))
-		return UNKNOWN_TYPE;
-
-	while (i++ <= (DCD_CHARGING_DURTION / 50)) {
-		value = readl(base + DCD_CONTROL);
-		if (value & DCD_CONTROL_IF) {
-			value = readl(base + DCD_STATUS);
-			if (value & DCD_STATUS_ACTIVE) {
-				dev_err(phy->dev, "still detecting\n");
-				chgr_type = UNKNOWN_TYPE;
-				break;
-			}
-
-			if (value & DCD_STATUS_TO) {
-				dev_err(phy->dev, "detect timeout\n");
-				chgr_type = UNKNOWN_TYPE;
-				break;
-			}
-
-			if (value & DCD_STATUS_ERR) {
-				dev_err(phy->dev, "detect error\n");
-				chgr_type = UNKNOWN_TYPE;
-				break;
-			}
-
-			if ((value & DCD_STATUS_SEQ_STAT) <= DCD_CHG_DPIN) {
-				dev_err(phy->dev, "error occurs\n");
-				chgr_type = UNKNOWN_TYPE;
-				break;
-			}
-
-			/* SDP */
-			if (((value & DCD_STATUS_SEQ_STAT) == DCD_CHG_PORT) &&
-				((value & DCD_STATUS_SEQ_RES)
-					== DCD_SDP_PORT)) {
-				dev_dbg(phy->dev, "SDP\n");
-				chgr_type = SDP_TYPE;
-				break;
-			}
-
-			if ((value & DCD_STATUS_SEQ_STAT) == DCD_CHG_DET) {
-				if ((value & DCD_STATUS_SEQ_RES) ==
-						DCD_CDP_PORT) {
-					dev_dbg(phy->dev, "CDP\n");
-					chgr_type = CDP_TYPE;
-					break;
-				}
-
-				if ((value & DCD_STATUS_SEQ_RES) ==
-						DCD_DCP_PORT) {
-					dev_dbg(phy->dev, "DCP\n");
-					chgr_type = DCP_TYPE;
-					break;
-				}
-			}
-			dev_err(phy->dev, "unknown error occurs\n");
-			chgr_type = UNKNOWN_TYPE;
-			break;
-		}
-		msleep(50);
-	}
-
-	if (i > 20) {
-		dev_err(phy->dev, "charger detecting timeout\n");
-		chgr_type = UNKNOWN_TYPE;
-	}
-
-	/* disable dcd module */
-	readl(base + DCD_STATUS);
-	writel(DCD_CONTROL_IACK, base + DCD_CONTROL);
-	writel(DCD_CONTROL_SR, base + DCD_CONTROL);
 	return chgr_type;
 }
 
@@ -1078,11 +912,7 @@ static int mxs_phy_probe(struct platform_device *pdev)
 	mxs_phy->phy.notify_disconnect	= mxs_phy_on_disconnect;
 	mxs_phy->phy.type		= USB_PHY_TYPE_USB2;
 	mxs_phy->phy.set_wakeup		= mxs_phy_set_wakeup;
-	mxs_phy->phy.set_mode		= mxs_phy_set_mode;
-	if (mxs_phy->data->flags & MXS_PHY_SENDING_SOF_TOO_FAST) {
-		mxs_phy->phy.notify_suspend = mxs_phy_on_suspend;
-		mxs_phy->phy.notify_resume = mxs_phy_on_resume;
-	}
+	mxs_phy->phy.charger_detect	= mxs_phy_charger_detect;
 
 	if (mxs_phy->data->flags & MXS_PHY_HAS_DCD)
 		mxs_phy->phy.charger_detect	= mxs_phy_dcd_flow;

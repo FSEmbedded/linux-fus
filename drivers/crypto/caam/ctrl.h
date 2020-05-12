@@ -9,7 +9,6 @@
 #define CTRL_H
 
 /* Prototypes for backend-level services exposed to APIs */
-
 extern bool caam_dpaa2;
 
 #endif /* CTRL_H */

@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2013-2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP.
+ * Copyright (C) 2013-2015 Freescale Semiconductor, Inc.
+ * Copyright 2017-2018 NXP.
  *
  * The code contained herein is licensed under the GNU General Public
  * License. You may obtain a copy of the GNU General Public License
@@ -211,7 +211,7 @@ void __init imx_init_revision_from_anatop(void)
 	unsigned int revision;
 	u32 digprog, sbmr2 = 0;
 	u16 offset = ANADIG_DIGPROG;
-	u16 major_part, minor_part;
+	u8 major_part, minor_part;
 
 	np = of_find_compatible_node(NULL, NULL, "fsl,imx6q-anatop");
 	anatop_base = of_iomap(np, 0);
@@ -222,20 +222,6 @@ void __init imx_init_revision_from_anatop(void)
 		offset = ANADIG_DIGPROG_IMX7D;
 	digprog = readl_relaxed(anatop_base + offset);
 	iounmap(anatop_base);
-
-	if ((digprog >> 16) == MXC_CPU_IMX6ULL) {
-		np = of_find_compatible_node(NULL, NULL, "fsl,imx6ul-src");
-		if (np) {
-			src_base = of_iomap(np, 0);
-			WARN_ON(!src_base);
-			sbmr2 = readl_relaxed(src_base + 0x1c);
-			iounmap(src_base);
-		}
-		if (sbmr2 & (1 << 6)) {
-			digprog &= ~(0xff << 16);
-			digprog |= (MXC_CPU_IMX6ULZ << 16);
-		}
-	}
 
 	/*
 	 * On i.MX7D digprog value match linux version format, so

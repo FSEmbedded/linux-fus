@@ -227,6 +227,7 @@ enum fsl_qspi_devtype {
 	FSL_QUADSPI_IMX7D,
 	FSL_QUADSPI_IMX6UL,
 	FSL_QUADSPI_LS1021A,
+	FSL_QUADSPI_LS2080A,
 };
 
 struct fsl_qspi_devtype_data {
@@ -279,6 +280,15 @@ static struct fsl_qspi_devtype_data ls1021a_data = {
 	.ahb_buf_size = 1024,
 	.driver_data = 0,
 };
+
+static const struct fsl_qspi_devtype_data ls2080a_data = {
+	.devtype = FSL_QUADSPI_LS2080A,
+	.rxfifo = 128,
+	.txfifo = 64,
+	.ahb_buf_size = 1024,
+	.driver_data = QUADSPI_QUIRK_TKT253890,
+};
+
 
 #define FSL_QSPI_MAX_CHIP	4
 struct fsl_qspi {
@@ -479,70 +489,35 @@ static void fsl_qspi_prepare_lut(struct spi_nor *nor,
 	case FSL_QSPI_OPS_ERASE:
 		/* Common for Read, Write and Erase ops. */
 
-		addrlen = (nor->addr_width == 3) ? ADDR24BIT : ADDR32BIT;
-
-		qspi_writel(q, LUT0(CMD, pad_count(cmd_pad), opcode) |
-				LUT1(ADDR, pad_count(addr_pad), addrlen),
-				base + QUADSPI_LUT(lut_base));
-		/*
-		 * For Erase ops - Data and Dummy not required.
-		 * For Write ops - Dummy not required.
-		 */
-
-		if (ops == FSL_QSPI_OPS_READ) {
-
-			lut_base = SEQID_LUT1_AHB * 4;
-
-			qspi_writel(q, LUT0(CMD, pad_count(cmd_pad), opcode) |
-				    LUT1(ADDR, pad_count(addr_pad), addrlen),
-				    base + QUADSPI_LUT(lut_base));
-
-			if (spi_nor_protocol_is_dtr(protocol))
-				qspi_writel(q, LUT0(CMD, pad_count(cmd_pad), opcode) |
-					    LUT1(ADDR_DDR, pad_count(addr_pad), addrlen),
-					    base + QUADSPI_LUT(lut_base));
-			/*
-			 * For cmds SPINOR_OP_READ and SPINOR_OP_READ_4B value
-			 * of dummy cycles are 0.
-			 */
-			if (read_dm) {
-				qspi_writel(q,
-					    LUT0(DUMMY, pad_count(dummy_pad),
-					    read_dm) |
-					    LUT1(FSL_READ, pad_count(data_pad),
-					    0),
-					    base + QUADSPI_LUT(lut_base + 1));
-
-				if (spi_nor_protocol_is_dtr(protocol))
-					qspi_writel(q,
-						    LUT0(DUMMY, pad_count(dummy_pad),
-						    read_dm) |
-						    LUT1(FSL_READ_DDR, pad_count(data_pad),
-						    0),
-						    base + QUADSPI_LUT(lut_base + 1));
-			} else {
-				qspi_writel(q,
-					    LUT0(FSL_READ, pad_count(data_pad),
-					    0),
-					    base + QUADSPI_LUT(lut_base + 1));
-
-				if (spi_nor_protocol_is_dtr(protocol))
-					qspi_writel(q,
-						    LUT0(FSL_READ_DDR, pad_count(data_pad),
-						    0),
-						    base + QUADSPI_LUT(lut_base + 1));
-			}
-
-			stop_lut = 2;
-		}
-
-		if (ops == FSL_QSPI_OPS_WRITE) {
-
-			qspi_writel(q, LUT0(FSL_WRITE, pad_count(data_pad), 0),
-					base + QUADSPI_LUT(lut_base + 1));
-			stop_lut = 2;
-		}
-		break;
+/* Get the SEQID for the command */
+static int fsl_qspi_get_seqid(struct fsl_qspi *q, u8 cmd)
+{
+	switch (cmd) {
+	case SPINOR_OP_READ_1_1_4:
+	case SPINOR_OP_READ_1_1_4_4B:
+		return SEQID_READ;
+	case SPINOR_OP_WREN:
+		return SEQID_WREN;
+	case SPINOR_OP_WRDI:
+		return SEQID_WRDI;
+	case SPINOR_OP_RDSR:
+		return SEQID_RDSR;
+	case SPINOR_OP_SE:
+		return SEQID_SE;
+	case SPINOR_OP_CHIP_ERASE:
+		return SEQID_CHIP_ERASE;
+	case SPINOR_OP_PP:
+		return SEQID_PP;
+	case SPINOR_OP_RDID:
+		return SEQID_RDID;
+	case SPINOR_OP_WRSR:
+		return SEQID_WRSR;
+	case SPINOR_OP_RDCR:
+		return SEQID_RDCR;
+	case SPINOR_OP_EN4B:
+		return SEQID_EN4B;
+	case SPINOR_OP_BRWR:
+		return SEQID_BRWR;
 	default:
 		dev_err(q->dev, "Unsupported operation 0x%.2x\n", ops);
 		break;
@@ -586,7 +561,10 @@ fsl_qspi_runcmd(struct fsl_qspi *q, u8 cmd, unsigned int addr, int len)
 	} while (1);
 
 	/* trigger the LUT now */
-	seqid = SEQID_LUT1_RUNTIME;
+	seqid = fsl_qspi_get_seqid(q, cmd);
+	if (seqid < 0)
+		return seqid;
+
 	qspi_writel(q, (seqid << QUADSPI_IPCR_SEQID_SHIFT) | len,
 			base + QUADSPI_IPCR);
 
@@ -715,7 +693,7 @@ static void fsl_qspi_set_map_addr(struct fsl_qspi *q)
  * causes the controller to clear the buffer, and use the sequence pointed
  * by the QUADSPI_BFGENCR[SEQID] to initiate a read from the flash.
  */
-static void fsl_qspi_init_ahb_read(struct fsl_qspi *q)
+static int fsl_qspi_init_ahb_read(struct fsl_qspi *q)
 {
 	void __iomem *base = q->iobase;
 	int seqid;
@@ -738,10 +716,15 @@ static void fsl_qspi_init_ahb_read(struct fsl_qspi *q)
 	qspi_writel(q, 0, base + QUADSPI_BUF1IND);
 	qspi_writel(q, 0, base + QUADSPI_BUF2IND);
 
-	/* Set dynamic LUT entry as lut sequence for AHB Read . */
-	seqid = SEQID_LUT1_AHB;
+	/* Set the default lut sequence for AHB Read. */
+	seqid = fsl_qspi_get_seqid(q, q->nor[0].read_opcode);
+	if (seqid < 0)
+		return seqid;
+
 	qspi_writel(q, seqid << QUADSPI_BFGENCR_SEQID_SHIFT,
 		q->iobase + QUADSPI_BFGENCR);
+
+	return 0;
 }
 
 /* This function was used to prepare and enable QSPI clock */
@@ -860,16 +843,20 @@ static int fsl_qspi_nor_setup_last(struct fsl_qspi *q)
 	if (ret)
 		return ret;
 
-	return 0;
+	/* Init the LUT table again. */
+	fsl_qspi_init_lut(q);
+
+	/* Init for AHB read */
+	return fsl_qspi_init_ahb_read(q);
 }
 
 static const struct of_device_id fsl_qspi_dt_ids[] = {
-	{ .compatible = "fsl,vf610-qspi", .data = (void *)&vybrid_data, },
-	{ .compatible = "fsl,imx6sx-qspi", .data = (void *)&imx6sx_data, },
-	{ .compatible = "fsl,imx7d-qspi", .data = (void *)&imx7d_data, },
-	{ .compatible = "fsl,imx6ul-qspi", .data = (void *)&imx6ul_data, },
+	{ .compatible = "fsl,vf610-qspi", .data = &vybrid_data, },
+	{ .compatible = "fsl,imx6sx-qspi", .data = &imx6sx_data, },
+	{ .compatible = "fsl,imx7d-qspi", .data = &imx7d_data, },
+	{ .compatible = "fsl,imx6ul-qspi", .data = &imx6ul_data, },
 	{ .compatible = "fsl,ls1021a-qspi", .data = (void *)&ls1021a_data, },
-	{ .compatible = "fsl,imx6ull-qspi", .data = (void *)&imx6ul_data, },
+	{ .compatible = "fsl,ls2080a-qspi", .data = &ls2080a_data, },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, fsl_qspi_dt_ids);
@@ -1205,6 +1192,24 @@ static int fsl_qspi_probe(struct platform_device *pdev)
 		spi_nor_set_flash_node(nor, np);
 		nor->priv = q;
 
+		if (q->nor_num > 1 && !mtd->name) {
+			int spiflash_idx;
+
+			ret = of_property_read_u32(np, "reg", &spiflash_idx);
+			if (!ret) {
+				mtd->name = devm_kasprintf(dev, GFP_KERNEL,
+							   "%s-%d",
+							   dev_name(dev),
+							   spiflash_idx);
+				if (!mtd->name) {
+					ret = -ENOMEM;
+					goto mutex_failed;
+				}
+			} else {
+				dev_warn(dev, "reg property is missing\n");
+			}
+		}
+
 		/* fill the hooks */
 		nor->read_reg = fsl_qspi_read_reg;
 		nor->write_reg = fsl_qspi_write_reg;
@@ -1366,8 +1371,6 @@ static const struct dev_pm_ops fsl_qspi_pm_ops = {
 static struct platform_driver fsl_qspi_driver = {
 	.driver = {
 		.name	= "fsl-quadspi",
-		.bus	= &platform_bus_type,
-		.pm	= &fsl_qspi_pm_ops,
 		.of_match_table = fsl_qspi_dt_ids,
 	},
 	.probe          = fsl_qspi_probe,

@@ -1,10 +1,7 @@
-/*
- * Copyright (C) 2016 Freescale Semiconductor, Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+// SPDX-License-Identifier: GPL-2.0
+//
+// Copyright (C) 2016 Freescale Semiconductor, Inc.
+// Copyright 2017-2018 NXP.
 
 #include <linux/err.h>
 #include <linux/init.h>
@@ -172,14 +169,6 @@ enum imx6sll_pads {
 	MX6SLL_PAD_GPIO4_IO26 = 152,
 };
 
-enum imx6sll_lpsr_pads {
-	MX6SLL_PAD_SNVS_TAMPER = 0,
-	MX6SLL_PAD_SNVS_PMIC_ON_REQ = 1,
-	MX6SLL_PAD_SNVS_PMIC_STBY_REQ = 2,
-	MX6SLL_PAD_SNVS_BOOT_MODE0 = 3,
-	MX6SLL_PAD_SNVS_BOOT_MODE1 = 4,
-};
-
 /* Pad names for the pinmux subsystem */
 static const struct pinctrl_pin_desc imx6sll_pinctrl_pads[] = {
 	IMX_PINCTRL_PIN(MX6SLL_PAD_RESERVE0),
@@ -337,36 +326,27 @@ static const struct pinctrl_pin_desc imx6sll_pinctrl_pads[] = {
 	IMX_PINCTRL_PIN(MX6SLL_PAD_GPIO4_IO26),
 };
 
-static struct imx_pinctrl_soc_info imx6sll_pinctrl_info = {
+static const struct imx_pinctrl_soc_info imx6sll_pinctrl_info = {
 	.pins = imx6sll_pinctrl_pads,
 	.npins = ARRAY_SIZE(imx6sll_pinctrl_pads),
+	.gpr_compatible = "fsl,imx6sll-iomuxc-gpr",
 };
 
-static struct of_device_id imx6sll_pinctrl_of_match[] = {
+static const struct of_device_id imx6sll_pinctrl_of_match[] = {
 	{ .compatible = "fsl,imx6sll-iomuxc", .data = &imx6sll_pinctrl_info, },
 	{ /* sentinel */ }
 };
 
 static int imx6sll_pinctrl_probe(struct platform_device *pdev)
 {
-	const struct of_device_id *match;
-	struct imx_pinctrl_soc_info *pinctrl_info;
-
-	match = of_match_device(imx6sll_pinctrl_of_match, &pdev->dev);
-
-	if (!match)
-		return -ENODEV;
-
-	pinctrl_info = (struct imx_pinctrl_soc_info *) match->data;
-
-	return imx_pinctrl_probe(pdev, pinctrl_info);
+	return imx_pinctrl_probe(pdev, &imx6sll_pinctrl_info);
 }
 
 static struct platform_driver imx6sll_pinctrl_driver = {
 	.driver = {
 		.name = "imx6sll-pinctrl",
-		.owner = THIS_MODULE,
 		.of_match_table = of_match_ptr(imx6sll_pinctrl_of_match),
+		.suppress_bind_attrs = true,
 	},
 	.probe = imx6sll_pinctrl_probe,
 };
@@ -376,13 +356,3 @@ static int __init imx6sll_pinctrl_init(void)
 	return platform_driver_register(&imx6sll_pinctrl_driver);
 }
 arch_initcall(imx6sll_pinctrl_init);
-
-static void __exit imx6sll_pinctrl_exit(void)
-{
-	platform_driver_unregister(&imx6sll_pinctrl_driver);
-}
-module_exit(imx6sll_pinctrl_exit);
-
-MODULE_AUTHOR("Bai Ping <ping.bai@nxp.com>");
-MODULE_DESCRIPTION("Freescale imx6sll pinctrl driver");
-MODULE_LICENSE("GPL v2");

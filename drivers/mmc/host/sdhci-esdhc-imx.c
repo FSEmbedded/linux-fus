@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Freescale eSDHC i.MX controller driver for the platform bus.
  *
@@ -5,10 +6,6 @@
  *
  * Copyright (c) 2010 Pengutronix e.K.
  *   Author: Wolfram Sang <kernel@pengutronix.de>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License.
  */
 
 #include <linux/busfreq-imx.h>
@@ -44,6 +41,12 @@
 #define  ESDHC_VENDOR_SPEC_FRC_SDCLK_ON	(1 << 8)
 #define ESDHC_WTMK_LVL			0x44
 #define  ESDHC_WTMK_DEFAULT_VAL		0x10401040
+#define  ESDHC_WTMK_LVL_RD_WML_MASK	0x000000FF
+#define  ESDHC_WTMK_LVL_RD_WML_SHIFT	0
+#define  ESDHC_WTMK_LVL_WR_WML_MASK	0x00FF0000
+#define  ESDHC_WTMK_LVL_WR_WML_SHIFT	16
+#define  ESDHC_WTMK_LVL_WML_VAL_DEF	64
+#define  ESDHC_WTMK_LVL_WML_VAL_MAX	128
 #define ESDHC_MIX_CTRL			0x48
 #define  ESDHC_MIX_CTRL_DDREN		(1 << 3)
 #define  ESDHC_MIX_CTRL_AC23EN		(1 << 7)
@@ -271,6 +274,7 @@ struct pltfm_imx_data {
 	struct clk *clk_ipg;
 	struct clk *clk_ahb;
 	struct clk *clk_per;
+	unsigned int actual_clock;
 	enum {
 		NO_CMD_PENDING,      /* no multiblock command pending */
 		MULTIBLK_IN_PROCESS, /* exact multiblock cmd in process */
@@ -607,6 +611,7 @@ static void esdhc_writew_le(struct sdhci_host *host, u16 val, int reg)
 		}
 
 		if (esdhc_is_usdhc(imx_data)) {
+			u32 wml;
 			u32 m = readl(host->ioaddr + ESDHC_MIX_CTRL);
 			/* Swap AC23 bit */
 			if (val & SDHCI_TRNS_AUTO_CMD23) {
@@ -615,6 +620,21 @@ static void esdhc_writew_le(struct sdhci_host *host, u16 val, int reg)
 			}
 			m = val | (m & ~ESDHC_MIX_CTRL_SDHCI_MASK);
 			writel(m, host->ioaddr + ESDHC_MIX_CTRL);
+
+			/* Set watermark levels for PIO access to maximum value
+			 * (128 words) to accommodate full 512 bytes buffer.
+			 * For DMA access restore the levels to default value.
+			 */
+			m = readl(host->ioaddr + ESDHC_WTMK_LVL);
+			if (val & SDHCI_TRNS_DMA)
+				wml = ESDHC_WTMK_LVL_WML_VAL_DEF;
+			else
+				wml = ESDHC_WTMK_LVL_WML_VAL_MAX;
+			m &= ~(ESDHC_WTMK_LVL_RD_WML_MASK |
+			       ESDHC_WTMK_LVL_WR_WML_MASK);
+			m |= (wml << ESDHC_WTMK_LVL_RD_WML_SHIFT) |
+			     (wml << ESDHC_WTMK_LVL_WR_WML_SHIFT);
+			writel(m, host->ioaddr + ESDHC_WTMK_LVL);
 		} else {
 			/*
 			 * Postpone this write, we must do it together with a
@@ -775,14 +795,14 @@ static inline void esdhc_pltfm_set_clock(struct sdhci_host *host,
 	int div = 1;
 	u32 temp, val;
 
+	if (esdhc_is_usdhc(imx_data)) {
+		val = readl(host->ioaddr + ESDHC_VENDOR_SPEC);
+		writel(val & ~ESDHC_VENDOR_SPEC_FRC_SDCLK_ON,
+			host->ioaddr + ESDHC_VENDOR_SPEC);
+	}
+
 	if (clock == 0) {
 		host->mmc->actual_clock = 0;
-
-		if (esdhc_is_usdhc(imx_data)) {
-			val = readl(host->ioaddr + ESDHC_VENDOR_SPEC);
-			writel(val & ~ESDHC_VENDOR_SPEC_FRC_SDCLK_ON,
-					host->ioaddr + ESDHC_VENDOR_SPEC);
-		}
 		return;
 	}
 
@@ -835,7 +855,7 @@ static inline void esdhc_pltfm_set_clock(struct sdhci_host *host,
 	if (esdhc_is_usdhc(imx_data)) {
 		val = readl(host->ioaddr + ESDHC_VENDOR_SPEC);
 		writel(val | ESDHC_VENDOR_SPEC_FRC_SDCLK_ON,
-		host->ioaddr + ESDHC_VENDOR_SPEC);
+			host->ioaddr + ESDHC_VENDOR_SPEC);
 	}
 
 	mdelay(1);
@@ -1078,7 +1098,6 @@ static void esdhc_set_uhs_signaling(struct sdhci_host *host, unsigned timing)
 	case MMC_TIMING_UHS_SDR25:
 	case MMC_TIMING_UHS_SDR50:
 	case MMC_TIMING_UHS_SDR104:
-	case MMC_TIMING_SD_HS:
 	case MMC_TIMING_MMC_HS:
 	case MMC_TIMING_MMC_HS200:
 		writel(m, host->ioaddr + ESDHC_MIX_CTRL);
@@ -1211,7 +1230,8 @@ static void sdhci_esdhc_imx_hwinit(struct sdhci_host *host)
 			host->ioaddr + SDHCI_HOST_CONTROL);
 
 		/*
-		 * enable the new IC fix for ERR004536
+		 * erratum ESDHC_FLAG_ERR004536 fix for MX6Q TO1.2 and MX6DL
+		 * TO1.1, it's harmless for MX6SL
 		 */
 		writel(readl(host->ioaddr + 0x6c) & ~BIT(7),
 			host->ioaddr + 0x6c);
@@ -1516,7 +1536,7 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 
 	if (esdhc_is_usdhc(imx_data)) {
 		host->quirks2 |= SDHCI_QUIRK2_PRESET_VALUE_BROKEN;
-		host->mmc->caps |= MMC_CAP_1_8V_DDR;
+		host->mmc->caps |= MMC_CAP_1_8V_DDR | MMC_CAP_3_3V_DDR;
 		if (!(imx_data->socdata->flags & ESDHC_FLAG_HS200))
 			host->quirks2 |= SDHCI_QUIRK2_BROKEN_HS200;
 
@@ -1718,11 +1738,15 @@ static int sdhci_esdhc_runtime_suspend(struct device *dev)
 	}
 
 	ret = sdhci_runtime_suspend_host(host);
+	if (ret)
+		return ret;
 
 	if (host->tuning_mode != SDHCI_TUNING_MODE_3)
 		mmc_retune_needed(host->mmc);
 
 	if (!sdhci_sdio_irq_enabled(host)) {
+		imx_data->actual_clock = host->mmc->actual_clock;
+		esdhc_pltfm_set_clock(host, 0);
 		clk_disable_unprepare(imx_data->clk_per);
 		clk_disable_unprepare(imx_data->clk_ipg);
 	}
@@ -1744,44 +1768,37 @@ static int sdhci_esdhc_runtime_resume(struct device *dev)
 	struct pltfm_imx_data *imx_data = sdhci_pltfm_priv(pltfm_host);
 	int err;
 
-	if (imx_data->socdata->flags & ESDHC_FLAG_BUSFREQ)
-		request_bus_freq(BUS_FREQ_HIGH);
-
-	if (imx_data->socdata->flags & ESDHC_FLAG_PMQOS)
-		pm_qos_add_request(&imx_data->pm_qos_req,
-			PM_QOS_CPU_DMA_LATENCY, 0);
-
-	if (imx_data->socdata->flags & ESDHC_FLAG_CLK_RATE_LOST_IN_PM_RUNTIME)
-		clk_set_rate(imx_data->clk_per, pltfm_host->clock);
+	err = clk_prepare_enable(imx_data->clk_ahb);
+	if (err)
+		return err;
 
 	if (!sdhci_sdio_irq_enabled(host)) {
 		err = clk_prepare_enable(imx_data->clk_per);
 		if (err)
-			return err;
+			goto disable_ahb_clk;
 		err = clk_prepare_enable(imx_data->clk_ipg);
 		if (err)
 			goto disable_per_clk;
+		esdhc_pltfm_set_clock(host, imx_data->actual_clock);
 	}
-	err = clk_prepare_enable(imx_data->clk_ahb);
-	if (err)
-		goto disable_ipg_clk;
+
 	err = sdhci_runtime_resume_host(host);
 	if (err)
-		goto disable_ahb_clk;
+		goto disable_ipg_clk;
 
 	if (host->mmc->caps2 & MMC_CAP2_CQE)
 		err = cqhci_resume(host->mmc);
 
 	return err;
 
-disable_ahb_clk:
-	clk_disable_unprepare(imx_data->clk_ahb);
 disable_ipg_clk:
 	if (!sdhci_sdio_irq_enabled(host))
 		clk_disable_unprepare(imx_data->clk_ipg);
 disable_per_clk:
 	if (!sdhci_sdio_irq_enabled(host))
 		clk_disable_unprepare(imx_data->clk_per);
+disable_ahb_clk:
+	clk_disable_unprepare(imx_data->clk_ahb);
 	return err;
 }
 #endif

@@ -98,8 +98,8 @@ nfs_page_free(struct nfs_page *p)
 int
 nfs_iocounter_wait(struct nfs_lock_context *l_ctx)
 {
-	return wait_on_atomic_t(&l_ctx->io_count, nfs_wait_atomic_killable,
-			TASK_KILLABLE);
+	return wait_var_event_killable(&l_ctx->io_count,
+				       !atomic_read(&l_ctx->io_count));
 }
 
 /**
@@ -395,7 +395,7 @@ static void nfs_clear_request(struct nfs_page *req)
 	}
 	if (l_ctx != NULL) {
 		if (atomic_dec_and_test(&l_ctx->io_count)) {
-			wake_up_atomic_t(&l_ctx->io_count);
+			wake_up_var(&l_ctx->io_count);
 			if (test_bit(NFS_CONTEXT_UNLOCK, &ctx->flags))
 				rpc_wake_up(&NFS_SERVER(d_inode(ctx->dentry))->uoc_rpcwaitq);
 		}
@@ -537,7 +537,7 @@ EXPORT_SYMBOL_GPL(nfs_pgio_header_free);
  * @cinfo: Commit information for the call (writes only)
  */
 static void nfs_pgio_rpcsetup(struct nfs_pgio_header *hdr,
-			      unsigned int count, unsigned int offset,
+			      unsigned int count,
 			      int how, struct nfs_commit_info *cinfo)
 {
 	struct nfs_page *req = hdr->req;
@@ -546,10 +546,10 @@ static void nfs_pgio_rpcsetup(struct nfs_pgio_header *hdr,
 	 * NB: take care not to mess about with hdr->commit et al. */
 
 	hdr->args.fh     = NFS_FH(hdr->inode);
-	hdr->args.offset = req_offset(req) + offset;
+	hdr->args.offset = req_offset(req);
 	/* pnfs_set_layoutcommit needs this */
 	hdr->mds_offset = hdr->args.offset;
-	hdr->args.pgbase = req->wb_pgbase + offset;
+	hdr->args.pgbase = req->wb_pgbase;
 	hdr->args.pages  = hdr->page_array.pagevec;
 	hdr->args.count  = count;
 	hdr->args.context = get_nfs_open_context(req->wb_context);
@@ -561,6 +561,7 @@ static void nfs_pgio_rpcsetup(struct nfs_pgio_header *hdr,
 	case FLUSH_COND_STABLE:
 		if (nfs_reqs_to_commit(cinfo))
 			break;
+		/* fall through */
 	default:
 		hdr->args.stable = NFS_FILE_SYNC;
 	}
@@ -789,7 +790,7 @@ int nfs_generic_pgio(struct nfs_pageio_descriptor *desc,
 		desc->pg_ioflags &= ~FLUSH_COND_STABLE;
 
 	/* Set up the argument struct */
-	nfs_pgio_rpcsetup(hdr, mirror->pg_count, 0, desc->pg_ioflags, &cinfo);
+	nfs_pgio_rpcsetup(hdr, mirror->pg_count, desc->pg_ioflags, &cinfo);
 	desc->pg_rpc_callops = &nfs_pgio_common_ops;
 	return 0;
 }
@@ -988,6 +989,17 @@ static void nfs_pageio_doio(struct nfs_pageio_descriptor *desc)
 	}
 }
 
+static void
+nfs_pageio_cleanup_request(struct nfs_pageio_descriptor *desc,
+		struct nfs_page *req)
+{
+	LIST_HEAD(head);
+
+	nfs_list_remove_request(req);
+	nfs_list_add_request(req, &head);
+	desc->pg_completion_ops->error_cleanup(&head);
+}
+
 /**
  * nfs_pageio_add_request - Attempt to coalesce a request into a page list.
  * @desc: destination io descriptor
@@ -1025,10 +1037,8 @@ static int __nfs_pageio_add_request(struct nfs_pageio_descriptor *desc,
 			nfs_page_group_unlock(req);
 			desc->pg_moreio = 1;
 			nfs_pageio_doio(desc);
-			if (desc->pg_error < 0)
-				return 0;
-			if (mirror->pg_recoalesce)
-				return 0;
+			if (desc->pg_error < 0 || mirror->pg_recoalesce)
+				goto out_cleanup_subreq;
 			/* retry add_request for this subreq */
 			nfs_page_group_lock(req);
 			continue;
@@ -1061,6 +1071,10 @@ err_ptr:
 	desc->pg_error = PTR_ERR(subreq);
 	nfs_page_group_unlock(req);
 	return 0;
+out_cleanup_subreq:
+	if (req != subreq)
+		nfs_pageio_cleanup_request(desc, subreq);
+	return 0;
 }
 
 static int nfs_do_recoalesce(struct nfs_pageio_descriptor *desc)
@@ -1079,7 +1093,6 @@ static int nfs_do_recoalesce(struct nfs_pageio_descriptor *desc)
 			struct nfs_page *req;
 
 			req = list_first_entry(&head, struct nfs_page, wb_list);
-			nfs_list_remove_request(req);
 			if (__nfs_pageio_add_request(desc, req))
 				continue;
 			if (desc->pg_error < 0) {
@@ -1168,11 +1181,14 @@ int nfs_pageio_add_request(struct nfs_pageio_descriptor *desc,
 		if (nfs_pgio_has_mirroring(desc))
 			desc->pg_mirror_idx = midx;
 		if (!nfs_pageio_add_request_mirror(desc, dupreq))
-			goto out_failed;
+			goto out_cleanup_subreq;
 	}
 
 	return 1;
 
+out_cleanup_subreq:
+	if (req != dupreq)
+		nfs_pageio_cleanup_request(desc, dupreq);
 out_failed:
 	/* remember fatal errors */
 	if (nfs_error_is_fatal(desc->pg_error))
@@ -1198,7 +1214,7 @@ static void nfs_pageio_complete_mirror(struct nfs_pageio_descriptor *desc,
 		desc->pg_mirror_idx = mirror_idx;
 	for (;;) {
 		nfs_pageio_doio(desc);
-		if (!mirror->pg_recoalesce)
+		if (desc->pg_error < 0 || !mirror->pg_recoalesce)
 			break;
 		if (!nfs_do_recoalesce(desc))
 			break;

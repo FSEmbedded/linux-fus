@@ -1,13 +1,8 @@
-/*
- * Freescale ESAI ALSA SoC Digital Audio Interface (DAI) driver
- *
- * Copyright (C) 2014-2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
- *
- * This file is licensed under the terms of the GNU General Public License
- * version 2. This program is licensed "as is" without any warranty of any
- * kind, whether express or implied.
- */
+// SPDX-License-Identifier: GPL-2.0
+//
+// Freescale ESAI ALSA SoC Digital Audio Interface (DAI) driver
+//
+// Copyright (C) 2014 Freescale Semiconductor, Inc.
 
 #include <linux/clk.h>
 #include <linux/dmaengine.h>
@@ -285,19 +280,10 @@ static int fsl_esai_set_dai_sysclk(struct snd_soc_dai *dai, int clk_id,
 	unsigned long clk_rate;
 	int ret;
 
-	if (esai_priv->synchronous && !tx) {
-		switch (clk_id) {
-		case ESAI_HCKR_FSYS:
-			fsl_esai_set_dai_sysclk(dai, ESAI_HCKT_FSYS,
-								freq, dir);
-			break;
-		case ESAI_HCKR_EXTAL:
-			fsl_esai_set_dai_sysclk(dai, ESAI_HCKT_EXTAL,
-								freq, dir);
-			break;
-		default:
-			return -EINVAL;
-		}
+	if (freq == 0) {
+		dev_err(dai->dev, "%sput freq of HCK%c should not be 0Hz\n",
+			in ? "in" : "out", tx ? 'T' : 'R');
+		return -EINVAL;
 	}
 
 	/* Bypass divider settings if the requirement doesn't change */
@@ -321,7 +307,7 @@ static int fsl_esai_set_dai_sysclk(struct snd_soc_dai *dai, int clk_id,
 		break;
 	case ESAI_HCKT_EXTAL:
 		ecr |= ESAI_ECR_ETI;
-		break;
+		/* fall through */
 	case ESAI_HCKR_EXTAL:
 		ecr |= ESAI_ECR_ERI;
 		break;
@@ -438,8 +424,8 @@ static int fsl_esai_set_dai_tdm_slot(struct snd_soc_dai *dai, u32 tx_mask,
 
 	esai_priv->slot_width = slot_width;
 	esai_priv->slots = slots;
-	esai_priv->tx_mask    = tx_mask;
-	esai_priv->rx_mask    = rx_mask;
+	esai_priv->tx_mask = tx_mask;
+	esai_priv->rx_mask = rx_mask;
 
 	return 0;
 }
@@ -555,6 +541,11 @@ static int fsl_esai_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	mask = ESAI_xCR_xFSL | ESAI_xCR_xFSR | ESAI_xCR_xWA;
 	regmap_update_bits(esai_priv->regmap, REG_ESAI_TCR, mask, xcr);
 	regmap_update_bits(esai_priv->regmap, REG_ESAI_RCR, mask, xcr);
+
+	mask = ESAI_xCCR_xCKP | ESAI_xCCR_xHCKP | ESAI_xCCR_xFSP |
+		ESAI_xCCR_xFSD | ESAI_xCCR_xCKD;
+	regmap_update_bits(esai_priv->regmap, REG_ESAI_TCCR, mask, xccr);
+	regmap_update_bits(esai_priv->regmap, REG_ESAI_RCCR, mask, xccr);
 
 	return 0;
 }
@@ -699,6 +690,18 @@ static int fsl_esai_trigger(struct snd_pcm_substream *substream, int cmd,
 		for (i = 0; tx && i < channels; i++)
 			regmap_write(esai_priv->regmap, REG_ESAI_ETDR, 0x0);
 
+		/*
+		 * When set the TE/RE in the end of enablement flow, there
+		 * will be channel swap issue for multi data line case.
+		 * In order to workaround this issue, we switch the bit
+		 * enablement sequence to below sequence
+		 * 1) clear the xSMB & xSMA: which is done in probe and
+		 *                           stop state.
+		 * 2) set TE/RE
+		 * 3) set xSMB
+		 * 4) set xSMA:  xSMA is the last one in this flow, which
+		 *               will trigger esai to start.
+		 */
 		regmap_update_bits(esai_priv->regmap, REG_ESAI_xCR(tx),
 				   tx ? ESAI_xCR_TE_MASK : ESAI_xCR_RE_MASK,
 				   tx ? ESAI_xCR_TE(pins) : ESAI_xCR_RE(pins));
@@ -1001,7 +1004,7 @@ static int fsl_esai_probe(struct platform_device *pdev)
 	const struct of_device_id *of_id;
 	struct fsl_esai *esai_priv;
 	struct resource *res;
-	const uint32_t *iprop;
+	const __be32 *iprop;
 	void __iomem *regs;
 	int irq, ret;
 	u32 buffer_size;
@@ -1142,6 +1145,9 @@ static int fsl_esai_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to enable ESAI: %d\n", ret);
 		return ret;
 	}
+
+	esai_priv->tx_mask = 0xFFFFFFFF;
+	esai_priv->rx_mask = 0xFFFFFFFF;
 
 	/* Clear the TSMA, TSMB, RSMA, RSMB */
 	regmap_write(esai_priv->regmap, REG_ESAI_TSMA, 0);

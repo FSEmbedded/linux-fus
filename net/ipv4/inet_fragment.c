@@ -20,6 +20,7 @@
 #include <linux/skbuff.h>
 #include <linux/rtnetlink.h>
 #include <linux/slab.h>
+#include <linux/rhashtable.h>
 
 #include <net/sock.h>
 #include <net/inet_frag.h>
@@ -161,9 +162,6 @@ static struct inet_frag_queue *inet_frag_alloc(struct netns_frags *nf,
 {
 	struct inet_frag_queue *q;
 
-	if (!nf->high_thresh || frag_mem_limit(nf) > nf->high_thresh)
-		return NULL;
-
 	q = kmem_cache_zalloc(f->frags_cachep, GFP_ATOMIC);
 	if (!q)
 		return NULL;
@@ -209,6 +207,9 @@ struct inet_frag_queue *inet_frag_find(struct netns_frags *nf, void *key)
 {
 	struct inet_frag_queue *fq = NULL, *prev;
 
+	if (!nf->high_thresh || frag_mem_limit(nf) > nf->high_thresh)
+		return NULL;
+
 	rcu_read_lock();
 
 	prev = rhashtable_lookup(&nf->rhashtable, key, nf->f->rhash_params);
@@ -220,7 +221,6 @@ struct inet_frag_queue *inet_frag_find(struct netns_frags *nf, void *key)
 			fq = NULL;
 	}
 	rcu_read_unlock();
-
 	return fq;
 }
 EXPORT_SYMBOL(inet_frag_find);

@@ -28,11 +28,10 @@ struct mmc_bus_ops {
 	int (*resume)(struct mmc_host *);
 	int (*runtime_suspend)(struct mmc_host *);
 	int (*runtime_resume)(struct mmc_host *);
-	int (*power_save)(struct mmc_host *);
-	int (*power_restore)(struct mmc_host *);
 	int (*alive)(struct mmc_host *);
 	int (*shutdown)(struct mmc_host *);
-	int (*reset)(struct mmc_host *);
+	int (*hw_reset)(struct mmc_host *);
+	int (*sw_reset)(struct mmc_host *);
 };
 
 extern bool mmc_use_blk_mq;
@@ -51,7 +50,9 @@ void mmc_set_bus_mode(struct mmc_host *host, unsigned int mode);
 void mmc_set_bus_width(struct mmc_host *host, unsigned int width);
 u32 mmc_select_voltage(struct mmc_host *host, u32 ocr);
 int mmc_set_uhs_voltage(struct mmc_host *host, u32 ocr);
+int mmc_host_set_uhs_voltage(struct mmc_host *host);
 int mmc_set_signal_voltage(struct mmc_host *host, int signal_voltage);
+void mmc_set_initial_signal_voltage(struct mmc_host *host);
 void mmc_set_timing(struct mmc_host *host, unsigned int timing);
 void mmc_set_driver_type(struct mmc_host *host, unsigned int drv_type);
 int mmc_select_drive_strength(struct mmc_card *card, unsigned int max_dtr,
@@ -63,12 +64,10 @@ void mmc_set_initial_state(struct mmc_host *host);
 
 static inline void mmc_delay(unsigned int ms)
 {
-	if (ms < 1000 / HZ) {
-		cond_resched();
-		mdelay(ms);
-	} else {
+	if (ms <= 20)
+		usleep_range(ms * 1000, ms * 1250);
+	else
 		msleep(ms);
-	}
 }
 
 void mmc_rescan(struct work_struct *work);
@@ -94,8 +93,6 @@ void mmc_remove_host_debugfs(struct mmc_host *host);
 void mmc_add_card_debugfs(struct mmc_card *card);
 void mmc_remove_card_debugfs(struct mmc_card *card);
 
-void mmc_init_context_info(struct mmc_host *host);
-
 int mmc_execute_tuning(struct mmc_card *card);
 int mmc_hs200_to_hs400(struct mmc_card *card);
 int mmc_hs400_to_hs200(struct mmc_card *card);
@@ -112,12 +109,6 @@ void mmc_wait_for_req_done(struct mmc_host *host, struct mmc_request *mrq);
 bool mmc_is_req_done(struct mmc_host *host, struct mmc_request *mrq);
 
 int mmc_start_request(struct mmc_host *host, struct mmc_request *mrq);
-
-struct mmc_async_req;
-
-struct mmc_async_req *mmc_start_areq(struct mmc_host *host,
-				     struct mmc_async_req *areq,
-				     enum mmc_blk_status *ret_stat);
 
 int mmc_erase(struct mmc_card *card, unsigned int from, unsigned int nr,
 		unsigned int arg);

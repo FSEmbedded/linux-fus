@@ -71,7 +71,7 @@ static u32 num_mb = 8;
 static char *tvmem[TVMEMSIZE];
 
 static char *check[] = {
-	"des", "md5", "des3_ede", "rot13", "sha1", "sha224", "sha256",
+	"des", "md5", "des3_ede", "rot13", "sha1", "sha224", "sha256", "sm3",
 	"blowfish", "twofish", "serpent", "sha384", "sha512", "md4", "aes",
 	"cast6", "arc4", "michael_mic", "deflate", "crc32c", "tea", "xtea",
 	"khazad", "wp512", "wp384", "wp256", "tnepres", "xeta",  "fcrypt",
@@ -79,11 +79,378 @@ static char *check[] = {
 	"lzo", "cts", "sha3-224", "sha3-256", "sha3-384", "sha3-512", NULL
 };
 
+static u32 block_sizes[] = { 16, 64, 256, 1024, 8192, 0 };
+static u32 aead_sizes[] = { 16, 64, 256, 512, 1024, 2048, 4096, 8192, 0 };
+
+#define XBUFSIZE 8
+#define MAX_IVLEN 32
+
+static int testmgr_alloc_buf(char *buf[XBUFSIZE])
+{
+	int i;
+
+	for (i = 0; i < XBUFSIZE; i++) {
+		buf[i] = (void *)__get_free_page(GFP_KERNEL);
+		if (!buf[i])
+			goto err_free_buf;
+	}
+
+	return 0;
+
+err_free_buf:
+	while (i-- > 0)
+		free_page((unsigned long)buf[i]);
+
+	return -ENOMEM;
+}
+
+static void testmgr_free_buf(char *buf[XBUFSIZE])
+{
+	int i;
+
+	for (i = 0; i < XBUFSIZE; i++)
+		free_page((unsigned long)buf[i]);
+}
+
+static void sg_init_aead(struct scatterlist *sg, char *xbuf[XBUFSIZE],
+			 unsigned int buflen, const void *assoc,
+			 unsigned int aad_size)
+{
+	int np = (buflen + PAGE_SIZE - 1)/PAGE_SIZE;
+	int k, rem;
+
+	if (np > XBUFSIZE) {
+		rem = PAGE_SIZE;
+		np = XBUFSIZE;
+	} else {
+		rem = buflen % PAGE_SIZE;
+	}
+
+	sg_init_table(sg, np + 1);
+
+	sg_set_buf(&sg[0], assoc, aad_size);
+
+	if (rem)
+		np--;
+	for (k = 0; k < np; k++)
+		sg_set_buf(&sg[k + 1], xbuf[k], PAGE_SIZE);
+
+	if (rem)
+		sg_set_buf(&sg[k + 1], xbuf[k], rem);
+}
+
 static inline int do_one_aead_op(struct aead_request *req, int ret)
 {
 	struct crypto_wait *wait = req->base.data;
 
 	return crypto_wait_req(ret, wait);
+}
+
+struct test_mb_aead_data {
+	struct scatterlist sg[XBUFSIZE];
+	struct scatterlist sgout[XBUFSIZE];
+	struct aead_request *req;
+	struct crypto_wait wait;
+	char *xbuf[XBUFSIZE];
+	char *xoutbuf[XBUFSIZE];
+	char *axbuf[XBUFSIZE];
+};
+
+static int do_mult_aead_op(struct test_mb_aead_data *data, int enc,
+				u32 num_mb, int *rc)
+{
+	int i, err = 0;
+
+	/* Fire up a bunch of concurrent requests */
+	for (i = 0; i < num_mb; i++) {
+		if (enc == ENCRYPT)
+			rc[i] = crypto_aead_encrypt(data[i].req);
+		else
+			rc[i] = crypto_aead_decrypt(data[i].req);
+	}
+
+	/* Wait for all requests to finish */
+	for (i = 0; i < num_mb; i++) {
+		rc[i] = crypto_wait_req(rc[i], &data[i].wait);
+
+		if (rc[i]) {
+			pr_info("concurrent request %d error %d\n", i, rc[i]);
+			err = rc[i];
+		}
+	}
+
+	return err;
+}
+
+static int test_mb_aead_jiffies(struct test_mb_aead_data *data, int enc,
+				int blen, int secs, u32 num_mb)
+{
+	unsigned long start, end;
+	int bcount;
+	int ret = 0;
+	int *rc;
+
+	rc = kcalloc(num_mb, sizeof(*rc), GFP_KERNEL);
+	if (!rc)
+		return -ENOMEM;
+
+	for (start = jiffies, end = start + secs * HZ, bcount = 0;
+	     time_before(jiffies, end); bcount++) {
+		ret = do_mult_aead_op(data, enc, num_mb, rc);
+		if (ret)
+			goto out;
+	}
+
+	pr_cont("%d operations in %d seconds (%ld bytes)\n",
+		bcount * num_mb, secs, (long)bcount * blen * num_mb);
+
+out:
+	kfree(rc);
+	return ret;
+}
+
+static int test_mb_aead_cycles(struct test_mb_aead_data *data, int enc,
+			       int blen, u32 num_mb)
+{
+	unsigned long cycles = 0;
+	int ret = 0;
+	int i;
+	int *rc;
+
+	rc = kcalloc(num_mb, sizeof(*rc), GFP_KERNEL);
+	if (!rc)
+		return -ENOMEM;
+
+	/* Warm-up run. */
+	for (i = 0; i < 4; i++) {
+		ret = do_mult_aead_op(data, enc, num_mb, rc);
+		if (ret)
+			goto out;
+	}
+
+	/* The real thing. */
+	for (i = 0; i < 8; i++) {
+		cycles_t start, end;
+
+		start = get_cycles();
+		ret = do_mult_aead_op(data, enc, num_mb, rc);
+		end = get_cycles();
+
+		if (ret)
+			goto out;
+
+		cycles += end - start;
+	}
+
+	pr_cont("1 operation in %lu cycles (%d bytes)\n",
+		(cycles + 4) / (8 * num_mb), blen);
+
+out:
+	kfree(rc);
+	return ret;
+}
+
+static void test_mb_aead_speed(const char *algo, int enc, int secs,
+			       struct aead_speed_template *template,
+			       unsigned int tcount, u8 authsize,
+			       unsigned int aad_size, u8 *keysize, u32 num_mb)
+{
+	struct test_mb_aead_data *data;
+	struct crypto_aead *tfm;
+	unsigned int i, j, iv_len;
+	const char *key;
+	const char *e;
+	void *assoc;
+	u32 *b_size;
+	char *iv;
+	int ret;
+
+
+	if (aad_size >= PAGE_SIZE) {
+		pr_err("associate data length (%u) too big\n", aad_size);
+		return;
+	}
+
+	iv = kzalloc(MAX_IVLEN, GFP_KERNEL);
+	if (!iv)
+		return;
+
+	if (enc == ENCRYPT)
+		e = "encryption";
+	else
+		e = "decryption";
+
+	data = kcalloc(num_mb, sizeof(*data), GFP_KERNEL);
+	if (!data)
+		goto out_free_iv;
+
+	tfm = crypto_alloc_aead(algo, 0, 0);
+	if (IS_ERR(tfm)) {
+		pr_err("failed to load transform for %s: %ld\n",
+			algo, PTR_ERR(tfm));
+		goto out_free_data;
+	}
+
+	ret = crypto_aead_setauthsize(tfm, authsize);
+
+	for (i = 0; i < num_mb; ++i)
+		if (testmgr_alloc_buf(data[i].xbuf)) {
+			while (i--)
+				testmgr_free_buf(data[i].xbuf);
+			goto out_free_tfm;
+		}
+
+	for (i = 0; i < num_mb; ++i)
+		if (testmgr_alloc_buf(data[i].axbuf)) {
+			while (i--)
+				testmgr_free_buf(data[i].axbuf);
+			goto out_free_xbuf;
+		}
+
+	for (i = 0; i < num_mb; ++i)
+		if (testmgr_alloc_buf(data[i].xoutbuf)) {
+			while (i--)
+				testmgr_free_buf(data[i].xoutbuf);
+			goto out_free_axbuf;
+		}
+
+	for (i = 0; i < num_mb; ++i) {
+		data[i].req = aead_request_alloc(tfm, GFP_KERNEL);
+		if (!data[i].req) {
+			pr_err("alg: skcipher: Failed to allocate request for %s\n",
+			       algo);
+			while (i--)
+				aead_request_free(data[i].req);
+			goto out_free_xoutbuf;
+		}
+	}
+
+	for (i = 0; i < num_mb; ++i) {
+		crypto_init_wait(&data[i].wait);
+		aead_request_set_callback(data[i].req,
+					  CRYPTO_TFM_REQ_MAY_BACKLOG,
+					  crypto_req_done, &data[i].wait);
+	}
+
+	pr_info("\ntesting speed of multibuffer %s (%s) %s\n", algo,
+		get_driver_name(crypto_aead, tfm), e);
+
+	i = 0;
+	do {
+		b_size = aead_sizes;
+		do {
+			if (*b_size + authsize > XBUFSIZE * PAGE_SIZE) {
+				pr_err("template (%u) too big for buffer (%lu)\n",
+				       authsize + *b_size,
+				       XBUFSIZE * PAGE_SIZE);
+				goto out;
+			}
+
+			pr_info("test %u (%d bit key, %d byte blocks): ", i,
+				*keysize * 8, *b_size);
+
+			/* Set up tfm global state, i.e. the key */
+
+			memset(tvmem[0], 0xff, PAGE_SIZE);
+			key = tvmem[0];
+			for (j = 0; j < tcount; j++) {
+				if (template[j].klen == *keysize) {
+					key = template[j].key;
+					break;
+				}
+			}
+
+			crypto_aead_clear_flags(tfm, ~0);
+
+			ret = crypto_aead_setkey(tfm, key, *keysize);
+			if (ret) {
+				pr_err("setkey() failed flags=%x\n",
+				       crypto_aead_get_flags(tfm));
+				goto out;
+			}
+
+			iv_len = crypto_aead_ivsize(tfm);
+			if (iv_len)
+				memset(iv, 0xff, iv_len);
+
+			/* Now setup per request stuff, i.e. buffers */
+
+			for (j = 0; j < num_mb; ++j) {
+				struct test_mb_aead_data *cur = &data[j];
+
+				assoc = cur->axbuf[0];
+				memset(assoc, 0xff, aad_size);
+
+				sg_init_aead(cur->sg, cur->xbuf,
+					     *b_size + (enc ? 0 : authsize),
+					     assoc, aad_size);
+
+				sg_init_aead(cur->sgout, cur->xoutbuf,
+					     *b_size + (enc ? authsize : 0),
+					     assoc, aad_size);
+
+				aead_request_set_ad(cur->req, aad_size);
+
+				if (!enc) {
+
+					aead_request_set_crypt(cur->req,
+							       cur->sgout,
+							       cur->sg,
+							       *b_size, iv);
+					ret = crypto_aead_encrypt(cur->req);
+					ret = do_one_aead_op(cur->req, ret);
+
+					if (ret) {
+						pr_err("calculating auth failed failed (%d)\n",
+						       ret);
+						break;
+					}
+				}
+
+				aead_request_set_crypt(cur->req, cur->sg,
+						       cur->sgout, *b_size +
+						       (enc ? 0 : authsize),
+						       iv);
+
+			}
+
+			if (secs) {
+				ret = test_mb_aead_jiffies(data, enc, *b_size,
+							   secs, num_mb);
+				cond_resched();
+			} else {
+				ret = test_mb_aead_cycles(data, enc, *b_size,
+							  num_mb);
+			}
+
+			if (ret) {
+				pr_err("%s() failed return code=%d\n", e, ret);
+				break;
+			}
+			b_size++;
+			i++;
+		} while (*b_size);
+		keysize++;
+	} while (*keysize);
+
+out:
+	for (i = 0; i < num_mb; ++i)
+		aead_request_free(data[i].req);
+out_free_xoutbuf:
+	for (i = 0; i < num_mb; ++i)
+		testmgr_free_buf(data[i].xoutbuf);
+out_free_axbuf:
+	for (i = 0; i < num_mb; ++i)
+		testmgr_free_buf(data[i].axbuf);
+out_free_xbuf:
+	for (i = 0; i < num_mb; ++i)
+		testmgr_free_buf(data[i].xbuf);
+out_free_tfm:
+	crypto_free_aead(tfm);
+out_free_data:
+	kfree(data);
+out_free_iv:
+	kfree(iv);
 }
 
 static int test_aead_jiffies(struct aead_request *req, int enc,
@@ -149,66 +516,6 @@ out:
 		       (cycles + 4) / 8, blen);
 
 	return ret;
-}
-
-static u32 block_sizes[] = { 16, 64, 256, 1024, 8192, 0 };
-static u32 aead_sizes[] = { 16, 64, 256, 512, 1024, 2048, 4096, 8192, 0 };
-
-#define XBUFSIZE 8
-#define MAX_IVLEN 32
-
-static int testmgr_alloc_buf(char *buf[XBUFSIZE])
-{
-	int i;
-
-	for (i = 0; i < XBUFSIZE; i++) {
-		buf[i] = (void *)__get_free_page(GFP_KERNEL);
-		if (!buf[i])
-			goto err_free_buf;
-	}
-
-	return 0;
-
-err_free_buf:
-	while (i-- > 0)
-		free_page((unsigned long)buf[i]);
-
-	return -ENOMEM;
-}
-
-static void testmgr_free_buf(char *buf[XBUFSIZE])
-{
-	int i;
-
-	for (i = 0; i < XBUFSIZE; i++)
-		free_page((unsigned long)buf[i]);
-}
-
-static void sg_init_aead(struct scatterlist *sg, char *xbuf[XBUFSIZE],
-			 unsigned int buflen, const void *assoc,
-			 unsigned int aad_size)
-{
-	int np = (buflen + PAGE_SIZE - 1)/PAGE_SIZE;
-	int k, rem;
-
-	if (np > XBUFSIZE) {
-		rem = PAGE_SIZE;
-		np = XBUFSIZE;
-	} else {
-		rem = buflen % PAGE_SIZE;
-	}
-
-	sg_init_table(sg, np + 1);
-
-	sg_set_buf(&sg[0], assoc, aad_size);
-
-	if (rem)
-		np--;
-	for (k = 0; k < np; k++)
-		sg_set_buf(&sg[k + 1], xbuf[k], PAGE_SIZE);
-
-	if (rem)
-		sg_set_buf(&sg[k + 1], xbuf[k], rem);
 }
 
 static void test_aead_speed(const char *algo, int enc, unsigned int secs,
@@ -354,11 +661,13 @@ static void test_aead_speed(const char *algo, int enc, unsigned int secs,
 					       *b_size + (enc ? 0 : authsize),
 					       iv);
 
-			if (secs)
+			if (secs) {
 				ret = test_aead_jiffies(req, enc, *b_size,
 							secs);
-			else
+				cond_resched();
+			} else {
 				ret = test_aead_cycles(req, enc, *b_size);
+			}
 
 			if (ret) {
 				pr_err("%s() failed return code=%d\n", e, ret);
@@ -384,7 +693,6 @@ out_noaxbuf:
 	testmgr_free_buf(xbuf);
 out_noxbuf:
 	kfree(iv);
-	return;
 }
 
 static void test_hash_sg_init(struct scatterlist *sg)
@@ -413,9 +721,10 @@ struct test_mb_ahash_data {
 	char *xbuf[XBUFSIZE];
 };
 
-static inline int do_mult_ahash_op(struct test_mb_ahash_data *data, u32 num_mb)
+static inline int do_mult_ahash_op(struct test_mb_ahash_data *data, u32 num_mb,
+				   int *rc)
 {
-	int i, rc[num_mb], err = 0;
+	int i, err = 0;
 
 	/* Fire up a bunch of concurrent requests */
 	for (i = 0; i < num_mb; i++)
@@ -439,18 +748,26 @@ static int test_mb_ahash_jiffies(struct test_mb_ahash_data *data, int blen,
 {
 	unsigned long start, end;
 	int bcount;
-	int ret;
+	int ret = 0;
+	int *rc;
+
+	rc = kcalloc(num_mb, sizeof(*rc), GFP_KERNEL);
+	if (!rc)
+		return -ENOMEM;
 
 	for (start = jiffies, end = start + secs * HZ, bcount = 0;
 	     time_before(jiffies, end); bcount++) {
-		ret = do_mult_ahash_op(data, num_mb);
+		ret = do_mult_ahash_op(data, num_mb, rc);
 		if (ret)
-			return ret;
+			goto out;
 	}
 
 	pr_cont("%d operations in %d seconds (%ld bytes)\n",
 		bcount * num_mb, secs, (long)bcount * blen * num_mb);
-	return 0;
+
+out:
+	kfree(rc);
+	return ret;
 }
 
 static int test_mb_ahash_cycles(struct test_mb_ahash_data *data, int blen,
@@ -459,10 +776,15 @@ static int test_mb_ahash_cycles(struct test_mb_ahash_data *data, int blen,
 	unsigned long cycles = 0;
 	int ret = 0;
 	int i;
+	int *rc;
+
+	rc = kcalloc(num_mb, sizeof(*rc), GFP_KERNEL);
+	if (!rc)
+		return -ENOMEM;
 
 	/* Warm-up run. */
 	for (i = 0; i < 4; i++) {
-		ret = do_mult_ahash_op(data, num_mb);
+		ret = do_mult_ahash_op(data, num_mb, rc);
 		if (ret)
 			goto out;
 	}
@@ -472,7 +794,7 @@ static int test_mb_ahash_cycles(struct test_mb_ahash_data *data, int blen,
 		cycles_t start, end;
 
 		start = get_cycles();
-		ret = do_mult_ahash_op(data, num_mb);
+		ret = do_mult_ahash_op(data, num_mb, rc);
 		end = get_cycles();
 
 		if (ret)
@@ -481,11 +803,11 @@ static int test_mb_ahash_cycles(struct test_mb_ahash_data *data, int blen,
 		cycles += end - start;
 	}
 
-out:
-	if (ret == 0)
-		pr_cont("1 operation in %lu cycles (%d bytes)\n",
-			(cycles + 4) / (8 * num_mb), blen);
+	pr_cont("1 operation in %lu cycles (%d bytes)\n",
+		(cycles + 4) / (8 * num_mb), blen);
 
+out:
+	kfree(rc);
 	return ret;
 }
 
@@ -557,11 +879,13 @@ static void test_mb_ahash_speed(const char *algo, unsigned int secs,
 			i, speed[i].blen, speed[i].plen,
 			speed[i].blen / speed[i].plen);
 
-		if (secs)
+		if (secs) {
 			ret = test_mb_ahash_jiffies(data, speed[i].blen, secs,
 						    num_mb);
-		else
+			cond_resched();
+		} else {
 			ret = test_mb_ahash_cycles(data, speed[i].blen, num_mb);
+		}
 
 
 		if (ret) {
@@ -787,12 +1111,14 @@ static void test_ahash_speed_common(const char *algo, unsigned int secs,
 
 		ahash_request_set_crypt(req, sg, output, speed[i].plen);
 
-		if (secs)
+		if (secs) {
 			ret = test_ahash_jiffies(req, speed[i].blen,
 						 speed[i].plen, output, secs);
-		else
+			cond_resched();
+		} else {
 			ret = test_ahash_cycles(req, speed[i].blen,
 						speed[i].plen, output);
+		}
 
 		if (ret) {
 			pr_err("hashing failed ret=%d\n", ret);
@@ -829,9 +1155,9 @@ struct test_mb_skcipher_data {
 };
 
 static int do_mult_acipher_op(struct test_mb_skcipher_data *data, int enc,
-				u32 num_mb)
+				u32 num_mb, int *rc)
 {
-	int i, rc[num_mb], err = 0;
+	int i, err = 0;
 
 	/* Fire up a bunch of concurrent requests */
 	for (i = 0; i < num_mb; i++) {
@@ -859,18 +1185,26 @@ static int test_mb_acipher_jiffies(struct test_mb_skcipher_data *data, int enc,
 {
 	unsigned long start, end;
 	int bcount;
-	int ret;
+	int ret = 0;
+	int *rc;
+
+	rc = kcalloc(num_mb, sizeof(*rc), GFP_KERNEL);
+	if (!rc)
+		return -ENOMEM;
 
 	for (start = jiffies, end = start + secs * HZ, bcount = 0;
 	     time_before(jiffies, end); bcount++) {
-		ret = do_mult_acipher_op(data, enc, num_mb);
+		ret = do_mult_acipher_op(data, enc, num_mb, rc);
 		if (ret)
-			return ret;
+			goto out;
 	}
 
 	pr_cont("%d operations in %d seconds (%ld bytes)\n",
 		bcount * num_mb, secs, (long)bcount * blen * num_mb);
-	return 0;
+
+out:
+	kfree(rc);
+	return ret;
 }
 
 static int test_mb_acipher_cycles(struct test_mb_skcipher_data *data, int enc,
@@ -879,10 +1213,15 @@ static int test_mb_acipher_cycles(struct test_mb_skcipher_data *data, int enc,
 	unsigned long cycles = 0;
 	int ret = 0;
 	int i;
+	int *rc;
+
+	rc = kcalloc(num_mb, sizeof(*rc), GFP_KERNEL);
+	if (!rc)
+		return -ENOMEM;
 
 	/* Warm-up run. */
 	for (i = 0; i < 4; i++) {
-		ret = do_mult_acipher_op(data, enc, num_mb);
+		ret = do_mult_acipher_op(data, enc, num_mb, rc);
 		if (ret)
 			goto out;
 	}
@@ -892,7 +1231,7 @@ static int test_mb_acipher_cycles(struct test_mb_skcipher_data *data, int enc,
 		cycles_t start, end;
 
 		start = get_cycles();
-		ret = do_mult_acipher_op(data, enc, num_mb);
+		ret = do_mult_acipher_op(data, enc, num_mb, rc);
 		end = get_cycles();
 
 		if (ret)
@@ -901,12 +1240,189 @@ static int test_mb_acipher_cycles(struct test_mb_skcipher_data *data, int enc,
 		cycles += end - start;
 	}
 
-out:
-	if (ret == 0)
-		pr_cont("1 operation in %lu cycles (%d bytes)\n",
-			(cycles + 4) / (8 * num_mb), blen);
+	pr_cont("1 operation in %lu cycles (%d bytes)\n",
+		(cycles + 4) / (8 * num_mb), blen);
 
+out:
+	kfree(rc);
 	return ret;
+}
+
+static void test_mb_skcipher_speed(const char *algo, int enc, int secs,
+				   struct cipher_speed_template *template,
+				   unsigned int tcount, u8 *keysize, u32 num_mb)
+{
+	struct test_mb_skcipher_data *data;
+	struct crypto_skcipher *tfm;
+	unsigned int i, j, iv_len;
+	const char *key;
+	const char *e;
+	u32 *b_size;
+	char iv[128];
+	int ret;
+
+	if (enc == ENCRYPT)
+		e = "encryption";
+	else
+		e = "decryption";
+
+	data = kcalloc(num_mb, sizeof(*data), GFP_KERNEL);
+	if (!data)
+		return;
+
+	tfm = crypto_alloc_skcipher(algo, 0, 0);
+	if (IS_ERR(tfm)) {
+		pr_err("failed to load transform for %s: %ld\n",
+			algo, PTR_ERR(tfm));
+		goto out_free_data;
+	}
+
+	for (i = 0; i < num_mb; ++i)
+		if (testmgr_alloc_buf(data[i].xbuf)) {
+			while (i--)
+				testmgr_free_buf(data[i].xbuf);
+			goto out_free_tfm;
+		}
+
+
+	for (i = 0; i < num_mb; ++i)
+		if (testmgr_alloc_buf(data[i].xbuf)) {
+			while (i--)
+				testmgr_free_buf(data[i].xbuf);
+			goto out_free_tfm;
+		}
+
+
+	for (i = 0; i < num_mb; ++i) {
+		data[i].req = skcipher_request_alloc(tfm, GFP_KERNEL);
+		if (!data[i].req) {
+			pr_err("alg: skcipher: Failed to allocate request for %s\n",
+			       algo);
+			while (i--)
+				skcipher_request_free(data[i].req);
+			goto out_free_xbuf;
+		}
+	}
+
+	for (i = 0; i < num_mb; ++i) {
+		skcipher_request_set_callback(data[i].req,
+					      CRYPTO_TFM_REQ_MAY_BACKLOG,
+					      crypto_req_done, &data[i].wait);
+		crypto_init_wait(&data[i].wait);
+	}
+
+	pr_info("\ntesting speed of multibuffer %s (%s) %s\n", algo,
+		get_driver_name(crypto_skcipher, tfm), e);
+
+	i = 0;
+	do {
+		b_size = block_sizes;
+		do {
+			if (*b_size > XBUFSIZE * PAGE_SIZE) {
+				pr_err("template (%u) too big for buffer (%lu)\n",
+				       *b_size, XBUFSIZE * PAGE_SIZE);
+				goto out;
+			}
+
+			pr_info("test %u (%d bit key, %d byte blocks): ", i,
+				*keysize * 8, *b_size);
+
+			/* Set up tfm global state, i.e. the key */
+
+			memset(tvmem[0], 0xff, PAGE_SIZE);
+			key = tvmem[0];
+			for (j = 0; j < tcount; j++) {
+				if (template[j].klen == *keysize) {
+					key = template[j].key;
+					break;
+				}
+			}
+
+			crypto_skcipher_clear_flags(tfm, ~0);
+
+			ret = crypto_skcipher_setkey(tfm, key, *keysize);
+			if (ret) {
+				pr_err("setkey() failed flags=%x\n",
+				       crypto_skcipher_get_flags(tfm));
+				goto out;
+			}
+
+			iv_len = crypto_skcipher_ivsize(tfm);
+			if (iv_len)
+				memset(&iv, 0xff, iv_len);
+
+			/* Now setup per request stuff, i.e. buffers */
+
+			for (j = 0; j < num_mb; ++j) {
+				struct test_mb_skcipher_data *cur = &data[j];
+				unsigned int k = *b_size;
+				unsigned int pages = DIV_ROUND_UP(k, PAGE_SIZE);
+				unsigned int p = 0;
+
+				sg_init_table(cur->sg, pages);
+
+				while (k > PAGE_SIZE) {
+					sg_set_buf(cur->sg + p, cur->xbuf[p],
+						   PAGE_SIZE);
+					memset(cur->xbuf[p], 0xff, PAGE_SIZE);
+					p++;
+					k -= PAGE_SIZE;
+				}
+
+				sg_set_buf(cur->sg + p, cur->xbuf[p], k);
+				memset(cur->xbuf[p], 0xff, k);
+
+				skcipher_request_set_crypt(cur->req, cur->sg,
+							   cur->sg, *b_size,
+							   iv);
+			}
+
+			if (secs) {
+				ret = test_mb_acipher_jiffies(data, enc,
+							      *b_size, secs,
+							      num_mb);
+				cond_resched();
+			} else {
+				ret = test_mb_acipher_cycles(data, enc,
+							     *b_size, num_mb);
+			}
+
+			if (ret) {
+				pr_err("%s() failed flags=%x\n", e,
+				       crypto_skcipher_get_flags(tfm));
+				break;
+			}
+			b_size++;
+			i++;
+		} while (*b_size);
+		keysize++;
+	} while (*keysize);
+
+out:
+	for (i = 0; i < num_mb; ++i)
+		skcipher_request_free(data[i].req);
+out_free_xbuf:
+	for (i = 0; i < num_mb; ++i)
+		testmgr_free_buf(data[i].xbuf);
+out_free_tfm:
+	crypto_free_skcipher(tfm);
+out_free_data:
+	kfree(data);
+}
+
+struct test_mb_skcipher_data {
+	struct scatterlist sg[XBUFSIZE];
+	struct skcipher_request *req;
+	struct crypto_wait wait;
+	char *xbuf[XBUFSIZE];
+};
+
+static int do_mult_acipher_op(struct test_mb_skcipher_data *data, int enc,
+				u32 num_mb)
+{
+	struct crypto_wait *wait = req->base.data;
+
+	return crypto_wait_req(ret, wait);
 }
 
 static void test_mb_skcipher_speed(const char *algo, int enc, int secs,
@@ -1252,12 +1768,14 @@ static void test_skcipher_speed(const char *algo, int enc, unsigned int secs,
 
 			skcipher_request_set_crypt(req, sg, sg, *b_size, iv);
 
-			if (secs)
+			if (secs) {
 				ret = test_acipher_jiffies(req, enc,
 							   *b_size, secs);
-			else
+				cond_resched();
+			} else {
 				ret = test_acipher_cycles(req, enc,
 							  *b_size);
+			}
 
 			if (ret) {
 				pr_err("%s() failed flags=%x\n", e,
@@ -1317,7 +1835,7 @@ static inline int tcrypt_test(const char *alg)
 	return ret;
 }
 
-static int do_test(const char *alg, u32 type, u32 mask, int m)
+static int do_test(const char *alg, u32 type, u32 mask, int m, u32 num_mb)
 {
 	int i;
 	int ret = 0;
@@ -1332,7 +1850,7 @@ static int do_test(const char *alg, u32 type, u32 mask, int m)
 		}
 
 		for (i = 1; i < 200; i++)
-			ret += do_test(NULL, 0, 0, i);
+			ret += do_test(NULL, 0, 0, i, num_mb);
 		break;
 
 	case 1:
@@ -1392,6 +1910,7 @@ static int do_test(const char *alg, u32 type, u32 mask, int m)
 		ret += tcrypt_test("xts(aes)");
 		ret += tcrypt_test("ctr(aes)");
 		ret += tcrypt_test("rfc3686(ctr(aes))");
+		ret += tcrypt_test("cfb(aes)");
 		break;
 
 	case 11:
@@ -1565,6 +2084,10 @@ static int do_test(const char *alg, u32 type, u32 mask, int m)
 		ret += tcrypt_test("sha3-512");
 		break;
 
+	case 52:
+		ret += tcrypt_test("sm3");
+		break;
+
 	case 100:
 		ret += tcrypt_test("hmac(md5)");
 		break;
@@ -1602,7 +2125,7 @@ static int do_test(const char *alg, u32 type, u32 mask, int m)
 		break;
 
 	case 109:
-		ret += tcrypt_test("vmac(aes)");
+		ret += tcrypt_test("vmac64(aes)");
 		break;
 
 	case 111:
@@ -1682,6 +2205,9 @@ static int do_test(const char *alg, u32 type, u32 mask, int m)
 	case 190:
 		ret += tcrypt_test("authenc(hmac(sha512),cbc(des3_ede))");
 		break;
+	case 191:
+		ret += tcrypt_test("ecb(sm4)");
+		break;
 	case 200:
 		test_cipher_speed("ecb(aes)", ENCRYPT, sec, NULL, 0,
 				speed_template_16_24_32);
@@ -1706,6 +2232,10 @@ static int do_test(const char *alg, u32 type, u32 mask, int m)
 		test_cipher_speed("ctr(aes)", ENCRYPT, sec, NULL, 0,
 				speed_template_16_24_32);
 		test_cipher_speed("ctr(aes)", DECRYPT, sec, NULL, 0,
+				speed_template_16_24_32);
+		test_cipher_speed("cfb(aes)", ENCRYPT, sec, NULL, 0,
+				speed_template_16_24_32);
+		test_cipher_speed("cfb(aes)", DECRYPT, sec, NULL, 0,
 				speed_template_16_24_32);
 		break;
 
@@ -1903,115 +2433,143 @@ static int do_test(const char *alg, u32 type, u32 mask, int m)
 				  speed_template_32);
 		break;
 
+	case 215:
+		test_mb_aead_speed("rfc4106(gcm(aes))", ENCRYPT, sec, NULL,
+				   0, 16, 16, aead_speed_template_20, num_mb);
+		test_mb_aead_speed("gcm(aes)", ENCRYPT, sec, NULL, 0, 16, 8,
+				   speed_template_16_24_32, num_mb);
+		test_mb_aead_speed("rfc4106(gcm(aes))", DECRYPT, sec, NULL,
+				   0, 16, 16, aead_speed_template_20, num_mb);
+		test_mb_aead_speed("gcm(aes)", DECRYPT, sec, NULL, 0, 16, 8,
+				   speed_template_16_24_32, num_mb);
+		break;
+
+	case 216:
+		test_mb_aead_speed("rfc4309(ccm(aes))", ENCRYPT, sec, NULL, 0,
+				   16, 16, aead_speed_template_19, num_mb);
+		test_mb_aead_speed("rfc4309(ccm(aes))", DECRYPT, sec, NULL, 0,
+				   16, 16, aead_speed_template_19, num_mb);
+		break;
+
+	case 217:
+		test_mb_aead_speed("rfc7539esp(chacha20,poly1305)", ENCRYPT,
+				   sec, NULL, 0, 16, 8, aead_speed_template_36,
+				   num_mb);
+		test_mb_aead_speed("rfc7539esp(chacha20,poly1305)", DECRYPT,
+				   sec, NULL, 0, 16, 8, aead_speed_template_36,
+				   num_mb);
+		break;
 
 	case 300:
 		if (alg) {
 			test_hash_speed(alg, sec, generic_hash_speed_template);
 			break;
 		}
-
 		/* fall through */
-
 	case 301:
 		test_hash_speed("md4", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 302:
 		test_hash_speed("md5", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 303:
 		test_hash_speed("sha1", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 304:
 		test_hash_speed("sha256", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 305:
 		test_hash_speed("sha384", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 306:
 		test_hash_speed("sha512", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 307:
 		test_hash_speed("wp256", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 308:
 		test_hash_speed("wp384", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 309:
 		test_hash_speed("wp512", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 310:
 		test_hash_speed("tgr128", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 311:
 		test_hash_speed("tgr160", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 312:
 		test_hash_speed("tgr192", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 313:
 		test_hash_speed("sha224", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 314:
 		test_hash_speed("rmd128", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 315:
 		test_hash_speed("rmd160", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 316:
 		test_hash_speed("rmd256", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 317:
 		test_hash_speed("rmd320", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 318:
 		test_hash_speed("ghash-generic", sec, hash_speed_template_16);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 319:
 		test_hash_speed("crc32c", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 320:
 		test_hash_speed("crct10dif", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 321:
 		test_hash_speed("poly1305", sec, poly1305_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 322:
 		test_hash_speed("sha3-224", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 323:
 		test_hash_speed("sha3-256", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 324:
 		test_hash_speed("sha3-384", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
 	case 325:
 		test_hash_speed("sha3-512", sec, generic_hash_speed_template);
 		if (mode > 300 && mode < 400) break;
-
+		/* fall through */
+	case 326:
+		test_hash_speed("sm3", sec, generic_hash_speed_template);
+		if (mode > 300 && mode < 400) break;
+		/* fall through */
 	case 399:
 		break;
 
@@ -2020,109 +2578,111 @@ static int do_test(const char *alg, u32 type, u32 mask, int m)
 			test_ahash_speed(alg, sec, generic_hash_speed_template);
 			break;
 		}
-
 		/* fall through */
-
 	case 401:
 		test_ahash_speed("md4", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 402:
 		test_ahash_speed("md5", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 403:
 		test_ahash_speed("sha1", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 404:
 		test_ahash_speed("sha256", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 405:
 		test_ahash_speed("sha384", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 406:
 		test_ahash_speed("sha512", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 407:
 		test_ahash_speed("wp256", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 408:
 		test_ahash_speed("wp384", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 409:
 		test_ahash_speed("wp512", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 410:
 		test_ahash_speed("tgr128", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 411:
 		test_ahash_speed("tgr160", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 412:
 		test_ahash_speed("tgr192", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 413:
 		test_ahash_speed("sha224", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 414:
 		test_ahash_speed("rmd128", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 415:
 		test_ahash_speed("rmd160", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 416:
 		test_ahash_speed("rmd256", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 417:
 		test_ahash_speed("rmd320", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 418:
 		test_ahash_speed("sha3-224", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 419:
 		test_ahash_speed("sha3-256", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 420:
 		test_ahash_speed("sha3-384", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
-
+		/* fall through */
 	case 421:
 		test_ahash_speed("sha3-512", sec, generic_hash_speed_template);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 422:
 		test_mb_ahash_speed("sha1", sec, generic_hash_speed_template,
 				    num_mb);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 423:
 		test_mb_ahash_speed("sha256", sec, generic_hash_speed_template,
 				    num_mb);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
 	case 424:
 		test_mb_ahash_speed("sha512", sec, generic_hash_speed_template,
 				    num_mb);
 		if (mode > 400 && mode < 500) break;
-
+		/* fall through */
+	case 425:
+		test_mb_ahash_speed("sm3", sec, generic_hash_speed_template,
+				    num_mb);
+		if (mode > 400 && mode < 500) break;
+		/* fall through */
 	case 499:
 		break;
 
@@ -2569,7 +3129,7 @@ static int __init tcrypt_mod_init(void)
 			goto err_free_tv;
 	}
 
-	err = do_test(alg, type, mask, mode);
+	err = do_test(alg, type, mask, mode, num_mb);
 
 	if (err) {
 		printk(KERN_ERR "tcrypt: one or more tests failed!\n");

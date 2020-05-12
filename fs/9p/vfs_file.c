@@ -442,7 +442,11 @@ v9fs_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		i_size = i_size_read(inode);
 		if (iocb->ki_pos > i_size) {
 			inode_add_bytes(inode, iocb->ki_pos - i_size);
-			i_size_write(inode, iocb->ki_pos);
+			/*
+			 * Need to serialize against i_size_write() in
+			 * v9fs_stat2inode()
+			 */
+			v9fs_i_size_write(inode, iocb->ki_pos);
 		}
 		return retval;
 	}
@@ -545,7 +549,7 @@ v9fs_mmap_file_mmap(struct file *filp, struct vm_area_struct *vma)
 	return retval;
 }
 
-static int
+static vm_fault_t
 v9fs_vm_page_mkwrite(struct vm_fault *vmf)
 {
 	struct v9fs_inode *v9inode;

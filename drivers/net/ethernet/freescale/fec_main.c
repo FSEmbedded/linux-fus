@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Fast Ethernet Controller (FEC) driver for Motorola MPC8xx.
  * Copyright (c) 1997 Dan Malek (dmalek@jlc.net)
@@ -48,7 +49,7 @@
 #include <linux/io.h>
 #include <linux/irq.h>
 #include <linux/clk.h>
-#include <linux/clk/clk-conf.h>
+#include <linux/crc32.h>
 #include <linux/platform_device.h>
 #include <linux/mdio.h>
 #include <linux/phy.h>
@@ -1682,10 +1683,6 @@ fec_enet_interrupt(int irq, void *dev_id)
 		ret = IRQ_HANDLED;
 		complete(&fep->mdio_done);
 	}
-
-	if (fep->ptp_clock)
-		if (fec_ptp_check_pps_event(fep))
-			ret = IRQ_HANDLED;
 	return ret;
 }
 
@@ -1952,9 +1949,7 @@ static int fec_enet_clk_enable(struct net_device *ndev, bool enable)
 		if (ret)
 			goto failed_clk_ref;
 
-		ret = clk_prepare_enable(fep->clk_2x_txclk);
-		if (ret)
-			goto failed_clk_2x_txclk;
+		phy_reset_after_clk_enable(ndev->phydev);
 	} else {
 		clk_disable_unprepare(fep->clk_enet_out);
 		if (fep->clk_ptp) {
@@ -2158,15 +2153,9 @@ static int fec_enet_mii_init(struct platform_device *pdev)
 	fep->mii_bus->parent = &pdev->dev;
 
 	node = of_get_child_by_name(pdev->dev.of_node, "mdio");
-	if (node) {
-		err = of_mdiobus_register(fep->mii_bus, node);
+	err = of_mdiobus_register(fep->mii_bus, node);
+	if (node)
 		of_node_put(node);
-	} else if (fep->phy_node && !fep->fixed_link) {
-		err = -EPROBE_DEFER;
-	} else {
-		err = mdiobus_register(fep->mii_bus);
-	}
-
 	if (err)
 		goto err_out_free_mdiobus;
 
@@ -2221,7 +2210,7 @@ static int fec_enet_get_regs_len(struct net_device *ndev)
 /* List of registers that can be safety be read to dump them with ethtool */
 #if defined(CONFIG_M523x) || defined(CONFIG_M527x) || defined(CONFIG_M528x) || \
 	defined(CONFIG_M520x) || defined(CONFIG_M532x) || defined(CONFIG_ARM) || \
-	defined(CONFIG_ARM64)
+	defined(CONFIG_ARM64) || defined(CONFIG_COMPILE_TEST)
 static u32 fec_enet_register_offset[] = {
 	FEC_IEVENT, FEC_IMASK, FEC_R_DES_ACTIVE_0, FEC_X_DES_ACTIVE_0,
 	FEC_ECNTRL, FEC_MII_DATA, FEC_MII_SPEED, FEC_MIB_CTRLSTAT, FEC_R_CNTRL,
@@ -3062,6 +3051,7 @@ fec_enet_open(struct net_device *ndev)
 	const struct platform_device_id *id_entry =
 				platform_get_device_id(fep->pdev);
 	int ret;
+	bool reset_again;
 
 	ret = pm_runtime_get_sync(&fep->pdev->dev);
 	if (ret < 0)
@@ -3071,6 +3061,17 @@ fec_enet_open(struct net_device *ndev)
 	ret = fec_enet_clk_enable(ndev, true);
 	if (ret)
 		goto clk_enable;
+
+	/* During the first fec_enet_open call the PHY isn't probed at this
+	 * point. Therefore the phy_reset_after_clk_enable() call within
+	 * fec_enet_clk_enable() fails. As we need this reset in order to be
+	 * sure the PHY is working correctly we check if we need to reset again
+	 * later when the PHY is probed
+	 */
+	if (ndev->phydev && ndev->phydev->drv)
+		reset_again = false;
+	else
+		reset_again = true;
 
 	/* I should reset the ring buffers here, but I don't yet know
 	 * a simple way to do that.
@@ -3087,6 +3088,12 @@ fec_enet_open(struct net_device *ndev)
 	ret = fec_enet_mii_probe(ndev);
 	if (ret)
 		goto err_enet_mii_probe;
+
+	/* Call phy_reset_after_clk_enable() again if it failed during
+	 * phy_reset_after_clk_enable() before because the PHY wasn't probed.
+	 */
+	if (reset_again)
+		phy_reset_after_clk_enable(ndev->phydev);
 
 	if (fep->quirks & FEC_QUIRK_ERR006687)
 		imx6q_cpuidle_fec_irqs_used();
@@ -3166,13 +3173,12 @@ fec_enet_close(struct net_device *ndev)
  */
 
 #define FEC_HASH_BITS	6		/* #bits in hash */
-#define CRC32_POLY	0xEDB88320
 
 static void set_multicast_list(struct net_device *ndev)
 {
 	struct fec_enet_private *fep = netdev_priv(ndev);
 	struct netdev_hw_addr *ha;
-	unsigned int i, bit, data, crc, tmp;
+	unsigned int crc, tmp;
 	unsigned char hash;
 	unsigned int hash_high = 0, hash_low = 0;
 
@@ -3200,15 +3206,7 @@ static void set_multicast_list(struct net_device *ndev)
 	/* Add the addresses in hash register */
 	netdev_for_each_mc_addr(ha, ndev) {
 		/* calculate crc32 value of mac address */
-		crc = 0xffffffff;
-
-		for (i = 0; i < ndev->addr_len; i++) {
-			data = ha->addr[i];
-			for (bit = 0; bit < 8; bit++, data >>= 1) {
-				crc = (crc >> 1) ^
-				(((crc ^ data) & 1) ? CRC32_POLY : 0);
-			}
-		}
+		crc = ether_crc_le(ndev->addr_len, ha->addr);
 
 		/* only upper 6 bits (FEC_HASH_BITS) are used
 		 * which point to specific bit in the hash registers
@@ -3385,6 +3383,7 @@ static int fec_enet_init(struct net_device *ndev)
 	unsigned dsize = fep->bufdesc_ex ? sizeof(struct bufdesc_ex) :
 			sizeof(struct bufdesc);
 	unsigned dsize_log2 = __fls(dsize);
+	int ret;
 
 	WARN_ON(dsize != (1 << dsize_log2));
 #if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
@@ -3394,6 +3393,13 @@ static int fec_enet_init(struct net_device *ndev)
 	fep->rx_align = 0x3;
 	fep->tx_align = 0x3;
 #endif
+
+	/* Check mask of the streaming and coherent API */
+	ret = dma_set_mask_and_coherent(&fep->pdev->dev, DMA_BIT_MASK(32));
+	if (ret < 0) {
+		dev_warn(&fep->pdev->dev, "No suitable DMA available\n");
+		return ret;
+	}
 
 	fec_enet_alloc_queue(ndev);
 
@@ -3582,39 +3588,17 @@ fec_enet_get_queue_num(struct platform_device *pdev, int *num_tx, int *num_rx)
 
 }
 
-static void fec_enet_of_parse_stop_mode(struct platform_device *pdev)
+static int fec_enet_get_irq_cnt(struct platform_device *pdev)
 {
-	struct net_device *dev = platform_get_drvdata(pdev);
-	struct device_node *np = pdev->dev.of_node;
-	struct fec_enet_private *fep = netdev_priv(dev);
-	struct device_node *node;
-	phandle phandle;
-	u32 out_val[3];
-	int ret;
+	int irq_cnt = platform_irq_count(pdev);
 
-	ret = of_property_read_u32_array(np, "stop-mode", out_val, 3);
-	if (ret) {
-		dev_dbg(&pdev->dev, "no stop-mode property\n");
-		return;
-	}
-
-	phandle = *out_val;
-	node = of_find_node_by_phandle(phandle);
-	if (!node) {
-		dev_dbg(&pdev->dev, "could not find gpr node by phandle\n");
-		return;
-	}
-
-	fep->gpr.gpr = syscon_node_to_regmap(node);
-	if (IS_ERR(fep->gpr.gpr)) {
-		dev_dbg(&pdev->dev, "could not find gpr regmap\n");
-		return;
-	}
-
-	of_node_put(node);
-
-	fep->gpr.req_gpr = out_val[1];
-	fep->gpr.req_bit = out_val[2];
+	if (irq_cnt > FEC_IRQ_NUM)
+		irq_cnt = FEC_IRQ_NUM;	/* last for pps */
+	else if (irq_cnt == 2)
+		irq_cnt = 1;	/* last for pps */
+	else if (irq_cnt <= 0)
+		irq_cnt = 1;	/* At least 1 irq is needed */
+	return irq_cnt;
 }
 
 static int
@@ -3630,6 +3614,8 @@ fec_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node, *phy_node;
 	int num_tx_qs;
 	int num_rx_qs;
+	char irq_name[8];
+	int irq_cnt;
 
 	fec_enet_get_queue_num(pdev, &num_tx_qs, &num_rx_qs);
 
@@ -3792,18 +3778,20 @@ fec_probe(struct platform_device *pdev)
 	if (ret)
 		goto failed_reset;
 
+	irq_cnt = fec_enet_get_irq_cnt(pdev);
 	if (fep->bufdesc_ex)
-		fec_ptp_init(pdev);
+		fec_ptp_init(pdev, irq_cnt);
 
 	ret = fec_enet_init(ndev);
 	if (ret)
 		goto failed_init;
 
-	for (i = 0; i < FEC_IRQ_NUM; i++) {
-		irq = platform_get_irq(pdev, i);
+	for (i = 0; i < irq_cnt; i++) {
+		snprintf(irq_name, sizeof(irq_name), "int%d", i);
+		irq = platform_get_irq_byname(pdev, irq_name);
+		if (irq < 0)
+			irq = platform_get_irq(pdev, i);
 		if (irq < 0) {
-			if (i)
-				break;
 			ret = irq;
 			goto failed_irq;
 		}

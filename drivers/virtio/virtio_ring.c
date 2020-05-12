@@ -23,7 +23,6 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/hrtimer.h>
-#include <linux/kmemleak.h>
 #include <linux/dma-mapping.h>
 #include <xen/xen.h>
 
@@ -250,7 +249,7 @@ static struct vring_desc *alloc_indirect(struct virtqueue *_vq,
 	 */
 	gfp &= ~__GFP_HIGHMEM;
 
-	desc = kmalloc(total_sg * sizeof(struct vring_desc), gfp);
+	desc = kmalloc_array(total_sg, sizeof(struct vring_desc), gfp);
 	if (!desc)
 		return NULL;
 
@@ -1089,6 +1088,8 @@ struct virtqueue *vring_create_virtqueue(
 					  GFP_KERNEL|__GFP_NOWARN|__GFP_ZERO);
 		if (queue)
 			break;
+		if (!may_reduce_num)
+			return NULL;
 	}
 
 	if (!num)

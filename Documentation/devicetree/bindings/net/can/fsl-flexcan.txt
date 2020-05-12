@@ -34,6 +34,12 @@ Optional properties:
 	    Implementation dependent. Refer to RM for detailed definition.
 	    0: clock source 0 1: clock source 1
 
+- big-endian: This means the registers of FlexCAN controller are big endian.
+              This is optional property.i.e. if this property is not present in
+              device tree node then controller is assumed to be little endian.
+              if this property is present then controller is assumed to be big
+              endian.
+
 Example:
 
 	can@1c000 {

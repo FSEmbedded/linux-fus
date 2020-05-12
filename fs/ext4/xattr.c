@@ -56,6 +56,7 @@
 #include <linux/slab.h>
 #include <linux/mbcache.h>
 #include <linux/quotaops.h>
+#include <linux/iversion.h>
 #include "ext4_jbd2.h"
 #include "ext4.h"
 #include "xattr.h"
@@ -314,13 +315,13 @@ ext4_xattr_inode_hash(struct ext4_sb_info *sbi, const void *buffer, size_t size)
 static u64 ext4_xattr_inode_get_ref(struct inode *ea_inode)
 {
 	return ((u64)ea_inode->i_ctime.tv_sec << 32) |
-	       ((u32)ea_inode->i_version);
+		(u32) inode_peek_iversion_raw(ea_inode);
 }
 
 static void ext4_xattr_inode_set_ref(struct inode *ea_inode, u64 ref_count)
 {
 	ea_inode->i_ctime.tv_sec = (u32)(ref_count >> 32);
-	ea_inode->i_version = (u32)ref_count;
+	inode_set_iversion_raw(ea_inode, ref_count & 0xffffffff);
 }
 
 static u32 ext4_xattr_inode_get_hash(struct inode *ea_inode)
@@ -383,7 +384,7 @@ static int ext4_xattr_inode_iget(struct inode *parent, unsigned long ea_ino,
 	struct inode *inode;
 	int err;
 
-	inode = ext4_iget(parent->i_sb, ea_ino);
+	inode = ext4_iget(parent->i_sb, ea_ino, EXT4_IGET_NORMAL);
 	if (IS_ERR(inode)) {
 		err = PTR_ERR(inode);
 		ext4_error(parent->i_sb,
@@ -1485,7 +1486,8 @@ ext4_xattr_inode_cache_find(struct inode *inode, const void *value,
 	}
 
 	while (ce) {
-		ea_inode = ext4_iget(inode->i_sb, ce->e_value);
+		ea_inode = ext4_iget(inode->i_sb, ce->e_value,
+				     EXT4_IGET_NORMAL);
 		if (!IS_ERR(ea_inode) &&
 		    !is_bad_inode(ea_inode) &&
 		    (EXT4_I(ea_inode)->i_flags & EXT4_EA_INODE_FL) &&

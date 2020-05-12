@@ -1,17 +1,13 @@
-/*
- * Freescale S/PDIF ALSA SoC Digital Audio Interface (DAI) driver
- *
- * Copyright (C) 2013-2016 Freescale Semiconductor, Inc.
- *
- * Based on stmp3xxx_spdif_dai.c
- * Vladimir Barinov <vbarinov@embeddedalley.com>
- * Copyright 2008 SigmaTel, Inc
- * Copyright 2008 Embedded Alley Solutions, Inc
- *
- * This file is licensed under the terms of the GNU General Public License
- * version 2.  This program  is licensed "as is" without any warranty of any
- * kind, whether express or implied.
- */
+// SPDX-License-Identifier: GPL-2.0
+//
+// Freescale S/PDIF ALSA SoC Digital Audio Interface (DAI) driver
+//
+// Copyright (C) 2013 Freescale Semiconductor, Inc.
+//
+// Based on stmp3xxx_spdif_dai.c
+// Vladimir Barinov <vbarinov@embeddedalley.com>
+// Copyright 2008 SigmaTel, Inc
+// Copyright 2008 Embedded Alley Solutions, Inc
 
 #include <linux/bitrev.h>
 #include <linux/clk.h>
@@ -1385,15 +1381,113 @@ static const struct regmap_config fsl_spdif_regmap_config = {
 	.cache_type = REGCACHE_FLAT,
 };
 
-static const struct of_device_id fsl_spdif_dt_ids[] = {
-	{ .compatible = "fsl,imx8qxp-v1-spdif", .data = &fsl_spdif_imx8qxp_v1, },
-	{ .compatible = "fsl,imx8mm-spdif", .data = &fsl_spdif_imx8mm, },
-	{ .compatible = "fsl,imx8qm-spdif", .data = &fsl_spdif_imx8qm, },
-	{ .compatible = "fsl,imx35-spdif", .data = &fsl_spdif_imx35, },
-	{ .compatible = "fsl,vf610-spdif", .data = &fsl_spdif_vf610, },
-	{}
-};
-MODULE_DEVICE_TABLE(of, fsl_spdif_dt_ids);
+static u32 fsl_spdif_txclk_caldiv(struct fsl_spdif_priv *spdif_priv,
+				struct clk *clk, u64 savesub,
+				enum spdif_txrate index, bool round)
+{
+	static const u32 rate[] = { 32000, 44100, 48000, 96000, 192000 };
+	bool is_sysclk = clk_is_match(clk, spdif_priv->sysclk);
+	u64 rate_ideal, rate_actual, sub;
+	u32 sysclk_dfmin, sysclk_dfmax;
+	u32 txclk_df, sysclk_df, arate;
+
+	/* The sysclk has an extra divisor [2, 512] */
+	sysclk_dfmin = is_sysclk ? 2 : 1;
+	sysclk_dfmax = is_sysclk ? 512 : 1;
+
+	for (sysclk_df = sysclk_dfmin; sysclk_df <= sysclk_dfmax; sysclk_df++) {
+		for (txclk_df = 1; txclk_df <= 128; txclk_df++) {
+			rate_ideal = rate[index] * txclk_df * 64ULL;
+			if (round)
+				rate_actual = clk_round_rate(clk, rate_ideal);
+			else
+				rate_actual = clk_get_rate(clk);
+
+			arate = rate_actual / 64;
+			arate /= txclk_df * sysclk_df;
+
+			if (arate == rate[index]) {
+				/* We are lucky */
+				savesub = 0;
+				spdif_priv->txclk_df[index] = txclk_df;
+				spdif_priv->sysclk_df[index] = sysclk_df;
+				spdif_priv->txrate[index] = arate;
+				goto out;
+			} else if (arate / rate[index] == 1) {
+				/* A little bigger than expect */
+				sub = (u64)(arate - rate[index]) * 100000;
+				do_div(sub, rate[index]);
+				if (sub >= savesub)
+					continue;
+				savesub = sub;
+				spdif_priv->txclk_df[index] = txclk_df;
+				spdif_priv->sysclk_df[index] = sysclk_df;
+				spdif_priv->txrate[index] = arate;
+			} else if (rate[index] / arate == 1) {
+				/* A little smaller than expect */
+				sub = (u64)(rate[index] - arate) * 100000;
+				do_div(sub, rate[index]);
+				if (sub >= savesub)
+					continue;
+				savesub = sub;
+				spdif_priv->txclk_df[index] = txclk_df;
+				spdif_priv->sysclk_df[index] = sysclk_df;
+				spdif_priv->txrate[index] = arate;
+			}
+		}
+	}
+
+out:
+	return savesub;
+}
+
+static int fsl_spdif_probe_txclk(struct fsl_spdif_priv *spdif_priv,
+				enum spdif_txrate index)
+{
+	static const u32 rate[] = { 32000, 44100, 48000, 96000, 192000 };
+	struct platform_device *pdev = spdif_priv->pdev;
+	struct device *dev = &pdev->dev;
+	u64 savesub = 100000, ret;
+	struct clk *clk;
+	char tmp[16];
+	int i;
+
+	for (i = 0; i < STC_TXCLK_SRC_MAX; i++) {
+		sprintf(tmp, "rxtx%d", i);
+		clk = devm_clk_get(&pdev->dev, tmp);
+		if (IS_ERR(clk)) {
+			dev_err(dev, "no rxtx%d clock in devicetree\n", i);
+			return PTR_ERR(clk);
+		}
+		if (!clk_get_rate(clk))
+			continue;
+
+		ret = fsl_spdif_txclk_caldiv(spdif_priv, clk, savesub, index,
+					     i == STC_TXCLK_SPDIF_ROOT);
+		if (savesub == ret)
+			continue;
+
+		savesub = ret;
+		spdif_priv->txclk[index] = clk;
+		spdif_priv->txclk_src[index] = i;
+
+		/* To quick catch a divisor, we allow a 0.1% deviation */
+		if (savesub < 100)
+			break;
+	}
+
+	dev_dbg(&pdev->dev, "use rxtx%d as tx clock source for %dHz sample rate\n",
+			spdif_priv->txclk_src[index], rate[index]);
+	dev_dbg(&pdev->dev, "use txclk df %d for %dHz sample rate\n",
+			spdif_priv->txclk_df[index], rate[index]);
+	if (clk_is_match(spdif_priv->txclk[index], spdif_priv->sysclk))
+		dev_dbg(&pdev->dev, "use sysclk df %d for %dHz sample rate\n",
+				spdif_priv->sysclk_df[index], rate[index]);
+	dev_dbg(&pdev->dev, "the best rate for %dHz sample rate is %dHz\n",
+			rate[index], spdif_priv->txrate[index]);
+
+	return 0;
+}
 
 static int fsl_spdif_probe(struct platform_device *pdev)
 {

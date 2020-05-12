@@ -52,6 +52,7 @@ static struct tee_context *teedev_open(struct tee_device *teedev)
 		goto err;
 	}
 
+	kref_init(&ctx->refcount);
 	ctx->teedev = teedev;
 	INIT_LIST_HEAD(&ctx->list_shm);
 	rc = teedev->desc->ops->open(ctx);
@@ -66,29 +67,35 @@ err:
 
 }
 
-static void teedev_close_context(struct tee_context *ctx)
+void teedev_ctx_get(struct tee_context *ctx)
 {
-	struct tee_shm *shm;
+	if (ctx->releasing)
+		return;
 
+	kref_get(&ctx->refcount);
+}
+
+static void teedev_ctx_release(struct kref *ref)
+{
+	struct tee_context *ctx = container_of(ref, struct tee_context,
+					       refcount);
+	ctx->releasing = true;
 	ctx->teedev->desc->ops->release(ctx);
-	mutex_lock(&ctx->teedev->mutex);
-	list_for_each_entry(shm, &ctx->list_shm, link)
-		shm->ctx = NULL;
-	mutex_unlock(&ctx->teedev->mutex);
-	tee_device_put(ctx->teedev);
 	kfree(ctx);
 }
 
-static int tee_open(struct inode *inode, struct file *filp)
+void teedev_ctx_put(struct tee_context *ctx)
 {
-	struct tee_context *ctx;
+	if (ctx->releasing)
+		return;
 
-	ctx = teedev_open(container_of(inode->i_cdev, struct tee_device, cdev));
-	if (IS_ERR(ctx))
-		return PTR_ERR(ctx);
+	kref_put(&ctx->refcount, teedev_ctx_release);
+}
 
-	filp->private_data = ctx;
-	return 0;
+static void teedev_close_context(struct tee_context *ctx)
+{
+	tee_device_put(ctx->teedev);
+	teedev_ctx_put(ctx);
 }
 
 static int tee_release(struct inode *inode, struct file *filp)
@@ -127,8 +134,6 @@ static int tee_ioctl_shm_alloc(struct tee_context *ctx,
 	if (data.flags)
 		return -EINVAL;
 
-	data.id = -1;
-
 	shm = tee_shm_alloc(ctx, data.size, TEE_SHM_MAPPED | TEE_SHM_DMA_BUF);
 	if (IS_ERR(shm))
 		return PTR_ERR(shm);
@@ -151,12 +156,13 @@ static int tee_ioctl_shm_alloc(struct tee_context *ctx,
 	return ret;
 }
 
-static int tee_ioctl_shm_register_fd(struct tee_context *ctx,
-			struct tee_ioctl_shm_register_fd_data __user *udata)
+static int
+tee_ioctl_shm_register(struct tee_context *ctx,
+		       struct tee_ioctl_shm_register_data __user *udata)
 {
-	struct tee_ioctl_shm_register_fd_data data;
-	struct tee_shm *shm;
 	long ret;
+	struct tee_ioctl_shm_register_data data;
+	struct tee_shm *shm;
 
 	if (copy_from_user(&data, udata, sizeof(data)))
 		return -EFAULT;
@@ -165,19 +171,19 @@ static int tee_ioctl_shm_register_fd(struct tee_context *ctx,
 	if (data.flags)
 		return -EINVAL;
 
-	shm = tee_shm_register_fd(ctx, data.fd);
-	if (IS_ERR_OR_NULL(shm))
-		return -EINVAL;
+	shm = tee_shm_register(ctx, data.addr, data.length,
+			       TEE_SHM_DMA_BUF | TEE_SHM_USER_MAPPED);
+	if (IS_ERR(shm))
+		return PTR_ERR(shm);
 
 	data.id = shm->id;
 	data.flags = shm->flags;
-	data.size = shm->size;
+	data.length = shm->size;
 
 	if (copy_to_user(udata, &data, sizeof(data)))
 		ret = -EFAULT;
 	else
 		ret = tee_shm_get_fd(shm);
-
 	/*
 	 * When user space closes the file descriptor the shared memory
 	 * should be freed or if tee_shm_get_fd() failed then it will
@@ -638,8 +644,8 @@ static long tee_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		return tee_ioctl_version(ctx, uarg);
 	case TEE_IOC_SHM_ALLOC:
 		return tee_ioctl_shm_alloc(ctx, uarg);
-	case TEE_IOC_SHM_REGISTER_FD:
-		return tee_ioctl_shm_register_fd(ctx, uarg);
+	case TEE_IOC_SHM_REGISTER:
+		return tee_ioctl_shm_register(ctx, uarg);
 	case TEE_IOC_OPEN_SESSION:
 		return tee_ioctl_open_session(ctx, uarg);
 	case TEE_IOC_INVOKE:
@@ -696,7 +702,7 @@ struct tee_device *tee_device_alloc(const struct tee_desc *teedesc,
 {
 	struct tee_device *teedev;
 	void *ret;
-	int rc;
+	int rc, max_id;
 	int offs = 0;
 
 	if (!teedesc || !teedesc->name || !teedesc->ops ||
@@ -710,16 +716,20 @@ struct tee_device *tee_device_alloc(const struct tee_desc *teedesc,
 		goto err;
 	}
 
-	if (teedesc->flags & TEE_DESC_PRIVILEGED)
+	max_id = TEE_NUM_DEVICES / 2;
+
+	if (teedesc->flags & TEE_DESC_PRIVILEGED) {
 		offs = TEE_NUM_DEVICES / 2;
+		max_id = TEE_NUM_DEVICES;
+	}
 
 	spin_lock(&driver_lock);
-	teedev->id = find_next_zero_bit(dev_mask, TEE_NUM_DEVICES, offs);
-	if (teedev->id < TEE_NUM_DEVICES)
+	teedev->id = find_next_zero_bit(dev_mask, max_id, offs);
+	if (teedev->id < max_id)
 		set_bit(teedev->id, dev_mask);
 	spin_unlock(&driver_lock);
 
-	if (teedev->id >= TEE_NUM_DEVICES) {
+	if (teedev->id >= max_id) {
 		ret = ERR_PTR(-ENOMEM);
 		goto err;
 	}

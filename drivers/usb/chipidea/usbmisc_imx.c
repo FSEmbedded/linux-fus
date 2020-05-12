@@ -1,13 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2012-2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
+ * Copyright 2012 Freescale Semiconductor, Inc.
  */
 
 #include <linux/module.h>
@@ -238,14 +231,21 @@ static int usbmisc_imx25_post(struct imx_usbmisc_data *data)
 	if (data->index > 2)
 		return -EINVAL;
 
-	if (data->evdo) {
-		spin_lock_irqsave(&usbmisc->lock, flags);
-		reg = usbmisc->base + MX25_USB_PHY_CTRL_OFFSET;
-		val = readl(reg);
-		writel(val | MX25_BM_EXTERNAL_VBUS_DIVIDER, reg);
-		spin_unlock_irqrestore(&usbmisc->lock, flags);
-		usleep_range(5000, 10000); /* needed to stabilize voltage */
-	}
+	if (data->index)
+		return 0;
+
+	spin_lock_irqsave(&usbmisc->lock, flags);
+	reg = usbmisc->base + MX25_USB_PHY_CTRL_OFFSET;
+	val = readl(reg);
+
+	if (data->evdo)
+		val |= MX25_BM_EXTERNAL_VBUS_DIVIDER;
+	else
+		val &= ~MX25_BM_EXTERNAL_VBUS_DIVIDER;
+
+	writel(val, reg);
+	spin_unlock_irqrestore(&usbmisc->lock, flags);
+	usleep_range(5000, 10000); /* needed to stabilize voltage */
 
 	return 0;
 }
@@ -468,20 +468,14 @@ static int usbmisc_imx6q_set_wakeup
 	spin_lock_irqsave(&usbmisc->lock, flags);
 	val = readl(usbmisc->base + data->index * 4);
 	if (enabled) {
-		wakeup_setting |= imx6q_finalize_wakeup_setting(data);
-		writel(val | wakeup_setting, usbmisc->base + data->index * 4);
-		spin_unlock_irqrestore(&usbmisc->lock, flags);
-		if (vbus_wakeup_reg)
-			ret = regulator_enable(vbus_wakeup_reg);
+		val |= wakeup_setting;
 	} else {
 		if (val & MX6_BM_WAKEUP_INTR)
 			pr_debug("wakeup int at ci_hdrc.%d\n", data->index);
-		wakeup_setting |= MX6_BM_VBUS_WAKEUP | MX6_BM_ID_WAKEUP;
-		writel(val & ~wakeup_setting, usbmisc->base + data->index * 4);
-		spin_unlock_irqrestore(&usbmisc->lock, flags);
-		if (vbus_wakeup_reg && regulator_is_enabled(vbus_wakeup_reg))
-			regulator_disable(vbus_wakeup_reg);
+		val &= ~wakeup_setting;
 	}
+	writel(val, usbmisc->base + data->index * 4);
+	spin_unlock_irqrestore(&usbmisc->lock, flags);
 
 	return ret;
 }

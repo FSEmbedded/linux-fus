@@ -36,6 +36,12 @@
 #define TCR_TG_FLAGS	TCR_TG0_4K | TCR_TG1_4K
 #endif
 
+#ifdef CONFIG_RANDOMIZE_BASE
+#define TCR_KASLR_FLAGS	TCR_NFD1
+#else
+#define TCR_KASLR_FLAGS	0
+#endif
+
 #define TCR_SMP_FLAGS	TCR_SHARED
 
 /* PTWs cacheable, inner/outer WBWA */
@@ -113,10 +119,10 @@ ENTRY(cpu_do_resume)
 	/*
 	 * __cpu_setup() cleared MDSCR_EL1.MDE and friends, before unmasking
 	 * debug exceptions. By restoring MDSCR_EL1 here, we may take a debug
-	 * exception. Mask them until local_dbg_restore() in cpu_suspend()
+	 * exception. Mask them until local_daif_restore() in cpu_suspend()
 	 * resets them.
 	 */
-	disable_dbg
+	disable_daif
 	msr	mdscr_el1, x10
 
 	msr	sctlr_el1, x12
@@ -132,6 +138,11 @@ alternative_endif
 	ubfx	x11, x11, #1, #1
 	msr	oslar_el1, x11
 	reset_pmuserenr_el0 x0			// Disable PMU access from EL0
+
+alternative_if ARM64_HAS_RAS_EXTN
+	msr_s	SYS_DISR_EL1, xzr
+alternative_else_nop_endif
+
 	isb
 	ret
 ENDPROC(cpu_do_resume)
@@ -148,13 +159,14 @@ ENDPROC(cpu_do_resume)
 ENTRY(cpu_do_switch_mm)
 	mrs	x2, ttbr1_el1
 	mmid	x1, x1				// get mm->context.id
+	phys_to_ttbr x3, x0
 #ifdef CONFIG_ARM64_SW_TTBR0_PAN
-	bfi	x0, x1, #48, #16		// set the ASID field in TTBR0
+	bfi	x3, x1, #48, #16		// set the ASID field in TTBR0
 #endif
 	bfi	x2, x1, #48, #16		// set the ASID
 	msr	ttbr1_el1, x2			// in TTBR1 (since TCR.A1 is set)
 	isb
-	msr	ttbr0_el1, x0			// now update TTBR0
+	msr	ttbr0_el1, x3			// now update TTBR0
 	isb
 	b	post_ttbr_update_workaround	// Back to C code...
 ENDPROC(cpu_do_switch_mm)
@@ -163,7 +175,8 @@ ENDPROC(cpu_do_switch_mm)
 
 .macro	__idmap_cpu_set_reserved_ttbr1, tmp1, tmp2
 	adrp	\tmp1, empty_zero_page
-	msr	ttbr1_el1, \tmp1
+	phys_to_ttbr \tmp2, \tmp1
+	msr	ttbr1_el1, \tmp2
 	isb
 	tlbi	vmalle1
 	dsb	nsh
@@ -177,19 +190,208 @@ ENDPROC(cpu_do_switch_mm)
  * called by anything else. It can only be executed from a TTBR0 mapping.
  */
 ENTRY(idmap_cpu_replace_ttbr1)
-	mrs	x2, daif
-	msr	daifset, #0xf
+	save_and_disable_daif flags=x2
 
 	__idmap_cpu_set_reserved_ttbr1 x1, x3
 
-	msr	ttbr1_el1, x0
+	phys_to_ttbr x3, x0
+	msr	ttbr1_el1, x3
 	isb
 
-	msr	daif, x2
+	restore_daif x2
 
 	ret
 ENDPROC(idmap_cpu_replace_ttbr1)
 	.popsection
+
+#ifdef CONFIG_UNMAP_KERNEL_AT_EL0
+	.pushsection ".idmap.text", "awx"
+
+	.macro	__idmap_kpti_get_pgtable_ent, type
+	dc	cvac, cur_\()\type\()p		// Ensure any existing dirty
+	dmb	sy				// lines are written back before
+	ldr	\type, [cur_\()\type\()p]	// loading the entry
+	tbz	\type, #0, skip_\()\type	// Skip invalid and
+	tbnz	\type, #11, skip_\()\type	// non-global entries
+	.endm
+
+	.macro __idmap_kpti_put_pgtable_ent_ng, type
+	orr	\type, \type, #PTE_NG		// Same bit for blocks and pages
+	str	\type, [cur_\()\type\()p]	// Update the entry and ensure
+	dmb	sy				// that it is visible to all
+	dc	civac, cur_\()\type\()p		// CPUs.
+	.endm
+
+/*
+ * void __kpti_install_ng_mappings(int cpu, int num_cpus, phys_addr_t swapper)
+ *
+ * Called exactly once from stop_machine context by each CPU found during boot.
+ */
+__idmap_kpti_flag:
+	.long	1
+ENTRY(idmap_kpti_install_ng_mappings)
+	cpu		.req	w0
+	num_cpus	.req	w1
+	swapper_pa	.req	x2
+	swapper_ttb	.req	x3
+	flag_ptr	.req	x4
+	cur_pgdp	.req	x5
+	end_pgdp	.req	x6
+	pgd		.req	x7
+	cur_pudp	.req	x8
+	end_pudp	.req	x9
+	pud		.req	x10
+	cur_pmdp	.req	x11
+	end_pmdp	.req	x12
+	pmd		.req	x13
+	cur_ptep	.req	x14
+	end_ptep	.req	x15
+	pte		.req	x16
+
+	mrs	swapper_ttb, ttbr1_el1
+	adr	flag_ptr, __idmap_kpti_flag
+
+	cbnz	cpu, __idmap_kpti_secondary
+
+	/* We're the boot CPU. Wait for the others to catch up */
+	sevl
+1:	wfe
+	ldaxr	w18, [flag_ptr]
+	eor	w18, w18, num_cpus
+	cbnz	w18, 1b
+
+	/* We need to walk swapper, so turn off the MMU. */
+	pre_disable_mmu_workaround
+	mrs	x18, sctlr_el1
+	bic	x18, x18, #SCTLR_ELx_M
+	msr	sctlr_el1, x18
+	isb
+
+	/* Everybody is enjoying the idmap, so we can rewrite swapper. */
+	/* PGD */
+	mov	cur_pgdp, swapper_pa
+	add	end_pgdp, cur_pgdp, #(PTRS_PER_PGD * 8)
+do_pgd:	__idmap_kpti_get_pgtable_ent	pgd
+	tbnz	pgd, #1, walk_puds
+next_pgd:
+	__idmap_kpti_put_pgtable_ent_ng	pgd
+skip_pgd:
+	add	cur_pgdp, cur_pgdp, #8
+	cmp	cur_pgdp, end_pgdp
+	b.ne	do_pgd
+
+	/* Publish the updated tables and nuke all the TLBs */
+	dsb	sy
+	tlbi	vmalle1is
+	dsb	ish
+	isb
+
+	/* We're done: fire up the MMU again */
+	mrs	x18, sctlr_el1
+	orr	x18, x18, #SCTLR_ELx_M
+	msr	sctlr_el1, x18
+	isb
+
+	/* Set the flag to zero to indicate that we're all done */
+	str	wzr, [flag_ptr]
+	ret
+
+	/* PUD */
+walk_puds:
+	.if CONFIG_PGTABLE_LEVELS > 3
+	pte_to_phys	cur_pudp, pgd
+	add	end_pudp, cur_pudp, #(PTRS_PER_PUD * 8)
+do_pud:	__idmap_kpti_get_pgtable_ent	pud
+	tbnz	pud, #1, walk_pmds
+next_pud:
+	__idmap_kpti_put_pgtable_ent_ng	pud
+skip_pud:
+	add	cur_pudp, cur_pudp, 8
+	cmp	cur_pudp, end_pudp
+	b.ne	do_pud
+	b	next_pgd
+	.else /* CONFIG_PGTABLE_LEVELS <= 3 */
+	mov	pud, pgd
+	b	walk_pmds
+next_pud:
+	b	next_pgd
+	.endif
+
+	/* PMD */
+walk_pmds:
+	.if CONFIG_PGTABLE_LEVELS > 2
+	pte_to_phys	cur_pmdp, pud
+	add	end_pmdp, cur_pmdp, #(PTRS_PER_PMD * 8)
+do_pmd:	__idmap_kpti_get_pgtable_ent	pmd
+	tbnz	pmd, #1, walk_ptes
+next_pmd:
+	__idmap_kpti_put_pgtable_ent_ng	pmd
+skip_pmd:
+	add	cur_pmdp, cur_pmdp, #8
+	cmp	cur_pmdp, end_pmdp
+	b.ne	do_pmd
+	b	next_pud
+	.else /* CONFIG_PGTABLE_LEVELS <= 2 */
+	mov	pmd, pud
+	b	walk_ptes
+next_pmd:
+	b	next_pud
+	.endif
+
+	/* PTE */
+walk_ptes:
+	pte_to_phys	cur_ptep, pmd
+	add	end_ptep, cur_ptep, #(PTRS_PER_PTE * 8)
+do_pte:	__idmap_kpti_get_pgtable_ent	pte
+	__idmap_kpti_put_pgtable_ent_ng	pte
+skip_pte:
+	add	cur_ptep, cur_ptep, #8
+	cmp	cur_ptep, end_ptep
+	b.ne	do_pte
+	b	next_pmd
+
+	/* Secondary CPUs end up here */
+__idmap_kpti_secondary:
+	/* Uninstall swapper before surgery begins */
+	__idmap_cpu_set_reserved_ttbr1 x18, x17
+
+	/* Increment the flag to let the boot CPU we're ready */
+1:	ldxr	w18, [flag_ptr]
+	add	w18, w18, #1
+	stxr	w17, w18, [flag_ptr]
+	cbnz	w17, 1b
+
+	/* Wait for the boot CPU to finish messing around with swapper */
+	sevl
+1:	wfe
+	ldxr	w18, [flag_ptr]
+	cbnz	w18, 1b
+
+	/* All done, act like nothing happened */
+	msr	ttbr1_el1, swapper_ttb
+	isb
+	ret
+
+	.unreq	cpu
+	.unreq	num_cpus
+	.unreq	swapper_pa
+	.unreq	swapper_ttb
+	.unreq	flag_ptr
+	.unreq	cur_pgdp
+	.unreq	end_pgdp
+	.unreq	pgd
+	.unreq	cur_pudp
+	.unreq	end_pudp
+	.unreq	pud
+	.unreq	cur_pmdp
+	.unreq	end_pmdp
+	.unreq	pmd
+	.unreq	cur_ptep
+	.unreq	end_ptep
+	.unreq	pte
+ENDPROC(idmap_kpti_install_ng_mappings)
+	.popsection
+#endif
 
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
 	.pushsection ".idmap.text", "awx"
@@ -419,61 +621,32 @@ ENTRY(__cpu_setup)
 	/*
 	 * Prepare SCTLR
 	 */
-	adr	x5, crval
-	ldp	w5, w6, [x5]
-	mrs	x0, sctlr_el1
-	bic	x0, x0, x5			// clear bits
-	orr	x0, x0, x6			// set bits
+	mov_q	x0, SCTLR_EL1_SET
 	/*
 	 * Set/prepare TCR and TTBR. We use 512GB (39-bit) address range for
 	 * both user and kernel.
 	 */
 	ldr	x10, =TCR_TxSZ(VA_BITS) | TCR_CACHE_FLAGS | TCR_SMP_FLAGS | \
-			TCR_TG_FLAGS | TCR_ASID16 | TCR_TBI0 | TCR_A1
+			TCR_TG_FLAGS | TCR_KASLR_FLAGS | TCR_ASID16 | \
+			TCR_TBI0 | TCR_A1
 	tcr_set_idmap_t0sz	x10, x9
 
 	/*
-	 * Read the PARange bits from ID_AA64MMFR0_EL1 and set the IPS bits in
-	 * TCR_EL1.
+	 * Set the IPS bits in TCR_EL1.
 	 */
-	mrs	x9, ID_AA64MMFR0_EL1
-	bfi	x10, x9, #32, #3
+	tcr_compute_pa_size x10, #TCR_IPS_SHIFT, x5, x6
 #ifdef CONFIG_ARM64_HW_AFDBM
 	/*
-	 * Hardware update of the Access and Dirty bits.
+	 * Enable hardware update of the Access Flags bit.
+	 * Hardware dirty bit management is enabled later,
+	 * via capabilities.
 	 */
 	mrs	x9, ID_AA64MMFR1_EL1
 	and	x9, x9, #0xf
-	cbz	x9, 2f
-	cmp	x9, #2
-	b.lt	1f
-#ifdef CONFIG_ARM64_ERRATUM_1024718
-	/* Disable hardware DBM on Cortex-A55 r0p0, r0p1 & r1p0 */
-	cpu_midr_match MIDR_CORTEX_A55, MIDR_CPU_VAR_REV(0, 0), MIDR_CPU_VAR_REV(1, 0), x1, x2, x3, x4
-	cbnz	x1, 1f
-#endif
-	orr	x10, x10, #TCR_HD		// hardware Dirty flag update
-1:	orr	x10, x10, #TCR_HA		// hardware Access flag update
-2:
+	cbz	x9, 1f
+	orr	x10, x10, #TCR_HA		// hardware Access flag update
+1:
 #endif	/* CONFIG_ARM64_HW_AFDBM */
 	msr	tcr_el1, x10
 	ret					// return to head.S
 ENDPROC(__cpu_setup)
-
-	/*
-	 * We set the desired value explicitly, including those of the
-	 * reserved bits. The values of bits EE & E0E were set early in
-	 * el2_setup, which are left untouched below.
-	 *
-	 *                 n n            T
-	 *       U E      WT T UD     US IHBS
-	 *       CE0      XWHW CZ     ME TEEA S
-	 * .... .IEE .... NEAI TE.I ..AD DEN0 ACAM
-	 * 0011 0... 1101 ..0. ..0. 10.. .0.. .... < hardware reserved
-	 * .... .1.. .... 01.1 11.1 ..01 0.01 1101 < software settings
-	 */
-	.type	crval, #object
-crval:
-	.word	0xfcffffff			// clear
-	.word	0x34d5d91d			// set
-	.popsection

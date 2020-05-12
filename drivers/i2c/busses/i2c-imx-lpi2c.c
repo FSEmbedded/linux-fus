@@ -1,18 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * This is i.MX low power i2c controller driver.
  *
  * Copyright 2016 Freescale Semiconductor, Inc.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
  */
 
 #include <linux/clk.h>
@@ -182,15 +172,13 @@ static int lpi2c_imx_start(struct lpi2c_imx_struct *lpi2c_imx,
 			   struct i2c_msg *msgs)
 {
 	unsigned int temp;
-	u8 read;
 
 	temp = readl(lpi2c_imx->base + LPI2C_MCR);
 	temp |= MCR_RRF | MCR_RTF;
 	writel(temp, lpi2c_imx->base + LPI2C_MCR);
 	writel(0x7f00, lpi2c_imx->base + LPI2C_MSR);
 
-	read = msgs->flags & I2C_M_RD;
-	temp = (msgs->addr << 1 | read) | (GEN_START << 8);
+	temp = i2c_8bit_addr_from_msg(msgs) | (GEN_START << 8);
 	writel(temp, lpi2c_imx->base + LPI2C_MTDR);
 
 	return lpi2c_imx_bus_busy(lpi2c_imx);
@@ -563,7 +551,6 @@ static const struct i2c_algorithm lpi2c_imx_algo = {
 
 static const struct of_device_id lpi2c_imx_of_match[] = {
 	{ .compatible = "fsl,imx7ulp-lpi2c" },
-	{ .compatible = "fsl,imx8qm-lpi2c" },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, lpi2c_imx_of_match);
@@ -621,21 +608,29 @@ static int lpi2c_imx_probe(struct platform_device *pdev)
 	pm_runtime_use_autosuspend(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 
-	pm_runtime_get_sync(&pdev->dev);
+	pm_runtime_set_autosuspend_delay(&pdev->dev, I2C_PM_TIMEOUT);
+	pm_runtime_use_autosuspend(&pdev->dev);
+	pm_runtime_get_noresume(&pdev->dev);
+	pm_runtime_set_active(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
+
 	temp = readl(lpi2c_imx->base + LPI2C_PARAM);
 	lpi2c_imx->txfifosize = 1 << (temp & 0x0f);
 	lpi2c_imx->rxfifosize = 1 << ((temp >> 8) & 0x0f);
-	pm_runtime_put(&pdev->dev);
 
 	ret = i2c_add_adapter(&lpi2c_imx->adapter);
 	if (ret)
 		goto rpm_disable;
+
+	pm_runtime_mark_last_busy(&pdev->dev);
+	pm_runtime_put_autosuspend(&pdev->dev);
 
 	dev_info(&lpi2c_imx->adapter.dev, "LPI2C adapter registered\n");
 
 	return 0;
 
 rpm_disable:
+	pm_runtime_put(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
 
@@ -659,10 +654,8 @@ static int lpi2c_runtime_suspend(struct device *dev)
 {
 	struct lpi2c_imx_struct *lpi2c_imx = dev_get_drvdata(dev);
 
-	devm_free_irq(dev, lpi2c_imx->irq, lpi2c_imx);
-	clk_disable_unprepare(lpi2c_imx->clk_ipg);
-	clk_disable_unprepare(lpi2c_imx->clk_per);
-	pinctrl_pm_select_idle_state(dev);
+	clk_disable_unprepare(lpi2c_imx->clk);
+	pinctrl_pm_select_sleep_state(dev);
 
 	return 0;
 }
@@ -673,50 +666,18 @@ static int lpi2c_runtime_resume(struct device *dev)
 	int ret;
 
 	pinctrl_pm_select_default_state(dev);
-	ret = clk_prepare_enable(lpi2c_imx->clk_per);
+	ret = clk_prepare_enable(lpi2c_imx->clk);
 	if (ret) {
-		dev_err(dev, "can't enable I2C per clock, ret=%d\n", ret);
+		dev_err(dev, "failed to enable I2C clock, ret=%d\n", ret);
 		return ret;
 	}
-
-	ret = clk_prepare_enable(lpi2c_imx->clk_ipg);
-	if (ret) {
-		clk_disable_unprepare(lpi2c_imx->clk_per);
-		dev_err(dev, "can't enable I2C ipg clock, ret=%d\n", ret);
-	}
-
-	ret = devm_request_irq(dev, lpi2c_imx->irq, lpi2c_imx_isr,
-                               IRQF_NO_SUSPEND,
-                               dev_name(dev), lpi2c_imx);
-        if (ret) {
-                dev_err(dev, "can't claim irq %d\n", lpi2c_imx->irq);
-                return ret;
-        }
-
-	return ret;
-}
-
-static int lpi2c_suspend_noirq(struct device *dev)
-{
-	int ret;
-
-	ret = pm_runtime_force_suspend(dev);
-	if (ret)
-		return ret;
-
-	pinctrl_pm_select_sleep_state(dev);
 
 	return 0;
 }
 
-static int lpi2c_resume_noirq(struct device *dev)
-{
-	return pm_runtime_force_resume(dev);
-}
-
 static const struct dev_pm_ops lpi2c_pm_ops = {
-	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(lpi2c_suspend_noirq,
-				     lpi2c_resume_noirq)
+	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
+				      pm_runtime_force_resume)
 	SET_RUNTIME_PM_OPS(lpi2c_runtime_suspend,
 			   lpi2c_runtime_resume, NULL)
 };

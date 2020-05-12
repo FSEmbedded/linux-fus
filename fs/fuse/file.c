@@ -12,6 +12,7 @@
 #include <linux/slab.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
+#include <linux/sched/signal.h>
 #include <linux/module.h>
 #include <linux/compat.h>
 #include <linux/swap.h>
@@ -1777,7 +1778,7 @@ static bool fuse_writepage_in_flight(struct fuse_req *new_req,
 		spin_unlock(&fc->lock);
 
 		dec_wb_stat(&bdi->wb, WB_WRITEBACK);
-		dec_node_page_state(page, NR_WRITEBACK_TEMP);
+		dec_node_page_state(new_req->pages[0], NR_WRITEBACK_TEMP);
 		wb_writeout_inc(&bdi->wb);
 		fuse_writepage_free(fc, new_req);
 		fuse_request_free(new_req);
@@ -2050,7 +2051,7 @@ static void fuse_vma_close(struct vm_area_struct *vma)
  * - sync(2)
  * - try_to_free_pages() with order > PAGE_ALLOC_COSTLY_ORDER
  */
-static int fuse_page_mkwrite(struct vm_fault *vmf)
+static vm_fault_t fuse_page_mkwrite(struct vm_fault *vmf)
 {
 	struct page *page = vmf->page;
 	struct inode *inode = file_inode(vmf->vma->vm_file);
@@ -2753,7 +2754,7 @@ static void fuse_register_polled_file(struct fuse_conn *fc,
 	spin_unlock(&fc->lock);
 }
 
-unsigned fuse_file_poll(struct file *file, poll_table *wait)
+__poll_t fuse_file_poll(struct file *file, poll_table *wait)
 {
 	struct fuse_file *ff = file->private_data;
 	struct fuse_conn *fc = ff->fc;
@@ -2766,7 +2767,7 @@ unsigned fuse_file_poll(struct file *file, poll_table *wait)
 		return DEFAULT_POLLMASK;
 
 	poll_wait(file, &ff->poll_wait, wait);
-	inarg.events = (__u32)poll_requested_events(wait);
+	inarg.events = mangle_poll(poll_requested_events(wait));
 
 	/*
 	 * Ask for notification iff there's someone waiting for it.
@@ -2788,12 +2789,12 @@ unsigned fuse_file_poll(struct file *file, poll_table *wait)
 	err = fuse_simple_request(fc, &args);
 
 	if (!err)
-		return outarg.revents;
+		return demangle_poll(outarg.revents);
 	if (err == -ENOSYS) {
 		fc->no_poll = 1;
 		return DEFAULT_POLLMASK;
 	}
-	return POLLERR;
+	return EPOLLERR;
 }
 EXPORT_SYMBOL_GPL(fuse_file_poll);
 

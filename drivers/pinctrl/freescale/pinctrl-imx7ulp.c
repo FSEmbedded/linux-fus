@@ -1,14 +1,9 @@
-/*
- * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright (C) 2017 NXP
- *
- * Author: Dong Aisheng <aisheng.dong@nxp.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- */
+// SPDX-License-Identifier: GPL-2.0
+//
+// Copyright (C) 2016 Freescale Semiconductor, Inc.
+// Copyright (C) 2017 NXP
+//
+// Author: Dong Aisheng <aisheng.dong@nxp.com>
 
 #include <linux/err.h>
 #include <linux/init.h>
@@ -374,7 +369,7 @@ static const struct pinctrl_pin_desc imx7ulp_pinctrl_pads_1[] = {
 #define BP_MUX_MODE		8
 #define BM_PULL_ENABLED		BIT(1)
 
-struct imx_cfg_params_decode imx7ulp_cfg_decodes[] = {
+static const struct imx_cfg_params_decode imx7ulp_cfg_decodes[] = {
 	IMX_CFG_PARAMS_DECODE(PIN_CONFIG_DRIVE_STRENGTH, 		BIT(6), 6),
 	IMX_CFG_PARAMS_DECODE(PIN_CONFIG_DRIVE_PUSH_PULL,		BIT(5), 5),
 	IMX_CFG_PARAMS_DECODE(PIN_CONFIG_SLEW_RATE,			BIT(2), 2),
@@ -415,11 +410,10 @@ static int imx7ulp_pmx_gpio_set_direction(struct pinctrl_dev *pctldev,
 					  unsigned offset, bool input)
 {
 	struct imx_pinctrl *ipctl = pinctrl_dev_get_drvdata(pctldev);
-	struct imx_pinctrl_soc_info *info = ipctl->info;
 	const struct imx_pin_reg *pin_reg;
 	u32 reg;
 
-	pin_reg = &info->pin_regs[offset];
+	pin_reg = &ipctl->pin_regs[offset];
 	if (pin_reg->mux_reg == -1)
 		return -EINVAL;
 
@@ -433,23 +427,9 @@ static int imx7ulp_pmx_gpio_set_direction(struct pinctrl_dev *pctldev,
 	return 0;
 }
 
-static struct imx_pinctrl_soc_info imx7ulp_pinctrl_info_0 = {
-	.pins = imx7ulp_pinctrl_pads_0,
-	.npins = ARRAY_SIZE(imx7ulp_pinctrl_pads_0),
-	.flags = ZERO_OFFSET_VALID | SHARE_MUX_CONF_REG,
-	.gpio_set_direction = imx7ulp_pmx_gpio_set_direction,
-	.mux_mask = BM_MUX_MODE,
-	.mux_shift = BP_MUX_MODE,
-	.decodes = imx7ulp_cfg_decodes,
-	.num_decodes = ARRAY_SIZE(imx7ulp_cfg_decodes),
-	.fixup = imx7ulp_cfg_params_fixup,
-	.ibe_bit = BIT(16),
-	.obe_bit = BIT(17),
-};
-
-static struct imx_pinctrl_soc_info imx7ulp_pinctrl_info_1 = {
-	.pins = imx7ulp_pinctrl_pads_1,
-	.npins = ARRAY_SIZE(imx7ulp_pinctrl_pads_1),
+static const struct imx_pinctrl_soc_info imx7ulp_pinctrl_info = {
+	.pins = imx7ulp_pinctrl_pads,
+	.npins = ARRAY_SIZE(imx7ulp_pinctrl_pads),
 	.flags = ZERO_OFFSET_VALID | SHARE_MUX_CONF_REG,
 	.gpio_set_direction = imx7ulp_pmx_gpio_set_direction,
 	.mux_mask = BM_MUX_MODE,

@@ -56,15 +56,15 @@ struct mm_struct;
 void set_pte_vaddr_p4d(p4d_t *p4d_page, unsigned long vaddr, pte_t new_pte);
 void set_pte_vaddr_pud(pud_t *pud_page, unsigned long vaddr, pte_t new_pte);
 
+static inline void native_set_pte(pte_t *ptep, pte_t pte)
+{
+	WRITE_ONCE(*ptep, pte);
+}
+
 static inline void native_pte_clear(struct mm_struct *mm, unsigned long addr,
 				    pte_t *ptep)
 {
-	*ptep = native_make_pte(0);
-}
-
-static inline void native_set_pte(pte_t *ptep, pte_t pte)
-{
-	*ptep = pte;
+	native_set_pte(ptep, native_make_pte(0));
 }
 
 static inline void native_set_pte_atomic(pte_t *ptep, pte_t pte)
@@ -74,7 +74,7 @@ static inline void native_set_pte_atomic(pte_t *ptep, pte_t pte)
 
 static inline void native_set_pmd(pmd_t *pmdp, pmd_t pmd)
 {
-	*pmdp = pmd;
+	WRITE_ONCE(*pmdp, pmd);
 }
 
 static inline void native_pmd_clear(pmd_t *pmd)
@@ -110,7 +110,7 @@ static inline pmd_t native_pmdp_get_and_clear(pmd_t *xp)
 
 static inline void native_set_pud(pud_t *pudp, pud_t pud)
 {
-	*pudp = pud;
+	WRITE_ONCE(*pudp, pud);
 }
 
 static inline void native_pud_clear(pud_t *pud)
@@ -219,29 +219,26 @@ static inline pgd_t pti_set_user_pgd(pgd_t *pgdp, pgd_t pgd)
 
 static inline void native_set_p4d(p4d_t *p4dp, p4d_t p4d)
 {
-#if defined(CONFIG_PAGE_TABLE_ISOLATION) && !defined(CONFIG_X86_5LEVEL)
-	p4dp->pgd = pti_set_user_pgd(&p4dp->pgd, p4d.pgd);
-#else
-	*p4dp = p4d;
-#endif
+	pgd_t pgd;
+
+	if (pgtable_l5_enabled() || !IS_ENABLED(CONFIG_PAGE_TABLE_ISOLATION)) {
+		WRITE_ONCE(*p4dp, p4d);
+		return;
+	}
+
+	pgd = native_make_pgd(native_p4d_val(p4d));
+	pgd = pti_set_user_pgtbl((pgd_t *)p4dp, pgd);
+	WRITE_ONCE(*p4dp, native_make_p4d(native_pgd_val(pgd)));
 }
 
 static inline void native_p4d_clear(p4d_t *p4d)
 {
-#ifdef CONFIG_X86_5LEVEL
 	native_set_p4d(p4d, native_make_p4d(0));
-#else
-	native_set_p4d(p4d, (p4d_t) { .pgd = native_make_pgd(0)});
-#endif
 }
 
 static inline void native_set_pgd(pgd_t *pgdp, pgd_t pgd)
 {
-#ifdef CONFIG_PAGE_TABLE_ISOLATION
-	*pgdp = pti_set_user_pgd(pgdp, pgd);
-#else
-	*pgdp = pgd;
-#endif
+	WRITE_ONCE(*pgdp, pti_set_user_pgtbl(pgdp, pgd));
 }
 
 static inline void native_pgd_clear(pgd_t *pgd)
@@ -259,7 +256,6 @@ extern void sync_global_pgds(unsigned long start, unsigned long end);
 /*
  * Level 4 access.
  */
-static inline int pgd_large(pgd_t pgd) { return 0; }
 #define mk_kernel_pgd(address) __pgd((address) | _KERNPG_TABLE)
 
 /* PUD - Level3 access */
