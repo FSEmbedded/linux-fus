@@ -101,6 +101,14 @@ static struct clk *clk[IMX6QDL_CLK_END];
 static struct clk_onecell_data clk_data;
 static void __iomem *ccm_base;
 
+static unsigned int const clks_init_on[] __initconst = {
+	IMX6QDL_CLK_MMDC_CH0_AXI,
+	IMX6QDL_CLK_ROM,
+	IMX6QDL_CLK_ARM,
+	IMX6QDL_CLK_OCRAM,
+	IMX6QDL_CLK_AXI,
+};
+
 static struct clk_div_table clk_enet_ref_table[] = {
 	{ .val = 0, .div = 20, },
 	{ .val = 1, .div = 10, },
@@ -482,7 +490,8 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 {
 	struct device_node *np;
 	void __iomem *anatop_base, *base;
-	int ret;
+	int i;
+	u32 val;
 
 	clk[IMX6QDL_CLK_DUMMY] = imx_clk_fixed("dummy", 0);
 	clk[IMX6QDL_CLK_CKIL] = imx_obtain_fixed_clock("ckil", 0);
@@ -840,7 +849,7 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 	clk[IMX6QDL_CLK_GPU2D_CORE] = imx_clk_gate2("gpu2d_core", "gpu2d_core_podf", base + 0x6c, 24);
 	clk[IMX6QDL_CLK_GPU3D_CORE]   = imx_clk_gate2("gpu3d_core",    "gpu3d_core_podf",   base + 0x6c, 26);
 	clk[IMX6QDL_CLK_HDMI_IAHB]    = imx_clk_gate2("hdmi_iahb",     "ahb",               base + 0x70, 0);
-	clk[IMX6QDL_CLK_HDMI_ISFR]    = imx_clk_gate2("hdmi_isfr",     "mipi_core_cfg",     base + 0x70, 4);
+	clk[IMX6QDL_CLK_HDMI_ISFR]    = imx_clk_gate2("hdmi_isfr",     "pll3_pfd1_540m",    base + 0x70, 4);
 	clk[IMX6QDL_CLK_I2C1]         = imx_clk_gate2("i2c1",          "ipg_per",           base + 0x70, 6);
 	clk[IMX6QDL_CLK_I2C2]         = imx_clk_gate2("i2c2",          "ipg_per",           base + 0x70, 8);
 	clk[IMX6QDL_CLK_I2C3]         = imx_clk_gate2("i2c3",          "ipg_per",           base + 0x70, 10);
@@ -885,7 +894,7 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 	clk[IMX6QDL_CLK_GPMI_BCH]     = imx_clk_gate2("gpmi_bch",      "usdhc4",            base + 0x78, 26);
 	clk[IMX6QDL_CLK_GPMI_IO]      = imx_clk_gate2("gpmi_io",       "enfc",              base + 0x78, 28);
 	clk[IMX6QDL_CLK_GPMI_APB]     = imx_clk_gate2("gpmi_apb",      "usdhc3",            base + 0x78, 30);
-	clk[IMX6QDL_CLK_ROM]          = imx_clk_gate2_flags("rom",     "ahb",               base + 0x7c, 0, CLK_IS_CRITICAL);
+	clk[IMX6QDL_CLK_ROM]          = imx_clk_gate2("rom",           "ahb",               base + 0x7c, 0);
 	clk[IMX6QDL_CLK_SATA]         = imx_clk_gate2("sata",          "ahb",               base + 0x7c, 4);
 	clk[IMX6QDL_CLK_SDMA]         = imx_clk_gate2("sdma",          "ahb",               base + 0x7c, 6);
 	clk[IMX6QDL_CLK_SPBA]         = imx_clk_gate2("spba",          "ipg",               base + 0x7c, 12);
@@ -972,9 +981,36 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 	 */
 	clk_set_parent(clk[IMX6QDL_CLK_ENFC_SEL], clk[IMX6QDL_CLK_PLL2_PFD2_396M]);
 
-	if (IS_ENABLED(CONFIG_USB_MXS_PHY)) {
-		clk_prepare_enable(clk[IMX6QDL_CLK_USBPHY1_GATE]);
-		clk_prepare_enable(clk[IMX6QDL_CLK_USBPHY2_GATE]);
+	/* gpu clock initilazation */
+	/*
+	 * On mx6dl, 2d core clock sources(sel, podf) is from 3d
+	 * shader core clock, but 3d shader clock multiplexer of
+	 * mx6dl is different. For instance the equivalent of
+	 * pll2_pfd_594M on mx6q is pll2_pfd_528M on mx6dl.
+	 * Make a note here.
+	 */
+	if (clk_on_imx6dl()) {
+		clk_set_parent(clk[IMX6QDL_CLK_GPU3D_SHADER_SEL], clk[IMX6QDL_CLK_PLL2_PFD1_594M]);
+		imx_clk_set_rate(clk[IMX6QDL_CLK_GPU3D_SHADER], 528000000);
+		/* for mx6dl, change gpu3d_core parent to 594_PFD*/
+		clk_set_parent(clk[IMX6QDL_CLK_GPU3D_CORE_SEL], clk[IMX6QDL_CLK_PLL2_PFD1_594M]);
+		imx_clk_set_rate(clk[IMX6QDL_CLK_GPU3D_CORE], 528000000);
+	} else if (clk_on_imx6q()) {
+		if (imx_get_soc_revision() >= IMX_CHIP_REVISION_2_0) {
+			clk_set_parent(clk[IMX6QDL_CLK_GPU3D_SHADER_SEL], clk[IMX6QDL_CLK_PLL3_PFD0_720M]);
+			imx_clk_set_rate(clk[IMX6QDL_CLK_GPU3D_SHADER], 720000000);
+			clk_set_parent(clk[IMX6QDL_CLK_GPU3D_CORE_SEL], clk[IMX6QDL_CLK_PLL2_PFD1_594M]);
+			imx_clk_set_rate(clk[IMX6QDL_CLK_GPU3D_CORE], 594000000);
+			clk_set_parent(clk[IMX6QDL_CLK_GPU2D_CORE_SEL], clk[IMX6QDL_CLK_PLL3_PFD0_720M]);
+			imx_clk_set_rate(clk[IMX6QDL_CLK_GPU2D_CORE], 720000000);
+		} else {
+			clk_set_parent(clk[IMX6QDL_CLK_GPU3D_SHADER_SEL], clk[IMX6QDL_CLK_PLL2_PFD1_594M]);
+			imx_clk_set_rate(clk[IMX6QDL_CLK_GPU3D_SHADER], 594000000);
+			clk_set_parent(clk[IMX6QDL_CLK_GPU3D_CORE_SEL], clk[IMX6QDL_CLK_MMDC_CH0_AXI]);
+			imx_clk_set_rate(clk[IMX6QDL_CLK_GPU3D_CORE], 528000000);
+			clk_set_parent(clk[IMX6QDL_CLK_GPU2D_CORE_SEL], clk[IMX6QDL_CLK_PLL3_USB_OTG]);
+			imx_clk_set_rate(clk[IMX6QDL_CLK_GPU2D_CORE], 480000000);
+		}
 	}
 
 	/*

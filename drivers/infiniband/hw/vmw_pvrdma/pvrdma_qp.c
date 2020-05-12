@@ -438,13 +438,6 @@ static void pvrdma_free_qp(struct pvrdma_qp *qp)
 			ib_umem_release(qp->sumem);
 	}
 
-	if (!qp->is_kernel) {
-		if (qp->rumem)
-			ib_umem_release(qp->rumem);
-		if (qp->sumem)
-			ib_umem_release(qp->sumem);
-	}
-
 	pvrdma_page_dir_cleanup(dev, &qp->pdir);
 
 	kfree(qp);

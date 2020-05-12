@@ -161,9 +161,6 @@ void tty_termios_encode_baud_rate(struct ktermios *termios,
 		ibinput = 1;	/* An input speed was specified */
 #endif
 #ifdef BOTHER
-	if ((termios->c_cflag >> IBSHIFT) & CBAUD)
-		ibinput = 1;	/* An input speed was specified */
-
 	/* If the user asked for a precise weird speed give a precise weird
 	   answer. If they asked for a Bfoo speed they may have problems
 	   digesting non-exact replies so fuzz a bit */

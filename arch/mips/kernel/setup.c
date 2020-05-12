@@ -447,13 +447,6 @@ static void __init bootmem_init(void)
 		mapstart = max(reserved_end, start);
 	}
 
-	/*
-	 * Reserve any memory between the start of RAM and PHYS_OFFSET
-	 */
-	if (ramstart > PHYS_OFFSET)
-		add_memory_region(PHYS_OFFSET, ramstart - PHYS_OFFSET,
-				  BOOT_MEM_RESERVED);
-
 	if (min_low_pfn >= max_low_pfn)
 		panic("Incorrect memory mapping !!!");
 

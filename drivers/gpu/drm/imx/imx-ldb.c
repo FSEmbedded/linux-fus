@@ -1073,7 +1073,7 @@ static struct devtype imx6q_ldb_devtype = {
 };
 
 static struct devtype imx8qm_ldb_devtype = {
-	.ctrl_reg = 0x10e0,
+	.ctrl_reg = 0x0,
 	.bus_mux = NULL,
 	.capable_10bit = true,
 	.visible_phy = true,
@@ -1086,7 +1086,7 @@ static struct devtype imx8qm_ldb_devtype = {
 };
 
 static struct devtype imx8qxp_ldb_devtype = {
-	.ctrl_reg = 0x10e0,
+	.ctrl_reg = 0x0,
 	.bus_mux = NULL,
 	.visible_phy = true,
 	.has_ch_sel = true,
@@ -1241,9 +1241,6 @@ static int imx_ldb_bind(struct device *dev, struct device *master, void *data)
 		return PTR_ERR(imx_ldb->regmap);
 	}
 
-	/* disable LDB by resetting the control register to POR default */
-	regmap_write(imx_ldb->regmap, IOMUXC_GPR2, 0);
-
 	imx_ldb->dev = dev;
 	imx_ldb->ldb_ctrl_reg = devtype->ctrl_reg;
 	imx_ldb->lvds_mux = devtype->bus_mux;
@@ -1337,13 +1334,18 @@ static int imx_ldb_bind(struct device *dev, struct device *master, void *data)
 			goto free_child;
 		}
 
-		if (!of_device_is_available(child))
-			continue;
-
 		if (dual && imx_ldb->use_mixel_phy && i > 0) {
 			auxiliary_ch = true;
 			channel = &imx_ldb->channel[i];
 			goto get_phy;
+		}
+
+		if (!of_device_is_available(child))
+			continue;
+
+		if (dual && i > 0) {
+			dev_warn(dev, "dual-channel mode, ignoring second output\n");
+			continue;
 		}
 
 		channel = &imx_ldb->channel[i];

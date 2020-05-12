@@ -230,7 +230,6 @@ struct meson_sar_adc_param {
 struct meson_sar_adc_data {
 	const struct meson_sar_adc_param	*param;
 	const char				*name;
-	const struct regmap_config		*regmap_config;
 };
 
 struct meson_sar_adc_priv {

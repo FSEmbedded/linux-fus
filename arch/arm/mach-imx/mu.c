@@ -139,8 +139,8 @@ static int imx_mu_send_message(unsigned int index, unsigned int data)
 	ep = val & BIT(4);
 	if (((val & (1 << (20 + (3 - index)))) == 0) || (ep == BIT(4)))
 		return 0;
-	else
-		te_flag = 1;
+
+	te_flag = 1;
 
 	/*
 	 * Make sure that TEn flag is changed, after the ATRn is filled up.
@@ -358,13 +358,12 @@ static int imx_mu_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev,
 				"mu clock source missing or invalid\n");
 			return PTR_ERR(clk);
-		} else {
-			ret = clk_prepare_enable(clk);
-			if (ret) {
-				dev_err(&pdev->dev,
-					"unable to enable mu clock\n");
-				return ret;
-			}
+		}
+
+		ret = clk_prepare_enable(clk);
+		if (ret) {
+			dev_err(&pdev->dev, "unable to enable mu clock\n");
+			return ret;
 		}
 
 		/* MU always as a wakeup source for low power mode */

@@ -1448,8 +1448,6 @@ release_sq:
 	adapter_delete_sq(dev, qid);
 release_cq:
 	adapter_delete_cq(dev, qid);
- release_vector:
-	nvmeq->cq_vector = -1;
 	return result;
 }
 

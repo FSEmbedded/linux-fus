@@ -1412,7 +1412,6 @@ static struct talitos_edesc *talitos_edesc_alloc(struct device *dev,
 		dma_len = 0;
 		alloc_len += icv_stashing ? authsize : 0;
 	}
-	alloc_len += ivsize;
 
 	/* if its a ahash, add space for a second desc next to the first one */
 	if (is_sec1 && !dst)

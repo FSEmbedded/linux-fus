@@ -1198,41 +1198,6 @@ static int read_retpoline_hints(struct objtool_file *file)
 	return 0;
 }
 
-static int read_retpoline_hints(struct objtool_file *file)
-{
-	struct section *sec;
-	struct instruction *insn;
-	struct rela *rela;
-
-	sec = find_section_by_name(file->elf, ".rela.discard.retpoline_safe");
-	if (!sec)
-		return 0;
-
-	list_for_each_entry(rela, &sec->rela_list, list) {
-		if (rela->sym->type != STT_SECTION) {
-			WARN("unexpected relocation symbol type in %s", sec->name);
-			return -1;
-		}
-
-		insn = find_insn(file, rela->sym->sec, rela->addend);
-		if (!insn) {
-			WARN("bad .discard.retpoline_safe entry");
-			return -1;
-		}
-
-		if (insn->type != INSN_JUMP_DYNAMIC &&
-		    insn->type != INSN_CALL_DYNAMIC) {
-			WARN_FUNC("retpoline_safe hint not an indirect jump/call",
-				  insn->sec, insn->offset);
-			return -1;
-		}
-
-		insn->retpoline_safe = true;
-	}
-
-	return 0;
-}
-
 static int decode_sections(struct objtool_file *file)
 {
 	int ret;

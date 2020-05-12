@@ -19,6 +19,7 @@
 #include <linux/sizes.h>
 #include <linux/io.h>
 #include <linux/dma-mapping.h>
+#include <linux/seq_file.h>
 #include <linux/delay.h>
 #include <asm/cacheflush.h>
 

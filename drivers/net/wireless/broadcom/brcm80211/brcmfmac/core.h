@@ -145,6 +145,8 @@ struct brcmf_pub {
 	struct brcmf_mp_device *settings;
 
 	u8 clmver[BRCMF_DCMD_SMLEN];
+	struct brcmf_pkt_filter_enable_le pkt_filter[MAX_PKT_FILTER_COUNT];
+
 };
 
 /* forward declarations */

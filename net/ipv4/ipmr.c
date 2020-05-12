@@ -71,8 +71,6 @@
 
 #include <linux/nospec.h>
 
-#include <linux/nospec.h>
-
 struct ipmr_rule {
 	struct fib_rule		common;
 };
@@ -402,7 +400,6 @@ static struct mr_table_ops ipmr_mr_table_ops = {
 static struct mr_table *ipmr_new_table(struct net *net, u32 id)
 {
 	struct mr_table *mrt;
-	int err;
 
 	/* "pimreg%u" should not exceed 16 bytes (IFNAMSIZ) */
 	if (id != RT_TABLE_DEFAULT && id >= 1000000000)

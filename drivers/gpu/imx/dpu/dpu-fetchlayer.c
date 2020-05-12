@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017-2018 NXP
+ * Copyright 2017-2019 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -68,11 +68,7 @@ fetchlayer_set_src_buf_dimensions(struct dpu_fetchunit *fu,
 	mutex_unlock(&fu->mutex);
 }
 
-static void fetchlayer_set_fmt(struct dpu_fetchunit *fu,
-			       u32 fmt,
-			       enum drm_color_encoding color_encoding,
-			       enum drm_color_range color_range,
-			       bool unused)
+static void fetchlayer_set_fmt(struct dpu_fetchunit *fu, u32 fmt, bool unused)
 {
 	u32 val, bits, shift;
 	int i, sub_id = fu->sub_id;
@@ -251,7 +247,6 @@ static const struct dpu_fetchunit_ops fl_ops = {
 	.set_src_stride		= fetchunit_set_src_stride,
 	.set_src_buf_dimensions	= fetchlayer_set_src_buf_dimensions,
 	.set_fmt		= fetchlayer_set_fmt,
-	.set_pixel_blend_mode	= fetchunit_set_pixel_blend_mode,
 	.enable_src_buf		= fetchunit_enable_src_buf,
 	.disable_src_buf	= fetchunit_disable_src_buf,
 	.is_enabled		= fetchunit_is_enabled,
@@ -259,6 +254,9 @@ static const struct dpu_fetchunit_ops fl_ops = {
 	.set_controltrigger	= fetchlayer_set_controltrigger,
 	.get_stream_id		= fetchunit_get_stream_id,
 	.set_stream_id		= fetchunit_set_stream_id,
+	.pin_off		= fetchunit_pin_off,
+	.unpin_off		= fetchunit_unpin_off,
+	.is_pinned_off		= fetchunit_is_pinned_off,
 };
 
 void _dpu_fl_init(struct dpu_soc *dpu, unsigned int id)

@@ -1165,7 +1165,6 @@ static void mt_touch_report(struct hid_device *hid,
 			app->num_received++;
 	}
 
-	first_packet = td->num_received == 0;
 	for (r = 0; r < report->maxfield; r++) {
 		field = report->field[r];
 		count = field->report_count;

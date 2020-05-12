@@ -720,14 +720,6 @@ static ssize_t verify_hdr(struct ib_uverbs_cmd_hdr *hdr,
 	return 0;
 }
 
-static bool verify_command_idx(u32 command, bool extended)
-{
-	if (extended)
-		return command < ARRAY_SIZE(uverbs_ex_cmd_table);
-
-	return command < ARRAY_SIZE(uverbs_cmd_table);
-}
-
 static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 			     size_t count, loff_t *pos)
 {

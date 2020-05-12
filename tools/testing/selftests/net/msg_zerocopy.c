@@ -762,8 +762,6 @@ static void parse_opts(int argc, char **argv)
 			break;
 		}
 	}
-	setup_sockaddr(cfg_family, daddr, &cfg_dst_addr);
-	setup_sockaddr(cfg_family, saddr, &cfg_src_addr);
 
 	cfg_test = argv[argc - 1];
 	if (strcmp(cfg_test, "rds") == 0) {

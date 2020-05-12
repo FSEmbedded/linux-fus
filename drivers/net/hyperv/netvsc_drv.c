@@ -2134,7 +2134,6 @@ static struct net_device *get_netvsc_byslot(const struct net_device *vf_netdev)
 static int netvsc_register_vf(struct net_device *vf_netdev)
 {
 	struct net_device_context *net_device_ctx;
-	struct device *pdev = vf_netdev->dev.parent;
 	struct netvsc_device *netvsc_dev;
 	struct net_device *ndev;
 	int ret;

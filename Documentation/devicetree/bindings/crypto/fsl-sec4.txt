@@ -540,28 +540,13 @@ Secure Non-Volatile Storage (SNVS) Low Power (LP) RTC Node
     with snvs LP/HP registers access. The modules involved snvs LP/HP
     registers access are snvs-power key, snvs-rtc, and caam.
 
-   - clocks
-      Usage: optional, required if SNVS LP RTC requires explicit
-          enablement of clocks
-      Value type: <prop_encoded-array>
-      Definition:  a clock specifier describing the clock required for
-          enabling and disabling SNVS LP RTC.
-
-   - clock-names
-      Usage: optional, required if SNVS LP RTC requires explicit
-          enablement of clocks
-      Value type: <string>
-      Definition: clock name string should be "snvs-rtc".
-
 EXAMPLE
-	sec_mon_rtc_lp@1 {
-		compatible = "fsl,sec-v4.0-mon-rtc-lp";
-		interrupts = <93 2>;
-		regmap = <&snvs>;
-		offset = <0x34>;
-		clocks = <&clks IMX7D_SNVS_CLK>;
-		clock-names = "snvs-rtc";
-	};
+  sec_mon_rtc_lp@1 {
+    compatible = "fsl,sec-v4.0-mon-rtc-lp";
+    interrupts = <93 2>;
+    regmap = <&snvs>;
+    offset = <0x34>;
+  };
 
 =====================================================================
 System ON/OFF key driver
@@ -596,104 +581,116 @@ System ON/OFF key driver
       Definition: this is phandle to the register map node.
 
 EXAMPLE:
-	snvs-pwrkey@020cc000 {
-		compatible = "fsl,sec-v4.0-pwrkey";
-		regmap = <&snvs>;
-		interrupts = <0 4 0x4>
-	        linux,keycode = <116>; /* KEY_POWER */
-		wakeup-source;
-	};
+  snvs-pwrkey@0x020cc000 {
+    compatible = "fsl,sec-v4.0-pwrkey";
+    regmap = <&snvs>;
+    interrupts = <0 4 0x4>
+          linux,keycode = <116>; /* KEY_POWER */
+    wakeup-source;
+  };
 
 =====================================================================
 FULL EXAMPLE
 
-	crypto: crypto@300000 {
-		compatible = "fsl,sec-v4.0";
-		#address-cells = <1>;
-		#size-cells = <1>;
-		reg = <0x300000 0x10000>;
-		ranges = <0 0x300000 0x10000>;
-		interrupt-parent = <&mpic>;
-		interrupts = <92 2>;
+  crypto: crypto@300000 {
+    compatible = "fsl,sec-v4.0";
+    #address-cells = <1>;
+    #size-cells = <1>;
+    reg = <0x300000 0x10000>;
+    ranges = <0 0x300000 0x10000>;
+    interrupt-parent = <&mpic>;
+    interrupts = <92 2>;
 
-		sec_jr0: jr@1000 {
-			compatible = "fsl,sec-v4.0-job-ring";
-			reg = <0x1000 0x1000>;
-			interrupt-parent = <&mpic>;
-			interrupts = <88 2>;
-		};
+    sec_jr0: jr@1000 {
+      compatible = "fsl,sec-v4.0-job-ring";
+      reg = <0x1000 0x1000>;
+      interrupt-parent = <&mpic>;
+      interrupts = <88 2>;
+    };
 
-		sec_jr1: jr@2000 {
-			compatible = "fsl,sec-v4.0-job-ring";
-			reg = <0x2000 0x1000>;
-			interrupt-parent = <&mpic>;
-			interrupts = <89 2>;
-		};
+    sec_jr1: jr@2000 {
+      compatible = "fsl,sec-v4.0-job-ring";
+      reg = <0x2000 0x1000>;
+      interrupt-parent = <&mpic>;
+      interrupts = <89 2>;
+    };
 
-		sec_jr2: jr@3000 {
-			compatible = "fsl,sec-v4.0-job-ring";
-			reg = <0x3000 0x1000>;
-			interrupt-parent = <&mpic>;
-			interrupts = <90 2>;
-		};
+    sec_jr2: jr@3000 {
+      compatible = "fsl,sec-v4.0-job-ring";
+      reg = <0x3000 0x1000>;
+      interrupt-parent = <&mpic>;
+      interrupts = <90 2>;
+    };
 
-		sec_jr3: jr@4000 {
-			compatible = "fsl,sec-v4.0-job-ring";
-			reg = <0x4000 0x1000>;
-			interrupt-parent = <&mpic>;
-			interrupts = <91 2>;
-		};
+    sec_jr3: jr@4000 {
+      compatible = "fsl,sec-v4.0-job-ring";
+      reg = <0x4000 0x1000>;
+      interrupt-parent = <&mpic>;
+      interrupts = <91 2>;
+    };
 
-		rtic@6000 {
-			compatible = "fsl,sec-v4.0-rtic";
-			#address-cells = <1>;
-			#size-cells = <1>;
-			reg = <0x6000 0x100>;
-			ranges = <0x0 0x6100 0xe00>;
+    rtic@6000 {
+      compatible = "fsl,sec-v4.0-rtic";
+      #address-cells = <1>;
+      #size-cells = <1>;
+      reg = <0x6000 0x100>;
+      ranges = <0x0 0x6100 0xe00>;
 
-			rtic_a: rtic-a@0 {
-				compatible = "fsl,sec-v4.0-rtic-memory";
-				reg = <0x00 0x20 0x100 0x80>;
-			};
+      rtic_a: rtic-a@0 {
+        compatible = "fsl,sec-v4.0-rtic-memory";
+        reg = <0x00 0x20 0x100 0x80>;
+      };
 
-			rtic_b: rtic-b@20 {
-				compatible = "fsl,sec-v4.0-rtic-memory";
-				reg = <0x20 0x20 0x200 0x80>;
-			};
+      rtic_b: rtic-b@20 {
+        compatible = "fsl,sec-v4.0-rtic-memory";
+        reg = <0x20 0x20 0x200 0x80>;
+      };
 
-			rtic_c: rtic-c@40 {
-				compatible = "fsl,sec-v4.0-rtic-memory";
-				reg = <0x40 0x20 0x300 0x80>;
-			};
+      rtic_c: rtic-c@40 {
+        compatible = "fsl,sec-v4.0-rtic-memory";
+        reg = <0x40 0x20 0x300 0x80>;
+      };
 
-			rtic_d: rtic-d@60 {
-				compatible = "fsl,sec-v4.0-rtic-memory";
-				reg = <0x60 0x20 0x500 0x80>;
-			};
-		};
-	};
+      rtic_d: rtic-d@60 {
+        compatible = "fsl,sec-v4.0-rtic-memory";
+        reg = <0x60 0x20 0x500 0x80>;
+      };
+    };
+  };
 
-	sec_mon: sec_mon@314000 {
-		compatible = "fsl,sec-v4.0-mon";
-		reg = <0x314000 0x1000>;
-		ranges = <0 0x314000 0x1000>;
+  sec_mon: sec_mon@314000 {
+    compatible = "fsl,sec-v4.0-mon";
+    reg = <0x314000 0x1000>;
+    ranges = <0 0x314000 0x1000>;
 
-		sec_mon_rtc_lp@34 {
-			compatible = "fsl,sec-v4.0-mon-rtc-lp";
-			regmap = <&sec_mon>;
-			offset = <0x34>;
-			interrupts = <93 2>;
-			clocks = <&clks IMX7D_SNVS_CLK>;
-			clock-names = "snvs-rtc";
-		};
+    sec_mon_rtc_lp@34 {
+      compatible = "fsl,sec-v4.0-mon-rtc-lp";
+      regmap = <&sec_mon>;
+      offset = <0x34>;
+      interrupts = <93 2>;
+    };
 
-		snvs-pwrkey@020cc000 {
-			compatible = "fsl,sec-v4.0-pwrkey";
-			regmap = <&sec_mon>;
-			interrupts = <0 4 0x4>;
-			linux,keycode = <116>; /* KEY_POWER */
-			wakeup-source;
-		};
-	};
+    snvs-pwrkey@0x020cc000 {
+      compatible = "fsl,sec-v4.0-pwrkey";
+      regmap = <&sec_mon>;
+      interrupts = <0 4 0x4>;
+      linux,keycode = <116>; /* KEY_POWER */
+      wakeup-source;
+    };
+  };
+
+  caam_snvs: caam-snvs@30370000 {
+    compatible = "fsl,imx6q-caam-snvs";
+    reg = <0x30370000 0x10000>;
+  };
+
+  irq_sec_vio: caam_secvio {
+    compatible = "fsl,imx7d-caam-secvio", "fsl,imx6q-caam-secvio";
+    interrupts = <GIC_SPI 20 IRQ_TYPE_LEVEL_HIGH>;
+    jtag-tamper = "disabled";
+    watchdog-tamper = "enabled";
+    internal-boot-tamper = "enabled";
+    external-pin-tamper = "disabled";
+  };
 
 =====================================================================

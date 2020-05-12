@@ -897,12 +897,6 @@ err_kill_urbs:
 	usb_kill_urb(port->interrupt_in_urb);
 
 	return status;
-
-err_kill_urbs:
-	usb_kill_anchored_urbs(&garmin_data_p->write_urbs);
-	usb_kill_urb(port->interrupt_in_urb);
-
-	return status;
 }
 
 

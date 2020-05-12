@@ -124,15 +124,15 @@ static int imx6sx_enter_wait(struct cpuidle_device *dev,
 		index = 1;
 		cpu_do_idle();
 	} else {
-			/* Need to notify there is a cpu pm operation. */
-			cpu_pm_enter();
-			cpu_cluster_pm_enter();
+		/* Need to notify there is a cpu pm operation. */
+		cpu_pm_enter();
+		cpu_cluster_pm_enter();
 
-			cpu_suspend(0, imx6_idle_finish);
+		cpu_suspend(0, imx6_idle_finish);
 
-			cpu_cluster_pm_exit();
-			cpu_pm_exit();
-			imx6_enable_rbc(false);
+		cpu_cluster_pm_exit();
+		cpu_pm_exit();
+		imx6_enable_rbc(false);
 	}
 
 	imx6_set_lpm(WAIT_CLOCKED);
@@ -161,9 +161,9 @@ static struct cpuidle_driver imx6sx_cpuidle_driver = {
 			 * + PLL2 relock 450us and some margin, here set
 			 * it to 800us.
 			 */
-			.exit_latency = 300,
-			.target_residency = 500,
 			.flags = CPUIDLE_FLAG_TIMER_STOP,
+			.exit_latency = 800,
+			.target_residency = 1000,
 			.enter = imx6sx_enter_wait,
 			.name = "LOW-POWER-IDLE",
 			.desc = "ARM power off",
@@ -234,16 +234,60 @@ int __init imx6sx_cpuidle_init(void)
 #endif
 
 	imx6_set_int_mem_clk_lpm(true);
-	imx6_enable_rbc(false);
-	imx_gpc_set_l2_mem_power_in_lpm(false);
-	/*
-	 * set ARM power up/down timing to the fastest,
-	 * sw2iso and sw can be set to one 32K cycle = 31us
-	 * except for power up sw2iso which need to be
-	 * larger than LDO ramp up time.
-	 */
-	imx_gpc_set_arm_power_up_timing(0xf, 1);
-	imx_gpc_set_arm_power_down_timing(1, 1);
+
+	if (imx_get_soc_revision() >= IMX_CHIP_REVISION_1_2) {
+		/*
+		 * enable RC-OSC here, as it needs at least 4ms for RC-OSC to
+		 * be stable, low power idle flow can NOT endure this big
+		 * latency, so we make RC-OSC self-tuning enabled here.
+		 */
+		val = readl_relaxed(anatop_base + PMU_LOW_PWR_CTRL);
+		val |= 0x1;
+		writel_relaxed(val, anatop_base + PMU_LOW_PWR_CTRL);
+		/*
+		 * config RC-OSC freq
+		 * tune_enable = 1;tune_start = 1;hyst_plus = 0;hyst_minus = 0;
+		 * osc_prog = 0xa7;
+		 */
+		writel_relaxed(
+			0x4 << XTALOSC24M_OSC_CONFIG0_RC_OSC_PROG_CUR_SHIFT |
+			0xa7 << XTALOSC24M_OSC_CONFIG0_RC_OSC_PROG_SHIFT |
+			0x1 << XTALOSC24M_OSC_CONFIG0_ENABLE_SHIFT |
+			0x1 << XTALOSC24M_OSC_CONFIG0_START_SHIFT,
+			anatop_base + XTALOSC24M_OSC_CONFIG0);
+		/* set count_trg = 0x2dc */
+		writel_relaxed(
+			0x40 << XTALOSC24M_OSC_CONFIG1_COUNT_RC_CUR_SHIFT |
+			0x2dc << XTALOSC24M_OSC_CONFIG1_COUNT_RC_TRG_SHIFT,
+			anatop_base + XTALOSC24M_OSC_CONFIG1);
+		/* wait 4ms according to hardware design */
+		msleep(4);
+		/*
+		 * now add some hysteresis, hyst_plus=3, hyst_minus=3
+		 * (the minimum hysteresis that looks good is 2)
+		 */
+		val = readl_relaxed(anatop_base + XTALOSC24M_OSC_CONFIG0);
+		val &= ~((XTALOSC24M_OSC_CONFIG0_HYST_MINUS_MASK <<
+			XTALOSC24M_OSC_CONFIG0_HYST_MINUS_SHIFT) |
+			(XTALOSC24M_OSC_CONFIG0_HYST_PLUS_MASK <<
+			XTALOSC24M_OSC_CONFIG0_HYST_PLUS_SHIFT));
+		val |= (0x3 << XTALOSC24M_OSC_CONFIG0_HYST_MINUS_SHIFT) |
+			(0x3 << XTALOSC24M_OSC_CONFIG0_HYST_PLUS_SHIFT);
+		writel_relaxed(val, anatop_base  + XTALOSC24M_OSC_CONFIG0);
+		/* set the count_1m_trg = 0x2d7 */
+		val = readl_relaxed(anatop_base  + XTALOSC24M_OSC_CONFIG2);
+		val &= ~(XTALOSC24M_OSC_CONFIG2_COUNT_1M_TRG_MASK <<
+			XTALOSC24M_OSC_CONFIG2_COUNT_1M_TRG_SHIFT);
+		val |= 0x2d7 << XTALOSC24M_OSC_CONFIG2_COUNT_1M_TRG_SHIFT;
+		writel_relaxed(val, anatop_base  + XTALOSC24M_OSC_CONFIG2);
+		/*
+		 * hardware design require to write XTALOSC24M_OSC_CONFIG0 or
+		 * XTALOSC24M_OSC_CONFIG1 to
+		 * make XTALOSC24M_OSC_CONFIG2 write work
+		 */
+		val = readl_relaxed(anatop_base  + XTALOSC24M_OSC_CONFIG1);
+		writel_relaxed(val, anatop_base  + XTALOSC24M_OSC_CONFIG1);
+	}
 
 	return cpuidle_register(&imx6sx_cpuidle_driver, NULL);
 }

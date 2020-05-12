@@ -16,7 +16,7 @@
 #include <linux/phy.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
-#ifdef CONFIG_ARCH_MXC_ARM64
+#ifdef CONFIG_HAVE_IMX_SC
 #include <soc/imx8/sc/sci.h>
 #endif
 #include "fec.h"
@@ -94,12 +94,12 @@ void fec_enet_register_fixup(struct net_device *ndev)
 		return;
 
 	if (fep->fixups & FEC_QUIRK_AR8031_FIXUP) {
-		static int ar8031_registered = 0;
+		static int ar8031_registered;
 
 		if (ar8031_registered)
 			return;
 		err = phy_register_fixup_for_uid(PHY_ID_AR8031, 0xffffffef,
-					ar8031_phy_fixup);
+						 ar8031_phy_fixup);
 		if (err)
 			netdev_info(ndev, "Cannot register PHY board fixup\n");
 		ar8031_registered = 1;
@@ -148,7 +148,7 @@ put_ocotp_node:
 	of_node_put(ocotp_np);
 }
 
-#ifdef CONFIG_ARCH_MXC_ARM64
+#ifdef CONFIG_HAVE_IMX_SC
 static void imx8qm_get_mac_from_fuse(int dev_id, unsigned char *mac,
 				     struct imx_fuse_mac_addr *fuse_mapping)
 {
@@ -204,10 +204,10 @@ static void imx8qm_get_mac_from_fuse(int dev_id, unsigned char *mac,
 
 static void imx8qm_ipg_stop_enable(int dev_id, bool enabled)
 {
-	uint32_t mu_id;
+	u32 mu_id;
 	sc_ipc_t ipc_handle;
 	sc_err_t sc_err = SC_ERR_NONE;
-	uint32_t rsrc_id, val;
+	u32 rsrc_id, val;
 
 	sc_err = sc_ipc_getMuID(&mu_id);
 	if (sc_err != SC_ERR_NONE) {
@@ -257,8 +257,7 @@ void fec_enet_get_mac_from_fuse(struct device_node *np, unsigned char *mac)
 		imx8qm_get_mac_from_fuse(idx, mac,
 					 &imx8_fuse_mapping[IMX8QXP_FUSE]);
 	else if (of_machine_is_compatible("fsl,imx8mq") ||
-		 of_machine_is_compatible("fsl,imx8mm") ||
-		 of_machine_is_compatible("fsl,imx8mn"))
+		 of_machine_is_compatible("fsl,imx8mm"))
 		imx8mq_get_mac_from_fuse(idx, mac);
 }
 

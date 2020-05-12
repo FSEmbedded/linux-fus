@@ -94,8 +94,6 @@
 #define UART_UBRC	0xac
 #define UART_UTS	0xb4
 
-#define IOMUXC_GPR5_CLOCK_AFCG_X_BYPASS_MASK	0xf800
-
 extern unsigned long iram_tlb_base_addr;
 extern unsigned long iram_tlb_phys_addr;
 
@@ -359,6 +357,27 @@ static const u32 imx6sll_mmdc_io_offset[] __initconst = {
 	0x2a4, 0x2a8,		    /* SDCKE0, SDCKE1*/
 };
 
+static const u32 imx6sx_mmdc_io_lpddr2_offset[] __initconst = {
+	0x2ec, 0x2f0, 0x2f4, 0x2f8, /* DQM0 ~ DQM3 */
+	0x300, 0x2fc, 0x32c, 0x5f4, /* CAS, RAS, SDCLK_0, GPR_ADDS */
+	0x60c, 0x610, 0x61c, 0x620, /* GPR_B0DS ~ GPR_B3DS */
+	0x310, 0x314, 0x5f8, 0x608, /* SODT0, SODT1, MODE_CTL, MODE */
+	0x330, 0x334, 0x338, 0x33c, /* SDQS0 ~ SDQS3 */
+	0x324, 0x328, 0x340,	    /* DRAM_SDCKE0 ~ 1, DRAM_RESET */
+};
+
+static const u32 imx6sx_mmdc_lpddr2_offset[] __initconst = {
+	0x01c, 0x85c, 0x800, 0x890,
+	0x8b8, 0x81c, 0x820, 0x824,
+	0x828, 0x82c, 0x830, 0x834,
+	0x838, 0x848, 0x850, 0x8c0,
+	0x83c, 0x840, 0x8b8, 0x00c,
+	0x004, 0x010, 0x014, 0x018,
+	0x02c, 0x030, 0x038, 0x008,
+	0x040, 0x000, 0x020, 0x818,
+	0x800, 0x004, 0x01c,
+};
+
 static const u32 imx6sx_mmdc_io_offset[] __initconst = {
 	0x2ec, 0x2f0, 0x2f4, 0x2f8, /* DQM0 ~ DQM3 */
 	0x60c, 0x610, 0x61c, 0x620, /* GPR_B0DS ~ GPR_B3DS */
@@ -411,13 +430,6 @@ static const u32 imx6ul_mmdc_lpddr2_offset[] __initconst = {
 	0x018, 0x01c, 0x02c, 0x030,
 	0x040, 0x000, 0x020, 0x818,
 	0x800, 0x004, 0x01c,
-};
-
-static const u32 imx6sll_mmdc_io_offset[] __initconst = {
-	0x294, 0x298, 0x29c, 0x2a0, /* DQM0 ~ DQM3 */
-	0x544, 0x54c, 0x554, 0x558, /* GPR_B0DS ~ GPR_B3DS */
-	0x530, 0x540, 0x2ac, 0x52c, /* MODE_CTL, MODE, SDCLK_0, GPR_ADDDS */
-	0x2a4, 0x2a8,		    /* SDCKE0, SDCKE1*/
 };
 
 static const u32 imx6sll_mmdc_lpddr3_offset[] __initconst = {
@@ -532,17 +544,6 @@ static const struct imx6_pm_socdata imx6ul_lpddr2_pm_data __initconst = {
 	.mmdc_io_offset = imx6ul_mmdc_io_lpddr2_offset,
 	.mmdc_num = ARRAY_SIZE(imx6ul_mmdc_lpddr2_offset),
 	.mmdc_offset = imx6ul_mmdc_lpddr2_offset,
-};
-
-static const struct imx6_pm_socdata imx6sll_pm_data __initconst = {
-	.mmdc_compat = "fsl,imx6sll-mmdc",
-	.src_compat = "fsl,imx6sll-src",
-	.iomuxc_compat = "fsl,imx6sll-iomuxc",
-	.gpc_compat = "fsl,imx6sll-gpc",
-	.mmdc_io_num = ARRAY_SIZE(imx6sll_mmdc_io_offset),
-	.mmdc_io_offset = imx6sll_mmdc_io_offset,
-	.mmdc_num = ARRAY_SIZE(imx6sll_mmdc_lpddr3_offset),
-	.mmdc_offset = imx6sll_mmdc_lpddr3_offset,
 };
 
 static struct map_desc iram_tlb_io_desc __initdata = {
@@ -737,11 +738,9 @@ int imx6_set_lpm(enum mxc_cpu_pwr_mode mode)
 	 *
 	 * Note that IRQ #32 is GIC SPI #0.
 	 */
-	if (mode != WAIT_CLOCKED)
-		imx_gpc_hwirq_unmask(0);
+	imx_gpc_hwirq_unmask(0);
 	writel_relaxed(val, ccm_base + CLPCR);
-	if (mode != WAIT_CLOCKED)
-		imx_gpc_hwirq_mask(0);
+	imx_gpc_hwirq_mask(0);
 
 	return 0;
 }
@@ -984,10 +983,8 @@ static int __init imx6_dt_find_lpsram(unsigned long node, const char *uname,
 		iram_tlb_phys_addr = lpram_addr;
 		iram_tlb_base_addr = IMX_IO_P2V(lpram_addr);
 
-	node = of_find_compatible_node(NULL, NULL, compat);
-	if (!node)
-		return -ENODEV;
-
+		iotable_init(&iram_tlb_io_desc, 1);
+	}
 	return 0;
 }
 
@@ -995,9 +992,76 @@ void __init imx6_pm_map_io(void)
 {
 	unsigned long i;
 
-put_node:
-	of_node_put(node);
-	return ret;
+	iotable_init(imx6_pm_io_desc, ARRAY_SIZE(imx6_pm_io_desc));
+
+	/*
+	 * Get the address of IRAM or OCRAM to be used by the low
+	 * power code from the device tree.
+	 */
+	WARN_ON(of_scan_flat_dt(imx6_dt_find_lpsram, NULL));
+
+	/*
+	 * We moved suspend/resume and lowpower idle to TEE,
+	 * But busfreq now still in Linux, this table is still needed
+	 * If we later decide to move busfreq to TEE, we could drop this.
+	 */
+	/* Return if no IRAM space is allocated for suspend/resume code. */
+	if (!iram_tlb_base_addr) {
+		pr_warn("No IRAM/OCRAM memory allocated for suspend/resume \
+			 code. Please ensure device tree has an entry for \
+			 fsl,lpm-sram.\n");
+		return;
+	}
+
+	/* Set all entries to 0. */
+	memset((void *)iram_tlb_base_addr, 0, MX6Q_IRAM_TLB_SIZE);
+
+	/*
+	 * Make sure the IRAM virtual address has a mapping in the IRAM
+	 * page table.
+	 *
+	 * Only use the top 11 bits [31-20] when storing the physical
+	 * address in the page table as only these bits are required
+	 * for 1M mapping.
+	 */
+	i = ((iram_tlb_base_addr >> 20) << 2) / 4;
+	*((unsigned long *)iram_tlb_base_addr + i) =
+		(iram_tlb_phys_addr & 0xFFF00000) | TT_ATTRIB_NON_CACHEABLE_1M;
+
+	/*
+	 * Make sure the AIPS1 virtual address has a mapping in the
+	 * IRAM page table.
+	 */
+	i = ((IMX_IO_P2V(MX6Q_AIPS1_BASE_ADDR) >> 20) << 2) / 4;
+	*((unsigned long *)iram_tlb_base_addr + i) =
+		(MX6Q_AIPS1_BASE_ADDR & 0xFFF00000) |
+		TT_ATTRIB_NON_CACHEABLE_1M;
+
+	/*
+	 * Make sure the AIPS2 virtual address has a mapping in the
+	 * IRAM page table.
+	 */
+	i = ((IMX_IO_P2V(MX6Q_AIPS2_BASE_ADDR) >> 20) << 2) / 4;
+	*((unsigned long *)iram_tlb_base_addr + i) =
+		(MX6Q_AIPS2_BASE_ADDR & 0xFFF00000) |
+		TT_ATTRIB_NON_CACHEABLE_1M;
+
+	/*
+	 * Make sure the AIPS3 virtual address has a mapping
+	 * in the IRAM page table.
+	 */
+	i = ((IMX_IO_P2V(MX6Q_AIPS3_BASE_ADDR) >> 20) << 2) / 4;
+		*((unsigned long *)iram_tlb_base_addr + i) =
+		(MX6Q_AIPS3_BASE_ADDR & 0xFFF00000) |
+		TT_ATTRIB_NON_CACHEABLE_1M;
+
+	/*
+	 * Make sure the L2 controller virtual address has a mapping
+	 * in the IRAM page table.
+	 */
+	i = ((IMX_IO_P2V(MX6Q_L2_BASE_ADDR) >> 20) << 2) / 4;
+	*((unsigned long *)iram_tlb_base_addr + i) =
+		(MX6Q_L2_BASE_ADDR & 0xFFF00000) | TT_ATTRIB_NON_CACHEABLE_1M;
 }
 
 static int __init imx6q_suspend_init(const struct imx6_pm_socdata *socdata)
@@ -1096,8 +1160,8 @@ static int __init imx6q_suspend_init(const struct imx6_pm_socdata *socdata)
 
 	/* i.MX6SLL has no DRAM RESET pin */
 	if (cpu_is_imx6sll()) {
-			pm_info->mmdc_io_val[pm_info->mmdc_io_num - 2][2] = 0x1000;
-			pm_info->mmdc_io_val[pm_info->mmdc_io_num - 1][2] = 0x1000;
+		pm_info->mmdc_io_val[pm_info->mmdc_io_num - 2][2] = 0x1000;
+		pm_info->mmdc_io_val[pm_info->mmdc_io_num - 1][2] = 0x1000;
 	} else {
 		if (pm_info->ddr_type == IMX_DDR_TYPE_LPDDR2) {
 			/* for LPDDR2, CKE0/1 and RESET pin need special setting */
@@ -1293,7 +1357,7 @@ void __init imx6sx_pm_init(void)
 	WARN_ON(!ocram_saved_in_ddr);
 
 	np = of_find_node_by_path(
-		"/soc/aips-bus@02000000/spba-bus@02000000/serial@02020000");
+		"/soc/aips-bus@2000000/spba-bus@2000000/serial@2020000");
 	if (np)
 		console_base = of_iomap(np, 0);
 	if (imx_src_is_m4_enabled()) {
@@ -1316,7 +1380,7 @@ void __init imx6ul_pm_init(void)
 
 	if (cpu_is_imx6ull()) {
 		np = of_find_node_by_path(
-			"/soc/aips-bus@02000000/spba-bus@02000000/serial@02020000");
+			"/soc/aips-bus@2000000/spba-bus@2000000/serial@2020000");
 		if (np)
 			console_base = of_iomap(np, 0);
 	}

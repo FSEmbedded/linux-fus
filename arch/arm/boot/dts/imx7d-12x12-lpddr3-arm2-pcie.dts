@@ -14,7 +14,7 @@
  * pin conflict, disable ecspi3 in this pcie named dts file.
  */
 &ecspi3 {
-        status = "disabled";
+	status = "disabled";
 };
 
 &pcie{

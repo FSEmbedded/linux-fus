@@ -330,7 +330,7 @@ int inst_rng_imx(struct platform_device *pdev)
 			}
 			/*
 			 * if instantiate_rng(...) fails, the loop will rerun
-			 * and the kick_trng(...) function will modfiy the
+			 * and the kick_trng(...) function will modify the
 			 * upper and lower limits of the entropy sampling
 			 * interval, leading to a sucessful initialization of
 			 * the RNG.

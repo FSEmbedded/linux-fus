@@ -1028,13 +1028,3 @@ int pud_free_pmd_page(pud_t *pudp, unsigned long addr)
 	pmd_free(NULL, table);
 	return 1;
 }
-
-int pud_free_pmd_page(pud_t *pud, unsigned long addr)
-{
-	return pud_none(*pud);
-}
-
-int pmd_free_pte_page(pmd_t *pmd, unsigned long addr)
-{
-	return pmd_none(*pmd);
-}

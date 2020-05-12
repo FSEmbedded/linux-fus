@@ -62,10 +62,6 @@ radix__hugetlb_get_unmapped_area(struct file *file, unsigned long addr,
 		return -EINVAL;
 	if (len > high_limit)
 		return -ENOMEM;
-	if (fixed) {
-		if (addr > high_limit - len)
-			return -ENOMEM;
-	}
 
 	if (fixed) {
 		if (addr > high_limit - len)

@@ -188,41 +188,6 @@ static int hns_ae_wait_flow_down(struct hnae_handle *handle)
 	return 0;
 }
 
-static int hns_ae_wait_flow_down(struct hnae_handle *handle)
-{
-	struct dsaf_device *dsaf_dev;
-	struct hns_ppe_cb *ppe_cb;
-	struct hnae_vf_cb *vf_cb;
-	int ret;
-	int i;
-
-	for (i = 0; i < handle->q_num; i++) {
-		ret = hns_rcb_wait_tx_ring_clean(handle->qs[i]);
-		if (ret)
-			return ret;
-	}
-
-	ppe_cb = hns_get_ppe_cb(handle);
-	ret = hns_ppe_wait_tx_fifo_clean(ppe_cb);
-	if (ret)
-		return ret;
-
-	dsaf_dev = hns_ae_get_dsaf_dev(handle->dev);
-	if (!dsaf_dev)
-		return -EINVAL;
-	ret = hns_dsaf_wait_pkt_clean(dsaf_dev, handle->dport_id);
-	if (ret)
-		return ret;
-
-	vf_cb = hns_ae_get_vf_cb(handle);
-	ret = hns_mac_wait_fifo_clean(vf_cb->mac_cb);
-	if (ret)
-		return ret;
-
-	mdelay(10);
-	return 0;
-}
-
 static void hns_ae_ring_enable_all(struct hnae_handle *handle, int val)
 {
 	int q_num = handle->q_num;

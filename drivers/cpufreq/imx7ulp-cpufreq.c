@@ -1,4 +1,4 @@
- /*
+/*
  * Copyright 2017 NXP.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -68,7 +68,8 @@ static int imx7ulp_set_target(struct cpufreq_policy *policy, unsigned int index)
 	if (new_freq > old_freq) {
 		ret = regulator_set_voltage_tol(arm_reg, volt, 0);
 		if (ret) {
-			dev_err(cpu_dev, "failed to scale vddarm up: %d\n", ret);
+			dev_err(cpu_dev, "failed to scale vddarm up: %d\n",
+				ret);
 			return ret;
 		}
 	}
@@ -101,7 +102,8 @@ static int imx7ulp_set_target(struct cpufreq_policy *policy, unsigned int index)
 	if (new_freq < old_freq) {
 		ret = regulator_set_voltage_tol(arm_reg, volt, 0);
 		if (ret) {
-			dev_warn(cpu_dev, "failed to scale vddarm down: %d\n", ret);
+			dev_warn(cpu_dev, "failed to scale vddarm down: %d\n",
+				 ret);
 			ret = 0;
 		}
 	}
@@ -112,6 +114,7 @@ static int imx7ulp_set_target(struct cpufreq_policy *policy, unsigned int index)
 static int imx7ulp_cpufreq_init(struct cpufreq_policy *policy)
 {
 	int ret;
+
 	policy->clk = arm_clk;
 	policy->cur = clk_get_rate(arm_clk) / 1000;
 	policy->suspend_freq = freq_table[0].frequency;

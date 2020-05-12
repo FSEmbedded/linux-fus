@@ -211,8 +211,6 @@ int sctp_stream_init(struct sctp_stream *stream, __u16 outcnt, __u16 incnt,
 
 	gfp |= __GFP_NOWARN;
 
-	gfp |= __GFP_NOWARN;
-
 	/* Initial stream->out size may be very big, so free it and alloc
 	 * a new one with new outcnt to save memory if needed.
 	 */
@@ -1069,8 +1067,6 @@ struct sctp_chunk *sctp_process_strreset_resp(
 		str_p = inreq->list_of_streams;
 		nums = (ntohs(inreq->param_hdr.length) - sizeof(*inreq)) /
 		       sizeof(__u16);
-
-		flags |= SCTP_STREAM_RESET_INCOMING_SSN;
 
 		flags |= SCTP_STREAM_RESET_INCOMING_SSN;
 

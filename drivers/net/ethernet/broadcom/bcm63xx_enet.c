@@ -2768,9 +2768,6 @@ static int bcm_enetsw_remove(struct platform_device *pdev)
 
 	clk_disable_unprepare(priv->mac_clk);
 
-	clk_disable_unprepare(priv->mac_clk);
-	clk_put(priv->mac_clk);
-
 	free_netdev(dev);
 	return 0;
 }

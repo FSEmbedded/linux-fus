@@ -17,17 +17,12 @@ config IMX8_MIPI_CSI2
 	tristate "IMX8 MIPI CSI2 Controller"
 	default y
 
-config IMX8_MIPI_CSI2_SAM
-	tristate "IMX8 MIPI CSI2 SAMSUNG Controller"
-	default y
-
 config IMX8_PARALLEL_CSI
 	tristate "IMX8 PARALLEL CSI Controller"
 	default y
 
 config IMX8_MIPI_CSI2_YAV
 	tristate "IMX8 MIPI CSI2 Controller Yet Another Version"
-	select V4L2_FWNODE
 	default y
 
 config MXC_CAMERA_OV5640_V3

@@ -52,11 +52,6 @@ static inline bool vcpu_el1_is_32bit(struct kvm_vcpu *vcpu)
 	return !(vcpu->arch.hcr_el2 & HCR_RW);
 }
 
-static inline bool vcpu_el1_is_32bit(struct kvm_vcpu *vcpu)
-{
-	return !(vcpu->arch.hcr_el2 & HCR_RW);
-}
-
 static inline void vcpu_reset_hcr(struct kvm_vcpu *vcpu)
 {
 	vcpu->arch.hcr_el2 = HCR_GUEST_FLAGS;

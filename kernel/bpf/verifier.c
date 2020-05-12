@@ -1702,29 +1702,6 @@ static void coerce_reg_to_size(struct bpf_reg_state *reg, int size)
 	reg->smax_value = reg->umax_value;
 }
 
-/* truncate register to smaller size (in bytes)
- * must be called with size < BPF_REG_SIZE
- */
-static void coerce_reg_to_size(struct bpf_reg_state *reg, int size)
-{
-	u64 mask;
-
-	/* clear high bits in bit representation */
-	reg->var_off = tnum_cast(reg->var_off, size);
-
-	/* fix arithmetic bounds */
-	mask = ((u64)1 << (size * 8)) - 1;
-	if ((reg->umin_value & ~mask) == (reg->umax_value & ~mask)) {
-		reg->umin_value &= mask;
-		reg->umax_value &= mask;
-	} else {
-		reg->umin_value = 0;
-		reg->umax_value = mask;
-	}
-	reg->smin_value = reg->umin_value;
-	reg->smax_value = reg->umax_value;
-}
-
 /* check whether memory at (regno + off) is accessible for t = (read | write)
  * if t==write, value_regno is a register which value is stored into memory
  * if t==read, value_regno is a register which will receive the value from memory
@@ -1863,14 +1840,6 @@ static int check_xadd(struct bpf_verifier_env *env, int insn_idx, struct bpf_ins
 	if (is_ctx_reg(env, insn->dst_reg) ||
 	    is_pkt_reg(env, insn->dst_reg)) {
 		verbose(env, "BPF_XADD stores into R%d %s is not allowed\n",
-			insn->dst_reg, is_ctx_reg(env, insn->dst_reg) ?
-			"context" : "packet");
-		return -EACCES;
-	}
-
-	if (is_ctx_reg(env, insn->dst_reg) ||
-	    is_pkt_reg(env, insn->dst_reg)) {
-		verbose("BPF_XADD stores into R%d %s is not allowed\n",
 			insn->dst_reg, is_ctx_reg(env, insn->dst_reg) ?
 			"context" : "packet");
 		return -EACCES;
@@ -2576,13 +2545,6 @@ static int check_helper_call(struct bpf_verifier_env *env, int func_id, int insn
 	err = check_func_arg(env, BPF_REG_2, fn->arg2_type, &meta);
 	if (err)
 		return err;
-	if (func_id == BPF_FUNC_tail_call) {
-		if (meta.map_ptr == NULL) {
-			verbose("verifier bug\n");
-			return -EINVAL;
-		}
-		env->insn_aux_data[insn_idx].map_ptr = meta.map_ptr;
-	}
 	err = check_func_arg(env, BPF_REG_3, fn->arg3_type, &meta);
 	if (err)
 		return err;
@@ -3585,11 +3547,6 @@ static int check_alu_op(struct bpf_verifier_env *env, struct bpf_insn *insn)
 
 		if (opcode == BPF_ARSH && BPF_CLASS(insn->code) != BPF_ALU64) {
 			verbose(env, "BPF_ARSH not supported for 32 bit ALU\n");
-			return -EINVAL;
-		}
-
-		if (opcode == BPF_ARSH && BPF_CLASS(insn->code) != BPF_ALU64) {
-			verbose("BPF_ARSH not supported for 32 bit ALU\n");
 			return -EINVAL;
 		}
 
@@ -5146,7 +5103,6 @@ static int do_check(struct bpf_verifier_env *env)
 		regs = cur_regs(env);
 		env->insn_aux_data[env->insn_idx].seen = true;
 
-		env->insn_aux_data[insn_idx].seen = true;
 		if (class == BPF_ALU || class == BPF_ALU64) {
 			err = check_alu_op(env, insn);
 			if (err)

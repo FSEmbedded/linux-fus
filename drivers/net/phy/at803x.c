@@ -85,6 +85,7 @@ MODULE_LICENSE("GPL");
 
 struct at803x_priv {
 	bool phy_reset:1;
+	u32 quirks;
 };
 
 struct at803x_context {
@@ -124,7 +125,8 @@ static int at803x_debug_reg_mask(struct phy_device *phydev, u16 reg,
 	return phy_write(phydev, AT803X_DEBUG_DATA, val);
 }
 
-static inline int at803x_set_rx_delay(struct phy_device *phydev, bool is_enabled)
+static inline int at803x_set_rx_delay(struct phy_device *phydev,
+				      bool is_enabled)
 {
 	if (is_enabled)
 		return at803x_debug_reg_mask(phydev, AT803X_DEBUG_REG_0, 0,
@@ -134,7 +136,8 @@ static inline int at803x_set_rx_delay(struct phy_device *phydev, bool is_enabled
 						AT803X_DEBUG_RX_CLK_DLY_EN, 0);
 }
 
-static inline int at803x_set_tx_delay(struct phy_device *phydev, bool is_enabled)
+static inline int at803x_set_tx_delay(struct phy_device *phydev,
+				      bool is_enabled)
 {
 	if (is_enabled)
 		return at803x_debug_reg_mask(phydev, AT803X_DEBUG_REG_5, 0,
@@ -296,6 +299,15 @@ static int at803x_probe(struct phy_device *phydev)
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
+
+	if (of_property_read_bool(dev->of_node, "at803x,led-act-blind-workaround"))
+		priv->quirks |= AT803X_LED_ACT_BLINDING_WORKAROUND;
+
+	if (of_property_read_bool(dev->of_node, "at803x,eee-disabled"))
+		priv->quirks |= AT803X_EEE_FEATURE_DISABLE;
+
+	if (of_property_read_bool(dev->of_node, "at803x,vddio-1p8v"))
+		priv->quirks |= AT803X_VDDIO_1P8V;
 
 	phydev->priv = priv;
 
@@ -520,6 +532,8 @@ static struct phy_driver at803x_driver[] = {
 	.resume			= at803x_resume,
 	.features		= PHY_GBIT_FEATURES,
 	.flags			= PHY_HAS_INTERRUPT,
+	.config_aneg		= at803x_config_aneg,
+	.read_status		= genphy_read_status,
 	.aneg_done		= at803x_aneg_done,
 	.ack_interrupt		= &at803x_ack_interrupt,
 	.config_intr		= &at803x_config_intr,

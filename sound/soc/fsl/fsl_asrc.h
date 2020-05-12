@@ -10,11 +10,8 @@
 #ifndef _FSL_ASRC_H
 #define _FSL_ASRC_H
 
-#include <sound/asound.h>
 #include <uapi/linux/mxc_asrc.h>
 #include <linux/miscdevice.h>
-
-#define ASRC_PAIR_MAX_NUM	(ASRC_PAIR_C + 1)
 
 #define IN	0
 #define OUT	1
@@ -292,11 +289,6 @@
 
 #define ASRC_CLK_MAX_NUM	16
 
-enum asrc_word_width {
-	ASRC_WIDTH_24_BIT = 0,
-	ASRC_WIDTH_16_BIT = 1,
-	ASRC_WIDTH_8_BIT  = 2,
-};
 
 struct dma_block {
 	void *dma_vaddr;
@@ -350,9 +342,10 @@ struct fsl_asrc_pair {
  * @pair: pair pointers
  * @channel_bits: width of ASRCNCR register for each pair
  * @channel_avail: non-occupied channel numbers
- * @pair_streams:indicat which substream is running
+ * @pair_streams:indicate which substream is running
  * @asrc_rate: default sample rate for ASoC Back-Ends
  * @asrc_width: default sample width for ASoC Back-Ends
+ * @name: driver name
  * @regcache_cfg: store register value of REG_ASRCFG
  */
 struct fsl_asrc {
@@ -381,6 +374,9 @@ struct fsl_asrc {
 	u32 regcache_cfg;
 	char name[20];
 };
+
+#define DMA_SDMA 0
+#define DMA_EDMA 1
 
 #define DRV_NAME "fsl-asrc-dai"
 extern struct snd_soc_component_driver fsl_asrc_component;

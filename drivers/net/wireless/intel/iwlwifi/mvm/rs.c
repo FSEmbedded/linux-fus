@@ -2720,8 +2720,7 @@ static void rs_get_initial_rate(struct iwl_mvm *mvm,
 				struct ieee80211_sta *sta,
 				struct iwl_lq_sta *lq_sta,
 				enum nl80211_band band,
-				struct rs_rate *rate,
-				bool init)
+				struct rs_rate *rate)
 {
 	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
 	int i, nentries;
@@ -2888,7 +2887,7 @@ static void rs_initialize_lq(struct iwl_mvm *mvm,
 	tbl = &(lq_sta->lq_info[active_tbl]);
 	rate = &tbl->rate;
 
-	rs_get_initial_rate(mvm, sta, lq_sta, band, rate, init);
+	rs_get_initial_rate(mvm, sta, lq_sta, band, rate);
 	rs_init_optimal_rate(mvm, sta, lq_sta);
 
 	WARN_ONCE(rate->ant != ANT_A && rate->ant != ANT_B,

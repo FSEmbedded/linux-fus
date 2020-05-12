@@ -726,14 +726,6 @@ static inline void vgic_set_underflow(struct kvm_vcpu *vcpu)
 		vgic_v3_set_underflow(vcpu);
 }
 
-static inline void vgic_set_npie(struct kvm_vcpu *vcpu)
-{
-	if (kvm_vgic_global_state.type == VGIC_V2)
-		vgic_v2_set_npie(vcpu);
-	else
-		vgic_v3_set_npie(vcpu);
-}
-
 /* Requires the ap_list_lock to be held. */
 static int compute_ap_list_depth(struct kvm_vcpu *vcpu,
 				 bool *multi_sgi)
@@ -808,9 +800,6 @@ static void vgic_flush_lr_state(struct kvm_vcpu *vcpu)
 			break;
 		}
 	}
-
-	if (npie)
-		vgic_set_npie(vcpu);
 
 	vcpu->arch.vgic_cpu.used_lrs = count;
 

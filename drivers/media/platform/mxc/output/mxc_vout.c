@@ -896,7 +896,7 @@ static int mxc_vout_buffer_prepare(struct videobuf_queue *q,
 }
 
 /*
- * Buffer queue funtion will be called from the videobuf layer when _QBUF
+ * Buffer queue function will be called from the videobuf layer when _QBUF
  * ioctl is called. It is used to enqueue buffer, which is ready to be
  * displayed.
  * This function is protected by q->irqlock.

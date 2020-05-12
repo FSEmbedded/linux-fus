@@ -54,9 +54,6 @@ extra-y				+= head64.o vmlinux.lds
 obj-$(CONFIG_SYSFS)		+= nospec-sysfs.o
 CFLAGS_REMOVE_nospec-branch.o	+= $(CC_FLAGS_EXPOLINE)
 
-obj-$(CONFIG_SYSFS)		+= nospec-sysfs.o
-CFLAGS_REMOVE_nospec-branch.o	+= $(CC_FLAGS_EXPOLINE)
-
 obj-$(CONFIG_MODULES)		+= module.o
 obj-$(CONFIG_SMP)		+= smp.o
 obj-$(CONFIG_SCHED_TOPOLOGY)	+= topology.o

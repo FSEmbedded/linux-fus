@@ -74,10 +74,9 @@ static int wm8524_startup(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-	if (!rtd->dai_link->be_hw_params_fixup)
-		snd_pcm_hw_constraint_list(substream->runtime, 0,
-					   SNDRV_PCM_HW_PARAM_RATE,
-					   &wm8524->rate_constraint);
+	snd_pcm_hw_constraint_list(substream->runtime, 0,
+				   SNDRV_PCM_HW_PARAM_RATE,
+				   &wm8524->rate_constraint);
 
 	gpiod_set_value_cansleep(wm8524->mute, 1);
 

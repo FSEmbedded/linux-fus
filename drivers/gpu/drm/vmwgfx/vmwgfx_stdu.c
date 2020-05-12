@@ -713,7 +713,6 @@ static void vmw_stdu_bo_cpu_commit(struct vmw_kms_dirty *dirty)
 		vmw_fifo_commit(dev_priv, sizeof(*cmd));
 	}
 
-	ttm_bo_kunmap(&guest_map);
 out_cleanup:
 	ddirty->left = ddirty->top = ddirty->fb_left = ddirty->fb_top = S32_MAX;
 	ddirty->right = ddirty->bottom = S32_MIN;

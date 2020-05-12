@@ -46,7 +46,6 @@ enum typec_data_role {
 enum typec_role {
 	TYPEC_SINK,
 	TYPEC_SOURCE,
-	TYPEC_ROLE_UNKNOWN,
 };
 
 enum typec_pwr_opmode {
@@ -236,8 +235,6 @@ void typec_set_data_role(struct typec_port *port, enum typec_data_role role);
 void typec_set_pwr_role(struct typec_port *port, enum typec_role role);
 void typec_set_vconn_role(struct typec_port *port, enum typec_role role);
 void typec_set_pwr_opmode(struct typec_port *port, enum typec_pwr_opmode mode);
-enum typec_port_type typec_get_port_type(struct device *dev);
-enum typec_role typec_get_power_role(struct device *dev);
 
 int typec_set_orientation(struct typec_port *port,
 			  enum typec_orientation orientation);

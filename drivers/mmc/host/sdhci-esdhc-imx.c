@@ -55,7 +55,7 @@
 #define  ESDHC_MIX_CTRL_AUTO_TUNE_EN	(1 << 24)
 #define  ESDHC_MIX_CTRL_FBCLK_SEL	(1 << 25)
 #define  ESDHC_MIX_CTRL_HS400_EN	(1 << 26)
-#define  ESDHC_MIX_CTRL_HS400_ES	(1 << 27)
+#define  ESDHC_MIX_CTRL_HS400_ES_EN	(1 << 27)
 /* Bits 3 and 6 are not SDHCI standard definitions */
 #define  ESDHC_MIX_CTRL_SDHCI_MASK	0xb7
 /* Tuning bits */
@@ -245,7 +245,7 @@ static struct esdhc_soc_data usdhc_imx7ulp_data = {
 			| ESDHC_FLAG_PMQOS,
 };
 
-static struct esdhc_soc_data usdhc_imx8qm_data = {
+static struct esdhc_soc_data usdhc_imx8qxp_data = {
 	.flags = ESDHC_FLAG_USDHC | ESDHC_FLAG_STD_TUNING
 			| ESDHC_FLAG_HAVE_CAP1 | ESDHC_FLAG_HS200
 			| ESDHC_FLAG_HS400 | ESDHC_FLAG_HS400_ES
@@ -311,7 +311,7 @@ static const struct of_device_id imx_esdhc_dt_ids[] = {
 	{ .compatible = "fsl,imx6ull-usdhc", .data = &usdhc_imx6ull_data, },
 	{ .compatible = "fsl,imx7d-usdhc", .data = &usdhc_imx7d_data, },
 	{ .compatible = "fsl,imx7ulp-usdhc", .data = &usdhc_imx7ulp_data, },
-	{ .compatible = "fsl,imx8qm-usdhc", .data = &usdhc_imx8qm_data, },
+	{ .compatible = "fsl,imx8qxp-usdhc", .data = &usdhc_imx8qxp_data, },
 	{ .compatible = "fsl,imx8mm-usdhc", .data = &usdhc_imx8mm_data, },
 	{ /* sentinel */ }
 };
@@ -970,9 +970,9 @@ static void esdhc_hs400_enhanced_strobe(struct mmc_host *mmc, struct mmc_ios *io
 
 	m = readl(host->ioaddr + ESDHC_MIX_CTRL);
 	if (ios->enhanced_strobe)
-		m |= ESDHC_MIX_CTRL_HS400_ES;
+		m |= ESDHC_MIX_CTRL_HS400_ES_EN;
 	else
-		m &= ~ESDHC_MIX_CTRL_HS400_ES;
+		m &= ~ESDHC_MIX_CTRL_HS400_ES_EN;
 	writel(m, host->ioaddr + ESDHC_MIX_CTRL);
 }
 
@@ -1098,6 +1098,7 @@ static void esdhc_set_uhs_signaling(struct sdhci_host *host, unsigned timing)
 	case MMC_TIMING_UHS_SDR25:
 	case MMC_TIMING_UHS_SDR50:
 	case MMC_TIMING_UHS_SDR104:
+	case MMC_TIMING_SD_HS:
 	case MMC_TIMING_MMC_HS:
 	case MMC_TIMING_MMC_HS200:
 		writel(m, host->ioaddr + ESDHC_MIX_CTRL);
@@ -1229,13 +1230,6 @@ static void sdhci_esdhc_imx_hwinit(struct sdhci_host *host)
 			| ESDHC_BURST_LEN_EN_INCR,
 			host->ioaddr + SDHCI_HOST_CONTROL);
 
-		/*
-		 * erratum ESDHC_FLAG_ERR004536 fix for MX6Q TO1.2 and MX6DL
-		 * TO1.1, it's harmless for MX6SL
-		 */
-		writel(readl(host->ioaddr + 0x6c) & ~BIT(7),
-			host->ioaddr + 0x6c);
-
 		/* disable DLL_CTRL delay line settings */
 		writel(0x0, host->ioaddr + ESDHC_DLL_CTRL);
 
@@ -1273,9 +1267,9 @@ static void sdhci_esdhc_imx_hwinit(struct sdhci_host *host)
 			writel(tmp, host->ioaddr + ESDHC_TUNING_CTRL);
 		} else if (imx_data->socdata->flags & ESDHC_FLAG_MAN_TUNING) {
 			/*
-			 * ESDHC_STD_TUNING_EN may be configed in bootloader code,
-			 * so clear this bit here to make sure the manual tuning
-			 * can work.
+			 * ESDHC_STD_TUNING_EN may be configed in bootloader
+			 * or ROM code, so clear this bit here to make sure
+			 * the manual tuning can work.
 			 */
 			tmp = readl(host->ioaddr + ESDHC_TUNING_CTRL);
 			tmp &= ~ESDHC_STD_TUNING_EN;
@@ -1287,6 +1281,7 @@ static void sdhci_esdhc_imx_hwinit(struct sdhci_host *host)
 static void esdhc_cqe_enable(struct mmc_host *mmc)
 {
 	struct sdhci_host *host = mmc_priv(mmc);
+	struct cqhci_host *cq_host = mmc->cqe_private;
 	u32 reg;
 	u16 mode;
 	int count = 10;
@@ -1318,6 +1313,18 @@ static void esdhc_cqe_enable(struct mmc_host *mmc)
 	if (!(host->quirks2 & SDHCI_QUIRK2_SUPPORT_SINGLE))
 		mode |= SDHCI_TRNS_BLK_CNT_EN;
 	sdhci_writew(host, mode, SDHCI_TRANSFER_MODE);
+
+	/*
+	 * Though Runtime resume reset the entire host controller,
+	 * but do not impact the CQHCI side, need to clear the
+	 * HALT bit, avoid CQHCI stuck in the first request when
+	 * system resume back.
+	 */
+	cqhci_writel(cq_host, 0, CQHCI_CTL);
+	if (cqhci_readl(cq_host, CQHCI_CTL) && CQHCI_HALT)
+		dev_err(mmc_dev(host->mmc),
+			"failed to exit halt state when enable CQE\n");
+
 
 	sdhci_cqe_enable(mmc);
 }
@@ -1358,6 +1365,9 @@ sdhci_esdhc_imx_probe_dt(struct platform_device *pdev,
 
 	if (of_find_property(np, "no-1-8-v", NULL))
 		host->quirks2 |= SDHCI_QUIRK2_NO_1_8_V;
+
+	if (of_find_property(np, "auto-cmd23-broken", NULL))
+		host->quirks2 |= SDHCI_QUIRK2_ACMD23_BROKEN;
 
 	if (of_property_read_u32(np, "fsl,delay-line", &boarddata->delay_line))
 		boarddata->delay_line = 0;
@@ -1771,6 +1781,16 @@ static int sdhci_esdhc_runtime_resume(struct device *dev)
 	err = clk_prepare_enable(imx_data->clk_ahb);
 	if (err)
 		return err;
+
+	if (imx_data->socdata->flags & ESDHC_FLAG_BUSFREQ)
+		request_bus_freq(BUS_FREQ_HIGH);
+
+	if (imx_data->socdata->flags & ESDHC_FLAG_PMQOS)
+		pm_qos_add_request(&imx_data->pm_qos_req,
+			PM_QOS_CPU_DMA_LATENCY, 0);
+
+	if (imx_data->socdata->flags & ESDHC_FLAG_CLK_RATE_LOST_IN_PM_RUNTIME)
+		clk_set_rate(imx_data->clk_per, pltfm_host->clock);
 
 	if (!sdhci_sdio_irq_enabled(host)) {
 		err = clk_prepare_enable(imx_data->clk_per);

@@ -719,8 +719,8 @@ int init_mmdc_ddr3_settings_imx6_smp(struct platform_device *busfreq_pdev)
 		(ddr_settings_size * 8) + 8);
 
 	if (wfe_freq_change_iram_base & (FNCPY_ALIGN - 1))
-			wfe_freq_change_iram_base += FNCPY_ALIGN -
-			((uintptr_t)wfe_freq_change_iram_base % (FNCPY_ALIGN));
+		wfe_freq_change_iram_base += FNCPY_ALIGN -
+		((uintptr_t)wfe_freq_change_iram_base % (FNCPY_ALIGN));
 
 	wfe_code_size = (&wfe_smp_freq_change_end -
 		&wfe_smp_freq_change_start) *4;
@@ -739,7 +739,7 @@ int init_mmdc_ddr3_settings_imx6_smp(struct platform_device *busfreq_pdev)
 		ddr_settings_size) * 8 + 16)
 		> ddr_freq_change_total_size) {
 		printk(KERN_ERR "Not enough memory for DDR Freq scale.\n");
-		return EINVAL;
+		return -EINVAL;
 	}
 
 	if (cpu_is_imx6q()) {

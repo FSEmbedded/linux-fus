@@ -50,11 +50,11 @@ static void cpufreq_governor_daemon_handler(struct work_struct *work)
 		"/cpufreq/scaling_governor");
 
 	for (i = 0; i < MAX_CLUSTER_NUM; i++) {
-		fd = sys_open((const char __user __force *)cluster_governor[i],
+		fd = ksys_open((const char __user __force *)cluster_governor[i],
 				O_RDWR, 0700);
 		if (fd >= 0) {
-			sys_write(fd, "schedutil", strlen("schedutil"));
-			sys_close(fd);
+			ksys_write(fd, "schedutil", strlen("schedutil"));
+			ksys_close(fd);
 			pr_info("switch cluster %d cpu-freq governor to schedutil\n",
 				i);
 		} else {
@@ -109,7 +109,8 @@ static int imx8_cpufreq_init(struct cpufreq_policy *policy)
 	 */
 	cpumask_copy(policy->cpus, topology_core_cpumask(policy->cpu));
 
-	ret = cpufreq_table_validate_and_show(policy, freq_table[cluster_id]);
+	policy->freq_table = freq_table[cluster_id];
+	ret = cpufreq_table_validate_and_sort(policy);
 	if (ret) {
 		pr_err("%s: invalid frequency table: %d\n", __func__, ret);
 		return ret;
@@ -131,7 +132,7 @@ static void imx8_cpufreq_ready(struct cpufreq_policy *policy)
 	unsigned int cluster_id = topology_physical_package_id(policy->cpu);
 
 	if (of_find_property(np, "#cooling-cells", NULL)) {
-		cdev[cluster_id] = of_cpufreq_cooling_register(np, policy);
+		cdev[cluster_id] = of_cpufreq_cooling_register(policy);
 
 		if (IS_ERR(cdev[cluster_id]) && PTR_ERR(cdev[cluster_id]) != -ENOSYS) {
 			pr_err("cpu%d is not running as cooling device: %ld\n",

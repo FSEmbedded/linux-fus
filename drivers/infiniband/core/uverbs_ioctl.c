@@ -313,15 +313,6 @@ static int uverbs_set_attr(struct bundle_priv *pbundle,
 
 	__set_bit(attr_bkey, pbundle->bundle.attr_present);
 
-	for (; i < method_spec->num_buckets; i++) {
-		struct uverbs_attr_spec_hash *attr_spec_bucket =
-			method_spec->attr_buckets[i];
-
-		if (!bitmap_empty(attr_spec_bucket->mandatory_attrs_bitmask,
-				  attr_spec_bucket->num_attrs))
-			return -EINVAL;
-	}
-
 	return 0;
 }
 

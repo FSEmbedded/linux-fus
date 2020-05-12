@@ -842,11 +842,6 @@ nft_target_select_ops(const struct nft_ctx *ctx,
 	    strcmp(tg_name, "standard") == 0)
 		return ERR_PTR(-EINVAL);
 
-	if (strcmp(tg_name, XT_ERROR_TARGET) == 0 ||
-	    strcmp(tg_name, XT_STANDARD_TARGET) == 0 ||
-	    strcmp(tg_name, "standard") == 0)
-		return ERR_PTR(-EINVAL);
-
 	/* Re-use the existing target if it's already loaded. */
 	list_for_each_entry(nft_target, &nft_target_list, head) {
 		struct xt_target *target = nft_target->ops.data;

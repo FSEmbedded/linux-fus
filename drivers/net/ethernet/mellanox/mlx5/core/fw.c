@@ -35,7 +35,6 @@
 #include <linux/mlx5/eswitch.h>
 #include <linux/module.h>
 #include "mlx5_core.h"
-#include "eswitch.h"
 #include "../../mlxfw/mlxfw.h"
 
 static int mlx5_cmd_query_adapter(struct mlx5_core_dev *dev, u32 *out,

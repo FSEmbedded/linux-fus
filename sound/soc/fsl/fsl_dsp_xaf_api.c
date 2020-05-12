@@ -47,7 +47,7 @@ int xaf_comp_set_config(struct xf_client *client, struct xaf_comp *p_comp,
 
 	for (i = 0; i < num_param; i++) {
 		smsg[i].id = param[i].id;
-		smsg[i].mixData.value = param[i].mixData.value;
+		smsg[i].value = param[i].value;
 	}
 
 	/* ...set command parameters */
@@ -129,7 +129,7 @@ int xaf_comp_get_config(struct xf_client *client, struct xaf_comp *p_comp,
 	}
 
 	for (i = 0; i < num_param; i++)
-		param[i].mixData.value = smsg[i].mixData.value;
+		param[i].value = smsg[i].value;
 
 	return 0;
 }

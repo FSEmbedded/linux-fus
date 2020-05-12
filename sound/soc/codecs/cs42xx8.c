@@ -227,17 +227,21 @@ static int cs42xx8_set_dai_fmt(struct snd_soc_dai *codec_dai,
 			   CS42XX8_INTF_DAC_DIF_MASK |
 			   CS42XX8_INTF_ADC_DIF_MASK, val);
 
-	/* Set master/slave audio interface */
-	switch (format & SND_SOC_DAIFMT_MASTER_MASK) {
-	case SND_SOC_DAIFMT_CBS_CFS:
-		cs42xx8->slave_mode = true;
-		break;
-	case SND_SOC_DAIFMT_CBM_CFM:
-		cs42xx8->slave_mode = false;
-		break;
-	default:
-		dev_err(component->dev, "unsupported master/slave mode\n");
-		return -EINVAL;
+	if (cs42xx8->slave_mode[0] == cs42xx8->slave_mode[1]) {
+		/* Set master/slave audio interface */
+		switch (format & SND_SOC_DAIFMT_MASTER_MASK) {
+		case SND_SOC_DAIFMT_CBS_CFS:
+			cs42xx8->slave_mode[0] = true;
+			cs42xx8->slave_mode[1] = true;
+			break;
+		case SND_SOC_DAIFMT_CBM_CFM:
+			cs42xx8->slave_mode[0] = false;
+			cs42xx8->slave_mode[1] = false;
+			break;
+		default:
+			dev_err(component->dev, "unsupported master/slave mode\n");
+			return -EINVAL;
+		}
 	}
 
 	return 0;
@@ -276,7 +280,7 @@ static int cs42xx8_hw_params(struct snd_pcm_substream *substream,
 			else if (rate[i] > 100000 && rate[i] < 200000)
 				fm[i] = CS42XX8_FM_QUAD;
 			else {
-				dev_err(codec->dev,
+				dev_err(component->dev,
 				"unsupported sample rate or rate combine\n");
 				return -EINVAL;
 			}
@@ -316,12 +320,12 @@ static int cs42xx8_hw_params(struct snd_pcm_substream *substream,
 	cs42xx8->rate[tx] = params_rate(params);
 
 	if (cs42xx8->is_tdm && !cs42xx8->slave_mode[tx]) {
-		dev_err(codec->dev, "TDM mode is unsupported in master mode\n");
+		dev_err(component->dev, "TDM mode is unsupported in master mode\n");
 		return -EINVAL;
 	}
 
 	if (cs42xx8->is_tdm && (cs42xx8->sysclk < 256 * cs42xx8->rate[tx])) {
-		dev_err(codec->dev, "unsupported sysclk for TDM mode\n");
+		dev_err(component->dev, "unsupported sysclk for TDM mode\n");
 		return -EINVAL;
 	}
 
@@ -339,8 +343,8 @@ static int cs42xx8_hw_free(struct snd_pcm_substream *substream,
 			     struct snd_soc_dai *dai)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_codec *codec = rtd->codec;
-	struct cs42xx8_priv *cs42xx8 = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = rtd->codec_dai->component;
+	struct cs42xx8_priv *cs42xx8 = snd_soc_component_get_drvdata(component);
 	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
 
 	cs42xx8->rate[tx] = 0;
@@ -512,7 +516,8 @@ EXPORT_SYMBOL_GPL(cs42xx8_of_match);
 
 int cs42xx8_probe(struct device *dev, struct regmap *regmap)
 {
-	const struct of_device_id *of_id = of_match_device(cs42xx8_of_match, dev);
+	const struct of_device_id *of_id =
+		of_match_device(cs42xx8_of_match, dev);
 	struct device_node *np = dev->of_node;
 	struct cs42xx8_priv *cs42xx8;
 	int ret, val, i;
@@ -697,7 +702,8 @@ static int cs42xx8_runtime_suspend(struct device *dev)
 #endif
 
 const struct dev_pm_ops cs42xx8_pm = {
-	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend, pm_runtime_force_resume)
+	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
+			pm_runtime_force_resume)
 	SET_RUNTIME_PM_OPS(cs42xx8_runtime_suspend, cs42xx8_runtime_resume, NULL)
 };
 EXPORT_SYMBOL_GPL(cs42xx8_pm);

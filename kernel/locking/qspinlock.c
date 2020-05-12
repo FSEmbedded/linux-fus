@@ -501,9 +501,6 @@ locked:
 	/* Either somebody is queued behind us or _Q_PENDING_VAL is set */
 	set_locked(lock);
 
-	/* Either somebody is queued behind us or _Q_PENDING_VAL is set */
-	set_locked(lock);
-
 	/*
 	 * contended path; wait for next if not observed yet, release.
 	 */

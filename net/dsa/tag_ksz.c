@@ -91,9 +91,6 @@ static struct sk_buff *ksz_rcv(struct sk_buff *skb, struct net_device *dev,
 	if (!skb->dev)
 		return NULL;
 
-	if (unlikely(ds->cpu_port_mask & BIT(source_port)))
-		return NULL;
-
 	pskb_trim_rcsum(skb, skb->len - KSZ_EGRESS_TAG_LEN);
 
 	return skb;

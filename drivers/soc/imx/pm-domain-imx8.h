@@ -38,7 +38,7 @@ struct imx8_pm_domain {
 	int (*suspend)(void);
 	void (*resume)(void);
 	sc_rsrc_t rsrc_id;
-	bool dev_attached;
+	bool runtime_idle_active;
 	struct list_head clks;
 
 	/* indicate the possible clk state lost */

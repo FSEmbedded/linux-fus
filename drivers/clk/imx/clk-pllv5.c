@@ -159,7 +159,7 @@ static int clk_pllv5_is_enabled(struct clk_hw *hw)
 }
 
 static const struct clk_ops clk_pllv5_ops = {
-	.recalc_rate 	= clk_pllv5_recalc_rate,
+	.recalc_rate	= clk_pllv5_recalc_rate,
 	.round_rate	= clk_pllv5_round_rate,
 	.set_rate	= clk_pllv5_set_rate,
 	.enable		= clk_pllv5_enable,

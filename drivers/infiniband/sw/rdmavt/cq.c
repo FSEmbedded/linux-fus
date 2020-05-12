@@ -121,8 +121,6 @@ void rvt_cq_enter(struct rvt_cq *cq, struct ib_wc *entry, bool solicited)
 	if (cq->notify == IB_CQ_NEXT_COMP ||
 	    (cq->notify == IB_CQ_SOLICITED &&
 	     (solicited || entry->status != IB_WC_SUCCESS))) {
-		struct kthread_worker *worker;
-
 		/*
 		 * This will cause send_complete() to be called in
 		 * another thread.

@@ -46,8 +46,6 @@
 
 #include <linux/nospec.h>
 
-#include <linux/nospec.h>
-
 #include "i915_drv.h"
 #include "gvt.h"
 
@@ -992,13 +990,6 @@ static ssize_t intel_vgpu_write(struct mdev_device *mdev,
 	return done;
 write_err:
 	return -EFAULT;
-}
-
-static inline bool intel_vgpu_in_aperture(struct intel_vgpu *vgpu,
-					  unsigned long off)
-{
-	return off >= vgpu_aperture_offset(vgpu) &&
-		off < vgpu_aperture_offset(vgpu) + vgpu_aperture_sz(vgpu);
 }
 
 static int intel_vgpu_mmap(struct mdev_device *mdev, struct vm_area_struct *vma)

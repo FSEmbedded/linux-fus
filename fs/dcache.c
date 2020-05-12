@@ -486,12 +486,6 @@ void __d_drop(struct dentry *dentry)
 		write_seqcount_invalidate(&dentry->d_seq);
 	}
 }
-
-void __d_drop(struct dentry *dentry)
-{
-	___d_drop(dentry);
-	dentry->d_hash.pprev = NULL;
-}
 EXPORT_SYMBOL(__d_drop);
 
 void d_drop(struct dentry *dentry)

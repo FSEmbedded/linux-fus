@@ -66,6 +66,28 @@ void imx_gpc_set_arm_power_down_timing(u32 sw2iso, u32 sw);
 void imx25_pm_init(void);
 void imx27_pm_init(void);
 void imx5_pmu_init(void);
+unsigned int imx_gpc_is_mf_mix_off(void);
+void imx6sx_set_m4_highfreq(bool high_freq);
+void imx_mu_enable_m4_irqs_in_gic(bool enable);
+#ifdef CONFIG_HAVE_IMX_GPC
+void imx_gpc_add_m4_wake_up_irq(u32 irq, bool enable);
+unsigned int imx_gpc_is_m4_sleeping(void);
+#else
+static inline void imx_gpc_add_m4_wake_up_irq(u32 irq, bool enable) {}
+static inline unsigned int imx_gpc_is_m4_sleeping(void) { return 0; }
+#endif
+void imx_gpc_hold_m4_in_sleep(void);
+void imx_gpc_release_m4_in_sleep(void);
+void mcc_receive_from_mu_buffer(unsigned int index, unsigned int *data);
+void mcc_send_via_mu_buffer(unsigned int index, unsigned int data);
+bool imx_mu_is_m4_in_low_freq(void);
+bool imx_mu_is_m4_in_stop(void);
+void imx_mu_set_m4_run_mode(void);
+#ifdef CONFIG_HAVE_IMX_MU
+int imx_mu_lpm_ready(bool ready);
+#else
+static inline int imx_mu_lpm_ready(bool ready) { return 0; }
+#endif
 
 enum mxc_cpu_pwr_mode {
 	WAIT_CLOCKED,		/* wfi only */
@@ -74,6 +96,26 @@ enum mxc_cpu_pwr_mode {
 	STOP_POWER_ON,		/* just STOP */
 	STOP_POWER_OFF,		/* STOP + SRPG */
 };
+
+enum mx3_cpu_pwr_mode {
+	MX3_RUN,
+	MX3_WAIT,
+	MX3_DOZE,
+	MX3_SLEEP,
+};
+
+enum imx7ulp_cpu_pwr_mode {
+	HSRUN,
+	RUN,
+	VLPR,
+	WAIT,
+	VLPW,
+	STOP,
+	VLPS,
+	VLLS,
+};
+
+void mx3_cpu_lp_set(enum mx3_cpu_pwr_mode mode);
 
 void imx_enable_cpu(int cpu, bool enable);
 void imx_set_cpu_jump(int cpu, void *jump_addr);

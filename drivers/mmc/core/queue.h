@@ -121,22 +121,4 @@ static inline int mmc_cqe_qcnt(struct mmc_queue *mq)
 	       mq->in_flight[MMC_ISSUE_ASYNC];
 }
 
-void mmc_cqe_check_busy(struct mmc_queue *mq);
-void mmc_cqe_recovery_notifier(struct mmc_request *mrq);
-
-enum mmc_issue_type mmc_issue_type(struct mmc_queue *mq, struct request *req);
-
-static inline int mmc_tot_in_flight(struct mmc_queue *mq)
-{
-	return mq->in_flight[MMC_ISSUE_SYNC] +
-	       mq->in_flight[MMC_ISSUE_DCMD] +
-	       mq->in_flight[MMC_ISSUE_ASYNC];
-}
-
-static inline int mmc_cqe_qcnt(struct mmc_queue *mq)
-{
-	return mq->in_flight[MMC_ISSUE_DCMD] +
-	       mq->in_flight[MMC_ISSUE_ASYNC];
-}
-
 #endif

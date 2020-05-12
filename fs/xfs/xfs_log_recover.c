@@ -4725,8 +4725,7 @@ STATIC int
 xlog_recover_process_cui(
 	struct xfs_trans		*parent_tp,
 	struct xfs_ail			*ailp,
-	struct xfs_log_item		*lip,
-	struct xfs_defer_ops		*dfops)
+	struct xfs_log_item		*lip)
 {
 	struct xfs_cui_log_item		*cuip;
 	int				error;
@@ -4766,8 +4765,7 @@ STATIC int
 xlog_recover_process_bui(
 	struct xfs_trans		*parent_tp,
 	struct xfs_ail			*ailp,
-	struct xfs_log_item		*lip,
-	struct xfs_defer_ops		*dfops)
+	struct xfs_log_item		*lip)
 {
 	struct xfs_bui_log_item		*buip;
 	int				error;
@@ -4898,7 +4896,6 @@ xlog_recover_process_intents(
 #if defined(DEBUG) || defined(XFS_WARN)
 	last_lsn = xlog_assign_lsn(log->l_curr_cycle, log->l_curr_block);
 #endif
-	xfs_defer_init(&dfops, &firstfsb);
 	while (lip != NULL) {
 		/*
 		 * We're done when we see something other than an intent.

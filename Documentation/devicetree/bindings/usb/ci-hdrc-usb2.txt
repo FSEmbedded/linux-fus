@@ -10,9 +10,6 @@ Required properties:
 	"fsl,imx6sx-usb"
 	"fsl,imx6ul-usb"
 	"fsl,imx7d-usb"
-	"fsl,imx7ulp-usb"
-	"fsl,imx8qm-usb"
-	"fsl,imx8mm-usb"
 	"lsi,zevio-usb"
 	"qcom,ci-hdrc"
 	"chipidea,usb2"
@@ -83,6 +80,8 @@ Optional properties:
   controller. It's expected that a mux state of 0 indicates device mode and a
   mux state of 1 indicates host mode.
 - mux-control-names: Shall be "usb_switch" if mux-controls is specified.
+- ci-disable-lpm: Some chipidea hardware need to disable low power mode
+- phy-charger-detection: enable USB PHY charger detection function
 
 i.mx specific properties
 - fsl,usbmisc: phandler of non-core register device, with one

@@ -36,7 +36,7 @@ int imx_pmx_set_one_pin_mem(struct imx_pinctrl *ipctl, struct imx_pin *pin)
 	unsigned int pin_id = pin->pin;
 	struct imx_pin_reg *pin_reg;
 	struct imx_pin_memmap *pin_memmap;
-	pin_reg = &info->pin_regs[pin_id];
+	pin_reg = &ipctl->pin_regs[pin_id];
 	pin_memmap = &pin->pin_conf.pin_memmap;
 
 	if (pin_reg->mux_reg == -1) {
@@ -109,11 +109,11 @@ int imx_pinconf_backend_get_mem(struct pinctrl_dev *pctldev,
 			    unsigned pin_id, unsigned long *config)
 {
 	struct imx_pinctrl *ipctl = pinctrl_dev_get_drvdata(pctldev);
-	struct imx_pinctrl_soc_info *info = ipctl->info;
-	const struct imx_pin_reg *pin_reg = &info->pin_regs[pin_id];
+	const struct imx_pinctrl_soc_info *info = ipctl->info;
+	const struct imx_pin_reg *pin_reg = &ipctl->pin_regs[pin_id];
 
 	if (pin_reg->conf_reg == -1) {
-		dev_err(info->dev, "Pin(%s) does not support config function\n",
+		dev_err(ipctl->dev, "Pin(%s) does not support config function\n",
 			info->pins[pin_id].name);
 		return -EINVAL;
 	}
@@ -131,12 +131,12 @@ int imx_pinconf_backend_set_mem(struct pinctrl_dev *pctldev,
 			    unsigned num_configs)
 {
 	struct imx_pinctrl *ipctl = pinctrl_dev_get_drvdata(pctldev);
-	struct imx_pinctrl_soc_info *info = ipctl->info;
-	const struct imx_pin_reg *pin_reg = &info->pin_regs[pin_id];
+	const struct imx_pinctrl_soc_info *info = ipctl->info;
+	const struct imx_pin_reg *pin_reg = &ipctl->pin_regs[pin_id];
 	int i;
 
 	if (pin_reg->conf_reg == -1) {
-		dev_err(info->dev, "Pin(%s) does not support config function\n",
+		dev_err(ipctl->dev, "Pin(%s) does not support config function\n",
 			info->pins[pin_id].name);
 		return -EINVAL;
 	}
@@ -163,11 +163,12 @@ int imx_pinconf_backend_set_mem(struct pinctrl_dev *pctldev,
 	return 0;
 }
 
-int imx_pinctrl_parse_pin_mem(struct imx_pinctrl_soc_info *info,
+int imx_pinctrl_parse_pin_mem(struct imx_pinctrl *ipctl,
 			  unsigned int *grp_pin_id, struct imx_pin *pin,
 			  const __be32 **list_p, u32 generic_config)
 {
 	struct imx_pin_memmap *pin_memmap = &pin->pin_conf.pin_memmap;
+	const struct imx_pinctrl_soc_info *info = ipctl->info;
 	u32 mux_reg = be32_to_cpu(*((*list_p)++));
 	u32 conf_reg;
 	u32 config;
@@ -183,7 +184,7 @@ int imx_pinctrl_parse_pin_mem(struct imx_pinctrl_soc_info *info,
 	}
 
 	pin_id = (mux_reg != -1) ? mux_reg / 4 : conf_reg / 4;
-	pin_reg = &info->pin_regs[pin_id];
+	pin_reg = &ipctl->pin_regs[pin_id];
 	pin->pin = pin_id;
 	*grp_pin_id = pin_id;
 	pin_reg->mux_reg = mux_reg;
@@ -205,7 +206,7 @@ int imx_pinctrl_parse_pin_mem(struct imx_pinctrl_soc_info *info,
 		pin_memmap->config = config & ~IMX_PAD_SION;
 	}
 
-	dev_dbg(info->dev, "%s: 0x%x 0x%08lx", info->pins[pin_id].name,
+	dev_dbg(ipctl->dev, "%s: 0x%x 0x%08lx", info->pins[pin_id].name,
 			pin_memmap->mux_mode, pin_memmap->config);
 
 	return 0;

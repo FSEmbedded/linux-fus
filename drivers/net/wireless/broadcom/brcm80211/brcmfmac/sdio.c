@@ -332,8 +332,7 @@ struct rte_console {
 #define BRCMF_SDIO_MAX_ACCESS_ERRORS	5
 
 static void brcmf_sdio_firmware_callback(struct device *dev, int err,
-					 const struct firmware *code,
-					 void *nvram, u32 nvram_len);
+					 struct brcmf_fw_request *fwreq);
 
 #ifdef DEBUG
 /* Device console log buffer state */
@@ -627,6 +626,7 @@ BRCMF_FW_DEF(43455, "brcmfmac43455-sdio");
 BRCMF_FW_DEF(4354, "brcmfmac4354-sdio");
 BRCMF_FW_DEF(4356, "brcmfmac4356-sdio");
 BRCMF_FW_DEF(4373, "brcmfmac4373-sdio");
+BRCMF_FW_DEF(43012, "brcmfmac43012-sdio");
 
 static const struct brcmf_firmware_mapping brcmf_sdio_fwnames[] = {
 	BRCMF_FW_ENTRY(BRCM_CC_43143_CHIP_ID, 0xFFFFFFFF, 43143),
@@ -646,7 +646,8 @@ static const struct brcmf_firmware_mapping brcmf_sdio_fwnames[] = {
 	BRCMF_FW_ENTRY(BRCM_CC_4345_CHIP_ID, 0xFFFFFFC0, 43455),
 	BRCMF_FW_ENTRY(BRCM_CC_4354_CHIP_ID, 0xFFFFFFFF, 4354),
 	BRCMF_FW_ENTRY(BRCM_CC_4356_CHIP_ID, 0xFFFFFFFF, 4356),
-	BRCMF_FW_ENTRY(CY_CC_4373_CHIP_ID, 0xFFFFFFFF, 4373)
+	BRCMF_FW_ENTRY(CY_CC_4373_CHIP_ID, 0xFFFFFFFF, 4373),
+	BRCMF_FW_ENTRY(CY_CC_43012_CHIP_ID, 0xFFFFFFFF, 43012)
 };
 
 static void pkt_align(struct sk_buff *p, int len, int align)
@@ -2450,9 +2451,20 @@ static void brcmf_sdio_bus_stop(struct device *dev)
 		/* Force backplane clocks to assure F2 interrupt propagates */
 		saveclk = brcmf_sdiod_readb(sdiodev, SBSDIO_FUNC1_CHIPCLKCSR,
 					    &err);
-		if (!err)
-			brcmf_sdiod_writeb(sdiodev, SBSDIO_FUNC1_CHIPCLKCSR,
-					   (saveclk | SBSDIO_FORCE_HT), &err);
+		if (!err) {
+			if (bus->ci->chip == CY_CC_43012_CHIP_ID) {
+				brcmf_sdiod_writeb(sdiodev,
+						   SBSDIO_FUNC1_CHIPCLKCSR,
+						   (saveclk |
+						   SBSDIO_HT_AVAIL_REQ),
+						   &err);
+			} else {
+				brcmf_sdiod_writeb(sdiodev,
+						   SBSDIO_FUNC1_CHIPCLKCSR,
+						   (saveclk | SBSDIO_FORCE_HT),
+						   &err);
+			}
+		}
 		if (err)
 			brcmf_err("Failed to force clock for F2: err %d\n",
 				  err);
@@ -2558,11 +2570,15 @@ brcmf_sdio_ulp_preinit(struct device *dev)
 		  M_ULP_WAKE_IND(sdiodev->shm_ulp));
 }
 
+#define BRCMF_SDIO_FW_CODE	0
+#define BRCMF_SDIO_FW_NVRAM	1
+
 /* Reinitialize ARM because In DS1 mode ARM got off */
 static int
 brcmf_sdio_ulp_reinit_fw(struct brcmf_sdio *bus)
 {
 	struct brcmf_sdio_dev *sdiodev = bus->sdiodev;
+	struct brcmf_fw_request *fwreq;
 	int err = 0;
 
 	/* After firmware redownload tx/rx seq are reset accordingly
@@ -2573,11 +2589,24 @@ brcmf_sdio_ulp_reinit_fw(struct brcmf_sdio *bus)
 	bus->rx_seq = 0;
 	bus->tx_max = 4;
 
-	err = brcmf_fw_get_firmwares(sdiodev->dev, BRCMF_FW_REQUEST_NVRAM,
-				     sdiodev->fw_name, sdiodev->nvram_name,
+	fwreq = kzalloc(sizeof(fwreq) + 2 * sizeof(struct brcmf_fw_item),
+			GFP_KERNEL);
+	if (!fwreq)
+		return -ENOMEM;
+
+	fwreq->items[BRCMF_SDIO_FW_CODE].path = sdiodev->fw_name;
+	fwreq->items[BRCMF_SDIO_FW_CODE].type = BRCMF_FW_TYPE_BINARY;
+	fwreq->items[BRCMF_SDIO_FW_NVRAM].path = sdiodev->nvram_name;
+	fwreq->items[BRCMF_SDIO_FW_NVRAM].type = BRCMF_FW_TYPE_NVRAM;
+	fwreq->n_items = 2;
+
+	err = brcmf_fw_get_firmwares(sdiodev->dev, fwreq,
 				     brcmf_sdio_firmware_callback);
-	if (err != 0)
+	if (err != 0) {
 		brcmf_err("async firmware request failed: %d\n", err);
+		kfree(fwreq);
+	}
+
 	return err;
 }
 
@@ -2591,7 +2620,7 @@ brcmf_sdio_ulp_pre_redownload_check(struct brcmf_sdio *bus)
 	int reg_addr;
 	unsigned long timeout;
 
-	value = brcmf_sdiod_regrb(bus->sdiodev, SDIO_CCCR_IOEx, &err);
+	value = brcmf_sdiod_readb(bus->sdiodev, SDIO_CCCR_IOEx, &err);
 
 	if (value == SDIO_FUNC_ENABLE_1) {
 		brcmf_dbg(SDIO, "GOT THE INTERRUPT FROM UCODE\n");
@@ -2660,8 +2689,8 @@ brcmf_sdio_ulp_pre_redownload_check(struct brcmf_sdio *bus)
 			  wowl_wake_ind, ulp_wake_ind);
 		reg_addr = CORE_CC_REG(
 			  brcmf_chip_get_pmu(bus->ci)->base, min_res_mask);
-		brcmf_sdiod_regwl(bus->sdiodev, reg_addr,
-				  DEFAULT_43012_MIN_RES_MASK, &err);
+		brcmf_sdiod_writel(bus->sdiodev, reg_addr,
+				   DEFAULT_43012_MIN_RES_MASK, &err);
 		if (err)
 			brcmf_err("min_res_mask failed\n");
 
@@ -2744,7 +2773,8 @@ static void brcmf_sdio_dpc(struct brcmf_sdio *bus)
 	if (intstatus & I_HMB_HOST_INT) {
 		intstatus &= ~I_HMB_HOST_INT;
 		intstatus |= brcmf_sdio_hostmail(bus);
-		if (brcmf_sdio_ulp_pre_redownload_check(bus))
+		if ((sdiod->func1->device != SDIO_DEVICE_ID_BROADCOM_4339) &&
+		    brcmf_sdio_ulp_pre_redownload_check(bus))
 			brcmf_sdio_ulp_reinit_fw(bus);
 	}
 
@@ -3503,23 +3533,38 @@ static void brcmf_sdio_sr_init(struct brcmf_sdio *bus)
 
 	brcmf_dbg(TRACE, "Enter\n");
 
+	if (bus->ci->chip == CY_CC_43012_CHIP_ID) {
+		wakeupctrl = SBSDIO_FUNC1_WCTRL_ALPWAIT_SHIFT;
+		chipclkcsr = SBSDIO_HT_AVAIL_REQ;
+	} else {
+		wakeupctrl = SBSDIO_FUNC1_WCTRL_HTWAIT_SHIFT;
+		chipclkcsr = SBSDIO_FORCE_HT;
+	}
+
+	if (bus->ci->chip == CY_CC_43012_CHIP_ID ||
+	    bus->ci->chip == BRCM_CC_4339_CHIP_ID ||
+	    bus->ci->chip == BRCM_CC_4354_CHIP_ID ||
+	    bus->ci->chip == BRCM_CC_4345_CHIP_ID) {
+		cardcap = SDIO_CCCR_BRCM_CARDCAP_CMD_NODEC;
+	} else {
+		cardcap = (SDIO_CCCR_BRCM_CARDCAP_CMD14_SUPPORT |
+			   SDIO_CCCR_BRCM_CARDCAP_CMD14_EXT);
+	}
+
 	val = brcmf_sdiod_readb(bus->sdiodev, SBSDIO_FUNC1_WAKEUPCTRL, &err);
 	if (err) {
 		brcmf_err("error reading SBSDIO_FUNC1_WAKEUPCTRL\n");
 		return;
 	}
 
-	val |= 1 << SBSDIO_FUNC1_WCTRL_HTWAIT_SHIFT;
+	val |= 1 << wakeupctrl;
 	brcmf_sdiod_writeb(bus->sdiodev, SBSDIO_FUNC1_WAKEUPCTRL, val, &err);
 	if (err) {
 		brcmf_err("error writing SBSDIO_FUNC1_WAKEUPCTRL\n");
 		return;
 	}
-
-	/* Add CMD14 Support */
 	brcmf_sdiod_func0_wb(bus->sdiodev, SDIO_CCCR_BRCM_CARDCAP,
-			     (SDIO_CCCR_BRCM_CARDCAP_CMD14_SUPPORT |
-			      SDIO_CCCR_BRCM_CARDCAP_CMD14_EXT),
+			     cardcap,
 			     &err);
 	if (err) {
 		brcmf_err("error writing SDIO_CCCR_BRCM_CARDCAP\n");
@@ -3527,7 +3572,7 @@ static void brcmf_sdio_sr_init(struct brcmf_sdio *bus)
 	}
 
 	brcmf_sdiod_writeb(bus->sdiodev, SBSDIO_FUNC1_CHIPCLKCSR,
-			   SBSDIO_FORCE_HT, &err);
+			   chipclkcsr, &err);
 	if (err) {
 		brcmf_err("error writing SBSDIO_FUNC1_CHIPCLKCSR\n");
 		return;
@@ -3618,7 +3663,8 @@ static int brcmf_sdio_bus_preinit(struct device *dev)
 		goto done;
 
 	/* initialize SHM address from firmware for DS1 */
-	if (!bus->sdiodev->ulp)
+	if ((sdiodev->func1->device != SDIO_DEVICE_ID_BROADCOM_4339) &&
+	    !bus->sdiodev->ulp)
 		brcmf_sdio_ulp_preinit(dev);
 
 	bus->tx_hdrlen = SDPCM_HWHDR_LEN + SDPCM_SWHDR_LEN;
@@ -4212,9 +4258,6 @@ static const struct brcmf_bus_ops brcmf_sdio_bus_ops = {
 	.get_fwname = brcmf_sdio_get_fwname,
 };
 
-#define BRCMF_SDIO_FW_CODE	0
-#define BRCMF_SDIO_FW_NVRAM	1
-
 static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 					 struct brcmf_fw_request *fwreq)
 {
@@ -4259,8 +4302,14 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 	/* Force clocks on backplane to be sure F2 interrupt propagates */
 	saveclk = brcmf_sdiod_readb(sdiod, SBSDIO_FUNC1_CHIPCLKCSR, &err);
 	if (!err) {
-		brcmf_sdiod_writeb(sdiod, SBSDIO_FUNC1_CHIPCLKCSR,
-				   (saveclk | SBSDIO_FORCE_HT), &err);
+		if (bus->ci->chip == CY_CC_43012_CHIP_ID) {
+			brcmf_sdiod_writeb(sdiod, SBSDIO_FUNC1_CHIPCLKCSR,
+					   (saveclk | SBSDIO_HT_AVAIL_REQ),
+					   &err);
+		} else {
+			brcmf_sdiod_writeb(sdiod, SBSDIO_FUNC1_CHIPCLKCSR,
+					   (saveclk | SBSDIO_FORCE_HT), &err);
+		}
 	}
 	if (err) {
 		brcmf_err("Failed to force clock for F2: err %d\n", err);
@@ -4281,9 +4330,56 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 		bus->hostintmask = HOSTINTMASK;
 		brcmf_sdiod_writel(sdiod, core->base + SD_REG(hostintmask),
 				   bus->hostintmask, NULL);
-
-
-		brcmf_sdiod_writeb(sdiod, SBSDIO_WATERMARK, 8, &err);
+		switch (sdiod->func1->device) {
+		case SDIO_DEVICE_ID_CYPRESS_4373:
+			brcmf_dbg(INFO, "set F2 watermark to 0x%x*4 bytes\n",
+				  CY_4373_F2_WATERMARK);
+			brcmf_sdiod_writeb(sdiod, SBSDIO_WATERMARK, CY_4373_F2_WATERMARK, &err);
+			devctl = brcmf_sdiod_readb(sdiod, SBSDIO_DEVICE_CTL, &err);
+			devctl |= SBSDIO_DEVCTL_F2WM_ENAB;
+			brcmf_sdiod_writeb(sdiod, SBSDIO_DEVICE_CTL, devctl, &err);
+			break;
+		case SDIO_DEVICE_ID_CYPRESS_43012:
+			brcmf_dbg(INFO, "set F2 watermark to 0x%x*4 bytes for 43012\n",
+				  CY_43012_F2_WATERMARK);
+			brcmf_sdiod_writeb(sdiod,
+					   SBSDIO_WATERMARK,
+					   CY_43012_F2_WATERMARK, &err);
+			devctl = brcmf_sdiod_readb(sdiod,
+						   SBSDIO_DEVICE_CTL, &err);
+			devctl |= SBSDIO_DEVCTL_F2WM_ENAB;
+			brcmf_sdiod_writeb(sdiod,
+					   SBSDIO_DEVICE_CTL, devctl, &err);
+			break;
+		case SDIO_DEVICE_ID_BROADCOM_43455:
+			brcmf_dbg(INFO, "set F2 watermark to 0x%x*4 bytes for 43455\n",
+				  CY_43455_F2_WATERMARK);
+			brcmf_sdiod_writeb(sdiod, SBSDIO_WATERMARK,
+					  CY_43455_F2_WATERMARK, &err);
+			devctl = brcmf_sdiod_readb(sdiod, SBSDIO_DEVICE_CTL,
+						   &err);
+			devctl |= SBSDIO_DEVCTL_F2WM_ENAB;
+			brcmf_sdiod_writeb(sdiod, SBSDIO_DEVICE_CTL, devctl,
+					  &err);
+			brcmf_sdiod_writeb(sdiod, SBSDIO_FUNC1_MESBUSYCTRL,
+					  CY_43455_MESBUSYCTRL, &err);
+			break;
+		case SDIO_DEVICE_ID_BROADCOM_4339:
+			brcmf_sdiod_writeb(sdiod,
+					   SBSDIO_WATERMARK,
+					   CY_4339_F2_WATERMARK, &err);
+			devctl = brcmf_sdiod_readb(sdiod,
+						   SBSDIO_DEVICE_CTL, &err);
+			devctl |= SBSDIO_DEVCTL_F2WM_ENAB;
+			brcmf_sdiod_writeb(sdiod,
+					   SBSDIO_DEVICE_CTL, devctl, &err);
+			brcmf_sdiod_writeb(sdiod,
+					   SBSDIO_FUNC1_MESBUSYCTRL, CY_4339_MESBUSYCTRL, &err);
+			break;
+		default:
+			brcmf_sdiod_writeb(sdiod, SBSDIO_WATERMARK, DEFAULT_F2_WATERMARK, &err);
+			break;
+		}
 	} else {
 		/* Disable F2 again */
 		sdio_disable_func(sdiod->func2);
@@ -4323,7 +4419,8 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 	err = brcmf_attach(sdiod->dev, sdiod->settings);
 	if (err != 0) {
 		brcmf_err("brcmf_attach failed\n");
-		goto fail;
+		sdio_claim_host(sdiod->func1);
+		goto release;
 	}
 
 	/* ready */
@@ -4388,8 +4485,14 @@ struct brcmf_sdio *brcmf_sdio_probe(struct brcmf_sdio_dev *sdiodev)
 	}
 
 	/* single-threaded workqueue */
-	wq = alloc_ordered_workqueue("brcmf_wq/%s", WQ_MEM_RECLAIM,
-				     dev_name(&sdiodev->func1->dev));
+	if (sdiodev->settings->sdio_wq_highpri) {
+		wq = alloc_workqueue("brcmf_wq/%s",
+				     WQ_HIGHPRI | WQ_MEM_RECLAIM | WQ_UNBOUND,
+				     1, dev_name(&sdiodev->func1->dev));
+	} else {
+		wq = alloc_ordered_workqueue("brcmf_wq/%s", WQ_MEM_RECLAIM,
+					     dev_name(&sdiodev->func1->dev));
+	}
 	if (!wq) {
 		brcmf_err("insufficient memory to create txworkqueue\n");
 		goto fail;

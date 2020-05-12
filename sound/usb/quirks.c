@@ -1183,7 +1183,6 @@ bool snd_usb_get_sample_rate_quirk(struct snd_usb_audio *chip)
 
 /* ITF-USB DSD based DACs need a vendor cmd to switch
  * between PCM and native DSD mode
- * (2 altsets version)
  */
 static bool is_itf_usb_dsd_dac(unsigned int id)
 {

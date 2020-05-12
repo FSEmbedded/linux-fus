@@ -780,7 +780,7 @@ static u8 sdhci_calc_timeout(struct sdhci_host *host, struct mmc_command *cmd,
 			     bool *too_big)
 {
 	u8 count;
-	struct mmc_data *data = cmd->data;
+	struct mmc_data *data;
 	unsigned target_timeout, current_timeout;
 
 	*too_big = true;
@@ -793,6 +793,12 @@ static u8 sdhci_calc_timeout(struct sdhci_host *host, struct mmc_command *cmd,
 	 */
 	if (host->quirks & SDHCI_QUIRK_BROKEN_TIMEOUT_VAL)
 		return 0xE;
+
+	/* Unspecified command, assume max */
+	if (cmd == NULL)
+		return 0xE;
+
+	data = cmd->data;
 
 	/* Unspecified timeout, assume max */
 	if (!data && !cmd->busy_timeout)
@@ -3026,9 +3032,11 @@ static irqreturn_t sdhci_thread_irq(int irq, void *dev_id)
 
 static bool sdhci_cd_irq_can_wakeup(struct sdhci_host *host)
 {
+	int gpio_cd = mmc_gpio_get_cd(host->mmc);
+
 	return mmc_card_is_removable(host->mmc) &&
-	       !(host->quirks & SDHCI_QUIRK_BROKEN_CARD_DETECTION) &&
-	       !mmc_can_gpio_cd(host->mmc);
+	       !(host->quirks & SDHCI_QUIRK_BROKEN_CARD_DETECTION ||
+	       (gpio_cd >= 0)) && !mmc_can_gpio_cd(host->mmc);
 }
 
 /*
@@ -3098,7 +3106,7 @@ int sdhci_suspend_host(struct sdhci_host *host)
 		host->ier = 0;
 		sdhci_writel(host, 0, SDHCI_INT_ENABLE);
 		sdhci_writel(host, 0, SDHCI_SIGNAL_ENABLE);
-		free_irq(host->irq, host);
+		disable_irq(host->irq);
 	}
 
 	return 0;
@@ -3130,11 +3138,7 @@ int sdhci_resume_host(struct sdhci_host *host)
 	if (host->irq_wake_enabled) {
 		sdhci_disable_irq_wakeups(host);
 	} else {
-		ret = request_threaded_irq(host->irq, sdhci_irq,
-					   sdhci_thread_irq, IRQF_SHARED,
-					   mmc_hostname(host->mmc), host);
-		if (ret)
-			return ret;
+		enable_irq(host->irq);
 	}
 
 	sdhci_enable_card_detection(host);
@@ -3779,11 +3783,7 @@ int sdhci_setup_host(struct sdhci_host *host)
 	if (host->caps & SDHCI_CAN_DO_HISPD)
 		mmc->caps |= MMC_CAP_SD_HIGHSPEED | MMC_CAP_MMC_HIGHSPEED;
 
-	if ((host->quirks & SDHCI_QUIRK_BROKEN_CARD_DETECTION) &&
-	    mmc_card_is_removable(mmc) &&
-	    mmc_gpio_get_cd(host->mmc) < 0)
-		mmc->caps |= MMC_CAP_NEEDS_POLL;
-
+	/* If vqmmc regulator and no 1.8V signalling, then there's no UHS */
 	if (!IS_ERR(mmc->supply.vqmmc)) {
 		ret = regulator_enable(mmc->supply.vqmmc);
 
@@ -3818,7 +3818,7 @@ int sdhci_setup_host(struct sdhci_host *host)
 		 * to the IO lines. (Applicable for other modes in 1.8v)
 		 */
 		mmc->caps2 &= ~(MMC_CAP2_HSX00_1_8V | MMC_CAP2_HS400_ES);
-		mmc->caps &= ~(MMC_CAP_1_8V_DDR | MMC_CAP_UHS);
+		mmc->caps2 |= MMC_CAP2_DDR52_3_3V;
 	}
 
 	/* Any UHS-I mode in caps implies SDR12 and SDR25 support. */

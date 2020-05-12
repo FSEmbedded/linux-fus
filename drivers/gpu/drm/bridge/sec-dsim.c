@@ -22,7 +22,6 @@
 #include <linux/log2.h>
 #include <linux/module.h>
 #include <linux/of_graph.h>
-#include <linux/pm_runtime.h>
 #include <drm/bridge/sec_mipi_dsim.h>
 #include <drm/drmP.h>
 #include <drm/drm_atomic_helper.h>
@@ -827,9 +826,13 @@ static int sec_mipi_dsim_bridge_attach(struct drm_bridge *bridge)
 		endpoint = of_graph_get_next_endpoint(np, endpoint);
 	}
 
-	/* No valid dsi device attached */
+	/* For the panel driver loading is after dsim bridge,
+	 * defer bridge binding to wait for panel driver ready.
+	 * The disadvantage of probe defer is endless probing
+	 * in some cases.
+	 */
 	if (!next)
-		return -ENODEV;
+		return -EPROBE_DEFER;
 
 	/* duplicate bridges or next bridge exists */
 	WARN_ON(bridge == next || bridge->next || dsim->next);
@@ -1848,12 +1851,10 @@ int sec_mipi_dsim_bind(struct device *dev, struct device *master, void *data,
 		return ret;
 	}
 
-	dev_set_drvdata(dev, dsim);
-
-	pm_runtime_get_sync(dev);
+	clk_prepare_enable(dsim->clk_cfg);
 	version = dsim_read(dsim, DSIM_VERSION);
 	WARN_ON(version != pdata->version);
-	pm_runtime_put_sync(dev);
+	clk_disable_unprepare(dsim->clk_cfg);
 
 	dev_info(dev, "version number is %#x\n", version);
 
@@ -1906,7 +1907,8 @@ int sec_mipi_dsim_bind(struct device *dev, struct device *master, void *data,
 	bridge->funcs = &sec_mipi_dsim_bridge_funcs;
 	bridge->of_node = dev->of_node;
 	bridge->encoder = encoder;
-	encoder->bridge = bridge;
+
+	dev_set_drvdata(dev, dsim);
 
 	/* attach sec dsim bridge and its next bridge if exists */
 	ret = drm_bridge_attach(encoder, bridge, NULL);
@@ -1931,7 +1933,7 @@ int sec_mipi_dsim_bind(struct device *dev, struct device *master, void *data,
 		/* TODO */
 		connector->dpms = DRM_MODE_DPMS_OFF;
 
-		ret = drm_mode_connector_attach_encoder(connector, encoder);
+		ret = drm_connector_attach_encoder(connector, encoder);
 		if (ret)
 			goto cleanup_connector;
 

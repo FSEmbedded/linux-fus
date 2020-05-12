@@ -23,6 +23,9 @@ Optional properties:
 - dma-names: should contain "tx" and "rx".
 - rs485-rts-delay, rs485-rts-active-low, rs485-rx-during-tx,
   linux,rs485-enabled-at-boot-time: see rs485.txt
+- clocks : phandle + clock specifier pairs, one for each entry in clock-names
+- clock-names : "per" - the uart module clock.
+  clock.
 
 Note: Optional properties for DMA support. Write them both or both not.
 

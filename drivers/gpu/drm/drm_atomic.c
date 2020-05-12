@@ -1404,6 +1404,7 @@ static int drm_atomic_connector_set_property(struct drm_connector *connector,
 		ret = drm_atomic_replace_property_blob_from_id(dev,
 				&state->hdr_source_metadata_blob_ptr,
 				val,
+				sizeof(struct hdr_static_metadata),
 				-1,
 				&replaced);
 		state->hdr_metadata_changed |= replaced;
@@ -1532,6 +1533,9 @@ drm_atomic_connector_get_property(struct drm_connector *connector,
 		*val = 0;
 	} else if (property == config->writeback_out_fence_ptr_property) {
 		*val = 0;
+	} else if (property == config->hdr_source_metadata_property) {
+		*val = (state->hdr_source_metadata_blob_ptr) ?
+			state->hdr_source_metadata_blob_ptr->base.id : 0;
 	} else if (connector->funcs->atomic_get_property) {
 		return connector->funcs->atomic_get_property(connector,
 				state, property, val);

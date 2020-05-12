@@ -569,8 +569,8 @@ static ssize_t show_rate_limit_us(struct gov_attr_set *attr_set, char *buf)
 	return sprintf(buf, "%u\n", tunables->rate_limit_us);
 }
 
-static ssize_t
-rate_limit_us_store(struct gov_attr_set *attr_set, const char *buf, size_t count)
+static ssize_t store_rate_limit_us(struct gov_attr_set *attr_set,
+				   const char *buf, size_t count)
 {
 	struct sugov_tunables *tunables = to_sugov_tunables(attr_set);
 	struct sugov_policy *sg_policy;

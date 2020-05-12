@@ -148,10 +148,6 @@ static int dh_is_pubkey_valid(struct dh_ctx *ctx, MPI y)
 	}
 
 	return 0;
-
-err_clear_ctx:
-	dh_clear_ctx(ctx);
-	return -EINVAL;
 }
 
 static int dh_compute_value(struct kpp_request *req)

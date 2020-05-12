@@ -4976,15 +4976,6 @@ static int inet6_rtm_getroute(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 		goto errout;
 	}
 
-	if (fibmatch && rt->dst.from) {
-		struct rt6_info *ort = container_of(rt->dst.from,
-						    struct rt6_info, dst);
-
-		dst_hold(&ort->dst);
-		ip6_rt_put(rt);
-		rt = ort;
-	}
-
 	skb = alloc_skb(NLMSG_GOODSIZE, GFP_KERNEL);
 	if (!skb) {
 		ip6_rt_put(rt);

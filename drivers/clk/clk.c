@@ -2215,7 +2215,8 @@ static int clk_core_set_parent_nolock(struct clk_core *core,
 	if (!core)
 		return 0;
 
-	if (core->parent == parent)
+	if ((core->parent == parent) &&
+		!(core->flags & CLK_SET_PARENT_NOCACHE))
 		return 0;
 
 	/* verify ops for for multi-parent clks */
@@ -3074,11 +3075,24 @@ static int __clk_core_init(struct clk_core *core)
 	}
 
 	/*
+	 * optional platform-specific magic
+	 *
+	 * The .init callback is not used by any of the basic clock types, but
+	 * exists for weird hardware that must perform initialization magic.
+	 * Please consider other ways of solving initialization problems before
+	 * using this callback, as its use is discouraged.
+	 */
+	if (core->ops->init)
+		core->ops->init(core->hw);
+
+	kref_init(&core->ref);
+
+	/*
 	 * walk the list of orphan clocks and reparent any that newly finds a
 	 * parent.
 	 */
-	if (core->flags & CLK_IS_CRITICAL) {
-		unsigned long flags;
+	hlist_for_each_entry_safe(orphan, tmp2, &clk_orphan_list, child_node) {
+		struct clk_core *parent = __clk_init_parent(orphan);
 
 		/*
 		 * We need to use __clk_set_parent_before() and _after() to
@@ -3095,7 +3109,6 @@ static int __clk_core_init(struct clk_core *core)
 		}
 	}
 
-	kref_init(&core->ref);
 out:
 	clk_pm_runtime_put(core);
 unlock:

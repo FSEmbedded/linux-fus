@@ -304,9 +304,6 @@ static inline void *__ptr_ring_consume(struct ptr_ring *r)
 	if (ptr)
 		__ptr_ring_discard_one(r);
 
-	/* Make sure anyone accessing data through the pointer is up to date. */
-	/* Pairs with smp_wmb in __ptr_ring_produce. */
-	smp_read_barrier_depends();
 	return ptr;
 }
 

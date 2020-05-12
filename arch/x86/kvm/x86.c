@@ -6864,11 +6864,8 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 	unsigned long nr, a0, a1, a2, a3, ret;
 	int op_64_bit;
 
-	if (kvm_hv_hypercall_enabled(vcpu->kvm)) {
-		if (!kvm_hv_hypercall(vcpu))
-			return 0;
-		goto out;
-	}
+	if (kvm_hv_hypercall_enabled(vcpu->kvm))
+		return kvm_hv_hypercall(vcpu);
 
 	nr = kvm_register_read(vcpu, VCPU_REGS_RAX);
 	a0 = kvm_register_read(vcpu, VCPU_REGS_RBX);
@@ -6889,7 +6886,7 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 
 	if (kvm_x86_ops->get_cpl(vcpu) != 0) {
 		ret = -KVM_EPERM;
-		goto out_error;
+		goto out;
 	}
 
 	switch (nr) {
@@ -6912,7 +6909,7 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 		ret = -KVM_ENOSYS;
 		break;
 	}
-out_error:
+out:
 	if (!op_64_bit)
 		ret = (u32)ret;
 	kvm_register_write(vcpu, VCPU_REGS_RAX, ret);
@@ -7389,20 +7386,6 @@ int kvm_arch_mmu_notifier_invalidate_range(struct kvm *kvm,
 		kvm_make_all_cpus_request(kvm, KVM_REQ_APIC_PAGE_RELOAD);
 
 	return 0;
-}
-
-void kvm_arch_mmu_notifier_invalidate_range(struct kvm *kvm,
-		unsigned long start, unsigned long end)
-{
-	unsigned long apic_address;
-
-	/*
-	 * The physical address of apic access page is stored in the VMCS.
-	 * Update it when it becomes invalid.
-	 */
-	apic_address = gfn_to_hva(kvm, APIC_DEFAULT_PHYS_BASE >> PAGE_SHIFT);
-	if (start <= apic_address && apic_address < end)
-		kvm_make_all_cpus_request(kvm, KVM_REQ_APIC_PAGE_RELOAD);
 }
 
 void kvm_vcpu_reload_apic_access_page(struct kvm_vcpu *vcpu)
@@ -8238,9 +8221,6 @@ static int __set_sregs(struct kvm_vcpu *vcpu, struct kvm_sregs *sregs)
 
 	if (kvm_valid_sregs(vcpu, sregs))
 		goto out;
-
-	if (kvm_valid_sregs(vcpu, sregs))
-		return -EINVAL;
 
 	apic_base_msr.data = sregs->apic_base;
 	apic_base_msr.host_initiated = true;

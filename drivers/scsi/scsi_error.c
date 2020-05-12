@@ -62,6 +62,13 @@ static int scsi_eh_try_stu(struct scsi_cmnd *scmd);
 static int scsi_try_to_abort_cmd(struct scsi_host_template *,
 				 struct scsi_cmnd *);
 
+#ifdef CONFIG_AHCI_IMX
+extern void *sg_io_buffer_hack;
+#else
+#define sg_io_buffer_hack NULL
+#endif
+
+/* called with shost->host_lock held */
 void scsi_eh_wakeup(struct Scsi_Host *shost)
 {
 	lockdep_assert_held(shost->host_lock);
@@ -2175,12 +2182,13 @@ int scsi_error_handler(void *data)
 
 		/*
 		 * Do not go to sleep, when there is host_failed when the
-		 * one-PRD per command workaroud is tiggered.
+		 * one-PRD per command workaroud is triggered.
 		 * Because that ata/scsi subsystem maybe hang, when CD_ROM
 		 * and HDD are accessed simultaneously.
 		 */
 		if ((shost->host_failed == 0 && shost->host_eh_scheduled == 0) ||
-		    shost->host_failed != scsi_host_busy(shost)) {
+		    ((shost->host_failed != atomic_read(&shost->host_busy)) &&
+		    (sg_io_buffer_hack == NULL) && (shost->host_failed > 0))) {
 			SCSI_LOG_ERROR_RECOVERY(1,
 				shost_printk(KERN_INFO, shost,
 					     "scsi_eh_%d: sleeping\n",

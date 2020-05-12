@@ -120,6 +120,9 @@ unsigned long divider_recalc_rate(struct clk_hw *hw, unsigned long parent_rate,
 {
 	unsigned int div;
 
+	if (flags & CLK_DIVIDER_ZERO_GATE && !val)
+		return 0;
+
 	div = _get_div(table, val, flags, width);
 	if (!div) {
 		WARN(!(flags & CLK_DIVIDER_ALLOW_ZERO),
@@ -138,8 +141,14 @@ static unsigned long clk_divider_recalc_rate(struct clk_hw *hw,
 	struct clk_divider *divider = to_clk_divider(hw);
 	unsigned int val;
 
-	val = clk_readl(divider->reg) >> divider->shift;
-	val &= clk_div_mask(divider->width);
+	if ((divider->flags & CLK_DIVIDER_ZERO_GATE) &&
+	    !clk_hw_is_enabled(hw)) {
+		val = divider->cached_val;
+	} else {
+
+		val = clk_readl(divider->reg) >> divider->shift;
+		val &= clk_div_mask(divider->width);
+	}
 
 	return divider_recalc_rate(hw, parent_rate, val, divider->table,
 				   divider->flags, divider->width);
@@ -491,7 +500,7 @@ static void clk_divider_disable(struct clk_hw *hw)
 
 	/* store the current div val */
 	val = clk_readl(divider->reg) >> divider->shift;
-	val &= div_mask(divider->width);
+	val &= clk_div_mask(divider->width);
 	divider->cached_val = val;
 	clk_writel(0, divider->reg);
 
@@ -510,7 +519,7 @@ static int clk_divider_is_enabled(struct clk_hw *hw)
 		return __clk_get_enable_count(hw->clk);
 
 	val = clk_readl(divider->reg) >> divider->shift;
-	val &= div_mask(divider->width);
+	val &= clk_div_mask(divider->width);
 
 	return val ? 1 : 0;
 }
@@ -575,7 +584,7 @@ static struct clk_hw *_register_divider(struct device *dev, const char *name,
 
 	if (div->flags & CLK_DIVIDER_ZERO_GATE) {
 		val = clk_readl(reg) >> shift;
-		val &= div_mask(width);
+		val &= clk_div_mask(width);
 		div->cached_val = val;
 	}
 

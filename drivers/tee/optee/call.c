@@ -185,6 +185,15 @@ u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg)
 	}
 
 	optee_rpc_finalize_call(&call_ctx);
+
+#if defined(CONFIG_SOC_IMX6) || defined(CONFIG_SOC_IMX7) \
+	|| (CONFIG_HAVE_IMX8_SOC)
+	/*
+	 * Release Busfreq from HIGH
+	 */
+	release_bus_freq(BUS_FREQ_HIGH);
+#endif
+
 	/*
 	 * We're done with our thread in secure world, if there's any
 	 * thread waiters wake up one.
@@ -554,7 +563,10 @@ void optee_free_pages_list(void *list, size_t num_entries)
 static bool is_normal_memory(pgprot_t p)
 {
 #if defined(CONFIG_ARM)
-	return (pgprot_val(p) & L_PTE_MT_MASK) == L_PTE_MT_WRITEALLOC;
+	u32 attr = pgprot_val(p) & L_PTE_MT_MASK;
+
+	return (attr == L_PTE_MT_WRITEALLOC) || (attr == L_PTE_MT_WRITEBACK) ||
+		(attr == L_PTE_MT_WRITETHROUGH);
 #elif defined(CONFIG_ARM64)
 	return (pgprot_val(p) & PTE_ATTRINDX_MASK) == PTE_ATTRINDX(MT_NORMAL);
 #else

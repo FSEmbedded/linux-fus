@@ -369,10 +369,6 @@ struct mlb_dev_info {
 struct mlb_data {
 	struct device *dev;
 	struct mlb_dev_info *devinfo;
-#ifdef CONFIG_ARCH_MXC_ARM64
-	struct clk *ipg;
-	struct clk *hclk;
-#endif
 	struct clk *mlb;
 	struct cdev cdev;
 	struct class *class;	/* device class */
@@ -1518,15 +1514,14 @@ static s32 mlb150_trans_complete_check(struct mlb_dev_info *pdevinfo)
 	struct mlb_ringbuf *rx_rbuf = &pdevinfo->rx_rbuf;
 	struct mlb_ringbuf *tx_rbuf = &pdevinfo->tx_rbuf;
 	s32 timeout = 1024;
-	unsigned long flags;
 
 	while (timeout--) {
-		read_lock_irqsave(&tx_rbuf->rb_lock, flags);
+		read_lock(&tx_rbuf->rb_lock);
 		if (!CIRC_CNT(tx_rbuf->head, tx_rbuf->tail, TRANS_RING_NODES)) {
-			read_unlock_irqrestore(&tx_rbuf->rb_lock, flags);
+			read_unlock(&tx_rbuf->rb_lock);
 			break;
 		} else
-			read_unlock_irqrestore(&tx_rbuf->rb_lock, flags);
+			read_unlock(&tx_rbuf->rb_lock);
 	}
 
 	if (timeout <= 0) {
@@ -1536,12 +1531,12 @@ static s32 mlb150_trans_complete_check(struct mlb_dev_info *pdevinfo)
 
 	timeout = 1024;
 	while (timeout--) {
-		read_lock_irqsave(&rx_rbuf->rb_lock, flags);
+		read_lock(&rx_rbuf->rb_lock);
 		if (!CIRC_CNT(rx_rbuf->head, rx_rbuf->tail, TRANS_RING_NODES)) {
-			read_unlock_irqrestore(&rx_rbuf->rb_lock, flags);
+			read_unlock(&rx_rbuf->rb_lock);
 			break;
 		} else
-			read_unlock_irqrestore(&rx_rbuf->rb_lock, flags);
+			read_unlock(&rx_rbuf->rb_lock);
 	}
 
 	if (timeout <= 0) {
@@ -1666,7 +1661,7 @@ static void mlb_rx_isr(s32 ctype, u32 ahb_ch, struct mlb_dev_info *pdevinfo)
 	read_lock(&rx_rbuf->rb_lock);
 
 	head = (rx_rbuf->head + 1) & (TRANS_RING_NODES - 1);
-	tail = ACCESS_ONCE(rx_rbuf->tail);
+	tail = READ_ONCE(rx_rbuf->tail);
 	read_unlock(&rx_rbuf->rb_lock);
 
 	if (CIRC_SPACE(head, tail, TRANS_RING_NODES) >= 1) {
@@ -1700,7 +1695,7 @@ static void mlb_tx_isr(s32 ctype, u32 ahb_ch, struct mlb_dev_info *pdevinfo)
 
 	read_lock(&tx_rbuf->rb_lock);
 
-	head = ACCESS_ONCE(tx_rbuf->head);
+	head = READ_ONCE(tx_rbuf->head);
 	tail = (tx_rbuf->tail + 1) & (TRANS_RING_NODES - 1);
 	read_unlock(&tx_rbuf->rb_lock);
 
@@ -1947,10 +1942,6 @@ static int mxc_mlb150_open(struct inode *inode, struct file *filp)
 		return -EBUSY;
 	}
 
-#ifdef CONFIG_ARCH_MXC_ARM64
-	clk_prepare_enable(drvdata->ipg);
-	clk_prepare_enable(drvdata->hclk);
-#endif
 	clk_prepare_enable(drvdata->mlb);
 
 	/* initial MLB module */
@@ -2042,10 +2033,6 @@ static int mxc_mlb150_release(struct inode *inode, struct file *filp)
 	atomic_set(&pdevinfo->on, 0);
 
 	clk_disable_unprepare(drvdata->mlb);
-#ifdef CONFIG_ARCH_MXC_ARM64
-	clk_disable_unprepare(drvdata->hclk);
-	clk_disable_unprepare(drvdata->ipg);
-#endif
 	/* decrease the open count */
 	atomic_set(&pdevinfo->opencnt, 0);
 
@@ -2294,7 +2281,7 @@ static ssize_t mxc_mlb150_read(struct file *filp, char __user *buf,
 
 	read_lock_irqsave(&rx_rbuf->rb_lock, flags);
 
-	head = ACCESS_ONCE(rx_rbuf->head);
+	head = READ_ONCE(rx_rbuf->head);
 	tail = rx_rbuf->tail;
 
 	read_unlock_irqrestore(&rx_rbuf->rb_lock, flags);
@@ -2393,7 +2380,7 @@ static ssize_t mxc_mlb150_write(struct file *filp, const char __user *buf,
 	read_lock_irqsave(&tx_rbuf->rb_lock, flags);
 
 	head = tx_rbuf->head;
-	tail = ACCESS_ONCE(tx_rbuf->tail);
+	tail = READ_ONCE(tx_rbuf->tail);
 	read_unlock_irqrestore(&tx_rbuf->rb_lock, flags);
 
 	if (0 == CIRC_SPACE(head, tail, TRANS_RING_NODES)) {
@@ -2675,22 +2662,7 @@ static int mxc_mlb150_probe(struct platform_device *pdev)
 	}
 #endif
 
-#ifdef CONFIG_ARCH_MXC_ARM64
-	drvdata->ipg = devm_clk_get(&pdev->dev, "ipg");
-	if (IS_ERR(drvdata->ipg)) {
-		dev_err(&pdev->dev, "unable to get mlb ipg clock\n");
-		ret = PTR_ERR(drvdata->ipg);
-		goto err_dev;
-	};
-
-	drvdata->hclk = devm_clk_get(&pdev->dev, "hclk");
-	if (IS_ERR(drvdata->hclk)) {
-		dev_err(&pdev->dev, "unable to get mlb hclk clock\n");
-		ret = PTR_ERR(drvdata->hclk);
-		goto err_dev;
-	};
-#endif
-
+	/* enable clock */
 	drvdata->mlb = devm_clk_get(&pdev->dev, "mlb");
 	if (IS_ERR(drvdata->mlb)) {
 		dev_err(&pdev->dev, "unable to get mlb clock\n");

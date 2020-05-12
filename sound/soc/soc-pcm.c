@@ -1355,8 +1355,7 @@ static struct snd_soc_pcm_runtime *dpcm_get_be(struct snd_soc_card *card,
 		}
 	}
 
-	/* dai link name and stream name set correctly ? */
-	dev_err(card->dev, "ASoC: can't get %s BE for %s\n",
+	dev_dbg(card->dev, "ASoC: can't get %s BE for %s\n",
 		stream ? "capture" : "playback", widget->name);
 	return NULL;
 }
@@ -1836,43 +1835,6 @@ static void dpcm_runtime_merge_rate(struct snd_pcm_substream *substream,
 						 codec_stream->rate_max);
 			*rates = snd_pcm_rate_mask_intersect(*rates,
 						codec_stream->rates);
-		}
-	}
-}
-
-static void dpcm_runtime_base_chan(struct snd_pcm_substream *substream,
-					unsigned int *channels_min,
-					unsigned int *channels_max)
-{
-	struct snd_soc_pcm_runtime *fe = substream->private_data;
-	struct snd_soc_dpcm *dpcm;
-	int stream = substream->stream;
-	*channels_min = 0;
-	*channels_max = UINT_MAX;
-
-	if (!fe->dai_link->dpcm_merged_chan)
-		return;
-
-	/*
-	 * It returns merged BE codec channel;
-	 * if FE want to use it (= dpcm_merged_chan)
-	 */
-
-	list_for_each_entry(dpcm, &fe->dpcm[stream].be_clients, list_be) {
-		struct snd_soc_pcm_runtime *be = dpcm->be;
-		struct snd_soc_dai_driver *codec_dai_drv;
-		struct snd_soc_pcm_stream *codec_stream;
-		int i;
-
-		for (i = 0; i < be->num_codecs; i++) {
-			codec_dai_drv = be->codec_dais[i]->driver;
-			if (stream == SNDRV_PCM_STREAM_PLAYBACK)
-				codec_stream = &codec_dai_drv->playback;
-			else
-				codec_stream = &codec_dai_drv->capture;
-
-			*channels_min = max(*channels_min, codec_stream->channels_min);
-			*channels_max = min(*channels_max, codec_stream->channels_max);
 		}
 	}
 }

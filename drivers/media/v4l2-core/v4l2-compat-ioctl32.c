@@ -547,23 +547,6 @@ static int put_v4l2_plane32(struct v4l2_plane __user *p64,
 		break;
 	}
 
-	if (!access_ok(VERIFY_READ, up, sizeof(*up)) ||
-	    get_user(type, &up->type) ||
-	    get_user(length, &up->length))
-		return -EFAULT;
-
-	if (V4L2_TYPE_IS_MULTIPLANAR(type)) {
-		if (length > VIDEO_MAX_PLANES)
-			return -EINVAL;
-
-		/*
-		 * We don't really care if userspace decides to kill itself
-		 * by passing a very big length value
-		 */
-		*size = length * sizeof(struct v4l2_plane);
-	} else {
-		*size = 0;
-	}
 	return 0;
 }
 

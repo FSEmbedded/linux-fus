@@ -3535,11 +3535,6 @@ static int rtnl_fdb_add(struct sk_buff *skb, struct nlmsghdr *nlh,
 		return -EINVAL;
 	}
 
-	if (dev->type != ARPHRD_ETHER) {
-		NL_SET_ERR_MSG(extack, "FDB add only supported for Ethernet devices");
-		return -EINVAL;
-	}
-
 	addr = nla_data(tb[NDA_LLADDR]);
 
 	err = fdb_vid_parse(tb[NDA_VLAN], &vid, extack);
@@ -3646,11 +3641,6 @@ static int rtnl_fdb_del(struct sk_buff *skb, struct nlmsghdr *nlh,
 
 	if (dev->type != ARPHRD_ETHER) {
 		NL_SET_ERR_MSG(extack, "FDB add only supported for Ethernet devices");
-		return -EINVAL;
-	}
-
-	if (dev->type != ARPHRD_ETHER) {
-		NL_SET_ERR_MSG(extack, "FDB delete only supported for Ethernet devices");
 		return -EINVAL;
 	}
 

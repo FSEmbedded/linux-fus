@@ -7503,8 +7503,6 @@ static int rtl_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* chip gets powered up in rtl_open() */
 	rtl_pll_power_down(tp);
 
-	pci_set_drvdata(pdev, dev);
-
 	rc = register_netdev(dev);
 	if (rc)
 		goto err_mdio_unregister;

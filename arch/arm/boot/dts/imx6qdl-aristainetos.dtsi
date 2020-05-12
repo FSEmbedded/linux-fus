@@ -14,6 +14,12 @@
 #include <dt-bindings/gpio/gpio.h>
 
 / {
+	aliases {
+		mxcfb0 = &mxcfb1;
+		mxcfb1 = &mxcfb2;
+		mxcfb2 = &mxcfb3;
+		mxcfb3 = &mxcfb4;
+	};
 
 	reg_2p5v: regulator-2p5v {
 		compatible = "regulator-fixed";

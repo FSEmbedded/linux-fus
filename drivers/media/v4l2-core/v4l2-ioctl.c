@@ -30,6 +30,8 @@
 #include <media/videobuf2-v4l2.h>
 #include <media/v4l2-mc.h>
 #include <media/v4l2-mem2mem.h>
+#include <media/v4l2-chip-ident.h>
+#include <media/videobuf2-core.h>
 
 #include <trace/events/v4l2.h>
 
@@ -1192,7 +1194,6 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
 	case V4L2_PIX_FMT_RGB32:	descr = "32-bit A/XRGB 8-8-8-8"; break;
 	case V4L2_PIX_FMT_ARGB32:	descr = "32-bit ARGB 8-8-8-8"; break;
 	case V4L2_PIX_FMT_XRGB32:	descr = "32-bit XRGB 8-8-8-8"; break;
-	case V4L2_PIX_FMT_RGBA:		descr = "32-bit RGBA 8-8-8-8"; break;
 	case V4L2_PIX_FMT_GREY:		descr = "8-bit Greyscale"; break;
 	case V4L2_PIX_FMT_Y4:		descr = "4-bit Greyscale"; break;
 	case V4L2_PIX_FMT_Y6:		descr = "6-bit Greyscale"; break;
@@ -1988,22 +1989,7 @@ static int v4l_s_parm(const struct v4l2_ioctl_ops *ops,
 	struct v4l2_streamparm *p = arg;
 	int ret = check_fmt(file, p->type);
 
-	if (ret)
-		return ret;
-
-	/* Note: extendedmode is never used in drivers */
-	if (V4L2_TYPE_IS_OUTPUT(p->type)) {
-		memset(p->parm.output.reserved, 0,
-		       sizeof(p->parm.output.reserved));
-		p->parm.output.extendedmode = 0;
-		p->parm.output.outputmode &= V4L2_MODE_HIGHQUALITY;
-	} else {
-		memset(p->parm.capture.reserved, 0,
-		       sizeof(p->parm.capture.reserved));
-		p->parm.capture.extendedmode = 0;
-		p->parm.capture.capturemode &= V4L2_MODE_HIGHQUALITY;
-	}
-	return ops->vidioc_s_parm(file, fh, p);
+	return ret ? ret : ops->vidioc_s_parm(file, fh, p);
 }
 
 static int v4l_queryctrl(const struct v4l2_ioctl_ops *ops,
@@ -2686,6 +2672,7 @@ static struct v4l2_ioctl_info v4l2_ioctls[] = {
 	IOCTL_INFO(VIDIOC_TRY_DECODER_CMD, v4l_stub_try_decoder_cmd, v4l_print_decoder_cmd, 0),
 	IOCTL_INFO(VIDIOC_DBG_S_REGISTER, v4l_dbg_s_register, v4l_print_dbg_register, 0),
 	IOCTL_INFO(VIDIOC_DBG_G_REGISTER, v4l_dbg_g_register, v4l_print_dbg_register, 0),
+	IOCTL_INFO(VIDIOC_DBG_G_CHIP_IDENT, v4l_dbg_g_chip_ident, v4l_print_dbg_chip_ident, 0),
 	IOCTL_INFO(VIDIOC_S_HW_FREQ_SEEK, v4l_s_hw_freq_seek, v4l_print_hw_freq_seek, INFO_FL_PRIO),
 	IOCTL_INFO(VIDIOC_S_DV_TIMINGS, v4l_stub_s_dv_timings, v4l_print_dv_timings, INFO_FL_PRIO | INFO_FL_CLEAR(v4l2_dv_timings, bt.flags)),
 	IOCTL_INFO(VIDIOC_G_DV_TIMINGS, v4l_stub_g_dv_timings, v4l_print_dv_timings, 0),
@@ -3083,6 +3070,7 @@ out:
 	kvfree(mbuf);
 	return err;
 }
+EXPORT_SYMBOL(video_usercopy);
 
 long video_ioctl2(struct file *file,
 	       unsigned int cmd, unsigned long arg)

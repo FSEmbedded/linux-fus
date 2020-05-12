@@ -1530,18 +1530,6 @@ static int dss_remove(struct platform_device *pdev)
 
 	kfree(dss);
 
-	pm_runtime_disable(&pdev->dev);
-
-	dss_uninit_ports(pdev);
-
-	if (dss.video1_pll)
-		dss_video_pll_uninit(dss.video1_pll);
-
-	if (dss.video2_pll)
-		dss_video_pll_uninit(dss.video2_pll);
-
-	dss_put_clocks();
-
 	return 0;
 }
 

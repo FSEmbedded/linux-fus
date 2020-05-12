@@ -37,7 +37,6 @@
 #include "mlx5_core.h"
 #include "fs_core.h"
 #include "fs_cmd.h"
-#include "eswitch.h"
 #include "diag/fs_tracepoint.h"
 #include "accel/ipsec.h"
 #include "fpga/ipsec.h"

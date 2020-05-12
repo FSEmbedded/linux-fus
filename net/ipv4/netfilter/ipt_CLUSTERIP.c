@@ -132,12 +132,6 @@ clusterip_config_entry_put(struct clusterip_config *c)
 			proc_remove(c->pde);
 		mutex_unlock(&cn->mutex);
 #endif
-		list_del_rcu(&c->list);
-		spin_unlock(&cn->lock);
-		local_bh_enable();
-
-		unregister_netdevice_notifier(&c->notifier);
-
 		return;
 	}
 	local_bh_enable();

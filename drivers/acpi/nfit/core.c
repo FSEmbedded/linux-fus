@@ -421,32 +421,6 @@ static int cmd_to_func(struct nfit_mem *nfit_mem, unsigned int cmd,
 	return 0;
 }
 
-static int cmd_to_func(struct nfit_mem *nfit_mem, unsigned int cmd,
-		struct nd_cmd_pkg *call_pkg)
-{
-	if (call_pkg) {
-		int i;
-
-		if (nfit_mem->family != call_pkg->nd_family)
-			return -ENOTTY;
-
-		for (i = 0; i < ARRAY_SIZE(call_pkg->nd_reserved2); i++)
-			if (call_pkg->nd_reserved2[i])
-				return -EINVAL;
-		return call_pkg->nd_command;
-	}
-
-	/* Linux ND commands == NVDIMM_FAMILY_INTEL function numbers */
-	if (nfit_mem->family == NVDIMM_FAMILY_INTEL)
-		return cmd;
-
-	/*
-	 * Force function number validation to fail since 0 is never
-	 * published as a valid function in dsm_mask.
-	 */
-	return 0;
-}
-
 int acpi_nfit_ctl(struct nvdimm_bus_descriptor *nd_desc, struct nvdimm *nvdimm,
 		unsigned int cmd, void *buf, unsigned int buf_len, int *cmd_rc)
 {
@@ -478,11 +452,6 @@ int acpi_nfit_ctl(struct nvdimm_bus_descriptor *nd_desc, struct nvdimm *nvdimm,
 		if (!adev)
 			return -ENOTTY;
 
-		if (cmd == ND_CMD_CALL)
-			call_pkg = buf;
-		func = cmd_to_func(nfit_mem, cmd, call_pkg);
-		if (func < 0)
-			return func;
 		dimm_name = nvdimm_name(nvdimm);
 		cmd_name = nvdimm_cmd_name(cmd);
 		cmd_mask = nvdimm_cmd_mask(nvdimm);
@@ -493,7 +462,6 @@ int acpi_nfit_ctl(struct nvdimm_bus_descriptor *nd_desc, struct nvdimm *nvdimm,
 	} else {
 		struct acpi_device *adev = to_acpi_dev(acpi_desc);
 
-		func = cmd;
 		cmd_name = nvdimm_bus_cmd_name(cmd);
 		cmd_mask = nd_desc->cmd_mask;
 		dsm_mask = nd_desc->bus_dsm_mask;
@@ -3135,6 +3103,7 @@ static void acpi_nfit_init_ars(struct acpi_nfit_desc *acpi_desc,
 static int acpi_nfit_register_regions(struct acpi_nfit_desc *acpi_desc)
 {
 	struct nfit_spa *nfit_spa;
+	int rc;
 
 	list_for_each_entry(nfit_spa, &acpi_desc->spas, list) {
 		switch (nfit_spa_type(nfit_spa->spa)) {

@@ -104,7 +104,7 @@ static inline unsigned long __range_ok(const void __user *addr, unsigned long si
  */
 #define untagged_addr(addr)		sign_extend64(addr, 55)
 
-#define access_ok(type, addr, size)	__range_ok((unsigned long)(addr), size)
+#define access_ok(type, addr, size)	__range_ok(addr, size)
 #define user_addr_max			get_fs
 
 #define _ASM_EXTABLE(from, to)						\

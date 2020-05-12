@@ -37,13 +37,15 @@
 #define GPC_PGC_PCI_PDN		0x200
 #define GPC_PGC_PCI_SR		0x20c
 
+#define GPC_PGC_DISP_PGCR_OFFSET       0x240
+#define GPC_PGC_DISP_PUPSCR_OFFSET     0x244
+#define GPC_PGC_DISP_PDNSCR_OFFSET     0x248
+#define GPC_PGC_DISP_SR_OFFSET         0x24c
+
 #define GPC_PGC_GPU_PDN		0x260
 #define GPC_PGC_GPU_PUPSCR	0x264
 #define GPC_PGC_GPU_PDNSCR	0x268
 #define GPC_PGC_GPU_SR		0x26c
-
-#define GPC_PGC_DISP_PDN	0x240
-#define GPC_PGC_DISP_SR		0x24c
 
 #define GPC_PGC_DISP_PDN	0x240
 #define GPC_PGC_DISP_SR		0x24c
@@ -119,7 +121,7 @@ static int imx6_pm_domain_power_off(struct generic_pm_domain *genpd)
 {
 	struct imx_pm_domain *pd = to_imx_pm_domain(genpd);
 
-	if (pd->flags & PGC_DOMAIN_FLAG_NO_PD)
+	if (pd->base.flags & PGC_DOMAIN_FLAG_NO_PD)
 		return -EBUSY;
 
 	_imx6_pm_domain_power_off(genpd);
@@ -441,11 +443,6 @@ static const struct imx_gpc_dt_data imx6sx_dt_data = {
 	.err006287_present = false,
 };
 
-static const struct imx_gpc_dt_data imx6sx_dt_data = {
-	.num_domains = 3,
-	.err009619_present = false,
-};
-
 static const struct of_device_id imx_gpc_dt_ids[] = {
 	{ .compatible = "fsl,imx6q-gpc", .data = &imx6q_dt_data },
 	{ .compatible = "fsl,imx6qp-gpc", .data = &imx6qp_dt_data },
@@ -702,25 +699,17 @@ static int imx_gpc_probe(struct platform_device *pdev)
 			if (domain_index >= of_id_data->num_domains)
 				continue;
 
+			domain = &imx_gpc_domains[domain_index];
+			domain->regmap = regmap;
+			domain->ipg_rate_mhz = ipg_rate_mhz;
+
 			pd_pdev = platform_device_alloc("imx-pgc-power-domain",
 							domain_index);
 			if (!pd_pdev) {
 				of_node_put(np);
 				return -ENOMEM;
 			}
-
-			ret = platform_device_add_data(pd_pdev,
-						       &imx_gpc_domains[domain_index],
-						       sizeof(imx_gpc_domains[domain_index]));
-			if (ret) {
-				platform_device_put(pd_pdev);
-				of_node_put(np);
-				return ret;
-			}
-			domain = pd_pdev->dev.platform_data;
-			domain->regmap = regmap;
-			domain->ipg_rate_mhz = ipg_rate_mhz;
-
+			pd_pdev->dev.platform_data = domain;
 			pd_pdev->dev.parent = &pdev->dev;
 			pd_pdev->dev.of_node = np;
 

@@ -5,13 +5,13 @@
 menu "MXC Media Local Bus Driver"
 
 config MXC_MLB
-	boolean
+	bool
 
 config MXC_MLB150
 	tristate "MLB150 support"
-	depends on (SOC_IMX6Q || SOC_IMX6SX || ARCH_FSL_IMX8QM || ARCH_FSL_IMX8QXP)
+	depends on ARCH_MXC || COMPILE_TEST
 	select MXC_MLB
-	---help---
+	help
 	Say Y to get the MLB150 support.
 
 endmenu

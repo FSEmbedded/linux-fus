@@ -1205,9 +1205,6 @@ static int kbd_get_info(struct kbd_info *info)
 	if (quirks && quirks->kbd_led_levels_off_1 && info->levels)
 		info->levels--;
 
-	if (quirks && quirks->kbd_led_levels_off_1 && info->levels)
-		info->levels--;
-
 	if (units & BIT(0))
 		info->seconds = (buffer.output[3] >> 0) & 0xFF;
 	if (units & BIT(1))

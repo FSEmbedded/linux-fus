@@ -39,7 +39,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
-#include <linux/reset.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/videodev2.h>
@@ -190,6 +189,9 @@ MODULE_PARM_DESC(debug, "Debug level (0-2)");
 #define MIPI_CSIS_PKTDATA_ODD		0x2000
 #define MIPI_CSIS_PKTDATA_EVEN		0x3000
 #define MIPI_CSIS_PKTDATA_SIZE		SZ_4K
+
+#define GPR_MIPI_RESET			0x08
+#define GPR_MIPI_S_RESETN		BIT(16)
 
 #define DEFAULT_SCLK_CSIS_FREQ	166000000UL
 
@@ -391,19 +393,23 @@ static int mipi_csis_phy_init(struct csi_state *state)
 
 static int mipi_csis_phy_reset_mx8mm(struct csi_state *state)
 {
-	struct reset_control *phy_reset;
+	struct device_node *np = state->dev->of_node;
+	struct regmap *gpr;
 
-	phy_reset = devm_reset_control_get_exclusive(state->dev, "csi,mipi_rst");
-	if (IS_ERR(phy_reset))
-		return PTR_ERR(phy_reset);
+	gpr = syscon_regmap_lookup_by_phandle(np, "csi-gpr");
+	if (IS_ERR(gpr))
+		return PTR_ERR(gpr);
 
-	reset_control_assert(phy_reset);
+	regmap_update_bits(gpr, GPR_MIPI_RESET,
+			   GPR_MIPI_S_RESETN,
+			   0x0);
 	usleep_range(10, 20);
-	reset_control_deassert(phy_reset);
+	regmap_update_bits(gpr, GPR_MIPI_RESET,
+			   GPR_MIPI_S_RESETN,
+			   GPR_MIPI_S_RESETN);
 	usleep_range(10, 20);
 
 	return 0;
-
 }
 
 static int mipi_csis_phy_reset(struct csi_state *state)
@@ -937,7 +943,7 @@ static int subdev_notifier_bound(struct v4l2_async_notifier *notifier,
 	struct csi_state *state = notifier_to_mipi_dev(notifier);
 
 	/* Find platform data for this sensor subdev */
-	if (state->asd.match.fwnode.fwnode == dev_fwnode(subdev->dev))
+	if (state->asd.match.fwnode == dev_fwnode(subdev->dev))
 		state->sensor_sd = subdev;
 
 	if (subdev == NULL)
@@ -987,6 +993,10 @@ static int mipi_csis_parse_dt(struct platform_device *pdev,
 static int mipi_csis_pm_resume(struct device *dev, bool runtime);
 static const struct of_device_id mipi_csis_of_match[];
 
+static const struct v4l2_async_notifier_operations mxc_mipi_csi_subdev_ops = {
+	.bound = subdev_notifier_bound,
+};
+
 /* register parent dev */
 static int mipi_csis_subdev_host(struct csi_state *state)
 {
@@ -1013,7 +1023,7 @@ static int mipi_csis_subdev_host(struct csi_state *state)
 		}
 
 		state->asd.match_type = V4L2_ASYNC_MATCH_FWNODE;
-		state->asd.match.fwnode.fwnode = of_fwnode_handle(rem);
+		state->asd.match.fwnode = of_fwnode_handle(rem);
 		state->async_subdevs[0] = &state->asd;
 
 		of_node_put(rem);
@@ -1022,7 +1032,7 @@ static int mipi_csis_subdev_host(struct csi_state *state)
 
 	state->subdev_notifier.subdevs = state->async_subdevs;
 	state->subdev_notifier.num_subdevs = 1;
-	state->subdev_notifier.bound = subdev_notifier_bound;
+	state->subdev_notifier.ops = &mxc_mipi_csi_subdev_ops;
 
 	ret = v4l2_async_notifier_register(&state->v4l2_dev,
 					&state->subdev_notifier);

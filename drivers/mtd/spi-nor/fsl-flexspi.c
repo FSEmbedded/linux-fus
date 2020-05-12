@@ -32,7 +32,7 @@
 #include <soc/imx8/sc/sci.h>
 #include <linux/pm_runtime.h>
 
-/* Board only enabled up to Quad mode, not Octal*/
+/* Board only enabled up to Quad mode, not Octal */
 #define FLEXSPI_QUIRK_QUAD_ONLY		(1 << 0)
 /* Maximum clock limitation */
 #define FLEXSPI_QUIRK_FREQ_LIMIT	(1 << 1)
@@ -559,6 +559,7 @@ static irqreturn_t fsl_flexspi_irq_handler(int irq, void *dev_id)
 static void fsl_flexspi_init_lut(struct fsl_flexspi *flex)
 {
 	void __iomem *base = flex->iobase;
+	int rxfifo = flex->devtype_data->rxfifo;
 	struct spi_nor *nor = &flex->nor[0];
 	u8 addrlen = (nor->addr_width == 3) ? ADDR24BIT : ADDR32BIT;
 	u32 lut_base;
@@ -591,7 +592,7 @@ static void fsl_flexspi_init_lut(struct fsl_flexspi *flex)
 		       base + FLEXSPI_LUT(lut_base));
 
 		writel(LUT0(DUMMY_DDR, PAD8, dm * 2)
-			| LUT1(READ_DDR, PAD8, 0),
+			| LUT1(READ_DDR, PAD8, rxfifo),
 			base + FLEXSPI_LUT(lut_base + 1));
 	/* QUAD Fast Read */
 	} else if (op == SPINOR_OP_READ_1_1_4 || op == SPINOR_OP_READ_1_1_4_4B) {
@@ -618,12 +619,12 @@ static void fsl_flexspi_init_lut(struct fsl_flexspi *flex)
 	/* DDR Quad Fast Read 	 */
 	} else if (op == SPINOR_OP_READ_1_1_4_DTR) {
 		/* read mode : 1-1-4, such as Micron N25Q256A. */
-		writel(LUT0(CMD, PAD1, op) |
+		writel(LUT0(CMD_DDR, PAD1, op) |
 		       LUT1(ADDR_DDR, PAD1, addrlen),
 		       base + FLEXSPI_LUT(lut_base));
 
-		writel(LUT0(DUMMY_DDR, PAD4, dm * 2) |
-		       LUT1(READ_DDR, PAD4, 0),
+		writel(LUT0(DUMMY, PAD1, dm) |
+		       LUT1(READ_DDR, PAD4, rxfifo),
 		       base + FLEXSPI_LUT(lut_base + 1));
 
 		writel(LUT0(JMP_ON_CS, PAD1, 0),

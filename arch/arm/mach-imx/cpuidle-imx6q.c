@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2016 Freescale Semiconductor, Inc.
+ * Copyright (C) 2012 Freescale Semiconductor, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -34,7 +34,6 @@ static int imx6q_enter_wait(struct cpuidle_device *dev,
 		imx6_set_lpm(WAIT_CLOCKED);
 	spin_unlock(&cpuidle_lock);
 
-	imx6_set_lpm(WAIT_CLOCKED);
 	return index;
 }
 

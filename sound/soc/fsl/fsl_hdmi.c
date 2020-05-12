@@ -607,7 +607,8 @@ static int fsl_hdmi_audio_hw_params(struct device *dev, void *data,
 			 struct hdmi_codec_params *hparms)
 {
 	dev_dbg(dev, "[%s]: %u Hz, %d bit, %d channels\n", __func__,
-			hparms->sample_rate, hparms->sample_width, hparms->cea.channels);
+			hparms->sample_rate, hparms->sample_width,
+			hparms->cea.channels);
 
 	return 0;
 }

@@ -830,9 +830,9 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 		goto dispdrv_reg_fail;
 	}
 
-        mipi_dsi->mipi_dsi_pkt_read  = mipi_dsi_pkt_read;
-        mipi_dsi->mipi_dsi_pkt_write = mipi_dsi_pkt_write;
-        mipi_dsi->mipi_dsi_dcs_cmd   = mipi_dsi_dcs_cmd;
+	mipi_dsi->mipi_dsi_pkt_read  = mipi_dsi_pkt_read;
+	mipi_dsi->mipi_dsi_pkt_write = mipi_dsi_pkt_write;
+	mipi_dsi->mipi_dsi_dcs_cmd   = mipi_dsi_dcs_cmd;
 
 	pm_runtime_enable(&pdev->dev);
 

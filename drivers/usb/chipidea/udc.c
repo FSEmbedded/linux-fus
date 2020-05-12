@@ -1577,29 +1577,14 @@ static int ci_udc_vbus_session(struct usb_gadget *_gadget, int is_active)
 	ci->vbus_active = is_active;
 	spin_unlock_irqrestore(&ci->lock, flags);
 
-	if (ci->usb_phy)
-		usb_phy_set_charger_state(ci->usb_phy, is_active ?
-			USB_CHARGER_PRESENT : USB_CHARGER_ABSENT);
+	if (ci->usb_phy) {
+		/* Charger Detection */
+		ci_usb_charger_connect(ci, is_active);
 
-	if (gadget_ready) {
-		if (is_active) {
-			pm_runtime_get_sync(&_gadget->dev);
-			hw_device_reset(ci);
-			hw_device_state(ci, ci->ep0out->qh.dma);
-			usb_gadget_set_state(_gadget, USB_STATE_POWERED);
-			usb_udc_vbus_handler(_gadget, true);
-		} else {
-			usb_udc_vbus_handler(_gadget, false);
-			if (ci->driver)
-				ci->driver->disconnect(&ci->gadget);
-			hw_device_state(ci, 0);
-			if (ci->platdata->notify_event)
-				ci->platdata->notify_event(ci,
-				CI_HDRC_CONTROLLER_STOPPED_EVENT);
-			_gadget_stop_activity(&ci->gadget);
-			pm_runtime_put_sync(&_gadget->dev);
-			usb_gadget_set_state(_gadget, USB_STATE_NOTATTACHED);
-		}
+		if (is_active)
+			usb_phy_set_event(ci->usb_phy, USB_EVENT_VBUS);
+		else
+			usb_phy_set_event(ci->usb_phy, USB_EVENT_NONE);
 	}
 
 	if (ci->driver)
@@ -1682,25 +1667,6 @@ static int ci_udc_pullup(struct usb_gadget *_gadget, int is_on)
 static int ci_udc_start(struct usb_gadget *gadget,
 			 struct usb_gadget_driver *driver);
 static int ci_udc_stop(struct usb_gadget *gadget);
-
-/* Match ISOC IN from the highest endpoint */
-static struct usb_ep *ci_udc_match_ep(struct usb_gadget *gadget,
-			      struct usb_endpoint_descriptor *desc,
-			      struct usb_ss_ep_comp_descriptor *comp_desc)
-{
-	struct ci_hdrc *ci = container_of(gadget, struct ci_hdrc, gadget);
-	struct usb_ep *ep;
-
-	if (usb_endpoint_xfer_isoc(desc) && usb_endpoint_dir_in(desc)) {
-		list_for_each_entry_reverse(ep, &ci->gadget.ep_list, ep_list) {
-			if (ep->caps.dir_in && !ep->claimed)
-				return ep;
-		}
-	}
-
-	return NULL;
-}
-
 /**
  * Device operations part of the API to the USB controller hardware,
  * which don't involve endpoints (or i/o)
@@ -1714,7 +1680,6 @@ static const struct usb_gadget_ops usb_gadget_ops = {
 	.vbus_draw	= ci_udc_vbus_draw,
 	.udc_start	= ci_udc_start,
 	.udc_stop	= ci_udc_stop,
-	.match_ep 	= ci_udc_match_ep,
 };
 
 static int init_eps(struct ci_hdrc *ci)
@@ -1898,9 +1863,12 @@ static irqreturn_t udc_irq(struct ci_hdrc *ci)
 	if (ci == NULL)
 		return IRQ_HANDLED;
 
+	spin_lock(&ci->lock);
+
 	if (ci->platdata->flags & CI_HDRC_REGS_SHARED) {
 		if (hw_read(ci, OP_USBMODE, USBMODE_CM) !=
 				USBMODE_CM_DC) {
+			spin_unlock(&ci->lock);
 			return IRQ_NONE;
 		}
 	}
@@ -1948,6 +1916,7 @@ static irqreturn_t udc_irq(struct ci_hdrc *ci)
 	} else {
 		retval = IRQ_NONE;
 	}
+	spin_unlock(&ci->lock);
 
 	return retval;
 }
@@ -2116,7 +2085,7 @@ static void udc_id_switch_for_host(struct ci_hdrc *ci)
 		return;
 
 	/*
-	 * Clear and disbale BSV irq for B-device switch to A-device
+	 * Clear and disable BSV irq for B-device switch to A-device
 	 * (in otg fsm mode, means B_IDLE->A_IDLE) due to ID change.
 	 */
 	if (!ci_otg_is_fsm_mode(ci) ||

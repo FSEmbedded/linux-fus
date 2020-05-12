@@ -352,10 +352,6 @@ ENTRY(entry_INT80_compat)
 
 	/* switch to thread stack expects orig_ax and rdi to be pushed */
 	pushq	%rax			/* pt_regs->orig_ax */
-
-	/* switch to thread stack expects orig_ax to be pushed */
-	call	switch_to_thread_stack
-
 	pushq	%rdi			/* pt_regs->di */
 
 	/* Need to switch before accessing the thread stack. */

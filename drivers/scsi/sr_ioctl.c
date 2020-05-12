@@ -188,7 +188,6 @@ int sr_do_ioctl(Scsi_CD *cd, struct packet_command *cgc)
 	struct scsi_device *SDev;
 	struct scsi_sense_hdr local_sshdr, *sshdr = &local_sshdr;
 	int result, err = 0, retries = 0;
-	unsigned char sense_buffer[SCSI_SENSE_BUFFERSIZE], *senseptr = NULL;
 
 	SDev = cd->device;
 
@@ -204,9 +203,6 @@ int sr_do_ioctl(Scsi_CD *cd, struct packet_command *cgc)
 	result = scsi_execute(SDev, cgc->cmd, cgc->data_direction,
 			      cgc->buffer, cgc->buflen, NULL, sshdr,
 			      cgc->timeout, IOCTL_RETRIES, 0, 0, NULL);
-
-	if (cgc->sense)
-		memcpy(cgc->sense, sense_buffer, sizeof(*cgc->sense));
 
 	/* Minimal error checking.  Ignore cases we know about, and report the rest. */
 	if (driver_byte(result) != 0) {

@@ -87,7 +87,8 @@ static const struct snd_soc_dapm_route audio_map[] = {
 };
 
 static int be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
-				struct snd_pcm_hw_params *params) {
+				struct snd_pcm_hw_params *params)
+{
 
 	struct imx_priv *priv = &card_priv;
 	struct snd_interval *rate;

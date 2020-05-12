@@ -10,7 +10,7 @@
 
 /* disable epdc, conflict with qspi */
 &epdc {
-        status = "disabled";
+	status = "disabled";
 };
 
 &iomuxc {

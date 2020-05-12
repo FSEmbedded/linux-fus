@@ -39,9 +39,6 @@
 #define OV5640_CHIP_ID_HIGH_BYTE        0x300A
 #define OV5640_CHIP_ID_LOW_BYTE         0x300B
 
-#define OV5640_MIPI_CONTROLL_00		0x300E
-#define MIPI_CONTROLL00_MIPI_MODE	BIT(2)
-
 #define OV5640_SENS_PAD_SOURCE	0
 #define OV5640_SENS_PADS_NUM	1
 
@@ -138,6 +135,7 @@ struct ov5640 {
 };
 
 static struct reg_value ov5640_init_setting_30fps_VGA[] = {
+
 	{0x3103, 0x11, 0, 0}, {0x3008, 0x82, 0, 5}, {0x3008, 0x42, 0, 0},
 	{0x3103, 0x03, 0, 0}, {0x3017, 0x00, 0, 0}, {0x3018, 0x00, 0, 0},
 	{0x3034, 0x18, 0, 0}, {0x3035, 0x14, 0, 0}, {0x3036, 0x38, 0, 0},
@@ -172,7 +170,7 @@ static struct reg_value ov5640_init_setting_30fps_VGA[] = {
 	{0x300e, 0x45, 0, 0}, {0x302e, 0x08, 0, 0}, {0x4300, 0x3F, 0, 0},
 	{0x501f, 0x00, 0, 0}, {0x4713, 0x03, 0, 0}, {0x4407, 0x04, 0, 0},
 	{0x440e, 0x00, 0, 0}, {0x460b, 0x35, 0, 0}, {0x460c, 0x22, 0, 0},
-	{0x4837, 0x0a, 0, 0}, {0x4800, 0x24, 0, 0}, {0x3824, 0x02, 0, 0},
+	{0x4837, 0x0a, 0, 0}, {0x4800, 0x04, 0, 0}, {0x3824, 0x02, 0, 0},
 	{0x5000, 0xa7, 0, 0}, {0x5001, 0xa3, 0, 0}, {0x5180, 0xff, 0, 0},
 	{0x5181, 0xf2, 0, 0}, {0x5182, 0x00, 0, 0}, {0x5183, 0x14, 0, 0},
 	{0x5184, 0x25, 0, 0}, {0x5185, 0x24, 0, 0}, {0x5186, 0x09, 0, 0},
@@ -222,7 +220,7 @@ static struct reg_value ov5640_init_setting_30fps_VGA[] = {
 	{0x583b, 0x28, 0, 0}, {0x583c, 0x42, 0, 0}, {0x583d, 0xce, 0, 0},
 	{0x5025, 0x00, 0, 0}, {0x3a0f, 0x30, 0, 0}, {0x3a10, 0x28, 0, 0},
 	{0x3a1b, 0x30, 0, 0}, {0x3a1e, 0x26, 0, 0}, {0x3a11, 0x60, 0, 0},
-	{0x3a1f, 0x14, 0, 0}, {0x3008, 0x42, 0, 10}, {0x3c00, 0x04, 0, 300},
+	{0x3a1f, 0x14, 0, 0}, {0x3008, 0x42, 0, 0}, {0x3c00, 0x04, 0, 300},
 };
 
 static struct reg_value ov5640_setting_30fps_VGA_640_480[] = {
@@ -245,7 +243,7 @@ static struct reg_value ov5640_setting_30fps_VGA_640_480[] = {
 	{0x4001, 0x02, 0, 0}, {0x4004, 0x02, 0, 0}, {0x4713, 0x03, 0, 0},
 	{0x4407, 0x04, 0, 0}, {0x460b, 0x35, 0, 0}, {0x460c, 0x22, 0, 0},
 	{0x3824, 0x02, 0, 0}, {0x5001, 0xa3, 0, 0},
-	{0x4005, 0x1a, 0, 0}, {0x3008, 0x02, 0, 10}, {0x3503, 0x00, 0, 0},
+	{0x4005, 0x1a, 0, 0}, {0x3008, 0x02, 0, 0}, {0x3503, 0x00, 0, 0},
 };
 
 static struct reg_value ov5640_setting_30fps_QVGA_320_240[] = {
@@ -268,7 +266,7 @@ static struct reg_value ov5640_setting_30fps_QVGA_320_240[] = {
 	{0x4001, 0x02, 0, 0}, {0x4004, 0x02, 0, 0}, {0x4713, 0x03, 0, 0},
 	{0x4407, 0x04, 0, 0}, {0x460b, 0x35, 0, 0}, {0x460c, 0x22, 0, 0},
 	{0x3824, 0x02, 0, 0}, {0x5001, 0xa3, 0, 0},
-	{0x4005, 0x1a, 0, 0}, {0x3008, 0x02, 0, 10}, {0x3503, 0x00, 0, 0},
+	{0x4005, 0x1a, 0, 0}, {0x3008, 0x02, 0, 0}, {0x3503, 0x00, 0, 0},
 };
 
 static struct reg_value ov5640_setting_30fps_NTSC_720_480[] = {
@@ -291,7 +289,7 @@ static struct reg_value ov5640_setting_30fps_NTSC_720_480[] = {
 	{0x4001, 0x02, 0, 0}, {0x4004, 0x02, 0, 0}, {0x4713, 0x03, 0, 0},
 	{0x4407, 0x04, 0, 0}, {0x460b, 0x35, 0, 0}, {0x460c, 0x22, 0, 0},
 	{0x3824, 0x02, 0, 0}, {0x5001, 0xa3, 0, 0},
-	{0x4005, 0x1a, 0, 0}, {0x3008, 0x02, 0, 10}, {0x3503, 0, 0, 0},
+	{0x4005, 0x1a, 0, 0}, {0x3008, 0x02, 0, 0}, {0x3503, 0, 0, 0},
 };
 
 static struct reg_value ov5640_setting_30fps_720P_1280_720[] = {
@@ -314,7 +312,7 @@ static struct reg_value ov5640_setting_30fps_720P_1280_720[] = {
 	{0x4001, 0x02, 0, 0}, {0x4004, 0x02, 0, 0}, {0x4713, 0x02, 0, 0},
 	{0x4407, 0x04, 0, 0}, {0x460b, 0x37, 0, 0}, {0x460c, 0x20, 0, 0},
 	{0x3824, 0x04, 0, 0}, {0x5001, 0x83, 0, 0}, {0x4005, 0x1a, 0, 0},
-	{0x3008, 0x02, 0, 15}, {0x3503, 0,    0, 0},
+	{0x3008, 0x02, 0, 0}, {0x3503, 0,    0, 0},
 };
 
 static struct reg_value ov5640_setting_30fps_1080P_1920_1080[] = {
@@ -350,12 +348,13 @@ static struct reg_value ov5640_setting_30fps_1080P_1920_1080[] = {
 	{0x3a0e, 0x03, 0, 0}, {0x3a0d, 0x04, 0, 0}, {0x3a14, 0x04, 0, 0},
 	{0x3a15, 0x60, 0, 0}, {0x4713, 0x02, 0, 0}, {0x4407, 0x04, 0, 0},
 	{0x460b, 0x37, 0, 0}, {0x460c, 0x20, 0, 0}, {0x3824, 0x04, 0, 0},
-	{0x4005, 0x1a, 0, 0}, {0x3008, 0x02, 0, 20},
+	{0x4005, 0x1a, 0, 0}, {0x3008, 0x02, 0, 0},
 	{0x3503, 0, 0, 0},
 };
 
 static struct reg_value ov5640_setting_15fps_QSXGA_2592_1944[] = {
 	{0x3008, 0x42, 0, 0},
+	{0x4202, 0x0f, 0, 0},	/* stream off the sensor */
 	{0x3820, 0x40, 0, 0}, {0x3821, 0x06, 0, 0}, /*disable flip*/
 	{0x3035, 0x21, 0, 0}, {0x3036, 0x54, 0, 0}, {0x3c07, 0x08, 0, 0},
 	{0x3c09, 0x1c, 0, 0}, {0x3c0a, 0x9c, 0, 0}, {0x3c0b, 0x40, 0, 0},
@@ -374,7 +373,8 @@ static struct reg_value ov5640_setting_15fps_QSXGA_2592_1944[] = {
 	{0x3a0d, 0x04, 0, 0}, {0x3a14, 0x03, 0, 0}, {0x3a15, 0xd8, 0, 0},
 	{0x4001, 0x02, 0, 0}, {0x4004, 0x06, 0, 0}, {0x4713, 0x03, 0, 0},
 	{0x4407, 0x04, 0, 0}, {0x460b, 0x35, 0, 0}, {0x460c, 0x22, 0, 0},
-	{0x3824, 0x02, 0, 0}, {0x5001, 0x83, 0, 70}, {0x3008, 0x02, 0, 267},
+	{0x3824, 0x02, 0, 0}, {0x5001, 0x83, 0, 70}, {0x3008, 0x02, 0, 0},
+	{0x4202, 0x00, 0, 0},	/* stream on the sensor */
 };
 
 static struct ov5640_mode_info ov5640_mode_info_data[2][ov5640_mode_MAX + 1] = {
@@ -438,7 +438,6 @@ static int ov5640_remove(struct i2c_client *client);
 
 static s32 ov5640_read_reg(struct ov5640 *sensor, u16 reg, u8 *val);
 static s32 ov5640_write_reg(struct ov5640 *sensor, u16 reg, u8 val);
-static void ov5640_stop(struct ov5640 *sensor);
 
 static const struct i2c_device_id ov5640_id[] = {
 	{"ov5640_mipi_v3", 0},
@@ -527,9 +526,6 @@ static inline void ov5640_power_down(struct ov5640 *sensor, int enable)
 
 static inline void ov5640_reset(struct ov5640 *sensor)
 {
-	if (sensor->pwn_gpio < 0 || sensor->rst_gpio < 0)
-		return;
-
 	gpio_set_value_cansleep(sensor->pwn_gpio, 1);
 	gpio_set_value_cansleep(sensor->rst_gpio, 0);
 	udelay(5000);
@@ -694,6 +690,18 @@ err:
 	return retval;
 }
 
+static void ov5640_soft_reset(struct ov5640 *sensor)
+{
+	/* sysclk from pad */
+	ov5640_write_reg(sensor, 0x3103, 0x11);
+
+	/* software reset */
+	ov5640_write_reg(sensor, 0x3008, 0x82);
+
+	/* delay at least 5ms */
+	msleep(10);
+}
+
 static int ov5640_config_init(struct ov5640 *sensor)
 {
 	struct reg_value *pModeSetting = NULL;
@@ -713,13 +721,11 @@ static int ov5640_config_init(struct ov5640 *sensor)
 static void ov5640_start(struct ov5640 *sensor)
 {
 	ov5640_write_reg(sensor, 0x3008, 0x02);
-	ov5640_write_reg(sensor, 0x4202, 0x00);
+	ov5640_write_reg(sensor, 0x3008, 0x02);
 
 	/* Color bar control */
 	/*ov5640_write_reg(sensor, 0x503d, 0x80);*/
-
-	/* skip the first three frame for 30fps */
-	msleep(100);
+	udelay(1000);
 }
 
 static int ov5640_change_mode(struct ov5640 *sensor)
@@ -749,26 +755,27 @@ static int ov5640_change_mode(struct ov5640 *sensor)
 	}
 
 	retval = ov5640_download_firmware(sensor, pModeSetting, ArySize);
-
 	return retval;
-}
-
-static void ov5640_stop(struct ov5640 *sensor)
-{
-	ov5640_write_reg(sensor, 0x4202, 0x0f);
-	ov5640_write_reg(sensor, 0x3008, 0x42);
-	ov5640_write_reg(sensor, 0x4800, 0x24);
 }
 
 static int init_device(struct ov5640 *sensor)
 {
 	int retval;
 
+	ov5640_soft_reset(sensor);
 	retval = ov5640_config_init(sensor);
 	if (retval < 0)
 		return retval;
 
+	ov5640_start(sensor);
+
 	return 0;
+}
+
+static void ov5640_stop(struct ov5640 *sensor)
+{
+	ov5640_write_reg(sensor, 0x3008, 0x42);
+	udelay(1000);
 }
 
 /*!
@@ -1014,7 +1021,6 @@ static int ov5640_set_fmt(struct v4l2_subdev *sd,
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct ov5640 *sensor = to_ov5640(client);
 	int ret;
-	u8 val;
 
 	if (format->pad)
 		return -EINVAL;
@@ -1030,11 +1036,7 @@ static int ov5640_set_fmt(struct v4l2_subdev *sd,
 	if (format->which == V4L2_SUBDEV_FORMAT_TRY)
 		return 0;
 
-	/* Need to reinitialize sensor after system suspend/resume */
-	ov5640_read_reg(sensor, OV5640_MIPI_CONTROLL_00, &val);
-	if (!(val & MIPI_CONTROLL00_MIPI_MODE))
-		init_device(sensor);
-
+	init_device(sensor);
 	ret = ov5640_change_mode(sensor);
 	sensor->fmt = fmt;
 
@@ -1293,7 +1295,7 @@ static int ov5640_probe(struct i2c_client *client,
 
 	ov5640_regulator_enable(&client->dev);
 
-	ov5640_power_down(sensor, 0);
+	ov5640_reset(sensor);
 
 	retval = ov5640_read_reg(sensor, OV5640_CHIP_ID_HIGH_BYTE,
 				&chip_id_high);

@@ -2319,7 +2319,6 @@ static int azx_probe_continue(struct azx *chip)
 	struct hdac_bus *bus = azx_bus(chip);
 	struct pci_dev *pci = chip->pci;
 	int dev = chip->dev_index;
-	int val;
 	int err;
 
 	to_hda_bus(bus)->bus_probing = 1;

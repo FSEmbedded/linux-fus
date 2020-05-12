@@ -19,9 +19,6 @@
 #include <asm/pgalloc.h>
 #include <asm/pte-walk.h>
 
-static void mark_pages_dirty(struct kvm *kvm, struct kvm_memory_slot *memslot,
-			     unsigned long gfn, unsigned int order);
-
 /*
  * Supported radix tree geometry.
  * Like p9, we support either 5 or 9 bits at the first (lowest) level,

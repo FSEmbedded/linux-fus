@@ -91,6 +91,7 @@ struct flash_info {
 #define USE_CLSR		BIT(14)	/* use CLSR command */
 
 	int	(*quad_enable)(struct spi_nor *nor);
+#define	SPI_NOR_OCTAL_READ	BIT(15)  /* Flash supports DDR Octal Read */
 };
 
 #define JEDEC_MFR(info)	((info)->id[0])
@@ -1122,7 +1123,7 @@ static const struct flash_info spi_nor_ids[] = {
 	{ "n25q064",     INFO(0x20ba17, 0, 64 * 1024,  128, SECT_4K | SPI_NOR_QUAD_READ) },
 	{ "n25q064a",    INFO(0x20bb17, 0, 64 * 1024,  128, SECT_4K | SPI_NOR_QUAD_READ) },
 	{ "n25q128a11",  INFO(0x20bb18, 0, 64 * 1024,  256, SECT_4K | SPI_NOR_QUAD_READ) },
-	{ "mt25qu256",	 INFO(0x20bb19, 0, 64 * 1024,  256, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
+	{ "mt25qu256",   INFO(0x20bb19, 0, 64 * 1024,  256, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
 	{ "n25q128a13",  INFO(0x20ba18, 0, 64 * 1024,  256, SECT_4K | SPI_NOR_QUAD_READ) },
 	{ "n25q256a",    INFO(0x20ba19, 0, 64 * 1024,  512, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
 	{ "n25q256ax1",  INFO(0x20bb19, 0, 64 * 1024,  512, SECT_4K | SPI_NOR_QUAD_READ) },
@@ -1131,6 +1132,8 @@ static const struct flash_info spi_nor_ids[] = {
 	{ "n25q00",      INFO(0x20ba21, 0, 64 * 1024, 2048, SECT_4K | USE_FSR | SPI_NOR_QUAD_READ | NO_CHIP_ERASE) },
 	{ "n25q00a",     INFO(0x20bb21, 0, 64 * 1024, 2048, SECT_4K | USE_FSR | SPI_NOR_QUAD_READ | NO_CHIP_ERASE) },
 	{ "mt25qu02g",   INFO(0x20bb22, 0, 64 * 1024, 4096, SECT_4K | USE_FSR | SPI_NOR_QUAD_READ | NO_CHIP_ERASE) },
+	{"mt35xu512aba", INFO(0x2c5b1a, 0, 128 * 1024, 512, SECT_4K | SPI_NOR_OCTAL_READ) },
+	{"mt35xu512aba", INFO(0x2c5b1a, 0, 128 * 1024, 512, SECT_4K | SPI_NOR_OCTAL_READ | SPI_NOR_SKIP_SFDP) },
 
 	/* PMC */
 	{ "pm25lv512",   INFO(0,        0, 32 * 1024,    2, SECT_4K_PMC) },
@@ -2836,10 +2839,18 @@ static void spi_nor_resume(struct mtd_info *mtd)
 	struct device *dev = nor->dev;
 	int ret;
 
+	ret = spi_nor_lock_and_prep(nor, SPI_NOR_OPS_RESUME);
+	if (ret) {
+		dev_err(dev, "prepare() failed\n");
+		return;
+	}
+
 	/* re-initialize the nor chip */
 	ret = spi_nor_init(nor);
 	if (ret)
 		dev_err(dev, "resume() failed\n");
+
+	spi_nor_unlock_and_unprep(nor, SPI_NOR_OPS_RESUME);
 }
 
 void spi_nor_restore(struct spi_nor *nor)

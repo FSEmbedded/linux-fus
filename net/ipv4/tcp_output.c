@@ -1289,7 +1289,6 @@ int tcp_fragment(struct sock *sk, enum tcp_queue tcp_queue,
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct sk_buff *buff;
 	int nsize, old_factor;
-	long limit;
 	int nlen;
 	u8 flags;
 
@@ -1299,19 +1298,6 @@ int tcp_fragment(struct sock *sk, enum tcp_queue tcp_queue,
 	nsize = skb_headlen(skb) - len;
 	if (nsize < 0)
 		nsize = 0;
-
-	/* tcp_sendmsg() can overshoot sk_wmem_queued by one full size skb.
-	 * We need some allowance to not penalize applications setting small
-	 * SO_SNDBUF values.
-	 * Also allow first and last skb in retransmit queue to be split.
-	 */
-	limit = sk->sk_sndbuf + 2 * SKB_TRUESIZE(GSO_MAX_SIZE);
-	if (unlikely((sk->sk_wmem_queued >> 1) > limit &&
-		     skb != tcp_rtx_queue_head(sk) &&
-		     skb != tcp_rtx_queue_tail(sk))) {
-		NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPWQUEUETOOBIG);
-		return -ENOMEM;
-	}
 
 	if (skb_unclone(skb, gfp))
 		return -ENOMEM;
@@ -1471,7 +1457,8 @@ static inline int __tcp_mtu_to_mss(struct sock *sk, int pmtu)
 	mss_now -= icsk->icsk_ext_hdr_len;
 
 	/* Then reserve room for full set of TCP options and 8 bytes of data */
-	mss_now = max(mss_now, sock_net(sk)->ipv4.sysctl_tcp_min_snd_mss);
+	if (mss_now < 48)
+		mss_now = 48;
 	return mss_now;
 }
 
@@ -2513,14 +2500,6 @@ void tcp_send_loss_probe(struct sock *sk)
 		return;
 	}
 
-	if (unlikely(!skb)) {
-		WARN_ONCE(tp->packets_out,
-			  "invalid inflight: %u state %u cwnd %u mss %d\n",
-			  tp->packets_out, sk->sk_state, tp->snd_cwnd, mss);
-		inet_csk(sk)->icsk_pending = 0;
-		return;
-	}
-
 	/* At most one outstanding TLP retransmission. */
 	if (tp->tlp_high_seq)
 		goto rearm_timer;
@@ -2748,7 +2727,7 @@ static bool tcp_collapse_retrans(struct sock *sk, struct sk_buff *skb)
 		if (next_skb_size <= skb_availroom(skb))
 			skb_copy_bits(next_skb, 0, skb_put(skb, next_skb_size),
 				      next_skb_size);
-		else if (!tcp_skb_shift(skb, next_skb, 1, next_skb_size))
+		else if (!skb_shift(skb, next_skb, next_skb_size))
 			return false;
 	}
 	tcp_highest_sack_replace(sk, next_skb, skb);

@@ -94,24 +94,6 @@ static struct qeth_ipaddr *qeth_l3_find_addr_by_ip(struct qeth_card *card,
 	return NULL;
 }
 
-static struct qeth_ipaddr *qeth_l3_find_addr_by_ip(struct qeth_card *card,
-						   struct qeth_ipaddr *query)
-{
-	u64 key = qeth_l3_ipaddr_hash(query);
-	struct qeth_ipaddr *addr;
-
-	if (query->is_multicast) {
-		hash_for_each_possible(card->ip_mc_htable, addr, hnode, key)
-			if (qeth_l3_addr_match_ip(addr, query))
-				return addr;
-	} else {
-		hash_for_each_possible(card->ip_htable,  addr, hnode, key)
-			if (qeth_l3_addr_match_ip(addr, query))
-				return addr;
-	}
-	return NULL;
-}
-
 static void qeth_l3_convert_addr_to_bits(u8 *addr, u8 *bits, int len)
 {
 	int i, j;

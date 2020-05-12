@@ -81,7 +81,6 @@ struct rds_sock *rds_find_bound(const struct in6_addr *addr, __be16 port,
 	if (rs && (sock_flag(rds_rs_to_sk(rs), SOCK_DEAD) ||
 		   !refcount_inc_not_zero(&rds_rs_to_sk(rs)->sk_refcnt)))
 		rs = NULL;
-	rcu_read_unlock();
 
 	rcu_read_unlock();
 

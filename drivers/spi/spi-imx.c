@@ -65,6 +65,7 @@ struct spi_imx_devtype_data {
 	int (*rx_available)(struct spi_imx_data *);
 	void (*reset)(struct spi_imx_data *);
 	void (*disable)(struct spi_imx_data *);
+	void (*setup_wml)(struct spi_imx_data *);
 	bool has_dmamode;
 	bool has_slavemode;
 	unsigned int fifo_size;
@@ -96,11 +97,6 @@ struct spi_imx_data {
 	const void *tx_buf;
 	unsigned int txfifo; /* number of words pushed in tx FIFO */
 	unsigned int dynamic_burst;
-
-	/* Slave mode */
-	bool slave_mode;
-	bool slave_aborted;
-	unsigned int slave_burst;
 
 	/* Slave mode */
 	bool slave_mode;
@@ -233,12 +229,12 @@ static bool spi_imx_can_dma(struct spi_master *master, struct spi_device *spi,
 
 	bytes_per_word = spi_imx_bytes_per_word(transfer->bits_per_word);
 
-	for (i = spi_imx->devtype_data->fifo_size / 2; i > 0; i--) {
-		if (!(transfer->len % (i * bytes_per_word)))
-			break;
-	}
+	if (bytes_per_word != 1 && bytes_per_word != 2 && bytes_per_word != 4)
+		return false;
 
-	spi_imx->wml = i;
+	if (transfer->len < spi_imx->devtype_data->fifo_size / 2)
+		return false;
+
 	spi_imx->dynamic_burst = 0;
 
 	return true;
@@ -425,44 +421,6 @@ static void mx53_ecspi_tx_slave(struct spi_imx_data *spi_imx)
 	writel(val, spi_imx->base + MXC_CSPITXDATA);
 }
 
-static void mx53_ecspi_rx_slave(struct spi_imx_data *spi_imx)
-{
-	u32 val = be32_to_cpu(readl(spi_imx->base + MXC_CSPIRXDATA));
-
-	if (spi_imx->rx_buf) {
-		int n_bytes = spi_imx->slave_burst % sizeof(val);
-
-		if (!n_bytes)
-			n_bytes = sizeof(val);
-
-		memcpy(spi_imx->rx_buf,
-		       ((u8 *)&val) + sizeof(val) - n_bytes, n_bytes);
-
-		spi_imx->rx_buf += n_bytes;
-		spi_imx->slave_burst -= n_bytes;
-	}
-}
-
-static void mx53_ecspi_tx_slave(struct spi_imx_data *spi_imx)
-{
-	u32 val = 0;
-	int n_bytes = spi_imx->count % sizeof(val);
-
-	if (!n_bytes)
-		n_bytes = sizeof(val);
-
-	if (spi_imx->tx_buf) {
-		memcpy(((u8 *)&val) + sizeof(val) - n_bytes,
-		       spi_imx->tx_buf, n_bytes);
-		val = cpu_to_be32(val);
-		spi_imx->tx_buf += n_bytes;
-	}
-
-	spi_imx->count -= n_bytes;
-
-	writel(val, spi_imx->base + MXC_CSPITXDATA);
-}
-
 /* MX51 eCSPI */
 static unsigned int mx51_ecspi_clkdiv(struct spi_imx_data *spi_imx,
 				      unsigned int fspi, unsigned int *fres)
@@ -569,7 +527,7 @@ static int mx51_ecspi_config(struct spi_device *spi)
 	/* set chip select to use */
 	ctrl |= MX51_ECSPI_CTRL_CS(spi->chip_select);
 
-	if (spi_imx->slave_mode && is_imx53_ecspi(spi_imx))
+	if (spi_imx->slave_mode)
 		ctrl |= (spi_imx->slave_burst * 8 - 1)
 			<< MX51_ECSPI_CTRL_BL_OFFSET;
 	else
@@ -1264,12 +1222,6 @@ static int spi_imx_setupxfer(struct spi_device *spi,
 		spi_imx->slave_burst = t->len;
 	}
 
-	if (is_imx53_ecspi(spi_imx) && spi_imx->slave_mode) {
-		spi_imx->rx = mx53_ecspi_rx_slave;
-		spi_imx->tx = mx53_ecspi_tx_slave;
-		spi_imx->slave_burst = t->len;
-	}
-
 	spi_imx->devtype_data->config(spi);
 
 	return 0;
@@ -1484,7 +1436,7 @@ static int spi_imx_pio_transfer_slave(struct spi_device *spi,
 	struct spi_imx_data *spi_imx = spi_master_get_devdata(spi->master);
 	int ret = transfer->len;
 
-	if (is_imx53_ecspi(spi_imx) &&
+	if ((is_imx51_ecspi(spi_imx) || is_imx53_ecspi(spi_imx)) &&
 	    transfer->len > MX53_MAX_TRANSFER_BYTES) {
 		dev_err(&spi->dev, "Transaction too big, max size is %d bytes\n",
 			MX53_MAX_TRANSFER_BYTES);
@@ -1600,16 +1552,6 @@ static int spi_imx_slave_abort(struct spi_master *master)
 	return 0;
 }
 
-static int spi_imx_slave_abort(struct spi_master *master)
-{
-	struct spi_imx_data *spi_imx = spi_master_get_devdata(master);
-
-	spi_imx->slave_aborted = true;
-	complete(&spi_imx->xfer_done);
-
-	return 0;
-}
-
 static int spi_imx_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -1620,10 +1562,10 @@ static int spi_imx_probe(struct platform_device *pdev)
 	struct spi_master *master;
 	struct spi_imx_data *spi_imx;
 	struct resource *res;
-	int i, ret, irq, spi_drctl;
 	const struct spi_imx_devtype_data *devtype_data = of_id ? of_id->data :
 		(struct spi_imx_devtype_data *)pdev->id_entry->driver_data;
 	bool slave_mode;
+	int i, ret, irq, spi_drctl, num_cs;
 
 	if (!np && !mxc_platform_info) {
 		dev_err(&pdev->dev, "can't get the platform data\n");
@@ -1669,25 +1611,31 @@ static int spi_imx_probe(struct platform_device *pdev)
 
 	spi_imx->devtype_data = devtype_data;
 
-	/* Get number of chip selects, either platform data or OF */
-	if (mxc_platform_info) {
-		master->num_chipselect = mxc_platform_info->num_chipselect;
-		if (mxc_platform_info->chipselect) {
-			master->cs_gpios = devm_kcalloc(&master->dev,
-				master->num_chipselect, sizeof(int),
-				GFP_KERNEL);
-			if (!master->cs_gpios)
-				return -ENOMEM;
+	master->cs_gpios = devm_kzalloc(&master->dev,
+			sizeof(int) * master->num_chipselect, GFP_KERNEL);
 
-			for (i = 0; i < master->num_chipselect; i++)
-				master->cs_gpios[i] = mxc_platform_info->chipselect[i];
+	if (!master->cs_gpios) {
+		dev_err(&pdev->dev, "No CS GPIOs available\n");
+		ret = -EINVAL;
+		goto out_master_put;
+	}
+
+	for (i = 0; i < master->num_chipselect; i++) {
+		int cs_gpio = of_get_named_gpio(np, "cs-gpios", i);
+		if (!gpio_is_valid(cs_gpio) && mxc_platform_info)
+			cs_gpio = mxc_platform_info->chipselect[i];
+
+		master->cs_gpios[i] = cs_gpio;
+		if (!gpio_is_valid(cs_gpio))
+			continue;
+
+		ret = devm_gpio_request(&pdev->dev, master->cs_gpios[i],
+					DRIVER_NAME);
+		if (ret) {
+			dev_err(&pdev->dev, "Can't get CS GPIO %i\n",
+				master->cs_gpios[i]);
+			goto out_master_put;
 		}
-	} else {
-		u32 num_cs;
-
-		if (!of_property_read_u32(np, "num-cs", &num_cs))
-			master->num_chipselect = num_cs;
-		/* If not preset, default value of 1 is used */
 	}
 
 	spi_imx->bitbang.chipselect = spi_imx_chipselect;
@@ -1775,31 +1723,12 @@ static int spi_imx_probe(struct platform_device *pdev)
 		goto out_clk_put;
 	}
 
-	/* Request GPIO CS lines, if any */
-	if (!spi_imx->slave_mode && master->cs_gpios) {
-		for (i = 0; i < master->num_chipselect; i++) {
-			if (!gpio_is_valid(master->cs_gpios[i]))
-				continue;
-
-			ret = devm_gpio_request(&pdev->dev,
-						master->cs_gpios[i],
-						DRIVER_NAME);
-			if (ret) {
-				dev_err(&pdev->dev, "Can't get CS GPIO %i\n",
-					master->cs_gpios[i]);
-				goto out_spi_bitbang;
-			}
-		}
-	}
-
 	dev_info(&pdev->dev, "probed\n");
 
 	clk_disable_unprepare(spi_imx->clk_ipg);
 	clk_disable_unprepare(spi_imx->clk_per);
 	return ret;
 
-out_spi_bitbang:
-	spi_bitbang_stop(&spi_imx->bitbang);
 out_clk_put:
 	clk_disable_unprepare(spi_imx->clk_ipg);
 out_put_per:

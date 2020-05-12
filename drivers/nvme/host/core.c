@@ -3324,9 +3324,6 @@ void nvme_remove_namespaces(struct nvme_ctrl *ctrl)
 	/* prevent racing with ns scanning */
 	flush_work(&ctrl->scan_work);
 
-	/* prevent racing with ns scanning */
-	flush_work(&ctrl->scan_work);
-
 	/*
 	 * The dead states indicates the controller was not gracefully
 	 * disconnected. In that case, we won't be able to flush any data while

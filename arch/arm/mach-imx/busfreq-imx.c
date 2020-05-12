@@ -70,7 +70,7 @@ static u32 org_arm_rate;
 static int origin_arm_volt, origin_soc_volt;
 
 extern unsigned long iram_tlb_phys_addr;
-extern int unsigned long iram_tlb_base_addr;
+extern unsigned long iram_tlb_base_addr;
 
 /*
  * Bus frequency management by Linux
@@ -483,7 +483,7 @@ static void enter_lpm_imx6sl(void)
 			 */
 			clk_set_parent(pll2_bypass_clk, pll2_clk);
 			/*
-			 * Swtich ARM to run off PLL2_PFD2_400MHz
+			 * Switch ARM to run off PLL2_PFD2_400MHz
 			 * since DDR is anyway at 100MHz.
 			 */
 			clk_set_parent(step_clk, pll2_400_clk);
@@ -507,6 +507,7 @@ static void enter_lpm_imx6sl(void)
 		cur_bus_freq_mode = BUS_FREQ_AUDIO;
 	} else {
 		u32 arm_div, pll1_rate;
+
 		org_arm_rate = clk_get_rate(arm_clk);
 		if (org_arm_rate == 0) {
 			WARN_ON(1);
@@ -547,7 +548,7 @@ static void enter_lpm_imx6sl(void)
 				arm_div = pll1_rate / org_arm_rate;
 				if (pll1_rate / arm_div > org_arm_rate)
 					arm_div++;
-				/*
+				 /*
 				  * Need to ensure that PLL1 is bypassed and enabled
 				  * before ARM-PODF is set.
 				  */
@@ -625,9 +626,9 @@ static void exit_lpm_imx6sl(void)
 		clk_set_parent(step_clk, pll2_400_clk);
 		clk_set_parent(pll1_sw_clk, step_clk);
 		/*
-		  * Need to ensure that PLL1 is bypassed and enabled
-		  * before ARM-PODF is set.
-		  */
+		 * Need to ensure that PLL1 is bypassed and enabled
+		 * before ARM-PODF is set.
+		 */
 		clk_set_parent(pll1_bypass_clk, pll1_bypass_src_clk);
 		clk_set_rate(arm_clk, org_arm_rate);
 		ultra_low_bus_freq_mode = 0;

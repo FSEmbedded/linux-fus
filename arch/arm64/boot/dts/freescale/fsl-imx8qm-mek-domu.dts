@@ -32,6 +32,7 @@
 #include <dt-bindings/pinctrl/pads-imx8qm.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/thermal/thermal.h>
+#include <dt-bindings/usb/pd.h>
 
 / {
 	model = "Freescale i.MX8QM DOMU";
@@ -118,11 +119,11 @@
 		 *
 		 */
 
-		decoder_boot: decoder_boot@0x84000000 {
+		decoder_boot: decoder_boot@84000000 {
 			no-map;
 			reg = <0 0x84000000 0 0x2000000>;
 		};
-		encoder_boot: encoder_boot@0x86000000 {
+		encoder_boot: encoder_boot@86000000 {
 			no-map;
 			reg = <0 0x86000000 0 0x400000>;
 		};
@@ -130,28 +131,28 @@
 		 * CM40 rpmsg memory is still for Dom0, the domu.cfg
 		 * not map 0x90000000 - 0x90100000 to DomU.
 		 */
-		rpmsg_reserved: rpmsg@0x90000000 {
+		rpmsg_reserved: rpmsg@90000000 {
 			no-map;
 			reg = <0 0x90000000 0 0x400000>;
 		};
-		rpmsg_dma_reserved:rpmsg_dma@0x90400000 {
+		rpmsg_dma_reserved:rpmsg_dma@90400000 {
 			compatible = "shared-dma-pool";
 			no-map;
 			reg = <0 0x90400000 0 0x1C00000>;
 		};
-		decoder_rpc: decoder_rpc@0x92000000 {
+		decoder_rpc: decoder_rpc@92000000 {
 			no-map;
 			reg = <0 0x92000000 0 0x200000>;
 		};
-		encoder_rpc: encoder_rpc@0x92200000 {
+		encoder_rpc: encoder_rpc@92200000 {
 			no-map;
 			reg = <0 0x92200000 0 0x200000>;
 		};
-		dsp_reserved: dsp@0x92400000 {
+		dsp_reserved: dsp@92400000 {
 			no-map;
 			reg = <0 0x92400000 0 0x2000000>;
 		};
-		encoder_reserved: encoder_reserved@0x94400000 {
+		encoder_reserved: encoder_reserved@94400000 {
 			no-map;
 			reg = <0 0x94400000 0 0x800000>;
 		};
@@ -431,7 +432,7 @@
 			status = "okay";
 		};
 
-		edma21: dma-controller@0x59260000 {
+		edma21: dma-controller@59260000 {
 			compatible = "fsl,imx8qm-adma";
 			reg = <0x0 0x59260000 0x0 0x10000>, /* esai0 rx */
 			      <0x0 0x59270000 0x0 0x10000>; /* esai0 tx */
@@ -444,7 +445,7 @@
 			status = "okay";
 		};
 
-		edma24: dma-controller@0x592c0000 {
+		edma24: dma-controller@592c0000 {
 			compatible = "fsl,imx8qm-adma";
 			reg = <0x0 0x592c0000 0x0 0x10000>, /* sai0 rx */
 			      <0x0 0x592d0000 0x0 0x10000>; /* sai0 tx */
@@ -592,18 +593,17 @@
 	status = "okay";
 
 	dpu2_disp0: port@0 {
-		dpu2_disp0_mipi_dsi: mipi-dsi-endpoint {
+		dpu2_disp0_mipi_dsi: endpoint {
 			/delete-property/ remote-endpoint;
 		};
 	};
-	dpu2_disp1: port@1 {
-		reg = <1>;
 
-		dpu2_disp1_lvds0: lvds0-endpoint {
+	dpu2_disp1: port@1 {
+		dpu2_disp1_lvds0: endpoint@0 {
 			remote-endpoint = <&ldb2_lvds0>;
 		};
 
-		dpu2_disp1_lvds1: lvds1-endpoint {
+		dpu2_disp1_lvds1: endpoint@1 {
 			remote-endpoint = <&ldb2_lvds1>;
 		};
 	};
@@ -880,7 +880,7 @@
 /delete-node/ &sai_hdmi_tx;
 /delete-node/ &sai6;
 /delete-node/ &sai7;
-/delete-node/ &amix;
+/delete-node/ &audmix;
 
 &asrc0 {
 	dmas = <&edma20 0 0 0>, <&edma20 1 0 0>, <&edma20 2 0 0>,
@@ -1145,7 +1145,7 @@
 	};
 
 	typec_ptn5110: typec@50 {
-		compatible = "usb,tcpci";
+		compatible = "nxp,ptn5110";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_typec>;
 		reg = <0x51>;
@@ -1153,11 +1153,15 @@
 		interrupts = <26 IRQ_TYPE_LEVEL_LOW>;
 		ss-sel-gpios = <&gpio4 6 GPIO_ACTIVE_LOW>;
 		reset-gpios = <&gpio4 19 GPIO_ACTIVE_HIGH>;
-		src-pdos = <0x380190c8 0x3803c0c8>;
-		port-type = "drp";
-		sink-disable;
-		default-role = "source";
 		status = "okay";
+
+		usb_con1: connector {
+			compatible = "usb-c-connector";
+			label = "USB-C";
+			power-role = "source";
+			data-role = "dual";
+			source-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)>;
+		};
 	};
 };
 

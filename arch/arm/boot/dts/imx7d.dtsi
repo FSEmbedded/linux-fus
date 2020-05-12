@@ -39,6 +39,13 @@
 			clock-latency-ns = <150000>;
 			opp-suspend;
 		};
+
+		opp-1200000000 {
+			opp-hz = /bits/ 64 <1200000000>;
+			opp-microvolt = <1225000>;
+			clock-latency-ns = <150000>;
+		};
+
 	};
 
 	usbphynop2: usbphynop2 {
@@ -46,6 +53,20 @@
 		clocks = <&clks IMX7D_USB_PHY2_CLK>;
 		clock-names = "main_clk";
 		#phy-cells = <0>;
+	};
+
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		/* global autoconfigured region for contiguous allocations */
+		linux,cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0x14000000>;
+			linux,cma-default;
+		};
 	};
 
 	soc {
@@ -81,13 +102,13 @@
 				<&clks IMX7D_AHB_CHANNEL_ROOT_CLK>, <&clks IMX7D_MAIN_AXI_ROOT_DIV>;
 			clock-names = "osc", "axi_sel", "ahb_sel", "pfd0_392m", "dram_root", "dram_alt_sel",
 					"pll_dram", "dram_alt_root", "pfd2_270m", "pfd1_332m", "ahb", "axi";
-			interrupts = <0 112 0x04>, <0 113 0x04>;
+			interrupts = <0 112 0x4>, <0 113 0x4>;
 			interrupt-names = "irq_busfreq_0", "irq_busfreq_1";
 		};
 
-		caam_sm: caam-sm@00100000 {
+		caam_sm: caam-sm@100000 {
 			 compatible = "fsl,imx7d-caam-sm", "fsl,imx6q-caam-sm";
-			 reg = <0x00100000 0x8000>;
+			 reg = <0x100000 0x8000>;
 		};
 
 		irq_sec_vio: caam_secvio {
@@ -105,37 +126,37 @@
 			status = "disabled";
 		};
 
-		ocrams_ddr: sram@00900000 {
+		ocrams_ddr: sram@900000 {
 			compatible = "fsl,ddr-lpm-sram";
-			reg = <0x00900000 0x1000>;
+			reg = <0x900000 0x1000>;
 			clocks = <&clks IMX7D_OCRAM_CLK>;
 		};
 
 		ocram: sram@901000 {
 			compatible = "mmio-sram";
-			reg = <0x00901000 0x1f000>;
+			reg = <0x901000 0x1f000>;
 			clocks = <&clks IMX7D_OCRAM_CLK>;
 		};
 
-		ocrams: sram@00180000 {
+		ocrams: sram@180000 {
 			compatible = "fsl,lpm-sram";
-			reg = <0x00180000 0x8000>;
+			reg = <0x180000 0x8000>;
 			clocks = <&clks IMX7D_OCRAM_S_CLK>;
 			status = "disabled";
 		};
 
-		ocrams_mf: sram-mf@00900000 {
+		ocrams_mf: sram-mf@900000 {
 			compatible = "fsl,mega-fast-sram";
-			reg = <0x00900000 0x20000>;
+			reg = <0x900000 0x20000>;
 			clocks = <&clks IMX7D_OCRAM_CLK>;
 		};
 
 		ocram_optee {
 			compatible = "fsl,optee-lpm-sram";
-			reg = <0x00180000 0x8000>;
-			overw_reg = <&ocrams_ddr 0x00904000 0x1000>,
-					<&ocram 0x00905000 0x1b000>,
-					<&ocrams 0x00900000 0x4000>;
+			reg = <0x180000 0x8000>;
+			overw_reg = <&ocrams_ddr 0x904000 0x1000>,
+					<&ocram 0x905000 0x1b000>,
+					<&ocrams 0x900000 0x4000>;
 			overw_clock = <&ocrams &clks IMX7D_OCRAM_CLK>;
 		};
 	};
@@ -161,14 +182,6 @@
 		reg = <0x30350000 0x10000>;
 		clocks = <&clks IMX7D_OCOTP_CLK>;
 		status = "okay";
-	};
-
-	tempmon: tempmon {
-		compatible = "fsl,imx7d-tempmon";
-		interrupts = <GIC_SPI 49 IRQ_TYPE_LEVEL_HIGH>;
-		fsl,tempmon =<&anatop>;
-		fsl,tempmon-data = <&ocotp>;
-		clocks = <&clks IMX7D_PLL_SYS_MAIN_CLK>;
 	};
 
 	caam_snvs: caam-snvs@30370000 {
@@ -333,19 +346,21 @@
 		#address-cells = <3>;
 		#size-cells = <2>;
 		device_type = "pci";
-		bus-range = <0x00 0xff>;
-		ranges = <0x81000000 0 0          0x4ff80000 0 0x00010000   /* downstream I/O */
-			  0x82000000 0 0x40000000 0x40000000 0 0x0ff00000>; /* non-prefetchable memory */
+		bus-range = <0x0 0xff>;
+		ranges = <0x81000000 0 0          0x4ff80000 0 0x10000   /* downstream I/O */
+			  0x82000000 0 0x40000000 0x40000000 0 0xff00000>; /* non-prefetchable memory */
 		num-lanes = <1>;
 		interrupts = <GIC_SPI 122 IRQ_TYPE_LEVEL_HIGH>,
 			     <GIC_SPI 127 IRQ_TYPE_LEVEL_HIGH>; /* eDMA */
 		interrupt-names = "msi";
 		#interrupt-cells = <1>;
 		interrupt-map-mask = <0 0 0 0x7>;
+
 		/*
 		 * Reference manual lists pci irqs incorrectly
 		 * Real hardware ordering is same as imx6: D+MSI, C, B, A
 		 */
+
 		interrupt-map = <0 0 0 1 &intc GIC_SPI 125 IRQ_TYPE_LEVEL_HIGH>,
 				<0 0 0 2 &intc GIC_SPI 124 IRQ_TYPE_LEVEL_HIGH>,
 				<0 0 0 3 &intc GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>,
@@ -367,44 +382,6 @@
 		status = "disabled";
 	};
 
-	crypto: caam@30900000 {
-		compatible = "fsl,imx7d-caam", "fsl,sec-v4.0";
-		#address-cells = <1>;
-		#size-cells = <1>;
-		reg = <0x30900000 0x40000>;
-		ranges = <0 0x30900000 0x40000>;
-		interrupts = <GIC_SPI 91 IRQ_TYPE_LEVEL_HIGH>;
-		clocks = <&clks IMX7D_CAAM_CLK>,
-			<&clks IMX7D_AHB_CHANNEL_ROOT_CLK>;
-		clock-names = "ipg", "aclk";
-
-		sec_ctrl: ctrl@0 {
-			/* CAAM Page 0 only accessible */
-			/*	by secure world */
-			compatible = "fsl,sec-v4.0-ctrl";
-			reg = <0x30900000 0x1000>;
-			secure-status = "okay";
-			status = "disabled";
-		};
-
-		sec_jr0: jr0@1000 {
-			 compatible = "fsl,sec-v4.0-job-ring";
-			 reg = <0x1000 0x1000>;
-			 interrupts = <GIC_SPI 105 IRQ_TYPE_LEVEL_HIGH>;
-		};
-
-		sec_jr1: jr1@2000 {
-			 compatible = "fsl,sec-v4.0-job-ring";
-			 reg = <0x2000 0x1000>;
-			 interrupts = <GIC_SPI 106 IRQ_TYPE_LEVEL_HIGH>;
-		};
-
-		sec_jr2: jr2@3000 {
-			 compatible = "fsl,sec-v4.0-job-ring";
-			 reg = <0x3000 0x1000>;
-			 interrupts = <GIC_SPI 114 IRQ_TYPE_LEVEL_HIGH>;
-		};
-	};
 
 	mu: mu@30aa0000 {
 		compatible = "fsl,imx7d-mu", "fsl,imx6sx-mu";

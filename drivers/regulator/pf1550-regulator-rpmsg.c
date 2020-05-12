@@ -363,7 +363,7 @@ static struct rpmsg_driver rpmsg_regulator_driver = {
 #define MAX_REGS 0xff
 
 /*
- * Alligned the below two functions as the same as regmap_map_read_file
+ * Aligned the below two functions as the same as regmap_map_read_file
  * and regmap_map_write_file in regmap-debugfs.c
  */
 static ssize_t pf1550_registers_show(struct device *dev,

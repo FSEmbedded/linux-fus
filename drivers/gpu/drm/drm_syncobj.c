@@ -458,7 +458,6 @@ static int drm_syncobj_fd_to_handle(struct drm_file *file_private,
 	file = fget(fd);
 	if (!file)
 		return -EINVAL;
-	}
 
 	if (file->f_op != &drm_syncobj_file_fops) {
 		fput(file);

@@ -28,7 +28,7 @@ struct dma_buf_sync {
 };
 
 struct dma_buf_phys {
-	__u64 phys;
+	unsigned long phys;
 };
 
 #define DMA_BUF_SYNC_READ      (1 << 0)

@@ -1899,7 +1899,7 @@ static bool dm_table_requires_stable_pages(struct dm_table *t)
 			return true;
 	}
 
-	return true;
+	return false;
 }
 
 void dm_table_set_restrictions(struct dm_table *t, struct request_queue *q,

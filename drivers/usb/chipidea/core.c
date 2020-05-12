@@ -219,7 +219,7 @@ static void hw_wait_phy_stable(void)
 }
 
 /* The PHY enters/leaves low power mode */
-void ci_hdrc_enter_lpm(struct ci_hdrc *ci, bool enable)
+static void ci_hdrc_enter_lpm(struct ci_hdrc *ci, bool enable)
 {
 	enum ci_hw_regs reg = ci->hw_bank.lpm ? OP_DEVLC : OP_PORTSC;
 	bool lpm = !!(hw_read(ci, reg, PORTSC_PHCD(ci->hw_bank.lpm)));
@@ -538,21 +538,10 @@ static irqreturn_t ci_irq(int irq, void *data)
 	irqreturn_t ret = IRQ_NONE;
 	u32 otgsc = 0;
 
-	spin_lock(&ci->lock);
 	if (ci->in_lpm) {
-		/*
-		 * If we already have a wakeup irq pending there,
-		 * let's just return to wait resume finished firstly.
-		 */
-		if (ci->wakeup_int) {
-			spin_unlock(&ci->lock);
-			return IRQ_HANDLED;
-		}
-
 		disable_irq_nosync(irq);
 		ci->wakeup_int = true;
 		pm_runtime_get(ci->dev);
-		spin_unlock(&ci->lock);
 		return IRQ_HANDLED;
 	}
 
@@ -560,10 +549,8 @@ static irqreturn_t ci_irq(int irq, void *data)
 		otgsc = hw_read_otgsc(ci, ~0);
 		if (ci_otg_is_fsm_mode(ci)) {
 			ret = ci_otg_fsm_irq(ci);
-			if (ret == IRQ_HANDLED) {
-				spin_unlock(&ci->lock);
+			if (ret == IRQ_HANDLED)
 				return ret;
-			}
 		}
 	}
 
@@ -576,7 +563,6 @@ static irqreturn_t ci_irq(int irq, void *data)
 		/* Clear ID change irq status */
 		hw_write_otgsc(ci, OTGSC_IDIS, OTGSC_IDIS);
 		ci_otg_queue_work(ci);
-		spin_unlock(&ci->lock);
 		return IRQ_HANDLED;
 	}
 
@@ -589,7 +575,6 @@ static irqreturn_t ci_irq(int irq, void *data)
 		/* Clear BSV irq */
 		hw_write_otgsc(ci, OTGSC_BSVIS, OTGSC_BSVIS);
 		ci_otg_queue_work(ci);
-		spin_unlock(&ci->lock);
 		return IRQ_HANDLED;
 	}
 
@@ -597,7 +582,6 @@ static irqreturn_t ci_irq(int irq, void *data)
 	if (ci->role != CI_ROLE_END)
 		ret = ci_role(ci)->irq(ci);
 
-	spin_unlock(&ci->lock);
 	return ret;
 }
 
@@ -1152,6 +1136,9 @@ static int ci_hdrc_probe(struct platform_device *pdev)
 		ci_hdrc_otg_fsm_start(ci);
 
 	device_set_wakeup_capable(&pdev->dev, true);
+
+	mutex_init(&ci->mutex);
+
 	dbg_create_files(ci);
 
 	ret = sysfs_create_group(&dev->kobj, &ci_attr_group);
@@ -1292,19 +1279,15 @@ static int ci_controller_resume(struct device *dev)
 		hw_wait_phy_stable();
 	}
 
-	spin_lock(&ci->lock);
 	ci->in_lpm = false;
 	if (ci->wakeup_int) {
 		ci->wakeup_int = false;
-		spin_unlock(&ci->lock);
 		pm_runtime_mark_last_busy(ci->dev);
 		pm_runtime_put_autosuspend(ci->dev);
 		enable_irq(ci->irq);
 		if (ci_otg_is_fsm_mode(ci))
 			ci_otg_fsm_wakeup_by_srp(ci);
 		ci_extcon_wakeup_int(ci);
-	} else {
-		spin_unlock(&ci->lock);
 	}
 
 	return 0;

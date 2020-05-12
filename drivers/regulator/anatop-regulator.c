@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 //
-// Copyright (C) 2011 Freescale Semiconductor, Inc. All Rights Reserved.
+// Copyright (C) 2011-2015 Freescale Semiconductor, Inc. All Rights Reserved.
 
 #include <linux/slab.h>
 #include <linux/device.h>

@@ -547,7 +547,6 @@ static int tls_setsockopt(struct sock *sk, int level, int optname,
 
 static struct tls_context *create_ctx(struct sock *sk)
 {
-	int ip_ver = sk->sk_family == AF_INET6 ? TLSV6 : TLSV4;
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct tls_context *ctx;
 

@@ -48,6 +48,10 @@
 		reg = <0x10000000 0>;
 	};
 
+	aliases {
+		mxcfb0 = &mxcfb1;
+	};
+
 	chosen {
 		stdout-path = &uart1;
 	};

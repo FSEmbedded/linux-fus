@@ -10,5 +10,4 @@ obj-$(CONFIG_MX8_HDP) += \
 
 obj-$(CONFIG_MX8_HDP_RX) += \
 	API_HDMIRX.o \
-	API_HDCPRX.o \
 	API_HDMI_RX_Audio.o

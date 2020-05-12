@@ -289,6 +289,7 @@ struct hdmi_codec_priv {
 
 static const struct snd_soc_dapm_widget hdmi_widgets[] = {
 	SND_SOC_DAPM_OUTPUT("TX"),
+	SND_SOC_DAPM_OUTPUT("RX"),
 };
 
 enum {
@@ -687,14 +688,20 @@ static int hdmi_codec_pcm_new(struct snd_soc_pcm_runtime *rtd,
 static int hdmi_dai_probe(struct snd_soc_dai *dai)
 {
 	struct snd_soc_dapm_context *dapm;
-	struct snd_soc_dapm_route route = {
-		.sink = "TX",
-		.source = dai->driver->playback.stream_name,
+	struct snd_soc_dapm_route route[] = {
+		{
+			.sink = "TX",
+			.source = dai->driver->playback.stream_name,
+		},
+		{
+			.sink = "Capture",
+			.source = "RX",
+		},
 	};
 
 	dapm = snd_soc_component_get_dapm(dai->component);
 
-	return snd_soc_dapm_add_routes(dapm, &route, 1);
+	return snd_soc_dapm_add_routes(dapm, route, ARRAY_SIZE(route));
 }
 
 static const struct snd_soc_dai_driver hdmi_i2s_dai = {
@@ -703,7 +710,7 @@ static const struct snd_soc_dai_driver hdmi_i2s_dai = {
 	.probe = hdmi_dai_probe,
 	.playback = {
 		.stream_name = "I2S Playback",
-		.channels_min = 1,
+		.channels_min = 2,
 		.channels_max = 8,
 		.rates = HDMI_RATES,
 		.formats = I2S_FORMATS,

@@ -463,9 +463,6 @@ void hv_pkt_iter_close(struct vmbus_channel *channel)
 	start_read_index = rbi->ring_buffer->read_index;
 	rbi->ring_buffer->read_index = rbi->priv_read_index;
 
-	if (!rbi->ring_buffer->feature_bits.feat_pending_send_sz)
-		return;
-
 	/*
 	 * Older versions of Hyper-V (before WS2102 and Win8) do not
 	 * implement pending_send_sz and simply poll if the host->guest

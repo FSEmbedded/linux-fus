@@ -186,17 +186,6 @@ struct control_buf {
 	__virtio64 offloads;
 };
 
-/* Control VQ buffers: protected by the rtnl lock */
-struct control_buf {
-	struct virtio_net_ctrl_hdr hdr;
-	virtio_net_ctrl_ack status;
-	struct virtio_net_ctrl_mq mq;
-	u8 promisc;
-	u8 allmulti;
-	__virtio16 vid;
-	u64 offloads;
-};
-
 struct virtnet_info {
 	struct virtio_device *vdev;
 	struct virtqueue *cvq;
@@ -1405,16 +1394,6 @@ static void free_old_xmit_skbs(struct send_queue *sq, bool in_napi)
 	sq->stats.bytes += bytes;
 	sq->stats.packets += packets;
 	u64_stats_update_end(&sq->stats.syncp);
-}
-
-static bool is_xdp_raw_buffer_queue(struct virtnet_info *vi, int q)
-{
-	if (q < (vi->curr_queue_pairs - vi->xdp_queue_pairs))
-		return false;
-	else if (q < vi->curr_queue_pairs)
-		return true;
-	else
-		return false;
 }
 
 static bool is_xdp_raw_buffer_queue(struct virtnet_info *vi, int q)

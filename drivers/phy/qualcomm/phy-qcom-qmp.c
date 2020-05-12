@@ -1172,8 +1172,6 @@ static int qcom_qmp_phy_exit(struct phy *phy)
 
 	clk_disable_unprepare(qphy->pipe_clk);
 
-	clk_disable_unprepare(qphy->pipe_clk);
-
 	/* PHY reset */
 	qphy_setbits(qphy->pcs, cfg->regs[QPHY_SW_RESET], SW_RESET);
 

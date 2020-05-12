@@ -334,11 +334,6 @@ struct drm_display_info {
 	u8 cea_rev;
 
 	/**
-	 * @non_desktop: Non desktop display (HMD)
-	 */
-	bool non_desktop;
-
-	/**
 	 * @hdmi: advance features of a HDMI sink.
 	 */
 	struct drm_hdmi_info hdmi;
@@ -470,6 +465,13 @@ struct drm_connector_state {
 	 * drm_writeback_signal_completion()
 	 */
 	struct drm_writeback_job *writeback_job;
+
+	/**
+	 * @metadata_blob_ptr:
+	 * DRM blob property for HDR metadata
+	 */
+	struct drm_property_blob *hdr_source_metadata_blob_ptr;
+	bool hdr_metadata_changed : 1;
 };
 
 /**
@@ -1085,6 +1087,9 @@ struct drm_connector {
 	 * &drm_mode_config.connector_free_work.
 	 */
 	struct llist_node free_node;
+
+	/* HDR metdata */
+	struct hdr_static_metadata *hdr_source_metadata;
 };
 
 #define obj_to_connector(x) container_of(x, struct drm_connector, base)

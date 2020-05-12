@@ -16,6 +16,7 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_fb_cma_helper.h>
+#include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <linux/dma-buf.h>
@@ -59,7 +60,7 @@ static void dcss_kms_setup_output_pipe(struct drm_atomic_state *state)
 	struct drm_display_info *di;
 	int i;
 
-	for_each_connector_in_state(state, connector, conn_state, i) {
+	for_each_new_connector_in_state(state, connector, conn_state, i) {
 		if (!connector->state->best_encoder)
 			continue;
 
@@ -201,7 +202,7 @@ err_free:
 }
 
 const struct drm_mode_config_funcs dcss_drm_mode_config_funcs = {
-	.fb_create = drm_fb_cma_create,
+	.fb_create = drm_gem_fb_create,
 	.output_poll_changed = dcss_drm_output_poll_changed,
 	.atomic_check = dcss_drm_atomic_check,
 	.atomic_commit = dcss_drm_atomic_commit,

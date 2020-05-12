@@ -36,24 +36,6 @@
 #include "mxc-isi-core.h"
 #include "mxc-mipi-csi2.h"
 #include "mxc-parallel-csi.h"
-#include "mxc-mipi-csi2-sam.h"
-
-static void set_soc_version(struct mxc_md *mxc_md)
-{
-	if (of_machine_is_compatible("fsl,imx8mn"))
-		mxc_md->plat = MXC_IMX8MN;
-	else if (of_machine_is_compatible("fsl,imx8qxp"))
-		mxc_md->plat = MXC_IMX8QXP;
-	else if (of_machine_is_compatible("fsl,imx8qm"))
-		mxc_md->plat = MXC_IMX8QM;
-	else
-		mxc_md->plat = INVALID_SOC;
-}
-
-static enum platform get_soc_version(struct mxc_md *mxc_md)
-{
-	return mxc_md->plat;
-}
 
 /*create default links between registered entities  */
 static int mxc_md_create_links(struct mxc_md *mxc_md)
@@ -63,7 +45,6 @@ static int mxc_md_create_links(struct mxc_md *mxc_md)
 	struct mxc_sensor_info *sensor;
 	struct mxc_mipi_csi2_dev *mipi_csi2;
 	struct mxc_parallel_csi_dev *pcsidev;
-	struct csi_state *state;
 	int num_sensors = mxc_md->subdev_notifier.num_subdevs;
 	int i, j, ret = 0;
 	u16  source_pad, sink_pad;
@@ -124,15 +105,9 @@ static int mxc_md_create_links(struct mxc_md *mxc_md)
 		switch (mxc_isi->interface[IN_PORT]) {
 
 		case ISI_INPUT_INTERFACE_MIPI0_CSI2:
-			if (get_soc_version(mxc_md) == MXC_IMX8MN) {
-				if (mxc_md->state[0] == NULL)
-					continue;
-				source = &mxc_md->state[0]->sd.entity;
-			} else {
-				if (mxc_md->mipi_csi2[0] == NULL)
-					continue;
-				source = &mxc_md->mipi_csi2[0]->sd.entity;
-			}
+			if (mxc_md->mipi_csi2[0] == NULL)
+				continue;
+			source = &mxc_md->mipi_csi2[0]->sd.entity;
 
 			switch (mxc_isi->interface[SUB_IN_PORT]) {
 			case ISI_INPUT_SUB_INTERFACE_VC1:
@@ -155,15 +130,9 @@ static int mxc_md_create_links(struct mxc_md *mxc_md)
 			break;
 
 		case ISI_INPUT_INTERFACE_MIPI1_CSI2:
-			if (get_soc_version(mxc_md) == MXC_IMX8MN) {
-				if (mxc_md->state[1] == NULL)
-					continue;
-				source = &mxc_md->state[1]->sd.entity;
-			} else {
-				if (mxc_md->mipi_csi2[1] == NULL)
-					continue;
-				source = &mxc_md->mipi_csi2[1]->sd.entity;
-			}
+			if (mxc_md->mipi_csi2[1] == NULL)
+				continue;
+			source = &mxc_md->mipi_csi2[1]->sd.entity;
 
 			switch (mxc_isi->interface[SUB_IN_PORT]) {
 			case ISI_INPUT_SUB_INTERFACE_VC1:
@@ -266,26 +235,20 @@ static int mxc_md_create_links(struct mxc_md *mxc_md)
 				return ret;
 			v4l2_info(&mxc_md->v4l2_dev, "created link [%s] => [%s]\n",
 						sensor->sd->entity.name, pcsidev->sd.entity.name);
-		} else if (mxc_md->mipi_csi2 || mxc_md->state) {
-			if (get_soc_version(mxc_md) == MXC_IMX8MN) {
-				state = mxc_md->state[sensor->id];
-				if (state == NULL)
-					continue;
-
-				sink = &state->sd.entity;
-				mipi_vc = (state->vchannel == true) ? 4 : 1;
-			} else {
-				mipi_csi2 = mxc_md->mipi_csi2[sensor->id];
-				if (mipi_csi2 ==  NULL)
-					continue;
-
-				sink = &mipi_csi2->sd.entity;
-				mipi_vc = (mipi_csi2->vchannel == true) ? 4 : 1;
-			}
+		} else if (mxc_md->mipi_csi2) {
+			mipi_csi2 = mxc_md->mipi_csi2[sensor->id];
+			if (mipi_csi2 ==  NULL)
+				continue;
 			source = &sensor->sd->entity;
+			sink = &mipi_csi2->sd.entity;
 
 			source_pad = 0;  /* sensor source pad: MIPI_CSI2_SENS_VC0_PAD_SOURCE */
 			sink_pad = source_pad;  /* mipi sink pad: MXC_MIPI_CSI2_VC0_PAD_SINK; */
+
+			if (mipi_csi2->vchannel == true)
+				mipi_vc = 4;
+			else
+				mipi_vc = 1;
 
 			for (j = 0; j < mipi_vc; j++) {
 				ret = media_create_pad_link(source, source_pad + j, sink, sink_pad + j,
@@ -306,7 +269,7 @@ static int mxc_md_create_links(struct mxc_md *mxc_md)
 					return ret;
 			}
 			v4l2_info(&mxc_md->v4l2_dev, "created link [%s] => [%s]\n",
-					source->name, sink->name);
+				  sensor->sd->entity.name, mipi_csi2->sd.entity.name);
 		}
 	}
 	dev_info(&mxc_md->pdev->dev, "%s\n", __func__);
@@ -324,7 +287,7 @@ static int subdev_notifier_bound(struct v4l2_async_notifier *notifier,
 	dev_dbg(&mxc_md->pdev->dev, "%s\n", __func__);
 	/* Find platform data for this sensor subdev */
 	for (i = 0; i < ARRAY_SIZE(mxc_md->sensor); i++) {
-		if (mxc_md->sensor[i].asd.match.fwnode.fwnode ==
+		if (mxc_md->sensor[i].asd.match.fwnode ==
 				of_fwnode_handle(sd->dev->of_node))
 			sensor = &mxc_md->sensor[i];
 	}
@@ -369,6 +332,10 @@ unlock:
 	return media_device_register(&mxc_md->media_dev);
 }
 
+static const struct v4l2_async_notifier_operations subdev_notifer_ops = {
+	.bound    = subdev_notifier_bound,
+	.complete = subdev_notifier_complete,
+};
 
 /**
  * mxc_sensor_notify - v4l2_device notification from a sensor subdev
@@ -395,7 +362,7 @@ static int register_sensor_entities(struct mxc_md *mxc_md)
 
 		if (!of_node_cmp(node->name, "hdmi_rx")) {
 			mxc_md->sensor[index].asd.match_type = V4L2_ASYNC_MATCH_FWNODE;
-			mxc_md->sensor[index].asd.match.fwnode.fwnode = of_fwnode_handle(node);
+			mxc_md->sensor[index].asd.match.fwnode = of_fwnode_handle(node);
 			mxc_md->async_subdevs[index] = &mxc_md->sensor[index].asd;
 
 			mxc_md->num_sensors++;
@@ -441,7 +408,7 @@ static int register_sensor_entities(struct mxc_md *mxc_md)
 		}
 
 		mxc_md->sensor[index].asd.match_type = V4L2_ASYNC_MATCH_FWNODE;
-		mxc_md->sensor[index].asd.match.fwnode.fwnode = of_fwnode_handle(rem);
+		mxc_md->sensor[index].asd.match.fwnode = of_fwnode_handle(rem);
 		mxc_md->async_subdevs[index] = &mxc_md->sensor[index].asd;
 
 		mxc_md->num_sensors++;
@@ -472,36 +439,22 @@ static int register_isi_entity(struct mxc_md *mxc_md, struct mxc_isi_dev *mxc_is
 	return ret;
 }
 
-static int register_mipi_csi2_entity(struct mxc_md *mxc_md, void *data)
+static int register_mipi_csi2_entity(struct mxc_md *mxc_md,
+				struct mxc_mipi_csi2_dev *mipi_csi2)
 {
-	struct mxc_mipi_csi2_dev *mipi_csi2 = NULL;
-	struct csi_state *state = NULL;
-	struct v4l2_subdev *sd;
-	int ret, id;
+	struct v4l2_subdev *sd = &mipi_csi2->sd;
+	int ret;
 
-	if (get_soc_version(mxc_md) == MXC_IMX8MN) {
-		state = (struct csi_state *)data;
-		sd = &state->sd;
-		id = state->id;
-	} else {
-		mipi_csi2 = (struct mxc_mipi_csi2_dev *)data;
-		sd = &mipi_csi2->sd;
-		id = mipi_csi2->id;
-	}
-
-	if (WARN_ON(id >= MXC_MIPI_CSI2_MAX_DEVS || id < 0))
+	if (WARN_ON(mipi_csi2->id >= MXC_MIPI_CSI2_MAX_DEVS))
 		return -ENOENT;
 
 	sd->grp_id = GRP_ID_MXC_MIPI_CSI2;
 	ret = v4l2_device_register_subdev(&mxc_md->v4l2_dev, sd);
-	if (!ret) {
-		if (get_soc_version(mxc_md) == MXC_IMX8MN)
-			mxc_md->state[id] = state;
-		else
-			mxc_md->mipi_csi2[id] = mipi_csi2;
-	} else
+	if (!ret)
+		mxc_md->mipi_csi2[mipi_csi2->id] = mipi_csi2;
+	else
 		v4l2_err(&mxc_md->v4l2_dev,
-			 "Failed to register MIPI-CSIS.%d (%d)\n", id, ret);
+			 "Failed to register MIPI-CSIS.%d (%d)\n", mipi_csi2->id, ret);
 	return ret;
 }
 
@@ -821,12 +774,6 @@ static int mxc_md_probe(struct platform_device *pdev)
 	mxc_md->pdev = pdev;
 	platform_set_drvdata(pdev, mxc_md);
 
-	set_soc_version(mxc_md);
-	if (get_soc_version(mxc_md) == INVALID_SOC) {
-		dev_err(dev, "Not support soc\n");
-		return -ENODEV;
-	}
-
 	mxc_md->parallel_csi = of_property_read_bool(dev->of_node, "parallel_csi");
 
 	/* register media device  */
@@ -863,8 +810,7 @@ static int mxc_md_probe(struct platform_device *pdev)
 	if (mxc_md->num_sensors > 0) {
 		mxc_md->subdev_notifier.subdevs = mxc_md->async_subdevs;
 		mxc_md->subdev_notifier.num_subdevs = mxc_md->num_sensors;
-		mxc_md->subdev_notifier.bound = subdev_notifier_bound;
-		mxc_md->subdev_notifier.complete = subdev_notifier_complete;
+		mxc_md->subdev_notifier.ops = &subdev_notifer_ops;
 		mxc_md->num_sensors = 0;
 		mxc_md->link_status = 0;
 
@@ -918,7 +864,7 @@ static int mxc_md_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id mxc_md_of_match[] = {
-	{ .compatible = "fsl,mxc-md",},
+	{	.compatible = "fsl,mxc-md",},
 	{ /* sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, mxc_md_of_match);

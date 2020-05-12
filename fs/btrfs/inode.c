@@ -9408,7 +9408,6 @@ static int btrfs_rename_exchange(struct inode *old_dir,
 	u64 new_idx = 0;
 	u64 root_objectid;
 	int ret;
-	int ret2;
 	bool root_log_pinned = false;
 	bool dest_log_pinned = false;
 	struct btrfs_log_ctx ctx_root;

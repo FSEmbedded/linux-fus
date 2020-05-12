@@ -122,9 +122,9 @@ static int egalax_irq_request(struct egalax_ts *ts)
 	struct i2c_client *client = ts->client;
 
 	ret = devm_request_threaded_irq(&client->dev, client->irq, NULL,
-					  egalax_ts_interrupt,
-					  IRQF_TRIGGER_LOW | IRQF_ONESHOT,
-					  "egalax_ts", ts);
+					egalax_ts_interrupt,
+					IRQF_TRIGGER_LOW | IRQF_ONESHOT,
+					"egalax_ts", ts);
 	if (ret < 0)
 		dev_err(&client->dev, "Failed to register interrupt\n");
 
@@ -273,9 +273,7 @@ static int __maybe_unused egalax_ts_suspend(struct device *dev)
 	struct egalax_ts *ts = i2c_get_clientdata(client);
 	int ret;
 
-	if (device_may_wakeup(dev))
-		return enable_irq_wake(client->irq);
-
+	egalax_free_irq(ts);
 	ret = i2c_master_send(client, suspend_cmd, MAX_I2C_DATA_LEN);
 	return ret > 0 ? 0 : ret;
 }
@@ -290,10 +288,7 @@ static int __maybe_unused egalax_ts_resume(struct device *dev)
 	if (!ret)
 		ret = egalax_irq_request(ts);
 
-	if (device_may_wakeup(dev))
-		return disable_irq_wake(client->irq);
-
-	return egalax_wake_up_device(client);
+	return ret;
 }
 
 static SIMPLE_DEV_PM_OPS(egalax_ts_pm_ops, egalax_ts_suspend, egalax_ts_resume);

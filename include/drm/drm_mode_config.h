@@ -764,14 +764,6 @@ struct drm_mode_config {
 	 * the position of the output on the host's screen.
 	 */
 	struct drm_property *suggested_x_property;
-
-	/**
-	 * @non_desktop_property: Optional connector property with a hint
-	 * that device isn't a standard display, and the console/desktop
-	 * should not be displayed on it.
-	 */
-	struct drm_property *non_desktop_property;
-
 	/**
 	 * @suggested_y_property: Optional connector property with a hint for
 	 * the position of the output on the host's screen.
@@ -814,6 +806,12 @@ struct drm_mode_config {
 	 * See also: drm_writeback_connector_init()
 	 */
 	struct drm_property *writeback_out_fence_ptr_property;
+
+	/**
+	 * hdr_metadata_property: Connector property containing hdr metatda
+	 * This will be provided by userspace compositors based on HDR content
+	 */
+	struct drm_property *hdr_source_metadata_property;
 
 	/* dumb ioctl parameters */
 	uint32_t preferred_depth, prefer_shadow;

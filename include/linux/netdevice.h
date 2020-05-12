@@ -2468,13 +2468,6 @@ struct netdev_notifier_info_ext {
 	} ext;
 };
 
-struct netdev_notifier_info_ext {
-	struct netdev_notifier_info info; /* must be first */
-	union {
-		u32 mtu;
-	} ext;
-};
-
 struct netdev_notifier_change_info {
 	struct netdev_notifier_info info; /* must be first */
 	unsigned int flags_changed;

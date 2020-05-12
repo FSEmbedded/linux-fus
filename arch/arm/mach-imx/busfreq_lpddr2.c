@@ -159,8 +159,8 @@ int update_lpddr2_freq(int ddr_rate)
 int init_mmdc_lpddr2_settings(struct platform_device *busfreq_pdev)
 {
 	unsigned long ddr_code_size;
-	busfreq_dev = &busfreq_pdev->dev;
 
+	busfreq_dev = &busfreq_pdev->dev;
 	ddr_code_size = SZ_4K;
 
 	if (cpu_is_imx6sl())
@@ -195,7 +195,7 @@ int update_lpddr2_freq_smp(int ddr_rate)
 
 	printk(KERN_DEBUG "Bus freq set to %d start...\n", ddr_rate);
 
-	for (i=0; i < mmdc_settings_size; i++) {
+	for (i = 0; i < mmdc_settings_size; i++) {
 		iram_mmdc_settings[i][0] = mmdc_settings[i][0];
 		iram_mmdc_settings[i][1] = mmdc_settings[i][1];
 	}
@@ -213,6 +213,7 @@ int update_lpddr2_freq_smp(int ddr_rate)
 	/* Make sure all the online cores are active */
 	while (1) {
 		bool not_exited_busfreq = false;
+
 		for_each_online_cpu(cpu) {
 			reg = __raw_readl(imx_scu_base + 0x08);
 			if (reg & (0x02 << (cpu * 8)))
@@ -325,6 +326,7 @@ int init_mmdc_lpddr2_settings_mx6q(struct platform_device *busfreq_pdev)
 
 	for_each_online_cpu(cpu) {
 		int irq = platform_get_irq(busfreq_pdev, cpu);
+
 		err = request_irq(irq, wait_in_wfe_irq, IRQF_PERCPU,
 				"mmdc_1", NULL);
 		if (err) {
@@ -345,9 +347,10 @@ int init_mmdc_lpddr2_settings_mx6q(struct platform_device *busfreq_pdev)
 	}
 
 	/* Stoange_iram_basee the variable used to communicate between cores in
-	 * a non-cacheable IRAM area */
+	 * a non-cacheable IRAM area
+	 */
 	wait_for_lpddr2_freq_update = (u32 *)ddr_freq_change_iram_base;
-	wfe_code_size = (&wfe_smp_freq_change_end - &wfe_smp_freq_change_start) *4;
+	wfe_code_size = (&wfe_smp_freq_change_end - &wfe_smp_freq_change_start) * 4;
 
 	wfe_change_lpddr2_freq = (void *)fncpy((void *)ddr_freq_change_iram_base + 0x8,
 			&wfe_smp_freq_change, wfe_code_size);
@@ -363,7 +366,7 @@ int init_mmdc_lpddr2_settings_mx6q(struct platform_device *busfreq_pdev)
 			&mx6q_lpddr2_freq_change, ddr_code_size);
 
 	/* save initial mmdc boot timing settings */
-	for (i=0; i < mmdc_settings_size; i++)
+	for (i = 0; i < mmdc_settings_size; i++)
 		mmdc_settings[i][1] = readl_relaxed(mmdc_base +
 				mmdc_settings[i][0]);
 

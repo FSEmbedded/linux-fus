@@ -287,15 +287,32 @@ static int imx_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	return ret;
 }
 
-static struct snd_soc_platform_driver imx_soc_platform = {
+static struct snd_soc_component_driver imx_soc_component = {
+	.name		= "imx-pcm-dma-v2",
 	.ops		= &imx_pcm_ops,
 	.pcm_new	= imx_pcm_new,
 };
 
-int imx_pcm_platform_register(struct device *dev)
+int imx_pcm_component_register(struct device *dev)
 {
-	return devm_snd_soc_register_platform(dev, &imx_soc_platform);
+	int ret;
+	struct snd_soc_component *component;
+
+	ret = devm_snd_soc_register_component(dev, &imx_soc_component,
+					       NULL, 0);
+	if (ret)
+		return ret;
+
+	component = snd_soc_lookup_component(dev, "imx-pcm-dma-v2");
+	if (!component)
+		return -EINVAL;
+
+#ifdef CONFIG_DEBUG_FS
+	component->debugfs_prefix = "dma";
+#endif
+
+	return 0;
 }
-EXPORT_SYMBOL_GPL(imx_pcm_platform_register);
+EXPORT_SYMBOL_GPL(imx_pcm_component_register);
 
 MODULE_LICENSE("GPL");

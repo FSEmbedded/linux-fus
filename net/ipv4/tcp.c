@@ -2729,9 +2729,7 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		name[val] = 0;
 
 		lock_sock(sk);
-		err = tcp_set_congestion_control(sk, name, true, true,
-						 ns_capable(sock_net(sk)->user_ns,
-							    CAP_NET_ADMIN));
+		err = tcp_set_congestion_control(sk, name, true, true);
 		release_sock(sk);
 		return err;
 	}
@@ -3831,7 +3829,6 @@ void __init tcp_init(void)
 	unsigned long limit;
 	unsigned int i;
 
-	BUILD_BUG_ON(TCP_MIN_SND_MSS <= MAX_TCP_OPTION_SPACE);
 	BUILD_BUG_ON(sizeof(struct tcp_skb_cb) >
 		     FIELD_SIZEOF(struct sk_buff, cb));
 

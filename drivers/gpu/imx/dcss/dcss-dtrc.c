@@ -15,6 +15,7 @@
 #include <linux/device.h>
 #include <linux/bitops.h>
 #include <linux/io.h>
+#include <linux/seq_file.h>
 #include <linux/platform_device.h>
 #include <linux/interrupt.h>
 #include <drm/drm_fourcc.h>

@@ -17,6 +17,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_fb_cma_helper.h>
+#include <drm/drm_gem_framebuffer_helper.h>
 
 static void lcdif_drm_atomic_commit_tail(struct drm_atomic_state *state)
 {
@@ -36,7 +37,7 @@ static void lcdif_drm_atomic_commit_tail(struct drm_atomic_state *state)
 }
 
 const struct drm_mode_config_funcs lcdif_drm_mode_config_funcs = {
-	.fb_create     = drm_fb_cma_create,
+	.fb_create     = drm_gem_fb_create,
 	.atomic_check  = drm_atomic_helper_check,
 	.atomic_commit = drm_atomic_helper_commit,
 };

@@ -1,6 +1,6 @@
 config CRYPTO_DEV_FSL_CAAM
 	tristate "Freescale CAAM-Multicore driver backend"
-	depends on FSL_SOC || ARCH_MXC || ARCH_LAYERSCAPE || ARCH_MXC_ARM64
+	depends on FSL_SOC || ARCH_MXC || ARCH_LAYERSCAPE
 	select SOC_BUS
 	help
 	  Enables the driver module for Freescale's Cryptographic Accelerator
@@ -154,7 +154,7 @@ config CRYPTO_DEV_FSL_CAAM_TK_API
 	  they are and how to handle them.
 
 config CRYPTO_DEV_FSL_CAAM_RNG_TEST
-	boolean "Test caam rng"
+	bool "Test caam rng"
 	depends on CRYPTO_DEV_FSL_CAAM_RNG_API
 	default n
 	help

@@ -128,9 +128,6 @@ static int alloc_encrypted_sg(struct sock *sk, int len)
 	if (rc == -ENOSPC)
 		ctx->sg_encrypted_num_elem = ARRAY_SIZE(ctx->sg_encrypted_data);
 
-	if (rc == -ENOSPC)
-		ctx->sg_encrypted_num_elem = ARRAY_SIZE(ctx->sg_encrypted_data);
-
 	return rc;
 }
 
@@ -143,9 +140,6 @@ static int alloc_plaintext_sg(struct sock *sk, int len)
 	rc = sk_alloc_sg(sk, len, ctx->sg_plaintext_data, 0,
 			 &ctx->sg_plaintext_num_elem, &ctx->sg_plaintext_size,
 			 tls_ctx->pending_open_record_frags);
-
-	if (rc == -ENOSPC)
-		ctx->sg_plaintext_num_elem = ARRAY_SIZE(ctx->sg_plaintext_data);
 
 	if (rc == -ENOSPC)
 		ctx->sg_plaintext_num_elem = ARRAY_SIZE(ctx->sg_plaintext_data);
@@ -376,8 +370,7 @@ int tls_sw_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 
 	lock_sock(sk);
 
-	ret = tls_complete_pending_work(sk, tls_ctx, msg->msg_flags, &timeo);
-	if (ret)
+	if (tls_complete_pending_work(sk, tls_ctx, msg->msg_flags, &timeo))
 		goto send_end;
 
 	if (unlikely(msg->msg_controllen)) {
@@ -532,8 +525,7 @@ int tls_sw_sendpage(struct sock *sk, struct page *page,
 
 	sk_clear_bit(SOCKWQ_ASYNC_NOSPACE, sk);
 
-	ret = tls_complete_pending_work(sk, tls_ctx, flags, &timeo);
-	if (ret)
+	if (tls_complete_pending_work(sk, tls_ctx, flags, &timeo))
 		goto sendpage_end;
 
 	/* Call the sk_stream functions to manage the sndbuf mem. */

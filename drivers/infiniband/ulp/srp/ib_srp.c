@@ -742,7 +742,7 @@ static void srp_path_rec_completion(int status,
 static int srp_ib_lookup_path(struct srp_rdma_ch *ch)
 {
 	struct srp_target_port *target = ch->target;
-	int ret = -ENODEV;
+	int ret;
 
 	ch->ib_cm.path.numb_path = 1;
 
@@ -766,21 +766,16 @@ static int srp_ib_lookup_path(struct srp_rdma_ch *ch)
 
 	ret = wait_for_completion_interruptible(&ch->done);
 	if (ret < 0)
-		goto put;
+		return ret;
 
-	ret = ch->status;
-	if (ret < 0)
+	if (ch->status < 0)
 		shost_printk(KERN_WARNING, target->scsi_host,
 			     PFX "Path record query failed: sgid %pI6, dgid %pI6, pkey %#04x, service_id %#16llx\n",
 			     ch->ib_cm.path.sgid.raw, ch->ib_cm.path.dgid.raw,
 			     be16_to_cpu(target->ib_cm.pkey),
 			     be64_to_cpu(target->ib_cm.service_id));
 
-put:
-	scsi_host_put(target->scsi_host);
-
-out:
-	return ret;
+	return ch->status;
 }
 
 static int srp_rdma_lookup_path(struct srp_rdma_ch *ch)

@@ -347,14 +347,6 @@ static unsigned get_maxpacket(struct usb_device *udev, int pipe)
 	return le16_to_cpup(&ep->desc.wMaxPacketSize);
 }
 
-static int ss_isoc_get_packet_num(struct usb_device *udev, int pipe)
-{
-	struct usb_host_endpoint *ep = usb_pipe_endpoint(udev, pipe);
-
-	return USB_SS_MULT(ep->ss_ep_comp.bmAttributes)
-		* (1 + ep->ss_ep_comp.bMaxBurst);
-}
-
 static void simple_fill_buf(struct urb *urb)
 {
 	unsigned	i;
@@ -2073,24 +2065,17 @@ test_queue(struct usbtest_dev *dev, struct usbtest_param_32 *param,
 	packets *= param->iterations;
 
 	if (context.is_iso) {
-		int transaction_num;
-
-		if (udev->speed >= USB_SPEED_SUPER)
-			transaction_num = ss_isoc_get_packet_num(udev, pipe);
-		else
-			transaction_num = usb_endpoint_maxp_mult(desc);
-
 		dev_info(&dev->intf->dev,
 			"iso period %d %sframes, wMaxPacket %d, transactions: %d\n",
 			1 << (desc->bInterval - 1),
-			(udev->speed >= USB_SPEED_HIGH) ? "micro" : "",
+			(udev->speed == USB_SPEED_HIGH) ? "micro" : "",
 			usb_endpoint_maxp(desc),
-			transaction_num);
+			usb_endpoint_maxp_mult(desc));
 
 		dev_info(&dev->intf->dev,
 			"total %lu msec (%lu packets)\n",
 			(packets * (1 << (desc->bInterval - 1)))
-				/ ((udev->speed >= USB_SPEED_HIGH) ? 8 : 1),
+				/ ((udev->speed == USB_SPEED_HIGH) ? 8 : 1),
 			packets);
 	}
 

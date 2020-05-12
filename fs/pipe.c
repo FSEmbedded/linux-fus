@@ -1047,8 +1047,6 @@ static long pipe_set_size(struct pipe_inode_info *pipe, unsigned long arg)
 	long ret = 0;
 
 	size = round_pipe_size(arg);
-	if (size == 0)
-		return -EINVAL;
 	nr_pages = size >> PAGE_SHIFT;
 
 	if (!nr_pages)

@@ -21,6 +21,7 @@
 static int imx_audmux_config(int slave, int master)
 {
 	unsigned int ptcr, pdcr;
+
 	slave = slave - 1;
 	master = master - 1;
 

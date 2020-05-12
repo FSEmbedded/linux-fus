@@ -1931,26 +1931,6 @@ static int dname_to_vma_addr(struct dentry *dentry,
 
 	if (*str != '\0')
 		return -EINVAL;
-	if (sval != (unsigned long)sval)
-		return -EINVAL;
-	str += len;
-
-	if (*str != '-')
-		return -EINVAL;
-	str++;
-
-	len = _parse_integer(str, 16, &eval);
-	if (len & KSTRTOX_OVERFLOW)
-		return -EINVAL;
-	if (eval != (unsigned long)eval)
-		return -EINVAL;
-	str += len;
-
-	if (*str != '\0')
-		return -EINVAL;
-
-	*start = sval;
-	*end = eval;
 
 	*start = sval;
 	*end = eval;

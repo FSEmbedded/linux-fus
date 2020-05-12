@@ -454,18 +454,6 @@ enable_trace_kprobe(struct trace_kprobe *tk, struct trace_event_file *file)
 		if (ret)
 			tk->tp.flags &= ~TP_FLAG_PROFILE;
 	}
-
-	if (ret) {
-		if (file) {
-			/* Notice the if is true on not WARN() */
-			if (!WARN_ON_ONCE(!link))
-				list_del_rcu(&link->list);
-			kfree(link);
-			tk->tp.flags &= ~TP_FLAG_TRACE;
-		} else {
-			tk->tp.flags &= ~TP_FLAG_PROFILE;
-		}
-	}
  out:
 	return ret;
 }

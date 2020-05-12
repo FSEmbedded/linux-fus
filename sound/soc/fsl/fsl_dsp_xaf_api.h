@@ -106,36 +106,12 @@ struct __attribute__((__packed__)) xf_unroute_port_msg {
 /* ...check if non-zero value is a power-of-two */
 #define xf_is_power_of_two(v)       (((v) & ((v) - 1)) == 0)
 
-
-/*******************************************************************************
- * bascial message
- ******************************************************************************/
-typedef union DATA {
-	u32                 value;
-
-	struct {
-		u32 size;
-		u32 channel_table[10];
-	} chan_map_tab;
-
-	struct {
-		u32 samplerate;
-		u32 width;
-		u32 depth;
-		u32 channels;
-		u32 endian;
-		u32 interleave;
-		u32 layout[12];
-		u32 chan_pos_set;  // indicate if channel position is set outside or use codec default
-	} outputFormat;
-} data_t;
-
 /* ...component initialization parameter */
 struct __attribute__((__packed__)) xf_set_param_msg {
 	/* ...index of parameter passed to SET_CONFIG_PARAM call */
 	u32 id;
 	/* ...value of parameter */
-	data_t mixData;
+	u32 value;
 };
 
 /* ...message body (command/response) */
@@ -143,7 +119,7 @@ struct __attribute__((__packed__)) xf_get_param_msg {
 	/* ...array of parameters requested */
 	u32 id;
 	/* ...array of parameters values */
-	data_t mixData;
+	u32 value;
 };
 
 /* ...renderer-specific configuration parameters */

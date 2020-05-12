@@ -25,7 +25,6 @@
 #include <linux/hwmon.h>
 #include <linux/marvell_phy.h>
 #include <linux/phy.h>
-#include <linux/marvell_phy.h>
 
 enum {
 	MV_PCS_BASE_T		= 0x0000,

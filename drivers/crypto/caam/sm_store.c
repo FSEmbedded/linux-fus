@@ -68,6 +68,7 @@ static __always_inline u32 sm_send_cmd(struct caam_drv_private_sm *smpriv,
 
 	if (smpriv->sm_reg_offset == SM_V1_OFFSET) {
 		struct caam_secure_mem_v1 *sm_regs_v1;
+
 		sm_regs_v1 = (struct caam_secure_mem_v1 *)
 			((void *)jrpriv->rregs + SM_V1_OFFSET);
 		write_address = &sm_regs_v1->sm_cmd;
@@ -75,6 +76,7 @@ static __always_inline u32 sm_send_cmd(struct caam_drv_private_sm *smpriv,
 
 	} else if (smpriv->sm_reg_offset == SM_V2_OFFSET) {
 		struct caam_secure_mem_v2 *sm_regs_v2;
+
 		sm_regs_v2 = (struct caam_secure_mem_v2 *)
 			((void *)jrpriv->rregs + SM_V2_OFFSET);
 		write_address = &sm_regs_v2->sm_cmd;
@@ -96,6 +98,7 @@ static __always_inline u32 sm_send_cmd(struct caam_drv_private_sm *smpriv,
 
 	return 0;
 }
+
 /*
  * Construct a black key conversion job descriptor
  *
@@ -541,7 +544,7 @@ void *slot_get_physical(struct device *dev, u32 unit, u32 slot)
 		return NULL;
 
 #ifdef SM_DEBUG
-	dev_info(dev, "slot_get_physical(): slot %d is 0x%08x\n", slot,
+	dev_info(dev, "%s: slot %d is 0x%08x\n", __func__, slot,
 		 (u32)ksdata->phys_address + slot * smpriv->slot_size);
 #endif
 

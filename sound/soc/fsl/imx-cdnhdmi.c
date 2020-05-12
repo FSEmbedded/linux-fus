@@ -99,7 +99,6 @@ static int imx_cdnhdmi_hw_params(struct snd_pcm_substream *substream,
 		return ret;
 	}
 
-
 	if (of_device_is_compatible(dev->of_node,
 				    "fsl,imx8mq-evk-cdnhdmi"))
 		ret = snd_soc_dai_set_sysclk(cpu_dai, FSL_SAI_CLK_MAST1,
@@ -148,7 +147,7 @@ static int get_edid_info(struct snd_soc_card *card)
 	struct snd_soc_pcm_runtime *rtd = list_first_entry(
 		&card->rtd_list, struct snd_soc_pcm_runtime, list);
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	struct snd_soc_codec *codec = codec_dai->codec;
+	struct snd_soc_component *codec = codec_dai->component;
 	struct hdmi_codec_pdata *hcd = codec->dev->platform_data;
 	struct imx_cdnhdmi_data *data = snd_soc_card_get_drvdata(card);
 	int i, j, ret;
@@ -169,7 +168,8 @@ static int get_edid_info(struct snd_soc_card *card)
 
 		for (i = drm_eld_sad_count(data->eld); i > 0; i--, sad += 3) {
 			if (rate_mask & sad[1])
-				channel_max = max(channel_max, sad_max_channels(sad));
+				channel_max = max(channel_max,
+						  sad_max_channels(sad));
 
 			if (sad_max_channels(sad) >= 2)
 				rate_mask_eld |= sad[1];
@@ -281,7 +281,7 @@ static int get_edid_rx_info(struct snd_soc_card *card)
 	struct snd_soc_pcm_runtime *rtd = list_first_entry(
 		&card->rtd_list, struct snd_soc_pcm_runtime, list);
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	struct snd_soc_codec *codec = codec_dai->codec;
+	struct snd_soc_component *codec = codec_dai->component;
 	struct hdmi_codec_pdata *hcd = codec->dev->platform_data;
 	struct imx_cdnhdmi_data *data = snd_soc_card_get_drvdata(card);
 	int ret;

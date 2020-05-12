@@ -2221,10 +2221,6 @@ static void crypt_dtr(struct dm_target *ti)
 	WARN_ON(percpu_counter_sum(&cc->n_allocated_pages) != 0);
 	percpu_counter_destroy(&cc->n_allocated_pages);
 
-	if (cc->page_pool)
-		WARN_ON(percpu_counter_sum(&cc->n_allocated_pages) != 0);
-	percpu_counter_destroy(&cc->n_allocated_pages);
-
 	if (cc->iv_gen_ops && cc->iv_gen_ops->dtr)
 		cc->iv_gen_ops->dtr(cc);
 
@@ -2812,7 +2808,6 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 			cc->tag_pool_max_sectors * cc->on_disk_tag_size);
 		if (ret) {
 			ti->error = "Cannot allocate integrity tags mempool";
-			ret = -ENOMEM;
 			goto bad;
 		}
 

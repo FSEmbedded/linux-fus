@@ -330,6 +330,9 @@ static int qoriq_tmu_remove(struct platform_device *pdev)
 {
 	struct qoriq_tmu_data *data = platform_get_drvdata(pdev);
 
+	devfreq_cooling_unregister(data->cdev);
+	thermal_zone_of_sensor_unregister(&pdev->dev, data->tz);
+
 	/* Disable monitoring */
 	tmu_write(data, TMR_DISABLE, &data->regs->tmr);
 

@@ -1322,15 +1322,6 @@ const struct nla_policy rtm_tca_policy[TCA_MAX + 1] = {
  * Delete/get qdisc.
  */
 
-const struct nla_policy rtm_tca_policy[TCA_MAX + 1] = {
-	[TCA_KIND]		= { .type = NLA_STRING },
-	[TCA_RATE]		= { .type = NLA_BINARY,
-				    .len = sizeof(struct tc_estimator) },
-	[TCA_STAB]		= { .type = NLA_NESTED },
-	[TCA_DUMP_INVISIBLE]	= { .type = NLA_FLAG },
-	[TCA_CHAIN]		= { .type = NLA_U32 },
-};
-
 static int tc_get_qdisc(struct sk_buff *skb, struct nlmsghdr *n,
 			struct netlink_ext_ack *extack)
 {

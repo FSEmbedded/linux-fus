@@ -17,6 +17,7 @@
 #include <linux/virtio_ids.h>
 #include <linux/virtio_config.h>
 #include <linux/scatterlist.h>
+#include <linux/dma-direct.h>
 #include <linux/dma-mapping.h>
 #include <linux/slab.h>
 #include <linux/idr.h>

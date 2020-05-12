@@ -103,6 +103,14 @@ static int clks_shared[MAX_SHARED_CLK_NUMBER];
 struct imx_shared_mem *shared_mem;
 static unsigned int shared_mem_paddr, shared_mem_size;
 
+static int const clks_init_on[] __initconst = {
+	IMX6SX_CLK_AIPS_TZ1, IMX6SX_CLK_AIPS_TZ2, IMX6SX_CLK_AIPS_TZ3,
+	IMX6SX_CLK_IPMUX1, IMX6SX_CLK_IPMUX2, IMX6SX_CLK_IPMUX3,
+	IMX6SX_CLK_WAKEUP, IMX6SX_CLK_MMDC_P0_FAST, IMX6SX_CLK_MMDC_P0_IPG,
+	IMX6SX_CLK_ROM, IMX6SX_CLK_ARM, IMX6SX_CLK_IPG, IMX6SX_CLK_OCRAM,
+	IMX6SX_CLK_PER2_MAIN, IMX6SX_CLK_PERCLK, IMX6SX_CLK_TZASC1,
+};
+
 static const struct clk_div_table clk_enet_ref_table[] = {
 	{ .val = 0, .div = 20, },
 	{ .val = 1, .div = 10, },
@@ -177,6 +185,7 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 {
 	struct device_node *np;
 	void __iomem *base;
+	int i;
 
 	clks[IMX6SX_CLK_DUMMY] = imx_clk_fixed("dummy", 0);
 
@@ -366,7 +375,7 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	clks[IMX6SX_CLK_QSPI1_PODF]         = imx_clk_divider("qspi1_podf",     "qspi1_sel",         base + 0x1c, 26,   3);
 	clks[IMX6SX_CLK_EIM_SLOW_PODF]      = imx_clk_divider("eim_slow_podf",  "eim_slow_sel",      base + 0x1c, 23,   3);
 	clks[IMX6SX_CLK_LCDIF2_PODF]        = imx_clk_divider("lcdif2_podf",    "lcdif2_pred",       base + 0x1c, 20,   3);
-	clks[IMX6SX_CLK_PERCLK]             = imx_clk_divider_flags("perclk", "perclk_sel", base + 0x1c, 0, 6, CLK_IS_CRITICAL);
+	clks[IMX6SX_CLK_PERCLK]             = imx_clk_divider("perclk",         "perclk_sel",        base + 0x1c, 0,    6);
 	clks[IMX6SX_CLK_VID_PODF]           = imx_clk_divider("vid_podf",       "vid_sel",           base + 0x20, 24,   2);
 	clks[IMX6SX_CLK_CAN_PODF]           = imx_clk_divider("can_podf",       "can_sel",           base + 0x20, 2,    6);
 	clks[IMX6SX_CLK_USDHC4_PODF]        = imx_clk_divider("usdhc4_podf",    "usdhc4_sel",        base + 0x24, 22,   3);
@@ -445,7 +454,7 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	clks[IMX6SX_CLK_GPT_BUS]      = imx_clk_gate2("gpt_bus",       "perclk",            base + 0x6c, 20);
 	clks[IMX6SX_CLK_GPT_SERIAL]   = imx_clk_gate2("gpt_serial",    "perclk",            base + 0x6c, 22);
 	clks[IMX6SX_CLK_GPU]          = imx_clk_gate2("gpu",           "gpu_core_podf",     base + 0x6c, 26);
-	clks[IMX6SX_CLK_OCRAM_S]      = imx_clk_gate2("ocram_s",       "ahb",               base + 0x6c, 28);
+	clks[IMX6SX_CLK_OCRAM_S]      = imx_clk_gate2_flags("ocram_s",       "ahb",               base + 0x6c, 28, CLK_IS_CRITICAL);
 	clks[IMX6SX_CLK_CANFD]        = imx_clk_gate2("canfd",         "can_podf",          base + 0x6c, 30);
 
 	/* CCGR2 */
@@ -552,7 +561,7 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 
 	/*
 	 * QSPI2/GPMI_IO share the same clock source but with the
-	 * different gate, need explicitely gate the QSPI2 & GPMI_IO
+	 * different gate, need explicitly gate the QSPI2 & GPMI_IO
 	 * during the clock init phase according to the SOC design.
 	 */
 	if (!imx_src_is_m4_enabled()) {
@@ -565,6 +574,23 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	clk_data.clks = clks;
 	clk_data.clk_num = ARRAY_SIZE(clks);
 	of_clk_add_provider(np, of_clk_src_onecell_get, &clk_data);
+
+	/*
+	 * As some of the modules need to access ocotp in MSL,
+	 * need to make sure ocotp clk(CCM_CCGR2_CG6) is enabled
+	 * during MSL, as on i.MX6SX, accessing OCOTP registers
+	 * needs its clk on, it will be disabled by clk late
+	 * init and managed by ocotp driver.
+	 */
+	writel_relaxed(readl_relaxed(base + 0x70) | 1 << 12, base + 0x70);
+
+	/* maintain M4 usecount */
+	if (imx_src_is_m4_enabled())
+		imx_clk_prepare_enable(clks[IMX6SX_CLK_M4]);
+
+	/* set perclk to from OSC */
+	imx_clk_set_parent(clks[IMX6SX_CLK_PERCLK_SEL], clks[IMX6SX_CLK_OSC]);
+	imx_clk_prepare_enable(clks[IMX6SX_CLK_PERCLK]);
 
 	if (IS_ENABLED(CONFIG_USB_MXS_PHY)) {
 		imx_clk_prepare_enable(clks[IMX6SX_CLK_USBPHY1_GATE]);
@@ -615,10 +641,10 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	imx_clk_set_parent(clks[IMX6SX_CLK_ESAI_SEL], clks[IMX6SX_CLK_PLL4_AUDIO_DIV]);
 	imx_clk_set_rate(clks[IMX6SX_CLK_ESAI_PODF], 24576000);
 
-        /* Set the UART parent if needed. */
-        if (uart_from_osc)
+	/* Set the UART parent if needed. */
+	if (uart_from_osc)
 		clk_set_parent(clks[IMX6SX_CLK_UART_SEL], clks[IMX6SX_CLK_OSC]);
-        else
+	else
 		clk_set_parent(clks[IMX6SX_CLK_UART_SEL], clks[IMX6SX_CLK_PLL3_80M]);
 
 	/* Set parent clock for vadc */
@@ -630,9 +656,6 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 
 	imx_clk_set_parent(clks[IMX6SX_CLK_QSPI1_SEL], clks[IMX6SX_CLK_PLL2_BUS]);
 	imx_clk_set_parent(clks[IMX6SX_CLK_QSPI2_SEL], clks[IMX6SX_CLK_PLL2_BUS]);
-	/* Set the UART parent if needed. */
-	if (uart_from_osc)
-		imx_clk_set_parent(clks[IMX6SX_CLK_UART_SEL], clks[IMX6SX_CLK_OSC]);
 
 	if (!imx_src_is_m4_enabled())
 		/* default parent of can_sel clock is invalid, manually set it here */

@@ -705,7 +705,6 @@ handle_results:
 		ndesc = ctx->handle_result(priv, ring, req,
 					   &should_complete, &ret);
 		if (ndesc < 0) {
-			kfree(sreq);
 			dev_err(priv->dev, "failed to handle result (%d)", ndesc);
 			goto acknowledge;
 		}

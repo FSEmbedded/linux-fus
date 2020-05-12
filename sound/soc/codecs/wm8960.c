@@ -670,10 +670,6 @@ int wm8960_configure_sysclk(struct wm8960_priv *wm8960, int mclk,
  *		- freq_out    = sysclk * sysclk_divs
  *		- 10 * sysclk = bclk * bclk_divs
  *
- * 	If we cannot find an exact match for (sysclk, lrclk, bclk)
- * 	triplet, we relax the bclk such that bclk is chosen as the
- * 	closest available frequency greater than expected bclk.
- *
  * @component: component structure
  * @freq_in: input frequency used to derive freq out via PLL
  * @sysclk_idx: sysclk_divs index for found sysclk
@@ -846,8 +842,7 @@ static int wm8960_hw_params(struct snd_pcm_substream *substream,
 
 	wm8960->is_stream_in_use[tx] = true;
 
-	if (snd_soc_component_get_bias_level(component) == SND_SOC_BIAS_ON &&
-	    !wm8960->is_stream_in_use[!tx])
+	if (!wm8960->is_stream_in_use[!tx])
 		return wm8960_configure_clocking(component);
 
 	return 0;
@@ -1216,6 +1211,9 @@ static int wm8960_set_dai_pll(struct snd_soc_dai *codec_dai, int pll_id,
 	if (pll_id == WM8960_SYSCLK_AUTO)
 		return 0;
 
+	if (is_pll_freq_available(freq_in, freq_out))
+		return -EINVAL;
+
 	return wm8960_set_pll(component, freq_in, freq_out);
 }
 
@@ -1434,6 +1432,8 @@ static int wm8960_i2c_probe(struct i2c_client *i2c,
 	regmap_update_bits(wm8960->regmap, WM8960_ROUT2, 0x100, 0x100);
 
 	i2c_set_clientdata(i2c, wm8960);
+
+	pm_runtime_enable(&i2c->dev);
 
 	ret = devm_snd_soc_register_component(&i2c->dev,
 			&soc_component_dev_wm8960, &wm8960_dai, 1);

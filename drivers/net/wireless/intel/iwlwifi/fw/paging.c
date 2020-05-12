@@ -252,14 +252,6 @@ static int iwl_fill_paging_mem(struct iwl_fw_runtime *fwrt,
 			goto err;
 		}
 
-		if (block->fw_paging_size > image->sec[sec_idx].len - offset) {
-			IWL_ERR(fwrt,
-				"Paging: paging size is larger than remaining data in block %d\n",
-				idx);
-			ret = -EINVAL;
-			goto err;
-		}
-
 		memcpy(page_address(block->fw_paging_block),
 		       image->sec[sec_idx].data + offset, len);
 		dma_sync_single_for_device(fwrt->trans->dev,

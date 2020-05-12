@@ -21,9 +21,6 @@
 	add	\tmp1, \tmp1, #RESERVED_TTBR0_SIZE
 	msr	ttbr1_el1, \tmp1		// set reserved ASID
 	isb
-	sub	\tmp1, \tmp1, #SWAPPER_DIR_SIZE
-	msr	ttbr1_el1, \tmp1		// set reserved ASID
-	isb
 	.endm
 
 	.macro	__uaccess_ttbr0_enable, tmp1, tmp2

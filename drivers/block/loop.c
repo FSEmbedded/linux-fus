@@ -1210,12 +1210,6 @@ loop_set_status(struct loop_device *lo, const struct loop_info64 *info)
 		kill_bdev(lo->lo_device);
 	}
 
-	if (lo->lo_offset != info->lo_offset ||
-	    lo->lo_sizelimit != info->lo_sizelimit) {
-		sync_blockdev(lo->lo_device);
-		kill_bdev(lo->lo_device);
-	}
-
 	/* I/O need to be drained during transfer transition */
 	blk_mq_freeze_queue(lo->lo_queue);
 

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 
-obj-$(CONFIG_ARM)   += \
+obj-y += \
 	clk.o \
 	clk-busy.o \
 	clk-cpu.o \
@@ -31,11 +31,8 @@ obj-$(CONFIG_SOC_IMX6UL) += clk-imx6ul.o
 obj-$(CONFIG_SOC_IMX7D)  += clk-imx7d.o
 obj-$(CONFIG_SOC_IMX7ULP)  += clk-imx7ulp.o clk-composite-7ulp.o
 obj-$(CONFIG_SOC_VF610)  += clk-vf610.o
-#
-# IMX Clock specific Makefile
-#
+
 obj-$(CONFIG_ARCH_FSL_IMX8QM)	+= clk.o clk-imx8qm.o clk-imx8.o clk-divider-scu.o clk-gate-scu.o clk-mux-scu.o
 obj-$(CONFIG_ARCH_FSL_IMX8QXP)	+= clk.o clk-imx8qxp.o clk-imx8.o clk-divider-scu.o clk-gate-scu.o clk-mux-scu.o
 obj-$(CONFIG_ARCH_FSL_IMX8MQ)	+= clk.o clk-imx8mq.o clk-frac-pll.o clk-sccg-pll.o clk-gate2.o clk-composite-8m.o
 obj-$(CONFIG_ARCH_FSL_IMX8MM)	+= clk.o clk-imx8mm.o clk-pll14xx.o clk-gate2.o clk-cpu.o
-obj-$(CONFIG_ARCH_FSL_IMX8MN)  += clk.o clk-imx8mn.o clk-pll14xx.o clk-gate2.o clk-cpu.o

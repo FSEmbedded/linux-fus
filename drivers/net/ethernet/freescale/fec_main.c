@@ -27,6 +27,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/string.h>
+#include <linux/pm_runtime.h>
 #include <linux/ptrace.h>
 #include <linux/errno.h>
 #include <linux/ioport.h>
@@ -65,11 +66,11 @@
 #include <linux/pm_runtime.h>
 #include <linux/busfreq-imx.h>
 #include <linux/prefetch.h>
+#include <soc/imx/cpuidle.h>
 #include <linux/mfd/syscon.h>
 #include <linux/regmap.h>
 
 #include <asm/cacheflush.h>
-#include <soc/imx/cpuidle.h>
 
 #include "fec.h"
 
@@ -1949,7 +1950,9 @@ static int fec_enet_clk_enable(struct net_device *ndev, bool enable)
 		if (ret)
 			goto failed_clk_ref;
 
-		phy_reset_after_clk_enable(ndev->phydev);
+		ret = clk_prepare_enable(fep->clk_2x_txclk);
+		if (ret)
+			goto failed_clk_2x_txclk;
 	} else {
 		clk_disable_unprepare(fep->clk_enet_out);
 		if (fep->clk_ptp) {
@@ -2153,9 +2156,15 @@ static int fec_enet_mii_init(struct platform_device *pdev)
 	fep->mii_bus->parent = &pdev->dev;
 
 	node = of_get_child_by_name(pdev->dev.of_node, "mdio");
-	err = of_mdiobus_register(fep->mii_bus, node);
-	if (node)
+	if (node) {
+		err = of_mdiobus_register(fep->mii_bus, node);
 		of_node_put(node);
+	} else if (fep->phy_node && !fep->fixed_link) {
+		err = -EPROBE_DEFER;
+	} else {
+		err = mdiobus_register(fep->mii_bus);
+	}
+
 	if (err)
 		goto err_out_free_mdiobus;
 
@@ -3034,8 +3043,7 @@ static inline bool fec_enet_irq_workaround(struct fec_enet_private *fep)
 
 	intr_node = of_parse_phandle(np, "interrupts-extended", 0);
 	if (intr_node && !strcmp(intr_node->name, "gpio")) {
-		/*
-		 * If the interrupt controller is a GPIO node, it must have
+		/* If the interrupt controller is a GPIO node, it must have
 		 * applied the workaround for WAIT mode bug.
 		 */
 		return true;
@@ -3328,7 +3336,7 @@ u16 fec_enet_get_raw_vlan_tci(struct sk_buff *skb)
 }
 
 u16 fec_enet_select_queue(struct net_device *ndev, struct sk_buff *skb,
-			  void *accel_priv, select_queue_fallback_t fallback)
+			  struct net_device *sb_dev, select_queue_fallback_t fallback)
 {
 	struct fec_enet_private *fep = netdev_priv(ndev);
 	const struct platform_device_id *id_entry =
@@ -3336,7 +3344,7 @@ u16 fec_enet_select_queue(struct net_device *ndev, struct sk_buff *skb,
 	u16 vlan_tag;
 
 	if (!(id_entry->driver_data & FEC_QUIRK_HAS_AVB))
-		return skb_tx_hash(ndev, skb);
+		return fallback(ndev, skb, NULL);
 
 	vlan_tag = fec_enet_get_raw_vlan_tci(skb);
 	if (!vlan_tag)
@@ -3599,6 +3607,41 @@ static int fec_enet_get_irq_cnt(struct platform_device *pdev)
 	else if (irq_cnt <= 0)
 		irq_cnt = 1;	/* At least 1 irq is needed */
 	return irq_cnt;
+}
+
+static void fec_enet_of_parse_stop_mode(struct platform_device *pdev)
+{
+	struct net_device *dev = platform_get_drvdata(pdev);
+	struct device_node *np = pdev->dev.of_node;
+	struct fec_enet_private *fep = netdev_priv(dev);
+	struct device_node *node;
+	phandle phandle;
+	u32 out_val[3];
+	int ret;
+
+	ret = of_property_read_u32_array(np, "stop-mode", out_val, 3);
+	if (ret) {
+		dev_dbg(&pdev->dev, "no stop-mode property\n");
+		return;
+	}
+
+	phandle = *out_val;
+	node = of_find_node_by_phandle(phandle);
+	if (!node) {
+		dev_dbg(&pdev->dev, "could not find gpr node by phandle\n");
+		return;
+	}
+
+	fep->gpr.gpr = syscon_node_to_regmap(node);
+	if (IS_ERR(fep->gpr.gpr)) {
+		dev_dbg(&pdev->dev, "could not find gpr regmap\n");
+		return;
+	}
+
+	of_node_put(node);
+
+	fep->gpr.req_gpr = out_val[1];
+	fep->gpr.req_bit = out_val[2];
 }
 
 static int

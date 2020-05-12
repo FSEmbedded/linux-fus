@@ -97,7 +97,6 @@ err:
 	cifs_free_hash(&p->hmacsha256, &p->sdeschmacsha256);
 	return rc;
 }
-#endif
 
 static struct cifs_ses *
 smb2_find_smb_ses_unlocked(struct TCP_Server_Info *server, __u64 ses_id)

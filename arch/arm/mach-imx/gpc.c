@@ -21,6 +21,8 @@
 #include "hardware.h"
 
 #define GPC_CNTR		0x0
+#define GPC_CNTR_L2_PGE		22
+
 #define GPC_IMR1		0x008
 #define GPC_PGC_MF_PDN		0x220
 #define GPC_PGC_CPU_PDN		0x2a0
@@ -36,12 +38,12 @@
 #define GPC_M4_LPSR_M4_SLEEP_HOLD_ACK_MASK	0x1
 #define GPC_M4_LPSR_M4_SLEEP_HOLD_ACK_SHIFT	1
 
+#define GPC_CNTR_L2_PGE_SHIFT	22
+
 #define GPC_PGC_CPU_SW_SHIFT		0
 #define GPC_PGC_CPU_SW_MASK		0x3f
 #define GPC_PGC_CPU_SW2ISO_SHIFT	8
 #define GPC_PGC_CPU_SW2ISO_MASK		0x3f
-
-#define GPC_CNTR_L2_PGE_SHIFT	22
 
 #define IMR_NUM			4
 #define GPC_MAX_IRQS		(IMR_NUM * 32)

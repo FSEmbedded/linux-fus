@@ -455,8 +455,8 @@ struct alginfo {
 	u32 keylen;
 	u32 keylen_pad;
 	union {
-		dma_addr_t key_dma;
-		const void *key_virt;
+		caam_dma_addr_t key_dma;
+		void *key_virt;
 	};
 	bool key_inline;
 	u32 key_real_len;

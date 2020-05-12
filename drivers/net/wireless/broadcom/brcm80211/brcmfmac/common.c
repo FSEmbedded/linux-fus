@@ -19,6 +19,7 @@
 #include <linux/netdevice.h>
 #include <linux/module.h>
 #include <linux/firmware.h>
+#include <linux/pinctrl/consumer.h>
 #include <brcmu_wifi.h>
 #include <brcmu_utils.h>
 #include "core.h"
@@ -77,6 +78,14 @@ MODULE_PARM_DESC(roamoff, "Do not use internal roaming engine");
 static int brcmf_iapp_enable;
 module_param_named(iapp, brcmf_iapp_enable, int, 0);
 MODULE_PARM_DESC(iapp, "Enable partial support for the obsoleted Inter-Access Point Protocol");
+
+static int brcmf_eap_restrict;
+module_param_named(eap_restrict, brcmf_eap_restrict, int, 0400);
+MODULE_PARM_DESC(eap_restrict, "Block non-802.1X frames until auth finished");
+
+static int brcmf_sdio_wq_highpri;
+module_param_named(sdio_wq_highpri, brcmf_sdio_wq_highpri, int, 0);
+MODULE_PARM_DESC(sdio_wq_highpri, "SDIO workqueue is set to high priority");
 
 #ifdef DEBUG
 /* always succeed brcmf_bus_started() */
@@ -347,6 +356,13 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
 
 	/* Enable tx beamforming, errors can be ignored (not supported) */
 	(void)brcmf_fil_iovar_int_set(ifp, "txbf", 1);
+
+	/* add unicast packet filter */
+	err = brcmf_pktfilter_add_remove(ifp->ndev,
+					 BRCMF_UNICAST_FILTER_NUM, true);
+	if (err)
+		brcmf_info("Add unicast filter error (%d)\n", err);
+
 done:
 	return err;
 }
@@ -421,6 +437,8 @@ struct brcmf_mp_device *brcmf_get_module_param(struct device *dev,
 	settings->fcmode = brcmf_fcmode;
 	settings->roamoff = !!brcmf_roamoff;
 	settings->iapp = !!brcmf_iapp_enable;
+	settings->eap_restrict = !!brcmf_eap_restrict;
+	settings->sdio_wq_highpri = !!brcmf_sdio_wq_highpri;
 #ifdef DEBUG
 	settings->ignore_probe_fail = !!brcmf_ignore_probe_fail;
 #endif

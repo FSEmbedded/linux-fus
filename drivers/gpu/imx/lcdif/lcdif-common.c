@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 NXP
+ * Copyright 2018-2019 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@
 #include <linux/of_graph.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
-#include <linux/reset.h>
+#include <linux/regmap.h>
 #include <linux/types.h>
 #include <drm/drm_fourcc.h>
 #include <video/imx-lcdif.h>
@@ -32,13 +32,24 @@
 
 #define DRIVER_NAME "imx-lcdif"
 
+/* TODO: add this to platform data later */
+#define DISP_MIX_SFT_RSTN_CSR		0x00
+#define DISP_MIX_CLK_EN_CSR		0x04
+
+/* 'DISP_MIX_SFT_RSTN_CSR' bit fields */
+#define BUS_RSTN_BLK_SYNC_SFT_EN	BIT(6)
+
+/* 'DISP_MIX_CLK_EN_CSR' bit fields */
+#define BUS_BLK_CLK_SFT_EN		BIT(12)
+#define LCDIF_PIXEL_CLK_SFT_EN		BIT(7)
+#define LCDIF_APB_CLK_SFT_EN		BIT(6)
+
 struct lcdif_soc {
 	struct device *dev;
 
 	int irq;
 	void __iomem *base;
-	struct reset_control *soft_resetn;
-	struct reset_control *clk_enable;
+	struct regmap *gpr;
 	atomic_t rpm_suspended;
 
 	struct clk *clk_pix;
@@ -72,7 +83,6 @@ struct lcdif_soc_pdata imx8mm_pdata = {
 
 static const struct of_device_id imx_lcdif_dt_ids[] = {
 	{ .compatible = "fsl,imx8mm-lcdif", .data = &imx8mm_pdata, },
-	{ .compatible = "fsl,imx8mn-lcdif", .data = &imx8mm_pdata, },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, lcdif_dt_ids);
@@ -91,17 +101,32 @@ static int imx_lcdif_runtime_resume(struct device *dev)
 }
 #endif
 
-static int lcdif_rstc_reset(struct reset_control *rstc, bool assert)
+void disp_mix_bus_rstn_reset(struct regmap *gpr, bool reset)
 {
-	int ret;
+	if (!reset)
+		/* release reset */
+		regmap_update_bits(gpr, DISP_MIX_SFT_RSTN_CSR,
+				   BUS_RSTN_BLK_SYNC_SFT_EN,
+				   BUS_RSTN_BLK_SYNC_SFT_EN);
+	else
+		/* hold reset */
+		regmap_update_bits(gpr, DISP_MIX_SFT_RSTN_CSR,
+				   BUS_RSTN_BLK_SYNC_SFT_EN,
+				   0x0);
+}
 
-	if (!rstc)
-		return 0;
-
-	ret = assert ? reset_control_assert(rstc)	:
-		       reset_control_deassert(rstc);
-
-	return ret;
+void disp_mix_lcdif_clks_enable(struct regmap *gpr, bool enable)
+{
+	if (enable)
+		/* enable lcdif clks */
+		regmap_update_bits(gpr, DISP_MIX_CLK_EN_CSR,
+				   LCDIF_PIXEL_CLK_SFT_EN | LCDIF_APB_CLK_SFT_EN,
+				   LCDIF_PIXEL_CLK_SFT_EN | LCDIF_APB_CLK_SFT_EN);
+	else
+		/* disable lcdif clks */
+		regmap_update_bits(gpr, DISP_MIX_CLK_EN_CSR,
+				   LCDIF_PIXEL_CLK_SFT_EN | LCDIF_APB_CLK_SFT_EN,
+				   0x0);
 }
 
 static int lcdif_enable_clocks(struct lcdif_soc *lcdif)
@@ -601,6 +626,12 @@ static int lcdif_add_client_devices(struct lcdif_soc *lcdif)
 		pdev->dev.parent = dev;
 		client_reg[i].pdata.of_node = of_node;
 
+		/* make child device 'dma_mask' to point to its
+		 * coherent dma mask, otherwise later probe will
+		 * print warning message: 'DMA mask not set'.
+		 */
+		pdev->dev.dma_mask = &pdev->dev.coherent_dma_mask;
+
 		ret = platform_device_add_data(pdev, &client_reg[i].pdata,
 					       sizeof(client_reg[i].pdata));
 		if (!ret)
@@ -623,56 +654,10 @@ err_register:
 	return ret;
 }
 
-static int lcdif_of_parse_resets(struct lcdif_soc *lcdif)
-{
-	int ret;
-	struct device *dev = lcdif->dev;
-	struct device_node *np = dev->of_node;
-	struct device_node *parent, *child;
-	struct of_phandle_args args;
-	struct reset_control *rstc;
-	const char *compat;
-	uint32_t len, rstc_num = 0;
-
-	ret = of_parse_phandle_with_args(np, "resets", "#reset-cells",
-					 0, &args);
-	if (ret)
-		return ret;
-
-	parent = args.np;
-	for_each_child_of_node(parent, child) {
-		compat = of_get_property(child, "compatible", NULL);
-		if (!compat)
-			continue;
-
-		rstc = of_reset_control_array_get(child, false, false);
-		if (IS_ERR(rstc))
-			continue;
-
-		len = strlen(compat);
-		if (!of_compat_cmp("lcdif,soft-resetn", compat, len)) {
-			lcdif->soft_resetn = rstc;
-			rstc_num++;
-		} else if (!of_compat_cmp("lcdif,clk-enable", compat, len)) {
-			lcdif->clk_enable = rstc;
-			rstc_num++;
-		}
-		else
-			dev_warn(dev, "invalid lcdif reset node: %s\n", compat);
-	}
-
-	if (!rstc_num) {
-		dev_err(dev, "no invalid reset control exists\n");
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 static int imx_lcdif_probe(struct platform_device *pdev)
 {
-	int ret;
 	struct device *dev = &pdev->dev;
+	struct device_node *np = dev->of_node;
 	struct lcdif_soc *lcdif;
 	struct resource *res;
 
@@ -708,11 +693,11 @@ static int imx_lcdif_probe(struct platform_device *pdev)
 	if (IS_ERR(lcdif->base))
 		return PTR_ERR(lcdif->base);
 
-	lcdif->dev = dev;
-	ret = lcdif_of_parse_resets(lcdif);
-	if (ret)
-		return ret;
+	lcdif->gpr = syscon_regmap_lookup_by_phandle(np, "lcdif-gpr");
+	if (IS_ERR(lcdif->gpr))
+		return PTR_ERR(lcdif->gpr);
 
+	lcdif->dev = dev;
 	platform_set_drvdata(pdev, lcdif);
 
 	atomic_set(&lcdif->rpm_suspended, 0);
@@ -740,6 +725,15 @@ static int imx_lcdif_suspend(struct device *dev)
 static int imx_lcdif_resume(struct device *dev)
 {
 	return imx_lcdif_runtime_resume(dev);
+}
+#else
+static int imx_lcdif_suspend(struct device *dev)
+{
+	return 0;
+}
+static int imx_lcdif_resume(struct device *dev)
+{
+	return 0;
 }
 #endif
 
@@ -779,17 +773,8 @@ static int imx_lcdif_runtime_resume(struct device *dev)
 		return ret;
 	}
 
-	ret = lcdif_rstc_reset(lcdif->soft_resetn, false);
-	if (ret) {
-		dev_err(dev, "deassert soft_resetn failed\n");
-		return ret;
-	}
-
-	ret = lcdif_rstc_reset(lcdif->clk_enable, true);
-	if (ret) {
-		dev_err(dev, "assert clk_enable failed\n");
-		return ret;
-	}
+	disp_mix_bus_rstn_reset(lcdif->gpr, false);
+	disp_mix_lcdif_clks_enable(lcdif->gpr, true);
 
 	/* Pull LCDIF out of reset */
 	writel(0x0, lcdif->base + LCDIF_CTRL);

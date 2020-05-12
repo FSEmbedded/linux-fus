@@ -3537,12 +3537,6 @@ serial_pci_guess_board(struct pci_dev *dev, struct pciserial_board *board)
 	if ((dev->class >> 8) == PCI_CLASS_COMMUNICATION_MULTISERIAL)
 		return -ENODEV;
 
-	/*
-	 * Should we try to make guesses for multiport serial devices later?
-	 */
-	if ((dev->class >> 8) == PCI_CLASS_COMMUNICATION_MULTISERIAL)
-		return -ENODEV;
-
 	num_iomem = num_port = 0;
 	for (i = 0; i < PCI_NUM_BAR_RESOURCES; i++) {
 		if (pci_resource_flags(dev, i) & IORESOURCE_IO) {

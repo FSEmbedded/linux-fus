@@ -86,7 +86,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_esai>;
 	assigned-clocks = <&clks IMX6ULL_CLK_ESAI_SEL>,
-		          <&clks IMX6ULL_CLK_ESAI_EXTAL>;
+			<&clks IMX6ULL_CLK_ESAI_EXTAL>;
 	assigned-clock-parents = <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>;
 	assigned-clock-rates = <0>, <24576000>;
 	status = "okay";
@@ -98,9 +98,9 @@
 	pinctrl-0 = <&pinctrl_i2c4>;
 	status = "okay";
 
-	codec_a: cs42888@048 {
+	codec_a: cs42888@48 {
 		compatible = "cirrus,cs42888";
-		reg = <0x048>;
+		reg = <0x48>;
 		clocks = <&codec_osc 0>;
 		clock-names = "mclk";
 		VA-supply = <&reg_audio>;
@@ -144,9 +144,9 @@
 };
 
 &sdma {
-        gpr = <&gpr>;
-        /* SDMA event remap for ESAI */
-        fsl,sdma-event-remap = <0 14 1>, <0 15 1>;
+	gpr = <&gpr>;
+	/* SDMA event remap for ESAI */
+	fsl,sdma-event-remap = <0 14 1>, <0 15 1>;
 };
 
 &uart2 {

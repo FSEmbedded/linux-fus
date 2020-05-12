@@ -65,13 +65,6 @@ static int __mmc_max_reserved_idx = -1;
 bool use_spi_crc = 1;
 module_param(use_spi_crc, bool, 0);
 
-#ifdef CONFIG_MMC_MQ_DEFAULT
-bool mmc_use_blk_mq = true;
-#else
-bool mmc_use_blk_mq = false;
-#endif
-module_param_named(use_blk_mq, mmc_use_blk_mq, bool, S_IWUSR | S_IRUGO);
-
 static int mmc_schedule_delayed_work(struct delayed_work *work,
 				     unsigned long delay)
 {
@@ -2799,6 +2792,40 @@ void mmc_unregister_pm_notifier(struct mmc_host *host)
 	unregister_pm_notifier(&host->pm_notify);
 }
 #endif
+
+/*
+ * mmc_first_nonreserved_index() - get the first index that
+ * is not reserved
+ */
+int mmc_first_nonreserved_index(void)
+{
+	return __mmc_max_reserved_idx + 1;
+}
+EXPORT_SYMBOL(mmc_first_nonreserved_index);
+
+/*
+ * mmc_get_reserved_index() - get the index reserved for this host
+ * Return: The index reserved for this host or negative error value
+ *         if no index is reserved for this host
+ */
+int mmc_get_reserved_index(struct mmc_host *host)
+{
+	return of_alias_get_id(host->parent->of_node, "mmc");
+}
+EXPORT_SYMBOL(mmc_get_reserved_index);
+
+static void mmc_of_reserve_idx(void)
+{
+	int max;
+
+	max = of_alias_max_index("mmc");
+	if (max < 0)
+		return;
+
+	__mmc_max_reserved_idx = max;
+	pr_debug("MMC: reserving %d slots for of aliases\n",
+			__mmc_max_reserved_idx + 1);
+}
 
 static int __init mmc_init(void)
 {

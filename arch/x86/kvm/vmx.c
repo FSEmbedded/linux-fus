@@ -4103,19 +4103,6 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 
 		msr_info->data = to_vmx(vcpu)->spec_ctrl;
 		break;
-	case MSR_IA32_SPEC_CTRL:
-		if (!msr_info->host_initiated &&
-		    !guest_cpuid_has(vcpu, X86_FEATURE_SPEC_CTRL))
-			return 1;
-
-		msr_info->data = to_vmx(vcpu)->spec_ctrl;
-		break;
-	case MSR_IA32_ARCH_CAPABILITIES:
-		if (!msr_info->host_initiated &&
-		    !guest_cpuid_has(vcpu, X86_FEATURE_ARCH_CAPABILITIES))
-			return 1;
-		msr_info->data = to_vmx(vcpu)->arch_capabilities;
-		break;
 	case MSR_IA32_SYSENTER_CS:
 		msr_info->data = vmcs_read32(GUEST_SYSENTER_CS);
 		break;
@@ -4276,68 +4263,6 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		 */
 		vmx_disable_intercept_for_msr(vmx->vmcs01.msr_bitmap, MSR_IA32_PRED_CMD,
 					      MSR_TYPE_W);
-		break;
-	case MSR_IA32_SPEC_CTRL:
-		if (!msr_info->host_initiated &&
-		    !guest_cpuid_has(vcpu, X86_FEATURE_SPEC_CTRL))
-			return 1;
-
-		/* The STIBP bit doesn't fault even if it's not advertised */
-		if (data & ~(SPEC_CTRL_IBRS | SPEC_CTRL_STIBP | SPEC_CTRL_SSBD))
-			return 1;
-
-		vmx->spec_ctrl = data;
-
-		if (!data)
-			break;
-
-		/*
-		 * For non-nested:
-		 * When it's written (to non-zero) for the first time, pass
-		 * it through.
-		 *
-		 * For nested:
-		 * The handling of the MSR bitmap for L2 guests is done in
-		 * nested_vmx_merge_msr_bitmap. We should not touch the
-		 * vmcs02.msr_bitmap here since it gets completely overwritten
-		 * in the merging. We update the vmcs01 here for L1 as well
-		 * since it will end up touching the MSR anyway now.
-		 */
-		vmx_disable_intercept_for_msr(vmx->vmcs01.msr_bitmap,
-					      MSR_IA32_SPEC_CTRL,
-					      MSR_TYPE_RW);
-		break;
-	case MSR_IA32_PRED_CMD:
-		if (!msr_info->host_initiated &&
-		    !guest_cpuid_has(vcpu, X86_FEATURE_SPEC_CTRL))
-			return 1;
-
-		if (data & ~PRED_CMD_IBPB)
-			return 1;
-
-		if (!data)
-			break;
-
-		wrmsrl(MSR_IA32_PRED_CMD, PRED_CMD_IBPB);
-
-		/*
-		 * For non-nested:
-		 * When it's written (to non-zero) for the first time, pass
-		 * it through.
-		 *
-		 * For nested:
-		 * The handling of the MSR bitmap for L2 guests is done in
-		 * nested_vmx_merge_msr_bitmap. We should not touch the
-		 * vmcs02.msr_bitmap here since it gets completely overwritten
-		 * in the merging.
-		 */
-		vmx_disable_intercept_for_msr(vmx->vmcs01.msr_bitmap, MSR_IA32_PRED_CMD,
-					      MSR_TYPE_W);
-		break;
-	case MSR_IA32_ARCH_CAPABILITIES:
-		if (!msr_info->host_initiated)
-			return 1;
-		vmx->arch_capabilities = data;
 		break;
 	case MSR_IA32_CR_PAT:
 		if (vmcs_config.vmentry_ctrl & VM_ENTRY_LOAD_IA32_PAT) {
@@ -8515,11 +8440,6 @@ static int handle_vmon(struct kvm_vcpu *vcpu)
  */
 static int nested_vmx_check_permission(struct kvm_vcpu *vcpu)
 {
-	if (vmx_get_cpl(vcpu)) {
-		kvm_inject_gp(vcpu, 0);
-		return 0;
-	}
-
 	if (!to_vmx(vcpu)->nested.vmxon) {
 		kvm_queue_exception(vcpu, UD_VECTOR);
 		return 0;
@@ -10783,11 +10703,6 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 		     vmx->loaded_vmcs->soft_vnmi_blocked))
 		vmx->loaded_vmcs->entry_time = ktime_get();
 
-	/* Record the guest's net vcpu time for enforced NMI injections. */
-	if (unlikely(!cpu_has_virtual_nmis() &&
-		     vmx->loaded_vmcs->soft_vnmi_blocked))
-		vmx->loaded_vmcs->entry_time = ktime_get();
-
 	/* Don't enter VMX if guest state is invalid, let the exit handler
 	   start emulation until we arrive back to a valid state */
 	if (vmx->emulation_required)
@@ -10836,14 +10751,6 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	atomic_switch_perf_msrs(vmx);
 
 	vmx_update_hv_timer(vcpu);
-
-	/*
-	 * If this vCPU has touched SPEC_CTRL, restore the guest's value if
-	 * it's non-zero. Since vmentry is serialising on affected CPUs, there
-	 * is no need to worry about the conditional branch over the wrmsr
-	 * being speculatively taken.
-	 */
-	x86_spec_ctrl_set_guest(vmx->spec_ctrl, 0);
 
 	/*
 	 * If this vCPU has touched SPEC_CTRL, restore the guest's value if
@@ -12426,9 +12333,6 @@ static int prepare_vmcs02(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12,
 
 	if (kvm_has_tsc_control)
 		decache_tsc_multiplier(vmx);
-
-	if (cpu_has_vmx_msr_bitmap())
-		vmcs_write64(MSR_BITMAP, __pa(vmx->nested.vmcs02.msr_bitmap));
 
 	if (enable_vpid) {
 		/*

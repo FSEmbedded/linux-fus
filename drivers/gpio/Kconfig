@@ -377,7 +377,7 @@ config GPIO_MVEBU
 
 config GPIO_MXC
 	def_bool y
-	depends on ARCH_MXC || ARCH_MXC_ARM64 || COMPILE_TEST
+	depends on ARCH_MXC
 	select GPIO_GENERIC
 	select GENERIC_IRQ_CHIP
 
@@ -389,7 +389,7 @@ config GPIO_MXS
 
 config GPIO_MXC_PAD_WAKEUP
 	def_bool n
-	depends on ARCH_MXC_ARM64 || COMPILE_TEST
+	depends on HAVE_IMX_SC || COMPILE_TEST
 	select GPIO_MXC
 	help
 	  Say Y here to enable the imx8 gpio pad wakeup

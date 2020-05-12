@@ -1,1 +1,0 @@
-obj-y += seco_mu.o

@@ -151,14 +151,6 @@ nvme_loop_timeout(struct request *rq, bool reserved)
 	return BLK_EH_DONE;
 }
 
-static inline blk_status_t nvme_loop_is_ready(struct nvme_loop_queue *queue,
-		struct request *rq)
-{
-	if (unlikely(!test_bit(NVME_LOOP_Q_LIVE, &queue->flags)))
-		return nvmf_check_init_req(&queue->ctrl->ctrl, rq);
-	return BLK_STS_OK;
-}
-
 static blk_status_t nvme_loop_queue_rq(struct blk_mq_hw_ctx *hctx,
 		const struct blk_mq_queue_data *bd)
 {

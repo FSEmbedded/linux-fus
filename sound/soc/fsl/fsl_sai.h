@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright 2012-2013 Freescale Semiconductor, Inc.
+ * Copyright 2012-2016 Freescale Semiconductor, Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  */
 
 #ifndef __FSL_SAI_H
@@ -211,12 +215,6 @@
 #define FSL_SAI_MAXBURST_RX 6
 
 #define SAI_FLAG_PMQOS   BIT(0)
-
-/* SAI timestamp and bitcounter */
-#define FSL_SAI_xTCTL_TSEN BIT(0)
-#define FSL_SAI_xTCTL_TSINC BIT(1)
-#define FSL_SAI_xTCTL_RTSC BIT(8)
-#define FSL_SAI_xTCTL_RBC BIT(9)
 
 struct fsl_sai_soc_data {
 	unsigned int fifo_depth;

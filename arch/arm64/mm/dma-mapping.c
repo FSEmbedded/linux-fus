@@ -29,13 +29,8 @@
 #include <linux/vmalloc.h>
 #include <linux/swiotlb.h>
 #include <linux/pci.h>
-#include <linux/of.h>
 
 #include <asm/cacheflush.h>
-
-EXPORT_SYMBOL(__dma_map_area);
-EXPORT_SYMBOL(__dma_unmap_area);
-EXPORT_SYMBOL(__dma_flush_area);
 
 static int swiotlb __ro_after_init;
 
@@ -321,6 +316,12 @@ static int __swiotlb_get_sgtable(struct device *dev, struct sg_table *sgt,
 
 static int __swiotlb_dma_supported(struct device *hwdev, u64 mask)
 {
+	/*
+	 * Upstream PCI/PCIe bridges or SoC interconnects may not carry
+	 * as many DMA address bits as the device itself supports.
+	 */
+	if (hwdev->bus_dma_mask && mask > hwdev->bus_dma_mask)
+		return 0;
 	if (swiotlb)
 		return swiotlb_dma_supported(hwdev, mask);
 	return 1;
@@ -812,7 +813,7 @@ static void __iommu_unmap_sg_attrs(struct device *dev,
 	iommu_dma_unmap_sg(dev, sgl, nelems, dir, attrs);
 }
 
-static struct dma_map_ops iommu_dma_ops = {
+static const struct dma_map_ops iommu_dma_ops = {
 	.alloc = __iommu_alloc_attrs,
 	.free = __iommu_free_attrs,
 	.mmap = __iommu_mmap_attrs,
@@ -872,15 +873,6 @@ void arch_teardown_dma_ops(struct device *dev)
 	dev->dma_ops = NULL;
 }
 
-static int iommu_dma_supported_quirk(struct device *dev, u64 mask)
-{
-	if (mask > DMA_BIT_MASK(32)) {
-		pr_err("Can't support > 32 bit dma.\n");
-		return 0;
-	}
-
-	return 1;
-}
 #else
 
 static void __iommu_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
@@ -892,9 +884,6 @@ static void __iommu_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
 void arch_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
 			const struct iommu_ops *iommu, bool coherent)
 {
-	u32 mask32;
-	struct device_node *np;
-
 	if (!dev->dma_ops)
 		dev->dma_ops = &arm64_swiotlb_dma_ops;
 
@@ -907,16 +896,4 @@ void arch_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
 		dev->dma_ops = xen_dma_ops;
 	}
 #endif
-
-	np = of_find_compatible_node(NULL, NULL, "dma-capability");
-	if (np == NULL)
-		return;
-	if (of_property_read_u32(np, "only-dma-mask32", &mask32))
-		mask32 = 0;
-	if (mask32) {
-		swiotlb_dma_ops.dma_supported = __swiotlb_dma_supported_quirk;
-#ifdef CONFIG_IOMMU_DMA
-		iommu_dma_ops.dma_supported = iommu_dma_supported_quirk;
-#endif
-	}
 }

@@ -571,7 +571,6 @@ void rpcrdma_post_recvs(struct rpcrdma_xprt *r_xprt, bool temp);
  */
 struct rpcrdma_req *rpcrdma_create_req(struct rpcrdma_xprt *);
 void rpcrdma_destroy_req(struct rpcrdma_req *);
-int rpcrdma_create_rep(struct rpcrdma_xprt *r_xprt);
 int rpcrdma_buffer_create(struct rpcrdma_xprt *);
 void rpcrdma_buffer_destroy(struct rpcrdma_buffer *);
 struct rpcrdma_sendctx *rpcrdma_sendctx_get_locked(struct rpcrdma_buffer *buf);

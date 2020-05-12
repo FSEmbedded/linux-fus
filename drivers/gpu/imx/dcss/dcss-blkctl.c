@@ -16,6 +16,7 @@
 #include <linux/io.h>
 #include <linux/bitops.h>
 #include <linux/of.h>
+#include <linux/seq_file.h>
 #include <linux/delay.h>
 #include <soc/imx8/soc.h>
 

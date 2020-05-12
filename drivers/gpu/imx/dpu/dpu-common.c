@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017-2018 NXP
+ * Copyright 2017-2019 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -827,7 +827,7 @@ int dpu_format_plane_height(int height, u32 format, int plane)
 		_dpu_##unit##_init(dpu, us->ids[i]);			\
 }
 
-static int __maybe_unused
+static int
 _dpu_submodules_init(struct dpu_soc *dpu, struct platform_device *pdev)
 {
 	const struct dpu_devtype *devtype = dpu->devtype;
@@ -843,7 +843,6 @@ _dpu_submodules_init(struct dpu_soc *dpu, struct platform_device *pdev)
 	_DPU_UNITS_INIT(hs);
 	_DPU_UNITS_INIT(lb);
 	_DPU_UNITS_INIT(sig);
-	_DPU_UNITS_INIT(st);
 	_DPU_UNITS_INIT(tcon);
 	_DPU_UNITS_INIT(vs);
 
@@ -1126,6 +1125,11 @@ static int dpu_get_plane_resource(struct dpu_soc *dpu,
 	struct dpu_plane_grp *grp = plane_res_to_grp(res);
 	int i;
 
+	for (i = 0; i < ARRAY_SIZE(res->cf); i++) {
+		res->cf[i] = dpu_cf_get(dpu, i);
+		if (IS_ERR(res->cf[i]))
+			return PTR_ERR(res->cf[i]);
+	}
 	for (i = 0; i < ARRAY_SIZE(res->ed); i++) {
 		res->ed[i] = dpu_ed_get(dpu, i);
 		if (IS_ERR(res->ed[i]))
@@ -1186,6 +1190,10 @@ static void dpu_put_plane_resource(struct dpu_plane_res *res)
 	struct dpu_plane_grp *grp = plane_res_to_grp(res);
 	int i;
 
+	for (i = 0; i < ARRAY_SIZE(res->cf); i++) {
+		if (!IS_ERR_OR_NULL(res->cf[i]))
+			dpu_cf_put(res->cf[i]);
+	}
 	for (i = 0; i < ARRAY_SIZE(res->ed); i++) {
 		if (!IS_ERR_OR_NULL(res->ed[i]))
 			dpu_ed_put(res->ed[i]);

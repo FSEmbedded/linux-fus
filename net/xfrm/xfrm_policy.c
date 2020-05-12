@@ -1977,7 +1977,6 @@ static struct xfrm_dst *xfrm_bundle_lookup(struct net *net,
 	if (num_xfrms <= 0)
 		goto make_dummy_bundle;
 
-	local_bh_disable();
 	xdst = xfrm_resolve_and_create_bundle(pols, num_pols, fl, family,
 					      xflo->dst_orig);
 	if (IS_ERR(xdst)) {
@@ -2077,7 +2076,6 @@ struct dst_entry *xfrm_lookup_with_ifid(struct net *net,
 				goto no_transform;
 			}
 
-			local_bh_disable();
 			xdst = xfrm_resolve_and_create_bundle(
 					pols, num_pols, fl,
 					family, dst_orig);

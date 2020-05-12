@@ -27,6 +27,7 @@
 #include <linux/platform_device.h>
 #include <soc/imx8/sc/sci.h>
 #include <soc/imx8/sc/svc/irq/api.h>
+#include <soc/imx8/sc/svc/misc/api.h>
 
 #define DEBOUNCE_TIME	100
 #define REPEAT_INTERVAL	60

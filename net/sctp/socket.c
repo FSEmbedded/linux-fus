@@ -3351,7 +3351,6 @@ static int sctp_setsockopt_maxseg(struct sock *sk, char __user *optval, unsigned
 			return -EINVAL;
 	}
 
-	asoc = sctp_id2assoc(sk, params.assoc_id);
 	if (asoc) {
 		asoc->user_frag = val;
 		sctp_assoc_update_frag_point(asoc);

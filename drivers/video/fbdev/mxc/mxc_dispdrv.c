@@ -15,9 +15,10 @@
  * @file mxc_dispdrv.c
  * @brief mxc display driver framework.
  *
- * A display device driver could call mxc_dispdrv_register(drv) in its dev_probe() function.
- * Move all dev_probe() things into mxc_dispdrv_driver->init(), init() function should init
- * and feedback setting;
+ * A display device driver could call mxc_dispdrv_register(drv) in its
+ * dev_probe() function.
+ * Move all dev_probe() things into mxc_dispdrv_driver->init(), init() function
+ * should init and feedback setting;
  * Move all dev_remove() things into mxc_dispdrv_driver->deinit();
  * Move all dev_suspend() things into fb_notifier for SUSPEND, if there is;
  * Move all dev_resume() things into fb_notifier for RESUME, if there is;

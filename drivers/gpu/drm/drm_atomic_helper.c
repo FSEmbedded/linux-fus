@@ -3584,29 +3584,6 @@ void drm_atomic_helper_crtc_destroy_state(struct drm_crtc *crtc,
 EXPORT_SYMBOL(drm_atomic_helper_crtc_destroy_state);
 
 /**
- * __drm_atomic_helper_plane_reset - resets planes state to default values
- * @plane: plane object, must not be NULL
- * @state: atomic plane state, must not be NULL
- *
- * Initializes plane state to default. This is useful for drivers that subclass
- * the plane state.
- */
-void __drm_atomic_helper_plane_reset(struct drm_plane *plane,
-				     struct drm_plane_state *state)
-{
-	state->plane = plane;
-	state->rotation = DRM_MODE_ROTATE_0;
-
-	/* Reset the alpha value to fully opaque if it matters */
-	if (plane->alpha_property)
-		state->alpha = plane->alpha_property->values[1];
-	state->pixel_blend_mode = DRM_MODE_BLEND_PREMULTI;
-
-	plane->state = state;
-}
-EXPORT_SYMBOL(__drm_atomic_helper_plane_reset);
-
-/**
  * drm_atomic_helper_plane_reset - default &drm_plane_funcs.reset hook for planes
  * @plane: drm plane
  *
@@ -3776,6 +3753,11 @@ __drm_atomic_helper_connector_duplicate_state(struct drm_connector *connector,
 
 	/* Don't copy over a writeback job, they are used only once */
 	state->writeback_job = NULL;
+
+	if (state->hdr_source_metadata_blob_ptr)
+		drm_property_blob_get(state->hdr_source_metadata_blob_ptr);
+
+	state->hdr_metadata_changed = false;
 }
 EXPORT_SYMBOL(__drm_atomic_helper_connector_duplicate_state);
 
@@ -3905,6 +3887,9 @@ __drm_atomic_helper_connector_destroy_state(struct drm_connector_state *state)
 
 	if (state->commit)
 		drm_crtc_commit_put(state->commit);
+
+	if (state->hdr_source_metadata_blob_ptr)
+		drm_property_blob_put(state->hdr_source_metadata_blob_ptr);
 }
 EXPORT_SYMBOL(__drm_atomic_helper_connector_destroy_state);
 

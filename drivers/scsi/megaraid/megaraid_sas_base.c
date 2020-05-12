@@ -7015,8 +7015,6 @@ skip_firing_dcmds:
 
 	megasas_free_ctrl_mem(instance);
 
-	megasas_free_ctrl_mem(instance);
-
 	scsi_host_put(host);
 
 	pci_disable_device(pdev);

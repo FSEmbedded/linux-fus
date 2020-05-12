@@ -205,8 +205,8 @@ static void __init imx7ulp_clocks_init(struct device_node *scg_node)
 
 	for (i = 0; i < ARRAY_SIZE(clks_init_on); i++)
 		imx_clk_prepare_enable(clks[clks_init_on[i]]);
-        imx_clk_set_parent(clks[IMX7ULP_CLK_GPU2D], clks[IMX7ULP_CLK_APLL_PFD2]);
-        imx_clk_set_parent(clks[IMX7ULP_CLK_GPU3D], clks[IMX7ULP_CLK_APLL_PFD2]);
+	imx_clk_set_parent(clks[IMX7ULP_CLK_GPU2D], clks[IMX7ULP_CLK_APLL_PFD2]);
+	imx_clk_set_parent(clks[IMX7ULP_CLK_GPU3D], clks[IMX7ULP_CLK_APLL_PFD2]);
 
 	imx_clk_set_rate(clks[IMX7ULP_CLK_APLL_PFD2], 400000000);
 
@@ -250,7 +250,7 @@ static void __init imx7ulp_cm4_clocks_init(struct device_node *scg_node)
 
 	clks_cm4[IMX7ULP_CM4_CLK_SPLL_VCO_PRE_SEL] = imx_clk_mux("cm4_spll_vco_pre_sel", base + 0x608, 0, 1, cm4_pll_pre_sels, ARRAY_SIZE(cm4_pll_pre_sels));
 	clks_cm4[IMX7ULP_CM4_CLK_APLL_VCO_PRE_SEL] = imx_clk_mux("cm4_apll_vco_pre_sel", base + 0x508, 0, 1, cm4_pll_pre_sels, ARRAY_SIZE(cm4_pll_pre_sels));
-	/*						 name		parent_name	reg		shift 	width */
+	/*						name		parent_name	reg		shift	width*/
 	clks_cm4[IMX7ULP_CM4_CLK_SPLL_VCO_PRE_DIV] = imx_clk_divider("cm4_spll_vco_pre_div", "cm4_spll_vco_pre_sel", base + 0x608,  8,	3);
 	clks_cm4[IMX7ULP_CM4_CLK_APLL_VCO_PRE_DIV] = imx_clk_divider("cm4_apll_vco_pre_div", "cm4_apll_vco_pre_sel", base + 0x508,	8,	3);
 	/*					name	parent_name	base*/

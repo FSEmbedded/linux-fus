@@ -59,6 +59,9 @@ struct brcmf_mp_device {
 	int		fcmode;
 	bool		roamoff;
 	bool		iapp;
+	bool		eap_restrict;
+	int		sdio_dpc_prio;
+	bool		sdio_wq_highpri;
 	bool		ignore_probe_fail;
 	struct brcmfmac_pd_cc *country_codes;
 	union {

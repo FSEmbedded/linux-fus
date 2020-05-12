@@ -3302,8 +3302,6 @@ SMB2_read(const unsigned int xid, struct cifs_io_parms *io_parms,
 		*nbytes = 0;
 	}
 
-	shdr = get_sync_hdr(rsp);
-
 	if (*buf) {
 		memcpy(*buf, (char *)rsp + rsp->DataOffset, *nbytes);
 		free_rsp_buf(resp_buftype, rsp_iov.iov_base);

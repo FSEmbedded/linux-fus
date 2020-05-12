@@ -578,14 +578,6 @@ static void free_ioctx(struct work_struct *work)
 	kmem_cache_free(kioctx_cachep, ctx);
 }
 
-static void free_ioctx_rcufn(struct rcu_head *head)
-{
-	struct kioctx *ctx = container_of(head, struct kioctx, free_rcu);
-
-	INIT_WORK(&ctx->free_work, free_ioctx);
-	schedule_work(&ctx->free_work);
-}
-
 static void free_ioctx_reqs(struct percpu_ref *ref)
 {
 	struct kioctx *ctx = container_of(ref, struct kioctx, reqs);

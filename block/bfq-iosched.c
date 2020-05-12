@@ -1426,24 +1426,6 @@ static unsigned long bfq_smallest_from_now(void)
 	return jiffies - MAX_JIFFY_OFFSET;
 }
 
-/*
- * Return the farthest future time instant according to jiffies
- * macros.
- */
-static unsigned long bfq_greatest_from_now(void)
-{
-	return jiffies + MAX_JIFFY_OFFSET;
-}
-
-/*
- * Return the farthest past time instant according to jiffies
- * macros.
- */
-static unsigned long bfq_smallest_from_now(void)
-{
-	return jiffies - MAX_JIFFY_OFFSET;
-}
-
 static void bfq_update_bfqq_wr_on_rq_arrival(struct bfq_data *bfqd,
 					     struct bfq_queue *bfqq,
 					     unsigned int old_wr_coeff,

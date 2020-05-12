@@ -427,9 +427,23 @@ static int imx7ulp_pmx_gpio_set_direction(struct pinctrl_dev *pctldev,
 	return 0;
 }
 
-static const struct imx_pinctrl_soc_info imx7ulp_pinctrl_info = {
-	.pins = imx7ulp_pinctrl_pads,
-	.npins = ARRAY_SIZE(imx7ulp_pinctrl_pads),
+static struct imx_pinctrl_soc_info imx7ulp_pinctrl_info_0 = {
+	.pins = imx7ulp_pinctrl_pads_0,
+	.npins = ARRAY_SIZE(imx7ulp_pinctrl_pads_0),
+	.flags = ZERO_OFFSET_VALID | SHARE_MUX_CONF_REG,
+	.gpio_set_direction = imx7ulp_pmx_gpio_set_direction,
+	.mux_mask = BM_MUX_MODE,
+	.mux_shift = BP_MUX_MODE,
+	.decodes = imx7ulp_cfg_decodes,
+	.num_decodes = ARRAY_SIZE(imx7ulp_cfg_decodes),
+	.fixup = imx7ulp_cfg_params_fixup,
+	.ibe_bit = BIT(16),
+	.obe_bit = BIT(17),
+};
+
+static struct imx_pinctrl_soc_info imx7ulp_pinctrl_info_1 = {
+	.pins = imx7ulp_pinctrl_pads_1,
+	.npins = ARRAY_SIZE(imx7ulp_pinctrl_pads_1),
 	.flags = ZERO_OFFSET_VALID | SHARE_MUX_CONF_REG,
 	.gpio_set_direction = imx7ulp_pmx_gpio_set_direction,
 	.mux_mask = BM_MUX_MODE,

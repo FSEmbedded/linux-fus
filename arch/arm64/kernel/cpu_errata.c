@@ -64,20 +64,6 @@ is_kryo_midr(const struct arm64_cpu_capabilities *entry, int scope)
 	return model == entry->midr_range.model;
 }
 
-static bool __maybe_unused
-is_kryo_midr(const struct arm64_cpu_capabilities *entry, int scope)
-{
-	u32 model;
-
-	WARN_ON(scope != SCOPE_LOCAL_CPU || preemptible());
-
-	model = read_cpuid_id();
-	model &= MIDR_IMPLEMENTOR_MASK | (0xf00 << MIDR_PARTNUM_SHIFT) |
-		 MIDR_ARCHITECTURE_MASK;
-
-	return model == entry->midr_model;
-}
-
 static bool
 has_mismatched_cache_type(const struct arm64_cpu_capabilities *entry,
 			  int scope)
@@ -656,13 +642,6 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 		.midr_range.model = MIDR_QCOM_KRYO,
 		.matches = is_kryo_midr,
 	},
-	{
-		.desc = "Qualcomm Technologies Kryo erratum 1003",
-		.capability = ARM64_WORKAROUND_QCOM_FALKOR_E1003,
-		.def_scope = SCOPE_LOCAL_CPU,
-		.midr_model = MIDR_QCOM_KRYO,
-		.matches = is_kryo_midr,
-	},
 #endif
 #ifdef CONFIG_QCOM_FALKOR_ERRATUM_1009
 	{
@@ -698,64 +677,6 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 		.desc = "Speculative Store Bypass Disable",
 		.capability = ARM64_SSBD,
 		.type = ARM64_CPUCAP_LOCAL_CPU_ERRATUM,
-		.matches = has_ssbd_mitigation,
-	},
-#endif
-#ifdef CONFIG_HARDEN_BRANCH_PREDICTOR
-	{
-		.capability = ARM64_HARDEN_BRANCH_PREDICTOR,
-		MIDR_ALL_VERSIONS(MIDR_CORTEX_A57),
-		.enable = enable_smccc_arch_workaround_1,
-	},
-	{
-		.capability = ARM64_HARDEN_BRANCH_PREDICTOR,
-		MIDR_ALL_VERSIONS(MIDR_CORTEX_A72),
-		.enable = enable_smccc_arch_workaround_1,
-	},
-	{
-		.capability = ARM64_HARDEN_BRANCH_PREDICTOR,
-		MIDR_ALL_VERSIONS(MIDR_CORTEX_A73),
-		.enable = enable_smccc_arch_workaround_1,
-	},
-	{
-		.capability = ARM64_HARDEN_BRANCH_PREDICTOR,
-		MIDR_ALL_VERSIONS(MIDR_CORTEX_A75),
-		.enable = enable_smccc_arch_workaround_1,
-	},
-	{
-		.capability = ARM64_HARDEN_BRANCH_PREDICTOR,
-		MIDR_ALL_VERSIONS(MIDR_QCOM_FALKOR_V1),
-		.enable = qcom_enable_link_stack_sanitization,
-	},
-	{
-		.capability = ARM64_HARDEN_BP_POST_GUEST_EXIT,
-		MIDR_ALL_VERSIONS(MIDR_QCOM_FALKOR_V1),
-	},
-	{
-		.capability = ARM64_HARDEN_BRANCH_PREDICTOR,
-		MIDR_ALL_VERSIONS(MIDR_QCOM_FALKOR),
-		.enable = qcom_enable_link_stack_sanitization,
-	},
-	{
-		.capability = ARM64_HARDEN_BP_POST_GUEST_EXIT,
-		MIDR_ALL_VERSIONS(MIDR_QCOM_FALKOR),
-	},
-	{
-		.capability = ARM64_HARDEN_BRANCH_PREDICTOR,
-		MIDR_ALL_VERSIONS(MIDR_BRCM_VULCAN),
-		.enable = enable_smccc_arch_workaround_1,
-	},
-	{
-		.capability = ARM64_HARDEN_BRANCH_PREDICTOR,
-		MIDR_ALL_VERSIONS(MIDR_CAVIUM_THUNDERX2),
-		.enable = enable_smccc_arch_workaround_1,
-	},
-#endif
-#ifdef CONFIG_ARM64_SSBD
-	{
-		.desc = "Speculative Store Bypass Disable",
-		.def_scope = SCOPE_LOCAL_CPU,
-		.capability = ARM64_SSBD,
 		.matches = has_ssbd_mitigation,
 	},
 #endif

@@ -547,9 +547,6 @@ static void update_vttbr(struct kvm *kvm)
 	smp_wmb();
 	WRITE_ONCE(kvm->arch.vmid_gen, atomic64_read(&kvm_vmid_gen));
 
-	smp_wmb();
-	WRITE_ONCE(kvm->arch.vmid_gen, atomic64_read(&kvm_vmid_gen));
-
 	spin_unlock(&kvm_vmid_lock);
 }
 

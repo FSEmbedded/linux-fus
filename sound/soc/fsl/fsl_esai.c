@@ -1,14 +1,17 @@
-// SPDX-License-Identifier: GPL-2.0
-//
-// Freescale ESAI ALSA SoC Digital Audio Interface (DAI) driver
-//
-// Copyright (C) 2014 Freescale Semiconductor, Inc.
+/*
+ * Freescale ESAI ALSA SoC Digital Audio Interface (DAI) driver
+ *
+ * Copyright (C) 2014-2016 Freescale Semiconductor, Inc.
+ * Copyright 2017 NXP
+ *
+ * This file is licensed under the terms of the GNU General Public License
+ * version 2. This program is licensed "as is" without any warranty of any
+ * kind, whether express or implied.
+ */
 
 #include <linux/clk.h>
 #include <linux/dmaengine.h>
 #include <linux/module.h>
-#include <linux/of.h>
-#include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/dma-mapping.h>
@@ -18,7 +21,6 @@
 #include <sound/pcm_params.h>
 
 #include "fsl_esai.h"
-#include "fsl_acm.h"
 #include "imx-pcm.h"
 #include "fsl_dma_workaround.h"
 
@@ -280,10 +282,19 @@ static int fsl_esai_set_dai_sysclk(struct snd_soc_dai *dai, int clk_id,
 	unsigned long clk_rate;
 	int ret;
 
-	if (freq == 0) {
-		dev_err(dai->dev, "%sput freq of HCK%c should not be 0Hz\n",
-			in ? "in" : "out", tx ? 'T' : 'R');
-		return -EINVAL;
+	if (esai_priv->synchronous && !tx) {
+		switch (clk_id) {
+		case ESAI_HCKR_FSYS:
+			fsl_esai_set_dai_sysclk(dai, ESAI_HCKT_FSYS,
+								freq, dir);
+			break;
+		case ESAI_HCKR_EXTAL:
+			fsl_esai_set_dai_sysclk(dai, ESAI_HCKT_EXTAL,
+								freq, dir);
+			break;
+		default:
+			return -EINVAL;
+		}
 	}
 
 	/* Bypass divider settings if the requirement doesn't change */
@@ -307,7 +318,7 @@ static int fsl_esai_set_dai_sysclk(struct snd_soc_dai *dai, int clk_id,
 		break;
 	case ESAI_HCKT_EXTAL:
 		ecr |= ESAI_ECR_ETI;
-		/* fall through */
+		break;
 	case ESAI_HCKR_EXTAL:
 		ecr |= ESAI_ECR_ERI;
 		break;
@@ -542,11 +553,6 @@ static int fsl_esai_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	regmap_update_bits(esai_priv->regmap, REG_ESAI_TCR, mask, xcr);
 	regmap_update_bits(esai_priv->regmap, REG_ESAI_RCR, mask, xcr);
 
-	mask = ESAI_xCCR_xCKP | ESAI_xCCR_xHCKP | ESAI_xCCR_xFSP |
-		ESAI_xCCR_xFSD | ESAI_xCCR_xCKD;
-	regmap_update_bits(esai_priv->regmap, REG_ESAI_TCCR, mask, xccr);
-	regmap_update_bits(esai_priv->regmap, REG_ESAI_RCCR, mask, xccr);
-
 	return 0;
 }
 
@@ -736,23 +742,11 @@ static int fsl_esai_trigger(struct snd_pcm_substream *substream, int cmd,
 	return 0;
 }
 
-static int fsl_esai_hw_free(struct snd_pcm_substream *substream,
-		struct snd_soc_dai *cpu_dai)
-{
-	struct fsl_esai *esai_priv = snd_soc_dai_get_drvdata(cpu_dai);
-
-	if (esai_priv->soc->dma_workaround)
-		clear_gpt_dma(substream,  esai_priv->dma_info);
-
-	return 0;
-}
-
 static const struct snd_soc_dai_ops fsl_esai_dai_ops = {
 	.startup = fsl_esai_startup,
 	.shutdown = fsl_esai_shutdown,
 	.trigger = fsl_esai_trigger,
 	.hw_params = fsl_esai_hw_params,
-	.hw_free = fsl_esai_hw_free,
 	.set_sysclk = fsl_esai_set_dai_sysclk,
 	.set_fmt = fsl_esai_set_dai_fmt,
 	.set_tdm_slot = fsl_esai_set_dai_tdm_slot,
@@ -1176,23 +1170,11 @@ static int fsl_esai_probe(struct platform_device *pdev)
 	pm_runtime_enable(&pdev->dev);
 	regcache_cache_only(esai_priv->regmap, true);
 
-	ret = imx_pcm_platform_register(&pdev->dev);
+	ret = imx_pcm_component_register(&pdev->dev);
 	if (ret)
 		dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
 
 	return ret;
-}
-
-static int fsl_esai_remove(struct platform_device *pdev)
-{
-	struct fsl_esai *esai_priv = dev_get_drvdata(&pdev->dev);
-
-	if (esai_priv->soc->dma_workaround)
-		fsl_dma_workaround_free_info(esai_priv->dma_info, &pdev->dev);
-
-	pm_runtime_disable(&pdev->dev);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -1285,7 +1267,6 @@ static const struct dev_pm_ops fsl_esai_pm_ops = {
 
 static struct platform_driver fsl_esai_driver = {
 	.probe = fsl_esai_probe,
-	.remove = fsl_esai_remove,
 	.driver = {
 		.name = "fsl-esai-dai",
 		.pm = &fsl_esai_pm_ops,

@@ -82,9 +82,6 @@ jiffies_64 = jiffies;
 	. = ALIGN(PMD_SIZE);					\
 	__end_bss_decrypted = .;				\
 
-#define ALIGN_ENTRY_TEXT_BEGIN	. = ALIGN(PMD_SIZE);
-#define ALIGN_ENTRY_TEXT_END	. = ALIGN(PMD_SIZE);
-
 #else
 
 #define X86_ALIGN_RODATA_BEGIN
@@ -95,9 +92,6 @@ jiffies_64 = jiffies;
 #define ALIGN_ENTRY_TEXT_BEGIN
 #define ALIGN_ENTRY_TEXT_END
 #define BSS_DECRYPTED
-
-#define ALIGN_ENTRY_TEXT_BEGIN
-#define ALIGN_ENTRY_TEXT_END
 
 #endif
 

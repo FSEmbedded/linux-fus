@@ -2401,9 +2401,6 @@
 /* PCI core control register */
 #define HW_ATL_PCI_REG_CONTROL6_ADR 0x1014u
 
-/* PCI core control register */
-#define pci_reg_control6_adr 0x1014u
-
 /* global microprocessor scratch pad definitions */
 #define HW_ATL_GLB_CPU_SCRATCH_SCP_ADR(scratch_scp) \
 	(0x00000300u + (scratch_scp) * 0x4)

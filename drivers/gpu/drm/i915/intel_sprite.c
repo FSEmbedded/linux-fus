@@ -350,7 +350,6 @@ bool
 skl_plane_get_hw_state(struct intel_plane *plane,
 		       enum pipe *pipe)
 {
-	struct intel_plane *plane = to_intel_plane(plane_state->base.plane);
 	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
 	enum intel_display_power_domain power_domain;
 	enum plane_id plane_id = plane->id;

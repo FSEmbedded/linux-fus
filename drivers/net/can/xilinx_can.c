@@ -561,10 +561,6 @@ static int xcan_start_xmit_fifo(struct sk_buff *skb, struct net_device *ndev)
 	if (priv->tx_max > 1)
 		priv->write_reg(priv, XCAN_ICR_OFFSET, XCAN_IXR_TXFEMP_MASK);
 
-	/* Clear TX-FIFO-empty interrupt for xcan_tx_interrupt() */
-	if (priv->tx_max > 1)
-		priv->write_reg(priv, XCAN_ICR_OFFSET, XCAN_IXR_TXFEMP_MASK);
-
 	/* Check if the TX buffer is full */
 	if ((priv->tx_head - priv->tx_tail) == priv->tx_max)
 		netif_stop_queue(ndev);
@@ -1521,30 +1517,6 @@ static int xcan_probe(struct platform_device *pdev)
 		tx_max = 1;
 
 	rx_max = hw_rx_max;
-
-	of_id = of_match_device(xcan_of_match, &pdev->dev);
-	if (of_id) {
-		const struct xcan_devtype_data *devtype_data = of_id->data;
-
-		if (devtype_data)
-			caps = devtype_data->caps;
-	}
-
-	/* There is no way to directly figure out how many frames have been
-	 * sent when the TXOK interrupt is processed. If watermark programming
-	 * is supported, we can have 2 frames in the FIFO and use TXFEMP
-	 * to determine if 1 or 2 frames have been sent.
-	 * Theoretically we should be able to use TXFWMEMP to determine up
-	 * to 3 frames, but it seems that after putting a second frame in the
-	 * FIFO, with watermark at 2 frames, it can happen that TXFWMEMP (less
-	 * than 2 frames in FIFO) is set anyway with no TXOK (a frame was
-	 * sent), which is not a sensible state - possibly TXFWMEMP is not
-	 * completely synchronized with the rest of the bits?
-	 */
-	if (caps & XCAN_CAP_WATERMARK)
-		tx_max = min(tx_fifo_depth, 2);
-	else
-		tx_max = 1;
 
 	/* Create a CAN device instance */
 	ndev = alloc_candev(sizeof(struct xcan_priv), tx_max);

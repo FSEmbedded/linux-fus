@@ -1,8 +1,13 @@
-// SPDX-License-Identifier: GPL-2.0
-//
-// Copyright 2011 Freescale Semiconductor, Inc. All Rights Reserved.
-//
-// Refer to drivers/dma/imx-sdma.c
+/*
+ * Copyright 2011-2015 Freescale Semiconductor, Inc. All Rights Reserved.
+ * Copyright 2017 NXP
+ *
+ * Refer to drivers/dma/imx-sdma.c
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
 
 #include <linux/init.h>
 #include <linux/types.h>
@@ -136,7 +141,6 @@ enum mxs_dma_id {
 	IMX23_DMA,
 	IMX28_DMA,
 	IMX7D_DMA,
-	IMX8QXP_DMA,
 };
 
 struct mxs_dma_engine {
@@ -173,9 +177,6 @@ static struct mxs_dma_type mxs_dma_types[] = {
 	}, {
 		.id = IMX7D_DMA,
 		.type = MXS_DMA_APBH,
-	}, {
-		.id = IMX8QXP_DMA,
-		.type = MXS_DMA_APBH,
 	}
 };
 
@@ -196,9 +197,6 @@ static const struct platform_device_id mxs_dma_ids[] = {
 		.name = "imx7d-dma-apbh",
 		.driver_data = (kernel_ulong_t) &mxs_dma_types[4],
 	}, {
-		.name = "imx8qxp-dma-apbh",
-		.driver_data = (kernel_ulong_t) &mxs_dma_types[5],
-	}, {
 		/* end of list */
 	}
 };
@@ -209,7 +207,6 @@ static const struct of_device_id mxs_dma_dt_ids[] = {
 	{ .compatible = "fsl,imx28-dma-apbh", .data = &mxs_dma_ids[2], },
 	{ .compatible = "fsl,imx28-dma-apbx", .data = &mxs_dma_ids[3], },
 	{ .compatible = "fsl,imx7d-dma-apbh", .data = &mxs_dma_ids[4], },
-	{ .compatible = "fsl,imx8qxp-dma-apbh", .data = &mxs_dma_ids[5], },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, mxs_dma_dt_ids);
@@ -892,6 +889,7 @@ static int mxs_dma_probe(struct platform_device *pdev)
 
 	for (i = 0; i < MXS_DMA_CHANNELS; i++) {
 		struct mxs_dma_chan *mxs_chan = &mxs_dma->mxs_chans[i];
+
 		mxs_chan->ccw_pool = ccw_pool;
 	}
 
@@ -941,6 +939,7 @@ static int mxs_dma_remove(struct platform_device *pdev)
 
 	for (i = 0; i < MXS_DMA_CHANNELS; i++) {
 		struct mxs_dma_chan *mxs_chan = &mxs_dma->mxs_chans[i];
+
 		tasklet_kill(&mxs_chan->tasklet);
 		mxs_chan->ccw_pool = NULL;
 	}
@@ -948,7 +947,6 @@ static int mxs_dma_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
 static int mxs_dma_pm_suspend(struct device *dev)
 {
 	int ret;
@@ -969,7 +967,6 @@ static int mxs_dma_pm_resume(struct device *dev)
 
 	return 0;
 }
-#endif
 
 int mxs_dma_runtime_suspend(struct device *dev)
 {

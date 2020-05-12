@@ -20,14 +20,6 @@
 #include <linux/tee_drv.h>
 #include "tee_private.h"
 
-/* extra references appended to shm object for registered shared memory */
-struct tee_shm_dmabuf_ref {
-     struct tee_shm shm;
-     struct dma_buf *dmabuf;
-     struct dma_buf_attachment *attach;
-     struct sg_table *sgt;
-};
-
 static void tee_shm_release(struct tee_shm *shm)
 {
 	struct tee_device *teedev = shm->teedev;
@@ -66,7 +58,6 @@ static void tee_shm_release(struct tee_shm *shm)
 
 	kfree(shm);
 
-	kfree(shm);
 	tee_device_put(teedev);
 }
 

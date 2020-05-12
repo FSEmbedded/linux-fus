@@ -1810,7 +1810,6 @@ int hrtimers_prepare_cpu(unsigned int cpu)
 		timerqueue_init_head(&cpu_base->clock_base[i].active);
 	}
 
-	cpu_base->active_bases = 0;
 	cpu_base->cpu = cpu;
 	cpu_base->active_bases = 0;
 	cpu_base->hres_active = 0;

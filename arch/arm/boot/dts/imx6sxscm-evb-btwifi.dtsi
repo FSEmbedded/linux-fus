@@ -128,4 +128,3 @@
 	pinctrl-2 = <&pinctrl_usdhc3_1_200mhz>;
 	bus-width = <4>;
 };
-

@@ -193,6 +193,10 @@ static const struct edid_quirk {
 
 	/* Sony PlayStation VR Headset */
 	{ "SNY", 0x0704, EDID_QUIRK_NON_DESKTOP },
+
+	/* Quantum data 980 */
+	{ "QDI", 980, EDID_QUIRK_PREFER_LARGE_60 },
+	{ "QDI", 178, EDID_QUIRK_PREFER_LARGE_60 },
 };
 
 /*
@@ -4073,12 +4077,6 @@ static void drm_edid_to_eld(struct drm_connector *connector, struct edid *edid)
 	else
 		eld[DRM_ELD_SAD_COUNT_CONN_TYPE] |= DRM_ELD_CONN_TYPE_HDMI;
 
-	if (connector->connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
-	    connector->connector_type == DRM_MODE_CONNECTOR_eDP)
-		eld[DRM_ELD_SAD_COUNT_CONN_TYPE] |= DRM_ELD_CONN_TYPE_DP;
-	else
-		eld[DRM_ELD_SAD_COUNT_CONN_TYPE] |= DRM_ELD_CONN_TYPE_HDMI;
-
 	eld[DRM_ELD_BASELINE_ELD_LEN] =
 		DIV_ROUND_UP(drm_eld_calc_baseline_block_size(eld), 4);
 
@@ -4595,8 +4593,6 @@ u32 drm_add_display_info(struct drm_connector *connector, const struct edid *edi
 	info->non_desktop = !!(quirks & EDID_QUIRK_NON_DESKTOP);
 
 	DRM_DEBUG_KMS("non_desktop set to %d\n", info->non_desktop);
-
-	info->non_desktop = !!(quirks & EDID_QUIRK_NON_DESKTOP);
 
 	if (edid->revision < 3)
 		return quirks;

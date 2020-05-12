@@ -787,11 +787,6 @@ static int safexcel_skcipher_cra_init(struct crypto_tfm *tfm)
 				    sizeof(struct safexcel_cipher_req));
 
 	ctx->priv = tmpl->priv;
-	ctx->base.send = safexcel_send;
-	ctx->base.handle_result = safexcel_handle_result;
-
-	crypto_skcipher_set_reqsize(__crypto_skcipher_cast(tfm),
-				    sizeof(struct safexcel_cipher_req));
 
 	ctx->base.send = safexcel_skcipher_send;
 	ctx->base.handle_result = safexcel_skcipher_handle_result;

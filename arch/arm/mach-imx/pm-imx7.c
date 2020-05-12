@@ -688,13 +688,12 @@ static int imx7_suspend_finish(unsigned long val)
 	else
 		state = MX7D_SUSPEND_STANDBY_PARAM;
 
-	if (psci_ops.cpu_suspend) {
+	if (psci_ops.cpu_suspend)
 		return psci_ops.cpu_suspend(state, __pa(cpu_resume));
-	}
 
-	if (!imx7_suspend_in_ocram_fn) {
+	if (!imx7_suspend_in_ocram_fn)
 		cpu_do_idle();
-	} else {
+	else {
 		/*
 		 * call low level suspend function in ocram,
 		 * as we need to float DDR IO.
@@ -1138,14 +1137,14 @@ void __init imx7d_pm_init(void)
 	if (imx_src_is_m4_enabled()) {
 		/* map the 32K of M4 TCM */
 		np = of_find_node_by_path(
-			"/tcml@007f8000");
+			"/tcml@7f8000");
 		if (np)
 			lpm_m4tcm_base = of_iomap(np, 0);
 		WARN_ON(!lpm_m4tcm_base);
 
 		/* map the m4 bootrom from dtb */
 		np = of_find_node_by_path(
-			"/soc/sram@00180000");
+			"/soc/sram@180000");
 		if (np)
 			m4_bootrom_base = of_iomap(np, 0);
 		WARN_ON(!m4_bootrom_base);

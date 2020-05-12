@@ -1192,8 +1192,6 @@ static int build_insn(const struct bpf_insn *insn, struct jit_ctx *ctx)
 		u8 *func = ((u8 *)__bpf_call_base) + imm;
 
 		ctx->saw_call = true;
-		if (ctx->saw_ld_abs_ind && bpf_helper_changes_pkt_data(func))
-			emit_reg_move(bpf2sparc[BPF_REG_1], L7, ctx);
 
 		emit_call((u32 *)func, ctx);
 		emit_nop(ctx);

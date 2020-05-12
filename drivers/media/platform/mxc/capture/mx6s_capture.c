@@ -1053,7 +1053,7 @@ static void mx6s_csi_frame_done(struct mx6s_csi_dev *csi_dev,
 	}
 
 	csi_dev->frame_count++;
-	csi_dev->nextfb = (bufnum == 0 ? 1: 0);
+	csi_dev->nextfb = (bufnum == 0 ? 1 : 0);
 
 	/* Config discard buffer to active_bufs */
 	if (list_empty(&csi_dev->capture)) {
@@ -1157,7 +1157,7 @@ static irqreturn_t mx6s_csi_irq_handler(int irq, void *data)
 			else
 				mx6s_csi_frame_done(csi_dev, 0, false);
 		} else
-			pr_warn("skip frame 0 \n");
+			pr_warn("skip frame 0\n");
 
 	} else if (status & BIT_DMA_TSF_DONE_FB2) {
 		if (csi_dev->nextfb == 1) {
@@ -1166,7 +1166,7 @@ static irqreturn_t mx6s_csi_irq_handler(int irq, void *data)
 			else
 				mx6s_csi_frame_done(csi_dev, 1, false);
 		} else
-			pr_warn("skip frame 1 \n");
+			pr_warn("skip frame 1\n");
 	}
 
 	spin_unlock(&csi_dev->slock);
@@ -1726,7 +1726,7 @@ static int subdev_notifier_bound(struct v4l2_async_notifier *notifier,
 	struct mx6s_csi_dev *csi_dev = notifier_to_mx6s_dev(notifier);
 
 	/* Find platform data for this sensor subdev */
-	if (csi_dev->asd.match.fwnode.fwnode == dev_fwnode(subdev->dev))
+	if (csi_dev->asd.match.fwnode == dev_fwnode(subdev->dev))
 		csi_dev->sd = subdev;
 
 	if (subdev == NULL)
@@ -1782,6 +1782,10 @@ static int mx6s_csi_mode_sel(struct mx6s_csi_dev *csi_dev)
 	return ret;
 }
 
+static const struct v4l2_async_notifier_operations mx6s_capture_async_ops = {
+	.bound = subdev_notifier_bound,
+};
+
 static int mx6s_csi_two_8bit_sensor_mode_sel(struct mx6s_csi_dev *csi_dev)
 {
 	struct device_node *np = csi_dev->dev->of_node;
@@ -1820,7 +1824,7 @@ static int mx6sx_register_subdevs(struct mx6s_csi_dev *csi_dev)
 		}
 
 		csi_dev->asd.match_type = V4L2_ASYNC_MATCH_FWNODE;
-		csi_dev->asd.match.fwnode.fwnode = of_fwnode_handle(rem);
+		csi_dev->asd.match.fwnode = of_fwnode_handle(rem);
 		csi_dev->async_subdevs[0] = &csi_dev->asd;
 
 		of_node_put(rem);
@@ -1829,7 +1833,7 @@ static int mx6sx_register_subdevs(struct mx6s_csi_dev *csi_dev)
 
 	csi_dev->subdev_notifier.subdevs = csi_dev->async_subdevs;
 	csi_dev->subdev_notifier.num_subdevs = 1;
-	csi_dev->subdev_notifier.bound = subdev_notifier_bound;
+	csi_dev->subdev_notifier.ops = &mx6s_capture_async_ops;
 
 	ret = v4l2_async_notifier_register(&csi_dev->v4l2_dev,
 					&csi_dev->subdev_notifier);

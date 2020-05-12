@@ -2810,9 +2810,9 @@ static int dw_mci_init_slot_caps(struct dw_mci_slot *slot)
 	if (!mmc->f_max)
 		mmc->f_max = DW_MCI_FREQ_MAX;
 
-	ret = dw_mci_init_slot_caps(slot);
-	if (ret)
-		goto err_host_allocated;
+	/* Process SDIO IRQs through the sdio_irq_work. */
+	if (mmc->caps & MMC_CAP_SDIO_IRQ)
+		mmc->caps2 |= MMC_CAP2_SDIO_IRQ_NOTHREAD;
 
 	return 0;
 }

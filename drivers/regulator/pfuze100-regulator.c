@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0+
 //
 // Copyright (C) 2011-2013 Freescale Semiconductor, Inc. All Rights Reserved.
+// Copyright 2017 NXP
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -239,7 +240,10 @@ static const struct regulator_ops pfuze100_swb_regulator_ops = {
 			.vsel_reg = (base) + PFUZE100_VOL_OFFSET,	\
 			.vsel_mask = 0x3f,	\
 			.enable_reg = (base) + PFUZE100_MODE_OFFSET,	\
+			.enable_val = 0xc,	\
+			.disable_val = 0x0,	\
 			.enable_mask = 0xf,	\
+			.enable_time = 500,	\
 		},	\
 		.stby_reg = (base) + PFUZE100_STANDBY_OFFSET,	\
 		.stby_mask = 0x3f,	\
@@ -774,7 +778,6 @@ static int pfuze100_regulator_probe(struct i2c_client *client,
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
 static int pfuze_reg_save_restore(struct pfuze_chip *pfuze_chip, int start,
 				  int end, int index, bool save)
 {
@@ -795,7 +798,7 @@ static int pfuze_reg_save_restore(struct pfuze_chip *pfuze_chip, int start,
 	return index + i;
 }
 
-static int __maybe_unused pfuze_suspend(struct device *dev)
+static int pfuze_suspend(struct device *dev)
 {
 	struct pfuze_chip *pfuze_chip = i2c_get_clientdata(to_i2c_client(dev));
 	int index = 0;
@@ -821,7 +824,7 @@ err_ret:
 	return index;
 }
 
-static int __maybe_unused pfuze_resume(struct device *dev)
+static int pfuze_resume(struct device *dev)
 {
 	struct pfuze_chip *pfuze_chip = i2c_get_clientdata(to_i2c_client(dev));
 	int index = 0;
@@ -846,7 +849,6 @@ static int __maybe_unused pfuze_resume(struct device *dev)
 err_ret:
 	return index;
 }
-#endif
 
 static const struct dev_pm_ops pfuze_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(pfuze_suspend, pfuze_resume)
