@@ -1034,8 +1034,11 @@ static int selinux_sb_clone_mnt_opts(const struct super_block *oldsb,
 	BUG_ON(!(oldsbsec->flags & SE_SBINITIALIZED));
 
 	/* if fs is reusing a sb, make sure that the contexts match */
-	if (newsbsec->flags & SE_SBINITIALIZED)
+	if (newsbsec->flags & SE_SBINITIALIZED) {
+		if ((kern_flags & SECURITY_LSM_NATIVE_LABELS) && !set_context)
+			*set_kern_flags |= SECURITY_LSM_NATIVE_LABELS;
 		return selinux_cmp_sb_context(oldsb, newsb);
+	}
 
 	mutex_lock(&newsbsec->lock);
 
@@ -1508,6 +1511,11 @@ static int selinux_genfs_get_sid(struct dentry *dentry,
 		}
 		rc = security_genfs_sid(&selinux_state, sb->s_type->name,
 					path, tclass, sid);
+		if (rc == -ENOENT) {
+			/* No match in policy, mark as unlabeled. */
+			*sid = SECINITSID_UNLABELED;
+			rc = 0;
+		}
 	}
 	free_page((unsigned long)buffer);
 	return rc;
@@ -2929,7 +2937,7 @@ static int selinux_sb_kern_mount(struct super_block *sb, int flags, void *data)
 		return rc;
 
 	/* Allow all mounts performed by the kernel */
-	if (flags & MS_KERNMOUNT)
+	if (flags & (MS_KERNMOUNT | MS_SUBMOUNT))
 		return 0;
 
 	ad.type = LSM_AUDIT_DATA_DENTRY;
@@ -3450,10 +3458,14 @@ static int selinux_inode_setsecurity(struct inode *inode, const char *name,
 				     const void *value, size_t size, int flags)
 {
 	struct inode_security_struct *isec = inode_security_novalidate(inode);
+	struct superblock_security_struct *sbsec = inode->i_sb->s_security;
 	u32 newsid;
 	int rc;
 
 	if (strcmp(name, XATTR_SELINUX_SUFFIX))
+		return -EOPNOTSUPP;
+
+	if (!(sbsec->flags & SBLABEL_MNT))
 		return -EOPNOTSUPP;
 
 	if (!value || !size)
@@ -5313,6 +5325,9 @@ static int selinux_sctp_bind_connect(struct sock *sk, int optname,
 	addr_buf = address;
 
 	while (walk_size < addrlen) {
+		if (walk_size + sizeof(sa_family_t) > addrlen)
+			return -EINVAL;
+
 		addr = addr_buf;
 		switch (addr->sa_family) {
 		case AF_UNSPEC:
@@ -5325,6 +5340,9 @@ static int selinux_sctp_bind_connect(struct sock *sk, int optname,
 		default:
 			return -EINVAL;
 		}
+
+		if (walk_size + len > addrlen)
+			return -EINVAL;
 
 		err = -EINVAL;
 		switch (optname) {
@@ -6598,7 +6616,10 @@ static void selinux_inode_invalidate_secctx(struct inode *inode)
  */
 static int selinux_inode_notifysecctx(struct inode *inode, void *ctx, u32 ctxlen)
 {
-	return selinux_inode_setsecurity(inode, XATTR_SELINUX_SUFFIX, ctx, ctxlen, 0);
+	int rc = selinux_inode_setsecurity(inode, XATTR_SELINUX_SUFFIX,
+					   ctx, ctxlen, 0);
+	/* Do not return error when suppressing label (SBLABEL_MNT not set). */
+	return rc == -EOPNOTSUPP ? 0 : rc;
 }
 
 /*
