@@ -210,6 +210,7 @@ typedef enum _gceHAL_COMMAND_CODES
 
     /* Vsimulator only. */
     gcvHAL_UPDATE_DEBUG_CALLBACK,
+    gcvHAL_CONFIG_CTX_FRAMEWORK,
 
     /* Non paged memory management backup compatibility, windows, qnx. */
     gcvHAL_ALLOCATE_NON_PAGED_MEMORY,
@@ -405,9 +406,9 @@ typedef struct _gcsHAL_QUERY_CHIP_IDENTITY
     /* Customer ID. */
     gctUINT32                   customerID;
 
-    /* SRAM physical addresses and sizes. */
-    gctUINT64                   sRAMBases[gcvSRAM_COUNT];
-    gctUINT32                   sRAMSizes[gcvSRAM_COUNT];
+    /* CPU view physical address and size of SRAMs. */
+    gctUINT64                   sRAMBases[gcvSRAM_INTER_COUNT];
+    gctUINT32                   sRAMSizes[gcvSRAM_INTER_COUNT];
 
     gctUINT64                   platformFlagBits;
 }
@@ -429,9 +430,20 @@ typedef struct _gcsHAL_QUERY_CHIP_OPTIONS
     gctUINT32                   uscL1CacheRatio;
     gctUINT32                   uscAttribCacheRatio;
     gctUINT32                   userClusterMask;
-    gctUINT32                   sRAMBaseAddress[gcvSRAM_COUNT];
-    gceSECURE_MODE              secureMode;
 
+    /* Internal SRAM size. */
+    gctUINT32                   sRAMSizes[gcvSRAM_INTER_COUNT];
+    /* Internal SRAM count. */
+    gctUINT32                   sRAMCount;
+
+    /* External SRAM size. */
+    gctUINT32                   extSRAMSizes[gcvSRAM_EXT_COUNT];
+    /* External SRAM count. */
+    gctUINT32                   extSRAMCount;
+
+    gceSECURE_MODE              secureMode;
+    gctBOOL                     enableNNTPParallel;
+    gctUINT                     enableSwtilingPhase1;
 }
 gcsHAL_QUERY_CHIP_OPTIONS;
 
@@ -495,6 +507,11 @@ typedef struct _gcsHAL_ALLOCATE_LINEAR_VIDEO_MEMORY
 
     /* Memory pool to allocate from. */
     IN OUT gctUINT32            pool;
+
+    /* Internal SRAM index. */
+    IN gctINT32                 sRAMIndex;
+    /* External SRAM index. */
+    IN gctINT32                 extSRAMIndex;
 
     /* Allocated video memory. */
     OUT gctUINT32               node;
@@ -777,6 +794,8 @@ typedef struct _gcsHAL_COMMIT
     gcsHAL_SUBCOMMIT            subCommit;
 
     gctBOOL                     shared;
+
+    gctBOOL                     contextSwitched;
 
     /* Commit stamp of this commit. */
     OUT gctUINT64               commitStamp;

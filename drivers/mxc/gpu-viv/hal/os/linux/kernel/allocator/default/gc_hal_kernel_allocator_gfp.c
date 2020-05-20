@@ -285,45 +285,57 @@ _NonContiguous1MPagesFree(
 {
     gctINT i;
 
-    for (i = 0; i < NumPages1M && MdlPriv->Pages1M[i]; i++)
+    if (MdlPriv->Pages1M && MdlPriv->isExact)
     {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)
-        if (MdlPriv->isExact[i] == gcvTRUE)
+        for (i = 0; i < NumPages1M && MdlPriv->Pages1M[i]; i++)
         {
-            free_pages_exact(page_address(MdlPriv->Pages1M[i]), gcd1M_PAGE_SIZE);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)
+            if (MdlPriv->isExact[i] == gcvTRUE)
+            {
+                free_pages_exact(page_address(MdlPriv->Pages1M[i]), gcd1M_PAGE_SIZE);
+            }
+            else
+#endif
+            {
+                __free_pages(MdlPriv->Pages1M[i], get_order(gcd1M_PAGE_SIZE));
+            }
+        }
+    }
+
+    if (MdlPriv->Pages1M)
+    {
+        if (is_vmalloc_addr(MdlPriv->Pages1M))
+        {
+            vfree(MdlPriv->Pages1M);
         }
         else
-#endif
         {
-            __free_pages(MdlPriv->Pages1M[i], get_order(gcd1M_PAGE_SIZE));
+            kfree(MdlPriv->Pages1M);
         }
     }
 
-    if (is_vmalloc_addr(MdlPriv->Pages1M))
+    if (MdlPriv->isExact)
     {
-        vfree(MdlPriv->Pages1M);
-    }
-    else
-    {
-        kfree(MdlPriv->Pages1M);
-    }
-
-    if (is_vmalloc_addr(MdlPriv->isExact))
-    {
-        vfree(MdlPriv->isExact);
-    }
-    else
-    {
-        kfree(MdlPriv->isExact);
+         if (is_vmalloc_addr(MdlPriv->isExact))
+        {
+            vfree(MdlPriv->isExact);
+        }
+        else
+        {
+            kfree(MdlPriv->isExact);
+        }
     }
 
-    if (is_vmalloc_addr(MdlPriv->nonContiguousPages))
+    if (MdlPriv->nonContiguousPages)
     {
-        vfree(MdlPriv->nonContiguousPages);
-    }
-    else
-    {
-        kfree(MdlPriv->nonContiguousPages);
+        if (is_vmalloc_addr(MdlPriv->nonContiguousPages))
+        {
+            vfree(MdlPriv->nonContiguousPages);
+        }
+        else
+        {
+            kfree(MdlPriv->nonContiguousPages);
+        }
     }
 }
 
@@ -341,14 +353,15 @@ _NonContiguous1MPagesAlloc(
     gctINT i, j;
 
     numPages1M = ((*NumPages << PAGE_SHIFT) + (gcd1M_PAGE_SIZE - 1)) >> gcd1M_PAGE_SHIFT;
-    MdlPriv->numPages1M = numPages1M;
 
     *NumPages = (numPages1M << gcd1M_PAGE_SHIFT) >> PAGE_SHIFT;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)
-    if (*NumPages > totalram_pages)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
+        if (*NumPages > totalram_pages())
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)
+        if (*NumPages > totalram_pages)
 #else
-    if (*NumPages > num_physpages)
+        if (*NumPages > num_physpages)
 #endif
     {
         return gcvNULL;
@@ -373,7 +386,11 @@ _NonContiguous1MPagesAlloc(
     if (!MdlPriv->isExact)
     {
         MdlPriv->isExact = vmalloc(size);
-        return gcvNULL;
+        if (!MdlPriv->isExact)
+        {
+            _NonContiguous1MPagesFree(MdlPriv, 0);
+            return gcvNULL;
+        }
     }
 
     size = *NumPages * sizeof(struct page *);
@@ -381,9 +398,14 @@ _NonContiguous1MPagesAlloc(
     if (!pages)
     {
         pages = vmalloc(size);
-        return gcvNULL;
+        if (!pages)
+        {
+            _NonContiguous1MPagesFree(MdlPriv, 0);
+            return gcvNULL;
+        }
     }
 
+    MdlPriv->numPages1M = 0;
     for (i = 0; i < numPages1M; i++)
     {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)
@@ -402,6 +424,8 @@ _NonContiguous1MPagesAlloc(
 
             if (order >= MAX_ORDER)
             {
+                kfree(pages);
+                _NonContiguous1MPagesFree(MdlPriv, MdlPriv->numPages1M);
                 return gcvNULL;
             }
 
@@ -410,9 +434,12 @@ _NonContiguous1MPagesAlloc(
 
         if (MdlPriv->Pages1M[i] == gcvNULL)
         {
-            _NonContiguous1MPagesFree(MdlPriv, i);
+            kfree(pages);
+            _NonContiguous1MPagesFree(MdlPriv, MdlPriv->numPages1M);
             return gcvNULL;
         }
+
+        MdlPriv->numPages1M += 1;
 
         for (j = 0; j < num; j++)
         {
@@ -1172,7 +1199,9 @@ _GFPCache(
 {
     struct gfp_mdl_priv *mdlPriv = Mdl->priv;
     enum dma_data_direction dir;
-    gctINT numPages = GetPageCount(Bytes, Offset);
+    dma_addr_t dma_addr = (mdlPriv->dma_addr + Offset) & PAGE_MASK;
+    gctSIZE_T bytes = (mdlPriv->dma_addr + Offset + Bytes) - dma_addr;
+    gctINT numPages = GetPageCount(bytes, 0);
 
     switch (Operation)
     {
@@ -1182,7 +1211,7 @@ _GFPCache(
         if (mdlPriv->contiguous)
         {
             dma_sync_single_for_device(galcore_device,
-                    mdlPriv->dma_addr, numPages << PAGE_SHIFT, dir);
+                    dma_addr, numPages << PAGE_SHIFT, dir);
         }
         else
         {
@@ -1197,7 +1226,7 @@ _GFPCache(
         if (mdlPriv->contiguous)
         {
             dma_sync_single_for_device(galcore_device,
-                    mdlPriv->dma_addr, numPages << PAGE_SHIFT, dir);
+                    dma_addr, numPages << PAGE_SHIFT, dir);
         }
         else
         {
@@ -1210,7 +1239,7 @@ _GFPCache(
         if (mdlPriv->contiguous)
         {
             dma_sync_single_for_cpu(galcore_device,
-                    mdlPriv->dma_addr, numPages << PAGE_SHIFT, dir);
+                    dma_addr, numPages << PAGE_SHIFT, dir);
         }
         else
         {
@@ -1225,7 +1254,7 @@ _GFPCache(
         if (mdlPriv->contiguous)
         {
             dma_sync_single_for_cpu(galcore_device,
-                    mdlPriv->dma_addr, numPages << PAGE_SHIFT, dir);
+                    dma_addr, numPages << PAGE_SHIFT, dir);
         }
         else
         {

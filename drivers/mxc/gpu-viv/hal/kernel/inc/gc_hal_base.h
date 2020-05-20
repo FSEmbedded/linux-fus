@@ -121,6 +121,7 @@ typedef struct _gcsNN_FIXED_FEATURE
     gctUINT  nnCoreCountInt8;       /* total nn core count supporting int8 */
     gctUINT  nnCoreCountInt16;      /* total nn core count supporting int16 */
     gctUINT  nnCoreCountFloat16;    /* total nn core count supporting float16 */
+    gctUINT  nnCoreCountBFloat16;    /* total nn core count supporting Bfloat16 */
     gctUINT  nnMadPerCore;
     gctUINT  nnInputBufferDepth;
     gctUINT  nnAccumBufferDepth;
@@ -197,7 +198,10 @@ typedef struct _gcsNN_UNIFIED_FEATURE
     gctUINT  axiSramOnlySWTiling : 1;
     gctUINT  imageNotPackedInSram : 1;
     gctUINT  coefDeltaCordOverFlowZRL8BitFix : 1;
+    gctUINT  lowEfficiencyOfIDWriteImgBufFix : 1;
     gctUINT  xyOffsetLimitationFix : 1;
+    gctUINT  kernelPerCoreLTOneThirdCoefFix : 1;
+    gctUINT  diffConditionForCachelineModePreFix : 1;
 } gcsNN_UNIFIED_FEATURE;
 
 /* Features are derived from above ones */
@@ -268,6 +272,7 @@ gcsSystemInfo;
     gcvNULL, /* accessLock         */ \
     gcvNULL, /* GL FE compiler lock*/ \
     gcvNULL, /* CL FE compiler lock*/ \
+    gcvNULL, /* VX context lock    */ \
     gcvPATCH_NOTINIT,/* global patchID     */ \
     gcvNULL, /* global fenceID*/ \
     gcvFALSE, /* memory profile flag */ \
@@ -384,6 +389,8 @@ typedef enum _gcePOOL
     gcvPOOL_SRAM,
     gcvPOOL_VIRTUAL,
     gcvPOOL_USER,
+    gcvPOOL_INTERNAL_SRAM,
+    gcvPOOL_EXTERNAL_SRAM,
 
     gcvPOOL_NUMBER_OF_POOLS
 }
@@ -727,9 +734,11 @@ gcoHAL_QueryMultiGPUAffinityConfig(
 gceSTATUS
 gcoHAL_QuerySRAM(
     IN gcoHAL Hal,
-    IN gceSRAM Type,
+    IN gcePOOL Type,
     OUT gctUINT32 *Base,
-    OUT gctUINT32 *Size
+    OUT gctUINT32 *Size,
+    OUT gctPHYS_ADDR_T *gpuPhysical,
+    OUT gctPHYS_ADDR_T *cpuPhysical
     );
 
 #ifdef LINUX
@@ -4486,7 +4495,7 @@ gckOS_DebugStatus2Name(
 **
 **      func    Function to evaluate.
 */
-#define _gcmERR_BREAK(prefix, func) \
+#define _gcmERR_BREAK(prefix, func){ \
     status = func; \
     if (gcmIS_ERROR(status)) \
     { \
@@ -4496,8 +4505,10 @@ gckOS_DebugStatus2Name(
             status, gcoOS_DebugStatus2Name(status), __FUNCTION__, __LINE__); \
         break; \
     } \
-    do { } while (gcvFALSE)
-#define _gcmkERR_BREAK(prefix, func) \
+    do { } while (gcvFALSE); \
+    }
+
+#define _gcmkERR_BREAK(prefix, func){ \
     status = func; \
     if (gcmIS_ERROR(status)) \
     { \
@@ -4507,7 +4518,9 @@ gckOS_DebugStatus2Name(
             status, gckOS_DebugStatus2Name(status), __FUNCTION__, __LINE__); \
         break; \
     } \
-    do { } while (gcvFALSE)
+    do { } while (gcvFALSE); \
+    }
+
 #define gcmERR_BREAK(func)          _gcmERR_BREAK(gcm, func)
 #define gcmkERR_BREAK(func)         _gcmkERR_BREAK(gcmk, func)
 
@@ -5658,6 +5671,97 @@ gcoHAL_GetUserDebugOption(
 }
 #endif
 
+/*******************************************************************************
+**
+**  gcmCONFIGUREUNIFORMS2
+**  only fix clang build error
+**
+**      Configure uniforms according to chip and numConstants.
+*/
+#if !gcdENABLE_UNIFIED_CONSTANT
+#define gcmCONFIGUREUNIFORMS2(ChipModel, ChipRevision, NumConstants, \
+             UnifiedConst, VsConstMax, PsConstMax) \
+{ \
+    if (ChipModel == gcv2000 && (ChipRevision == 0x5118 || ChipRevision == 0x5140)) \
+    { \
+        UnifiedConst = gcvFALSE; \
+        VsConstMax   = 256; \
+        PsConstMax   = 64; \
+    } \
+    else if (NumConstants == 320) \
+    { \
+        UnifiedConst = gcvFALSE; \
+        VsConstMax   = 256; \
+        PsConstMax   = 64; \
+    } \
+    /* All GC1000 series chips can only support 64 uniforms for ps on non-unified const mode. */ \
+    else if (NumConstants > 256 && ChipModel == gcv1000) \
+    { \
+        UnifiedConst = gcvFALSE; \
+        VsConstMax   = 256; \
+        PsConstMax   = 64; \
+    } \
+    else if (NumConstants > 256) \
+    { \
+        UnifiedConst = gcvFALSE; \
+        VsConstMax   = 256; \
+        PsConstMax   = 256; \
+    } \
+    else if (NumConstants == 256) \
+    { \
+        UnifiedConst = gcvFALSE; \
+        VsConstMax   = 256; \
+        PsConstMax   = 256; \
+    } \
+    else \
+    { \
+        UnifiedConst = gcvFALSE; \
+        VsConstMax   = 168; \
+        PsConstMax   = 64; \
+    } \
+}
+#else
+#define gcmCONFIGUREUNIFORMS2(ChipModel, ChipRevision, Halti5Avail, SmallBatch, NumConstants, \
+             UnifiedConst, VsConstMax, PsConstMax) \
+{ \
+    if (NumConstants > 256) \
+    { \
+        UnifiedConst = gcvTRUE; \
+        if ((ChipModel == gcv880) && ((ChipRevision & 0xfff0) == 0x5120)) \
+        { \
+            VsConstMax   = 512; \
+            PsConstMax   = 64; \
+        } \
+        else \
+        { \
+            VsConstMax   = gcmMIN(512, NumConstants - 64); \
+            PsConstMax   = gcmMIN(512, NumConstants - 64); \
+        } \
+    } \
+    else if (NumConstants == 256) \
+    { \
+        if (ChipModel == gcv2000 && (ChipRevision == 0x5118 || ChipRevision == 0x5140)) \
+        { \
+            UnifiedConst = gcvFALSE; \
+            VsConstMax   = 256; \
+            PsConstMax   = 64; \
+        } \
+        else \
+        { \
+            UnifiedConst = gcvFALSE; \
+            VsConstMax   = 256; \
+            PsConstMax   = 256; \
+        } \
+    } \
+    else \
+    { \
+        UnifiedConst = gcvFALSE; \
+        VsConstMax   = 168; \
+        PsConstMax   = 64; \
+    } \
+}
+#endif
+
 #define gcmAnyTileStatusEnableForFullMultiSlice(SurfView, anyTsEnableForMultiSlice)\
 {\
     gctUINT i = 0; \
@@ -5769,8 +5873,8 @@ gcoHAL_GetUserDebugOption(
                 } \
                 else \
                 { \
-                    attribBufSizeInKB -= 4; \
-                    L1cacheSize = 4; \
+                    attribBufSizeInKB -= 2; \
+                    L1cacheSize = 2; \
                 } \
             } \
             prefix##ASSERT(L1cacheSize); \
@@ -5779,6 +5883,88 @@ gcoHAL_GetUserDebugOption(
                 L1CacheRatio = 0x0; \
                 prefix##ASSERT(featureUSCFullCacheFix); \
                 featureUSCFullCacheFix = featureUSCFullCacheFix; \
+            } \
+            else \
+            { \
+                static const gctINT s_uscCacheRatio[] = \
+                { \
+                    100000,/* 1.0f */     \
+                    50000, /* 0.5f */     \
+                    25000, /* 0.25f */    \
+                    12500, /* 0.125f */   \
+                    62500, /* 0.0625f */  \
+                    3125, /* 0.03125f */ \
+                    75000, /* 0.75f */    \
+                    0, /*0.0f */      \
+                }; \
+                gctINT maxL1cacheSize = L1cacheSize * 100000; \
+                gctINT delta = 2147483647; /* start with very big delta */ \
+                gctINT i = 0; \
+                gctINT curIndex = -1; \
+                for (; i < gcmCOUNTOF(s_uscCacheRatio); ++i) \
+                { \
+                    gctINT curL1cacheSize = featureL1CacheSize * s_uscCacheRatio[i]; \
+                  \
+                    if ((maxL1cacheSize >= curL1cacheSize) && \
+                        ((maxL1cacheSize - curL1cacheSize) < delta)) \
+                    { \
+                        curIndex = i; \
+                        delta = maxL1cacheSize - curL1cacheSize; \
+                    } \
+                } \
+                prefix##ASSERT(-1 != curIndex); \
+                L1CacheRatio = curIndex; \
+            } \
+        } \
+    } \
+} \
+
+#define gcmCONFIGUSC2(prefix, featureUSC, featureSeparateLS, featureComputeOnly, \
+    featureTS, featureL1CacheSize, featureUSCMaxPages, \
+    attribCacheRatio, L1CacheRatio) \
+{ \
+    attribCacheRatio = 0x2; \
+    \
+    if (featureUSC) \
+    { \
+        if (featureSeparateLS) \
+        { \
+            L1CacheRatio = 0x0; \
+        } \
+        else \
+        { \
+            gctUINT L1cacheSize; \
+            \
+            if (featureComputeOnly) \
+            { \
+                L1cacheSize = featureL1CacheSize; \
+            } \
+            else \
+            { \
+                gctUINT attribBufSizeInKB; \
+                if (featureTS) \
+                { \
+                    /* GS/TS must be bundled. */ \
+                    attribBufSizeInKB = 42; \
+                } \
+                else \
+                { \
+                    attribBufSizeInKB = 8; \
+                } \
+                if (attribBufSizeInKB < featureUSCMaxPages) \
+                { \
+                    L1cacheSize = featureUSCMaxPages - attribBufSizeInKB; \
+                } \
+                else \
+                { \
+                    attribBufSizeInKB -= 4; \
+                    L1cacheSize = 4; \
+                } \
+            } \
+            prefix##ASSERT(L1cacheSize); \
+            if (L1cacheSize >= featureL1CacheSize) \
+            { \
+                L1CacheRatio = 0x0; \
             } \
             else \
             { \

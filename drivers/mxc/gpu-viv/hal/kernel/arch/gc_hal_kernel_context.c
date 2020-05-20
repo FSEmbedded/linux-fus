@@ -2857,7 +2857,7 @@ _InitializeContextBuffer(
 #if gcdENABLE_3D
     gctBOOL halti0, halti1, halti2, halti3, halti4, halti5;
     gctUINT i;
-    gctUINT vertexUniforms, fragmentUniforms, vsConstBase, psConstBase, constMax;
+    gctUINT vertexUniforms, fragmentUniforms;
     gctBOOL unifiedUniform;
     gctBOOL hasGS, hasTS;
     gctBOOL genericAttrib;
@@ -2874,6 +2874,7 @@ _InitializeContextBuffer(
     gctUINT clusterAliveMask;
     gctBOOL hasPSCSThrottle;
     gctBOOL hasMsaaFragOperation;
+    gctBOOL newGPipe;
 #endif
 
     gckHARDWARE hardware;
@@ -2924,6 +2925,7 @@ _InitializeContextBuffer(
     clusterAliveMask = hardware->identity.clusterAvailMask & hardware->options.userClusterMask;
     hasPSCSThrottle = gckHARDWARE_IsFeatureAvailable(hardware, gcvFEATURE_PSCS_THROTTLE);
     hasMsaaFragOperation = gckHARDWARE_IsFeatureAvailable(hardware, gcvFEATURE_MSAA_FRAGMENT_OPERATION);
+    newGPipe = gckHARDWARE_IsFeatureAvailable(hardware, gcvFEATURE_NEW_GPIPE);
 
     /* Multi render target. */
     if (Context->hardware->identity.chipModel == gcv880 &&
@@ -2953,39 +2955,14 @@ _InitializeContextBuffer(
     }
 
     /* Query how many uniforms can support. */
-    {if (Context->hardware->identity.numConstants > 256){    unifiedUniform = gcvTRUE;
-if (smallBatch){    vsConstBase  = 0xD000;
-    psConstBase  = 0xD000;
-}else if (halti5){    vsConstBase  = 0xD000;
-    psConstBase  = 0xD800;
-}else{    vsConstBase  = 0xC000;
-    psConstBase  = 0xC000;
-}if ((Context->hardware->identity.chipModel == gcv880) && ((Context->hardware->identity.chipRevision & 0xfff0) == 0x5120)){    vertexUniforms   = 512;
-    fragmentUniforms   = 64;
-    constMax     = 576;
-}else{    vertexUniforms   = gcmMIN(512, Context->hardware->identity.numConstants - 64);
-    fragmentUniforms   = gcmMIN(512, Context->hardware->identity.numConstants - 64);
-    constMax     = Context->hardware->identity.numConstants;
-}}else if (Context->hardware->identity.numConstants == 256){    if (Context->hardware->identity.chipModel == gcv2000 && (Context->hardware->identity.chipRevision == 0x5118 || Context->hardware->identity.chipRevision == 0x5140))    {        unifiedUniform = gcvFALSE;
-        vsConstBase  = 0x1400;
-        psConstBase  = 0x1C00;
-        vertexUniforms   = 256;
-        fragmentUniforms   = 64;
-        constMax     = 320;
-    }    else    {        unifiedUniform = gcvFALSE;
-        vsConstBase  = 0x1400;
-        psConstBase  = 0x1C00;
-        vertexUniforms   = 256;
-        fragmentUniforms   = 256;
-        constMax     = 512;
-    }}else{    unifiedUniform = gcvFALSE;
-    vsConstBase  = 0x1400;
-    psConstBase  = 0x1C00;
-    vertexUniforms   = 168;
-    fragmentUniforms   = 64;
-    constMax     = 232;
-}};
-
+    gcmCONFIGUREUNIFORMS2(Context->hardware->identity.chipModel,
+                         Context->hardware->identity.chipRevision,
+                         halti5,
+                         smallBatch,
+                         Context->hardware->identity.numConstants,
+                         unifiedUniform,
+                         vertexUniforms,
+                         fragmentUniforms);
 
 #if !gcdENABLE_UNIFIED_CONSTANT
     if (Context->hardware->identity.numConstants > 256)
@@ -3116,7 +3093,7 @@ if (smallBatch){    vsConstBase  = 0xD000;
         index += _State(Context, index, 0x007D0 >> 2, 0x00000000, 2, gcvFALSE, gcvFALSE);
         index += _State(Context, index, 0x007D8 >> 2, 0x00000000, 1, gcvFALSE, gcvFALSE);
         index += _State(Context, index, 0x17A80 >> 2, 0x00000000, 32, gcvFALSE, gcvFALSE);
-        if (genericAttrib)
+        if (genericAttrib || newGPipe)
         {
             index += _State(Context, index, 0x17880 >> 2, 0x00000000, 32, gcvFALSE, gcvFALSE);
             index += _State(Context, index, 0x17900 >> 2, 0x00000000, 32, gcvFALSE, gcvFALSE);
@@ -4144,12 +4121,6 @@ if (smallBatch){    vsConstBase  = 0xD000;
 
     Context->totalSize = index * gcmSIZEOF(gctUINT32);
 
-#if gcdENABLE_3D
-    psConstBase = psConstBase;
-    vsConstBase = vsConstBase;
-    constMax = constMax;
-#endif
-
     /* Success. */
     gcmkFOOTER_NO();
     return gcvSTATUS_OK;
@@ -4727,58 +4698,62 @@ gckCONTEXT_Update(
                     dirtyRecordArraySize,
                     (gctPOINTER *) &recordArray
                     ));
-            }
 
-            /* Merge all pending states. */
-            for (j = 0; j < kDelta->recordCount; j += 1)
-            {
-                if (j >= Context->numStates)
+                if (recordArray == gcvNULL)
                 {
-                    break;
+                    gcmkONERROR(gcvSTATUS_INVALID_ARGUMENT);
                 }
 
-                /* Get the current state record. */
-                record = &recordArray[j];
-
-                /* Get the state address. */
-                gcmkONERROR(gckOS_ReadMappedPointer(kernel->os, &record->address, &address));
-
-                /* Make sure the state is a part of the mapping table. */
-                if (address >= Context->maxState)
+                /* Merge all pending states. */
+                for (j = 0; j < kDelta->recordCount; j += 1)
                 {
-                    gcmkTRACE(
-                        gcvLEVEL_ERROR,
-                        "%s(%d): State 0x%04X (0x%04X) is not mapped.\n",
-                        __FUNCTION__, __LINE__,
-                        address, address << 2
-                        );
-
-                    continue;
-                }
-
-                /* Get the state index. */
-                index = map[address].index;
-
-                /* Skip the state if not mapped. */
-                if (index == 0)
-                {
-                    continue;
-                }
-
-                /* Get the data mask. */
-                gcmkONERROR(gckOS_ReadMappedPointer(kernel->os, &record->mask, &mask));
-
-                /* Get the new data value. */
-                gcmkONERROR(gckOS_ReadMappedPointer(kernel->os, &record->data, &data));
-
-                /* Masked states that are being completly reset or regular states. */
-                if ((mask == 0) || (mask == ~0U))
-                {
-                    /* Process special states. */
-                    if (address == 0x0595)
+                    if (j >= Context->numStates)
                     {
-                        /* Force auto-disable to be disabled. */
-                        data = ((((gctUINT32) (data)) & ~(((gctUINT32) (((gctUINT32) ((((1 ?
+                        break;
+                    }
+
+                    /* Get the current state record. */
+                    record = &recordArray[j];
+
+                    /* Get the state address. */
+                    gcmkONERROR(gckOS_ReadMappedPointer(kernel->os, &record->address, &address));
+
+                    /* Make sure the state is a part of the mapping table. */
+                    if (address >= Context->maxState)
+                    {
+                        gcmkTRACE(
+                            gcvLEVEL_ERROR,
+                            "%s(%d): State 0x%04X (0x%04X) is not mapped.\n",
+                            __FUNCTION__, __LINE__,
+                            address, address << 2
+                            );
+
+                        continue;
+                    }
+
+                    /* Get the state index. */
+                    index = map[address].index;
+
+                    /* Skip the state if not mapped. */
+                    if (index == 0)
+                    {
+                        continue;
+                    }
+
+                    /* Get the data mask. */
+                    gcmkONERROR(gckOS_ReadMappedPointer(kernel->os, &record->mask, &mask));
+
+                    /* Get the new data value. */
+                    gcmkONERROR(gckOS_ReadMappedPointer(kernel->os, &record->data, &data));
+
+                    /* Masked states that are being completly reset or regular states. */
+                    if ((mask == 0) || (mask == ~0U))
+                    {
+                        /* Process special states. */
+                        if (address == 0x0595)
+                        {
+                            /* Force auto-disable to be disabled. */
+                            data = ((((gctUINT32) (data)) & ~(((gctUINT32) (((gctUINT32) ((((1 ?
  5:5) - (0 ?
  5:5) + 1) == 32) ?
  ~0U : (~(~0U << ((1 ?
@@ -4788,7 +4763,7 @@ gckCONTEXT_Update(
  5:5) - (0 ?
  5:5) + 1) == 32) ?
  ~0U : (~(~0U << ((1 ? 5:5) - (0 ? 5:5) + 1))))))) << (0 ? 5:5)));
-                        data = ((((gctUINT32) (data)) & ~(((gctUINT32) (((gctUINT32) ((((1 ?
+                            data = ((((gctUINT32) (data)) & ~(((gctUINT32) (((gctUINT32) ((((1 ?
  4:4) - (0 ?
  4:4) + 1) == 32) ?
  ~0U : (~(~0U << ((1 ?
@@ -4798,7 +4773,7 @@ gckCONTEXT_Update(
  4:4) - (0 ?
  4:4) + 1) == 32) ?
  ~0U : (~(~0U << ((1 ? 4:4) - (0 ? 4:4) + 1))))))) << (0 ? 4:4)));
-                        data = ((((gctUINT32) (data)) & ~(((gctUINT32) (((gctUINT32) ((((1 ?
+                            data = ((((gctUINT32) (data)) & ~(((gctUINT32) (((gctUINT32) ((((1 ?
  13:13) - (0 ?
  13:13) + 1) == 32) ?
  ~0U : (~(~0U << ((1 ?
@@ -4808,18 +4783,19 @@ gckCONTEXT_Update(
  13:13) - (0 ?
  13:13) + 1) == 32) ?
  ~0U : (~(~0U << ((1 ? 13:13) - (0 ? 13:13) + 1))))))) << (0 ? 13:13)));
+                        }
+
+                        /* Set new data. */
+                        buffer->logical[index] = data;
                     }
 
-                    /* Set new data. */
-                    buffer->logical[index] = data;
-                }
-
-                /* Masked states that are being set partially. */
-                else
-                {
-                    buffer->logical[index]
-                        = (~mask & buffer->logical[index])
-                        | (mask & data);
+                    /* Masked states that are being set partially. */
+                    else
+                    {
+                        buffer->logical[index]
+                            = (~mask & buffer->logical[index])
+                            | (mask & data);
+                    }
                 }
             }
 

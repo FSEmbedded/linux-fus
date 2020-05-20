@@ -81,7 +81,7 @@
 **      gckCOMMAND Command
 **          gckCOMMAND object has been updated with a new command queue.
 */
-static gcmNOINLINE gceSTATUS
+static gceSTATUS
 _NewQueue(
     IN OUT gckCOMMAND Command,
     IN gctBOOL Stalled
@@ -173,7 +173,7 @@ OnError:
     return status;
 }
 
-static gcmNOINLINE gceSTATUS
+static gceSTATUS
 _IncrementCommitAtom(
     IN gckCOMMAND Command,
     IN gctBOOL Increment
@@ -234,7 +234,7 @@ OnError:
     return status;
 }
 
-static gcmNOINLINE gceSTATUS
+static gceSTATUS
 _CheckFlushMMU(
     IN gckCOMMAND Command,
     IN gckHARDWARE Hardware
@@ -348,7 +348,7 @@ OnError:
 }
 
 /* WaitLink FE only. */
-static gcmNOINLINE gceSTATUS
+static gceSTATUS
 _DummyDraw(
     IN gckCOMMAND Command
     )
@@ -799,7 +799,7 @@ _CheckFlushMcfeMMU(
     gcmkONERROR(gckMCFE_WaitSemaphore(Hardware, buffer, id, &bytes));
 
     /* Execute flush mmu and send semaphores. */
-    gckCOMMAND_ExecuteMultiChannel(Command, 0, 0, reqBytes);
+    gcmkONERROR(gckCOMMAND_ExecuteMultiChannel(Command, 0, 0, reqBytes));
 
     /* Need sync from system channel. */
     Command->syncChannel[0] = ~1ull;
@@ -1156,7 +1156,7 @@ OnError:
     return status;
 }
 
-static gcmNOINLINE gceSTATUS
+static gceSTATUS
 _HandlePatchList(
     IN gckCOMMAND Command,
     IN gcsHAL_COMMAND_LOCATION * CommandBuffer,
@@ -1251,7 +1251,7 @@ OnError:
     return status;
 }
 
-static gcmNOINLINE gceSTATUS
+static gceSTATUS
 _WaitForAsyncCommandStamp(
     IN gckCOMMAND Command,
     IN gctUINT64 Stamp
@@ -2174,7 +2174,8 @@ _CommitWaitLinkOnce(
     IN gcsHAL_COMMAND_LOCATION * CommandBuffer,
     IN gcsSTATE_DELTA_PTR StateDelta,
     IN gctUINT32 ProcessID,
-    IN gctBOOL Shared
+    IN gctBOOL Shared,
+    INOUT gctBOOL *contextSwitched
     )
 {
     gceSTATUS status;
@@ -2445,6 +2446,11 @@ _CommitWaitLinkOnce(
 
         /* Update the current context. */
         Command->currContext = Context;
+
+        if (contextSwitched)
+        {
+            *contextSwitched = gcvTRUE;
+        }
 
 #if gcdDUMP_IN_KERNEL
         contextDumpLogical = entryLogical;
@@ -3043,6 +3049,7 @@ OnError:
 static gceSTATUS
 _CommitMultiChannelOnce(
     IN gckCOMMAND Command,
+    IN gckCONTEXT Context,
     IN gcsHAL_COMMAND_LOCATION * CommandBuffer
     )
 {
@@ -3120,6 +3127,8 @@ _CommitMultiChannelOnce(
             ));
     }
 
+    Command->currContext = Context;
+
     gckOS_AcquireMutex(Command->os, Command->mutexQueue, gcvINFINITE);
     acquired = gcvTRUE;
 
@@ -3196,8 +3205,8 @@ OnError:
 **          Current process ID.
 **
 **  OUTPUT:
-**
-**      Nothing.
+**      gctBOOL *contextSwitched
+**          pass context Switch flag to upper
 */
 gceSTATUS
 gckCOMMAND_Commit(
@@ -3205,7 +3214,8 @@ gckCOMMAND_Commit(
     IN gcsHAL_SUBCOMMIT * SubCommit,
     IN gctUINT32 ProcessId,
     IN gctBOOL Shared,
-    OUT gctUINT64_PTR CommitStamp
+    OUT gctUINT64_PTR CommitStamp,
+    INOUT gctBOOL *contextSwitched
     )
 {
     gceSTATUS status;
@@ -3274,11 +3284,12 @@ gckCOMMAND_Commit(
                                          cmdLoc,
                                          delta,
                                          ProcessId,
-                                         Shared);
+                                         Shared,
+                                         contextSwitched);
         }
         else if (Command->feType == gcvHW_FE_MULTI_CHANNEL)
         {
-            status = _CommitMultiChannelOnce(Command, cmdLoc);
+            status = _CommitMultiChannelOnce(Command, context, cmdLoc);
         }
         else
         {
@@ -4089,13 +4100,44 @@ gckCOMMAND_Attach(
     IN gctUINT32 ProcessID
     )
 {
+    gctUINT32 allocationSize;
+    gctPOINTER pointer;
+    gceSTATUS status;
+
     if (Command->feType == gcvHW_FE_WAIT_LINK)
     {
-        return _AttachWaitLinkFECommand(Command,
+        status = _AttachWaitLinkFECommand(Command,
                                         Context,
                                         MaxState,
                                         NumStates,
                                         ProcessID);
+    }
+    else if (Command->feType == gcvHW_FE_MULTI_CHANNEL)
+    {
+        /*
+         * For mcfe, we only allocate context which is used to
+         * store profile counters.
+         */
+        allocationSize = gcmSIZEOF(struct _gckCONTEXT);
+
+        /* Allocate the object. */
+        gckOS_Allocate(Command->os, allocationSize, &pointer);
+        if (!pointer)
+        {
+            return gcvSTATUS_OUT_OF_MEMORY;
+        }
+        *Context = pointer;
+        /* Reset the entire object. */
+        gckOS_ZeroMemory(*Context, allocationSize);
+
+        /* Initialize the gckCONTEXT object. */
+        (*Context)->object.type = gcvOBJ_CONTEXT;
+        (*Context)->os          = Command->os;
+        (*Context)->hardware    = Command->kernel->hardware;
+        *MaxState  = 0;
+        *NumStates = 0;
+
+        status = gcvSTATUS_OK;
     }
     else
     {
@@ -4104,8 +4146,10 @@ gckCOMMAND_Attach(
         *MaxState  = 0;
         *NumStates = 0;
 
-        return gcvSTATUS_OK;
+        status = gcvSTATUS_OK;
     }
+
+    return status;
 }
 #endif
 
@@ -4187,6 +4231,11 @@ gckCOMMAND_Detach(
     if (Command->feType == gcvHW_FE_WAIT_LINK)
     {
         return _DetachWaitLinkFECommand(Command, Context);
+    }
+    else if (Command->feType == gcvHW_FE_MULTI_CHANNEL)
+    {
+        gcmkOS_SAFE_FREE(Context->os, Context);
+        return gcvSTATUS_OK;
     }
     else
     {
@@ -4322,7 +4371,7 @@ gckCOMMAND_DumpExecutingBuffer(
         gpuAddress &= 0xfffff000;
 
         /* Dump max 4096 bytes. */
-        bytes = (bytes - offset) > 1024 ? 1024 : (bytes - offset);
+        bytes = (bytes - offset) > 4096 ? 4096 : (bytes - offset);
 
         /* Kernel address of page where stall point stay. */
         entryDump = (gctUINT8_PTR)entryDump + offset;

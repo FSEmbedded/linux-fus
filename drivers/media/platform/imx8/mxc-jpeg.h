@@ -25,10 +25,11 @@
 #define MXC_JPEG_RUNNING		1
 #define MXC_JPEG_FMT_TYPE_ENC		0
 #define MXC_JPEG_FMT_TYPE_RAW		1
-#define MXC_JPEG_MIN_HEIGHT		0x8
-#define MXC_JPEG_MIN_WIDTH		0x8
+#define MXC_JPEG_MIN_HEIGHT		64
+#define MXC_JPEG_MIN_WIDTH		64
 #define MXC_JPEG_MAX_HEIGHT		0x2000
 #define MXC_JPEG_MAX_WIDTH		0x2000
+#define MXC_JPEG_MAX_CFG_STREAM		0x1000
 #define MXC_JPEG_H_ALIGN		3
 #define MXC_JPEG_W_ALIGN		3
 #define MXC_JPEG_DEFAULT_SIZEIMAGE	10000
@@ -37,6 +38,9 @@
 #define SOF0				0xC0
 #define SOF1				0xC1
 #define SOF2				0xC2
+#define SOS				0xDA
+#define DHT				0xC4
+#define APP14				0xEE
 #define MXC_JPEG_ENC_CONF_DONE		1
 #define MXC_JPEG_MAX_PLANES		2
 
@@ -78,7 +82,9 @@ struct mxc_jpeg_q_data {
 	u32			sizeimage[MXC_JPEG_MAX_PLANES];
 	u32			bytesperline[MXC_JPEG_MAX_PLANES];
 	int w;
+	int w_adjusted;
 	int h;
+	int h_adjusted;
 	u32			stride;
 };
 struct mxc_jpeg_ctx {
@@ -92,6 +98,7 @@ struct mxc_jpeg_ctx {
 	unsigned int			enc_state;
 	unsigned int			aborting;
 	unsigned int			stopping;
+	unsigned int			dht_needed;
 	unsigned int			slot;
 };
 
@@ -100,6 +107,7 @@ struct mxc_jpeg_slot_data {
 	struct mxc_jpeg_desc *desc; // enc/dec descriptor
 	struct mxc_jpeg_desc *cfg_desc; // configuration descriptor
 	void *cfg_stream_vaddr; // configuration bitstream virtual address
+	unsigned int cfg_stream_size;
 	int flags;
 	dma_addr_t desc_handle;
 	dma_addr_t cfg_desc_handle; // configuration descriptor dma address
@@ -142,6 +150,18 @@ struct mxc_jpeg_sof {
 	u16 height, width;
 	u8 components_no;
 	struct mxc_jpeg_sof_comp comp[MXC_JPEG_MAX_COMPONENTS];
+} __packed;
+
+/* JPEG Start Of Scan marker fields*/
+struct mxc_jpeg_sos_comp {
+	u8 id; /*component id*/
+	u8 huffman_table_no;
+} __packed;
+struct mxc_jpeg_sos {
+	u16 length;
+	u8 components_no;
+	struct mxc_jpeg_sos_comp comp[MXC_JPEG_MAX_COMPONENTS];
+	u8 ignorable_bytes[3];
 } __packed;
 
 #endif

@@ -1,14 +1,14 @@
 /*
- * Copyright 2018 NXP
+ * Copyright 2018-2019 NXP
  */
 
 /*
- * The code contained herein is licensed under the GNU Lesser General
- * Public License.  You may obtain a copy of the GNU Lesser General
- * Public License Version 2.1 or later at the following locations:
+ * The code contained herein is licensed under the GNU General Public
+ * License. You may obtain a copy of the GNU General Public License
+ * Version 2 or later at the following locations:
  *
- * http://www.opensource.org/licenses/lgpl-license.html
- * http://www.gnu.org/copyleft/lgpl.html
+ * http://www.opensource.org/licenses/gpl-license.html
+ * http://www.gnu.org/copyleft/gpl.html
  */
 
 /*!
@@ -56,14 +56,19 @@ extern unsigned int vpu_dbg_level_decoder;
 #define MAX_MBI_NUM 18 // same with MEDIA_PLAYER_MAX_MBI_UNIT defined in firmware
 #define MAX_TIMEOUT_COUNT 10
 #define VPU_REG_BASE 0x40000000
+#define VPU_MAX_STEP_STRING_LENGTH 40
 
-#define V4L2_MAX_CTRLS 12
 #define V4L2_PIX_FMT_NV12_10BIT    v4l2_fourcc('N', 'T', '1', '2') /*  Y/CbCr 4:2:0 for 10bit  */
 #define INVALID_FRAME_DEPTH -1
 #define DECODER_NODE_NUMBER 12 // use /dev/video12 as vpu decoder
 #define DEFAULT_LOG_DEPTH 20
 #define DEFAULT_FRMDBG_ENABLE 0
 #define DEFAULT_FRMDBG_LEVEL 0
+#define VPU_DEC_CMD_DATA_MAX_NUM	16
+#define VPU_DEC_MAX_WIDTH		8188
+#define VPU_DEC_MAX_HEIGTH		8188
+#define VPU_DEC_FMT_DIVX_MASK		(1 << 20)
+#define VPU_DEC_FMT_RV_MASK		(1 << 21)
 
 #define V4L2_EVENT_DECODE_ERROR		(V4L2_EVENT_PRIVATE_START + 1)
 #define V4L2_EVENT_SKIP			(V4L2_EVENT_PRIVATE_START + 2)
@@ -124,6 +129,7 @@ typedef enum{
 #define VPU_PIX_FMT_RV          v4l2_fourcc('R', 'V', '0', '0')
 #define VPU_PIX_FMT_VP6         v4l2_fourcc('V', 'P', '6', '0')
 #define VPU_PIX_FMT_SPK         v4l2_fourcc('S', 'P', 'K', '0')
+#define VPU_PIX_FMT_DIV3        v4l2_fourcc('D', 'I', 'V', '3')
 #define VPU_PIX_FMT_DIVX        v4l2_fourcc('D', 'I', 'V', 'X')
 #define VPU_PIX_FMT_HEVC        v4l2_fourcc('H', 'E', 'V', 'C')
 #define VPU_PIX_FMT_LOGO        v4l2_fourcc('L', 'O', 'G', 'O')
@@ -143,6 +149,8 @@ typedef enum{
 #define V4L2_CID_USER_FRAME_MATRIXCOEFFS	(V4L2_CID_USER_BASE + 0x1106)
 #define V4L2_CID_USER_FRAME_FULLRANGE		(V4L2_CID_USER_BASE + 0x1107)
 #define V4L2_CID_USER_FRAME_VUIPRESENT		(V4L2_CID_USER_BASE + 0x1108)
+
+#define V4L2_CID_USER_STREAM_INPUT_MODE		(V4L2_CID_USER_BASE + 0x1109)
 
 #define IMX_V4L2_DEC_CMD_START		(0x09000000)
 #define IMX_V4L2_DEC_CMD_RESET		(IMX_V4L2_DEC_CMD_START + 1)
@@ -206,12 +214,11 @@ struct queue_data {
 	unsigned int width;
 	unsigned int height;
 	unsigned int stride;
-	unsigned int bytesperline;
+	unsigned int field;
 	unsigned int num_planes;
 	unsigned int sizeimage[2];
 	unsigned int fourcc;
 	unsigned int vdec_std;
-	struct v4l2_rect rect;
 	int buf_type; // v4l2_buf_type
 	bool vb2_q_inited;
 	struct vb2_queue vb2_q;    // vb2 queue
@@ -249,10 +256,11 @@ struct vpu_dev {
 	u_int32 m0_rpc_phy;
 	u_int32 m0_rpc_size;
 	struct mutex dev_mutex;
-	struct mutex cmd_mutex;
+	spinlock_t cmd_spinlock;
 	struct mutex fw_flow_mutex;
 	bool fw_is_ready;
 	bool firmware_started;
+	bool need_cleanup_firmware;
 	struct completion start_cmp;
 	struct completion snap_done_cmp;
 	struct workqueue_struct *workqueue;
@@ -274,9 +282,14 @@ struct vpu_dev {
 	struct shared_addr shared_mem;
 	struct vpu_ctx *ctx[VPU_MAX_NUM_STREAMS];
 	struct dentry *debugfs_root;
+	struct dentry *debugfs_dbglog;
 	struct dentry *debugfs_fwlog;
 
 	struct print_buf_desc *print_buf;
+	u8 precheck_pattern[64];
+	int precheck_next[64];
+	int precheck_num;
+	char precheck_content[1024];
 };
 
 struct vpu_statistic {
@@ -296,6 +309,36 @@ struct dma_buffer {
 	u_int32 dma_size;
 };
 
+struct vpu_dec_cmd_request {
+	struct list_head list;
+	u32 request;
+	u32 response;
+	bool block;
+	u32 idx;
+	u32 num;
+	u32 data[VPU_DEC_CMD_DATA_MAX_NUM];
+};
+
+struct vpu_dec_perf_time {
+	u_int64 open_time;
+
+	u_int64 first_decoded_time;
+	u_int64 last_decoded_time;
+	u_int64 cur_decoded_interv;
+	u_int64 decoded_fps;
+
+	u_int64 first_ready_time;
+	u_int64 last_ready_time;
+	u_int64 cur_ready_interv;
+	u_int64 ready_fps;
+};
+
+struct vpu_dec_perf_queue {
+	struct list_head list;
+	char str[VPU_MAX_STEP_STRING_LENGTH];
+	u_int64 time;
+};
+
 struct vpu_ctx {
 	struct vpu_dev *dev;
 	struct v4l2_fh fh;
@@ -310,9 +353,8 @@ struct vpu_ctx {
 	char buffer_name[64];
 	struct device_attribute dev_attr_instance_flow;
 	char flow_name[64];
-	struct dentry *dbglog_dir;
-	char dbglog_name[64];
-	struct v4l2_ctrl *ctrls[V4L2_MAX_CTRLS];
+	struct device_attribute dev_attr_instance_perf;
+	char perf_name[64];
 	struct v4l2_ctrl_handler ctrl_handler;
 	bool ctrl_inited;
 	struct list_head log_q;
@@ -326,20 +368,24 @@ struct vpu_ctx {
 	struct completion completion;
 	struct completion stop_cmp;
 	struct completion eos_cmp;
-	MediaIPFW_Video_SeqInfo *pSeqinfo;
+	MediaIPFW_Video_SeqInfo seqinfo;
 	bool b_dis_reorder;
 	bool b_firstseq;
-	bool start_flag;
 	bool wait_rst_done;
 	bool wait_res_change_done;
+	bool seek_flag;
 	bool firmware_stopped;
 	bool firmware_finished;
 	bool eos_stop_received;
 	bool eos_stop_added;
 	bool ctx_released;
 	bool start_code_bypass;
+	STREAM_INPUT_MODE stream_input_mode;
 	bool hang_status;
 	bool fifo_low;
+	bool frame_decoded;
+	bool first_dump_data_flag;
+	bool first_data_flag;
 	u32 req_frame_count;
 	u_int32 mbi_count;
 	u_int32 mbi_size;
@@ -366,6 +412,7 @@ struct vpu_ctx {
 	long total_write_bytes;
 	long total_consumed_bytes;
 	long total_ts_bytes;
+	u32 extra_size;
 	struct semaphore tsm_lock;
 	s64 output_ts;
 	s64 capture_ts;
@@ -375,14 +422,23 @@ struct vpu_ctx {
 
 	struct v4l2_fract fixed_frame_interval;
 	struct v4l2_fract frame_interval;
+
+	struct list_head cmd_q;
+	struct vpu_dec_cmd_request *pending;
+	struct mutex cmd_lock;
+
+	struct vpu_dec_perf_time perf_time;
+	int res_change_occu_count;
+	int res_change_send_count;
+	int res_change_done_count;
+
+	struct list_head perf_q;
+	struct mutex perf_lock;
 };
 
-#define LVL_INFO		3
-#define LVL_EVENT		2
-#define LVL_WARN		1
-#define LVL_ERR			0
-#define LVL_MASK		0xf
-
+#define LVL_WARN		(1 << 0)
+#define LVL_EVENT		(1 << 1)
+#define LVL_INFO		(1 << 2)
 #define LVL_BIT_CMD		(1 << 4)
 #define LVL_BIT_EVT		(1 << 5)
 #define LVL_BIT_TS		(1 << 6)
@@ -393,13 +449,14 @@ struct vpu_ctx {
 #define LVL_BIT_BUFFER_DESC	(1 << 11)
 #define LVL_BIT_FUNC		(1 << 12)
 #define LVL_BIT_FLOW		(1 << 13)
+#define LVL_BIT_FRAME_COUNT	(1 << 14)
+
+#define vpu_err(fmt, arg...) pr_info("[VPU Decoder] " fmt, ## arg)
 
 #define vpu_dbg(level, fmt, arg...) \
 	do { \
-		if ((vpu_dbg_level_decoder & LVL_MASK) >= (level)) \
-			pr_info("[VPU Decoder]\t " fmt, ## arg); \
-		else if ((vpu_dbg_level_decoder & (~LVL_MASK)) & level) \
-			pr_info("[VPU Decoder]\t " fmt, ## arg); \
+		if (vpu_dbg_level_decoder & (level)) \
+			pr_info("[VPU Decoder] " fmt, ## arg); \
 	} while (0)
 
 #define V4L2_NXP_BUF_FLAG_CODECCONFIG		0x00200000
@@ -408,5 +465,14 @@ struct vpu_ctx {
 #define V4L2_NXP_BUF_MASK_FLAGS		(V4L2_NXP_BUF_FLAG_CODECCONFIG | \
 					 V4L2_NXP_BUF_FLAG_TIMESTAMP_INVALID)
 
+#define VPU_DECODED_EVENT_PERF_MASK		(1 << 0)
+#define VPU_READY_EVENT_PERF_MASK		(1 << 1)
+
+#define V4L2_NXP_FRAME_VERTICAL_ALIGN		512
+#define V4L2_NXP_FRAME_HORIZONTAL_ALIGN		512
+
+pSTREAM_BUFFER_DESCRIPTOR_TYPE get_str_buffer_desc(struct vpu_ctx *ctx);
+u_int32 got_free_space(u_int32 wptr, u_int32 rptr, u_int32 start, u_int32 end);
+int copy_buffer_to_stream(struct vpu_ctx *ctx, void *buffer, uint32_t length);
 
 #endif

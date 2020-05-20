@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011-2016 Freescale Semiconductor, Inc. All Rights Reserved.
  *
- * Copyright 2018 NXP
+ * Copyright 2018-2019 NXP
  *
  */
 
@@ -55,7 +55,7 @@ enum ov5640_mode {
 	ov5640_mode_720P_1280_720 = 3,
 	ov5640_mode_1080P_1920_1080 = 4,
 	ov5640_mode_QSXGA_2592_1944 = 5,
-	ov5640_mode_MAX = 6,
+	ov5640_mode_MAX = 5,
 	ov5640_mode_INIT = 0xff, /*only for sensor init*/
 };
 
@@ -428,6 +428,15 @@ static int ov5640_remove(struct i2c_client *client);
 
 static s32 ov5640_read_reg(struct ov5640 *sensor, u16 reg, u8 *val);
 static s32 ov5640_write_reg(struct ov5640 *sensor, u16 reg, u8 val);
+#ifdef CONFIG_OF
+static const struct of_device_id ov5640_mipi_v2_of_match[] = {
+	{ .compatible = "ovti,ov5640_mipi",
+	},
+	{ /* sentinel */ }
+};
+
+MODULE_DEVICE_TABLE(of, ov5640_mipi_v2_of_match);
+#endif
 
 static const struct i2c_device_id ov5640_id[] = {
 	{"ov5640_mipi", 0},
@@ -440,6 +449,9 @@ static struct i2c_driver ov5640_i2c_driver = {
 	.driver = {
 		  .owner = THIS_MODULE,
 		  .name  = "ov5640_mipi",
+#ifdef CONFIG_OF
+		  .of_match_table = of_match_ptr(ov5640_mipi_v2_of_match),
+#endif
 		  },
 	.probe  = ov5640_probe,
 	.remove = ov5640_remove,
