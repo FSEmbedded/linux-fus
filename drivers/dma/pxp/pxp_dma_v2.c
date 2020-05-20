@@ -216,28 +216,28 @@ static void dump_pxp_reg(struct pxps *pxp)
 static bool is_yuv(u32 pix_fmt)
 {
 	switch (pix_fmt) {
-		case PXP_PIX_FMT_YUYV:
-		case PXP_PIX_FMT_UYVY:
-		case PXP_PIX_FMT_YVYU:
-		case PXP_PIX_FMT_VYUY:
-		case PXP_PIX_FMT_Y41P:
-		case PXP_PIX_FMT_VUY444:
-		case PXP_PIX_FMT_NV12:
-		case PXP_PIX_FMT_NV21:
-		case PXP_PIX_FMT_NV16:
-		case PXP_PIX_FMT_NV61:
-		case PXP_PIX_FMT_GREY:
-		case PXP_PIX_FMT_GY04:
-		case PXP_PIX_FMT_YVU410P:
-		case PXP_PIX_FMT_YUV410P:
-		case PXP_PIX_FMT_YVU420P:
-		case PXP_PIX_FMT_YUV420P:
-		case PXP_PIX_FMT_YUV420P2:
-		case PXP_PIX_FMT_YVU422P:
-		case PXP_PIX_FMT_YUV422P:
-			return true;
-		default:
-			return false;
+	case PXP_PIX_FMT_YUYV:
+	case PXP_PIX_FMT_UYVY:
+	case PXP_PIX_FMT_YVYU:
+	case PXP_PIX_FMT_VYUY:
+	case PXP_PIX_FMT_Y41P:
+	case PXP_PIX_FMT_VUY444:
+	case PXP_PIX_FMT_NV12:
+	case PXP_PIX_FMT_NV21:
+	case PXP_PIX_FMT_NV16:
+	case PXP_PIX_FMT_NV61:
+	case PXP_PIX_FMT_GREY:
+	case PXP_PIX_FMT_GY04:
+	case PXP_PIX_FMT_YVU410P:
+	case PXP_PIX_FMT_YUV410P:
+	case PXP_PIX_FMT_YVU420P:
+	case PXP_PIX_FMT_YUV420P:
+	case PXP_PIX_FMT_YUV420P2:
+	case PXP_PIX_FMT_YVU422P:
+	case PXP_PIX_FMT_YUV422P:
+		return true;
+	default:
+		return false;
 	}
 }
 
@@ -1139,9 +1139,9 @@ static inline void clkoff_callback(struct work_struct *w)
 	pxp_clk_disable(pxp);
 }
 
-static void pxp_clkoff_timer(unsigned long arg)
+static void pxp_clkoff_timer(struct timer_list *t)
 {
-	struct pxps *pxp = (struct pxps *)arg;
+	struct pxps *pxp = from_timer(pxp, t, clk_timer);
 
 	if ((pxp->pxp_ongoing == 0) && list_empty(&head))
 		schedule_work(&pxp->work);
@@ -1747,9 +1747,7 @@ static int pxp_probe(struct platform_device *pdev)
 	pxp_clk_disable(pxp);
 
 	INIT_WORK(&pxp->work, clkoff_callback);
-	init_timer(&pxp->clk_timer);
-	pxp->clk_timer.function = pxp_clkoff_timer;
-	pxp->clk_timer.data = (unsigned long)pxp;
+	timer_setup(&pxp->clk_timer, pxp_clkoff_timer, 0);
 
 	init_waitqueue_head(&pxp->thread_waitq);
 	/* allocate a kernel thread to dispatch pxp conf */

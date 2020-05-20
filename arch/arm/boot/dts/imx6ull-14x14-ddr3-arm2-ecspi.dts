@@ -19,4 +19,3 @@
 &ov5640{
 	status = "disabled";
 };
-

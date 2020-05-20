@@ -177,7 +177,7 @@ unlock:
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);
 
-	return ret;
+	return 0;
 }
 
 irqreturn_t dpu_crc_valid_irq_threaded_handler(int irq, void *dev_id)

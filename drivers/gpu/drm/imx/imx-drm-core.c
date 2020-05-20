@@ -23,28 +23,24 @@
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_plane_helper.h>
 #include <drm/drm_of.h>
-#include <video/imx-ipu-v3.h>
 #include <video/dpu.h>
-#include <video/imx-dcss.h>
+#include <video/imx-ipu-v3.h>
 #include <video/imx-lcdif.h>
+#include <video/imx-dcss.h>
 
 #include "imx-drm.h"
-#include "ipuv3/ipuv3-plane.h"
+#include "ipuv3-plane.h"
+
+#define MAX_CRTC	4
 
 #if IS_ENABLED(CONFIG_DRM_FBDEV_EMULATION)
 static int legacyfb_depth = 16;
 module_param(legacyfb_depth, int, 0444);
 #endif
-
-static void imx_drm_driver_lastclose(struct drm_device *drm)
-{
-	struct imx_drm_device *imxdrm = drm->dev_private;
-
-	drm_fbdev_cma_restore_mode(imxdrm->fbhelper);
-}
 
 DEFINE_DRM_GEM_CMA_FOPS(imx_drm_driver_fops);
 
@@ -91,7 +87,7 @@ static const struct drm_ioctl_desc imx_drm_ioctls[] = {
 static struct drm_driver imx_drm_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_PRIME |
 				  DRIVER_ATOMIC,
-	.lastclose		= imx_drm_driver_lastclose,
+	.lastclose		= drm_fb_helper_lastclose,
 	.gem_free_object_unlocked = drm_gem_cma_free_object,
 	.gem_vm_ops		= &drm_gem_cma_vm_ops,
 	.dumb_create		= drm_gem_cma_dumb_create,
@@ -125,14 +121,6 @@ static int compare_of(struct device *dev, void *data)
 		struct ipu_client_platformdata *pdata = dev->platform_data;
 
 		return pdata->of_node == np;
-	} else if (strcmp(dev->driver->name, "imx-dpu-crtc") == 0) {
-		struct dpu_client_platformdata *pdata = dev->platform_data;
-
-		return pdata->of_node == np;
-	}  else if (strcmp(dev->driver->name, "imx-dcss-crtc") == 0) {
-		struct dcss_client_platformdata *pdata = dev->platform_data;
-
-		return pdata->of_node == np;
 	} else if (strcmp(dev->driver->name, "imx-lcdif-crtc") == 0) {
 		struct lcdif_client_platformdata *pdata = dev->platform_data;
 #if IS_ENABLED(CONFIG_DRM_FBDEV_EMULATION)
@@ -143,6 +131,14 @@ static int compare_of(struct device *dev, void *data)
 		if (pdata->of_node == np)
 			legacyfb_depth = 32;
 #endif
+
+		return pdata->of_node == np;
+	}  else if (strcmp(dev->driver->name, "imx-dcss-crtc") == 0) {
+		struct dcss_client_platformdata *pdata = dev->platform_data;
+
+		return pdata->of_node == np;
+	} else if (strcmp(dev->driver->name, "imx-dpu-crtc") == 0) {
+		struct dpu_client_platformdata *pdata = dev->platform_data;
 
 		return pdata->of_node == np;
 	}
@@ -338,8 +334,6 @@ static int imx_drm_bind(struct device *dev)
 	if (ret)
 		goto err_kms;
 
-	dev_set_drvdata(dev, drm);
-
 	/* Now try and bind all our sub-components */
 	ret = component_bind_all(dev, drm);
 	if (ret)
@@ -361,12 +355,10 @@ static int imx_drm_bind(struct device *dev)
 	if (legacyfb_depth == 16 && has_dcss(dev))
 		legacyfb_depth = 32;
 
-	imxdrm->fbhelper = drm_fbdev_cma_init(drm, legacyfb_depth, MAX_CRTC);
-	if (IS_ERR(imxdrm->fbhelper)) {
-		ret = PTR_ERR(imxdrm->fbhelper);
-		imxdrm->fbhelper = NULL;
+	ret = drm_fb_cma_fbdev_init(drm, legacyfb_depth, MAX_CRTC);
+	if (ret)
+
 		goto err_unbind;
-	}
 #endif
 
 	drm_kms_helper_poll_init(drm);
@@ -375,18 +367,18 @@ static int imx_drm_bind(struct device *dev)
 	if (ret)
 		goto err_fbhelper;
 
+	dev_set_drvdata(dev, drm);
+
 	return 0;
 
 err_fbhelper:
 	drm_kms_helper_poll_fini(drm);
 #if IS_ENABLED(CONFIG_DRM_FBDEV_EMULATION)
-	if (imxdrm->fbhelper)
-		drm_fbdev_cma_fini(imxdrm->fbhelper);
+	drm_fb_cma_fbdev_fini(drm);
 err_unbind:
 #endif
 	component_unbind_all(drm->dev, drm);
 err_kms:
-	dev_set_drvdata(dev, NULL);
 	drm_mode_config_cleanup(drm);
 err_wq:
 	if (imxdrm->dcss_nonblock_commit_wq)
@@ -394,7 +386,7 @@ err_wq:
 	if (imxdrm->dpu_nonblock_commit_wq)
 		destroy_workqueue(imxdrm->dpu_nonblock_commit_wq);
 err_unref:
-	drm_dev_unref(drm);
+	drm_dev_put(drm);
 
 	return ret;
 }
@@ -405,8 +397,8 @@ static void imx_drm_unbind(struct device *dev)
 	struct imx_drm_device *imxdrm = drm->dev_private;
 
 	if (has_dpu(dev)) {
-		imx_drm_driver.driver_features &= ~DRIVER_RENDER;
 		flush_workqueue(imxdrm->dpu_nonblock_commit_wq);
+		imx_drm_driver.driver_features &= ~DRIVER_RENDER;
 	}
 
 	if (has_dcss(dev))
@@ -416,8 +408,7 @@ static void imx_drm_unbind(struct device *dev)
 
 	drm_kms_helper_poll_fini(drm);
 
-	if (imxdrm->fbhelper)
-		drm_fbdev_cma_fini(imxdrm->fbhelper);
+	drm_fb_cma_fbdev_fini(drm);
 
 	drm_mode_config_cleanup(drm);
 
@@ -430,7 +421,7 @@ static void imx_drm_unbind(struct device *dev)
 	if (has_dcss(dev))
 		destroy_workqueue(imxdrm->dcss_nonblock_commit_wq);
 
-	drm_dev_unref(drm);
+	drm_dev_put(drm);
 }
 
 static const struct component_master_ops imx_drm_ops = {
@@ -465,37 +456,15 @@ static int imx_drm_platform_remove(struct platform_device *pdev)
 static int imx_drm_suspend(struct device *dev)
 {
 	struct drm_device *drm_dev = dev_get_drvdata(dev);
-	struct imx_drm_device *imxdrm;
 
-	/* The drm_dev is NULL before .load hook is called */
-	if (drm_dev == NULL)
-		return 0;
-
-	drm_kms_helper_poll_disable(drm_dev);
-
-	imxdrm = drm_dev->dev_private;
-	imxdrm->state = drm_atomic_helper_suspend(drm_dev);
-	if (IS_ERR(imxdrm->state)) {
-		drm_kms_helper_poll_enable(drm_dev);
-		return PTR_ERR(imxdrm->state);
-	}
-
-	return 0;
+	return drm_mode_config_helper_suspend(drm_dev);
 }
 
 static int imx_drm_resume(struct device *dev)
 {
 	struct drm_device *drm_dev = dev_get_drvdata(dev);
-	struct imx_drm_device *imx_drm;
 
-	if (drm_dev == NULL)
-		return 0;
-
-	imx_drm = drm_dev->dev_private;
-	drm_atomic_helper_resume(drm_dev, imx_drm->state);
-	drm_kms_helper_poll_enable(drm_dev);
-
-	return 0;
+	return drm_mode_config_helper_resume(drm_dev);
 }
 #endif
 

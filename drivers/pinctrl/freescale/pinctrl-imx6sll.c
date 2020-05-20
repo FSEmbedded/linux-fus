@@ -1,10 +1,7 @@
-/*
- * Copyright (C) 2016 Freescale Semiconductor, Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+// SPDX-License-Identifier: GPL-2.0
+//
+// Copyright (C) 2016 Freescale Semiconductor, Inc.
+// Copyright 2017-2018 NXP.
 
 #include <linux/err.h>
 #include <linux/init.h>
@@ -337,9 +334,10 @@ static const struct pinctrl_pin_desc imx6sll_pinctrl_pads[] = {
 	IMX_PINCTRL_PIN(MX6SLL_PAD_GPIO4_IO26),
 };
 
-static struct imx_pinctrl_soc_info imx6sll_pinctrl_info = {
+static const struct imx_pinctrl_soc_info imx6sll_pinctrl_info = {
 	.pins = imx6sll_pinctrl_pads,
 	.npins = ARRAY_SIZE(imx6sll_pinctrl_pads),
+	.gpr_compatible = "fsl,imx6sll-iomuxc-gpr",
 };
 
 static struct of_device_id imx6sll_pinctrl_of_match[] = {
@@ -365,6 +363,7 @@ static int imx6sll_pinctrl_probe(struct platform_device *pdev)
 static struct platform_driver imx6sll_pinctrl_driver = {
 	.driver = {
 		.name = "imx6sll-pinctrl",
+		.suppress_bind_attrs = true,
 		.owner = THIS_MODULE,
 		.of_match_table = of_match_ptr(imx6sll_pinctrl_of_match),
 	},

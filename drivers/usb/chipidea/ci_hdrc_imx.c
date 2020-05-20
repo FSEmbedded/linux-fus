@@ -1,15 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2012-2016 Freescale Semiconductor, Inc.
  * Copyright 2017 NXP
  * Copyright (C) 2012 Marek Vasut <marex@denx.de>
  * on behalf of DENX Software Engineering GmbH
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
  */
 
 #include <linux/module.h>
@@ -34,7 +28,6 @@
 
 struct ci_hdrc_imx_platform_flag {
 	unsigned int flags;
-	bool runtime_pm;
 };
 
 static const struct ci_hdrc_imx_platform_flag imx23_usb_data = {
@@ -43,7 +36,7 @@ static const struct ci_hdrc_imx_platform_flag imx23_usb_data = {
 };
 
 static const struct ci_hdrc_imx_platform_flag imx27_usb_data = {
-		CI_HDRC_DISABLE_STREAMING,
+	.flags = CI_HDRC_DISABLE_STREAMING,
 };
 
 static const struct ci_hdrc_imx_platform_flag imx28_usb_data = {
@@ -80,22 +73,13 @@ static const struct ci_hdrc_imx_platform_flag imx6ul_usb_data = {
 };
 
 static const struct ci_hdrc_imx_platform_flag imx7d_usb_data = {
-	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM |
-		CI_HDRC_HOST_SUSP_PHY_LPM,
+	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM,
 };
 
 static const struct ci_hdrc_imx_platform_flag imx7ulp_usb_data = {
 	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM |
 		CI_HDRC_IMX_EHCI_QUIRK |
 		CI_HDRC_PMQOS,
-};
-
-static const struct ci_hdrc_imx_platform_flag imx8qm_usb_data = {
-	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM,
-};
-
-static const struct ci_hdrc_imx_platform_flag imx8mm_usb_data = {
-	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM,
 };
 
 static const struct of_device_id ci_hdrc_imx_dt_ids[] = {
@@ -108,8 +92,6 @@ static const struct of_device_id ci_hdrc_imx_dt_ids[] = {
 	{ .compatible = "fsl,imx6ul-usb", .data = &imx6ul_usb_data},
 	{ .compatible = "fsl,imx7d-usb", .data = &imx7d_usb_data},
 	{ .compatible = "fsl,imx7ulp-usb", .data = &imx7ulp_usb_data},
-	{ .compatible = "fsl,imx8qm-usb", .data = &imx8qm_usb_data},
-	{ .compatible = "fsl,imx8mm-usb", .data = &imx8mm_usb_data},
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, ci_hdrc_imx_dt_ids);
@@ -120,6 +102,7 @@ struct ci_hdrc_imx_data {
 	struct clk *clk;
 	struct imx_usbmisc_data *usbmisc_data;
 	bool supports_runtime_pm;
+	bool override_phy_control;
 	bool in_lpm;
 	struct regmap *anatop;
 	struct pinctrl *pinctrl;
@@ -456,6 +439,15 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 	}
 
 	pdata.usb_phy = data->phy;
+
+	if ((of_device_is_compatible(np, "fsl,imx53-usb") ||
+	     of_device_is_compatible(np, "fsl,imx51-usb")) && pdata.usb_phy &&
+	    of_usb_get_phy_mode(np) == USBPHY_INTERFACE_MODE_ULPI) {
+		pdata.flags |= CI_HDRC_OVERRIDE_PHY_CONTROL;
+		data->override_phy_control = true;
+		usb_phy_init(pdata.usb_phy);
+	}
+
 	data->usbmisc_data->usb_phy = data->phy;
 	if (pdata.flags & CI_HDRC_SUPPORTS_RUNTIME_PM)
 		data->supports_runtime_pm = true;
@@ -570,6 +562,8 @@ static int ci_hdrc_imx_remove(struct platform_device *pdev)
 		pm_runtime_put_noidle(&pdev->dev);
 	}
 	ci_hdrc_remove_device(data->ci_pdev);
+	if (data->override_phy_control)
+		usb_phy_shutdown(data->phy);
 	imx_disable_unprepare_clks(&pdev->dev);
 	if (data->data->flags & CI_HDRC_PMQOS)
 		pm_qos_remove_request(&data->pm_qos_req);
@@ -600,14 +594,6 @@ static int imx_controller_suspend(struct device *dev)
 				"usbmisc hsic_set_clk failed, ret=%d\n", ret);
 			return ret;
 		}
-
-	}
-
-	ret = imx_usbmisc_vbus_comparator_on(data->usbmisc_data, false);
-	if (ret) {
-		dev_err(dev,
-			"vbus comparator off failed, ret=%d\n", ret);
-		return ret;
 	}
 
 	imx_disable_unprepare_clks(dev);
@@ -655,13 +641,6 @@ static int imx_controller_resume(struct device *dev)
 		goto clk_disable;
 	}
 
-	ret = imx_usbmisc_vbus_comparator_on(data->usbmisc_data, true);
-	if (ret) {
-		dev_err(dev,
-			"vbus comparator on failed, ret=%d\n", ret);
-		goto vbus_comparator_off;
-	}
-
 	ret = imx_usbmisc_hsic_set_clk(data->usbmisc_data, true);
 	if (ret) {
 		dev_err(dev, "usbmisc hsic_set_clk failed, ret=%d\n", ret);
@@ -671,8 +650,6 @@ static int imx_controller_resume(struct device *dev)
 	return 0;
 
 hsic_set_clk_fail:
-	imx_usbmisc_vbus_comparator_on(data->usbmisc_data, false);
-vbus_comparator_off:
 	imx_usbmisc_set_wakeup(data->usbmisc_data, true);
 clk_disable:
 	imx_disable_unprepare_clks(dev);

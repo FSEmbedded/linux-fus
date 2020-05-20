@@ -22,10 +22,10 @@
 	};
 
 	clocks {
-	        codec_osc: codec_osc {
-		        #clock-cells = <0>;
-		        compatible = "fixed-clock";
-		        clock-frequency = <12000000>;
+		codec_osc: codec_osc {
+			#clock-cells = <0>;
+			compatible = "fixed-clock";
+			clock-frequency = <12000000>;
 		};
 	};
 
@@ -116,9 +116,9 @@
 };
 
 &audmux {
-       pinctrl-names = "default";
-       pinctrl-0 = <&pinctrl_audmux_2>;
-       status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_audmux_2>;
+	status = "okay";
 };
 
 &cpu0 {
@@ -219,14 +219,14 @@
 };
 
 &i2c1 {
-        clock-frequency = <100000>;
-        pinctrl-names = "default";
-        pinctrl-0 = <&pinctrl_i2c1_1>;
-        status = "okay";
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c1_1>;
+	status = "okay";
 
-	pmic: pfuze100@08 {
+	pmic: pfuze100@8 {
 		compatible = "fsl,pfuze200";
-		reg = <0x08>;
+		reg = <0x8>;
 
 		regulators {
 			sw1a_reg: sw1ab {
@@ -313,14 +313,14 @@
 };
 
 &i2c2 {
-        clock-frequency = <100000>;
-        pinctrl-names = "default";
-        pinctrl-0 = <&pinctrl_i2c2_1>;
-        status = "okay";
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c2_1>;
+	status = "okay";
 
 	max7322_1: gpio@68 {
-		compatible = "maxim,max7322";
-		reg = <0x68>;
+		   compatible = "maxim,max7322";
+		   reg = <0x68>;
 		gpio-controller;
 		#gpio-cells = <2>;
 		resets = <&max7322_reset>;
@@ -334,9 +334,9 @@
 		resets = <&max7322_reset>;
 	};
 
-	codec: sgtl5000@0a {
+	codec: sgtl5000@a {
 		compatible = "fsl,sgtl5000";
-		reg = <0x0a>;
+		reg = <0xa>;
 		clocks = <&codec_osc>;
 		VDDA-supply = <&vgen4_reg>;
 		VDDIO-supply = <&reg_3p3v>;
@@ -345,17 +345,17 @@
 
 
 &i2c3 {
-        clock-frequency = <100000>;
-        pinctrl-names = "default";
-        pinctrl-0 = <&pinctrl_i2c3_1>;
-        status = "okay";
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c3_1>;
+	status = "okay";
 };
 
 &i2c4 {
-        clock-frequency = <100000>;
-        pinctrl-names = "default";
-        pinctrl-0 = <&pinctrl_i2c4_1>;
-        status = "okay";
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c4_1>;
+	status = "okay";
 };
 
 &iomuxc {
@@ -546,6 +546,7 @@
 	pinctrl-0 = <&pinctrl_usdhc4_1>;
 	bus-width = <8>;
 	non-removable;
+	auto-cmd23-broken;
 	/* need hw rework to enable signal voltage switch */
 	no-1-8-v;
 	status = "okay";
@@ -571,7 +572,7 @@
 
 		pinctrl_audmux_2: audmuxgrp-2 {
 			fsl,pins = <
-				MX6SX_PAD_ENET1_COL__AUDMUX_AUD4_TXC 	 0x130b0
+				MX6SX_PAD_ENET1_COL__AUDMUX_AUD4_TXC     0x130b0
 				MX6SX_PAD_ENET1_CRS__AUDMUX_AUD4_TXD     0x130b0
 				MX6SX_PAD_ENET1_RX_CLK__AUDMUX_AUD4_TXFS 0x130b0
 				MX6SX_PAD_ENET1_TX_CLK__AUDMUX_AUD4_RXD  0x130b0

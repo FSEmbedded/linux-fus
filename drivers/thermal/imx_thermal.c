@@ -1,14 +1,10 @@
-/*
- * Copyright 2013-2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- */
+// SPDX-License-Identifier: GPL-2.0
+//
+// Copyright 2013 Freescale Semiconductor, Inc.
+
 #include <linux/busfreq-imx.h>
 #include <linux/clk.h>
+#include <linux/cpu.h>
 #include <linux/cpufreq.h>
 #include <linux/cpu_cooling.h>
 #include <linux/delay.h>
@@ -27,21 +23,23 @@
 #include <linux/slab.h>
 #include <linux/thermal.h>
 #include <linux/types.h>
+#include <linux/nvmem-consumer.h>
 
 #define REG_SET		0x4
 #define REG_CLR		0x8
 #define REG_TOG		0xc
 
-#define MISC0				0x0150
-#define MISC0_REFTOP_SELBIASOFF		(1 << 3)
-#define MISC1				0x0160
-#define MISC1_IRQ_TEMPHIGH		(1 << 29)
+/* i.MX6 specific */
+#define IMX6_MISC0				0x0150
+#define IMX6_MISC0_REFTOP_SELBIASOFF		(1 << 3)
+#define IMX6_MISC1				0x0160
+#define IMX6_MISC1_IRQ_TEMPHIGH			(1 << 29)
 /* Below LOW and PANIC bits are only for TEMPMON_IMX6SX */
-#define MISC1_IRQ_TEMPLOW		(1 << 28)
-#define MISC1_IRQ_TEMPPANIC		(1 << 27)
+#define IMX6_MISC1_IRQ_TEMPLOW			(1 << 28)
+#define IMX6_MISC1_IRQ_TEMPPANIC		(1 << 27)
 
 /* i.MX6 specific */
-#define IMX6_TEMPSENSE0				0X180
+#define IMX6_TEMPSENSE0				0X0180
 #define IMX6_TEMPSENSE0_ALARM_VALUE_SHIFT	20
 #define IMX6_TEMPSENSE0_ALARM_VALUE_MASK	(0xfff << 20)
 #define IMX6_TEMPSENSE0_TEMP_CNT_SHIFT		8
@@ -50,19 +48,19 @@
 #define IMX6_TEMPSENSE0_MEASURE_TEMP		(1 << 1)
 #define IMX6_TEMPSENSE0_POWER_DOWN		(1 << 0)
 
-#define IMX6_TEMPSENSE1				0X190
+#define IMX6_TEMPSENSE1				0x0190
 #define IMX6_TEMPSENSE1_MEASURE_FREQ		0xffff
 #define IMX6_TEMPSENSE1_MEASURE_FREQ_SHIFT	0
 
-/* Below TEMPSENSE2 is only for TEMPMON_IMX6SX */
-#define TEMPSENSE2			0x0290
-#define TEMPSENSE2_LOW_VALUE_SHIFT	0
-#define TEMPSENSE2_LOW_VALUE_MASK	0xfff
-#define TEMPSENSE2_PANIC_VALUE_SHIFT	16
-#define TEMPSENSE2_PANIC_VALUE_MASK	0xfff0000
-
 #define OCOTP_MEM0			0x0480
 #define OCOTP_ANA1			0x04e0
+
+/* Below TEMPSENSE2 is only for TEMPMON_IMX6SX */
+#define IMX6_TEMPSENSE2				0x0290
+#define IMX6_TEMPSENSE2_LOW_VALUE_SHIFT		0
+#define IMX6_TEMPSENSE2_LOW_VALUE_MASK		0xfff
+#define IMX6_TEMPSENSE2_PANIC_VALUE_SHIFT	16
+#define IMX6_TEMPSENSE2_PANIC_VALUE_MASK	0xfff0000
 
 /* i.MX7D specific */
 #define IMX7_ANADIG_DIGPROG			0x800
@@ -85,7 +83,8 @@
 
 #define IMX6_OCOTP_ANA1		0x04e0
 #define IMX7_OCOTP_ANA1		0x04f0
-#define IMX7_OCOTP_TESTER3	0x0440
+
+#define IMX7_OCOTP_TESTER3     0x0440
 
 /* The driver supports 1 passive trip point and 1 critical trip point */
 enum imx_thermal_trip {
@@ -183,9 +182,13 @@ static struct thermal_soc_data thermal_imx6sx_data = {
 	.high_alarm_mask = IMX6_TEMPSENSE0_ALARM_VALUE_MASK,
 	.high_alarm_shift = IMX6_TEMPSENSE0_ALARM_VALUE_SHIFT,
 
-	.panic_alarm_ctrl = TEMPSENSE2,
-	.panic_alarm_mask = TEMPSENSE2_PANIC_VALUE_MASK,
-	.panic_alarm_shift = TEMPSENSE2_PANIC_VALUE_SHIFT,
+	.panic_alarm_ctrl = IMX6_TEMPSENSE2,
+	.panic_alarm_mask = IMX6_TEMPSENSE2_PANIC_VALUE_MASK,
+	.panic_alarm_shift = IMX6_TEMPSENSE2_PANIC_VALUE_SHIFT,
+
+	.low_alarm_ctrl = IMX6_TEMPSENSE2,
+	.low_alarm_mask = IMX6_TEMPSENSE2_LOW_VALUE_MASK,
+	.low_alarm_shift = IMX6_TEMPSENSE2_LOW_VALUE_SHIFT,
 };
 
 static struct thermal_soc_data thermal_imx7d_data = {
@@ -215,7 +218,6 @@ static struct thermal_soc_data thermal_imx7d_data = {
 	.low_alarm_ctrl = IMX7_TEMPSENSE0,
 	.low_alarm_mask = IMX7_TEMPSENSE0_LOW_ALARM_MASK,
 	.low_alarm_shift = IMX7_TEMPSENSE0_LOW_ALARM_SHIFT,
-
 };
 
 struct imx_thermal_data {
@@ -224,7 +226,7 @@ struct imx_thermal_data {
 	struct thermal_cooling_device *cdev[2];
 	enum thermal_device_mode mode;
 	struct regmap *tempmon;
-	u32 c1, c2; /* See formula in imx_get_sensor_data() */
+	u32 c1, c2; /* See formula in imx_init_calib() */
 	int temp_passive;
 	int temp_critical;
 	int temp_max;
@@ -240,10 +242,7 @@ struct imx_thermal_data {
 
 static struct imx_thermal_data *imx_thermal_data;
 static int skip_finish_check;
-
-#ifdef CONFIG_PM_SLEEP
 static u32 imx7_lpsr_save[2];
-#endif
 
 static void imx_set_panic_temp(struct imx_thermal_data *data,
 			       int panic_temp)
@@ -325,7 +324,7 @@ static int imx_get_temp(struct thermal_zone_device *tz, int *temp)
 		 */
 		if (data->socdata->version == TEMPMON_IMX7 && skip_finish_check)
 			msleep(20);
-		 else
+		else
 			usleep_range(20, 50);
 		regmap_read(map, soc_data->temp_data, &val);
 	}
@@ -345,7 +344,7 @@ static int imx_get_temp(struct thermal_zone_device *tz, int *temp)
 	}
 
 	n_meas = (val & soc_data->temp_value_mask) >> soc_data->temp_value_shift;
-	/* See imx_get_sensor_data() for formula derivation */
+	/* See imx_init_calib() for formula derivation */
 	*temp = data->c2 - n_meas * data->c1;
 	if (data->socdata->version == TEMPMON_IMX7)
 		*temp = (n_meas - data->c1 + 25) * 1000;
@@ -594,10 +593,42 @@ static inline void imx7_calibrate_data(struct imx_thermal_data *data, u32 val)
 	data->c1 = (val >> 9) & 0x1ff;
 }
 
-static int imx_get_sensor_data(struct platform_device *pdev)
+static void imx_init_temp_grade(struct platform_device *pdev, u32 ocotp_mem0)
 {
 	struct imx_thermal_data *data = platform_get_drvdata(pdev);
+
+	/* The maximum die temp is specified by the Temperature Grade */
+	switch ((ocotp_mem0 >> 6) & 0x3) {
+	case 0: /* Commercial (0 to 95 °C) */
+		data->temp_grade = "Commercial";
+		data->temp_max = 95000;
+		break;
+	case 1: /* Extended Commercial (-20 °C to 105 °C) */
+		data->temp_grade = "Extended Commercial";
+		data->temp_max = 105000;
+		break;
+	case 2: /* Industrial (-40 °C to 105 °C) */
+		data->temp_grade = "Industrial";
+		data->temp_max = 105000;
+		break;
+	case 3: /* Automotive (-40 °C to 125 °C) */
+		data->temp_grade = "Automotive";
+		data->temp_max = 125000;
+		break;
+	}
+
+	/*
+	 * Set the critical trip point at 5 °C under max
+	 * Set the passive trip point at 10 °C under max (changeable via sysfs)
+	 */
+	data->temp_critical = data->temp_max - (1000 * 5);
+	data->temp_passive = data->temp_max - (1000 * 10);
+}
+
+static int imx_init_from_tempmon_data(struct platform_device *pdev)
+{
 	struct regmap *map;
+	struct imx_thermal_data *data = platform_get_drvdata(pdev);
 	int ret;
 	u32 val;
 
@@ -609,19 +640,10 @@ static int imx_get_sensor_data(struct platform_device *pdev)
 		return ret;
 	}
 
-	if (data->socdata->version == TEMPMON_IMX7)
-		ret = regmap_read(map, IMX7_OCOTP_ANA1, &val);
-	else
-		ret = regmap_read(map, IMX6_OCOTP_ANA1, &val);
-
+	ret = regmap_read(map, OCOTP_ANA1, &val);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to read sensor data: %d\n", ret);
 		return ret;
-	}
-
-	if (val == 0 || val == ~0) {
-		dev_err(&pdev->dev, "invalid sensor calibration data\n");
-		return -EINVAL;
 	}
 
 	if (data->socdata->version == TEMPMON_IMX7)
@@ -629,43 +651,39 @@ static int imx_get_sensor_data(struct platform_device *pdev)
 	else
 		imx6_calibrate_data(data, val);
 
-	/* use OTP for thermal grade */
 	if (data->socdata->version == TEMPMON_IMX7)
 		ret = regmap_read(map, IMX7_OCOTP_TESTER3, &val);
 	else
 		ret = regmap_read(map, OCOTP_MEM0, &val);
 
 	if (ret) {
-		dev_err(&pdev->dev, "failed to read temp grade: %d\n", ret);
+		dev_err(&pdev->dev, "failed to read sensor data: %d\n", ret);
 		return ret;
 	}
+	imx_init_temp_grade(pdev, val);
 
-	/* The maximum die temp is specified by the Temperature Grade */
-	switch ((val >> 6) & 0x3) {
-	case 0: /* Commercial (0 to 95C) */
-		data->temp_grade = "Commercial";
-		data->temp_max = 95000;
-		break;
-	case 1: /* Extended Commercial (-20 to 105C) */
-		data->temp_grade = "Extended Commercial";
-		data->temp_max = 105000;
-		break;
-	case 2: /* Industrial (-40 to 105C) */
-		data->temp_grade = "Industrial";
-		data->temp_max = 105000;
-		break;
-	case 3: /* Automotive (-40 to 125C) */
-		data->temp_grade = "Automotive";
-		data->temp_max = 125000;
-		break;
-	}
+	return 0;
+}
 
-	/*
-	 * Set the critical trip point at 5C under max
-	 * Set the passive trip point at 10C under max (can change via sysfs)
-	 */
-	data->temp_critical = data->temp_max - (1000 * 5);
-	data->temp_passive = data->temp_max - (1000 * 10);
+static int imx_init_from_nvmem_cells(struct platform_device *pdev)
+{
+	struct imx_thermal_data *data = platform_get_drvdata(pdev);
+	int ret;
+	u32 val;
+
+	ret = nvmem_cell_read_u32(&pdev->dev, "calib", &val);
+	if (ret)
+		return ret;
+
+	if (data->socdata->version == TEMPMON_IMX7)
+		imx7_calibrate_data(data, val);
+	else
+		imx6_calibrate_data(data, val);
+
+	ret = nvmem_cell_read_u32(&pdev->dev, "temp_grade", &val);
+	if (ret)
+		return ret;
+	imx_init_temp_grade(pdev, val);
 
 	return 0;
 }
@@ -774,14 +792,15 @@ static int imx_thermal_probe(struct platform_device *pdev)
 
 	/* make sure the IRQ flag is clear before enabling irq on i.MX6SX */
 	if (data->socdata->version == TEMPMON_IMX6SX) {
-		regmap_write(map, MISC1 + REG_CLR, MISC1_IRQ_TEMPHIGH |
-			MISC1_IRQ_TEMPLOW | MISC1_IRQ_TEMPPANIC);
+		regmap_write(map, IMX6_MISC1 + REG_CLR,
+			IMX6_MISC1_IRQ_TEMPHIGH | IMX6_MISC1_IRQ_TEMPLOW
+			| IMX6_MISC1_IRQ_TEMPPANIC);
 		/*
 		 * reset value of LOW ALARM is incorrect, set it to lowest
 		 * value to avoid false trigger of low alarm.
 		 */
-		regmap_write(map, TEMPSENSE2 + REG_SET,
-			TEMPSENSE2_LOW_VALUE_MASK);
+		regmap_write(map, data->socdata->low_alarm_ctrl + REG_SET,
+			     data->socdata->low_alarm_mask);
 	}
 
 	data->irq = platform_get_irq(pdev, 0);
@@ -790,10 +809,21 @@ static int imx_thermal_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, data);
 
-	ret = imx_get_sensor_data(pdev);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to get sensor data\n");
-		return ret;
+	if (of_find_property(pdev->dev.of_node, "nvmem-cells", NULL)) {
+		ret = imx_init_from_nvmem_cells(pdev);
+		if (ret == -EPROBE_DEFER)
+			return ret;
+		if (ret) {
+			dev_err(&pdev->dev, "failed to init from nvmem: %d\n",
+				ret);
+			return ret;
+		}
+	} else {
+		ret = imx_init_from_tempmon_data(pdev);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to init from from fsl,tempmon-data\n");
+			return ret;
+		}
 	}
 
 	/*
@@ -812,7 +842,7 @@ static int imx_thermal_probe(struct platform_device *pdev)
 	regmap_write(map, data->socdata->measure_freq_ctrl + REG_CLR,
 		     data->socdata->measure_freq_mask);
 	if (data->socdata->version != TEMPMON_IMX7)
-		regmap_write(map, MISC0 + REG_SET, MISC0_REFTOP_SELBIASOFF);
+		regmap_write(map, IMX6_MISC0 + REG_SET, IMX6_MISC0_REFTOP_SELBIASOFF);
 	regmap_write(map, data->socdata->sensor_ctrl + REG_SET,
 		     data->socdata->power_down_mask);
 

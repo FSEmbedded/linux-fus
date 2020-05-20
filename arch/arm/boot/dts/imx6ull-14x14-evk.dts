@@ -96,7 +96,7 @@
 		codec-master;
 		gpr = <&gpr 4 0x100000 0x100000>;
 		/*
-                 * hp-det = <hp-det-pin hp-det-polarity>;
+		 * hp-det = <hp-det-pin hp-det-polarity>;
 		 * hp-det-pin: JD1 JD2  or JD3
 		 * hp-det-polarity = 0: hp detect high for headphone
 		 * hp-det-polarity = 1: hp detect high for speaker
@@ -232,9 +232,9 @@
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
-	mag3110@0e {
+	mag3110@e {
 		compatible = "fsl,mag3110";
-		reg = <0x0e>;
+		reg = <0xe>;
 		position = <2>;
 	};
 
@@ -569,50 +569,50 @@
 
 &iomuxc_snvs {
 	pinctrl-names = "default_snvs";
-        pinctrl-0 = <&pinctrl_hog_2>;
-        imx6ul-evk {
+	pinctrl-0 = <&pinctrl_hog_2>;
+	imx6ul-evk {
 		pinctrl_hog_2: hoggrp-2 {
-                        fsl,pins = <
-                                MX6ULL_PAD_SNVS_TAMPER0__GPIO5_IO00      0x80000000
-                        >;
-                };
+			fsl,pins = <
+				MX6ULL_PAD_SNVS_TAMPER0__GPIO5_IO00      0x80000000
+			>;
+		};
 
 		pinctrl_dvfs: dvfsgrp {
-                        fsl,pins = <
-                                MX6ULL_PAD_SNVS_TAMPER3__GPIO5_IO03      0x79
-                        >;
-                };
-		
+			fsl,pins = <
+				MX6ULL_PAD_SNVS_TAMPER3__GPIO5_IO03      0x79
+			>;
+		};
+
 		pinctrl_lcdif_reset: lcdifresetgrp {
-                        fsl,pins = <
-                                /* used for lcd reset */
-                                MX6ULL_PAD_SNVS_TAMPER9__GPIO5_IO09  0x79
-                        >;
-                };
+			fsl,pins = <
+				/* used for lcd reset */
+				MX6ULL_PAD_SNVS_TAMPER9__GPIO5_IO09  0x79
+			>;
+		};
 
 		pinctrl_spi4: spi4grp {
-                        fsl,pins = <
-                                MX6ULL_PAD_BOOT_MODE0__GPIO5_IO10        0x70a1
-                                MX6ULL_PAD_BOOT_MODE1__GPIO5_IO11        0x70a1
-                                MX6ULL_PAD_SNVS_TAMPER7__GPIO5_IO07      0x70a1
-                                MX6ULL_PAD_SNVS_TAMPER8__GPIO5_IO08      0x80000000
-                        >;
-                };
+			fsl,pins = <
+				MX6ULL_PAD_BOOT_MODE0__GPIO5_IO10        0x70a1
+				MX6ULL_PAD_BOOT_MODE1__GPIO5_IO11        0x70a1
+				MX6ULL_PAD_SNVS_TAMPER7__GPIO5_IO07      0x70a1
+				MX6ULL_PAD_SNVS_TAMPER8__GPIO5_IO08      0x80000000
+			>;
+		};
 
-                pinctrl_sai2_hp_det_b: sai2_hp_det_grp {
-                        fsl,pins = <
-                                MX6ULL_PAD_SNVS_TAMPER4__GPIO5_IO04   0x17059
-                        >;
-                };
-        };
+		pinctrl_sai2_hp_det_b: sai2_hp_det_grp {
+			fsl,pins = <
+				MX6ULL_PAD_SNVS_TAMPER4__GPIO5_IO04   0x17059
+			>;
+		};
+	};
 };
 
 
 &lcdif {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcdif_dat
-		     &pinctrl_lcdif_ctrl
-		     &pinctrl_lcdif_reset>;
+		&pinctrl_lcdif_ctrl
+		&pinctrl_lcdif_reset>;
 	display = <&display0>;
 	status = "okay";
 

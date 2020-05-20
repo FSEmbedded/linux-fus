@@ -222,7 +222,7 @@ struct mxsfb_layer {
 	int			registered;
 	atomic_t		usage;
 	int			blank_state;
-	uint32_t 		global_alpha;
+	uint32_t		global_alpha;
 
 	struct mxsfb_layer_ops	*ops;
 
@@ -408,6 +408,8 @@ static const struct fb_bitfield def_rgb565[] = {
 };
 
 #ifdef CONFIG_FB_MXC_OVERLAY
+static u32 saved_as_ctrl;
+static u32 saved_as_next_buf;
 
 static const struct fb_bitfield def_argb555[] = {
 	[RED] = {
@@ -841,7 +843,8 @@ static int mxsfb_set_par(struct fb_info *fb_info)
 	u32 ctrl, vdctrl0, vdctrl4;
 	int line_size, fb_size;
 	int reenable = 0;
-	static u32 equal_bypass = 0;
+	static u32 equal_bypass;
+
 #ifdef CONFIG_FB_IMX64_DEBUG
 	static int time;
 
@@ -1773,7 +1776,7 @@ static struct mxsfb_layer_ops ofb_ops = {
 
 static int overlayfb_open(struct fb_info *info, int user)
 {
-	struct mxsfb_layer *ofb = (struct mxsfb_layer*)info->par;
+	struct mxsfb_layer *ofb = (struct mxsfb_layer *)info->par;
 	struct mxsfb_info  *fbi = ofb->fbi;
 
 	if (atomic_inc_return(&ofb->usage) == 1) {
@@ -1790,7 +1793,7 @@ static int overlayfb_open(struct fb_info *info, int user)
 
 static int overlayfb_release(struct fb_info *info, int user)
 {
-	struct mxsfb_layer *ofb = (struct mxsfb_layer*)info->par;
+	struct mxsfb_layer *ofb = (struct mxsfb_layer *)info->par;
 
 	BUG_ON(!atomic_read(&ofb->usage));
 
@@ -1817,7 +1820,7 @@ static int overlayfb_check_var(struct fb_var_screeninfo *var,
 			       struct fb_info *info)
 {
 	int bpp;
-	struct mxsfb_layer *ofb = (struct mxsfb_layer*)info->par;
+	struct mxsfb_layer *ofb = (struct mxsfb_layer *)info->par;
 	struct mxsfb_info *fbi  = ofb->fbi;
 	const struct fb_bitfield *rgb = NULL;
 
@@ -1895,13 +1898,13 @@ static int overlayfb_check_var(struct fb_var_screeninfo *var,
 			 * case there will be a sync error between formats
 			 * supported in fmt_support and this function.
 			 */
-			 return -EINVAL;
+			return -EINVAL;
 		}
 		break;
 	}
 
-        if (var->xres_virtual * var->yres_virtual * var->bits_per_pixel / 8 >
-            info->fix.smem_len)
+	if (var->xres_virtual * var->yres_virtual * var->bits_per_pixel / 8 >
+		info->fix.smem_len)
 		return -EINVAL;
 
 	fill_fmt_bitfields(var, rgb);
@@ -1912,7 +1915,7 @@ static int overlayfb_check_var(struct fb_var_screeninfo *var,
 static int overlayfb_set_par(struct fb_info *info)
 {
 	int size, bpp;
-	struct mxsfb_layer *ofb = (struct mxsfb_layer*)info->par;
+	struct mxsfb_layer *ofb = (struct mxsfb_layer *)info->par;
 	struct mxsfb_info  *fbi = ofb->fbi;
 	struct fb_var_screeninfo *var = &ofb->ol_fb->var;
 
@@ -1960,7 +1963,7 @@ static int overlayfb_set_par(struct fb_info *info)
 
 static int overlayfb_blank(int blank, struct fb_info *info)
 {
-	struct mxsfb_layer *ofb = (struct mxsfb_layer*)info->par;
+	struct mxsfb_layer *ofb = (struct mxsfb_layer *)info->par;
 	struct mxsfb_info  *fbi  = ofb->fbi;
 
 	if (ofb->blank_state == blank)
@@ -2049,7 +2052,7 @@ static struct fb_ops overlay_fb_ops = {
 	.fb_set_par	= overlayfb_set_par,
 	.fb_blank	= overlayfb_blank,
 	.fb_pan_display = overlayfb_pan_display,
-	.fb_mmap 	= mxsfb_mmap,
+	.fb_mmap	= mxsfb_mmap,
 };
 
 static void init_mxsfb_overlay(struct mxsfb_info *fbi,
@@ -2060,7 +2063,7 @@ static void init_mxsfb_overlay(struct mxsfb_info *fbi,
 	ofb->ol_fb->fix.type		= FB_TYPE_PACKED_PIXELS;
 	ofb->ol_fb->fix.xpanstep	= 0;
 	ofb->ol_fb->fix.ypanstep	= 1;
-	ofb->ol_fb->fix.ywrapstep 	= 1;
+	ofb->ol_fb->fix.ywrapstep	= 1;
 	ofb->ol_fb->fix.visual		= FB_VISUAL_TRUECOLOR;
 	ofb->ol_fb->fix.accel		= FB_ACCEL_NONE;
 
@@ -2133,7 +2136,7 @@ static void mxsfb_overlay_init(struct mxsfb_info *fbi)
 	ofb->dev = &fbi->pdev->dev;
 	ofb->ol_fb = framebuffer_alloc(0, ofb->dev);
 	if (!ofb->ol_fb) {
-		dev_err(ofb->dev, "Faild to allocate overlay fbinfo\n");
+		dev_err(ofb->dev, "Failed to allocate overlay fbinfo\n");
 		return;
 	}
 
@@ -2187,10 +2190,6 @@ static void mxsfb_overlay_exit(struct mxsfb_info *fbi)
 	}
 }
 
-#ifdef CONFIG_PM_SLEEP
-static u32 saved_as_ctrl;
-static u32 saved_as_next_buf;
-
 static void mxsfb_overlay_resume(struct mxsfb_info *fbi)
 {
 	if (fbi->cur_blank != FB_BLANK_UNBLANK) {
@@ -2230,11 +2229,11 @@ static void mxsfb_overlay_suspend(struct mxsfb_info *fbi)
 		clk_disable_pix(fbi);
 	}
 }
-#endif
-
 #else
 static void mxsfb_overlay_init(struct mxsfb_info *fbi) {}
 static void mxsfb_overlay_exit(struct mxsfb_info *fbi) {}
+static void mxsfb_overlay_resume(struct mxsfb_info *fbi) {}
+static void mxsfb_overlay_suspend(struct mxsfb_info *fbi) {}
 #endif
 
 static int mxsfb_probe(struct platform_device *pdev)
@@ -2256,9 +2255,11 @@ static int mxsfb_probe(struct platform_device *pdev)
 		return -EPROBE_DEFER;
 
 	if (gpio_is_valid(gpio)) {
-		ret = devm_gpio_request_one(&pdev->dev, gpio, GPIOF_OUT_INIT_LOW, "lcd_pwr_en");
+		ret = devm_gpio_request_one(&pdev->dev, gpio,
+					GPIOF_OUT_INIT_LOW, "lcd_pwr_en");
 		if (ret) {
-			dev_err(&pdev->dev, "faild to request gpio %d, ret = %d\n", gpio, ret);
+			dev_err(&pdev->dev,
+			"failed to request gpio %d, ret = %d\n", gpio, ret);
 			return ret;
 		}
 	}
@@ -2332,7 +2333,7 @@ static int mxsfb_probe(struct platform_device *pdev)
 	if (IS_ERR(host->reg_lcd))
 		host->reg_lcd = NULL;
 
-	fb_info->pseudo_palette = devm_kzalloc(&pdev->dev, sizeof(u32) * 16,
+	fb_info->pseudo_palette = devm_kcalloc(&pdev->dev, 16, sizeof(u32),
 					       GFP_KERNEL);
 	if (!fb_info->pseudo_palette) {
 		ret = -ENOMEM;
@@ -2487,9 +2488,7 @@ static int mxsfb_runtime_resume(struct device *dev)
 
 	return 0;
 }
-#endif
 
-#ifdef CONFIG_PM_SLEEP
 static int mxsfb_suspend(struct device *pdev)
 {
 	struct mxsfb_info *host = dev_get_drvdata(pdev);
@@ -2524,6 +2523,12 @@ static int mxsfb_resume(struct device *pdev)
 
 	return 0;
 }
+#else
+#define	mxsfb_runtime_suspend	NULL
+#define	mxsfb_runtime_resume	NULL
+
+#define	mxsfb_suspend	NULL
+#define	mxsfb_resume	NULL
 #endif
 
 static const struct dev_pm_ops mxsfb_pm_ops = {

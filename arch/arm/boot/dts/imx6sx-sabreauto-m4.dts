@@ -21,11 +21,11 @@
  * is running.
  */
 &adc1 {
-        status = "disabled";
+	status = "disabled";
 };
 
 &adc2 {
-        status = "disabled";
+	status = "disabled";
 };
 
 &flexcan1 {
@@ -41,11 +41,11 @@
 };
 
 &ocram {
-	reg = <0x00901000 0x1E000>;
+	reg = <0x901000 0x1E000>;
 };
 
 &ocram {
-	reg = <0x00901000 0xf000>;
+	reg = <0x901000 0xf000>;
 };
 
 &qspi1 {
@@ -53,7 +53,7 @@
 };
 
 &qspi_m4 {
-	reg = <0x021e0000 0x4000>;
+	reg = <0x21e0000 0x4000>;
 	status = "okay";
 };
 
@@ -90,4 +90,3 @@
 	fsl,shared-mem-addr = <0x91F000>;
 	fsl,shared-mem-size = <0x1000>;
 };
-

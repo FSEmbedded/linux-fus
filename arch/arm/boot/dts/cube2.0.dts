@@ -270,7 +270,7 @@
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
 				/* WLAN 32kHz clock */
-				MX6UL_PAD_ENET1_RX_EN__REF_CLK_32K	0x00008
+				MX6UL_PAD_ENET1_RX_EN__OSC32K_32K_OUT	0x00008
 
 				/* WLAN_IRQ */
 				MX6UL_PAD_LCD_DATA23__GPIO3_IO28	0x0b058

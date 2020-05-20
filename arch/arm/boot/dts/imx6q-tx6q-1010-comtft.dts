@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016 Lothar Waßmann <LW@KARO-electronics.de>
+ * Copyright 2014-2017 Lothar Waßmann <LW@KARO-electronics.de>
  *
  * This file is dual-licensed: you can use it either under the terms
  * of the GPL or the X11 license, at your option. Note that this dual
@@ -42,6 +42,7 @@
 /dts-v1/;
 #include "imx6q.dtsi"
 #include "imx6qdl-tx6.dtsi"
+#include "imx6qdl-tx6-lcd.dtsi"
 
 / {
 	model = "Ka-Ro electronics TX6Q-1010 Module on CoMpact TFT";
@@ -90,6 +91,10 @@
 
 &kpp {
 	status = "disabled";
+};
+
+&lcd_panel {
+	compatible = "edt,etm0700g0edh6";
 };
 
 &reg_can_xcvr {

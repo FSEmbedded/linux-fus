@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2018 NXP
+ * Copyright 2017-2019 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -79,11 +79,7 @@ fetcheco_set_src_buf_dimensions(struct dpu_fetchunit *fu,
 	mutex_unlock(&fu->mutex);
 }
 
-static void fetcheco_set_fmt(struct dpu_fetchunit *fu,
-			     u32 fmt,
-			     enum drm_color_encoding unused1,
-			     enum drm_color_range unused2,
-			     bool unused3)
+static void fetcheco_set_fmt(struct dpu_fetchunit *fu, u32 fmt, bool unused)
 {
 	u32 val, bits, shift;
 	int i, hsub, vsub;
@@ -368,6 +364,9 @@ static const struct dpu_fetchunit_ops fe_ops = {
 	.set_controltrigger	= fetcheco_set_controltrigger,
 	.get_stream_id		= fetchunit_get_stream_id,
 	.set_stream_id		= fetchunit_set_stream_id,
+	.pin_off		= fetchunit_pin_off,
+	.unpin_off		= fetchunit_unpin_off,
+	.is_pinned_off		= fetchunit_is_pinned_off,
 };
 
 void _dpu_fe_init(struct dpu_soc *dpu, unsigned int id)

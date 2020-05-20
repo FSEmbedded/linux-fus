@@ -1,15 +1,7 @@
-/*
- * Copyright 2012-2016 Freescale Semiconductor, Inc.
- * Copyright 2011 Linaro Ltd.
- * Copyright 2017 NXP.
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
- */
+// SPDX-License-Identifier: GPL-2.0+
+//
+// Copyright 2012 Freescale Semiconductor, Inc.
+// Copyright 2011 Linaro Ltd.
 
 #include <dt-bindings/clock/imx6qdl-clock.h>
 #include <dt-bindings/gpio/gpio.h>
@@ -50,7 +42,7 @@
 		stdout-path = &uart1;
 	};
 
-	memory: memory {
+	memory: memory@10000000 {
 		reg = <0x10000000 0x40000000>;
 	};
 
@@ -98,7 +90,6 @@
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			gpio = <&gpio3 19 0>;
-			regulator-always-on;
 			enable-active-high;
 		};
 
@@ -379,7 +370,7 @@
 };
 
 &hdmi_video {
-	fsl,phy_reg_vlev = <0x0294>;
+	fsl,phy_reg_vlev = <0x294>;
 	fsl,phy_reg_cksymtx = <0x800d>;
 	HDMI-supply = <&reg_hdmi>;
 	status = "okay";
@@ -433,8 +424,7 @@
 		clocks = <&clks IMX6QDL_CLK_CKO>;
 		clock-names = "csi_mclk";
 		DOVDD-supply = <&vgen4_reg>; /* 1.8v */
-		AVDD-supply = <&vgen3_reg>;  /* 2.8v, on rev C board is VGEN3,
-						on rev B board is VGEN5 */
+		AVDD-supply = <&vgen3_reg>;  /* 2.8v, on rev C board is VGEN3, on rev B board is VGEN5 */
 		DVDD-supply = <&vgen2_reg>;  /* 1.5v*/
 		pwn-gpios = <&gpio1 16 1>;   /* active low: SD1_DAT0 */
 		rst-gpios = <&gpio1 17 0>;   /* active high: SD1_DAT1 */
@@ -454,9 +444,9 @@
 	sda-gpios = <&gpio4 13 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 
-	egalax_ts@04 {
+	egalax_ts@4 {
 		compatible = "eeti,egalax_ts";
-		reg = <0x04>;
+		reg = <0x4>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_i2c2_egalax_int>;
 		interrupt-parent = <&gpio6>;
@@ -472,9 +462,9 @@
 		work-mode = <1>;/*DCM mode*/
 	};
 
-	pmic: pfuze100@08 {
+	pmic: pfuze100@8 {
 		compatible = "fsl,pfuze100";
-		reg = <0x08>;
+		reg = <0x8>;
 
 		regulators {
 			sw1a_reg: sw1ab {
@@ -584,8 +574,7 @@
 		clocks = <&clks 201>;
 		clock-names = "csi_mclk";
 		DOVDD-supply = <&vgen4_reg>; /* 1.8v */
-		AVDD-supply = <&vgen3_reg>;  /* 2.8v, rev C board is VGEN3
-						rev B board is VGEN5 */
+		AVDD-supply = <&vgen3_reg>;  /* 2.8v rev C board is VGEN3 rev B board is VGEN5 */
 		DVDD-supply = <&vgen2_reg>;  /* 1.5v*/
 		pwn-gpios = <&gpio1 19 1>;   /* active low: SD1_CLK */
 		rst-gpios = <&gpio1 20 0>;   /* active high: SD1_DAT2 */
@@ -603,9 +592,9 @@
 	pinctrl-0 = <&pinctrl_i2c3>;
 	status = "okay";
 
-	egalax_ts@04 {
+	egalax_ts@4 {
 		compatible = "eeti,egalax_ts";
-		reg = <0x04>;
+		reg = <0x4>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_i2c3_egalax_int>;
 		interrupt-parent = <&gpio6>;
@@ -622,9 +611,9 @@
 		interrupts = <9 2>;
 	};
 
-	mag3110@0e {
+	mag3110@e {
 		compatible = "fsl,mag3110";
-		reg = <0x0e>;
+		reg = <0xe>;
 		position = <2>;
 		vdd-supply = <&reg_sensor>;
 		vddio-supply = <&reg_sensor>;
@@ -656,8 +645,8 @@
 				MX6QDL_PAD_EIM_EB3__GPIO2_IO31 0x80000000
 				MX6QDL_PAD_SD1_CMD__GPIO1_IO18 0x80000000
 				MX6QDL_PAD_EIM_D16__GPIO3_IO16 0x80000000
-				MX6QDL_PAD_SD3_RST__GPIO7_IO08	0x80000000
-				MX6QDL_PAD_GPIO_9__GPIO1_IO09 	0x80000000
+				MX6QDL_PAD_SD3_RST__GPIO7_IO08 0x80000000
+				MX6QDL_PAD_GPIO_9__GPIO1_IO09  0x80000000
 				MX6QDL_PAD_EIM_DA9__GPIO3_IO09 0x80000000
 				MX6QDL_PAD_NANDF_CS0__GPIO6_IO11 0x80000000
 				MX6QDL_PAD_NANDF_CS1__GPIO6_IO14 0x80000000
@@ -1038,6 +1027,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcie>;
 	reset-gpio = <&gpio7 12 GPIO_ACTIVE_LOW>;
+	vpcie-supply = <&reg_pcie>;
 	status = "okay";
 };
 
@@ -1134,6 +1124,7 @@
 	bus-width = <8>;
 	non-removable;
 	no-1-8-v;
+	auto-cmd23-broken;
 	keep-power-in-suspend;
 	status = "okay";
 };

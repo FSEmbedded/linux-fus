@@ -1,11 +1,6 @@
-/*
- * Copyright (C) 2014 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+// SPDX-License-Identifier: GPL-2.0
+//
+// Copyright (C) 2014 Freescale Semiconductor, Inc.
 
 /dts-v1/;
 
@@ -38,8 +33,20 @@
 		#reset-cells = <0>;
 	};
 
-	memory {
+	memory: memory@80000000 {
 		reg = <0x80000000 0x80000000>;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_led>;
+
+		user {
+			label = "debug";
+			gpios = <&gpio1 24 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "heartbeat";
+		};
 	};
 
 	pxp_v4l2_out {
@@ -92,9 +99,8 @@
 			regulator-always-on;
 		};
 
-		vcc_sd3: regulator@0 {
+		vcc_sd3: regulator-vcc-sd3 {
 			compatible = "regulator-fixed";
-			reg = <0>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&pinctrl_vcc_sd3>;
 			regulator-name = "VCC_SD3";
@@ -164,7 +170,6 @@
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 		};
-
 	};
 
 	sound-cs42888 {
@@ -224,7 +229,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_esai_2>;
 	assigned-clocks = <&clks IMX6SX_CLK_ESAI_SEL>,
-		          <&clks IMX6SX_CLK_ESAI_EXTAL>;
+			<&clks IMX6SX_CLK_ESAI_EXTAL>;
 	assigned-clock-parents = <&clks IMX6SX_CLK_PLL4_AUDIO_DIV>;
 	assigned-clock-rates = <0>, <24576000>;
 	status = "okay";
@@ -287,12 +292,12 @@
 &i2c2 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c2_1>;
+	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 
-	codec: cs42888@048 {
+	codec: cs42888@48 {
 		compatible = "cirrus,cs42888";
-		reg = <0x048>;
+		reg = <0x48>;
 		clocks = <&codec_osc 0>;
 		clock-names = "mclk";
 		VA-supply = <&reg_audio>;
@@ -301,13 +306,13 @@
 		VLC-supply = <&reg_audio>;
 	};
 
-	egalax_ts@04 {
+	touchscreen@4 {
 		compatible = "eeti,egalax_ts";
-		reg = <0x04>;
+		reg = <0x4>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_egalax_int>;
 		interrupt-parent = <&gpio6>;
-		interrupts = <22 2>;
+		interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
 		wakeup-gpios = <&gpio6 22 GPIO_ACTIVE_HIGH>;
 	};
 
@@ -333,9 +338,9 @@
 		out-default = /bits/ 16 <0x1 0x1>;
 	};
 
-	pmic: pfuze100@08 {
+	pmic: pfuze100@8 {
 		compatible = "fsl,pfuze100";
-		reg = <0x08>;
+		reg = <0x8>;
 
 		regulators {
 			sw1a_reg: sw1ab {
@@ -439,7 +444,7 @@
 &i2c3 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c3_2>;
+	pinctrl-0 = <&pinctrl_i2c3>;
 	status = "okay";
 
 	max7310_a: gpio@30 {
@@ -467,9 +472,9 @@
 		interrupt-route = <1>;
 	};
 
-	mag3110@0e {
+	mag3110@e {
 		compatible = "fsl,mag3110";
-		reg = <0x0e>;
+		reg = <0xe>;
 		position = <2>;
 		interrupt-parent = <&gpio6>;
 		interrupts = <6 1>;
@@ -742,14 +747,14 @@
 			>;
 		};
 
-		pinctrl_i2c2_1: i2c2grp-1 {
+		pinctrl_i2c2: i2c2grp {
 			fsl,pins = <
 				MX6SX_PAD_GPIO1_IO03__I2C2_SDA          0x4001b8b1
 				MX6SX_PAD_GPIO1_IO02__I2C2_SCL          0x4001b8b1
 			>;
 		};
 
-		pinctrl_i2c3_2: i2c3grp-2 {
+		pinctrl_i2c3: i2c3grp {
 			fsl,pins = <
 				MX6SX_PAD_KEY_ROW4__I2C3_SDA            0x4001b8b1
 				MX6SX_PAD_KEY_COL4__I2C3_SCL            0x4001b8b1
@@ -843,6 +848,29 @@
 			>;
 		};
 
+		pinctrl_enet2: enet2grp {
+			fsl,pins = <
+				MX6SX_PAD_RGMII2_TXC__ENET2_RGMII_TXC   0xa0b9
+				MX6SX_PAD_RGMII2_TD0__ENET2_TX_DATA_0   0xa0b1
+				MX6SX_PAD_RGMII2_TD1__ENET2_TX_DATA_1   0xa0b1
+				MX6SX_PAD_RGMII2_TD2__ENET2_TX_DATA_2   0xa0b1
+				MX6SX_PAD_RGMII2_TD3__ENET2_TX_DATA_3   0xa0b1
+				MX6SX_PAD_RGMII2_TX_CTL__ENET2_TX_EN    0xa0b1
+				MX6SX_PAD_RGMII2_RXC__ENET2_RX_CLK      0x3081
+				MX6SX_PAD_RGMII2_RD0__ENET2_RX_DATA_0   0x3081
+				MX6SX_PAD_RGMII2_RD1__ENET2_RX_DATA_1   0x3081
+				MX6SX_PAD_RGMII2_RD2__ENET2_RX_DATA_2   0x3081
+				MX6SX_PAD_RGMII2_RD3__ENET2_RX_DATA_3   0x3081
+				MX6SX_PAD_RGMII2_RX_CTL__ENET2_RX_EN    0x3081
+			>;
+		};
+
+		pinctrl_led: ledgrp {
+			fsl,pins = <
+				MX6SX_PAD_CSI_PIXCLK__GPIO1_IO_24 0x17059
+			>;
+		};
+
 		pinctrl_usdhc3: usdhc3grp {
 			fsl,pins = <
 				MX6SX_PAD_SD3_CMD__USDHC3_CMD		0x17059
@@ -887,8 +915,8 @@
 				MX6SX_PAD_SD3_DATA5__USDHC3_DATA5	0x170f9
 				MX6SX_PAD_SD3_DATA6__USDHC3_DATA6	0x170f9
 				MX6SX_PAD_SD3_DATA7__USDHC3_DATA7	0x170f9
-			>;
-		};
+				>;
+			};
 
 		pinctrl_usdhc4: usdhc4grp {
 			fsl,pins = <
@@ -910,10 +938,16 @@
 
 		pinctrl_wdog: wdoggrp {
 			fsl,pins = <
-				MX6SX_PAD_GPIO1_IO13__WDOG1_WDOG_ANY 0x30b0
+				MX6SX_PAD_GPIO1_IO13__WDOG1_WDOG_ANY	0x30b0
 			>;
 		};
 	};
+};
+
+&wdog1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_wdog>;
+	fsl,ext-reset-output;
 };
 &csi2 {
 	status = "okay";

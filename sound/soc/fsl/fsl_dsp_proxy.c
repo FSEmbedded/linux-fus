@@ -808,7 +808,8 @@ int xf_open(struct xf_client *client, struct xf_proxy *proxy,
 	handle->id = XF_MSG_SRC(rmsg->id);
 	/* TODO: review cleanup */
 	/* xf_msg_free(proxy, rmsg);
-	 * xf_unlock(&proxy->lock); */
+	 * xf_unlock(&proxy->lock);
+	 */
 
 	/* ...if failed, release buffer handle */
 	/* ...operation completed successfully; assign handle data */
@@ -850,7 +851,8 @@ int xf_close(struct xf_client *client, struct xf_handle *handle)
 	}
 	/* TODO: review cleanup */
 	/* xf_msg_free(proxy, rmsg);
-	 * xf_unlock(&proxy->lock); */
+	 * xf_unlock(&proxy->lock);
+	 */
 
 	/* ...wipe out proxy pointer */
 	handle->proxy = NULL;

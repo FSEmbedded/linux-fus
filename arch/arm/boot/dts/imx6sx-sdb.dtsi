@@ -20,17 +20,18 @@
 		stdout-path = &uart1;
 	};
 
-	memory {
+	memory@80000000 {
 		reg = <0x80000000 0x40000000>;
 	};
 
-	backlight1 {
+	backlight_display: backlight-display {
 		compatible = "pwm-backlight";
 		pwms = <&pwm3 0 5000000>;
 		brightness-levels = <0 4 8 16 32 64 128 255>;
 		default-brightness-level = <6>;
 		fb-names = "mxs-lcdif0";
 	};
+
 	backlight2 {
 		compatible = "pwm-backlight";
 		pwms = <&pwm4 0 5000000>;
@@ -57,6 +58,18 @@
 		};
 	};
 
+	vcc_sd3: regulator-vcc-sd3 {
+		compatible = "regulator-fixed";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_vcc_sd3>;
+		regulator-name = "VCC_SD3";
+		regulator-min-microvolt = <3000000>;
+		regulator-max-microvolt = <3000000>;
+		gpio = <&gpio2 11 GPIO_ACTIVE_HIGH>;
+		off-on-delay = <20000>;
+		enable-active-high;
+	};
+
 	hannstar_cabc {
 		compatible = "hannstar,cabc";
 		lvds0 {
@@ -64,32 +77,18 @@
 		};
 	};
 
-        pxp_v4l2_out {
-                compatible = "fsl,imx6sx-pxp-v4l2", "fsl,imx6sl-pxp-v4l2";
-                status = "okay";
-        };
+	pxp_v4l2_out {
+		compatible = "fsl,imx6sx-pxp-v4l2", "fsl,imx6sl-pxp-v4l2";
+		status = "okay";
+	};
 
 	regulators {
 		compatible = "simple-bus";
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		vcc_sd3: regulator@0 {
+		reg_usb_otg1_vbus: regulator-usb-otg1-vbus {
 			compatible = "regulator-fixed";
-			reg = <0>;
-			pinctrl-names = "default";
-			pinctrl-0 = <&pinctrl_vcc_sd3>;
-			regulator-name = "VCC_SD3";
-			regulator-min-microvolt = <3000000>;
-			regulator-max-microvolt = <3000000>;
-			gpio = <&gpio2 11 GPIO_ACTIVE_HIGH>;
-			off-on-delay = <20000>;
-			enable-active-high;
-		};
-
-		reg_usb_otg1_vbus: regulator@1 {
-			compatible = "regulator-fixed";
-			reg = <1>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&pinctrl_usb_otg1>;
 			regulator-name = "usb_otg1_vbus";
@@ -99,9 +98,8 @@
 			enable-active-high;
 		};
 
-		reg_usb_otg2_vbus: regulator@2 {
+		reg_usb_otg2_vbus: regulator-usb-otg2-vbus {
 			compatible = "regulator-fixed";
-			reg = <2>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&pinctrl_usb_otg2>;
 			regulator-name = "usb_otg2_vbus";
@@ -111,26 +109,23 @@
 			enable-active-high;
 		};
 
-		reg_psu_5v: regulator@3 {
+		reg_psu_5v: regulator-psu-5v {
 			compatible = "regulator-fixed";
-			reg = <3>;
 			regulator-name = "PSU-5V0";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
 		};
 
-		reg_lcd_3v3: regulator@4 {
+		reg_lcd_3v3: regulator-lcd-3v3 {
 			compatible = "regulator-fixed";
-			reg = <4>;
 			regulator-name = "lcd-3v3";
 			gpio = <&gpio3 27 0>;
 			enable-active-high;
 			status = "disabled";
 		};
 
-		reg_peri_3v3: regulator@5 {
+		reg_peri_3v3: regulator-peri-3v3 {
 			compatible = "regulator-fixed";
-			reg = <5>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&pinctrl_peri_3v3>;
 			regulator-name = "peri_3v3";
@@ -141,9 +136,8 @@
 			regulator-always-on;
 		};
 
-		reg_enet_3v3: regulator@6 {
+		reg_enet_3v3: regulator-enet-3v3 {
 			compatible = "regulator-fixed";
-			reg = <6>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&pinctrl_enet_3v3>;
 			regulator-name = "enet_3v3";
@@ -154,27 +148,36 @@
 
 		reg_vref_3v3: regulator@7 {
 			compatible = "regulator-fixed";
+			#address-cells = <1>;
+			#size-cells = <0>;
 			reg = <7>;
 			regulator-name = "vref-3v3";
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 		};
 
-		reg_pcie: regulator@8 {
+		reg_pcie_gpio: regulator-pcie-gpio {
 			compatible = "regulator-fixed";
-			reg = <8>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&pinctrl_pcie_reg>;
 			regulator-name = "MPCIE_3V3";
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
-			gpio = <&gpio2 1 0>;
-			regulator-always-on;
+			gpio = <&gpio2 1 GPIO_ACTIVE_HIGH>;
 			enable-active-high;
+		};
+
+		reg_lcd_5v: regulator-lcd-5v {
+			compatible = "regulator-fixed";
+			regulator-name = "lcd-5v0";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
 		};
 
 		reg_can_en: regulator@9 {
 			compatible = "regulator-fixed";
+			#address-cells = <1>;
+			#size-cells = <0>;
 			reg = <9>;
 			regulator-name = "can-en";
 			regulator-min-microvolt = <3300000>;
@@ -183,6 +186,8 @@
 
 		reg_can_stby: regulator@10 {
 			compatible = "regulator-fixed";
+			#address-cells = <1>;
+			#size-cells = <0>;
 			reg = <10>;
 			regulator-name = "can-stby";
 			regulator-min-microvolt = <3300000>;
@@ -327,9 +332,9 @@
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
-	pmic: pfuze100@08 {
+	pmic: pfuze100@8 {
 		compatible = "fsl,pfuze200";
-		reg = <0x08>;
+		reg = <0x8>;
 
 		regulators {
 			sw1a_reg: sw1ab {
@@ -454,9 +459,9 @@
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 
-	egalax_ts@04 {
+	egalax_ts@4 {
 		compatible = "eeti,egalax_ts";
-		reg = <0x04>;
+		reg = <0x4>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_egalax_int>;
 		interrupt-parent = <&gpio4>;
@@ -480,9 +485,9 @@
 		shared-interrupt;
 	};
 
-	mag3110@0e {
+	mag3110@e {
 		compatible = "fsl,mag3110";
-		reg = <0x0e>;
+		reg = <0xe>;
 		position = <2>;
 		interrupt-parent = <&gpio6>;
 		interrupts = <5 1>;
@@ -521,6 +526,14 @@
 	};
 };
 
+&pcie {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pcie>;
+	reset-gpio = <&gpio2 0 GPIO_ACTIVE_LOW>;
+	vpcie-supply = <&reg_pcie_gpio>;
+	status = "okay";
+};
+
 &lcdif1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcd>;
@@ -553,13 +566,6 @@
 	};
 };
 
-&pcie {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_pcie>;
-	reset-gpio = <&gpio2 0 0>;
-	status = "okay";
-};
-
 &lcdif2 {
 	display = <&display1>;
 	disp-dev = "ldb";
@@ -569,6 +575,7 @@
 		bus-width = <18>;
 	};
 };
+
 &ldb {
 	status = "okay";
 	lvds-channel@0 {
@@ -606,7 +613,7 @@
 };
 
 &pxp {
-        status = "okay";
+	status = "okay";
 };
 
 &snvs_poweroff {

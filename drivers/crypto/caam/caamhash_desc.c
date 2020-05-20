@@ -23,9 +23,10 @@
  * @import_ctx: true if previous Context Register needs to be restored
  *              must be true for ahash update and final
  *              must be false for for ahash first and digest
+ * @era: SEC Era
  */
 void cnstr_shdsc_ahash(u32 * const desc, struct alginfo *adata, u32 state,
-		       int digestsize, int ctx_len, bool import_ctx)
+		       int digestsize, int ctx_len, bool import_ctx, int era)
 {
 	u32 op = adata->algtype;
 
@@ -39,10 +40,13 @@ void cnstr_shdsc_ahash(u32 * const desc, struct alginfo *adata, u32 state,
 		skip_key_load = append_jump(desc, JUMP_JSL | JUMP_TEST_ALL |
 					    JUMP_COND_SHRD);
 
-		append_key_as_imm(desc, adata->key_virt,
-				  adata->keylen_pad,
-				  adata->keylen, CLASS_2 |
-				  KEY_DEST_MDHA_SPLIT | KEY_ENC);
+		if (era < 6)
+			append_key_as_imm(desc, adata->key_virt,
+					  adata->keylen_pad,
+					  adata->keylen, CLASS_2 |
+					  KEY_DEST_MDHA_SPLIT | KEY_ENC);
+		else
+			append_proto_dkp(desc, adata);
 
 		set_jump_tgt_here(desc, skip_key_load);
 

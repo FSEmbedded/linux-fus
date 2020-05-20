@@ -371,7 +371,7 @@ static int dcic_init(struct device_node *np, struct dcic_data *dcic)
 
 	bus = dcic->bus_n;
 
-	regmap_update_bits(dcic->regmap, dcic->buses[bus].reg ,
+	regmap_update_bits(dcic->regmap, dcic->buses[bus].reg,
 			   dcic->buses[bus].mask, val);
 
 	return 0;

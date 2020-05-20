@@ -154,26 +154,19 @@ int hdp_fw_init(state_struct *state)
 
 	core_rate = clk_get_rate(hdp->clks.clk_core);
 
+	/* configure the clock */
+	CDN_API_SetClock(state, core_rate/1000000);
+	pr_info("CDN_API_SetClock completed\n");
+
+	/* moved from CDN_API_LoadFirmware */
+	cdn_apb_write(state, APB_CTRL << 2, 0);
+	DRM_INFO("Started firmware!\n");
+
 	ret = CDN_API_CheckAlive_blocking(state);
 	if (ret != 0) {
-		/* Firmware is not running */
-		DRM_WARN("CDN_API_CheckAlive failed - starting firmware\n");
-		/* configure the clock */
-		CDN_API_SetClock(state, core_rate / 1000000);
-		pr_info("CDN_API_SetClock completed\n");
-
-		/* moved from CDN_API_LoadFirmware */
-		cdn_apb_write(state, APB_CTRL << 2, 0);
-		DRM_INFO("Started firmware!\n");
-
-		ret = CDN_API_CheckAlive_blocking(state);
-		if (ret != 0) {
-			DRM_ERROR("CDN_API_CheckAlive failed - check firmware!\n");
-			return -ENXIO;
-		} else
-			DRM_INFO("CDN_API_CheckAlive returned ret = %d\n", ret);
+		DRM_ERROR("CDN_API_CheckAlive failed - check firmware!\n");
+		return -ENXIO;
 	} else
-		/* Firmware is alreaady running - do nothing */
 		DRM_INFO("CDN_API_CheckAlive returned ret = %d\n", ret);
 
 	/* turn on IP activity */
@@ -890,16 +883,13 @@ static int imx_hdp_connector_get_modes(struct drm_connector *connector)
 				 edid->header[2], edid->header[3],
 				 edid->header[4], edid->header[5],
 				 edid->header[6], edid->header[7]);
-			drm_mode_connector_update_edid_property(connector,
-								edid);
+			drm_connector_update_edid_property(connector, edid);
 			num_modes = drm_add_edid_modes(connector, edid);
 			if (num_modes == 0) {
 				dev_warn(hdp->dev, "Invalid edid, use default video modes\n");
 				num_modes =
 					imx_hdp_default_video_modes(connector);
-			} else
-				/* Store the ELD */
-				drm_edid_to_eld(connector, edid);
+			}
 			kfree(edid);
 		} else {
 			dev_info(hdp->dev, "failed to get edid, use default video modes\n");
@@ -1414,9 +1404,6 @@ static void hotplug_work_func(struct work_struct *work)
 		/* Cable Disconnedted  */
 		DRM_INFO("HDMI/DP Cable Plug Out\n");
 		enable_irq(hdp->irq[HPD_IRQ_IN]);
-
-		/* Allow enable EDID read for next plug in event */
-		hdp->no_edid = false;
 	}
 }
 
@@ -1634,7 +1621,7 @@ static int imx_hdp_imx_bind(struct device *dev, struct device *master,
 	drm_object_attach_property(&connector->base,
 		connector->dev->mode_config.hdr_source_metadata_property, 0);
 
-	drm_mode_connector_attach_encoder(connector, encoder);
+	drm_connector_attach_encoder(connector, encoder);
 
 	dev_set_drvdata(dev, hdp);
 

@@ -1,23 +1,17 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * fsl_asrc.h - Freescale ASRC ALSA SoC header file
  *
  * Copyright (C) 2014-2016 Freescale Semiconductor, Inc.
  *
  * Author: Nicolin Chen <nicoleotsuka@gmail.com>
- *
- * This file is licensed under the terms of the GNU General Public License
- * version 2. This program is licensed "as is" without any warranty of any
- * kind, whether express or implied.
  */
 
 #ifndef _FSL_ASRC_H
 #define _FSL_ASRC_H
 
-#include <sound/asound.h>
 #include <uapi/linux/mxc_asrc.h>
 #include <linux/miscdevice.h>
-
-#define ASRC_PAIR_MAX_NUM	(ASRC_PAIR_C + 1)
 
 #define IN	0
 #define OUT	1
@@ -64,7 +58,7 @@
 #define REG_ASRDOC			0x74
 #define REG_ASRDI(i)			(REG_ASRDIA + (i << 3))
 #define REG_ASRDO(i)			(REG_ASRDOA + (i << 3))
-#define REG_ASRDx(x, i)			(x == IN ? REG_ASRDI(i) : REG_ASRDO(i))
+#define REG_ASRDx(x, i)			((x) == IN ? REG_ASRDI(i) : REG_ASRDO(i))
 
 #define REG_ASRIDRHA			0x80
 #define REG_ASRIDRLA			0x84
@@ -267,8 +261,8 @@
 #define ASRFSTi_OUTPUT_FIFO_SHIFT	12
 #define ASRFSTi_OUTPUT_FIFO_MASK	(((1 << ASRFSTi_OUTPUT_FIFO_WIDTH) - 1) << ASRFSTi_OUTPUT_FIFO_SHIFT)
 #define ASRFSTi_IAEi_SHIFT		11
-#define ASRFSTi_IAEi_MASK		(1 << ASRFSTi_OAFi_SHIFT)
-#define ASRFSTi_IAEi			(1 << ASRFSTi_OAFi_SHIFT)
+#define ASRFSTi_IAEi_MASK		(1 << ASRFSTi_IAEi_SHIFT)
+#define ASRFSTi_IAEi			(1 << ASRFSTi_IAEi_SHIFT)
 #define ASRFSTi_INPUT_FIFO_WIDTH	7
 #define ASRFSTi_INPUT_FIFO_SHIFT	0
 #define ASRFSTi_INPUT_FIFO_MASK		((1 << ASRFSTi_INPUT_FIFO_WIDTH) - 1)
@@ -295,11 +289,6 @@
 
 #define ASRC_CLK_MAX_NUM	16
 
-enum asrc_word_width {
-	ASRC_WIDTH_24_BIT = 0,
-	ASRC_WIDTH_16_BIT = 1,
-	ASRC_WIDTH_8_BIT  = 2,
-};
 
 struct dma_block {
 	void *dma_vaddr;
@@ -353,9 +342,10 @@ struct fsl_asrc_pair {
  * @pair: pair pointers
  * @channel_bits: width of ASRCNCR register for each pair
  * @channel_avail: non-occupied channel numbers
- * @pair_streams:indicat which substream is running
+ * @pair_streams:indicate which substream is running
  * @asrc_rate: default sample rate for ASoC Back-Ends
  * @asrc_width: default sample width for ASoC Back-Ends
+ * @name: driver name
  * @regcache_cfg: store register value of REG_ASRCFG
  */
 struct fsl_asrc {
@@ -388,7 +378,8 @@ struct fsl_asrc {
 #define DMA_SDMA 0
 #define DMA_EDMA 1
 
-extern struct snd_soc_platform_driver fsl_asrc_platform;
+#define DRV_NAME "fsl-asrc-dai"
+extern struct snd_soc_component_driver fsl_asrc_component;
 struct dma_chan *fsl_asrc_get_dma_channel(struct fsl_asrc_pair *pair, bool dir);
 int fsl_asrc_request_pair(int channels, struct fsl_asrc_pair *pair);
 void fsl_asrc_release_pair(struct fsl_asrc_pair *pair);

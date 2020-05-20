@@ -245,6 +245,9 @@
 
 #define IMX6Q_GPR5_L2_CLK_STOP			BIT(8)
 #define IMX6Q_GPR5_ENET_TX_CLK_SEL		BIT(9)
+#define IMX6Q_GPR5_SATA_SW_PD			BIT(10)
+#define IMX6Q_GPR5_SATA_SW_RST			BIT(11)
+#define IMX6Q_GPR5_ENET_TX_CLK_SEL		BIT(9)
 #define IMX6Q_GPR5_PRE_PRG_SEL0_MASK		(0x3 << 12)
 #define IMX6Q_GPR5_PRE_PRG_SEL0_SHIFT		12
 #define IMX6Q_GPR5_PRE_PRG_SEL0_MSB		13
@@ -496,5 +499,8 @@
 #define IMX6UL_GPR1_SAI_MCLK_MASK		(0x7 << 19)
 #define MCLK_DIR(x) (x == 1 ? IMX6UL_GPR1_SAI1_MCLK_DIR : x == 2 ? \
 		     IMX6UL_GPR1_SAI2_MCLK_DIR : IMX6UL_GPR1_SAI3_MCLK_DIR)
+
+/* For imx6sll iomux gpr register field define */
+#define IMX6SLL_GPR5_AFCG_X_BYPASS_MASK		(0x1f << 11)
 
 #endif /* __LINUX_IMX6Q_IOMUXC_GPR_H */

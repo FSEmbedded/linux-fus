@@ -7,7 +7,7 @@
  */
 
 &epdc {
-        status = "okay";
+	status = "okay";
 };
 
 &fec1 {
@@ -27,7 +27,7 @@
 };
 
 &max17135 {
-        status = "okay";
+	status = "okay";
 };
 
 &sii902x {

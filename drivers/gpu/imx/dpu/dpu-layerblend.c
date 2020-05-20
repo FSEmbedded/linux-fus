@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017-2018 NXP
+ * Copyright 2017-2019 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -13,7 +13,6 @@
  * for more details.
  */
 
-#include <drm/drm_blend.h>
 #include <linux/io.h>
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
@@ -58,12 +57,13 @@ static const lb_prim_sel_t prim_sels[] = {
 #define MODE_MASK				BIT(0)
 #define BLENDCONTROL				0x10
 #define ALPHA(a)				(((a) & 0xFF) << 16)
-#define PRIM_C_BLD_FUNC__ONE_MINUS_CONST_ALPHA	0x7
 #define PRIM_C_BLD_FUNC__ONE_MINUS_SEC_ALPHA	0x5
-#define PRIM_C_BLD_FUNC__ZERO			0x0
+#define PRIM_C_BLD_FUNC__PRIM_ALPHA		0x2
 #define SEC_C_BLD_FUNC__CONST_ALPHA		(0x6 << 4)
-#define SEC_C_BLD_FUNC__SEC_ALPHA		(0x4 << 4)
+#define SEC_C_BLD_FUNC__ONE_MINUS_PRIM_ALPHA	(0x3 << 4)
+#define PRIM_A_BLD_FUNC__ONE_MINUS_SEC_ALPHA	(0x5 << 8)
 #define PRIM_A_BLD_FUNC__ZERO			(0x0 << 8)
+#define SEC_A_BLD_FUNC__ONE			(0x1 << 12)
 #define SEC_A_BLD_FUNC__ZERO			(0x0 << 12)
 #define POSITION				0x14
 #define XPOS(x)					((x) & 0x7FFF)
@@ -223,34 +223,16 @@ void layerblend_control(struct dpu_layerblend *lb, lb_mode_t mode)
 }
 EXPORT_SYMBOL_GPL(layerblend_control);
 
-void layerblend_blendcontrol(struct dpu_layerblend *lb, unsigned int zpos,
-			     unsigned int pixel_blend_mode, u16 alpha)
+void layerblend_blendcontrol(struct dpu_layerblend *lb, bool sec_from_scaler)
 {
-	u32 val = PRIM_A_BLD_FUNC__ZERO | SEC_A_BLD_FUNC__ZERO;
+	u32 val;
 
-	if (zpos == 0) {
-		val |= PRIM_C_BLD_FUNC__ZERO | SEC_C_BLD_FUNC__CONST_ALPHA;
-		alpha = DRM_BLEND_ALPHA_OPAQUE;
-	} else {
-		switch (pixel_blend_mode) {
-		case DRM_MODE_BLEND_PIXEL_NONE:
-			val |= PRIM_C_BLD_FUNC__ONE_MINUS_CONST_ALPHA |
-			       SEC_C_BLD_FUNC__CONST_ALPHA;
-			break;
-		case DRM_MODE_BLEND_PREMULTI:
-			val |= PRIM_C_BLD_FUNC__ONE_MINUS_SEC_ALPHA |
-			       SEC_C_BLD_FUNC__CONST_ALPHA;
-			break;
-		case DRM_MODE_BLEND_COVERAGE:
-			val |= PRIM_C_BLD_FUNC__ONE_MINUS_SEC_ALPHA |
-			       SEC_C_BLD_FUNC__SEC_ALPHA;
-			break;
-		default:
-			break;
-		}
-	}
+	val = ALPHA(0xff) |
+	      PRIM_C_BLD_FUNC__PRIM_ALPHA |
+	      SEC_C_BLD_FUNC__ONE_MINUS_PRIM_ALPHA |
+	      PRIM_A_BLD_FUNC__ZERO;
 
-	val |= ALPHA(alpha >> 8);
+	val |= sec_from_scaler ? SEC_A_BLD_FUNC__ZERO : SEC_A_BLD_FUNC__ONE;
 
 	mutex_lock(&lb->mutex);
 	dpu_lb_write(lb, val, BLENDCONTROL);

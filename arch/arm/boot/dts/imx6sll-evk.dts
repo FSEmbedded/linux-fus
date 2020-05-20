@@ -158,8 +158,10 @@
 };
 
 &clks {
-	assigned-clocks = <&clks IMX6SLL_CLK_PLL4_AUDIO_DIV>;
-	assigned-clock-rates = <393216000>;
+	assigned-clocks = <&clks IMX6SLL_CLK_PERCLK_SEL>,
+			<&clks IMX6SLL_CLK_PLL4_AUDIO_DIV>;
+	assigned-clock-parents = <&clks IMX6SLL_CLK_OSC>;
+	assigned-clock-rates = <0>, <393216000>;
 };
 
 &cpu0 {
@@ -173,9 +175,9 @@
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
-	pmic: pfuze100@08 {
+	pmic: pfuze100@8 {
 		compatible = "fsl,pfuze100";
-		reg = <0x08>;
+		reg = <0x8>;
 
 		regulators {
 			sw1a_reg: sw1ab {
@@ -428,8 +430,8 @@
 			>;
 		};
 
-                pinctrl_epdc0: epdcgrp0 {
-                        fsl,pins = <
+		pinctrl_epdc0: epdcgrp0 {
+			fsl,pins = <
 				MX6SLL_PAD_EPDC_DATA00__EPDC_DATA00	0x100b1
 				MX6SLL_PAD_EPDC_DATA01__EPDC_DATA01	0x100b1
 				MX6SLL_PAD_EPDC_DATA02__EPDC_DATA02	0x100b1
@@ -455,8 +457,8 @@
 				MX6SLL_PAD_EPDC_GDOE__EPDC_GDOE		0x100b1
 				MX6SLL_PAD_EPDC_GDRL__EPDC_GDRL		0x100b1
 				MX6SLL_PAD_EPDC_GDSP__EPDC_GDSP		0x100b1
-                       >;
-                };
+			>;
+		};
 
 		pinctrl_lcdif_dat: lcdifdatgrp {
 			fsl,pins = <
@@ -577,7 +579,7 @@
 			fsl,pins = <
 				MX6SLL_PAD_SD2_CMD__SD2_CMD		0x17059
 				MX6SLL_PAD_SD2_CLK__SD2_CLK		0x13059
-				MX6SLL_PAD_SD2_DATA0__SD2_DATA0 	0x17059
+				MX6SLL_PAD_SD2_DATA0__SD2_DATA0		0x17059
 				MX6SLL_PAD_SD2_DATA1__SD2_DATA1		0x17059
 				MX6SLL_PAD_SD2_DATA2__SD2_DATA2		0x17059
 				MX6SLL_PAD_SD2_DATA3__SD2_DATA3		0x17059
@@ -593,7 +595,7 @@
 			fsl,pins = <
 				MX6SLL_PAD_SD2_CMD__SD2_CMD		0x170b9
 				MX6SLL_PAD_SD2_CLK__SD2_CLK		0x130b9
-				MX6SLL_PAD_SD2_DATA0__SD2_DATA0 	0x170b9
+				MX6SLL_PAD_SD2_DATA0__SD2_DATA0		0x170b9
 				MX6SLL_PAD_SD2_DATA1__SD2_DATA1		0x170b9
 				MX6SLL_PAD_SD2_DATA2__SD2_DATA2		0x170b9
 				MX6SLL_PAD_SD2_DATA3__SD2_DATA3		0x170b9
@@ -609,7 +611,7 @@
 			fsl,pins = <
 				MX6SLL_PAD_SD2_CMD__SD2_CMD		0x170f9
 				MX6SLL_PAD_SD2_CLK__SD2_CLK		0x130f9
-				MX6SLL_PAD_SD2_DATA0__SD2_DATA0 	0x170f9
+				MX6SLL_PAD_SD2_DATA0__SD2_DATA0		0x170f9
 				MX6SLL_PAD_SD2_DATA1__SD2_DATA1		0x170f9
 				MX6SLL_PAD_SD2_DATA2__SD2_DATA2		0x170f9
 				MX6SLL_PAD_SD2_DATA3__SD2_DATA3		0x170f9

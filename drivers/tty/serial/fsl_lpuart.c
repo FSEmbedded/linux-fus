@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  *  Freescale lpuart serial port driver
  *
@@ -26,6 +27,7 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_dma.h>
+#include <linux/pinctrl/consumer.h>
 #include <linux/pm_runtime.h>
 #include <linux/reset.h>
 #include <linux/serial_core.h>
@@ -1070,8 +1072,8 @@ static void lpuart_dma_stop(struct lpuart_port *sport, bool enable_pio)
 	if (lpuart_is_32(sport)) {
 		lpuart32_write(&sport->port, UARTSTAT_IDLE, UARTSTAT);
 		crdma = lpuart32_read(&sport->port, UARTBAUD);
-		lpuart32_write(&sport->port, crdma & ~(UARTBAUD_RDMAE | UARTBAUD_RIDMAE),
-				UARTBAUD);
+		lpuart32_write(&sport->port, crdma & ~(UARTBAUD_RDMAE |
+			       UARTBAUD_RIDMAE), UARTBAUD);
 		if (enable_pio) {
 			temp = lpuart32_read(&sport->port, UARTCTRL);
 			temp |= (UARTCTRL_RIE | UARTCTRL_ILIE);
@@ -1124,9 +1126,9 @@ static void lpuart_dma_rx_complete(void *arg)
 	spin_unlock_irqrestore(&sport->port.lock, flags);
 }
 
-static void lpuart_timer_func(unsigned long data)
+static void lpuart_timer_func(struct timer_list *t)
 {
-	struct lpuart_port *sport = (struct lpuart_port *)data;
+	struct lpuart_port *sport = from_timer(sport, t, lpuart_timer);
 	struct tty_port *port = &sport->port.state->port;
 	struct dma_tx_state state;
 	unsigned long flags;
@@ -1540,8 +1542,7 @@ static int lpuart_startup(struct uart_port *port)
 
 	if (sport->dma_rx_chan && !lpuart_dma_rx_request(port)) {
 		sport->lpuart_dma_rx_use = true;
-		setup_timer(&sport->lpuart_timer, lpuart_timer_func,
-			    (unsigned long)sport);
+		timer_setup(&sport->lpuart_timer, lpuart_timer_func, 0);
 	} else
 		sport->lpuart_dma_rx_use = false;
 
@@ -1602,9 +1603,7 @@ static int lpuart32_startup(struct uart_port *port)
 	if (sport->dma_rx_chan && !lpuart_dma_rx_request(port)) {
 		sport->lpuart_dma_rx_use = true;
 		if (!sport->dma_eeop)
-			setup_timer(&sport->lpuart_timer,
-				    lpuart_timer_func,
-				    (unsigned long)sport);
+			timer_setup(&sport->lpuart_timer, lpuart_timer_func, 0);
 	} else
 		sport->lpuart_dma_rx_use = false;
 
@@ -1793,6 +1792,8 @@ lpuart_set_termios(struct uart_port *port, struct ktermios *termios,
 			else
 				cr1 &= ~UARTCR1_PT;
 		}
+	} else {
+		cr1 &= ~UARTCR1_PE;
 	}
 
 	/* ask the core to calculate the divisor */
@@ -2009,6 +2010,8 @@ lpuart32_set_termios(struct uart_port *port, struct ktermios *termios,
 			else
 				ctrl &= ~UARTCTRL_PT;
 		}
+	} else {
+		ctrl &= ~UARTCTRL_PE;
 	}
 
 	/* ask the core to calculate the divisor */
@@ -2867,9 +2870,8 @@ static inline void lpuart32_resume_init(struct lpuart_port *sport)
 		if (!lpuart_dma_rx_request(&sport->port)) {
 			sport->lpuart_dma_rx_use = true;
 			if (!sport->dma_eeop)
-				setup_timer(&sport->lpuart_timer,
-					    lpuart_timer_func,
-					    (unsigned long)sport);
+				timer_setup(&sport->lpuart_timer,
+					    lpuart_timer_func, 0);
 		} else {
 			sport->lpuart_dma_rx_use = false;
 		}
@@ -2924,9 +2926,8 @@ static inline void lpuart_resume_init(struct lpuart_port *sport)
 	if (sport->lpuart_dma_rx_use) {
 		if (!lpuart_dma_rx_request(&sport->port)) {
 			sport->lpuart_dma_rx_use = true;
-			setup_timer(&sport->lpuart_timer,
-				lpuart_timer_func,
-				(unsigned long)sport);
+			timer_setup(&sport->lpuart_timer,
+				lpuart_timer_func, 0);
 		} else {
 			sport->lpuart_dma_rx_use = false;
 		}

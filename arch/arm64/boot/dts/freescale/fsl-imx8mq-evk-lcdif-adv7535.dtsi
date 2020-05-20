@@ -39,7 +39,7 @@
 	max-res = <1280>, <720>;
 
 	port@0 {
-		lcdif_mipi_dsi: mipi-dsi-endpoint {
+		lcdif_mipi_dsi: endpoint {
 			remote-endpoint = <&mipi_dsi_in>;
 		};
 	};

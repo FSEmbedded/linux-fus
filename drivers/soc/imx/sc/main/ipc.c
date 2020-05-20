@@ -21,7 +21,6 @@
 #include <linux/syscore_ops.h>
 #include <linux/suspend.h>
 
-#include <soc/imx/fsl_hvc.h>
 #include <soc/imx8/sc/svc/irq/api.h>
 #include <soc/imx8/sc/ipc.h>
 #include <soc/imx8/sc/sci.h>
@@ -60,7 +59,6 @@ EXPORT_SYMBOL(sc_pm_set_clock_rate);
 /*--------------------------------------------------------------------------*/
 void sc_call_rpc(sc_ipc_t handle, sc_rpc_msg_t *msg, sc_bool_t no_resp)
 {
-	struct arm_smccc_res res;
 	unsigned long timeout;
 
 	if (in_interrupt()) {
@@ -72,20 +70,13 @@ void sc_call_rpc(sc_ipc_t handle, sc_rpc_msg_t *msg, sc_bool_t no_resp)
 
 	reinit_completion(&rx_completion);
 	rx_msg = msg;
-	if (xen_initial_domain()) {
-		arm_smccc_hvc(FSL_HVC_SC, (uint64_t)msg, no_resp, 0, 0, 0, 0,
-			      0, &res);
-		if (res.a0)
-			printk("Error FSL_HVC_SC %ld\n", res.a0);
-	} else {
-		sc_ipc_write(handle, msg);
-		if (!no_resp) {
-			timeout = wait_for_completion_timeout(&rx_completion, HZ / 10);
-			if (!timeout) {
-				pr_err("Timeout for IPC response!\n");
-				mutex_unlock(&scu_mu_mutex);
-				return;
-			}
+	sc_ipc_write(handle, msg);
+	if (!no_resp) {
+		timeout = wait_for_completion_timeout(&rx_completion, HZ / 10);
+		if (!timeout) {
+			pr_err("Timeout for IPC response!\n");
+			mutex_unlock(&scu_mu_mutex);
+			return;
 		}
 	}
 

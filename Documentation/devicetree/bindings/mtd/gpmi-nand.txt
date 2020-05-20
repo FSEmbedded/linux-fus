@@ -50,7 +50,12 @@ Optional properties:
                        partitions written from Linux with this feature
                        turned on may not be accessible by the BootROM
                        code.
- - fsl,legacy-bch-geometry: Use legacy bch geometry(ECC scheme) that
+  - nand-ecc-strength: integer representing the number of bits to correct
+                       per ECC step. Needs to be a multiple of 2.
+  - nand-ecc-step-size: integer representing the number of data bytes
+                       that are covered by a single ECC step. The driver
+                       supports 512 and 1024.
+  - fsl,legacy-bch-geometry: Use legacy bch geometry(ECC scheme) that
                        compatible with 3.10 kernel. Without the property,
                        software may use ECC strength according to NAND chip
                        spec, e.g. ONFI standard.

@@ -58,6 +58,7 @@
 #include <linux/of.h>
 #include <linux/string.h>
 #include <linux/iio/sysfs.h>
+#include <linux/export.h>
 
 #include "bme280.h"
 
@@ -1267,7 +1268,6 @@ static const struct attribute_group bme280_attribute_group = {
 };
 
 static const struct iio_info bme280_iio_info = {
-	.driver_module		= THIS_MODULE,
 	.read_raw		= bme280_read_raw,
 	.attrs			= &bme280_attribute_group,
 };

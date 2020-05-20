@@ -24,18 +24,13 @@
 #include <linux/export.h>
 #include <linux/slab.h>
 #include <linux/genalloc.h>
-#include <linux/dma-mapping.h>
+#include <linux/dma-direct.h>
 #include <linux/dma-contiguous.h>
 #include <linux/vmalloc.h>
 #include <linux/swiotlb.h>
 #include <linux/pci.h>
-#include <linux/of.h>
 
 #include <asm/cacheflush.h>
-
-EXPORT_SYMBOL(__dma_map_area);
-EXPORT_SYMBOL(__dma_unmap_area);
-EXPORT_SYMBOL(__dma_flush_area);
 
 static int swiotlb __ro_after_init;
 
@@ -96,46 +91,6 @@ static int __free_from_pool(void *start, size_t size)
 	return 1;
 }
 
-static void *__dma_alloc_coherent(struct device *dev, size_t size,
-				  dma_addr_t *dma_handle, gfp_t flags,
-				  unsigned long attrs)
-{
-	if (IS_ENABLED(CONFIG_ZONE_DMA) &&
-	    dev->coherent_dma_mask <= DMA_BIT_MASK(32))
-		flags |= GFP_DMA;
-	if (dev_get_cma_area(dev) && gfpflags_allow_blocking(flags)) {
-		struct page *page;
-		void *addr;
-
-		page = dma_alloc_from_contiguous(dev, size >> PAGE_SHIFT,
-						 get_order(size), flags);
-		if (!page)
-			return NULL;
-
-		*dma_handle = phys_to_dma(dev, page_to_phys(page));
-		addr = page_address(page);
-		memset(addr, 0, size);
-		return addr;
-	} else {
-		return swiotlb_alloc_coherent(dev, size, dma_handle, flags);
-	}
-}
-
-static void __dma_free_coherent(struct device *dev, size_t size,
-				void *vaddr, dma_addr_t dma_handle,
-				unsigned long attrs)
-{
-	bool freed;
-	phys_addr_t paddr = dma_to_phys(dev, dma_handle);
-
-
-	freed = dma_release_from_contiguous(dev,
-					phys_to_page(paddr),
-					size >> PAGE_SHIFT);
-	if (!freed)
-		swiotlb_free_coherent(dev, size, vaddr, dma_handle);
-}
-
 static void *__dma_alloc(struct device *dev, size_t size,
 			 dma_addr_t *dma_handle, gfp_t flags,
 			 unsigned long attrs)
@@ -157,7 +112,7 @@ static void *__dma_alloc(struct device *dev, size_t size,
 		return addr;
 	}
 
-	ptr = __dma_alloc_coherent(dev, size, dma_handle, flags, attrs);
+	ptr = swiotlb_alloc(dev, size, dma_handle, flags, attrs);
 	if (!ptr)
 		goto no_mem;
 
@@ -171,14 +126,14 @@ static void *__dma_alloc(struct device *dev, size_t size,
 	/* create a coherent mapping */
 	page = virt_to_page(ptr);
 	coherent_ptr = dma_common_contiguous_remap(page, size, VM_USERMAP,
-						   prot, NULL);
+						   prot, __builtin_return_address(0));
 	if (!coherent_ptr)
 		goto no_map;
 
 	return coherent_ptr;
 
 no_map:
-	__dma_free_coherent(dev, size, ptr, *dma_handle, attrs);
+	swiotlb_free(dev, size, ptr, *dma_handle, attrs);
 no_mem:
 	return NULL;
 }
@@ -196,7 +151,7 @@ static void __dma_free(struct device *dev, size_t size,
 			return;
 		vunmap(vaddr);
 	}
-	__dma_free_coherent(dev, size, swiotlb_addr, dma_handle, attrs);
+	swiotlb_free(dev, size, swiotlb_addr, dma_handle, attrs);
 }
 
 static dma_addr_t __swiotlb_map_page(struct device *dev, struct page *page,
@@ -308,8 +263,7 @@ static int __swiotlb_mmap_pfn(struct vm_area_struct *vma,
 			      unsigned long pfn, size_t size)
 {
 	int ret = -ENXIO;
-	unsigned long nr_vma_pages = (vma->vm_end - vma->vm_start) >>
-					PAGE_SHIFT;
+	unsigned long nr_vma_pages = vma_pages(vma);
 	unsigned long nr_pages = PAGE_ALIGN(size) >> PAGE_SHIFT;
 	unsigned long off = vma->vm_pgoff;
 
@@ -362,6 +316,12 @@ static int __swiotlb_get_sgtable(struct device *dev, struct sg_table *sgt,
 
 static int __swiotlb_dma_supported(struct device *hwdev, u64 mask)
 {
+	/*
+	 * Upstream PCI/PCIe bridges or SoC interconnects may not carry
+	 * as many DMA address bits as the device itself supports.
+	 */
+	if (hwdev->bus_dma_mask && mask > hwdev->bus_dma_mask)
+		return 0;
 	if (swiotlb)
 		return swiotlb_dma_supported(hwdev, mask);
 	return 1;
@@ -374,23 +334,7 @@ static int __swiotlb_dma_mapping_error(struct device *hwdev, dma_addr_t addr)
 	return 0;
 }
 
-/*
- * Some 64bit SoCs only support up to 32bit dma capability.
- * Do quirk set here.
- */
-static int __swiotlb_dma_supported_quirk(struct device *hwdev, u64 mask)
-{
-	if (mask > DMA_BIT_MASK(32)) {
-		pr_err("Can't support > 32 bit dma.\n");
-		return 0;
-	}
-
-	if (swiotlb)
-		return swiotlb_dma_supported(hwdev, mask);
-	return 1;
-}
-
-static struct dma_map_ops swiotlb_dma_ops = {
+static const struct dma_map_ops arm64_swiotlb_dma_ops = {
 	.alloc = __dma_alloc,
 	.free = __dma_free,
 	.mmap = __swiotlb_mmap,
@@ -417,9 +361,9 @@ static int __init atomic_pool_init(void)
 
 	if (dev_get_cma_area(NULL))
 		page = dma_alloc_from_contiguous(NULL, nr_pages,
-						 pool_size_order, GFP_KERNEL);
+						 pool_size_order, false);
 	else
-		page = alloc_pages(GFP_DMA, pool_size_order);
+		page = alloc_pages(GFP_DMA32, pool_size_order);
 
 	if (page) {
 		int ret;
@@ -566,19 +510,14 @@ static int __init arm64_dma_init(void)
 	    max_pfn > (arm64_dma_phys_limit >> PAGE_SHIFT))
 		swiotlb = 1;
 
+	WARN_TAINT(ARCH_DMA_MINALIGN < cache_line_size(),
+		   TAINT_CPU_OUT_OF_SPEC,
+		   "ARCH_DMA_MINALIGN smaller than CTR_EL0.CWG (%d < %d)",
+		   ARCH_DMA_MINALIGN, cache_line_size());
+
 	return atomic_pool_init();
 }
 arch_initcall(arm64_dma_init);
-
-#define PREALLOC_DMA_DEBUG_ENTRIES	4096
-
-static int __init dma_debug_do_init(void)
-{
-	dma_debug_init(PREALLOC_DMA_DEBUG_ENTRIES);
-	return 0;
-}
-fs_initcall(dma_debug_do_init);
-
 
 #ifdef CONFIG_IOMMU_DMA
 #include <linux/dma-iommu.h>
@@ -640,7 +579,7 @@ static void *__iommu_alloc_attrs(struct device *dev, size_t size,
 		struct page *page;
 
 		page = dma_alloc_from_contiguous(dev, size >> PAGE_SHIFT,
-						 get_order(size), gfp);
+					get_order(size), gfp & __GFP_NOWARN);
 		if (!page)
 			return NULL;
 
@@ -874,7 +813,7 @@ static void __iommu_unmap_sg_attrs(struct device *dev,
 	iommu_dma_unmap_sg(dev, sgl, nelems, dir, attrs);
 }
 
-static struct dma_map_ops iommu_dma_ops = {
+static const struct dma_map_ops iommu_dma_ops = {
 	.alloc = __iommu_alloc_attrs,
 	.free = __iommu_free_attrs,
 	.mmap = __iommu_mmap_attrs,
@@ -934,15 +873,6 @@ void arch_teardown_dma_ops(struct device *dev)
 	dev->dma_ops = NULL;
 }
 
-static int iommu_dma_supported_quirk(struct device *dev, u64 mask)
-{
-	if (mask > DMA_BIT_MASK(32)) {
-		pr_err("Can't support > 32 bit dma.\n");
-		return 0;
-	}
-
-	return 1;
-}
 #else
 
 static void __iommu_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
@@ -954,11 +884,8 @@ static void __iommu_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
 void arch_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
 			const struct iommu_ops *iommu, bool coherent)
 {
-	u32 mask32;
-	struct device_node *np;
-
 	if (!dev->dma_ops)
-		dev->dma_ops = &swiotlb_dma_ops;
+		dev->dma_ops = &arm64_swiotlb_dma_ops;
 
 	dev->archdata.dma_coherent = coherent;
 	__iommu_setup_dma_ops(dev, dma_base, size, iommu);
@@ -969,16 +896,4 @@ void arch_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
 		dev->dma_ops = xen_dma_ops;
 	}
 #endif
-
-	np = of_find_compatible_node(NULL, NULL, "dma-capability");
-	if (np == NULL)
-		return;
-	if (of_property_read_u32(np, "only-dma-mask32", &mask32))
-		mask32 = 0;
-	if (mask32) {
-		swiotlb_dma_ops.dma_supported = __swiotlb_dma_supported_quirk;
-#ifdef CONFIG_IOMMU_DMA
-		iommu_dma_ops.dma_supported = iommu_dma_supported_quirk;
-#endif
-	}
 }

@@ -1,13 +1,9 @@
-/*
- * Freescale imx6ul pinctrl driver
- *
- * Author: Anson Huang <Anson.Huang@freescale.com>
- * Copyright (C) 2015 Freescale Semiconductor, Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+// SPDX-License-Identifier: GPL-2.0
+//
+// Freescale imx6ul pinctrl driver
+//
+// Author: Anson Huang <Anson.Huang@freescale.com>
+// Copyright (C) 2015 Freescale Semiconductor, Inc.
 
 #include <linux/err.h>
 #include <linux/init.h>
@@ -299,7 +295,7 @@ static const struct pinctrl_pin_desc imx6ul_pinctrl_pads[] = {
 };
 
 /* pad for i.MX6ULL lpsr pinmux */
-static struct pinctrl_pin_desc imx6ull_snvs_pinctrl_pads[] = {
+static const struct pinctrl_pin_desc imx6ull_snvs_pinctrl_pads[] = {
 	IMX_PINCTRL_PIN(MX6ULL_PAD_BOOT_MODE0),
 	IMX_PINCTRL_PIN(MX6ULL_PAD_BOOT_MODE1),
 	IMX_PINCTRL_PIN(MX6ULL_PAD_SNVS_TAMPER0),
@@ -314,19 +310,19 @@ static struct pinctrl_pin_desc imx6ull_snvs_pinctrl_pads[] = {
 	IMX_PINCTRL_PIN(MX6ULL_PAD_SNVS_TAMPER9),
 };
 
-static struct imx_pinctrl_soc_info imx6ul_pinctrl_info = {
+static const struct imx_pinctrl_soc_info imx6ul_pinctrl_info = {
 	.pins = imx6ul_pinctrl_pads,
 	.npins = ARRAY_SIZE(imx6ul_pinctrl_pads),
 	.gpr_compatible = "fsl,imx6ul-iomuxc-gpr",
 };
 
-static struct imx_pinctrl_soc_info imx6ull_snvs_pinctrl_info = {
+static const struct imx_pinctrl_soc_info imx6ull_snvs_pinctrl_info = {
 	.pins = imx6ull_snvs_pinctrl_pads,
 	.npins = ARRAY_SIZE(imx6ull_snvs_pinctrl_pads),
 	.flags = ZERO_OFFSET_VALID,
 };
 
-static struct of_device_id imx6ul_pinctrl_of_match[] = {
+static const struct of_device_id imx6ul_pinctrl_of_match[] = {
 	{ .compatible = "fsl,imx6ul-iomuxc", .data = &imx6ul_pinctrl_info, },
 	{ .compatible = "fsl,imx6ull-iomuxc-snvs", .data = &imx6ull_snvs_pinctrl_info, },
 	{ /* sentinel */ }
@@ -334,8 +330,12 @@ static struct of_device_id imx6ul_pinctrl_of_match[] = {
 
 static int imx6ul_pinctrl_probe(struct platform_device *pdev)
 {
+	const struct imx_pinctrl_soc_info *pinctrl_info;
 	const struct of_device_id *match;
-	struct imx_pinctrl_soc_info *pinctrl_info;
+
+	pinctrl_info = of_device_get_match_data(&pdev->dev);
+	if (!pinctrl_info)
+		return -ENODEV;
 
 	match = of_match_device(imx6ul_pinctrl_of_match, &pdev->dev);
 

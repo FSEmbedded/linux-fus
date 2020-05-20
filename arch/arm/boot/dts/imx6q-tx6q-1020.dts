@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016 Lothar Waßmann <LW@KARO-electronics.de>
+ * Copyright 2014-2017 Lothar Waßmann <LW@KARO-electronics.de>
  *
  * This file is dual-licensed: you can use it either under the terms
  * of the GPL or the X11 license, at your option. Note that this dual
@@ -42,6 +42,7 @@
 /dts-v1/;
 #include "imx6q.dtsi"
 #include "imx6qdl-tx6.dtsi"
+#include "imx6qdl-tx6-lcd.dtsi"
 
 / {
 	model = "Ka-Ro electronics TX6Q-1020 Module";
@@ -88,10 +89,15 @@
 	status = "disabled";
 };
 
+&ipu2 {
+	status = "disabled";
+};
+
 &usdhc4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc4>;
 	bus-width = <4>;
+	non-removable;
 	no-1-8-v;
 	fsl,wp-controller;
 	status = "okay";

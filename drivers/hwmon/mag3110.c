@@ -519,7 +519,7 @@ static int mag3110_probe(struct i2c_client *client,
 		if (shared_irq)
 			irq_flag |= IRQF_SHARED;
 		ret = request_threaded_irq(client->irq, NULL, mag3110_irq_handler,
-			  		   irq_flag, client->dev.driver->name, idev);
+					   irq_flag, client->dev.driver->name, idev);
 		if (ret < 0) {
 			dev_err(&client->dev, "failed to register irq %d!\n",
 				client->irq);

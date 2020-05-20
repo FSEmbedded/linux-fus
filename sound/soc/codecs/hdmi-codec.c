@@ -300,11 +300,8 @@ enum {
 static int hdmi_eld_ctl_info(struct snd_kcontrol *kcontrol,
 			     struct snd_ctl_elem_info *uinfo)
 {
-	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
-	struct hdmi_codec_priv *hcp = snd_soc_component_get_drvdata(component);
-
 	uinfo->type = SNDRV_CTL_ELEM_TYPE_BYTES;
-	uinfo->count = sizeof(hcp->eld);
+	uinfo->count = FIELD_SIZEOF(struct hdmi_codec_priv, eld);
 
 	return 0;
 }
@@ -713,7 +710,7 @@ static const struct snd_soc_dai_driver hdmi_i2s_dai = {
 	.probe = hdmi_dai_probe,
 	.playback = {
 		.stream_name = "I2S Playback",
-		.channels_min = 1,
+		.channels_min = 2,
 		.channels_max = 8,
 		.rates = HDMI_RATES,
 		.formats = I2S_FORMATS,
@@ -765,12 +762,14 @@ static int hdmi_of_xlate_dai_id(struct snd_soc_component *component,
 	return ret;
 }
 
-static const struct snd_soc_codec_driver hdmi_codec = {
-	.component_driver = {
-		.dapm_widgets		= hdmi_widgets,
-		.num_dapm_widgets	= ARRAY_SIZE(hdmi_widgets),
-		.of_xlate_dai_id	= hdmi_of_xlate_dai_id,
-	},
+static const struct snd_soc_component_driver hdmi_driver = {
+	.dapm_widgets		= hdmi_widgets,
+	.num_dapm_widgets	= ARRAY_SIZE(hdmi_widgets),
+	.of_xlate_dai_id	= hdmi_of_xlate_dai_id,
+	.idle_bias_on		= 1,
+	.use_pmdown_time	= 1,
+	.endianness		= 1,
+	.non_legacy_dai_naming	= 1,
 };
 
 static int hdmi_codec_probe(struct platform_device *pdev)
@@ -802,7 +801,7 @@ static int hdmi_codec_probe(struct platform_device *pdev)
 	hcp->hcd = *hcd;
 	mutex_init(&hcp->current_stream_lock);
 
-	hcp->daidrv = devm_kzalloc(dev, dai_count * sizeof(*hcp->daidrv),
+	hcp->daidrv = devm_kcalloc(dev, dai_count, sizeof(*hcp->daidrv),
 				   GFP_KERNEL);
 	if (!hcp->daidrv)
 		return -ENOMEM;
@@ -817,22 +816,15 @@ static int hdmi_codec_probe(struct platform_device *pdev)
 	if (hcd->spdif)
 		hcp->daidrv[i] = hdmi_spdif_dai;
 
-	ret = snd_soc_register_codec(dev, &hdmi_codec, hcp->daidrv,
+	dev_set_drvdata(dev, hcp);
+
+	ret = devm_snd_soc_register_component(dev, &hdmi_driver, hcp->daidrv,
 				     dai_count);
 	if (ret) {
-		dev_err(dev, "%s: snd_soc_register_codec() failed (%d)\n",
+		dev_err(dev, "%s: snd_soc_register_component() failed (%d)\n",
 			__func__, ret);
 		return ret;
 	}
-
-	dev_set_drvdata(dev, hcp);
-	return 0;
-}
-
-static int hdmi_codec_remove(struct platform_device *pdev)
-{
-	snd_soc_unregister_codec(&pdev->dev);
-
 	return 0;
 }
 
@@ -841,7 +833,6 @@ static struct platform_driver hdmi_codec_driver = {
 		.name = HDMI_CODEC_DRV_NAME,
 	},
 	.probe = hdmi_codec_probe,
-	.remove = hdmi_codec_remove,
 };
 
 module_platform_driver(hdmi_codec_driver);

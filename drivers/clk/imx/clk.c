@@ -9,6 +9,7 @@
 DEFINE_SPINLOCK(imx_ccm_lock);
 
 bool uart_from_osc;
+extern struct device_node *of_stdout;
 
 void __init imx_check_clocks(struct clk *clks[], unsigned int count)
 {
@@ -78,6 +79,8 @@ void imx_cscmr1_fixup(u32 *val)
 }
 
 static int imx_keep_uart_clocks __initdata;
+static int earlycon_bits __initdata;
+
 static struct clk ** const *imx_uart_clocks __initdata;
 
 static int __init imx_keep_uart_clocks_param(char *str)
@@ -91,26 +94,44 @@ __setup_param("earlycon", imx_keep_uart_earlycon,
 __setup_param("earlyprintk", imx_keep_uart_earlyprintk,
 	      imx_keep_uart_clocks_param, 0);
 
+static void imx_earlycon_get(void)
+{
+	int ret;
+
+#ifdef CONFIG_DEBUG_LL
+	if (IS_ENABLED(CONFIG_DEBUG_IMX_UART_PORT))
+		earlycon_bits |= BIT(CONFIG_DEBUG_IMX_UART_PORT - 1);
+#endif
+
+	if (!of_stdout)
+		return;
+
+	ret = of_alias_get_id(of_stdout, "serial");
+	if (ret >= 0)
+		earlycon_bits |= BIT(ret);
+}
+
 void __init imx_register_uart_clocks(struct clk ** const clks[])
 {
+	imx_earlycon_get();
+
 	if (imx_keep_uart_clocks) {
 		int i;
 
 		imx_uart_clocks = clks;
-		for (i = 0; imx_uart_clocks[i]; i++)
+		for (i = 0; (earlycon_bits & BIT(i)) &&
+		     imx_uart_clocks[i]; i++)
 			clk_prepare_enable(*imx_uart_clocks[i]);
 	}
 }
 
 static int __init imx_clk_disable_uart(void)
 {
-	if (imx_src_is_m4_enabled())
-		return 0;
-
 	if (imx_keep_uart_clocks && imx_uart_clocks) {
 		int i;
 
-		for (i = 0; imx_uart_clocks[i]; i++)
+		for (i = 0; (earlycon_bits & BIT(i)) &&
+		     imx_uart_clocks[i]; i++)
 			clk_disable_unprepare(*imx_uart_clocks[i]);
 	}
 
@@ -120,8 +141,8 @@ late_initcall_sync(imx_clk_disable_uart);
 
 static int __init setup_uart_clk(char *uart_rate)
 {
-       uart_from_osc = true;
-       return 1;
+	uart_from_osc = true;
+	return 1;
 }
 __setup("uart_from_osc", setup_uart_clk);
 

@@ -22,10 +22,10 @@
 #include "API_AFE_t28hpc_hdmitx.h"
 
 #define RGB_ALLOWED_COLORIMETRY (BIT(HDMI_EXTENDED_COLORIMETRY_BT2020) |\
-				 BIT(HDMI_EXTENDED_COLORIMETRY_ADOBE_RGB))
+				 BIT(HDMI_EXTENDED_COLORIMETRY_OPRGB))
 #define YCC_ALLOWED_COLORIMETRY (BIT(HDMI_EXTENDED_COLORIMETRY_BT2020) |\
 				 BIT(HDMI_EXTENDED_COLORIMETRY_BT2020_CONST_LUM) |\
-				 BIT(HDMI_EXTENDED_COLORIMETRY_ADOBE_YCC_601) |\
+				 BIT(HDMI_EXTENDED_COLORIMETRY_OPYCC_601) |\
 				 BIT(HDMI_EXTENDED_COLORIMETRY_S_YCC_601) |\
 				 BIT(HDMI_EXTENDED_COLORIMETRY_XV_YCC_709) |\
 				 BIT(HDMI_EXTENDED_COLORIMETRY_XV_YCC_601))
@@ -61,12 +61,12 @@ static int hdmi_avi_info_set(struct imx_hdp *hdp,
 		ext_colorimetry = HDMI_EXTENDED_COLORIMETRY_BT2020;
 	else if (sink_colorimetry & BIT(HDMI_EXTENDED_COLORIMETRY_BT2020_CONST_LUM))
 		ext_colorimetry = HDMI_EXTENDED_COLORIMETRY_BT2020_CONST_LUM;
-	else if (sink_colorimetry & BIT(HDMI_EXTENDED_COLORIMETRY_ADOBE_RGB))
-		ext_colorimetry = HDMI_EXTENDED_COLORIMETRY_ADOBE_RGB;
+	else if (sink_colorimetry & BIT(HDMI_EXTENDED_COLORIMETRY_OPRGB))
+		ext_colorimetry = HDMI_EXTENDED_COLORIMETRY_OPRGB;
 	else if (sink_colorimetry & BIT(HDMI_EXTENDED_COLORIMETRY_XV_YCC_709))
 		ext_colorimetry = HDMI_EXTENDED_COLORIMETRY_XV_YCC_709;
-	else if (sink_colorimetry & BIT(HDMI_EXTENDED_COLORIMETRY_ADOBE_YCC_601))
-		ext_colorimetry = HDMI_EXTENDED_COLORIMETRY_ADOBE_YCC_601;
+	else if (sink_colorimetry & BIT(HDMI_EXTENDED_COLORIMETRY_OPYCC_601))
+		ext_colorimetry = HDMI_EXTENDED_COLORIMETRY_OPYCC_601;
 	else if (sink_colorimetry & BIT(HDMI_EXTENDED_COLORIMETRY_S_YCC_601))
 		ext_colorimetry = HDMI_EXTENDED_COLORIMETRY_S_YCC_601;
 	else if (sink_colorimetry & BIT(HDMI_EXTENDED_COLORIMETRY_XV_YCC_601))
@@ -114,7 +114,9 @@ static int hdmi_vendor_info_set(struct imx_hdp *hdp,
 	int ret;
 
 	/* Initialise vendor frame from DRM mode */
-	ret = drm_hdmi_vendor_infoframe_from_display_mode(&frame, mode);
+	ret = drm_hdmi_vendor_infoframe_from_display_mode(&frame,
+							  &hdp->connector,
+							  mode);
 	if (ret < 0) {
 		DRM_DEBUG("Unable to init vendor infoframe: %d\n", ret);
 		return -1;

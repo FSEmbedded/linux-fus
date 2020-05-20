@@ -1,22 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * host.c - ChipIdea USB host controller driver
  *
  * Copyright (c) 2012 Intel Corporation
  *
  * Author: Alexander Shishkin
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
 #include <linux/kernel.h>
@@ -201,7 +189,7 @@ static int ci_imx_ehci_hub_control(
 {
 	struct ehci_hcd	*ehci = hcd_to_ehci(hcd);
 	u32 __iomem	*status_reg;
-	u32		temp, suspend_line_state;
+	u32		temp;
 	unsigned long	flags;
 	int		retval = 0;
 	struct device *dev = hcd->self.controller;
@@ -229,16 +217,6 @@ static int ci_imx_ehci_hub_control(
 		if (ehci_handshake(ehci, status_reg, PORT_SUSPEND,
 						PORT_SUSPEND, 5000))
 			ehci_err(ehci, "timeout waiting for SUSPEND\n");
-
-		if (ci->platdata->flags & CI_HDRC_HOST_SUSP_PHY_LPM) {
-			if (PORT_SPEED_LOW(temp))
-				suspend_line_state = PORTSC_LS_K;
-			else
-				suspend_line_state = PORTSC_LS_J;
-			if (!ehci_handshake(ehci, status_reg, PORTSC_LS,
-					   suspend_line_state, 5000))
-				ci_hdrc_enter_lpm(ci, true);
-		}
 
 		if (ci->platdata->flags & CI_HDRC_IMX_IS_HSIC) {
 			if (ci->platdata->notify_event)
@@ -320,10 +298,11 @@ static int host_start(struct ci_hdrc *ci)
 
 	hcd->power_budget = ci->platdata->power_budget;
 	hcd->tpl_support = ci->platdata->tpl_support;
-	if (ci->phy)
-		hcd->phy = ci->phy;
-	else
-		hcd->usb_phy = ci->usb_phy;
+	if (ci->phy || ci->usb_phy) {
+		hcd->skip_phy_initialization = 1;
+		if (ci->usb_phy)
+			hcd->usb_phy = ci->usb_phy;
+	}
 
 	ehci = hcd_to_ehci(hcd);
 	ehci->caps = ci->hw_bank.cap;

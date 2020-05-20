@@ -94,8 +94,6 @@
 #define UART_UBRC	0xac
 #define UART_UTS	0xb4
 
-#define IOMUXC_GPR5_CLOCK_AFCG_X_BYPASS_MASK	0xf800
-
 extern unsigned long iram_tlb_base_addr;
 extern unsigned long iram_tlb_phys_addr;
 
@@ -352,6 +350,13 @@ static const u32 imx6sl_mmdc_io_offset[] __initconst = {
 	0x330, 0x334, 0x320,        /* SDCKE0, SDCKE1, RESET */
 };
 
+static const u32 imx6sll_mmdc_io_offset[] __initconst = {
+	0x294, 0x298, 0x29c, 0x2a0, /* DQM0 ~ DQM3 */
+	0x544, 0x54c, 0x554, 0x558, /* GPR_B0DS ~ GPR_B3DS */
+	0x530, 0x540, 0x2ac, 0x52c, /* MODE_CTL, MODE, SDCLK_0, GPR_ADDDS */
+	0x2a4, 0x2a8,		    /* SDCKE0, SDCKE1*/
+};
+
 static const u32 imx6sx_mmdc_io_lpddr2_offset[] __initconst = {
 	0x2ec, 0x2f0, 0x2f4, 0x2f8, /* DQM0 ~ DQM3 */
 	0x300, 0x2fc, 0x32c, 0x5f4, /* CAS, RAS, SDCLK_0, GPR_ADDS */
@@ -427,13 +432,6 @@ static const u32 imx6ul_mmdc_lpddr2_offset[] __initconst = {
 	0x800, 0x004, 0x01c,
 };
 
-static const u32 imx6sll_mmdc_io_offset[] __initconst = {
-	0x294, 0x298, 0x29c, 0x2a0, /* DQM0 ~ DQM3 */
-	0x544, 0x54c, 0x554, 0x558, /* GPR_B0DS ~ GPR_B3DS */
-	0x530, 0x540, 0x2ac, 0x52c, /* MODE_CTL, MODE, SDCLK_0, GPR_ADDDS */
-	0x2a4, 0x2a8,		    /* SDCKE0, SDCKE1*/
-};
-
 static const u32 imx6sll_mmdc_lpddr3_offset[] __initconst = {
 	0x01c, 0x85c, 0x800, 0x890,
 	0x8b8, 0x81c, 0x820, 0x82c,
@@ -492,6 +490,16 @@ static const struct imx6_pm_socdata imx6sl_pm_data __initconst = {
 	.mmdc_offset = NULL,
 };
 
+static const struct imx6_pm_socdata imx6sll_pm_data __initconst = {
+	.mmdc_compat = "fsl,imx6sll-mmdc",
+	.src_compat = "fsl,imx6sll-src",
+	.iomuxc_compat = "fsl,imx6sll-iomuxc",
+	.gpc_compat = "fsl,imx6sll-gpc",
+	.pl310_compat = "arm,pl310-cache",
+	.mmdc_io_num = ARRAY_SIZE(imx6sll_mmdc_io_offset),
+	.mmdc_io_offset = imx6sll_mmdc_io_offset,
+};
+
 static const struct imx6_pm_socdata imx6sx_pm_data __initconst = {
 	.mmdc_compat = "fsl,imx6sx-mmdc",
 	.src_compat = "fsl,imx6sx-src",
@@ -536,17 +544,6 @@ static const struct imx6_pm_socdata imx6ul_lpddr2_pm_data __initconst = {
 	.mmdc_io_offset = imx6ul_mmdc_io_lpddr2_offset,
 	.mmdc_num = ARRAY_SIZE(imx6ul_mmdc_lpddr2_offset),
 	.mmdc_offset = imx6ul_mmdc_lpddr2_offset,
-};
-
-static const struct imx6_pm_socdata imx6sll_pm_data __initconst = {
-	.mmdc_compat = "fsl,imx6sll-mmdc",
-	.src_compat = "fsl,imx6sll-src",
-	.iomuxc_compat = "fsl,imx6sll-iomuxc",
-	.gpc_compat = "fsl,imx6sll-gpc",
-	.mmdc_io_num = ARRAY_SIZE(imx6sll_mmdc_io_offset),
-	.mmdc_io_offset = imx6sll_mmdc_io_offset,
-	.mmdc_num = ARRAY_SIZE(imx6sll_mmdc_lpddr3_offset),
-	.mmdc_offset = imx6sll_mmdc_lpddr3_offset,
 };
 
 static struct map_desc iram_tlb_io_desc __initdata = {
@@ -741,11 +738,9 @@ int imx6_set_lpm(enum mxc_cpu_pwr_mode mode)
 	 *
 	 * Note that IRQ #32 is GIC SPI #0.
 	 */
-	if (mode != WAIT_CLOCKED)
-		imx_gpc_hwirq_unmask(0);
+	imx_gpc_hwirq_unmask(0);
 	writel_relaxed(val, ccm_base + CLPCR);
-	if (mode != WAIT_CLOCKED)
-		imx_gpc_hwirq_mask(0);
+	imx_gpc_hwirq_mask(0);
 
 	return 0;
 }
@@ -990,7 +985,6 @@ static int __init imx6_dt_find_lpsram(unsigned long node, const char *uname,
 
 		iotable_init(&iram_tlb_io_desc, 1);
 	}
-
 	return 0;
 }
 
@@ -1166,8 +1160,8 @@ static int __init imx6q_suspend_init(const struct imx6_pm_socdata *socdata)
 
 	/* i.MX6SLL has no DRAM RESET pin */
 	if (cpu_is_imx6sll()) {
-			pm_info->mmdc_io_val[pm_info->mmdc_io_num - 2][2] = 0x1000;
-			pm_info->mmdc_io_val[pm_info->mmdc_io_num - 1][2] = 0x1000;
+		pm_info->mmdc_io_val[pm_info->mmdc_io_num - 2][2] = 0x1000;
+		pm_info->mmdc_io_val[pm_info->mmdc_io_num - 1][2] = 0x1000;
 	} else {
 		if (pm_info->ddr_type == IMX_DDR_TYPE_LPDDR2) {
 			/* for LPDDR2, CKE0/1 and RESET pin need special setting */
@@ -1305,24 +1299,17 @@ void __init imx6dl_pm_init(void)
 
 void __init imx6sl_pm_init(void)
 {
-	struct device_node *np;
 	struct regmap *gpr;
 
-	if (cpu_is_imx6sll()) {
+	if (cpu_is_imx6sl()) {
+		imx6_pm_common_init(&imx6sl_pm_data);
+	} else {
 		imx6_pm_common_init(&imx6sll_pm_data);
-		np = of_find_node_by_path(
-			"/soc/aips-bus@02000000/spba-bus@02000000/serial@02020000");
-		if (np)
-			console_base = of_iomap(np, 0);
-		/* i.MX6SLL has bus auto clock gating function */
 		gpr = syscon_regmap_lookup_by_compatible("fsl,imx6q-iomuxc-gpr");
 		if (!IS_ERR(gpr))
 			regmap_update_bits(gpr, IOMUXC_GPR5,
-				IOMUXC_GPR5_CLOCK_AFCG_X_BYPASS_MASK, 0);
-		return;
+				IMX6SLL_GPR5_AFCG_X_BYPASS_MASK, 0);
 	}
-
-	imx6_pm_common_init(&imx6sl_pm_data);
 }
 
 void __init imx6sx_pm_init(void)
@@ -1370,7 +1357,7 @@ void __init imx6sx_pm_init(void)
 	WARN_ON(!ocram_saved_in_ddr);
 
 	np = of_find_node_by_path(
-		"/soc/aips-bus@02000000/spba-bus@02000000/serial@02020000");
+		"/soc/aips-bus@2000000/spba-bus@2000000/serial@2020000");
 	if (np)
 		console_base = of_iomap(np, 0);
 	if (imx_src_is_m4_enabled()) {
@@ -1393,7 +1380,7 @@ void __init imx6ul_pm_init(void)
 
 	if (cpu_is_imx6ull()) {
 		np = of_find_node_by_path(
-			"/soc/aips-bus@02000000/spba-bus@02000000/serial@02020000");
+			"/soc/aips-bus@2000000/spba-bus@2000000/serial@2020000");
 		if (np)
 			console_base = of_iomap(np, 0);
 	}

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2012-2015 Freescale Semiconductor, Inc.
  *
@@ -45,6 +46,5 @@ int imx_usbmisc_hsic_set_connect(struct imx_usbmisc_data *);
 int imx_usbmisc_hsic_set_clk(struct imx_usbmisc_data *, bool);
 int imx_usbmisc_term_select_override(struct imx_usbmisc_data *data,
 						bool enable, int val);
-int imx_usbmisc_vbus_comparator_on(struct imx_usbmisc_data *data, bool on);
 
 #endif /* __DRIVER_USB_CHIPIDEA_CI_HDRC_IMX_H */

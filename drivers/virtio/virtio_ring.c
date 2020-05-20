@@ -23,7 +23,6 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/hrtimer.h>
-#include <linux/kmemleak.h>
 #include <linux/dma-mapping.h>
 #include <xen/xen.h>
 
@@ -144,8 +143,6 @@ struct vring_virtqueue {
 
 static bool vring_use_dma_api(struct virtio_device *vdev)
 {
-	struct device *dma_dev = vdev->dev.parent;
-
 	if (!virtio_has_iommu_quirk(vdev))
 		return true;
 
@@ -158,7 +155,7 @@ static bool vring_use_dma_api(struct virtio_device *vdev)
 	 * the DMA API if we're a Xen guest, which at least allows
 	 * all of the sensible Xen configurations to work correctly.
 	 */
-	if (xen_domain() && !dma_dev->dma_mem)
+	if (xen_domain())
 		return true;
 
 	return false;
@@ -250,7 +247,7 @@ static struct vring_desc *alloc_indirect(struct virtqueue *_vq,
 	 */
 	gfp &= ~__GFP_HIGHMEM;
 
-	desc = kmalloc(total_sg * sizeof(struct vring_desc), gfp);
+	desc = kmalloc_array(total_sg, sizeof(struct vring_desc), gfp);
 	if (!desc)
 		return NULL;
 
@@ -1089,6 +1086,8 @@ struct virtqueue *vring_create_virtqueue(
 					  GFP_KERNEL|__GFP_NOWARN|__GFP_ZERO);
 		if (queue)
 			break;
+		if (!may_reduce_num)
+			return NULL;
 	}
 
 	if (!num)

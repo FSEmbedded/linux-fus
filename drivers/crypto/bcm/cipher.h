@@ -23,6 +23,8 @@
 #include <crypto/aes.h>
 #include <crypto/internal/hash.h>
 #include <crypto/aead.h>
+#include <crypto/arc4.h>
+#include <crypto/gcm.h>
 #include <crypto/sha.h>
 #include <crypto/sha3.h>
 
@@ -33,14 +35,9 @@
 /* Driver supports up to MAX_SPUS SPU blocks */
 #define MAX_SPUS 16
 
-#define ARC4_MIN_KEY_SIZE   1
-#define ARC4_MAX_KEY_SIZE   256
-#define ARC4_BLOCK_SIZE     1
 #define ARC4_STATE_SIZE     4
 
 #define CCM_AES_IV_SIZE    16
-#define GCM_AES_IV_SIZE    12
-#define GCM_ESP_IV_SIZE     8
 #define CCM_ESP_IV_SIZE     8
 #define RFC4543_ICV_SIZE   16
 

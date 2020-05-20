@@ -1,13 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Driver for EETI eGalax Multiple Touch Controller
  *
  * Copyright (C) 2011 Freescale Semiconductor, Inc.
  *
  * based on max11801_ts.c
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 /* EETI eGalax serial touch screen controller is a I2C based multiple
@@ -125,9 +122,9 @@ static int egalax_irq_request(struct egalax_ts *ts)
 	struct i2c_client *client = ts->client;
 
 	ret = devm_request_threaded_irq(&client->dev, client->irq, NULL,
-					  egalax_ts_interrupt,
-					  IRQF_TRIGGER_LOW | IRQF_ONESHOT,
-					  "egalax_ts", ts);
+					egalax_ts_interrupt,
+					IRQF_TRIGGER_LOW | IRQF_ONESHOT,
+					"egalax_ts", ts);
 	if (ret < 0)
 		dev_err(&client->dev, "Failed to register interrupt\n");
 

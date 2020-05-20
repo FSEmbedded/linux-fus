@@ -1,16 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Copyright 2017-2018 NXP
+ * Copyright (C) 2018 Pengutronix, Lucas Stach <kernel@pengutronix.de>
  */
 
 #include <linux/err.h>
@@ -327,53 +319,27 @@ static const struct pinctrl_pin_desc imx8mq_pinctrl_pads[] = {
 	IMX_PINCTRL_PIN(MX8MQ_IOMUXC_UART4_TXD),
 };
 
-static struct imx_pinctrl_soc_info imx8mq_pinctrl_info = {
+static const struct imx_pinctrl_soc_info imx8mq_pinctrl_info = {
 	.pins = imx8mq_pinctrl_pads,
 	.npins = ARRAY_SIZE(imx8mq_pinctrl_pads),
 	.gpr_compatible = "fsl,imx8mq-iomuxc-gpr",
 };
 
-static struct of_device_id imx8mq_pinctrl_of_match[] = {
+static const struct of_device_id imx8mq_pinctrl_of_match[] = {
 	{ .compatible = "fsl,imx8mq-iomuxc", .data = &imx8mq_pinctrl_info, },
 	{ /* sentinel */ }
 };
 
 static int imx8mq_pinctrl_probe(struct platform_device *pdev)
 {
-	const struct of_device_id *match;
-	struct imx_pinctrl_soc_info *pinctrl_info;
-
-	match = of_match_device(imx8mq_pinctrl_of_match, &pdev->dev);
-
-	if (!match)
-		return -ENODEV;
-
-	pinctrl_info = (struct imx_pinctrl_soc_info *) match->data;
-
-	return imx_pinctrl_probe(pdev, pinctrl_info);
+	return imx_pinctrl_probe(pdev, &imx8mq_pinctrl_info);
 }
-
-static int __maybe_unused imx8mq_pinctrl_suspend(struct device *dev)
-{
-
-       return imx_pinctrl_suspend(dev);
-}
-
-static int __maybe_unused imx8mq_pinctrl_resume(struct device *dev)
-{
-
-       return imx_pinctrl_resume(dev);
-}
-
-static const struct dev_pm_ops imx8mq_pinctrl_pm_ops = {
-       SET_LATE_SYSTEM_SLEEP_PM_OPS(imx8mq_pinctrl_suspend, imx8mq_pinctrl_resume)
-};
 
 static struct platform_driver imx8mq_pinctrl_driver = {
 	.driver = {
 		.name = "imx8mq-pinctrl",
 		.of_match_table = of_match_ptr(imx8mq_pinctrl_of_match),
-		.pm = &imx8mq_pinctrl_pm_ops,
+		.suppress_bind_attrs = true,
 	},
 	.probe = imx8mq_pinctrl_probe,
 };

@@ -12,8 +12,6 @@
 #include <linux/clk.h>
 #include <linux/dmaengine.h>
 #include <linux/module.h>
-#include <linux/of.h>
-#include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/dma-mapping.h>
@@ -23,7 +21,6 @@
 #include <sound/pcm_params.h>
 
 #include "fsl_esai.h"
-#include "fsl_acm.h"
 #include "imx-pcm.h"
 #include "fsl_dma_workaround.h"
 
@@ -438,8 +435,8 @@ static int fsl_esai_set_dai_tdm_slot(struct snd_soc_dai *dai, u32 tx_mask,
 
 	esai_priv->slot_width = slot_width;
 	esai_priv->slots = slots;
-	esai_priv->tx_mask    = tx_mask;
-	esai_priv->rx_mask    = rx_mask;
+	esai_priv->tx_mask = tx_mask;
+	esai_priv->rx_mask = rx_mask;
 
 	return 0;
 }
@@ -699,6 +696,18 @@ static int fsl_esai_trigger(struct snd_pcm_substream *substream, int cmd,
 		for (i = 0; tx && i < channels; i++)
 			regmap_write(esai_priv->regmap, REG_ESAI_ETDR, 0x0);
 
+		/*
+		 * When set the TE/RE in the end of enablement flow, there
+		 * will be channel swap issue for multi data line case.
+		 * In order to workaround this issue, we switch the bit
+		 * enablement sequence to below sequence
+		 * 1) clear the xSMB & xSMA: which is done in probe and
+		 *                           stop state.
+		 * 2) set TE/RE
+		 * 3) set xSMB
+		 * 4) set xSMA:  xSMA is the last one in this flow, which
+		 *               will trigger esai to start.
+		 */
 		regmap_update_bits(esai_priv->regmap, REG_ESAI_xCR(tx),
 				   tx ? ESAI_xCR_TE_MASK : ESAI_xCR_RE_MASK,
 				   tx ? ESAI_xCR_TE(pins) : ESAI_xCR_RE(pins));
@@ -733,23 +742,11 @@ static int fsl_esai_trigger(struct snd_pcm_substream *substream, int cmd,
 	return 0;
 }
 
-static int fsl_esai_hw_free(struct snd_pcm_substream *substream,
-		struct snd_soc_dai *cpu_dai)
-{
-	struct fsl_esai *esai_priv = snd_soc_dai_get_drvdata(cpu_dai);
-
-	if (esai_priv->soc->dma_workaround)
-		clear_gpt_dma(substream,  esai_priv->dma_info);
-
-	return 0;
-}
-
 static const struct snd_soc_dai_ops fsl_esai_dai_ops = {
 	.startup = fsl_esai_startup,
 	.shutdown = fsl_esai_shutdown,
 	.trigger = fsl_esai_trigger,
 	.hw_params = fsl_esai_hw_params,
-	.hw_free = fsl_esai_hw_free,
 	.set_sysclk = fsl_esai_set_dai_sysclk,
 	.set_fmt = fsl_esai_set_dai_fmt,
 	.set_tdm_slot = fsl_esai_set_dai_tdm_slot,
@@ -1001,7 +998,7 @@ static int fsl_esai_probe(struct platform_device *pdev)
 	const struct of_device_id *of_id;
 	struct fsl_esai *esai_priv;
 	struct resource *res;
-	const uint32_t *iprop;
+	const __be32 *iprop;
 	void __iomem *regs;
 	int irq, ret;
 	u32 buffer_size;
@@ -1143,6 +1140,9 @@ static int fsl_esai_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	esai_priv->tx_mask = 0xFFFFFFFF;
+	esai_priv->rx_mask = 0xFFFFFFFF;
+
 	/* Clear the TSMA, TSMB, RSMA, RSMB */
 	regmap_write(esai_priv->regmap, REG_ESAI_TSMA, 0);
 	regmap_write(esai_priv->regmap, REG_ESAI_TSMB, 0);
@@ -1170,23 +1170,11 @@ static int fsl_esai_probe(struct platform_device *pdev)
 	pm_runtime_enable(&pdev->dev);
 	regcache_cache_only(esai_priv->regmap, true);
 
-	ret = imx_pcm_platform_register(&pdev->dev);
+	ret = imx_pcm_component_register(&pdev->dev);
 	if (ret)
 		dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
 
 	return ret;
-}
-
-static int fsl_esai_remove(struct platform_device *pdev)
-{
-	struct fsl_esai *esai_priv = dev_get_drvdata(&pdev->dev);
-
-	if (esai_priv->soc->dma_workaround)
-		fsl_dma_workaround_free_info(esai_priv->dma_info, &pdev->dev);
-
-	pm_runtime_disable(&pdev->dev);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -1279,7 +1267,6 @@ static const struct dev_pm_ops fsl_esai_pm_ops = {
 
 static struct platform_driver fsl_esai_driver = {
 	.probe = fsl_esai_probe,
-	.remove = fsl_esai_remove,
 	.driver = {
 		.name = "fsl-esai-dai",
 		.pm = &fsl_esai_pm_ops,

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 NXP
+ * Copyright 2018-2019 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -138,7 +138,8 @@ struct pc *pc_lookup_by_phandle(struct device *dev, const char *name)
 	list_for_each_entry(pc, &pc_list, list) {
 		if (pc_node == pc->dev->of_node) {
 			mutex_unlock(&pc_list_mutex);
-			device_link_add(dev, pc->dev, DL_FLAG_AUTOREMOVE);
+			device_link_add(dev, pc->dev,
+					DL_FLAG_AUTOREMOVE_CONSUMER);
 			return pc;
 		}
 	}

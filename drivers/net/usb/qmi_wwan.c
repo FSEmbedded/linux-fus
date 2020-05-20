@@ -223,7 +223,7 @@ static int qmimux_register_device(struct net_device *real_dev, u8 mux_id)
 	/* Account for reference in struct qmimux_priv_priv */
 	dev_hold(real_dev);
 
-	err = netdev_upper_dev_link(real_dev, new_dev);
+	err = netdev_upper_dev_link(real_dev, new_dev, NULL);
 	if (err)
 		goto out_unregister_netdev;
 
@@ -969,6 +969,20 @@ static const struct usb_device_id products[] = {
 		USB_DEVICE_AND_INTERFACE_INFO(0x03f0, 0x581d, USB_CLASS_VENDOR_SPEC, 1, 7),
 		.driver_info = (unsigned long)&qmi_wwan_info,
 	},
+	{	/* Quectel EP06/EG06/EM06 */
+		USB_DEVICE_AND_INTERFACE_INFO(0x2c7c, 0x0306,
+					      USB_CLASS_VENDOR_SPEC,
+					      USB_SUBCLASS_VENDOR_SPEC,
+					      0xff),
+		.driver_info	    = (unsigned long)&qmi_wwan_info_quirk_dtr,
+	},
+	{	/* Quectel EG12/EM12 */
+		USB_DEVICE_AND_INTERFACE_INFO(0x2c7c, 0x0512,
+					      USB_CLASS_VENDOR_SPEC,
+					      USB_SUBCLASS_VENDOR_SPEC,
+					      0xff),
+		.driver_info	    = (unsigned long)&qmi_wwan_info_quirk_dtr,
+	},
 
 	/* 3. Combined interface devices matching on interface number */
 	{QMI_FIXED_INTF(0x0408, 0xea42, 4)},	/* Yota / Megafon M100-1 */
@@ -1111,6 +1125,7 @@ static const struct usb_device_id products[] = {
 	{QMI_FIXED_INTF(0x1435, 0xd181, 3)},	/* Wistron NeWeb D18Q1 */
 	{QMI_FIXED_INTF(0x1435, 0xd181, 4)},	/* Wistron NeWeb D18Q1 */
 	{QMI_FIXED_INTF(0x1435, 0xd181, 5)},	/* Wistron NeWeb D18Q1 */
+	{QMI_FIXED_INTF(0x1435, 0xd191, 4)},	/* Wistron NeWeb D19Q1 */
 	{QMI_QUIRK_SET_DTR(0x1508, 0x1001, 4)},	/* Fibocom NL668 series */
 	{QMI_FIXED_INTF(0x16d8, 0x6003, 0)},	/* CMOTech 6003 */
 	{QMI_FIXED_INTF(0x16d8, 0x6007, 0)},	/* CMOTech CHE-628S */
@@ -1188,13 +1203,14 @@ static const struct usb_device_id products[] = {
 	{QMI_FIXED_INTF(0x19d2, 0x2002, 4)},	/* ZTE (Vodafone) K3765-Z */
 	{QMI_FIXED_INTF(0x2001, 0x7e19, 4)},	/* D-Link DWM-221 B1 */
 	{QMI_FIXED_INTF(0x2001, 0x7e35, 4)},	/* D-Link DWM-222 */
+	{QMI_FIXED_INTF(0x2020, 0x2031, 4)},	/* Olicard 600 */
 	{QMI_FIXED_INTF(0x2020, 0x2033, 4)},	/* BroadMobi BM806U */
 	{QMI_FIXED_INTF(0x0f3d, 0x68a2, 8)},    /* Sierra Wireless MC7700 */
 	{QMI_FIXED_INTF(0x114f, 0x68a2, 8)},    /* Sierra Wireless MC7750 */
 	{QMI_FIXED_INTF(0x1199, 0x68a2, 8)},	/* Sierra Wireless MC7710 in QMI mode */
 	{QMI_FIXED_INTF(0x1199, 0x68a2, 19)},	/* Sierra Wireless MC7710 in QMI mode */
-	{QMI_FIXED_INTF(0x1199, 0x68c0, 8)},	/* Sierra Wireless MC7304/MC7354 */
-	{QMI_FIXED_INTF(0x1199, 0x68c0, 10)},	/* Sierra Wireless MC7304/MC7354 */
+	{QMI_QUIRK_SET_DTR(0x1199, 0x68c0, 8)},	/* Sierra Wireless MC7304/MC7354, WP76xx */
+	{QMI_QUIRK_SET_DTR(0x1199, 0x68c0, 10)},/* Sierra Wireless MC7304/MC7354 */
 	{QMI_FIXED_INTF(0x1199, 0x901c, 8)},    /* Sierra Wireless EM7700 */
 	{QMI_FIXED_INTF(0x1199, 0x901f, 8)},    /* Sierra Wireless EM7355 */
 	{QMI_FIXED_INTF(0x1199, 0x9041, 8)},	/* Sierra Wireless MC7305/MC7355 */
@@ -1259,7 +1275,6 @@ static const struct usb_device_id products[] = {
 	{QMI_QUIRK_SET_DTR(0x2c7c, 0x0121, 4)},	/* Quectel EC21 Mini PCIe */
 	{QMI_QUIRK_SET_DTR(0x2c7c, 0x0191, 4)},	/* Quectel EG91 */
 	{QMI_FIXED_INTF(0x2c7c, 0x0296, 4)},	/* Quectel BG96 */
-	{QMI_QUIRK_SET_DTR(0x2c7c, 0x0306, 4)},	/* Quectel EP06 Mini PCIe */
 	{QMI_QUIRK_SET_DTR(0x2cb7, 0x0104, 4)},	/* Fibocom NL678 series */
 
 	/* 4. Gobi 1000 devices */
@@ -1336,6 +1351,22 @@ static bool quectel_ec20_detected(struct usb_interface *intf)
 	return false;
 }
 
+static bool quectel_diag_detected(struct usb_interface *intf)
+{
+	struct usb_device *dev = interface_to_usbdev(intf);
+	struct usb_interface_descriptor intf_desc = intf->cur_altsetting->desc;
+	u16 id_vendor = le16_to_cpu(dev->descriptor.idVendor);
+	u16 id_product = le16_to_cpu(dev->descriptor.idProduct);
+
+	if (id_vendor != 0x2c7c || intf_desc.bNumEndpoints != 2)
+		return false;
+
+	if (id_product == 0x0306 || id_product == 0x0512)
+		return true;
+	else
+		return false;
+}
+
 static int qmi_wwan_probe(struct usb_interface *intf,
 			  const struct usb_device_id *prod)
 {
@@ -1369,6 +1400,15 @@ static int qmi_wwan_probe(struct usb_interface *intf,
 		dev_dbg(&intf->dev, "Quectel EC20 quirk, skipping interface 0\n");
 		return -ENODEV;
 	}
+
+	/* Several Quectel modems supports dynamic interface configuration, so
+	 * we need to match on class/subclass/protocol. These values are
+	 * identical for the diagnostic- and QMI-interface, but bNumEndpoints is
+	 * different. Ignore the current interface if the number of endpoints
+	 * the number for the diag interface (two).
+	 */
+	if (quectel_diag_detected(intf))
+		return -ENODEV;
 
 	return usbnet_probe(intf, id);
 }

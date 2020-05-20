@@ -54,7 +54,7 @@ static inline int imx7ulp_cpuidle_init(void)
 }
 #endif
 
-#if defined(CONFIG_CPU_IDLE) && defined (CONFIG_SOC_IMX6SLL)
+#if defined(CONFIG_CPU_IDLE) && defined(CONFIG_SOC_IMX6SLL)
 extern int imx6sll_cpuidle_init(void);
 #else
 static inline int imx6sll_cpuidle_init(void) { return 0; }

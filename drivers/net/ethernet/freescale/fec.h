@@ -22,7 +22,7 @@
 
 #if defined(CONFIG_M523x) || defined(CONFIG_M527x) || defined(CONFIG_M528x) || \
     defined(CONFIG_M520x) || defined(CONFIG_M532x) || defined(CONFIG_ARM) || \
-    defined(CONFIG_ARM64)
+    defined(CONFIG_ARM64) || defined(CONFIG_COMPILE_TEST)
 /*
  *	Just figures, Motorola would have to change the offsets for
  *	registers in the same peripheral device on different models
@@ -297,7 +297,7 @@ struct bufdesc_ex {
 
 
 /* This device has up to three irqs on some platforms */
-#define FEC_IRQ_NUM		4
+#define FEC_IRQ_NUM		3
 
 /* Maximum number of queues supported
  * ENET with AVB IP can support up to 3 independent tx queues and rx queues.
@@ -465,8 +465,7 @@ struct bufdesc_ex {
  * those FIFO receive registers are resolved in other platforms.
  */
 #define FEC_QUIRK_HAS_FRREG		(1 << 16)
-/*
- * i.MX6Q/DL ENET cannot wake up system in wait mode because ENET tx & rx
+/* i.MX6Q/DL ENET cannot wake up system in wait mode because ENET tx & rx
  * interrupt signal don't connect to GPC. So use pm qos to avoid cpu enter
  * to wait mode.
  */
@@ -643,7 +642,7 @@ struct fec_enet_private {
 	u64 ethtool_stats[0];
 };
 
-void fec_ptp_init(struct platform_device *pdev);
+void fec_ptp_init(struct platform_device *pdev, int irq_idx);
 void fec_ptp_stop(struct platform_device *pdev);
 void fec_ptp_start_cyclecounter(struct net_device *ndev);
 int fec_ptp_set(struct net_device *ndev, struct ifreq *ifr);

@@ -7,7 +7,6 @@
  *
  */
 
-#include <linux/busfreq-imx.h>
 #include <linux/clk.h>
 #include <linux/clkdev.h>
 #include <linux/err.h>
@@ -18,8 +17,9 @@
 
 #include "clk.h"
 
+#define CCDR				0x4
+#define BM_CCM_CCDR_MMDC_CH0_MASK	(1 << 17)
 #define CCSR			0xc
-#define CCDR			0x04
 #define CCDR_CH0_HS_BYP		17
 #define BM_CCSR_PLL1_SW_CLK_SEL	(1 << 2)
 #define CACRR			0x10
@@ -107,10 +107,6 @@ static struct clk_onecell_data clk_data;
 static void __iomem *ccm_base;
 static void __iomem *anatop_base;
 
-static const u32 clks_init_on[] __initconst = {
-	IMX6SL_CLK_IPG, IMX6SL_CLK_ARM, IMX6SL_CLK_MMDC_ROOT,
-};
-
 /*
  * ERR005311 CCM: After exit from WAIT mode, unwanted interrupt(s) taken
  *           during WAIT mode entry process could cause cache memory
@@ -146,39 +142,46 @@ static int imx6sl_get_arm_divider_for_wait(void)
 	}
 }
 
+static void imx6sl_enable_pll_arm(bool enable)
+{
+	static u32 saved_pll_arm;
+	u32 val;
+
+	if (enable) {
+		saved_pll_arm = val = readl_relaxed(anatop_base + PLL_ARM);
+		val |= BM_PLL_ARM_ENABLE;
+		val &= ~BM_PLL_ARM_POWERDOWN;
+		writel_relaxed(val, anatop_base + PLL_ARM);
+		while (!(__raw_readl(anatop_base + PLL_ARM) & BM_PLL_ARM_LOCK))
+			;
+	} else {
+		 writel_relaxed(saved_pll_arm, anatop_base + PLL_ARM);
+	}
+}
+
 void imx6sl_set_wait_clk(bool enter)
 {
 	static unsigned long saved_arm_div;
-	u32 val;
 	int arm_div_for_wait = imx6sl_get_arm_divider_for_wait();
-	int mode = get_bus_freq_mode();
+
+	/*
+	 * According to hardware design, arm podf change need
+	 * PLL1 clock enabled.
+	 */
+	if (arm_div_for_wait == ARM_WAIT_DIV_396M)
+		imx6sl_enable_pll_arm(true);
 
 	if (enter) {
-		/*
-		 * If in this mode, the IPG clock is at 12MHz, we can
-		 * only run ARM at a max 28.8MHz, so we need to run
-		 * from the 24MHz OSC, as there is no way to get
-		 * 28.8MHz, when ARM is sourced from PLl1.
-		 */
-		if (mode == BUS_FREQ_LOW) {
-			val = readl_relaxed(ccm_base + CCSR);
-			val |= BM_CCSR_PLL1_SW_CLK_SEL;
-			writel_relaxed(val, ccm_base + CCSR);
-		} else {
-			saved_arm_div = readl_relaxed(ccm_base + CACRR);
-			writel_relaxed(arm_div_for_wait, ccm_base + CACRR);
-		}
+		saved_arm_div = readl_relaxed(ccm_base + CACRR);
+		writel_relaxed(arm_div_for_wait, ccm_base + CACRR);
 	} else {
-		if (mode == BUS_FREQ_LOW) {
-			val = readl_relaxed(ccm_base + CCSR);
-			val &= ~BM_CCSR_PLL1_SW_CLK_SEL;
-			writel_relaxed(val, ccm_base + CCSR);
-		} else {
-			writel_relaxed(saved_arm_div, ccm_base + CACRR);
-		}
+		writel_relaxed(saved_arm_div, ccm_base + CACRR);
 	}
 	while (__raw_readl(ccm_base + CDHIPR) & BM_CDHIPR_ARM_PODF_BUSY)
 		;
+
+	if (arm_div_for_wait == ARM_WAIT_DIV_396M)
+		imx6sl_enable_pll_arm(false);
 }
 
 static struct clk ** const uart_clks[] __initconst = {
@@ -191,7 +194,7 @@ static void __init imx6sl_clocks_init(struct device_node *ccm_node)
 {
 	struct device_node *np;
 	void __iomem *base;
-	int i, reg;
+	int reg;
 	int ret;
 
 	clks[IMX6SL_CLK_DUMMY] = imx_clk_fixed("dummy", 0);
@@ -327,7 +330,7 @@ static void __init imx6sl_clocks_init(struct device_node *ccm_node)
 	clks[IMX6SL_CLK_PERIPH2] = imx_clk_busy_mux("periph2", base + 0x14, 26,  1,   base + 0x48, 3,  periph2_sels, ARRAY_SIZE(periph2_sels));
 
 	/*                                                   name                 parent_name          reg       shift width */
-	clks[IMX6SL_CLK_OCRAM_PODF]        = imx_clk_busy_divider("ocram_podf",        "ocram_sel",         base + 0x14, 16, 3, base + 0x48, 0);
+	clks[IMX6SL_CLK_OCRAM_PODF]        = imx_clk_busy_divider("ocram_podf",   "ocram_sel",         base + 0x14, 16, 3, base + 0x48, 0);
 	clks[IMX6SL_CLK_PERIPH_CLK2_PODF]  = imx_clk_divider("periph_clk2_podf",  "periph_clk2_sel",   base + 0x14, 27, 3);
 	clks[IMX6SL_CLK_PERIPH2_CLK2_PODF] = imx_clk_divider("periph2_clk2_podf", "periph2_clk2_sel",  base + 0x14, 0,  3);
 	clks[IMX6SL_CLK_IPG]               = imx_clk_divider("ipg",               "ahb",               base + 0x14, 8,  2);
@@ -411,6 +414,10 @@ static void __init imx6sl_clocks_init(struct device_node *ccm_node)
 	clks[IMX6SL_CLK_USDHC3]       = imx_clk_gate2("usdhc3",       "usdhc3_podf",       base + 0x80, 6);
 	clks[IMX6SL_CLK_USDHC4]       = imx_clk_gate2("usdhc4",       "usdhc4_podf",       base + 0x80, 8);
 
+	/* Ensure the MMDC CH0 handshake is bypassed */
+	writel_relaxed(readl_relaxed(base + CCDR) |
+		BM_CCM_CCDR_MMDC_CH0_MASK, base + CCDR);
+
 	imx_check_clocks(clks, ARRAY_SIZE(clks));
 
 	clk_data.clks = clks;
@@ -427,13 +434,6 @@ static void __init imx6sl_clocks_init(struct device_node *ccm_node)
 	if (ret)
 		pr_warn("%s: failed to set AHB clock rate %d!\n",
 			__func__, ret);
-
-	/*
-	 * Make sure those always on clocks are enabled to maintain the correct
-	 * usecount and enabling/disabling of parent PLLs.
-	 */
-	for (i = 0; i < ARRAY_SIZE(clks_init_on); i++)
-		clk_prepare_enable(clks[clks_init_on[i]]);
 
 	if (IS_ENABLED(CONFIG_USB_MXS_PHY)) {
 		clk_prepare_enable(clks[IMX6SL_CLK_USBPHY1_GATE]);
@@ -459,8 +459,8 @@ static void __init imx6sl_clocks_init(struct device_node *ccm_node)
 		clks[IMX6SL_CLK_PLL2_PFD2]);
 	clk_set_rate(clks[IMX6SL_CLK_EPDC_AXI], 200000000);
 
-        /* Set the UART parent if needed */
-        if (uart_from_osc)
+	/* Set the UART parent if needed */
+	if (uart_from_osc)
 		imx_clk_set_parent(clks[IMX6SL_CLK_UART_SEL], clks[IMX6SL_CLK_UART_OSC_4M]);
 
 	imx_register_uart_clocks(uart_clks);

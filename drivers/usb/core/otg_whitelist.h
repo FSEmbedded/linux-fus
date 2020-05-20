@@ -1,12 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * drivers/usb/core/otg_whitelist.h
  *
  * Copyright (C) 2004 Texas Instruments
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
  */
 
 /*
@@ -43,10 +39,10 @@ static struct usb_device_id whitelist_table[] = {
 	.bInterfaceClass = (cl)
 
 {USB_INTERFACE_CLASS_INFO(USB_CLASS_HUB) },
-#if defined(CONFIG_USB_STORAGE) || defined(CONFIG_USB_STORAGE_MODULE)
+#if IS_ENABLED(CONFIG_USB_STORAGE) || IS_ENABLED(CONFIG_USB_STORAGE_MODULE)
 {USB_INTERFACE_CLASS_INFO(USB_CLASS_MASS_STORAGE) },
 #endif
-#if defined(CONFIG_USB_HID) || defined(CONFIG_USB_HID_MODULE)
+#if IS_ENABLED(CONFIG_USB_HID) || IS_ENABLED(CONFIG_USB_HID_MODULE)
 {USB_INTERFACE_CLASS_INFO(USB_CLASS_HID) },
 #endif
 

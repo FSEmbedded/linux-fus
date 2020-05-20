@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2013-2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP.
+ * Copyright (C) 2013-2015 Freescale Semiconductor, Inc.
+ * Copyright 2017-2018 NXP.
  *
  * The code contained herein is licensed under the GNU General Public
  * License. You may obtain a copy of the GNU General Public License
@@ -111,6 +111,7 @@ static inline void imx_anatop_disconnect_high_snvs(bool enable)
 static void imx_anatop_disable_pu(bool off)
 {
 	u32  val, soc, delay;
+
 	if (off) {
 		regmap_read(anatop, ANADIG_REG_CORE, &val);
 		val &= ~BM_ANADIG_REG_CORE_REG1;
@@ -211,7 +212,7 @@ void __init imx_init_revision_from_anatop(void)
 	unsigned int revision;
 	u32 digprog, sbmr2 = 0;
 	u16 offset = ANADIG_DIGPROG;
-	u16 major_part, minor_part;
+	u8 major_part, minor_part;
 
 	np = of_find_compatible_node(NULL, NULL, "fsl,imx6q-anatop");
 	anatop_base = of_iomap(np, 0);

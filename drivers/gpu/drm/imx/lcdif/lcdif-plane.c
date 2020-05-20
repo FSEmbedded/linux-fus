@@ -50,7 +50,6 @@ static int lcdif_plane_atomic_check(struct drm_plane *plane,
 	struct drm_framebuffer *old_fb = old_state->fb;
 	struct drm_crtc_state *crtc_state;
 	struct drm_display_mode *mode;
-	struct drm_rect clip = { 0 };
 
 	/* 'fb' should also be NULL which has been checked in
 	 * the core sanity check function 'drm_atomic_plane_check()'
@@ -68,28 +67,22 @@ static int lcdif_plane_atomic_check(struct drm_plane *plane,
 							plane_state->crtc);
 	mode = &crtc_state->adjusted_mode;
 
-	clip.x2 = mode->hdisplay;
-	clip.y2 = mode->vdisplay;
-
-	ret = drm_plane_helper_check_state(plane_state, &clip,
-					   DRM_PLANE_HELPER_NO_SCALING,
-					   DRM_PLANE_HELPER_NO_SCALING,
-					   false, true);
+	ret = drm_atomic_helper_check_plane_state(plane_state, crtc_state,
+						  DRM_PLANE_HELPER_NO_SCALING,
+						  DRM_PLANE_HELPER_NO_SCALING,
+						  false, true);
 	if (ret)
 		return ret;
 
 	if (!plane_state->visible)
 		return -EINVAL;
 
-	/* force 'mode_changed' when fb pitches or format
-	 * changed, since the pitch and format related
-	 * registers configuration of LCDIF can not be
-	 * done when LCDIF is running and 'mode_changed'
-	 * means a full modeset is required.
+	/* force 'mode_changed' when fb pitches changed, since
+	 * the pitch related registers configuration of LCDIF
+	 * can not be done when LCDIF is running.
 	 */
 	if (old_fb && likely(!crtc_state->mode_changed)) {
-		if (old_fb->pitches[0] != fb->pitches[0] ||
-		    old_fb->format->format != fb->format->format)
+		if (old_fb->pitches[0] != fb->pitches[0])
 			crtc_state->mode_changed = true;
 	}
 
@@ -115,6 +108,9 @@ static void lcdif_plane_atomic_update(struct drm_plane *plane,
 	 * and the fb pixel format, since the mode set will
 	 * be done in crtc's ->enable() helper func
 	 */
+	if (plane->type == DRM_PLANE_TYPE_PRIMARY)
+		lcdif_set_pix_fmt(lcdif, fb->format->format);
+
 	switch (plane->type) {
 	case DRM_PLANE_TYPE_PRIMARY:
 		/* TODO: only support RGB */
@@ -131,14 +127,8 @@ static void lcdif_plane_atomic_update(struct drm_plane *plane,
 
 	lcdif_set_fb_addr(lcdif, fb_idx, fb_addr);
 
-	/* Config pixel format and horizontal cropping
-	 * if CRTC needs a full modeset which needs to
-	 * enable LCDIF to run at the end.
-	 */
+	/* config horizontal cropping if crtc needs modeset */
 	if (unlikely(drm_atomic_crtc_needs_modeset(state->crtc->state))) {
-		if (plane->type == DRM_PLANE_TYPE_PRIMARY)
-			lcdif_set_pix_fmt(lcdif, fb->format->format);
-
 		cpp = fb->format->cpp[0];
 		stride = DIV_ROUND_UP(fb->pitches[0], cpp);
 
@@ -147,9 +137,9 @@ static void lcdif_plane_atomic_update(struct drm_plane *plane,
 
 		crop  = src_w != stride ? true : false;
 		lcdif_set_fb_hcrop(lcdif, src_w, stride, crop);
-
-		lcdif_enable_controller(lcdif);
 	}
+
+	lcdif_enable_controller(lcdif);
 }
 
 static void lcdif_plane_atomic_disable(struct drm_plane *plane,

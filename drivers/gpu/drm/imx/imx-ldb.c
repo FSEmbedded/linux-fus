@@ -232,7 +232,7 @@ static int imx_ldb_connector_get_modes(struct drm_connector *connector)
 		imx_ldb_ch->edid = drm_get_edid(connector, imx_ldb_ch->ddc);
 
 	if (imx_ldb_ch->edid) {
-		drm_mode_connector_update_edid_property(connector,
+		drm_connector_update_edid_property(connector,
 							imx_ldb_ch->edid);
 		num_modes = drm_add_edid_modes(connector, imx_ldb_ch->edid);
 	}
@@ -986,8 +986,7 @@ static int imx_ldb_register(struct drm_device *drm,
 		drm_connector_init(drm, &imx_ldb_ch->connector,
 				&imx_ldb_connector_funcs,
 				DRM_MODE_CONNECTOR_LVDS);
-		drm_mode_connector_attach_encoder(&imx_ldb_ch->connector,
-				encoder);
+		drm_connector_attach_encoder(&imx_ldb_ch->connector, encoder);
 	}
 
 	if (imx_ldb_ch->panel) {
@@ -1081,7 +1080,7 @@ static struct devtype imx6q_ldb_devtype = {
 };
 
 static struct devtype imx8qm_ldb_devtype = {
-	.ctrl_reg = 0x10e0,
+	.ctrl_reg = 0x0,
 	.bus_mux = NULL,
 	.capable_10bit = true,
 	.visible_phy = true,
@@ -1094,7 +1093,7 @@ static struct devtype imx8qm_ldb_devtype = {
 };
 
 static struct devtype imx8qxp_ldb_devtype = {
-	.ctrl_reg = 0x10e0,
+	.ctrl_reg = 0x0,
 	.bus_mux = NULL,
 	.visible_phy = true,
 	.has_ch_sel = true,
@@ -1337,8 +1336,10 @@ static int imx_ldb_bind(struct device *dev, struct device *master, void *data)
 		bool auxiliary_ch = false;
 
 		ret = of_property_read_u32(child, "reg", &i);
-		if (ret || i < 0 || i > 1)
-			return -EINVAL;
+		if (ret || i < 0 || i > 1) {
+			ret = -EINVAL;
+			goto free_child;
+		}
 
 		if (dual && imx_ldb->use_mixel_phy && i > 0) {
 			auxiliary_ch = true;
@@ -1357,7 +1358,6 @@ static int imx_ldb_bind(struct device *dev, struct device *master, void *data)
 		channel = &imx_ldb->channel[i];
 		channel->ldb = imx_ldb;
 		channel->chno = i;
-		channel->child = child;
 
 		/*
 		 * The output port is port@4 with an external 4-port mux or
@@ -1372,13 +1372,13 @@ static int imx_ldb_bind(struct device *dev, struct device *master, void *data)
 						  port_reg, 0,
 						  &channel->panel, &channel->bridge);
 		if (ret && ret != -ENODEV)
-			return ret;
+			goto free_child;
 
 		/* panel ddc only if there is no bridge */
 		if (!channel->bridge) {
 			ret = imx_ldb_panel_ddc(dev, channel, child);
 			if (ret)
-				return ret;
+				goto free_child;
 		}
 
 		bus_format = of_get_bus_format(dev, imx_ldb, child);
@@ -1394,9 +1394,11 @@ static int imx_ldb_bind(struct device *dev, struct device *master, void *data)
 		if (bus_format < 0) {
 			dev_err(dev, "could not determine data mapping: %d\n",
 				bus_format);
-			return bus_format;
+			ret = bus_format;
+			goto free_child;
 		}
 		channel->bus_format = bus_format;
+		channel->child = child;
 
 get_phy:
 		if (imx_ldb->visible_phy) {
@@ -1450,8 +1452,10 @@ get_phy:
 		}
 
 		ret = imx_ldb_register(drm, channel);
-		if (ret)
-			return ret;
+		if (ret) {
+			channel->child = NULL;
+			goto free_child;
+		}
 	}
 
 	dev_set_drvdata(dev, imx_ldb);
@@ -1464,6 +1468,10 @@ get_phy:
 		ldb_pixel_link_init(imx_ldb->id, dual);
 
 	return 0;
+
+free_child:
+	of_node_put(child);
+	return ret;
 }
 
 static void imx_ldb_unbind(struct device *dev, struct device *master,

@@ -8,6 +8,7 @@
  */
 
 #include <linux/io.h>
+#include <linux/of.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>

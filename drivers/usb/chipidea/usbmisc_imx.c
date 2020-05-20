@@ -1,13 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2012-2016 Freescale Semiconductor, Inc.
  * Copyright 2017 NXP
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
  */
 
 #include <linux/module.h>
@@ -132,7 +126,6 @@
 #define TXVREFTUNE0_BIT			20
 #define TXVREFTUNE0_MASK		(0xf << 20)
 
-#define MX7D_USB_OTG_PHY_CFG2_DRVVBUS0		BIT(16)
 #define MX7D_USB_OTG_PHY_CFG2_CHRG_DCDENB	BIT(3)
 #define MX7D_USB_OTG_PHY_CFG2_CHRG_VDATSRCENB0	BIT(2)
 #define MX7D_USB_OTG_PHY_CFG2_CHRG_VDATDETENB0	BIT(1)
@@ -181,13 +174,13 @@ struct usbmisc_ops {
 	/* override UTMI termination select */
 	int (*term_select_override)(struct imx_usbmisc_data *data,
 						bool enable, int val);
-	int (*vbus_comparator_on)(struct imx_usbmisc_data *data, bool on);
 };
 
 struct imx_usbmisc {
 	void __iomem *base;
 	spinlock_t lock;
 	const struct usbmisc_ops *ops;
+	struct mutex mutex;
 };
 
 static struct regulator *vbus_wakeup_reg;
@@ -238,14 +231,21 @@ static int usbmisc_imx25_post(struct imx_usbmisc_data *data)
 	if (data->index > 2)
 		return -EINVAL;
 
-	if (data->evdo) {
-		spin_lock_irqsave(&usbmisc->lock, flags);
-		reg = usbmisc->base + MX25_USB_PHY_CTRL_OFFSET;
-		val = readl(reg);
-		writel(val | MX25_BM_EXTERNAL_VBUS_DIVIDER, reg);
-		spin_unlock_irqrestore(&usbmisc->lock, flags);
-		usleep_range(5000, 10000); /* needed to stabilize voltage */
-	}
+	if (data->index)
+		return 0;
+
+	spin_lock_irqsave(&usbmisc->lock, flags);
+	reg = usbmisc->base + MX25_USB_PHY_CTRL_OFFSET;
+	val = readl(reg);
+
+	if (data->evdo)
+		val |= MX25_BM_EXTERNAL_VBUS_DIVIDER;
+	else
+		val &= ~MX25_BM_EXTERNAL_VBUS_DIVIDER;
+
+	writel(val, reg);
+	spin_unlock_irqrestore(&usbmisc->lock, flags);
+	usleep_range(5000, 10000); /* needed to stabilize voltage */
 
 	return 0;
 }
@@ -728,33 +728,29 @@ static int imx7d_charger_secondary_detection(struct imx_usbmisc_data *data)
 {
 	struct imx_usbmisc *usbmisc = dev_get_drvdata(data->dev);
 	struct usb_phy *usb_phy = data->usb_phy;
-	int val;
-	unsigned long flags;
+	int val, bak_val;
 
-	/* VDM_SRC is connected to D- and IDP_SINK is connected to D+ */
-	spin_lock_irqsave(&usbmisc->lock, flags);
-	val = readl(usbmisc->base + MX7D_USB_OTG_PHY_CFG2);
-	writel(val | MX7D_USB_OTG_PHY_CFG2_CHRG_VDATSRCENB0 |
-			MX7D_USB_OTG_PHY_CFG2_CHRG_VDATDETENB0 |
-			MX7D_USB_OTG_PHY_CFG2_CHRG_CHRGSEL,
-				usbmisc->base + MX7D_USB_OTG_PHY_CFG2);
-	spin_unlock_irqrestore(&usbmisc->lock, flags);
+	/* Pull up DP */
+	val = readl(usbmisc->base + MX7D_USBNC_USB_CTRL2);
+	bak_val = val;
+	val &= ~MX7D_USBNC_USB_CTRL2_DP_DM_MASK;
+	val |= MX7D_USBNC_USB_CTRL2_DM_OVERRIDE_EN |
+		MX7D_USBNC_USB_CTRL2_DP_OVERRIDE_EN;
+	val |= MX7D_USBNC_USB_CTRL2_TERMSEL_OVERRIDE_EN |
+		MX7D_USBNC_USB_CTRL2_TERMSEL_OVERRIDE_VAL;
+	writel(val, usbmisc->base + MX7D_USBNC_USB_CTRL2);
 
-	usleep_range(1000, 2000);
+	msleep(80);
 
-	/*
-	 * Per BC 1.2, check voltage of D+:
-	 * DCP: if greater than VDAT_REF;
-	 * CDP: if less than VDAT_REF.
-	 */
 	val = readl(usbmisc->base + MX7D_USB_OTG_PHY_STATUS);
-	if (val & MX7D_USB_OTG_PHY_STATUS_CHRGDET) {
+	if (val & MX7D_USB_OTG_PHY_STATUS_LINE_STATE1) {
 		dev_dbg(data->dev, "It is a dedicate charging port\n");
 		usb_phy->chg_type = DCP_TYPE;
 	} else {
 		dev_dbg(data->dev, "It is a charging downstream port\n");
 		usb_phy->chg_type = CDP_TYPE;
 	}
+	writel(bak_val, usbmisc->base + MX7D_USBNC_USB_CTRL2);
 
 	return 0;
 }
@@ -791,13 +787,27 @@ static int imx7d_charger_data_contact_detect(struct imx_usbmisc_data *data)
 	u32 val;
 	int i, data_pin_contact_count = 0;
 
-	/* Enable Data Contact Detect (DCD) per the USB BC 1.2 */
 	spin_lock_irqsave(&usbmisc->lock, flags);
+
+	/* check if vbus is valid */
+	val = readl(usbmisc->base + MX7D_USB_OTG_PHY_STATUS);
+	if (!(val & MX7D_USB_OTG_PHY_STATUS_VBUS_VLD)) {
+		dev_err(data->dev, "vbus is error\n");
+		spin_unlock_irqrestore(&usbmisc->lock, flags);
+		return -EINVAL;
+	}
+
+	/*
+	 * - Do not check whether a charger is connected to the USB port
+	 * - Check whether the USB plug has been in contact with each other
+	 */
 	val = readl(usbmisc->base + MX7D_USB_OTG_PHY_CFG2);
 	writel(val | MX7D_USB_OTG_PHY_CFG2_CHRG_DCDENB,
 			usbmisc->base + MX7D_USB_OTG_PHY_CFG2);
+
 	spin_unlock_irqrestore(&usbmisc->lock, flags);
 
+	/* Check if plug is connected */
 	for (i = 0; i < 100; i = i + 1) {
 		val = readl(usbmisc->base + MX7D_USB_OTG_PHY_STATUS);
 		if (!(val & MX7D_USB_OTG_PHY_STATUS_LINE_STATE0)) {
@@ -812,16 +822,10 @@ static int imx7d_charger_data_contact_detect(struct imx_usbmisc_data *data)
 		}
 	}
 
-	/* Disable DCD after finished data contact check */
-	spin_lock_irqsave(&usbmisc->lock, flags);
-	val = readl(usbmisc->base + MX7D_USB_OTG_PHY_CFG2);
-	writel(val & ~MX7D_USB_OTG_PHY_CFG2_CHRG_DCDENB,
-			usbmisc->base + MX7D_USB_OTG_PHY_CFG2);
-	spin_unlock_irqrestore(&usbmisc->lock, flags);
-
 	if (i == 100) {
 		dev_err(data->dev,
 			"VBUS is coming from a dedicated power supply.\n");
+		imx7_disable_charger_detector(data);
 		return -ENXIO;
 	}
 
@@ -834,56 +838,14 @@ static int imx7d_charger_primary_detection(struct imx_usbmisc_data *data)
 	struct usb_phy *usb_phy = data->usb_phy;
 	unsigned long flags;
 	u32 val;
-
-	/* VDP_SRC is connected to D+ and IDM_SINK is connected to D- */
-	spin_lock_irqsave(&usbmisc->lock, flags);
-	val = readl(usbmisc->base + MX7D_USB_OTG_PHY_CFG2);
-	val &= ~MX7D_USB_OTG_PHY_CFG2_CHRG_CHRGSEL;
-	writel(val | MX7D_USB_OTG_PHY_CFG2_CHRG_VDATSRCENB0 |
-			MX7D_USB_OTG_PHY_CFG2_CHRG_VDATDETENB0,
-				usbmisc->base + MX7D_USB_OTG_PHY_CFG2);
-	spin_unlock_irqrestore(&usbmisc->lock, flags);
-
-	usleep_range(1000, 2000);
-
-	/* Check if D- is less than VDAT_REF to determine an SDP per BC 1.2 */
-	val = readl(usbmisc->base + MX7D_USB_OTG_PHY_STATUS);
-	if (!(val & MX7D_USB_OTG_PHY_STATUS_CHRGDET)) {
-		dev_dbg(data->dev, "It is a stardard downstream port\n");
-		usb_phy->chg_type = SDP_TYPE;
-	}
-
-	return 0;
-}
-
-/**
- * Whole charger detection process:
- * 1. OPMODE override to be non-driving
- * 2. Data contact check
- * 3. Primary detection
- * 4. Secondary detection
- * 5. Disable charger detection
- */
-static int imx7d_charger_detection(struct imx_usbmisc_data *data)
-{
-	struct imx_usbmisc *usbmisc = dev_get_drvdata(data->dev);
-	struct usb_phy *usb_phy = data->usb_phy;
-	unsigned long flags;
-	u32 val;
 	int ret;
 
-	/* Check if vbus is valid */
-	val = readl(usbmisc->base + MX7D_USB_OTG_PHY_STATUS);
-	if (!(val & MX7D_USB_OTG_PHY_STATUS_VBUS_VLD)) {
-		dev_err(data->dev, "vbus is error\n");
-		return -EINVAL;
-	}
+	ret = imx7d_charger_data_contact_detect(data);
+	if (ret)
+		return ret;
 
-	/*
-	 * Keep OPMODE to be non-driving mode during the whole
-	 * charger detection process.
-	 */
 	spin_lock_irqsave(&usbmisc->lock, flags);
+	/* Set OPMODE to be non-driving mode */
 	val = readl(usbmisc->base + MX7D_USBNC_USB_CTRL2);
 	val &= ~MX7D_USBNC_USB_CTRL2_OPMODE_OVERRIDE_MASK;
 	val |= MX7D_USBNC_USB_CTRL2_OPMODE_NON_DRIVING;
@@ -892,17 +854,43 @@ static int imx7d_charger_detection(struct imx_usbmisc_data *data)
 	val = readl(usbmisc->base + MX7D_USBNC_USB_CTRL2);
 	writel(val | MX7D_USBNC_USB_CTRL2_OPMODE_OVERRIDE_EN,
 			usbmisc->base + MX7D_USBNC_USB_CTRL2);
+
+	/*
+	 * - Do check whether a charger is connected to the USB port
+	 * - Do not Check whether the USB plug has been in contact with
+	 * each other
+	 */
+	val = readl(usbmisc->base + MX7D_USB_OTG_PHY_CFG2);
+	writel(val | MX7D_USB_OTG_PHY_CFG2_CHRG_VDATSRCENB0 |
+			MX7D_USB_OTG_PHY_CFG2_CHRG_VDATDETENB0,
+				usbmisc->base + MX7D_USB_OTG_PHY_CFG2);
 	spin_unlock_irqrestore(&usbmisc->lock, flags);
 
-	ret = imx7d_charger_data_contact_detect(data);
+	usleep_range(1000, 2000);
+
+	/* Check if it is a charger */
+	val = readl(usbmisc->base + MX7D_USB_OTG_PHY_STATUS);
+	if (!(val & MX7D_USB_OTG_PHY_STATUS_CHRGDET)) {
+		dev_dbg(data->dev, "It is a stardard downstream port\n");
+		usb_phy->chg_type = SDP_TYPE;
+	}
+
+	imx7_disable_charger_detector(data);
+
+	return 0;
+}
+
+static int imx7d_charger_detection(struct imx_usbmisc_data *data)
+{
+	struct usb_phy *usb_phy = data->usb_phy;
+	int ret;
+
+	ret = imx7d_charger_primary_detection(data);
 	if (ret)
 		return ret;
 
-	ret = imx7d_charger_primary_detection(data);
-	if (!ret && usb_phy->chg_type != SDP_TYPE)
+	if (usb_phy->chg_type != SDP_TYPE)
 		ret = imx7d_charger_secondary_detection(data);
-
-	imx7_disable_charger_detector(data);
 
 	return ret;
 }
@@ -960,7 +948,7 @@ static int usbmisc_imx7ulp_init(struct imx_usbmisc_data *data)
 	if (data->disable_oc)
 		reg |= MX6_BM_OVER_CUR_DIS;
 	else
-		reg &= ~MX6_BM_OVER_CUR_DIS;
+		reg &= MX6_BM_OVER_CUR_DIS;
 
 	writel(reg, usbmisc->base);
 
@@ -993,35 +981,6 @@ static int usbmisc_imx7ulp_init(struct imx_usbmisc_data *data)
 	spin_unlock_irqrestore(&usbmisc->lock, flags);
 
 	usbmisc_imx7d_set_wakeup(data, false);
-
-	return 0;
-}
-
-static int usbmisc_imx7d_vbus_comparator_on(struct imx_usbmisc_data *data,
-					    bool on)
-{
-	unsigned long flags;
-	struct imx_usbmisc *usbmisc = dev_get_drvdata(data->dev);
-	u32 val;
-
-	if (data->hsic)
-		return 0;
-
-	spin_lock_irqsave(&usbmisc->lock, flags);
-	/*
-	 * Disable VBUS valid comparator when in suspend mode,
-	 * when real OTG is disabled and DRVVBUS0 is asserted,
-	 * the bandgap circuitry and VBUS Valid comparator are
-	 * still powered, even in suspend or sleep mode.
-	 */
-	val = readl(usbmisc->base + MX7D_USB_OTG_PHY_CFG2);
-	if (on)
-		val |= MX7D_USB_OTG_PHY_CFG2_DRVVBUS0;
-	else
-		val &= ~MX7D_USB_OTG_PHY_CFG2_DRVVBUS0;
-
-	writel(val, usbmisc->base + MX7D_USB_OTG_PHY_CFG2);
-	spin_unlock_irqrestore(&usbmisc->lock, flags);
 
 	return 0;
 }
@@ -1068,7 +1027,6 @@ static const struct usbmisc_ops imx7d_usbmisc_ops = {
 	.power_lost_check = usbmisc_imx7d_power_lost_check,
 	.charger_detection = imx7d_charger_detection,
 	.term_select_override = usbmisc_term_select_override,
-	.vbus_comparator_on = usbmisc_imx7d_vbus_comparator_on,
 };
 
 static const struct usbmisc_ops imx7ulp_usbmisc_ops = {
@@ -1142,6 +1100,7 @@ int imx_usbmisc_charger_detection(struct imx_usbmisc_data *data, bool connect)
 	if (!usbmisc->ops->charger_detection)
 		return -ENOTSUPP;
 
+	mutex_lock(&usbmisc->mutex);
 	if (connect) {
 		ret = usbmisc->ops->charger_detection(data);
 		if (ret) {
@@ -1156,6 +1115,7 @@ int imx_usbmisc_charger_detection(struct imx_usbmisc_data *data, bool connect)
 		usb_phy->chg_state = USB_CHARGER_ABSENT;
 		usb_phy->chg_type = UNKNOWN_TYPE;
 	}
+	mutex_unlock(&usbmisc->mutex);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(imx_usbmisc_charger_detection);
@@ -1216,21 +1176,6 @@ int imx_usbmisc_term_select_override(struct imx_usbmisc_data *data,
 	return usbmisc->ops->term_select_override(data, enable, val);
 }
 EXPORT_SYMBOL_GPL(imx_usbmisc_term_select_override);
-
-int imx_usbmisc_vbus_comparator_on(struct imx_usbmisc_data *data,
-				   bool on)
-{
-	struct imx_usbmisc *usbmisc;
-
-	if (!data)
-		return 0;
-
-	usbmisc = dev_get_drvdata(data->dev);
-	if (!usbmisc->ops->vbus_comparator_on)
-		return 0;
-	return usbmisc->ops->vbus_comparator_on(data, on);
-}
-EXPORT_SYMBOL_GPL(imx_usbmisc_vbus_comparator_on);
 
 static const struct of_device_id usbmisc_imx_dt_ids[] = {
 	{
@@ -1296,6 +1241,7 @@ static int usbmisc_imx_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	spin_lock_init(&data->lock);
+	mutex_init(&data->mutex);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	data->base = devm_ioremap_resource(&pdev->dev, res);

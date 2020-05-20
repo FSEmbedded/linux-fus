@@ -9,9 +9,7 @@ vpu-windsor-objs = vpu_encoder_b0.o \
 	vpu_encoder_ctrl.o \
 	vpu_event_msg.o \
 	vpu_encoder_mem.o \
-	vpu_encoder_rpc.o \
-	vpu_encoder_mu.o \
-	vpu_encoder_pm.o
+	vpu_encoder_rpc.o
 
 clean:
 	rm -rf $(vpu-windsor-objs)

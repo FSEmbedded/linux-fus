@@ -364,9 +364,8 @@ framegen_cfg_videomode(struct dpu_framegen *fg,
 	/* skikconfig */
 	dpu_fg_write(fg, COL(kick_col) | ROW(kick_row) | EN, SKICKCONFIG);
 
-	/* primary and secondary area position config */
+	/* primary position config */
 	dpu_fg_write(fg, STARTX(0) | STARTY(0), PACFG);
-	dpu_fg_write(fg, STARTX(0) | STARTY(0), SACFG);
 
 	/* alpha */
 	val = dpu_fg_read(fg, FGINCTRL);
@@ -450,6 +449,12 @@ void framegen_syncmode_fixup(struct dpu_framegen *fg, bool enable)
 	dpu_fg_write(fg, val, SECSTATCONFIG);
 }
 EXPORT_SYMBOL_GPL(framegen_syncmode_fixup);
+
+void framegen_sacfg(struct dpu_framegen *fg, unsigned int x, unsigned int y)
+{
+	dpu_fg_write(fg, STARTX(x) | STARTY(y), SACFG);
+}
+EXPORT_SYMBOL_GPL(framegen_sacfg);
 
 void framegen_displaymode(struct dpu_framegen *fg, fgdm_t mode)
 {
@@ -543,7 +548,7 @@ EXPORT_SYMBOL_GPL(framegen_read_timestamp);
 void framegen_wait_for_frame_counter_moving(struct dpu_framegen *fg)
 {
 	u32 frame_index, line_index, last_frame_index;
-	unsigned long timeout = jiffies + msecs_to_jiffies(100);
+	unsigned long timeout = jiffies + msecs_to_jiffies(50);
 
 	framegen_read_timestamp(fg, &frame_index, &line_index);
 	do {

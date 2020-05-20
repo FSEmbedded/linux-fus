@@ -58,7 +58,7 @@ static unsigned long __mxc_arch_type;
 
 static inline bool arm_is_ca7(void)
 {
-       return __mxc_arch_type == MXC_ARCH_CA7;
+	return __mxc_arch_type == MXC_ARCH_CA7;
 }
 /*
  * Initialise the CPU possible map early - this describes the CPUs

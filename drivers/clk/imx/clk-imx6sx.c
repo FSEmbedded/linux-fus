@@ -69,16 +69,16 @@ static const char *display_sels[]	= { "pll2_bus", "pll2_pfd2_396m", "pll3_usb_ot
 static const char *csi_sels[]		= { "osc", "pll2_pfd2_396m", "pll3_120m", "pll3_pfd1_540m", };
 static const char *cko1_sels[]		= {
 	"pll3_usb_otg", "pll2_bus", "pll1_sys", "pll5_video_div",
-	"vadc", "ocram", "dummy", "pxp_axi", "epdc_axi", "lcdif_pix",
-	"epdc_pix", "ahb", "ipg", "perclk", "ckil", "pll4_audio_div",
+	"vadc", "ocram", "qspi2", "m4", "enet_ahb", "lcdif2_pix",
+	"lcdif1_pix", "ahb", "ipg", "perclk", "ckil", "pll4_audio_div",
 };
 static const char *cko2_sels[]		= {
 	"dummy", "mmdc_p0_fast", "usdhc4", "usdhc1", "dummy", "wrck",
 	"ecspi_root", "dummy", "usdhc3", "pcie", "arm", "csi",
-	"lcdif_axi", "dummy", "osc", "dummy", "gpu2d_ovg_core",
-	"usdhc2", "ssi1", "ssi2", "ssi3", "gpu2d_core", "dummy",
-	"dummy", "dummy", "dummy", "esai_extal", "eim_slow", "uart_serial",
-	"spdif", "asrc", "dummy",
+	"display_axi", "dummy", "osc", "dummy", "dummy",
+	"usdhc2", "ssi1", "ssi2", "ssi3", "gpu_axi_podf", "dummy",
+	"can_podf", "lvds1_out", "qspi1", "esai_extal", "eim_slow",
+	"uart_serial", "spdif", "audio", "dummy",
 };
 static const char *cko_sels[] = { "cko1", "cko2", };
 static const char *lvds_sels[]	= {
@@ -196,9 +196,9 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	clks[IMX6SX_CLK_IPP_DI0] = of_clk_get_by_name(ccm_node, "ipp_di0");
 	clks[IMX6SX_CLK_IPP_DI1] = of_clk_get_by_name(ccm_node, "ipp_di1");
 
-	/* Clock source from external clock via CLK1 PAD */
-	clks[IMX6SX_CLK_ANACLK1] = imx_obtain_fixed_clock("anaclk1", 0);
-	clks[IMX6SX_CLK_ANACLK2] = imx_obtain_fixed_clock("anaclk2", 0);
+	/* Clock source from external clock via CLK1/2 PAD */
+	clks[IMX6SX_CLK_ANACLK1] = of_clk_get_by_name(ccm_node, "anaclk1");
+	clks[IMX6SX_CLK_ANACLK2] = of_clk_get_by_name(ccm_node, "anaclk2");
 
 	np = of_find_compatible_node(NULL, NULL, "fsl,imx6sx-anatop");
 	base = of_iomap(np, 0);
@@ -445,7 +445,7 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	clks[IMX6SX_CLK_CAN2_SERIAL]  = imx_clk_gate2("can2_serial",   "can_podf",          base + 0x68, 20);
 	clks[IMX6SX_CLK_DCIC1]        = imx_clk_gate2("dcic1",         "display_podf",      base + 0x68, 24);
 	clks[IMX6SX_CLK_DCIC2]        = imx_clk_gate2("dcic2",         "display_podf",      base + 0x68, 26);
-	clks[IMX6SX_CLK_AIPS_TZ3]     = imx_clk_gate2("aips_tz3",      "ahb",               base + 0x68, 30);
+	clks[IMX6SX_CLK_AIPS_TZ3]     = imx_clk_gate2_flags("aips_tz3", "ahb", base + 0x68, 30, CLK_IS_CRITICAL);
 
 	/* CCGR1 */
 	clks[IMX6SX_CLK_ECSPI1]       = imx_clk_gate2("ecspi1",        "ecspi_podf",        base + 0x6c, 0);
@@ -458,10 +458,11 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	clks[IMX6SX_CLK_ESAI_EXTAL]   = imx_clk_gate2_shared("esai_extal", "esai_podf",     base + 0x6c, 16, &share_count_esai);
 	clks[IMX6SX_CLK_ESAI_IPG]     = imx_clk_gate2_shared("esai_ipg",   "ahb",           base + 0x6c, 16, &share_count_esai);
 	clks[IMX6SX_CLK_ESAI_MEM]     = imx_clk_gate2_shared("esai_mem",   "ahb",           base + 0x6c, 16, &share_count_esai);
-	clks[IMX6SX_CLK_WAKEUP]       = imx_clk_gate2("wakeup",        "ipg",               base + 0x6c, 18);
+	clks[IMX6SX_CLK_WAKEUP]       = imx_clk_gate2_flags("wakeup", "ipg", base + 0x6c, 18, CLK_IS_CRITICAL);
 	clks[IMX6SX_CLK_GPT_BUS]      = imx_clk_gate2("gpt_bus",       "perclk",            base + 0x6c, 20);
 	clks[IMX6SX_CLK_GPT_SERIAL]   = imx_clk_gate2("gpt_serial",    "perclk",            base + 0x6c, 22);
 	clks[IMX6SX_CLK_GPU]          = imx_clk_gate2("gpu",           "gpu_core_podf",     base + 0x6c, 26);
+	clks[IMX6SX_CLK_OCRAM_S]      = imx_clk_gate2_flags("ocram_s",       "ahb",               base + 0x6c, 28, CLK_IS_CRITICAL);
 	clks[IMX6SX_CLK_CANFD]        = imx_clk_gate2("canfd",         "can_podf",          base + 0x6c, 30);
 
 	/* CCGR2 */
@@ -471,10 +472,10 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	clks[IMX6SX_CLK_I2C3]         = imx_clk_gate2("i2c3",          "perclk",            base + 0x70, 10);
 	clks[IMX6SX_CLK_OCOTP]        = imx_clk_gate2("ocotp",         "ipg",               base + 0x70, 12);
 	clks[IMX6SX_CLK_IOMUXC]       = imx_clk_gate2("iomuxc",        "lcdif1_podf",       base + 0x70, 14);
-	clks[IMX6SX_CLK_IPMUX1]       = imx_clk_gate2("ipmux1",        "ahb",               base + 0x70, 16);
-	clks[IMX6SX_CLK_IPMUX2]       = imx_clk_gate2("ipmux2",        "ahb",               base + 0x70, 18);
-	clks[IMX6SX_CLK_IPMUX3]       = imx_clk_gate2("ipmux3",        "ahb",               base + 0x70, 20);
-	clks[IMX6SX_CLK_TZASC1]       = imx_clk_gate2("tzasc1",        "mmdc_podf",         base + 0x70, 22);
+	clks[IMX6SX_CLK_IPMUX1]       = imx_clk_gate2_flags("ipmux1", "ahb", base + 0x70, 16, CLK_IS_CRITICAL);
+	clks[IMX6SX_CLK_IPMUX2]       = imx_clk_gate2_flags("ipmux2", "ahb", base + 0x70, 18, CLK_IS_CRITICAL);
+	clks[IMX6SX_CLK_IPMUX3]       = imx_clk_gate2_flags("ipmux3", "ahb", base + 0x70, 20, CLK_IS_CRITICAL);
+	clks[IMX6SX_CLK_TZASC1]       = imx_clk_gate2_flags("tzasc1", "mmdc_podf", base + 0x70, 22, CLK_IS_CRITICAL);
 	clks[IMX6SX_CLK_LCDIF_APB]    = imx_clk_gate2("lcdif_apb",     "display_podf",      base + 0x70, 28);
 	clks[IMX6SX_CLK_PXP_AXI]      = imx_clk_gate2("pxp_axi",       "display_podf",      base + 0x70, 30);
 
@@ -488,15 +489,15 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	clks[IMX6SX_CLK_LDB_DI0]      = imx_clk_gate2("ldb_di0",       "ldb_di0_div_sel",   base + 0x74, 12);
 	clks[IMX6SX_CLK_QSPI1]        = imx_clk_gate2("qspi1",         "qspi1_podf",        base + 0x74, 14);
 	clks[IMX6SX_CLK_MLB]          = imx_clk_gate2("mlb",           "ahb",               base + 0x74, 18);
-	clks[IMX6SX_CLK_MMDC_P0_FAST] = imx_clk_gate2("mmdc_p0_fast",  "mmdc_podf",         base + 0x74, 20);
-	clks[IMX6SX_CLK_MMDC_P0_IPG]  = imx_clk_gate2("mmdc_p0_ipg",   "ipg",               base + 0x74, 24);
-	clks[IMX6SX_CLK_OCRAM]        = imx_clk_gate2("ocram",         "ocram_podf",        base + 0x74, 28);
+	clks[IMX6SX_CLK_MMDC_P0_FAST] = imx_clk_gate2_flags("mmdc_p0_fast", "mmdc_podf", base + 0x74, 20, CLK_IS_CRITICAL);
+	clks[IMX6SX_CLK_MMDC_P0_IPG]  = imx_clk_gate2_flags("mmdc_p0_ipg", "ipg", base + 0x74, 24, CLK_IS_CRITICAL);
+	clks[IMX6SX_CLK_OCRAM]        = imx_clk_gate2_flags("ocram", "ocram_podf", base + 0x74, 28, CLK_IS_CRITICAL);
 
 	/* CCGR4 */
 	clks[IMX6SX_CLK_PCIE_AXI]     = imx_clk_gate2("pcie_axi",      "display_podf",      base + 0x78, 0);
 	clks[IMX6SX_CLK_QSPI2]        = imx_clk_gate2("qspi2",         "qspi2_podf",        base + 0x78, 10);
 	clks[IMX6SX_CLK_PER1_BCH]     = imx_clk_gate2("per1_bch",      "usdhc3",            base + 0x78, 12);
-	clks[IMX6SX_CLK_PER2_MAIN]    = imx_clk_gate2("per2_main",     "ahb",               base + 0x78, 14);
+	clks[IMX6SX_CLK_PER2_MAIN]    = imx_clk_gate2_flags("per2_main", "ahb", base + 0x78, 14, CLK_IS_CRITICAL);
 	clks[IMX6SX_CLK_PWM1]         = imx_clk_gate2("pwm1",          "perclk",            base + 0x78, 16);
 	clks[IMX6SX_CLK_PWM2]         = imx_clk_gate2("pwm2",          "perclk",            base + 0x78, 18);
 	clks[IMX6SX_CLK_PWM3]         = imx_clk_gate2("pwm3",          "perclk",            base + 0x78, 20);
@@ -507,7 +508,7 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	clks[IMX6SX_CLK_GPMI_APB]     = imx_clk_gate2("gpmi_apb",      "usdhc3",            base + 0x78, 30);
 
 	/* CCGR5 */
-	clks[IMX6SX_CLK_ROM]          = imx_clk_gate2("rom",           "ahb",               base + 0x7c, 0);
+	clks[IMX6SX_CLK_ROM]          = imx_clk_gate2_flags("rom", "ahb", base + 0x7c, 0, CLK_IS_CRITICAL);
 	clks[IMX6SX_CLK_SDMA]         = imx_clk_gate2("sdma",          "ahb",               base + 0x7c, 6);
 	clks[IMX6SX_CLK_SPBA]         = imx_clk_gate2("spba",          "ipg",               base + 0x7c, 12);
 	clks[IMX6SX_CLK_AUDIO]        = imx_clk_gate2_shared("audio",  "audio_podf",        base + 0x7c, 14, &share_count_audio);
@@ -568,7 +569,7 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 
 	/*
 	 * QSPI2/GPMI_IO share the same clock source but with the
-	 * different gate, need explicitely gate the QSPI2 & GPMI_IO
+	 * different gate, need explicitly gate the QSPI2 & GPMI_IO
 	 * during the clock init phase according to the SOC design.
 	 */
 	if (!imx_src_is_m4_enabled()) {
@@ -597,6 +598,7 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 
 	/* set perclk to from OSC */
 	imx_clk_set_parent(clks[IMX6SX_CLK_PERCLK_SEL], clks[IMX6SX_CLK_OSC]);
+	imx_clk_prepare_enable(clks[IMX6SX_CLK_PERCLK]);
 
 	if (IS_ENABLED(CONFIG_USB_MXS_PHY)) {
 		imx_clk_prepare_enable(clks[IMX6SX_CLK_USBPHY1_GATE]);
@@ -650,10 +652,10 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	imx_clk_set_parent(clks[IMX6SX_CLK_ESAI_SEL], clks[IMX6SX_CLK_PLL4_AUDIO_DIV]);
 	imx_clk_set_rate(clks[IMX6SX_CLK_ESAI_PODF], 24576000);
 
-        /* Set the UART parent if needed. */
-        if (uart_from_osc)
+	/* Set the UART parent if needed. */
+	if (uart_from_osc)
 		clk_set_parent(clks[IMX6SX_CLK_UART_SEL], clks[IMX6SX_CLK_OSC]);
-        else
+	else
 		clk_set_parent(clks[IMX6SX_CLK_UART_SEL], clks[IMX6SX_CLK_PLL3_80M]);
 
 	/* Set parent clock for vadc */
@@ -665,9 +667,6 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 
 	imx_clk_set_parent(clks[IMX6SX_CLK_QSPI1_SEL], clks[IMX6SX_CLK_PLL2_BUS]);
 	imx_clk_set_parent(clks[IMX6SX_CLK_QSPI2_SEL], clks[IMX6SX_CLK_PLL2_BUS]);
-	/* Set the UART parent if needed. */
-	if (uart_from_osc)
-		imx_clk_set_parent(clks[IMX6SX_CLK_UART_SEL], clks[IMX6SX_CLK_OSC]);
 
 	/* Only set parent of can_sel clock if the Cortex M4 has not done it already */
 	if (clk_get_parent(clks[IMX6SX_CLK_CAN_SEL]) == clks[IMX6SX_CLK_DUMMY])

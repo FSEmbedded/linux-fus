@@ -1,25 +1,9 @@
-/*
- *  linux/arch/arm/plat-mxc/time.c
- *
- *  Copyright (C) 2000-2001 Deep Blue Solutions
- *  Copyright (C) 2002 Shane Nay (shane@minirl.com)
- *  Copyright (C) 2006-2007 Pavel Pisa (ppisa@pikron.com)
- *  Copyright (C) 2008 Juergen Beisert (kernel@pengutronix.de)
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
- * MA 02110-1301, USA.
- */
+// SPDX-License-Identifier: GPL-2.0+
+//
+//  Copyright (C) 2000-2001 Deep Blue Solutions
+//  Copyright (C) 2002 Shane Nay (shane@minirl.com)
+//  Copyright (C) 2006-2007 Pavel Pisa (ppisa@pikron.com)
+//  Copyright (C) 2008 Juergen Beisert (kernel@pengutronix.de)
 
 #include <linux/interrupt.h>
 #include <linux/irq.h>
@@ -170,9 +154,6 @@ static int __init mxc_clocksource_init(struct imx_timer *imxtm)
 {
 	unsigned int c = clk_get_rate(imxtm->clk_per);
 	void __iomem *reg = imxtm->base + imxtm->gpt->reg_tcn;
-
-	if (c == 0)
-		return -EINVAL;
 
 #ifndef CONFIG_ARM64
 	imx_delay_timer.read_current_timer = &imx_read_current_timer;
@@ -496,16 +477,12 @@ static int __init mxc_timer_init_dt(struct device_node *np,  enum imx_gpt_type t
 		return -ENOMEM;
 
 	imxtm->base = of_iomap(np, 0);
-	if (!imxtm->base) {
-		kfree(imxtm);
+	if (!imxtm->base)
 		return -ENXIO;
-	}
 
 	imxtm->irq = irq_of_parse_and_map(np, 0);
-	if (imxtm->irq <= 0) {
-		kfree(imxtm);
+	if (imxtm->irq <= 0)
 		return -EINVAL;
-	}
 
 	imxtm->clk_ipg = of_clk_get_by_name(np, "ipg");
 

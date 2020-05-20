@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2018 NXP
+ * Copyright 2017-2019 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -103,18 +103,6 @@ static void prg_reset(struct prg *prg)
 		usleep_range(1000, 2000);
 
 	prg_write(prg, SOFTRST, PRG_CTRL + CLR);
-
-	/*
-	 * After the above soft reset, PRG width and height are zero.
-	 * With the zero size, PRG is likely to generate a bogus signal
-	 * which indicates it finishes processing one frame as soon as
-	 * PRG works in non-bypass mode.  So, an explicit reg-update with
-	 * non-zero size to avoid the bogus signal.
-	 */
-	prg_write(prg, WIDTH(64), PRG_WIDTH);
-	prg_write(prg, HEIGHT(64), PRG_HEIGHT);
-	prg_write(prg, SHADOW_EN, PRG_CTRL + CLR);
-	prg_write(prg, REG_UPDATE, PRG_REG_UPDATE);
 }
 
 void prg_enable(struct prg *prg)
@@ -126,15 +114,12 @@ void prg_enable(struct prg *prg)
 }
 EXPORT_SYMBOL_GPL(prg_enable);
 
-void prg_disable(struct prg *prg, bool hard)
+void prg_disable(struct prg *prg)
 {
 	if (WARN_ON(!prg))
 		return;
 
-	if (hard)
-		prg_reset(prg);
-	else
-		prg_write(prg, BYPASS, PRG_CTRL + SET);
+	prg_write(prg, BYPASS, PRG_CTRL);
 }
 EXPORT_SYMBOL_GPL(prg_disable);
 
@@ -152,7 +137,7 @@ void prg_configure(struct prg *prg, unsigned int width, unsigned int height,
 	if (WARN_ON(!prg))
 		return;
 
-	if (start && prg->is_blit)
+	if (start)
 		prg_reset(prg);
 
 	/* prg finer cropping into micro-tile block - top/left start point */
@@ -254,6 +239,11 @@ void prg_configure(struct prg *prg, unsigned int width, unsigned int height,
 		val |= DES_DATA_TYPE_8BPP;
 		break;
 	}
+	if (start)
+		/* no shadow for the first frame */
+		val &= ~SHADOW_EN;
+	else
+		val |= SHADOW_EN;
 	prg_write(prg, val, PRG_CTRL);
 
 	dev_dbg(prg->dev, "bits per pixel %u\n", bits_per_pixel);
@@ -277,15 +267,6 @@ void prg_shadow_enable(struct prg *prg)
 	prg_write(prg, SHADOW_EN, PRG_CTRL + SET);
 }
 EXPORT_SYMBOL_GPL(prg_shadow_enable);
-
-void prg_shadow_disable(struct prg *prg)
-{
-	if (WARN_ON(!prg))
-		return;
-
-	prg_write(prg, SHADOW_EN, PRG_CTRL + CLR);
-}
-EXPORT_SYMBOL_GPL(prg_shadow_disable);
 
 bool prg_stride_supported(struct prg *prg, unsigned int stride)
 {
@@ -389,7 +370,8 @@ prg_lookup_by_phandle(struct device *dev, const char *name, int index)
 	list_for_each_entry(prg, &prg_list, list) {
 		if (prg_node == prg->dev->of_node) {
 			mutex_unlock(&prg_list_mutex);
-			device_link_add(dev, prg->dev, DL_FLAG_AUTOREMOVE);
+			device_link_add(dev, prg->dev,
+					DL_FLAG_AUTOREMOVE_CONSUMER);
 			return prg;
 		}
 	}

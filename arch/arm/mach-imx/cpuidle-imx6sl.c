@@ -15,6 +15,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
+#include <linux/mod_devicetable.h>
 #include <asm/cpuidle.h>
 #include <asm/fncpy.h>
 #include <asm/proc-fns.h>
@@ -159,7 +160,7 @@ int __init imx6sl_cpuidle_init(void)
 		pm_info->mmdc_io_val[i][0] = mmdc_offset_array[i];
 
 	/* calculate the wfi code size */
-	wfi_code_size = (&mx6sl_lpm_wfi_end -&mx6sl_lpm_wfi_start) *4;
+	wfi_code_size = (&mx6sl_lpm_wfi_end -&mx6sl_lpm_wfi_start) * 4;
 
 	imx6sl_wfi_in_iram_fn = (void *)fncpy(wfi_iram_base + sizeof(*pm_info),
 		&imx6sl_low_power_idle, wfi_code_size);
@@ -218,8 +219,8 @@ static int ldo2p5_dummy_probe(struct platform_device *pdev)
 }
 
 static const struct of_device_id imx_ldo2p5_dummy_ids[] = {
-	{ .compatible = "fsl,imx6-dummy-ldo2p5"},
-	};
+	{ .compatible = "fsl,imx6-dummy-ldo2p5", },
+};
 MODULE_DEVICE_TABLE(ofm, imx_ldo2p5_dummy_ids);
 
 static struct platform_driver ldo2p5_dummy_driver = {

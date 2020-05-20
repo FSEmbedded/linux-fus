@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 /*
  * f_mass_storage.c -- Mass Storage USB Composite Function
  *
@@ -205,7 +206,6 @@
 #include <linux/fcntl.h>
 #include <linux/file.h>
 #include <linux/fs.h>
-#include <linux/kref.h>
 #include <linux/kthread.h>
 #include <linux/sched/signal.h>
 #include <linux/limits.h>
@@ -313,8 +313,6 @@ struct fsg_common {
 	void			*private_data;
 
 	char inquiry_string[INQUIRY_STRING_LEN];
-
-	struct kref		ref;
 };
 
 struct fsg_dev {
@@ -2605,24 +2603,10 @@ static DEVICE_ATTR(file, 0, file_show, file_store);
 
 /****************************** FSG COMMON ******************************/
 
-static void fsg_common_release(struct kref *ref);
-
 static void fsg_lun_release(struct device *dev)
 {
 	/* Nothing needs to be done */
 }
-
-void fsg_common_get(struct fsg_common *common)
-{
-	kref_get(&common->ref);
-}
-EXPORT_SYMBOL_GPL(fsg_common_get);
-
-void fsg_common_put(struct fsg_common *common)
-{
-	kref_put(&common->ref, fsg_common_release);
-}
-EXPORT_SYMBOL_GPL(fsg_common_put);
 
 static struct fsg_common *fsg_common_setup(struct fsg_common *common)
 {
@@ -2636,7 +2620,6 @@ static struct fsg_common *fsg_common_setup(struct fsg_common *common)
 	}
 	init_rwsem(&common->filesem);
 	spin_lock_init(&common->lock);
-	kref_init(&common->ref);
 	init_completion(&common->thread_notifier);
 	init_waitqueue_head(&common->io_wait);
 	init_waitqueue_head(&common->fsg_wait);
@@ -2924,9 +2907,8 @@ void fsg_common_set_inquiry_string(struct fsg_common *common, const char *vn,
 }
 EXPORT_SYMBOL_GPL(fsg_common_set_inquiry_string);
 
-static void fsg_common_release(struct kref *ref)
+static void fsg_common_release(struct fsg_common *common)
 {
-	struct fsg_common *common = container_of(ref, struct fsg_common, ref);
 	int i;
 
 	/* If the thread isn't already dead, tell it to exit now */
@@ -3210,7 +3192,7 @@ static struct configfs_attribute *fsg_lun_attrs[] = {
 	NULL,
 };
 
-static struct config_item_type fsg_lun_type = {
+static const struct config_item_type fsg_lun_type = {
 	.ct_item_ops	= &fsg_lun_item_ops,
 	.ct_attrs	= fsg_lun_attrs,
 	.ct_owner	= THIS_MODULE,
@@ -3378,7 +3360,9 @@ static ssize_t fsg_opts_num_buffers_store(struct config_item *item,
 	if (ret)
 		goto end;
 
-	fsg_common_set_num_buffers(opts->common, num);
+	ret = fsg_common_set_num_buffers(opts->common, num);
+	if (ret)
+		goto end;
 	ret = len;
 
 end:
@@ -3402,7 +3386,7 @@ static struct configfs_group_operations fsg_group_ops = {
 	.drop_item	= fsg_lun_drop,
 };
 
-static struct config_item_type fsg_func_type = {
+static const struct config_item_type fsg_func_type = {
 	.ct_item_ops	= &fsg_item_ops,
 	.ct_group_ops	= &fsg_group_ops,
 	.ct_attrs	= fsg_attrs,
@@ -3414,7 +3398,7 @@ static void fsg_free_inst(struct usb_function_instance *fi)
 	struct fsg_opts *opts;
 
 	opts = fsg_opts_from_func_inst(fi);
-	fsg_common_put(opts->common);
+	fsg_common_release(opts->common);
 	kfree(opts);
 }
 
@@ -3438,7 +3422,7 @@ static struct usb_function_instance *fsg_alloc_inst(void)
 	rc = fsg_common_set_num_buffers(opts->common,
 					CONFIG_USB_GADGET_STORAGE_NUM_BUFFERS);
 	if (rc)
-		goto release_opts;
+		goto release_common;
 
 	pr_info(FSG_DRIVER_DESC ", version: " FSG_DRIVER_VERSION "\n");
 
@@ -3461,6 +3445,8 @@ static struct usb_function_instance *fsg_alloc_inst(void)
 
 release_buffers:
 	fsg_common_free_buffers(opts->common);
+release_common:
+	kfree(opts->common);
 release_opts:
 	kfree(opts);
 	return ERR_PTR(rc);

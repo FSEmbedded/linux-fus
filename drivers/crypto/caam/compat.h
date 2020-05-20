@@ -32,12 +32,15 @@
 #include <crypto/aes.h>
 #include <crypto/ctr.h>
 #include <crypto/des.h>
+#include <crypto/gcm.h>
 #include <crypto/sha.h>
 #include <crypto/md5.h>
 #include <crypto/internal/aead.h>
 #include <crypto/authenc.h>
 #include <crypto/akcipher.h>
 #include <crypto/scatterwalk.h>
+#include <crypto/arc4.h>
+
 #include <crypto/internal/skcipher.h>
 #include <crypto/internal/hash.h>
 #include <crypto/internal/rsa.h>

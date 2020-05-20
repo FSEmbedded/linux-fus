@@ -41,7 +41,7 @@ static int imx_rpmsg_probe(struct platform_device *pdev)
 	struct device_node *cpu_np;
 	struct platform_device *cpu_pdev;
 	struct imx_rpmsg_data *data;
-	struct fsl_rpmsg_i2s         *rpmsg_i2s;
+	struct fsl_rpmsg_i2s *rpmsg_i2s;
 	int ret;
 
 	cpu_np = of_parse_phandle(pdev->dev.of_node, "cpu-dai", 0);

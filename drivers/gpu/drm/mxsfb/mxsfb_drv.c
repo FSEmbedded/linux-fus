@@ -27,7 +27,7 @@
 #include <linux/of_reserved_mem.h>
 #include <linux/pm_runtime.h>
 #include <linux/reservation.h>
-#include <linux/version.h>
+#include <linux/busfreq-imx.h>
 
 #include <drm/drmP.h>
 #include <drm/drm_atomic.h>
@@ -37,6 +37,7 @@
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_of.h>
 #include <drm/drm_panel.h>
 #include <drm/drm_simple_kms_helper.h>
@@ -124,14 +125,14 @@ static int mxsfb_atomic_helper_check(struct drm_device *dev,
 			    struct drm_atomic_state *state)
 {
 	struct drm_crtc *crtc;
-	struct drm_crtc_state *crtc_state;
+	struct drm_crtc_state *new_state;
 	int i, ret;
 
 	ret = drm_atomic_helper_check(dev, state);
 	if (ret)
 		return ret;
 
-	for_each_crtc_in_state(state, crtc, crtc_state, i) {
+	for_each_new_crtc_in_state(state, crtc, new_state, i) {
 		struct drm_plane_state *primary_state;
 		int old_bpp = 0;
 		int new_bpp = 0;
@@ -145,7 +146,7 @@ static int mxsfb_atomic_helper_check(struct drm_device *dev,
 		old_bpp = crtc->primary->old_fb->format->depth;
 		new_bpp = primary_state->fb->format->depth;
 		if (old_bpp != new_bpp) {
-			crtc_state->mode_changed = true;
+			new_state->mode_changed = true;
 			DRM_DEBUG_ATOMIC(
 				"[CRTC:%d:%s] mode changed, bpp %d->%d\n",
 				crtc->base.id, crtc->name, old_bpp, new_bpp);
@@ -155,7 +156,7 @@ static int mxsfb_atomic_helper_check(struct drm_device *dev,
 }
 
 static const struct drm_mode_config_funcs mxsfb_mode_config_funcs = {
-	.fb_create		= drm_fb_cma_create,
+	.fb_create		= drm_gem_fb_create,
 	.atomic_check		= mxsfb_atomic_helper_check,
 	.atomic_commit		= drm_atomic_helper_commit,
 };
@@ -312,7 +313,8 @@ static int mxsfb_pipe_check(struct drm_simple_display_pipe *pipe,
 }
 
 static void mxsfb_pipe_enable(struct drm_simple_display_pipe *pipe,
-			      struct drm_crtc_state *crtc_state)
+			      struct drm_crtc_state *crtc_state,
+			      struct drm_plane_state *plane_state)
 {
 	struct drm_device *drm = pipe->encoder.dev;
 	struct drm_connector *connector;
@@ -361,6 +363,8 @@ static void mxsfb_pipe_disable(struct drm_simple_display_pipe *pipe)
 	}
 	spin_unlock_irq(&drm->event_lock);
 
+	drm_crtc_vblank_off(&mxsfb->pipe.crtc);
+
 	if (mxsfb->connector != &mxsfb->panel_connector)
 		mxsfb->connector = NULL;
 }
@@ -373,13 +377,35 @@ static void mxsfb_pipe_update(struct drm_simple_display_pipe *pipe,
 	mxsfb_plane_atomic_update(mxsfb, plane_state);
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
-static int mxsfb_pipe_prepare_fb(struct drm_simple_display_pipe *pipe,
-				 struct drm_plane_state *plane_state)
+static int mxsfb_pipe_enable_vblank(struct drm_simple_display_pipe *pipe)
 {
-	return drm_fb_cma_prepare_fb(&pipe->plane, plane_state);
+	struct mxsfb_drm_private *mxsfb = drm_pipe_to_mxsfb_drm_private(pipe);
+	int ret = 0;
+
+	ret = clk_prepare_enable(mxsfb->clk_axi);
+	if (ret)
+		return ret;
+
+	/* Clear and enable VBLANK IRQ */
+	writel(CTRL1_CUR_FRAME_DONE_IRQ, mxsfb->base + LCDC_CTRL1 + REG_CLR);
+	writel(CTRL1_CUR_FRAME_DONE_IRQ_EN, mxsfb->base + LCDC_CTRL1 + REG_SET);
+	clk_disable_unprepare(mxsfb->clk_axi);
+
+	return ret;
 }
-#endif
+
+static void mxsfb_pipe_disable_vblank(struct drm_simple_display_pipe *pipe)
+{
+	struct mxsfb_drm_private *mxsfb = drm_pipe_to_mxsfb_drm_private(pipe);
+
+	if (clk_prepare_enable(mxsfb->clk_axi))
+		return;
+
+	/* Disable and clear VBLANK IRQ */
+	writel(CTRL1_CUR_FRAME_DONE_IRQ_EN, mxsfb->base + LCDC_CTRL1 + REG_CLR);
+	writel(CTRL1_CUR_FRAME_DONE_IRQ, mxsfb->base + LCDC_CTRL1 + REG_CLR);
+	clk_disable_unprepare(mxsfb->clk_axi);
+}
 
 static struct drm_simple_display_pipe_funcs mxsfb_funcs = {
 	.mode_valid	= mxsfb_pipe_mode_valid,
@@ -387,9 +413,9 @@ static struct drm_simple_display_pipe_funcs mxsfb_funcs = {
 	.enable		= mxsfb_pipe_enable,
 	.disable	= mxsfb_pipe_disable,
 	.update		= mxsfb_pipe_update,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
-	.prepare_fb	= mxsfb_pipe_prepare_fb,
-#endif
+	.prepare_fb	= drm_gem_fb_simple_display_pipe_prepare_fb,
+	.enable_vblank	= mxsfb_pipe_enable_vblank,
+	.disable_vblank	= mxsfb_pipe_disable_vblank,
 };
 
 static int mxsfb_load(struct drm_device *drm, unsigned long flags)
@@ -576,39 +602,11 @@ static void mxsfb_lastclose(struct drm_device *drm)
 	drm_fbdev_cma_restore_mode(mxsfb->fbdev);
 }
 
-static int mxsfb_enable_vblank(struct drm_device *drm, unsigned int crtc)
-{
-	struct mxsfb_drm_private *mxsfb = drm->dev_private;
-	int ret = 0;
-
-	ret = clk_prepare_enable(mxsfb->clk_axi);
-	if (ret)
-		return ret;
-
-	/* Clear and enable VBLANK IRQ */
-	writel(CTRL1_CUR_FRAME_DONE_IRQ, mxsfb->base + LCDC_CTRL1 + REG_CLR);
-	writel(CTRL1_CUR_FRAME_DONE_IRQ_EN, mxsfb->base + LCDC_CTRL1 + REG_SET);
-	clk_disable_unprepare(mxsfb->clk_axi);
-
-	return ret;
-}
-
-static void mxsfb_disable_vblank(struct drm_device *drm, unsigned int crtc)
-{
-	struct mxsfb_drm_private *mxsfb = drm->dev_private;
-
-	if (clk_prepare_enable(mxsfb->clk_axi))
-		return;
-
-	/* Disable and clear VBLANK IRQ */
-	writel(CTRL1_CUR_FRAME_DONE_IRQ_EN, mxsfb->base + LCDC_CTRL1 + REG_CLR);
-	writel(CTRL1_CUR_FRAME_DONE_IRQ, mxsfb->base + LCDC_CTRL1 + REG_CLR);
-	clk_disable_unprepare(mxsfb->clk_axi);
-}
-
 static void mxsfb_irq_preinstall(struct drm_device *drm)
 {
-	mxsfb_disable_vblank(drm, 0);
+	struct mxsfb_drm_private *mxsfb = drm->dev_private;
+
+	mxsfb_pipe_disable_vblank(&mxsfb->pipe);
 }
 
 static irqreturn_t mxsfb_irq_handler(int irq, void *data)
@@ -641,8 +639,6 @@ static struct drm_driver mxsfb_driver = {
 	.irq_handler		= mxsfb_irq_handler,
 	.irq_preinstall		= mxsfb_irq_preinstall,
 	.irq_uninstall		= mxsfb_irq_preinstall,
-	.enable_vblank		= mxsfb_enable_vblank,
-	.disable_vblank		= mxsfb_disable_vblank,
 	.gem_free_object_unlocked = drm_gem_cma_free_object,
 	.gem_vm_ops		= &drm_gem_cma_vm_ops,
 	.dumb_create		= drm_gem_cma_dumb_create,
@@ -750,7 +746,7 @@ static struct platform_driver mxsfb_platform_driver = {
 	.remove		= mxsfb_remove,
 	.id_table	= mxsfb_devtype,
 	.driver	= {
-		.name		= "mxsfb_drm",
+		.name		= "mxsfb",
 		.of_match_table	= mxsfb_dt_ids,
 		.pm		= &mxsfb_pm_ops,
 	},

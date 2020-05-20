@@ -7,7 +7,7 @@ Required properties:
 - compatible : should be one of the following:
    - "fsl,imx53-ahci" for i.MX53 SATA controller
    - "fsl,imx6q-ahci" for i.MX6Q SATA controller
-   - "fsl,imx8qm-ahci" for i.MX8QM SATA controller
+   - "fsl,imx6qp-ahci" for i.MX6QP SATA controller
 - interrupts : interrupt mapping for SATA IRQ
 - reg : registers mapping
 - clocks : list of clock specifiers, must contain an entry for each
@@ -23,13 +23,10 @@ Optional properties:
   for the list of legal values for these options.
 - fsl,no-spread-spectrum : disable spread-spectrum clocking on the SATA
   link.
-- fsl,phy-imp: PHY impedance ratio value refer to the differnt HW design.
-  Set it to 0x6c when 85OHM is used, keep it to default value 0x80 when
-  100OHM is used.
 
 Examples:
 
-sata@02200000 {
+sata@2200000 {
 	compatible = "fsl,imx6q-ahci";
 	reg = <0x02200000 0x4000>;
 	interrupts = <0 39 IRQ_TYPE_LEVEL_HIGH>;

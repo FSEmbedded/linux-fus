@@ -1,17 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * drivers/staging/android/uapi/ion.h
  *
  * Copyright (C) 2011 Google, Inc.
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
  */
 
 #ifndef _UAPI_LINUX_ION_H
@@ -28,8 +19,6 @@
  *				 carveout heap, allocations are physically
  *				 contiguous
  * @ION_HEAP_TYPE_DMA:		 memory allocated via DMA API
- * @ION_HEAP_TYPE_UNMAPPED:	 memory not intended to be mapped into the
- *				 linux address space unless for debug cases
  * @ION_NUM_HEAPS:		 helper for iterating over heaps, a bit mask
  *				 is used to identify the heaps, so only 32
  *				 total heap types are supported
@@ -40,7 +29,6 @@ enum ion_heap_type {
 	ION_HEAP_TYPE_CARVEOUT,
 	ION_HEAP_TYPE_CHUNK,
 	ION_HEAP_TYPE_DMA,
-	ION_HEAP_TYPE_UNMAPPED,
 	ION_HEAP_TYPE_CUSTOM, /*
 			       * must be last so device specific heaps always
 			       * are at the end of this enum

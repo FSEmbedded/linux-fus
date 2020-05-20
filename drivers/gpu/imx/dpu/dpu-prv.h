@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017-2018 NXP
+ * Copyright 2017-2019 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -73,8 +73,6 @@ enum linemode {
 #define CLIPWINDOWYOFFSET(y)		(((y) & 0x7FFF) << 16)
 #define CLIPWINDOWWIDTH(w)		(((w) - 1) & 0x3FFF)
 #define CLIPWINDOWHEIGHT(h)		((((h) - 1) & 0x3FFF) << 16)
-#define CONSTANTALPHA_MASK		0xFF
-#define CONSTANTALPHA(n)		((n) & CONSTANTALPHA_MASK)
 #define	PALETTEENABLE			BIT(0)
 typedef enum {
 	TILE_FILL_ZERO,
@@ -86,16 +84,10 @@ typedef enum {
 #define ALPHACONSTENABLE		BIT(9)
 #define ALPHAMASKENABLE			BIT(10)
 #define ALPHATRANSENABLE		BIT(11)
-#define ALPHA_ENABLE_MASK		(ALPHASRCENABLE  | ALPHACONSTENABLE | \
-					 ALPHAMASKENABLE | ALPHATRANSENABLE)
 #define RGBALPHASRCENABLE		BIT(12)
 #define RGBALPHACONSTENABLE		BIT(13)
 #define RGBALPHAMASKENABLE		BIT(14)
 #define RGBALPHATRANSENABLE		BIT(15)
-#define RGB_ENABLE_MASK			(RGBALPHASRCENABLE   | \
-					 RGBALPHACONSTENABLE | \
-					 RGBALPHAMASKENABLE  | \
-					 RGBALPHATRANSENABLE)
 #define PREMULCONSTRGB			BIT(16)
 typedef enum {
 	YUVCONVERSIONMODE__OFF,
@@ -290,7 +282,6 @@ _DECLARE_DPU_UNIT_INIT_FUNC(fw);
 _DECLARE_DPU_UNIT_INIT_FUNC(hs);
 _DECLARE_DPU_UNIT_INIT_FUNC(lb);
 _DECLARE_DPU_UNIT_INIT_FUNC(sig);
-_DECLARE_DPU_UNIT_INIT_FUNC(st);
 _DECLARE_DPU_UNIT_INIT_FUNC(tcon);
 _DECLARE_DPU_UNIT_INIT_FUNC(vs);
 

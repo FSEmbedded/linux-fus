@@ -246,7 +246,8 @@ static const struct snd_soc_dapm_route audio_map[] = {
 };
 
 static int be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
-				struct snd_pcm_hw_params *params) {
+				struct snd_pcm_hw_params *params)
+{
 
 	struct imx_priv *priv = &card_priv;
 	struct snd_interval *rate;
@@ -406,7 +407,8 @@ static int imx_cs42888_probe(struct platform_device *pdev)
 		snd_soc_card_imx_cs42888.num_links = 3;
 
 		if (priv->is_codec_rpmsg) {
-			imx_cs42888_dai[2].codec_name     = "rpmsg-audio-codec-cs42888";
+			imx_cs42888_dai[2].codec_name =
+						"rpmsg-audio-codec-cs42888";
 			imx_cs42888_dai[2].codec_dai_name = "cs42888";
 		} else {
 			imx_cs42888_dai[2].codec_of_node   = codec_np;

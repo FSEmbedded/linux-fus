@@ -2294,7 +2294,7 @@ static int mxt_parse_object_table(struct mxt_data *data,
 
 	/* Store maximum reportid */
 	data->max_reportid = reportid;
-	
+
 	/* If T44 exists, T5 position has to be directly after */
 	if (data->T44_address && (data->T5_address != data->T44_address + 1)) {
 		dev_err(&client->dev, "Invalid T44 position\n");
@@ -2956,7 +2956,7 @@ static int mxt_set_t7_power_cfg(struct mxt_data *data, u8 sleep)
 	if (error)
 		return error;
 
-	dev_dbg(dev, "Set T7 ACTV:%d IDLE:%d\n",	
+	dev_dbg(dev, "Set T7 ACTV:%d IDLE:%d\n",
 		new_config->active, new_config->idle);
 
 	return 0;
@@ -3424,7 +3424,7 @@ static int mxt_configure_objects(struct mxt_data *data,
 		if (error)
 			dev_warn(dev, "Error %d updating config\n", error);
 	}
-	
+
 	if (!data->sysfs_updating_config) {
 		if (data->multitouch) {
 			dev_info(dev, "Registering devices\n");
@@ -3441,9 +3441,8 @@ static int mxt_configure_objects(struct mxt_data *data,
 			dev_warn(dev, "No touch object detected\n");
 		}
 	}
-	
 	data->sysfs_updating_config = false;
-	
+
 	mxt_debug_init(data);
 
 	return 0;
@@ -3579,7 +3578,7 @@ static int mxt_load_fw(struct device *dev, const char *fn)
 	} else {
 
 		dev_info(dev, "Opened firmware file: %s\n", fn);
-	}  
+	}
 
 	/* Check for incorrect enc file */
 	ret = mxt_check_firmware_format(dev, fw);
@@ -3610,7 +3609,7 @@ static int mxt_load_fw(struct device *dev, const char *fn)
 			goto release_firmware;
 		} else {
 			dev_info(dev, "Found bootloader I2C address\n");
-		}	
+		}
 	} else {
 		enable_irq(data->irq);
 	}
@@ -3683,7 +3682,7 @@ static int mxt_load_fw(struct device *dev, const char *fn)
 	 */
 
 	msleep(MXT_BOOTLOADER_WAIT);	/* Wait for chip to leave bootloader*/
-	
+
 	ret = mxt_wait_for_completion(data, &data->bl_completion,
 				      MXT_BOOTLOADER_WAIT);
 	if (ret)
@@ -3704,7 +3703,7 @@ static ssize_t mxt_update_fw_store(struct device *dev,
 {
 	struct mxt_data *data = dev_get_drvdata(dev);
 	int error;
-	
+
 	error = mxt_load_fw(dev, MXT_FW_NAME);
 	if (error) {
 		dev_err(dev, "The firmware update failed(%d)\n", error);
@@ -3712,15 +3711,15 @@ static ssize_t mxt_update_fw_store(struct device *dev,
 	} else {
 		dev_info(dev, "The firmware update succeeded\n");
 	}
-	
+
 	data->sysfs_updating_config = true;		
-	
+
 	msleep(MXT_FW_FLASH_TIME);
-	
+
 	error = mxt_acquire_irq(data);
 	if (error)
 		return error;
-	
+
 	/* Only works when driver compiled as module */
 	error = request_firmware_nowait(THIS_MODULE, true, data->cfg_name,
 					dev, GFP_KERNEL, data,
@@ -3731,7 +3730,7 @@ static ssize_t mxt_update_fw_store(struct device *dev,
 		return error;
 		
 	}
-	
+
 	return count;
 }
 
@@ -4141,7 +4140,7 @@ static int mxt_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		gpiod_direction_output(data->reset_gpio, 1);	/* GPIO in device tree is active-low */
 		dev_dbg(&client->dev, "Direction is ouput\n");
 	}
-	
+
 	if(!(IS_ERR(data->reset_gpio))) {
 		dev_info(&client->dev, "Resetting chip\n");
 		msleep(MXT_RESET_GPIO_TIME);

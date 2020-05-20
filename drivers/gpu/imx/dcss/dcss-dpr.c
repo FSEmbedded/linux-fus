@@ -18,6 +18,7 @@
 #include <linux/interrupt.h>
 #include <linux/sizes.h>
 #include <linux/io.h>
+#include <linux/seq_file.h>
 #include <drm/drmP.h>
 #include <drm/drm_fourcc.h>
 

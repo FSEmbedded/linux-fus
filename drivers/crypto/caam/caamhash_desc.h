@@ -16,7 +16,7 @@
 #define DESC_AHASH_DIGEST_LEN		(DESC_AHASH_BASE + 4 * CAAM_CMD_SZ)
 
 void cnstr_shdsc_ahash(u32 * const desc, struct alginfo *adata, u32 state,
-		       int digestsize, int ctx_len, bool import_ctx);
+		       int digestsize, int ctx_len, bool import_ctx, int era);
 
 void cnstr_shdsc_axcbc(u32 * const desc, struct alginfo *adata, u32 state,
 		       int digestsize, int ctx_len, dma_addr_t key_dma);

@@ -15,6 +15,7 @@
 
 /dts-v1/;
 
+#include <dt-bindings/usb/pd.h>
 #include "fsl-imx8mq.dtsi"
 
 / {
@@ -517,7 +518,7 @@
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
-	pmic: pfuze100@08 {
+	pmic: pfuze100@8 {
 		compatible = "fsl,pfuze100";
 		reg = <0x08>;
 
@@ -602,21 +603,26 @@
 	};
 
 	typec_ptn5100: ptn5110@50 {
-		compatible = "usb,tcpci";
+		compatible = "nxp,ptn5110";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_typec>;
 		reg = <0x50>;
 		interrupt-parent = <&gpio3>;
 		interrupts = <3 8>;
 		ss-sel-gpios = <&gpio3 15 GPIO_ACTIVE_HIGH>;
-		src-pdos = <0x380190c8>;
-		snk-pdos = <0x380190c8 0x3802d0c8>;
-		max-snk-mv = <9000>;
-		max-snk-ma = <2000>;
-		op-snk-mw = <9000>;
-		max-snk-mw = <18000>;
-		port-type = "drp";
-		default-role = "sink";
+
+		usb_con1: connector {
+			compatible = "usb-c-connector";
+			label = "USB-C";
+			power-role = "dual";
+			data-role = "dual";
+			try-power-role = "sink";
+			source-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)>;
+			sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
+				     PDO_VAR(5000, 20000, 3000)>;
+			op-sink-microwatt = <15000000>;
+			self-powered;
+		};
 	};
 
 	ov5640_mipi2: ov5640_mipi2@3c {
@@ -807,10 +813,6 @@
 	status = "okay";
 };
 
-&usb3_0 {
-	status = "okay";
-};
-
 &usb_dwc3_0 {
 	status = "okay";
 	extcon = <&typec_ptn5100>;
@@ -821,10 +823,6 @@
 };
 
 &usb3_phy1 {
-	status = "okay";
-};
-
-&usb3_1 {
 	status = "okay";
 };
 
@@ -989,12 +987,12 @@
 	#size-cells = <0>;
 	status = "okay";
 	port {
-		mipi1_sensor_ep: endpoint1 {
+		mipi1_sensor_ep: endpoint@0 {
 			remote-endpoint = <&ov5640_mipi1_ep>;
 			data-lanes = <1 2>;
 		};
 
-		csi1_mipi_ep: endpoint2 {
+		csi1_mipi_ep: endpoint@1 {
 			remote-endpoint = <&csi1_ep>;
 		};
 	};
@@ -1005,12 +1003,12 @@
 	#size-cells = <0>;
 	status = "okay";
 	port {
-		mipi2_sensor_ep: endpoint1 {
+		mipi2_sensor_ep: endpoint@0 {
 			remote-endpoint = <&ov5640_mipi2_ep>;
 			data-lanes = <1 2>;
 		};
 
-		csi2_mipi_ep: endpoint2 {
+		csi2_mipi_ep: endpoint@1 {
 			remote-endpoint = <&csi2_ep>;
 		};
 	};

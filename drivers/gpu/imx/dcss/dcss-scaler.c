@@ -15,6 +15,7 @@
 #include <linux/bitops.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
+#include <linux/seq_file.h>
 #include <drm/drm_fourcc.h>
 
 #include <video/imx-dcss.h>

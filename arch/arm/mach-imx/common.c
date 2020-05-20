@@ -22,6 +22,7 @@ unsigned long iram_tlb_phys_addr;
 unsigned long save_ttbr1(void)
 {
 	unsigned long lttbr1;
+
 	asm volatile(
 		".align 4\n"
 		"mrc p15, 0, %0, c2, c0, 1\n"
@@ -163,4 +164,3 @@ void wfe_smp_freq_change(u32 cpuid, u32 *ddr_freq_change_done) {}
 void imx7_smp_wfe(u32 cpuid, u32 ocram_base) {}
 void imx7d_ddr3_freq_change(u32 freq) {}
 #endif
-

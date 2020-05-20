@@ -31,6 +31,8 @@
 #include "../codecs/wm8962.h"
 #include "imx-audmux.h"
 
+#include "fsl_dma_workaround.h"
+
 #define DAI_NAME_SIZE	32
 
 struct imx_wm8962_data {
@@ -50,7 +52,7 @@ struct imx_priv {
 	int mic_active_low;
 	bool amic_mono;
 	bool dmic_mono;
-	struct snd_soc_codec *codec;
+	struct snd_soc_component *component;
 	struct platform_device *pdev;
 	struct snd_pcm_substream *first_stream;
 	struct snd_pcm_substream *second_stream;
@@ -113,11 +115,11 @@ static int hpjack_status_check(void *data)
 
 	if (hp_status != priv->hp_active_low) {
 		snprintf(buf, 32, "STATE=%d", 2);
-		snd_soc_dapm_disable_pin(snd_soc_codec_get_dapm(priv->codec), "Ext Spk");
+		snd_soc_dapm_disable_pin(snd_soc_component_get_dapm(priv->component), "Ext Spk");
 		ret = imx_hp_jack_gpio.report;
 	} else {
 		snprintf(buf, 32, "STATE=%d", 0);
-		snd_soc_dapm_enable_pin(snd_soc_codec_get_dapm(priv->codec), "Ext Spk");
+		snd_soc_dapm_enable_pin(snd_soc_component_get_dapm(priv->component), "Ext Spk");
 		ret = 0;
 	}
 
@@ -144,10 +146,10 @@ static int micjack_status_check(void *data)
 
 	if ((mic_status != priv->mic_active_low && priv->amic_mono)
 		|| (mic_status == priv->mic_active_low && priv->dmic_mono))
-		snd_soc_update_bits(priv->codec, WM8962_THREED1,
+		snd_soc_component_update_bits(priv->component, WM8962_THREED1,
 				WM8962_ADC_MONOMIX_MASK, WM8962_ADC_MONOMIX);
 	else
-		snd_soc_update_bits(priv->codec, WM8962_THREED1,
+		snd_soc_component_update_bits(priv->component, WM8962_THREED1,
 				WM8962_ADC_MONOMIX_MASK, 0);
 
 	buf = kmalloc(32, GFP_ATOMIC);
@@ -158,11 +160,11 @@ static int micjack_status_check(void *data)
 
 	if (mic_status != priv->mic_active_low) {
 		snprintf(buf, 32, "STATE=%d", 2);
-		snd_soc_dapm_disable_pin(snd_soc_codec_get_dapm(priv->codec), "DMIC");
+		snd_soc_dapm_disable_pin(snd_soc_component_get_dapm(priv->component), "DMIC");
 		ret = imx_mic_jack_gpio.report;
 	} else {
 		snprintf(buf, 32, "STATE=%d", 0);
-		snd_soc_dapm_enable_pin(snd_soc_codec_get_dapm(priv->codec), "DMIC");
+		snd_soc_dapm_enable_pin(snd_soc_component_get_dapm(priv->component), "DMIC");
 		ret = 0;
 	}
 
@@ -438,10 +440,10 @@ static int imx_wm8962_gpio_init(struct snd_soc_card *card)
 	struct snd_soc_pcm_runtime *rtd = list_first_entry(
 		&card->rtd_list, struct snd_soc_pcm_runtime, list);
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	struct snd_soc_codec *codec = codec_dai->codec;
+	struct snd_soc_component *component = codec_dai->component;
 	struct imx_priv *priv = &card_priv;
 
-	priv->codec = codec;
+	priv->component = component;
 
 	if (gpio_is_valid(priv->hp_gpio)) {
 		imx_hp_jack_gpio.gpio = priv->hp_gpio;
@@ -468,7 +470,7 @@ static int imx_wm8962_gpio_init(struct snd_soc_card *card)
 		 * Permanent set monomix bit if only one microphone
 		 * is present on the board while it needs monomix.
 		 */
-		snd_soc_update_bits(priv->codec, WM8962_THREED1,
+		snd_soc_component_update_bits(priv->component, WM8962_THREED1,
 				WM8962_ADC_MONOMIX_MASK, WM8962_ADC_MONOMIX);
 	}
 
@@ -542,7 +544,8 @@ static int imx_wm8962_late_probe(struct snd_soc_card *card)
 }
 
 static int be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
-				struct snd_pcm_hw_params *params) {
+				struct snd_pcm_hw_params *params)
+{
 	struct imx_priv *priv = &card_priv;
 	struct snd_interval *rate;
 	struct snd_mask *mask;
@@ -750,7 +753,7 @@ audmux_bypass:
 	data->card.dev = &pdev->dev;
 	ret = snd_soc_of_parse_card_name(&data->card, "model");
 	if (ret)
-		goto fail;
+		goto clk_fail;
 	ret = snd_soc_of_parse_audio_routing(&data->card, "audio-routing");
 	if (ret)
 		goto fail;
@@ -770,7 +773,7 @@ audmux_bypass:
 	ret = devm_snd_soc_register_card(&pdev->dev, &data->card);
 	if (ret) {
 		dev_err(&pdev->dev, "snd_soc_register_card failed (%d)\n", ret);
-		goto fail;
+		goto clk_fail;
 	}
 
 	imx_wm8962_gpio_init(&data->card);
@@ -800,6 +803,12 @@ fail:
 	of_node_put(cpu_np);
 	of_node_put(codec_np);
 
+	return 0;
+
+clk_fail:
+	if (!IS_ERR(data->codec_clk))
+		clk_disable_unprepare(data->codec_clk);
+
 	return ret;
 }
 
@@ -820,6 +829,7 @@ MODULE_DEVICE_TABLE(of, imx_wm8962_dt_ids);
 static struct platform_driver imx_wm8962_driver = {
 	.driver = {
 		.name = "imx-wm8962",
+		.owner = THIS_MODULE,
 		.pm = &snd_soc_pm_ops,
 		.of_match_table = imx_wm8962_dt_ids,
 	},

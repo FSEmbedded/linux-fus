@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Freescale eSDHC i.MX controller driver for the platform bus.
  *
@@ -5,10 +6,6 @@
  *
  * Copyright (c) 2010 Pengutronix e.K.
  *   Author: Wolfram Sang <kernel@pengutronix.de>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License.
  */
 
 #include <linux/busfreq-imx.h>
@@ -44,6 +41,12 @@
 #define  ESDHC_VENDOR_SPEC_FRC_SDCLK_ON	(1 << 8)
 #define ESDHC_WTMK_LVL			0x44
 #define  ESDHC_WTMK_DEFAULT_VAL		0x10401040
+#define  ESDHC_WTMK_LVL_RD_WML_MASK	0x000000FF
+#define  ESDHC_WTMK_LVL_RD_WML_SHIFT	0
+#define  ESDHC_WTMK_LVL_WR_WML_MASK	0x00FF0000
+#define  ESDHC_WTMK_LVL_WR_WML_SHIFT	16
+#define  ESDHC_WTMK_LVL_WML_VAL_DEF	64
+#define  ESDHC_WTMK_LVL_WML_VAL_MAX	128
 #define ESDHC_MIX_CTRL			0x48
 #define  ESDHC_MIX_CTRL_DDREN		(1 << 3)
 #define  ESDHC_MIX_CTRL_AC23EN		(1 << 7)
@@ -52,7 +55,7 @@
 #define  ESDHC_MIX_CTRL_AUTO_TUNE_EN	(1 << 24)
 #define  ESDHC_MIX_CTRL_FBCLK_SEL	(1 << 25)
 #define  ESDHC_MIX_CTRL_HS400_EN	(1 << 26)
-#define  ESDHC_MIX_CTRL_HS400_ES	(1 << 27)
+#define  ESDHC_MIX_CTRL_HS400_ES_EN	(1 << 27)
 /* Bits 3 and 6 are not SDHCI standard definitions */
 #define  ESDHC_MIX_CTRL_SDHCI_MASK	0xb7
 /* Tuning bits */
@@ -242,7 +245,7 @@ static struct esdhc_soc_data usdhc_imx7ulp_data = {
 			| ESDHC_FLAG_PMQOS,
 };
 
-static struct esdhc_soc_data usdhc_imx8qm_data = {
+static struct esdhc_soc_data usdhc_imx8qxp_data = {
 	.flags = ESDHC_FLAG_USDHC | ESDHC_FLAG_STD_TUNING
 			| ESDHC_FLAG_HAVE_CAP1 | ESDHC_FLAG_HS200
 			| ESDHC_FLAG_HS400 | ESDHC_FLAG_HS400_ES
@@ -272,6 +275,7 @@ struct pltfm_imx_data {
 	struct clk *clk_ahb;
 	struct clk *clk_per;
 	struct clk *clk_extra;		/* Additional clock, e.g. for WLAN */
+	unsigned int actual_clock;
 	enum {
 		NO_CMD_PENDING,      /* no multiblock command pending */
 		MULTIBLK_IN_PROCESS, /* exact multiblock cmd in process */
@@ -309,7 +313,7 @@ static const struct of_device_id imx_esdhc_dt_ids[] = {
 	{ .compatible = "fsl,imx6ull-usdhc", .data = &usdhc_imx6ull_data, },
 	{ .compatible = "fsl,imx7d-usdhc", .data = &usdhc_imx7d_data, },
 	{ .compatible = "fsl,imx7ulp-usdhc", .data = &usdhc_imx7ulp_data, },
-	{ .compatible = "fsl,imx8qm-usdhc", .data = &usdhc_imx8qm_data, },
+	{ .compatible = "fsl,imx8qxp-usdhc", .data = &usdhc_imx8qxp_data, },
 	{ .compatible = "fsl,imx8mm-usdhc", .data = &usdhc_imx8mm_data, },
 	{ /* sentinel */ }
 };
@@ -609,6 +613,7 @@ static void esdhc_writew_le(struct sdhci_host *host, u16 val, int reg)
 		}
 
 		if (esdhc_is_usdhc(imx_data)) {
+			u32 wml;
 			u32 m = readl(host->ioaddr + ESDHC_MIX_CTRL);
 			/* Swap AC23 bit */
 			if (val & SDHCI_TRNS_AUTO_CMD23) {
@@ -617,6 +622,21 @@ static void esdhc_writew_le(struct sdhci_host *host, u16 val, int reg)
 			}
 			m = val | (m & ~ESDHC_MIX_CTRL_SDHCI_MASK);
 			writel(m, host->ioaddr + ESDHC_MIX_CTRL);
+
+			/* Set watermark levels for PIO access to maximum value
+			 * (128 words) to accommodate full 512 bytes buffer.
+			 * For DMA access restore the levels to default value.
+			 */
+			m = readl(host->ioaddr + ESDHC_WTMK_LVL);
+			if (val & SDHCI_TRNS_DMA)
+				wml = ESDHC_WTMK_LVL_WML_VAL_DEF;
+			else
+				wml = ESDHC_WTMK_LVL_WML_VAL_MAX;
+			m &= ~(ESDHC_WTMK_LVL_RD_WML_MASK |
+			       ESDHC_WTMK_LVL_WR_WML_MASK);
+			m |= (wml << ESDHC_WTMK_LVL_RD_WML_SHIFT) |
+			     (wml << ESDHC_WTMK_LVL_WR_WML_SHIFT);
+			writel(m, host->ioaddr + ESDHC_WTMK_LVL);
 		} else {
 			/*
 			 * Postpone this write, we must do it together with a
@@ -778,14 +798,14 @@ static inline void esdhc_pltfm_set_clock(struct sdhci_host *host,
 	int div = 1;
 	u32 temp, val;
 
+	if (esdhc_is_usdhc(imx_data)) {
+		val = readl(host->ioaddr + ESDHC_VENDOR_SPEC);
+		writel(val & ~ESDHC_VENDOR_SPEC_FRC_SDCLK_ON,
+			host->ioaddr + ESDHC_VENDOR_SPEC);
+	}
+
 	if (clock == 0) {
 		host->mmc->actual_clock = 0;
-
-		if (esdhc_is_usdhc(imx_data)) {
-			val = readl(host->ioaddr + ESDHC_VENDOR_SPEC);
-			writel(val & ~ESDHC_VENDOR_SPEC_FRC_SDCLK_ON,
-					host->ioaddr + ESDHC_VENDOR_SPEC);
-		}
 		return;
 	}
 
@@ -838,7 +858,7 @@ static inline void esdhc_pltfm_set_clock(struct sdhci_host *host,
 	if (esdhc_is_usdhc(imx_data)) {
 		val = readl(host->ioaddr + ESDHC_VENDOR_SPEC);
 		writel(val | ESDHC_VENDOR_SPEC_FRC_SDCLK_ON,
-		host->ioaddr + ESDHC_VENDOR_SPEC);
+			host->ioaddr + ESDHC_VENDOR_SPEC);
 	}
 
 	mdelay(1);
@@ -953,9 +973,9 @@ static void esdhc_hs400_enhanced_strobe(struct mmc_host *mmc, struct mmc_ios *io
 
 	m = readl(host->ioaddr + ESDHC_MIX_CTRL);
 	if (ios->enhanced_strobe)
-		m |= ESDHC_MIX_CTRL_HS400_ES;
+		m |= ESDHC_MIX_CTRL_HS400_ES_EN;
 	else
-		m &= ~ESDHC_MIX_CTRL_HS400_ES;
+		m &= ~ESDHC_MIX_CTRL_HS400_ES_EN;
 	writel(m, host->ioaddr + ESDHC_MIX_CTRL);
 }
 
@@ -1217,12 +1237,6 @@ static void sdhci_esdhc_imx_hwinit(struct sdhci_host *host)
 			| ESDHC_BURST_LEN_EN_INCR,
 			host->ioaddr + SDHCI_HOST_CONTROL);
 
-		/*
-		 * enable the new IC fix for ERR004536
-		 */
-		writel(readl(host->ioaddr + 0x6c) & ~BIT(7),
-			host->ioaddr + 0x6c);
-
 		/* disable DLL_CTRL delay line settings */
 		writel(0x0, host->ioaddr + ESDHC_DLL_CTRL);
 
@@ -1260,9 +1274,9 @@ static void sdhci_esdhc_imx_hwinit(struct sdhci_host *host)
 			writel(tmp, host->ioaddr + ESDHC_TUNING_CTRL);
 		} else if (imx_data->socdata->flags & ESDHC_FLAG_MAN_TUNING) {
 			/*
-			 * ESDHC_STD_TUNING_EN may be configed in bootloader code,
-			 * so clear this bit here to make sure the manual tuning
-			 * can work.
+			 * ESDHC_STD_TUNING_EN may be configed in bootloader
+			 * or ROM code, so clear this bit here to make sure
+			 * the manual tuning can work.
 			 */
 			tmp = readl(host->ioaddr + ESDHC_TUNING_CTRL);
 			tmp &= ~ESDHC_STD_TUNING_EN;
@@ -1274,6 +1288,7 @@ static void sdhci_esdhc_imx_hwinit(struct sdhci_host *host)
 static void esdhc_cqe_enable(struct mmc_host *mmc)
 {
 	struct sdhci_host *host = mmc_priv(mmc);
+	struct cqhci_host *cq_host = mmc->cqe_private;
 	u32 reg;
 	u16 mode;
 	int count = 10;
@@ -1305,6 +1320,18 @@ static void esdhc_cqe_enable(struct mmc_host *mmc)
 	if (!(host->quirks2 & SDHCI_QUIRK2_SUPPORT_SINGLE))
 		mode |= SDHCI_TRNS_BLK_CNT_EN;
 	sdhci_writew(host, mode, SDHCI_TRANSFER_MODE);
+
+	/*
+	 * Though Runtime resume reset the entire host controller,
+	 * but do not impact the CQHCI side, need to clear the
+	 * HALT bit, avoid CQHCI stuck in the first request when
+	 * system resume back.
+	 */
+	cqhci_writel(cq_host, 0, CQHCI_CTL);
+	if (cqhci_readl(cq_host, CQHCI_CTL) && CQHCI_HALT)
+		dev_err(mmc_dev(host->mmc),
+			"failed to exit halt state when enable CQE\n");
+
 
 	sdhci_cqe_enable(mmc);
 }
@@ -1345,6 +1372,9 @@ sdhci_esdhc_imx_probe_dt(struct platform_device *pdev,
 
 	if (of_find_property(np, "no-1-8-v", NULL))
 		host->quirks2 |= SDHCI_QUIRK2_NO_1_8_V;
+
+	if (of_find_property(np, "auto-cmd23-broken", NULL))
+		host->quirks2 |= SDHCI_QUIRK2_ACMD23_BROKEN;
 
 	if (of_property_read_u32(np, "fsl,delay-line", &boarddata->delay_line))
 		boarddata->delay_line = 0;
@@ -1490,6 +1520,10 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 		goto free_sdhci;
 	}
 
+	imx_data->clk_extra = devm_clk_get(&pdev->dev, "extra");
+	if (IS_ERR(imx_data->clk_extra))
+		imx_data->clk_extra = NULL;
+
 	pltfm_host->clk = imx_data->clk_per;
 	pltfm_host->clock = clk_get_rate(pltfm_host->clk);
 
@@ -1500,9 +1534,13 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 		pm_qos_add_request(&imx_data->pm_qos_req,
 			PM_QOS_CPU_DMA_LATENCY, 0);
 
-	err = clk_prepare_enable(imx_data->clk_per);
+	err = clk_prepare_enable(imx_data->clk_extra);
 	if (err)
 		goto free_sdhci;
+
+	err = clk_prepare_enable(imx_data->clk_per);
+	if (err)
+		goto disable_extra_clk;
 	err = clk_prepare_enable(imx_data->clk_ipg);
 	if (err)
 		goto disable_per_clk;
@@ -1524,7 +1562,7 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 
 	if (esdhc_is_usdhc(imx_data)) {
 		host->quirks2 |= SDHCI_QUIRK2_PRESET_VALUE_BROKEN;
-		host->mmc->caps |= MMC_CAP_1_8V_DDR;
+		host->mmc->caps |= MMC_CAP_1_8V_DDR | MMC_CAP_3_3V_DDR;
 		if (!(imx_data->socdata->flags & ESDHC_FLAG_HS200))
 			host->quirks2 |= SDHCI_QUIRK2_BROKEN_HS200;
 
@@ -1603,6 +1641,8 @@ disable_per_clk:
 
 	if (imx_data->socdata->flags & ESDHC_FLAG_PMQOS)
 		pm_qos_remove_request(&imx_data->pm_qos_req);
+disable_extra_clk:
+	clk_disable_unprepare(imx_data->clk_extra);
 free_sdhci:
 	sdhci_pltfm_free(pdev);
 	return err;
@@ -1726,11 +1766,15 @@ static int sdhci_esdhc_runtime_suspend(struct device *dev)
 	}
 
 	ret = sdhci_runtime_suspend_host(host);
+	if (ret)
+		return ret;
 
 	if (host->tuning_mode != SDHCI_TUNING_MODE_3)
 		mmc_retune_needed(host->mmc);
 
 	if (!sdhci_sdio_irq_enabled(host)) {
+		imx_data->actual_clock = host->mmc->actual_clock;
+		esdhc_pltfm_set_clock(host, 0);
 		clk_disable_unprepare(imx_data->clk_per);
 		clk_disable_unprepare(imx_data->clk_ipg);
 	}
@@ -1752,6 +1796,10 @@ static int sdhci_esdhc_runtime_resume(struct device *dev)
 	struct pltfm_imx_data *imx_data = sdhci_pltfm_priv(pltfm_host);
 	int err;
 
+	err = clk_prepare_enable(imx_data->clk_ahb);
+	if (err)
+		return err;
+
 	if (imx_data->socdata->flags & ESDHC_FLAG_BUSFREQ)
 		request_bus_freq(BUS_FREQ_HIGH);
 
@@ -1765,31 +1813,30 @@ static int sdhci_esdhc_runtime_resume(struct device *dev)
 	if (!sdhci_sdio_irq_enabled(host)) {
 		err = clk_prepare_enable(imx_data->clk_per);
 		if (err)
-			return err;
+			goto disable_ahb_clk;
 		err = clk_prepare_enable(imx_data->clk_ipg);
 		if (err)
 			goto disable_per_clk;
+		esdhc_pltfm_set_clock(host, imx_data->actual_clock);
 	}
-	err = clk_prepare_enable(imx_data->clk_ahb);
-	if (err)
-		goto disable_ipg_clk;
+
 	err = sdhci_runtime_resume_host(host);
 	if (err)
-		goto disable_ahb_clk;
+		goto disable_ipg_clk;
 
 	if (host->mmc->caps2 & MMC_CAP2_CQE)
 		err = cqhci_resume(host->mmc);
 
 	return err;
 
-disable_ahb_clk:
-	clk_disable_unprepare(imx_data->clk_ahb);
 disable_ipg_clk:
 	if (!sdhci_sdio_irq_enabled(host))
 		clk_disable_unprepare(imx_data->clk_ipg);
 disable_per_clk:
 	if (!sdhci_sdio_irq_enabled(host))
 		clk_disable_unprepare(imx_data->clk_per);
+disable_ahb_clk:
+	clk_disable_unprepare(imx_data->clk_ahb);
 	return err;
 }
 #endif

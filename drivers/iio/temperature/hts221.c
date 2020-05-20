@@ -72,6 +72,7 @@ Revision 0.0.3 05/12/2014
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
 #include <linux/of.h>
+#include <linux/export.h>
 
 #include "hts221.h"
 
@@ -561,7 +562,6 @@ static const struct attribute_group hts221_attribute_group = {
 };
 
 static const struct iio_info hts221_iio_info = {
-	.driver_module		= THIS_MODULE,
 	.read_raw		= hts221_read_raw,
 	.attrs = &hts221_attribute_group,
 };

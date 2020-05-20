@@ -71,6 +71,13 @@ config ARCH_EXYNOS
 	help
 	  This enables support for ARMv8 based Samsung Exynos SoC family.
 
+config ARCH_K3
+	bool "Texas Instruments Inc. K3 multicore SoC architecture"
+	select PM_GENERIC_DOMAINS if PM
+	help
+	  This enables support for Texas Instruments' K3 multicore SoC
+	  architecture.
+
 config ARCH_LAYERSCAPE
 	bool "ARMv8 based Freescale Layerscape SoC family"
 	select EDAC_SUPPORT
@@ -91,12 +98,13 @@ config ARCH_HISI
 	  This enables support for Hisilicon ARMv8 SoC family
 
 config ARCH_MEDIATEK
-	bool "Mediatek MT65xx & MT81xx ARMv8 SoC"
+	bool "MediaTek SoC Family"
 	select ARM_GIC
 	select PINCTRL
 	select MTK_TIMER
 	help
-	  Support for Mediatek MT65xx & MT81xx ARMv8 SoCs
+	  This enables support for MediaTek MT27xx, MT65xx, MT76xx
+	  & MT81xx ARMv8 SoCs
 
 config ARCH_MESON
 	bool "Amlogic Platforms"
@@ -104,6 +112,8 @@ config ARCH_MESON
 	select PINCTRL_MESON
 	select COMMON_CLK_AMLOGIC
 	select COMMON_CLK_GXBB
+	select COMMON_CLK_AXG
+	select MESON_IRQ_GPIO
 	help
 	  This enables support for the Amlogic S905 SoCs.
 
@@ -128,6 +138,14 @@ config ARCH_MVEBU
 	   - Armada 3700 SoC Family
 	   - Armada 7K SoC Family
 	   - Armada 8K SoC Family
+
+config ARCH_MXC
+	bool "ARMv8 based NXP i.MX SoC family"
+	select ARM64_ERRATUM_843419
+	select ARM64_ERRATUM_845719
+	help
+	  This enables support for the ARMv8 based SoCs in the
+	  NXP i.MX family.
 
 config ARCH_QCOM
 	bool "Qualcomm Platforms"
@@ -162,6 +180,9 @@ config ARCH_SEATTLE
 config ARCH_SHMOBILE
 	bool
 
+config ARCH_SYNQUACER
+	bool "Socionext SynQuacer SoC Family"
+
 config ARCH_RENESAS
 	bool "Renesas SoC Platforms"
 	select ARCH_SHMOBILE
@@ -184,6 +205,30 @@ config ARCH_R8A7796
 	depends on ARCH_RENESAS
 	help
 	  This enables support for the Renesas R-Car M3-W SoC.
+
+config ARCH_R8A77965
+	bool "Renesas R-Car M3-N SoC Platform"
+	depends on ARCH_RENESAS
+	help
+	  This enables support for the Renesas R-Car M3-N SoC.
+
+config ARCH_R8A77970
+	bool "Renesas R-Car V3M SoC Platform"
+	depends on ARCH_RENESAS
+	help
+	  This enables support for the Renesas R-Car V3M SoC.
+
+config ARCH_R8A77980
+	bool "Renesas R-Car V3H SoC Platform"
+	depends on ARCH_RENESAS
+	help
+	  This enables support for the Renesas R-Car V3H SoC.
+
+config ARCH_R8A77990
+	bool "Renesas R-Car E3 SoC Platform"
+	depends on ARCH_RENESAS
+	help
+	  This enables support for the Renesas R-Car E3 SoC.
 
 config ARCH_R8A77995
 	bool "Renesas R-Car D3 SoC Platform"
@@ -232,6 +277,7 @@ config ARCH_UNIPHIER
 	bool "Socionext UniPhier SoC Family"
 	select ARCH_HAS_RESET_CONTROLLER
 	select PINCTRL
+	select RESET_CONTROLLER
 	help
 	  This enables support for Socionext UniPhier SoC family.
 
@@ -271,45 +317,52 @@ config ARCH_FSL_IMX8QM
 	select PINCTRL
 	select PINCTRL_IMX
 	select PINCTRL_IMX8QM
-	select HAVE_IMX8_SECO
+	select HAVE_IMX_MU
+	select HAVE_IMX_RPMSG
+	select HAVE_IMX_SC
+	select HAVE_IMX_SC_PD
+	select HAVE_IMX8_SOC
 	select PM
 	select SOC_BUS
 	select GPIO_MXC_PAD_WAKEUP
 	help
 	  This enables support for Freescale i.MX8QM SOC.
 
-config ARCH_FSL_IMX8QP
-	bool "Freescale i.MX8QP SOC"
-	select PINCTRL
-	select PINCTRL_IMX
-	select PINCTRL_IMX8QM
-	select HAVE_IMX8_SECO
-	select PM
-	select SOC_BUS
-	select GPIO_MXC_PAD_WAKEUP
-	help
-	  This enables support for Freescale i.MX8QP SOC.
-
-
 config ARCH_FSL_IMX8QXP
 	bool "Freescale i.MX8QXP SOC"
 	select PINCTRL
 	select PINCTRL_IMX
 	select PINCTRL_IMX8QXP
-	select HAVE_IMX8_SECO
+	select HAVE_IMX_MU
+	select HAVE_IMX_RPMSG
+	select HAVE_IMX_SC
+	select HAVE_IMX_SC_PD
+	select HAVE_IMX8_SOC
 	select PM
 	select SOC_BUS
 	select GPIO_MXC_PAD_WAKEUP
+	select CLKSRC_IMX_GPT
 	help
 	  This enables support for Freescale i.MX8QXP SOC.
 
+config HAVE_IMX_SRC
+	bool
+
+config HAVE_IMX_BUSFREQ
+	bool
+
 config ARCH_FSL_IMX8MQ
 	bool "Freescale i.MX8MQ SOC"
-	select ARCH_MXC
 	select SERIAL_IMX
 	select PINCTRL
 	select PINCTRL_IMX
 	select PINCTRL_IMX8MQ
+	select HAVE_IMX8_SOC
+	select HAVE_IMX_SRC
+	select HAVE_IMX_GPC_PSCI
+	select HAVE_IMX_BUSFREQ
+	select HAVE_IMX_MU
+	select HAVE_IMX_RPMSG
 	select PM
 	select SOC_BUS
 	select KEYBOARD_SNVS_PWRKEY
@@ -318,28 +371,19 @@ config ARCH_FSL_IMX8MQ
 
 config ARCH_FSL_IMX8MM
 	bool "Freescale i.MX8MM SOC"
-	select ARCH_MXC
 	select SERIAL_IMX
 	select PINCTRL
 	select PINCTRL_IMX
 	select PINCTRL_IMX8MM
+	select HAVE_IMX8_SOC
+	select HAVE_IMX_SRC
+	select HAVE_IMX_GPC_PSCI
+	select HAVE_IMX_BUSFREQ
+	select HAVE_IMX_MU
+	select HAVE_IMX_RPMSG
 	select PM
 	select SOC_BUS
-	select KEYBOARD_SNVS_PWRKEY
 	help
 	  This enables support for Freescale i.MX8MM SOC.
-
-config ARCH_FSL_IMX8MN
-	bool "Freescale i.MX8MN SOC"
-	select ARCH_MXC
-	select SERIAL_IMX
-	select PINCTRL
-	select PINCTRL_IMX
-	select PINCTRL_IMX8MN
-	select PM
-	select SOC_BUS
-	select KEYBOARD_SNVS_PWRKEY
-	help
-          This enables support for Freescale i.MX8MN SOC.
 
 endmenu

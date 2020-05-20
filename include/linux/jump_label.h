@@ -82,9 +82,9 @@
 
 extern bool static_key_initialized;
 
-#define STATIC_KEY_CHECK_USE() WARN(!static_key_initialized,		      \
-				    "%s used before call to jump_label_init", \
-				    __func__)
+#define STATIC_KEY_CHECK_USE(key) WARN(!static_key_initialized,		      \
+				    "%s(): static key '%pS' used before call to jump_label_init()", \
+				    __func__, (key))
 
 #ifdef HAVE_JUMP_LABEL
 
@@ -151,6 +151,7 @@ extern struct jump_entry __start___jump_table[];
 extern struct jump_entry __stop___jump_table[];
 
 extern void jump_label_init(void);
+extern void jump_label_invalidate_initmem(void);
 extern void jump_label_lock(void);
 extern void jump_label_unlock(void);
 extern void arch_jump_label_transform(struct jump_entry *entry,
@@ -198,6 +199,8 @@ static __always_inline void jump_label_init(void)
 	static_key_initialized = true;
 }
 
+static inline void jump_label_invalidate_initmem(void) {}
+
 static __always_inline bool static_key_false(struct static_key *key)
 {
 	if (unlikely(static_key_count(key) > 0))
@@ -214,13 +217,13 @@ static __always_inline bool static_key_true(struct static_key *key)
 
 static inline void static_key_slow_inc(struct static_key *key)
 {
-	STATIC_KEY_CHECK_USE();
+	STATIC_KEY_CHECK_USE(key);
 	atomic_inc(&key->enabled);
 }
 
 static inline void static_key_slow_dec(struct static_key *key)
 {
-	STATIC_KEY_CHECK_USE();
+	STATIC_KEY_CHECK_USE(key);
 	atomic_dec(&key->enabled);
 }
 
@@ -242,7 +245,7 @@ static inline int jump_label_apply_nops(struct module *mod)
 
 static inline void static_key_enable(struct static_key *key)
 {
-	STATIC_KEY_CHECK_USE();
+	STATIC_KEY_CHECK_USE(key);
 
 	if (atomic_read(&key->enabled) != 0) {
 		WARN_ON_ONCE(atomic_read(&key->enabled) != 1);
@@ -253,7 +256,7 @@ static inline void static_key_enable(struct static_key *key)
 
 static inline void static_key_disable(struct static_key *key)
 {
-	STATIC_KEY_CHECK_USE();
+	STATIC_KEY_CHECK_USE(key);
 
 	if (atomic_read(&key->enabled) != 1) {
 		WARN_ON_ONCE(atomic_read(&key->enabled) != 0);
@@ -296,11 +299,17 @@ struct static_key_false {
 #define DEFINE_STATIC_KEY_TRUE(name)	\
 	struct static_key_true name = STATIC_KEY_TRUE_INIT
 
+#define DEFINE_STATIC_KEY_TRUE_RO(name)	\
+	struct static_key_true name __ro_after_init = STATIC_KEY_TRUE_INIT
+
 #define DECLARE_STATIC_KEY_TRUE(name)	\
 	extern struct static_key_true name
 
 #define DEFINE_STATIC_KEY_FALSE(name)	\
 	struct static_key_false name = STATIC_KEY_FALSE_INIT
+
+#define DEFINE_STATIC_KEY_FALSE_RO(name)	\
+	struct static_key_false name __ro_after_init = STATIC_KEY_FALSE_INIT
 
 #define DECLARE_STATIC_KEY_FALSE(name)	\
 	extern struct static_key_false name
@@ -393,7 +402,7 @@ extern bool ____wrong_branch_error(void);
 		branch = !arch_static_branch_jump(&(x)->key, true);		\
 	else									\
 		branch = ____wrong_branch_error();				\
-	branch;									\
+	likely(branch);								\
 })
 
 #define static_branch_unlikely(x)						\
@@ -405,7 +414,7 @@ extern bool ____wrong_branch_error(void);
 		branch = arch_static_branch(&(x)->key, false);			\
 	else									\
 		branch = ____wrong_branch_error();				\
-	branch;									\
+	unlikely(branch);							\
 })
 
 #else /* !HAVE_JUMP_LABEL */

@@ -6,7 +6,7 @@
  * the Free Software Foundation; either version 2 of the license, or
  * (at your option) any later version.
  *
- * This program is distributed in teh hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
@@ -295,7 +295,7 @@ check_done:
 	str	r6, [r10, #0x130]
 
 	/*
-	 * Cannot diable regular bandgap
+	 * Cannot disable regular bandgap
 	 * in LDO-enable mode. The bandgap
 	 * is required for ARM-LDO to regulate
 	 * the voltage.

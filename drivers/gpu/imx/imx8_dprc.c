@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2018 NXP
+ * Copyright 2017-2019 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -276,24 +276,16 @@ void dprc_enable(struct dprc *dprc)
 }
 EXPORT_SYMBOL_GPL(dprc_enable);
 
-void dprc_disable(struct dprc *dprc, bool hard)
+void dprc_disable(struct dprc *dprc)
 {
 	if (WARN_ON(!dprc))
 		return;
 
-	if (dprc->is_blit_chan)
-		dprc_write(dprc, SHADOW_LOAD_EN | SW_SHADOW_LOAD_SEL,
-								SYSTEM_CTRL0);
+	dprc_write(dprc, SHADOW_LOAD_EN | SW_SHADOW_LOAD_SEL, SYSTEM_CTRL0);
 
-	prg_disable(dprc->prgs[0], hard);
+	prg_disable(dprc->prgs[0]);
 	if (dprc->has_aux_prg)
-		prg_disable(dprc->prgs[1], hard);
-
-	if (!dprc->is_blit_chan) {
-		/* avoid garbage data in RTRAM after PRG bypass on-the-fly */
-		dprc_write(dprc, NUM_X_PIX_WIDE(0), FRAME_1P_PIX_X_CTRL);
-		dprc_write(dprc, NUM_Y_PIX_HIGH(0), FRAME_1P_PIX_Y_CTRL);
-	}
+		prg_disable(dprc->prgs[1]);
 
 	prg_reg_update(dprc->prgs[0]);
 	if (dprc->has_aux_prg)
@@ -381,9 +373,9 @@ void dprc_configure(struct dprc *dprc, unsigned int stream_id,
 	dprc->use_aux_prg = false;
 
 	if (start) {
-		if (dprc->is_blit_chan)
-			dprc_reset(dprc);
-		else
+		dprc_reset(dprc);
+
+		if (!dprc->is_blit_chan)
 			dprc_dpu_gpr_configure(dprc, stream_id);
 	}
 
@@ -590,50 +582,6 @@ void dprc_configure(struct dprc *dprc, unsigned int stream_id,
 }
 EXPORT_SYMBOL_GPL(dprc_configure);
 
-void dprc_disable_repeat_en(struct dprc *dprc)
-{
-	if (WARN_ON(!dprc))
-		return;
-
-	dprc_write(dprc, REPEAT_EN, SYSTEM_CTRL0 + CLR);
-}
-EXPORT_SYMBOL_GPL(dprc_disable_repeat_en);
-
-bool dprc_is_repeat_en(struct dprc *dprc)
-{
-	u32 val;
-
-	if (WARN_ON(!dprc))
-		return false;
-
-	val = dprc_read(dprc, SYSTEM_CTRL0);
-
-	return !!(val & REPEAT_EN);
-}
-EXPORT_SYMBOL_GPL(dprc_is_repeat_en);
-
-void dprc_gasket_shadow_enable(struct dprc *dprc)
-{
-	if (WARN_ON(!dprc))
-		return;
-
-	prg_shadow_enable(dprc->prgs[0]);
-	if (dprc->use_aux_prg)
-		prg_shadow_enable(dprc->prgs[1]);
-}
-EXPORT_SYMBOL_GPL(dprc_gasket_shadow_enable);
-
-void dprc_gasket_shadow_disable(struct dprc *dprc)
-{
-	if (WARN_ON(!dprc))
-		return;
-
-	prg_shadow_disable(dprc->prgs[0]);
-	if (dprc->use_aux_prg)
-		prg_shadow_disable(dprc->prgs[1]);
-}
-EXPORT_SYMBOL_GPL(dprc_gasket_shadow_disable);
-
 void dprc_reg_update(struct dprc *dprc)
 {
 	if (WARN_ON(!dprc))
@@ -824,7 +772,8 @@ dprc_lookup_by_phandle(struct device *dev, const char *name, int index)
 	list_for_each_entry(dprc, &dprc_list, list) {
 		if (dprc_node == dprc->dev->of_node) {
 			mutex_unlock(&dprc_list_mutex);
-			device_link_add(dev, dprc->dev, DL_FLAG_AUTOREMOVE);
+			device_link_add(dev, dprc->dev,
+					DL_FLAG_AUTOREMOVE_CONSUMER);
 			return dprc;
 		}
 	}

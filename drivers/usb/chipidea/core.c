@@ -1,13 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * core.c - ChipIdea USB IP core family device controller
  *
  * Copyright (C) 2008 Chipidea - MIPS Technologies, Inc. All rights reserved.
  *
  * Author: David Lopo
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 /*
@@ -222,7 +219,7 @@ static void hw_wait_phy_stable(void)
 }
 
 /* The PHY enters/leaves low power mode */
-void ci_hdrc_enter_lpm(struct ci_hdrc *ci, bool enable)
+static void ci_hdrc_enter_lpm(struct ci_hdrc *ci, bool enable)
 {
 	enum ci_hw_regs reg = ci->hw_bank.lpm ? OP_DEVLC : OP_PORTSC;
 	bool lpm = !!(hw_read(ci, reg, PORTSC_PHCD(ci->hw_bank.lpm)));
@@ -541,21 +538,10 @@ static irqreturn_t ci_irq(int irq, void *data)
 	irqreturn_t ret = IRQ_NONE;
 	u32 otgsc = 0;
 
-	spin_lock(&ci->lock);
 	if (ci->in_lpm) {
-		/*
-		 * If we already have a wakeup irq pending there,
-		 * let's just return to wait resume finished firstly.
-		 */
-		if (ci->wakeup_int) {
-			spin_unlock(&ci->lock);
-			return IRQ_HANDLED;
-		}
-
 		disable_irq_nosync(irq);
 		ci->wakeup_int = true;
 		pm_runtime_get(ci->dev);
-		spin_unlock(&ci->lock);
 		return IRQ_HANDLED;
 	}
 
@@ -563,10 +549,8 @@ static irqreturn_t ci_irq(int irq, void *data)
 		otgsc = hw_read_otgsc(ci, ~0);
 		if (ci_otg_is_fsm_mode(ci)) {
 			ret = ci_otg_fsm_irq(ci);
-			if (ret == IRQ_HANDLED) {
-				spin_unlock(&ci->lock);
+			if (ret == IRQ_HANDLED)
 				return ret;
-			}
 		}
 	}
 
@@ -579,7 +563,6 @@ static irqreturn_t ci_irq(int irq, void *data)
 		/* Clear ID change irq status */
 		hw_write_otgsc(ci, OTGSC_IDIS, OTGSC_IDIS);
 		ci_otg_queue_work(ci);
-		spin_unlock(&ci->lock);
 		return IRQ_HANDLED;
 	}
 
@@ -592,7 +575,6 @@ static irqreturn_t ci_irq(int irq, void *data)
 		/* Clear BSV irq */
 		hw_write_otgsc(ci, OTGSC_BSVIS, OTGSC_BSVIS);
 		ci_otg_queue_work(ci);
-		spin_unlock(&ci->lock);
 		return IRQ_HANDLED;
 	}
 
@@ -600,7 +582,6 @@ static irqreturn_t ci_irq(int irq, void *data)
 	if (ci->role != CI_ROLE_END)
 		ret = ci_role(ci)->irq(ci);
 
-	spin_unlock(&ci->lock);
 	return ret;
 }
 
@@ -887,7 +868,7 @@ static void ci_get_otg_capable(struct ci_hdrc *ci)
 	}
 }
 
-static ssize_t ci_role_show(struct device *dev, struct device_attribute *attr,
+static ssize_t role_show(struct device *dev, struct device_attribute *attr,
 			  char *buf)
 {
 	struct ci_hdrc *ci = dev_get_drvdata(dev);
@@ -898,7 +879,7 @@ static ssize_t ci_role_show(struct device *dev, struct device_attribute *attr,
 	return 0;
 }
 
-static ssize_t ci_role_store(struct device *dev,
+static ssize_t role_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t n)
 {
 	struct ci_hdrc *ci = dev_get_drvdata(dev);
@@ -929,7 +910,7 @@ static ssize_t ci_role_store(struct device *dev,
 
 	return (ret == 0) ? n : ret;
 }
-static DEVICE_ATTR(role, 0644, ci_role_show, ci_role_store);
+static DEVICE_ATTR_RW(role);
 
 static struct attribute *ci_attrs[] = {
 	&dev_attr_role.attr,
@@ -1036,8 +1017,15 @@ static int ci_hdrc_probe(struct platform_device *pdev)
 	} else if (ci->platdata->usb_phy) {
 		ci->usb_phy = ci->platdata->usb_phy;
 	} else {
+		ci->usb_phy = devm_usb_get_phy_by_phandle(dev->parent, "phys",
+							  0);
 		ci->phy = devm_phy_get(dev->parent, "usb-phy");
-		ci->usb_phy = devm_usb_get_phy(dev->parent, USB_PHY_TYPE_USB2);
+
+		/* Fallback to grabbing any registered USB2 PHY */
+		if (IS_ERR(ci->usb_phy) &&
+		    PTR_ERR(ci->usb_phy) != -EPROBE_DEFER)
+			ci->usb_phy = devm_usb_get_phy(dev->parent,
+						       USB_PHY_TYPE_USB2);
 
 		/* if both generic PHY and USB PHY layers aren't enabled */
 		if (PTR_ERR(ci->phy) == -ENOSYS &&
@@ -1151,9 +1139,7 @@ static int ci_hdrc_probe(struct platform_device *pdev)
 
 	mutex_init(&ci->mutex);
 
-	ret = dbg_create_files(ci);
-	if (ret)
-		goto stop;
+	dbg_create_files(ci);
 
 	ret = sysfs_create_group(&dev->kobj, &ci_attr_group);
 	if (ret)
@@ -1293,19 +1279,15 @@ static int ci_controller_resume(struct device *dev)
 		hw_wait_phy_stable();
 	}
 
-	spin_lock(&ci->lock);
 	ci->in_lpm = false;
 	if (ci->wakeup_int) {
 		ci->wakeup_int = false;
-		spin_unlock(&ci->lock);
 		pm_runtime_mark_last_busy(ci->dev);
 		pm_runtime_put_autosuspend(ci->dev);
 		enable_irq(ci->irq);
 		if (ci_otg_is_fsm_mode(ci))
 			ci_otg_fsm_wakeup_by_srp(ci);
 		ci_extcon_wakeup_int(ci);
-	} else {
-		spin_unlock(&ci->lock);
 	}
 
 	return 0;

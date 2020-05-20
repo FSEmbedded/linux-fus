@@ -893,7 +893,7 @@ static __attribute__((aligned (1024*4))) unsigned int active_matrix_data_8x8[64]
    0x03020706, 0x05010004, 0x03020706, 0x05010004
     };
 
-static __attribute__((aligned (1024*4))) unsigned int bit1_dither_data_8x8[64]={
+static __attribute__((aligned (1024*4))) unsigned int bit1_dither_data_8x8[64] = {
 
 	1,       49*2,    13*2,    61*2,    4*2,     52*2,    16*2,    64*2,
 	33*2,    17*2,    45*2,    29*2,    36*2,    20*2,    48*2,    32*2,
@@ -905,7 +905,7 @@ static __attribute__((aligned (1024*4))) unsigned int bit1_dither_data_8x8[64]={
 	43*2,    27*2,    39*2,    23*2,    42*2,    26*2,    38*2,    22*2
 };
 
-static __attribute__((aligned (1024*4))) unsigned int bit2_dither_data_8x8[64]={
+static __attribute__((aligned (1024*4))) unsigned int bit2_dither_data_8x8[64] = {
 
 	1,     49,    13,    61,    4,     52,    16,    64,
 	33,    17,    45,    29,    36,    20,    48,    32,
@@ -917,7 +917,7 @@ static __attribute__((aligned (1024*4))) unsigned int bit2_dither_data_8x8[64]={
 	43,    27,    39,    23,    42,    26,    38,    22
 };
 
-static __attribute__((aligned (1024*4))) unsigned int bit4_dither_data_8x8[64]={
+static __attribute__((aligned (1024*4))) unsigned int bit4_dither_data_8x8[64] = {
 
 	1,       49/4,    13/4,    61/4,    4/4,     52/4,    16/4,    64/4,
 	33/4,    17/4,    45/4,    29/4,    36/4,    20/4,    48/4,    32/4,
@@ -3051,6 +3051,7 @@ static int pxp_2d_task_config(struct pxp_pixmap *input,
 {
 	uint8_t position = 0;
 
+
 	do {
 		position = find_next_bit((unsigned long *)&nodes_used, 32, position);
 		if (position >= sizeof(uint32_t) * 8)
@@ -3585,7 +3586,7 @@ static int pxp_config(struct pxps *pxp, struct pxp_channel *pxp_chan)
 			/* collision detection should be always enable in standard mode */
 			pxp_collision_detection_enable(pxp, pxp_conf_data->wfe_a_fetch_param[0].width,
 					pxp_conf_data->wfe_a_fetch_param[0].height);
-		}
+			}
 
 		if (pxp->devdata && pxp->devdata->pxp_wfe_a_configure)
 			pxp->devdata->pxp_wfe_a_configure(pxp);
@@ -3656,9 +3657,9 @@ static inline void clkoff_callback(struct work_struct *w)
 	pxp_clk_disable(pxp);
 }
 
-static void pxp_clkoff_timer(unsigned long arg)
+static void pxp_clkoff_timer(struct timer_list *t)
 {
-	struct pxps *pxp = (struct pxps *)arg;
+	struct pxps *pxp = from_timer(pxp, t, clk_timer);
 
 	if ((pxp->pxp_ongoing == 0) && list_empty(&head))
 		schedule_work(&pxp->work);
@@ -3731,7 +3732,7 @@ static void __pxpdma_dostart(struct pxp_channel *pxp_chan)
 
 	memset(&pxp->pxp_conf_state.s0_param, 0,  sizeof(struct pxp_layer_param));
 	memset(&pxp->pxp_conf_state.out_param, 0,  sizeof(struct pxp_layer_param));
-	memset(pxp->pxp_conf_state.ol_param, 0,  sizeof(struct pxp_layer_param));
+	memset(pxp->pxp_conf_state.ol_param, 0, sizeof(struct pxp_layer_param));
 	memset(&pxp->pxp_conf_state.proc_data, 0,  sizeof(struct pxp_proc_data));
 
 	memset(task, 0, sizeof(*task));
@@ -6557,15 +6558,22 @@ static void pxp_histogram_enable(struct pxps *pxp,
 				 unsigned int width,
 				 unsigned int height)
 {
+	u32 val = 0;
+
 	__raw_writel(
 			BF_PXP_HIST_B_BUF_SIZE_HEIGHT(height)|
 			BF_PXP_HIST_B_BUF_SIZE_WIDTH(width),
 			pxp->base + HW_PXP_HIST_B_BUF_SIZE);
 
+	if (pxp_is_v3(pxp))
+		val = 64;
+	else if (pxp_is_v3p(pxp))
+		val = 64 + 4;
+
 	__raw_writel(
 			BF_PXP_HIST_B_MASK_MASK_EN(1)|
 			BF_PXP_HIST_B_MASK_MASK_MODE(0)|
-			BF_PXP_HIST_B_MASK_MASK_OFFSET(64)|
+			BF_PXP_HIST_B_MASK_MASK_OFFSET(val)|
 			BF_PXP_HIST_B_MASK_MASK_WIDTH(0)|
 			BF_PXP_HIST_B_MASK_MASK_VALUE0(1) |
 			BF_PXP_HIST_B_MASK_MASK_VALUE1(0),
@@ -6606,15 +6614,22 @@ static void pxp_collision_detection_enable(struct pxps *pxp,
 					   unsigned int width,
 					   unsigned int height)
 {
+	u32 val = 0;
+
 	__raw_writel(
 			BF_PXP_HIST_A_BUF_SIZE_HEIGHT(height)|
 			BF_PXP_HIST_A_BUF_SIZE_WIDTH(width),
 			pxp_reg_base + HW_PXP_HIST_A_BUF_SIZE);
 
+	if (pxp_is_v3(pxp))
+		val = 65;
+	else if (pxp_is_v3p(pxp))
+		val = 65 + 4;
+
 	__raw_writel(
 			BF_PXP_HIST_A_MASK_MASK_EN(1)|
 			BF_PXP_HIST_A_MASK_MASK_MODE(0)|
-			BF_PXP_HIST_A_MASK_MASK_OFFSET(65)|
+			BF_PXP_HIST_A_MASK_MASK_OFFSET(val)|
 			BF_PXP_HIST_A_MASK_MASK_WIDTH(0)|
 			BF_PXP_HIST_A_MASK_MASK_VALUE0(1) |
 			BF_PXP_HIST_A_MASK_MASK_VALUE1(0),
@@ -6926,7 +6941,7 @@ static void pxp_set_final_lut_data(struct pxps *pxp)
 	struct pxp_config_data *pxp_conf = &pxp->pxp_conf_state;
 	struct pxp_proc_data *proc_data = &pxp_conf->proc_data;
 
-	if(proc_data->quant_bit < 2) {
+	if (proc_data->quant_bit < 2) {
 		pxp_sram_init(pxp, DITHER0_LUT, (u32)bit1_dither_data_8x8, 64);
 
 		__raw_writel(
@@ -6956,7 +6971,7 @@ static void pxp_set_final_lut_data(struct pxps *pxp)
 				BF_PXP_DITHER_FINAL_LUT_DATA3_DATA14(0xf0) |
 				BF_PXP_DITHER_FINAL_LUT_DATA3_DATA15(0xf0),
 				pxp->base + HW_PXP_DITHER_FINAL_LUT_DATA3);
-	} else if(proc_data->quant_bit < 4) {
+	} else if (proc_data->quant_bit < 4) {
 		pxp_sram_init(pxp, DITHER0_LUT, (u32)bit2_dither_data_8x8, 64);
 
 		__raw_writel(
@@ -7646,7 +7661,8 @@ static int pxp_init_interrupt(struct platform_device *pdev)
 	err = devm_request_irq(&pdev->dev, std_irq, pxp_irq, 0,
 				"pxp-dmaengine-std", pxp);
 	if (err) {
-		dev_err(&pdev->dev, "Request pxp standard irq failed: %d\n", err);
+		dev_err(&pdev->dev, "Request pxp standard irq failed: %d\n",
+			err);
 		return err;
 	}
 
@@ -7689,9 +7705,7 @@ static void pxp_init_timer(struct pxps *pxp)
 {
 	INIT_WORK(&pxp->work, clkoff_callback);
 
-	init_timer(&pxp->clk_timer);
-	pxp->clk_timer.function = pxp_clkoff_timer;
-	pxp->clk_timer.data = (unsigned long)pxp;
+	timer_setup(&pxp->clk_timer, pxp_clkoff_timer, 0);
 }
 
 static bool is_mux_node(uint32_t node_id)
@@ -7918,9 +7932,9 @@ static void pxp_config_m4(struct platform_device *pdev)
 	__raw_writel(0xC0000000, pinctrl_base + 0x08);
 	__raw_writel(0x3, pinctrl_base + PIN_DOUT);
 	int i;
-	for (i = 0; i < 1024 * 32 / 4; i++) {
+
+	for (i = 0; i < 1024 * 32 / 4; i++)
 		*(((unsigned int *)(fpga_tcml_base)) + i) = cm4_image[i];
-	}
 }
 #endif
 
@@ -7990,6 +8004,8 @@ static int pxp_probe(struct platform_device *pdev)
 
 	if (pxp->devdata && pxp->devdata->pxp_data_path_config)
 		pxp->devdata->pxp_data_path_config(pxp);
+	/* enable all the possible irq raised by PXP */
+	__raw_writel(0xffff, pxp->base + HW_PXP_IRQ_MASK);
 
 	dump_pxp_reg(pxp);
 	pxp_clk_disable(pxp);
