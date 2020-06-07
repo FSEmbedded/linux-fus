@@ -16,6 +16,11 @@ dtb-$(CONFIG_ARCH_FSL_IMX8MM) += picocoremx8mm.dtb \
 
 dtb-$(CONFIG_ARCH_FSL_IMX8QXP) += efusmx8x.dtb
 
+dtb-$(CONFIG_ARCH_FSL_IMX8MN) += picocoremx8mn.dtb \
+				picocoremx8mn-bbdsi.dtb \
+				picocoremx8mn-lcdif-tc358764-g070y2-l01.dtb \
+                picocoremx8mn-lcdif-tc358764-j070wvtc0211.dtb
+
 always		:= $(dtb-y)
 subdir-y	:= $(dts-dirs)
 clean-files	:= *.dtb
