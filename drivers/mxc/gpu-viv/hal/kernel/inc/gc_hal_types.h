@@ -144,11 +144,6 @@ extern "C" {
 #   error "gcmINLINE: Platform could not be determined"
 #endif
 
-#if defined(CONFIG_KASAN)
-#   define gcmNOINLINE noinline
-#else
-#   define gcmNOINLINE
-#endif
 
 /* Possible debug flags. */
 #define gcdDEBUG_NONE           0
@@ -277,6 +272,8 @@ typedef void *                  gctPOINTER;
 typedef const void *            gctCONST_POINTER;
 
 typedef char                    gctCHAR;
+typedef signed char             gctSIGNED_CHAR;
+typedef unsigned char           gctUNSIGNED_CHAR;
 typedef char *                  gctSTRING;
 typedef const char *            gctCONST_STRING;
 

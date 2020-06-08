@@ -364,8 +364,9 @@ framegen_cfg_videomode(struct dpu_framegen *fg,
 	/* skikconfig */
 	dpu_fg_write(fg, COL(kick_col) | ROW(kick_row) | EN, SKICKCONFIG);
 
-	/* primary position config */
+	/* primary and secondary area position config */
 	dpu_fg_write(fg, STARTX(0) | STARTY(0), PACFG);
+	dpu_fg_write(fg, STARTX(0) | STARTY(0), SACFG);
 
 	/* alpha */
 	val = dpu_fg_read(fg, FGINCTRL);
@@ -379,7 +380,7 @@ framegen_cfg_videomode(struct dpu_framegen *fg,
 	/* constant color */
 	dpu_fg_write(fg, 0, FGCCR);
 
-	disp_clock_rate = m->clock * 1000;
+	disp_clock_rate = m->crtc_clock * 1000;
 
 	/*
 	 * To workaround setting clock rate failure issue
@@ -449,12 +450,6 @@ void framegen_syncmode_fixup(struct dpu_framegen *fg, bool enable)
 	dpu_fg_write(fg, val, SECSTATCONFIG);
 }
 EXPORT_SYMBOL_GPL(framegen_syncmode_fixup);
-
-void framegen_sacfg(struct dpu_framegen *fg, unsigned int x, unsigned int y)
-{
-	dpu_fg_write(fg, STARTX(x) | STARTY(y), SACFG);
-}
-EXPORT_SYMBOL_GPL(framegen_sacfg);
 
 void framegen_displaymode(struct dpu_framegen *fg, fgdm_t mode)
 {

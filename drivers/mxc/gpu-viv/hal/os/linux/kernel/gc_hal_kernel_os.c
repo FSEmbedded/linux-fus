@@ -83,10 +83,6 @@
 #include <linux/dma-buf.h>
 #endif
 
-#if defined(CONFIG_ARM) && LINUX_VERSION_CODE >= KERNEL_VERSION(4, 3, 0)
-#include <dma.h>
-#endif
-
 #define _GC_OBJ_ZONE    gcvZONE_OS
 
 #include "gc_hal_kernel_allocator.h"
@@ -1382,7 +1378,11 @@ gckOS_AllocateNonPagedMemory(
     Flag &= ~gcvALLOC_FLAG_CACHEABLE;
 #endif
 
+#if LINUX_CMA_FSL
     Flag |= gcvALLOC_FLAG_CMA_PREEMPT;
+#else
+    Flag |= gcvALLOC_FLAG_4GB_ADDR | gcvALLOC_FLAG_CONTIGUOUS;
+#endif
 
     /* Walk all allocators. */
     list_for_each_entry(allocator, &Os->allocatorList, link)
@@ -3008,7 +3008,7 @@ gckOS_GetTime(
 
     /* Return the time of day in microseconds. */
     ktime_get_real_ts64(&tv);
-    *Time = (tv.tv_sec * 1000000ULL) + (tv.tv_nsec * 1000);
+    *Time = (tv.tv_sec * 1000000ULL) + (tv.tv_nsec / 1000);
 #else
     struct timeval tv;
     gcmkHEADER();
@@ -3095,6 +3095,7 @@ gckOS_AllocatePagedMemory(
     gctSIZE_T bytes;
     gceSTATUS status = gcvSTATUS_NOT_SUPPORTED;
     gckALLOCATOR allocator;
+    gctBOOL zoneDMA32 = gcvFALSE;
 
     gcmkHEADER_ARG("Os=%p Flag=%x *Bytes=0x%zx", Os, Flag, *Bytes);
 
@@ -3113,7 +3114,19 @@ gckOS_AllocatePagedMemory(
         gcmkONERROR(gcvSTATUS_OUT_OF_MEMORY);
     }
 
-#if defined(CONFIG_ZONE_DMA32) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
+#if defined(CONFIG_ZONE_DMA32)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
+    zoneDMA32 = gcvTRUE;
+#endif
+#endif
+
+    if ((Flag & gcvALLOC_FLAG_4GB_ADDR) && !zoneDMA32)
+    {
+        Flag &= ~gcvALLOC_FLAG_4GB_ADDR;
+    }
+
+#if defined(CONFIG_ZONE_DMA32) && LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37) \
+    || !defined(LINUX_CMA_FSL) || !LINUX_CMA_FSL
     /* redirect DMA32 pool for CMA LIMIT request */
     if (Flag & gcvALLOC_FLAG_CMA_LIMIT)
     {
@@ -7195,15 +7208,27 @@ gckOS_QueryOption(
     }
     else if (!strcmp(Option, "sRAMBases"))
     {
-        memcpy(Value, device->args.sRAMBases, gcmSIZEOF(gctUINT64) * gcvSRAM_COUNT * gcvCORE_COUNT);
+        memcpy(Value, device->args.sRAMBases, gcmSIZEOF(gctUINT64) * gcvSRAM_INTER_COUNT * gcvCORE_COUNT);
     }
     else if (!strcmp(Option, "sRAMSizes"))
     {
-        memcpy(Value, device->args.sRAMSizes, gcmSIZEOF(gctUINT32) * gcvSRAM_COUNT * gcvCORE_COUNT);
+        memcpy(Value, device->args.sRAMSizes, gcmSIZEOF(gctUINT32) * gcvSRAM_INTER_COUNT * gcvCORE_COUNT);
     }
-    else if (!strcmp(Option, "sRAMMode"))
+    else if (!strcmp(Option, "extSRAMBases"))
     {
-        *Value = device->args.sRAMMode;
+        memcpy(Value, device->args.extSRAMBases, gcmSIZEOF(gctUINT64) * gcvSRAM_EXT_COUNT);
+    }
+    else if (!strcmp(Option, "extSRAMSizes"))
+    {
+        memcpy(Value, device->args.extSRAMSizes, gcmSIZEOF(gctUINT32) * gcvSRAM_EXT_COUNT);
+    }
+    else if (!strcmp(Option, "sRAMRequested"))
+    {
+        *Value = device->args.sRAMRequested;
+    }
+    else if (!strcmp(Option, "sRAMLoopMode"))
+    {
+        *Value = device->args.sRAMLoopMode;
     }
     else if (!strcmp(Option, "platformFlagBits"))
     {

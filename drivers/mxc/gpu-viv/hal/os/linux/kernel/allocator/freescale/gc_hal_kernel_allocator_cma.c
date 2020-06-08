@@ -441,7 +441,7 @@ _CMAFSLMapUser(
     up_write(&current->mm->mmap_sem);
 
 OnError:
-    if (gcmIS_ERROR(status) && userLogical)
+    if (gcmIS_ERROR(status) && userLogical && !IS_ERR(userLogical))
     {
         _CMAFSLUnmapUser(Allocator, Mdl, userLogical, Mdl->numPages * PAGE_SIZE);
     }
@@ -580,7 +580,11 @@ _CMAFSLAlloctorInit(
 #endif
                           ;
 #if defined(CONFIG_ARM64)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0)
+    Os->allocatorLimitMarker = (Os->device->baseAddress + totalram_pages() * PAGE_SIZE) > 0x100000000;
+#else
     Os->allocatorLimitMarker = (Os->device->baseAddress + totalram_pages * PAGE_SIZE) > 0x100000000;
+#endif
 #else
     Os->allocatorLimitMarker = gcvFALSE;
 #endif

@@ -127,13 +127,14 @@ typedef struct _gcoBUFOBJ *             gcoBUFOBJ;
 
 typedef enum _gcePROGRAM_STAGE
 {
-    gcvPROGRAM_STAGE_VERTEX   = 0x0,
-    gcvPROGRAM_STAGE_TCS      = 0x1,
-    gcvPROGRAM_STAGE_TES      = 0x2,
-    gcvPROGRAM_STAGE_GEOMETRY = 0x3,
-    gcvPROGRAM_STAGE_FRAGMENT = 0x4,
-    gcvPROGRAM_STAGE_COMPUTE  = 0x5,
-    gcvPROGRAM_STAGE_OPENCL   = 0x6,
+    gcvPROGRAM_STAGE_VERTEX         = 0x0,
+    gcvPROGRAM_STAGE_TCS            = 0x1,
+    gcvPROGRAM_STAGE_TES            = 0x2,
+    gcvPROGRAM_STAGE_GEOMETRY       = 0x3,
+    gcvPROGRAM_STAGE_FRAGMENT       = 0x4,
+    gcvPROGRAM_STAGE_GRAPHICS_COUNT = 0x5,
+    gcvPROGRAM_STAGE_COMPUTE        = 0x5,
+    gcvPROGRAM_STAGE_OPENCL         = 0x6,
     gcvPROGRAM_STAGE_LAST
 }
 gcePROGRAM_STAGE;
@@ -682,7 +683,7 @@ gceSTATUS
 gcoINDEX_GetIndexRange(
     IN gcoINDEX Index,
     IN gceINDEX_TYPE Type,
-    IN gctUINT32 Offset,
+    IN gctSIZE_T Offset,
     IN gctUINT32 Count,
     OUT gctUINT32 * MinimumIndex,
     OUT gctUINT32 * MaximumIndex
@@ -2714,6 +2715,7 @@ typedef struct _gcsVERTEXARRAY_INDEX_INFO
     gctSIZE_T        count;
     gceINDEX_TYPE    indexType;
     gctPOINTER       indexMemory;
+    gctUINT          restartElement;
 
     union _gcsVERTEXARRAY_INDEX_INFO_UNION
     {
@@ -2894,8 +2896,9 @@ gceSTATUS
 gcoBUFOBJ_IndexBind (
     IN gcoBUFOBJ Index,
     IN gceINDEX_TYPE Type,
-    IN gctUINT32 Offset,
-    IN gctSIZE_T Count
+    IN gctSIZE_T Offset,
+    IN gctSIZE_T Count,
+    IN gctUINT   RestartElement
     );
 
 /* Find min and max index for the index buffer */
@@ -2903,7 +2906,7 @@ gceSTATUS
 gcoBUFOBJ_IndexGetRange(
     IN gcoBUFOBJ Index,
     IN gceINDEX_TYPE Type,
-    IN gctUINT32 Offset,
+    IN gctSIZE_T Offset,
     IN gctUINT32 Count,
     OUT gctUINT32 * MinimumIndex,
     OUT gctUINT32 * MaximumIndex

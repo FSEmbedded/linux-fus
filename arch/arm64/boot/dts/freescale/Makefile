@@ -90,7 +90,9 @@ dtb-$(CONFIG_ARCH_FSL_IMX8QXP) += fsl-imx8qxp-lpddr4-arm2.dtb \
 				  fsl-imx8qxp-ddr3l-val.dtb \
 				  fsl-imx8dx-17x17-val.dtb \
 				  fsl-imx8dx-lpddr4-arm2.dtb \
-				  fsl-imx8dxp-lpddr4-arm2.dtb
+				  fsl-imx8dxp-lpddr4-arm2.dtb \
+				  fsl-imx8dxl-phantom-mek.dtb \
+				  fsl-imx8dxl-phantom-mek-rpmsg.dtb
 dtb-$(CONFIG_ARCH_FSL_IMX8MQ) += fsl-imx8mq-ddr3l-arm2.dtb \
 				 fsl-imx8mq-ddr4-arm2.dtb \
 				 fsl-imx8mq-ddr4-arm2-gpmi-nand.dtb \
@@ -100,6 +102,7 @@ dtb-$(CONFIG_ARCH_FSL_IMX8MQ) += fsl-imx8mq-ddr3l-arm2.dtb \
 				 fsl-imx8mq-evk-pcie1-m2.dtb \
 				 fsl-imx8mq-evk-lcdif-adv7535.dtb \
 				 fsl-imx8mq-evk-lcdif-adv7535-b3.dtb \
+				 fsl-imx8mq-evk-lcdif-rm67191.dtb \
 				 fsl-imx8mq-evk-mipi-csi2.dtb \
 				 fsl-imx8mq-evk-pdm.dtb \
 				 fsl-imx8mq-evk-dcss-adv7535.dtb \
@@ -131,3 +134,9 @@ dtb-$(CONFIG_ARCH_FSL_IMX8MM) += fsl-imx8mm-evk.dtb \
 				 fsl-imx8mm-evk-revb-rm67191.dtb \
 				 fsl-imx8mm-ddr4-evk-rm67191.dtb \
 				 fsl-imx8mm-ddr4-qca9377-evk.dtb
+dtb-$(CONFIG_ARCH_FSL_IMX8MN) += fsl-imx8mn-ddr4-evk.dtb \
+				 fsl-imx8mn-ddr4-evk-rpmsg.dtb \
+				 fsl-imx8mn-ddr4-evk-rm67191.dtb \
+				 fsl-imx8mn-ddr4-evk-ak5558.dtb \
+				 fsl-imx8mn-ddr4-evk-root.dtb \
+				 fsl-imx8mn-ddr4-evk-inmate.dtb

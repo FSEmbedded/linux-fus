@@ -406,6 +406,7 @@
 			interrupts = <GIC_SPI 436 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 437 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "edma0-chan14-rx", "edma0-chan15-tx";
+			pdomains = <&pd_dma0_chan14>, <&pd_dma0_chan15>; /* lpuart1 */
 			status = "okay";
 		};
 
@@ -429,6 +430,8 @@
 			interrupt-names = "edma2-chan0-rx", "edma2-chan1-rx", /* asrc0 */
 					"edma2-chan2-rx", "edma2-chan3-tx",
 					"edma2-chan4-tx", "edma2-chan5-tx";
+			pdomains = <&pd_dma2_chan0>, <&pd_dma2_chan1>, <&pd_dma2_chan2>,
+				<&pd_dma2_chan3>, <&pd_dma2_chan4>, <&pd_dma2_chan5>;
 			status = "okay";
 		};
 
@@ -442,6 +445,7 @@
 			interrupts = <GIC_SPI 410 IRQ_TYPE_LEVEL_HIGH>, /* esai0 */
 				     <GIC_SPI 410 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "edma2-chan6-rx", "edma2-chan7-tx"; /* esai0 */
+			pdomains = <&pd_dma2_chan6>, <&pd_dma2_chan7>;
 			status = "okay";
 		};
 
@@ -455,6 +459,7 @@
 			interrupts = <GIC_SPI 315 IRQ_TYPE_LEVEL_HIGH>, /* sai0 */
 				     <GIC_SPI 315 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "edma2-chan12-rx", "edma2-chan13-tx"; /* sai0 */
+			pdomains = <&pd_dma2_chan12>, <&pd_dma2_chan13>;
 			fsl,sc_rsrc_id = <SC_R_DMA_2_CH12>,
 					 <SC_R_DMA_2_CH13>;
 			status = "okay";
@@ -509,87 +514,70 @@
 };
 
 &dpu2_intsteer {
-	reg = <0x0 0x57000000 0x0 0x10000>;
 	status = "okay";
 };
 
 &prg10 {
-	reg = <0x0 0x57040000 0x0 0x10000>;
 	status = "okay";
 };
 
 &prg11 {
-	reg = <0x0 0x57050000 0x0 0x10000>;
 	status = "okay";
 };
 
 &prg12 {
-	reg = <0x0 0x57060000 0x0 0x10000>;
 	status = "okay";
 };
 
 &prg13 {
-	reg = <0x0 0x57070000 0x0 0x10000>;
 	status = "okay";
 };
 
 &prg14 {
-	reg = <0x0 0x57080000 0x0 0x10000>;
 	status = "okay";
 };
 
 &prg15 {
-	reg = <0x0 0x57090000 0x0 0x10000>;
 	status = "okay";
 };
 
 &prg16 {
-	reg = <0x0 0x570a0000 0x0 0x10000>;
 	status = "okay";
 };
 
 &prg17 {
-	reg = <0x0 0x570b0000 0x0 0x10000>;
 	status = "okay";
 };
 
 &prg18 {
-	reg = <0x0 0x570c0000 0x0 0x10000>;
 	status = "okay";
 };
 
 &dpr3_channel1 {
-	reg = <0x0 0x570d0000 0x0 0x10000>;
 	status = "okay";
 };
 
 &dpr3_channel2 {
-	reg = <0x0 0x570e0000 0x0 0x10000>;
 	status = "okay";
 };
 
 &dpr3_channel3 {
-	reg = <0x0 0x570f0000 0x0 0x10000>;
 	status = "okay";
 };
 
 &dpr4_channel1 {
-	reg = <0x0 0x57100000 0x0 0x10000>;
 	status = "okay";
 };
 
 &dpr4_channel2 {
-	reg = <0x0 0x57110000 0x0 0x10000>;
 	status = "okay";
 };
 
 &dpr4_channel3 {
-	reg = <0x0 0x57120000 0x0 0x10000>;
 	status = "okay";
 };
 
 &dpu2 {
-	reg = <0x0 0x57180000 0x0 0x40000>;
 	status = "okay";
 
 	dpu2_disp0: port@0 {
@@ -623,12 +611,10 @@
 /delete-node/ &mipi_dsi_bridge1;
 
 &lvds_region2 {
-	reg = <0x0 0x57240000 0x0 0x10000>;
 	status = "okay";
 };
 
 &ldb2_phy {
-	reg = <0x0 0x57241000 0x0 0x100>;
 	status = "okay";
 };
 
@@ -698,7 +684,6 @@
 /delete-node/ &i2c0_hdmi;
 
 &irqsteer_lvds1 {
-	reg = <0x0 0x57240000 0x0 0x1000>;
 	/delete-property/ interrupt-parent;
 	status = "okay";
 };
@@ -708,7 +693,6 @@
 /delete-node/ &flexcan3;
 
 &i2c1_lvds1 {
-	reg = <0x0 0x57247000 0x0 0x1000>;
 	status = "okay";
 };
 
@@ -724,7 +708,6 @@
 
 &lpuart1 {
 	/delete-property/ interrupt-parent;
-	reg = <0x0 0x5a070000 0 0x1000>;
 	dmas = <&edma01 15 0 0>, <&edma01 14 0 1>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lpuart1>;
@@ -784,7 +767,6 @@
 /delete-node/ &pwm7;
 
 &gpu_3d1 {
-	reg = <0x0 0x54100000 0 0x40000>;
 	status = "okay";
 };
 
@@ -804,7 +786,6 @@
 	compatible = "fsl,imx8qm-usdhc", "fsl,imx6sl-usdhc";
 	/*interrupt-parent = <&gic>;*/
 	/delete-property/ interrupt-parent;
-	reg = <0x0 0x5b010000 0x0 0x10000>;
 };
 
 /delete-node/ &usdhc2;
@@ -813,7 +794,6 @@
 /delete-node/ &fec2;
 
 &usbmisc1 {
-	reg = <0x0 0x5b0d0200 0x0 0x200>;
 };
 
 &usbmisc2 {
@@ -821,7 +801,6 @@
 };
 
 &usbphy1 {
-	reg = <0x0 0x5b100000 0x0 0x200>;
 };
 
 /delete-node/ &usbh1;
@@ -840,7 +819,6 @@
 /delete-node/ &usbphynop2;
 
 &usbotg1 {
-	reg = <0x0 0x5b0d0000 0x0 0x200>;
 	/delete-property/ interrupt-parent;
 };
 
@@ -907,7 +885,7 @@
 	reset-gpio = <&gpio4 29 GPIO_ACTIVE_LOW>;
 	clkreq-gpio = <&gpio4 27 GPIO_ACTIVE_LOW>;
 	epdev_on-supply = <&epdev_on>;
-	status = "okay";
+	status = "disabled";
 };
 /delete-node/ &pcieb;
 /delete-node/ &sata;
@@ -925,7 +903,6 @@
 };
 
 &mu_rpmsg1 {
-	reg = <0x0 0x5d210000 0x0 0x10000>;
 };
 
 /*/delete-node/ &crypto;*/

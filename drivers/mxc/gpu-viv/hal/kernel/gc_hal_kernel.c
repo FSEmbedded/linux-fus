@@ -128,6 +128,7 @@ gctCONST_STRING _DispatchText[] =
     gcmDEFINE2TEXT(gcvHAL_SET_DEBUG_LEVEL_ZONE),
     gcmDEFINE2TEXT(gcvHAL_DEBUG_DUMP),
     gcmDEFINE2TEXT(gcvHAL_UPDATE_DEBUG_CALLBACK),
+    gcmDEFINE2TEXT(gcvHAL_CONFIG_CTX_FRAMEWORK),
     gcmDEFINE2TEXT(gcvHAL_DUMP_GPU_STATE),
     gcmDEFINE2TEXT(gcvHAL_DUMP_EVENT),
     gcmDEFINE2TEXT(gcvHAL_DUMP_GPU_PROFILE),
@@ -517,6 +518,9 @@ gckKERNEL_Construct(
         _SetRecovery(kernel, recovery, stuckDump);
     }
 
+    status = gckOS_QueryOption(Os, "sRAMLoopMode", &data);
+    kernel->sRAMLoopMode = (status == gcvSTATUS_OK) ? data : 0;
+
     /* Need the kernel reference before gckKERNEL_Construct() completes.
        gckOS_MapPagesEx() is called to map kernel virtual command buffers. */
     *Kernel = kernel;
@@ -562,12 +566,14 @@ gckKERNEL_Construct(
         /* Set pointer to gckKERNEL object in gckHARDWARE object. */
         kernel->hardware->kernel = kernel;
 
-        kernel->sRAMNonExclusive = kernel->hardware->sRAMNonExclusive;
+        kernel->sRAMIndex = 0;
+        kernel->extSRAMIndex = 0;
 
-        for (i = gcvSRAM_EXTERNAL0; i < gcvSRAM_COUNT; i++)
+        for (i = gcvSRAM_INTERNAL0; i < gcvSRAM_INTER_COUNT; i++)
         {
-            kernel->sRAMVideoMem[i] = kernel->hardware->sRAMVideoMem[i];
-            kernel->sRAMPhysical[i] = kernel->hardware->sRAMPhysical[i];
+            kernel->sRAMVidMem[i]    = kernel->hardware->sRAMVidMem[i];
+            kernel->sRAMPhysical[i]  = kernel->hardware->sRAMPhysical[i];
+            kernel->sRAMPhysFaked[i] = gcvFALSE;
         }
 
         kernel->timeOut = kernel->hardware->type == gcvHARDWARE_2D
@@ -601,7 +607,7 @@ gckKERNEL_Construct(
         }
 
         gcmkONERROR(
-            gckMMU_SetupPerHardware(kernel->mmu, kernel->hardware, kernel->device));
+            gckMMU_SetupSRAM(kernel->mmu, kernel->hardware, kernel->device));
 
         if (kernel->hardware->mmuVersion && !kernel->mmu->dynamicAreaSetuped)
         {
@@ -813,8 +819,11 @@ gckKERNEL_Destroy(
             gcmkVERIFY_OK(gckEVENT_Destroy(Kernel->eventObj));
         }
 
-        /* Destroy hardware resources before destroying MMU. */
-        gcmkVERIFY_OK(gckHARDWARE_PreDestroy(Kernel->hardware));
+        if (Kernel->hardware)
+        {
+            /* Destroy hardware resources before destroying MMU. */
+            gcmkVERIFY_OK(gckHARDWARE_PreDestroy(Kernel->hardware));
+        }
 
         if (Kernel->mmu)
         {
@@ -830,8 +839,11 @@ gckKERNEL_Destroy(
 #endif
         }
 
-        /* Destroy the gckHARDWARE object. */
-        gcmkVERIFY_OK(gckHARDWARE_Destroy(Kernel->hardware));
+        if (Kernel->hardware)
+        {
+            /* Destroy the gckHARDWARE object. */
+            gcmkVERIFY_OK(gckHARDWARE_Destroy(Kernel->hardware));
+        }
     }
 
     if (Kernel->atomClients)
@@ -995,7 +1007,6 @@ gckKERNEL_AllocateVideoMemory(
     gctBOOL virtualPool4K = gcvFALSE;
     gctBOOL hasFastPools = gcvFALSE;
     gctSIZE_T bytes = *Bytes;
-    gctUINT32 sRAMIndex = 1;
 
     gcmkHEADER_ARG("Kernel=%p *Pool=%d *Bytes=%lu Alignment=%lu Type=%d",
                    Kernel, *Pool, *Bytes, Alignment, Type);
@@ -1181,9 +1192,13 @@ AllocateMemory:
         /* gcvPOOL_SYSTEM/gcvPOOL_SRAM can't be cacheable. */
         else if (cacheable == gcvFALSE && secure == gcvFALSE)
         {
-            /* Get pointer to gckVIDMEM object for pool. */
-            Kernel->sRAMIndex = sRAMIndex;
+#ifdef EMULATOR
+            /* Cmodel only support 1 SRAM currently. */
+            Kernel->sRAMIndex = 0;
+            Kernel->extSRAMIndex = 0;
+#endif
 
+            /* Get pointer to gckVIDMEM object for pool. */
             status = gckKERNEL_GetVideoMemoryPool(Kernel, pool, &videoMemory);
 
             if (gcmIS_SUCCESS(status))
@@ -1209,7 +1224,9 @@ AllocateMemory:
                                                            pool,
                                                            Type,
                                                            Alignment,
-                                                           (pool == gcvPOOL_SYSTEM || pool == gcvPOOL_SRAM),
+                                                           (pool == gcvPOOL_SYSTEM ||
+                                                            pool == gcvPOOL_INTERNAL_SRAM ||
+                                                            pool == gcvPOOL_EXTERNAL_SRAM),
                                                            &bytes,
                                                            &nodeObject);
                 }
@@ -1231,10 +1248,10 @@ AllocateMemory:
         else
         if (pool == gcvPOOL_LOCAL_EXTERNAL)
         {
-            if (Kernel->sRAMNonExclusive)
+            if (Kernel->sRAMLoopMode)
             {
-                /* Advance to SRAM memory. */
-                pool = gcvPOOL_SRAM;
+                /* Advance to Internal SRAM memory block. */
+                pool = gcvPOOL_INTERNAL_SRAM;
             }
             else
             {
@@ -1244,11 +1261,11 @@ AllocateMemory:
         }
 
         else
-        if (pool == gcvPOOL_SRAM)
+        if (pool == gcvPOOL_INTERNAL_SRAM)
         {
-            if (sRAMIndex < gcvSRAM_COUNT - 1)
+            if (Kernel->sRAMIndex < gcvSRAM_INTER_COUNT - 1 && !Kernel->sRAMPhysFaked[Kernel->sRAMIndex])
             {
-                sRAMIndex++;
+                Kernel->sRAMIndex++;
                 loopCount++;
             }
             else
@@ -1342,6 +1359,16 @@ _AllocateLinearMemory(
                    Kernel, pool, bytes, alignment, type);
 
     gcmkVERIFY_ARGUMENT(bytes != 0);
+
+    if (Interface->u.AllocateLinearVideoMemory.sRAMIndex >= 0)
+    {
+        Kernel->sRAMIndex = Interface->u.AllocateLinearVideoMemory.sRAMIndex;
+    }
+
+    if (Interface->u.AllocateLinearVideoMemory.extSRAMIndex >= 0)
+    {
+        Kernel->extSRAMIndex = Interface->u.AllocateLinearVideoMemory.extSRAMIndex;
+    }
 
     /* Allocate video memory node. */
     gcmkONERROR(
@@ -1553,7 +1580,7 @@ OnError:
         gckVIDMEM_NODE_UnlockCPU(Kernel, nodeObject, ProcessID, gcvTRUE);
     }
 
-    if (address)
+    if (address != gcvINVALID_ADDRESS)
     {
         gckVIDMEM_NODE_Unlock(Kernel, nodeObject, ProcessID, &asynchronous);
 
@@ -2121,6 +2148,7 @@ gckKERNEL_CacheOperation(
     gckVIDMEM_NODE nodeObject = gcvNULL;
     gcuVIDMEM_NODE_PTR node = gcvNULL;
     gckVIDMEM_BLOCK vidMemBlock = gcvNULL;
+    gctSIZE_T offset = 0;
     void *memHandle;
 
     gcmkHEADER_ARG("Kernel=%p pid=%u Node=%u op=%d Logical=%p Bytes=0x%lx",
@@ -2151,6 +2179,7 @@ gckKERNEL_CacheOperation(
     else if (vidMemBlock && vidMemBlock->object.type == gcvOBJ_VIDMEM_BLOCK)
     {
         memHandle = vidMemBlock->physical;
+        offset = node->VirtualChunk.offset;
     }
     else
     {
@@ -2164,7 +2193,7 @@ gckKERNEL_CacheOperation(
         status = gckOS_CacheFlush(Kernel->os,
                                   ProcessID,
                                   memHandle,
-                                  0,
+                                  offset,
                                   Logical,
                                   Bytes);
         break;
@@ -2173,7 +2202,7 @@ gckKERNEL_CacheOperation(
         status = gckOS_CacheClean(Kernel->os,
                                   ProcessID,
                                   memHandle,
-                                  0,
+                                  offset,
                                   Logical,
                                   Bytes);
         break;
@@ -2182,7 +2211,7 @@ gckKERNEL_CacheOperation(
         status = gckOS_CacheInvalidate(Kernel->os,
                                        ProcessID,
                                        memHandle,
-                                       0,
+                                       offset,
                                        Logical,
                                        Bytes);
         break;
@@ -2366,7 +2395,6 @@ _Commit(
             command  = kernel->command;
             eventObj = kernel->eventObj;
         }
-
         gcmkONERROR(gckOS_Broadcast(kernel->os,
                                     kernel->hardware,
                                     gcvBROADCAST_GPU_COMMIT));
@@ -2377,7 +2405,8 @@ _Commit(
                                        subCommit,
                                        ProcessId,
                                        Commit->shared,
-                                       &Commit->commitStamp);
+                                       &Commit->commitStamp,
+                                       &Commit->contextSwitched);
 
             if (status != gcvSTATUS_INTERRUPTED)
             {
@@ -3757,6 +3786,17 @@ gckKERNEL_AttachProcessEx(
                                             gcvBROADCAST_LAST_PROCESS));
             }
         }
+
+        if (Kernel->timeoutPID == PID)
+        {
+            Kernel->timeOut = Kernel->hardware->type == gcvHARDWARE_2D
+                            ? gcdGPU_2D_TIMEOUT
+                            : gcdGPU_TIMEOUT;
+
+            gcmkVERIFY_OK(gckOS_StopTimer(Kernel->os, Kernel->monitorTimer));
+
+            gcmkVERIFY_OK(gckOS_StartTimer(Kernel->os, Kernel->monitorTimer, 100));
+        }
     }
 
     /* Success. */
@@ -4268,6 +4308,7 @@ gckKERNEL_AllocateIntegerId(
     gctUINT32 pos;
     gctUINT32 n, i;
     gckOS os = database->os;
+    gctPOINTER * table = gcvNULL;
 
     gcmkHEADER_ARG("Database=%p Pointer=%p", Database, Pointer);
 
@@ -4275,7 +4316,6 @@ gckKERNEL_AllocateIntegerId(
 
     if (database->freeCount < 1)
     {
-        gctPOINTER * table = gcvNULL;
         gctUINT32 * bitmap = gcvNULL;
         gctUINT32 expand;
         gctUINT32 capacity;
@@ -4349,6 +4389,11 @@ gckKERNEL_AllocateIntegerId(
     return gcvSTATUS_OK;
 
 OnError:
+    if (table)
+    {
+        gckOS_Free(os, table);
+    }
+
     gcmkVERIFY_OK(gckOS_ReleaseMutex(os, database->mutex));
 
     gcmkFOOTER();
@@ -5149,12 +5194,20 @@ gckDEVICE_Construct(
     {
         device->coreInfoArray[i].type = gcvHARDWARE_INVALID;
 
-        /* Initialize device SRAM. */
-        for (j = 0; j < gcvSRAM_COUNT; j++)
+        /* Initialize internal SRAM. */
+        for (j = 0; j < gcvSRAM_INTER_COUNT; j++)
         {
             device->sRAMBases[i][j] = gcvINVALID_PHYSICAL_ADDRESS;
             device->sRAMSizes[i][j] = 0;
+            device->sRAMPhysFaked[i][j] = gcvFALSE;
         }
+    }
+
+    /* Initialize external SRAM. */
+    for (i = 0; i < gcvSRAM_EXT_COUNT; i++)
+    {
+        device->extSRAMBases[i] = gcvINVALID_PHYSICAL_ADDRESS;
+        device->extSRAMSizes[i] = 0;
     }
 
     device->defaultHwType = gcvHARDWARE_INVALID;
@@ -5163,6 +5216,7 @@ gckDEVICE_Construct(
     gcmkONERROR(gckOS_CreateMutex(Os, &device->commitMutex));
 
     device->os = Os;
+    device->showSRAMMapInfo = 0;
 
     *Device = device;
 
@@ -5372,6 +5426,10 @@ gckDEVICE_SetTimeOut(
     gctUINT i;
     gceHARDWARE_TYPE type = Interface->hardwareType;
     gcsCORE_LIST *coreList;
+    gctUINT32 processID = 0;
+
+    /* Get the current process ID. */
+    gckOS_GetProcessID(&processID);
 
     coreList = &Device->map[type];
 
@@ -5380,6 +5438,8 @@ gckDEVICE_SetTimeOut(
         kernel = coreList->kernels[i];
 
         kernel->timeOut = Interface->u.SetTimeOut.timeOut;
+
+        kernel->timeoutPID = processID;
     }
 #endif
 

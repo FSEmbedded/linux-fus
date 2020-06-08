@@ -291,6 +291,8 @@ static int thermal_hot_pm_notify(struct notifier_block *nb, unsigned long event,
     static gctBOOL bAlreadyTooHot = gcvFALSE;
     gckHARDWARE hardware;
     gckGALDEVICE galDevice;
+    gctUINT FscaleVal = orgFscale;
+    gctUINT core = gcvCORE_MAJOR;
 
     galDevice = platform_get_drvdata(pdevice);
     if (!galDevice)
@@ -313,14 +315,19 @@ static int thermal_hot_pm_notify(struct notifier_block *nb, unsigned long event,
 
     if (event && !bAlreadyTooHot) {
         gckHARDWARE_GetFscaleValue(hardware,&orgFscale,&minFscale, &maxFscale);
-        gckHARDWARE_SetFscaleValue(hardware, minFscale);
+        FscaleVal = minFscale;
         bAlreadyTooHot = gcvTRUE;
         printk("System is too hot. GPU3D will work at %d/64 clock.\n", minFscale);
     } else if (!event && bAlreadyTooHot) {
-        gckHARDWARE_SetFscaleValue(hardware, orgFscale);
         printk("Hot alarm is canceled. GPU3D clock will return to %d/64\n", orgFscale);
         bAlreadyTooHot = gcvFALSE;
     }
+
+    while (galDevice->kernels[core] && core <= gcvCORE_3D_MAX)
+    {
+        gckHARDWARE_SetFscaleValue(galDevice->kernels[core++]->hardware, FscaleVal);
+    }
+
     return NOTIFY_OK;
 }
 
@@ -336,7 +343,6 @@ static ssize_t gpu3DMinClock_show(struct device_driver *dev, char *buf)
 
     galDevice = platform_get_drvdata(pdevice);
 
-    minf = 0;
     if (galDevice->kernels[gcvCORE_MAJOR])
     {
          gckHARDWARE_GetFscaleValue(galDevice->kernels[gcvCORE_MAJOR]->hardware,
@@ -353,17 +359,20 @@ static ssize_t gpu3DMinClock_store(struct device_driver *dev, const char *buf, s
     gctINT fields;
     gctUINT MinFscaleValue;
     gckGALDEVICE galDevice;
+    gctUINT core = gcvCORE_MAJOR;
 
     galDevice = platform_get_drvdata(pdevice);
+    if (!galDevice)
+         return -EINVAL;
 
-    if (galDevice->kernels[gcvCORE_MAJOR])
+    fields = sscanf(buf, "%d", &MinFscaleValue);
+
+    if (fields < 1)
+         return -EINVAL;
+
+    while (galDevice->kernels[core] && core <= gcvCORE_3D_MAX)
     {
-         fields = sscanf(buf, "%d", &MinFscaleValue);
-
-         if (fields < 1)
-             return -EINVAL;
-
-         gckHARDWARE_SetMinFscaleValue(galDevice->kernels[gcvCORE_MAJOR]->hardware,MinFscaleValue);
+         gckHARDWARE_SetMinFscaleValue(galDevice->kernels[core++]->hardware,MinFscaleValue);
     }
 
     return count;
@@ -373,6 +382,54 @@ static ssize_t gpu3DMinClock_store(struct device_driver *dev, const char *buf, s
 static DRIVER_ATTR_RW(gpu3DMinClock);
 #else
 static DRIVER_ATTR(gpu3DMinClock, S_IRUGO | S_IWUSR, gpu3DMinClock_show, gpu3DMinClock_store);
+#endif
+
+static ssize_t gpu3DClockScale_show(struct device_driver *dev, char *buf)
+{
+    gctUINT currentf = 0, minf = 0, maxf = 0;
+    gckGALDEVICE galDevice;
+
+    galDevice = platform_get_drvdata(pdevice);
+
+    if (galDevice->kernels[gcvCORE_MAJOR])
+    {
+         gckHARDWARE_GetFscaleValue(galDevice->kernels[gcvCORE_MAJOR]->hardware,
+            &currentf, &minf, &maxf);
+    }
+
+    snprintf(buf, PAGE_SIZE, "%d\n", currentf);
+    return strlen(buf);
+}
+
+static ssize_t gpu3DClockScale_store(struct device_driver *dev, const char *buf, size_t count)
+{
+
+    gctINT fields;
+    gctUINT FscaleValue;
+    gckGALDEVICE galDevice;
+    gctUINT core = gcvCORE_MAJOR;
+
+    galDevice = platform_get_drvdata(pdevice);
+    if (!galDevice)
+         return -EINVAL;
+
+    fields = sscanf(buf, "%d", &FscaleValue);
+
+    if (fields < 1)
+         return -EINVAL;
+
+    while (galDevice->kernels[core] && core <= gcvCORE_3D_MAX)
+    {
+         gckHARDWARE_SetFscaleValue(galDevice->kernels[core++]->hardware,FscaleValue);
+    }
+
+    return count;
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
+static DRIVER_ATTR_RW(gpu3DClockScale);
+#else
+static DRIVER_ATTR(gpu3DClockScale, S_IRUGO | S_IWUSR, gpu3DClockScale_show, gpu3DClockScale_store);
 #endif
 
 #endif
@@ -465,25 +522,25 @@ static ssize_t gpu_govern_show(struct device_driver *dev, char *buf)
     unsigned long shader_freq;
 
     if (priv->imx_gpu_govern.num_modes == GOVERN_COUNT)
-	    max_modes = priv->imx_gpu_govern.num_modes - 1;
+        max_modes = priv->imx_gpu_govern.num_modes - 1;
     else
-	    max_modes = priv->imx_gpu_govern.num_modes;
+        max_modes = priv->imx_gpu_govern.num_modes;
 
     len = sprintf(buf, "GPU support %d modes\n", priv->imx_gpu_govern.num_modes);
 
 
     for (i = priv->imx_gpu_govern.current_mode; i <= max_modes; i++)
     {
-	    core_freq   = priv->imx_gpu_govern.core_clk_freq[i];
-	    shader_freq = priv->imx_gpu_govern.shader_clk_freq[i];
+        core_freq   = priv->imx_gpu_govern.core_clk_freq[i];
+        shader_freq = priv->imx_gpu_govern.shader_clk_freq[i];
 
-	    len += sprintf(buf + len,
-			    "%s:\tcore_clk frequency: %lu\tshader_clk frequency: %lu\n",
-			    govern_modes[i], core_freq, shader_freq);
+        len += sprintf(buf + len,
+                "%s:\tcore_clk frequency: %lu\tshader_clk frequency: %lu\n",
+                govern_modes[i], core_freq, shader_freq);
     }
 
     len += sprintf(buf + len, "Currently GPU runs on mode %s\n",
-		    govern_modes[priv->imx_gpu_govern.current_mode]);
+        govern_modes[priv->imx_gpu_govern.current_mode]);
 
     return len;
 }
@@ -526,7 +583,6 @@ static ssize_t gpu_govern_store(struct device_driver *dev, const char *buf, size
 #endif
             clk_set_rate(clk_core, core_freq);
             clk_set_rate(clk_shader, shader_freq);
-
 #ifdef CONFIG_PM
             pm_runtime_put_sync(priv->pmdev[core]);
 #endif
@@ -549,7 +605,13 @@ int init_gpu_opp_table(struct device *dev)
     int nr;
     int ret = 0;
     int i, p;
+    int core = gcvCORE_MAJOR;
     struct imx_priv *priv = &imxPriv;
+
+    struct clk *clk_core;
+    struct clk *clk_shader;
+
+    unsigned long core_freq, shader_freq;
 
     priv->imx_gpu_govern.num_modes = 0;
 
@@ -559,7 +621,7 @@ int init_gpu_opp_table(struct device *dev)
     }
 
     if (!prop->value) {
-	dev_err(dev, "operating-points invalid. Frequency scaling will not work\n");
+        dev_err(dev, "operating-points invalid. Frequency scaling will not work\n");
         return -ENODATA;
     }
 
@@ -581,11 +643,11 @@ int init_gpu_opp_table(struct device *dev)
      * are divisible by 2 (X Y) hence there's no need to test for odd values.
      */
     if (nr < 6)
-	    priv->imx_gpu_govern.current_mode = UNDERDRIVE;
+        priv->imx_gpu_govern.current_mode = UNDERDRIVE;
     else if (nr == 6 || nr == 8)
-	    priv->imx_gpu_govern.current_mode = NOMINAL;
+        priv->imx_gpu_govern.current_mode = NOMINAL;
     else
-	    priv->imx_gpu_govern.current_mode = OVERDRIVE;
+        priv->imx_gpu_govern.current_mode = OVERDRIVE;
 
     val = prop->value;
 
@@ -619,7 +681,7 @@ int init_gpu_opp_table(struct device *dev)
         priv->imx_gpu_govern.shader_clk_freq[i] = shader_freq;
 
         p++;
-	i++;
+    i++;
     }
 
     priv->imx_gpu_govern.num_modes = p;
@@ -630,8 +692,32 @@ int init_gpu_opp_table(struct device *dev)
         ret = driver_create_file(dev->driver, &driver_attr_gpu_govern);
         if (ret) {
             dev_err(dev, "create gpu_govern attr failed (%d)\n", ret);
-	    return ret;
-	}
+        return ret;
+    }
+
+    /*
+    * This could be redundant, but it is useful for testing DTS with
+    * different OPPs that have assigned-clock rates different than the
+    * ones specified in OPP tuple array. Otherwise we will display
+    * different clock values when the driver is loaded. Further
+    * modifications of the governor will display correctly but not when
+    * the driver has been loaded.
+    */
+    core_freq = priv->imx_gpu_govern.core_clk_freq[priv->imx_gpu_govern.current_mode];
+    shader_freq = priv->imx_gpu_govern.shader_clk_freq[priv->imx_gpu_govern.current_mode];
+
+    if (core_freq && shader_freq) {
+        for (; core <= gcvCORE_3D_MAX; core++) {
+            clk_core = priv->imx_gpu_clks[core].clk_core;
+            clk_shader = priv->imx_gpu_clks[core].clk_shader;
+
+            if (clk_core != NULL && clk_shader != NULL) {
+                clk_set_rate(clk_core, core_freq);
+                clk_set_rate(clk_shader, shader_freq);
+            }
+        }
+    }
+
     }
 
     return ret;
@@ -645,13 +731,13 @@ int remove_gpu_opp_table(void)
     int max_modes;
 
     if (priv->imx_gpu_govern.num_modes == GOVERN_COUNT)
-	    max_modes = priv->imx_gpu_govern.num_modes - 1;
+        max_modes = priv->imx_gpu_govern.num_modes - 1;
     else
-	    max_modes = priv->imx_gpu_govern.num_modes;
+        max_modes = priv->imx_gpu_govern.num_modes;
 
     /* if we don't have any modes available we don't have OPP */
     if (max_modes == 0)
-	    return 0;
+        return 0;
 
     for (i = priv->imx_gpu_govern.current_mode; i <= max_modes; i++)
     {
@@ -738,11 +824,13 @@ static int patch_param_imx8_subsystem(struct platform_device *pdev,
 {
     int i = 0;
     struct resource* res;
+    struct imx_priv *priv = &imxPriv;
     struct device_node *node = pdev->dev.of_node;
     struct device_node *core_node;
     int core = gcvCORE_MAJOR;
 
-    while ((core_node = of_parse_phandle(node, "cores", i++)) != NULL) {
+    while ((core_node = of_parse_phandle(node, "cores", i++)) != NULL &&
+            core < gcvCORE_COUNT) {
         struct platform_device *pdev_gpu;
         int irqLine = -1;
 
@@ -766,6 +854,9 @@ static int patch_param_imx8_subsystem(struct platform_device *pdev,
         if (!res)
             break;
 
+        while(!priv->pmdev[core] && core < gcvCORE_COUNT)
+            core++;
+
         args->irqs[core] = irqLine;
         args->registerBases[core] = res->start;
         args->registerSizes[core] = res->end - res->start + 1;
@@ -786,6 +877,7 @@ static inline int get_power_imx8_subsystem(struct device *pdev)
     struct clk *clk_core = NULL;
     struct clk *clk_shader = NULL;
     struct clk *clk_axi = NULL;
+    struct clk *clk_ahb = NULL;
 
     /* Initialize the clock structure */
     int i = 0;
@@ -797,19 +889,6 @@ static inline int get_power_imx8_subsystem(struct device *pdev)
     sc_err_t sciErr;
     uint32_t mu_id;
 
-    sciErr = sc_ipc_getMuID(&mu_id);
-
-    if (sciErr != SC_ERR_NONE) {
-        printk("galcore; cannot obtain mu id\n");
-        return -EINVAL;
-    }
-
-    sciErr = sc_ipc_open(&gpu_ipcHandle, mu_id);
-
-    if (sciErr != SC_ERR_NONE) {
-        printk("galcore: cannot open MU channel to SCU\n");
-        return -EINVAL;
-    }
 #endif
 
     while ((core_node = of_parse_phandle(node, "cores", i++)) != NULL) {
@@ -817,6 +896,7 @@ static inline int get_power_imx8_subsystem(struct device *pdev)
         clk_shader = NULL;
         clk_core = NULL;
         clk_axi = NULL;
+        clk_ahb = NULL;
 
         if (!of_device_is_available(core_node)) {
             of_node_put(core_node);
@@ -835,16 +915,22 @@ static inline int get_power_imx8_subsystem(struct device *pdev)
             break;
         }
 
-        clk_axi = clk_get(&pdev_gpu->dev, "bus");
+        clk_axi = clk_get(&pdev_gpu->dev, "axi");
 
         if (IS_ERR(clk_axi))
             clk_axi = NULL;
 
+        clk_ahb = clk_get(&pdev_gpu->dev, "ahb");
+
+        if (IS_ERR(clk_ahb))
+            clk_ahb = NULL;
+
         clk_shader = clk_get(&pdev_gpu->dev, "shader");
 
         if (IS_ERR(clk_shader)) {
-            printk("galcore: clk_get clk_3d_shader failed\n");
-            continue;
+            priv->gpu3dCount = core;
+            core = gcvCORE_2D;
+            clk_shader = NULL;
         }
 
 #if defined(CONFIG_ANDROID) && LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)
@@ -861,10 +947,26 @@ static inline int get_power_imx8_subsystem(struct device *pdev)
         priv->imx_gpu_clks[core].clk_shader = clk_shader;
         priv->imx_gpu_clks[core].clk_core   = clk_core;
         priv->imx_gpu_clks[core].clk_axi    = clk_axi;
+        priv->imx_gpu_clks[core].clk_ahb    = clk_ahb;
 
 #if defined(IMX8_SCU_CONTROL)
         if (of_property_read_u32(core_node, "fsl,sc_gpu_pid", &priv->sc_gpu_pid[core])) {
             priv->sc_gpu_pid[core] = 0;
+        }
+        else if (!gpu_ipcHandle) {
+            sciErr = sc_ipc_getMuID(&mu_id);
+
+            if (sciErr != SC_ERR_NONE) {
+                printk("galcore; cannot obtain mu id\n");
+                return -EINVAL;
+            }
+
+            sciErr = sc_ipc_open(&gpu_ipcHandle, mu_id);
+
+            if (sciErr != SC_ERR_NONE) {
+                printk("galcore: cannot open MU channel to SCU\n");
+                return -EINVAL;
+            }
         }
 #endif
 
@@ -879,7 +981,8 @@ static inline int get_power_imx8_subsystem(struct device *pdev)
         ++core;
     }
 
-    priv->gpu3dCount = core;
+    if (core <= gcvCORE_3D_MAX)
+        priv->gpu3dCount = core;
 
     if (core_node)
         of_node_put(core_node);
@@ -959,6 +1062,7 @@ static int patch_param(struct platform_device *pdev,
     if(args->compression == gcvCOMPRESSION_OPTION_DEFAULT)
     {
         const u32 *property;
+
         property = of_get_property(pdev->dev.of_node, "depth-compression", NULL);
         if (property && *property == 0)
         {
@@ -966,6 +1070,7 @@ static int patch_param(struct platform_device *pdev,
         }
     }
 #endif
+
     res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "phys_baseaddr");
 
     if (res && !args->baseAddress && !args->physSize) {
@@ -1217,12 +1322,17 @@ static inline int get_power(struct device *pdev)
 
     if (ret)
         dev_err(pdev, "create gpu3DMinClock attr failed (%d)\n", ret);
+
+    ret = driver_create_file(pdev->driver, &driver_attr_gpu3DClockScale);
+
+    if (ret)
+        dev_err(pdev, "create gpu3DClockScale attr failed (%d)\n", ret);
 #endif
 
 #if defined(CONFIG_PM_OPP)
     ret = init_gpu_opp_table(pdev);
     if (ret)
-	dev_err(pdev, "OPP init failed!\n");
+        dev_err(pdev, "OPP init failed!\n");
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
@@ -1283,6 +1393,8 @@ static inline void put_power(void)
     UNREG_THERMAL_NOTIFIER(&thermal_hot_pm_notifier);
 
     driver_remove_file(pdevice->dev.driver, &driver_attr_gpu3DMinClock);
+
+    driver_remove_file(pdevice->dev.driver, &driver_attr_gpu3DClockScale);
 #endif
 
 #if defined(CONFIG_PM_OPP)
@@ -1513,8 +1625,13 @@ _AdjustParam(
 {
     patch_param(Platform->device, Args);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0)
     if (of_find_compatible_node(NULL, NULL, "fsl,imx8mq-gpu") &&
-        ((Args->baseAddress + totalram_pages * PAGE_SIZE) > 0x100000000))
+        ((Args->baseAddress + totalram_pages() * PAGE_SIZE) > 0x100000000))
+#else
+     if (of_find_compatible_node(NULL, NULL, "fsl,imx8mq-gpu") &&
+         ((Args->baseAddress + totalram_pages * PAGE_SIZE) > 0x100000000))
+#endif
     {
         Platform->flagBits |= gcvPLATFORM_FLAG_LIMIT_4G_ADDRESS;
     }

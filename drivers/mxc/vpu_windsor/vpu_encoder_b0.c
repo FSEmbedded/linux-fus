@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 NXP
+ * Copyright 2018-2019 NXP
  */
 
 /*
@@ -125,6 +125,7 @@ static int inc_frame(struct queue_data *queue);
 static void dec_frame(struct vpu_frame_info *frame);
 static int submit_input_and_encode(struct vpu_ctx *ctx);
 static int process_stream_output(struct vpu_ctx *ctx);
+static u32 get_ptr(u32 ptr);
 
 static char *get_event_str(u32 event)
 {
@@ -1616,12 +1617,12 @@ static void vpu_core_send_cmd(struct core_device *core, u32 idx,
 	vpu_log_cmd(cmdid, idx);
 	count_cmd(&core->attr[idx], cmdid);
 
-	mutex_lock(&core->cmd_mutex);
+	spin_lock(&core->cmd_spinlock);
 	rpc_send_cmd_buf_encoder(&core->shared_mem, idx,
 				cmdid, cmdnum, local_cmddata);
 	mb();
 	MU_SendMessage(core->mu_base_virtaddr, 0, COMMAND);
-	mutex_unlock(&core->cmd_mutex);
+	spin_unlock(&core->cmd_spinlock);
 }
 
 static void vpu_ctx_send_cmd(struct vpu_ctx *ctx, uint32_t cmdid,
@@ -1859,6 +1860,14 @@ static struct vb2_data_req *find_vb2_data_by_sequence(struct queue_data *queue,
 	return NULL;
 }
 
+static void update_stream_desc_rptr(struct vpu_ctx *ctx, u32 rptr)
+{
+	pBUFFER_DESCRIPTOR_TYPE stream_buffer_desc;
+
+	stream_buffer_desc = get_rpc_stream_buffer_desc(ctx);
+	stream_buffer_desc->rptr = rptr;
+}
+
 static int do_configure_codec(struct vpu_ctx *ctx)
 {
 	pBUFFER_DESCRIPTOR_TYPE pEncStrBuffDesc = NULL;
@@ -2049,7 +2058,7 @@ static void get_kmp_next(const u8 *p, int *next, int size)
 	}
 }
 
-static int kmp_serach(u8 *s, int s_len, const u8 *p, int p_len, int *next)
+static int kmp_search(u8 *s, int s_len, const u8 *p, int p_len, int *next)
 {
 	int i = 0;
 	int j = 0;
@@ -2078,7 +2087,7 @@ static int get_stuff_data_size(u8 *data, int size)
 		return 0;
 
 	get_kmp_next(pattern, next, ARRAY_SIZE(pattern));
-	index =  kmp_serach(data, size, pattern, ARRAY_SIZE(pattern), next);
+	index =  kmp_search(data, size, pattern, ARRAY_SIZE(pattern), next);
 	if (index < 0)
 		return 0;
 	vpu_dbg(LVL_DEBUG, "find end_of_stream nal\n");
@@ -2160,6 +2169,31 @@ static void clear_queue_rw_flag(struct queue_data *queue, int flag)
 	clear_bit(flag, &queue->rw_flag);
 }
 
+u32 get_free_space(struct vpu_ctx *ctx)
+{
+	pBUFFER_DESCRIPTOR_TYPE desc = get_rpc_stream_buffer_desc(ctx);
+	u32 start = get_ptr(desc->start);
+	u32 end = get_ptr(desc->end);
+	u32 wptr = get_ptr(desc->wptr);
+	u32 rptr = get_ptr(desc->rptr);
+
+	if (rptr > wptr)
+		return (rptr - wptr);
+	else if (rptr < wptr)
+		return (end - start + rptr - wptr);
+	else
+		return (end - start);
+
+}
+
+bool check_stream_buffer_for_coded_picture(struct vpu_ctx *ctx)
+{
+	if (get_free_space(ctx) < ctx->cpb_size)
+		return false;
+
+	return true;
+}
+
 static int submit_input_and_encode(struct vpu_ctx *ctx)
 {
 	struct queue_data *queue;
@@ -2175,6 +2209,9 @@ static int submit_input_and_encode(struct vpu_ctx *ctx)
 		goto exit;
 
 	if (list_empty(&queue->drv_q))
+		goto exit;
+
+	if (!check_stream_buffer_for_coded_picture(ctx))
 		goto exit;
 
 	if (test_bit(VPU_ENC_STATUS_STOP_SEND, &ctx->status))
@@ -2263,7 +2300,7 @@ static int find_nal_begin(u8 *data, u32 size)
 
 	len = ARRAY_SIZE(pattern);
 	get_kmp_next(pattern, next, len);
-	index = kmp_serach(data, size, pattern, len, next);
+	index = kmp_search(data, size, pattern, len, next);
 	if (index > 0 && data[index - 1] == 0)
 		index--;
 
@@ -2538,7 +2575,7 @@ static bool process_frame_done(struct queue_data *queue)
 	frame->rptr = get_ptr(stream_buffer_desc->rptr);
 
 	if (precheck_frame(ctx, frame)) {
-		stream_buffer_desc->rptr = frame->rptr;
+		update_stream_desc_rptr(ctx, frame->rptr);
 		put_frame_idle(frame);
 		frame = NULL;
 		return true;
@@ -2554,7 +2591,7 @@ static bool process_frame_done(struct queue_data *queue)
 	else
 		transfer_stream_output(ctx, frame, p_data_req);
 
-	stream_buffer_desc->rptr = frame->rptr;
+	update_stream_desc_rptr(ctx, frame->rptr);
 	if (!frame->eos) {
 		fill_vb_sequence(p_data_req->vb2_buf, frame->info.uFrameID);
 		p_data_req->vb2_buf->timestamp = frame->timestamp;
@@ -2589,6 +2626,8 @@ static int process_stream_output(struct vpu_ctx *ctx)
 			break;
 	}
 	up(&queue->drv_q_lock);
+
+	submit_input_and_encode(ctx);
 
 	return 0;
 }
@@ -2658,6 +2697,33 @@ static int handle_event_mem_request(struct vpu_ctx *ctx,
 	return 0;
 }
 
+static bool check_stream_buffer_desc(struct vpu_ctx *ctx,
+				pBUFFER_DESCRIPTOR_TYPE stream_buffer_desc)
+{
+	u32 start;
+	u32 end;
+	u32 rptr;
+	u32 wptr;
+
+	if (!stream_buffer_desc)
+		return false;
+	start = get_ptr(stream_buffer_desc->start);
+	end = get_ptr(stream_buffer_desc->end);
+	rptr = get_ptr(stream_buffer_desc->rptr);
+	wptr = get_ptr(stream_buffer_desc->wptr);
+
+	if (rptr < start || rptr > end ||
+		wptr < start || wptr > end ||
+		end <= start ||
+		end - start != ctx->encoder_stream.size) {
+		vpu_err("stream buffer desc is invalid, s:%x,e:%x,r:%x,w:%x\n",
+				start, end, rptr, wptr);
+		return false;
+	}
+
+	return true;
+}
+
 static int handle_event_frame_done(struct vpu_ctx *ctx,
 				MEDIAIP_ENC_PIC_INFO *pEncPicInfo)
 {
@@ -2679,19 +2745,8 @@ static int handle_event_frame_done(struct vpu_ctx *ctx,
 	}
 
 	stream_buffer_desc = get_rpc_stream_buffer_desc(ctx);
-	if (stream_buffer_desc->rptr < stream_buffer_desc->start ||
-			stream_buffer_desc->rptr > stream_buffer_desc->end ||
-			stream_buffer_desc->wptr < stream_buffer_desc->start ||
-			stream_buffer_desc->wptr > stream_buffer_desc->end ||
-			stream_buffer_desc->end - stream_buffer_desc->start !=
-			ctx->encoder_stream.size) {
-		vpu_err("stream buffer desc is invalid, s:%x,e:%x,r:%x,w:%x\n",
-				stream_buffer_desc->start,
-				stream_buffer_desc->end,
-				stream_buffer_desc->rptr,
-				stream_buffer_desc->wptr);
+	if (!check_stream_buffer_desc(ctx, stream_buffer_desc))
 		return -EINVAL;
-	}
 
 	show_enc_pic_info(pEncPicInfo);
 	record_start_time(ctx, V4L2_DST);
@@ -2849,11 +2904,12 @@ static void enable_mu(struct core_device *dev)
 	dev->print_buf = dev->m0_rpc_virt + dev->rpc_buf_size;
 
 	mu_addr = cpu_phy_to_mu(dev, dev->m0_rpc_phy);
+	spin_lock(&dev->cmd_spinlock);
 	MU_sendMesgToFW(dev->mu_base_virtaddr, RPC_BUF_OFFSET, mu_addr);
-
 	MU_sendMesgToFW(dev->mu_base_virtaddr, BOOT_ADDRESS,
 			dev->m0_p_fw_space_phy);
 	MU_sendMesgToFW(dev->mu_base_virtaddr, INIT_DONE, 2);
+	spin_unlock(&dev->cmd_spinlock);
 }
 
 static void get_core_supported_instance_count(struct core_device *core)
@@ -3971,6 +4027,28 @@ static int show_instance_status(struct vpu_ctx *ctx, char *buf, u32 size)
 	return num;
 }
 
+static int show_instance_stream_buffer_desc(struct vpu_ctx *ctx,
+						char *buf, u32 size)
+{
+	pBUFFER_DESCRIPTOR_TYPE stream_buffer_desc;
+	int num = 0;
+
+	stream_buffer_desc = get_rpc_stream_buffer_desc(ctx);
+	num += scnprintf(buf + num, size - num,
+			"\t%-13s:0x%x\n", "start",
+			get_ptr(stream_buffer_desc->start));
+	num += scnprintf(buf + num, size - num,
+			"\t%-13s:0x%x\n", "end",
+			get_ptr(stream_buffer_desc->end));
+	num += scnprintf(buf + num, size - num,
+			"\t%-13s:0x%x\n", "rptr",
+			get_ptr(stream_buffer_desc->rptr));
+	num += scnprintf(buf + num, size - num,
+			"\t%-13s:0x%x\n", "wptr",
+			get_ptr(stream_buffer_desc->wptr));
+	return num;
+}
+
 static int show_instance_others(struct vpu_attr *attr, char *buf, u32 size)
 {
 	int num = 0;
@@ -4043,6 +4121,9 @@ static ssize_t show_instance_info(struct device *dev,
 	if (ctx) {
 		num += show_v4l2_buf_status(ctx, buf + num, PAGE_SIZE - num);
 		num += show_instance_status(ctx, buf + num, PAGE_SIZE - num);
+		num += show_instance_stream_buffer_desc(ctx,
+							buf + num,
+							PAGE_SIZE - num);
 	}
 	mutex_unlock(&vpudev->dev_mutex);
 
@@ -5245,7 +5326,7 @@ static int init_vpu_core_dev(struct core_device *core_dev)
 	if (!core_dev)
 		return -EINVAL;
 
-	mutex_init(&core_dev->cmd_mutex);
+	spin_lock_init(&core_dev->cmd_spinlock);
 	init_completion(&core_dev->start_cmp);
 	init_completion(&core_dev->snap_done_cmp);
 
@@ -5740,7 +5821,52 @@ static int resume_core(struct core_device *core)
 	return ret;
 }
 
-static int vpu_enc_suspend(struct device *dev)
+static void vpu_enc_cancel_work(struct vpu_dev *vpudev)
+{
+	int i;
+	int j;
+
+	for (i = 0; i < vpudev->core_num; i++) {
+		struct core_device *core = &vpudev->core_dev[i];
+
+		if (!core->fw_is_ready)
+			continue;
+		cancel_work_sync(&core->msg_work);
+		for (j = 0; j < core->supported_instance_count; j++) {
+			struct vpu_ctx *ctx = core->ctx[j];
+
+			if (!ctx)
+				continue;
+			cancel_work_sync(&ctx->instance_work);
+		}
+	}
+	cancel_delayed_work_sync(&vpudev->watchdog);
+}
+
+static void vpu_enc_resume_work(struct vpu_dev *vpudev)
+{
+	int i;
+	int j;
+
+	for (i = 0; i < vpudev->core_num; i++) {
+		struct core_device *core = &vpudev->core_dev[i];
+
+		if (!core->fw_is_ready)
+			continue;
+		queue_work(core->workqueue, &core->msg_work);
+		for (j = 0; j < core->supported_instance_count; j++) {
+			struct vpu_ctx *ctx = core->ctx[j];
+
+			if (!ctx)
+				continue;
+			queue_work(ctx->instance_wq, &ctx->instance_work);
+		}
+	}
+	schedule_delayed_work(&vpudev->watchdog,
+			msecs_to_jiffies(VPU_WATCHDOG_INTERVAL_MS));
+}
+
+static int __maybe_unused vpu_enc_suspend(struct device *dev)
 {
 	struct vpu_dev *vpudev = (struct vpu_dev *)dev_get_drvdata(dev);
 	int i;
@@ -5755,6 +5881,7 @@ static int vpu_enc_suspend(struct device *dev)
 		if (ret)
 			break;
 	}
+	vpu_enc_cancel_work(vpudev);
 	pm_runtime_put_sync(dev);
 	mutex_unlock(&vpudev->dev_mutex);
 
@@ -5763,7 +5890,7 @@ static int vpu_enc_suspend(struct device *dev)
 	return ret;
 }
 
-static int vpu_enc_resume(struct device *dev)
+static int __maybe_unused vpu_enc_resume(struct device *dev)
 {
 	struct vpu_dev *vpudev = (struct vpu_dev *)dev_get_drvdata(dev);
 	int i;
@@ -5780,6 +5907,7 @@ static int vpu_enc_resume(struct device *dev)
 			break;
 	}
 	vpudev->hw_enable = true;
+	vpu_enc_resume_work(vpudev);
 	pm_runtime_put_sync(dev);
 	mutex_unlock(&vpudev->dev_mutex);
 
