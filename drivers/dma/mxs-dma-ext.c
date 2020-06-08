@@ -31,8 +31,8 @@
 #include <linux/of_device.h>
 #include <linux/of_dma.h>
 #include <linux/pm_runtime.h>
-#include <asm/irq.h>
 #include <linux/dmapool.h>
+#include <asm/irq.h>
 
 #include "dmaengine.h"			/* Cookie stuff */
 
@@ -135,7 +135,7 @@ static struct mxs_dma_type mxs_dma_types[] = {
 	}
 };
 
-static struct platform_device_id mxs_dma_ext_ids[] = {
+static const struct platform_device_id mxs_dma_ext_ids[] = {
 	{
 		.name = "imx23-dma-ext-apbh",
 		.driver_data = (kernel_ulong_t) &mxs_dma_types[0],
@@ -303,8 +303,7 @@ static void mxs_dma_ext_tasklet(unsigned long data)
 {
 	struct mxs_dma_chan *mxs_chan = (struct mxs_dma_chan *)data;
 
-	if (mxs_chan->desc.callback)
-		mxs_chan->desc.callback(mxs_chan->desc.callback_param);
+	dmaengine_desc_get_callback_invoke(&mxs_chan->desc, NULL);
 }
 
 static int mxs_dma_ext_irq_to_chan(struct mxs_dma_engine *mxs_dma, int irq)
@@ -397,8 +396,8 @@ static int mxs_dma_ext_alloc_chan_resources(struct dma_chan *chan)
 						   &mxs_chan->ccw_phys);
 	} else {
 		mxs_chan->ccw = dma_pool_zalloc(mxs_chan->ccw_pool,
-			       GFP_ATOMIC,
-			       &mxs_chan->ccw_phys);
+					       GFP_ATOMIC,
+					       &mxs_chan->ccw_phys);
 	}
 	if (!mxs_chan->ccw) {
 		ret = -ENOMEM;
@@ -420,12 +419,10 @@ static int mxs_dma_ext_alloc_chan_resources(struct dma_chan *chan)
 		mxs_chan->ccw[i].next = (u32)(ccw_phys + n);
 	}
 
-	if (mxs_chan->chan_irq != NO_IRQ) {
-		ret = request_irq(mxs_chan->chan_irq, mxs_dma_ext_int_handler,
-					0, "mxs-dma", mxs_dma);
-		if (ret)
-			goto err_irq;
-	}
+	ret = request_irq(mxs_chan->chan_irq, mxs_dma_ext_int_handler,
+			  0, "mxs-dma", mxs_dma);
+	if (ret)
+		goto err_irq;
 
 	ret = pm_runtime_get_sync(dev);
 	if (ret < 0) {
@@ -652,6 +649,12 @@ static bool mxs_dma_filter_fn(struct dma_chan *chan, void *fn_param)
 	struct mxs_dma_engine *mxs_dma = mxs_chan->mxs_dma;
 	int chan_irq;
 
+	if (strcmp(chan->device->dev->driver->name, "mxs-dma-ext"))
+		return false;
+
+	if (!mxs_dma)
+		return false;
+
 	if (mxs_dma->dma_device.dev->of_node != param->of_node)
 		return false;
 
@@ -745,7 +748,6 @@ static int mxs_dma_ext_probe(struct platform_device *pdev)
 		tasklet_init(&mxs_chan->tasklet, mxs_dma_ext_tasklet,
 			     (unsigned long) mxs_chan);
 
-
 		/* Add the channel to mxs_chan list */
 		list_add_tail(&mxs_chan->chan.device_node,
 			&mxs_dma->dma_device.channels);
@@ -767,7 +769,6 @@ static int mxs_dma_ext_probe(struct platform_device *pdev)
 
 	for (i = 0; i < MXS_DMA_CHANNELS; i++) {
 		struct mxs_dma_chan *mxs_chan = &mxs_dma->mxs_chans[i];
-
 		mxs_chan->ccw_pool = ccw_pool;
 	}
 
@@ -814,25 +815,32 @@ static int mxs_dma_ext_remove(struct platform_device *pdev)
 	int i;
 
 	dma_async_device_unregister(&mxs_dma->dma_device);
-	dma_pool_destroy(mxs_dma->mxs_chans[0].ccw_pool);
 
-	for (i = 0; i < MXS_DMA_CHANNELS; i++) {
-		struct mxs_dma_chan *mxs_chan = &mxs_dma->mxs_chans[i];
+	if (mxs_dma->use_iram) {
+		gen_pool_free(mxs_dma->iram_pool, (unsigned long)mxs_dma->mxs_chans->ccw,
+			      CCW_BLOCK_SIZE);
+	} else {
 
-		tasklet_kill(&mxs_chan->tasklet);
-		mxs_chan->ccw_pool = NULL;
+		dma_pool_destroy(mxs_dma->mxs_chans[0].ccw_pool);
+
+		for (i = 0; i < MXS_DMA_CHANNELS; i++) {
+			struct mxs_dma_chan *mxs_chan = &mxs_dma->mxs_chans[i];
+			tasklet_kill(&mxs_chan->tasklet);
+			mxs_chan->ccw_pool = NULL;
+		}
 	}
 
 	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
 static int mxs_dma_ext_pm_suspend(struct device *dev)
 {
 	int ret;
 
 	ret = pm_runtime_force_suspend(dev);
 
-	return 0;
+	return ret;
 }
 
 static int mxs_dma_ext_pm_resume(struct device *dev)
@@ -845,6 +853,7 @@ static int mxs_dma_ext_pm_resume(struct device *dev)
 		return ret;
 	return 0;
 }
+#endif
 
 int mxs_dma_ext_runtime_suspend(struct device *dev)
 {

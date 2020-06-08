@@ -31,6 +31,7 @@
 
 #include <linux/clk.h>
 #include <linux/slab.h>
+#include <linux/sched/task_stack.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/mtd/partitions.h>
@@ -78,12 +79,11 @@
 #define GPMI_IS_MX6SX(x)	((x)->devdata->type == IS_MX6SX)
 #define GPMI_IS_MX7D(x)		((x)->devdata->type == IS_MX7D)
 #define GPMI_IS_MX6UL(x)	((x)->devdata->type == IS_MX6UL)
-#define GPMI_IS_MX6ULL(x)	((x)->devdata->type == IS_MX6ULL)
 #define GPMI_IS_MX8QXP(x)	((x)->devdata->type == IS_MX8QXP)
 /* i.MX6UL version also works for i.MX6ULL */
 
 #define GPMI_IS_MX6(x)		(GPMI_IS_MX6Q(x) || GPMI_IS_MX6QP(x)\
-	   || GPMI_IS_MX6SX(x) || GPMI_IS_MX6UL(x) || GPMI_IS_MX6ULL(x))
+	   || GPMI_IS_MX6SX(x) || GPMI_IS_MX6UL(x))
 #define GPMI_IS_MX7(x)		(GPMI_IS_MX7D(x))
 #define GPMI_IS_MX8(x)		(GPMI_IS_MX8QXP(x))
 
@@ -147,7 +147,6 @@ enum gpmi_type {
 	IS_MX6SX,
 	IS_MX7D,
 	IS_MX6UL,
-	IS_MX6ULL,
 	IS_MX8QXP
 };
 
@@ -157,6 +156,25 @@ struct gpmi_devdata {
 	int max_chain_delay; /* See the async EDO mode */
 	const char * const *clks;
 	const int clks_count;
+};
+
+/**
+ * struct gpmi_nfc_hardware_timing - GPMI hardware timing parameters.
+ * @must_apply_timings:        Whether controller timings have already been
+ *                             applied or not (useful only while there is
+ *                             support for only one chip select)
+ * @clk_rate:                  The clock rate that must be used to derive the
+ *                             following parameters
+ * @timing0:                   HW_GPMI_TIMING0 register
+ * @timing1:                   HW_GPMI_TIMING1 register
+ * @ctrl1n:                    HW_GPMI_CTRL1n register
+ */
+struct gpmi_nfc_hardware_timing {
+	bool must_apply_timings;
+	unsigned long int clk_rate;
+	u32 timing0;
+	u32 timing1;
+	u32 ctrl1n;
 };
 
 #define ASYNC_EDO_ENABLED		1
@@ -176,8 +194,7 @@ struct gpmi_nand_data {
 	struct resources	resources;
 
 	/* Flash Hardware */
-	struct nand_timing	timing;
-	int			timing_mode;
+	struct gpmi_nfc_hardware_timing hw;
 
 	/* BCH */
 	struct completion	bch_done;
@@ -220,34 +237,6 @@ struct gpmi_nand_data {
 	unsigned int		bch_layout;
 	uint8_t			column_cycles;
 	uint8_t			row_cycles;
-};
-
-/**
- * struct gpmi_nfc_hardware_timing - GPMI hardware timing parameters.
- * @data_setup_in_cycles:      The data setup time, in cycles.
- * @data_hold_in_cycles:       The data hold time, in cycles.
- * @address_setup_in_cycles:   The address setup time, in cycles.
- * @device_busy_timeout:       The timeout waiting for NAND Ready/Busy,
- *                             this value is the number of cycles multiplied
- *                             by 4096.
- * @use_half_periods:          Indicates the clock is running slowly, so the
- *                             NFC DLL should use half-periods.
- * @sample_delay_factor:       The sample delay factor.
- * @wrn_dly_sel:               The delay on the GPMI write strobe.
- */
-struct gpmi_nfc_hardware_timing {
-	/* for GPMI_HW_GPMI_TIMING0 */
-	uint8_t  data_setup_in_cycles;
-	uint8_t  data_hold_in_cycles;
-	uint8_t  address_setup_in_cycles;
-
-	/* for GPMI_HW_GPMI_TIMING1 */
-	uint16_t device_busy_timeout;
-
-	/* for GPMI_HW_GPMI_CTRL1 */
-	bool     use_half_periods;
-	uint8_t  sample_delay_factor;
-	uint8_t  wrn_dly_sel;
 };
 
 /**
@@ -460,6 +449,14 @@ static const struct gpmi_devdata gpmi_devdata_imx6sx = {
 	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx6),
 };
 
+static const struct gpmi_devdata gpmi_devdata_imx6ul = {
+	.type = IS_MX6UL,
+	.bch_max_ecc_strength = 40,
+	.max_chain_delay = 12000,
+	.clks = gpmi_clks_for_mx6,
+	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx6),
+};
+
 static const char * const gpmi_clks_for_mx7d[] = {
 	"gpmi_io", "gpmi_bch_apb",
 };
@@ -470,22 +467,6 @@ static const struct gpmi_devdata gpmi_devdata_imx7d = {
 	.max_chain_delay = 12000,
 	.clks = gpmi_clks_for_mx7d,
 	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx7d),
-};
-
-static const struct gpmi_devdata gpmi_devdata_imx6ul = {
-	.type = IS_MX6UL,
-	.bch_max_ecc_strength = 40,
-	.max_chain_delay = 12000,
-	.clks = gpmi_clks_for_mx6,
-	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx6),
-};
-
-static const struct gpmi_devdata gpmi_devdata_imx6ull = {
-	.type = IS_MX6ULL,
-	.bch_max_ecc_strength = 40,
-	.max_chain_delay = 12000,
-	.clks = gpmi_clks_for_mx6,
-	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx6),
 };
 
 static const char * gpmi_clks_for_mx8qxp[GPMI_CLK_MAX] = {
@@ -709,8 +690,8 @@ static struct dma_chan *get_dma_chan(struct gpmi_nand_data *priv)
  */
 static int gpmi_fus_wait_ready(struct mtd_info *mtd, unsigned long timeout)
 {
-	struct nand_chip *chip = mtd->priv;
-	struct gpmi_nand_data *priv = chip->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	struct resources *r = &priv->resources;
 	struct dma_chan *channel = get_dma_chan(priv);
 	struct dma_async_tx_descriptor *desc;
@@ -831,8 +812,8 @@ static struct dma_async_tx_descriptor *gpmi_fus_add_cmd_desc(
 static struct dma_async_tx_descriptor *gpmi_fus_read_data_buf(
 			struct mtd_info *mtd, dma_addr_t phys, uint32_t length)
 {
-	struct nand_chip *chip = mtd->priv;
-	struct gpmi_nand_data *priv = chip->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	struct dma_chan *channel = get_dma_chan(priv);
 	struct mxs_dma_ccw ccw;
 
@@ -865,8 +846,8 @@ static struct dma_async_tx_descriptor *gpmi_fus_read_data_buf(
 static struct dma_async_tx_descriptor *gpmi_fus_write_data_buf(
 			struct mtd_info *mtd, dma_addr_t phys, uint32_t length)
 {
-	struct nand_chip *chip = mtd->priv;
-	struct gpmi_nand_data *priv = chip->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	struct dma_chan *channel = get_dma_chan(priv);
 	struct mxs_dma_ccw ccw;
 
@@ -926,16 +907,6 @@ acquire_err:
 }
 
 /* -------------------- GPMI-LIB STUFF ------------------------------------- */
-
-static struct timing_threshod timing_default_threshold = {
-	.max_data_setup_cycles       = (BM_GPMI_TIMING0_DATA_SETUP >>
-						BP_GPMI_TIMING0_DATA_SETUP),
-	.internal_data_setup_in_ns   = 0,
-	.max_sample_delay_factor     = (BM_GPMI_CTRL1_RDN_DELAY >>
-						BP_GPMI_CTRL1_RDN_DELAY),
-	.max_dll_clock_period_in_ns  = 32,
-	.max_dll_delay_in_ns         = 16,
-};
 
 #define MXS_SET_ADDR		0x4
 #define MXS_CLR_ADDR		0x8
@@ -1117,769 +1088,107 @@ err_out:
 	return ret;
 }
 
-/* Converts time in nanoseconds to cycles. */
-static unsigned int ns_to_cycles(unsigned int time,
-				 unsigned int period, unsigned int min)
-{
-	unsigned int k;
-
-	k = (time + period - 1) / period;
-	return max(k, min);
-}
+/* Converts time to clock cycles */
+#define TO_CYCLES(duration, period) DIV_ROUND_UP_ULL(duration, period)
 
 #define DEF_MIN_PROP_DELAY	5
 #define DEF_MAX_PROP_DELAY	9
-/* Apply timing to current hardware conditions. */
-static int gpmi_nfc_compute_hardware_timing(struct gpmi_nand_data *this,
-					struct gpmi_nfc_hardware_timing *hw)
+
+static void gpmi_nfc_compute_timings(struct gpmi_nand_data *this,
+				     const struct nand_sdr_timings *sdr)
 {
-	struct timing_threshod *nfc = &timing_default_threshold;
-	struct resources *r = &this->resources;
-	struct nand_chip *nand = &this->nand;
-	struct nand_timing target = this->timing;
-	bool improved_timing_is_available;
-	unsigned long clock_frequency_in_hz;
-	unsigned int clock_period_in_ns;
-	bool dll_use_half_periods;
-	unsigned int dll_delay_shift;
-	unsigned int max_sample_delay_in_ns;
-	unsigned int address_setup_in_cycles;
-	unsigned int data_setup_in_ns;
-	unsigned int data_setup_in_cycles;
-	unsigned int data_hold_in_cycles;
-	int ideal_sample_delay_in_ns;
-	unsigned int sample_delay_factor;
-	int tEYE;
-	unsigned int min_prop_delay_in_ns = DEF_MIN_PROP_DELAY;
-	unsigned int max_prop_delay_in_ns = DEF_MAX_PROP_DELAY;
+	struct gpmi_nfc_hardware_timing *hw = &this->hw;
+	unsigned int dll_threshold_ps = this->devdata->max_chain_delay;
+	unsigned int period_ps, reference_period_ps;
+	unsigned int data_setup_cycles, data_hold_cycles, addr_setup_cycles;
+	unsigned int tRP_ps;
+	bool use_half_period;
+	int sample_delay_ps, sample_delay_factor;
+	u16 busy_timeout_cycles;
+	u8 wrn_dly_sel;
 
-	/*
-	 * If there are multiple chips, we need to relax the timings to allow
-	 * for signal distortion due to higher capacitance.
-	 */
-	if (nand->numchips > 2) {
-		target.data_setup_in_ns    += 10;
-		target.data_hold_in_ns     += 10;
-		target.address_setup_in_ns += 10;
-	} else if (nand->numchips > 1) {
-		target.data_setup_in_ns    += 5;
-		target.data_hold_in_ns     += 5;
-		target.address_setup_in_ns += 5;
-	}
-
-	/* Check if improved timing information is available. */
-	improved_timing_is_available =
-		(target.tREA_in_ns  >= 0) &&
-		(target.tRLOH_in_ns >= 0) &&
-		(target.tRHOH_in_ns >= 0);
-
-	/* Inspect the clock. */
-	nfc->clock_frequency_in_hz = clk_get_rate(r->clock[0]);
-	clock_frequency_in_hz = nfc->clock_frequency_in_hz;
-	clock_period_in_ns    = NSEC_PER_SEC / clock_frequency_in_hz;
-
-	/*
-	 * The NFC quantizes setup and hold parameters in terms of clock cycles.
-	 * Here, we quantize the setup and hold timing parameters to the
-	 * next-highest clock period to make sure we apply at least the
-	 * specified times.
-	 *
-	 * For data setup and data hold, the hardware interprets a value of zero
-	 * as the largest possible delay. This is not what's intended by a zero
-	 * in the input parameter, so we impose a minimum of one cycle.
-	 */
-	data_setup_in_cycles    = ns_to_cycles(target.data_setup_in_ns,
-							clock_period_in_ns, 1);
-	data_hold_in_cycles     = ns_to_cycles(target.data_hold_in_ns,
-							clock_period_in_ns, 1);
-	address_setup_in_cycles = ns_to_cycles(target.address_setup_in_ns,
-							clock_period_in_ns, 0);
-
-	/*
-	 * The clock's period affects the sample delay in a number of ways:
-	 *
-	 * (1) The NFC HAL tells us the maximum clock period the sample delay
-	 *     DLL can tolerate. If the clock period is greater than half that
-	 *     maximum, we must configure the DLL to be driven by half periods.
-	 *
-	 * (2) We need to convert from an ideal sample delay, in ns, to a
-	 *     "sample delay factor," which the NFC uses. This factor depends on
-	 *     whether we're driving the DLL with full or half periods.
-	 *     Paraphrasing the reference manual:
-	 *
-	 *         AD = SDF x 0.125 x RP
-	 *
-	 * where:
-	 *
-	 *     AD   is the applied delay, in ns.
-	 *     SDF  is the sample delay factor, which is dimensionless.
-	 *     RP   is the reference period, in ns, which is a full clock period
-	 *          if the DLL is being driven by full periods, or half that if
-	 *          the DLL is being driven by half periods.
-	 *
-	 * Let's re-arrange this in a way that's more useful to us:
-	 *
-	 *                        8
-	 *         SDF  =  AD x ----
-	 *                       RP
-	 *
-	 * The reference period is either the clock period or half that, so this
-	 * is:
-	 *
-	 *                        8       AD x DDF
-	 *         SDF  =  AD x -----  =  --------
-	 *                      f x P        P
-	 *
-	 * where:
-	 *
-	 *       f  is 1 or 1/2, depending on how we're driving the DLL.
-	 *       P  is the clock period.
-	 *     DDF  is the DLL Delay Factor, a dimensionless value that
-	 *          incorporates all the constants in the conversion.
-	 *
-	 * DDF will be either 8 or 16, both of which are powers of two. We can
-	 * reduce the cost of this conversion by using bit shifts instead of
-	 * multiplication or division. Thus:
-	 *
-	 *                 AD << DDS
-	 *         SDF  =  ---------
-	 *                     P
-	 *
-	 *     or
-	 *
-	 *         AD  =  (SDF >> DDS) x P
-	 *
-	 * where:
-	 *
-	 *     DDS  is the DLL Delay Shift, the logarithm to base 2 of the DDF.
-	 */
-	if (clock_period_in_ns > (nfc->max_dll_clock_period_in_ns >> 1)) {
-		dll_use_half_periods = true;
-		dll_delay_shift      = 3 + 1;
+	if (sdr->tRC_min >= 30000) {
+		/* ONFI non-EDO modes [0-3] */
+		hw->clk_rate = 22000000;
+		wrn_dly_sel = BV_GPMI_CTRL1_WRN_DLY_SEL_4_TO_8NS;
+	} else if (sdr->tRC_min >= 25000) {
+		/* ONFI EDO mode 4 */
+		hw->clk_rate = 80000000;
+		wrn_dly_sel = BV_GPMI_CTRL1_WRN_DLY_SEL_NO_DELAY;
 	} else {
-		dll_use_half_periods = false;
-		dll_delay_shift      = 3;
+		/* ONFI EDO mode 5 */
+		hw->clk_rate = 100000000;
+		wrn_dly_sel = BV_GPMI_CTRL1_WRN_DLY_SEL_NO_DELAY;
 	}
 
-	/*
-	 * Compute the maximum sample delay the NFC allows, under current
-	 * conditions. If the clock is running too slowly, no sample delay is
-	 * possible.
-	 */
-	if (clock_period_in_ns > nfc->max_dll_clock_period_in_ns)
-		max_sample_delay_in_ns = 0;
-	else {
-		/*
-		 * Compute the delay implied by the largest sample delay factor
-		 * the NFC allows.
-		 */
-		max_sample_delay_in_ns =
-			(nfc->max_sample_delay_factor * clock_period_in_ns) >>
-								dll_delay_shift;
+	/* SDR core timings are given in picoseconds */
+	period_ps = div_u64((u64)NSEC_PER_SEC * 1000, hw->clk_rate);
 
-		/*
-		 * Check if the implied sample delay larger than the NFC
-		 * actually allows.
-		 */
-		if (max_sample_delay_in_ns > nfc->max_dll_delay_in_ns)
-			max_sample_delay_in_ns = nfc->max_dll_delay_in_ns;
-	}
+	addr_setup_cycles = TO_CYCLES(sdr->tALS_min, period_ps);
+	data_setup_cycles = TO_CYCLES(sdr->tDS_min, period_ps);
+	data_hold_cycles = TO_CYCLES(sdr->tDH_min, period_ps);
+	busy_timeout_cycles = TO_CYCLES(sdr->tWB_max + sdr->tR_max, period_ps);
+
+	hw->timing0 = BF_GPMI_TIMING0_ADDRESS_SETUP(addr_setup_cycles) |
+		      BF_GPMI_TIMING0_DATA_HOLD(data_hold_cycles) |
+		      BF_GPMI_TIMING0_DATA_SETUP(data_setup_cycles);
+	hw->timing1 = BF_GPMI_TIMING1_BUSY_TIMEOUT(busy_timeout_cycles * 4096);
 
 	/*
-	 * Check if improved timing information is available. If not, we have to
-	 * use a less-sophisticated algorithm.
-	 */
-	if (!improved_timing_is_available) {
-		/*
-		 * Fold the read setup time required by the NFC into the ideal
-		 * sample delay.
-		 */
-		ideal_sample_delay_in_ns = target.gpmi_sample_delay_in_ns +
-						nfc->internal_data_setup_in_ns;
-
-		/*
-		 * The ideal sample delay may be greater than the maximum
-		 * allowed by the NFC. If so, we can trade off sample delay time
-		 * for more data setup time.
-		 *
-		 * In each iteration of the following loop, we add a cycle to
-		 * the data setup time and subtract a corresponding amount from
-		 * the sample delay until we've satisified the constraints or
-		 * can't do any better.
-		 */
-		while ((ideal_sample_delay_in_ns > max_sample_delay_in_ns) &&
-			(data_setup_in_cycles < nfc->max_data_setup_cycles)) {
-
-			data_setup_in_cycles++;
-			ideal_sample_delay_in_ns -= clock_period_in_ns;
-
-			if (ideal_sample_delay_in_ns < 0)
-				ideal_sample_delay_in_ns = 0;
-
-		}
-
-		/*
-		 * Compute the sample delay factor that corresponds most closely
-		 * to the ideal sample delay. If the result is too large for the
-		 * NFC, use the maximum value.
-		 *
-		 * Notice that we use the ns_to_cycles function to compute the
-		 * sample delay factor. We do this because the form of the
-		 * computation is the same as that for calculating cycles.
-		 */
-		sample_delay_factor =
-			ns_to_cycles(
-				ideal_sample_delay_in_ns << dll_delay_shift,
-							clock_period_in_ns, 0);
-
-		if (sample_delay_factor > nfc->max_sample_delay_factor)
-			sample_delay_factor = nfc->max_sample_delay_factor;
-
-		/* Skip to the part where we return our results. */
-		goto return_results;
-	}
-
-	/*
-	 * If control arrives here, we have more detailed timing information,
-	 * so we can use a better algorithm.
-	 */
-
-	/*
-	 * Fold the read setup time required by the NFC into the maximum
-	 * propagation delay.
-	 */
-	max_prop_delay_in_ns += nfc->internal_data_setup_in_ns;
-
-	/*
-	 * Earlier, we computed the number of clock cycles required to satisfy
-	 * the data setup time. Now, we need to know the actual nanoseconds.
-	 */
-	data_setup_in_ns = clock_period_in_ns * data_setup_in_cycles;
-
-	/*
-	 * Compute tEYE, the width of the data eye when reading from the NAND
-	 * Flash. The eye width is fundamentally determined by the data setup
-	 * time, perturbed by propagation delays and some characteristics of the
-	 * NAND Flash device.
+	 * Derive NFC ideal delay from {3}:
 	 *
-	 * start of the eye = max_prop_delay + tREA
-	 * end of the eye   = min_prop_delay + tRHOH + data_setup
+	 *                     (tREA + 4000 - tRP) * 8
+	 *         RDN_DELAY = -----------------------
+	 *                                RP
 	 */
-	tEYE = (int)min_prop_delay_in_ns + (int)target.tRHOH_in_ns +
-							(int)data_setup_in_ns;
-
-	tEYE -= (int)max_prop_delay_in_ns + (int)target.tREA_in_ns;
-
-	/*
-	 * The eye must be open. If it's not, we can try to open it by
-	 * increasing its main forcer, the data setup time.
-	 *
-	 * In each iteration of the following loop, we increase the data setup
-	 * time by a single clock cycle. We do this until either the eye is
-	 * open or we run into NFC limits.
-	 */
-	while ((tEYE <= 0) &&
-			(data_setup_in_cycles < nfc->max_data_setup_cycles)) {
-		/* Give a cycle to data setup. */
-		data_setup_in_cycles++;
-		/* Synchronize the data setup time with the cycles. */
-		data_setup_in_ns += clock_period_in_ns;
-		/* Adjust tEYE accordingly. */
-		tEYE += clock_period_in_ns;
-	}
-
-	/*
-	 * When control arrives here, the eye is open. The ideal time to sample
-	 * the data is in the center of the eye:
-	 *
-	 *     end of the eye + start of the eye
-	 *     ---------------------------------  -  data_setup
-	 *                    2
-	 *
-	 * After some algebra, this simplifies to the code immediately below.
-	 */
-	ideal_sample_delay_in_ns =
-		((int)max_prop_delay_in_ns +
-			(int)target.tREA_in_ns +
-				(int)min_prop_delay_in_ns +
-					(int)target.tRHOH_in_ns -
-						(int)data_setup_in_ns) >> 1;
-
-	/*
-	 * The following figure illustrates some aspects of a NAND Flash read:
-	 *
-	 *
-	 *           __                   _____________________________________
-	 * RDN         \_________________/
-	 *
-	 *                                         <---- tEYE ----->
-	 *                                        /-----------------\
-	 * Read Data ----------------------------<                   >---------
-	 *                                        \-----------------/
-	 *             ^                 ^                 ^              ^
-	 *             |                 |                 |              |
-	 *             |<--Data Setup -->|<--Delay Time -->|              |
-	 *             |                 |                 |              |
-	 *             |                 |                                |
-	 *             |                 |<--   Quantized Delay Time   -->|
-	 *             |                 |                                |
-	 *
-	 *
-	 * We have some issues we must now address:
-	 *
-	 * (1) The *ideal* sample delay time must not be negative. If it is, we
-	 *     jam it to zero.
-	 *
-	 * (2) The *ideal* sample delay time must not be greater than that
-	 *     allowed by the NFC. If it is, we can increase the data setup
-	 *     time, which will reduce the delay between the end of the data
-	 *     setup and the center of the eye. It will also make the eye
-	 *     larger, which might help with the next issue...
-	 *
-	 * (3) The *quantized* sample delay time must not fall either before the
-	 *     eye opens or after it closes (the latter is the problem
-	 *     illustrated in the above figure).
-	 */
-
-	/* Jam a negative ideal sample delay to zero. */
-	if (ideal_sample_delay_in_ns < 0)
-		ideal_sample_delay_in_ns = 0;
-
-	/*
-	 * Extend the data setup as needed to reduce the ideal sample delay
-	 * below the maximum permitted by the NFC.
-	 */
-	while ((ideal_sample_delay_in_ns > max_sample_delay_in_ns) &&
-			(data_setup_in_cycles < nfc->max_data_setup_cycles)) {
-
-		/* Give a cycle to data setup. */
-		data_setup_in_cycles++;
-		/* Synchronize the data setup time with the cycles. */
-		data_setup_in_ns += clock_period_in_ns;
-		/* Adjust tEYE accordingly. */
-		tEYE += clock_period_in_ns;
-
-		/*
-		 * Decrease the ideal sample delay by one half cycle, to keep it
-		 * in the middle of the eye.
-		 */
-		ideal_sample_delay_in_ns -= (clock_period_in_ns >> 1);
-
-		/* Jam a negative ideal sample delay to zero. */
-		if (ideal_sample_delay_in_ns < 0)
-			ideal_sample_delay_in_ns = 0;
-	}
-
-	/*
-	 * Compute the sample delay factor that corresponds to the ideal sample
-	 * delay. If the result is too large, then use the maximum allowed
-	 * value.
-	 *
-	 * Notice that we use the ns_to_cycles function to compute the sample
-	 * delay factor. We do this because the form of the computation is the
-	 * same as that for calculating cycles.
-	 */
-	sample_delay_factor =
-		ns_to_cycles(ideal_sample_delay_in_ns << dll_delay_shift,
-							clock_period_in_ns, 0);
-
-	if (sample_delay_factor > nfc->max_sample_delay_factor)
-		sample_delay_factor = nfc->max_sample_delay_factor;
-
-	/*
-	 * These macros conveniently encapsulate a computation we'll use to
-	 * continuously evaluate whether or not the data sample delay is inside
-	 * the eye.
-	 */
-	#define IDEAL_DELAY  ((int) ideal_sample_delay_in_ns)
-
-	#define QUANTIZED_DELAY  \
-		((int) ((sample_delay_factor * clock_period_in_ns) >> \
-							dll_delay_shift))
-
-	#define DELAY_ERROR  (abs(QUANTIZED_DELAY - IDEAL_DELAY))
-
-	#define SAMPLE_IS_NOT_WITHIN_THE_EYE  (DELAY_ERROR > (tEYE >> 1))
-
-	/*
-	 * While the quantized sample time falls outside the eye, reduce the
-	 * sample delay or extend the data setup to move the sampling point back
-	 * toward the eye. Do not allow the number of data setup cycles to
-	 * exceed the maximum allowed by the NFC.
-	 */
-	while (SAMPLE_IS_NOT_WITHIN_THE_EYE &&
-			(data_setup_in_cycles < nfc->max_data_setup_cycles)) {
-		/*
-		 * If control arrives here, the quantized sample delay falls
-		 * outside the eye. Check if it's before the eye opens, or after
-		 * the eye closes.
-		 */
-		if (QUANTIZED_DELAY > IDEAL_DELAY) {
-			/*
-			 * If control arrives here, the quantized sample delay
-			 * falls after the eye closes. Decrease the quantized
-			 * delay time and then go back to re-evaluate.
-			 */
-			if (sample_delay_factor != 0)
-				sample_delay_factor--;
-			continue;
-		}
-
-		/*
-		 * If control arrives here, the quantized sample delay falls
-		 * before the eye opens. Shift the sample point by increasing
-		 * data setup time. This will also make the eye larger.
-		 */
-
-		/* Give a cycle to data setup. */
-		data_setup_in_cycles++;
-		/* Synchronize the data setup time with the cycles. */
-		data_setup_in_ns += clock_period_in_ns;
-		/* Adjust tEYE accordingly. */
-		tEYE += clock_period_in_ns;
-
-		/*
-		 * Decrease the ideal sample delay by one half cycle, to keep it
-		 * in the middle of the eye.
-		 */
-		ideal_sample_delay_in_ns -= (clock_period_in_ns >> 1);
-
-		/* ...and one less period for the delay time. */
-		ideal_sample_delay_in_ns -= clock_period_in_ns;
-
-		/* Jam a negative ideal sample delay to zero. */
-		if (ideal_sample_delay_in_ns < 0)
-			ideal_sample_delay_in_ns = 0;
-
-		/*
-		 * We have a new ideal sample delay, so re-compute the quantized
-		 * delay.
-		 */
-		sample_delay_factor =
-			ns_to_cycles(
-				ideal_sample_delay_in_ns << dll_delay_shift,
-							clock_period_in_ns, 0);
-
-		if (sample_delay_factor > nfc->max_sample_delay_factor)
-			sample_delay_factor = nfc->max_sample_delay_factor;
-	}
-
-	/* Control arrives here when we're ready to return our results. */
-return_results:
-	hw->data_setup_in_cycles    = data_setup_in_cycles;
-	hw->data_hold_in_cycles     = data_hold_in_cycles;
-	hw->address_setup_in_cycles = address_setup_in_cycles;
-	hw->use_half_periods        = dll_use_half_periods;
-	hw->sample_delay_factor     = sample_delay_factor;
-//###	hw->device_busy_timeout     = GPMI_DEFAULT_BUSY_TIMEOUT;
-	hw->device_busy_timeout     = 0xFFFF; /* default busy timeout value. */
-	hw->wrn_dly_sel             = BV_GPMI_CTRL1_WRN_DLY_SEL_4_TO_8NS;
-
-	/* Return success. */
-	return 0;
-}
-
-/*
- * <1> Firstly, we should know what's the GPMI-clock means.
- *     The GPMI-clock is the internal clock in the gpmi nand controller.
- *     If you set 100MHz to gpmi nand controller, the GPMI-clock's period
- *     is 10ns. Mark the GPMI-clock's period as GPMI-clock-period.
- *
- * <2> Secondly, we should know what's the frequency on the nand chip pins.
- *     The frequency on the nand chip pins is derived from the GPMI-clock.
- *     We can get it from the following equation:
- *
- *         F = G / (DS + DH)
- *
- *         F  : the frequency on the nand chip pins.
- *         G  : the GPMI clock, such as 100MHz.
- *         DS : GPMI_HW_GPMI_TIMING0:DATA_SETUP
- *         DH : GPMI_HW_GPMI_TIMING0:DATA_HOLD
- *
- * <3> Thirdly, when the frequency on the nand chip pins is above 33MHz,
- *     the nand EDO(extended Data Out) timing could be applied.
- *     The GPMI implements a feedback read strobe to sample the read data.
- *     The feedback read strobe can be delayed to support the nand EDO timing
- *     where the read strobe may deasserts before the read data is valid, and
- *     read data is valid for some time after read strobe.
- *
- *     The following figure illustrates some aspects of a NAND Flash read:
- *
- *                   |<---tREA---->|
- *                   |             |
- *                   |         |   |
- *                   |<--tRP-->|   |
- *                   |         |   |
- *                  __          ___|__________________________________
- *     RDN            \________/   |
- *                                 |
- *                                 /---------\
- *     Read Data    --------------<           >---------
- *                                 \---------/
- *                                |     |
- *                                |<-D->|
- *     FeedbackRDN  ________             ____________
- *                          \___________/
- *
- *          D stands for delay, set in the HW_GPMI_CTRL1:RDN_DELAY.
- *
- *
- * <4> Now, we begin to describe how to compute the right RDN_DELAY.
- *
- *  4.1) From the aspect of the nand chip pins:
- *        Delay = (tREA + C - tRP)               {1}
- *
- *        tREA : the maximum read access time. From the ONFI nand standards,
- *               we know that tREA is 16ns in mode 5, tREA is 20ns is mode 4.
- *               Please check it in : www.onfi.org
- *        C    : a constant for adjust the delay. default is 4.
- *        tRP  : the read pulse width.
- *               Specified by the HW_GPMI_TIMING0:DATA_SETUP:
- *                    tRP = (GPMI-clock-period) * DATA_SETUP
- *
- *  4.2) From the aspect of the GPMI nand controller:
- *         Delay = RDN_DELAY * 0.125 * RP        {2}
- *
- *         RP   : the DLL reference period.
- *            if (GPMI-clock-period > DLL_THRETHOLD)
- *                   RP = GPMI-clock-period / 2;
- *            else
- *                   RP = GPMI-clock-period;
- *
- *            Set the HW_GPMI_CTRL1:HALF_PERIOD if GPMI-clock-period
- *            is greater DLL_THRETHOLD. In other SOCs, the DLL_THRETHOLD
- *            is 16ns, but in mx6q, we use 12ns.
- *
- *  4.3) since {1} equals {2}, we get:
- *
- *                    (tREA + 4 - tRP) * 8
- *         RDN_DELAY = ---------------------     {3}
- *                           RP
- *
- *  4.4) We only support the fastest asynchronous mode of ONFI nand.
- *       For some ONFI nand, the mode 4 is the fastest mode;
- *       while for some ONFI nand, the mode 5 is the fastest mode.
- *       So we only support the mode 4 and mode 5. It is no need to
- *       support other modes.
- */
-static void gpmi_compute_edo_timing(struct gpmi_nand_data *this,
-			struct gpmi_nfc_hardware_timing *hw)
-{
-	struct resources *r = &this->resources;
-	unsigned long rate = clk_get_rate(r->clock[0]);
-	int mode = this->timing_mode;
-	int dll_threshold = this->devdata->max_chain_delay;
-	unsigned long delay;
-	unsigned long clk_period;
-	int t_rea;
-	int c = 4;
-	int t_rp;
-	int rp;
-
-	/*
-	 * [1] for GPMI_HW_GPMI_TIMING0:
-	 *     The async mode requires 40MHz for mode 4, 50MHz for mode 5.
-	 *     The GPMI can support 100MHz at most. So if we want to
-	 *     get the 40MHz or 50MHz, we have to set DS=1, DH=1.
-	 *     Set the ADDRESS_SETUP to 0 in mode 4.
-	 */
-	hw->data_setup_in_cycles = 1;
-	hw->data_hold_in_cycles = 1;
-	hw->address_setup_in_cycles = ((mode == 5) ? 1 : 0);
-
-	/* [2] for GPMI_HW_GPMI_TIMING1 */
-//###	hw->device_busy_timeout = 0x9000;
-	hw->device_busy_timeout = 0xFFFF;
-
-	/* [3] for GPMI_HW_GPMI_CTRL1 */
-	hw->wrn_dly_sel = BV_GPMI_CTRL1_WRN_DLY_SEL_NO_DELAY;
-
-	/*
-	 * Enlarge 10 times for the numerator and denominator in {3}.
-	 * This make us to get more accurate result.
-	 */
-	clk_period = NSEC_PER_SEC / (rate / 10);
-	dll_threshold *= 10;
-	t_rea = ((mode == 5) ? 16 : 20) * 10;
-	c *= 10;
-
-	t_rp = clk_period * 1; /* DATA_SETUP is 1 */
-
-	if (clk_period > dll_threshold) {
-		hw->use_half_periods = 1;
-		rp = clk_period / 2;
+	if (period_ps > dll_threshold_ps) {
+		use_half_period = true;
+		reference_period_ps = period_ps / 2;
 	} else {
-		hw->use_half_periods = 0;
-		rp = clk_period;
+		use_half_period = false;
+		reference_period_ps = period_ps;
 	}
 
-	/*
-	 * Multiply the numerator with 10, we could do a round off:
-	 *      7.8 round up to 8; 7.4 round down to 7.
-	 */
-	delay  = (((t_rea + c - t_rp) * 8) * 10) / rp;
-	delay = (delay + 5) / 10;
+	tRP_ps = data_setup_cycles * period_ps;
+	sample_delay_ps = (sdr->tREA_max + 4000 - tRP_ps) * 8;
+	if (sample_delay_ps > 0)
+		sample_delay_factor = sample_delay_ps / reference_period_ps;
+	else
+		sample_delay_factor = 0;
 
-	hw->sample_delay_factor = delay;
+	hw->ctrl1n = BF_GPMI_CTRL1_WRN_DLY_SEL(wrn_dly_sel);
+	if (sample_delay_factor)
+		hw->ctrl1n |= BF_GPMI_CTRL1_RDN_DELAY(sample_delay_factor) |
+			      BM_GPMI_CTRL1_DLL_ENABLE |
+			      (use_half_period ? BM_GPMI_CTRL1_HALF_PERIOD : 0);
 }
 
-static int enable_edo_mode(struct gpmi_nand_data *this, int mode)
+void gpmi_nfc_apply_timings(struct gpmi_nand_data *this)
 {
-	struct resources  *r = &this->resources;
-	struct nand_chip *nand = &this->nand;
-	struct mtd_info *mtd = nand_to_mtd(nand);
-	uint8_t feature[ONFI_SUBFEATURE_PARAM_LEN] = {};
-	unsigned long rate;
-	int ret;
-
-	nand->select_chip(mtd, 0);
-
-	/* [1] send SET FEATURE commond to NAND */
-	feature[0] = mode;
-	ret = nand->set_features(mtd, nand,
-				ONFI_FEATURE_ADDR_TIMING_MODE, feature);
-	if (ret)
-		goto err_out;
-
-	/* [2] send GET FEATURE command to double-check the timing mode */
-	memset(feature, 0, ONFI_SUBFEATURE_PARAM_LEN);
-	ret = nand->get_features(mtd, nand,
-				ONFI_FEATURE_ADDR_TIMING_MODE, feature);
-	if (ret || feature[0] != mode)
-		goto err_out;
-
-	nand->select_chip(mtd, -1);
-
-	pm_runtime_get_sync(this->dev);
-	clk_disable_unprepare(r->clock[0]);
-	/* [3] set the main IO clock, 100MHz for mode 5, 80MHz for mode 4. */
-	rate = (mode == 5) ? 100000000 : 80000000;
-	clk_set_rate(r->clock[0], rate);
-	clk_prepare_enable(r->clock[0]);
-	pm_runtime_mark_last_busy(this->dev);
-        pm_runtime_put_autosuspend(this->dev);	
-
-	/* Let the gpmi_begin() re-compute the timing again. */
-	this->flags &= ~GPMI_TIMING_INIT_OK;
-
-	this->flags |= GPMI_ASYNC_EDO_ENABLED;
-	this->timing_mode = mode;
-	dev_info(this->dev, "enable asynchronous EDO mode %d\n", mode);
-
-	return 0;
-
-err_out:
-	nand->select_chip(mtd, -1);
-	dev_err(this->dev, "mode: %d, failed in set feature.\n", mode);
-	return -EINVAL;
-}
-
-static int gpmi_extra_init(struct gpmi_nand_data *this)
-{
-	struct nand_chip *chip = &this->nand;
-
-	/* If flash is ONFI flash and supports GET/SET_FEATURE command and
-	   asynchronous EDO timing mode 4 or 5, enable appropriate EDO mode */
-	if (onfi_get_opt_cmd(chip) & ONFI_OPT_CMD_SET_GET_FEATURES) {
-		int mode = onfi_get_async_timing_mode(chip);
-
-		if (mode & ONFI_TIMING_MODE_5)
-			enable_edo_mode(this, 5);
-		else if (mode & ONFI_TIMING_MODE_4)
-			enable_edo_mode(this, 4);
-	}
-
-	return 0;
-}
-
-/* Begin the I/O */
-static void gpmi_begin(struct gpmi_nand_data *this)
-{
+	struct gpmi_nfc_hardware_timing *hw = &this->hw;
 	struct resources *r = &this->resources;
 	void __iomem *gpmi_regs = r->gpmi_regs;
-	unsigned int   clock_period_in_ns;
-	uint32_t       reg;
-	unsigned int   dll_wait_time_in_us;
-	struct gpmi_nfc_hardware_timing  hw;
-	int ret;
+	unsigned int dll_wait_time_us;
 
-	/* Enable the clock. */
-	ret = pm_runtime_get_sync(this->dev);
-	if (ret < 0) {
-		dev_err(this->dev, "Failed to enable clock\n");
-		goto err_out;
-	}
+	clk_set_rate(r->clock[0], hw->clk_rate);
 
-	/* Only initialize the timing once */
-	if (this->flags & GPMI_TIMING_INIT_OK)
-		return;
-	this->flags |= GPMI_TIMING_INIT_OK;
-
-	if (this->flags & GPMI_ASYNC_EDO_ENABLED)
-		gpmi_compute_edo_timing(this, &hw);
-	else
-		gpmi_nfc_compute_hardware_timing(this, &hw);
-
-	/* [1] Set HW_GPMI_TIMING0 */
-	reg = BF_GPMI_TIMING0_ADDRESS_SETUP(hw.address_setup_in_cycles) |
-		BF_GPMI_TIMING0_DATA_HOLD(hw.data_hold_in_cycles)         |
-		BF_GPMI_TIMING0_DATA_SETUP(hw.data_setup_in_cycles)       ;
-
-	writel(reg, gpmi_regs + HW_GPMI_TIMING0);
-
-	/* [2] Set HW_GPMI_TIMING1 */
-	writel(BF_GPMI_TIMING1_BUSY_TIMEOUT(hw.device_busy_timeout),
-		gpmi_regs + HW_GPMI_TIMING1);
-
-	/* [3] The following code is to set the HW_GPMI_CTRL1. */
-
-	/* Set the WRN_DLY_SEL */
-	writel(BM_GPMI_CTRL1_WRN_DLY_SEL, gpmi_regs + HW_GPMI_CTRL1_CLR);
-	writel(BF_GPMI_CTRL1_WRN_DLY_SEL(hw.wrn_dly_sel),
-					gpmi_regs + HW_GPMI_CTRL1_SET);
-
-	/* DLL_ENABLE must be set to 0 when setting RDN_DELAY or HALF_PERIOD. */
-	writel(BM_GPMI_CTRL1_DLL_ENABLE, gpmi_regs + HW_GPMI_CTRL1_CLR);
-
-	/* Clear out the DLL control fields. */
-	reg = BM_GPMI_CTRL1_RDN_DELAY | BM_GPMI_CTRL1_HALF_PERIOD;
-	writel(reg, gpmi_regs + HW_GPMI_CTRL1_CLR);
-
-	/* If no sample delay is called for, return immediately. */
-	if (!hw.sample_delay_factor)
-		return;
-
-	/* Set RDN_DELAY or HALF_PERIOD. */
-	reg = BF_GPMI_CTRL1_RDN_DELAY(hw.sample_delay_factor);
-	if (hw.use_half_periods)
-		reg |= BM_GPMI_CTRL1_HALF_PERIOD;
-	writel(reg, gpmi_regs + HW_GPMI_CTRL1_SET);
-
-	/* At last, we enable the DLL. */
-	writel(BM_GPMI_CTRL1_DLL_ENABLE, gpmi_regs + HW_GPMI_CTRL1_SET);
+	writel(hw->timing0, gpmi_regs + HW_GPMI_TIMING0);
+	writel(hw->timing1, gpmi_regs + HW_GPMI_TIMING1);
 
 	/*
-	 * After we enable the GPMI DLL, we have to wait 64 clock cycles before
-	 * we can use the GPMI. Calculate the amount of time we need to wait,
-	 * in microseconds.
+	 * Clear several CTRL1 fields, DLL must be disabled when setting
+	 * RDN_DELAY or HALF_PERIOD.
 	 */
-	clock_period_in_ns = NSEC_PER_SEC / clk_get_rate(r->clock[0]);
-	dll_wait_time_in_us = (clock_period_in_ns * 64) / 1000;
+	writel(BM_GPMI_CTRL1_CLEAR_MASK, gpmi_regs + HW_GPMI_CTRL1_CLR);
+	writel(hw->ctrl1n, gpmi_regs + HW_GPMI_CTRL1_SET);
 
-	if (!dll_wait_time_in_us)
-		dll_wait_time_in_us = 1;
+	/* Wait 64 clock cycles before using the GPMI after enabling the DLL */
+	dll_wait_time_us = USEC_PER_SEC / hw->clk_rate * 64;
+	if (!dll_wait_time_us)
+		dll_wait_time_us = 1;
 
 	/* Wait for the DLL to settle. */
-	udelay(dll_wait_time_in_us);
-
-err_out:
-	return;
-}
-
-static void gpmi_end(struct gpmi_nand_data *this)
-{
-	pm_runtime_mark_last_busy(this->dev);
-	pm_runtime_put_autosuspend(this->dev);
+	udelay(dll_wait_time_us);
 }
 
 /* -------------------- LOCAL HELPER FUNCTIONS ----------------------------- */
@@ -1962,8 +1271,8 @@ static inline int gpmi_fus_get_ecc_strength(struct mtd_info *mtd,
  */
 static void gpmi_fus_read_main_data(struct mtd_info *mtd, uint8_t *buf)
 {
-	struct nand_chip *chip = mtd->priv;
-	struct gpmi_nand_data *priv = chip->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	uint val;
 	uint bit = 0;
 	int chunk, remaining;
@@ -2004,8 +1313,8 @@ static void gpmi_fus_read_main_data(struct mtd_info *mtd, uint8_t *buf)
  */
 static void gpmi_fus_write_main_data(struct mtd_info *mtd, const uint8_t *buf)
 {
-	struct nand_chip *chip = mtd->priv;
-	struct gpmi_nand_data *priv = chip->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	uint val, tmp, mask;
 	uint bit = 0;
 	int chunk, remaining;
@@ -2097,8 +1406,8 @@ static void gpmi_fus_write_main_data(struct mtd_info *mtd, const uint8_t *buf)
  */
 static void gpmi_fus_read_ecc_data(struct mtd_info *mtd, uint8_t *oob)
 {
-	struct nand_chip *chip = mtd->priv;
-	struct gpmi_nand_data *priv = chip->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	int chunk, remaining = 0;
 	int chunk_size = chip->ecc.size;
 	uint8_t val, mask;
@@ -2154,8 +1463,8 @@ static void gpmi_fus_read_ecc_data(struct mtd_info *mtd, uint8_t *oob)
  */
 static void gpmi_fus_write_ecc_data(struct mtd_info *mtd, const uint8_t *oob)
 {
-	struct nand_chip *chip = mtd->priv;
-	struct gpmi_nand_data *priv = chip->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	int chunk, remaining = 0;
 	int chunk_size = chip->ecc.size;
 	uint8_t val, mask;
@@ -2210,7 +1519,7 @@ static void gpmi_fus_write_ecc_data(struct mtd_info *mtd, const uint8_t *oob)
 static int gpmi_fus_do_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
 				int page, int raw)
 {
-	struct gpmi_nand_data *priv = chip->priv;
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	struct dma_async_tx_descriptor *desc;
 	uint32_t boffs;
 	int column = raw ? 0 : 4;
@@ -2277,7 +1586,7 @@ static int gpmi_fus_do_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
 static int gpmi_fus_do_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 				 int page, int raw)
 {
-	struct gpmi_nand_data *priv = chip->priv;
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	struct dma_async_tx_descriptor *desc;
 	uint32_t boffs;
 	int column = raw ? 0 : 4;
@@ -2462,33 +1771,6 @@ static int gpmi_init(struct gpmi_nand_data *this)
 	return ret;
 }
 
-static int init_hardware(struct gpmi_nand_data *this)
-{
-	int ret;
-
-	/*
-	 * This structure contains the "safe" GPMI timing that should succeed
-	 * with any NAND Flash device
-	 * (although, with less-than-optimal performance).
-	 */
-	struct nand_timing  safe_timing = {
-		.data_setup_in_ns        = 80,
-		.data_hold_in_ns         = 60,
-		.address_setup_in_ns     = 25,
-		.gpmi_sample_delay_in_ns =  6,
-		.tREA_in_ns              = -1,
-		.tRLOH_in_ns             = -1,
-		.tRHOH_in_ns             = -1,
-	};
-
-	ret = gpmi_init(this);
-	if (!ret)
-		this->timing = safe_timing;
-
-	return ret;
-
-}
-
 /* -------------------- INTERFACE FUNCTIONS -------------------------------- */
 
 /*
@@ -2496,13 +1778,33 @@ static int init_hardware(struct gpmi_nand_data *this)
  */
 static void gpmi_fus_select_chip(struct mtd_info *mtd, int chipnr)
 {
-	struct nand_chip *chip = mtd->priv;
-	struct gpmi_nand_data *this = chip->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct gpmi_nand_data *this = nand_get_controller_data(chip);
+	int ret;
 
-	if ((this->current_chip < 0) && (chipnr >= 0))
-		gpmi_begin(this);
-	else if ((this->current_chip >= 0) && (chipnr < 0))
-		gpmi_end(this);
+	/*
+	 * For power consumption matters, disable/enable the clock each time a
+	 * die is selected/unselected.
+	 */
+	if (this->current_chip < 0 && chipnr >= 0) {
+		ret = pm_runtime_get_sync(this->dev);
+		if (ret < 0)
+			dev_err(this->dev, "Failed to enable the clock\n");
+	} else if (this->current_chip >= 0 && chipnr < 0) {
+		pm_runtime_mark_last_busy(this->dev);
+		pm_runtime_use_autosuspend(this->dev);
+	}
+
+	/*
+	 * This driver currently supports only one NAND chip. Plus, dies share
+	 * the same configuration. So once timings have been applied on the
+	 * controller side, they will not change anymore. When the time will
+	 * come, the check on must_apply_timings will have to be dropped.
+	 */
+	if (chipnr >= 0 && this->hw.must_apply_timings) {
+		this->hw.must_apply_timings = false;
+		gpmi_nfc_apply_timings(this);
+	}
 
 	this->current_chip = chipnr;
 }
@@ -2522,8 +1824,8 @@ static int gpmi_fus_dev_ready(struct mtd_info *mtd)
  */
 static uint8_t gpmi_fus_read_byte(struct mtd_info *mtd)
 {
-	struct nand_chip *chip = mtd->priv;
-	struct gpmi_nand_data *priv = chip->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	struct dma_async_tx_descriptor *desc;
 
 	desc = gpmi_fus_read_data_buf(mtd, priv->data_buffer_phys, 1);
@@ -2540,8 +1842,8 @@ static uint8_t gpmi_fus_read_byte(struct mtd_info *mtd)
  */
 static u16 gpmi_fus_read_word(struct mtd_info *mtd)
 {
-	struct nand_chip *chip = mtd->priv;
-	struct gpmi_nand_data *priv = chip->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	struct dma_async_tx_descriptor *desc;
 
 	desc = gpmi_fus_read_data_buf(mtd, priv->data_buffer_phys, 2);
@@ -2559,8 +1861,8 @@ static u16 gpmi_fus_read_word(struct mtd_info *mtd)
  */
 static void gpmi_fus_read_buf(struct mtd_info *mtd, uint8_t *buf, int length)
 {
-	struct nand_chip *chip = mtd->priv;
-	struct gpmi_nand_data *priv = chip->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	struct dma_async_tx_descriptor *desc;
 
 	desc = gpmi_fus_read_data_buf(mtd, priv->data_buffer_phys, length);
@@ -2576,8 +1878,8 @@ static void gpmi_fus_read_buf(struct mtd_info *mtd, uint8_t *buf, int length)
 static void gpmi_fus_write_buf(struct mtd_info *mtd, const uint8_t *buf,
 			       int length)
 {
-	struct nand_chip *chip = mtd->priv;
-	struct gpmi_nand_data *priv = chip->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 
 	memcpy(priv->data_buffer_virt, buf, length);
 	gpmi_fus_write_data_buf(mtd, priv->data_buffer_phys, length);
@@ -2611,8 +1913,8 @@ static int gpmi_fus_waitfunc(struct mtd_info *mtd, struct nand_chip *chip)
 static void gpmi_fus_command(struct mtd_info *mtd, uint command, int column,
 			     int page)
 {
-	struct nand_chip *chip = mtd->priv;
-	struct gpmi_nand_data *priv = chip->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 
 	/* Simulate NAND_CMD_READOOB with NAND_CMD_READ0; NAND_CMD_READOOB is
 	   only used in nand_block_bad() to read the BBM. So simply use the
@@ -2694,17 +1996,23 @@ static void gpmi_fus_command(struct mtd_info *mtd, uint command, int column,
 static int gpmi_fus_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 				  uint8_t *buf, int oob_required, int page)
 {
-	struct gpmi_nand_data *priv = chip->priv;
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	struct dma_async_tx_descriptor *desc;
 	int ret;
 
 	/*
-	 * A DMA descriptor for the first command byte NAND_CMD_READ0 and the
-	 * column/row bytes was already created in nand_do_read_ops(). Now add
-	 * a DMA descriptor for the second command byte NAND_CMD_READSTART and
-	 * a DMA descriptor to wait for ready. Execute this DMA chain and
-	 * check for timeout.
+	 * In kernel < 4.19 a DMA descriptor for the first command byte
+	 * NAND_CMD_READ0 and the column/row bytes was already created in
+	 * nand_do_read_ops(). In kernel >= 4.19 we have to call the command
+	 * NAND_CMD_READ0 here, because now you can handle this specifically.
+	 * Now add a DMA descriptor for the second command byte
+	 * NAND_CMD_READSTART and a DMA descriptor to wait for ready. Execute
+	 * this DMA chain and check for timeout.
 	 */
+	ret = nand_read_page_op(chip, page, 0, NULL, 0);
+	if (ret)
+		return ret;
+
 	chip->cmdfunc(mtd, NAND_CMD_READSTART, -1, -1);
 	ret = gpmi_fus_wait_ready(mtd, GPMI_FUS_TIMEOUT_DATA);
 	if (ret)
@@ -2743,9 +2051,17 @@ static int gpmi_fus_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 static int gpmi_fus_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 				   const uint8_t *buf, int oob_required, int page)
 {
-	struct gpmi_nand_data *priv = chip->priv;
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
+	int ret;
 
-	/* NAND_CMD_SEQIN for column 0 was already issued by the caller */
+	/*
+	 * In kernel < 4.19 NAND_CMD_SEQIN for column 0 was already issued by the
+	 * caller. In kernel >= 4.19 we have to call the command NAND_CMD_SEQIN
+	 * here, because now you can handle this specifically.
+	 */
+	ret = nand_prog_page_begin_op(chip, page, 0, NULL, 0);
+	if (ret)
+		return ret;
 
 	/* We must write OOB data as it is interleaved with main data. But if
 	   no OOB data is available, use 0xFF instead. This does not modify
@@ -2770,9 +2086,11 @@ static int gpmi_fus_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 				     mtd->writesize + mtd->oobsize))
 		return -EINVAL;
 
-	/* The actual programming will take place in gpmi_fus_command() when
-	   command NAND_CMD_PAGEPROG is sent */
-	return 0;
+	/* In kernel < 4.19 NAND_CMD_PAGEPROG is sent by the caller.
+	 * In kernel >= 4.19 we have to call the command NAND_CMD_PAGEPROG
+	 * here, because now you can handle this specifically.
+	 */
+	return nand_prog_page_end_op(chip);
 }
 
 /*
@@ -2781,7 +2099,7 @@ static int gpmi_fus_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 static int gpmi_fus_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 			      uint8_t *buf, int oob_required, int page)
 {
-	struct gpmi_nand_data *priv = chip->priv;
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	struct resources *r = &priv->resources;
 	struct dma_chan *channel = get_dma_chan(priv);
 	struct dma_async_tx_descriptor *desc;
@@ -2799,12 +2117,18 @@ static int gpmi_fus_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 	writel(priv->bch_layout, r->bch_regs + HW_BCH_LAYOUTSELECT);
 
 	/*
-	 * A DMA descriptor for the first command byte NAND_CMD_READ0 and the
-	 * column/row bytes was already created in nand_do_read_ops(). Now add
-	 * a DMA descriptor for the second command byte NAND_CMD_READSTART and
-	 * a DMA descriptor to wait for ready. Execute this DMA chain and
-	 * check for timeout.
+	 * In kernel < 4.19 a DMA descriptor for the first command byte
+	 * NAND_CMD_READ0 and the column/row bytes was already created in
+	 * nand_do_read_ops(). In kernel >= 4.19 we have to call the command
+	 * NAND_CMD_READ0 here, because now you can handle this specifically.
+	 * Now add a DMA descriptor for the second command byte
+	 * NAND_CMD_READSTART and a DMA descriptor to wait for ready. Execute
+	 * this DMA chain and check for timeout.
 	 */
+	ret = nand_read_page_op(chip, page, 0, NULL, 0);
+	if (ret)
+		return ret;
+
 	chip->cmdfunc(mtd, NAND_CMD_READSTART, -1, -1);
 	ret = gpmi_fus_wait_ready(mtd, GPMI_FUS_TIMEOUT_DATA);
 	if (ret)
@@ -2960,7 +2284,7 @@ static int gpmi_fus_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 static int gpmi_fus_write_page(struct mtd_info *mtd, struct nand_chip *chip,
 			       const uint8_t *buf, int oob_required, int page)
 {
-	struct gpmi_nand_data *priv = chip->priv;
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	struct resources *r = &priv->resources;
 	struct dma_async_tx_descriptor *desc;
 	struct dma_chan *channel = get_dma_chan(priv);
@@ -2972,6 +2296,15 @@ static int gpmi_fus_write_page(struct mtd_info *mtd, struct nand_chip *chip,
 
 	/* Select the desired flash layout */
 	writel(priv->bch_layout, r->bch_regs + HW_BCH_LAYOUTSELECT);
+
+	/*
+	 * In kernel < 4.19 NAND_CMD_SEQIN for column 0 was already issued by the
+	 * caller. In kernel >= 4.19 we have to call the command NAND_CMD_SEQIN
+	 * here, because now you can handle this specifically.
+	 */
+	ret = nand_prog_page_begin_op(chip, page, 0, NULL, 0);
+	if (ret)
+		return ret;
 
 	/* Try to map buf directly for DMA. If this fails, use the local page
 	   buffer and copy the data to it. */
@@ -3038,9 +2371,11 @@ static int gpmi_fus_write_page(struct mtd_info *mtd, struct nand_chip *chip,
 		dma_unmap_single(priv->dev, payload_phys,
 				 mtd->writesize, DMA_TO_DEVICE);
 
-	/* The actual programming will take place in when command
-	   NAND_CMD_PAGEPROG is sent. This also disables the BCH. */
-	return 0;
+	/* In kernel < 4.19 NAND_CMD_PAGEPROG is sent by the caller.
+	 * In kernel >= 4.19 we have to call the command NAND_CMD_PAGEPROG
+	 * here, because now you can handle this specifically.
+	 */
+	return nand_prog_page_end_op(chip);
 }
 
 
@@ -3110,57 +2445,44 @@ static void gpmi_fus_exit(struct gpmi_nand_data *priv)
 	priv->page_buffer_virt	= NULL;
 }
 
-static int gpmi_fus_init(struct gpmi_nand_data *priv)
+int gpmi_setup_data_interface(struct mtd_info *mtd, int chipnr,
+			      const struct nand_data_interface *conf)
 {
-	struct nand_chip *chip = &priv->nand;
-	struct mtd_info *mtd = nand_to_mtd(chip);
-	int ret;
+	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct gpmi_nand_data *this = nand_get_controller_data(chip);
+	const struct nand_sdr_timings *sdr;
+
+	/* Retrieve required NAND timings */
+	sdr = nand_get_sdr_timings(conf);
+	if (IS_ERR(sdr))
+		return PTR_ERR(sdr);
+
+	/* Only MX6 GPMI controller can reach EDO timings */
+	if (sdr->tRC_min <= 25000 && !GPMI_IS_MX6(this))
+		return -ENOTSUPP;
+
+	/* Stop here if this call was just a check */
+	if (chipnr < 0)
+		return 0;
+
+	/* Do the actual derivation of the controller timings */
+	gpmi_nfc_compute_timings(this, sdr);
+
+	this->hw.must_apply_timings = true;
+
+	return 0;
+}
+
+static int gpmi_fus_nand_attach_chip(struct nand_chip *chip)
+{
+	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
+	struct mtd_info *mtd = nand_to_mtd(&priv->nand);
 	unsigned int chunk_shift;
 	unsigned int ecc_strength;
 	unsigned int skipblocks;
 	unsigned int oobavail;
 	unsigned int ecc_bytes;
-	struct mtd_part_parser_data ppdata = {};
-
-	/* init current chip */
-	priv->current_chip	= -1;
-
-	/* init the MTD data structures */
-	mtd->priv		= chip;
-	mtd->name		= "gpmi-nand";
-	mtd->owner		= THIS_MODULE;
-
-	/* init the nand_chip{}, we don't support a 16-bit NAND Flash bus. */
-	chip->priv		= priv;
-	chip->select_chip	= gpmi_fus_select_chip;
-	chip->dev_ready		= gpmi_fus_dev_ready;
-	chip->cmdfunc		= gpmi_fus_command;
-	chip->read_byte		= gpmi_fus_read_byte;
-	chip->read_word		= gpmi_fus_read_word;
-	chip->read_buf		= gpmi_fus_read_buf;
-	chip->write_buf		= gpmi_fus_write_buf;
-	chip->waitfunc		= gpmi_fus_waitfunc;
-	chip->options		= NAND_BBT_SCAN2NDPAGE | NAND_NO_SUBPAGE_WRITE;
-
-	/* Allocate a combined comman/data/status buffer. This is used for
-	   reading the NAND ID and ONFI data. PAGE_SIZE is enough. */
-	priv->cmd_buffer_virt =
-		dma_alloc_coherent(priv->dev, PAGE_SIZE,
-				   &priv->cmd_buffer_phys, GFP_DMA);
-	if (!priv->cmd_buffer_virt) {
-		ret = -ENOMEM;
-		goto err_out;
-	}
-	priv->data_buffer_virt = priv->cmd_buffer_virt + GPMI_FUS_CMD_BUF_SIZE;
-	priv->data_buffer_phys = priv->cmd_buffer_phys + GPMI_FUS_CMD_BUF_SIZE;
-
-	/* Read NAND ID and ONFI parameters, set basic MTD geometry info */
-	ret = nand_scan_ident(mtd, 1 /*### OF->max_chips */, NULL);
-	//ret = nand_scan(mtd, (GPMI_IS_MX6(priv) || GPMI_IS_MX8(priv)) ? 2 : 1);
-	if (ret) {
-		mtd->name = NULL;
-		goto err_out;
-	}
+	int ret;
 
 	chunk_shift = 9;
 	ecc_strength = 0;
@@ -3212,20 +2534,15 @@ static int gpmi_fus_init(struct gpmi_nand_data *priv)
 	else
 		mtd->bitflip_threshold = ecc_strength - 1;
 
-	if (chip->onfi_version) {
-		/* Get address cycles from ONFI data:
-		   [7:4] column cycles, [3:0] row cycles */
-		priv->column_cycles = chip->onfi_params.addr_cycles >> 4;
-		priv->row_cycles = chip->onfi_params.addr_cycles & 0x0F;
-	} else {
-		/* Use two column cycles and decide from the size whether we
-		   need two or three row cycles */
+	if (mtd->writesize <= 512)
+		priv->column_cycles = 1;
+	else
 		priv->column_cycles = 2;
-		if (chip->chipsize > (mtd->writesize << 16))
-			priv->row_cycles = 3;
-		else
-			priv->row_cycles = 2;
-	}
+
+	if (chip->options & NAND_ROW_ADDR_3)
+		priv->row_cycles = 3;
+	else
+		priv->row_cycles = 2;
 
 	/* Set up the NFC geometry which is used by BCH. */
 	ret = bch_set_geometry(priv, oobavail, 0); /* ### TODO: set MTD device index */
@@ -3256,13 +2573,58 @@ static int gpmi_fus_init(struct gpmi_nand_data *priv)
 	priv->auxiliary_phys = priv->page_buffer_phys + mtd->writesize;
 	priv->status_virt = priv->auxiliary_virt + ((oobavail + 4 + 3) & ~3);
 
-	/* Activate DDR or EDO mode if possible */
-	ret = gpmi_extra_init(priv);
-	if (ret != 0)
-		goto err_out;
+err_out:
 
-	/* Fill remaining mtd structure and create bad block table (BBT) */
-	ret = nand_scan_tail(mtd);
+	return ret;
+}
+
+static const struct nand_controller_ops gpmi_fus_nand_controller_ops = {
+	.attach_chip = gpmi_fus_nand_attach_chip,
+};
+
+static int gpmi_fus_init(struct gpmi_nand_data *priv)
+{
+	struct nand_chip *chip = &priv->nand;
+	struct mtd_info *mtd = nand_to_mtd(chip);
+	int ret;
+	struct mtd_part_parser_data ppdata = {};
+
+	/* init current chip */
+	priv->current_chip	= -1;
+
+	/* init the MTD data structures */
+	mtd->priv		= chip;
+	mtd->name		= "gpmi-nand";
+	mtd->owner		= THIS_MODULE;
+
+	/* init the nand_chip{}, we don't support a 16-bit NAND Flash bus. */
+	chip->priv		= priv;
+	chip->select_chip	= gpmi_fus_select_chip;
+	chip->setup_data_interface = gpmi_setup_data_interface;
+	chip->dev_ready		= gpmi_fus_dev_ready;
+	chip->cmdfunc		= gpmi_fus_command;
+	chip->read_byte		= gpmi_fus_read_byte;
+	chip->read_word		= gpmi_fus_read_word;
+	chip->read_buf		= gpmi_fus_read_buf;
+	chip->write_buf		= gpmi_fus_write_buf;
+	chip->waitfunc		= gpmi_fus_waitfunc;
+	chip->options		= NAND_BBT_SCAN2NDPAGE | NAND_NO_SUBPAGE_WRITE;
+
+	/* Allocate a combined comman/data/status buffer. This is used for
+	   reading the NAND ID and ONFI data. PAGE_SIZE is enough. */
+	priv->cmd_buffer_virt =
+		dma_alloc_coherent(priv->dev, PAGE_SIZE,
+				   &priv->cmd_buffer_phys, GFP_DMA);
+	if (!priv->cmd_buffer_virt) {
+		ret = -ENOMEM;
+		goto err_out;
+	}
+	priv->data_buffer_virt = priv->cmd_buffer_virt + GPMI_FUS_CMD_BUF_SIZE;
+	priv->data_buffer_phys = priv->cmd_buffer_phys + GPMI_FUS_CMD_BUF_SIZE;
+
+	/* Read NAND ID and ONFI parameters, set basic MTD geometry info */
+	chip->dummy_controller.ops = &gpmi_fus_nand_controller_ops;
+	ret = nand_scan(mtd, 1 /*### OF->max_chips */);
 	if (ret) {
 		mtd->name = NULL;
 		goto err_out;
@@ -3299,9 +2661,6 @@ static const struct of_device_id gpmi_nand_fus_id_table[] = {
 	}, {
 		.compatible = "fus,imx7d-gpmi-nand",
 		.data = (void *)&gpmi_devdata_imx7d,
-	}, {
-		.compatible = "fsl,imx6ull-gpmi-nand",
-		.data = &gpmi_devdata_imx6ull,
 	}, {
 		.compatible = "fsl,imx8qxp-gpmi-nand",
 		.data = &gpmi_devdata_imx8qxp,
@@ -3341,7 +2700,7 @@ static int gpmi_nand_fus_probe(struct platform_device *pdev)
 	if (ret)
 		goto exit_nfc_init;
 
-	ret = init_hardware(this);
+	ret = gpmi_init(this);
 	if (ret)
 		goto exit_nfc_init;
 
@@ -3414,16 +2773,13 @@ static int gpmi_nand_fus_pm_resume(struct device *dev)
 		return ret;
 	}
 
-	/* re-init others */
-	gpmi_extra_init(this);
-
 	return 0;
 }
 
 int gpmi_nand_fus_runtime_suspend(struct device *dev)
 {
 	struct gpmi_nand_data *this = dev_get_drvdata(dev);
-printk("###%s --\n", __func__);
+
 	gpmi_enable_clk(this, false);
 	release_bus_freq(BUS_FREQ_HIGH);
 	release_dma_channels(this);
@@ -3444,7 +2800,7 @@ int gpmi_nand_fus_runtime_resume(struct device *dev)
 	ret = acquire_dma_channels(this);
 	if (ret < 0)
 		return ret;
-printk("###%s ++\n", __func__);
+
 	return 0;
 }
 

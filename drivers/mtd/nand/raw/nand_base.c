@@ -5173,7 +5173,7 @@ static void nand_bit_wise_majority(const void **srcbufs,
 static int nand_flash_detect_onfi(struct nand_chip *chip)
 {
 	struct mtd_info *mtd = nand_to_mtd(chip);
-	struct nand_onfi_params *p = &chip->onfi_params;
+	struct nand_onfi_params *p;
 	struct onfi_params *onfi;
 	int onfi_version = 0;
 	char id[4];
@@ -5184,14 +5184,23 @@ static int nand_flash_detect_onfi(struct nand_chip *chip)
 	if (ret || strncmp(id, "ONFI", 4))
 		return 0;
 
+	/* ONFI chip: allocate a buffer to hold its parameter page */
+	p = kzalloc((sizeof(*p) * 3), GFP_KERNEL);
+	if (!p)
+		return -ENOMEM;
+
 	ret = nand_read_param_page_op(chip, 0, NULL, 0);
-	if (ret)
-		return 0;
+	if (ret) {
+		ret = 0;
+		goto free_onfi_param_page;
+	}
 
 	for (i = 0; i < 3; i++) {
-		ret = nand_read_data_op(chip, &p[i], sizeof(*p), true);
-		if (ret)
-			return 0;
+		ret = nand_read_data_op(chip, &p[i], sizeof(*p), false);
+		if (ret) {
+			ret = 0;
+			goto free_onfi_param_page;
+		}
 
 		if (onfi_crc16(ONFI_CRC_BASE, (u8 *)&p[i], 254) ==
 				le16_to_cpu(p->crc)) {
@@ -5211,7 +5220,7 @@ static int nand_flash_detect_onfi(struct nand_chip *chip)
 		if (onfi_crc16(ONFI_CRC_BASE, (u8 *)p, 254) !=
 				le16_to_cpu(p->crc)) {
 			pr_err("ONFI parameter recovery failed, aborting\n");
-			return ret;
+			goto free_onfi_param_page;
 		}
 	}
 
@@ -5234,10 +5243,7 @@ static int nand_flash_detect_onfi(struct nand_chip *chip)
 
 	if (!onfi_version) {
 		pr_info("unsupported ONFI version: %d\n", val);
-		return ret;
-	}
-	else {
-		chip->onfi_version = onfi_version;
+		goto free_onfi_param_page;
 	}
 
 	sanitize_string(p->manufacturer, sizeof(p->manufacturer));
@@ -5245,7 +5251,7 @@ static int nand_flash_detect_onfi(struct nand_chip *chip)
 	chip->parameters.model = kstrdup(p->model, GFP_KERNEL);
 	if (!chip->parameters.model) {
 		ret = -ENOMEM;
-		return ret;
+		goto free_onfi_param_page;
 	}
 
 	mtd->writesize = le32_to_cpu(p->byte_per_page);
@@ -5325,6 +5331,8 @@ static int nand_flash_detect_onfi(struct nand_chip *chip)
 
 free_model:
 	kfree(chip->parameters.model);
+free_onfi_param_page:
+	kfree(p);
 
 	return ret;
 }
@@ -5643,7 +5651,7 @@ static void nand_manufacturer_cleanup(struct nand_chip *chip)
 /*
  * Get the flash and manufacturer id and lookup if the type is supported.
  */
-static int nand_detect(struct nand_chip *chip, const struct nand_flash_dev *type)
+static const int nand_detect(struct nand_chip *chip, const struct nand_flash_dev *type)
 {
 	const struct nand_manufacturer *manufacturer;
 	struct mtd_info *mtd = nand_to_mtd(chip);
@@ -5980,7 +5988,7 @@ static int nand_dt_init(struct nand_chip *chip)
  * prevented dynamic allocations during this phase which was unconvenient and
  * as been banned for the benefit of the ->init_ecc()/cleanup_ecc() hooks.
  */
-int nand_scan_ident(struct mtd_info *mtd, int maxchips,
+static int nand_scan_ident(struct mtd_info *mtd, int maxchips,
 		    const struct nand_flash_dev *table)
 {
 	int i, nand_maf_id, nand_dev_id;
@@ -6444,7 +6452,7 @@ static bool nand_ecc_strength_good(struct mtd_info *mtd)
  * all the uninitialized function pointers with the defaults and scans for a
  * bad block table if appropriate.
  */
-int nand_scan_tail(struct mtd_info *mtd)
+static int nand_scan_tail(struct mtd_info *mtd)
 {
 	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct nand_ecc_ctrl *ecc = &chip->ecc;

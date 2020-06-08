@@ -30,10 +30,6 @@ struct nand_flash_dev;
 int nand_scan_with_ids(struct mtd_info *mtd, int max_chips,
 		       struct nand_flash_dev *ids);
 
-int nand_scan_ident(struct mtd_info *mtd, int max_chips,
-			   const struct nand_flash_dev *table);
-int nand_scan_tail(struct mtd_info *mtd);
-
 static inline int nand_scan(struct mtd_info *mtd, int max_chips)
 {
 	return nand_scan_with_ids(mtd, max_chips, NULL);
@@ -1263,10 +1259,6 @@ int nand_op_parser_exec_op(struct nand_chip *chip,
  *			currently in data_buf.
  * @subpagesize:	[INTERN] holds the subpagesize
  * @id:			[INTERN] holds NAND ID
- * @onfi_version:	[INTERN] holds the chip ONFI version (BCD encoded),
- *			non 0 if ONFI supported.
- * @onfi_params:	[INTERN] holds the ONFI page parameter when ONFI is
- *                  supported, 0 otherwise.
  * @parameters:		[INTERN] holds generic parameters under an easily
  *			readable form.
  * @max_bb_per_die:	[INTERN] the max number of bad blocks each die of a
@@ -1348,10 +1340,6 @@ struct nand_chip {
 	int badblockbits;
 
 	struct nand_id id;
-	int onfi_version;
-	union {
-		struct nand_onfi_params onfi_params;
-	};
 	struct nand_parameters parameters;
 	u16 max_bb_per_die;
 	u32 blocks_per_die;
@@ -1632,14 +1620,6 @@ struct platform_nand_data {
 	struct platform_nand_chip chip;
 	struct platform_nand_ctrl ctrl;
 };
-
-/* return the supported optional commands. */
-static inline int onfi_get_opt_cmd(struct nand_chip *chip)
-{
-	if (!chip->onfi_version)
-		return 0;
-	return le16_to_cpu(chip->onfi_params.opt_cmd);
-}
 
 /* return the supported asynchronous timing mode. */
 static inline int onfi_get_async_timing_mode(struct nand_chip *chip)
