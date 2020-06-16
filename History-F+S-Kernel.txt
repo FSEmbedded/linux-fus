@@ -3,6 +3,11 @@ gVersion History for Linux Kernel on i.MX8 based F&S Boards and Modules
 
 Remark: MM: M Mini, MN: M Nano
 
+linux-4.14.98-fsimx8mn-Y2020.06 (16.06.2020)
+-------------------------------------------
+Supported boards: PicoCoreMX8MN, PicoCoreMX8MM, armStoneMX8MM, efusMX8X
+
+
 linux-4.14.98-fsimx8mn-Y2020.06 (09.06.2020)
 -------------------------------------------
 Supported boards: PicoCoreMX8MN, PicoCoreMX8MM, armStoneMX8MM, efusMX8X
