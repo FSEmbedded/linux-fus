@@ -85,7 +85,7 @@
 	focaltech@38 {
 		compatible = "focaltech,fts";
 		reg = <0x38>;
-#if (CONFIG_PICOCOREMX8MM_BOARD_REVISION==100)
+#if (CONFIG_PICOCOREMX8MN_BOARD_REVISION==100)
 		interrupt-parent = <&gpio1>;
 		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
 		focaltech,irq-gpio = <&gpio1 2 IRQ_TYPE_EDGE_FALLING>;
@@ -94,7 +94,7 @@
 		interrupts = <31 IRQ_TYPE_EDGE_FALLING>;
 		focaltech,irq-gpio = <&gpio4 31 IRQ_TYPE_EDGE_FALLING>;
 #endif
-#ifdef CONFIG_PICOCOREMX8MM_INVERTED_XY
+#ifdef CONFIG_PICOCOREMX8MN_INVERTED_XY
 		focaltech,touchscreen-inverted-x;
 		focaltech,touchscreen-inverted-y;
 #endif
