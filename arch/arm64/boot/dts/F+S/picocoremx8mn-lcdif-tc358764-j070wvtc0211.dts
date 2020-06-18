@@ -1,14 +1,14 @@
 /*
- * Copyright (C) 2019 F&S Elektronik Systeme GmbH
+ * Copyright (C) 2020 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
 
-#include "picocoremx8mm-bbdsi.dts"
+#include "picocoremx8mn-bbdsi.dts"
 
-#define CONFIG_PICOCOREMX8MM_INVERTED_XY
+#define CONFIG_PICOCOREMX8MN_INVERTED_XY
 
 &lcdif {
 	status = "okay";
@@ -20,13 +20,13 @@
 &mipi_dsi {
 	status = "okay";
 
-	clocks = <&clk IMX8MM_CLK_DSI_CORE>,
-			 <&clk IMX8MM_CLK_DSI_PHY_REF>, <&clk IMX8MM_CLK_CLKO2>;
+	clocks = <&clk IMX8MN_CLK_DSI_CORE>,
+			 <&clk IMX8MN_CLK_DSI_PHY_REF>, <&clk IMX8MN_CLK_CLKO2>;
 	clock-names = "cfg", "pll-ref";
-	assigned-clocks = <&clk IMX8MM_CLK_DSI_CORE>,
-				  <&clk IMX8MM_CLK_DSI_PHY_REF>, <&clk IMX8MM_CLK_CLKO2>;
-	assigned-clock-parents = <&clk IMX8MM_SYS_PLL1_266M>,
-					 <&clk IMX8MM_VIDEO_PLL1_OUT>, <&clk IMX8MM_SYS_PLL2_200M>;
+	assigned-clocks = <&clk IMX8MN_CLK_DSI_CORE>,
+				  <&clk IMX8MN_CLK_DSI_PHY_REF>, <&clk IMX8MN_CLK_CLKO2>;
+	assigned-clock-parents = <&clk IMX8MN_SYS_PLL1_266M>,
+					 <&clk IMX8MN_VIDEO_PLL1_OUT>, <&clk IMX8MN_SYS_PLL2_200M>;
 	assigned-clock-rates = <266000000>, <27000000>, <200000000>;
 
 	panel@0{
@@ -36,7 +36,7 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_mipi_dsi_en>;
 
-		clocks = <&clk IMX8MM_CLK_CLKO2>;
+		clocks = <&clk IMX8MN_CLK_CLKO2>;
 		reset-gpios = <&gpio1 13 GPIO_ACTIVE_LOW>;
 		clock-names = "ext-clk";
 		ext-clk-rate = <33500000>;
@@ -85,7 +85,7 @@
 	focaltech@38 {
 		compatible = "focaltech,fts";
 		reg = <0x38>;
-#if (CONFIG_PICOCOREMX8MM_BOARD_REVISION==100)
+#if (CONFIG_PICOCOREMX8MN_BOARD_REVISION==100)
 		interrupt-parent = <&gpio1>;
 		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
 		focaltech,irq-gpio = <&gpio1 2 IRQ_TYPE_EDGE_FALLING>;
@@ -94,7 +94,7 @@
 		interrupts = <31 IRQ_TYPE_EDGE_FALLING>;
 		focaltech,irq-gpio = <&gpio4 31 IRQ_TYPE_EDGE_FALLING>;
 #endif
-#ifdef CONFIG_PICOCOREMX8MM_INVERTED_XY
+#ifdef CONFIG_PICOCOREMX8MN_INVERTED_XY
 		focaltech,touchscreen-inverted-x;
 		focaltech,touchscreen-inverted-y;
 #endif
@@ -112,7 +112,7 @@
 		compatible = "toshiba,tc358764";
 		reg = <0xf>;
 
-		clocks = <&clk IMX8MM_CLK_CLKO2>;
+		clocks = <&clk IMX8MN_CLK_CLKO2>;
 		clock-names = "ref";
 
 		reg,address = < /* dsi basic parameters in lp mode */

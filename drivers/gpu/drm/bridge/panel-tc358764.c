@@ -167,6 +167,7 @@ struct tc358764 {
 	struct videomode vm;
 	u32 width_mm;
 	u32 height_mm;
+        u32 mode_flags;
 
 	struct clk *extclk;
 	u32 clk_rate;
@@ -452,10 +453,6 @@ static int tc358764_probe(struct mipi_dsi_device *dsi)
 	dsi->lanes = 4;
 	dsi->format = MIPI_DSI_FMT_RGB888;
 
-	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST
-		| MIPI_DSI_MODE_VIDEO_AUTO_VERT | MIPI_DSI_MODE_LPM;
-
-
 	/*
 	* 'display-timings' is optional, so verify if the node is present
 	* before calling of_get_videomode so we won't get console error
@@ -471,6 +468,18 @@ static int tc358764_probe(struct mipi_dsi_device *dsi)
 
 	of_property_read_u32(np, "panel-width-mm", &ctx->width_mm);
 	of_property_read_u32(np, "panel-height-mm", &ctx->height_mm);
+
+	if(of_property_read_u32(np, "flags", &ctx->mode_flags)) {
+	  /* Default mode flags for mipi dsi phy:
+	   * Use sync event burst mode...
+	   */
+	  dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST
+		| MIPI_DSI_MODE_VIDEO_AUTO_VERT | MIPI_DSI_MODE_LPM;
+
+	}else{
+	  dsi->mode_flags = (MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_LPM) | ctx->mode_flags;
+	}
+	    
 
 	/* Set initial values for the sensor struct. */
 	ctx->extclk = devm_clk_get(dev, "ext-clk");
@@ -491,11 +500,11 @@ static int tc358764_probe(struct mipi_dsi_device *dsi)
 
 	/* Set extclk before clk on */
 	ret = clk_set_rate(ctx->extclk, ctx->clk_rate);
-	if (ret < 0)
+	if (ret < 0) {
 		dev_info(dev, "set rate %d failed. Ret: %u\n",ctx->clk_rate, ret);
-    else
+	}
+	else
 	{
-
 		ret = clk_prepare_enable(ctx->extclk);
 		if (ret < 0) {
 			dev_err(dev, "%s: enable ext clk fail\n", __func__);
