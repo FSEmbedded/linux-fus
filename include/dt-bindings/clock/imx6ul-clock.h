@@ -256,7 +256,8 @@
 #define IMX6UL_CLK_CKO2_PODF		241
 #define IMX6UL_CLK_CKO1			242
 #define IMX6UL_CLK_CKO2			243
+#define IMX6UL_CLK_TSC			244
 
-#define IMX6UL_CLK_END			244
+#define IMX6UL_CLK_END			245
 
 #endif /* __DT_BINDINGS_CLOCK_IMX6UL_H */
