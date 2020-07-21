@@ -4,6 +4,21 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
 
+linux-4.9.88-picocoma7-B2019.11 (21.07.2020)
+--------------------------------------------
+Supported boards: PicoCOMA7
+Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6SX,
+                  CONT1, CUBEA5, armStoneA5, NetDCUA5, PicoCOMA5, AGATEWAY,
+                  HGATEWAY, efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2,
+                  CubeA7UL, Cube2.0
+
+- Add full device-tree support for PicoCOMA7
+- Add imx6ul-touchscreen controller support
+- Add generic touchscreen functions to mx6ul-tsc driver
+
+
+
 linux-4.9.88-fsimx6ul-B2019.11 (15.11.2019)
 -------------------------------------------
 Supported boards: efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2,
