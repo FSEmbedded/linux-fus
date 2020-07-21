@@ -13,6 +13,7 @@
 #include <linux/module.h>
 #include <linux/gpio/consumer.h>
 #include <linux/input.h>
+#include <linux/input/touchscreen.h>
 #include <linux/slab.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
@@ -88,6 +89,8 @@ struct imx6ul_tsc {
 	int pre_charge_time;
 
 	struct completion completion;
+
+	struct touchscreen_properties prop;
 };
 
 /*
@@ -274,8 +277,8 @@ static irqreturn_t tsc_irq_fn(int irq, void *dev_id)
 		if (!tsc_wait_detect_mode(tsc) ||
 		    gpiod_get_value_cansleep(tsc->xnur_gpio)) {
 			input_report_key(tsc->input, BTN_TOUCH, 1);
-			input_report_abs(tsc->input, ABS_X, x);
-			input_report_abs(tsc->input, ABS_Y, y);
+			touchscreen_report_pos(tsc->input, &tsc->prop,
+						   x, y, false);
 		} else {
 			input_report_key(tsc->input, BTN_TOUCH, 0);
 		}
@@ -439,6 +442,8 @@ static int imx6ul_tsc_probe(struct platform_device *pdev)
 			adc_irq, err);
 		return err;
 	}
+
+	touchscreen_parse_properties(tsc->input, false, &tsc->prop);
 
 	err = of_property_read_u32(np, "measure-delay-time",
 				   &tsc->measure_delay_time);
