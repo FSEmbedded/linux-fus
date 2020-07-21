@@ -527,6 +527,7 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	efusa7ul.dtb \
 	picocom1.2.dtb \
 	picocoma7.dtb \
+	picocoma7ull.dtb \
 	picocoremx6ul.dtb \
 	cubea7ul.dtb \
 	cube2.0.dtb \
