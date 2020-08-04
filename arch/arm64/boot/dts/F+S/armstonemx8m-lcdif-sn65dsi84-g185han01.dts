@@ -1,16 +1,10 @@
 /*
- * Copyright 2017 NXP
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- */
+* Copyright (C) 2020 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
 
 #define CONFIG_ARMSTONEMX8M_LVDS_5_0_V
 
@@ -70,7 +64,7 @@
 	panel@0 {
 		reg = <0>;
 		compatible = "auo,g185han01-dsi"; /* one of panel-simple's 
-		     		          match strings */
+		match strings */
 
 		power-supply = <&reg_vlcd>;
 
@@ -122,42 +116,45 @@
 		status = "okay";
 		compatible = "ti,sn65dsi84";
 		#gpio-cells = <2>;
-		sn65dsi84,addresses = <0x09 0x0A 0x0B 0x0D
-		                       0x10 0x11 0x12 0x13
-                               0x18 0x19 0x1A 0x1B
-                               0x20 0x21 0x22 0x23
-                               0x24 0x25 0x26 0x27
-                               0x28 0x29 0x2A 0x2B
-                               0x2C 0x2D 0x2E 0x2F
-                               0x30 0x31 0x32 0x33
-                               0x34 0x35 0x36 0x37
-                               0x38 0x39 0x3A 0x3B
-                               0x3C 0x3D 0x3E 
-                               0x0D>;
 
-		sn65dsi84,values = </* reset and clock registers */
-		                    0x00 0x05 0x28 0x00
-                            /* DSI registers */
-		                    0x26 0x00 0x59 0x00
-		                    /* LVDS registers */
-                            0x6c 0x00 0x03 0x00
-                            /* video registers */
-                            /* cha-al-len-l, cha-al-len-h */
-                            0x80 0x07 0x00 0x00
-                            /* cha-v-ds-l, cha-v-ds-h */
-                            0x00 0x00 0x00 0x00
-                            /* cha-sdl, cha-sdh*/
-                            0x21 0x00 0x00 0x00
-                            /* cha-hs-pwl, cha-hs-pwh */
-                            0x18 0x00 0x00 0x00
-                            /* cha-vs-pwl, cha-vs-pwh */
-                            0x05 0x00 0x00 0x00
-                            /*cha-hbp, cha-vbp */
-                            0x2c 0x00 0x00 0x00
-                            /* cha-hfp, cha-vfp*/
-                            0x00 0x00 0x00 0x00
-                            0x00 0x00 0x00 
-                            0x01>;
+		sn65dsi84,addresses = <
+		0x09 0x0A 0x0B 0x0D
+		0x10 0x11 0x12 0x13
+                0x18 0x19 0x1A 0x1B
+                0x20 0x21 0x22 0x23
+                0x24 0x25 0x26 0x27
+                0x28 0x29 0x2A 0x2B
+                0x2C 0x2D 0x2E 0x2F
+                0x30 0x31 0x32 0x33
+                0x34 0x35 0x36 0x37
+                0x38 0x39 0x3A 0x3B
+                0x3C 0x3D 0x3E
+                0x0D>;
+
+		sn65dsi84,values = <
+		/* reset and clock registers */
+		0x00 0x05 0x28 0x00
+                /* DSI registers */
+		0x26 0x00 0x59 0x00
+		/* LVDS registers */
+                0x6c 0x00 0x03 0x00
+                /* video registers */
+                /* cha-al-len-l, cha-al-len-h */
+                0x80 0x07 0x00 0x00
+                /* cha-v-ds-l, cha-v-ds-h */
+                0x00 0x00 0x00 0x00
+                /* cha-sdl, cha-sdh*/
+                0x21 0x00 0x00 0x00
+                /* cha-hs-pwl, cha-hs-pwh */
+                0x18 0x00 0x00 0x00
+                /* cha-vs-pwl, cha-vs-pwh */
+                0x05 0x00 0x00 0x00
+                /*cha-hbp, cha-vbp */
+                0x2c 0x00 0x00 0x00
+                /* cha-hfp, cha-vfp*/
+                0x00 0x00 0x00 0x00
+                0x00 0x00 0x00
+                0x01>;
 	};
 };
 

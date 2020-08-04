@@ -36,7 +36,7 @@
 
 		power-supply = <&reg_vlcd>;
 
-		dsi,flags = <0xB>; /* MIPI_DSI_MODE_VIDEO MIPI_DSI_MODE_VIDEO_BURST MIPI_DSI_MODE_VIDEO_SYNC_PULSE */
+		dsi,flags = <0xB>; /* MIPI_DSI_MODE_VIDEO MIPI_DSI_MODE_VIDEO_BURST MIPI_DSI_MODE_VIDEO_AUTO_VERT */
 		dsi,format = <0x0>; /* MIPI_DSI_FMT_RGB888 */
 		dsi,lanes = <4>;
 
