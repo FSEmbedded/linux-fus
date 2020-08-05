@@ -78,12 +78,9 @@ wvga {					\
 #define CONFIG_PICOCOREMX6UL_CMA_SIZE 0x4000000
 
 /* NAND */
-#define CONFIG_PICOCOREMX6UL_NAND
+/* eMMC */
+/* Will be set by Uboot */
 
-/* EMMC
- * If NAND is equipped, EMMC is not possible.
- */
-//#define CONFIG_PICOCOREMX6UL_EMMC
 
 /* Network */
 #define CONFIG_PICOCOREMX6UL_ETH0
@@ -128,9 +125,6 @@ wvga {					\
 /* Only NAND or EMMC can be placed, both at the same time is not possible
  * we give NAND higher preference
  */
-#ifdef CONFIG_PICOCOREMX6UL_NAND
-#undef CONFIG_PICOCOREMX6UL_EMMC
-#endif
 
 
 #include <dt-bindings/input/input.h>
@@ -151,6 +145,7 @@ wvga {					\
 #endif
 
 	aliases {
+		nand=&gpmi;
 	};
 	chosen {
 	};
@@ -355,8 +350,9 @@ wvga {					\
 	iram = <&ocram>;
 };
 
-//TODO check compatible
-#ifdef CONFIG_PICOCOREMX6UL_NAND
+/* Default boot device. Will be disabled by Uboot
+ * if eMMC is used as boot device.
+ */
 &gpmi {
 	/* Switch to F&S implementation of GPMI NAND driver */
 	compatible = "fus,imx6ul-gpmi-nand", "fus,imx6q-gpmi-nand";
@@ -366,7 +362,6 @@ wvga {					\
 	fus,ecc_strength = <8>;
 	status = "okay";
 };
-#endif
 
 #ifdef CONFIG_PICOCOREMX6UL_SPI_A
 &ecspi2 {
@@ -744,7 +739,9 @@ wvga {					\
 };
 #endif
 
-#ifdef CONFIG_PICOCOREMX6UL_EMMC
+/* Keep disabled. Will be activated by Uboot
+ * if eMMC is used as boot device.
+ */
 &usdhc2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc2>;
@@ -754,9 +751,8 @@ wvga {					\
 	voltage-ranges = <3300 3300>;
 	no-1-8-v;
 	keep-power-in-suspend;
-	status = "okay";
+	status = "disabled";
 };
-#endif
 
 #ifdef CONFIG_PICOCOREMX6UL_ULL
 &iomuxc_snvs {
@@ -829,14 +825,7 @@ wvga {					\
 
 				MX6UL_PAD_JTAG_TMS__SAI2_MCLK		0x17088
 //###				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
-#ifdef CONFIG_PICOCOREMX6UL_EMMC
-				/* GPIOs */
-				MX6UL_PAD_NAND_WP_B__GPIO4_IO11		0x030b0
-				MX6UL_PAD_NAND_READY_B__GPIO4_IO12	0x030b0
-				MX6UL_PAD_NAND_CE0_B__GPIO4_IO13	0x030b0
-				MX6UL_PAD_NAND_CLE__GPIO4_IO15		0x030b0
-				MX6UL_PAD_NAND_DQS__GPIO4_IO16		0x030b0
-#endif
+
 				/* GPIOs */
 				MX6UL_PAD_CSI_DATA04__GPIO4_IO25	0x030b0
 				MX6UL_PAD_CSI_DATA05__GPIO4_IO26	0x030b0
@@ -1115,7 +1104,6 @@ wvga {					\
 		};
 #endif /* CONFIG_PICOCOREMX6UL_SD_A */
 
-#ifdef CONFIG_PICOCOREMX6UL_EMMC
 		pinctrl_usdhc2: usdhc2grp {
 			fsl,pins = <
 				MX6UL_PAD_NAND_WE_B__USDHC2_CMD		0x17091
@@ -1132,9 +1120,15 @@ wvga {					\
 
 				/* Reset (for eMMC) */
 				MX6UL_PAD_NAND_ALE__USDHC2_RESET_B	0x17091
+
+				/* Additional GPIOs available if eMMC is used */
+				MX6UL_PAD_NAND_WP_B__GPIO4_IO11		0x030b0
+				MX6UL_PAD_NAND_READY_B__GPIO4_IO12	0x030b0
+				MX6UL_PAD_NAND_CE0_B__GPIO4_IO13	0x030b0
+				MX6UL_PAD_NAND_CLE__GPIO4_IO15		0x030b0
+				MX6UL_PAD_NAND_DQS__GPIO4_IO16		0x030b0
 			>;
 		};
-#endif /* CONFIG_PICOCOREMX6UL_EMMC */
 
 	};
 };
