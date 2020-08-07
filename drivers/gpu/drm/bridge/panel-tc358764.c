@@ -142,7 +142,7 @@ enum {
 #define LV_CFG_CLKPOL2		BIT(3)
 
 static const char * const tc358764_supplies[] = {
-	"vddc", "vddio", "vddlvds"
+	"vddc", "vddio", "vddlvds", "vlcd"
 };
 
 static const u32 tc358764_bus_formats[] = {
@@ -249,7 +249,6 @@ static void tc358764_reset(struct tc358764 *ctx)
 static int tc358764_configure_regulators(struct tc358764 *ctx)
 {
 	int i, ret;
-
 	for (i = 0; i < ARRAY_SIZE(ctx->supplies); ++i)
 		ctx->supplies[i].supply = tc358764_supplies[i];
 

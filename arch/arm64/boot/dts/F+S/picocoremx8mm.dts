@@ -12,6 +12,9 @@
 //#define CONFIG_PICOCOREMX8MM_BOARD_REVISION	100
 #define CONFIG_PICOCOREMX8MM_BOARD_REVISION	110
 
+/* Activate this if you want to use the Cortex-M4 core */
+//#define SUPPORT_M4
+
 /* MIPI DSI */
 #define CONFIG_PICOCOREMX8MM_MIPI_DSI
 
@@ -27,9 +30,8 @@
 /* WLAN/BLUETOOTH; either WLAN-only or combined WLAN/Bluetooth chip */
 #define CONFIG_PICOCOREMX8MM_WLAN
 
-/* USB - USB OTG1 has over-current detection on OC pin */
+/* USB */
 #define CONFIG_PICOCOREMX8MM_USB_OTG1
-#define CONFIG_PICOCOREMX8MM_USB_OTG1_OC
 #define CONFIG_PICOCOREMX8MM_USB_HOST
 
 /* PCIe */
@@ -92,6 +94,35 @@
 #define CONFIG_PICOCOREMX8MM_SD_B_CD
 #define CONFIG_PICOCOREMX8MM_SD_B_WP
 
+/* Check for invalid CONFIG combinations */
+
+/*
+ * Exclude devices from Linux that are used by the Cortex-M4 FreeRTOS examples
+ *
+ * - UART_D: Debug Console for Cortex-M4
+ * - I2C_A:  I2C Bus used in I2C examples
+ * - I2C_D:  I2C Bus used by the Audio Codec in SAI examples
+ * - SPI_B:  SPI_B is used for ECSPI examples
+ * - SDMA1:  Gets removed at another Point, it is used by SPI_B and UART driver examples
+ * - SPI_A:  SPI_A using SDMA1 but SDMA1 is excluded so also exclude SPI_A
+ *
+ * In addition the following pins are already predefined in FreeRTOS to be used
+ * as arbitrary GPIOs. Please remove the comment of the appropriate line of
+ * each device from which you use any signal in your own application.
+ *
+ * - AUDIO_3: GPT capture driver example uses one of its Pins
+ */
+#ifdef SUPPORT_M4
+#undef CONFIG_PICOCOREMX8MM_UART_D
+#undef CONFIG_PICOCOREMX8MM_I2C_A
+#undef CONFIG_PICOCOREMX8MM_SPI_A
+#undef CONFIG_PICOCOREMX8MM_SPI_B
+#undef CONFIG_PICOCOREMX8MM_AUDIO_3
+/* Only undef if using audio/sai examples */
+//#undef CONFIG_PICOCOREMX8MM_I2C_D
+//#undef CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
+#endif
+
 /* If WLAN is equipped, SD_B is not available */
 #ifdef CONFIG_PICOCOREMX8MM_WLAN
 #undef CONFIG_PICOCOREMX8MM_SD_B
@@ -124,13 +155,12 @@
 
 	backlight_ldb {
 		compatible = "pwm-backlight";
-		#pwm-cells = <3>;
-		pwms = <&pwm2 0 3000000 PWM_POLARITY_INVERTED>;
 		power-supply = <&reg_ldb_bl>;
-		brightness-levels = <0 1 5 10 18 28 41 56
-				     73 92 113 137 163 192 222 255>;
-		default-brightness-level = <4>;
-		fb-names = "mxs-lcdif0";
+		pwms = <&pwm2 0 250000 PWM_POLARITY_INVERTED>;
+		brightness-levels = <135 143 151 159 167 175 183 191
+				     199 207 215 223 231 239 247 255>;
+		default-brightness-level = <14>;
+		fb-names = "ldb0";
 	};
 
 	regulators {
@@ -212,15 +242,19 @@
 			enable-active-high;
 		};
 
+		/* USB_OTG1_PWR done by USB controller, no regulator needed */
+#if 0 //###
 		reg_usb_otg1_vbus: usb_otg1_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg1_vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
-			gpio = <&gpio1 12 0>;
-			enable-active-high;
+			gpio = <&gpio1 12 GPIO_ACTIVE_LOW>;
 		};
+#endif //###
 
+		/* USB_OTG2_PWR done by USB controller, no regulator needed */
+#if 0 //###
 		reg_usb_otg2_vbus: usb_otg2_vbus {
 			compatible = "regulator-fixed";
 			regulator-name = "usb_otg1_vbus";
@@ -229,6 +263,7 @@
 			gpio = <&gpio1 14 0>;
 			enable-active-high;
 		};
+#endif //###
 
 #ifdef CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
 		/* SGTL5000 analog voltage */
@@ -259,6 +294,31 @@
 		};
 #endif /* CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO */
 	};
+#ifdef SUPPORT_M4
+	// ###TODO - not implemented yet
+#if 0
+	rpmsg_i2s: rpmsg-i2s {
+		compatible = "fsl,imx8mq-rpmsg-i2s";
+		/* the audio device index in m4 domain */
+		fsl,audioindex = <0> ;
+		clocks = <&clk IMX8MM_CLK_DUMMY>;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+		fsl,dma-buffer-size = <0x6000000>;
+		fsl,enable-lpa;
+		status = "okay";
+	};
+
+	sound-rpmsg {
+		compatible = "fsl,imx-audio-rpmsg";
+		model = "sgtl5000-audio";
+		cpu-dai = <&rpmsg_i2s>;
+		rpmsg-out;
+		status = "okay";
+	};
+#endif
+#endif
 
 #ifdef CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
 	sound-sgtl5000 {
@@ -313,7 +373,7 @@
 
 #ifdef CONFIG_PICOCOREMX8MM_I2C_D
 &i2c4 {
-	clock-frequency = <400000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c4>;
 	status = "okay";
@@ -474,6 +534,7 @@
 		reg = <0x51>;
 	};
 
+#ifdef CONFIG_PICOCOREMX8MM_SERIAL_CAMERA
 	ov5640_mipi: ov5640_mipi@3c {
 		compatible = "ovti,ov5640_mipi";
 		reg = <0x3c>;
@@ -493,7 +554,7 @@
 			};
 		};
 	};
-
+#endif
 	/* ### TODO: implement root of trust A71CH-SDS */
 };
 #endif
@@ -521,9 +582,11 @@
 &pwm2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm2>;
+	#pwm-cells = <3>;
 	status = "okay";
 };
 
+#ifdef SUPPORT_M4
 &rpmsg{
 	/*
 	 * 64K for one rpmsg instance:
@@ -533,6 +596,7 @@
 	reg = <0x0 0xb8000000 0x0 0x10000>;
 	status = "okay";
 };
+#endif
 
 #ifdef CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
 &sai1 {
@@ -620,6 +684,14 @@
 	fsl,spi-num-chipselects = <1>;
 	cs-gpios = <&gpio5 9 GPIO_ACTIVE_LOW>;
 	status = "okay";
+
+	spidev@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <1>;
+	};
 };
 #endif
 
@@ -631,7 +703,7 @@
 	cs-gpios = <&gpio5 13 0>;
 	status = "okay";
 
-        spidev: spidev@1 {
+	spidev@0 {
 	  compatible = "linux,spidev";
 	  spi-max-frequency = <20000000>;
 	  reg = <0>;
@@ -700,12 +772,10 @@
 	dr_mode = "otg";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg1>;
-	vbus-supply = <&reg_usb_otg1_vbus>;
+//###	vbus-supply = <&reg_usb_otg1_vbus>;
 	picophy,pre-emp-curr-control = <3>;
 	picophy,dc-vol-level-adjust = <7>;
-#ifndef CONFIG_PICOCOREMX8MM_USB_OTG1_OC
 	disable-over-current;
-#endif
 	status = "okay";
 };
 #endif
@@ -715,7 +785,7 @@
 	dr_mode = "host";
 	pinctrl-names ="default";
 	pinctrl-0 = <&pinctrl_usbotg2>;
-	vbus-supply = <&reg_usb_otg2_vbus>;
+//###	vbus-supply = <&reg_usb_otg2_vbus>;
 	pwr-active-high;
 	disable-over-current;
 	picophy,pre-emp-curr-control = <3>;
@@ -839,9 +909,11 @@
 	status = "okay";
 };
 
+#ifndef SUPPORT_M4
 &A53_0 {
 	arm-supply = <&buck2_reg>;
 };
+#endif
 
 &gpu {
 	status = "okay";
@@ -868,6 +940,12 @@
 };
 #endif
 
+#ifdef SUPPORT_M4
+&sdma1 {
+	status = "disabled";
+};
+#endif
+
 &iomuxc {
 	pinctrl-names = "default";
 
@@ -877,6 +955,7 @@
 			fsl,pins = <
 				/* GPIO */
 				MX8MM_IOMUXC_GPIO1_IO00_GPIO1_IO0		0x00104
+				/* Touch Reset */
 				MX8MM_IOMUXC_GPIO1_IO10_GPIO1_IO10		0x00104
 				MX8MM_IOMUXC_GPIO1_IO11_GPIO1_IO11		0x00104
 				/* WLAN LED / BT LED */
@@ -890,11 +969,10 @@
 #endif
 				/* GPIO_J1_7, MIPI_RESET  */
 				MX8MM_IOMUXC_GPIO1_IO01_GPIO1_IO1		0x00144
-				/* VLCD_ON for reg_vlcd */
-				MX8MM_IOMUXC_SAI3_RXFS_GPIO4_IO28		0x00192
+				/* VLCD_ON for reg_vlcd - active high */
+				MX8MM_IOMUXC_SAI3_RXFS_GPIO4_IO28		0x00104
 				/* BL_ON */
 				MX8MM_IOMUXC_SPDIF_TX_GPIO5_IO3			0x00104
-
 				/* RESET MIPI */
 				MX8MM_IOMUXC_UART4_TXD_GPIO5_IO29		0x16
 				/* SD_A_VSEL ?*/
@@ -1161,15 +1239,15 @@
 
 		pinctrl_usbotg1: usbotg1grp {
 			fsl,pins = <
-				MX8MM_IOMUXC_GPIO1_IO12_GPIO1_IO12		0x00144
-//				MX8MM_IOMUXC_GPIO1_IO12_USB1_OTG_PWR		0x00144
+//				MX8MM_IOMUXC_GPIO1_IO12_GPIO1_IO12		0x00144
+				MX8MM_IOMUXC_GPIO1_IO12_USB1_OTG_PWR		0x00144
 			>;
 		};
 
 		pinctrl_usbotg2: usbotg2grp {
 			fsl,pins = <
-				MX8MM_IOMUXC_GPIO1_IO14_GPIO1_IO14		0x00144
-//				MX8MM_IOMUXC_GPIO1_IO14_USB2_OTG_PWR		0x00144
+//				MX8MM_IOMUXC_GPIO1_IO14_GPIO1_IO14		0x00104
+				MX8MM_IOMUXC_GPIO1_IO14_USB2_OTG_PWR		0x00104
 			>;
 		};
 

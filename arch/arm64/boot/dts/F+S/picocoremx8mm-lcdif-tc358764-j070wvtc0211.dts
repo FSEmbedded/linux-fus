@@ -41,10 +41,10 @@
 		clock-names = "ext-clk";
 		ext-clk-rate = <33500000>;
 
-
 		vddc-supply = <&reg_vref_1v2>;
 		vddio-supply = <&reg_vref_1v8>;
 		vddlvds-supply = <&reg_vref_3v3>;
+		vlcd-supply = <&reg_vlcd>;
 
 		dsi,format = <0x0>; /* MIPI_DSI_FMT_RGB888 */
 		dsi,lanes = <4>;
@@ -98,7 +98,7 @@
 		focaltech,touchscreen-inverted-x;
 		focaltech,touchscreen-inverted-y;
 #endif
-		focaltech,reset-gpio = <&gpio1 1 GPIO_ACTIVE_LOW>;
+		focaltech,reset-gpio = <&gpio1 10 GPIO_ACTIVE_LOW>;
 		focaltech,num-max-touches = <10>;
 		focaltech,display-coords = <0 0 800 480>;
 	};
