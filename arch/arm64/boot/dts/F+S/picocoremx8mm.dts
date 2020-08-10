@@ -343,7 +343,7 @@
 
 #ifdef CONFIG_PICOCOREMX8MM_I2C_A
 &i2c1 {
-	clock-frequency = <400000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
@@ -352,7 +352,7 @@
 
 #ifdef CONFIG_PICOCOREMX8MM_I2C_B
 &i2c2 {
-	clock-frequency = <400000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
@@ -458,7 +458,7 @@
 			buck6_reg: regulator@5 {
 				reg = <5>;
 				regulator-compatible = "buck6";
-				regulator-min-microvolt = <3000000>;
+				regulator-min-microvolt = <2600000>;
 				regulator-max-microvolt = <3300000>;
 				regulator-boot-on;
 				regulator-always-on;
@@ -485,8 +485,8 @@
 			ldo1_reg: regulator@8 {
 				reg = <8>;
 				regulator-compatible = "ldo1";
-				regulator-min-microvolt = <3000000>;
-				regulator-max-microvolt = <3300000>;
+				regulator-min-microvolt = <1600000>;
+				regulator-max-microvolt = <1900000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
@@ -494,7 +494,7 @@
 			ldo2_reg: regulator@9 {
 				reg = <9>;
 				regulator-compatible = "ldo2";
-				regulator-min-microvolt = <900000>;
+				regulator-min-microvolt = <800000>;
 				regulator-max-microvolt = <900000>;
 				regulator-boot-on;
 				regulator-always-on;
@@ -514,6 +514,15 @@
 				regulator-compatible = "ldo4";
 				regulator-min-microvolt = <900000>;
 				regulator-max-microvolt = <1800000>;
+				regulator-boot-on;
+				regulator-always-on;
+			};
+
+			ldo5_reg: regulator@12 {
+				reg = <12>;
+				regulator-compatible = "ldo5";
+				regulator-min-microvolt = <800000>;
+				regulator-max-microvolt = <3300000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
@@ -684,14 +693,6 @@
 	fsl,spi-num-chipselects = <1>;
 	cs-gpios = <&gpio5 9 GPIO_ACTIVE_LOW>;
 	status = "okay";
-
-	spidev@0 {
-		#address-cells = <1>;
-		#size-cells = <1>;
-		compatible = "linux,spidev";
-		spi-max-frequency = <20000000>;
-		reg = <1>;
-	};
 };
 #endif
 
