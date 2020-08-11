@@ -290,6 +290,22 @@ struct vpu_dev {
 	int precheck_next[64];
 	int precheck_num;
 	char precheck_content[1024];
+
+	struct kfifo mu_msg_fifo;
+	void *mu_msg_buffer;
+	unsigned int mu_msg_buffer_size;
+	u_int32 vpu_irq;
+
+	/* reserve for kernel version 5.4 or later */
+	struct vpu_sc_chan sc_chan_tx0;
+	struct vpu_sc_chan sc_chan_tx1;
+	struct vpu_sc_chan sc_chan_rx;
+	struct device *pd_vpu;
+	struct device *pd_dec;
+	struct device *pd_mu;
+	struct device_link *pd_vpu_link;
+	struct device_link *pd_dec_link;
+	struct device_link *pd_mu_link;
 };
 
 struct vpu_statistic {
@@ -362,6 +378,8 @@ struct vpu_ctx {
 	int str_index;
 	struct queue_data q_data[2];
 	struct kfifo msg_fifo;
+	void *msg_buffer;
+	unsigned int msg_buffer_size;
 	struct mutex instance_mutex;
 	struct work_struct instance_work;
 	struct workqueue_struct *instance_wq;

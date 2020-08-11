@@ -1346,6 +1346,36 @@ static int imx8_sata_probe(struct device *dev, struct imx_ahci_priv *imxpriv)
 		return PTR_ERR(imxpriv->per_clk5);
 	}
 
+	imxpriv->per_clk0 = devm_clk_get(dev, "per_clk0");
+	if (IS_ERR(imxpriv->per_clk0)) {
+		dev_err(dev, "can't get per_clk0 clock.\n");
+		return PTR_ERR(imxpriv->per_clk0);
+	}
+	imxpriv->per_clk1 = devm_clk_get(dev, "per_clk1");
+	if (IS_ERR(imxpriv->per_clk1)) {
+		dev_err(dev, "can't get per_clk1 clock.\n");
+		return PTR_ERR(imxpriv->per_clk1);
+	}
+	imxpriv->per_clk2 = devm_clk_get(dev, "per_clk2");
+	if (IS_ERR(imxpriv->per_clk2)) {
+		dev_err(dev, "can't get per_clk2 clock.\n");
+		return PTR_ERR(imxpriv->per_clk2);
+	}
+	imxpriv->per_clk3 = devm_clk_get(dev, "per_clk3");
+	if (IS_ERR(imxpriv->per_clk3)) {
+		dev_err(dev, "can't get per_clk3 clock.\n");
+		return PTR_ERR(imxpriv->per_clk3);
+	}
+	imxpriv->per_clk4 = devm_clk_get(dev, "per_clk4");
+	if (IS_ERR(imxpriv->per_clk4)) {
+		dev_err(dev, "can't get per_clk4 clock.\n");
+		return PTR_ERR(imxpriv->per_clk4);
+	}
+	imxpriv->per_clk5 = devm_clk_get(dev, "per_clk5");
+	if (IS_ERR(imxpriv->per_clk5)) {
+		dev_err(dev, "can't get per_clk5 clock.\n");
+		return PTR_ERR(imxpriv->per_clk5);
+	}
 	/* Fetch GPIO, then enable the external OSC */
 	imxpriv->clkreq_gpio = of_get_named_gpio(np, "clkreq-gpio", 0);
 	if (gpio_is_valid(imxpriv->clkreq_gpio)) {
