@@ -3,6 +3,18 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
+linux-4.9.88-picocoremx6ul-B2019.11 (14.08.2020)
+--------------------------------------------
+Supported boards: PicoCoreMX6UL
+Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6SX
+                  CONT1, CUBEA5, armStoneA5, NetDCUA5, PicoCOMA5, AGATEWAY,
+                  HGATEWAY, efusA7UL, PicoCOM1.2, GAR1, GAR2,
+                  CubeA7UL, Cube2.0, PicoCOMA7
+
+- Add support for eMMC as bootdevice for PicoCoreMX6UL
+
+
 
 linux-4.9.88-picocoma7-B2019.11 (21.07.2020)
 --------------------------------------------
