@@ -51,6 +51,7 @@
 #define PCF85263_REG_PINIO	0x27
 #define PCF85263_REG_PINIO_INTAPM_MASK	(BIT(0) | BIT(1))
 #define PCF85263_REG_PINIO_INTAPM_SHIFT	0
+#define PCF85263_INTAPM_CLK_OUT	(0x0 << PCF85263_REG_PINIO_INTAPM_SHIFT)
 #define PCF85263_INTAPM_INTA	(0x2 << PCF85263_REG_PINIO_INTAPM_SHIFT)
 #define PCF85263_INTAPM_HIGHZ	(0x3 << PCF85263_REG_PINIO_INTAPM_SHIFT)
 #define PCF85263_REG_PINIO_TSPM_MASK	(BIT(2) | BIT(3))
@@ -61,6 +62,13 @@
 
 #define PCF85263_REG_FUNCTION	0x28
 #define PCF85263_REG_FUNCTION_COF_MASK	0x7
+#define PCF85263_REG_FUNCTION_COF_32kHz	0x0	/* clock output 32,768 kHz */
+#define PCF85263_REG_FUNCTION_COF_16kHz	0x1	/* clock output 16,384 kHz */
+#define PCF85263_REG_FUNCTION_COF_8kHz	0x2	/* clock output 8,192 kHz */
+#define PCF85263_REG_FUNCTION_COF_4kHz	0x3	/* clock output 4,096 kHz */
+#define PCF85263_REG_FUNCTION_COF_2kHz	0x4	/* clock output 2,048 kHz */
+#define PCF85263_REG_FUNCTION_COF_1kHz	0x5	/* clock output 1,024 kHz */
+#define PCF85263_REG_FUNCTION_COF_1Hz	0x6	/* clock output 1 Hz */
 #define PCF85263_REG_FUNCTION_COF_OFF	0x7	/* No clock output */
 
 #define PCF85263_REG_INTA_CTL	0x29
@@ -105,6 +113,7 @@ struct pcf85263 {
 	struct regmap *regmap;
 	enum pcf85263_irqpin irq_pin;
 	int irq;
+	u32 clk_out;		/* output clock */
 	u8 century;		/* 1 = 1900 2 = 2000, ... */
 	bool century_half;	/* false = 0-49, true=50-99 */
 	bool mode_12h;
@@ -405,7 +414,7 @@ static int pcf85263_set_alarm(struct device *dev, struct rtc_wkalrm *alarm)
 
 	/* Clear any pending alarm (write 0=>clr, 1=>no change) */
 	ret = regmap_write(pcf85263->regmap, PCF85263_REG_FLAGS,
-			   ~PCF85263_REG_FLAGS_A1F);
+			   (unsigned int)~PCF85263_REG_FLAGS_A1F);
 	if (ret)
 		return ret;
 
@@ -447,7 +456,7 @@ static irqreturn_t pcf85263_irq(int irq, void *data)
 
 	if (regval & PCF85263_REG_FLAGS_A1F) {
 		regmap_write(pcf85263->regmap, PCF85263_REG_FLAGS,
-			     ~PCF85263_REG_FLAGS_A1F);
+			     (unsigned int)~PCF85263_REG_FLAGS_A1F);
 
 		rtc_update_irq(pcf85263->rtc, 1, RTC_IRQF | RTC_AF);
 
@@ -549,9 +558,35 @@ static int pcf85263_init_hw(struct pcf85263 *pcf85263)
 	if (ret)
 		return ret;
 
-	/* Set function register (RTC mode, 1s tick, clock output static) */
-	ret = regmap_write(pcf85263->regmap, PCF85263_REG_FUNCTION,
-			   PCF85263_REG_FUNCTION_COF_OFF);
+	/* Set clock output frequency if available */
+	switch (pcf85263->clk_out) {
+		case PCF85263_CLK_OUT_32p768kHz:
+			regval = PCF85263_REG_FUNCTION_COF_32kHz;
+			break;
+		case PCF85263_CLK_OUT_16p384kHz:
+			regval = PCF85263_REG_FUNCTION_COF_16kHz;
+			break;
+		case PCF85263_CLK_OUT_8p192kHz:
+			regval = PCF85263_REG_FUNCTION_COF_8kHz;
+			break;
+		case PCF85263_CLK_OUT_4p096kHz:
+			regval = PCF85263_REG_FUNCTION_COF_4kHz;
+			break;
+		case PCF85263_CLK_OUT_2p048kHz:
+			regval = PCF85263_REG_FUNCTION_COF_2kHz;
+			break;
+		case PCF85263_CLK_OUT_1p024kHz:
+			regval = PCF85263_REG_FUNCTION_COF_1kHz;
+			break;
+		case PCF85263_CLK_OUT_1Hz:
+			regval = PCF85263_REG_FUNCTION_COF_1Hz;
+			break;
+		default:
+			regval = PCF85263_REG_FUNCTION_COF_OFF;
+			break;
+	}
+
+	ret = regmap_write(pcf85263->regmap, PCF85263_REG_FUNCTION, regval);
 	if (ret)
 		return ret;
 
@@ -575,7 +610,10 @@ static int pcf85263_init_hw(struct pcf85263 *pcf85263)
 		regval |= (PCF85263_INTAPM_HIGHZ | PCF85263_TSPM_INTB);
 		break;
 	case PCF85263_IRQPIN_NONE:
-		regval |= (PCF85263_INTAPM_HIGHZ | PCF85263_TSPM_DISABLED);
+		if (pcf85263->clk_out < 0)
+			regval |= (PCF85263_INTAPM_HIGHZ | PCF85263_TSPM_DISABLED);
+		else
+			regval |= (PCF85263_INTAPM_CLK_OUT | PCF85263_TSPM_DISABLED);
 		break;
 	}
 	ret = regmap_write(pcf85263->regmap, PCF85263_REG_PINIO, regval);
@@ -648,6 +686,15 @@ static int pcf85263_probe(struct i2c_client *client,
 			pcf85263->irq_pin = PCF85263_IRQPIN_INTA;
 	} else {
 		pcf85263->irq_pin = PCF85263_IRQPIN_NONE;
+	}
+
+	/* If interrupt is not available, pin can be used to generate a
+	 * output clock
+	 */
+	if (pcf85263->irq_pin == PCF85263_IRQPIN_NONE)
+	{
+		if(of_property_read_u32(dev->of_node, "clock-out", &pcf85263->clk_out))
+			pcf85263->clk_out = -EINVAL;
 	}
 
 	ret = pcf85263_init_hw(pcf85263);

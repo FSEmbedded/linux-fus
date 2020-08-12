@@ -41,16 +41,16 @@
 		clock-names = "ext-clk";
 		ext-clk-rate = <33500000>;
 
-
 		vddc-supply = <&reg_vref_1v2>;
 		vddio-supply = <&reg_vref_1v8>;
 		vddlvds-supply = <&reg_vref_3v3>;
+		vlcd-supply = <&reg_vlcd>;
 
 		dsi,format = <0x0>; /* MIPI_DSI_FMT_RGB888 */
 		dsi,lanes = <4>;
 		dsi,flags = <0xB>; /* MIPI_DSI_MODE_VIDEO MIPI_DSI_MODE_VIDEO_BURST MIPI_DSI_MODE_VIDEO_AUTO_VERT */
 		refresh-rate = <60>;
-        rotate = <0>;
+                rotate = <0>;
 
 		panel-width-mm = <154>;
 		panel-height-mm = <85>;
@@ -98,7 +98,7 @@
 		focaltech,touchscreen-inverted-x;
 		focaltech,touchscreen-inverted-y;
 #endif
-		focaltech,reset-gpio = <&gpio1 1 GPIO_ACTIVE_LOW>;
+		focaltech,reset-gpio = <&gpio1 10 GPIO_ACTIVE_LOW>;
 		focaltech,num-max-touches = <10>;
 		focaltech,display-coords = <0 0 800 480>;
 	};
@@ -124,12 +124,12 @@
 				0x0480 0x0484 0x0488 0x048C 0x0490
 				0x0494 0x0498
 				 /* LVDS enable */
-	            0x049C
+                                 0x049C
 					>;
 		reg,value = <
-				0x10002 0x1 0x2 0x2
-				0x2	0x2 0x1F 0x1F
-				0x1 0x1 0x3F00120 0x2E0001
+				0x10002 0x1 0x0 0x0
+				0x00000	0x0 0x1F 0x1F
+				0x00001 0x1 0x3F00120 0x2E0001
 				0xD20320 0x170002 0x1601E0 0x1
 				0x44802D 0x4802D 0x4 0x3020100
 				0x8050704 0xF0E0A09 0x100D0C0B 0x12111716

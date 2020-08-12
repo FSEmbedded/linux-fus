@@ -46,7 +46,7 @@
 #include <media/v4l2-mem2mem.h>
 #include <media/videobuf2-v4l2.h>
 #include <media/videobuf2-dma-contig.h>
-#include <media/videobuf2-vmalloc.h>
+#include <media/videobuf2-dma-sg.h>
 
 #include "vpu_b0.h"
 #include "insert_startcode.h"
@@ -5756,7 +5756,8 @@ static int create_instance_file(struct vpu_ctx *ctx)
 	create_instance_buffer_file(ctx);
 	create_instance_flow_file(ctx);
 	create_instance_perf_file(ctx);
-
+	atomic64_set(&ctx->statistic.total_dma_size, 0);
+	atomic64_set(&ctx->statistic.total_alloc_size, 0);
 
 	return 0;
 }
@@ -5921,23 +5922,12 @@ static int v4l2_open(struct file *filp)
 	mutex_init(&ctx->instance_mutex);
 	mutex_init(&ctx->cmd_lock);
 	mutex_init(&ctx->perf_lock);
-	atomic64_set(&ctx->statistic.total_dma_size, 0);
-	atomic64_set(&ctx->statistic.total_alloc_size, 0);
-
-	ctx->msg_buffer_size = sizeof(struct event_msg) * VID_API_MESSAGE_LIMIT;
-	if (!is_power_of_2(ctx->msg_buffer_size))
-		ctx->msg_buffer_size = roundup_pow_of_two(ctx->msg_buffer_size);
-	ctx->msg_buffer = vzalloc(ctx->msg_buffer_size);
-	if (!ctx->msg_buffer) {
+	if (kfifo_alloc(&ctx->msg_fifo,
+			sizeof(struct event_msg) * VID_API_MESSAGE_LIMIT,
+			GFP_KERNEL)) {
 		vpu_err("fail to alloc fifo when open\n");
 		ret = -ENOMEM;
 		goto err_alloc_fifo;
-	}
-	atomic64_add(ctx->msg_buffer_size, &ctx->statistic.total_alloc_size);
-	if (kfifo_init(&ctx->msg_fifo, ctx->msg_buffer, ctx->msg_buffer_size)) {
-		vpu_err("fail to init fifo when open\n");
-		ret = -EINVAL;
-		goto err_init_kfifo;
 	}
 	ctx->dev = dev;
 	ctx->str_index = idx;
@@ -6022,12 +6012,8 @@ err_open_crc:
 	ctx->tsm = NULL;
 err_create_tsm:
 	remove_instance_file(ctx);
+	kfifo_free(&ctx->msg_fifo);
 	dev->ctx[idx] = NULL;
-err_init_kfifo:
-	vfree(ctx->msg_buffer);
-	atomic64_sub(ctx->msg_buffer_size, &ctx->statistic.total_alloc_size);
-	ctx->msg_buffer = NULL;
-	ctx->msg_buffer_size = 0;
 err_alloc_fifo:
 	mutex_destroy(&ctx->instance_mutex);
 	mutex_destroy(&ctx->cmd_lock);
@@ -6071,10 +6057,7 @@ static int v4l2_release(struct file *filp)
 	mutex_lock(&ctx->dev->dev_mutex);
 	ctx->ctx_released = true;
 	cancel_work_sync(&ctx->instance_work);
-	vfree(ctx->msg_buffer);
-	atomic64_sub(ctx->msg_buffer_size, &ctx->statistic.total_alloc_size);
-	ctx->msg_buffer = NULL;
-	ctx->msg_buffer_size = 0;
+	kfifo_free(&ctx->msg_fifo);
 	if (ctx->instance_wq)
 		destroy_workqueue(ctx->instance_wq);
 	mutex_unlock(&ctx->dev->dev_mutex);
@@ -6428,20 +6411,11 @@ static int vpu_probe(struct platform_device *pdev)
 			goto err_rm_vdev;
 		}
 
-	dev->mu_msg_buffer_size =
-		sizeof(u_int32) * VPU_MAX_NUM_STREAMS * VID_API_MESSAGE_LIMIT;
-	if (!is_power_of_2(dev->mu_msg_buffer_size))
-		dev->mu_msg_buffer_size = roundup_pow_of_two(dev->mu_msg_buffer_size);
-	dev->mu_msg_buffer = vzalloc(dev->mu_msg_buffer_size);
-	if (!dev->mu_msg_buffer) {
-		vpu_err("error: fail to alloc mu msg fifo\n");
-		goto err_rm_vdev;
-	}
-	ret = kfifo_init(&dev->mu_msg_fifo,
-			dev->mu_msg_buffer, dev->mu_msg_buffer_size);
-	if (ret) {
-		vpu_err("error: fail to init mu msg fifo\n");
-		goto err_free_fifo;
+		ret = sc_ipc_open(&dev->mu_ipcHandle, mu_id);
+		if (ret) {
+			vpu_err("error: --- sc_ipc_getMuID() cannot open MU channel to SCU error! (%d)\n", ret);
+			goto err_rm_vdev;
+		}
 	}
 
 	dev->workqueue = alloc_workqueue("vpu", WQ_UNBOUND | WQ_MEM_RECLAIM, 1);
@@ -6474,10 +6448,6 @@ err_poweroff:
 	vpu_disable_hw(dev);
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
-err_free_fifo:
-	vfree(dev->mu_msg_buffer);
-	dev->mu_msg_buffer = NULL;
-	dev->mu_msg_buffer_size = 0;
 err_rm_vdev:
 	if (dev->pvpu_decoder_dev) {
 		video_unregister_device(dev->pvpu_decoder_dev);
@@ -6506,9 +6476,6 @@ static int vpu_remove(struct platform_device *pdev)
 	dev->debugfs_root = NULL;
 	dev->debugfs_dbglog = NULL;
 	dev->debugfs_fwlog = NULL;
-	vfree(dev->mu_msg_buffer);
-	dev->mu_msg_buffer = NULL;
-	dev->mu_msg_buffer_size = 0;
 	destroy_workqueue(dev->workqueue);
 	if (dev->m0_p_fw_space_vir)
 		iounmap(dev->m0_p_fw_space_vir);

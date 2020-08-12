@@ -1,7 +1,99 @@
 Version History for Linux Kernel on i.MX based F&S Boards and Modules
 =====================================================================
 
-Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
+Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight,
+        MM: M Mini, MN: M Nano
+
+linux-4.14.98-fsimx8m(m,n)-B2020.08 (11.08.2020)
+-------------------------------------------
+Supported boards: PicoCoreMX8MN, PicoCoreMX8MM, armStoneMX8M, efusMX8X
+
+- Improve pmic regulator voltages for PicoCoreMX8MM
+- Improve fsimx8mm support
+- Update copyright messages in device trees
+- Improve support for g070y2-l01 panel (armStoneMX8M only)
+- Add support for j070wvtc0211 panel (armStoneMX8M only)
+- Improve clock calculation for NWL MIPI-DSI core
+- Add support for panel sitronix ST7703
+- Add support for PicoCoreMX8MX PCB
+- Improve rtc-pcf85263 driver - support generating output clock
+- Add support for MCP25XXFD
+- Add panel g185han01 support for armStoneMX8M
+- NXP version rel_imx_4.14.98_2.3.2_patch
+- Merge branch 'fsimx8mx-B2019.11-pre'
+
+linux-4.14.98-fsimx8mn-Y2020.06 (18.06.2020)
+-------------------------------------------
+Supported boards: PicoCoreMX8MN, PicoCoreMX8MM, armStoneMX8M, efusMX8X
+
+- Correct device tree support for picocoremx8mn
+- Update history file to linux-4.14.98-fsimx8mm-Y2020.06
+- Update history to fsimx8m(m,n)-Y2020.05(6)
+
+linux-4.14.98-fsimx8mn-Y2020.06 (16.06.2020)
+-------------------------------------------
+Supported boards: PicoCoreMX8MN, PicoCoreMX8MM, armStoneMX8M, efusMX8X
+
+
+linux-4.14.98-fsimx8mn-Y2020.06 (09.06.2020)
+-------------------------------------------
+Supported boards: PicoCoreMX8MN, PicoCoreMX8MM, armStoneMX8M, efusMX8X
+
+- Add support for PicoCoreMX8MN
+- Add HDMI support for armStoneMX8M
+
+linux-4.14.98-fsimx8m-Y2020.05 (14.05.2020)
+-------------------------------------------
+Supported boards: PicoCoreMX8MM, armStoneMX8M, efusMX8X
+
+
+linux-4.14.98-fsimx8mm-Y2020.05 (14.05.2020)
+-------------------------------------------
+Supported boards: PicoCoreMX8MM, armStoneMX8M, efusMX8X
+
+- Improve support for panel j070wvtc0211
+- Add support for MIPI-DSI panel rf3500d-ayw-mng1
+- Add support for F&S adp-mipi2lvds1 board with j070wvtc0211 panel
+- Merge commit rel_imx_4.14.98_2.3.1_patch into fsimx8mx-B2019.11-pre
+- Merge commit rel_imx_4.14.98_2.3.0 into fsimx8mx-B2019.11-pre
+- Improve device tree for PicoCoreMX8MM
+  UART pin names because of merge
+- Merge commit imx_4.14.98_2.2.0 into fsimx8mx-B2019.11-pr
+- Add driver support to fsimx8m_defconfig
+  SGTL5000, MCP251X SPI CAN driver
+- Improve device tree support for armStoneMX8M
+- Improve audio support for armStoneMX8M
+- Improve device tree support for picocoremx8mm
+- Merge branch rel_imx_4.14.98_2.1.0 into fsimx8mx-B2019.11-pre
+- Merge to rel_imx_4.14.98_2.0.0_ga
+- Improve imx-sgtl5000
+- Improve compiler warnings
+- Add support for inversion of x,y coordinates
+  focaltech touch driver
+- Add audio support for SGTL5000
+- Add spidev support
+- Remove old display timings
+- Add DT support for board rev. 1.10
+- Add support for g050tan01 panel
+- Add dynamic calculation of pll pms
+- Add device tree support for DSI2LVDS panels
+  g070y2-l01, j070wvtc0211
+- Add basic support for TC358764
+- Add IOMUX configuration for UART
+- Add CLKO2 support
+- Corrects some compatible strings
+- Add support for PicoCoreMX8MM
+- Add 'best-match' attribute to set precise clock
+- Add sn65dsi84 to default configuration
+- Add support for sn65dsi84
+- Add support for display panels
+  g070y2-l01, g070y2-l01
+- Add BDIInfo driver
+- Correct compatible string for USB3 nodes
+- Add support for armStoneMX8M
+- NXP Version rel_imx_4.14.78_1.0.0_ga
+
+
 
 linux-4.9.88-fsimx6-B2020.04 (21.04.2020)
 ------------------------------------------
