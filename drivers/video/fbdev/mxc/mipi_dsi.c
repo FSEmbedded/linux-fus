@@ -16,6 +16,7 @@
 #include <linux/err.h>
 #include <linux/clk.h>
 #include <linux/console.h>
+#include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/bitops.h>
 #include <linux/ipu.h>

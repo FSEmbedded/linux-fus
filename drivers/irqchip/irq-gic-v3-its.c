@@ -2109,29 +2109,6 @@ static u64 its_clear_vpend_valid(void __iomem *vlpi_base)
 	return val;
 }
 
-static u64 its_clear_vpend_valid(void __iomem *vlpi_base)
-{
-	u32 count = 1000000;	/* 1s! */
-	bool clean;
-	u64 val;
-
-	val = gits_read_vpendbaser(vlpi_base + GICR_VPENDBASER);
-	val &= ~GICR_VPENDBASER_Valid;
-	gits_write_vpendbaser(val, vlpi_base + GICR_VPENDBASER);
-
-	do {
-		val = gits_read_vpendbaser(vlpi_base + GICR_VPENDBASER);
-		clean = !(val & GICR_VPENDBASER_Dirty);
-		if (!clean) {
-			count--;
-			cpu_relax();
-			udelay(1);
-		}
-	} while (!clean && count);
-
-	return val;
-}
-
 static void its_cpu_init_lpis(void)
 {
 	void __iomem *rbase = gic_data_rdist_rd_base();

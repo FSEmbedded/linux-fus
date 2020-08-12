@@ -1145,8 +1145,6 @@ static void tcmu_handle_completion(struct tcmu_cmd *cmd, struct tcmu_cmd_entry *
 
 	list_del_init(&cmd->queue_entry);
 
-	list_del_init(&cmd->queue_entry);
-
 	tcmu_cmd_reset_dbi_cur(cmd);
 
 	if (entry->hdr.uflags & TCMU_UFLAG_UNKNOWN_OP) {
@@ -1319,7 +1317,6 @@ static int tcmu_check_expired_cmd(int id, void *p, void *data)
 		tcmu_free_cmd(cmd);
 		scsi_status = SAM_STAT_TASK_SET_FULL;
 	}
-	list_del_init(&cmd->queue_entry);
 
 	pr_debug("Timing out cmd %u on dev %s that is %s.\n",
 		 id, udev->name, is_running ? "inflight" : "queued");

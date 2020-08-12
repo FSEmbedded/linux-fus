@@ -133,7 +133,7 @@ static inline int submit_job(struct caam_rng_ctx *ctx, int to_current)
 	dev_dbg(jrdev, "submitting job %d\n", !(to_current ^ ctx->current_buf));
 	init_completion(&bd->filled);
 	err = caam_jr_enqueue(jrdev, desc, rng_done, ctx);
-	if (err)
+	if (err != -EINPROGRESS)
 		complete(&bd->filled); /* don't wait on failed job*/
 	else
 		atomic_inc(&bd->empty); /* note if pending */
@@ -153,7 +153,7 @@ static int caam_read(struct hwrng *rng, void *data, size_t max, bool wait)
 		if (atomic_read(&bd->empty) == BUF_EMPTY) {
 			err = submit_job(ctx, 1);
 			/* if can't submit job, can't even wait */
-			if (err)
+			if (err != -EINPROGRESS)
 				return 0;
 		}
 		/* no immediate data, so exit if not waiting */
@@ -268,7 +268,7 @@ static inline void test_len(struct hwrng *rng, size_t len, bool wait)
 	real_len = rng->read(rng, buf, len, wait);
 	if (real_len == 0 && wait)
 		pr_err("WAITING FAILED\n");
-	pr_info("wanted %d bytes, got %d\n", len, real_len);
+	pr_info("wanted %zu bytes, got %d\n", len, real_len);
 	print_hex_dump(KERN_INFO, "random bytes@: ", DUMP_PREFIX_ADDRESS,
 		       16, 4, buf, real_len, 1);
 	kfree(buf);
@@ -363,10 +363,10 @@ int caam_rng_init(struct device *ctrldev)
 
 	/* Check for an instantiated RNG before registration */
 	if (priv->era < 10)
-		rng_inst = (rd_reg32(&priv->ctrl->perfmon.cha_num_ls) &
+		rng_inst = (rd_reg32(&priv->jr[0]->perfmon.cha_num_ls) &
 			    CHA_ID_LS_RNG_MASK) >> CHA_ID_LS_RNG_SHIFT;
 	else
-		rng_inst = rd_reg32(&priv->ctrl->vreg.rng) & CHA_VER_NUM_MASK;
+		rng_inst = rd_reg32(&priv->jr[0]->vreg.rng) & CHA_VER_NUM_MASK;
 
 	if (!rng_inst)
 		return 0;

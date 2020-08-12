@@ -791,12 +791,10 @@ out_vci:
 out_wq:
 	destroy_workqueue(virtio_vsock_workqueue);
 	return ret;
-
 }
 
 static void __exit virtio_vsock_exit(void)
 {
-	vsock_core_exit();
 	unregister_virtio_driver(&virtio_vsock_driver);
 	vsock_core_exit();
 	destroy_workqueue(virtio_vsock_workqueue);

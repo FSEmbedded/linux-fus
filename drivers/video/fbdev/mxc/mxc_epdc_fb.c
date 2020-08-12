@@ -1,20 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
- * Copyright 2017 NXP
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
- *
+ * Copyright 2017-2019 NXP
  */
 /*
  * Based on STMP378X LCDIF
@@ -4622,10 +4608,10 @@ int mxc_epdc_fb_probe(struct platform_device *pdev)
 	}
 
 	/* Allocate FB memory */
-	info->screen_base = dma_alloc_writecombine(&pdev->dev,
-						  fb_data->map_size,
-						  &fb_data->phys_start,
-						  GFP_DMA | GFP_KERNEL);
+	info->screen_base = dma_alloc_wc(&pdev->dev,
+					 fb_data->map_size,
+					 &fb_data->phys_start,
+					 GFP_DMA | GFP_KERNEL);
 
 	if (info->screen_base == NULL) {
 		ret = -ENOMEM;
@@ -5066,12 +5052,15 @@ int mxc_epdc_fb_probe(struct platform_device *pdev)
 out_lutmap:
 	kfree(fb_data->pxp_conf.proc_data.lut_map);
 out_dma_work_buf:
-	dma_free_writecombine(&pdev->dev, fb_data->working_buffer_size,
-		fb_data->working_buffer_virt, fb_data->working_buffer_phys);
+	dma_free_wc(&pdev->dev,
+		    fb_data->working_buffer_size,
+		    fb_data->working_buffer_virt,
+		    fb_data->working_buffer_phys);
 out_copybuffer:
-	dma_free_writecombine(&pdev->dev, fb_data->max_pix_size*2,
-			      fb_data->virt_addr_copybuf,
-			      fb_data->phys_addr_copybuf);
+	dma_free_wc(&pdev->dev,
+		    fb_data->max_pix_size*2,
+		    fb_data->virt_addr_copybuf,
+		    fb_data->phys_addr_copybuf);
 out_upd_buffers:
 	for (i = 0; i < fb_data->max_num_buffers; i++)
 		if (fb_data->virt_addr_updbuf[i] != NULL)
@@ -5087,8 +5076,8 @@ out_upd_lists:
 		kfree(plist);
 	}
 out_dma_fb:
-	dma_free_writecombine(&pdev->dev, fb_data->map_size, info->screen_base,
-			      fb_data->phys_start);
+	dma_free_wc(&pdev->dev, fb_data->map_size, info->screen_base,
+		    fb_data->phys_start);
 
 out_cmap:
 	fb_dealloc_cmap(&info->cmap);
@@ -5119,15 +5108,15 @@ static int mxc_epdc_fb_remove(struct platform_device *pdev)
 	if (fb_data->phys_addr_updbuf != NULL)
 		kfree(fb_data->phys_addr_updbuf);
 
-	dma_free_writecombine(&pdev->dev, fb_data->working_buffer_size,
+	dma_free_wc(&pdev->dev, fb_data->working_buffer_size,
 				fb_data->working_buffer_virt,
 				fb_data->working_buffer_phys);
 	if (fb_data->waveform_buffer_virt != NULL)
-		dma_free_writecombine(&pdev->dev, fb_data->waveform_buffer_size,
+		dma_free_wc(&pdev->dev, fb_data->waveform_buffer_size,
 				fb_data->waveform_buffer_virt,
 				fb_data->waveform_buffer_phys);
 	if (fb_data->virt_addr_copybuf != NULL)
-		dma_free_writecombine(&pdev->dev, fb_data->max_pix_size*2,
+		dma_free_wc(&pdev->dev, fb_data->max_pix_size*2,
 				fb_data->virt_addr_copybuf,
 				fb_data->phys_addr_copybuf);
 	list_for_each_entry_safe(plist, temp_list, &fb_data->upd_buf_free_list,
@@ -5139,7 +5128,7 @@ static int mxc_epdc_fb_remove(struct platform_device *pdev)
 	fb_deferred_io_cleanup(&fb_data->info);
 #endif
 
-	dma_free_writecombine(&pdev->dev, fb_data->map_size, fb_data->info.screen_base,
+	dma_free_wc(&pdev->dev, fb_data->map_size, fb_data->info.screen_base,
 			      fb_data->phys_start);
 
 	/* Release PxP-related resources */

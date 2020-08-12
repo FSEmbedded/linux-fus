@@ -1,14 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * Copyright 2004-2014 Freescale Semiconductor, Inc. All Rights Reserved.
- */
-
-/*
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
+ * Copyright 2019 NXP
  */
 
 /*!
@@ -189,15 +182,15 @@ static int prpvf_start(void *private)
 		goto out_4;
 
 	if (cam->vf_bufs_vaddr[0]) {
-		dma_free_coherent(0, cam->vf_bufs_size[0],
+		dma_free_coherent(cam->dev, cam->vf_bufs_size[0],
 				  cam->vf_bufs_vaddr[0], cam->vf_bufs[0]);
 	}
 	if (cam->vf_bufs_vaddr[1]) {
-		dma_free_coherent(0, cam->vf_bufs_size[1],
+		dma_free_coherent(cam->dev, cam->vf_bufs_size[1],
 				  cam->vf_bufs_vaddr[1], cam->vf_bufs[1]);
 	}
 	cam->vf_bufs_size[0] = PAGE_ALIGN(size);
-	cam->vf_bufs_vaddr[0] = (void *)dma_alloc_coherent(0,
+	cam->vf_bufs_vaddr[0] = (void *)dma_alloc_coherent(cam->dev,
 							   cam->vf_bufs_size[0],
 							   &cam->vf_bufs[0],
 							   GFP_DMA |
@@ -208,7 +201,7 @@ static int prpvf_start(void *private)
 		goto out_3;
 	}
 	cam->vf_bufs_size[1] = PAGE_ALIGN(size);
-	cam->vf_bufs_vaddr[1] = (void *)dma_alloc_coherent(0,
+	cam->vf_bufs_vaddr[1] = (void *)dma_alloc_coherent(cam->dev,
 							   cam->vf_bufs_size[1],
 							   &cam->vf_bufs[1],
 							   GFP_DMA |
@@ -318,26 +311,26 @@ out_3:
 	ipu_uninit_channel(cam->ipu, CSI_PRP_VF_MEM);
 out_4:
 	if (cam->vf_bufs_vaddr[0]) {
-		dma_free_coherent(0, cam->vf_bufs_size[0],
+		dma_free_coherent(cam->dev, cam->vf_bufs_size[0],
 				  cam->vf_bufs_vaddr[0], cam->vf_bufs[0]);
 		cam->vf_bufs_vaddr[0] = NULL;
 		cam->vf_bufs[0] = 0;
 	}
 	if (cam->vf_bufs_vaddr[1]) {
-		dma_free_coherent(0, cam->vf_bufs_size[1],
+		dma_free_coherent(cam->dev, cam->vf_bufs_size[1],
 				  cam->vf_bufs_vaddr[1], cam->vf_bufs[1]);
 		cam->vf_bufs_vaddr[1] = NULL;
 		cam->vf_bufs[1] = 0;
 	}
 	if (cam->rot_vf_bufs_vaddr[0]) {
-		dma_free_coherent(0, cam->rot_vf_buf_size[0],
+		dma_free_coherent(cam->dev, cam->rot_vf_buf_size[0],
 				  cam->rot_vf_bufs_vaddr[0],
 				  cam->rot_vf_bufs[0]);
 		cam->rot_vf_bufs_vaddr[0] = NULL;
 		cam->rot_vf_bufs[0] = 0;
 	}
 	if (cam->rot_vf_bufs_vaddr[1]) {
-		dma_free_coherent(0, cam->rot_vf_buf_size[1],
+		dma_free_coherent(cam->dev, cam->rot_vf_buf_size[1],
 				  cam->rot_vf_bufs_vaddr[1],
 				  cam->rot_vf_bufs[1]);
 		cam->rot_vf_bufs_vaddr[1] = NULL;
@@ -387,26 +380,26 @@ static int prpvf_stop(void *private)
 #endif
 
 	if (cam->vf_bufs_vaddr[0]) {
-		dma_free_coherent(0, cam->vf_bufs_size[0],
+		dma_free_coherent(cam->dev, cam->vf_bufs_size[0],
 				  cam->vf_bufs_vaddr[0], cam->vf_bufs[0]);
 		cam->vf_bufs_vaddr[0] = NULL;
 		cam->vf_bufs[0] = 0;
 	}
 	if (cam->vf_bufs_vaddr[1]) {
-		dma_free_coherent(0, cam->vf_bufs_size[1],
+		dma_free_coherent(cam->dev, cam->vf_bufs_size[1],
 				  cam->vf_bufs_vaddr[1], cam->vf_bufs[1]);
 		cam->vf_bufs_vaddr[1] = NULL;
 		cam->vf_bufs[1] = 0;
 	}
 	if (cam->rot_vf_bufs_vaddr[0]) {
-		dma_free_coherent(0, cam->rot_vf_buf_size[0],
+		dma_free_coherent(cam->dev, cam->rot_vf_buf_size[0],
 				  cam->rot_vf_bufs_vaddr[0],
 				  cam->rot_vf_bufs[0]);
 		cam->rot_vf_bufs_vaddr[0] = NULL;
 		cam->rot_vf_bufs[0] = 0;
 	}
 	if (cam->rot_vf_bufs_vaddr[1]) {
-		dma_free_coherent(0, cam->rot_vf_buf_size[1],
+		dma_free_coherent(cam->dev, cam->rot_vf_buf_size[1],
 				  cam->rot_vf_bufs_vaddr[1],
 				  cam->rot_vf_bufs[1]);
 		cam->rot_vf_bufs_vaddr[1] = NULL;

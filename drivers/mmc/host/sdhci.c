@@ -150,10 +150,9 @@ static inline bool sdhci_data_line_cmd(struct mmc_command *cmd)
 static void sdhci_set_card_detection(struct sdhci_host *host, bool enable)
 {
 	u32 present;
-	int gpio_cd = mmc_gpio_get_cd(host->mmc);
 
 	if ((host->quirks & SDHCI_QUIRK_BROKEN_CARD_DETECTION) ||
-	    !mmc_card_is_removable(host->mmc) || (gpio_cd >= 0))
+	    !mmc_card_is_removable(host->mmc) || mmc_can_gpio_cd(host->mmc))
 		return;
 
 	if (enable) {
@@ -2145,6 +2144,11 @@ void sdhci_enable_sdio_irq(struct mmc_host *mmc, int enable)
 		pm_runtime_get_noresume(host->mmc->parent);
 
 	spin_lock_irqsave(&host->lock, flags);
+	if (enable)
+		host->flags |= SDHCI_SDIO_IRQ_ENABLED;
+	else
+		host->flags &= ~SDHCI_SDIO_IRQ_ENABLED;
+
 	sdhci_enable_sdio_irq_nolock(host, enable);
 	spin_unlock_irqrestore(&host->lock, flags);
 
@@ -2481,15 +2485,11 @@ int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 		break;
 
 	case MMC_TIMING_UHS_SDR104:
+	case MMC_TIMING_UHS_DDR50:
 		break;
 
 	case MMC_TIMING_UHS_SDR50:
 		if (host->flags & SDHCI_SDR50_NEEDS_TUNING)
-			break;
-		/* FALLTHROUGH */
-
-	case MMC_TIMING_UHS_DDR50:
-		if (host->flags & SDHCI_DDR50_NEEDS_TUNING)
 			break;
 		/* FALLTHROUGH */
 
@@ -3065,7 +3065,7 @@ static irqreturn_t sdhci_irq(int irq, void *dev_id)
 
 	spin_lock(&host->lock);
 
-	if (host->runtime_suspended) {
+	if (host->runtime_suspended && !sdhci_sdio_irq_enabled(host)) {
 		spin_unlock(&host->lock);
 		return IRQ_NONE;
 	}
@@ -3184,9 +3184,6 @@ out:
 		sdhci_dumpregs(host);
 	}
 
-	if (cardint && host->mmc->sdio_irqs)
-		mmc_signal_sdio_irq(host->mmc);
-
 	return result;
 }
 
@@ -3224,11 +3221,9 @@ static irqreturn_t sdhci_thread_irq(int irq, void *dev_id)
 
 static bool sdhci_cd_irq_can_wakeup(struct sdhci_host *host)
 {
-	int gpio_cd = mmc_gpio_get_cd(host->mmc);
-
 	return mmc_card_is_removable(host->mmc) &&
-	       !(host->quirks & SDHCI_QUIRK_BROKEN_CARD_DETECTION ||
-	       (gpio_cd >= 0)) && !mmc_can_gpio_cd(host->mmc);
+	       !(host->quirks & SDHCI_QUIRK_BROKEN_CARD_DETECTION) &&
+	       !mmc_can_gpio_cd(host->mmc);
 }
 
 /*
@@ -3399,7 +3394,7 @@ int sdhci_runtime_resume_host(struct sdhci_host *host, int soft_reset)
 	host->runtime_suspended = false;
 
 	/* Enable SDIO IRQ */
-	if (sdio_irq_claimed(mmc))
+	if (host->flags & SDHCI_SDIO_IRQ_ENABLED)
 		sdhci_enable_sdio_irq_nolock(host, true);
 
 	/* Enable Card Detection */
@@ -3964,8 +3959,7 @@ int sdhci_setup_host(struct sdhci_host *host)
 		mmc->max_busy_timeout = 0;
 
 	mmc->caps |= MMC_CAP_SDIO_IRQ | MMC_CAP_ERASE | MMC_CAP_CMD23;
-	if (!(host->quirks2 & SDHCI_QUIRK2_SDIO_IRQ_THREAD))
-		mmc->caps2 |= MMC_CAP2_SDIO_IRQ_NOTHREAD;
+	mmc->caps2 |= MMC_CAP2_SDIO_IRQ_NOTHREAD;
 
 	if (host->quirks & SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12)
 		host->flags |= SDHCI_AUTO_CMD12;
@@ -4000,7 +3994,6 @@ int sdhci_setup_host(struct sdhci_host *host)
 	if (host->caps & SDHCI_CAN_DO_HISPD)
 		mmc->caps |= MMC_CAP_SD_HIGHSPEED | MMC_CAP_MMC_HIGHSPEED;
 
-	/* If vqmmc regulator and no 1.8V signalling, then there's no UHS */
 	if (!IS_ERR(mmc->supply.vqmmc)) {
 		ret = regulator_enable(mmc->supply.vqmmc);
 
@@ -4035,7 +4028,7 @@ int sdhci_setup_host(struct sdhci_host *host)
 		 * to the IO lines. (Applicable for other modes in 1.8v)
 		 */
 		mmc->caps2 &= ~(MMC_CAP2_HSX00_1_8V | MMC_CAP2_HS400_ES);
-		mmc->caps2 |= MMC_CAP2_DDR52_3_3V;
+		mmc->caps &= ~(MMC_CAP_1_8V_DDR | MMC_CAP_UHS);
 	}
 
 	/* Any UHS-I mode in caps implies SDR12 and SDR25 support. */
@@ -4175,11 +4168,10 @@ int sdhci_setup_host(struct sdhci_host *host)
 		goto unreg;
 	}
 
-	if (((mmc->caps & (MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 |
+	if ((mmc->caps & (MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 |
 			  MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_SDR104 |
 			  MMC_CAP_UHS_DDR50 | MMC_CAP_1_8V_DDR)) ||
-	    (mmc->caps2 & (MMC_CAP2_HS200_1_8V_SDR | MMC_CAP2_HS400_1_8V))) &&
-	    !(mmc->caps2 & MMC_CAP2_DDR52_3_3V))
+	    (mmc->caps2 & (MMC_CAP2_HS200_1_8V_SDR | MMC_CAP2_HS400_1_8V)))
 		host->flags |= SDHCI_SIGNALING_180;
 
 	if (mmc->caps2 & MMC_CAP2_HSX00_1_2V)
@@ -4220,14 +4212,13 @@ int sdhci_setup_host(struct sdhci_host *host)
 	if (host->flags & SDHCI_USE_ADMA) {
 		if (host->quirks & SDHCI_QUIRK_BROKEN_ADMA_ZEROLEN_DESC) {
 			mmc->max_seg_size = 65535;
-
 			/*
 			 * send the ADMA limitation to IOMMU. In default,
 			 * the max segment size of IOMMU is 64KB, this exceed
 			 * the ADMA max segment limitation, which is 65535.
 			 */
 			dev->dma_parms = devm_kzalloc(dev,
-					sizeof(*dev->dma_parms), GFP_KERNEL);
+			                sizeof(*dev->dma_parms), GFP_KERNEL);
 			dma_set_max_seg_size(dev, SZ_64K - 1);
 		} else {
 			mmc->max_seg_size = 65536;

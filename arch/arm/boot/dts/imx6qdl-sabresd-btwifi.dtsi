@@ -88,6 +88,7 @@
 	bus-width = <4>;
 	no-1-8-v;
 	non-removable;
+	keep-power-in-suspend;
 	mmc-pwrseq = <&usdhc1_pwrseq>;
 	pm-ignore-notify;
 	cap-power-off-card;

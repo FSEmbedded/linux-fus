@@ -358,13 +358,6 @@ struct generic_pm_domain *of_genpd_remove_last(struct device_node *np)
 {
 	return ERR_PTR(-ENOTSUPP);
 }
-
-static inline
-struct generic_pm_domain *genpd_get_from_provider(
-				struct of_phandle_args *genpdspec)
-{
-	return ERR_PTR(-ENOTSUPP);
-}
 #endif /* CONFIG_PM_GENERIC_DOMAINS_OF */
 
 #ifdef CONFIG_PM

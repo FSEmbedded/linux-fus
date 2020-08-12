@@ -41,10 +41,6 @@
 FILE *open_memstream(char **ptr, size_t *sizeloc);
 #endif
 
-#ifdef LACKS_OPEN_MEMSTREAM_PROTOTYPE
-FILE *open_memstream(char **ptr, size_t *sizeloc);
-#endif
-
 #define SUPPORT_OLD_POWER_EVENTS 1
 #define PWR_EVENT_EXIT -1
 

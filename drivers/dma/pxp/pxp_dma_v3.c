@@ -1,22 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2010-2016 Freescale Semiconductor, Inc.
  *
- * Copyright 2017-2018 NXP
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
- *
+ * Copyright 2017-2019 NXP
  */
 /*
  * Based on STMP378X PxP driver
@@ -195,7 +181,6 @@ static unsigned int block_size;
 static struct kmem_cache *tx_desc_cache;
 static struct kmem_cache *edge_node_cache;
 static struct pxp_collision_info col_info;
-static dma_addr_t paddr;
 static bool v3p_flag;
 static int alpha_blending_version;
 static bool pxp_legacy;
@@ -1713,11 +1698,13 @@ static uint32_t pxp_store_shift_ctrl_config(struct pxp_pixmap *out,
 		switch(out->format) {
 		case PXP_PIX_FMT_YUYV:
 			shift_bypass = 1;
+			/* fall through */
 		case PXP_PIX_FMT_YVYU:
 			shift_ctrl.out_yuv422_1p_en = 1;
 			break;
 		case PXP_PIX_FMT_NV16:
 			shift_bypass = 1;
+			/* fall through */
 		case PXP_PIX_FMT_NV61:
 			shift_ctrl.out_yuv422_2p_en = 1;
 			break;
@@ -8054,9 +8041,6 @@ static int pxp_probe(struct platform_device *pdev)
 #endif
 	register_pxp_device();
 	pm_runtime_enable(pxp->dev);
-
-	dma_alloc_coherent(NULL, PAGE_ALIGN(1920 * 1088 * 4),
-			   &paddr, GFP_KERNEL);
 
 exit:
 	if (err)

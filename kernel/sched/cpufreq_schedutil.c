@@ -82,12 +82,10 @@ static bool sugov_should_update_freq(struct sugov_policy *sg_policy, u64 time)
 	 * by the hardware, as calculating the frequency is pointless if
 	 * we cannot in fact act on it.
 	 *
-	 * For the slow switching platforms, the kthread is always scheduled on
-	 * the right set of CPUs and any CPU can find the next frequency and
-	 * schedule the kthread.
+	 * This is needed on the slow switching platforms too to prevent CPUs
+	 * going offline from leaving stale IRQ work items behind.
 	 */
-	if (sg_policy->policy->fast_switch_enabled &&
-	    !cpufreq_this_cpu_can_update(sg_policy->policy))
+	if (!cpufreq_this_cpu_can_update(sg_policy->policy))
 		return false;
 
 	if (unlikely(sg_policy->limits_changed)) {
@@ -593,15 +591,15 @@ static inline struct sugov_tunables *to_sugov_tunables(struct gov_attr_set *attr
 	return container_of(attr_set, struct sugov_tunables, attr_set);
 }
 
-static ssize_t show_rate_limit_us(struct gov_attr_set *attr_set, char *buf)
+static ssize_t rate_limit_us_show(struct gov_attr_set *attr_set, char *buf)
 {
 	struct sugov_tunables *tunables = to_sugov_tunables(attr_set);
 
 	return sprintf(buf, "%u\n", tunables->rate_limit_us);
 }
 
-static ssize_t store_rate_limit_us(struct gov_attr_set *attr_set,
-				   const char *buf, size_t count)
+static ssize_t
+rate_limit_us_store(struct gov_attr_set *attr_set, const char *buf, size_t count)
 {
 	struct sugov_tunables *tunables = to_sugov_tunables(attr_set);
 	struct sugov_policy *sg_policy;
@@ -618,7 +616,7 @@ static ssize_t store_rate_limit_us(struct gov_attr_set *attr_set,
 	return count;
 }
 
-gov_attr_rw(rate_limit_us);
+static struct governor_attr rate_limit_us = __ATTR_RW(rate_limit_us);
 
 static struct attribute *sugov_attrs[] = {
 	&rate_limit_us.attr,

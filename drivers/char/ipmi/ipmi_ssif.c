@@ -727,7 +727,7 @@ static void msg_done_handler(struct ssif_info *ssif_info, int result,
 			/* End of read */
 			len = ssif_info->multi_len;
 			data = ssif_info->data;
-		} else if (blocknum != ssif_info->multi_pos) {
+		} else if (blocknum + 1 != ssif_info->multi_pos) {
 			/*
 			 * Out of sequence block, just abort.  Block
 			 * numbers start at zero for the second block,

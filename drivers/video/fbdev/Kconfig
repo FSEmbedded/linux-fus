@@ -13,7 +13,7 @@ menuconfig FB
 	tristate "Support for frame buffer devices"
 	select FB_CMDLINE
 	select FB_NOTIFY
-	help
+	---help---
 	  The frame buffer device provides an abstraction for the graphics
 	  hardware. It represents the frame buffer of some video hardware and
 	  allows application software to access the graphics hardware through
@@ -44,23 +44,6 @@ menuconfig FB
 	  running graphical applications that directly touch the hardware
 	  (e.g. an accelerated X server) and that are not frame buffer
 	  device-aware may cause unexpected results. If unsure, say N.
-
-config FB_IMX64
-	bool "Enable framebuffer support for 64 bit platforms"
-	depends on FB && ARM64
-	default n
-	help
-	  Add framebuffer device support for 64 bit platforms. This is needed
-	  only if you specifically need FBDEV support on your 64bit platform,
-	  since it will soon become deprecated.
-
-config FB_IMX64_DEBUG
-	bool "Enable debug messages and operations for 64bit framebuffer devices"
-	depends on FB_IMX64
-	default n
-	help
-	  Select this option if you need to debug 64bit platforms specific
-	  operations.
 
 config FIRMWARE_EDID
 	bool "Enable firmware EDID"
@@ -2214,6 +2197,18 @@ config FB_BROADSHEET
 	  and could also have been called by other names when coupled with
 	  a bridge adapter.
 
+config FB_MXS
+	tristate "MXS LCD framebuffer support"
+	depends on FB && (ARCH_MXS || ARCH_MXC)
+	select FB_MXC_DISP_FRAMEWORK
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	select FB_MODE_HELPERS
+	select VIDEOMODE_HELPERS
+	help
+	  Framebuffer support for the MXS SoC.
+
 config FB_PUV3_UNIGFX
 	tristate "PKUnity v3 Unigfx framebuffer support"
 	depends on FB && UNICORE32 && ARCH_PUV3
@@ -2283,3 +2278,4 @@ config FB_SM712
 source "drivers/video/fbdev/omap/Kconfig"
 source "drivers/video/fbdev/omap2/Kconfig"
 source "drivers/video/fbdev/mmp/Kconfig"
+source "drivers/video/fbdev/mxc/Kconfig"

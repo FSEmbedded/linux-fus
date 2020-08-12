@@ -729,7 +729,7 @@ save_and_set_mmdc_io_lpm:
 	 * mask all GPC interrupts before
 	 * enabling the RBC counters to
 	 * avoid the counter starting too
-	 * early if an interrupt is already
+	 * early if an interupt is already
 	 * pending.
 	 */
 	ldr     r10, [r0, #PM_INFO_MX6Q_GPC_V_OFFSET]

@@ -393,9 +393,9 @@ static long hx280enc_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 	* "write" is reversed
 	*/
 	if (_IOC_DIR(cmd) & _IOC_READ)
-		err = !access_ok(VERIFY_WRITE, (void *) arg, _IOC_SIZE(cmd));
+		err = !access_ok((void *) arg, _IOC_SIZE(cmd));
 	else if (_IOC_DIR(cmd) & _IOC_WRITE)
-		err = !access_ok(VERIFY_READ, (void *) arg, _IOC_SIZE(cmd));
+		err = !access_ok((void *) arg, _IOC_SIZE(cmd));
 	if (err)
 		return -EFAULT;
 
@@ -477,6 +477,7 @@ static int hx280enc_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
+#ifdef CONFIG_COMPAT
 static long hx280enc_ioctl32(struct file *filp, unsigned int cmd, unsigned long arg)
 {
     long err = 0;
@@ -528,6 +529,7 @@ union {
 	}
     return 0;
 }
+#endif
 
 /* VFS methods */
 static struct file_operations hx280enc_fops = {

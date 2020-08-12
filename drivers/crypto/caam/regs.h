@@ -173,13 +173,14 @@ static inline u64 rd_reg64(void __iomem *reg)
 
 static inline u64 cpu_to_caam_dma64(dma_addr_t value)
 {
-	if (caam_imx)
-#if IS_ENABLED(CONFIG_ARCH_DMA_ADDR_T_64BIT)
-		return (((u64)cpu_to_caam32(lower_32_bits(value)) << 32) |
-			 (u64)cpu_to_caam32(upper_32_bits(value)));
-#else
-		return (u64)cpu_to_caam32(lower_32_bits(value)) << 32;
-#endif
+	if (caam_imx) {
+		u64 ret_val = (u64)cpu_to_caam32(lower_32_bits(value)) << 32;
+
+		if (IS_ENABLED(CONFIG_ARCH_DMA_ADDR_T_64BIT))
+			ret_val |= (u64)cpu_to_caam32(upper_32_bits(value));
+
+		return ret_val;
+	}
 
 	return cpu_to_caam64(value);
 }
@@ -210,21 +211,6 @@ static inline u64 caam_dma_to_cpu(u64 value)
 	else
 		return caam32_to_cpu(value);
 }
-
-/*
- * On i.MX8 boards the arch is arm64 but the CAAM dma address size is
- * 32 bits on 8MQ and 36 bits on 8QM and 8QXP.
- * For 8QM and 8QXP there is a configurable field PS called pointer size
- * in the MCFGR register to switch between 32 and 64 (default 32)
- * But this register is only accessible by the SECO and is left to its
- * default value.
- * Here we set the CAAM dma address size to 32 bits for all i.MX8
- */
-#ifdef CONFIG_HAVE_IMX8_SOC
-#define caam_dma_addr_t u32
-#else
-#define caam_dma_addr_t dma_addr_t
-#endif
 
 /*
  * jr_outentry
@@ -396,18 +382,17 @@ struct version_regs {
 #define CHA_VER_VID_MD_LP512	0x1ull
 #define CHA_VER_VID_MD_HP	0x2ull
 
+/*
+ * caam_perfmon - Performance Monitor/Secure Memory Status/
+ *                CAAM Global Status/Component Version IDs
+ *
+ * Spans f00-fff wherever instantiated
+ */
 struct sec_vid {
 	u16 ip_id;
 	u8 maj_rev;
 	u8 min_rev;
 };
-
-#define SEC_VID_IPID_SHIFT      16
-#define SEC_VID_MAJ_SHIFT       8
-#define SEC_VID_MAJ_MASK        0x0000FF00
-
-#define CCB_VID_ERA_SHIFT       24
-#define CCB_VID_ERA_MASK        0x000000FF
 
 struct caam_perfmon {
 	/* Performance Monitor Registers			f00-f9f */
@@ -646,8 +631,7 @@ struct caam_ctrl {
 	u32 deco_rsr;			/* DECORSR - Deco Request Source */
 	u32 rsvd11;
 	u32 deco_rq;			/* DECORR - DECO Request */
-	struct masterid deco_mid[5];	/* DECOxLIODNR - 1 per DECO */
-	u32 rsvd5[22];
+	struct masterid deco_mid[16];	/* DECOxLIODNR - 1 per DECO */
 
 	/* DECO Availability/Reset Section			120-3ff */
 	u32 deco_avail;		/* DAR - DECO availability */

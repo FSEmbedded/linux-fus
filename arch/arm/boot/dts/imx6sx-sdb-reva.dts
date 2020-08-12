@@ -6,48 +6,6 @@
 
 / {
 	model = "Freescale i.MX6 SoloX SDB RevA Board";
-
-	regulators {
-		/* Transceiver EN/STBY is active high on RevA board */
-		reg_can_en: regulator@9 {
-			gpio = <&gpio4 25 GPIO_ACTIVE_HIGH>;
-			enable-active-high;
-		};
-
-		reg_can_stby: regulator@10 {
-			gpio = <&gpio4 27 GPIO_ACTIVE_HIGH>;
-			enable-active-high;
-			vin-supply = <&reg_can_en>;
-		};
-	};
-};
-
-&cpu0 {
-	operating-points = <
-		/* kHz    uV */
-		996000  1250000
-		792000  1175000
-		396000  1075000
-		198000	975000
-		>;
-	fsl,soc-operating-points = <
-		/* ARM kHz      SOC uV */
-		996000	1175000
-		792000	1175000
-		396000	1175000
-		198000	1175000
-	>;
-	fsl,arm-soc-shared = <0>;
-};
-
-&reg_arm {
-	vin-supply = <&sw1a_reg>;
-	regulator-allow-bypass;
-};
-
-&reg_soc {
-	vin-supply = <&sw1c_reg>;
-	regulator-allow-bypass;
 };
 
 &i2c1 {
@@ -58,7 +16,7 @@
 
 	pmic: pfuze100@8 {
 		compatible = "fsl,pfuze100";
-		reg = <0x8>;
+		reg = <0x08>;
 
 		regulators {
 			sw1a_reg: sw1ab {
@@ -163,7 +121,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_qspi2>;
 	status = "okay";
-	ddrsmp=<0>;
 
 	flash0: s25fl128s@0 {
 		reg = <0>;
@@ -200,10 +157,6 @@
 
 &reg_vdd1p1 {
 	vin-supply = <&vgen6_reg>;
-};
-
-&reg_vdd3p0 {
-	vin-supply = <&sw2_reg>;
 };
 
 &reg_vdd2p5 {

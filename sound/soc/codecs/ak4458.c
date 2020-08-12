@@ -18,15 +18,20 @@
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
 #include <sound/tlv.h>
-#include <sound/pcm_params.h>
-#include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
 
 #include "ak4458.h"
 
+#define AK4458_NUM_SUPPLIES 2
+static const char *ak4458_supply_names[AK4458_NUM_SUPPLIES] = {
+	"DVDD",
+	"AVDD",
+};
+
 struct ak4458_drvdata {
 	struct snd_soc_dai_driver *dai_drv;
 	const struct snd_soc_component_driver *comp_drv;
+	bool  dsd512;	/* DSD512 is supported or not */
 };
 
 /* AK4458 Codec Private Data */
@@ -35,6 +40,7 @@ struct ak4458_priv {
 	struct regmap *regmap;
 	struct gpio_desc *reset_gpiod;
 	struct gpio_desc *mute_gpiod;
+	const struct ak4458_drvdata *drvdata;
 	int digfil;	/* SSLOW, SD, SLOW bits */
 	int fs;		/* sampling rate */
 	int fmt;
@@ -132,6 +138,9 @@ static const char * const ak4458_ats_select_texts[] = {
 /* DIF2 bit Audio Interface Format Setting(BICK fs) */
 static const char * const ak4458_dif_select_texts[] = {"32fs,48fs", "64fs",};
 
+static const char * const ak4497_dsd_input_path_select[] = {
+	"16_17_19pin", "3_4_5pin"};
+
 static const struct soc_enum ak4458_dac1_dem_enum =
 	SOC_ENUM_SINGLE(AK4458_01_CONTROL2, 1,
 			ARRAY_SIZE(ak4458_dem_select_texts),
@@ -171,6 +180,10 @@ static const struct soc_enum ak4458_dif_enum =
 	SOC_ENUM_SINGLE(AK4458_00_CONTROL1, 3,
 			ARRAY_SIZE(ak4458_dif_select_texts),
 			ak4458_dif_select_texts);
+static const struct soc_enum ak4497_dsdp_enum =
+        SOC_ENUM_SINGLE(AK4458_09_DSD2, 2,
+                        ARRAY_SIZE(ak4497_dsd_input_path_select),
+                        ak4497_dsd_input_path_select);
 
 static int get_digfil(struct snd_kcontrol *kcontrol,
 		      struct snd_ctl_elem_value *ucontrol)
@@ -278,6 +291,7 @@ static const struct snd_kcontrol_new ak4497_snd_controls[] = {
 	SOC_ENUM("AK4497 Sound Mode", ak4458_sm_enum),
 	SOC_ENUM("AK4497 Attenuation transition Time Setting",
 		 ak4458_ats_enum),
+	SOC_ENUM("AK4497 DSD Data Input Pin", ak4497_dsdp_enum),
 };
 
 /* ak4497 dapm widgets */
@@ -294,9 +308,23 @@ static const struct snd_soc_dapm_route ak4497_intercon[] = {
 
 };
 
+static int ak4458_get_tdm_mode(struct ak4458_priv *ak4458)
+{
+	switch (ak4458->slots * ak4458->slot_width) {
+	case 128:
+		return 1;
+	case 256:
+		return 2;
+	case 512:
+		return 3;
+	default:
+		return 0;
+	}
+}
+
 static int ak4458_rstn_control(struct snd_soc_component *component, int bit)
 {
-	int ret, val;
+	int ret;
 
 	if (bit)
 		ret = snd_soc_component_update_bits(component,
@@ -323,7 +351,7 @@ static int ak4458_hw_params(struct snd_pcm_substream *substream,
 	int pcm_width = max(params_physical_width(params), ak4458->slot_width);
 	int nfs1;
 	u8 format, dsdsel0, dsdsel1, dchn;
-	int dsd_bclk, channels, channels_max;
+	int ret, dsd_bclk, channels, channels_max;
 	bool is_dsd = false;
 
 	channels = params_channels(params);
@@ -357,8 +385,16 @@ static int ak4458_hw_params(struct snd_pcm_substream *substream,
 			dsdsel0 = 0;
 			dsdsel1 = 1;
 			break;
+		case 22579200:
+			if (ak4458->drvdata->dsd512) {
+				dsdsel0 = 1;
+				dsdsel1 = 1;
+			} else {
+				dev_err(dai->dev, "DSD512 not supported.\n");
+				return -EINVAL;
+			}
+			break;
 		default:
-			dev_err(dai->dev, "DSD512 not supported.\n");
 			return -EINVAL;
 		}
 
@@ -417,8 +453,13 @@ static int ak4458_hw_params(struct snd_pcm_substream *substream,
 	snd_soc_component_update_bits(component, AK4458_0B_CONTROL7,
 				AK4458_DCHAIN_MASK, dchn);
 
-	ak4458_rstn_control(component, 0);
-	ak4458_rstn_control(component, 1);
+	ret = ak4458_rstn_control(component, 0);
+	if (ret)
+		return ret;
+
+	ret = ak4458_rstn_control(component, 1);
+	if (ret)
+		return ret;
 
 	return 0;
 }
@@ -511,7 +552,6 @@ static int ak4458_set_tdm_slot(struct snd_soc_dai *dai, unsigned int tx_mask,
 	snd_soc_component_update_bits(component, AK4458_0A_CONTROL6,
 			    AK4458_MODE_MASK,
 			    mode);
-
 	return 0;
 }
 
@@ -617,7 +657,6 @@ static int ak4458_init(struct snd_soc_component *component)
 static int ak4458_probe(struct snd_soc_component *component)
 {
 	struct ak4458_priv *ak4458 = snd_soc_component_get_drvdata(component);
-	int ret;
 
 	ak4458->fs = 48000;
 
@@ -706,11 +745,13 @@ static const struct regmap_config ak4458_regmap = {
 static const struct ak4458_drvdata ak4458_drvdata = {
 	.dai_drv = &ak4458_dai,
 	.comp_drv = &soc_codec_dev_ak4458,
+	.dsd512 = false,
 };
 
 static const struct ak4458_drvdata ak4497_drvdata = {
 	.dai_drv = &ak4497_dai,
 	.comp_drv = &soc_codec_dev_ak4497,
+	.dsd512 = true,
 };
 
 static const struct dev_pm_ops ak4458_pm = {
@@ -722,7 +763,6 @@ static const struct dev_pm_ops ak4458_pm = {
 static int ak4458_i2c_probe(struct i2c_client *i2c)
 {
 	struct ak4458_priv *ak4458;
-	const struct ak4458_drvdata *drvdata;
 	int ret;
 	int i;
 
@@ -737,7 +777,7 @@ static int ak4458_i2c_probe(struct i2c_client *i2c)
 	i2c_set_clientdata(i2c, ak4458);
 	ak4458->dev = &i2c->dev;
 
-	drvdata = of_device_get_match_data(&i2c->dev);
+	ak4458->drvdata = of_device_get_match_data(&i2c->dev);
 
 	ak4458->reset_gpiod = devm_gpiod_get_optional(ak4458->dev, "reset",
 						      GPIOD_OUT_LOW);
@@ -749,8 +789,25 @@ static int ak4458_i2c_probe(struct i2c_client *i2c)
 	if (IS_ERR(ak4458->mute_gpiod))
 		return PTR_ERR(ak4458->mute_gpiod);
 
-	ret = devm_snd_soc_register_component(ak4458->dev, drvdata->comp_drv,
-					      drvdata->dai_drv, 1);
+	for (i = 0; i < ARRAY_SIZE(ak4458->supplies); i++)
+		ak4458->supplies[i].supply = ak4458_supply_names[i];
+
+	ret = devm_regulator_bulk_get(ak4458->dev, ARRAY_SIZE(ak4458->supplies),
+				 ak4458->supplies);
+	if (ret != 0) {
+		dev_err(ak4458->dev, "Failed to request supplies: %d\n", ret);
+		return ret;
+	}
+
+	ret = regulator_bulk_enable(ARRAY_SIZE(ak4458->supplies),
+				    ak4458->supplies);
+	if (ret != 0) {
+		dev_err(ak4458->dev, "Failed to enable supplies: %d\n", ret);
+		return ret;
+	}
+
+	ret = devm_snd_soc_register_component(ak4458->dev, ak4458->drvdata->comp_drv,
+					      ak4458->drvdata->dai_drv, 1);
 	if (ret < 0) {
 		dev_err(ak4458->dev, "Failed to register CODEC: %d\n", ret);
 		return ret;

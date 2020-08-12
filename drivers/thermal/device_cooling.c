@@ -55,6 +55,7 @@ static int devfreq_set_cur_state(struct thermal_cooling_device *cdev,
 	ret = devfreq_cooling_notifier_call_chain(state);
 	if (ret)
 		return -EINVAL;
+
 	devfreq_device->devfreq_state = state;
 
 	return 0;

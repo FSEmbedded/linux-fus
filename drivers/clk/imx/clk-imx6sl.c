@@ -13,10 +13,7 @@
 
 #include "clk.h"
 
-#define CCDR				0x4
-#define BM_CCM_CCDR_MMDC_CH0_MASK	(1 << 17)
 #define CCSR			0xc
-#define CCDR_CH0_HS_BYP		17
 #define BM_CCSR_PLL1_SW_CLK_SEL	(1 << 2)
 #define CACRR			0x10
 #define CDHIPR			0x48
@@ -54,7 +51,7 @@ static const char *lcdif_pix_sels[]	= { "pll2_bus", "pll3_usb_otg", "pll5_video_
 static const char *epdc_pix_sels[]	= { "pll2_bus", "pll3_usb_otg", "pll5_video_div", "pll2_pfd0", "pll2_pfd1", "pll3_pfd1", };
 static const char *audio_sels[]		= { "pll4_audio_div", "pll3_pfd2", "pll3_pfd3", "pll3_usb_otg", };
 static const char *ecspi_sels[]		= { "pll3_60m", "osc", };
-static const char *uart_sels[]		= { "pll3_80m", "uart_osc_4m", };
+static const char *uart_sels[]		= { "pll3_80m", "osc", };
 static const char *lvds_sels[]		= {
 	"pll1_sys", "pll2_bus", "pll2_pfd0", "pll2_pfd1", "pll2_pfd2", "dummy", "pll4_audio", "pll5_video",
 	"dummy", "enet_ref", "dummy", "dummy", "pll3_usb_otg", "pll7_usb_host", "pll3_pfd0", "pll3_pfd1",
@@ -180,20 +177,11 @@ void imx6sl_set_wait_clk(bool enter)
 		imx6sl_enable_pll_arm(false);
 }
 
-static const int uart_clk_ids[] __initconst = {
-	IMX6SL_CLK_UART,
-	IMX6SL_CLK_UART_SERIAL,
-};
-
-static struct clk **uart_clks[ARRAY_SIZE(uart_clk_ids) + 1] __initdata;
-
 static void __init imx6sl_clocks_init(struct device_node *ccm_node)
 {
 	struct device_node *np;
 	void __iomem *base;
-	int reg;
 	int ret;
-	int i;
 
 	clk_hw_data = kzalloc(struct_size(clk_hw_data, hws,
 					  IMX6SL_CLK_END), GFP_KERNEL);
@@ -428,11 +416,6 @@ static void __init imx6sl_clocks_init(struct device_node *ccm_node)
 
 	of_clk_add_hw_provider(np, of_clk_hw_onecell_get, clk_hw_data);
 
-	/* Ensure the CH0 handshake is bypassed */
-	reg = readl_relaxed(base + CCDR);
-	reg |= 1 << CCDR_CH0_HS_BYP;
-	writel_relaxed(reg, base + CCDR);
-
 	/* Ensure the AHB clk is at 132MHz. */
 	ret = clk_set_rate(hws[IMX6SL_CLK_AHB]->clk, 132000000);
 	if (ret)
@@ -448,32 +431,22 @@ static void __init imx6sl_clocks_init(struct device_node *ccm_node)
 	clk_set_parent(hws[IMX6SL_CLK_SPDIF0_SEL]->clk, hws[IMX6SL_CLK_PLL3_PFD3]->clk);
 
 	/* Initialize Video PLLs to valid frequency (650MHz). */
-	imx_clk_set_rate(clks[IMX6SL_CLK_PLL5_VIDEO_DIV], 650000000);
+	clk_set_rate(hws[IMX6SL_CLK_PLL5_VIDEO_DIV]->clk, 650000000);
+
 	/* set PLL5 video as lcdif pix parent clock */
 	clk_set_parent(hws[IMX6SL_CLK_LCDIF_PIX_SEL]->clk,
 			hws[IMX6SL_CLK_PLL5_VIDEO_DIV]->clk);
 
+	/* Configure EPDC clocks */
+	clk_set_parent(hws[IMX6SL_CLK_EPDC_PIX_SEL]->clk,
+		hws[IMX6SL_CLK_PLL5_VIDEO_DIV]->clk);
+	clk_set_parent(hws[IMX6SL_CLK_EPDC_AXI_SEL]->clk,
+		hws[IMX6SL_CLK_PLL2_PFD2]->clk);
+	clk_set_rate(hws[IMX6SL_CLK_EPDC_AXI]->clk, 200000000);
+
 	clk_set_parent(hws[IMX6SL_CLK_LCDIF_AXI_SEL]->clk,
 		       hws[IMX6SL_CLK_PLL2_PFD2]->clk);
 
-	for (i = 0; i < ARRAY_SIZE(uart_clk_ids); i++) {
-		int index = uart_clk_ids[i];
-
-		uart_clks[i] = &hws[index]->clk;
-	}
-
-	/* Configure EPDC clocks */
-	clk_set_parent(clks[IMX6SL_CLK_EPDC_PIX_SEL],
-		clks[IMX6SL_CLK_PLL5_VIDEO_DIV]);
-	clk_set_parent(clks[IMX6SL_CLK_EPDC_AXI_SEL],
-		clks[IMX6SL_CLK_PLL2_PFD2]);
-	clk_set_rate(clks[IMX6SL_CLK_EPDC_AXI], 200000000);
-
-	/* Set the UART parent if needed */
-	if (uart_from_osc)
-		imx_clk_set_parent(clks[IMX6SL_CLK_UART_SEL], clks[IMX6SL_CLK_UART_OSC_4M]);
-
-	imx_register_uart_clocks(uart_clks);
-
+	imx_register_uart_clocks();
 }
 CLK_OF_DECLARE(imx6sl, "fsl,imx6sl-ccm", imx6sl_clocks_init);

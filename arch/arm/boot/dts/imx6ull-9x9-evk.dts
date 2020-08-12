@@ -40,7 +40,7 @@
 		linux,cma {
 			compatible = "shared-dma-pool";
 			reusable;
-			size = <0x6000000>;
+			size = <0xa000000>;
 			linux,cma-default;
 		};
 	};
@@ -82,7 +82,7 @@
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			gpio = <&gpio1 9 GPIO_ACTIVE_HIGH>;
-			off-on-delay = <20000>;
+			off-on-delay-us = <20000>;
 			enable-active-high;
 		};
 	};
@@ -97,7 +97,7 @@
 		codec-master;
 		gpr = <&gpr 4 0x100000 0x100000>;
 		/*
-		 * hp-det = <hp-det-pin hp-det-polarity>;
+                 * hp-det = <hp-det-pin hp-det-polarity>;
 		 * hp-det-pin: JD1 JD2  or JD3
 		 * hp-det-polarity = 0: hp detect high for headphone
 		 * hp-det-polarity = 1: hp detect high for speaker
@@ -156,9 +156,9 @@
 
 &cpu0 {
 	/*
-	 * on i.MX6ULL, no separated VDD_ARM_IN and VDD_SOC_IN,
+	 * on i.MX6ULL, no seperated VDD_ARM_IN and VDD_SOC_IN,
 	 * to align with other platform and use the same cpufreq
-	 * driver, still use the separated OPP define for arm
+	 * driver, still use the seperated OPP define for arm
 	 * and soc.
 	 */
 	operating-points = <
@@ -227,18 +227,18 @@
 	};
 };
 
-&flexcan1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_flexcan1>;
-	xceiver-supply = <&reg_can_3v3>;
-	status = "okay";
+&can1 {
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_flexcan1>;
+        xceiver-supply = <&reg_can_3v3>;
+        status = "okay";
 };
 
-&flexcan2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_flexcan2>;
-	xceiver-supply = <&reg_can_3v3>;
-	status = "okay";
+&can2 {
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_flexcan2>;
+        xceiver-supply = <&reg_can_3v3>;
+        status = "okay";
 };
 
 &gpc {
@@ -257,7 +257,7 @@
 
 	pmic: pfuze3000@8 {
 		compatible = "fsl,pfuze3000";
-		reg = <0x8>;
+		reg = <0x08>;
 
 		regulators {
 			sw1a_reg: sw1a {
@@ -348,7 +348,7 @@
 
 	mag3110@e {
 		compatible = "fsl,mag3110";
-		reg = <0xe>;
+		reg = <0x0e>;
 		position = <2>;
 	};
 
@@ -634,53 +634,53 @@
 
 &iomuxc_snvs {
 	pinctrl-names = "default_snvs";
-	pinctrl-0 = <&pinctrl_hog_2>;
-	imx6ull-evk {
+        pinctrl-0 = <&pinctrl_hog_2>;
+        imx6ull-evk {
 		pinctrl_hog_2: hoggrp-2 {
-			fsl,pins = <
-				MX6ULL_PAD_SNVS_TAMPER0__GPIO5_IO00      0x80000000
-			>;
-		};
+                        fsl,pins = <
+                                MX6ULL_PAD_SNVS_TAMPER0__GPIO5_IO00      0x80000000
+                        >;
+                };
 
 		pinctrl_dvfs: dvfsgrp {
-			fsl,pins = <
-				MX6ULL_PAD_SNVS_TAMPER3__GPIO5_IO03      0x79
-			>;
-		};
+                        fsl,pins = <
+                                MX6ULL_PAD_SNVS_TAMPER3__GPIO5_IO03      0x79
+                        >;
+                };
 
 		pinctrl_lcdif_reset: lcdifresetgrp {
-			fsl,pins = <
-				/* used for lcd reset */
-				MX6ULL_PAD_SNVS_TAMPER9__GPIO5_IO09  0x79
-			>;
-		};
+                        fsl,pins = <
+                                /* used for lcd reset */
+                                MX6ULL_PAD_SNVS_TAMPER9__GPIO5_IO09  0x79
+                        >;
+                };
 
 		pinctrl_spi4: spi4grp {
-			fsl,pins = <
-				MX6ULL_PAD_BOOT_MODE0__GPIO5_IO10        0x70a1
-				MX6ULL_PAD_BOOT_MODE1__GPIO5_IO11        0x70a1
-				MX6ULL_PAD_SNVS_TAMPER7__GPIO5_IO07      0x70a1
-				MX6ULL_PAD_SNVS_TAMPER8__GPIO5_IO08      0x80000000
-			>;
-		};
+                        fsl,pins = <
+                                MX6ULL_PAD_BOOT_MODE0__GPIO5_IO10        0x70a1
+                                MX6ULL_PAD_BOOT_MODE1__GPIO5_IO11        0x70a1
+                                MX6ULL_PAD_SNVS_TAMPER7__GPIO5_IO07      0x70a1
+                                MX6ULL_PAD_SNVS_TAMPER8__GPIO5_IO08      0x80000000
+                        >;
+                };
 
-		pinctrl_sai2_hp_det_b: sai2_hp_det_grp {
-			fsl,pins = <
-				MX6ULL_PAD_SNVS_TAMPER4__GPIO5_IO04   0x17059
-			>;
-		};
-	};
+                pinctrl_sai2_hp_det_b: sai2_hp_det_grp {
+                        fsl,pins = <
+                                MX6ULL_PAD_SNVS_TAMPER4__GPIO5_IO04   0x17059
+                        >;
+                };
+        };
 };
 
 &lcdif {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcdif_dat
-		&pinctrl_lcdif_ctrl
-		&pinctrl_lcdif_reset>;
+		     &pinctrl_lcdif_ctrl
+		     &pinctrl_lcdif_reset>;
 	display = <&display0>;
 	status = "okay";
 
-	display0: display@0 {
+	display0: display {
 		bits-per-pixel = <16>;
 		bus-width = <24>;
 

@@ -88,13 +88,11 @@
 /* Double Transfer Rate opcodes - defined in JEDEC JESD216B. */
 #define SPINOR_OP_READ_1_1_1_DTR	0x0d
 #define SPINOR_OP_READ_1_2_2_DTR	0xbd
-#define SPINOR_OP_READ_1_1_4_DTR	0x6d
 #define SPINOR_OP_READ_1_4_4_DTR	0xed
 
 #define SPINOR_OP_READ_1_1_1_DTR_4B	0x0e
 #define SPINOR_OP_READ_1_2_2_DTR_4B	0xbe
 #define SPINOR_OP_READ_1_4_4_DTR_4B	0xee
-#define SPINOR_OP_READ_1_8_8_DTR_4B	0x9d
 
 /* Used for SST flashes only. */
 #define SPINOR_OP_BP		0x02	/* Byte program */
@@ -121,8 +119,6 @@
 /* Used for Micron flashes only. */
 #define SPINOR_OP_RD_EVCR      0x65    /* Read EVCR register */
 #define SPINOR_OP_WD_EVCR      0x61    /* Write EVCR register */
-#define SPINOR_OP_RD_VCR	0x85    /* Read VCR register */
-#define SPINOR_OP_WR_VCR	0x81    /* Write VCR register */
 
 /* Status Register bits. */
 #define SR_WIP			BIT(0)	/* Write in progress */
@@ -235,7 +231,6 @@ enum spi_nor_ops {
 	SPI_NOR_OPS_ERASE,
 	SPI_NOR_OPS_LOCK,
 	SPI_NOR_OPS_UNLOCK,
-	SPI_NOR_OPS_RESUME,
 };
 
 enum spi_nor_option_flags {

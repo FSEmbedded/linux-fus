@@ -241,7 +241,6 @@ static int vf610_gpio_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
-	struct clk *clk_port, *clk_gpio;
 	struct vf610_gpio_port *port;
 	struct gpio_chip *gc;
 	struct gpio_irq_chip *girq;
@@ -319,10 +318,6 @@ static int vf610_gpio_probe(struct platform_device *pdev)
 	ic->irq_unmask = vf610_gpio_irq_unmask;
 	ic->irq_set_type = vf610_gpio_irq_set_type;
 	ic->irq_set_wake = vf610_gpio_irq_set_wake;
-
-	/* Mask all GPIO interrupts */
-	for (i = 0; i < gc->ngpio; i++)
-		vf610_gpio_writel(0, port->base + PORT_PCR(i));
 
 	/* Mask all GPIO interrupts */
 	for (i = 0; i < gc->ngpio; i++)

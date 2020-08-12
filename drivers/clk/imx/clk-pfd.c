@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * Copyright 2012-2015 Freescale Semiconductor, Inc.
+ * Copyright 2012 Freescale Semiconductor, Inc.
  * Copyright 2012 Linaro Ltd.
  */
 
@@ -11,7 +11,6 @@
 #include <linux/err.h>
 #include <soc/imx/src.h>
 #include "clk.h"
-
 
 /**
  * struct clk_pfd - IMX PFD clock

@@ -43,16 +43,12 @@
 static const vs_src_sel_t src_sels[3][6] = {
 	{
 		VS_SRC_SEL__DISABLE,
-		VS_SRC_SEL__EXTSRC4,
 		VS_SRC_SEL__FETCHDECODE0,
-		VS_SRC_SEL__FETCHDECODE2,
 		VS_SRC_SEL__MATRIX4,
 		VS_SRC_SEL__HSCALER4,
 	}, {
 		VS_SRC_SEL__DISABLE,
-		VS_SRC_SEL__EXTSRC5,
 		VS_SRC_SEL__FETCHDECODE1,
-		VS_SRC_SEL__FETCHDECODE3,
 		VS_SRC_SEL__MATRIX5,
 		VS_SRC_SEL__HSCALER5,
 	}, {
@@ -79,8 +75,8 @@ static inline u32 dpu_pec_vs_read(struct dpu_vscaler *vs,
 	return readl(vs->pec_base + offset);
 }
 
-static inline void dpu_pec_vs_write(struct dpu_vscaler *vs, u32 value,
-				    unsigned int offset)
+static inline void dpu_pec_vs_write(struct dpu_vscaler *vs,
+				    unsigned int offset, u32 value)
 {
 	writel(value, vs->pec_base + offset);
 }
@@ -90,8 +86,8 @@ static inline u32 dpu_vs_read(struct dpu_vscaler *vs, unsigned int offset)
 	return readl(vs->base + offset);
 }
 
-static inline void dpu_vs_write(struct dpu_vscaler *vs, u32 value,
-				unsigned int offset)
+static inline void dpu_vs_write(struct dpu_vscaler *vs,
+				unsigned int offset, u32 value)
 {
 	writel(value, vs->base + offset);
 }
@@ -99,10 +95,9 @@ static inline void dpu_vs_write(struct dpu_vscaler *vs, u32 value,
 int vscaler_pixengcfg_dynamic_src_sel(struct dpu_vscaler *vs, vs_src_sel_t src)
 {
 	struct dpu_soc *dpu = vs->dpu;
-	const unsigned int *block_id_map = dpu->devtype->sw2hw_block_id_map;
 	const unsigned int vs_id_array[] = {4, 5, 9};
 	int i, j;
-	u32 val, mapped_src;
+	u32 val;
 
 	for (i = 0; i < ARRAY_SIZE(vs_id_array); i++)
 		if (vs_id_array[i] == vs->id)
@@ -114,14 +109,10 @@ int vscaler_pixengcfg_dynamic_src_sel(struct dpu_vscaler *vs, vs_src_sel_t src)
 	mutex_lock(&vs->mutex);
 	for (j = 0; j < ARRAY_SIZE(src_sels[0]); j++) {
 		if (src_sels[i][j] == src) {
-			mapped_src = block_id_map ? block_id_map[src] : src;
-			if (WARN_ON(mapped_src == NA))
-				return -EINVAL;
-
 			val = dpu_pec_vs_read(vs, PIXENGCFG_DYNAMIC);
 			val &= ~PIXENGCFG_DYNAMIC_SRC_SEL_MASK;
-			val |= mapped_src;
-			dpu_pec_vs_write(vs, val, PIXENGCFG_DYNAMIC);
+			val |= src;
+			dpu_pec_vs_write(vs, PIXENGCFG_DYNAMIC, val);
 			mutex_unlock(&vs->mutex);
 			return 0;
 		}
@@ -142,7 +133,7 @@ void vscaler_pixengcfg_clken(struct dpu_vscaler *vs, pixengcfg_clken_t clken)
 	val = dpu_pec_vs_read(vs, PIXENGCFG_DYNAMIC);
 	val &= ~CLKEN_MASK;
 	val |= clken << CLKEN_MASK_SHIFT;
-	dpu_pec_vs_write(vs, val, PIXENGCFG_DYNAMIC);
+	dpu_pec_vs_write(vs, PIXENGCFG_DYNAMIC, val);
 	mutex_unlock(&vs->mutex);
 }
 EXPORT_SYMBOL_GPL(vscaler_pixengcfg_clken);
@@ -157,7 +148,7 @@ void vscaler_shden(struct dpu_vscaler *vs, bool enable)
 		val |= SHDEN;
 	else
 		val &= ~SHDEN;
-	dpu_vs_write(vs, val, STATICCONTROL);
+	dpu_vs_write(vs, STATICCONTROL, val);
 	mutex_unlock(&vs->mutex);
 }
 EXPORT_SYMBOL_GPL(vscaler_shden);
@@ -188,7 +179,7 @@ void vscaler_setup1(struct dpu_vscaler *vs, u32 src, u32 dst, bool deinterlace)
 	WARN_ON(scale_factor > 0x80000);
 
 	mutex_lock(&vs->mutex);
-	dpu_vs_write(vs, SCALE_FACTOR(scale_factor), SETUP1);
+	dpu_vs_write(vs, SETUP1, SCALE_FACTOR(scale_factor));
 	mutex_unlock(&vs->mutex);
 
 	dev_dbg(dpu->dev, "Vscaler%d scale factor 0x%08x\n",
@@ -202,7 +193,7 @@ void vscaler_setup2(struct dpu_vscaler *vs, bool deinterlace)
 	u32 phase_offset = deinterlace ? 0x20000 : 0;
 
 	mutex_lock(&vs->mutex);
-	dpu_vs_write(vs, PHASE_OFFSET(phase_offset), SETUP2);
+	dpu_vs_write(vs, SETUP2, PHASE_OFFSET(phase_offset));
 	mutex_unlock(&vs->mutex);
 }
 EXPORT_SYMBOL_GPL(vscaler_setup2);
@@ -213,7 +204,7 @@ void vscaler_setup3(struct dpu_vscaler *vs, bool deinterlace)
 	u32 phase_offset = deinterlace ? 0x1e0000 : 0;
 
 	mutex_lock(&vs->mutex);
-	dpu_vs_write(vs, PHASE_OFFSET(phase_offset), SETUP3);
+	dpu_vs_write(vs, SETUP3, PHASE_OFFSET(phase_offset));
 	mutex_unlock(&vs->mutex);
 }
 EXPORT_SYMBOL_GPL(vscaler_setup3);
@@ -221,7 +212,7 @@ EXPORT_SYMBOL_GPL(vscaler_setup3);
 void vscaler_setup4(struct dpu_vscaler *vs, u32 phase_offset)
 {
 	mutex_lock(&vs->mutex);
-	dpu_vs_write(vs, PHASE_OFFSET(phase_offset), SETUP4);
+	dpu_vs_write(vs, SETUP4, PHASE_OFFSET(phase_offset));
 	mutex_unlock(&vs->mutex);
 }
 EXPORT_SYMBOL_GPL(vscaler_setup4);
@@ -229,7 +220,7 @@ EXPORT_SYMBOL_GPL(vscaler_setup4);
 void vscaler_setup5(struct dpu_vscaler *vs, u32 phase_offset)
 {
 	mutex_lock(&vs->mutex);
-	dpu_vs_write(vs, PHASE_OFFSET(phase_offset), SETUP5);
+	dpu_vs_write(vs, SETUP5, PHASE_OFFSET(phase_offset));
 	mutex_unlock(&vs->mutex);
 }
 EXPORT_SYMBOL_GPL(vscaler_setup5);
@@ -242,7 +233,7 @@ void vscaler_output_size(struct dpu_vscaler *vs, u32 line_num)
 	val = dpu_vs_read(vs, CONTROL);
 	val &= ~OUTPUT_SIZE_MASK;
 	val |= OUTPUT_SIZE(line_num);
-	dpu_vs_write(vs, val, CONTROL);
+	dpu_vs_write(vs, CONTROL, val);
 	mutex_unlock(&vs->mutex);
 }
 EXPORT_SYMBOL_GPL(vscaler_output_size);
@@ -255,7 +246,7 @@ void vscaler_field_mode(struct dpu_vscaler *vs, scaler_field_mode_t m)
 	val = dpu_vs_read(vs, CONTROL);
 	val &= ~FIELD_MODE;
 	val |= m;
-	dpu_vs_write(vs, val, CONTROL);
+	dpu_vs_write(vs, CONTROL, val);
 	mutex_unlock(&vs->mutex);
 }
 EXPORT_SYMBOL_GPL(vscaler_field_mode);
@@ -268,7 +259,7 @@ void vscaler_filter_mode(struct dpu_vscaler *vs, scaler_filter_mode_t m)
 	val = dpu_vs_read(vs, CONTROL);
 	val &= ~FILTER_MODE;
 	val |= m;
-	dpu_vs_write(vs, val, CONTROL);
+	dpu_vs_write(vs, CONTROL, val);
 	mutex_unlock(&vs->mutex);
 }
 EXPORT_SYMBOL_GPL(vscaler_filter_mode);
@@ -281,7 +272,7 @@ void vscaler_scale_mode(struct dpu_vscaler *vs, scaler_scale_mode_t m)
 	val = dpu_vs_read(vs, CONTROL);
 	val &= ~SCALE_MODE;
 	val |= m;
-	dpu_vs_write(vs, val, CONTROL);
+	dpu_vs_write(vs, CONTROL, val);
 	mutex_unlock(&vs->mutex);
 }
 EXPORT_SYMBOL_GPL(vscaler_scale_mode);
@@ -294,7 +285,7 @@ void vscaler_mode(struct dpu_vscaler *vs, scaler_mode_t m)
 	val = dpu_vs_read(vs, CONTROL);
 	val &= ~MODE;
 	val |= m;
-	dpu_vs_write(vs, val, CONTROL);
+	dpu_vs_write(vs, CONTROL, val);
 	mutex_unlock(&vs->mutex);
 }
 EXPORT_SYMBOL_GPL(vscaler_mode);

@@ -1,15 +1,9 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * Copyright 2004-2015 Freescale Semiconductor, Inc. All Rights Reserved.
+ * Copyright 2019 NXP
  */
 
-/*
- * The code contained herein is licensed under the GNU Lesser General
- * Public License.  You may obtain a copy of the GNU Lesser General
- * Public License Version 2.1 or later at the following locations:
- *
- * http://www.opensource.org/licenses/lgpl-license.html
- * http://www.gnu.org/copyleft/lgpl.html
- */
 #ifndef __ASM_ARCH_MXC_PMIC_STATUS_H__
 #define __ASM_ARCH_MXC_PMIC_STATUS_H__
 #include <asm-generic/errno-base.h>

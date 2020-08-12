@@ -1,15 +1,7 @@
-
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * Copyright 2004-2015 Freescale Semiconductor, Inc. All Rights Reserved.
- */
-
-/*
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
+ * Copyright 2019 NXP
  */
 
 /*!
@@ -198,19 +190,19 @@ static int csi_enc_setup(cam_data *cam)
 #endif
 
 	if (cam->vf_bufs_vaddr[0]) {
-		dma_free_coherent(0, cam->vf_bufs_size[0],
+		dma_free_coherent(cam->dev, cam->vf_bufs_size[0],
 				  cam->vf_bufs_vaddr[0],
 				  (dma_addr_t) cam->vf_bufs[0]);
 	}
 	if (cam->vf_bufs_vaddr[1]) {
-		dma_free_coherent(0, cam->vf_bufs_size[1],
+		dma_free_coherent(cam->dev, cam->vf_bufs_size[1],
 				  cam->vf_bufs_vaddr[1],
 				  (dma_addr_t) cam->vf_bufs[1]);
 	}
 	csi_mem_bufsize =
 		cam->crop_current.width * cam->crop_current.height * 2;
 	cam->vf_bufs_size[0] = PAGE_ALIGN(csi_mem_bufsize);
-	cam->vf_bufs_vaddr[0] = (void *)dma_alloc_coherent(0,
+	cam->vf_bufs_vaddr[0] = (void *)dma_alloc_coherent(cam->dev,
 							   cam->vf_bufs_size[0],
 							   (dma_addr_t *) &
 							   cam->vf_bufs[0],
@@ -222,7 +214,7 @@ static int csi_enc_setup(cam_data *cam)
 		goto out_2;
 	}
 	cam->vf_bufs_size[1] = PAGE_ALIGN(csi_mem_bufsize);
-	cam->vf_bufs_vaddr[1] = (void *)dma_alloc_coherent(0,
+	cam->vf_bufs_vaddr[1] = (void *)dma_alloc_coherent(cam->dev,
 							   cam->vf_bufs_size[1],
 							   (dma_addr_t *) &
 							   cam->vf_bufs[1],
@@ -265,14 +257,14 @@ static int csi_enc_setup(cam_data *cam)
 	return err;
 out_1:
 	if (cam->vf_bufs_vaddr[0]) {
-		dma_free_coherent(0, cam->vf_bufs_size[0],
+		dma_free_coherent(cam->dev, cam->vf_bufs_size[0],
 				  cam->vf_bufs_vaddr[0],
 				  (dma_addr_t) cam->vf_bufs[0]);
 		cam->vf_bufs_vaddr[0] = NULL;
 		cam->vf_bufs[0] = 0;
 	}
 	if (cam->vf_bufs_vaddr[1]) {
-		dma_free_coherent(0, cam->vf_bufs_size[1],
+		dma_free_coherent(cam->dev, cam->vf_bufs_size[1],
 				  cam->vf_bufs_vaddr[1],
 				  (dma_addr_t) cam->vf_bufs[1]);
 		cam->vf_bufs_vaddr[1] = NULL;
@@ -420,26 +412,26 @@ static int bg_overlay_stop(void *private)
 	cancel_work_sync(&cam->csi_work_struct);
 
 	if (cam->vf_bufs_vaddr[0]) {
-		dma_free_coherent(0, cam->vf_bufs_size[0],
+		dma_free_coherent(cam->dev, cam->vf_bufs_size[0],
 				  cam->vf_bufs_vaddr[0], cam->vf_bufs[0]);
 		cam->vf_bufs_vaddr[0] = NULL;
 		cam->vf_bufs[0] = 0;
 	}
 	if (cam->vf_bufs_vaddr[1]) {
-		dma_free_coherent(0, cam->vf_bufs_size[1],
+		dma_free_coherent(cam->dev, cam->vf_bufs_size[1],
 				  cam->vf_bufs_vaddr[1], cam->vf_bufs[1]);
 		cam->vf_bufs_vaddr[1] = NULL;
 		cam->vf_bufs[1] = 0;
 	}
 	if (cam->rot_vf_bufs_vaddr[0]) {
-		dma_free_coherent(0, cam->rot_vf_buf_size[0],
+		dma_free_coherent(cam->dev, cam->rot_vf_buf_size[0],
 				  cam->rot_vf_bufs_vaddr[0],
 				  cam->rot_vf_bufs[0]);
 		cam->rot_vf_bufs_vaddr[0] = NULL;
 		cam->rot_vf_bufs[0] = 0;
 	}
 	if (cam->rot_vf_bufs_vaddr[1]) {
-		dma_free_coherent(0, cam->rot_vf_buf_size[1],
+		dma_free_coherent(cam->dev, cam->rot_vf_buf_size[1],
 				  cam->rot_vf_bufs_vaddr[1],
 				  cam->rot_vf_bufs[1]);
 		cam->rot_vf_bufs_vaddr[1] = NULL;

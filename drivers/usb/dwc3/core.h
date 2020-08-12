@@ -25,6 +25,7 @@
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
 #include <linux/usb/otg.h>
+#include <linux/usb/role.h>
 #include <linux/ulpi/interface.h>
 
 #include <linux/phy/phy.h>
@@ -165,6 +166,21 @@
 /* Bit fields */
 
 /* Global SoC Bus Configuration INCRx Register 0 */
+#ifdef CONFIG_OF
+#define DWC3_GSBUSCFG0_DATARD_SHIFT	28
+#define DWC3_GSBUSCFG0_DATARD(n)	(((n) & 0xf)		\
+			<< DWC3_GSBUSCFG0_DATARD_SHIFT)
+#define DWC3_GSBUSCFG0_DESCRD_SHIFT	24
+#define DWC3_GSBUSCFG0_DESCRD(n)	(((n) & 0xf)		\
+			<< DWC3_GSBUSCFG0_DESCRD_SHIFT)
+#define DWC3_GSBUSCFG0_DATAWR_SHIFT	20
+#define DWC3_GSBUSCFG0_DATAWR(n)	(((n) & 0xf)		\
+			<< DWC3_GSBUSCFG0_DATAWR_SHIFT)
+#define DWC3_GSBUSCFG0_DESCWR_SHIFT	16
+#define DWC3_GSBUSCFG0_DESCWR(n)	(((n) & 0xf)		\
+			<< DWC3_GSBUSCFG0_DESCWR_SHIFT)
+#endif
+
 #define DWC3_GSBUSCFG0_INCR256BRSTENA	(1 << 7) /* INCR256 burst */
 #define DWC3_GSBUSCFG0_INCR128BRSTENA	(1 << 6) /* INCR128 burst */
 #define DWC3_GSBUSCFG0_INCR64BRSTENA	(1 << 5) /* INCR64 burst */
@@ -252,6 +268,7 @@
 /* Global User Control 1 Register */
 #define DWC3_GUCTL1_TX_IPGAP_LINECHECK_DIS	BIT(28)
 #define DWC3_GUCTL1_DEV_L1_EXIT_BY_HW	BIT(24)
+#define DWC3_GUCTL1_PARKMODE_DISABLE_SS	BIT(17)
 
 /* Global Status Register */
 #define DWC3_GSTS_OTG_IP	BIT(10)
@@ -689,7 +706,9 @@ struct dwc3_ep {
 #define DWC3_EP_STALL		BIT(1)
 #define DWC3_EP_WEDGE		BIT(2)
 #define DWC3_EP_TRANSFER_STARTED BIT(3)
+#define DWC3_EP_END_TRANSFER_PENDING BIT(4)
 #define DWC3_EP_PENDING_REQUEST	BIT(5)
+#define DWC3_EP_DELAY_START	BIT(6)
 
 	/* This last one is specific to EP0 */
 #define DWC3_EP0_DIR_IN		BIT(31)
@@ -869,6 +888,8 @@ struct dwc3_hwparams {
  *	or unaligned OUT)
  * @direction: IN or OUT direction flag
  * @mapped: true when request has been dma-mapped
+ * @skip_remain_trbs: true if a short packet received so the remain
+	chained trbs should be skipped.
  */
 struct dwc3_request {
 	struct usb_request	request;
@@ -897,6 +918,7 @@ struct dwc3_request {
 	unsigned		needs_extra_trb:1;
 	unsigned		direction:1;
 	unsigned		mapped:1;
+	unsigned		skip_remain_trbs:1;
 };
 
 /*
@@ -905,6 +927,10 @@ struct dwc3_request {
  */
 struct dwc3_scratchpad_array {
 	__le64	dma_adr[DWC3_MAX_HIBER_SCRATCHBUFS];
+};
+
+struct dwc3_priv_data {
+	void	(*set_role_post)(struct dwc3 *dwc, u32 role);
 };
 
 /**
@@ -942,6 +968,7 @@ struct dwc3_scratchpad_array {
  * @nr_scratch: number of scratch buffers
  * @u1u2: only used on revisions <1.83a for workaround
  * @maximum_speed: maximum speed requested (mainly for testing purposes)
+ * @otg_caps: the OTG capabilities from hardware point
  * @revision: revision register contents
  * @version_type: VERSIONTYPE register contents, a sub release of a revision
  * @dr_mode: requested mode of operation
@@ -1030,9 +1057,10 @@ struct dwc3_scratchpad_array {
  * 	2	- No de-emphasis
  * 	3	- Reserved
  * @dis_metastability_quirk: set to disable metastability quirk.
+ * @host_vbus_glitches: set to avoid vbus glitch during
+ *                      xhci reset.
  * @imod_interval: set the interrupt moderation interval in 250ns
  *                 increments or 0 to disable.
- * @otg_caps: the OTG capabilities from hardware point
  */
 struct dwc3 {
 	struct work_struct	drd_work;
@@ -1080,6 +1108,7 @@ struct dwc3 {
 	void __iomem		*regs;
 	size_t			regs_size;
 
+	struct usb_role_switch	*role_switch;
 	enum usb_dr_mode	dr_mode;
 	u32			current_dr_role;
 	u32			desired_dr_role;
@@ -1096,6 +1125,8 @@ struct dwc3 {
 	u32			nr_scratch;
 	u32			u1u2;
 	u32			maximum_speed;
+	struct usb_otg_caps	otg_caps;
+	struct dwc3_priv_data	*priv_data;
 
 	/*
 	 * All 3.1 IP version constants are greater than the 3.0 IP
@@ -1128,7 +1159,6 @@ struct dwc3 {
 #define DWC3_REVISION_290A	0x5533290a
 #define DWC3_REVISION_300A	0x5533300a
 #define DWC3_REVISION_310A	0x5533310a
-#define DWC3_REVISION_330A	0x5533330a
 
 /*
  * NOTICE: we're using bit 31 as a "is usb 3.1" flag. This is really
@@ -1220,10 +1250,9 @@ struct dwc3 {
 	unsigned		tx_de_emphasis:2;
 
 	unsigned		dis_metastability_quirk:1;
+	unsigned		host_vbus_glitches:1;
 
 	u16			imod_interval;
-
-	struct usb_otg_caps	otg_caps;
 };
 
 #define INCRX_BURST_MODE 0

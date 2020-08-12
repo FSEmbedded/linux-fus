@@ -201,7 +201,6 @@ struct hw_bank {
  * @debugfs: root dentry for this controller in debugfs
  * @id_event: indicates there is an id event, and handled at ci_otg_work
  * @b_sess_valid_event: indicates there is a vbus event, and handled
- * @vbus_glitch_check_event: check if vbus change is a glitch
  * at ci_otg_work
  * @imx28_write_fix: Freescale imx28 needs swp instruction for writing
  * @supports_runtime_pm: if runtime pm is supported
@@ -259,7 +258,6 @@ struct ci_hdrc {
 	struct dentry			*debugfs;
 	bool				id_event;
 	bool				b_sess_valid_event;
-	bool				vbus_glitch_check_event;
 	bool				imx28_write_fix;
 	bool				supports_runtime_pm;
 	bool				in_lpm;
@@ -306,10 +304,10 @@ static inline int ci_role_start(struct ci_hdrc *ci, enum ci_role role)
 	if (ci->usb_phy) {
 		if (role == CI_ROLE_HOST)
 			usb_phy_set_mode(ci->usb_phy,
-					USB_MODE_HOST);
+					CUR_USB_MODE_HOST);
 		else
 			usb_phy_set_mode(ci->usb_phy,
-					USB_MODE_DEVICE);
+					CUR_USB_MODE_DEVICE);
 	}
 
 	return 0;
@@ -327,7 +325,7 @@ static inline void ci_role_stop(struct ci_hdrc *ci)
 	ci->roles[role]->stop(ci);
 
 	if (ci->usb_phy)
-		usb_phy_set_mode(ci->usb_phy, USB_MODE_NONE);
+		usb_phy_set_mode(ci->usb_phy, CUR_USB_MODE_NONE);
 }
 
 static inline enum usb_role ci_role_to_usb_role(struct ci_hdrc *ci)
@@ -338,6 +336,16 @@ static inline enum usb_role ci_role_to_usb_role(struct ci_hdrc *ci)
 		return USB_ROLE_DEVICE;
 	else
 		return USB_ROLE_NONE;
+}
+
+static inline enum ci_role usb_role_to_ci_role(enum usb_role role)
+{
+	if (role == USB_ROLE_HOST)
+		return CI_ROLE_HOST;
+	else if (role == USB_ROLE_DEVICE)
+		return CI_ROLE_GADGET;
+	else
+		return CI_ROLE_END;
 }
 
 /**
@@ -496,6 +504,5 @@ int hw_controller_reset(struct ci_hdrc *ci);
 void dbg_create_files(struct ci_hdrc *ci);
 
 void dbg_remove_files(struct ci_hdrc *ci);
-
 void ci_hdrc_enter_lpm(struct ci_hdrc *ci, bool enable);
 #endif	/* __DRIVERS_USB_CHIPIDEA_CI_H */

@@ -1,118 +1,30 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright 2017-2018 NXP
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation; either version 2 of the License, or (at your
- * option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * for more details.
+ * Copyright 2019 NXP.
  */
 
-#include <linux/module.h>
-#include <linux/device.h>
-#include <linux/platform_device.h>
-#include <linux/component.h>
-#include <linux/pm_runtime.h>
-#include <drm/drmP.h>
-#include <drm/drm_atomic.h>
-#include <drm/drm_crtc_helper.h>
 #include <drm/drm_atomic_helper.h>
-#include <video/imx-dcss.h>
+#include <drm/drm_vblank.h>
+#include <linux/platform_device.h>
+#include <linux/pm_runtime.h>
 
+#include "dcss-dev.h"
 #include "dcss-kms.h"
-#include "dcss-plane.h"
-#include "imx-drm.h"
-#include "dcss-crtc.h"
-
-#define TRACE_FLUSH	0
-#define TRACE_VBLANK	1
-
-struct dcss_crtc {
-	struct device *dev;
-	struct drm_crtc		base;
-
-	struct dcss_plane	*plane[3];
-
-	int			irq;
-	bool			irq_enabled;
-
-	struct drm_property *alpha;
-	struct drm_property *use_global;
-	struct drm_property *dtrc_table_ofs;
-
-	struct completion en_completion;
-	struct completion dis_completion;
-
-	enum dcss_hdr10_nonlinearity opipe_nl;
-	enum dcss_hdr10_gamut opipe_g;
-	enum dcss_hdr10_pixel_range opipe_pr;
-	u32 opipe_pix_format;
-};
-
-static void dcss_crtc_reset(struct drm_crtc *crtc)
-{
-	struct imx_crtc_state *state;
-
-	if (crtc->state) {
-		if (crtc->state->mode_blob)
-			drm_property_blob_put(crtc->state->mode_blob);
-
-		state = to_imx_crtc_state(crtc->state);
-		memset(state, 0, sizeof(*state));
-	} else {
-		state = kzalloc(sizeof(*state), GFP_KERNEL);
-		if (!state)
-			return;
-		crtc->state = &state->base;
-	}
-
-	state->base.crtc = crtc;
-}
-
-static struct drm_crtc_state *dcss_crtc_duplicate_state(struct drm_crtc *crtc)
-{
-	struct imx_crtc_state *state;
-
-	if (!crtc->state)
-		return NULL;
-
-	state = kzalloc(sizeof(*state), GFP_KERNEL);
-	if (!state)
-		return NULL;
-
-	__drm_atomic_helper_crtc_duplicate_state(crtc, &state->base);
-
-	WARN_ON(state->base.crtc != crtc);
-	state->base.crtc = crtc;
-
-	return &state->base;
-}
-
-static void dcss_crtc_destroy_state(struct drm_crtc *crtc,
-				    struct drm_crtc_state *state)
-{
-	__drm_atomic_helper_crtc_destroy_state(state);
-	kfree(to_imx_crtc_state(state));
-}
 
 static int dcss_enable_vblank(struct drm_crtc *crtc)
 {
 	struct dcss_crtc *dcss_crtc = container_of(crtc, struct dcss_crtc,
 						   base);
-	struct dcss_soc *dcss = dev_get_drvdata(dcss_crtc->dev->parent);
+	struct dcss_dev *dcss = crtc->dev->dev_private;
 
 	if (dcss_crtc->irq_enabled)
 		return 0;
 
 	dcss_crtc->irq_enabled = true;
 
-	dcss_vblank_irq_enable(dcss, true);
+	dcss_dtg_vblank_irq_enable(dcss->dtg, true);
 
-	dcss_dtg_ctxld_kick_irq_enable(dcss, true);
+	dcss_dtg_ctxld_kick_irq_enable(dcss->dtg, true);
 
 	enable_irq(dcss_crtc->irq);
 
@@ -123,13 +35,14 @@ static void dcss_disable_vblank(struct drm_crtc *crtc)
 {
 	struct dcss_crtc *dcss_crtc = container_of(crtc, struct dcss_crtc,
 						   base);
-	struct dcss_soc *dcss = dev_get_drvdata(dcss_crtc->dev->parent);
+	struct dcss_dev *dcss = dcss_crtc->base.dev->dev_private;
 
 	disable_irq_nosync(dcss_crtc->irq);
 
-	dcss_vblank_irq_enable(dcss, false);
+	dcss_dtg_vblank_irq_enable(dcss->dtg, false);
 
-	dcss_dtg_ctxld_kick_irq_enable(dcss, false);
+	if (!dcss_dtrc_is_running(dcss->dtrc))
+		dcss_dtg_ctxld_kick_irq_enable(dcss->dtg, false);
 
 	dcss_crtc->irq_enabled = false;
 }
@@ -138,20 +51,12 @@ static const struct drm_crtc_funcs dcss_crtc_funcs = {
 	.set_config = drm_atomic_helper_set_config,
 	.destroy = drm_crtc_cleanup,
 	.page_flip = drm_atomic_helper_page_flip,
-	.reset = dcss_crtc_reset,
-	.atomic_duplicate_state = dcss_crtc_duplicate_state,
-	.atomic_destroy_state = dcss_crtc_destroy_state,
+	.reset = drm_atomic_helper_crtc_reset,
+	.atomic_duplicate_state = drm_atomic_helper_crtc_duplicate_state,
+	.atomic_destroy_state = drm_atomic_helper_crtc_destroy_state,
 	.enable_vblank = dcss_enable_vblank,
 	.disable_vblank = dcss_disable_vblank,
 };
-
-static int dcss_crtc_atomic_check(struct drm_crtc *crtc,
-				  struct drm_crtc_state *state)
-{
-	/* TODO: other checks? */
-
-	return 0;
-}
 
 static void dcss_crtc_atomic_begin(struct drm_crtc *crtc,
 				   struct drm_crtc_state *old_crtc_state)
@@ -172,71 +77,10 @@ static void dcss_crtc_atomic_flush(struct drm_crtc *crtc,
 {
 	struct dcss_crtc *dcss_crtc = container_of(crtc, struct dcss_crtc,
 						   base);
-	struct dcss_soc *dcss = dev_get_drvdata(dcss_crtc->dev->parent);
+	struct dcss_dev *dcss = dcss_crtc->base.dev->dev_private;
 
-	dcss_trace_module(TRACE_DRM_CRTC, TRACE_FLUSH);
-
-	if (dcss_dtg_is_enabled(dcss))
-		dcss_ctxld_enable(dcss);
-}
-
-#define YUV_MODE		BIT(0)
-
-void dcss_crtc_setup_opipe(struct drm_crtc *crtc, struct drm_connector *conn,
-			   u32 colorimetry, u32 eotf,
-			   enum hdmi_quantization_range qr)
-{
-	struct dcss_crtc *dcss_crtc = container_of(crtc, struct dcss_crtc,
-						   base);
-
-	if ((colorimetry & BIT(HDMI_EXTENDED_COLORIMETRY_BT2020)) ||
-	    (colorimetry & BIT(HDMI_EXTENDED_COLORIMETRY_BT2020_CONST_LUM)))
-		dcss_crtc->opipe_g = G_REC2020;
-	else if ((colorimetry & BIT(HDMI_EXTENDED_COLORIMETRY_OPRGB)) &&
-		 !(crtc->state->adjusted_mode.private_flags & YUV_MODE))
-		dcss_crtc->opipe_g = G_ADOBE_ARGB;
-	else
-		dcss_crtc->opipe_g = G_REC709;
-
-	if (dcss_crtc->opipe_g == G_REC2020)
-		dcss_crtc->opipe_nl = NL_REC2084;
-	else if (dcss_crtc->opipe_g == G_ADOBE_ARGB)
-		dcss_crtc->opipe_nl = NL_SRGB;
-	else
-		dcss_crtc->opipe_nl = NL_REC709;
-
-	if (qr == HDMI_QUANTIZATION_RANGE_FULL)
-		dcss_crtc->opipe_pr = PR_FULL;
-	else
-		dcss_crtc->opipe_pr = PR_LIMITED;
-
-	/*
-	 * private_flags is set in the connector driver in the mode_fixup()
-	 * phase. Also, the DCSS HDR10 output pipe color depth is always
-	 * 10-bit.
-	 */
-	if (crtc->state->adjusted_mode.private_flags & YUV_MODE)
-		dcss_crtc->opipe_pix_format = DRM_FORMAT_P010;
-	else
-		dcss_crtc->opipe_pix_format = DRM_FORMAT_ARGB2101010;
-
-	DRM_DEBUG_KMS("OPIPE_CFG: gamut = %d, nl = %d, pr = %d, pix_fmt = %d\n",
-		      dcss_crtc->opipe_g, dcss_crtc->opipe_nl,
-		      dcss_crtc->opipe_pr, dcss_crtc->opipe_pix_format);
-}
-
-int dcss_crtc_get_opipe_cfg(struct drm_crtc *crtc,
-			    struct dcss_hdr10_pipe_cfg *opipe_cfg)
-{
-	struct dcss_crtc *dcss_crtc = container_of(crtc, struct dcss_crtc,
-						   base);
-
-	opipe_cfg->pixel_format = dcss_crtc->opipe_pix_format;
-	opipe_cfg->g = dcss_crtc->opipe_g;
-	opipe_cfg->nl = dcss_crtc->opipe_nl;
-	opipe_cfg->pr = dcss_crtc->opipe_pr;
-
-	return 0;
+	if (dcss_dtg_is_enabled(dcss->dtg))
+		dcss_ctxld_enable(dcss->ctxld);
 }
 
 static void dcss_crtc_atomic_enable(struct drm_crtc *crtc,
@@ -244,35 +88,33 @@ static void dcss_crtc_atomic_enable(struct drm_crtc *crtc,
 {
 	struct dcss_crtc *dcss_crtc = container_of(crtc, struct dcss_crtc,
 						   base);
-	struct dcss_soc *dcss = dev_get_drvdata(dcss_crtc->dev->parent);
+	struct dcss_dev *dcss = dcss_crtc->base.dev->dev_private;
 	struct drm_display_mode *mode = &crtc->state->adjusted_mode;
 	struct videomode vm;
 
 	drm_display_mode_to_videomode(mode, &vm);
-	/* Use crtc_clock instead of clock, for videomode */
+
+	pm_runtime_get_sync(dcss->dev);
+
 	vm.pixelclock = mode->crtc_clock * 1000;
 
-	pm_runtime_get_sync(dcss_crtc->dev->parent);
+	dcss_dtg_sync_set(dcss->dtg, &vm);
 
-	dcss_dtg_ctxld_kick_irq_enable(dcss, true);
-
-	dcss_dtg_sync_set(dcss, &vm);
-
-	dcss_ss_subsam_set(dcss, dcss_crtc->opipe_pix_format);
-	dcss_ss_sync_set(dcss, &vm, mode->flags & DRM_MODE_FLAG_PHSYNC,
+	dcss_ss_subsam_set(dcss->ss, dcss_crtc->output_is_yuv);
+	dcss_ss_sync_set(dcss->ss, &vm, mode->flags & DRM_MODE_FLAG_PHSYNC,
 			 mode->flags & DRM_MODE_FLAG_PVSYNC);
 
-	dcss_dtg_css_set(dcss, dcss_crtc->opipe_pix_format);
+	dcss_dtg_css_set(dcss->dtg, dcss_crtc->output_is_yuv);
 
-	dcss_ss_enable(dcss, true);
-	dcss_dtg_enable(dcss, true, NULL);
-	dcss_ctxld_enable(dcss);
+	dcss_ss_enable(dcss->ss);
+	dcss_dtg_enable(dcss->dtg, true, NULL);
+	dcss_ctxld_enable(dcss->ctxld);
+
+	dcss_enable_vblank(crtc);
 
 	reinit_completion(&dcss_crtc->en_completion);
 	wait_for_completion_timeout(&dcss_crtc->en_completion,
 				    msecs_to_jiffies(500));
-
-	crtc->enabled = true;
 }
 
 static void dcss_crtc_atomic_disable(struct drm_crtc *crtc,
@@ -280,7 +122,7 @@ static void dcss_crtc_atomic_disable(struct drm_crtc *crtc,
 {
 	struct dcss_crtc *dcss_crtc = container_of(crtc, struct dcss_crtc,
 						   base);
-	struct dcss_soc *dcss = dev_get_drvdata(dcss_crtc->dev->parent);
+	struct dcss_dev *dcss = dcss_crtc->base.dev->dev_private;
 
 	drm_atomic_helper_disable_planes_on_crtc(old_crtc_state, false);
 
@@ -291,13 +133,11 @@ static void dcss_crtc_atomic_disable(struct drm_crtc *crtc,
 	}
 	spin_unlock_irq(&crtc->dev->event_lock);
 
-	dcss_dtg_ctxld_kick_irq_enable(dcss, true);
+	dcss_dtg_ctxld_kick_irq_enable(dcss->dtg, true);
 
-	dcss_ss_enable(dcss, false);
-	dcss_dtg_enable(dcss, false, &dcss_crtc->dis_completion);
-	dcss_ctxld_enable(dcss);
-
-	crtc->enabled = false;
+	dcss_ss_disable(dcss->ss);
+	dcss_dtg_enable(dcss->dtg, false, &dcss_crtc->dis_completion);
+	dcss_ctxld_enable(dcss->ctxld);
 
 	reinit_completion(&dcss_crtc->dis_completion);
 	wait_for_completion_timeout(&dcss_crtc->dis_completion,
@@ -305,13 +145,12 @@ static void dcss_crtc_atomic_disable(struct drm_crtc *crtc,
 
 	drm_crtc_vblank_off(crtc);
 
-	dcss_dtg_ctxld_kick_irq_enable(dcss, false);
+	dcss_dtg_ctxld_kick_irq_enable(dcss->dtg, false);
 
-	pm_runtime_put_sync(dcss_crtc->dev->parent);
+	pm_runtime_put_sync(dcss->dev);
 }
 
 static const struct drm_crtc_helper_funcs dcss_helper_funcs = {
-	.atomic_check = dcss_crtc_atomic_check,
 	.atomic_begin = dcss_crtc_atomic_begin,
 	.atomic_flush = dcss_crtc_atomic_flush,
 	.atomic_enable = dcss_crtc_atomic_enable,
@@ -321,106 +160,67 @@ static const struct drm_crtc_helper_funcs dcss_helper_funcs = {
 static irqreturn_t dcss_crtc_irq_handler(int irq, void *dev_id)
 {
 	struct dcss_crtc *dcss_crtc = dev_id;
-	struct dcss_soc *dcss = dev_get_drvdata(dcss_crtc->dev->parent);
+	struct dcss_dev *dcss = dcss_crtc->base.dev->dev_private;
 
-	dcss_trace_module(TRACE_DRM_CRTC, TRACE_VBLANK);
-
-	if (!dcss_dtg_vblank_irq_valid(dcss))
+	if (!dcss_dtg_vblank_irq_valid(dcss->dtg))
 		return IRQ_HANDLED;
 
 	complete(&dcss_crtc->en_completion);
 
-	if (dcss_ctxld_is_flushed(dcss))
+	if (dcss_ctxld_is_flushed(dcss->ctxld))
 		drm_crtc_handle_vblank(&dcss_crtc->base);
 
-	dcss_vblank_irq_clear(dcss);
+	dcss_dtg_vblank_irq_clear(dcss->dtg);
 
 	return IRQ_HANDLED;
 }
 
-static int dcss_crtc_init(struct dcss_crtc *crtc,
-			  struct dcss_client_platformdata *pdata,
-			  struct drm_device *drm)
+int dcss_crtc_init(struct dcss_crtc *crtc, struct drm_device *drm)
 {
-	struct dcss_soc *dcss = dev_get_drvdata(crtc->dev->parent);
+	struct dcss_dev *dcss = drm->dev_private;
+	struct platform_device *pdev = to_platform_device(dcss->dev);
 	int ret;
 
-	crtc->plane[0] = dcss_plane_init(drm, dcss, drm_crtc_mask(&crtc->base),
+	crtc->plane[0] = dcss_plane_init(drm, drm_crtc_mask(&crtc->base),
 					 DRM_PLANE_TYPE_PRIMARY, 2);
 	if (IS_ERR(crtc->plane[0]))
 		return PTR_ERR(crtc->plane[0]);
 
-	crtc->base.port = pdata->of_node;
+	crtc->base.port = dcss->of_port;
+
 	drm_crtc_helper_add(&crtc->base, &dcss_helper_funcs);
 	ret = drm_crtc_init_with_planes(drm, &crtc->base, &crtc->plane[0]->base,
 					NULL, &dcss_crtc_funcs, NULL);
 	if (ret) {
-		dev_err(crtc->dev, "failed to init crtc\n");
+		dev_err(dcss->dev, "failed to init crtc\n");
 		return ret;
 	}
 
-	crtc->plane[1] = dcss_plane_init(drm, dcss, drm_crtc_mask(&crtc->base),
+	crtc->plane[1] = dcss_plane_init(drm, drm_crtc_mask(&crtc->base),
 					 DRM_PLANE_TYPE_OVERLAY, 1);
 	if (IS_ERR(crtc->plane[1]))
 		crtc->plane[1] = NULL;
 
-	crtc->plane[2] = dcss_plane_init(drm, dcss, drm_crtc_mask(&crtc->base),
+	crtc->plane[2] = dcss_plane_init(drm, drm_crtc_mask(&crtc->base),
 					 DRM_PLANE_TYPE_OVERLAY, 0);
 	if (IS_ERR(crtc->plane[2]))
 		crtc->plane[2] = NULL;
 
-	crtc->alpha = drm_property_create_range(drm, 0, "alpha", 0, 255);
-	if (!crtc->alpha) {
-		dev_err(crtc->dev, "cannot create alpha property\n");
-		return -ENOMEM;
-	}
+	drm_plane_create_alpha_property(&crtc->plane[0]->base);
 
-	crtc->use_global = drm_property_create_range(drm, 0,
-						     "use_global_alpha", 0, 1);
-	if (!crtc->use_global) {
-		dev_err(crtc->dev, "cannot create use_global property\n");
-		return -ENOMEM;
-	}
-
-	crtc->dtrc_table_ofs = drm_property_create_range(drm, 0,
-							 "dtrc_table_ofs", 0,
-							 ULLONG_MAX);
-	if (!crtc->dtrc_table_ofs) {
-		dev_err(crtc->dev, "cannot create dtrc_table_ofs property\n");
-		return -ENOMEM;
-	}
-
-	/* attach alpha property to channel 0 */
-	drm_object_attach_property(&crtc->plane[0]->base.base,
-				   crtc->alpha, 255);
-	crtc->plane[0]->alpha_prop = crtc->alpha;
-
-	drm_object_attach_property(&crtc->plane[0]->base.base,
-				   crtc->use_global, 0);
-	crtc->plane[0]->use_global_prop = crtc->use_global;
-
-	/* attach DTRC table offsets property to overlay planes */
-	drm_object_attach_property(&crtc->plane[1]->base.base,
-				   crtc->dtrc_table_ofs, 0);
-	crtc->plane[1]->dtrc_table_ofs_prop = crtc->dtrc_table_ofs;
-
-	drm_object_attach_property(&crtc->plane[2]->base.base,
-				   crtc->dtrc_table_ofs, 0);
-	crtc->plane[2]->dtrc_table_ofs_prop = crtc->dtrc_table_ofs;
-
-	crtc->irq = dcss_vblank_irq_get(dcss);
+	crtc->irq = platform_get_irq_byname(pdev, "vblank");
 	if (crtc->irq < 0) {
-		dev_err(crtc->dev, "unable to get vblank interrupt\n");
+		dev_err(dcss->dev, "unable to get vblank interrupt\n");
 		return crtc->irq;
 	}
 
 	init_completion(&crtc->en_completion);
 	init_completion(&crtc->dis_completion);
 
-	ret = devm_request_irq(crtc->dev, crtc->irq, dcss_crtc_irq_handler,
+	ret = devm_request_irq(dcss->dev, crtc->irq, dcss_crtc_irq_handler,
 			       IRQF_TRIGGER_RISING, "dcss_drm", crtc);
 	if (ret) {
-		dev_err(crtc->dev, "irq request failed with %d.\n", ret);
+		dev_err(dcss->dev, "irq request failed with %d.\n", ret);
 		return ret;
 	}
 
@@ -429,70 +229,29 @@ static int dcss_crtc_init(struct dcss_crtc *crtc,
 	return 0;
 }
 
-static int dcss_crtc_bind(struct device *dev, struct device *master,
-			  void *data)
+void dcss_crtc_attach_color_mgmt_properties(struct dcss_crtc *crtc)
 {
-	struct dcss_client_platformdata *pdata = dev->platform_data;
-	struct drm_device *drm = data;
-	struct dcss_crtc *crtc;
-	int ret;
+	int i;
 
-	crtc = devm_kzalloc(dev, sizeof(*crtc), GFP_KERNEL);
-	if (!crtc)
-		return -ENOMEM;
+	/* create color management properties only for video planes */
+	for (i = 1; i < 3; i++) {
+		if (crtc->plane[i]->type == DRM_PLANE_TYPE_PRIMARY)
+			return;
 
-	crtc->dev = dev;
-
-	ret = dcss_crtc_init(crtc, pdata, drm);
-	if (ret)
-		return ret;
-
-	if (!drm->mode_config.funcs)
-		drm->mode_config.funcs = &dcss_drm_mode_config_funcs;
-
-	dev_set_drvdata(dev, crtc);
-
-	return 0;
-}
-
-static void dcss_crtc_unbind(struct device *dev, struct device *master,
-			     void *data)
-{
-}
-
-static const struct component_ops dcss_crtc_ops = {
-	.bind = dcss_crtc_bind,
-	.unbind = dcss_crtc_unbind,
-};
-
-static int dcss_crtc_probe(struct platform_device *pdev)
-{
-	struct device *dev = &pdev->dev;
-
-	if (!dev->platform_data) {
-		dev_err(dev, "no platform data\n");
-		return -EINVAL;
+		drm_plane_create_color_properties(&crtc->plane[i]->base,
+					BIT(DRM_COLOR_YCBCR_BT601) |
+					BIT(DRM_COLOR_YCBCR_BT709) |
+					BIT(DRM_COLOR_YCBCR_BT2020),
+					BIT(DRM_COLOR_YCBCR_FULL_RANGE) |
+					BIT(DRM_COLOR_YCBCR_LIMITED_RANGE),
+					DRM_COLOR_YCBCR_BT709,
+					DRM_COLOR_YCBCR_FULL_RANGE);
 	}
-
-	return component_add(dev, &dcss_crtc_ops);
 }
 
-static int dcss_crtc_remove(struct platform_device *pdev)
+void dcss_crtc_deinit(struct dcss_crtc *crtc, struct drm_device *drm)
 {
-	component_del(&pdev->dev, &dcss_crtc_ops);
-	return 0;
+	struct dcss_dev *dcss = drm->dev_private;
+
+	devm_free_irq(dcss->dev, crtc->irq, crtc);
 }
-
-static struct platform_driver dcss_crtc_driver = {
-	.driver = {
-		.name = "imx-dcss-crtc",
-	},
-	.probe = dcss_crtc_probe,
-	.remove = dcss_crtc_remove,
-};
-module_platform_driver(dcss_crtc_driver);
-
-MODULE_AUTHOR("Laurentiu Palcu <laurentiu.palcu@nxp.com>");
-MODULE_DESCRIPTION("i.MX DCSS CRTC");
-MODULE_LICENSE("GPL");
-MODULE_ALIAS("platform:imx-dcss-crtc");

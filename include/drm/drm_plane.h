@@ -120,7 +120,6 @@ struct drm_plane_state {
 	 * details.
 	 */
 	u16 alpha;
-	uint16_t pixel_blend_mode;
 
 	/**
 	 * @pixel_blend_mode:
@@ -638,9 +637,6 @@ struct drm_plane {
 
 	/** @type: Type of plane, see &enum drm_plane_type for details. */
 	enum drm_plane_type type;
-
-	/* Value of true:1 means HDR is supported */
-	bool hdr_supported;
 
 	/**
 	 * @index: Position inside the mode_config.list, can be used as an array

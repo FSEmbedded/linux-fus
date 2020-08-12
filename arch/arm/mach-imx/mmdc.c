@@ -26,8 +26,6 @@
 #define MMDC_MDMISC		0x18
 #define BM_MMDC_MDMISC_DDR_TYPE	0x18
 #define BP_MMDC_MDMISC_DDR_TYPE	0x3
-#define BM_MMDC_MDMISC_LPDDR2_2CH	0x4
-#define BP_MMDC_MDMISC_LPDDR2_2CH	0x2
 
 #define TOTAL_CYCLES		0x0
 #define BUSY_CYCLES		0x1
@@ -562,9 +560,6 @@ static int imx_mmdc_probe(struct platform_device *pdev)
 	val = readl_relaxed(reg);
 	ddr_type = (val & BM_MMDC_MDMISC_DDR_TYPE) >>
 		 BP_MMDC_MDMISC_DDR_TYPE;
-	/* Get lpddr2 2ch-mode */
-	lpddr2_2ch_mode = (val & BM_MMDC_MDMISC_LPDDR2_2CH) >>
-			BP_MMDC_MDMISC_LPDDR2_2CH;
 
 	reg = mmdc_base + MMDC_MAPSR;
 

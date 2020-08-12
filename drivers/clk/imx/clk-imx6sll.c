@@ -13,15 +13,11 @@
 #include <linux/io.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
-#include <linux/of_irq.h>
-#include <linux/types.h>
 
 #include "clk.h"
 
 #define CCM_ANALOG_PLL_BYPASS		(0x1 << 16)
 #define xPLL_CLR(offset)		(offset + 0x8)
-#define BM_CCM_CCDR_MMDC_CH0_MASK	(0x2 << 16)
-#define CCDR	0x4
 
 static const char *pll_bypass_src_sels[] = { "osc", "dummy", };
 static const char *pll1_bypass_sels[] = { "pll1", "pll1_bypass_src", };
@@ -80,26 +76,10 @@ static u32 share_count_ssi1;
 static u32 share_count_ssi2;
 static u32 share_count_ssi3;
 
-static const int uart_clk_ids[] __initconst = {
-	IMX6SLL_CLK_UART1_IPG,
-	IMX6SLL_CLK_UART1_SERIAL,
-	IMX6SLL_CLK_UART2_IPG,
-	IMX6SLL_CLK_UART2_SERIAL,
-	IMX6SLL_CLK_UART3_IPG,
-	IMX6SLL_CLK_UART3_SERIAL,
-	IMX6SLL_CLK_UART4_IPG,
-	IMX6SLL_CLK_UART4_SERIAL,
-	IMX6SLL_CLK_UART5_IPG,
-	IMX6SLL_CLK_UART5_SERIAL,
-};
-
-static struct clk **uart_clks[ARRAY_SIZE(uart_clk_ids) + 1] __initdata;
-
 static void __init imx6sll_clocks_init(struct device_node *ccm_node)
 {
 	struct device_node *np;
 	void __iomem *base;
-	int i;
 
 	clk_hw_data = kzalloc(struct_size(clk_hw_data, hws,
 					  IMX6SLL_CLK_END), GFP_KERNEL);
@@ -163,15 +143,6 @@ static void __init imx6sll_clocks_init(struct device_node *ccm_node)
 	hws[IMX6SLL_CLK_PLL5_VIDEO]	= imx_clk_hw_gate("pll5_video",	   "pll5_bypass", base + 0xa0, 13);
 	hws[IMX6SLL_CLK_PLL6_ENET]	= imx_clk_hw_gate("pll6_enet",	   "pll6_bypass", base + 0xe0, 13);
 	hws[IMX6SLL_CLK_PLL7_USB_HOST]	= imx_clk_hw_gate("pll7_usb_host",	   "pll7_bypass", base + 0x20, 13);
-
-	/* Do not bypass PLLs initially */
-	clk_set_parent(clks[IMX6SLL_PLL1_BYPASS], clks[IMX6SLL_CLK_PLL1]);
-	clk_set_parent(clks[IMX6SLL_PLL2_BYPASS], clks[IMX6SLL_CLK_PLL2]);
-	clk_set_parent(clks[IMX6SLL_PLL3_BYPASS], clks[IMX6SLL_CLK_PLL3]);
-	clk_set_parent(clks[IMX6SLL_PLL4_BYPASS], clks[IMX6SLL_CLK_PLL4]);
-	clk_set_parent(clks[IMX6SLL_PLL5_BYPASS], clks[IMX6SLL_CLK_PLL5]);
-	clk_set_parent(clks[IMX6SLL_PLL6_BYPASS], clks[IMX6SLL_CLK_PLL6]);
-	clk_set_parent(clks[IMX6SLL_PLL7_BYPASS], clks[IMX6SLL_CLK_PLL7]);
 
 	/*
 	 * Bit 20 is the reserved and read-only bit, we do this only for:
@@ -369,13 +340,12 @@ static void __init imx6sll_clocks_init(struct device_node *ccm_node)
 
 	of_clk_add_hw_provider(np, of_clk_hw_onecell_get, clk_hw_data);
 
-	for (i = 0; i < ARRAY_SIZE(uart_clk_ids); i++) {
-		int index = uart_clk_ids[i];
-
-		uart_clks[i] = &hws[index]->clk;
-	}
-
-	imx_register_uart_clocks(uart_clks);
+	/* Set the UART parent if needed */
+	if (uart_from_osc)
+		clk_set_parent(hws[IMX6SLL_CLK_UART_SEL]->clk, hws[IMX6SLL_CLK_OSC]->clk);
+	else
+		clk_set_parent(hws[IMX6SLL_CLK_UART_SEL]->clk, hws[IMX6SLL_CLK_PLL3_80M]->clk);
+	imx_register_uart_clocks();
 
 	/* Lower the AHB clock rate before changing the clock source. */
 	clk_set_rate(hws[IMX6SLL_CLK_AHB]->clk, 99000000);
@@ -385,6 +355,10 @@ static void __init imx6sll_clocks_init(struct device_node *ccm_node)
 	clk_set_parent(hws[IMX6SLL_CLK_PERIPH]->clk, hws[IMX6SLL_CLK_PERIPH_CLK2]->clk);
 	clk_set_parent(hws[IMX6SLL_CLK_PERIPH_PRE]->clk, hws[IMX6SLL_CLK_PLL2_BUS]->clk);
 	clk_set_parent(hws[IMX6SLL_CLK_PERIPH]->clk, hws[IMX6SLL_CLK_PERIPH_PRE]->clk);
+	/* Configure EPDC clocks */
+	clk_set_rate(hws[IMX6SLL_CLK_PLL3_PFD2]->clk, 320000000);
+	clk_set_parent(hws[IMX6SLL_CLK_EPDC_PRE_SEL]->clk,
+		hws[IMX6SLL_CLK_PLL3_PFD2]->clk);
 
 	clk_set_rate(hws[IMX6SLL_CLK_AHB]->clk, 132000000);
 }

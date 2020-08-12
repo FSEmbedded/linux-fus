@@ -25,6 +25,7 @@
 #include <linux/mm.h>
 #include <linux/mount.h>
 #include <linux/pseudo_fs.h>
+#include <linux/device.h>
 
 #include <uapi/linux/dma-buf.h>
 #include <uapi/linux/magic.h>

@@ -1,21 +1,16 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2015 Freescale Semiconductor, Inc.
- * Copyright (C) 2017 NXP.
- */
-
-/*
- * The code contained herein is licensed under the GNU Lesser General
- * Public License.  You may obtain a copy of the GNU Lesser General
- * Public License Version 2.1 or later at the following locations:
+ * Copyright (C) 2019 NXP.
  *
- * http://www.opensource.org/licenses/lgpl-license.html
- * http://www.gnu.org/copyleft/lgpl.html
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  */
 
 /*
  * @file linux/imx_rpmsg.h
  *
- * @brief Global header file for imx RPMSG
+ * @brief Global header file for iMX RPMSG
  *
  * @ingroup RPMSG
  */
@@ -34,6 +29,8 @@
 #define IMX_RMPSG_MAJOR		1
 #define IMX_RMPSG_MINOR		0
 
+#define CIRC_ADD(idx, size, value)	(((idx) + (value)) & ((size) - 1))
+
 struct imx_rpmsg_head {
 	u8 cate;
 	u8 major;
@@ -41,6 +38,6 @@ struct imx_rpmsg_head {
 	u8 type;
 	u8 cmd;
 	u8 reserved[5];
-} __attribute__ ((packed));
+} __packed;
 
 #endif /* __LINUX_IMX_RPMSG_H__ */

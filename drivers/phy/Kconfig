@@ -50,22 +50,14 @@ config PHY_XGENE
 	  This option enables support for APM X-Gene SoC multi-purpose PHY.
 
 config PHY_MIXEL_LVDS
-	bool
+	tristate "MIXEL LVDS PHY support"
 	depends on OF
 	select GENERIC_PHY
-	default ARCH_FSL_IMX8QM
 
 config PHY_MIXEL_LVDS_COMBO
-	bool
+	tristate "MIXEL LVDS PHY(LVDS+MIPI DSI combo PHY) support"
 	depends on OF
 	select GENERIC_PHY
-	default ARCH_FSL_IMX8QXP
-
-config PHY_MIXEL_MIPI_DSI
-	bool
-	depends on OF
-	select GENERIC_PHY
-	default ARCH_FSL_IMX8QM || ARCH_FSL_IMX8QXP
 
 source "drivers/phy/allwinner/Kconfig"
 source "drivers/phy/amlogic/Kconfig"

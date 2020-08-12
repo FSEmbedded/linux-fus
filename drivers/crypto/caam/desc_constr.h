@@ -134,7 +134,7 @@ static inline void init_job_desc_pdb(u32 * const desc, u32 options,
 	init_job_desc(desc, (((pdb_len + 1) << HDR_START_IDX_SHIFT)) | options);
 }
 
-static inline void append_ptr(u32 * const desc, caam_dma_addr_t ptr)
+static inline void append_ptr(u32 * const desc, dma_addr_t ptr)
 {
 	if (caam_ptr_sz == sizeof(dma_addr_t)) {
 		dma_addr_t *offset = (dma_addr_t *)desc_end(desc);
@@ -150,7 +150,7 @@ static inline void append_ptr(u32 * const desc, caam_dma_addr_t ptr)
 				CAAM_PTR_SZ / CAAM_CMD_SZ);
 }
 
-static inline void init_job_desc_shared(u32 * const desc, caam_dma_addr_t ptr,
+static inline void init_job_desc_shared(u32 * const desc, dma_addr_t ptr,
 					int len, u32 options)
 {
 	PRINT_POS;
@@ -205,15 +205,15 @@ static inline u32 *write_cmd(u32 * const desc, u32 command)
 	return desc + 1;
 }
 
-static inline void append_cmd_ptr(u32 * const desc, caam_dma_addr_t ptr,
-					int len, u32 command)
+static inline void append_cmd_ptr(u32 * const desc, dma_addr_t ptr, int len,
+				  u32 command)
 {
 	append_cmd(desc, command | len);
 	append_ptr(desc, ptr);
 }
 
 /* Write length after pointer, rather than inside command */
-static inline void append_cmd_ptr_extlen(u32 * const desc, caam_dma_addr_t ptr,
+static inline void append_cmd_ptr_extlen(u32 * const desc, dma_addr_t ptr,
 					 unsigned int len, u32 command)
 {
 	append_cmd(desc, command);
@@ -240,6 +240,7 @@ static inline u32 *append_##cmd(u32 * const desc, u32 options) \
 APPEND_CMD_RET(jump, JUMP)
 APPEND_CMD_RET(move, MOVE)
 APPEND_CMD_RET(move_len, MOVE_LEN)
+APPEND_CMD_RET(moveb, MOVEB)
 
 static inline void set_jump_tgt_here(u32 * const desc, u32 *jump_cmd)
 {
@@ -278,8 +279,8 @@ APPEND_CMD_LEN(seq_fifo_load, SEQ_FIFO_LOAD)
 APPEND_CMD_LEN(seq_fifo_store, SEQ_FIFO_STORE)
 
 #define APPEND_CMD_PTR(cmd, op) \
-static inline void append_##cmd(u32 * const desc, caam_dma_addr_t ptr, \
-		unsigned int len, u32 options) \
+static inline void append_##cmd(u32 * const desc, dma_addr_t ptr, \
+				unsigned int len, u32 options) \
 { \
 	PRINT_POS; \
 	append_cmd_ptr(desc, ptr, len, CMD_##op | options); \
@@ -289,7 +290,7 @@ APPEND_CMD_PTR(load, LOAD)
 APPEND_CMD_PTR(fifo_load, FIFO_LOAD)
 APPEND_CMD_PTR(fifo_store, FIFO_STORE)
 
-static inline void append_store(u32 * const desc, caam_dma_addr_t ptr,
+static inline void append_store(u32 * const desc, dma_addr_t ptr,
 				unsigned int len, u32 options)
 {
 	u32 cmd_src;
@@ -308,9 +309,9 @@ static inline void append_store(u32 * const desc, caam_dma_addr_t ptr,
 
 #define APPEND_SEQ_PTR_INTLEN(cmd, op) \
 static inline void append_seq_##cmd##_ptr_intlen(u32 * const desc, \
-					 caam_dma_addr_t ptr, \
-					 unsigned int len, \
-					 u32 options) \
+						 dma_addr_t ptr, \
+						 unsigned int len, \
+						 u32 options) \
 { \
 	PRINT_POS; \
 	if (options & (SQIN_RTO | SQIN_PRE)) \
@@ -332,9 +333,8 @@ APPEND_CMD_PTR_TO_IMM(load, LOAD);
 APPEND_CMD_PTR_TO_IMM(fifo_load, FIFO_LOAD);
 
 #define APPEND_CMD_PTR_EXTLEN(cmd, op) \
-static inline void append_##cmd##_extlen(u32 * const desc, \
-					caam_dma_addr_t ptr, \
-					unsigned int len, u32 options) \
+static inline void append_##cmd##_extlen(u32 * const desc, dma_addr_t ptr, \
+					 unsigned int len, u32 options) \
 { \
 	PRINT_POS; \
 	append_cmd_ptr_extlen(desc, ptr, len, CMD_##op | SQIN_EXT | options); \
@@ -347,7 +347,7 @@ APPEND_CMD_PTR_EXTLEN(seq_out_ptr, SEQ_OUT_PTR)
  * the size of its type
  */
 #define APPEND_CMD_PTR_LEN(cmd, op, type) \
-static inline void append_##cmd(u32 * const desc, caam_dma_addr_t ptr, \
+static inline void append_##cmd(u32 * const desc, dma_addr_t ptr, \
 				type len, u32 options) \
 { \
 	PRINT_POS; \
@@ -501,8 +501,8 @@ do { \
  * @key_virt: virtual address where algorithm key resides
  * @key_inline: true - key can be inlined in the descriptor; false - key is
  *              referenced by the descriptor
- * @key_real_len: Size of the key to be loaded by the CAAM
- * @key_cmd_opt: Optional parameters for KEY command
+ * @key_real_len: size of the key to be loaded by the CAAM
+ * @key_cmd_opt: optional parameters for KEY command
  */
 struct alginfo {
 	u32 algtype;

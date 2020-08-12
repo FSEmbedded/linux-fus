@@ -5,8 +5,9 @@
  */
 
 #include <linux/clk-provider.h>
-#include <linux/imx_sema4.h>
+#include <linux/delay.h>
 #include <linux/io.h>
+#include <linux/imx_sema4.h>
 #include <linux/slab.h>
 #include <linux/jiffies.h>
 #include <linux/err.h>
@@ -67,6 +68,9 @@ static int clk_pllv3_wait_lock(struct clk_pllv3 *pll)
 			break;
 		if (time_after(jiffies, timeout))
 			break;
+		/* Do not usleep if m4 enabled on i.mx6sx */
+		if (!(imx_src_is_m4_enabled() && clk_on_imx6sx()))
+			usleep_range(50, 500);
 	} while (1);
 
 	return readl_relaxed(pll->base) & BM_PLL_LOCK ? 0 : -ETIMEDOUT;
@@ -290,7 +294,7 @@ static long clk_pllv3_av_round_rate(struct clk_hw *hw, unsigned long rate,
 		mfd = parent_rate;
 
 	div = rate / parent_rate;
-	temp64 = rate - div * parent_rate;
+	temp64 = (u64) (rate - div * parent_rate);
 	temp64 *= mfd;
 	do_div(temp64, parent_rate);
 	mfn = temp64;
@@ -320,7 +324,7 @@ static int clk_pllv3_av_set_rate(struct clk_hw *hw, unsigned long rate,
 		mfd = parent_rate;
 
 	div = rate / parent_rate;
-	temp64 = rate - div * parent_rate;
+	temp64 = (u64) (rate - div * parent_rate);
 	temp64 *= mfd;
 	do_div(temp64, parent_rate);
 	mfn = temp64;
@@ -478,11 +482,6 @@ struct clk_hw *imx_clk_hw_pllv3(enum imx_pllv3_type type, const char *name,
 		ops = &clk_pllv3_vf610_ops;
 		pll->num_offset = PLL_VF610_NUM_OFFSET;
 		pll->denom_offset = PLL_VF610_DENOM_OFFSET;
-		break;
-	case IMX_PLLV3_PLL2:
-		pll->num_offset = PLL_PLL2_NUM_OFFSET;
-		pll->denom_offset = PLL_PLL2_DENOM_OFFSET;
-		ops = &clk_pllv3_pll2_ops;
 		break;
 	case IMX_PLLV3_USB_VF610:
 		pll->div_shift = 1;

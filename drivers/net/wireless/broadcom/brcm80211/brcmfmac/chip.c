@@ -498,6 +498,16 @@ char *brcmf_chip_name(u32 id, u32 rev, char *buf, uint len)
 	return buf;
 }
 
+bool brcmf_chip_has_clm_blob(u32 id)
+{
+	bool ret = true;
+
+	if (id == BRCM_CC_4339_CHIP_ID)
+		return false;
+
+	return ret;
+}
+
 static struct brcmf_core *brcmf_chip_add_core(struct brcmf_chip_priv *ci,
 					      u16 coreid, u32 base,
 					      u32 wrapbase)
@@ -1373,7 +1383,7 @@ bool brcmf_chip_set_active(struct brcmf_chip *pub, u32 rstvec)
 
 bool brcmf_chip_sr_capable(struct brcmf_chip *pub)
 {
-	u32 base, addr, reg, sr_eng_en, pmu_cc3_mask = ~0;
+	u32 base, addr, reg, pmu_cc3_mask = ~0;
 	struct brcmf_chip_priv *chip;
 	struct brcmf_core *pmu = brcmf_chip_get_pmu(pub);
 

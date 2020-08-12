@@ -123,7 +123,6 @@ static int imx_hifi_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-	struct snd_soc_component *component = codec_dai->component;
 	struct snd_soc_card *card = rtd->card;
 	struct device *dev = card->dev;
 	struct imx_wm8958_data *data = snd_soc_card_get_drvdata(card);
@@ -207,13 +206,13 @@ static int imx_hifi_hw_params(struct snd_pcm_substream *substream,
 	 * Set GPIO1 pin function to reserve, so that DAC1 and ADC1 using shared
 	 * LRCLK from DACLRCK1.
 	 */
-	snd_soc_component_update_bits(component, WM8994_GPIO_1, 0x1f, 0x2);
+	snd_soc_component_update_bits(codec_dai->component, WM8994_GPIO_1, 0x1f, 0x2);
 
 	/*
 	 * Clear ADC_OSR128 bit to support slower SYSCLK, and support ADC sample
 	 * rate 8K, 11.025K and 12K.
 	 */
-	snd_soc_component_update_bits(component, WM8994_OVERSAMPLING, 1<<1, 0);
+	snd_soc_component_update_bits(codec_dai->component, WM8994_OVERSAMPLING, 1<<1, 0);
 	return 0;
 }
 
@@ -289,10 +288,10 @@ static int imx_wm8958_gpio_init(struct snd_soc_card *card)
 	struct snd_soc_pcm_runtime *rtd = list_first_entry(
 		&card->rtd_list, struct snd_soc_pcm_runtime, list);
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	struct snd_soc_component *component = codec_dai->component;
 	struct imx_priv *priv = &card_priv;
 	int ret;
-	priv->component = component;
+
+	priv->component = codec_dai->component;
 
 	if (gpio_is_valid(priv->hp_gpio)) {
 		imx_hp_jack_gpio.gpio = priv->hp_gpio;
@@ -435,9 +434,14 @@ static int imx_wm8958_probe(struct platform_device *pdev)
 	struct imx_priv *priv = &card_priv;
 	struct i2c_client *codec_dev;
 	struct imx_wm8958_data *data;
+	struct snd_soc_dai_link_component *dlc;
 	int ret;
 
 	priv->pdev = pdev;
+
+	dlc = devm_kzalloc(&pdev->dev, 3 * sizeof(*dlc), GFP_KERNEL);
+	if (!dlc)
+		return -ENOMEM;
 
 	cpu_np = of_parse_phandle(np, "cpu-dai", 0);
 	if (!cpu_np) {
@@ -493,12 +497,19 @@ static int imx_wm8958_probe(struct platform_device *pdev)
 	priv->hp_gpio = of_get_named_gpio_flags(np, "hp-det-gpios", 0,
 			(enum of_gpio_flags *)&priv->hp_active_low);
 
+	data->dai.cpus = &dlc[0];
+	data->dai.num_cpus = 1;
+	data->dai.platforms = &dlc[1];
+	data->dai.num_platforms = 1;
+	data->dai.codecs = &dlc[2];
+	data->dai.num_codecs = 1;
+
 	data->dai.name = "HiFi";
 	data->dai.stream_name = "HiFi";
-	data->dai.codec_dai_name = "wm8994-aif1";
-	data->dai.codec_name = "wm8994-codec";
-	data->dai.cpu_dai_name = dev_name(&cpu_pdev->dev);
-	data->dai.platform_of_node = cpu_np;
+	data->dai.codecs->dai_name = "wm8994-aif1";
+	data->dai.codecs->name = "wm8994-codec";
+	data->dai.cpus->dai_name = dev_name(&cpu_pdev->dev);
+	data->dai.platforms->of_node = cpu_np;
 	data->dai.ops = &imx_hifi_ops;
 	data->dai.dai_fmt |= SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF;
 	data->card.set_bias_level = imx_wm8958_set_bias_level;

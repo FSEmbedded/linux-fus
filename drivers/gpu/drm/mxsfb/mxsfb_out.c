@@ -79,7 +79,8 @@ int mxsfb_create_output(struct drm_device *drm)
 	struct mxsfb_drm_private *mxsfb = drm->dev_private;
 	int ret;
 
-	ret = drm_of_find_panel_or_bridge(drm->dev->of_node, 0, 0, &mxsfb->panel, &mxsfb->bridge);
+	ret = drm_of_find_panel_or_bridge(drm->dev->of_node, 0, 0,
+					  &mxsfb->panel, &mxsfb->bridge);
 	if (ret)
 		return ret;
 
@@ -88,7 +89,7 @@ int mxsfb_create_output(struct drm_device *drm)
 		mxsfb->connector->dpms = DRM_MODE_DPMS_OFF;
 		mxsfb->connector->polled = 0;
 		drm_connector_helper_add(mxsfb->connector,
-				&mxsfb_panel_connector_helper_funcs);
+					 &mxsfb_panel_connector_helper_funcs);
 		ret = drm_connector_init(drm, mxsfb->connector,
 					 &mxsfb_panel_connector_funcs,
 					 DRM_MODE_CONNECTOR_Unknown);

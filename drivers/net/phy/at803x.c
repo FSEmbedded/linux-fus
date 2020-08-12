@@ -14,7 +14,6 @@
 #include <linux/etherdevice.h>
 #include <linux/of_gpio.h>
 #include <linux/gpio/consumer.h>
-#include <linux/phy.h>
 
 #define AT803X_SPECIFIC_STATUS			0x11
 #define AT803X_SS_SPEED_MASK			(3 << 14)
@@ -45,6 +44,10 @@
 #define AT803X_LOC_MAC_ADDR_0_15_OFFSET		0x804C
 #define AT803X_LOC_MAC_ADDR_16_31_OFFSET	0x804B
 #define AT803X_LOC_MAC_ADDR_32_47_OFFSET	0x804A
+#define AT803X_SMARTEEE_CTL3_OFFSET		0x805D
+#define AT803X_MMD_ACCESS_CONTROL		0x0D
+#define AT803X_MMD_ACCESS_CONTROL_DATA		0x0E
+#define AT803X_FUNC_DATA			0x4003
 #define AT803X_REG_CHIP_CONFIG			0x1f
 #define AT803X_BT_BX_REG_SEL			0x8000
 #define AT803X_SMARTEEE_DISABLED_VAL		0x1000
@@ -64,6 +67,8 @@
 #define AT803X_DEBUG_REG_5			0x05
 #define AT803X_DEBUG_TX_CLK_DLY_EN		BIT(8)
 
+#define AT803X_LPI_EN				BIT(8)
+
 #define AT803X_DEBUG_REG_31			0x1f
 #define AT803X_VDDIO_1P8V_EN			0x8
 
@@ -72,11 +77,6 @@
 #define ATH8035_PHY_ID 0x004dd072
 #define AT803X_PHY_ID_MASK			0xffffffef
 
-/* LED_ACT is busy on blinding even if no any frame transferring,
- * it may cause by PHY/RJ45 power supply issue, the fixup flag just
- * to do sw workaround for the issue.
- */
-#define AT803X_LED_ACT_BLINDING_WORKAROUND	(1 << 0)
 #define AT803X_EEE_FEATURE_DISABLE		(1 << 1)
 #define AT803X_VDDIO_1P8V			(1 << 2)
 
@@ -148,6 +148,39 @@ static int at803x_disable_tx_delay(struct phy_device *phydev)
 {
 	return at803x_debug_reg_mask(phydev, AT803X_DEBUG_REG_5,
 				     AT803X_DEBUG_TX_CLK_DLY_EN, 0);
+}
+
+static inline int at803x_set_vddio_1p8v(struct phy_device *phydev)
+{
+	return at803x_debug_reg_mask(phydev, AT803X_DEBUG_REG_31, 0,
+					AT803X_VDDIO_1P8V_EN);
+}
+
+static int at803x_disable_eee(struct phy_device *phydev)
+{
+	int ret;
+
+	ret = phy_write(phydev, AT803X_MMD_ACCESS_CONTROL,
+				  AT803X_DEVICE_ADDR);
+	if (ret < 0)
+		return ret;
+
+	ret = phy_write(phydev, AT803X_MMD_ACCESS_CONTROL_DATA,
+				  AT803X_SMARTEEE_CTL3_OFFSET);
+	if (ret < 0)
+		return ret;
+
+	ret = phy_write(phydev, AT803X_MMD_ACCESS_CONTROL,
+				  AT803X_FUNC_DATA);
+	if (ret < 0)
+		return ret;
+
+	ret = phy_write(phydev, AT803X_MMD_ACCESS_CONTROL_DATA,
+				  AT803X_SMARTEEE_DISABLED_VAL);
+	if (ret < 0)
+		return ret;
+
+	return 0;
 }
 
 /* save relevant PHY registers to private copy */
@@ -263,9 +296,6 @@ static int at803x_probe(struct phy_device *phydev)
 	if (!priv)
 		return -ENOMEM;
 
-	if (of_property_read_bool(dev->of_node, "at803x,led-act-blind-workaround"))
-		priv->quirks |= AT803X_LED_ACT_BLINDING_WORKAROUND;
-
 	if (of_property_read_bool(dev->of_node, "at803x,eee-disabled"))
 		priv->quirks |= AT803X_EEE_FEATURE_DISABLE;
 
@@ -277,10 +307,30 @@ static int at803x_probe(struct phy_device *phydev)
 	return 0;
 }
 
+static void at803x_enable_smart_eee(struct phy_device *phydev, int on)
+{
+	int value;
+
+	/* 5.1.11 Smart_eee control3 */
+	value = phy_read_mmd(phydev, MDIO_MMD_PCS, 0x805D);
+	if (on)
+		value |= AT803X_LPI_EN;
+	else
+		value &= ~AT803X_LPI_EN;
+	phy_write_mmd(phydev, MDIO_MMD_PCS, 0x805D, value);
+}
+
 static int at803x_config_init(struct phy_device *phydev)
 {
 	int ret;
 	struct at803x_priv *priv = phydev->priv;
+
+
+#ifdef CONFIG_AT803X_PHY_SMART_EEE
+	at803x_enable_smart_eee(phydev, 1);
+#else
+	at803x_enable_smart_eee(phydev, 0);
+#endif
 
 	/* The RX and TX delay default is:
 	 *   after HW reset: RX delay enabled and TX delay disabled
@@ -300,6 +350,18 @@ static int at803x_config_init(struct phy_device *phydev)
 		ret = at803x_enable_tx_delay(phydev);
 	else
 		ret = at803x_disable_tx_delay(phydev);
+
+	if (priv->quirks & AT803X_VDDIO_1P8V) {
+		ret = at803x_set_vddio_1p8v(phydev);
+		if (ret < 0)
+			return ret;
+	}
+
+	if (priv->quirks & AT803X_EEE_FEATURE_DISABLE) {
+		ret = at803x_disable_eee(phydev);
+		if (ret < 0)
+			return ret;
+	}
 
 	return ret;
 }
@@ -358,37 +420,6 @@ static void at803x_link_change_notify(struct phy_device *phydev)
 
 		phydev_dbg(phydev, "%s(): phy was reset\n", __func__);
 	}
-}
-
-int at803x_config_aneg(struct phy_device *phydev)
-{
-	struct at803x_priv *priv = phydev->priv;
-	int result;
-
-	/* Only restart aneg if we are advertising something different
-	 * than we were before.
-	 */
-	result = genphy_config_aneg_check(phydev);
-	if (result > 0) {
-		/* do autonegotiation here */
-		result = phy_read(phydev, MII_BMCR);
-		if (result < 0)
-			return result;
-
-		/* firstly power down here */
-		if (priv->quirks & AT803X_LED_ACT_BLINDING_WORKAROUND) {
-			phy_write(phydev, MII_BMCR, BMCR_PDOWN);
-			msleep(1);
-		}
-
-		result |= BMCR_ANENABLE | BMCR_ANRESTART;
-		/* Don't isolate the PHY if we're negotiating */
-		result &= ~BMCR_ISOLATE;
-
-		result = phy_write(phydev, MII_BMCR, result);
-	}
-
-	return result;
 }
 
 static int at803x_aneg_done(struct phy_device *phydev)

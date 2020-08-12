@@ -6128,7 +6128,6 @@ void cgroup_release(struct task_struct *task)
 	do_each_subsys_mask(ss, ssid, have_release_callback) {
 		ss->release(task);
 	} while_each_subsys_mask();
-}
 
 	if (use_task_css_set_links) {
 		spin_lock_irq(&css_set_lock);

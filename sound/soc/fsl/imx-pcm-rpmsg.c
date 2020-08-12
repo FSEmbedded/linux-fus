@@ -162,7 +162,6 @@ static int imx_rpmsg_pcm_open(struct snd_pcm_substream *substream)
 	struct fsl_rpmsg_i2s *rpmsg_i2s = dev_get_drvdata(cpu_dai->dev);
 	struct i2s_info      *i2s_info =  &rpmsg_i2s->i2s_info;
 	struct i2s_rpmsg     *rpmsg;
-	struct dmaengine_pcm_runtime_data *prtd;
 	int cmd;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
@@ -196,12 +195,6 @@ static int imx_rpmsg_pcm_open(struct snd_pcm_substream *substream)
 
 	i2s_info->send_message(rpmsg, i2s_info);
 
-	prtd = kzalloc(sizeof(*prtd), GFP_KERNEL);
-	if (!prtd)
-		return -ENOMEM;
-
-	substream->runtime->private_data = prtd;
-
 	ret = snd_pcm_hw_constraint_integer(substream->runtime,
 					    SNDRV_PCM_HW_PARAM_PERIODS);
 	if (ret < 0)
@@ -226,8 +219,6 @@ static int imx_rpmsg_pcm_close(struct snd_pcm_substream *substream)
 	struct fsl_rpmsg_i2s *rpmsg_i2s = dev_get_drvdata(cpu_dai->dev);
 	struct i2s_info      *i2s_info =  &rpmsg_i2s->i2s_info;
 	struct i2s_rpmsg     *rpmsg;
-	struct dmaengine_pcm_runtime_data *prtd =
-					substream->runtime->private_data;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 		rpmsg = &i2s_info->rpmsg[I2S_TX_CLOSE];
@@ -242,8 +233,6 @@ static int imx_rpmsg_pcm_close(struct snd_pcm_substream *substream)
 	i2s_info->send_message(rpmsg, i2s_info);
 
 	del_timer(&i2s_info->stream_timer[substream->stream].timer);
-
-	kfree(prtd);
 
 	rtd->dai_link->ignore_suspend = 0;
 
@@ -281,10 +270,10 @@ static int imx_rpmsg_pcm_mmap(struct snd_pcm_substream *substream,
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 
-	return dma_mmap_writecombine(substream->pcm->card->dev, vma,
-				     runtime->dma_area,
-				     runtime->dma_addr,
-				     runtime->dma_bytes);
+	return dma_mmap_wc(substream->pcm->card->dev, vma,
+			   runtime->dma_area,
+			   runtime->dma_addr,
+			   runtime->dma_bytes);
 }
 
 static void imx_rpmsg_pcm_dma_complete(void *arg)
@@ -518,6 +507,7 @@ int imx_rpmsg_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_RESUME:
 		if (rpmsg_i2s->force_lpa)
 			break;
+		/* fall through */
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 		ret = imx_rpmsg_restart(substream);
 		break;
@@ -645,8 +635,8 @@ static int imx_rpmsg_pcm_preallocate_dma_buffer(struct snd_pcm *pcm,
 	buf->dev.type = SNDRV_DMA_TYPE_DEV;
 	buf->dev.dev = pcm->card->dev;
 	buf->private_data = NULL;
-	buf->area = dma_alloc_writecombine(pcm->card->dev, size,
-					   &buf->addr, GFP_KERNEL);
+	buf->area = dma_alloc_wc(pcm->card->dev, size,
+				 &buf->addr, GFP_KERNEL);
 	if (!buf->area)
 		return -ENOMEM;
 
@@ -670,8 +660,8 @@ static void imx_rpmsg_pcm_free_dma_buffers(struct snd_pcm *pcm)
 		if (!buf->area)
 			continue;
 
-		dma_free_writecombine(pcm->card->dev, buf->bytes,
-				      buf->area, buf->addr);
+		dma_free_wc(pcm->card->dev, buf->bytes,
+			    buf->area, buf->addr);
 		buf->area = NULL;
 	}
 }
@@ -857,8 +847,7 @@ static int i2s_rpmsg_probe(struct rpmsg_device *rpdev)
 					&rpmsg_i2s->pdev->dev,
 					RPMSG_CODEC_DRV_NAME_AK4497,
 					PLATFORM_DEVID_NONE,
-					&rpmsg_codec[2],
-					sizeof(struct fsl_rpmsg_codec));
+					&rpmsg_codec[2], sizeof(struct fsl_rpmsg_codec));
 		if (IS_ERR(codec_pdev)) {
 			dev_err(&rpdev->dev,
 				"failed to register rpmsg audio codec\n");

@@ -27,7 +27,7 @@
 #include <linux/regulator/of_regulator.h>
 #include <linux/regulator/machine.h>
 #include <linux/clk.h>
-
+#include <linux/pinctrl/consumer.h>
 
 struct fixed_voltage_data {
 	struct regulator_desc desc;
@@ -123,7 +123,7 @@ of_get_fixed_voltage_config(struct device *dev,
 		config->enabled_at_boot = true;
 
 	of_property_read_u32(np, "startup-delay-us", &config->startup_delay);
-	of_property_read_u32(np, "off-on-delay", &config->off_on_delay);
+	of_property_read_u32(np, "off-on-delay-us", &config->off_on_delay);
 
 	if (of_find_property(np, "vin-supply", NULL))
 		config->input_supply = "vin";

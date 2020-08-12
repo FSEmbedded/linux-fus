@@ -71,9 +71,8 @@ static char *check[] = {
 	"cast6", "arc4", "michael_mic", "deflate", "crc32c", "tea", "xtea",
 	"khazad", "wp512", "wp384", "wp256", "tnepres", "xeta",  "fcrypt",
 	"camellia", "seed", "salsa20", "rmd128", "rmd160", "rmd256", "rmd320",
-	"lzo", "lzo-rle", "cts", "sha3-224", "sha3-256", "sha3-384",
-	"sha3-512", "streebog256", "streebog512",
-	NULL
+	"lzo", "lzo-rle", "cts", "zlib", "sha3-224", "sha3-256", "sha3-384",
+	"sha3-512", "streebog256", "streebog512", "rsa", NULL
 };
 
 static u32 block_sizes[] = { 16, 64, 256, 1024, 1472, 8192, 0 };
@@ -528,7 +527,7 @@ static void test_aead_speed(const char *algo, int enc, unsigned int secs,
 	struct scatterlist *sg;
 	struct scatterlist *sgout;
 	const char *e;
-	void *assoc, *assoc_out;
+	void *assoc;
 	char *iv;
 	char *xbuf[XBUFSIZE];
 	char *xoutbuf[XBUFSIZE];
@@ -591,8 +590,6 @@ static void test_aead_speed(const char *algo, int enc, unsigned int secs,
 		do {
 			assoc = axbuf[0];
 			memset(assoc, 0xff, aad_size);
-			assoc_out = axbuf[1];
-			memset(assoc_out, 0xff, aad_size);
 
 			if ((*keysize + *b_size) > TVMEMSIZE * PAGE_SIZE) {
 				pr_err("template (%u) too big for tvmem (%lu)\n",
@@ -632,7 +629,7 @@ static void test_aead_speed(const char *algo, int enc, unsigned int secs,
 				     assoc, aad_size);
 
 			sg_init_aead(sgout, xoutbuf,
-				     *b_size + (enc ? authsize : 0), assoc_out,
+				     *b_size + (enc ? authsize : 0), assoc,
 				     aad_size);
 
 			aead_request_set_ad(req, aad_size);
@@ -654,9 +651,6 @@ static void test_aead_speed(const char *algo, int enc, unsigned int secs,
 					       ret);
 					break;
 				}
-
-				memset(assoc, 0xff, aad_size);
-				memset(assoc_out, 0xff, aad_size);
 			}
 
 			aead_request_set_crypt(req, sg, sgout,
@@ -1988,6 +1982,10 @@ static int do_test(const char *alg, u32 type, u32 mask, int m, u32 num_mb)
 		ret += tcrypt_test("hmac(streebog512)");
 		break;
 
+	case 117:
+		ret += tcrypt_test("rsa");
+		break;
+
 	case 150:
 		ret += tcrypt_test("ansi_cprng");
 		break;
@@ -2053,6 +2051,9 @@ static int do_test(const char *alg, u32 type, u32 mask, int m, u32 num_mb)
 		ret += tcrypt_test("ecb(sm4)");
 		ret += tcrypt_test("cbc(sm4)");
 		ret += tcrypt_test("ctr(sm4)");
+		break;
+	case 192:
+		ret += tcrypt_test("tls10(hmac(sha1),cbc(aes))");
 		break;
 	case 200:
 		test_cipher_speed("ecb(aes)", ENCRYPT, sec, NULL, 0,

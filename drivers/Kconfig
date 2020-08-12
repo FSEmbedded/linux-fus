@@ -110,8 +110,6 @@ source "drivers/mmc/Kconfig"
 
 source "drivers/memstick/Kconfig"
 
-source "drivers/mxc/Kconfig"
-
 source "drivers/leds/Kconfig"
 
 source "drivers/accessibility/Kconfig"
@@ -230,4 +228,5 @@ source "drivers/interconnect/Kconfig"
 
 source "drivers/counter/Kconfig"
 
+source "drivers/mxc/Kconfig"
 endmenu

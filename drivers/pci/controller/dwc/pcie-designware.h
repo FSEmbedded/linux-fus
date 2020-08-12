@@ -28,7 +28,6 @@
 /* Parameters for the waiting for iATU enabled routine */
 #define LINK_WAIT_MAX_IATU_RETRIES	5
 #define LINK_WAIT_IATU			9
-#define LINK_WAIT_IATU_MAX		10000
 
 /* Synopsys-specific PCIe configuration registers */
 #define PCIE_PORT_LINK_CONTROL		0x710
@@ -177,7 +176,6 @@ struct pcie_port {
 	u64			mem_base;
 	phys_addr_t		mem_bus_addr;
 	u32			mem_size;
-	int			cpu_addr_offset;
 	struct resource		*cfg;
 	struct resource		*io;
 	struct resource		*mem;
@@ -360,8 +358,6 @@ static inline void dw_pcie_dbi_ro_wr_dis(struct dw_pcie *pci)
 #ifdef CONFIG_PCIE_DW_HOST
 irqreturn_t dw_handle_msi_irq(struct pcie_port *pp);
 void dw_pcie_msi_init(struct pcie_port *pp);
-void dw_pcie_msi_cfg_store(struct pcie_port *pp);
-void dw_pcie_msi_cfg_restore(struct pcie_port *pp);
 void dw_pcie_free_msi(struct pcie_port *pp);
 void dw_pcie_setup_rc(struct pcie_port *pp);
 int dw_pcie_host_init(struct pcie_port *pp);
@@ -374,14 +370,6 @@ static inline irqreturn_t dw_handle_msi_irq(struct pcie_port *pp)
 }
 
 static inline void dw_pcie_msi_init(struct pcie_port *pp)
-{
-}
-
-static inline void dw_pcie_msi_cfg_store(struct pcie_port *pp)
-{
-}
-
-static inline void dw_pcie_msi_cfg_restore(struct pcie_port *pp)
 {
 }
 

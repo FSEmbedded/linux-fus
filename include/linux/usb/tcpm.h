@@ -10,9 +10,6 @@
 #include <linux/usb/typec.h>
 #include "pd.h"
 
-/* VBUS off level should be lower than it */
-#define TCPM_VBUS_PRESENT_LEVEL		600
-
 enum typec_cc_status {
 	TYPEC_CC_OPEN,
 	TYPEC_CC_RA,
@@ -56,9 +53,6 @@ enum tcpm_transmit_type {
  * @nr_src_pdo:	Number of entries in @src_pdo
  * @snk_pdo:	PDO parameters sent to partner as response to
  *		PD_CTRL_GET_SINK_CAP message
- * @max_snk_mv:	Maximum acceptable sink voltage in mV
- * @max_snk_ma:	Maximum sink current in mA
- * @max_snk_mw:	Maximum required sink power in mW
  * @nr_snk_pdo:	Number of entries in @snk_pdo
  * @operating_snk_mw:
  *		Required operating sink power in mW
@@ -79,10 +73,6 @@ struct tcpc_config {
 
 	const u32 *snk_vdo;
 	unsigned int nr_snk_vdo;
-
-	unsigned int max_snk_mv;
-	unsigned int max_snk_ma;
-	unsigned int max_snk_mw;
 
 	unsigned int operating_snk_mw;
 
@@ -137,8 +127,6 @@ struct tcpc_dev {
 	int (*init)(struct tcpc_dev *dev);
 	int (*get_vbus)(struct tcpc_dev *dev);
 	int (*get_current_limit)(struct tcpc_dev *dev);
-	/* Optional, get the vbus voltage(mv) */
-	unsigned int (*get_vbus_vol)(struct tcpc_dev *dev);
 	int (*set_cc)(struct tcpc_dev *dev, enum typec_cc_status cc);
 	int (*get_cc)(struct tcpc_dev *dev, enum typec_cc_status *cc1,
 		      enum typec_cc_status *cc2);
@@ -156,11 +144,6 @@ struct tcpc_dev {
 	int (*try_role)(struct tcpc_dev *dev, int role);
 	int (*pd_transmit)(struct tcpc_dev *dev, enum tcpm_transmit_type type,
 			   const struct pd_message *msg);
-	int (*vbus_detect)(struct tcpc_dev *dev, bool enable);
-	int (*vbus_discharge)(struct tcpc_dev *tcpc, bool enable);
-	void (*bist_mode)(struct tcpc_dev *tcpc, bool enable);
-	int (*ss_mux_sel)(struct tcpc_dev *dev,
-			  enum typec_cc_polarity polarity);
 };
 
 struct tcpm_port;
@@ -176,6 +159,5 @@ void tcpm_pd_transmit_complete(struct tcpm_port *port,
 			       enum tcpm_transmit_status status);
 void tcpm_pd_hard_reset(struct tcpm_port *port);
 void tcpm_tcpc_reset(struct tcpm_port *port);
-void tcpm_vbus_low_alarm(struct tcpm_port *port);
 
 #endif /* __LINUX_USB_TCPM_H */

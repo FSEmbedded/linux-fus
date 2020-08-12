@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2019 NXP
+ * Copyright 2018-2020 NXP
  */
 
 /*
@@ -20,6 +20,7 @@
 #ifndef __VPU_B0_H
 #define __VPU_B0_H
 
+#include <linux/version.h>
 #include <linux/irqreturn.h>
 #include <linux/mutex.h>
 #include <linux/videodev2.h>
@@ -27,10 +28,16 @@
 #include <media/v4l2-device.h>
 #include <media/v4l2-fh.h>
 #include <media/videobuf2-v4l2.h>
+#ifdef CONFIG_IMX_SCU
+#include <linux/firmware/imx/ipc.h>
+#include <linux/firmware/imx/svc/misc.h>
+#else
 #include <soc/imx8/sc/svc/irq/api.h>
 #include <soc/imx8/sc/ipc.h>
 #include <soc/imx8/sc/sci.h>
+#endif
 #include <linux/mx8_mu.h>
+#include <linux/mailbox_client.h>
 #include <media/v4l2-event.h>
 #include <linux/kfifo.h>
 #include "vpu_rpc.h"
@@ -57,6 +64,7 @@ extern unsigned int vpu_dbg_level_decoder;
 #define MAX_TIMEOUT_COUNT 10
 #define VPU_REG_BASE 0x40000000
 #define VPU_MAX_STEP_STRING_LENGTH 40
+#define VPU_DISABLE_BITS (0x7)
 
 #define V4L2_PIX_FMT_NV12_10BIT    v4l2_fourcc('N', 'T', '1', '2') /*  Y/CbCr 4:2:0 for 10bit  */
 #define INVALID_FRAME_DEPTH -1
@@ -151,6 +159,7 @@ typedef enum{
 #define V4L2_CID_USER_FRAME_VUIPRESENT		(V4L2_CID_USER_BASE + 0x1108)
 
 #define V4L2_CID_USER_STREAM_INPUT_MODE		(V4L2_CID_USER_BASE + 0x1109)
+#define V4L2_CID_USER_FRAME_THRESHOLD		(V4L2_CID_USER_BASE + 0x110A)
 
 #define IMX_V4L2_DEC_CMD_START		(0x09000000)
 #define IMX_V4L2_DEC_CMD_RESET		(IMX_V4L2_DEC_CMD_START + 1)
@@ -230,6 +239,7 @@ struct queue_data {
 	unsigned long dqbuf_count;
 	unsigned long process_count;
 	bool enable;
+	struct vpu_ctx *ctx;
 };
 
 struct print_buf_desc {
@@ -240,6 +250,27 @@ struct print_buf_desc {
 	u32 read;
 	u32 write;
 	char buffer[0];
+};
+
+#ifdef CONFIG_IMX_SCU
+struct vpu_imx_sc_msg_misc {
+	struct imx_sc_rpc_msg hdr;
+	u32 word;
+} __packed;
+#endif
+
+struct vpu_sc_chan {
+	struct vpu_dev *dev;
+	char name[20];
+	struct mbox_client cl;
+	struct mbox_chan *ch;
+};
+
+struct vpu_ctx_work {
+	struct work_struct instance_work;
+	struct delayed_work delayed_instance_work;
+	int str_index;
+	struct vpu_dev *dev;
 };
 
 struct vpu_ctx;
@@ -256,18 +287,18 @@ struct vpu_dev {
 	u_int32 m0_rpc_phy;
 	u_int32 m0_rpc_size;
 	struct mutex dev_mutex;
-	spinlock_t cmd_spinlock;
-	struct mutex fw_flow_mutex;
+	struct mutex cmd_mutex;
 	bool fw_is_ready;
 	bool firmware_started;
 	bool need_cleanup_firmware;
+	bool suspend;
 	struct completion start_cmp;
 	struct completion snap_done_cmp;
 	struct workqueue_struct *workqueue;
 	struct work_struct msg_work;
+	struct delayed_work delayed_msg_work;
 	unsigned long instance_mask;
 	unsigned long hang_mask; //this is used to deal with hang issue to reset firmware
-	sc_ipc_t mu_ipcHandle;
 	struct clk *vpu_clk;
 	void __iomem *mu_base_virtaddr;
 	unsigned int vpu_mu_id;
@@ -281,6 +312,7 @@ struct vpu_dev {
 
 	struct shared_addr shared_mem;
 	struct vpu_ctx *ctx[VPU_MAX_NUM_STREAMS];
+	struct vpu_ctx_work ctx_work[VPU_MAX_NUM_STREAMS];
 	struct dentry *debugfs_root;
 	struct dentry *debugfs_dbglog;
 	struct dentry *debugfs_fwlog;
@@ -292,8 +324,6 @@ struct vpu_dev {
 	char precheck_content[1024];
 
 	struct kfifo mu_msg_fifo;
-	void *mu_msg_buffer;
-	unsigned int mu_msg_buffer_size;
 	u_int32 vpu_irq;
 
 	/* reserve for kernel version 5.4 or later */
@@ -313,8 +343,9 @@ struct vpu_statistic {
 	unsigned long event[VID_API_EVENT_DEC_CFG_INFO + 2];
 	unsigned long current_cmd;
 	unsigned long current_event;
-	struct timespec ts_cmd;
-	struct timespec ts_event;
+	unsigned long skipped_frame_count;
+	struct timespec64 ts_cmd;
+	struct timespec64 ts_event;
 	atomic64_t total_dma_size;
 	atomic64_t total_alloc_size;
 };
@@ -360,7 +391,6 @@ struct vpu_ctx {
 	struct v4l2_fh fh;
 
 	struct vpu_statistic statistic;
-	atomic64_t total_alloc_size;
 	struct device_attribute dev_attr_instance_command;
 	char command_name[64];
 	struct device_attribute dev_attr_instance_event;
@@ -378,10 +408,9 @@ struct vpu_ctx {
 	int str_index;
 	struct queue_data q_data[2];
 	struct kfifo msg_fifo;
-	void *msg_buffer;
-	unsigned int msg_buffer_size;
 	struct mutex instance_mutex;
-	struct work_struct instance_work;
+	struct work_struct *instance_work;
+	struct delayed_work *delayed_instance_work;
 	struct workqueue_struct *instance_wq;
 	struct completion completion;
 	struct completion stop_cmp;
@@ -405,9 +434,13 @@ struct vpu_ctx {
 	bool first_dump_data_flag;
 	bool first_data_flag;
 	u32 req_frame_count;
+	u32 req_mbi_count;
+	u32 req_dcp_count;
 	u_int32 mbi_count;
 	u_int32 mbi_size;
 	u_int32 dcp_count;
+	u32 mbi_index;
+	u32 dcp_index;
 	struct dma_buffer dpb_buffer;
 	struct dma_buffer dcp_buffer[MAX_DCP_NUM];
 	struct dma_buffer mbi_buffer[MAX_MBI_NUM];
@@ -452,6 +485,8 @@ struct vpu_ctx {
 
 	struct list_head perf_q;
 	struct mutex perf_lock;
+
+	struct mutex fw_flow_mutex;
 };
 
 #define LVL_WARN		(1 << 0)
@@ -488,6 +523,8 @@ struct vpu_ctx {
 
 #define V4L2_NXP_FRAME_VERTICAL_ALIGN		512
 #define V4L2_NXP_FRAME_HORIZONTAL_ALIGN		512
+
+#define VPU_IMX_DECODER_FUSE_OFFSET		14
 
 pSTREAM_BUFFER_DESCRIPTOR_TYPE get_str_buffer_desc(struct vpu_ctx *ctx);
 u_int32 got_free_space(u_int32 wptr, u_int32 rptr, u_int32 start, u_int32 end);

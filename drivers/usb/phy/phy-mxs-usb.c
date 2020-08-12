@@ -19,6 +19,7 @@
 #include <linux/regmap.h>
 #include <linux/mfd/syscon.h>
 #include <linux/iopoll.h>
+#include <linux/regulator/consumer.h>
 
 #define DRIVER_NAME "mxs_phy"
 
@@ -124,6 +125,11 @@
 #define BM_ANADIG_USB2_MISC_RX_VPIN_FS		BIT(29)
 #define BM_ANADIG_USB2_MISC_RX_VMIN_FS		BIT(28)
 
+/* System Integration Module (SIM) Registers */
+#define SIM_GPR1				0x30
+
+#define USB_PHY_VLLS_WAKEUP_EN			BIT(0)
+
 #define BM_ANADIG_REG_1P1_ENABLE_WEAK_LINREG	BIT(18)
 #define BM_ANADIG_REG_1P1_TRACK_VDD_SOC_CAP	BIT(19)
 
@@ -154,10 +160,6 @@
 #define DCD_SDP_PORT				BIT(16)
 #define DCD_CDP_PORT				BIT(17)
 #define DCD_DCP_PORT				(BIT(16) | BIT(17))
-/* System Integration Module (SIM) Registers */
-#define SIM_GPR1				0x30
-
-#define USB_PHY_VLLS_WAKEUP_EN			BIT(0)
 
 #define to_mxs_phy(p) container_of((p), struct mxs_phy, phy)
 
@@ -244,12 +246,7 @@ static const struct mxs_phy_data imx7ulp_phy_data = {
 	.flags = MXS_PHY_HAS_DCD,
 };
 
-static const struct mxs_phy_data imx7ulp_phy_data = {
-};
-
 static const struct of_device_id mxs_phy_dt_ids[] = {
-	{ .compatible = "fsl,imx7ulp-usbphy", .data = &imx7ulp_phy_data, },
-	{ .compatible = "fsl,imx6ul-usbphy", .data = &imx6sx_phy_data, },
 	{ .compatible = "fsl,imx6sx-usbphy", .data = &imx6sx_phy_data, },
 	{ .compatible = "fsl,imx6sl-usbphy", .data = &imx6sl_phy_data, },
 	{ .compatible = "fsl,imx6q-usbphy", .data = &imx6q_phy_data, },
@@ -289,6 +286,11 @@ static inline bool is_imx6sl_phy(struct mxs_phy *mxs_phy)
 static inline bool is_imx7ulp_phy(struct mxs_phy *mxs_phy)
 {
 	return mxs_phy->data == &imx7ulp_phy_data;
+}
+
+static inline bool is_imx6ul_phy(struct mxs_phy *mxs_phy)
+{
+	return mxs_phy->data == &imx6ul_phy_data;
 }
 
 /*
@@ -357,6 +359,16 @@ static int mxs_phy_hw_init(struct mxs_phy *mxs_phy)
 	ret = stmp_reset_block(base + HW_USBPHY_CTRL);
 	if (ret)
 		goto disable_pll;
+
+	if (mxs_phy->phy_3p0) {
+		ret = regulator_enable(mxs_phy->phy_3p0);
+		if (ret) {
+			dev_err(mxs_phy->phy.dev,
+				"Failed to enable 3p0 regulator, ret=%d\n",
+				ret);
+			return ret;
+		}
+	}
 
 	/* Power up the PHY */
 	writel(0, base + HW_USBPHY_PWD);
@@ -471,7 +483,7 @@ static void mxs_phy_disconnect_line(struct mxs_phy *mxs_phy, bool on)
 
 	vbus_is_on = mxs_phy_get_vbus_status(mxs_phy);
 
-	if (on && ((!vbus_is_on && mxs_phy->mode != USB_MODE_HOST) ||
+	if (on && ((!vbus_is_on && mxs_phy->mode != CUR_USB_MODE_HOST) ||
 			(last_event == USB_EVENT_VBUS)))
 		__mxs_phy_disconnect_line(mxs_phy, true);
 	else
@@ -512,6 +524,9 @@ static void mxs_phy_shutdown(struct usb_phy *phy)
 
 	if (is_imx7ulp_phy(mxs_phy))
 		mxs_phy_pll_enable(phy->io_priv, false);
+
+	if (mxs_phy->phy_3p0)
+		regulator_disable(mxs_phy->phy_3p0);
 
 	clk_disable_unprepare(mxs_phy->clk);
 }
@@ -716,29 +731,6 @@ static int mxs_charger_data_contact_detect(struct mxs_phy *x)
 	return 0;
 }
 
-static int mxs_phy_on_suspend(struct usb_phy *phy,
-		enum usb_device_speed speed)
-{
-	struct mxs_phy *mxs_phy = to_mxs_phy(phy);
-
-	dev_dbg(phy->dev, "%s device has suspended\n",
-		(speed == USB_SPEED_HIGH) ? "HS" : "FS/LS");
-
-	/* delay 4ms to wait bus entering idle */
-	usleep_range(4000, 5000);
-
-	if (mxs_phy->data->flags & MXS_PHY_ABNORMAL_IN_SUSPEND) {
-		writel_relaxed(0xffffffff, phy->io_priv + HW_USBPHY_PWD);
-		writel_relaxed(0, phy->io_priv + HW_USBPHY_PWD);
-	}
-
-	if (speed == USB_SPEED_HIGH)
-		writel_relaxed(BM_USBPHY_CTRL_ENHOSTDISCONDETECT,
-				phy->io_priv + HW_USBPHY_CTRL_CLR);
-
-	return 0;
-}
-
 static enum usb_charger_type mxs_charger_primary_detection(struct mxs_phy *x)
 {
 	struct regmap *regmap = x->regmap_anatop;
@@ -826,6 +818,61 @@ static enum usb_charger_type mxs_phy_charger_detect(struct usb_phy *phy)
 	return chgr_type;
 }
 
+static int mxs_phy_on_suspend(struct usb_phy *phy,
+		enum usb_device_speed speed)
+{
+	struct mxs_phy *mxs_phy = to_mxs_phy(phy);
+
+	dev_dbg(phy->dev, "%s device has suspended\n",
+		(speed == USB_SPEED_HIGH) ? "HS" : "FS/LS");
+
+	/* delay 4ms to wait bus entering idle */
+	usleep_range(4000, 5000);
+
+	if (mxs_phy->data->flags & MXS_PHY_ABNORMAL_IN_SUSPEND) {
+		writel_relaxed(0xffffffff, phy->io_priv + HW_USBPHY_PWD);
+		writel_relaxed(0, phy->io_priv + HW_USBPHY_PWD);
+	}
+
+	if (speed == USB_SPEED_HIGH)
+		writel_relaxed(BM_USBPHY_CTRL_ENHOSTDISCONDETECT,
+				phy->io_priv + HW_USBPHY_CTRL_CLR);
+
+	return 0;
+}
+
+/*
+ * The resume signal must be finished here.
+ */
+static int mxs_phy_on_resume(struct usb_phy *phy,
+		enum usb_device_speed speed)
+{
+	dev_dbg(phy->dev, "%s device has resumed\n",
+		(speed == USB_SPEED_HIGH) ? "HS" : "FS/LS");
+
+	if (speed == USB_SPEED_HIGH) {
+		/* Make sure the device has switched to High-Speed mode */
+		udelay(500);
+		writel_relaxed(BM_USBPHY_CTRL_ENHOSTDISCONDETECT,
+				phy->io_priv + HW_USBPHY_CTRL_SET);
+	}
+
+	return 0;
+}
+
+/*
+ * Set the usb current role for phy.
+ */
+static int mxs_phy_set_mode(struct usb_phy *phy,
+		enum usb_current_mode mode)
+{
+	struct mxs_phy *mxs_phy = to_mxs_phy(phy);
+
+	mxs_phy->mode = mode;
+
+	return 0;
+}
+
 static int mxs_phy_dcd_start(struct mxs_phy *mxs_phy)
 {
 	void __iomem *base = mxs_phy->phy.io_priv;
@@ -902,7 +949,7 @@ static enum usb_charger_type mxs_phy_dcd_flow(struct usb_phy *phy)
 
 			if ((value & DCD_STATUS_SEQ_STAT) == DCD_CHG_DET) {
 				if ((value & DCD_STATUS_SEQ_RES) ==
-					DCD_CDP_PORT) {
+						DCD_CDP_PORT) {
 					dev_dbg(phy->dev, "CDP\n");
 					chgr_type = CDP_TYPE;
 					break;
@@ -932,38 +979,6 @@ static enum usb_charger_type mxs_phy_dcd_flow(struct usb_phy *phy)
 	writel(DCD_CONTROL_IACK, base + DCD_CONTROL);
 	writel(DCD_CONTROL_SR, base + DCD_CONTROL);
 	return chgr_type;
-}
-
-/*
- * The resume signal must be finished here.
- */
-static int mxs_phy_on_resume(struct usb_phy *phy,
-		enum usb_device_speed speed)
-{
-	dev_dbg(phy->dev, "%s device has resumed\n",
-		(speed == USB_SPEED_HIGH) ? "HS" : "FS/LS");
-
-	if (speed == USB_SPEED_HIGH) {
-		/* Make sure the device has switched to High-Speed mode */
-		udelay(500);
-		writel_relaxed(BM_USBPHY_CTRL_ENHOSTDISCONDETECT,
-				phy->io_priv + HW_USBPHY_CTRL_SET);
-	}
-
-	return 0;
-}
-
-/*
- * Set the usb current role for phy.
- */
-static int mxs_phy_set_mode(struct usb_phy *phy,
-		enum usb_current_mode mode)
-{
-	struct mxs_phy *mxs_phy = to_mxs_phy(phy);
-
-	mxs_phy->mode = mode;
-
-	return 0;
 }
 
 static int mxs_phy_probe(struct platform_device *pdev)
@@ -1054,9 +1069,9 @@ static int mxs_phy_probe(struct platform_device *pdev)
 	ret = of_alias_get_id(np, "usbphy");
 	if (ret < 0)
 		dev_dbg(&pdev->dev, "failed to get alias id, errno %d\n", ret);
-	mxs_phy->port_id = ret;
 	mxs_phy->clk = clk;
 	mxs_phy->data = of_id->data;
+	mxs_phy->port_id = ret;
 
 	mxs_phy->phy.io_priv		= base;
 	mxs_phy->phy.dev		= &pdev->dev;
@@ -1068,18 +1083,16 @@ static int mxs_phy_probe(struct platform_device *pdev)
 	mxs_phy->phy.notify_disconnect	= mxs_phy_on_disconnect;
 	mxs_phy->phy.type		= USB_PHY_TYPE_USB2;
 	mxs_phy->phy.set_wakeup		= mxs_phy_set_wakeup;
-	mxs_phy->phy.charger_detect	= mxs_phy_charger_detect;
+	if (mxs_phy->data->flags & MXS_PHY_HAS_DCD)
+		mxs_phy->phy.charger_detect	= mxs_phy_dcd_flow;
+	else
+		mxs_phy->phy.charger_detect	= mxs_phy_charger_detect;
 
 	mxs_phy->phy.set_mode		= mxs_phy_set_mode;
 	if (mxs_phy->data->flags & MXS_PHY_SENDING_SOF_TOO_FAST) {
 		mxs_phy->phy.notify_suspend = mxs_phy_on_suspend;
 		mxs_phy->phy.notify_resume = mxs_phy_on_resume;
 	}
-
-	if (mxs_phy->data->flags & MXS_PHY_HAS_DCD)
-		mxs_phy->phy.charger_detect	= mxs_phy_dcd_flow;
-	else
-		mxs_phy->phy.charger_detect	= mxs_phy_charger_detect;
 
 	mxs_phy->phy_3p0 = devm_regulator_get(&pdev->dev, "phy-3p0");
 	if (PTR_ERR(mxs_phy->phy_3p0) == -EPROBE_DEFER) {

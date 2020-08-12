@@ -1164,9 +1164,6 @@ int hns_nic_init_phy(struct net_device *ndev, struct hnae_handle *h)
 
 	phy_attached_info(phy_dev);
 
-	if (h->phy_if == PHY_INTERFACE_MODE_SGMII)
-		phy_stop(phy_dev);
-
 	return 0;
 }
 

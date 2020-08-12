@@ -21,7 +21,7 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  *
- * Copyright 2018 NXP
+ * Copyright 2018-2019 NXP
  *
  * Authors: Peng Fan <peng.fan@nxp.com>
  */

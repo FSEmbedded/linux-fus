@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 /*
  * Secure Memory / Keystore Exemplification Module
- * Copyright (C) 2012-2015 Freescale Semiconductor, Inc. All Rights Reserved
+ *
+ * Copyright 2012-2015 Freescale Semiconductor, Inc.
+ * Copyright 2016-2019 NXP
  *
  * This module has been overloaded as an example to show:
  * - Secure memory subsystem initialization/shutdown
@@ -528,6 +531,7 @@ static int __init caam_sm_test_init(void)
 {
 	struct device_node *dev_node;
 	struct platform_device *pdev;
+	struct caam_drv_private *priv;
 	int ret;
 
 	/*
@@ -546,6 +550,16 @@ static int __init caam_sm_test_init(void)
 		return -ENODEV;
 
 	of_node_put(dev_node);
+
+	priv = dev_get_drvdata(&pdev->dev);
+	if (!priv) {
+		dev_info(&pdev->dev, "SM driver not ready, aborting tests\n");
+		return -ENODEV;
+	}
+	if (!priv->sm_present) {
+		dev_info(&pdev->dev, "No SM support, skipping tests\n");
+		return -ENODEV;
+	}
 
 	ret = caam_sm_example_init(pdev);
 	if (ret)

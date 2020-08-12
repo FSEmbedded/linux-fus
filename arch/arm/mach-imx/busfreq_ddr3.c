@@ -126,7 +126,7 @@ extern void wfe_smp_freq_change(u32 cpuid, u32 *ddr_freq_change_done);
 extern void imx7_smp_wfe(u32 cpuid, u32 ocram_base);
 extern unsigned long wfe_smp_freq_change_start asm("wfe_smp_freq_change_start");
 extern unsigned long wfe_smp_freq_change_end asm("wfe_smp_freq_change_end");
-extern void __iomem *imx_scu_base;
+extern void __iomem *scu_base;
 #endif
 
 unsigned long ddr3_dll_mx6sx[][2] = {
@@ -302,7 +302,7 @@ int update_ddr_freq_imx_smp(int ddr_rate)
 			if (cpu_is_imx7d())
 				reg = *(wait_for_ddr_freq_update + 1);
 			else if (cpu_is_imx6())
-				reg = __raw_readl(imx_scu_base + 0x08);
+				reg = __raw_readl(scu_base + 0x08);
 
 			if (reg & (0x02 << (cpu * 8)))
 				not_exited_busfreq = true;
@@ -317,7 +317,7 @@ int update_ddr_freq_imx_smp(int ddr_rate)
 	if (cpu_is_imx7d())
 		online_cpus = *(wait_for_ddr_freq_update + 1);
 	else if (cpu_is_imx6())
-		online_cpus = readl_relaxed(imx_scu_base + 0x08);
+		online_cpus = readl_relaxed(scu_base + 0x08);
 	for_each_online_cpu(cpu) {
 		*((char *)(&online_cpus) + (u8)cpu) = 0x02;
 		if (cpu != me) {
@@ -334,7 +334,7 @@ int update_ddr_freq_imx_smp(int ddr_rate)
 		if (cpu_is_imx7d())
 			reg = *(wait_for_ddr_freq_update + 1);
 		else if (cpu_is_imx6())
-			reg = readl_relaxed(imx_scu_base + 0x08);
+			reg = readl_relaxed(scu_base + 0x08);
 		reg |= (0x02 << (me * 8));
 		if (reg == online_cpus)
 			break;
@@ -540,14 +540,13 @@ int init_mmdc_ddr3_settings_imx6_up(struct platform_device *busfreq_pdev)
 				+ normal_mmdc_settings[i][0]);
 	}
 
-	if (cpu_is_imx6ul() || cpu_is_imx6ull())
+	if (cpu_is_imx6ul() || cpu_is_imx6ull() || cpu_is_imx6ulz())
 		iomux_settings_size = ARRAY_SIZE(iomux_offsets_mx6ul);
 	else
 		iomux_settings_size = ARRAY_SIZE(iomux_offsets_mx6sx);
 
 	ddr_code_size = (&imx6_up_ddr3_freq_change_end -&imx6_up_ddr3_freq_change_start) *4 +
 			sizeof(*imx6_busfreq_info);
-
 	imx6_busfreq_info = (struct imx6_busfreq_info *)ddr_freq_change_iram_base;
 
 	imx6_up_change_ddr_freq = (void *)fncpy((void *)ddr_freq_change_iram_base + sizeof(*imx6_busfreq_info),
@@ -567,7 +566,7 @@ int init_mmdc_ddr3_settings_imx6_up(struct platform_device *busfreq_pdev)
 	}
 
 	for (i = 0; i < iomux_settings_size; i++) {
-		if (cpu_is_imx6ul() || cpu_is_imx6ull()) {
+		if (cpu_is_imx6ul() || cpu_is_imx6ull() || cpu_is_imx6ulz()) {
 			iomux_offsets_mx6ul[i][1] =
 			readl_relaxed(iomux_base +
 				iomux_offsets_mx6ul[i][0]);
@@ -719,8 +718,8 @@ int init_mmdc_ddr3_settings_imx6_smp(struct platform_device *busfreq_pdev)
 		(ddr_settings_size * 8) + 8);
 
 	if (wfe_freq_change_iram_base & (FNCPY_ALIGN - 1))
-		wfe_freq_change_iram_base += FNCPY_ALIGN -
-		((uintptr_t)wfe_freq_change_iram_base % (FNCPY_ALIGN));
+			wfe_freq_change_iram_base += FNCPY_ALIGN -
+			((uintptr_t)wfe_freq_change_iram_base % (FNCPY_ALIGN));
 
 	wfe_code_size = (&wfe_smp_freq_change_end -
 		&wfe_smp_freq_change_start) *4;
@@ -739,7 +738,7 @@ int init_mmdc_ddr3_settings_imx6_smp(struct platform_device *busfreq_pdev)
 		ddr_settings_size) * 8 + 16)
 		> ddr_freq_change_total_size) {
 		printk(KERN_ERR "Not enough memory for DDR Freq scale.\n");
-		return -EINVAL;
+		return EINVAL;
 	}
 
 	if (cpu_is_imx6q()) {

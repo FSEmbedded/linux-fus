@@ -6,7 +6,6 @@
 // Copyright (c) 2012-2013 by Tensilica Inc.
 
 #include <linux/slab.h>
-#include <soc/imx8/sc/ipc.h>
 
 #include "fsl_dsp_pool.h"
 #include "fsl_dsp.h"
@@ -23,7 +22,7 @@ int xf_pool_alloc(struct xf_client *client, struct xf_proxy *proxy,
 	struct xf_message   *rmsg;
 
 	/* ...basic sanity checks; number of buffers is positive */
-	if (number <= 0)
+	if (number <=0)
 		return -EINVAL;
 
 	/* ...get properly aligned buffer length */
@@ -31,7 +30,7 @@ int xf_pool_alloc(struct xf_client *client, struct xf_proxy *proxy,
 
 	p = kzalloc(offsetof(struct xf_pool, buffer) +
 		    number * sizeof(struct xf_buffer), GFP_KERNEL);
-	if (!p)
+	if(!p)
 		return -ENOMEM;
 
 	/* ...prepare command parameters */
@@ -54,8 +53,7 @@ int xf_pool_alloc(struct xf_client *client, struct xf_proxy *proxy,
 	p->p = rmsg->buffer;
 	/* TODO: review cleanup */
 	/* xf_msg_free(proxy, rmsg);
-	 * xf_unlock(&proxy->lock);
-	 */
+	 * xf_unlock(&proxy->lock); */
 
 	/* ...if operation is failed, do cleanup */
 	/* ...set pool parameters */
@@ -116,8 +114,7 @@ int xf_pool_free(struct xf_client *client, struct xf_pool *pool)
 
 	/* TODO: review cleanup */
 	/* xf_msg_free(proxy, rmsg);
-	 * xf_unlock(&proxy->lock);
-	 */
+	 * xf_unlock(&proxy->lock); */
 
 	return 0;
 }

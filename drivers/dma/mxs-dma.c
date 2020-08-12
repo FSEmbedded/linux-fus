@@ -1,13 +1,8 @@
-/*
- * Copyright 2011-2015 Freescale Semiconductor, Inc. All Rights Reserved.
- * Copyright 2017 NXP
- *
- * Refer to drivers/dma/imx-sdma.c
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+// SPDX-License-Identifier: GPL-2.0
+//
+// Copyright 2011 Freescale Semiconductor, Inc. All Rights Reserved.
+//
+// Refer to drivers/dma/imx-sdma.c
 
 #include <linux/init.h>
 #include <linux/types.h>
@@ -30,10 +25,10 @@
 #include <linux/of_dma.h>
 #include <linux/list.h>
 #include <linux/dma/mxs-dma.h>
-
-#include <asm/irq.h>
 #include <linux/pm_runtime.h>
 #include <linux/dmapool.h>
+
+#include <asm/irq.h>
 
 #include "dmaengine.h"
 
@@ -143,7 +138,6 @@ enum mxs_dma_devtype {
 enum mxs_dma_id {
 	IMX23_DMA,
 	IMX28_DMA,
-	IMX7D_DMA,
 };
 
 struct mxs_dma_engine {
@@ -151,7 +145,6 @@ struct mxs_dma_engine {
 	enum mxs_dma_devtype		type;
 	void __iomem			*base;
 	struct clk			*clk;
-	struct clk			*clk_io;
 	struct dma_device		dma_device;
 	struct device_dma_parameters	dma_parms;
 	struct mxs_dma_chan		mxs_chans[MXS_DMA_CHANNELS];
@@ -177,9 +170,6 @@ static struct mxs_dma_type mxs_dma_types[] = {
 	}, {
 		.id = IMX28_DMA,
 		.type = MXS_DMA_APBX,
-	}, {
-		.id = IMX7D_DMA,
-		.type = MXS_DMA_APBH,
 	}
 };
 
@@ -197,9 +187,6 @@ static const struct platform_device_id mxs_dma_ids[] = {
 		.name = "imx28-dma-apbx",
 		.driver_data = (kernel_ulong_t) &mxs_dma_types[3],
 	}, {
-		.name = "imx7d-dma-apbh",
-		.driver_data = (kernel_ulong_t) &mxs_dma_types[4],
-	}, {
 		/* end of list */
 	}
 };
@@ -209,7 +196,6 @@ static const struct of_device_id mxs_dma_dt_ids[] = {
 	{ .compatible = "fsl,imx23-dma-apbx", .data = &mxs_dma_ids[1], },
 	{ .compatible = "fsl,imx28-dma-apbh", .data = &mxs_dma_ids[2], },
 	{ .compatible = "fsl,imx28-dma-apbx", .data = &mxs_dma_ids[3], },
-	{ .compatible = "fsl,imx7d-dma-apbh", .data = &mxs_dma_ids[4], },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, mxs_dma_dt_ids);
@@ -438,9 +424,10 @@ static int mxs_dma_alloc_chan_resources(struct dma_chan *chan)
 	struct device *dev = &mxs_dma->pdev->dev;
 	int ret;
 
-	mxs_chan->ccw = dma_alloc_coherent(mxs_dma->dma_device.dev,
-					   CCW_BLOCK_SIZE,
-					   &mxs_chan->ccw_phys, GFP_KERNEL);
+	mxs_chan->ccw = dma_pool_zalloc(mxs_chan->ccw_pool,
+				        GFP_ATOMIC,
+				        &mxs_chan->ccw_phys);
+
 	if (!mxs_chan->ccw) {
 		ret = -ENOMEM;
 		goto err_alloc;
@@ -742,7 +729,7 @@ static int mxs_dma_init(struct mxs_dma_engine *mxs_dma)
 
 	ret = stmp_reset_block(mxs_dma->base);
 	if (ret)
-		goto err_clk;
+		goto err_out;
 
 	/* enable apbh burst */
 	if (dma_is_apbh(mxs_dma)) {
@@ -756,10 +743,9 @@ static int mxs_dma_init(struct mxs_dma_engine *mxs_dma)
 	writel(MXS_DMA_CHANNELS_MASK << MXS_DMA_CHANNELS,
 		mxs_dma->base + HW_APBHX_CTRL1 + STMP_OFFSET_REG_SET);
 
+err_out:
 	pm_runtime_mark_last_busy(dev);
 	pm_runtime_put_autosuspend(dev);
-
-err_clk:
 	return ret;
 }
 
@@ -773,6 +759,12 @@ static bool mxs_dma_filter_fn(struct dma_chan *chan, void *fn_param)
 	struct mxs_dma_chan *mxs_chan = to_mxs_dma_chan(chan);
 	struct mxs_dma_engine *mxs_dma = mxs_chan->mxs_dma;
 	int chan_irq;
+
+	if (strcmp(chan->device->dev->driver->name, "mxs-dma"))
+		return false;
+
+	if (!mxs_dma)
+		return false;
 
 	if (chan->chan_id != param->chan_id)
 		return false;
@@ -874,12 +866,11 @@ static int mxs_dma_probe(struct platform_device *pdev)
 		return ret;
 
 	mxs_dma->dma_device.dev = &pdev->dev;
-	dev_set_drvdata(&pdev->dev, mxs_dma);
 
 	/* create the dma pool */
 	ccw_pool = dma_pool_create("ccw_pool",
-					     mxs_dma->dma_device.dev,
-					     CCW_BLOCK_SIZE, 32, 0);
+				   mxs_dma->dma_device.dev,
+				   CCW_BLOCK_SIZE, 32, 0);
 
 	for (i = 0; i < MXS_DMA_CHANNELS; i++) {
 		struct mxs_dma_chan *mxs_chan = &mxs_dma->mxs_chans[i];
@@ -999,7 +990,6 @@ static struct platform_driver mxs_dma_driver = {
 	},
 	.id_table	= mxs_dma_ids,
 	.remove		= mxs_dma_remove,
-	.probe		= mxs_dma_probe,
+	.probe = mxs_dma_probe,
 };
-
 module_platform_driver(mxs_dma_driver);

@@ -43,6 +43,7 @@
 #define CMD_SEQ_LOAD		(0x03 << CMD_SHIFT)
 #define CMD_FIFO_LOAD		(0x04 << CMD_SHIFT)
 #define CMD_SEQ_FIFO_LOAD	(0x05 << CMD_SHIFT)
+#define CMD_MOVEB		(0x07 << CMD_SHIFT)
 #define CMD_STORE		(0x0a << CMD_SHIFT)
 #define CMD_SEQ_STORE		(0x0b << CMD_SHIFT)
 #define CMD_FIFO_STORE		(0x0c << CMD_SHIFT)
@@ -363,6 +364,7 @@
 #define FIFOLD_TYPE_PK_N	(0x08 << FIFOLD_TYPE_SHIFT)
 #define FIFOLD_TYPE_PK_A	(0x0c << FIFOLD_TYPE_SHIFT)
 #define FIFOLD_TYPE_PK_B	(0x0d << FIFOLD_TYPE_SHIFT)
+#define FIFOLD_TYPE_IFIFO	(0x0f << FIFOLD_TYPE_SHIFT)
 
 /* Other types. Need to OR in last/flush bits as desired */
 #define FIFOLD_TYPE_MSG_MASK	(0x38 << FIFOLD_TYPE_SHIFT)
@@ -1521,6 +1523,7 @@
 #define MATH_SRC1_INFIFO	(0x0a << MATH_SRC1_SHIFT)
 #define MATH_SRC1_OUTFIFO	(0x0b << MATH_SRC1_SHIFT)
 #define MATH_SRC1_ONE		(0x0c << MATH_SRC1_SHIFT)
+#define MATH_SRC1_ZERO		(0x0f << MATH_SRC1_SHIFT)
 
 /* Destination selectors */
 #define MATH_DEST_SHIFT		8
@@ -1703,8 +1706,31 @@
 /* Frame Descriptor Command for Replacement Job Descriptor */
 #define FD_CMD_REPLACE_JOB_DESC				0x20000000
 
-#define ARC4_BLOCK_SIZE       1
-#define ARC4_MAX_KEY_SIZE     256
-#define ARC4_MIN_KEY_SIZE     1
+/* CHA Control Register bits */
+#define CCTRL_RESET_CHA_ALL          0x1
+#define CCTRL_RESET_CHA_AESA         0x2
+#define CCTRL_RESET_CHA_DESA         0x4
+#define CCTRL_RESET_CHA_AFHA         0x8
+#define CCTRL_RESET_CHA_KFHA         0x10
+#define CCTRL_RESET_CHA_SF8A         0x20
+#define CCTRL_RESET_CHA_PKHA         0x40
+#define CCTRL_RESET_CHA_MDHA         0x80
+#define CCTRL_RESET_CHA_CRCA         0x100
+#define CCTRL_RESET_CHA_RNG          0x200
+#define CCTRL_RESET_CHA_SF9A         0x400
+#define CCTRL_RESET_CHA_ZUCE         0x800
+#define CCTRL_RESET_CHA_ZUCA         0x1000
+#define CCTRL_UNLOAD_PK_A0           0x10000
+#define CCTRL_UNLOAD_PK_A1           0x20000
+#define CCTRL_UNLOAD_PK_A2           0x40000
+#define CCTRL_UNLOAD_PK_A3           0x80000
+#define CCTRL_UNLOAD_PK_B0           0x100000
+#define CCTRL_UNLOAD_PK_B1           0x200000
+#define CCTRL_UNLOAD_PK_B2           0x400000
+#define CCTRL_UNLOAD_PK_B3           0x800000
+#define CCTRL_UNLOAD_PK_N            0x1000000
+#define CCTRL_UNLOAD_PK_A            0x4000000
+#define CCTRL_UNLOAD_PK_B            0x8000000
+#define CCTRL_UNLOAD_SBOX            0x10000000
 
 #endif /* DESC_H */

@@ -1,10 +1,6 @@
-/*
- * Copyright (C) 2018 NXP
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+// SPDX-License-Identifier: GPL-2.0
+//
+// Copyright (C) 2018 NXP
 
 /*
  * DTS file for ECSPI Slave Certification at i.mx6ul 14x14 evk board.
@@ -17,5 +13,6 @@
 /delete-node/&spidev0;
 
 &ecspi4 {
+	#address-cells = <0>;
 	spi-slave;
 };

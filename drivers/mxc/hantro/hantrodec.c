@@ -1,7 +1,7 @@
 /*****************************************************************************
  *    The GPL License (GPL)
  *
- *    Copyright (c) 2015-2019, VeriSilicon Inc.
+ *    Copyright (c) 2015-2018, VeriSilicon Inc.
  *    Copyright (c) 2011-2014, Google Inc.
  *
  *    This program is free software; you can redistribute it and/or
@@ -19,6 +19,7 @@
  *    http://www.opensource.org/licenses/gpl-license.html
  *    http://www.gnu.org/copyleft/gpl.html
  *****************************************************************************/
+
 #include <linux/hantrodec.h>
 #include "dwl_defs.h"
 #include <linux/io.h>
@@ -47,7 +48,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/clk.h>
-#include <linux/busfreq-imx.h>
+//#include <linux/busfreq-imx.h>
 
 #ifdef CONFIG_DEVICE_THERMAL
 #include <linux/device_cooling.h>
@@ -145,7 +146,7 @@ static struct device *hantro_dev;
 static struct clk *hantro_clk_g1;
 static struct clk *hantro_clk_g2;
 static struct clk *hantro_clk_bus;
-static struct regulator *hantro_regulator;
+//static struct regulator *hantro_regulator;
 
 static int hantro_dbg = -1;
 module_param(hantro_dbg, int, 0644);
@@ -224,6 +225,7 @@ DECLARE_WAIT_QUEUE_HEAD(hw_queue);
 static u32 cfg[HXDEC_MAX_CORES];
 static u32 timeout;
 
+#if 0
 static int hantro_update_voltage(struct device *dev)
 {
 	unsigned long new_vol, old_vol;
@@ -251,6 +253,7 @@ static int hantro_update_voltage(struct device *dev)
 	}
 	return 0;
 }
+#endif
 
 static int hantro_clk_enable(struct device *dev)
 {
@@ -327,7 +330,7 @@ static int hantro_thermal_check(struct device *dev)
 	}
 	pr_info("hantro: event(%d), g1, g2, bus clock: %ld, %ld, %ld\n", thermal_cur,
 		clk_get_rate(hantro_clk_g1),	clk_get_rate(hantro_clk_g2), clk_get_rate(hantro_clk_bus));
-	hantro_update_voltage(dev);
+	//hantro_update_voltage(dev);
 	return 0;
 }
 
@@ -1028,9 +1031,9 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd, unsigned long a
 	 * "write" is reversed
 	 */
 	if (_IOC_DIR(cmd) & _IOC_READ)
-		err = !access_ok(VERIFY_WRITE, (void *) arg, _IOC_SIZE(cmd));
+		err = !access_ok((void *) arg, _IOC_SIZE(cmd));
 	else if (_IOC_DIR(cmd) & _IOC_WRITE)
-		err = !access_ok(VERIFY_READ, (void *) arg, _IOC_SIZE(cmd));
+		err = !access_ok((void *) arg, _IOC_SIZE(cmd));
 
 	if (err)
 		return -EFAULT;
@@ -1242,6 +1245,7 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd, unsigned long a
 			PDEBUG("hantrodec: pp_core[%li]  %s\n",
 					tmp, pp_owner[tmp] == NULL ? "FREE" : "RESERVED");
 		}
+		break;
 	}
 	default:
 		return -ENOTTY;
@@ -1261,7 +1265,7 @@ static int get_hantro_core_desc32(struct core_desc *kp, struct core_desc_32 __us
 {
 	u32 tmp;
 
-	if (!access_ok(VERIFY_READ, up, sizeof(struct core_desc_32)) ||
+	if (!access_ok(up, sizeof(struct core_desc_32)) ||
 				get_user(kp->id, &up->id) ||
 				get_user(kp->size, &up->size) ||
 				get_user(tmp, &up->regs)) {
@@ -1275,7 +1279,7 @@ static int put_hantro_core_desc32(struct core_desc *kp, struct core_desc_32 __us
 {
 	u32 tmp = (u32)((unsigned long)kp->regs);
 
-	if (!access_ok(VERIFY_WRITE, up, sizeof(struct core_desc_32)) ||
+	if (!access_ok(up, sizeof(struct core_desc_32)) ||
 				put_user(kp->id, &up->id) ||
 				put_user(kp->size, &up->size) ||
 				put_user(tmp, &up->regs)) {
@@ -1788,16 +1792,19 @@ static int hantro_dev_probe(struct platform_device *pdev)
 	pr_debug("hantro: g1, g2, bus clock: 0x%lX, 0x%lX, 0x%lX\n", clk_get_rate(hantro_clk_g1),
 				clk_get_rate(hantro_clk_g2), clk_get_rate(hantro_clk_bus));
 
+#if 0
 	hantro_regulator = regulator_get(&pdev->dev, "regulator");
 	if (IS_ERR(hantro_regulator)) {
 		pr_err("hantro: get regulator failed\n");
 		return -ENODEV;
 	}
 	hantro_update_voltage(&pdev->dev);
-
+#endif
 	hantro_clk_enable(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
+
 	pm_runtime_get_sync(&pdev->dev);
+
 	hantro_ctrlblk_reset(&pdev->dev);
 
 	err = hantrodec_init(pdev);
@@ -1859,12 +1866,12 @@ static int hantro_dev_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM
-static int __maybe_unused hantro_suspend(struct device *dev)
+static int hantro_suspend(struct device *dev)
 {
 	pm_runtime_put_sync_suspend(dev);   //power off
 	return 0;
 }
-static int __maybe_unused hantro_resume(struct device *dev)
+static int hantro_resume(struct device *dev)
 {
 	pm_runtime_get_sync(dev);     //power on
 	hantro_ctrlblk_reset(dev);
@@ -1872,13 +1879,13 @@ static int __maybe_unused hantro_resume(struct device *dev)
 }
 static int hantro_runtime_suspend(struct device *dev)
 {
-	release_bus_freq(BUS_FREQ_HIGH);
+//	release_bus_freq(BUS_FREQ_HIGH);
 	return 0;
 }
 
 static int hantro_runtime_resume(struct device *dev)
 {
-	request_bus_freq(BUS_FREQ_HIGH);
+//	request_bus_freq(BUS_FREQ_HIGH);
 	hantro_ctrlblk_reset(dev);
 	return 0;
 }
@@ -1923,8 +1930,10 @@ static void __exit hantro_exit(void)
 		clk_put(hantro_clk_g2);
 	if (!IS_ERR(hantro_clk_bus))
 		clk_put(hantro_clk_bus);
+#if 0
 	if (!IS_ERR(hantro_regulator))
 		regulator_put(hantro_regulator);
+#endif
 	platform_driver_unregister(&mxchantro_driver);
 }
 

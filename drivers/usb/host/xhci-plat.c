@@ -291,6 +291,14 @@ static int xhci_plat_probe(struct platform_device *pdev)
 
 		device_property_read_u32(tmpdev, "imod-interval-ns",
 					 &xhci->imod_interval);
+
+		if (device_property_read_bool(tmpdev,
+					      "usb3-resume-missing-cas"))
+			xhci->quirks |= XHCI_MISSING_CAS;
+
+		if (device_property_read_bool(tmpdev,
+					      "xhci-no-64bit-support"))
+			xhci->quirks |= XHCI_NO_64BIT_SUPPORT;
 	}
 
 	hcd->usb_phy = devm_usb_get_phy_by_phandle(sysdev, "usb-phy", 0);
@@ -321,6 +329,12 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	device_enable_async_suspend(&pdev->dev);
 	pm_runtime_put_noidle(&pdev->dev);
 
+	/*
+	 * Prevent runtime pm from being on as default, users should enable
+	 * runtime pm using power/control in sysfs.
+	 */
+	pm_runtime_forbid(&pdev->dev);
+
 	return 0;
 
 
@@ -329,7 +343,6 @@ dealloc_usb2_hcd:
 
 disable_usb_phy:
 	usb_phy_shutdown(hcd->usb_phy);
-	release_bus_freq(BUS_FREQ_HIGH);
 
 put_usb3_hcd:
 	usb_put_hcd(xhci->shared_hcd);
@@ -358,6 +371,7 @@ static int xhci_plat_remove(struct platform_device *dev)
 	struct clk *reg_clk = xhci->reg_clk;
 	struct usb_hcd *shared_hcd = xhci->shared_hcd;
 
+	pm_runtime_get_sync(&dev->dev);
 	xhci->xhc_state |= XHCI_STATE_REMOVING;
 
 	usb_remove_hcd(shared_hcd);
@@ -370,9 +384,6 @@ static int xhci_plat_remove(struct platform_device *dev)
 	clk_disable_unprepare(clk);
 	clk_disable_unprepare(reg_clk);
 	usb_put_hcd(hcd);
-
-	if (!pm_runtime_suspended(&dev->dev))
-		release_bus_freq(BUS_FREQ_HIGH);
 
 	pm_runtime_set_suspended(&dev->dev);
 	pm_runtime_disable(&dev->dev);
@@ -411,14 +422,18 @@ static int __maybe_unused xhci_plat_resume(struct device *dev)
 
 static int __maybe_unused xhci_plat_runtime_suspend(struct device *dev)
 {
-	release_bus_freq(BUS_FREQ_HIGH);
-	return 0;
+	struct usb_hcd  *hcd = dev_get_drvdata(dev);
+	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+
+	return xhci_suspend(xhci, true);
 }
 
 static int __maybe_unused xhci_plat_runtime_resume(struct device *dev)
 {
-	request_bus_freq(BUS_FREQ_HIGH);
-	return 0;
+	struct usb_hcd  *hcd = dev_get_drvdata(dev);
+	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+
+	return xhci_resume(xhci, 0);
 }
 
 static const struct dev_pm_ops xhci_plat_pm_ops = {

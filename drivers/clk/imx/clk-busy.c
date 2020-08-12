@@ -96,7 +96,7 @@ struct clk_hw *imx_clk_hw_busy_divider(const char *name, const char *parent_name
 
 	init.name = name;
 	init.ops = &clk_busy_divider_ops;
-	init.flags = CLK_SET_RATE_PARENT | CLK_IS_CRITICAL | CLK_GET_RATE_NOCACHE;
+	init.flags = CLK_SET_RATE_PARENT | CLK_IS_CRITICAL;
 	init.parent_names = &parent_name;
 	init.num_parents = 1;
 

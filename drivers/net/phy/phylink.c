@@ -279,6 +279,7 @@ static int phylink_parse_mode(struct phylink *pl, struct fwnode_handle *fwnode)
 
 		switch (pl->link_config.interface) {
 		case PHY_INTERFACE_MODE_SGMII:
+		case PHY_INTERFACE_MODE_QSGMII:
 			phylink_set(pl->supported, 10baseT_Half);
 			phylink_set(pl->supported, 10baseT_Full);
 			phylink_set(pl->supported, 100baseT_Half);
@@ -292,6 +293,16 @@ static int phylink_parse_mode(struct phylink *pl, struct fwnode_handle *fwnode)
 			break;
 
 		case PHY_INTERFACE_MODE_2500BASEX:
+			phylink_set(pl->supported, 2500baseX_Full);
+			break;
+
+		case PHY_INTERFACE_MODE_USXGMII:
+			phylink_set(pl->supported, 10baseT_Half);
+			phylink_set(pl->supported, 10baseT_Full);
+			phylink_set(pl->supported, 100baseT_Half);
+			phylink_set(pl->supported, 100baseT_Full);
+			phylink_set(pl->supported, 1000baseT_Half);
+			phylink_set(pl->supported, 1000baseT_Full);
 			phylink_set(pl->supported, 2500baseX_Full);
 			break;
 
@@ -979,9 +990,6 @@ void phylink_start(struct phylink *pl)
 	if (pl->netdev)
 		netif_carrier_off(pl->netdev);
 
-	/* Always set the carrier off */
-	netif_carrier_off(pl->netdev);
-
 	/* Apply the link configuration to the MAC when starting. This allows
 	 * a fixed-link to start with the correct parameters, and also
 	 * ensures that we set the appropriate advertisement for Serdes links.
@@ -1013,7 +1021,8 @@ void phylink_start(struct phylink *pl)
 		if (irq <= 0)
 			mod_timer(&pl->link_poll, jiffies + HZ);
 	}
-	if (pl->link_an_mode == MLO_AN_FIXED && pl->get_fixed_state)
+	if ((pl->link_an_mode == MLO_AN_FIXED && pl->get_fixed_state) ||
+	    pl->config->pcs_poll)
 		mod_timer(&pl->link_poll, jiffies + HZ);
 	if (pl->phydev)
 		phy_start(pl->phydev);

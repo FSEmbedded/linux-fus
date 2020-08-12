@@ -221,8 +221,6 @@ int mmc_of_parse(struct mmc_host *host)
 	/* Parse Card Detection */
 	if (device_property_read_bool(dev, "non-removable")) {
 		host->caps |= MMC_CAP_NONREMOVABLE;
-		if (device_property_read_bool(dev, "cd-post"))
-			host->caps2 |= MMC_CAP2_CD_POST;
 	} else {
 		cd_cap_invert = device_property_read_bool(dev, "cd-inverted");
 
@@ -299,10 +297,10 @@ int mmc_of_parse(struct mmc_host *host)
 	if (device_property_read_bool(dev, "wakeup-source") ||
 	    device_property_read_bool(dev, "enable-sdio-wakeup")) /* legacy */
 		host->pm_caps |= MMC_PM_WAKE_SDIO_IRQ;
-	if (device_property_read_bool(dev, "mmc-ddr-3_3v"))
-		host->caps |= MMC_CAP_3_3V_DDR;
 	if (device_property_read_bool(dev, "pm-ignore-notify"))
 		host->pm_caps |= MMC_PM_IGNORE_PM_NOTIFY;
+	if (device_property_read_bool(dev, "mmc-ddr-3_3v"))
+		host->caps |= MMC_CAP_3_3V_DDR;
 	if (device_property_read_bool(dev, "mmc-ddr-1_8v"))
 		host->caps |= MMC_CAP_1_8V_DDR;
 	if (device_property_read_bool(dev, "mmc-ddr-1_2v"))
@@ -417,7 +415,7 @@ struct mmc_host *mmc_alloc_host(int extra, struct device *dev)
 	alias_id = mmc_get_reserved_index(host);
 	if (alias_id >= 0)
 		err = ida_simple_get(&mmc_host_ida, alias_id,
-					alias_id + 1, GFP_KERNEL);
+				alias_id + 1, GFP_KERNEL);
 	else
 		err = ida_simple_get(&mmc_host_ida,
 					mmc_first_nonreserved_index(),
@@ -492,7 +490,7 @@ int mmc_add_host(struct mmc_host *host)
 #endif
 
 	mmc_start_host(host);
-	if (!(host->pm_caps & MMC_PM_IGNORE_PM_NOTIFY))
+	if (!(host->pm_caps& MMC_PM_IGNORE_PM_NOTIFY))
 		mmc_register_pm_notifier(host);
 
 	return 0;
@@ -510,7 +508,7 @@ EXPORT_SYMBOL(mmc_add_host);
  */
 void mmc_remove_host(struct mmc_host *host)
 {
-	if (!(host->pm_caps & MMC_PM_IGNORE_PM_NOTIFY))
+	if (!(host->pm_caps& MMC_PM_IGNORE_PM_NOTIFY))
 		mmc_unregister_pm_notifier(host);
 	mmc_stop_host(host);
 

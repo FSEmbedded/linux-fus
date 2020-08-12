@@ -45,8 +45,6 @@
 
 #include "process.h"
 
-#include "process.h"
-
 /*
  * per-CPU TSS segments. Threads are completely 'soft' on Linux,
  * no more per-task TSS's. The TSS size is kept cacheline-aligned
@@ -492,7 +490,6 @@ void speculation_ctrl_update(unsigned long tif)
 /* Called from seccomp/prctl update */
 void speculation_ctrl_update_current(void)
 {
-	/* Forced update. Make sure all relevant TIF flags are different */
 	preempt_disable();
 	speculation_ctrl_update(speculation_ctrl_update_tif(current));
 	preempt_enable();

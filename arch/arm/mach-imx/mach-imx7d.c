@@ -121,6 +121,7 @@ static void __init imx7d_init_machine(void)
 	if (parent == NULL)
 		pr_warn("failed to initialize soc device\n");
 
+	imx_anatop_init();
 	of_platform_default_populate(NULL, NULL, parent);
 	imx7d_pm_init();
 	imx_anatop_init();
@@ -129,6 +130,7 @@ static void __init imx7d_init_machine(void)
 
 static void __init imx7d_init_late(void)
 {
+	imx7d_cpuidle_init();
 	if (IS_ENABLED(CONFIG_ARM_IMX_CPUFREQ_DT))
 		platform_device_register_simple("imx-cpufreq-dt", -1, NULL, 0);
 }
@@ -142,11 +144,6 @@ static void __init imx7d_init_irq(void)
 #ifndef CONFIG_SMP
 	imx7d_disable_arm_arch_timer();
 #endif
-}
-
-static void __init imx7d_init_late(void)
-{
-	imx7d_cpuidle_init();
 }
 
 static void __init imx7d_map_io(void)

@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 /*
  * CAAM Secure Memory Storage Interface
- * Copyright (C) 2008-2015 Freescale Semiconductor, Inc.
- * Copyright 2018 NXP
+ *
+ * Copyright 2008-2015 Freescale Semiconductor, Inc.
+ * Copyright 2016-2019 NXP
  *
  * Loosely based on the SHW Keystore API for SCC/SCC2
  * Experimental implementation and NOT intended for upstream use. Expect
@@ -1051,9 +1053,9 @@ EXPORT_SYMBOL(sm_keystore_slot_import);
  * Also, simply uses ring 0 for execution at the present
  */
 
-int caam_sm_startup(struct platform_device *pdev)
+int caam_sm_startup(struct device *ctrldev)
 {
-	struct device *ctrldev, *smdev;
+	struct device *smdev;
 	struct caam_drv_private *ctrlpriv;
 	struct caam_drv_private_sm *smpriv;
 	struct caam_drv_private_jr *jrpriv;	/* need this for reg page */
@@ -1063,17 +1065,10 @@ int caam_sm_startup(struct platform_device *pdev)
 	int ret = 0;
 
 	struct device_node *np;
-	ctrldev = &pdev->dev;
 	ctrlpriv = dev_get_drvdata(ctrldev);
 
-	/*
-	 * If ctrlpriv is NULL, it's probably because the caam driver wasn't
-	 * properly initialized (e.g. RNG4 init failed). Thus, bail out here.
-	 */
-	if (!ctrlpriv) {
-		ret = -ENODEV;
-		goto exit;
-	}
+	if (!ctrlpriv->sm_present)
+		return 0;
 
 	/*
 	 * Set up the private block for secure memory
@@ -1106,13 +1101,8 @@ int caam_sm_startup(struct platform_device *pdev)
 	ctrlpriv->smdev = smdev;
 
 	/* Set the Secure Memory Register Map Version */
-	if (ctrlpriv->has_seco) {
-		smvid = rd_reg32(&ctrlpriv->jr[0]->perfmon.smvid);
-		smpart = rd_reg32(&ctrlpriv->jr[0]->perfmon.smpart);
-	} else {
-		smvid = rd_reg32(&ctrlpriv->ctrl->perfmon.smvid);
-		smpart = rd_reg32(&ctrlpriv->ctrl->perfmon.smpart);
-	}
+	smvid = rd_reg32(&ctrlpriv->jr[0]->perfmon.smvid);
+	smpart = rd_reg32(&ctrlpriv->jr[0]->perfmon.smpart);
 
 	if (smvid < SMVID_V2)
 		smpriv->sm_reg_offset = SM_V1_OFFSET;
@@ -1190,7 +1180,7 @@ int caam_sm_startup(struct platform_device *pdev)
 				(pgstat & SMCS_PART_SHIFT) >> SMCS_PART_MASK;
 			lpagedesc[page].pg_base = (u8 *)ctrlpriv->sm_base +
 				(smpriv->page_size * page);
-			if (ctrlpriv->has_seco) {
+			if (ctrlpriv->scu_en) {
 /* FIXME: get different addresses viewed by CPU and CAAM from
  * platform property
  */
@@ -1251,14 +1241,16 @@ exit:
 	return ret;
 }
 
-void caam_sm_shutdown(struct platform_device *pdev)
+void caam_sm_shutdown(struct device *ctrldev)
 {
-	struct device *ctrldev, *smdev;
+	struct device *smdev;
 	struct caam_drv_private *priv;
 	struct caam_drv_private_sm *smpriv;
 
-	ctrldev = &pdev->dev;
 	priv = dev_get_drvdata(ctrldev);
+	if (!priv->sm_present)
+		return;
+
 	smdev = priv->smdev;
 
 	/* Return if resource not initialized by startup */
@@ -1276,60 +1268,3 @@ void caam_sm_shutdown(struct platform_device *pdev)
 	kfree(smpriv);
 }
 EXPORT_SYMBOL(caam_sm_shutdown);
-
-static void  __exit caam_sm_exit(void)
-{
-	struct device_node *dev_node;
-	struct platform_device *pdev;
-
-	dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
-	if (!dev_node) {
-		dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec4.0");
-		if (!dev_node)
-			return;
-	}
-
-	pdev = of_find_device_by_node(dev_node);
-	if (!pdev)
-		return;
-
-	of_node_put(dev_node);
-
-	caam_sm_shutdown(pdev);
-
-	return;
-}
-
-static int __init caam_sm_init(void)
-{
-	struct device_node *dev_node;
-	struct platform_device *pdev;
-
-	/*
-	 * Do of_find_compatible_node() then of_find_device_by_node()
-	 * once a functional device tree is available
-	 */
-	dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
-	if (!dev_node) {
-		dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec4.0");
-		if (!dev_node)
-			return -ENODEV;
-	}
-
-	pdev = of_find_device_by_node(dev_node);
-	if (!pdev)
-		return -ENODEV;
-
-	of_node_get(dev_node);
-
-	caam_sm_startup(pdev);
-
-	return 0;
-}
-
-module_init(caam_sm_init);
-module_exit(caam_sm_exit);
-
-MODULE_LICENSE("Dual BSD/GPL");
-MODULE_DESCRIPTION("FSL CAAM Secure Memory / Keystore");
-MODULE_AUTHOR("Freescale Semiconductor - NMSG/MAD");

@@ -2361,8 +2361,7 @@ void mmc_start_host(struct mmc_host *host)
 	}
 
 	mmc_gpiod_request_cd_irq(host);
-	if (!(host->caps2 & MMC_CAP2_CD_POST))
-		_mmc_detect_change(host, 0, false);
+	_mmc_detect_change(host, 0, false);
 }
 
 void mmc_stop_host(struct mmc_host *host)
@@ -2483,7 +2482,7 @@ EXPORT_SYMBOL(mmc_first_nonreserved_index);
 /*
  * mmc_get_reserved_index() - get the index reserved for this host
  * Return: The index reserved for this host or negative error value
- *         if no index is reserved for this host
+ *        if no index is reserved for this host
  */
 int mmc_get_reserved_index(struct mmc_host *host)
 {

@@ -11,30 +11,9 @@
 #include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
-#include <linux/micrel_phy.h>
 
 #include "common.h"
 #include "cpuidle.h"
-static void mmd_write_reg(struct phy_device *dev, int device, int reg, int val)
-{
-	phy_write(dev, 0x0d, device);
-	phy_write(dev, 0x0e, reg);
-	phy_write(dev, 0x0d, (1 << 14) | device);
-	phy_write(dev, 0x0e, val);
-}
-
-static int ksz9031rn_phy_fixup(struct phy_device *dev)
-{
-	/*
-	 * min rx data delay, max rx/tx clock delay,
-	 * min rx/tx control delay
-	 */
-	mmd_write_reg(dev, 2, 4, 0);
-	mmd_write_reg(dev, 2, 5, 0);
-	mmd_write_reg(dev, 2, 8, 0x003ff);
-
-	return 0;
-}
 
 static int ar8031_phy_fixup(struct phy_device *dev)
 {
@@ -64,12 +43,9 @@ static int ar8031_phy_fixup(struct phy_device *dev)
 #define PHY_ID_AR8031   0x004dd074
 static void __init imx6sx_enet_phy_init(void)
 {
-	if (IS_BUILTIN(CONFIG_PHYLIB)) {
-		phy_register_fixup_for_uid(PHY_ID_KSZ9031, MICREL_PHY_ID_MASK,
-				ksz9031rn_phy_fixup);
+	if (IS_BUILTIN(CONFIG_PHYLIB))
 		phy_register_fixup_for_uid(PHY_ID_AR8031, 0xffffffff,
 					   ar8031_phy_fixup);
-	}
 }
 
 static void __init imx6sx_enet_clk_sel(void)
@@ -104,6 +80,7 @@ static void __init imx6sx_init_machine(void)
 
 	of_platform_default_populate(NULL, NULL, parent);
 
+	imx_anatop_init();
 	imx6sx_enet_init();
 	imx_anatop_init();
 	imx6sx_pm_init();
@@ -119,19 +96,19 @@ static void __init imx6sx_init_irq(void)
 	imx6_pm_ccm_init("fsl,imx6sx-ccm");
 }
 
-static void __init imx6sx_init_late(void)
-{
-	if (IS_ENABLED(CONFIG_ARM_IMX6Q_CPUFREQ))
-		platform_device_register_simple("imx6q-cpufreq", -1, NULL, 0);
-
-	imx6sx_cpuidle_init();
-}
-
 static void __init imx6sx_map_io(void)
 {
 	debug_ll_io_init();
 	imx6_pm_map_io();
 	imx_busfreq_map_io();
+}
+
+static void __init imx6sx_init_late(void)
+{
+	imx6sx_cpuidle_init();
+
+	if (IS_ENABLED(CONFIG_ARM_IMX6Q_CPUFREQ))
+		platform_device_register_simple("imx6q-cpufreq", -1, NULL, 0);
 }
 
 static const char * const imx6sx_dt_compat[] __initconst = {

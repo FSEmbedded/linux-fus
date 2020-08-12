@@ -1882,10 +1882,14 @@ match:
 				dev_err(card->dev, "init platform error");
 				continue;
 			}
-			dai_link->platforms->name = component->name;
+
+			if (!dai_link->platforms->of_node)
+				dai_link->platforms->name = component->name;
 
 			/* convert non BE into BE */
 			dai_link->no_pcm = 1;
+			dai_link->dpcm_playback = 1;
+			dai_link->dpcm_capture = 1;
 
 			/* override any BE fixups */
 			dai_link->be_hw_params_fixup =

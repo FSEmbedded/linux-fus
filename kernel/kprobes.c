@@ -696,7 +696,6 @@ static void unoptimize_kprobe(struct kprobe *p, bool force)
 static int reuse_unused_kprobe(struct kprobe *ap)
 {
 	struct optimized_kprobe *op;
-	int ret;
 
 	/*
 	 * Unused kprobe MUST be on the way of delayed unoptimizing (means

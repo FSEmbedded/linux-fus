@@ -2,7 +2,6 @@
 /*
  * Copyright (C) 2010-2011 Canonical Ltd <jeremy.kerr@canonical.com>
  * Copyright (C) 2011-2012 Mike Turquette, Linaro Ltd <mturquette@linaro.org>
- * Copyright (C) 2014-2015 Freescale Semiconductor, Inc.
  *
  * Gated clock implementation
  */

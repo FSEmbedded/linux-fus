@@ -580,18 +580,6 @@ struct gov_attr_set {
 	int usage_count;
 };
 
-#define gov_attr_ro(_name)						\
-static struct governor_attr _name =					\
-__ATTR(_name, 0444, show_##_name, NULL)
-
-#define gov_attr_wo(_name)						\
-static struct governor_attr _name =					\
-__ATTR(_name, 0200, NULL, store_##_name)
-
-#define gov_attr_rw(_name)						\
-static struct governor_attr _name =					\
-__ATTR(_name, 0644, show_##_name, store_##_name)
-
 /* sysfs ops for cpufreq governors */
 extern const struct sysfs_ops governor_sysfs_ops;
 
@@ -606,17 +594,6 @@ struct governor_attr {
 	ssize_t (*store)(struct gov_attr_set *attr_set, const char *buf,
 			 size_t count);
 };
-
-static inline bool cpufreq_this_cpu_can_update(struct cpufreq_policy *policy)
-{
-	/*
-	 * Allow remote callbacks if:
-	 * - dvfs_possible_from_any_cpu flag is set
-	 * - the local and remote CPUs share cpufreq policy
-	 */
-	return policy->dvfs_possible_from_any_cpu ||
-		cpumask_test_cpu(smp_processor_id(), policy->cpus);
-}
 
 /*********************************************************************
  *                     FREQUENCY TABLE HELPERS                       *

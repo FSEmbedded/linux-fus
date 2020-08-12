@@ -28,6 +28,7 @@
 
 /* The bits in CONFIG cell defined in binding doc*/
 #define IMX_NO_PAD_CTL	0x80000000	/* no pin config need */
+#define IMX_PAD_SION 0x40000000		/* set SION */
 
 static inline const struct group_desc *imx_pinctrl_find_group_by_name(
 				struct pinctrl_dev *pctldev,
@@ -240,7 +241,6 @@ static int imx_pmx_set(struct pinctrl_dev *pctldev, unsigned selector,
 		       unsigned group)
 {
 	struct imx_pinctrl *ipctl = pinctrl_dev_get_drvdata(pctldev);
-	unsigned int npins;
 	const struct imx_pinctrl_soc_info *info = ipctl->info;
 	struct function_desc *func;
 	struct group_desc *grp;
@@ -350,11 +350,20 @@ static int imx_pinconf_get_mmio(struct pinctrl_dev *pctldev, unsigned pin_id,
 {
 	struct imx_pinctrl *ipctl = pinctrl_dev_get_drvdata(pctldev);
 	const struct imx_pinctrl_soc_info *info = ipctl->info;
+	const struct imx_pin_reg *pin_reg = &ipctl->pin_regs[pin_id];
 
-	if (info->flags & IMX8_USE_SCU)
-		return imx_pinconf_backend_get_scu(pctldev, pin_id, config);
-	else
-		return imx_pinconf_backend_get_mem(pctldev, pin_id, config);
+	if (pin_reg->conf_reg == -1) {
+		dev_err(ipctl->dev, "Pin(%s) does not support config function\n",
+			info->pins[pin_id].name);
+		return -EINVAL;
+	}
+
+	*config = readl(ipctl->base + pin_reg->conf_reg);
+
+	if (info->flags & SHARE_MUX_CONF_REG)
+		*config &= ~info->mux_mask;
+
+	return 0;
 }
 
 static int imx_pinconf_get(struct pinctrl_dev *pctldev,
@@ -375,11 +384,35 @@ static int imx_pinconf_set_mmio(struct pinctrl_dev *pctldev,
 {
 	struct imx_pinctrl *ipctl = pinctrl_dev_get_drvdata(pctldev);
 	const struct imx_pinctrl_soc_info *info = ipctl->info;
+	const struct imx_pin_reg *pin_reg = &ipctl->pin_regs[pin_id];
+	int i;
 
-	if (info->flags & IMX8_USE_SCU)
-		return imx_pinconf_backend_set_scu(pctldev, pin_id, configs, num_configs);
-	else
-		return imx_pinconf_backend_set_mem(pctldev, pin_id, configs, num_configs);
+	if (pin_reg->conf_reg == -1) {
+		dev_err(ipctl->dev, "Pin(%s) does not support config function\n",
+			info->pins[pin_id].name);
+		return -EINVAL;
+	}
+
+	dev_dbg(ipctl->dev, "pinconf set pin %s\n",
+		info->pins[pin_id].name);
+
+	for (i = 0; i < num_configs; i++) {
+		if (info->flags & SHARE_MUX_CONF_REG) {
+			u32 reg;
+			reg = readl(ipctl->base + pin_reg->conf_reg);
+			reg &= info->mux_mask;
+			reg |= configs[i];
+			writel(reg, ipctl->base + pin_reg->conf_reg);
+			dev_dbg(ipctl->dev, "write: offset 0x%x val 0x%x\n",
+				pin_reg->conf_reg, reg);
+		} else {
+			writel(configs[i], ipctl->base + pin_reg->conf_reg);
+			dev_dbg(ipctl->dev, "write: offset 0x%x val 0x%lx\n",
+				pin_reg->conf_reg, configs[i]);
+		}
+	} /* for each config */
+
+	return 0;
 }
 
 static int imx_pinconf_set(struct pinctrl_dev *pctldev,
@@ -474,7 +507,6 @@ static const struct pinconf_ops imx_pinconf_ops = {
  * IMX_USE_SCU:
  *	<pin_id mux_mode>
  */
-#define FSL_IMX8_PIN_SIZE 12
 #define FSL_PIN_SIZE 24
 #define FSL_PIN_SHARE_SIZE 20
 #define FSL_SCU_PIN_SIZE 12
@@ -577,8 +609,6 @@ static int imx_pinctrl_parse_groups(struct device_node *np,
 			return -EINVAL;
 		}
 	}
-
-	list_p = &list;
 
 	/* we do not check return since it's safe node passed down */
 	if (!size || size % pin_size) {

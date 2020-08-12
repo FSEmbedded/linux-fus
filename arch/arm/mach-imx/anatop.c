@@ -27,14 +27,12 @@
 #define ANADIG_REG_2P5		0x130
 #define ANADIG_REG_CORE		0x140
 #define ANADIG_ANA_MISC0	0x150
-#define ANADIG_ANA_MISC2	0x170
 #define ANADIG_USB1_CHRG_DETECT	0x1b0
 #define ANADIG_USB2_CHRG_DETECT	0x210
+#define ANADIG_ANA_MISC2	0x170
 #define ANADIG_DIGPROG		0x260
 #define ANADIG_DIGPROG_IMX6SL	0x280
 #define ANADIG_DIGPROG_IMX7D	0x800
-
-#define SRC_SBMR2		0x1c
 
 #define BM_ANADIG_REG_2P5_ENABLE_WEAK_LINREG	0x40000
 #define BM_ANADIG_REG_2P5_ENABLE_PULLDOWN	0x8
@@ -65,8 +63,8 @@ static void imx_anatop_enable_weak2p5(bool enable)
 
 	regmap_read(anatop, ANADIG_ANA_MISC0, &val);
 
-	if (cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull()
-		|| cpu_is_imx6sll())
+	if (cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull() ||
+	    cpu_is_imx6ulz() || cpu_is_imx6sll())
 		mask = BM_ANADIG_ANA_MISC0_V3_STOP_MODE_CONFIG;
 	else if (cpu_is_imx6sl())
 		mask = BM_ANADIG_ANA_MISC0_V2_STOP_MODE_CONFIG;
@@ -94,7 +92,7 @@ static inline void imx_anatop_enable_2p5_pulldown(bool enable)
 static inline void imx_anatop_disconnect_high_snvs(bool enable)
 {
 	if (cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull() ||
-		cpu_is_imx6sll())
+	    cpu_is_imx6ulz() || cpu_is_imx6sll())
 		regmap_write(anatop, ANADIG_ANA_MISC0 +
 			(enable ? REG_SET : REG_CLR),
 			BM_ANADIG_ANA_MISC0_V2_DISCON_HIGH_SNVS);
@@ -107,7 +105,6 @@ static inline void imx_anatop_disconnect_high_snvs(bool enable)
 static void imx_anatop_disable_pu(bool off)
 {
 	u32  val, soc, delay;
-
 	if (off) {
 		regmap_read(anatop, ANADIG_REG_CORE, &val);
 		val &= ~BM_ANADIG_REG_CORE_REG1;
@@ -145,18 +142,12 @@ void imx_anatop_pre_suspend(void)
 
 	if (cpu_is_imx6q() && imx_get_soc_revision() >= IMX_CHIP_REVISION_2_0)
 		imx_anatop_disable_pu(true);
-
-	if ((imx_mmdc_get_ddr_type() == IMX_DDR_TYPE_LPDDR2 ||
-		imx_mmdc_get_ddr_type() == IMX_MMDC_DDR_TYPE_LPDDR3) &&
-		!imx_gpc_usb_wakeup_enabled() && !imx_gpc_enet_wakeup_enabled())
-		imx_anatop_enable_2p5_pulldown(true);
-	else
-		imx_anatop_enable_weak2p5(true);
+	imx_anatop_enable_weak2p5(true);
 
 	imx_anatop_enable_fet_odrive(true);
 
 	if (cpu_is_imx6sl() || cpu_is_imx6sx() || cpu_is_imx6ul() ||
-		cpu_is_imx6ull() || cpu_is_imx6sll())
+	    cpu_is_imx6ull() || cpu_is_imx6ulz() || cpu_is_imx6sll())
 		imx_anatop_disconnect_high_snvs(true);
 }
 
@@ -176,17 +167,12 @@ void imx_anatop_post_resume(void)
 	if (cpu_is_imx6q() && imx_get_soc_revision() >= IMX_CHIP_REVISION_2_0)
 		imx_anatop_disable_pu(false);
 
-	if ((imx_mmdc_get_ddr_type() == IMX_DDR_TYPE_LPDDR2 ||
-		imx_mmdc_get_ddr_type() == IMX_MMDC_DDR_TYPE_LPDDR3) &&
-		!imx_gpc_usb_wakeup_enabled() && !imx_gpc_enet_wakeup_enabled())
-		imx_anatop_enable_2p5_pulldown(false);
-	else
-		imx_anatop_enable_weak2p5(false);
+	imx_anatop_enable_weak2p5(false);
 
 	imx_anatop_enable_fet_odrive(false);
 
 	if (cpu_is_imx6sl() || cpu_is_imx6sx() || cpu_is_imx6ul() ||
-		cpu_is_imx6ull() || cpu_is_imx6sll())
+	    cpu_is_imx6ull() || cpu_is_imx6ulz() || cpu_is_imx6sll())
 		imx_anatop_disconnect_high_snvs(false);
 }
 
@@ -208,7 +194,7 @@ void __init imx_init_revision_from_anatop(void)
 	unsigned int revision;
 	u32 digprog, sbmr2 = 0;
 	u16 offset = ANADIG_DIGPROG;
-	u8 major_part, minor_part;
+	u16 major_part, minor_part;
 
 	np = of_find_compatible_node(NULL, NULL, "fsl,imx6q-anatop");
 	anatop_base = of_iomap(np, 0);
@@ -253,24 +239,6 @@ void __init imx_init_revision_from_anatop(void)
 		major_part = (digprog >> 8) & 0xf;
 		minor_part = digprog & 0xf;
 		revision = ((major_part + 1) << 4) | minor_part;
-
-		if ((digprog >> 16) == MXC_CPU_IMX6ULL) {
-			void __iomem *src_base;
-			u32 sbmr2;
-
-			np = of_find_compatible_node(NULL, NULL,
-						     "fsl,imx6ul-src");
-			src_base = of_iomap(np, 0);
-			WARN_ON(!src_base);
-			sbmr2 = readl_relaxed(src_base + SRC_SBMR2);
-			iounmap(src_base);
-
-			/* src_sbmr2 bit 6 is to identify if it is i.MX6ULZ */
-			if (sbmr2 & (1 << 6)) {
-				digprog &= ~(0xff << 16);
-				digprog |= (MXC_CPU_IMX6ULZ << 16);
-			}
-		}
 	}
 
 	mxc_set_cpu_type(digprog >> 16 & 0xff);

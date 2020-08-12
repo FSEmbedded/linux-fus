@@ -1,7 +1,7 @@
 /*
  * Cirrus Logic CS42448/CS42888 Audio CODEC Digital Audio Interface (DAI) driver
  *
- * Copyright (C) 2014-2016 Freescale Semiconductor, Inc.
+ * Copyright (C) 2014 Freescale Semiconductor, Inc.
  *
  * Author: Nicolin Chen <Guangyu.Chen@freescale.com>
  *
@@ -17,6 +17,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
+#include <linux/pm_domain.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 #include <sound/tlv.h>
@@ -33,7 +34,8 @@ static const char *const cs42xx8_supply_names[CS42XX8_NUM_SUPPLIES] = {
 
 #define CS42XX8_FORMATS	(SNDRV_PCM_FMTBIT_S16_LE | \
 			 SNDRV_PCM_FMTBIT_S20_3LE | \
-			 SNDRV_PCM_FMTBIT_S24_LE)
+			 SNDRV_PCM_FMTBIT_S24_LE | \
+			 SNDRV_PCM_FMTBIT_S32_LE)
 
 /* codec private data */
 struct cs42xx8_priv {
@@ -280,7 +282,7 @@ static int cs42xx8_hw_params(struct snd_pcm_substream *substream,
 
 	/* Get functional mode for tx and rx according to rate */
 	for (i = 0; i < 2; i++) {
-		if (cs42xx8->slave_mode) {
+		if (cs42xx8->slave_mode[i]) {
 			fm[i] = CS42XX8_FM_AUTO;
 		} else {
 			if (rate[i] < 50000) {
@@ -335,6 +337,16 @@ static int cs42xx8_hw_params(struct snd_pcm_substream *substream,
 
 	cs42xx8->rate[tx] = params_rate(params);
 
+	if (cs42xx8->is_tdm && !cs42xx8->slave_mode[tx]) {
+		dev_err(component->dev, "TDM mode is unsupported in master mode\n");
+		return -EINVAL;
+	}
+
+	if (cs42xx8->is_tdm && (cs42xx8->sysclk < 256 * cs42xx8->rate[tx])) {
+		dev_err(component->dev, "unsupported sysclk for TDM mode\n");
+		return -EINVAL;
+	}
+
 	mask = CS42XX8_FUNCMOD_MFREQ_MASK;
 	val = cs42xx8_ratios[i].mfreq;
 
@@ -353,22 +365,6 @@ static int cs42xx8_hw_free(struct snd_pcm_substream *substream,
 	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
 
 	/* Clear stored rate */
-	cs42xx8->rate[tx] = 0;
-
-	regmap_update_bits(cs42xx8->regmap, CS42XX8_FUNCMOD,
-			   CS42XX8_FUNCMOD_xC_FM_MASK(tx),
-			   CS42XX8_FUNCMOD_xC_FM(tx, CS42XX8_FM_AUTO));
-	return 0;
-}
-
-static int cs42xx8_hw_free(struct snd_pcm_substream *substream,
-			     struct snd_soc_dai *dai)
-{
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_component *component = rtd->codec_dai->component;
-	struct cs42xx8_priv *cs42xx8 = snd_soc_component_get_drvdata(component);
-	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
-
 	cs42xx8->rate[tx] = 0;
 
 	regmap_update_bits(cs42xx8->regmap, CS42XX8_FUNCMOD,
@@ -474,7 +470,8 @@ const struct regmap_config cs42xx8_regmap_config = {
 	.volatile_reg = cs42xx8_volatile_register,
 	.writeable_reg = cs42xx8_writeable_register,
 	.cache_type = REGCACHE_RBTREE,
-	.use_single_rw = true,
+	.use_single_read = true,
+	.use_single_write = true,
 };
 EXPORT_SYMBOL_GPL(cs42xx8_regmap_config);
 
@@ -538,11 +535,11 @@ EXPORT_SYMBOL_GPL(cs42xx8_of_match);
 
 int cs42xx8_probe(struct device *dev, struct regmap *regmap)
 {
-	const struct of_device_id *of_id =
-		of_match_device(cs42xx8_of_match, dev);
 	struct device_node *np = dev->of_node;
+	const struct of_device_id *of_id;
 	struct cs42xx8_priv *cs42xx8;
 	int ret, val, i;
+	int num_domains = 0;
 
 	if (IS_ERR(regmap)) {
 		ret = PTR_ERR(regmap);
@@ -581,6 +578,24 @@ int cs42xx8_probe(struct device *dev, struct regmap *regmap)
 	}
 
 	cs42xx8->sysclk = clk_get_rate(cs42xx8->clk);
+
+	num_domains = of_count_phandle_with_args(np, "power-domains",
+						 "#power-domain-cells");
+	for (i = 0; i < num_domains; i++) {
+		struct device *pd_dev;
+		struct device_link *link;
+
+		pd_dev = dev_pm_domain_attach_by_id(dev, i);
+		if (IS_ERR(pd_dev))
+			return PTR_ERR(pd_dev);
+
+		link = device_link_add(dev, pd_dev,
+			DL_FLAG_STATELESS |
+			DL_FLAG_PM_RUNTIME |
+			DL_FLAG_RPM_ACTIVE);
+		if (IS_ERR(link))
+			return PTR_ERR(link);
+	}
 
 	if (of_property_read_bool(np, "fsl,txm-rxs")) {
 		/* 0 --  rx,  1 -- tx */
@@ -674,13 +689,8 @@ static int cs42xx8_runtime_resume(struct device *dev)
 		goto err_clk;
 	}
 
-	regmap_update_bits(cs42xx8->regmap, CS42XX8_PWRCTL,
-				CS42XX8_PWRCTL_PDN_MASK, 1);
 	/* Make sure hardware reset done */
 	msleep(5);
-
-	regmap_update_bits(cs42xx8->regmap, CS42XX8_PWRCTL,
-				CS42XX8_PWRCTL_PDN_MASK, 0);
 
 	regcache_cache_only(cs42xx8->regmap, false);
 	regcache_mark_dirty(cs42xx8->regmap);

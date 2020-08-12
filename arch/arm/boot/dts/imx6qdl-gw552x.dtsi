@@ -14,7 +14,6 @@
 		nand = &gpmi;
 		usb0 = &usbh1;
 		usb1 = &usbotg;
-		mxcfb0 = &mxcfb1;
 	};
 
 	chosen {
@@ -74,17 +73,6 @@
 		regulator-max-microvolt = <5000000>;
 		regulator-always-on;
 	};
-
-	mxcfb1: fb@0 {
-		compatible = "fsl,mxc_sdc_fb";
-		disp_dev = "hdmi";
-		interface_pix_fmt = "RGB24";
-		mode_str ="1920x1080M@60";
-		default_bpp = <24>;
-		int_clk = <0>;
-		late_init = <0>;
-		status = "okay";
-	};
 };
 
 &gpmi {
@@ -93,15 +81,8 @@
 	status = "okay";
 };
 
-&hdmi_core {
-	ipu_id = <0>;
-	disp_id = <0>;
-	status = "okay";
-};
-
-&hdmi_video {
-	fsl,phy_reg_vlev = <0x0294>;
-	fsl,phy_reg_cksymtx = <0x800d>;
+&hdmi {
+	ddc-i2c-bus = <&i2c3>;
 	status = "okay";
 };
 
@@ -235,11 +216,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c3>;
 	status = "okay";
-
-	hdmi_edid: edid@50 {
-		compatible = "fsl,imx6-hdmi-i2c";
-		reg = <0x50>;
-	};
 };
 
 &pcie {

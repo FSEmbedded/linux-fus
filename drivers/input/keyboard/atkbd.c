@@ -1805,8 +1805,7 @@ static const struct dmi_system_id atkbd_dmi_quirk_table[] __initconst = {
 
 static int __init atkbd_init(void)
 {
-	if (!dmi_check_system(atkbd_dmi_quirk_table))
-		return -ENODEV;
+	dmi_check_system(atkbd_dmi_quirk_table);
 
 	return serio_register_driver(&atkbd_drv);
 }

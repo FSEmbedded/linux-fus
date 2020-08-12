@@ -27,6 +27,8 @@
 #include "dpu-blit-registers.h"
 #include "dpu-prv.h"
 
+void dpu_be_wait(struct dpu_bliteng *dpu_be);
+
 static inline u32 dpu_be_read(struct dpu_bliteng *dpu_be, unsigned int offset)
 {
 	return readl(dpu_be->base + offset);

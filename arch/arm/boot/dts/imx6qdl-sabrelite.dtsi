@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2015 Freescale Semiconductor, Inc.
+ * Copyright 2011 Freescale Semiconductor, Inc.
  * Copyright 2011 Linaro Ltd.
  *
  * This file is dual-licensed: you can use it either under the terms
@@ -340,6 +340,11 @@
 	status = "okay";
 };
 
+&hdmi {
+	ddc-i2c-bus = <&i2c2>;
+	status = "okay";
+};
+
 &i2c1 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
@@ -348,7 +353,7 @@
 
 	codec: sgtl5000@a {
 		compatible = "fsl,sgtl5000";
-		reg = <0xa>;
+		reg = <0x0a>;
 		clocks = <&clks IMX6QDL_CLK_CKO>;
 		VDDA-supply = <&reg_2p5v>;
 		VDDIO-supply = <&reg_3p3v>;
@@ -725,9 +730,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg>;
 	disable-over-current;
-	srp-disable;
-	hnp-disable;
-	adp-disable;
 	status = "okay";
 };
 

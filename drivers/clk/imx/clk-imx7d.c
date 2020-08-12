@@ -25,8 +25,6 @@ static u32 share_count_nand;
 static u32 share_count_enet1;
 static u32 share_count_enet2;
 static u32 share_count_pxp;
-static u32 share_count_enet1;
-static u32 share_count_enet2;
 
 static const struct clk_div_table test_div_table[] = {
 	{ .val = 3, .div = 1, },
@@ -75,7 +73,7 @@ static const char *nand_usdhc_bus_sel[] = { "osc", "pll_sys_pfd2_270m_clk",
 static const char *ahb_channel_sel[] = { "osc", "pll_sys_pfd2_270m_clk",
 	"pll_dram_533m_clk", "pll_sys_pfd0_392m_clk",
 	"pll_enet_250m_clk", "pll_usb_main_clk", "pll_audio_post_div",
-	"pll_video_main_clk", };
+	"pll_video_post_div", };
 
 static const char *dram_phym_sel[] = { "pll_dram_main_clk",
 	"dram_phym_alt_clk", };
@@ -380,23 +378,10 @@ static const char *pll_video_bypass_sel[] = { "pll_video_main", "pll_video_main_
 static struct clk_hw **hws;
 static struct clk_hw_onecell_data *clk_hw_data;
 
-static const int uart_clk_ids[] __initconst = {
-	IMX7D_UART1_ROOT_CLK,
-	IMX7D_UART2_ROOT_CLK,
-	IMX7D_UART3_ROOT_CLK,
-	IMX7D_UART4_ROOT_CLK,
-	IMX7D_UART5_ROOT_CLK,
-	IMX7D_UART6_ROOT_CLK,
-	IMX7D_UART7_ROOT_CLK,
-};
-
-static struct clk **uart_clks[ARRAY_SIZE(uart_clk_ids) + 1] __initdata;
-
 static void __init imx7d_clocks_init(struct device_node *ccm_node)
 {
 	struct device_node *np;
 	void __iomem *base;
-	int i;
 
 	clk_hw_data = kzalloc(struct_size(clk_hw_data, hws,
 					  IMX7D_CLK_END), GFP_KERNEL);
@@ -869,6 +854,8 @@ static void __init imx7d_clocks_init(struct device_node *ccm_node)
 	hws[IMX7D_USB_PHY1_CLK] = imx_clk_hw_gate4("usb_phy1_clk", "pll_usb1_main_clk", base + 0x46a0, 0);
 	hws[IMX7D_USB_PHY2_CLK] = imx_clk_hw_gate4("usb_phy2_clk", "pll_usb_main_clk", base + 0x46b0, 0);
 	hws[IMX7D_ADC_ROOT_CLK] = imx_clk_hw_gate4("adc_root_clk", "ipg_root_clk", base + 0x4200, 0);
+	hws[IMX7D_PXP_IPG_CLK] = imx_clk_hw_gate2_shared2("pxp_ipg_clk", "ipg_root_clk", base + 0x44c0, 0, &share_count_pxp);
+	hws[IMX7D_PXP_AXI_CLK] = imx_clk_hw_gate2_shared2("pxp_axi_clk", "main_axi_root_clk", base + 0x44c0, 0, &share_count_pxp);
 
 	hws[IMX7D_GPT_3M_CLK] = imx_clk_hw_fixed_factor("gpt_3m", "osc", 1, 8);
 
@@ -891,6 +878,12 @@ static void __init imx7d_clocks_init(struct device_node *ccm_node)
 
 	clk_set_parent(hws[IMX7D_MIPI_CSI_ROOT_SRC]->clk, hws[IMX7D_PLL_SYS_PFD3_CLK]->clk);
 
+	if (imx_src_is_m4_enabled()) {
+		clk_set_parent(hws[IMX7D_ARM_M4_ROOT_SRC]->clk, hws[IMX7D_PLL_SYS_MAIN_240M_CLK]->clk);
+		clk_prepare_enable(hws[IMX7D_ARM_M4_ROOT_CLK]->clk);
+		clk_prepare_enable(hws[IMX7D_UART2_ROOT_CLK]->clk);
+	}
+
 	/* use old gpt clk setting, gpt1 root clk must be twice as gpt counter freq */
 	clk_set_parent(hws[IMX7D_GPT1_ROOT_SRC]->clk, hws[IMX7D_OSC_24M_CLK]->clk);
 
@@ -898,31 +891,10 @@ static void __init imx7d_clocks_init(struct device_node *ccm_node)
 	hws[IMX7D_USB1_MAIN_480M_CLK] = imx_clk_hw_fixed_factor("pll_usb1_main_clk", "osc", 20, 1);
 	hws[IMX7D_USB_MAIN_480M_CLK] = imx_clk_hw_fixed_factor("pll_usb_main_clk", "osc", 20, 1);
 
-	for (i = 0; i < ARRAY_SIZE(uart_clk_ids); i++) {
-		int index = uart_clk_ids[i];
-
-		uart_clks[i] = &hws[index]->clk;
-	}
-
-
 	/* set parent of EPDC pixel clock */
-	imx_clk_set_parent(clks[IMX7D_EPDC_PIXEL_ROOT_SRC], clks[IMX7D_PLL_SYS_MAIN_CLK]);
+	clk_set_parent(hws[IMX7D_EPDC_PIXEL_ROOT_SRC]->clk, hws[IMX7D_PLL_SYS_MAIN_CLK]->clk);
 
-	/* set lcdif pixel root clock source to get the required 33Mhz clock */
-	imx_clk_set_parent(clks[IMX7D_LCDIF_PIXEL_ROOT_SRC], clks[IMX7D_PLL_VIDEO_POST_DIV]);
+	imx_register_uart_clocks();
 
-	imx_clk_set_parent(clks[IMX7D_MIPI_CSI_ROOT_SRC], clks[IMX7D_PLL_SYS_PFD3_CLK]);
-
-	/* set parent of SIM1 root clock */
-	imx_clk_set_parent(clks[IMX7D_SIM1_ROOT_SRC], clks[IMX7D_PLL_SYS_MAIN_120M_CLK]);
-
-	imx_clk_set_parent(clks[IMX7D_UART3_ROOT_SRC], clks[IMX7D_PLL_SYS_MAIN_240M_CLK]);
-	imx_clk_set_rate(clks[IMX7D_UART3_ROOT_DIV], 80000000);
-	imx_clk_set_parent(clks[IMX7D_UART5_ROOT_SRC], clks[IMX7D_PLL_SYS_MAIN_240M_CLK]);
-	imx_clk_set_rate(clks[IMX7D_UART5_ROOT_DIV], 80000000);
-	imx_clk_set_parent(clks[IMX7D_UART6_ROOT_SRC], clks[IMX7D_PLL_SYS_MAIN_240M_CLK]);
-	imx_clk_set_rate(clks[IMX7D_UART6_ROOT_DIV], 80000000);
-
-	imx_register_uart_clocks(uart_clks);
 }
 CLK_OF_DECLARE(imx7d, "fsl,imx7d-ccm", imx7d_clocks_init);

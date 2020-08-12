@@ -100,8 +100,7 @@ config PCI_IMX6_COMPLIANCE_TEST
 	default n
 	help
 	  Say Y here if you want do the compliance tests on imx6 pcie rc found
-	  on FSL iMX SoCs. The pcie clks wouldn't be turned off, and the link
-	  speed wouldn't be limited to gen1 when the Y is set here.
+	  on FSL iMX SoCs.
 
 config EP_MODE_IN_EP_RC_SYS
 	bool "PCI Express EP mode in the IMX6 RC/EP interconnection system"
@@ -111,7 +110,7 @@ config RC_MODE_IN_EP_RC_SYS
 	bool "PCI Express RC mode in the IMX6 RC/EP interconnection system"
 	depends on PCI_IMX6 && EP_MODE_IN_EP_RC_SYS!=y
 
-config PCI_IMX_EP_DRV
+config PCI_IMX6_EP
 	bool "i.MX6 PCI Express EP skeleton driver"
 	depends on RC_MODE_IN_EP_RC_SYS
 	default y

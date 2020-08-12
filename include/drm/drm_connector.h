@@ -207,11 +207,6 @@ struct drm_hdmi_info {
 
 	/** @y420_dc_modes: bitmap of deep color support index */
 	u8 y420_dc_modes;
-
-	/* Colorimerty info from EDID */
-	u32 colorimetry;
-	/* Panel HDR capabilities */
-	struct hdr_static_metadata hdr_panel_metadata;
 };
 
 /**

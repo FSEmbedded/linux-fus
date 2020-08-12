@@ -10,7 +10,6 @@
 #include "imx7ulp-evk-mipi.dtsi"
 
 &lpi2c7 {
-
 	focaltech@38 {
 		status = "disabled";
 	};

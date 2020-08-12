@@ -30,7 +30,6 @@
 #include <linux/slab.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
-#include <linux/pinctrl/consumer.h>
 #include <linux/io.h>
 #include <linux/dma-mapping.h>
 
@@ -232,7 +231,7 @@ struct imx_port {
 	unsigned int            saved_reg[10];
 	bool			context_saved;
 
-	struct pm_qos_request	pm_qos_req;
+	struct pm_qos_request   pm_qos_req;
 };
 
 struct imx_port_ucrs {
@@ -613,7 +612,7 @@ static void imx_uart_dma_tx(struct imx_port *sport)
 
 	sport->tx_bytes = uart_circ_chars_pending(xmit);
 
-	if (xmit->tail < xmit->head) {
+	if (xmit->tail < xmit->head || xmit->head == 0) {
 		sport->dma_tx_nents = 1;
 		sg_init_one(sgl, xmit->buf + xmit->tail, sport->tx_bytes);
 	} else {
@@ -814,16 +813,12 @@ static void imx_uart_clear_rx_errors(struct imx_port *sport);
  */
 static unsigned int imx_uart_get_hwmctrl(struct imx_port *sport)
 {
-	unsigned int tmp = TIOCM_DSR | TIOCM_CAR;
-	unsigned int usr1 = imx_uart_readl(sport, USR1);
-	unsigned int usr2 = imx_uart_readl(sport, USR2);
-	unsigned int ucr2 = imx_uart_readl(sport, UCR2);
+	unsigned int tmp = TIOCM_DSR;
+	unsigned usr1 = imx_uart_readl(sport, USR1);
+	unsigned usr2 = imx_uart_readl(sport, USR2);
 
 	if (usr1 & USR1_RTSS)
 		tmp |= TIOCM_CTS;
-
-	if (ucr2 & UCR2_CTS)
-		tmp |= TIOCM_RTS;
 
 	/* in DCE mode DCDIN is always 0 */
 	if (!(usr2 & USR2_DCDIN))
@@ -832,9 +827,6 @@ static unsigned int imx_uart_get_hwmctrl(struct imx_port *sport)
 	if (sport->dte_mode)
 		if (!(imx_uart_readl(sport, USR2) & USR2_RIIN))
 			tmp |= TIOCM_RI;
-
-	if (imx_uart_readl(sport, imx_uart_uts_reg(sport)) & UTS_LOOP)
-		tmp |= TIOCM_LOOP;
 
 	return tmp;
 }
@@ -2431,7 +2423,6 @@ static void imx_uart_restore_context(struct imx_port *sport)
 		return;
 	}
 
-	spin_lock_irqsave(&sport->port.lock, flags);
 	imx_uart_writel(sport, sport->saved_reg[4], UFCR);
 	imx_uart_writel(sport, sport->saved_reg[5], UESC);
 	imx_uart_writel(sport, sport->saved_reg[6], UTIM);
@@ -2468,17 +2459,15 @@ static void imx_uart_save_context(struct imx_port *sport)
 
 static void imx_uart_enable_wakeup(struct imx_port *sport, bool on)
 {
-	u32 ucr3, usr1;
-
-	usr1 = imx_uart_readl(sport, USR1);
-	if (usr1 & (USR1_AWAKE | USR1_RTSD))
-		imx_uart_writel(sport, USR1_AWAKE | USR1_RTSD, USR1);
+	u32 ucr3;
 
 	ucr3 = imx_uart_readl(sport, UCR3);
-	if (on)
+	if (on) {
+		imx_uart_writel(sport, USR1_AWAKE, USR1);
 		ucr3 |= UCR3_AWAKEN;
-	else
+	} else {
 		ucr3 &= ~UCR3_AWAKEN;
+	}
 	imx_uart_writel(sport, ucr3, UCR3);
 
 	if (sport->have_rtscts) {
@@ -2494,9 +2483,6 @@ static void imx_uart_enable_wakeup(struct imx_port *sport, bool on)
 static int imx_uart_suspend_noirq(struct device *dev)
 {
 	struct imx_port *sport = dev_get_drvdata(dev);
-
-	/* enable wakeup from i.MX UART */
-	imx_uart_enable_wakeup(sport, true);
 
 	imx_uart_save_context(sport);
 
@@ -2520,9 +2506,6 @@ static int imx_uart_resume_noirq(struct device *dev)
 
 	imx_uart_restore_context(sport);
 
-	/* disable wakeup from i.MX UART */
-	imx_uart_enable_wakeup(sport, false);
-
 	return 0;
 }
 
@@ -2538,12 +2521,18 @@ static int imx_uart_suspend(struct device *dev)
 	if (ret)
 		return ret;
 
+	/* enable wakeup from i.MX UART */
+	imx_uart_enable_wakeup(sport, true);
+
 	return 0;
 }
 
 static int imx_uart_resume(struct device *dev)
 {
 	struct imx_port *sport = dev_get_drvdata(dev);
+
+	/* disable wakeup from i.MX UART */
+	imx_uart_enable_wakeup(sport, false);
 
 	uart_resume_port(&imx_uart_uart_driver, &sport->port);
 	enable_irq(sport->port.irq);

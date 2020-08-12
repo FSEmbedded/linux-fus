@@ -240,8 +240,6 @@ static inline bool virtqueue_use_indirect(struct virtqueue *_vq,
 
 static bool vring_use_dma_api(struct virtio_device *vdev)
 {
-	struct device *dma_dev = vdev->dev.parent;
-
 	if (!virtio_has_iommu_quirk(vdev))
 		return true;
 
@@ -254,7 +252,7 @@ static bool vring_use_dma_api(struct virtio_device *vdev)
 	 * the DMA API if we're a Xen guest, which at least allows
 	 * all of the sensible Xen configurations to work correctly.
 	 */
-	if (xen_domain() && !dma_dev->dma_mem)
+	if (xen_domain())
 		return true;
 
 	return false;

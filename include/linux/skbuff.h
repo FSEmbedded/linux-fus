@@ -1022,6 +1022,7 @@ void skb_dump(const char *level, const struct sk_buff *skb, bool full_pkt);
 void skb_tx_error(struct sk_buff *skb);
 void consume_skb(struct sk_buff *skb);
 void __consume_stateless_skb(struct sk_buff *skb);
+void skb_recycle(struct sk_buff *skb);
 void  __kfree_skb(struct sk_buff *skb);
 extern struct kmem_cache *skbuff_head_cache;
 
@@ -1454,7 +1455,7 @@ static inline void skb_zcopy_clear(struct sk_buff *skb, bool zerocopy)
 		} else if (uarg->callback == sock_zerocopy_callback) {
 			uarg->zerocopy = uarg->zerocopy && zerocopy;
 			sock_zerocopy_put(uarg);
-		} else if (!skb_zcopy_is_nouarg(skb)) {
+		} else {
 			uarg->callback(uarg, zerocopy);
 		}
 

@@ -2123,8 +2123,7 @@ static struct urb *request_single_step_set_feature_urb(
 	void			*dr,
 	void			*buf,
 	struct completion	*done
-	)
-{
+) {
 	struct urb *urb;
 	struct usb_hcd *hcd = bus_to_hcd(udev->bus);
 	struct usb_host_endpoint *ep;

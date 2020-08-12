@@ -4,7 +4,6 @@
  *
  * Copyright (C) 2012 Freescale Semiconductor, Inc.
  * Copyright (C) 2012 Linaro Ltd.
- * Copyright 2017 NXP
  *
  * Author: Dong Aisheng <dong.aisheng@linaro.org>
  */
@@ -33,19 +32,6 @@ struct imx_pin_mmio {
 	u16 input_reg;
 	unsigned int input_val;
 	unsigned long config;
-};
-
-struct imx_pin_scu {
-	unsigned long mux;
-	unsigned long config;
-};
-
-struct imx_pin {
-	unsigned int pin;
-	union {
-		struct imx_pin_memmap pin_memmap;
-		struct imx_pin_scu pin_scu;
-	} pin_conf;
 };
 
 /**
@@ -98,8 +84,6 @@ struct imx_pinctrl_soc_info {
 	/* MUX_MODE shift and mask in case SHARE_MUX_CONF_REG */
 	unsigned int mux_mask;
 	u8 mux_shift;
-	u32 ibe_bit;
-	u32 obe_bit;
 
 	/* generic pinconf */
 	bool generic_pinconf;

@@ -1,20 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2010-2015 Freescale Semiconductor, Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
- *
+ * Copyright 2019 NXP
  */
 /*
  * Based on STMP378X PxP driver
@@ -214,6 +201,7 @@ static void video_dma_done(void *arg)
 	struct pxp_channel *pxp_chan = to_pxp_channel(chan);
 	struct pxps *pxp = pxp_chan->client;
 	struct videobuf_buffer *vb;
+	struct timespec64 ts;
 
 	dev_dbg(chan->device->dev, "callback cookie %d, active DMA 0x%08x\n",
 			tx_desc->txd.cookie,
@@ -225,7 +213,8 @@ static void video_dma_done(void *arg)
 
 		list_del_init(&vb->queue);
 		vb->state = VIDEOBUF_DONE;
-		do_gettimeofday(&vb->ts);
+		ktime_get_real_ts64(&ts);
+		vb->ts = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
 		vb->field_count++;
 		wake_up(&vb->done);
 	}
@@ -962,7 +951,7 @@ static int pxp_querycap(struct file *file, void *fh,
 	cap->version = (PXP_DRIVER_MAJOR << 8) + PXP_DRIVER_MINOR;
 
 	cap->device_caps = V4L2_CAP_STREAMING |	V4L2_CAP_VIDEO_OUTPUT |
-				V4L2_CAP_VIDEO_OUTPUT_OVERLAY;
+				V4L2_CAP_VIDEO_OVERLAY;
 	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS;
 
 	return 0;
@@ -1006,34 +995,34 @@ static int pxp_s_fbuf(struct file *file, void *priv,
 	return 0;
 }
 
-static int pxp_g_crop(struct file *file, void *fh,
-			struct v4l2_crop *c)
+static int pxp_g_selection(struct file *file, void *fh,
+			  struct v4l2_selection *s)
 {
 	struct pxps *pxp = video_get_drvdata(video_devdata(file));
 
-	if (c->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_OVERLAY)
+	if (s->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_OVERLAY)
 		return -EINVAL;
 
-	c->c.left = pxp->pxp_conf.proc_data.drect.left;
-	c->c.top = pxp->pxp_conf.proc_data.drect.top;
-	c->c.width = pxp->pxp_conf.proc_data.drect.width;
-	c->c.height = pxp->pxp_conf.proc_data.drect.height;
+	s->r.left = pxp->pxp_conf.proc_data.drect.left;
+	s->r.top = pxp->pxp_conf.proc_data.drect.top;
+	s->r.width = pxp->pxp_conf.proc_data.drect.width;
+	s->r.height = pxp->pxp_conf.proc_data.drect.height;
 
 	return 0;
 }
 
-static int pxp_s_crop(struct file *file, void *fh,
-			const struct v4l2_crop *c)
+static int pxp_s_selection(struct file *file, void *fh,
+			 struct v4l2_selection *s)
 {
 	struct pxps *pxp = video_get_drvdata(video_devdata(file));
-	int l = c->c.left;
-	int t = c->c.top;
-	int w = c->c.width;
-	int h = c->c.height;
+	int l = s->r.left;
+	int t = s->r.top;
+	int w = s->r.width;
+	int h = s->r.height;
 	int fbw = pxp->fb.fmt.width;
 	int fbh = pxp->fb.fmt.height;
 
-	if (c->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_OVERLAY)
+	if (s->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_OVERLAY)
 		return -EINVAL;
 
 	/* Constrain parameters to FB limits */
@@ -1218,8 +1207,8 @@ static const struct v4l2_ioctl_ops pxp_ioctl_ops = {
 	.vidioc_g_fbuf			= pxp_g_fbuf,
 	.vidioc_s_fbuf			= pxp_s_fbuf,
 
-	.vidioc_g_crop			= pxp_g_crop,
-	.vidioc_s_crop			= pxp_s_crop,
+	.vidioc_g_selection		= pxp_g_selection,
+	.vidioc_s_selection		= pxp_s_selection,
 
 	.vidioc_queryctrl		= pxp_queryctrl,
 	.vidioc_g_ctrl			= pxp_g_ctrl,
@@ -1228,7 +1217,7 @@ static const struct v4l2_ioctl_ops pxp_ioctl_ops = {
 
 static const struct video_device pxp_template = {
 	.name				= "PxP",
-	.vfl_type 			= V4L2_CAP_VIDEO_OUTPUT |
+	.device_caps 			= V4L2_CAP_VIDEO_OUTPUT |
 						V4L2_CAP_VIDEO_OVERLAY |
 						V4L2_CAP_STREAMING,
 	.vfl_dir			= VFL_DIR_TX,

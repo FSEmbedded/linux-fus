@@ -332,28 +332,6 @@ static void rk_update_iv(struct rk_crypto_info *dev)
 		memcpy_toio(dev->reg + RK_CRYPTO_AES_IV_0, new_iv, ivsize);
 }
 
-static void rk_update_iv(struct rk_crypto_info *dev)
-{
-	struct ablkcipher_request *req =
-		ablkcipher_request_cast(dev->async_req);
-	struct crypto_ablkcipher *tfm = crypto_ablkcipher_reqtfm(req);
-	struct rk_cipher_ctx *ctx = crypto_ablkcipher_ctx(tfm);
-	u32 ivsize = crypto_ablkcipher_ivsize(tfm);
-	u8 *new_iv = NULL;
-
-	if (ctx->mode & RK_CRYPTO_DEC) {
-		new_iv = ctx->iv;
-	} else {
-		new_iv = page_address(sg_page(dev->sg_dst)) +
-			 dev->sg_dst->offset + dev->sg_dst->length - ivsize;
-	}
-
-	if (ivsize == DES_BLOCK_SIZE)
-		memcpy_toio(dev->reg + RK_CRYPTO_TDES_IV_0, new_iv, ivsize);
-	else if (ivsize == AES_BLOCK_SIZE)
-		memcpy_toio(dev->reg + RK_CRYPTO_AES_IV_0, new_iv, ivsize);
-}
-
 /* return:
  *	true	some err was occurred
  *	fault	no err, continue

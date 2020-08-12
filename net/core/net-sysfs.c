@@ -927,8 +927,6 @@ static int rx_queue_add_kobject(struct net_device *dev, int index)
 
 	dev_hold(queue->dev);
 
-	dev_hold(queue->dev);
-
 	if (dev->sysfs_rx_queue_group) {
 		error = sysfs_create_group(kobj, dev->sysfs_rx_queue_group);
 		if (error)
@@ -1466,8 +1464,6 @@ static int netdev_queue_add_kobject(struct net_device *dev, int index)
 				     "tx-%u", index);
 	if (error)
 		goto err;
-
-	dev_hold(queue->dev);
 
 	dev_hold(queue->dev);
 

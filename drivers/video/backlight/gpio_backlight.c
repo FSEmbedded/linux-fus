@@ -166,21 +166,6 @@ static struct of_device_id gpio_backlight_of_match[] = {
 
 MODULE_DEVICE_TABLE(of, gpio_backlight_of_match);
 
-static int gpio_backlight_suspend(struct device *dev)
-{
-	return 0;
-}
-
-static int gpio_backlight_resume(struct device *dev)
-{
-	return 0;
-}
-
-static const struct dev_pm_ops mipi_dsi_pm_ops = {
-	.suspend = gpio_backlight_suspend,
-	.resume  = gpio_backlight_resume,
-};
-
 static struct platform_driver gpio_backlight_driver = {
 	.driver		= {
 		.name		= "gpio-backlight",

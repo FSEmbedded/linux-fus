@@ -139,8 +139,8 @@ static int imx_mu_send_message(unsigned int index, unsigned int data)
 	ep = val & BIT(4);
 	if (((val & (1 << (20 + (3 - index)))) == 0) || (ep == BIT(4)))
 		return 0;
-
-	te_flag = 1;
+	else
+		te_flag = 1;
 
 	/*
 	 * Make sure that TEn flag is changed, after the ATRn is filled up.
@@ -334,36 +334,37 @@ static int imx_mu_probe(struct platform_device *pdev)
 	struct device_node *np;
 	struct device *dev = &pdev->dev;
 
-	np = of_find_compatible_node(NULL, NULL, "fsl,imx6sx-mu");
+	np = of_find_compatible_node(NULL, NULL, "fsl,imx6sx-mu-lp");
 	mu_base = of_iomap(np, 0);
 	WARN_ON(!mu_base);
 
-	ret = of_device_is_compatible(np, "fsl,imx7ulp-mu");
+	ret = of_device_is_compatible(np, "fsl,imx7ulp-mu-lp");
 	if (ret)
 		irq = platform_get_irq(pdev, 1);
 	else
 		irq = platform_get_irq(pdev, 0);
 	ret = request_irq(irq, imx_mu_isr,
-			  IRQF_EARLY_RESUME | IRQF_SHARED, "imx-mu", dev);
+			  IRQF_NO_SUSPEND | IRQF_SHARED, "imx-mu-lp", dev);
 	if (ret) {
 		pr_err("%s: register interrupt %d failed, rc %d\n",
 			__func__, irq, ret);
 		return ret;
 	}
 
-	ret = of_device_is_compatible(np, "fsl,imx7d-mu");
+	ret = of_device_is_compatible(np, "fsl,imx7d-mu-lp");
 	if (ret) {
 		clk = devm_clk_get(&pdev->dev, "mu");
 		if (IS_ERR(clk)) {
 			dev_err(&pdev->dev,
 				"mu clock source missing or invalid\n");
 			return PTR_ERR(clk);
-		}
-
-		ret = clk_prepare_enable(clk);
-		if (ret) {
-			dev_err(&pdev->dev, "unable to enable mu clock\n");
-			return ret;
+		} else {
+			ret = clk_prepare_enable(clk);
+			if (ret) {
+				dev_err(&pdev->dev,
+					"unable to enable mu clock\n");
+				return ret;
+			}
 		}
 
 		/* MU always as a wakeup source for low power mode */
@@ -389,9 +390,9 @@ static int imx_mu_probe(struct platform_device *pdev)
 }
 
 static const struct of_device_id imx_mu_ids[] = {
-	{ .compatible = "fsl,imx6sx-mu" },
-	{ .compatible = "fsl,imx7d-mu" },
-	{ .compatible = "fsl,imx7ulp-mu" },
+	{ .compatible = "fsl,imx6sx-mu-lp" },
+	{ .compatible = "fsl,imx7d-mu-lp" },
+	{ .compatible = "fsl,imx7ulp-mu-lp" },
 	{ }
 };
 
@@ -418,7 +419,7 @@ static const struct dev_pm_ops mu_pm_ops = {
 
 static struct platform_driver imx_mu_driver = {
 	.driver = {
-		.name   = "imx-mu",
+		.name   = "imx-mu-lp",
 		.owner  = THIS_MODULE,
 		.pm = &mu_pm_ops,
 		.of_match_table = imx_mu_ids,

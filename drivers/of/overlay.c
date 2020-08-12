@@ -318,11 +318,6 @@ static int add_changeset_property(struct overlay_changeset *ovcs,
 	else
 		prop = NULL;
 
-	if (target->in_livetree)
-		prop = of_find_property(target->np, overlay_prop->name, NULL);
-	else
-		prop = NULL;
-
 	if (is_symbols_prop) {
 		if (prop)
 			return -EINVAL;

@@ -16,6 +16,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_edid.h>
+#include <drm/drm_probe_helper.h>
 #include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/module.h>
@@ -569,13 +570,10 @@ it6263_read_edid(void *data, u8 *buf, unsigned int block, size_t len)
 static int it6263_get_modes(struct drm_connector *connector)
 {
 	struct it6263 *it6263 = connector_to_it6263(connector);
-	struct regmap *regmap = it6263->hdmi_regmap;
 	u32 bus_format = MEDIA_BUS_FMT_RGB888_1X24;
 	struct edid *edid;
 	int num = 0;
 	int ret;
-
-	regmap_write(regmap, HDMI_REG_DDC_MASTER_CTRL, MASTER_SEL_HOST);
 
 	edid = drm_do_get_edid(connector, it6263_read_edid, it6263);
 	drm_connector_update_edid_property(connector, edid);
@@ -588,7 +586,8 @@ static int it6263_get_modes(struct drm_connector *connector)
 	ret = drm_display_info_set_bus_formats(&connector->display_info,
 					       &bus_format, 1);
 	if (ret)
-		return ret;
+		dev_dbg(&it6263->hdmi_i2c->dev,
+			"failed to set the supported bus format %d\n", ret);
 
 	return num;
 }
@@ -687,8 +686,8 @@ static void it6263_bridge_enable(struct drm_bridge *bridge)
 }
 
 static void it6263_bridge_mode_set(struct drm_bridge *bridge,
-				    struct drm_display_mode *mode,
-				    struct drm_display_mode *adj)
+				    const struct drm_display_mode *mode,
+				    const struct drm_display_mode *adj)
 {
 	struct it6263 *it6263 = bridge_to_it6263(bridge);
 	struct regmap *regmap = it6263->hdmi_regmap;

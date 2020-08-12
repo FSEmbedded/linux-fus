@@ -16,12 +16,10 @@ struct mxsfb_devdata {
 	unsigned int	 hs_wdth_mask;
 	unsigned int	 hs_wdth_shift;
 	unsigned int	 ipversion;
-	unsigned int	 flags;
 	unsigned int	 num_formats;
 };
 
 struct mxsfb_drm_private {
-	struct device			*dev;
 	const struct mxsfb_devdata	*devdata;
 
 	void __iomem			*base;	/* registers */
@@ -33,6 +31,9 @@ struct mxsfb_drm_private {
 	struct drm_connector		panel_connector;
 	struct drm_connector		*connector;
 	struct drm_panel		*panel;
+	struct drm_bridge		*bridge;
+
+	u32				max_bw;
 };
 
 int mxsfb_setup_crtc(struct drm_device *dev);

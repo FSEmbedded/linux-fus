@@ -20,6 +20,11 @@
 #include <linux/ptp_clock_kernel.h>
 #include <linux/timecounter.h>
 
+#ifdef CONFIG_IMX_SCU_SOC
+#include <dt-bindings/firmware/imx/rsrc.h>
+#include <linux/firmware/imx/sci.h>
+#endif
+
 #if defined(CONFIG_M523x) || defined(CONFIG_M527x) || defined(CONFIG_M528x) || \
     defined(CONFIG_M520x) || defined(CONFIG_M532x) || defined(CONFIG_ARM) || \
     defined(CONFIG_ARM64) || defined(CONFIG_COMPILE_TEST)
@@ -358,8 +363,6 @@ struct bufdesc_ex {
 #define FLAG_RX_CSUM_ENABLED	(BD_ENET_RX_ICE | BD_ENET_RX_PCR)
 #define FLAG_RX_CSUM_ERROR	(BD_ENET_RX_ICE | BD_ENET_RX_PCR)
 
-#define FEC0_MII_BUS_SHARE_TRUE	1
-
 /* Interrupt events/masks. */
 #define FEC_ENET_HBERR  ((uint)0x80000000)      /* Heartbeat error */
 #define FEC_ENET_BABR   ((uint)0x40000000)      /* Babbling receiver */
@@ -465,29 +468,25 @@ struct bufdesc_ex {
  * those FIFO receive registers are resolved in other platforms.
  */
 #define FEC_QUIRK_HAS_FRREG		(1 << 16)
-/* i.MX6Q/DL ENET cannot wake up system in wait mode because ENET tx & rx
- * interrupt signal don't connect to GPC. So use pm qos to avoid cpu enter
- * to wait mode.
- */
-#define FEC_QUIRK_BUG_WAITMODE		(1 << 16)
-
-/* PHY fixup flag define */
-#define FEC_QUIRK_AR8031_FIXUP		(1 << 16)
-
-/* i.MX8QM/QXP ENET IP version add new feture to generate delayed TXC/RXC
- * as an alternative option to make sure it can work well with various PHYs.
- * - For the implementation of delayed TXC, ENET will take synchronized 250/125MHz
- *   clocks to generate 2ns delay by registering original TXC with positive edge
- *   of inverted 250MHz clock.
- * - For the implementation of delayed RXC, there will be buffers in the subsystem
- *   level. The exact length of delay buffers will be decided when closing I/O timing.
- */
-#define FEC_QUIRK_DELAYED_CLKS_SUPPORT	(1 << 17)
 /* i.MX8MQ ENET IP version add new feature to support IEEE 802.3az EEE
  * standard. For the transmission, MAC supply two user registers to set
  * Sleep (TS) and Wake (TW) time.
  */
-#define FEC_QUIRK_HAS_EEE		(1 << 18)
+#define FEC_QUIRK_HAS_EEE		(1 << 17)
+/* i.MX8QM ENET IP version add new feture to generate delayed TXC/RXC
+ * as an alternative option to make sure it works well with various PHYs.
+ * For the implementation of delayed clock, ENET takes synchronized 250MHz
+ * clocks to generate 2ns delay.
+ */
+#define FEC_QUIRK_DELAYED_CLKS_SUPPORT	(1 << 18)
+/* request pmqos during low power */
+#define FEC_QUIRK_HAS_PMQOS		(1 << 19)
+
+struct fec_enet_stop_mode {
+	struct regmap *gpr;
+	u8 req_gpr;
+	u8 req_bit;
+};
 
 struct bufdesc_prop {
 	int qid;
@@ -500,12 +499,6 @@ struct bufdesc_prop {
 	unsigned short ring_size;
 	unsigned char dsize;
 	unsigned char dsize_log2;
-};
-
-struct fec_enet_stop_mode {
-	struct regmap *gpr;
-	u8 req_gpr;
-	u8 req_bit;
 };
 
 struct fec_enet_priv_tx_q {
@@ -573,10 +566,11 @@ struct fec_enet_private {
 	uint	phy_speed;
 	phy_interface_t	phy_interface;
 	struct device_node *phy_node;
-	int	link;
-	bool	fixed_link;
 	bool	rgmii_txc_dly;
 	bool	rgmii_rxc_dly;
+	bool	mii_bus_share;
+	bool	rpm_active;
+	int	link;
 	int	full_duplex;
 	int	speed;
 	struct	completion mdio_done;
@@ -586,7 +580,6 @@ struct fec_enet_private {
 	int	wol_flag;
 	int	wake_irq;
 	u32	quirks;
-	u32	fixups;
 
 	struct	napi_struct napi;
 	int	csum_flags;
@@ -633,7 +626,11 @@ struct fec_enet_private {
 	int pps_enable;
 	unsigned int next_counter;
 
-	struct fec_enet_stop_mode gpr;
+	/* stop mode */
+	struct fec_enet_stop_mode lpm;
+#ifdef CONFIG_IMX_SCU_SOC
+	struct imx_sc_ipc *ipc_handle;
+#endif
 
 	u64 ethtool_stats[0];
 };
@@ -643,11 +640,6 @@ void fec_ptp_stop(struct platform_device *pdev);
 void fec_ptp_start_cyclecounter(struct net_device *ndev);
 int fec_ptp_set(struct net_device *ndev, struct ifreq *ifr);
 int fec_ptp_get(struct net_device *ndev, struct ifreq *ifr);
-uint fec_ptp_check_pps_event(struct fec_enet_private *fep);
-void fec_enet_register_fixup(struct net_device *ndev);
-int of_fec_enet_parse_fixup(struct device_node *np);
-void fec_enet_get_mac_from_fuse(struct device_node *np, unsigned char *mac);
-void fec_enet_ipg_stop_misc_set(struct device_node *np, bool enabled);
 
 /****************************************************************************/
 #endif /* FEC_H */

@@ -200,8 +200,7 @@ out:
 }
 
 static int si476x_codec_startup(struct snd_pcm_substream *substream,
-					struct snd_soc_dai *dai)
-{
+					struct snd_soc_dai *dai) {
 	struct si476x_core *core = i2c_mfd_cell_to_core(dai->dev);
 
 	if (!si476x_core_is_powered_up(core))
@@ -210,8 +209,7 @@ static int si476x_codec_startup(struct snd_pcm_substream *substream,
 }
 
 static void si476x_codec_shutdown(struct snd_pcm_substream *substream,
-					struct snd_soc_dai *dai)
-{
+					struct snd_soc_dai *dai) {
 	struct si476x_core *core = i2c_mfd_cell_to_core(dai->dev);
 
 	if (si476x_core_is_powered_up(core))

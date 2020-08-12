@@ -27,9 +27,11 @@ obj-$(CONFIG_MXC_CLK_SCU) += \
 
 obj-$(CONFIG_CLK_IMX8MM) += clk-imx8mm.o
 obj-$(CONFIG_CLK_IMX8MN) += clk-imx8mn.o
+obj-$(CONFIG_CLK_IMX8MP) += clk-imx8mp.o clk-audiomix.o clk-hdmimix.o clk-gate-shared.o
 obj-$(CONFIG_CLK_IMX8MQ) += clk-imx8mq.o
-obj-$(CONFIG_CLK_IMX8QXP) += clk-imx8qxp.o clk-imx8qxp-lpcg.o
-
+obj-$(CONFIG_CLK_IMX8QXP) += clk-imx8qxp.o clk-imx8qxp-lpcg.o clk-imx8qxp-acm.o \
+			     clk-imx8qxp-rsrc.o clk-imx8qm-rsrc.o clk-imx8qm-acm.o \
+			     clk-imx8dxl-rsrc.o clk-imx8dxl-acm.o
 obj-$(CONFIG_SOC_IMX1)   += clk-imx1.o
 obj-$(CONFIG_SOC_IMX21)  += clk-imx21.o
 obj-$(CONFIG_SOC_IMX25)  += clk-imx25.o
@@ -45,9 +47,3 @@ obj-$(CONFIG_SOC_IMX6UL) += clk-imx6ul.o
 obj-$(CONFIG_SOC_IMX7D)  += clk-imx7d.o
 obj-$(CONFIG_SOC_IMX7ULP) += clk-imx7ulp.o
 obj-$(CONFIG_SOC_VF610)  += clk-vf610.o
-
-obj-$(CONFIG_ARCH_FSL_IMX8QM)	+= clk.o clk-imx8qm.o clk-imx8.o clk-divider-scu.o clk-gate-scu.o clk-mux-scu.o
-obj-$(CONFIG_ARCH_FSL_IMX8QXP)	+= clk.o clk-imx8qxp.o clk-imx8.o clk-divider-scu.o clk-gate-scu.o clk-mux-scu.o
-obj-$(CONFIG_ARCH_FSL_IMX8MQ)	+= clk.o clk-imx8mq.o clk-frac-pll.o clk-sccg-pll.o clk-gate2.o clk-composite-8m.o
-obj-$(CONFIG_ARCH_FSL_IMX8MM)	+= clk.o clk-imx8mm.o clk-pll14xx.o clk-gate2.o clk-cpu.o
-obj-$(CONFIG_ARCH_FSL_IMX8MN)  += clk.o clk-imx8mn.o clk-pll14xx.o clk-gate2.o clk-cpu.o

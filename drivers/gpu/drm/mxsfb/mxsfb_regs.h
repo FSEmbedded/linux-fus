@@ -40,15 +40,9 @@
 #define LCDC_AS_BUF			0x220
 #define LCDC_AS_NEXT_BUF		0x230
 
-/* pigeon registers for crop */
-#define HW_EPDC_PIGEON_12_0		0xb00
-#define HW_EPDC_PIGEON_12_1		0xb10
-#define HW_EPDC_PIGEON_12_2		0xb20
-
 /* reg bit manipulation */
-#define REG_MASK(e, s) (((1 << ((e) - (s) + 1)) - 1) << (s))
-#define REG_PUT(x, e, s) (((x) << (s)) & REG_MASK(e, s))
-#define REG_GET(x, e, s) (((x) & REG_MASK(e, s)) >> (s))
+#define REG_PUT(x, h, l) (((x) << (l)) & GENMASK(h, l))
+#define REG_GET(x, h, l) (((x) & GENMASK(h, l)) >> (l))
 
 #define SWIZZLE_LE		0 /* Little-Endian or No swap */
 #define SWIZZLE_BE		1 /* Big-Endian or swap all */
@@ -78,26 +72,48 @@
 
 #define CTRL1_RECOVERY_ON_UNDERFLOW	BIT(24)
 #define CTRL1_FIFO_CLEAR		BIT(21)
+
+/*
+ * BYTE_PACKAGING
+ *
+ * This bitfield is used to show which data bytes in a 32-bit word area valid.
+ * Default value 0xf indicates that all bytes are valid. For 8-bit transfers,
+ * any combination in this bitfield will mean valid data is present in the
+ * corresponding bytes. In the 16-bit mode, a 16-bit half-word is valid only if
+ * adjacent bits [1:0] or [3:2] or both are 1. A value of 0x0 will mean that
+ * none of the bytes are valid and should not be used. For example, set the bit
+ * field value to 0x7 if the display data is arranged in the 24-bit unpacked
+ * format (A-R-G-B where A value does not have be transmitted).
+ */
 #define CTRL1_SET_BYTE_PACKAGING(x)	REG_PUT((x), 19, 16)
 #define CTRL1_GET_BYTE_PACKAGING(x)	REG_GET((x), 19, 16)
+
 #define CTRL1_CUR_FRAME_DONE_IRQ_EN	BIT(13)
 #define CTRL1_CUR_FRAME_DONE_IRQ	BIT(9)
 
+#define CTRL2_OUTSTANDING_REQS(x)	REG_PUT((x), 23, 21)
 #define REQ_1	0
 #define REQ_2	1
 #define REQ_4	2
 #define REQ_8	3
 #define REQ_16	4
 
-#define CTRL2_OUTSTANDING_REQS(x)	REG_PUT((x), 23, 21)
 #define CTRL2_ODD_LINE_PATTERN(x)	REG_PUT((x), 18, 16)
 #define CTRL2_EVEN_LINE_PATTERN(x)	REG_PUT((x), 14, 12)
+#define CTRL2_LINE_PATTERN_RGB	0
+#define CTRL2_LINE_PATTERN_RBG	1
+#define CTRL2_LINE_PATTERN_GBR	2
+#define CTRL2_LINE_PATTERN_GRB	3
+#define CTRL2_LINE_PATTERN_BRG	4
+#define CTRL2_LINE_PATTERN_BGR	5
+#define CTRL2_LINE_PATTERN_CLR	7
+
 #define CTRL2_LCD_RESET			BIT(0)
 
-#define TRANSFER_COUNT_SET_VCOUNT(x)	(((x) & 0xffff) << 16)
-#define TRANSFER_COUNT_GET_VCOUNT(x)	(((x) >> 16) & 0xffff)
-#define TRANSFER_COUNT_SET_HCOUNT(x)	((x) & 0xffff)
-#define TRANSFER_COUNT_GET_HCOUNT(x)	((x) & 0xffff)
+#define TRANSFER_COUNT_SET_VCOUNT(x)	REG_PUT((x), 31, 16)
+#define TRANSFER_COUNT_GET_VCOUNT(x)	REG_GET((x), 31, 16)
+#define TRANSFER_COUNT_SET_HCOUNT(x)	REG_PUT((x), 15, 0)
+#define TRANSFER_COUNT_GET_HCOUNT(x)	REG_GET((x), 15, 0)
 
 #define VDCTRL0_ENABLE_PRESENT		BIT(28)
 #define VDCTRL0_VSYNC_ACT_HIGH		BIT(27)
@@ -108,23 +124,31 @@
 #define VDCTRL0_VSYNC_PULSE_WIDTH_UNIT	BIT(20)
 #define VDCTRL0_HALF_LINE		BIT(19)
 #define VDCTRL0_HALF_LINE_MODE		BIT(18)
-#define VDCTRL0_SET_VSYNC_PULSE_WIDTH(x) ((x) & 0x3ffff)
-#define VDCTRL0_GET_VSYNC_PULSE_WIDTH(x) ((x) & 0x3ffff)
+#define VDCTRL0_SET_VSYNC_PULSE_WIDTH(x) REG_PUT((x), 17, 0)
+#define VDCTRL0_GET_VSYNC_PULSE_WIDTH(x) REG_GET((x), 17, 0)
 
-#define VDCTRL2_SET_HSYNC_PERIOD(x)	((x) & 0x3ffff)
-#define VDCTRL2_GET_HSYNC_PERIOD(x)	((x) & 0x3ffff)
+#define VDCTRL2_SET_HSYNC_PERIOD(x)	REG_PUT((x), 15, 0)
+#define VDCTRL2_GET_HSYNC_PERIOD(x)	REG_GET((x), 15, 0)
 
 #define VDCTRL3_MUX_SYNC_SIGNALS	BIT(29)
 #define VDCTRL3_VSYNC_ONLY		BIT(28)
-#define SET_HOR_WAIT_CNT(x)		(((x) & 0xfff) << 16)
-#define GET_HOR_WAIT_CNT(x)		(((x) >> 16) & 0xfff)
-#define SET_VERT_WAIT_CNT(x)		((x) & 0xffff)
-#define GET_VERT_WAIT_CNT(x)		((x) & 0xffff)
+#define SET_HOR_WAIT_CNT(x)		REG_PUT((x), 27, 16)
+#define GET_HOR_WAIT_CNT(x)		REG_GET((x), 27, 16)
+#define SET_VERT_WAIT_CNT(x)		REG_PUT((x), 15, 0)
+#define GET_VERT_WAIT_CNT(x)		REG_GET((x), 15, 0)
 
-#define VDCTRL4_SET_DOTCLK_DLY(x)	(((x) & 0x7) << 29) /* v4 only */
-#define VDCTRL4_GET_DOTCLK_DLY(x)	(((x) >> 29) & 0x7) /* v4 only */
+#define VDCTRL4_SET_DOTCLK_DLY(x)	REG_PUT((x), 31, 29) /* v4 only */
+#define VDCTRL4_GET_DOTCLK_DLY(x)	REG_GET((x), 31, 29) /* v4 only */
 #define VDCTRL4_SYNC_SIGNALS_ON		BIT(18)
-#define SET_DOTCLK_H_VALID_DATA_CNT(x)	((x) & 0x3ffff)
+#define SET_DOTCLK_H_VALID_DATA_CNT(x)	REG_PUT((x), 17, 0)
+
+#define DEBUG0_HSYNC			BIT(26)
+#define DEBUG0_VSYNC			BIT(25)
+
+/* pigeon registers for crop */
+#define HW_EPDC_PIGEON_12_0		0xb00
+#define HW_EPDC_PIGEON_12_1		0xb10
+#define HW_EPDC_PIGEON_12_2		0xb20
 
 #define PIGEON_12_0_SET_STATE_MASK(x)	REG_PUT((x), 31, 24)
 #define PIGEON_12_0_SET_MASK_CNT(x)	REG_PUT((x), 23, 12)
@@ -136,9 +160,6 @@
 
 #define PIGEON_12_1_SET_CLR_CNT(x)	REG_PUT((x), 31, 16)
 #define PIGEON_12_1_SET_SET_CNT(x)	REG_PUT((x), 15,  0)
-
-#define DEBUG0_HSYNC			(1 < 26)
-#define DEBUG0_VSYNC			(1 < 25)
 
 #define MXSFB_MIN_XRES			120
 #define MXSFB_MIN_YRES			120
@@ -157,8 +178,5 @@
 
 #define MXSFB_SYNC_DATA_ENABLE_HIGH_ACT	BIT(6)
 #define MXSFB_SYNC_DOTCLK_FALLING_ACT	BIT(7) /* negative edge sampling */
-
-#define MXSFB_FLAG_NULL BIT(0)
-#define MXSFB_FLAG_BUSFREQ BIT(1)
 
 #endif /* __MXSFB_REGS_H__ */

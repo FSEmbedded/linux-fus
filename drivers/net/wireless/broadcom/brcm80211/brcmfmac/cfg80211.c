@@ -3575,7 +3575,7 @@ static void brcmf_report_wowl_wakeind(struct wiphy *wiphy, struct brcmf_if *ifp)
 	err = brcmf_fil_iovar_data_get(ifp, "wowl_wakeind", &wake_ind_le,
 				       sizeof(wake_ind_le));
 	if (err) {
-		bphy_err(drvr, "Get wowl_wakeind failed, err = %d\n", err);
+		brcmf_dbg(INFO, "cannet get wowl_wakeind, err = %d\n", err);
 		return;
 	}
 
@@ -5035,7 +5035,7 @@ static int brcmf_cfg80211_get_channel(struct wiphy *wiphy,
 
 	err = brcmf_fil_iovar_int_get(netdev_priv(ndev), "chanspec", &chanspec);
 	if (err) {
-		bphy_err(drvr, "chanspec failed (%d)\n", err);
+		brcmf_dbg(TRACE, "chanspec failed (%d)\n", err);
 		return err;
 	}
 
@@ -5644,6 +5644,17 @@ static s32 brcmf_get_assoc_ies(struct brcmf_cfg80211_info *cfg,
 			    GFP_KERNEL);
 		if (!conn_info->resp_ie)
 			conn_info->resp_ie_len = 0;
+
+		err = brcmf_fil_iovar_data_get(ifp, "wme_ac_sta",
+					       edcf_acparam_info,
+					       sizeof(edcf_acparam_info));
+		if (err) {
+			brcmf_err("could not get wme_ac_sta (%d)\n", err);
+			return err;
+		}
+
+		brcmf_wifi_prioritize_acparams(edcf_acparam_info,
+					       cfg->ac_priority);
 	} else {
 		conn_info->resp_ie_len = 0;
 		conn_info->resp_ie = NULL;

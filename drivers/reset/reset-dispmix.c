@@ -340,7 +340,7 @@ static int dispmix_reset_probe(struct platform_device *pdev)
 	if (IS_ERR(regs))
 		return PTR_ERR(regs);
 
-	apb_clk = devm_clk_get(dev, "disp-apb");
+	apb_clk = devm_clk_get(dev, "disp_apb_root_clk");
 	if (IS_ERR(apb_clk)) {
 		dev_err(dev, "Unable to get disp apb clock\n");
 		return PTR_ERR(apb_clk);
@@ -352,8 +352,8 @@ static int dispmix_reset_probe(struct platform_device *pdev)
 	pdata = of_id->data;
 
 	/* init mmio regmap */
-	regmap = devm_regmap_init_mmio_clk(dev, __clk_get_name(apb_clk),
-					   regs, pdata->config);
+	regmap = regmap_init_mmio_clk(NULL, NULL,
+				      regs, pdata->config);
 	if (IS_ERR(regmap)) {
 		dev_err(dev, "Failed to init mmio regmap: %ld\n",
 			PTR_ERR(regmap));

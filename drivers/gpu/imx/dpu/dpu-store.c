@@ -37,8 +37,8 @@ static inline u32 dpu_pec_st_read(struct dpu_store *st, unsigned int offset)
 	return readl(st->pec_base + offset);
 }
 
-static inline void dpu_pec_st_write(struct dpu_store *st, u32 value,
-				    unsigned int offset)
+static inline void dpu_pec_st_write(struct dpu_store *st,
+				    unsigned int offset, u32 value)
 {
 	writel(value, st->pec_base + offset);
 }
@@ -53,16 +53,13 @@ void store_pixengcfg_syncmode_fixup(struct dpu_store *st, bool enable)
 
 	dpu = st->dpu;
 
-	if (!dpu->devtype->has_syncmode_fixup)
-		return;
-
 	mutex_lock(&st->mutex);
 	val = dpu_pec_st_read(st, PIXENGCFG_STATIC);
 	if (enable)
 		val |= BIT(16);
 	else
 		val &= ~BIT(16);
-	dpu_pec_st_write(st, val, PIXENGCFG_STATIC);
+	dpu_pec_st_write(st, PIXENGCFG_STATIC, val);
 	mutex_unlock(&st->mutex);
 }
 EXPORT_SYMBOL_GPL(store_pixengcfg_syncmode_fixup);
@@ -120,7 +117,7 @@ void _dpu_st_init(struct dpu_soc *dpu, unsigned int id)
 
 	st = dpu->st_priv[i];
 
-	dpu_pec_st_write(st, SHDEN | DIV(DIV_RESET), PIXENGCFG_STATIC);
+	dpu_pec_st_write(st, PIXENGCFG_STATIC, SHDEN | DIV(DIV_RESET));
 }
 
 int dpu_st_init(struct dpu_soc *dpu, unsigned int id,
@@ -152,7 +149,6 @@ int dpu_st_init(struct dpu_soc *dpu, unsigned int id,
 
 	st->dpu = dpu;
 	st->id = id;
-
 	mutex_init(&st->mutex);
 
 	_dpu_st_init(dpu, id);

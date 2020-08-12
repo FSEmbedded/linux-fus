@@ -72,8 +72,8 @@ static inline u32 dpu_tcon_read(struct dpu_tcon *tcon, unsigned int offset)
 	return readl(tcon->base + offset);
 }
 
-static inline void dpu_tcon_write(struct dpu_tcon *tcon, u32 value,
-				  unsigned int offset)
+static inline void dpu_tcon_write(struct dpu_tcon *tcon,
+				  unsigned int offset, u32 value)
 {
 	writel(value, tcon->base + offset);
 }
@@ -82,24 +82,24 @@ int tcon_set_fmt(struct dpu_tcon *tcon, u32 bus_format)
 {
 	switch (bus_format) {
 	case MEDIA_BUS_FMT_RGB888_1X24:
-		dpu_tcon_write(tcon, 0x19181716, MAPBIT3_0);
-		dpu_tcon_write(tcon, 0x1d1c1b1a, MAPBIT7_4);
-		dpu_tcon_write(tcon, 0x0f0e0d0c, MAPBIT11_8);
-		dpu_tcon_write(tcon, 0x13121110, MAPBIT15_12);
-		dpu_tcon_write(tcon, 0x05040302, MAPBIT19_16);
-		dpu_tcon_write(tcon, 0x09080706, MAPBIT23_20);
+		dpu_tcon_write(tcon, MAPBIT3_0,   0x19181716);
+		dpu_tcon_write(tcon, MAPBIT7_4,   0x1d1c1b1a);
+		dpu_tcon_write(tcon, MAPBIT11_8,  0x0f0e0d0c);
+		dpu_tcon_write(tcon, MAPBIT15_12, 0x13121110);
+		dpu_tcon_write(tcon, MAPBIT19_16, 0x05040302);
+		dpu_tcon_write(tcon, MAPBIT23_20, 0x09080706);
 		break;
 	case MEDIA_BUS_FMT_RGB101010_1X30:
 	case MEDIA_BUS_FMT_RGB888_1X30_PADLO:
 	case MEDIA_BUS_FMT_RGB666_1X30_PADLO:
-		dpu_tcon_write(tcon, 0x17161514, MAPBIT3_0);
-		dpu_tcon_write(tcon, 0x1b1a1918, MAPBIT7_4);
-		dpu_tcon_write(tcon, 0x0b0a1d1c, MAPBIT11_8);
-		dpu_tcon_write(tcon, 0x0f0e0d0c, MAPBIT15_12);
-		dpu_tcon_write(tcon, 0x13121110, MAPBIT19_16);
-		dpu_tcon_write(tcon, 0x03020100, MAPBIT23_20);
-		dpu_tcon_write(tcon, 0x07060504, MAPBIT27_24);
-		dpu_tcon_write(tcon, 0x00000908, MAPBIT31_28);
+		dpu_tcon_write(tcon, MAPBIT3_0,   0x17161514);
+		dpu_tcon_write(tcon, MAPBIT7_4,   0x1b1a1918);
+		dpu_tcon_write(tcon, MAPBIT11_8,  0x0b0a1d1c);
+		dpu_tcon_write(tcon, MAPBIT15_12, 0x0f0e0d0c);
+		dpu_tcon_write(tcon, MAPBIT19_16, 0x13121110);
+		dpu_tcon_write(tcon, MAPBIT23_20, 0x03020100);
+		dpu_tcon_write(tcon, MAPBIT27_24, 0x07060504);
+		dpu_tcon_write(tcon, MAPBIT31_28, 0x00000908);
 		break;
 	default:
 		return -EINVAL;
@@ -116,15 +116,13 @@ void tcon_set_operation_mode(struct dpu_tcon *tcon)
 
 	val = dpu_tcon_read(tcon, TCON_CTRL);
 	val &= ~BYPASS;
-	dpu_tcon_write(tcon, val, TCON_CTRL);
+	dpu_tcon_write(tcon, TCON_CTRL, val);
 }
 EXPORT_SYMBOL_GPL(tcon_set_operation_mode);
 
 void tcon_cfg_videomode(struct dpu_tcon *tcon,
 			struct drm_display_mode *m, bool side_by_side)
 {
-	struct dpu_soc *dpu = tcon->dpu;
-	const struct dpu_devtype *devtype = dpu->devtype;
 	u32 val;
 	int hdisplay, hsync_start, hsync_end;
 	int vdisplay, vsync_start, vsync_end;
@@ -150,45 +148,45 @@ void tcon_cfg_videomode(struct dpu_tcon *tcon,
 	 */
 	val = dpu_tcon_read(tcon, TCON_CTRL);
 	val |= BYPASS;
-	dpu_tcon_write(tcon, val, TCON_CTRL);
+	dpu_tcon_write(tcon, TCON_CTRL, val);
 
 	/* dsp_control[0]: hsync */
-	dpu_tcon_write(tcon, X(hsync_start), SPGPOSON(0));
-	dpu_tcon_write(tcon, 0xffff, SPGMASKON(0));
+	dpu_tcon_write(tcon, SPGPOSON(0), X(hsync_start));
+	dpu_tcon_write(tcon, SPGMASKON(0), 0xffff);
 
-	dpu_tcon_write(tcon, X(hsync_end), SPGPOSOFF(0));
-	dpu_tcon_write(tcon, 0xffff, SPGMASKOFF(0));
+	dpu_tcon_write(tcon, SPGPOSOFF(0), X(hsync_end));
+	dpu_tcon_write(tcon, SPGMASKOFF(0), 0xffff);
 
-	dpu_tcon_write(tcon, 0x2, SMXSIGS(0));
-	dpu_tcon_write(tcon, 0x1, SMXFCTTABLE(0));
+	dpu_tcon_write(tcon, SMXSIGS(0), 0x2);
+	dpu_tcon_write(tcon, SMXFCTTABLE(0), 0x1);
 
 	/* dsp_control[1]: vsync */
-	dpu_tcon_write(tcon, X(hsync_start) | Y(vsync_start - 1), SPGPOSON(1));
-	dpu_tcon_write(tcon, 0x0, SPGMASKON(1));
+	dpu_tcon_write(tcon, SPGPOSON(1), X(hsync_start) | Y(vsync_start - 1));
+	dpu_tcon_write(tcon, SPGMASKON(1), 0x0);
 
-	dpu_tcon_write(tcon, X(hsync_start) | Y(vsync_end - 1), SPGPOSOFF(1));
-	dpu_tcon_write(tcon, 0x0, SPGMASKOFF(1));
+	dpu_tcon_write(tcon, SPGPOSOFF(1), X(hsync_start) | Y(vsync_end - 1));
+	dpu_tcon_write(tcon, SPGMASKOFF(1), 0x0);
 
-	dpu_tcon_write(tcon, 0x3, SMXSIGS(1));
-	dpu_tcon_write(tcon, 0x1, SMXFCTTABLE(1));
+	dpu_tcon_write(tcon, SMXSIGS(1), 0x3);
+	dpu_tcon_write(tcon, SMXFCTTABLE(1), 0x1);
 
 	/* dsp_control[2]: data enable */
 	/* horizontal */
-	dpu_tcon_write(tcon, 0x0, SPGPOSON(2));
-	dpu_tcon_write(tcon, 0xffff, SPGMASKON(2));
+	dpu_tcon_write(tcon, SPGPOSON(2), 0x0);
+	dpu_tcon_write(tcon, SPGMASKON(2), 0xffff);
 
-	dpu_tcon_write(tcon, X(hdisplay), SPGPOSOFF(2));
-	dpu_tcon_write(tcon, 0xffff, SPGMASKOFF(2));
+	dpu_tcon_write(tcon, SPGPOSOFF(2), X(hdisplay));
+	dpu_tcon_write(tcon, SPGMASKOFF(2), 0xffff);
 
 	/* vertical */
-	dpu_tcon_write(tcon, 0x0, SPGPOSON(3));
-	dpu_tcon_write(tcon, 0x7fff0000, SPGMASKON(3));
+	dpu_tcon_write(tcon, SPGPOSON(3), 0x0);
+	dpu_tcon_write(tcon, SPGMASKON(3), 0x7fff0000);
 
-	dpu_tcon_write(tcon, Y(vdisplay), SPGPOSOFF(3));
-	dpu_tcon_write(tcon, 0x7fff0000, SPGMASKOFF(3));
+	dpu_tcon_write(tcon, SPGPOSOFF(3), Y(vdisplay));
+	dpu_tcon_write(tcon, SPGMASKOFF(3), 0x7fff0000);
 
-	dpu_tcon_write(tcon, 0x2c, SMXSIGS(2));
-	dpu_tcon_write(tcon, 0x8, SMXFCTTABLE(2));
+	dpu_tcon_write(tcon, SMXSIGS(2), 0x2c);
+	dpu_tcon_write(tcon, SMXFCTTABLE(2), 0x8);
 
 	/* dsp_control[3]: kachuck */
 	y = vdisplay + 1;
@@ -196,25 +194,25 @@ void tcon_cfg_videomode(struct dpu_tcon *tcon,
 	 * If sync mode fixup is present, the kachuck signal from slave tcon
 	 * should be one line later than the one from master tcon.
 	 */
-	if (side_by_side && tcon_is_slave(tcon) && devtype->has_syncmode_fixup)
+	if (side_by_side && tcon_is_slave(tcon))
 		y++;
 
-	dpu_tcon_write(tcon, X(0x0) | Y(y), SPGPOSON(4));
-	dpu_tcon_write(tcon, 0x0, SPGMASKON(4));
+	dpu_tcon_write(tcon, SPGPOSON(4), X(0x0) | Y(y));
+	dpu_tcon_write(tcon, SPGMASKON(4), 0x0);
 
-	dpu_tcon_write(tcon, X(0x20) | Y(y), SPGPOSOFF(4));
-	dpu_tcon_write(tcon, 0x0, SPGMASKOFF(4));
+	dpu_tcon_write(tcon, SPGPOSOFF(4), X(0x20) | Y(y));
+	dpu_tcon_write(tcon, SPGMASKOFF(4), 0x0);
 
-	dpu_tcon_write(tcon, 0x6, SMXSIGS(3));
-	dpu_tcon_write(tcon, 0x2, SMXFCTTABLE(3));
+	dpu_tcon_write(tcon, SMXSIGS(3), 0x6);
+	dpu_tcon_write(tcon, SMXFCTTABLE(3), 0x2);
 }
 EXPORT_SYMBOL_GPL(tcon_cfg_videomode);
 
 bool tcon_is_master(struct dpu_tcon *tcon)
 {
-	const struct dpu_devtype *devtype = tcon->dpu->devtype;
+	const struct dpu_data *data = tcon->dpu->data;
 
-	return tcon->id == devtype->master_stream_id;
+	return tcon->id == data->master_stream_id;
 }
 EXPORT_SYMBOL_GPL(tcon_is_master);
 
@@ -317,7 +315,6 @@ int dpu_tcon_init(struct dpu_soc *dpu, unsigned int id,
 		return -ENOMEM;
 
 	tcon->dpu = dpu;
-	tcon->id = id;
 	mutex_init(&tcon->mutex);
 
 	return 0;

@@ -320,7 +320,7 @@ out:
 static int stmmac_dt_phy(struct plat_stmmacenet_data *plat,
 			 struct device_node *np, struct device *dev)
 {
-	bool mdio = true;
+	bool mdio = false;
 	static const struct of_device_id need_mdio_ids[] = {
 		{ .compatible = "snps,dwc-qos-ethernet-4.10" },
 		{},
@@ -507,7 +507,8 @@ stmmac_probe_config_dt(struct platform_device *pdev, const char **mac)
 
 	if (of_device_is_compatible(np, "snps,dwmac-4.00") ||
 	    of_device_is_compatible(np, "snps,dwmac-4.10a") ||
-	    of_device_is_compatible(np, "snps,dwmac-4.20a")) {
+	    of_device_is_compatible(np, "snps,dwmac-4.20a") ||
+	    of_device_is_compatible(np, "snps,dwmac-5.10a")) {
 		plat->has_gmac4 = 1;
 		plat->has_gmac = 0;
 		plat->pmt = 1;
@@ -663,14 +664,14 @@ int stmmac_get_platform_resources(struct platform_device *pdev,
 	 * In case the wake up interrupt is not passed from the platform
 	 * so the driver will continue to use the mac irq (ndev->irq)
 	 */
-	stmmac_res->wol_irq = platform_get_irq_byname(pdev, "eth_wake_irq");
+	stmmac_res->wol_irq = platform_get_irq_byname_optional(pdev, "eth_wake_irq");
 	if (stmmac_res->wol_irq < 0) {
 		if (stmmac_res->wol_irq == -EPROBE_DEFER)
 			return -EPROBE_DEFER;
 		stmmac_res->wol_irq = stmmac_res->irq;
 	}
 
-	stmmac_res->lpi_irq = platform_get_irq_byname(pdev, "eth_lpi");
+	stmmac_res->lpi_irq = platform_get_irq_byname_optional(pdev, "eth_lpi");
 	if (stmmac_res->lpi_irq == -EPROBE_DEFER)
 		return -EPROBE_DEFER;
 
@@ -694,7 +695,7 @@ int stmmac_pltfr_remove(struct platform_device *pdev)
 	struct plat_stmmacenet_data *plat = priv->plat;
 	int ret = stmmac_dvr_remove(&pdev->dev);
 
-	if (plat->exit)
+	if (plat->exit && ndev && netif_running(ndev))
 		plat->exit(pdev, plat->bsp_priv);
 
 	stmmac_remove_config_dt(pdev, plat);
@@ -719,7 +720,7 @@ static int stmmac_pltfr_suspend(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 
 	ret = stmmac_suspend(dev);
-	if (priv->plat->exit)
+	if (priv->plat->exit && ndev && netif_running(ndev))
 		priv->plat->exit(pdev, priv->plat->bsp_priv);
 
 	return ret;
@@ -738,7 +739,7 @@ static int stmmac_pltfr_resume(struct device *dev)
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	struct platform_device *pdev = to_platform_device(dev);
 
-	if (priv->plat->init)
+	if (priv->plat->init && ndev && netif_running(ndev))
 		priv->plat->init(pdev, priv->plat->bsp_priv);
 
 	return stmmac_resume(dev);

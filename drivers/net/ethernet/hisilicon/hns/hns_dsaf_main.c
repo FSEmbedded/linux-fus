@@ -2772,16 +2772,6 @@ static void set_promisc_tcam_enable(struct dsaf_device *dsaf_dev, u32 port)
 	entry_index = hns_dsaf_find_soft_mac_entry(dsaf_dev, &mac_key);
 	if (entry_index != DSAF_INVALID_ENTRY_IDX)
 		return;
-	}
-
-	memset(&mask_entry, 0x0, sizeof(mask_entry));
-	memset(&mask_key, 0x0, sizeof(mask_key));
-	memset(&temp_key, 0x0, sizeof(temp_key));
-	mask_entry.addr[0] = 0x01;
-	hns_dsaf_set_mac_key(dsaf_dev, &mask_key, mask_entry.in_vlan_id,
-			     port, mask_entry.addr);
-	tbl_tcam_mcast.tbl_mcast_item_vld = 1;
-	tbl_tcam_mcast.tbl_mcast_old_en = 0;
 
 	/* put promisc tcam entry in the end. */
 	/* 1. set promisc unicast vague tcam entry. */

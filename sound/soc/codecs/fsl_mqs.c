@@ -168,7 +168,10 @@ static void fsl_mqs_shutdown(struct snd_pcm_substream *substream,
 					MQS_EN_MASK, 0);
 }
 
-static struct snd_soc_component_driver soc_codec_fsl_mqs;
+static struct snd_soc_component_driver soc_codec_fsl_mqs = {
+	.idle_bias_on = 1,
+	.non_legacy_dai_naming	= 1,
+};
 
 static const struct snd_soc_dai_ops fsl_mqs_dai_ops = {
 	.startup = fsl_mqs_startup,
@@ -267,7 +270,6 @@ static int fsl_mqs_probe(struct platform_device *pdev)
 
 	return devm_snd_soc_register_component(&pdev->dev, &soc_codec_fsl_mqs,
 			&fsl_mqs_dai, 1);
-
 out:
 	if (!IS_ERR(gpr_np))
 		of_node_put(gpr_np);

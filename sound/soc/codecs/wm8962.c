@@ -2517,9 +2517,7 @@ static int wm8962_set_bias_level(struct snd_soc_component *component,
 		snd_soc_component_update_bits(component, WM8962_PWR_MGMT_1,
 				    WM8962_VMID_SEL_MASK, 0x80);
 
-		if (snd_soc_component_get_bias_level(component) == SND_SOC_BIAS_STANDBY)
-			wm8962_configure_bclk(component);
-
+		wm8962_configure_bclk(component);
 		break;
 
 	case SND_SOC_BIAS_STANDBY:

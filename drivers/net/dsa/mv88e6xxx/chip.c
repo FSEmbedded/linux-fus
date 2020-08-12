@@ -2659,12 +2659,6 @@ static int mv88e6xxx_setup(struct dsa_switch *ds)
 			goto unlock;
 	}
 
-	if (chip->info->ops->setup_errata) {
-		err = chip->info->ops->setup_errata(chip);
-		if (err)
-			goto unlock;
-	}
-
 	/* Cache the cmode of each port. */
 	for (i = 0; i < mv88e6xxx_num_ports(chip); i++) {
 		if (chip->info->ops->port_get_cmode) {

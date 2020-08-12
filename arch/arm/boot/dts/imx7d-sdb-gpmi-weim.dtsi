@@ -10,9 +10,9 @@
 	status = "okay";
 };
 
-&sai1{
-	status = "disabled";
-};
+/* &sai1{ */
+	/* status = "disabled"; */
+/* }; */
 
 &usdhc3{
 	status = "disabled";

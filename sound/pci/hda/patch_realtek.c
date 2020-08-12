@@ -5735,23 +5735,6 @@ static void alc_fixup_disable_mic_vref(struct hda_codec *codec,
 		snd_hda_codec_set_pin_target(codec, 0x19, PIN_VREFHIZ);
 }
 
-/* The DAC of NID 0x3 will introduce click/pop noise on headphones, so invalidate it */
-static void alc285_fixup_invalidate_dacs(struct hda_codec *codec,
-			      const struct hda_fixup *fix, int action)
-{
-	if (action != HDA_FIXUP_ACT_PRE_PROBE)
-		return;
-
-	snd_hda_override_wcaps(codec, 0x03, 0);
-}
-
-static void alc_fixup_disable_mic_vref(struct hda_codec *codec,
-				  const struct hda_fixup *fix, int action)
-{
-	if (action == HDA_FIXUP_ACT_PRE_PROBE)
-		snd_hda_codec_set_pin_target(codec, 0x19, PIN_VREFHIZ);
-}
-
 /* for hda_fixup_thinkpad_acpi() */
 #include "thinkpad_helper.c"
 

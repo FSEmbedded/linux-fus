@@ -2,7 +2,7 @@
 /*
  * Freescale GPMI NAND Flash Driver
  *
- * Copyright (C) 2010-2016 Freescale Semiconductor, Inc.
+ * Copyright (C) 2010-2011 Freescale Semiconductor, Inc.
  * Copyright (C) 2008 Embedded Alley Solutions, Inc.
  */
 #ifndef __DRIVERS_MTD_NAND_GPMI_NAND_H
@@ -30,8 +30,8 @@ struct resources {
  * @page_size:                The size, in bytes, of a physical page, including
  *                            both data and OOB.
  * @metadata_size:            The size, in bytes, of the metadata.
- * @ecc_chunk0_size:	      The size, in bytes, of a first ECC chunk.
- * @ecc_chunkn_size:	      The size, in bytes, of a single ECC chunk after
+ * @ecc_chunk0_size:          The size, in bytes, of a first ECC chunk.
+ * @ecc_chunkn_size:          The size, in bytes, of a single ECC chunk after
  *                            the first chunk in the page.
  * @ecc_chunk_count:          The number of ECC chunks in the page,
  * @payload_size:             The size, in bytes, of the payload buffer.
@@ -42,7 +42,7 @@ struct resources {
  *                            which the underlying physical block mark appears.
  * @block_mark_bit_offset:    The bit offset into the ECC-based page view at
  *                            which the underlying physical block mark appears.
- * @ecc_for_meta:	      The flag to indicate if there is a dedicate ecc
+ * @ecc_for_meta:             The flag to indicate if there is a dedicate ecc
  *                            for meta.
  */
 struct bch_geometry {
@@ -158,8 +158,6 @@ struct gpmi_nand_data {
 	dma_addr_t		auxiliary_phys;
 
 	void			*raw_buffer;
-	/* legacy bch geometry flag */
-	bool			legacy_bch_geometry;
 
 	/* DMA channels */
 #define DMA_CHANS		8
@@ -183,12 +181,9 @@ struct gpmi_nand_data {
 #define GPMI_IS_MX6ULL(x)	((x)->devdata->type == IS_MX6ULL)
 #define GPMI_IS_MX8QXP(x)	((x)->devdata->type == IS_MX8QXP)
 
-#define GPMI_IS_MX6(x)		(GPMI_IS_MX6Q(x) || GPMI_IS_MX6QP(x) || \
-				 GPMI_IS_MX6SX(x) || GPMI_IS_MX6UL(x) || \
-				 GPMI_IS_MX6ULL(x) || GPMI_IS_MX7D(x))
-#define GPMI_IS_MX8(x)		(GPMI_IS_MX8QXP(x))
-
 #define GPMI_IS_MX6(x)		(GPMI_IS_MX6Q(x) || GPMI_IS_MX6SX(x) || \
-				 GPMI_IS_MX7D(x))
+				 GPMI_IS_MX7D(x) || GPMI_IS_MX6UL(x) || \
+				 GPMI_IS_MX6ULL(x) || GPMI_IS_MX6QP(x))
+#define GPMI_IS_MX8(x)		(GPMI_IS_MX8QXP(x))
 #define GPMI_IS_MXS(x)		(GPMI_IS_MX23(x) || GPMI_IS_MX28(x))
 #endif

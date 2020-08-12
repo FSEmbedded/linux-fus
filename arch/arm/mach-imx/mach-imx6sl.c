@@ -27,8 +27,9 @@ static void __init imx6sl_fec_clk_init(void)
 			IMX6SL_GPR1_FEC_CLOCK_MUX2_SEL_MASK, 0);
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 			IMX6SL_GPR1_FEC_CLOCK_MUX1_SEL_MASK, 0);
-	} else
+	} else {
 		pr_err("failed to find fsl,imx6sl-iomux-gpr regmap\n");
+	}
 }
 
 static inline void imx6sl_fec_init(void)
@@ -59,7 +60,8 @@ static void __init imx6sl_init_machine(void)
 
 	of_platform_default_populate(NULL, NULL, parent);
 
-	if (!cpu_is_imx6sll())
+	imx_anatop_init();
+	if (cpu_is_imx6sl())
 		imx6sl_fec_init();
 	imx_anatop_init();
 	imx6sl_pm_init();
@@ -72,15 +74,14 @@ static void __init imx6sl_init_irq(void)
 	imx_init_l2cache();
 	imx_src_init();
 	irqchip_init();
-	if (cpu_is_imx6sll())
-		imx6_pm_ccm_init("fsl,imx6sll-ccm");
-	else
+	if (cpu_is_imx6sl())
 		imx6_pm_ccm_init("fsl,imx6sl-ccm");
+	else
+		imx6_pm_ccm_init("fsl,imx6sll-ccm");
 }
 
 static void __init imx6sl_map_io(void)
 {
-	debug_ll_io_init();
 	imx6_pm_map_io();
 #ifdef CONFIG_CPU_FREQ
 	imx_busfreq_map_io();

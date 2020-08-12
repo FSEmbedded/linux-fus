@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * Copyright (C) 2011-2016 Freescale Semiconductor, Inc.
+ * Copyright 2011-2013 Freescale Semiconductor, Inc.
  * Copyright 2011 Linaro Ltd.
  */
 
@@ -93,6 +93,7 @@ static const char *pll7_bypass_sels[] = { "pll7", "pll7_bypass_src", };
 
 static struct clk_hw **hws;
 static struct clk_hw_onecell_data *clk_hw_data;
+static void __iomem *ccm_base;
 
 static struct clk_div_table clk_enet_ref_table[] = {
 	{ .val = 0, .div = 20, },
@@ -141,13 +142,6 @@ static inline int clk_on_imx6dl(void)
 {
 	return of_machine_is_compatible("fsl,imx6dl");
 }
-
-static const int uart_clk_ids[] __initconst = {
-	IMX6QDL_CLK_UART_IPG,
-	IMX6QDL_CLK_UART_SERIAL,
-};
-
-static struct clk **uart_clks[ARRAY_SIZE(uart_clk_ids) + 1] __initdata;
 
 static int ldb_di_sel_by_clock_id(int clock_id)
 {
@@ -266,7 +260,6 @@ static bool pll6_bypassed(struct device_node *node)
 #define CCM_CCGR3		0x74
 
 #define ANATOP_PLL3_PFD		0xf0
-
 
 #define CCSR_PLL3_SW_CLK_SEL		BIT(0)
 
@@ -504,7 +497,6 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 	struct device_node *np;
 	void __iomem *anatop_base, *base;
 	int ret;
-	int i;
 
 	clk_hw_data = kzalloc(struct_size(clk_hw_data, hws,
 					  IMX6QDL_CLK_END), GFP_KERNEL);
@@ -679,7 +671,8 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 	hws[IMX6QDL_CLK_PERIPH2_PRE]      = imx_clk_hw_mux("periph2_pre",      base + 0x18, 21, 2, periph_pre_sels,   ARRAY_SIZE(periph_pre_sels));
 	hws[IMX6QDL_CLK_PERIPH_CLK2_SEL]  = imx_clk_hw_mux("periph_clk2_sel",  base + 0x18, 12, 2, periph_clk2_sels,  ARRAY_SIZE(periph_clk2_sels));
 	hws[IMX6QDL_CLK_PERIPH2_CLK2_SEL] = imx_clk_hw_mux("periph2_clk2_sel", base + 0x18, 20, 1, periph2_clk2_sels, ARRAY_SIZE(periph2_clk2_sels));
-	hws[IMX6QDL_CLK_AXI_SEL]          = imx_clk_hw_mux("axi_sel",          base + 0x14, 6,  2, axi_sels,          ARRAY_SIZE(axi_sels));
+	hws[IMX6QDL_CLK_AXI_ALT_SEL]      = imx_clk_hw_mux("axi_alt_sel",      base + 0x14, 7,  1, axi_alt_sels,      ARRAY_SIZE(axi_alt_sels));
+	hws[IMX6QDL_CLK_AXI_SEL]          = imx_clk_hw_mux("axi_sel",          base + 0x14, 6,  1, axi_sels,          ARRAY_SIZE(axi_sels));
 	hws[IMX6QDL_CLK_ESAI_SEL]         = imx_clk_hw_mux("esai_sel",         base + 0x20, 19, 2, audio_sels,        ARRAY_SIZE(audio_sels));
 	hws[IMX6QDL_CLK_ASRC_SEL]         = imx_clk_hw_mux("asrc_sel",         base + 0x30, 7,  2, audio_sels,        ARRAY_SIZE(audio_sels));
 	hws[IMX6QDL_CLK_SPDIF_SEL]        = imx_clk_hw_mux("spdif_sel",        base + 0x30, 20, 2, audio_sels,        ARRAY_SIZE(audio_sels));
@@ -714,9 +707,6 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 		hws[IMX6QDL_CLK_LDB_DI0_SEL]      = imx_clk_hw_mux_flags("ldb_di0_sel", base + 0x2c, 9,  3, ldb_di_sels,      ARRAY_SIZE(ldb_di_sels), CLK_SET_RATE_PARENT);
 		hws[IMX6QDL_CLK_LDB_DI1_SEL]      = imx_clk_hw_mux_flags("ldb_di1_sel", base + 0x2c, 12, 3, ldb_di_sels,      ARRAY_SIZE(ldb_di_sels), CLK_SET_RATE_PARENT);
 	} else {
-		disable_anatop_clocks(anatop_base);
-
-		imx6q_mmdc_ch1_mask_handshake(base);
 		/*
 		 * The LDB_DI0/1_SEL muxes are registered read-only due to a hardware
 		 * bug. Set the muxes to the requested values before registering the
@@ -728,6 +718,8 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 		hws[IMX6QDL_CLK_LDB_DI1_SEL]      = imx_clk_hw_mux_ldb("ldb_di1_sel", base + 0x2c, 12, 3, ldb_di_sels,      ARRAY_SIZE(ldb_di_sels));
 	}
 
+	hws[IMX6QDL_CLK_LDB_DI0_DIV_SEL]  = imx_clk_hw_mux_flags("ldb_di0_div_sel",  base + 0x20, 10, 1, ldb_di0_div_sels, ARRAY_SIZE(ldb_di0_div_sels), CLK_SET_RATE_PARENT);
+	hws[IMX6QDL_CLK_LDB_DI1_DIV_SEL]  = imx_clk_hw_mux_flags("ldb_di1_div_sel",  base + 0x20, 11, 1, ldb_di1_div_sels, ARRAY_SIZE(ldb_di1_div_sels), CLK_SET_RATE_PARENT);
 	hws[IMX6QDL_CLK_IPU1_DI0_PRE_SEL] = imx_clk_hw_mux_flags("ipu1_di0_pre_sel", base + 0x34, 6,  3, ipu_di_pre_sels,   ARRAY_SIZE(ipu_di_pre_sels), CLK_SET_RATE_PARENT);
 	hws[IMX6QDL_CLK_IPU1_DI1_PRE_SEL] = imx_clk_hw_mux_flags("ipu1_di1_pre_sel", base + 0x34, 15, 3, ipu_di_pre_sels,   ARRAY_SIZE(ipu_di_pre_sels), CLK_SET_RATE_PARENT);
 	hws[IMX6QDL_CLK_IPU2_DI0_PRE_SEL] = imx_clk_hw_mux_flags("ipu2_di0_pre_sel", base + 0x38, 6,  3, ipu_di_pre_sels,   ARRAY_SIZE(ipu_di_pre_sels), CLK_SET_RATE_PARENT);
@@ -796,6 +788,8 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 		hws[IMX6QDL_CLK_UART_SERIAL_PODF] = imx_clk_hw_divider("uart_serial_podf", "uart_sel", base + 0x24, 0, 6);
 		hws[IMX6QDL_CLK_LDB_DI0_DIV_3_5] = imx_clk_hw_fixed_factor("ldb_di0_div_3_5", "ldb_di0", 2, 7);
 		hws[IMX6QDL_CLK_LDB_DI1_DIV_3_5] = imx_clk_hw_fixed_factor("ldb_di1_div_3_5", "ldb_di1", 2, 7);
+		hws[IMX6QDL_CLK_LDB_DI0_DIV_7] = imx_clk_hw_fixed_factor("ldb_di0_div_7",   "ldb_di0", 1, 7);
+		hws[IMX6QDL_CLK_LDB_DI1_DIV_7] = imx_clk_hw_fixed_factor("ldb_di1_div_7",   "ldb_di1", 1, 7);
 	} else {
 		hws[IMX6QDL_CLK_ECSPI_ROOT] = imx_clk_hw_divider("ecspi_root", "pll3_60m", base + 0x38, 19, 6);
 		hws[IMX6QDL_CLK_CAN_ROOT] = imx_clk_hw_divider("can_root", "pll3_60m", base + 0x20, 2, 6);
@@ -803,6 +797,8 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 		hws[IMX6QDL_CLK_UART_SERIAL_PODF] = imx_clk_hw_divider("uart_serial_podf", "pll3_80m",          base + 0x24, 0,  6);
 		hws[IMX6QDL_CLK_LDB_DI0_DIV_3_5] = imx_clk_hw_fixed_factor("ldb_di0_div_3_5", "ldb_di0_sel", 2, 7);
 		hws[IMX6QDL_CLK_LDB_DI1_DIV_3_5] = imx_clk_hw_fixed_factor("ldb_di1_div_3_5", "ldb_di1_sel", 2, 7);
+		hws[IMX6QDL_CLK_LDB_DI0_DIV_7] = imx_clk_hw_fixed_factor("ldb_di0_div_7",   "ldb_di0_sel", 1, 7);
+		hws[IMX6QDL_CLK_LDB_DI1_DIV_7] = imx_clk_hw_fixed_factor("ldb_di1_div_7",   "ldb_di1_sel", 1, 7);
 	}
 
 	if (clk_on_imx6dl())
@@ -988,8 +984,19 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 	clk_hw_register_clkdev(hws[IMX6QDL_CLK_ENET_REF], "enet_ref", NULL);
 
 	clk_set_rate(hws[IMX6QDL_CLK_PLL3_PFD1_540M]->clk, 540000000);
-	if (clk_on_imx6dl())
+	if (clk_on_imx6dl()) {
+		init_ipu_clk(anatop_base);
 		clk_set_parent(hws[IMX6QDL_CLK_IPU1_SEL]->clk, hws[IMX6QDL_CLK_PLL3_PFD1_540M]->clk);
+		clk_set_parent(hws[IMX6QDL_CLK_AXI_ALT_SEL]->clk, hws[IMX6QDL_CLK_PLL3_PFD1_540M]->clk);
+		clk_set_parent(hws[IMX6QDL_CLK_AXI_SEL]->clk, hws[IMX6QDL_CLK_AXI_ALT_SEL]->clk);
+		/* set epdc/pxp axi clock to 200Mhz */
+		clk_set_parent(hws[IMX6QDL_CLK_IPU2_SEL]->clk, hws[IMX6QDL_CLK_PLL2_PFD2_396M]->clk);
+		clk_set_rate(hws[IMX6QDL_CLK_IPU2]->clk, 200000000);
+	} else {
+		clk_set_parent(hws[IMX6QDL_CLK_IPU1_SEL]->clk, hws[IMX6QDL_CLK_MMDC_CH0_AXI]->clk);
+
+		clk_set_parent(hws[IMX6QDL_CLK_IPU2_SEL]->clk, hws[IMX6QDL_CLK_MMDC_CH0_AXI]->clk);
+	}
 
 	clk_set_parent(hws[IMX6QDL_CLK_IPU1_DI0_PRE_SEL]->clk, hws[IMX6QDL_CLK_PLL5_VIDEO_DIV]->clk);
 	clk_set_parent(hws[IMX6QDL_CLK_IPU1_DI1_PRE_SEL]->clk, hws[IMX6QDL_CLK_PLL5_VIDEO_DIV]->clk);
@@ -999,7 +1006,6 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 	clk_set_parent(hws[IMX6QDL_CLK_IPU1_DI1_SEL]->clk, hws[IMX6QDL_CLK_IPU1_DI1_PRE]->clk);
 	clk_set_parent(hws[IMX6QDL_CLK_IPU2_DI0_SEL]->clk, hws[IMX6QDL_CLK_IPU2_DI0_PRE]->clk);
 	clk_set_parent(hws[IMX6QDL_CLK_IPU2_DI1_SEL]->clk, hws[IMX6QDL_CLK_IPU2_DI1_PRE]->clk);
-
 
 	/*
 	 * The gpmi needs 100MHz frequency in the EDO/Sync mode,
@@ -1048,42 +1054,6 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 			       hws[IMX6QDL_CLK_PLL3_USB_OTG]->clk);
 	}
 
-	for (i = 0; i < ARRAY_SIZE(uart_clk_ids); i++) {
-		int index = uart_clk_ids[i];
-
-		uart_clks[i] = &hws[index]->clk;
-	}
-
-	imx_register_uart_clocks(uart_clks);
-
-	/*
-	 * for i.MX6QP with speeding grading set to 1.2GHz,
-	 * VPU should run at 396MHz.
-	 */
-	if (clk_on_imx6q() && imx_get_soc_revision() >= IMX_CHIP_REVISION_2_0) {
-		np = of_find_compatible_node(NULL, NULL, "fsl,imx6q-ocotp");
-		WARN_ON(!np);
-
-		base = of_iomap(np, 0);
-		WARN_ON(!base);
-
-		/*
-		 * SPEED_GRADING[1:0] defines the max speed of ARM:
-		 * 2b'11: 1200000000Hz;
-		 * 2b'10: 996000000Hz;
-		 * 2b'01: 852000000Hz; -- i.MX6Q Only, exclusive with 996MHz.
-		 * 2b'00: 792000000Hz;
-		 * We need to set the max speed of ARM according to fuse map.
-		 */
-		val = readl_relaxed(base + OCOTP_CFG3);
-		val >>= OCOTP_CFG3_SPEED_SHIFT;
-		val &= 0x3;
-		if (val == OCOTP_CFG3_SPEED_1P2GHZ) {
-			imx_clk_set_parent(clk[IMX6QDL_CLK_VPU_AXI_SEL], clk[IMX6QDL_CLK_PLL2_PFD2_396M]);
-			imx_clk_set_rate(clk[IMX6QDL_CLK_VPU_AXI_PODF], 396000000);
-			pr_info("VPU frequency set to 396MHz!\n");
-		}
-		iounmap(base);
-	}
+	imx_register_uart_clocks();
 }
 CLK_OF_DECLARE(imx6q, "fsl,imx6q-ccm", imx6q_clocks_init);

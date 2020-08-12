@@ -79,7 +79,6 @@ static inline int sys_bpf_prog_load(union bpf_attr *attr, unsigned int size)
 int bpf_create_map_xattr(const struct bpf_create_map_attr *create_attr)
 {
 	union bpf_attr attr;
-	int ret;
 
 	memset(&attr, '\0', sizeof(attr));
 
@@ -98,15 +97,7 @@ int bpf_create_map_xattr(const struct bpf_create_map_attr *create_attr)
 	attr.map_ifindex = create_attr->map_ifindex;
 	attr.inner_map_fd = create_attr->inner_map_fd;
 
-	ret = sys_bpf(BPF_MAP_CREATE, &attr, sizeof(attr));
-	if (ret < 0 && errno == EINVAL && create_attr->name) {
-		/* Retry the same syscall, but without the name.
-		 * Pre v4.14 kernels don't support map names.
-		 */
-		memset(attr.map_name, 0, sizeof(attr.map_name));
-		return sys_bpf(BPF_MAP_CREATE, &attr, sizeof(attr));
-	}
-	return ret;
+	return sys_bpf(BPF_MAP_CREATE, &attr, sizeof(attr));
 }
 
 int bpf_create_map_node(enum bpf_map_type map_type, const char *name,

@@ -151,7 +151,7 @@
 	codec: sgtl5000@a {
 		compatible = "fsl,sgtl5000";
 		#sound-dai-cells = <0>;
-		reg = <0xa>;
+		reg = <0x0a>;
 		clocks = <&clks IMX7D_AUDIO_MCLK_ROOT_CLK>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_sai1_mclk>;

@@ -299,13 +299,10 @@ static int mxs_dcp_aes_block_crypt(struct crypto_async_request *arq)
 	int init = 0;
 	bool limit_hit = false;
 
-	actx->fill = 0;
+	if (!req->nbytes)
+		return 0;
 
-	/*
-	 * We are not supporting the case where there is no message to encrypt
-	 */
-	if (nents == 0)
-		return -EINVAL;
+	actx->fill = 0;
 
 	/* Copy the key from the temporary location. */
 	memcpy(key, actx->key, actx->key_len);
@@ -632,8 +629,6 @@ static int dcp_sha_req_to_buf(struct crypto_async_request *arq)
 	uint8_t *in_buf = sdcp->coh->sha_in_buf;
 	uint8_t *out_buf = sdcp->coh->sha_out_buf;
 
-	uint8_t *src_buf;
-
 	struct scatterlist *src;
 
 	unsigned int i, len, clen, oft = 0;
@@ -809,17 +804,15 @@ static int dcp_sha_finup(struct ahash_request *req)
 	return dcp_sha_update_fx(req, 1);
 }
 
-static int dcp_sha_export(struct ahash_request *req, void *out)
+static int dcp_sha_digest(struct ahash_request *req)
 {
-	struct dcp_sha_req_ctx *rctx_state = ahash_request_ctx(req);
-	struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
-	struct dcp_async_ctx *actx_state = crypto_ahash_ctx(tfm);
-	struct dcp_export_state *export = out;
+	int ret;
 
-	memcpy(&export->req_ctx, rctx_state, sizeof(struct dcp_sha_req_ctx));
-	memcpy(&export->async_ctx, actx_state, sizeof(struct dcp_async_ctx));
+	ret = dcp_sha_init(req);
+	if (ret)
+		return ret;
 
-	return 0;
+	return dcp_sha_finup(req);
 }
 
 static int dcp_sha_import(struct ahash_request *req, const void *in)
@@ -1018,26 +1011,6 @@ static int mxs_dcp_probe(struct platform_device *pdev)
 	if (IS_ERR(sdcp->base))
 		return PTR_ERR(sdcp->base);
 
-#ifdef CONFIG_ARM
-	sdcp->dcp_clk = devm_clk_get(dev, "dcp");
-
-	if (IS_ERR(sdcp->dcp_clk)) {
-		ret = PTR_ERR(sdcp->dcp_clk);
-		dev_err(dev, "can't identify DCP clk: %d\n", ret);
-		return -ENODEV;
-	}
-
-	ret = clk_prepare(sdcp->dcp_clk);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "can't prepare DCP clock: %d\n", ret);
-		return -ENODEV;
-	}
-	ret = clk_enable(sdcp->dcp_clk);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "can't enable DCP clock: %d\n", ret);
-		return -ENODEV;
-	}
-#endif
 
 	ret = devm_request_irq(dev, dcp_vmi_irq, mxs_dcp_irq, 0,
 			       "dcp-vmi-irq", sdcp);
@@ -1110,11 +1083,6 @@ static int mxs_dcp_probe(struct platform_device *pdev)
 		init_completion(&sdcp->completion[i]);
 		crypto_init_queue(&sdcp->queue[i], 50);
 	}
-
-	/*
-	 * Enable driver alignment with hw behavior for sha generation
-	 */
-	sdcp->enable_sha_workaround = 1;
 
 	/* Create the SHA and AES handler threads. */
 	sdcp->thread[DCP_CHAN_HASH_SHA] = kthread_run(dcp_chan_thread_sha,
@@ -1214,7 +1182,6 @@ static int mxs_dcp_remove(struct platform_device *pdev)
 static const struct of_device_id mxs_dcp_dt_ids[] = {
 	{ .compatible = "fsl,imx23-dcp", .data = NULL, },
 	{ .compatible = "fsl,imx28-dcp", .data = NULL, },
-	{ .compatible = "fsl,imx6sl-dcp", .data = NULL, },
 	{ /* sentinel */ }
 };
 

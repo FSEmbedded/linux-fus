@@ -38,11 +38,6 @@ MODULE_PARM_DESC(safety_stream_cf_color,
 #define START			0x18
 #define STATUS			0x1C
 
-static const shadow_load_req_t cf_shdlreqs[] = {
-	SHLDREQID_CONSTFRAME0, SHLDREQID_CONSTFRAME1,
-	SHLDREQID_CONSTFRAME4, SHLDREQID_CONSTFRAME5,
-};
-
 struct dpu_constframe {
 	void __iomem *pec_base;
 	void __iomem *base;
@@ -50,7 +45,6 @@ struct dpu_constframe {
 	int id;
 	bool inuse;
 	struct dpu_soc *dpu;
-	shadow_load_req_t shdlreq;
 };
 
 static inline u32 dpu_cf_read(struct dpu_constframe *cf, unsigned int offset)
@@ -58,8 +52,8 @@ static inline u32 dpu_cf_read(struct dpu_constframe *cf, unsigned int offset)
 	return readl(cf->base + offset);
 }
 
-static inline void dpu_cf_write(struct dpu_constframe *cf, u32 value,
-				unsigned int offset)
+static inline void dpu_cf_write(struct dpu_constframe *cf,
+				unsigned int offset, u32 value)
 {
 	writel(value, cf->base + offset);
 }
@@ -71,7 +65,7 @@ void constframe_shden(struct dpu_constframe *cf, bool enable)
 	val = enable ? SHDEN : 0;
 
 	mutex_lock(&cf->mutex);
-	dpu_cf_write(cf, val, STATICCONTROL);
+	dpu_cf_write(cf, STATICCONTROL, val);
 	mutex_unlock(&cf->mutex);
 }
 EXPORT_SYMBOL_GPL(constframe_shden);
@@ -84,10 +78,42 @@ void constframe_framedimensions(struct dpu_constframe *cf, unsigned int w,
 	val = WIDTH(w) | HEIGHT(h);
 
 	mutex_lock(&cf->mutex);
-	dpu_cf_write(cf, val, FRAMEDIMENSIONS);
+	dpu_cf_write(cf, FRAMEDIMENSIONS, val);
 	mutex_unlock(&cf->mutex);
 }
 EXPORT_SYMBOL_GPL(constframe_framedimensions);
+
+void constframe_framedimensions_copy_prim(struct dpu_constframe *cf)
+{
+	struct dpu_constframe *prim_cf = NULL;
+	unsigned int prim_id;
+	int i;
+	u32 val;
+
+	if (cf->id != 0 && cf->id != 1) {
+		dev_warn(cf->dpu->dev, "ConstFrame%d is not a secondary one\n",
+								cf->id);
+		return;
+	}
+
+	prim_id = cf->id + 4;
+
+	for (i = 0; i < ARRAY_SIZE(cf_ids); i++)
+		if (cf_ids[i] == prim_id)
+			prim_cf = cf->dpu->cf_priv[i];
+
+	if (!prim_cf) {
+		dev_warn(cf->dpu->dev, "cannot find ConstFrame%d's primary peer\n",
+								cf->id);
+		return;
+	}
+
+	mutex_lock(&cf->mutex);
+	val = dpu_cf_read(prim_cf, FRAMEDIMENSIONS);
+	dpu_cf_write(cf, FRAMEDIMENSIONS, val);
+	mutex_unlock(&cf->mutex);
+}
+EXPORT_SYMBOL_GPL(constframe_framedimensions_copy_prim);
 
 void constframe_constantcolor(struct dpu_constframe *cf, unsigned int r,
 			      unsigned int g, unsigned int b, unsigned int a)
@@ -97,7 +123,7 @@ void constframe_constantcolor(struct dpu_constframe *cf, unsigned int r,
 	val = RED(r) | GREEN(g) | BLUE(b) | ALPHA(a);
 
 	mutex_lock(&cf->mutex);
-	dpu_cf_write(cf, val, CONSTANTCOLOR);
+	dpu_cf_write(cf, CONSTANTCOLOR, val);
 	mutex_unlock(&cf->mutex);
 }
 EXPORT_SYMBOL_GPL(constframe_constantcolor);
@@ -109,33 +135,10 @@ void constframe_controltrigger(struct dpu_constframe *cf, bool trigger)
 	val = trigger ? SHDTOKGEN : 0;
 
 	mutex_lock(&cf->mutex);
-	dpu_cf_write(cf, val, CONTROLTRIGGER);
+	dpu_cf_write(cf, CONTROLTRIGGER, val);
 	mutex_unlock(&cf->mutex);
 }
 EXPORT_SYMBOL_GPL(constframe_controltrigger);
-
-shadow_load_req_t constframe_to_shdldreq_t(struct dpu_constframe *cf)
-{
-	shadow_load_req_t t = 0;
-
-	switch (cf->id) {
-	case 0:
-		t = SHLDREQID_CONSTFRAME0;
-		break;
-	case 1:
-		t = SHLDREQID_CONSTFRAME1;
-		break;
-	case 4:
-		t = SHLDREQID_CONSTFRAME4;
-		break;
-	case 5:
-		t = SHLDREQID_CONSTFRAME5;
-		break;
-	}
-
-	return t;
-}
-EXPORT_SYMBOL_GPL(constframe_to_shdldreq_t);
 
 struct dpu_constframe *dpu_cf_get(struct dpu_soc *dpu, int id)
 {
@@ -207,7 +210,7 @@ void _dpu_cf_init(struct dpu_soc *dpu, unsigned int id)
 
 	if (id == 4 || id == 5) {
 		mutex_lock(&cf->mutex);
-		dpu_cf_write(cf, safety_stream_cf_color, CONSTANTCOLOR);
+		dpu_cf_write(cf, CONSTANTCOLOR, safety_stream_cf_color);
 		mutex_unlock(&cf->mutex);
 	}
 }
@@ -241,7 +244,6 @@ int dpu_cf_init(struct dpu_soc *dpu, unsigned int id,
 
 	cf->dpu = dpu;
 	cf->id = id;
-	cf->shdlreq = cf_shdlreqs[i];
 
 	mutex_init(&cf->mutex);
 

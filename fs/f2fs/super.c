@@ -1121,12 +1121,6 @@ static void f2fs_put_super(struct super_block *sb)
 	 */
 	f2fs_destroy_stats(sbi);
 
-	/*
-	 * iput() can update stat information, if f2fs_write_checkpoint()
-	 * above failed with error.
-	 */
-	f2fs_destroy_stats(sbi);
-
 	/* destroy f2fs internal modules */
 	f2fs_destroy_node_manager(sbi);
 	f2fs_destroy_segment_manager(sbi);

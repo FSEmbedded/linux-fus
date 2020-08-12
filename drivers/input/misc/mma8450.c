@@ -2,7 +2,7 @@
 /*
  *  Driver for Freescale's 3-Axis Accelerometer MMA8450
  *
- *  Copyright (C) 2011 Freescale Semiconductor, Inc. All Rights Reserved.
+ *  Copyright (C) 2011-2015 Freescale Semiconductor, Inc. All Rights Reserved.
  */
 
 #include <linux/kernel.h>

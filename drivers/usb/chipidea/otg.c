@@ -128,32 +128,6 @@ enum ci_role ci_otg_role(struct ci_hdrc *ci)
 	return role;
 }
 
-/*
- * Handling vbus glitch
- * We only need to consider glitch for without usb connection,
- * With usb connection, we consider it as real disconnection.
- *
- * If the vbus can't be kept above B session valid for timeout value,
- * we think it is a vbus glitch, otherwise it's a valid vbus.
- */
-#define CI_VBUS_CONNECT_TIMEOUT_MS 300
-static int ci_is_vbus_glitch(struct ci_hdrc *ci)
-{
-	int i;
-
-	for (i = 0; i < CI_VBUS_CONNECT_TIMEOUT_MS/20; i++) {
-		if (hw_read_otgsc(ci, OTGSC_AVV)) {
-			return 0;
-		} else if (!hw_read_otgsc(ci, OTGSC_BSV)) {
-			dev_warn(ci->dev, "there is a vbus glitch\n");
-			return 1;
-		}
-		msleep(20);
-	}
-
-	return 0;
-}
-
 void ci_handle_vbus_connected(struct ci_hdrc *ci)
 {
 	/*
@@ -164,7 +138,7 @@ void ci_handle_vbus_connected(struct ci_hdrc *ci)
 	if (!ci->is_otg)
 		return;
 
-	if (hw_read_otgsc(ci, OTGSC_BSV) && !ci_is_vbus_glitch(ci))
+	if (hw_read_otgsc(ci, OTGSC_BSV))
 		usb_gadget_vbus_connect(&ci->gadget);
 }
 
@@ -207,7 +181,6 @@ static int hw_wait_vbus_lower_bsv(struct ci_hdrc *ci)
 void ci_handle_id_switch(struct ci_hdrc *ci)
 {
 	enum ci_role role;
-	int ret = 0;
 
 	mutex_lock(&ci->mutex);
 	role = ci_otg_role(ci);
@@ -226,7 +199,7 @@ void ci_handle_id_switch(struct ci_hdrc *ci)
 			 * care vbus on the board, since it will not affect
 			 * external connector status.
 			 */
-			ret = hw_wait_vbus_lower_bsv(ci);
+			hw_wait_vbus_lower_bsv(ci);
 		else if (ci->vbus_active)
 			/*
 			 * If the role switch happens(e.g. during
@@ -234,49 +207,16 @@ void ci_handle_id_switch(struct ci_hdrc *ci)
 			 * event, disconnect gadget for it before
 			 * start host.
 			 */
-		       usb_gadget_vbus_disconnect(&ci->gadget);
+			usb_gadget_vbus_disconnect(&ci->gadget);
 
 		ci_role_start(ci, role);
 		/* vbus change may have already occurred */
 		if (role == CI_ROLE_GADGET)
 			ci_handle_vbus_change(ci);
 
-		/*
-		 * If the role switch happens(e.g. during system
-		 * sleep) and vbus keeps on afterwards, we connect
-		 * gadget as vbus connect event lost.
-		 */
-		if (ret == -ETIMEDOUT)
-			usb_gadget_vbus_connect(&ci->gadget);
 	}
 	mutex_unlock(&ci->mutex);
 }
-
-static void ci_handle_vbus_glitch(struct ci_hdrc *ci)
-{
-	bool valid_vbus_change = false;
-
-	if (hw_read_otgsc(ci, OTGSC_BSV)) {
-		if (!ci_is_vbus_glitch(ci)) {
-			if (ci_otg_is_fsm_mode(ci)) {
-				ci->fsm.b_sess_vld = 1;
-				ci->fsm.b_ssend_srp = 0;
-				otg_del_timer(&ci->fsm, B_SSEND_SRP);
-				otg_del_timer(&ci->fsm, B_SRP_FAIL);
-			}
-			valid_vbus_change = true;
-		}
-	} else {
-		if (ci->vbus_active && !ci_otg_is_fsm_mode(ci))
-			valid_vbus_change = true;
-	}
-
-	if (valid_vbus_change) {
-		ci->b_sess_valid_event = true;
-		ci_otg_queue_work(ci);
-	}
-}
-
 /**
  * ci_otg_work - perform otg (vbus/id) event handle
  * @work: work struct
@@ -284,15 +224,6 @@ static void ci_handle_vbus_glitch(struct ci_hdrc *ci)
 static void ci_otg_work(struct work_struct *work)
 {
 	struct ci_hdrc *ci = container_of(work, struct ci_hdrc, work);
-
-	if (ci->vbus_glitch_check_event) {
-		ci->vbus_glitch_check_event = false;
-		pm_runtime_get_sync(ci->dev);
-		ci_handle_vbus_glitch(ci);
-		pm_runtime_put_sync(ci->dev);
-		enable_irq(ci->irq);
-		return;
-	}
 
 	if (ci_otg_is_fsm_mode(ci) && !ci_otg_fsm_work(ci)) {
 		enable_irq(ci->irq);
@@ -342,14 +273,13 @@ int ci_hdrc_otg_init(struct ci_hdrc *ci)
  */
 void ci_hdrc_otg_destroy(struct ci_hdrc *ci)
 {
-	/* Disable all OTG irq and clear status */
-	hw_write_otgsc(ci, OTGSC_INT_EN_BITS | OTGSC_INT_STATUS_BITS,
-						OTGSC_INT_STATUS_BITS);
 	if (ci->wq) {
 		flush_workqueue(ci->wq);
 		destroy_workqueue(ci->wq);
-		ci->wq = NULL;
 	}
+	/* Disable all OTG irq and clear status */
+	hw_write_otgsc(ci, OTGSC_INT_EN_BITS | OTGSC_INT_STATUS_BITS,
+						OTGSC_INT_STATUS_BITS);
 	if (ci_otg_is_fsm_mode(ci))
 		ci_hdrc_otg_fsm_remove(ci);
 }

@@ -254,7 +254,7 @@ static bool mdio_bus_phy_may_suspend(struct phy_device *phydev)
 	 *         status.
 	 *
 	 * So, in here, it shouldn't set phy to suspend by calling mdio bus.
-	 */
+ 	 */
 	if (!netdev)
 		return false;
 
@@ -1718,22 +1718,6 @@ int __genphy_config_aneg(struct phy_device *phydev, bool changed)
 			changed = true; /* do restart aneg */
 	}
 
-	return changed;
-}
-EXPORT_SYMBOL(genphy_config_aneg_check);
-
-/**
- * genphy_config_aneg - restart auto-negotiation or write BMCR
- * @phydev: target phy_device struct
- *
- * Description: If auto-negotiation is enabled, we configure the
- *   advertising, and then restart auto-negotiation.  If it is not
- *   enabled, then we write the BMCR.
- */
-int genphy_config_aneg(struct phy_device *phydev)
-{
-	int result;
-
 	/* Only restart aneg if we are advertising something different
 	 * than we were before.
 	 */
@@ -2340,14 +2324,6 @@ int phy_driver_register(struct phy_driver *new_driver, struct module *owner)
 	new_driver->mdiodrv.driver.probe = phy_probe;
 	new_driver->mdiodrv.driver.remove = phy_remove;
 	new_driver->mdiodrv.driver.owner = owner;
-
-	/* The following works around an issue where the PHY driver doesn't bind
-	 * to the device, resulting in the genphy driver being used instead of
-	 * the dedicated driver. The root cause of the issue isn't known yet
-	 * and seems to be in the base driver core. Once this is fixed we may
-	 * remove this workaround.
-	 */
-	new_driver->mdiodrv.driver.probe_type = PROBE_FORCE_SYNCHRONOUS;
 
 	retval = driver_register(&new_driver->mdiodrv.driver);
 	if (retval) {
