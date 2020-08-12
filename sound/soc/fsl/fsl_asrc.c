@@ -102,6 +102,52 @@ static unsigned char output_clk_map_imx8_1[] = {
 };
 
 /**
+ * Select the pre-processing and post-processing options
+ * Make sure to exclude following unsupported cases before
+ * calling this function:
+ * 1) inrate > 8.125 * outrate
+ * 2) inrate > 16.125 * outrate
+ *
+ * inrate: input sample rate
+ * outrate: output sample rate
+ * pre_proc: return value for pre-processing option
+ * post_proc: return value for post-processing option
+ */
+static void fsl_asrc_sel_proc(int inrate, int outrate,
+			     int *pre_proc, int *post_proc)
+{
+	bool post_proc_cond2;
+	bool post_proc_cond0;
+
+	/* select pre_proc between [0, 2] */
+	if (inrate * 8 > 33 * outrate)
+		*pre_proc = 2;
+	else if (inrate * 8 > 15 * outrate) {
+		if (inrate > 152000)
+			*pre_proc = 2;
+		else
+			*pre_proc = 1;
+	} else if (inrate < 76000)
+		*pre_proc = 0;
+	else if (inrate > 152000)
+		*pre_proc = 2;
+	else
+		*pre_proc = 1;
+
+	/* Condition for selection of post-processing */
+	post_proc_cond2 = (inrate * 15 > outrate * 16 && outrate < 56000) ||
+			  (inrate > 56000 && outrate < 56000);
+	post_proc_cond0 = inrate * 23 < outrate * 8;
+
+	if (post_proc_cond2)
+		*post_proc = 2;
+	else if (post_proc_cond0)
+		*post_proc = 0;
+	else
+		*post_proc = 1;
+}
+
+/**
  * Request ASRC pair
  *
  * It assigns pair by the order of A->C->B because allocation of pair B,
@@ -375,8 +421,8 @@ static int fsl_asrc_config_pair(struct fsl_asrc_pair *pair, bool p2p_in, bool p2
 		return -EINVAL;
 	}
 
-	if ((outrate > 8000 && outrate < 30000) &&
-	    (outrate/inrate > 24 || inrate/outrate > 8)) {
+	if ((outrate >= 5512 && outrate <= 30000) &&
+	    (outrate > 24 * inrate || inrate > 8 * outrate)) {
 		pair_err("exceed supported ratio range [1/24, 8] for \
 				inrate/outrate: %d/%d\n", inrate, outrate);
 		return -EINVAL;
@@ -500,11 +546,7 @@ static int fsl_asrc_config_pair(struct fsl_asrc_pair *pair, bool p2p_in, bool p2
 			   ASRCTR_IDRi_MASK(index) | ASRCTR_USRi_MASK(index),
 			   ASRCTR_IDR(index) | ASRCTR_USR(index));
 
-	ret = proc_autosel(inrate, outrate, &pre_proc, &post_proc);
-	if (ret) {
-		pair_err("No supported pre-processing options\n");
-		return ret;
-	}
+	fsl_asrc_sel_proc(inrate, outrate, &pre_proc, &post_proc);
 
 	/* Apply configurations for pre- and post-processing */
 	regmap_update_bits(asrc_priv->regmap, REG_ASRCFG,
@@ -577,59 +619,19 @@ struct dma_chan *fsl_asrc_get_dma_channel(struct fsl_asrc_pair *pair, bool dir)
 }
 EXPORT_SYMBOL_GPL(fsl_asrc_get_dma_channel);
 
-static int fsl_asrc_select_clk(struct fsl_asrc *asrc_priv,
-				struct fsl_asrc_pair *pair,
-				int in_rate,
-				int out_rate)
+static int fsl_asrc_dai_startup(struct snd_pcm_substream *substream,
+				struct snd_soc_dai *dai)
 {
-	struct asrc_config *config = pair->config;
-	int clk_rate;
-	int clk_index;
-	int i = 0, j = 0;
-	int rate[2];
-	int select_clk[2];
-	bool clk_sel[2];
+	struct fsl_asrc *asrc_priv = snd_soc_dai_get_drvdata(dai);
 
-	rate[0] = in_rate;
-	rate[1] = out_rate;
+	/* Odd channel number is not valid for older ASRC (channel_bits==3) */
+	if (asrc_priv->channel_bits == 3)
+		snd_pcm_hw_constraint_step(substream->runtime, 0,
+					   SNDRV_PCM_HW_PARAM_CHANNELS, 2);
 
-	/*select proper clock for asrc p2p mode*/
-	for (j = 0; j < 2; j++) {
-		for (i = 0; i < CLK_MAP_NUM; i++) {
-			clk_index = asrc_priv->clk_map[j][i];
-			clk_rate = clk_get_rate(asrc_priv->asrck_clk[clk_index]);
-			if (clk_rate != 0 && (clk_rate / rate[j]) <= 1024 &&
-						(clk_rate % rate[j]) == 0)
-				break;
-		}
 
-		if (i == CLK_MAP_NUM) {
-			select_clk[j] = OUTCLK_ASRCK1_CLK;
-			clk_sel[j] = false;
-		} else {
-			select_clk[j] = i;
-			clk_sel[j] = true;
-		}
-	}
-
-	if (clk_sel[0] != true || clk_sel[1] != true)
-		select_clk[IN] = INCLK_NONE;
-
-	config->inclk = select_clk[IN];
-	config->outclk = select_clk[OUT];
-
-	/*
-	 * FIXME: workaroud for 176400/192000 with 8 channel input case
-	 * the output sample rate is 48kHz.
-	 * with ideal ratio mode, the asrc seems has performance issue
-	 * that the output sound is not correct. so switch to non-ideal
-	 * ratio mode
-	 */
-	if (config->channel_num >= 8 && config->input_sample_rate >= 176400
-		&& config->inclk == INCLK_NONE)
-		config->inclk = INCLK_ASRCK1_CLK;
-
-	return 0;
+	return snd_pcm_hw_constraint_list(substream->runtime, 0,
+			SNDRV_PCM_HW_PARAM_RATE, &fsl_asrc_rate_constraints);
 }
 
 static int fsl_asrc_dai_hw_params(struct snd_pcm_substream *substream,
@@ -767,7 +769,6 @@ static void fsl_asrc_dai_shutdown(struct snd_pcm_substream *substream,
 
 static const struct snd_soc_dai_ops fsl_asrc_dai_ops = {
 	.startup      = fsl_asrc_dai_startup,
-	.shutdown     = fsl_asrc_dai_shutdown,
 	.hw_params    = fsl_asrc_dai_hw_params,
 	.hw_free      = fsl_asrc_dai_hw_free,
 	.trigger      = fsl_asrc_dai_trigger,
@@ -783,11 +784,7 @@ static int fsl_asrc_dai_probe(struct snd_soc_dai *dai)
 	return 0;
 }
 
-#define FSL_ASRC_RATES		 SNDRV_PCM_RATE_8000_192000
-#define FSL_ASRC_FORMATS_RX	(SNDRV_PCM_FMTBIT_S24_LE | \
-				 SNDRV_PCM_FMTBIT_S16_LE | \
-				 SNDRV_PCM_FMTBIT_S24_3LE)
-#define FSL_ASRC_FORMATS_TX	(SNDRV_PCM_FMTBIT_S24_LE | \
+#define FSL_ASRC_FORMATS	(SNDRV_PCM_FMTBIT_S24_LE | \
 				 SNDRV_PCM_FMTBIT_S16_LE | \
 				 SNDRV_PCM_FMTBIT_S8 | \
 				 SNDRV_PCM_FMTBIT_S24_3LE)
@@ -801,7 +798,7 @@ static struct snd_soc_dai_driver fsl_asrc_dai = {
 		.rate_min = 5512,
 		.rate_max = 192000,
 		.rates = SNDRV_PCM_RATE_KNOT,
-		.formats = FSL_ASRC_FORMATS_TX,
+		.formats = FSL_ASRC_FORMATS,
 	},
 	.capture = {
 		.stream_name = "ASRC-Capture",
@@ -810,7 +807,7 @@ static struct snd_soc_dai_driver fsl_asrc_dai = {
 		.rate_min = 5512,
 		.rate_max = 192000,
 		.rates = SNDRV_PCM_RATE_KNOT,
-		.formats = FSL_ASRC_FORMATS_RX,
+		.formats = FSL_ASRC_FORMATS,
 	},
 	.ops = &fsl_asrc_dai_ops,
 };
@@ -1132,10 +1129,8 @@ static int fsl_asrc_probe(struct platform_device *pdev)
 	}
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq < 0) {
-		dev_err(&pdev->dev, "no irq for node %s\n", pdev->name);
+	if (irq < 0)
 		return irq;
-	}
 
 	ret = devm_request_irq(&pdev->dev, irq, fsl_asrc_isr, 0,
 			       dev_name(&pdev->dev), asrc_priv);

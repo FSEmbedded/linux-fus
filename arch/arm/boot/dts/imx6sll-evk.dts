@@ -21,7 +21,8 @@
 		stdout-path = &uart1;
 	};
 
-	memory {
+	memory@80000000 {
+		device_type = "memory";
 		reg = <0x80000000 0x80000000>;
 	};
 
@@ -33,8 +34,20 @@
 		status = "okay";
 	};
 
-	battery: max8903@0 {
-		compatible = "fsl,max8903-charger";
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_led>;
+
+		user {
+			label = "debug";
+			gpios = <&gpio2 4 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "heartbeat";
+		};
+	};
+
+	reg_usb_otg1_vbus: regulator-otg1-vbus {
+		compatible = "regulator-fixed";
 		pinctrl-names = "default";
 		dok_input = <&gpio4 13 1>;
 		uok_input = <&gpio4 13 1>;
@@ -733,6 +746,18 @@
 	status = "okay";
 };
 
+&reg_3p0 {
+	vin-supply = <&sw2_reg>;
+};
+
+&snvs_poweroff {
+	status = "okay";
+};
+
+&snvs_pwrkey {
+	status = "okay";
+};
+
 &uart1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1>;
@@ -803,16 +828,15 @@
 	status = "okay";
 };
 
-&epdc {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_epdc0>;
-	V3P3-supply = <&V3P3_reg>;
-	VCOM-supply = <&VCOM_reg>;
-	DISPLAY-supply = <&DISPLAY_reg>;
-	status = "okay";
-};
-
-&ssi2 {
+&usdhc3 {
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-0 = <&pinctrl_usdhc3>;
+	pinctrl-1 = <&pinctrl_usdhc3_100mhz>;
+	pinctrl-2 = <&pinctrl_usdhc3_200mhz>;
+	cd-gpios = <&gpio3 22 GPIO_ACTIVE_LOW>;
+	keep-power-in-suspend;
+	wakeup-source;
+	vmmc-supply = <&reg_sd3_vmmc>;
 	status = "okay";
 };
 
@@ -820,4 +844,177 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_wdog1>;
 	fsl,ext-reset-output;
+};
+
+&iomuxc {
+	pinctrl_reg_sd3_vmmc: sd3vmmcgrp {
+		fsl,pins = <
+			MX6SLL_PAD_KEY_COL6__GPIO4_IO04 0x17059
+		>;
+	};
+
+	pinctrl_usb_otg1_vbus: vbus1grp {
+		fsl,pins = <
+			MX6SLL_PAD_KEY_COL4__GPIO4_IO00 0x17059
+		>;
+	};
+
+	pinctrl_usb_otg2_vbus: vbus2grp {
+		fsl,pins = <
+			MX6SLL_PAD_KEY_COL5__GPIO4_IO02 0x17059
+		>;
+	};
+
+	pinctrl_reg_lcd_3v3: reglcd3v3grp {
+		fsl,pins = <
+			MX6SLL_PAD_KEY_ROW5__GPIO4_IO03 0x17059
+		>;
+	};
+
+	pinctrl_reg_sd1_vmmc: sd1vmmcgrp {
+		fsl,pins = <
+			MX6SLL_PAD_KEY_COL3__GPIO3_IO30 0x17059
+		>;
+	};
+
+	pinctrl_uart1: uart1grp {
+		fsl,pins = <
+			MX6SLL_PAD_UART1_TXD__UART1_DCE_TX 0x1b0b1
+			MX6SLL_PAD_UART1_RXD__UART1_DCE_RX 0x1b0b1
+		>;
+	};
+
+	pinctrl_usdhc1: usdhc1grp {
+		fsl,pins = <
+			MX6SLL_PAD_SD1_CMD__SD1_CMD	0x17059
+			MX6SLL_PAD_SD1_CLK__SD1_CLK	0x13059
+			MX6SLL_PAD_SD1_DATA0__SD1_DATA0	0x17059
+			MX6SLL_PAD_SD1_DATA1__SD1_DATA1	0x17059
+			MX6SLL_PAD_SD1_DATA2__SD1_DATA2	0x17059
+			MX6SLL_PAD_SD1_DATA3__SD1_DATA3	0x17059
+		>;
+	};
+
+	pinctrl_usdhc1_100mhz: usdhc1grp_100mhz {
+		fsl,pins = <
+			MX6SLL_PAD_SD1_CMD__SD1_CMD	0x170b9
+			MX6SLL_PAD_SD1_CLK__SD1_CLK	0x130b9
+			MX6SLL_PAD_SD1_DATA0__SD1_DATA0	0x170b9
+			MX6SLL_PAD_SD1_DATA1__SD1_DATA1	0x170b9
+			MX6SLL_PAD_SD1_DATA2__SD1_DATA2	0x170b9
+			MX6SLL_PAD_SD1_DATA3__SD1_DATA3	0x170b9
+		>;
+	};
+
+	pinctrl_usdhc1_200mhz: usdhc1grp_200mhz {
+		fsl,pins = <
+			MX6SLL_PAD_SD1_CMD__SD1_CMD	0x170f9
+			MX6SLL_PAD_SD1_CLK__SD1_CLK	0x130f9
+			MX6SLL_PAD_SD1_DATA0__SD1_DATA0	0x170f9
+			MX6SLL_PAD_SD1_DATA1__SD1_DATA1	0x170f9
+			MX6SLL_PAD_SD1_DATA2__SD1_DATA2	0x170f9
+			MX6SLL_PAD_SD1_DATA3__SD1_DATA3	0x170f9
+		>;
+	};
+
+	pinctrl_usbotg1: usbotg1grp {
+		fsl,pins = <
+			MX6SLL_PAD_EPDC_PWR_COM__USB_OTG1_ID 0x17059
+		>;
+	};
+
+	pinctrl_usdhc3: usdhc3grp {
+		fsl,pins = <
+			MX6SLL_PAD_SD3_CMD__SD3_CMD		0x17061
+			MX6SLL_PAD_SD3_CLK__SD3_CLK		0x13061
+			MX6SLL_PAD_SD3_DATA0__SD3_DATA0		0x17061
+			MX6SLL_PAD_SD3_DATA1__SD3_DATA1		0x17061
+			MX6SLL_PAD_SD3_DATA2__SD3_DATA2		0x17061
+			MX6SLL_PAD_SD3_DATA3__SD3_DATA3		0x17061
+			MX6SLL_PAD_REF_CLK_32K__GPIO3_IO22	0x17059
+		>;
+	};
+
+	pinctrl_usdhc3_100mhz: usdhc3grp_100mhz {
+		fsl,pins = <
+			MX6SLL_PAD_SD3_CMD__SD3_CMD		0x170a1
+			MX6SLL_PAD_SD3_CLK__SD3_CLK		0x130a1
+			MX6SLL_PAD_SD3_DATA0__SD3_DATA0		0x170a1
+			MX6SLL_PAD_SD3_DATA1__SD3_DATA1		0x170a1
+			MX6SLL_PAD_SD3_DATA2__SD3_DATA2		0x170a1
+			MX6SLL_PAD_SD3_DATA3__SD3_DATA3		0x170a1
+			MX6SLL_PAD_REF_CLK_32K__GPIO3_IO22	0x17059
+		>;
+	};
+
+	pinctrl_usdhc3_200mhz: usdhc3grp_200mhz {
+		fsl,pins = <
+			MX6SLL_PAD_SD3_CMD__SD3_CMD		0x170e9
+			MX6SLL_PAD_SD3_CLK__SD3_CLK		0x130f9
+			MX6SLL_PAD_SD3_DATA0__SD3_DATA0		0x170e9
+			MX6SLL_PAD_SD3_DATA1__SD3_DATA1		0x170e9
+			MX6SLL_PAD_SD3_DATA2__SD3_DATA2		0x170e9
+			MX6SLL_PAD_SD3_DATA3__SD3_DATA3		0x170e9
+			MX6SLL_PAD_REF_CLK_32K__GPIO3_IO22	0x17059
+		>;
+	};
+
+	pinctrl_i2c1: i2c1grp {
+		fsl,pins = <
+			MX6SLL_PAD_I2C1_SCL__I2C1_SCL	 0x4001b8b1
+			MX6SLL_PAD_I2C1_SDA__I2C1_SDA	 0x4001b8b1
+		>;
+	};
+
+	pinctrl_lcd: lcdgrp {
+		fsl,pins = <
+			MX6SLL_PAD_LCD_DATA00__LCD_DATA00	0x79
+			MX6SLL_PAD_LCD_DATA01__LCD_DATA01	0x79
+			MX6SLL_PAD_LCD_DATA02__LCD_DATA02	0x79
+			MX6SLL_PAD_LCD_DATA03__LCD_DATA03	0x79
+			MX6SLL_PAD_LCD_DATA04__LCD_DATA04	0x79
+			MX6SLL_PAD_LCD_DATA05__LCD_DATA05	0x79
+			MX6SLL_PAD_LCD_DATA06__LCD_DATA06	0x79
+			MX6SLL_PAD_LCD_DATA07__LCD_DATA07	0x79
+			MX6SLL_PAD_LCD_DATA08__LCD_DATA08	0x79
+			MX6SLL_PAD_LCD_DATA09__LCD_DATA09	0x79
+			MX6SLL_PAD_LCD_DATA10__LCD_DATA10	0x79
+			MX6SLL_PAD_LCD_DATA11__LCD_DATA11	0x79
+			MX6SLL_PAD_LCD_DATA12__LCD_DATA12	0x79
+			MX6SLL_PAD_LCD_DATA13__LCD_DATA13	0x79
+			MX6SLL_PAD_LCD_DATA14__LCD_DATA14	0x79
+			MX6SLL_PAD_LCD_DATA15__LCD_DATA15	0x79
+			MX6SLL_PAD_LCD_DATA16__LCD_DATA16	0x79
+			MX6SLL_PAD_LCD_DATA17__LCD_DATA17	0x79
+			MX6SLL_PAD_LCD_DATA18__LCD_DATA18	0x79
+			MX6SLL_PAD_LCD_DATA19__LCD_DATA19	0x79
+			MX6SLL_PAD_LCD_DATA20__LCD_DATA20	0x79
+			MX6SLL_PAD_LCD_DATA21__LCD_DATA21	0x79
+			MX6SLL_PAD_LCD_DATA22__LCD_DATA22	0x79
+			MX6SLL_PAD_LCD_DATA23__LCD_DATA23	0x79
+			MX6SLL_PAD_LCD_CLK__LCD_CLK		0x79
+			MX6SLL_PAD_LCD_ENABLE__LCD_ENABLE	0x79
+			MX6SLL_PAD_LCD_HSYNC__LCD_HSYNC		0x79
+			MX6SLL_PAD_LCD_VSYNC__LCD_VSYNC		0x79
+			MX6SLL_PAD_LCD_RESET__LCD_RESET		0x79
+		>;
+	};
+
+	pinctrl_led: ledgrp {
+		fsl,pins = <
+			MX6SLL_PAD_EPDC_VCOM1__GPIO2_IO04	0x17059
+		>;
+	};
+
+	pinctrl_pwm1: pmw1grp {
+		fsl,pins = <
+			MX6SLL_PAD_PWM1__PWM1_OUT   0x110b0
+		>;
+	};
+
+	pinctrl_wdog1: wdog1grp	{
+		fsl,pins = <
+			MX6SLL_PAD_WDOG_B__WDOG1_B   0x170b0
+		>;
+	};
 };

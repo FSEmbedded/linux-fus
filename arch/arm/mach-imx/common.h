@@ -1,13 +1,9 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright 2004-2016 Freescale Semiconductor, Inc. All Rights Reserved.
  * Copyright 2017 NXP
  */
 
-/*
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
 
 #ifndef __ASM_ARCH_MXC_COMMON_H__
 #define __ASM_ARCH_MXC_COMMON_H__
@@ -97,25 +93,14 @@ enum mxc_cpu_pwr_mode {
 	STOP_POWER_OFF,		/* STOP + SRPG */
 };
 
-enum mx3_cpu_pwr_mode {
-	MX3_RUN,
-	MX3_WAIT,
-	MX3_DOZE,
-	MX3_SLEEP,
+enum ulp_cpu_pwr_mode {
+	ULP_PM_HSRUN,    /* High speed run mode */
+	ULP_PM_RUN,      /* Run mode */
+	ULP_PM_WAIT,     /* Wait mode */
+	ULP_PM_STOP,     /* Stop mode */
+	ULP_PM_VLPS,     /* Very low power stop mode */
+	ULP_PM_VLLS,     /* very low leakage stop mode */
 };
-
-enum imx7ulp_cpu_pwr_mode {
-	HSRUN,
-	RUN,
-	VLPR,
-	WAIT,
-	VLPW,
-	STOP,
-	VLPS,
-	VLLS,
-};
-
-void mx3_cpu_lp_set(enum mx3_cpu_pwr_mode mode);
 
 void imx_enable_cpu(int cpu, bool enable);
 void imx_set_cpu_jump(int cpu, void *jump_addr);
@@ -172,16 +157,8 @@ void imx6_enet_mac_init(const char *enet_compat, const char *ocotp_compat);
 int imx7ulp_set_lpm(enum imx7ulp_cpu_pwr_mode mode);
 #ifdef CONFIG_HAVE_IMX_MMDC
 int imx_mmdc_get_ddr_type(void);
-int imx_mmdc_get_lpddr2_2ch_mode(void);
-#else
-static inline int imx_mmdc_get_ddr_type(void) { return 0; }
-static inline int imx_mmdc_get_lpddr2_2ch_mode(void) { return 0; }
-#endif
-#ifdef CONFIG_HAVE_IMX_DDRC
-int imx_ddrc_get_ddr_type(void);
-#else
-static inline int imx_ddrc_get_ddr_type(void) { return 0; }
-#endif
+int imx7ulp_set_lpm(enum ulp_cpu_pwr_mode mode);
+
 void imx_cpu_die(unsigned int cpu);
 int imx_cpu_kill(unsigned int cpu);
 void imx_busfreq_map_io(void);
@@ -226,12 +203,7 @@ void imx6dl_pm_init(void);
 void imx6sl_pm_init(void);
 void imx6sx_pm_init(void);
 void imx6ul_pm_init(void);
-void imx6ull_pm_init(void);
-void imx7d_pm_init(void);
 void imx7ulp_pm_init(void);
-void imx7ulp_enable_nmi(void);
-void imx7ulp_poweroff(void);
-void imx6q_pm_set_ccm_base(void __iomem *base);
 
 #ifdef CONFIG_PM
 void imx51_pm_init(void);

@@ -1,40 +1,31 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * i.MX drm driver - LVDS display bridge
  *
  * Copyright (C) 2012 Sascha Hauer, Pengutronix
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
-#include <linux/module.h>
 #include <linux/clk.h>
 #include <linux/component.h>
-#include <drm/drmP.h>
-#include <drm/drm_atomic.h>
-#include <drm/drm_atomic_helper.h>
-#include <drm/drm_fb_helper.h>
-#include <drm/drm_crtc_helper.h>
-#include <drm/drm_of.h>
-#include <drm/drm_panel.h>
 #include <linux/mfd/syscon.h>
 #include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
+#include <linux/module.h>
 #include <linux/of_device.h>
 #include <linux/of_graph.h>
-#include <video/of_display_timing.h>
-#include <video/of_videomode.h>
-#include <linux/phy/phy.h>
-#include <linux/phy/phy-mixel-lvds.h>
-#include <linux/phy/phy-mixel-lvds-combo.h>
 #include <linux/regmap.h>
 #include <linux/videodev2.h>
 #include <soc/imx8/sc/sci.h>
+
+#include <video/of_display_timing.h>
+#include <video/of_videomode.h>
+
+#include <drm/drm_atomic.h>
+#include <drm/drm_atomic_helper.h>
+#include <drm/drm_fb_helper.h>
+#include <drm/drm_of.h>
+#include <drm/drm_panel.h>
+#include <drm/drm_print.h>
+#include <drm/drm_probe_helper.h>
 
 #include "imx-drm.h"
 
@@ -212,14 +203,11 @@ static void imx_ldb_ch_set_bus_format(struct imx_ldb_channel *imx_ldb_ch,
 static int imx_ldb_connector_get_modes(struct drm_connector *connector)
 {
 	struct imx_ldb_channel *imx_ldb_ch = con_to_imx_ldb_ch(connector);
-	int num_modes = 0;
+	int num_modes;
 
-	if (imx_ldb_ch->panel && imx_ldb_ch->panel->funcs &&
-	    imx_ldb_ch->panel->funcs->get_modes) {
-		num_modes = imx_ldb_ch->panel->funcs->get_modes(imx_ldb_ch->panel);
-		if (num_modes > 0)
-			return num_modes;
-	}
+	num_modes = drm_panel_get_modes(imx_ldb_ch->panel);
+	if (num_modes > 0)
+		return num_modes;
 
 	if (!imx_ldb_ch->edid && imx_ldb_ch->ddc)
 		imx_ldb_ch->edid = drm_get_edid(connector, imx_ldb_ch->ddc);
@@ -976,9 +964,10 @@ static int imx_ldb_register(struct drm_device *drm,
 		 */
 		drm_connector_helper_add(&imx_ldb_ch->connector,
 				&imx_ldb_connector_helper_funcs);
-		drm_connector_init(drm, &imx_ldb_ch->connector,
-				&imx_ldb_connector_funcs,
-				DRM_MODE_CONNECTOR_LVDS);
+		drm_connector_init_with_ddc(drm, &imx_ldb_ch->connector,
+					    &imx_ldb_connector_funcs,
+					    DRM_MODE_CONNECTOR_LVDS,
+					    imx_ldb_ch->ddc);
 		drm_connector_attach_encoder(&imx_ldb_ch->connector, encoder);
 	}
 
@@ -1334,12 +1323,6 @@ static int imx_ldb_bind(struct device *dev, struct device *master, void *data)
 			goto free_child;
 		}
 
-		if (dual && imx_ldb->use_mixel_phy && i > 0) {
-			auxiliary_ch = true;
-			channel = &imx_ldb->channel[i];
-			goto get_phy;
-		}
-
 		if (!of_device_is_available(child))
 			continue;
 
@@ -1392,57 +1375,6 @@ static int imx_ldb_bind(struct device *dev, struct device *master, void *data)
 		}
 		channel->bus_format = bus_format;
 		channel->child = child;
-
-get_phy:
-		if (imx_ldb->visible_phy) {
-			channel->phy = devm_of_phy_get(dev, child, "ldb_phy");
-			if (IS_ERR(channel->phy)) {
-				ret = PTR_ERR(channel->phy);
-				if (ret == -EPROBE_DEFER) {
-					return ret;
-				} else {
-					dev_err(dev,
-						"can't get channel%d phy: %d\n",
-							channel->chno, ret);
-					return ret;
-				}
-			}
-
-			ret = phy_init(channel->phy);
-			if (ret < 0) {
-				dev_err(dev,
-					"failed to initialize channel%d phy: %d\n",
-					channel->chno, ret);
-				return ret;
-			}
-
-			if (dual && imx_ldb->has_aux_ldb) {
-				channel->aux_phy =
-					devm_of_phy_get(dev, child, "aux_ldb_phy");
-				if (IS_ERR(channel->aux_phy)) {
-					ret = PTR_ERR(channel->aux_phy);
-					if (ret == -EPROBE_DEFER) {
-						return ret;
-					} else {
-						dev_err(dev,
-							"can't get channel%d aux phy: %d\n",
-							channel->chno, ret);
-						return ret;
-					}
-				}
-
-				ret = phy_init(channel->aux_phy);
-				if (ret < 0) {
-					dev_err(dev,
-						"failed to initialize channel%d aux phy: %d\n",
-						channel->chno, ret);
-					return ret;
-				}
-			}
-
-			if (auxiliary_ch)
-				continue;
-		}
 
 		ret = imx_ldb_register(drm, channel);
 		if (ret) {

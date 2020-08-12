@@ -1,14 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Freescale i.MX23/i.MX28 Data Co-Processor driver
  *
  * Copyright (C) 2013 Marek Vasut <marex@denx.de>
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
  */
 
 #include <linux/dma-mapping.h>
@@ -34,16 +28,15 @@
 
 #define DCP_ALIGNMENT	64
 
-
 /*
  * Null hashes to align with hw behavior on imx6sl and ull
  * these are flipped for consistency with hw output
  */
-const uint8_t sha1_null_hash[] =
+static const uint8_t sha1_null_hash[] =
 	"\x09\x07\xd8\xaf\x90\x18\x60\x95\xef\xbf"
 	"\x55\x32\x0d\x4b\x6b\x5e\xee\xa3\x39\xda";
 
-const uint8_t sha256_null_hash[] =
+static const uint8_t sha256_null_hash[] =
 	"\x55\xb8\x52\x78\x1b\x99\x95\xa4"
 	"\x4c\x93\x9b\x64\xe4\x41\xae\x27"
 	"\x24\xb9\x6f\x99\xc8\xf4\xfb\x9a"
@@ -85,10 +78,7 @@ struct dcp {
 	spinlock_t			lock[DCP_MAX_CHANS];
 	struct task_struct		*thread[DCP_MAX_CHANS];
 	struct crypto_queue		queue[DCP_MAX_CHANS];
-#ifdef CONFIG_ARM
-	struct clk *dcp_clk;
-#endif
-	int                             enable_sha_workaround;
+	struct clk			*dcp_clk;
 };
 
 enum dcp_chan {
@@ -107,7 +97,7 @@ struct dcp_async_ctx {
 	unsigned int			hot:1;
 
 	/* Crypto-specific context */
-	struct crypto_skcipher		*fallback;
+	struct crypto_sync_skcipher	*fallback;
 	unsigned int			key_len;
 	uint8_t				key[AES_KEYSIZE_128];
 };
@@ -443,10 +433,10 @@ static int mxs_dcp_block_fallback(struct ablkcipher_request *req, int enc)
 {
 	struct crypto_ablkcipher *tfm = crypto_ablkcipher_reqtfm(req);
 	struct dcp_async_ctx *ctx = crypto_ablkcipher_ctx(tfm);
-	SKCIPHER_REQUEST_ON_STACK(subreq, ctx->fallback);
+	SYNC_SKCIPHER_REQUEST_ON_STACK(subreq, ctx->fallback);
 	int ret;
 
-	skcipher_request_set_tfm(subreq, ctx->fallback);
+	skcipher_request_set_sync_tfm(subreq, ctx->fallback);
 	skcipher_request_set_callback(subreq, req->base.flags, NULL, NULL);
 	skcipher_request_set_crypt(subreq, req->src, req->dst,
 				   req->nbytes, req->info);
@@ -482,7 +472,7 @@ static int mxs_dcp_aes_enqueue(struct ablkcipher_request *req, int enc, int ecb)
 
 	wake_up_process(sdcp->thread[actx->chan]);
 
-	return -EINPROGRESS;
+	return ret;
 }
 
 static int mxs_dcp_aes_ecb_decrypt(struct ablkcipher_request *req)
@@ -527,16 +517,16 @@ static int mxs_dcp_aes_setkey(struct crypto_ablkcipher *tfm, const u8 *key,
 	 * but is supported by in-kernel software implementation, we use
 	 * software fallback.
 	 */
-	crypto_skcipher_clear_flags(actx->fallback, CRYPTO_TFM_REQ_MASK);
-	crypto_skcipher_set_flags(actx->fallback,
+	crypto_sync_skcipher_clear_flags(actx->fallback, CRYPTO_TFM_REQ_MASK);
+	crypto_sync_skcipher_set_flags(actx->fallback,
 				  tfm->base.crt_flags & CRYPTO_TFM_REQ_MASK);
 
-	ret = crypto_skcipher_setkey(actx->fallback, key, len);
+	ret = crypto_sync_skcipher_setkey(actx->fallback, key, len);
 	if (!ret)
 		return 0;
 
 	tfm->base.crt_flags &= ~CRYPTO_TFM_RES_MASK;
-	tfm->base.crt_flags |= crypto_skcipher_get_flags(actx->fallback) &
+	tfm->base.crt_flags |= crypto_sync_skcipher_get_flags(actx->fallback) &
 			       CRYPTO_TFM_RES_MASK;
 
 	return ret;
@@ -545,11 +535,10 @@ static int mxs_dcp_aes_setkey(struct crypto_ablkcipher *tfm, const u8 *key,
 static int mxs_dcp_aes_fallback_init(struct crypto_tfm *tfm)
 {
 	const char *name = crypto_tfm_alg_name(tfm);
-	const uint32_t flags = CRYPTO_ALG_ASYNC | CRYPTO_ALG_NEED_FALLBACK;
 	struct dcp_async_ctx *actx = crypto_tfm_ctx(tfm);
-	struct crypto_skcipher *blk;
+	struct crypto_sync_skcipher *blk;
 
-	blk = crypto_alloc_skcipher(name, 0, flags);
+	blk = crypto_alloc_sync_skcipher(name, 0, CRYPTO_ALG_NEED_FALLBACK);
 	if (IS_ERR(blk))
 		return PTR_ERR(blk);
 
@@ -562,7 +551,7 @@ static void mxs_dcp_aes_fallback_exit(struct crypto_tfm *tfm)
 {
 	struct dcp_async_ctx *actx = crypto_tfm_ctx(tfm);
 
-	crypto_free_skcipher(actx->fallback);
+	crypto_free_sync_skcipher(actx->fallback);
 }
 
 /*
@@ -600,8 +589,7 @@ static int mxs_dcp_run_sha(struct ahash_request *req)
 	/*
 	 * Align driver with hw behavior when generating null hashes
 	 */
-	if (rctx->init && rctx->fini && desc->size == 0 &&
-	    sdcp->enable_sha_workaround) {
+	if (rctx->init && rctx->fini && desc->size == 0) {
 		struct hash_alg_common *halg = crypto_hash_alg_common(tfm);
 		const uint8_t *sha_buf =
 			(actx->alg == MXS_DCP_CONTROL1_HASH_SELECT_SHA1) ?
@@ -643,6 +631,8 @@ static int dcp_sha_req_to_buf(struct crypto_async_request *arq)
 
 	uint8_t *in_buf = sdcp->coh->sha_in_buf;
 	uint8_t *out_buf = sdcp->coh->sha_out_buf;
+
+	uint8_t *src_buf;
 
 	struct scatterlist *src;
 
@@ -710,11 +700,7 @@ static int dcp_chan_thread_sha(void *data)
 
 	struct crypto_async_request *backlog;
 	struct crypto_async_request *arq;
-
-	struct dcp_sha_req_ctx *rctx;
-
-	struct ahash_request *req;
-	int ret, fini;
+	int ret;
 
 	while (!kthread_should_stop()) {
 		set_current_state(TASK_INTERRUPTIBLE);
@@ -735,11 +721,7 @@ static int dcp_chan_thread_sha(void *data)
 			backlog->complete(backlog, -EINPROGRESS);
 
 		if (arq) {
-			req = ahash_request_cast(arq);
-			rctx = ahash_request_ctx(req);
-
 			ret = dcp_sha_req_to_buf(arq);
-			fini = rctx->fini;
 			arq->complete(arq, ret);
 		}
 	}
@@ -807,7 +789,7 @@ static int dcp_sha_update_fx(struct ahash_request *req, int fini)
 	wake_up_process(sdcp->thread[actx->chan]);
 	mutex_unlock(&actx->mutex);
 
-	return -EINPROGRESS;
+	return ret;
 }
 
 static int dcp_sha_update(struct ahash_request *req)
@@ -849,22 +831,23 @@ static int dcp_sha_import(struct ahash_request *req, const void *in)
 
 	memset(rctx, 0, sizeof(struct dcp_sha_req_ctx));
 	memset(actx, 0, sizeof(struct dcp_async_ctx));
-
 	memcpy(rctx, &export->req_ctx, sizeof(struct dcp_sha_req_ctx));
 	memcpy(actx, &export->async_ctx, sizeof(struct dcp_async_ctx));
 
 	return 0;
 }
 
-static int dcp_sha_digest(struct ahash_request *req)
+static int dcp_sha_export(struct ahash_request *req, void *out)
 {
-	int ret;
+	struct dcp_sha_req_ctx *rctx_state = ahash_request_ctx(req);
+	struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
+	struct dcp_async_ctx *actx_state = crypto_ahash_ctx(tfm);
+	struct dcp_export_state *export = out;
 
-	ret = dcp_sha_init(req);
-	if (ret)
-		return ret;
+	memcpy(&export->req_ctx, rctx_state, sizeof(struct dcp_sha_req_ctx));
+	memcpy(&export->async_ctx, actx_state, sizeof(struct dcp_async_ctx));
 
-	return dcp_sha_finup(req);
+	return 0;
 }
 
 static int dcp_sha_cra_init(struct crypto_tfm *tfm)
@@ -937,8 +920,8 @@ static struct ahash_alg dcp_sha1_alg = {
 	.final	= dcp_sha_final,
 	.finup	= dcp_sha_finup,
 	.digest	= dcp_sha_digest,
-	.export = dcp_sha_export,
 	.import = dcp_sha_import,
+	.export = dcp_sha_export,
 	.halg	= {
 		.digestsize	= SHA1_DIGEST_SIZE,
 		.statesize	= sizeof(struct dcp_export_state),
@@ -964,8 +947,8 @@ static struct ahash_alg dcp_sha256_alg = {
 	.final	= dcp_sha_final,
 	.finup	= dcp_sha_finup,
 	.digest	= dcp_sha_digest,
-	.export = dcp_sha_export,
 	.import = dcp_sha_import,
+	.export = dcp_sha_export,
 	.halg	= {
 		.digestsize	= SHA256_DIGEST_SIZE,
 		.statesize	= sizeof(struct dcp_export_state),
@@ -1011,8 +994,6 @@ static int mxs_dcp_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct dcp *sdcp = NULL;
 	int i, ret;
-
-	struct resource *iores;
 	int dcp_vmi_irq, dcp_irq;
 
 	if (global_sdcp) {
@@ -1020,25 +1001,20 @@ static int mxs_dcp_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	iores = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	dcp_vmi_irq = platform_get_irq(pdev, 0);
-	if (dcp_vmi_irq < 0) {
-		dev_err(dev, "Failed to get IRQ: (%d)!\n", dcp_vmi_irq);
+	if (dcp_vmi_irq < 0)
 		return dcp_vmi_irq;
-	}
 
 	dcp_irq = platform_get_irq(pdev, 1);
-	if (dcp_irq < 0) {
-		dev_err(dev, "Failed to get IRQ: (%d)!\n", dcp_irq);
+	if (dcp_irq < 0)
 		return dcp_irq;
-	}
 
 	sdcp = devm_kzalloc(dev, sizeof(*sdcp), GFP_KERNEL);
 	if (!sdcp)
 		return -ENOMEM;
 
 	sdcp->dev = dev;
-	sdcp->base = devm_ioremap_resource(dev, iores);
+	sdcp->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(sdcp->base))
 		return PTR_ERR(sdcp->base);
 
@@ -1086,10 +1062,23 @@ static int mxs_dcp_probe(struct platform_device *pdev)
 	/* Re-align the structure so it fits the DCP constraints. */
 	sdcp->coh = PTR_ALIGN(sdcp->coh, DCP_ALIGNMENT);
 
-	/* Restart the DCP block. */
-	ret = stmp_reset_block(sdcp->base);
+	/* DCP clock is optional, only used on some SOCs */
+	sdcp->dcp_clk = devm_clk_get(dev, "dcp");
+	if (IS_ERR(sdcp->dcp_clk)) {
+		if (sdcp->dcp_clk != ERR_PTR(-ENOENT))
+			return PTR_ERR(sdcp->dcp_clk);
+		sdcp->dcp_clk = NULL;
+	}
+	ret = clk_prepare_enable(sdcp->dcp_clk);
 	if (ret)
 		return ret;
+
+	/* Restart the DCP block. */
+	ret = stmp_reset_block(sdcp->base);
+	if (ret) {
+		dev_err(dev, "Failed reset\n");
+		goto err_disable_unprepare_clk;
+	}
 
 	/* Initialize control register. */
 	writel(MXS_DCP_CTRL_GATHER_RESIDUAL_WRITES |
@@ -1132,7 +1121,8 @@ static int mxs_dcp_probe(struct platform_device *pdev)
 						      NULL, "mxs_dcp_chan/sha");
 	if (IS_ERR(sdcp->thread[DCP_CHAN_HASH_SHA])) {
 		dev_err(dev, "Error starting SHA thread!\n");
-		return PTR_ERR(sdcp->thread[DCP_CHAN_HASH_SHA]);
+		ret = PTR_ERR(sdcp->thread[DCP_CHAN_HASH_SHA]);
+		goto err_disable_unprepare_clk;
 	}
 
 	sdcp->thread[DCP_CHAN_CRYPTO] = kthread_run(dcp_chan_thread_aes,
@@ -1189,6 +1179,10 @@ err_destroy_aes_thread:
 
 err_destroy_sha_thread:
 	kthread_stop(sdcp->thread[DCP_CHAN_HASH_SHA]);
+
+err_disable_unprepare_clk:
+	clk_disable_unprepare(sdcp->dcp_clk);
+
 	return ret;
 }
 
@@ -1208,10 +1202,7 @@ static int mxs_dcp_remove(struct platform_device *pdev)
 	kthread_stop(sdcp->thread[DCP_CHAN_HASH_SHA]);
 	kthread_stop(sdcp->thread[DCP_CHAN_CRYPTO]);
 
-#ifdef CONFIG_ARM
-	/* shut clocks off before finalizing shutdown */
-	clk_disable(sdcp->dcp_clk);
-#endif
+	clk_disable_unprepare(sdcp->dcp_clk);
 
 	platform_set_drvdata(pdev, NULL);
 

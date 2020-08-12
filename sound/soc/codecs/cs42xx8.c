@@ -14,7 +14,7 @@
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
-#include <linux/of_gpio.h>
+#include <linux/gpio/consumer.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
 #include <sound/pcm_params.h>
@@ -46,8 +46,8 @@ struct cs42xx8_priv {
 	bool is_tdm;
 	unsigned long sysclk;
 	u32 tx_channels;
-	int rate[2];
-	int reset_gpio;
+	struct gpio_desc *gpiod_reset;
+	u32 rate[2];
 };
 
 /* -127.5dB to 0dB with step of 0.5dB */
@@ -175,6 +175,15 @@ struct cs42xx8_ratios {
 	unsigned int ratio[3];
 };
 
+/*
+ * According to reference mannual, define the cs42xx8_ratio struct
+ * MFreq2 | MFreq1 | MFreq0 |     Description     | SSM | DSM | QSM |
+ * 0      | 0      | 0      |1.029MHz to 12.8MHz  | 256 | 128 |  64 |
+ * 0      | 0      | 1      |1.536MHz to 19.2MHz  | 384 | 192 |  96 |
+ * 0      | 1      | 0      |2.048MHz to 25.6MHz  | 512 | 256 | 128 |
+ * 0      | 1      | 1      |3.072MHz to 38.4MHz  | 768 | 384 | 192 |
+ * 1      | x      | x      |4.096MHz to 51.2MHz  |1024 | 512 | 256 |
+ */
 static const struct cs42xx8_ratios cs42xx8_ratios[] = {
 	{ 0, 1029000, 12800000, {256, 128, 64} },
 	{ 2, 1536000, 19200000, {384, 192, 96} },
@@ -269,25 +278,27 @@ static int cs42xx8_hw_params(struct snd_pcm_substream *substream,
 	ratio[tx] = rate[tx] > 0 ? cs42xx8->sysclk / rate[tx] : 0;
 	ratio[!tx] = rate[!tx] > 0 ? cs42xx8->sysclk / rate[!tx] : 0;
 
+	/* Get functional mode for tx and rx according to rate */
 	for (i = 0; i < 2; i++) {
-		if (cs42xx8->slave_mode[i]) {
+		if (cs42xx8->slave_mode) {
 			fm[i] = CS42XX8_FM_AUTO;
 		} else {
-			if (rate[i] < 50000)
+			if (rate[i] < 50000) {
 				fm[i] = CS42XX8_FM_SINGLE;
-			else if (rate[i] > 50000 && rate[i] < 100000)
+			} else if (rate[i] > 50000 && rate[i] < 100000) {
 				fm[i] = CS42XX8_FM_DOUBLE;
-			else if (rate[i] > 100000 && rate[i] < 200000)
+			} else if (rate[i] > 100000 && rate[i] < 200000) {
 				fm[i] = CS42XX8_FM_QUAD;
-			else {
+			} else {
 				dev_err(component->dev,
-				"unsupported sample rate or rate combine\n");
+					"unsupported sample rate\n");
 				return -EINVAL;
 			}
 		}
 	}
 
 	for (i = 0; i < ARRAY_SIZE(cs42xx8_ratios); i++) {
+		/* Is the ratio[tx] valid ? */
 		condition1 = ((fm[tx] == CS42XX8_FM_AUTO) ?
 			(cs42xx8_ratios[i].ratio[0] == ratio[tx] ||
 			cs42xx8_ratios[i].ratio[1] == ratio[tx] ||
@@ -296,18 +307,23 @@ static int cs42xx8_hw_params(struct snd_pcm_substream *substream,
 			cs42xx8->sysclk >= cs42xx8_ratios[i].min_mclk &&
 			cs42xx8->sysclk <= cs42xx8_ratios[i].max_mclk;
 
-		if (ratio[tx] <= 0)
+		if (!ratio[tx])
 			condition1 = true;
 
+		/* Is the ratio[!tx] valid ? */
 		condition2 = ((fm[!tx] == CS42XX8_FM_AUTO) ?
 			(cs42xx8_ratios[i].ratio[0] == ratio[!tx] ||
 			cs42xx8_ratios[i].ratio[1] == ratio[!tx] ||
 			cs42xx8_ratios[i].ratio[2] == ratio[!tx]) :
 			(cs42xx8_ratios[i].ratio[fm[!tx]] == ratio[!tx]));
 
-		if (ratio[!tx] <= 0)
+		if (!ratio[!tx])
 			condition2 = true;
 
+		/*
+		 * Both ratio[tx] and ratio[!tx] is valid, then we get
+		 * a proper MFreq.
+		 */
 		if (condition1 && condition2)
 			break;
 	}
@@ -319,16 +335,6 @@ static int cs42xx8_hw_params(struct snd_pcm_substream *substream,
 
 	cs42xx8->rate[tx] = params_rate(params);
 
-	if (cs42xx8->is_tdm && !cs42xx8->slave_mode[tx]) {
-		dev_err(component->dev, "TDM mode is unsupported in master mode\n");
-		return -EINVAL;
-	}
-
-	if (cs42xx8->is_tdm && (cs42xx8->sysclk < 256 * cs42xx8->rate[tx])) {
-		dev_err(component->dev, "unsupported sysclk for TDM mode\n");
-		return -EINVAL;
-	}
-
 	mask = CS42XX8_FUNCMOD_MFREQ_MASK;
 	val = cs42xx8_ratios[i].mfreq;
 
@@ -336,6 +342,22 @@ static int cs42xx8_hw_params(struct snd_pcm_substream *substream,
 			   CS42XX8_FUNCMOD_xC_FM_MASK(tx) | mask,
 			   CS42XX8_FUNCMOD_xC_FM(tx, fm[tx]) | val);
 
+	return 0;
+}
+
+static int cs42xx8_hw_free(struct snd_pcm_substream *substream,
+			   struct snd_soc_dai *dai)
+{
+	struct snd_soc_component *component = dai->component;
+	struct cs42xx8_priv *cs42xx8 = snd_soc_component_get_drvdata(component);
+	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
+
+	/* Clear stored rate */
+	cs42xx8->rate[tx] = 0;
+
+	regmap_update_bits(cs42xx8->regmap, CS42XX8_FUNCMOD,
+			   CS42XX8_FUNCMOD_xC_FM_MASK(tx),
+			   CS42XX8_FUNCMOD_xC_FM(tx, CS42XX8_FM_AUTO));
 	return 0;
 }
 
@@ -544,16 +566,12 @@ int cs42xx8_probe(struct device *dev, struct regmap *regmap)
 		return -EINVAL;
 	}
 
-	cs42xx8->reset_gpio = of_get_named_gpio(np, "reset-gpio", 0);
-	if (gpio_is_valid(cs42xx8->reset_gpio)) {
-		ret = devm_gpio_request_one(dev, cs42xx8->reset_gpio,
-				GPIOF_OUT_INIT_LOW, "cs42xx8 reset");
-		if (ret) {
-			dev_err(dev, "unable to get reset gpio\n");
-			return ret;
-		}
-		gpio_set_value_cansleep(cs42xx8->reset_gpio, 1);
-	}
+	cs42xx8->gpiod_reset = devm_gpiod_get_optional(dev, "reset",
+							GPIOD_OUT_HIGH);
+	if (IS_ERR(cs42xx8->gpiod_reset))
+		return PTR_ERR(cs42xx8->gpiod_reset);
+
+	gpiod_set_value_cansleep(cs42xx8->gpiod_reset, 0);
 
 	cs42xx8->clk = devm_clk_get(dev, "mclk");
 	if (IS_ERR(cs42xx8->clk)) {
@@ -647,10 +665,7 @@ static int cs42xx8_runtime_resume(struct device *dev)
 		return ret;
 	}
 
-	if (gpio_is_valid(cs42xx8->reset_gpio)) {
-		gpio_set_value_cansleep(cs42xx8->reset_gpio, 0);
-		gpio_set_value_cansleep(cs42xx8->reset_gpio, 1);
-	}
+	gpiod_set_value_cansleep(cs42xx8->gpiod_reset, 0);
 
 	ret = regulator_bulk_enable(ARRAY_SIZE(cs42xx8->supplies),
 				    cs42xx8->supplies);
@@ -668,6 +683,7 @@ static int cs42xx8_runtime_resume(struct device *dev)
 				CS42XX8_PWRCTL_PDN_MASK, 0);
 
 	regcache_cache_only(cs42xx8->regmap, false);
+	regcache_mark_dirty(cs42xx8->regmap);
 
 	ret = regcache_sync(cs42xx8->regmap);
 	if (ret) {
@@ -695,6 +711,8 @@ static int cs42xx8_runtime_suspend(struct device *dev)
 	regulator_bulk_disable(ARRAY_SIZE(cs42xx8->supplies),
 			       cs42xx8->supplies);
 
+	gpiod_set_value_cansleep(cs42xx8->gpiod_reset, 1);
+
 	clk_disable_unprepare(cs42xx8->clk);
 
 	return 0;
@@ -703,7 +721,7 @@ static int cs42xx8_runtime_suspend(struct device *dev)
 
 const struct dev_pm_ops cs42xx8_pm = {
 	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
-			pm_runtime_force_resume)
+				pm_runtime_force_resume)
 	SET_RUNTIME_PM_OPS(cs42xx8_runtime_suspend, cs42xx8_runtime_resume, NULL)
 };
 EXPORT_SYMBOL_GPL(cs42xx8_pm);

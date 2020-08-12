@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright (C) 2016 Marek Vasut <marex@denx.de>
  *
@@ -5,34 +6,25 @@
  * Copyright (C) 2010 Juergen Beisert, Pengutronix
  * Copyright (C) 2008-2009 Freescale Semiconductor, Inc. All Rights Reserved.
  * Copyright (C) 2008 Embedded Alley Solutions, Inc All Rights Reserved.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
-#include <drm/drmP.h>
-#include <drm/drm_atomic.h>
-#include <drm/drm_atomic_helper.h>
-#include <drm/drm_crtc.h>
-#include <drm/drm_crtc_helper.h>
-#include <drm/drm_fb_helper.h>
-#include <drm/drm_fb_cma_helper.h>
-#include <drm/drm_gem_cma_helper.h>
-#include <drm/drm_of.h>
-#include <drm/drm_plane_helper.h>
-#include <drm/drm_simple_kms_helper.h>
-#include <linux/busfreq-imx.h>
 #include <linux/clk.h>
 #include <linux/iopoll.h>
 #include <linux/of_graph.h>
 #include <linux/platform_data/simplefb.h>
+
 #include <video/videomode.h>
+
+#include <drm/drm_atomic_helper.h>
+#include <drm/drm_crtc.h>
+#include <drm/drm_fb_cma_helper.h>
+#include <drm/drm_fb_helper.h>
+#include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_of.h>
+#include <drm/drm_plane_helper.h>
+#include <drm/drm_probe_helper.h>
+#include <drm/drm_simple_kms_helper.h>
+#include <drm/drm_vblank.h>
 
 #include "mxsfb_drv.h"
 #include "mxsfb_regs.h"
@@ -232,20 +224,6 @@ static void mxsfb_enable_controller(struct mxsfb_drm_private *mxsfb)
 		clk_prepare_enable(mxsfb->clk_disp_axi);
 	clk_prepare_enable(mxsfb->clk);
 
-	if (mxsfb->devdata->ipversion >= 4) {
-		/*
-		 * On some platforms, bit 21 is defaulted to 1, which may alter
-		 * the below setting. So, to make sure we have the right setting
-		 * clear all the bits for CTRL2_OUTSTANDING_REQS.
-		 */
-		writel(CTRL2_OUTSTANDING_REQS(0x7),
-			mxsfb->base + LCDC_V4_CTRL2 + REG_CLR);
-		writel(CTRL2_OUTSTANDING_REQS(REQ_16),
-			mxsfb->base + LCDC_V4_CTRL2 + REG_SET);
-		/* Assert LCD Reset bit */
-		writel(CTRL2_LCD_RESET, mxsfb->base + LCDC_V4_CTRL2 + REG_SET);
-	}
-
 	/* If it was disabled, re-enable the mode again */
 	writel(CTRL_DOTCLK_MODE, mxsfb->base + LCDC_CTRL + REG_SET);
 
@@ -390,12 +368,12 @@ static void mxsfb_crtc_mode_set_nofb(struct mxsfb_drm_private *mxsfb)
 	if (!(bus_flags & DRM_BUS_FLAG_DE_LOW))
 		vdctrl0 |= VDCTRL0_ENABLE_ACT_HIGH;
 	/*
-	 * DRM_BUS_FLAG_PIXDATA_ defines are controller centric,
+	 * DRM_BUS_FLAG_PIXDATA_DRIVE_ defines are controller centric,
 	 * controllers VDCTRL0_DOTCLK is display centric.
 	 * Drive on positive edge       -> display samples on falling edge
-	 * DRM_BUS_FLAG_PIXDATA_POSEDGE -> VDCTRL0_DOTCLK_ACT_FALLING
+	 * DRM_BUS_FLAG_PIXDATA_DRIVE_POSEDGE -> VDCTRL0_DOTCLK_ACT_FALLING
 	 */
-	if (bus_flags & DRM_BUS_FLAG_PIXDATA_POSEDGE)
+	if (bus_flags & DRM_BUS_FLAG_PIXDATA_DRIVE_POSEDGE)
 		vdctrl0 |= VDCTRL0_DOTCLK_ACT_FALLING;
 
 	writel(vdctrl0, mxsfb->base + LCDC_VDCTRL0);
@@ -423,11 +401,7 @@ void mxsfb_crtc_enable(struct mxsfb_drm_private *mxsfb)
 {
 	dma_addr_t paddr;
 
-	if (mxsfb->devdata->flags & MXSFB_FLAG_BUSFREQ)
-		request_bus_freq(BUS_FREQ_HIGH);
-
-	clk_prepare_enable(mxsfb->clk_axi);
-	writel(0, mxsfb->base + LCDC_CTRL);
+	mxsfb_enable_axi_clk(mxsfb);
 	mxsfb_crtc_mode_set_nofb(mxsfb);
 
 	/* Write cur_buf as well to avoid an initial corrupt frame */
@@ -443,61 +417,7 @@ void mxsfb_crtc_enable(struct mxsfb_drm_private *mxsfb)
 void mxsfb_crtc_disable(struct mxsfb_drm_private *mxsfb)
 {
 	mxsfb_disable_controller(mxsfb);
-	clk_disable_unprepare(mxsfb->clk_axi);
-
-	if (mxsfb->devdata->flags & MXSFB_FLAG_BUSFREQ)
-		release_bus_freq(BUS_FREQ_HIGH);
-}
-
-void mxsfb_set_fb_hcrop(struct mxsfb_drm_private *mxsfb, u32 src_w, u32 fb_w)
-{
-	u32 mask_cnt, htotal, hcount;
-	u32 vdctrl2, vdctrl3, vdctrl4, transfer_count;
-	u32 pigeon_12_0, pigeon_12_1, pigeon_12_2;
-
-	if (src_w == fb_w) {
-		writel(0x0, mxsfb->base + HW_EPDC_PIGEON_12_0);
-		writel(0x0, mxsfb->base + HW_EPDC_PIGEON_12_1);
-
-		return;
-	}
-
-	transfer_count = readl(mxsfb->base + LCDC_V4_TRANSFER_COUNT);
-	hcount = TRANSFER_COUNT_GET_HCOUNT(transfer_count);
-
-	transfer_count &= ~TRANSFER_COUNT_SET_HCOUNT(0xffff);
-	transfer_count |= TRANSFER_COUNT_SET_HCOUNT(fb_w);
-	writel(transfer_count, mxsfb->base + LCDC_V4_TRANSFER_COUNT);
-
-	vdctrl2 = readl(mxsfb->base + LCDC_VDCTRL2);
-	htotal  = VDCTRL2_GET_HSYNC_PERIOD(vdctrl2);
-	htotal  += fb_w - hcount;
-	vdctrl2 &= ~VDCTRL2_SET_HSYNC_PERIOD(0x3ffff);
-	vdctrl2 |= VDCTRL2_SET_HSYNC_PERIOD(htotal);
-	writel(vdctrl2, mxsfb->base + LCDC_VDCTRL2);
-
-	vdctrl4 = readl(mxsfb->base + LCDC_VDCTRL4);
-	vdctrl4 &= ~SET_DOTCLK_H_VALID_DATA_CNT(0x3ffff);
-	vdctrl4 |= SET_DOTCLK_H_VALID_DATA_CNT(fb_w);
-	writel(vdctrl4, mxsfb->base + LCDC_VDCTRL4);
-
-	/* configure related pigeon registers */
-	vdctrl3  = readl(mxsfb->base + LCDC_VDCTRL3);
-	mask_cnt = GET_HOR_WAIT_CNT(vdctrl3) - 5;
-
-	pigeon_12_0 = PIGEON_12_0_SET_STATE_MASK(0x24)		|
-		      PIGEON_12_0_SET_MASK_CNT(mask_cnt)	|
-		      PIGEON_12_0_SET_MASK_CNT_SEL(0x6)		|
-		      PIGEON_12_0_POL_ACTIVE_LOW		|
-		      PIGEON_12_0_EN;
-	writel(pigeon_12_0, mxsfb->base + HW_EPDC_PIGEON_12_0);
-
-	pigeon_12_1 = PIGEON_12_1_SET_CLR_CNT(src_w) |
-		      PIGEON_12_1_SET_SET_CNT(0x0);
-	writel(pigeon_12_1, mxsfb->base + HW_EPDC_PIGEON_12_1);
-
-	pigeon_12_2 = 0x0;
-	writel(pigeon_12_2, mxsfb->base + HW_EPDC_PIGEON_12_2);
+	mxsfb_disable_axi_clk(mxsfb);
 }
 
 void mxsfb_plane_atomic_update(struct mxsfb_drm_private *mxsfb,
@@ -505,11 +425,7 @@ void mxsfb_plane_atomic_update(struct mxsfb_drm_private *mxsfb,
 {
 	struct drm_simple_display_pipe *pipe = &mxsfb->pipe;
 	struct drm_crtc *crtc = &pipe->crtc;
-	struct drm_plane_state *state = pipe->plane.state;
-	struct drm_framebuffer *fb = pipe->plane.state->fb;
-	struct drm_framebuffer *old_fb = old_state->fb;
 	struct drm_pending_vblank_event *event;
-	u32 fb_addr, src_off, src_w, cpp, stride;
 	dma_addr_t paddr;
 
 	spin_lock_irq(&crtc->dev->event_lock);
@@ -525,38 +441,10 @@ void mxsfb_plane_atomic_update(struct mxsfb_drm_private *mxsfb,
 	}
 	spin_unlock_irq(&crtc->dev->event_lock);
 
-	if (!fb || !old_fb)
-		return;
-
 	paddr = mxsfb_get_fb_paddr(mxsfb);
-	cpp = fb->format->cpp[0];
-	src_off = (state->src_y >> 16) * fb->pitches[0] +
-		  (state->src_x >> 16) * cpp;
-	fb_addr = paddr + fb->offsets[0] + src_off;
-
 	if (paddr) {
-		clk_prepare_enable(mxsfb->clk_axi);
-		writel(fb_addr, mxsfb->base + mxsfb->devdata->next_buf);
-		clk_disable_unprepare(mxsfb->clk_axi);
-	}
-
-	if (unlikely(drm_atomic_crtc_needs_modeset(state->crtc->state))) {
-		stride = DIV_ROUND_UP(fb->pitches[0], cpp);
-		src_w = state->src_w >> 16;
-		mxsfb_set_fb_hcrop(mxsfb, src_w, stride);
-	}
-
-	/*
-	 * TODO: Currently, we only support pixel format change, but we need
-	 * also to care about size changes too
-	 */
-	if (old_fb->format->format != fb->format->format) {
-		struct drm_format_name_buf old_fmt_buf;
-		struct drm_format_name_buf new_fmt_buf;
-		DRM_DEV_DEBUG_DRIVER(mxsfb->dev,
-				"Switching pixel format: %s -> %s\n",
-				drm_get_format_name(old_fb->format->format, &old_fmt_buf),
-				drm_get_format_name(fb->format->format, &new_fmt_buf));
-		mxsfb_set_pixel_fmt(mxsfb, true);
+		mxsfb_enable_axi_clk(mxsfb);
+		writel(paddr, mxsfb->base + mxsfb->devdata->next_buf);
+		mxsfb_disable_axi_clk(mxsfb);
 	}
 }

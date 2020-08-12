@@ -202,7 +202,7 @@
 #define IMX6SLL_CLK_GPIO4               176
 #define IMX6SLL_CLK_GPIO5               177
 #define IMX6SLL_CLK_GPIO6               178
-#define IMX6SLL_CLK_GPT_3M		179
+#define IMX6SLL_CLK_MMDC_P1_IPG		179
 
 #define IMX6SLL_CLK_END			180
 

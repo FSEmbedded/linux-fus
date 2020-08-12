@@ -1,9 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2014-2015 Freescale Semiconductor, Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Copyright (C) 2014 Freescale Semiconductor, Inc.
  */
 
 #include <linux/busfreq-imx.h>
@@ -27,47 +24,6 @@
 #include "common.h"
 #include "cpuidle.h"
 #include "hardware.h"
-
-#define MX6_MAX_MMDC_IO_NUM	19
-
-#define PMU_LOW_PWR_CTRL	0x270
-#define XTALOSC24M_OSC_CONFIG0	0x2a0
-#define XTALOSC24M_OSC_CONFIG1	0x2b0
-#define XTALOSC24M_OSC_CONFIG2	0x2c0
-#define XTALOSC24M_OSC_CONFIG0_RC_OSC_PROG_CUR_SHIFT	24
-#define XTALOSC24M_OSC_CONFIG0_HYST_MINUS_MASK		0xf
-#define XTALOSC24M_OSC_CONFIG0_HYST_MINUS_SHIFT		16
-#define XTALOSC24M_OSC_CONFIG0_HYST_PLUS_MASK		0xf
-#define XTALOSC24M_OSC_CONFIG0_HYST_PLUS_SHIFT		12
-#define XTALOSC24M_OSC_CONFIG0_RC_OSC_PROG_SHIFT	4
-#define XTALOSC24M_OSC_CONFIG0_ENABLE_SHIFT		1
-#define XTALOSC24M_OSC_CONFIG0_START_SHIFT		0
-#define XTALOSC24M_OSC_CONFIG1_COUNT_RC_CUR_SHIFT	20
-#define XTALOSC24M_OSC_CONFIG1_COUNT_RC_TRG_SHIFT	0
-#define XTALOSC24M_OSC_CONFIG2_COUNT_1M_TRG_MASK	0xfff
-#define XTALOSC24M_OSC_CONFIG2_COUNT_1M_TRG_SHIFT	0
-
-extern unsigned long iram_tlb_phys_addr;
-
-static void __iomem *wfi_iram_base;
-#ifdef CONFIG_CPU_FREQ
-static void __iomem *wfi_iram_base_phys;
-extern unsigned long mx6sx_lpm_wfi_start asm("mx6sx_lpm_wfi_start");
-extern unsigned long mx6sx_lpm_wfi_end asm("mx6sx_lpm_wfi_end");
-#endif
-
-struct imx6_pm_base {
-	phys_addr_t pbase;
-	void __iomem *vbase;
-};
-
-static const u32 imx6sx_mmdc_io_offset[] __initconst = {
-	0x2ec, 0x2f0, 0x2f4, 0x2f8, /* DQM0 ~ DQM3 */
-	0x330, 0x334, 0x338, 0x33c, /* SDQS0 ~ SDQS3 */
-	0x60c, 0x610, 0x61c, 0x620, /* B0DS ~ B3DS */
-	0x5f8, 0x608, 0x310, 0x314, /* CTL, MODE, SODT0, SODT1 */
-	0x300, 0x2fc, 0x32c,	    /* CAS, RAS, SDCLK_0 */
-};
 
 struct imx6_cpuidle_pm_info {
 	phys_addr_t pbase; /* The physical address of pm_info. */
@@ -234,60 +190,16 @@ int __init imx6sx_cpuidle_init(void)
 #endif
 
 	imx6_set_int_mem_clk_lpm(true);
-
-	if (imx_get_soc_revision() >= IMX_CHIP_REVISION_1_2) {
-		/*
-		 * enable RC-OSC here, as it needs at least 4ms for RC-OSC to
-		 * be stable, low power idle flow can NOT endure this big
-		 * latency, so we make RC-OSC self-tuning enabled here.
-		 */
-		val = readl_relaxed(anatop_base + PMU_LOW_PWR_CTRL);
-		val |= 0x1;
-		writel_relaxed(val, anatop_base + PMU_LOW_PWR_CTRL);
-		/*
-		 * config RC-OSC freq
-		 * tune_enable = 1;tune_start = 1;hyst_plus = 0;hyst_minus = 0;
-		 * osc_prog = 0xa7;
-		 */
-		writel_relaxed(
-			0x4 << XTALOSC24M_OSC_CONFIG0_RC_OSC_PROG_CUR_SHIFT |
-			0xa7 << XTALOSC24M_OSC_CONFIG0_RC_OSC_PROG_SHIFT |
-			0x1 << XTALOSC24M_OSC_CONFIG0_ENABLE_SHIFT |
-			0x1 << XTALOSC24M_OSC_CONFIG0_START_SHIFT,
-			anatop_base + XTALOSC24M_OSC_CONFIG0);
-		/* set count_trg = 0x2dc */
-		writel_relaxed(
-			0x40 << XTALOSC24M_OSC_CONFIG1_COUNT_RC_CUR_SHIFT |
-			0x2dc << XTALOSC24M_OSC_CONFIG1_COUNT_RC_TRG_SHIFT,
-			anatop_base + XTALOSC24M_OSC_CONFIG1);
-		/* wait 4ms according to hardware design */
-		msleep(4);
-		/*
-		 * now add some hysteresis, hyst_plus=3, hyst_minus=3
-		 * (the minimum hysteresis that looks good is 2)
-		 */
-		val = readl_relaxed(anatop_base + XTALOSC24M_OSC_CONFIG0);
-		val &= ~((XTALOSC24M_OSC_CONFIG0_HYST_MINUS_MASK <<
-			XTALOSC24M_OSC_CONFIG0_HYST_MINUS_SHIFT) |
-			(XTALOSC24M_OSC_CONFIG0_HYST_PLUS_MASK <<
-			XTALOSC24M_OSC_CONFIG0_HYST_PLUS_SHIFT));
-		val |= (0x3 << XTALOSC24M_OSC_CONFIG0_HYST_MINUS_SHIFT) |
-			(0x3 << XTALOSC24M_OSC_CONFIG0_HYST_PLUS_SHIFT);
-		writel_relaxed(val, anatop_base  + XTALOSC24M_OSC_CONFIG0);
-		/* set the count_1m_trg = 0x2d7 */
-		val = readl_relaxed(anatop_base  + XTALOSC24M_OSC_CONFIG2);
-		val &= ~(XTALOSC24M_OSC_CONFIG2_COUNT_1M_TRG_MASK <<
-			XTALOSC24M_OSC_CONFIG2_COUNT_1M_TRG_SHIFT);
-		val |= 0x2d7 << XTALOSC24M_OSC_CONFIG2_COUNT_1M_TRG_SHIFT;
-		writel_relaxed(val, anatop_base  + XTALOSC24M_OSC_CONFIG2);
-		/*
-		 * hardware design require to write XTALOSC24M_OSC_CONFIG0 or
-		 * XTALOSC24M_OSC_CONFIG1 to
-		 * make XTALOSC24M_OSC_CONFIG2 write work
-		 */
-		val = readl_relaxed(anatop_base  + XTALOSC24M_OSC_CONFIG1);
-		writel_relaxed(val, anatop_base  + XTALOSC24M_OSC_CONFIG1);
-	}
+	imx6_enable_rbc(false);
+	imx_gpc_set_l2_mem_power_in_lpm(false);
+	/*
+	 * set ARM power up/down timing to the fastest,
+	 * sw2iso and sw can be set to one 32K cycle = 31us
+	 * except for power up sw2iso which need to be
+	 * larger than LDO ramp up time.
+	 */
+	imx_gpc_set_arm_power_up_timing(cpu_is_imx6sx() ? 0xf : 0x2, 1);
+	imx_gpc_set_arm_power_down_timing(1, 1);
 
 	return cpuidle_register(&imx6sx_cpuidle_driver, NULL);
 }

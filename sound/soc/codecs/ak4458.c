@@ -24,10 +24,9 @@
 
 #include "ak4458.h"
 
-#define AK4458_NUM_SUPPLIES 2
-static const char *ak4458_supply_names[AK4458_NUM_SUPPLIES] = {
-	"DVDD",
-	"AVDD",
+struct ak4458_drvdata {
+	struct snd_soc_dai_driver *dai_drv;
+	const struct snd_soc_component_driver *comp_drv;
 };
 
 /* AK4458 Codec Private Data */
@@ -268,29 +267,51 @@ static const struct snd_soc_dapm_route ak4458_intercon[] = {
 	{"AK4458 AOUTD",	NULL,	"AK4458 DAC4"},
 };
 
-static int ak4458_get_tdm_mode(struct ak4458_priv *ak4458)
-{
-	switch (ak4458->slots * ak4458->slot_width) {
-	case 128:
-		return 1;
-	case 256:
-		return 2;
-	case 512:
-		return 3;
-	default:
-		return 0;
-	}
-}
+/* ak4497 controls */
+static const struct snd_kcontrol_new ak4497_snd_controls[] = {
+	SOC_DOUBLE_R_TLV("DAC Playback Volume", AK4458_03_LCHATT,
+			 AK4458_04_RCHATT, 0, 0xFF, 0, dac_tlv),
+	SOC_ENUM("AK4497 De-emphasis Response DAC", ak4458_dac1_dem_enum),
+	SOC_ENUM_EXT("AK4497 Digital Filter Setting", ak4458_digfil_enum,
+		     get_digfil, set_digfil),
+	SOC_ENUM("AK4497 Inverting Enable of DZFB", ak4458_dzfb_enum),
+	SOC_ENUM("AK4497 Sound Mode", ak4458_sm_enum),
+	SOC_ENUM("AK4497 Attenuation transition Time Setting",
+		 ak4458_ats_enum),
+};
+
+/* ak4497 dapm widgets */
+static const struct snd_soc_dapm_widget ak4497_dapm_widgets[] = {
+	SND_SOC_DAPM_DAC("AK4497 DAC", NULL, AK4458_0A_CONTROL6, 2, 0),
+	SND_SOC_DAPM_AIF_IN("AK4497 SDTI", "Playback", 0, SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_OUTPUT("AK4497 AOUT"),
+};
+
+/* ak4497 dapm routes */
+static const struct snd_soc_dapm_route ak4497_intercon[] = {
+	{"AK4497 DAC",		NULL,	"AK4497 SDTI"},
+	{"AK4497 AOUT",		NULL,	"AK4497 DAC"},
+
+};
 
 static int ak4458_rstn_control(struct snd_soc_component *component, int bit)
 {
 	int ret, val;
 
-	val = bit ? AK4458_RSTN_MASK : 0;
-	ret = snd_soc_component_update_bits(component, AK4458_00_CONTROL1,
-					    AK4458_RSTN_MASK, val);
-	/* Return a negative error code only. */
-	return (ret < 0 ? ret : 0);
+	if (bit)
+		ret = snd_soc_component_update_bits(component,
+					  AK4458_00_CONTROL1,
+					  AK4458_RSTN_MASK,
+					  0x1);
+	else
+		ret = snd_soc_component_update_bits(component,
+					  AK4458_00_CONTROL1,
+					  AK4458_RSTN_MASK,
+					  0x0);
+	if (ret < 0)
+		return ret;
+
+	return 0;
 }
 
 static int ak4458_hw_params(struct snd_pcm_substream *substream,
@@ -546,6 +567,18 @@ static struct snd_soc_dai_driver ak4458_dai = {
 	.ops = &ak4458_dai_ops,
 };
 
+static struct snd_soc_dai_driver ak4497_dai = {
+	.name = "ak4497-aif",
+	.playback = {
+		.stream_name = "Playback",
+		.channels_min = 1,
+		.channels_max = 2,
+		.rates = SNDRV_PCM_RATE_KNOT,
+		.formats = AK4458_FORMATS,
+	},
+	.ops = &ak4458_dai_ops,
+};
+
 static void ak4458_power_off(struct ak4458_priv *ak4458)
 {
 	if (ak4458->reset_gpiod) {
@@ -573,9 +606,8 @@ static int ak4458_init(struct snd_soc_component *component)
 
 	ak4458_power_on(ak4458);
 
-	/* ACKS bit = 1; 10000000 */
 	ret = snd_soc_component_update_bits(component, AK4458_00_CONTROL1,
-					    0x80, 0x80);
+			    0x80, 0x80);   /* ACKS bit = 1; 10000000 */
 	if (ret < 0)
 		return ret;
 
@@ -587,11 +619,9 @@ static int ak4458_probe(struct snd_soc_component *component)
 	struct ak4458_priv *ak4458 = snd_soc_component_get_drvdata(component);
 	int ret;
 
-	ret = ak4458_init(component);
-
 	ak4458->fs = 48000;
 
-	return ret;
+	return ak4458_init(component);
 }
 
 static void ak4458_remove(struct snd_soc_component *component)
@@ -648,6 +678,21 @@ static const struct snd_soc_component_driver soc_codec_dev_ak4458 = {
 	.non_legacy_dai_naming	= 1,
 };
 
+static const struct snd_soc_component_driver soc_codec_dev_ak4497 = {
+	.probe			= ak4458_probe,
+	.remove			= ak4458_remove,
+	.controls		= ak4497_snd_controls,
+	.num_controls		= ARRAY_SIZE(ak4497_snd_controls),
+	.dapm_widgets		= ak4497_dapm_widgets,
+	.num_dapm_widgets	= ARRAY_SIZE(ak4497_dapm_widgets),
+	.dapm_routes		= ak4497_intercon,
+	.num_dapm_routes	= ARRAY_SIZE(ak4497_intercon),
+	.idle_bias_on		= 1,
+	.use_pmdown_time	= 1,
+	.endianness		= 1,
+	.non_legacy_dai_naming	= 1,
+};
+
 static const struct regmap_config ak4458_regmap = {
 	.reg_bits = 8,
 	.val_bits = 8,
@@ -656,6 +701,16 @@ static const struct regmap_config ak4458_regmap = {
 	.reg_defaults = ak4458_reg_defaults,
 	.num_reg_defaults = ARRAY_SIZE(ak4458_reg_defaults),
 	.cache_type = REGCACHE_RBTREE,
+};
+
+static const struct ak4458_drvdata ak4458_drvdata = {
+	.dai_drv = &ak4458_dai,
+	.comp_drv = &soc_codec_dev_ak4458,
+};
+
+static const struct ak4458_drvdata ak4497_drvdata = {
+	.dai_drv = &ak4497_dai,
+	.comp_drv = &soc_codec_dev_ak4497,
 };
 
 static const struct dev_pm_ops ak4458_pm = {
@@ -667,6 +722,7 @@ static const struct dev_pm_ops ak4458_pm = {
 static int ak4458_i2c_probe(struct i2c_client *i2c)
 {
 	struct ak4458_priv *ak4458;
+	const struct ak4458_drvdata *drvdata;
 	int ret;
 	int i;
 
@@ -681,6 +737,8 @@ static int ak4458_i2c_probe(struct i2c_client *i2c)
 	i2c_set_clientdata(i2c, ak4458);
 	ak4458->dev = &i2c->dev;
 
+	drvdata = of_device_get_match_data(&i2c->dev);
+
 	ak4458->reset_gpiod = devm_gpiod_get_optional(ak4458->dev, "reset",
 						      GPIOD_OUT_LOW);
 	if (IS_ERR(ak4458->reset_gpiod))
@@ -691,25 +749,8 @@ static int ak4458_i2c_probe(struct i2c_client *i2c)
 	if (IS_ERR(ak4458->mute_gpiod))
 		return PTR_ERR(ak4458->mute_gpiod);
 
-	for (i = 0; i < ARRAY_SIZE(ak4458->supplies); i++)
-		ak4458->supplies[i].supply = ak4458_supply_names[i];
-
-	ret = devm_regulator_bulk_get(ak4458->dev, ARRAY_SIZE(ak4458->supplies),
-				 ak4458->supplies);
-	if (ret != 0) {
-		dev_err(ak4458->dev, "Failed to request supplies: %d\n", ret);
-		return ret;
-	}
-
-	ret = regulator_bulk_enable(ARRAY_SIZE(ak4458->supplies),
-				    ak4458->supplies);
-	if (ret != 0) {
-		dev_err(ak4458->dev, "Failed to enable supplies: %d\n", ret);
-		return ret;
-	}
-
-	ret = devm_snd_soc_register_component(ak4458->dev, &soc_codec_dev_ak4458,
-				     &ak4458_dai, 1);
+	ret = devm_snd_soc_register_component(ak4458->dev, drvdata->comp_drv,
+					      drvdata->dai_drv, 1);
 	if (ret < 0) {
 		dev_err(ak4458->dev, "Failed to register CODEC: %d\n", ret);
 		return ret;
@@ -728,7 +769,8 @@ static int ak4458_i2c_remove(struct i2c_client *i2c)
 }
 
 static const struct of_device_id ak4458_of_match[] = {
-	{ .compatible = "asahi-kasei,ak4458", },
+	{ .compatible = "asahi-kasei,ak4458", .data = &ak4458_drvdata},
+	{ .compatible = "asahi-kasei,ak4497", .data = &ak4497_drvdata},
 	{ },
 };
 

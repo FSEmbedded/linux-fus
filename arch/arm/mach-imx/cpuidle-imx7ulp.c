@@ -1,9 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Copyright 2017-2018 NXP
+ *   Anson Huang <Anson.Huang@nxp.com>
  */
 
 #include <linux/cpuidle.h>
@@ -12,19 +11,18 @@
 
 #include "common.h"
 #include "cpuidle.h"
-#include "hardware.h"
 
 static int imx7ulp_enter_wait(struct cpuidle_device *dev,
 			    struct cpuidle_driver *drv, int index)
 {
 	if (index == 1)
-		imx7ulp_set_lpm(WAIT);
+		imx7ulp_set_lpm(ULP_PM_WAIT);
 	else
-		imx7ulp_set_lpm(STOP);
+		imx7ulp_set_lpm(ULP_PM_STOP);
 
 	cpu_do_idle();
 
-	imx7ulp_set_lpm(RUN);
+	imx7ulp_set_lpm(ULP_PM_RUN);
 
 	return index;
 }

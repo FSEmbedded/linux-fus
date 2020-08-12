@@ -13,7 +13,7 @@
 #include <linux/usb/hcd.h>
 #include <linux/usb/chipidea.h>
 #include <linux/regulator/consumer.h>
-#include <linux/imx_gpc.h>
+#include <linux/pinctrl/consumer.h>
 
 #include "../host/ehci.h"
 
@@ -337,12 +337,9 @@ static int host_start(struct ci_hdrc *ci)
 		}
 	}
 
-	if (ci_otg_is_fsm_mode(ci)) {
-		if (ci->fsm.id && ci->fsm.otg->state <= OTG_STATE_B_HOST)
-			hcd->self.is_b_host = 1;
-		else
-			hcd->self.is_b_host = 0;
-	}
+	if (ci->platdata->pins_host)
+		pinctrl_select_state(ci->platdata->pctl,
+				     ci->platdata->pins_host);
 
 	ret = usb_add_hcd(hcd, 0, 0);
 	if (ret) {
@@ -357,6 +354,11 @@ static int host_start(struct ci_hdrc *ci)
 			otg->host = &hcd->self;
 			hcd->self.otg_port = 1;
 		}
+
+		if (ci->platdata->notify_event &&
+			(ci->platdata->flags & CI_HDRC_IMX_IS_HSIC))
+			ci->platdata->notify_event
+				(ci, CI_HDRC_IMX_HSIC_ACTIVE_EVENT);
 	}
 
 	if (ci->platdata->notify_event &&
@@ -396,6 +398,10 @@ static void host_stop(struct ci_hdrc *ci)
 	}
 	ci->hcd = NULL;
 	ci->otg.host = NULL;
+
+	if (ci->platdata->pins_host && ci->platdata->pins_default)
+		pinctrl_select_state(ci->platdata->pctl,
+				     ci->platdata->pins_default);
 }
 
 bool ci_hdrc_host_has_device(struct ci_hdrc *ci)
@@ -510,9 +516,85 @@ void ci_hdrc_host_destroy(struct ci_hdrc *ci)
 	}
 }
 
+/* The below code is based on tegra ehci driver */
+static int ci_ehci_hub_control(
+	struct usb_hcd	*hcd,
+	u16		typeReq,
+	u16		wValue,
+	u16		wIndex,
+	char		*buf,
+	u16		wLength
+)
+{
+	struct ehci_hcd	*ehci = hcd_to_ehci(hcd);
+	u32 __iomem	*status_reg;
+	u32		temp;
+	unsigned long	flags;
+	int		retval = 0;
+	struct device *dev = hcd->self.controller;
+	struct ci_hdrc *ci = dev_get_drvdata(dev);
+
+	status_reg = &ehci->regs->port_status[(wIndex & 0xff) - 1];
+
+	spin_lock_irqsave(&ehci->lock, flags);
+
+	if (typeReq == SetPortFeature && wValue == USB_PORT_FEAT_SUSPEND) {
+		temp = ehci_readl(ehci, status_reg);
+		if ((temp & PORT_PE) == 0 || (temp & PORT_RESET) != 0) {
+			retval = -EPIPE;
+			goto done;
+		}
+
+		temp &= ~(PORT_RWC_BITS | PORT_WKCONN_E);
+		temp |= PORT_WKDISC_E | PORT_WKOC_E;
+		ehci_writel(ehci, temp | PORT_SUSPEND, status_reg);
+
+		/*
+		 * If a transaction is in progress, there may be a delay in
+		 * suspending the port. Poll until the port is suspended.
+		 */
+		if (ehci_handshake(ehci, status_reg, PORT_SUSPEND,
+			PORT_SUSPEND, 5000))
+			ehci_err(ehci, "timeout waiting for SUSPEND\n");
+
+		if (ci->platdata->flags & CI_HDRC_IMX_IS_HSIC) {
+			if (ci->platdata->notify_event)
+				ci->platdata->notify_event(ci,
+					CI_HDRC_IMX_HSIC_SUSPEND_EVENT);
+
+			temp = ehci_readl(ehci, status_reg);
+			temp &= ~(PORT_WKDISC_E | PORT_WKCONN_E);
+			ehci_writel(ehci, temp, status_reg);
+		}
+
+		set_bit((wIndex & 0xff) - 1, &ehci->suspended_ports);
+		goto done;
+	}
+
+	/*
+	 * After resume has finished, it needs do some post resume
+	 * operation for some SoCs.
+	 */
+	else if (typeReq == ClearPortFeature &&
+		wValue == USB_PORT_FEAT_C_SUSPEND) {
+		/* Make sure the resume has finished, it should be finished */
+		if (ehci_handshake(ehci, status_reg, PORT_RESUME, 0, 25000))
+			ehci_err(ehci, "timeout waiting for resume\n");
+	}
+
+	spin_unlock_irqrestore(&ehci->lock, flags);
+
+	/* Handle the hub control events here */
+	return ehci_hub_control(hcd, typeReq, wValue, wIndex, buf, wLength);
+done:
+	spin_unlock_irqrestore(&ehci->lock, flags);
+	return retval;
+}
 static int ci_ehci_bus_suspend(struct usb_hcd *hcd)
 {
 	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
+	struct device *dev = hcd->self.controller;
+	struct ci_hdrc *ci = dev_get_drvdata(dev);
 	int port;
 	u32 tmp;
 	struct device *dev = hcd->self.controller;
@@ -546,30 +628,16 @@ static int ci_ehci_bus_suspend(struct usb_hcd *hcd)
 			 * It needs a short delay between set RS bit and PHCD.
 			 */
 			usleep_range(150, 200);
-
 			/*
-			 * If a transaction is in progress, there may be
-			 * a delay in suspending the port. Poll until the
-			 * port is suspended.
+			 * Need to clear WKCN and WKOC for imx HSIC,
+			 * otherwise, there will be wakeup event.
 			 */
-			if (test_bit(port, &ehci->bus_suspended) &&
-					ehci_handshake(ehci, reg, PORT_SUSPEND,
-							PORT_SUSPEND, 5000))
-				ehci_err(ehci, "timeout waiting for SUSPEND\n");
+			if (ci->platdata->flags & CI_HDRC_IMX_IS_HSIC) {
+				tmp = ehci_readl(ehci, reg);
+				tmp &= ~(PORT_WKDISC_E | PORT_WKCONN_E);
+				ehci_writel(ehci, tmp, reg);
+			}
 
-			if (ci->platdata->flags & CI_HDRC_IMX_IS_HSIC)
-				ci_ehci_override_wakeup_flag(ehci, reg,
-					PORT_WKDISC_E | PORT_WKCONN_E, false);
-
-			if (hcd->usb_phy && test_bit(port, &ehci->bus_suspended)
-				&& (ehci_port_speed(ehci, portsc) ==
-					USB_PORT_STAT_HIGH_SPEED))
-				/*
-				 * notify the USB PHY, it is for global
-				 * suspend case.
-				 */
-				usb_phy_notify_suspend(hcd->usb_phy,
-					USB_SPEED_HIGH);
 			break;
 		}
 	}
@@ -607,7 +675,5 @@ void ci_hdrc_host_driver_init(void)
 	orig_hub_control = ci_ehci_hc_driver.hub_control;
 
 	ci_ehci_hc_driver.bus_suspend = ci_ehci_bus_suspend;
-	ci_ehci_hc_driver.bus_resume = ci_imx_ehci_bus_resume;
-	ci_ehci_hc_driver.hub_control = ci_imx_ehci_hub_control;
-	ci_ehci_hc_driver.start_port_reset = ci_start_port_reset;
+	ci_ehci_hc_driver.hub_control = ci_ehci_hub_control;
 }
