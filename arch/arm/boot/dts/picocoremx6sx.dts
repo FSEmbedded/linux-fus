@@ -68,11 +68,10 @@ lcd_wvga {				\
 /* CMA: Set 320 MB for Continuous Memory Allocator */
 #define CONFIG_PICOCOREMX6SX_CMA_SIZE 0x14000000
 
-/* On-board NAND */
-#define CONFIG_PICOCOREMX6SX_NAND
+/* NAND */
+/* eMMC */
+/* Will be set by Uboot */
 
-/* EMMC - SD_B - Internal SD port */
-#define CONFIG_PICOCOREMX6SX_EMMC
 
 /* Network */
 #define CONFIG_PICOCOREMX6SX_ETH0
@@ -152,18 +151,16 @@ lcd_wvga {				\
 #undef CONFIG_PICOCOREMX6SX_UART_C_RTSCTS
 #endif
 
-/* IF NAND is used, eMMC can´t be used */
-#ifdef CONFIG_PICOCOREMX6SX_NAND
-#undef CONFIG_PICOCOREMX6SX_EMMC
-#endif
-
-
 #include "imx6sx.dtsi"
 #include <dt-bindings/pwm/pwm.h>
 
 / {
 	model = "F&S picocoreMX6SX";
 	compatible = "fus,imx6sx-picocoremx6sx", "fsl,imx6sx";
+
+	aliases {
+		nand=&gpmi;
+	};
 
 #if defined(CONFIG_PICOCOREMX6SX_I2C_B) && (CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD)
 	backlight_lcd {
@@ -836,20 +833,20 @@ lcd_wvga {				\
 };
 #endif /* CONFIG_PICOCOREMX6SX_SD_A */
 
-#ifdef CONFIG_PICOCOREMX6SX_EMMC
-/* EMMC implemented via USDHC2 */
+/* Keep disabled. Will be activated by Uboot
+ * if eMMC is used as boot device.
+ */
 &usdhc2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc2_emmc>;
-	bus-width = <4>;
+	bus-width = <8>;
 	vmmc-supply = <&reg_vref_3v3>;
 	vqmmc-supply = <&reg_vref_3v3>;
 	voltage-ranges = <3300 3300>;
 	no-1-8-v;
 	keep-power-in-suspend;
-	status = "okay";
+	status = "disabled";
 };
-#endif
 
 #ifdef CONFIG_PICOCOREMX6SX_PWM_A
 /* PWM_A implemented by PWM4 */
@@ -906,7 +903,6 @@ lcd_wvga {				\
 };
 #endif /* CONFIG_PICOCOREMX6SX_SPI_A */
 
-#ifdef CONFIG_PICOCOREMX6SX_NAND
 &dma_apbh {
 	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
 	compatible = "fus,imx6sx-dma-apbh", "fus,imx28-dma-apbh";
@@ -924,7 +920,6 @@ lcd_wvga {				\
 //###	fus,ecc_strength = <52>;	/* Spare area 224 bytes */
 	status = "okay";
 };
-#endif /* CONFIG_PICOCOREMX6SX_NAND */
 
 &iomuxc {
 	pinctrl-names = "default";
@@ -1321,7 +1316,6 @@ lcd_wvga {				\
 		};
 #endif /* CONFIG_PICOCOREMX6SX_SD_A */
 
-#ifdef CONFIG_PICOCOREMX6SX_EMMC
 		/* EMMC */
 		pinctrl_usdhc2_emmc: usdhc2grp-emmc {
 			fsl,pins = <
@@ -1338,7 +1332,6 @@ lcd_wvga {				\
 				MX6SX_PAD_NAND_RE_B__USDHC2_RESET_B	0x17091
 			>;
 		};
-#endif
 
 	};
 };
