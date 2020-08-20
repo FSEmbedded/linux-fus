@@ -458,22 +458,22 @@
 /* ASRC Interrupt Status Flags (ISF) */
 #define EASRC_IRQF_RSD_SHIFT		8
 #define EASRC_IRQF_RSD_WIDTH		4
-#define EASRC_IRQF_RSD_MASK		((BIT(EASRC_ISF_RSD_WIDTH) - 1) \
-					 << EASRC_ISF_RSD_SHIFT)
-#define EASRC_IRQF_RSD(v)		(((v) << EASRC_ISF_RSD_SHIFT) \
-					 & EASRC_ISF_RSD_MASK)
+#define EASRC_IRQF_RSD_MASK		((BIT(EASRC_IRQF_RSD_WIDTH) - 1) \
+					 << EASRC_IRQF_RSD_SHIFT)
+#define EASRC_IRQF_RSD(v)		(((v) << EASRC_IRQF_RSD_SHIFT) \
+					 & EASRC_IRQF_RSD_MASK)
 #define EASRC_IRQF_OER_SHIFT		4
 #define EASRC_IRQF_OER_WIDTH		4
-#define EASRC_IRQF_OER_MASK		((BIT(EASRC_ISF_OER_WIDTH) - 1) \
-					 << EASRC_ISF_OER_SHIFT)
-#define EASRC_IRQF_OER(v)		(((v) << EASRC_ISF_OER_SHIFT) \
-					 & EASRC_ISF_OER_MASK)
+#define EASRC_IRQF_OER_MASK		((BIT(EASRC_IRQF_OER_WIDTH) - 1) \
+					 << EASRC_IRQF_OER_SHIFT)
+#define EASRC_IRQF_OER(v)		(((v) << EASRC_IRQF_OER_SHIFT) \
+					 & EASRC_IRQF_OER_MASK)
 #define EASRC_IRQF_IFO_SHIFT		0
 #define EASRC_IRQF_IFO_WIDTH		4
-#define EASRC_IRQF_IFO_MASK		((BIT(EASRC_ISF_IFO_WIDTH) - 1) \
-					 << EASRC_ISF_IFO_SHIFT)
-#define EASRC_IRQF_IFO(v)		(((v) << EASRC_ISF_IFO_SHIFT) \
-					 & EASRC_ISF_IFO_MASK)
+#define EASRC_IRQF_IFO_MASK		((BIT(EASRC_IRQF_IFO_WIDTH) - 1) \
+					 << EASRC_IRQF_IFO_SHIFT)
+#define EASRC_IRQF_IFO(v)		(((v) << EASRC_IRQF_IFO_SHIFT) \
+					 & EASRC_IRQF_IFO_MASK)
 
 /* ASRC Context Channel STAT */
 #define EASRC_CSx_CSx_SHIFT		0
@@ -607,6 +607,7 @@ struct fsl_easrc_slot {
 	int num_channel;  /*maximum is 8*/
 	int min_channel;
 	int max_channel;
+	int pf_mem_used;
 };
 
 struct fsl_easrc_context {
@@ -680,6 +681,7 @@ struct fsl_easrc {
 	unsigned int bps_iec958[EASRC_CTX_MAX_NUM];
 	unsigned int chn_avail;
 	u64 *rs_coeff;
+	u64 const_coeff;
 	int firmware_loaded;
 	spinlock_t lock;  /* spin lock for resource protection */
 	int easrc_rate;

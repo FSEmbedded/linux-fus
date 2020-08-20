@@ -1,9 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2014-2015 Freescale Semiconductor, Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/busfreq-imx.h>
@@ -124,15 +121,15 @@ static int imx6sx_enter_wait(struct cpuidle_device *dev,
 		index = 1;
 		cpu_do_idle();
 	} else {
-		/* Need to notify there is a cpu pm operation. */
-		cpu_pm_enter();
-		cpu_cluster_pm_enter();
+			/* Need to notify there is a cpu pm operation. */
+			cpu_pm_enter();
+			cpu_cluster_pm_enter();
 
-		cpu_suspend(0, imx6_idle_finish);
+			cpu_suspend(0, imx6_idle_finish);
 
-		cpu_cluster_pm_exit();
-		cpu_pm_exit();
-		imx6_enable_rbc(false);
+			cpu_cluster_pm_exit();
+			cpu_pm_exit();
+			imx6_enable_rbc(false);
 	}
 
 	imx6_set_lpm(WAIT_CLOCKED);
@@ -161,7 +158,6 @@ static struct cpuidle_driver imx6sx_cpuidle_driver = {
 			 * + PLL2 relock 450us and some margin, here set
 			 * it to 800us.
 			 */
-			.flags = CPUIDLE_FLAG_TIMER_STOP,
 			.exit_latency = 800,
 			.target_residency = 1000,
 			.enter = imx6sx_enter_wait,

@@ -53,7 +53,7 @@ static int dsp_audio_probe(struct platform_device *pdev)
 
 	dev_dbg(&pdev->dev, "probing DSP device....\n");
 
-	/* initialise sof device */
+	/* intialise sof device */
 	dev_set_drvdata(&pdev->dev, dsp_audio);
 
 	pm_runtime_enable(&pdev->dev);
@@ -67,7 +67,7 @@ static int dsp_audio_probe(struct platform_device *pdev)
 		goto err;
 	}
 
-	return 0;
+        return 0;
 
 err:
 	return ret;
@@ -78,6 +78,7 @@ static int dsp_audio_remove(struct platform_device *pdev)
 	snd_soc_unregister_component(&pdev->dev);
 	return 0;
 }
+
 
 static const struct of_device_id dsp_audio_ids[] = {
 	{ .compatible = "fsl,dsp-audio"},

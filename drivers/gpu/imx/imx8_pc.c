@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2019 NXP
+ * Copyright 2018,2019 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -63,16 +63,16 @@ static inline u32 pc_read(struct pc *pc, unsigned int offset)
 	return readl(pc->base + offset);
 }
 
-static inline void pc_write(struct pc *pc, u32 value, unsigned int offset)
+static inline void pc_write(struct pc *pc, unsigned int offset, u32 value)
 {
 	writel(value, pc->base + offset);
 }
 
 static void pc_reset(struct pc *pc)
 {
-	pc_write(pc, 0, REG2);
+	pc_write(pc, REG2, 0);
 	usleep_range(1000, 2000);
-	pc_write(pc, PC_FULL_RESET_N, REG2);
+	pc_write(pc, REG2, PC_FULL_RESET_N);
 }
 
 void pc_enable(struct pc *pc)
@@ -84,7 +84,7 @@ void pc_enable(struct pc *pc)
 
 	val = pc_read(pc, REG0);
 	val |= PIX_COMBINE_ENABLE;
-	pc_write(pc, val, REG0);
+	pc_write(pc, REG0, val);
 
 	dev_dbg(pc->dev, "enable\n");
 }
@@ -123,8 +123,8 @@ void pc_configure(struct pc *pc, unsigned int di, unsigned int frame_width,
 		frame_width /= 4;
 	}
 
-	pc_write(pc, val, REG0);
-	pc_write(pc, BUF_ACTIVE_DEPTH(frame_width), REG1);
+	pc_write(pc, REG0, val);
+	pc_write(pc, REG1, BUF_ACTIVE_DEPTH(frame_width));
 }
 EXPORT_SYMBOL_GPL(pc_configure);
 
@@ -181,7 +181,7 @@ static int pc_probe(struct platform_device *pdev)
 	      DISP_PIX_COMBINE_BYPASS(0)  | DISP_PIX_COMBINE_BYPASS(1)  |
 	      VSYNC_MASK_ENABLE;
 
-	pc_write(pc, val, REG0);
+	pc_write(pc, REG0, val);
 
 	return 0;
 }

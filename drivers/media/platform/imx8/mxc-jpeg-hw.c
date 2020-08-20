@@ -1,13 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright 2018 NXP
- */
-/*
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
+ * i.MX8QXP/i.MX8QM JPEG encoder/decoder v4l2 driver
  *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
+ * Copyright 2018-2019 NXP
  */
 
 #include <linux/delay.h>
@@ -37,7 +32,8 @@ void print_descriptor_info(struct device *dev, struct mxc_jpeg_desc *desc)
 	dev_dbg(dev, " MXC JPEG STM_CTRL 0x%x\n", desc->stm_ctrl);
 }
 
-void print_cast_status(struct device *dev, void __iomem *reg, unsigned int mode)
+void print_cast_status(struct device *dev, void __iomem *reg,
+		       unsigned int mode)
 {
 	dev_dbg(dev, "CAST IP status regs:\n");
 	print_wrapper_reg(dev, reg, CAST_STATUS0);

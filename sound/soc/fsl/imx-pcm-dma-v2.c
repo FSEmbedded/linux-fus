@@ -45,25 +45,6 @@ static bool imx_dma_filter_fn(struct dma_chan *chan, void *param)
 	return true;
 }
 
-static void imx_pcm_dma_v2_complete(void *arg)
-{
-	struct snd_pcm_substream *substream = arg;
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct dmaengine_pcm_runtime_data *prtd =
-				substream->runtime->private_data;
-	struct snd_dmaengine_dai_dma_data *dma_data;
-
-	prtd->pos += snd_pcm_lib_period_bytes(substream);
-	if (prtd->pos >= snd_pcm_lib_buffer_bytes(substream))
-		prtd->pos = 0;
-
-	snd_pcm_period_elapsed(substream);
-
-	dma_data = snd_soc_dai_get_dma_data(rtd->cpu_dai, substream);
-	if (dma_data->check_xrun && dma_data->check_xrun(substream))
-		dma_data->device_reset(substream, 1);
-}
-
 /* this may get called several times by oss emulation */
 static int imx_pcm_hw_params(struct snd_pcm_substream *substream,
 			      struct snd_pcm_hw_params *params)
@@ -73,11 +54,7 @@ static int imx_pcm_hw_params(struct snd_pcm_substream *substream,
 	struct snd_dmaengine_dai_dma_data *dma_data;
 	struct dma_slave_config config;
 	struct dma_chan *chan;
-	struct dmaengine_pcm_runtime_data *prtd =
-				substream->runtime->private_data;
 	int err = 0;
-
-	prtd->callback = imx_pcm_dma_v2_complete;
 
 	dma_data = snd_soc_dai_get_dma_data(rtd->cpu_dai, substream);
 
@@ -123,25 +100,28 @@ static snd_pcm_uframes_t imx_pcm_pointer(struct snd_pcm_substream *substream)
 }
 
 static int imx_pcm_preallocate_dma_buffer(struct snd_pcm_substream *substream,
-	struct device *dev)
+					  struct device *dev)
 {
 	size_t size = imx_pcm_hardware.buffer_bytes_max;
 	int ret;
 
-	ret = snd_pcm_lib_preallocate_pages(substream,
-				SNDRV_DMA_TYPE_DEV_IRAM,
-				dev,
-				size,
-				size);
+	ret = snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV_IRAM,
+				  dev,
+				  size,
+				  &substream->dma_buffer);
 	if (ret)
 		return ret;
 
 	return 0;
 }
 
-static int imx_pcm_free_dma_buffers(struct snd_pcm_substream *substream)
+static void imx_pcm_free_dma_buffers(struct snd_pcm_substream *substream)
 {
-	return snd_pcm_lib_preallocate_free(substream);
+	if (substream) {
+		snd_dma_free_pages(&substream->dma_buffer);
+		substream->dma_buffer.area = NULL;
+		substream->dma_buffer.addr = 0;
+	}
 }
 
 static int imx_pcm_open(struct snd_pcm_substream *substream)
@@ -247,19 +227,15 @@ static int imx_pcm_mmap(struct snd_pcm_substream *substream,
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 
-	return dma_mmap_writecombine(substream->pcm->card->dev, vma,
-				     runtime->dma_area,
-				     runtime->dma_addr,
-				     runtime->dma_bytes);
+	return dma_mmap_wc(substream->pcm->card->dev, vma,
+			   runtime->dma_area,
+			   runtime->dma_addr,
+			   runtime->dma_bytes);
 }
 
 static int imx_pcm_close(struct snd_pcm_substream *substream)
 {
-	int ret;
-
-	ret = imx_pcm_free_dma_buffers(substream);
-	if (ret)
-		return ret;
+	imx_pcm_free_dma_buffers(substream);
 
 	return snd_dmaengine_pcm_close_release_chan(substream);
 }
@@ -287,32 +263,16 @@ static int imx_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	return ret;
 }
 
-static struct snd_soc_component_driver imx_soc_component = {
-	.name		= "imx-pcm-dma-v2",
+static struct snd_soc_component_driver imx_soc_platform = {
+	.name           = "imx-pcm-dma-v2",
 	.ops		= &imx_pcm_ops,
 	.pcm_new	= imx_pcm_new,
 };
 
-int imx_pcm_component_register(struct device *dev)
+int imx_pcm_platform_register(struct device *dev)
 {
-	int ret;
-	struct snd_soc_component *component;
-
-	ret = devm_snd_soc_register_component(dev, &imx_soc_component,
-					       NULL, 0);
-	if (ret)
-		return ret;
-
-	component = snd_soc_lookup_component(dev, "imx-pcm-dma-v2");
-	if (!component)
-		return -EINVAL;
-
-#ifdef CONFIG_DEBUG_FS
-	component->debugfs_prefix = "dma";
-#endif
-
-	return 0;
+	return devm_snd_soc_register_component(dev, &imx_soc_platform, NULL, 0);
 }
-EXPORT_SYMBOL_GPL(imx_pcm_component_register);
+EXPORT_SYMBOL_GPL(imx_pcm_platform_register);
 
 MODULE_LICENSE("GPL");

@@ -1,16 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2015-2016 Freescale Semiconductor, Inc.
- * Copyright (C) 2017 NXP
- *
- * derived from the omap-rpmsg implementation.
- * Remote processor messaging transport - tty driver
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
+ * Copyright 2019 NXP
  */
 
 #include <linux/delay.h>
@@ -96,7 +86,7 @@ static int rpmsgtty_write(struct tty_struct *tty, const unsigned char *buf,
 			struct rpmsgtty_port, port);
 	struct rpmsg_device *rpdev = rptty_port->rpdev;
 
-	if (NULL == buf) {
+	if (buf == NULL) {
 		pr_err("buf shouldn't be null.\n");
 		return -ENOMEM;
 	}

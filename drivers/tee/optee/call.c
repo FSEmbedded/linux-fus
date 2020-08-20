@@ -1,15 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015, Linaro Limited
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
  */
 #include <linux/arm-smccc.h>
 #include <linux/device.h>
@@ -22,11 +13,6 @@
 #include <linux/uaccess.h>
 #include "optee_private.h"
 #include "optee_smc.h"
-
-#if defined(CONFIG_SOC_IMX6) || defined(CONFIG_SOC_IMX7) \
-	|| (CONFIG_HAVE_IMX8_SOC)
-#include <linux/busfreq-imx.h>
-#endif
 
 struct optee_call_waiter {
 	struct list_head list_node;
@@ -146,19 +132,8 @@ u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg)
 
 	param.a0 = OPTEE_SMC_CALL_WITH_ARG;
 	reg_pair_from_64(&param.a1, &param.a2, parg);
-
 	/* Initialize waiter */
 	optee_cq_wait_init(&optee->call_queue, &w);
-
-#if defined(CONFIG_SOC_IMX6) || defined(CONFIG_SOC_IMX7) \
-	|| (CONFIG_HAVE_IMX8_SOC)
-	/*
-	 * Request Busfreq to HIGH to prevent DDR self-refresh while
-	 * executing Secure stuff
-	 */
-	request_bus_freq(BUS_FREQ_HIGH);
-#endif
-
 	while (true) {
 		struct arm_smccc_res res;
 
@@ -173,6 +148,7 @@ u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg)
 			 */
 			optee_cq_wait_for_completion(&optee->call_queue, &w);
 		} else if (OPTEE_SMC_RETURN_IS_RPC(res.a0)) {
+			might_sleep();
 			param.a0 = res.a0;
 			param.a1 = res.a1;
 			param.a2 = res.a2;
@@ -185,15 +161,6 @@ u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg)
 	}
 
 	optee_rpc_finalize_call(&call_ctx);
-
-#if defined(CONFIG_SOC_IMX6) || defined(CONFIG_SOC_IMX7) \
-	|| (CONFIG_HAVE_IMX8_SOC)
-	/*
-	 * Release Busfreq from HIGH
-	 */
-	release_bus_freq(BUS_FREQ_HIGH);
-#endif
-
 	/*
 	 * We're done with our thread in secure world, if there's any
 	 * thread waiters wake up one.
@@ -589,6 +556,13 @@ static int check_mem_type(unsigned long start, size_t num_pages)
 {
 	struct mm_struct *mm = current->mm;
 	int rc;
+
+	/*
+	 * Allow kernel address to register with OP-TEE as kernel
+	 * pages are configured as normal memory only.
+	 */
+	if (virt_addr_valid(start))
+		return 0;
 
 	down_read(&mm->mmap_sem);
 	rc = __check_mem_type(find_vma(mm, start),

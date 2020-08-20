@@ -1,13 +1,10 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * consumer.h -- SoC Regulator consumer support.
  *
  * Copyright (C) 2007, 2008 Wolfson Microelectronics PLC.
  *
  * Author: Liam Girdwood <lrg@slimlogic.co.uk>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  *
  * Regulator Consumer Interface.
  *
@@ -29,7 +26,6 @@
  *   but this drops rapidly to 60% when below 100mA. Regulator r has > 90%
  *   efficiency in IDLE mode at loads < 10mA. Thus regulator r will operate
  *   in normal mode for loads > 10mA and in IDLE mode for load <= 10mA.
- *
  */
 
 #ifndef __LINUX_REGULATOR_CONSUMER_H_
@@ -121,9 +117,6 @@ struct regmap;
 #define REGULATOR_EVENT_PRE_DISABLE		0x400
 #define REGULATOR_EVENT_ABORT_DISABLE		0x800
 #define REGULATOR_EVENT_ENABLE			0x1000
-#define REGULATOR_EVENT_PRE_DO_ENABLE		0x2000
-#define REGULATOR_EVENT_PRE_DO_DISABLE		0x4000
-#define REGULATOR_EVENT_AFT_DO_ENABLE		0x8000
 
 /*
  * Regulator errors that can be queried using regulator_get_error_flags
@@ -287,6 +280,12 @@ void devm_regulator_unregister_notifier(struct regulator *regulator,
 /* driver data - core doesn't touch */
 void *regulator_get_drvdata(struct regulator *regulator);
 void regulator_set_drvdata(struct regulator *regulator, void *data);
+
+/* misc helpers */
+
+void regulator_bulk_set_supply_names(struct regulator_bulk_data *consumers,
+				     const char *const *supply_names,
+				     unsigned int num_supplies);
 
 #else
 
@@ -481,6 +480,11 @@ static inline int regulator_is_supported_voltage(struct regulator *regulator,
 	return 0;
 }
 
+static inline unsigned int regulator_get_linear_step(struct regulator *regulator)
+{
+	return 0;
+}
+
 static inline int regulator_set_current_limit(struct regulator *regulator,
 					     int min_uA, int max_uA)
 {
@@ -511,7 +515,7 @@ static inline int regulator_get_error_flags(struct regulator *regulator,
 
 static inline int regulator_set_load(struct regulator *regulator, int load_uA)
 {
-	return REGULATOR_MODE_NORMAL;
+	return 0;
 }
 
 static inline int regulator_allow_bypass(struct regulator *regulator,
@@ -580,6 +584,13 @@ static inline int regulator_count_voltages(struct regulator *regulator)
 static inline int regulator_list_voltage(struct regulator *regulator, unsigned selector)
 {
 	return -EINVAL;
+}
+
+static inline void
+regulator_bulk_set_supply_names(struct regulator_bulk_data *consumers,
+				const char *const *supply_names,
+				unsigned int num_supplies)
+{
 }
 
 #endif

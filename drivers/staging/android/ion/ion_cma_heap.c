@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * drivers/staging/android/ion/ion_cma_heap.c
+ * ION Memory Allocator CMA heap exporter
  *
  * Copyright (C) Linaro 2012
  * Author: <benjamin.gaignard@linaro.org> for ST-Ericsson.
@@ -13,10 +13,6 @@
 #include <linux/cma.h>
 #include <linux/scatterlist.h>
 #include <linux/highmem.h>
-#include <asm/cacheflush.h>
-#ifdef CONFIG_ARM
-#include <asm/outercache.h>
-#endif
 
 #include "ion.h"
 
@@ -50,36 +46,17 @@ static int ion_cma_allocate(struct ion_heap *heap, struct ion_buffer *buffer,
 	if (PageHighMem(pages)) {
 		unsigned long nr_clear_pages = nr_pages;
 		struct page *page = pages;
-#ifdef CONFIG_ARM
-		phys_addr_t base = __pfn_to_phys(page_to_pfn(pages));
-		phys_addr_t end = base + size;
-#endif
 
 		while (nr_clear_pages > 0) {
 			void *vaddr = kmap_atomic(page);
 
 			memset(vaddr, 0, PAGE_SIZE);
-#ifdef CONFIG_ARM
-			__cpuc_flush_dcache_area(vaddr,PAGE_SIZE);
-#else
-			__flush_dcache_area(vaddr,PAGE_SIZE);
-#endif
 			kunmap_atomic(vaddr);
 			page++;
 			nr_clear_pages--;
 		}
-#ifdef CONFIG_ARM
-		outer_flush_range(base, end);
-#endif
 	} else {
-		void *ptr = page_address(pages);
-		memset(ptr, 0, size);
-#ifdef CONFIG_ARM
-		__cpuc_flush_dcache_area(ptr,size);
-		outer_flush_range(__pa(ptr), __pa(ptr) + size);
-#else
-		__flush_dcache_area(ptr,size);
-#endif
+		memset(page_address(pages), 0, size);
 	}
 
 	table = kmalloc(sizeof(*table), GFP_KERNEL);
@@ -134,10 +111,6 @@ static struct ion_heap *__ion_cma_heap_create(struct cma *cma)
 		return ERR_PTR(-ENOMEM);
 
 	cma_heap->heap.ops = &ion_cma_ops;
-	/*
-	 * get device from private heaps data, later it will be
-	 * used to make the link with reserved CMA memory
-	 */
 	cma_heap->cma = cma;
 	cma_heap->heap.type = ION_HEAP_TYPE_DMA;
 	return &cma_heap->heap;

@@ -75,9 +75,7 @@ static struct snd_soc_ops imx_hifi_ops = {
 
 static const struct snd_soc_dapm_route audio_map[] = {
 	{"Playback",  NULL, "CPU-Playback"},
-	{"CPU-Capture",  NULL, "Capture"},
 	{"CPU-Playback",  NULL, "ASRC-Playback"},
-	{"ASRC-Capture",  NULL, "CPU-Capture"},
 };
 
 static int be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
@@ -126,6 +124,7 @@ static int imx_wm8524_probe(struct platform_device *pdev)
 	struct platform_device *cpu_pdev;
 	struct imx_priv *priv;
 	struct platform_device *codec_pdev = NULL;
+	struct snd_soc_dai_link_component *dlc;
 	int ret;
 	u32 width;
 
@@ -134,6 +133,10 @@ static int imx_wm8524_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	priv->pdev = pdev;
+
+	dlc = devm_kzalloc(&pdev->dev, 9 * sizeof(*dlc), GFP_KERNEL);
+	if (!dlc)
+		return -ENOMEM;
 
 	cpu_np = of_parse_phandle(pdev->dev.of_node, "audio-cpu", 0);
 	if (!cpu_np) {
@@ -165,7 +168,7 @@ static int imx_wm8524_probe(struct platform_device *pdev)
 	codec_pdev = of_find_device_by_node(codec_np);
 	if (!codec_pdev || !codec_pdev->dev.driver) {
 		dev_err(&pdev->dev, "failed to find codec platform device\n");
-		ret = -EINVAL;
+		ret = -EPROBE_DEFER;
 		goto fail;
 	}
 
@@ -176,13 +179,20 @@ static int imx_wm8524_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
+	priv->dai[0].cpus = &dlc[0];
+	priv->dai[0].num_cpus = 1;
+	priv->dai[0].platforms = &dlc[1];
+	priv->dai[0].num_platforms = 1;
+	priv->dai[0].codecs = &dlc[2];
+	priv->dai[0].num_codecs = 1;
+
 	priv->dai[0].name               = "HiFi";
 	priv->dai[0].stream_name        = "HiFi";
-	priv->dai[0].codec_dai_name     = "wm8524-hifi",
+	priv->dai[0].codecs->dai_name     = "wm8524-hifi",
 	priv->dai[0].ops                = &imx_hifi_ops,
-	priv->dai[0].codec_of_node      = codec_np;
-	priv->dai[0].cpu_dai_name = dev_name(&cpu_pdev->dev);
-	priv->dai[0].platform_of_node = cpu_np;
+	priv->dai[0].codecs->of_node      = codec_np;
+	priv->dai[0].cpus->dai_name = dev_name(&cpu_pdev->dev);
+	priv->dai[0].platforms->of_node = cpu_np;
 	priv->dai[0].playback_only	= 1;
 
 	priv->card.late_probe = imx_wm8524_late_probe;
@@ -193,26 +203,40 @@ static int imx_wm8524_probe(struct platform_device *pdev)
 	priv->card.num_dapm_widgets = ARRAY_SIZE(imx_wm8524_dapm_widgets);
 	priv->card.dai_link = priv->dai;
 	priv->card.dapm_routes = audio_map;
-	priv->card.num_dapm_routes = 2;
+	priv->card.num_dapm_routes = 1;
 
 	/*if there is no asrc controller, we only enable one device*/
 	if (asrc_pdev) {
+		priv->dai[1].cpus = &dlc[3];
+		priv->dai[1].num_cpus = 1;
+		priv->dai[1].platforms = &dlc[4];
+		priv->dai[1].num_platforms = 1;
+		priv->dai[1].codecs = &dlc[5];
+		priv->dai[1].num_codecs = 1;
+
+		priv->dai[2].cpus = &dlc[6];
+		priv->dai[2].num_cpus = 1;
+		priv->dai[2].platforms = &dlc[7];
+		priv->dai[2].num_platforms = 1;
+		priv->dai[2].codecs = &dlc[8];
+		priv->dai[2].num_codecs = 1;
+
 		priv->dai[1].name = "HiFi-ASRC-FE";
 		priv->dai[1].stream_name = "HiFi-ASRC-FE";
-		priv->dai[1].codec_dai_name = "snd-soc-dummy-dai";
-		priv->dai[1].codec_name = "snd-soc-dummy";
-		priv->dai[1].cpu_of_node    = asrc_np;
-		priv->dai[1].platform_of_node   = asrc_np;
+		priv->dai[1].codecs->dai_name = "snd-soc-dummy-dai";
+		priv->dai[1].codecs->name = "snd-soc-dummy";
+		priv->dai[1].cpus->of_node    = asrc_np;
+		priv->dai[1].platforms->of_node   = asrc_np;
 		priv->dai[1].dynamic   = 1;
 		priv->dai[1].dpcm_playback  = 1;
 		priv->dai[1].dpcm_capture   = 0;
 
 		priv->dai[2].name = "HiFi-ASRC-BE";
 		priv->dai[2].stream_name = "HiFi-ASRC-BE";
-		priv->dai[2].codec_dai_name  = "wm8524-hifi";
-		priv->dai[2].codec_of_node   = codec_np;
-		priv->dai[2].cpu_of_node     = cpu_np;
-		priv->dai[2].platform_name   = "snd-soc-dummy";
+		priv->dai[2].codecs->dai_name  = "wm8524-hifi";
+		priv->dai[2].codecs->of_node   = codec_np;
+		priv->dai[2].cpus->of_node     = cpu_np;
+		priv->dai[2].platforms->name   = "snd-soc-dummy";
 		priv->dai[2].no_pcm          = 1;
 		priv->dai[2].dpcm_playback  = 1;
 		priv->dai[2].dpcm_capture   = 0;
@@ -220,7 +244,7 @@ static int imx_wm8524_probe(struct platform_device *pdev)
 		priv->dai[2].be_hw_params_fixup = be_hw_params_fixup,
 		priv->card.num_links = 3;
 		priv->card.dai_link = &priv->dai[0];
-		priv->card.num_dapm_routes += 2;
+		priv->card.num_dapm_routes += 1;
 
 		ret = of_property_read_u32(asrc_np, "fsl,asrc-rate",
 					   &priv->asrc_rate);

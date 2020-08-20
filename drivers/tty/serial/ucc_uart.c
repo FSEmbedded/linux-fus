@@ -32,6 +32,7 @@
 #include <soc/fsl/qe/ucc_slow.h>
 
 #include <linux/firmware.h>
+#include <asm/cpm.h>
 #include <asm/reg.h>
 
 /*
@@ -1081,7 +1082,7 @@ static int qe_uart_verify_port(struct uart_port *port,
 }
 /* UART operations
  *
- * Details on these functions can be found in Documentation/serial/driver
+ * Details on these functions can be found in Documentation/driver-api/serial/driver.rst
  */
 static const struct uart_ops qe_uart_pops = {
 	.tx_empty       = qe_uart_tx_empty,

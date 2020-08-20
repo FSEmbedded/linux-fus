@@ -1,16 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * Copyright (C) 2016 Marek Vasut <marex@denx.de>
  *
  * i.MX23/i.MX28/i.MX6SX MXSFB LCD controller driver.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #ifndef __MXSFB_DRV_H__
@@ -24,12 +16,10 @@ struct mxsfb_devdata {
 	unsigned int	 hs_wdth_mask;
 	unsigned int	 hs_wdth_shift;
 	unsigned int	 ipversion;
-	unsigned int	 flags;
 	unsigned int	 num_formats;
 };
 
 struct mxsfb_drm_private {
-	struct device			*dev;
 	const struct mxsfb_devdata	*devdata;
 
 	void __iomem			*base;	/* registers */
@@ -42,7 +32,8 @@ struct mxsfb_drm_private {
 	struct drm_connector		*connector;
 	struct drm_panel		*panel;
 	struct drm_bridge		*bridge;
-	struct drm_fbdev_cma		*fbdev;
+
+	u32				max_bw;
 };
 
 int mxsfb_setup_crtc(struct drm_device *dev);

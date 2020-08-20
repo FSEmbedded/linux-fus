@@ -1,19 +1,14 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2017~2018 NXP
  *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
  */
-#include <linux/errno.h>
-#include <linux/slab.h>
+
 #include <linux/clk-provider.h>
-#include <linux/clk.h>
 #include <linux/err.h>
+#include <linux/io.h>
+#include <linux/slab.h>
 
 #include "clk.h"
 
@@ -27,26 +22,18 @@
 #define PCG_PCD_WIDTH	3
 #define PCG_PCD_MASK	0x7
 
-#define PCG_PREDIV_SHIFT	16
-#define PCG_PREDIV_WIDTH	3
-#define PCG_PREDIV_MAX		8
-
-#define PCG_DIV_SHIFT		0
-#define PCG_DIV_WIDTH		6
-#define PCG_DIV_MAX		64
-
-#define clk_div_mask(width) ((1 << (width)) - 1)
-
-struct clk *imx7ulp_clk_composite(const char *name, const char **parent_names,
-			      int num_parents, bool mux_present,
-			      bool rate_present, bool gate_present,
-			      void __iomem *reg)
+struct clk_hw *imx7ulp_clk_composite(const char *name,
+				     const char * const *parent_names,
+				     int num_parents, bool mux_present,
+				     bool rate_present, bool gate_present,
+				     void __iomem *reg)
 {
 	struct clk_hw *mux_hw = NULL, *fd_hw = NULL, *gate_hw = NULL;
 	struct clk_fractional_divider *fd = NULL;
 	struct clk_gate *gate = NULL;
 	struct clk_mux *mux = NULL;
-	struct clk *clk;
+	struct clk_hw *hw;
+	u32 val;
 
 	if (mux_present) {
 		mux = kzalloc(sizeof(*mux), GFP_KERNEL);
@@ -85,19 +72,30 @@ struct clk *imx7ulp_clk_composite(const char *name, const char **parent_names,
 		gate_hw = &gate->hw;
 		gate->reg = reg;
 		gate->bit_idx = PCG_CGC_SHIFT;
+		/*
+		 * make sure clock is gated during clock tree initialization,
+		 * the HW ONLY allow clock parent/rate changed with clock gated,
+		 * during clock tree initialization, clocks could be enabled
+		 * by bootloader, so the HW status will mismatch with clock tree
+		 * prepare count, then clock core driver will allow parent/rate
+		 * change since the prepare count is zero, but HW actually
+		 * prevent the parent/rate change due to the clock is enabled.
+		 */
+		val = readl_relaxed(reg);
+		val &= ~(1 << PCG_CGC_SHIFT);
+		writel_relaxed(val, reg);
 	}
 
-	clk = clk_register_composite(NULL, name, parent_names, num_parents,
-				    mux_hw, &clk_mux_ops, fd_hw,
-				    &clk_fractional_divider_ops, gate_hw,
-				    &clk_gate_ops, CLK_SET_RATE_GATE |
-				    CLK_SET_PARENT_GATE);
-	if (IS_ERR(clk)) {
+	hw = clk_hw_register_composite(NULL, name, parent_names, num_parents,
+				       mux_hw, &clk_mux_ops, fd_hw,
+				       &clk_fractional_divider_ops, gate_hw,
+				       &clk_gate_ops, CLK_SET_RATE_GATE |
+				       CLK_SET_PARENT_GATE);
+	if (IS_ERR(hw)) {
 		kfree(mux);
 		kfree(fd);
 		kfree(gate);
 	}
 
-	return clk;
+	return hw;
 }
-

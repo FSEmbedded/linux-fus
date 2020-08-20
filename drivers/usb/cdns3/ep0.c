@@ -387,6 +387,8 @@ static int cdns3_ep0_feature_handle_endpoint(struct cdns3_device *priv_dev,
 		priv_ep->flags |= EP_STALL;
 	} else {
 		struct usb_request *request;
+		struct cdns3_request *priv_req;
+		struct cdns3_trb *trb;
 
 		if (priv_dev->eps[index]->flags & EP_WEDGE) {
 			cdns3_select_ep(priv_dev, 0x00);
@@ -395,6 +397,13 @@ static int cdns3_ep0_feature_handle_endpoint(struct cdns3_device *priv_dev,
 
 		cdns3_dbg(priv_ep->cdns3_dev, "Clear Stalled endpoint %s\n",
 			  priv_ep->name);
+
+		request = cdns3_next_request(&priv_ep->pending_req_list);
+		if (request) {
+			priv_req = to_cdns3_request(request);
+			trb = priv_req->trb;
+			trb->control = trb->control ^ TRB_CYCLE;
+		}
 
 		writel(EP_CMD_CSTALL | EP_CMD_EPRST, &priv_dev->regs->ep_cmd);
 
@@ -406,11 +415,10 @@ static int cdns3_ep0_feature_handle_endpoint(struct cdns3_device *priv_dev,
 
 		priv_ep->flags &= ~EP_STALL;
 
-		request = cdns3_next_request(&priv_ep->pending_req_list);
 		if (request) {
 			cdns3_dbg(priv_ep->cdns3_dev, "Resume transfer for %s\n",
 				  priv_ep->name);
-
+			trb->control = trb->control ^ TRB_CYCLE;
 			cdns3_rearm_transfer(priv_ep, 1);
 		}
 	}
@@ -846,7 +854,6 @@ void cdns3_ep0_config(struct cdns3_device *priv_dev)
 	struct cdns3_usb_regs __iomem *regs;
 	struct cdns3_endpoint *priv_ep;
 	u32 max_packet_size = 64;
-	struct usb_request *request;
 
 	regs = priv_dev->regs;
 
@@ -855,9 +862,10 @@ void cdns3_ep0_config(struct cdns3_device *priv_dev)
 
 	priv_ep = priv_dev->eps[0];
 
-	request = cdns3_next_request(&priv_ep->pending_req_list);
-	if (request) {
-		WARN_ON(1);
+	if (!list_empty(&priv_ep->pending_req_list)) {
+		struct usb_request *request;
+
+		request = cdns3_next_request(&priv_ep->pending_req_list);
 		list_del_init(&request->list);
 	}
 

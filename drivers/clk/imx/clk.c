@@ -1,18 +1,52 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/err.h>
+#include <linux/io.h>
 #include <linux/of.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include "clk.h"
 
+#define CCM_CCDR			0x4
+#define CCDR_MMDC_CH0_MASK		BIT(17)
+#define CCDR_MMDC_CH1_MASK		BIT(16)
+
 DEFINE_SPINLOCK(imx_ccm_lock);
 
 bool uart_from_osc;
 
-void __init imx_check_clocks(struct clk *clks[], unsigned int count)
+void imx_unregister_clocks(struct clk *clks[], unsigned int count)
+{
+	unsigned int i;
+
+	for (i = 0; i < count; i++)
+		clk_unregister(clks[i]);
+}
+
+void __init imx_mmdc_mask_handshake(void __iomem *ccm_base,
+				    unsigned int chn)
+{
+	unsigned int reg;
+
+	reg = readl_relaxed(ccm_base + CCM_CCDR);
+	reg |= chn == 0 ? CCDR_MMDC_CH0_MASK : CCDR_MMDC_CH1_MASK;
+	writel_relaxed(reg, ccm_base + CCM_CCDR);
+}
+
+void imx_check_clocks(struct clk *clks[], unsigned int count)
 {
 	unsigned i;
+
+	for (i = 0; i < count; i++)
+		if (IS_ERR(clks[i]))
+			pr_err("i.MX clk %u: register failed with %ld\n",
+			       i, PTR_ERR(clks[i]));
+}
+
+void imx_check_clk_hws(struct clk_hw *clks[], unsigned int count)
+{
+	unsigned int i;
 
 	for (i = 0; i < count; i++)
 		if (IS_ERR(clks[i]))
@@ -51,6 +85,29 @@ struct clk * __init imx_obtain_fixed_clock(
 	return clk;
 }
 
+struct clk_hw * __init imx_obtain_fixed_clock_hw(
+			const char *name, unsigned long rate)
+{
+	struct clk *clk;
+
+	clk = imx_obtain_fixed_clock_from_dt(name);
+	if (IS_ERR(clk))
+		clk = imx_clk_fixed(name, rate);
+	return __clk_get_hw(clk);
+}
+
+struct clk_hw * __init imx_obtain_fixed_clk_hw(struct device_node *np,
+					       const char *name)
+{
+	struct clk *clk;
+
+	clk = of_clk_get_by_name(np, name);
+	if (IS_ERR(clk))
+		return ERR_PTR(-ENOENT);
+
+	return __clk_get_hw(clk);
+}
+
 /*
  * This fixups the register CCM_CSCMR1 write value.
  * The write/read/divider values of the aclk_podf field
@@ -77,10 +134,8 @@ void imx_cscmr1_fixup(u32 *val)
 	return;
 }
 
-static int imx_keep_uart_clocks __initdata;
-static int earlycon_bits __initdata;
-
-static struct clk ** const *imx_uart_clocks __initdata;
+static int imx_keep_uart_clocks;
+static bool imx_uart_clks_on;
 
 static int __init imx_keep_uart_clocks_param(char *str)
 {
@@ -93,46 +148,41 @@ __setup_param("earlycon", imx_keep_uart_earlycon,
 __setup_param("earlyprintk", imx_keep_uart_earlyprintk,
 	      imx_keep_uart_clocks_param, 0);
 
-static void imx_earlycon_get(void)
+static void imx_earlycon_uart_clks_onoff(bool is_on)
 {
-	int ret;
+	struct clk *uart_clk;
+	int i = 0;
 
-#ifdef CONFIG_DEBUG_LL
-	if (IS_ENABLED(CONFIG_DEBUG_IMX_UART_PORT))
-		earlycon_bits |= BIT(CONFIG_DEBUG_IMX_UART_PORT - 1);
-#endif
+	if (!imx_keep_uart_clocks || (!is_on && !imx_uart_clks_on))
+		return;
 
+	/* only support dt */
 	if (!of_stdout)
 		return;
 
-	ret = of_alias_get_id(of_stdout, "serial");
-	if (ret >= 0)
-		earlycon_bits |= BIT(ret);
+	do {
+		uart_clk = of_clk_get(of_stdout, i++);
+		if (IS_ERR(uart_clk))
+			break;
+
+		if (is_on)
+			clk_prepare_enable(uart_clk);
+		else
+			clk_disable_unprepare(uart_clk);
+	} while (true);
+
+	if (is_on)
+		imx_uart_clks_on = true;
 }
 
-void __init imx_register_uart_clocks(struct clk ** const clks[])
+void imx_register_uart_clocks(void)
 {
-	imx_earlycon_get();
-
-	if (imx_keep_uart_clocks) {
-		int i;
-
-		imx_uart_clocks = clks;
-		for (i = 0; imx_uart_clocks[i]; i++)
-			if (earlycon_bits & BIT(i))
-				clk_prepare_enable(*imx_uart_clocks[i]);
-	}
+	imx_earlycon_uart_clks_onoff(true);
 }
 
 static int __init imx_clk_disable_uart(void)
 {
-	if (imx_keep_uart_clocks && imx_uart_clocks) {
-		int i;
-
-		for (i = 0; imx_uart_clocks[i]; i++)
-			if (earlycon_bits & BIT(i))
-				clk_disable_unprepare(*imx_uart_clocks[i]);
-	}
+	imx_earlycon_uart_clks_onoff(false);
 
 	return 0;
 }
@@ -140,8 +190,7 @@ late_initcall_sync(imx_clk_disable_uart);
 
 static int __init setup_uart_clk(char *uart_rate)
 {
-	uart_from_osc = true;
-	return 1;
+       uart_from_osc = true;
+       return 1;
 }
 __setup("uart_from_osc", setup_uart_clk);
-

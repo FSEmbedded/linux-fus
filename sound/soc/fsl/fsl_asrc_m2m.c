@@ -234,8 +234,7 @@ static int fsl_asrc_dmaconfig(struct fsl_asrc_pair *pair, struct dma_chan *chan,
 		return -EINVAL;
 	}
 
-	ret = dma_map_sg(&asrc_priv->pdev->dev, sg, sg_nent,
-			 slave_config.direction);
+	ret = dma_map_sg(&asrc_priv->pdev->dev, sg, sg_nent, slave_config.direction);
 	if (ret != sg_nent) {
 		pair_err("failed to map DMA sg for %sput task\n", DIR_STR(dir));
 		return -EINVAL;

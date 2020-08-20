@@ -1,7 +1,9 @@
-
+/* SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause) */
 /*
  * CAAM Secure Memory/Keywrap API Definitions
- * Copyright (C) 2008-2015 Freescale Semiconductor, Inc.
+ *
+ * Copyright 2008-2015 Freescale Semiconductor, Inc.
+ * Copyright 2016-2019 NXP
  */
 
 #ifndef SM_H
@@ -39,7 +41,6 @@ void sm_init_keystore(struct device *dev);
 u32 sm_detect_keystore_units(struct device *dev);
 int sm_establish_keystore(struct device *dev, u32 unit);
 void sm_release_keystore(struct device *dev, u32 unit);
-void caam_sm_shutdown(struct platform_device *pdev);
 int caam_sm_example_init(struct platform_device *pdev);
 
 /* Keystore accessor functions */

@@ -39,7 +39,7 @@ static void xhci_cdns3_quirks(struct device *dev, struct xhci_hcd *xhci)
 	 * here that the generic code does not try to make a pci_dev from our
 	 * dev struct in order to setup MSI
 	 */
-	xhci->quirks |= (XHCI_PLAT | XHCI_CDNS_HOST | XHCI_AVOID_BEI);
+	xhci->quirks |= (XHCI_PLAT | XHCI_AVOID_BEI | XHCI_CDNS_HOST);
 }
 
 static int xhci_cdns3_setup(struct usb_hcd *hcd)
@@ -171,7 +171,6 @@ static int cdns3_host_start(struct cdns3 *cdns)
 
 	xhci = hcd_to_xhci(host->hcd);
 
-	xhci->quirks = XHCI_SKIP_ACCESS_RESERVED_REG;
 	xhci->main_hcd = host->hcd;
 	xhci->shared_hcd = __usb_create_hcd(&xhci_cdns3_hc_driver, sysdev, dev,
 			dev_name(dev), host->hcd);

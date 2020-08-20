@@ -1,15 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2015 Freescale Semiconductor, Inc.
- *
- * derived from the omap-rpmsg implementation.
- * Remote processor messaging transport - pingpong driver
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
+ * Copyright 2019 NXP
  */
 
 #include <linux/kernel.h>
@@ -62,7 +53,8 @@ static int rpmsg_pingpong_probe(struct rpmsg_device *rpdev)
 	}
 
 	rpmsg_pingpong = 0;
-	err = rpmsg_sendto(rpdev->ept, (void *)(&rpmsg_pingpong), 4, rpdev->dst);
+	err = rpmsg_sendto(rpdev->ept, (void *)(&rpmsg_pingpong),
+			   4, rpdev->dst);
 	if (err) {
 		dev_err(&rpdev->dev, "rpmsg_send failed: %d\n", err);
 		return err;

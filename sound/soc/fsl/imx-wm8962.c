@@ -31,8 +31,6 @@
 #include "../codecs/wm8962.h"
 #include "imx-audmux.h"
 
-#include "fsl_dma_workaround.h"
-
 #define DAI_NAME_SIZE	32
 
 struct imx_wm8962_data {
@@ -148,6 +146,7 @@ static int micjack_status_check(void *data)
 		|| (mic_status == priv->mic_active_low && priv->dmic_mono))
 		snd_soc_component_update_bits(priv->component, WM8962_THREED1,
 				WM8962_ADC_MONOMIX_MASK, WM8962_ADC_MONOMIX);
+
 	else
 		snd_soc_component_update_bits(priv->component, WM8962_THREED1,
 				WM8962_ADC_MONOMIX_MASK, 0);
@@ -440,10 +439,9 @@ static int imx_wm8962_gpio_init(struct snd_soc_card *card)
 	struct snd_soc_pcm_runtime *rtd = list_first_entry(
 		&card->rtd_list, struct snd_soc_pcm_runtime, list);
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	struct snd_soc_component *component = codec_dai->component;
 	struct imx_priv *priv = &card_priv;
 
-	priv->component = component;
+	priv->component = codec_dai->component;
 
 	if (gpio_is_valid(priv->hp_gpio)) {
 		imx_hp_jack_gpio.gpio = priv->hp_gpio;
@@ -544,8 +542,7 @@ static int imx_wm8962_late_probe(struct snd_soc_card *card)
 }
 
 static int be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
-				struct snd_pcm_hw_params *params)
-{
+				struct snd_pcm_hw_params *params) {
 	struct imx_priv *priv = &card_priv;
 	struct snd_interval *rate;
 	struct snd_mask *mask;
@@ -575,10 +572,15 @@ static int imx_wm8962_probe(struct platform_device *pdev)
 	int ret;
 	struct platform_device *asrc_pdev = NULL;
 	struct device_node *asrc_np;
+	struct snd_soc_dai_link_component *dlc;
 	u32 width;
 
 	priv->pdev = pdev;
 	priv->asrc_pdev = NULL;
+
+	dlc = devm_kzalloc(&pdev->dev, 9 * sizeof(*dlc), GFP_KERNEL);
+	if (!dlc)
+		return -ENOMEM;
 
 	data = devm_kzalloc(&pdev->dev, sizeof(*data), GFP_KERNEL);
 	if (!data) {
@@ -589,7 +591,7 @@ static int imx_wm8962_probe(struct platform_device *pdev)
 	if (of_property_read_bool(pdev->dev.of_node, "codec-master"))
 		data->is_codec_master = true;
 
-	cpu_np = of_parse_phandle(pdev->dev.of_node, "cpu-dai", 0);
+	cpu_np = of_parse_phandle(pdev->dev.of_node, "audio-cpu", 0);
 	if (!cpu_np) {
 		dev_err(&pdev->dev, "cpu dai phandle missing or invalid\n");
 		ret = -EINVAL;
@@ -686,12 +688,19 @@ audmux_bypass:
 	priv->mic_gpio = of_get_named_gpio_flags(np, "mic-det-gpios", 0,
 				(enum of_gpio_flags *)&priv->mic_active_low);
 
+	data->dai[0].cpus = &dlc[0];
+	data->dai[0].num_cpus = 1;
+	data->dai[0].platforms = &dlc[1];
+	data->dai[0].num_platforms = 1;
+	data->dai[0].codecs = &dlc[2];
+	data->dai[0].num_codecs = 1;
+
 	data->dai[0].name = "HiFi";
 	data->dai[0].stream_name = "HiFi";
-	data->dai[0].codec_dai_name = "wm8962";
-	data->dai[0].codec_of_node = codec_np;
-	data->dai[0].cpu_dai_name = dev_name(&cpu_pdev->dev);
-	data->dai[0].platform_of_node = cpu_np;
+	data->dai[0].codecs->dai_name = "wm8962";
+	data->dai[0].codecs->of_node = codec_np;
+	data->dai[0].cpus->dai_name = dev_name(&cpu_pdev->dev);
+	data->dai[0].platforms->of_node = cpu_np;
 	data->dai[0].ops = &imx_hifi_ops;
 	data->dai[0].dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF;
 	if (data->is_codec_master)
@@ -702,13 +711,27 @@ audmux_bypass:
 	data->card.num_links = 1;
 
 	if (asrc_pdev) {
+		data->dai[1].cpus = &dlc[3];
+		data->dai[1].num_cpus = 1;
+		data->dai[1].platforms = &dlc[4];
+		data->dai[1].num_platforms = 1;
+		data->dai[1].codecs = &dlc[5];
+		data->dai[1].num_codecs = 1;
+
+		data->dai[2].cpus = &dlc[6];
+		data->dai[2].num_cpus = 1;
+		data->dai[2].platforms = &dlc[7];
+		data->dai[2].num_platforms = 1;
+		data->dai[2].codecs = &dlc[8];
+		data->dai[2].num_codecs = 1;
+
 		data->dai[0].ignore_pmdown_time = 1;
 		data->dai[1].name = "HiFi-ASRC-FE";
 		data->dai[1].stream_name = "HiFi-ASRC-FE";
-		data->dai[1].codec_name = "snd-soc-dummy";
-		data->dai[1].codec_dai_name = "snd-soc-dummy-dai";
-		data->dai[1].cpu_of_node = asrc_np;
-		data->dai[1].platform_of_node = asrc_np;
+		data->dai[1].codecs->name = "snd-soc-dummy";
+		data->dai[1].codecs->dai_name = "snd-soc-dummy-dai";
+		data->dai[1].cpus->of_node = asrc_np;
+		data->dai[1].platforms->of_node = asrc_np;
 		data->dai[1].dynamic = 1;
 		data->dai[1].ignore_pmdown_time = 1;
 		data->dai[1].dpcm_playback = 1;
@@ -717,10 +740,10 @@ audmux_bypass:
 
 		data->dai[2].name = "HiFi-ASRC-BE";
 		data->dai[2].stream_name = "HiFi-ASRC-BE";
-		data->dai[2].codec_dai_name = "wm8962";
-		data->dai[2].codec_of_node = codec_np;
-		data->dai[2].cpu_dai_name = dev_name(&cpu_pdev->dev);
-		data->dai[2].platform_name = "snd-soc-dummy";
+		data->dai[2].codecs->dai_name = "wm8962";
+		data->dai[2].codecs->of_node = codec_np;
+		data->dai[2].cpus->dai_name = dev_name(&cpu_pdev->dev);
+		data->dai[2].platforms->name = "snd-soc-dummy";
 		data->dai[2].ops = &imx_hifi_ops;
 		data->dai[2].be_hw_params_fixup = be_hw_params_fixup;
 		data->dai[2].no_pcm = 1;
@@ -753,7 +776,7 @@ audmux_bypass:
 	data->card.dev = &pdev->dev;
 	ret = snd_soc_of_parse_card_name(&data->card, "model");
 	if (ret)
-		goto clk_fail;
+		goto fail;
 	ret = snd_soc_of_parse_audio_routing(&data->card, "audio-routing");
 	if (ret)
 		goto fail;
@@ -773,7 +796,7 @@ audmux_bypass:
 	ret = devm_snd_soc_register_card(&pdev->dev, &data->card);
 	if (ret) {
 		dev_err(&pdev->dev, "snd_soc_register_card failed (%d)\n", ret);
-		goto clk_fail;
+		goto fail;
 	}
 
 	imx_wm8962_gpio_init(&data->card);
@@ -803,12 +826,6 @@ fail:
 	of_node_put(cpu_np);
 	of_node_put(codec_np);
 
-	return 0;
-
-clk_fail:
-	if (!IS_ERR(data->codec_clk))
-		clk_disable_unprepare(data->codec_clk);
-
 	return ret;
 }
 
@@ -829,7 +846,6 @@ MODULE_DEVICE_TABLE(of, imx_wm8962_dt_ids);
 static struct platform_driver imx_wm8962_driver = {
 	.driver = {
 		.name = "imx-wm8962",
-		.owner = THIS_MODULE,
 		.pm = &snd_soc_pm_ops,
 		.of_match_table = imx_wm8962_dt_ids,
 	},

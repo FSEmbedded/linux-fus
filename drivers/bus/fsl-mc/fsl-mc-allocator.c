@@ -295,6 +295,14 @@ int __must_check fsl_mc_object_allocate(struct fsl_mc_device *mc_dev,
 	if (!mc_adev)
 		goto error;
 
+	mc_adev->consumer_link = device_link_add(&mc_dev->dev,
+						 &mc_adev->dev,
+						 DL_FLAG_AUTOREMOVE_CONSUMER);
+	if (!mc_adev->consumer_link) {
+		error = -EINVAL;
+		goto error;
+	}
+
 	*new_mc_adev = mc_adev;
 	return 0;
 error:
@@ -321,6 +329,8 @@ void fsl_mc_object_free(struct fsl_mc_device *mc_adev)
 		return;
 
 	fsl_mc_resource_free(resource);
+
+	mc_adev->consumer_link = NULL;
 }
 EXPORT_SYMBOL_GPL(fsl_mc_object_free);
 
@@ -537,6 +547,7 @@ void fsl_mc_init_all_resource_pools(struct fsl_mc_device *mc_bus_dev)
 		mutex_init(&res_pool->mutex);
 	}
 }
+EXPORT_SYMBOL_GPL(fsl_mc_init_all_resource_pools);
 
 static void fsl_mc_cleanup_resource_pool(struct fsl_mc_device *mc_bus_dev,
 					 enum fsl_mc_pool_type pool_type)
@@ -561,6 +572,7 @@ void fsl_mc_cleanup_all_resource_pools(struct fsl_mc_device *mc_bus_dev)
 	for (pool_type = 0; pool_type < FSL_MC_NUM_POOL_TYPES; pool_type++)
 		fsl_mc_cleanup_resource_pool(mc_bus_dev, pool_type);
 }
+EXPORT_SYMBOL_GPL(fsl_mc_cleanup_all_resource_pools);
 
 /**
  * fsl_mc_allocator_probe - callback invoked when an allocatable device is

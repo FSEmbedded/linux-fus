@@ -21,8 +21,6 @@ Example:
 
 		port {
 			it6263_0_in: endpoint {
-				clock-lanes = <3>;
-				data-lanes = <0 1 2 4 5>;
 				remote-endpoint = <&lvds0_out>;
 			};
 		};

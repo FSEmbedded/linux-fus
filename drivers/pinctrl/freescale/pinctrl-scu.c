@@ -1,110 +1,121 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Copyright 2017-2018 NXP
+ *	Dong Aisheng <aisheng.dong@nxp.com>
  */
 
 #include <linux/err.h>
-#include <linux/init.h>
-#include <linux/io.h>
-#include <linux/module.h>
-#include <linux/of.h>
-#include <linux/of_device.h>
-#include <linux/pinctrl/machine.h>
-#include <linux/pinctrl/pinconf.h>
+#include <linux/firmware/imx/sci.h>
+#include <linux/of_address.h>
 #include <linux/pinctrl/pinctrl.h>
-#include <linux/pinctrl/pinmux.h>
-#include <linux/slab.h>
-#include <soc/imx8/sc/sci.h>
+#include <linux/platform_device.h>
 
 #include "../core.h"
 #include "pinctrl-imx.h"
 
-sc_ipc_t pinctrl_ipcHandle;
+enum pad_func_e {
+	IMX_SC_PAD_FUNC_SET = 15,
+	IMX_SC_PAD_FUNC_GET = 16,
+};
 
-int imx_pmx_set_one_pin_scu(struct imx_pinctrl *ipctl, struct imx_pin *pin)
+struct imx_sc_msg_req_pad_set {
+	struct imx_sc_rpc_msg hdr;
+	u32 val;
+	u16 pad;
+} __packed __aligned(4);
+
+struct imx_sc_msg_req_pad_get {
+	struct imx_sc_rpc_msg hdr;
+	u16 pad;
+} __packed __aligned(4);
+
+struct imx_sc_msg_resp_pad_get {
+	struct imx_sc_rpc_msg hdr;
+	u32 val;
+} __packed;
+
+static struct imx_sc_ipc *pinctrl_ipc_handle;
+
+int imx_pinctrl_sc_ipc_init(struct platform_device *pdev)
 {
+	return imx_scu_get_handle(&pinctrl_ipc_handle);
+}
+
+int imx_pinconf_get_scu(struct pinctrl_dev *pctldev, unsigned pin_id,
+			unsigned long *config)
+{
+	struct imx_sc_msg_req_pad_get msg;
+	struct imx_sc_msg_resp_pad_get *resp;
+	struct imx_sc_rpc_msg *hdr = &msg.hdr;
+	int ret;
+
+	hdr->ver = IMX_SC_RPC_VERSION;
+	hdr->svc = IMX_SC_RPC_SVC_PAD;
+	hdr->func = IMX_SC_PAD_FUNC_GET;
+	hdr->size = 2;
+
+	msg.pad = pin_id;
+
+	ret = imx_scu_call_rpc(pinctrl_ipc_handle, &msg, true);
+	if (ret)
+		return ret;
+
+	resp = (struct imx_sc_msg_resp_pad_get *)&msg;
+	*config = resp->val;
+
 	return 0;
 }
 
-int imx_pinconf_backend_get_scu(struct pinctrl_dev *pctldev, unsigned pin_id,
-			    unsigned long *config)
+int imx_pinconf_set_scu(struct pinctrl_dev *pctldev, unsigned pin_id,
+			unsigned long *configs, unsigned num_configs)
 {
-	sc_err_t err = SC_ERR_NONE;
-	sc_ipc_t ipc = pinctrl_ipcHandle;
-
-	if (ipc == -1) {
-		printk("IPC handle not initialized!\n");
-		return -EIO;
-	}
-
-	err = sc_pad_get(ipc, pin_id, (unsigned int *)config);
-
-	if (err != SC_ERR_NONE)
-		return -EIO;
-
-	return 0;
-}
-
-int imx_pinconf_backend_set_scu(struct pinctrl_dev *pctldev, unsigned pin_id,
-			    unsigned long *configs, unsigned num_configs)
-{
-	sc_err_t err = SC_ERR_NONE;
-	sc_ipc_t ipc = pinctrl_ipcHandle;
 	struct imx_pinctrl *ipctl = pinctrl_dev_get_drvdata(pctldev);
-	const struct imx_pinctrl_soc_info *info = ipctl->info;
-	/*
-	 * Mux should be done in pmx set, but we do not have a good api
-	 * to handle that in scfw, so config it in pad conf func
-	 */
+	struct imx_sc_msg_req_pad_set msg;
+	struct imx_sc_rpc_msg *hdr = &msg.hdr;
 	unsigned int mux = configs[0];
-	unsigned int val = configs[1];
+	unsigned int conf = configs[1];
+	unsigned int val;
+	int ret;
 
-	if (ipc == -1) {
-		printk("IPC handle not initialized!\n");
-		return -EIO;
-	}
+	/*
+	 * Set mux and conf together in one IPC call
+	 */
+	WARN_ON(num_configs != 2);
 
-	if (info->flags & IMX8_ENABLE_MUX_CONFIG)
-		val |= BM_IMX8_IFMUX_ENABLE;
+	val = conf | BM_PAD_CTL_IFMUX_ENABLE | BM_PAD_CTL_GP_ENABLE;
+	val |= mux << BP_PAD_CTL_IFMUX;
 
-	if (info->flags & IMX8_ENABLE_PAD_CONFIG)
-		val |= BM_IMX8_GP_ENABLE;
+	hdr->ver = IMX_SC_RPC_VERSION;
+	hdr->svc = IMX_SC_RPC_SVC_PAD;
+	hdr->func = IMX_SC_PAD_FUNC_SET;
+	hdr->size = 3;
 
-	if (info->flags & SHARE_MUX_CONF_REG) {
-		val |= (mux << 27) & (0x7 << 27);
-		err = sc_pad_set(ipc, pin_id, val);
-	}
+	msg.pad = pin_id;
+	msg.val = val;
 
-	if (err != SC_ERR_NONE)
-		return -EIO;
+	ret = imx_scu_call_rpc(pinctrl_ipc_handle, &msg, true);
 
-	return 0;
+	dev_dbg(ipctl->dev, "write: pin_id %u config 0x%x val 0x%x\n",
+		pin_id, conf, val);
+
+	return ret;
 }
 
-int imx_pinctrl_parse_pin_scu(struct imx_pinctrl *ipctl,
-			  unsigned int *pin_id, struct imx_pin *pin,
-			  const __be32 **list_p, u32 generic_config)
+void imx_pinctrl_parse_pin_scu(struct imx_pinctrl *ipctl,
+			       unsigned int *pin_id, struct imx_pin *pin,
+			       const __be32 **list_p)
 {
 	const struct imx_pinctrl_soc_info *info = ipctl->info;
-	struct imx_pin_scu *pin_scu = &pin->pin_conf.pin_scu;
+	struct imx_pin_scu *pin_scu = &pin->conf.scu;
+	const __be32 *list = *list_p;
 
-	pin->pin = be32_to_cpu(*((*list_p)++));
+	pin->pin = be32_to_cpu(*list++);
 	*pin_id = pin->pin;
-	pin_scu->mux = be32_to_cpu(*((*list_p)++));
-	pin_scu->config = be32_to_cpu(*((*list_p)++));
+	pin_scu->mux_mode = be32_to_cpu(*list++);
+	pin_scu->config = be32_to_cpu(*list++);
+	*list_p = list;
 
-	dev_dbg(ipctl->dev, "%s: 0x%lx 0x%lx",
-		 info->pins[pin->pin].name, pin_scu->mux, pin_scu->config);
-
-	return 0;
+	dev_dbg(ipctl->dev, "%s: 0x%x 0x%08lx", info->pins[pin->pin].name,
+		pin_scu->mux_mode, pin_scu->config);
 }

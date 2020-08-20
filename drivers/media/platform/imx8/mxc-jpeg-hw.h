@@ -1,14 +1,10 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright 2018 NXP
- */
-/*
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
+ * i.MX8QXP/i.MX8QM JPEG encoder/decoder v4l2 driver
  *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
+ * Copyright 2018-2019 NXP
  */
+
 #ifndef _MXC_JPEG_HW_H
 #define _MXC_JPEG_HW_H
 
@@ -120,7 +116,7 @@ enum mxc_jpeg_image_format {
 #include "mxc-jpeg.h"
 void print_descriptor_info(struct device *dev, struct mxc_jpeg_desc *desc);
 void print_cast_status(struct device *dev, void __iomem *reg,
-			unsigned int mode);
+		       unsigned int mode);
 void print_wrapper_info(struct device *dev, void __iomem *reg);
 void mxc_jpeg_sw_reset(void __iomem *reg);
 int mxc_jpeg_enable(void __iomem *reg);
@@ -138,10 +134,11 @@ int mxc_jpeg_set_output(void __iomem *reg, u16 out_pitch, u32 out_buf,
 			u16 w, u16 h);
 void mxc_jpeg_set_config_mode(void __iomem *reg, int config_mode);
 int mxc_jpeg_set_params(struct mxc_jpeg_desc *desc,  u32 bufsize, u16
-			 out_pitch, u32 format);
+			out_pitch, u32 format);
 void mxc_jpeg_set_bufsize(struct mxc_jpeg_desc *desc,  u32 bufsize);
 void mxc_jpeg_set_res(struct mxc_jpeg_desc *desc, u16 w, u16 h);
 void mxc_jpeg_set_line_pitch(struct mxc_jpeg_desc *desc, u32 line_pitch);
 void mxc_jpeg_set_desc(u32 desc, void __iomem *reg, int slot);
-void mxc_jpeg_set_regs_from_desc(struct mxc_jpeg_desc *desc, void __iomem *reg);
+void mxc_jpeg_set_regs_from_desc(struct mxc_jpeg_desc *desc,
+				 void __iomem *reg);
 #endif

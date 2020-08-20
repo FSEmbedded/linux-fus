@@ -1,19 +1,13 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright 2017-2018 NXP.
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
  */
 
 #include <linux/bitops.h>
 #include <linux/clk-provider.h>
-#include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/io.h>
+#include <linux/iopoll.h>
 #include <linux/slab.h>
 #include <linux/jiffies.h>
 
@@ -34,6 +28,8 @@
 #define SDIV_MASK	GENMASK(2, 0)
 #define KDIV_SHIFT	0
 #define KDIV_MASK	GENMASK(15, 0)
+
+#define LOCK_TIMEOUT_US		10000
 
 struct clk_pll14xx {
 	struct clk_hw			hw;
@@ -78,10 +74,9 @@ static unsigned long clk_pll1416x_recalc_rate(struct clk_hw *hw,
 						  unsigned long parent_rate)
 {
 	struct clk_pll14xx *pll = to_clk_pll14xx(hw);
-	u32 mdiv, pdiv, sdiv, pll_gnrl, pll_div;
+	u32 mdiv, pdiv, sdiv, pll_div;
 	u64 fvco = parent_rate;
 
-	pll_gnrl = readl_relaxed(pll->base);
 	pll_div = readl_relaxed(pll->base + 4);
 	mdiv = (pll_div & MDIV_MASK) >> MDIV_SHIFT;
 	pdiv = (pll_div & PDIV_MASK) >> PDIV_SHIFT;
@@ -98,13 +93,12 @@ static unsigned long clk_pll1443x_recalc_rate(struct clk_hw *hw,
 {
 	struct clk_pll14xx *pll = to_clk_pll14xx(hw);
 	const struct imx_pll14xx_rate_table *rate_table = pll->rate_table;
-	u32 mdiv, pdiv, sdiv, pll_gnrl, pll_div_ctl0, pll_div_ctl1;
+	u32 mdiv, pdiv, sdiv, pll_div_ctl0, pll_div_ctl1;
 	short int kdiv;
 	u64 fvco = parent_rate;
 	long rate = 0;
 	int i;
 
-	pll_gnrl = readl_relaxed(pll->base);
 	pll_div_ctl0 = readl_relaxed(pll->base + 4);
 	pll_div_ctl1 = readl_relaxed(pll->base + 8);
 	mdiv = (pll_div_ctl0 & MDIV_MASK) >> MDIV_SHIFT;
@@ -172,17 +166,10 @@ static inline bool clk_pll1443x_mp_change(const struct imx_pll14xx_rate_table *r
 
 static int clk_pll14xx_wait_lock(struct clk_pll14xx *pll)
 {
-	unsigned long timeout = jiffies + msecs_to_jiffies(10);
+	u32 val;
 
-	/* Wait for PLL to lock */
-	do {
-		if (readl_relaxed(pll->base) & LOCK_STATUS)
-			break;
-		if (time_after(jiffies, timeout))
-			break;
-	} while (1);
-
-	return readl_relaxed(pll->base) & LOCK_STATUS ? 0 : -ETIMEDOUT;
+	return readl_poll_timeout(pll->base, val, val & LOCK_TIMEOUT_US, 0,
+			LOCK_TIMEOUT_US);
 }
 
 static int clk_pll1416x_set_rate(struct clk_hw *hw, unsigned long drate,
@@ -389,14 +376,13 @@ static const struct clk_ops clk_pll1443x_ops = {
 	.set_rate	= clk_pll1443x_set_rate,
 };
 
-struct clk *imx_clk_pll14xx(const char *name, const char *parent_name,
-			    void __iomem *base,
+struct clk *imx_dev_clk_pll14xx(struct device *dev, const char *name,
+			    const char *parent_name, void __iomem *base,
 			    const struct imx_pll14xx_clk *pll_clk)
 {
 	struct clk_pll14xx *pll;
 	struct clk *clk;
 	struct clk_init_data init;
-	int len;
 	u32 val;
 
 	pll = kzalloc(sizeof(*pll), GFP_KERNEL);
@@ -408,21 +394,9 @@ struct clk *imx_clk_pll14xx(const char *name, const char *parent_name,
 	init.parent_names = &parent_name;
 	init.num_parents = 1;
 
-	if (pll_clk->rate_table) {
-		for (len = 0; pll_clk->rate_table[len].rate != 0; )
-			len++;
-
-		pll->rate_count = len;
-		pll->rate_table = kmemdup(pll_clk->rate_table,
-					  pll->rate_count *
-					  sizeof(struct imx_pll14xx_rate_table),
-					  GFP_KERNEL);
-		WARN(!pll->rate_table, "%s : could not alloc rate table\n", __func__);
-	}
-
 	switch (pll_clk->type) {
 	case PLL_1416X:
-		if (!pll->rate_table)
+		if (!pll_clk->rate_table)
 			init.ops = &clk_pll1416x_min_ops;
 		else
 			init.ops = &clk_pll1416x_ops;
@@ -438,12 +412,14 @@ struct clk *imx_clk_pll14xx(const char *name, const char *parent_name,
 	pll->base = base;
 	pll->hw.init = &init;
 	pll->type = pll_clk->type;
+	pll->rate_table = pll_clk->rate_table;
+	pll->rate_count = pll_clk->rate_count;
 
 	val = readl_relaxed(pll->base + GNRL_CTL);
 	val &= ~BYPASS_MASK;
 	writel_relaxed(val, pll->base + GNRL_CTL);
 
-	clk = clk_register(NULL, &pll->hw);
+	clk = clk_register(dev, &pll->hw);
 	if (IS_ERR(clk)) {
 		pr_err("%s: failed to register pll %s %lu\n",
 			__func__, name, PTR_ERR(clk));

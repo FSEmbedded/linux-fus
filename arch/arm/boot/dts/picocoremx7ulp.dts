@@ -102,7 +102,7 @@
 
 	backlight {
 		compatible = "pwm-backlight";
-		pwms = <&pwm0 1 5000000>;
+		pwms = <&tpm4 1 5000000>;
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
@@ -316,7 +316,7 @@
 };
 #endif
 
-&pwm0 {
+&tpm4 {
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_pwm0>;
 	pinctrl-1 = <&pinctrl_pwm0>;

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * include/media/v4l2-int-device.h
  *
@@ -291,7 +292,6 @@ V4L2_INT_WRAPPER_1(g_parm, struct v4l2_streamparm, *);
 V4L2_INT_WRAPPER_1(s_parm, struct v4l2_streamparm, *);
 V4L2_INT_WRAPPER_1(querystd, v4l2_std_id, *);
 V4L2_INT_WRAPPER_1(s_std, v4l2_std_id, *);
-V4L2_INT_WRAPPER_1(s_video_routing, struct v4l2_routing, *);
 
 V4L2_INT_WRAPPER_0(dev_init);
 V4L2_INT_WRAPPER_0(dev_exit);

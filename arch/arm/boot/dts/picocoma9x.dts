@@ -433,9 +433,9 @@ lcd_wvga {				\
 	status = "okay";
 
 #ifdef CONFIG_PICOCOMA9X_AUDIO
-	sgtl5000: sgtl5000@0a {
+	sgtl5000: sgtl5000@a {
 		compatible = "fsl,sgtl5000";
-		reg = <0x0a>;
+		reg = <0xa>;
 		mono2both;
 		clocks = <&clks IMX6SX_CLK_AUDIO>;
 		VDDA-supply = <&reg_sgtl5000_vdda>;

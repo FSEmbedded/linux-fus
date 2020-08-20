@@ -509,6 +509,7 @@ static int ipu_pre_prefetch(unsigned int id,
 		break;
 	case PRE_PIX_FMT_NV61:
 		prefetch_ctrl |= BM_PRE_PREFETCH_ENGINE_CTRL_PARTIAL_UV_SWAP;
+		/* fall-through */
 	case IPU_PIX_FMT_NV16:
 		prefetch_ctrl |= BF_PRE_PREFETCH_ENGINE_CTRL_INPUT_PIXEL_FORMAT(0x4);
 		input_y_pitch  = input_width;
@@ -516,6 +517,7 @@ static int ipu_pre_prefetch(unsigned int id,
 		break;
 	case PRE_PIX_FMT_NV21:
 		prefetch_ctrl |= BM_PRE_PREFETCH_ENGINE_CTRL_PARTIAL_UV_SWAP;
+		/* fall-through */
 	case IPU_PIX_FMT_NV12:
 		prefetch_ctrl |= BF_PRE_PREFETCH_ENGINE_CTRL_INPUT_PIXEL_FORMAT(0x5);
 		input_y_pitch  = input_width;

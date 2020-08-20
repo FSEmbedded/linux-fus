@@ -72,8 +72,8 @@ static inline u32 dpu_pec_ed_read(struct dpu_extdst *ed, unsigned int offset)
 	return readl(ed->pec_base + offset);
 }
 
-static inline void dpu_pec_ed_write(struct dpu_extdst *ed, u32 value,
-				unsigned int offset)
+static inline void dpu_pec_ed_write(struct dpu_extdst *ed,
+				unsigned int offset, u32 value)
 {
 	writel(value, ed->pec_base + offset);
 }
@@ -83,8 +83,8 @@ static inline u32 dpu_ed_read(struct dpu_extdst *ed, unsigned int offset)
 	return readl(ed->base + offset);
 }
 
-static inline void dpu_ed_write(struct dpu_extdst *ed, u32 value,
-				unsigned int offset)
+static inline void dpu_ed_write(struct dpu_extdst *ed,
+				unsigned int offset, u32 value)
 {
 	writel(value, ed->base + offset);
 }
@@ -92,14 +92,6 @@ static inline void dpu_ed_write(struct dpu_extdst *ed, u32 value,
 static inline bool dpu_ed_is_safety_stream(struct dpu_extdst *ed)
 {
 	if (ed->id == 4 || ed->id == 5)
-		return true;
-
-	return false;
-}
-
-static inline bool dpu_ed_src_sel_is_extsrc(extdst_src_sel_t src)
-{
-	if (src == ED_SRC_EXTSRC4 || src == ED_SRC_EXTSRC5)
 		return true;
 
 	return false;
@@ -115,7 +107,7 @@ void extdst_pixengcfg_shden(struct dpu_extdst *ed, bool enable)
 		val |= SHDEN;
 	else
 		val &= ~SHDEN;
-	dpu_pec_ed_write(ed, val, PIXENGCFG_STATIC);
+	dpu_pec_ed_write(ed, PIXENGCFG_STATIC, val);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_pixengcfg_shden);
@@ -130,7 +122,7 @@ void extdst_pixengcfg_powerdown(struct dpu_extdst *ed, bool powerdown)
 		val |= POWERDOWN;
 	else
 		val &= ~POWERDOWN;
-	dpu_pec_ed_write(ed, val, PIXENGCFG_STATIC);
+	dpu_pec_ed_write(ed, PIXENGCFG_STATIC, val);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_pixengcfg_powerdown);
@@ -145,7 +137,7 @@ void extdst_pixengcfg_sync_mode(struct dpu_extdst *ed, ed_sync_mode_t mode)
 		val |= SYNC_MODE;
 	else
 		val &= ~SYNC_MODE;
-	dpu_pec_ed_write(ed, val, PIXENGCFG_STATIC);
+	dpu_pec_ed_write(ed, PIXENGCFG_STATIC, val);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_pixengcfg_sync_mode);
@@ -160,7 +152,7 @@ void extdst_pixengcfg_reset(struct dpu_extdst *ed, bool reset)
 		val |= SW_RESET;
 	else
 		val &= ~SW_RESET;
-	dpu_pec_ed_write(ed, val, PIXENGCFG_STATIC);
+	dpu_pec_ed_write(ed, PIXENGCFG_STATIC, val);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_pixengcfg_reset);
@@ -173,18 +165,14 @@ void extdst_pixengcfg_div(struct dpu_extdst *ed, u16 div)
 	val = dpu_pec_ed_read(ed, PIXENGCFG_STATIC);
 	val &= ~0xFF0000;
 	val |= DIV(div);
-	dpu_pec_ed_write(ed, val, PIXENGCFG_STATIC);
+	dpu_pec_ed_write(ed, PIXENGCFG_STATIC, val);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_pixengcfg_div);
 
 void extdst_pixengcfg_syncmode_master(struct dpu_extdst *ed, bool enable)
 {
-	struct dpu_soc *dpu = ed->dpu;
 	u32 val;
-
-	if (!dpu->devtype->has_syncmode_fixup)
-		return;
 
 	mutex_lock(&ed->mutex);
 	val = dpu_pec_ed_read(ed, PIXENGCFG_STATIC);
@@ -192,28 +180,15 @@ void extdst_pixengcfg_syncmode_master(struct dpu_extdst *ed, bool enable)
 		val |= BIT(16);
 	else
 		val &= ~BIT(16);
-	dpu_pec_ed_write(ed, val, PIXENGCFG_STATIC);
+	dpu_pec_ed_write(ed, PIXENGCFG_STATIC, val);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_pixengcfg_syncmode_master);
 
 int extdst_pixengcfg_src_sel(struct dpu_extdst *ed, extdst_src_sel_t src)
 {
-	struct dpu_soc *dpu = ed->dpu;
-	const unsigned int *block_id_map = dpu->devtype->sw2hw_block_id_map;
-	u32 mapped_src;
-
-	mapped_src = block_id_map ? block_id_map[src] : src;
-	if (WARN_ON(mapped_src == NA))
-		return -EINVAL;
-
-	if (dpu_ed_is_safety_stream(ed) && dpu_ed_src_sel_is_extsrc(src)) {
-		dev_err(dpu->dev, "ExtDst%d source cannot be ExtSrc\n", ed->id);
-		return -EINVAL;
-	}
-
 	mutex_lock(&ed->mutex);
-	dpu_pec_ed_write(ed, mapped_src, PIXENGCFG_DYNAMIC);
+	dpu_pec_ed_write(ed, PIXENGCFG_DYNAMIC, src);
 	mutex_unlock(&ed->mutex);
 
 	return 0;
@@ -227,7 +202,7 @@ void extdst_pixengcfg_sel_shdldreq(struct dpu_extdst *ed)
 	mutex_lock(&ed->mutex);
 	val = dpu_pec_ed_read(ed, PIXENGCFG_REQUEST);
 	val |= SEL_SHDLDREQ;
-	dpu_pec_ed_write(ed, val, PIXENGCFG_REQUEST);
+	dpu_pec_ed_write(ed, PIXENGCFG_REQUEST, val);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_pixengcfg_sel_shdldreq);
@@ -239,7 +214,7 @@ void extdst_pixengcfg_shdldreq(struct dpu_extdst *ed, u32 req_mask)
 	mutex_lock(&ed->mutex);
 	val = dpu_pec_ed_read(ed, PIXENGCFG_REQUEST);
 	val |= req_mask;
-	dpu_pec_ed_write(ed, val, PIXENGCFG_REQUEST);
+	dpu_pec_ed_write(ed, PIXENGCFG_REQUEST, val);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_pixengcfg_shdldreq);
@@ -247,7 +222,7 @@ EXPORT_SYMBOL_GPL(extdst_pixengcfg_shdldreq);
 void extdst_pixengcfg_sync_trigger(struct dpu_extdst *ed)
 {
 	mutex_lock(&ed->mutex);
-	dpu_pec_ed_write(ed, SYNC_TRIGGER, PIXENGCFG_TRIGGER);
+	dpu_pec_ed_write(ed, PIXENGCFG_TRIGGER, SYNC_TRIGGER);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_pixengcfg_sync_trigger);
@@ -255,7 +230,7 @@ EXPORT_SYMBOL_GPL(extdst_pixengcfg_sync_trigger);
 void extdst_pixengcfg_trigger_sequence_complete(struct dpu_extdst *ed)
 {
 	mutex_lock(&ed->mutex);
-	dpu_pec_ed_write(ed, TRIGGER_SEQUENCE_COMPLETE, PIXENGCFG_TRIGGER);
+	dpu_pec_ed_write(ed, PIXENGCFG_TRIGGER, TRIGGER_SEQUENCE_COMPLETE);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_pixengcfg_trigger_sequence_complete);
@@ -294,7 +269,7 @@ void extdst_shden(struct dpu_extdst *ed, bool enable)
 		val |= SHDEN;
 	else
 		val &= ~SHDEN;
-	dpu_ed_write(ed, val, STATICCONTROL);
+	dpu_ed_write(ed, STATICCONTROL, val);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_shden);
@@ -307,7 +282,7 @@ void extdst_kick_mode(struct dpu_extdst *ed, ed_kick_mode_t mode)
 	val = dpu_ed_read(ed, STATICCONTROL);
 	val &= ~KICK_MODE;
 	val |= mode;
-	dpu_ed_write(ed, val, STATICCONTROL);
+	dpu_ed_write(ed, STATICCONTROL, val);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_kick_mode);
@@ -322,7 +297,7 @@ void extdst_perfcountmode(struct dpu_extdst *ed, bool enable)
 		val |= PERFCOUNTMODE;
 	else
 		val &= ~PERFCOUNTMODE;
-	dpu_ed_write(ed, val, STATICCONTROL);
+	dpu_ed_write(ed, STATICCONTROL, val);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_perfcountmode);
@@ -337,7 +312,7 @@ void extdst_gamma_apply_enable(struct dpu_extdst *ed, bool enable)
 		val |= GAMMAAPPLYENABLE;
 	else
 		val &= ~GAMMAAPPLYENABLE;
-	dpu_ed_write(ed, val, CONTROL);
+	dpu_ed_write(ed, CONTROL, val);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_gamma_apply_enable);
@@ -345,7 +320,7 @@ EXPORT_SYMBOL_GPL(extdst_gamma_apply_enable);
 void extdst_kick(struct dpu_extdst *ed)
 {
 	mutex_lock(&ed->mutex);
-	dpu_ed_write(ed, KICK, SOFTWAREKICK);
+	dpu_ed_write(ed, SOFTWAREKICK, KICK);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_kick);
@@ -353,7 +328,7 @@ EXPORT_SYMBOL_GPL(extdst_kick);
 void extdst_cnt_err_clear(struct dpu_extdst *ed)
 {
 	mutex_lock(&ed->mutex);
-	dpu_ed_write(ed, CNT_ERR_STS, STATUS);
+	dpu_ed_write(ed, STATUS, CNT_ERR_STS);
 	mutex_unlock(&ed->mutex);
 }
 EXPORT_SYMBOL_GPL(extdst_cnt_err_clear);
@@ -422,9 +397,9 @@ EXPORT_SYMBOL_GPL(extdst_perfresult);
 
 bool extdst_is_master(struct dpu_extdst *ed)
 {
-	const struct dpu_devtype *devtype = ed->dpu->devtype;
+	const struct dpu_data *data = ed->dpu->data;
 
-	return ed->id == devtype->master_stream_id;
+	return ed->id == data->master_stream_id;
 }
 EXPORT_SYMBOL_GPL(extdst_is_master);
 

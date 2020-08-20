@@ -1,4 +1,4 @@
-ccflags-y += -Idrivers/gpu/imx/dpu
+ccflags-y += -I $(srctree)/$(src)/../dpu/
 
 imx-dpu-blit-objs := dpu-blit.o
 

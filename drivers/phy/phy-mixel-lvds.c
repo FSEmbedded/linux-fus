@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 NXP
+ * Copyright 2017-2019 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -69,7 +69,7 @@ static inline u32 phy_read(struct phy *phy, unsigned int reg)
 	return readl(priv->base + reg);
 }
 
-static inline void phy_write(struct phy *phy, u32 value, unsigned int reg)
+static inline void phy_write(struct phy *phy, unsigned int reg, u32 value)
 {
 	struct mixel_lvds_phy_priv *priv = dev_get_drvdata(phy->dev.parent);
 
@@ -92,17 +92,10 @@ void mixel_phy_lvds_set_phy_speed(struct phy *phy, unsigned long phy_clk_rate)
 		val |= M(0x1);
 	else
 		val |= M(0x0);
-	phy_write(phy, val, PHY_CTRL);
+	phy_write(phy, PHY_CTRL, val);
 	mutex_unlock(&priv->lock);
 	clk_disable_unprepare(priv->phy_clk);
 
-	/*
-	 * To workaround setting clock rate failure issue
-	 * when the system resumes back from PM sleep mode,
-	 * we need to get the clock rate before setting it's
-	 * rate, otherwise, setting the clock rate will fail.
-	 */
-	clk_get_rate(priv->phy_clk);
 	clk_set_rate(priv->phy_clk, phy_clk_rate);
 }
 EXPORT_SYMBOL_GPL(mixel_phy_lvds_set_phy_speed);
@@ -120,7 +113,7 @@ void mixel_phy_lvds_set_hsync_pol(struct phy *phy, bool active_high)
 	val &= ~CH_HSYNC_M(id);
 	if (active_high)
 		val |= CH_PHSYNC(id);
-	phy_write(phy, val, PHY_SS_CTRL);
+	phy_write(phy, PHY_SS_CTRL, val);
 	mutex_unlock(&priv->lock);
 	clk_disable_unprepare(priv->phy_clk);
 }
@@ -139,7 +132,7 @@ void mixel_phy_lvds_set_vsync_pol(struct phy *phy, bool active_high)
 	val &= ~CH_VSYNC_M(id);
 	if (active_high)
 		val |= CH_PVSYNC(id);
-	phy_write(phy, val, PHY_SS_CTRL);
+	phy_write(phy, PHY_SS_CTRL, val);
 	mutex_unlock(&priv->lock);
 	clk_disable_unprepare(priv->phy_clk);
 }
@@ -155,7 +148,7 @@ static int mixel_lvds_phy_init(struct phy *phy)
 	val = phy_read(phy, PHY_CTRL);
 	val &= ~(M_MASK | CCM_MASK | CA_MASK | TST_MASK | NB | PD);
 	val |= (M(0x0) | CCM(0x5) | CA(0x4) | TST(0x25) | RFB);
-	phy_write(phy, val, PHY_CTRL);
+	phy_write(phy, PHY_CTRL, val);
 	mutex_unlock(&priv->lock);
 	clk_disable_unprepare(priv->phy_clk);
 
@@ -171,7 +164,7 @@ static int mixel_lvds_phy_power_on(struct phy *phy)
 	clk_prepare_enable(priv->phy_clk);
 
 	mutex_lock(&priv->lock);
-	phy_write(phy, CH_EN(id), PHY_CTRL + SET);
+	phy_write(phy, PHY_CTRL + SET, CH_EN(id));
 	mutex_unlock(&priv->lock);
 
 	usleep_range(500, 1000);
@@ -186,7 +179,7 @@ static int mixel_lvds_phy_power_off(struct phy *phy)
 	unsigned int id = lvds_phy->id;
 
 	mutex_lock(&priv->lock);
-	phy_write(phy, CH_EN(id), PHY_CTRL + CLR);
+	phy_write(phy, PHY_CTRL + CLR, CH_EN(id));
 	mutex_unlock(&priv->lock);
 
 	clk_disable_unprepare(priv->phy_clk);

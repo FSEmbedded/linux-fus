@@ -30,7 +30,7 @@
 #include <linux/regulator/consumer.h>
 #include "../fsl/fsl_rpmsg_i2s.h"
 
-#include "ak4497.h"
+#include "rpmsg_ak4497.h"
 
 //#define AK4497_DEBUG   //used at debug mode
 #define AK4497_NUM_SUPPLIES 2
@@ -886,6 +886,9 @@ static int ak4497_probe(struct snd_soc_component *component)
 			return ret;
 		gpio_direction_output(ak4497->mute_gpio, 0);
 	}
+
+	snd_soc_dapm_ignore_suspend(snd_soc_component_get_dapm(component), "AK4497 AOUT");
+	snd_soc_dapm_ignore_suspend(snd_soc_component_get_dapm(component), "Playback");
 
 	ret = ak4497_init_reg(component);
 	if (ret)

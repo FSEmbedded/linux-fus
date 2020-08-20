@@ -1,14 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * Copyright 2004-2015 Freescale Semiconductor, Inc. All Rights Reserved.
- */
-
-/*
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
+ * Copyright 2019 NXP
  */
 
 /*!
@@ -172,19 +165,19 @@ static int prp_enc_setup(cam_data *cam)
 	grotation = cam->rotation;
 	if (cam->rotation >= IPU_ROTATE_90_RIGHT) {
 		if (cam->rot_enc_bufs_vaddr[0]) {
-			dma_free_coherent(0, cam->rot_enc_buf_size[0],
+			dma_free_coherent(cam->dev, cam->rot_enc_buf_size[0],
 					  cam->rot_enc_bufs_vaddr[0],
 					  cam->rot_enc_bufs[0]);
 		}
 		if (cam->rot_enc_bufs_vaddr[1]) {
-			dma_free_coherent(0, cam->rot_enc_buf_size[1],
+			dma_free_coherent(cam->dev, cam->rot_enc_buf_size[1],
 					  cam->rot_enc_bufs_vaddr[1],
 					  cam->rot_enc_bufs[1]);
 		}
 		cam->rot_enc_buf_size[0] =
 		    PAGE_ALIGN(cam->v2f.fmt.pix.sizeimage);
 		cam->rot_enc_bufs_vaddr[0] =
-		    (void *)dma_alloc_coherent(0, cam->rot_enc_buf_size[0],
+		    (void *)dma_alloc_coherent(cam->dev, cam->rot_enc_buf_size[0],
 					       &cam->rot_enc_bufs[0],
 					       GFP_DMA | GFP_KERNEL);
 		if (!cam->rot_enc_bufs_vaddr[0]) {
@@ -194,11 +187,11 @@ static int prp_enc_setup(cam_data *cam)
 		cam->rot_enc_buf_size[1] =
 		    PAGE_ALIGN(cam->v2f.fmt.pix.sizeimage);
 		cam->rot_enc_bufs_vaddr[1] =
-		    (void *)dma_alloc_coherent(0, cam->rot_enc_buf_size[1],
+		    (void *)dma_alloc_coherent(cam->dev, cam->rot_enc_buf_size[1],
 					       &cam->rot_enc_bufs[1],
 					       GFP_DMA | GFP_KERNEL);
 		if (!cam->rot_enc_bufs_vaddr[1]) {
-			dma_free_coherent(0, cam->rot_enc_buf_size[0],
+			dma_free_coherent(cam->dev, cam->rot_enc_buf_size[0],
 					  cam->rot_enc_bufs_vaddr[0],
 					  cam->rot_enc_bufs[0]);
 			cam->rot_enc_bufs_vaddr[0] = NULL;
@@ -385,7 +378,7 @@ static int prp_enc_enabling_tasks(void *private)
 	int err = 0;
 	CAMERA_TRACE("IPU:In prp_enc_enabling_tasks\n");
 
-	cam->dummy_frame.vaddress = dma_alloc_coherent(0,
+	cam->dummy_frame.vaddress = dma_alloc_coherent(cam->dev,
 			       PAGE_ALIGN(cam->v2f.fmt.pix.sizeimage),
 			       &cam->dummy_frame.paddress,
 			       GFP_DMA | GFP_KERNEL);
@@ -450,7 +443,7 @@ static int prp_enc_disabling_tasks(void *private)
 		ipu_uninit_channel(cam->ipu, MEM_ROT_ENC_MEM, NULL);
 
 	if (cam->dummy_frame.vaddress != 0) {
-		dma_free_coherent(0, cam->dummy_frame.buffer.length,
+		dma_free_coherent(cam->dev, cam->dummy_frame.buffer.length,
 				  cam->dummy_frame.vaddress,
 				  cam->dummy_frame.paddress);
 		cam->dummy_frame.vaddress = 0;
@@ -551,14 +544,14 @@ int prp_enc_deselect(void *private)
 		cam->enc_enable_csi = NULL;
 		cam->enc_disable_csi = NULL;
 		if (cam->rot_enc_bufs_vaddr[0]) {
-			dma_free_coherent(0, cam->rot_enc_buf_size[0],
+			dma_free_coherent(cam->dev, cam->rot_enc_buf_size[0],
 					  cam->rot_enc_bufs_vaddr[0],
 					  cam->rot_enc_bufs[0]);
 			cam->rot_enc_bufs_vaddr[0] = NULL;
 			cam->rot_enc_bufs[0] = 0;
 		}
 		if (cam->rot_enc_bufs_vaddr[1]) {
-			dma_free_coherent(0, cam->rot_enc_buf_size[1],
+			dma_free_coherent(cam->dev, cam->rot_enc_buf_size[1],
 					  cam->rot_enc_bufs_vaddr[1],
 					  cam->rot_enc_bufs[1]);
 			cam->rot_enc_bufs_vaddr[1] = NULL;

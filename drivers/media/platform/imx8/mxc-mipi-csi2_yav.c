@@ -1,15 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * Copyright 2017 NXP
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 #include <linux/clk.h>
 #include <linux/delay.h>
@@ -240,12 +231,6 @@ static int mipi_csi2_clk_init(struct mxc_mipi_csi2_dev *csi2dev)
 {
 	struct device *dev = &csi2dev->pdev->dev;
 
-	csi2dev->clk_apb = devm_clk_get(dev, "clk_apb");
-	if (IS_ERR(csi2dev->clk_apb)) {
-		dev_err(dev, "failed to get csi apb clk\n");
-		return PTR_ERR(csi2dev->clk_apb);
-	}
-
 	csi2dev->clk_core = devm_clk_get(dev, "clk_core");
 	if (IS_ERR(csi2dev->clk_core)) {
 		dev_err(dev, "failed to get csi core clk\n");
@@ -272,11 +257,6 @@ static int mipi_csi2_clk_enable(struct mxc_mipi_csi2_dev *csi2dev)
 	struct device *dev = &csi2dev->pdev->dev;
 	int ret;
 
-	ret = clk_prepare_enable(csi2dev->clk_apb);
-	if (ret < 0) {
-		dev_err(dev, "%s, pre clk_apb error\n", __func__);
-		return ret;
-	}
 	ret = clk_prepare_enable(csi2dev->clk_core);
 	if (ret < 0) {
 		dev_err(dev, "%s, pre clk_core error\n", __func__);
@@ -297,7 +277,6 @@ static int mipi_csi2_clk_enable(struct mxc_mipi_csi2_dev *csi2dev)
 
 static void mipi_csi2_clk_disable(struct mxc_mipi_csi2_dev *csi2dev)
 {
-	clk_disable_unprepare(csi2dev->clk_apb);
 	clk_disable_unprepare(csi2dev->clk_core);
 	clk_disable_unprepare(csi2dev->clk_esc);
 	clk_disable_unprepare(csi2dev->clk_pxl);
@@ -477,6 +456,7 @@ static int mipi_csi2_parse_dt(struct mxc_mipi_csi2_dev *csi2dev)
 	}
 
 	/* Get port node */
+	memset(&endpoint, 0x0, sizeof(endpoint));
 	v4l2_fwnode_endpoint_parse(of_fwnode_handle(node), &endpoint);
 
 	csi2dev->num_lanes = endpoint.bus.mipi_csi2.num_data_lanes;
@@ -524,6 +504,8 @@ static int mipi_csis_subdev_host(struct mxc_mipi_csi2_dev *csi2dev)
 	struct device_node *node, *port, *rem;
 	int ret;
 
+	v4l2_async_notifier_init(&csi2dev->subdev_notifier);
+
 	/* Attach sensors linked to csi receivers */
 	for_each_available_child_of_node(parent, node) {
 		if (of_node_cmp(node->name, "port"))
@@ -545,6 +527,7 @@ static int mipi_csis_subdev_host(struct mxc_mipi_csi2_dev *csi2dev)
 				  "Remote device at %s XXX found\n",
 				  port->full_name);
 
+		INIT_LIST_HEAD(&csi2dev->asd.list);
 		csi2dev->asd.match_type = V4L2_ASYNC_MATCH_FWNODE;
 		csi2dev->asd.match.fwnode = of_fwnode_handle(rem);
 		csi2dev->async_subdevs[0] = &csi2dev->asd;
@@ -553,8 +536,10 @@ static int mipi_csis_subdev_host(struct mxc_mipi_csi2_dev *csi2dev)
 		break;
 	}
 
-	csi2dev->subdev_notifier.subdevs = csi2dev->async_subdevs;
-	csi2dev->subdev_notifier.num_subdevs = 1;
+	v4l2_async_notifier_add_subdev(&csi2dev->subdev_notifier,
+					&csi2dev->asd);
+
+	csi2dev->subdev_notifier.v4l2_dev = &csi2dev->v4l2_dev;
 	csi2dev->subdev_notifier.ops = &subdev_notifier_ops;
 
 	ret = v4l2_async_notifier_register(&csi2dev->v4l2_dev,
@@ -638,6 +623,7 @@ static int mipi_csi2_probe(struct platform_device *pdev)
 	csi2dev->running = 0;
 	csi2dev->flags = MXC_MIPI_CSI2_PM_POWERED;
 	pm_runtime_enable(&pdev->dev);
+	mipi_csi2_clk_disable(csi2dev);
 
 	return 0;
 
@@ -693,7 +679,6 @@ static int __maybe_unused mipi_csi2_pm_suspend(struct device *dev)
 		dev_warn(dev, "running, prevent entering suspend.\n");
 		return -EAGAIN;
 	}
-	mipi_csi2_clk_disable(csi2dev);
 	csi2dev->flags &= ~MXC_MIPI_CSI2_PM_POWERED;
 	csi2dev->flags |= MXC_MIPI_CSI2_PM_SUSPENDED;
 
@@ -703,16 +688,9 @@ static int __maybe_unused mipi_csi2_pm_suspend(struct device *dev)
 static int __maybe_unused mipi_csi2_pm_resume(struct device *dev)
 {
 	struct mxc_mipi_csi2_dev *csi2dev = dev_get_drvdata(dev);
-	int ret;
 
 	if (csi2dev->flags & MXC_MIPI_CSI2_PM_POWERED)
 		return 0;
-
-	ret = mipi_csi2_clk_enable(csi2dev);
-	if (ret < 0) {
-		dev_info(dev, "%s:%d fail\n", __func__, __LINE__);
-		return -EAGAIN;
-	}
 
 	csi2dev->flags |= MXC_MIPI_CSI2_PM_POWERED;
 	csi2dev->flags &= ~MXC_MIPI_CSI2_PM_SUSPENDED;

@@ -70,6 +70,7 @@ struct fsl_micfil_soc_data {
 	unsigned int fifo_depth;
 	unsigned int dataline;
 	bool imx;
+	u64  formats;
 };
 
 static char *envp[] = {
@@ -82,10 +83,20 @@ static struct fsl_micfil_soc_data fsl_micfil_imx8mm = {
 	.fifos = 8,
 	.fifo_depth = 8,
 	.dataline =  0xf,
+	.formats = SNDRV_PCM_FMTBIT_S16_LE,
+};
+
+static struct fsl_micfil_soc_data fsl_micfil_imx8mp = {
+	.imx = true,
+	.fifos = 8,
+	.fifo_depth = 32,
+	.dataline =  0xf,
+	.formats = SNDRV_PCM_FMTBIT_S32_LE,
 };
 
 static const struct of_device_id fsl_micfil_dt_ids[] = {
 	{ .compatible = "fsl,imx8mm-micfil", .data = &fsl_micfil_imx8mm },
+	{ .compatible = "fsl,imx8mp-micfil", .data = &fsl_micfil_imx8mp },
 	{}
 };
 MODULE_DEVICE_TABLE(of, fsl_micfil_dt_ids);
@@ -394,62 +405,6 @@ static int gain_info(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-static int put_channel_gain(struct snd_kcontrol *kcontrol,
-			    struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_component *comp = snd_kcontrol_chip(kcontrol);
-	struct fsl_micfil *micfil = snd_soc_component_get_drvdata(comp);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
-	unsigned int shift = mc->shift;
-	int index = shift / 4;
-	int val = ucontrol->value.integer.value[0];
-	int remapped_value;
-	int ret;
-	u32 reg_val;
-
-	/* a value remapping must be done since the gain field have
-	 * the following meaning:
-	 * * 0 : no gain
-	 * * 1 - 7 : +1 to +7 bits gain
-	 * * 8 - 15 : -8 to -1 bits gain
-	 * After the remapp, the scale should start from -8 to +7
-	 */
-
-	micfil->channel_gain[index] = val;
-
-	remapped_value = (val - 8) & 0xF;
-
-	reg_val = remapped_value << shift;
-
-	ret = snd_soc_component_update_bits(comp,
-					    REG_MICFIL_OUT_CTRL,
-					    0xF << shift,
-					    reg_val);
-
-	if (ret < 0)
-		return ret;
-
-	return 0;
-}
-
-static int get_channel_gain(struct snd_kcontrol *kcontrol,
-			    struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_component *comp = snd_kcontrol_chip(kcontrol);
-	struct fsl_micfil *micfil = snd_soc_component_get_drvdata(comp);
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
-	int index;
-
-	/* gain bitfield is 4 bits wide */
-	index = mc->shift / 4;
-
-	ucontrol->value.enumerated.item[0] = micfil->channel_gain[index];
-
-	return 0;
-}
-
 static int hwvad_put_input_gain(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
@@ -684,31 +639,22 @@ static int hwvad_get_zcd_adj(struct snd_kcontrol *kcontrol,
 static DECLARE_TLV_DB_SCALE(gain_tlv, 0, 100, 0);
 
 static const struct snd_kcontrol_new fsl_micfil_snd_controls[] = {
-	SOC_SINGLE_RANGE_EXT_TLV("CH0 Gain", -1, MICFIL_OUTGAIN_CHX_SHIFT(0),
-				 0x0, 0xF, 0,
-				 get_channel_gain, put_channel_gain, gain_tlv),
-	SOC_SINGLE_RANGE_EXT_TLV("CH1 Gain", -1, MICFIL_OUTGAIN_CHX_SHIFT(1),
-				 0x0, 0xF, 0,
-				 get_channel_gain, put_channel_gain, gain_tlv),
-	SOC_SINGLE_RANGE_EXT_TLV("CH2 Gain", -1, MICFIL_OUTGAIN_CHX_SHIFT(2),
-				 0x0, 0xF, 0,
-				 get_channel_gain, put_channel_gain, gain_tlv),
-	SOC_SINGLE_RANGE_EXT_TLV("CH3 Gain", -1, MICFIL_OUTGAIN_CHX_SHIFT(3),
-				 0x0, 0xF, 0,
-				 get_channel_gain, put_channel_gain, gain_tlv),
-	SOC_SINGLE_RANGE_EXT_TLV("CH4 Gain", -1, MICFIL_OUTGAIN_CHX_SHIFT(4),
-				 0x0, 0xF, 0,
-				 get_channel_gain, put_channel_gain, gain_tlv),
-	SOC_SINGLE_RANGE_EXT_TLV("CH5 Gain", -1, MICFIL_OUTGAIN_CHX_SHIFT(5),
-				 0x0, 0xF, 0,
-				 get_channel_gain, put_channel_gain, gain_tlv),
-	SOC_SINGLE_RANGE_EXT_TLV("CH6 Gain", -1, MICFIL_OUTGAIN_CHX_SHIFT(6),
-				 0x0, 0xF, 0,
-				 get_channel_gain, put_channel_gain, gain_tlv),
-	SOC_SINGLE_RANGE_EXT_TLV("CH7 Gain", -1, MICFIL_OUTGAIN_CHX_SHIFT(7),
-				 0x0, 0xF, 0,
-				 get_channel_gain, put_channel_gain, gain_tlv),
-
+	SOC_SINGLE_SX_TLV("CH0 Volume", REG_MICFIL_OUT_CTRL,
+			  MICFIL_OUTGAIN_CHX_SHIFT(0), 0xF, 0x7, gain_tlv),
+	SOC_SINGLE_SX_TLV("CH1 Volume", REG_MICFIL_OUT_CTRL,
+			  MICFIL_OUTGAIN_CHX_SHIFT(1), 0xF, 0x7, gain_tlv),
+	SOC_SINGLE_SX_TLV("CH2 Volume", REG_MICFIL_OUT_CTRL,
+			  MICFIL_OUTGAIN_CHX_SHIFT(2), 0xF, 0x7, gain_tlv),
+	SOC_SINGLE_SX_TLV("CH3 Volume", REG_MICFIL_OUT_CTRL,
+			  MICFIL_OUTGAIN_CHX_SHIFT(3), 0xF, 0x7, gain_tlv),
+	SOC_SINGLE_SX_TLV("CH4 Volume", REG_MICFIL_OUT_CTRL,
+			  MICFIL_OUTGAIN_CHX_SHIFT(4), 0xF, 0x7, gain_tlv),
+	SOC_SINGLE_SX_TLV("CH5 Volume", REG_MICFIL_OUT_CTRL,
+			  MICFIL_OUTGAIN_CHX_SHIFT(5), 0xF, 0x7, gain_tlv),
+	SOC_SINGLE_SX_TLV("CH6 Volume", REG_MICFIL_OUT_CTRL,
+			  MICFIL_OUTGAIN_CHX_SHIFT(6), 0xF, 0x7, gain_tlv),
+	SOC_SINGLE_SX_TLV("CH7 Volume", REG_MICFIL_OUT_CTRL,
+			  MICFIL_OUTGAIN_CHX_SHIFT(7), 0xF, 0x7, gain_tlv),
 	SOC_ENUM_EXT("MICFIL Quality Select",
 		     fsl_micfil_quality_enum,
 		     snd_soc_get_enum_double, snd_soc_put_enum_double),
@@ -812,27 +758,6 @@ static const struct snd_kcontrol_new fsl_micfil_snd_controls[] = {
 
 static int disable_hwvad(struct device *dev, bool sync);
 
-static inline int get_pdm_clk(struct fsl_micfil *micfil,
-			      unsigned int rate);
-
-static inline int get_clk_div(struct fsl_micfil *micfil,
-			      unsigned int rate)
-{
-	u32 ctrl2_reg;
-	long mclk_rate;
-	int osr;
-	int clk_div;
-
-	regmap_read(micfil->regmap, REG_MICFIL_CTRL2, &ctrl2_reg);
-	osr = 16 - ((ctrl2_reg & MICFIL_CTRL2_CICOSR_MASK)
-		    >> MICFIL_CTRL2_CICOSR_SHIFT);
-
-	mclk_rate = clk_get_rate(micfil->mclk);
-
-	clk_div = mclk_rate / (get_pdm_clk(micfil, rate) * 2);
-
-	return clk_div;
-}
 
 static inline int get_pdm_clk(struct fsl_micfil *micfil,
 			      unsigned int rate)
@@ -871,6 +796,22 @@ static inline int get_pdm_clk(struct fsl_micfil *micfil,
 	}
 
 	return bclk;
+}
+
+static inline int get_clk_div(struct fsl_micfil *micfil,
+			      unsigned int rate)
+{
+	u32 ctrl2_reg;
+	long mclk_rate;
+	int clk_div;
+
+	regmap_read(micfil->regmap, REG_MICFIL_CTRL2, &ctrl2_reg);
+
+	mclk_rate = clk_get_rate(micfil->mclk);
+
+	clk_div = mclk_rate / (get_pdm_clk(micfil, rate) * 2);
+
+	return clk_div;
 }
 
 /* The SRES is a self-negated bit which provides the CPU with the
@@ -934,6 +875,9 @@ static int configure_hwvad_interrupts(struct device *dev,
 			ret);
 		return ret;
 	}
+
+	/* w1c */
+	regmap_write_bits(micfil->regmap, REG_MICFIL_STAT, 0xFF, 0xFF);
 
 	return 0;
 }
@@ -1732,7 +1676,7 @@ static int fsl_micfil_dai_probe(struct snd_soc_dai *cpu_dai)
 	int ret;
 	int i;
 
-	/* set qsel to very low quality 0 */
+	/* set qsel to medium */
 	ret = regmap_update_bits(micfil->regmap, REG_MICFIL_CTRL2,
 				 MICFIL_CTRL2_QSEL_MASK, MICFIL_VLOW0_QUALITY);
 	if (ret) {
@@ -1881,8 +1825,6 @@ static bool fsl_micfil_writeable_reg(struct device *dev, unsigned int reg)
 static bool fsl_micfil_volatile_reg(struct device *dev, unsigned int reg)
 {
 	switch (reg) {
-	case REG_MICFIL_CTRL1:
-	case REG_MICFIL_CTRL2:
 	case REG_MICFIL_STAT:
 	case REG_MICFIL_DATACH0:
 	case REG_MICFIL_DATACH1:
@@ -1892,13 +1834,8 @@ static bool fsl_micfil_volatile_reg(struct device *dev, unsigned int reg)
 	case REG_MICFIL_DATACH5:
 	case REG_MICFIL_DATACH6:
 	case REG_MICFIL_DATACH7:
-	case REG_MICFIL_VAD0_CTRL1:
-	case REG_MICFIL_VAD0_CTRL2:
 	case REG_MICFIL_VAD0_STAT:
-	case REG_MICFIL_VAD0_SCONFIG:
-	case REG_MICFIL_VAD0_NCONFIG:
 	case REG_MICFIL_VAD0_NDATA:
-	case REG_MICFIL_VAD0_ZCD:
 		return true;
 	default:
 		return false;
@@ -2339,7 +2276,7 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 	/* Digital Microphone interface voice activity detector event
 	 * interrupt - IRQ 44
 	 */
-	ret = devm_request_threaded_irq(&pdev->dev, micfil->irq[0],
+	ret = devm_request_threaded_irq(&pdev->dev, micfil->irq[2],
 					hwvad_isr, voice_detected_fn,
 					irqflag, micfil->name, micfil);
 	if (ret) {
@@ -2351,7 +2288,7 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 	/* Digital Microphone interface voice activity detector error
 	 * interrupt - IRQ 45
 	 */
-	ret = devm_request_irq(&pdev->dev, micfil->irq[1],
+	ret = devm_request_irq(&pdev->dev, micfil->irq[3],
 			       hwvad_err_isr, irqflag,
 			       micfil->name, micfil);
 	if (ret) {
@@ -2361,22 +2298,22 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 	}
 
 	/* Digital Microphone interface interrupt - IRQ 109 */
-	ret = devm_request_irq(&pdev->dev, micfil->irq[2],
+	ret = devm_request_irq(&pdev->dev, micfil->irq[0],
 			       micfil_isr, irqflag,
 			       micfil->name, micfil);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to claim mic interface irq %u\n",
-			micfil->irq[2]);
+			micfil->irq[0]);
 		return ret;
 	}
 
 	/* Digital Microphone interface error interrupt - IRQ 110 */
-	ret = devm_request_irq(&pdev->dev, micfil->irq[3],
+	ret = devm_request_irq(&pdev->dev, micfil->irq[1],
 			       micfil_err_isr, irqflag,
 			       micfil->name, micfil);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to claim mic interface error irq %u\n",
-			micfil->irq[3]);
+			micfil->irq[1]);
 		return ret;
 	}
 
@@ -2395,6 +2332,8 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 
 	pm_runtime_enable(&pdev->dev);
 
+	fsl_micfil_dai.capture.formats = micfil->soc->formats;
+
 	ret = devm_snd_soc_register_component(&pdev->dev, &fsl_micfil_component,
 					      &fsl_micfil_dai, 1);
 	if (ret) {
@@ -2404,7 +2343,7 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 	}
 
 	if (micfil->soc->imx)
-		ret = imx_pcm_component_register(&pdev->dev);
+		ret = imx_pcm_platform_register(&pdev->dev);
 	else
 		ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
 

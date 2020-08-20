@@ -1,50 +1,42 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2012-2015 Freescale Semiconductor, Inc.
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
+ * Copyright 2012 Freescale Semiconductor, Inc.
  */
 
 #ifndef __DRIVER_USB_CHIPIDEA_CI_HDRC_IMX_H
 #define __DRIVER_USB_CHIPIDEA_CI_HDRC_IMX_H
-#include <linux/usb/otg.h>
-#include <linux/usb/phy.h>
 
 struct imx_usbmisc_data {
 	struct device *dev;
 	int index;
-	struct regmap *anatop;
-	struct usb_phy *usb_phy;
 
 	unsigned int pwr_active_high:1;	/* power polarity is active high */
 	unsigned int oc_active_low:1;	/* over current detect is active low */
 	unsigned int disable_oc:1; /* over current detect disabled */
+
+	/* true if over-current polarity is active low */
+	unsigned int oc_pol_active_low:1;
+
+	/* true if dt specifies polarity */
+	unsigned int oc_pol_configured:1;
+
+	unsigned int pwr_pol:1; /* power polarity */
 	unsigned int evdo:1; /* set external vbus divider option */
 	unsigned int ulpi:1; /* connected to an ULPI phy */
 	unsigned int hsic:1; /* HSIC controlller */
-	/*
-	 * Specifies the delay between powering up the xtal 24MHz clock
-	 * and release the clock to the digital logic inside the analog block
-	 */
-	unsigned int osc_clkgate_delay;
 	enum usb_dr_mode available_role;
+	unsigned int ext_id:1; /* ID from exteranl event */
+	unsigned int ext_vbus:1; /* Vbus from exteranl event */
 	int emp_curr_control;
 	int dc_vol_level_adjust;
+	struct usb_phy *usb_phy;
 };
 
-int imx_usbmisc_init(struct imx_usbmisc_data *);
-int imx_usbmisc_init_post(struct imx_usbmisc_data *);
-int imx_usbmisc_set_wakeup(struct imx_usbmisc_data *, bool);
+int imx_usbmisc_init(struct imx_usbmisc_data *data);
+int imx_usbmisc_init_post(struct imx_usbmisc_data *data);
+int imx_usbmisc_hsic_set_connect(struct imx_usbmisc_data *data);
 int imx_usbmisc_charger_detection(struct imx_usbmisc_data *data, bool connect);
-int imx_usbmisc_power_lost_check(struct imx_usbmisc_data *);
-int imx_usbmisc_hsic_set_connect(struct imx_usbmisc_data *);
-int imx_usbmisc_hsic_set_clk(struct imx_usbmisc_data *, bool);
-int imx_usbmisc_term_select_override(struct imx_usbmisc_data *data,
-						bool enable, int val);
+int imx_usbmisc_suspend(struct imx_usbmisc_data *data, bool wakeup);
+int imx_usbmisc_resume(struct imx_usbmisc_data *data, bool wakeup);
 
 #endif /* __DRIVER_USB_CHIPIDEA_CI_HDRC_IMX_H */

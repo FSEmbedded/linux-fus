@@ -22,7 +22,6 @@ unsigned long iram_tlb_phys_addr;
 unsigned long save_ttbr1(void)
 {
 	unsigned long lttbr1;
-
 	asm volatile(
 		".align 4\n"
 		"mrc p15, 0, %0, c2, c0, 1\n"
@@ -145,11 +144,6 @@ void imx6_up_ddr3_freq_change(struct imx6_busfreq_info *busfreq_info) {}
 void imx6_up_lpddr2_freq_change(u32 freq, int bus_freq_mode) {}
 #endif
 
-#if !defined(CONFIG_SOC_IMX6ULL)
-u32 mx6ull_lpm_wfi_start, mx6ull_lpm_wfi_end;
-void imx6ull_low_power_idle(void) {}
-#endif
-
 #if !defined(CONFIG_SOC_IMX6Q)
 u32 mx6_ddr3_freq_change_start, mx6_ddr3_freq_change_end;
 u32 mx6q_lpddr2_freq_change_start, mx6q_lpddr2_freq_change_end;
@@ -160,7 +154,8 @@ void mx6q_lpddr2_freq_change(u32 freq, void *ddr_settings) {}
 void wfe_smp_freq_change(u32 cpuid, u32 *ddr_freq_change_done) {}
 #endif
 
-#if !defined(CONFIG_SOC_IMX7D)
+#if !defined(CONFIG_SOC_IMX7D) && !defined(CONFIG_SOC_IMX7ULP)
 void imx7_smp_wfe(u32 cpuid, u32 ocram_base) {}
 void imx7d_ddr3_freq_change(u32 freq) {}
 #endif
+

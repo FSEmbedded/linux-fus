@@ -350,10 +350,9 @@ struct fsl_asrc_pair {
  * @pair: pair pointers
  * @channel_bits: width of ASRCNCR register for each pair
  * @channel_avail: non-occupied channel numbers
- * @pair_streams:indicate which substream is running
+ * @pair_streams:indicat which substream is running
  * @asrc_rate: default sample rate for ASoC Back-Ends
  * @asrc_width: default sample width for ASoC Back-Ends
- * @name: driver name
  * @regcache_cfg: store register value of REG_ASRCFG
  */
 struct fsl_asrc {
@@ -369,7 +368,6 @@ struct fsl_asrc {
 	unsigned char *clk_map[2];
 	spinlock_t lock;
 
-	struct snd_pcm_substream *substream[2];
 	struct fsl_asrc_pair *pair[ASRC_PAIR_MAX_NUM];
 	struct miscdevice asrc_miscdev;
 	unsigned int channel_bits;

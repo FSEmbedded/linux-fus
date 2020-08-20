@@ -1,10 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2016 Freescale Semiconductor, Inc.
- * Copyright 2017-2018 NXP.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Copyright 2017-2018 NXP
+ *   Dong Aisheng <aisheng.dong@nxp.com>
  */
 
 /dts-v1/;
@@ -14,7 +12,7 @@
 
 / {
 	model = "NXP i.MX7ULP EVK";
-	compatible = "fsl,imx7ulp-evk", "fsl,imx7ulp", "Generic DT based system";
+	compatible = "fsl,imx7ulp-evk", "fsl,imx7ulp";
 
 	aliases {
 		gpio4 = &rpmsg_gpio0;
@@ -25,14 +23,26 @@
 		stdout-path = &lpuart4;
 	};
 
-	memory {
+	memory@60000000 {
 		device_type = "memory";
 		reg = <0x60000000 0x40000000>;
 	};
 
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		rpmsg_reserved: rpmsg@9FF00000 {
+			no-map;
+			reg = <0x9FF00000 0x100000>;
+		};
+
+	};
+
 	backlight {
 		compatible = "pwm-backlight";
-		pwms = <&pwm0 1 50000>;
+		pwms = <&tpm4 1 50000 0>;
 		brightness-levels = <0 20 25 30 35 40 100>;
 		default-brightness-level = <6>;
 		status = "okay";
@@ -50,47 +60,6 @@
 		reset-gpios = <&rpmsg_gpio0 15 GPIO_ACTIVE_LOW>;
 		reset-delay-us = <1000>;
 		#reset-cells = <0>;
-	};
-
-	regulators {
-		compatible = "simple-bus";
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		reg_usb_otg1_vbus: regulator@0 {
-			compatible = "regulator-fixed";
-			reg = <0>;
-			pinctrl-names = "default", "sleep";
-			pinctrl-0 = <&pinctrl_usbotg1_vbus>;
-			pinctrl-1 = <&pinctrl_usbotg1_vbus>;
-			regulator-name = "usb_otg1_vbus";
-			regulator-min-microvolt = <5000000>;
-			regulator-max-microvolt = <5000000>;
-			gpio = <&gpio_ptc 0 GPIO_ACTIVE_HIGH>;
-			enable-active-high;
-		};
-
-		reg_vsd_3v3: regulator@1 {
-			compatible = "regulator-fixed";
-			reg = <1>;
-			regulator-name = "VSD_3V3";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			gpio = <&gpio_ptd 0 GPIO_ACTIVE_HIGH>;
-			off-on-delay = <20000>;
-			enable-active-high;
-		};
-
-		reg_sd1_vmmc: sd1_regulator {
-			compatible = "regulator-fixed";
-			regulator-name = "WLAN_EN";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			gpio = <&rpmsg_gpio0 14 GPIO_ACTIVE_HIGH>;
-			off-on-delay = <20000>;
-			startup-delay-us = <100>;
-			enable-active-high;
-		};
 	};
 
 	pf1550-rpmsg {
@@ -149,11 +118,45 @@
 		};
 	};
 
-	rpmsg_i2s: rpmsg-i2s {
-		compatible = "fsl,imx7ulp-rpmsg-i2s";
-		/* the audio device index in m4 domain */
-		fsl,audioindex = <0> ;
-		status = "okay";
+	regulators {
+		compatible = "simple-bus";
+		#address-cell = <1>;
+		#size-cells = <0>;
+
+		reg_usb_otg1_vbus: regulator-usb-otg1-vbus {
+			compatible = "regulator-fixed";
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <&pinctrl_usbotg1_vbus>;
+			pinctrl-1 = <&pinctrl_usbotg1_vbus>;
+			regulator-name = "usb_otg1_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio_ptc 0 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+
+		reg_vsd_3v3: regulator-vsd-3v3 {
+			compatible = "regulator-fixed";
+			regulator-name = "VSD_3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&pinctrl_usdhc0_rst>;
+			gpio = <&gpio_ptd 0 GPIO_ACTIVE_HIGH>;
+			off-on-delay-us = <20000>;
+			enable-active-high;
+		};
+
+		reg_sd1_vmmc: sd1_regulator {
+			compatible = "regulator-fixed";
+			regulator-name = "WLAN_EN";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			gpio = <&rpmsg_gpio0 14 GPIO_ACTIVE_HIGH>;
+			startup-delay-us = <100>;
+			off-on-delay-us = <20000>;
+			enable-active-high;
+		};
 	};
 
 	rpmsg_gpio0: rpmsg-gpio0 {
@@ -202,9 +205,16 @@
 		compatible = "fsl,rpmsg-input";
 	};
 
+	rpmsg_i2s: rpmsg-i2s {
+		compatible = "fsl,imx7ulp-rpmsg-i2s";
+		/* the audio device index in m4 domain */
+		fsl,audioindex = <0> ;
+		status = "okay";
+	};
+
 	sound-rpmsg {
 		compatible = "fsl,imx-audio-rpmsg";
-		model = "rpmsg-audio";
+		model = "wm8960-audio";
 		cpu-dai = <&rpmsg_i2s>;
 		rpmsg-out;
 		rpmsg-in;
@@ -230,151 +240,42 @@
 	arm-supply= <&sw1_reg>;
 };
 
-&iomuxc1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_hog_1>;
+&lpspi3 {
+	fsl,spi-num-chipselects = <1>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_lpspi3>;
+	pinctrl-1 = <&pinctrl_lpspi3>;
+	status = "okay";
 
-	imx7ulp-evk {
-		pinctrl_hog_1: hoggrp-1 {
-			fsl,pins = <
-				IMX7ULP_PAD_PTC1__PTC1		0x20000
-			>;
-		};
+	spidev0: spi@0 {
+		reg = <0>;
+		compatible = "rohm,dh2228fv";
+		spi-max-frequency = <1000000>;
+	};
+};
 
-		pinctrl_pwm0: pwm0_grp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTF2__TPM4_CH1	0x3
-			>;
-		};
+&lpi2c5 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_lpi2c5>;
+	pinctrl-1 = <&pinctrl_lpi2c5>;
+	status = "okay";
 
-		pinctrl_lpi2c5: lpi2c5grp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTC4__LPI2C5_SCL	0x27
-				IMX7ULP_PAD_PTC5__LPI2C5_SDA	0x27
-			>;
-		};
-
-		pinctrl_mipi_dsi_reset: mipi_dsi_reset_grp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTC19__PTC19	0x20003
-			>;
-		};
-
-		pinctrl_lpuart4: lpuart4grp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTC3__LPUART4_RX	0x3
-				IMX7ULP_PAD_PTC2__LPUART4_TX	0x3
-			>;
-		};
-
-		pinctrl_lpuart6: lpuart6grp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTE10__LPUART6_TX	0x3
-				IMX7ULP_PAD_PTE11__LPUART6_RX	0x3
-				IMX7ULP_PAD_PTE9__LPUART6_RTS_B	0x3
-				IMX7ULP_PAD_PTE8__LPUART6_CTS_B	0x3
-				IMX7ULP_PAD_PTE7__PTE7		0x20000	/* BT_REG_ON */
-			>;
-		};
-
-		pinctrl_lpuart7: lpuart7grp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTF14__LPUART7_TX		0x3
-				IMX7ULP_PAD_PTF15__LPUART7_RX		0x3
-				IMX7ULP_PAD_PTF13__LPUART7_RTS_B	0x3
-				IMX7ULP_PAD_PTF12__LPUART7_CTS_B	0x3
-			>;
-		};
-
-		pinctrl_usdhc0: usdhc0grp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTD1__SDHC0_CMD	0x43
-				IMX7ULP_PAD_PTD2__SDHC0_CLK	0x10042
-				IMX7ULP_PAD_PTD7__SDHC0_D3	0x43
-				IMX7ULP_PAD_PTD8__SDHC0_D2	0x43
-				IMX7ULP_PAD_PTD9__SDHC0_D1	0x43
-				IMX7ULP_PAD_PTD10__SDHC0_D0	0x43
-				IMX7ULP_PAD_PTC10__PTC10	0x10000	/* USDHC0 CD */
-				IMX7ULP_PAD_PTD0__PTD0		0x20000	/* USDHC0 RST */
-			>;
-		};
-
-		pinctrl_usdhc0_8bit: usdhc0grp_8bit {
-			fsl,pins = <
-				IMX7ULP_PAD_PTD1__SDHC0_CMD	0x43
-				IMX7ULP_PAD_PTD2__SDHC0_CLK	0x10042
-				IMX7ULP_PAD_PTD3__SDHC0_D7	0x43
-				IMX7ULP_PAD_PTD4__SDHC0_D6	0x43
-				IMX7ULP_PAD_PTD5__SDHC0_D5	0x43
-				IMX7ULP_PAD_PTD6__SDHC0_D4	0x43
-				IMX7ULP_PAD_PTD7__SDHC0_D3	0x43
-				IMX7ULP_PAD_PTD8__SDHC0_D2	0x43
-				IMX7ULP_PAD_PTD9__SDHC0_D1	0x43
-				IMX7ULP_PAD_PTD10__SDHC0_D0	0x43
-				IMX7ULP_PAD_PTD11__SDHC0_DQS	0x42
-			>;
-		};
-
-		pinctrl_lpi2c7: lpi2c7grp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTF12__LPI2C7_SCL	0x27
-				IMX7ULP_PAD_PTF13__LPI2C7_SDA	0x27
-			>;
-		};
-
-		pinctrl_lpspi3: lpspi3grp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTF16__LPSPI3_SIN	0x0
-				IMX7ULP_PAD_PTF17__LPSPI3_SOUT	0x0
-				IMX7ULP_PAD_PTF18__LPSPI3_SCK	0x0
-				IMX7ULP_PAD_PTF19__LPSPI3_PCS0	0x0
-			>;
-		};
-
-		pinctrl_usbotg1_vbus: otg1vbusgrp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTC0__PTC0		0x20000
-			>;
-		};
-
-		pinctrl_usbotg1_id: otg1idgrp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTC13__USB0_ID	0x10003
-			>;
-		};
-
-		pinctrl_touch_io: touchiogrp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTF0__PTF0		0x10043
-				IMX7ULP_PAD_PTF1__PTF1		0x20043
-			>;
-		};
-
-		pinctrl_usdhc1: usdhc1grp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTE3__SDHC1_CMD	0x43
-				IMX7ULP_PAD_PTE2__SDHC1_CLK	0x10042
-				IMX7ULP_PAD_PTE1__SDHC1_D0	0x43
-				IMX7ULP_PAD_PTE0__SDHC1_D1	0x43
-				IMX7ULP_PAD_PTE5__SDHC1_D2	0x43
-				IMX7ULP_PAD_PTE4__SDHC1_D3	0x43
-			>;
-		};
-
-		pinctrl_usdhc1_rst: usdhc1grp_rst {
-			fsl,pins = <
-				IMX7ULP_PAD_PTE11__PTE11	0x20000	/* USDHC1 RST */
-				IMX7ULP_PAD_PTE13__PTE13	0x10003	/* USDHC1 CD */
-				IMX7ULP_PAD_PTE12__PTE12	0x10003	/* USDHC1 WP */
-				IMX7ULP_PAD_PTE14__SDHC1_VS	0x43	/* USDHC1 VSEL */
-			>;
-		};
-
-		pinctrl_dsi_hdmi: dsi_hdmi_grp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTC18__PTC18	0x10003	/* DSI_HDMI_INT */
-			>;
-		};
+	adv7535: adv7535@3d {
+		compatible = "adi,adv7535";
+		reg = <0x3d>; /* PD pin is low */
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_dsi_hdmi>;
+		interrupt-parent = <&gpio_ptc>;
+		interrupts = <18 IRQ_TYPE_EDGE_FALLING>;
+		video-mode = <1>; /*
+				   * Only support CEA modes.
+				   * Reference mxc_edid.c
+				   */
+		dsi-traffic-mode = <0>;
+		bpp = <24>;
+		status = "disabled";
 	};
 };
 
@@ -409,10 +310,32 @@
 	};
 };
 
+&lpuart4 {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_lpuart4>;
+	pinctrl-1 = <&pinctrl_lpuart4>;
+	status = "okay";
+};
+
+&lpuart6 { /* BT */
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_lpuart6>;
+	pinctrl-1 = <&pinctrl_lpuart6>;
+	resets = <&modem_reset>;
+	status = "okay";
+};
+
+&lpuart7 { /* Uart test */
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_lpuart7>;
+	pinctrl-1 = <&pinctrl_lpuart7>;
+	status = "disabled";
+};
+
 &lpi2c7 {
 	#address-cells = <1>;
 	#size-cells = <0>;
-	pinctrl-names = "default",  "sleep";
+	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_lpi2c7 &pinctrl_touch_io>;
 	pinctrl-1 = <&pinctrl_lpi2c7 &pinctrl_touch_io>;
 	status = "okay";
@@ -435,48 +358,6 @@
 		focaltech,key-x-coords = <200 600 800>;
 	};
 };
-
-&lpi2c5 {
-	#address-cells = <1>;
-	#size-cells = <0>;
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&pinctrl_lpi2c5>;
-	pinctrl-1 = <&pinctrl_lpi2c5>;
-	status = "okay";
-
-	adv7535: adv7535@3d {
-		compatible = "adi,adv7535";
-		reg = <0x3d>; /* PD pin is low */
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_dsi_hdmi>;
-		interrupt-parent = <&gpio_ptc>;
-		interrupts = <18 IRQ_TYPE_EDGE_FALLING>;
-		video-mode = <1>; /*
-				   * Only support CEA modes.
-				   * Reference mxc_edid.c
-				   */
-		dsi-traffic-mode = <0>;
-		bpp = <24>;
-		status = "disabled";
-	};
-};
-
-&lpspi3 {
-	#address-cells = <1>;
-	#size-cells = <0>;
-	fsl,spi-num-chipselects = <1>;
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&pinctrl_lpspi3>;
-	pinctrl-1 = <&pinctrl_lpspi3>;
-	status = "okay";
-
-	spidev0: spi@0 {
-		reg = <0>;
-		compatible = "rohm,dh2228fv";
-		spi-max-frequency = <1000000>;
-	};
-};
-
 
 &adv7535 {
 	status = "okay";
@@ -503,47 +384,20 @@
 	};
 };
 
-&lpuart4 { /* console */
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&pinctrl_lpuart4>;
-	pinctrl-1 = <&pinctrl_lpuart4>;
-	status = "okay";
-};
-
-&lpuart6 { /* BT */
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&pinctrl_lpuart6>;
-	pinctrl-1 = <&pinctrl_lpuart6>;
-	resets = <&modem_reset>;
-	status = "okay";
-};
-
-&lpuart7 { /* Uart test */
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&pinctrl_lpuart7>;
-	pinctrl-1 = <&pinctrl_lpuart7>;
-	status = "disabled";
-};
-
-&pwm0 {
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&pinctrl_pwm0>;
-	pinctrl-1 = <&pinctrl_pwm0>;
-	status = "okay";
-};
-
 &rpmsg{
 	/*
 	 * 64K for one rpmsg instance, default using 2 rpmsg instances:
-	 * --0x9FF00000~0x9FF0FFFF: pingpong
-	 * --0x9FF10000~0x9FF1FFFF: pmic
-	 * --0x9FF20000~0x9FF2FFFF: pm
-	 * --0x9FF30000~0x9FF3FFFF: audio
-	 * --0x9FF40000~0x9FF4FFFF: virtual tty
-	 * --0x9FF50000~0x9FF5FFFF: keys
+	 * --0x9FF00000~0x9FF0FFFF: pmic,pm,audio,keys,gpio,sensor
+	 * --0x9FF10000~0x9FF1FFFF: pingpong,virtual tty
 	 */
 	vdev-nums = <2>;
 	reg = <0x9FF00000 0x20000>;
+	status = "okay";
+};
+
+&tpm4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm0>;
 	status = "okay";
 };
 
@@ -555,11 +409,8 @@
 	srp-disable;
 	hnp-disable;
 	adp-disable;
+	disable-over-current;
 	status = "okay";
-};
-
-&usbphy1 {
-	fsl,tx-d-cal = <88>;
 };
 
 &usdhc0 {
@@ -586,4 +437,147 @@
 	keep-power-in-suspend;
 	non-removable;
 	status = "okay";
+};
+
+&iomuxc1 {
+	pinctrl_lpi2c5: lpi2c5grp {
+		fsl,pins = <
+			IMX7ULP_PAD_PTC4__LPI2C5_SCL	0x27
+			IMX7ULP_PAD_PTC5__LPI2C5_SDA	0x27
+		>;
+	};
+
+	pinctrl_mipi_dsi_reset: mipi_dsi_reset_grp {
+		fsl,pins = <
+			IMX7ULP_PAD_PTC19__PTC19	0x20003
+		>;
+	};
+
+	pinctrl_lpuart4: lpuart4grp {
+		fsl,pins = <
+			IMX7ULP_PAD_PTC3__LPUART4_RX	0x3
+			IMX7ULP_PAD_PTC2__LPUART4_TX	0x3
+		>;
+		bias-pull-up;
+	};
+
+	pinctrl_lpuart6: lpuart6grp {
+		fsl,pins = <
+			IMX7ULP_PAD_PTE10__LPUART6_TX	0x3
+			IMX7ULP_PAD_PTE11__LPUART6_RX	0x3
+			IMX7ULP_PAD_PTE9__LPUART6_RTS_B	0x3
+			IMX7ULP_PAD_PTE8__LPUART6_CTS_B	0x3
+			IMX7ULP_PAD_PTE7__PTE7		0x20000	/* BT_REG_ON */
+		>;
+	};
+
+	pinctrl_lpuart7: lpuart7grp {
+		fsl,pins = <
+			IMX7ULP_PAD_PTF14__LPUART7_TX		0x3
+			IMX7ULP_PAD_PTF15__LPUART7_RX		0x3
+			IMX7ULP_PAD_PTF13__LPUART7_RTS_B	0x3
+			IMX7ULP_PAD_PTF12__LPUART7_CTS_B	0x3
+		>;
+	};
+
+	pinctrl_lpi2c7: lpi2c7grp {
+		fsl,pins = <
+			IMX7ULP_PAD_PTF12__LPI2C7_SCL	0x27
+			IMX7ULP_PAD_PTF13__LPI2C7_SDA	0x27
+		>;
+	};
+
+	pinctrl_touch_io: touchiogrp {
+		fsl,pins = <
+			IMX7ULP_PAD_PTF0__PTF0		0x10043
+			IMX7ULP_PAD_PTF1__PTF1		0x20043
+		>;
+	};
+
+	pinctrl_pwm0: pwm0grp {
+		fsl,pins = <
+			IMX7ULP_PAD_PTF2__TPM4_CH1	0x2
+		>;
+	};
+
+	pinctrl_lpspi3: lpspi3grp {
+		fsl,pins = <
+			IMX7ULP_PAD_PTF16__LPSPI3_SIN	0x0
+			IMX7ULP_PAD_PTF17__LPSPI3_SOUT	0x0
+			IMX7ULP_PAD_PTF18__LPSPI3_SCK	0x0
+			IMX7ULP_PAD_PTF19__LPSPI3_PCS0	0x0
+		>;
+	};
+
+	pinctrl_usbotg1_vbus: otg1vbusgrp {
+		fsl,pins = <
+			IMX7ULP_PAD_PTC0__PTC0		0x20000
+		>;
+	};
+
+	pinctrl_usbotg1_id: otg1idgrp {
+		fsl,pins = <
+			IMX7ULP_PAD_PTC13__USB0_ID	0x10003
+		>;
+	};
+
+	pinctrl_usdhc0: usdhc0grp {
+		fsl,pins = <
+			IMX7ULP_PAD_PTD1__SDHC0_CMD	0x43
+			IMX7ULP_PAD_PTD2__SDHC0_CLK	0x40
+			IMX7ULP_PAD_PTD7__SDHC0_D3	0x43
+			IMX7ULP_PAD_PTD8__SDHC0_D2	0x43
+			IMX7ULP_PAD_PTD9__SDHC0_D1	0x43
+			IMX7ULP_PAD_PTD10__SDHC0_D0	0x43
+			IMX7ULP_PAD_PTC10__PTC10	0x3	/* CD */
+		>;
+	};
+
+	pinctrl_usdhc0_8bit: usdhc0grp_8bit {
+		fsl,pins = <
+			IMX7ULP_PAD_PTD1__SDHC0_CMD     0x43
+			IMX7ULP_PAD_PTD2__SDHC0_CLK     0x10042
+			IMX7ULP_PAD_PTD3__SDHC0_D7      0x43
+			IMX7ULP_PAD_PTD4__SDHC0_D6      0x43
+			IMX7ULP_PAD_PTD5__SDHC0_D5      0x43
+			IMX7ULP_PAD_PTD6__SDHC0_D4      0x43
+			IMX7ULP_PAD_PTD7__SDHC0_D3      0x43
+			IMX7ULP_PAD_PTD8__SDHC0_D2      0x43
+			IMX7ULP_PAD_PTD9__SDHC0_D1      0x43
+			IMX7ULP_PAD_PTD10__SDHC0_D0     0x43
+			IMX7ULP_PAD_PTD11__SDHC0_DQS    0x42
+		>;
+	};
+
+	pinctrl_usdhc0_rst: usdhc0-gpio-rst-grp {
+		fsl,pins = <
+			IMX7ULP_PAD_PTD0__PTD0		0x3
+		>;
+	};
+
+	pinctrl_usdhc1: usdhc1grp {
+		fsl,pins = <
+			IMX7ULP_PAD_PTE3__SDHC1_CMD     0x43
+			IMX7ULP_PAD_PTE2__SDHC1_CLK     0x10042
+			IMX7ULP_PAD_PTE1__SDHC1_D0      0x43
+			IMX7ULP_PAD_PTE0__SDHC1_D1      0x43
+			IMX7ULP_PAD_PTE5__SDHC1_D2      0x43
+			IMX7ULP_PAD_PTE4__SDHC1_D3      0x43
+		>;
+	};
+
+	pinctrl_usdhc1_rst: usdhc1grp_rst {
+		fsl,pins = <
+			IMX7ULP_PAD_PTE11__PTE11        0x20000 /* USDHC1 RST */
+			IMX7ULP_PAD_PTE13__PTE13        0x10003 /* USDHC1 CD */
+			IMX7ULP_PAD_PTE12__PTE12        0x10003 /* USDHC1 WP */
+			IMX7ULP_PAD_PTE14__SDHC1_VS     0x43    /* USDHC1 VSEL */
+		>;
+	};
+
+	pinctrl_dsi_hdmi: dsi_hdmi_grp {
+		fsl,pins = <
+			IMX7ULP_PAD_PTC18__PTC18	0x10003	/* DSI_HDMI_INT */
+		>;
+	};
 };

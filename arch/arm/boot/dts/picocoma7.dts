@@ -376,9 +376,9 @@ chosen {
 	status = "okay";
 
 #ifdef CONFIG_PICOCOMA7_AUDIO
-	sgtl5000: sgtl5000@0a {
+	sgtl5000: sgtl5000@a {
 		compatible = "fsl,sgtl5000";
-		reg = <0x0a>;
+		reg = <0xa>;
 		mono2both;
 		clocks = <&clks IMX6UL_CLK_SAI1>;
 		VDDA-supply = <&reg_sgtl5000_vdda>;

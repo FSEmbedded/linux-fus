@@ -173,7 +173,7 @@ pwmleds {
 
 #ifdef CONFIG_EFUSA9X_CAPTOUCH_FT5x06
 	/* F&S driver V3.0 */
-	ft5x06_ts@70 {
+	ft5x06_ts@38 {
 		compatible = "FocalTech,ft5306";
 		reg = <0x38>;
 		fingers = <2>;

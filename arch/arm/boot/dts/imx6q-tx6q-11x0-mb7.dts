@@ -108,9 +108,9 @@
 };
 
 &i2c3 {
-	polytouch1: eeti@04 {
+	polytouch1: eeti@4 {
 		compatible = "eeti,egalax_ts";
-		reg = <0x04>;
+		reg = <0x4>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_eeti>;
 		interrupts-extended = <&gpio3 22 IRQ_TYPE_EDGE_FALLING>;

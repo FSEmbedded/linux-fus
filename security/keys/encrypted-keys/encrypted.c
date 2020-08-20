@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2010 IBM Corporation
  * Copyright (C) 2010 Politecnico di Torino, Italy
@@ -6,10 +7,6 @@
  * Authors:
  * Mimi Zohar <zohar@us.ibm.com>
  * Roberto Sassu <roberto.sassu@polito.it>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, version 2 of the License.
  *
  * See Documentation/security/keys/trusted-encrypted.rst
  */
@@ -39,35 +36,40 @@
 #include "ecryptfs_format.h"
 
 static const char KEY_TRUSTED_PREFIX[] = "trusted:";
+static const char KEY_SECURE_PREFIX[] = "secure:";
 static const char KEY_USER_PREFIX[] = "user:";
 static const char hash_alg[] = "sha256";
 static const char hmac_alg[] = "hmac(sha256)";
 static const char blkcipher_alg[] = "cbc(aes)";
 static const char key_format_default[] = "default";
 static const char key_format_ecryptfs[] = "ecryptfs";
+static const char key_format_enc32[] = "enc32";
 static unsigned int ivsize;
 static int blksize;
 
 #define KEY_TRUSTED_PREFIX_LEN (sizeof (KEY_TRUSTED_PREFIX) - 1)
+#define KEY_SECURE_PREFIX_LEN (sizeof(KEY_SECURE_PREFIX) - 1)
 #define KEY_USER_PREFIX_LEN (sizeof (KEY_USER_PREFIX) - 1)
 #define KEY_ECRYPTFS_DESC_LEN 16
 #define HASH_SIZE SHA256_DIGEST_SIZE
 #define MAX_DATA_SIZE 4096
 #define MIN_DATA_SIZE  20
+#define KEY_ENC32_PAYLOAD_LEN 32
 
 static struct crypto_shash *hash_tfm;
 
 enum {
-	Opt_err = -1, Opt_new, Opt_load, Opt_update
+	Opt_new, Opt_load, Opt_update, Opt_err
 };
 
 enum {
-	Opt_error = -1, Opt_default, Opt_ecryptfs
+	Opt_default, Opt_ecryptfs, Opt_enc32, Opt_error
 };
 
 static const match_table_t key_format_tokens = {
 	{Opt_default, "default"},
 	{Opt_ecryptfs, "ecryptfs"},
+	{Opt_enc32, "enc32"},
 	{Opt_error, NULL}
 };
 
@@ -125,7 +127,7 @@ static int valid_ecryptfs_desc(const char *ecryptfs_desc)
 /*
  * valid_master_desc - verify the 'key-type:desc' of a new/updated master-key
  *
- * key-type:= "trusted:" | "user:"
+ * key-type:= "trusted:" | "user:" | "secure:"
  * desc:= master-key description
  *
  * Verify that 'key-type' is valid and that 'desc' exists. On key update,
@@ -140,6 +142,8 @@ static int valid_master_desc(const char *new_desc, const char *orig_desc)
 
 	if (!strncmp(new_desc, KEY_TRUSTED_PREFIX, KEY_TRUSTED_PREFIX_LEN))
 		prefix_len = KEY_TRUSTED_PREFIX_LEN;
+	else if (!strncmp(new_desc, KEY_SECURE_PREFIX, KEY_SECURE_PREFIX_LEN))
+		prefix_len = KEY_SECURE_PREFIX_LEN;
 	else if (!strncmp(new_desc, KEY_USER_PREFIX, KEY_USER_PREFIX_LEN))
 		prefix_len = KEY_USER_PREFIX_LEN;
 	else
@@ -195,6 +199,7 @@ static int datablob_parse(char *datablob, const char **format,
 	key_format = match_token(p, key_format_tokens, args);
 	switch (key_format) {
 	case Opt_ecryptfs:
+	case Opt_enc32:
 	case Opt_default:
 		*format = p;
 		*master_desc = strsep(&datablob, " \t");
@@ -329,7 +334,6 @@ static int calc_hash(struct crypto_shash *tfm, u8 *digest,
 	int err;
 
 	desc->tfm = tfm;
-	desc->flags = 0;
 
 	err = crypto_shash_digest(desc, buf, buflen, digest);
 	shash_desc_zero(desc);
@@ -342,7 +346,7 @@ static int calc_hmac(u8 *digest, const u8 *key, unsigned int keylen,
 	struct crypto_shash *tfm;
 	int err;
 
-	tfm = crypto_alloc_shash(hmac_alg, 0, CRYPTO_ALG_ASYNC);
+	tfm = crypto_alloc_shash(hmac_alg, 0, 0);
 	if (IS_ERR(tfm)) {
 		pr_err("encrypted_key: can't alloc %s transform: %ld\n",
 		       hmac_alg, PTR_ERR(tfm));
@@ -358,7 +362,7 @@ static int calc_hmac(u8 *digest, const u8 *key, unsigned int keylen,
 
 enum derived_key_type { ENC_KEY, AUTH_KEY };
 
-/* Derive authentication/encryption key from trusted key */
+/* Derive authentication/encryption key from trusted/secure key */
 static int get_derived_key(u8 *derived_key, enum derived_key_type key_type,
 			   const u8 *master_key, size_t master_keylen)
 {
@@ -429,6 +433,11 @@ static struct key *request_master_key(struct encrypted_key_payload *epayload,
 		mkey = request_trusted_key(epayload->master_desc +
 					   KEY_TRUSTED_PREFIX_LEN,
 					   master_key, master_keylen);
+	} else if (!strncmp(epayload->master_desc, KEY_SECURE_PREFIX,
+			    KEY_SECURE_PREFIX_LEN)) {
+		mkey = request_secure_key(epayload->master_desc +
+					  KEY_SECURE_PREFIX_LEN,
+					  master_key, master_keylen);
 	} else if (!strncmp(epayload->master_desc, KEY_USER_PREFIX,
 			    KEY_USER_PREFIX_LEN)) {
 		mkey = request_user_key(epayload->master_desc +
@@ -625,15 +634,22 @@ static struct encrypted_key_payload *encrypted_key_alloc(struct key *key,
 	format_len = (!format) ? strlen(key_format_default) : strlen(format);
 	decrypted_datalen = dlen;
 	payload_datalen = decrypted_datalen;
-	if (format && !strcmp(format, key_format_ecryptfs)) {
-		if (dlen != ECRYPTFS_MAX_KEY_BYTES) {
-			pr_err("encrypted_key: keylen for the ecryptfs format "
-			       "must be equal to %d bytes\n",
-			       ECRYPTFS_MAX_KEY_BYTES);
-			return ERR_PTR(-EINVAL);
+	if (format) {
+		if (!strcmp(format, key_format_ecryptfs)) {
+			if (dlen != ECRYPTFS_MAX_KEY_BYTES) {
+				pr_err("encrypted_key: keylen for the ecryptfs format must be equal to %d bytes\n",
+					ECRYPTFS_MAX_KEY_BYTES);
+				return ERR_PTR(-EINVAL);
+			}
+			decrypted_datalen = ECRYPTFS_MAX_KEY_BYTES;
+			payload_datalen = sizeof(struct ecryptfs_auth_tok);
+		} else if (!strcmp(format, key_format_enc32)) {
+			if (decrypted_datalen != KEY_ENC32_PAYLOAD_LEN) {
+				pr_err("encrypted_key: enc32 key payload incorrect length: %d\n",
+						decrypted_datalen);
+				return ERR_PTR(-EINVAL);
+			}
 		}
-		decrypted_datalen = ECRYPTFS_MAX_KEY_BYTES;
-		payload_datalen = sizeof(struct ecryptfs_auth_tok);
 	}
 
 	encrypted_datalen = roundup(decrypted_datalen, blksize);
@@ -984,7 +1000,7 @@ static int __init init_encrypted(void)
 {
 	int ret;
 
-	hash_tfm = crypto_alloc_shash(hash_alg, 0, CRYPTO_ALG_ASYNC);
+	hash_tfm = crypto_alloc_shash(hash_alg, 0, 0);
 	if (IS_ERR(hash_tfm)) {
 		pr_err("encrypted_key: can't allocate %s transform: %ld\n",
 		       hash_alg, PTR_ERR(hash_tfm));

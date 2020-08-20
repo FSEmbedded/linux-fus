@@ -1,13 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Video capture interface for Linux version 2
  *
  *	A generic video device interface for the LINUX operating system
  *	using a set of device structures/vectors for low level operations.
- *
- *	This program is free software; you can redistribute it and/or
- *	modify it under the terms of the GNU General Public License
- *	as published by the Free Software Foundation; either version
- *	2 of the License, or (at your option) any later version.
  *
  * Authors:	Alan Cox, <alan@lxorguk.ukuu.org.uk> (version 1)
  *              Mauro Carvalho Chehab <mchehab@kernel.org> (version 2)
@@ -362,34 +358,6 @@ static long v4l2_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	if (vdev->fops->unlocked_ioctl) {
 		if (video_is_registered(vdev))
 			ret = vdev->fops->unlocked_ioctl(filp, cmd, arg);
-	} else if (vdev->fops->ioctl) {
-		/* This code path is a replacement for the BKL. It is a major
-		 * hack but it will have to do for those drivers that are not
-		 * yet converted to use unlocked_ioctl.
-		 *
-		 * All drivers implement struct v4l2_device, so we use the
-		 * lock defined there to serialize the ioctls.
-		 *
-		 * However, if the driver sleeps, then it blocks all ioctls
-		 * since the lock is still held. This is very common for
-		 * VIDIOC_DQBUF since that normally waits for a frame to arrive.
-		 * As a result any other ioctl calls will proceed very, very
-		 * slowly since each call will have to wait for the VIDIOC_QBUF
-		 * to finish. Things that should take 0.01s may now take 10-20
-		 * seconds.
-		 *
-		 * The workaround is to *not* take the lock for VIDIOC_DQBUF.
-		 * This actually works OK for videobuf-based drivers, since
-		 * videobuf will take its own internal lock.
-		 */
-		struct mutex *m = &vdev->v4l2_dev->ioctl_lock;
-
-		if (cmd != VIDIOC_DQBUF && mutex_lock_interruptible(m))
-			return -ERESTARTSYS;
-		if (video_is_registered(vdev))
-			ret = vdev->fops->ioctl(filp, cmd, arg);
-		if (cmd != VIDIOC_DQBUF)
-			mutex_unlock(m);
 	} else
 		ret = -ENOTTY;
 
@@ -472,8 +440,22 @@ static int v4l2_release(struct inode *inode, struct file *filp)
 	struct video_device *vdev = video_devdata(filp);
 	int ret = 0;
 
-	if (vdev->fops->release)
-		ret = vdev->fops->release(filp);
+	/*
+	 * We need to serialize the release() with queueing new requests.
+	 * The release() may trigger the cancellation of a streaming
+	 * operation, and that should not be mixed with queueing a new
+	 * request at the same time.
+	 */
+	if (vdev->fops->release) {
+		if (v4l2_device_supports_requests(vdev->v4l2_dev)) {
+			mutex_lock(&vdev->v4l2_dev->mdev->req_queue_mutex);
+			ret = vdev->fops->release(filp);
+			mutex_unlock(&vdev->v4l2_dev->mdev->req_queue_mutex);
+		} else {
+			ret = vdev->fops->release(filp);
+		}
+	}
+
 	if (vdev->dev_debug & V4L2_DEV_DEBUG_FOP)
 		dprintk("%s: release\n",
 			video_device_node_name(vdev));
@@ -608,11 +590,10 @@ static void determine_valid_ioctls(struct video_device *vdev)
 	if (is_vid || is_tch) {
 		/* video and metadata specific ioctls */
 		if ((is_rx && (ops->vidioc_enum_fmt_vid_cap ||
-			       ops->vidioc_enum_fmt_vid_cap_mplane ||
 			       ops->vidioc_enum_fmt_vid_overlay ||
 			       ops->vidioc_enum_fmt_meta_cap)) ||
 		    (is_tx && (ops->vidioc_enum_fmt_vid_out ||
-			       ops->vidioc_enum_fmt_vid_out_mplane)))
+			       ops->vidioc_enum_fmt_meta_out)))
 			set_bit(_IOC_NR(VIDIOC_ENUM_FMT), valid_ioctls);
 		if ((is_rx && (ops->vidioc_g_fmt_vid_cap ||
 			       ops->vidioc_g_fmt_vid_cap_mplane ||
@@ -620,7 +601,8 @@ static void determine_valid_ioctls(struct video_device *vdev)
 			       ops->vidioc_g_fmt_meta_cap)) ||
 		    (is_tx && (ops->vidioc_g_fmt_vid_out ||
 			       ops->vidioc_g_fmt_vid_out_mplane ||
-			       ops->vidioc_g_fmt_vid_out_overlay)))
+			       ops->vidioc_g_fmt_vid_out_overlay ||
+			       ops->vidioc_g_fmt_meta_out)))
 			 set_bit(_IOC_NR(VIDIOC_G_FMT), valid_ioctls);
 		if ((is_rx && (ops->vidioc_s_fmt_vid_cap ||
 			       ops->vidioc_s_fmt_vid_cap_mplane ||
@@ -628,7 +610,8 @@ static void determine_valid_ioctls(struct video_device *vdev)
 			       ops->vidioc_s_fmt_meta_cap)) ||
 		    (is_tx && (ops->vidioc_s_fmt_vid_out ||
 			       ops->vidioc_s_fmt_vid_out_mplane ||
-			       ops->vidioc_s_fmt_vid_out_overlay)))
+			       ops->vidioc_s_fmt_vid_out_overlay ||
+			       ops->vidioc_s_fmt_meta_out)))
 			 set_bit(_IOC_NR(VIDIOC_S_FMT), valid_ioctls);
 		if ((is_rx && (ops->vidioc_try_fmt_vid_cap ||
 			       ops->vidioc_try_fmt_vid_cap_mplane ||
@@ -636,7 +619,8 @@ static void determine_valid_ioctls(struct video_device *vdev)
 			       ops->vidioc_try_fmt_meta_cap)) ||
 		    (is_tx && (ops->vidioc_try_fmt_vid_out ||
 			       ops->vidioc_try_fmt_vid_out_mplane ||
-			       ops->vidioc_try_fmt_vid_out_overlay)))
+			       ops->vidioc_try_fmt_vid_out_overlay ||
+			       ops->vidioc_try_fmt_meta_out)))
 			 set_bit(_IOC_NR(VIDIOC_TRY_FMT), valid_ioctls);
 		SET_VALID_IOCTL(ops, VIDIOC_OVERLAY, vidioc_overlay);
 		SET_VALID_IOCTL(ops, VIDIOC_G_FBUF, vidioc_g_fbuf);
@@ -650,14 +634,14 @@ static void determine_valid_ioctls(struct video_device *vdev)
 		SET_VALID_IOCTL(ops, VIDIOC_TRY_DECODER_CMD, vidioc_try_decoder_cmd);
 		SET_VALID_IOCTL(ops, VIDIOC_ENUM_FRAMESIZES, vidioc_enum_framesizes);
 		SET_VALID_IOCTL(ops, VIDIOC_ENUM_FRAMEINTERVALS, vidioc_enum_frameintervals);
-		if (ops->vidioc_g_crop || ops->vidioc_g_selection)
+		if (ops->vidioc_g_selection) {
 			set_bit(_IOC_NR(VIDIOC_G_CROP), valid_ioctls);
-		if (ops->vidioc_s_crop || ops->vidioc_s_selection)
+			set_bit(_IOC_NR(VIDIOC_CROPCAP), valid_ioctls);
+		}
+		if (ops->vidioc_s_selection)
 			set_bit(_IOC_NR(VIDIOC_S_CROP), valid_ioctls);
 		SET_VALID_IOCTL(ops, VIDIOC_G_SELECTION, vidioc_g_selection);
 		SET_VALID_IOCTL(ops, VIDIOC_S_SELECTION, vidioc_s_selection);
-		if (ops->vidioc_cropcap || ops->vidioc_g_selection)
-			set_bit(_IOC_NR(VIDIOC_CROPCAP), valid_ioctls);
 	} else if (is_vbi) {
 		/* vbi specific ioctls */
 		if ((is_rx && (ops->vidioc_g_fmt_vbi_cap ||
@@ -875,6 +859,9 @@ int __video_register_device(struct video_device *vdev,
 		return -EINVAL;
 	/* the v4l2_dev pointer MUST be present */
 	if (WARN_ON(!vdev->v4l2_dev))
+		return -EINVAL;
+	/* the device_caps field MUST be set for all but subdevs */
+	if (WARN_ON(type != VFL_TYPE_SUBDEV && !vdev->device_caps))
 		return -EINVAL;
 
 	/* v4l2_fh support */
@@ -1106,7 +1093,7 @@ static void __exit videodev_exit(void)
 subsys_initcall(videodev_init);
 module_exit(videodev_exit)
 
-MODULE_AUTHOR("Alan Cox, Mauro Carvalho Chehab <mchehab@kernel.org>");
-MODULE_DESCRIPTION("Device registrar for Video4Linux drivers v2");
+MODULE_AUTHOR("Alan Cox, Mauro Carvalho Chehab <mchehab@kernel.org>, Bill Dirks, Justin Schoeman, Gerd Knorr");
+MODULE_DESCRIPTION("Video4Linux2 core driver");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_CHARDEV_MAJOR(VIDEO_MAJOR);

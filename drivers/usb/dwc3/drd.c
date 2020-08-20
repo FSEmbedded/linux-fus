@@ -10,6 +10,7 @@
 #include <linux/extcon.h>
 #include <linux/of_graph.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 
 #include "debug.h"
 #include "core.h"
@@ -138,14 +139,14 @@ static int dwc3_otg_get_irq(struct dwc3 *dwc)
 	struct platform_device *dwc3_pdev = to_platform_device(dwc->dev);
 	int irq;
 
-	irq = platform_get_irq_byname(dwc3_pdev, "otg");
+	irq = platform_get_irq_byname_optional(dwc3_pdev, "otg");
 	if (irq > 0)
 		goto out;
 
 	if (irq == -EPROBE_DEFER)
 		goto out;
 
-	irq = platform_get_irq_byname(dwc3_pdev, "dwc_usb3");
+	irq = platform_get_irq_byname_optional(dwc3_pdev, "dwc_usb3");
 	if (irq > 0)
 		goto out;
 
@@ -155,9 +156,6 @@ static int dwc3_otg_get_irq(struct dwc3 *dwc)
 	irq = platform_get_irq(dwc3_pdev, 0);
 	if (irq > 0)
 		goto out;
-
-	if (irq != -EPROBE_DEFER)
-		dev_err(dwc->dev, "missing OTG IRQ\n");
 
 	if (!irq)
 		irq = -EINVAL;
@@ -445,9 +443,24 @@ static struct extcon_dev *dwc3_get_extcon(struct dwc3 *dwc)
 	struct device *dev = dwc->dev;
 	struct device_node *np_phy, *np_conn;
 	struct extcon_dev *edev;
+	const char *name;
 
-	if (of_property_read_bool(dev->of_node, "extcon"))
-		return extcon_get_edev_by_phandle(dwc->dev, 0);
+	if (device_property_read_bool(dev, "extcon"))
+		return extcon_get_edev_by_phandle(dev, 0);
+
+	/*
+	 * Device tree platforms should get extcon via phandle.
+	 * On ACPI platforms, we get the name from a device property.
+	 * This device property is for kernel internal use only and
+	 * is expected to be set by the glue code.
+	 */
+	if (device_property_read_string(dev, "linux,extcon-name", &name) == 0) {
+		edev = extcon_get_extcon_dev(name);
+		if (!edev)
+			return ERR_PTR(-EPROBE_DEFER);
+
+		return edev;
+	}
 
 	np_phy = of_parse_phandle(dev->of_node, "phys", 0);
 	np_conn = of_graph_get_remote_node(np_phy, -1, -1);
@@ -463,6 +476,44 @@ static struct extcon_dev *dwc3_get_extcon(struct dwc3 *dwc)
 	return edev;
 }
 
+static int dwc3_usb_role_switch_set(struct device *dev, enum usb_role role)
+{
+	u32 mode;
+
+	switch (role) {
+	case USB_ROLE_HOST:
+		mode = DWC3_GCTL_PRTCAP_HOST;
+		break;
+	case USB_ROLE_DEVICE:
+		mode = DWC3_GCTL_PRTCAP_DEVICE;
+		break;
+	default:
+		mode = DWC3_GCTL_PRTCAP_DEVICE;
+		break;
+	};
+
+	dwc3_set_mode(dev_get_drvdata(dev), mode);
+	return 0;
+}
+
+static enum usb_role dwc3_usb_role_switch_get(struct device *dev)
+{
+	struct dwc3 *dwc = dev_get_drvdata(dev);
+	unsigned long flags;
+	enum usb_role role;
+
+	spin_lock_irqsave(&dwc->lock, flags);
+	role = dwc->current_dr_role;
+	spin_unlock_irqrestore(&dwc->lock, flags);
+
+	return role;
+}
+
+static struct usb_role_switch_desc dwc3_role_switch = {
+	.set = dwc3_usb_role_switch_set,
+	.get = dwc3_usb_role_switch_get,
+};
+
 int dwc3_drd_init(struct dwc3 *dwc)
 {
 	int ret, irq;
@@ -471,7 +522,13 @@ int dwc3_drd_init(struct dwc3 *dwc)
 	if (IS_ERR(dwc->edev))
 		return PTR_ERR(dwc->edev);
 
-	if (dwc->edev) {
+	if (device_property_read_bool(dwc->dev, "usb-role-switch")) {
+		dwc3_role_switch.fwnode = dev_fwnode(dwc->dev);
+		dwc->role_switch = usb_role_switch_register(dwc->dev,
+							    &dwc3_role_switch);
+		if (IS_ERR(dwc->role_switch))
+			return PTR_ERR(dwc->role_switch);
+	} else if (dwc->edev) {
 		dwc->edev_nb.notifier_call = dwc3_drd_notifier;
 		ret = extcon_register_notifier(dwc->edev, EXTCON_USB_HOST,
 					       &dwc->edev_nb);
@@ -518,6 +575,9 @@ void dwc3_drd_exit(struct dwc3 *dwc)
 {
 	unsigned long flags;
 
+	if (dwc->role_switch)
+		usb_role_switch_unregister(dwc->role_switch);
+
 	if (dwc->edev)
 		extcon_unregister_notifier(dwc->edev, EXTCON_USB_HOST,
 					   &dwc->edev_nb);
@@ -544,6 +604,6 @@ void dwc3_drd_exit(struct dwc3 *dwc)
 		break;
 	}
 
-	if (!dwc->edev)
+	if (!dwc->edev && !dwc->role_switch)
 		free_irq(dwc->otg_irq, dwc);
 }

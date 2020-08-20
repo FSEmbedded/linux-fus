@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * sound/soc/codecs/si476x.c -- Codec driver for SI476X chips
  *
@@ -5,16 +6,6 @@
  * Copyright (C) 2013 Andrey Smirnov
  *
  * Author: Andrey Smirnov <andrew.smirnov@gmail.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
  */
 
 #include <linux/module.h>
@@ -209,8 +200,7 @@ out:
 }
 
 static int si476x_codec_startup(struct snd_pcm_substream *substream,
-					struct snd_soc_dai *dai)
-{
+					struct snd_soc_dai *dai) {
 	struct si476x_core *core = i2c_mfd_cell_to_core(dai->dev);
 
 	if (!si476x_core_is_powered_up(core))
@@ -219,8 +209,7 @@ static int si476x_codec_startup(struct snd_pcm_substream *substream,
 }
 
 static void si476x_codec_shutdown(struct snd_pcm_substream *substream,
-					struct snd_soc_dai *dai)
-{
+					struct snd_soc_dai *dai) {
 	struct si476x_core *core = i2c_mfd_cell_to_core(dai->dev);
 
 	if (si476x_core_is_powered_up(core))

@@ -22,7 +22,7 @@
 
 #include <linux/platform_device.h>
 #include <linux/regulator/machine.h>
-#include <asm/mach-types.h>
+//#include <asm/mach-types.h>
 
 #include <video/mxc_hdmi.h>
 #include <linux/ipu-v3.h>
@@ -441,13 +441,11 @@ static unsigned int hdmi_compute_cts(unsigned int freq, unsigned long pixel_clk,
 	unsigned int cts = 0;
 	switch (freq) {
 	case 32000:
-		if (pixel_clk == 297000000) {
+		if (pixel_clk == 297000000)
 			cts = 222750;
-			break;
-		} else if (pixel_clk == 25174000) {
+		 else if (pixel_clk == 25174000)
 			cts = 28125;
-			break;
-		}
+		break;
 	case 48000:
 	case 96000:
 	case 192000:

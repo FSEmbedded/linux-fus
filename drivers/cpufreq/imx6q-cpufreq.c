@@ -1,17 +1,12 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2013-2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Copyright (C) 2013 Freescale Semiconductor, Inc.
  */
 
 #include <linux/busfreq-imx.h>
 #include <linux/clk.h>
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
-#include <linux/cpu_cooling.h>
 #include <linux/err.h>
 #include <linux/module.h>
 #include <linux/nvmem-consumer.h>
@@ -24,6 +19,11 @@
 
 #define PU_SOC_VOLTAGE_NORMAL	1250000
 #define PU_SOC_VOLTAGE_HIGH	1275000
+#define FREQ_1P2_GHZ		1200000000
+#define FREQ_396_MHZ		396000
+
+#define PU_SOC_VOLTAGE_NORMAL	1250000
+#define PU_SOC_VOLTAGE_HIGH	1275000
 #define DC_VOLTAGE_MIN		1300000
 #define DC_VOLTAGE_MAX		1400000
 #define FREQ_1P2_GHZ		1200000000
@@ -33,9 +33,9 @@
 #define FREQ_24_MHZ		24000
 
 struct regulator *arm_reg;
-static struct regulator *pu_reg;
+struct regulator *pu_reg;
 struct regulator *soc_reg;
-static struct regulator *dc_reg;
+struct regulator *dc_reg;
 
 enum IMX6_CPUFREQ_CLKS {
 	ARM,
@@ -43,9 +43,9 @@ enum IMX6_CPUFREQ_CLKS {
 	STEP,
 	PLL1_SW,
 	PLL2_PFD2_396M,
+	PLL1,
 	PLL1_BYPASS,
 	PLL1_BYPASS_SRC,
-	PLL1,
 	/* MX6UL requires two more clks */
 	PLL2_BUS,
 	SECONDARY_SEL,
@@ -60,15 +60,14 @@ static struct clk_bulk_data clks[] = {
 	{ .id = "step" },
 	{ .id = "pll1_sw" },
 	{ .id = "pll2_pfd2_396m" },
+	{ .id = "pll1" },
 	{ .id = "pll1_bypass" },
 	{ .id = "pll1_bypass_src" },
-	{ .id = "pll1" },
 	{ .id = "pll2_bus" },
 	{ .id = "secondary_sel" },
 };
 
 static struct device *cpu_dev;
-static struct thermal_cooling_device *cdev;
 static bool free_opp;
 static struct cpufreq_frequency_table *freq_table;
 static unsigned int max_freq;
@@ -76,6 +75,7 @@ static unsigned int transition_latency;
 
 static u32 *imx6_soc_volt;
 static u32 soc_opp_count;
+
 static bool ignore_dc_reg;
 static bool low_power_run_support;
 
@@ -97,9 +97,8 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 	 * from 24MHz to 198Mhz directly. busfreq will handle this
 	 * when exit from low bus mode.
 	 */
-	if (old_freq == FREQ_24_MHZ && new_freq == FREQ_198_MHZ) {
+	if (old_freq == FREQ_24_MHZ && new_freq == FREQ_198_MHZ)
 		return 0;
-	};
 
 	opp = dev_pm_opp_find_freq_ceil(cpu_dev, &freq_hz);
 	if (IS_ERR(opp)) {
@@ -115,10 +114,7 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 	dev_dbg(cpu_dev, "%u MHz, %ld mV --> %u MHz, %ld mV\n",
 		old_freq / 1000, volt_old / 1000,
 		new_freq / 1000, volt / 1000);
-	/*
-	 * CPU freq is increasing, so need to ensure
-	 * that bus frequency is increased too.
-	 */
+
 	if (low_power_run_support) {
 		if (old_freq == freq_table[0].frequency)
 			request_bus_freq(BUS_FREQ_HIGH);
@@ -160,8 +156,7 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 	 *  - Disable pll2_pfd2_396m_clk
 	 */
 	if (of_machine_is_compatible("fsl,imx6ul") ||
-		of_machine_is_compatible("fsl,imx6ull") ||
-		of_machine_is_compatible("fsl,imx6ulz")) {
+	    of_machine_is_compatible("fsl,imx6ull")) {
 		/*
 		 * When changing pll1_sw_clk's parent to pll1_sys_clk,
 		 * CPU may run at higher than 528MHz, this will lead to
@@ -210,11 +205,9 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 
 		dev_err(cpu_dev, "failed to set clock rate: %d\n", ret);
 		ret1 = regulator_set_voltage_tol(arm_reg, volt_old, 0);
-		if (ret1) {
-			dev_err(cpu_dev,
-				"failed to restore vddarm: %d\n", ret1);
-			return ret1;
-		}
+		if (ret1)
+			dev_warn(cpu_dev,
+				 "failed to restore vddarm voltage: %d\n", ret1);
 		return ret;
 	}
 
@@ -225,24 +218,19 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 	/* scaling down?  scale voltage after frequency */
 	if (new_freq < old_freq) {
 		ret = regulator_set_voltage_tol(arm_reg, volt, 0);
-		if (ret) {
+		if (ret)
 			dev_warn(cpu_dev,
 				 "failed to scale vddarm down: %d\n", ret);
-			ret = 0;
-		}
 		ret = regulator_set_voltage_tol(soc_reg, imx6_soc_volt[index], 0);
-		if (ret) {
+		if (ret)
 			dev_warn(cpu_dev, "failed to scale vddsoc down: %d\n", ret);
-			ret = 0;
-		}
 		if (!IS_ERR(pu_reg)) {
 			ret = regulator_set_voltage_tol(pu_reg, imx6_soc_volt[index], 0);
-			if (ret) {
+			if (ret)
 				dev_warn(cpu_dev, "failed to scale vddpu down: %d\n", ret);
-				ret = 0;
-			}
 		}
 	}
+
 	/*
 	 * If CPU is dropped to the lowest level, release the need
 	 * for a high bus frequency.
@@ -257,52 +245,31 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 	return 0;
 }
 
-static void imx6q_cpufreq_ready(struct cpufreq_policy *policy)
-{
-	cdev = of_cpufreq_cooling_register(policy);
-
-	if (!cdev)
-		dev_err(cpu_dev,
-			"running cpufreq without cooling device: %ld\n",
-			PTR_ERR(cdev));
-}
-
 static int imx6q_cpufreq_init(struct cpufreq_policy *policy)
 {
-	int ret;
-
 	policy->clk = clks[ARM].clk;
-	policy->cur = clk_get_rate(clks[ARM].clk) / 1000;
-	ret = cpufreq_generic_init(policy, freq_table, transition_latency);
+	policy->cur = clk_get_rate(policy->clk) / 1000;
+	cpufreq_generic_init(policy, freq_table, transition_latency);
 	policy->suspend_freq = max_freq;
-	if (ret) {
-		dev_err(cpu_dev, "imx6 cpufreq init failed!\n");
-		return ret;
+	dev_pm_opp_of_register_em(policy->cpus);
+
+	if (low_power_run_support && policy->cur > freq_table[0].frequency) {
+		request_bus_freq(BUS_FREQ_HIGH);
+	} else if (policy->cur > FREQ_396_MHZ) {
+		request_bus_freq(BUS_FREQ_HIGH);
 	}
-	if (low_power_run_support && policy->cur > freq_table[0].frequency)
-		request_bus_freq(BUS_FREQ_HIGH);
-	else if (policy->cur > FREQ_396_MHZ)
-		request_bus_freq(BUS_FREQ_HIGH);
-
-	return 0;
-}
-
-static int imx6q_cpufreq_exit(struct cpufreq_policy *policy)
-{
-	cpufreq_cooling_unregister(cdev);
 
 	return 0;
 }
 
 static struct cpufreq_driver imx6q_cpufreq_driver = {
-	.flags = CPUFREQ_NEED_INITIAL_FREQ_CHECK,
+	.flags = CPUFREQ_NEED_INITIAL_FREQ_CHECK |
+		 CPUFREQ_IS_COOLING_DEV,
 	.verify = cpufreq_generic_frequency_table_verify,
 	.target_index = imx6q_set_target,
 	.get = cpufreq_generic_get,
 	.init = imx6q_cpufreq_init,
-	.exit = imx6q_cpufreq_exit,
 	.name = "imx6q-cpufreq",
-	.ready = imx6q_cpufreq_ready,
 	.attr = cpufreq_generic_attr,
 	.suspend = cpufreq_generic_suspend,
 };
@@ -313,32 +280,20 @@ static struct cpufreq_driver imx6q_cpufreq_driver = {
 #define OCOTP_CFG3_SPEED_996MHZ		0x2
 #define OCOTP_CFG3_SPEED_852MHZ		0x1
 
-static int imx6q_opp_check_speed_grading(struct device *dev)
+static void imx6q_opp_check_speed_grading(struct device *dev)
 {
+	struct device_node *np;
+	void __iomem *base;
 	u32 val;
-	int ret = 0;
 
-	if (of_find_property(dev->of_node, "nvmem-cells", NULL)) {
-		ret = nvmem_cell_read_u32(dev, "speed_grade", &val);
-		if (ret)
-			return ret;
-	} else {
-		struct device_node *np;
-		void __iomem *base;
+	np = of_find_compatible_node(NULL, NULL, "fsl,imx6q-ocotp");
+	if (!np)
+		return;
 
-		np = of_find_compatible_node(NULL, NULL, "fsl,imx6q-ocotp");
-		/* Assume no speed grading if nothing found */
-		if (!np)
-			return 0;
-
-		base = of_iomap(np, 0);
-		of_node_put(np);
-		if (!base) {
-			dev_err(dev, "failed to map ocotp\n");
-			return -EFAULT;
-		}
-		val = readl_relaxed(base + OCOTP_CFG3);
-		iounmap(base);
+	base = of_iomap(np, 0);
+	if (!base) {
+		dev_err(dev, "failed to map ocotp\n");
+		goto put_node;
 	}
 
 	/*
@@ -349,6 +304,7 @@ static int imx6q_opp_check_speed_grading(struct device *dev)
 	 * 2b'00: 792000000Hz;
 	 * We need to set the max speed of ARM according to fuse map.
 	 */
+	val = readl_relaxed(base + OCOTP_CFG3);
 	val >>= OCOTP_CFG3_SPEED_SHIFT;
 	val &= 0x3;
 
@@ -365,13 +321,9 @@ static int imx6q_opp_check_speed_grading(struct device *dev)
 			if (dev_pm_opp_disable(dev, 1200000000))
 				dev_warn(dev, "failed to disable 1.2GHz OPP\n");
 	}
-
-	if (IS_ENABLED(CONFIG_MX6_VPU_352M)) {
-		if (dev_pm_opp_disable(cpu_dev, 396000000))
-			pr_warn("failed to disable 396MHz OPP\n");
-		pr_info("remove 396MHz OPP for VPU running at 352MHz!\n");
-	}
-	return ret;
+	iounmap(base);
+put_node:
+	of_node_put(np);
 }
 
 #define OCOTP_CFG3_6UL_SPEED_696MHZ	0x2
@@ -392,7 +344,6 @@ static int imx6ul_opp_check_speed_grading(struct device *dev)
 		void __iomem *base;
 
 		np = of_find_compatible_node(NULL, NULL, "fsl,imx6ul-ocotp");
-
 		if (!np)
 			return -ENOENT;
 
@@ -424,8 +375,7 @@ static int imx6ul_opp_check_speed_grading(struct device *dev)
 				dev_warn(dev, "failed to disable 696MHz OPP\n");
 	}
 
-	if (of_machine_is_compatible("fsl,imx6ull") ||
-	    of_machine_is_compatible("fsl,imx6ulz")) {
+	if (of_machine_is_compatible("fsl,imx6ull")) {
 		if (val != OCOTP_CFG3_6ULL_SPEED_792MHZ)
 			if (dev_pm_opp_disable(dev, 792000000))
 				dev_warn(dev, "failed to disable 792MHz OPP\n");
@@ -439,7 +389,7 @@ static int imx6ul_opp_check_speed_grading(struct device *dev)
 }
 
 static int imx6_cpufreq_pm_notify(struct notifier_block *nb,
-		unsigned long event, void *dummy)
+	unsigned long event, void *dummy)
 {
 	int ret;
 
@@ -479,13 +429,11 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 {
 	struct device_node *np;
 	struct dev_pm_opp *opp;
-	struct clk *vpu_axi_podf;
 	unsigned long min_volt, max_volt;
 	int num, ret;
 	const struct property *prop;
 	const __be32 *val;
-	u32 nr, j, i = 0;
-	u32 vpu_axi_rate = 0;
+	u32 nr, i, j;
 
 	cpu_dev = get_cpu_device(0);
 	if (!cpu_dev) {
@@ -500,8 +448,7 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 	}
 
 	if (of_machine_is_compatible("fsl,imx6ul") ||
-		of_machine_is_compatible("fsl,imx6ull") ||
-		of_machine_is_compatible("fsl,imx6ulz"))
+	    of_machine_is_compatible("fsl,imx6ull"))
 		num_clks = IMX6UL_CPUFREQ_CLK_NUM;
 	else
 		num_clks = IMX6Q_CPUFREQ_CLK_NUM;
@@ -509,12 +456,6 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 	ret = clk_bulk_get(cpu_dev, num_clks, clks);
 	if (ret)
 		goto put_node;
-
-	vpu_axi_podf = clk_get(cpu_dev, "vpu_axi_podf");
-	if (!IS_ERR(vpu_axi_podf)) {
-		vpu_axi_rate = clk_get_rate(vpu_axi_podf);
-		clk_put(vpu_axi_podf);
-	}
 
 	arm_reg = regulator_get(cpu_dev, "arm");
 	pu_reg = regulator_get_optional(cpu_dev, "pu");
@@ -534,17 +475,6 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 
 	dc_reg = devm_regulator_get_optional(cpu_dev, "dc");
 
-	/*
-	 * soc_reg sync  with arm_reg if arm shares the same regulator
-	 * with soc. Otherwise, regulator common framework will refuse to update
-	 * this consumer's voltage right now while another consumer voltage
-	 * still keep in old one. For example, imx6sx-sdb with pfuze200 in
-	 * ldo-bypass mode.
-	 */
-	of_property_read_u32(np, "fsl,arm-soc-shared", &i);
-	if (i == 1)
-		soc_reg = arm_reg;
-
 	/* On i.MX6ULL, check the 24MHz low power run mode support */
 	low_power_run_support = of_property_read_bool(np, "fsl,low-power-run");
 
@@ -555,25 +485,20 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 	}
 
 	if (of_machine_is_compatible("fsl,imx6ul") ||
-	    of_machine_is_compatible("fsl,imx6ull") ||
-	    of_machine_is_compatible("fsl,imx6ulz")) {
+	    of_machine_is_compatible("fsl,imx6ull")) {
 		ret = imx6ul_opp_check_speed_grading(cpu_dev);
-		if (ret == -EPROBE_DEFER)
-			return ret;
 		if (ret) {
+			if (ret == -EPROBE_DEFER) {
+				dev_err(cpu_dev, "defer the cpufreq\n\n");
+				goto out_free_opp;
+			}
+
 			dev_err(cpu_dev, "failed to read ocotp: %d\n",
 				ret);
-			return ret;
+			goto out_free_opp;
 		}
 	} else {
-		ret = imx6q_opp_check_speed_grading(cpu_dev);
-		if (ret == -EPROBE_DEFER)
-			return ret;
-		if (ret) {
-			dev_err(cpu_dev, "failed to read ocotp: %d\n",
-				ret);
-			return ret;
-		}
+		imx6q_opp_check_speed_grading(cpu_dev);
 	}
 
 	/* Because we have added the OPPs here, we must free them */
@@ -592,7 +517,7 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 	}
 
 	/*
-	 * On i.MX6UL/ULL EVK board, if the SOC is run in override frequency,
+	 * On i.MX6UL/ULL EVK board, if the SOC is run in overide frequency,
 	 * the dc_regulator voltage should not be touched.
 	 */
 	if (freq_table[num - 1].frequency > FREQ_528_MHZ)
@@ -633,19 +558,6 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 			unsigned long volt = be32_to_cpup(val++);
 			if (freq_table[j].frequency == freq) {
 				imx6_soc_volt[soc_opp_count++] = volt;
-#ifdef CONFIG_MX6_VPU_352M
-				if (freq == 792000) {
-					pr_info("increase SOC/PU voltage for VPU352MHz\n");
-					imx6_soc_volt[soc_opp_count - 1] = 1250000;
-				}
-#endif
-				if (vpu_axi_rate == 396000000) {
-					if (freq <= 996000) {
-						pr_info("increase SOC/PU voltage for VPU396MHz at %ld MHz\n",
-							freq / 1000);
-						imx6_soc_volt[soc_opp_count - 1] = 1275000;
-					}
-				}
 				break;
 			}
 		}

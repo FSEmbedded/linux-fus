@@ -1,5 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright 2017 NXP
+ * Copyright 2019 NXP
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -28,4 +29,3 @@
 #define		PCIEAX2PCIEBX1		3
 
 #endif /* __DT_BINDINGS_IMX8_HSIO_H */
-

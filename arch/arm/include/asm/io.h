@@ -1,11 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  *  arch/arm/include/asm/io.h
  *
  *  Copyright (C) 1996-2000 Russell King
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  *
  * Modifications:
  *  16-Sep-1996	RMK	Inlined the inx/outx functions & optimised for both
@@ -28,13 +25,11 @@
 #include <asm/byteorder.h>
 #include <asm/memory.h>
 #include <asm-generic/pci_iomap.h>
-#include <xen/xen.h>
 
 /*
  * ISA I/O bus memory addresses are 1:1 with the physical address.
  */
 #define isa_virt_to_bus virt_to_phys
-#define isa_page_to_bus page_to_phys
 #define isa_bus_to_virt phys_to_virt
 
 /*
@@ -128,6 +123,7 @@ static inline u32 __raw_readl(const volatile void __iomem *addr)
 #define MT_DEVICE_NONSHARED	1
 #define MT_DEVICE_CACHED	2
 #define MT_DEVICE_WC		3
+#define MT_MEMORY_RW_NS		4
 /*
  * types 4 onwards can be found in asm/mach/map.h and are undefined
  * for ioremap
@@ -229,6 +225,34 @@ void __iomem *pci_remap_cfgspace(resource_size_t res_cookie, size_t size);
 #endif
 #endif
 
+/* access ports */
+#define setbits32(_addr, _v) iowrite32be(ioread32be(_addr) |  (_v), (_addr))
+#define clrbits32(_addr, _v) iowrite32be(ioread32be(_addr) & ~(_v), (_addr))
+
+#define setbits16(_addr, _v) iowrite16be(ioread16be(_addr) |  (_v), (_addr))
+#define clrbits16(_addr, _v) iowrite16be(ioread16be(_addr) & ~(_v), (_addr))
+
+#define setbits8(_addr, _v) iowrite8(ioread8(_addr) |  (_v), (_addr))
+#define clrbits8(_addr, _v) iowrite8(ioread8(_addr) & ~(_v), (_addr))
+
+/* Clear and set bits in one shot.  These macros can be used to clear and
+ * set multiple bits in a register using a single read-modify-write.  These
+ * macros can also be used to set a multiple-bit bit pattern using a mask,
+ * by specifying the mask in the 'clear' parameter and the new bit pattern
+ * in the 'set' parameter.
+ */
+
+#define clrsetbits_be32(addr, clear, set) \
+	iowrite32be((ioread32be(addr) & ~(clear)) | (set), (addr))
+#define clrsetbits_le32(addr, clear, set) \
+	iowrite32le((ioread32le(addr) & ~(clear)) | (set), (addr))
+#define clrsetbits_be16(addr, clear, set) \
+	iowrite16be((ioread16be(addr) & ~(clear)) | (set), (addr))
+#define clrsetbits_le16(addr, clear, set) \
+	iowrite16le((ioread16le(addr) & ~(clear)) | (set), (addr))
+#define clrsetbits_8(addr, clear, set) \
+	iowrite8((ioread8(addr) & ~(clear)) | (set), (addr))
+
 /*
  *  IO port access primitives
  *  -------------------------
@@ -281,8 +305,6 @@ void __iomem *pci_remap_cfgspace(resource_size_t res_cookie, size_t size);
 extern void _memcpy_fromio(void *, const volatile void __iomem *, size_t);
 extern void _memcpy_toio(volatile void __iomem *, const void *, size_t);
 extern void _memset_io(volatile void __iomem *, int, size_t);
-
-#define mmiowb()
 
 /*
  *  Memory access primitives
@@ -417,6 +439,8 @@ void __iomem *ioremap_wc(resource_size_t res_cookie, size_t size);
 #define ioremap_wc ioremap_wc
 #define ioremap_wt ioremap_wc
 
+void __iomem *ioremap_cache_ns(resource_size_t res_cookie, size_t size);
+
 void iounmap(volatile void __iomem *iomem_cookie);
 #define iounmap iounmap
 
@@ -458,20 +482,6 @@ extern void pci_iounmap(struct pci_dev *dev, void __iomem *addr);
 #define xlate_dev_kmem_ptr(p)	p
 
 #include <asm-generic/io.h>
-
-/*
- * can the hardware map this into one segment or not, given no other
- * constraints.
- */
-#define BIOVEC_MERGEABLE(vec1, vec2)	\
-	((bvec_to_phys((vec1)) + (vec1)->bv_len) == bvec_to_phys((vec2)))
-
-struct bio_vec;
-extern bool xen_biovec_phys_mergeable(const struct bio_vec *vec1,
-				      const struct bio_vec *vec2);
-#define BIOVEC_PHYS_MERGEABLE(vec1, vec2)				\
-	(__BIOVEC_PHYS_MERGEABLE(vec1, vec2) &&				\
-	 (!xen_domain() || xen_biovec_phys_mergeable(vec1, vec2)))
 
 #ifdef CONFIG_MMU
 #define ARCH_HAS_VALID_PHYS_ADDR_RANGE

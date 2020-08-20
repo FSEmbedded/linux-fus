@@ -60,22 +60,17 @@ struct ci_hdrc_platform_data {
 #define CI_HDRC_OVERRIDE_RX_BURST	BIT(11)
 #define CI_HDRC_OVERRIDE_PHY_CONTROL	BIT(12) /* Glue layer manages phy */
 #define CI_HDRC_REQUIRES_ALIGNED_DMA	BIT(13)
-#define CI_HDRC_IMX_EHCI_QUIRK		BIT(14)
-#define CI_HDRC_IMX_IS_HSIC		BIT(15)
-/* need request pmqos during low power */
-#define CI_HDRC_PMQOS			BIT(16)
-/* Using PHY's charger detection */
-#define CI_HDRC_PHY_CHARGER_DETECTION	BIT(17)
+#define CI_HDRC_IMX_IS_HSIC		BIT(14)
+#define CI_HDRC_PMQOS			BIT(15)
 /* PHY enter low power mode when bus suspend */
-#define CI_HDRC_HOST_SUSP_PHY_LPM	BIT(18)
+#define CI_HDRC_HOST_SUSP_PHY_LPM	BIT(16)
 	enum usb_dr_mode	dr_mode;
 #define CI_HDRC_CONTROLLER_RESET_EVENT		0
 #define CI_HDRC_CONTROLLER_STOPPED_EVENT	1
-#define CI_HDRC_CONTROLLER_VBUS_EVENT		2
-#define CI_HDRC_IMX_HSIC_ACTIVE_EVENT		5
-#define CI_HDRC_IMX_HSIC_SUSPEND_EVENT		6
-#define CI_HDRC_IMX_TERM_SELECT_OVERRIDE_FS	7
-#define CI_HDRC_IMX_TERM_SELECT_OVERRIDE_OFF	8
+#define CI_HDRC_IMX_HSIC_ACTIVE_EVENT		2
+#define CI_HDRC_IMX_HSIC_SUSPEND_EVENT		3
+#define CI_HDRC_CONTROLLER_VBUS_EVENT		4
+#define CI_HDRC_NOTIFY_RET_DEFER_EVENT		5
 	int	(*notify_event) (struct ci_hdrc *ci, unsigned event);
 	struct regulator	*reg_vbus;
 	struct usb_otg_caps	ci_otg_caps;
@@ -90,6 +85,12 @@ struct ci_hdrc_platform_data {
 	struct ci_hdrc_cable		vbus_extcon;
 	struct ci_hdrc_cable		id_extcon;
 	u32			phy_clkgate_delay_us;
+
+	/* pins */
+	struct pinctrl *pctl;
+	struct pinctrl_state *pins_default;
+	struct pinctrl_state *pins_host;
+	struct pinctrl_state *pins_device;
 };
 
 /* Default offset of capability registers */

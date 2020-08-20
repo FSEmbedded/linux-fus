@@ -15,31 +15,38 @@
 
 #include <linux/device.h>
 #include <linux/err.h>
+#include <linux/firmware/imx/sci.h>
 #include <linux/init.h>
 #include <linux/input.h>
 #include <linux/interrupt.h>
-#include <linux/io.h>
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
-#include <soc/imx8/sc/sci.h>
-#include <soc/imx8/sc/svc/irq/api.h>
-#include <soc/imx8/sc/svc/misc/api.h>
 
 #define DEBOUNCE_TIME	100
 #define REPEAT_INTERVAL	60
+
+#define SC_IRQ_BUTTON	(1U << 0U)     /* Button interrupt */
+#define SC_IRQ_GROUP_WAKE	3U      /* Wakeup interrupts */
+
+#define IMX_SC_MISC_FUNC_GET_BUTTON_STATUS	18U
 
 struct pwrkey_drv_data {
 	int keycode;
 	bool keystate;  /* 1: pressed, 0: release */
 	bool delay_check;
-	sc_ipc_t ipcHandle;
+	struct imx_sc_ipc *ipcHandle;
 	int wakeup;
 	struct delayed_work check_work;
 	struct input_dev *input;
+};
+
+struct imx_sc_msg_pwrkey {
+	struct imx_sc_rpc_msg hdr;
+	u32 state;
 };
 
 static struct pwrkey_drv_data *pdata;
@@ -49,7 +56,7 @@ static int imx_sc_pwrkey_notify(struct notifier_block *nb,
 {
 	/* ignore other irqs */
 	if (!(pdata && pdata->ipcHandle && (event & SC_IRQ_BUTTON) &&
-		(*(sc_irq_group_t *)group == SC_IRQ_GROUP_WAKE)))
+		(*(u8 *)group == SC_IRQ_GROUP_WAKE)))
 		return 0;
 
 	if (!pdata->delay_check) {
@@ -64,9 +71,23 @@ static int imx_sc_pwrkey_notify(struct notifier_block *nb,
 static void imx_sc_check_for_events(struct work_struct *work)
 {
 	struct input_dev *input = pdata->input;
-	sc_bool_t state;
+	struct imx_sc_msg_pwrkey msg;
+	struct imx_sc_rpc_msg *hdr = &msg.hdr;
+	bool state;
 
-	sc_misc_get_button_status(pdata->ipcHandle, &state);
+	hdr->ver = IMX_SC_RPC_VERSION;
+	hdr->svc = IMX_SC_RPC_SVC_MISC;
+	hdr->func = IMX_SC_MISC_FUNC_GET_BUTTON_STATUS;
+	hdr->size = 1;
+
+	/*
+	 * Current SCU firmware does NOT have return value for
+	 * this API, that means it is always successful.
+	 */
+	imx_scu_call_rpc(pdata->ipcHandle, &msg, true);
+
+	/* Only care the least 1 byte */
+	state = (bool)(msg.state & 0xff);
 	/*
 	 * restore status back if press interrupt received but pin's status
 	 * released, which caused by pressing so quickly.
@@ -98,30 +119,20 @@ static int imx_sc_pwrkey_probe(struct platform_device *pdev)
 	struct input_dev *input = NULL;
 	struct device_node *np = pdev->dev.of_node;
 	int error;
-	uint32_t mu_id;
-	sc_err_t sciErr;
+	int ret;
 
 	pdata = devm_kzalloc(&pdev->dev, sizeof(*pdata), GFP_KERNEL);
 	if (!pdata)
 		return -ENOMEM;
 
+	ret = imx_scu_get_handle(&pdata->ipcHandle);
+	if (ret)
+		return ret;
+
 	if (of_property_read_u32(np, "linux,keycode", &pdata->keycode)) {
 		pdata->keycode = KEY_POWER;
 		dev_warn(&pdev->dev, "KEY_POWER without setting in dts\n");
 	}
-
-	sciErr = sc_ipc_getMuID(&mu_id);
-	if (sciErr != SC_ERR_NONE) {
-		dev_err(&pdev->dev, "can not obtain mu id: %d\n", sciErr);
-		return sciErr;
-	}
-
-	sciErr = sc_ipc_open(&pdata->ipcHandle, mu_id);
-
-	if (sciErr != SC_ERR_NONE) {
-		dev_err(&pdev->dev, "can not get ipc handler: %d\n", sciErr);
-		return sciErr;
-	};
 
 	INIT_DELAYED_WORK(&pdata->check_work, imx_sc_check_for_events);
 
@@ -151,7 +162,23 @@ static int imx_sc_pwrkey_probe(struct platform_device *pdev)
 
 	device_init_wakeup(&pdev->dev, !!(pdata->wakeup));
 
-	return register_scu_notifier(&imx_sc_pwrkey_notifier);
+
+	ret = imx_scu_irq_group_enable(SC_IRQ_GROUP_WAKE,
+					SC_IRQ_BUTTON, true);
+	if (ret) {
+		dev_warn(&pdev->dev, "Enable irq failed.\n");
+		return ret;
+	}
+
+	ret = imx_scu_irq_register_notifier(&imx_sc_pwrkey_notifier);
+	if (ret) {
+		imx_scu_irq_group_enable(SC_IRQ_GROUP_WAKE,
+					SC_IRQ_BUTTON, false);
+		dev_warn(&pdev->dev, "reqister scu notifier failed.\n");
+		return ret;
+	}
+
+	return 0;
 }
 
 static const struct of_device_id imx_sc_pwrkey_ids[] = {

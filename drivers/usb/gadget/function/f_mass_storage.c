@@ -47,7 +47,7 @@
  *
  * For more information about MSF and in particular its module
  * parameters and sysfs interface read the
- * <Documentation/usb/mass-storage.txt> file.
+ * <Documentation/usb/mass-storage.rst> file.
  */
 
 /*
@@ -261,7 +261,7 @@ struct fsg_common;
 struct fsg_common {
 	struct usb_gadget	*gadget;
 	struct usb_composite_dev *cdev;
-	struct fsg_dev		*fsg, *new_fsg;
+	struct fsg_dev		*fsg;
 	wait_queue_head_t	io_wait;
 	wait_queue_head_t	fsg_wait;
 
@@ -290,6 +290,7 @@ struct fsg_common {
 	unsigned int		bulk_out_maxpacket;
 	enum fsg_state		state;		/* For exception handling */
 	unsigned int		exception_req_tag;
+	void			*exception_arg;
 
 	enum data_direction	data_dir;
 	u32			data_size;
@@ -330,14 +331,7 @@ struct fsg_dev {
 
 	struct usb_ep		*bulk_in;
 	struct usb_ep		*bulk_out;
-#ifdef CONFIG_FSL_UTP
-	void			*utp;
-#endif
 };
-
-#ifdef CONFIG_FSL_UTP
-#include "fsl_updater.h"
-#endif
 
 static inline int __fsg_is_set(struct fsg_common *common,
 			       const char *func, unsigned line)
@@ -398,7 +392,8 @@ static int fsg_set_halt(struct fsg_dev *fsg, struct usb_ep *ep)
 
 /* These routines may be called in process context or in_irq */
 
-static void raise_exception(struct fsg_common *common, enum fsg_state new_state)
+static void __raise_exception(struct fsg_common *common, enum fsg_state new_state,
+			      void *arg)
 {
 	unsigned long		flags;
 
@@ -411,13 +406,18 @@ static void raise_exception(struct fsg_common *common, enum fsg_state new_state)
 	if (common->state <= new_state) {
 		common->exception_req_tag = common->ep0_req_tag;
 		common->state = new_state;
+		common->exception_arg = arg;
 		if (common->thread_task)
-			send_sig_info(SIGUSR1, SEND_SIG_FORCED,
+			send_sig_info(SIGUSR1, SEND_SIG_PRIV,
 				      common->thread_task);
 	}
 	spin_unlock_irqrestore(&common->lock, flags);
 }
 
+static void raise_exception(struct fsg_common *common, enum fsg_state new_state)
+{
+	__raise_exception(common, new_state, NULL);
+}
 
 /*-------------------------------------------------------------------------*/
 
@@ -1116,15 +1116,6 @@ static int do_request_sense(struct fsg_common *common, struct fsg_buffhd *bh)
 	}
 #endif
 
-#ifdef CONFIG_FSL_UTP
-	if (is_utp_device(common->fsg) &&
-			utp_get_sense(common->fsg) == 0) {
-		/* got the sense from the UTP */
-		sd = UTP_CTX(common->fsg)->sd;
-		sdinfo = UTP_CTX(common->fsg)->sdinfo;
-		valid = 0;
-	} else
-#endif
 	if (!curlun) {		/* Unsupported LUNs are okay */
 		common->bad_lun_okay = 1;
 		sd = SS_LOGICAL_UNIT_NOT_SUPPORTED;
@@ -1146,10 +1137,6 @@ static int do_request_sense(struct fsg_common *common, struct fsg_buffhd *bh)
 	buf[7] = 18 - 8;			/* Additional sense length */
 	buf[12] = ASC(sd);
 	buf[13] = ASCQ(sd);
-#ifdef CONFIG_FSL_UTP
-	if (is_utp_device(common->fsg))
-		put_unaligned_be32(UTP_CTX(common->fsg)->sdinfo_h, &buf[8]);
-#endif
 	return 18;
 }
 
@@ -1636,20 +1623,7 @@ static void send_status(struct fsg_common *common)
 		sd = SS_INVALID_COMMAND;
 	} else if (sd != SS_NO_SENSE) {
 		DBG(common, "sending command-failure status\n");
-#ifdef CONFIG_FSL_UTP
-		/*
-		 * mfgtool host frequently reset bus during transfer
-		 *  - the response in csw to request sense will be 1
-		 *    due to UTP change some storage information
-		 *  - host will reset the bus if response to request sense is 1
-		 *  - change the response to 0 if CONFIG_FSL_UTP is defined
-		 */
-		if (is_utp_device(common->fsg))
-			status = US_BULK_STAT_OK;
-		else
-#endif
-			status = US_BULK_STAT_FAIL;
-
+		status = US_BULK_STAT_FAIL;
 		VDBG(common, "  sense data: SK x%02x, ASC x%02x, ASCQ x%02x;"
 				"  info x%x\n",
 				SK(sd), ASC(sd), ASCQ(sd), sdinfo);
@@ -1838,14 +1812,6 @@ static int do_scsi_command(struct fsg_common *common)
 
 	common->phase_error = 0;
 	common->short_packet_received = 0;
-
-#ifdef CONFIG_FSL_UTP
-	if (is_utp_device(common->fsg))
-		reply = utp_handle_message(common->fsg, common->cmnd, reply);
-
-	if (reply != -EINVAL)
-		return reply;
-#endif
 
 	down_read(&common->filesem);	/* We're using the backing file */
 	switch (common->cmnd[0]) {
@@ -2326,16 +2292,16 @@ reset:
 static int fsg_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 {
 	struct fsg_dev *fsg = fsg_from_func(f);
-	fsg->common->new_fsg = fsg;
-	raise_exception(fsg->common, FSG_STATE_CONFIG_CHANGE);
+
+	__raise_exception(fsg->common, FSG_STATE_CONFIG_CHANGE, fsg);
 	return USB_GADGET_DELAYED_STATUS;
 }
 
 static void fsg_disable(struct usb_function *f)
 {
 	struct fsg_dev *fsg = fsg_from_func(f);
-	fsg->common->new_fsg = NULL;
-	raise_exception(fsg->common, FSG_STATE_CONFIG_CHANGE);
+
+	__raise_exception(fsg->common, FSG_STATE_CONFIG_CHANGE, NULL);
 }
 
 
@@ -2348,13 +2314,14 @@ static void handle_exception(struct fsg_common *common)
 	enum fsg_state		old_state;
 	struct fsg_lun		*curlun;
 	unsigned int		exception_req_tag;
+	struct fsg_dev		*new_fsg;
 
 	/*
 	 * Clear the existing signals.  Anything but SIGUSR1 is converted
 	 * into a high-priority EXIT exception.
 	 */
 	for (;;) {
-		int sig = kernel_dequeue_signal(NULL);
+		int sig = kernel_dequeue_signal();
 		if (!sig)
 			break;
 		if (sig != SIGUSR1) {
@@ -2401,6 +2368,7 @@ static void handle_exception(struct fsg_common *common)
 	common->next_buffhd_to_fill = &common->buffhds[0];
 	common->next_buffhd_to_drain = &common->buffhds[0];
 	exception_req_tag = common->exception_req_tag;
+	new_fsg = common->exception_arg;
 	old_state = common->state;
 	common->state = FSG_STATE_NORMAL;
 
@@ -2454,8 +2422,8 @@ static void handle_exception(struct fsg_common *common)
 		break;
 
 	case FSG_STATE_CONFIG_CHANGE:
-		do_set_interface(common, common->new_fsg);
-		if (common->new_fsg)
+		do_set_interface(common, new_fsg);
+		if (new_fsg)
 			usb_composite_setup_continue(common->cdev);
 		break;
 
@@ -2490,18 +2458,6 @@ static int fsg_main_thread(void *common_)
 
 	/* Allow the thread to be frozen */
 	set_freezable();
-
-	/*
-	 * Arrange for userspace references to be interpreted as kernel
-	 * pointers.  That way we can pass a kernel pointer to a routine
-	 * that expects a __user pointer and it will work okay.
-	 */
-#ifdef CONFIG_FSL_UTP
-	if (!is_utp_device(common->fsg))
-		set_fs(get_ds());
-#else
-	set_fs(get_ds());
-#endif
 
 	/* The main loop */
 	while (common->state != FSG_STATE_TERMINATED) {
@@ -2935,10 +2891,6 @@ static void fsg_common_release(struct fsg_common *common)
 
 /*-------------------------------------------------------------------------*/
 
-#ifdef CONFIG_FSL_UTP
-#include "fsl_updater.c"
-#endif
-
 static int fsg_bind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct fsg_dev		*fsg = fsg_from_func(f);
@@ -2989,11 +2941,6 @@ static int fsg_bind(struct usb_configuration *c, struct usb_function *f)
 		goto fail;
 	fsg_intf_desc.bInterfaceNumber = i;
 	fsg->interface_number = i;
-
-#ifdef CONFIG_FSL_UTP
-	if (is_utp_device(fsg))
-		utp_init(fsg);
-#endif
 
 	/* Find all the endpoints we will use */
 	ep = usb_ep_autoconfig(gadget, &fsg_fs_bulk_in_desc);
@@ -3051,19 +2998,12 @@ static void fsg_unbind(struct usb_configuration *c, struct usb_function *f)
 
 	DBG(fsg, "unbind\n");
 	if (fsg->common->fsg == fsg) {
-		fsg->common->new_fsg = NULL;
-		raise_exception(fsg->common, FSG_STATE_CONFIG_CHANGE);
+		__raise_exception(fsg->common, FSG_STATE_CONFIG_CHANGE, NULL);
 		/* FIXME: make interruptible or killable somehow? */
 		wait_event(common->fsg_wait, common->fsg != fsg);
 	}
 
 	usb_free_all_descriptors(&fsg->function);
-
-#ifdef CONFIG_FSL_UTP
-	if (is_utp_device(common->fsg))
-		utp_exit(fsg);
-#endif
-
 }
 
 static inline struct fsg_lun_opts *to_fsg_lun_opts(struct config_item *item)

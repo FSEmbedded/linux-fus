@@ -1,13 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright 2011-2016 Freescale Semiconductor, Inc.
  * Copyright 2011 Linaro Ltd.
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
  */
 
 #include <linux/delay.h>
@@ -93,6 +87,8 @@
 #define UART_UBMR	0xa8
 #define UART_UBRC	0xac
 #define UART_UTS	0xb4
+
+#define IOMUXC_GPR5_CLOCK_AFCG_X_BYPASS_MASK	0xf800
 
 extern unsigned long iram_tlb_base_addr;
 extern unsigned long iram_tlb_phys_addr;
@@ -350,13 +346,6 @@ static const u32 imx6sl_mmdc_io_offset[] __initconst = {
 	0x330, 0x334, 0x320,        /* SDCKE0, SDCKE1, RESET */
 };
 
-static const u32 imx6sll_mmdc_io_offset[] __initconst = {
-	0x294, 0x298, 0x29c, 0x2a0, /* DQM0 ~ DQM3 */
-	0x544, 0x54c, 0x554, 0x558, /* GPR_B0DS ~ GPR_B3DS */
-	0x530, 0x540, 0x2ac, 0x52c, /* MODE_CTL, MODE, SDCLK_0, GPR_ADDDS */
-	0x2a4, 0x2a8,		    /* SDCKE0, SDCKE1*/
-};
-
 static const u32 imx6sx_mmdc_io_lpddr2_offset[] __initconst = {
 	0x2ec, 0x2f0, 0x2f4, 0x2f8, /* DQM0 ~ DQM3 */
 	0x300, 0x2fc, 0x32c, 0x5f4, /* CAS, RAS, SDCLK_0, GPR_ADDS */
@@ -432,6 +421,13 @@ static const u32 imx6ul_mmdc_lpddr2_offset[] __initconst = {
 	0x800, 0x004, 0x01c,
 };
 
+static const u32 imx6sll_mmdc_io_offset[] __initconst = {
+	0x294, 0x298, 0x29c, 0x2a0, /* DQM0 ~ DQM3 */
+	0x544, 0x54c, 0x554, 0x558, /* GPR_B0DS ~ GPR_B3DS */
+	0x530, 0x540, 0x2ac, 0x52c, /* MODE_CTL, MODE, SDCLK_0, GPR_ADDDS */
+	0x2a4, 0x2a8,		    /* SDCKE0, SDCKE1*/
+};
+
 static const u32 imx6sll_mmdc_lpddr3_offset[] __initconst = {
 	0x01c, 0x85c, 0x800, 0x890,
 	0x8b8, 0x81c, 0x820, 0x82c,
@@ -490,16 +486,6 @@ static const struct imx6_pm_socdata imx6sl_pm_data __initconst = {
 	.mmdc_offset = NULL,
 };
 
-static const struct imx6_pm_socdata imx6sll_pm_data __initconst = {
-	.mmdc_compat = "fsl,imx6sll-mmdc",
-	.src_compat = "fsl,imx6sll-src",
-	.iomuxc_compat = "fsl,imx6sll-iomuxc",
-	.gpc_compat = "fsl,imx6sll-gpc",
-	.pl310_compat = "arm,pl310-cache",
-	.mmdc_io_num = ARRAY_SIZE(imx6sll_mmdc_io_offset),
-	.mmdc_io_offset = imx6sll_mmdc_io_offset,
-};
-
 static const struct imx6_pm_socdata imx6sx_pm_data __initconst = {
 	.mmdc_compat = "fsl,imx6sx-mmdc",
 	.src_compat = "fsl,imx6sx-src",
@@ -544,6 +530,17 @@ static const struct imx6_pm_socdata imx6ul_lpddr2_pm_data __initconst = {
 	.mmdc_io_offset = imx6ul_mmdc_io_lpddr2_offset,
 	.mmdc_num = ARRAY_SIZE(imx6ul_mmdc_lpddr2_offset),
 	.mmdc_offset = imx6ul_mmdc_lpddr2_offset,
+};
+
+static const struct imx6_pm_socdata imx6sll_pm_data __initconst = {
+	.mmdc_compat = "fsl,imx6sll-mmdc",
+	.src_compat = "fsl,imx6sll-src",
+	.iomuxc_compat = "fsl,imx6sll-iomuxc",
+	.gpc_compat = "fsl,imx6sll-gpc",
+	.mmdc_io_num = ARRAY_SIZE(imx6sll_mmdc_io_offset),
+	.mmdc_io_offset = imx6sll_mmdc_io_offset,
+	.mmdc_num = ARRAY_SIZE(imx6sll_mmdc_lpddr3_offset),
+	.mmdc_offset = imx6sll_mmdc_lpddr3_offset,
 };
 
 static struct map_desc iram_tlb_io_desc __initdata = {
@@ -683,7 +680,7 @@ int imx6_set_lpm(enum mxc_cpu_pwr_mode mode)
 		if (cpu_is_imx6sl() || cpu_is_imx6sx() || cpu_is_imx6sll())
 			val |= BM_CLPCR_BYPASS_PMIC_READY;
 		if (cpu_is_imx6sl() || cpu_is_imx6sx() || cpu_is_imx6ul() ||
-		    cpu_is_imx6ull() || cpu_is_imx6sll())
+		    cpu_is_imx6ull() || cpu_is_imx6ulz() || cpu_is_imx6sll())
 			val |= BM_CLPCR_BYP_MMDC_CH0_LPM_HS;
 		else if (cpu_is_imx6q() &&
 		    imx_mmdc_get_ddr_type() == IMX_DDR_TYPE_LPDDR2 &&
@@ -708,7 +705,7 @@ int imx6_set_lpm(enum mxc_cpu_pwr_mode mode)
 		if (cpu_is_imx6sl() || cpu_is_imx6sx() || cpu_is_imx6sll())
 			val |= BM_CLPCR_BYPASS_PMIC_READY;
 		if (cpu_is_imx6sl() || cpu_is_imx6sx() || cpu_is_imx6ul() ||
-		    cpu_is_imx6ull() || cpu_is_imx6sll())
+		    cpu_is_imx6ull() || cpu_is_imx6ulz() || cpu_is_imx6sll())
 			val |= BM_CLPCR_BYP_MMDC_CH0_LPM_HS;
 		else if (cpu_is_imx6q() &&
 		    imx_mmdc_get_ddr_type() == IMX_DDR_TYPE_LPDDR2 &&
@@ -738,9 +735,11 @@ int imx6_set_lpm(enum mxc_cpu_pwr_mode mode)
 	 *
 	 * Note that IRQ #32 is GIC SPI #0.
 	 */
-	imx_gpc_hwirq_unmask(0);
+	if (mode != WAIT_CLOCKED)
+		imx_gpc_hwirq_unmask(0);
 	writel_relaxed(val, ccm_base + CLPCR);
-	imx_gpc_hwirq_mask(0);
+	if (mode != WAIT_CLOCKED)
+		imx_gpc_hwirq_mask(0);
 
 	return 0;
 }
@@ -888,7 +887,7 @@ static int imx6q_pm_enter(suspend_state_t state)
 			imx6_enable_rbc(true);
 		imx_gpc_pre_suspend(true);
 		imx_anatop_pre_suspend();
-		if ((cpu_is_imx6ull() || cpu_is_imx6sll()) &&
+		if ((cpu_is_imx6ull() || cpu_is_imx6ulz() || cpu_is_imx6sll()) &&
 			imx_gpc_is_mf_mix_off())
 			imx6_console_save(console_saved_reg);
 		if (cpu_is_imx6sx() && imx_gpc_is_mf_mix_off()) {
@@ -929,7 +928,7 @@ static int imx6q_pm_enter(suspend_state_t state)
 					sizeof(qspi_regs_imx6sx) /
 					sizeof(struct qspi_regs));
 		}
-		if ((cpu_is_imx6ull() || cpu_is_imx6sll()) &&
+		if ((cpu_is_imx6ull() || cpu_is_imx6ulz() || cpu_is_imx6sll()) &&
 			imx_gpc_is_mf_mix_off())
 			imx6_console_restore(console_saved_reg);
 		if (cpu_is_imx6q() || cpu_is_imx6dl())
@@ -985,6 +984,7 @@ static int __init imx6_dt_find_lpsram(unsigned long node, const char *uname,
 
 		iotable_init(&iram_tlb_io_desc, 1);
 	}
+
 	return 0;
 }
 
@@ -1160,8 +1160,8 @@ static int __init imx6q_suspend_init(const struct imx6_pm_socdata *socdata)
 
 	/* i.MX6SLL has no DRAM RESET pin */
 	if (cpu_is_imx6sll()) {
-		pm_info->mmdc_io_val[pm_info->mmdc_io_num - 2][2] = 0x1000;
-		pm_info->mmdc_io_val[pm_info->mmdc_io_num - 1][2] = 0x1000;
+			pm_info->mmdc_io_val[pm_info->mmdc_io_num - 2][2] = 0x1000;
+			pm_info->mmdc_io_val[pm_info->mmdc_io_num - 1][2] = 0x1000;
 	} else {
 		if (pm_info->ddr_type == IMX_DDR_TYPE_LPDDR2) {
 			/* for LPDDR2, CKE0/1 and RESET pin need special setting */
@@ -1193,7 +1193,7 @@ static int __init imx6q_suspend_init(const struct imx6_pm_socdata *socdata)
 	}
 
 	/* need to overwrite the value for some mmdc registers */
-	if ((cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull()) &&
+	if ((cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull() || cpu_is_imx6ulz()) &&
 		pm_info->ddr_type != IMX_DDR_TYPE_LPDDR2) {
 		pm_info->mmdc_val[20][1] = (pm_info->mmdc_val[20][1]
 			& 0xffff0000) | 0x0202;
@@ -1212,7 +1212,7 @@ static int __init imx6q_suspend_init(const struct imx6_pm_socdata *socdata)
 		pm_info->mmdc_val[32][1] = 0xa1310003;
 	}
 
-	if ((cpu_is_imx6ul() || cpu_is_imx6ull()) &&
+	if ((cpu_is_imx6ul() || cpu_is_imx6ull() || cpu_is_imx6ulz()) &&
 		pm_info->ddr_type == IMX_DDR_TYPE_LPDDR2) {
 		pm_info->mmdc_val[0][1] = 0x8000;
 		pm_info->mmdc_val[2][1] = 0xa1390003;
@@ -1299,17 +1299,24 @@ void __init imx6dl_pm_init(void)
 
 void __init imx6sl_pm_init(void)
 {
+	struct device_node *np;
 	struct regmap *gpr;
 
-	if (cpu_is_imx6sl()) {
-		imx6_pm_common_init(&imx6sl_pm_data);
-	} else {
+	if (cpu_is_imx6sll()) {
 		imx6_pm_common_init(&imx6sll_pm_data);
+		np = of_find_node_by_path(
+			"/soc/aips-bus@02000000/spba-bus@02000000/serial@02020000");
+		if (np)
+			console_base = of_iomap(np, 0);
+		/* i.MX6SLL has bus auto clock gating function */
 		gpr = syscon_regmap_lookup_by_compatible("fsl,imx6q-iomuxc-gpr");
 		if (!IS_ERR(gpr))
 			regmap_update_bits(gpr, IOMUXC_GPR5,
-				IMX6SLL_GPR5_AFCG_X_BYPASS_MASK, 0);
+				IOMUXC_GPR5_CLOCK_AFCG_X_BYPASS_MASK, 0);
+		return;
 	}
+
+	imx6_pm_common_init(&imx6sl_pm_data);
 }
 
 void __init imx6sx_pm_init(void)
@@ -1357,7 +1364,7 @@ void __init imx6sx_pm_init(void)
 	WARN_ON(!ocram_saved_in_ddr);
 
 	np = of_find_node_by_path(
-		"/soc/aips-bus@2000000/spba-bus@2000000/serial@2020000");
+		"/soc/aips-bus@02000000/spba-bus@02000000/serial@02020000");
 	if (np)
 		console_base = of_iomap(np, 0);
 	if (imx_src_is_m4_enabled()) {
@@ -1378,9 +1385,9 @@ void __init imx6ul_pm_init(void)
 	else
 		imx6_pm_common_init(&imx6ul_pm_data);
 
-	if (cpu_is_imx6ull()) {
+	if (cpu_is_imx6ull() || cpu_is_imx6ulz()) {
 		np = of_find_node_by_path(
-			"/soc/aips-bus@2000000/spba-bus@2000000/serial@2020000");
+			"/soc/aips-bus@02000000/spba-bus@02000000/serial@02020000");
 		if (np)
 			console_base = of_iomap(np, 0);
 	}

@@ -39,16 +39,12 @@
 static const hs_src_sel_t src_sels[3][6] = {
 	{
 		HS_SRC_SEL__DISABLE,
-		HS_SRC_SEL__EXTSRC4,
 		HS_SRC_SEL__FETCHDECODE0,
-		HS_SRC_SEL__FETCHDECODE2,
 		HS_SRC_SEL__MATRIX4,
 		HS_SRC_SEL__VSCALER4,
 	}, {
 		HS_SRC_SEL__DISABLE,
-		HS_SRC_SEL__EXTSRC5,
 		HS_SRC_SEL__FETCHDECODE1,
-		HS_SRC_SEL__FETCHDECODE3,
 		HS_SRC_SEL__MATRIX5,
 		HS_SRC_SEL__VSCALER5,
 	}, {
@@ -76,8 +72,8 @@ static inline u32 dpu_pec_hs_read(struct dpu_hscaler *hs,
 	return readl(hs->pec_base + offset);
 }
 
-static inline void dpu_pec_hs_write(struct dpu_hscaler *hs, u32 value,
-				    unsigned int offset)
+static inline void dpu_pec_hs_write(struct dpu_hscaler *hs,
+				    unsigned int offset, u32 value)
 {
 	writel(value, hs->pec_base + offset);
 }
@@ -87,8 +83,8 @@ static inline u32 dpu_hs_read(struct dpu_hscaler *hs, unsigned int offset)
 	return readl(hs->base + offset);
 }
 
-static inline void dpu_hs_write(struct dpu_hscaler *hs, u32 value,
-				unsigned int offset)
+static inline void dpu_hs_write(struct dpu_hscaler *hs,
+				unsigned int offset, u32 value)
 {
 	writel(value, hs->base + offset);
 }
@@ -96,10 +92,9 @@ static inline void dpu_hs_write(struct dpu_hscaler *hs, u32 value,
 int hscaler_pixengcfg_dynamic_src_sel(struct dpu_hscaler *hs, hs_src_sel_t src)
 {
 	struct dpu_soc *dpu = hs->dpu;
-	const unsigned int *block_id_map = dpu->devtype->sw2hw_block_id_map;
 	const unsigned int hs_id_array[] = {4, 5, 9};
 	int i, j;
-	u32 val, mapped_src;
+	u32 val;
 
 	for (i = 0; i < ARRAY_SIZE(hs_id_array); i++)
 		if (hs_id_array[i] == hs->id)
@@ -111,14 +106,10 @@ int hscaler_pixengcfg_dynamic_src_sel(struct dpu_hscaler *hs, hs_src_sel_t src)
 	mutex_lock(&hs->mutex);
 	for (j = 0; j < ARRAY_SIZE(src_sels[0]); j++) {
 		if (src_sels[i][j] == src) {
-			mapped_src = block_id_map ? block_id_map[src] : src;
-			if (WARN_ON(mapped_src == NA))
-				return -EINVAL;
-
 			val = dpu_pec_hs_read(hs, PIXENGCFG_DYNAMIC);
 			val &= ~PIXENGCFG_DYNAMIC_SRC_SEL_MASK;
-			val |= mapped_src;
-			dpu_pec_hs_write(hs, val, PIXENGCFG_DYNAMIC);
+			val |= src;
+			dpu_pec_hs_write(hs, PIXENGCFG_DYNAMIC, val);
 			mutex_unlock(&hs->mutex);
 			return 0;
 		}
@@ -139,7 +130,7 @@ void hscaler_pixengcfg_clken(struct dpu_hscaler *hs, pixengcfg_clken_t clken)
 	val = dpu_pec_hs_read(hs, PIXENGCFG_DYNAMIC);
 	val &= ~CLKEN_MASK;
 	val |= clken << CLKEN_MASK_SHIFT;
-	dpu_pec_hs_write(hs, val, PIXENGCFG_DYNAMIC);
+	dpu_pec_hs_write(hs, PIXENGCFG_DYNAMIC, val);
 	mutex_unlock(&hs->mutex);
 }
 EXPORT_SYMBOL_GPL(hscaler_pixengcfg_clken);
@@ -154,7 +145,7 @@ void hscaler_shden(struct dpu_hscaler *hs, bool enable)
 		val |= SHDEN;
 	else
 		val &= ~SHDEN;
-	dpu_hs_write(hs, val, STATICCONTROL);
+	dpu_hs_write(hs, STATICCONTROL, val);
 	mutex_unlock(&hs->mutex);
 }
 EXPORT_SYMBOL_GPL(hscaler_shden);
@@ -182,7 +173,7 @@ void hscaler_setup1(struct dpu_hscaler *hs, u32 src, u32 dst)
 	WARN_ON(scale_factor > 0x80000);
 
 	mutex_lock(&hs->mutex);
-	dpu_hs_write(hs, SCALE_FACTOR(scale_factor), SETUP1);
+	dpu_hs_write(hs, SETUP1, SCALE_FACTOR(scale_factor));
 	mutex_unlock(&hs->mutex);
 
 	dev_dbg(dpu->dev, "Hscaler%d scale factor 0x%08x\n",
@@ -193,7 +184,7 @@ EXPORT_SYMBOL_GPL(hscaler_setup1);
 void hscaler_setup2(struct dpu_hscaler *hs, u32 phase_offset)
 {
 	mutex_lock(&hs->mutex);
-	dpu_hs_write(hs, PHASE_OFFSET(phase_offset), SETUP2);
+	dpu_hs_write(hs, SETUP2, PHASE_OFFSET(phase_offset));
 	mutex_unlock(&hs->mutex);
 }
 EXPORT_SYMBOL_GPL(hscaler_setup2);
@@ -206,7 +197,7 @@ void hscaler_output_size(struct dpu_hscaler *hs, u32 line_num)
 	val = dpu_hs_read(hs, CONTROL);
 	val &= ~OUTPUT_SIZE_MASK;
 	val |= OUTPUT_SIZE(line_num);
-	dpu_hs_write(hs, val, CONTROL);
+	dpu_hs_write(hs, CONTROL, val);
 	mutex_unlock(&hs->mutex);
 }
 EXPORT_SYMBOL_GPL(hscaler_output_size);
@@ -219,7 +210,7 @@ void hscaler_filter_mode(struct dpu_hscaler *hs, scaler_filter_mode_t m)
 	val = dpu_hs_read(hs, CONTROL);
 	val &= ~FILTER_MODE;
 	val |= m;
-	dpu_hs_write(hs, val, CONTROL);
+	dpu_hs_write(hs, CONTROL, val);
 	mutex_unlock(&hs->mutex);
 }
 EXPORT_SYMBOL_GPL(hscaler_filter_mode);
@@ -232,7 +223,7 @@ void hscaler_scale_mode(struct dpu_hscaler *hs, scaler_scale_mode_t m)
 	val = dpu_hs_read(hs, CONTROL);
 	val &= ~SCALE_MODE;
 	val |= m;
-	dpu_hs_write(hs, val, CONTROL);
+	dpu_hs_write(hs, CONTROL, val);
 	mutex_unlock(&hs->mutex);
 }
 EXPORT_SYMBOL_GPL(hscaler_scale_mode);
@@ -245,7 +236,7 @@ void hscaler_mode(struct dpu_hscaler *hs, scaler_mode_t m)
 	val = dpu_hs_read(hs, CONTROL);
 	val &= ~MODE;
 	val |= m;
-	dpu_hs_write(hs, val, CONTROL);
+	dpu_hs_write(hs, CONTROL, val);
 	mutex_unlock(&hs->mutex);
 }
 EXPORT_SYMBOL_GPL(hscaler_mode);

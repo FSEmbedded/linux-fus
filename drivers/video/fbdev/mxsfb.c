@@ -1577,7 +1577,7 @@ static int mxsfb_map_videomem(struct fb_info *fbi)
 		fbi->fix.smem_len = fbi->var.yres_virtual *
 				    fbi->fix.line_length;
 
-	fbi->screen_base = dma_alloc_writecombine(fbi->device,
+	fbi->screen_base = dma_alloc_wc(fbi->device,
 				fbi->fix.smem_len,
 				(dma_addr_t *)&fbi->fix.smem_start,
 				GFP_DMA | GFP_KERNEL);
@@ -1608,7 +1608,7 @@ static int mxsfb_map_videomem(struct fb_info *fbi)
  */
 static int mxsfb_unmap_videomem(struct fb_info *fbi)
 {
-	dma_free_writecombine(fbi->device, fbi->fix.smem_len,
+	dma_free_wc(fbi->device, fbi->fix.smem_len,
 			      fbi->screen_base, fbi->fix.smem_start);
 	fbi->screen_base = 0;
 	fbi->fix.smem_start = 0;
@@ -1668,8 +1668,7 @@ static void overlayfb_enable(struct mxsfb_layer *ofb)
 {
 	struct mxsfb_info *fbi = ofb->fbi;
 
-	if (!lock_fb_info(fbi->fb_info))
-		return;
+	lock_fb_info(fbi->fb_info);
 
 	if (fbi->cur_blank == FB_BLANK_UNBLANK) {
 		mxsfb_disable_controller(fbi->fb_info);
@@ -1924,8 +1923,7 @@ static int overlayfb_set_par(struct fb_info *info)
 	if (ofb->video_mem_size < size)
 		return -EINVAL;
 
-	if (!lock_fb_info(fbi->fb_info))
-		return -EINVAL;
+	lock_fb_info(fbi->fb_info);
 
 	if (fbi->cur_blank != FB_BLANK_UNBLANK) {
 		clk_enable_pix(fbi);
@@ -1942,8 +1940,7 @@ static int overlayfb_set_par(struct fb_info *info)
 	if (ofb->blank_state == FB_BLANK_UNBLANK)
 		ofb->ops->enable(ofb);
 
-	if (!lock_fb_info(fbi->fb_info))
-		return -EINVAL;
+	lock_fb_info(fbi->fb_info);
 
 	if (fbi->cur_blank != FB_BLANK_UNBLANK) {
 		clk_disable_disp_axi(fbi);
@@ -1967,8 +1964,7 @@ static int overlayfb_blank(int blank, struct fb_info *info)
 	if (ofb->blank_state == blank)
 		return 0;
 
-	if (!lock_fb_info(fbi->fb_info))
-		return -EINVAL;
+	lock_fb_info(fbi->fb_info);
 
 	if (fbi->cur_blank != FB_BLANK_UNBLANK) {
 		clk_enable_pix(fbi);
@@ -1989,8 +1985,7 @@ static int overlayfb_blank(int blank, struct fb_info *info)
 		break;
 	}
 
-	if (!lock_fb_info(fbi->fb_info))
-		return -EINVAL;
+	lock_fb_info(fbi->fb_info);
 
 	if (fbi->cur_blank != FB_BLANK_UNBLANK) {
 		clk_disable_disp_axi(fbi);
@@ -2014,8 +2009,7 @@ static int overlayfb_pan_display(struct fb_var_screeninfo *var,
 
 	init_completion(&fbi->flip_complete);
 
-	if (!lock_fb_info(fbi->fb_info))
-		return -EINVAL;
+	lock_fb_info(fbi->fb_info);
 
 	if (fbi->cur_blank != FB_BLANK_UNBLANK) {
 		unlock_fb_info(fbi->fb_info);
@@ -2105,10 +2099,10 @@ static int mxsfb_overlay_map_video_memory(struct mxsfb_info *fbi,
 	BUG_ON(!fb->fix.smem_len);
 
 	ofb->video_mem_size = fb->fix.smem_len;
-	ofb->video_mem = dma_alloc_writecombine(ofb->dev,
-						ofb->video_mem_size,
-						(dma_addr_t *)&ofb->video_mem_phys,
-						GFP_DMA | GFP_KERNEL);
+	ofb->video_mem = dma_alloc_wc(ofb->dev,
+				      ofb->video_mem_size,
+				      (dma_addr_t *)&ofb->video_mem_phys,
+				      GFP_DMA | GFP_KERNEL);
 
 	if (ofb->video_mem == NULL) {
 		dev_err(ofb->dev, "Unable to allocate overlay fb memory\n");
@@ -2180,8 +2174,8 @@ static void mxsfb_overlay_exit(struct mxsfb_info *fbi)
 
 	if (ofb->registered) {
 		if (ofb->video_mem)
-			dma_free_writecombine(ofb->dev, ofb->video_mem_size,
-					ofb->video_mem, ofb->video_mem_phys);
+			dma_free_wc(ofb->dev, ofb->video_mem_size,
+				    ofb->video_mem, ofb->video_mem_phys);
 
 		unregister_framebuffer(ofb->ol_fb);
 		framebuffer_release(ofb->ol_fb);
@@ -2236,6 +2230,8 @@ static void mxsfb_overlay_suspend(struct mxsfb_info *fbi)
 #else
 static void mxsfb_overlay_init(struct mxsfb_info *fbi) {}
 static void mxsfb_overlay_exit(struct mxsfb_info *fbi) {}
+static void mxsfb_overlay_resume(struct mxsfb_info *fbi) {}
+static void mxsfb_overlay_suspend(struct mxsfb_info *fbi) {}
 #endif
 
 static int mxsfb_probe(struct platform_device *pdev)

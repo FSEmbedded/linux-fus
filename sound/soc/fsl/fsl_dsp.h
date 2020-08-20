@@ -8,11 +8,13 @@
 #ifndef FSL_DSP_H
 #define FSL_DSP_H
 #include <uapi/linux/mxc_dsp.h>
-#include <soc/imx8/sc/ipc.h>
+#include <linux/firmware/imx/ipc.h>
 #include "fsl_dsp_proxy.h"
 #include "fsl_dsp_platform.h"
+#include "fsl_dsp_audiomix.h"
 
-#define DRV_NAME "fsl-dsp"
+
+#define FSL_DSP_COMP_NAME "fsl-dsp-component"
 
 typedef void (*memcpy_func) (void *dest, const void *src, size_t n);
 typedef void (*memset_func) (void *s, int c, size_t n);
@@ -23,6 +25,7 @@ typedef void (*memset_func) (void *s, int c, size_t n);
 enum {
 	DSP_IMX8QXP_TYPE = 0,
 	DSP_IMX8QM_TYPE,
+	DSP_IMX8MP_TYPE,
 };
 
 /* ...proxy client data */
@@ -69,8 +72,8 @@ struct fsl_dsp {
 	const char			*fw_name;
 	void __iomem			*regs;
 	void __iomem			*mu_base_virtaddr;
-	sc_ipc_t			dsp_ipcHandle;
-	sc_ipc_t			mu_ipcHandle;
+	struct imx_sc_ipc		*dsp_ipcHandle;
+	struct imx_audiomix_dsp_data 	*audiomix;
 	unsigned int			dsp_mu_id;
 	int				dsp_mu_init;
 	atomic_long_t			refcnt;
@@ -110,6 +113,10 @@ struct fsl_dsp {
 	struct clk *asrc_mem_clk;
 	struct clk *asrc_ipg_clk;
 	struct clk *asrck_clk[4];
+	struct clk *dsp_ocrama_clk;
+	struct clk *dsp_root_clk;
+	struct clk *debug_clk;
+	struct clk *mu2_clk;
 };
 
 #define IRAM_OFFSET		0x10000
@@ -130,7 +137,7 @@ struct fsl_dsp {
 #define MSG_BUF_SIZE		8192
 #define INPUT_BUF_SIZE		4096
 #define OUTPUT_BUF_SIZE		16384
-#define DSP_CONFIG_SIZE		8192
+#define DSP_CONFIG_SIZE    4096
 
 void *memcpy_dsp(void *dest, const void *src, size_t count);
 void *memset_dsp(void *dest, int c, size_t count);

@@ -6,26 +6,20 @@ Required properties:
 - interrupts : Should contain fec interrupt
 - phy-mode : See ethernet.txt file in the same directory
 - clock-name: Should be the names of the clocks
-  - "ipg" for MAC ipg_clk_s, ipg_clk_mac_s that are for register accessing
-  - "ahb" for MAC ipg_clk, ipg_clk_mac that are bus clock
-  - "ptp" for IEEE1588 timer clock
-  - "enet_clk_ref" for MAC transmit/receiver reference clock
-  - "enet_out" output clock for external device
+  - "ipg", for MAC ipg_clk_s, ipg_clk_mac_s that are for register accessing
+  - "ahb", for MAC ipg_clk, ipg_clk_mac that are bus clock
+  - "ptp"(option), for IEEE1588 timer clock that requires the clock
+  - "enet_clk_ref"(option), for MAC transmit/receiver reference clock like
+    RGMII TXC clock or RMII reference clock. It depends on board design,
+    the clock is required if RGMII TXC and RMII reference clock source from
+    SOC internal PLL.
+  - "enet_out"(option), output clock for external device, like supply clock
+    for PHY. The clock is required if PHY clock source from SOC.
+  - "enet_2x_txclk"(option), for RGMII sampleing clock which fixed at 250Mhz.
+    The clock is required if SOC RGMII enable clock delay.
 - clocks: Phandles to input clocks.
 
 Optional properties:
-- phy-reset-gpios : Should specify the gpio for phy reset
-- phy-reset-duration : Reset duration in milliseconds.  Should present
-  only if property "phy-reset-gpios" is available.  Missing the property
-  will have the duration be 1 millisecond.  Numbers greater than 1000 are
-  invalid and 1 millisecond will be used instead.
-- phy-reset-active-high : If present then the reset sequence using the GPIO
-  specified in the "phy-reset-gpios" property is reversed (H=reset state,
-  L=operation state).
-- phy-reset-post-delay : Post reset delay in milliseconds. If present then
-  a delay of phy-reset-post-delay milliseconds will be observed after the
-  phy-reset-gpios has been toggled. Can be omitted thus no delay is
-  observed. Delay is in range of 1ms to 1000ms. Other delays are invalid.
 - phy-supply : regulator that powers the Ethernet PHY.
 - phy-handle : phandle to the PHY device connected to this device.
 - fixed-link : Assume a fixed link. See fixed-link.txt in the same directory.
@@ -54,10 +48,8 @@ Optional properties:
   For imx6sx, "int0" handles all 3 queues and ENET_MII. "pps" is for the pulse
   per second interrupt associated with 1588 precision time protocol(PTP).
 
-- fsl,wakeup_irq : The property define the wakeup irq index in enet irq source.
-- stop-mode : If present, indicates soc need to set gpr bit to request stop
-  mode.
-- fsl,ar8031-phy-fixup : If present, indicates board need to do phy fixup setting.
+- fsl,wakeup_irq : The property defines the wakeup irq index in enet irq source.
+- stop-mode : If present, indicates soc need to set gpr bit to request stop mode.
 - mii-exclusive: If present, each MAC has their exclusive MDIO bus in current board
   design, otherwise multiple MACs share one MDIO bus to reduce Pins utilize.
 - fsl,ref-clock-out : Reference clock is an output rather than an input.
@@ -66,6 +58,23 @@ Optional properties:
 Optional subnodes:
 - mdio : specifies the mdio bus in the FEC, used as a container for phy nodes
   according to phy.txt in the same directory
+
+Deprecated optional properties:
+	To avoid these, create a phy node according to phy.txt in the same
+	directory, and point the fec's "phy-handle" property to it. Then use
+	the phy's reset binding, again described by phy.txt.
+- phy-reset-gpios : Should specify the gpio for phy reset
+- phy-reset-duration : Reset duration in milliseconds.  Should present
+  only if property "phy-reset-gpios" is available.  Missing the property
+  will have the duration be 1 millisecond.  Numbers greater than 1000 are
+  invalid and 1 millisecond will be used instead.
+- phy-reset-active-high : If present then the reset sequence using the GPIO
+  specified in the "phy-reset-gpios" property is reversed (H=reset state,
+  L=operation state).
+- phy-reset-post-delay : Post reset delay in milliseconds. If present then
+  a delay of phy-reset-post-delay milliseconds will be observed after the
+  phy-reset-gpios has been toggled. Can be omitted thus no delay is
+  observed. Delay is in range of 1ms to 1000ms. Other delays are invalid.
 
 Example:
 

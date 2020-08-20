@@ -21,7 +21,6 @@
 static int imx_audmux_config(int slave, int master)
 {
 	unsigned int ptcr, pdcr;
-
 	slave = slave - 1;
 	master = master - 1;
 
@@ -72,11 +71,16 @@ static struct snd_soc_ops imx_si476x_ops = {
 	.hw_params = imx_si476x_hw_params,
 };
 
+SND_SOC_DAILINK_DEFS(hifi,
+	DAILINK_COMP_ARRAY(COMP_EMPTY()),
+	DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "si476x-codec")),
+	DAILINK_COMP_ARRAY(COMP_EMPTY()));
+
 static struct snd_soc_dai_link imx_dai = {
 	.name = "imx-si476x",
 	.stream_name = "imx-si476x",
-	.codec_dai_name = "si476x-codec",
 	.ops = &imx_si476x_ops,
+	SND_SOC_DAILINK_REG(hifi),
 };
 
 static struct snd_soc_card snd_soc_card_imx_3stack = {
@@ -137,9 +141,9 @@ static int imx_si476x_probe(struct platform_device *pdev)
 	}
 
 	card->dev = &pdev->dev;
-	card->dai_link->cpu_dai_name = dev_name(&ssi_pdev->dev);
-	card->dai_link->platform_of_node = ssi_np;
-	card->dai_link->codec_of_node = fm_np;
+	card->dai_link->cpus->dai_name = dev_name(&ssi_pdev->dev);
+	card->dai_link->platforms->of_node = ssi_np;
+	card->dai_link->codecs->of_node = fm_np;
 
 	platform_set_drvdata(pdev, card);
 

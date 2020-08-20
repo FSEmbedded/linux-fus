@@ -27,6 +27,33 @@
 #define CONSTANTCOLOR(n)		(0x30 + (n) * 0x28)
 #define LAYERPROPERTY(n)		(0x34 + (n) * 0x28)
 
+/* base address has to align to burst size */
+unsigned int fetchunit_burst_size_fixup_tkt343664(dma_addr_t baddr)
+{
+	unsigned int burst_size;
+
+	burst_size = 1 << (ffs(baddr) - 1);
+	burst_size = round_up(burst_size, 8);
+	burst_size = min(burst_size, 128U);
+
+	return burst_size;
+}
+EXPORT_SYMBOL_GPL(fetchunit_burst_size_fixup_tkt343664);
+
+/* fixup for burst size vs stride mismatch */
+unsigned int
+fetchunit_stride_fixup_tkt339017(unsigned int stride, unsigned int burst_size,
+				 dma_addr_t baddr, bool nonzero_mod)
+{
+	if (nonzero_mod)
+		stride = round_up(stride + round_up(baddr % 8, 8), burst_size);
+	else
+		stride = round_up(stride, burst_size);
+
+	return stride;
+}
+EXPORT_SYMBOL_GPL(fetchunit_stride_fixup_tkt339017);
+
 void fetchunit_get_dprc(struct dpu_fetchunit *fu, void *data)
 {
 	if (WARN_ON(!fu))
@@ -46,7 +73,7 @@ void fetchunit_shden(struct dpu_fetchunit *fu, bool enable)
 		val |= SHDEN;
 	else
 		val &= ~SHDEN;
-	dpu_fu_write(fu, val, STATICCONTROL);
+	dpu_fu_write(fu, STATICCONTROL, val);
 	mutex_unlock(&fu->mutex);
 }
 EXPORT_SYMBOL_GPL(fetchunit_shden);
@@ -59,7 +86,7 @@ void fetchunit_baddr_autoupdate(struct dpu_fetchunit *fu, u8 layer_mask)
 	val = dpu_fu_read(fu, STATICCONTROL);
 	val &= ~BASEADDRESSAUTOUPDATE_MASK;
 	val |= BASEADDRESSAUTOUPDATE(layer_mask);
-	dpu_fu_write(fu, val, STATICCONTROL);
+	dpu_fu_write(fu, STATICCONTROL, val);
 	mutex_unlock(&fu->mutex);
 }
 EXPORT_SYMBOL_GPL(fetchunit_baddr_autoupdate);
@@ -72,7 +99,7 @@ void fetchunit_shdldreq_sticky(struct dpu_fetchunit *fu, u8 layer_mask)
 	val = dpu_fu_read(fu, STATICCONTROL);
 	val &= ~SHDLDREQSTICKY_MASK;
 	val |= SHDLDREQSTICKY(layer_mask);
-	dpu_fu_write(fu, val, STATICCONTROL);
+	dpu_fu_write(fu, STATICCONTROL, val);
 	mutex_unlock(&fu->mutex);
 }
 EXPORT_SYMBOL_GPL(fetchunit_shdldreq_sticky);
@@ -91,13 +118,7 @@ void fetchunit_set_burstlength(struct dpu_fetchunit *fu,
 		if (nonzero_mod)
 			baddr += (x_offset % mt_w) * (bpp / 8);
 
-		/*
-		 * address TKT343664:
-		 * fetch unit base address has to align to burst size
-		 */
-		burst_size = 1 << (ffs(baddr) - 1);
-		burst_size = round_up(burst_size, 8);
-		burst_size = min(burst_size, 128U);
+		burst_size = fetchunit_burst_size_fixup_tkt343664(baddr);
 		burst_length = burst_size / 8;
 	} else {
 		burst_length = 16;
@@ -107,7 +128,7 @@ void fetchunit_set_burstlength(struct dpu_fetchunit *fu,
 	val = dpu_fu_read(fu, BURSTBUFFERMANAGEMENT);
 	val &= ~SETBURSTLENGTH_MASK;
 	val |= SETBURSTLENGTH(burst_length);
-	dpu_fu_write(fu, val, BURSTBUFFERMANAGEMENT);
+	dpu_fu_write(fu, BURSTBUFFERMANAGEMENT, val);
 	mutex_unlock(&fu->mutex);
 
 	dev_dbg(dpu->dev, "%s%d burst length is %u\n",
@@ -127,27 +148,18 @@ void fetchunit_set_baseaddress(struct dpu_fetchunit *fu, unsigned int width,
 		/* consider PRG x offset to calculate buffer address */
 		baddr += (x_offset % mt_w) * (bpp / 8);
 
-		/*
-		 * address TKT343664:
-		 * fetch unit base address has to align to burst size
-		 */
-		burst_size = 1 << (ffs(baddr) - 1);
-		burst_size = round_up(burst_size, 8);
-		burst_size = min(burst_size, 128U);
+		burst_size = fetchunit_burst_size_fixup_tkt343664(baddr);
 
-		stride = width * (bpp >> 3);
-		/*
-		 * address TKT339017:
-		 * fixup for burst size vs stride mismatch
-		 */
-		stride = round_up(stride + round_up(baddr % 8, 8), burst_size);
+		stride = width * (bpp / 8);
+		stride = fetchunit_stride_fixup_tkt339017(stride, burst_size,
+							  baddr, nonzero_mod);
 
 		/* consider PRG y offset to calculate buffer address */
 		baddr += (y_offset % mt_h) * stride;
 	}
 
 	mutex_lock(&fu->mutex);
-	dpu_fu_write(fu, baddr, BASEADDRESS(fu->sub_id));
+	dpu_fu_write(fu, BASEADDRESS(fu->sub_id), baddr);
 	mutex_unlock(&fu->mutex);
 }
 EXPORT_SYMBOL_GPL(fetchunit_set_baseaddress);
@@ -160,7 +172,7 @@ void fetchunit_set_src_bpp(struct dpu_fetchunit *fu, int bpp)
 	val = dpu_fu_read(fu, SOURCEBUFFERATTRIBUTES(fu->sub_id));
 	val &= ~0x3f0000;
 	val |= BITSPERPIXEL(bpp);
-	dpu_fu_write(fu, val, SOURCEBUFFERATTRIBUTES(fu->sub_id));
+	dpu_fu_write(fu, SOURCEBUFFERATTRIBUTES(fu->sub_id), val);
 	mutex_unlock(&fu->mutex);
 }
 EXPORT_SYMBOL_GPL(fetchunit_set_src_bpp);
@@ -185,31 +197,18 @@ void fetchunit_set_src_stride(struct dpu_fetchunit *fu,
 		if (nonzero_mod)
 			baddr += (x_offset % mt_w) * (bpp / 8);
 
-		/*
-		 * address TKT343664:
-		 * fetch unit base address has to align to burst size
-		 */
-		burst_size = 1 << (ffs(baddr) - 1);
-		burst_size = round_up(burst_size, 8);
-		burst_size = min(burst_size, 128U);
+		burst_size = fetchunit_burst_size_fixup_tkt343664(baddr);
 
-		stride = width * (bpp >> 3);
-		/*
-		 * address TKT339017:
-		 * fixup for burst size vs stride mismatch
-		 */
-		if (nonzero_mod)
-			stride = round_up(stride + round_up(baddr % 8, 8),
-								burst_size);
-		else
-			stride = round_up(stride, burst_size);
+		stride = width * (bpp / 8);
+		stride = fetchunit_stride_fixup_tkt339017(stride, burst_size,
+							  baddr, nonzero_mod);
 	}
 
 	mutex_lock(&fu->mutex);
 	val = dpu_fu_read(fu, SOURCEBUFFERATTRIBUTES(fu->sub_id));
 	val &= ~0xffff;
 	val |= STRIDE(stride);
-	dpu_fu_write(fu, val, SOURCEBUFFERATTRIBUTES(fu->sub_id));
+	dpu_fu_write(fu, SOURCEBUFFERATTRIBUTES(fu->sub_id), val);
 	mutex_unlock(&fu->mutex);
 }
 EXPORT_SYMBOL_GPL(fetchunit_set_src_stride);
@@ -238,12 +237,12 @@ void fetchunit_set_pixel_blend_mode(struct dpu_fetchunit *fu,
 	val = dpu_fu_read(fu, LAYERPROPERTY(fu->sub_id));
 	val &= ~(PREMULCONSTRGB | ALPHA_ENABLE_MASK | RGB_ENABLE_MASK);
 	val |= mode;
-	dpu_fu_write(fu, val, LAYERPROPERTY(fu->sub_id));
+	dpu_fu_write(fu, LAYERPROPERTY(fu->sub_id), val);
 
 	val = dpu_fu_read(fu, CONSTANTCOLOR(fu->sub_id));
 	val &= ~CONSTANTALPHA_MASK;
 	val |= CONSTANTALPHA(alpha >> 8);
-	dpu_fu_write(fu, val, CONSTANTCOLOR(fu->sub_id));
+	dpu_fu_write(fu, CONSTANTCOLOR(fu->sub_id), val);
 	mutex_unlock(&fu->mutex);
 }
 EXPORT_SYMBOL_GPL(fetchunit_set_pixel_blend_mode);
@@ -255,7 +254,7 @@ void fetchunit_enable_src_buf(struct dpu_fetchunit *fu)
 	mutex_lock(&fu->mutex);
 	val = dpu_fu_read(fu, LAYERPROPERTY(fu->sub_id));
 	val |= SOURCEBUFFERENABLE;
-	dpu_fu_write(fu, val, LAYERPROPERTY(fu->sub_id));
+	dpu_fu_write(fu, LAYERPROPERTY(fu->sub_id), val);
 	mutex_unlock(&fu->mutex);
 }
 EXPORT_SYMBOL_GPL(fetchunit_enable_src_buf);
@@ -267,7 +266,7 @@ void fetchunit_disable_src_buf(struct dpu_fetchunit *fu)
 	mutex_lock(&fu->mutex);
 	val = dpu_fu_read(fu, LAYERPROPERTY(fu->sub_id));
 	val &= ~SOURCEBUFFERENABLE;
-	dpu_fu_write(fu, val, LAYERPROPERTY(fu->sub_id));
+	dpu_fu_write(fu, LAYERPROPERTY(fu->sub_id), val);
 	mutex_unlock(&fu->mutex);
 }
 EXPORT_SYMBOL_GPL(fetchunit_disable_src_buf);
@@ -309,33 +308,6 @@ void fetchunit_set_stream_id(struct dpu_fetchunit *fu, unsigned int id)
 	}
 }
 EXPORT_SYMBOL_GPL(fetchunit_set_stream_id);
-
-void fetchunit_pin_off(struct dpu_fetchunit *fu)
-{
-	if (WARN_ON(!fu))
-		return;
-
-	fu->pin_off = true;
-}
-EXPORT_SYMBOL_GPL(fetchunit_pin_off);
-
-void fetchunit_unpin_off(struct dpu_fetchunit *fu)
-{
-	if (WARN_ON(!fu))
-		return;
-
-	fu->pin_off = false;
-}
-EXPORT_SYMBOL_GPL(fetchunit_unpin_off);
-
-bool fetchunit_is_pinned_off(struct dpu_fetchunit *fu)
-{
-	if (WARN_ON(!fu))
-		return false;
-
-	return fu->pin_off;
-}
-EXPORT_SYMBOL_GPL(fetchunit_is_pinned_off);
 
 bool fetchunit_is_fetchdecode(struct dpu_fetchunit *fu)
 {

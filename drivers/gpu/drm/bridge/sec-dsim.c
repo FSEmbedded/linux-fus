@@ -22,12 +22,13 @@
 #include <linux/log2.h>
 #include <linux/module.h>
 #include <linux/of_graph.h>
+#include <linux/pm_runtime.h>
 #include <drm/bridge/sec_mipi_dsim.h>
 #include <drm/drmP.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge.h>
 #include <drm/drm_connector.h>
-#include <drm/drm_crtc_helper.h>
+#include <drm/drm_probe_helper.h>
 #include <drm/drm_encoder.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_mipi_dsi.h>
@@ -603,8 +604,10 @@ static void sec_mipi_dsim_write_pl_to_sfr_fifo(struct sec_mipi_dsim *dsim,
 	switch (length) {
 	case 3:
 		pl_data |= ((u8 *)payload)[2] << 16;
+		/* fall through */
 	case 2:
 		pl_data |= ((u8 *)payload)[1] << 8;
+		/* fall through */
 	case 1:
 		pl_data |= ((u8 *)payload)[0];
 		dsim_write(dsim, pl_data, DSIM_PAYLOAD);
@@ -684,8 +687,10 @@ static int sec_mipi_dsim_read_pl_from_sfr_fifo(struct sec_mipi_dsim *dsim,
 			switch (word_count) {
 			case 3:
 				((u8 *)payload)[2] = (pl >> 16) & 0xff;
+				/* fall through */
 			case 2:
 				((u8 *)payload)[1] = (pl >> 8) & 0xff;
+				/* fall through */
 			case 1:
 				((u8 *)payload)[0] = pl & 0xff;
 				break;
@@ -788,11 +793,12 @@ static const struct mipi_dsi_host_ops sec_mipi_dsim_host_ops = {
 static int sec_mipi_dsim_bridge_attach(struct drm_bridge *bridge)
 {
 	int ret;
+	bool attach_bridge = false;
 	struct sec_mipi_dsim *dsim = bridge->driver_private;
 	struct device *dev = dsim->dev;
 	struct device_node *np = dev->of_node;
-	struct device_node *endpoint, *remote;
-	struct drm_bridge *next = NULL;
+	struct device_node *endpoint, *remote = NULL;
+	struct drm_bridge *next = ERR_PTR(-ENODEV);
 	struct drm_encoder *encoder = dsim->encoder;
 
 	/* TODO: All bridges and planes should have already been added */
@@ -807,7 +813,14 @@ static int sec_mipi_dsim_bridge_attach(struct drm_bridge *bridge)
 	if (!endpoint)
 		return -ENODEV;
 
-	while(endpoint && !next) {
+	while (endpoint) {
+		/* check the endpoint can attach bridge or not */
+		attach_bridge = of_property_read_bool(endpoint, "attach-bridge");
+		if (!attach_bridge) {
+			endpoint = of_graph_get_next_endpoint(np, endpoint);
+			continue;
+		}
+
 		remote = of_graph_get_remote_port_parent(endpoint);
 
 		if (!remote || !of_device_is_available(remote)) {
@@ -825,6 +838,10 @@ static int sec_mipi_dsim_bridge_attach(struct drm_bridge *bridge)
 
 		endpoint = of_graph_get_next_endpoint(np, endpoint);
 	}
+
+	/* No workable bridge exists */
+	if (IS_ERR(next))
+		return PTR_ERR(next);
 
 	/* For the panel driver loading is after dsim bridge,
 	 * defer bridge binding to wait for panel driver ready.
@@ -1483,23 +1500,6 @@ static bool sec_mipi_dsim_bridge_mode_fixup(struct drm_bridge *bridge,
 		adjusted_mode->flags |= DRM_MODE_FLAG_PVSYNC;
 	}
 
-	return true;
-}
-
-static void sec_mipi_dsim_bridge_mode_set(struct drm_bridge *bridge,
-					  struct drm_display_mode *mode,
-					  struct drm_display_mode *adjusted_mode)
-{
-	struct sec_mipi_dsim *dsim = bridge->driver_private;
-
-	/* This hook is called when the display pipe is completely
-	 * off. And since the pm runtime is implemented, the dsim
-	 * hardware cannot be accessed at this moment. So move all
-	 * the mode_set config to ->enable() hook.
-	 * And this hook is called only when 'mode_changed' is true,
-	 * so it is called not every time atomic commit.
-	 */
-
 	/* workaround for CEA standard mode "1280x720@60"
 	 * display on 4 data lanes with Non-burst with sync
 	 * pulse DSI mode, since use the standard horizontal
@@ -1516,6 +1516,23 @@ static void sec_mipi_dsim_bridge_mode_set(struct drm_bridge *bridge,
 		adjusted_mode->hsync_end   += 2;
 		adjusted_mode->htotal      += 2;
 	}
+
+	return true;
+}
+
+static void sec_mipi_dsim_bridge_mode_set(struct drm_bridge *bridge,
+					  const struct drm_display_mode *mode,
+					  const struct drm_display_mode *adjusted_mode)
+{
+	struct sec_mipi_dsim *dsim = bridge->driver_private;
+
+	/* This hook is called when the display pipe is completely
+	 * off. And since the pm runtime is implemented, the dsim
+	 * hardware cannot be accessed at this moment. So move all
+	 * the mode_set config to ->enable() hook.
+	 * And this hook is called only when 'mode_changed' is true,
+	 * so it is called not every time atomic commit.
+	 */
 
 	drm_display_mode_to_videomode(adjusted_mode, &dsim->vmode);
 }
@@ -1816,6 +1833,7 @@ int sec_mipi_dsim_bind(struct device *dev, struct device *master, void *data,
 	struct drm_bridge *bridge;
 	struct drm_connector *connector;
 	struct sec_mipi_dsim *dsim;
+	struct device_node *node = NULL;
 
 	dev_dbg(dev, "sec-dsim bridge bind begin\n");
 
@@ -1851,10 +1869,12 @@ int sec_mipi_dsim_bind(struct device *dev, struct device *master, void *data,
 		return ret;
 	}
 
-	clk_prepare_enable(dsim->clk_cfg);
+	dev_set_drvdata(dev, dsim);
+
+	pm_runtime_get_sync(dev);
 	version = dsim_read(dsim, DSIM_VERSION);
 	WARN_ON(version != pdata->version);
-	clk_disable_unprepare(dsim->clk_cfg);
+	pm_runtime_put_sync(dev);
 
 	dev_info(dev, "version number is %#x\n", version);
 
@@ -1908,16 +1928,34 @@ int sec_mipi_dsim_bind(struct device *dev, struct device *master, void *data,
 	bridge->of_node = dev->of_node;
 	bridge->encoder = encoder;
 
-	dev_set_drvdata(dev, dsim);
-
 	/* attach sec dsim bridge and its next bridge if exists */
 	ret = drm_bridge_attach(encoder, bridge, NULL);
 	if (ret) {
 		dev_err(dev, "Failed to attach bridge: %s\n", dev_name(dev));
+
+		/* no bridge exists, so defer probe to wait
+		 * panel driver loading
+		 */
+		if (ret != -EPROBE_DEFER) {
+			for_each_available_child_of_node(dev->of_node, node) {
+				/* skip nodes without reg property */
+				if (!of_find_property(node, "reg", NULL))
+					continue;
+
+				/* error codes only ENODEV or EPROBE_DEFER */
+				dsim->panel = of_drm_find_panel(node);
+				if (!IS_ERR(dsim->panel))
+					goto panel;
+
+				ret = PTR_ERR(dsim->panel);
+			}
+		}
+
 		mipi_dsi_host_unregister(&dsim->dsi_host);
 		return ret;
 	}
 
+panel:
 	if (dsim->panel) {
 		/* A panel has been attached */
 		connector = &dsim->connector;

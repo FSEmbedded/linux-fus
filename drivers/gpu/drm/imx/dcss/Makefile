@@ -1,4 +1,7 @@
-ccflags-y += -Idrivers/gpu/drm/imx
+imx-dcss-objs := dcss-drv.o dcss-dev.o dcss-blkctl.o dcss-ctxld.o dcss-dtg.o \
+				 dcss-ss.o dcss-dpr.o dcss-scaler.o dcss-kms.o dcss-crtc.o \
+				 dcss-plane.o dcss-dec400d.o dcss-hdr10.o dcss-wrscl.o \
+				 dcss-rdsrc.o dcss-dtrc.o
 
-imx-dcss-crtc-objs := dcss-crtc.o dcss-plane.o dcss-kms.o
-obj-$(CONFIG_DRM_IMX_DCSS) += imx-dcss-crtc.o
+obj-$(CONFIG_DRM_IMX_DCSS) += imx-dcss.o
+

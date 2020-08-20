@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 //
-// Copyright (C) 2013-2015 Freescale Semiconductor, Inc.
+// Copyright (C) 2013 Freescale Semiconductor, Inc.
 
 /dts-v1/;
 
@@ -89,7 +89,7 @@
                 vpos_pwrdn = <2>;
                 gvee_pwrdn = <1>;
                 vneg_pwrdn = <1>;
-                SENSOR-supply = <&reg_sensor>;
+                SENSOR-supply = <&reg_sensors>;
                 gpio_pmic_pwrgood = <&gpio2 21 0>;
                 gpio_pmic_vcom_ctrl = <&gpio3 17 0>;
                 gpio_pmic_wakeup = <&gpio3 20 0>;

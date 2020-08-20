@@ -31,7 +31,7 @@ struct imx_ak4458_data {
 	int num_codec_conf;
 	struct snd_soc_codec_conf *codec_conf;
 	bool tdm_mode;
-	struct gpio_desc *reset_gpiod;
+	int pdn_gpio;
 	unsigned int slots;
 	unsigned int slot_width;
 	bool one2one_ratio;
@@ -233,8 +233,8 @@ static int imx_aif_startup(struct snd_pcm_substream *substream)
 		constraint_rates.count = ARRAY_SIZE(ak4458_rates);
 	}
 
-	ret = snd_pcm_hw_constraint_list(runtime, 0,
-			SNDRV_PCM_HW_PARAM_CHANNELS, &constraint_channels);
+	ret = snd_pcm_hw_constraint_list(runtime, 0, SNDRV_PCM_HW_PARAM_CHANNELS,
+						&constraint_channels);
 	if (ret)
 		return ret;
 
@@ -277,10 +277,15 @@ static int imx_ak4458_probe(struct platform_device *pdev)
 	struct imx_ak4458_data *priv;
 	struct device_node *cpu_np, *codec_np_0 = NULL, *codec_np_1 = NULL;
 	struct platform_device *cpu_pdev;
+	struct snd_soc_dai_link_component *dlc;
 	int ret;
 
 	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
+		return -ENOMEM;
+
+	dlc = devm_kzalloc(&pdev->dev, 2 * sizeof(*dlc), GFP_KERNEL);
+	if (!dlc)
 		return -ENOMEM;
 
 	cpu_np = of_parse_phandle(pdev->dev.of_node, "audio-cpu", 0);
@@ -331,8 +336,13 @@ static int imx_ak4458_probe(struct platform_device *pdev)
 	ak4458_codecs[0].of_node = codec_np_0;
 	ak4458_codecs[1].of_node = codec_np_1;
 
-	imx_ak4458_dai.cpu_dai_name  = dev_name(&cpu_pdev->dev);
-	imx_ak4458_dai.platform_of_node = cpu_np;
+	imx_ak4458_dai.cpus = &dlc[0];
+	imx_ak4458_dai.num_cpus = 1;
+	imx_ak4458_dai.platforms = &dlc[1];
+	imx_ak4458_dai.num_platforms = 1;
+
+	imx_ak4458_dai.cpus->dai_name  = dev_name(&cpu_pdev->dev);
+	imx_ak4458_dai.platforms->of_node = cpu_np;
 
 	priv->card.num_links = 1;
 	priv->card.dai_link = &imx_ak4458_dai;
@@ -345,15 +355,18 @@ static int imx_ak4458_probe(struct platform_device *pdev)
 	priv->one2one_ratio = !of_device_is_compatible(pdev->dev.of_node,
 					"fsl,imx-audio-ak4458-mq");
 
-	priv->reset_gpiod = devm_gpiod_get_optional(&pdev->dev, "ak4458,pdn",
-						    GPIOD_OUT_LOW);
-	if (IS_ERR(priv->reset_gpiod))
-		return PTR_ERR(priv->reset_gpiod);
+	priv->pdn_gpio = of_get_named_gpio(pdev->dev.of_node, "ak4458,pdn-gpio", 0);
+	if (gpio_is_valid(priv->pdn_gpio)) {
+		ret = devm_gpio_request_one(&pdev->dev, priv->pdn_gpio,
+				GPIOF_OUT_INIT_LOW, "ak4458,pdn");
+		if (ret) {
+			dev_err(&pdev->dev, "unable to get pdn gpio\n");
+			goto fail;
+		}
 
-	if (priv->reset_gpiod) {
-		gpiod_set_value_cansleep(priv->reset_gpiod, 0);
+		gpio_set_value_cansleep(priv->pdn_gpio, 0);
 		usleep_range(1000, 2000);
-		gpiod_set_value_cansleep(priv->reset_gpiod, 1);
+		gpio_set_value_cansleep(priv->pdn_gpio, 1);
 		usleep_range(1000, 2000);
 	}
 

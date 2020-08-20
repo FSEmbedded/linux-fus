@@ -1,9 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2015 Freescale Semiconductor, Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 #include <linux/irqchip.h>
 #include <linux/mfd/syscon.h>
@@ -19,7 +16,6 @@
 
 #include "common.h"
 #include "cpuidle.h"
-#include "hardware.h"
 
 #if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 static void __init imx6ul_enet_clk_init(void)
@@ -69,18 +65,16 @@ static int ksz8081_phy_fixup(struct phy_device *dev)
 
 static void __init imx6ul_enet_phy_init(void)
 {
-	phy_register_fixup_for_uid(PHY_ID_KSZ8081, MICREL_PHY_ID_MASK,
-				   ksz8081_phy_fixup);
+	if (IS_BUILTIN(CONFIG_PHYLIB))
+		phy_register_fixup_for_uid(PHY_ID_KSZ8081, MICREL_PHY_ID_MASK,
+					   ksz8081_phy_fixup);
 }
 
 static inline void imx6ul_enet_init(void)
 {
 	imx6ul_enet_clk_init();
 	imx6ul_enet_phy_init();
-	if (cpu_is_imx6ul())
-		imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ul-ocotp");
-	else
-		imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ull-ocotp");
+	imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ul-ocotp");
 }
 #endif /* CONFIG_FEC || CONFIG_FEC_MODULE */
 
@@ -132,20 +126,18 @@ static void __init imx6ul_init_machine(void)
 		pr_warn("failed to initialize soc device\n");
 
 	of_platform_default_populate(NULL, NULL, parent);
-
+	imx_anatop_init();
 #if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 	imx6ul_enet_init();
 #endif
 #if defined(CONFIG_SND_SOC_FSL_SAI) || defined(CONFIG_SND_SOC_FSL_SAI_MODULE)
 	imx6ul_sai_init();
 #endif
-	imx_anatop_init();
 	imx6ul_pm_init();
 }
 
 static void __init imx6ul_init_irq(void)
 {
-	imx_gpc_check_dt();
 	imx_init_revision_from_anatop();
 	imx_src_init();
 	irqchip_init();
@@ -154,15 +146,14 @@ static void __init imx6ul_init_irq(void)
 
 static void __init imx6ul_init_late(void)
 {
+	imx6ul_cpuidle_init();
+
 	if (IS_ENABLED(CONFIG_ARM_IMX6Q_CPUFREQ))
 		platform_device_register_simple("imx6q-cpufreq", -1, NULL, 0);
-
-	imx6ul_cpuidle_init();
 }
 
 static void __init imx6ul_map_io(void)
 {
-	debug_ll_io_init();
 	imx6_pm_map_io();
 	imx_busfreq_map_io();
 }
@@ -170,11 +161,10 @@ static void __init imx6ul_map_io(void)
 static const char * const imx6ul_dt_compat[] __initconst = {
 	"fsl,imx6ul",
 	"fsl,imx6ull",
-	"fsl,imx6ulz",
 	NULL,
 };
 
-DT_MACHINE_START(IMX6UL, "Freescale i.MX6 UltraLite (Device Tree)")
+DT_MACHINE_START(IMX6UL, "Freescale i.MX6 Ultralite (Device Tree)")
 	.map_io		= imx6ul_map_io,
 	.init_irq	= imx6ul_init_irq,
 	.init_machine	= imx6ul_init_machine,

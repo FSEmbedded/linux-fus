@@ -433,7 +433,7 @@ static int sim_reset_low_timing(struct sim_t *sim, u32 clock_cycle)
 	timeout  = wait_for_completion_timeout(&sim->xfer_done,
 					msecs_to_jiffies(delay_in_us / 1000 * 2));
 	if (timeout == 0) {
-		pr_err("Reset low GPC timeout\n");
+		pr_err("Reset low GPC timout\n");
 		errval =  -SIM_E_TIMEOUT;
 	}
 
@@ -460,7 +460,6 @@ static void sim_set_cwt(struct sim_t *sim, u8 enable)
 static void sim_set_bwt(struct sim_t *sim, u8 enable)
 {
 	u32 reg_val;
-
 	reg_val = __raw_readl(sim->ioaddr + CNTL);
 	if (enable && (sim->timing_data.bwt || sim->timing_data.bgt))
 		reg_val |= SIM_CNTL_BWTEN;
@@ -764,9 +763,7 @@ static irqreturn_t sim_irq_handler(int irq, void *dev_id)
 	else if (sim->state == SIM_STATE_XMTING) {
 		/*The CWT BWT expire should not happen when in the transmitting state*/
 		if (tx_status & SIM_XMT_STATUS_ETC) {
-			/*Once the transmit frame is completed, need to enable
-			 * CWT timer
-			 */
+			/*Once the transmit frame is completed, need to enable CWT timer*/
 			sim_set_cwt(sim, 1);
 		}
 		if (tx_status & SIM_XMT_STATUS_XTE) {
@@ -1288,7 +1285,6 @@ static void sim_polling_delay(struct sim_t *sim, u32 delay)
 void sim_clear_rx_buf(struct sim_t *sim)
 {
 	unsigned int i;
-
 	for (i = 0; i < SIM_RCV_BUFFER_SIZE; i++)
 		sim->rcv_buffer[i] = 0;
 	sim->rcv_count = 0;
@@ -1399,8 +1395,7 @@ static long sim_ioctl(struct file *file,
 		}
 
 		__get_user(xmt_buffer, &((sim_xmt_t *)arg)->xmt_buffer);
-		ret = copy_from_user(sim->xmt_buffer, xmt_buffer,
-				     sim->xmt_remaining);
+		ret = copy_from_user(sim->xmt_buffer, xmt_buffer, sim->xmt_remaining);
 
 		if (ret) {
 			pr_err("Copy Error\n");
@@ -1537,8 +1532,7 @@ copy_data:
 		}
 
 		__get_user(rcv_buffer, &((sim_rcv_t *)arg)->rcv_buffer);
-		ret = copy_to_user(rcv_buffer, &sim->rcv_buffer[sim->rcv_head],
-				   copy_cnt);
+		ret = copy_to_user(rcv_buffer, &sim->rcv_buffer[sim->rcv_head], copy_cnt);
 		if (ret) {
 			pr_err("ATR ACCESS Error\n");
 			errval = -SIM_E_ACCESS;

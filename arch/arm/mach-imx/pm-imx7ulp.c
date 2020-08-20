@@ -1,13 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
  * Copyright 2017-2018 NXP
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
+ *   Author: Dong Aisheng <aisheng.dong@nxp.com>
  */
 
 #include <linux/delay.h>
@@ -351,10 +346,6 @@ static inline void imx7ulp_iomuxc_save(void)
 		pm_info->select_input_val[i] =
 			readl_relaxed(iomuxc1_base +
 				SELECT_INPUT_START + i * 0x4);
-
-	/* Put all the PADs to OFF state */
-	for (i = 0; i < pm_info->iomux_num; i++)
-		writel_relaxed(0, (iomuxc1_base + IOMUX_START + i * 0x4));
 }
 
 static void imx7ulp_lpuart_save(void)
@@ -404,7 +395,7 @@ static void imx7ulp_set_dgo(u32 val)
 	writel_relaxed(val, pm_info->sim_base + DGO_GPR4);
 }
 
-int imx7ulp_set_lpm(enum imx7ulp_cpu_pwr_mode mode)
+int imx7ulp_set_lpm(enum ulp_cpu_pwr_mode mode)
 {
 	u32 val1 = BM_PMPROT_AHSRUN | BM_PMPROT_AVLP | BM_PMPROT_AVLLS;
 	u32 val2 = readl_relaxed(smc1_base + PMCTRL);
@@ -415,22 +406,22 @@ int imx7ulp_set_lpm(enum imx7ulp_cpu_pwr_mode mode)
 	val3 |= BM_CTRL_LDOOKDIS;
 
 	switch (mode) {
-	case RUN:
+	case ULP_PM_RUN:
 		/* system/bus clock enabled */
 		val2 |= 0x3 << BP_PMCTRL_PSTOPO;
 		break;
-	case WAIT:
+	case ULP_PM_WAIT:
 		/* system clock disabled, bus clock enabled */
 		val2 |= 0x2 << BP_PMCTRL_PSTOPO;
 		break;
-	case STOP:
+	case ULP_PM_STOP:
 		/* system/bus clock disabled */
 		val2 |= 0x1 << BP_PMCTRL_PSTOPO;
 		break;
-	case VLPS:
+	case ULP_PM_VLPS:
 		val2 |= 0x2 << BP_PMCTRL_STOPM;
 		break;
-	case VLLS:
+	case ULP_PM_VLLS:
 		val2 |= 0x4 << BP_PMCTRL_STOPM;
 		break;
 	default:
@@ -479,7 +470,7 @@ static int imx7ulp_pm_enter(suspend_state_t state)
 			/* Zzz ... */
 			cpu_suspend(1, imx7ulp_suspend_finish);
 		else {
-			imx7ulp_set_lpm(VLPS);
+			imx7ulp_set_lpm(ULP_PM_VLPS);
 			writel_relaxed(
 				readl_relaxed(pmc1_base + PMC1_VLPS) | BM_VLPS_RBBEN,
 				pmc1_base + PMC1_VLPS);
@@ -490,7 +481,7 @@ static int imx7ulp_pm_enter(suspend_state_t state)
 			writel_relaxed(
 				readl_relaxed(pmc1_base + PMC1_VLPS) & ~BM_VLPS_RBBEN,
 				pmc1_base + PMC1_VLPS);
-			imx7ulp_set_lpm(RUN);
+			imx7ulp_set_lpm(ULP_PM_RUN);
 		}
 		break;
 	case PM_SUSPEND_MEM:
@@ -506,7 +497,7 @@ static int imx7ulp_pm_enter(suspend_state_t state)
 			if (!console_suspend_enabled)
 				imx7ulp_lpuart_save();
 			imx7ulp_iomuxc_save();
-			imx7ulp_set_lpm(VLLS);
+			imx7ulp_set_lpm(ULP_PM_VLLS);
 
 			/* Zzz ... */
 			cpu_suspend(0, imx7ulp_suspend_finish);
@@ -517,7 +508,7 @@ static int imx7ulp_pm_enter(suspend_state_t state)
 				imx7ulp_lpuart_restore();
 			imx7ulp_set_dgo(0);
 			imx7ulp_tpm_restore();
-			imx7ulp_set_lpm(RUN);
+			imx7ulp_set_lpm(ULP_PM_RUN);
 	}
 		break;
 	default:
@@ -530,7 +521,7 @@ static int imx7ulp_pm_enter(suspend_state_t state)
 /* Put CA7 into VLLS mode before M4 power off CA7 */
 void imx7ulp_poweroff(void)
 {
-	imx7ulp_set_lpm(VLLS);
+	imx7ulp_set_lpm(ULP_PM_VLLS);
 	cpu_suspend(0, imx7ulp_suspend_finish);
 }
 
@@ -705,7 +696,7 @@ void __init imx7ulp_pm_common_init(const struct imx7ulp_pm_socdata
 	pcc3_base = of_iomap(np, 0);
 	WARN_ON(!pcc3_base);
 
-	np = of_find_compatible_node(NULL, NULL, "fsl,imx7ulp-iomuxc-1");
+	np = of_find_compatible_node(NULL, NULL, "fsl,imx7ulp-iomuxc1");
 	iomuxc1_base = of_iomap(np, 0);
 	WARN_ON(!iomuxc1_base);
 
@@ -796,7 +787,7 @@ void __init imx7ulp_pm_common_init(const struct imx7ulp_pm_socdata
 void __init imx7ulp_pm_init(void)
 {
 	imx7ulp_pm_common_init(&imx7ulp_lpddr3_pm_data);
-	imx7ulp_set_lpm(RUN);
+	imx7ulp_set_lpm(ULP_PM_RUN);
 }
 
 static irqreturn_t imx7ulp_nmi_isr(int irq, void *param)

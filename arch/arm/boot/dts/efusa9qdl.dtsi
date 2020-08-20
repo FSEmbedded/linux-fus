@@ -806,9 +806,9 @@
 	pinctrl-0 = <&pinctrl_i2c1_2>;
 	status = "okay";
 #ifdef CONFIG_EFUSA9_SGTL5000_AUDIO
-	sgtl5000: sgtl5000@0a {
+	sgtl5000: sgtl5000@a {
 		compatible = "fsl,sgtl5000";
-		reg = <0x0a>;
+		reg = <0xa>;
 		mono2both;
 		lrclk-strength = <3>;
 		/* derived from IMX6QDL_CLK_CKO2 */

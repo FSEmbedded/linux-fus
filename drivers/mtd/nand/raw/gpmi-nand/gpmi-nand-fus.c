@@ -203,6 +203,7 @@ struct gpmi_nand_data {
 	bool			swap_block_mark;
 
 	/* MTD / NAND */
+	struct nand_controller	base;
 	struct nand_chip	nand;
 
 	/* General-use Variables */
@@ -1530,8 +1531,8 @@ static int gpmi_fus_do_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
 	unsigned int ecc_bits;
 
 	/* Issue read command for the page */
-	chip->cmdfunc(mtd, NAND_CMD_READ0, column, page);
-	chip->cmdfunc(mtd, NAND_CMD_READSTART, -1, -1);
+	chip->legacy.cmdfunc(chip, NAND_CMD_READ0, column, page);
+	chip->legacy.cmdfunc(chip, NAND_CMD_READSTART, -1, -1);
 	ret = gpmi_fus_wait_ready(mtd, GPMI_FUS_TIMEOUT_DATA);
 	if (ret)
 		return ret;
@@ -1553,8 +1554,8 @@ static int gpmi_fus_do_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
 			from = boffs >> 3;
 			boffs += ecc_bits;
 			to = (boffs - 1) >> 3;
-			chip->cmdfunc(mtd, NAND_CMD_RNDOUT, from, -1);
-			chip->cmdfunc(mtd, NAND_CMD_RNDOUTSTART, -1, -1);
+			chip->legacy.cmdfunc(chip, NAND_CMD_RNDOUT, from, -1);
+			chip->legacy.cmdfunc(chip, NAND_CMD_RNDOUTSTART, -1, -1);
 			desc = gpmi_fus_read_data_buf(mtd, phys + from,
 						      to - from + 1);
 			if (!desc)
@@ -1597,7 +1598,7 @@ static int gpmi_fus_do_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 	unsigned int ecc_bits;
 
 	/* Write the BBM (optional) and the user part of the OOB area */
-	chip->cmdfunc(mtd, NAND_CMD_SEQIN, column, page);
+	chip->legacy.cmdfunc(chip, NAND_CMD_SEQIN, column, page);
 	memcpy(priv->page_buffer_virt, chip->oob_poi + column, length);
 	gpmi_fus_write_data_buf(mtd, 0, length);
 
@@ -1616,7 +1617,7 @@ static int gpmi_fus_do_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 			from = boffs >> 3;
 			boffs += ecc_bits;
 			to = (boffs - 1) >> 3;
-			chip->cmdfunc(mtd, NAND_CMD_RNDIN, from, -1);
+			chip->legacy.cmdfunc(chip, NAND_CMD_RNDIN, from, -1);
 			desc = gpmi_fus_write_data_buf(mtd, phys + from,
 						       to - from + 1);
 			if (!desc)
@@ -1625,10 +1626,10 @@ static int gpmi_fus_do_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 	}
 
 	/* Now actually do the programming */
-	chip->cmdfunc(mtd, NAND_CMD_PAGEPROG, -1, -1);
+	chip->legacy.cmdfunc(chip, NAND_CMD_PAGEPROG, -1, -1);
 
 	/* Check if it worked */
-	if (chip->waitfunc(mtd, chip) & NAND_STATUS_FAIL)
+	if (chip->legacy.waitfunc(chip) & NAND_STATUS_FAIL)
 		return -EIO;
 
 	return 0;
@@ -1776,9 +1777,8 @@ static int gpmi_init(struct gpmi_nand_data *this)
 /*
  * Select, change or deselect the NAND chip, activate or deactivate hardware
  */
-static void gpmi_fus_select_chip(struct mtd_info *mtd, int chipnr)
+static void gpmi_fus_select_chip(struct nand_chip *chip, int chipnr)
 {
-	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct gpmi_nand_data *this = nand_get_controller_data(chip);
 	int ret;
 
@@ -1812,7 +1812,7 @@ static void gpmi_fus_select_chip(struct mtd_info *mtd, int chipnr)
 /*
  * Test if the NAND flash is ready.
  */
-static int gpmi_fus_dev_ready(struct mtd_info *mtd)
+static int gpmi_fus_dev_ready(struct nand_chip *chip)
 {
 	/* We have called gpmi_fus_wait_ready() before, so we can be sure that
 	   our command is already completed. So just return "done". */
@@ -1822,9 +1822,9 @@ static int gpmi_fus_dev_ready(struct mtd_info *mtd)
 /*
  * Read a single byte from NAND.
  */
-static uint8_t gpmi_fus_read_byte(struct mtd_info *mtd)
+static uint8_t gpmi_fus_read_byte(struct nand_chip *chip)
 {
-	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	struct dma_async_tx_descriptor *desc;
 
@@ -1838,30 +1838,11 @@ static uint8_t gpmi_fus_read_byte(struct mtd_info *mtd)
 }
 
 /*
- * Read a word from NAND.
- */
-static u16 gpmi_fus_read_word(struct mtd_info *mtd)
-{
-	struct nand_chip *chip = mtd_to_nand(mtd);
-	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
-	struct dma_async_tx_descriptor *desc;
-
-	desc = gpmi_fus_read_data_buf(mtd, priv->data_buffer_phys, 2);
-	if (desc) {
-		if (!start_dma_without_bch_irq(priv, desc))
-			return priv->data_buffer_virt[0]
-				| (priv->data_buffer_virt[1] << 8);
-	}
-
-	return 0xFFFF;
-}
-
-/*
  * Read arbitrary data from NAND.
  */
-static void gpmi_fus_read_buf(struct mtd_info *mtd, uint8_t *buf, int length)
+static void gpmi_fus_read_buf(struct nand_chip *chip, uint8_t *buf, int length)
 {
-	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 	struct dma_async_tx_descriptor *desc;
 
@@ -1875,10 +1856,10 @@ static void gpmi_fus_read_buf(struct mtd_info *mtd, uint8_t *buf, int length)
 /*
  * Write arbitrary data to NAND.
  */
-static void gpmi_fus_write_buf(struct mtd_info *mtd, const uint8_t *buf,
+static void gpmi_fus_write_buf(struct nand_chip *chip, const uint8_t *buf,
 			       int length)
 {
-	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 
 	memcpy(priv->data_buffer_virt, buf, length);
@@ -1888,32 +1869,33 @@ static void gpmi_fus_write_buf(struct mtd_info *mtd, const uint8_t *buf,
 /*
  * Wait until chip is ready, then read status.
  */
-static int gpmi_fus_waitfunc(struct mtd_info *mtd, struct nand_chip *chip)
+static int gpmi_fus_waitfunc(struct nand_chip *chip)
 {
-	unsigned long timeout;
-
+	struct mtd_info *mtd = nand_to_mtd(chip);
+	unsigned long timeout = GPMI_FUS_TIMEOUT_ERASE;
+#if 0
 	if (chip->state == FL_ERASING)
 		timeout = GPMI_FUS_TIMEOUT_ERASE;
 	else
 		timeout = GPMI_FUS_TIMEOUT_WRITE;
-
+#endif
 	/* Add DMA descriptor to wait for ready and execute the DMA chain */
 	if (gpmi_fus_wait_ready(mtd, timeout))
 		return NAND_STATUS_FAIL;
 
 	/* Issue NAND_CMD_STATUS command to read status */
-	chip->cmdfunc(mtd, NAND_CMD_STATUS, -1, -1);
+	chip->legacy.cmdfunc(chip, NAND_CMD_STATUS, -1, -1);
 
 	/* Read and return status byte */
-	return gpmi_fus_read_byte(mtd);
+	return gpmi_fus_read_byte(chip);
 }
 
 /* Write command to NAND flash. This usually results in creating a chain of
    DMA descriptors which is executed at the end. */
-static void gpmi_fus_command(struct mtd_info *mtd, uint command, int column,
+static void gpmi_fus_command(struct nand_chip *chip, uint command, int column,
 			     int page)
 {
-	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
 
 	/* Simulate NAND_CMD_READOOB with NAND_CMD_READ0; NAND_CMD_READOOB is
@@ -1993,10 +1975,11 @@ static void gpmi_fus_command(struct mtd_info *mtd, uint command, int column,
 /*
  * Read a page from NAND without ECC
  */
-static int gpmi_fus_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
+static int gpmi_fus_read_page_raw(struct nand_chip *chip,
 				  uint8_t *buf, int oob_required, int page)
 {
 	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	struct dma_async_tx_descriptor *desc;
 	int ret;
 
@@ -2013,7 +1996,7 @@ static int gpmi_fus_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 	if (ret)
 		return ret;
 
-	chip->cmdfunc(mtd, NAND_CMD_READSTART, -1, -1);
+	chip->legacy.cmdfunc(chip, NAND_CMD_READSTART, -1, -1);
 	ret = gpmi_fus_wait_ready(mtd, GPMI_FUS_TIMEOUT_DATA);
 	if (ret)
 		return ret;
@@ -2048,10 +2031,11 @@ static int gpmi_fus_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 /*
  * Write a page to NAND without ECC
  */
-static int gpmi_fus_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
+static int gpmi_fus_write_page_raw(struct nand_chip *chip,
 				   const uint8_t *buf, int oob_required, int page)
 {
 	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	int ret;
 
 	/*
@@ -2096,7 +2080,7 @@ static int gpmi_fus_write_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 /*
  * Read a page from NAND with ECC
  */
-static int gpmi_fus_read_page(struct mtd_info *mtd, struct nand_chip *chip,
+static int gpmi_fus_read_page(struct nand_chip *chip,
 			      uint8_t *buf, int oob_required, int page)
 {
 	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
@@ -2104,6 +2088,7 @@ static int gpmi_fus_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 	struct dma_chan *channel = get_dma_chan(priv);
 	struct dma_async_tx_descriptor *desc;
 	struct mxs_dma_ccw ccw[3];
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	uint32_t corrected = 0;
 	unsigned char *status;
 	int i, ret;
@@ -2129,7 +2114,7 @@ static int gpmi_fus_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 	if (ret)
 		return ret;
 
-	chip->cmdfunc(mtd, NAND_CMD_READSTART, -1, -1);
+	chip->legacy.cmdfunc(chip, NAND_CMD_READSTART, -1, -1);
 	ret = gpmi_fus_wait_ready(mtd, GPMI_FUS_TIMEOUT_DATA);
 	if (ret)
 		return ret;
@@ -2281,7 +2266,7 @@ static int gpmi_fus_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 /*
  * Write a page to NAND with ECC.
  */
-static int gpmi_fus_write_page(struct mtd_info *mtd, struct nand_chip *chip,
+static int gpmi_fus_write_page(struct nand_chip *chip,
 			       const uint8_t *buf, int oob_required, int page)
 {
 	struct gpmi_nand_data *priv = nand_get_controller_data(chip);
@@ -2289,6 +2274,7 @@ static int gpmi_fus_write_page(struct mtd_info *mtd, struct nand_chip *chip,
 	struct dma_async_tx_descriptor *desc;
 	struct dma_chan *channel = get_dma_chan(priv);
 	struct mxs_dma_ccw ccw;
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	bool direct_dma_map_ok;
 	dma_addr_t try_phys;
 	dma_addr_t payload_phys;
@@ -2386,9 +2372,9 @@ static int gpmi_fus_write_page(struct mtd_info *mtd, struct nand_chip *chip,
  *
  * See gpmi_fus_read_ecc_data() for a description of the OOB area layout.
  */
-static int gpmi_fus_read_oob_raw(struct mtd_info *mtd,
-				 struct nand_chip *chip, int page)
+static int gpmi_fus_read_oob_raw(struct nand_chip *chip, int page)
 {
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	return gpmi_fus_do_read_oob(mtd, chip, page, 1);
 }
 
@@ -2397,9 +2383,10 @@ static int gpmi_fus_read_oob_raw(struct mtd_info *mtd,
  *
  * See gpmi-fus_read_ecc_data() for a description of the OOB area layout.
  */
-static int gpmi_fus_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
+static int gpmi_fus_read_oob(struct nand_chip *chip,
 			     int page)
 {
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	return gpmi_fus_do_read_oob(mtd, chip, page, 0);
 }
 
@@ -2410,9 +2397,9 @@ static int gpmi_fus_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
  *
  * See gpmi_fus_read_ecc_data() for a description of the OOB area layout.
  */
-static int gpmi_fus_write_oob_raw(struct mtd_info *mtd,
-				  struct nand_chip *chip, int page)
+static int gpmi_fus_write_oob_raw(struct nand_chip *chip, int page)
 {
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	return gpmi_fus_do_write_oob(mtd, chip, page, 1);
 }
 
@@ -2421,9 +2408,10 @@ static int gpmi_fus_write_oob_raw(struct mtd_info *mtd,
  *
  * See gpmi_fus_read_ecc_data() for a description of the OOB area layout.
  */
-static int gpmi_fus_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
+static int gpmi_fus_write_oob(struct nand_chip *chip,
 			      int page)
 {
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	return gpmi_fus_do_write_oob(mtd, chip, page, 0);
 }
 
@@ -2431,7 +2419,7 @@ static void gpmi_fus_exit(struct gpmi_nand_data *priv)
 {
 	struct mtd_info *mtd = nand_to_mtd(&priv->nand);
 
-	nand_release(mtd);
+	nand_release(&priv->nand);
 
 	/* Free the DMA buffers */
 	if (priv->cmd_buffer_virt && virt_addr_valid(priv->cmd_buffer_virt))
@@ -2445,10 +2433,9 @@ static void gpmi_fus_exit(struct gpmi_nand_data *priv)
 	priv->page_buffer_virt	= NULL;
 }
 
-int gpmi_setup_data_interface(struct mtd_info *mtd, int chipnr,
+int gpmi_setup_data_interface(struct nand_chip *chip, int chipnr,
 			      const struct nand_data_interface *conf)
 {
-	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct gpmi_nand_data *this = nand_get_controller_data(chip);
 	const struct nand_sdr_timings *sdr;
 
@@ -2580,6 +2567,7 @@ err_out:
 
 static const struct nand_controller_ops gpmi_fus_nand_controller_ops = {
 	.attach_chip = gpmi_fus_nand_attach_chip,
+	.setup_data_interface = gpmi_setup_data_interface,
 };
 
 static int gpmi_fus_init(struct gpmi_nand_data *priv)
@@ -2599,16 +2587,14 @@ static int gpmi_fus_init(struct gpmi_nand_data *priv)
 
 	/* init the nand_chip{}, we don't support a 16-bit NAND Flash bus. */
 	chip->priv		= priv;
-	chip->select_chip	= gpmi_fus_select_chip;
-	chip->setup_data_interface = gpmi_setup_data_interface;
-	chip->dev_ready		= gpmi_fus_dev_ready;
-	chip->cmdfunc		= gpmi_fus_command;
-	chip->read_byte		= gpmi_fus_read_byte;
-	chip->read_word		= gpmi_fus_read_word;
-	chip->read_buf		= gpmi_fus_read_buf;
-	chip->write_buf		= gpmi_fus_write_buf;
-	chip->waitfunc		= gpmi_fus_waitfunc;
-	chip->options		= NAND_BBT_SCAN2NDPAGE | NAND_NO_SUBPAGE_WRITE;
+	chip->legacy.select_chip	= gpmi_fus_select_chip;
+	chip->legacy.dev_ready		= gpmi_fus_dev_ready;
+	chip->legacy.cmdfunc		= gpmi_fus_command;
+	chip->legacy.read_byte		= gpmi_fus_read_byte;
+	chip->legacy.read_buf		= gpmi_fus_read_buf;
+	chip->legacy.write_buf		= gpmi_fus_write_buf;
+	chip->legacy.waitfunc		= gpmi_fus_waitfunc;
+	chip->options		= NAND_BBM_FIRSTPAGE | NAND_BBM_SECONDPAGE | NAND_NO_SUBPAGE_WRITE;
 
 	/* Allocate a combined comman/data/status buffer. This is used for
 	   reading the NAND ID and ONFI data. PAGE_SIZE is enough. */
@@ -2623,8 +2609,11 @@ static int gpmi_fus_init(struct gpmi_nand_data *priv)
 	priv->data_buffer_phys = priv->cmd_buffer_phys + GPMI_FUS_CMD_BUF_SIZE;
 
 	/* Read NAND ID and ONFI parameters, set basic MTD geometry info */
-	chip->dummy_controller.ops = &gpmi_fus_nand_controller_ops;
-	ret = nand_scan(mtd, 1 /*### OF->max_chips */);
+	nand_controller_init(&priv->base);
+	priv->base.ops = &gpmi_fus_nand_controller_ops;
+	chip->controller = &priv->base;
+
+	ret = nand_scan(chip, 1 /*### OF->max_chips */);
 	if (ret) {
 		mtd->name = NULL;
 		goto err_out;

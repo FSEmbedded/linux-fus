@@ -83,6 +83,12 @@ static int fsl_mc_bus_match(struct device *dev, struct device_driver *drv)
 	struct fsl_mc_driver *mc_drv = to_fsl_mc_driver(drv);
 	bool found = false;
 
+	/* When driver_override is set, only bind to the matching driver */
+	if (mc_dev->driver_override) {
+		found = !strcmp(mc_dev->driver_override, mc_drv->driver.name);
+		goto out;
+	}
+
 	if (!mc_drv->match_id_table)
 		goto out;
 
@@ -127,6 +133,16 @@ static int fsl_mc_bus_uevent(struct device *dev, struct kobj_uevent_env *env)
 	return 0;
 }
 
+static int fsl_mc_dma_configure(struct device *dev)
+{
+	struct device *dma_dev = dev;
+
+	while (dev_is_fsl_mc(dma_dev))
+		dma_dev = dma_dev->parent;
+
+	return of_dma_configure(dev, dma_dev->of_node, 1);
+}
+
 static ssize_t modalias_show(struct device *dev, struct device_attribute *attr,
 			     char *buf)
 {
@@ -137,18 +153,159 @@ static ssize_t modalias_show(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR_RO(modalias);
 
+static ssize_t driver_override_store(struct device *dev,
+				     struct device_attribute *attr,
+				     const char *buf, size_t count)
+{
+	struct fsl_mc_device *mc_dev = to_fsl_mc_device(dev);
+	const char *driver_override, *old = mc_dev->driver_override;
+	char *cp;
+
+	if (WARN_ON(dev->bus != &fsl_mc_bus_type))
+		return -EINVAL;
+
+	if (count >= (PAGE_SIZE - 1))
+		return -EINVAL;
+
+	driver_override = kstrndup(buf, count, GFP_KERNEL);
+	if (!driver_override)
+		return -ENOMEM;
+
+	cp = strchr(driver_override, '\n');
+	if (cp)
+		*cp = '\0';
+
+	if (strlen(driver_override)) {
+		mc_dev->driver_override = driver_override;
+	} else {
+		kfree(driver_override);
+		mc_dev->driver_override = NULL;
+	}
+
+	kfree(old);
+
+	return count;
+}
+
+static ssize_t driver_override_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	struct fsl_mc_device *mc_dev = to_fsl_mc_device(dev);
+
+	return snprintf(buf, PAGE_SIZE, "%s\n", mc_dev->driver_override);
+}
+static DEVICE_ATTR_RW(driver_override);
+
 static struct attribute *fsl_mc_dev_attrs[] = {
 	&dev_attr_modalias.attr,
+	&dev_attr_driver_override.attr,
 	NULL,
 };
 
 ATTRIBUTE_GROUPS(fsl_mc_dev);
 
+static int scan_fsl_mc_bus(struct device *dev, void *data)
+{
+	struct fsl_mc_device *root_mc_dev;
+	struct fsl_mc_bus *root_mc_bus;
+
+	if (!fsl_mc_is_root_dprc(dev))
+		goto exit;
+
+	root_mc_dev = to_fsl_mc_device(dev);
+	root_mc_bus = to_fsl_mc_bus(root_mc_dev);
+	mutex_lock(&root_mc_bus->scan_mutex);
+	dprc_scan_objects(root_mc_dev, NULL, true, NULL);
+	mutex_unlock(&root_mc_bus->scan_mutex);
+
+exit:
+	return 0;
+}
+
+static ssize_t rescan_store(struct bus_type *bus,
+			    const char *buf, size_t count)
+{
+	unsigned long val;
+
+	if (kstrtoul(buf, 0, &val) < 0)
+		return -EINVAL;
+
+	if (val)
+		bus_for_each_dev(bus, NULL, NULL, scan_fsl_mc_bus);
+
+	return count;
+}
+static BUS_ATTR_WO(rescan);
+
+static int fsl_mc_bus_set_autorescan(struct device *dev, void *data)
+{
+	struct fsl_mc_device *root_mc_dev;
+	unsigned long val;
+	char *buf = data;
+
+	if (!fsl_mc_is_root_dprc(dev))
+		goto exit;
+
+	root_mc_dev = to_fsl_mc_device(dev);
+
+	if (kstrtoul(buf, 0, &val) < 0)
+		return -EINVAL;
+
+	if (val)
+		enable_dprc_irq(root_mc_dev);
+	else
+		disable_dprc_irq(root_mc_dev);
+
+exit:
+	return 0;
+}
+
+static int fsl_mc_bus_get_autorescan(struct device *dev, void *data)
+{
+	struct fsl_mc_device *root_mc_dev;
+	char *buf = data;
+
+	if (!fsl_mc_is_root_dprc(dev))
+		goto exit;
+
+	root_mc_dev = to_fsl_mc_device(dev);
+
+	sprintf(buf, "%d\n", get_dprc_irq_state(root_mc_dev));
+exit:
+	return 0;
+}
+
+static ssize_t autorescan_store(struct bus_type *bus,
+				const char *buf, size_t count)
+{
+	bus_for_each_dev(bus, NULL, (void *)buf, fsl_mc_bus_set_autorescan);
+
+	return count;
+}
+
+static ssize_t autorescan_show(struct bus_type *bus, char *buf)
+{
+	bus_for_each_dev(bus, NULL, (void *)buf, fsl_mc_bus_get_autorescan);
+	return strlen(buf);
+}
+
+static BUS_ATTR_RW(autorescan);
+
+static struct attribute *fsl_mc_bus_attrs[] = {
+	&bus_attr_rescan.attr,
+	&bus_attr_autorescan.attr,
+	NULL,
+};
+
+ATTRIBUTE_GROUPS(fsl_mc_bus);
+
 struct bus_type fsl_mc_bus_type = {
 	.name = "fsl-mc",
 	.match = fsl_mc_bus_match,
 	.uevent = fsl_mc_bus_uevent,
+	.dma_configure  = fsl_mc_dma_configure,
 	.dev_groups = fsl_mc_dev_groups,
+	.bus_groups = fsl_mc_bus_groups,
 };
 EXPORT_SYMBOL_GPL(fsl_mc_bus_type);
 
@@ -166,6 +323,10 @@ struct device_type fsl_mc_bus_dpio_type = {
 
 struct device_type fsl_mc_bus_dpsw_type = {
 	.name = "fsl_mc_bus_dpsw"
+};
+
+struct device_type fsl_mc_bus_dpdmux_type = {
+	.name = "fsl_mc_bus_dpdmux"
 };
 
 struct device_type fsl_mc_bus_dpbp_type = {
@@ -188,6 +349,30 @@ struct device_type fsl_mc_bus_dprtc_type = {
 	.name = "fsl_mc_bus_dprtc"
 };
 
+struct device_type fsl_mc_bus_dpseci_type = {
+	.name = "fsl_mc_bus_dpseci"
+};
+
+struct device_type fsl_mc_bus_dpdcei_type = {
+	.name = "fsl_mc_bus_dpdcei"
+};
+
+struct device_type fsl_mc_bus_dpaiop_type = {
+	.name = "fsl_mc_bus_dpaiop"
+};
+
+struct device_type fsl_mc_bus_dpci_type = {
+	.name = "fsl_mc_bus_dpci"
+};
+
+struct device_type fsl_mc_bus_dpdmai_type = {
+	.name = "fsl_mc_bus_dpdmai"
+};
+
+struct device_type fsl_mc_bus_dpdbg_type = {
+	.name = "fsl_mc_bus_dpdbg"
+};
+
 static struct device_type *fsl_mc_get_device_type(const char *type)
 {
 	static const struct {
@@ -198,11 +383,18 @@ static struct device_type *fsl_mc_get_device_type(const char *type)
 		{ &fsl_mc_bus_dpni_type, "dpni" },
 		{ &fsl_mc_bus_dpio_type, "dpio" },
 		{ &fsl_mc_bus_dpsw_type, "dpsw" },
+		{ &fsl_mc_bus_dpdmux_type, "dpdmux" },
 		{ &fsl_mc_bus_dpbp_type, "dpbp" },
 		{ &fsl_mc_bus_dpcon_type, "dpcon" },
 		{ &fsl_mc_bus_dpmcp_type, "dpmcp" },
 		{ &fsl_mc_bus_dpmac_type, "dpmac" },
 		{ &fsl_mc_bus_dprtc_type, "dprtc" },
+		{ &fsl_mc_bus_dpseci_type, "dpseci" },
+		{ &fsl_mc_bus_dpdcei_type, "dpdcei" },
+		{ &fsl_mc_bus_dpaiop_type, "dpaiop" },
+		{ &fsl_mc_bus_dpci_type, "dpci" },
+		{ &fsl_mc_bus_dpdmai_type, "dpdmai" },
+		{ &fsl_mc_bus_dpdbg_type, "dpdbg" },
 		{ NULL, NULL }
 	};
 	int i;
@@ -340,8 +532,8 @@ static int mc_get_version(struct fsl_mc_io *mc_io,
 /**
  * fsl_mc_get_root_dprc - function to traverse to the root dprc
  */
-static void fsl_mc_get_root_dprc(struct device *dev,
-				 struct device **root_dprc_dev)
+void fsl_mc_get_root_dprc(struct device *dev,
+			  struct device **root_dprc_dev)
 {
 	if (!dev) {
 		*root_dprc_dev = NULL;
@@ -353,6 +545,7 @@ static void fsl_mc_get_root_dprc(struct device *dev,
 			*root_dprc_dev = (*root_dprc_dev)->parent;
 	}
 }
+EXPORT_SYMBOL_GPL(fsl_mc_get_root_dprc);
 
 static int get_dprc_attr(struct fsl_mc_io *mc_io,
 			 int container_id, struct dprc_attributes *attr)
@@ -382,7 +575,7 @@ common_cleanup:
 }
 
 static int get_dprc_icid(struct fsl_mc_io *mc_io,
-			 int container_id, u16 *icid)
+			 int container_id, u32 *icid)
 {
 	struct dprc_attributes attr;
 	int error;
@@ -471,10 +664,19 @@ static int fsl_mc_device_get_mmio_regions(struct fsl_mc_device *mc_dev,
 				"dprc_get_obj_region() failed: %d\n", error);
 			goto error_cleanup_regions;
 		}
-
-		error = translate_mc_addr(mc_dev, mc_region_type,
+		/*
+		 * Older MC only returned region offset and no base address
+		 * If base address is in the region_desc use it otherwise
+		 * revert to old mechanism
+		 */
+		if (region_desc.base_address)
+			regions[i].start = region_desc.base_address +
+						region_desc.base_offset;
+		else
+			error = translate_mc_addr(mc_dev, mc_region_type,
 					  region_desc.base_offset,
 					  &regions[i].start);
+
 		if (error < 0) {
 			dev_err(parent_dev,
 				"Invalid MC offset: %#x (for %s.%d\'s region %d)\n",
@@ -485,9 +687,8 @@ static int fsl_mc_device_get_mmio_regions(struct fsl_mc_device *mc_dev,
 
 		regions[i].end = regions[i].start + region_desc.size - 1;
 		regions[i].name = "fsl-mc object MMIO region";
-		regions[i].flags = IORESOURCE_IO;
-		if (region_desc.flags & DPRC_REGION_CACHEABLE)
-			regions[i].flags |= IORESOURCE_CACHEABLE;
+		regions[i].flags = region_desc.flags & IORESOURCE_BITS;
+		regions[i].flags |= IORESOURCE_MEM;
 	}
 
 	mc_dev->regions = regions;
@@ -529,6 +730,7 @@ static void fsl_mc_device_release(struct device *dev)
 int fsl_mc_device_add(struct fsl_mc_obj_desc *obj_desc,
 		      struct fsl_mc_io *mc_io,
 		      struct device *parent_dev,
+		      const char *driver_override,
 		      struct fsl_mc_device **new_mc_dev)
 {
 	int error;
@@ -561,6 +763,19 @@ int fsl_mc_device_add(struct fsl_mc_obj_desc *obj_desc,
 
 	mc_dev->obj_desc = *obj_desc;
 	mc_dev->mc_io = mc_io;
+
+	if (driver_override) {
+		/*
+		 * We trust driver_override, so we don't need to use
+		 * kstrndup() here
+		 */
+		mc_dev->driver_override = kstrdup(driver_override, GFP_KERNEL);
+		if (!mc_dev->driver_override) {
+			error = -ENOMEM;
+			goto error_cleanup_dev;
+		}
+	}
+
 	device_initialize(&mc_dev->dev);
 	mc_dev->dev.parent = parent_dev;
 	mc_dev->dev.bus = &fsl_mc_bus_type;
@@ -616,6 +831,7 @@ int fsl_mc_device_add(struct fsl_mc_obj_desc *obj_desc,
 		mc_dev->icid = parent_mc_dev->icid;
 		mc_dev->dma_mask = FSL_MC_DEFAULT_DMA_MASK;
 		mc_dev->dev.dma_mask = &mc_dev->dma_mask;
+		mc_dev->dev.coherent_dma_mask = mc_dev->dma_mask;
 		dev_set_msi_domain(&mc_dev->dev,
 				   dev_get_msi_domain(&parent_mc_dev->dev));
 	}
@@ -632,10 +848,6 @@ int fsl_mc_device_add(struct fsl_mc_obj_desc *obj_desc,
 		if (error < 0)
 			goto error_cleanup_dev;
 	}
-
-	/* Objects are coherent, unless 'no shareability' flag set. */
-	if (!(obj_desc->flags & FSL_MC_OBJ_FLAG_NO_MEM_SHAREABILITY))
-		arch_setup_dma_ops(&mc_dev->dev, 0, 0, NULL, true);
 
 	/*
 	 * The device-specific probe callback will get invoked by device_add()
@@ -670,6 +882,9 @@ EXPORT_SYMBOL_GPL(fsl_mc_device_add);
  */
 void fsl_mc_device_remove(struct fsl_mc_device *mc_dev)
 {
+	kfree(mc_dev->driver_override);
+	mc_dev->driver_override = NULL;
+
 	/*
 	 * The device-specific remove callback will get invoked by device_del()
 	 */
@@ -693,8 +908,8 @@ static int parse_mc_ranges(struct device *dev,
 	*ranges_start = of_get_property(mc_node, "ranges", &ranges_len);
 	if (!(*ranges_start) || !ranges_len) {
 		dev_warn(dev,
-			 "missing or empty ranges property for device tree node '%s'\n",
-			 mc_node->name);
+			 "missing or empty ranges property for device tree node '%pOFn'\n",
+			 mc_node);
 		return 0;
 	}
 
@@ -717,7 +932,7 @@ static int parse_mc_ranges(struct device *dev,
 
 	tuple_len = range_tuple_cell_count * sizeof(__be32);
 	if (ranges_len % tuple_len != 0) {
-		dev_err(dev, "malformed ranges property '%s'\n", mc_node->name);
+		dev_err(dev, "malformed ranges property '%pOFn'\n", mc_node);
 		return -EINVAL;
 	}
 
@@ -859,7 +1074,8 @@ static int fsl_mc_bus_probe(struct platform_device *pdev)
 	obj_desc.irq_count = 1;
 	obj_desc.region_count = 0;
 
-	error = fsl_mc_device_add(&obj_desc, mc_io, &pdev->dev, &mc_bus_dev);
+	error = fsl_mc_device_add(&obj_desc, mc_io, &pdev->dev, NULL,
+				 &mc_bus_dev);
 	if (error < 0)
 		goto error_cleanup_mc_io;
 

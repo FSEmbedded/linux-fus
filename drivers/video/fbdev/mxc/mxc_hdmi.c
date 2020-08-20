@@ -1074,6 +1074,7 @@ static int hdmi_phy_configure(struct mxc_hdmi *hdmi, unsigned char pRep,
 		case 12:
 			hdmi_phy_i2c_write(hdmi, 0x4142, 0x06);
 			hdmi_phy_i2c_write(hdmi, 0x0005, 0x15);
+			break;
 		default:
 			return false;
 		}
@@ -1090,6 +1091,7 @@ static int hdmi_phy_configure(struct mxc_hdmi *hdmi, unsigned char pRep,
 		case 12:
 			hdmi_phy_i2c_write(hdmi, 0x40a2, 0x06);
 			hdmi_phy_i2c_write(hdmi, 0x000a, 0x15);
+			break;
 		default:
 			return false;
 		}
@@ -1106,6 +1108,7 @@ static int hdmi_phy_configure(struct mxc_hdmi *hdmi, unsigned char pRep,
 		case 12:
 			hdmi_phy_i2c_write(hdmi, 0x4002, 0x06);
 			hdmi_phy_i2c_write(hdmi, 0x000f, 0x15);
+			break;
 		default:
 			return false;
 		}
@@ -1961,8 +1964,9 @@ static void mxc_hdmi_cable_connected(struct mxc_hdmi *hdmi)
 
 	case HDMI_EDID_FAIL:
 		mxc_hdmi_default_edid_cfg(hdmi);
-		/* No break here  */
+		/* fall through */
 	case HDMI_EDID_NO_MODES:
+		/* fall through */
 	default:
 		mxc_hdmi_default_modelist(hdmi);
 		break;
@@ -2312,6 +2316,7 @@ static int mxc_hdmi_fb_event(struct notifier_block *nb,
 		return 0;
 
 	switch (val) {
+
 	case FB_EVENT_FB_REGISTERED:
 		dev_dbg(&hdmi->pdev->dev, "event=FB_EVENT_FB_REGISTERED\n");
 		mxc_hdmi_fb_registered(hdmi);

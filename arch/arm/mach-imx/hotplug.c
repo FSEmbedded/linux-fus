@@ -1,13 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * Copyright 2011-2015 Freescale Semiconductor, Inc.
+ * Copyright 2011 Freescale Semiconductor, Inc.
  * Copyright 2011 Linaro Ltd.
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
  */
 
 #include <linux/errno.h>
@@ -16,7 +10,6 @@
 #include <asm/proc-fns.h>
 
 #include "common.h"
-#include "hardware.h"
 
 static inline void cpu_enter_lowpower(void)
 {
@@ -67,7 +60,5 @@ int imx_cpu_kill(unsigned int cpu)
 			return 0;
 	imx_enable_cpu(cpu, false);
 	imx_set_cpu_arg(cpu, 0);
-	if (cpu_is_imx7d())
-		imx_gpcv2_set_core1_pdn_pup_by_software(true);
 	return 1;
 }

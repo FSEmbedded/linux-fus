@@ -21,8 +21,10 @@
 };
 
 &lpspi3 {
+	#address-cells = <0>;
 	pinctrl-0 = <&pinctrl_lpspi3>;
 	pinctrl-1 = <&pinctrl_lpspi3>;
 	/delete-property/ cs-gpios;
+
 	spi-slave;
 };

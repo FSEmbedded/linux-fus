@@ -1,14 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * Copyright 2009-2015 Freescale Semiconductor, Inc. All Rights Reserved.
- */
-
-/*
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
+ * Copyright 2019 NXP
  */
 
 /*!
@@ -246,7 +239,7 @@ static int csi_enc_enabling_tasks(void *private)
 
 	CAMERA_TRACE("IPU:In csi_enc_enabling_tasks\n");
 
-	cam->dummy_frame.vaddress = dma_alloc_coherent(0,
+	cam->dummy_frame.vaddress = dma_alloc_coherent(cam->dev,
 			       PAGE_ALIGN(cam->v2f.fmt.pix.sizeimage),
 			       &cam->dummy_frame.paddress,
 			       GFP_DMA | GFP_KERNEL);
@@ -299,7 +292,7 @@ static int csi_enc_disabling_tasks(void *private)
 	ipu_uninit_channel(cam->ipu, chan, NULL);
 
 	if (cam->dummy_frame.vaddress != 0) {
-		dma_free_coherent(0, cam->dummy_frame.buffer.length,
+		dma_free_coherent(cam->dev, cam->dummy_frame.buffer.length,
 				  cam->dummy_frame.vaddress,
 				  cam->dummy_frame.paddress);
 		cam->dummy_frame.vaddress = 0;

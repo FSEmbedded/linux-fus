@@ -1,10 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright 2012-2016 Freescale Semiconductor, Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #ifndef __FSL_SAI_H
@@ -88,8 +84,6 @@
 #define FSL_SAI_xCR3(tx, off)	(tx ? FSL_SAI_TCR3(off) : FSL_SAI_RCR3(off))
 #define FSL_SAI_xCR4(tx, off)	(tx ? FSL_SAI_TCR4(off) : FSL_SAI_RCR4(off))
 #define FSL_SAI_xCR5(tx, off)	(tx ? FSL_SAI_TCR5(off) : FSL_SAI_RCR5(off))
-#define FSL_SAI_xDR(tx)		(tx ? FSL_SAI_TDR : FSL_SAI_RDR)
-#define FSL_SAI_xFR(tx)		(tx ? FSL_SAI_TFR : FSL_SAI_RFR)
 #define FSL_SAI_xMR(tx)		(tx ? FSL_SAI_TMR : FSL_SAI_RMR)
 
 /* SAI Transmit/Receive Control Register */

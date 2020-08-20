@@ -75,7 +75,7 @@ static inline u32 phy_csr_read(struct phy *phy, unsigned int reg)
 	return readl(lvds_phy->csr_base + reg);
 }
 
-static inline void phy_csr_write(struct phy *phy, u32 value, unsigned int reg)
+static inline void phy_csr_write(struct phy *phy, unsigned int reg, u32 value)
 {
 	struct mixel_lvds_phy *lvds_phy = phy_get_drvdata(phy);
 
@@ -89,7 +89,7 @@ static inline u32 phy_ctrl_read(struct phy *phy, unsigned int reg)
 	return readl(lvds_phy->ctrl_base + reg);
 }
 
-static inline void phy_ctrl_write(struct phy *phy, u32 value, unsigned int reg)
+static inline void phy_ctrl_write(struct phy *phy, unsigned int reg, u32 value)
 {
 	struct mixel_lvds_phy *lvds_phy = phy_get_drvdata(phy);
 
@@ -131,17 +131,10 @@ void mixel_phy_combo_lvds_set_phy_speed(struct phy *phy,
 
 	clk_prepare_enable(lvds_phy->phy_clk);
 	mutex_lock(&lvds_phy->lock);
-	phy_ctrl_write(phy, CO_DIV(div), CO);
+	phy_ctrl_write(phy, CO, CO_DIV(div));
 	mutex_unlock(&lvds_phy->lock);
 	clk_disable_unprepare(lvds_phy->phy_clk);
 
-	/*
-	 * To workaround setting clock rate failure issue
-	 * when the system resumes back from PM sleep mode,
-	 * we need to get the clock rate before setting it's
-	 * rate, otherwise, setting the clock rate will fail.
-	 */
-	clk_get_rate(lvds_phy->phy_clk);
 	clk_set_rate(lvds_phy->phy_clk, phy_clk_rate);
 }
 EXPORT_SYMBOL_GPL(mixel_phy_combo_lvds_set_phy_speed);
@@ -157,7 +150,7 @@ void mixel_phy_combo_lvds_set_hsync_pol(struct phy *phy, bool active_high)
 	val &= ~(CH_HSYNC_M(0) | CH_HSYNC_M(1));
 	if (active_high)
 		val |= (CH_PHSYNC(0) | CH_PHSYNC(1));
-	phy_csr_write(phy, val, SS);
+	phy_csr_write(phy, SS, val);
 	mutex_unlock(&lvds_phy->lock);
 	clk_disable_unprepare(lvds_phy->phy_clk);
 }
@@ -174,7 +167,7 @@ void mixel_phy_combo_lvds_set_vsync_pol(struct phy *phy, bool active_high)
 	val &= ~(CH_VSYNC_M(0) | CH_VSYNC_M(1));
 	if (active_high)
 		val |= (CH_PVSYNC(0) | CH_PVSYNC(1));
-	phy_csr_write(phy, val, SS);
+	phy_csr_write(phy, SS, val);
 	mutex_unlock(&lvds_phy->lock);
 	clk_disable_unprepare(lvds_phy->phy_clk);
 }
@@ -190,12 +183,12 @@ static int mixel_lvds_combo_phy_init(struct phy *phy)
 	val = phy_csr_read(phy, PHY_CTRL);
 	val &= ~(CCM_MASK | CA_MASK);
 	val |= (CCM(0x5) | CA(0x4) | RFB);
-	phy_csr_write(phy, val, PHY_CTRL);
+	phy_csr_write(phy, PHY_CTRL, val);
 
 	val = phy_csr_read(phy, DPI);
 	val &= ~COLOR_CODE_MASK;
 	val |= BIT24;
-	phy_csr_write(phy, val, DPI);
+	phy_csr_write(phy, DPI, val);
 	mutex_unlock(&lvds_phy->lock);
 	clk_disable_unprepare(lvds_phy->phy_clk);
 
@@ -209,16 +202,16 @@ static int mixel_lvds_combo_phy_power_on(struct phy *phy)
 
 	clk_prepare_enable(lvds_phy->phy_clk);
 	mutex_lock(&lvds_phy->lock);
-	phy_ctrl_write(phy, 0, PD_PLL);
-	phy_ctrl_write(phy, 0, PD_TX);
+	phy_ctrl_write(phy, PD_PLL, 0);
+	phy_ctrl_write(phy, PD_TX, 0);
 
 	val = phy_csr_read(phy, ULPS);
 	val &= ~ULPS_MASK;
-	phy_csr_write(phy, val, ULPS);
+	phy_csr_write(phy, ULPS, val);
 
 	val = phy_csr_read(phy, PHY_CTRL);
 	val |= LVDS_EN;
-	phy_csr_write(phy, val, PHY_CTRL);
+	phy_csr_write(phy, PHY_CTRL, val);
 	mutex_unlock(&lvds_phy->lock);
 
 	usleep_range(500, 1000);
@@ -234,14 +227,14 @@ static int mixel_lvds_combo_phy_power_off(struct phy *phy)
 	mutex_lock(&lvds_phy->lock);
 	val = phy_csr_read(phy, PHY_CTRL);
 	val &= ~LVDS_EN;
-	phy_csr_write(phy, val, PHY_CTRL);
+	phy_csr_write(phy, PHY_CTRL, val);
 
 	val = phy_csr_read(phy, ULPS);
 	val |= ULPS_MASK;
-	phy_csr_write(phy, val, ULPS);
+	phy_csr_write(phy, ULPS, val);
 
-	phy_ctrl_write(phy, 1, PD_TX);
-	phy_ctrl_write(phy, 1, PD_PLL);
+	phy_ctrl_write(phy, PD_TX, 1);
+	phy_ctrl_write(phy, PD_PLL, 1);
 	mutex_unlock(&lvds_phy->lock);
 	clk_disable_unprepare(lvds_phy->phy_clk);
 

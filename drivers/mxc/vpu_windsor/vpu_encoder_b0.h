@@ -27,11 +27,19 @@
 #include <media/v4l2-device.h>
 #include <media/v4l2-fh.h>
 #include <media/videobuf2-v4l2.h>
+#ifdef CONFIG_IMX_SCU
+#include <linux/firmware/imx/ipc.h>
+#include <linux/firmware/imx/svc/misc.h>
+#else
 #include <soc/imx8/sc/svc/irq/api.h>
 #include <soc/imx8/sc/ipc.h>
 #include <soc/imx8/sc/sci.h>
+#endif
 #include <linux/mx8_mu.h>
 #include <media/v4l2-event.h>
+#include <linux/mailbox_client.h>
+#include <linux/kfifo.h>
+
 #include "vpu_encoder_rpc.h"
 #include "vpu_encoder_config.h"
 
@@ -54,7 +62,6 @@ extern unsigned int vpu_dbg_level_encoder;
 #define PRINT_SIZE_DEFAULT		0x80000
 #define PRINT_SIZE_MIN			0x20000
 #define STREAM_SIZE			0x300000
-#define MU_B0_REG_CONTROL		(0x10000 + 0x24)
 
 #define MIN_BUFFER_COUNT		3
 #define BITRATE_COEF			1024
@@ -218,7 +225,7 @@ struct vpu_fps_sts {
 	unsigned int thd;
 	unsigned int times;
 	unsigned long frame_number;
-	struct timespec ts;
+	struct timespec64 ts;
 	unsigned long fps;
 };
 
@@ -227,8 +234,8 @@ struct vpu_statistic {
 	unsigned long event[VID_API_ENC_EVENT_RESERVED + 1];
 	unsigned long current_cmd;
 	unsigned long current_event;
-	struct timespec ts_cmd;
-	struct timespec ts_event;
+	struct timespec64 ts_cmd;
+	struct timespec64 ts_event;
 	unsigned long yuv_count;
 	unsigned long encoded_count;
 	unsigned long h264_count;
@@ -253,6 +260,7 @@ struct vpu_attr {
 
 	struct vpu_statistic statistic;
 	MEDIAIP_ENC_PARAM param;
+	struct v4l2_fract fival;
 
 	unsigned long ts_start[2];
 	unsigned long msg_count;
@@ -271,6 +279,20 @@ struct print_buf_desc {
 	char buffer[0];
 };
 
+#ifdef CONFIG_IMX_SCU
+struct vpu_sc_msg_misc {
+	struct imx_sc_rpc_msg hdr;
+	u32 word;
+} __packed;
+#endif
+
+struct vpu_sc_chan {
+	struct core_device *dev;
+	char name[20];
+	struct mbox_client cl;
+	struct mbox_chan *ch;
+};
+
 struct core_device {
 	void *m0_p_fw_space_vir;
 	u_int32 m0_p_fw_space_phy;
@@ -283,7 +305,7 @@ struct core_device {
 	u32 rpc_actual_size;
 	struct print_buf_desc *print_buf;
 
-	spinlock_t cmd_spinlock;
+	struct mutex cmd_mutex;
 	bool fw_is_ready;
 	bool firmware_started;
 	struct completion start_cmp;
@@ -312,6 +334,15 @@ struct core_device {
 	struct device_attribute core_attr;
 	char name[64];
 	unsigned long reset_times;
+
+	struct kfifo mu_msg_fifo;
+
+	/* reserve for kernel version 5.4 or later */
+	struct vpu_sc_chan sc_chan_tx0;
+	struct vpu_sc_chan sc_chan_tx1;
+	struct vpu_sc_chan sc_chan_rx;
+
+	struct dentry *debugfs_fwlog;
 };
 
 struct vpu_enc_mem_item {
@@ -328,7 +359,7 @@ struct vpu_enc_mem_info {
 	unsigned long size;
 	unsigned long bytesused;
 	struct list_head memorys;
-	spinlock_t lock;
+	struct mutex lock;
 };
 
 struct vpu_dev {
@@ -364,6 +395,19 @@ struct vpu_dev {
 		u32 step;
 	} supported_fps;
 	struct vpu_enc_mem_info reserved_mem;
+
+	/* reserve for kernel version 5.4 or later */
+	struct device *pd_vpu;
+	struct device *pd_enc1;
+	struct device *pd_enc2;
+	struct device *pd_mu1;
+	struct device *pd_mu2;
+	struct device_link *pd_vpu_link;
+	struct device_link *pd_enc1_link;
+	struct device_link *pd_enc2_link;
+	struct device_link *pd_mu1_link;
+	struct device_link *pd_mu2_link;
+	struct dentry *debugfs_root;
 };
 
 struct buffer_addr {

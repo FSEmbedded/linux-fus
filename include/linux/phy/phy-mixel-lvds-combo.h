@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 NXP
+ * Copyright 2017-2019 NXP
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -23,14 +23,16 @@ void mixel_phy_combo_lvds_set_phy_speed(struct phy *phy,
 void mixel_phy_combo_lvds_set_hsync_pol(struct phy *phy, bool active_high);
 void mixel_phy_combo_lvds_set_vsync_pol(struct phy *phy, bool active_high);
 #else
-void mixel_phy_combo_lvds_set_phy_speed(struct phy *phy,
-					unsigned long phy_clk_rate)
+static inline void
+mixel_phy_combo_lvds_set_phy_speed(struct phy *phy, unsigned long phy_clk_rate)
 {
 }
-void mixel_phy_combo_lvds_set_hsync_pol(struct phy *phy, bool active_high)
+static inline void mixel_phy_combo_lvds_set_hsync_pol(struct phy *phy,
+						      bool active_high)
 {
 }
-void mixel_phy_combo_lvds_set_vsync_pol(struct phy *phy, bool active_high)
+static inline void mixel_phy_combo_lvds_set_vsync_pol(struct phy *phy,
+						      bool active_high)
 {
 }
 #endif

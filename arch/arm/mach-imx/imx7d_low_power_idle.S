@@ -754,6 +754,7 @@ skip_lpi_flow:
 	mov	pc, lr
 
 wakeup:
+
 	/* invalidate L1 I-cache first */
 	mov	r1, #0x0
 	mcr	p15, 0, r1, c7, c5, 0

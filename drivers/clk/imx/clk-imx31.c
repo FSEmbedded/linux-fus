@@ -1,18 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright (C) 2012 Sascha Hauer <kernel@pengutronix.de>
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation.
  */
 
 #include <linux/module.h>
@@ -62,16 +50,6 @@ enum mx31_clks {
 
 static struct clk *clk[clk_max];
 static struct clk_onecell_data clk_data;
-
-static struct clk ** const uart_clks[] __initconst = {
-	&clk[ipg],
-	&clk[uart1_gate],
-	&clk[uart2_gate],
-	&clk[uart3_gate],
-	&clk[uart4_gate],
-	&clk[uart5_gate],
-	NULL
-};
 
 static void __init _mx31_clocks_init(void __iomem *base, unsigned long fref)
 {
@@ -209,7 +187,7 @@ int __init mx31_clocks_init(unsigned long fref)
 	clk_register_clkdev(clk[iim_gate], "iim", NULL);
 
 
-	imx_register_uart_clocks(uart_clks);
+	imx_register_uart_clocks();
 	mxc_timer_init(MX31_GPT1_BASE_ADDR, MX31_INT_GPT, GPT_TYPE_IMX31);
 
 	return 0;

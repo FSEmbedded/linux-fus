@@ -3,7 +3,8 @@
  * CAAM descriptor composition header
  * Definitions to support CAAM descriptor instruction generation
  *
- * Copyright (C) 2008-2015 Freescale Semiconductor, Inc.
+ * Copyright 2008-2011 Freescale Semiconductor, Inc.
+ * Copyright 2018 NXP
  */
 
 #ifndef DESC_H
@@ -42,6 +43,7 @@
 #define CMD_SEQ_LOAD		(0x03 << CMD_SHIFT)
 #define CMD_FIFO_LOAD		(0x04 << CMD_SHIFT)
 #define CMD_SEQ_FIFO_LOAD	(0x05 << CMD_SHIFT)
+#define CMD_MOVEB		(0x07 << CMD_SHIFT)
 #define CMD_STORE		(0x0a << CMD_SHIFT)
 #define CMD_SEQ_STORE		(0x0b << CMD_SHIFT)
 #define CMD_FIFO_STORE		(0x0c << CMD_SHIFT)
@@ -242,6 +244,7 @@
 #define LDST_SRCDST_WORD_DESCBUF_SHARED	(0x42 << LDST_SRCDST_SHIFT)
 #define LDST_SRCDST_WORD_DESCBUF_JOB_WE	(0x45 << LDST_SRCDST_SHIFT)
 #define LDST_SRCDST_WORD_DESCBUF_SHARED_WE (0x46 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_INFO_FIFO_SM	(0x71 << LDST_SRCDST_SHIFT)
 #define LDST_SRCDST_WORD_INFO_FIFO	(0x7a << LDST_SRCDST_SHIFT)
 
 /* Offset in source/destination */
@@ -283,6 +286,12 @@
 #define LDLEN_SET_OFIFO_OFF_RSVD	(1 << 3)
 #define LDLEN_SET_OFIFO_OFFSET_SHIFT	0
 #define LDLEN_SET_OFIFO_OFFSET_MASK	(3 << LDLEN_SET_OFIFO_OFFSET_SHIFT)
+
+/* Special Length definitions when dst=sm, nfifo-{sm,m} */
+#define LDLEN_MATH0			0
+#define LDLEN_MATH1			1
+#define LDLEN_MATH2			2
+#define LDLEN_MATH3			3
 
 /*
  * FIFO_LOAD/FIFO_STORE/SEQ_FIFO_LOAD/SEQ_FIFO_STORE
@@ -355,6 +364,7 @@
 #define FIFOLD_TYPE_PK_N	(0x08 << FIFOLD_TYPE_SHIFT)
 #define FIFOLD_TYPE_PK_A	(0x0c << FIFOLD_TYPE_SHIFT)
 #define FIFOLD_TYPE_PK_B	(0x0d << FIFOLD_TYPE_SHIFT)
+#define FIFOLD_TYPE_IFIFO	(0x0f << FIFOLD_TYPE_SHIFT)
 
 /* Other types. Need to OR in last/flush bits as desired */
 #define FIFOLD_TYPE_MSG_MASK	(0x38 << FIFOLD_TYPE_SHIFT)
@@ -412,6 +422,7 @@
 #define FIFOST_TYPE_MESSAGE_DATA (0x30 << FIFOST_TYPE_SHIFT)
 #define FIFOST_TYPE_RNGSTORE	 (0x34 << FIFOST_TYPE_SHIFT)
 #define FIFOST_TYPE_RNGFIFO	 (0x35 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_METADATA	 (0x3e << FIFOST_TYPE_SHIFT)
 #define FIFOST_TYPE_SKIP	 (0x3f << FIFOST_TYPE_SHIFT)
 
 /*
@@ -1154,6 +1165,12 @@
 #define OP_ALG_TYPE_CLASS1	(2 << OP_ALG_TYPE_SHIFT)
 #define OP_ALG_TYPE_CLASS2	(4 << OP_ALG_TYPE_SHIFT)
 
+/* version register fields */
+#define OP_VER_CCHA_NUM  0x000000ff /* Number CCHAs instantiated */
+#define OP_VER_CCHA_MISC 0x0000ff00 /* CCHA Miscellaneous Information */
+#define OP_VER_CCHA_REV  0x00ff0000 /* CCHA Revision Number */
+#define OP_VER_CCHA_VID  0xff000000 /* CCHA Version ID */
+
 #define OP_ALG_ALGSEL_SHIFT	16
 #define OP_ALG_ALGSEL_MASK	(0xff << OP_ALG_ALGSEL_SHIFT)
 #define OP_ALG_ALGSEL_SUBMASK	(0x0f << OP_ALG_ALGSEL_SHIFT)
@@ -1161,6 +1178,7 @@
 #define OP_ALG_ALGSEL_DES	(0x20 << OP_ALG_ALGSEL_SHIFT)
 #define OP_ALG_ALGSEL_3DES	(0x21 << OP_ALG_ALGSEL_SHIFT)
 #define OP_ALG_ALGSEL_ARC4	(0x30 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_CHA_MDHA		(0x40 << OP_ALG_ALGSEL_SHIFT)
 #define OP_ALG_ALGSEL_MD5	(0x40 << OP_ALG_ALGSEL_SHIFT)
 #define OP_ALG_ALGSEL_SHA1	(0x41 << OP_ALG_ALGSEL_SHIFT)
 #define OP_ALG_ALGSEL_SHA224	(0x42 << OP_ALG_ALGSEL_SHIFT)
@@ -1173,6 +1191,8 @@
 #define OP_ALG_ALGSEL_KASUMI	(0x70 << OP_ALG_ALGSEL_SHIFT)
 #define OP_ALG_ALGSEL_CRC	(0x90 << OP_ALG_ALGSEL_SHIFT)
 #define OP_ALG_ALGSEL_SNOW_F9	(0xA0 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_CHACHA20	(0xD0 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_POLY1305	(0xE0 << OP_ALG_ALGSEL_SHIFT)
 
 #define OP_ALG_AAI_SHIFT	4
 #define OP_ALG_AAI_MASK		(0x1ff << OP_ALG_AAI_SHIFT)
@@ -1219,6 +1239,11 @@
 #define OP_ALG_AAI_RNG4_PS	(0x40 << OP_ALG_AAI_SHIFT)
 #define OP_ALG_AAI_RNG4_AI	(0x80 << OP_ALG_AAI_SHIFT)
 #define OP_ALG_AAI_RNG4_SK	(0x100 << OP_ALG_AAI_SHIFT)
+
+/* Chacha20 AAI set */
+#define OP_ALG_AAI_AEAD	(0x002 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_KEYSTREAM	(0x001 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_BC8		(0x008 << OP_ALG_AAI_SHIFT)
 
 /* hmac/smac AAI set */
 #define OP_ALG_AAI_HASH		(0x00 << OP_ALG_AAI_SHIFT)
@@ -1408,6 +1433,7 @@
 #define MOVE_SRC_MATH3		(0x07 << MOVE_SRC_SHIFT)
 #define MOVE_SRC_INFIFO		(0x08 << MOVE_SRC_SHIFT)
 #define MOVE_SRC_INFIFO_CL	(0x09 << MOVE_SRC_SHIFT)
+#define MOVE_SRC_AUX_ABLK	(0x0a << MOVE_SRC_SHIFT)
 
 #define MOVE_DEST_SHIFT		16
 #define MOVE_DEST_MASK		(0x0f << MOVE_DEST_SHIFT)
@@ -1434,6 +1460,10 @@
 
 #define MOVELEN_MRSEL_SHIFT	0
 #define MOVELEN_MRSEL_MASK	(0x3 << MOVE_LEN_SHIFT)
+#define MOVELEN_MRSEL_MATH0	(0 << MOVELEN_MRSEL_SHIFT)
+#define MOVELEN_MRSEL_MATH1	(1 << MOVELEN_MRSEL_SHIFT)
+#define MOVELEN_MRSEL_MATH2	(2 << MOVELEN_MRSEL_SHIFT)
+#define MOVELEN_MRSEL_MATH3	(3 << MOVELEN_MRSEL_SHIFT)
 
 /*
  * MATH Command Constructs
@@ -1493,6 +1523,7 @@
 #define MATH_SRC1_INFIFO	(0x0a << MATH_SRC1_SHIFT)
 #define MATH_SRC1_OUTFIFO	(0x0b << MATH_SRC1_SHIFT)
 #define MATH_SRC1_ONE		(0x0c << MATH_SRC1_SHIFT)
+#define MATH_SRC1_ZERO		(0x0f << MATH_SRC1_SHIFT)
 
 /* Destination selectors */
 #define MATH_DEST_SHIFT		8
@@ -1610,6 +1641,7 @@
 #define NFIFOENTRY_DTYPE_IV	(0x2 << NFIFOENTRY_DTYPE_SHIFT)
 #define NFIFOENTRY_DTYPE_SAD	(0x3 << NFIFOENTRY_DTYPE_SHIFT)
 #define NFIFOENTRY_DTYPE_ICV	(0xA << NFIFOENTRY_DTYPE_SHIFT)
+#define NFIFOENTRY_DTYPE_POLY	(0xB << NFIFOENTRY_DTYPE_SHIFT)
 #define NFIFOENTRY_DTYPE_SKIP	(0xE << NFIFOENTRY_DTYPE_SHIFT)
 #define NFIFOENTRY_DTYPE_MSG	(0xF << NFIFOENTRY_DTYPE_SHIFT)
 
@@ -1674,8 +1706,31 @@
 /* Frame Descriptor Command for Replacement Job Descriptor */
 #define FD_CMD_REPLACE_JOB_DESC				0x20000000
 
-#define ARC4_BLOCK_SIZE       1
-#define ARC4_MAX_KEY_SIZE     256
-#define ARC4_MIN_KEY_SIZE     1
+/* CHA Control Register bits */
+#define CCTRL_RESET_CHA_ALL          0x1
+#define CCTRL_RESET_CHA_AESA         0x2
+#define CCTRL_RESET_CHA_DESA         0x4
+#define CCTRL_RESET_CHA_AFHA         0x8
+#define CCTRL_RESET_CHA_KFHA         0x10
+#define CCTRL_RESET_CHA_SF8A         0x20
+#define CCTRL_RESET_CHA_PKHA         0x40
+#define CCTRL_RESET_CHA_MDHA         0x80
+#define CCTRL_RESET_CHA_CRCA         0x100
+#define CCTRL_RESET_CHA_RNG          0x200
+#define CCTRL_RESET_CHA_SF9A         0x400
+#define CCTRL_RESET_CHA_ZUCE         0x800
+#define CCTRL_RESET_CHA_ZUCA         0x1000
+#define CCTRL_UNLOAD_PK_A0           0x10000
+#define CCTRL_UNLOAD_PK_A1           0x20000
+#define CCTRL_UNLOAD_PK_A2           0x40000
+#define CCTRL_UNLOAD_PK_A3           0x80000
+#define CCTRL_UNLOAD_PK_B0           0x100000
+#define CCTRL_UNLOAD_PK_B1           0x200000
+#define CCTRL_UNLOAD_PK_B2           0x400000
+#define CCTRL_UNLOAD_PK_B3           0x800000
+#define CCTRL_UNLOAD_PK_N            0x1000000
+#define CCTRL_UNLOAD_PK_A            0x4000000
+#define CCTRL_UNLOAD_PK_B            0x8000000
+#define CCTRL_UNLOAD_SBOX            0x10000000
 
 #endif /* DESC_H */

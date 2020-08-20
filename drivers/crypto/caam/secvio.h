@@ -1,7 +1,9 @@
-
+/* SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause) */
 /*
  * CAAM Security Violation Handler
- * Copyright (C) 2012-2015 Freescale Semiconductor, Inc., All Rights Reserved
+ *
+ * Copyright 2012-2015 Freescale Semiconductor, Inc.
+ * Copyright 2016-2019 NXP
  */
 
 #ifndef SECVIO_H

@@ -1,12 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
- * Copyright 2014-2015 Freescale Semiconductor, Inc.
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
+ * Copyright 2014 Freescale Semiconductor, Inc.
  */
 
 #include <linux/linkage.h>
@@ -47,7 +41,6 @@
 #define PM_INFO_RESUME_ADDR_OFFSET		0x4
 #define PM_INFO_DDR_TYPE_OFFSET			0x8
 #define PM_INFO_PM_INFO_SIZE_OFFSET		0xC
-
 #define PM_INFO_MX6Q_MMDC0_P_OFFSET		0x10
 #define PM_INFO_MX6Q_MMDC0_V_OFFSET		0x14
 #define PM_INFO_MX6Q_MMDC1_P_OFFSET		0x18

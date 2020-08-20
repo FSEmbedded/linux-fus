@@ -1,13 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * wm8960.c  --  WM8960 ALSA SoC Audio driver
  *
  * Copyright 2007-11 Wolfson Microelectronics, plc
  *
  * Author: Liam Girdwood
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/module.h>
@@ -18,7 +15,6 @@
 #include <linux/clk.h>
 #include <linux/i2c.h>
 #include <linux/slab.h>
-#include <linux/pm_runtime.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -1432,8 +1428,6 @@ static int wm8960_i2c_probe(struct i2c_client *i2c,
 	regmap_update_bits(wm8960->regmap, WM8960_ROUT2, 0x100, 0x100);
 
 	i2c_set_clientdata(i2c, wm8960);
-
-	pm_runtime_enable(&i2c->dev);
 
 	ret = devm_snd_soc_register_component(&i2c->dev,
 			&soc_component_dev_wm8960, &wm8960_dai, 1);

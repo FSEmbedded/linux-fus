@@ -541,7 +541,7 @@ void imx_gpcv2_pre_suspend(bool arm_power_off)
 
 		if ((!imx_src_is_m4_enabled()) ||
 			(imx_src_is_m4_enabled() && imx_mu_is_m4_in_stop()))
-			imx_gpcv2_mf_mix_off();
+				imx_gpcv2_mf_mix_off();;
 
 		imx_gpcv2_set_slot_ack(6, SCU_A7, true, false);
 		imx_gpcv2_set_slot_ack(6, CORE0_A7, true, true);
@@ -634,7 +634,7 @@ void imx_gpcv2_post_resume(void)
 	imx_gpcv2_set_m_core_pgc(false, GPC_PGC_C0);
 	imx_gpcv2_set_m_core_pgc(false, GPC_PGC_SCU);
 	imx_gpcv2_set_m_core_pgc(false, GPC_PGC_FM);
-	for (i = 0; i < MAX_SLOT_NUMBER; i++) {
+	for (i = 0; i < MAX_SLOT_NUMBER; i++){
 		if (i == 1 || i == 5) /* skip slts m4 uses */
 			continue;
 		writel_relaxed(0x0, gpc_base + GPC_SLOT0_CFG + i * 0x4);

@@ -136,8 +136,9 @@ static int imx_wm8960_jack_init(struct snd_soc_card *card,
 	int ret;
 
 	ret = snd_soc_card_jack_new(card, pin->pin, pin->mask, jack, pin, 1);
-	if (ret)
+	if (ret) {
 		return ret;
+	}
 
 	ret = snd_soc_jack_add_gpios(jack, 1, gpio);
 	if (ret)
@@ -221,8 +222,7 @@ static int imx_hifi_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	if (!data->is_codec_master) {
-		ret = snd_soc_dai_set_tdm_slot(cpu_dai, 0, 0, 2,
-					       params_physical_width(params));
+		ret = snd_soc_dai_set_tdm_slot(cpu_dai, 0, 0, 2, params_width(params));
 		if (ret) {
 			dev_err(dev, "failed to set cpu dai tdm slot: %d\n", ret);
 			return ret;
@@ -271,8 +271,7 @@ static int imx_hifi_hw_free(struct snd_pcm_substream *substream)
 	data->is_stream_in_use[tx] = false;
 
 	if (data->is_codec_master && !data->is_stream_in_use[!tx]) {
-		ret = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_CBS_CFS |
-				SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF);
+		ret = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_CBS_CFS | SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF);
 		if (ret)
 			dev_warn(dev, "failed to set codec dai fmt: %d\n", ret);
 	}
@@ -335,25 +334,22 @@ static int imx_wm8960_late_probe(struct snd_soc_card *card)
 	struct snd_soc_pcm_runtime *rtd = list_first_entry(
 		&card->rtd_list, struct snd_soc_pcm_runtime, list);
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	struct snd_soc_component *component = codec_dai->component;
 	struct imx_wm8960_data *data = snd_soc_card_get_drvdata(card);
 
 	/*
 	 * codec ADCLRC pin configured as GPIO, DACLRC pin is used as a frame
 	 * clock for ADCs and DACs
 	 */
-	snd_soc_component_update_bits(component, WM8960_IFACE2, 1<<6, 1<<6);
+	snd_soc_component_update_bits(codec_dai->component, WM8960_IFACE2, 1<<6, 1<<6);
 
 	/* GPIO1 used as headphone detect output */
-	snd_soc_component_update_bits(component, WM8960_ADDCTL4, 7<<4, 3<<4);
+	snd_soc_component_update_bits(codec_dai->component, WM8960_ADDCTL4, 7<<4, 3<<4);
 
 	/* Enable headphone jack detect */
-	snd_soc_component_update_bits(component, WM8960_ADDCTL2, 1<<6, 1<<6);
-	snd_soc_component_update_bits(component, WM8960_ADDCTL2, 1<<5,
-				      data->hp_det[1]<<5);
-	snd_soc_component_update_bits(component, WM8960_ADDCTL4, 3<<2,
-				      data->hp_det[0]<<2);
-	snd_soc_component_update_bits(component, WM8960_ADDCTL1, 3, 3);
+	snd_soc_component_update_bits(codec_dai->component, WM8960_ADDCTL2, 1<<6, 1<<6);
+	snd_soc_component_update_bits(codec_dai->component, WM8960_ADDCTL2, 1<<5, data->hp_det[1]<<5);
+	snd_soc_component_update_bits(codec_dai->component, WM8960_ADDCTL4, 3<<2, data->hp_det[0]<<2);
+	snd_soc_component_update_bits(codec_dai->component, WM8960_ADDCTL1, 3, 3);
 
 	return 0;
 }
@@ -380,35 +376,48 @@ static int be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
+SND_SOC_DAILINK_DEFS(hifi,
+	DAILINK_COMP_ARRAY(COMP_EMPTY()),
+	DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "wm8960-hifi")),
+	DAILINK_COMP_ARRAY(COMP_EMPTY()));
+
+SND_SOC_DAILINK_DEFS(hifi_fe,
+	DAILINK_COMP_ARRAY(COMP_EMPTY()),
+	DAILINK_COMP_ARRAY(COMP_DUMMY()),
+	DAILINK_COMP_ARRAY(COMP_EMPTY()));
+
+SND_SOC_DAILINK_DEFS(hifi_be,
+	DAILINK_COMP_ARRAY(COMP_EMPTY()),
+	DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "wm8960-hifi")),
+	DAILINK_COMP_ARRAY(COMP_DUMMY()));
+
 static struct snd_soc_dai_link imx_wm8960_dai[] = {
 	{
 		.name = "HiFi",
 		.stream_name = "HiFi",
-		.codec_dai_name = "wm8960-hifi",
 		.ops = &imx_hifi_ops,
+		SND_SOC_DAILINK_REG(hifi),
 	},
 	{
 		.name = "HiFi-ASRC-FE",
 		.stream_name = "HiFi-ASRC-FE",
-		.codec_name = "snd-soc-dummy",
-		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_pmdown_time = 1,
 		.dpcm_playback = 1,
 		.dpcm_capture = 1,
 		.dpcm_merged_chan = 1,
+		SND_SOC_DAILINK_REG(hifi_fe),
 	},
 	{
 		.name = "HiFi-ASRC-BE",
 		.stream_name = "HiFi-ASRC-BE",
-		.codec_dai_name = "wm8960-hifi",
-		.platform_name = "snd-soc-dummy",
 		.no_pcm = 1,
 		.ignore_pmdown_time = 1,
 		.dpcm_playback = 1,
 		.dpcm_capture = 1,
 		.ops = &imx_hifi_ops,
 		.be_hw_params_fixup = be_hw_params_fixup,
+		SND_SOC_DAILINK_REG(hifi_be),
 	},
 };
 
@@ -507,7 +516,7 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 		codec_dev = of_find_i2c_device_by_node(codec_np);
 		if (!codec_dev || !codec_dev->dev.driver) {
 			dev_err(&pdev->dev, "failed to find codec platform device\n");
-			ret = -EINVAL;
+			ret = -EPROBE_DEFER;
 			goto fail;
 		}
 
@@ -537,25 +546,25 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 	data->card.dai_link = imx_wm8960_dai;
 
 	if (data->is_codec_rpmsg) {
-		imx_wm8960_dai[0].codec_name     = "rpmsg-audio-codec-wm8960";
-		imx_wm8960_dai[0].codec_dai_name = "rpmsg-wm8960-hifi";
+		imx_wm8960_dai[0].codecs->name     = "rpmsg-audio-codec-wm8960";
+		imx_wm8960_dai[0].codecs->dai_name = "rpmsg-wm8960-hifi";
 	} else
-		imx_wm8960_dai[0].codec_of_node	= codec_np;
+		imx_wm8960_dai[0].codecs->of_node	= codec_np;
 
-	imx_wm8960_dai[0].cpu_dai_name = dev_name(&cpu_pdev->dev);
-	imx_wm8960_dai[0].platform_of_node = cpu_np;
+	imx_wm8960_dai[0].cpus->dai_name = dev_name(&cpu_pdev->dev);
+	imx_wm8960_dai[0].platforms->of_node = cpu_np;
 
 	if (!asrc_pdev) {
 		data->card.num_links = 1;
 	} else {
-		imx_wm8960_dai[1].cpu_of_node = asrc_np;
-		imx_wm8960_dai[1].platform_of_node = asrc_np;
+		imx_wm8960_dai[1].cpus->of_node = asrc_np;
+		imx_wm8960_dai[1].platforms->of_node = asrc_np;
 		if (data->is_codec_rpmsg) {
-			imx_wm8960_dai[2].codec_name     = "rpmsg-audio-codec-wm8960";
-			imx_wm8960_dai[2].codec_dai_name = "rpmsg-wm8960-hifi";
+			imx_wm8960_dai[2].codecs->name     = "rpmsg-audio-codec-wm8960";
+			imx_wm8960_dai[2].codecs->dai_name = "rpmsg-wm8960-hifi";
 		} else
-			imx_wm8960_dai[2].codec_of_node	= codec_np;
-		imx_wm8960_dai[2].cpu_dai_name = dev_name(&cpu_pdev->dev);
+			imx_wm8960_dai[2].codecs->of_node	= codec_np;
+		imx_wm8960_dai[2].cpus->dai_name = dev_name(&cpu_pdev->dev);
 		data->card.num_links = 3;
 
 		ret = of_property_read_u32(asrc_np, "fsl,asrc-rate",

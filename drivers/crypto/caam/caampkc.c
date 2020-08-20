@@ -1,8 +1,9 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 /*
  * caam - Freescale FSL CAAM support for Public Key Cryptography
  *
  * Copyright 2016 Freescale Semiconductor, Inc.
- * Copyright 2017-2018 NXP
+ * Copyright 2018-2019 NXP
  *
  * There is no Shared Descriptor for PKC so that the Job Descriptor must carry
  * all the desired key parameters, input and output pointers.
@@ -16,17 +17,28 @@
 #include "sg_sw_sec4.h"
 #include "caampkc.h"
 
-#define DESC_RSA_PUB_LEN	(2 * CAAM_CMD_SZ + sizeof(struct rsa_pub_pdb))
+#define DESC_RSA_PUB_LEN	(2 * CAAM_CMD_SZ + SIZEOF_RSA_PUB_PDB)
 #define DESC_RSA_PRIV_F1_LEN	(2 * CAAM_CMD_SZ + \
-				 sizeof(struct rsa_priv_f1_pdb))
+				 SIZEOF_RSA_PRIV_F1_PDB)
 #define DESC_RSA_PRIV_F2_LEN	(2 * CAAM_CMD_SZ + \
-				 sizeof(struct rsa_priv_f2_pdb))
+				 SIZEOF_RSA_PRIV_F2_PDB)
 #define DESC_RSA_PRIV_F3_LEN	(2 * CAAM_CMD_SZ + \
-				 sizeof(struct rsa_priv_f3_pdb))
+				 SIZEOF_RSA_PRIV_F3_PDB)
 #define CAAM_RSA_MAX_INPUT_SIZE	512 /* for a 4096-bit modulus */
 
 /* buffer filled with zeros, used for padding */
 static u8 *zero_buffer;
+
+/*
+ * variable used to avoid double free of resources in case
+ * algorithm registration was unsuccessful
+ */
+static bool init_done;
+
+struct caam_akcipher_alg {
+	struct akcipher_alg akcipher;
+	bool registered;
+};
 
 static void rsa_io_unmap(struct device *dev, struct rsa_edesc *edesc,
 			 struct akcipher_request *req)
@@ -105,72 +117,69 @@ static void rsa_priv_f3_unmap(struct device *dev, struct rsa_edesc *edesc,
 static void rsa_pub_done(struct device *dev, u32 *desc, u32 err, void *context)
 {
 	struct akcipher_request *req = context;
+	struct caam_rsa_req_ctx *req_ctx = akcipher_request_ctx(req);
+	struct caam_drv_private_jr *jrp = dev_get_drvdata(dev);
 	struct rsa_edesc *edesc;
+	int ecode = 0;
 
 	if (err)
-		caam_jr_strstatus(dev, err);
+		ecode = caam_jr_strstatus(dev, err);
 
-	edesc = container_of(desc, struct rsa_edesc, hw_desc[0]);
+	edesc = req_ctx->edesc;
 
 	rsa_pub_unmap(dev, edesc, req);
 	rsa_io_unmap(dev, edesc, req);
 	kfree(edesc);
 
-	akcipher_request_complete(req, err);
+	/*
+	 * If no backlog flag, the completion of the request is done
+	 * by CAAM, not crypto engine.
+	 */
+	if (!edesc->bklog)
+		akcipher_request_complete(req, ecode);
+	else
+		crypto_finalize_akcipher_request(jrp->engine, req, ecode);
 }
 
-static void rsa_priv_f1_done(struct device *dev, u32 *desc, u32 err,
-			     void *context)
+static void rsa_priv_f_done(struct device *dev, u32 *desc, u32 err,
+			    void *context)
 {
 	struct akcipher_request *req = context;
+	struct crypto_akcipher *tfm = crypto_akcipher_reqtfm(req);
+	struct caam_drv_private_jr *jrp = dev_get_drvdata(dev);
+	struct caam_rsa_ctx *ctx = akcipher_tfm_ctx(tfm);
+	struct caam_rsa_key *key = &ctx->key;
+	struct caam_rsa_req_ctx *req_ctx = akcipher_request_ctx(req);
 	struct rsa_edesc *edesc;
+	int ecode = 0;
 
 	if (err)
-		caam_jr_strstatus(dev, err);
+		ecode = caam_jr_strstatus(dev, err);
 
-	edesc = container_of(desc, struct rsa_edesc, hw_desc[0]);
+	edesc = req_ctx->edesc;
 
-	rsa_priv_f1_unmap(dev, edesc, req);
+	switch (key->priv_form) {
+	case FORM1:
+		rsa_priv_f1_unmap(dev, edesc, req);
+		break;
+	case FORM2:
+		rsa_priv_f2_unmap(dev, edesc, req);
+		break;
+	case FORM3:
+		rsa_priv_f3_unmap(dev, edesc, req);
+	}
+
 	rsa_io_unmap(dev, edesc, req);
 	kfree(edesc);
 
-	akcipher_request_complete(req, err);
-}
-
-static void rsa_priv_f2_done(struct device *dev, u32 *desc, u32 err,
-			     void *context)
-{
-	struct akcipher_request *req = context;
-	struct rsa_edesc *edesc;
-
-	if (err)
-		caam_jr_strstatus(dev, err);
-
-	edesc = container_of(desc, struct rsa_edesc, hw_desc[0]);
-
-	rsa_priv_f2_unmap(dev, edesc, req);
-	rsa_io_unmap(dev, edesc, req);
-	kfree(edesc);
-
-	akcipher_request_complete(req, err);
-}
-
-static void rsa_priv_f3_done(struct device *dev, u32 *desc, u32 err,
-			     void *context)
-{
-	struct akcipher_request *req = context;
-	struct rsa_edesc *edesc;
-
-	if (err)
-		caam_jr_strstatus(dev, err);
-
-	edesc = container_of(desc, struct rsa_edesc, hw_desc[0]);
-
-	rsa_priv_f3_unmap(dev, edesc, req);
-	rsa_io_unmap(dev, edesc, req);
-	kfree(edesc);
-
-	akcipher_request_complete(req, err);
+	/*
+	 * If no backlog flag, the completion of the request is done
+	 * by CAAM, not crypto engine.
+	 */
+	if (!edesc->bklog)
+		akcipher_request_complete(req, ecode);
+	else
+		crypto_finalize_akcipher_request(jrp->engine, req, ecode);
 }
 
 /**
@@ -236,9 +245,9 @@ static struct rsa_edesc *rsa_edesc_alloc(struct akcipher_request *req,
 	gfp_t flags = (req->base.flags & CRYPTO_TFM_REQ_MAY_SLEEP) ?
 		       GFP_KERNEL : GFP_ATOMIC;
 	int sg_flags = (flags == GFP_ATOMIC) ? SG_MITER_ATOMIC : 0;
-	int sgc;
-	int sec4_sg_index = 0, sec4_sg_len = 0, sec4_sg_bytes;
+	int sec4_sg_index, sec4_sg_len = 0, sec4_sg_bytes;
 	int src_nents, dst_nents;
+	int mapped_src_nents, mapped_dst_nents;
 	unsigned int diff_size = 0;
 	int lzeros;
 
@@ -269,13 +278,29 @@ static struct rsa_edesc *rsa_edesc_alloc(struct akcipher_request *req,
 				     req_ctx->fixup_src_len);
 	dst_nents = sg_nents_for_len(req->dst, req->dst_len);
 
-	if (!diff_size && src_nents == 1)
+	mapped_src_nents = dma_map_sg(dev, req_ctx->fixup_src, src_nents,
+				      DMA_TO_DEVICE);
+	if (unlikely(!mapped_src_nents)) {
+		dev_err(dev, "unable to map source\n");
+		return ERR_PTR(-ENOMEM);
+	}
+	mapped_dst_nents = dma_map_sg(dev, req->dst, dst_nents,
+				      DMA_FROM_DEVICE);
+	if (unlikely(!mapped_dst_nents)) {
+		dev_err(dev, "unable to map destination\n");
+		goto src_fail;
+	}
+
+	if (!diff_size && mapped_src_nents == 1)
 		sec4_sg_len = 0; /* no need for an input hw s/g table */
 	else
-		sec4_sg_len = src_nents + !!diff_size;
+		sec4_sg_len = mapped_src_nents + !!diff_size;
 	sec4_sg_index = sec4_sg_len;
-	if (dst_nents > 1)
-		sec4_sg_len += dst_nents;
+
+	if (mapped_dst_nents > 1)
+		sec4_sg_len += pad_sg_nents(mapped_dst_nents);
+	else
+		sec4_sg_len = pad_sg_nents(sec4_sg_len);
 
 	sec4_sg_bytes = sec4_sg_len * sizeof(struct sec4_sg_entry);
 
@@ -283,19 +308,7 @@ static struct rsa_edesc *rsa_edesc_alloc(struct akcipher_request *req,
 	edesc = kzalloc(sizeof(*edesc) + desclen + sec4_sg_bytes,
 			GFP_DMA | flags);
 	if (!edesc)
-		return ERR_PTR(-ENOMEM);
-
-	sgc = dma_map_sg(dev, req_ctx->fixup_src, src_nents, DMA_TO_DEVICE);
-	if (unlikely(!sgc)) {
-		dev_err(dev, "unable to map source\n");
-		goto src_fail;
-	}
-
-	sgc = dma_map_sg(dev, req->dst, dst_nents, DMA_FROM_DEVICE);
-	if (unlikely(!sgc)) {
-		dev_err(dev, "unable to map destination\n");
 		goto dst_fail;
-	}
 
 	edesc->sec4_sg = (void *)edesc + sizeof(*edesc) + desclen;
 	if (diff_size)
@@ -306,7 +319,7 @@ static struct rsa_edesc *rsa_edesc_alloc(struct akcipher_request *req,
 		sg_to_sec4_sg_last(req_ctx->fixup_src, req_ctx->fixup_src_len,
 				   edesc->sec4_sg + !!diff_size, 0);
 
-	if (dst_nents > 1)
+	if (mapped_dst_nents > 1)
 		sg_to_sec4_sg_last(req->dst, req->dst_len,
 				   edesc->sec4_sg + sec4_sg_index, 0);
 
@@ -314,8 +327,13 @@ static struct rsa_edesc *rsa_edesc_alloc(struct akcipher_request *req,
 	edesc->src_nents = src_nents;
 	edesc->dst_nents = dst_nents;
 
+	req_ctx->edesc = edesc;
+
 	if (!sec4_sg_bytes)
 		return edesc;
+
+	edesc->mapped_src_nents = mapped_src_nents;
+	edesc->mapped_dst_nents = mapped_dst_nents;
 
 	edesc->sec4_sg_dma = dma_map_single(dev, edesc->sec4_sg,
 					    sec4_sg_bytes, DMA_TO_DEVICE);
@@ -333,12 +351,39 @@ static struct rsa_edesc *rsa_edesc_alloc(struct akcipher_request *req,
 	return edesc;
 
 sec4_sg_fail:
-	dma_unmap_sg(dev, req->dst, dst_nents, DMA_FROM_DEVICE);
-dst_fail:
-	dma_unmap_sg(dev, req_ctx->fixup_src, src_nents, DMA_TO_DEVICE);
-src_fail:
 	kfree(edesc);
+dst_fail:
+	dma_unmap_sg(dev, req->dst, dst_nents, DMA_FROM_DEVICE);
+src_fail:
+	dma_unmap_sg(dev, req_ctx->fixup_src, src_nents, DMA_TO_DEVICE);
 	return ERR_PTR(-ENOMEM);
+}
+
+static int akcipher_do_one_req(struct crypto_engine *engine, void *areq)
+{
+	struct akcipher_request *req = container_of(areq,
+						    struct akcipher_request,
+						    base);
+	struct crypto_akcipher *tfm = crypto_akcipher_reqtfm(req);
+	struct caam_rsa_req_ctx *req_ctx = akcipher_request_ctx(req);
+	struct caam_rsa_ctx *ctx = akcipher_tfm_ctx(tfm);
+	struct device *jrdev = ctx->dev;
+	u32 *desc = req_ctx->edesc->hw_desc;
+	int ret;
+
+	req_ctx->edesc->bklog = true;
+
+	ret = caam_jr_enqueue(jrdev, desc, req_ctx->akcipher_op_done, req);
+
+	if (ret != -EINPROGRESS) {
+		rsa_pub_unmap(jrdev, req_ctx->edesc, req);
+		rsa_io_unmap(jrdev, req_ctx->edesc, req);
+		kfree(req_ctx->edesc);
+	} else {
+		ret = 0;
+	}
+
+	return ret;
 }
 
 static int set_rsa_pub_pdb(struct akcipher_request *req,
@@ -365,15 +410,15 @@ static int set_rsa_pub_pdb(struct akcipher_request *req,
 		return -ENOMEM;
 	}
 
-	if (edesc->src_nents > 1) {
+	if (edesc->mapped_src_nents > 1) {
 		pdb->sgf |= RSA_PDB_SGF_F;
 		pdb->f_dma = edesc->sec4_sg_dma;
-		sec4_sg_index += edesc->src_nents;
+		sec4_sg_index += edesc->mapped_src_nents;
 	} else {
 		pdb->f_dma = sg_dma_address(req_ctx->fixup_src);
 	}
 
-	if (edesc->dst_nents > 1) {
+	if (edesc->mapped_dst_nents > 1) {
 		pdb->sgf |= RSA_PDB_SGF_G;
 		pdb->g_dma = edesc->sec4_sg_dma +
 			     sec4_sg_index * sizeof(struct sec4_sg_entry);
@@ -410,17 +455,18 @@ static int set_rsa_priv_f1_pdb(struct akcipher_request *req,
 		return -ENOMEM;
 	}
 
-	if (edesc->src_nents > 1) {
+	if (edesc->mapped_src_nents > 1) {
 		pdb->sgf |= RSA_PRIV_PDB_SGF_G;
 		pdb->g_dma = edesc->sec4_sg_dma;
-		sec4_sg_index += edesc->src_nents;
+		sec4_sg_index += edesc->mapped_src_nents;
+
 	} else {
 		struct caam_rsa_req_ctx *req_ctx = akcipher_request_ctx(req);
 
 		pdb->g_dma = sg_dma_address(req_ctx->fixup_src);
 	}
 
-	if (edesc->dst_nents > 1) {
+	if (edesc->mapped_dst_nents > 1) {
 		pdb->sgf |= RSA_PRIV_PDB_SGF_F;
 		pdb->f_dma = edesc->sec4_sg_dma +
 			     sec4_sg_index * sizeof(struct sec4_sg_entry);
@@ -475,17 +521,17 @@ static int set_rsa_priv_f2_pdb(struct akcipher_request *req,
 		goto unmap_tmp1;
 	}
 
-	if (edesc->src_nents > 1) {
+	if (edesc->mapped_src_nents > 1) {
 		pdb->sgf |= RSA_PRIV_PDB_SGF_G;
 		pdb->g_dma = edesc->sec4_sg_dma;
-		sec4_sg_index += edesc->src_nents;
+		sec4_sg_index += edesc->mapped_src_nents;
 	} else {
 		struct caam_rsa_req_ctx *req_ctx = akcipher_request_ctx(req);
 
 		pdb->g_dma = sg_dma_address(req_ctx->fixup_src);
 	}
 
-	if (edesc->dst_nents > 1) {
+	if (edesc->mapped_dst_nents > 1) {
 		pdb->sgf |= RSA_PRIV_PDB_SGF_F;
 		pdb->f_dma = edesc->sec4_sg_dma +
 			     sec4_sg_index * sizeof(struct sec4_sg_entry);
@@ -564,17 +610,17 @@ static int set_rsa_priv_f3_pdb(struct akcipher_request *req,
 		goto unmap_tmp1;
 	}
 
-	if (edesc->src_nents > 1) {
+	if (edesc->mapped_src_nents > 1) {
 		pdb->sgf |= RSA_PRIV_PDB_SGF_G;
 		pdb->g_dma = edesc->sec4_sg_dma;
-		sec4_sg_index += edesc->src_nents;
+		sec4_sg_index += edesc->mapped_src_nents;
 	} else {
 		struct caam_rsa_req_ctx *req_ctx = akcipher_request_ctx(req);
 
 		pdb->g_dma = sg_dma_address(req_ctx->fixup_src);
 	}
 
-	if (edesc->dst_nents > 1) {
+	if (edesc->mapped_dst_nents > 1) {
 		pdb->sgf |= RSA_PRIV_PDB_SGF_F;
 		pdb->f_dma = edesc->sec4_sg_dma +
 			     sec4_sg_index * sizeof(struct sec4_sg_entry);
@@ -601,6 +647,53 @@ unmap_p:
 	dma_unmap_single(dev, pdb->p_dma, p_sz, DMA_TO_DEVICE);
 
 	return -ENOMEM;
+}
+
+static int akcipher_enqueue_req(struct device *jrdev,
+				void (*cbk)(struct device *jrdev, u32 *desc,
+					    u32 err, void *context),
+				struct akcipher_request *req)
+{
+	struct caam_drv_private_jr *jrpriv = dev_get_drvdata(jrdev);
+	struct crypto_akcipher *tfm = crypto_akcipher_reqtfm(req);
+	struct caam_rsa_ctx *ctx = akcipher_tfm_ctx(tfm);
+	struct caam_rsa_key *key = &ctx->key;
+	struct caam_rsa_req_ctx *req_ctx = akcipher_request_ctx(req);
+	struct rsa_edesc *edesc = req_ctx->edesc;
+	u32 *desc = edesc->hw_desc;
+	int ret;
+
+	req_ctx->akcipher_op_done = cbk;
+	/*
+	 * Only the backlog request are sent to crypto-engine since the others
+	 * can be handled by CAAM, if free, especially since JR has up to 1024
+	 * entries (more than the 10 entries from crypto-engine).
+	 */
+	if (req->base.flags & CRYPTO_TFM_REQ_MAY_BACKLOG)
+		ret = crypto_transfer_akcipher_request_to_engine(jrpriv->engine,
+								 req);
+	else
+		ret = caam_jr_enqueue(jrdev, desc, cbk, req);
+
+	if ((ret != -EINPROGRESS) && (ret != -EBUSY)) {
+		switch (key->priv_form) {
+		case FORM1:
+			rsa_priv_f1_unmap(jrdev, edesc, req);
+			break;
+		case FORM2:
+			rsa_priv_f2_unmap(jrdev, edesc, req);
+			break;
+		case FORM3:
+			rsa_priv_f3_unmap(jrdev, edesc, req);
+			break;
+		default:
+			rsa_pub_unmap(jrdev, edesc, req);
+		}
+		rsa_io_unmap(jrdev, edesc, req);
+		kfree(edesc);
+	}
+
+	return ret;
 }
 
 static int caam_rsa_enc(struct akcipher_request *req)
@@ -634,11 +727,7 @@ static int caam_rsa_enc(struct akcipher_request *req)
 	/* Initialize Job Descriptor */
 	init_rsa_pub_desc(edesc->hw_desc, &edesc->pdb.pub);
 
-	ret = caam_jr_enqueue(jrdev, edesc->hw_desc, rsa_pub_done, req);
-	if (!ret)
-		return -EINPROGRESS;
-
-	rsa_pub_unmap(jrdev, edesc, req);
+	return akcipher_enqueue_req(jrdev, rsa_pub_done, req);
 
 init_fail:
 	rsa_io_unmap(jrdev, edesc, req);
@@ -667,11 +756,7 @@ static int caam_rsa_dec_priv_f1(struct akcipher_request *req)
 	/* Initialize Job Descriptor */
 	init_rsa_priv_f1_desc(edesc->hw_desc, &edesc->pdb.priv_f1);
 
-	ret = caam_jr_enqueue(jrdev, edesc->hw_desc, rsa_priv_f1_done, req);
-	if (!ret)
-		return -EINPROGRESS;
-
-	rsa_priv_f1_unmap(jrdev, edesc, req);
+	return akcipher_enqueue_req(jrdev, rsa_priv_f_done, req);
 
 init_fail:
 	rsa_io_unmap(jrdev, edesc, req);
@@ -700,11 +785,7 @@ static int caam_rsa_dec_priv_f2(struct akcipher_request *req)
 	/* Initialize Job Descriptor */
 	init_rsa_priv_f2_desc(edesc->hw_desc, &edesc->pdb.priv_f2);
 
-	ret = caam_jr_enqueue(jrdev, edesc->hw_desc, rsa_priv_f2_done, req);
-	if (!ret)
-		return -EINPROGRESS;
-
-	rsa_priv_f2_unmap(jrdev, edesc, req);
+	return akcipher_enqueue_req(jrdev, rsa_priv_f_done, req);
 
 init_fail:
 	rsa_io_unmap(jrdev, edesc, req);
@@ -733,11 +814,7 @@ static int caam_rsa_dec_priv_f3(struct akcipher_request *req)
 	/* Initialize Job Descriptor */
 	init_rsa_priv_f3_desc(edesc->hw_desc, &edesc->pdb.priv_f3);
 
-	ret = caam_jr_enqueue(jrdev, edesc->hw_desc, rsa_priv_f3_done, req);
-	if (!ret)
-		return -EINPROGRESS;
-
-	rsa_priv_f3_unmap(jrdev, edesc, req);
+	return akcipher_enqueue_req(jrdev, rsa_priv_f_done, req);
 
 init_fail:
 	rsa_io_unmap(jrdev, edesc, req);
@@ -864,7 +941,7 @@ static int caam_rsa_set_pub_key(struct crypto_akcipher *tfm, const void *key,
 		return ret;
 
 	/* Copy key in DMA zone */
-	rsa_key->e = kzalloc(raw_key.e_sz, GFP_DMA | GFP_KERNEL);
+	rsa_key->e = kmemdup(raw_key.e, raw_key.e_sz, GFP_DMA | GFP_KERNEL);
 	if (!rsa_key->e)
 		goto err;
 
@@ -885,8 +962,6 @@ static int caam_rsa_set_pub_key(struct crypto_akcipher *tfm, const void *key,
 
 	rsa_key->e_sz = raw_key.e_sz;
 	rsa_key->n_sz = raw_key.n_sz;
-
-	memcpy(rsa_key->e, raw_key.e, raw_key.e_sz);
 
 	return 0;
 err:
@@ -968,11 +1043,11 @@ static int caam_rsa_set_priv_key(struct crypto_akcipher *tfm, const void *key,
 		return ret;
 
 	/* Copy key in DMA zone */
-	rsa_key->d = kzalloc(raw_key.d_sz, GFP_DMA | GFP_KERNEL);
+	rsa_key->d = kmemdup(raw_key.d, raw_key.d_sz, GFP_DMA | GFP_KERNEL);
 	if (!rsa_key->d)
 		goto err;
 
-	rsa_key->e = kzalloc(raw_key.e_sz, GFP_DMA | GFP_KERNEL);
+	rsa_key->e = kmemdup(raw_key.e, raw_key.e_sz, GFP_DMA | GFP_KERNEL);
 	if (!rsa_key->e)
 		goto err;
 
@@ -994,9 +1069,6 @@ static int caam_rsa_set_priv_key(struct crypto_akcipher *tfm, const void *key,
 	rsa_key->d_sz = raw_key.d_sz;
 	rsa_key->e_sz = raw_key.e_sz;
 	rsa_key->n_sz = raw_key.n_sz;
-
-	memcpy(rsa_key->d, raw_key.d, raw_key.d_sz);
-	memcpy(rsa_key->e, raw_key.e, raw_key.e_sz);
 
 	caam_rsa_set_priv_key_form(ctx, &raw_key);
 
@@ -1035,6 +1107,8 @@ static int caam_rsa_init_tfm(struct crypto_akcipher *tfm)
 		return -ENOMEM;
 	}
 
+	ctx->enginectx.op.do_one_request = akcipher_do_one_req;
+
 	return 0;
 }
 
@@ -1050,71 +1124,44 @@ static void caam_rsa_exit_tfm(struct crypto_akcipher *tfm)
 	caam_jr_free(ctx->dev);
 }
 
-static struct akcipher_alg caam_rsa = {
-	.encrypt = caam_rsa_enc,
-	.decrypt = caam_rsa_dec,
-	.sign = caam_rsa_dec,
-	.verify = caam_rsa_enc,
-	.set_pub_key = caam_rsa_set_pub_key,
-	.set_priv_key = caam_rsa_set_priv_key,
-	.max_size = caam_rsa_max_size,
-	.init = caam_rsa_init_tfm,
-	.exit = caam_rsa_exit_tfm,
-	.reqsize = sizeof(struct caam_rsa_req_ctx),
-	.base = {
-		.cra_name = "rsa",
-		.cra_driver_name = "rsa-caam",
-		.cra_priority = 3000,
-		.cra_module = THIS_MODULE,
-		.cra_ctxsize = sizeof(struct caam_rsa_ctx),
-	},
+static struct caam_akcipher_alg caam_rsa = {
+	.akcipher = {
+		.encrypt = caam_rsa_enc,
+		.decrypt = caam_rsa_dec,
+		.set_pub_key = caam_rsa_set_pub_key,
+		.set_priv_key = caam_rsa_set_priv_key,
+		.max_size = caam_rsa_max_size,
+		.init = caam_rsa_init_tfm,
+		.exit = caam_rsa_exit_tfm,
+		.reqsize = sizeof(struct caam_rsa_req_ctx),
+		.base = {
+			.cra_name = "rsa",
+			.cra_driver_name = "rsa-caam",
+			.cra_priority = 3000,
+			.cra_module = THIS_MODULE,
+			.cra_ctxsize = sizeof(struct caam_rsa_ctx),
+		},
+	}
 };
 
 /* Public Key Cryptography module initialization handler */
-static int __init caam_pkc_init(void)
+int caam_pkc_init(struct device *ctrldev)
 {
-	struct device_node *dev_node;
-	struct platform_device *pdev;
-	struct device *ctrldev;
-	struct caam_drv_private *priv;
-	u32 cha_inst, pk_inst;
+	struct caam_drv_private *priv = dev_get_drvdata(ctrldev);
+	u32 pk_inst;
 	int err;
-
-	dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
-	if (!dev_node) {
-		dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec4.0");
-		if (!dev_node)
-			return -ENODEV;
-	}
-
-	pdev = of_find_device_by_node(dev_node);
-	if (!pdev) {
-		of_node_put(dev_node);
-		return -ENODEV;
-	}
-
-	ctrldev = &pdev->dev;
-	priv = dev_get_drvdata(ctrldev);
-	of_node_put(dev_node);
-
-	/*
-	 * If priv is NULL, it's probably because the caam driver wasn't
-	 * properly initialized (e.g. RNG4 init failed). Thus, bail out here.
-	 */
-	if (!priv)
-		return -ENODEV;
+	init_done = false;
 
 	/* Determine public key hardware accelerator presence. */
-	if (priv->has_seco)
-		cha_inst = rd_reg32(&priv->jr[0]->perfmon.cha_num_ls);
+	if (priv->era < 10)
+		pk_inst = (rd_reg32(&priv->jr[0]->perfmon.cha_num_ls) &
+			   CHA_ID_LS_PK_MASK) >> CHA_ID_LS_PK_SHIFT;
 	else
-		cha_inst = rd_reg32(&priv->ctrl->perfmon.cha_num_ls);
-
-	pk_inst = (cha_inst & CHA_ID_LS_PK_MASK) >> CHA_ID_LS_PK_SHIFT;
+		pk_inst = rd_reg32(&priv->jr[0]->vreg.pkha) & CHA_VER_NUM_MASK;
 
 	/* Do not register algorithms if PKHA is not present. */
 	if (!pk_inst)
-		return -ENODEV;
+		return 0;
 
 	/* allocate zero buffer, used for padding input */
 	zero_buffer = kzalloc(CAAM_RSA_MAX_INPUT_SIZE - 1, GFP_DMA |
@@ -1122,25 +1169,28 @@ static int __init caam_pkc_init(void)
 	if (!zero_buffer)
 		return -ENOMEM;
 
-	err = crypto_register_akcipher(&caam_rsa);
-	if (err)
+	err = crypto_register_akcipher(&caam_rsa.akcipher);
+
+	if (err) {
+		kfree(zero_buffer);
 		dev_warn(ctrldev, "%s alg registration failed\n",
-			 caam_rsa.base.cra_driver_name);
-	else
+			 caam_rsa.akcipher.base.cra_driver_name);
+	} else {
+		init_done = true;
+		caam_rsa.registered = true;
 		dev_info(ctrldev, "caam pkc algorithms registered in /proc/crypto\n");
+	}
 
 	return err;
 }
 
-static void __exit caam_pkc_exit(void)
+void caam_pkc_exit(void)
 {
+	if (!init_done)
+		return;
+
+	if (caam_rsa.registered)
+		crypto_unregister_akcipher(&caam_rsa.akcipher);
+
 	kfree(zero_buffer);
-	crypto_unregister_akcipher(&caam_rsa);
 }
-
-module_init(caam_pkc_init);
-module_exit(caam_pkc_exit);
-
-MODULE_LICENSE("Dual BSD/GPL");
-MODULE_DESCRIPTION("FSL CAAM support for PKC functions of crypto API");
-MODULE_AUTHOR("Freescale Semiconductor");

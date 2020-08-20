@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright 2011 bct electronic GmbH
  * Copyright 2013 Qtechnology/AS
@@ -6,10 +7,6 @@
  * Author: Ricardo Ribalda <ricardo.ribalda@gmail.com>
  *
  * Based on leds-pca955x.c
- *
- * This file is subject to the terms and conditions of version 2 of
- * the GNU General Public License.  See the file COPYING in the main
- * directory of this archive for more details.
  *
  * LED driver for the PCA9633 I2C LED driver (7-bit slave address 0x62)
  * LED driver for the PCA9634/5 I2C LED driver (7-bit slave address set by hw.)
@@ -25,7 +22,6 @@
  * or by adding the 'nxp,hw-blink' property to the DTS.
  */
 
-#include <linux/acpi.h>
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/string.h>
@@ -35,6 +31,7 @@
 #include <linux/gpio.h>
 #include <linux/err.h>
 #include <linux/i2c.h>
+#include <linux/property.h>
 #include <linux/slab.h>
 #include <linux/of.h>
 #include <linux/platform_data/leds-pca963x.h>
@@ -99,15 +96,6 @@ static const struct i2c_device_id pca963x_id[] = {
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, pca963x_id);
-
-static const struct acpi_device_id pca963x_acpi_ids[] = {
-	{ "PCA9632", pca9633 },
-	{ "PCA9633", pca9633 },
-	{ "PCA9634", pca9634 },
-	{ "PCA9635", pca9635 },
-	{ }
-};
-MODULE_DEVICE_TABLE(acpi, pca963x_acpi_ids);
 
 struct pca963x_entry;
 
@@ -584,19 +572,17 @@ static int pca963x_set_default_values(struct pca963x *pca963x)
 	return 0;
 }
 
-#if IS_ENABLED(CONFIG_OF)
-/* Parse device tree settings */
-static int pca963x_dt_init(struct pca963x *pca963x)
+static int pca963x_get_pdata(struct i2c_client *client, struct pca963x *pca963x)
 {
-	struct device_node *np = pca963x->client->dev.of_node, *child;
 	u32 reg;
 	int res;
-	const void *type;
+	const char *type;
 	const char *label;
+	struct fwnode_handle *child;
 	int count;
 	int value;
 
-	count = of_get_child_count(np);
+	count = device_get_child_node_count(&client->dev);
 	if (!count || count > pca963x->chipdef->n_leds) {
 		dev_err(&pca963x->client->dev,
 			"device tree node must have 1..%d children\n",
@@ -604,10 +590,10 @@ static int pca963x_dt_init(struct pca963x *pca963x)
 		return -EINVAL;
 	}
 
-	for_each_child_of_node(np, child) {
+	device_for_each_child_node(&client->dev, child) {
 		struct pca963x_entry *entry;
 
-		res = of_property_read_u32(child, "reg", &reg);
+		res = fwnode_property_read_u32(child, "reg", &reg);
 		if ((res != 0) || (reg >= pca963x->chipdef->n_leds))
 			continue;
 		entry = &pca963x->entries[reg];
@@ -622,21 +608,21 @@ static int pca963x_dt_init(struct pca963x *pca963x)
 		 * additional inversion is available. If this is necessary,
 		 * configure these pins as PWM and use pwm-leds instead.
 		 */
-		if (of_property_read_bool(child, "active-high"))
+		if (fwnode_property_read_bool(child, "active-high"))
 			entry->flags |= PCA963X_LED_FLAGS_ACTIVE_HIGH;
-		else if (of_property_read_bool(child, "active-low"))
+		else if (fwnode_property_read_bool(child, "active-low"))
 			entry->flags &= ~PCA963X_LED_FLAGS_ACTIVE_HIGH;
 
 		value = 0;
-		if (of_property_read_bool(child, "keep-value"))
+		if (fwnode_property_read_bool(child, "keep-value"))
 			entry->flags |= PCA963X_LED_FLAGS_KEEP_VALUE;
-		else if (of_property_read_u32(child, "value", &value) != 0) {
-			if (of_property_read_bool(child, "default-on"))
+		else if (fwnode_property_read_u32(child, "value", &value) != 0) {
+			if (fwnode_property_read_bool(child, "default-on"))
 				value = 256;
 		}
 		entry->defval = value;
 
-		label = of_get_property(child, "label", NULL);
+		res = fwnode_property_read_string(child, "label", &label);
 		if (label) {
 			snprintf(entry->name, sizeof(entry->name),
 				"pca963x:%s", label);
@@ -647,14 +633,13 @@ static int pca963x_dt_init(struct pca963x *pca963x)
 				pca963x->client->addr, reg);
 		}
 
-		type = of_get_property(child, "type", NULL);
+		res = fwnode_property_read_string(child, "type", &type);
  		if (!type || !strcmp(type, "LED") || !strcmp(type, "")) {
 			pca963x->n_led++;
 			entry->led_cdev.name = entry->name;
 			entry->led_cdev.flags = 0;
-			entry->led_cdev.default_trigger =
-				of_get_property(child, "linux,default-trigger",
-						NULL);
+			res = fwnode_property_read_string(child, "linux,default-trigger",
+				&entry->led_cdev.default_trigger);
 		}
 #ifdef CONFIG_PWM
 		else if (!strcmp(type, "PWM")) {
@@ -675,13 +660,13 @@ static int pca963x_dt_init(struct pca963x *pca963x)
 	}
 
 	/* default to open-drain unless totem pole (push-pull) is specified */
-	if (of_property_read_bool(np, "nxp,totem-pole"))
+	if (device_property_read_bool(&client->dev, "nxp,totem-pole"))
 		pca963x->outdrv = PCA963X_TOTEM_POLE;
 	else
 		pca963x->outdrv = PCA963X_OPEN_DRAIN;
 
 	/* default to software blinking unless hardware blinking is specified */
-	if (of_property_read_bool(np, "nxp,hw-blink"))
+	if (device_property_read_bool(&client->dev, "nxp,hw-blink"))
 		pca963x->blink_type = PCA963X_HW_BLINK;
 	else
 		pca963x->blink_type = PCA963X_SW_BLINK;
@@ -697,12 +682,6 @@ static const struct of_device_id of_pca963x_match[] = {
 	{},
 };
 MODULE_DEVICE_TABLE(of, of_pca963x_match);
-#else
-static int pca963x_dt_init(struct pca963x *pca963x)
-{
-	return -ENODEV;
-}
-#endif
 
 /* Copy info from platform data */
 static int pca963x_platform_init(struct pca963x *pca963x,
@@ -784,16 +763,8 @@ static int pca963x_probe(struct i2c_client *client,
 	if (!pca963x)
 		return -ENOMEM;
 
-	if (id) {
-		pca963x->chipdef = &pca963x_chipdefs[id->driver_data];
-	} else {
-		const struct acpi_device_id *acpi_id;
+	pca963x->chipdef = &pca963x_chipdefs[id->driver_data];
 
-		acpi_id = acpi_match_device(pca963x_acpi_ids, &client->dev);
-		if (!acpi_id)
-			return -ENODEV;
-		pca963x->chipdef = &pca963x_chipdefs[acpi_id->driver_data];
-	}
 	pca963x->client = client;
 	mutex_init(&pca963x->mutex);
 
@@ -806,7 +777,7 @@ static int pca963x_probe(struct i2c_client *client,
 	if (pdata)
 		err = pca963x_platform_init(pca963x, pdata);
 	else
-		err = pca963x_dt_init(pca963x);
+		err = pca963x_get_pdata(client, pca963x);
 	if (err)
 		return err;
 
@@ -908,8 +879,7 @@ static int pca963x_remove(struct i2c_client *client)
 static struct i2c_driver pca963x_driver = {
 	.driver = {
 		.name	= "leds-pca963x",
-		.of_match_table = of_match_ptr(of_pca963x_match),
-		.acpi_match_table = ACPI_PTR(pca963x_acpi_ids),
+		.of_match_table = of_pca963x_match,
 	},
 	.probe	= pca963x_probe,
 	.remove	= pca963x_remove,

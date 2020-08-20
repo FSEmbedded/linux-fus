@@ -185,7 +185,7 @@ u_int32 rpc_MediaIPFW_Video_buffer_space_check_encoder(BUFFER_DESCRIPTOR_TYPE *p
 			/* the updated write pointer.                     */
 			uTemp = uPtr1 + uSize;
 			if (uTemp >= end)
-				uTemp += (start - end);
+				uTemp -= (end - start);
 			*puUpdateAddress = uTemp;
 			return (end - start);
 		}
@@ -203,7 +203,7 @@ u_int32 rpc_MediaIPFW_Video_buffer_space_check_encoder(BUFFER_DESCRIPTOR_TYPE *p
 	end   = pBufDesc->end;
 	uTemp  = uPtr1 + uSize;
 	if (uTemp >= end)
-		uTemp += (start - end);
+		uTemp -= (end - start);
 	*puUpdateAddress = uTemp;
 	return ((end - uPtr1) + (uPtr2 - start));
 }
@@ -231,6 +231,18 @@ void rpc_send_cmd_buf_encoder(struct shared_addr *This,
 	u_int32 *cmddata;
 	u_int32 i;
 	u_int32 *cmdword = (u_int32 *)(This->cmd_mem_vir+pCmdDesc->wptr - pCmdDesc->start);
+	u_int32 uIgnore;
+	u_int32 uSpace;
+
+	uSpace = rpc_MediaIPFW_Video_buffer_space_check_encoder(pCmdDesc,
+								FALSE,
+								0,
+								&uIgnore);
+	if (uSpace < ((cmdnum + 1) << 2) + 16) {
+		pr_err("[VPU WINDSOR] CmdBuf is no space for [%d] %d\n",
+				idx, cmdid);
+		return;
+	}
 
 	*cmdword = 0;
 	*cmdword |= ((idx & 0x000000ff) << 24);

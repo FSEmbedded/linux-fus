@@ -1,11 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Analog Devices ADV7511 HDMI transmitter driver
  *
  * Copyright 2012 Analog Devices Inc.
- *
- * Licensed under the GPL-2.
  */
 
+#include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/gpio/consumer.h>
 #include <linux/module.h>
@@ -13,14 +13,14 @@
 #include <linux/of_device.h>
 #include <linux/of_graph.h>
 #include <linux/slab.h>
-#include <linux/clk.h>
 
-#include <drm/drmP.h>
+#include <media/cec.h>
+
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_edid.h>
-
-#include <media/cec.h>
+#include <drm/drm_print.h>
+#include <drm/drm_probe_helper.h>
 
 #include "adv7511.h"
 
@@ -83,7 +83,6 @@ static const uint8_t adv7511_register_defaults[] = {
  */
 
 static const int valid_clocks[] = {
-	162000,
 	148500,
 	135000,
 	132000,
@@ -722,8 +721,8 @@ static enum drm_mode_status adv7511_mode_valid(struct adv7511 *adv7511,
 }
 
 static void adv7511_mode_set(struct adv7511 *adv7511,
-			     struct drm_display_mode *mode,
-			     struct drm_display_mode *adj_mode)
+			     const struct drm_display_mode *mode,
+			     const struct drm_display_mode *adj_mode)
 {
 	unsigned int low_refresh_rate;
 	unsigned int hsync_polarity = 0;
@@ -793,11 +792,11 @@ static void adv7511_mode_set(struct adv7511 *adv7511,
 			vsync_polarity = 1;
 	}
 
-	if (mode->vrefresh <= 24)
+	if (drm_mode_vrefresh(mode) <= 24)
 		low_refresh_rate = ADV7511_LOW_REFRESH_RATE_24HZ;
-	else if (mode->vrefresh <= 25)
+	else if (drm_mode_vrefresh(mode) <= 25)
 		low_refresh_rate = ADV7511_LOW_REFRESH_RATE_25HZ;
-	else if (mode->vrefresh <= 30)
+	else if (drm_mode_vrefresh(mode) <= 30)
 		low_refresh_rate = ADV7511_LOW_REFRESH_RATE_30HZ;
 	else
 		low_refresh_rate = ADV7511_LOW_REFRESH_RATE_NONE;
@@ -887,24 +886,12 @@ static void adv7511_bridge_disable(struct drm_bridge *bridge)
 }
 
 static void adv7511_bridge_mode_set(struct drm_bridge *bridge,
-				    struct drm_display_mode *mode,
-				    struct drm_display_mode *adj_mode)
+				    const struct drm_display_mode *mode,
+				    const struct drm_display_mode *adj_mode)
 {
 	struct adv7511 *adv = bridge_to_adv7511(bridge);
 
 	adv7511_mode_set(adv, mode, adj_mode);
-}
-
-static bool adv7511_bridge_mode_fixup(struct drm_bridge *bridge,
-				      const struct drm_display_mode *mode,
-				      struct drm_display_mode *adjusted_mode)
-{
-	struct adv7511 *adv = bridge_to_adv7511(bridge);
-
-	if (adv->type == ADV7533 || adv->type == ADV7535)
-		return adv7533_mode_fixup(adv, adjusted_mode);
-
-	return true;
 }
 
 static int adv7511_bridge_attach(struct drm_bridge *bridge)
@@ -948,7 +935,6 @@ static const struct drm_bridge_funcs adv7511_bridge_funcs = {
 	.enable = adv7511_bridge_enable,
 	.disable = adv7511_bridge_disable,
 	.mode_set = adv7511_bridge_mode_set,
-	.mode_fixup = adv7511_bridge_mode_fixup,
 	.attach = adv7511_bridge_attach,
 };
 
@@ -1042,10 +1028,10 @@ static int adv7511_init_cec_regmap(struct adv7511 *adv)
 {
 	int ret;
 
-	adv->i2c_cec = i2c_new_secondary_device(adv->i2c_main, "cec",
+	adv->i2c_cec = i2c_new_ancillary_device(adv->i2c_main, "cec",
 						adv->addr_cec);
-	if (!adv->i2c_cec)
-		return -EINVAL;
+	if (IS_ERR(adv->i2c_cec))
+		return PTR_ERR(adv->i2c_cec);
 	i2c_set_clientdata(adv->i2c_cec, adv);
 
 	adv->regmap_cec = devm_regmap_init_i2c(adv->i2c_cec,
@@ -1158,7 +1144,6 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 #if IS_ENABLED(CONFIG_OF_DYNAMIC)
 	struct device_node *remote_node = NULL, *endpoint = NULL;
 	struct of_changeset ocs;
-	struct property *prop;
 #endif
 	unsigned int main_i2c_addr = i2c->addr << 1;
 	unsigned int edid_i2c_addr = main_i2c_addr + 4;
@@ -1253,20 +1238,20 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	regmap_write(adv7511->regmap, ADV7511_REG_EDID_I2C_ADDR,
 			edid_i2c_addr);
 
-	adv7511->i2c_edid = i2c_new_secondary_device(i2c, "edid",
+	adv7511->i2c_edid = i2c_new_ancillary_device(i2c, "edid",
 					adv7511->addr_edid);
-	if (!adv7511->i2c_edid) {
-		ret = -EINVAL;
+	if (IS_ERR(adv7511->i2c_edid)) {
+		ret = PTR_ERR(adv7511->i2c_edid);
 		goto uninit_regulators;
 	}
 
 	regmap_write(adv7511->regmap, ADV7511_REG_PACKET_I2C_ADDR,
 			pkt_i2c_addr);
 
-	adv7511->i2c_packet = i2c_new_secondary_device(i2c, "packet",
+	adv7511->i2c_packet = i2c_new_ancillary_device(i2c, "packet",
 					adv7511->addr_pkt);
-	if (!adv7511->i2c_packet) {
-		ret = -EINVAL;
+	if (IS_ERR(adv7511->i2c_packet)) {
+		ret = PTR_ERR(adv7511->i2c_packet);
 		goto err_i2c_unregister_edid;
 	}
 
@@ -1324,38 +1309,31 @@ uninit_regulators:
 	if (endpoint)
 		remote_node = of_graph_get_remote_port_parent(endpoint);
 
-	if (remote_node) {
-		int num_endpoints = 0;
+	if (!remote_node)
+		return ret;
 
-		/*
-		 * Remote node should have two endpoints (input and output: us)
-		 * If remote node has more than two endpoints, probably that it
-		 * has more outputs, so there is no need to disable it.
-		 */
-		endpoint = NULL;
-		while ((endpoint = of_graph_get_next_endpoint(remote_node,
-							      endpoint)))
-			num_endpoints++;
+	/* Find remote's endpoint connected to us and detach it */
+	endpoint = NULL;
+	while ((endpoint = of_graph_get_next_endpoint(remote_node,
+						      endpoint))) {
+		struct device_node *us;
 
-		if (num_endpoints > 2) {
-			of_node_put(remote_node);
-			return ret;
-		}
+		us = of_graph_get_remote_port_parent(endpoint);
+		if (us == dev->of_node)
+			break;
+	}
+	of_node_put(remote_node);
 
-		prop = devm_kzalloc(dev, sizeof(*prop), GFP_KERNEL);
-		prop->name = devm_kstrdup(dev, "status", GFP_KERNEL);
-		prop->value = devm_kstrdup(dev, "disabled", GFP_KERNEL);
-		prop->length = 9;
-		of_changeset_init(&ocs);
-		of_changeset_update_property(&ocs, remote_node, prop);
-		ret = of_changeset_apply(&ocs);
-		if (!ret)
-			dev_warn(dev,
-				"Probe failed. Remote port '%s' disabled\n",
-				remote_node->full_name);
+	if (!endpoint)
+		return ret;
 
-		of_node_put(remote_node);
-	};
+	of_changeset_init(&ocs);
+	of_changeset_detach_node(&ocs, endpoint);
+	ret = of_changeset_apply(&ocs);
+	if (!ret)
+		dev_warn(dev,
+			 "Probe failed. Remote port '%s' disabled\n",
+			 remote_node->full_name);
 #endif
 
 	return ret;

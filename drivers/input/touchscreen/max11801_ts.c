@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Driver for MAXI MAX11801 - A Resistive touch screen controller with
  * i2c interface
@@ -6,11 +7,6 @@
  * Author: Zhang Jiejing <jiejing.zhang@freescale.com>
  *
  * Based on mcs5000_ts.c
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
  */
 
 /*
@@ -114,28 +110,26 @@ static int max11801_dcm_write_command(struct i2c_client *client, int command)
 	return i2c_smbus_write_byte(client, command);
 }
 
-static int max11801_dcm_sample_aux(struct i2c_client *client)
+static u32 max11801_dcm_sample_aux(struct i2c_client *client)
 {
 	int ret;
 	int aux = 0;
-	int sample_data;
+	u32 sample_data;
 
 	/* AUX_measurement */
 	max11801_dcm_write_command(client, AUX_measurement);
 	mdelay(5);
 	ret = i2c_smbus_read_i2c_block_data(client, FIFO_RD_AUX_MSB,
 						1, &aux_buf[0]);
-	if (ret < 0) {
-		dev_err(&client->dev, "FIFO_RD_AUX_MSB read failed (%d)\n",
-			ret);
+	if (ret < 1) {
+		dev_err(&client->dev, "FIFO_RD_AUX_MSB read fails\n");
 		return ret;
 	}
 	mdelay(5);
 	ret = i2c_smbus_read_i2c_block_data(client, FIFO_RD_AUX_LSB,
 						1, &aux_buf[1]);
-	if (ret < 0) {
-		dev_err(&client->dev, "FIFO_RD_AUX_LSB read failed (%d)\n",
-			ret);
+	if (ret < 1) {
+		dev_err(&client->dev, "FIFO_RD_AUX_LSB read fails\n");
 		return ret;
 	}
 
@@ -151,12 +145,14 @@ static int max11801_dcm_sample_aux(struct i2c_client *client)
 	return sample_data;
 }
 
-int max11801_read_adc(void)
+u32 max11801_read_adc(void)
 {
-	int adc_data;
+	u32 adc_data;
 
-	if (!max11801_client)
-		return -ENODEV;
+	if (!max11801_client) {
+		pr_err("FAIL  max11801_client not initialize\n");
+		return -1;
+	}
 	adc_data = max11801_dcm_sample_aux(max11801_client);
 
 	return adc_data;

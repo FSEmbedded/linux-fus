@@ -43,7 +43,7 @@
 	bic	r6, r6, #0x100000
 	str	r6, [r2, #0x18]
 
-	/* Switch periph2_clk_sel to run from PLL3. */
+	/* Swtich periph2_clk_sel to run from PLL3. */
 	ldr	r6, [r2, #0x14]
 	orr	r6, r6, #0x4000000
 	str	r6, [r2, #0x14]

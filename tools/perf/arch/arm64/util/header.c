@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <perf/cpumap.h>
+#include <internal/cpumap.h>
 #include <api/fs/fs.h>
+#include "debug.h"
 #include "header.h"
 
 #define MIDR "/regs/identification/midr_el1"
@@ -16,7 +19,7 @@ char *get_cpuid_str(struct perf_pmu *pmu)
 	const char *sysfs = sysfs__mountpoint();
 	int cpu;
 	u64 midr = 0;
-	struct cpu_map *cpus;
+	struct perf_cpu_map *cpus;
 	FILE *file;
 
 	if (!sysfs || !pmu || !pmu->cpus)
@@ -27,8 +30,8 @@ char *get_cpuid_str(struct perf_pmu *pmu)
 		return NULL;
 
 	/* read midr from list of cpus mapped to this pmu */
-	cpus = cpu_map__get(pmu->cpus);
-	for (cpu = 0; cpu < cpus->nr; cpu++) {
+	cpus = perf_cpu_map__get(pmu->cpus);
+	for (cpu = 0; cpu < perf_cpu_map__nr(cpus); cpu++) {
 		scnprintf(path, PATH_MAX, "%s/devices/system/cpu/cpu%d"MIDR,
 				sysfs, cpus->map[cpu]);
 
@@ -60,6 +63,34 @@ char *get_cpuid_str(struct perf_pmu *pmu)
 		buf = NULL;
 	}
 
-	cpu_map__put(cpus);
+	perf_cpu_map__put(cpus);
 	return buf;
+}
+
+#define LEN	20
+
+int soc_version_check(const char *soc_name __maybe_unused)
+{
+	FILE *soc_fd;
+	char name[LEN];
+
+	soc_fd = fopen("/sys/devices/soc0/soc_id", "r");
+	if (!soc_fd) {
+		pr_debug("fopen failed for file /sys/devices/soc0/soc_id\n");
+		return false;
+	}
+
+	if (!fgets(name, LEN, soc_fd)) {
+		pr_debug("get soc name failed\n");
+		fclose(soc_fd);
+		return false;
+	}
+	fclose(soc_fd);
+
+	name[strlen(name) - 1] = '\0';
+
+	if (!strcmp(name, soc_name))
+		return false;
+
+	return true;
 }

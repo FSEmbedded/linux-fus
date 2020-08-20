@@ -1,6 +1,5 @@
 /*
- * Copyright 2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2019 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -13,12 +12,11 @@
 	regulators {
 		reg_vsd_3v3b: regulator@2 {
 			compatible = "regulator-fixed";
-			reg = <2>;
 			regulator-name = "VSD_3V3B";
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			gpio = <&gpio_pte 11 GPIO_ACTIVE_HIGH>;
-			off-on-delay = <20000>;
+			off-on-delay-us = <20000>;
 			enable-active-high;
 		};
 	};
@@ -39,8 +37,6 @@
 	fsl,delay-line = <15>;
 	vmmc-supply = <&reg_vsd_3v3b>;
 	/delete-property/non-removable;
-	/delete-property/cd-post;
-	/delete-property/wifi-host;
 	/delete-property/pm-ignore-notify;
 	/delete-property/keep-power-in-suspend;
 	/delete-property/non-removable;

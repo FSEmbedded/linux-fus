@@ -1,14 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/of_graph.h>
@@ -136,38 +128,6 @@ void adv7533_dsi_power_off(struct adv7511 *adv)
 	regmap_write(adv->regmap_cec, 0x03, 0x0b);
 	/* disable internal timing generator */
 	regmap_write(adv->regmap_cec, 0x27, 0x0b);
-}
-
-void adv7533_mode_set(struct adv7511 *adv, struct drm_display_mode *mode)
-{
-}
-
-bool adv7533_mode_fixup(struct adv7511 *adv,
-			struct drm_display_mode *mode)
-{
-	struct mipi_dsi_device *dsi = adv->dsi;
-	int lanes, ret;
-
-	if (adv->num_dsi_lanes != 4)
-		return true;
-
-	if (mode->clock > 80000)
-		lanes = 4;
-	else
-		lanes = 3;
-
-	if (lanes != dsi->lanes) {
-		mipi_dsi_detach(dsi);
-		swap(dsi->lanes, lanes);
-		ret = mipi_dsi_attach(dsi);
-		if (ret) {
-			dev_err(&dsi->dev, "failed to change host lanes\n");
-			swap(dsi->lanes, lanes);
-			return false;
-		}
-	}
-
-	return true;
 }
 
 int adv7533_patch_registers(struct adv7511 *adv)

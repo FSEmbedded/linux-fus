@@ -72,14 +72,17 @@ wvga {					\
 //#define CONFIG_EFUSA7UL_CAPTOUCH_SITRONIX
 //#define CONFIG_EFUSA7UL_CAPTOUCH_ILITEK
 
-/* CMA: Set 64 MB for Continuous Memory Allocator */
-#define CONFIG_EFUSA7UL_CMA_SIZE 0x4000000
+/* CMA: Set 80 MB for Continuous Memory Allocator */
+#define CONFIG_EFUSA7UL_CMA_SIZE 0x5000000
 
 /* NAND */
 #define CONFIG_EFUSA7UL_NAND
 
 /* EMMC */
 #define CONFIG_EFUSA7UL_EMMC
+
+/* AUDIO */
+#define CONFIG_EFUSA7UL_AUDIO
 
 /* Network */
 #define CONFIG_EFUSA7UL_WLAN
@@ -258,6 +261,7 @@ wvga {					\
 			enable-active-high;
 		};
 
+#if 0
 		reg_dvfs: regulator_dvfs {
 			compatible = "regulator-fixed";
 			regulator-min-microvolt = <1325000>;
@@ -265,6 +269,7 @@ wvga {					\
 			regulator-name = "dvfs";
 			regulator-always-on;
 		};
+#endif
 
 		/* USB_OTG1_PWR done by USB controller, no regulator needed */
 #if 0 //###
@@ -336,8 +341,8 @@ wvga {					\
 		gpios = <&gpio5 8 0 /* sda */
 			 &gpio5 9 0 /* scl */
 			>;
-//###		i2c-gpio,sda-open-drain;
-//###		i2c-gpio,scl-open-drain;
+		i2c-gpio,sda-open-drain;
+		i2c-gpio,scl-open-drain;
 		i2c-gpio,delay-us = <2>;	/* ~100 kHz */
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -362,11 +367,13 @@ wvga {					\
 	disable-scaling;
 };
 
+#if 0
 &cpu0 {
 	arm-supply = <&reg_arm>;
 	soc-supply = <&reg_soc>;
-	dc-supply = <&reg_dvfs>;
+	//dc-supply = <&reg_dvfs>;
 };
+#endif
 
 &clks {
 	/* Set audio clock rate */
@@ -550,8 +557,9 @@ wvga {					\
 };
 
 &usbotg2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usbotg2>;
+//### no node necessary
+//### pinctrl-names = "default";
+//### pinctrl-0 = <&pinctrl_usbotg2>;
 //###	vbus-supply = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
 	pwr-active-high;
@@ -565,9 +573,9 @@ wvga {					\
 /* Either on-board WLAN or SD_A (Micro-SD slot on SKIT) */
 &usdhc1 {
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
-	pinctrl-0 = <&pinctrl_usdhc1        &pinctrl_usdhc1_cdwp>;
-	pinctrl-1 = <&pinctrl_usdhc1_100mhz &pinctrl_usdhc1_cdwp>;
-	pinctrl-2 = <&pinctrl_usdhc1_200mhz &pinctrl_usdhc1_cdwp>;
+	pinctrl-0 = <&pinctrl_usdhc1>;
+	pinctrl-1 = <&pinctrl_usdhc1_100mhz>;
+	pinctrl-2 = <&pinctrl_usdhc1_200mhz>;
 #ifdef CONFIG_EFUSA7UL_SD_A_CD
 	cd-gpios = <&gpio1 19 GPIO_ACTIVE_LOW>;
 #else
@@ -788,6 +796,7 @@ wvga {					\
 		reg = <0x41>;
 	};
 #endif
+
 	sgtl5000: sgtl5000@0a {
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
@@ -1027,11 +1036,14 @@ wvga {					\
 			>;
 		};
 
+//### no node necessary
+#if 0
 		pinctrl_usbotg2: usbotg2grp {
 			fsl,pins = <
 				/* USB_OTG2_PWR is always on */
 			>;
 		};
+#endif
 
 		pinctrl_lcdif_dat: lcdifdatgrp {
 			fsl,pins = <
@@ -1118,6 +1130,18 @@ wvga {					\
 				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x170b1
 				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x170b1
 				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x170b1
+#ifdef CONFIG_EFUSA7UL_SD_A_CD
+				/* Card Detect (CD), active low (pull-up) */
+				MX6UL_PAD_UART1_RTS_B__GPIO1_IO19	0x17000
+#endif
+#ifdef CONFIG_EFUSA7UL_SD_A_WP
+				/*
+				 * Write Protect (WP), active high (pull-up)
+				 * lock:   WP switch open, pulled high
+				 * unlock: WP switch closed, connects to GND
+				 */
+				MX6UL_PAD_UART1_CTS_B__GPIO1_IO18	0x17000
+#endif
 			>;
 		};
 
@@ -1129,6 +1153,18 @@ wvga {					\
 				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x170b9
 				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x170b9
 				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x170b9
+#ifdef CONFIG_EFUSA7UL_SD_A_CD
+				/* Card Detect (CD), active low (pull-up) */
+				MX6UL_PAD_UART1_RTS_B__GPIO1_IO19	0x17000
+#endif
+#ifdef CONFIG_EFUSA7UL_SD_A_WP
+				/*
+				 * Write Protect (WP), active high (pull-up)
+				 * lock:   WP switch open, pulled high
+				 * unlock: WP switch closed, connects to GND
+				 */
+				MX6UL_PAD_UART1_CTS_B__GPIO1_IO18	0x17000
+#endif
 			>;
 		};
 
@@ -1140,11 +1176,6 @@ wvga {					\
 				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x170f9
 				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x170f9
 				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x170f9
-			>;
-		};
-
-		pinctrl_usdhc1_cdwp: usdhc1grp-cdwp {
-			fsl,pins = <
 #ifdef CONFIG_EFUSA7UL_SD_A_CD
 				/* Card Detect (CD), active low (pull-up) */
 				MX6UL_PAD_UART1_RTS_B__GPIO1_IO19	0x17000

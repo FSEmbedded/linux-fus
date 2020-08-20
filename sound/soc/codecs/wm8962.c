@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * wm8962.c  --  WM8962 ALSA SoC Audio driver
  *
@@ -5,11 +6,6 @@
  * Copyright 2017 NXP
  *
  * Author: Mark Brown <broonie@opensource.wolfsonmicro.com>
- *
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/module.h>
@@ -2521,9 +2517,7 @@ static int wm8962_set_bias_level(struct snd_soc_component *component,
 		snd_soc_component_update_bits(component, WM8962_PWR_MGMT_1,
 				    WM8962_VMID_SEL_MASK, 0x80);
 
-		if (snd_soc_component_get_bias_level(component) == SND_SOC_BIAS_STANDBY)
-			wm8962_configure_bclk(component);
-
+		wm8962_configure_bclk(component);
 		break;
 
 	case SND_SOC_BIAS_STANDBY:
@@ -3437,8 +3431,9 @@ static int wm8962_probe(struct snd_soc_component *component)
 
 	/* This should really be moved into the regulator core */
 	for (i = 0; i < ARRAY_SIZE(wm8962->supplies); i++) {
-		ret = regulator_register_notifier(wm8962->supplies[i].consumer,
-						  &wm8962->disable_nb[i]);
+		ret = devm_regulator_register_notifier(
+						wm8962->supplies[i].consumer,
+						&wm8962->disable_nb[i]);
 		if (ret != 0) {
 			dev_err(component->dev,
 				"Failed to register regulator notifier: %d\n",
@@ -3480,15 +3475,11 @@ static int wm8962_probe(struct snd_soc_component *component)
 static void wm8962_remove(struct snd_soc_component *component)
 {
 	struct wm8962_priv *wm8962 = snd_soc_component_get_drvdata(component);
-	int i;
 
 	cancel_delayed_work_sync(&wm8962->mic_work);
 
 	wm8962_free_gpio(component);
 	wm8962_free_beep(component);
-	for (i = 0; i < ARRAY_SIZE(wm8962->supplies); i++)
-		regulator_unregister_notifier(wm8962->supplies[i].consumer,
-					      &wm8962->disable_nb[i]);
 }
 
 static const struct snd_soc_component_driver soc_component_dev_wm8962 = {

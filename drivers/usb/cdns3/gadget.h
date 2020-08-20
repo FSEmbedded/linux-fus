@@ -165,6 +165,19 @@ struct cdns3_usb_regs {
 #define USB_CONF_LGO_U2		BIT(30)
 /* SS.Inactive state entry request (used in SS mode) */
 #define USB_CONF_LGO_SSINACT	BIT(31)
+/* USB_CONF2- bitmasks */
+/*
+ * Writing 1 disables TDL calculation basing on TRB feature in controller
+ * for DMULT mode.
+ * Bit supported only for DEV_VER_V2 version.
+ */
+#define USB_CONF2_DIS_TDL_TRB		BIT(1)
+/*
+ * Writing 1 enables TDL calculation basing on TRB feature in controller
+ * for DMULT mode.
+ * Bit supported only for DEV_VER_V2 version.
+ */
+#define USB_CONF2_EN_TDL_TRB		BIT(2)
 
 /* USB_STS - bitmasks */
 /*
@@ -839,12 +852,13 @@ struct cdns3_usb_regs {
 /* USB_CAP6- bitmasks */
 /* The USBSS-DEV Controller  Internal build number. */
 #define GET_DEV_BASE_VERSION(p) ((p) & GENMASK(23, 0))
-/* The USBSS-DEV Controller  version number. */
+/* The USBSS-DEV Controller version number. */
 #define GET_DEV_CUSTOM_VERSION(p) ((p) & GENMASK(31, 24))
 
 #define DEV_VER_NXP_V1		0x00024502
 #define DEV_VER_TI_V1		0x00024509
-#define DEV_VER_LATEST		0x0002450B
+#define DEV_VER_V2		0x0002450C
+#define DEV_VER_V3		0x0002450d
 
 /* DBG_LINK1- bitmasks */
 /*
@@ -902,7 +916,7 @@ struct cdns3_usb_regs {
 /*
  * USBSS-DEV DMA interface.
  */
-#define TRBS_PER_SEGMENT	150
+#define TRBS_PER_SEGMENT	600
 
 #define ISO_MAX_INTERVAL	10
 
@@ -966,8 +980,16 @@ struct cdns3_trb {
 /* stream ID bitmasks. */
 #define TRB_STREAM_ID(p)	((p) & GENMASK(31, 16))
 
+/* Size of TD expressed in USB packets for HS/FS mode. */
+#define TRB_TDL_HS_SIZE(p)	(((p) << 16) & GENMASK(31, 16))
+#define TRB_TDL_HS_SIZE_GET(p)	(((p) & GENMASK(31, 16)) >> 16)
+
 /* transfer_len bitmasks. */
 #define TRB_LEN(p)		((p) & GENMASK(16, 0))
+
+/* Size of TD expressed in USB packets for SS mode. */
+#define TRB_TDL_SS_SIZE(p)	(((p) << 17) & GENMASK(23, 17))
+#define TRB_TDL_SS_SIZE_GET(p)	(((p) & GENMASK(23, 17)) >> 17)
 
 /* transfer_len bitmasks - bits 31:24 */
 #define TRB_BURST_LEN(p)	(((p) << 24) & GENMASK(31, 24))
@@ -1103,6 +1125,8 @@ struct cdns3_aligned_buf {
  *               this endpoint
  * @flags: flag specifying special usage of request
  * @list: used by internally allocated request to add to descmiss_req_list.
+ * @finished_trb: number of trb has already finished per request
+ * @num_of_trb: how many trbs in this request
  */
 struct cdns3_request {
 	struct usb_request		request;
@@ -1118,6 +1142,8 @@ struct cdns3_request {
 #define REQUEST_UNALIGNED		BIT(4)
 	u32				flags;
 	struct list_head		list;
+	int finished_trb;
+	int num_of_trb;
 };
 
 #define to_cdns3_request(r) (container_of(r, struct cdns3_request, request))
