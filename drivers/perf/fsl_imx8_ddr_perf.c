@@ -301,6 +301,65 @@ static const struct attribute_group *ddr_attr_groups[] = {
 	NULL,
 };
 
+static const struct attribute_group *db_attr_groups[] = {
+	&db_perf_events_attr_group,
+	&ddr_perf_format_attr_group,
+	&ddr_perf_cpumask_attr_group,
+	&ddr_perf_filter_cap_attr_group,
+	NULL,
+};
+
+static int ddr_perf_clks_enable(struct ddr_pmu *pmu)
+{
+	int err;
+
+	err = clk_prepare_enable(pmu->clk_ipg);
+	if (err)
+		return err;
+
+	err = clk_prepare_enable(pmu->clk_cnt);
+	if (err)
+		clk_disable_unprepare(pmu->clk_ipg);
+
+	return err;
+}
+
+static void ddr_perf_clks_disable(struct ddr_pmu *pmu)
+{
+	clk_disable_unprepare(pmu->clk_cnt);
+	clk_disable_unprepare(pmu->clk_ipg);
+}
+
+static bool ddr_perf_is_filtered(struct perf_event *event)
+{
+	return event->attr.config == 0x41 || event->attr.config == 0x42;
+}
+
+static u32 ddr_perf_filter_val(struct perf_event *event)
+{
+	return event->attr.config1;
+}
+
+static bool ddr_perf_filters_compatible(struct perf_event *a,
+					struct perf_event *b)
+{
+	if (!ddr_perf_is_filtered(a))
+		return true;
+	if (!ddr_perf_is_filtered(b))
+		return true;
+	return ddr_perf_filter_val(a) == ddr_perf_filter_val(b);
+}
+
+static bool ddr_perf_is_enhanced_filtered(struct perf_event *event)
+{
+	unsigned int filt;
+	struct ddr_pmu *pmu = to_ddr_pmu(event->pmu);
+
+	filt = pmu->devtype_data->quirks & DDR_CAP_AXI_ID_FILTER_ENHANCED;
+	return (filt == DDR_CAP_AXI_ID_FILTER_ENHANCED) &&
+		ddr_perf_is_filtered(event);
+}
+
 static u32 ddr_perf_alloc_counter(struct ddr_pmu *pmu, int event)
 {
 	int i;
@@ -808,7 +867,6 @@ cpuhp_state_err:
 		ddr_perf_clks_disable(pmu);
 		ida_simple_remove(&db_ida, pmu->id);
 	}
-
 	dev_warn(&pdev->dev, "i.MX8 DDR Perf PMU failed (%d), disabled\n", ret);
 	return ret;
 }

@@ -232,46 +232,6 @@ int sof_machine_check(struct snd_sof_dev *sdev)
 }
 EXPORT_SYMBOL(sof_machine_check);
 
-/*
- *			FW Boot State Transition Diagram
- *
- *    +-----------------------------------------------------------------------+
- *    |									      |
- * ------------------	     ------------------				      |
- * |		    |	     |		      |				      |
- * |   BOOT_FAILED  |	     |  READY_FAILED  |-------------------------+     |
- * |		    |	     |	              |				|     |
- * ------------------	     ------------------				|     |
- *	^			    ^					|     |
- *	|			    |					|     |
- * (FW Boot Timeout)		(FW_READY FAIL)				|     |
- *	|			    |					|     |
- *	|			    |					|     |
- * ------------------		    |		   ------------------	|     |
- * |		    |		    |		   |		    |	|     |
- * |   IN_PROGRESS  |---------------+------------->|    COMPLETE    |	|     |
- * |		    | (FW Boot OK)   (FW_READY OK) |		    |	|     |
- * ------------------				   ------------------	|     |
- *	^						|		|     |
- *	|						|		|     |
- * (FW Loading OK)			       (System Suspend/Runtime Suspend)
- *	|						|		|     |
- *	|						|		|     |
- * ------------------		------------------	|		|     |
- * |		    |		|		 |<-----+		|     |
- * |   PREPARE	    |		|   NOT_STARTED  |<---------------------+     |
- * |		    |		|		 |<---------------------------+
- * ------------------		------------------
- *    |	    ^			    |	   ^
- *    |	    |			    |	   |
- *    |	    +-----------------------+	   |
- *    |		(DSP Probe OK)		   |
- *    |					   |
- *    |					   |
- *    +------------------------------------+
- *	(System Suspend/Runtime Suspend)
- */
-
 int sof_machine_register(struct snd_sof_dev *sdev, void *pdata)
 {
 	struct snd_sof_pdata *plat_data = (struct snd_sof_pdata *)pdata;
@@ -395,7 +355,7 @@ static int sof_probe_continue(struct snd_sof_dev *sdev)
 
 	ret = snd_sof_machine_register(sdev, plat_data);
 	if (ret < 0)
-		goto fw_trace_err;
+		goto fw_run_err;
 
 	/*
 	 * Some platforms in SOF, ex: BYT, may not have their platform PM

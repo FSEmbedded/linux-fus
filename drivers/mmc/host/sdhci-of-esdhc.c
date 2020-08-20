@@ -888,6 +888,87 @@ static void esdhc_tuning_block_enable(struct sdhci_host *host, bool enable)
 	esdhc_clock_enable(host, true);
 }
 
+static void esdhc_prepare_sw_tuning(struct sdhci_host *host, u8 *window_start,
+				    u8 *window_end)
+{
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_esdhc *esdhc = sdhci_pltfm_priv(pltfm_host);
+	u8 tbstat_15_8, tbstat_7_0;
+	u32 val;
+
+	if (esdhc->quirk_tuning_erratum_type1) {
+		*window_start = 5 * esdhc->div_ratio;
+		*window_end = 3 * esdhc->div_ratio;
+		return;
+	}
+
+	/* Write TBCTL[11:8]=4'h8 */
+	val = sdhci_readl(host, ESDHC_TBCTL);
+	val &= ~(0xf << 8);
+	val |= 8 << 8;
+	sdhci_writel(host, val, ESDHC_TBCTL);
+
+	mdelay(1);
+
+	/* Read TBCTL[31:0] register and rewrite again */
+	val = sdhci_readl(host, ESDHC_TBCTL);
+	sdhci_writel(host, val, ESDHC_TBCTL);
+
+	mdelay(1);
+
+	/* Read the TBSTAT[31:0] register twice */
+	val = sdhci_readl(host, ESDHC_TBSTAT);
+	val = sdhci_readl(host, ESDHC_TBSTAT);
+
+	/* Reset data lines by setting ESDHCCTL[RSTD] */
+	sdhci_reset(host, SDHCI_RESET_DATA);
+	/* Write 32'hFFFF_FFFF to IRQSTAT register */
+	sdhci_writel(host, 0xFFFFFFFF, SDHCI_INT_STATUS);
+
+	/* If TBSTAT[15:8]-TBSTAT[7:0] > 4 * div_ratio
+	 * or TBSTAT[7:0]-TBSTAT[15:8] > 4 * div_ratio,
+	 * then program TBPTR[TB_WNDW_END_PTR] = 4 * div_ratio
+	 * and program TBPTR[TB_WNDW_START_PTR] = 8 * div_ratio.
+	 */
+	tbstat_7_0 = val & 0xff;
+	tbstat_15_8 = (val >> 8) & 0xff;
+
+	if (abs(tbstat_15_8 - tbstat_7_0) > (4 * esdhc->div_ratio)) {
+		*window_start = 8 * esdhc->div_ratio;
+		*window_end = 4 * esdhc->div_ratio;
+	} else {
+		*window_start = 5 * esdhc->div_ratio;
+		*window_end = 3 * esdhc->div_ratio;
+	}
+}
+
+static int esdhc_execute_sw_tuning(struct mmc_host *mmc, u32 opcode,
+				   u8 window_start, u8 window_end)
+{
+	struct sdhci_host *host = mmc_priv(mmc);
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_esdhc *esdhc = sdhci_pltfm_priv(pltfm_host);
+	u32 val;
+	int ret;
+
+	/* Program TBPTR[TB_WNDW_END_PTR] and TBPTR[TB_WNDW_START_PTR] */
+	val = ((u32)window_start << ESDHC_WNDW_STRT_PTR_SHIFT) &
+	      ESDHC_WNDW_STRT_PTR_MASK;
+	val |= window_end & ESDHC_WNDW_END_PTR_MASK;
+	sdhci_writel(host, val, ESDHC_TBPTR);
+
+	/* Program the software tuning mode by setting TBCTL[TB_MODE]=2'h3 */
+	val = sdhci_readl(host, ESDHC_TBCTL);
+	val &= ~ESDHC_TB_MODE_MASK;
+	val |= ESDHC_TB_MODE_SW;
+	sdhci_writel(host, val, ESDHC_TBCTL);
+
+	esdhc->in_sw_tuning = true;
+	ret = sdhci_execute_tuning(mmc, opcode);
+	esdhc->in_sw_tuning = false;
+	return ret;
+}
+
 static int esdhc_execute_tuning(struct mmc_host *mmc, u32 opcode)
 {
 	struct sdhci_host *host = mmc_priv(mmc);
@@ -910,13 +991,16 @@ static int esdhc_execute_tuning(struct mmc_host *mmc, u32 opcode)
 
 	hs400_tuning = host->flags & SDHCI_HS400_TUNING;
 
-	if (hs400_tuning) {
-		val = sdhci_readl(host, ESDHC_SDTIMNGCTL);
-		val |= ESDHC_FLW_CTL_BG;
-		sdhci_writel(host, val, ESDHC_SDTIMNGCTL);
-	}
+	do {
+		if (esdhc->quirk_limited_clk_division &&
+		    hs400_tuning)
+			esdhc_of_set_clock(host, host->clock);
 
-	if (host->tuning_err == -EAGAIN && esdhc->quirk_fixup_tuning) {
+		/* Do HW tuning */
+		val = sdhci_readl(host, ESDHC_TBCTL);
+		val &= ~ESDHC_TB_MODE_MASK;
+		val |= ESDHC_TB_MODE_3;
+		sdhci_writel(host, val, ESDHC_TBCTL);
 
 		ret = sdhci_execute_tuning(mmc, opcode);
 		if (ret)

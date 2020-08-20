@@ -172,10 +172,8 @@ static int rtl8211c_config_init(struct phy_device *phydev)
 
 static int rtl8211f_config_init(struct phy_device *phydev)
 {
-	struct device *dev = &phydev->mdio.dev;
 	u16 txdly = 0;
 	u16 rxdly = 0;
-	int ret;
 	int ret;
 
 	/* enable TX-delay for rgmii-{id,txid}, and disable it for rgmii and
