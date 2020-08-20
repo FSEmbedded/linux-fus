@@ -1638,7 +1638,7 @@ static int fsl_sai_probe(struct platform_device *pdev)
 	ret = devm_snd_soc_register_component(&pdev->dev, &fsl_component,
 			&fsl_sai_dai, 1);
 	if (ret)
-		return ret;
+		goto err_pm_disable;
 
 	if (sai->soc->imx)
 		return imx_pcm_platform_register(&pdev->dev);

@@ -1206,7 +1206,6 @@ static irqreturn_t cdns3_device_thread_irq_handler(struct cdns3 *cdns)
 	int bit;
 	u32 reg;
 
-	priv_dev = cdns->gadget_dev;
 	spin_lock_irqsave(&priv_dev->lock, flags);
 
 	reg = readl(&priv_dev->regs->usb_ists);

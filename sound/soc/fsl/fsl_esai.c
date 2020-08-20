@@ -48,6 +48,7 @@ struct fsl_esai_soc_data {
  * @spbaclk: SPBA clock (optional, depending on SoC design)
  * @soc: soc specific data
  * @lock: spin lock between hw_reset() and trigger()
+ * @lock: spin lock between hw_reset() and trigger()
  * @fifo_depth: depth of tx/rx FIFO
  * @slot_width: width of each DAI slot
  * @slots: number of slots

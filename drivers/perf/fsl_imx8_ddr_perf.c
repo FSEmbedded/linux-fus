@@ -301,65 +301,6 @@ static const struct attribute_group *ddr_attr_groups[] = {
 	NULL,
 };
 
-static const struct attribute_group *db_attr_groups[] = {
-	&db_perf_events_attr_group,
-	&ddr_perf_format_attr_group,
-	&ddr_perf_cpumask_attr_group,
-	&ddr_perf_filter_cap_attr_group,
-	NULL,
-};
-
-static int ddr_perf_clks_enable(struct ddr_pmu *pmu)
-{
-	int err;
-
-	err = clk_prepare_enable(pmu->clk_ipg);
-	if (err)
-		return err;
-
-	err = clk_prepare_enable(pmu->clk_cnt);
-	if (err)
-		clk_disable_unprepare(pmu->clk_ipg);
-
-	return err;
-}
-
-static void ddr_perf_clks_disable(struct ddr_pmu *pmu)
-{
-	clk_disable_unprepare(pmu->clk_cnt);
-	clk_disable_unprepare(pmu->clk_ipg);
-}
-
-static bool ddr_perf_is_filtered(struct perf_event *event)
-{
-	return event->attr.config == 0x41 || event->attr.config == 0x42;
-}
-
-static u32 ddr_perf_filter_val(struct perf_event *event)
-{
-	return event->attr.config1;
-}
-
-static bool ddr_perf_filters_compatible(struct perf_event *a,
-					struct perf_event *b)
-{
-	if (!ddr_perf_is_filtered(a))
-		return true;
-	if (!ddr_perf_is_filtered(b))
-		return true;
-	return ddr_perf_filter_val(a) == ddr_perf_filter_val(b);
-}
-
-static bool ddr_perf_is_enhanced_filtered(struct perf_event *event)
-{
-	unsigned int filt;
-	struct ddr_pmu *pmu = to_ddr_pmu(event->pmu);
-
-	filt = pmu->devtype_data->quirks & DDR_CAP_AXI_ID_FILTER_ENHANCED;
-	return (filt == DDR_CAP_AXI_ID_FILTER_ENHANCED) &&
-		ddr_perf_is_filtered(event);
-}
-
 static u32 ddr_perf_alloc_counter(struct ddr_pmu *pmu, int event)
 {
 	int i;
@@ -813,13 +754,17 @@ static int ddr_perf_probe(struct platform_device *pdev)
 
 	if (ret < 0) {
 		dev_err(&pdev->dev, "cpuhp_setup_state_multi failed\n");
-		goto ddr_perf_err;
+		goto cpuhp_state_err;
 	}
 
 	pmu->cpuhp_state = ret;
 
 	/* Register the pmu instance for cpu hotplug */
-	cpuhp_state_add_instance_nocalls(pmu->cpuhp_state, &pmu->node);
+	ret = cpuhp_state_add_instance_nocalls(pmu->cpuhp_state, &pmu->node);
+	if (ret) {
+		dev_err(&pdev->dev, "Error %d registering hotplug\n", ret);
+		goto cpuhp_instance_err;
+	}
 
 	/* Request irq */
 	irq = of_irq_get(np, 0);
@@ -853,9 +798,10 @@ static int ddr_perf_probe(struct platform_device *pdev)
 	return 0;
 
 ddr_perf_err:
-	if (pmu->cpuhp_state)
-		cpuhp_state_remove_instance_nocalls(pmu->cpuhp_state, &pmu->node);
-
+	cpuhp_state_remove_instance_nocalls(pmu->cpuhp_state, &pmu->node);
+cpuhp_instance_err:
+	cpuhp_remove_multi_state(pmu->cpuhp_state);
+cpuhp_state_err:
 	if (pmu->devtype_data->type & DDR_PERF_TYPE)
 		ida_simple_remove(&ddr_ida, pmu->id);
 	else {
@@ -872,6 +818,7 @@ static int ddr_perf_remove(struct platform_device *pdev)
 	struct ddr_pmu *pmu = platform_get_drvdata(pdev);
 
 	cpuhp_state_remove_instance_nocalls(pmu->cpuhp_state, &pmu->node);
+	cpuhp_remove_multi_state(pmu->cpuhp_state);
 	irq_set_affinity_hint(pmu->irq, NULL);
 
 	perf_pmu_unregister(&pmu->pmu);
