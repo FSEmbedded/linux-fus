@@ -14,8 +14,10 @@
 /* CMA: Set 320 MB for Continuous Memory Allocator */
 #define CONFIG_VC600_CMA_SIZE 0x14000000
 
-/* EMMC - SD_B - Internal SD port */
-#define CONFIG_VC600_EMMC
+/* NAND */
+/* eMMC */
+/* Will be set by Uboot */
+
 
 /* Network */
 #define CONFIG_VC600_ETH0
@@ -51,6 +53,10 @@
 / {
 	model = "VISUCONNECT 600";
 	compatible = "fus,imx6sx-picocoremx6sx", "fsl,imx6sx";
+
+	aliases {
+		nand=&gpmi;
+	};
 
 	clocks {
 		codec_osc: anaclk2 {
@@ -309,8 +315,9 @@
 };
 #endif
 
-#ifdef CONFIG_VC600_EMMC
-/* EMMC implemented via USDHC2 */
+/* Keep disabled. Will be activated by Uboot
+ * if eMMC is used as boot device.
+ */
 &usdhc2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc2_emmc>;
@@ -321,9 +328,26 @@
 	voltage-ranges = <3300 3300>;
 	no-1-8-v;
 	keep-power-in-suspend;
+	status = "disabled";
+};
+
+&dma_apbh {
+	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
+	compatible = "fus,imx6sx-dma-apbh", "fus,imx28-dma-apbh";
+	iram = <&ocram>;
+};
+
+&gpmi {
+	/* Switch to F&S implementation of GPMI NAND driver */
+	compatible = "fus,imx6sx-gpmi-nand";
+	pinctrl-names = "default";
+//###	pinctrl-0 = <&pinctrl_gpmi_nand>;
+	fus,skipblocks = <2>;
+	fus,chunk1k;
+	fus,ecc_strength = <8>;		/* Spare area 64 bytes */
+//###	fus,ecc_strength = <52>;	/* Spare area 224 bytes */
 	status = "okay";
 };
-#endif
 
 &iomuxc {
 	pinctrl-names = "default";
@@ -472,7 +496,6 @@
 		};
 #endif
 
-#ifdef CONFIG_VC600_EMMC
 		/* EMMC */
 		pinctrl_usdhc2_emmc: usdhc2grp-emmc {
 			fsl,pins = <
@@ -489,7 +512,6 @@
 				MX6SX_PAD_NAND_RE_B__USDHC2_RESET_B	0x17091
 			>;
 		};
-#endif
 
 	};
 };
