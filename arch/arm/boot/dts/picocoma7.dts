@@ -11,8 +11,8 @@
  /* Set board revision as 3-digit number, e.g. 100 for board rev. 1.00 */
 #define CONFIG_PICOCOMA7_BOARD_REVISION	100
 
- /* CMA: Set 64 MB for Continuous Memory Allocator */
-#define CONFIG_PICOCOMA7_CMA_SIZE 0x4000000
+ /* CMA: Set 72 MB for Continuous Memory Allocator */
+#define CONFIG_PICOCOMA7_CMA_SIZE 0x4800000
 
 /* Ethernet, pins 1-4*/
 #define CONFIG_PICOCOMA7_ETH_A
@@ -328,7 +328,7 @@ chosen {
 	pinctrl-0 = <&pinctrl_usb_otg2>;
 	vbus-supply = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
-	pwr-active-high;
+	power-active-high;
 	disable-over-current;
 	status = "okay";
 };
@@ -432,8 +432,6 @@ chosen {
 };
 
 &cpu0 {
-	arm-supply = <&reg_arm>;
-	soc-supply = <&reg_soc>;
 	dc-supply = <&reg_dvfs>;
 };
 

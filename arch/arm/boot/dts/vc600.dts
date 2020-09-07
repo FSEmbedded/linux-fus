@@ -303,7 +303,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg2>;
 	dr_mode = "host";
-	pwr-active-high;
+	power-active-high;
 	over-current-active-low;
 	status = "okay";
 };

@@ -866,7 +866,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbh1>;
 //###	vbus-supply = <&reg_usb_h1_vbus>;
-	pwr-active-high;
+	power-active-high;
 	disable-over-current;
 	status = "okay";
 };

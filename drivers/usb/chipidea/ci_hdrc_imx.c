@@ -144,9 +144,6 @@ static struct imx_usbmisc_data *usbmisc_get_init_data(struct device *dev)
 
 	data->dev = &misc_pdev->dev;
 
-	if (of_find_property(np, "pwr-active-high", NULL))
-		data->pwr_active_high = 1;
-
 	/*
 	 * Check the various over current related properties. If over current
 	 * detection is disabled we're not interested in the polarity.

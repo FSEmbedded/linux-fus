@@ -787,7 +787,7 @@
 	pinctrl-names ="default";
 	pinctrl-0 = <&pinctrl_usbotg2>;
 //###	vbus-supply = <&reg_usb_otg2_vbus>;
-	pwr-active-high;
+	power-active-high;
 	disable-over-current;
 	picophy,pre-emp-curr-control = <3>;
 	picophy,dc-vol-level-adjust = <7>;
@@ -1122,8 +1122,9 @@
 		};
 #endif
 
-		pinctrl_pmic: pmicirq {
+		pinctrl_pmic: pmic0grp {
 			fsl,pins = <
+				/* IRQn */
 				MX8MM_IOMUXC_SAI5_RXD3_GPIO3_IO24		0x00041
 			>;
 		};

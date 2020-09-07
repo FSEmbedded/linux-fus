@@ -12,7 +12,7 @@
 #define CONFIG_GAR1_BOARD_REVISION	140
 
 /* CMA: Set 64 MB for Continuous Memory Allocator */
-#define CONFIG_GAR1_CMA_SIZE 0x4000000
+#define CONFIG_GAR1_CMA_SIZE 0x4800000
 
 /* NAND */
 #define CONFIG_GAR1_NAND
@@ -279,7 +279,7 @@
 	pinctrl-0 = <&pinctrl_usbotg2>;
 //###	vbus-supply = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
-	pwr-active-high;
+	power-active-high;
 	disable-over-current;
 	status = "okay";
 };

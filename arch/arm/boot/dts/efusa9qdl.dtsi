@@ -964,8 +964,11 @@
 		interrupt-parent = <&gpio1>;
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
-		x-rev;
-		y-rev;
+		/* using global touchscreen_parse_properties, instead of
+		 * specific parsing.
+		 */
+		touchscreen-inverted-x;
+		touchscreen-inverted-y;
 	};
 #endif
 
@@ -1178,7 +1181,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbh1>;
 //###	vbus-supply = <&reg_usb_h1_vbus>;
-	pwr-active-high;
+	power-active-high;
 	disable-over-current;
 	status = "okay";
 };

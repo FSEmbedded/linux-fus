@@ -407,8 +407,8 @@
 			buck7_reg: regulator@6 {
 				reg = <6>;
 				regulator-compatible = "buck7";
-				regulator-min-microvolt = <1500000>;
-				regulator-max-microvolt = <1605000>;
+				regulator-min-microvolt = <1605000>;
+				regulator-max-microvolt = <1995000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
@@ -819,7 +819,7 @@
 	pinctrl-names ="default";
 	pinctrl-0 = <&pinctrl_usbotg2>;
 	//vbus-supply = <&reg_usb_otg2_vbus>;
-	pwr-active-high;
+	power-active-high;
 	disable-over-current;
 	picophy,pre-emp-curr-control = <3>;
 	picophy,dc-vol-level-adjust = <7>;

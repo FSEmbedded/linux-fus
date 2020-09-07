@@ -86,6 +86,7 @@ struct pwm_imx27_chip {
 	struct clk	*clk_32k;
 	void __iomem	*mmio_base;
 	struct pwm_chip	chip;
+	int keep_power;
 };
 
 #define to_pwm_imx27_chip(chip)	container_of(chip, struct pwm_imx27_chip, chip)
@@ -286,9 +287,19 @@ static int pwm_imx27_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 
 		writel(cr, imx->mmio_base + MX3_PWMCR);
 	} else if (cstate.enabled) {
-		writel(0, imx->mmio_base + MX3_PWMCR);
-
-		pwm_imx27_clk_disable_unprepare(chip);
+		cr = 0;
+		if (imx->keep_power)
+		{
+			cr = MX3_PWMCR_EN;
+			if (state->polarity == PWM_POLARITY_INVERSED)
+				cr |= FIELD_PREP(MX3_PWMCR_POUTC,
+						MX3_PWMCR_POUTC_INVERTED);
+			writel(cr, imx->mmio_base + MX3_PWMCR);
+		}
+		else {
+			writel(cr, imx->mmio_base + MX3_PWMCR);
+			pwm_imx27_clk_disable_unprepare(chip);
+		}
 	}
 
 	return 0;
@@ -308,6 +319,7 @@ MODULE_DEVICE_TABLE(of, pwm_imx27_dt_ids);
 
 static int pwm_imx27_probe(struct platform_device *pdev)
 {
+	struct device_node *np = pdev->dev.of_node;
 	struct pwm_imx27_chip *imx;
 
 	imx = devm_kzalloc(&pdev->dev, sizeof(*imx), GFP_KERNEL);
@@ -353,6 +365,11 @@ static int pwm_imx27_probe(struct platform_device *pdev)
 
 	imx->chip.of_xlate = of_pwm_xlate_with_flags;
 	imx->chip.of_pwm_n_cells = 3;
+
+	if (of_property_read_bool(np, "keep-power"))
+		imx->keep_power = 1;
+	else
+		imx->keep_power = 0;
 
 	imx->mmio_base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(imx->mmio_base))

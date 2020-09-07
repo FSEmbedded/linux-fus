@@ -893,7 +893,7 @@ static unsigned long ov5640_calc_sys_clk(struct ov5640_dev *sensor,
 			 * We have reached the maximum allowed PLL1 output,
 			 * increase sysdiv.
 			 */
-			if (!rate)
+			if (!_rate)
 				break;
 
 			/*
@@ -1381,8 +1381,18 @@ static int ov5640_set_stream_mipi(struct ov5640_dev *sensor, bool on)
 	if (ret)
 		return ret;
 
-	return ov5640_write_reg(sensor, OV5640_REG_FRAME_CTRL01,
+	ret = ov5640_write_reg(sensor, OV5640_REG_FRAME_CTRL01,
 				on ? 0x00 : 0x0f);
+	if (ret)
+		return ret;
+
+	ret = ov5640_write_reg(sensor, OV5640_REG_SYS_CTRL0,
+				on ? 0x02 : 0x42);
+	if (ret)
+		return ret;
+
+	msleep(100);
+	return ret;
 }
 
 static int ov5640_get_sysclk(struct ov5640_dev *sensor)
@@ -1668,11 +1678,6 @@ ov5640_find_mode(struct ov5640_dev *sensor, enum ov5640_frame_rate fr,
 
 	if (!mode ||
 	    (!nearest && (mode->hact != width || mode->vact != height)))
-		return NULL;
-
-	/* Only 640x480 can operate at 60fps (for now) */
-	if (fr == OV5640_60_FPS &&
-	    !(mode->hact == 640 && mode->vact == 480))
 		return NULL;
 
 	return mode;

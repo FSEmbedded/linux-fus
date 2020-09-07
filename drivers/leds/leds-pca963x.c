@@ -44,6 +44,8 @@
 #define PCA963X_LED_MASK	0x3	/* MASK LED */
 #define PCA963X_LED_OUT		0x8	/* LEDOUT Register */
 
+#define PCA963X_MODE2_OUTDRV	0x04	/* Open-drain or totem pole */
+#define PCA963X_MODE2_INVRT	0x10	/* Normal or inverted direction */
 #define PCA963X_MODE2_DMBLNK	0x20	/* Enable blinking */
 
 #define PCA963X_MODE1		0x00

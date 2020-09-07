@@ -16,6 +16,7 @@
 
 #include "common.h"
 #include "cpuidle.h"
+#include "hardware.h"
 
 #if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 static void __init imx6ul_enet_clk_init(void)
@@ -29,7 +30,7 @@ static void __init imx6ul_enet_clk_init(void)
 		return;
 	}
 
-	np = of_find_node_by_path("/soc/aips-bus@02100000/ethernet@02188000");
+	np = of_find_node_by_path("/soc/aips-bus@2100000/ethernet@2188000");
 	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				   IMX6UL_GPR1_ENET1_CLK_OUTPUT,
@@ -38,7 +39,7 @@ static void __init imx6ul_enet_clk_init(void)
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				   IMX6UL_GPR1_ENET1_CLK_OUTPUT, 0);
 
-	np = of_find_node_by_path("/soc/aips-bus@02000000/ethernet@020b4000");
+	np = of_find_node_by_path("/soc/aips-bus@2000000/ethernet@20b4000");
 	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				   IMX6UL_GPR1_ENET2_CLK_OUTPUT,
@@ -65,16 +66,18 @@ static int ksz8081_phy_fixup(struct phy_device *dev)
 
 static void __init imx6ul_enet_phy_init(void)
 {
-	if (IS_BUILTIN(CONFIG_PHYLIB))
-		phy_register_fixup_for_uid(PHY_ID_KSZ8081, MICREL_PHY_ID_MASK,
-					   ksz8081_phy_fixup);
+	phy_register_fixup_for_uid(PHY_ID_KSZ8081, MICREL_PHY_ID_MASK,
+				   ksz8081_phy_fixup);
 }
 
 static inline void imx6ul_enet_init(void)
 {
 	imx6ul_enet_clk_init();
 	imx6ul_enet_phy_init();
-	imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ul-ocotp");
+	if (cpu_is_imx6ul())
+		imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ul-ocotp");
+	else
+		imx6_enet_mac_init("fsl,imx6ul-fec", "fsl,imx6ull-ocotp");
 }
 #endif /* CONFIG_FEC || CONFIG_FEC_MODULE */
 
@@ -91,7 +94,7 @@ static void imx6ul_sai_init(void)
 	}
 
 	/* Set MCLK direction depending on fsl,mclk-out property */
-	np = of_find_node_by_path("/soc/aips-bus@02000000/spba-bus@02000000/sai@02028000");
+	np = of_find_node_by_path("/soc/aips-bus@2000000/spba-bus@2000000/sai@2028000");
 	if (np && of_get_property(np, "fsl,mclk-out", NULL))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				IMX6UL_GPR1_SAI1_MCLK_DIR, IMX6UL_GPR1_SAI1_MCLK_DIR);
@@ -99,7 +102,7 @@ static void imx6ul_sai_init(void)
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				IMX6UL_GPR1_SAI1_MCLK_DIR, 0);
 
-	np = of_find_node_by_path("/soc/aips-bus@02000000/spba-bus@02000000/sai@0202c000");
+	np = of_find_node_by_path("/soc/aips-bus@2000000/spba-bus@2000000/sai@202c000");
 	if (np && of_get_property(np, "fsl,mclk-out", NULL))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				IMX6UL_GPR1_SAI2_MCLK_DIR, IMX6UL_GPR1_SAI2_MCLK_DIR);
@@ -107,7 +110,7 @@ static void imx6ul_sai_init(void)
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				IMX6UL_GPR1_SAI2_MCLK_DIR, 0);
 
-	np = of_find_node_by_path("/soc/aips-bus@02000000/spba-bus@02000000/sai@02030000");
+	np = of_find_node_by_path("/soc/aips-bus@2000000/spba-bus@2000000/sai@2030000");
 	if (np && of_get_property(np, "fsl,mclk-out", NULL))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				IMX6UL_GPR1_SAI3_MCLK_DIR, IMX6UL_GPR1_SAI3_MCLK_DIR);
@@ -133,6 +136,7 @@ static void __init imx6ul_init_machine(void)
 #if defined(CONFIG_SND_SOC_FSL_SAI) || defined(CONFIG_SND_SOC_FSL_SAI_MODULE)
 	imx6ul_sai_init();
 #endif
+	imx_anatop_init();
 	imx6ul_pm_init();
 }
 

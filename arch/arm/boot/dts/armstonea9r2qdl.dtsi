@@ -775,8 +775,11 @@
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
 //#endif
 		reset-gpios = <&gpio1 29 GPIO_ACTIVE_LOW>;
-		x-rev;
-		y-rev;
+		/* using global touchscreen_parse_properties, instead of
+		 * specific parsing.
+		 */
+		touchscreen-inverted-x;
+		touchscreen-inverted-y;
 		linux,wakeup;
 	};
 #endif

@@ -72,17 +72,14 @@ wvga {					\
 //#define CONFIG_EFUSA7UL_CAPTOUCH_SITRONIX
 //#define CONFIG_EFUSA7UL_CAPTOUCH_ILITEK
 
-/* CMA: Set 80 MB for Continuous Memory Allocator */
-#define CONFIG_EFUSA7UL_CMA_SIZE 0x5000000
+/* CMA: Set 72 MB for Continuous Memory Allocator */
+#define CONFIG_EFUSA7UL_CMA_SIZE 0x4800000
 
 /* NAND */
 #define CONFIG_EFUSA7UL_NAND
 
 /* EMMC */
 #define CONFIG_EFUSA7UL_EMMC
-
-/* AUDIO */
-#define CONFIG_EFUSA7UL_AUDIO
 
 /* Network */
 #define CONFIG_EFUSA7UL_WLAN
@@ -261,7 +258,6 @@ wvga {					\
 			enable-active-high;
 		};
 
-#if 0
 		reg_dvfs: regulator_dvfs {
 			compatible = "regulator-fixed";
 			regulator-min-microvolt = <1325000>;
@@ -269,7 +265,6 @@ wvga {					\
 			regulator-name = "dvfs";
 			regulator-always-on;
 		};
-#endif
 
 		/* USB_OTG1_PWR done by USB controller, no regulator needed */
 #if 0 //###
@@ -341,8 +336,8 @@ wvga {					\
 		gpios = <&gpio5 8 0 /* sda */
 			 &gpio5 9 0 /* scl */
 			>;
-		i2c-gpio,sda-open-drain;
-		i2c-gpio,scl-open-drain;
+//###		i2c-gpio,sda-open-drain;
+//###		i2c-gpio,scl-open-drain;
 		i2c-gpio,delay-us = <2>;	/* ~100 kHz */
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -367,13 +362,9 @@ wvga {					\
 	disable-scaling;
 };
 
-#if 0
 &cpu0 {
-	arm-supply = <&reg_arm>;
-	soc-supply = <&reg_soc>;
-	//dc-supply = <&reg_dvfs>;
+	dc-supply = <&reg_dvfs>;
 };
-#endif
 
 &clks {
 	/* Set audio clock rate */
@@ -404,12 +395,16 @@ wvga {					\
 		ethphy0: ethernet-phy@0 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <0>;
+			clocks = <&clks IMX6UL_CLK_ENET_REF>;
+			clock-names = "rmii-ref";
 		};
 
 #ifdef CONFIG_EFUSA7UL_ETH1
 		ethphy1: ethernet-phy@3 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <3>;
+			clocks = <&clks IMX6UL_CLK_ENET2_REF>;
+			clock-names = "rmii-ref";
 		};
 #endif
 	};
@@ -557,12 +552,9 @@ wvga {					\
 };
 
 &usbotg2 {
-//### no node necessary
-//### pinctrl-names = "default";
-//### pinctrl-0 = <&pinctrl_usbotg2>;
 //###	vbus-supply = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
-	pwr-active-high;
+	power-active-high;
 	disable-over-current;
 	status = "okay";
 };
@@ -701,8 +693,11 @@ wvga {					\
 		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
 		interrupt-parent = <&gpio5>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
-		x-rev;
-		y-rev;
+		/* using global touchscreen_parse_properties, instead of
+		 * specific parsing.
+		 */
+		touchscreen-inverted-x;
+		touchscreen-inverted-y;
 	};
 #endif
 
@@ -796,7 +791,6 @@ wvga {					\
 		reg = <0x41>;
 	};
 #endif
-
 	sgtl5000: sgtl5000@0a {
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
@@ -1035,15 +1029,6 @@ wvga {					\
 				MX6UL_PAD_GPIO1_IO00__ANATOP_OTG1_ID	0x1b000
 			>;
 		};
-
-//### no node necessary
-#if 0
-		pinctrl_usbotg2: usbotg2grp {
-			fsl,pins = <
-				/* USB_OTG2_PWR is always on */
-			>;
-		};
-#endif
 
 		pinctrl_lcdif_dat: lcdifdatgrp {
 			fsl,pins = <

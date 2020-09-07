@@ -180,6 +180,30 @@ static inline void restore_output(struct snd_soc_component *component,
 		mute_mask, mute_reg);
 }
 
+static void power_vag_up(struct snd_soc_component *component)
+{
+	snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_POWER,
+		SGTL5000_VAG_POWERUP, SGTL5000_VAG_POWERUP);
+}
+
+
+static void power_vag_down(struct snd_soc_component *component)
+{
+	const u32 mask = SGTL5000_DAC_POWERUP | SGTL5000_ADC_POWERUP;
+
+	/*
+	 * Don't clear VAG_POWERUP, when both DAC and ADC are
+	 * operational to prevent inadvertently starving the
+	 * other one of them.
+	 */
+	if ((snd_soc_component_read32(component, SGTL5000_CHIP_ANA_POWER) &
+			mask) != mask) {
+		snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_POWER,
+			SGTL5000_VAG_POWERUP, 0);
+		msleep(400);
+	}
+}
+
 static void vag_power_on(struct snd_soc_component *component, u32 source)
 {
 	if (snd_soc_component_read32(component, SGTL5000_CHIP_ANA_POWER) &
@@ -286,31 +310,6 @@ static int mic_bias_event(struct snd_soc_dapm_widget *w,
 	}
 	return 0;
 }
-
-static void power_vag_up(struct snd_soc_component *component)
-{
-	snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_POWER,
-		SGTL5000_VAG_POWERUP, SGTL5000_VAG_POWERUP);
-}
-
-
-static void power_vag_down(struct snd_soc_component *component)
-{
-	const u32 mask = SGTL5000_DAC_POWERUP | SGTL5000_ADC_POWERUP;
-
-	/*
-	 * Don't clear VAG_POWERUP, when both DAC and ADC are
-	 * operational to prevent inadvertently starving the
-	 * other one of them.
-	 */
-	if ((snd_soc_component_read32(component, SGTL5000_CHIP_ANA_POWER) &
-			mask) != mask) {
-		snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_POWER,
-			SGTL5000_VAG_POWERUP, 0);
-		msleep(400);
-	}
-}
-
 
 static int vag_and_mute_control(struct snd_soc_component *component,
 				 int event, int event_source)
@@ -1384,7 +1383,8 @@ static int sgtl5000_set_power_regs(struct snd_soc_component *component)
 		 * if vddio == vdda the source of charge pump should be
 		 * assigned manually to VDDIO
 		 */
-		if (vddio == vdda) {
+		if (regulator_is_equal(sgtl5000->supplies[VDDA].consumer,
+				       sgtl5000->supplies[VDDIO].consumer)) {
 			lreg_ctrl |= SGTL5000_VDDC_ASSN_OVRD;
 			lreg_ctrl |= SGTL5000_VDDC_MAN_ASSN_VDDIO <<
 				    SGTL5000_VDDC_MAN_ASSN_SHIFT;
@@ -1654,83 +1654,13 @@ static void sgtl5000_fill_defaults(struct i2c_client *client)
 	}
 }
 
-#if IS_ENABLED(CONFIG_OF)
-static int sgtl5000_dt_init(const struct i2c_client *client,
-			    struct sgtl5000_priv *sgtl5000)
-{
-	struct device_node *np = client->dev.of_node;
-	u32 value;
-
-	if (!np)
-		return 0;
-
-	if (of_property_read_bool(np, "mono2both"))
-		sgtl5000->mono2both = 1;
-
-	if (of_property_read_bool(np, "no-standby"))
-		sgtl5000->no_standby = 1;
-
-	sgtl5000->lrclk_strength = I2S_LRCLK_STRENGTH_LOW;
-	if (!of_property_read_u32(np, "lrclk-strength", &value)) {
-		if (value > I2S_LRCLK_STRENGTH_HIGH)
-			value = I2S_LRCLK_STRENGTH_HIGH;
-		sgtl5000->lrclk_strength = value;
-	}
-
-	if (!of_property_read_u32(np,
-		"micbias-resistor-k-ohms", &value)) {
-		switch (value) {
-		case SGTL5000_MICBIAS_OFF:
-			sgtl5000->micbias_resistor = 0;
-			break;
-		case SGTL5000_MICBIAS_2K:
-			sgtl5000->micbias_resistor = 1;
-			break;
-		case SGTL5000_MICBIAS_4K:
-			sgtl5000->micbias_resistor = 2;
-			break;
-		case SGTL5000_MICBIAS_8K:
-			sgtl5000->micbias_resistor = 3;
-			break;
-		default:
-			sgtl5000->micbias_resistor = 2;
-			dev_err(&client->dev,
-				"Unsuitable MicBias resistor\n");
-		}
-	} else {
-		/* default is 4Kohms */
-		sgtl5000->micbias_resistor = 2;
-	}
-	if (!of_property_read_u32(np,
-		"micbias-voltage-m-volts", &value)) {
-		/* 1250mV => 0 */
-		/* steps of 250mV */
-		if ((value >= 1250) && (value <= 3000))
-			sgtl5000->micbias_voltage = (value / 250) - 5;
-		else {
-			sgtl5000->micbias_voltage = 0;
-			dev_err(&client->dev,
-				"Unsuitable MicBias resistor\n");
-		}
-	} else {
-		sgtl5000->micbias_voltage = 0;
-	}
-
-	return 0;
-}
-#else
-static inline int sgtl5000_dt_init(struct i2c_client *client,
-				   struct sgtl5000_priv *sgtl5000)
-{
-	return 0;
-}
-#endif
-
 static int sgtl5000_i2c_probe(struct i2c_client *client,
 			      const struct i2c_device_id *id)
 {
 	struct sgtl5000_priv *sgtl5000;
 	int ret, reg, rev;
+	struct device_node *np = client->dev.of_node;
+	u32 value;
 	u16 ana_pwr;
 
 	sgtl5000 = devm_kzalloc(&client->dev, sizeof(*sgtl5000), GFP_KERNEL);
@@ -1738,10 +1668,6 @@ static int sgtl5000_i2c_probe(struct i2c_client *client,
 		return -ENOMEM;
 
 	i2c_set_clientdata(client, sgtl5000);
-
-	ret = sgtl5000_dt_init(client, sgtl5000);
-	if (ret < 0)
-		return ret;
 
 	ret = sgtl5000_enable_regulators(client);
 	if (ret)
@@ -1832,6 +1758,69 @@ static int sgtl5000_i2c_probe(struct i2c_client *client,
 		dev_err(&client->dev,
 			"Error %d setting CHIP_ANA_POWER to %04x\n",
 			ret, ana_pwr);
+
+	if (np) {
+		if (!of_property_read_u32(np,
+			"micbias-resistor-k-ohms", &value)) {
+			switch (value) {
+			case SGTL5000_MICBIAS_OFF:
+				sgtl5000->micbias_resistor = 0;
+				break;
+			case SGTL5000_MICBIAS_2K:
+				sgtl5000->micbias_resistor = 1;
+				break;
+			case SGTL5000_MICBIAS_4K:
+				sgtl5000->micbias_resistor = 2;
+				break;
+			case SGTL5000_MICBIAS_8K:
+				sgtl5000->micbias_resistor = 3;
+				break;
+			default:
+				sgtl5000->micbias_resistor = 2;
+				dev_err(&client->dev,
+					"Unsuitable MicBias resistor\n");
+			}
+		} else {
+			/* default is 4Kohms */
+			sgtl5000->micbias_resistor = 2;
+		}
+		if (!of_property_read_u32(np,
+			"micbias-voltage-m-volts", &value)) {
+			/* 1250mV => 0 */
+			/* steps of 250mV */
+			if ((value >= 1250) && (value <= 3000))
+				sgtl5000->micbias_voltage = (value / 250) - 5;
+			else {
+				sgtl5000->micbias_voltage = 0;
+				dev_err(&client->dev,
+					"Unsuitable MicBias voltage\n");
+			}
+		} else {
+			sgtl5000->micbias_voltage = 0;
+		}
+	}
+
+	sgtl5000->mono2both = 0;
+	if (of_property_read_bool(np, "mono2both"))
+		sgtl5000->mono2both = 1;
+
+	sgtl5000->no_standby = 0;
+	if (of_property_read_bool(np, "no-standby"))
+		sgtl5000->no_standby = 1;
+
+	sgtl5000->lrclk_strength = I2S_LRCLK_STRENGTH_LOW;
+	if (!of_property_read_u32(np, "lrclk-strength", &value)) {
+		if (value > I2S_LRCLK_STRENGTH_HIGH)
+			value = I2S_LRCLK_STRENGTH_HIGH;
+		sgtl5000->lrclk_strength = value;
+	}
+
+	sgtl5000->sclk_strength = I2S_SCLK_STRENGTH_LOW;
+	if (!of_property_read_u32(np, "sclk-strength", &value)) {
+		if (value > I2S_SCLK_STRENGTH_HIGH)
+			value = I2S_SCLK_STRENGTH_HIGH;
+		sgtl5000->sclk_strength = value;
+	}
 
 	/* Ensure sgtl5000 will start with sane register values */
 	sgtl5000_fill_defaults(client);

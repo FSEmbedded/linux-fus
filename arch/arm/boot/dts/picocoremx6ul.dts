@@ -74,8 +74,8 @@ wvga {					\
 //#define CONFIG_PICOCOREMX6UL_CAPTOUCH_SITRONIX
 //#define CONFIG_PICOCOREMX6UL_CAPTOUCH_ILITEK
 
-/* CMA: Set 64 MB for Continuous Memory Allocator */
-#define CONFIG_PICOCOREMX6UL_CMA_SIZE 0x4000000
+/* CMA: Set 72 MB for Continuous Memory Allocator */
+#define CONFIG_PICOCOREMX6UL_CMA_SIZE 0x4800000
 
 /* NAND */
 #define CONFIG_PICOCOREMX6UL_NAND
@@ -258,6 +258,14 @@ wvga {					\
 		};
 #endif
 
+		reg_dvfs: regulator_dvfs {
+			compatible = "regulator-fixed";
+			regulator-min-microvolt = <1325000>;
+			regulator-max-microvolt = <1325000>;
+			regulator-name = "dvfs";
+			regulator-always-on;
+		};
+
 #ifdef CONFIG_PICOCOREMX6UL_USB_OTG1
 		reg_usb_otg1_vbus: usb_otg1_vbus {
 			compatible = "regulator-fixed";
@@ -331,9 +339,7 @@ wvga {					\
 };
 
 &cpu0 {
-	arm-supply = <&reg_arm>;
-	soc-supply = <&reg_soc>;
-	//dc-supply = <&reg_dvfs>;
+	dc-supply = <&reg_dvfs>;
 };
 
 &clks {
@@ -403,12 +409,16 @@ wvga {					\
 		ethphy0: ethernet-phy@0 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <0>;
+			clocks = <&clks IMX6UL_CLK_ENET_REF>;
+			clock-names = "rmii-ref";
 		};
 
 #ifdef CONFIG_PICOCOREMX6UL_ETH1
 		ethphy1: ethernet-phy@3 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <3>;
+			clocks = <&clks IMX6UL_CLK_ENET2_REF>;
+			clock-names = "rmii-ref";
 		};
 #endif
 	};
@@ -563,8 +573,11 @@ wvga {					\
 		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
 		interrupt-parent = <&gpio5>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
-		x-rev;
-		y-rev;
+		/* using global touchscreen_parse_properties, instead of
+		 * specific parsing.
+		 */
+		touchscreen-inverted-x;
+		touchscreen-inverted-y;
 	};
 #endif
 
@@ -716,7 +729,7 @@ wvga {					\
 	vbus-wakeup = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
 	disable-over-current;
-	pwr-active-high;
+	power-active-high;
 	status = "okay";
 };
 #endif

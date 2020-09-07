@@ -6,8 +6,8 @@
  * published by the Free Software Foundation.
  */
 
-/* CMA: Set 64 MB for Continuous Memory Allocator */
-#define CONFIG_CUBEA7UL_CMA_SIZE 0x4000000
+/* CMA: Set 72 MB for Continuous Memory Allocator */
+#define CONFIG_CUBEA7UL_CMA_SIZE 0x4800000
 
 /* Set if USB OTG2 has power switch with over-current detection equipped */
 //#define CONFIG_CUBEA7UL_HAVE_USB_OTG2_PWR_OC
@@ -247,7 +247,7 @@
 //###	vbus-supply = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
 #ifdef CONFIG_CUBEA7UL_HAVE_USB_OTG2_PWR_OC
-	pwr-active-high;
+	power-active-high;
 	over-current-active-low;
 #else
 	disable-over-current;

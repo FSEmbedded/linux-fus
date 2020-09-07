@@ -498,7 +498,7 @@ static struct flexcan_mb __iomem *flexcan_get_mb(const struct flexcan_priv *priv
 		(&priv->regs->mb[bank][priv->mb_size * mb_index]);
 }
 
-static int flexcan_enter_low_power_ack(struct flexcan_priv *priv)
+static int flexcan_low_power_enter_ack(struct flexcan_priv *priv)
 {
 	struct flexcan_regs __iomem *regs = priv->regs;
 	unsigned int timeout = FLEXCAN_TIMEOUT_US / 10;
@@ -512,7 +512,7 @@ static int flexcan_enter_low_power_ack(struct flexcan_priv *priv)
 	return 0;
 }
 
-static int flexcan_exit_low_power_ack(struct flexcan_priv *priv)
+static int flexcan_low_power_exit_ack(struct flexcan_priv *priv)
 {
 	struct flexcan_regs __iomem *regs = priv->regs;
 	unsigned int timeout = FLEXCAN_TIMEOUT_US / 10;
@@ -583,8 +583,7 @@ static inline int flexcan_enter_stop_mode(struct flexcan_priv *priv)
 		regmap_update_bits(priv->stm.gpr, priv->stm.req_gpr,
 				   1 << priv->stm.req_bit, 1 << priv->stm.req_bit);
 
-	/* get stop acknowledgment */
-	return flexcan_enter_low_power_ack(priv);
+	return flexcan_low_power_enter_ack(priv);
 }
 
 static inline int flexcan_exit_stop_mode(struct flexcan_priv *priv)
@@ -603,8 +602,7 @@ static inline int flexcan_exit_stop_mode(struct flexcan_priv *priv)
 	reg_mcr &= ~FLEXCAN_MCR_SLF_WAK;
 	priv->write(reg_mcr, &regs->mcr);
 
-	/* get stop acknowledgment */
-	return flexcan_exit_low_power_ack(priv);
+	return flexcan_low_power_exit_ack(priv);
 }
 
 static inline void flexcan_error_irq_enable(const struct flexcan_priv *priv)
@@ -669,7 +667,7 @@ static int flexcan_chip_enable(struct flexcan_priv *priv)
 	reg &= ~FLEXCAN_MCR_MDIS;
 	priv->write(reg, &regs->mcr);
 
-	return flexcan_exit_low_power_ack(priv);
+	return flexcan_low_power_exit_ack(priv);
 }
 
 static int flexcan_chip_disable(struct flexcan_priv *priv)
@@ -681,7 +679,7 @@ static int flexcan_chip_disable(struct flexcan_priv *priv)
 	reg |= FLEXCAN_MCR_MDIS;
 	priv->write(reg, &regs->mcr);
 
-	return flexcan_enter_low_power_ack(priv);
+	return flexcan_low_power_enter_ack(priv);
 }
 
 static int flexcan_chip_freeze(struct flexcan_priv *priv)
@@ -1276,6 +1274,8 @@ static void flexcan_set_bittiming(struct net_device *dev)
 				/* for the TDC to work reliably, the offset has to use optimal settings */
 				reg_fdctrl |= FLEXCAN_FDCTRL_TDCOFF(((dbt->phase_seg1 - 1) + dbt->prop_seg + 2) *
 								    ((dbt->brp -1) + 1));
+			} else {
+				reg_fdctrl &= ~FLEXCAN_FDCTRL_TDCEN;
 			}
 			priv->write(reg_fdctrl, &regs->fdctrl);
 
@@ -1503,7 +1503,6 @@ static int flexcan_chip_start(struct net_device *dev)
 	/* FDCTRL */
 	if (priv->can.ctrlmode_supported & CAN_CTRLMODE_FD) {
 		reg_fdctrl = priv->read(&regs->fdctrl) & ~FLEXCAN_FDCTRL_FDRATE;
-		reg_fdctrl &= ~FLEXCAN_FDCTRL_TDCEN;
 		reg_fdctrl &= ~(FLEXCAN_FDCTRL_MBDSR1(0x3) | FLEXCAN_FDCTRL_MBDSR0(0x3));
 		reg_mcr = priv->read(&regs->mcr) & ~FLEXCAN_MCR_FDEN;
 		reg_ctrl2 = priv->read(&regs->ctrl2) & ~FLEXCAN_CTRL2_ISOCANFDEN;

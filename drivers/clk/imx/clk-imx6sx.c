@@ -257,10 +257,10 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	hws[IMX6SX_CLK_LVDS1_IN]  = imx_clk_hw_gate_exclusive("lvds1_in",  "anaclk1",   base + 0x160, 12, BIT(10));
 	hws[IMX6SX_CLK_LVDS2_IN]  = imx_clk_hw_gate_exclusive("lvds2_in",  "anaclk2",   base + 0x160, 13, BIT(11));
 
-	hws[IMX6SX_CLK_ENET_REF] = clk_hw_register_divider_table(NULL, "enet_div", "pll6_bypass", 0,
+	hws[IMX6SX_CLK_ENET_DIV] = clk_hw_register_divider_table(NULL, "enet_div", "pll6_bypass", 0,
 			base + 0xe0, 0, 2, 0, clk_enet_ref_table,
 			&imx_ccm_lock);
-	hws[IMX6SX_CLK_ENET2_REF] = clk_hw_register_divider_table(NULL, "enet2_div", "pll6_bypass", 0,
+	hws[IMX6SX_CLK_ENET2_DIV] = clk_hw_register_divider_table(NULL, "enet2_div", "pll6_bypass", 0,
 			base + 0xe0, 2, 2, 0, clk_enet_ref_table,
 			&imx_ccm_lock);
 	hws[IMX6SX_CLK_ENET_REF] = imx_clk_hw_gate("enet_ref", "enet_div", base + 0xe0, 13);
@@ -418,8 +418,8 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 
 	/*                                            name             parent_name          reg         shift */
 	/* CCGR0 */
-	hws[IMX6SX_CLK_AIPS_TZ1]     = imx_clk_hw_gate2("aips_tz1", "ahb", base + 0x68, 0);
-	hws[IMX6SX_CLK_AIPS_TZ2]     = imx_clk_hw_gate2("aips_tz2", "ahb", base + 0x68, 2);
+	hws[IMX6SX_CLK_AIPS_TZ1]     = imx_clk_hw_gate2_flags("aips_tz1", "ahb", base + 0x68, 0, CLK_IS_CRITICAL);
+	hws[IMX6SX_CLK_AIPS_TZ2]     = imx_clk_hw_gate2_flags("aips_tz2", "ahb", base + 0x68, 2, CLK_IS_CRITICAL);
 	hws[IMX6SX_CLK_APBH_DMA]     = imx_clk_hw_gate2("apbh_dma",      "usdhc3",            base + 0x68, 4);
 	hws[IMX6SX_CLK_ASRC_MEM]     = imx_clk_hw_gate2_shared("asrc_mem", "ahb",             base + 0x68, 6, &share_count_asrc);
 	hws[IMX6SX_CLK_ASRC_IPG]     = imx_clk_hw_gate2_shared("asrc_ipg", "ahb",             base + 0x68, 6, &share_count_asrc);
