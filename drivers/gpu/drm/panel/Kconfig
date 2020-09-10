@@ -127,6 +127,18 @@ config DRM_PANEL_NEC_NL8048HL11
 	  panel (found on the Zoom2/3/3630 SDP boards). To compile this driver
 	  as a module, choose M here.
 
+config DRM_PANEL_NEWVISION_NV3051D
+	tristate "NewVision NV3051D based MIPI touchscreen panels"
+	depends on OF
+	depends on DRM_MIPI_DSI
+	depends on BACKLIGHT_CLASS_DEVICE
+	help
+	  Say Y here if you want to enable support for NewVision NV3051D based
+	  panels, souch as Eagleeyetech EE0350ET-2 MIPI DSI panel. It has a
+	  resolution of 480x640 pixels, a built in backlight and touch controller.
+	  Touch input support is provided by the atmel mxt336U driver and needs to
+	  be selected separately.
+
 config DRM_PANEL_NOVATEK_NT39016
 	tristate "Novatek NT39016 RGB/SPI panel"
 	depends on OF && SPI
