@@ -283,7 +283,7 @@ wvga {					\
 //#define CONFIG_EFUSMX8X_CAPTOUCH_SITRONIX
 //#define CONFIG_EFUSMX8X_CAPTOUCH_ILITEK
 
-#include "../freescale/fsl-imx8qxp.dtsi"
+#include "../freescale/imx8qxp.dtsi"
 #include "efusmx8x.dtsi"
 
 / {

@@ -76,7 +76,7 @@
 
 
 
-#include "../freescale/fsl-imx8mq.dtsi"
+#include "../freescale/imx8mq.dtsi"
 #include "armstonemx8m.dtsi"
 
 / {

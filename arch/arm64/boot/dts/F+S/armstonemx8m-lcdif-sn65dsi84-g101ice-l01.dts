@@ -37,7 +37,7 @@
 	};
 };
 
-&mipi_dsi_phy {
+&dphy {
 	status = "okay";
 };
 
@@ -50,16 +50,6 @@
 	sync-pol = <1>;
 	pwr-delay = <10>;
 	best-match;
-	port@1 {
-		mipi_dsi_in: endpoint {
-			remote-endpoint = <&lcdif_out>;
-		};
-	};
-
-};
-
-&mipi_dsi_bridge {
-	status = "okay";
 
 	panel@0 {
 		reg = <0>;
@@ -101,9 +91,21 @@
 		};
 	};
 
-	port@1 {
-		mipi_dsi_bridge_out: endpoint {
-			remote-endpoint = <&panel1_in>;
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+			mipi_dsi_in: endpoint {
+				remote-endpoint = <&lcdif_out>;
+			};
+		};
+		port@1 {
+			reg = <1>;
+			mipi_dsi_bridge_out: endpoint {
+				remote-endpoint = <&panel1_in>;
+			};
 		};
 	};
 };

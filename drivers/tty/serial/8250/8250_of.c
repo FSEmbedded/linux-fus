@@ -71,7 +71,7 @@ static int of_platform_setup_port_specifics(struct device_node *np, struct uart_
 
 		/* Check for TX FIFO threshold & set tx_loadsz */
 		if ((of_property_read_u32(np, "tx-threshold", &tx_threshold) == 0)
-		    && (tx_threshold < port.fifosize))
+		    && (tx_threshold < port8250.port.fifosize))
 			port8250.tx_loadsz = port->fifosize - tx_threshold;
 	}
 
@@ -96,7 +96,7 @@ static int of_platform_serial_setup(struct platform_device *ofdev,
 	struct resource resource;
 	struct device_node *np = ofdev->dev.of_node;
 	u32 clk, spd, prop;
-	int ret, irq;
+	int ret;
 
 	memset(port, 0, sizeof *port);
 
@@ -233,7 +233,6 @@ static int of_platform_serial_probe(struct platform_device *ofdev)
 	struct uart_port port;
 	struct device_node *child;
 	unsigned int port_type;
-	u32 tx_threshold;
 	int ret;
 	int gpio;
 	int count;
@@ -289,7 +288,7 @@ static int of_platform_serial_probe(struct platform_device *ofdev)
 	platform_set_drvdata(ofdev, info);
 	return 0;
 err_dispose:
-	irq_dispose_mapping(port8250.port.irq);
+	irq_dispose_mapping(port.irq);
 	pm_runtime_put_sync(&ofdev->dev);
 	pm_runtime_disable(&ofdev->dev);
 	clk_disable_unprepare(info->clk);

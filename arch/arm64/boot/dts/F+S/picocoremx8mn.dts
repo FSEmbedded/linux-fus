@@ -103,7 +103,7 @@
 #undef CONFIG_PICOCOREMX8MN_EMMC
 #endif
 
-#include "../freescale/fsl-imx8mn.dtsi"
+#include "../freescale/imx8mn.dtsi"
 #include <dt-bindings/pwm/pwm.h>
 
 / {
@@ -123,7 +123,6 @@
 	
 	backlight_ldb {
 		compatible = "pwm-backlight";
-		#pwm-cells = <3>;
 		pwms = <&pwm2 0 3000000 PWM_POLARITY_INVERTED>;
 		power-supply = <&reg_ldb_bl>;
 		brightness-levels = <0 1 5 10 18 28 41 56
@@ -530,6 +529,7 @@
 };
 
 &pwm2 {
+	#pwm-cells = <3>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm2>;
 	status = "okay";
@@ -640,7 +640,7 @@
 	cs-gpios = <&gpio5 13 0>;
 	status = "okay";
 
-        spidev: spidev@1 {
+        spidev: spidev@0 {
 	  compatible = "linux,spidev";
 	  spi-max-frequency = <20000000>;
 	  reg = <0>;
@@ -800,9 +800,9 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 	status = "okay";
-	port {
-                reg = <0>;
-		mipi1_sensor_ep: endpoint1 {
+	port@0 {
+		reg = <0>;
+		mipi1_sensor_ep: endpoint {
 			remote-endpoint = <&ov5640_mipi1_ep>;
 			data-lanes = <2>;
 			csis-hs-settle = <13>;

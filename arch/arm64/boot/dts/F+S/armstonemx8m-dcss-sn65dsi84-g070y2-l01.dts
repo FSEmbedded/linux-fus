@@ -45,13 +45,13 @@
 	dcss_disp0: port@0 {
 		reg = <0>;
 
-		dcss_disp0_mipi_dsi: mipi_dsi {
+		dcss_disp0_mipi_dsi: endpoint {
 			remote-endpoint = <&mipi_dsi_in>;
 		};
 	};
 };
 
-&mipi_dsi_phy {
+&dphy {
 	status = "okay";
 };
 
@@ -72,22 +72,6 @@
 			       <266000000>,
 			       <0>,
 			       <599999999>;
-
-	port@1 {
-		#if 1
-		mipi_dsi_in: endpoint {
-			remote-endpoint = <&dcss_disp0_mipi_dsi>;
-		};
-		#else
-		mipi_dsi_in: endpoint {
-			remote-endpoint = <&lcdif_mipi_dsi>;
-		};
-		#endif
-	};
-};
-
-&mipi_dsi_bridge {
-	status = "okay";
 
 	panel@0 {
 		reg = <0>;
@@ -131,9 +115,28 @@
 		};
 	};
 
-	port@1 {
-		mipi_dsi_bridge_out: endpoint {
-			remote-endpoint = <&panel1_in>;
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+			#if 1
+			mipi_dsi_in: endpoint {
+				remote-endpoint = <&dcss_disp0_mipi_dsi>;
+			};
+			#else
+			mipi_dsi_in: endpoint {
+				remote-endpoint = <&lcdif_mipi_dsi>;
+			};
+			#endif
+		};
+
+		port@1 {
+			reg = <1>;
+			mipi_dsi_bridge_out: endpoint {
+				remote-endpoint = <&panel1_in>;
+			};
 		};
 	};
 };

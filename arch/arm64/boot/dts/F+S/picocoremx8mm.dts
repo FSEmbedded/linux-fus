@@ -135,7 +135,7 @@
 #undef CONFIG_PICOCOREMX8MM_EMMC
 #endif
 
-#include "../freescale/fsl-imx8mm.dtsi"
+#include "../freescale/imx8mm.dtsi"
 #include <dt-bindings/pwm/pwm.h>
 
 / {
@@ -379,7 +379,7 @@
 	status = "okay";
 
 #ifdef CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
-	sgtl5000: sgtl5000@0a {
+	sgtl5000: sgtl5000@a {
 		compatible = "fsl,sgtl5000";
 		/* MCLK is needed for i2c sgtl driver */
 		pinctrl-names = "default";
@@ -877,7 +877,7 @@
 	#size-cells = <0>;
 	status = "okay";
 	port {
-		mipi1_sensor_ep: endpoint1 {
+		mipi1_sensor_ep: endpoint@1 {
 			remote-endpoint = <&ov5640_mipi1_ep>;
 			data-lanes = <2>;
 			csis-hs-settle = <13>;
@@ -885,7 +885,7 @@
 			csis-wclk;
 		};
 
-		csi1_mipi_ep: endpoint2 {
+		csi1_mipi_ep: endpoint@2 {
 			remote-endpoint = <&csi1_ep>;
 		};
 	};
@@ -1197,9 +1197,9 @@
 				MX8MM_IOMUXC_UART1_TXD_UART1_DCE_TX		0x00140
 #ifdef CONFIG_PICOCOREMX8MM_UART_A_RTSCTS
 				/* CTS */
-				MX8MM_IOMUXC_SAI2_RXD0_UART1_CTS_B	        0x00140
+				MX8MM_IOMUXC_SAI2_RXD0_UART1_DCE_RTS_B	0x00140
 				/* RTS */
-				MX8MM_IOMUXC_SAI2_TXFS_UART1_RTS_B	        0x00140
+				MX8MM_IOMUXC_SAI2_TXFS_UART1_DCE_CTS_B	0x00140
 #endif
 			>;
 		};
@@ -1213,9 +1213,9 @@
 				MX8MM_IOMUXC_UART2_TXD_UART2_DCE_TX		0x00140
 #ifdef CONFIG_PICOCOREMX8MM_UART_B_RTSCTS
 				/* CTS */
-				MX8MM_IOMUXC_SAI3_RXC_UART2_CTS_B	        0x00140
+				MX8MM_IOMUXC_SAI3_RXC_UART2_DCE_CTS_B	0x00140
 				/* RTS */
-				MX8MM_IOMUXC_SAI3_RXD_UART2_RTS_B	        0x00140
+				MX8MM_IOMUXC_SAI3_RXD_UART2_DCE_RTS_B	0x00140
 #endif
 			>;
 		};
