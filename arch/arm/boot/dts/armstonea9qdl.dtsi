@@ -645,6 +645,7 @@
 				<0>,
 #endif
 				<786432000>,
+				<0>,
 #ifdef CONFIG_ARMSTONEA9_AUDIO_12M288
 				<12288000>,	/* Audio with 12.288 MHz */
 #else
