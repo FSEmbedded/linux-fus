@@ -50,6 +50,10 @@ struct nv3051d_panel_desc {
 	int (*init_sequence)(struct nv3051d *ctx);
 };
 
+static const u32 nv3051d_bus_formats[] = {
+	MEDIA_BUS_FMT_RGB888_1X24,
+};
+
 static inline struct nv3051d *panel_to_nv3051d(struct drm_panel *panel)
 {
 	return container_of(panel, struct nv3051d, panel);
@@ -67,223 +71,222 @@ static inline struct nv3051d *panel_to_nv3051d(struct drm_panel *panel)
 static int ee0350et_init_sequence(struct nv3051d *ctx)
 {
 	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
+	dsi->mode_flags |= MIPI_DSI_MODE_LPM;
 
-	/* Switch to Page 1 */
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ENEXTC, 0x30);
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ENEXTC, 0x52);
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ENEXTC, 0x01);
+	dsi_generic_write_seq(dsi, 0xFF,0x30);
+	dsi_generic_write_seq(dsi, 0xFF,0x52);
+	dsi_generic_write_seq(dsi, 0xFF,0x01);
+	dsi_generic_write_seq(dsi, 0xE3,0x00);
 
-	/* ??? */
-	dsi_generic_write_seq(dsi, 0xE3, 0x00);
-	dsi_generic_write_seq(dsi, 0x40, 0x0A);
-	dsi_generic_write_seq(dsi, 0x03, 0x40);
-	dsi_generic_write_seq(dsi, 0x04, 0x00);
-	dsi_generic_write_seq(dsi, 0x05, 0x03);
-	dsi_generic_write_seq(dsi, 0x20, 0x90);
-	dsi_generic_write_seq(dsi, 0x24, 0x0C);
-	dsi_generic_write_seq(dsi, 0x25, 0x06);
-	dsi_generic_write_seq(dsi, 0x26, 0x14);
-	dsi_generic_write_seq(dsi, 0x27, 0x14);
-	dsi_generic_write_seq(dsi, 0x28, 0x57);
-	dsi_generic_write_seq(dsi, 0x29, 0x01);
-	dsi_generic_write_seq(dsi, 0x2A, 0xDF);
-	dsi_generic_write_seq(dsi, 0x38, 0x9C);
-	dsi_generic_write_seq(dsi, 0x39, 0xA7);
-	dsi_generic_write_seq(dsi, 0x3A, 0x53);
-	dsi_generic_write_seq(dsi, 0x44, 0x00);
-	dsi_generic_write_seq(dsi, 0x49, 0x3C);
-	dsi_generic_write_seq(dsi, 0x59, 0xFE);
-	dsi_generic_write_seq(dsi, 0x5C, 0x00);
-	dsi_generic_write_seq(dsi, 0x91, 0x57);
-	dsi_generic_write_seq(dsi, 0x92, 0x57);
-	dsi_generic_write_seq(dsi, 0xA0, 0x55);
-	dsi_generic_write_seq(dsi, 0xA1, 0x50);
-	dsi_generic_write_seq(dsi, 0xA4, 0x9C);
-	dsi_generic_write_seq(dsi, 0xA7, 0x02);
-	dsi_generic_write_seq(dsi, 0xA8, 0x01);
-	dsi_generic_write_seq(dsi, 0xA9, 0x01);
-	dsi_generic_write_seq(dsi, 0xAA, 0xFC);
-	dsi_generic_write_seq(dsi, 0xAB, 0x28);
-	dsi_generic_write_seq(dsi, 0xAC, 0x06);
-	dsi_generic_write_seq(dsi, 0xAD, 0x06);
-	dsi_generic_write_seq(dsi, 0xAE, 0x06);
-	dsi_generic_write_seq(dsi, 0xAF, 0x03);
-	dsi_generic_write_seq(dsi, 0xB0, 0x08);
-	dsi_generic_write_seq(dsi, 0xB1, 0x26);
-	dsi_generic_write_seq(dsi, 0xB2, 0x28);
-	dsi_generic_write_seq(dsi, 0xB3, 0x28);
-	dsi_generic_write_seq(dsi, 0xB4, 0x33);
-	dsi_generic_write_seq(dsi, 0xB5, 0x08);
-	dsi_generic_write_seq(dsi, 0xB6, 0x26);
-	dsi_generic_write_seq(dsi, 0xB7, 0x08);
-	dsi_generic_write_seq(dsi, 0xB8, 0x26);
+	dsi_generic_write_seq(dsi, 0x40,0x0a);
 
-	/* Switch to Page 2 */
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ENEXTC, 0x30);
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ENEXTC, 0x52);
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ENEXTC, 0x02);
+	dsi_generic_write_seq(dsi, 0x03,0x40);
+	dsi_generic_write_seq(dsi, 0x04,0x00);
+	dsi_generic_write_seq(dsi, 0x05,0x03);
 
-	/* ??? */
-	dsi_generic_write_seq(dsi, 0xB0, 0x0B);
-	dsi_generic_write_seq(dsi, 0xB1, 0x16);
-	dsi_generic_write_seq(dsi, 0xB2, 0x17);
-	dsi_generic_write_seq(dsi, 0xB3, 0x2C);
-	dsi_generic_write_seq(dsi, 0xB4, 0x32);
-	dsi_generic_write_seq(dsi, 0xB5, 0x3B);
-	dsi_generic_write_seq(dsi, 0xB6, 0x29);
-	dsi_generic_write_seq(dsi, 0xB7, 0x40);
-	dsi_generic_write_seq(dsi, 0xB8, 0x0D);
-	dsi_generic_write_seq(dsi, 0xB9, 0x05);
-	dsi_generic_write_seq(dsi, 0xBA, 0x12);
-	dsi_generic_write_seq(dsi, 0xBB, 0x10);
-	dsi_generic_write_seq(dsi, 0xBC, 0x12);
-	dsi_generic_write_seq(dsi, 0xBD, 0x15);
-	dsi_generic_write_seq(dsi, 0xBE, 0x19);
-	dsi_generic_write_seq(dsi, 0xBF, 0x0E);
-	dsi_generic_write_seq(dsi, 0xC0, 0x16);
-	dsi_generic_write_seq(dsi, 0xC1, 0x0A);
-	dsi_generic_write_seq(dsi, 0xD0, 0x0C);
-	dsi_generic_write_seq(dsi, 0xD1, 0x17);
-	dsi_generic_write_seq(dsi, 0xD2, 0x14);
-	dsi_generic_write_seq(dsi, 0xD3, 0x2E);
-	dsi_generic_write_seq(dsi, 0xD4, 0x32);
-	dsi_generic_write_seq(dsi, 0xD5, 0x3C);
-	dsi_generic_write_seq(dsi, 0xD6, 0x22);
-	dsi_generic_write_seq(dsi, 0xD7, 0x3D);
-	dsi_generic_write_seq(dsi, 0xD8, 0x0D);
-	dsi_generic_write_seq(dsi, 0xD9, 0x07);
-	dsi_generic_write_seq(dsi, 0xDA, 0x13);
-	dsi_generic_write_seq(dsi, 0xDB, 0x13);
-	dsi_generic_write_seq(dsi, 0xDC, 0x11);
-	dsi_generic_write_seq(dsi, 0xDD, 0x15);
-	dsi_generic_write_seq(dsi, 0xDE, 0x19);
-	dsi_generic_write_seq(dsi, 0xDF, 0x10);
-	dsi_generic_write_seq(dsi, 0xE0, 0x17);
-	dsi_generic_write_seq(dsi, 0xE1, 0x0A);
+	dsi_generic_write_seq(dsi, 0x20,0x90);//2LANE
 
-	/* Switch to Page 3 */
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ENEXTC, 0x30);
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ENEXTC, 0x52);
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ENEXTC, 0x03);
+	dsi_generic_write_seq(dsi, 0x24,0x0c);
+	dsi_generic_write_seq(dsi, 0x25,0x06);
+	dsi_generic_write_seq(dsi, 0x26,0x14);
+	dsi_generic_write_seq(dsi, 0x27,0x14);
 
-	/* ??? */
-	dsi_generic_write_seq(dsi, 0x00, 0x2A);
-	dsi_generic_write_seq(dsi, 0x01, 0x2A);
-	dsi_generic_write_seq(dsi, 0x02, 0x2A);
-	dsi_generic_write_seq(dsi, 0x03, 0x2A);
-	dsi_generic_write_seq(dsi, 0x04, 0x61);
-	dsi_generic_write_seq(dsi, 0x05, 0x80);
-	dsi_generic_write_seq(dsi, 0x06, 0xC7);
-	dsi_generic_write_seq(dsi, 0x07, 0x01);
+	dsi_generic_write_seq(dsi, 0x28,0x57);
+	dsi_generic_write_seq(dsi, 0x29,0x01);
+	dsi_generic_write_seq(dsi, 0x2A,0xdf);
 
-	dsi_generic_write_seq(dsi, 0x08, 0x82);
-	dsi_generic_write_seq(dsi, 0x09, 0x83);
+	dsi_generic_write_seq(dsi, 0x38,0x9C);
+	dsi_generic_write_seq(dsi, 0x39,0xA7);
+	dsi_generic_write_seq(dsi, 0x3A,0x53);
 
-	dsi_generic_write_seq(dsi, 0x30, 0x2A);
-	dsi_generic_write_seq(dsi, 0x31, 0x2A);
-	dsi_generic_write_seq(dsi, 0x32, 0x2A);
-	dsi_generic_write_seq(dsi, 0x33, 0x2A);
-	dsi_generic_write_seq(dsi, 0x34, 0x61);
-	dsi_generic_write_seq(dsi, 0x35, 0xC5);
-	dsi_generic_write_seq(dsi, 0x36, 0x80);
-	dsi_generic_write_seq(dsi, 0x37, 0x23);
+	dsi_generic_write_seq(dsi, 0x44,0x00);
+	dsi_generic_write_seq(dsi, 0x49,0x3C);
+	dsi_generic_write_seq(dsi, 0x59,0xfe);
+	dsi_generic_write_seq(dsi, 0x5c,0x00);
 
-	dsi_generic_write_seq(dsi, 0x40, 0x82);
-	dsi_generic_write_seq(dsi, 0x41, 0x83);
-	dsi_generic_write_seq(dsi, 0x42, 0x80);
-	dsi_generic_write_seq(dsi, 0x43, 0x81);
+	dsi_generic_write_seq(dsi, 0x91,0x57);
+	dsi_generic_write_seq(dsi, 0x92,0x57);
+	dsi_generic_write_seq(dsi, 0xA0,0x55);
+	dsi_generic_write_seq(dsi, 0xA1,0x50);
 
-	dsi_generic_write_seq(dsi, 0x40, 0x82);
-	dsi_generic_write_seq(dsi, 0x41, 0x83);
-	dsi_generic_write_seq(dsi, 0x42, 0x80);
-	dsi_generic_write_seq(dsi, 0x43, 0x81);
+	dsi_generic_write_seq(dsi, 0xA4,0x9C);
+	dsi_generic_write_seq(dsi, 0xA7,0x02);
+	dsi_generic_write_seq(dsi, 0xA8,0x01);
+	dsi_generic_write_seq(dsi, 0xA9,0x01);
+	dsi_generic_write_seq(dsi, 0xAA,0xFC);
+	dsi_generic_write_seq(dsi, 0xAB,0x28);
+	dsi_generic_write_seq(dsi, 0xAC,0x06);
+	dsi_generic_write_seq(dsi, 0xAD,0x06);
+	dsi_generic_write_seq(dsi, 0xAE,0x06);
+	dsi_generic_write_seq(dsi, 0xAF,0x03);
+	dsi_generic_write_seq(dsi, 0xB0,0x08);
+	dsi_generic_write_seq(dsi, 0xB1,0x26);
+	dsi_generic_write_seq(dsi, 0xB2,0x28);
+	dsi_generic_write_seq(dsi, 0xB3,0x28);
+	dsi_generic_write_seq(dsi, 0xB4,0x33);
+	dsi_generic_write_seq(dsi, 0xB5,0x08);
+	dsi_generic_write_seq(dsi, 0xB6,0x26);
+	dsi_generic_write_seq(dsi, 0xB7,0x08);
+	dsi_generic_write_seq(dsi, 0xB8,0x26);
 
-	dsi_generic_write_seq(dsi, 0x44, 0x11);
-	dsi_generic_write_seq(dsi, 0x45, 0xE6);
-	dsi_generic_write_seq(dsi, 0x46, 0xE5);
-	dsi_generic_write_seq(dsi, 0x47, 0x11);
-	dsi_generic_write_seq(dsi, 0x48, 0xE8);
-	dsi_generic_write_seq(dsi, 0x49, 0xE7);
+	dsi_generic_write_seq(dsi, 0xFF,0x30);
+	dsi_generic_write_seq(dsi, 0xFF,0x52);
+	dsi_generic_write_seq(dsi, 0xFF,0x02);
+	dsi_generic_write_seq(dsi, 0xB0,0x0B);
+	dsi_generic_write_seq(dsi, 0xB1,0x16);
+	dsi_generic_write_seq(dsi, 0xB2,0x17);
+	dsi_generic_write_seq(dsi, 0xB3,0x2C);
+	dsi_generic_write_seq(dsi, 0xB4,0x32);
+	dsi_generic_write_seq(dsi, 0xB5,0x3B);
+	dsi_generic_write_seq(dsi, 0xB6,0x29);
+	dsi_generic_write_seq(dsi, 0xB7,0x40);
+	dsi_generic_write_seq(dsi, 0xB8,0x0d);
+	dsi_generic_write_seq(dsi, 0xB9,0x05);
+	dsi_generic_write_seq(dsi, 0xBA,0x12);
+	dsi_generic_write_seq(dsi, 0xBB,0x10);
+	dsi_generic_write_seq(dsi, 0xBC,0x12);
+	dsi_generic_write_seq(dsi, 0xBD,0x15);
+	dsi_generic_write_seq(dsi, 0xBE,0x19);
+	dsi_generic_write_seq(dsi, 0xBF,0x0E);
+	dsi_generic_write_seq(dsi, 0xC0,0x16);
+	dsi_generic_write_seq(dsi, 0xC1,0x0A);
+	dsi_generic_write_seq(dsi, 0xD0,0x0C);
+	dsi_generic_write_seq(dsi, 0xD1,0x17);
+	dsi_generic_write_seq(dsi, 0xD2,0x14);
+	dsi_generic_write_seq(dsi, 0xD3,0x2E);
+	dsi_generic_write_seq(dsi, 0xD4,0x32);
+	dsi_generic_write_seq(dsi, 0xD5,0x3C);
+	dsi_generic_write_seq(dsi, 0xD6,0x22);
+	dsi_generic_write_seq(dsi, 0xD7,0x3D);
+	dsi_generic_write_seq(dsi, 0xD8,0x0D);
+	dsi_generic_write_seq(dsi, 0xD9,0x07);
+	dsi_generic_write_seq(dsi, 0xDA,0x13);
+	dsi_generic_write_seq(dsi, 0xDB,0x13);
+	dsi_generic_write_seq(dsi, 0xDC,0x11);
+	dsi_generic_write_seq(dsi, 0xDD,0x15);
+	dsi_generic_write_seq(dsi, 0xDE,0x19);
+	dsi_generic_write_seq(dsi, 0xDF,0x10);
+	dsi_generic_write_seq(dsi, 0xE0,0x17);
+	dsi_generic_write_seq(dsi, 0xE1,0x0A);
 
-	dsi_generic_write_seq(dsi, 0x50, 0x02);
-	dsi_generic_write_seq(dsi, 0x51, 0x01);
-	dsi_generic_write_seq(dsi, 0x52, 0x04);
-	dsi_generic_write_seq(dsi, 0x53, 0x03);
+	dsi_generic_write_seq(dsi, 0xFF,0x30);
+	dsi_generic_write_seq(dsi, 0xFF,0x52);
+	dsi_generic_write_seq(dsi, 0xFF,0x03);
 
-	dsi_generic_write_seq(dsi, 0x54, 0x11);
-	dsi_generic_write_seq(dsi, 0x55, 0xEA);
-	dsi_generic_write_seq(dsi, 0x56, 0xE9);
-	dsi_generic_write_seq(dsi, 0x57, 0x11);
-	dsi_generic_write_seq(dsi, 0x58, 0xEC);
-	dsi_generic_write_seq(dsi, 0x59, 0xEB);
+	dsi_generic_write_seq(dsi, 0x00,0x2A);
+	dsi_generic_write_seq(dsi, 0x01,0x2A);
+	dsi_generic_write_seq(dsi, 0x02,0x2A);
+	dsi_generic_write_seq(dsi, 0x03,0x2A);
+	dsi_generic_write_seq(dsi, 0x04,0x61);
+	dsi_generic_write_seq(dsi, 0x05,0x80);
+	dsi_generic_write_seq(dsi, 0x06,0xc7);
+	dsi_generic_write_seq(dsi, 0x07,0x01);
 
-	dsi_generic_write_seq(dsi, 0x7E, 0x02);
-	dsi_generic_write_seq(dsi, 0x7F, 0x80);
-	dsi_generic_write_seq(dsi, 0xE0, 0x5A);
+	dsi_generic_write_seq(dsi, 0x08,0x82);
+	dsi_generic_write_seq(dsi, 0x09,0x83);
 
-	dsi_generic_write_seq(dsi, 0xB1, 0x00);
-	dsi_generic_write_seq(dsi, 0xB4, 0x0E);
-	dsi_generic_write_seq(dsi, 0xB5, 0x0F);
-	dsi_generic_write_seq(dsi, 0xB6, 0x04);
-	dsi_generic_write_seq(dsi, 0xB7, 0x07);
-	dsi_generic_write_seq(dsi, 0xB8, 0x06);
-	dsi_generic_write_seq(dsi, 0xB9, 0x05);
-	dsi_generic_write_seq(dsi, 0xBA, 0x0F);
-	dsi_generic_write_seq(dsi, 0xC7, 0x00);
-	dsi_generic_write_seq(dsi, 0xCA, 0x0E);
-	dsi_generic_write_seq(dsi, 0xCB, 0x0F);
-	dsi_generic_write_seq(dsi, 0xCC, 0x04);
-	dsi_generic_write_seq(dsi, 0xCD, 0x07);
-	dsi_generic_write_seq(dsi, 0xCE, 0x06);
-	dsi_generic_write_seq(dsi, 0xCF, 0x05);
-	dsi_generic_write_seq(dsi, 0xD0, 0x0F);
+	dsi_generic_write_seq(dsi, 0x30,0x2A);
+	dsi_generic_write_seq(dsi, 0x31,0x2A);
+	dsi_generic_write_seq(dsi, 0x32,0x2A);
+	dsi_generic_write_seq(dsi, 0x33,0x2A);
+	dsi_generic_write_seq(dsi, 0x34,0x61);
+	dsi_generic_write_seq(dsi, 0x35,0xc5);
+	dsi_generic_write_seq(dsi, 0x36,0x80);
+	dsi_generic_write_seq(dsi, 0x37,0x23);
 
-	dsi_generic_write_seq(dsi, 0x81, 0x0F);
-	dsi_generic_write_seq(dsi, 0x84, 0x0E);
-	dsi_generic_write_seq(dsi, 0x85, 0x0F);
-	dsi_generic_write_seq(dsi, 0x86, 0x07);
-	dsi_generic_write_seq(dsi, 0x87, 0x04);
-	dsi_generic_write_seq(dsi, 0x88, 0x05);
-	dsi_generic_write_seq(dsi, 0x89, 0x06);
-	dsi_generic_write_seq(dsi, 0x8A, 0x00);
-	dsi_generic_write_seq(dsi, 0x97, 0x0F);
-	dsi_generic_write_seq(dsi, 0x9A, 0x0E);
-	dsi_generic_write_seq(dsi, 0x9B, 0x0F);
-	dsi_generic_write_seq(dsi, 0x9C, 0x07);
-	dsi_generic_write_seq(dsi, 0x9D, 0x04);
-	dsi_generic_write_seq(dsi, 0x9E, 0x05);
-	dsi_generic_write_seq(dsi, 0x9F, 0x06);
-	dsi_generic_write_seq(dsi, 0xA0, 0x00);
+	dsi_generic_write_seq(dsi, 0x40,0x82);
+	dsi_generic_write_seq(dsi, 0x41,0x83);
+	dsi_generic_write_seq(dsi, 0x42,0x80);
+	dsi_generic_write_seq(dsi, 0x43,0x81);
 
-	dsi_generic_write_seq(dsi, 0xFF, 0x30);
-	dsi_generic_write_seq(dsi, 0xFF, 0x52);
-	dsi_generic_write_seq(dsi, 0xFF, 0x02);
-	dsi_generic_write_seq(dsi, 0x01, 0x01);
-	dsi_generic_write_seq(dsi, 0x02, 0xDA);
-	dsi_generic_write_seq(dsi, 0x03, 0xBA);
-	dsi_generic_write_seq(dsi, 0x04, 0xA8);
-	dsi_generic_write_seq(dsi, 0x05, 0x9A);
-	dsi_generic_write_seq(dsi, 0x06, 0x70);
-	dsi_generic_write_seq(dsi, 0x07, 0xFF);
-	dsi_generic_write_seq(dsi, 0x08, 0x91);
-	dsi_generic_write_seq(dsi, 0x09, 0x90);
-	dsi_generic_write_seq(dsi, 0x0A, 0xFF);
-	dsi_generic_write_seq(dsi, 0x0B, 0x8F);
-	dsi_generic_write_seq(dsi, 0x0C, 0x60);
-	dsi_generic_write_seq(dsi, 0x0D, 0x58);
-	dsi_generic_write_seq(dsi, 0x0E, 0x48);
-	dsi_generic_write_seq(dsi, 0x0F, 0x38);
-	dsi_generic_write_seq(dsi, 0x10, 0x2B);
+	dsi_generic_write_seq(dsi, 0x44,0x11);
+	dsi_generic_write_seq(dsi, 0x45,0xe6);
+	dsi_generic_write_seq(dsi, 0x46,0xe5);
+	dsi_generic_write_seq(dsi, 0x47,0x11);
+	dsi_generic_write_seq(dsi, 0x48,0xe8);
+	dsi_generic_write_seq(dsi, 0x49,0xe7);
 
-	/* Switch to Page 2 */
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ENEXTC, 0x30);
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ENEXTC, 0x52);
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ENEXTC, 0x02);
+	dsi_generic_write_seq(dsi, 0x50,0x02);
+	dsi_generic_write_seq(dsi, 0x51,0x01);
+	dsi_generic_write_seq(dsi, 0x52,0x04);
+	dsi_generic_write_seq(dsi, 0x53,0x03);
 
-	/* ??? */
-	dsi_generic_write_seq(dsi, 0x36, 0x02);
+	dsi_generic_write_seq(dsi, 0x54,0x11);
+	dsi_generic_write_seq(dsi, 0x55,0xea);
+	dsi_generic_write_seq(dsi, 0x56,0xe9);
+	dsi_generic_write_seq(dsi, 0x57,0x11);
+	dsi_generic_write_seq(dsi, 0x58,0xec);
+	dsi_generic_write_seq(dsi, 0x59,0xeb);
 
-	printk("###ee0350et_init_sequence successful\n");
+	dsi_generic_write_seq(dsi, 0x7e,0x02);
+	dsi_generic_write_seq(dsi, 0x7f,0x80);
+	dsi_generic_write_seq(dsi, 0xe0,0x5a);
+
+	dsi_generic_write_seq(dsi, 0xB1,0x00);
+	dsi_generic_write_seq(dsi, 0xB4,0x0e);
+	dsi_generic_write_seq(dsi, 0xB5,0x0f);
+	dsi_generic_write_seq(dsi, 0xB6,0x04);
+	dsi_generic_write_seq(dsi, 0xB7,0x07);
+	dsi_generic_write_seq(dsi, 0xB8,0x06);
+	dsi_generic_write_seq(dsi, 0xB9,0x05);
+	dsi_generic_write_seq(dsi, 0xBA,0x0f);
+	dsi_generic_write_seq(dsi, 0xC7,0x00);
+	dsi_generic_write_seq(dsi, 0xCA,0x0e);
+	dsi_generic_write_seq(dsi, 0xCB,0x0f);
+	dsi_generic_write_seq(dsi, 0xCC,0x04);
+	dsi_generic_write_seq(dsi, 0xCD,0x07);
+	dsi_generic_write_seq(dsi, 0xCE,0x06);
+	dsi_generic_write_seq(dsi, 0xCF,0x05);
+	dsi_generic_write_seq(dsi, 0xD0,0x0f);
+
+	dsi_generic_write_seq(dsi, 0x81,0x0f);
+	dsi_generic_write_seq(dsi, 0x84,0x0e);
+	dsi_generic_write_seq(dsi, 0x85,0x0f);
+	dsi_generic_write_seq(dsi, 0x86,0x07);
+	dsi_generic_write_seq(dsi, 0x87,0x04);
+	dsi_generic_write_seq(dsi, 0x88,0x05);
+	dsi_generic_write_seq(dsi, 0x89,0x06);
+	dsi_generic_write_seq(dsi, 0x8A,0x00);
+	dsi_generic_write_seq(dsi, 0x97,0x0f);
+	dsi_generic_write_seq(dsi, 0x9A,0x0e);
+	dsi_generic_write_seq(dsi, 0x9B,0x0f);
+	dsi_generic_write_seq(dsi, 0x9C,0x07);
+	dsi_generic_write_seq(dsi, 0x9D,0x04);
+	dsi_generic_write_seq(dsi, 0x9E,0x05);
+	dsi_generic_write_seq(dsi, 0x9F,0x06);
+	dsi_generic_write_seq(dsi, 0xA0,0x00);
+
+	dsi_generic_write_seq(dsi, 0xFF,0x30);
+	dsi_generic_write_seq(dsi, 0xFF,0x52);
+	dsi_generic_write_seq(dsi, 0xFF,0x02);
+	dsi_generic_write_seq(dsi, 0x01,0x01);
+	dsi_generic_write_seq(dsi, 0x02,0xDA);
+	dsi_generic_write_seq(dsi, 0x03,0xBA);
+	dsi_generic_write_seq(dsi, 0x04,0xA8);
+	dsi_generic_write_seq(dsi, 0x05,0x9A);
+	dsi_generic_write_seq(dsi, 0x06,0x70);
+	dsi_generic_write_seq(dsi, 0x07,0xFF);
+	dsi_generic_write_seq(dsi, 0x08,0x91);
+	dsi_generic_write_seq(dsi, 0x09,0x90);
+	dsi_generic_write_seq(dsi, 0x0A,0xFF);
+	dsi_generic_write_seq(dsi, 0x0B,0x8F);
+	dsi_generic_write_seq(dsi, 0x0C,0x60);
+	dsi_generic_write_seq(dsi, 0x0D,0x58);
+	dsi_generic_write_seq(dsi, 0x0E,0x48);
+	dsi_generic_write_seq(dsi, 0x0F,0x38);
+	dsi_generic_write_seq(dsi, 0x10,0x2B);
+
+	dsi_generic_write_seq(dsi, 0xFF,0x30);
+	dsi_generic_write_seq(dsi, 0xFF,0x52);
+	dsi_generic_write_seq(dsi, 0xFF,0x00);
+	dsi_generic_write_seq(dsi, 0x36,0x02);
+
+	dsi_generic_write_seq(dsi, 0x11,0x00);
+	msleep( 200 );
+
+	dsi_generic_write_seq(dsi, 0x29,0x00);
+	msleep(10);
+
 
 	return 0;
 }
@@ -291,11 +294,11 @@ static int ee0350et_init_sequence(struct nv3051d *ctx)
 static const struct drm_display_mode ee0350et_mode = {
 	.hdisplay    = 640,
 	.hsync_start = 640 + 20,
-	.hsync_end   = 640 + 20 + 2,
-	.htotal	     = 640 + 20 + 2 + 20,
+	.hsync_end   = 640 + 20 + 20,
+	.htotal	     = 640 + 20 + 20 + 2,
 	.vdisplay    = 480,
-	.vsync_start = 480 + 12,
-	.vsync_end   = 480 + 12 + 2,
+	.vsync_start = 480 + 4,
+	.vsync_end   = 480 + 4 + 12,
 	.vtotal	     = 480 + 12 + 2 + 4,
 	.clock	     = 20378,
 	.flags	     = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
@@ -422,6 +425,7 @@ static int nv3051d_get_modes(struct drm_panel *panel)
 	struct nv3051d *ctx = panel_to_nv3051d(panel);
 	struct drm_connector *connector = panel->connector;
 	struct drm_display_mode *mode;
+	int ret;
 
 	mode = drm_mode_duplicate(connector->dev, ctx->desc->mode);
 	if (!mode) {
@@ -436,6 +440,12 @@ static int nv3051d_get_modes(struct drm_panel *panel)
 	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
 	connector->display_info.width_mm = mode->width_mm;
 	connector->display_info.height_mm = mode->height_mm;
+
+	ret = drm_display_info_set_bus_formats(&connector->display_info,
+			nv3051d_bus_formats, ARRAY_SIZE(nv3051d_bus_formats));
+	if (ret)
+		return ret;
+
 	drm_mode_probed_add(connector, mode);
 
 	return 1;
