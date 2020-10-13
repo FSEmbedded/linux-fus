@@ -1627,6 +1627,7 @@ static int nl80211_send_wiphy(struct cfg80211_registered_device *rdev,
 			if (rdev->wiphy.features &
 					NL80211_FEATURE_SUPPORTS_WMM_ADMISSION)
 				CMD(add_tx_ts, ADD_TX_TS);
+			CMD(update_ft_ies, UPDATE_FT_IES);
 		}
 		/* add into the if now */
 #undef CMD
