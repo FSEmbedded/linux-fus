@@ -1,18 +1,4 @@
 /*
- * Copyright 2018 NXP
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- */
-
-/*
  * Copyright (C) 2020 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
@@ -47,21 +33,25 @@
 
 /* PWM and backlight brightness */
 #define CONFIG_TBS2_BL_CTRL
-#define CONFIG_TBS2_PWM_BUZZER
+/* Some HW related issues */
+//#define CONFIG_TBS2_PWM_BUZZER
 
 /* UART_A - UART1 - DEBUG */
 #define CONFIG_TBS2_UART_A
 
 /* UART_RFID - UART2 */
-#define CONFIG_TBS2_UART_RFID
+/* Some HW related issues */
+//#define CONFIG_TBS2_UART_RFID
 
 /* UART_B - UART3 */
-#define CONFIG_TBS2_UART_B
-#define CONFIG_TBS2_UART_B_RTSCTS
+/* Some HW related issues */
+//#define CONFIG_TBS2_UART_B
+//#define CONFIG_TBS2_UART_B_RTSCTS
 
 /* UART_C - UART4 */
-#define CONFIG_TBS2_UART_C
-#define CONFIG_TBS2_UART_C_RTSCTS
+/* Some HW related issues */
+//#define CONFIG_TBS2_UART_C
+//#define CONFIG_TBS2_UART_C_RTSCTS
 
 /* External RTC */
 #define CONFIG_TBS2_EXT_RTC
@@ -74,7 +64,8 @@
 /*
  * SD_B - is WLAN.
  */
-#define CONFIG_TBS2_SD_B
+ /* Some HW related issues */
+//#define CONFIG_TBS2_SD_B
 
 /* ADC */
 #define CONFIG_ADS1015
@@ -148,17 +139,14 @@
 			regulator-max-microvolt = <3300000>;
 			regulator-always-on;
 		};
-#if 0
-		wlreg_on: wlreg_on {
-			compatible = "regulator-fixed";
-			regulator-name = "wlreg_on";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			regulator-always-on;
-			gpio = <&gpio5 5 GPIO_ACTIVE_HIGH>;
-			enable-active-high;
+
+		reg_vio_3v3: regulator_vio_3v3 {
+				compatible = "regulator-fixed";
+				regulator-name = "vio-3V3";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-always-on;
 		};
-#endif
 
 #ifdef CONFIG_TBS2_MIPI_DSI
 		/* LCD power on voltage */
@@ -193,19 +181,23 @@
 #endif
 	};
 
+#ifdef CONFIG_TBS2_UART_B
 	modem_reset: modem-reset {
 		compatible = "gpio-reset";
 		reset-gpios = <&gpio1 0 GPIO_ACTIVE_LOW>;
-		reset-delay-us = <1000>;
+		reset-delay-us = <2000>;
+		reset-post-delay-ms = <40>;
 		#reset-cells = <0>;
 	};
+#endif
 
+#ifdef CONFIG_TBS2_SD_B
+	/* pwrseq resets the chip at startup */
 	usdhc2_pwrseq: usdhc2_pwrseq {
-		//pinctrl-names = "default";
-		//pinctrl-0 = <&pinctrl_wifi>;
 		compatible = "mmc-pwrseq-simple";
 		reset-gpios = <&gpio5 5 GPIO_ACTIVE_LOW>;
 	};
+#endif
 };
 
 #ifdef CONFIG_TBS2_EXT_RTC
@@ -420,7 +412,6 @@
 		compatible = "eagleeyetech,ee0350et-2";
 		reg = <0>;
 		reset-gpios = <&gpio5 3 GPIO_ACTIVE_LOW>;
-		//iovcc-supply = <&reg_vref_1v8>;
 		vci-supply = <&reg_vlcd>;
 		status = "okay";
 	};
@@ -498,9 +489,9 @@
 &uart3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3>;
-	resets = <&modem_reset>;
 	assigned-clocks = <&clk IMX8MM_CLK_UART3>;
 	assigned-clock-parents = <&clk IMX8MM_SYS_PLL1_80M>;
+	resets = <&modem_reset>;
 #ifdef CONFIG_TBS2_UART_B_RTSCTS
 	fsl,uart-has-rtscts;
 #endif
@@ -567,21 +558,21 @@
 &usdhc2 {
 	#address-cells = <1>;
 	#size-cells = <0>;
+
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
 	pinctrl-0 = <&pinctrl_usdhc2>;
 	pinctrl-1 = <&pinctrl_usdhc2_100mhz>;
 	pinctrl-2 = <&pinctrl_usdhc2_200mhz>;
-	non-removable;
-	//vmmc-supply = <&wlreg_on>;
-	vqmmc-supply = <&reg_vref_3v3>;
-	mmc-pwrseq = <&usdhc2_pwrseq>;
 	bus-width = <4>;
-	voltage-ranges = <3300 3300>;
-	no-1-8-v;
+	pm-ignore-notify;
 	keep-power-in-suspend;
-	enable-sdio-wakeup;
+	non-removable;
 	cap-power-off-card;
-
+	/* used to reset the wifi module */
+	mmc-pwrseq = <&usdhc2_pwrseq>;
+	vmmc-supply = <&reg_vref_3v3>;
+	vqmmc-supply =<&reg_vio_3v3>;
+	no-1-8-v;
 	status = "okay";
 
 	brcmf: bcrmf@1 {
@@ -641,14 +632,12 @@
 			fsl,pins = <
 				/* GPIO */
 				MX8MM_IOMUXC_GPIO1_IO08_GPIO1_IO8		0x00104
-				/* BT_REG_EN - Active High */
-				MX8MM_IOMUXC_GPIO1_IO00_GPIO1_IO0		0x00144
 				/* BT_DEV_WAKE */
-				MX8MM_IOMUXC_GPIO1_IO01_GPIO1_IO1		0x00104
+				//MX8MM_IOMUXC_GPIO1_IO01_GPIO1_IO1		0x00104
 				/* BT_HOST_WAKE */
-				MX8MM_IOMUXC_GPIO1_IO04_GPIO1_IO4		0x00104
+				MX8MM_IOMUXC_GPIO1_IO04_GPIO1_IO4		0x00144
 				/* WL_REG_EN - Active High */
-				MX8MM_IOMUXC_SPDIF_EXT_CLK_GPIO5_IO5	0x00144
+				MX8MM_IOMUXC_SPDIF_EXT_CLK_GPIO5_IO5	0x00104
 				/* RS485/232
 				 * High = RS232 / Low = RS485
 				 */
@@ -804,6 +793,8 @@
 				MX8MM_IOMUXC_ECSPI1_MISO_UART3_DCE_CTS_B	0x00140
 				MX8MM_IOMUXC_ECSPI1_SS0_UART3_DCE_RTS_B		0x00140
 #endif
+				/* BT_REG_EN - Active High */
+				MX8MM_IOMUXC_GPIO1_IO00_GPIO1_IO0		0x00019
 			>;
 		};
 #endif
