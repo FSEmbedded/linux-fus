@@ -639,7 +639,6 @@ static struct sdma_driver_data sdma_imx8mq = {
 	.num_events = 48,
 	.script_addrs = &sdma_script_imx7d,
 	.check_ratio = 1,
-	.ecspi_fixed = true,
 };
 
 static struct sdma_driver_data sdma_imx8mp = {
@@ -1633,7 +1632,6 @@ static void sdma_free_chan_resources(struct dma_chan *chan)
 
 	sdmac->event_id0 = 0;
 	sdmac->event_id1 = 0;
-	sdmac->context_loaded = false;
 
 	sdma_set_channel_priority(sdmac, 0);
 
