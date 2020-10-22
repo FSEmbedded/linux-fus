@@ -16,7 +16,10 @@ dtb-$(CONFIG_ARCH_MXC) += picocoremx8mm.dtb \
 								picocoremx8mm-lcdif-g050tan01.dtb \
 								picocoremx8mm-lcdif-adp-mipi2lvds1-j070wvtc0211-single-display.dtb \
 								picocoremx8mm-lcdif-rf3500d-ayw-mng1.dtb \
-								tbs2.dtb
+								tbs2.dtb \
+								picocoremx8mx-lcdif-adp-mipi2lvds1-G133HAN01.dtb \
+								picocoremx8mm-lcdif-adp-mipi2lvds1-G133HAN01.dtb \
+								picocoremx8mx-tc358775-G133HAN01.dtb \
 
 dtb-$(CONFIG_ARCH_MXC) += efusmx8x.dtb
 

@@ -3905,6 +3905,38 @@ static struct panel_desc_dsi  auo_g185han01_dsi = {
 	.lanes = 4,
 };
 
+static struct drm_display_mode auo_g133han01_mode = {
+	.clock = 150000000,
+	.hdisplay = 1920,
+	.hsync_start = 1920 + 77,
+	.hsync_end = 1920 + 77 + 117,
+	.htotal = 1920 + 77 + 117+ 56,
+	.vdisplay = 1080,
+	.vsync_start = 1080 + 11,
+	.vsync_end = 1080 + 11 + 19,
+	.vtotal = 1080 + 11 + 19 + 19,
+	.vrefresh = 60,
+};
+
+static struct panel_desc_dsi  auo_g133han01_dsi = {
+	.desc = {
+		.modes = & auo_g133han01_mode,
+		.num_modes = 1,
+		.bpc = 8,
+		.size = {
+			.width = 409,
+			.height = 230,
+		},
+		.bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_SPWG,
+		.bus_flags = DRM_BUS_FLAG_DE_HIGH,
+	},
+	.flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST | MIPI_DSI_MODE_VIDEO_SYNC_PULSE,
+	.format = MIPI_DSI_FMT_RGB888,
+	.lanes = 4,
+};
+
+
+
 static const struct of_device_id dsi_of_match[] = {
 	{
 		.compatible = "auo,b080uan01",
@@ -3939,6 +3971,9 @@ static const struct of_device_id dsi_of_match[] = {
 	}, {
 		.compatible = "auo,g185han01-dsi",
 		.data = &auo_g185han01_dsi
+	}, {
+		.compatible = "auo,g133han01-dsi",
+		.data = &auo_g133han01_dsi
 	}, {
 		/* sentinel */
 	}
