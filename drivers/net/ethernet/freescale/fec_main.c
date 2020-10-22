@@ -64,6 +64,8 @@
 #include <linux/pm_runtime.h>
 #include <linux/busfreq-imx.h>
 #include <linux/prefetch.h>
+#include <linux/mfd/syscon.h>
+#include <linux/regmap.h>
 #include <soc/imx/cpuidle.h>
 #include <linux/mfd/syscon.h>
 #include <linux/regmap.h>
@@ -88,6 +90,56 @@ static const u16 fec_enet_vlan_pri_to_queue[8] = {1, 1, 1, 1, 2, 2, 2, 2};
 #define FEC_ENET_RAFL_V	0x8
 #define FEC_ENET_OPD_V	0xFFF0
 #define FEC_MDIO_PM_TIMEOUT  100 /* ms */
+
+struct fec_devinfo {
+	u32 quirks;
+	u8 stop_gpr_reg;
+	u8 stop_gpr_bit;
+};
+
+static const struct fec_devinfo fec_imx25_info = {
+	.quirks = FEC_QUIRK_USE_GASKET | FEC_QUIRK_MIB_CLEAR |
+		  FEC_QUIRK_HAS_FRREG,
+};
+
+static const struct fec_devinfo fec_imx27_info = {
+	.quirks = FEC_QUIRK_MIB_CLEAR | FEC_QUIRK_HAS_FRREG,
+};
+
+static const struct fec_devinfo fec_imx28_info = {
+	.quirks = FEC_QUIRK_ENET_MAC | FEC_QUIRK_SWAP_FRAME |
+		  FEC_QUIRK_SINGLE_MDIO | FEC_QUIRK_HAS_RACC |
+		  FEC_QUIRK_HAS_FRREG,
+};
+
+static const struct fec_devinfo fec_imx6q_info = {
+	.quirks = FEC_QUIRK_ENET_MAC | FEC_QUIRK_HAS_GBIT |
+		  FEC_QUIRK_HAS_BUFDESC_EX | FEC_QUIRK_HAS_CSUM |
+		  FEC_QUIRK_HAS_VLAN | FEC_QUIRK_ERR006358 |
+		  FEC_QUIRK_HAS_RACC,
+	.stop_gpr_reg = 0x34,
+	.stop_gpr_bit = 27,
+};
+
+static const struct fec_devinfo fec_mvf600_info = {
+	.quirks = FEC_QUIRK_ENET_MAC | FEC_QUIRK_HAS_RACC,
+};
+
+static const struct fec_devinfo fec_imx6x_info = {
+	.quirks = FEC_QUIRK_ENET_MAC | FEC_QUIRK_HAS_GBIT |
+		  FEC_QUIRK_HAS_BUFDESC_EX | FEC_QUIRK_HAS_CSUM |
+		  FEC_QUIRK_HAS_VLAN | FEC_QUIRK_HAS_AVB |
+		  FEC_QUIRK_ERR007885 | FEC_QUIRK_BUG_CAPTURE |
+		  FEC_QUIRK_HAS_RACC | FEC_QUIRK_HAS_COALESCE,
+};
+
+static const struct fec_devinfo fec_imx6ul_info = {
+	.quirks = FEC_QUIRK_ENET_MAC | FEC_QUIRK_HAS_GBIT |
+		  FEC_QUIRK_HAS_BUFDESC_EX | FEC_QUIRK_HAS_CSUM |
+		  FEC_QUIRK_HAS_VLAN | FEC_QUIRK_ERR007885 |
+		  FEC_QUIRK_BUG_CAPTURE | FEC_QUIRK_HAS_RACC |
+		  FEC_QUIRK_HAS_COALESCE,
+};
 
 static struct platform_device_id fec_devtype[] = {
 	{
@@ -1138,77 +1190,6 @@ fec_restart(struct net_device *ndev)
 	/* Init the interrupt coalescing */
 	fec_enet_itr_coal_init(ndev);
 
-}
-
-#ifdef CONFIG_IMX_SCU_SOC
-static int fec_enet_ipc_handle_init(struct fec_enet_private *fep)
-{
-	if (!(of_machine_is_compatible("fsl,imx8qm") ||
-	    of_machine_is_compatible("fsl,imx8qxp") ||
-	    of_machine_is_compatible("fsl,imx8dxl")))
-		return 0;
-
-	return imx_scu_get_handle(&fep->ipc_handle);
-}
-
-static void fec_enet_ipg_stop_set(struct fec_enet_private *fep, bool enabled)
-{
-	struct device_node *np = fep->pdev->dev.of_node;
-	u32 rsrc_id, val;
-	int idx;
-
-	if (!np || !fep->ipc_handle)
-		return;
-
-	idx = of_alias_get_id(np, "ethernet");
-	if (idx < 0)
-		idx = 0;
-	rsrc_id = idx ? IMX_SC_R_ENET_1 : IMX_SC_R_ENET_0;
-
-	val = enabled ? 1 : 0;
-	imx_sc_misc_set_control(fep->ipc_handle, rsrc_id, IMX_SC_C_IPG_STOP, val);
-}
-#else
-static int fec_enet_ipc_handle_init(struct fec_enet_private *fep)
-{
-	return 0;
-}
-
-static void fec_enet_ipg_stop_set(struct fec_enet_private *fep, bool enabled) {}
-#endif
-
-static void fec_enet_enter_stop_mode(struct fec_enet_private *fep)
-{
-	struct fec_platform_data *pdata = fep->pdev->dev.platform_data;
-
-	if (!IS_ERR_OR_NULL(fep->lpm.gpr))
-		regmap_update_bits(fep->lpm.gpr, fep->lpm.req_gpr,
-				   1 << fep->lpm.req_bit,
-				   1 << fep->lpm.req_bit);
-	else if (pdata && pdata->sleep_mode_enable)
-		pdata->sleep_mode_enable(true);
-	else
-		fec_enet_ipg_stop_set(fep, true);
-}
-
-static void fec_enet_exit_stop_mode(struct fec_enet_private *fep)
-{
-	struct fec_platform_data *pdata = fep->pdev->dev.platform_data;
-
-	if (!IS_ERR_OR_NULL(fep->lpm.gpr))
-		regmap_update_bits(fep->lpm.gpr, fep->lpm.req_gpr,
-				   1 << fep->lpm.req_bit, 0);
-	else if (pdata && pdata->sleep_mode_enable)
-		pdata->sleep_mode_enable(false);
-	else
-		fec_enet_ipg_stop_set(fep, false);
-}
-
-static inline void fec_irqs_disable(struct net_device *ndev)
-{
-	struct fec_enet_private *fep = netdev_priv(ndev);
-
-	writel(0, fep->hwp + FEC_IMASK);
 }
 
 static void
@@ -2683,15 +2664,15 @@ fec_enet_set_coalesce(struct net_device *ndev, struct ethtool_coalesce *ec)
 		return -EINVAL;
 	}
 
-	cycle = fec_enet_us_to_itr_clock(ndev, fep->rx_time_itr);
+	cycle = fec_enet_us_to_itr_clock(ndev, ec->rx_coalesce_usecs);
 	if (cycle > 0xFFFF) {
 		dev_err(dev, "Rx coalesced usec exceed hardware limitation\n");
 		return -EINVAL;
 	}
 
-	cycle = fec_enet_us_to_itr_clock(ndev, fep->tx_time_itr);
+	cycle = fec_enet_us_to_itr_clock(ndev, ec->tx_coalesce_usecs);
 	if (cycle > 0xFFFF) {
-		dev_err(dev, "Rx coalesced usec exceed hardware limitation\n");
+		dev_err(dev, "Tx coalesced usec exceed hardware limitation\n");
 		return -EINVAL;
 	}
 
@@ -3735,6 +3716,7 @@ fec_probe(struct platform_device *pdev)
 	int num_rx_qs;
 	char irq_name[8];
 	int irq_cnt;
+	struct fec_devinfo *dev_info;
 
 	fec_enet_get_queue_num(pdev, &num_tx_qs, &num_rx_qs);
 
@@ -3752,7 +3734,9 @@ fec_probe(struct platform_device *pdev)
 	of_id = of_match_device(fec_dt_ids, &pdev->dev);
 	if (of_id)
 		pdev->id_entry = of_id->data;
-	fep->quirks = pdev->id_entry->driver_data;
+	dev_info = (struct fec_devinfo *)pdev->id_entry->driver_data;
+	if (dev_info)
+		fep->quirks = dev_info->quirks;
 
 	fep->netdev = ndev;
 	fep->num_rx_queues = num_rx_qs;
