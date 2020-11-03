@@ -38,6 +38,7 @@
 /* Network */
 //###: TODO Check how it works with Switch
 #define CONFIG_PICOCOREMX8MX_ETH
+#define CONFIG_PICOCOREMX8MX_ETH_I2C
 
 /* USB */
 #define CONFIG_PICOCOREMX8MX_USB_OTG1
@@ -298,6 +299,22 @@
 //###			"MIC_IN", "Mic Jack",
 //###			"Line Out Jack", "LINE_OUT",
 			"Headphone Jack", "HP_OUT";
+	};
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MX_ETH_I2C
+	/* Internal I2C (bitbanging) */
+	i2c_gpio: i2c_gpio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_i2c_gpio>;
+		compatible = "i2c-gpio";
+		gpios = <&gpio1 17 0 /* sda */
+			 &gpio1 16 0 /* scl */
+			>;
+		i2c-gpio,delay-us = <2>;	/* ~100 kHz */
 	};
 #endif
 
@@ -611,12 +628,45 @@
 };
 #endif
 
+#ifdef CONFIG_PICOCOREMX8MX_ETH_I2C
+&i2c_gpio {
+		ksz9893: ksz9893@5f {
+			compatible = "microchip,ksz9893";
+			reg = <0x5f>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@0 {
+					reg = <0>;
+					label = "lan1";
+					local-mac-address = [00 05 51 07 55 81];
+				};
+				port@1 {
+					reg = <1>;
+					label = "lan2";
+					local-mac-address = [00 05 51 07 55 80];
+				};
+				port@2 {
+					reg = <2>;
+					label = "cpu";
+					ethernet = <&fec1>;
+					fixed-link {
+						speed = <1000>;
+						full-duplex;
+					};
+				};
+			};
+		};
+ };
+#endif
+
 #ifdef CONFIG_PICOCOREMX8MX_ETH
 &fec1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_fec1>;
 	phy-mode = "rgmii-id";
-	//phy-handle = <&ethphy0>;
+//###   phy-handle = <&ethphy0>;
 	phy-reset-gpios = <&gpio1 5 GPIO_ACTIVE_LOW>;
 	phy-reset-duration = <11>;
 	phy-reset-post-delay=<1>;
@@ -627,40 +677,6 @@
 		speed = <1000>;
 		full-duplex;
 	};
-
-	mdio {
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		switch0: switch@0{
-			compatible = "microchip,ksz9477";
-			reg = <0>;
-			ports {
-				#address-cells = <1>;
-				#size-cells = <0>;
-				port@0 {
-					reg = <0>;
-					label = "lan1";
-				};
-
-				port@1 {
-					reg = <1>;
-					label = "lan2";
-				};
-
-				port@3 {
-					reg = <2>;
-					label = "cpu";
-             			        ethernet = <&fec1>;
-					fixed-link {
-					speed = <1000>;
-					full-duplex;
-					};
-				};
-			};
-		};
-	};
-
 };
 
 #endif
@@ -1071,8 +1087,10 @@
 #ifdef CONFIG_PICOCOREMX8MX_ETH
 		pinctrl_fec1: fec1grp {
 			fsl,pins = <
+#ifndef CONFIG_PICOCOREMX8MX_ETH_I2C
 				MX8MM_IOMUXC_ENET_MDC_ENET1_MDC			0x00003
 				MX8MM_IOMUXC_ENET_MDIO_ENET1_MDIO		0x00023
+#endif
 				MX8MM_IOMUXC_ENET_TD3_ENET1_RGMII_TD3		0x0001f
 				MX8MM_IOMUXC_ENET_TD2_ENET1_RGMII_TD2		0x0001f
 				MX8MM_IOMUXC_ENET_TD1_ENET1_RGMII_TD1		0x0001f
@@ -1080,7 +1098,11 @@
 				MX8MM_IOMUXC_ENET_RD3_ENET1_RGMII_RD3		0x00091
 				MX8MM_IOMUXC_ENET_RD2_ENET1_RGMII_RD2		0x00091
 				MX8MM_IOMUXC_ENET_RD1_ENET1_RGMII_RD1		0x00091
+#ifdef CONFIG_PICOCOREMX8MX_ETH_I2C
+				MX8MM_IOMUXC_ENET_RD0_ENET1_RGMII_RD0		0x001D1
+#else
 				MX8MM_IOMUXC_ENET_RD0_ENET1_RGMII_RD0		0x00091
+#endif
 				MX8MM_IOMUXC_ENET_TXC_ENET1_RGMII_TXC		0x0001f
 				MX8MM_IOMUXC_ENET_RXC_ENET1_RGMII_RXC		0x00091
 				MX8MM_IOMUXC_ENET_RX_CTL_ENET1_RGMII_RX_CTL	0x00091
@@ -1091,6 +1113,15 @@
 				MX8MM_IOMUXC_GPIO1_IO11_GPIO1_IO11		0x00064
 			>;
 		};
+
+#ifdef CONFIG_PICOCOREMX8MX_ETH_I2C
+		pinctrl_i2c_gpio: i2c_gpio_grp {
+			fsl,pins = <
+				MX8MM_IOMUXC_ENET_MDC_GPIO1_IO16		0x000001c3
+				MX8MM_IOMUXC_ENET_MDIO_GPIO1_IO17		0x000001c3
+			>;
+		};
+#endif
 
 #endif
 
