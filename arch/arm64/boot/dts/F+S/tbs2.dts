@@ -33,25 +33,24 @@
 
 /* PWM and backlight brightness */
 #define CONFIG_TBS2_BL_CTRL
-/* Some HW related issues */
-//#define CONFIG_TBS2_PWM_BUZZER
+
+/* default frequency: 4kHz, maximum frequency: 10kHz */
+#define CONFIG_TBS2_PWM_BUZZER
 
 /* UART_A - UART1 - DEBUG */
 #define CONFIG_TBS2_UART_A
 
 /* UART_RFID - UART2 */
-/* Some HW related issues */
-//#define CONFIG_TBS2_UART_RFID
+#define CONFIG_TBS2_UART_RFID
 
-/* UART_B - UART3 */
+/* UART_B - UART3 - BT */
 /* Some HW related issues */
 //#define CONFIG_TBS2_UART_B
 //#define CONFIG_TBS2_UART_B_RTSCTS
 
 /* UART_C - UART4 */
-/* Some HW related issues */
-//#define CONFIG_TBS2_UART_C
-//#define CONFIG_TBS2_UART_C_RTSCTS
+#define CONFIG_TBS2_UART_C
+#define CONFIG_TBS2_UART_C_RTSCTS
 
 /* External RTC */
 #define CONFIG_TBS2_EXT_RTC
@@ -65,7 +64,7 @@
  * SD_B - is WLAN.
  */
  /* Some HW related issues */
-//#define CONFIG_TBS2_SD_B
+#define CONFIG_TBS2_SD_B
 
 /* ADC */
 #define CONFIG_ADS1015
