@@ -36,7 +36,6 @@
 #define CONFIG_PICOCOREMX8MX_EMMC
 
 /* Network */
-//###: TODO Check how it works with Switch
 #define CONFIG_PICOCOREMX8MX_ETH
 #define CONFIG_PICOCOREMX8MX_ETH_I2C
 
@@ -106,6 +105,7 @@
 #define CONFIG_PICOCOREMX8MX_SD_A
 #define CONFIG_PICOCOREMX8MX_SD_A_CD
 //#define CONFIG_PICOCOREMX8MX_SD_A_WP
+//#define CONFIG_PICOCOREMX8MX_SD_A_8_Bit
 
 /*
  * SD_B - External SD port with Card Detect (CD) and Write Protect (WP)
@@ -126,6 +126,12 @@
 / {
 	model = "F&S PicoCoreMX8MX";
 	compatible = "fus,imx8mm-picocoremx8mm", "fsl,imx8mm";
+
+	aliases {
+		/* Alias for GPMI node. Dont change it
+		 * because it used by the bootloader */
+		nand = &gpmi;
+	};
 
 	/* -------------------- BOARD INFO -------------------- */
 	bdinfo {
@@ -200,31 +206,13 @@
 			enable-active-high;
 		};
 
+#ifdef CONFIG_PICOCOREMX8MX_BL_CTRL
 		reg_ldb_bl: ldb-bl {
 			compatible = "regulator-fixed";
 			regulator-name = "ldb-bl";
 			gpio = <&gpio5 3 GPIO_ACTIVE_HIGH>;
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
-			enable-active-high;
-		};
-
-#if 0
-		reg_usb_otg1_vbus: usb_otg1_vbus {
-			compatible = "regulator-fixed";
-			regulator-name = "usb_otg1_vbus";
-			regulator-min-microvolt = <5000000>;
-			regulator-max-microvolt = <5000000>;
-			gpio = <&gpio1 12 GPIO_ACTIVE_LOW>;
-		};
-#endif
-#if 0
-		reg_usb_otg2_vbus: usb_otg2_vbus {
-			compatible = "regulator-fixed";
-			regulator-name = "usb_otg1_vbus";
-			regulator-min-microvolt = <5000000>;
-			regulator-max-microvolt = <5000000>;
-			gpio = <&gpio1 14 0>;
 			enable-active-high;
 		};
 #endif
@@ -320,11 +308,6 @@
 
 };
 
-&clk {
-	assigned-clocks = <&clk IMX8MM_AUDIO_PLL1>, <&clk IMX8MM_AUDIO_PLL2>;
-	assigned-clock-rates = <786432000>, <722534400>;
-};
-
 #ifdef CONFIG_PICOCOREMX8MX_EXT_RTC
 &snvs_rtc {
 	status = "disabled";
@@ -356,8 +339,8 @@
 
 	/* PMIC */
 	pmic@4b {
-		reg = <0x4b>;
 		compatible = "rohm,bd71847";
+		reg = <0x4b>;
 		pinctrl-0 = <&pinctrl_pmic>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <10 GPIO_ACTIVE_LOW>;
@@ -365,7 +348,7 @@
 
 		regulators {
 			buck1_reg: BUCK1 {
-				regulator-compatible = "BUCK1";
+				regulator-name = "BUCK1";
 				regulator-min-microvolt = <700000>;
 				regulator-max-microvolt = <1300000>;
 				regulator-boot-on;
@@ -374,7 +357,7 @@
 			};
 
 			buck2_reg: BUCK2 {
-				regulator-compatible = "BUCK2";
+				regulator-name = "BUCK2";
 				regulator-min-microvolt = <700000>;
 				regulator-max-microvolt = <1300000>;
 				regulator-boot-on;
@@ -421,7 +404,7 @@
 			};
 
 			ldo1_reg: LDO1 {
-				regulator-compatible = "LDO1";
+				regulator-name = "LDO1";
 				regulator-min-microvolt = <1600000>;
 				regulator-max-microvolt = <1900000>;
 				regulator-boot-on;
@@ -429,7 +412,7 @@
 			};
 
 			ldo2_reg: LDO2 {
-				regulator-compatible = "LDO2";
+				regulator-name = "LDO2";
 				regulator-min-microvolt = <800000>;
 				regulator-max-microvolt = <900000>;
 				regulator-boot-on;
@@ -437,7 +420,7 @@
 			};
 
 			ldo3_reg: LDO3 {
-				regulator-compatible = "LDO3";
+				regulator-name = "LDO3";
 				regulator-min-microvolt = <1800000>;
 				regulator-max-microvolt = <3300000>;
 				regulator-boot-on;
@@ -445,7 +428,7 @@
 			};
 
 			ldo4_reg: LDO4 {
-				regulator-compatible = "LDO4";
+				regulator-name = "LDO4";
 				regulator-min-microvolt = <900000>;
 				regulator-max-microvolt = <1800000>;
 				regulator-boot-on;
@@ -453,7 +436,7 @@
 			};
 
 			ldo6_reg: LDO6 {
-				regulator-compatible = "LDO6";
+				regulator-name = "LDO6";
 				regulator-min-microvolt = <900000>;
 				regulator-max-microvolt = <1800000>;
 				regulator-boot-on;
@@ -666,7 +649,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_fec1>;
 	phy-mode = "rgmii-id";
-//###   phy-handle = <&ethphy0>;
 	phy-reset-gpios = <&gpio1 5 GPIO_ACTIVE_LOW>;
 	phy-reset-duration = <11>;
 	phy-reset-post-delay=<1>;
@@ -858,7 +840,11 @@
 	pinctrl-0 = <&pinctrl_usdhc1>, <&pinctrl_usdhc1_gpio>;
 	pinctrl-1 = <&pinctrl_usdhc1_100mhz>, <&pinctrl_usdhc1_gpio>;
 	pinctrl-2 = <&pinctrl_usdhc1_200mhz>, <&pinctrl_usdhc1_gpio>;
+#ifdef CONFIG_PICOCOREMX8MX_SD_A_8_Bit
+	bus-width = <8>;
+#else
 	bus-width = <4>;
+#endif
 #ifdef CONFIG_PICOCOREMX8MX_SD_A_CD
 	cd-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;
 #else
@@ -1077,7 +1063,7 @@
 				/* LVDS RESET / TC358764 RST */
 				MX8MM_IOMUXC_GPIO1_IO08_GPIO1_IO8			0x00016
 				/* Use MIP-DSI CLK as source by defualt.
-				   For EXTCLK use the following setting in your display DTS */
+				 * For EXTCLK use the following setting in your display DTS */
 				/* MX8MM_IOMUXC_GPIO1_IO15_CCMSRCGPCMIX_CLKO2	0x00059 */
 				MX8MM_IOMUXC_GPIO1_IO15_GPIO1_IO15	0x00016
 			>;
@@ -1391,10 +1377,12 @@
 				MX8MM_IOMUXC_SD1_DATA1_USDHC1_DATA1		0x001d0
 				MX8MM_IOMUXC_SD1_DATA2_USDHC1_DATA2		0x001d0
 				MX8MM_IOMUXC_SD1_DATA3_USDHC1_DATA3		0x001d0
+#ifdef CONFIG_PICOCOREMX8MX_SD_A_8_Bit
 				MX8MM_IOMUXC_SD1_DATA4_USDHC1_DATA4		0x001d0
 				MX8MM_IOMUXC_SD1_DATA5_USDHC1_DATA5		0x001d0
 				MX8MM_IOMUXC_SD1_DATA6_USDHC1_DATA6		0x001d0
 				MX8MM_IOMUXC_SD1_DATA7_USDHC1_DATA7		0x001d0
+#endif
 			>;
 		};
 
@@ -1406,10 +1394,12 @@
 				MX8MM_IOMUXC_SD1_DATA1_USDHC1_DATA1		0x001d4
 				MX8MM_IOMUXC_SD1_DATA2_USDHC1_DATA2		0x001d4
 				MX8MM_IOMUXC_SD1_DATA3_USDHC1_DATA3		0x001d4
+#ifdef CONFIG_PICOCOREMX8MX_SD_A_8_Bit
 				MX8MM_IOMUXC_SD1_DATA4_USDHC1_DATA4		0x001d4
 				MX8MM_IOMUXC_SD1_DATA5_USDHC1_DATA5		0x001d4
 				MX8MM_IOMUXC_SD1_DATA6_USDHC1_DATA6		0x001d4
 				MX8MM_IOMUXC_SD1_DATA7_USDHC1_DATA7		0x001d4
+#endif
 			>;
 		};
 
@@ -1421,10 +1411,12 @@
 				MX8MM_IOMUXC_SD1_DATA1_USDHC1_DATA1		0x001d6
 				MX8MM_IOMUXC_SD1_DATA2_USDHC1_DATA2		0x001d6
 				MX8MM_IOMUXC_SD1_DATA3_USDHC1_DATA3		0x001d6
+#ifdef CONFIG_PICOCOREMX8MX_SD_A_8_Bit
 				MX8MM_IOMUXC_SD1_DATA4_USDHC1_DATA4		0x001d6
 				MX8MM_IOMUXC_SD1_DATA5_USDHC1_DATA5		0x001d6
 				MX8MM_IOMUXC_SD1_DATA6_USDHC1_DATA6		0x001d6
 				MX8MM_IOMUXC_SD1_DATA7_USDHC1_DATA7		0x001d6
+#endif
 			>;
 		};
 #endif
