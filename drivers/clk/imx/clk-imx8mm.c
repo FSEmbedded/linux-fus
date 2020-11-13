@@ -368,7 +368,7 @@ static const char *imx8mm_clko2_sels[] = {"osc_24m", "sys_pll2_200m", "sys_pll1_
 static struct clk *clks[IMX8MM_CLK_END];
 static struct clk_onecell_data clk_data;
 
-static int __init imx_clk_init_on(struct device_node *np,
+static int imx_clk_init_on(struct device_node *np,
 				  struct clk * const clks[])
 {
 	u32 *array;
@@ -721,7 +721,11 @@ static struct platform_driver imx8mm_clk_driver = {
 	},
 };
 module_platform_driver(imx8mm_clk_driver);
+MODULE_AUTHOR("Bai Ping <ping.bai@nxp.com>");
+MODULE_DESCRIPTION("NXP i.MX8MM clock driver");
+MODULE_LICENSE("GPL v2");
 
+#ifndef MODULE
 /*
  * Debugfs interface for audio PLL K divider change dynamically.
  * Monitor control for the Audio PLL K-Divider
@@ -799,3 +803,4 @@ static int __init pll_debug_init(void)
 }
 late_initcall(pll_debug_init);
 #endif /* CONFIG_DEBUG_FS */
+#endif /* MODULE */
