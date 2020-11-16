@@ -151,6 +151,11 @@
 			size = <0 0x14000000>;
 			alloc-ranges = <0 0x40000000 0 0x40000000>;
 			linux,cma-default;
+			/*
+			 * The propertiy "size" is overwritten by Uboot, depending
+			 * on the ram size. To prevent this, uncomment the following line
+			 */
+			//no-uboot-override;
 		};
 	};
 #ifdef CONFIG_PICOCOREMX8MX_BL_CTRL
