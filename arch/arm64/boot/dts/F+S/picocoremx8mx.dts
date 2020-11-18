@@ -90,7 +90,7 @@
 /* External RTC - default not mounted */
 //#define CONFIG_PICOCOREMX8MX_EXT_RTC
 
-#define CONFIG_PICOCOREMX8MX_CAMERA
+//#define CONFIG_PICOCOREMX8MX_CAMERA
 
 /* Camera on parallel CSI interface */
 //#define CONFIG_PICOCOREMX8MX_PARALLEL_CAMERA
@@ -143,6 +143,7 @@
 		bootargs = "console=ttymxc0,115200 earlycon=ec_imx6q,0x30860000,115200";
 		stdout-path = &uart1;
 	};
+
 	reserved-memory {
 		/* global autoconfigured region for contiguous allocations */
 		linux,cma {
@@ -157,7 +158,13 @@
 			 */
 			//no-uboot-override;
 		};
+
+		rpmsg_reserved: rpmsg@0xb8000000 {
+			no-map;
+			reg = <0 0xb8000000 0 0x400000>;
+		};
 	};
+
 #ifdef CONFIG_PICOCOREMX8MX_BL_CTRL
 	backlight_ldb {
 		compatible = "pwm-backlight";
@@ -251,11 +258,13 @@
 		};
 #endif /* CONFIG_PICOCOREMX8MX_SGTL5000_AUDIO */
 
+#ifdef CONFIG_PICOCOREMX8MX_CAN
 		/* CAN */
 		reg_can: regulator_can {
 			compatible = "regulator-fixed";
 			regulator-name = "can";
 		};
+#endif
 
 #ifdef CONFIG_PICOCOREMX8MX_CAMERA
 		reg_camera_dovdd: camera_dovdd {
@@ -310,6 +319,12 @@
 		i2c-gpio,delay-us = <2>;	/* ~100 kHz */
 	};
 #endif
+
+	pcie0_refclk: pcie0-refclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <100000000>;
+	};
 
 };
 
@@ -746,6 +761,7 @@
 		xceiver-supply = <&reg_can>;
 		status = "okay";
 	};
+
 	mcp25xxfd_clk: oscillator-mcp25xxfd {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
@@ -761,7 +777,13 @@
 	pinctrl-0 = <&pinctrl_pcie0>;
 	reset-gpio = <&gpio3 19 GPIO_ACTIVE_LOW>;
 	wake-gpio = <&gpio3 20 GPIO_ACTIVE_LOW>;
+	clocks = <&clk IMX8MM_CLK_PCIE1_ROOT>,
+		 <&clk IMX8MM_CLK_PCIE1_AUX>,
+		 <&clk IMX8MM_CLK_PCIE1_PHY>,
+		 <&pcie0_refclk>;
+	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
 	ext_osc = <0>;
+	reserved-region = <&rpmsg_reserved>;
 	status = "okay";
 };
 #endif
@@ -899,7 +921,7 @@
 	pinctrl-2 = <&pinctrl_usdhc3_200mhz>;
 	bus-width = <8>;
 	non-removable;
-	status = "okay";
+	status = "disabled";
 };
 #endif
 
