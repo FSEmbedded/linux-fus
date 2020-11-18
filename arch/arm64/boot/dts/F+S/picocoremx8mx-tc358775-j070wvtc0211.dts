@@ -125,4 +125,12 @@
 	};
 };
 
+/{
+	backlight_ldb {
+		pwms = <&pwm2 0 250000 PWM_POLARITY_INVERTED>;
+		brightness-levels = <135 143 151 159 167 175 183 191
+				     199 207 215 223 231 239 247 255>;
+		default-brightness-level = <14>;
+	};
+};
 
