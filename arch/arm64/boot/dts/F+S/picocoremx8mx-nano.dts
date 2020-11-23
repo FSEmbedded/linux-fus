@@ -19,13 +19,14 @@
 //#define CONFIG_PICOCOREMX8MX_NANO_MIPI_DSI
 
 /* On-board NAND */
-//#define CONFIG_PICOCOREMX8MX_NANO_NAND
+#define CONFIG_PICOCOREMX8MX_NANO_NAND
 
 /* On-board eMMC */
 #define CONFIG_PICOCOREMX8MX_NANO_EMMC
 
 /* Network */
 #define CONFIG_PICOCOREMX8MX_NANO_ETH
+#define CONFIG_PICOCOREMX8MX_NANO_ETH_I2C
 
 /* WLAN/BLUETOOTH; either WLAN-only or combined WLAN/Bluetooth chip */
 //#define CONFIG_PICOCOREMX8MX_NANO_WLAN
@@ -46,8 +47,8 @@
 #define CONFIG_PICOCOREMX8MX_NANO_I2C_D
 
 /* PWM and backlight brightness */
-//#define CONFIG_PICOCOREMX8MX_NANO_PWM_A
-//#define CONFIG_PICOCOREMX8MX_NANO_BL_CTRL
+#define CONFIG_PICOCOREMX8MX_NANO_PWM_A
+#define CONFIG_PICOCOREMX8MX_NANO_BL_CTRL
 
 /* UART_A - UART1 */
 #define CONFIG_PICOCOREMX8MX_NANO_UART_A
@@ -74,6 +75,9 @@
 //#define CONFIG_PICOCOREMX8MX_NANO_AUDIO_2
 //#define CONFIG_PICOCOREMX8MX_NANO_AUDIO_3
 #define CONFIG_PICOCOREMX8MX_NANO_SGTL5000_AUDIO
+
+/* External RTC - default not mounted */
+//#define CONFIG_PICOCOREMX8MX_NANO_EXT_RTC
 
 /* Camera on parallel CSI interface */
 //#define CONFIG_PICOCOREMX8MX_NANO_PARALLEL_CAMERA
@@ -116,15 +120,22 @@
 
 #include "../freescale/imx8mn.dtsi"
 #include <dt-bindings/pwm/pwm.h>
+#include <dt-bindings/rtc/nxp,pcf85263.h>
 
 / {
-	model = "F&S PicoCoreMX8MN";
+	model = "F&S PicoCoreMX8MX";
 	compatible = "fus,imx8mn-picocoremx8mn", "fsl,imx8mn";
+
+	aliases {
+		/* Alias for GPMI node. Dont change it
+		 * because it used by the bootloader */
+		nand = &gpmi;
+	};
 
 	/* -------------------- BOARD INFO -------------------- */
 	bdinfo {
 		compatible = "bdinfo";
-		board_name = "picocoremx8mn";
+		board_name = "picocoremx8mx";
 	};
 
 	chosen {
@@ -132,8 +143,31 @@
 		stdout-path = &uart1;
 	};
 	
+	reserved-memory {
+		/* global autoconfigured region for contiguous allocations */
+		linux,cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0 0x14000000>;
+			alloc-ranges = <0 0x40000000 0 0x40000000>;
+			linux,cma-default;
+			/*
+			 * The propertiy "size" is overwritten by Uboot, depending
+			 * on the ram size. To prevent this, uncomment the following line
+			 */
+			//no-uboot-override;
+		};
+
+		rpmsg_reserved: rpmsg@0xb8000000 {
+			no-map;
+			reg = <0 0xb8000000 0 0x400000>;
+		};
+	};
+
+#ifdef CONFIG_PICOCOREMX8MX_NANO_BL_CTRL
 	backlight_ldb {
 		compatible = "pwm-backlight";
+		#pwm-cells = <3>;
 		pwms = <&pwm2 0 3000000 PWM_POLARITY_INVERTED>;
 		power-supply = <&reg_ldb_bl>;
 		brightness-levels = <0 1 5 10 18 28 41 56
@@ -141,20 +175,14 @@
 		default-brightness-level = <4>;
 		fb-names = "mxs-lcdif0";
 	};
+#endif
 
 	regulators {
 		compatible = "simple-bus";
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		reg_vref_3v3: regulator_3v3 {
-			compatible = "regulator-fixed";
-			regulator-name = "vref-3V3";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			regulator-always-on;
-		};
-
+		/* necessary for lcdif-tc35874-j070wvtc0211 */
 		reg_vref_1v2: regulator_1v2 {
 			compatible = "regulator-fixed";
 			regulator-name = "vref-1V2";
@@ -171,6 +199,14 @@
 			regulator-always-on;
 		};
 
+		reg_vref_3v3: regulator_3v3 {
+			compatible = "regulator-fixed";
+			regulator-name = "vref-3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
 		/* LCD power on voltage */
 		reg_vlcd: vlcd {
 			compatible = "regulator-fixed";
@@ -181,6 +217,7 @@
 			enable-active-high;
 		};
 
+#ifdef CONFIG_PICOCOREMX8MX_NANO_BL_CTRL
 		reg_ldb_bl: ldb-bl {
 			compatible = "regulator-fixed";
 			regulator-name = "ldb-bl";
@@ -189,6 +226,7 @@
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
 		};
+#endif
 
 #ifdef CONFIG_PICOCOREMX8MX_NANO_SGTL5000_AUDIO
 		/* SGTL5000 analog voltage */
@@ -218,6 +256,14 @@
 			regulator-always-on;
 		};
 #endif /* CONFIG_PICOCOREMX8MX_NANO_SGTL5000_AUDIO */
+
+#ifdef CONFIG_PICOCOREMX8MX_NANO_CAN
+		/* CAN */
+		reg_can: regulator_can {
+			compatible = "regulator-fixed";
+			regulator-name = "can";
+		};
+#endif
 	};
 
 #ifdef CONFIG_PICOCOREMX8MX_NANO_SGTL5000_AUDIO
@@ -234,7 +280,28 @@
 	};
 #endif
 
+#ifdef CONFIG_PICOCOREMX8MX_NANO_ETH_I2C
+	/* Internal I2C (bitbanging) */
+	i2c_gpio: i2c_gpio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_i2c_gpio>;
+		compatible = "i2c-gpio";
+		gpios = <&gpio1 17 0 /* sda */
+			 &gpio1 16 0 /* scl */
+			>;
+		i2c-gpio,delay-us = <2>;	/* ~100 kHz */
+	};
+#endif
 };
+
+#ifdef CONFIG_PICOCOREMX8MX_NANO_EXT_RTC
+&snvs_rtc {
+	status = "disabled";
+};
+#endif
 
 #ifdef CONFIG_PICOCOREMX8MX_NANO_I2C_A
 &i2c1 {
@@ -366,10 +433,17 @@
 		};
 	};
 
-	rtc85063@51 {
-		compatible = "nxp,pcf85063";
+#ifdef CONFIG_PICOCOREMX8MX_NANO_EXT_RTC
+	rtcpcf85263@51 {
+		compatible = "nxp,pcf85263";
 		reg = <0x51>;
+		clock-out = <PCF85263_CLK_OUT_32p768kHz>;
+
+		quartz-load-capacitance = <PCF85263_QUARTZCAP_12p5pF>;
+		quartz-drive-strength = <PCF85263_QUARTZDRIVE_LOW>;
 	};
+#endif
+
 #ifdef CONFIG_PICOCOREMX8MX_NANO_SERIAL_CAMERA
 	ov5640_mipi: ov5640_mipi@3c {
 		compatible = "ovti,ov5640_mipi";
@@ -436,18 +510,22 @@
 	status = "okay";
 };
 
+#ifdef CONFIG_PICOCOREMX8MX_NANO_PWM_A
 &pwm1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm1>;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_PICOCOREMX8MX_NANO_BL_CTRL
 &pwm2 {
-	#pwm-cells = <3>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm2>;
+	#pwm-cells = <3>;
 	status = "okay";
 };
+#endif
 
 &rpmsg{
 	/*
@@ -504,12 +582,47 @@
 };
 #endif
 
+#ifdef CONFIG_PICOCOREMX8MX_NANO_ETH_I2C
+&i2c_gpio {
+		ksz9893: ksz9893@5f {
+			compatible = "microchip,ksz9893";
+			reg = <0x5f>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@0 {
+					reg = <0>;
+					label = "lan1";
+					local-mac-address = [00 05 51 07 55 81];
+				};
+				port@1 {
+					reg = <1>;
+					label = "lan2";
+					local-mac-address = [00 05 51 07 55 80];
+				};
+				port@2 {
+					reg = <2>;
+					label = "cpu";
+					ethernet = <&fec1>;
+					fixed-link {
+						speed = <1000>;
+						full-duplex;
+					};
+				};
+			};
+		};
+ };
+#endif
+
 #ifdef CONFIG_PICOCOREMX8MX_NANO_ETH
 &fec1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_fec1>;
 	phy-mode = "rgmii-id";
-	//phy-handle = <&ethphy0>;
+	phy-reset-gpios = <&gpio1 5 GPIO_ACTIVE_LOW>;
+	phy-reset-duration = <11>;
+	phy-reset-post-delay=<1>;
 	fsl,magic-packet;
 	status = "okay";
 
@@ -565,10 +678,11 @@
 		reg = <0>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_can1_int>;
-		clocks = <&mcp25xxfd_clk>;
+		spi-max-frequency = <10000000>;
 		interrupt-parent = <&gpio4>;
-		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
-		spi-max-frequency = <20000000>;
+		interrupts = <28 IRQ_TYPE_LEVEL_LOW>;
+		clocks = <&mcp25xxfd_clk>;
+		xceiver-supply = <&reg_can>;
 		status = "okay";
 	};
 
@@ -588,17 +702,6 @@
 		status = "okay";
 	};
 #endif
-};
-#endif
-
-#ifdef CONFIG_PICOCOREMX8MX_NANO_PCIE
-&pcie0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_pcie0>;
-	reset-gpio = <&gpio3 19 GPIO_ACTIVE_LOW>;
-/*	wake-gpio = <&gpio3 22>;*/
-	ext_osc = <0>;
-	status = "okay";
 };
 #endif
 
@@ -733,7 +836,7 @@
 	voltage-ranges = <3300 3300>;
 	no-1-8-v;
 	non-removable;
-	status = "okay";
+	status = "disabled";
 };
 #endif
 
@@ -855,8 +958,10 @@
 #ifdef CONFIG_PICOCOREMX8MX_NANO_ETH
 		pinctrl_fec1: fec1grp {
 			fsl,pins = <
+#ifndef CONFIG_PICOCOREMX8MX_NANO_ETH_I2C
 				MX8MN_IOMUXC_ENET_MDC_ENET1_MDC			0x00003
 				MX8MN_IOMUXC_ENET_MDIO_ENET1_MDIO		0x00003
+#endif
 				MX8MN_IOMUXC_ENET_TD3_ENET1_RGMII_TD3		0x0001f
 				MX8MN_IOMUXC_ENET_TD2_ENET1_RGMII_TD2		0x0001f
 				MX8MN_IOMUXC_ENET_TD1_ENET1_RGMII_TD1		0x0001f
@@ -864,7 +969,11 @@
 				MX8MN_IOMUXC_ENET_RD3_ENET1_RGMII_RD3		0x00091
 				MX8MN_IOMUXC_ENET_RD2_ENET1_RGMII_RD2		0x00091
 				MX8MN_IOMUXC_ENET_RD1_ENET1_RGMII_RD1		0x00091
+#ifdef CONFIG_PICOCOREMX8MX_NANO_ETH_I2C
+				MX8MN_IOMUXC_ENET_RD0_ENET1_RGMII_RD0		0x001D1
+#else
 				MX8MN_IOMUXC_ENET_RD0_ENET1_RGMII_RD0		0x00091
+#endif
 				MX8MN_IOMUXC_ENET_TXC_ENET1_RGMII_TXC		0x0001f
 				MX8MN_IOMUXC_ENET_RXC_ENET1_RGMII_RXC		0x00091
 				MX8MN_IOMUXC_ENET_RX_CTL_ENET1_RGMII_RX_CTL	0x00091
@@ -875,6 +984,15 @@
 				MX8MN_IOMUXC_GPIO1_IO11_GPIO1_IO11		0x00019
 			>;
 		};
+
+#ifdef CONFIG_PICOCOREMX8MX_NANO_ETH_I2C
+		pinctrl_i2c_gpio: i2c_gpio_grp {
+			fsl,pins = <
+				MX8MN_IOMUXC_ENET_MDC_GPIO1_IO16		0x000001c3
+				MX8MN_IOMUXC_ENET_MDIO_GPIO1_IO17		0x000001c3
+			>;
+		};
+#endif
 
 #endif
 
@@ -984,6 +1102,7 @@
 		};
 #endif
 
+
 		pinctrl_pmic: pmicirq {
 			fsl,pins = <
 				MX8MN_IOMUXC_GPIO1_IO10_GPIO1_IO10		0x00041
@@ -996,11 +1115,13 @@
 			>;
 		};
 
+#ifdef CONFIG_PICOCOREMX8MX_NANO_BL_CTRL
 		pinctrl_pwm2: pwm2grp {
 			fsl,pins = <
 				MX8MN_IOMUXC_SPDIF_RX_PWM2_OUT			0x00104
 			>;
 		};
+#endif
 
 #ifdef CONFIG_PICOCOREMX8MX_NANO_AUDIO_1
 		pinctrl_sai1: sai1grp {
