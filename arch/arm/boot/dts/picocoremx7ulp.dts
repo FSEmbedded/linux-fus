@@ -11,6 +11,9 @@
 /* Set board revision as 3-digit number, e.g. 120 for board rev. 1.20 */
 #define CONFIG_PICOCOREMX7ULP_BOARD_REVISION	120
 
+/* Set adapter MIPI2MIPI1 revision as 3-digit number, e.g. 120 for board rev. 1.20 */
+#define CONFIG_ADP_MIPI2MIPI1_REVISION		120
+
 /* GPIO numbers
  *
  * IOMUXC1 handles ports C - F
@@ -45,6 +48,7 @@
  */
 //#define CONFIG_PICOCOREMX7ULP_4WTOUCH_SX8655_ONBOARD
 //#define CONFIG_PICOCOREMX7ULP_CAPTOUCH_MXT224
+#define CONFIG_PICOCOREMX7ULP_CAPTOUCH_MXT336U
 //#define CONFIG_PICOCOREMX7ULP_CAPTOUCH_SITRONIX
 //#define CONFIG_PICOCOREMX7ULP_CAPTOUCH_ILITEK
 
@@ -109,11 +113,36 @@
 		status = "okay";
 	};
 
+	/* MIPI-DSI backlight PWM on adapter MIPI2MIPI1 */
+	backlight_mipi_dsi {
+		compatible = "pwm-backlight";
+		power-supply = <&reg_mipi_bl>;
+#if CONFIG_ADP_MIPI2MIPI1_REVISION < 120
+		pwms = <&pca963x 0 640000 0>; /* 1.5625 kHz */
+		brightness-levels = <0 30 32 35 39 46 55 66
+				     80 96 115 137 162 190 221 255>;
+#else
+		/* only 32 kHz available */
+		pwms = <&max7315 1 31250 PWM_POLARITY_INVERTED>;
+		/* calculated without sigma so it´s linear */
+		brightness-levels = <0 17 34 51 68 85 102 119 136
+				     153 170 187 204 221 238 255>;
+#endif
+		default-brightness-level = <14>;
+		fb-names = "mipi_dsi";
+	};
+
 #if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
 	mipi_dsi_reset: mipi-dsi-reset {
 		compatible = "gpio-reset";
-		/* ### TODO: no reset pin defined */
-		reset-gpios = <&gpio_ptc 19 GPIO_ACTIVE_LOW>;
+		/* dedicated reset GPIO */
+		//reset-gpios = <&gpio_ptc 19 GPIO_ACTIVE_LOW>;
+		/* Reset on adapter board MIPI2MIPI1 */
+#if CONFIG_ADP_MIPI2MIPI1_REVISION < 120
+		reset-gpios = <&pca963x 3 GPIO_ACTIVE_HIGH>;
+#else
+		reset-gpios = <&max7315 4 GPIO_ACTIVE_LOW>;
+#endif
 		reset-delay-us = <20>;
 		reset-post-delay-ms =<1>;
 		#reset-cells = <0>;
@@ -140,6 +169,20 @@
 			compatible = "regulator-fixed";
 			reg = <1>;
 			regulator-name = "VSD_3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+
+		/* BL_ON on adapter board MIPI2MIPI1 */
+		reg_mipi_bl: backlight_mipi {
+			compatible = "regulator-fixed";
+			regulator-name = "mipi-bl";
+#if CONFIG_ADP_MIPI2MIPI1_REVISION < 120
+			gpio = <&pca963x 1 0>;
+#else
+			gpio = <&max7315 0 GPIO_ACTIVE_HIGH>;
+#endif
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
@@ -411,6 +454,62 @@
 	clock-frequency = <100000>;
 	status = "okay";
 
+#if CONFIG_ADP_MIPI2MIPI1_REVISION < 120
+	/* LED-driver on adapter board MIPI2MIPI1 */
+	pca963x: pca9632@60 { /* LED-driver */
+		compatible = "nxp,pca9632";
+		reg = <0x60>;
+		nxp,totem-pole;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#pwm-cells = <3>;
+		#gpio-cells = <2>;
+		led@0 {
+			reg = <0>;
+			label = "1-LEDCTRL";
+			type = "PWM";
+			default-on;		/* or: keep-value */
+			active-low;
+		};
+		led@1 {
+			reg = <1>;
+			label = "0-PWRCTL";
+			type = "GPIO";
+			default-on;		/* or: keep-value */
+			active-high;
+		};
+		led@2 {
+			reg = <2>;
+			label = "2-TOUCH-RST";
+			type = "GPIO";
+			active-low;
+		};
+		led@3 {
+			reg = <3>;
+			label = "2-MIPI-RST";
+			type = "GPIO";
+			active-low;
+		};
+	};
+#else
+	/* LED-driver on adapter board MIPI2MIPI1 */
+	max7315: max7315@20 { /* LED-driver */
+		compatible = "maxim,max7315";
+		reg = <0x20>;
+		/* interrupt not yet supported */
+		//interrupt-parent = <&gpio4>;
+		//interrupts = <31 IRQ_TYPE_LEVEL_LOW>;
+		//#interrupt-cells = <2>;
+		//interrupt-controller;
+		gpio-controller;
+		#gpio-cells = <2>;
+		pwm-controller;
+		#pwm-cells = <3>;
+		//#interrupt-cells = <2>;
+		//interrupt-controller;
+	};
+#endif
+
 	//TODO: check if atmel firmware works
 #ifdef CONFIG_PICOCOREMX7ULP_CAPTOUCH_MXT224
 	mxt224@4a {
@@ -419,7 +518,28 @@
 		interrupt-parent = <&gpio_ptf>;
 		interrupts = <0 2>;
 		atmel,cfg_name = "atmel/mxt224.cfg";
+#if CONFIG_ADP_MIPI2MIPI1_REVISION < 120
 		atmel,reset-gpio = <&gpio_ptf 1 GPIO_ACTIVE_LOW>;
+#else
+		reset-gpios = <&max7315 6 GPIO_ACTIVE_LOW>;
+#endif
+	};
+#endif
+
+#ifdef CONFIG_PICOCOREMX7ULP_CAPTOUCH_MXT336U
+	/* Atmel PCAP touch on Touch Connector (I2C) */
+	mxt336u@4a {
+		compatible = "atmel,maxtouch";
+		reg = <0x4a>;
+		interrupt-parent = <&gpio_ptf>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		atmel,cfg_name = "atmel/mxt336u.cfg";
+#if CONFIG_ADP_MIPI2MIPI1_REVISION < 120
+		atmel,reset-gpio = <&gpio_ptf 1 GPIO_ACTIVE_LOW>;
+#else
+		reset-gpios = <&max7315 6 GPIO_ACTIVE_LOW>;
+#endif
+		max-read-size = <256>;
 	};
 #endif
 
@@ -490,7 +610,7 @@
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_mipi_dsi_reset>;
 	pinctrl-1 = <&pinctrl_mipi_dsi_reset>;
-	lcd_panel = "TIANMA_PANEL_TM050JDHG33";
+	lcd_panel = "NEWVISION_PANEL_NV3051D";
 	resets = <&mipi_dsi_reset>;
 };
 #endif
@@ -544,10 +664,10 @@
 				IMX7ULP_PAD_PTF11__PTF11	0x00002
 
 				/* I2C7n IRQ */
-				IMX7ULP_PAD_PTF0__PTF0		0x10003
+				IMX7ULP_PAD_PTF0__PTF0		0x10043
 
 				/* I2C7n RST */
-				IMX7ULP_PAD_PTF1__PTF1		0x20003
+				IMX7ULP_PAD_PTF1__PTF1		0x20043
 
 #if (CONFIG_PICOCOREMX7ULP_LCDIF == MIPI_DSI)
 				/* TC358762 RST */
