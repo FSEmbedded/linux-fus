@@ -344,8 +344,10 @@ static int tc358775_panel_prepare(struct drm_panel *panel)
 		}
 	}
 	udelay(500);
-	gpiod_set_value(ctx->gpio_stby, 1);
-	udelay(50);
+	if (ctx->gpio_stby){
+		gpiod_set_value(ctx->gpio_stby, 1);
+		udelay(50);
+	}
 	tc358775_reset(ctx);
 
 	ctx->prepared = true;
@@ -641,7 +643,7 @@ static int tc358775_probe(struct mipi_dsi_device *dsi)
 		dev_info(dev, "Using MIPI-DSI clk\n");
 	}
 
-	ctx->gpio_stby = devm_gpiod_get(dev, "stby", GPIOD_OUT_HIGH);
+	ctx->gpio_stby = devm_gpiod_get_optional(dev, "stby", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->gpio_stby)) {
 		dev_err(dev, "no gpio_stby GPIO pin provided\n");
 		return PTR_ERR(ctx->gpio_reset);
