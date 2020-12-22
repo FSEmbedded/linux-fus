@@ -3131,6 +3131,8 @@ struct cfg80211_ops {
 				 struct cfg80211_external_auth_params *params);
 	int	(*update_owe_info)(struct wiphy *wiphy, struct net_device *dev,
 				   struct cfg80211_update_owe_info *owe_info);
+        void    (*bangradar)(struct wiphy *wiphy,
+                             struct net_device *dev);
 };
 
 /*

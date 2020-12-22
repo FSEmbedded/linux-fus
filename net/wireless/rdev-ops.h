@@ -1157,4 +1157,12 @@ static inline int rdev_update_owe_info(struct cfg80211_registered_device *rdev,
 	return ret;
 }
 
+static inline void rdev_bangradar(struct cfg80211_registered_device *rdev,
+				   struct net_device *netdev)
+{
+	trace_rdev_bangradar(&rdev->wiphy, netdev);
+	rdev->ops->bangradar(&rdev->wiphy, netdev);
+	trace_rdev_return_void(&rdev->wiphy);
+}
+
 #endif /* __CFG80211_RDEV_OPS */

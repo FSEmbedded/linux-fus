@@ -2235,6 +2235,12 @@ TRACE_EVENT(rdev_external_auth,
 		      __entry->bssid, __entry->ssid, __entry->status)
 );
 
+DEFINE_EVENT(wiphy_netdev_evt, rdev_bangradar,
+        TP_PROTO(struct wiphy *wiphy, struct net_device *netdev),
+	TP_ARGS(wiphy, netdev)
+);
+
+
 /*************************************************************
  *	     cfg80211 exported functions traces		     *
  *************************************************************/
