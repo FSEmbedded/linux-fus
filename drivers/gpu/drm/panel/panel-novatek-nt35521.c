@@ -489,11 +489,12 @@ static const u32 nt_bus_formats[] = {
 	MEDIA_BUS_FMT_RGB565_1X16,
 };
 
-struct nt_panel {
-	struct drm_panel base;
-	struct mipi_dsi_device *dsi;
+struct nt35521 {
+	struct device *dev;
+	struct drm_panel panel;
+	struct regulator_bulk_data supplies[2];
 
-	struct gpio_desc *reset;
+	struct gpio_desc *reset_gpio;
 	struct backlight_device *backlight;
 
 	bool prepared;
@@ -504,12 +505,12 @@ struct nt_panel {
 	u32 height_mm;
 };
 
-static inline struct nt_panel *to_nt_panel(struct drm_panel *panel)
+static inline struct nt35521 *panel_to_nt35521(struct drm_panel *panel)
 {
-	return container_of(panel, struct nt_panel, base);
+	return container_of(panel, struct nt35521, panel);
 }
 
-static int nt_panel_push_cmd_list(struct mipi_dsi_device *dsi)
+static int nt35521_push_cmd_list(struct mipi_dsi_device *dsi)
 {
 	size_t i;
 	const struct cmd_table *cmd;
@@ -555,54 +556,89 @@ static int color_format_from_dsi_format(enum mipi_dsi_pixel_format format)
 	}
 };
 
-static int nt_panel_prepare(struct drm_panel *panel)
+static int nt35521_power_on(struct nt35521 *nt)
 {
-	struct nt_panel *nt = to_nt_panel(panel);
+	int ret;
+
+	ret = regulator_bulk_enable(ARRAY_SIZE(nt->supplies), nt->supplies);
+	if (ret < 0) {
+		dev_err(nt->dev, "unable to enable regulators\n");
+		return ret;
+	}
+
+	/* Toggle RESET in accordance with datasheet page 370 */
+	if (nt->reset_gpio) {
+		gpiod_set_value(nt->reset_gpio, 1);
+		/* Active min 10 us according to datasheet, let's say 20 */
+		usleep_range(20, 1000);
+		gpiod_set_value(nt->reset_gpio, 0);
+		/*
+		 * 5 ms during sleep mode, 120 ms during sleep out mode
+		 * according to datasheet, let's use 120-140 ms.
+		 */
+		usleep_range(200000, 250000);
+	}
+
+	return 0;
+}
+
+static int nt35521_prepare(struct drm_panel *panel)
+{
+	struct nt35521 *nt = panel_to_nt35521(panel);
+	int ret = 0;
 
 	if (nt->prepared)
 		return 0;
 
-	if (nt->reset != NULL) {
-		gpiod_set_value(nt->reset, 0);
-		usleep_range(5000, 10000);
-		gpiod_set_value(nt->reset, 1);
-		usleep_range(20000, 25000);
-	}
+	ret = nt35521_power_on(nt);
+	if (ret)
+		return ret;
 
 	nt->prepared = true;
 
 	return 0;
 }
 
-static int nt_panel_unprepare(struct drm_panel *panel)
+static int nt35521_power_off(struct nt35521 *nt)
 {
-	struct nt_panel *nt = to_nt_panel(panel);
-	struct device *dev = &nt->dsi->dev;
+	int ret;
+
+	ret = regulator_bulk_disable(ARRAY_SIZE(nt->supplies), nt->supplies);
+	if (ret)
+		return ret;
+
+	if (nt->reset_gpio)
+		gpiod_set_value(nt->reset_gpio, 1);
+
+	return 0;
+}
+
+static int nt35521_unprepare(struct drm_panel *panel)
+{
+	struct nt35521 *nt = panel_to_nt35521(panel);
+	int ret;
 
 	if (!nt->prepared)
 		return 0;
 
 	if (nt->enabled) {
-		DRM_DEV_ERROR(dev, "Panel still enabled!\n");
+		dev_err(nt->dev, "Panel still enabled!\n");
 		return -EPERM;
 	}
 
-	if (nt->reset != NULL) {
-		gpiod_set_value(nt->reset, 0);
-		usleep_range(15000, 17000);
-		gpiod_set_value(nt->reset, 1);
-	}
+	ret = nt35521_power_off(nt);
+	if (ret)
+		return ret;
 
 	nt->prepared = false;
 
 	return 0;
 }
 
-static int nt_panel_enable(struct drm_panel *panel)
+static int nt35521_enable(struct drm_panel *panel)
 {
-	struct nt_panel *nt = to_nt_panel(panel);
-	struct mipi_dsi_device *dsi = nt->dsi;
-	struct device *dev = &dsi->dev;
+	struct nt35521 *nt = panel_to_nt35521(panel);
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(nt->dev);
 	int color_format = color_format_from_dsi_format(dsi->format);
 	u16 brightness;
 	int ret;
@@ -611,24 +647,22 @@ static int nt_panel_enable(struct drm_panel *panel)
 		return 0;
 
 	if (!nt->prepared) {
-		DRM_DEV_ERROR(dev, "Panel not prepared!\n");
+		dev_err(nt->dev, "Panel not prepared!\n");
 		return -EPERM;
 	}
 
 	dsi->mode_flags |= MIPI_DSI_MODE_LPM;
 
-#if 1
-	ret = nt_panel_push_cmd_list(dsi);
+	ret = nt35521_push_cmd_list(dsi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to send MCS (%d)\n", ret);
+		dev_err(nt->dev, "Failed to send MCS (%d)\n", ret);
 		goto fail;
 	}
-#endif
 
 	/* Software reset */
 	ret = mipi_dsi_dcs_soft_reset(dsi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to do Software Reset (%d)\n", ret);
+		dev_err(nt->dev, "Failed to do Software Reset (%d)\n", ret);
 		goto fail;
 	}
 
@@ -636,17 +670,17 @@ static int nt_panel_enable(struct drm_panel *panel)
 
 	/* Set pixel format */
 	ret = mipi_dsi_dcs_set_pixel_format(dsi, color_format);
-	DRM_DEV_DEBUG_DRIVER(dev, "Interface color format set to 0x%x\n",
+	dev_dbg(nt->dev, "Interface color format set to 0x%x\n",
 				color_format);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to set pixel format (%d)\n", ret);
+		dev_err(nt->dev, "Failed to set pixel format (%d)\n", ret);
 		goto fail;
 	}
 	/* Set display brightness */
 	brightness = nt->backlight->props.brightness;
 	ret = mipi_dsi_dcs_set_display_brightness(dsi, brightness);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to set display brightness (%d)\n",
+		dev_err(nt->dev, "Failed to set display brightness (%d)\n",
 			      ret);
 		goto fail;
 	}
@@ -654,7 +688,7 @@ static int nt_panel_enable(struct drm_panel *panel)
 	/* Exit sleep mode */
 	ret = mipi_dsi_dcs_exit_sleep_mode(dsi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to exit sleep mode (%d)\n", ret);
+		dev_err(nt->dev, "Failed to exit sleep mode (%d)\n", ret);
 		goto fail;
 	}
 
@@ -662,7 +696,7 @@ static int nt_panel_enable(struct drm_panel *panel)
 
 	ret = mipi_dsi_dcs_set_display_on(dsi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to set display ON (%d)\n", ret);
+		dev_err(nt->dev, "Failed to set display ON (%d)\n", ret);
 		goto fail;
 	}
 
@@ -674,17 +708,16 @@ static int nt_panel_enable(struct drm_panel *panel)
 	return 0;
 
 fail:
-	if (nt->reset != NULL)
-		gpiod_set_value(nt->reset, 0);
+	if (nt->reset_gpio)
+		gpiod_set_value(nt->reset_gpio, 1);
 
 	return ret;
 }
 
-static int nt_panel_disable(struct drm_panel *panel)
+static int nt35521_disable(struct drm_panel *panel)
 {
-	struct nt_panel *nt = to_nt_panel(panel);
-	struct mipi_dsi_device *dsi = nt->dsi;
-	struct device *dev = &dsi->dev;
+	struct nt35521 *nt = panel_to_nt35521(panel);
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(nt->dev);
 	int ret;
 
 	if (!nt->enabled)
@@ -694,7 +727,7 @@ static int nt_panel_disable(struct drm_panel *panel)
 
 	ret = mipi_dsi_dcs_set_display_off(dsi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to set display OFF (%d)\n", ret);
+		dev_err(nt->dev, "Failed to set display OFF (%d)\n", ret);
 		return ret;
 	}
 
@@ -702,7 +735,7 @@ static int nt_panel_disable(struct drm_panel *panel)
 
 	ret = mipi_dsi_dcs_enter_sleep_mode(dsi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to enter sleep mode (%d)\n", ret);
+		dev_err(nt->dev, "Failed to enter sleep mode (%d)\n", ret);
 		return ret;
 	}
 
@@ -716,10 +749,9 @@ static int nt_panel_disable(struct drm_panel *panel)
 	return 0;
 }
 
-static int nt_panel_get_modes(struct drm_panel *panel)
+static int nt35521_get_modes(struct drm_panel *panel)
 {
-	struct nt_panel *nt = to_nt_panel(panel);
-	struct device *dev = &nt->dsi->dev;
+	struct nt35521 *nt = panel_to_nt35521(panel);
 	struct drm_connector *connector = panel->connector;
 	struct drm_display_mode *mode;
 	u32 *bus_flags = &connector->display_info.bus_flags;
@@ -727,7 +759,7 @@ static int nt_panel_get_modes(struct drm_panel *panel)
 
 	mode = drm_mode_create(connector->dev);
 	if (!mode) {
-		DRM_DEV_ERROR(dev, "Failed to create display mode!\n");
+		dev_err(nt->dev, "Failed to create display mode!\n");
 		return 0;
 	}
 
@@ -760,15 +792,12 @@ static int nt_panel_get_modes(struct drm_panel *panel)
 static int nt_bl_get_brightness(struct backlight_device *bl)
 {
 	struct mipi_dsi_device *dsi = bl_get_data(bl);
-	struct nt_panel *nt = mipi_dsi_get_drvdata(dsi);
-	struct device *dev = &dsi->dev;
+	struct nt35521 *nt = mipi_dsi_get_drvdata(dsi);
 	u16 brightness;
 	int ret;
 
 	if (!nt->prepared)
 		return 0;
-
-	DRM_DEV_DEBUG_DRIVER(dev, "\n");
 
 	dsi->mode_flags &= ~MIPI_DSI_MODE_LPM;
 
@@ -784,14 +813,14 @@ static int nt_bl_get_brightness(struct backlight_device *bl)
 static int nt_bl_update_status(struct backlight_device *bl)
 {
 	struct mipi_dsi_device *dsi = bl_get_data(bl);
-	struct nt_panel *nt = mipi_dsi_get_drvdata(dsi);
-	struct device *dev = &dsi->dev;
+	struct nt35521 *nt = mipi_dsi_get_drvdata(dsi);
+	//struct device *dev = &dsi->dev;
 	int ret = 0;
 
 	if (!nt->prepared)
 		return 0;
 
-	DRM_DEV_DEBUG_DRIVER(dev, "New brightness: %d\n", bl->props.brightness);
+	dev_dbg(nt->dev, "New brightness: %d\n", bl->props.brightness);
 
 	dsi->mode_flags &= ~MIPI_DSI_MODE_LPM;
 
@@ -807,12 +836,12 @@ static const struct backlight_ops nt_bl_ops = {
 	.get_brightness = nt_bl_get_brightness,
 };
 
-static const struct drm_panel_funcs nt_panel_funcs = {
-	.prepare = nt_panel_prepare,
-	.unprepare = nt_panel_unprepare,
-	.enable = nt_panel_enable,
-	.disable = nt_panel_disable,
-	.get_modes = nt_panel_get_modes,
+static const struct drm_panel_funcs nt35521_funcs = {
+	.prepare = nt35521_prepare,
+	.unprepare = nt35521_unprepare,
+	.enable = nt35521_enable,
+	.disable = nt35521_disable,
+	.get_modes = nt35521_get_modes,
 };
 
 
@@ -836,28 +865,14 @@ static const struct display_timing nt_default_timing = {
 		 DISPLAY_FLAGS_PIXDATA_NEGEDGE,
 };
 
-static int nt_panel_probe(struct mipi_dsi_device *dsi)
+static int nt35521_parse_dt(struct nt35521 *nt, struct mipi_dsi_device *dsi)
 {
-	struct device *dev = &dsi->dev;
+	struct device *dev = nt->dev;
 	struct device_node *np = dev->of_node;
 	struct device_node *timings;
-	struct nt_panel *panel;
-	struct backlight_properties bl_props;
-	int ret;
     /* use default burst mode */
 	u32 video_mode = 0;
-
-	panel = devm_kzalloc(&dsi->dev, sizeof(*panel), GFP_KERNEL);
-	if (!panel)
-		return -ENOMEM;
-
-	mipi_dsi_set_drvdata(dsi, panel);
-
-	panel->dsi = dsi;
-
-	dsi->format = MIPI_DSI_FMT_RGB888;
-        dsi->mode_flags =  MIPI_DSI_MODE_VIDEO_HSE | MIPI_DSI_MODE_VIDEO
-                | MIPI_DSI_MODE_EOT_PACKET | MIPI_DSI_MODE_VIDEO_BURST;
+	int ret;
 
 	ret = of_property_read_u32(np, "video-mode", &video_mode);
 	if (!ret) {
@@ -894,79 +909,109 @@ static int nt_panel_probe(struct mipi_dsi_device *dsi)
 	timings = of_get_child_by_name(np, "display-timings");
 	if (timings) {
 		of_node_put(timings);
-		ret = of_get_videomode(np, &panel->vm, 0);
+		ret = of_get_videomode(np, &nt->vm, 0);
 	} else {
-		videomode_from_timing(&nt_default_timing, &panel->vm);
+		videomode_from_timing(&nt_default_timing, &nt->vm);
 	}
 	if (ret < 0)
 		return ret;
 
-	of_property_read_u32(np, "panel-width-mm", &panel->width_mm);
-	of_property_read_u32(np, "panel-height-mm", &panel->height_mm);
+	of_property_read_u32(np, "panel-width-mm", &nt->width_mm);
+	of_property_read_u32(np, "panel-height-mm", &nt->height_mm);
 
-	panel->reset = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
+	return ret;
+}
 
-	if (IS_ERR(panel->reset))
-		panel->reset = NULL;
-	else
-		gpiod_set_value(panel->reset, 0);
+static int nt35521_probe(struct mipi_dsi_device *dsi)
+{
+	struct device *dev = &dsi->dev;
+	struct nt35521 *nt;
+	struct backlight_properties bl_props;
+	int ret;
+
+	nt = devm_kzalloc(&dsi->dev, sizeof(*nt), GFP_KERNEL);
+	if (!nt)
+		return -ENOMEM;
+
+	mipi_dsi_set_drvdata(dsi, nt);
+	nt->dev = dev;
+
+	dsi->format = MIPI_DSI_FMT_RGB888;
+	dsi->mode_flags =  MIPI_DSI_MODE_VIDEO_HSE | MIPI_DSI_MODE_VIDEO
+                | MIPI_DSI_MODE_EOT_PACKET | MIPI_DSI_MODE_VIDEO_BURST;
+
+	ret = nt35521_parse_dt(nt, dsi);
+
+	nt->supplies[0].supply = "vci"; /* 2.5-3.6 V */
+	nt->supplies[1].supply = "vddi"; /* 1.65-3.6 V */
+	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(nt->supplies),
+									nt->supplies);
+	if (ret < 0)
+		return ret;
+
+	nt->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
+	if (IS_ERR(nt->reset_gpio)) {
+		dev_err(nt->dev,
+	      "error getting RESET GPIO\n");
+		return PTR_ERR(nt->reset_gpio);
+	}
 
 	memset(&bl_props, 0, sizeof(bl_props));
 	bl_props.type = BACKLIGHT_RAW;
 	bl_props.brightness = 255;
 	bl_props.max_brightness = 255;
 
-	panel->backlight = devm_backlight_device_register(
+	nt->backlight = devm_backlight_device_register(
 				dev, dev_name(dev),
 				dev, dsi,
 				&nt_bl_ops, &bl_props);
-	if (IS_ERR(panel->backlight)) {
-		ret = PTR_ERR(panel->backlight);
+	if (IS_ERR(nt->backlight)) {
+		ret = PTR_ERR(nt->backlight);
 		dev_err(dev, "Failed to register backlight (%d)\n", ret);
 		return ret;
 	}
 
-	drm_panel_init(&panel->base);
-	panel->base.funcs = &nt_panel_funcs;
-	panel->base.dev = dev;
+	drm_panel_init(&nt->panel);
+	nt->panel.funcs = &nt35521_funcs;
+	nt->panel.dev = dev;
 
-	ret = drm_panel_add(&panel->base);
+	ret = drm_panel_add(&nt->panel);
 
 	if (ret < 0)
 		return ret;
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0)
-		drm_panel_remove(&panel->base);
+		drm_panel_remove(&nt->panel);
 
 	return ret;
 }
 
-static int nt_panel_remove(struct mipi_dsi_device *dsi)
+static int nt35521_remove(struct mipi_dsi_device *dsi)
 {
-	struct nt_panel *nt = mipi_dsi_get_drvdata(dsi);
-	struct device *dev = &dsi->dev;
+	struct nt35521 *nt = mipi_dsi_get_drvdata(dsi);
 	int ret;
 
 	ret = mipi_dsi_detach(dsi);
 	if (ret < 0)
-		DRM_DEV_ERROR(dev, "Failed to detach from host (%d)\n",
+		dev_err(nt->dev, "Failed to detach from host (%d)\n",
 			ret);
 
-	drm_panel_detach(&nt->base);
+	ret = nt35521_power_off(nt);
+	if (ret < 0)
+		dev_err(nt->dev, "Failed to power off (%d)\n",
+			ret);
+	drm_panel_remove(&nt->panel);
 
-	if (nt->base.dev)
-		drm_panel_remove(&nt->base);
-
-	return 0;
+	return ret;
 }
 
-static void nt_panel_shutdown(struct mipi_dsi_device *dsi)
+static void nt35521_shutdown(struct mipi_dsi_device *dsi)
 {
-	struct nt_panel *nt = mipi_dsi_get_drvdata(dsi);
+	struct nt35521 *nt = mipi_dsi_get_drvdata(dsi);
 
-	nt_panel_disable(&nt->base);
-	nt_panel_unprepare(&nt->base);
+	nt35521_disable(&nt->panel);
+	nt35521_unprepare(&nt->panel);
 }
 
 static const struct of_device_id nt_of_match[] = {
@@ -975,16 +1020,16 @@ static const struct of_device_id nt_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, nt_of_match);
 
-static struct mipi_dsi_driver nt_panel_driver = {
+static struct mipi_dsi_driver nt35521_driver = {
 	.driver = {
 		.name = "panel-novatek-nt35521",
 		.of_match_table = nt_of_match,
 	},
-	.probe = nt_panel_probe,
-	.remove = nt_panel_remove,
-	.shutdown = nt_panel_shutdown,
+	.probe = nt35521_probe,
+	.remove = nt35521_remove,
+	.shutdown = nt35521_shutdown,
 };
-module_mipi_dsi_driver(nt_panel_driver);
+module_mipi_dsi_driver(nt35521_driver);
 
 MODULE_AUTHOR("F&S Elektronik Systeme GmbH");
 MODULE_DESCRIPTION("Novatek NT35521");
