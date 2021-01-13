@@ -6,7 +6,7 @@
  * published by the Free Software Foundation.
  */
 
-#include "picocoremx8mx.dts"
+#include "picocoremx8mm-bbdsi.dts"
 
 #define CONFIG_PICOCOREMX8MM_INVERTED_XY
 / {
@@ -125,6 +125,4 @@
         0x01>;
 	};
 };
-
-
 

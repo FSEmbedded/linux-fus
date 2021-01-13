@@ -6,7 +6,7 @@
  * published by the Free Software Foundation.
  */
 
-#include "picocoremx8mm-bbdsi.dts"
+#include "picocoremx8mx.dts"
 
 #define CONFIG_PICOCOREMX8MM_INVERTED_XY
 / {
@@ -39,7 +39,7 @@
 
 
 		reg = <0>;
-		compatible = "auo,g133han01-dsi"; /* one of panel-simple's 
+		compatible = "auo,g133han01-dsi"; /* one of panel-simple's
 		     		          match strings */
 
 		power-supply = <&reg_vlcd>;
@@ -125,6 +125,4 @@
         0x01>;
 	};
 };
-
-
 

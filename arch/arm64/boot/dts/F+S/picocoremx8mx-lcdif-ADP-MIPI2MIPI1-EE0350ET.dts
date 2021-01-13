@@ -6,8 +6,7 @@
 * published by the Free Software Foundation.
 */
 
-
-#include "picocoremx8mx.dts"
+#include "picocoremx8mm-bbdsi.dts"
 
 &lcdif {
 	status = "okay";
@@ -32,8 +31,8 @@
 	mxt336u@4a {
 		compatible = "atmel,maxtouch";
 		reg = <0x4a>;
-		interrupt-parent = <&gpio5>;
-		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <31 IRQ_TYPE_EDGE_FALLING>;
 		atmel,cfg_name = "atmel/mxt336u.cfg";
 		reset-gpios = <&pca963x 2 0>;
 	};
