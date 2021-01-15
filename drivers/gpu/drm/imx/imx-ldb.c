@@ -239,6 +239,7 @@ static void imx_ldb_encoder_disable(struct drm_encoder *encoder)
 	struct imx_ldb_channel *imx_ldb_ch = enc_to_imx_ldb_ch(encoder);
 	struct imx_ldb *imx_ldb = imx_ldb_ch->imx_ldb;
 	struct ldb *ldb = &imx_ldb->base;
+	int dual = ldb->ldb_ctrl & LDB_SPLIT_MODE_EN;
 	int mux, ret;
 
 	if (ldb->dual) {
@@ -560,6 +561,14 @@ static const struct component_ops imx_ldb_ops = {
 
 static int imx_ldb_probe(struct platform_device *pdev)
 {
+	struct imx_ldb *imx_ldb;
+
+	imx_ldb = devm_kzalloc(&pdev->dev, sizeof(*imx_ldb), GFP_KERNEL);
+	if (!imx_ldb)
+		return -ENOMEM;
+
+	platform_set_drvdata(pdev, imx_ldb);
+
 	struct device *dev = &pdev->dev;
 	struct imx_ldb *imx_ldb;
 
