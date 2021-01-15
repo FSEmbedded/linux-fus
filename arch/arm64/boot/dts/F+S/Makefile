@@ -22,8 +22,7 @@ dtb-$(CONFIG_ARCH_MXC) += picocoremx8mm.dtb \
 								picocoremx8mx-lcdif-adp-mipi2lvds1-g133han01.dtb \
 								picocoremx8mx-tc358775-g133han01.dtb \
 								picocoremx8mx-tc358775-j070wvtc0211.dtb \
-								picocoremx8mx-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtb \
-								picocoremx8mx-lcdif-adp-MIPI2MIPI1-EE0350ET.dtb
+								picocoremx8mx-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtb
 
 dtb-$(CONFIG_ARCH_MXC) += efusmx8x.dtb
 
