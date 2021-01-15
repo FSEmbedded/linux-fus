@@ -712,9 +712,7 @@ static int imx_thermal_register_legacy_cooling(struct imx_thermal_data *data)
 		return ret;
 	}
 
-	of_node_put(np);
-
-	return ret;
+	return 0;
 }
 
 static void imx_thermal_unregister_legacy_cooling(struct imx_thermal_data *data)
