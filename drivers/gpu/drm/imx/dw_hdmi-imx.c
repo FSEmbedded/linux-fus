@@ -308,9 +308,11 @@ static void imx8mp_hdmi_phy_disable(struct dw_hdmi *dw_hdmi, void *data)
 	regmap_read(hdmi->regmap, 0x200, &val);
 	/* Disable CEC */
 	val &= ~0x2;
-	/* Power down HDMI PHY */
-	val |= 0x8;
-    regmap_write(hdmi->regmap, 0x200, val);
+	/* Power down HDMI PHY
+	 * TODO move PHY power off to hdmi phy driver
+	 * val |= 0x8;
+	 * regmap_write(hdmi->regmap, 0x200, val);
+	*/
 }
 
 static int imx8mp_hdmimix_setup(struct imx_hdmi *hdmi)
@@ -335,9 +337,10 @@ static int imx8mp_hdmimix_setup(struct imx_hdmi *hdmi)
 	return clk_bulk_prepare_enable(ARRAY_SIZE(imx8mp_clocks), imx8mp_clocks);
 }
 
-void imx8mp_hdmi_enable_audio(struct dw_hdmi *dw_hdmi, void *data, int channel)
+void imx8mp_hdmi_enable_audio(struct dw_hdmi *dw_hdmi, void *data, int channel,
+			      int width, int rate, int non_pcm)
 {
-	imx8mp_hdmi_pai_enable(channel);
+	imx8mp_hdmi_pai_enable(channel, width, rate, non_pcm);
 }
 
 void imx8mp_hdmi_disable_audio(struct dw_hdmi *dw_hdmi, void *data)
@@ -395,9 +398,8 @@ static int dw_hdmi_imx_bind(struct device *dev, struct device *master,
 	if (!pdev->dev.of_node)
 		return -ENODEV;
 
-	hdmi = devm_kzalloc(&pdev->dev, sizeof(*hdmi), GFP_KERNEL);
-	if (!hdmi)
-		return -ENOMEM;
+	hdmi = dev_get_drvdata(dev);
+	memset(hdmi, 0, sizeof(*hdmi));
 
 	match = of_match_node(dw_hdmi_imx_dt_ids, pdev->dev.of_node);
 	if (!match)
@@ -468,6 +470,14 @@ static const struct component_ops dw_hdmi_imx_ops = {
 
 static int dw_hdmi_imx_probe(struct platform_device *pdev)
 {
+	struct imx_hdmi *hdmi;
+
+	hdmi = devm_kzalloc(&pdev->dev, sizeof(*hdmi), GFP_KERNEL);
+	if (!hdmi)
+		return -ENOMEM;
+
+	platform_set_drvdata(pdev, hdmi);
+
 	return component_add(&pdev->dev, &dw_hdmi_imx_ops);
 }
 

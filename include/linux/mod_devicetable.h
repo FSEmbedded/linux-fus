@@ -318,7 +318,7 @@ struct pcmcia_device_id {
 #define INPUT_DEVICE_ID_LED_MAX		0x0f
 #define INPUT_DEVICE_ID_SND_MAX		0x07
 #define INPUT_DEVICE_ID_FF_MAX		0x7f
-#define INPUT_DEVICE_ID_SW_MAX		0x0f
+#define INPUT_DEVICE_ID_SW_MAX		0x10
 #define INPUT_DEVICE_ID_PROP_MAX	0x1f
 
 #define INPUT_DEVICE_ID_MATCH_BUS	1
@@ -825,6 +825,21 @@ struct tee_client_device_id {
 struct wmi_device_id {
 	const char guid_string[UUID_STRING_LEN+1];
 	const void *context;
+};
+
+/* vop */
+struct vop_device_id {
+	__u32 device;
+	__u32 vendor;
+};
+#define VOP_DEV_ANY_ID	0xffffffff
+
+/* cosm */
+#define COSM_NAME_SIZE			32
+#define COSM_MODULE_PREFIX	"cosm:"
+
+struct cosm_device_id {
+	char name[COSM_NAME_SIZE];
 };
 
 #endif /* LINUX_MOD_DEVICETABLE_H */
