@@ -131,6 +131,8 @@
 		/* Alias for GPMI node. Dont change it
 		 * because it used by the bootloader */
 		nand = &gpmi;
+		/* Alias for gpio i2c bus. Used by bootloader. */
+		i2c4 = &i2c_gpio;
 	};
 
 	/* -------------------- BOARD INFO -------------------- */
@@ -354,6 +356,7 @@
 		VDDA-supply = <&reg_sgtl5000_vdda>;
 		VDDIO-supply = <&reg_sgtl5000_vddio>;
 		VDDD-supply = <&reg_sgtl5000_vddd>;
+		status = "okay";
 	};
 #endif
 
@@ -633,34 +636,37 @@
 
 #ifdef CONFIG_PICOCOREMX8MX_ETH_I2C
 &i2c_gpio {
-		ksz9893: ksz9893@5f {
-			compatible = "microchip,ksz9893";
-			reg = <0x5f>;
+	status = "okay";
 
-			ports {
-				#address-cells = <1>;
-				#size-cells = <0>;
-				port@0 {
-					reg = <0>;
-					label = "lan1";
-					local-mac-address = [00 05 51 07 55 81];
-				};
-				port@1 {
-					reg = <1>;
-					label = "lan2";
-					local-mac-address = [00 05 51 07 55 80];
-				};
-				port@2 {
-					reg = <2>;
-					label = "cpu";
-					ethernet = <&fec1>;
-					fixed-link {
-						speed = <1000>;
-						full-duplex;
-					};
+	ksz9893: ksz9893@5f {
+		compatible = "microchip,ksz9893";
+		status = "okay";
+		reg = <0x5f>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+				label = "lan1";
+				local-mac-address = [00 05 51 07 55 81];
+			};
+			port@1 {
+				reg = <1>;
+				label = "lan2";
+				local-mac-address = [00 05 51 07 55 80];
+			};
+			port@2 {
+				reg = <2>;
+				label = "cpu";
+				ethernet = <&fec1>;
+				fixed-link {
+					speed = <1000>;
+					full-duplex;
 				};
 			};
 		};
+	};
  };
 #endif
 
