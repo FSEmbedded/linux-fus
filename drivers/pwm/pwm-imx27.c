@@ -287,19 +287,10 @@ static int pwm_imx27_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 
 		writel(cr, imx->mmio_base + MX3_PWMCR);
 	} else if (cstate.enabled) {
-		cr = 0;
-		if (imx->keep_power)
-		{
-			cr = MX3_PWMCR_EN;
-			if (state->polarity == PWM_POLARITY_INVERSED)
-				cr |= FIELD_PREP(MX3_PWMCR_POUTC,
-						MX3_PWMCR_POUTC_INVERTED);
-			writel(cr, imx->mmio_base + MX3_PWMCR);
-		}
-		else {
-			writel(cr, imx->mmio_base + MX3_PWMCR);
-			pwm_imx27_clk_disable_unprepare(chip);
-		}
+		if (!imx->keep_power)
+			writel(0, imx->mmio_base + MX3_PWMCR);
+
+		pwm_imx27_clk_disable_unprepare(chip);
 	}
 
 	return 0;
