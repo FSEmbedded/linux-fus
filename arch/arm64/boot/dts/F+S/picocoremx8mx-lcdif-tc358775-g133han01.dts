@@ -1,16 +1,26 @@
 /*
- * Copyright (C) 2020 F&S Elektronik Systeme GmbH
+ * Copyright (C) 2019 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
 
-#include "picocoremx8mx-nano.dts"
+#define CONFIG_PICOCOREMX8MX_MIPI_DSI_LVDS
 
-#ifdef CONFIG_PICOCOREMX8MX_NANO_LVDS
+#include "picocoremx8mx.dts"
 
-#define CONFIG_PICOCOREMX8MX_NANO_INVERTED_XY
+
+/ {
+	backlight_ldb {
+		pwms = <&pwm2 0 2000000 0>;
+		brightness-levels = < 23 39 55 71 87 103 119 135 151 167 183
+		     199 215 231 239 255>;
+		default-brightness-level = <14>;
+	};
+
+
+};
 
 &lcdif {
 	status = "okay";
@@ -28,11 +38,8 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_mipi_dsi_en>;
 
-		clocks = <&clk IMX8MN_CLK_CLKO2>;
 		reset-gpios = <&gpio1 8 GPIO_ACTIVE_HIGH>;
 		stby-gpios  = <&gpio1 4 GPIO_ACTIVE_HIGH>;
-		clock-names = "ext-clk";
-		ext-clk-rate = <33500000>;
 
 		vddc-supply = <&reg_vref_1v2>;
 		vddio-supply = <&reg_vref_1v8>;
@@ -63,29 +70,29 @@
                 0x049C>;
 		reg,value = <
 				/* dsi basic parameters in lp mode */
-				0x10002 0x1 0x0 0x0
-				0x00000	0x0 0x1F 0x1F
-				0x00001 0x1
+				0xA000C 0x8 0xD 0xD
+				0xD	0xD 0x1F 0x1F
+				0x1 0x1
 				/* Timing and mode settings */
-				0x03200120 0x1A0014 0xD20320 0x170001
-				0x1501E0 0x1 0x44802D 0x4802D 0x4
+				0x03200120 0x750038 0x4D0780 0x130013
+				0xB0438 0x1 0x448006 0x48006 0x4
 				/* color mapping settings	*/
-				0x3020100 0x8050704 0xF0E0A09 0x100D0C0B 0x12111716
-				0x1B151413 0x61A1918
-				0x00000031>;
+				0x5040302 0xA070106 0x9080C0B 0x120F0E0D 0x14131110
+				0x1B171615 0x01A1918
+				0x00000263>;
 
 		display-timings {
 			native-mode = <&timing0>;
 
-			timing0: jd_j070wvtc0211 {
-				clock-frequency = <33500000>;
-				hactive = <800>;
-				vactive = <480>;
+			timing0: G133HAN01 {
+				clock-frequency = <150000000>;
+				hactive = <1920>;
+				vactive = <1080>;
 				hback-porch = <20>;
-				hfront-porch = <247>;
-				hsync-len = <5>;
-				vback-porch = <22>;
-				vfront-porch = <23>;
+				hfront-porch = <159>;
+				hsync-len = <70>;
+				vback-porch = <37>;
+				vfront-porch = <11>;
 				vsync-len = <1>;
 				pixelclk-active = <0>;
 			};
@@ -93,28 +100,3 @@
 	};
 };
 
-&i2c2 {
-	/* touch I2C */
-	focaltech@38 {
-		compatible = "focaltech,fts";
-		reg = <0x38>;
-#if (CONFIG_PICOCOREMX8MX_NANO_BOARD_REVISION==100)
-		interrupt-parent = <&gpio1>;
-		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
-		focaltech,irq-gpio = <&gpio1 2 IRQ_TYPE_EDGE_FALLING>;
-#else
-		interrupt-parent = <&gpio5>;
-		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
-		focaltech,irq-gpio = <&gpio5 2 IRQ_TYPE_EDGE_FALLING>;
-#endif
-#ifdef CONFIG_PICOCOREMX8MX_NANO_INVERTED_XY
-		focaltech,touchscreen-inverted-x;
-		focaltech,touchscreen-inverted-y;
-#endif
-		focaltech,reset-gpio = <&gpio1 1 GPIO_ACTIVE_LOW>;
-		focaltech,num-max-touches = <10>;
-		focaltech,display-coords = <0 0 800 480>;
-	};
-};
-
-#endif

@@ -11,16 +11,6 @@
 &mipi_dsi {
 	status = "okay";
 
-	clocks = <&clk IMX8MM_CLK_DSI_CORE>,
-			 <&clk IMX8MM_CLK_DSI_PHY_REF>, <&clk IMX8MM_CLK_CLKO2>;
-	clock-names = "cfg", "pll-ref";
-	assigned-clocks = <&clk IMX8MM_CLK_DSI_CORE>,
-				  <&clk IMX8MM_CLK_DSI_PHY_REF>, <&clk IMX8MM_CLK_CLKO2>;
-	assigned-clock-parents = <&clk IMX8MM_SYS_PLL1_266M>,
-					 <&clk IMX8MM_VIDEO_PLL1_OUT>, <&clk IMX8MM_SYS_PLL2_200M>;
-	assigned-clock-rates = <266000000>, <27000000>, <200000000>;
-
-
 #if 0
 /* DSI mode flags */
 

@@ -397,7 +397,7 @@
 		reg = <0x4a>;
 		interrupt-parent = <&gpio5>;
 		interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
-		atmel,cfg_name = "atmel/mxt336u.cfg";
+		atmel,cfg_name = "atmel/mxt336u-extra-glass.cfg";
 		atmel,reset-gpio = <&gpio5 23 GPIO_ACTIVE_LOW>;
 	};
 };

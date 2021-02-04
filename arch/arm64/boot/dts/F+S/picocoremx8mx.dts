@@ -1,19 +1,5 @@
 /*
- * Copyright 2018 NXP
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- */
-
-/*
- * Copyright (C) 2020 F&S Elektronik Systeme GmbH
+ * Copyright (C) 2019 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -24,6 +10,9 @@
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_PICOCOREMX8MX_BOARD_REVISION	110
+
+/* Activate this if you want to use the Cortex-M4 core */
+//#define SUPPORT_M4
 
 /* MIPI DSI */
 #define CONFIG_PICOCOREMX8MX_MIPI_DSI
@@ -44,20 +33,19 @@
 #define CONFIG_PICOCOREMX8MX_USB_HOST
 
 /* EEPROM - default not mounted */
-//#define CONFIG_PICOCOREMX8MX_EEPROM
+#define CONFIG_PICOCOREMX8MX_EEPROM
 
 /* PCIe */
 #define CONFIG_PICOCOREMX8MX_PCIE
 
-/* CAN - default not mounted */
-//#define CONFIG_PICOCOREMX8MX_CAN
+/* CAN */
+#define CONFIG_PICOCOREMX8MX_CAN
 
 /* I2C */
 #define CONFIG_PICOCOREMX8MX_I2C_A
 #define CONFIG_PICOCOREMX8MX_I2C_B
 #define CONFIG_PICOCOREMX8MX_I2C_C
 #define CONFIG_PICOCOREMX8MX_I2C_D
-//#define CONFIG_PICOCOREMX8MX_I2C_D_A71CH
 
 /* PWM and backlight brightness */
 #define CONFIG_PICOCOREMX8MX_PWM_A
@@ -78,17 +66,16 @@
 #define CONFIG_PICOCOREMX8MX_UART_D
 
 #define CONFIG_PICOCOREMX8MX_SPI_A
-/* HW option, only works if R89 = mounted, R82 = umounted */
-//#define CONFIG_PICOCOREMX8MX_SPI_A_CAN_CONVERTER
+/* HW option can only be used if LVDS converter not mounted.
+ * IRQ pin is shared with LVDS_STBY (mounting option)
+ */
+#define CONFIG_PICOCOREMX8MX_SPI_A_CAN_CONVERTER
 #define CONFIG_PICOCOREMX8MX_SPI_B
 #define CONFIG_PICOCOREMX8MX_SPI_C
 
 /* Audio */
 #define CONFIG_PICOCOREMX8MX_SGTL5000_AUDIO
-//#define CONFIG_PICOCOREMX8MX_AUDIO_2
-
-/* External RTC - default not mounted */
-//#define CONFIG_PICOCOREMX8MX_EXT_RTC
+#define CONFIG_PICOCOREMX8MX_AUDIO_2
 
 //#define CONFIG_PICOCOREMX8MX_CAMERA
 
@@ -109,12 +96,12 @@
 
 /*
  * SD_B - External SD port with Card Detect (CD) and Write Protect (WP)
- * only available if WLAN is not equipped.
  */
 #define CONFIG_PICOCOREMX8MX_SD_B
 #define CONFIG_PICOCOREMX8MX_SD_B_CD
 #define CONFIG_PICOCOREMX8MX_SD_B_WP
 
+/* If LVDS is equipped, CAN_BBDSI is not available */
 #ifdef CONFIG_PICOCOREMX8MX_MIPI_DSI_LVDS
 #undef CONFIG_PICOCOREMX8MX_SPI_A_CAN_CONVERTER
 #endif
@@ -131,6 +118,11 @@
 		/* Alias for GPMI node. Dont change it
 		 * because it used by the bootloader */
 		nand = &gpmi;
+		/* Due to this labels U-Boot sets mac addresses ethaddr/eth1addr
+		 * to corresponding VLAN interfaces
+		 */
+		ethernet = &eth_port0;
+		ethernet1 = &eth_port1;
 		/* Alias for gpio i2c bus. Used by bootloader. */
 		i2c4 = &i2c_gpio;
 	};
@@ -175,7 +167,7 @@
 		power-supply = <&reg_ldb_bl>;
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
-		default-brightness-level = <4>;
+		default-brightness-level = <14>;
 		fb-names = "mxs-lcdif0";
 	};
 #endif
@@ -236,8 +228,8 @@
 		reg_sgtl5000_vdda: sgtl5000_vdda {
 			compatible = "regulator-fixed";
 			regulator-name = "VDDA-supply";
-			regulator-min-microvolt = <3000000>;
-			regulator-max-microvolt = <3000000>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
 			regulator-always-on;
 		};
 
@@ -254,8 +246,8 @@
 		reg_sgtl5000_vddd: sgtl5000_vddd {
 			compatible = "regulator-fixed";
 			regulator-name = "VDDD-supply";
-			regulator-min-microvolt = <1500000>;
-			regulator-max-microvolt = <1500000>;
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
 			regulator-always-on;
 		};
 #endif /* CONFIG_PICOCOREMX8MX_SGTL5000_AUDIO */
@@ -327,14 +319,7 @@
 		#clock-cells = <0>;
 		clock-frequency = <100000000>;
 	};
-
 };
-
-#ifdef CONFIG_PICOCOREMX8MX_EXT_RTC
-&snvs_rtc {
-	status = "disabled";
-};
-#endif
 
 #ifdef CONFIG_PICOCOREMX8MX_I2C_D
 &i2c1 {
@@ -342,7 +327,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
-
 
 #ifdef CONFIG_PICOCOREMX8MX_SGTL5000_AUDIO
 	sgtl5000: sgtl5000@a {
@@ -356,7 +340,6 @@
 		VDDA-supply = <&reg_sgtl5000_vdda>;
 		VDDIO-supply = <&reg_sgtl5000_vddio>;
 		VDDD-supply = <&reg_sgtl5000_vddd>;
-		status = "okay";
 	};
 #endif
 
@@ -468,7 +451,6 @@
 		};
 	};
 
-#ifdef CONFIG_PICOCOREMX8MX_EXT_RTC
 	rtcpcf85263@51 {
 		compatible = "nxp,pcf85263";
 		reg = <0x51>;
@@ -477,7 +459,6 @@
 		quartz-load-capacitance = <PCF85263_QUARTZCAP_12p5pF>;
 		quartz-drive-strength = <PCF85263_QUARTZDRIVE_LOW>;
 	};
-#endif
 
 #ifdef CONFIG_PICOCOREMX8MX_SERIAL_CAMERA
 	ov5640_mipi: ov5640_mipi@3c {
@@ -558,7 +539,6 @@
 	status = "okay";
 
 	/* PCIe */
-
 };
 #endif
 
@@ -598,10 +578,12 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm2>;
 	#pwm-cells = <3>;
+	keep-power;
 	status = "okay";
 };
 #endif
 
+#ifdef SUPPORT_M4
 &rpmsg{
 	/*
 	 * 64K for one rpmsg instance:
@@ -611,6 +593,15 @@
 	reg = <0x0 0xb8000000 0x0 0x10000>;
 	status = "okay";
 };
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MX_AUDIO_2
+&sai1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sai1>;
+	status = "okay";
+};
+#endif
 
 #ifdef CONFIG_PICOCOREMX8MX_SGTL5000_AUDIO
 &sai5 {
@@ -620,16 +611,8 @@
 	assigned-clocks = <&clk IMX8MM_CLK_SAI5>;
 	assigned-clock-parents = <&clk IMX8MM_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <24576000>;
+	//assigned-clock-rates = <12288000>;
 
-	status = "okay";
-};
-
-#endif
-
-#ifdef CONFIG_PICOCOREMX8MX_AUDIO_2
-&sai1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_sai1>;
 	status = "okay";
 };
 #endif
@@ -646,12 +629,12 @@
 		ports {
 			#address-cells = <1>;
 			#size-cells = <0>;
-			port@0 {
+			eth_port0: port@0 {
 				reg = <0>;
 				label = "lan1";
 				local-mac-address = [00 05 51 07 55 81];
 			};
-			port@1 {
+			eth_port1: port@1 {
 				reg = <1>;
 				label = "lan2";
 				local-mac-address = [00 05 51 07 55 80];
@@ -700,7 +683,7 @@
 	status = "okay";
 
 #ifdef CONFIG_PICOCOREMX8MX_SPI_A_CAN_CONVERTER
-	mcp251x@1 {
+	mcp251x@0 {
 		compatible = "microchip,mcp2515";
 		reg = <0>;
 		clocks = <&mcp2515_clk>;
@@ -708,14 +691,13 @@
 		interrupts = <4 IRQ_TYPE_EDGE_FALLING>;
 		spi-max-frequency = <10000000>;
 		status = "okay";
-	};
 
-	mcp2515_clk: oscillator-mcp2515@1 {
-		compatible = "fixed-clock";
-		reg = <1>;
-		#clock-cells = <0>;
-		clock-frequency = <20000000>; //20MHz
+		mcp2515_clk: oscillator {
+			#clock-cells = <0>;
+			compatible = "fixed-clock";
+			clock-frequency = <20000000>; //20MHz
 		};
+	};
 #else
 	spidev@0 {
 		compatible = "linux,spidev";
@@ -729,8 +711,6 @@
 
 #ifdef CONFIG_PICOCOREMX8MX_SPI_B
 &ecspi3 {
-	#address-cells = <1>;
-	#size-cells = <0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi3>;
 	fsl,spi-num-chipselects = <1>;
@@ -755,23 +735,29 @@
 	status = "okay";
 
 #ifdef CONFIG_PICOCOREMX8MX_CAN
-	mcp25xxfd@1 {
-		compatible = "microchip,mcp2517fd";
+	mcp25xxfd@0 {
+		compatible = "microchip,mcp2518fd";
 		reg = <0>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_can>;
 		spi-max-frequency = <10000000>;
-		interrupt-parent = <&gpio4>;
-		interrupts = <28 IRQ_TYPE_LEVEL_LOW>;
+		interrupts-extended = <&gpio4 28 IRQ_TYPE_LEVEL_LOW>;
 		clocks = <&mcp25xxfd_clk>;
 		xceiver-supply = <&reg_can>;
 		status = "okay";
-	};
 
-	mcp25xxfd_clk: oscillator-mcp25xxfd {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <20000000>; //20MHz
+		mcp25xxfd_clk: oscillator-mcp25xxfd {
+			#clock-cells = <0>;
+			compatible = "fixed-clock";
+			clock-frequency = <20000000>; //20MHz
+		};
+	};
+#else
+	spidev@0 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
 	};
 #endif
 };
@@ -811,8 +797,6 @@
 &uart2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2>;
-	assigned-clocks = <&clk IMX8MM_CLK_UART2>;
-	assigned-clock-parents = <&clk IMX8MM_SYS_PLL1_80M>;
 #ifdef CONFIG_PICOCOREMX8MX_UART_B_RTSCTS
 	fsl,uart-has-rtscts;
 #endif
@@ -845,7 +829,7 @@
 	dr_mode = "otg";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg1>;
-	//vbus-supply = <&reg_usb_otg1_vbus>;
+//###	vbus-supply = <&reg_usb_otg1_vbus>;
 	picophy,pre-emp-curr-control = <3>;
 	picophy,dc-vol-level-adjust = <7>;
 	disable-over-current;
@@ -858,7 +842,7 @@
 	dr_mode = "host";
 	pinctrl-names ="default";
 	pinctrl-0 = <&pinctrl_usbotg2>;
-	//vbus-supply = <&reg_usb_otg2_vbus>;
+//###	vbus-supply = <&reg_usb_otg2_vbus>;
 	power-active-high;
 	disable-over-current;
 	picophy,pre-emp-curr-control = <3>;
@@ -1015,44 +999,41 @@
 				/* GPIO */
 #ifndef CONFIG_PICOCOREMX8MX_MIPI_DSI_LVDS
 #ifndef CONFIG_PICOCOREMX8MX_SPI_A_CAN_CONVERTER
-				/* GPIO_J1_46 */
+				/* GPIO_J1_46 / HW option */
 				MX8MM_IOMUXC_GPIO1_IO04_GPIO1_IO4		0x00104
 #endif
-				/* GPIO_J1_52 */
+				/* GPIO_J1_52 / HW option */
 				MX8MM_IOMUXC_GPIO1_IO08_GPIO1_IO8		0x00104
-				/* GPIO_J1_54 */
+				/* GPIO_J1_54 / HW option */
 				MX8MM_IOMUXC_GPIO1_IO15_GPIO1_IO15		0x00104
-#else
-				/* LVDS_STBY */
-				MX8MM_IOMUXC_GPIO1_IO04_GPIO1_IO4		0x00104
 #endif
 #ifndef CONFIG_PICOCOREMX8MX_SERIAL_CAMERA
-				/* GPIO_J1_44 */
+				/* GPIO_J1_44 HW option / ETH_SW_PMEn */
 				MX8MM_IOMUXC_GPIO1_IO00_GPIO1_IO0		0x00104
 #endif
 #ifndef CONFIG_PICOCOREMX8MX_I2C_D_A71CH
-				/* GPIO_J2_67 */
+				/* GPIO_J2_67 / HW option */
 				MX8MM_IOMUXC_GPIO1_IO09_GPIO1_IO9		0x00104
 #else
 				/* I2C_A71CH_RST - default PD */
 				MX8MM_IOMUXC_GPIO1_IO09_GPIO1_IO9		0x00104
 #endif
 #ifndef CONFIG_PICOCOREMX8MX_ETH
-				/* GPIO_J2_77 */
+				/* GPIO_J2_77 / HW option */
 				MX8MM_IOMUXC_GPIO1_IO11_GPIO1_IO11		0x00104
 #endif
 #ifndef CONFIG_PICOCOREMX8MX_CAN
 				/* GPIO_J2_75 */
 				MX8MM_IOMUXC_SAI3_RXFS_GPIO4_IO28		0x00104
-				/* GPIO_J2_65 */
+				/* GPIO_J2_65 / HW option */
 				MX8MM_IOMUXC_SAI2_MCLK_GPIO4_IO27		0x00104
-				/* GPIO_J2_69 */
+				/* GPIO_J2_69 / HW option */
 				MX8MM_IOMUXC_SAI2_TXC_GPIO4_IO25		0x00104
-				/* GPIO_J2_73 */
+				/* GPIO_J2_73 / HW option */
 				MX8MM_IOMUXC_SAI2_TXD0_GPIO4_IO26		0x00104
 #endif
 #ifndef CONFIG_PICOCOREMX8MX_AUDIO_2
-				/* GPIO_J2_65 */
+				/* GPIO_J2_65 / HW option */
 				MX8MM_IOMUXC_SAI1_MCLK_GPIO4_IO20		0x00104
 				/* GPIO_J2_67 */
 				MX8MM_IOMUXC_SAI1_TXFS_GPIO4_IO10		0x00104
@@ -1092,13 +1073,13 @@
 		pinctrl_mipi_dsi_en: mipi_dsi_en {
 			fsl,pins = <
 				/* LVDS STBY / TC358764 STBY */
-				MX8MM_IOMUXC_GPIO1_IO04_GPIO1_IO4			0x00016
+				MX8MM_IOMUXC_GPIO1_IO04_GPIO1_IO4		0x00016
 				/* LVDS RESET / TC358764 RST */
-				MX8MM_IOMUXC_GPIO1_IO08_GPIO1_IO8			0x00016
+				MX8MM_IOMUXC_GPIO1_IO08_GPIO1_IO8		0x00016
 				/* Use MIP-DSI CLK as source by defualt.
 				 * For EXTCLK use the following setting in your display DTS */
 				/* MX8MM_IOMUXC_GPIO1_IO15_CCMSRCGPCMIX_CLKO2	0x00059 */
-				MX8MM_IOMUXC_GPIO1_IO15_GPIO1_IO15	0x00016
+				MX8MM_IOMUXC_GPIO1_IO15_GPIO1_IO15		0x00016
 			>;
 		};
 #endif
@@ -1110,23 +1091,23 @@
 				MX8MM_IOMUXC_ENET_MDC_ENET1_MDC			0x00003
 				MX8MM_IOMUXC_ENET_MDIO_ENET1_MDIO		0x00023
 #endif
-				MX8MM_IOMUXC_ENET_TD3_ENET1_RGMII_TD3		0x0001f
-				MX8MM_IOMUXC_ENET_TD2_ENET1_RGMII_TD2		0x0001f
-				MX8MM_IOMUXC_ENET_TD1_ENET1_RGMII_TD1		0x0001f
-				MX8MM_IOMUXC_ENET_TD0_ENET1_RGMII_TD0		0x0001f
-				MX8MM_IOMUXC_ENET_RD3_ENET1_RGMII_RD3		0x00091
-				MX8MM_IOMUXC_ENET_RD2_ENET1_RGMII_RD2		0x00091
-				MX8MM_IOMUXC_ENET_RD1_ENET1_RGMII_RD1		0x00091
+				MX8MM_IOMUXC_ENET_TD3_ENET1_RGMII_TD3	0x0001f
+				MX8MM_IOMUXC_ENET_TD2_ENET1_RGMII_TD2	0x0001f
+				MX8MM_IOMUXC_ENET_TD1_ENET1_RGMII_TD1	0x0001f
+				MX8MM_IOMUXC_ENET_TD0_ENET1_RGMII_TD0	0x0001f
+				MX8MM_IOMUXC_ENET_RD3_ENET1_RGMII_RD3	0x00091
+				MX8MM_IOMUXC_ENET_RD2_ENET1_RGMII_RD2	0x00091
+				MX8MM_IOMUXC_ENET_RD1_ENET1_RGMII_RD1	0x00091
 #ifdef CONFIG_PICOCOREMX8MX_ETH_I2C
-				MX8MM_IOMUXC_ENET_RD0_ENET1_RGMII_RD0		0x001D1
+				MX8MM_IOMUXC_ENET_RD0_ENET1_RGMII_RD0	0x001D1
 #else
-				MX8MM_IOMUXC_ENET_RD0_ENET1_RGMII_RD0		0x00091
+				MX8MM_IOMUXC_ENET_RD0_ENET1_RGMII_RD0	0x00091
 #endif
-				MX8MM_IOMUXC_ENET_TXC_ENET1_RGMII_TXC		0x0001f
-				MX8MM_IOMUXC_ENET_RXC_ENET1_RGMII_RXC		0x00091
+				MX8MM_IOMUXC_ENET_TXC_ENET1_RGMII_TXC	0x0001f
+				MX8MM_IOMUXC_ENET_RXC_ENET1_RGMII_RXC	0x00091
 				MX8MM_IOMUXC_ENET_RX_CTL_ENET1_RGMII_RX_CTL	0x00091
 				MX8MM_IOMUXC_ENET_TX_CTL_ENET1_RGMII_TX_CTL	0x0001f
-				/* reset */
+				/* ETH_SW_RST */
 				MX8MM_IOMUXC_GPIO1_IO05_GPIO1_IO5		0x00019
 				/* ETH_SW_INTn */
 				MX8MM_IOMUXC_GPIO1_IO11_GPIO1_IO11		0x00064
@@ -1183,12 +1164,12 @@
 #ifdef CONFIG_PICOCOREMX8MX_SPI_A
 		pinctrl_ecspi1: ecspi1grp {
 			fsl,pins = <
-				MX8MM_IOMUXC_ECSPI1_SCLK_ECSPI1_SCLK		0x00082
-				MX8MM_IOMUXC_ECSPI1_MOSI_ECSPI1_MOSI		0x00082
-				MX8MM_IOMUXC_ECSPI1_MISO_ECSPI1_MISO		0x00082
-				MX8MM_IOMUXC_ECSPI1_SS0_GPIO5_IO9			0x40000
+				MX8MM_IOMUXC_ECSPI1_SCLK_ECSPI1_SCLK	0x00082
+				MX8MM_IOMUXC_ECSPI1_MOSI_ECSPI1_MOSI	0x00082
+				MX8MM_IOMUXC_ECSPI1_MISO_ECSPI1_MISO	0x00082
+				MX8MM_IOMUXC_ECSPI1_SS0_GPIO5_IO9		0x40000
 #ifdef CONFIG_PICOCOREMX8MX_SPI_A_CAN_CONVERTER
-				MX8MM_IOMUXC_GPIO1_IO04_GPIO1_IO4			0x00144
+				MX8MM_IOMUXC_GPIO1_IO04_GPIO1_IO4		0x00144
 #endif
 			>;
 		};
@@ -1197,10 +1178,10 @@
 #ifdef CONFIG_PICOCOREMX8MX_SPI_B
 		pinctrl_ecspi3: ecspi3grp {
 			fsl,pins = <
-				MX8MM_IOMUXC_UART1_RXD_ECSPI3_SCLK			0x00082
-				MX8MM_IOMUXC_UART1_TXD_ECSPI3_MOSI			0x00082
-				MX8MM_IOMUXC_UART2_RXD_ECSPI3_MISO			0x00082
-				MX8MM_IOMUXC_UART2_TXD_GPIO5_IO25			0x40000
+				MX8MM_IOMUXC_UART1_RXD_ECSPI3_SCLK		0x00082
+				MX8MM_IOMUXC_UART1_TXD_ECSPI3_MOSI		0x00082
+				MX8MM_IOMUXC_UART2_RXD_ECSPI3_MISO		0x00082
+				MX8MM_IOMUXC_UART2_TXD_GPIO5_IO25		0x40000
 			>;
 		};
 #endif
@@ -1208,10 +1189,10 @@
 #ifdef CONFIG_PICOCOREMX8MX_SPI_C
 		pinctrl_ecspi2: ecspi2grp {
 			fsl,pins = <
-				MX8MM_IOMUXC_ECSPI2_SCLK_ECSPI2_SCLK		0x00082
-				MX8MM_IOMUXC_ECSPI2_MOSI_ECSPI2_MOSI		0x00082
-				MX8MM_IOMUXC_ECSPI2_MISO_ECSPI2_MISO		0x00082
-				MX8MM_IOMUXC_ECSPI2_SS0_GPIO5_IO13			0x00144
+				MX8MM_IOMUXC_ECSPI2_SCLK_ECSPI2_SCLK	0x00082
+				MX8MM_IOMUXC_ECSPI2_MOSI_ECSPI2_MOSI	0x00082
+				MX8MM_IOMUXC_ECSPI2_MISO_ECSPI2_MISO	0x00082
+				MX8MM_IOMUXC_ECSPI2_SS0_GPIO5_IO13		0x00144
 			>;
 		};
 #endif
@@ -1235,21 +1216,21 @@
 #ifdef CONFIG_PICOCOREMX8MX_NAND
 		pinctrl_gpmi_nand_1: gpmi-nand-1 {
 			fsl,pins = <
-				MX8MM_IOMUXC_NAND_ALE_RAWNAND_ALE			0x00096
-				MX8MM_IOMUXC_NAND_CE0_B_RAWNAND_CE0_B		0x00096
-				MX8MM_IOMUXC_NAND_CLE_RAWNAND_CLE			0x00096
-				MX8MM_IOMUXC_NAND_DATA00_RAWNAND_DATA00		0x00096
-				MX8MM_IOMUXC_NAND_DATA01_RAWNAND_DATA01		0x00096
-				MX8MM_IOMUXC_NAND_DATA02_RAWNAND_DATA02		0x00096
-				MX8MM_IOMUXC_NAND_DATA03_RAWNAND_DATA03		0x00096
-				MX8MM_IOMUXC_NAND_DATA04_RAWNAND_DATA04		0x00096
-				MX8MM_IOMUXC_NAND_DATA05_RAWNAND_DATA05		0x00096
-				MX8MM_IOMUXC_NAND_DATA06_RAWNAND_DATA06		0x00096
-				MX8MM_IOMUXC_NAND_DATA07_RAWNAND_DATA07		0x00096
-				MX8MM_IOMUXC_NAND_RE_B_RAWNAND_RE_B			0x00096
+				MX8MM_IOMUXC_NAND_ALE_RAWNAND_ALE		0x00096
+				MX8MM_IOMUXC_NAND_CE0_B_RAWNAND_CE0_B	0x00096
+				MX8MM_IOMUXC_NAND_CLE_RAWNAND_CLE		0x00096
+				MX8MM_IOMUXC_NAND_DATA00_RAWNAND_DATA00	0x00096
+				MX8MM_IOMUXC_NAND_DATA01_RAWNAND_DATA01	0x00096
+				MX8MM_IOMUXC_NAND_DATA02_RAWNAND_DATA02	0x00096
+				MX8MM_IOMUXC_NAND_DATA03_RAWNAND_DATA03	0x00096
+				MX8MM_IOMUXC_NAND_DATA04_RAWNAND_DATA04	0x00096
+				MX8MM_IOMUXC_NAND_DATA05_RAWNAND_DATA05	0x00096
+				MX8MM_IOMUXC_NAND_DATA06_RAWNAND_DATA06	0x00096
+				MX8MM_IOMUXC_NAND_DATA07_RAWNAND_DATA07	0x00096
+				MX8MM_IOMUXC_NAND_RE_B_RAWNAND_RE_B		0x00096
 				MX8MM_IOMUXC_NAND_READY_B_RAWNAND_READY_B	0x00056
-				MX8MM_IOMUXC_NAND_WE_B_RAWNAND_WE_B			0x00096
-				MX8MM_IOMUXC_NAND_WP_B_RAWNAND_WP_B			0x00096
+				MX8MM_IOMUXC_NAND_WE_B_RAWNAND_WE_B		0x00096
+				MX8MM_IOMUXC_NAND_WP_B_RAWNAND_WP_B		0x00096
 			>;
 		};
 #endif
@@ -1258,9 +1239,9 @@
 		pinctrl_pcie0: pcie0grp {
 			fsl,pins = <
 				/* mPCIE_PERST */
-				MX8MM_IOMUXC_SAI5_RXFS_GPIO3_IO19			0x00041
+				MX8MM_IOMUXC_SAI5_RXFS_GPIO3_IO19		0x00041
 				/* mPCIE_WAKE */
-				MX8MM_IOMUXC_SAI5_RXC_GPIO3_IO20			0x00041
+				MX8MM_IOMUXC_SAI5_RXC_GPIO3_IO20		0x00041
 			>;
 		};
 #endif
@@ -1370,7 +1351,7 @@
 #ifdef CONFIG_PICOCOREMX8MX_USB_OTG1
 		pinctrl_usbotg1: usbotg1grp {
 			fsl,pins = <
-				//MX8MM_IOMUXC_GPIO1_IO12_GPIO1_IO12		0x00144
+//				MX8MM_IOMUXC_GPIO1_IO12_GPIO1_IO12		0x00144
 				MX8MM_IOMUXC_GPIO1_IO12_USB1_OTG_PWR	0x00144
 			>;
 		};
@@ -1389,12 +1370,12 @@
 		pinctrl_usdhc1_gpio: usdhc1grpgpio {
 			fsl,pins = <
 				/* SD_A_VSEL, 3,3V = PD, 1.8 = PU */
-				///MX8MM_IOMUXC_GPIO1_IO03_GPIO1_IO3		0x00041
-				//MX8MM_IOMUXC_GPIO1_IO03_GPIO1_IO3		0x00141
+//				MX8MM_IOMUXC_GPIO1_IO03_GPIO1_IO3		0x00041
+//				MX8MM_IOMUXC_GPIO1_IO03_GPIO1_IO3		0x00141
 				MX8MM_IOMUXC_GPIO1_IO03_USDHC1_VSELECT	0x001d0
 				/* RESET, high active */
 				MX8MM_IOMUXC_SD1_RESET_B_GPIO2_IO10		0x00041
-				//MX8MM_IOMUXC_SD1_RESET_B_GPIO2_IO10		0x00141
+//				MX8MM_IOMUXC_SD1_RESET_B_GPIO2_IO10		0x00141
 				/* CD */
 				MX8MM_IOMUXC_GPIO1_IO06_GPIO1_IO6		0x001c4
 				/* WP */
@@ -1454,7 +1435,7 @@
 		};
 #endif
 
-#if defined(CONFIG_PICOCOREMX8MX_WLAN) || defined(CONFIG_PICOCOREMX8MX_SD_B)
+#ifdef CONFIG_PICOCOREMX8MX_SD_B
 		pinctrl_usdhc2_gpio: usdhc2grpgpio {
 			fsl,pins = <
 #ifdef CONFIG_PICOCOREMX8MX_SD_B_CD

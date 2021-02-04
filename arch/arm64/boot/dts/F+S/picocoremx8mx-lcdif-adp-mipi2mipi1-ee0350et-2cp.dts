@@ -95,7 +95,7 @@
 		reg = <0x4a>;
 		interrupt-parent = <&gpio5>;
 		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
-		atmel,cfg_name = "atmel/mxt336u.cfg";
+		atmel,cfg_name = "atmel/mxt336u-gloves.cfg";
 		reset-gpios = <&pca963x 2 GPIO_ACTIVE_HIGH>;
 	};
 };

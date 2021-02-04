@@ -6,20 +6,10 @@
  * published by the Free Software Foundation.
  */
 
-#include "picocoremx8mn-bbdsi.dts"
+#include "picocoremx8mn.dts"
 
 &mipi_dsi {
 	status = "okay";
-
-	clocks = <&clk IMX8MN_CLK_DSI_CORE>,
-			 <&clk IMX8MN_CLK_DSI_PHY_REF>, <&clk IMX8MN_CLK_CLKO2>;
-	clock-names = "cfg", "pll-ref";
-	assigned-clocks = <&clk IMX8MN_CLK_DSI_CORE>,
-				  <&clk IMX8MN_CLK_DSI_PHY_REF>, <&clk IMX8MN_CLK_CLKO2>;
-	assigned-clock-parents = <&clk IMX8MN_SYS_PLL1_266M>,
-					 <&clk IMX8MN_VIDEO_PLL1_OUT>, <&clk IMX8MN_SYS_PLL2_200M>;
-	assigned-clock-rates = <266000000>, <27000000>, <200000000>;
-
 
 #if 0
 /* DSI mode flags */

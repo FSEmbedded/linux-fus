@@ -8,7 +8,7 @@
 
 #define CONFIG_PICOCOREMX8MM_MIPI_DSI_LVDS
 #define CONFIG_PICOCOREMX8MM_INVERTED_XY
-#include "picocoremx8mm-bbdsi.dts"
+#include "picocoremx8mm.dts"
 
 &lcdif {
 	status = "okay";
@@ -19,16 +19,6 @@
 &mipi_dsi {
 	status = "okay";
 
-	clocks = <&clk IMX8MM_CLK_DSI_CORE>,
-			 <&clk IMX8MM_CLK_DSI_PHY_REF>;
-	clock-names = "cfg", "pll-ref";
-	assigned-clocks = <&clk IMX8MM_CLK_DSI_CORE>,
-				  <&clk IMX8MM_CLK_DSI_PHY_REF>;
-	assigned-clock-parents = <&clk IMX8MM_SYS_PLL1_266M>,
-					 <&clk IMX8MM_VIDEO_PLL1_OUT>;
-	assigned-clock-rates = <266000000>, <27000000>;
-
-
 	panel@0{
 		status = "okay";
 		compatible = "toshiba,fus-tc358775";
@@ -36,7 +26,11 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_mipi_dsi_en>;
 
+#if CONFIG_PICOCOREMX8MM_BOARD_REVISION < 130
 		reset-gpios = <&gpio1 13 GPIO_ACTIVE_HIGH>;
+#else
+		reset-gpios = <&gpio4 31 GPIO_ACTIVE_HIGH>;
+#endif
 
 		vddc-supply = <&reg_vref_1v2>;
 		vddio-supply = <&reg_vref_1v8>;
@@ -102,14 +96,14 @@
 	focaltech@38 {
 		compatible = "focaltech,fts";
 		reg = <0x38>;
-#if (CONFIG_PICOCOREMX8MM_BOARD_REVISION==100)
-		interrupt-parent = <&gpio1>;
-		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
-		focaltech,irq-gpio = <&gpio1 2 IRQ_TYPE_EDGE_FALLING>;
-#else
+#if CONFIG_PICOCOREMX8MM_BOARD_REVISION < 130
 		interrupt-parent = <&gpio4>;
 		interrupts = <31 IRQ_TYPE_EDGE_FALLING>;
 		focaltech,irq-gpio = <&gpio4 31 IRQ_TYPE_EDGE_FALLING>;
+#else
+		interrupt-parent = <&gpio1>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		focaltech,irq-gpio = <&gpio1 0 IRQ_TYPE_EDGE_FALLING>;
 #endif
 #ifdef CONFIG_PICOCOREMX8MM_INVERTED_XY
 		focaltech,touchscreen-inverted-x;
@@ -127,6 +121,6 @@
 		brightness-levels = <135 143 151 159 167 175 183 191
 				     199 207 215 223 231 239 247 255>;
 		default-brightness-level = <14>;
-				};
+	};
 };
 

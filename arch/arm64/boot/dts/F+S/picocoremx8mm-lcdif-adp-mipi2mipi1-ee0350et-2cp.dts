@@ -6,7 +6,7 @@
 * published by the Free Software Foundation.
 */
 
-#include "picocoremx8mm-bbdsi.dts"
+#include "picocoremx8mm.dts"
 
 
 / {
@@ -94,7 +94,7 @@
 		reg = <0x4a>;
 		interrupt-parent = <&gpio4>;
 		interrupts = <31 IRQ_TYPE_EDGE_FALLING>;
-		atmel,cfg_name = "atmel/mxt336u.cfg";
+		atmel,cfg_name = "atmel/mxt336u-gloves.cfg";
 		reset-gpios = <&pca963x 2 GPIO_ACTIVE_HIGH>;
 	};
 };
