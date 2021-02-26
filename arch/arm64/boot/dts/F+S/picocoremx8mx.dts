@@ -625,6 +625,7 @@
 		compatible = "microchip,ksz9893";
 		status = "okay";
 		reg = <0x5f>;
+		xmii-mac-mode = <0>;
 
 		ports {
 			#address-cells = <1>;

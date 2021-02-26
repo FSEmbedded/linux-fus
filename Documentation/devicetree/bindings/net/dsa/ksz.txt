@@ -22,6 +22,16 @@ Optional properties:
 - reset-gpios		: Should be a gpio specifier for a reset line
 - microchip,synclko-125 : Set if the output SYNCLKO frequency should be set to
 			  125MHz instead of 25MHz.
+- xmii-mac-mode		: Can be setup via strapping pins or by settings this
+               		  property (only verified for ksz9893).
+               		  MII interface: 0 = MII interfaces operates as PHY device
+               		                 1 = MII interfaces operates as MAC device
+               		  RMII interface: 0 = A 50 MHz RMII REFCLK is generated
+               		                      from the RXC pin
+               		                  1 = The 50 MHz RMII REFCLK is received
+               		                      at the RXC pin
+               		  RGMII interface: 0 = In-Band status disabled
+               		                   1 = In-Band Status enabled
 
 See Documentation/devicetree/bindings/net/dsa/dsa.txt for a list of additional
 required and optional properties.

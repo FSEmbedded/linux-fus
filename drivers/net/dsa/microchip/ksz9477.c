@@ -1246,6 +1246,13 @@ static void ksz9477_port_setup(struct ksz_device *dev, int port, bool cpu_port)
 			p->phydev.speed = SPEED_1000;
 			break;
 		}
+		/* MAC MODE */
+		if (dev->xmii_mac_mode >= 0) {
+			if (dev->xmii_mac_mode == 0)
+				data8 &= ~PORT_MII_MAC_MODE;
+			else
+				data8 |= PORT_MII_MAC_MODE;
+		}
 		ksz_pwrite8(dev, port, REG_PORT_XMII_CTRL_1, data8);
 		p->phydev.duplex = 1;
 	}
