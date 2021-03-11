@@ -1383,12 +1383,56 @@ static int ksz9477_setup(struct dsa_switch *ds)
 	return 0;
 }
 
+static void ksz9477_set_gpio_phylink(struct ksz_device *dev,
+									 struct phy_device *phydev, int port)
+{
+	uint16_t LED_OVERRIDE_REGISTER = 0x123;
+	uint16_t LED_OUTPUT_REGISTER = 0x127;
+	uint8_t reg_led_override = 0, reg_led_output = 0;
+	int shift = 0;
+
+	/* return of port connection between CPU and switch */
+	if (port == dev->port_cnt - 1)
+	{
+		return;
+	} else {
+		ksz_read8(dev, LED_OVERRIDE_REGISTER, &reg_led_override);
+		ksz_read8(dev, LED_OUTPUT_REGISTER, &reg_led_output);
+
+		shift = (port * 2) + dev->led_gpio_phy_link;
+
+		reg_led_override |= 0x1 << shift;
+
+		if (phydev->link)
+			reg_led_output &= ~(0x1 << shift);
+		else
+			reg_led_output |= 0x1 << shift;
+
+		ksz_write8(dev, LED_OUTPUT_REGISTER, reg_led_output);
+		ksz_write8(dev, LED_OVERRIDE_REGISTER, reg_led_override);
+	}
+}
+
+static void ksz9477_adjust_link(struct dsa_switch *ds, int port,
+		     struct phy_device *phydev)
+{
+	struct ksz_device *dev = ds->priv;
+
+	ksz_adjust_link(ds, port, phydev);
+
+	/* Check if LEDs are used as GPIO */
+	if (dev->led_gpio_phy_link >= 0)
+	{
+		ksz9477_set_gpio_phylink(dev, phydev, port);
+	}
+}
+
 static const struct dsa_switch_ops ksz9477_switch_ops = {
 	.get_tag_protocol	= ksz9477_get_tag_protocol,
 	.setup			= ksz9477_setup,
 	.phy_read		= ksz9477_phy_read16,
 	.phy_write		= ksz9477_phy_write16,
-	.adjust_link		= ksz_adjust_link,
+	.adjust_link		= ksz9477_adjust_link,
 	.port_enable		= ksz_enable_port,
 	.port_disable		= ksz_disable_port,
 	.get_strings		= ksz9477_get_strings,
@@ -1603,10 +1647,23 @@ static const struct ksz_dev_ops ksz9477_dev_ops = {
 	.exit = ksz9477_switch_exit,
 };
 
+static void ksz9477_probe_dt(struct ksz_device *dev)
+{
+	if(of_property_read_u32(dev->dev->of_node, "xmii-mac-mode",
+		&dev->xmii_mac_mode))
+		dev->xmii_mac_mode = -EINVAL;
+
+	if(of_property_read_u32(dev->dev->of_node, "led-gpio-phy-link",
+		&dev->led_gpio_phy_link))
+		dev->led_gpio_phy_link = -EINVAL;
+}
+
 int ksz9477_switch_register(struct ksz_device *dev)
 {
 	int ret, i;
 	struct phy_device *phydev;
+
+	ksz9477_probe_dt(dev);
 
 	ret = ksz_switch_register(dev, &ksz9477_dev_ops);
 	if (ret)

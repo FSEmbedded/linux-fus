@@ -77,6 +77,7 @@ struct ksz_device {
 	bool phy_errata_9477;
 	bool synclko_125;
 	int xmii_mac_mode;
+	int led_gpio_phy_link;
 
 	struct vlan_table *vlan_cache;
 

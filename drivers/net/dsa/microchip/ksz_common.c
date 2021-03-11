@@ -456,8 +456,6 @@ int ksz_switch_register(struct ksz_device *dev,
 			dev->interface = ret;
 		dev->synclko_125 = of_property_read_bool(dev->dev->of_node,
 							 "microchip,synclko-125");
-		if(of_property_read_u32(dev->dev->of_node, "xmii-mac-mode", &dev->xmii_mac_mode))
-			dev->xmii_mac_mode = -EINVAL;
 	}
 
 	ret = dsa_register_switch(dev->ds);
