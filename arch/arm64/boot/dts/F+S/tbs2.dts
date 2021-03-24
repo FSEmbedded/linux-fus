@@ -33,25 +33,24 @@
 
 /* PWM and backlight brightness */
 #define CONFIG_TBS2_BL_CTRL
-/* Some HW related issues */
-//#define CONFIG_TBS2_PWM_BUZZER
+
+/* default frequency: 4kHz, maximum frequency: 10kHz */
+#define CONFIG_TBS2_PWM_BUZZER
 
 /* UART_A - UART1 - DEBUG */
 #define CONFIG_TBS2_UART_A
 
 /* UART_RFID - UART2 */
-/* Some HW related issues */
-//#define CONFIG_TBS2_UART_RFID
+#define CONFIG_TBS2_UART_RFID
 
-/* UART_B - UART3 */
+/* UART_B - UART3 - BT */
 /* Some HW related issues */
 //#define CONFIG_TBS2_UART_B
 //#define CONFIG_TBS2_UART_B_RTSCTS
 
 /* UART_C - UART4 */
-/* Some HW related issues */
-//#define CONFIG_TBS2_UART_C
-//#define CONFIG_TBS2_UART_C_RTSCTS
+#define CONFIG_TBS2_UART_C
+#define CONFIG_TBS2_UART_C_RTSCTS
 
 /* External RTC */
 #define CONFIG_TBS2_EXT_RTC
@@ -65,7 +64,7 @@
  * SD_B - is WLAN.
  */
  /* Some HW related issues */
-//#define CONFIG_TBS2_SD_B
+#define CONFIG_TBS2_SD_B
 
 /* ADC */
 #define CONFIG_ADS1015
@@ -398,7 +397,7 @@
 		reg = <0x4a>;
 		interrupt-parent = <&gpio5>;
 		interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
-		atmel,cfg_name = "atmel/mxt336u.cfg";
+		atmel,cfg_name = "atmel/mxt336u-extra-glass.cfg";
 		atmel,reset-gpio = <&gpio5 23 GPIO_ACTIVE_LOW>;
 	};
 };
@@ -816,8 +815,8 @@
 		pinctrl_usbotg1: usbotg1grp {
 			fsl,pins = <
 				/* Active high */
-				//MX8MM_IOMUXC_GPIO1_IO12_GPIO1_IO12		0x00144
-				MX8MM_IOMUXC_GPIO1_IO12_USB1_OTG_PWR	0x00104
+				MX8MM_IOMUXC_GPIO1_IO12_GPIO1_IO12		0x00144
+				//MX8MM_IOMUXC_GPIO1_IO12_USB1_OTG_PWR	0x00104
 				/* USB_OTG1_OC, active low */
 				MX8MM_IOMUXC_GPIO1_IO13_GPIO1_IO13		0x00144
 			>;
