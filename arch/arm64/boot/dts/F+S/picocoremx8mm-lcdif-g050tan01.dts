@@ -6,8 +6,8 @@
 * published by the Free Software Foundation.
 */
 
+#define CONFIG_PICOCOREMX8MM_MIPI_DSI
 #include "picocoremx8mm.dts"
-
 
 &mipi_dsi {
 	status = "okay";
@@ -52,4 +52,3 @@
 &lcdif {
 	status = "okay";
 };
-

@@ -6,8 +6,8 @@
 * published by the Free Software Foundation.
 */
 
+#define CONFIG_PICOCOREMX8MM_MIPI_DSI
 #include "picocoremx8mm.dts"
-
 
 / {
 	regulators {
@@ -98,4 +98,3 @@
 		reset-gpios = <&pca963x 2 GPIO_ACTIVE_HIGH>;
 	};
 };
-

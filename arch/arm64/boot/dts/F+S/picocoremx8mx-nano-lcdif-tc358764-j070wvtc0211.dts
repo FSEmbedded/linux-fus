@@ -111,7 +111,7 @@
 		focaltech,touchscreen-inverted-x;
 		focaltech,touchscreen-inverted-y;
 #endif
-		focaltech,reset-gpio = <&gpio1 1 GPIO_ACTIVE_LOW>;
+		focaltech,reset-gpio = <&gpio1 13 GPIO_ACTIVE_LOW>;
 		focaltech,num-max-touches = <10>;
 		focaltech,display-coords = <0 0 800 480>;
 	};
