@@ -36,9 +36,6 @@
 #define CONFIG_PICOCOREMX8MX_USB_HOST
 //#define CONFIG_PICOCOREMX8MX_USB_OTG1_USBC
 
-/* EEPROM - only for V6 */
-#define CONFIG_PICOCOREMX8MX_EEPROM
-
 /* PCIe */
 #define CONFIG_PICOCOREMX8MX_PCIE
 
@@ -135,6 +132,10 @@
 		/* Alias for GPMI node. Dont change it
 		 * because it used by the bootloader */
 		nand = &gpmi;
+		emmc = &usdhc3;
+		eeprom = &eeprom;
+		mcp2518fd = &mcp2518fd;
+		sgtl5000 = &sgtl5000;
 		/* Due to this labels U-Boot sets mac addresses
 		 * ethaddr/eth1addr to corresponding VLAN interfaces
 		 */
@@ -540,14 +541,12 @@
 #endif
 #endif
 
-#ifdef CONFIG_PICOCOREMX8MX_EEPROM
 	/* EEPROM */
-	eeprom@50 {
+	eeprom: eeprom@50 {
 		compatible = "atmel,24c02";
 		reg = <0x50>;
 		pagesize = <8>;
 	};
-#endif
 
 	/* ### TODO: implement root of trust A71CH-SDS / SE050A1HQ1 */
 };
@@ -750,7 +749,7 @@
 	status = "okay";
 
 #ifdef CONFIG_PICOCOREMX8MX_CAN_A
-	mcp25xxfd@0 {
+	mcp2518fd: mcp25xxfd@0 {
 		compatible = "microchip,mcp2518fd";
 		reg = <0>;
 		pinctrl-names = "default";

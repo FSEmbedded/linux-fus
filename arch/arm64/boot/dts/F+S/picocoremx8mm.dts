@@ -167,6 +167,9 @@
 		/* Alias for GPMI node. Dont change it
 		 * because it used by the bootloader */
 		nand = &gpmi;
+		emmc = &usdhc3;
+		rtcpcf85063 = &rtc85063;
+		rtcpcf85263 = &rtc85263;
 	};
 
 	/* -------------------- BOARD INFO -------------------- */
@@ -539,13 +542,12 @@
 		};
 	};
 
-#if CONFIG_PICOCOREMX8MM_BOARD_REVISION < 130
-	rtc85063@51 {
+	rtc85063: rtc85063@51 {
 		compatible = "nxp,pcf85063";
 		reg = <0x51>;
 	};
-#else
-	rtcpcf85263@51 {
+
+	rtc85263: rtc85263@51 {
 		compatible = "nxp,pcf85263";
 		reg = <0x51>;
 		clock-out = <PCF85263_CLK_OUT_32p768kHz>;
@@ -553,7 +555,6 @@
 		quartz-load-capacitance = <PCF85263_QUARTZCAP_12p5pF>;
 		quartz-drive-strength = <PCF85263_QUARTZDRIVE_LOW>;
 	};
-#endif
 
 #ifdef CONFIG_PICOCOREMX8MM_USB_OTG1_USBC
 	/* USB-C */
