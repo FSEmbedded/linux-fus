@@ -4138,11 +4138,11 @@ static int mxt_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 	if(!(IS_ERR(data->reset_gpio))) {
 		dev_info(&client->dev, "Resetting chip\n");
- 		msleep(MXT_RESET_GPIO_TIME);
-        gpiod_set_value(data->reset_gpio, 1);
-        msleep(MXT_RESET_GPIO_TIME);
-        gpiod_set_value(data->reset_gpio, 0);
-        msleep(MXT_BACKUP_TIME);
+		msleep(MXT_RESET_GPIO_TIME);
+		gpiod_set_value_cansleep(data->reset_gpio, 1);
+		msleep(MXT_RESET_GPIO_TIME);
+		gpiod_set_value_cansleep(data->reset_gpio, 0);
+		msleep(MXT_BACKUP_TIME);
 	}
 
 	error = mxt_initialize(data);
