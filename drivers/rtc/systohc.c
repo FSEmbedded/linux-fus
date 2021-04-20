@@ -55,14 +55,16 @@ int rtc_set_ntp_time(struct timespec64 now, unsigned long *target_nsec)
 	err = rtc_set_time(rtc, &tm);
 
 #ifdef CONFIG_RTC_HCTOSYS_OPT
+	rtc_class_close(rtc);
+
 	rtc = rtc_class_open(CONFIG_RTC_HCTOSYS_OPT_DEVICE);
-	if (rtc) {
-		/* rtc_hctosys exclusively uses UTC, so we call set_time here,
-		 * not set_mmss. */
-		if (rtc->ops && (rtc->ops->set_time))
-			err = rtc_set_time(rtc, &tm);
-		rtc_class_close(rtc);
-	}
+	if (!rtc)
+		goto out_err;
+
+	/* rtc_hctosys exclusively uses UTC, so we call set_time here,
+		* not set_mmss. */
+	if (rtc->ops && (rtc->ops->set_time))
+		err = rtc_set_time(rtc, &tm);
 #endif
 
 out_close:
