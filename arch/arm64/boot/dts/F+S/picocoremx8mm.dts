@@ -86,6 +86,10 @@
 
 /* Camera on serial MIPI CSI interface */
 //#define CONFIG_PICOCOREMX8MM_SERIAL_CAMERA
+/* Experimental implementation for Basler dart daA4200-30mci.
+ * Define CONFIG_PICOCOREMX8MM_SERIAL_CAMERA must also be set.
+ */
+//#define CONFIG_PICOCOREMX8MM_CAMERA_BASLER_daA4200
 
 /*
  * SD_A - External SD port with Card Detect (CD) and Write Protect (WP)
@@ -166,8 +170,12 @@
 	aliases {
 		/* Alias for GPMI node. Dont change it
 		 * because it used by the bootloader */
+#ifdef CONFIG_PICOCOREMX8MM_NAND
 		nand = &gpmi;
+#endif
+#ifdef CONFIG_PICOCOREMX8MM_EMMC
 		emmc = &usdhc3;
+#endif
 		rtcpcf85063 = &rtc85063;
 		rtcpcf85263 = &rtc85263;
 	};
@@ -270,6 +278,7 @@
 #if defined(CONFIG_PICOCOREMX8MM_MIPI_DSI) \
 || defined(CONFIG_PICOCOREMX8MM_MIPI_DSI_LVDS)
 		/* LCD power on voltage */
+		/omit-if-no-ref/
 		reg_vlcd: vlcd {
 			compatible = "regulator-fixed";
 			regulator-name = "VLCD";
@@ -388,6 +397,28 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
+
+#ifdef CONFIG_PICOCOREMX8MM_CAMERA_BASLER_daA4200
+	basler_camera_mipi1: basler_camera_mipi@36 {
+		compatible = "basler,basler-camera";
+		reg = <0x36>;
+		status = "okay";
+
+		port {
+			basler_camera_mipi1_ep: endpoint {
+				remote-endpoint = <&mipi1_sensor_ep>;
+
+				/* IMPORTANT: The following three entries needs
+				 * to be held in sync with the information
+				 * stored in the mipi1_sensor_ep node.
+				 */
+				 data-lanes = < 1>;
+				 clock-lanes = <0>;
+				 link-frequenc = /bits/ 64 <594000000>;
+			};
+		};
+	};
+#endif
 };
 #endif
 
@@ -828,10 +859,16 @@
 	pinctrl-0 = <&pinctrl_pcie0>;
 #if CONFIG_PICOCOREMX8MM_BOARD_REVISION < 130
 	reset-gpio = <&gpio3 21 GPIO_ACTIVE_LOW>;
-	wake-gpio  = <&gpio3 22 GPIO_ACTIVE_LOW>;
+	/* the wake pin of PCIe must be configured as normal
+	 * wakeup source and it is not a specific driver issue
+	 */
+	//wake-gpio  = <&gpio3 22 GPIO_ACTIVE_LOW>;
 #else
 	reset-gpio = <&gpio3 19 GPIO_ACTIVE_LOW>;
-	wake-gpio = <&gpio3 20 GPIO_ACTIVE_LOW>;
+	/* the wake pin of PCIe must be configured as normal
+	 * wakeup source and it is not a specific driver issue
+	 */
+	//wake-gpio = <&gpio3 20 GPIO_ACTIVE_LOW>;
 #endif
 	clocks = <&clk IMX8MM_CLK_PCIE1_ROOT>,
 		 <&clk IMX8MM_CLK_PCIE1_AUX>,
@@ -1024,10 +1061,31 @@
 		};
 	};
 #endif
+#ifdef CONFIG_PICOCOREMX8MM_CAMERA_BASLER_daA4200
+	port {
+		mipi1_sensor_ep: endpoint@1 {
+			remote-endpoint = <&basler_camera_mipi1_ep>;
+			/* If the following entries are changed, then
+			 * the entries in the basler_camera_mipi1_ep node
+			 * need to update too.
+			 */
+			/* On the i.mx8mmini NXP uses data-lanes
+			 * other than expected by the kernel.
+			 * On the imx8mmini the enry data-lanes
+			 * must contain the number of data lanes.
+			 */
+			data-lanes = <4>;
+			clock-lanes = <0>;
+			link-frequencies = /bits/ 64 <496000000>;
+			csis-hs-settle = <13>;
+			csis-clk-settle = <2>;
+			csis-wclk;
+		};
+	};
+#endif
 };
 
 &csi1_bridge {
-	fsl,mipi-mode;
 	status = "okay";
 #if 0
 	port {
@@ -1035,6 +1093,10 @@
 			remote-endpoint = <&csi1_mipi_ep>;
 		};
 	};
+#endif
+#ifdef CONFIG_PICOCOREMX8MM_CAMERA_BASLER_daA4200
+	dma-coherent;
+	bsl,dma-invalidate;
 #endif
 };
 #endif
@@ -1047,11 +1109,9 @@
 	status = "okay";
 };
 
-//#ifndef SUPPORT_M4
 &A53_0 {
-	arm-supply = <&buck2_reg>;
+	cpu-supply = <&buck2_reg>;
 };
-//#endif
 
 &gpu {
 	status = "okay";
@@ -1311,7 +1371,9 @@
 				MX8MM_IOMUXC_GPIO1_IO01_GPIO1_IO1	0x00104
 #endif
 				MX8MM_IOMUXC_GPIO1_IO08_GPIO1_IO8	0x00104
+#ifndef CONFIG_PICOCOREMX8MM_SPI_A_CAN_CONVERTER
 				MX8MM_IOMUXC_GPIO1_IO09_GPIO1_IO9	0x00104
+#endif
 				MX8MM_IOMUXC_GPIO1_IO10_GPIO1_IO10	0x00104
 				MX8MM_IOMUXC_GPIO1_IO11_GPIO1_IO11	0x00104
 #if CONFIG_PICOCOREMX8MM_BOARD_REVISION >= 130
@@ -1528,12 +1590,12 @@
 				/* mPCIE_PERST */
 				MX8MM_IOMUXC_SAI5_RXD0_GPIO3_IO21	0x00041
 				/* mPCIE_WAKE */
-				MX8MM_IOMUXC_SAI5_RXD1_GPIO3_IO22	0x00041
+				MX8MM_IOMUXC_SAI5_RXD1_GPIO3_IO22	0x00144
 #else
 				/* mPCIE_PERST */
 				MX8MM_IOMUXC_SAI5_RXFS_GPIO3_IO19	0x00041
 				/* mPCIE_WAKE */
-				MX8MM_IOMUXC_SAI5_RXC_GPIO3_IO20	0x00041
+				MX8MM_IOMUXC_SAI5_RXC_GPIO3_IO20	0x00144
 #endif
 			>;
 		};

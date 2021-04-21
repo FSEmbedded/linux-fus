@@ -7,6 +7,7 @@
 */
 
 #define CONFIG_PICOCOREMX8MX_MIPI_DSI
+#include <dt-bindings/interrupt-controller/irq.h>
 #include "picocoremx8mx.dts"
 
 / {
@@ -15,7 +16,7 @@
 		reg_mipi_bl: backlight_mipi {
 			compatible = "regulator-fixed";
 			regulator-name = "mipi-bl";
-			gpio = <&pca963x 1 0>;
+			gpio = <&max7315 0 GPIO_ACTIVE_HIGH>;
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
@@ -25,10 +26,12 @@
 	/* MIPI-DSI backlight PWM on adapter MIPI2MIPI1 */
 	backlight_mipi_dsi {
 		compatible = "pwm-backlight";
-		pwms = <&pca963x 0 640000 0>; /* 1.5625 kHz */
+		/* only 32 kHz available */
+		pwms = <&max7315 1 31250 PWM_POLARITY_INVERTED>;
 		power-supply = <&reg_mipi_bl>;
-		brightness-levels = <0 30 32 35 39 46 55 66
-				     80 96 115 137 162 190 221 255>;
+		/* calculated without sigma so it´s linear */
+		brightness-levels = <0 17 34 51 68 85 102 119 136
+				     153 170 187 204 221 238 255>;
 		default-brightness-level = <14>;
 		fb-names = "mipi_dsi";
 	};
@@ -44,49 +47,30 @@
 	panel@0 {
 		compatible = "eagleeyetech,ee0350et-2";
 		reg = <0>;
-		reset-gpios = <&pca963x 3 GPIO_ACTIVE_HIGH>;
-		vci-supply = <&reg_vlcd>;
+		reset-gpios = <&max7315 4 GPIO_ACTIVE_LOW>;
+		/* VLCD is not needed */
+		//vci-supply = <&reg_vlcd>;
 		status = "okay";
 	};
 };
 
 &i2c2 {
 	/* LED-driver on adapter board MIPI2MIPI1 */
-	pca963x: pca9632@60 { /* LED-driver */
-		compatible = "nxp,pca9632";
-		reg = <0x60>;
-		nxp,totem-pole;
-		#address-cells = <1>;
-		#size-cells = <0>;
-		#pwm-cells = <3>;
+	max7315: max7315@20 { /* LED-driver */
+		compatible = "maxim,max7315";
+		reg = <0x20>;
+		/* interrupt not yet supported */
+		//interrupt-parent = <&gpio5>;
+		//interrupts = <2 IRQ_TYPE_LEVEL_LOW>;
+		//#interrupt-cells = <2>;
+		//interrupt-controller;
+		gpio-controller;
 		#gpio-cells = <2>;
-		led@0 {
-			reg = <0>;
-			label = "1-LEDCTRL";
-			type = "PWM";
-			default-on;		/* or: keep-value */
-			active-low;
-		};
-		led@1 {
-			reg = <1>;
-			label = "0-PWRCTL";
-			type = "GPIO";
-			default-on;		/* or: keep-value */
-			active-high;
-		};
-		led@2 {
-			reg = <2>;
-			label = "2-TOUCH-RST";
-			type = "GPIO";
-			active-low;
-		};
-		led@3 {
-			reg = <3>;
-			label = "2-MIPI-RST";
-			type = "GPIO";
-			active-low;
-		};
-	};
+		pwm-controller;
+		#pwm-cells = <3>;
+		//#interrupt-cells = <2>;
+		//interrupt-controller;
+};
 
 	/* Atmel PCAP touch on Touch Connector (I2C) */
 	mxt336u@4a {
@@ -95,6 +79,6 @@
 		interrupt-parent = <&gpio5>;
 		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
 		atmel,cfg_name = "atmel/mxt336u-gloves.cfg";
-		reset-gpios = <&pca963x 2 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&max7315 6 GPIO_ACTIVE_LOW>;
 	};
 };
