@@ -4,8 +4,59 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight,
         MM: M Mini, MN: M Nano
 
-linux-4.14.98-fsimx8m(m,n)-B2020.08 (11.08.2020)
+linux-5.4.70-fsimx8mm-Y2021.04 (21.04.2021)
 -------------------------------------------
+Supported boards: PicoCoreMX8MM
+
+- Merge kernel to 5.4.24
+- Fixup for kernel upgrade to 5.4.24
+- Add basic support display NewVision NV3051D
+- Fix audio clock settings in armstonea9qdl.dtsi
+- Fix newvision-nv3051 driver
+- Improve picocoremx8mx device tree
+- Fix MIPI-DSI clock PMS-boundary values
+- Add fus-tc358775 driver and G133HAN01 display support
+- Improve fsimx8mm_defconfig
+- Add support for picocoremx8mx-nano device-tree
+- Improve pmic node for picocoremx8mx
+- Add support for KSZ9893 ETH switch
+- Add SquashFS, OverlayFS and Ubiblock support on fsimx8mm
+- Improve picocoremx8mx device tree support
+- Add picocoremx8mx j070wvtc-display support
+- Merge kernel to 5.4.47
+- Add fsimx8mm BD718XX driver and cma no-override flag to picocore8mx dts
+- Improve fsimx8mx display support and fix atmel touch driver
+- Improve picocorem8mx device tree and fix PCIE support
+- Improve device tree for picocoremx8mx-nano
+- Improve panel-novatek-nt35521 driver
+- Improve picocoremx8mm device tree and tc358775 mipi2lvds support
+- Add support for display EE0350-ET-2CP and change syntax of device-trees
+- Remove duplicate device-tree for picocoremx8mx
+- Merge kernel to 5.4.70
+- Improve device tree for picocoremx8mx
+- Improve support for CAN-FD chip MCP251xfd
+- Improve display backlight support
+- Add VPU support for fsimx8mm
+- Rework of fsimx8mm device-trees
+- Improve ksz9893 support - DT property
+- Disable ACL for SquashFS and UBIFS
+- Improve ksz9477 switch driver to support phy-link via GPIOs
+- Fix-up for devicetrees fsimx8mm
+- Add driver for lontium-lt9211 MIPI2RGB converter
+- Improve picocoremx8mx/mm device trees for deactivating nodes from UBoot
+- Improve picocoremx8mm.dts and fsimx8mm_defconfig
+- Improve fsimx8mm_defconfig
+- Improve clk-composite-8m.c
+- Improve atmel_mxt_ts.c touch
+- Add PWM usage for driver gpio-pca953x.c
+- Improve fsimx8mm_defconfig to be closer to fsimx6* defconfigs
+- Improve drivers/rtc/systohc.c
+- Fixup for picocoremx8mm/mx device-trees
+
+
+
+linux-4.14.98-fsimx8m(m,n)-B2020.08 (11.08.2020)
+------------------------------------------------
 Supported boards: PicoCoreMX8MN, PicoCoreMX8MM, armStoneMX8M, efusMX8X
 
 - Improve pmic regulator voltages for PicoCoreMX8MM
@@ -22,33 +73,41 @@ Supported boards: PicoCoreMX8MN, PicoCoreMX8MM, armStoneMX8M, efusMX8X
 - NXP version rel_imx_4.14.98_2.3.2_patch
 - Merge branch 'fsimx8mx-B2019.11-pre'
 
+
+
 linux-4.14.98-fsimx8mn-Y2020.06 (18.06.2020)
--------------------------------------------
+--------------------------------------------
 Supported boards: PicoCoreMX8MN, PicoCoreMX8MM, armStoneMX8M, efusMX8X
 
 - Correct device tree support for picocoremx8mn
 - Update history file to linux-4.14.98-fsimx8mm-Y2020.06
 - Update history to fsimx8m(m,n)-Y2020.05(6)
 
+
+
 linux-4.14.98-fsimx8mn-Y2020.06 (16.06.2020)
--------------------------------------------
+--------------------------------------------
 Supported boards: PicoCoreMX8MN, PicoCoreMX8MM, armStoneMX8M, efusMX8X
 
 
+
 linux-4.14.98-fsimx8mn-Y2020.06 (09.06.2020)
--------------------------------------------
+--------------------------------------------
 Supported boards: PicoCoreMX8MN, PicoCoreMX8MM, armStoneMX8M, efusMX8X
 
 - Add support for PicoCoreMX8MN
 - Add HDMI support for armStoneMX8M
+
+
 
 linux-4.14.98-fsimx8m-Y2020.05 (14.05.2020)
 -------------------------------------------
 Supported boards: PicoCoreMX8MM, armStoneMX8M, efusMX8X
 
 
+
 linux-4.14.98-fsimx8mm-Y2020.05 (14.05.2020)
--------------------------------------------
+--------------------------------------------
 Supported boards: PicoCoreMX8MM, armStoneMX8M, efusMX8X
 
 - Improve support for panel j070wvtc0211
@@ -96,7 +155,7 @@ Supported boards: PicoCoreMX8MM, armStoneMX8M, efusMX8X
 
 
 linux-4.9.88-fsimx6-B2020.04 (21.04.2020)
-------------------------------------------
+-----------------------------------------
 Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
                   QBlissA9, QBlissA9r2, armStoneA5, Cube2.0, CubeA5,
                   AGATEWAY
@@ -115,7 +174,7 @@ Not tested:       efusA9X, PicoCOMA9X, PicoCoreMX6SX, PicoCoreMX7ULP,
 
 
 linux-4.9.88-fsimx7ulp-Y2020.03 (30.03.2020)
--------------------------------------------
+--------------------------------------------
 Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
                   QBlissA9, QBlissA9r2, efusA9X,  PicoCOMA9X, PicoCoreMX6SX,
                   CONT1, efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2
@@ -141,7 +200,7 @@ Not tested:       CUBEA5, armStoneA5, NetDCUA5, PicoCOMA5, AGATEWAY,
 
 
 linux-4.9.88-fsimx6x-Y2020.03 (24.03.2020)
--------------------------------------------
+------------------------------------------
 Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
                   QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6SX,
                   CONT1
