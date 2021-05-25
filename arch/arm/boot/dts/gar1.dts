@@ -9,7 +9,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 100 for board rev. 1.00 */
-#define CONFIG_GAR1_BOARD_REVISION	140
+#define CONFIG_GAR1_BOARD_REVISION	150
 
 /* CMA: Set 64 MB for Continuous Memory Allocator */
 #define CONFIG_GAR1_CMA_SIZE 0x4000000
@@ -449,8 +449,8 @@
 #if (CONFIG_GAR1_BOARD_REVISION >= 140)
 		pinctrl_uart4: uart4grp {
 			fsl,pins = <
-				MX6UL_PAD_LCD_HSYNC__UART4_DTE_RTS 		0x1b0b1
-				MX6UL_PAD_LCD_VSYNC__UART4_DTE_CTS		0x1b0b1
+				MX6UL_PAD_LCD_HSYNC__UART4_DCE_CTS 		0x1b0b1
+				MX6UL_PAD_LCD_VSYNC__UART4_DCE_RTS		0x1b0b1
 				MX6UL_PAD_UART4_TX_DATA__UART4_DCE_TX		0x1b0b1
 				MX6UL_PAD_UART4_RX_DATA__UART4_DCE_RX		0x1b0b1
 				/* UART4_DTR */
