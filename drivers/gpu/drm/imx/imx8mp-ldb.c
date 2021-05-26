@@ -198,9 +198,9 @@ imx8mp_ldb_encoder_atomic_check(struct drm_encoder *encoder,
 	 * we do mode fixup here in case any mode is unsupported.
 	 */
 	if (ldb->dual)
-		mode->clock = mode->clock > 100000 ? 148500 : 74250;
+		mode->clock = mode->clock > 100000 ? 148500 : 37125;
 	else
-		mode->clock = 74250;
+		mode->clock = 37125;//74250;
 
 	return 0;
 }
