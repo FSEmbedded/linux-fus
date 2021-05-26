@@ -1520,6 +1520,7 @@ static int fsl_sai_probe(struct platform_device *pdev)
 
 	if (of_find_property(np, "fsl,sai-mclk-direction-output", NULL) &&
 	    sai->verid.id >= FSL_SAI_VERID_0301) {
+		/* SAI is in master mode so enable MCLK as output */
 		regmap_update_bits(sai->regmap, FSL_SAI_MCTL,
 				   FSL_SAI_MCTL_MCLK_EN, FSL_SAI_MCTL_MCLK_EN);
 	}
@@ -1643,6 +1644,19 @@ static int fsl_sai_runtime_resume(struct device *dev)
 	usleep_range(1000, 2000);
 	regmap_write(sai->regmap, FSL_SAI_TCSR(offset), 0);
 	regmap_write(sai->regmap, FSL_SAI_RCSR(offset), 0);
+
+	/*
+	 * Audio codecs like SGTL5000 need the MCLK during setup of the codec.
+	 * For the i.MX8MP it is gated with the receiver/transmiter BCE
+	 * bit. So enable the bit already here.
+	 */
+	if((sai->masterflag[FSL_FMT_TRANSMITTER] & SND_SOC_DAIFMT_CBM_CFM) == SND_SOC_DAIFMT_CBM_CFM)
+	{
+		if(!fsl_sai_check_ver(dev) && sai->verid.id >= FSL_SAI_VERID_0301)
+			/* Enable transmit clock early.*/
+			regmap_update_bits(sai->regmap, FSL_SAI_xCSR(1, offset),
+					FSL_SAI_CSR_BCE, FSL_SAI_CSR_BCE);
+	}
 
 	ret = regcache_sync(sai->regmap);
 	if (ret)
