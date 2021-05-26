@@ -9,12 +9,15 @@
 #include <linux/delay.h>
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
+#include <linux/sys_soc.h>
 
 #define PHY_PLL_LOCK_WAIT_MAX_RETRIES	2000
 #define IMX8MP_PCIE_PHY_FLAG_EXT_OSC	BIT(0)
 
 #define IMX8MP_PCIE_PHY_CMN_REG020	0x80
 #define  PLL_ANA_LPF_R_SEL_FINE_0_4	0x04
+#define IMX8MP_PCIE_PHY_CMN_REG036	0xD8
+#define  PLL_PMS_SDIV_8_4		0x32
 #define IMX8MP_PCIE_PHY_CMN_REG061	0x184
 #define  ANA_PLL_CLK_OUT_TO_EXT_IO_EN	BIT(0)
 #define IMX8MP_PCIE_PHY_CMN_REG062	0x188
@@ -34,6 +37,14 @@
 #define  LANE_TX_DATA_CLK_MUX_SEL	0x00
 
 #define IMX8MP_PCIE_PHY_TRSV_REG001	0x404
+#define IMX8MP_PCIE_PHY_TRSV_REG020	0x480
+#define  LN0_RX_CDR_REFDIV_1_2		1
+#define IMX8MP_PCIE_PHY_TRSV_REG022	0x488
+#define  LN0_RX_CDR_REFDIV_1_1		0
+#define IMX8MP_PCIE_PHY_TRSV_REG0BB	0x6EC
+#define  LN0_TXD_DESKEW_BYPASS		BIT(2)
+#define IMX8MP_PCIE_PHY_TRSV_REG0CF	0x73C
+#define  LN0_MISC_TX_CLK_SRC		BIT(2)
 #define  LN0_OVRD_TX_DRV_LVL		0x3F
 #define IMX8MP_PCIE_PHY_TRSV_REG005	0x414
 #define  LN0_OVRD_TX_DRV_PST_LVL_G1	0x2B
@@ -68,6 +79,13 @@ struct imx8_pcie_phy {
 	struct clk *clk;
 	void __iomem *base;
 	u32 flags;
+};
+
+static const struct soc_device_attribute imx8_soc[] = {
+	{
+		.soc_id   = "i.MX8MP",
+		.revision = "1.0",
+	},
 };
 
 static int imx8_pcie_phy_init(struct phy *phy)
@@ -116,13 +134,21 @@ static int imx8_pcie_phy_cal(struct phy *phy)
 {
 	u32 value;
 	struct imx8_pcie_phy *imx8_phy = phy_get_drvdata(phy);
+	const struct soc_device_attribute *match;
+
+	match = soc_device_match(imx8_soc);
 
 	/* export clock to ep when internal clock is used as PHY REF clock */
 	if ((imx8_phy->flags & IMX8MP_PCIE_PHY_FLAG_EXT_OSC) == 0) {
+		/* PLL low-frequency clock output to external I/O enable */
 		writel(ANA_PLL_CLK_OUT_TO_EXT_IO_EN,
 		       imx8_phy->base + IMX8MP_PCIE_PHY_CMN_REG061);
+		/* PLL low-frequency clock output to external I/O selection
+		 * 1 -> reference clock bypass  for MPHY
+		 *  */
 		writel(ANA_PLL_CLK_OUT_TO_EXT_IO_SEL,
 		       imx8_phy->base + IMX8MP_PCIE_PHY_CMN_REG062);
+		/* AUX_IN -> PLL clock -> from syspll */
 		writel(AUX_PLL_REFCLK_SEL_SYS_PLL,
 		       imx8_phy->base + IMX8MP_PCIE_PHY_CMN_REG063);
 		value = ANA_AUX_RX_TX_SEL_TX | ANA_AUX_TX_TERM;
@@ -173,6 +199,25 @@ static int imx8_pcie_phy_cal(struct phy *phy)
 	       imx8_phy->base + IMX8MP_PCIE_PHY_CMN_REG076);
 	writel(LANE_TX_DATA_CLK_MUX_SEL,
 	       imx8_phy->base + IMX8MP_PCIE_PHY_CMN_REG078);
+
+	/* workaround ERR050442 for iMX8MP A0
+	 * revert commit MLK-24910-3 phy: pcie: imx8mp: remove the pcie workaround
+	 * */
+	if (match && !strcmp(match->soc_id, "i.MX8MP") && !strcmp(match->revision, "1.0"))
+	{
+		udelay(1);
+		writel(PLL_PMS_SDIV_8_4,
+			   imx8_phy->base + IMX8MP_PCIE_PHY_CMN_REG036);
+		writel(LN0_RX_CDR_REFDIV_1_2,
+			   imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG020);
+		writel(LN0_RX_CDR_REFDIV_1_1,
+			   imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG022);
+		writel(LN0_MISC_TX_CLK_SRC,
+			   imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG0CF);
+		writel(LN0_TXD_DESKEW_BYPASS,
+			   imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG0BB);
+		udelay(1);
+	}
 
 	return 0;
 }
