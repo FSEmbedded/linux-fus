@@ -1,0 +1,125 @@
+/*
+ * Copyright (C) 2021 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+#define CONFIG_PICOCOREMX8MP_MIPI_DSI_LVDS
+#define CONFIG_PICOCOREMX8MP_INVERTED_XY
+#include "picocoremx8mp.dts"
+
+/ {
+
+	lvds_panel {
+		compatible = "panel-lvds";
+		power = <&reg_vlcd>;
+		backlight = <&backlight_ldb>;
+		data-mapping = "vesa-24";
+		label = "j070wvtc0211";
+		width-mm = <154>;
+		height-mm = <85>;
+		status = "okay";
+
+		panel-timing {
+			clock-frequency = <33300000>;
+			hactive = <800>;
+			vactive = <480>;
+			hback-porch = <46>;
+			hfront-porch = <209>;
+			hsync-len = <1>;
+			vback-porch = <23>;
+			vfront-porch = <11>;
+			vsync-len = <1>;
+			de-active = <1>;
+			vsync-active = <0>;
+			hsync-active = <0>;
+		};
+
+		port {
+			panel_lvds_in: endpoint {
+				remote-endpoint = <&lvds_out>;
+			};
+		};
+	};
+};
+
+&backlight_ldb {
+	pwms = <&pwm2 0 250000 PWM_POLARITY_INVERTED>;
+	brightness-levels = <0 155 159 174 176 177 179 180 182 183
+				184 186 187 189 190 191 192 193 194 196
+				198 199 200 202 203 204 206 207 208 209
+				210 212 213 214 215 217 218 219 220 221
+				223 224 225 226 227 228 230 231 232 233
+				234 235 236 238 239 240 241 242 243 244
+				245 246 248 249 250 251 252 253 254 255>;
+	default-brightness-level = <35>;
+
+	status = "okay";
+};
+
+/* MIPI-DSI */
+&lcdif1 {
+	status = "okay";
+};
+
+/* LVDS */
+&lcdif2 {
+	status = "okay";
+};
+
+
+/* HDMI */
+&lcdif3 {
+	status = "disbled";
+};
+
+&ldb_phy {
+	status = "okay";
+};
+
+&ldb {
+	status = "okay";
+
+	lvds-channel@0 {
+			status = "disabled";
+		};
+
+	lvds-channel@1 {
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <24>;
+		status = "okay";
+
+		port@1 {
+			reg = <1>;
+
+			lvds_out: endpoint {
+				remote-endpoint = <&panel_lvds_in>;
+			};
+		};
+	};
+};
+
+&i2c4 {
+	/* touch I2C */
+	focaltech@38 {
+		compatible = "focaltech,fts";
+		reg = <0x38>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <13 IRQ_TYPE_EDGE_FALLING>;
+		focaltech,irq-gpio = <&gpio1 13 IRQ_TYPE_EDGE_FALLING>;
+#ifdef CONFIG_PICOCOREMX8MP_INVERTED_XY
+		focaltech,touchscreen-inverted-x;
+		focaltech,touchscreen-inverted-y;
+#endif
+		focaltech,reset-gpio = <&gpio3 14 GPIO_ACTIVE_LOW>;
+		focaltech,num-max-touches = <10>;
+		focaltech,display-coords = <0 0 800 480>;
+	};
+};
+
+&mipi_dsi {
+	status = "okay";
+
+};
+
