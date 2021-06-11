@@ -13,7 +13,7 @@
 
 	lvds_panel {
 		compatible = "panel-lvds";
-		power = <&reg_vlcd>;
+		power-supply = <&reg_vlcd>;
 		backlight = <&backlight_ldb>;
 		data-mapping = "vesa-24";
 		label = "j070wvtc0211";
