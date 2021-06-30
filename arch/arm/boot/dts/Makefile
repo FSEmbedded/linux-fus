@@ -619,6 +619,7 @@ dtb-$(CONFIG_SOC_IMX6SX) += \
 	bema9x.dtb \
 	picocoma9x.dtb \
 	cont1.dtb \
+	vand3.dtb \
 	imx6sx-sdb-m4.dtb \
 	imx6sx-sdb-mqs.dtb \
 	imx6sx-sdb-btwifi.dtb \
