@@ -663,6 +663,7 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	cube2.0.dtb \
 	gar1.dtb \
 	gar2.dtb \
+	gar3.dtb \
 	imx6ull-14x14-evk.dtb \
 	imx6ull-14x14-evk-emmc.dtb \
 	imx6ull-14x14-evk-btwifi.dtb \

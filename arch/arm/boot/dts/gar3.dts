@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 F&S Elektronik Systeme GmbH
+ * Copyright (C) 2021 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -9,28 +9,28 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 100 for board rev. 1.00 */
-#define CONFIG_GAR1_BOARD_REVISION	150
+#define CONFIG_GAR3_BOARD_REVISION	100
 
 /* CMA: Set 72 MB for Continuous Memory Allocator */
-#define CONFIG_GAR1_CMA_SIZE 0x4800000
+#define CONFIG_GAR3_CMA_SIZE 0x4800000
 
 /* NAND */
-#define CONFIG_GAR1_NAND
+#define CONFIG_GAR3_NAND
 
 /* Network */
-#define CONFIG_GAR1_ETH0
-#define CONFIG_GAR1_ETH1
+#define CONFIG_GAR3_ETH0
+#define CONFIG_GAR3_ETH1
 
 #include <dt-bindings/input/input.h>
 #include "imx6ul.dtsi"
 
 / {
-	model = "F&S GAR1";
-	compatible = "fsl,imx6ul-gar1", "fsl,imx6ul";
+	model = "F&S GAR3";
+	compatible = "fsl,imx6ul-gar3", "fsl,imx6ul";
 
 	aliases {
-		ethernet1 = &fec1;
-		ethernet0 = &fec2;
+		ethernet0 = &fec1;
+		ethernet1 = &fec2;
 	};
 #if 0
 	chosen {
@@ -75,15 +75,24 @@
 		pinctrl-0 = <&pinctrl_led>;
 
 		fec0-led {
-			label = "eth1-led";
+			label = "eth0-led";
 			gpios = <&gpio3 0 GPIO_ACTIVE_LOW>;
-			linux,default-trigger = "20b4000.ethernet:01:100Mbps";
+			linux,default-trigger = "2188000.ethernet-1:01";
 		};
 
-		fec1-led {
-			label = "eth0-led";
-			gpios = <&gpio3 1 GPIO_ACTIVE_LOW>;
-			linux,default-trigger = "20b4000.ethernet:11:100Mbps";
+		c-red-led {
+			label = "c-red-led";
+			gpios = <&gpio3 19 GPIO_ACTIVE_HIGH>;
+		};
+
+		c-green-led {
+			label = "c-green-led";
+			gpios = <&gpio3 21 GPIO_ACTIVE_HIGH>;
+		};
+
+		c-blue-led {
+			label = "c-blue-led";
+			gpios = <&gpio3 23 GPIO_ACTIVE_HIGH>;
 		};
 	};
 
@@ -132,7 +141,7 @@
 	/* F&S board information */
 	bdinfo {
 		compatible = "bdinfo";
-		board_name = "GAR1";
+		board_name = "GAR3";
 		ecc_strength = "8";
 	};
 };
@@ -143,7 +152,7 @@
 
 /* RAM size for Continues Memory Allocator */
 &cma {
-	size = <CONFIG_GAR1_CMA_SIZE>;
+	size = <CONFIG_GAR3_CMA_SIZE>;
 };
 
 &busfreq {
@@ -158,7 +167,7 @@
 	fsl,arm-soc-shared = <0>;
 };
 
-#ifdef CONFIG_GAR1_ETH0
+#ifdef CONFIG_GAR3_ETH0
 &fec1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet1>;
@@ -170,38 +179,38 @@
 	phy-supply = <&reg_vref_3v3>;
 	fsl,ref-clock-out;
 	status = "okay";
-};
-#endif /* CONFIG_GAR1_ETH0 */
 
-#ifdef CONFIG_GAR1_ETH1
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy0: ethernet-phy@1 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <1>;
+		};
+	};
+
+
+};
+#endif /* CONFIG_GAR3_ETH0 */
+
+#ifdef CONFIG_GAR3_ETH1
 &fec2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet2>;
 	assigned-clocks = <&clks IMX6UL_CLK_ENET2_REF>;
 	assigned-clock-rates = <50000000>;
 	phy-mode = "rmii";
-	phy-reset-gpios = <&gpio4 18 GPIO_ACTIVE_LOW>;
-	phy-handle = <&ethphy1>;
-	phy-supply = <&reg_vref_3v3>;
 	fsl,ref-clock-out;
 	status = "okay";
 
-	mdio {
-		#address-cells = <1>;
-		#size-cells = <0>;
-#ifdef CONFIG_GAR1_ETH0
-		ethphy0: ethernet-phy@1 {
-			compatible = "ethernet-phy-ieee802.3-c22";
-			reg = <1>;
-		};
-#endif
-		ethphy1: ethernet-phy@17 {
-			compatible = "ethernet-phy-ieee802.3-c22";
-			reg = <17>;
-		};
+	/* FEC2 is directly connected to ethernet switch SJA1105 port 4 */
+	fixed-link {
+		speed = <100>;
+		full-duplex;
 	};
 };
-#endif /* CONFIG_GAR1_ETH1 */
+#endif /* CONFIG_GAR3_ETH1 */
 
 &gpc {
 	fsl,cpu_pupscr_sw2iso = <0x2>;
@@ -257,14 +266,13 @@
 };
 
 /* UART_C */
-#if (CONFIG_GAR1_BOARD_REVISION >= 140)
 &uart4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart4>;
 	uart-has-rtscts;
 	status = "okay";
 };
-#endif
+
 
 &usbotg1 {
 	pinctrl-names = "default";
@@ -313,7 +321,7 @@
 	iram = <&ocram>;
 };
 
-#ifdef CONFIG_GAR1_NAND
+#ifdef CONFIG_GAR3_NAND
 &gpmi {
 	/* Switch to F&S implementation of GPMI NAND driver */
 	compatible = "fus,imx6ul-gpmi-nand", "fus,imx6q-gpmi-nand";
@@ -329,39 +337,52 @@
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog_1>;
-	GAR1 {
+	GAR3 {
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
+				/* LED0_Test */
+				MX6UL_PAD_GPIO1_IO01__GPIO1_IO01	0x0f0b0
 				/* LED1_Test */
-				MX6UL_PAD_GPIO1_IO04__GPIO1_IO04	0x80000000
+				MX6UL_PAD_GPIO1_IO04__GPIO1_IO04	0x0f0b0
 				/* LED2_Test */
-				MX6UL_PAD_GPIO1_IO05__GPIO1_IO05	0x80000000
+				MX6UL_PAD_GPIO1_IO05__GPIO1_IO05	0x0f0b0
 				/* LED3_Test */
-				MX6UL_PAD_GPIO1_IO08__GPIO1_IO08	0x80000000
+				MX6UL_PAD_GPIO1_IO08__GPIO1_IO08	0x0f0b0
 				/* LED4_Test */
-				MX6UL_PAD_GPIO1_IO09__GPIO1_IO09	0x80000000
+				MX6UL_PAD_GPIO1_IO09__GPIO1_IO09	0x0f0b0
+				/* LED5_Test */
+				MX6UL_PAD_LCD_DATA15__GPIO3_IO20	0x0f0b0
+				/* LED6_Test */
+				MX6UL_PAD_LCD_DATA17__GPIO3_IO22	0x0f0b0
+				/* LED7_Test */
+				MX6UL_PAD_LCD_DATA19__GPIO3_IO24	0x0f0b0
 				/* GPIO0 - GPIO3 */
 				MX6UL_PAD_UART3_RTS_B__GPIO1_IO27	0x000b0
 				MX6UL_PAD_UART3_CTS_B__GPIO1_IO26	0x000b0
-#if (CONFIG_GAR1_BOARD_REVISION >= 140)
 				MX6UL_PAD_LCD_DATA04__GPIO3_IO09	0x000b0
 				MX6UL_PAD_LCD_DATA05__GPIO3_IO10	0x000b0
-				/* USB_OTG1 Power on/off based on customers' demand using
-				 * GPIO pin.
-				 */
-				MX6UL_PAD_SD1_CMD__GPIO2_IO16		0x000b0
-#else
-				MX6UL_PAD_UART4_TX_DATA__GPIO1_IO28	0x000b0
-				MX6UL_PAD_UART4_RX_DATA__GPIO1_IO29	0x000b0
-#endif
 				/* RTC IRQ */
 				MX6UL_PAD_LCD_RESET__GPIO3_IO04		0x0b0b0
+				/* ETH_5V_EN Power on/off based on customers' demand using
+				 * GPIO pin - default external PU.
+				 */
+				MX6UL_PAD_LCD_DATA23__GPIO3_IO28	0x000b0
+				/* mPCIe2_USB_PWR on/off based on customers' demand using
+				 * GPIO pin - default external PU.
+				 */
+				MX6UL_PAD_SD1_CMD__GPIO2_IO16		0x000b0
+				/* mPCIe_SIM_Switch - default external PU */
+				MX6UL_PAD_LCD_DATA20__GPIO3_IO25	0x000b0
 			>;
 		};
 
-#ifdef CONFIG_GAR1_ETH0
+#ifdef CONFIG_GAR3_ETH0
 		pinctrl_enet1: enet1grp {
 			fsl,pins = <
+				/* MDIO */
+				MX6UL_PAD_GPIO1_IO07__ENET1_MDC		0x1b0b0
+				MX6UL_PAD_GPIO1_IO06__ENET1_MDIO	0x1b829
+
 				/* FEC1 */
 				MX6UL_PAD_ENET1_RX_EN__ENET1_RX_EN	0x0b0e9
 				MX6UL_PAD_ENET1_RX_ER__ENET1_RX_ER	0x0b0e9
@@ -377,15 +398,12 @@
 		};
 #endif
 
-#ifdef CONFIG_GAR1_ETH1
+#ifdef CONFIG_GAR3_ETH1
 		pinctrl_enet2: enet2grp {
 			fsl,pins = <
-				/* MDIO */
-				MX6UL_PAD_GPIO1_IO07__ENET2_MDC		0x1b0b0
-				MX6UL_PAD_GPIO1_IO06__ENET2_MDIO	0x1b829
 				/* FEC2 */
 				MX6UL_PAD_ENET2_RX_EN__ENET2_RX_EN	0x0b0e9
-				MX6UL_PAD_ENET2_RX_ER__ENET2_RX_ER	0x0b0e9
+				MX6UL_PAD_ENET2_RX_ER__ENET2_RX_ER	0x030e9
 				MX6UL_PAD_ENET2_RX_DATA0__ENET2_RDATA00	0x030e9
 				MX6UL_PAD_ENET2_RX_DATA1__ENET2_RDATA01	0x030e9
 				MX6UL_PAD_ENET2_TX_EN__ENET2_TX_EN	0x0b0e9
@@ -401,7 +419,9 @@
 		pinctrl_led: ledgrp {
 			fsl,pins = <
 				MX6UL_PAD_LCD_CLK__GPIO3_IO00		0x1b059
-				MX6UL_PAD_LCD_ENABLE__GPIO3_IO01 	0x1b059
+				MX6UL_PAD_LCD_DATA14__GPIO3_IO19	0x130b0
+				MX6UL_PAD_LCD_DATA16__GPIO3_IO21	0x130b0
+				MX6UL_PAD_LCD_DATA18__GPIO3_IO23	0x130b0
 			>;
 		};
 
@@ -446,7 +466,6 @@
 			>;
 		};
 
-#if (CONFIG_GAR1_BOARD_REVISION >= 140)
 		pinctrl_uart4: uart4grp {
 			fsl,pins = <
 				MX6UL_PAD_LCD_HSYNC__UART4_DCE_CTS 		0x1b0b1
@@ -467,7 +486,6 @@
 				MX6UL_PAD_LCD_DATA11__GPIO3_IO16		0x030b0
 			>;
 		};
-#endif
 
 		pinctrl_usbotg1: usbotg1grp {
 			fsl,pins = <
@@ -485,6 +503,10 @@
 				MX6UL_PAD_SD1_DATA0__GPIO2_IO18		0x0b030
 				/* mPCIe_WAKE */
 				MX6UL_PAD_SD1_DATA2__GPIO2_IO20		0x0b030
+				/* mPCIe2_RST */
+				MX6UL_PAD_LCD_DATA22__GPIO3_IO27	0x0b030
+				/* mPCIe2_WAKE */
+				MX6UL_PAD_LCD_DATA21__GPIO3_IO26	0x0b030
 			>;
 		};
 
@@ -510,7 +532,7 @@
 			>;
 		};
 
-#ifdef CONFIG_GAR1_NAND
+#ifdef CONFIG_GAR3_NAND
 #if 0
 		pinctrl_gpmi_nand_1: gpmi-nand-1 {
 			/* Already configured in NBoot/U-Boot */
