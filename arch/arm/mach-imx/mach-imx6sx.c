@@ -9,6 +9,7 @@
 #include <linux/regmap.h>
 #include <linux/mfd/syscon.h>
 #include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
+#include <linux/micrel_phy.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 
@@ -24,6 +25,21 @@ static int dp83848_phy_fixup(struct phy_device *dev)
 	val = phy_read(dev, 0x19);
 	val &= ~(0x1 << 5);
 	phy_write(dev, 0x19, val);
+	return 0;
+}
+
+static int ksz8081_phy_fixup(struct phy_device *dev)
+{
+	/* Do not use PHY address 0 for broadcast, switch LED to show link and
+	   activity and activate correct clock speed */
+	if (dev && dev->interface == PHY_INTERFACE_MODE_MII) {
+		phy_write(dev, 0x1f, 0x8100);
+		phy_write(dev, 0x16, 0x201);
+	} else if (dev && dev->interface == PHY_INTERFACE_MODE_RMII) {
+		phy_write(dev, 0x1f, 0x8180);
+		phy_write(dev, 0x16, 0x202);
+	}
+
 	return 0;
 }
 
@@ -59,6 +75,8 @@ static void __init imx6sx_enet_phy_init(void)
 	if (IS_BUILTIN(CONFIG_PHYLIB)) {
 		phy_register_fixup_for_uid(PHY_ID_DP83848, 0xfffffff0,
 					   dp83848_phy_fixup);
+		phy_register_fixup_for_uid(PHY_ID_KSZ8081, MICREL_PHY_ID_MASK,
+				   ksz8081_phy_fixup);
 		phy_register_fixup_for_uid(PHY_ID_AR8031, 0xffffffff,
 					   ar8031_phy_fixup);
 	}
