@@ -19,6 +19,7 @@ Optional properties:
                      value is 32.
 - no-dma: Disables dma for this uart. The uart is now interrupt-driven,
           does not buffer the received data and supports parity check.
+- disable-dtrd: Disable Data Terminal Ready Delta Enables interrupts.
 
 Please check Documentation/devicetree/bindings/serial/serial.txt
 for the complete list of generic properties.

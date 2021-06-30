@@ -210,6 +210,7 @@ struct imx_port {
 	unsigned int		have_rtsgpio:1;
 	unsigned int		dte_mode:1;
 	bool			no_dma;
+	bool			no_dtrd;
 	struct clk		*clk_ipg;
 	struct clk		*clk_per;
 	const struct imx_uart_data *devdata;
@@ -1460,6 +1461,9 @@ static int imx_uart_startup(struct uart_port *port)
 			/* disable broken interrupts */
 			ucr3 &= ~(UCR3_RI | UCR3_DCD);
 
+		if (sport->no_dtrd)
+			ucr3 &= ~UCR3_DTRDEN;
+
 		imx_uart_writel(sport, ucr3, UCR3);
 	}
 
@@ -2249,6 +2253,11 @@ static int imx_uart_probe_dt(struct imx_port *sport,
 		sport->no_dma = 1;
 	else
 		sport->no_dma = 0;
+
+	if (of_get_property(np, "disable-dtrd", NULL))
+		sport->no_dtrd = 1;
+	else
+		sport->no_dtrd = 0;
 
 	return 0;
 }
