@@ -70,8 +70,8 @@
 
 /* Audio */
 #define CONFIG_PICOCOREMX8MP_I2S_A
-#define CONFIG_PICOCOREMX8MP_I2S_B
-/* SGTL5000 needs I2S_B */
+//#define CONFIG_PICOCOREMX8MP_I2S_B
+/* SGTL5000 needs I2S_A */
 #define CONFIG_PICOCOREMX8MP_SGTL5000_AUDIO
 
 
@@ -131,6 +131,10 @@
 #undef CONFIG_PICOCOREMX8MP_HDMI_HPD
 #endif
 
+#ifdef CONFIG_PICOCOREMX8MP_SGTL5000_AUDIO
+#define CONFIG_PICOCOREMX8MP_I2S_A
+#endif
+
 
 #include <dt-bindings/usb/pd.h>
 #include <dt-bindings/pwm/pwm.h>
@@ -140,6 +144,21 @@
 / {
 	model = "F&S PicoCoreMX8MP";
 	compatible = "fus,imx8mp-picocoremx8mp", "fsl,imx8mp";
+
+	aliases {
+		rtcpcf85263 = &rtc85263;
+		sound-sgtl5000 = &sound_sgtl5000;
+		sgtl5000 = &sgtl5000;
+		wlan-reset = &reg_wlan_pdn;
+		eeprom = &eeprom;
+		mipi_dsi = &mipi_dsi;
+		lcdif1 = &lcdif1;
+		lcdif2 = &lcdif2;
+		lcdif3 = &lcdif3;
+		ldb = &ldb;
+		ldb_phy = &ldb_phy;
+		snvs_rtc = &snvs_rtc;
+	};
 
 	/* -------------------- BOARD INFO -------------------- */
 	bdinfo {
@@ -161,6 +180,11 @@
 			no-map;
 			reg = <0 0x55800000 0 0x800000>;
 		};
+
+		/* remove this node because the region used
+		 * only by tuning tool
+		 * */
+		/delete-node/isp0@94400000;
 	};
 
 #ifdef CONFIG_PICOCOREMX8MP_BL_CTRL
@@ -337,7 +361,7 @@
 #endif
 
 #ifdef CONFIG_PICOCOREMX8MP_SGTL5000_AUDIO
-	sound-sgtl5000 {
+	sound_sgtl5000: sound-sgtl5000 {
 		compatible = "fsl,imx-audio-sgtl5000";
 		model = "imx-sgtl5000";
 		cpu-dai = <&sai2>;
@@ -585,7 +609,7 @@
 	status = "okay";
 
 #ifdef CONFIG_PICOCOREMX8MP_EXT_RTC
-	rtcpcf85263@51 {
+	rtc85263: rtc85263@51 {
 		compatible = "nxp,pcf85263";
 		reg = <0x51>;
 		clock-out = <PCF85263_CLK_OUT_32p768kHz>;
@@ -597,7 +621,7 @@
 
 #ifdef CONFIG_PICOCOREMX8MP_EEPROM
 	/* EEPROM */
-	eeprom@50 {
+	eeprom: eeprom@50 {
 		compatible = "atmel,24c02";
 		reg = <0x50>;
 		pagesize = <8>;
@@ -913,6 +937,7 @@
 #endif /* CONFIG_PICOCOREMX8MP_PCIE */
 
 #ifdef CONFIG_PICOCOREMX8MP_I2S_B
+/* TODO: Enable SAI5_MCLK via BLK_CTRL */
 &sai1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai1>;
@@ -924,6 +949,24 @@
 		 <&clk IMX8MP_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 	fsl,sai-mclk-direction-output;
+	fsl,txmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
+	fsl,rxmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
+	status = "okay";
+};
+
+&sai5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sai5>;
+	assigned-clocks = <&clk IMX8MP_CLK_SAI5>;
+	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
+	assigned-clock-rates = <12288000>;
+	clocks = <&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI5_IPG>, <&clk IMX8MP_CLK_DUMMY>,
+			<&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI5_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
+		 <&clk IMX8MP_CLK_DUMMY>;
+	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
+	fsl,sai-mclk-direction-output;
+	fsl,txmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
+	fsl,rxmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
 	status = "okay";
 };
 #endif /* CONFIG_PICOCOREMX8MP_I2S_B */
@@ -1157,6 +1200,13 @@
 
 &cameradev {
 	status = "okay";
+};
+
+&isp_0 {
+	/* remove this property because this region used
+	 * only by tuning tool
+	 * */
+	/delete-property/memory-region;
 };
 
 &isi_0 {
@@ -1455,13 +1505,24 @@
 		>;
 	};
 
+#ifdef CONFIG_PICOCOREMX8MP_I2S_B
 	pinctrl_sai1: sai1grp {
 		fsl,pins = <
+			/* TODO: Enable SAI5_MCLK via BLK_CTRL */
 			MX8MP_IOMUXC_SAI1_MCLK__AUDIOMIX_SAI1_MCLK		0xd6
 		>;
 	};
 
-#ifdef CONFIG_PICOCOREMX8MP_I2S_B
+	pinctrl_sai5: sai5grp {
+		fsl,pins = <
+			MX8MP_IOMUXC_SAI5_RXD1__AUDIOMIX_SAI5_TX_SYNC	0xd6
+			MX8MP_IOMUXC_SAI5_RXD2__AUDIOMIX_SAI5_TX_BCLK	0xd6
+			MX8MP_IOMUXC_SAI5_RXD3__AUDIOMIX_SAI5_TX_DATA00	0xd6
+		>;
+	};
+#endif /* CONFIG_PICOCOREMX8MP_I2S_B */
+
+#ifdef CONFIG_PICOCOREMX8MP_I2S_A
 		pinctrl_sai2: sai2grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_SAI2_TXFS__AUDIOMIX_SAI2_TX_SYNC	0xd6
@@ -1471,7 +1532,7 @@
 				MX8MP_IOMUXC_SAI2_MCLK__AUDIOMIX_SAI2_MCLK		0xd6
 			>;
 		};
-#endif
+#endif /* CONFIG_PICOCOREMX8MP_I2S_A */
 
 #ifdef CONFIG_PICOCOREMX8MP_UART_C
 	pinctrl_uart1: uart1grp {
