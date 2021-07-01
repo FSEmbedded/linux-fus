@@ -7,11 +7,13 @@
  */
 #define CONFIG_PICOCOREMX8MP_MIPI_DSI_LVDS
 #define CONFIG_PICOCOREMX8MP_INVERTED_XY
+/* TODO: does not work */
+//#define CONFIG_PICOCOREMX8MP_LDB_DUAL_CHANNEL
 #include "picocoremx8mp.dts"
 
 / {
 
-	lvds_panel {
+	lvds0_panel {
 		compatible = "panel-lvds";
 		power-supply = <&reg_vlcd>;
 		backlight = <&backlight_ldb>;
@@ -37,8 +39,40 @@
 		};
 
 		port {
-			panel_lvds_in: endpoint {
-				remote-endpoint = <&lvds_out>;
+			panel_lvds0_in: endpoint {
+				remote-endpoint = <&lvds0_out>;
+			};
+		};
+	};
+
+	lvds1_panel {
+		compatible = "panel-lvds";
+		power-supply = <&reg_vlcd>;
+		backlight = <&backlight_ldb>;
+		data-mapping = "vesa-24";
+		label = "j070wvtc0211";
+		width-mm = <154>;
+		height-mm = <85>;
+		status = "okay";
+
+		panel-timing {
+			clock-frequency = <33300000>;
+			hactive = <800>;
+			vactive = <480>;
+			hback-porch = <46>;
+			hfront-porch = <209>;
+			hsync-len = <1>;
+			vback-porch = <23>;
+			vfront-porch = <11>;
+			vsync-len = <1>;
+			de-active = <1>;
+			vsync-active = <0>;
+			hsync-active = <0>;
+		};
+
+		port {
+			panel_lvds1_in: endpoint {
+				remote-endpoint = <&lvds1_out>;
 			};
 		};
 	};
@@ -68,7 +102,6 @@
 	status = "okay";
 };
 
-
 /* HDMI */
 &lcdif3 {
 	status = "disbled";
@@ -80,11 +113,27 @@
 
 &ldb {
 	status = "okay";
+	/* TODO: disabled for now because does not work */
+#ifdef CONFIG_PICOCOREMX8MP_LDB_DUAL_CHANNEL
+	fsl,dual-channel;
+#endif /* CONFIG_PICOCOREMX8MP_LDB_DUAL_CHANNEL */
 
+	/* DSI_A */
 	lvds-channel@0 {
-			status = "disabled";
-		};
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <24>;
+		status = "disabled";
 
+		port@1 {
+			reg = <1>;
+
+			lvds0_out: endpoint {
+				remote-endpoint = <&panel_lvds0_in>;
+			};
+		};
+	};
+
+	/* DSI_B */
 	lvds-channel@1 {
 		fsl,data-mapping = "spwg";
 		fsl,data-width = <24>;
@@ -93,8 +142,8 @@
 		port@1 {
 			reg = <1>;
 
-			lvds_out: endpoint {
-				remote-endpoint = <&panel_lvds_in>;
+			lvds1_out: endpoint {
+				remote-endpoint = <&panel_lvds1_in>;
 			};
 		};
 	};
@@ -120,6 +169,5 @@
 
 &mipi_dsi {
 	status = "okay";
-
 };
 
