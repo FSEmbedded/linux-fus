@@ -4,7 +4,13 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight,
         MM: M Mini, MN: M Nano
 
-linux-5.4.70-fsimx8mp-B2021.07 (09.07.2021)
+linux-5.4.70-fsimx8mp-Y2021.07.1 (19.07.2021)
+-------------------------------------------
+Supported boards: PicoCoreMX8MP
+
+
+
+linux-5.4.70-fsimx8mp-Y2021.07 (09.07.2021)
 -------------------------------------------
 Supported boards: PicoCoreMX8MP
 
