@@ -20,7 +20,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_PICOCOREMX6UL_BOARD_REVISION	110
+#define CONFIG_PICOCOREMX6UL_BOARD_REVISION	120
 
 #define DISPLAY_NONE	0	/* No display on this port */
 #define DISPLAY_LCD	1	/* LCD via RGB adapter */
@@ -77,13 +77,14 @@ wvga {					\
 /* CMA: Set 64 MB for Continuous Memory Allocator */
 #define CONFIG_PICOCOREMX6UL_CMA_SIZE 0x4000000
 
+/* NAND/eMMC will be set by U-Boot */
 /* NAND */
 #define CONFIG_PICOCOREMX6UL_NAND
 
 /* EMMC
  * If NAND is equipped, EMMC is not possible.
  */
-//#define CONFIG_PICOCOREMX6UL_EMMC
+#define CONFIG_PICOCOREMX6UL_EMMC
 
 /* Network */
 #define CONFIG_PICOCOREMX6UL_ETH0
@@ -95,6 +96,9 @@ wvga {					\
 
 /* CAN */
 #define CONFIG_PICOCOREMX6UL_CAN_A
+
+/* EEPROM */
+#define CONFIG_PICOCOREMX6UL_EEPROM
 
 /* I2C */
 #define CONFIG_PICOCOREMX6UL_I2C_A
@@ -125,16 +129,9 @@ wvga {					\
 
 /* Check for invalid CONFIG combinations */
 
-/* Only NAND or EMMC can be placed, both at the same time is not possible
- * we give NAND higher preference
- */
-#ifdef CONFIG_PICOCOREMX6UL_NAND
-#undef CONFIG_PICOCOREMX6UL_EMMC
-#endif
-
-
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/pwm/pwm.h>
+#include <dt-bindings/rtc/nxp,pcf85263.h>
 
 #ifdef CONFIG_PICOCOREMX6UL_ULL
 #include "imx6ull.dtsi"
@@ -151,6 +148,10 @@ wvga {					\
 #endif
 
 	aliases {
+		nand=&gpmi;
+		emmc=&usdhc2;
+		rtcpcf85063 = &rtc85063;
+		rtcpcf85263 = &rtc85263;
 	};
 	chosen {
 	};
@@ -355,7 +356,6 @@ wvga {					\
 	iram = <&ocram>;
 };
 
-//TODO check compatible
 #ifdef CONFIG_PICOCOREMX6UL_NAND
 &gpmi {
 	/* Switch to F&S implementation of GPMI NAND driver */
@@ -607,11 +607,31 @@ wvga {					\
 	};
 #endif
 
-	rtc85063@51 {
+	rtc85063: rtc85063@51 {
 		compatible = "nxp,pcf85063";
 		reg = <0x51>;
 		cap_12_5pf;
 	};
+
+	rtc85263: rtc85263@51 {
+		compatible = "nxp,pcf85263";
+		reg = <0x51>;
+		clock-out = <PCF85263_CLK_OUT_32p768kHz>;
+
+		quartz-load-capacitance = <PCF85263_QUARTZCAP_12p5pF>;
+		quartz-drive-strength = <PCF85263_QUARTZDRIVE_LOW>;
+	};
+
+#ifdef CONFIG_PICOCOREMX6UL_EEPROM
+	/* EEPROM */
+	eeprom: eeprom@50 {
+		compatible = "atmel,24c02";
+		reg = <0x50>;
+		pagesize = <8>;
+	};
+#endif
+
+	// ### TODO: security chip
 };
 #endif
 
@@ -829,14 +849,7 @@ wvga {					\
 
 				MX6UL_PAD_JTAG_TMS__SAI2_MCLK		0x17088
 //###				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
-#ifdef CONFIG_PICOCOREMX6UL_EMMC
-				/* GPIOs */
-				MX6UL_PAD_NAND_WP_B__GPIO4_IO11		0x030b0
-				MX6UL_PAD_NAND_READY_B__GPIO4_IO12	0x030b0
-				MX6UL_PAD_NAND_CE0_B__GPIO4_IO13	0x030b0
-				MX6UL_PAD_NAND_CLE__GPIO4_IO15		0x030b0
-				MX6UL_PAD_NAND_DQS__GPIO4_IO16		0x030b0
-#endif
+
 				/* GPIOs */
 				MX6UL_PAD_CSI_DATA04__GPIO4_IO25	0x030b0
 				MX6UL_PAD_CSI_DATA05__GPIO4_IO26	0x030b0
@@ -1022,8 +1035,8 @@ wvga {					\
 				MX6UL_PAD_CSI_DATA00__UART5_DCE_TX	0x1b0b1
 				MX6UL_PAD_CSI_DATA01__UART5_DCE_RX	0x1b0b1
 #ifdef CONFIG_PICOCOREMX6UL_UART_C_RTSCTS
-				MX6UL_PAD_CSI_DATA02__UART5_DTE_CTS	0x1b0b1
-				MX6UL_PAD_CSI_DATA03__UART5_DTE_RTS	0x1b0b1
+				MX6UL_PAD_CSI_DATA02__UART5_DCE_RTS	0x1b0b1
+				MX6UL_PAD_CSI_DATA03__UART5_DCE_CTS	0x1b0b1
 #endif
 			>;
 		};
@@ -1132,6 +1145,13 @@ wvga {					\
 
 				/* Reset (for eMMC) */
 				MX6UL_PAD_NAND_ALE__USDHC2_RESET_B	0x17091
+
+				/* Additional GPIOs available if eMMC is used */
+				MX6UL_PAD_NAND_WP_B__GPIO4_IO11		0x030b0
+				MX6UL_PAD_NAND_READY_B__GPIO4_IO12	0x030b0
+				MX6UL_PAD_NAND_CE0_B__GPIO4_IO13	0x030b0
+				MX6UL_PAD_NAND_CLE__GPIO4_IO15		0x030b0
+				MX6UL_PAD_NAND_DQS__GPIO4_IO16		0x030b0
 			>;
 		};
 #endif /* CONFIG_PICOCOREMX6UL_EMMC */
