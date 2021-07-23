@@ -76,8 +76,14 @@
 	mxt336u@4a {
 		compatible = "atmel,maxtouch";
 		reg = <0x4a>;
+#if CONFIG_PICOCOREMX8MM_BOARD_REVISION >= 130
+		interrupt-parent = <&gpio1>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+
+#else
 		interrupt-parent = <&gpio4>;
 		interrupts = <31 IRQ_TYPE_EDGE_FALLING>;
+#endif
 		atmel,cfg_name = "atmel/mxt336u-gloves.cfg";
 		reset-gpios = <&max7315 6 GPIO_ACTIVE_LOW>;
 	};
