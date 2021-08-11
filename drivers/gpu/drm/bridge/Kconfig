@@ -168,6 +168,17 @@ config DRM_TI_SN65DSI86
 	help
 	  Texas Instruments SN65DSI86 DSI to eDP Bridge driver
 
+config DRM_LONTIUM_LT9211
+	tristate "Lontium LT9211 DSI/RGB bridge"
+	depends on OF
+	select DRM_PANEL_BRIDGE
+	select DRM_KMS_HELPER
+	select REGMAP_I2C
+	help
+	  Driver for Lontium LT9211 DSI to RGB bridge
+	  chip driver that converts DSI RGB TTL signals
+	  Please say Y if you have such hardware.
+
 source "drivers/gpu/drm/bridge/analogix/Kconfig"
 
 source "drivers/gpu/drm/bridge/adv7511/Kconfig"
