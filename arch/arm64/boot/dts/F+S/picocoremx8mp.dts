@@ -70,7 +70,7 @@
 
 /* Audio */
 #define CONFIG_PICOCOREMX8MP_I2S_A
-//#define CONFIG_PICOCOREMX8MP_I2S_B
+#define CONFIG_PICOCOREMX8MP_I2S_B
 /* SGTL5000 needs I2S_A */
 #define CONFIG_PICOCOREMX8MP_SGTL5000_AUDIO
 
@@ -432,7 +432,8 @@
 };
 
 &audiomix_clk {
-	init-on-array = <IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>;
+	init-on-array = <IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1
+			IMX8MP_CLK_AUDIOMIX_SAI5_MCLK1>;
 };
 
 &A53_0 {
@@ -947,29 +948,12 @@
 #endif /* CONFIG_PICOCOREMX8MP_PCIE */
 
 #ifdef CONFIG_PICOCOREMX8MP_I2S_B
-/* TODO: Enable SAI5_MCLK via BLK_CTRL */
-&sai1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_sai1>;
-	assigned-clocks = <&clk IMX8MP_CLK_SAI1>;
-	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <12288000>;
-	clocks = <&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI1_IPG>, <&clk IMX8MP_CLK_DUMMY>,
-		 <&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI1_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
-		 <&clk IMX8MP_CLK_DUMMY>;
-	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
-	fsl,sai-mclk-direction-output;
-	fsl,txmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
-	fsl,rxmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
-	status = "okay";
-};
-
 &sai5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai5>;
 	assigned-clocks = <&clk IMX8MP_CLK_SAI5>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <12288000>;
+	assigned-clock-rates = <24576000>;
 	clocks = <&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI5_IPG>, <&clk IMX8MP_CLK_DUMMY>,
 			<&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI5_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
 		 <&clk IMX8MP_CLK_DUMMY>;
@@ -987,7 +971,7 @@
 	pinctrl-0 = <&pinctrl_sai2>;
 	assigned-clocks = <&clk IMX8MP_CLK_SAI2>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <12288000>;
+	assigned-clock-rates = <24576000>;
 	clocks = <&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI2_IPG>, <&clk IMX8MP_CLK_DUMMY>,
 		 <&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
 		 <&clk IMX8MP_CLK_DUMMY>;
@@ -1516,18 +1500,13 @@
 	};
 
 #ifdef CONFIG_PICOCOREMX8MP_I2S_B
-	pinctrl_sai1: sai1grp {
-		fsl,pins = <
-			/* TODO: Enable SAI5_MCLK via BLK_CTRL */
-			MX8MP_IOMUXC_SAI1_MCLK__AUDIOMIX_SAI1_MCLK		0xd6
-		>;
-	};
-
 	pinctrl_sai5: sai5grp {
 		fsl,pins = <
 			MX8MP_IOMUXC_SAI5_RXD1__AUDIOMIX_SAI5_TX_SYNC	0xd6
 			MX8MP_IOMUXC_SAI5_RXD2__AUDIOMIX_SAI5_TX_BCLK	0xd6
 			MX8MP_IOMUXC_SAI5_RXD3__AUDIOMIX_SAI5_TX_DATA00	0xd6
+			MX8MP_IOMUXC_SAI1_RXD0__AUDIOMIX_SAI5_RX_DATA00 0xd6
+			MX8MP_IOMUXC_SAI1_MCLK__AUDIOMIX_SAI5_MCLK	0xd6
 		>;
 	};
 #endif /* CONFIG_PICOCOREMX8MP_I2S_B */
@@ -1539,7 +1518,7 @@
 				MX8MP_IOMUXC_SAI2_TXC__AUDIOMIX_SAI2_TX_BCLK	0xd6
 				MX8MP_IOMUXC_SAI2_TXD0__AUDIOMIX_SAI2_TX_DATA00	0xd6
 				MX8MP_IOMUXC_SAI2_RXD0__AUDIOMIX_SAI2_RX_DATA00	0xd6
-				MX8MP_IOMUXC_SAI2_MCLK__AUDIOMIX_SAI2_MCLK		0xd6
+				MX8MP_IOMUXC_SAI2_MCLK__AUDIOMIX_SAI2_MCLK	0xd6
 			>;
 		};
 #endif /* CONFIG_PICOCOREMX8MP_I2S_A */
