@@ -1118,6 +1118,14 @@
 	vqmmc-supply = <&reg_vref_1v8>;
 	bus-width = <4>;
 	status = "okay";
+#ifdef CONFIG_PICOCOREMX8MP_WLAN
+	#address-cells = <1>;
+	#size-cells = <0>;
+	mwifiex: wifi@1 {
+		compatible = "marvell,sd8997";
+		reg = <1>;
+	};
+#endif
 };
 #endif
 
