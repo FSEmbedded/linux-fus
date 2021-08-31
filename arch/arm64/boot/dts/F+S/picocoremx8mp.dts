@@ -10,6 +10,7 @@
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_PICOCOREMX8MP_BOARD_REVISION	100
+//#define SUPPORT_M7
 
 /* HDMI */
 //#define CONFIG_PICOCOREMX8MP_HDMI
@@ -135,6 +136,24 @@
 #define CONFIG_PICOCOREMX8MP_I2S_A
 #endif
 
+/*
+ * Exclude devices from Linux that are used by the Cortex-M7 FreeRTOS examples
+ *
+ * - UART_C: Debug Console for Cortex-M7
+ * - PWM_A: PWM Signal for the PWM example
+ * - CAN_A: CAN-Signal for FlexCAN examples
+ * - I2C_A:  I2C Bus used in I2C examples
+ * - SPI_B:  SPI_B is used for ECSPI examples
+ *
+ */
+
+#ifdef SUPPORT_M7
+#undef CONFIG_PICOCOREMX8MP_UART_C
+#undef CONFIG_PICOCOREMX8MP_PWM_A
+#undef CONFIG_PICOCOREMX8MP_CAN_A
+#undef CONFIG_PICOCOREMX8MP_I2C_A
+#undef CONFIG_PICOCOREMX8MP_SPI_B
+#endif
 
 #include <dt-bindings/usb/pd.h>
 #include <dt-bindings/pwm/pwm.h>
@@ -178,7 +197,7 @@
 
 		rpmsg_reserved: rpmsg@0x55800000 {
 			no-map;
-			reg = <0 0x55800000 0 0x800000>;
+			reg = <0 0x55800000 0 0x400000>;
 		};
 
 		/* remove this node because the region used
@@ -422,6 +441,19 @@
 	status = "okay";
 };
 #endif
+
+#ifdef SUPPORT_M7
+&rpmsg{
+	/*
+	 * 64K for one rpmsg instance:
+	 * --0x55800000~0x5580ffff: pingpong
+	 */
+	vdev-nums = <1>;
+	reg = <0x0 0x55800000 0x0 0x10000>;
+	status = "okay";
+};
+#endif
+
 
 &aud2htx {
 	status = "okay";
@@ -984,9 +1016,13 @@
 };
 #endif /* CONFIG_PICOCOREMX8MP_I2S_A */
 
+#if 0
+#ifdef SUPPORT_M7
 &sdma2 {
 	status = "okay";
 };
+#endif
+#endif
 
 #ifdef CONFIG_PICOCOREMX8MP_UART_C
 &uart1 {
