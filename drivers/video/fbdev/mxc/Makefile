@@ -19,3 +19,4 @@ obj-$(CONFIG_FB_MXC_BT656) += mxc_bt656if.o
 obj-$(CONFIG_FB_MXC_SYNC_PANEL)			+= mxc_lcdif.o mxc_ipuv3_fb.o
 obj-$(CONFIG_FB_MXC_EINK_PANEL)			+= mxc_epdc_fb.o
 obj-$(CONFIG_FB_MXC_EINK_V2_PANEL)		+= mxc_epdc_v2_fb.o
+obj-$(CONFIG_FB_MXS_LT9211) += mxsfb_lontium_lt9211.o
