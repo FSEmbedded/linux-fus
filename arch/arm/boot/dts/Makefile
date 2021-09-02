@@ -660,6 +660,7 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	picocom1.2.dtb \
 	picocoma7.dtb \
 	picocoremx6ul.dtb \
+	picocoremx6ul100.dtb \
 	cubea7ul.dtb \
 	cube2.0.dtb \
 	gar1.dtb \
@@ -674,6 +675,7 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	cube2.0ull.dtb \
 	picocoma7ull.dtb \
 	picocoremx6ull.dtb \
+	picocoremx6ull100.dtb \
 	imx6ull-9x9-evk.dtb \
 	imx6ull-9x9-evk-ldo.dtb \
 	imx6ull-9x9-evk-btwifi.dtb \
