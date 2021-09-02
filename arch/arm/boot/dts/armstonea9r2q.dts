@@ -233,6 +233,11 @@ wvga {					\
 #define CONFIG_ARMSTONEA9R2_EMMC
 
 /* PCIe */
+/* On PCIe wire PCIECLKN/P there are some missing terminating resistor
+ * therefore PCIe can´t get a link. These can be fixed if either the
+ * corresponding adapter have these resistors or there must be a redesign
+ * for armstone. The resistors can be found on efusA9.
+ */
 //#define CONFIG_ARMSTONEA9R2_PCIE
 
 /* I2C */

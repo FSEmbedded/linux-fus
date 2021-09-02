@@ -289,7 +289,7 @@ wvga {					\
 #define CONFIG_EFUSA9_EMMC
 
 /* PCIe */
-//#define CONFIG_EFUSA9_PCIE
+#define CONFIG_EFUSA9_PCIE
 
 /* I2C */
 #define CONFIG_EFUSA9_I2C_A
