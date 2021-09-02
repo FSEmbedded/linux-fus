@@ -84,6 +84,7 @@ enum ipu_dc_map {
 	IPU_DC_MAP_BGR666,
 	IPU_DC_MAP_LVDS666,
 	IPU_DC_MAP_BGR24,
+	IPU_DC_MAP_RGB666,
 };
 
 struct ipu_dc {
@@ -150,6 +151,8 @@ static int ipu_bus_format_to_map(u32 fmt)
 		return IPU_DC_MAP_GBR24;
 	case MEDIA_BUS_FMT_RGB666_1X18:
 		return IPU_DC_MAP_BGR666;
+	case MEDIA_BUS_FMT_BGR666_1X18:
+		return IPU_DC_MAP_RGB666;
 	case MEDIA_BUS_FMT_RGB666_1X24_CPADHI:
 		return IPU_DC_MAP_LVDS666;
 	case MEDIA_BUS_FMT_BGR888_1X24:
@@ -399,6 +402,12 @@ int ipu_dc_init(struct ipu_soc *ipu, struct device *dev,
 	ipu_dc_map_config(priv, IPU_DC_MAP_BGR666, 0, 5, 0xfc); /* blue */
 	ipu_dc_map_config(priv, IPU_DC_MAP_BGR666, 1, 11, 0xfc); /* green */
 	ipu_dc_map_config(priv, IPU_DC_MAP_BGR666, 2, 17, 0xfc); /* red */
+
+	/* rgb666 */
+	ipu_dc_map_clear(priv, IPU_DC_MAP_BGR666);
+	ipu_dc_map_config(priv, IPU_DC_MAP_BGR666, 2, 5, 0xfc); /* red */
+	ipu_dc_map_config(priv, IPU_DC_MAP_BGR666, 1, 11, 0xfc); /* green */
+	ipu_dc_map_config(priv, IPU_DC_MAP_BGR666, 0, 17, 0xfc); /* blue */
 
 	/* lvds666 */
 	ipu_dc_map_clear(priv, IPU_DC_MAP_LVDS666);
