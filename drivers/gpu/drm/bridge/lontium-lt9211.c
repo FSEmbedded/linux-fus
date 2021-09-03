@@ -198,7 +198,7 @@ static void LT9211_TxPhy(struct lt9211 *lt9211) {
 void LT9211_Pattern(struct lt9211 *lt9211, struct video_timing *video_format) {
 
 	u32 pclk_khz;
-	u8 dessc_pll_post_div;
+	u8 dessc_pll_post_div = 0;
 	u32 pcr_m, pcr_k;
 
 	int ret, val;
@@ -388,7 +388,8 @@ int LT9211_TimingSet(struct lt9211 *lt9211) {
 
 	unsigned int val1, val2;
 
-	msleep(100); //500-->100
+	msleep(500); //500-->100
+	//msleep(100); //500-->100
 	regmap_write(lt9211->regmap, 0xff, 0xd0);
 
 	regmap_read(lt9211->regmap, 0x82, &val1);
@@ -420,7 +421,7 @@ int LT9211_TimingSet(struct lt9211 *lt9211) {
 		LT9211_SetVideoTiming(lt9211, &lt9211->video_timing);
 		return 0;
 	} else {
-		dev_dbg(lt9211->dev, "Could not detect resolution\n");
+		dev_err(lt9211->dev, "Could not detect resolution\n");
 		return -EPROBE_DEFER;
 
 	}
@@ -743,7 +744,6 @@ int LT9211_Init(struct lt9211 *lt9211) {
 
 	int ret;
 	dev_dbg(lt9211->dev, "\r\n LT9211_mipi to TTL");
-
 	LT9211_SystemInt(lt9211);
 	LT9211_MipiRxPhy(lt9211);
 	LT9211_MipiRxDigital(lt9211);
@@ -841,8 +841,6 @@ static int lt9211_parse_dt(struct device *dev, struct lt9211 *lt9211) {
 	/* 0: 4 Lane / 1: 1 Lane / 2 : 2 Lane / 3: 3 Lane */
 	if (lt9211->num_mipi_lanes == 4)
 		lt9211->num_mipi_lanes = 0;
-
-	dev_err(dev, "###num_mipi_lanes %i \n", lt9211->num_mipi_lanes);
 
 	lt9211->host_node = of_graph_get_remote_node(dev->of_node, /*0*/1, 0);
 	if (!lt9211->host_node) {
@@ -987,15 +985,17 @@ static int lt9211_probe(struct i2c_client *client,
 		LT9211_Patten_debug_M2TTL(lt9211);
 	} else {
 		ret = LT9211_Init(lt9211);
-		goto err_disable_regulators;
+		if (ret)
+			goto err_disable_regulators;
 	}
-
 	return ret;
 
-	err_disable_regulators: regulator_bulk_disable(ARRAY_SIZE(lt9211->supplies),
+	err_disable_regulators:
+	regulator_bulk_disable(ARRAY_SIZE(lt9211->supplies),
 			lt9211->supplies);
 
-	err_of_put: of_node_put(lt9211->dsi1_node);
+	err_of_put:
+	of_node_put(lt9211->dsi1_node);
 	of_node_put(lt9211->dsi0_node);
 
 	return ret;
