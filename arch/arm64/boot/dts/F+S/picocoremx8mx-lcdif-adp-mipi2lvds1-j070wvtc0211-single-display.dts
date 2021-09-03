@@ -6,8 +6,8 @@
  * published by the Free Software Foundation.
  */
 
-#define CONFIG_PICOCOREMX8MM_MIPI_DSI
-#define CONFIG_PICOCOREMX8MM_INVERTED_XY
+#define CONFIG_PICOCOREMX8MX_MIPI_DSI
+#define CONFIG_PICOCOREMX8MX_INVERTED_XY
 #define CONFIG_MIPI2LVDS1_BOARD_REVISION 120
 #define CONFIG_MIPI2LVDS1_MAXIM_MAX7315
 //#define CONFIG_MIPI2LVDS1_TI_TCA9534
@@ -22,7 +22,7 @@
 #endif
 
 
-#include "picocoremx8mm.dts"
+#include "picocoremx8mx.dts"
 
 &lcdif {
 	status = "okay";
@@ -242,23 +242,15 @@
 	focaltech@38 {
 		compatible = "focaltech,fts";
 		reg = <0x38>;
-#if (CONFIG_PICOCOREMX8MM_BOARD_REVISION==100)
-		interrupt-parent = <&gpio1>;
+		interrupt-parent = <&gpio5>;
 		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
-		focaltech,irq-gpio = <&gpio1 2 IRQ_TYPE_EDGE_FALLING>;
-#else
-		interrupt-parent = <&gpio4>;
-		interrupts = <31 IRQ_TYPE_EDGE_FALLING>;
-		focaltech,irq-gpio = <&gpio4 31 IRQ_TYPE_EDGE_FALLING>;
-#endif
-#ifdef CONFIG_PICOCOREMX8MM_INVERTED_XY
+		focaltech,irq-gpio = <&gpio5 2 IRQ_TYPE_EDGE_FALLING>;
+#ifdef CONFIG_PICOCOREMX8MX_INVERTED_XY
 		focaltech,touchscreen-inverted-x;
 		focaltech,touchscreen-inverted-y;
 #endif
-#if CONFIG_PICOCOREMX8MM_BOARD_REVISION >= 130
+#if CONFIG_PICOCOREBBDSI_BOARD_REVISION > 120
 		focaltech,reset-gpio = <&gpio1 13 GPIO_ACTIVE_LOW>;
-#else
-		focaltech,reset-gpio = <&gpio1 0 GPIO_ACTIVE_LOW>;
 #endif
 		focaltech,num-max-touches = <10>;
 		focaltech,display-coords = <0 0 800 480>;
