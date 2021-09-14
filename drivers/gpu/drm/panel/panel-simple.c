@@ -1880,6 +1880,38 @@ static const struct panel_desc innolux_zj070na_01p = {
 	},
 };
 
+#define J070_HFRONT_PORCH 210
+#define J070_HBACK_PORCH 46
+#define J070_HSYNC_LEN 4
+
+#define J070_VFRONT_PORCH 22
+#define J070_VBACK_PORCH 23
+#define J070_VSYNC_LEN 1
+
+static struct drm_display_mode jhd_j070wvtc1601w_mode = {
+	.clock = 33600,
+	.hdisplay = 800,
+	.hsync_start = 800 + J070_HFRONT_PORCH,
+	.hsync_end = 800 + J070_HFRONT_PORCH + J070_HSYNC_LEN,
+	.htotal = 800 + J070_HFRONT_PORCH + J070_HSYNC_LEN + J070_HBACK_PORCH, // 1060
+	.vdisplay = 480,
+	.vsync_start = 480 + J070_VFRONT_PORCH,
+	.vsync_end = 480 + J070_VFRONT_PORCH + J070_VSYNC_LEN,
+	.vtotal = 480 + J070_VFRONT_PORCH + J070_VSYNC_LEN + J070_VBACK_PORCH, // 526
+	.vrefresh = 60,
+};
+
+static const struct panel_desc jhd_j070wvtc1601w = {
+	.modes = &jhd_j070wvtc1601w_mode,
+	.num_modes = 1,
+	.bpc = 8,
+	.size = {
+		.width = 154.08,
+		.height = 85.92,
+	},
+	.bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_SPWG,
+};
+
 static struct display_timing jdi_tx26d202vm0bwa_timing = {
 	.pixelclock = { 151820000, 156720000, 159780000 },
 	.hactive = { 1920, 1920, 1920 },
@@ -3366,6 +3398,9 @@ static const struct of_device_id platform_of_match[] = {
 	}, {
 		.compatible = "jdi,tx26d202vm0bwa",
 		.data = &jdi_tx26d202vm0bwa,
+	}, {
+		.compatible = "jhd,j070wvtc1601w",
+		.data = &jhd_j070wvtc1601w,
 	}, {
 		.compatible = "koe,tx14d24vm1bpa",
 		.data = &koe_tx14d24vm1bpa,
