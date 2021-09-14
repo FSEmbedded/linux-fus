@@ -1,23 +1,14 @@
 /*
- * Copyright (C) 2019 F&S Elektronik Systeme GmbH
+ * Copyright (C) 2021 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
 
-#define CONFIG_PICOCOREMX8MM_MIPI_DSI
-#include "picocoremx8mm.dts"
-
-#define CONFIG_PICOCOREMX8MM_INVERTED_XY
-/ {
-	backlight_ldb {
-		pwms = <&pwm2 0 2000000 0>;
-		brightness-levels = < 23 39 55 71 87 103 119 135 151 167 183
-		     199 215 231 239 255>;
-		default-brightness-level = <14>;
-	};
-};
+#define CONFIG_PICOCOREMX8MN_MIPI_DSI
+#define CONFIG_PICOCOREMX8MN_INVERTED_XY
+#include "picocoremx8mn-lpddr4.dts"
 
 &lcdif {
 	status = "okay";
@@ -27,11 +18,12 @@
 	max-res = <4096>, <4096>;
 };
 
+
 &mipi_dsi {
 	status = "okay";
 	panel@0 {
 		reg = <0>;
-		compatible = "auo,g133han01-dsi"; /* one of panel-simple's 
+		compatible = "fs,j070wvtc0211-dsi"; /* one of panel-simple's
 		     		          match strings */
 		power-supply = <&reg_vlcd>;
 		/* MIPI_DSI_MODE_VIDEO MIPI_DSI_MODE_VIDEO_BURST
@@ -42,24 +34,26 @@
 		dsi,lanes = <4>;
 		bus-flags = <1>;
 		refresh-rate = <60>;
-	    rotate = <0>;
-	    bus-format = <0x100a>;
-
+                rotate = <0>;
+                bus-format = <0x100a>;
 		panel-width-mm = <154>;
 		panel-height-mm = <85>;
 		display-timings {
 			native-mode = <&timing0>;
-			timing0: auo_g133han01 {
-				clock-frequency = <150000000>;
-				hactive = <1920>;
-				vactive = <1080>;
-				hfront-porch = <76>;
-				hsync-len = <56>;
-				hback-porch = <117>;
+			timing0: jd_j070wvtc0211 {
+				clock-frequency = <33300000>;
+				hactive = <800>;
+				vactive = <480>;
+				hback-porch = <10>;
+				hfront-porch = <37>;
+				hsync-len = <128>;
+				vback-porch = <23>;
 				vfront-porch = <11>;
-				vsync-len = <19>;
-				vback-porch = <19>;
+				vsync-len = <1>;
+				pixelclk-active = <0>;
 				de-active = <1>;
+				vsync-active = <0>;
+				hsync-active = <0>;
 			};
 		};
 	};
@@ -72,9 +66,9 @@
 		status = "okay";
 		compatible = "ti,sn65dsi84";
 		#gpio-cells = <2>;
-		#if 1
+		#if 0
 		/* <&pinctrl_mipi_dsi_rst>; */
-		enable-gpios = <&gpio1 10 GPIO_ACTIVE_HIGH>;
+		enable-gpios = <&gpio1 1 GPIO_ACTIVE_LOW>;
 		#endif
 		sn65dsi84,addresses = <
 			0x09 0x0A 0x0B 0x0D
@@ -92,27 +86,53 @@
 
 		sn65dsi84,values = <
 			/* reset and clock registers */
-			0x00 0x05 0x28 0x00
+			0x00 0x01 0x10 0x00
 			/* DSI registers */
-			0x26 0x00 0x58 0x00
+			0x26 0x00 0x14 0x00
 			/* LVDS registers */
-			0x6f 0x00 0x03 0x00
+			0x78 0x00 0x03 0x00
 			/* video registers */
 			/* cha-al-len-l, cha-al-len-h */
-			0x80 0x07 0x00 0x00
+			0x20 0x03 0x00 0x00
 			/* cha-v-ds-l, cha-v-ds-h */
 			0x00 0x00 0x00 0x00
 			/* cha-sdl, cha-sdh*/
 			0x21 0x00 0x00 0x00
 			/* cha-hs-pwl, cha-hs-pwh */
-			0x1c 0x00 0x00 0x00
+			0x01 0x00 0x00 0x00
 			/* cha-vs-pwl, cha-vs-pwh */
-			0x13 0x00 0x00 0x00
+			0x01 0x00 0x00 0x00
 			/*cha-hbp, cha-vbp */
-			0x3a 0x00 0x00 0x00
+			0x2e 0x00 0x00 0x00
 			/* cha-hfp, cha-vfp*/
 			0x00 0x00 0x00 0x00
 			0x00 0x00 0x00 0x01
 		>;
+	};
+
+	/* touch I2C */
+	focaltech@38 {
+		compatible = "focaltech,fts";
+		reg = <0x38>;
+#if (CONFIG_PICOCOREMX8MN_BOARD_REVISION==100)
+		interrupt-parent = <&gpio1>;
+		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
+		focaltech,irq-gpio = <&gpio1 2 IRQ_TYPE_EDGE_FALLING>;
+#else
+		interrupt-parent = <&gpio4>;
+		interrupts = <31 IRQ_TYPE_EDGE_FALLING>;
+		focaltech,irq-gpio = <&gpio4 31 IRQ_TYPE_EDGE_FALLING>;
+#endif
+#ifdef CONFIG_PICOCOREMX8MN_INVERTED_XY
+		focaltech,touchscreen-inverted-x;
+		focaltech,touchscreen-inverted-y;
+#endif
+#if CONFIG_PICOCOREMX8MN_BOARD_REVISION >= 130
+		focaltech,reset-gpio = <&gpio1 13 GPIO_ACTIVE_LOW>;
+#else
+		focaltech,reset-gpio = <&gpio1 0 GPIO_ACTIVE_LOW>;
+#endif
+		focaltech,num-max-touches = <10>;
+		focaltech,display-coords = <0 0 800 480>;
 	};
 };

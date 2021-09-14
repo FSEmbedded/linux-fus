@@ -1,13 +1,13 @@
 /*
-* Copyright (C) 2019 F&S Elektronik Systeme GmbH
+* Copyright (C) 2021 F&S Elektronik Systeme GmbH
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License version 2 as
 * published by the Free Software Foundation.
 */
 
-#define CONFIG_PICOCOREMX8MM_MIPI_DSI_LVDS
-#include "picocoremx8mm.dts"
+#define CONFIG_PICOCOREMX8MN_MIPI_DSI_LVDS
+#include "picocoremx8mn-lpddr4.dts"
 
 &mipi_dsi {
 	status = "okay";
@@ -47,8 +47,8 @@
 		reg = <0>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_mipi_dsi_lvds_en>;
-		clocks = <&clk IMX8MM_CLK_CLKO2>;
-#if CONFIG_PICOCOREMX8MM_BOARD_REVISION >= 130
+		clocks = <&clk IMX8MN_CLK_CLKO2>;
+#if CONFIG_PICOCOREMX8MN_BOARD_REVISION >= 130
 		reset-gpios = <&gpio4 31 GPIO_ACTIVE_HIGH>;
 #else
 		reset-gpios = <&gpio1 13 GPIO_ACTIVE_HIGH>;
@@ -97,7 +97,7 @@
 		status = "okay";
 		compatible = "toshiba,tc358764";
 		reg = <0xf>;
-		clocks = <&clk IMX8MM_CLK_CLKO2>;
+		clocks = <&clk IMX8MN_CLK_CLKO2>;
 		clock-names = "ref";
 		ports {
 			#address-cells = <1>;

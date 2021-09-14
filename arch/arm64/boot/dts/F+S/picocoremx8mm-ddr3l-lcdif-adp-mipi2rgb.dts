@@ -8,7 +8,7 @@
 
 #define CONFIG_PICOCOREMX8MX_MIPI_DSI
 
-#include "picocoremx8mx.dts"
+#include "picocoremx8mm-ddr3l.dts"
 
 / {
 	regulators {

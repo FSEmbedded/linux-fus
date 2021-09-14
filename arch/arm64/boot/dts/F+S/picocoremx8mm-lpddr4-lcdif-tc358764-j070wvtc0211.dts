@@ -8,7 +8,7 @@
 
 #define CONFIG_PICOCOREMX8MM_MIPI_DSI_LVDS
 #define CONFIG_PICOCOREMX8MM_INVERTED_XY
-#include "picocoremx8mm.dts"
+#include "picocoremx8mm-lpddr4.dts"
 
 &lcdif {
 	status = "okay";

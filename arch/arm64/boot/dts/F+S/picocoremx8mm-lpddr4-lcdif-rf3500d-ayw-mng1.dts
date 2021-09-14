@@ -6,7 +6,7 @@
 * published by the Free Software Foundation.
 */
 
-#include "picocoremx8mm.dts"
+#include "picocoremx8mm-lpddr4.dts"
 
 &mipi_dsi {
 	status = "okay";

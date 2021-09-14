@@ -6,9 +6,9 @@
  * published by the Free Software Foundation.
  */
 
-#define CONFIG_PICOCOREMX8MX_NANO_MIPI_DSI_LVDS
-#define CONFIG_PICOCOREMX8MX_NANO_INVERTED_XY
-#include "picocoremx8mx-nano.dts"
+#define CONFIG_PICOCOREMX8MX_MIPI_DSI_LVDS
+#define CONFIG_PICOCOREMX8MX_INVERTED_XY
+#include "picocoremx8mm-ddr3l.dts"
 
 &lcdif {
 	status = "okay";
@@ -26,7 +26,7 @@
 		reg = <0>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_mipi_dsi_lvds_en>;
-		clocks = <&clk IMX8MN_CLK_CLKO2>;
+		clocks = <&clk IMX8MM_CLK_CLKO2>;
 		reset-gpios = <&gpio1 8 GPIO_ACTIVE_HIGH>;
 		stby-gpios  = <&gpio1 4 GPIO_ACTIVE_HIGH>;
 		vddc-supply = <&reg_vref_1v2>;
@@ -98,7 +98,7 @@
 		interrupt-parent = <&gpio5>;
 		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
 		focaltech,irq-gpio = <&gpio5 2 IRQ_TYPE_EDGE_FALLING>;
-#ifdef CONFIG_PICOCOREMX8MX_NANO_INVERTED_XY
+#ifdef CONFIG_PICOCOREMX8MX_INVERTED_XY
 		focaltech,touchscreen-inverted-x;
 		focaltech,touchscreen-inverted-y;
 #endif
@@ -123,7 +123,7 @@
 &iomuxc {
 		pinctrl_touch: touch_grp {
 			fsl,pins = <
-				MX8MN_IOMUXC_GPIO1_IO13_GPIO1_IO13	0x00104
+				MX8MM_IOMUXC_GPIO1_IO13_GPIO1_IO13	0x00104
 			>;
 		};
 };

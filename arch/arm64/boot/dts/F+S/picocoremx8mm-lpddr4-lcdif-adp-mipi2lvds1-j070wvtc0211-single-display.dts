@@ -22,7 +22,7 @@
 #endif
 
 
-#include "picocoremx8mm.dts"
+#include "picocoremx8mm-lpddr4.dts"
 
 &lcdif {
 	status = "okay";
