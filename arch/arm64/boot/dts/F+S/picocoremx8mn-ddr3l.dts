@@ -73,10 +73,6 @@
 
 /* Audio */
 #define CONFIG_PICOCOREMX8MX_NANO_SGTL5000_AUDIO
-/* AUDIO_B is an example implementation and must be
- * modified.
- */
-//#define CONFIG_PICOCOREMX8MX_NANO_AUDIO_B
 
 /* Camera on parallel CSI interface */
 //#define CONFIG_PICOCOREMX8MX_NANO_PARALLEL_CAMERA
@@ -113,11 +109,6 @@
 /* Only undef if using audio/sai examples */
 //#undef CONFIG_PICOCOREMX8MX_NANO_I2C_D
 //#undef CONFIG_PICOCOREMX8MX_NANO_SGTL5000_AUDIO
-#endif
-
-/* IF CAN-FD is equipped, AUDIO_B is no available */
-#ifdef CONFIG_PICOCOREMX8MX_NANO_CAN_A
-#undef CONFIG_PICOCOREMX8MX_NANO_AUDIO_B
 #endif
 
 /* Check for invalid CONFIG combinations */
@@ -352,12 +343,6 @@
 		i2c-gpio,delay-us = <2>;	/* ~100 kHz */
 	};
 #endif
-
-	pcie0_refclk: pcie0-refclk {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <100000000>;
-	};
 };
 
 #ifdef CONFIG_PICOCOREMX8MX_NANO_I2C_D
@@ -609,8 +594,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c3>;
 	status = "okay";
-
-	/* PCIe */
 };
 #endif
 
@@ -663,14 +646,6 @@
 	 */
 	vdev-nums = <1>;
 	reg = <0x0 0xb8000000 0x0 0x10000>;
-	status = "okay";
-};
-#endif
-
-#ifdef CONFIG_PICOCOREMX8MX_NANO_AUDIO_B
-&sai2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_sai2>;
 	status = "okay";
 };
 #endif
@@ -1221,7 +1196,7 @@
 				MX8MN_IOMUXC_SAI5_RXFS_GPIO3_IO19	0x00104
 				MX8MN_IOMUXC_SAI5_RXC_GPIO3_IO20	0x00104
 
-#if !defined (CONFIG_PICOCOREMX8MX_NANO_CAN_A) && !defined(CONFIG_PICOCOREMX8MX_NANO_AUDIO_B)
+#ifndef CONFIG_PICOCOREMX8MX_NANO_CAN_A
 				/* CAN-FD */
 				MX8MN_IOMUXC_SAI3_RXFS_GPIO4_IO28	0x00104
 				MX8MN_IOMUXC_SAI2_MCLK_GPIO4_IO27	0x00104
@@ -1477,16 +1452,6 @@
 		pinctrl_sgtl5000: sgtl5000grp {
 			fsl,pins = <
 				MX8MN_IOMUXC_SAI5_MCLK_SAI5_MCLK	0x000d6
-			>;
-		};
-#endif
-
-#ifdef CONFIG_PICOCOREMX8MX_NANO_AUDIO_B
-		pinctrl_sai2: sai2grp {
-			fsl,pins = <
-				MX8MN_IOMUXC_SAI2_MCLK_SAI2_MCLK	0x000d6
-				MX8MN_IOMUXC_SAI2_TXC_SAI2_TX_BCLK	0x000d6
-				MX8MN_IOMUXC_SAI2_TXD0_SAI2_TX_DATA0	0x000d6
 			>;
 		};
 #endif

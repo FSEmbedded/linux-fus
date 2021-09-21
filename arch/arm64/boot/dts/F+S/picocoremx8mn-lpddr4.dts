@@ -72,10 +72,6 @@
 
 /* Audio */
 #define CONFIG_PICOCOREMX8MN_SGTL5000_AUDIO
-/* AUDIO_B is an example implementation and must be
- * modified.
- */
-//#define CONFIG_PICOCOREMX8MN_AUDIO_B
 
 /* Camera on parallel CSI interface */
 //#define CONFIG_PICOCOREMX8MN_PARALLEL_CAMERA
@@ -139,11 +135,6 @@
 #undef CONFIG_PICOCOREMX8MN_SD_B
 #undef CONFIG_PICOCOREMX8MN_SD_B_CD
 #undef CONFIG_PICOCOREMX8MN_SD_B_WP
-#endif
-
-/* IF CAN-FD is equipped, AUDIO_B is no available */
-#ifdef CONFIG_PICOCOREMX8MN_CAN_A
-#undef CONFIG_PICOCOREMX8MN_AUDIO_B
 #endif
 
 /* Set different settings for corresponding baseboard revision */
@@ -362,11 +353,6 @@
 			"Headphone Jack", "HP_OUT";
 	};
 #endif
-	pcie0_refclk: pcie0-refclk {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <100000000>;
-	};
 };
 
 #ifdef CONFIG_PICOCOREMX8MN_I2C_A
@@ -415,9 +401,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c3>;
 	status = "okay";
-
-	/* pciE */
-
 };
 #endif
 
@@ -685,14 +668,6 @@
 };
 #endif
 
-#ifdef CONFIG_PICOCOREMX8MN_AUDIO_B
-&sai2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_sai2>;
-	status = "okay";
-};
-#endif
-
 #ifdef CONFIG_PICOCOREMX8MN_ETH
 &fec1 {
 	pinctrl-names = "default";
@@ -743,6 +718,23 @@
 			#clock-cells = <0>;
 			compatible = "fixed-clock";
 			clock-frequency = <20000000>; //20MHz
+		};
+	};
+#elif defined CONFIG_PICOCOREMX8MM_SPI_A_CAN_CONVERTER
+	can0: can@0 {
+		compatible = "microchip,mcp2515";
+		reg = <0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_can_converter>;
+		clocks = <&mcp2515_clk>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <9 IRQ_TYPE_EDGE_FALLING>;
+		spi-max-frequency = <10000000>;
+
+		mcp2515_clk: oscillator {
+				#clock-cells = <0>;
+				compatible = "fixed-clock";
+				clock-frequency = <20000000>; //20MHz
 		};
 	};
 #else
@@ -1175,15 +1167,13 @@
 				MX8MN_IOMUXC_SAI5_RXD3_GPIO3_IO24	0x00104
 #endif
 
-#ifndef CONFIG_PICOCOREMX8MN_AUDIO_B
-				/* AUDIO_B */
 				MX8MN_IOMUXC_SAI2_MCLK_GPIO4_IO27	0x00104
+
 #ifndef CONFIG_PICOCOREMX8MN_CAN_A
 				MX8MN_IOMUXC_SAI2_TXC_GPIO4_IO25	0x00104
 				MX8MN_IOMUXC_SAI2_TXD0_GPIO4_IO26	0x00104
 				MX8MN_IOMUXC_SAI2_RXC_GPIO4_IO22	0x00104
 				MX8MN_IOMUXC_SAI2_RXFS_GPIO4_IO21	0x00104
-#endif
 #endif
 
 				MX8MN_IOMUXC_SAI5_RXFS_GPIO3_IO19	0x00104
@@ -1431,20 +1421,6 @@
 		pinctrl_sgtl5000: sgtl5000grp {
 			fsl,pins = <
 				MX8MN_IOMUXC_SAI5_MCLK_SAI5_MCLK	0x000d6
-			>;
-		};
-#endif
-
-#ifdef CONFIG_PICOCOREMX8MN_AUDIO_B
-		pinctrl_sai2: sai2grp {
-			fsl,pins = <
-				MX8MN_IOMUXC_SAI2_MCLK_SAI2_MCLK	0x000d6
-#ifndef CONFIG_PICOCOREMX8MN_CAN_A
-				MX8MN_IOMUXC_SAI2_TXC_SAI2_TX_BCLK	0x000d6
-				MX8MN_IOMUXC_SAI2_TXD0_SAI2_TX_DATA0	0x000d6
-				MX8MN_IOMUXC_SAI2_RXFS_SAI2_RX_SYNC	0x000d6
-				MX8MN_IOMUXC_SAI2_RXC_SAI2_RX_BCLK	0x000d6
-#endif
 			>;
 		};
 #endif
