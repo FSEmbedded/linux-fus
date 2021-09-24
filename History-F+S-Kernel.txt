@@ -4,6 +4,33 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight,
         MM: M Mini, MN: M Nano
 
+linux-5.4.70-fsimx8mn-Y2021.09 (24.09.2021)
+-------------------------------------------
+Supported boards: PicoCoreMX8MN
+
+- Fix ee0350-mipi-disp touch interrupt pin
+- Revert NXP commit MLK-24133 arm64: SAI1_RXD0 and SAI1_MCLK pins only
+- Enable I2S_B for PicoCoreMX8MP
+- Add cpu freq powersave, conservative governor fix to fsimx8mp_defconfig
+- Add mwifiex node to picocoremx8mp device tree
+- Improve picocoremx8mp Cortex-M7 support
+- Improve support for imx6ul-touchscreen controller
+- Add driver for lontium-lt9211 RGB2LVDS converter
+- Add full device-tree support for PicoCOMA7
+- Improve support for picocoremx6ul revision 1.20
+- Add support for picocoremx6ul100 on architecture fsimx6ul
+- Improve support for picocom1.2
+- Improve architecture fsimx6 PCIe setup
+- Improve support for ADP-MIPI2LVDS1 for fsimx8mm
+- Add support for ADP-MIPI2RGB adapter for fsimx8mm
+- LF-3132: dmaengine: imx-sdma: raise up channel0 priority after resume
+- Enable Polling of the status register for USB-C ptn5110
+- Change naming for device trees of PicoCoreMX8MM_MN_Mx
+- Use simple-panel driver for tc358775 with j070wvtc0211
+- Improve device trees for fsimx8mn
+
+
+
 linux-5.4.70-fsimx8mp-Y2021.07.1 (19.07.2021)
 -------------------------------------------
 Supported boards: PicoCoreMX8MP
