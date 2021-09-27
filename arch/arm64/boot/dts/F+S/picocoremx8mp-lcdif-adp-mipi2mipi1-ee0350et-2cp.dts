@@ -6,7 +6,7 @@
 * published by the Free Software Foundation.
 */
 
-#define CONFIG_PICOCOREMX8MM_MIPI_DSI
+#define CONFIG_PICOCOREMX8MP_MIPI_DSI
 #include "picocoremx8mp.dts"
 
 #define CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION	120
@@ -55,7 +55,29 @@
 };
 
 &lcdif2 {
-	status = "okay";
+	status = "disabled";
+};
+
+&ldb {
+	status = "disabled";
+
+	/* DSI_A */
+	lvds-channel@0 {
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <24>;
+		status = "disabled";
+	};
+
+	/* DSI_B */
+	lvds-channel@1 {
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <24>;
+		status = "disabled";
+	};
+};
+
+&ldb_phy {
+	status = "disabled";
 };
 
 &lcdif3 {
