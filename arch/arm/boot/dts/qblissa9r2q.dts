@@ -300,7 +300,7 @@ wvga {					\
 
 / {
 	model = "F&S i.MX6 Dual/Quad QBlissA9r2";
-	compatible = "fsl,imx6dl-qblissa9r2", "fsl,imx6dl";
+	compatible = "fsl,imx6q-qblissa9r2", "fsl,imx6q";
 };
 
 &bdinfo {
