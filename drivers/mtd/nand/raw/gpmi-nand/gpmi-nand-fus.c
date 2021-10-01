@@ -1953,7 +1953,8 @@ static void gpmi_fus_command(struct nand_chip *chip, uint command, int column,
 	case NAND_CMD_RNDOUTSTART:
 	case NAND_CMD_STATUS:
 		column = -1;
-		/* Fall through to case NAND_CMD_READID */
+		/* Fall through */
+		/* to case NAND_CMD_READID */
 	case NAND_CMD_READID:
 	case NAND_CMD_SET_FEATURES:
 		/* Add DMA descriptor with command and up to one byte */
