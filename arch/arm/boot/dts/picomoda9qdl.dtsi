@@ -215,6 +215,7 @@
 #ifdef CONFIG_PICOMODA9_PARALLEL_CAMERA
 		i2c5 = &i2c_gpio_camera_digital;
 #endif
+		nand = &gpmi;
 	};
 
 	memory {

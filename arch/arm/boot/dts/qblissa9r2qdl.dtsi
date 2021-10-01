@@ -103,6 +103,7 @@
 #ifdef CONFIG_QBLISSA9R2_SERIAL_CAMERA
 		i2c6 = &i2c_gpio_cam1;
 #endif
+		nand = &gpmi;
 	};
 
 	memory {

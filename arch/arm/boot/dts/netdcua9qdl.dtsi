@@ -158,6 +158,7 @@
 		mxcfb2 = &mxcfb2;
 		mxcfb3 = &mxcfb3;
 		ethernet1 = &ax88796;
+		nand = &gpmi;
 	};
 
 	memory {

@@ -171,6 +171,7 @@
 		mxcfb1 = &mxcfb1;
 		mxcfb2 = &mxcfb2;
 		mxcfb3 = &mxcfb3;
+		nand = &gpmi;
 	};
 
 	memory {
