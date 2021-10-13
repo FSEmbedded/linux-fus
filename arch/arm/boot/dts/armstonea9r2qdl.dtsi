@@ -69,7 +69,9 @@
 		mxcfb0 = &mxcfb0;
 		mxcfb1 = &mxcfb1;
 		mxcfb2 = &mxcfb2;
+#if (CONFIG_ARMSTONEA9R2_BOARD_REVISION < 110)
 		i2c5 = &i2c_lvds;
+#endif /* CONFIG_ARMSTONEA9R2_BOARD_REVISION < 110 */
 		nand = &gpmi;
 	};
 
@@ -220,7 +222,7 @@
 		compatible = "mmc-pwrseq-simple";
 		reset-gpios = <&gpio1 27 GPIO_ACTIVE_LOW>;
 	};
-
+#if (CONFIG_ARMSTONEA9R2_BOARD_REVISION < 110)
 	i2c_lvds: i2c-gpio-lvds {
 		compatible = "i2c-gpio";
 		gpios = <&gpio2 15 GPIO_ACTIVE_HIGH /* sda */
@@ -234,6 +236,7 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 	};
+#endif/* (CONFIG_ARMSTONEA9R2_BOARD_REVISION < 110) */
 
 #ifdef CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO
 	sound {
@@ -776,11 +779,8 @@
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
 //#endif
 		reset-gpios = <&gpio1 29 GPIO_ACTIVE_LOW>;
-		/* using global touchscreen_parse_properties, instead of
-		 * specific parsing.
-		 */
-		touchscreen-inverted-x;
-		touchscreen-inverted-y;
+		x-rev;
+		y-rev;
 		linux,wakeup;
 	};
 #endif
@@ -1245,6 +1245,10 @@
 				/* I2C2_IRQ2 (Touch, LVDS connector) */
 				MX6QDL_PAD_SD4_DAT5__GPIO2_IO13		0x0b0b0
 #endif
+#if (CONFIG_ARMSTONEA9R2_BOARD_REVISION >= 130)
+				/* I2C2_RSTn(Touch, LVDS connector) */
+				MX6QDL_PAD_SD4_DAT6__GPIO2_IO14		0x0b0b0
+#endif
 			>;
 		};
 
@@ -1484,12 +1488,14 @@
 		};
 #endif /* CONFIG_ARMSTONEA9R2_I2C_D */
 
+#if (CONFIG_ARMSTONEA9R2_BOARD_REVISION < 110)
 		pinctrl_i2c5_gpio: i2c5_gpio_grp {
 			fsl,pins = <
 				MX6QDL_PAD_SD4_DAT6__GPIO2_IO14		0x070b1
 				MX6QDL_PAD_SD4_DAT7__GPIO2_IO15		0x070b1
 			>;
 		};
+#endif /* CONFIG_ARMSTONEA9R2_BOARD_REVISION < 110 */
 
 #if defined(CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO)
 		pinctrl_audmux_4: audmux-4 {
