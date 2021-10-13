@@ -93,7 +93,7 @@
  *            all other data bits on all four differential data pairs
  */
 #ifndef DISPLAY_LVDS_CHIMEI
-#define CONFIG_NETDCUA9_LVDS0_BPP	24
+#define CONFIG_NETDCUA9_LVDS0_BPP	32
 #define CONFIG_NETDCUA9_LVDS0_PIX_FMT	"RGB24"
 #define CONFIG_NETDCUA9_LVDS0_DATA_WIDTH	24
 #define CONFIG_NETDCUA9_LVDS0_MAPPING	"spwg"
@@ -114,7 +114,7 @@ wvga {					\
 	pixelclk-active = <0>;		\
 }
 #else
-#define CONFIG_NETDCUA9_LVDS0_BPP	24
+#define CONFIG_NETDCUA9_LVDS0_BPP	32
 #define CONFIG_NETDCUA9_LVDS0_PIX_FMT	"RGB666"
 #define CONFIG_NETDCUA9_LVDS0_DATA_WIDTH	18
 #define CONFIG_NETDCUA9_LVDS0_MAPPING	"spwg"
@@ -141,7 +141,7 @@ wvga {					\
  * For mapping value see above.
  */
 #ifndef DISPLAY_LVDS_CHIMEI
-#define CONFIG_NETDCUA9_LVDS1_BPP	24
+#define CONFIG_NETDCUA9_LVDS1_BPP	32
 #define CONFIG_NETDCUA9_LVDS1_PIX_FMT	"RGB24"
 #define CONFIG_NETDCUA9_LVDS1_DATA_WIDTH	24
 #define CONFIG_NETDCUA9_LVDS1_MAPPING	"spwg"
@@ -162,7 +162,7 @@ wvga {					\
 	pixelclk-active = <0>;		\
 }
 #else
-#define CONFIG_NETDCUA9_LVDS1_BPP	24
+#define CONFIG_NETDCUA9_LVDS1_BPP	32
 #define CONFIG_NETDCUA9_LVDS1_PIX_FMT	"RGB666"
 #define CONFIG_NETDCUA9_LVDS1_DATA_WIDTH	18
 #define CONFIG_NETDCUA9_LVDS1_MAPPING	"spwg"
