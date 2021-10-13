@@ -1019,7 +1019,7 @@
 	/* Switch to F&S implementation of GPMI NAND driver */
 	compatible = "fus,imx6q-gpmi-nand";
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
+	//###pinctrl-0 = <&pinctrl_gpmi_nand_1>;
 	fus,skipblocks = <2>;
 	fus,chunk1k;
 	fus,ecc_strength = <8>;		/* Spare area 64 bytes */
