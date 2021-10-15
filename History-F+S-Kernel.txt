@@ -4,6 +4,27 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight,
         MM: M Mini, MN: M Nano
 
+linux-5.4.70-fsimx6-B2021.10 (15.10.2021)
+-----------------------------------------
+Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+QBlissA9, QBlissA9r2
+
+- fsimx8mp: Improve device tree for mipi-dsi panel ee0350et-2cp
+- Fix qblissa9r2q SoC compatible in device tree
+- Add fsimx6 etnaviv support
+- Fix imx6 device tree pathes for backwards compatibility
+- Add fsimx6 alias for gpmi
+- Fix switch_case fallthrough warning
+- Fix qblissa9dl SoC compatible in device tree
+- Fix qiblisa9r2dl RTC IRQ pad setting
+- Fix netdcua9qdl framebuffer bit depth for LVDS
+- Improve netdcua9 ax88796 driver support
+- Fix fus-ac97 driver
+- Fix picomoda9qdl kernel warning  for pinctrl_gpmi_nand_1
+- Improve armstonea9qdl.dtsi
+
+
+
 linux-5.4.70-fsimx8mn-Y2021.09 (24.09.2021)
 -------------------------------------------
 Supported boards: PicoCoreMX8MN
