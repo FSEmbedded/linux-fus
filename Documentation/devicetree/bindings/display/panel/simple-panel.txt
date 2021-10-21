@@ -1,1 +1,52 @@
 See panel-common.yaml in this directory.
+
+Additional setting from F&S. Its possible to setup display parameters directly
+in device tree without re-compiling kernel source. Therefore you need a
+specific compatible string and the required parameters.
+
+Required properties:
+compatible:      "fus,disp-template" use this compatible string to setup own
+                 timings for display.
+refresh-rate:    refresh-rate in Hz
+bits-per-color:  bits per color
+bus-flags:       DRM bus flags (include/drm/drm_connector.h)
+bus-format:      Media bus format (include/uapi/linux/media-bus-format.h)
+panel-width-mm:  panel width in mm
+panel-height-mm: panel height in mm
+display-timings: Documentation/devicetree/bindings/display/panel/display-timing.txt
+
+panel: panel {
+        compatible = "fus,disp-template";
+        backlight = <&backlight_lcd>;
+        power-supply = <&reg_vlcd>;
+
+        /* refresh-rate in Hz */
+        refresh-rate = <60>;
+        /* bits per color */
+        bits-per-color = <6>;
+        /* DRM_BUS_FLAG_DE_HIGH | DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE */
+        bus-flags = <9>;
+        /* MEDIA_BUS_FMT_RGB666_1X18 */
+        bus-format = <0x100e>;
+        panel-width-mm = <152>;
+        panel-height-mm = <91>;
+        display-timings {
+                native-mode = <&timing0>;
+                timing0: et070080 {
+                        clock-frequency = <33260000>;
+                        hactive = <800>;
+                        vactive = <480>;
+                        hfront-porch = <40>;
+                        hsync-len = <128>;
+                        hback-porch = <88>;
+                        vfront-porch = <10>;
+                        vsync-len = <2>;
+                        vback-porch = <33>;
+                        /* active high - positive edge */
+                        de-active = <1>;
+                        /* active low - negative edge */
+                        vsync-active = <0>;
+                        hsync-active = <0>;
+                };
+        };
+};
