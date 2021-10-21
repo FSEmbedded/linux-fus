@@ -6,15 +6,15 @@
 * published by the Free Software Foundation.
 */
 
-#define CONFIG_PICOCOREMX8MM_MIPI_DSI
-#include "picocoremx8mm-lpddr4.dts"
+#define CONFIG_PICOCOREMX8MX_MIPI_DSI
+#include "picocoremx8mm-ddr3l.dts"
 
 &mipi_dsi {
 	status = "okay";
 
 	panel@0 {
 		status = "okay";
-        	compatible = "novatek,nt35521";
+                compatible = "novatek,nt35521";
 		reg = <0>;
 		pinctrl-0 = <&pinctrl_mipi_dsi_en>;
 		reset-gpio = <&gpio1 1 GPIO_ACTIVE_LOW>;
