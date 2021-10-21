@@ -77,6 +77,7 @@ struct tsc200x {
 	struct regmap		*regmap;
 	__u16                   bustype;
 
+	struct touchscreen_properties props;
 	struct input_dev	*idev;
 	char			phys[32];
 
@@ -113,8 +114,7 @@ static void tsc200x_update_pen_state(struct tsc200x *ts,
 				     int x, int y, int pressure)
 {
 	if (pressure) {
-		input_report_abs(ts->idev, ABS_X, x);
-		input_report_abs(ts->idev, ABS_Y, y);
+		touchscreen_report_pos(ts->idev, &ts->props, x, y, false);
 		input_report_abs(ts->idev, ABS_PRESSURE, pressure);
 		if (!ts->pen_down) {
 			input_report_key(ts->idev, BTN_TOUCH, !!pressure);
@@ -533,7 +533,7 @@ int tsc200x_probe(struct device *dev, int irq, const struct input_id *tsc_id,
 	input_set_abs_params(input_dev, ABS_PRESSURE,
 			     0, MAX_12BIT, TSC200X_DEF_P_FUZZ, 0);
 
-	touchscreen_parse_properties(input_dev, false, NULL);
+	touchscreen_parse_properties(input_dev, false, &ts->props);
 
 	/* Ensure the touchscreen is off */
 	tsc200x_stop_scan(ts);
