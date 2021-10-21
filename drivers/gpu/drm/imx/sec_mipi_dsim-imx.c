@@ -46,6 +46,8 @@ struct imx_sec_dsim_device {
 	struct reset_control *mipi_reset;
 	struct regmap *blk_ctl;
 
+	u32 bus_fmt;
+
 	atomic_t rpm_suspended;
 };
 
@@ -133,56 +135,8 @@ static int imx_sec_dsim_encoder_helper_atomic_check(struct drm_encoder *encoder,
 	bus_format = adjusted_mode->private_flags & 0xffff;
 
 	for (i = 0; i < num_bus_formats; i++) {
-		u32 bus_format_tmp;
-
-		/* 2021-08-27-KM: Convert the bus format
-		 * to the correct MIPI-DSI format. Leave
-		 * the possibility open for a bridge to
-		 * correct the bus format for LVDS. The
-		 * worst that can happen is that the
-		 * display outputs wrong colors.
-		 */
-
-		switch (display_info->bus_formats[i]) {
-			/* MIPI_DSI_FMT_RGB888 */
-			case MEDIA_BUS_FMT_RBG888_1X24:
-			case MEDIA_BUS_FMT_BGR888_1X24:
-			case MEDIA_BUS_FMT_BGR888_3X8:
-			case MEDIA_BUS_FMT_GBR888_1X24:
-			case MEDIA_BUS_FMT_RGB888_1X24:
-			case MEDIA_BUS_FMT_RGB888_2X12_BE:
-			case MEDIA_BUS_FMT_RGB888_2X12_LE:
-			case MEDIA_BUS_FMT_RGB888_3X8:
-			case MEDIA_BUS_FMT_RGB888_1X7X4_SPWG:
-			case MEDIA_BUS_FMT_RGB888_1X7X4_JEIDA:
-				bus_format_tmp = MEDIA_BUS_FMT_RGB888_1X24;
-				break;
-
-			/* MIPI_DSI_FMT_RGB666 */
-			case MEDIA_BUS_FMT_RGB666_1X24_CPADHI:
-				bus_format_tmp = MEDIA_BUS_FMT_RGB666_1X24_CPADHI;
-				break;
-
-			/* MIPI_DSI_FMT_RGB666_PACKED */
-			case MEDIA_BUS_FMT_RGB666_1X18:
-				bus_format_tmp = MEDIA_BUS_FMT_RGB666_1X18;
-				break;
-
-			/* MIPI_DSI_FMT_RGB565 */
-			case MEDIA_BUS_FMT_RGB565_1X16:
-			case MEDIA_BUS_FMT_BGR565_2X8_BE:
-			case MEDIA_BUS_FMT_BGR565_2X8_LE:
-			case MEDIA_BUS_FMT_RGB565_2X8_BE:
-			case MEDIA_BUS_FMT_RGB565_2X8_LE:
-				bus_format_tmp = MEDIA_BUS_FMT_RGB565_1X16;
-				break;
-
-			default:
-				bus_format_tmp = -1;
-				break;
-		}
-
-		if (bus_format_tmp != bus_format)
+		if (display_info->bus_formats[i] != bus_format &&
+			dsim_dev->bus_fmt != bus_format)
 			continue;
 		break;
 	}
@@ -210,8 +164,6 @@ static int imx_sec_dsim_encoder_helper_atomic_check(struct drm_encoder *encoder,
 	/* set the bus format for CRTC output which should be
 	 * the same as the bus format between dsim and connector,
 	 * since dsim cannot do any pixel conversions.
-	 * 2021-08-27-KM: If a bridge is in between there, it is
-	 * possible for a conversion of the bus format. (tc358775)
 	 */
 	imx_crtc_state->bus_format = bus_format;
 
@@ -313,6 +265,18 @@ static int sec_dsim_of_parse_resets(struct imx_sec_dsim_device *dsim)
 	return 0;
 }
 
+static void sec_dsim_of_parse_flags(struct imx_sec_dsim_device *dsim)
+{
+	int ret;
+	struct device *dev = dsim->dev;
+	struct device_node *np = dev->of_node;
+
+	ret = of_property_read_u32(np, "bus-fmt", &dsim->bus_fmt);
+	if (ret < 0) {
+		dsim->bus_fmt = 0;
+	}
+}
+
 static void sec_dsim_of_put_resets(struct imx_sec_dsim_device *dsim)
 {
 	if (dsim->soft_resetn)
@@ -355,6 +319,8 @@ static int imx_sec_dsim_bind(struct device *dev, struct device *master,
 	ret = sec_dsim_of_parse_resets(dsim_dev);
 	if (ret)
 		return ret;
+
+	sec_dsim_of_parse_flags(dsim_dev);
 
 	encoder = &dsim_dev->encoder;
 	ret = imx_drm_encoder_parse_of(drm_dev, encoder, np);
