@@ -1,0 +1,66 @@
+LT9211 MIPI-DSI to RGB panel bridge
+
+Required properties:
+  - compatible: "lontium,lt9211"
+  - reg: the virtual channel number of a DSI peripheral
+  - vdd-supply: core voltage supply, 1.8V
+  - vcc-supply: I/O voltage supply, 3.3V
+  - reset-gpios: a GPIO spec for the reset pin
+  - rx-source: Input signal 0 = LVDS, 1 = MIPI, 2 = TTL
+
+Optional properites:
+  - bus-fmt: overwrite Simple Panel setup: 6 = RGB666, 8 = RGB888
+  - pclk-invert: invert dotclock polarity
+  - lt,debug-pattern: using debug pattern as output to test display
+
+
+The device node can contain following 'port' child nodes,
+according to the OF graph bindings defined in [1]:
+  0: DSI Input, not required, if the bridge is DSI controlled
+  1: RGB Output, mandatory
+
+[1]: Documentation/devicetree/bindings/media/video-interfaces.txt
+
+Example:
+    	/* mipi to RGB controller  */
+	bridge@2d {
+		reg = <0x2d>;
+		compatible = "lontium,lt9211";
+		vdd-supply = <&reg_vref_1v8>;
+		vcc-supply = <&reg_vref_3v3>;
+		reset-gpios = <&pca963x 3 GPIO_ACTIVE_HIGH>;
+		/* 0 = LVDS, 1 = MIPI, 2 = TTL */
+		rx-source = /bits/ 8 <1>;
+		/* optional: normally taken from simple panel display but can
+		 * be overwritten by bus-fmt flag: 6 = RGB666, 8 = RGB888
+		 */
+		bus-fmt = /bits/ 8 <8>;
+		/* PCLK will inverted because dotclock polarity from
+		 * sec_mipi_dsim-imx is set to neg edge. The display needs
+		 * dotclock pos edge therefore we inverte dotclock polarity.
+		 */
+		pclk-invert;
+//		lt,debug-pattern;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+
+				rgb_from_dsim: endpoint {
+					remote-endpoint = <&dsim_to_rgb>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+
+				rgb_to_panel: endpoint {
+					remote-endpoint = <&panel_from_rgb>;
+				};
+			};
+		};
+    };
