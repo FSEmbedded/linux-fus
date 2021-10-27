@@ -6,9 +6,10 @@
  * published by the Free Software Foundation.
  */
 
-#define CONFIG_PICOCOREMX8MN_MIPI_DSI_LVDS
-#define CONFIG_PICOCOREMX8MN_INVERTED_XY
-#include "picocoremx8mn-lpddr4.dts"
+#define CONFIG_PICOCOREMX8MX_NANO_MIPI_DSI_LVDS
+#define CONFIG_PICOCOREMX8MX_NANO_INVERTED_XY
+
+#include "picocoremx8mn-ddr3l.dts"
 
 &lcdif {
 	status = "okay";
@@ -17,7 +18,6 @@
 	 */
 	max-res = <4096>, <4096>;
 };
-
 
 &mipi_dsi {
 	status = "okay";
@@ -173,16 +173,10 @@
 	focaltech@38 {
 		compatible = "focaltech,fts";
 		reg = <0x38>;
-#if CONFIG_PICOCOREMX8MN_BOARD_REVISION >= 130
-		interrupt-parent = <&gpio1>;
-		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
-		focaltech,irq-gpio = <&gpio1 0 IRQ_TYPE_EDGE_FALLING>;
-#else
-		interrupt-parent = <&gpio4>;
-		interrupts = <31 IRQ_TYPE_EDGE_FALLING>;
-		focaltech,irq-gpio = <&gpio4 31 IRQ_TYPE_EDGE_FALLING>;
-#endif
-#ifdef CONFIG_PICOCOREMX8MN_INVERTED_XY
+		interrupt-parent = <&gpio5>;
+		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
+		focaltech,irq-gpio = <&gpio5 2 IRQ_TYPE_EDGE_FALLING>;
+#ifdef CONFIG_PICOCOREMX8MX_NANO_INVERTED_XY
 		focaltech,touchscreen-inverted-x;
 		focaltech,touchscreen-inverted-y;
 #endif
