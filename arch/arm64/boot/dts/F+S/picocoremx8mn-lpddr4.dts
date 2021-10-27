@@ -35,7 +35,9 @@
 
 /* USB */
 #define CONFIG_PICOCOREMX8MN_USB_OTG1
-//#define CONFIG_PICOCOREMX8MN_USB_OTG1_USBC
+#define CONFIG_PICOCOREMX8MN_USB_OTG1_USBC
+/* The ALERT pin is currently unavailable at connector 3, so use polling with ~100ms */
+//#define CONFIG_PICOCOREMX8MN_USB_OTG1_USBC_ALERT
 
 /* I2C */
 #define CONFIG_PICOCOREMX8MN_I2C_A
@@ -552,11 +554,13 @@
 	/* USB-C */
 	ptn5110: tcpc@52 {
 		compatible = "nxp,ptn5110";
+#ifdef CONFIG_PICOCOREMX8MN_USB_OTG1_USBC_ALERT
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_typec1>;
-		reg = <0x52>;
 		interrupt-parent = <&gpio5>;
 		interrupts = <9 8>;
+#endif
+		reg = <0x52>;
 		status = "okay";
 
 		port {
@@ -1484,11 +1488,13 @@
 #endif
 
 #ifdef CONFIG_PICOCOREMX8MN_USB_OTG1_USBC
+#ifdef CONFIG_PICOCOREMX8MN_USB_OTG1_USBC_ALERT
 	pinctrl_typec1: typec1grp {
 		fsl,pins = <
 			MX8MN_IOMUXC_ECSPI1_SS0_GPIO5_IO9		0x00159
 		>;
 	};
+#endif
 #endif
 
 #ifdef CONFIG_PICOCOREMX8MN_SD_A
