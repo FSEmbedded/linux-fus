@@ -1,0 +1,205 @@
+/*
+ * Copyright (C) 2021 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#include "tbs2.dts"
+
+/ {
+	regulators {
+		reg_lcd_bl: backlight_lcd {
+			compatible = "regulator-fixed";
+			regulator-name = "lcd-bl";
+			gpio = <&pca963x 0 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+
+		reg_vref_1v8: regulator_1v8 {
+			compatible = "regulator-fixed";
+			regulator-name = "vref-1V8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-always-on;
+		};
+
+		/* LCD power on voltage */
+		reg_vlcd_adp: vlcd_adp {
+			compatible = "regulator-fixed";
+			regulator-name = "VLCD-ADP";
+			gpio = <&pca963x 4 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+	};
+
+	/* Simple panel driver */
+	panel: panel {
+		compatible = "edt,et035012dm6";
+		backlight = <&backlight_lcd>;
+		power-supply = <&reg_vlcd_adp>;
+
+		port@0 {
+			panel_from_rgb: endpoint {
+				remote-endpoint = <&rgb_to_panel>;
+			};
+		};
+	};
+
+	backlight_lcd: backlight_lcd {
+		compatible = "pwm-backlight";
+		pwms = <&pca963x 1 640000 0>;
+		power-supply = <&reg_lcd_bl>;
+		brightness-levels = < 23 39 55 71 87 103 119
+		     135 151 167 183 199 215 231 239 255>;
+		default-brightness-level = <14>;
+	};
+};
+
+&lcdif {
+	status = "okay";
+	/* important to overwrite max-res otherwise DRM lcdif will fail to find a suitable connector */
+	max-res = <4096>, <4096>;
+};
+
+&mipi_dsi {
+	status = "okay";
+
+	bus-fmt = <0x100a>;
+
+	port@1 {
+		reg = <1>;
+		dsim_to_rgb: endpoint {
+			remote-endpoint = <&rgb_from_dsim>;
+			data-lanes = <0 1 2 3>;
+			attach-bridge;
+		};
+	};
+};
+
+&i2c2 {
+    /* mipi to RGB controller  */
+	rgb-bridge@2d {
+		#address-cells = <1>;
+		#size-cells = <0>;
+	      	compatible = "lontium,lt9211";
+//		lt,debug-pattern;
+		/* 0 = LVDS, 1 = MIPI, 2 = TTL */
+		rx-source = /bits/ 8 <1>;
+		/* optional: normally taken from simple panel display but can be
+		 * overwritten by bus-fmt flag: 6 = RGB666, 8 = RGB888
+		 */
+		bus-fmt = /bits/ 8 <8>;
+		/* PCLK will inverted because dotclock polarity from sec_mipi_dsim-imx
+		 * is set to neg edge. The display needs dotclock pos edge therefore
+		 * we inverte dotclock polarity.
+		 */
+		pclk-invert;
+		reg = <0x2d>;
+		reset-gpios = <&pca963x 3 GPIO_ACTIVE_HIGH>;
+		vdd-supply = <&reg_vref_1v8>;
+		vcc-supply = <&reg_vref_3v3>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+
+				rgb_from_dsim: endpoint {
+					remote-endpoint = <&dsim_to_rgb>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+
+				rgb_to_panel: endpoint {
+					remote-endpoint = <&panel_from_rgb>;
+				};
+			};
+		};
+    };
+
+	pca963x: pca9634@61 {
+			compatible = "nxp,pca9634";
+			reg = <0x61>;
+			nxp,totem-pole;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			#pwm-cells = <3>;
+			#gpio-cells = <2>;
+			led@0 {
+				reg = <0>;
+				label = "BL_ON";
+				type = "GPIO";
+				default-on;
+				active-high;
+			};
+			led@1 {
+				reg = <1>;
+				label = "BL_PWM";
+				type = "PWM";
+				default-on;
+				active-low;
+			};
+			led@2 {
+				reg = <2>;
+				label = "ROTATE";
+				type = "GPIO";
+				active-high;
+			};
+			led@3 {
+				reg = <3>;
+				label = "MIPI_RST";
+				type = "GPIO";
+				active-high;
+				default-on;
+			};
+			led@4 {
+				reg = <4>;
+				label = "VLCD_ON";
+				type = "GPIO";
+				default-on;
+				active-high;
+			};
+			led@5 {
+				reg = <5>;
+				label = "TOUCH_RST";
+				type = "GPIO";
+				active-high;
+				default-on;
+			};
+			led@6 {
+				reg = <6>;
+				label = "6-unused";
+				type = "LED";
+				active-low;
+			};
+			led@7 {
+				reg = <7>;
+				label = "7-unused";
+				type = "LED";
+				active-low;
+			};
+		};
+
+	polytouch: edt-ft5x06@38 {
+		compatible = "edt,edt-ft5206", "edt,edt-ft5x06";
+		reg = <0x38>;
+
+		interrupt-parent = <&gpio5>;
+		interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&pca963x 5 GPIO_ACTIVE_LOW>;
+
+		threshold = <25>;
+		gain = <5>;
+		offset = <0>;
+    };
+};

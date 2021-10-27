@@ -18,6 +18,7 @@ dtb-$(CONFIG_ARCH_MXC) += picocoremx8mm-lpddr4.dtb \
 			  picocoremx8mm-lpddr4-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtb \
 			  picocoremx8mm-lpddr4-lcdif-adp-mipi2rgb.dtb \
 			  tbs2.dtb \
+			  tbs2-lcdif-adp-mipi2rgb-etm0350.dtb \
 			  picocoremx8mm-ddr3l.dtb \
 			  picocoremx8mm-ddr3l-lcdif-tc358775-g133han01.dtb \
 			  picocoremx8mm-ddr3l-lcdif-tc358775-j070wvtc0211.dtb \
