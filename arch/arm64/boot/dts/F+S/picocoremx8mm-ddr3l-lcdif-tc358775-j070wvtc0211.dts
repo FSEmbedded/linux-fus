@@ -21,6 +21,8 @@
 &mipi_dsi {
 	status = "okay";
 
+	bus-fmt = <0x100a>;
+
 	port@1 {
 		reg = <1>;
 		dsim_to_lvds: endpoint {
@@ -53,8 +55,8 @@
 
 				lvds_from_dsim: endpoint {
 					remote-endpoint = <&dsim_to_lvds>;
+				};
 			};
-		};
 
 			port@1 {
 				reg = <1>;
@@ -68,11 +70,27 @@
 };
 
 /{
-	/* Simple panel driver */
 	panel: panel {
-		compatible = "jhd,j070wvtc1601w", "simple-panel";
+		compatible = "panel-lvds";
 		backlight = <&backlight_ldb>;
 		power-supply = <&reg_vlcd>;
+
+		data-mapping = "vesa-24";
+		width-mm = <154>;
+		height-mm = <86>;
+
+		panel-timing {
+				clock-frequency = <33600000>;
+				hactive = <800>;
+				vactive = <480>;
+				hback-porch = <42>;
+				hfront-porch = <210>;
+				hsync-len = <4>;
+				vback-porch = <22>;
+				vfront-porch = <22>;
+				vsync-len = <1>;
+				pixelclk-active = <0>;
+		};
 
 		port@0 {
 			panel_from_lvds: endpoint {
