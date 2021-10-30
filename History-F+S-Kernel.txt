@@ -4,6 +4,25 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight,
         MM: M Mini, MN: M Nano
 
+linux-5.4.70-fsimx8mn-Y2021.10 (30.10.2021)
+-------------------------------------------
+Supported boards: PicoCoreMX8MN
+
+- Improve tsc200x-core touch driver
+- Improve tsc200x-core touchscreen driver
+- Improve panel-simple driver of drm/panel
+- Improve sec_mipi_dsim-imx.c driver
+- Improve lontium-lt9211.c bridge driver
+- Improve devicetree picocoremx8mm-ddr3l-lcdif-adp-mipi2rgb.dts
+- Add new devicetree picocoremx8mm-ddr3l-lcdif-g050tan01.dts
+- Add tbs2 mipi2rgb device tree
+- Enable adp-mipi2rgb for fsimx8mn
+- Use panel-lvds driver for output of TC358775
+- Enable USB Type-C for picocoremx8mn-lpddr4
+- Enable adp-mipi2lvds1 for fsimx8mn
+
+
+
 linux-5.4.70-fsimx6-B2021.10.1 (19.10.2021)
 -------------------------------------------
 Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
