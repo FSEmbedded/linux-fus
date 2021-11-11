@@ -207,7 +207,6 @@
 	polytouch: edt-ft5x06@38 {
 		compatible = "edt,edt-ft5206", "edt,edt-ft5x06";
 		reg = <0x38>;
-
 		interrupt-parent = <&gpio5>;
 		interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpios = <&pca963x 5 GPIO_ACTIVE_LOW>;
@@ -215,5 +214,7 @@
 		threshold = <25>;
 		gain = <5>;
 		offset = <0>;
-    };
+
+		no-dummy-write;
+	};
 };
