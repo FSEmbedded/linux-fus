@@ -5751,7 +5751,17 @@ static int nand_scan_tail(struct nand_chip *chip)
 		ret = -EINVAL;
 		goto err_nand_manuf_cleanup;
 	}
-	ecc->total = ecc->steps * ecc->bytes;
+
+	/*
+	 * Attention! Some ECC methods (like the BCH engine on i.MX CPUs) may
+	 * produce ECC sums with a bit size per step that is not a multiple of
+	 * bytes. These drivers should compute entry ecc->total in their
+	 * attach() code already and ecc->bytes should be ignored then. In all
+	 * other cases, i.e. if ecc->total is still 0, compute it now.
+	 */
+	if (!ecc->total)
+		ecc->total = ecc->steps * ecc->bytes;
+
 	if (ecc->total > mtd->oobsize) {
 		WARN(1, "Total number of ECC bytes exceeded oobsize\n");
 		ret = -EINVAL;
