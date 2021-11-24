@@ -226,6 +226,7 @@ struct fsl_sai_soc_data {
 	bool imx;
 	/* True for EDMA because it needs period size multiple of maxburst */
 	bool constrain_period_size;
+	bool mclk0_is_mclk1;
 };
 
 struct fsl_sai_verid {
