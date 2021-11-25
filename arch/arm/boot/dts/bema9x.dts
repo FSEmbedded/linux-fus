@@ -18,6 +18,9 @@
 	model = "F&S bemA9X";
 	compatible = "fus,imx6sx-bema9x", "fsl,imx6sx";
 
+ 	aliases {
+ 		nand = &gpmi;
+ 	};
 
 	backlight_lcd {
 		compatible = "pwm-backlight";

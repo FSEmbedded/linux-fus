@@ -195,6 +195,12 @@ lcd_wvga {				\
 	model = "F&S PicoCOMA9X";
 	compatible = "fus,imx6sx-picocoma9x", "fsl,imx6sx";
 
+ 	aliases {
+ 		nand = &gpmi;
+		emmc = &usdhc4;
+		rpmsg = &rpmsg;
+ 	};
+
 	backlight_lcd {
 		compatible = "pwm-backlight";
 		pwms = <&pwm7 0 5000000 PWM_POLARITY_INVERTED>;

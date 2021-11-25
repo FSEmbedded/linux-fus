@@ -31,6 +31,7 @@
 	aliases {
 		ethernet1 = &fec1;
 		ethernet0 = &fec2;
+		nand = &gpmi;
 	};
 #if 0
 	chosen {

@@ -152,6 +152,10 @@ lcd_wvga {				\
 	compatible = "fsl,imx6ul-picocoma7", "fsl,imx6ul";
 #endif
 
+	aliases {
+		nand = &gpmi;
+	};
+
 	memory {
 		reg = <0x80000000 0x80000000>;
 	};

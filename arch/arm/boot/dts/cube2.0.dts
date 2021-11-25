@@ -32,6 +32,10 @@
 	model = "F&S Cube2.0";
 	compatible = "fsl,imx6ul-cube2_0", "fsl,imx6ul";
 
+	aliases {
+		nand = &gpmi;
+	};
+
 #if 0
 	chosen {
 		stdout-path = &uart1;

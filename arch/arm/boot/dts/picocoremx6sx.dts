@@ -165,6 +165,12 @@ lcd_wvga {				\
 	model = "F&S picocoreMX6SX";
 	compatible = "fus,imx6sx-picocoremx6sx", "fsl,imx6sx";
 
+ 	aliases {
+ 		nand = &gpmi;
+ 		emmc = &usdhc2;
+		rpmsg = &rpmsg;
+ 	};
+
 #if defined(CONFIG_PICOCOREMX6SX_I2C_B) && (CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD)
 	backlight_lcd {
 		compatible = "pwm-backlight";

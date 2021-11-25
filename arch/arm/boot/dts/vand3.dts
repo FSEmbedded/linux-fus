@@ -48,6 +48,10 @@
 	model = "F&S VAND3";
 	compatible = "fus,imx6sx-vand3", "fsl,imx6sx";
 
+ 	aliases {
+ 		nand = &gpmi;
+ 	};
+
 	memory {
 		reg = <0x80000000 0x80000000>;
 	};

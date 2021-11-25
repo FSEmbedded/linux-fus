@@ -132,6 +132,7 @@
 
 	aliases {
 		i2c3 = &i2c_gpio;
+		nand=&gpmi;
 	};
 
 #if 0

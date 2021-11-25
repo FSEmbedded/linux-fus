@@ -293,6 +293,11 @@ lvds_wvga {				\
 	model = "F&S efusA9X";
 	compatible = "fus,imx6sx-efusa9x", "fsl,imx6sx";
 
+ 	aliases {
+ 		nand = &gpmi;
+		rpmsg = &rpmsg;
+ 	};
+
 #ifdef CONFIG_EFUSA9X_I2C_A
 #if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LCD
 	backlight_lcd {

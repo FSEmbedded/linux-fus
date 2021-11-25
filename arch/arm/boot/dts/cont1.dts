@@ -36,6 +36,10 @@
 	model = "F&S CONT1";
 	compatible = "fus,imx6sx-CONT1", "fsl,imx6sx";
 
+ 	aliases {
+ 		nand = &gpmi;
+ 	};
+
 	clocks {
 		codec_osc: anaclk2 {
 			#clock-cells = <0>;
