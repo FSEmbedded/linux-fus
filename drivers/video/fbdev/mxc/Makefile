@@ -6,6 +6,7 @@ obj-$(CONFIG_FB_MXC_TRULY_PANEL_TFT3P5581E)	+= mxcfb_hx8363_wvga.o
 obj-$(CONFIG_FB_MXC_TRULY_WVGA_SYNC_PANEL)      += mxcfb_hx8369_wvga.o
 obj-$(CONFIG_FB_MXC_YES_OPTOELECTRONICS_PANEL_YTC310KLAA)     += mxcfb_hx8379_wvga.o
 obj-$(CONFIG_FB_MXC_TIANMA_PANEL_TM050JDHG33)     += mxcfb_ili9881c_wvga.o
+obj-$(CONFIG_FB_MXC_NEWVISION_PANEL_NV3051D)     += mxcfb_nv3051d_vga.o
 obj-$(CONFIG_FB_MXC_RK_PANEL_RK055AHD042)	+= mxcfb_rm68200_wxga.o
 obj-$(CONFIG_FB_MXC_RK_PANEL_RK055IQH042)	+= mxcfb_rm68191_qhd.o
 obj-$(CONFIG_FB_MXC_MIPI_DSI_SAMSUNG)           += mipi_dsi_samsung.o

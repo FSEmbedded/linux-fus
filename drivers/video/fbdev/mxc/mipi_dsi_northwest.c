@@ -90,6 +90,12 @@ static struct mipi_dsi_match_lcd mipi_dsi_lcd_db[] = {
 	 {mipid_ili9881c_get_lcd_videomode, mipid_ili9881c_lcd_setup}
 	},
 #endif
+#ifdef CONFIG_FB_MXC_NEWVISION_PANEL_NV3051D
+	{
+	 "NEWVISION_PANEL_NV3051D",
+	 {mipid_nv3051d_get_lcd_videomode, mipid_nv3051d_lcd_setup}
+	},
+#endif
 #ifdef CONFIG_FB_MXC_RK_PANEL_RK055AHD042
 	{
 	 "ROCKTECH-WXGA-RK055AHD042",
