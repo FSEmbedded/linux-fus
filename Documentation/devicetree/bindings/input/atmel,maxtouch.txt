@@ -41,6 +41,8 @@ Optional properties for main touchpad device:
 
 - atmel,input_name: Override name of input device from the default.
 
+- max-read-size: Configure maximal read size in one transfer.
+
 Example:
 
 	touch@4b {
