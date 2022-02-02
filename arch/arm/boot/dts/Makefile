@@ -467,6 +467,7 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	netdcua9dl.dtb \
 	picomoda9dl.dtb \
 	efusa9dl.dtb \
+	efusa9r2dl.dtb \
 	armstonea9dl.dtb \
 	armstonea9r2dl.dtb \
 	qblissa9dl.dtb \
@@ -567,6 +568,7 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	netdcua9q.dtb \
 	picomoda9q.dtb \
 	efusa9q.dtb \
+	efusa9r2q.dtb \
 	armstonea9q.dtb \
 	armstonea9r2q.dtb \
 	qblissa9q.dtb \

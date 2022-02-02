@@ -34,6 +34,19 @@
 #include "hardware.h"
 
 #if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
+#define RTL8211F_PAGE_SELECT	0x1f
+
+static int rtl8211f_phy_fixup(struct phy_device *dev)
+{
+	/* Set LED2 for Link, LED1 for Activity */
+	phy_write(dev, RTL8211F_PAGE_SELECT, 0xd04);
+	phy_write(dev, 0x10, 0xae00);
+	/* restore to default page 0 */
+	phy_write(dev, RTL8211F_PAGE_SELECT, 0x0);
+
+	return 0;
+}
+
 static int dp83848_phy_fixup(struct phy_device *dev)
 {
 	u16 val;
@@ -155,6 +168,7 @@ static int ar8035_phy_fixup(struct phy_device *dev)
 
 #define PHY_ID_DP83848 	0x20005c90
 #define PHY_ID_AR8035 0x004dd072
+#define PHY_ID_RTL8211F 0x001cc916
 
 static void __init imx6q_enet_phy_init(void)
 {
@@ -169,6 +183,8 @@ static void __init imx6q_enet_phy_init(void)
 				ar8031_phy_fixup);
 		phy_register_fixup_for_uid(PHY_ID_AR8035, 0xffffffef,
 				ar8035_phy_fixup);
+		phy_register_fixup_for_uid(PHY_ID_RTL8211F, 0x001fffff,
+				rtl8211f_phy_fixup);
 	}
 }
 
