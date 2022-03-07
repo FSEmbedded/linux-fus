@@ -14,7 +14,7 @@
 
 	panel@0 {
 		status = "okay";
-                compatible = "novatek,nt35521";
+                compatible = "auo,g070tan01.0";
 		reg = <0>;
 		pinctrl-0 = <&pinctrl_mipi_dsi_en>;
 		reset-gpio = <&gpio1 1 GPIO_ACTIVE_LOW>;
