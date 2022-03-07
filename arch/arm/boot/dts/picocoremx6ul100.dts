@@ -1,0 +1,1388 @@
+/*
+ * Copyright (C) 2021 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * Despite the name, the F&S PicoCoreMX6UL100 module is currently only available
+ * with i.MX6ULL CPU. But in the future there may also be versions with
+ * i.MX6UL CPU. So we provide two different device trees. This is the version
+ * for i.MX6UL. However as most device tree settings are the same in both
+ * cases, the other variant simply defines the macro CONFIG_PICOCOREMX6UL_ULL_100
+ * and then includes this file here. So actually this file here is for both
+ * variants and any differences between i.MX6UL and i.MX6ULL can be decided
+ * depending on whether CONFIG_PICOCOREMX6UL_ULL_100 is defined or not. For
+ * example differences are necessary for tamper and boot pins that are located
+ * in the SNVS section instead of the IOMUXC section on i.MX6ULL.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOREMX6UL100_BOARD_REVISION	110
+
+#define DISPLAY_NONE    0	/* No display on this port */
+#define DISPLAY_LCD     1	/* LCD via RGB adapter */
+#define DISPLAY_LVDS    2	/* LVDS via Lontium Chip */
+
+/*
+ * Set the display configuration:
+ *
+ * - If you have no display, set LCDIF0 to DISPLAY_NONE.
+ * - If you have a LCD display, set LCDIF0 to DISPLAY_LCD.
+ * - If you have a LVDS display, set LCDIF0 to DISPLAY_LVDS.
+ */
+#define CONFIG_PICOCOREMX6UL100_LCDIF0		DISPLAY_LVDS
+
+#if (CONFIG_PICOCOREMX6UL100_LCDIF0 == DISPLAY_LCD)
+/* 24 bit LCD signals are possible but then some gpios like touch reset
+ * and bl pwm are not available in revision 1.00.
+ */
+//#define CONFIG_PICOCOREMX6UL100_LCD_24_BIT
+/*
+ * Configure LCD settings here (ignored if LCD is not used)
+ */
+#define CONFIG_PICOCOREMX6UL100_LCD_BPP		32
+#ifdef CONFIG_PICOCOREMX6UL100_LCD_24_BIT
+#define CONFIG_PICOCOREMX6UL100_LCD_BUS_WIDTH	24
+#else
+#define CONFIG_PICOCOREMX6UL100_LCD_BUS_WIDTH	18
+#endif
+#define CONFIG_PICOCOREMX6UL100_LCD_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <1>;		\
+}
+#elif (CONFIG_PICOCOREMX6UL100_LCDIF0 == DISPLAY_LVDS)
+#define CONFIG_PICOCOREMX6UL100_LCD_BPP		32
+#define CONFIG_PICOCOREMX6UL100_LCD_BUS_WIDTH	18
+#define CONFIG_PICOCOREMX6UL100_LCD_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <210>;		\
+	hback-porch = <46>;		\
+	hsync-len = <2>;		\
+	vback-porch = <23>;		\
+	vfront-porch = <22>;		\
+	vsync-len = <2>;		\
+	hsync-active = <1>;		\
+	vsync-active = <1>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#endif
+/*
+ * Configure touch screen:
+ *
+  * - 4-wire/5-wire analog resistive touch, touch controller on RGB LCD adapter
+ * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
+ * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ * - PCAP touch based on Sitronix controller (ST1633i), on Touch Connector
+ * - PCAP touch based on Ilitek controller (ILI12xx), on Touch Connector
+ *
+ * On PicoCoreMX6UL100, all touches use the same interrupt line and I2C bus, so do not
+ * select more than one entry! Select none if you do not need touch support.
+ */
+//#define CONFIG_PICOCOREMX6UL100_CAPTOUCH_MXT224
+#define CONFIG_PICOCOREMX6UL100_CAPTOUCH_FT5x06
+//#define CONFIG_PICOCOREMX6UL100_CAPTOUCH_SITRONIX
+//#define CONFIG_PICOCOREMX6UL100_CAPTOUCH_ILITEK
+//#define CONFIG_PICOCOREMX6UL100_CAPTOUCH_TSC2004
+
+/* CMA: Set 64 MB for Continuous Memory Allocator */
+#define CONFIG_PICOCOREMX6UL100_CMA_SIZE 0x4000000
+
+/* NAND
+ * If eMMC is equipped, NAND is not possible.
+ */
+#define CONFIG_PICOCOREMX6UL100_NAND
+
+/* EMMC
+ * If NAND is equipped, EMMC is not possible.
+ */
+#define CONFIG_PICOCOREMX6UL100_EMMC
+
+/* Network */
+#define CONFIG_PICOCOREMX6UL100_ETH0
+#define CONFIG_PICOCOREMX6UL100_ETH1
+
+/* USB */
+#define CONFIG_PICOCOREMX6UL100_USB_OTG1
+#define CONFIG_PICOCOREMX6UL100_USB_HOST
+
+/* CAN */
+#define CONFIG_PICOCOREMX6UL100_CAN_A
+
+/* EEPROM */
+#define CONFIG_PICOCOREMX6UL100_EEPROM
+
+/* PWM */
+#define CONFIG_PICOCOREMX6UL100_PWM_A
+#define CONFIG_PICOCOREMX6UL100_BL_CTRL
+
+/* I2C */
+#define CONFIG_PICOCOREMX6UL100_I2C_A
+#define CONFIG_PICOCOREMX6UL100_I2C_B
+#define CONFIG_PICOCOREMX6UL100_I2C_C
+#define CONFIG_PICOCOREMX6UL100_I2C_D
+
+/* UART */
+#define CONFIG_PICOCOREMX6UL100_UART_A
+#define CONFIG_PICOCOREMX6UL100_UART_A_RTSCTS
+#define CONFIG_PICOCOREMX6UL100_UART_B
+#define CONFIG_PICOCOREMX6UL100_UART_B_RTSCTS
+#define CONFIG_PICOCOREMX6UL100_UART_C
+#define CONFIG_PICOCOREMX6UL100_UART_D
+
+#define CONFIG_PICOCOREMX6UL100_SPI_A
+#define CONFIG_PICOCOREMX6UL100_SPI_B
+#define CONFIG_PICOCOREMX6UL100_SPI_C
+
+/* Audio */
+#define CONFIG_PICOCOREMX6UL100_AUDIO
+
+/* WLAN/BLUETOOTH; either WLAN-only or combined WLAN/Bluetooth chip */
+#define CONFIG_PICOCOREMX6UL100_WLAN
+
+/*
+ * SD_A - External SD port with CD/WP
+ * on PCoreBB microSD slot with CD
+ * write protect not available on SKIT
+ */
+#define CONFIG_PICOCOREMX6UL100_SD_A
+#define CONFIG_PICOCOREMX6UL100_SD_A_CD
+//#define CONFIG_PICOCOREMX6UL100_SD_A_WP /*WP not available on SKIT */
+
+/* Check for invalid CONFIG combinations */
+/* If WLAN is equipped, SD_A is not available */
+#ifdef CONFIG_PICOCOREMX6UL100_WLAN
+#undef CONFIG_PICOCOREMX6UL100_SD_A
+#undef CONFIG_PICOCOREMX6UL100_SD_A_CD
+#undef CONFIG_PICOCOREMX6UL100_SD_A_WP
+#endif
+
+/* If SD_A is used, SPI_B is not available */
+#ifdef CONFIG_PICOCOREMX6UL100_SD_A
+#undef CONFIG_PICOCOREMX6UL100_SPI_B
+#endif
+
+/* If ETH1 (PHY) is equipped, SPI_C is not available */
+#ifdef CONFIG_PICOCOREMX6UL100_ETH1
+#undef CONFIG_PICOCOREMX6UL100_SPI_C
+#endif
+
+/* If LCD_24_BIT is set, bl_pwm is in revision 1.00 not available */
+#if defined (CONFIG_PICOCOREMX6UL100_LCD_24_BIT) && \
+	(CONFIG_PICOCOREMX6UL100_BOARD_REVISION == 100)
+#undef CONFIG_PICOCOREMX6UL100_BL_CTRL
+#endif
+
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/pwm/pwm.h>
+#include <dt-bindings/rtc/nxp,pcf85263.h>
+
+#ifdef CONFIG_PICOCOREMX6UL_ULL_100
+#include "imx6ull.dtsi"
+#else
+#include "imx6ul.dtsi"
+#endif
+
+/ {
+	model = "F&S PicoCoreMX6UL100";
+#ifdef CONFIG_PICOCOREMX6UL_ULL_100
+	compatible = "fsl,imx6ull-picocoremx6ull", "fsl,imx6ull";
+#else
+	compatible = "fsl,imx6ul-picocoremx6ul", "fsl,imx6ul";
+#endif
+
+	aliases {
+#ifdef CONFIG_PICOCOREMX6UL100_NAND
+		nand = &gpmi;
+#endif
+#ifdef CONFIG_PICOCOREMX6UL100_EMMC
+		emmc = &usdhc2;
+#endif
+	};
+	chosen {
+	};
+	memory {
+		reg = <0x80000000 0x80000000>;
+	};
+
+#ifdef CONFIG_PICOCOREMX6UL100_BL_CTRL
+	backlight_ldb {
+		compatible = "pwm-backlight";
+		power-supply = <&reg_ldb_bl>;
+#ifdef CONFIG_PICOCOREMX6UL100_CAPTOUCH_TSC2004
+		pwms = <&pca963x 1 640000 0>;
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+#else
+		pwms = <&pwm7 0 250000 PWM_POLARITY_INVERTED>;
+		brightness-levels = <135 143 151 159 167 175 183 191
+				     199 207 215 223 231 239 247 255>;
+#endif
+		default-brightness-level = <14>;
+		fb-names = "mxs-lcdif";
+	};
+#endif
+
+	regulators {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		reg_vref_1v8: regulator_1v8 {
+			compatible = "regulator-fixed";
+			regulator-name = "vref-1V8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-always-on;
+		};
+
+		reg_vref_3v3: regulator_3v3 {
+			compatible = "regulator-fixed";
+			regulator-name = "vref-3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+#ifdef CONFIG_PICOCOREMX6UL100_WLAN
+		wlreg_on: fixedregulator@100 {
+			compatible = "regulator-fixed";
+			regulator-name = "wlreg_on";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			gpio = <&gpio5 11 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_CAN_A
+		reg_can: regulator_can {
+			compatible = "regulator-fixed";
+			regulator-name = "can";
+		};
+#endif
+
+#if (CONFIG_PICOCOREMX6UL100_LCDIF0 != DISPLAY_NONE)
+		/* VLCD */
+		reg_vlcd: regulator_vlcd {
+			compatible = "regulator-fixed";
+			regulator-name = "vlcd";
+			gpio = <&gpio5 5 0>;
+			enable-active-high;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_BL_CTRL
+		reg_ldb_bl: ldb-bl {
+			compatible = "regulator-fixed";
+			regulator-name = "ldb-bl";
+#ifdef CONFIG_PICOCOREMX6UL100_CAPTOUCH_TSC2004
+			gpio = <&pca963x 0 GPIO_ACTIVE_HIGH>;
+#else
+			gpio = <&gpio5 4 GPIO_ACTIVE_HIGH>;
+#endif
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_AUDIO
+		/* SGTL5000 analog voltage */
+		reg_sgtl5000_vdda: sgtl5000_vdda {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDA-supply";
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 I/O voltage */
+		reg_sgtl5000_vddio: sgtl5000_vddio {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 internal digital voltage */
+		reg_sgtl5000_vddd: sgtl5000_vddd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDD-supply";
+			regulator-min-microvolt = <1500000>;
+			regulator-max-microvolt = <1500000>;
+			regulator-always-on;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_USB_OTG1
+		reg_usb_otg1_vbus: usb_otg1_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_otg1_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio5 9 0>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_USB_HOST
+		reg_usb_otg2_vbus: usb_otg2_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_otg2_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio5 8 0>;
+			enable-active-high;
+		};
+#endif
+	};
+
+#ifdef CONFIG_PICOCOREMX6UL100_AUDIO
+	sound-sgtl5000 {
+		compatible = "fsl,imx-audio-sgtl5000";
+		cpu-dai = <&sai2>;
+		audio-codec = <&sgtl5000>;
+		model = "imx-sgtl5000";
+		audio-routing =
+			"LINE_IN", "Line In Jack",
+//###			"MIC_IN", "Mic Jack",
+//###			"Line Out Jack", "LINE_OUT",
+			"Headphone Jack", "HP_OUT";
+	};
+#endif
+
+	/* F&S board information */
+	bdinfo {
+		compatible = "bdinfo";
+		board_name = "PicoCoreMX6UL100";
+	};
+
+};
+
+/* RAM size for Continues Memory Allocator */
+&cma {
+	size = <CONFIG_PICOCOREMX6UL100_CMA_SIZE>;
+};
+
+&busfreq {
+	/* Disable bus frequency scaling, because reducing bus frequency to
+	   24 MHz does not work with all types of DDR3 RAM */
+	disable-scaling;
+};
+
+&cpu0 {
+	arm-supply = <&reg_arm>;
+	soc-supply = <&reg_soc>;
+	//dc-supply = <&reg_dvfs>;
+};
+
+&clks {
+	/* Set audio clock rate */
+	assigned-clocks = <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>,
+			  <&clks IMX6UL_CLK_SAI2_SEL>,
+			  <&clks IMX6UL_CLK_SAI2>;
+	assigned-clock-parents = <0>,
+				 <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>,
+				 <0>;
+//###	assigned-clock-rates = <786432000>, <0>, <24576000>;
+	assigned-clock-rates = <786432000>, <0>, <12288000>;
+};
+
+&dma_apbh {
+	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
+	compatible = "fus,imx6ul-dma-apbh", "fus,imx28-dma-apbh";
+	iram = <&ocram>;
+};
+
+#ifdef CONFIG_PICOCOREMX6UL100_NAND
+&gpmi {
+	/* Switch to F&S implementation of GPMI NAND driver */
+	compatible = "fus,imx6ul-gpmi-nand", "fus,imx6q-gpmi-nand";
+	pinctrl-names = "default";
+	fus,skipblocks = <2>;
+	fus,chunk1k;
+	fus,ecc_strength = <8>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_SPI_A
+&ecspi2 {
+	fsl,spi-num-chipselects = <1>;
+	cs-gpios = <&gpio4 22 0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi2>;
+	status = "okay";
+
+	spidev@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+	};
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_SPI_B
+&ecspi1 {
+	fsl,spi-num-chipselects = <1>;
+	cs-gpios = <&gpio4 26 0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi1>;
+	status = "okay";
+
+	spidev@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+	};
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_SPI_C
+&ecspi4 {
+	fsl,spi-num-chipselects = <1>;
+	cs-gpios = <&gpio2 15 0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi4>;
+	status = "okay";
+
+	spidev@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+	};
+};
+#endif
+
+
+#ifdef CONFIG_PICOCOREMX6UL100_ETH0
+&fec1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_enet1>;
+	phy-mode = "rmii";
+	phy-handle = <&ethphy0>;
+	phy-supply = <&reg_vref_3v3>;
+	fsl,ref-clock-out;
+	status = "okay";
+
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy0: ethernet-phy@0 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <0>;
+		};
+
+#ifdef CONFIG_PICOCOREMX6UL100_ETH1
+		ethphy1: ethernet-phy@3 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <3>;
+		};
+#endif
+	};
+};
+#endif /* CONFIG_PICOCOREMX6UL100_ETH0 */
+
+#ifdef CONFIG_PICOCOREMX6UL100_ETH1
+&fec2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_enet2>;
+	phy-mode = "rmii";
+	phy-handle = <&ethphy1>;
+	phy-supply = <&reg_vref_3v3>;
+	fsl,ref-clock-out;
+	status = "okay";
+
+#ifndef CONFIG_PICOCOREMX6UL100_ETH0
+	/* If only ETH1 is available, use MDIO bus of FEC2 */
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy1: ethernet-phy@3 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <3>;
+		};
+	};
+#endif
+};
+#endif /* CONFIG_PICOCOREMX6UL100_ETH1 */
+
+#ifdef CONFIG_PICOCOREMX6UL100_CAN_A
+&flexcan1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_flexcan1>;
+	xceiver-supply = <&reg_can>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_I2C_A
+&i2c1 {
+	clock_frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c1>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_I2C_D
+&i2c2 {
+	clock_frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c2>;
+	status = "okay";
+
+#if (CONFIG_PICOCOREMX6UL100_LCDIF0 == DISPLAY_LVDS)
+	/* LVDS CHIP address: 0x2D */
+	lt9211@2d {
+		compatible = "lontium,lt9211";
+		reg = <0x2d>;
+		reset-gpios = <&gpio3 4 GPIO_ACTIVE_HIGH>;
+
+		display-timings {
+			native-mode = <&timing1>;
+			timing1: CONFIG_PICOCOREMX6UL100_LCD_TIMING;
+		};
+	};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_AUDIO
+	sgtl5000: sgtl5000@0a {
+		compatible = "fsl,sgtl5000";
+		reg = <0x0a>;
+		mono2both;
+		clocks = <&clks IMX6UL_CLK_SAI2>;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+	};
+#endif
+
+	rtc85263: rtc85263@51 {
+		compatible = "nxp,pcf85263";
+		reg = <0x51>;
+		clock-out = <PCF85263_CLK_OUT_32p768kHz>;
+
+		quartz-load-capacitance = <PCF85263_QUARTZCAP_12p5pF>;
+		quartz-drive-strength = <PCF85263_QUARTZDRIVE_LOW>;
+	};
+
+#ifdef CONFIG_PICOCOREMX6UL100_EEPROM
+	/* EEPROM */
+	eeprom: eeprom@50 {
+		compatible = "atmel,24c02";
+		reg = <0x50>;
+		pagesize = <8>;
+	};
+#endif
+
+	//### TODO: implement Security Chip SE050A1HQ1
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_I2C_B
+&i2c3 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c3>;
+	status = "okay";
+
+#ifdef CONFIG_PICOCOREMX6UL100_CAPTOUCH_MXT224
+	mxt224@4a {
+		compatible = "atmel,maxtouch";
+		reg = <0x4a>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <1 2>;
+		atmel,cfg_name = "atmel/mxt224.cfg";
+		atmel,reset-gpio = <&gpio3 28 GPIO_ACTIVE_LOW>;
+#if 0
+		atmel,suspend-mode = <2>;
+		vdd = <&reg_atmel_mxt_vdd>;
+		avdd = <&reg_atmel_mxt_avdd>;
+#endif
+	};
+#endif
+
+        /* Touch driver Focaltech  */
+#if 0
+	/* Mainline driver, may only work on EDT displays */
+	edt-ft5x06@38 {
+		compatible = "edt,edt-ft5306";
+		reg = <0x38>;
+		threshold = <25>;
+		gain = <8>;
+		offset = <0>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <1 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&gpio3 28 GPIO_ACTIVE_LOW>;
+	};
+#else
+
+#ifdef CONFIG_PICOCOREMX6UL100_CAPTOUCH_FT5x06
+	/* F&S driver V3.0 */
+	ft5x06_ts@38 {
+		compatible = "FocalTech,ft5306";
+		reg = <0x38>;
+		fingers = <2>;
+		touchscreen-size-x = <800>;
+		touchscreen-size-y = <480>;
+		threshold = <25>;
+		x-rev;
+		y-rev;
+		interrupt-parent = <&gpio1>;
+		interrupts = <1 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&gpio3 28 GPIO_ACTIVE_LOW>;
+		linux,wakeup;
+	};
+#endif
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_CAPTOUCH_SITRONIX
+	/* Sitronix PCAP touch on Touch-Connector (I2C) */
+	st1633i@48 {
+		compatible = "sitronix";
+		reg = <0x48>;
+		swap-xy;
+		interrupt-parent = <&gpio1>;
+		interrupts = <1 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio3 28 GPIO_ACTIVE_LOW>;
+	};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_CAPTOUCH_ILITEK
+	/* Ilitek PCAP touch on Touch-Connector (I2C) */
+	ili210x@41 {
+		compatible = "Ilitek,ili210x";
+		reg = <0x41>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <1 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio3 28 GPIO_ACTIVE_LOW>;
+	};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_CAPTOUCH_TSC2004
+	pca963x: pca9632@60 {
+		compatible = "nxp,pca9632";
+		reg = <0x60>;
+		nxp,totem-pole;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#pwm-cells = <3>;
+		#gpio-cells = <2>;
+		led@0 {
+			reg = <0>;
+			label = "0-PWRCTL";
+			type = "GPIO";
+			default-on;		/* or: keep-value */
+			active-high;
+		};
+		led@1 {
+			reg = <1>;
+			label = "1-LEDCTRL";
+			type = "PWM";
+			default-on;		/* or: keep-value */
+			active-low;
+		};
+		led@2 {
+			reg = <2>;
+			label = "2-ROTATE";
+			type = "GPIO";
+			active-high;		/* optionally: keep value */
+		};
+		led@3 {
+			reg = <3>;
+			label = "3-unused";
+			type = "LED";
+			active-low;
+		};
+	};
+
+	tsc2004@4a {
+		compatible = "ti,tsc2004";
+		reg = <0x4a>;
+		vio-supply = <&reg_vref_3v3>;
+		interrupts-extended = <&gpio1 1 IRQ_TYPE_EDGE_FALLING>;
+		touchscreen-fuzz-x = <4>;
+		touchscreen-fuzz-y = <7>;
+		touchscreen-fuzz-pressure = <20>;
+		touchscreen-size-x = <4096>;
+		touchscreen-size-y = <4096>;
+		touchscreen-max-pressure = <2048>;
+		touchscreen-inverted-y;
+		ti,x-plate-ohms = <280>;
+		ti,pre-charge-time = <4>;
+		ti,sense-time-sel = <3>;
+	};
+#endif
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_I2C_C
+&i2c4 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c4>;
+	status = "okay";
+};
+#endif
+
+#if (CONFIG_PICOCOREMX6UL100_LCDIF0 != DISPLAY_NONE)
+&lcdif {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lcdif_dat
+		     &pinctrl_lcdif_ctrl>;
+	display = <&display0>;
+	/* Display bus pattern: RGB=0, RBG=1, GBR=2, GRB=3, BRG=4, BGR=5; */
+	//pattern = <4>;
+	//pattern = <2>;
+#ifdef CONFIG_PICOCOREMX6UL100_CAPTOUCH_TSC2004
+ 	pattern = <5>;
+#else
+ 	pattern = <0>;
+#endif
+	lcd-supply = <&reg_vlcd>;
+	status = "okay";
+
+	display0: lcd {
+		bits-per-pixel = <CONFIG_PICOCOREMX6UL100_LCD_BPP>;
+		bus-width = <CONFIG_PICOCOREMX6UL100_LCD_BUS_WIDTH>;
+
+		display-timings {
+			native-mode = <&timing0>;
+			timing0: CONFIG_PICOCOREMX6UL100_LCD_TIMING;
+		};
+	};
+};
+#endif /* CONFIG_PICOCOREMX6UL100_LCDIF0 != DISPLAY_NONE */
+
+#ifdef CONFIG_PICOCOREMX6UL100_BL_CTRL
+&pwm7{
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm7>;
+	#pwm-cells = <3>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_PWM_A
+&pwm8 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm8>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_AUDIO
+&sai2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sai2>;
+	fsl,mclk-out;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_UART_A
+/* UART_A (debug port on A7 ) on J9 pin 3-6 (RS232) */
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1>;
+#ifdef CONFIG_PICOCOREMX6UL100_UART_A_RTSCTS
+	uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_UART_C
+/* UART_C on J8 pin 3,5 (RS232) */
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_UART_B
+/* UART_B on J10 pin 3-6 (RS232/RS485) */
+&uart5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart5>;
+#ifdef CONFIG_PICOCOREMX6UL100_UART_B_RTSCTS
+	uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_UART_D
+/* UART_D on J11 pin 13,15 (TTL) */
+&uart6 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart6>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_USB_OTG1
+&usbotg1 {
+	pinctrl-names = "default";
+#ifdef CONFIG_PICOCOREMX6UL_ULL_100
+	pinctrl-0 = <&pinctrl_usbotg1 &pinctrl_usbotg1_snvs>;
+#else
+	pinctrl-0 = <&pinctrl_usbotg1>;
+#endif
+	vbus-supply = <&reg_usb_otg1_vbus>;
+	disable-over-current;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_USB_HOST
+&usbotg2 {
+	pinctrl-names = "default";
+#ifdef CONFIG_PICOCOREMX6UL_ULL_100
+	pinctrl-0 = <&pinctrl_usbotg2_snvs>;
+#else
+	pinctrl-0 = <&pinctrl_usbotg2>;
+#endif
+	vbus-supply = <&reg_usb_otg2_vbus>;
+	dr_mode = "host";
+	disable-over-current;
+	pwr-active-high;
+	status = "okay";
+};
+#endif
+
+#if defined(CONFIG_PICOCOREMX6UL100_WLAN) || defined(CONFIG_PICOCOREMX6UL100_SD_A)
+/* SD_A (Micro-SD slot on SKIT) or WLAN */
+&usdhc1 {
+#ifdef CONFIG_PICOCOREMX6UL100_SD_A
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-0 = <&pinctrl_usdhc1        &pinctrl_usdhc1_cdwp>;
+	pinctrl-1 = <&pinctrl_usdhc1_100mhz &pinctrl_usdhc1_cdwp>;
+	pinctrl-2 = <&pinctrl_usdhc1_200mhz &pinctrl_usdhc1_cdwp>;
+#else
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc1 &pinctrl_usdhc1_cdwp>;
+#endif
+	bus-width = <4>;
+#ifdef CONFIG_PICOCOREMX6UL100_WLAN
+	vmmc-supply = <&wlreg_on>; /* VDD misused for RESET_WLAN/BT */
+	vqmmc-supply = <&reg_vref_1v8>;	/* VDD_IO */
+	wifi-host; /* needed for BCM wifi cards */
+	enable-sdio-wakeup;
+#endif
+#ifdef CONFIG_PICOCOREMX6UL100_SD_A
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+#endif
+#ifdef CONFIG_PICOCOREMX6UL100_SD_A_CD
+	cd-gpios = <&gpio4 26 GPIO_ACTIVE_LOW>;
+#else
+	non-removable;
+#endif
+#ifdef CONFIG_PICOCOREMX6UL100_SD_A_WP
+	wp-gpios = <&gpio4 25 GPIO_ACTIVE_HIGH>;
+#endif
+
+	keep-power-in-suspend;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_EMMC
+&usdhc2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc2>;
+	bus-width = <8>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+	keep-power-in-suspend;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL_ULL_100
+&iomuxc_snvs {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_snvs_1>;
+	picocoremx6ull100 {
+		pinctrl_snvs_1: snvsgrp-1 {
+			fsl,pins = <
+				/* WLAN_RSTn */
+#ifdef CONFIG_PICOCOREMX6UL100_WLAN
+				MX6ULL_PAD_BOOT_MODE1__GPIO5_IO11	0x030b0
+#endif
+				/* ETH_PHY_IRQ */
+				MX6ULL_PAD_SNVS_TAMPER2__GPIO5_IO02	0x0b0b0
+#ifdef CONFIG_PICOCOREMX6UL100_ETH0
+				/* ETH1_PHY_RSTn */
+				MX6ULL_PAD_SNVS_TAMPER0__GPIO5_IO00	0x0b0b0
+#endif
+#ifdef CONFIG_PICOCOREMX6UL100_ETH1
+				/* ETH2_PHY_RSTn */
+				MX6ULL_PAD_SNVS_TAMPER1__GPIO5_IO01	0x0b0b0
+#endif
+				/* DISP_IRQn */
+				MX6ULL_PAD_SNVS_TAMPER3__GPIO5_IO03	0x0b0b0
+				/* BL_ON */
+				MX6ULL_PAD_SNVS_TAMPER4__GPIO5_IO04	0x0b0b0
+				/* VLCD_ON */
+				MX6ULL_PAD_SNVS_TAMPER5__GPIO5_IO05	0x0b030
+				/* SE050_ENA */
+				MX6ULL_PAD_SNVS_TAMPER6__GPIO5_IO06	0x0b030
+				/* DVS */
+				MX6ULL_PAD_SNVS_TAMPER7__GPIO5_IO07	0x03010
+			>;
+		};
+
+#ifdef CONFIG_PICOCOREMX6UL100_USB_OTG1
+		pinctrl_usbotg1_snvs: usbotg1grp {
+			fsl,pins = <
+				/* USB_OTG1_PWR, active low */
+				MX6ULL_PAD_SNVS_TAMPER9__GPIO5_IO09	0x0b030
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_USB_HOST
+		pinctrl_usbotg2_snvs: usbotg2grp {
+			fsl,pins = <
+				/* USB_OTG2_PWR, active high */
+				MX6ULL_PAD_SNVS_TAMPER8__GPIO5_IO08	0x03030
+			>;
+		};
+#endif
+	};
+};
+#endif
+
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog_1>;
+	picocoremx6ul100 {
+		pinctrl_hog_1: hoggrp-1 {
+			fsl,pins = <
+#ifndef CONFIG_PICOCOREMX6UL_ULL_100
+				/* WLAN_RSTn */
+#ifdef CONFIG_PICOCOREMX6UL100_WLAN
+				MX6UL_PAD_BOOT_MODE1__GPIO5_IO11	0x030b0
+#endif
+				/* ETH_PHY_IRQ */
+				MX6UL_PAD_SNVS_TAMPER2__GPIO5_IO02	0x0b0b0
+#ifdef CONFIG_PICOCOREMX6UL100_ETH0
+				/* ETH1_PHY_RSTn */
+				MX6UL_PAD_SNVS_TAMPER0__GPIO5_IO00	0x0b0b0
+#endif
+#ifdef CONFIG_PICOCOREMX6UL100_ETH1
+				/* ETH2_PHY_RSTn */
+				MX6UL_PAD_SNVS_TAMPER1__GPIO5_IO01	0x0b0b0
+#endif
+				/* DISP_IRQn */
+				MX6UL_PAD_SNVS_TAMPER3__GPIO5_IO03	0x0b0b0
+				/* BL_ON */
+				MX6UL_PAD_SNVS_TAMPER4__GPIO5_IO04	0x0b0b0
+				/* VLCD_ON */
+				MX6UL_PAD_SNVS_TAMPER5__GPIO5_IO05	0x0b030
+				/* SE050_ENA */
+				MX6UL_PAD_SNVS_TAMPER6__GPIO5_IO06	0x0b030
+				/* DVS */
+				MX6UL_PAD_SNVS_TAMPER7__GPIO5_IO07	0x0b030
+#endif
+				/* DISP_RSTn */
+				MX6UL_PAD_LCD_RESET__GPIO3_IO04		0x030b0
+
+				MX6UL_PAD_JTAG_TMS__SAI2_MCLK		0x17088
+//###				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
+
+				/* GPIOs */
+				MX6UL_PAD_UART2_CTS_B__GPIO1_IO22	0x030b0
+				MX6UL_PAD_UART2_RTS_B__GPIO1_IO23	0x030b0
+#ifndef CONFIG_PICOCOREMX6UL100_LCD_24_BIT
+				/* touch reset */
+				MX6UL_PAD_LCD_DATA23__GPIO3_IO28	0x0b0b0
+				/* display reset */
+				MX6UL_PAD_LCD_DATA22__GPIO3_IO27	0x030b0
+				MX6UL_PAD_LCD_DATA21__GPIO3_IO26	0x030b0
+				MX6UL_PAD_LCD_DATA20__GPIO3_IO25	0x030b0
+				MX6UL_PAD_LCD_DATA19__GPIO3_IO24	0x030b0
+#endif
+#if (CONFIG_PICOCOREMX6UL100_LCDIF0 == DISPLAY_NONE)
+				MX6UL_PAD_LCD_HSYNC__GPIO3_IO02		0x030b0
+				MX6UL_PAD_LCD_VSYNC__GPIO3_IO03		0x030b0
+#endif
+#ifndef CONFIG_PICOCOREMX6UL100_ETH1
+				MX6UL_PAD_SNVS_TAMPER1__GPIO5_IO01	0x030b0
+				MX6UL_PAD_ENET2_RX_DATA1__GPIO2_IO09	0x030b0
+				MX6UL_PAD_ENET2_RX_DATA0__GPIO2_IO08	0x030b0
+				MX6UL_PAD_ENET2_RX_EN__GPIO2_IO10	0x030b0
+				MX6UL_PAD_ENET2_TX_DATA0__GPIO2_IO11	0x030b0
+#endif
+			>;
+		};
+
+#ifdef CONFIG_PICOCOREMX6UL100_SPI_A
+		pinctrl_ecspi2: ecspi2grp {
+			fsl,pins = <
+				MX6UL_PAD_CSI_DATA00__ECSPI2_SCLK	0x100b1
+				MX6UL_PAD_CSI_DATA01__GPIO4_IO22	0x1b0b0
+				MX6UL_PAD_CSI_DATA02__ECSPI2_MOSI	0x100b1
+				MX6UL_PAD_CSI_DATA03__ECSPI2_MISO	0x100b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_SPI_B
+		pinctrl_ecspi1: ecspi1grp {
+			fsl,pins = <
+				MX6UL_PAD_CSI_DATA04__ECSPI1_SCLK	0x100b1
+				MX6UL_PAD_CSI_DATA05__GPIO4_IO26	0x1b0b0
+				MX6UL_PAD_CSI_DATA06__ECSPI1_MOSI	0x100b1
+				MX6UL_PAD_CSI_DATA07__ECSPI1_MISO	0x100b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_SPI_C
+		pinctrl_ecspi4: ecspi4grp {
+			fsl,pins = <
+				MX6UL_PAD_ENET2_TX_DATA1__ECSPI4_SCLK	0x100b1
+				MX6UL_PAD_ENET2_RX_ER__GPIO2_IO15	0x1b0b0
+				MX6UL_PAD_ENET2_TX_EN__ECSPI4_MOSI	0x100b1
+				MX6UL_PAD_ENET2_TX_CLK__ECSPI4_MISO	0x100b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_ETH0
+		pinctrl_enet1: enet1grp {
+			fsl,pins = <
+				/* MDIO */
+				MX6UL_PAD_GPIO1_IO07__ENET1_MDC		0x0b0e9
+				MX6UL_PAD_GPIO1_IO06__ENET1_MDIO	0x0b831
+
+				/* FEC1 */
+				MX6UL_PAD_ENET1_RX_EN__ENET1_RX_EN	0x0b0e9
+				MX6UL_PAD_ENET1_RX_ER__ENET1_RX_ER	0x0b0e9
+				MX6UL_PAD_ENET1_RX_DATA0__ENET1_RDATA00	0x0b0e9
+				MX6UL_PAD_ENET1_RX_DATA1__ENET1_RDATA01	0x0b0e9
+				MX6UL_PAD_ENET1_TX_EN__ENET1_TX_EN	0x0b0e9
+				MX6UL_PAD_ENET1_TX_DATA0__ENET1_TDATA00	0x0b0e9
+				MX6UL_PAD_ENET1_TX_DATA1__ENET1_TDATA01	0x0b0e9
+				MX6UL_PAD_ENET1_TX_CLK__ENET1_REF_CLK1	0x40000031
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_ETH1
+		pinctrl_enet2: enet2grp {
+			fsl,pins = <
+#ifndef CONFIG_PICOCOREMX6UL100_ETH0
+				/* MDIO, only used if FEC1 is not active */
+				MX6UL_PAD_GPIO1_IO07__ENET2_MDC		0x0b0e9
+				MX6UL_PAD_GPIO1_IO06__ENET2_MDIO	0x0b831
+#endif
+				/* FEC2 */
+				MX6UL_PAD_ENET2_RX_EN__ENET2_RX_EN	0x1b0b0
+				MX6UL_PAD_ENET2_RX_ER__ENET2_RX_ER	0x1b0b0
+				MX6UL_PAD_ENET2_RX_DATA0__ENET2_RDATA00	0x1b0b0
+				MX6UL_PAD_ENET2_RX_DATA1__ENET2_RDATA01	0x1b0b0
+				MX6UL_PAD_ENET2_TX_EN__ENET2_TX_EN	0x1b0b0
+				MX6UL_PAD_ENET2_TX_DATA0__ENET2_TDATA00	0x1b0b0
+				MX6UL_PAD_ENET2_TX_DATA1__ENET2_TDATA01	0x1b0b0
+				MX6UL_PAD_ENET2_TX_CLK__ENET2_REF_CLK2	0x4001b031
+			>;
+	       };
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_CAN_A
+		pinctrl_flexcan1: flexcan1grp{
+			fsl,pins = <
+				MX6UL_PAD_UART3_RTS_B__FLEXCAN1_RX	0x1b020
+				MX6UL_PAD_UART3_CTS_B__FLEXCAN1_TX	0x1b020
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_I2C_A
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <
+				MX6UL_PAD_UART4_TX_DATA__I2C1_SCL	0x4001b8b0
+				MX6UL_PAD_UART4_RX_DATA__I2C1_SDA	0x4001b8b0
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_I2C_D
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <
+				MX6UL_PAD_UART5_TX_DATA__I2C2_SCL	0x4001b8b0
+				MX6UL_PAD_UART5_RX_DATA__I2C2_SDA	0x4001b8b0
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_I2C_B
+		pinctrl_i2c3: i2c3grp {
+			fsl,pins = <
+				MX6UL_PAD_UART1_TX_DATA__I2C3_SCL	0x4001b8b0
+				MX6UL_PAD_UART1_RX_DATA__I2C3_SDA	0x4001b8b0
+				/* I2C_B_IRQn */
+				MX6UL_PAD_GPIO1_IO01__GPIO1_IO01	0x0b0b0
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_I2C_C
+		pinctrl_i2c4: i2c4grp {
+			fsl,pins = <
+				MX6UL_PAD_UART2_TX_DATA__I2C4_SCL	0x4001b8b0
+				MX6UL_PAD_UART2_RX_DATA__I2C4_SDA	0x4001b8b0
+			>;
+		};
+#endif
+
+#if (CONFIG_PICOCOREMX6UL100_LCDIF0 != DISPLAY_NONE)
+		pinctrl_lcdif_dat: lcdifdatgrp {
+			fsl,pins = <
+				MX6UL_PAD_LCD_DATA00__LCDIF_DATA00	0x00059
+				MX6UL_PAD_LCD_DATA01__LCDIF_DATA01	0x00059
+				MX6UL_PAD_LCD_DATA02__LCDIF_DATA02	0x00059
+				MX6UL_PAD_LCD_DATA03__LCDIF_DATA03	0x00059
+				MX6UL_PAD_LCD_DATA04__LCDIF_DATA04	0x00059
+				MX6UL_PAD_LCD_DATA05__LCDIF_DATA05	0x00059
+				MX6UL_PAD_LCD_DATA06__LCDIF_DATA06	0x00059
+				MX6UL_PAD_LCD_DATA07__LCDIF_DATA07	0x00059
+				MX6UL_PAD_LCD_DATA08__LCDIF_DATA08	0x00059
+				MX6UL_PAD_LCD_DATA09__LCDIF_DATA09	0x00059
+				MX6UL_PAD_LCD_DATA10__LCDIF_DATA10	0x00059
+				MX6UL_PAD_LCD_DATA11__LCDIF_DATA11	0x00059
+				MX6UL_PAD_LCD_DATA12__LCDIF_DATA12	0x00059
+				MX6UL_PAD_LCD_DATA13__LCDIF_DATA13	0x00059
+				MX6UL_PAD_LCD_DATA14__LCDIF_DATA14	0x00059
+				MX6UL_PAD_LCD_DATA15__LCDIF_DATA15	0x00059
+				MX6UL_PAD_LCD_DATA16__LCDIF_DATA16	0x00059
+				MX6UL_PAD_LCD_DATA17__LCDIF_DATA17	0x00059
+#ifdef CONFIG_PICOCOREMX6UL100_LCD_24_BIT
+				MX6UL_PAD_LCD_DATA18__LCDIF_DATA18	0x00059
+				MX6UL_PAD_LCD_DATA19__LCDIF_DATA19	0x00059
+				MX6UL_PAD_LCD_DATA20__LCDIF_DATA20	0x00059
+				MX6UL_PAD_LCD_DATA21__LCDIF_DATA21	0x00059
+				MX6UL_PAD_LCD_DATA22__LCDIF_DATA22	0x00059
+				MX6UL_PAD_LCD_DATA23__LCDIF_DATA23	0x00059
+#endif
+			>;
+		};
+
+		pinctrl_lcdif_ctrl: lcdifctrlgrp {
+			fsl,pins = <
+				MX6UL_PAD_LCD_CLK__LCDIF_CLK		0x00059
+				MX6UL_PAD_LCD_ENABLE__LCDIF_ENABLE	0x00059
+				MX6UL_PAD_LCD_HSYNC__LCDIF_HSYNC	0x00059
+				MX6UL_PAD_LCD_VSYNC__LCDIF_VSYNC	0x00059
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_BL_CTRL
+		pinctrl_pwm7: pwm7grp {
+			fsl,pins = <
+				MX6UL_PAD_CSI_VSYNC__PWM7_OUT		0x110b0
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_PWM_A
+		pinctrl_pwm8: pwm8grp {
+			fsl,pins = <
+				MX6UL_PAD_CSI_HSYNC__PWM8_OUT		0x110b0
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_AUDIO
+		pinctrl_sai2: sai2grp {
+			fsl,pins = <
+				MX6UL_PAD_JTAG_TDI__SAI2_TX_BCLK	0x17088
+				MX6UL_PAD_JTAG_TDO__SAI2_TX_SYNC	0x17088
+				MX6UL_PAD_JTAG_TRST_B__SAI2_TX_DATA	0x17088
+				MX6UL_PAD_JTAG_TCK__SAI2_RX_DATA	0x17088
+				/* Clock needs to be set globally */
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_UART_A
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <
+				MX6UL_PAD_GPIO1_IO02__UART1_DCE_TX	0x1b0b1
+				MX6UL_PAD_GPIO1_IO03__UART1_DCE_RX	0x1b0b1
+#ifdef CONFIG_PICOCOREMX6UL100_UART_A_RTSCTS
+				MX6UL_PAD_UART1_CTS_B__UART1_DCE_CTS	0x1b0b1
+				MX6UL_PAD_UART1_RTS_B__UART1_DCE_RTS	0x1b0b1
+#endif
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_UART_B
+		pinctrl_uart5: uart5grp {
+			fsl,pins = <
+				MX6UL_PAD_GPIO1_IO04__UART5_DCE_TX	0x1b0b1
+				MX6UL_PAD_GPIO1_IO05__UART5_DCE_RX	0x1b0b1
+#ifdef CONFIG_PICOCOREMX6UL100_UART_B_RTSCTS
+				MX6UL_PAD_GPIO1_IO08__UART5_DCE_RTS	0x1b0b1
+				MX6UL_PAD_GPIO1_IO09__UART5_DCE_CTS	0x1b0b1
+#endif
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_UART_C
+		pinctrl_uart3: uart3grp {
+			fsl,pins = <
+				MX6UL_PAD_UART3_TX_DATA__UART3_DCE_TX	0x1b0b1
+				MX6UL_PAD_UART3_RX_DATA__UART3_DCE_RX	0x1b0b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_UART_D
+		pinctrl_uart6: uart6grp {
+			fsl,pins = <
+				MX6UL_PAD_CSI_MCLK__UART6_DCE_TX	0x1b0b1
+				MX6UL_PAD_CSI_PIXCLK__UART6_DCE_RX	0x1b0b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_USB_OTG1
+		pinctrl_usbotg1: usbotg1grp {
+			fsl,pins = <
+				/* USB_OTG1_ID: low: host, open: device */
+				MX6UL_PAD_GPIO1_IO00__ANATOP_OTG1_ID	0x1b000
+#ifndef CONFIG_PICOCOREMX6UL_ULL_100
+				/* USB_OTG1_PWR, active low */
+				MX6UL_PAD_SNVS_TAMPER9__GPIO5_IO09 	0x0b030
+#endif
+			>;
+		};
+#endif
+
+#if !defined(CONFIG_PICOCOREMX6UL_ULL_100) && defined(CONFIG_PICOCOREMX6UL100_USB_HOST)
+		pinctrl_usbotg2: usbotg2grp {
+			fsl,pins = <
+				/* USB_OTG2_PWR */
+				MX6UL_PAD_SNVS_TAMPER8__GPIO5_IO08	0x0b030
+			>;
+		};
+#endif
+
+#if defined(CONFIG_PICOCOREMX6UL100_WLAN) || defined(CONFIG_PICOCOREMX6UL100_SD_A)
+		pinctrl_usdhc1: usdhc1grp {
+			fsl,pins = <
+				MX6UL_PAD_SD1_CMD__USDHC1_CMD		0x170b1
+				MX6UL_PAD_SD1_CLK__USDHC1_CLK		0x100b1
+				MX6UL_PAD_SD1_DATA0__USDHC1_DATA0	0x170b1
+				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x170b1
+				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x170b1
+				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x170b1
+			>;
+		};
+
+		pinctrl_usdhc1_100mhz: usdhc1grp100mhz {
+			fsl,pins = <
+				MX6UL_PAD_SD1_CMD__USDHC1_CMD		0x170b9
+				MX6UL_PAD_SD1_CLK__USDHC1_CLK		0x100b9
+				MX6UL_PAD_SD1_DATA0__USDHC1_DATA0	0x170b9
+				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x170b9
+				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x170b9
+				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x170b9
+			>;
+		};
+
+		pinctrl_usdhc1_200mhz: usdhc1grp200mhz {
+			fsl,pins = <
+				MX6UL_PAD_SD1_CMD__USDHC1_CMD		0x170f9
+				MX6UL_PAD_SD1_CLK__USDHC1_CLK		0x100f9
+				MX6UL_PAD_SD1_DATA0__USDHC1_DATA0	0x170f9
+				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x170f9
+				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x170f9
+				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x170f9
+			>;
+		};
+
+		pinctrl_usdhc1_cdwp: usdhc1grp-cdwp {
+			fsl,pins = <
+#ifdef CONFIG_PICOCOREMX6UL100_SD_A_CD
+				/* Card Detect (CD), active low (pull-up) */
+				MX6UL_PAD_CSI_DATA05__GPIO4_IO26	0x17000
+#endif
+#ifdef CONFIG_PICOCOREMX6UL100_SD_A_WP
+				/*
+				 * Write Protect (WP), active high (pull-up)
+				 * lock:   WP switch open, pulled high
+				 * unlock: WP switch closed, connects to GND
+				 */
+				MX6UL_PAD_CSI_DATA04__GPIO4_IO25	0x17000
+#endif
+#ifdef CONFIG_PICOCOREMX6UL100_SD_A
+				/* SDA_RST only available for SD_A not for WLAN */
+				MX6UL_PAD_CSI_DATA06__GPIO4_IO27	0x17091
+#endif
+			>;
+		};
+#endif /* CONFIG_PICOCOREMX6UL100_SD_A */
+
+#ifdef CONFIG_PICOCOREMX6UL100_EMMC
+		pinctrl_usdhc2: usdhc2grp {
+			fsl,pins = <
+				MX6UL_PAD_NAND_WE_B__USDHC2_CMD		0x17091
+				MX6UL_PAD_NAND_RE_B__USDHC2_CLK		0x10091
+
+				MX6UL_PAD_NAND_DATA00__USDHC2_DATA0	0x17091
+				MX6UL_PAD_NAND_DATA01__USDHC2_DATA1	0x17091
+				MX6UL_PAD_NAND_DATA02__USDHC2_DATA2	0x17091
+				MX6UL_PAD_NAND_DATA03__USDHC2_DATA3	0x17091
+				MX6UL_PAD_NAND_DATA04__USDHC2_DATA4	0x17091
+				MX6UL_PAD_NAND_DATA05__USDHC2_DATA5	0x17091
+				MX6UL_PAD_NAND_DATA06__USDHC2_DATA6	0x17091
+				MX6UL_PAD_NAND_DATA07__USDHC2_DATA7	0x17091
+
+				/* Reset (for eMMC) */
+				MX6UL_PAD_NAND_ALE__USDHC2_RESET_B	0x17091
+			>;
+		};
+#endif /* CONFIG_PICOCOREMX6UL100_EMMC */
+
+	};
+};

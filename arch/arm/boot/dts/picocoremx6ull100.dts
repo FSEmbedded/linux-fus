@@ -1,0 +1,20 @@
+/*
+ * Copyright (C) 2021 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * Despite the name, the F&S PicoCoreMX6UL module is currently only available
+ * with i.MX6ULL CPU. But in the future there may also be versions with
+ * i.MX6UL CPU. So we provide two different device trees. This is the version
+ * for i.MX6ULL. However as most device tree settings are the same in both
+ * cases, we simply add the macro CONFIG_PICOCOREMX6UL_ULL_100 here and include
+ * the device tree for the i.MX6UL variant. Differences between i.MX6UL and
+ * i.MX6ULL can then be made there by looking at this macro, for example for
+ * tamper and boot pins that are located in the SNVS section instead of the
+ * IOMUXC section on i.MX6ULL.
+ */
+
+#define CONFIG_PICOCOREMX6UL_ULL_100
+#include "picocoremx6ul100.dts"
