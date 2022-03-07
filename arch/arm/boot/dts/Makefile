@@ -563,6 +563,7 @@ dtb-$(CONFIG_SOC_IMX6ULL) += \
 	imx6ull-14x14-evk-usb-certi.dtb \
 	efusa7ull.dtb \
 	cube2.0ull.dtb \
+	picocoma7ull.dtb \
 	picocoremx6ull.dtb \
 	imx6ull-9x9-evk.dtb \
 	imx6ull-9x9-evk-btwifi.dtb \
