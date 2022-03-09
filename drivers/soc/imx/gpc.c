@@ -38,6 +38,7 @@
 #define GPC_CLK_MAX		7
 
 #define PGC_DOMAIN_FLAG_NO_PD		BIT(0)
+#define PGC_DOMAIN_FLAG_NO_PU		BIT(1)
 
 #define GPC_PGC_DOMAIN_ARM	0
 #define GPC_PGC_DOMAIN_PU	1
@@ -94,6 +95,9 @@ static int imx6_pm_domain_power_on(struct generic_pm_domain *genpd)
 	struct imx_pm_domain *pd = to_imx_pm_domain(genpd);
 	int i, ret;
 	u32 val, req;
+
+	if (genpd->flags & PGC_DOMAIN_FLAG_NO_PU)
+		return -EBUSY;
 
 	if (pd->supply) {
 		ret = regulator_enable(pd->supply);
@@ -431,9 +435,12 @@ static int imx_gpc_probe(struct platform_device *pdev)
 	struct device_node *pgc_node;
 	struct regmap *regmap;
 	void __iomem *base;
+	bool no_gpu;
 	int ret;
 
 	pgc_node = of_get_child_by_name(pdev->dev.of_node, "pgc");
+
+	no_gpu = of_property_read_bool(pdev->dev.of_node, "no-gpu");
 
 	/* bail out if DT too old and doesn't provide the necessary info */
 	if (!of_property_read_bool(pdev->dev.of_node, "#power-domain-cells") &&
@@ -471,6 +478,11 @@ static int imx_gpc_probe(struct platform_device *pdev)
 	if (of_id_data->err006287_present)
 		imx_gpc_domains[GPC_PGC_DOMAIN_DISPLAY].base.flags |=
 				GENPD_FLAG_ALWAYS_ON;
+
+	/* Disable PU power up in normal operation if GPU is not present */
+	if (no_gpu)
+		imx_gpc_domains[GPC_PGC_DOMAIN_PU].base.flags |=
+				PGC_DOMAIN_FLAG_NO_PU;
 
 	if (!pgc_node) {
 		ret = imx_gpc_old_dt_init(&pdev->dev, regmap,
