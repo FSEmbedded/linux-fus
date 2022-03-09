@@ -29,9 +29,6 @@
 #define CONFIG_VC600_I2C_A
 #define CONFIG_VC600_I2C_C
 
-/* GPU is only available on CPU variants MCIMX6X3... and MCIMX6X4... */
-//#define CONFIG_VC600_GPU
-
 /* UART */
 #define CONFIG_VC600_UART_A
 #define CONFIG_VC600_UART_C
@@ -51,6 +48,15 @@
 / {
 	model = "VISUCONNECT 600";
 	compatible = "fus,imx6sx-picocoremx6sx", "fsl,imx6sx";
+
+ 	aliases {
+ 		nand = &gpmi;
+ 		emmc = &usdhc2;
+		rpmsg = &rpmsg;
+		gpc = &gpc;
+		gpu3d = &gpu3d;
+ 	};
+
 
 	clocks {
 		codec_osc: anaclk2 {
@@ -263,12 +269,6 @@
 
 };
 #endif /* CONFIG_VC600_I2C_C */
-
-#ifndef CONFIG_VC600_GPU
-&gpu {
-	status = "disabled";
-};
-#endif /* CONFIG_VC600_GPU */
 
 #ifdef CONFIG_VC600_UART_A
 /* UART_A implemented by UART1: TXD, RXD only */
