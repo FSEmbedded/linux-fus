@@ -65,7 +65,7 @@ wvga {					\
  * - PCAP touch based on Sitronix controller (ST1633i), on Touch Connector
  * - PCAP touch based on Ilitek controller (ILI12xx), on Touch Connector
  *
- * On efusA7UL, all touches use the same interrupt line and I2C bus, so do not
+ * On PicoCoreMX6UL, all touches use the same interrupt line and I2C bus, so do not
  * select more than one entry! Select none if you do not need touch support.
  */
 #define CONFIG_PICOCOREMX6UL_4WTOUCH_SX8655_RGBADAPTER
@@ -73,6 +73,7 @@ wvga {					\
 //#define CONFIG_PICOCOREMX6UL_CAPTOUCH_FT5x06
 //#define CONFIG_PICOCOREMX6UL_CAPTOUCH_SITRONIX
 //#define CONFIG_PICOCOREMX6UL_CAPTOUCH_ILITEK
+//#define CONFIG_PICOCOREMX6UL_CAPTOUCH_TSC2004
 
 /* CMA: Set 64 MB for Continuous Memory Allocator */
 #define CONFIG_PICOCOREMX6UL_CMA_SIZE 0x4000000
@@ -505,7 +506,7 @@ wvga {					\
 	mxt224@4a {
 		compatible = "atmel,maxtouch";
 		reg = <0x4a>;
-		interrupt-parent = <&gpio7>;
+		interrupt-parent = <&gpio5>;
 		interrupts = <0 2>;
 		atmel,cfg_name = "atmel/mxt224.cfg";
 		atmel,reset-gpio = <&gpio3 21 GPIO_ACTIVE_LOW>;
@@ -526,7 +527,7 @@ wvga {					\
 		threshold = <25>;
 		gain = <8>;
 		offset = <0>;
-		interrupt-parent = <&gpio7>;
+		interrupt-parent = <&gpio5>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpios = <&gpio3 21 GPIO_ACTIVE_LOW>;
 	};
@@ -541,7 +542,7 @@ wvga {					\
 		touchscreen-size-x = <800>;
 		touchscreen-size-y = <480>;
 		threshold = <25>;
-		interrupt-parent = <&gpio7>;
+		interrupt-parent = <&gpio5>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpios = <&gpio3 21 GPIO_ACTIVE_LOW>;
 		linux,wakeup;
@@ -574,7 +575,7 @@ wvga {					\
 		compatible = "sitronix";
 		reg = <0x48>;
 		swap-xy;
-		interrupt-parent = <&gpio7>;
+		interrupt-parent = <&gpio5>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpio = <&gpio3 21 GPIO_ACTIVE_LOW>;
 	};
@@ -585,9 +586,28 @@ wvga {					\
 	ili210x@41 {
 		compatible = "Ilitek,ili210x";
 		reg = <0x41>;
-		interrupt-parent = <&gpio7>;
+		interrupt-parent = <&gpio5>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpio = <&gpio3 21 GPIO_ACTIVE_LOW>;
+	};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL_CAPTOUCH_TSC2004
+	tsc2004@4a {
+		compatible = "ti,tsc2004";
+		reg = <0x4a>;
+		vio-supply = <&reg_vref_3v3>;
+		interrupts-extended = <&gpio5 0 IRQ_TYPE_EDGE_FALLING>;
+		touchscreen-fuzz-x = <4>;
+		touchscreen-fuzz-y = <7>;
+		touchscreen-fuzz-pressure = <20>;
+		touchscreen-size-x = <4096>;
+		touchscreen-size-y = <4096>;
+		touchscreen-max-pressure = <2048>;
+		touchscreen-inverted-y;
+		ti,x-plate-ohms = <280>;
+		ti,pre-charge-time = <4>;
+		ti,sense-time-sel = <3>;
 	};
 #endif
 };
