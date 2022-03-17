@@ -1406,7 +1406,8 @@ static int imx_uart_startup(struct uart_port *port)
 	imx_uart_writel(sport, ucr4 & ~UCR4_DREN, UCR4);
 
 	/* Can we enable the DMA support? */
-	if (!uart_console(port) && imx_uart_dma_init(sport) == 0)
+	if (!uart_console(port) && !sport->no_dma
+        && imx_uart_dma_init(sport) == 0)
 		dma_is_inited = 1;
 
 	spin_lock_irqsave(&sport->port.lock, flags);
@@ -1939,6 +1940,7 @@ static int imx_uart_rs485_config(struct uart_port *port,
 		imx_uart_start_rx(port);
 
 	port->rs485 = *rs485conf;
+
 
 	return 0;
 }
