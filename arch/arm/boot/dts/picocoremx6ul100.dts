@@ -20,7 +20,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_PICOCOREMX6UL100_BOARD_REVISION	100
+#define CONFIG_PICOCOREMX6UL100_BOARD_REVISION	110
 
 #define DISPLAY_NONE    0	/* No display on this port */
 #define DISPLAY_LCD     1	/* LCD via RGB adapter */
@@ -101,6 +101,7 @@ wvga {					\
 #define CONFIG_PICOCOREMX6UL100_CAPTOUCH_FT5x06
 //#define CONFIG_PICOCOREMX6UL100_CAPTOUCH_SITRONIX
 //#define CONFIG_PICOCOREMX6UL100_CAPTOUCH_ILITEK
+//#define CONFIG_PICOCOREMX6UL100_CAPTOUCH_TSC2004
 
 /* CMA: Set 72 MB for Continuous Memory Allocator */
 #define CONFIG_PICOCOREMX6UL100_CMA_SIZE 0x4800000
@@ -226,9 +227,15 @@ wvga {					\
 	backlight_ldb {
 		compatible = "pwm-backlight";
 		power-supply = <&reg_ldb_bl>;
+#ifdef CONFIG_PICOCOREMX6UL100_CAPTOUCH_TSC2004
+		pwms = <&pca963x 1 640000 0>;
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+#else
 		pwms = <&pwm7 0 250000 PWM_POLARITY_INVERTED>;
 		brightness-levels = <135 143 151 159 167 175 183 191
 				     199 207 215 223 231 239 247 255>;
+#endif
 		default-brightness-level = <14>;
 		fb-names = "mxs-lcdif";
 	};
@@ -287,7 +294,11 @@ wvga {					\
 		reg_ldb_bl: ldb-bl {
 			compatible = "regulator-fixed";
 			regulator-name = "ldb-bl";
+#ifdef CONFIG_PICOCOREMX6UL100_CAPTOUCH_TSC2004
+			gpio = <&pca963x 0 GPIO_ACTIVE_HIGH>;
+#else
 			gpio = <&gpio5 4 GPIO_ACTIVE_HIGH>;
+#endif
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
@@ -546,7 +557,7 @@ wvga {					\
 
 #ifdef CONFIG_PICOCOREMX6UL100_I2C_A
 &i2c1 {
-	clock_frequency = <100000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
@@ -555,7 +566,7 @@ wvga {					\
 
 #ifdef CONFIG_PICOCOREMX6UL100_I2C_D
 &i2c2 {
-	clock_frequency = <100000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
@@ -687,6 +698,61 @@ wvga {					\
 		reset-gpio = <&gpio3 28 GPIO_ACTIVE_LOW>;
 	};
 #endif
+
+#ifdef CONFIG_PICOCOREMX6UL100_CAPTOUCH_TSC2004
+	pca963x: pca9632@60 {
+		compatible = "nxp,pca9632";
+		reg = <0x60>;
+		nxp,totem-pole;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#pwm-cells = <3>;
+		#gpio-cells = <2>;
+		led@0 {
+			reg = <0>;
+			label = "0-PWRCTL";
+			type = "GPIO";
+			default-on;		/* or: keep-value */
+			active-high;
+		};
+		led@1 {
+			reg = <1>;
+			label = "1-LEDCTRL";
+			type = "PWM";
+			default-on;		/* or: keep-value */
+			active-low;
+		};
+		led@2 {
+			reg = <2>;
+			label = "2-ROTATE";
+			type = "GPIO";
+			active-high;		/* optionally: keep value */
+		};
+		led@3 {
+			reg = <3>;
+			label = "3-unused";
+			type = "LED";
+			active-low;
+		};
+	};
+
+	tsc2004@4a {
+		compatible = "ti,tsc2004";
+		reg = <0x4a>;
+		vio-supply = <&reg_vref_3v3>;
+		interrupts-extended = <&gpio1 1 IRQ_TYPE_EDGE_FALLING>;
+		touchscreen-fuzz-x = <4>;
+		touchscreen-fuzz-y = <7>;
+		touchscreen-fuzz-pressure = <20>;
+		touchscreen-size-x = <4096>;
+		touchscreen-size-y = <4096>;
+		touchscreen-max-pressure = <2048>;
+		touchscreen-inverted-y;
+		ti,x-plate-ohms = <280>;
+		ti,pre-charge-time = <4>;
+		ti,sense-time-sel = <3>;
+	};
+#endif
 };
 #endif
 
@@ -708,7 +774,11 @@ wvga {					\
 	/* Display bus pattern: RGB=0, RBG=1, GBR=2, GRB=3, BRG=4, BGR=5; */
 	//pattern = <4>;
 	//pattern = <2>;
+#ifdef CONFIG_PICOCOREMX6UL100_CAPTOUCH_TSC2004
+ 	pattern = <5>;
+#else
  	pattern = <0>;
+#endif
 	lcd-supply = <&reg_vlcd>;
 	status = "okay";
 
@@ -1118,41 +1188,41 @@ wvga {					\
 #if (CONFIG_PICOCOREMX6UL100_LCDIF0 != DISPLAY_NONE)
 		pinctrl_lcdif_dat: lcdifdatgrp {
 			fsl,pins = <
-				MX6UL_PAD_LCD_DATA00__LCDIF_DATA00	0x00079
-				MX6UL_PAD_LCD_DATA01__LCDIF_DATA01	0x00079
-				MX6UL_PAD_LCD_DATA02__LCDIF_DATA02	0x00079
-				MX6UL_PAD_LCD_DATA03__LCDIF_DATA03	0x00079
-				MX6UL_PAD_LCD_DATA04__LCDIF_DATA04	0x00079
-				MX6UL_PAD_LCD_DATA05__LCDIF_DATA05	0x00079
-				MX6UL_PAD_LCD_DATA06__LCDIF_DATA06	0x00079
-				MX6UL_PAD_LCD_DATA07__LCDIF_DATA07	0x00079
-				MX6UL_PAD_LCD_DATA08__LCDIF_DATA08	0x00079
-				MX6UL_PAD_LCD_DATA09__LCDIF_DATA09	0x00079
-				MX6UL_PAD_LCD_DATA10__LCDIF_DATA10	0x00079
-				MX6UL_PAD_LCD_DATA11__LCDIF_DATA11	0x00079
-				MX6UL_PAD_LCD_DATA12__LCDIF_DATA12	0x00079
-				MX6UL_PAD_LCD_DATA13__LCDIF_DATA13	0x00079
-				MX6UL_PAD_LCD_DATA14__LCDIF_DATA14	0x00079
-				MX6UL_PAD_LCD_DATA15__LCDIF_DATA15	0x00079
-				MX6UL_PAD_LCD_DATA16__LCDIF_DATA16	0x00079
-				MX6UL_PAD_LCD_DATA17__LCDIF_DATA17	0x00079
+				MX6UL_PAD_LCD_DATA00__LCDIF_DATA00	0x00059
+				MX6UL_PAD_LCD_DATA01__LCDIF_DATA01	0x00059
+				MX6UL_PAD_LCD_DATA02__LCDIF_DATA02	0x00059
+				MX6UL_PAD_LCD_DATA03__LCDIF_DATA03	0x00059
+				MX6UL_PAD_LCD_DATA04__LCDIF_DATA04	0x00059
+				MX6UL_PAD_LCD_DATA05__LCDIF_DATA05	0x00059
+				MX6UL_PAD_LCD_DATA06__LCDIF_DATA06	0x00059
+				MX6UL_PAD_LCD_DATA07__LCDIF_DATA07	0x00059
+				MX6UL_PAD_LCD_DATA08__LCDIF_DATA08	0x00059
+				MX6UL_PAD_LCD_DATA09__LCDIF_DATA09	0x00059
+				MX6UL_PAD_LCD_DATA10__LCDIF_DATA10	0x00059
+				MX6UL_PAD_LCD_DATA11__LCDIF_DATA11	0x00059
+				MX6UL_PAD_LCD_DATA12__LCDIF_DATA12	0x00059
+				MX6UL_PAD_LCD_DATA13__LCDIF_DATA13	0x00059
+				MX6UL_PAD_LCD_DATA14__LCDIF_DATA14	0x00059
+				MX6UL_PAD_LCD_DATA15__LCDIF_DATA15	0x00059
+				MX6UL_PAD_LCD_DATA16__LCDIF_DATA16	0x00059
+				MX6UL_PAD_LCD_DATA17__LCDIF_DATA17	0x00059
 #ifdef CONFIG_PICOCOREMX6UL100_LCD_24_BIT
-				MX6UL_PAD_LCD_DATA18__LCDIF_DATA18	0x00079
-				MX6UL_PAD_LCD_DATA19__LCDIF_DATA19	0x00079
-				MX6UL_PAD_LCD_DATA20__LCDIF_DATA20	0x00079
-				MX6UL_PAD_LCD_DATA21__LCDIF_DATA21	0x00079
-				MX6UL_PAD_LCD_DATA22__LCDIF_DATA22	0x00079
-				MX6UL_PAD_LCD_DATA23__LCDIF_DATA23	0x00079
+				MX6UL_PAD_LCD_DATA18__LCDIF_DATA18	0x00059
+				MX6UL_PAD_LCD_DATA19__LCDIF_DATA19	0x00059
+				MX6UL_PAD_LCD_DATA20__LCDIF_DATA20	0x00059
+				MX6UL_PAD_LCD_DATA21__LCDIF_DATA21	0x00059
+				MX6UL_PAD_LCD_DATA22__LCDIF_DATA22	0x00059
+				MX6UL_PAD_LCD_DATA23__LCDIF_DATA23	0x00059
 #endif
 			>;
 		};
 
 		pinctrl_lcdif_ctrl: lcdifctrlgrp {
 			fsl,pins = <
-				MX6UL_PAD_LCD_CLK__LCDIF_CLK		0x00079
-				MX6UL_PAD_LCD_ENABLE__LCDIF_ENABLE	0x00079
-				MX6UL_PAD_LCD_HSYNC__LCDIF_HSYNC	0x00079
-				MX6UL_PAD_LCD_VSYNC__LCDIF_VSYNC	0x00079
+				MX6UL_PAD_LCD_CLK__LCDIF_CLK		0x00059
+				MX6UL_PAD_LCD_ENABLE__LCDIF_ENABLE	0x00059
+				MX6UL_PAD_LCD_HSYNC__LCDIF_HSYNC	0x00059
+				MX6UL_PAD_LCD_VSYNC__LCDIF_VSYNC	0x00059
 			>;
 		};
 #endif

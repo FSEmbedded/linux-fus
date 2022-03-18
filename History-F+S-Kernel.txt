@@ -4,6 +4,36 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight,
         MM: M Mini, MN: M Nano
 
+linux-4.9.88-fsimx6ul-Y2020.03.1 (15.03.2022)
+---------------------------------------------
+Supported boards: efusA7UL, PicoCoreMX6UL, PicoCoreMX6UL100, PicoMODA7
+
+- Add support for RTC PCF85263
+- Improve support for imx6ul-touchscreen controller
+- Add driver for lontium-lt9211 RGB2LVDS converter
+- Add full device-tree support for PicoCOMA7
+- Improve support for picocoremx6ul revision 1.20
+- Add support for picocoremx6ul100 on architecture fsimx6ul
+- Add support for TSC2004 on fsimx6ul
+- Fix i2c frequency entry in device trees
+
+
+
+linux-4.9.88-fsimx6-B2020.04.1 (01.02.2022)
+-------------------------------------------
+Supported boards: armStoneA9, armStoneA9r2, efusA9, efusA9r2, PicoMODA9,
+                  NetDCUA9, QBlissA9, QBlissA9r2, armStoneA5, Cube2.0, CubeA5,
+                  AGATEWAY
+Not tested:       efusA9X, PicoCOMA9X, PicoCoreMX6SX, PicoCoreMX7ULP,
+                  CONT1, efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2,
+                  CubeA7UL, NetDCUA5, PicoCOMA5, HGATEWAY
+
+- Add rx delay support for RTL8211F
+- Add support for efusA9r2
+- Add phy fixup for efusA9r2
+
+
+
 linux-5.4.70-fsimx8mn-Y2021.10 (30.10.2021)
 -------------------------------------------
 Supported boards: PicoCoreMX8MN
@@ -268,21 +298,6 @@ Supported boards: PicoCoreMX8MM, armStoneMX8M, efusMX8X
 - Add support for F&S adp-mipi2lvds1 board with j070wvtc0211 panel
 - Add support for MIPI-DSI panel rf3500d-ayw-mng1
 - Improve support for panel j070wvtc0211
-
-
-
-linux-4.9.88-fsimx6-B2020.04.1 (01.02.2022)
--------------------------------------------
-Supported boards: armStoneA9, armStoneA9r2, efusA9, efusA9r2, PicoMODA9,
-                  NetDCUA9, QBlissA9, QBlissA9r2, armStoneA5, Cube2.0, CubeA5,
-                  AGATEWAY
-Not tested:       efusA9X, PicoCOMA9X, PicoCoreMX6SX, PicoCoreMX7ULP,
-                  CONT1, efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2,
-                  CubeA7UL, NetDCUA5, PicoCOMA5, HGATEWAY
-
-- Add rx delay support for RTL8211F
-- Add support for efusA9r2
-- Add phy fixup for efusA9r2
 
 
 
