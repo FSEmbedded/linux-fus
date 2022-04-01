@@ -245,7 +245,7 @@
 			 reg = <0x100000 0x8000>;
 		};
 
-		gpmi: gpmi-nand@1806000 {
+		gpmi: gpmi-nand@01806000 {
 			compatible = "fsl,imx6q-gpmi-nand";
 			#address-cells = <1>;
 			#size-cells = <1>;
