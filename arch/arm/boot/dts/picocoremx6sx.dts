@@ -708,7 +708,7 @@ lcd_wvga {				\
 	rtc85063@51 {
 		compatible = "nxp,pcf85063";
 		reg = <0x51>;
-		cap_12_5pf;
+		quartz-load-femtofarads = <12500>;
 	};
 };
 #endif /* CONFIG_PICOCOREMX6SX_I2C_C */
