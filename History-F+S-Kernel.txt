@@ -4,6 +4,36 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight,
         MM: M Mini, MN: M Nano
 
+linux-5.4.70-fsimx6ul-B2022.04 (11.04.2022)
+-------------------------------------------
+Supported boards: efusA7UL PicoCOM1.2 PicoCoreMX6UL PicoCoreMX6UL100 PicoCOMA7
+
+- Fix SOC compatible entry for QBlissA9dl and QBlissA9r2q
+- Merge commit '54f9f3642c1a00bbed02a4f4eba5773aae9a9265'
+- In gpmi-nand-fus.c, set and use ecc.total/ecc.bytes correctly
+- Correct the clock source for mclk0
+- Add fsimx6sx/ul alias for gpmi/emmc/rpmsg
+- Improve edt-ft5x06 touch driver
+- Add support for tbs2 revision 1.20
+- Add support for mipi display EE0350ET-2CP for i.MX7ULP
+- Improve atmel_mxt_ts touch driver - read size
+- Add support for EE0350ET-2CP on architecture fsimx7ulp
+- Improve imx7ulp.dtsi
+- Improve target fsimx7ulp for kernel version 5.4.70
+- Add rx delay support for RTL8211F
+- Improve focaltech touch driver
+- Add display support for Rongen T070QYH
+- Improve gpc support for i.MX6SX
+- Improve fsimx6sx device trees for eMMC/GPU support
+- Fix armv7 default cpu frequency governor
+- Fix disabling of dma for a specific UART Port by DTS
+- Fix imx6sx/ul device tree pathes for backwards compatibility
+- Fix rtc-pfc856063 driver
+- Fix picocoma7 device tree
+- Fix picocoremx6ul100 DTS
+
+
+
 linux-4.9.88-fsimx6ul-Y2020.03.1 (15.03.2022)
 ---------------------------------------------
 Supported boards: efusA7UL, PicoCoreMX6UL, PicoCoreMX6UL100, PicoMODA7
