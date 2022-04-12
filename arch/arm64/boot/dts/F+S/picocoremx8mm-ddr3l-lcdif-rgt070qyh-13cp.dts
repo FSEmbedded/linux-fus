@@ -23,11 +23,11 @@
 
 	backlight_mipi_dsi: backlight_mipi_dsi {
 		compatible = "pwm-backlight";
-		pwms = <&pca963x 1 640000 0>;
+		pwms = <&pca963x 1 640000 PWM_POLARITY_INVERTED>;
 		power-supply = <&reg_mipi_bl>;
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
-		default-brightness-level = <15>;
+		default-brightness-level = <13>;
 	};
 };
 
