@@ -4596,6 +4596,12 @@ cfg80211_inform_bss_frame(struct wiphy *wiphy,
 	return cfg80211_inform_bss_frame_data(wiphy, &data, mgmt, len, gfp);
 }
 
+struct cfg80211_bss * __must_check
+cfg80211_channel_switch_update_channel(struct wiphy *wiphy,
+                                       struct cfg80211_inform_bss *data,
+                                       struct ieee80211_mgmt *mgmt, size_t len,
+                                       gfp_t gfp);
+
 /**
  * enum cfg80211_bss_frame_type - frame type that the BSS data came from
  * @CFG80211_BSS_FTYPE_UNKNOWN: driver doesn't know whether the data is
