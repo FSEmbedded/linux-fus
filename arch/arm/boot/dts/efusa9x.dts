@@ -52,7 +52,7 @@ lcd_wvga {				\
 	hsync-active = <0>;		\
 	vsync-active = <0>;		\
 	de-active = <1>;		\
-	pixelclk-active = <0>;		\
+	pixelclk-active = <1>;		\
 }
 
 /*
@@ -634,11 +634,6 @@ lvds_wvga {				\
 /* rpmsg is used for communication between Cortex-A9 and Cortex-M4 cores */
 
 &rpmsg{
-	/*
-	 * 64K for one rpmsg instance, default using 2 rpmsg instances:
-	 * --0x9FF00000~0x9FF0FFFF: pmic,pm,audio,keys,gpio,sensor
-	 * --0x9FF10000~0x9FF1FFFF: pingpong,virtual tty
-	 */
 	vdev-nums = <1>;
 	reg = <0xBFFF0000 0x10000>;
 	status = "okay";
@@ -930,6 +925,8 @@ lvds_wvga {				\
 	rtc8565@51 {
 		compatible = "nxp,pcf8565", "nxp,pcf8563";
 		reg = <0x51>;
+		interrupt-parent = <&gpio2>;
+		interrupts = <4 IRQ_TYPE_EDGE_FALLING>;
 	};
 
 #if 0
@@ -1479,6 +1476,8 @@ lvds_wvga {				\
 				/* DVS */
 				MX6SX_PAD_USB_H_STROBE__GPIO7_IO_11	0x130b0
 #endif
+				/* RTC IRQ */
+				MX6SX_PAD_ENET1_RX_CLK__GPIO2_IO_4	0x0b0b0
 			>;
 		};
 

@@ -9,7 +9,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 100 for board rev. 1.00 */
-#define CONFIG_CONT1_BOARD_REVISION	100
+#define CONFIG_CONT1_BOARD_REVISION	120
 
 /* CMA: Set 320 MB for Continuous Memory Allocator */
 #define CONFIG_CONT1_CMA_SIZE 0x14000000
@@ -551,7 +551,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3_1>;
 	uart-has-rtscts;
-	status = "disabled";		/* Used on Cortex-M4 */
+	status = "okay";
 };
 
 /* UART_C: TXD, RXD, RTS, CTS, TTL-level on B2B connector */

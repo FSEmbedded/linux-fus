@@ -38,12 +38,25 @@
 #define ENABLE_M4_CORE		0x00400000
 #define M4_BOOTROM_BASE_ADDR	0x007f8000
 
+#define TCM_START 		0x007f8000
+#define TCM_SIZE		0x7FFF
+#define OCRAM_START		0x00910000
+#define OCRAM_SIZE		0xEFFF
 
-struct auxiliary_core {
+struct allowed_mem {
+	uint32_t start;
+	uint32_t size;
+	uint32_t end;
+};
+
+static struct auxiliary_core {
 	struct kobject *auxiliary_core_kobj;
 	struct attribute_group attr_group;
 	struct platform_device *pdev;
 	struct clk *clk;
+	struct allowed_mem allowed_tcm;
+	struct allowed_mem allowed_ocram;
+	struct allowed_mem allowed_dram;
 	unsigned int acount;
 	unsigned int mem_addr;
 	char *path;
@@ -312,6 +325,46 @@ static ssize_t bootaux_store(struct kobject *kobj,
 	return count;
 }
 
+static int inRange(unsigned low, unsigned high, unsigned x)
+{
+	return (low <= x && x <= high);
+}
+
+void print_valid_adresses(void){
+}
+
+static struct allowed_mem* check_mem_addr(unsigned int addr) {
+
+	/* In tcm only 0x7f8000 is allowed as start address*/
+	if (addr == ac.allowed_tcm.start)
+		return &ac.allowed_tcm;
+	if (inRange(ac.allowed_ocram.start, ac.allowed_ocram.end, addr))
+		return &ac.allowed_ocram;
+	if (inRange(ac.allowed_dram.start, ac.allowed_dram.end, addr))
+		return &ac.allowed_dram;
+	else {
+		dev_err(&ac.pdev->dev,"Invalid address! Valid adresses are:\r\n");
+		dev_err(&ac.pdev->dev,"TCM:   0x%x \r\n",ac.allowed_tcm.start);
+		dev_err(&ac.pdev->dev,"OCRAM: 0x%x to 0x%x \r\n",ac.allowed_ocram.start, ac.allowed_ocram.end);
+		dev_err(&ac.pdev->dev,"DRAM:  0x%x to 0x%x \r\n",ac.allowed_dram.start, ac.allowed_dram.end);
+		return NULL;
+	}
+}
+
+static int check_file_size(unsigned int file_size)
+{
+
+	struct allowed_mem* mem_area;
+
+	mem_area = check_mem_addr(ac.mem_addr);
+
+	if ( ac.mem_addr + file_size > mem_area->end)
+		return -1;
+	else
+		return 0;
+
+}
+
 static ssize_t mem_store(struct kobject *kobj,
 		struct kobj_attribute *attr, const char *buf, size_t count)
 {
@@ -357,6 +410,10 @@ static ssize_t mem_store(struct kobject *kobj,
 
 	logstrs_size = (int) stat.size;
 
+	if (check_file_size(logstrs_size)) {
+		dev_err(&ac.pdev->dev, "File size to big for memory! \n");
+		goto fail;
+	}
 	raw_fmts = kmalloc(logstrs_size, GFP_KERNEL);
 	if (raw_fmts == NULL) {
 		dev_err(&ac.pdev->dev, "Failed to allocate memory \n");
@@ -398,7 +455,9 @@ static ssize_t mem_addr_store(struct kobject *kobj,
 	error = kstrtouint(buf, 0, &addr);
 	if (error)
 		return -EINVAL;
-
+	if (!check_mem_addr(addr)) {
+		return -EINVAL;
+	}
 	ac.mem_addr = addr;
 
 	return count;
@@ -451,6 +510,16 @@ static int auxiliary_core_init(struct platform_device *pdev)
 	ac.mem_addr = M4_BOOTROM_BASE_ADDR;
 	ac.path = NULL;
 	ac.pdev = pdev;
+	/* Set valid memory regions for M4 execution.
+	   Dram is set in probe_dts */
+	ac.allowed_tcm.start = TCM_START;
+	ac.allowed_tcm.size = TCM_SIZE;
+	ac.allowed_tcm.end = ac.allowed_tcm.start + ac.allowed_tcm.size;
+
+	ac.allowed_ocram.start = OCRAM_START;
+	ac.allowed_ocram.size = OCRAM_SIZE;
+	ac.allowed_ocram.end = ac.allowed_ocram.start + ac.allowed_ocram.size;
+
 	/* set number of variables to create */
 	ac.acount = sizeof(kattr)/sizeof(struct kobj_attribute);
 	ac.clk = devm_clk_get(&pdev->dev, NULL);
@@ -483,6 +552,25 @@ static int auxiliary_core_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static int auxiliary_core_probe_dts(struct platform_device *pdev)
+{
+	uint32_t dt_value;
+	struct device_node *dt_node;
+
+	dt_node = of_find_node_by_path("/reserved-memory");
+	dt_node = of_get_child_by_name (dt_node,"by-uboot");
+	if (!dt_node){
+		dev_err(&pdev->dev, "could not find by-uboot node!\n");
+		return -1;
+	}
+
+	of_property_read_u32_index(dt_node, "reg",0, &dt_value);
+	ac.allowed_dram.start = dt_value;
+	of_property_read_u32_index(dt_node, "reg",1, &dt_value);
+	ac.allowed_dram.size = dt_value;
+	ac.allowed_dram.end = ac.allowed_dram.start + ac.allowed_dram.size;
+	return 0;
+}
 static int auxiliary_core_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -507,6 +595,10 @@ static int auxiliary_core_probe(struct platform_device *pdev)
 		ret = sysfs_create_group(ac.auxiliary_core_kobj,
 							&ac.attr_group);
 	}
+	if (ret)
+		goto exit;
+
+	ret = auxiliary_core_probe_dts(pdev);
 	if (ret)
 		goto exit;
 

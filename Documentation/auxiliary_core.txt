@@ -69,61 +69,80 @@ The control interfaces have the following read/write attributes:
 
     /sys/devices/system/cpu/aux_core
 
-    	"bootaux" ... read:
-		  you will get the status of the clock, and the status of
-		  the core.
-		  Example:  "cat bootaux" will give you the Status of the
-		  auxiliary core.
+	"bootaux" ... read:
+	  you will get the status of the clock, and the status of
+	  the core.
+	  Example:  "cat bootaux" will give you the Status of the
+	  auxiliary core.
 
-		  ... write:
-		  you can write several commands to the bootaux file:
-		  pause: this transition will disable the auxiliary core clock
-		         so the programm which is running will be paused. The
-		         Core is set to state aux_paused.
-		  start: this transition will only work if you are in the state
-		         off. With start transition you can come to the state
-		         aux_stop. The difference between these two states are
-		         that the M4_Clock will be enabled.
-		  stop:  this will disable the auxiliary core itself and set
-		         the reset bit (hold M4 in reset). You are in the state
-		         aux_stopped.
-		  off:   this transition will disable the M4 Clock, disable M4
-		         itself and enable the reset bit. You are in the state
-		         aux_off.
-		  run:   this will start the auxiliary core at the address
-		         which is given in the variable mem_addr. After that
-		         you are in the state aux_running.
-		  address: this will start the auxiliary core at the address
-		         which is given in the transfer parameter. After that
-		         you are in the state aux_running.
+	  ... write:
+	  you can write several commands to the bootaux file:
+	  pause: this transition will disable the auxiliary core clock
+	         so the programm which is running will be paused. The
+	         Core is set to state aux_paused.
+	  start: this transition will only work if you are in the state
+	         off. With start transition you can come to the state
+	         aux_stop. The difference between these two states are
+	         that the M4_Clock will be enabled.
+	  stop:  this will disable the auxiliary core itself and set
+	         the reset bit (hold M4 in reset). You are in the state
+	         aux_stopped.
+	  off:   this transition will disable the M4 Clock, disable M4
+	         itself and enable the reset bit. You are in the state
+	         aux_off.
+	  run:   this will start the auxiliary core at the address
+	         which is given in the variable mem_addr. After that
+	         you are in the state aux_running.
+	  address: this will start the auxiliary core at the address
+	         which is given in the transfer parameter. After that
+	         you are in the state aux_running.
 
-		Example:  "echo start > bootaux", "echo pause > bootaux",
-		          "echo stop > bootaux", "echo off > bootaux",
-		          "echo run > bootaux", "echo 0x7f8000 > bootaux"
+	Example:  "echo start > bootaux", "echo pause > bootaux",
+	          "echo stop > bootaux", "echo off > bootaux",
+	          "echo run > bootaux", "echo 0x7f8000 > bootaux"
 
 The file/programm have the following read/write attributes:
 
     /sys/devices/system/cpu/aux_core
 
 	"mem" ... read:
-	      read the last file/programm which you have loaded
-	      Example: "cat mem" -> hello_world.bin
+      read the last file/programm which you have loaded
 
-	      ... write:
-	      write the file/programm which you want to load. Attention:
-	      you have to set an absolut path. No relative paths are allowed.
-	      Example: "echo /root/hello_world.bin > mem"
+      Example: "cat mem" -> hello_world.bin
+
+      ... write:
+      write the file/programm which you want to load. Attention:
+      you have to set an absolut path. No relative paths are allowed.
+	  It gets checked if the size of the code fits into the
+      valid memory-region, but the size of the data (heap/stack)
+      is not considered.
+
+      Example: "echo /root/hello_world.bin > mem".
 
 The address have the following read/write attributes:
 
     /sys/devices/system/cpu/aux_core
 
-    	"mem_addr" ... read:
-		   reads the address were the file/programm will be started.
-		   Default is the tcm.
-		   Example: "cat mem_addr" -> 0x7f8000
+	"mem_addr" ... read:
+	   reads the address were the file/programm will be started.
+	   Default is the tcm.
+	   Example: "cat mem_addr" -> 0x7f8000
 
-    	           ... write:
-    	           write the address were the file/programm will be stored.
-    	           Example: "echo 0x7f8000 > mem_addr"
+	          ... write:
+	   write the address were the file/programm will be stored.
+	   The address hast to be in a valid memory region.
+       For TCM and OCRAM the memory regions are hard-coded into the driver:
+       TCM_START 		0x007f8000
+       TCM_SIZE		    0x7FFF
+       OCRAM_START		0x00910000
+       OCRAM_SIZE		0xEFFF
+
+       The TCM-code can only be placed at the TCM_START address.
+       The DRAM and OCRAM code can be placed anywhere in the valid
+       memory-regions, but keep in mind to add enough space for your
+       heap and stack.
+       For DRAM the reserved memory entry, that is made by the U-Boot into
+       the devicetree, is parsed and START and SIZE are set accordingly.
+
+	   Example: "echo 0x7f8000 > mem_addr"
 
