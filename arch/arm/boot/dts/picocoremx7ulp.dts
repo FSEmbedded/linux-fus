@@ -45,6 +45,10 @@
  *
  * On picocoremx7ulp, all touches use the same interrupt line and I2C bus, so do not
  * select more than one entry! Select none if you do not need touch support.
+ *
+ * If you are using a touch controller other than the SX8655_ONBOARD, please make
+ * sure that the SX8655_ONBOARD is not equipped on your baseboard or it may
+ * disturb the touch interrupt signal.
  */
 //#define CONFIG_PICOCOREMX7ULP_4WTOUCH_SX8655_ONBOARD
 //#define CONFIG_PICOCOREMX7ULP_CAPTOUCH_MXT224
@@ -174,8 +178,8 @@
 #else
 		reset-gpios = <&max7315 4 GPIO_ACTIVE_LOW>;
 #endif
-		reset-delay-us = <20>;
-		reset-post-delay-ms =<1>;
+		reset-delay-us = <50>;
+		reset-post-delay-ms =<50>;
 		#reset-cells = <0>;
 	};
 #endif
@@ -320,6 +324,12 @@
 /* RAM size for Continues Memory Allocator */
 &cma {
 	size = <CONFIG_PICOCOREMX7ULP_CMA_SIZE>;
+	/*
+	 * The propertiy "size" is overwritten by UBoot,
+	 * depending on the ram size. To prevent this,
+	 * uncomment the following line
+	 */
+	//no-uboot-override;
 };
 
 &cpu0 {
