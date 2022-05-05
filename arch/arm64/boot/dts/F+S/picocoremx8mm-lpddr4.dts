@@ -36,7 +36,10 @@
 /* USB */
 #define CONFIG_PICOCOREMX8MM_USB_OTG1
 #define CONFIG_PICOCOREMX8MM_USB_HOST
-//#define CONFIG_PICOCOREMX8MM_USB_OTG1_USBC
+#define CONFIG_PICOCOREMX8MM_USB_OTG1_USBC
+/* USB Type-C ALERT signal is available on J2_77 on BBDSI baseboard since
+   Revision 1.40. Otherwise use polling with ~100ms */
+#define CONFIG_PICOCOREMX8MM_USB_OTG1_USBC_ALERT
 
 /* PCIe */
 #define CONFIG_PICOCOREMX8MM_PCIE
@@ -157,6 +160,12 @@
 #else
 #undef CONFIG_PICOCOREMX8MM_USB_OTG1_USBC
 #endif
+
+#if !defined(CONFIG_PICOCOREMX8MM_USB_OTG1_USB) \
+    || (CONFIG_PICOCOREBBDSI_BOARD_REVISION < 140)
+#undef CONFIG_PICOCOREMX8MM_USB_OTG1_USBC_ALERT
+#endif
+
 
 #include "../freescale/imx8mm.dtsi"
 #include <dt-bindings/pwm/pwm.h>
@@ -591,11 +600,13 @@
 	/* USB-C */
 	ptn5110: tcpc@52 {
 		compatible = "nxp,ptn5110";
+#ifdef CONFIG_PICOCOREMX8MM_USB_OTG1_USBC_ALERT
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_typec1>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <8 IRQ_TYPE_LEVEL_LOW>;
+#endif
 		reg = <0x52>;
-		interrupt-parent = <&gpio5>;
-		interrupts = <9 8>;
 		status = "okay";
 
 		port {
@@ -1756,12 +1767,12 @@
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREMX8MM_USB_OTG1_USBC
-	pinctrl_typec1: typec1grp {
-		fsl,pins = <
-			MX8MM_IOMUXC_ECSPI1_SS0_GPIO5_IO9		0x00159
-		>;
-	};
+#ifdef CONFIG_PICOCOREMX8MM_USB_OTG1_USBC_ALERT
+		pinctrl_typec1: typec1grp {
+			fsl,pins = <
+				MX8MM_IOMUXC_SAI1_RXD6_GPIO4_IO8	0x001c6
+			>;
+		};
 #endif
 
 #ifdef CONFIG_PICOCOREMX8MM_USB_HOST

@@ -34,8 +34,7 @@
 /* USB */
 #define CONFIG_PICOCOREMX8MX_NANO_USB_OTG1
 #define CONFIG_PICOCOREMX8MX_NANO_USB_OTG1_USBC
-/* The ALERT pin is currently unavailable at connector 3, so use polling with ~100ms */
-//#define CONFIG_PICOCOREMX8MX_NANO_USB_OTG1_USBC_ALERT
+/* ALERT pin on J2_77 is not available on i.MX8MN, use polling with ~100ms */
 
 /* I2C */
 #define CONFIG_PICOCOREMX8MX_NANO_I2C_A
@@ -115,7 +114,6 @@
 #if CONFIG_PICOCOREBBDSI_BOARD_REVISION < 130
 #undef CONFIG_PICOCOREMX8MX_NANO_USB_OTG1_USBC
 #endif
-
 
 #include "../freescale/imx8mn.dtsi"
 #include <dt-bindings/pwm/pwm.h>
@@ -488,7 +486,10 @@
 	/* USB-C */
 	ptn5110: tcpc@52 {
 		compatible = "nxp,ptn5110";
-#ifdef CONFIG_PICOCOREMX8MX_NANO_USB_OTG1_USBC_ALERT
+#if 0
+		/* On PicoCoreMX8MN-DDR3L with i.MX8MN, USB-C ALERT on J2_77
+		   is not available, use polling with ~100ms by not defining
+		   an interrupt */
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_typec1>;
 		interrupt-parent = <&gpio5>;

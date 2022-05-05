@@ -11,7 +11,7 @@
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_PICOCOREMX8MN_BOARD_REVISION	130
 /* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_PICOCOREBBDSI_BOARD_REVISION	130
+#define CONFIG_PICOCOREBBDSI_BOARD_REVISION	140
 
 /* Activate this if you want to use the Cortex-M4 core */
 //#define SUPPORT_M4
@@ -36,8 +36,8 @@
 /* USB */
 #define CONFIG_PICOCOREMX8MN_USB_OTG1
 #define CONFIG_PICOCOREMX8MN_USB_OTG1_USBC
-/* The ALERT pin is currently unavailable at connector 3, so use polling with ~100ms */
-//#define CONFIG_PICOCOREMX8MN_USB_OTG1_USBC_ALERT
+/* If ALERT is not set, use polling with ~100ms */
+#define CONFIG_PICOCOREMX8MN_USB_OTG1_USBC_ALERT
 
 /* I2C */
 #define CONFIG_PICOCOREMX8MN_I2C_A
@@ -144,6 +144,13 @@
 #undef CONFIG_PICOCOREMX8MN_SPI_A_CAN_CONVERTER
 #else
 #undef CONFIG_PICOCOREMX8MN_USB_OTG1_USBC
+#endif
+
+/* On i.MX8MN, USB-C ALERT on J2_77 is only available if CAN is not equipped */
+#if !defined(CONFIG_PICOCOREMX8MN_USB_OTG1_USB) \
+    || defined(CONFIG_PICOCOREMX8MN_CAN_A) \
+    || (CONFIG_PICOCOREBBDSI_BOARD_REVISION < 140)
+#undef CONFIG_PICOCOREMX8MN_USB_OTG1_USBC_ALERT
 #endif
 
 #include "../freescale/imx8mn.dtsi"
@@ -557,8 +564,8 @@
 #ifdef CONFIG_PICOCOREMX8MN_USB_OTG1_USBC_ALERT
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_typec1>;
-		interrupt-parent = <&gpio5>;
-		interrupts = <9 8>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <21 IRQ_TYPE_LEVEL_LOW>;
 #endif
 		reg = <0x52>;
 		status = "okay";
@@ -724,7 +731,7 @@
 			clock-frequency = <20000000>; //20MHz
 		};
 	};
-#elif defined CONFIG_PICOCOREMX8MM_SPI_A_CAN_CONVERTER
+#elif defined CONFIG_PICOCOREMX8MN_SPI_A_CAN_CONVERTER
 	can0: can@0 {
 		compatible = "microchip,mcp2515";
 		reg = <0>;
@@ -1177,7 +1184,9 @@
 				MX8MN_IOMUXC_SAI2_TXC_GPIO4_IO25	0x00104
 				MX8MN_IOMUXC_SAI2_TXD0_GPIO4_IO26	0x00104
 				MX8MN_IOMUXC_SAI2_RXC_GPIO4_IO22	0x00104
+#ifndef CONFIG_PICOCOREMX8MN_USB_OTG1_USBC_ALERT
 				MX8MN_IOMUXC_SAI2_RXFS_GPIO4_IO21	0x00104
+#endif
 #endif
 
 				MX8MN_IOMUXC_SAI5_RXFS_GPIO3_IO19	0x00104
@@ -1487,14 +1496,12 @@
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREMX8MN_USB_OTG1_USBC
 #ifdef CONFIG_PICOCOREMX8MN_USB_OTG1_USBC_ALERT
-	pinctrl_typec1: typec1grp {
-		fsl,pins = <
-			MX8MN_IOMUXC_ECSPI1_SS0_GPIO5_IO9		0x00159
-		>;
-	};
-#endif
+		pinctrl_typec1: typec1grp {
+			fsl,pins = <
+				MX8MN_IOMUXC_SAI2_RXFS_GPIO4_IO21	0x001c6
+			>;
+		};
 #endif
 
 #ifdef CONFIG_PICOCOREMX8MN_SD_A
