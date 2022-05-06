@@ -596,24 +596,13 @@ static int vmd_enable_domain(struct vmd_dev *vmd, unsigned long features)
 	 */
 	if (features & VMD_FEAT_HAS_MEMBAR_SHADOW) {
 		membar2_offset = MB2_SHADOW_OFFSET + MB2_SHADOW_SIZE;
-		ret = pci_read_config_dword(vmd->dev, PCI_REG_VMLOCK, &vmlock);
-		if (ret || vmlock == ~0)
-			return -ENODEV;
-
-		if (MB2_SHADOW_EN(vmlock)) {
-			void __iomem *membar2;
-
-			membar2 = pci_iomap(vmd->dev, VMD_MEMBAR2, 0);
-			if (!membar2)
-				return -ENOMEM;
-			offset[0] = vmd->dev->resource[VMD_MEMBAR1].start -
-					(readq(membar2 + MB2_SHADOW_OFFSET) &
-					 PCI_BASE_ADDRESS_MEM_MASK);
-			offset[1] = vmd->dev->resource[VMD_MEMBAR2].start -
-					(readq(membar2 + MB2_SHADOW_OFFSET + 8) &
-					 PCI_BASE_ADDRESS_MEM_MASK);
-			pci_iounmap(vmd->dev, membar2);
-		}
+		ret = vmd_get_phys_offsets(vmd, true, &offset[0], &offset[1]);
+		if (ret)
+			return ret;
+	} else if (features & VMD_FEAT_HAS_MEMBAR_SHADOW_VSCAP) {
+		ret = vmd_get_phys_offsets(vmd, false, &offset[0], &offset[1]);
+		if (ret)
+			return ret;
 	}
 
 	/*
@@ -688,12 +677,11 @@ static int vmd_enable_domain(struct vmd_dev *vmd, unsigned long features)
 	if (ret)
 		return ret;
 
-	vmd->irq_domain = pci_msi_create_irq_domain(fn, &vmd_msi_domain_info,
-						    x86_vector_domain);
-	if (!vmd->irq_domain) {
-		irq_domain_free_fwnode(fn);
-		return -ENODEV;
-	}
+	/*
+	 * Override the irq domain bus token so the domain can be distinguished
+	 * from a regular PCI/MSI domain.
+	 */
+	irq_domain_update_bus_token(vmd->irq_domain, DOMAIN_BUS_VMD_MSI);
 
 	pci_add_resource(&resources, &vmd->resources[0]);
 	pci_add_resource_offset(&resources, &vmd->resources[1], offset[0]);
@@ -703,8 +691,7 @@ static int vmd_enable_domain(struct vmd_dev *vmd, unsigned long features)
 				       &vmd_ops, sd, &resources);
 	if (!vmd->bus) {
 		pci_free_resource_list(&resources);
-		irq_domain_remove(vmd->irq_domain);
-		irq_domain_free_fwnode(fn);
+		vmd_remove_irq_domain(vmd);
 		return -ENODEV;
 	}
 
@@ -782,15 +769,13 @@ static void vmd_cleanup_srcu(struct vmd_dev *vmd)
 static void vmd_remove(struct pci_dev *dev)
 {
 	struct vmd_dev *vmd = pci_get_drvdata(dev);
-	struct fwnode_handle *fn = vmd->irq_domain->fwnode;
 
 	sysfs_remove_link(&vmd->dev->dev.kobj, "domain");
 	pci_stop_root_bus(vmd->bus);
 	pci_remove_root_bus(vmd->bus);
 	vmd_cleanup_srcu(vmd);
 	vmd_detach_resources(vmd);
-	irq_domain_remove(vmd->irq_domain);
-	irq_domain_free_fwnode(fn);
+	vmd_remove_irq_domain(vmd);
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -831,8 +816,15 @@ static const struct pci_device_id vmd_ids[] = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_VMD_28C0),
 		.driver_data = VMD_FEAT_HAS_MEMBAR_SHADOW |
 				VMD_FEAT_HAS_BUS_RESTRICTIONS,},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x467f),
+		.driver_data = VMD_FEAT_HAS_MEMBAR_SHADOW_VSCAP |
+				VMD_FEAT_HAS_BUS_RESTRICTIONS,},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x4c3d),
+		.driver_data = VMD_FEAT_HAS_MEMBAR_SHADOW_VSCAP |
+				VMD_FEAT_HAS_BUS_RESTRICTIONS,},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_VMD_9A0B),
-		.driver_data = VMD_FEAT_HAS_BUS_RESTRICTIONS,},
+		.driver_data = VMD_FEAT_HAS_MEMBAR_SHADOW_VSCAP |
+				VMD_FEAT_HAS_BUS_RESTRICTIONS,},
 	{0,}
 };
 MODULE_DEVICE_TABLE(pci, vmd_ids);

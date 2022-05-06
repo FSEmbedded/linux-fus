@@ -372,65 +372,7 @@ static void ttm_bo_flush_all_fences(struct ttm_buffer_object *bo)
 		if (!fence->ops->signaled)
 			dma_fence_enable_sw_signaling(fence);
 	}
-}
-
-static void ttm_bo_cleanup_refs_or_queue(struct ttm_buffer_object *bo)
-{
-	struct ttm_bo_device *bdev = bo->bdev;
-	struct ttm_bo_global *glob = bdev->glob;
-	int ret;
-
-	ret = ttm_bo_individualize_resv(bo);
-	if (ret) {
-		/* Last resort, if we fail to allocate memory for the
-		 * fences block for the BO to become idle
-		 */
-		dma_resv_wait_timeout_rcu(bo->base.resv, true, false,
-						    30 * HZ);
-		spin_lock(&glob->lru_lock);
-		goto error;
-	}
-
-	spin_lock(&glob->lru_lock);
-	ret = dma_resv_trylock(bo->base.resv) ? 0 : -EBUSY;
-	if (!ret) {
-		if (dma_resv_test_signaled_rcu(&bo->base._resv, true)) {
-			ttm_bo_del_from_lru(bo);
-			spin_unlock(&glob->lru_lock);
-			if (bo->base.resv != &bo->base._resv)
-				dma_resv_unlock(&bo->base._resv);
-
-			ttm_bo_cleanup_memtype_use(bo);
-			dma_resv_unlock(bo->base.resv);
-			return;
-		}
-
-		ttm_bo_flush_all_fences(bo);
-
-		/*
-		 * Make NO_EVICT bos immediately available to
-		 * shrinkers, now that they are queued for
-		 * destruction.
-		 */
-		if (bo->mem.placement & TTM_PL_FLAG_NO_EVICT) {
-			bo->mem.placement &= ~TTM_PL_FLAG_NO_EVICT;
-			ttm_bo_add_to_lru(bo);
-		}
-
-		dma_resv_unlock(bo->base.resv);
-	}
-	if (bo->base.resv != &bo->base._resv) {
-		ttm_bo_flush_all_fences(bo);
-		dma_resv_unlock(&bo->base._resv);
-	}
-
-error:
-	kref_get(&bo->list_kref);
-	list_add_tail(&bo->ddestroy, &bdev->ddestroy);
-	spin_unlock(&glob->lru_lock);
-
-	schedule_delayed_work(&bdev->wq,
-			      ((HZ / 100) < 1) ? 1 : HZ / 100);
+	rcu_read_unlock();
 }
 
 /**
@@ -856,8 +798,8 @@ int ttm_mem_evict_first(struct ttm_bo_device *bdev,
  * Add the last move fence to the BO and reserve a new shared slot.
  */
 static int ttm_bo_add_move_fence(struct ttm_buffer_object *bo,
-				 struct ttm_mem_type_manager *man,
-				 struct ttm_mem_reg *mem,
+				 struct ttm_resource_manager *man,
+				 struct ttm_resource *mem,
 				 bool no_wait_gpu)
 {
 	struct dma_fence *fence;
@@ -1016,12 +958,10 @@ int ttm_bo_mem_space(struct ttm_buffer_object *bo,
 		if (unlikely(ret))
 			goto error;
 
-		if (!mem->mm_node)
-			continue;
-
+		man = ttm_manager_type(bdev, mem->mem_type);
 		ret = ttm_bo_add_move_fence(bo, man, mem, ctx->no_wait_gpu);
 		if (unlikely(ret)) {
-			(*man->func->put_node)(man, mem);
+			ttm_resource_free(bo, mem);
 			if (ret == -EBUSY)
 				continue;
 

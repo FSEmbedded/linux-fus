@@ -119,17 +119,10 @@ void __init pkey_early_init_devtree(void)
 				!= (sizeof(u64) * BITS_PER_BYTE));
 
 	/*
-	 * Let's assume 32 pkeys on P8/P9 bare metal, if its not defined by device
-	 * tree. We make this exception since some version of skiboot forgot to
-	 * expose this property on power8/9.
+	 * Only P7 and above supports SPRN_AMR update with MSR[PR] = 1
 	 */
-	if (!pkeys_devtree_defined && !firmware_has_feature(FW_FEATURE_LPAR)) {
-		unsigned long pvr = mfspr(SPRN_PVR);
-
-		if (PVR_VER(pvr) == PVR_POWER8 || PVR_VER(pvr) == PVR_POWER8E ||
-		    PVR_VER(pvr) == PVR_POWER8NVL || PVR_VER(pvr) == PVR_POWER9)
-			pkeys_total = 32;
-	}
+	if (!early_cpu_has_feature(CPU_FTR_ARCH_206))
+		return;
 
 	/* scan the device tree for pkey feature */
 	pkeys_total = scan_pkey_feature();

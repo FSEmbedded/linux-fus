@@ -7,6 +7,7 @@
 #include <linux/clk-provider.h>
 #include <linux/delay.h>
 #include <linux/io.h>
+#include <linux/iopoll.h>
 #include <linux/imx_sema4.h>
 #include <linux/slab.h>
 #include <linux/jiffies.h>
@@ -66,18 +67,12 @@ static int clk_pllv3_wait_lock(struct clk_pllv3 *pll)
 	if ((pll->powerup_set && !val) || (!pll->powerup_set && val))
 		return 0;
 
-	/* Wait for PLL to lock */
-	do {
-		if (readl_relaxed(pll->base) & BM_PLL_LOCK)
-			break;
-		if (time_after(jiffies, timeout))
-			break;
-		/* Do not usleep if m4 enabled on i.mx6sx */
-		if (!(imx_src_is_m4_enabled() && clk_on_imx6sx()))
-			usleep_range(50, 500);
-	} while (1);
-
-	return readl_relaxed(pll->base) & BM_PLL_LOCK ? 0 : -ETIMEDOUT;
+	if (!(imx_src_is_m4_enabled() && clk_on_imx6sx()))
+		return readl_relaxed_poll_timeout(pll->base, val, val & BM_PLL_LOCK,
+						  500, PLL_LOCK_TIMEOUT);
+	else
+		return readl_relaxed_poll_timeout_atomic(pll->base, val, val & BM_PLL_LOCK,
+						  10, PLL_LOCK_TIMEOUT);
 }
 
 static int clk_pllv3_do_hardware(struct clk_hw *hw, bool enable)

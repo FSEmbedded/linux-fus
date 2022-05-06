@@ -1679,11 +1679,6 @@ minstrel_ht_alloc(struct ieee80211_hw *hw)
 	return mp;
 }
 
-	minstrel_ht_init_cck_rates(mp);
-
-	return mp;
-}
-
 #ifdef CONFIG_MAC80211_DEBUGFS
 static void minstrel_ht_add_debugfs(struct ieee80211_hw *hw, void *priv,
 				    struct dentry *debugfsdir)
@@ -1695,6 +1690,8 @@ static void minstrel_ht_add_debugfs(struct ieee80211_hw *hw, void *priv,
 			   &mp->fixed_rate_idx);
 	debugfs_create_u32("sample_switch", S_IRUGO | S_IWUSR, debugfsdir,
 			   &mp->sample_switch);
+	debugfs_create_bool("new_avg", S_IRUGO | S_IWUSR, debugfsdir,
+			   &mp->new_avg);
 }
 #endif
 

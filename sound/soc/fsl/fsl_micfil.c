@@ -37,6 +37,7 @@ struct fsl_micfil {
 	struct clk *clk_src[MICFIL_CLK_SRC_NUM];
 	struct snd_dmaengine_dai_dma_data dma_params_rx;
 	struct kobject *hwvad_kobject;
+	struct sdma_audio_config audio_config;
 	unsigned int vad_channel;
 	unsigned int dataline;
 	char name[32];
@@ -1602,7 +1603,10 @@ static int fsl_micfil_hw_params(struct snd_pcm_substream *substream,
 		return ret;
 	}
 
-	micfil->dma_params_rx.fifo_num = channels;
+	micfil->audio_config.src_fifo_num = channels;
+	micfil->audio_config.sw_done_sel = BIT(31);
+	micfil->dma_params_rx.peripheral_config  = &micfil->audio_config;
+	micfil->dma_params_rx.peripheral_size    = sizeof(micfil->audio_config);
 	micfil->dma_params_rx.maxburst = channels * MICFIL_DMA_MAXBURST_RX;
 
 	return 0;
@@ -2155,14 +2159,14 @@ static ssize_t micfil_hwvad_handler(struct kobject *kobj,
 	struct kobject *nand_kobj = kobj->parent;
 	struct device *dev = container_of(nand_kobj, struct device, kobj);
 	struct fsl_micfil *micfil = dev_get_drvdata(dev);
-	unsigned long vad_channel, flags;
+	unsigned long vad_channel;
 	int ret;
 
 	ret = kstrtoul(buf, 16, &vad_channel);
 	if (ret < 0)
 		return -EINVAL;
 
-	spin_lock_irqsave(&micfil->hwvad_lock, flags);
+	spin_lock(&micfil->hwvad_lock);
 	if (vad_channel <= 7) {
 		micfil->vad_channel = vad_channel;
 		ret = enable_hwvad(dev, true);
@@ -2170,7 +2174,7 @@ static ssize_t micfil_hwvad_handler(struct kobject *kobj,
 		micfil->vad_channel = -1;
 		ret = disable_hwvad(dev, true);
 	}
-	spin_unlock_irqrestore(&micfil->hwvad_lock, flags);
+	spin_unlock(&micfil->hwvad_lock);
 
 	if (ret) {
 		dev_err(dev, "Failed to %s hwvad: %d\n",
@@ -2350,11 +2354,7 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	if (micfil->soc->imx)
-		ret = imx_pcm_platform_register(&pdev->dev);
-	else
-		ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
-
+	ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to pcm register\n");
 		return ret;

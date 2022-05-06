@@ -857,17 +857,19 @@ static void reset_fdc_info(int fdc, int mode)
  */
 static void set_fdc(int drive)
 {
-	unsigned int new_fdc = fdc;
+	unsigned int fdc;
 
-	if (drive >= 0 && drive < N_DRIVE) {
-		new_fdc = FDC(drive);
-		current_drive = drive;
+	if (drive < 0 || drive >= N_DRIVE) {
+		pr_info("bad drive value %d\n", drive);
+		return;
 	}
-	if (new_fdc >= N_FDC) {
+
+	fdc = FDC(drive);
+	if (fdc >= N_FDC) {
 		pr_info("bad fdc value\n");
 		return;
 	}
-	fdc = new_fdc;
+
 	set_dor(fdc, ~0, 8);
 #if N_FDC > 1
 	set_dor(1 - fdc, ~8, 0);

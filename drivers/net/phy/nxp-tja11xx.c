@@ -76,7 +76,8 @@
 struct tja11xx_priv {
 	char		*hwmon_name;
 	struct device	*hwmon_dev;
-
+	struct phy_device *phydev;
+	struct work_struct phy_register_work;
 	u32 quirks;
 };
 
@@ -296,7 +297,8 @@ static int tja11xx_config_init(struct phy_device *phydev)
 		ret = phy_modify(phydev, MII_CFG1, reg_mask, reg_val);
 		if (ret)
 			return ret;
-
+		/* Fall Through */
+	case PHY_ID_TJA1102:
 		ret = phy_set_bits(phydev, MII_COMMCFG, MII_COMMCFG_AUTO_OP);
 		if (ret)
 			return ret;
@@ -578,7 +580,8 @@ static struct attribute_group nxp_attribute_group = {
 	.attrs = nxp_sysfs_entries,
 };
 
-static int tja11xx_probe(struct phy_device *phydev)
+static int tja11xx_hwmon_register(struct phy_device *phydev,
+				  struct tja11xx_priv *priv)
 {
 	struct device *dev = &phydev->mdio.dev;
 	int i;

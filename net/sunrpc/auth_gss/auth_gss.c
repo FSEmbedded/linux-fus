@@ -1923,19 +1923,6 @@ static void gss_update_rslack(struct rpc_task *task, struct rpc_cred *cred,
 	}
 }
 
-/*
- * RFC 2203, Section 5.3.2.2
- *
- *	struct rpc_gss_integ_data {
- *		opaque databody_integ<>;
- *		opaque checksum<>;
- *	};
- *
- *	struct rpc_gss_data_t {
- *		unsigned int seq_num;
- *		proc_req_arg_t arg;
- *	};
- */
 static int
 gss_unwrap_resp_auth(struct rpc_task *task, struct rpc_cred *cred)
 {
@@ -1962,7 +1949,6 @@ gss_unwrap_resp_integ(struct rpc_task *task, struct rpc_cred *cred,
 		      struct xdr_stream *xdr)
 {
 	struct xdr_buf gss_data, *rcv_buf = &rqstp->rq_rcv_buf;
-	struct rpc_auth *auth = cred->cr_auth;
 	u32 len, offset, seqno, maj_stat;
 	struct xdr_netobj mic;
 	int ret;
@@ -2011,8 +1997,7 @@ gss_unwrap_resp_integ(struct rpc_task *task, struct rpc_cred *cred,
 	if (maj_stat != GSS_S_COMPLETE)
 		goto bad_mic;
 
-	auth->au_rslack = auth->au_verfsize + 2 + 1 + XDR_QUADLEN(mic.len);
-	auth->au_ralign = auth->au_verfsize + 2;
+	gss_update_rslack(task, cred, 2, 2 + 1 + XDR_QUADLEN(mic.len));
 	ret = 0;
 
 out:
@@ -2037,7 +2022,6 @@ gss_unwrap_resp_priv(struct rpc_task *task, struct rpc_cred *cred,
 {
 	struct xdr_buf *rcv_buf = &rqstp->rq_rcv_buf;
 	struct kvec *head = rqstp->rq_rcv_buf.head;
-	struct rpc_auth *auth = cred->cr_auth;
 	u32 offset, opaque_len, maj_stat;
 	__be32 *p;
 
@@ -2064,8 +2048,8 @@ gss_unwrap_resp_priv(struct rpc_task *task, struct rpc_cred *cred,
 	 */
 	xdr_init_decode(xdr, rcv_buf, p, rqstp);
 
-	auth->au_rslack = auth->au_verfsize + 2 + ctx->gc_gss_ctx->slack;
-	auth->au_ralign = auth->au_verfsize + 2 + ctx->gc_gss_ctx->align;
+	gss_update_rslack(task, cred, 2 + ctx->gc_gss_ctx->align,
+			  2 + ctx->gc_gss_ctx->slack);
 
 	return 0;
 unwrap_failed:

@@ -102,8 +102,7 @@ void afs_fileserver_probe_result(struct afs_call *call)
 	struct afs_addr_list *alist = call->alist;
 	struct afs_server *server = call->server;
 	unsigned int index = call->addr_ix;
-	unsigned int rtt_us;
-	bool have_result = false;
+	unsigned int rtt_us = 0;
 	int ret = call->error;
 
 	_enter("%pU,%u", &server->uuid, index);
@@ -165,6 +164,7 @@ responded:
 	if (rxrpc_kernel_get_srtt(call->net->socket, call->rxcall, &rtt_us) &&
 	    rtt_us < server->probe.rtt) {
 		server->probe.rtt = rtt_us;
+		server->rtt = rtt_us;
 		alist->preferred = index;
 	}
 
@@ -175,8 +175,9 @@ responded:
 out:
 	spin_unlock(&server->probe_lock);
 
-	_debug("probe [%u][%u] %pISpc rtt=%u ret=%d",
-	       server_index, index, &alist->addrs[index].transport, rtt_us, ret);
+	_debug("probe %pU [%u] %pISpc rtt=%u ret=%d",
+	       &server->uuid, index, &alist->addrs[index].transport,
+	       rtt_us, ret);
 
 	return afs_done_one_fs_probe(call->net, server);
 }
@@ -205,21 +206,9 @@ void afs_fs_probe_fileserver(struct afs_net *net, struct afs_server *server,
 	memset(&server->probe, 0, sizeof(server->probe));
 	server->probe.rtt = UINT_MAX;
 
-	for (ac.index = 0; ac.index < ac.alist->nr_addrs; ac.index++) {
-		call = afs_fs_get_capabilities(net, server, &ac, key, server_index);
-		if (!IS_ERR(call)) {
-			afs_put_call(call);
-			in_progress = true;
-		} else {
-			afs_prioritise_error(_e, PTR_ERR(call), ac.abort_code);
-		}
-	}
-
-	if (!in_progress)
-		afs_fs_probe_done(server);
-	afs_put_addrlist(ac.alist);
-	return in_progress;
-}
+	ac.index = ac.alist->preferred;
+	if (ac.index < 0 || ac.index >= ac.alist->nr_addrs)
+		all = true;
 
 	if (all) {
 		for (ac.index = 0; ac.index < ac.alist->nr_addrs; ac.index++)

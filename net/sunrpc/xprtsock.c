@@ -2522,17 +2522,9 @@ static int bc_sendto(struct rpc_rqst *req)
 		.msg_flags	= 0,
 	};
 	rpc_fraghdr marker = cpu_to_be32(RPC_LAST_STREAM_FRAGMENT |
-					 (u32)xbufp->len);
-	struct kvec iov = {
-		.iov_base	= &marker,
-		.iov_len	= sizeof(marker),
-	};
-
-	req->rq_xtime = ktime_get();
-
-	len = kernel_sendmsg(transport->sock, &msg, &iov, 1, iov.iov_len);
-	if (len != iov.iov_len)
-		return -EAGAIN;
+					 (u32)xdr->len);
+	unsigned int sent = 0;
+	int err;
 
 	req->rq_xtime = ktime_get();
 	err = xprt_sock_sendmsg(transport->sock, &msg, xdr, 0, marker, &sent);

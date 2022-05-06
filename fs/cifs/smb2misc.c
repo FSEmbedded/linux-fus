@@ -772,10 +772,17 @@ smb2_cancelled_close_fid(struct work_struct *work)
 	kfree(cancelled);
 }
 
-/* Caller should already has an extra reference to @tcon */
+/*
+ * Caller should already has an extra reference to @tcon
+ * This function is used to queue work to close a handle to prevent leaks
+ * on the server.
+ * We handle two cases. If an open was interrupted after we sent the
+ * SMB2_CREATE to the server but before we processed the reply, and second
+ * if a close was interrupted before we sent the SMB2_CLOSE to the server.
+ */
 static int
-__smb2_handle_cancelled_close(struct cifs_tcon *tcon, __u64 persistent_fid,
-			      __u64 volatile_fid)
+__smb2_handle_cancelled_cmd(struct cifs_tcon *tcon, __u16 cmd, __u64 mid,
+			    __u64 persistent_fid, __u64 volatile_fid)
 {
 	struct close_cancelled_open *cancelled;
 
@@ -786,28 +793,12 @@ __smb2_handle_cancelled_close(struct cifs_tcon *tcon, __u64 persistent_fid,
 	cancelled->fid.persistent_fid = persistent_fid;
 	cancelled->fid.volatile_fid = volatile_fid;
 	cancelled->tcon = tcon;
+	cancelled->cmd = cmd;
+	cancelled->mid = mid;
 	INIT_WORK(&cancelled->work, smb2_cancelled_close_fid);
 	WARN_ON(queue_work(cifsiod_wq, &cancelled->work) == false);
 
 	return 0;
-}
-
-int
-smb2_handle_cancelled_close(struct cifs_tcon *tcon, __u64 persistent_fid,
-			    __u64 volatile_fid)
-{
-	int rc;
-
-	cifs_dbg(FYI, "%s: tc_count=%d\n", __func__, tcon->tc_count);
-	spin_lock(&cifs_tcp_ses_lock);
-	tcon->tc_count++;
-	spin_unlock(&cifs_tcp_ses_lock);
-
-	rc = __smb2_handle_cancelled_close(tcon, persistent_fid, volatile_fid);
-	if (rc)
-		cifs_put_tcon(tcon);
-
-	return rc;
 }
 
 int
@@ -860,8 +851,11 @@ smb2_handle_cancelled_mid(struct mid_q_entry *mid, struct TCP_Server_Info *serve
 	if (!tcon)
 		return -ENOENT;
 
-	rc = __smb2_handle_cancelled_close(tcon, rsp->PersistentFileId,
-					   rsp->VolatileFileId);
+	rc = __smb2_handle_cancelled_cmd(tcon,
+					 le16_to_cpu(sync_hdr->Command),
+					 le64_to_cpu(sync_hdr->MessageId),
+					 rsp->PersistentFileId,
+					 rsp->VolatileFileId);
 	if (rc)
 		cifs_put_tcon(tcon);
 

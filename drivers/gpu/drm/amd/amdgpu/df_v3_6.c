@@ -356,7 +356,7 @@ static void df_v3_6_update_medium_grain_clock_gating(struct amdgpu_device *adev,
 
 	if (adev->cg_flags & AMD_CG_SUPPORT_DF_MGCG) {
 		/* Put DF on broadcast mode */
-		adev->df_funcs->enable_broadcast_mode(adev, true);
+		adev->df.funcs->enable_broadcast_mode(adev, true);
 
 		if (enable) {
 			tmp = RREG32_SOC15(DF, 0,
@@ -375,7 +375,7 @@ static void df_v3_6_update_medium_grain_clock_gating(struct amdgpu_device *adev,
 		}
 
 		/* Exit broadcast mode */
-		adev->df_funcs->enable_broadcast_mode(adev, false);
+		adev->df.funcs->enable_broadcast_mode(adev, false);
 	}
 }
 

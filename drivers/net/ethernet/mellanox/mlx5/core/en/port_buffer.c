@@ -158,7 +158,7 @@ static int update_xoff_threshold(struct mlx5e_port_buffer *port_buffer,
 		}
 
 		if (port_buffer->buffer[i].size <
-		    (xoff + max_mtu + (1 << MLX5E_BUFFER_CELL_SHIFT))) {
+		    (xoff + max_mtu + port_buff_cell_sz)) {
 			pr_err("buffer_size[%d]=%d is not enough for lossless buffer\n",
 			       i, port_buffer->buffer[i].size);
 			return -ENOMEM;

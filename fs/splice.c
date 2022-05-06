@@ -856,13 +856,14 @@ ssize_t splice_direct_to_actor(struct file *in, struct splice_desc *sd,
 	WARN_ON_ONCE(!pipe_empty(pipe->head, pipe->tail));
 
 	while (len) {
-		unsigned int pipe_pages;
+		unsigned int p_space;
 		size_t read_len;
 		loff_t pos = sd->pos, prev_pos = pos;
 
 		/* Don't try to read more the pipe has space for. */
-		pipe_pages = pipe->buffers - pipe->nrbufs;
-		read_len = min(len, (size_t)pipe_pages << PAGE_SHIFT);
+		p_space = pipe->max_usage -
+			pipe_occupancy(pipe->head, pipe->tail);
+		read_len = min_t(size_t, len, p_space << PAGE_SHIFT);
 		ret = do_splice_to(in, &pos, pipe, read_len, flags);
 		if (unlikely(ret <= 0))
 			goto out_release;
@@ -1083,11 +1084,11 @@ long do_splice(struct file *in, loff_t *off_in, struct file *out,
 		pipe_lock(opipe);
 		ret = wait_for_space(opipe, flags);
 		if (!ret) {
-			unsigned int pipe_pages;
+			unsigned int p_space;
 
 			/* Don't try to read more the pipe has space for. */
-			pipe_pages = opipe->buffers - opipe->nrbufs;
-			len = min(len, (size_t)pipe_pages << PAGE_SHIFT);
+			p_space = opipe->max_usage - pipe_occupancy(opipe->head, opipe->tail);
+			len = min_t(size_t, len, p_space << PAGE_SHIFT);
 
 			ret = do_splice_to(in, &offset, opipe, len, flags);
 		}

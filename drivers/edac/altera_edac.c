@@ -502,69 +502,6 @@ module_platform_driver(altr_sdram_edac_driver);
 
 #endif	/* CONFIG_EDAC_ALTERA_SDRAM */
 
-/**************** Stratix 10 EDAC Memory Controller Functions ************/
-
-/**
- * s10_protected_reg_write
- * Write to a protected SMC register.
- * @context: Not used.
- * @reg: Address of register
- * @value: Value to write
- * Return: INTEL_SIP_SMC_STATUS_OK (0) on success
- *	   INTEL_SIP_SMC_REG_ERROR on error
- *	   INTEL_SIP_SMC_RETURN_UNKNOWN_FUNCTION if not supported
- */
-static int s10_protected_reg_write(void *context, unsigned int reg,
-				   unsigned int val)
-{
-	struct arm_smccc_res result;
-	unsigned long offset = (unsigned long)context;
-
-	arm_smccc_smc(INTEL_SIP_SMC_REG_WRITE, offset + reg, val, 0, 0,
-		      0, 0, 0, &result);
-
-	return (int)result.a0;
-}
-
-/**
- * s10_protected_reg_read
- * Read the status of a protected SMC register
- * @context: Not used.
- * @reg: Address of register
- * @value: Value read.
- * Return: INTEL_SIP_SMC_STATUS_OK (0) on success
- *	   INTEL_SIP_SMC_REG_ERROR on error
- *	   INTEL_SIP_SMC_RETURN_UNKNOWN_FUNCTION if not supported
- */
-static int s10_protected_reg_read(void *context, unsigned int reg,
-				  unsigned int *val)
-{
-	struct arm_smccc_res result;
-	unsigned long offset = (unsigned long)context;
-
-	arm_smccc_smc(INTEL_SIP_SMC_REG_READ, offset + reg, 0, 0, 0,
-		      0, 0, 0, &result);
-
-	*val = (unsigned int)result.a1;
-
-	return (int)result.a0;
-}
-
-static const struct regmap_config s10_sdram_regmap_cfg = {
-	.name = "s10_ddr",
-	.reg_bits = 32,
-	.reg_stride = 4,
-	.val_bits = 32,
-	.max_register = 0xffd12228,
-	.reg_read = s10_protected_reg_read,
-	.reg_write = s10_protected_reg_write,
-	.use_single_read = true,
-	.use_single_write = true,
-	.fast_io = true,
-};
-
-/************** </Stratix10 EDAC Memory Controller Functions> ***********/
-
 /************************* EDAC Parent Probe *************************/
 
 static const struct of_device_id altr_edac_device_of_match[];

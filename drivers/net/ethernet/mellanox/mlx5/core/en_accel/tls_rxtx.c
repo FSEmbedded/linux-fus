@@ -263,11 +263,6 @@ bool mlx5e_tls_handle_tx_skb(struct net_device *netdev, struct mlx5e_txqsq *sq,
 	int datalen;
 	u32 skb_seq;
 
-	if (MLX5_CAP_GEN(sq->channel->mdev, tls_tx)) {
-		skb = mlx5e_ktls_handle_tx_skb(netdev, sq, skb, wqe, pi);
-		goto out;
-	}
-
 	if (!skb->sk || !tls_is_sk_tx_device_offloaded(skb->sk))
 		return true;
 

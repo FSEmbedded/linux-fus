@@ -188,9 +188,8 @@ struct pci_bridge_reg_behavior pcie_cap_regs_behavior[PCI_CAP_PCIE_SIZEOF / 4] =
 		 * Device status register has bits 6 and [3:0] W1C, [5:4] RO,
 		 * the rest is reserved
 		 */
-		.w1c = GENMASK(19, 16),
-		.ro = GENMASK(21, 20),
-		.rsvd = GENMASK(31, 22),
+		.w1c = (BIT(6) | GENMASK(3, 0)) << 16,
+		.ro = GENMASK(5, 4) << 16,
 	},
 
 	[PCI_EXP_LNKCAP / 4] = {
@@ -229,7 +228,6 @@ struct pci_bridge_reg_behavior pcie_cap_regs_behavior[PCI_CAP_PCIE_SIZEOF / 4] =
 			PCI_EXP_SLTSTA_CC | PCI_EXP_SLTSTA_DLLSC) << 16,
 		.ro = (PCI_EXP_SLTSTA_MRLSS | PCI_EXP_SLTSTA_PDS |
 		       PCI_EXP_SLTSTA_EIS) << 16,
-		.rsvd = GENMASK(15, 13) | (GENMASK(15, 9) << 16),
 	},
 
 	[PCI_EXP_RTCTL / 4] = {

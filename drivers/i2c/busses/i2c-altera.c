@@ -69,7 +69,6 @@
  * @fifo_size: size of the FIFO passed in.
  * @isr_mask: cached copy of local ISR enables.
  * @isr_status: cached copy of local ISR status.
- * @lock: spinlock for IRQ synchronization.
  * @isr_mutex: mutex for IRQ thread.
  */
 struct altr_i2c_dev {
@@ -86,7 +85,6 @@ struct altr_i2c_dev {
 	u32 fifo_size;
 	u32 isr_mask;
 	u32 isr_status;
-	spinlock_t lock;	/* IRQ synchronization */
 	struct mutex isr_mutex;
 };
 
@@ -408,7 +406,6 @@ static int altr_i2c_probe(struct platform_device *pdev)
 
 	idev->dev = &pdev->dev;
 	init_completion(&idev->msg_complete);
-	spin_lock_init(&idev->lock);
 	mutex_init(&idev->isr_mutex);
 
 	ret = device_property_read_u32(idev->dev, "fifo-size",

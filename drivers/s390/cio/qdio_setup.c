@@ -9,6 +9,8 @@
 #include <linux/slab.h>
 #include <linux/export.h>
 #include <linux/io.h>
+
+#include <asm/ebcdic.h>
 #include <asm/qdio.h>
 
 #include "cio.h"

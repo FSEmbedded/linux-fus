@@ -955,7 +955,7 @@ static long encrypted_read(const struct key *key, char *buffer,
 	memzero_explicit(derived_key, sizeof(derived_key));
 
 	memcpy(buffer, ascii_buf, asciiblob_len);
-	kzfree(ascii_buf);
+	kfree_sensitive(ascii_buf);
 
 	return asciiblob_len;
 out:

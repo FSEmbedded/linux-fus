@@ -697,6 +697,18 @@ void gfs2_glock_remove_revoke(struct gfs2_glock *gl)
 	}
 }
 
+/**
+ * gfs2_write_revokes - Add as many revokes to the system transaction as we can
+ * @sdp: The GFS2 superblock
+ *
+ * Our usual strategy is to defer writing revokes as much as we can in the hope
+ * that we'll eventually overwrite the journal, which will make those revokes
+ * go away.  This changes when we flush the log: at that point, there will
+ * likely be some left-over space in the last revoke block of that transaction.
+ * We can fill that space with additional revokes for blocks that have already
+ * been written back.  This will basically come at no cost now, and will save
+ * us from having to keep track of those blocks on the AIL2 list later.
+ */
 void gfs2_write_revokes(struct gfs2_sbd *sdp)
 {
 	/* number of revokes we still have room for */

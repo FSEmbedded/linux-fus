@@ -542,6 +542,7 @@ SYM_DATA_START(initial_page_table)
 	.fill 1024, 4, 0
 #endif
 
+SYM_DATA_END(initial_page_table)
 #endif
 
 .data

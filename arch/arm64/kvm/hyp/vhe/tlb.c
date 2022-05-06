@@ -16,14 +16,8 @@ struct tlb_inv_context {
 	u64		sctlr;
 };
 
-#ifdef CONFIG_IMX_SCU_SOC
-extern bool TKT340553_SW_WORKAROUND;
-#else
-#define TKT340553_SW_WORKAROUND 0
-#endif
-
-static void __hyp_text __tlb_switch_to_guest_vhe(struct kvm *kvm,
-						 struct tlb_inv_context *cxt)
+static void __tlb_switch_to_guest(struct kvm_s2_mmu *mmu,
+				  struct tlb_inv_context *cxt)
 {
 	u64 val;
 
@@ -100,12 +94,8 @@ void __kvm_tlb_flush_vmid_ipa(struct kvm_s2_mmu *mmu,
 	 * Instead, we invalidate Stage-2 for this IPA, and the
 	 * whole of Stage-1. Weep...
 	 */
-	if (TKT340553_SW_WORKAROUND) {
-		__tlbi(vmalls12e1is);
-	} else {
-		ipa >>= 12;
-		__tlbi(ipas2e1is, ipa);
-	}
+	ipa >>= 12;
+	__tlbi_level(ipas2e1is, ipa, level);
 
 	/*
 	 * We have to ensure completion of the invalidation at Stage-2,

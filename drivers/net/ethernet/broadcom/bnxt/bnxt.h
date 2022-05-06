@@ -960,9 +960,8 @@ struct bnxt_cp_ring_info {
 
 	struct bnxt_stats_mem	stats;
 	u32			hw_stats_ctx_id;
-	u64			rx_l4_csum_errors;
-	u64			rx_buf_errors;
-	u64			missed_irqs;
+
+	struct bnxt_sw_stats	sw_stats;
 
 	struct bnxt_ring_struct	cp_ring_struct;
 
@@ -1809,10 +1808,6 @@ struct bnxt {
 	(test_bit(BNXT_STATE_FW_FATAL_COND, &(bp)->state) ||	\
 	 pci_channel_offline((bp)->pdev))
 
-#define BNXT_NO_FW_ACCESS(bp)					\
-	(test_bit(BNXT_STATE_FW_FATAL_COND, &(bp)->state) ||	\
-	 pci_channel_offline((bp)->pdev))
-
 	struct bnxt_irq	*irq_tbl;
 	int			total_irqs;
 	u8			mac_addr[ETH_ALEN];
@@ -1844,6 +1839,12 @@ struct bnxt {
 	#define BNXT_FW_CAP_EXT_STATS_SUPPORTED		0x00040000
 	#define BNXT_FW_CAP_ERR_RECOVER_RELOAD		0x00100000
 	#define BNXT_FW_CAP_HOT_RESET			0x00200000
+	#define BNXT_FW_CAP_SHARED_PORT_CFG		0x00400000
+	#define BNXT_FW_CAP_VLAN_RX_STRIP		0x01000000
+	#define BNXT_FW_CAP_VLAN_TX_INSERT		0x02000000
+	#define BNXT_FW_CAP_EXT_HW_STATS_SUPPORTED	0x04000000
+	#define BNXT_FW_CAP_PORT_STATS_NO_RESET		0x10000000
+	#define BNXT_FW_CAP_RING_MONITOR		0x40000000
 
 #define BNXT_NEW_RM(bp)		((bp)->fw_cap & BNXT_FW_CAP_NEW_RM)
 	u32			hwrm_spec_code;

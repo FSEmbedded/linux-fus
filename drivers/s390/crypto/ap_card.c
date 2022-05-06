@@ -67,10 +67,10 @@ static ssize_t request_count_show(struct device *dev,
 	u64 req_cnt;
 
 	req_cnt = 0;
-	spin_lock_bh(&ap_list_lock);
+	spin_lock_bh(&ap_queues_lock);
 	req_cnt = atomic64_read(&ac->total_request_count);
-	spin_unlock_bh(&ap_list_lock);
-	return snprintf(buf, PAGE_SIZE, "%llu\n", req_cnt);
+	spin_unlock_bh(&ap_queues_lock);
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", req_cnt);
 }
 
 static ssize_t request_count_store(struct device *dev,
@@ -81,10 +81,11 @@ static ssize_t request_count_store(struct device *dev,
 	struct ap_queue *aq;
 	struct ap_card *ac = to_ap_card(dev);
 
-	spin_lock_bh(&ap_list_lock);
-	for_each_ap_queue(aq, ac)
-		aq->total_request_count = 0;
-	spin_unlock_bh(&ap_list_lock);
+	spin_lock_bh(&ap_queues_lock);
+	hash_for_each(ap_queues, bkt, aq, hnode)
+		if (ac == aq->card)
+			aq->total_request_count = 0;
+	spin_unlock_bh(&ap_queues_lock);
 	atomic64_set(&ac->total_request_count, 0);
 
 	return count;

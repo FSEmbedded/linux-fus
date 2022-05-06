@@ -51,15 +51,10 @@
 #include <linux/highmem.h>
 #include <linux/percpu.h>
 #include <linux/dma-mapping.h>
-#include <linux/iommu.h>
 #include <linux/sort.h>
 #include <linux/phy_fixed.h>
 #include <soc/fsl/bman.h>
 #include <soc/fsl/qman.h>
-#if !defined(CONFIG_PPC) && defined(CONFIG_SOC_BUS)
-#include <linux/sys_soc.h>      /* soc_device_match */
-#endif
-
 #include "fman.h"
 #include "fman_port.h"
 #include "mac.h"
@@ -78,10 +73,6 @@ MODULE_PARM_DESC(debug, "Module/Driver verbosity level (0=none,...,16=all)");
 static u16 tx_timeout = 1000;
 module_param(tx_timeout, ushort, 0444);
 MODULE_PARM_DESC(tx_timeout, "The Tx timeout in ms");
-
-#ifndef CONFIG_PPC
-bool dpaa_errata_a010022;
-#endif
 
 #define FM_FD_STAT_RX_ERRORS						\
 	(FM_FD_ERR_DMA | FM_FD_ERR_PHYSICAL	| \
@@ -1523,22 +1514,9 @@ static int dpaa_bp_add_8_bufs(const struct dpaa_bp *dpaa_bp)
 	u8 i;
 
 	for (i = 0; i < 8; i++) {
-#ifndef CONFIG_PPC
-		if (dpaa_errata_a010022) {
-			struct page *page = alloc_page(GFP_KERNEL);
-
-			if (unlikely(!page))
-				goto release_previous_buffs;
-			new_buf = page_address(page);
-		} else {
-			new_buf = netdev_alloc_frag(dpaa_bp->raw_size);
-		}
-#else
-		new_buf = netdev_alloc_frag(dpaa_bp->raw_size);
-#endif
-		if (unlikely(!new_buf)) {
-			dev_err(dev, "netdev_alloc_frag() failed, size %zu\n",
-				dpaa_bp->raw_size);
+		p = dev_alloc_pages(0);
+		if (unlikely(!p)) {
+			netdev_err(net_dev, "dev_alloc_pages() failed\n");
 			goto release_previous_buffs;
 		}
 
@@ -1634,17 +1612,6 @@ static int dpaa_eth_refill_bpools(struct dpaa_priv *priv)
 	return 0;
 }
 
-static phys_addr_t dpaa_iova_to_phys(struct device *dev, dma_addr_t addr)
-{
-	struct iommu_domain *domain;
-
-	domain = iommu_get_domain_for_dev(dev);
-	if (domain)
-		return iommu_iova_to_phys(domain, addr);
-	else
-		return addr;
-}
-
 /* Cleanup function for outgoing frame descriptors that were built on Tx path,
  * either contiguous frames or scatter/gather ones.
  * Skb freeing is not handled here.
@@ -1668,23 +1635,17 @@ static struct sk_buff *dpaa_cleanup_tx_fd(const struct dpaa_priv *priv,
 	const struct qm_sg_entry *sgt;
 	struct sk_buff *skb;
 	u64 ns;
-
-	skbh = (struct sk_buff **)phys_to_virt(dpaa_iova_to_phys(dev, addr));
-	skb = *skbh;
+	int i;
 
 	if (unlikely(qm_fd_get_format(fd) == qm_fd_sg)) {
-		nr_frags = skb_shinfo(skb)->nr_frags;
+		dma_unmap_page(priv->tx_dma_dev, addr,
+			       qm_fd_get_offset(fd) + DPAA_SGT_SIZE,
+			       dma_dir);
 
 		/* The sgt buffer has been allocated with netdev_alloc_frag(),
 		 * it's from lowmem.
 		 */
-		sgt = phys_to_virt(dpaa_iova_to_phys(dev,
-						     addr +
-						     qm_fd_get_offset(fd)));
-
-		dma_unmap_single(dev, addr,
-				 qm_fd_get_offset(fd) + DPAA_SGT_SIZE,
-				 dma_dir);
+		sgt = vaddr + qm_fd_get_offset(fd);
 
 		/* sgt[0] is from lowmem, was dma_map_single()-ed */
 		dma_unmap_single(priv->tx_dma_dev, qm_sg_addr(&sgt[0]),
@@ -1698,13 +1659,6 @@ static struct sk_buff *dpaa_cleanup_tx_fd(const struct dpaa_priv *priv,
 			dma_unmap_page(priv->tx_dma_dev, qm_sg_addr(&sgt[i]),
 				       qm_sg_entry_get_len(&sgt[i]), dma_dir);
 		}
-#ifndef CONFIG_PPC
-		if (dpaa_errata_a010022)
-			put_page(virt_to_page(sgt));
-		else
-#endif
-			/* Free the page frag that we allocated on Tx */
-			skb_free_frag(skbh);
 	} else {
 		dma_unmap_single(priv->tx_dma_dev, addr,
 				 priv->tx_headroom + qm_fd_get_length(fd),
@@ -1727,23 +1681,9 @@ static struct sk_buff *dpaa_cleanup_tx_fd(const struct dpaa_priv *priv,
 		}
 	}
 
-	/* DMA unmapping is required before accessing the HW provided info */
-	if (ts && priv->tx_tstamp &&
-	    skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) {
-		memset(&shhwtstamps, 0, sizeof(shhwtstamps));
-
-		if (!fman_port_get_tstamp(priv->mac_dev->port[TX], (void *)skbh,
-					  &ns)) {
-			shhwtstamps.hwtstamp = ns_to_ktime(ns);
-			skb_tstamp_tx(skb, &shhwtstamps);
-		} else {
-			dev_warn(dev, "fman_port_get_tstamp failed!\n");
-		}
-	}
-
 	if (qm_fd_get_format(fd) == qm_fd_sg)
-		/* Free the page frag that we allocated on Tx */
-		skb_free_frag(phys_to_virt(addr));
+		/* Free the page that we allocated on Tx for the SGT */
+		free_pages((unsigned long)vaddr, 0);
 
 	return skb;
 }
@@ -1772,21 +1712,25 @@ static u8 rx_csum_offload(const struct dpaa_priv *priv, const struct qm_fd *fd)
  * accommodate the shared info area of the skb.
  */
 static struct sk_buff *contig_fd_to_skb(const struct dpaa_priv *priv,
-					const struct qm_fd *fd,
-					struct dpaa_bp *dpaa_bp,
-					void *vaddr)
+					const struct qm_fd *fd)
 {
 	ssize_t fd_off = qm_fd_get_offset(fd);
+	dma_addr_t addr = qm_fd_addr(fd);
+	struct dpaa_bp *dpaa_bp;
 	struct sk_buff *skb;
+	void *vaddr;
 
+	vaddr = phys_to_virt(addr);
 	WARN_ON(!IS_ALIGNED((unsigned long)vaddr, SMP_CACHE_BYTES));
+
+	dpaa_bp = dpaa_bpid2pool(fd->bpid);
+	if (!dpaa_bp)
+		goto free_buffer;
 
 	skb = build_skb(vaddr, dpaa_bp->size +
 			SKB_DATA_ALIGN(sizeof(struct skb_shared_info)));
-	if (WARN_ONCE(!skb, "Build skb failure on Rx\n")) {
-		skb_free_frag(vaddr);
-		return NULL;
-	}
+	if (WARN_ONCE(!skb, "Build skb failure on Rx\n"))
+		goto free_buffer;
 	WARN_ON(fd_off != priv->rx_headroom);
 	skb_reserve(skb, fd_off);
 	skb_put(skb, qm_fd_get_length(fd));
@@ -1794,6 +1738,10 @@ static struct sk_buff *contig_fd_to_skb(const struct dpaa_priv *priv,
 	skb->ip_summed = rx_csum_offload(priv, fd);
 
 	return skb;
+
+free_buffer:
+	free_pages((unsigned long)vaddr, 0);
+	return NULL;
 }
 
 /* Build an skb with the data of the first S/G entry in the linear portion and
@@ -1802,14 +1750,14 @@ static struct sk_buff *contig_fd_to_skb(const struct dpaa_priv *priv,
  * The page fragment holding the S/G Table is recycled here.
  */
 static struct sk_buff *sg_fd_to_skb(const struct dpaa_priv *priv,
-				    const struct qm_fd *fd,
-				    struct dpaa_bp *dpaa_bp,
-				    void *vaddr)
+				    const struct qm_fd *fd)
 {
 	ssize_t fd_off = qm_fd_get_offset(fd);
+	dma_addr_t addr = qm_fd_addr(fd);
 	const struct qm_sg_entry *sgt;
 	struct page *page, *head_page;
-	void *sg_vaddr;
+	struct dpaa_bp *dpaa_bp;
+	void *vaddr, *sg_vaddr;
 	int frag_off, frag_len;
 	struct sk_buff *skb;
 	dma_addr_t sg_addr;
@@ -1818,6 +1766,7 @@ static struct sk_buff *sg_fd_to_skb(const struct dpaa_priv *priv,
 	int *count_ptr;
 	int i, j;
 
+	vaddr = phys_to_virt(addr);
 	WARN_ON(!IS_ALIGNED((unsigned long)vaddr, SMP_CACHE_BYTES));
 
 	/* Iterate through the SGT entries and add data buffers to the skb */
@@ -1828,18 +1777,16 @@ static struct sk_buff *sg_fd_to_skb(const struct dpaa_priv *priv,
 		WARN_ON(qm_sg_entry_is_ext(&sgt[i]));
 
 		sg_addr = qm_sg_addr(&sgt[i]);
+		sg_vaddr = phys_to_virt(sg_addr);
+		WARN_ON(!PTR_IS_ALIGNED(sg_vaddr, SMP_CACHE_BYTES));
+
+		dma_unmap_page(priv->rx_dma_dev, sg_addr,
+			       DPAA_BP_RAW_SIZE, DMA_FROM_DEVICE);
 
 		/* We may use multiple Rx pools */
 		dpaa_bp = dpaa_bpid2pool(sgt[i].bpid);
-		if (!dpaa_bp) {
-			pr_info("%s: fail to get dpaa_bp for sg bpid %d\n",
-				__func__, sgt[i].bpid);
+		if (!dpaa_bp)
 			goto free_buffers;
-		}
-		sg_vaddr = phys_to_virt(dpaa_iova_to_phys(dpaa_bp->dev,
-							  sg_addr));
-		WARN_ON(!IS_ALIGNED((unsigned long)sg_vaddr,
-				    SMP_CACHE_BYTES));
 
 		if (!skb) {
 			sz = dpaa_bp->size +
@@ -1900,15 +1847,21 @@ static struct sk_buff *sg_fd_to_skb(const struct dpaa_priv *priv,
 
 free_buffers:
 	/* free all the SG entries */
-	for (i = 0; i < DPAA_SGT_MAX_ENTRIES ; i++) {
-		sg_addr = qm_sg_addr(&sgt[i]);
-		dpaa_bp = dpaa_bpid2pool(sgt[i].bpid);
-		if (dpaa_bp) {
-			sg_addr = dpaa_iova_to_phys(dpaa_bp->dev, sg_addr);
-			sg_vaddr = phys_to_virt(sg_addr);
-			skb_free_frag(sg_vaddr);
-			count_ptr = this_cpu_ptr(dpaa_bp->percpu_count);
-			(*count_ptr)--;
+	for (j = 0; j < DPAA_SGT_MAX_ENTRIES ; j++) {
+		sg_addr = qm_sg_addr(&sgt[j]);
+		sg_vaddr = phys_to_virt(sg_addr);
+		/* all pages 0..i were unmaped */
+		if (j > i)
+			dma_unmap_page(priv->rx_dma_dev, qm_sg_addr(&sgt[j]),
+				       DPAA_BP_RAW_SIZE, DMA_FROM_DEVICE);
+		free_pages((unsigned long)sg_vaddr, 0);
+		/* counters 0..i-1 were decremented */
+		if (j >= i) {
+			dpaa_bp = dpaa_bpid2pool(sgt[j].bpid);
+			if (dpaa_bp) {
+				count_ptr = this_cpu_ptr(dpaa_bp->percpu_count);
+				(*count_ptr)--;
+			}
 		}
 
 		if (qm_sg_entry_is_final(&sgt[j]))
@@ -1984,28 +1937,16 @@ static int skb_to_sg_fd(struct dpaa_priv *priv,
 	skb_frag_t *frag;
 	dma_addr_t addr;
 	size_t frag_len;
-	void *sgt_buf;
+	struct page *p;
+	int i, j, err;
 
-#ifndef CONFIG_PPC
-	if (unlikely(dpaa_errata_a010022)) {
-		struct page *page = alloc_page(GFP_ATOMIC);
-		if (unlikely(!page))
-			return -ENOMEM;
-		sgt_buf = page_address(page);
-	} else {
-#endif
-		/* get a page frag to store the SGTable */
-		sz = SKB_DATA_ALIGN(priv->tx_headroom + DPAA_SGT_SIZE);
-		sgt_buf = netdev_alloc_frag(sz);
-		if (unlikely(!sgt_buf)) {
-			netdev_err(net_dev,
-				   "netdev_alloc_frag() failed for size %d\n",
-				   sz);
-			return -ENOMEM;
-		}
-#ifndef CONFIG_PPC
+	/* get a page to store the SGTable */
+	p = dev_alloc_pages(0);
+	if (unlikely(!p)) {
+		netdev_err(net_dev, "dev_alloc_pages() failed\n");
+		return -ENOMEM;
 	}
-#endif
+	buff_start = page_address(p);
 
 	/* Enable L3/L4 hardware checksum computation.
 	 *
@@ -2125,128 +2066,80 @@ static inline int dpaa_xmit(struct dpaa_priv *priv,
 	return 0;
 }
 
-#ifndef CONFIG_PPC
-/* On LS1043A SoC there is a known erratum ERR010022 that results in split DMA
- * transfers in the FMan under certain conditions. This, combined with a fixed
- * size FIFO of ongoing DMA transfers that may overflow when a split occurs,
- * results in the FMan stalling DMA transfers under high traffic. To avoid the
- * problem, one needs to prevent the DMA transfer splits to occur by preparing
- * the buffers
- */
-
-#define DPAA_A010022_HEADROOM	256
-#define CROSS_4K_BOUND(start, size) \
-	(((start) + (size)) > (((start) + 0x1000) & ~0xFFF))
-
-static bool dpaa_errata_a010022_has_dma_issue(struct sk_buff *skb,
-					      struct dpaa_priv *priv)
+#ifdef CONFIG_DPAA_ERRATUM_A050385
+static int dpaa_a050385_wa(struct net_device *net_dev, struct sk_buff **s)
 {
-	int nr_frags, i = 0;
-	 skb_frag_t *frag;
+	struct dpaa_priv *priv = netdev_priv(net_dev);
+	struct sk_buff *new_skb, *skb = *s;
+	unsigned char *start, i;
 
-	/* Transfers that do not start at 16B aligned addresses will be split;
-	 * Transfers that cross a 4K page boundary will also be split
-	 */
+	/* check linear buffer alignment */
+	if (!PTR_IS_ALIGNED(skb->data, DPAA_A050385_ALIGN))
+		goto workaround;
 
-	/* Check if the frame data is aligned to 16 bytes */
-	if ((uintptr_t)skb->data % DPAA_FD_DATA_ALIGNMENT)
-		return true;
+	/* linear buffers just need to have an aligned start */
+	if (!skb_is_nonlinear(skb))
+		return 0;
 
-	/* Check if the headroom crosses a boundary */
-	if (CROSS_4K_BOUND((uintptr_t)skb->head, skb_headroom(skb)))
-		return true;
+	/* linear data size for nonlinear skbs needs to be aligned */
+	if (!IS_ALIGNED(skb_headlen(skb), DPAA_A050385_ALIGN))
+		goto workaround;
 
-	/* Check if the non-paged data crosses a boundary */
-	if (CROSS_4K_BOUND((uintptr_t)skb->data, skb_headlen(skb)))
-		return true;
+	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
 
-	nr_frags = skb_shinfo(skb)->nr_frags;
+		/* all fragments need to have aligned start addresses */
+		if (!IS_ALIGNED(skb_frag_off(frag), DPAA_A050385_ALIGN))
+			goto workaround;
 
-	while (i < nr_frags) {
-		frag = &skb_shinfo(skb)->frags[i];
-
-		/* Check if a paged fragment crosses a boundary from its
-		 * offset to its end.
-		 */
-		if (CROSS_4K_BOUND(skb_frag_off(frag), skb_frag_size(frag)))
-			return true;
-
-		i++;
+		/* all but last fragment need to have aligned sizes */
+		if (!IS_ALIGNED(skb_frag_size(frag), DPAA_A050385_ALIGN) &&
+		    (i < skb_shinfo(skb)->nr_frags - 1))
+			goto workaround;
 	}
 
-	return false;
-}
+	return 0;
 
-static struct sk_buff *dpaa_errata_a010022_prevent(struct sk_buff *skb,
-						   struct dpaa_priv *priv)
-{
-	int trans_offset = skb_transport_offset(skb);
-	int net_offset = skb_network_offset(skb);
-	int nsize, npage_order, headroom;
-	struct sk_buff *nskb = NULL;
-	struct page *npage;
-	void *npage_addr;
+workaround:
+	/* copy all the skb content into a new linear buffer */
+	new_skb = netdev_alloc_skb(net_dev, skb->len + DPAA_A050385_ALIGN - 1 +
+						priv->tx_headroom);
+	if (!new_skb)
+		return -ENOMEM;
 
-	if (!dpaa_errata_a010022_has_dma_issue(skb, priv))
-		return skb;
+	/* NET_SKB_PAD bytes already reserved, adding up to tx_headroom */
+	skb_reserve(new_skb, priv->tx_headroom - NET_SKB_PAD);
 
-	/* For the new skb we only need the old one's data (both non-paged and
-	 * paged). We can skip the old tailroom.
-	 *
-	 * The headroom also needs to fit our private info (64 bytes) but we
-	 * reserve 256 bytes instead in order to guarantee that the data is
-	 * aligned to 256.
-	 */
-	headroom = DPAA_A010022_HEADROOM;
-	nsize = ALIGN(headroom + skb->len, SMP_CACHE_BYTES) +
-		SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
+	/* Workaround for DPAA_A050385 requires data start to be aligned */
+	start = PTR_ALIGN(new_skb->data, DPAA_A050385_ALIGN);
+	if (start - new_skb->data)
+		skb_reserve(new_skb, start - new_skb->data);
 
-	/* Reserve enough memory to accommodate Jumbo frames */
-	npage_order = (nsize - 1) / PAGE_SIZE;
-	npage = alloc_pages(GFP_ATOMIC | __GFP_COMP, npage_order);
-	if (unlikely(!npage)) {
-		WARN_ONCE(1, "Memory allocation failure\n");
-		return NULL;
-	}
-	npage_addr = page_address(npage);
-
-	nskb = build_skb(npage_addr, nsize);
-	if (unlikely(!nskb))
-		goto err;
-
-	/* Code borrowed and adapted from skb_copy() */
-	skb_reserve(nskb, headroom);
-	skb_put(nskb, skb->len);
-	if (skb_copy_bits(skb, 0, nskb->data, skb->len)) {
-		WARN_ONCE(1, "skb parsing failure\n");
-		goto err;
-	}
-	skb_copy_header(nskb, skb);
+	skb_put(new_skb, skb->len);
+	skb_copy_bits(skb, 0, new_skb->data, skb->len);
+	skb_copy_header(new_skb, skb);
+	new_skb->dev = skb->dev;
 
 	/* Copy relevant timestamp info from the old skb to the new */
 	if (priv->tx_tstamp) {
-		skb_shinfo(nskb)->tx_flags = skb_shinfo(skb)->tx_flags;
-		skb_shinfo(nskb)->hwtstamps = skb_shinfo(skb)->hwtstamps;
-		skb_shinfo(nskb)->tskey = skb_shinfo(skb)->tskey;
+		skb_shinfo(new_skb)->tx_flags = skb_shinfo(skb)->tx_flags;
+		skb_shinfo(new_skb)->hwtstamps = skb_shinfo(skb)->hwtstamps;
+		skb_shinfo(new_skb)->tskey = skb_shinfo(skb)->tskey;
 		if (skb->sk)
-			skb_set_owner_w(nskb, skb->sk);
+			skb_set_owner_w(new_skb, skb->sk);
 	}
 
 	/* We move the headroom when we align it so we have to reset the
 	 * network and transport header offsets relative to the new data
 	 * pointer. The checksum offload relies on these offsets.
 	 */
-	skb_set_network_header(nskb, net_offset);
-	skb_set_transport_header(nskb, trans_offset);
+	skb_set_network_header(new_skb, skb_network_offset(skb));
+	skb_set_transport_header(new_skb, skb_transport_offset(skb));
 
 	dev_kfree_skb(skb);
-	return nskb;
+	*s = new_skb;
 
-err:
-	if (nskb)
-		dev_kfree_skb(nskb);
-	put_page(npage);
-	return NULL;
+	return 0;
 }
 #endif
 
@@ -2296,10 +2189,9 @@ dpaa_start_xmit(struct sk_buff *skb, struct net_device *net_dev)
 		nonlinear = skb_is_nonlinear(skb);
 	}
 
-#ifndef CONFIG_PPC
-	if (unlikely(dpaa_errata_a010022)) {
-		skb = dpaa_errata_a010022_prevent(skb, priv);
-		if (!skb)
+#ifdef CONFIG_DPAA_ERRATUM_A050385
+	if (unlikely(fman_has_errata_a050385())) {
+		if (dpaa_a050385_wa(net_dev, &skb))
 			goto enomem;
 		nonlinear = skb_is_nonlinear(skb);
 	}
@@ -2519,15 +2411,12 @@ static enum qman_cb_dqrr_result rx_default_dqrr(struct qman_portal *portal,
 		return qman_cb_dqrr_consume;
 	}
 
-	dpaa_bp = dpaa_bpid2pool(fd->bpid);
-	if (!dpaa_bp)
-		return qman_cb_dqrr_consume;
+	dma_unmap_page(dpaa_bp->priv->rx_dma_dev, addr, DPAA_BP_RAW_SIZE,
+		       DMA_FROM_DEVICE);
 
 	/* prefetch the first 64 bytes of the frame or the SGT start */
-	vaddr = phys_to_virt(dpaa_iova_to_phys(dpaa_bp->dev, addr));
+	vaddr = phys_to_virt(addr);
 	prefetch(vaddr + qm_fd_get_offset(fd));
-
-	dma_unmap_single(dpaa_bp->dev, addr, dpaa_bp->size, DMA_FROM_DEVICE);
 
 	/* The only FD types that we may receive are contig and S/G */
 	WARN_ON((fd_format != qm_fd_contig) && (fd_format != qm_fd_sg));
@@ -2539,9 +2428,9 @@ static enum qman_cb_dqrr_result rx_default_dqrr(struct qman_portal *portal,
 	(*count_ptr)--;
 
 	if (likely(fd_format == qm_fd_contig))
-		skb = contig_fd_to_skb(priv, fd, dpaa_bp, vaddr);
+		skb = contig_fd_to_skb(priv, fd);
 	else
-		skb = sg_fd_to_skb(priv, fd, dpaa_bp, vaddr);
+		skb = sg_fd_to_skb(priv, fd);
 	if (!skb)
 		return qman_cb_dqrr_consume;
 
@@ -2981,7 +2870,10 @@ static u16 dpaa_get_headroom(struct dpaa_buffer_layout *bl,
 	 */
 	headroom = (u16)(bl[port].priv_data_size + DPAA_HWA_SIZE);
 
-	return ALIGN(headroom, DPAA_FD_DATA_ALIGNMENT);
+	if (port == RX)
+		return ALIGN(headroom, DPAA_FD_RX_DATA_ALIGNMENT);
+	else
+		return ALIGN(headroom, DPAA_FD_DATA_ALIGNMENT);
 }
 
 static int dpaa_eth_probe(struct platform_device *pdev)
@@ -2995,25 +2887,27 @@ static int dpaa_eth_probe(struct platform_device *pdev)
 	int err = 0, channel;
 	struct device *dev;
 
+	dev = &pdev->dev;
+
 	err = bman_is_probed();
 	if (!err)
 		return -EPROBE_DEFER;
 	if (err < 0) {
-		dev_err(&pdev->dev, "failing probe due to bman probe error\n");
+		dev_err(dev, "failing probe due to bman probe error\n");
 		return -ENODEV;
 	}
 	err = qman_is_probed();
 	if (!err)
 		return -EPROBE_DEFER;
 	if (err < 0) {
-		dev_err(&pdev->dev, "failing probe due to qman probe error\n");
+		dev_err(dev, "failing probe due to qman probe error\n");
 		return -ENODEV;
 	}
 	err = bman_portals_probed();
 	if (!err)
 		return -EPROBE_DEFER;
 	if (err < 0) {
-		dev_err(&pdev->dev,
+		dev_err(dev,
 			"failing probe due to bman portals probe error\n");
 		return -ENODEV;
 	}
@@ -3021,24 +2915,9 @@ static int dpaa_eth_probe(struct platform_device *pdev)
 	if (!err)
 		return -EPROBE_DEFER;
 	if (err < 0) {
-		dev_err(&pdev->dev,
+		dev_err(dev,
 			"failing probe due to qman portals probe error\n");
 		return -ENODEV;
-	}
-
-	mac_dev = dpaa_mac_dev_get(pdev);
-	if (IS_ERR(mac_dev)) {
-		dev_err(&pdev->dev, "dpaa_mac_dev_get() failed\n");
-		err = PTR_ERR(mac_dev);
-		goto probe_err;
-	}
-
-	/* device used for DMA mapping */
-	dev = fman_port_get_device(mac_dev->port[RX]);
-	err = dma_coerce_mask_and_coherent(dev, DMA_BIT_MASK(40));
-	if (err) {
-		dev_err(dev, "dma_coerce_mask_and_coherent() failed\n");
-		return err;
 	}
 
 	/* Allocate this early, so we can store relevant information in
@@ -3058,6 +2937,25 @@ static int dpaa_eth_probe(struct platform_device *pdev)
 	priv->net_dev = net_dev;
 
 	priv->msg_enable = netif_msg_init(debug, DPAA_MSG_DEFAULT);
+
+	mac_dev = dpaa_mac_dev_get(pdev);
+	if (IS_ERR(mac_dev)) {
+		netdev_err(net_dev, "dpaa_mac_dev_get() failed\n");
+		err = PTR_ERR(mac_dev);
+		goto free_netdev;
+	}
+
+	/* Devices used for DMA mapping */
+	priv->rx_dma_dev = fman_port_get_device(mac_dev->port[RX]);
+	priv->tx_dma_dev = fman_port_get_device(mac_dev->port[TX]);
+	err = dma_coerce_mask_and_coherent(priv->rx_dma_dev, DMA_BIT_MASK(40));
+	if (!err)
+		err = dma_coerce_mask_and_coherent(priv->tx_dma_dev,
+						   DMA_BIT_MASK(40));
+	if (err) {
+		netdev_err(net_dev, "dma_coerce_mask_and_coherent() failed\n");
+		goto free_netdev;
+	}
 
 	/* If fsl_fm_max_frm is set to a higher value than the all-common 1500,
 	 * we choose conservatively and let the user explicitly set a higher
@@ -3192,9 +3090,9 @@ delete_egress_cgr:
 	qman_release_cgrid(priv->cgr_data.cgr.cgrid);
 free_dpaa_bps:
 	dpaa_bps_free(priv);
+free_netdev:
 	dev_set_drvdata(dev, NULL);
 	free_netdev(net_dev);
-probe_err:
 
 	return err;
 }
@@ -3232,23 +3130,6 @@ static int dpaa_remove(struct platform_device *pdev)
 	return err;
 }
 
-#ifndef CONFIG_PPC
-static bool __init soc_has_errata_a010022(void)
-{
-#ifdef CONFIG_SOC_BUS
-	const struct soc_device_attribute soc_msi_matches[] = {
-		{ .family = "QorIQ LS1043A",
-		  .data = NULL },
-		{ },
-	};
-
-	if (!soc_device_match(soc_msi_matches))
-		return false;
-#endif
-	return true; /* cannot identify SoC or errata applies */
-}
-#endif
-
 static const struct platform_device_id dpaa_devtype[] = {
 	{
 		.name = "dpaa-ethernet",
@@ -3273,10 +3154,6 @@ static int __init dpaa_load(void)
 
 	pr_debug("FSL DPAA Ethernet driver\n");
 
-#ifndef CONFIG_PPC
-	/* Detect if the current SoC requires the DMA transfer alignment workaround */
-	dpaa_errata_a010022 = soc_has_errata_a010022();
-#endif
 	/* initialize dpaa_eth mirror values */
 	dpaa_rx_extra_headroom = fman_get_rx_extra_headroom();
 	dpaa_max_frm = fman_get_max_frm();

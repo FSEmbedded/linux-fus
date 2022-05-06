@@ -54,27 +54,6 @@ struct svm_dev_ops {
  * The SVM_FLAG_GUEST_PASID flag is used when a guest has its own PASID space,
  * which requires guest and host PASID translation at both directions.
  */
-extern int intel_svm_is_pasid_valid(struct device *dev, int pasid);
-
-#else /* CONFIG_INTEL_IOMMU_SVM */
-
-static inline int intel_svm_bind_mm(struct device *dev, int *pasid,
-				    int flags, struct svm_dev_ops *ops)
-{
-	return -ENOSYS;
-}
-
-static inline int intel_svm_unbind_mm(struct device *dev, int pasid)
-{
-	BUG();
-}
-
-static inline int intel_svm_is_pasid_valid(struct device *dev, int pasid)
-{
-	return -EINVAL;
-}
-#endif /* CONFIG_INTEL_IOMMU_SVM */
-
-#define intel_svm_available(dev) (!intel_svm_bind_mm((dev), NULL, 0, NULL))
+#define SVM_FLAG_GUEST_PASID		(1<<3)
 
 #endif /* __INTEL_SVM_H__ */

@@ -194,16 +194,8 @@ static void vnt_rxtx_datahead_g(struct vnt_usb_send_context *tx_context,
 			  PK_TYPE_11B, &buf->b);
 
 	/* Get Duration and TimeStamp */
-	if (ieee80211_is_nullfunc(hdr->frame_control)) {
-		buf->duration_a = hdr->duration_id;
-		buf->duration_b = hdr->duration_id;
-	} else {
-		buf->duration_a = vnt_get_duration_le(priv,
-						tx_context->pkt_type, need_ack);
-		buf->duration_b = vnt_get_duration_le(priv,
-						      PK_TYPE_11B, need_ack);
-	}
-
+	buf->duration_a = hdr->duration_id;
+	buf->duration_b = hdr->duration_id;
 	buf->time_stamp_off_a = vnt_time_stamp_off(priv, rate);
 	buf->time_stamp_off_b = vnt_time_stamp_off(priv,
 						   priv->top_cck_basic_rate);
@@ -223,13 +215,7 @@ static void vnt_rxtx_datahead_ab(struct vnt_usb_send_context *tx_context,
 			  tx_context->pkt_type, &buf->ab);
 
 	/* Get Duration and TimeStampOff */
-	if (ieee80211_is_nullfunc(hdr->frame_control)) {
-		buf->duration = hdr->duration_id;
-	} else {
-		buf->duration = vnt_get_duration_le(priv, tx_context->pkt_type,
-						    need_ack);
-	}
-
+	buf->duration = hdr->duration_id;
 	buf->time_stamp_off = vnt_time_stamp_off(priv, rate);
 }
 

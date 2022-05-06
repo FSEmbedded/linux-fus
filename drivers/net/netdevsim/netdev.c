@@ -311,7 +311,7 @@ nsim_create(struct nsim_dev *nsim_dev, struct nsim_dev_port *nsim_dev_port)
 	rtnl_lock();
 	err = nsim_bpf_init(ns);
 	if (err)
-		goto err_rtnl_unlock;
+		goto err_utn_destroy;
 
 	nsim_ipsec_init(ns);
 
@@ -325,8 +325,10 @@ nsim_create(struct nsim_dev *nsim_dev, struct nsim_dev_port *nsim_dev_port)
 err_ipsec_teardown:
 	nsim_ipsec_teardown(ns);
 	nsim_bpf_uninit(ns);
-err_rtnl_unlock:
+err_utn_destroy:
 	rtnl_unlock();
+	nsim_udp_tunnels_info_destroy(dev);
+err_free_netdev:
 	free_netdev(dev);
 	return ERR_PTR(err);
 }

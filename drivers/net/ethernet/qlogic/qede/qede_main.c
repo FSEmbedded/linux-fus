@@ -3,6 +3,7 @@
  * Copyright (c) 2015-2017  QLogic Corporation
  * Copyright (c) 2019-2020 Marvell International Ltd.
  */
+
 #include <linux/crash_dump.h>
 #include <linux/module.h>
 #include <linux/pci.h>
@@ -1801,6 +1802,11 @@ static void qede_init_fp(struct qede_dev *edev)
 
 		snprintf(fp->name, sizeof(fp->name), "%s-fp-%d",
 			 edev->ndev->name, queue_id);
+	}
+
+	if (init_xdp) {
+		edev->total_xdp_queues = QEDE_RSS_COUNT(edev);
+		DP_INFO(edev, "Total XDP queues: %u\n", edev->total_xdp_queues);
 	}
 }
 

@@ -593,7 +593,7 @@ static bool cake_update_flowkeys(struct flow_keys *keys,
 	__be32 ip;
 
 	if (skb_protocol(skb, true) != htons(ETH_P_IP))
-		return;
+		return false;
 
 	if (!nf_ct_get_tuple_skb(&tuple, skb))
 		return false;

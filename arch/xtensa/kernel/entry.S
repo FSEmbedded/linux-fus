@@ -1932,7 +1932,7 @@ ENTRY(system_call)
 	s32i	a6, a2, PT_AREG2
 	bnez	a3, 1f
 .Lsyscall_exit:
-	abi_ret(4)
+	abi_ret_default
 
 1:
 	mov	a6, a2

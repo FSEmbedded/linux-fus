@@ -443,19 +443,25 @@ static void process_pedit_field(struct ch_filter_specification *fs, u32 val,
 	case FLOW_ACT_MANGLE_HDR_TYPE_TCP:
 		switch (offset) {
 		case PEDIT_TCP_SPORT_DPORT:
-			if (~mask & PEDIT_TCP_UDP_SPORT_MASK)
+			if (~mask & PEDIT_TCP_UDP_SPORT_MASK) {
 				fs->nat_fport = val;
-			else
+				*natmode_flags |= CXGB4_ACTION_NATMODE_SPORT;
+			} else {
 				fs->nat_lport = val >> 16;
+				*natmode_flags |= CXGB4_ACTION_NATMODE_DPORT;
+			}
 		}
 		break;
 	case FLOW_ACT_MANGLE_HDR_TYPE_UDP:
 		switch (offset) {
 		case PEDIT_UDP_SPORT_DPORT:
-			if (~mask & PEDIT_TCP_UDP_SPORT_MASK)
+			if (~mask & PEDIT_TCP_UDP_SPORT_MASK) {
 				fs->nat_fport = val;
-			else
+				*natmode_flags |= CXGB4_ACTION_NATMODE_SPORT;
+			} else {
 				fs->nat_lport = val >> 16;
+				*natmode_flags |= CXGB4_ACTION_NATMODE_DPORT;
+			}
 		}
 		break;
 	}

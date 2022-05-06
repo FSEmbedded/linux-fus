@@ -133,17 +133,6 @@ static void __tlb_remove_table_free(struct mmu_table_batch *batch)
  * the implementation of tlb_remove_table_one().
  *
  */
-static inline void tlb_table_invalidate(struct mmu_gather *tlb)
-{
-	if (tlb_needs_table_invalidate()) {
-		/*
-		 * Invalidate page-table caches used by hardware walkers. Then
-		 * we still need to RCU-sched wait while freeing the pages
-		 * because software walkers can still be in-flight.
-		 */
-		tlb_flush_mmu_tlbonly(tlb);
-	}
-}
 
 static void tlb_remove_table_smp_sync(void *arg)
 {

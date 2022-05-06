@@ -116,6 +116,9 @@ static struct option long_options[] = {
 	{ "tcp", no_argument, 0, 't' },
 	{ "udp", no_argument, 0, 'u' },
 	{ "ip", no_argument, 0, 'i' },
+	{ "strict", no_argument, 0, 'S' },
+	{ "ipv4", no_argument, 0, '4' },
+	{ "ipv6", no_argument, 0, '6' },
 	{ NULL, 0, NULL, 0 },
 };
 

@@ -440,11 +440,12 @@ static int msg_loop_sendpage(int fd, int iov_length, int cnt,
 		sent = sendfile(fd, fp, NULL, iov_length);
 
 		if (!drop && sent < 0) {
-			perror("send loop error");
+			perror("sendpage loop error");
 			fclose(file);
 			return sent;
 		} else if (drop && sent >= 0) {
-			printf("sendpage loop error expected: %i\n", sent);
+			printf("sendpage loop error expected: %i errno %i\n",
+			       sent, errno);
 			fclose(file);
 			return -EIO;
 		}
@@ -574,7 +575,7 @@ static int msg_loop(int fd, int iov_count, int iov_length, int cnt,
 			sent = sendmsg(fd, &msg, flags);
 
 			if (!drop && sent < 0) {
-				perror("send loop error");
+				perror("sendmsg loop error");
 				goto out_errno;
 			} else if (drop && sent >= 0) {
 				fprintf(stderr,

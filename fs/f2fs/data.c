@@ -4030,6 +4030,9 @@ static int check_swap_activate(struct swap_info_struct *sis,
 	int nr_extents = 0;
 	int ret;
 
+	if (PAGE_SIZE == F2FS_BLKSIZE)
+		return check_swap_activate_fast(sis, swap_file, span);
+
 	blkbits = inode->i_blkbits;
 	blocks_per_page = PAGE_SIZE >> blkbits;
 
@@ -4134,6 +4137,9 @@ static int f2fs_swap_activate(struct swap_info_struct *sis, struct file *file,
 	ret = f2fs_convert_inline_inode(inode);
 	if (ret)
 		return ret;
+
+	if (!f2fs_disable_compressed_file(inode))
+		return -EINVAL;
 
 	ret = check_swap_activate(sis, file, span);
 	if (ret < 0)

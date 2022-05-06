@@ -2324,8 +2324,8 @@ static void qla24xx_nvme_iocb_entry(scsi_qla_host_t *vha, struct req_que *req,
 
 		inbuf = (uint32_t *)&sts->nvme_ersp_data;
 		outbuf = (uint32_t *)fd->rspaddr;
-		iocb->u.nvme.rsp_pyld_len = le16_to_cpu(sts->nvme_rsp_pyld_len);
-		if (unlikely(iocb->u.nvme.rsp_pyld_len >
+		iocb->u.nvme.rsp_pyld_len = sts->nvme_rsp_pyld_len;
+		if (unlikely(le16_to_cpu(iocb->u.nvme.rsp_pyld_len) >
 		    sizeof(struct nvme_fc_ersp_iu))) {
 			if (ql_mask_match(ql_dbg_io)) {
 				WARN_ONCE(1, "Unexpected response payload length %u.\n",
@@ -2335,9 +2335,9 @@ static void qla24xx_nvme_iocb_entry(scsi_qla_host_t *vha, struct req_que *req,
 				    iocb->u.nvme.rsp_pyld_len);
 			}
 			iocb->u.nvme.rsp_pyld_len =
-			    sizeof(struct nvme_fc_ersp_iu);
+				cpu_to_le16(sizeof(struct nvme_fc_ersp_iu));
 		}
-		iter = iocb->u.nvme.rsp_pyld_len >> 2;
+		iter = le16_to_cpu(iocb->u.nvme.rsp_pyld_len) >> 2;
 		for (; iter; iter--)
 			*outbuf++ = swab32(*inbuf++);
 	}
@@ -2914,11 +2914,6 @@ qla2x00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 		return;
 	}
 	qla_put_iocbs(sp->qpair, &sp->iores);
-
-	if (sp->abort)
-		sp->aborted = 1;
-	else
-		sp->completed = 1;
 
 	if (sp->cmd_type != TYPE_SRB) {
 		req->outstanding_cmds[handle] = NULL;

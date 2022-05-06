@@ -253,7 +253,6 @@ static inline void regs_set_return_value(struct pt_regs *regs, unsigned long rc)
 }
 
 #define arch_has_single_step()	(1)
-#ifndef CONFIG_PPC_BOOK3S_601
 #define arch_has_block_step()	(true)
 #define ARCH_HAS_USER_SINGLE_STEP_REPORT
 

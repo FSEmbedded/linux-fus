@@ -2332,50 +2332,7 @@ static int goya_load_boot_fit_to_device(struct hl_device *hdev)
 
 	dst = hdev->pcie_bar[SRAM_CFG_BAR_ID] + BOOT_FIT_SRAM_OFFSET;
 
-	return hl_fw_push_fw_to_device(hdev, fw_name, dst);
-}
-
-static int goya_pldm_init_cpu(struct hl_device *hdev)
-{
-	u32 unit_rst_val;
-	int rc;
-
-	/* Must initialize SRAM scrambler before pushing u-boot to SRAM */
-	goya_init_golden_registers(hdev);
-
-	/* Put ARM cores into reset */
-	WREG32(mmCPU_CA53_CFG_ARM_RST_CONTROL, CPU_RESET_ASSERT);
-	RREG32(mmCPU_CA53_CFG_ARM_RST_CONTROL);
-
-	/* Reset the CA53 MACRO */
-	unit_rst_val = RREG32(mmPSOC_GLOBAL_CONF_UNIT_RST_N);
-	WREG32(mmPSOC_GLOBAL_CONF_UNIT_RST_N, CA53_RESET);
-	RREG32(mmPSOC_GLOBAL_CONF_UNIT_RST_N);
-	WREG32(mmPSOC_GLOBAL_CONF_UNIT_RST_N, unit_rst_val);
-	RREG32(mmPSOC_GLOBAL_CONF_UNIT_RST_N);
-
-	rc = goya_push_uboot_to_device(hdev);
-	if (rc)
-		return rc;
-
-	rc = goya_push_linux_to_device(hdev);
-	if (rc)
-		return rc;
-
-	WREG32(mmPSOC_GLOBAL_CONF_UBOOT_MAGIC, KMD_MSG_FIT_RDY);
-	WREG32(mmPSOC_GLOBAL_CONF_WARM_REBOOT, CPU_BOOT_STATUS_NA);
-
-	WREG32(mmCPU_CA53_CFG_RST_ADDR_LSB_0,
-		lower_32_bits(SRAM_BASE_ADDR + UBOOT_FW_OFFSET));
-	WREG32(mmCPU_CA53_CFG_RST_ADDR_MSB_0,
-		upper_32_bits(SRAM_BASE_ADDR + UBOOT_FW_OFFSET));
-
-	/* Release ARM core 0 from reset */
-	WREG32(mmCPU_CA53_CFG_ARM_RST_CONTROL,
-					CPU_RESET_CORE0_DEASSERT);
-	RREG32(mmCPU_CA53_CFG_ARM_RST_CONTROL);
-
-	return 0;
+	return hl_fw_load_fw_to_device(hdev, GOYA_BOOT_FIT_FILE, dst);
 }
 
 /*

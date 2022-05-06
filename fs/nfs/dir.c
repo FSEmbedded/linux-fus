@@ -763,8 +763,10 @@ int find_and_lock_cache_page(nfs_readdir_descriptor_t *desc)
 	res = -EAGAIN;
 	if (desc->page->mapping != NULL) {
 		res = nfs_readdir_search_array(desc);
-		if (res == 0)
+		if (res == 0) {
+			nfsi->page_index = desc->page_index;
 			return 0;
+		}
 	}
 	unlock_page(desc->page);
 error:

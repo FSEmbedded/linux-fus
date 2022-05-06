@@ -49,6 +49,15 @@ config RESET_BRCMSTB
 	  This enables the reset controller driver for Broadcom STB SoCs using
 	  a SUN_TOP_CTRL_SW_INIT style controller.
 
+config RESET_BRCMSTB_RESCAL
+	bool "Broadcom STB RESCAL reset controller"
+	depends on HAS_IOMEM
+	depends on ARCH_BRCMSTB || COMPILE_TEST
+	default ARCH_BRCMSTB
+	help
+	  This enables the RESCAL reset controller for SATA, PCIe0, or PCIe1 on
+	  BCM7216.
+
 config RESET_DISPMIX
 	tristate "IMX Display Mix reset support"
 	default y
@@ -67,25 +76,29 @@ config RESET_HSDK
 
 config RESET_IMX7
 	tristate "i.MX7/8 Reset Driver"
-	depends on HAS_IOMEM || COMPILE_TEST
-	default SOC_IMX7D || (ARM64 && ARCH_MXC)
+	depends on HAS_IOMEM
+	depends on SOC_IMX7D || (ARM64 && ARCH_MXC) || COMPILE_TEST
+	default y if SOC_IMX7D
 	select MFD_SYSCON
 	help
 	  This enables the reset controller driver for i.MX7 SoCs.
 
-config RESET_IMX_HDMIMIX
-	tristate "i.MX HDMIMIX Reset Driver"
-	depends on HAS_IOMEM || COMPILE_TEST
-	default ARCH_MXC
+config RESET_IMX8ULP_SIM
+	tristate "i.MX8ULP SIM Reset Driver"
+	depends on ARCH_MXC
 	help
-	  This enables the hdmimix reset controller driver for i.MX8MP.
+	  This enables the SIM (System Integration Module) reset driver
+	  for i.MX8ulp SoC.
 
-config RESET_IMX_AUDIOMIX
-	tristate "i.MX Audiomix Reset Driver"
-	depends on HAS_IOMEM || COMPILE_TEST
-	default ARCH_MXC
+config RESET_INTEL_GW
+	bool "Intel Reset Controller Driver"
+	depends on X86 || COMPILE_TEST
+	depends on OF && HAS_IOMEM
+	select REGMAP_MMIO
 	help
-	  This enables the audiomix reset controller driver for i.MX SoCs.
+	  This enables the reset controller driver for Intel Gateway SoCs.
+	  Say Y to control the reset signals provided by reset controller.
+	  Otherwise, say N.
 
 config RESET_LANTIQ
 	bool "Lantiq XWAY Reset Driver" if COMPILE_TEST

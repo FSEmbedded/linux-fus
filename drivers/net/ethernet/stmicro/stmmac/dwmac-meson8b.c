@@ -147,15 +147,7 @@ static int meson8b_init_rgmii_tx_clk(struct meson8b_dwmac *dwmac)
 		{ /* end of array */ }
 	};
 	struct meson8b_dwmac_clk_configs *clk_configs;
-	static const struct clk_div_table div_table[] = {
-		{ .div = 2, .val = 2, },
-		{ .div = 3, .val = 3, },
-		{ .div = 4, .val = 4, },
-		{ .div = 5, .val = 5, },
-		{ .div = 6, .val = 6, },
-		{ .div = 7, .val = 7, },
-		{ /* end of array */ }
-	};
+	struct clk_parent_data parent_data = { };
 
 	clk_configs = devm_kzalloc(dev, sizeof(*clk_configs), GFP_KERNEL);
 	if (!clk_configs)
@@ -178,7 +170,7 @@ static int meson8b_init_rgmii_tx_clk(struct meson8b_dwmac *dwmac)
 	clk_configs->m250_div.table = div_table;
 	clk_configs->m250_div.flags = CLK_DIVIDER_ALLOW_ZERO |
 				      CLK_DIVIDER_ROUND_CLOSEST;
-	clk = meson8b_dwmac_register_clk(dwmac, "m250_div", &parent_name, 1,
+	clk = meson8b_dwmac_register_clk(dwmac, "m250_div", &parent_data, 1,
 					 &clk_divider_ops,
 					 &clk_configs->m250_div.hw);
 	if (WARN_ON(IS_ERR(clk)))

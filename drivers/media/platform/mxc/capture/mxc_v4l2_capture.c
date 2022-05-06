@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * Copyright 2004-2015 Freescale Semiconductor, Inc. All Rights Reserved.
- * Copyright 2019 NXP
+ * Copyright 2019-2020 NXP
  */
 
 /*!
@@ -1411,14 +1411,14 @@ exit:
  */
 static int mxc_v4l2_s_std(cam_data *cam, v4l2_std_id e)
 {
-	pr_debug("In mxc_v4l2_s_std %Lx\n", e);
+	pr_debug("In mxc_v4l2_s_std %llx\n", e);
 
 	if (e == V4L2_STD_PAL) {
-		pr_debug("   Setting standard to PAL %Lx\n", V4L2_STD_PAL);
+		pr_debug("   Setting standard to PAL %llx\n", V4L2_STD_PAL);
 		cam->standard.id = V4L2_STD_PAL;
 		video_index = TV_PAL;
 	} else if (e == V4L2_STD_NTSC) {
-		pr_debug("   Setting standard to NTSC %Lx\n",
+		pr_debug("   Setting standard to NTSC %llx\n",
 				V4L2_STD_NTSC);
 		/* Get rid of the white dot line in NTSC signal input */
 		cam->standard.id = V4L2_STD_NTSC;
@@ -1426,7 +1426,7 @@ static int mxc_v4l2_s_std(cam_data *cam, v4l2_std_id e)
 	} else {
 		cam->standard.id = V4L2_STD_ALL;
 		video_index = TV_NOT_LOCKED;
-		pr_err("ERROR: unrecognized std! %Lx (PAL=%Lx, NTSC=%Lx\n",
+		pr_err("ERROR: unrecognized std! %llx (PAL=%llx, NTSC=%llx\n",
 			e, V4L2_STD_PAL, V4L2_STD_NTSC);
 	}
 
@@ -2559,8 +2559,9 @@ static void camera_callback(u32 mask, void *dev)
 		 * timestamp. Users can use this information to judge
 		 * the frame's usage.
 		 */
-		done_frame->buffer.timestamp =
-			ns_to_timeval(ts.tv_sec * 1000000000ULL + ts.tv_nsec);
+
+		done_frame->buffer.timestamp.tv_sec = ts.tv_sec;
+		done_frame->buffer.timestamp.tv_usec = ts.tv_nsec / NSEC_PER_USEC;
 
 		if (done_frame->buffer.flags & V4L2_BUF_FLAG_QUEUED) {
 			done_frame->buffer.flags |= V4L2_BUF_FLAG_DONE;
@@ -2811,7 +2812,7 @@ static int mxc_v4l2_probe(struct platform_device *pdev)
 	v4l2_int_device_register(cam->self);
 
 	/* register v4l video device */
-	if (video_register_device(cam->video_dev, VFL_TYPE_GRABBER, video_nr)
+	if (video_register_device(cam->video_dev, VFL_TYPE_VIDEO, video_nr)
 		< 0) {
 		kfree(cam);
 		cam = NULL;
@@ -2998,19 +2999,23 @@ static struct platform_driver mxc_v4l2_driver = {
  */
 static int mxc_v4l2_master_attach(struct v4l2_int_device *slave)
 {
-	cam_data *cam = slave->u.slave->master->priv;
+	cam_data *cam;
 	struct v4l2_format cam_fmt;
 	int i;
-	struct sensor_data *sdata = slave->priv;
+	struct sensor_data *sdata;
 
 	pr_debug("In MVC: mxc_v4l2_master_attach\n");
-	pr_debug("   slave.name = %s\n", slave->name);
-	pr_debug("   master.name = %s\n", slave->u.slave->master->name);
 
 	if (slave == NULL) {
 		pr_err("ERROR: v4l2 capture: slave parameter not valid.\n");
 		return -1;
 	}
+
+	pr_debug("   slave.name = %s\n", slave->name);
+	pr_debug("   master.name = %s\n", slave->u.slave->master->name);
+
+	cam = slave->u.slave->master->priv;
+	sdata = slave->priv;
 
 	if (sdata->csi != cam->csi) {
 		pr_debug("%s: csi doesn't match\n", __func__);

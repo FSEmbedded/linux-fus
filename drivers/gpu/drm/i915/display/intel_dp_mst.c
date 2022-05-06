@@ -921,9 +921,9 @@ intel_dp_mst_encoder_active_links(struct intel_digital_port *dig_port)
 int
 intel_dp_mst_encoder_init(struct intel_digital_port *dig_port, int conn_base_id)
 {
-	struct drm_i915_private *i915 = to_i915(intel_dig_port->base.base.dev);
-	struct intel_dp *intel_dp = &intel_dig_port->dp;
-	enum port port = intel_dig_port->base.port;
+	struct drm_i915_private *i915 = to_i915(dig_port->base.base.dev);
+	struct intel_dp *intel_dp = &dig_port->dp;
+	enum port port = dig_port->base.port;
 	int ret;
 
 	if (!HAS_DP_MST(i915) || intel_dp_is_edp(intel_dp))
@@ -938,7 +938,7 @@ intel_dp_mst_encoder_init(struct intel_digital_port *dig_port, int conn_base_id)
 	intel_dp->mst_mgr.cbs = &mst_cbs;
 
 	/* create encoders */
-	intel_dp_create_fake_mst_encoders(intel_dig_port);
+	intel_dp_create_fake_mst_encoders(dig_port);
 	ret = drm_dp_mst_topology_mgr_init(&intel_dp->mst_mgr, &i915->drm,
 					   &intel_dp->aux, 16, 3, conn_base_id);
 	if (ret)

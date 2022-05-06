@@ -234,4 +234,4 @@ struct clk_hw *imx_clk_hw_frac_pll(const char *name,
 
 	return hw;
 }
-EXPORT_SYMBOL_GPL(imx_clk_frac_pll);
+EXPORT_SYMBOL_GPL(imx_clk_hw_frac_pll);

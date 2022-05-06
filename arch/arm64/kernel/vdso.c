@@ -336,22 +336,7 @@ static int aarch32_alloc_kuser_vdso_page(void)
 	return 0;
 }
 
-#ifdef CONFIG_COMPAT_VDSO
-static int __aarch32_alloc_vdso_pages(void)
-{
-	int ret;
-
-	vdso_lookup[ARM64_VDSO32].dm = &aarch32_vdso_spec[C_VVAR];
-	vdso_lookup[ARM64_VDSO32].cm = &aarch32_vdso_spec[C_VDSO];
-
-	ret = __vdso_init(ARM64_VDSO32);
-	if (ret)
-		return ret;
-
-	return aarch32_alloc_kuser_vdso_page();
-}
-#else
-static int __aarch32_alloc_vdso_pages(void)
+static int aarch32_alloc_sigpage(void)
 {
 	extern char __aarch32_sigret_code_start[], __aarch32_sigret_code_end[];
 	int sigret_sz = __aarch32_sigret_code_end - __aarch32_sigret_code_start;

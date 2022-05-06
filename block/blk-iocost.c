@@ -502,7 +502,10 @@ struct ioc_gq {
 	atomic64_t			vtime;
 	atomic64_t			done_vtime;
 	u64				abs_vdebt;
-	u64				last_vtime;
+
+	/* current delay in effect and when it started */
+	u64				delay;
+	u64				delay_at;
 
 	/*
 	 * The period this iocg was last active in.  Used for deactivation
@@ -1415,9 +1418,7 @@ static void iocg_kick_waitq(struct ioc_gq *iocg, bool pay_debt,
 {
 	struct ioc *ioc = iocg->ioc;
 	struct iocg_wake_ctx ctx = { .iocg = iocg };
-	u64 margin_ns = (u64)(ioc->period_us *
-			      WAITQ_TIMER_MARGIN_PCT / 100) * NSEC_PER_USEC;
-	u64 vdebt, vshortage, expires, oexpires;
+	u64 vshortage, expires, oexpires;
 	s64 vbudget;
 	u32 hwa;
 
@@ -1427,15 +1428,31 @@ static void iocg_kick_waitq(struct ioc_gq *iocg, bool pay_debt,
 	vbudget = now->vnow - atomic64_read(&iocg->vtime);
 
 	/* pay off debt */
-	vdebt = abs_cost_to_cost(iocg->abs_vdebt, hw_inuse);
-	if (vdebt && vbudget > 0) {
-		u64 delta = min_t(u64, vbudget, vdebt);
-		u64 abs_delta = min(cost_to_abs_cost(delta, hw_inuse),
-				    iocg->abs_vdebt);
+	if (pay_debt && iocg->abs_vdebt && vbudget > 0) {
+		u64 abs_vbudget = cost_to_abs_cost(vbudget, hwa);
+		u64 abs_vpay = min_t(u64, abs_vbudget, iocg->abs_vdebt);
+		u64 vpay = abs_cost_to_cost(abs_vpay, hwa);
 
-		atomic64_add(delta, &iocg->vtime);
-		atomic64_add(delta, &iocg->done_vtime);
-		iocg->abs_vdebt -= abs_delta;
+		lockdep_assert_held(&ioc->lock);
+
+		atomic64_add(vpay, &iocg->vtime);
+		atomic64_add(vpay, &iocg->done_vtime);
+		iocg_pay_debt(iocg, abs_vpay, now);
+		vbudget -= vpay;
+	}
+
+	if (iocg->abs_vdebt || iocg->delay)
+		iocg_kick_delay(iocg, now);
+
+	/*
+	 * Debt can still be outstanding if we haven't paid all yet or the
+	 * caller raced and called without @pay_debt. Shouldn't wake up waiters
+	 * under debt. Make sure @vbudget reflects the outstanding amount and is
+	 * not positive.
+	 */
+	if (iocg->abs_vdebt) {
+		s64 vdebt = abs_cost_to_cost(iocg->abs_vdebt, hwa);
+		vbudget = min_t(s64, 0, vbudget - vdebt);
 	}
 
 	/*
@@ -1488,74 +1505,9 @@ static enum hrtimer_restart iocg_waitq_timer_fn(struct hrtimer *timer)
 
 	ioc_now(iocg->ioc, &now);
 
-	spin_lock_irqsave(&iocg->waitq.lock, flags);
-	iocg_kick_waitq(iocg, &now);
-	spin_unlock_irqrestore(&iocg->waitq.lock, flags);
-
-	return HRTIMER_NORESTART;
-}
-
-static bool iocg_kick_delay(struct ioc_gq *iocg, struct ioc_now *now, u64 cost)
-{
-	struct ioc *ioc = iocg->ioc;
-	struct blkcg_gq *blkg = iocg_to_blkg(iocg);
-	u64 vtime = atomic64_read(&iocg->vtime);
-	u64 vmargin = ioc->margin_us * now->vrate;
-	u64 margin_ns = ioc->margin_us * NSEC_PER_USEC;
-	u64 expires, oexpires;
-	u32 hw_inuse;
-
-	lockdep_assert_held(&iocg->waitq.lock);
-
-	/* debt-adjust vtime */
-	current_hweight(iocg, NULL, &hw_inuse);
-	vtime += abs_cost_to_cost(iocg->abs_vdebt, hw_inuse);
-
-	/*
-	 * Clear or maintain depending on the overage. Non-zero vdebt is what
-	 * guarantees that @iocg is online and future iocg_kick_delay() will
-	 * clear use_delay. Don't leave it on when there's no vdebt.
-	 */
-	if (!iocg->abs_vdebt || time_before_eq64(vtime, now->vnow)) {
-		blkcg_clear_delay(blkg);
-		return false;
-	}
-	if (!atomic_read(&blkg->use_delay) &&
-	    time_before_eq64(vtime, now->vnow + vmargin))
-		return false;
-
-	/* use delay */
-	if (cost) {
-		u64 cost_ns = DIV64_U64_ROUND_UP(cost * NSEC_PER_USEC,
-						 now->vrate);
-		blkcg_add_delay(blkg, now->now_ns, cost_ns);
-	}
-	blkcg_use_delay(blkg);
-
-	expires = now->now_ns + DIV64_U64_ROUND_UP(vtime - now->vnow,
-						   now->vrate) * NSEC_PER_USEC;
-
-	/* if already active and close enough, don't bother */
-	oexpires = ktime_to_ns(hrtimer_get_softexpires(&iocg->delay_timer));
-	if (hrtimer_is_queued(&iocg->delay_timer) &&
-	    abs(oexpires - expires) <= margin_ns / 4)
-		return true;
-
-	hrtimer_start_range_ns(&iocg->delay_timer, ns_to_ktime(expires),
-			       margin_ns / 4, HRTIMER_MODE_ABS);
-	return true;
-}
-
-static enum hrtimer_restart iocg_delay_timer_fn(struct hrtimer *timer)
-{
-	struct ioc_gq *iocg = container_of(timer, struct ioc_gq, delay_timer);
-	struct ioc_now now;
-	unsigned long flags;
-
-	spin_lock_irqsave(&iocg->waitq.lock, flags);
-	ioc_now(iocg->ioc, &now);
-	iocg_kick_delay(iocg, &now, 0);
-	spin_unlock_irqrestore(&iocg->waitq.lock, flags);
+	iocg_lock(iocg, pay_debt, &flags);
+	iocg_kick_waitq(iocg, pay_debt, &now);
+	iocg_unlock(iocg, pay_debt, &flags);
 
 	return HRTIMER_NORESTART;
 }
@@ -2166,12 +2118,29 @@ static void ioc_timer_fn(struct timer_list *timer)
 	 */
 	list_for_each_entry_safe(iocg, tiocg, &ioc->active_iocgs, active_list) {
 		if (!waitqueue_active(&iocg->waitq) && !iocg->abs_vdebt &&
-		    !iocg_is_idle(iocg))
+		    !iocg->delay && !iocg_is_idle(iocg))
 			continue;
 
 		spin_lock(&iocg->waitq.lock);
 
-		if (waitqueue_active(&iocg->waitq) || iocg->abs_vdebt) {
+		/* flush wait and indebt stat deltas */
+		if (iocg->wait_since) {
+			iocg->local_stat.wait_us += now.now - iocg->wait_since;
+			iocg->wait_since = now.now;
+		}
+		if (iocg->indebt_since) {
+			iocg->local_stat.indebt_us +=
+				now.now - iocg->indebt_since;
+			iocg->indebt_since = now.now;
+		}
+		if (iocg->indelay_since) {
+			iocg->local_stat.indelay_us +=
+				now.now - iocg->indelay_since;
+			iocg->indelay_since = now.now;
+		}
+
+		if (waitqueue_active(&iocg->waitq) || iocg->abs_vdebt ||
+		    iocg->delay) {
 			/* might be oversleeping vtime / hweight changes, kick */
 			iocg_kick_waitq(iocg, true, &now);
 			if (iocg->abs_vdebt || iocg->delay)
@@ -2331,11 +2300,9 @@ static void ioc_timer_fn(struct timer_list *timer)
 
 			/*
 			 * If there are IOs spanning multiple periods, wait
-			 * them out before pushing the device harder.  If
-			 * there are surpluses, let redistribution work it
-			 * out first.
+			 * them out before pushing the device harder.
 			 */
-			if (!nr_lagging && !nr_surpluses)
+			if (!nr_lagging)
 				ioc->busy_level--;
 		} else {
 			/*
@@ -2389,15 +2356,14 @@ static void ioc_timer_fn(struct timer_list *timer)
 		}
 
 		trace_iocost_ioc_vrate_adj(ioc, vrate, missed_ppm, rq_wait_pct,
-					   nr_lagging, nr_shortages,
-					   nr_surpluses);
+					   nr_lagging, nr_shortages);
 
 		ioc->vtime_base_rate = vrate;
 		ioc_refresh_margins(ioc);
 	} else if (ioc->busy_level != prev_busy_level || nr_lagging) {
 		trace_iocost_ioc_vrate_adj(ioc, atomic64_read(&ioc->vtime_rate),
 					   missed_ppm, rq_wait_pct, nr_lagging,
-					   nr_shortages, nr_surpluses);
+					   nr_shortages);
 	}
 
 	ioc_refresh_params(ioc, false);
@@ -2623,20 +2589,6 @@ retry_lock:
 	}
 
 	/*
-	 * We activated above but w/o any synchronization. Deactivation is
-	 * synchronized with waitq.lock and we won't get deactivated as long
-	 * as we're waiting or has debt, so we're good if we're activated
-	 * here. In the unlikely case that we aren't, just issue the IO.
-	 */
-	spin_lock_irq(&iocg->waitq.lock);
-
-	if (unlikely(list_empty(&iocg->active_list))) {
-		spin_unlock_irq(&iocg->waitq.lock);
-		iocg_commit_bio(iocg, bio, cost);
-		return;
-	}
-
-	/*
 	 * We're over budget. If @bio has to be issued regardless, remember
 	 * the abs_cost instead of advancing vtime. iocg_kick_waitq() will pay
 	 * off the debt before waking more IOs.
@@ -2653,12 +2605,12 @@ retry_lock:
 	 * clear them and leave @iocg inactive w/ dangling use_delay heavily
 	 * penalizing the cgroup and its descendants.
 	 */
-	if (bio_issue_as_root_blkg(bio) || fatal_signal_pending(current)) {
-		iocg->abs_vdebt += abs_cost;
-		if (iocg_kick_delay(iocg, &now, cost))
+	if (use_debt) {
+		iocg_incur_debt(iocg, abs_cost, &now);
+		if (iocg_kick_delay(iocg, &now))
 			blkcg_schedule_throttle(rqos->q,
 					(bio->bi_opf & REQ_SWAP) == REQ_SWAP);
-		spin_unlock_irq(&iocg->waitq.lock);
+		iocg_unlock(iocg, ioc_locked, &flags);
 		return;
 	}
 
@@ -2715,8 +2667,7 @@ static void ioc_rqos_merge(struct rq_qos *rqos, struct request *rq,
 	struct ioc *ioc = rqos_to_ioc(rqos);
 	sector_t bio_end = bio_end_sector(bio);
 	struct ioc_now now;
-	u32 hw_inuse;
-	u64 abs_cost, cost;
+	u64 vtime, abs_cost, cost;
 	unsigned long flags;
 
 	/* bypass if disabled, still initializing, or for root cgroup */
@@ -2743,7 +2694,7 @@ static void ioc_rqos_merge(struct rq_qos *rqos, struct request *rq,
 	 */
 	if (rq->bio && rq->bio->bi_iocost_cost &&
 	    time_before_eq64(atomic64_read(&iocg->vtime) + cost, now.vnow)) {
-		iocg_commit_bio(iocg, bio, cost);
+		iocg_commit_bio(iocg, bio, abs_cost, cost);
 		return;
 	}
 
@@ -2752,14 +2703,20 @@ static void ioc_rqos_merge(struct rq_qos *rqos, struct request *rq,
 	 * be for the vast majority of cases. See debt handling in
 	 * ioc_rqos_throttle() for details.
 	 */
-	spin_lock_irqsave(&iocg->waitq.lock, flags);
+	spin_lock_irqsave(&ioc->lock, flags);
+	spin_lock(&iocg->waitq.lock);
+
 	if (likely(!list_empty(&iocg->active_list))) {
-		iocg->abs_vdebt += abs_cost;
-		iocg_kick_delay(iocg, &now, cost);
+		iocg_incur_debt(iocg, abs_cost, &now);
+		if (iocg_kick_delay(iocg, &now))
+			blkcg_schedule_throttle(rqos->q,
+					(bio->bi_opf & REQ_SWAP) == REQ_SWAP);
 	} else {
-		iocg_commit_bio(iocg, bio, cost);
+		iocg_commit_bio(iocg, bio, abs_cost, cost);
 	}
-	spin_unlock_irqrestore(&iocg->waitq.lock, flags);
+
+	spin_unlock(&iocg->waitq.lock);
+	spin_unlock_irqrestore(&ioc->lock, flags);
 }
 
 static void ioc_rqos_done_bio(struct rq_qos *rqos, struct bio *bio)
@@ -2989,6 +2946,7 @@ static void ioc_pd_free(struct blkg_policy_data *pd)
 
 	if (ioc) {
 		spin_lock_irqsave(&ioc->lock, flags);
+
 		if (!list_empty(&iocg->active_list)) {
 			struct ioc_now now;
 
@@ -2996,6 +2954,10 @@ static void ioc_pd_free(struct blkg_policy_data *pd)
 			propagate_weights(iocg, 0, 0, false, &now);
 			list_del_init(&iocg->active_list);
 		}
+
+		WARN_ON_ONCE(!list_empty(&iocg->walk_list));
+		WARN_ON_ONCE(!list_empty(&iocg->surplus_list));
+
 		spin_unlock_irqrestore(&ioc->lock, flags);
 
 		hrtimer_cancel(&iocg->waitq_timer);

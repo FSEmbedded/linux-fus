@@ -852,9 +852,10 @@ static int cpg_mssr_suspend_noirq(struct device *dev)
 	/* Save module registers with bits under our control */
 	for (reg = 0; reg < ARRAY_SIZE(priv->smstpcr_saved); reg++) {
 		if (priv->smstpcr_saved[reg].mask)
-			priv->smstpcr_saved[reg].val = priv->stbyctrl ?
-				readb(priv->base + STBCR(reg)) :
-				readl(priv->base + SMSTPCR(reg));
+			priv->smstpcr_saved[reg].val =
+				priv->reg_layout == CLK_REG_LAYOUT_RZ_A ?
+				readb(priv->base + priv->control_regs[reg]) :
+				readl(priv->base + priv->control_regs[reg]);
 	}
 
 	/* Save core clocks */
@@ -914,8 +915,8 @@ static int cpg_mssr_resume_noirq(struct device *dev)
 
 		if (!i)
 			dev_warn(dev, "Failed to enable %s%u[0x%x]\n",
-				 priv->stbyctrl ? "STB" : "SMSTP", reg,
-				 oldval & mask);
+				 priv->reg_layout == CLK_REG_LAYOUT_RZ_A ?
+				 "STB" : "SMSTP", reg, oldval & mask);
 	}
 
 	return 0;

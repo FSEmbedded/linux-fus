@@ -653,7 +653,7 @@ err_dma_event_ring_create:
 	rocker_dma_cmd_ring_waits_free(rocker);
 err_dma_cmd_ring_waits_alloc:
 	rocker_dma_ring_bufs_free(rocker, &rocker->cmd_ring,
-				  PCI_DMA_BIDIRECTIONAL);
+				  DMA_BIDIRECTIONAL);
 err_dma_cmd_ring_bufs_alloc:
 	rocker_dma_ring_destroy(rocker, &rocker->cmd_ring);
 	return err;

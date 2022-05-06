@@ -25,6 +25,9 @@
 #define ICMP_TOOBIG_SIZE 98
 #define ICMP_TOOBIG_PAYLOAD_SIZE 92
 
+/* volatile to prevent compiler optimizations */
+static volatile __u32 max_pcktsz = MAX_PCKT_SIZE;
+
 struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
 	__type(key, __u32);

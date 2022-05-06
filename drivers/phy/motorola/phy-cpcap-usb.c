@@ -272,6 +272,26 @@ static void cpcap_usb_detect(struct work_struct *work)
 
 		cpcap_usb_try_musb_mailbox(ddata, MUSB_ID_GROUND);
 
+		/*
+		 * Force check state again after musb has reoriented,
+		 * otherwise devices won't enumerate after loading PHY
+		 * driver.
+		 */
+		schedule_delayed_work(&ddata->detect_work,
+				      msecs_to_jiffies(1000));
+
+		return;
+	}
+
+	if (s.id_ground && !ddata->docked) {
+		dev_dbg(ddata->dev, "id ground, USB host mode\n");
+
+		ddata->vbus_provider = true;
+
+		error = cpcap_usb_set_usb_mode(ddata);
+		if (error)
+			goto out_err;
+
 		cpcap_usb_try_musb_mailbox(ddata, MUSB_ID_GROUND);
 
 		error = regmap_update_bits(ddata->reg, CPCAP_REG_USBC3,
@@ -294,20 +314,6 @@ static void cpcap_usb_detect(struct work_struct *work)
 
 	/* Otherwise assume we're connected to a USB host */
 	if (vbus) {
-		/* Are we connected to a docking station with vbus? */
-		if (s.id_ground) {
-			dev_dbg(ddata->dev, "connected to a dock\n");
-
-			/* No VBUS needed with docks */
-			error = cpcap_usb_set_usb_mode(ddata);
-			if (error)
-				goto out_err;
-			cpcap_usb_try_musb_mailbox(ddata, MUSB_ID_GROUND);
-
-			return;
-		}
-
-		/* Otherwise assume we're connected to a USB host */
 		dev_dbg(ddata->dev, "connected to USB host\n");
 		error = cpcap_usb_set_usb_mode(ddata);
 		if (error)
@@ -317,6 +323,8 @@ static void cpcap_usb_detect(struct work_struct *work)
 		return;
 	}
 
+	ddata->vbus_provider = false;
+	ddata->docked = false;
 	cpcap_usb_try_musb_mailbox(ddata, MUSB_VBUS_OFF);
 
 	/* Default to debug UART mode */

@@ -120,14 +120,6 @@ static void mt76_led_cleanup(struct mt76_dev *dev)
 	led_classdev_unregister(&dev->led_cdev);
 }
 
-static void mt76_led_cleanup(struct mt76_dev *dev)
-{
-	if (!dev->led_cdev.brightness_set && !dev->led_cdev.blink_set)
-		return;
-
-	led_classdev_unregister(&dev->led_cdev);
-}
-
 static void mt76_init_stream_cap(struct mt76_phy *phy,
 				 struct ieee80211_supported_band *sband,
 				 bool vht)

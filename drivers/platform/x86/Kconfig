@@ -936,10 +936,10 @@ config MSI_WMI
 	 To compile this driver as a module, choose M here: the module will
 	 be called msi-wmi.
 
-config PEAQ_WMI
-	tristate "PEAQ 2-in-1 WMI hotkey driver"
-	depends on ACPI_WMI
-	depends on INPUT
+config XO15_EBOOK
+	tristate "OLPC XO-1.5 ebook switch"
+	depends on OLPC || COMPILE_TEST
+	depends on ACPI && INPUT
 	help
 	  Support for the ebook switch on the OLPC XO-1.5 laptop.
 

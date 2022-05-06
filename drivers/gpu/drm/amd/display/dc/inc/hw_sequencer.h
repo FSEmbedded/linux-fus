@@ -215,42 +215,9 @@ struct hw_sequencer_funcs {
 
 	void (*set_pipe)(struct pipe_ctx *pipe_ctx);
 
-	void (*enable_power_gating_plane)(
-		struct dce_hwseq *hws,
-		bool enable);
-
-	void (*dpp_pg_control)(
-			struct dce_hwseq *hws,
-			unsigned int dpp_inst,
-			bool power_on);
-
-	void (*hubp_pg_control)(
-			struct dce_hwseq *hws,
-			unsigned int hubp_inst,
-			bool power_on);
-
-	void (*dsc_pg_control)(
-			struct dce_hwseq *hws,
-			unsigned int dsc_inst,
-			bool power_on);
-
-
-#if defined(CONFIG_DRM_AMD_DC_DCN2_0)
-	void (*update_odm)(struct dc *dc, struct dc_state *context, struct pipe_ctx *pipe_ctx);
-	void (*program_all_writeback_pipes_in_tree)(
-			struct dc *dc,
-			const struct dc_stream_state *stream,
-			struct dc_state *context);
-	void (*update_writeback)(struct dc *dc,
-			const struct dc_stream_status *stream_status,
-			struct dc_writeback_info *wb_info,
-			struct dc_state *context);
-	void (*enable_writeback)(struct dc *dc,
-			const struct dc_stream_status *stream_status,
-			struct dc_writeback_info *wb_info,
-			struct dc_state *context);
-	void (*disable_writeback)(struct dc *dc,
-			unsigned int dwb_pipe_inst);
+#if defined(CONFIG_DRM_AMD_DC_DCN3_0)
+	/* Idle Optimization Related */
+	bool (*apply_idle_power_optimizations)(struct dc *dc, bool enable);
 #endif
 
 };

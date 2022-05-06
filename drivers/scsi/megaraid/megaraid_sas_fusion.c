@@ -4244,6 +4244,16 @@ static void megasas_refire_mgmt_cmd(struct megasas_instance *instance,
 			break;
 		}
 
+		if (return_ioctl && cmd_mfi->sync_cmd &&
+		    cmd_mfi->frame->hdr.cmd != MFI_CMD_ABORT) {
+			dev_err(&instance->pdev->dev,
+				"return -EBUSY from %s %d cmd 0x%x opcode 0x%x\n",
+				__func__, __LINE__, cmd_mfi->frame->hdr.cmd,
+				le32_to_cpu(cmd_mfi->frame->dcmd.opcode));
+			cmd_mfi->cmd_status_drv = DCMD_BUSY;
+			result = COMPLETE_CMD;
+		}
+
 		scsi_io_req = (struct MPI2_RAID_SCSI_IO_REQUEST *)
 				cmd_fusion->io_request;
 		if (scsi_io_req->Function == MPI2_FUNCTION_SCSI_TASK_MGMT)

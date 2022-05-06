@@ -301,15 +301,6 @@ void scm_detach_fds_compat(struct msghdr *msg, struct scm_cookie *scm)
 		err = receive_fd_user(scm->fp->fp[i], cmsg_data + i, o_flags);
 		if (err < 0)
 			break;
-		new_fd = err;
-		err = put_user(new_fd, cmfptr);
-		if (err) {
-			put_unused_fd(new_fd);
-			break;
-		}
-		/* Bump the usage count and install the file. */
-		__receive_sock(fp[i]);
-		fd_install(new_fd, get_file(fp[i]));
 	}
 
 	if (i > 0) {

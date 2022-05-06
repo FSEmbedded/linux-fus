@@ -32,8 +32,11 @@
 #include <soc/fsl/qe/ucc_slow.h>
 
 #include <linux/firmware.h>
-#include <asm/cpm.h>
-#include <asm/reg.h>
+#include <soc/fsl/cpm.h>
+
+#ifdef CONFIG_PPC32
+#include <asm/reg.h> /* mfspr, SPRN_SVR */
+#endif
 
 /*
  * The GUMR flag for Soft UART.  This would normally be defined in qe.h,

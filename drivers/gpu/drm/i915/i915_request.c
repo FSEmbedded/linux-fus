@@ -702,15 +702,6 @@ submit_notify(struct i915_sw_fence *fence, enum i915_sw_fence_notify state)
 	return NOTIFY_DONE;
 }
 
-static void irq_semaphore_cb(struct irq_work *wrk)
-{
-	struct i915_request *rq =
-		container_of(wrk, typeof(*rq), semaphore_work);
-
-	i915_schedule_bump_priority(rq, I915_PRIORITY_NOSEMAPHORE);
-	i915_request_put(rq);
-}
-
 static int __i915_sw_fence_call
 semaphore_notify(struct i915_sw_fence *fence, enum i915_sw_fence_notify state)
 {
@@ -718,11 +709,6 @@ semaphore_notify(struct i915_sw_fence *fence, enum i915_sw_fence_notify state)
 
 	switch (state) {
 	case FENCE_COMPLETE:
-		if (!(READ_ONCE(rq->sched.attr.priority) & I915_PRIORITY_NOSEMAPHORE)) {
-			i915_request_get(rq);
-			init_irq_work(&rq->semaphore_work, irq_semaphore_cb);
-			irq_work_queue(&rq->semaphore_work);
-		}
 		break;
 
 	case FENCE_FREE:
@@ -1099,10 +1085,74 @@ emit_semaphore_wait(struct i915_request *to,
 	if (i915_request_has_initial_breadcrumb(to))
 		goto await_fence;
 
-	if (i915_request_completed(from)) {
-		i915_sw_fence_set_error_once(&to->submit, from->fence.error);
+	if (!rcu_access_pointer(from->hwsp_cacheline))
+		goto await_fence;
+
+	/*
+	 * If this or its dependents are waiting on an external fence
+	 * that may fail catastrophically, then we want to avoid using
+	 * sempahores as they bypass the fence signaling metadata, and we
+	 * lose the fence->error propagation.
+	 */
+	if (from->sched.flags & I915_SCHED_HAS_EXTERNAL_CHAIN)
+		goto await_fence;
+
+	/* Just emit the first semaphore we see as request space is limited. */
+	if (already_busywaiting(to) & mask)
+		goto await_fence;
+
+	if (i915_request_await_start(to, from) < 0)
+		goto await_fence;
+
+	/* Only submit our spinner after the signaler is running! */
+	if (__await_execution(to, from, NULL, gfp))
+		goto await_fence;
+
+	if (__emit_semaphore_wait(to, from, from->fence.seqno))
+		goto await_fence;
+
+	to->sched.semaphores |= mask;
+	wait = &to->semaphore;
+
+await_fence:
+	return i915_sw_fence_await_dma_fence(wait,
+					     &from->fence, 0,
+					     I915_FENCE_GFP);
+}
+
+static bool intel_timeline_sync_has_start(struct intel_timeline *tl,
+					  struct dma_fence *fence)
+{
+	return __intel_timeline_sync_is_later(tl,
+					      fence->context,
+					      fence->seqno - 1);
+}
+
+static int intel_timeline_sync_set_start(struct intel_timeline *tl,
+					 const struct dma_fence *fence)
+{
+	return __intel_timeline_sync_set(tl, fence->context, fence->seqno - 1);
+}
+
+static int
+__i915_request_await_execution(struct i915_request *to,
+			       struct i915_request *from,
+			       void (*hook)(struct i915_request *rq,
+					    struct dma_fence *signal))
+{
+	int err;
+
+	GEM_BUG_ON(intel_context_is_barrier(from->context));
+
+	/* Submit both requests at the same time */
+	err = __await_execution(to, from, hook, I915_FENCE_GFP);
+	if (err)
+		return err;
+
+	/* Squash repeated depenendices to the same timelines */
+	if (intel_timeline_sync_has_start(i915_request_timeline(to),
+					  &from->fence))
 		return 0;
-	}
 
 	/*
 	 * Wait until the start of this request.

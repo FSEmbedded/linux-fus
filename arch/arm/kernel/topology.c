@@ -232,10 +232,6 @@ topology_populated:
 	update_siblings_masks(cpuid);
 }
 
-topology_populated:
-	update_siblings_masks(cpuid);
-}
-
 /*
  * init_cpu_topology is called at boot when only one cpu is running
  * which prevent simultaneous write access to cpu_topology array

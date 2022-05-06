@@ -9,7 +9,6 @@
 
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
-#include <linux/mod_devicetable.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/reset-controller.h>
@@ -237,16 +236,15 @@ static int imx8mq_reset_set(struct reset_controller_dev *rcdev,
 			udelay(10);
 		break;
 
-	case IMX8MQ_RESET_PCIEPHY_PERST:
 	case IMX8MQ_RESET_PCIE_CTRL_APPS_EN:
 	case IMX8MQ_RESET_PCIE_CTRL_APPS_CLK_REQ:
-	case IMX8MQ_RESET_PCIE2_CTRL_APPS_EN:	/* fallthrough */
+	case IMX8MQ_RESET_PCIE2_CTRL_APPS_EN:
 	case IMX8MQ_RESET_PCIE2_CTRL_APPS_CLK_REQ:
-	case IMX8MQ_RESET_MIPI_DSI_PCLK_RESET_N:	/* fallthrough */
-	case IMX8MQ_RESET_MIPI_DSI_ESC_RESET_N:	/* fallthrough */
-	case IMX8MQ_RESET_MIPI_DSI_DPI_RESET_N:	/* fallthrough */
-	case IMX8MQ_RESET_MIPI_DSI_RESET_N:	/* fallthrough */
-	case IMX8MQ_RESET_MIPI_DSI_RESET_BYTE_N:	/* fallthrough */
+	case IMX8MQ_RESET_MIPI_DSI_PCLK_RESET_N:
+	case IMX8MQ_RESET_MIPI_DSI_ESC_RESET_N:
+	case IMX8MQ_RESET_MIPI_DSI_DPI_RESET_N:
+	case IMX8MQ_RESET_MIPI_DSI_RESET_N:
+	case IMX8MQ_RESET_MIPI_DSI_RESET_BYTE_N:
 	case IMX8MQ_RESET_M4_ENABLE:
 		value = assert ? 0 : bit;
 		break;
@@ -301,8 +299,9 @@ static const struct imx7_src_signal imx8mp_src_signals[IMX8MP_RESET_NUM] = {
 	[IMX8MP_RESET_SUPERMIX_RESET]		= { SRC_SUPERMIX_RCR, BIT(0) },
 	[IMX8MP_RESET_AUDIOMIX_RESET]		= { SRC_AUDIOMIX_RCR, BIT(0) },
 	[IMX8MP_RESET_MLMIX_RESET]		= { SRC_MLMIX_RCR, BIT(0) },
-	[IMX8MP_RESET_PCIEPHY]			= { SRC_PCIEPHY_RCR, BIT(2) },
+	[IMX8MP_RESET_PCIEPHY]			= { SRC_PCIEPHY_RCR, BIT(2) | BIT(1) },
 	[IMX8MP_RESET_PCIEPHY_PERST]		= { SRC_PCIEPHY_RCR, BIT(3) },
+	[IMX8MP_RESET_PCIE_CTRL_APPS_CLK_REQ]	= { SRC_PCIEPHY_RCR, BIT(4) },
 	[IMX8MP_RESET_PCIE_CTRL_APPS_EN]	= { SRC_PCIEPHY_RCR, BIT(6) },
 	[IMX8MP_RESET_PCIE_CTRL_APPS_TURNOFF]	= { SRC_PCIEPHY_RCR, BIT(11) },
 	[IMX8MP_RESET_HDMI_PHY_APB_RESET]	= { SRC_HDMI_RCR, BIT(0) },
@@ -334,7 +333,9 @@ static int imx8mp_reset_set(struct reset_controller_dev *rcdev,
 			udelay(10);
 		break;
 
+	case IMX8MP_RESET_PCIEPHY_PERST:
 	case IMX8MP_RESET_PCIE_CTRL_APPS_EN:
+	case IMX8MP_RESET_PCIE_CTRL_APPS_CLK_REQ:
 		value = assert ? 0 : bit;
 		break;
 	}
@@ -406,4 +407,7 @@ static struct platform_driver imx7_reset_driver = {
 	},
 };
 module_platform_driver(imx7_reset_driver);
+
+MODULE_AUTHOR("Andrey Smirnov <andrew.smirnov@gmail.com>");
+MODULE_DESCRIPTION("NXP i.MX7 reset driver");
 MODULE_LICENSE("GPL v2");

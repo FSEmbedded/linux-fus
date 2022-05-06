@@ -123,4 +123,20 @@
 /* ESAI */
 #define SOF_TKN_IMX_ESAI_MCLK_ID		1100
 
+/* Stream */
+#define SOF_TKN_STREAM_PLAYBACK_COMPATIBLE_D0I3	1200
+#define SOF_TKN_STREAM_CAPTURE_COMPATIBLE_D0I3	1201
+
+/* Led control for mute switches */
+#define SOF_TKN_MUTE_LED_USE			1300
+#define SOF_TKN_MUTE_LED_DIRECTION		1301
+
+/* ALH */
+#define SOF_TKN_INTEL_ALH_RATE			1400
+#define SOF_TKN_INTEL_ALH_CH			1401
+
+/* HDA */
+#define SOF_TKN_INTEL_HDA_RATE			1500
+#define SOF_TKN_INTEL_HDA_CH			1501
+
 #endif

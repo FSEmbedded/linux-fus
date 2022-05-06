@@ -128,8 +128,7 @@ DEFINE_EVENT(iocg_inuse_update, iocost_inuse_adjust,
 TRACE_EVENT(iocost_ioc_vrate_adj,
 
 	TP_PROTO(struct ioc *ioc, u64 new_vrate, u32 *missed_ppm,
-		u32 rq_wait_pct, int nr_lagging, int nr_shortages,
-		int nr_surpluses),
+		u32 rq_wait_pct, int nr_lagging, int nr_shortages),
 
 	TP_ARGS(ioc, new_vrate, missed_ppm, rq_wait_pct, nr_lagging, nr_shortages),
 

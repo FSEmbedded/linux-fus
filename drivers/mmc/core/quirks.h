@@ -120,7 +120,7 @@ static const struct mmc_fixup __maybe_unused mmc_ext_csd_fixups[] = {
 };
 
 
-static const struct mmc_fixup sdio_fixup_methods[] = {
+static const struct mmc_fixup __maybe_unused sdio_fixup_methods[] = {
 	SDIO_FIXUP(SDIO_VENDOR_ID_TI_WL1251, SDIO_DEVICE_ID_TI_WL1251,
 		   add_quirk, MMC_QUIRK_NONSTD_FUNC_IF),
 

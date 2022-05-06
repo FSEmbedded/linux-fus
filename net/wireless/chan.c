@@ -872,10 +872,9 @@ static bool cfg80211_secondary_chans_ok(struct wiphy *wiphy,
 	start_freq = cfg80211_get_start_freq(center_freq, bandwidth);
 	end_freq = cfg80211_get_end_freq(center_freq, bandwidth);
 
-	for (freq = start_freq; freq <= end_freq; freq += 20) {
-		c = ieee80211_get_channel(wiphy, freq);
-		if (!c || ((c->flags & prohibited_flags) &&
-			!(wiphy->flags & WIPHY_FLAG_DFS_OFFLOAD)))
+	for (freq = start_freq; freq <= end_freq; freq += MHZ_TO_KHZ(20)) {
+		c = ieee80211_get_channel_khz(wiphy, freq);
+		if (!c || c->flags & prohibited_flags)
 			return false;
 	}
 

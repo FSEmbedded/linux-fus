@@ -1500,13 +1500,14 @@ ib_cache_update(struct ib_device *device, u8 port, bool enforce_security)
 			goto err;
 	}
 
-	pkey_cache = kmalloc(struct_size(pkey_cache, table,
-					 tprops->pkey_tbl_len),
-			     GFP_KERNEL);
-	if (!pkey_cache) {
-		ret = -ENOMEM;
-		goto err;
-	}
+	if (tprops->pkey_tbl_len) {
+		pkey_cache = kmalloc(struct_size(pkey_cache, table,
+						 tprops->pkey_tbl_len),
+				     GFP_KERNEL);
+		if (!pkey_cache) {
+			ret = -ENOMEM;
+			goto err;
+		}
 
 		pkey_cache->table_len = tprops->pkey_tbl_len;
 
@@ -1574,20 +1575,6 @@ static void ib_generic_event_task(struct work_struct *_work)
 {
 	struct ib_update_work *work =
 		container_of(_work, struct ib_update_work, work);
-	int ret;
-
-	/* Before distributing the cache update event, first sync
-	 * the cache.
-	 */
-	ret = ib_cache_update(work->event.device, work->event.element.port_num,
-			      work->enforce_security);
-
-	/* GID event is notified already for individual GID entries by
-	 * dispatch_gid_change_event(). Hence, notifiy for rest of the
-	 * events.
-	 */
-	if (!ret && work->event.event != IB_EVENT_GID_CHANGE)
-		ib_dispatch_event_clients(&work->event);
 
 	ib_dispatch_event_clients(&work->event);
 	kfree(work);

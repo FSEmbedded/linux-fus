@@ -2034,11 +2034,9 @@ unsigned long lockdep_count_forward_deps(struct lock_class *class)
 	__bfs_init_root(&this, class);
 
 	raw_local_irq_save(flags);
-	current->lockdep_recursion = 1;
-	arch_spin_lock(&lockdep_lock);
+	lockdep_lock();
 	ret = __lockdep_count_forward_deps(&this);
-	arch_spin_unlock(&lockdep_lock);
-	current->lockdep_recursion = 0;
+	lockdep_unlock();
 	raw_local_irq_restore(flags);
 
 	return ret;
@@ -2062,11 +2060,9 @@ unsigned long lockdep_count_backward_deps(struct lock_class *class)
 	__bfs_init_root(&this, class);
 
 	raw_local_irq_save(flags);
-	current->lockdep_recursion = 1;
-	arch_spin_lock(&lockdep_lock);
+	lockdep_lock();
 	ret = __lockdep_count_backward_deps(&this);
-	arch_spin_unlock(&lockdep_lock);
-	current->lockdep_recursion = 0;
+	lockdep_unlock();
 	raw_local_irq_restore(flags);
 
 	return ret;
@@ -4460,7 +4456,7 @@ lock_used:
 
 static inline unsigned int task_irq_context(struct task_struct *task)
 {
-	return LOCK_CHAIN_HARDIRQ_CONTEXT * !!task->hardirq_context +
+	return LOCK_CHAIN_HARDIRQ_CONTEXT * !!lockdep_hardirq_context() +
 	       LOCK_CHAIN_SOFTIRQ_CONTEXT * !!task->softirq_context;
 }
 
@@ -5864,7 +5860,7 @@ static void remove_class_from_lock_chain(struct pending_free *pf,
 free_lock_chain:
 	free_chain_hlocks(chain->base, chain->depth);
 	/* Overwrite the chain key for concurrent RCU readers. */
-	WRITE_ONCE(chain->chain_key, chain_key);
+	WRITE_ONCE(chain->chain_key, INITIAL_CHAIN_KEY);
 	dec_chains(chain->irq_context);
 
 	/*
@@ -5873,22 +5869,7 @@ free_lock_chain:
 	 */
 	hlist_del_rcu(&chain->entry);
 	__set_bit(chain - lock_chains, pf->lock_chains_being_freed);
-	if (chain->depth == 0)
-		return;
-	/*
-	 * If the modified lock chain matches an existing lock chain, drop
-	 * the modified lock chain.
-	 */
-	if (lookup_chain_cache(chain_key))
-		return;
-	new_chain = alloc_lock_chain();
-	if (WARN_ON_ONCE(!new_chain)) {
-		debug_locks_off();
-		return;
-	}
-	*new_chain = *chain;
-	hlist_add_head_rcu(&new_chain->entry, chainhashentry(chain_key));
-	inc_chains(new_chain->irq_context);
+	nr_zapped_lock_chains++;
 #endif
 }
 

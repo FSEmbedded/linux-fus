@@ -393,10 +393,8 @@ int ib_umem_odp_map_dma_and_lock(struct ib_umem_odp *umem_odp, u64 user_virt,
 			range.default_flags |= HMM_PFN_REQ_WRITE;
 	}
 
-	while (bcnt > 0) {
-		const size_t gup_num_pages = min_t(size_t,
-				ALIGN(bcnt, PAGE_SIZE) / PAGE_SIZE,
-				PAGE_SIZE / sizeof(struct page *));
+	range.hmm_pfns = &(umem_odp->pfn_list[pfn_start_idx]);
+	timeout = jiffies + msecs_to_jiffies(HMM_RANGE_DEFAULT_TIMEOUT);
 
 retry:
 	current_seq = range.notifier_seq =

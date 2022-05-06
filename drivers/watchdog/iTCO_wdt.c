@@ -491,7 +491,7 @@ static int iTCO_wdt_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	iTCO_wdt_no_reboot_bit_setup(p, pdata);
+	iTCO_wdt_no_reboot_bit_setup(p, pdev, pdata);
 
 	/*
 	 * Get the Memory-Mapped GCS or PMC register, we need it for the

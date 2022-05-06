@@ -277,10 +277,18 @@ smb2_reconnect(__le16 smb2_command, struct cifs_tcon *tcon,
 		rc = cifs_setup_session(0, tcon->ses, nls_codepage);
 		if ((rc == -EACCES) && !tcon->retry) {
 			rc = -EHOSTDOWN;
+			ses->binding = false;
+			ses->binding_chan = NULL;
 			mutex_unlock(&tcon->ses->session_mutex);
 			goto failed;
 		}
 	}
+	/*
+	 * End of channel binding
+	 */
+	ses->binding = false;
+	ses->binding_chan = NULL;
+
 	if (rc || !tcon->need_reconnect) {
 		mutex_unlock(&tcon->ses->session_mutex);
 		goto out;
@@ -358,7 +366,8 @@ fill_small_buf(__le16 smb2_command, struct cifs_tcon *tcon,
  * function must have filled in request_buf pointer.
  */
 static int __smb2_plain_req_init(__le16 smb2_command, struct cifs_tcon *tcon,
-				  void **request_buf, unsigned int *total_len)
+				 struct TCP_Server_Info *server,
+				 void **request_buf, unsigned int *total_len)
 {
 	/* BB eventually switch this to SMB2 specific small buf size */
 	if (smb2_command == SMB2_SET_INFO)
@@ -384,27 +393,30 @@ static int __smb2_plain_req_init(__le16 smb2_command, struct cifs_tcon *tcon,
 }
 
 static int smb2_plain_req_init(__le16 smb2_command, struct cifs_tcon *tcon,
+			       struct TCP_Server_Info *server,
 			       void **request_buf, unsigned int *total_len)
 {
 	int rc;
 
-	rc = smb2_reconnect(smb2_command, tcon);
+	rc = smb2_reconnect(smb2_command, tcon, server);
 	if (rc)
 		return rc;
 
-	return __smb2_plain_req_init(smb2_command, tcon, request_buf,
+	return __smb2_plain_req_init(smb2_command, tcon, server, request_buf,
 				     total_len);
 }
 
 static int smb2_ioctl_req_init(u32 opcode, struct cifs_tcon *tcon,
+			       struct TCP_Server_Info *server,
 			       void **request_buf, unsigned int *total_len)
 {
 	/* Skip reconnect only for FSCTL_VALIDATE_NEGOTIATE_INFO IOCTLs */
 	if (opcode == FSCTL_VALIDATE_NEGOTIATE_INFO) {
-		return __smb2_plain_req_init(SMB2_IOCTL, tcon, request_buf,
-					     total_len);
+		return __smb2_plain_req_init(SMB2_IOCTL, tcon, server,
+					     request_buf, total_len);
 	}
-	return smb2_plain_req_init(SMB2_IOCTL, tcon, request_buf, total_len);
+	return smb2_plain_req_init(SMB2_IOCTL, tcon, server,
+				   request_buf, total_len);
 }
 
 /* For explanation of negotiate contexts see MS-SMB2 section 2.2.3.1 */
@@ -2916,7 +2928,8 @@ SMB2_ioctl_init(struct cifs_tcon *tcon, struct TCP_Server_Info *server,
 	int rc;
 	char *in_data_buf;
 
-	rc = smb2_ioctl_req_init(opcode, tcon, (void **) &req, &total_len);
+	rc = smb2_ioctl_req_init(opcode, tcon, server,
+				 (void **) &req, &total_len);
 	if (rc)
 		return rc;
 
@@ -3263,21 +3276,7 @@ int
 SMB2_close(const unsigned int xid, struct cifs_tcon *tcon,
 		u64 persistent_fid, u64 volatile_fid)
 {
-	int rc;
-	int tmp_rc;
-
-	rc = SMB2_close_flags(xid, tcon, persistent_fid, volatile_fid, 0);
-
-	/* retry close in a worker thread if this one is interrupted */
-	if (rc == -EINTR) {
-		tmp_rc = smb2_handle_cancelled_close(tcon, persistent_fid,
-						     volatile_fid);
-		if (tmp_rc)
-			cifs_dbg(VFS, "handle cancelled close fid 0x%llx returned error %d\n",
-				 persistent_fid, tmp_rc);
-	}
-
-	return rc;
+	return __SMB2_close(xid, tcon, persistent_fid, volatile_fid, NULL);
 }
 
 int
@@ -4226,8 +4225,8 @@ smb2_writev_callback(struct mid_q_entry *mid)
 				     tcon->tid, tcon->ses->Suid, wdata->offset,
 				     wdata->bytes, wdata->result);
 		if (wdata->result == -ENOSPC)
-			printk_once(KERN_WARNING "Out of space writing to %s\n",
-				    tcon->treeName);
+			pr_warn_once("Out of space writing to %s\n",
+				     tcon->treeName);
 	} else
 		trace_smb3_write_done(0 /* no xid */,
 				      wdata->cfile->fid.persistent_fid,

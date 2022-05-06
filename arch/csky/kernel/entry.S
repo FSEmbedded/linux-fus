@@ -201,6 +201,8 @@ csky_syscall_trace:
 	stw	r9, (sp, 0x0)
 	ldw	r9, (sp, LSAVE_A5)
 	stw	r9, (sp, 0x4)
+	jsr	syscallid                     /* Do system call */
+	addi	sp, 8
 #else
 	ldw	r6, (sp, LSAVE_A4)
 	ldw	r7, (sp, LSAVE_A5)
@@ -354,9 +356,6 @@ ENTRY(csky_irq)
 ENTRY(__switch_to)
 	lrw	a3, TASK_THREAD
 	addu	a3, a0
-
-	mfcr	a2, psr			/* Save PSR value */
-	stw	a2, (a3, THREAD_SR)	/* Save PSR in task struct */
 
 	SAVE_SWITCH_STACK
 

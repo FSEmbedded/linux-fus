@@ -117,57 +117,9 @@ static const struct cal_camerarx_data am654_cal_csi_phy[] = {
 	},
 };
 
-/*
- * There is one cal_ctx structure for each camera core context.
- */
-struct cal_ctx {
-	struct v4l2_device	v4l2_dev;
-	struct v4l2_ctrl_handler ctrl_handler;
-	struct video_device	vdev;
-	struct v4l2_async_notifier notifier;
-	struct v4l2_subdev	*sensor;
-	struct v4l2_fwnode_endpoint	endpoint;
-
-	struct v4l2_fh		fh;
-	struct cal_dev		*dev;
-	struct cc_data		*cc;
-
-	/* v4l2_ioctl mutex */
-	struct mutex		mutex;
-	/* v4l2 buffers lock */
-	spinlock_t		slock;
-
-	/* Several counters */
-	unsigned long		jiffies;
-
-	struct cal_dmaqueue	vidq;
-
-	/* Input Number */
-	int			input;
-
-	/* video capture */
-	const struct cal_fmt	*fmt;
-	/* Used to store current pixel format */
-	struct v4l2_format		v_fmt;
-	/* Used to store current mbus frame format */
-	struct v4l2_mbus_framefmt	m_fmt;
-
-	/* Current subdev enumerated format */
-	struct cal_fmt		*active_fmt[ARRAY_SIZE(cal_formats)];
-	int			num_active_fmt;
-
-	struct v4l2_fract	timeperframe;
-	unsigned int		sequence;
-	unsigned int		external_rate;
-	struct vb2_queue	vb_vidq;
-	unsigned int		seq_count;
-	unsigned int		csi2_port;
-	unsigned int		virtual_channel;
-
-	/* Pointer pointing to current v4l2_buffer */
-	struct cal_buffer	*cur_frm;
-	/* Pointer pointing to next v4l2_buffer */
-	struct cal_buffer	*next_frm;
+static const struct cal_data am654_cal_data = {
+	.camerarx = am654_cal_csi_phy,
+	.num_csi2_phy = ARRAY_SIZE(am654_cal_csi_phy),
 };
 
 /* ------------------------------------------------------------------
@@ -206,23 +158,6 @@ void cal_quickdump_regs(struct cal_dev *cal)
 
 void cal_ctx_csi2_config(struct cal_ctx *ctx)
 {
-	u32 val;
-
-	/* Disable IRQ_WDMA_END 0/1 */
-	val = 0;
-	set_field(&val, CAL_HL_IRQ_CLEAR, CAL_HL_IRQ_MASK(ctx->csi2_port));
-	reg_write(ctx->dev, CAL_HL_IRQENABLE_CLR(2), val);
-	/* Disable IRQ_WDMA_START 0/1 */
-	val = 0;
-	set_field(&val, CAL_HL_IRQ_CLEAR, CAL_HL_IRQ_MASK(ctx->csi2_port));
-	reg_write(ctx->dev, CAL_HL_IRQENABLE_CLR(3), val);
-	/* Todo: Add VC_IRQ and CSI2_COMPLEXIO_IRQ handling */
-	reg_write(ctx->dev, CAL_CSI2_VC_IRQENABLE(1), 0);
-}
-
-static void csi2_init(struct cal_ctx *ctx)
-{
-	int i;
 	u32 val;
 
 	val = cal_read(ctx->cal, CAL_CSI2_CTX0(ctx->index));
@@ -297,24 +232,24 @@ void cal_ctx_pix_proc_config(struct cal_ctx *ctx)
 		cal_read(ctx->cal, CAL_PIX_PROC(ctx->index)));
 }
 
-static void cal_wr_dma_config(struct cal_ctx *ctx,
-			      unsigned int width, unsigned int height)
+void cal_ctx_wr_dma_config(struct cal_ctx *ctx, unsigned int width,
+			    unsigned int height)
 {
 	u32 val;
 
-	val = reg_read(ctx->dev, CAL_WR_DMA_CTRL(ctx->csi2_port));
-	set_field(&val, ctx->csi2_port, CAL_WR_DMA_CTRL_CPORT_MASK);
-	set_field(&val, height, CAL_WR_DMA_CTRL_YSIZE_MASK);
-	set_field(&val, CAL_WR_DMA_CTRL_DTAG_PIX_DAT,
-		  CAL_WR_DMA_CTRL_DTAG_MASK);
-	set_field(&val, CAL_WR_DMA_CTRL_MODE_CONST,
-		  CAL_WR_DMA_CTRL_MODE_MASK);
-	set_field(&val, CAL_WR_DMA_CTRL_PATTERN_LINEAR,
-		  CAL_WR_DMA_CTRL_PATTERN_MASK);
-	set_field(&val, CAL_GEN_ENABLE, CAL_WR_DMA_CTRL_STALL_RD_MASK);
-	reg_write(ctx->dev, CAL_WR_DMA_CTRL(ctx->csi2_port), val);
-	ctx_dbg(3, ctx, "CAL_WR_DMA_CTRL(%d) = 0x%08x\n", ctx->csi2_port,
-		reg_read(ctx->dev, CAL_WR_DMA_CTRL(ctx->csi2_port)));
+	val = cal_read(ctx->cal, CAL_WR_DMA_CTRL(ctx->index));
+	cal_set_field(&val, ctx->cport, CAL_WR_DMA_CTRL_CPORT_MASK);
+	cal_set_field(&val, height, CAL_WR_DMA_CTRL_YSIZE_MASK);
+	cal_set_field(&val, CAL_WR_DMA_CTRL_DTAG_PIX_DAT,
+		      CAL_WR_DMA_CTRL_DTAG_MASK);
+	cal_set_field(&val, CAL_WR_DMA_CTRL_MODE_CONST,
+		      CAL_WR_DMA_CTRL_MODE_MASK);
+	cal_set_field(&val, CAL_WR_DMA_CTRL_PATTERN_LINEAR,
+		      CAL_WR_DMA_CTRL_PATTERN_MASK);
+	cal_set_field(&val, 1, CAL_WR_DMA_CTRL_STALL_RD_MASK);
+	cal_write(ctx->cal, CAL_WR_DMA_CTRL(ctx->index), val);
+	ctx_dbg(3, ctx, "CAL_WR_DMA_CTRL(%d) = 0x%08x\n", ctx->index,
+		cal_read(ctx->cal, CAL_WR_DMA_CTRL(ctx->index)));
 
 	/*
 	 * width/16 not sure but giving it a whirl.
@@ -633,25 +568,12 @@ static int cal_media_init(struct cal_dev *cal)
 		 dev_name(mdev->dev));
 	media_device_init(mdev);
 
-	ret = cal_get_external_info(ctx);
-	if (ret < 0)
-		goto err;
-
-	cal_runtime_get(ctx->dev);
-
-	enable_irqs(ctx);
-	camerarx_phy_enable(ctx);
-	csi2_init(ctx);
-	csi2_phy_config(ctx);
-	csi2_lane_config(ctx);
-	csi2_ctx_config(ctx);
-	pix_proc_config(ctx);
-	cal_wr_dma_config(ctx, ctx->v_fmt.fmt.pix.bytesperline,
-			  ctx->v_fmt.fmt.pix.height);
-	cal_wr_dma_addr(ctx, addr);
-	csi2_ppi_enable(ctx);
-
-	ret = v4l2_subdev_call(ctx->sensor, video, s_stream, 1);
+	/*
+	 * Initialize the V4L2 device (despite the function name, this performs
+	 * initialization, not registration).
+	 */
+	cal->v4l2_dev.mdev = mdev;
+	ret = v4l2_device_register(cal->dev, &cal->v4l2_dev);
 	if (ret) {
 		cal_err(cal, "Failed to register V4L2 device\n");
 		return ret;
@@ -770,75 +692,12 @@ static int cal_init_camerarx_regmap(struct cal_dev *cal)
 	unsigned int offset;
 	void __iomem *base;
 
-	if (!parent)
-		return NULL;
-
-	do {
-		ep = of_get_next_child(parent, prev);
-		if (!ep)
-			return NULL;
-		prev = ep;
-	} while (!of_node_name_eq(ep, "endpoint"));
-
-	return ep;
-}
-
-static int of_cal_create_instance(struct cal_ctx *ctx, int inst)
-{
-	struct platform_device *pdev = ctx->dev->pdev;
-	struct device_node *ep_node, *port, *sensor_node, *parent;
-	struct v4l2_fwnode_endpoint *endpoint;
-	struct v4l2_async_subdev *asd;
-	u32 regval = 0;
-	int ret, index, found_port = 0, lane;
-
-	parent = pdev->dev.of_node;
-
-	endpoint = &ctx->endpoint;
-
-	ep_node = NULL;
-	port = NULL;
-	sensor_node = NULL;
-	ret = -EINVAL;
-
-	ctx_dbg(3, ctx, "Scanning Port node for csi2 port: %d\n", inst);
-	for (index = 0; index < CAL_NUM_CSI2_PORTS; index++) {
-		port = of_get_next_port(parent, port);
-		if (!port) {
-			ctx_dbg(1, ctx, "No port node found for csi2 port:%d\n",
-				index);
-			goto cleanup_exit;
-		}
-
-		/* Match the slice number with <REG> */
-		of_property_read_u32(port, "reg", &regval);
-		ctx_dbg(3, ctx, "port:%d inst:%d <reg>:%d\n",
-			index, inst, regval);
-		if ((regval == inst) && (index == inst)) {
-			found_port = 1;
-			break;
-		}
-	}
-
-	if (!found_port) {
-		ctx_dbg(1, ctx, "No port node matches csi2 port:%d\n",
-			inst);
-		goto cleanup_exit;
-	}
-
-	ctx_dbg(3, ctx, "Scanning sub-device for csi2 port: %d\n",
-		inst);
-
-	ep_node = of_get_next_endpoint(port, ep_node);
-	if (!ep_node) {
-		ctx_dbg(3, ctx, "can't get next endpoint\n");
-		goto cleanup_exit;
-	}
-
-	sensor_node = of_graph_get_remote_port_parent(ep_node);
-	if (!sensor_node) {
-		ctx_dbg(3, ctx, "can't get remote parent\n");
-		goto cleanup_exit;
+	syscon = syscon_regmap_lookup_by_phandle_args(np, "ti,camerrx-control",
+						      1, &offset);
+	if (!IS_ERR(syscon)) {
+		cal->syscon_camerrx = syscon;
+		cal->syscon_camerrx_offset = offset;
+		return 0;
 	}
 
 	dev_warn(cal->dev, "failed to get ti,camerrx-control: %ld\n",
@@ -864,29 +723,10 @@ static int of_cal_create_instance(struct cal_ctx *ctx, int inst)
 	config.val_bits = 32;
 	config.max_register = resource_size(res) - 4;
 
-	v4l2_async_notifier_init(&ctx->notifier);
-
-	asd = kzalloc(sizeof(*asd), GFP_KERNEL);
-	if (!asd)
-		goto cleanup_exit;
-
-	asd->match_type = V4L2_ASYNC_MATCH_FWNODE;
-	asd->match.fwnode = of_fwnode_handle(sensor_node);
-
-	ret = v4l2_async_notifier_add_subdev(&ctx->notifier, asd);
-	if (ret) {
-		ctx_err(ctx, "Error adding asd\n");
-		kfree(asd);
-		goto cleanup_exit;
-	}
-
-	ctx->notifier.ops = &cal_async_ops;
-	ret = v4l2_async_notifier_register(&ctx->v4l2_dev,
-					   &ctx->notifier);
-	if (ret) {
-		ctx_err(ctx, "Error registering async notifier\n");
-		v4l2_async_notifier_cleanup(&ctx->notifier);
-		ret = -EINVAL;
+	syscon = regmap_init_mmio(NULL, base, &config);
+	if (IS_ERR(syscon)) {
+		pr_err("regmap init failed\n");
+		return PTR_ERR(syscon);
 	}
 
 	/*

@@ -274,11 +274,6 @@ static const struct attribute_group *csrow_attr_groups[] = {
 	NULL
 };
 
-static void csrow_attr_release(struct device *dev)
-{
-	/* release device with _edac_mc_free() */
-}
-
 static const struct device_type csrow_attr_type = {
 	.groups		= csrow_attr_groups,
 };
@@ -449,10 +444,8 @@ static int edac_create_csrow_objects(struct mem_ctl_info *mci)
 
 error:
 	for (--i; i >= 0; i--) {
-		csrow = mci->csrows[i];
-		if (!nr_pages_per_csrow(csrow))
-			continue;
-		device_unregister(&mci->csrows[i]->dev);
+		if (device_is_registered(&mci->csrows[i]->dev))
+			device_unregister(&mci->csrows[i]->dev);
 	}
 
 	return err;
@@ -607,11 +600,6 @@ static const struct attribute_group *dimm_attr_groups[] = {
 	&dimm_attr_grp,
 	NULL
 };
-
-static void dimm_attr_release(struct device *dev)
-{
-	/* release device with _edac_mc_free() */
-}
 
 static const struct device_type dimm_attr_type = {
 	.groups		= dimm_attr_groups,
@@ -905,11 +893,6 @@ static const struct attribute_group *mci_attr_groups[] = {
 	&mci_attr_grp,
 	NULL
 };
-
-static void mci_attr_release(struct device *dev)
-{
-	/* release device with _edac_mc_free() */
-}
 
 static const struct device_type mci_attr_type = {
 	.groups		= mci_attr_groups,

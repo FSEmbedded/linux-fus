@@ -74,23 +74,6 @@ static const char *rproc_crash_to_string(enum rproc_crash_type type)
 }
 
 /*
- * rproc_memcpy() - memcpy verison for remoteproc usage
- * @flags:
- *	- 0 means to DA
- *	- 1 means from DA
- *
- */
-void *rproc_memcpy(struct rproc *rproc, void *dest,
-		   const void *src, size_t count, int flags)
-{
-	if (rproc->ops->memcpy)
-		return rproc->ops->memcpy(rproc, dest, src, count, flags);
-
-	return memcpy(dest, src, count);
-}
-EXPORT_SYMBOL(rproc_memcpy);
-
-/*
  * This is the IOMMU fault handler we register with the IOMMU API
  * (when relevant; not all remote processors access memory through
  * an IOMMU).
@@ -567,7 +550,9 @@ static int rproc_handle_vdev(struct rproc *rproc, struct fw_rsc_vdev *rsc,
 	/* Initialise vdev subdevice */
 	snprintf(name, sizeof(name), "vdev%dbuffer", rvdev->index);
 	rvdev->dev.parent = &rproc->dev;
-	rvdev->dev.dma_pfn_offset = rproc->dev.parent->dma_pfn_offset;
+	ret = copy_dma_range_map(&rvdev->dev, rproc->dev.parent);
+	if (ret)
+		return ret;
 	rvdev->dev.release = rproc_rvdev_release;
 	dev_set_name(&rvdev->dev, "%s#%s", dev_name(rvdev->dev.parent), name);
 	dev_set_drvdata(&rvdev->dev, rvdev);
@@ -1431,19 +1416,50 @@ reset_table_ptr:
 	return ret;
 }
 
-/**
- * rproc_fw_boot() - boot specified remote processor according to specified
- * firmware
- * @rproc: handle of a remote processor
- * @fw: pointer on firmware to handle
- *
- * Handle resources defined in resource table, load firmware and
- * start remote processor.
- *
- * If firmware pointer fw is NULL, firmware is not handled by remoteproc
- * core, but under the responsibility of platform driver.
- *
- * Returns 0 on success, and an appropriate error value otherwise.
+static int rproc_attach(struct rproc *rproc)
+{
+	struct device *dev = &rproc->dev;
+	int ret;
+
+	ret = rproc_prepare_subdevices(rproc);
+	if (ret) {
+		dev_err(dev, "failed to prepare subdevices for %s: %d\n",
+			rproc->name, ret);
+		goto out;
+	}
+
+	/* Attach to the remote processor */
+	ret = rproc_attach_device(rproc);
+	if (ret) {
+		dev_err(dev, "can't attach to rproc %s: %d\n",
+			rproc->name, ret);
+		goto unprepare_subdevices;
+	}
+
+	/* Start any subdevices for the remote processor */
+	ret = rproc_start_subdevices(rproc);
+	if (ret) {
+		dev_err(dev, "failed to probe subdevices for %s: %d\n",
+			rproc->name, ret);
+		goto stop_rproc;
+	}
+
+	rproc->state = RPROC_RUNNING;
+
+	dev_info(dev, "remote processor %s is now attached\n", rproc->name);
+
+	return 0;
+
+stop_rproc:
+	rproc->ops->stop(rproc);
+unprepare_subdevices:
+	rproc_unprepare_subdevices(rproc);
+out:
+	return ret;
+}
+
+/*
+ * take a firmware and boot a remote processor with it.
  */
 static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 {
@@ -1455,11 +1471,7 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 	if (ret)
 		return ret;
 
-	if (fw)
-		dev_info(dev, "Booting fw image %s, size %zd\n", name,
-			 fw->size);
-	else
-		dev_info(dev, "Synchronizing with preloaded co-processor\n");
+	dev_info(dev, "Booting fw image %s, size %zd\n", name, fw->size);
 
 	/*
 	 * if enabling an IOMMU isn't relevant for this rproc, this is
@@ -1660,104 +1672,6 @@ static int rproc_stop(struct rproc *rproc, bool crashed)
 	return 0;
 }
 
-	segment = kzalloc(sizeof(*segment), GFP_KERNEL);
-	if (!segment)
-		return -ENOMEM;
-
-	segment->da = da;
-	segment->size = size;
-	segment->priv = priv;
-	segment->dump = dumpfn;
-
-	list_add_tail(&segment->node, &rproc->dump_segments);
-
-	return 0;
-}
-EXPORT_SYMBOL(rproc_coredump_add_custom_segment);
-
-/**
- * rproc_coredump() - perform coredump
- * @rproc:	rproc handle
- *
- * This function will generate an ELF header for the registered segments
- * and create a devcoredump device associated with rproc.
- */
-static void rproc_coredump(struct rproc *rproc)
-{
-	struct rproc_dump_segment *segment;
-	struct elf32_phdr *phdr;
-	struct elf32_hdr *ehdr;
-	size_t data_size;
-	size_t offset;
-	void *data;
-	void *ptr;
-	int phnum = 0;
-
-	if (list_empty(&rproc->dump_segments))
-		return;
-
-	data_size = sizeof(*ehdr);
-	list_for_each_entry(segment, &rproc->dump_segments, node) {
-		data_size += sizeof(*phdr) + segment->size;
-
-		phnum++;
-	}
-
-	data = vmalloc(data_size);
-	if (!data)
-		return;
-
-	ehdr = data;
-
-	memset(ehdr, 0, sizeof(*ehdr));
-	memcpy(ehdr->e_ident, ELFMAG, SELFMAG);
-	ehdr->e_ident[EI_CLASS] = ELFCLASS32;
-	ehdr->e_ident[EI_DATA] = ELFDATA2LSB;
-	ehdr->e_ident[EI_VERSION] = EV_CURRENT;
-	ehdr->e_ident[EI_OSABI] = ELFOSABI_NONE;
-	ehdr->e_type = ET_CORE;
-	ehdr->e_machine = EM_NONE;
-	ehdr->e_version = EV_CURRENT;
-	ehdr->e_entry = rproc->bootaddr;
-	ehdr->e_phoff = sizeof(*ehdr);
-	ehdr->e_ehsize = sizeof(*ehdr);
-	ehdr->e_phentsize = sizeof(*phdr);
-	ehdr->e_phnum = phnum;
-
-	phdr = data + ehdr->e_phoff;
-	offset = ehdr->e_phoff + sizeof(*phdr) * ehdr->e_phnum;
-	list_for_each_entry(segment, &rproc->dump_segments, node) {
-		memset(phdr, 0, sizeof(*phdr));
-		phdr->p_type = PT_LOAD;
-		phdr->p_offset = offset;
-		phdr->p_vaddr = segment->da;
-		phdr->p_paddr = segment->da;
-		phdr->p_filesz = segment->size;
-		phdr->p_memsz = segment->size;
-		phdr->p_flags = PF_R | PF_W | PF_X;
-		phdr->p_align = 0;
-
-		if (segment->dump) {
-			segment->dump(rproc, segment, data + offset);
-		} else {
-			ptr = rproc_da_to_va(rproc, segment->da, segment->size);
-			if (!ptr) {
-				dev_err(&rproc->dev,
-					"invalid coredump segment (%pad, %zu)\n",
-					&segment->da, segment->size);
-				memset(data + offset, 0xff, segment->size);
-			} else {
-				rproc_memcpy(rproc, data + offset, ptr,
-					     segment->size, 1);
-			}
-		}
-
-		offset += phdr->p_filesz;
-		phdr++;
-	}
-
-	dev_coredumpv(&rproc->dev, data, data_size, GFP_KERNEL);
-}
 
 /**
  * rproc_trigger_recovery() - recover a remoteproc
@@ -1771,7 +1685,7 @@ static void rproc_coredump(struct rproc *rproc)
  */
 int rproc_trigger_recovery(struct rproc *rproc)
 {
-	const struct firmware *firmware_p;
+	const struct firmware *firmware_p = NULL;
 	struct device *dev = &rproc->dev;
 	int ret;
 
@@ -1789,11 +1703,11 @@ int rproc_trigger_recovery(struct rproc *rproc)
 	if (ret)
 		goto unlock_mutex;
 
-	if (!rproc->skip_fw_load) {
-		/* generate coredump */
-		rproc_coredump(rproc);
+	/* generate coredump */
+	rproc_coredump(rproc);
 
-		/* load firmware */
+	/* load firmware */
+	if (!rproc->skip_fw_recovery) {
 		ret = request_firmware(&firmware_p, rproc->firmware, dev);
 		if (ret < 0) {
 			dev_err(dev, "request_firmware failed: %d\n", ret);
@@ -1804,7 +1718,7 @@ int rproc_trigger_recovery(struct rproc *rproc)
 	/* boot the remote processor up again */
 	ret = rproc_start(rproc, firmware_p);
 
-	if (!rproc->skip_fw_load)
+	if (!rproc->skip_fw_recovery)
 		release_firmware(firmware_p);
 
 unlock_mutex:
@@ -1850,22 +1764,16 @@ static void rproc_crash_handler_work(struct work_struct *work)
  * rproc_boot() - boot a remote processor
  * @rproc: handle of a remote processor
  *
- * Boot a remote processor (i.e. load its firmware, power it on, ...) from
- * different contexts:
- * - power off
- * - preloaded firmware
- * - started before kernel execution
- * The different operations are selected thanks to properties defined by
- * platform driver.
+ * Boot a remote processor (i.e. load its firmware, power it on, ...).
  *
- * If the remote processor is already powered on at rproc level, this function
- * immediately returns (successfully).
+ * If the remote processor is already powered on, this function immediately
+ * returns (successfully).
  *
  * Returns 0 on success, and an appropriate error value otherwise.
  */
 int rproc_boot(struct rproc *rproc)
 {
-	const struct firmware *firmware_p = NULL;
+	const struct firmware *firmware_p;
 	struct device *dev;
 	int ret;
 
@@ -1897,21 +1805,9 @@ int rproc_boot(struct rproc *rproc)
 	if (rproc->state == RPROC_DETACHED) {
 		dev_info(dev, "attaching to %s\n", rproc->name);
 
-	if (!rproc->skip_fw_load) {
-		/* load firmware */
-		ret = request_firmware(&firmware_p, rproc->firmware, dev);
-		if (ret < 0) {
-			dev_err(dev, "request_firmware failed: %d\n", ret);
-			goto downref_rproc;
-		}
+		ret = rproc_actuate(rproc);
 	} else {
-		/*
-		 * Set firmware name pointer to null as remoteproc core is not
-		 * in charge of firmware loading
-		 */
-		kfree(rproc->firmware);
-		rproc->firmware = NULL;
-	}
+		dev_info(dev, "powering up %s\n", rproc->name);
 
 		/* load firmware */
 		ret = request_firmware(&firmware_p, rproc->firmware, dev);
@@ -2116,17 +2012,23 @@ int rproc_add(struct rproc *rproc)
 	/* create debugfs entries */
 	rproc_create_debug_dir(rproc);
 
-	if (rproc->skip_fw_load) {
-		/*
-		 * If rproc is marked already booted, no need to wait
-		 * for firmware.
-		 * Just handle associated resources and start sub devices
-		 */
-		ret = rproc_boot(rproc);
-		if (ret < 0)
-			return ret;
-	} else if (rproc->auto_boot) {
-		/* if rproc is marked always-on, request it to boot */
+	/* add char device for this remoteproc */
+	ret = rproc_char_device_add(rproc);
+	if (ret < 0)
+		return ret;
+
+	/*
+	 * Remind ourselves the remote processor has been attached to rather
+	 * than booted by the remoteproc core.  This is important because the
+	 * RPROC_DETACHED state will be lost as soon as the remote processor
+	 * has been attached to.  Used in firmware_show() and reset in
+	 * rproc_stop().
+	 */
+	if (rproc->state == RPROC_DETACHED)
+		rproc->autonomous = true;
+
+	/* if rproc is marked always-on, request it to boot */
+	if (rproc->auto_boot) {
 		ret = rproc_trigger_auto_boot(rproc);
 		if (ret < 0)
 			return ret;
@@ -2287,6 +2189,16 @@ struct rproc *rproc_alloc(struct device *dev, const char *name,
 	rproc->dev.class = &rproc_class;
 	rproc->dev.driver_data = rproc;
 	idr_init(&rproc->notifyids);
+
+	rproc->name = kstrdup_const(name, GFP_KERNEL);
+	if (!rproc->name)
+		goto put_device;
+
+	if (rproc_alloc_firmware(rproc, name, firmware))
+		goto put_device;
+
+	if (rproc_alloc_ops(rproc, ops))
+		goto put_device;
 
 	/* Assign a unique device index and name */
 	rproc->index = ida_simple_get(&rproc_dev_index, 0, 0, GFP_KERNEL);

@@ -322,31 +322,6 @@ static inline bool xmon_is_locked_down(void)
 
 static struct pt_regs *xmon_regs;
 
-	if (!lockdown) {
-		lockdown = !!security_locked_down(LOCKDOWN_XMON_RW);
-		if (lockdown) {
-			printf("xmon: Disabled due to kernel lockdown\n");
-			xmon_is_ro = true;
-		}
-	}
-
-	if (!xmon_is_ro) {
-		xmon_is_ro = !!security_locked_down(LOCKDOWN_XMON_WR);
-		if (xmon_is_ro)
-			printf("xmon: Read-only due to kernel lockdown\n");
-	}
-
-	return lockdown;
-}
-#else /* CONFIG_SECURITY */
-static inline bool xmon_is_locked_down(void)
-{
-	return false;
-}
-#endif
-
-static struct pt_regs *xmon_regs;
-
 static inline void sync(void)
 {
 	asm volatile("sync; isync");
@@ -2055,6 +2030,18 @@ static void dump_300_sprs(void)
 
 	printf("ptcr   = %.16lx  asdr  = %.16lx\n",
 		mfspr(SPRN_PTCR), mfspr(SPRN_ASDR));
+#endif
+}
+
+static void dump_310_sprs(void)
+{
+#ifdef CONFIG_PPC64
+	if (!cpu_has_feature(CPU_FTR_ARCH_31))
+		return;
+
+	printf("mmcr3  = %.16lx, sier2  = %.16lx, sier3  = %.16lx\n",
+		mfspr(SPRN_MMCR3), mfspr(SPRN_SIER2), mfspr(SPRN_SIER3));
+
 #endif
 }
 
@@ -3983,10 +3970,9 @@ static void clear_all_bpt(void)
 		bpts[i].enabled = 0;
 
 	/* Clear any data or iabr breakpoints */
-	if (iabr || dabr.enabled) {
-		iabr = NULL;
-		dabr.enabled = 0;
-	}
+	iabr = NULL;
+	for (i = 0; i < nr_wp_slots(); i++)
+		dabr[i].enabled = 0;
 }
 
 #ifdef CONFIG_DEBUG_FS

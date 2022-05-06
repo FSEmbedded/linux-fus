@@ -965,8 +965,8 @@ int afs_extract_data(struct afs_call *call, bool want_more)
 noinline int afs_protocol_error(struct afs_call *call,
 				enum afs_eproto_cause cause)
 {
-	trace_afs_protocol_error(call, error, cause);
+	trace_afs_protocol_error(call, cause);
 	if (call)
 		call->unmarshalling_error = true;
-	return error;
+	return -EBADMSG;
 }

@@ -94,7 +94,6 @@ static const struct sof_dev_desc bxt_desc = {
 	.default_fw_path = "intel/sof",
 	.default_tplg_path = "intel/sof-tplg",
 	.default_fw_filename = "sof-apl.ri",
-	.nocodec_fw_filename = "sof-apl.ri",
 	.nocodec_tplg_filename = "sof-apl-nocodec.tplg",
 	.ops = &sof_apl_ops,
 };
@@ -113,7 +112,6 @@ static const struct sof_dev_desc glk_desc = {
 	.default_fw_path = "intel/sof",
 	.default_tplg_path = "intel/sof-tplg",
 	.default_fw_filename = "sof-glk.ri",
-	.nocodec_fw_filename = "sof-glk.ri",
 	.nocodec_tplg_filename = "sof-glk-nocodec.tplg",
 	.ops = &sof_apl_ops,
 };
@@ -141,7 +139,6 @@ static const struct sof_dev_desc tng_desc = {
 	.default_fw_path = "intel/sof",
 	.default_tplg_path = "intel/sof-tplg",
 	.default_fw_filename = "sof-byt.ri",
-	.nocodec_fw_filename = "sof-byt.ri",
 	.nocodec_tplg_filename = "sof-byt.tplg",
 	.ops = &sof_tng_ops,
 };
@@ -161,7 +158,6 @@ static const struct sof_dev_desc cnl_desc = {
 	.default_fw_path = "intel/sof",
 	.default_tplg_path = "intel/sof-tplg",
 	.default_fw_filename = "sof-cnl.ri",
-	.nocodec_fw_filename = "sof-cnl.ri",
 	.nocodec_tplg_filename = "sof-cnl-nocodec.tplg",
 	.ops = &sof_cnl_ops,
 };
@@ -170,6 +166,8 @@ static const struct sof_dev_desc cnl_desc = {
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_COFFEELAKE)
 static const struct sof_dev_desc cfl_desc = {
 	.machines		= snd_soc_acpi_intel_cfl_machines,
+	.alt_machines		= snd_soc_acpi_intel_cfl_sdw_machines,
+	.use_acpi_target_states	= true,
 	.resindex_lpe_base	= 0,
 	.resindex_pcicfg_base	= -1,
 	.resindex_imr_base	= -1,
@@ -179,7 +177,6 @@ static const struct sof_dev_desc cfl_desc = {
 	.default_fw_path = "intel/sof",
 	.default_tplg_path = "intel/sof-tplg",
 	.default_fw_filename = "sof-cfl.ri",
-	.nocodec_fw_filename = "sof-cfl.ri",
 	.nocodec_tplg_filename = "sof-cnl-nocodec.tplg",
 	.ops = &sof_cnl_ops,
 };
@@ -188,6 +185,8 @@ static const struct sof_dev_desc cfl_desc = {
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_COMETLAKE)
 static const struct sof_dev_desc cml_desc = {
 	.machines		= snd_soc_acpi_intel_cml_machines,
+	.alt_machines		= snd_soc_acpi_intel_cml_sdw_machines,
+	.use_acpi_target_states	= true,
 	.resindex_lpe_base	= 0,
 	.resindex_pcicfg_base	= -1,
 	.resindex_imr_base	= -1,
@@ -197,7 +196,6 @@ static const struct sof_dev_desc cml_desc = {
 	.default_fw_path = "intel/sof",
 	.default_tplg_path = "intel/sof-tplg",
 	.default_fw_filename = "sof-cml.ri",
-	.nocodec_fw_filename = "sof-cml.ri",
 	.nocodec_tplg_filename = "sof-cnl-nocodec.tplg",
 	.ops = &sof_cnl_ops,
 };
@@ -217,7 +215,6 @@ static const struct sof_dev_desc icl_desc = {
 	.default_fw_path = "intel/sof",
 	.default_tplg_path = "intel/sof-tplg",
 	.default_fw_filename = "sof-icl.ri",
-	.nocodec_fw_filename = "sof-icl.ri",
 	.nocodec_tplg_filename = "sof-icl-nocodec.tplg",
 	.ops = &sof_cnl_ops,
 };
@@ -252,8 +249,7 @@ static const struct sof_dev_desc tglh_desc = {
 	.chip_info = &tglh_chip_info,
 	.default_fw_path = "intel/sof",
 	.default_tplg_path = "intel/sof-tplg",
-	.default_fw_filename = "sof-tgl.ri",
-	.nocodec_fw_filename = "sof-tgl.ri",
+	.default_fw_filename = "sof-tgl-h.ri",
 	.nocodec_tplg_filename = "sof-tgl-nocodec.tplg",
 	.ops = &sof_tgl_ops,
 };
@@ -272,7 +268,6 @@ static const struct sof_dev_desc ehl_desc = {
 	.default_fw_path = "intel/sof",
 	.default_tplg_path = "intel/sof-tplg",
 	.default_fw_filename = "sof-ehl.ri",
-	.nocodec_fw_filename = "sof-ehl.ri",
 	.nocodec_tplg_filename = "sof-ehl-nocodec.tplg",
 	.ops = &sof_cnl_ops,
 };
@@ -363,33 +358,6 @@ static int sof_pci_probe(struct pci_dev *pci,
 	ret = pci_request_regions(pci, "Audio DSP");
 	if (ret < 0)
 		return ret;
-
-#if IS_ENABLED(CONFIG_SND_SOC_SOF_FORCE_NOCODEC_MODE)
-	/* force nocodec mode */
-	dev_warn(dev, "Force to use nocodec mode\n");
-	mach = devm_kzalloc(dev, sizeof(*mach), GFP_KERNEL);
-	if (!mach) {
-		ret = -ENOMEM;
-		goto release_regions;
-	}
-	mach->drv_name = "sof-nocodec";
-	sof_pdata->fw_filename = desc->nocodec_fw_filename;
-	sof_pdata->tplg_filename = desc->nocodec_tplg_filename;
-	ret = sof_nocodec_setup(dev, ops);
-	if (ret < 0)
-		goto release_regions;
-
-#else
-	/* find machine */
-	mach = snd_soc_acpi_find_machine(desc->machines);
-	if (!mach) {
-		dev_warn(dev, "warning: No matching ASoC machine driver found\n");
-	} else {
-		mach->mach_params.platform = dev_name(dev);
-		sof_pdata->fw_filename = mach->sof_fw_filename;
-		sof_pdata->tplg_filename = mach->sof_tplg_filename;
-	}
-#endif /* CONFIG_SND_SOC_SOF_FORCE_NOCODEC_MODE */
 
 	sof_pdata->name = pci_name(pci);
 	sof_pdata->desc = (struct sof_dev_desc *)pci_id->driver_data;
@@ -513,8 +481,6 @@ static const struct pci_device_id sof_pci_ids[] = {
 	{ PCI_DEVICE(0x8086, 0x02c8), /* CML-LP */
 		.driver_data = (unsigned long)&cml_desc},
 	{ PCI_DEVICE(0x8086, 0x06c8), /* CML-H */
-		.driver_data = (unsigned long)&cml_desc},
-	{ PCI_DEVICE(0x8086, 0xa3f0), /* CML-S */
 		.driver_data = (unsigned long)&cml_desc},
 	{ PCI_DEVICE(0x8086, 0xa3f0), /* CML-S */
 		.driver_data = (unsigned long)&cml_desc},

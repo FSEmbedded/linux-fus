@@ -317,10 +317,6 @@ static void imx_drm_unbind(struct device *dev)
 
 	component_unbind_all(drm->dev, drm);
 
-	drm_mode_config_cleanup(drm);
-
-	dev_set_drvdata(dev, NULL);
-
 	drm_dev_put(drm);
 
 	dev_set_drvdata(dev, NULL);

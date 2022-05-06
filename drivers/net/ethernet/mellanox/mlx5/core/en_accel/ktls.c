@@ -43,9 +43,8 @@ static int mlx5e_ktls_resync(struct net_device *netdev,
 	if (unlikely(direction != TLS_OFFLOAD_CTX_DIR_RX))
 		return -EOPNOTSUPP;
 
-	mlx5e_destroy_tis(priv->mdev, tx_priv->tisn);
-	mlx5_ktls_destroy_key(priv->mdev, tx_priv->key_id);
-	kvfree(tx_priv);
+	mlx5e_ktls_rx_resync(netdev, sk, seq, rcd_sn);
+	return 0;
 }
 
 static const struct tlsdev_ops mlx5e_ktls_ops = {

@@ -297,6 +297,10 @@
 # define cpu_has_mips64r2	(cpu_has_64bits && \
 				 __isa_range_or_flag(2, 6, MIPS_CPU_ISA_M64R2))
 #endif
+#ifndef cpu_has_mips64r5
+# define cpu_has_mips64r5	(cpu_has_64bits && \
+				 __isa_range_or_flag(5, 6, MIPS_CPU_ISA_M64R5))
+#endif
 #ifndef cpu_has_mips64r6
 # define cpu_has_mips64r6	__isa_ge_and_flag(6, MIPS_CPU_ISA_M64R6)
 #endif

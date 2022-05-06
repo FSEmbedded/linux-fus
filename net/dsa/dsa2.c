@@ -293,10 +293,6 @@ static int dsa_port_setup(struct dsa_port *dp)
 		if (err)
 			break;
 
-		/* Enable TSN function on switch port */
-		if (ds->ops->port_tsn_enable)
-			ds->ops->port_tsn_enable(dp);
-
 		devlink_port_type_eth_set(dlp, dp->slave);
 		break;
 	}
@@ -548,26 +544,19 @@ static int dsa_tree_setup_switches(struct dsa_switch_tree *dst)
 			dp->type = DSA_PORT_TYPE_UNUSED;
 			err = dsa_port_devlink_setup(dp);
 			if (err)
-				continue;
+				goto teardown;
+			continue;
 		}
 	}
 
 	return 0;
 
-switch_teardown:
-	for (i = 0; i < device; i++) {
-		ds = dst->ds[i];
-		if (!ds)
-			continue;
+teardown:
+	list_for_each_entry(dp, &dst->ports, list)
+		dsa_port_teardown(dp);
 
-		for (port = 0; port < ds->num_ports; port++) {
-			dp = &ds->ports[port];
-
-			dsa_port_teardown(dp);
-		}
-
-		dsa_switch_teardown(ds);
-	}
+	list_for_each_entry(dp, &dst->ports, list)
+		dsa_switch_teardown(dp->ds);
 
 	return err;
 }

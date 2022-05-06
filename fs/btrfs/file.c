@@ -2109,14 +2109,16 @@ int btrfs_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 	btrfs_init_log_ctx(&ctx, inode);
 
 	/*
-	 * Set the range to full if the NO_HOLES feature is not enabled.
-	 * This is to avoid missing file extent items representing holes after
-	 * replaying the log.
+	 * Always set the range to a full range, otherwise we can get into
+	 * several problems, from missing file extent items to represent holes
+	 * when not using the NO_HOLES feature, to log tree corruption due to
+	 * races between hole detection during logging and completion of ordered
+	 * extents outside the range, to missing checksums due to ordered extents
+	 * for which we flushed only a subset of their pages.
 	 */
-	if (!btrfs_fs_incompat(fs_info, NO_HOLES)) {
-		start = 0;
-		end = LLONG_MAX;
-	}
+	start = 0;
+	end = LLONG_MAX;
+	len = (u64)LLONG_MAX + 1;
 
 	/*
 	 * We write the dirty pages in the range and wait until they complete
@@ -2708,8 +2710,8 @@ int btrfs_replace_file_extents(struct inode *inode, struct btrfs_path *path,
 			}
 		}
 
-		if (clone_info && drop_end > clone_info->file_offset) {
-			u64 clone_len = drop_end - clone_info->file_offset;
+		if (extent_info && drop_end > extent_info->file_offset) {
+			u64 replace_len = drop_end - extent_info->file_offset;
 
 			ret = btrfs_insert_replace_extent(trans, inode, path,
 							extent_info, replace_len);
@@ -3239,10 +3241,13 @@ reserve_space:
 						  &cached_state);
 		if (ret)
 			goto out;
-		ret = btrfs_qgroup_reserve_data(inode, &data_reserved,
+		ret = btrfs_qgroup_reserve_data(BTRFS_I(inode), &data_reserved,
 						alloc_start, bytes_to_reserve);
-		if (ret)
+		if (ret) {
+			unlock_extent_cached(&BTRFS_I(inode)->io_tree, lockstart,
+					     lockend, &cached_state);
 			goto out;
+		}
 		ret = btrfs_prealloc_file_range(inode, mode, alloc_start,
 						alloc_end - alloc_start,
 						i_blocksize(inode),

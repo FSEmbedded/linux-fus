@@ -556,39 +556,17 @@ static inline void flow_block_init(struct flow_block *flow_block)
 	INIT_LIST_HEAD(&flow_block->cb_list);
 }
 
-typedef int flow_indr_block_bind_cb_t(struct net_device *dev, void *cb_priv,
-				      enum tc_setup_type type, void *type_data);
+typedef int flow_indr_block_bind_cb_t(struct net_device *dev, struct Qdisc *sch, void *cb_priv,
+				      enum tc_setup_type type, void *type_data,
+				      void *data,
+				      void (*cleanup)(struct flow_block_cb *block_cb));
 
-typedef void flow_indr_block_cmd_t(struct net_device *dev,
-				   flow_indr_block_bind_cb_t *cb, void *cb_priv,
-				   enum flow_block_command command);
-
-struct flow_indr_block_entry {
-	flow_indr_block_cmd_t *cb;
-	struct list_head	list;
-};
-
-void flow_indr_add_block_cb(struct flow_indr_block_entry *entry);
-
-void flow_indr_del_block_cb(struct flow_indr_block_entry *entry);
-
-int __flow_indr_block_cb_register(struct net_device *dev, void *cb_priv,
-				  flow_indr_block_bind_cb_t *cb,
-				  void *cb_ident);
-
-void __flow_indr_block_cb_unregister(struct net_device *dev,
-				     flow_indr_block_bind_cb_t *cb,
-				     void *cb_ident);
-
-int flow_indr_block_cb_register(struct net_device *dev, void *cb_priv,
-				flow_indr_block_bind_cb_t *cb, void *cb_ident);
-
-void flow_indr_block_cb_unregister(struct net_device *dev,
-				   flow_indr_block_bind_cb_t *cb,
-				   void *cb_ident);
-
-void flow_indr_block_call(struct net_device *dev,
-			  struct flow_block_offload *bo,
-			  enum flow_block_command command);
+int flow_indr_dev_register(flow_indr_block_bind_cb_t *cb, void *cb_priv);
+void flow_indr_dev_unregister(flow_indr_block_bind_cb_t *cb, void *cb_priv,
+			      void (*release)(void *cb_priv));
+int flow_indr_dev_setup_offload(struct net_device *dev, struct Qdisc *sch,
+				enum tc_setup_type type, void *data,
+				struct flow_block_offload *bo,
+				void (*cleanup)(struct flow_block_cb *block_cb));
 
 #endif /* _NET_FLOW_OFFLOAD_H */

@@ -1061,7 +1061,6 @@ static int unmap_device_va(struct hl_ctx *ctx, u64 vaddr, bool ctx_free)
 
 	if (*vm_type == VM_TYPE_USERPTR) {
 		is_userptr = true;
-		va_range = &ctx->host_va_range;
 		userptr = hnode->ptr;
 		rc = init_phys_pg_pack_from_userptr(ctx, userptr,
 							&phys_pg_pack);
@@ -1079,7 +1078,7 @@ static int unmap_device_va(struct hl_ctx *ctx, u64 vaddr, bool ctx_free)
 			va_range = ctx->host_huge_va_range;
 	} else if (*vm_type == VM_TYPE_PHYS_PACK) {
 		is_userptr = false;
-		va_range = &ctx->dram_va_range;
+		va_range = ctx->dram_va_range;
 		phys_pg_pack = hnode->ptr;
 	} else {
 		dev_warn(hdev->dev,
@@ -1113,17 +1112,18 @@ static int unmap_device_va(struct hl_ctx *ctx, u64 vaddr, bool ctx_free)
 	mutex_unlock(&ctx->mmu_lock);
 
 	/*
-	 * No point in maintaining the free VA block list if the context is
-	 * closing as the list will be freed anyway
+	 * If the context is closing we don't need to check for the MMU cache
+	 * invalidation return code and update the VA free list as in this flow
+	 * we invalidate the MMU cache outside of this unmap function and the VA
+	 * free list will be freed anyway.
 	 */
 	if (!ctx_free) {
-		rc = add_va_block(hdev, va_range, vaddr,
-					vaddr + phys_pg_pack->total_size - 1);
+		int tmp_rc;
+
 		if (rc)
-			dev_warn(hdev->dev,
-					"add va block failed for vaddr: 0x%llx\n",
-					vaddr);
-	}
+			dev_err(hdev->dev,
+				"unmapping vaddr 0x%llx failed due to MMU cache invalidation\n",
+				vaddr);
 
 		tmp_rc = add_va_block(hdev, va_range, vaddr,
 					vaddr + phys_pg_pack->total_size - 1);

@@ -109,14 +109,6 @@ static int imx_ldb_connector_get_modes(struct drm_connector *connector)
 	return num_modes;
 }
 
-static struct drm_encoder *imx_ldb_connector_best_encoder(
-		struct drm_connector *connector)
-{
-	struct imx_ldb_channel *imx_ldb_ch = con_to_imx_ldb_ch(connector);
-
-	return &imx_ldb_ch->encoder;
-}
-
 static void imx_ldb_set_clock(struct imx_ldb *imx_ldb, int mux, int chno,
 		unsigned long serial_clk, unsigned long di_clk)
 {
@@ -153,6 +145,11 @@ static void imx_ldb_encoder_enable(struct drm_encoder *encoder)
 	struct ldb_channel *ldb_ch = &imx_ldb_ch->base;
 	struct ldb *ldb = &imx_ldb->base;
 	int mux = drm_of_encoder_active_port_id(ldb_ch->child, encoder);
+
+	if (mux < 0 || mux >= ARRAY_SIZE(imx_ldb->clk_sel)) {
+		dev_warn(ldb->dev, "%s: invalid mux %d\n", __func__, mux);
+		return;
+	}
 
 	if (ldb->dual) {
 		clk_set_parent(imx_ldb->clk_sel[mux], imx_ldb->clk[0]);
@@ -207,7 +204,7 @@ imx_ldb_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	unsigned long di_clk = mode->clock * 1000;
 	int mux = drm_of_encoder_active_port_id(ldb_ch->child, encoder);
 
-	if (mux < 0 || mux >= ARRAY_SIZE(ldb->clk_sel)) {
+	if (mux < 0 || mux >= ARRAY_SIZE(imx_ldb->clk_sel)) {
 		dev_warn(ldb->dev, "%s: invalid mux %d\n", __func__, mux);
 		return;
 	}
@@ -342,6 +339,7 @@ static int imx_ldb_get_clk(struct imx_ldb *imx_ldb, int chno)
 		return PTR_ERR(imx_ldb->clk[chno]);
 
 	snprintf(clkname, sizeof(clkname), "di%d_pll", chno);
+
 	imx_ldb->clk_pll[chno] = devm_clk_get(dev, clkname);
 
 	return PTR_ERR_OR_ZERO(imx_ldb->clk_pll[chno]);
@@ -391,15 +389,14 @@ static int imx_ldb_panel_ddc(struct device *dev,
 	}
 
 	if (!imx_ldb_ch->ddc) {
+		int edid_len;
+
 		/* if no DDC available, fallback to hardcoded EDID */
 		dev_dbg(dev, "no ddc available\n");
 
-		edidp = of_get_property(child, "edid",
-					&imx_ldb_ch->edid_len);
+		edidp = of_get_property(child, "edid", &edid_len);
 		if (edidp) {
-			imx_ldb_ch->edid = kmemdup(edidp,
-						imx_ldb_ch->edid_len,
-						GFP_KERNEL);
+			imx_ldb_ch->edid = kmemdup(edidp, edid_len, GFP_KERNEL);
 		} else if (!ldb_ch->panel) {
 			/* fallback to display-timings node */
 			ret = of_get_drm_display_mode(child,
@@ -464,12 +461,15 @@ static int imx_ldb_bind(struct device *dev, struct device *master, void *data)
 	struct drm_device *drm = data;
 	const struct of_device_id *of_id =
 			of_match_device(imx_ldb_dt_ids, dev);
-	struct imx_ldb *imx_ldb = dev_get_drvdata(dev);
+	struct imx_ldb *imx_ldb;
 	struct ldb *ldb;
 	struct ldb_channel *ldb_ch;
 	struct drm_encoder *encoder[LDB_CH_NUM];
 	int ret;
 	int i;
+
+	imx_ldb = dev_get_drvdata(dev);
+	memset(imx_ldb, 0, sizeof(*imx_ldb));
 
 	imx_ldb->lvds_mux = of_id ? of_id->data : NULL;
 
@@ -517,8 +517,7 @@ static int imx_ldb_bind(struct device *dev, struct device *master, void *data)
 
 		drm_encoder_helper_add(encoder[i],
 				      &imx_ldb_encoder_helper_funcs);
-		drm_encoder_init(drm, encoder[i], &imx_ldb_encoder_funcs,
-				 DRM_MODE_ENCODER_LVDS, NULL);
+		drm_simple_encoder_init(drm, encoder[i], DRM_MODE_ENCODER_LVDS);
 	}
 
 	ret = ldb_bind(ldb, encoder);
@@ -552,6 +551,8 @@ static void imx_ldb_unbind(struct device *dev, struct device *master,
 		kfree(imx_ldb_ch->edid);
 		i2c_put_adapter(imx_ldb_ch->ddc);
 	}
+
+	dev_set_drvdata(dev, NULL);
 }
 
 static const struct component_ops imx_ldb_ops = {
@@ -561,16 +562,15 @@ static const struct component_ops imx_ldb_ops = {
 
 static int imx_ldb_probe(struct platform_device *pdev)
 {
-	struct device *dev = &pdev->dev;
 	struct imx_ldb *imx_ldb;
 
-	imx_ldb = devm_kzalloc(dev, sizeof(*imx_ldb), GFP_KERNEL);
+	imx_ldb = devm_kzalloc(&pdev->dev, sizeof(*imx_ldb), GFP_KERNEL);
 	if (!imx_ldb)
 		return -ENOMEM;
 
-	dev_set_drvdata(dev, imx_ldb);
+	platform_set_drvdata(pdev, imx_ldb);
 
-	return component_add(dev, &imx_ldb_ops);
+	return component_add(&pdev->dev, &imx_ldb_ops);
 }
 
 static int imx_ldb_remove(struct platform_device *pdev)

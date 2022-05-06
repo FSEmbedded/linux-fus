@@ -150,4 +150,12 @@ static inline bool __init arch_get_random_seed_long_early(unsigned long *v)
 }
 #endif
 
+#ifndef arch_get_random_long_early
+static inline bool __init arch_get_random_long_early(unsigned long *v)
+{
+	WARN_ON(system_state != SYSTEM_BOOTING);
+	return arch_get_random_long(v);
+}
+#endif
+
 #endif /* _LINUX_RANDOM_H */

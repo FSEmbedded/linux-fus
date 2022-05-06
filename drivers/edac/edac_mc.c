@@ -475,9 +475,6 @@ void edac_mc_free(struct mem_ctl_info *mci)
 {
 	edac_dbg(1, "\n");
 
-	if (device_is_registered(&mci->dev))
-		edac_unregister_sysfs(mci);
-
 	_edac_mc_free(mci);
 }
 EXPORT_SYMBOL_GPL(edac_mc_free);

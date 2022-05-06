@@ -698,26 +698,6 @@ out:
 	return ret;
 }
 
-static int mipi_csis_init_cfg(struct v4l2_subdev *mipi_sd,
-			      struct v4l2_subdev_pad_config *cfg)
-{
-	struct v4l2_mbus_framefmt *mf;
-	unsigned int i;
-	int ret;
-
-	for (i = 0; i < CSIS_PADS_NUM; i++) {
-		mf = v4l2_subdev_get_try_format(mipi_sd, cfg, i);
-
-		ret = imx_media_init_mbus_fmt(mf, MIPI_CSIS_DEF_PIX_HEIGHT,
-					      MIPI_CSIS_DEF_PIX_WIDTH, 0,
-					      V4L2_FIELD_NONE, NULL);
-		if (ret < 0)
-			return ret;
-	}
-
-	return 0;
-}
-
 static struct v4l2_mbus_framefmt *
 mipi_csis_get_format(struct csi_state *state,
 		     struct v4l2_subdev_pad_config *cfg,
@@ -728,6 +708,43 @@ mipi_csis_get_format(struct csi_state *state,
 		return v4l2_subdev_get_try_format(&state->mipi_sd, cfg, pad);
 
 	return &state->format_mbus;
+}
+
+static int mipi_csis_init_cfg(struct v4l2_subdev *mipi_sd,
+			      struct v4l2_subdev_pad_config *cfg)
+{
+	struct csi_state *state = mipi_sd_to_csis_state(mipi_sd);
+	struct v4l2_mbus_framefmt *fmt_sink;
+	struct v4l2_mbus_framefmt *fmt_source;
+	enum v4l2_subdev_format_whence which;
+
+	which = cfg ? V4L2_SUBDEV_FORMAT_TRY : V4L2_SUBDEV_FORMAT_ACTIVE;
+	fmt_sink = mipi_csis_get_format(state, cfg, which, CSIS_PAD_SINK);
+
+	fmt_sink->code = MEDIA_BUS_FMT_UYVY8_2X8;
+	fmt_sink->width = MIPI_CSIS_DEF_PIX_WIDTH;
+	fmt_sink->height = MIPI_CSIS_DEF_PIX_HEIGHT;
+	fmt_sink->field = V4L2_FIELD_NONE;
+
+	fmt_sink->colorspace = V4L2_COLORSPACE_SMPTE170M;
+	fmt_sink->xfer_func = V4L2_MAP_XFER_FUNC_DEFAULT(fmt_sink->colorspace);
+	fmt_sink->ycbcr_enc = V4L2_MAP_YCBCR_ENC_DEFAULT(fmt_sink->colorspace);
+	fmt_sink->quantization =
+		V4L2_MAP_QUANTIZATION_DEFAULT(false, fmt_sink->colorspace,
+					      fmt_sink->ycbcr_enc);
+
+	/*
+	 * When called from mipi_csis_subdev_init() to initialize the active
+	 * configuration, cfg is NULL, which indicates there's no source pad
+	 * configuration to set.
+	 */
+	if (!cfg)
+		return 0;
+
+	fmt_source = mipi_csis_get_format(state, cfg, which, CSIS_PAD_SOURCE);
+	*fmt_source = *fmt_sink;
+
+	return 0;
 }
 
 static int mipi_csis_get_fmt(struct v4l2_subdev *mipi_sd,
@@ -741,6 +758,38 @@ static int mipi_csis_get_fmt(struct v4l2_subdev *mipi_sd,
 	fmt = mipi_csis_get_format(state, cfg, sdformat->which, sdformat->pad);
 	sdformat->format = *fmt;
 	mutex_unlock(&state->lock);
+
+	return 0;
+}
+
+static int mipi_csis_enum_mbus_code(struct v4l2_subdev *mipi_sd,
+				    struct v4l2_subdev_pad_config *cfg,
+				    struct v4l2_subdev_mbus_code_enum *code)
+{
+	struct csi_state *state = mipi_sd_to_csis_state(mipi_sd);
+
+	/*
+	 * The CSIS can't transcode in any way, the source format is identical
+	 * to the sink format.
+	 */
+	if (code->pad == CSIS_PAD_SOURCE) {
+		struct v4l2_mbus_framefmt *fmt;
+
+		if (code->index > 0)
+			return -EINVAL;
+
+		fmt = mipi_csis_get_format(state, cfg, code->which, code->pad);
+		code->code = fmt->code;
+		return 0;
+	}
+
+	if (code->pad != CSIS_PAD_SINK)
+		return -EINVAL;
+
+	if (code->index >= ARRAY_SIZE(mipi_csis_formats))
+		return -EINVAL;
+
+	code->code = mipi_csis_formats[code->index].code;
 
 	return 0;
 }
@@ -777,8 +826,31 @@ static int mipi_csis_set_fmt(struct v4l2_subdev *mipi_sd,
 	fmt->width = sdformat->format.width;
 	fmt->height = sdformat->format.height;
 
-	v4l_bound_align_image(&fmt->width, 1, CSIS_MAX_PIX_WIDTH,
-			      csis_fmt->pix_width_alignment,
+	/*
+	 * The total number of bits per line must be a multiple of 8. We thus
+	 * need to align the width for formats that are not multiples of 8
+	 * bits.
+	 */
+	switch (csis_fmt->width % 8) {
+	case 0:
+		align = 1;
+		break;
+	case 4:
+		align = 2;
+		break;
+	case 2:
+	case 6:
+		align = 4;
+		break;
+	case 1:
+	case 3:
+	case 5:
+	case 7:
+		align = 8;
+		break;
+	}
+
+	v4l_bound_align_image(&fmt->width, 1, CSIS_MAX_PIX_WIDTH, align,
 			      &fmt->height, 1, CSIS_MAX_PIX_HEIGHT, 1, 0);
 
 	sdformat->format = *fmt;

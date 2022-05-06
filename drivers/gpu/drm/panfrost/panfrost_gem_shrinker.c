@@ -40,9 +40,7 @@ static bool panfrost_gem_purge(struct drm_gem_object *obj)
 {
 	struct drm_gem_shmem_object *shmem = to_drm_gem_shmem_obj(obj);
 	struct panfrost_gem_object *bo = to_panfrost_bo(obj);
-
-	if (atomic_read(&bo->gpu_usecount))
-		return false;
+	bool ret = false;
 
 	if (atomic_read(&bo->gpu_usecount))
 		return false;
@@ -50,7 +48,10 @@ static bool panfrost_gem_purge(struct drm_gem_object *obj)
 	if (!mutex_trylock(&bo->mappings.lock))
 		return false;
 
-	panfrost_gem_teardown_mappings(bo);
+	if (!mutex_trylock(&shmem->pages_lock))
+		goto unlock_mappings;
+
+	panfrost_gem_teardown_mappings_locked(bo);
 	drm_gem_shmem_purge_locked(obj);
 	ret = true;
 

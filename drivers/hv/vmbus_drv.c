@@ -48,6 +48,10 @@ static int hyperv_cpuhp_online;
 
 static void *hv_panic_page;
 
+/* Values parsed from ACPI DSDT */
+static int vmbus_irq;
+int vmbus_interrupt;
+
 /*
  * Boolean to control whether to report panic messages over Hyper-V.
  *
@@ -85,6 +89,10 @@ static int hyperv_die_event(struct notifier_block *nb, unsigned long val,
 {
 	struct die_args *die = args;
 	struct pt_regs *regs = die->regs;
+
+	/* Don't notify Hyper-V if the die event is other than oops */
+	if (val != DIE_OOPS)
+		return NOTIFY_DONE;
 
 	/*
 	 * Hyper-V should be notified only once about a panic.  If we will be
@@ -1081,6 +1089,12 @@ void vmbus_on_msg_dpc(unsigned long data)
 	if (!entry->message_handler)
 		goto msg_handled;
 
+	if (msg->header.payload_size < entry->min_payload_len) {
+		WARN_ONCE(1, "message too short: msgtype=%d len=%d\n",
+			  hdr->msgtype, msg->header.payload_size);
+		goto msg_handled;
+	}
+
 	if (entry->handler_type	== VMHT_BLOCKING) {
 		ctx = kmalloc(sizeof(*ctx) + msg->header.payload_size,
 			      GFP_ATOMIC);
@@ -1118,8 +1132,7 @@ void vmbus_on_msg_dpc(unsigned long data)
 			 * work queue: the RESCIND handler can not start to
 			 * run before the OFFER handler finishes.
 			 */
-			schedule_work_on(VMBUS_CONNECT_CPU,
-					 &ctx->work);
+			schedule_work(&ctx->work);
 			break;
 
 		case CHANNELMSG_OFFERCHANNEL:
@@ -1146,10 +1159,7 @@ void vmbus_on_msg_dpc(unsigned long data)
 			 * works by the time these works will start execution.
 			 */
 			atomic_inc(&vmbus_connection.offer_in_progress);
-			queue_work_on(VMBUS_CONNECT_CPU,
-				      vmbus_connection.work_queue,
-				      &ctx->work);
-			break;
+			fallthrough;
 
 		default:
 			queue_work(vmbus_connection.work_queue, &ctx->work);
@@ -1194,9 +1204,7 @@ static void vmbus_force_channel_rescinded(struct vmbus_channel *channel)
 
 	INIT_WORK(&ctx->work, vmbus_onmessage_work);
 
-	queue_work_on(VMBUS_CONNECT_CPU,
-		      vmbus_connection.work_queue,
-		      &ctx->work);
+	queue_work(vmbus_connection.work_queue, &ctx->work);
 }
 #endif /* CONFIG_PM_SLEEP */
 
@@ -2549,7 +2557,6 @@ static void hv_crash_handler(struct pt_regs *regs)
 	cpu = smp_processor_id();
 	hv_stimer_cleanup(cpu);
 	hv_synic_disable_regs(cpu);
-	hyperv_cleanup();
 };
 
 static int hv_synic_suspend(void)

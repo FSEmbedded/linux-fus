@@ -22,34 +22,43 @@
  * Authors: AMD
  *
  */
-#ifndef __RENOIR_PPT_H__
-#define __RENOIR_PPT_H__
 
-extern void renoir_set_ppt_funcs(struct smu_context *smu);
+#include "../dmub_srv.h"
+#include "dmub_reg.h"
+#include "dmub_dcn21.h"
 
-/* UMD PState Renoir Msg Parameters in MHz */
-#define RENOIR_UMD_PSTATE_GFXCLK       700
-#define RENOIR_UMD_PSTATE_SOCCLK       678
-#define RENOIR_UMD_PSTATE_FCLK         800
+#include "dcn/dcn_2_1_0_offset.h"
+#include "dcn/dcn_2_1_0_sh_mask.h"
+#include "renoir_ip_offset.h"
 
-#define GET_DPM_CUR_FREQ(table, clk_type, dpm_level, freq)		\
-	do {								\
-		switch (clk_type) {					\
-		case SMU_SOCCLK:					\
-			freq = table->SocClocks[dpm_level].Freq;	\
-			break;						\
-		case SMU_MCLK:						\
-			freq = table->FClocks[dpm_level].Freq;	\
-			break;						\
-		case SMU_DCEFCLK:					\
-			freq = table->DcfClocks[dpm_level].Freq;	\
-			break;						\
-		case SMU_FCLK:						\
-			freq = table->FClocks[dpm_level].Freq;		\
-			break;						\
-		default:						\
-			break;						\
-		}							\
-	} while (0)
+#define BASE_INNER(seg) DMU_BASE__INST0_SEG##seg
+#define CTX dmub
+#define REGS dmub->regs
 
-#endif
+/* Registers. */
+
+const struct dmub_srv_common_regs dmub_srv_dcn21_regs = {
+#define DMUB_SR(reg) REG_OFFSET(reg),
+	{ DMUB_COMMON_REGS() },
+#undef DMUB_SR
+
+#define DMUB_SF(reg, field) FD_MASK(reg, field),
+	{ DMUB_COMMON_FIELDS() },
+#undef DMUB_SF
+
+#define DMUB_SF(reg, field) FD_SHIFT(reg, field),
+	{ DMUB_COMMON_FIELDS() },
+#undef DMUB_SF
+};
+
+/* Shared functions. */
+
+bool dmub_dcn21_is_auto_load_done(struct dmub_srv *dmub)
+{
+	return (REG_READ(DMCUB_SCRATCH0) == 3);
+}
+
+bool dmub_dcn21_is_phy_init(struct dmub_srv *dmub)
+{
+	return REG_READ(DMCUB_SCRATCH10) == 0;
+}

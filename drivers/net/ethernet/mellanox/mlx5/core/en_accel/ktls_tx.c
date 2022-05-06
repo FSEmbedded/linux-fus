@@ -401,13 +401,6 @@ mlx5e_ktls_tx_handle_ooo(struct mlx5e_ktls_offload_context_tx *priv_tx,
 		return MLX5E_KTLS_SYNC_DONE;
 	}
 
-	num_wqebbs = mlx5e_ktls_dumps_num_wqebbs(sq, info.nr_frags, info.sync_len);
-	pi = mlx5_wq_cyc_ctr2ix(wq, sq->pc);
-	contig_wqebbs_room = mlx5_wq_cyc_get_contig_wqebbs(wq, pi);
-
-	if (unlikely(contig_wqebbs_room < num_wqebbs))
-		mlx5e_fill_sq_frag_edge(sq, wq, pi, contig_wqebbs_room);
-
 	for (; i < info.nr_frags; i++) {
 		unsigned int orig_fsz, frag_offset = 0, n = 0;
 		skb_frag_t *f = &info.frags[i];
@@ -469,14 +462,13 @@ bool mlx5e_ktls_handle_tx_skb(struct tls_context *tls_ctx, struct mlx5e_txqsq *s
 
 		switch (ret) {
 		case MLX5E_KTLS_SYNC_DONE:
-			*wqe = mlx5e_sq_fetch_wqe(sq, sizeof(**wqe), pi);
 			break;
 		case MLX5E_KTLS_SYNC_SKIP_NO_DATA:
 			if (likely(!skb->decrypted))
 				goto out;
 			WARN_ON_ONCE(1);
-			/* fall-through */
-		default: /* MLX5E_KTLS_SYNC_FAIL */
+			fallthrough;
+		case MLX5E_KTLS_SYNC_FAIL:
 			goto err_out;
 		}
 	}

@@ -539,7 +539,8 @@ static void remove_link(struct snd_soc_component *comp,
 		dobj->ops->link_unload(comp, dobj);
 
 	list_del(&dobj->list);
-	snd_soc_remove_dai_link(comp->card, link);
+	snd_soc_remove_pcm_runtime(comp->card,
+			snd_soc_get_pcm_runtime(comp->card, link));
 
 	kfree(link->name);
 	kfree(link->stream_name);
@@ -902,7 +903,7 @@ static int soc_tplg_dmixer_create(struct soc_tplg *tplg, unsigned int count,
 			dev_err(tplg->dev, "ASoC: failed to create TLV %s\n",
 				mc->hdr.name);
 			kfree(sm);
-			continue;
+			break;
 		}
 
 		/* pass control to driver for optional further init */
@@ -1274,6 +1275,7 @@ static int soc_tplg_dapm_graph_elems_load(struct soc_tplg *tplg,
 
 		ret = soc_tplg_add_route(tplg, routes[i]);
 		if (ret < 0) {
+			dev_err(tplg->dev, "ASoC: topology: add_route failed: %d\n", ret);
 			/*
 			 * this route was added to the list, it will
 			 * be freed in remove_route() so increment the
@@ -1373,8 +1375,7 @@ static struct snd_kcontrol_new *soc_tplg_dapm_widget_dmixer_create(
 		if (err < 0) {
 			dev_err(tplg->dev, "ASoC: failed to create TLV %s\n",
 				mc->hdr.name);
-			kfree(sm);
-			continue;
+			goto err_sm;
 		}
 
 		/* pass control to driver for optional further init */
@@ -1987,7 +1988,7 @@ static int soc_tplg_fe_link_create(struct soc_tplg *tplg,
 		goto err;
 	}
 
-	ret = snd_soc_add_dai_link(tplg->comp->card, link);
+	ret = snd_soc_add_pcm_runtime(tplg->comp->card, link);
 	if (ret < 0) {
 		dev_err(tplg->comp->dev, "ASoC: adding FE link failed\n");
 		goto err;
@@ -2595,9 +2596,6 @@ static int soc_tplg_manifest_load(struct soc_tplg *tplg,
 	bool abi_match;
 	int ret = 0;
 
-	if (tplg->pass != SOC_TPLG_PASS_MANIFEST)
-		return 0;
-
 	manifest = (struct snd_soc_tplg_manifest *)tplg->pos;
 
 	/* check ABI version by size, create a new manifest if abi not match */
@@ -2612,7 +2610,7 @@ static int soc_tplg_manifest_load(struct soc_tplg *tplg,
 	}
 
 	/* pass control to component driver for optional further init */
-	if (tplg->comp && tplg->ops && tplg->ops->manifest)
+	if (tplg->ops && tplg->ops->manifest)
 		ret = tplg->ops->manifest(tplg->comp, tplg->index, _manifest);
 
 	if (!abi_match)	/* free the duplicated one */

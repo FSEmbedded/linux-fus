@@ -37,22 +37,10 @@ static void crc_t10dif_rehash(struct work_struct *work)
 {
 	struct crypto_shash *new, *old;
 
-	schedule_work(&crct10dif_rehash_work);
-	return 0;
-}
-
-static void crc_t10dif_rehash(struct work_struct *work)
-{
-	struct crypto_shash *new, *old;
-
 	mutex_lock(&crc_t10dif_mutex);
 	old = rcu_dereference_protected(crct10dif_tfm,
 					lockdep_is_held(&crc_t10dif_mutex));
-	if (!old) {
-		mutex_unlock(&crc_t10dif_mutex);
-		return;
-	}
-	new = crypto_alloc_shash("crct10dif", 0, 0);
+	new = crypto_alloc_shash(CRC_T10DIF_STRING, 0, 0);
 	if (IS_ERR(new)) {
 		mutex_unlock(&crc_t10dif_mutex);
 		return;
@@ -60,8 +48,12 @@ static void crc_t10dif_rehash(struct work_struct *work)
 	rcu_assign_pointer(crct10dif_tfm, new);
 	mutex_unlock(&crc_t10dif_mutex);
 
-	synchronize_rcu();
-	crypto_free_shash(old);
+	if (old) {
+		synchronize_rcu();
+		crypto_free_shash(old);
+	} else {
+		static_branch_disable(&crct10dif_fallback);
+	}
 }
 
 static struct notifier_block crc_t10dif_nb = {
@@ -99,18 +91,9 @@ EXPORT_SYMBOL(crc_t10dif);
 
 static int __init crc_t10dif_mod_init(void)
 {
-	struct crypto_shash *tfm;
-
 	INIT_WORK(&crct10dif_rehash_work, crc_t10dif_rehash);
 	crypto_register_notifier(&crc_t10dif_nb);
-	mutex_lock(&crc_t10dif_mutex);
-	tfm = crypto_alloc_shash("crct10dif", 0, 0);
-	if (IS_ERR(tfm)) {
-		static_key_slow_inc(&crct10dif_fallback);
-		tfm = NULL;
-	}
-	RCU_INIT_POINTER(crct10dif_tfm, tfm);
-	mutex_unlock(&crc_t10dif_mutex);
+	crc_t10dif_rehash(&crct10dif_rehash_work);
 	return 0;
 }
 
@@ -127,23 +110,15 @@ module_exit(crc_t10dif_mod_fini);
 static int crc_t10dif_transform_show(char *buffer, const struct kernel_param *kp)
 {
 	struct crypto_shash *tfm;
-	const char *name;
 	int len;
 
-	if (static_key_false(&crct10dif_fallback))
+	if (static_branch_unlikely(&crct10dif_fallback))
 		return sprintf(buffer, "fallback\n");
 
 	rcu_read_lock();
 	tfm = rcu_dereference(crct10dif_tfm);
-	if (!tfm) {
-		len = sprintf(buffer, "init\n");
-		goto unlock;
-	}
-
-	name = crypto_tfm_alg_driver_name(crypto_shash_tfm(tfm));
-	len = sprintf(buffer, "%s\n", name);
-
-unlock:
+	len = snprintf(buffer, PAGE_SIZE, "%s\n",
+		       crypto_shash_driver_name(tfm));
 	rcu_read_unlock();
 
 	return len;

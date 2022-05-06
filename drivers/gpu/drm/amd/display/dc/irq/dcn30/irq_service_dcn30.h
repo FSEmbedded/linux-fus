@@ -23,8 +23,7 @@
  *
  */
 
-#include "dml_common_defs.h"
-#include "dcn_calc_math.h"
+#if defined(CONFIG_DRM_AMD_DC_DCN3_0)
 
 #ifndef __DAL_IRQ_SERVICE_DCN30_H__
 #define __DAL_IRQ_SERVICE_DCN30_H__

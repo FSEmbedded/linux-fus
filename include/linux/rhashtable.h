@@ -364,25 +364,22 @@ static inline struct rhash_head *__rht_ptr(
  *            access is guaranteed, such as when destroying the table.
  */
 static inline struct rhash_head *rht_ptr_rcu(
-	struct rhash_lock_head *const *p)
+	struct rhash_lock_head __rcu *const *bkt)
 {
-	struct rhash_lock_head __rcu *const *bkt = (void *)p;
 	return __rht_ptr(rcu_dereference(*bkt), bkt);
 }
 
 static inline struct rhash_head *rht_ptr(
-	struct rhash_lock_head *const *p,
+	struct rhash_lock_head __rcu *const *bkt,
 	struct bucket_table *tbl,
 	unsigned int hash)
 {
-	struct rhash_lock_head __rcu *const *bkt = (void *)p;
 	return __rht_ptr(rht_dereference_bucket(*bkt, tbl, hash), bkt);
 }
 
 static inline struct rhash_head *rht_ptr_exclusive(
-	struct rhash_lock_head *const *p)
+	struct rhash_lock_head __rcu *const *bkt)
 {
-	struct rhash_lock_head __rcu *const *bkt = (void *)p;
 	return __rht_ptr(rcu_dereference_protected(*bkt, 1), bkt);
 }
 

@@ -11,7 +11,6 @@
 #include <asm/unistd.h>
 #include <asm/errno.h>
 
-#include <asm/vdso/clocksource.h>
 #include <asm/vdso/compat_barrier.h>
 
 #define VDSO_HAS_CLOCK_GETRES		1
@@ -110,11 +109,12 @@ static __always_inline u64 __arch_get_hw_counter(s32 clock_mode,
 	u64 res;
 
 	/*
-	 * clock_mode == ARCHTIMER implies that vDSO are enabled otherwise
-	 * fallback on syscall.
+	 * Core checks for mode already, so this raced against a concurrent
+	 * update. Return something. Core will do another round and then
+	 * see the mode change and fallback to the syscall.
 	 */
 	if (clock_mode != VDSO_CLOCKMODE_ARCHTIMER)
-		return __VDSO_USE_SYSCALL;
+		return 0;
 
 	/*
 	 * This isb() is required to prevent that the counter value

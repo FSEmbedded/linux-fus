@@ -517,8 +517,14 @@ static int vimc_deb_s_ctrl(struct v4l2_ctrl *ctrl)
 	struct vimc_deb_device *vdeb =
 		container_of(ctrl->handler, struct vimc_deb_device, hdl);
 
-	vimc_pads_cleanup(vdeb->ved.pads);
-	kfree(vdeb);
+	switch (ctrl->id) {
+	case VIMC_CID_MEAN_WIN_SIZE:
+		vdeb->mean_win_size = ctrl->val;
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
 }
 
 static const struct v4l2_ctrl_ops vimc_deb_ctrl_ops = {

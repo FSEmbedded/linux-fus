@@ -640,8 +640,6 @@ static int ax25_setsockopt(struct socket *sock, int level, int optname,
 
 		memset(devname, 0, sizeof(devname));
 
-		memset(devname, 0, sizeof(devname));
-
 		if (copy_from_sockptr(devname, optval, optlen)) {
 			res = -EFAULT;
 			break;

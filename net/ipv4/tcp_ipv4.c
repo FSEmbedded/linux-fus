@@ -1126,8 +1126,11 @@ int tcp_md5_do_add(struct sock *sk, const union tcp_md5_addr *addr,
 	if (key) {
 		/* Pre-existing entry - just update that one.
 		 * Note that the key might be used concurrently.
+		 * data_race() is telling kcsan that we do not care of
+		 * key mismatches, since changing MD5 key on live flows
+		 * can lead to packet drops.
 		 */
-		memcpy(key->key, newkey, newkeylen);
+		data_race(memcpy(key->key, newkey, newkeylen));
 
 		/* Pairs with READ_ONCE() in tcp_md5_hash_key().
 		 * Also note that a reader could catch new key->keylen value

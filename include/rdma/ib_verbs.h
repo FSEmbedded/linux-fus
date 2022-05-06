@@ -2154,10 +2154,6 @@ struct ib_port_cache {
 	enum ib_port_state     port_state;
 };
 
-struct ib_cache {
-	rwlock_t                lock;
-};
-
 struct ib_port_immutable {
 	int                           pkey_tbl_len;
 	int                           gid_tbl_len;
@@ -2642,7 +2638,7 @@ struct ib_device {
 	struct rw_semaphore event_handler_rwsem;
 
 	/* Protects QP's event_handler calls and open_qp list */
-	spinlock_t event_handler_lock;
+	spinlock_t qp_open_list_lock;
 
 	struct rw_semaphore	      client_data_rwsem;
 	struct xarray                 client_data;
@@ -4092,6 +4088,8 @@ static inline void ib_dma_unmap_sg(struct ib_device *dev,
  */
 static inline unsigned int ib_dma_max_seg_size(struct ib_device *dev)
 {
+	if (ib_uses_virt_dma(dev))
+		return UINT_MAX;
 	return dma_get_max_seg_size(dev->dma_device);
 }
 

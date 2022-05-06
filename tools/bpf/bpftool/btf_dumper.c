@@ -32,8 +32,56 @@ static int dump_prog_id_as_func_ptr(const struct btf_dumper *d,
 				    const struct btf_type *func_proto,
 				    __u32 prog_id)
 {
-	if (is_plain_text)
-		jsonw_printf(jw, "%p", *(void **)data);
+	struct bpf_prog_info_linear *prog_info = NULL;
+	const struct btf_type *func_type;
+	const char *prog_name = NULL;
+	struct bpf_func_info *finfo;
+	struct btf *prog_btf = NULL;
+	struct bpf_prog_info *info;
+	int prog_fd, func_sig_len;
+	char prog_str[1024];
+
+	/* Get the ptr's func_proto */
+	func_sig_len = btf_dump_func(d->btf, prog_str, func_proto, NULL, 0,
+				     sizeof(prog_str));
+	if (func_sig_len == -1)
+		return -1;
+
+	if (!prog_id)
+		goto print;
+
+	/* Get the bpf_prog's name.  Obtain from func_info. */
+	prog_fd = bpf_prog_get_fd_by_id(prog_id);
+	if (prog_fd == -1)
+		goto print;
+
+	prog_info = bpf_program__get_prog_info_linear(prog_fd,
+						1UL << BPF_PROG_INFO_FUNC_INFO);
+	close(prog_fd);
+	if (IS_ERR(prog_info)) {
+		prog_info = NULL;
+		goto print;
+	}
+	info = &prog_info->info;
+
+	if (!info->btf_id || !info->nr_func_info ||
+	    btf__get_from_id(info->btf_id, &prog_btf))
+		goto print;
+	finfo = u64_to_ptr(info->func_info);
+	func_type = btf__type_by_id(prog_btf, finfo->type_id);
+	if (!func_type || !btf_is_func(func_type))
+		goto print;
+
+	prog_name = btf__name_by_offset(prog_btf, func_type->name_off);
+
+print:
+	if (!prog_id)
+		snprintf(&prog_str[func_sig_len],
+			 sizeof(prog_str) - func_sig_len, " 0");
+	else if (prog_name)
+		snprintf(&prog_str[func_sig_len],
+			 sizeof(prog_str) - func_sig_len,
+			 " %s/prog_id:%u", prog_name, prog_id);
 	else
 		snprintf(&prog_str[func_sig_len],
 			 sizeof(prog_str) - func_sig_len,

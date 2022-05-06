@@ -1217,14 +1217,13 @@ int mlx5_load_one(struct mlx5_core_dev *dev, bool boot)
 	if (err)
 		goto err_load;
 
+	set_bit(MLX5_INTERFACE_STATE_UP, &dev->intf_state);
+
 	if (boot) {
 		err = mlx5_devlink_register(priv_to_devlink(dev), dev->device);
 		if (err)
 			goto err_devlink_reg;
-	}
-
-	if (mlx5_device_registered(dev)) {
-		mlx5_attach_device(dev);
+		mlx5_register_device(dev);
 	} else {
 		mlx5_attach_device(dev);
 	}
@@ -1232,12 +1231,8 @@ int mlx5_load_one(struct mlx5_core_dev *dev, bool boot)
 	mutex_unlock(&dev->intf_state_mutex);
 	return 0;
 
-	return err;
-
-err_reg_dev:
-	if (boot)
-		mlx5_devlink_unregister(priv_to_devlink(dev));
 err_devlink_reg:
+	clear_bit(MLX5_INTERFACE_STATE_UP, &dev->intf_state);
 	mlx5_unload(dev);
 err_load:
 	if (boot)

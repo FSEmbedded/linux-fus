@@ -55,7 +55,8 @@ static inline bool mlx5_accel_is_ktls_rx(struct mlx5_core_dev *mdev)
 
 static inline bool mlx5_accel_is_ktls_device(struct mlx5_core_dev *mdev)
 {
-	if (!MLX5_CAP_GEN(mdev, tls_tx))
+	if (!mlx5_accel_is_ktls_tx(mdev) &&
+	    !mlx5_accel_is_ktls_rx(mdev))
 		return false;
 
 	if (!MLX5_CAP_GEN(mdev, log_max_dek))

@@ -247,31 +247,7 @@ static void efx_associate(struct efx_nic *efx)
 
 static void efx_dissociate(struct efx_nic *efx)
 {
-	struct efx_channel *channel;
-	struct efx_rx_queue *rx_queue;
-	struct efx_tx_queue *tx_queue;
-	int j;
-
-	channel = kmalloc(sizeof(*channel), GFP_KERNEL);
-	if (!channel)
-		return NULL;
-
-	*channel = *old_channel;
-
-	channel->napi_dev = NULL;
-	INIT_HLIST_NODE(&channel->napi_str.napi_hash_node);
-	channel->napi_str.napi_id = 0;
-	channel->napi_str.state = 0;
-	memset(&channel->eventq, 0, sizeof(channel->eventq));
-
-	for (j = 0; j < EFX_TXQ_TYPES; j++) {
-		tx_queue = &channel->tx_queue[j];
-		if (tx_queue->channel)
-			tx_queue->channel = channel;
-		tx_queue->buffer = NULL;
-		tx_queue->cb_page = NULL;
-		memset(&tx_queue->txd, 0, sizeof(tx_queue->txd));
-	}
+	struct efx_nic *other, *next;
 
 	list_del(&efx->node);
 	efx->primary = NULL;

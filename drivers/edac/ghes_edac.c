@@ -30,7 +30,16 @@ static refcount_t ghes_refcount = REFCOUNT_INIT(0);
  * also provides the necessary (implicit) memory barrier for the SMP
  * case to make the pointer visible on another CPU.
  */
-static struct ghes_edac_pvt *ghes_pvt;
+static struct ghes_pvt *ghes_pvt;
+
+/*
+ * This driver's representation of the system hardware, as collected
+ * from DMI.
+ */
+struct ghes_hw_desc {
+	int num_dimms;
+	struct dimm_info *dimms;
+} ghes_hw;
 
 /* GHES registration mutex */
 static DEFINE_MUTEX(ghes_reg_mutex);
@@ -97,9 +106,9 @@ static void dimm_setup_label(struct dimm_info *dimm, u16 handle)
 		snprintf(dimm->label, sizeof(dimm->label), "%s %s", bank, device);
 }
 
-static int get_dimm_smbios_index(struct mem_ctl_info *mci, u16 handle)
+static void assign_dmi_dimm_info(struct dimm_info *dimm, struct memdev_dmi_entry *entry)
 {
-	int i;
+	u16 rdr_mask = BIT(7) | BIT(13);
 
 	if (entry->size == 0xffff) {
 		pr_info("Can't get DIMM%i size\n", dimm->idx);
@@ -230,10 +239,9 @@ void ghes_edac_report_mem_error(int sev, struct cper_sec_mem_err *mem_err)
 {
 	struct edac_raw_error_desc *e;
 	struct mem_ctl_info *mci;
-	struct ghes_edac_pvt *pvt;
+	struct ghes_pvt *pvt;
 	unsigned long flags;
 	char *p;
-	u8 grain_bits;
 
 	/*
 	 * We can do the locking below because GHES defers error processing
@@ -256,7 +264,6 @@ void ghes_edac_report_mem_error(int sev, struct cper_sec_mem_err *mem_err)
 	memset(e, 0, sizeof (*e));
 	e->error_count = 1;
 	e->grain = 1;
-	strcpy(e->label, "unknown label");
 	e->msg = pvt->msg;
 	e->other_detail = pvt->other_detail;
 	e->top_layer = -1;
@@ -392,10 +399,10 @@ void ghes_edac_report_mem_error(int sev, struct cper_sec_mem_err *mem_err)
 			p += sprintf(p, "DIMM DMI handle: 0x%.4x ",
 				     mem_err->mem_dev_handle);
 
-		index = get_dimm_smbios_index(mci, mem_err->mem_dev_handle);
-		if (index >= 0) {
-			e->top_layer = index;
-			e->enable_per_layer_report = true;
+		dimm = find_dimm_by_handle(mci, mem_err->mem_dev_handle);
+		if (dimm) {
+			e->top_layer = dimm->idx;
+			strcpy(e->label, dimm->label);
 		}
 	}
 	if (mem_err->validation_bits & CPER_MEM_VALID_CHIP_ID)
@@ -484,21 +491,7 @@ void ghes_edac_report_mem_error(int sev, struct cper_sec_mem_err *mem_err)
 	if (p > pvt->other_detail)
 		*(p - 1) = '\0';
 
-	/* Sanity-check driver-supplied grain value. */
-	if (WARN_ON_ONCE(!e->grain))
-		e->grain = 1;
-
-	grain_bits = fls_long(e->grain - 1);
-
-	/* Generate the trace event */
-	snprintf(pvt->detail_location, sizeof(pvt->detail_location),
-		 "APEI location: %s %s", e->location, e->other_detail);
-	trace_mc_event(type, e->msg, e->label, e->error_count,
-		       mci->mc_idx, e->top_layer, e->mid_layer, e->low_layer,
-		       (e->page_frame_number << PAGE_SHIFT) | e->offset_in_page,
-		       grain_bits, e->syndrome, pvt->detail_location);
-
-	edac_raw_mc_handle_error(type, mci, e);
+	edac_raw_mc_handle_error(e);
 
 unlock:
 	spin_unlock_irqrestore(&ghes_lock, flags);
@@ -515,11 +508,9 @@ static struct acpi_platform_list plat_list[] = {
 int ghes_edac_register(struct ghes *ghes, struct device *dev)
 {
 	bool fake = false;
-	int rc = 0, num_dimm = 0;
 	struct mem_ctl_info *mci;
-	struct ghes_edac_pvt *pvt;
+	struct ghes_pvt *pvt;
 	struct edac_mc_layer layers[1];
-	struct ghes_edac_dimm_fill dimm_fill;
 	unsigned long flags;
 	int idx = -1;
 	int rc = 0;
@@ -563,7 +554,6 @@ int ghes_edac_register(struct ghes *ghes, struct device *dev)
 	}
 
 	pvt		= mci->pvt_info;
-	pvt->ghes	= ghes;
 	pvt->mci	= mci;
 
 	mci->pdev = dev;
@@ -638,6 +628,11 @@ int ghes_edac_register(struct ghes *ghes, struct device *dev)
 	refcount_set(&ghes_refcount, 1);
 
 unlock:
+
+	/* Not needed anymore */
+	kfree(ghes_hw.dimms);
+	ghes_hw.dimms = NULL;
+
 	mutex_unlock(&ghes_reg_mutex);
 
 	return rc;
@@ -652,6 +647,9 @@ void ghes_edac_unregister(struct ghes *ghes)
 		return;
 
 	mutex_lock(&ghes_reg_mutex);
+
+	system_scanned = false;
+	memset(&ghes_hw, 0, sizeof(struct ghes_hw_desc));
 
 	if (!refcount_dec_and_test(&ghes_refcount))
 		goto unlock;

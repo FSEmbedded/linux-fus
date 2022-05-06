@@ -14,12 +14,26 @@
 
 struct hsr_node;
 
+struct hsr_frame_info {
+	struct sk_buff *skb_std;
+	struct sk_buff *skb_hsr;
+	struct sk_buff *skb_prp;
+	struct hsr_port *port_rcv;
+	struct hsr_node *node_src;
+	u16 sequence_nr;
+	bool is_supervision;
+	bool is_vlan;
+	bool is_local_dest;
+	bool is_local_exclusive;
+	bool is_from_san;
+};
+
 void hsr_del_self_node(struct hsr_priv *hsr);
 void hsr_del_nodes(struct list_head *node_db);
-struct hsr_node *hsr_get_node(struct hsr_port *port, struct sk_buff *skb,
-			      bool is_sup);
-void hsr_handle_sup_frame(struct sk_buff *skb, struct hsr_node *node_curr,
-			  struct hsr_port *port);
+struct hsr_node *hsr_get_node(struct hsr_port *port, struct list_head *node_db,
+			      struct sk_buff *skb, bool is_sup,
+			      enum hsr_port_type rx_port);
+void hsr_handle_sup_frame(struct hsr_frame_info *frame);
 bool hsr_addr_is_self(struct hsr_priv *hsr, unsigned char *addr);
 
 void hsr_addr_subst_source(struct hsr_node *node, struct sk_buff *skb);

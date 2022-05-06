@@ -1105,7 +1105,7 @@ static const struct user_regset aarch64_regsets[] = {
 		.size = sizeof(u32),
 		.align = sizeof(u32),
 		.active = fpr_active,
-		.get = fpr_get,
+		.regset_get = fpr_get,
 		.set = fpr_set
 	},
 	[REGSET_TLS] = {
@@ -1303,9 +1303,6 @@ static int compat_vfp_get(struct task_struct *target,
 	if (!system_supports_fpsimd())
 		return -EINVAL;
 
-	if (!system_supports_fpsimd())
-		return -EINVAL;
-
 	uregs = &target->thread.uw.fpsimd_state;
 
 	if (target == current)
@@ -1390,7 +1387,7 @@ static const struct user_regset aarch32_regsets[] = {
 		.size = sizeof(compat_ulong_t),
 		.align = sizeof(compat_ulong_t),
 		.active = fpr_active,
-		.get = compat_vfp_get,
+		.regset_get = compat_vfp_get,
 		.set = compat_vfp_set
 	},
 };
@@ -1802,8 +1799,8 @@ int syscall_trace_enter(struct pt_regs *regs)
 
 	if (flags & (_TIF_SYSCALL_EMU | _TIF_SYSCALL_TRACE)) {
 		tracehook_report_syscall(regs, PTRACE_SYSCALL_ENTER);
-		if (!in_syscall(regs) || (flags & _TIF_SYSCALL_EMU))
-			return -1;
+		if (flags & _TIF_SYSCALL_EMU)
+			return NO_SYSCALL;
 	}
 
 	/* Do the secure computing after ptrace; failures should be fast. */
@@ -1826,7 +1823,7 @@ void syscall_trace_exit(struct pt_regs *regs)
 	audit_syscall_exit(regs);
 
 	if (flags & _TIF_SYSCALL_TRACEPOINT)
-		trace_sys_exit(regs, regs_return_value(regs));
+		trace_sys_exit(regs, syscall_get_return_value(current, regs));
 
 	if (flags & (_TIF_SYSCALL_TRACE | _TIF_SINGLESTEP))
 		tracehook_report_syscall(regs, PTRACE_SYSCALL_EXIT);

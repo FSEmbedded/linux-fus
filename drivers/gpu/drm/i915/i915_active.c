@@ -128,7 +128,7 @@ static inline void debug_active_assert(struct i915_active *ref) { }
 #endif
 
 static void
-__active_retire(struct i915_active *ref, bool lock)
+__active_retire(struct i915_active *ref)
 {
 	struct rb_root root = RB_ROOT;
 	struct active_node *it, *n;
@@ -153,10 +153,10 @@ __active_retire(struct i915_active *ref, bool lock)
 		rb_erase(&ref->cache->node, &ref->tree);
 		root = ref->tree;
 
-	if (likely(lock))
-		mutex_unlock(&ref->mutex);
-	if (!retire)
-		return;
+		/* Rebuild the tree with only the cached node */
+		rb_link_node(&ref->cache->node, NULL, &ref->tree.rb_node);
+		rb_insert_color(&ref->cache->node, &ref->tree);
+		GEM_BUG_ON(ref->tree.rb_node != &ref->cache->node);
 
 		/* Make the cached node available for reuse with any timeline */
 		if (IS_ENABLED(CONFIG_64BIT))
@@ -192,16 +192,18 @@ active_work(struct work_struct *wrk)
 }
 
 static void
-active_retire(struct i915_active *ref, bool lock)
+active_retire(struct i915_active *ref)
 {
 	GEM_BUG_ON(!atomic_read(&ref->count));
 	if (atomic_add_unless(&ref->count, -1, 1))
 		return;
 
-	/* One active may be flushed from inside the acquire of another */
-	if (likely(lock))
-		mutex_lock_nested(&ref->mutex, SINGLE_DEPTH_NESTING);
-	__active_retire(ref, lock);
+	if (ref->flags & I915_ACTIVE_RETIRE_SLEEPS) {
+		queue_work(system_unbound_wq, &ref->work);
+		return;
+	}
+
+	__active_retire(ref);
 }
 
 static inline struct dma_fence **
@@ -222,13 +224,8 @@ active_fence_cb(struct dma_fence *fence, struct dma_fence_cb *cb)
 static void
 node_retire(struct dma_fence *fence, struct dma_fence_cb *cb)
 {
-	active_retire(node_from_active(base)->ref, true);
-}
-
-static void
-node_retire_nolock(struct i915_active_request *base, struct i915_request *rq)
-{
-	active_retire(node_from_active(base)->ref, false);
+	if (active_fence_cb(fence, cb))
+		active_retire(container_of(cb, struct active_node, base.cb)->ref);
 }
 
 static void
@@ -582,7 +579,7 @@ int i915_active_acquire_for_context(struct i915_active *ref, u64 idx)
 void i915_active_release(struct i915_active *ref)
 {
 	debug_active_assert(ref);
-	active_retire(ref, true);
+	active_retire(ref);
 }
 
 static void enable_signaling(struct i915_active_fence *active)
@@ -620,8 +617,16 @@ static int flush_lazy_signals(struct i915_active *ref)
 	struct active_node *it, *n;
 	int err = 0;
 
-	active_retire(ref, true);
-	__active_ungrab(ref);
+	enable_signaling(&ref->excl);
+	rbtree_postorder_for_each_entry_safe(it, n, &ref->tree, node) {
+		err = flush_barrier(it); /* unconnected idle barrier? */
+		if (err)
+			break;
+
+		enable_signaling(&it->base);
+	}
+
+	return err;
 }
 
 int __i915_active_wait(struct i915_active *ref, int state)
@@ -650,15 +655,27 @@ int __i915_active_wait(struct i915_active *ref, int state)
 	return 0;
 }
 
-		err = i915_active_request_retire(&it->base, BKL(ref),
-						 node_retire_nolock);
-		if (err)
-			break;
+static int __await_active(struct i915_active_fence *active,
+			  int (*fn)(void *arg, struct dma_fence *fence),
+			  void *arg)
+{
+	struct dma_fence *fence;
+
+	if (is_barrier(active)) /* XXX flush the barrier? */
+		return 0;
+
+	fence = i915_active_fence_get(active);
+	if (fence) {
+		int err;
+
+		err = fn(arg, fence);
+		dma_fence_put(fence);
+		if (err < 0)
+			return err;
 	}
 
-	__active_retire(ref, true);
-	if (err)
-		return err;
+	return 0;
+}
 
 struct wait_barrier {
 	struct wait_queue_entry base;

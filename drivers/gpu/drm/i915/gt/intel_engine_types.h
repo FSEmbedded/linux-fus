@@ -81,41 +81,6 @@ struct intel_instdone {
 	u32 row[I915_MAX_SLICES][I915_MAX_SUBSLICES];
 };
 
-struct intel_engine_hangcheck {
-	u64 acthd;
-	u32 last_ring;
-	u32 last_head;
-	unsigned long action_timestamp;
-	struct intel_instdone instdone;
-};
-
-struct intel_ring {
-	struct kref ref;
-	struct i915_vma *vma;
-	void *vaddr;
-
-	/*
-	 * As we have two types of rings, one global to the engine used
-	 * by ringbuffer submission and those that are exclusive to a
-	 * context used by execlists, we have to play safe and allow
-	 * atomic updates to the pin_count. However, the actual pinning
-	 * of the context is either done during initialisation for
-	 * ringbuffer submission or serialised as part of the context
-	 * pinning for execlists, and so we do not need a mutex ourselves
-	 * to serialise intel_ring_pin/intel_ring_unpin.
-	 */
-	atomic_t pin_count;
-
-	u32 head;
-	u32 tail;
-	u32 emit;
-
-	u32 space;
-	u32 size;
-	u32 wrap;
-	u32 effective_size;
-};
-
 /*
  * we use a single page to load ctx workarounds so all of these
  * values are referred in terms of dwords

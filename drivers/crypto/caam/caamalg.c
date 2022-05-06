@@ -57,6 +57,8 @@
 #include "key_gen.h"
 #include "caamalg_desc.h"
 #include <crypto/engine.h>
+#include <crypto/xts.h>
+#include <asm/unaligned.h>
 
 #ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_TK_API
 #include "tag_object.h"
@@ -126,14 +128,6 @@ struct caam_ctx {
 struct caam_skcipher_req_ctx {
 	struct skcipher_edesc *edesc;
 	struct skcipher_request fallback_req;
-};
-
-struct caam_aead_req_ctx {
-	struct aead_edesc *edesc;
-};
-
-struct caam_skcipher_req_ctx {
-	struct skcipher_edesc *edesc;
 };
 
 struct caam_aead_req_ctx {
@@ -833,6 +827,7 @@ static int ctr_skcipher_setkey(struct crypto_skcipher *skcipher,
 	return skcipher_setkey(skcipher, key, keylen, ctx1_iv_off);
 }
 
+
 #ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_TK_API
 static int tk_skcipher_setkey(struct crypto_skcipher *skcipher,
 			      const u8 *key, unsigned int keylen)
@@ -882,11 +877,8 @@ static int tk_skcipher_setkey(struct crypto_skcipher *skcipher,
 
 	/* Validate key length for AES algorithms */
 	ret = aes_check_keylen(ctx->cdata.key_real_len);
-	if (ret) {
-		crypto_skcipher_set_flags(skcipher,
-					  CRYPTO_TFM_RES_BAD_KEY_LEN);
+	if (ret)
 		return ret;
-	}
 
 	return skcipher_setkey(skcipher, NULL, 0, 0);
 }
@@ -1849,6 +1841,14 @@ static int skcipher_do_one_req(struct crypto_engine *engine, void *areq)
 	return ret;
 }
 
+static inline bool xts_skcipher_ivsize(struct skcipher_request *req)
+{
+	struct crypto_skcipher *skcipher = crypto_skcipher_reqtfm(req);
+	unsigned int ivsize = crypto_skcipher_ivsize(skcipher);
+
+	return !!get_unaligned((u64 *)(req->iv + (ivsize / 2)));
+}
+
 static inline int skcipher_crypt(struct skcipher_request *req, bool encrypt)
 {
 	struct skcipher_edesc *edesc;
@@ -1856,6 +1856,7 @@ static inline int skcipher_crypt(struct skcipher_request *req, bool encrypt)
 	struct caam_ctx *ctx = crypto_skcipher_ctx(skcipher);
 	struct device *jrdev = ctx->jrdev;
 	struct caam_drv_private_jr *jrpriv = dev_get_drvdata(jrdev);
+	struct caam_drv_private *ctrlpriv = dev_get_drvdata(jrdev->parent);
 	u32 *desc;
 	int ret = 0;
 
@@ -3497,10 +3498,33 @@ static int caam_cra_init(struct crypto_skcipher *tfm)
 	struct caam_skcipher_alg *caam_alg =
 		container_of(alg, typeof(*caam_alg), skcipher);
 	struct caam_ctx *ctx = crypto_skcipher_ctx(tfm);
-
-	crypto_skcipher_set_reqsize(tfm, sizeof(struct caam_skcipher_req_ctx));
+	u32 alg_aai = caam_alg->caam.class1_alg_type & OP_ALG_AAI_MASK;
+	int ret = 0;
 
 	ctx->enginectx.op.do_one_request = skcipher_do_one_req;
+
+	if (alg_aai == OP_ALG_AAI_XTS) {
+		const char *tfm_name = crypto_tfm_alg_name(&tfm->base);
+		struct crypto_skcipher *fallback;
+
+		fallback = crypto_alloc_skcipher(tfm_name, 0,
+						 CRYPTO_ALG_NEED_FALLBACK);
+		if (IS_ERR(fallback)) {
+			pr_err("Failed to allocate %s fallback: %ld\n",
+			       tfm_name, PTR_ERR(fallback));
+			return PTR_ERR(fallback);
+		}
+
+		ctx->fallback = fallback;
+		crypto_skcipher_set_reqsize(tfm, sizeof(struct caam_skcipher_req_ctx) +
+					    crypto_skcipher_reqsize(fallback));
+	} else {
+		crypto_skcipher_set_reqsize(tfm, sizeof(struct caam_skcipher_req_ctx));
+	}
+
+	ret = caam_init_common(ctx, &caam_alg->caam, false);
+	if (ret && ctx->fallback)
+		crypto_free_skcipher(ctx->fallback);
 
 	return ret;
 }

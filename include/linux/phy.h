@@ -142,6 +142,8 @@ typedef enum {
 	/* 10GBASE-R, XFI, SFI - single lane 10G Serdes */
 	PHY_INTERFACE_MODE_10GBASER,
 	PHY_INTERFACE_MODE_USXGMII,
+	/* 10GBASE-KR - with Clause 73 AN */
+	PHY_INTERFACE_MODE_10GKR,
 	PHY_INTERFACE_MODE_2500SGMII,
 	PHY_INTERFACE_MODE_MAX,
 } phy_interface_t;
@@ -214,6 +216,8 @@ static inline const char *phy_modes(phy_interface_t interface)
 		return "10gbase-r";
 	case PHY_INTERFACE_MODE_USXGMII:
 		return "usxgmii";
+	case PHY_INTERFACE_MODE_10GKR:
+		return "10gbase-kr";
 	case PHY_INTERFACE_MODE_2500SGMII:
 		return "sgmii-2500";
 	default:
@@ -469,25 +473,32 @@ struct macsec_ops;
 /**
  * struct phy_device - An instance of a PHY
  *
- * drv: Pointer to the driver for this PHY instance
- * phy_id: UID for this device found during discovery
- * c45_ids: 802.3-c45 Device Identifers if is_c45.
- * is_c45:  Set to true if this phy uses clause 45 addressing.
- * is_internal: Set to true if this phy is internal to a MAC.
- * is_pseudo_fixed_link: Set to true if this phy is an Ethernet switch, etc.
- * is_gigabit_capable: Set to true if PHY supports 1000Mbps
- * has_fixups: Set to true if this phy has fixups/quirks.
- * suspended: Set to true if this phy has been suspended successfully.
- * suspended_by_mdio_bus: Set to true if this phy was suspended by MDIO bus.
- * sysfs_links: Internal boolean tracking sysfs symbolic links setup/removal.
- * loopback_enabled: Set true if this phy has been loopbacked successfully.
- * state: state of the PHY for management purposes
- * dev_flags: Device-specific flags used by the PHY driver.
- * irq: IRQ number of the PHY's interrupt (-1 if none)
- * phy_timer: The timer for handling the state machine
- * attached_dev: The attached enet driver's device instance ptr
- * adjust_link: Callback for the enet controller to respond to
- * changes in the link state.
+ * @mdio: MDIO bus this PHY is on
+ * @drv: Pointer to the driver for this PHY instance
+ * @phy_id: UID for this device found during discovery
+ * @c45_ids: 802.3-c45 Device Identifiers if is_c45.
+ * @is_c45:  Set to true if this PHY uses clause 45 addressing.
+ * @is_internal: Set to true if this PHY is internal to a MAC.
+ * @is_pseudo_fixed_link: Set to true if this PHY is an Ethernet switch, etc.
+ * @is_gigabit_capable: Set to true if PHY supports 1000Mbps
+ * @has_fixups: Set to true if this PHY has fixups/quirks.
+ * @suspended: Set to true if this PHY has been suspended successfully.
+ * @suspended_by_mdio_bus: Set to true if this PHY was suspended by MDIO bus.
+ * @sysfs_links: Internal boolean tracking sysfs symbolic links setup/removal.
+ * @loopback_enabled: Set true if this PHY has been loopbacked successfully.
+ * @downshifted_rate: Set true if link speed has been downshifted.
+ * @state: State of the PHY for management purposes
+ * @dev_flags: Device-specific flags used by the PHY driver.
+ * @irq: IRQ number of the PHY's interrupt (-1 if none)
+ * @phy_timer: The timer for handling the state machine
+ * @phylink: Pointer to phylink instance for this PHY
+ * @sfp_bus_attached: Flag indicating whether the SFP bus has been attached
+ * @sfp_bus: SFP bus attached to this PHY's fiber port
+ * @attached_dev: The attached enet driver's device instance ptr
+ * @adjust_link: Callback for the enet controller to respond to changes: in the
+ *               link state.
+ * @phy_link_change: Callback for phylink for notification of link change
+ * @macsec_ops: MACsec offloading ops.
  *
  * @speed: Current link speed
  * @duplex: Current duplex
@@ -730,6 +741,13 @@ struct phy_driver {
 	 * if phydev->autoneg is off
 	 */
 	int (*config_aneg)(struct phy_device *phydev);
+
+	/**
+	 * @config_inband_aneg: Enable or disable in-band auto-negotiation for
+	 * the system-side interface if the PHY operates in a mode that
+	 * requires it: (Q)SGMII, USXGMII, 1000Base-X, etc.
+	 */
+	int (*config_inband_aneg)(struct phy_device *phydev, bool enabled);
 
 	/** @aneg_done: Determines the auto negotiation result */
 	int (*aneg_done)(struct phy_device *phydev);
@@ -1342,10 +1360,42 @@ struct phy_device *phy_device_create(struct mii_bus *bus, int addr, u32 phy_id,
 				     bool is_c45,
 				     struct phy_c45_device_ids *c45_ids);
 #if IS_ENABLED(CONFIG_PHYLIB)
+int fwnode_get_phy_id(struct fwnode_handle *fwnode, u32 *phy_id);
+struct mdio_device *fwnode_mdio_find_device(struct fwnode_handle *fwnode);
+struct phy_device *fwnode_phy_find_device(struct fwnode_handle *phy_fwnode);
+struct phy_device *device_phy_find_device(struct device *dev);
+struct fwnode_handle *fwnode_get_phy_node(struct fwnode_handle *fwnode);
 struct phy_device *get_phy_device(struct mii_bus *bus, int addr, bool is_c45);
 int phy_device_register(struct phy_device *phy);
 void phy_device_free(struct phy_device *phydev);
 #else
+static inline int fwnode_get_phy_id(struct fwnode_handle *fwnode, u32 *phy_id)
+{
+	return 0;
+}
+static inline
+struct mdio_device *fwnode_mdio_find_device(struct fwnode_handle *fwnode)
+{
+	return 0;
+}
+
+static inline
+struct phy_device *fwnode_phy_find_device(struct fwnode_handle *phy_fwnode)
+{
+	return NULL;
+}
+
+static inline struct phy_device *device_phy_find_device(struct device *dev)
+{
+	return NULL;
+}
+
+static inline
+struct fwnode_handle *fwnode_get_phy_node(struct fwnode_handle *fwnode)
+{
+	return NULL;
+}
+
 static inline
 struct phy_device *get_phy_device(struct mii_bus *bus, int addr, bool is_c45)
 {
@@ -1385,6 +1435,7 @@ void phy_detach(struct phy_device *phydev);
 void phy_start(struct phy_device *phydev);
 void phy_stop(struct phy_device *phydev);
 int phy_start_aneg(struct phy_device *phydev);
+int phy_config_inband_aneg(struct phy_device *phydev, bool enabled);
 int phy_aneg_done(struct phy_device *phydev);
 int phy_speed_down(struct phy_device *phydev, bool sync);
 int phy_speed_up(struct phy_device *phydev);

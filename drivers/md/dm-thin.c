@@ -330,7 +330,6 @@ struct pool_c {
 	dm_block_t low_water_blocks;
 	struct pool_features requested_pf; /* Features requested during table load */
 	struct pool_features adjusted_pf;  /* Features used after adjusting for constituent devices */
-	struct bio flush_bio;
 };
 
 /*
@@ -2394,7 +2393,7 @@ static void process_deferred_bios(struct pool *pool)
 		if (bio->bi_opf & REQ_PREFLUSH)
 			bio_endio(bio);
 		else
-			generic_make_request(bio);
+			submit_bio_noacct(bio);
 	}
 }
 
@@ -3123,7 +3122,6 @@ static void pool_dtr(struct dm_target *ti)
 	__pool_dec(pt->pool);
 	dm_put_device(ti, pt->metadata_dev);
 	dm_put_device(ti, pt->data_dev);
-	bio_uninit(&pt->flush_bio);
 	kfree(pt);
 
 	mutex_unlock(&dm_thin_pool_table.mutex);
@@ -3202,11 +3200,11 @@ static void metadata_low_callback(void *context)
  */
 static int metadata_pre_commit_callback(void *context)
 {
-	struct pool_c *pt = context;
-	struct bio *flush_bio = &pt->flush_bio;
+	struct pool *pool = context;
+	struct bio *flush_bio = &pool->flush_bio;
 
 	bio_reset(flush_bio);
-	bio_set_dev(flush_bio, pt->data_dev->bdev);
+	bio_set_dev(flush_bio, pool->data_dev);
 	flush_bio->bi_opf = REQ_OP_WRITE | REQ_PREFLUSH;
 
 	return submit_bio_wait(flush_bio);
@@ -3380,7 +3378,6 @@ static int pool_ctr(struct dm_target *ti, unsigned argc, char **argv)
 	pt->data_dev = data_dev;
 	pt->low_water_blocks = low_water_blocks;
 	pt->adjusted_pf = pt->requested_pf = pf;
-	bio_init(&pt->flush_bio, NULL, 0);
 	ti->num_flush_bios = 1;
 
 	/*
@@ -3568,9 +3565,6 @@ static int pool_preresume(struct dm_target *ti)
 	r = bind_control_target(pool, ti);
 	if (r)
 		return r;
-
-	dm_pool_register_pre_commit_callback(pool->pmd,
-					     metadata_pre_commit_callback, pt);
 
 	r = maybe_resize_data_dev(ti, &need_commit1);
 	if (r)

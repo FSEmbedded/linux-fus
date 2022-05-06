@@ -328,9 +328,7 @@ static irqreturn_t afe4403_trigger_handler(int irq, void *private)
 		if (ret)
 			goto err;
 
-		afe->buffer[i++] = (rx[0] << 16) |
-				   (rx[1] << 8) |
-				   (rx[2]);
+		afe->buffer[i++] = get_unaligned_be24(&rx[0]);
 	}
 
 	/* Disable reading from the device */

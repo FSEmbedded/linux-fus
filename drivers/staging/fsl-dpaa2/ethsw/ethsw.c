@@ -199,10 +199,28 @@ static int dpaa2_switch_port_set_flood(struct ethsw_port_priv *port_priv, bool e
 	return 0;
 }
 
+static enum dpsw_stp_state br_stp_state_to_dpsw(u8 state)
+{
+	switch (state) {
+	case BR_STATE_DISABLED:
+		return DPSW_STP_STATE_DISABLED;
+	case BR_STATE_LISTENING:
+		return DPSW_STP_STATE_LISTENING;
+	case BR_STATE_LEARNING:
+		return DPSW_STP_STATE_LEARNING;
+	case BR_STATE_FORWARDING:
+		return DPSW_STP_STATE_FORWARDING;
+	case BR_STATE_BLOCKING:
+		return DPSW_STP_STATE_BLOCKING;
+	default:
+		return DPSW_STP_STATE_DISABLED;
+	}
+}
+
 static int dpaa2_switch_port_set_stp_state(struct ethsw_port_priv *port_priv, u8 state)
 {
 	struct dpsw_stp_cfg stp_cfg = {
-		.state = state,
+		.state = br_stp_state_to_dpsw(state),
 	};
 	int err;
 	u16 vid;
@@ -984,9 +1002,16 @@ static int dpaa2_switch_port_vlans_add(struct net_device *netdev,
 	int vid, err = 0, new_vlans = 0;
 
 	if (switchdev_trans_ph_prepare(trans)) {
-		for (vid = vlan->vid_begin; vid <= vlan->vid_end; vid++)
+		for (vid = vlan->vid_begin; vid <= vlan->vid_end; vid++) {
 			if (!port_priv->ethsw_data->vlans[vid])
 				new_vlans++;
+
+			/* Make sure that the VLAN is not already configured
+			 * on the switch port
+			 */
+			if (port_priv->vlans[vid] & ETHSW_VLAN_MEMBER)
+				return -EEXIST;
+		}
 
 		/* Check if there is space for a new VLAN */
 		err = dpsw_get_attributes(ethsw->mc_io, 0, ethsw->dpsw_handle,
@@ -1435,26 +1460,26 @@ static int dpaa2_switch_port_blocking_event(struct notifier_block *nb,
 	return NOTIFY_DONE;
 }
 
-static int ethsw_register_notifier(struct device *dev)
+static int dpaa2_switch_register_notifier(struct device *dev)
 {
 	struct ethsw_core *ethsw = dev_get_drvdata(dev);
 	int err;
 
-	ethsw->port_nb.notifier_call = port_netdevice_event;
+	ethsw->port_nb.notifier_call = dpaa2_switch_port_netdevice_event;
 	err = register_netdevice_notifier(&ethsw->port_nb);
 	if (err) {
 		dev_err(dev, "Failed to register netdev notifier\n");
 		return err;
 	}
 
-	ethsw->port_switchdev_nb.notifier_call = port_switchdev_event;
+	ethsw->port_switchdev_nb.notifier_call = dpaa2_switch_port_event;
 	err = register_switchdev_notifier(&ethsw->port_switchdev_nb);
 	if (err) {
 		dev_err(dev, "Failed to register switchdev notifier\n");
 		goto err_switchdev_nb;
 	}
 
-	ethsw->port_switchdevb_nb.notifier_call = port_switchdev_blocking_event;
+	ethsw->port_switchdevb_nb.notifier_call = dpaa2_switch_port_blocking_event;
 	err = register_switchdev_blocking_notifier(&ethsw->port_switchdevb_nb);
 	if (err) {
 		dev_err(dev, "Failed to register switchdev blocking notifier\n");
@@ -1660,9 +1685,7 @@ static int dpaa2_switch_remove(struct fsl_mc_device *sw_dev)
 	dev = &sw_dev->dev;
 	ethsw = dev_get_drvdata(dev);
 
-	ethsw_teardown_irqs(sw_dev);
-
-	destroy_workqueue(ethsw->workqueue);
+	dpaa2_switch_teardown_irqs(sw_dev);
 
 	dpsw_disable(ethsw->mc_io, 0, ethsw->dpsw_handle);
 

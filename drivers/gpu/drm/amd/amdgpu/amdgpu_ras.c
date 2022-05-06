@@ -69,6 +69,34 @@ const char *ras_block_string[] = {
 /* inject address is 52 bits */
 #define	RAS_UMC_INJECT_ADDR_LIMIT	(0x1ULL << 52)
 
+/* typical ECC bad page rate(1 bad page per 100MB VRAM) */
+#define RAS_BAD_PAGE_RATE		(100 * 1024 * 1024ULL)
+
+enum amdgpu_ras_retire_page_reservation {
+	AMDGPU_RAS_RETIRE_PAGE_RESERVED,
+	AMDGPU_RAS_RETIRE_PAGE_PENDING,
+	AMDGPU_RAS_RETIRE_PAGE_FAULT,
+};
+
+atomic_t amdgpu_ras_in_intr = ATOMIC_INIT(0);
+
+static bool amdgpu_ras_check_bad_page(struct amdgpu_device *adev,
+				uint64_t addr);
+
+void amdgpu_ras_set_error_query_ready(struct amdgpu_device *adev, bool ready)
+{
+	if (adev && amdgpu_ras_get_context(adev))
+		amdgpu_ras_get_context(adev)->error_query_ready = ready;
+}
+
+static bool amdgpu_ras_get_error_query_ready(struct amdgpu_device *adev)
+{
+	if (adev && amdgpu_ras_get_context(adev))
+		return amdgpu_ras_get_context(adev)->error_query_ready;
+
+	return false;
+}
+
 static ssize_t amdgpu_ras_debugfs_read(struct file *f, char __user *buf,
 					size_t size, loff_t *pos)
 {
@@ -1541,7 +1569,29 @@ static void amdgpu_ras_do_recovery(struct work_struct *work)
 	struct amdgpu_device *adev = ras->adev;
 	struct list_head device_list, *device_list_handle =  NULL;
 
-	amdgpu_device_gpu_recover(ras->adev, 0);
+	if (!ras->disable_ras_err_cnt_harvest) {
+		struct amdgpu_hive_info *hive = amdgpu_get_xgmi_hive(adev);
+
+		/* Build list of devices to query RAS related errors */
+		if  (hive && adev->gmc.xgmi.num_physical_nodes > 1) {
+			device_list_handle = &hive->device_list;
+		} else {
+			INIT_LIST_HEAD(&device_list);
+			list_add_tail(&adev->gmc.xgmi.head, &device_list);
+			device_list_handle = &device_list;
+		}
+
+		list_for_each_entry(remote_adev,
+				device_list_handle, gmc.xgmi.head) {
+			amdgpu_ras_query_err_status(remote_adev);
+			amdgpu_ras_log_on_err_counter(remote_adev);
+		}
+
+		amdgpu_put_xgmi_hive(hive);
+	}
+
+	if (amdgpu_device_should_recover_gpu(ras->adev))
+		amdgpu_device_gpu_recover(ras->adev, NULL);
 	atomic_set(&ras->in_recovery, 0);
 }
 
@@ -1758,7 +1808,7 @@ int amdgpu_ras_reserve_bad_pages(struct amdgpu_device *adev)
 	struct ras_err_handler_data *data;
 	uint64_t bp;
 	struct amdgpu_bo *bo = NULL;
-	int i;
+	int i, ret = 0;
 
 	/* Not reserve bad page when amdgpu_bad_page_threshold == 0. */
 	if (!con || !con->eh_data || (amdgpu_bad_page_threshold == 0))
@@ -1770,12 +1820,7 @@ int amdgpu_ras_reserve_bad_pages(struct amdgpu_device *adev)
 		goto out;
 	/* reserve vram at driver post stage. */
 	for (i = data->last_reserved; i < data->count; i++) {
-		bp = data->bps[i].bp;
-
-		if (amdgpu_bo_create_kernel_at(adev, bp << PAGE_SHIFT, PAGE_SIZE,
-					       AMDGPU_GEM_DOMAIN_VRAM,
-					       &bo, NULL))
-			DRM_ERROR("RAS ERROR: reserve vram %llx fail\n", bp);
+		bp = data->bps[i].retired_page;
 
 		/* There are two cases of reserve error should be ignored:
 		 * 1) a ras bad page has been allocated (used by someone);

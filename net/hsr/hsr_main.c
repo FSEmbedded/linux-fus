@@ -151,6 +151,7 @@ static void __exit hsr_exit(void)
 {
 	hsr_netlink_exit();
 	hsr_debugfs_remove_root();
+	unregister_netdevice_notifier(&hsr_nb);
 }
 
 module_init(hsr_init);

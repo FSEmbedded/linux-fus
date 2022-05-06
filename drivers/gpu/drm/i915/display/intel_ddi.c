@@ -2102,7 +2102,7 @@ static void intel_ddi_get_power_domains(struct intel_encoder *encoder,
 			intel_crtc_has_type(crtc_state, INTEL_OUTPUT_DP_MST)))
 		return;
 
-	dig_port = enc_to_dig_port(&encoder->base);
+	dig_port = enc_to_dig_port(encoder);
 
 	if (!intel_phy_is_tc(dev_priv, phy) ||
 	    dig_port->tc_mode != TC_PORT_TBT_ALT)

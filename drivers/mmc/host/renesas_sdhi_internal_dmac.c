@@ -233,6 +233,9 @@ static bool renesas_sdhi_internal_dmac_complete(struct tmio_mmc_host *host)
 {
 	enum dma_data_direction dir;
 
+	if (!host->dma_on)
+		return false;
+
 	if (!host->data)
 		return false;
 
@@ -246,6 +249,8 @@ static bool renesas_sdhi_internal_dmac_complete(struct tmio_mmc_host *host)
 
 	if (dir == DMA_FROM_DEVICE)
 		clear_bit(SDHI_INTERNAL_DMAC_RX_IN_USE, &global_flags);
+
+	host->dma_on = false;
 
 	return true;
 }

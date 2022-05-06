@@ -40,7 +40,7 @@
 #define DPAA2_ETH_L2_MAX_FRM(mtu)	((mtu) + VLAN_ETH_HLEN)
 
 /* Set the taildrop threshold (in bytes) to allow the enqueue of a large
- * enuough number of jumbo frames in the Rx queues (length of the current
+ * enough number of jumbo frames in the Rx queues (length of the current
  * frame is not taken into account when making the taildrop decision)
  */
 #define DPAA2_ETH_FQ_TAILDROP_THRESH	(1024 * 1024)
@@ -441,8 +441,6 @@ struct dpaa2_eth_fq {
 
 struct dpaa2_eth_ch_xdp {
 	struct bpf_prog *prog;
-	u64 drop_bufs[DPAA2_ETH_BUFS_PER_CMD];
-	int drop_cnt;
 	unsigned int res;
 };
 
@@ -460,6 +458,10 @@ struct dpaa2_eth_channel {
 	struct dpaa2_eth_ch_xdp xdp;
 	struct xdp_rxq_info xdp_rxq;
 	struct list_head *rx_list;
+
+	/* Buffers to be recycled back in the buffer pool */
+	u64 recycled_bufs[DPAA2_ETH_BUFS_PER_CMD];
+	int recycled_bufs_cnt;
 };
 
 struct dpaa2_eth_dist_fields {
@@ -489,6 +491,8 @@ struct dpaa2_eth_trap_data {
 	struct dpaa2_eth_trap_item *trap_items_arr;
 	struct dpaa2_eth_priv *priv;
 };
+
+#define DPAA2_ETH_DEFAULT_COPYBREAK	512
 
 /* Driver private data */
 struct dpaa2_eth_priv {
@@ -554,9 +558,29 @@ struct dpaa2_eth_priv {
 #ifdef CONFIG_DEBUG_FS
 	struct dpaa2_debugfs dbg;
 #endif
-	struct dpni_tx_shaping_cfg shaping_cfg;
+
+	struct dpaa2_mac *mac;
+	struct workqueue_struct	*dpaa2_ptp_wq;
+	struct work_struct	tx_onestep_tstamp;
+	struct sk_buff_head	tx_skbs;
+	/* The one-step timestamping configuration on hardware
+	 * registers could only be done when no one-step
+	 * timestamping frames are in flight. So we use a mutex
+	 * lock here to make sure the lock is released by last
+	 * one-step timestamping packet through TX confirmation
+	 * queue before transmit current packet.
+	 */
+	struct mutex		onestep_tstamp_lock;
+	struct devlink *devlink;
+	struct dpaa2_eth_trap_data *trap_data;
+	struct devlink_port devlink_port;
 
 	bool ceetm_en;
+	u32 rx_copybreak;
+};
+
+struct dpaa2_eth_devlink_priv {
+	struct dpaa2_eth_priv *dpaa2_priv;
 };
 
 #define TX_TSTAMP		0x1
@@ -648,12 +672,7 @@ static inline bool dpaa2_eth_rx_pause_enabled(u64 link_options)
 	return !!(link_options & DPNI_LINK_OPT_PAUSE);
 }
 
-#define DPNI_LINK_AUTONEG_VER_MAJOR	7
-#define DPNI_LINK_AUTONEG_VER_MINOR	8
-
-static inline
-unsigned int dpaa2_eth_needed_headroom(struct dpaa2_eth_priv *priv,
-				       struct sk_buff *skb)
+static inline unsigned int dpaa2_eth_needed_headroom(struct sk_buff *skb)
 {
 	unsigned int headroom = DPAA2_ETH_SWA_SIZE;
 
@@ -687,6 +706,21 @@ static inline unsigned int dpaa2_eth_rx_head_room(struct dpaa2_eth_priv *priv)
 static inline int dpaa2_eth_ch_count(struct dpaa2_eth_priv *priv)
 {
 	return 1;
+}
+
+static inline bool dpaa2_eth_is_type_phy(struct dpaa2_eth_priv *priv)
+{
+	if (priv->mac &&
+	    (priv->mac->attr.link_type == DPMAC_LINK_TYPE_PHY ||
+	     priv->mac->attr.link_type == DPMAC_LINK_TYPE_BACKPLANE))
+		return true;
+
+	return false;
+}
+
+static inline bool dpaa2_eth_has_mac(struct dpaa2_eth_priv *priv)
+{
+	return priv->mac ? true : false;
 }
 
 int dpaa2_eth_set_hash(struct net_device *net_dev, u64 flags);

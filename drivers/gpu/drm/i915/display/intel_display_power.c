@@ -4760,20 +4760,28 @@ static void gen9_dbuf_disable(struct drm_i915_private *dev_priv)
 
 static void icl_mbus_init(struct drm_i915_private *dev_priv)
 {
-	u32 mask, val;
+	unsigned long abox_regs = INTEL_INFO(dev_priv)->abox_mask;
+	u32 mask, val, i;
 
 	mask = MBUS_ABOX_BT_CREDIT_POOL1_MASK |
 		MBUS_ABOX_BT_CREDIT_POOL2_MASK |
 		MBUS_ABOX_B_CREDIT_MASK |
 		MBUS_ABOX_BW_CREDIT_MASK;
-
-	val = I915_READ(MBUS_ABOX_CTL);
-	val &= ~mask;
-	val |= MBUS_ABOX_BT_CREDIT_POOL1(16) |
+	val = MBUS_ABOX_BT_CREDIT_POOL1(16) |
 		MBUS_ABOX_BT_CREDIT_POOL2(16) |
 		MBUS_ABOX_B_CREDIT(1) |
 		MBUS_ABOX_BW_CREDIT(1);
-	I915_WRITE(MBUS_ABOX_CTL, val);
+
+	/*
+	 * gen12 platforms that use abox1 and abox2 for pixel data reads still
+	 * expect us to program the abox_ctl0 register as well, even though
+	 * we don't have to program other instance-0 registers like BW_BUDDY.
+	 */
+	if (IS_GEN(dev_priv, 12))
+		abox_regs |= BIT(0);
+
+	for_each_set_bit(i, &abox_regs, sizeof(abox_regs))
+		intel_de_rmw(dev_priv, MBUS_ABOX_CTL(i), mask, val);
 }
 
 static void hsw_assert_cdclk(struct drm_i915_private *dev_priv)

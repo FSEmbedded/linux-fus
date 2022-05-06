@@ -251,18 +251,18 @@ int vt_waitactive(int n)
  */
 static int vt_kdsetmode(struct vc_data *vc, unsigned long mode)
 {
-	struct vc_data *vc = NULL;
-	int ret = 0;
-
-	console_lock();
-	if (vt_busy(vc_num))
-		ret = -EBUSY;
-	else if (vc_num)
-		vc = vc_deallocate(vc_num);
-	console_unlock();
-
-	if (vc && vc_num >= MIN_NR_CONSOLES)
-		tty_port_put(&vc->port);
+	switch (mode) {
+	case KD_GRAPHICS:
+		break;
+	case KD_TEXT0:
+	case KD_TEXT1:
+		mode = KD_TEXT;
+		fallthrough;
+	case KD_TEXT:
+		break;
+	default:
+		return -EINVAL;
+	}
 
 	if (vc->vc_mode == mode)
 		return 0;
@@ -271,40 +271,23 @@ static int vt_kdsetmode(struct vc_data *vc, unsigned long mode)
 	if (vc->vc_num != fg_console)
 		return 0;
 
-	console_lock();
-	for (i = 1; i < MAX_NR_CONSOLES; i++)
-		if (!vt_busy(i))
-			vc[i] = vc_deallocate(i);
-		else
-			vc[i] = NULL;
-	console_unlock();
+	/* explicitly blank/unblank the screen if switching modes */
+	if (mode == KD_TEXT)
+		do_unblank_screen(1);
+	else
+		do_blank_screen(1);
 
-	for (i = 1; i < MAX_NR_CONSOLES; i++) {
-		if (vc[i] && i >= MIN_NR_CONSOLES)
-			tty_port_put(&vc[i]->port);
-	}
+	return 0;
 }
 
 static int vt_k_ioctl(struct tty_struct *tty, unsigned int cmd,
 		unsigned long arg, bool perm)
 {
 	struct vc_data *vc = tty->driver_data;
-	struct console_font_op op;	/* used in multiple places here */
-	unsigned int console = vc->vc_num;
-	unsigned char ucval;
-	unsigned int uival;
 	void __user *up = (void __user *)arg;
-	int i, perm;
-	int ret = 0;
+	unsigned int console = vc->vc_num;
+	int ret;
 
-	/*
-	 * To have permissions to do most of the vt ioctls, we either have
-	 * to be the owner of the tty, or have CAP_SYS_TTY_CONFIG.
-	 */
-	perm = 0;
-	if (current->signal->tty == tty || capable(CAP_SYS_TTY_CONFIG))
-		perm = 1;
- 
 	switch (cmd) {
 	case KIOCSOUND:
 		if (!perm)
@@ -513,22 +496,430 @@ static inline int do_fontx_ioctl(struct vc_data *vc, int cmd,
 	if (copy_from_user(&cfdarg, user_cfd, sizeof(struct consolefontdesc)))
 		return -EFAULT;
 
-		if (put_user(fg_console + 1, &vtstat->v_active))
-			ret = -EFAULT;
-		else {
-			state = 1;	/* /dev/tty0 is always open */
-			console_lock(); /* required by vt_in_use() */
-			for (i = 0, mask = 2; i < MAX_NR_CONSOLES && mask;
-							++i, mask <<= 1)
-				if (vt_in_use(i))
-					state |= mask;
-			console_unlock();
-			ret = put_user(state, &vtstat->v_state);
-		}
-		break;
+	switch (cmd) {
+	case PIO_FONTX:
+		op->op = KD_FONT_OP_SET;
+		op->flags = KD_FONT_FLAG_OLD;
+		op->width = 8;
+		op->height = cfdarg.charheight;
+		op->charcount = cfdarg.charcount;
+		op->data = cfdarg.chardata;
+		return con_font_op(vc, op);
+
+	case GIO_FONTX:
+		op->op = KD_FONT_OP_GET;
+		op->flags = KD_FONT_FLAG_OLD;
+		op->width = 8;
+		op->height = cfdarg.charheight;
+		op->charcount = cfdarg.charcount;
+		op->data = cfdarg.chardata;
+		i = con_font_op(vc, op);
+		if (i)
+			return i;
+		cfdarg.charheight = op->height;
+		cfdarg.charcount = op->charcount;
+		if (copy_to_user(user_cfd, &cfdarg, sizeof(struct consolefontdesc)))
+			return -EFAULT;
+		return 0;
 	}
 	return -EINVAL;
 }
+
+static int vt_io_fontreset(struct vc_data *vc, struct console_font_op *op)
+{
+	int ret;
+
+	if (__is_defined(BROKEN_GRAPHICS_PROGRAMS)) {
+		/*
+		 * With BROKEN_GRAPHICS_PROGRAMS defined, the default font is
+		 * not saved.
+		 */
+		return -ENOSYS;
+	}
+
+	op->op = KD_FONT_OP_SET_DEFAULT;
+	op->data = NULL;
+	ret = con_font_op(vc, op);
+	if (ret)
+		return ret;
+
+	console_lock();
+	con_set_default_unimap(vc);
+	console_unlock();
+
+	return 0;
+}
+
+static inline int do_unimap_ioctl(int cmd, struct unimapdesc __user *user_ud,
+		bool perm, struct vc_data *vc)
+{
+	struct unimapdesc tmp;
+
+	if (copy_from_user(&tmp, user_ud, sizeof tmp))
+		return -EFAULT;
+	switch (cmd) {
+	case PIO_UNIMAP:
+		if (!perm)
+			return -EPERM;
+		return con_set_unimap(vc, tmp.entry_ct, tmp.entries);
+	case GIO_UNIMAP:
+		if (!perm && fg_console != vc->vc_num)
+			return -EPERM;
+		return con_get_unimap(vc, tmp.entry_ct, &(user_ud->entry_ct),
+				tmp.entries);
+	}
+	return 0;
+}
+
+static int vt_io_ioctl(struct vc_data *vc, unsigned int cmd, void __user *up,
+		bool perm)
+{
+	struct console_font_op op;	/* used in multiple places here */
+
+	switch (cmd) {
+	case PIO_FONT:
+		if (!perm)
+			return -EPERM;
+		op.op = KD_FONT_OP_SET;
+		op.flags = KD_FONT_FLAG_OLD | KD_FONT_FLAG_DONT_RECALC;	/* Compatibility */
+		op.width = 8;
+		op.height = 0;
+		op.charcount = 256;
+		op.data = up;
+		return con_font_op(vc, &op);
+
+	case GIO_FONT:
+		op.op = KD_FONT_OP_GET;
+		op.flags = KD_FONT_FLAG_OLD;
+		op.width = 8;
+		op.height = 32;
+		op.charcount = 256;
+		op.data = up;
+		return con_font_op(vc, &op);
+
+	case PIO_CMAP:
+                if (!perm)
+			return -EPERM;
+		return con_set_cmap(up);
+
+	case GIO_CMAP:
+                return con_get_cmap(up);
+
+	case PIO_FONTX:
+		if (!perm)
+			return -EPERM;
+
+		fallthrough;
+	case GIO_FONTX:
+		return do_fontx_ioctl(vc, cmd, up, &op);
+
+	case PIO_FONTRESET:
+		if (!perm)
+			return -EPERM;
+
+		return vt_io_fontreset(vc, &op);
+
+	case PIO_SCRNMAP:
+		if (!perm)
+			return -EPERM;
+		return con_set_trans_old(up);
+
+	case GIO_SCRNMAP:
+		return con_get_trans_old(up);
+
+	case PIO_UNISCRNMAP:
+		if (!perm)
+			return -EPERM;
+		return con_set_trans_new(up);
+
+	case GIO_UNISCRNMAP:
+		return con_get_trans_new(up);
+
+	case PIO_UNIMAPCLR:
+		if (!perm)
+			return -EPERM;
+		con_clear_unimap(vc);
+		break;
+
+	case PIO_UNIMAP:
+	case GIO_UNIMAP:
+		return do_unimap_ioctl(cmd, up, perm, vc);
+
+	default:
+		return -ENOIOCTLCMD;
+	}
+
+	return 0;
+}
+
+static int vt_reldisp(struct vc_data *vc, unsigned int swtch)
+{
+	int newvt, ret;
+
+	if (vc->vt_mode.mode != VT_PROCESS)
+		return -EINVAL;
+
+	/* Switched-to response */
+	if (vc->vt_newvt < 0) {
+		 /* If it's just an ACK, ignore it */
+		return swtch == VT_ACKACQ ? 0 : -EINVAL;
+	}
+
+	/* Switching-from response */
+	if (swtch == 0) {
+		/* Switch disallowed, so forget we were trying to do it. */
+		vc->vt_newvt = -1;
+		return 0;
+	}
+
+	/* The current vt has been released, so complete the switch. */
+	newvt = vc->vt_newvt;
+	vc->vt_newvt = -1;
+	ret = vc_allocate(newvt);
+	if (ret)
+		return ret;
+
+	/*
+	 * When we actually do the console switch, make sure we are atomic with
+	 * respect to other console switches..
+	 */
+	complete_change_console(vc_cons[newvt].d);
+
+	return 0;
+}
+
+static int vt_setactivate(struct vt_setactivate __user *sa)
+{
+	struct vt_setactivate vsa;
+	struct vc_data *nvc;
+	int ret;
+
+	if (copy_from_user(&vsa, sa, sizeof(vsa)))
+		return -EFAULT;
+	if (vsa.console == 0 || vsa.console > MAX_NR_CONSOLES)
+		return -ENXIO;
+
+	vsa.console = array_index_nospec(vsa.console, MAX_NR_CONSOLES + 1);
+	vsa.console--;
+	console_lock();
+	ret = vc_allocate(vsa.console);
+	if (ret) {
+		console_unlock();
+		return ret;
+	}
+
+	/*
+	 * This is safe providing we don't drop the console sem between
+	 * vc_allocate and finishing referencing nvc.
+	 */
+	nvc = vc_cons[vsa.console].d;
+	nvc->vt_mode = vsa.mode;
+	nvc->vt_mode.frsig = 0;
+	put_pid(nvc->vt_pid);
+	nvc->vt_pid = get_pid(task_pid(current));
+	console_unlock();
+
+	/* Commence switch and lock */
+	/* Review set_console locks */
+	set_console(vsa.console);
+
+	return 0;
+}
+
+/* deallocate a single console, if possible (leave 0) */
+static int vt_disallocate(unsigned int vc_num)
+{
+	struct vc_data *vc = NULL;
+	int ret = 0;
+
+	console_lock();
+	if (vt_busy(vc_num))
+		ret = -EBUSY;
+	else if (vc_num)
+		vc = vc_deallocate(vc_num);
+	console_unlock();
+
+	if (vc && vc_num >= MIN_NR_CONSOLES)
+		tty_port_put(&vc->port);
+
+	return ret;
+}
+
+/* deallocate all unused consoles, but leave 0 */
+static void vt_disallocate_all(void)
+{
+	struct vc_data *vc[MAX_NR_CONSOLES];
+	int i;
+
+	console_lock();
+	for (i = 1; i < MAX_NR_CONSOLES; i++)
+		if (!vt_busy(i))
+			vc[i] = vc_deallocate(i);
+		else
+			vc[i] = NULL;
+	console_unlock();
+
+	for (i = 1; i < MAX_NR_CONSOLES; i++) {
+		if (vc[i] && i >= MIN_NR_CONSOLES)
+			tty_port_put(&vc[i]->port);
+	}
+}
+
+static int vt_resizex(struct vc_data *vc, struct vt_consize __user *cs)
+{
+	struct vt_consize v;
+	int i;
+
+	if (copy_from_user(&v, cs, sizeof(struct vt_consize)))
+		return -EFAULT;
+
+	/* FIXME: Should check the copies properly */
+	if (!v.v_vlin)
+		v.v_vlin = vc->vc_scan_lines;
+
+	if (v.v_clin) {
+		int rows = v.v_vlin / v.v_clin;
+		if (v.v_rows != rows) {
+			if (v.v_rows) /* Parameters don't add up */
+				return -EINVAL;
+			v.v_rows = rows;
+		}
+	}
+
+	if (v.v_vcol && v.v_ccol) {
+		int cols = v.v_vcol / v.v_ccol;
+		if (v.v_cols != cols) {
+			if (v.v_cols)
+				return -EINVAL;
+			v.v_cols = cols;
+		}
+	}
+
+	if (v.v_clin > 32)
+		return -EINVAL;
+
+	for (i = 0; i < MAX_NR_CONSOLES; i++) {
+		struct vc_data *vcp;
+
+		if (!vc_cons[i].d)
+			continue;
+		console_lock();
+		vcp = vc_cons[i].d;
+		if (vcp) {
+			int ret;
+			int save_scan_lines = vcp->vc_scan_lines;
+			int save_cell_height = vcp->vc_cell_height;
+
+			if (v.v_vlin)
+				vcp->vc_scan_lines = v.v_vlin;
+			if (v.v_clin)
+				vcp->vc_cell_height = v.v_clin;
+			vcp->vc_resize_user = 1;
+			ret = vc_resize(vcp, v.v_cols, v.v_rows);
+			if (ret) {
+				vcp->vc_scan_lines = save_scan_lines;
+				vcp->vc_cell_height = save_cell_height;
+				console_unlock();
+				return ret;
+			}
+		}
+		console_unlock();
+	}
+
+	return 0;
+}
+
+/*
+ * We handle the console-specific ioctl's here.  We allow the
+ * capability to modify any console, not just the fg_console.
+ */
+int vt_ioctl(struct tty_struct *tty,
+	     unsigned int cmd, unsigned long arg)
+{
+	struct vc_data *vc = tty->driver_data;
+	void __user *up = (void __user *)arg;
+	int i, perm;
+	int ret;
+
+	/*
+	 * To have permissions to do most of the vt ioctls, we either have
+	 * to be the owner of the tty, or have CAP_SYS_TTY_CONFIG.
+	 */
+	perm = 0;
+	if (current->signal->tty == tty || capable(CAP_SYS_TTY_CONFIG))
+		perm = 1;
+
+	ret = vt_k_ioctl(tty, cmd, arg, perm);
+	if (ret != -ENOIOCTLCMD)
+		return ret;
+
+	ret = vt_io_ioctl(vc, cmd, up, perm);
+	if (ret != -ENOIOCTLCMD)
+		return ret;
+
+	switch (cmd) {
+	case TIOCLINUX:
+		return tioclinux(tty, arg);
+	case VT_SETMODE:
+	{
+		struct vt_mode tmp;
+
+		if (!perm)
+			return -EPERM;
+		if (copy_from_user(&tmp, up, sizeof(struct vt_mode)))
+			return -EFAULT;
+		if (tmp.mode != VT_AUTO && tmp.mode != VT_PROCESS)
+			return -EINVAL;
+
+		console_lock();
+		vc->vt_mode = tmp;
+		/* the frsig is ignored, so we set it to 0 */
+		vc->vt_mode.frsig = 0;
+		put_pid(vc->vt_pid);
+		vc->vt_pid = get_pid(task_pid(current));
+		/* no switch is required -- saw@shade.msu.ru */
+		vc->vt_newvt = -1;
+		console_unlock();
+		break;
+	}
+
+	case VT_GETMODE:
+	{
+		struct vt_mode tmp;
+		int rc;
+
+		console_lock();
+		memcpy(&tmp, &vc->vt_mode, sizeof(struct vt_mode));
+		console_unlock();
+
+		rc = copy_to_user(up, &tmp, sizeof(struct vt_mode));
+		if (rc)
+			return -EFAULT;
+		break;
+	}
+
+	/*
+	 * Returns global vt state. Note that VT 0 is always open, since
+	 * it's an alias for the current VT, and people can't use it here.
+	 * We cannot return state for more than 16 VTs, since v_state is short.
+	 */
+	case VT_GETSTATE:
+	{
+		struct vt_stat __user *vtstat = up;
+		unsigned short state, mask;
+
+		if (put_user(fg_console + 1, &vtstat->v_active))
+			return -EFAULT;
+
+		state = 1;	/* /dev/tty0 is always open */
+		console_lock(); /* required by vt_in_use() */
+		for (i = 0, mask = 2; i < MAX_NR_CONSOLES && mask;
+				++i, mask <<= 1)
+			if (vt_in_use(i))
+				state |= mask;
+		console_unlock();
+		return put_user(state, &vtstat->v_state);
+	}
 
 	/*
 	 * Returns the first available (non-opened) console.
@@ -539,8 +930,8 @@ static inline int do_fontx_ioctl(struct vc_data *vc, int cmd,
 			if (!vt_in_use(i))
 				break;
 		console_unlock();
-		uival = i < MAX_NR_CONSOLES ? (i+1) : -1;
-		goto setint;		 
+		i = i < MAX_NR_CONSOLES ? (i+1) : -1;
+		return put_user(i, (int __user *)arg);
 
 	/*
 	 * ioctl(fd, VT_ACTIVATE, num) will cause us to switch to vt # num,
@@ -623,89 +1014,6 @@ static inline int do_fontx_ioctl(struct vc_data *vc, int cmd,
 		if (get_user(ll, &vtsizes->v_rows) ||
 		    get_user(cc, &vtsizes->v_cols))
 			return -EFAULT;
-		/* FIXME: Should check the copies properly */
-		if (!v.v_vlin)
-			v.v_vlin = vc->vc_scan_lines;
-		if (v.v_clin) {
-			int rows = v.v_vlin/v.v_clin;
-			if (v.v_rows != rows) {
-				if (v.v_rows) /* Parameters don't add up */
-					return -EINVAL;
-				v.v_rows = rows;
-			}
-		}
-		if (v.v_vcol && v.v_ccol) {
-			int cols = v.v_vcol/v.v_ccol;
-			if (v.v_cols != cols) {
-				if (v.v_cols)
-					return -EINVAL;
-				v.v_cols = cols;
-			}
-		}
-
-		if (v.v_clin > 32)
-			return -EINVAL;
-
-		for (i = 0; i < MAX_NR_CONSOLES; i++) {
-			struct vc_data *vcp;
-
-			if (!vc_cons[i].d)
-				continue;
-			console_lock();
-			vcp = vc_cons[i].d;
-			if (vcp) {
-				int ret;
-				int save_scan_lines = vcp->vc_scan_lines;
-				int save_font_height = vcp->vc_font.height;
-
-				if (v.v_vlin)
-					vcp->vc_scan_lines = v.v_vlin;
-				if (v.v_clin)
-					vcp->vc_font.height = v.v_clin;
-				vcp->vc_resize_user = 1;
-				ret = vc_resize(vcp, v.v_cols, v.v_rows);
-				if (ret) {
-					vcp->vc_scan_lines = save_scan_lines;
-					vcp->vc_font.height = save_font_height;
-					console_unlock();
-					return ret;
-				}
-			}
-			console_unlock();
-		}
-		break;
-	}
-
-	case PIO_FONT: {
-		if (!perm)
-			return -EPERM;
-		op.op = KD_FONT_OP_SET;
-		op.flags = KD_FONT_FLAG_OLD | KD_FONT_FLAG_DONT_RECALC;	/* Compatibility */
-		op.width = 8;
-		op.height = 0;
-		op.charcount = 256;
-		op.data = up;
-		ret = con_font_op(vc_cons[fg_console].d, &op);
-		break;
-	}
-
-	case GIO_FONT: {
-		op.op = KD_FONT_OP_GET;
-		op.flags = KD_FONT_FLAG_OLD;
-		op.width = 8;
-		op.height = 32;
-		op.charcount = 256;
-		op.data = up;
-		ret = con_font_op(vc_cons[fg_console].d, &op);
-		break;
-	}
-
-	case PIO_CMAP:
-                if (!perm)
-			ret = -EPERM;
-		else
-	                ret = con_set_cmap(up);
-		break;
 
 		console_lock();
 		for (i = 0; i < MAX_NR_CONSOLES; i++) {

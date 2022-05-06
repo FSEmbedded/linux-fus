@@ -416,8 +416,6 @@ static const struct mvneta_statistic mvneta_statistics[] = {
 struct mvneta_stats {
 	u64	rx_packets;
 	u64	rx_bytes;
-	u64	rx_dropped;
-	u64	rx_errors;
 	u64	tx_packets;
 	u64	tx_bytes;
 	/* xdp */
@@ -782,12 +780,12 @@ mvneta_get_stats64(struct net_device *dev,
 		cpu_stats = per_cpu_ptr(pp->stats, cpu);
 		do {
 			start = u64_stats_fetch_begin_irq(&cpu_stats->syncp);
-			rx_packets = cpu_stats->rx_packets;
-			rx_bytes   = cpu_stats->rx_bytes;
+			rx_packets = cpu_stats->es.ps.rx_packets;
+			rx_bytes   = cpu_stats->es.ps.rx_bytes;
 			rx_dropped = cpu_stats->rx_dropped;
 			rx_errors  = cpu_stats->rx_errors;
-			tx_packets = cpu_stats->tx_packets;
-			tx_bytes   = cpu_stats->tx_bytes;
+			tx_packets = cpu_stats->es.ps.tx_packets;
+			tx_bytes   = cpu_stats->es.ps.tx_bytes;
 		} while (u64_stats_fetch_retry_irq(&cpu_stats->syncp, start));
 
 		stats->rx_packets += rx_packets;
@@ -2373,28 +2371,7 @@ static int mvneta_rx_swbm(struct napi_struct *napi,
 			/* Check errors only for FIRST descriptor */
 			if (rx_status & MVNETA_RXD_ERR_SUMMARY) {
 				mvneta_rx_error(pp, rx_desc);
-				/* leave the descriptor untouched */
-				continue;
-			}
-			rx_bytes = rx_desc->data_size -
-				   (ETH_FCS_LEN + MVNETA_MH_SIZE);
-
-			/* Allocate small skb for each new packet */
-			skb_size = max(rx_copybreak, rx_header_size);
-			rxq->skb = netdev_alloc_skb_ip_align(dev, skb_size);
-			if (unlikely(!rxq->skb)) {
-				struct mvneta_pcpu_stats *stats = this_cpu_ptr(pp->stats);
-
-				netdev_err(dev,
-					   "Can't allocate skb on queue %d\n",
-					   rxq->id);
-
-				rxq->skb_alloc_err++;
-
-				u64_stats_update_begin(&stats->syncp);
-				stats->rx_dropped++;
-				u64_stats_update_end(&stats->syncp);
-				continue;
+				goto next;
 			}
 
 			size = rx_desc->data_size;
@@ -5262,7 +5239,7 @@ static int mvneta_probe(struct platform_device *pdev)
 	err = mvneta_port_power_up(pp, pp->phy_interface);
 	if (err < 0) {
 		dev_err(&pdev->dev, "can't power up port\n");
-		return err;
+		goto err_netdev;
 	}
 
 	/* Armada3700 network controller does not support per-cpu

@@ -1258,7 +1258,7 @@ When kbuild executes, the following steps are followed (roughly):
 	In this example, extra-y is used to list object files that
 	shall be built, but shall not be linked as part of built-in.a.
 
-6.7 Commands useful for building a boot image
+7.7 Commands useful for building a boot image
 ---------------------------------------------
 
     Kbuild provides a few macros that are useful when building a

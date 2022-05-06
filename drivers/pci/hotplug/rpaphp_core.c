@@ -338,9 +338,6 @@ static int rpaphp_drc_info_add_slot(struct device_node *dn)
 	const __be32 *cur;
 	u32 count;
 	int retval = 0;
-	int i;
-	const __be32 *indexes, *names, *types, *power_domains;
-	char *name, *type;
 
 	info = of_find_property(dn, "ibm,drc-info", NULL);
 	if (!info)

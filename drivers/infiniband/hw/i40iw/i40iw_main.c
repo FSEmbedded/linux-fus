@@ -1217,10 +1217,10 @@ static void i40iw_add_ipv4_addr(struct i40iw_device *iwdev)
 		    (dev == iwdev->netdev)) && (READ_ONCE(dev->flags) & IFF_UP)) {
 			const struct in_ifaddr *ifa;
 
-			idev = in_dev_get(dev);
+			idev = __in_dev_get_rcu(dev);
 			if (!idev)
 				continue;
-			in_dev_for_each_ifa_rtnl(ifa, idev) {
+			in_dev_for_each_ifa_rcu(ifa, idev) {
 				i40iw_debug(&iwdev->sc_dev, I40IW_DEBUG_CM,
 					    "IP=%pI4, vlan_id=%d, MAC=%pM\n", &ifa->ifa_address,
 					     rdma_vlan_dev_vlan_id(dev), dev->dev_addr);

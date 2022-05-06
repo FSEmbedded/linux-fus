@@ -63,7 +63,7 @@ struct hashmap *hashmap__new(hashmap_hash_fn hash_fn,
 void hashmap__clear(struct hashmap *map)
 {
 	struct hashmap_entry *cur, *tmp;
-	int bkt;
+	size_t bkt;
 
 	hashmap__for_each_entry_safe(map, cur, tmp, bkt) {
 		free(cur);

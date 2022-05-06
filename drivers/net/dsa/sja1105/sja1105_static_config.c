@@ -146,9 +146,8 @@ static size_t sja1105et_general_params_entry_packing(void *buf, void *entry_ptr,
 /* TPID and TPID2 are intentionally reversed so that semantic
  * compatibility with E/T is kept.
  */
-static size_t
-sja1105pqrs_general_params_entry_packing(void *buf, void *entry_ptr,
-					 enum packing_op op)
+size_t sja1105pqrs_general_params_entry_packing(void *buf, void *entry_ptr,
+						enum packing_op op)
 {
 	const size_t size = SJA1105PQRS_SIZE_GENERAL_PARAMS_ENTRY;
 	struct sja1105_general_params_entry *entry = entry_ptr;

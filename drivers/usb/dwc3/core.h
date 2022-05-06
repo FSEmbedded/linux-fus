@@ -276,7 +276,6 @@
 #define DWC3_GUCTL1_PARKMODE_DISABLE_SS	BIT(17)
 #define DWC3_GUCTL1_TX_IPGAP_LINECHECK_DIS	BIT(28)
 #define DWC3_GUCTL1_DEV_L1_EXIT_BY_HW	BIT(24)
-#define DWC3_GUCTL1_PARKMODE_DISABLE_SS	BIT(17)
 
 /* Global Status Register */
 #define DWC3_GSTS_OTG_IP	BIT(10)
@@ -732,6 +731,9 @@ struct dwc3_ep {
 #define DWC3_EP_PENDING_REQUEST	BIT(5)
 #define DWC3_EP_DELAY_START	BIT(6)
 #define DWC3_EP_WAIT_TRANSFER_COMPLETE	BIT(7)
+#define DWC3_EP_IGNORE_NEXT_NOSTREAM	BIT(8)
+#define DWC3_EP_FORCE_RESTART_STREAM	BIT(9)
+#define DWC3_EP_FIRST_STREAM_PRIMED	BIT(10)
 #define DWC3_EP_PENDING_CLEAR_STALL	BIT(11)
 
 	/* This last one is specific to EP0 */
@@ -912,8 +914,6 @@ struct dwc3_hwparams {
  *	or unaligned OUT)
  * @direction: IN or OUT direction flag
  * @mapped: true when request has been dma-mapped
- * @skip_remain_trbs: true if a short packet received so the remain
-	chained trbs should be skipped.
  */
 struct dwc3_request {
 	struct usb_request	request;
@@ -939,10 +939,9 @@ struct dwc3_request {
 
 	unsigned int		num_trbs;
 
-	unsigned		needs_extra_trb:1;
-	unsigned		direction:1;
-	unsigned		mapped:1;
-	unsigned		skip_remain_trbs:1;
+	unsigned int		needs_extra_trb:1;
+	unsigned int		direction:1;
+	unsigned int		mapped:1;
 };
 
 /*
@@ -996,9 +995,10 @@ struct dwc3_platform_data {
  * @nr_scratch: number of scratch buffers
  * @u1u2: only used on revisions <1.83a for workaround
  * @maximum_speed: maximum speed requested (mainly for testing purposes)
- * @otg_caps: the OTG capabilities from hardware point
- * @revision: revision register contents
+ * @ip: controller's ID
+ * @revision: controller's version of an IP
  * @version_type: VERSIONTYPE register contents, a sub release of a revision
+ * @otg_caps: the OTG capabilities from hardware point
  * @dr_mode: requested mode of operation
  * @current_dr_role: current role of operation when in dual-role mode
  * @desired_dr_role: desired role of operation when in dual-role mode
@@ -1093,6 +1093,7 @@ struct dwc3_platform_data {
  * @dis_metastability_quirk: set to disable metastability quirk.
  * @host_vbus_glitches: set to avoid vbus glitch during
  *                      xhci reset.
+ * @dis_split_quirk: set to disable split boundary.
  * @imod_interval: set the interrupt moderation interval in 250ns
  *			increments or 0 to disable.
  */
@@ -1146,7 +1147,6 @@ struct dwc3 {
 	void __iomem		*regs;
 	size_t			regs_size;
 
-	struct usb_role_switch	*role_switch;
 	enum usb_dr_mode	dr_mode;
 	u32			current_dr_role;
 	u32			desired_dr_role;
@@ -1166,7 +1166,6 @@ struct dwc3 {
 	u32			u1u2;
 	u32			maximum_speed;
 	struct usb_otg_caps	otg_caps;
-	struct dwc3_priv_data	*priv_data;
 
 	u32			ip;
 
@@ -1199,6 +1198,7 @@ struct dwc3 {
 #define DWC3_REVISION_290A	0x5533290a
 #define DWC3_REVISION_300A	0x5533300a
 #define DWC3_REVISION_310A	0x5533310a
+#define DWC3_REVISION_330A	0x5533330a
 
 #define DWC31_REVISION_ANY	0x0
 #define DWC31_REVISION_110A	0x3131302a

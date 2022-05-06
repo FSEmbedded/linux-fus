@@ -203,6 +203,11 @@ struct mga_device {
 	struct drm_simple_display_pipe display_pipe;
 };
 
+static inline struct mga_device *to_mga_device(struct drm_device *dev)
+{
+	return container_of(dev, struct mga_device, base);
+}
+
 static inline enum mga_type
 mgag200_type_from_driver_data(kernel_ulong_t driver_data)
 {

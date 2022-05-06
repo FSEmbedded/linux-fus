@@ -1465,15 +1465,12 @@ void rpcrdma_reply_handler(struct rpcrdma_rep *rep)
 
 	if (credits == 0)
 		credits = 1;	/* don't deadlock */
-	else if (credits > buf->rb_max_requests)
-		credits = buf->rb_max_requests;
-	if (buf->rb_credits != credits) {
-		spin_lock(&xprt->transport_lock);
-		buf->rb_credits = credits;
-		xprt->cwnd = credits << RPC_CWNDSHIFT;
-		spin_unlock(&xprt->transport_lock);
-	}
-	rpcrdma_post_recvs(r_xprt, false);
+	else if (credits > r_xprt->rx_ep->re_max_requests)
+		credits = r_xprt->rx_ep->re_max_requests;
+	rpcrdma_post_recvs(r_xprt, credits + (buf->rb_bc_srv_max_requests << 1),
+			   false);
+	if (buf->rb_credits != credits)
+		rpcrdma_update_cwnd(r_xprt, credits);
 
 	req = rpcr_to_rdmar(rqst);
 	if (req->rl_reply) {

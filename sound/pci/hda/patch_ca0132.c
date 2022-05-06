@@ -4997,6 +4997,10 @@ static int ca0132_alt_select_in(struct hda_codec *codec)
 		case QUIRK_AE5:
 			ca0113_mmio_command_set(codec, 0x30, 0x28, 0x00);
 			tmp = FLOAT_THREE;
+			break;
+		case QUIRK_AE7:
+			ca0113_mmio_command_set(codec, 0x30, 0x28, 0x00);
+			tmp = FLOAT_THREE;
 			chipio_set_conn_rate(codec, MEM_CONNID_MICIN2,
 					SR_96_000);
 			chipio_set_conn_rate(codec, MEM_CONNID_MICOUT2,
@@ -5047,6 +5051,14 @@ static int ca0132_alt_select_in(struct hda_codec *codec)
 			break;
 		case QUIRK_AE5:
 			ca0113_mmio_command_set(codec, 0x30, 0x28, 0x00);
+			break;
+		case QUIRK_AE7:
+			ca0113_mmio_command_set(codec, 0x30, 0x28, 0x3f);
+			chipio_set_conn_rate(codec, MEM_CONNID_MICIN2,
+					SR_96_000);
+			chipio_set_conn_rate(codec, MEM_CONNID_MICOUT2,
+					SR_96_000);
+			dspio_set_uint_param(codec, 0x80, 0x01, FLOAT_ZERO);
 			break;
 		default:
 			break;
@@ -6168,6 +6180,16 @@ static int ca0132_switch_get(struct snd_kcontrol *kcontrol,
 
 	if (nid == ZXR_HEADPHONE_GAIN) {
 		*valp = spec->zxr_gain_set;
+		return 0;
+	}
+
+	if (nid == SPEAKER_FULL_RANGE_FRONT || nid == SPEAKER_FULL_RANGE_REAR) {
+		*valp = spec->speaker_range_val[nid - SPEAKER_FULL_RANGE_FRONT];
+		return 0;
+	}
+
+	if (nid == BASS_REDIRECTION) {
+		*valp = spec->bass_redirection_val;
 		return 0;
 	}
 

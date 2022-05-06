@@ -1116,19 +1116,8 @@ static void *_copy_key_from_user(void __user *ukey, size_t keylen)
 
 static void *_copy_apqns_from_user(void __user *uapqns, size_t nr_apqns)
 {
-	void *kapqns = NULL;
-	size_t nbytes;
-
-	if (uapqns && nr_apqns > 0) {
-		nbytes = nr_apqns * sizeof(struct pkey_apqn);
-		kapqns = kmalloc(nbytes, GFP_KERNEL);
-		if (!kapqns)
-			return ERR_PTR(-ENOMEM);
-		if (copy_from_user(kapqns, uapqns, nbytes)) {
-			kfree(kapqns);
-			return ERR_PTR(-EFAULT);
-		}
-	}
+	if (!uapqns || nr_apqns == 0)
+		return NULL;
 
 	return memdup_user(uapqns, nr_apqns * sizeof(struct pkey_apqn));
 }

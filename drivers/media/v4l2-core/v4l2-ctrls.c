@@ -3397,12 +3397,6 @@ static void v4l2_ctrl_request_queue(struct media_request_object *obj)
 	struct v4l2_ctrl_handler *hdl =
 		container_of(obj, struct v4l2_ctrl_handler, req_obj);
 	struct v4l2_ctrl_handler *main_hdl = obj->priv;
-	struct v4l2_ctrl_handler *prev_hdl = NULL;
-	struct v4l2_ctrl_ref *ref_ctrl, *ref_ctrl_prev = NULL;
-
-	mutex_lock(main_hdl->lock);
-	if (list_empty(&main_hdl->requests_queued))
-		goto queue;
 
 	mutex_lock(main_hdl->lock);
 	list_add_tail(&hdl->requests_queued, &main_hdl->requests_queued);
@@ -3418,7 +3412,6 @@ static void v4l2_ctrl_request_unbind(struct media_request_object *obj)
 
 	mutex_lock(main_hdl->lock);
 	list_del_init(&hdl->requests);
-	mutex_lock(main_hdl->lock);
 	if (hdl->request_is_queued) {
 		list_del_init(&hdl->requests_queued);
 		hdl->request_is_queued = false;

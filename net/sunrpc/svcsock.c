@@ -187,12 +187,6 @@ static int svc_sock_read_payload(struct svc_rqst *rqstp, unsigned int offset,
 	return 0;
 }
 
-static int svc_sock_read_payload(struct svc_rqst *rqstp, unsigned int offset,
-				 unsigned int length)
-{
-	return 0;
-}
-
 /*
  * Report socket names for nfsdfs
  */
@@ -579,10 +573,12 @@ static int svc_udp_sendto(struct svc_rqst *rqstp)
 
 	mutex_lock(&xprt->xpt_mutex);
 
-	svc_release_udp_skb(rqstp);
+	if (svc_xprt_is_dead(xprt))
+		goto out_notconn;
 
-	error = svc_sendto(rqstp, &rqstp->rq_res);
-	if (error == -ECONNREFUSED)
+	err = xprt_sock_sendmsg(svsk->sk_sock, &msg, xdr, 0, 0, &sent);
+	xdr_free_bvec(xdr);
+	if (err == -ECONNREFUSED) {
 		/* ICMP error on earlier request. */
 		err = xprt_sock_sendmsg(svsk->sk_sock, &msg, xdr, 0, 0, &sent);
 		xdr_free_bvec(xdr);
@@ -640,7 +636,7 @@ static const struct svc_xprt_ops svc_udp_ops = {
 	.xpo_recvfrom = svc_udp_recvfrom,
 	.xpo_sendto = svc_udp_sendto,
 	.xpo_read_payload = svc_sock_read_payload,
-	.xpo_release_rqst = svc_release_udp_skb,
+	.xpo_release_rqst = svc_udp_release_rqst,
 	.xpo_detach = svc_sock_detach,
 	.xpo_free = svc_sock_free,
 	.xpo_has_wspace = svc_udp_has_wspace,
@@ -1094,26 +1090,57 @@ static int svc_tcp_sendmsg(struct socket *sock, struct msghdr *msg,
 	};
 	int flags, ret;
 
-	svc_release_skb(rqstp);
+	*sentp = 0;
+	xdr_alloc_bvec(xdr, GFP_KERNEL);
 
-	/* Set up the first element of the reply kvec.
-	 * Any other kvecs that may be in use have been taken
-	 * care of by the server implementation itself.
-	 */
-	reclen = htonl(0x80000000|((xbufp->len ) - 4));
-	memcpy(xbufp->head[0].iov_base, &reclen, 4);
+	msg->msg_flags = MSG_MORE;
+	ret = kernel_sendmsg(sock, msg, &rm, 1, rm.iov_len);
+	if (ret < 0)
+		return ret;
+	*sentp += ret;
+	if (ret != rm.iov_len)
+		return -EAGAIN;
 
-	sent = svc_sendto(rqstp, &rqstp->rq_res);
-	if (sent != xbufp->len) {
-		printk(KERN_NOTICE
-		       "rpc-srv/tcp: %s: %s %d when sending %d bytes "
-		       "- shutting down socket\n",
-		       rqstp->rq_xprt->xpt_server->sv_name,
-		       (sent<0)?"got error":"sent only",
-		       sent, xbufp->len);
-		set_bit(XPT_CLOSE, &rqstp->rq_xprt->xpt_flags);
-		svc_xprt_enqueue(rqstp->rq_xprt);
-		sent = -EAGAIN;
+	flags = head->iov_len < xdr->len ? MSG_MORE | MSG_SENDPAGE_NOTLAST : 0;
+	ret = svc_tcp_send_kvec(sock, head, flags);
+	if (ret < 0)
+		return ret;
+	*sentp += ret;
+	if (ret != head->iov_len)
+		goto out;
+
+	if (xdr->page_len) {
+		unsigned int offset, len, remaining;
+		struct bio_vec *bvec;
+
+		bvec = xdr->bvec + (xdr->page_base >> PAGE_SHIFT);
+		offset = offset_in_page(xdr->page_base);
+		remaining = xdr->page_len;
+		flags = MSG_MORE | MSG_SENDPAGE_NOTLAST;
+		while (remaining > 0) {
+			if (remaining <= PAGE_SIZE && tail->iov_len == 0)
+				flags = 0;
+
+			len = min(remaining, bvec->bv_len - offset);
+			ret = kernel_sendpage(sock, bvec->bv_page,
+					      bvec->bv_offset + offset,
+					      len, flags);
+			if (ret < 0)
+				return ret;
+			*sentp += ret;
+			if (ret != len)
+				goto out;
+			remaining -= len;
+			offset = 0;
+			bvec++;
+		}
+	}
+
+	if (tail->iov_len) {
+		ret = svc_tcp_send_kvec(sock, tail, 0);
+		if (ret < 0)
+			return ret;
+		*sentp += ret;
 	}
 
 out:
@@ -1182,7 +1209,7 @@ static const struct svc_xprt_ops svc_tcp_ops = {
 	.xpo_recvfrom = svc_tcp_recvfrom,
 	.xpo_sendto = svc_tcp_sendto,
 	.xpo_read_payload = svc_sock_read_payload,
-	.xpo_release_rqst = svc_release_skb,
+	.xpo_release_rqst = svc_tcp_release_rqst,
 	.xpo_detach = svc_tcp_sock_detach,
 	.xpo_free = svc_sock_free,
 	.xpo_has_wspace = svc_tcp_has_wspace,

@@ -4,9 +4,4 @@
 
 #include <asm/vdso/clocksource.h>
 
-struct arch_clocksource_data {
-	/* Usable for direct VDSO access? */
-	enum vdso_arch_clockmode clock_mode;
-};
-
 #endif

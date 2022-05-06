@@ -15,8 +15,6 @@
 #define EXIT_NO_TEST		2
 #define EXIT_ERR_SETUP_INFRA	3
 
-#define EXIT_NO_TEST		2
-
 /* defined in test_progs.h */
 struct test_env env = {};
 
@@ -745,9 +743,6 @@ out:
 	free_str_set(&env.subtest_selector.whitelist);
 	free(env.subtest_selector.num_set);
 	close(env.saved_netns_fd);
-
-	if (env.succ_cnt + env.fail_cnt + env.skip_cnt == 0)
-		return EXIT_NO_TEST;
 
 	if (env.succ_cnt + env.fail_cnt + env.skip_cnt == 0)
 		return EXIT_NO_TEST;

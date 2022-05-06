@@ -897,7 +897,7 @@ static void btf_dump_emit_struct_def(struct btf_dump *d,
 
 	/* pad at the end, if necessary */
 	if (is_struct) {
-		align = packed ? 1 : btf_align_of(d->btf, id);
+		align = packed ? 1 : btf__align_of(d->btf, id);
 		btf_dump_emit_bit_padding(d, off, t->size * 8, 0, align,
 					  lvl + 1);
 	}

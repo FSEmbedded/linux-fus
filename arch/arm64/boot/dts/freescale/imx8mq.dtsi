@@ -284,11 +284,13 @@
 	};
 
 	soc@0 {
-		compatible = "simple-bus";
+		compatible = "fsl,imx8mq-soc", "simple-bus";
 		#address-cells = <1>;
 		#size-cells = <1>;
 		ranges = <0x0 0x0 0x0 0x3e000000>;
 		dma-ranges = <0x40000000 0x0 0x40000000 0xc0000000>;
+		nvmem-cells = <&imx8mq_uid>;
+		nvmem-cell-names = "soc_unique_id";
 
 		caam_sm: caam-sm@100000 {
 			compatible = "fsl,imx6q-caam-sm";
@@ -303,6 +305,7 @@
 			ranges = <0x30000000 0x30000000 0x400000>;
 
 			sai1: sai@30010000 {
+				#sound-dai-cells = <0>;
 				compatible = "fsl,imx8mq-sai",
 					     "fsl,imx6sx-sai";
 				reg = <0x30010000 0x10000>;
@@ -319,6 +322,7 @@
 			};
 
 			sai6: sai@30030000 {
+				#sound-dai-cells = <0>;
 				compatible = "fsl,imx8mq-sai",
 					     "fsl,imx6sx-sai";
 				reg = <0x30030000 0x10000>;
@@ -335,6 +339,7 @@
 			};
 
 			sai5: sai@30040000 {
+				#sound-dai-cells = <0>;
 				compatible = "fsl,imx8mq-sai",
 					     "fsl,imx6sx-sai";
 				reg = <0x30040000 0x10000>;
@@ -352,6 +357,7 @@
 			};
 
 			sai4: sai@30050000 {
+				#sound-dai-cells = <0>;
 				compatible = "fsl,imx8mq-sai",
 					     "fsl,imx6sx-sai";
 				reg = <0x30050000 0x10000>;
@@ -520,22 +526,30 @@
 				fsl,sdma-ram-script-name = "imx/sdma/sdma-imx7d.bin";
 			};
 
-			lcdif: lcdif@30320000 {
+			lcdif: lcd-controller@30320000 {
 				compatible = "fsl,imx8mq-lcdif", "fsl,imx28-lcdif";
 				reg = <0x30320000 0x10000>;
+				interrupts = <GIC_SPI 5 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&clk IMX8MQ_CLK_LCDIF_PIXEL>;
 				clock-names = "pix";
-				assigned-clocks = <&clk IMX8MQ_CLK_LCDIF_PIXEL>,
+				assigned-clocks = <&clk IMX8MQ_VIDEO_PLL1_REF_SEL>,
 						  <&clk IMX8MQ_VIDEO_PLL1_BYPASS>,
-						  <&clk IMX8MQ_VIDEO_PLL1_REF_SEL>;
-				assigned-clock-parents = <&clk IMX8MQ_VIDEO_PLL1_OUT>,
-							 <&clk IMX8MQ_VIDEO_PLL1>,
-							 <&clk IMX8MQ_CLK_27M>;
-				interrupts = <GIC_SPI 5 IRQ_TYPE_LEVEL_HIGH>;
+						  <&clk IMX8MQ_CLK_LCDIF_PIXEL>,
+						  <&clk IMX8MQ_VIDEO_PLL1>;
+				assigned-clock-parents = <&clk IMX8MQ_CLK_25M>,
+						  <&clk IMX8MQ_VIDEO_PLL1>,
+						  <&clk IMX8MQ_VIDEO_PLL1_OUT>;
+				assigned-clock-rates = <0>, <0>, <0>, <594000000>;
 				status = "disabled";
+
+				port@0 {
+					lcdif_mipi_dsi: endpoint {
+						remote-endpoint = <&mipi_dsi_lcdif_in>;
+					};
+				};
 			};
 
-			iomuxc: iomuxc@30330000 {
+			iomuxc: pinctrl@30330000 {
 				compatible = "fsl,imx8mq-iomuxc";
 				reg = <0x30330000 0x10000>;
 			};
@@ -558,6 +572,10 @@
 				clocks = <&clk IMX8MQ_CLK_OCOTP_ROOT>;
 				#address-cells = <1>;
 				#size-cells = <1>;
+
+				imx8mq_uid: soc-uid@410 {
+					reg = <0x4 0x8>;
+				};
 
 				cpu_speed_grade: speed-grade@10 {
 					reg = <0x10 4>;
@@ -609,7 +627,7 @@
 					regmap = <&snvs>;
 					interrupts = <GIC_SPI 4 IRQ_TYPE_LEVEL_HIGH>;
 					clocks = <&clk IMX8MQ_CLK_SNVS_ROOT>;
-					clock-names = "snvs";
+					clock-names = "snvs-pwrkey";
 					linux,keycode = <KEY_POWER>;
 					wakeup-source;
 					status = "disabled";
@@ -628,19 +646,22 @@
 				clock-names = "ckil", "osc_25m", "osc_27m",
 				              "clk_ext1", "clk_ext2",
 				              "clk_ext3", "clk_ext4";
-				assigned-clocks = <&clk IMX8MQ_CLK_NOC>,
+				assigned-clocks = <&clk IMX8MQ_CLK_A53_SRC>,
+						  <&clk IMX8MQ_CLK_A53_CORE>,
 						  <&clk IMX8MQ_CLK_NAND_USDHC_BUS>,
+						  <&clk IMX8MQ_CLK_NOC>,
 						  <&clk IMX8MQ_CLK_AUDIO_AHB>,
 						  <&clk IMX8MQ_AUDIO_PLL1>,
 						  <&clk IMX8MQ_AUDIO_PLL2>;
-				assigned-clock-parents = <&clk IMX8MQ_SYS1_PLL_800M>,
-							 <&clk IMX8MQ_SYS1_PLL_266M>,
-							 <&clk IMX8MQ_SYS2_PLL_500M>;
-				assigned-clock-rates = <800000000>,
-						       <0>,
-						       <0>,
+				assigned-clock-rates = <0>, <0>, <266000000>,
+						       <800000000>, <0>,
 						       <786432000>,
 						       <722534400>;
+				assigned-clock-parents = <&clk IMX8MQ_SYS1_PLL_800M>,
+							 <&clk IMX8MQ_ARM_PLL_OUT>,
+							 <0>,
+							 <&clk IMX8MQ_SYS1_PLL_800M>,
+							 <&clk IMX8MQ_SYS2_PLL_500M>;
 			};
 
 			src: reset-controller@30390000 {
@@ -947,6 +968,7 @@
 			};
 
 			sai3: sai@308c0000 {
+				#sound-dai-cells = <0>;
 				compatible = "fsl,imx8mq-sai",
 					     "fsl,imx6sx-sai";
 				reg = <0x308c0000 0x10000>;
@@ -998,14 +1020,20 @@
 					 <&clk IMX8MQ_CLK_DSI_AHB>,
 					 <&clk IMX8MQ_CLK_DSI_IPG_DIV>,
 					 <&clk IMX8MQ_CLK_DSI_PHY_REF>,
+					 <&clk IMX8MQ_VIDEO_PLL1>,
 					 <&clk IMX8MQ_CLK_LCDIF_PIXEL>;
-				clock-names = "core", "rx_esc", "tx_esc", "phy_ref", "lcdif";
-				assigned-clocks = <&clk IMX8MQ_CLK_DSI_AHB>,
+				clock-names = "core", "rx_esc", "tx_esc", "phy_ref", "video_pll", "lcdif";
+				assigned-clocks = <&clk IMX8MQ_CLK_DSI_PHY_REF>,
 						  <&clk IMX8MQ_CLK_DSI_CORE>,
+						  <&clk IMX8MQ_CLK_DSI_AHB>,
 						  <&clk IMX8MQ_CLK_DSI_IPG_DIV>;
-				assigned-clock-parents = <&clk IMX8MQ_SYS1_PLL_80M>,
-							 <&clk IMX8MQ_SYS1_PLL_266M>;
-				assigned-clock-rates = <80000000>, <266000000>, <20000000>;
+				assigned-clock-parents = <&clk IMX8MQ_VIDEO_PLL1_OUT>,
+							 <&clk IMX8MQ_SYS1_PLL_266M>,
+							 <&clk IMX8MQ_SYS1_PLL_80M>;
+				assigned-clock-rates = <27000000>,
+						       <266000000>,
+						       <80000000>,
+						       <20000000>;
 				interrupts = <GIC_SPI 34 IRQ_TYPE_LEVEL_HIGH>;
 				mux-controls = <&mux 0>;
 				power-domains = <&pgc_mipi>;
@@ -1044,47 +1072,6 @@
 				assigned-clock-rates = <24000000>;
 				#phy-cells = <0>;
 				power-domains = <&pgc_mipi>;
-				status = "disabled";
-			};
-
-			mipi_dsi: mipi_dsi@30a00000 {
-				#address-cells = <1>;
-				#size-cells = <0>;
-				compatible = "fsl,imx8mq-nwl-dsi";
-				reg = <0x30a00000 0x300>;
-				clocks = <&clk IMX8MQ_CLK_DSI_CORE>,
-					 <&clk IMX8MQ_CLK_DSI_AHB>,
-					 <&clk IMX8MQ_CLK_DSI_IPG_DIV>,
-					 <&clk IMX8MQ_CLK_DSI_PHY_REF>,
-					 <&clk IMX8MQ_VIDEO_PLL1>,
-					 <&clk IMX8MQ_CLK_LCDIF_PIXEL>;
-				clock-names = "core",
-					      "rx_esc",
-					      "tx_esc",
-					      "phy_ref",
-					      "video_pll",
-					      "lcdif";
-				assigned-clocks = <&clk IMX8MQ_CLK_DSI_PHY_REF>,
-						  <&clk IMX8MQ_CLK_DSI_CORE>,
-						  <&clk IMX8MQ_CLK_DSI_AHB>,
-						  <&clk IMX8MQ_CLK_DSI_IPG_DIV>;
-				assigned-clock-parents = <&clk IMX8MQ_VIDEO_PLL1_OUT>,
-							 <&clk IMX8MQ_SYS1_PLL_266M>,
-							 <&clk IMX8MQ_SYS1_PLL_80M>;
-				assigned-clock-rates = <27000000>,
-						       <266000000>,
-						       <80000000>,
-						       <20000000>;
-				interrupts = <GIC_SPI 34 IRQ_TYPE_LEVEL_HIGH>;
-				power-domains = <&pgc_mipi>;
-				resets = <&src IMX8MQ_RESET_MIPI_DSI_RESET_BYTE_N>,
-			                 <&src IMX8MQ_RESET_MIPI_DSI_DPI_RESET_N>,
-			                 <&src IMX8MQ_RESET_MIPI_DSI_ESC_RESET_N>,
-				         <&src IMX8MQ_RESET_MIPI_DSI_PCLK_RESET_N>;
-				reset-names = "byte", "dpi", "esc", "pclk";
-				mux-controls = <&mux 0>;
-				phys = <&dphy>;
-				phy-names = "dphy";
 				status = "disabled";
 			};
 
@@ -1170,7 +1157,7 @@
 				status = "disabled";
 			};
 
-			mu: mu@30aa0000 {
+			mu: mailbox@30aa0000 {
 				compatible = "fsl,imx8mq-mu", "fsl,imx6sx-mu";
 				reg = <0x30aa0000 0x10000>;
 				interrupts = <GIC_SPI 88 IRQ_TYPE_LEVEL_HIGH>;
@@ -1277,14 +1264,46 @@
 				         <&clk IMX8MQ_CLK_ENET_PHY_REF>;
 				clock-names = "ipg", "ahb", "ptp",
 				              "enet_clk_ref", "enet_out";
+				assigned-clocks = <&clk IMX8MQ_CLK_ENET_AXI>,
+						  <&clk IMX8MQ_CLK_ENET_TIMER>,
+						  <&clk IMX8MQ_CLK_ENET_REF>,
+						  <&clk IMX8MQ_CLK_ENET_PHY_REF>;
+				assigned-clock-parents = <&clk IMX8MQ_SYS1_PLL_266M>,
+							 <&clk IMX8MQ_SYS2_PLL_100M>,
+							 <&clk IMX8MQ_SYS2_PLL_125M>,
+							 <&clk IMX8MQ_SYS2_PLL_50M>;
+				assigned-clock-rates = <0>, <100000000>, <125000000>, <0>;
 				fsl,num-tx-queues = <3>;
 				fsl,num-rx-queues = <3>;
 				nvmem-cells = <&fec_mac_address>;
 				nvmem-cell-names = "mac-address";
 				nvmem_macaddr_swap;
-				stop-mode = <&iomuxc_gpr 0x10 3>;
+				fsl,stop-mode = <&iomuxc_gpr 0x10 3>;
 				fsl,wakeup_irq = <2>;
 				status = "disabled";
+			};
+		};
+
+		noc: interconnect@32700000 {
+			compatible = "fsl,imx8mq-noc", "fsl,imx8m-noc";
+			reg = <0x32700000 0x100000>;
+			clocks = <&clk IMX8MQ_CLK_NOC>;
+			fsl,ddrc = <&ddrc>;
+			#interconnect-cells = <1>;
+			operating-points-v2 = <&noc_opp_table>;
+
+			noc_opp_table: opp-table {
+				compatible = "operating-points-v2";
+
+				opp-133M {
+					opp-hz = /bits/ 64 <133333333>;
+				};
+				opp-400M {
+					opp-hz = /bits/ 64 <400000000>;
+				};
+				opp-800M {
+					opp-hz = /bits/ 64 <800000000>;
+				};
 			};
 		};
 
@@ -1321,7 +1340,7 @@
 				compatible = "nxp,imx8mq-dcss";
 				reg = <0x32e00000 0x2d000>, <0x32e2f000 0x1000>;
 				interrupts = <6>, <8>, <9>, <16>, <17>;
-				interrupt-names = "ctx_ld", "ctxld_kick", "vblank",
+				interrupt-names = "ctxld", "ctxld_kick", "vblank",
 								  "dtrc_ch1", "dtrc_ch2";
 				interrupt-parent = <&irqsteer>;
 				clocks = <&clk IMX8MQ_CLK_DISP_APB_ROOT>,
@@ -1389,6 +1408,8 @@
 			power-domains = <&pgc_otg1>;
 			usb3-resume-missing-cas;
 			snps,power-down-scale = <2>;
+			snps,parkmode-disable-ss-quirk;
+			snps,dis_rxdet_inp3_quirk;
 			status = "disabled";
 		};
 
@@ -1422,6 +1443,8 @@
 			power-domains = <&pgc_otg2>;
 			usb3-resume-missing-cas;
 			snps,power-down-scale = <2>;
+			snps,parkmode-disable-ss-quirk;
+			snps,dis_rxdet_inp3_quirk;
 			status = "disabled";
 		};
 
@@ -1488,6 +1511,7 @@
 			                <0 0 0 2 &gic GIC_SPI 124 IRQ_TYPE_LEVEL_HIGH>,
 			                <0 0 0 3 &gic GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>,
 			                <0 0 0 4 &gic GIC_SPI 122 IRQ_TYPE_LEVEL_HIGH>;
+			linux,pci-domain = <0>;
 			fsl,max-link-speed = <2>;
 			power-domains = <&pgc_pcie>;
 			resets = <&src IMX8MQ_RESET_PCIEPHY>,
@@ -1495,6 +1519,14 @@
 				 <&src IMX8MQ_RESET_PCIE_CTRL_APPS_CLK_REQ>,
 				 <&src IMX8MQ_RESET_PCIE_CTRL_APPS_TURNOFF>;
 			reset-names = "pciephy", "apps", "clkreq", "turnoff";
+			assigned-clocks = <&clk IMX8MQ_CLK_PCIE1_CTRL>,
+			                  <&clk IMX8MQ_CLK_PCIE1_PHY>,
+			                  <&clk IMX8MQ_CLK_PCIE1_AUX>;
+			assigned-clock-parents = <&clk IMX8MQ_SYS2_PLL_250M>,
+			                         <&clk IMX8MQ_SYS2_PLL_100M>,
+			                         <&clk IMX8MQ_SYS1_PLL_80M>;
+			assigned-clock-rates = <250000000>, <100000000>,
+			                       <10000000>;
 			status = "disabled";
 		};
 
@@ -1519,6 +1551,7 @@
 					<0 0 0 2 &gic GIC_SPI 76 IRQ_TYPE_LEVEL_HIGH>,
 					<0 0 0 3 &gic GIC_SPI 75 IRQ_TYPE_LEVEL_HIGH>,
 					<0 0 0 4 &gic GIC_SPI 74 IRQ_TYPE_LEVEL_HIGH>;
+			linux,pci-domain = <1>;
 			fsl,max-link-speed = <2>;
 			power-domains = <&pgc_pcie>;
 			resets = <&src IMX8MQ_RESET_PCIEPHY2>,
@@ -1526,6 +1559,14 @@
 				 <&src IMX8MQ_RESET_PCIE2_CTRL_APPS_CLK_REQ>,
 				 <&src IMX8MQ_RESET_PCIE2_CTRL_APPS_TURNOFF>;
 			reset-names = "pciephy", "apps", "clkreq", "turnoff";
+			assigned-clocks = <&clk IMX8MQ_CLK_PCIE2_CTRL>,
+			                  <&clk IMX8MQ_CLK_PCIE2_PHY>,
+			                  <&clk IMX8MQ_CLK_PCIE2_AUX>;
+			assigned-clock-parents = <&clk IMX8MQ_SYS2_PLL_250M>,
+			                         <&clk IMX8MQ_SYS2_PLL_100M>,
+			                         <&clk IMX8MQ_SYS1_PLL_80M>;
+			assigned-clock-rates = <250000000>, <100000000>,
+			                       <10000000>;
 			status = "disabled";
 		};
 
@@ -1592,6 +1633,11 @@
 			power-domains = <&pgc_vpu>;
 			status = "disabled";
 		};
+
+		vpu_v4l2: vpu_v4l2 {
+			compatible = "nxp,imx8m-vsiv4l2";
+			status = "disabled";
+		};
 	};
 
 	gpu3d: gpu3d@38000000 {
@@ -1615,20 +1661,6 @@
 				<&clk IMX8MQ_GPU_PLL_OUT>;
 		assigned-clock-rates = <800000000>, <800000000>, <800000000>, <800000000>;
 		power-domains = <&pgc_gpu>;
-		status = "disabled";
-	};
-
-	rpmsg: rpmsg{
-		compatible = "fsl,imx8mq-rpmsg";
-		/* up to now, the following channels are used in imx rpmsg
-		 * - tx1/rx1: messages channel.
-		 * - general interrupt1: remote proc finish re-init rpmsg stack
-		 *   when A core is partition reset.
-		 */
-		mbox-names = "tx", "rx", "rxdb";
-		mboxes = <&mu 0 1
-			  &mu 1 1
-			  &mu 3 1>;
 		status = "disabled";
 	};
 };

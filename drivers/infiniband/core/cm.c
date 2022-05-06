@@ -857,21 +857,43 @@ static struct cm_id_private *cm_alloc_id_priv(struct ib_device *device,
 	INIT_LIST_HEAD(&cm_id_priv->prim_list);
 	INIT_LIST_HEAD(&cm_id_priv->altr_list);
 	atomic_set(&cm_id_priv->work_count, -1);
-	atomic_set(&cm_id_priv->refcount, 1);
+	refcount_set(&cm_id_priv->refcount, 1);
 
-	ret = xa_alloc_cyclic_irq(&cm.local_id_table, &id, NULL, xa_limit_32b,
-				  &cm.local_id_next, GFP_KERNEL);
+	ret = xa_alloc_cyclic(&cm.local_id_table, &id, NULL, xa_limit_32b,
+			      &cm.local_id_next, GFP_KERNEL);
 	if (ret < 0)
 		goto error;
 	cm_id_priv->id.local_id = (__force __be32)id ^ cm.random_id_operand;
-	xa_store_irq(&cm.local_id_table, cm_local_id(cm_id_priv->id.local_id),
-		     cm_id_priv, GFP_KERNEL);
 
-	return &cm_id_priv->id;
+	return cm_id_priv;
 
 error:
 	kfree(cm_id_priv);
 	return ERR_PTR(ret);
+}
+
+/*
+ * Make the ID visible to the MAD handlers and other threads that use the
+ * xarray.
+ */
+static void cm_finalize_id(struct cm_id_private *cm_id_priv)
+{
+	xa_store(&cm.local_id_table, cm_local_id(cm_id_priv->id.local_id),
+		 cm_id_priv, GFP_ATOMIC);
+}
+
+struct ib_cm_id *ib_create_cm_id(struct ib_device *device,
+				 ib_cm_handler cm_handler,
+				 void *context)
+{
+	struct cm_id_private *cm_id_priv;
+
+	cm_id_priv = cm_alloc_id_priv(device, cm_handler, context);
+	if (IS_ERR(cm_id_priv))
+		return ERR_CAST(cm_id_priv);
+
+	cm_finalize_id(cm_id_priv);
+	return &cm_id_priv->id;
 }
 EXPORT_SYMBOL(ib_create_cm_id);
 
@@ -1127,11 +1149,10 @@ retest:
 	}
 	WARN_ON(cm_id->state != IB_CM_IDLE);
 
-	spin_lock_irq(&cm_id_priv->lock);
 	spin_lock(&cm.lock);
 	/* Required for cleanup paths related cm_req_handler() */
 	if (cm_id_priv->timewait_info) {
-		cm_cleanup_timewait(cm_id_priv->timewait_info);
+		cm_remove_remote(cm_id_priv);
 		kfree(cm_id_priv->timewait_info);
 		cm_id_priv->timewait_info = NULL;
 	}
@@ -1141,6 +1162,10 @@ retest:
 	if (!list_empty(&cm_id_priv->prim_list) &&
 	    (!cm_id_priv->prim_send_port_not_ready))
 		list_del(&cm_id_priv->prim_list);
+	WARN_ON(cm_id_priv->listen_sharecount);
+	WARN_ON(!RB_EMPTY_NODE(&cm_id_priv->service_node));
+	if (!RB_EMPTY_NODE(&cm_id_priv->sidr_id_node))
+		rb_erase(&cm_id_priv->sidr_id_node, &cm.remote_sidr_table);
 	spin_unlock(&cm.lock);
 	spin_unlock_irq(&cm_id_priv->lock);
 
@@ -1258,14 +1283,12 @@ struct ib_cm_id *ib_cm_insert_listen(struct ib_device *device,
 	if (err)
 		return ERR_PTR(err);
 
-	/* Find an existing ID */
-	cm_id_priv = cm_find_listen(device, service_id);
-	if (cm_id_priv) {
-		if (cm_id->cm_handler != cm_handler || cm_id->context) {
-			/* Sharing an ib_cm_id with different handlers is not
-			 * supported */
-			spin_unlock_irqrestore(&cm.lock, flags);
-			ib_destroy_cm_id(cm_id);
+	spin_lock_irq(&cm_id_priv->lock);
+	listen_id_priv = cm_insert_listen(cm_id_priv, cm_handler);
+	if (listen_id_priv != cm_id_priv) {
+		spin_unlock_irq(&cm_id_priv->lock);
+		ib_destroy_cm_id(&cm_id_priv->id);
+		if (!listen_id_priv)
 			return ERR_PTR(-EINVAL);
 		return &listen_id_priv->id;
 	}

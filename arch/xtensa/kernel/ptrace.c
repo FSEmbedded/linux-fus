@@ -556,7 +556,8 @@ int do_syscall_trace_enter(struct pt_regs *regs)
 		return 0;
 	}
 
-	if (regs->syscall == NO_SYSCALL) {
+	if (regs->syscall == NO_SYSCALL ||
+	    secure_computing() == -1) {
 		do_syscall_trace_leave(regs);
 		return 0;
 	}
@@ -564,6 +565,9 @@ int do_syscall_trace_enter(struct pt_regs *regs)
 	if (test_thread_flag(TIF_SYSCALL_TRACEPOINT))
 		trace_sys_enter(regs, syscall_get_nr(current, regs));
 
+	audit_syscall_entry(regs->syscall, regs->areg[6],
+			    regs->areg[3], regs->areg[4],
+			    regs->areg[5]);
 	return 1;
 }
 

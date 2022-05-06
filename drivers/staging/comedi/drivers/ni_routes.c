@@ -67,7 +67,15 @@ static const u8 *ni_find_route_values(const char *device_family)
 	return rv;
 }
 
-	/* Second, find the set of routes valid for this device. */
+/*
+ * Find the valid routes for a board.
+ */
+static const struct ni_device_routes *
+ni_find_valid_routes(const char *board_name)
+{
+	const struct ni_device_routes *dr = NULL;
+	int i;
+
 	for (i = 0; ni_device_routes_list[i]; ++i) {
 		if (memcmp(ni_device_routes_list[i]->device, board_name,
 			   strnlen(board_name, 30)) == 0) {
@@ -77,6 +85,29 @@ static const u8 *ni_find_route_values(const char *device_family)
 	}
 	return dr;
 }
+
+/*
+ * Find the proper route_values and ni_device_routes tables for this particular
+ * device.  Possibly try an alternate board name if device routes not found
+ * for the actual board name.
+ *
+ * Return: -ENODATA if either was not found; 0 if both were found.
+ */
+static int ni_find_device_routes(const char *device_family,
+				 const char *board_name,
+				 const char *alt_board_name,
+				 struct ni_route_tables *tables)
+{
+	const struct ni_device_routes *dr;
+	const u8 *rv;
+
+	/* First, find the register_values table for this device family */
+	rv = ni_find_route_values(device_family);
+
+	/* Second, find the set of routes valid for this device. */
+	dr = ni_find_valid_routes(board_name);
+	if (!dr && alt_board_name)
+		dr = ni_find_valid_routes(alt_board_name);
 
 	tables->route_values = rv;
 	tables->valid_routes = dr;

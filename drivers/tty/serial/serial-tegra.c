@@ -659,8 +659,7 @@ static void tegra_uart_handle_rx_pio(struct tegra_uart_port *tup,
 		if (tup->uport.ignore_status_mask & UART_LSR_DR)
 			continue;
 
-		if (tty)
-			tty_insert_flip_char(tty, ch, flag);
+		tty_insert_flip_char(port, ch, flag);
 	} while (1);
 }
 

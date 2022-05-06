@@ -680,7 +680,7 @@ try_again:
 	/*
 	 * Allocate card structure.
 	 */
-	card = mmc_alloc_card(host, NULL);
+	card = mmc_alloc_card(host, &sdio_type);
 	if (IS_ERR(card))
 		return PTR_ERR(card);
 

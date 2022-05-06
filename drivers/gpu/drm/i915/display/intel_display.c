@@ -18674,8 +18674,8 @@ static void intel_early_display_was(struct drm_i915_private *dev_priv)
 	 * Also known as Wa_14010480278.
 	 */
 	if (IS_GEN_RANGE(dev_priv, 10, 12) || IS_GEMINILAKE(dev_priv))
-		I915_WRITE(GEN9_CLKGATE_DIS_0, I915_READ(GEN9_CLKGATE_DIS_0) |
-			   DARBF_GATING_DIS);
+		intel_de_write(dev_priv, GEN9_CLKGATE_DIS_0,
+			       intel_de_read(dev_priv, GEN9_CLKGATE_DIS_0) | DARBF_GATING_DIS);
 
 	if (IS_HASWELL(dev_priv)) {
 		/*

@@ -661,10 +661,6 @@ struct mips_cdmm_device_id {
 /*
  * MODULE_DEVICE_TABLE expects this struct to be called x86cpu_device_id.
  * Although gcc seems to ignore this error, clang fails without this define.
- *
- * Note: The ordering of the struct is different from upstream because the
- * static initializers in kernels < 5.7 still use C89 style while upstream
- * has been converted to proper C99 initializers.
  */
 #define x86cpu_device_id x86_cpu_id
 struct x86_cpu_id {
@@ -674,7 +670,6 @@ struct x86_cpu_id {
 	__u16 steppings;
 	__u16 feature;	/* bit index */
 	kernel_ulong_t driver_data;
-	__u16 steppings;
 };
 
 /* Wild cards for x86_cpu_id::vendor, family, model and feature */
@@ -830,19 +825,17 @@ struct wmi_device_id {
 	const void *context;
 };
 
-/* vop */
-struct vop_device_id {
-	__u32 device;
-	__u32 vendor;
-};
-#define VOP_DEV_ANY_ID	0xffffffff
+#define MHI_DEVICE_MODALIAS_FMT "mhi:%s"
+#define MHI_NAME_SIZE 32
 
-/* cosm */
-#define COSM_NAME_SIZE			32
-#define COSM_MODULE_PREFIX	"cosm:"
-
-struct cosm_device_id {
-	char name[COSM_NAME_SIZE];
+/**
+ * struct mhi_device_id - MHI device identification
+ * @chan: MHI channel name
+ * @driver_data: driver data;
+ */
+struct mhi_device_id {
+	const char chan[MHI_NAME_SIZE];
+	kernel_ulong_t driver_data;
 };
 
 #endif /* LINUX_MOD_DEVICETABLE_H */

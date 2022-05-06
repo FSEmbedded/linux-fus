@@ -3971,15 +3971,6 @@ static int at91ether_open(struct net_device *dev)
 	if (ret)
 		goto pm_exit;
 
-	/* Enable MAC interrupts */
-	macb_writel(lp, IER, MACB_BIT(RCOMP)	|
-			     MACB_BIT(RXUBR)	|
-			     MACB_BIT(ISR_TUND)	|
-			     MACB_BIT(ISR_RLE)	|
-			     MACB_BIT(TCOMP)	|
-			     MACB_BIT(ISR_ROVR)	|
-			     MACB_BIT(HRESP));
-
 	ret = macb_phylink_connect(lp);
 	if (ret)
 		goto stop;
@@ -3988,6 +3979,8 @@ static int at91ether_open(struct net_device *dev)
 
 	return 0;
 
+stop:
+	at91ether_stop(lp);
 pm_exit:
 	pm_runtime_put_sync(&lp->pdev->dev);
 	return ret;

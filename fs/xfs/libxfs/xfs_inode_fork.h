@@ -23,6 +23,8 @@ struct xfs_ifork {
 	} if_u1;
 	short			if_broot_bytes;	/* bytes allocated for root */
 	unsigned char		if_flags;	/* per-fork flags */
+	int8_t			if_format;	/* format of this fork */
+	xfs_extnum_t		if_nextents;	/* # of extents in this fork */
 };
 
 /*
@@ -84,7 +86,7 @@ int		xfs_iformat_data_fork(struct xfs_inode *, struct xfs_dinode *);
 int		xfs_iformat_attr_fork(struct xfs_inode *, struct xfs_dinode *);
 void		xfs_iflush_fork(struct xfs_inode *, struct xfs_dinode *,
 				struct xfs_inode_log_item *, int);
-void		xfs_idestroy_fork(struct xfs_inode *, int);
+void		xfs_idestroy_fork(struct xfs_ifork *ifp);
 void		xfs_idata_realloc(struct xfs_inode *ip, int64_t byte_diff,
 				int whichfork);
 void		xfs_iroot_realloc(struct xfs_inode *, int, int);

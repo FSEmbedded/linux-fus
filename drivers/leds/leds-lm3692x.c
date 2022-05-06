@@ -394,14 +394,37 @@ static int lm3692x_probe_dt(struct lm3692x_led *led)
 	led->regulator = devm_regulator_get_optional(&led->client->dev, "vled");
 	if (IS_ERR(led->regulator)) {
 		ret = PTR_ERR(led->regulator);
-		if (ret != -ENODEV) {
-			if (ret != -EPROBE_DEFER)
-				dev_err(&led->client->dev,
-					"Failed to get vled regulator: %d\n",
-					ret);
-			return ret;
-		}
+		if (ret != -ENODEV)
+			return dev_err_probe(&led->client->dev, ret,
+					     "Failed to get vled regulator\n");
+
 		led->regulator = NULL;
+	}
+
+	led->boost_ctrl = LM3692X_BOOST_SW_1MHZ |
+		LM3692X_BOOST_SW_NO_SHIFT |
+		LM3692X_OCP_PROT_1_5A;
+	ret = device_property_read_u32(&led->client->dev,
+				       "ti,ovp-microvolt", &ovp);
+	if (ret) {
+		led->boost_ctrl |= LM3692X_OVP_29V;
+	} else {
+		switch (ovp) {
+		case 17000000:
+			break;
+		case 21000000:
+			led->boost_ctrl |= LM3692X_OVP_21V;
+			break;
+		case 25000000:
+			led->boost_ctrl |= LM3692X_OVP_25V;
+			break;
+		case 29000000:
+			led->boost_ctrl |= LM3692X_OVP_29V;
+			break;
+		default:
+			dev_err(&led->client->dev, "Invalid OVP %d\n", ovp);
+			return -EINVAL;
+		}
 	}
 
 	child = device_get_next_child_node(&led->client->dev, child);

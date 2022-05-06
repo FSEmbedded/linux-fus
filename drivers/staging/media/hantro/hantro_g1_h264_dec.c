@@ -59,9 +59,8 @@ static void set_params(struct hantro_ctx *ctx)
 	reg = G1_REG_DEC_CTRL2_CH_QP_OFFSET(pps->chroma_qp_index_offset) |
 	      G1_REG_DEC_CTRL2_CH_QP_OFFSET2(pps->second_chroma_qp_index_offset);
 
-	/* always use the matrix sent from userspace */
-	reg |= G1_REG_DEC_CTRL2_TYPE1_QUANT_E;
-
+	if (pps->flags & V4L2_H264_PPS_FLAG_SCALING_MATRIX_PRESENT)
+		reg |= G1_REG_DEC_CTRL2_TYPE1_QUANT_E;
 	if (!(sps->flags & V4L2_H264_SPS_FLAG_FRAME_MBS_ONLY))
 		reg |= G1_REG_DEC_CTRL2_FIELDPIC_FLAG_E;
 	vdpu_write_relaxed(vpu, reg, G1_REG_DEC_CTRL2);
@@ -251,14 +250,23 @@ static void set_buffers(struct hantro_ctx *ctx)
 
 	/* Higher profiles require DMV buffer appended to reference frames. */
 	if (ctrls->sps->profile_idc > 66 && ctrls->decode->nal_ref_idc) {
-		size_t pic_size = ctx->h264_dec.pic_size;
-		size_t mv_offset = round_up(pic_size, 8);
+		unsigned int bytes_per_mb = 384;
 
-		if (ctrls->slices[0].flags & V4L2_H264_SLICE_FLAG_BOTTOM_FIELD)
-			mv_offset += 32 * H264_MB_WIDTH(ctx->dst_fmt.width);
+		/* DMV buffer for monochrome start directly after Y-plane */
+		if (ctrls->sps->profile_idc >= 100 &&
+		    ctrls->sps->chroma_format_idc == 0)
+			bytes_per_mb = 256;
+		offset = bytes_per_mb * MB_WIDTH(ctx->src_fmt.width) *
+			 MB_HEIGHT(ctx->src_fmt.height);
 
-		vdpu_write_relaxed(vpu, dst_dma + mv_offset,
-				   G1_REG_ADDR_DIR_MV);
+		/*
+		 * DMV buffer is split in two for field encoded frames,
+		 * adjust offset for bottom field
+		 */
+		if (ctrls->decode->flags & V4L2_H264_DECODE_PARAM_FLAG_BOTTOM_FIELD)
+			offset += 32 * MB_WIDTH(ctx->src_fmt.width) *
+				  MB_HEIGHT(ctx->src_fmt.height);
+		vdpu_write_relaxed(vpu, dst_dma + offset, G1_REG_ADDR_DIR_MV);
 	}
 
 	/* Auxiliary buffer prepared in hantro_g1_h264_dec_prepare_table(). */

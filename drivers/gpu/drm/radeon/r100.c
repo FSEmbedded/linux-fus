@@ -1825,7 +1825,7 @@ static int r100_packet0_check(struct radeon_cs_parser *p,
 		if (idx_value & RADEON_TXFORMAT_NON_POWER2) {
 			track->textures[i].use_pitch = true;
 		} else {
-			track->textures[i].use_pitch = 0;
+			track->textures[i].use_pitch = false;
 			track->textures[i].width = 1 << ((idx_value & RADEON_TXFORMAT_WIDTH_MASK) >> RADEON_TXFORMAT_WIDTH_SHIFT);
 			track->textures[i].height = 1 << ((idx_value & RADEON_TXFORMAT_HEIGHT_MASK) >> RADEON_TXFORMAT_HEIGHT_SHIFT);
 		}

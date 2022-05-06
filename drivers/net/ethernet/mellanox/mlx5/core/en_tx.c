@@ -91,7 +91,7 @@ u16 mlx5e_select_queue(struct net_device *dev, struct sk_buff *skb,
 	 */
 	ch_ix = priv->txq2sq[txq_ix]->ch_ix;
 
-	return priv->channel_tc2realtxq[txq_ix][up];
+	return priv->channel_tc2realtxq[ch_ix][up];
 }
 
 static inline int mlx5e_skb_l2_header_offset(struct sk_buff *skb)
@@ -849,8 +849,6 @@ void mlx5e_free_txqsq_descs(struct mlx5e_txqsq *sq)
 	struct mlx5e_tx_wqe_info *wi;
 	u32 dma_fifo_cc, nbytes = 0;
 	u16 ci, sqcc, npkts = 0;
-	struct sk_buff *skb;
-	int i;
 
 	sqcc = sq->cc;
 	dma_fifo_cc = sq->dma_fifo_cc;
@@ -880,11 +878,6 @@ void mlx5e_free_txqsq_descs(struct mlx5e_txqsq *sq)
 			npkts += wi->num_fifo_pkts;
 			nbytes += wi->num_bytes;
 		}
-
-		dev_kfree_skb_any(skb);
-		npkts++;
-		nbytes += wi->num_bytes;
-		sqcc += wi->num_wqebbs;
 	}
 
 	sq->dma_fifo_cc = dma_fifo_cc;

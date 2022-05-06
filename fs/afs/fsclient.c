@@ -124,7 +124,7 @@ advance:
 
 bad:
 	xdr_dump_bad(*_bp);
-	afs_protocol_error(call, -EBADMSG, afs_eproto_bad_status);
+	afs_protocol_error(call, afs_eproto_bad_status);
 	goto advance;
 }
 
@@ -247,9 +247,9 @@ static int afs_deliver_fs_fetch_status(struct afs_call *call)
 
 	/* unmarshall the reply once we've received all of it */
 	bp = call->buffer;
-	xdr_decode_AFSFetchStatus(&bp, call, call->out_scb);
-	xdr_decode_AFSCallBack(&bp, call, call->out_scb);
-	xdr_decode_AFSVolSync(&bp, call->out_volsync);
+	xdr_decode_AFSFetchStatus(&bp, call, &vp->scb);
+	xdr_decode_AFSCallBack(&bp, call, &vp->scb);
+	xdr_decode_AFSVolSync(&bp, &op->volsync);
 
 	_leave(" = 0 [done]");
 	return 0;
@@ -397,9 +397,9 @@ static int afs_deliver_fs_fetch_data(struct afs_call *call)
 			return ret;
 
 		bp = call->buffer;
-		xdr_decode_AFSFetchStatus(&bp, call, call->out_scb);
-		xdr_decode_AFSCallBack(&bp, call, call->out_scb);
-		xdr_decode_AFSVolSync(&bp, call->out_volsync);
+		xdr_decode_AFSFetchStatus(&bp, call, &vp->scb);
+		xdr_decode_AFSCallBack(&bp, call, &vp->scb);
+		xdr_decode_AFSVolSync(&bp, &op->volsync);
 
 		req->data_version = vp->scb.status.data_version;
 		req->file_size = vp->scb.status.size;
@@ -524,11 +524,11 @@ static int afs_deliver_fs_create_vnode(struct afs_call *call)
 
 	/* unmarshall the reply once we've received all of it */
 	bp = call->buffer;
-	xdr_decode_AFSFid(&bp, call->out_fid);
-	xdr_decode_AFSFetchStatus(&bp, call, call->out_scb);
-	xdr_decode_AFSFetchStatus(&bp, call, call->out_dir_scb);
-	xdr_decode_AFSCallBack(&bp, call, call->out_scb);
-	xdr_decode_AFSVolSync(&bp, call->out_volsync);
+	xdr_decode_AFSFid(&bp, &op->file[1].fid);
+	xdr_decode_AFSFetchStatus(&bp, call, &vp->scb);
+	xdr_decode_AFSFetchStatus(&bp, call, &dvp->scb);
+	xdr_decode_AFSCallBack(&bp, call, &vp->scb);
+	xdr_decode_AFSVolSync(&bp, &op->volsync);
 
 	_leave(" = 0 [done]");
 	return 0;
@@ -659,8 +659,8 @@ static int afs_deliver_fs_file_status_and_vol(struct afs_call *call)
 
 	/* unmarshall the reply once we've received all of it */
 	bp = call->buffer;
-	xdr_decode_AFSFetchStatus(&bp, call, call->out_dir_scb);
-	xdr_decode_AFSVolSync(&bp, call->out_volsync);
+	xdr_decode_AFSFetchStatus(&bp, call, &vp->scb);
+	xdr_decode_AFSVolSync(&bp, &op->volsync);
 
 	_leave(" = 0 [done]");
 	return 0;
@@ -782,9 +782,9 @@ static int afs_deliver_fs_link(struct afs_call *call)
 
 	/* unmarshall the reply once we've received all of it */
 	bp = call->buffer;
-	xdr_decode_AFSFetchStatus(&bp, call, call->out_scb);
-	xdr_decode_AFSFetchStatus(&bp, call, call->out_dir_scb);
-	xdr_decode_AFSVolSync(&bp, call->out_volsync);
+	xdr_decode_AFSFetchStatus(&bp, call, &vp->scb);
+	xdr_decode_AFSFetchStatus(&bp, call, &dvp->scb);
+	xdr_decode_AFSVolSync(&bp, &op->volsync);
 
 	_leave(" = 0 [done]");
 	return 0;
@@ -862,10 +862,10 @@ static int afs_deliver_fs_symlink(struct afs_call *call)
 
 	/* unmarshall the reply once we've received all of it */
 	bp = call->buffer;
-	xdr_decode_AFSFid(&bp, call->out_fid);
-	xdr_decode_AFSFetchStatus(&bp, call, call->out_scb);
-	xdr_decode_AFSFetchStatus(&bp, call, call->out_dir_scb);
-	xdr_decode_AFSVolSync(&bp, call->out_volsync);
+	xdr_decode_AFSFid(&bp, &vp->fid);
+	xdr_decode_AFSFetchStatus(&bp, call, &vp->scb);
+	xdr_decode_AFSFetchStatus(&bp, call, &dvp->scb);
+	xdr_decode_AFSVolSync(&bp, &op->volsync);
 
 	_leave(" = 0 [done]");
 	return 0;
@@ -957,9 +957,9 @@ static int afs_deliver_fs_rename(struct afs_call *call)
 	/* If the two dirs are the same, we have two copies of the same status
 	 * report, so we just decode it twice.
 	 */
-	xdr_decode_AFSFetchStatus(&bp, call, call->out_dir_scb);
-	xdr_decode_AFSFetchStatus(&bp, call, call->out_scb);
-	xdr_decode_AFSVolSync(&bp, call->out_volsync);
+	xdr_decode_AFSFetchStatus(&bp, call, &orig_dvp->scb);
+	xdr_decode_AFSFetchStatus(&bp, call, &new_dvp->scb);
+	xdr_decode_AFSVolSync(&bp, &op->volsync);
 
 	_leave(" = 0 [done]");
 	return 0;
@@ -1052,8 +1052,8 @@ static int afs_deliver_fs_store_data(struct afs_call *call)
 
 	/* unmarshall the reply once we've received all of it */
 	bp = call->buffer;
-	xdr_decode_AFSFetchStatus(&bp, call, call->out_scb);
-	xdr_decode_AFSVolSync(&bp, call->out_volsync);
+	xdr_decode_AFSFetchStatus(&bp, call, &vp->scb);
+	xdr_decode_AFSVolSync(&bp, &op->volsync);
 
 	_leave(" = 0 [done]");
 	return 0;
@@ -1175,35 +1175,9 @@ void afs_fs_store_data(struct afs_operation *op)
 	*bp++ = 0; /* unix mode */
 	*bp++ = 0; /* segment size */
 
-	*bp++ = htonl(pos);
-	*bp++ = htonl(size);
-	*bp++ = htonl(i_size);
-
-	afs_use_fs_server(call, fc->cbi);
-	trace_afs_make_fs_call(call, &vnode->fid);
-	afs_set_fc_call(call, fc);
-	afs_make_call(&fc->ac, call, GFP_NOFS);
-	return afs_wait_for_call_to_complete(call, &fc->ac);
-}
-
-/*
- * deliver reply data to an FS.StoreStatus
- */
-static int afs_deliver_fs_store_status(struct afs_call *call)
-{
-	const __be32 *bp;
-	int ret;
-
-	_enter("");
-
-	ret = afs_transfer_reply(call);
-	if (ret < 0)
-		return ret;
-
-	/* unmarshall the reply once we've received all of it */
-	bp = call->buffer;
-	xdr_decode_AFSFetchStatus(&bp, call, call->out_scb);
-	xdr_decode_AFSVolSync(&bp, call->out_volsync);
+	*bp++ = htonl(lower_32_bits(pos));
+	*bp++ = htonl(lower_32_bits(size));
+	*bp++ = htonl(lower_32_bits(i_size));
 
 	trace_afs_make_fs_call(call, &vp->fid);
 	afs_make_op_call(op, call, GFP_NOFS);
@@ -1781,82 +1755,8 @@ bool afs_fs_get_capabilities(struct afs_net *net, struct afs_server *server,
 
 	trace_afs_make_fs_call(call, NULL);
 	afs_make_call(ac, call, GFP_NOFS);
-	return call;
-}
-
-/*
- * Deliver reply data to an FS.FetchStatus with no vnode.
- */
-static int afs_deliver_fs_fetch_status(struct afs_call *call)
-{
-	const __be32 *bp;
-	int ret;
-
-	ret = afs_transfer_reply(call);
-	if (ret < 0)
-		return ret;
-
-	/* unmarshall the reply once we've received all of it */
-	bp = call->buffer;
-	xdr_decode_AFSFetchStatus(&bp, call, call->out_scb);
-	xdr_decode_AFSCallBack(&bp, call, call->out_scb);
-	xdr_decode_AFSVolSync(&bp, call->out_volsync);
-
-	_leave(" = 0 [done]");
-	return 0;
-}
-
-/*
- * FS.FetchStatus operation type
- */
-static const struct afs_call_type afs_RXFSFetchStatus = {
-	.name		= "FS.FetchStatus",
-	.op		= afs_FS_FetchStatus,
-	.deliver	= afs_deliver_fs_fetch_status,
-	.destructor	= afs_flat_call_destructor,
-};
-
-/*
- * Fetch the status information for a fid without needing a vnode handle.
- */
-int afs_fs_fetch_status(struct afs_fs_cursor *fc,
-			struct afs_net *net,
-			struct afs_fid *fid,
-			struct afs_status_cb *scb,
-			struct afs_volsync *volsync)
-{
-	struct afs_call *call;
-	__be32 *bp;
-
-	if (test_bit(AFS_SERVER_FL_IS_YFS, &fc->cbi->server->flags))
-		return yfs_fs_fetch_status(fc, net, fid, scb, volsync);
-
-	_enter(",%x,{%llx:%llu},,",
-	       key_serial(fc->key), fid->vid, fid->vnode);
-
-	call = afs_alloc_flat_call(net, &afs_RXFSFetchStatus, 16, (21 + 3 + 6) * 4);
-	if (!call) {
-		fc->ac.error = -ENOMEM;
-		return -ENOMEM;
-	}
-
-	call->key = fc->key;
-	call->out_fid = fid;
-	call->out_scb = scb;
-	call->out_volsync = volsync;
-
-	/* marshall the parameters */
-	bp = call->request;
-	bp[0] = htonl(FSFETCHSTATUS);
-	bp[1] = htonl(fid->vid);
-	bp[2] = htonl(fid->vnode);
-	bp[3] = htonl(fid->unique);
-
-	afs_use_fs_server(call, fc->cbi);
-	trace_afs_make_fs_call(call, fid);
-	afs_set_fc_call(call, fc);
-	afs_make_call(&fc->ac, call, GFP_NOFS);
-	return afs_wait_for_call_to_complete(call, &fc->ac);
+	afs_put_call(call);
+	return true;
 }
 
 /*
@@ -1915,8 +1815,8 @@ static int afs_deliver_fs_inline_bulk_status(struct afs_call *call)
 		}
 
 		bp = call->buffer;
-		scb = &call->out_scb[call->count];
 		xdr_decode_AFSFetchStatus(&bp, call, scb);
+
 		call->count++;
 		if (call->count < op->nr_files)
 			goto more_counts;
@@ -2111,8 +2011,8 @@ static int afs_deliver_fs_fetch_acl(struct afs_call *call)
 			return ret;
 
 		bp = call->buffer;
-		xdr_decode_AFSFetchStatus(&bp, call, call->out_scb);
-		xdr_decode_AFSVolSync(&bp, call->out_volsync);
+		xdr_decode_AFSFetchStatus(&bp, call, &vp->scb);
+		xdr_decode_AFSVolSync(&bp, &op->volsync);
 
 		call->unmarshall++;
 
@@ -2156,16 +2056,8 @@ void afs_fs_fetch_acl(struct afs_operation *op)
 	bp[2] = htonl(vp->fid.vnode);
 	bp[3] = htonl(vp->fid.unique);
 
-	ret = afs_transfer_reply(call);
-	if (ret < 0)
-		return ret;
-
-	bp = call->buffer;
-	xdr_decode_AFSFetchStatus(&bp, call, call->out_scb);
-	xdr_decode_AFSVolSync(&bp, call->out_volsync);
-
-	_leave(" = 0 [done]");
-	return 0;
+	trace_afs_make_fs_call(call, &vp->fid);
+	afs_make_op_call(op, call, GFP_KERNEL);
 }
 
 /*

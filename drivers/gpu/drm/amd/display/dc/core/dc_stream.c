@@ -450,12 +450,17 @@ bool dc_stream_add_writeback(struct dc *dc,
 			return false;
 		}
 
-		if (dwb->funcs->is_enabled(dwb)) {
-			/* writeback pipe already enabled, only need to update */
-			dc->hwss.update_writeback(dc, stream_status, wb_info, dc->current_state);
-		} else {
-			/* Enable writeback pipe from scratch*/
-			dc->hwss.enable_writeback(dc, stream_status, wb_info, dc->current_state);
+		/* enable writeback */
+		if (dc->hwss.enable_writeback) {
+			struct dwbc *dwb = dc->res_pool->dwbc[wb_info->dwb_pipe_inst];
+
+			if (dwb->funcs->is_enabled(dwb)) {
+				/* writeback pipe already enabled, only need to update */
+				dc->hwss.update_writeback(dc, wb_info, dc->current_state);
+			} else {
+				/* Enable writeback pipe from scratch*/
+				dc->hwss.enable_writeback(dc, wb_info, dc->current_state);
+			}
 		}
 	}
 	return true;

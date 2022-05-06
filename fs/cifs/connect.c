@@ -336,58 +336,11 @@ static inline int reconn_set_ipaddr(struct TCP_Server_Info *server)
 #endif
 
 #ifdef CONFIG_CIFS_DFS_UPCALL
-struct super_cb_data {
-	struct TCP_Server_Info *server;
-	struct super_block *sb;
-};
-
 /* These functions must be called with server->srv_mutex held */
-
-static void super_cb(struct super_block *sb, void *arg)
-{
-	struct super_cb_data *d = arg;
-	struct cifs_sb_info *cifs_sb;
-	struct cifs_tcon *tcon;
-
-	if (d->sb)
-		return;
-
-	cifs_sb = CIFS_SB(sb);
-	tcon = cifs_sb_master_tcon(cifs_sb);
-	if (tcon->ses->server == d->server)
-		d->sb = sb;
-}
-
-static struct super_block *get_tcp_super(struct TCP_Server_Info *server)
-{
-	struct super_cb_data d = {
-		.server = server,
-		.sb = NULL,
-	};
-
-	iterate_supers_type(&cifs_fs_type, super_cb, &d);
-
-	if (unlikely(!d.sb))
-		return ERR_PTR(-ENOENT);
-	/*
-	 * Grab an active reference in order to prevent automounts (DFS links)
-	 * of expiring and then freeing up our cifs superblock pointer while
-	 * we're doing failover.
-	 */
-	cifs_sb_active(d.sb);
-	return d.sb;
-}
-
-static inline void put_tcp_super(struct super_block *sb)
-{
-	if (!IS_ERR_OR_NULL(sb))
-		cifs_sb_deactive(sb);
-}
-
-static void reconn_inval_dfs_target(struct TCP_Server_Info *server,
-				    struct cifs_sb_info *cifs_sb,
-				    struct dfs_cache_tgt_list *tgt_list,
-				    struct dfs_cache_tgt_iterator **tgt_it)
+static void reconn_set_next_dfs_target(struct TCP_Server_Info *server,
+				       struct cifs_sb_info *cifs_sb,
+				       struct dfs_cache_tgt_list *tgt_list,
+				       struct dfs_cache_tgt_iterator **tgt_it)
 {
 	const char *name;
 
@@ -453,7 +406,7 @@ cifs_reconnect(struct TCP_Server_Info *server)
 	server->nr_targets = 1;
 #ifdef CONFIG_CIFS_DFS_UPCALL
 	spin_unlock(&GlobalMid_Lock);
-	sb = get_tcp_super(server);
+	sb = cifs_get_tcp_super(server);
 	if (IS_ERR(sb)) {
 		rc = PTR_ERR(sb);
 		cifs_dbg(FYI, "%s: will not do DFS failover: rc = %d\n",
@@ -461,11 +414,13 @@ cifs_reconnect(struct TCP_Server_Info *server)
 		sb = NULL;
 	} else {
 		cifs_sb = CIFS_SB(sb);
-
-		rc = reconn_setup_dfs_targets(cifs_sb, &tgt_list, &tgt_it);
-		if (rc && (rc != -EOPNOTSUPP)) {
-			cifs_server_dbg(VFS, "%s: no target servers for DFS failover\n",
-				 __func__);
+		rc = reconn_setup_dfs_targets(cifs_sb, &tgt_list);
+		if (rc) {
+			cifs_sb = NULL;
+			if (rc != -EOPNOTSUPP) {
+				cifs_server_dbg(VFS, "%s: no target servers for DFS failover\n",
+						__func__);
+			}
 		} else {
 			server->nr_targets = dfs_cache_get_nr_tgts(&tgt_list);
 		}
@@ -480,8 +435,9 @@ cifs_reconnect(struct TCP_Server_Info *server)
 		spin_unlock(&GlobalMid_Lock);
 #ifdef CONFIG_CIFS_DFS_UPCALL
 		dfs_cache_free_tgts(&tgt_list);
-		put_tcp_super(sb);
+		cifs_put_tcp_super(sb);
 #endif
+		wake_up(&server->response_q);
 		return rc;
 	} else
 		server->tcpStatus = CifsNeedReconnect;
@@ -567,7 +523,7 @@ cifs_reconnect(struct TCP_Server_Info *server)
 		 * feature is disabled, then we will retry last server we
 		 * connected to before.
 		 */
-		reconn_inval_dfs_target(server, cifs_sb, &tgt_list, &tgt_it);
+		reconn_set_next_dfs_target(server, cifs_sb, &tgt_list, &tgt_it);
 #endif
 		rc = reconn_set_ipaddr(server);
 		if (rc) {
@@ -611,7 +567,7 @@ cifs_reconnect(struct TCP_Server_Info *server)
 
 	}
 
-	put_tcp_super(sb);
+	cifs_put_tcp_super(sb);
 #endif
 	if (server->tcpStatus == CifsNeedNegotiate)
 		mod_delayed_work(cifsiod_wq, &server->echo, 0);
@@ -4590,15 +4546,94 @@ static int is_path_remote(struct cifs_sb_info *cifs_sb, struct smb_vol *vol,
 }
 
 #ifdef CONFIG_CIFS_DFS_UPCALL
-static inline void set_root_tcon(struct cifs_sb_info *cifs_sb,
-				 struct cifs_tcon *tcon,
-				 struct cifs_tcon **root)
+static void set_root_ses(struct cifs_sb_info *cifs_sb, struct cifs_ses *ses,
+			 struct cifs_ses **root_ses)
 {
-	spin_lock(&cifs_tcp_ses_lock);
-	tcon->tc_count++;
-	tcon->remap = cifs_remap(cifs_sb);
-	spin_unlock(&cifs_tcp_ses_lock);
-	*root = tcon;
+	if (ses) {
+		spin_lock(&cifs_tcp_ses_lock);
+		ses->ses_count++;
+		if (ses->tcon_ipc)
+			ses->tcon_ipc->remap = cifs_remap(cifs_sb);
+		spin_unlock(&cifs_tcp_ses_lock);
+	}
+	*root_ses = ses;
+}
+
+static void put_root_ses(struct cifs_ses *ses)
+{
+	if (ses)
+		cifs_put_smb_ses(ses);
+}
+
+/* Check if a path component is remote and then update @dfs_path accordingly */
+static int check_dfs_prepath(struct cifs_sb_info *cifs_sb, struct smb_vol *vol,
+			     const unsigned int xid, struct TCP_Server_Info *server,
+			     struct cifs_tcon *tcon, char **dfs_path)
+{
+	char *path, *s;
+	char sep = CIFS_DIR_SEP(cifs_sb), tmp;
+	char *npath;
+	int rc = 0;
+	int added_treename = tcon->Flags & SMB_SHARE_IS_IN_DFS;
+	int skip = added_treename;
+
+	path = cifs_build_path_to_root(vol, cifs_sb, tcon, added_treename);
+	if (!path)
+		return -ENOMEM;
+
+	/*
+	 * Walk through the path components in @path and check if they're accessible. In case any of
+	 * the components is -EREMOTE, then update @dfs_path with the next DFS referral request path
+	 * (NOT including the remaining components).
+	 */
+	s = path;
+	do {
+		/* skip separators */
+		while (*s && *s == sep)
+			s++;
+		if (!*s)
+			break;
+		/* next separator */
+		while (*s && *s != sep)
+			s++;
+		/*
+		 * if the treename is added, we then have to skip the first
+		 * part within the separators
+		 */
+		if (skip) {
+			skip = 0;
+			continue;
+		}
+		tmp = *s;
+		*s = 0;
+		rc = server->ops->is_path_accessible(xid, tcon, cifs_sb, path);
+		if (rc && rc == -EREMOTE) {
+			struct smb_vol v = {NULL};
+			/* if @path contains a tree name, skip it in the prefix path */
+			if (added_treename) {
+				rc = cifs_parse_devname(path, &v);
+				if (rc)
+					break;
+				rc = -EREMOTE;
+				npath = build_unc_path_to_root(&v, cifs_sb, true);
+				cifs_cleanup_volume_info_contents(&v);
+			} else {
+				v.UNC = vol->UNC;
+				v.prepath = path + 1;
+				npath = build_unc_path_to_root(&v, cifs_sb, true);
+			}
+			if (IS_ERR(npath)) {
+				rc = PTR_ERR(npath);
+				break;
+			}
+			kfree(*dfs_path);
+			*dfs_path = npath;
+		}
+		*s = tmp;
+	} while (rc == 0);
+
+	kfree(path);
+	return rc;
 }
 
 int cifs_mount(struct cifs_sb_info *cifs_sb, struct smb_vol *vol)
@@ -4646,30 +4681,6 @@ int cifs_mount(struct cifs_sb_info *cifs_sb, struct smb_vol *vol)
 		ref_path = NULL;
 		goto error;
 	}
-	/* Cache out resolved root server */
-	(void)dfs_cache_find(xid, ses, cifs_sb->local_nls, cifs_remap(cifs_sb),
-			     root_path + 1, NULL, NULL);
-	kfree(root_path);
-	root_path = NULL;
-
-	set_root_tcon(cifs_sb, tcon, &root_tcon);
-
-	for (count = 1; ;) {
-		if (!rc && tcon) {
-			rc = is_path_remote(cifs_sb, vol, xid, server, tcon);
-			if (!rc || rc != -EREMOTE)
-				break;
-		}
-		/*
-		 * BB: when we implement proper loop detection,
-		 *     we will remove this check. But now we need it
-		 *     to prevent an indefinite loop if 'DFS tree' is
-		 *     misconfigured (i.e. has loops).
-		 */
-		if (count++ > MAX_NESTED_LINKS) {
-			rc = -ELOOP;
-			break;
-		}
 
 	set_root_ses(cifs_sb, ses, &root_ses);
 	do {
@@ -4689,17 +4700,7 @@ int cifs_mount(struct cifs_sb_info *cifs_sb, struct smb_vol *vol)
 		/* Connect to new DFS target only if we were redirected */
 		if (oldmnt != cifs_sb->mountdata) {
 			mount_put_conns(cifs_sb, xid, server, ses, tcon);
-			rc = mount_get_conns(vol, cifs_sb, &xid, &server, &ses,
-					     &tcon);
-			/*
-			 * Ensure that DFS referrals go through new root server.
-			 */
-			if (!rc && tcon &&
-			    (tcon->share_flags & (SHI1005_FLAGS_DFS |
-						  SHI1005_FLAGS_DFS_ROOT))) {
-				cifs_put_tcon(root_tcon);
-				set_root_tcon(cifs_sb, tcon, &root_tcon);
-			}
+			rc = mount_get_conns(vol, cifs_sb, &xid, &server, &ses, &tcon);
 		}
 		if (rc && !server && !ses) {
 			/* Failed to connect. Try to connect to other targets in the referral. */

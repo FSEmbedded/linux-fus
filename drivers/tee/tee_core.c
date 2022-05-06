@@ -154,28 +154,28 @@ static int uuid_v5(uuid_t *uuid, const uuid_t *ns, const void *name,
 
 	desc = kzalloc(sizeof(*desc) + crypto_shash_descsize(shash),
 		       GFP_KERNEL);
-	if (IS_ERR(desc)) {
-		rc = PTR_ERR(desc);
-		goto out;
+	if (!desc) {
+		rc = -ENOMEM;
+		goto out_free_shash;
 	}
 
 	desc->tfm = shash;
 
 	rc = crypto_shash_init(desc);
 	if (rc < 0)
-		goto out2;
+		goto out_free_desc;
 
 	rc = crypto_shash_update(desc, (const u8 *)ns, sizeof(*ns));
 	if (rc < 0)
-		goto out2;
+		goto out_free_desc;
 
 	rc = crypto_shash_update(desc, (const u8 *)name, size);
 	if (rc < 0)
-		goto out2;
+		goto out_free_desc;
 
 	rc = crypto_shash_final(desc, hash);
 	if (rc < 0)
-		goto out2;
+		goto out_free_desc;
 
 	memcpy(uuid->b, hash, UUID_SIZE);
 
@@ -183,10 +183,10 @@ static int uuid_v5(uuid_t *uuid, const uuid_t *ns, const void *name,
 	uuid->b[6] = (hash[6] & 0x0F) | 0x50;
 	uuid->b[8] = (hash[8] & 0x3F) | 0x80;
 
-out2:
+out_free_desc:
 	kfree(desc);
 
-out:
+out_free_shash:
 	crypto_free_shash(shash);
 	return rc;
 }
@@ -197,9 +197,11 @@ int tee_session_calc_client_uuid(uuid_t *uuid, u32 connection_method,
 	gid_t ns_grp = (gid_t)-1;
 	kgid_t grp = INVALID_GID;
 	char *name = NULL;
+	int name_len;
 	int rc;
 
-	if (connection_method == TEE_IOCTL_LOGIN_PUBLIC) {
+	if (connection_method == TEE_IOCTL_LOGIN_PUBLIC ||
+	    connection_method == TEE_IOCTL_LOGIN_REE_KERNEL) {
 		/* Nil UUID to be passed to TEE environment */
 		uuid_copy(uuid, &uuid_null);
 		return 0;
@@ -224,8 +226,12 @@ int tee_session_calc_client_uuid(uuid_t *uuid, u32 connection_method,
 
 	switch (connection_method) {
 	case TEE_IOCTL_LOGIN_USER:
-		scnprintf(name, TEE_UUID_NS_NAME_SIZE, "uid=%x",
-			  current_euid().val);
+		name_len = snprintf(name, TEE_UUID_NS_NAME_SIZE, "uid=%x",
+				    current_euid().val);
+		if (name_len >= TEE_UUID_NS_NAME_SIZE) {
+			rc = -E2BIG;
+			goto out_free_name;
+		}
 		break;
 
 	case TEE_IOCTL_LOGIN_GROUP:
@@ -233,19 +239,24 @@ int tee_session_calc_client_uuid(uuid_t *uuid, u32 connection_method,
 		grp = make_kgid(current_user_ns(), ns_grp);
 		if (!gid_valid(grp) || !in_egroup_p(grp)) {
 			rc = -EPERM;
-			goto out;
+			goto out_free_name;
 		}
 
-		scnprintf(name, TEE_UUID_NS_NAME_SIZE, "gid=%x", grp.val);
+		name_len = snprintf(name, TEE_UUID_NS_NAME_SIZE, "gid=%x",
+				    grp.val);
+		if (name_len >= TEE_UUID_NS_NAME_SIZE) {
+			rc = -E2BIG;
+			goto out_free_name;
+		}
 		break;
 
 	default:
 		rc = -EINVAL;
-		goto out;
+		goto out_free_name;
 	}
 
-	rc = uuid_v5(uuid, &tee_client_uuid_ns, name, strlen(name));
-out:
+	rc = uuid_v5(uuid, &tee_client_uuid_ns, name, name_len);
+out_free_name:
 	kfree(name);
 
 	return rc;

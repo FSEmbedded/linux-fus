@@ -249,14 +249,6 @@ ssize_t vfio_pci_bar_rw(struct vfio_pci_device *vdev, char __user *buf,
 
 	count = min(count, (size_t)(end - pos));
 
-	if (res->flags & IORESOURCE_MEM) {
-		down_read(&vdev->memory_lock);
-		if (!__vfio_pci_memory_enabled(vdev)) {
-			up_read(&vdev->memory_lock);
-			return -EIO;
-		}
-	}
-
 	if (bar == PCI_ROM_RESOURCE) {
 		/*
 		 * The ROM can fill less space than the BAR, so we start the
@@ -293,9 +285,6 @@ ssize_t vfio_pci_bar_rw(struct vfio_pci_device *vdev, char __user *buf,
 	if (bar == PCI_ROM_RESOURCE)
 		pci_unmap_rom(pdev, io);
 out:
-	if (res->flags & IORESOURCE_MEM)
-		up_read(&vdev->memory_lock);
-
 	return done;
 }
 

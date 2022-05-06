@@ -26,7 +26,7 @@
 	{						\
 		.barno = (b),				\
 		.padown_offset = SPT_PAD_OWN,		\
-		.padcfglock_offset = SPT_LP_PADCFGLOCK,	\
+		.padcfglock_offset = (pl),		\
 		.hostown_offset = SPT_HOSTSW_OWN,	\
 		.is_offset = SPT_GPI_IS,		\
 		.ie_offset = SPT_GPI_IE,		\
@@ -49,19 +49,8 @@
 		.gpio_base = (g),			\
 	}
 
-#define SPTH_COMMUNITY(b, s, e, g)			\
-	{						\
-		.barno = (b),				\
-		.padown_offset = SPT_PAD_OWN,		\
-		.padcfglock_offset = SPT_H_PADCFGLOCK,	\
-		.hostown_offset = SPT_HOSTSW_OWN,	\
-		.is_offset = SPT_GPI_IS,		\
-		.ie_offset = SPT_GPI_IE,		\
-		.pin_base = (s),			\
-		.npins = ((e) - (s) + 1),		\
-		.gpps = (g),				\
-		.ngpps = ARRAY_SIZE(g),			\
-	}
+#define SPT_H_COMMUNITY(b, s, e, g)			\
+	SPT_COMMUNITY(b, s, e, SPT_H_PADCFGLOCK, 0, 0, g, ARRAY_SIZE(g))
 
 /* Sunrisepoint-LP */
 static const struct pinctrl_pin_desc sptlp_pins[] = {

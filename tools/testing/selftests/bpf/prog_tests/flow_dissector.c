@@ -614,6 +614,6 @@ void test_flow_dissector(void)
 	test_skb_less_link_create(skel, tap_fd);
 
 	close(tap_fd);
-	bpf_prog_detach(prog_fd, BPF_FLOW_DISSECTOR);
-	bpf_object__close(obj);
+out_destroy_skel:
+	bpf_flow__destroy(skel);
 }

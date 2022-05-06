@@ -200,12 +200,6 @@ static int cdns_ufs_link_startup_notify(struct ufs_hba *hba,
 	 */
 	hba->ahit = 0;
 
-	/*
-	 * Disabling Autohibern8 feature in cadence UFS
-	 * to mask unexpected interrupt trigger.
-	 */
-	hba->ahit = 0;
-
 	return 0;
 }
 

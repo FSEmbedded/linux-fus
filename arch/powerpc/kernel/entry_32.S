@@ -297,21 +297,7 @@ reenable_mmu:
 	bctr				/* jump to handler */
 #endif /* CONFIG_TRACE_IRQFLAGS */
 
-#if defined (CONFIG_PPC_BOOK3S_32) || defined(CONFIG_E500)
-4:	rlwinm	r12,r12,0,~_TLF_NAPPING
-	stw	r12,TI_LOCAL_FLAGS(r2)
-	b	power_save_ppc32_restore
-
-7:	rlwinm	r12,r12,0,~_TLF_SLEEPING
-	stw	r12,TI_LOCAL_FLAGS(r2)
-	lwz	r9,_MSR(r11)		/* if sleeping, clear MSR.EE */
-	rlwinm	r9,r9,0,~MSR_EE
-	lwz	r12,_LINK(r11)		/* and return to address in LR */
-	kuap_restore r11, r2, r3, r4, r5
-	lwz	r2, GPR2(r11)
-	b	fast_exception_return
-#endif
-
+#ifndef CONFIG_VMAP_STACK
 /*
  * On kernel stack overflow, load up an initial stack pointer
  * and call StackOverflow(regs), which should not return.
@@ -828,16 +814,10 @@ _ASM_NOKPROBE_SYMBOL(fast_exception_return)
 1:	lis	r3,exc_exit_restart_end@ha
 	addi	r3,r3,exc_exit_restart_end@l
 	cmplw	r12,r3
-#ifdef CONFIG_PPC_BOOK3S_601
-	bge	2b
-#else
 	bge	3f
 	lis	r4,exc_exit_restart@ha
 	addi	r4,r4,exc_exit_restart@l
 	cmplw	r12,r4
-#ifdef CONFIG_PPC_BOOK3S_601
-	blt	2b
-#else
 	blt	3f
 	lis	r3,fee_restarts@ha
 	tophys(r3,r3)

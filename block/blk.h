@@ -25,11 +25,6 @@ struct blk_flush_queue {
 	struct list_head	flush_data_in_flight;
 	struct request		*flush_rq;
 
-	/*
-	 * flush_rq shares tag with this rq, both can't be active
-	 * at the same time
-	 */
-	struct request		*orig_rq;
 	struct lock_class_key	key;
 	spinlock_t		mq_flush_lock;
 };
@@ -172,6 +167,12 @@ static inline bool bio_integrity_endio(struct bio *bio)
 	return true;
 }
 static inline void bio_integrity_free(struct bio *bio)
+{
+}
+static inline void blk_integrity_add(struct gendisk *disk)
+{
+}
+static inline void blk_integrity_del(struct gendisk *disk)
 {
 }
 #endif /* CONFIG_BLK_DEV_INTEGRITY */

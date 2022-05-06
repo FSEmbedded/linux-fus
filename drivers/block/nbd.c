@@ -1081,6 +1081,7 @@ static int nbd_add_socket(struct nbd_device *nbd, unsigned long arg,
 	return 0;
 
 put_socket:
+	blk_mq_unfreeze_queue(nbd->disk->queue);
 	sockfd_put(sock);
 	return err;
 }

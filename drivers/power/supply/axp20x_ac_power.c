@@ -25,6 +25,7 @@
 #define AXP20X_PWR_STATUS_ACIN_AVAIL	BIT(6)
 
 #define AXP813_ACIN_PATH_SEL		BIT(7)
+#define AXP813_ACIN_PATH_SEL_TO_BIT(x)	(!!(x) << 7)
 
 #define AXP813_VHOLD_MASK		GENMASK(5, 3)
 #define AXP813_VHOLD_UV_TO_BIT(x)	((((x) / 100000) - 40) << 3)
@@ -44,6 +45,8 @@ struct axp20x_ac_power {
 	struct iio_channel *acin_v;
 	struct iio_channel *acin_i;
 	bool has_acin_path_sel;
+	unsigned int num_irqs;
+	unsigned int irqs[];
 };
 
 static irqreturn_t axp20x_ac_power_irq(int irq, void *devid)
@@ -257,18 +260,24 @@ struct axp_data {
 
 static const struct axp_data axp20x_data = {
 	.power_desc	= &axp20x_ac_power_desc,
+	.irq_names	= axp20x_irq_names,
+	.num_irq_names	= ARRAY_SIZE(axp20x_irq_names),
 	.acin_adc	= true,
 	.acin_path_sel	= false,
 };
 
 static const struct axp_data axp22x_data = {
 	.power_desc	= &axp22x_ac_power_desc,
+	.irq_names	= axp20x_irq_names,
+	.num_irq_names	= ARRAY_SIZE(axp20x_irq_names),
 	.acin_adc	= false,
 	.acin_path_sel	= false,
 };
 
 static const struct axp_data axp813_data = {
 	.power_desc	= &axp813_ac_power_desc,
+	.irq_names	= axp20x_irq_names,
+	.num_irq_names	= ARRAY_SIZE(axp20x_irq_names),
 	.acin_adc	= false,
 	.acin_path_sel	= true,
 };
@@ -352,6 +361,7 @@ static int axp20x_ac_power_probe(struct platform_device *pdev)
 
 	power->regmap = dev_get_regmap(pdev->dev.parent, NULL);
 	power->has_acin_path_sel = axp_data->acin_path_sel;
+	power->num_irqs = axp_data->num_irq_names;
 
 	platform_set_drvdata(pdev, power);
 

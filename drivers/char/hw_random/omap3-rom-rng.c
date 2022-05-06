@@ -18,6 +18,7 @@
 #include <linux/workqueue.h>
 #include <linux/clk.h>
 #include <linux/err.h>
+#include <linux/io.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
@@ -100,21 +101,22 @@ static int __maybe_unused omap_rom_rng_runtime_resume(struct device *dev)
 	return 0;
 }
 
-static struct hwrng omap3_rom_rng_ops = {
-	.name		= "omap3-rom",
-};
+static void omap_rom_rng_finish(void *data)
+{
+	struct omap_rom_rng *ddata = data;
+
+	pm_runtime_dont_use_autosuspend(ddata->dev);
+	pm_runtime_disable(ddata->dev);
+}
 
 static int omap3_rom_rng_probe(struct platform_device *pdev)
 {
 	struct omap_rom_rng *ddata;
 	int ret = 0;
 
-	omap3_rom_rng_ops.read = of_device_get_match_data(&pdev->dev);
-	if (!omap3_rom_rng_ops.read) {
-		dev_err(&pdev->dev, "missing rom code handler\n");
-
-		return -ENODEV;
-	}
+	ddata = devm_kzalloc(&pdev->dev, sizeof(*ddata), GFP_KERNEL);
+	if (!ddata)
+		return -ENOMEM;
 
 	ddata->dev = &pdev->dev;
 	ddata->ops.priv = (unsigned long)ddata;
@@ -152,25 +154,22 @@ static int omap3_rom_rng_probe(struct platform_device *pdev)
 	return devm_hwrng_register(ddata->dev, &ddata->ops);
 }
 
-static int omap3_rom_rng_remove(struct platform_device *pdev)
-{
-	cancel_delayed_work_sync(&idle_work);
-	hwrng_unregister(&omap3_rom_rng_ops);
-	if (!rng_idle)
-		clk_disable_unprepare(rng_clk);
-	return 0;
-}
-
 static const struct of_device_id omap_rom_rng_match[] = {
 	{ .compatible = "nokia,n900-rom-rng", .data = omap3_rom_rng_read, },
 	{ /* sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, omap_rom_rng_match);
 
+static const struct dev_pm_ops omap_rom_rng_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(omap_rom_rng_runtime_suspend,
+				omap_rom_rng_runtime_resume)
+};
+
 static struct platform_driver omap3_rom_rng_driver = {
 	.driver = {
 		.name		= "omap3-rom-rng",
 		.of_match_table = omap_rom_rng_match,
+		.pm = &omap_rom_rng_pm_ops,
 	},
 	.probe		= omap3_rom_rng_probe,
 };

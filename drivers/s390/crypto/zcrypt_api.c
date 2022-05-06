@@ -607,9 +607,9 @@ static inline bool zcrypt_card_compare(struct zcrypt_card *zc,
 	weight += atomic_read(&zc->load);
 	pref_weight += atomic_read(&pref_zc->load);
 	if (weight == pref_weight)
-		return atomic64_read(&zc->card->total_request_count) >
+		return atomic64_read(&zc->card->total_request_count) <
 			atomic64_read(&pref_zc->card->total_request_count);
-	return weight > pref_weight;
+	return weight < pref_weight;
 }
 
 static inline bool zcrypt_queue_compare(struct zcrypt_queue *zq,

@@ -36,15 +36,17 @@
 #define isspace(c)	((c) == ' ')
 
 /* FIXME: all this needs locking */
-/* Variables for selection control. */
-/* Use a dynamic buffer, instead of static (Dec 1994) */
-struct vc_data *sel_cons;		/* must not be deallocated */
-static int use_unicode;
-static volatile int sel_start = -1; 	/* cleared by clear_selection */
-static int sel_end;
-static int sel_buffer_lth;
-static char *sel_buffer;
-static DEFINE_MUTEX(sel_lock);
+static struct vc_selection {
+	struct mutex lock;
+	struct vc_data *cons;			/* must not be deallocated */
+	char *buffer;
+	unsigned int buf_len;
+	volatile int start;			/* cleared by clear_selection */
+	int end;
+} vc_sel = {
+	.lock = __MUTEX_INITIALIZER(vc_sel.lock),
+	.start = -1,
+};
 
 /* clear_selection, highlight and highlight_pointer can be called
    from interrupt (via scrollback/front) */
@@ -87,7 +89,7 @@ EXPORT_SYMBOL_GPL(clear_selection);
 
 bool vc_is_sel(struct vc_data *vc)
 {
-	return vc == sel_cons;
+	return vc == vc_sel.cons;
 }
 
 /*
@@ -183,12 +185,10 @@ int set_selection_user(const struct tiocl_selection __user *sel,
 	return set_selection_kernel(&v, tty);
 }
 
-static int __set_selection_kernel(struct tiocl_selection *v, struct tty_struct *tty)
+static int vc_selection_store_chars(struct vc_data *vc, bool unicode)
 {
 	char *bp, *obp;
-	int i, ps, pe, multiplier;
-	u32 c;
-	int mode, ret = 0;
+	unsigned int i;
 
 	/* Allocate a new buffer before freeing the old one ... */
 	/* chars can take up to 4 bytes with unicode */
@@ -336,20 +336,29 @@ static int vc_selection(struct vc_data *vc, struct tiocl_selection *v,
 			     v->ys);
 		return 0;
 	}
-	sel_buffer_lth = bp - sel_buffer;
 
-	return ret;
+	ps = v->ys * vc->vc_size_row + (v->xs << 1);
+	pe = v->ye * vc->vc_size_row + (v->xe << 1);
+	if (ps > pe)	/* make vc_sel.start <= vc_sel.end */
+		swap(ps, pe);
+
+	if (vc_sel.cons != vc) {
+		clear_selection();
+		vc_sel.cons = vc;
+	}
+
+	return vc_do_selection(vc, v->sel_mode, ps, pe);
 }
 
 int set_selection_kernel(struct tiocl_selection *v, struct tty_struct *tty)
 {
 	int ret;
 
-	mutex_lock(&sel_lock);
+	mutex_lock(&vc_sel.lock);
 	console_lock();
-	ret = __set_selection_kernel(v, tty);
+	ret = vc_selection(vc_cons[fg_console].d, v, tty);
 	console_unlock();
-	mutex_unlock(&sel_lock);
+	mutex_unlock(&vc_sel.lock);
 
 	return ret;
 }
@@ -381,17 +390,17 @@ int paste_selection(struct tty_struct *tty)
 	tty_buffer_lock_exclusive(&vc->port);
 
 	add_wait_queue(&vc->paste_wait, &wait);
-	mutex_lock(&sel_lock);
-	while (sel_buffer && sel_buffer_lth > pasted) {
+	mutex_lock(&vc_sel.lock);
+	while (vc_sel.buffer && vc_sel.buf_len > pasted) {
 		set_current_state(TASK_INTERRUPTIBLE);
 		if (signal_pending(current)) {
 			ret = -EINTR;
 			break;
 		}
 		if (tty_throttled(tty)) {
-			mutex_unlock(&sel_lock);
+			mutex_unlock(&vc_sel.lock);
 			schedule();
-			mutex_lock(&sel_lock);
+			mutex_lock(&vc_sel.lock);
 			continue;
 		}
 		__set_current_state(TASK_RUNNING);
@@ -400,7 +409,7 @@ int paste_selection(struct tty_struct *tty)
 					      count);
 		pasted += count;
 	}
-	mutex_unlock(&sel_lock);
+	mutex_unlock(&vc_sel.lock);
 	remove_wait_queue(&vc->paste_wait, &wait);
 	__set_current_state(TASK_RUNNING);
 

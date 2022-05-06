@@ -3,7 +3,7 @@
  * Copyright 2019 NXP
  *	Sandor Yu <Sandor.yu@nxp.com>
  */
- /* Three display enabled: HDMI, LVDS, and MIPI DSI */
+ /* HDMI Only driver, LVDS is disabled */
 
 /dts-v1/;
 
@@ -43,11 +43,27 @@
 	status = "disabled";
 };
 
-&mipi0_dphy {
+&ldb2_phy {
+	status = "disabled";
+};
+
+&ldb2 {
 	status = "disabled";
 };
 
 &mipi0_dsi_host {
+	status = "disabled";
+};
+
+&mipi1_dphy {
+	status = "disabled";
+};
+
+&mipi1_dsi_host {
+	status = "disabled";
+};
+
+&mipi1_dphy {
 	status = "disabled";
 };
 
@@ -103,6 +119,7 @@
 	compatible = "cdn,imx8qm-hdmi";
 	firmware-name = "hdmitxfw.bin";
 	lane-mapping = <0x93>;
+	hdcp-config = <0x3>;
 	status = "okay";
 };
 

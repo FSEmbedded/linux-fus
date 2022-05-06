@@ -3722,6 +3722,7 @@ static int __mlx5_ib_qp_set_counter(struct ib_qp *qp,
 	struct mlx5_ib_qp *mqp = to_mqp(qp);
 	struct mlx5_ib_qp_base *base;
 	u32 set_id;
+	u32 *qpc;
 
 	if (counter)
 		set_id = counter->id;
@@ -4425,14 +4426,8 @@ static void to_rdma_ah_attr(struct mlx5_ib_dev *ibdev,
 	rdma_ah_set_port_num(ah_attr, port);
 	rdma_ah_set_sl(ah_attr, MLX5_GET(ads, path, sl));
 
-	rdma_ah_set_dlid(ah_attr, be16_to_cpu(path->rlid));
-	rdma_ah_set_path_bits(ah_attr, path->grh_mlid & 0x7f);
-	rdma_ah_set_static_rate(ah_attr,
-				path->static_rate ? path->static_rate - 5 : 0);
-
-	if (path->grh_mlid & (1 << 7) ||
-	    ah_attr->type == RDMA_AH_ATTR_TYPE_ROCE) {
-		u32 tc_fl = be32_to_cpu(path->tclass_flowlabel);
+	rdma_ah_set_dlid(ah_attr, MLX5_GET(ads, path, rlid));
+	rdma_ah_set_path_bits(ah_attr, MLX5_GET(ads, path, mlid));
 
 	static_rate = MLX5_GET(ads, path, stat_rate);
 	rdma_ah_set_static_rate(ah_attr, mlx5_to_ib_rate_map(static_rate));

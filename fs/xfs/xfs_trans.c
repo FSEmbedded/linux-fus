@@ -305,13 +305,12 @@ xfs_trans_alloc(
  * notice the corrupt block and the operation will fail back to userspace
  * without deadlocking.
  *
- * Note the zero-length reservation; this transaction MUST be cancelled
- * without any dirty data.
+ * Note the zero-length reservation; this transaction MUST be cancelled without
+ * any dirty data.
  *
- * Callers should obtain freeze protection to avoid two conflicts with fs
- * freezing: (1) having active transactions trip the m_active_trans ASSERTs;
- * and (2) grabbing buffers at the same time that freeze is trying to drain
- * the buffer LRU list.
+ * Callers should obtain freeze protection to avoid a conflict with fs freezing
+ * where we can be grabbing buffers at the same time that freeze is trying to
+ * drain the buffer LRU list.
  */
 int
 xfs_trans_alloc_empty(

@@ -114,10 +114,10 @@ static int lm36274_probe(struct platform_device *pdev)
 	if (!chip)
 		return -ENOMEM;
 
-	lm36274_data->pdev = pdev;
-	lm36274_data->dev = lmu->dev;
-	lm36274_data->regmap = lmu->regmap;
-	platform_set_drvdata(pdev, lm36274_data);
+	chip->pdev = pdev;
+	chip->dev = &pdev->dev;
+	chip->regmap = lmu->regmap;
+	platform_set_drvdata(pdev, chip);
 
 	ret = lm36274_parse_dt(chip, &init_data);
 	if (ret) {
@@ -132,16 +132,23 @@ static int lm36274_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	return led_classdev_register(lm36274_data->dev, &lm36274_data->led_dev);
-}
+	chip->lmu_data.regmap = chip->regmap;
+	chip->lmu_data.max_brightness = MAX_BRIGHTNESS_11BIT;
+	chip->lmu_data.msb_brightness_reg = LM36274_REG_BRT_MSB;
+	chip->lmu_data.lsb_brightness_reg = LM36274_REG_BRT_LSB;
 
-static int lm36274_remove(struct platform_device *pdev)
-{
-	struct lm36274 *lm36274_data = platform_get_drvdata(pdev);
+	chip->led_dev.max_brightness = MAX_BRIGHTNESS_11BIT;
+	chip->led_dev.brightness_set_blocking = lm36274_brightness_set;
 
-	led_classdev_unregister(&lm36274_data->led_dev);
+	ret = devm_led_classdev_register_ext(chip->dev, &chip->led_dev,
+					     &init_data);
+	if (ret)
+		dev_err(chip->dev, "Failed to register LED for node %pfw\n",
+			init_data.fwnode);
 
-	return 0;
+	fwnode_handle_put(init_data.fwnode);
+
+	return ret;
 }
 
 static const struct of_device_id of_lm36274_leds_match[] = {
@@ -152,7 +159,6 @@ MODULE_DEVICE_TABLE(of, of_lm36274_leds_match);
 
 static struct platform_driver lm36274_driver = {
 	.probe  = lm36274_probe,
-	.remove = lm36274_remove,
 	.driver = {
 		.name = "lm36274-leds",
 		.of_match_table = of_lm36274_leds_match,

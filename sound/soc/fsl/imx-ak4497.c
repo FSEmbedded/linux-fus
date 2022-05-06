@@ -84,8 +84,8 @@ static int imx_aif_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
 	struct snd_soc_card *card = rtd->card;
 	struct device *dev = card->dev;
 	struct imx_ak4497_data *priv = snd_soc_card_get_drvdata(card);
@@ -120,17 +120,38 @@ static int imx_aif_hw_params(struct snd_pcm_substream *substream,
 		return ret;
 	}
 
-	if (is_dsd)
+	if (is_dsd) {
 		ret = snd_soc_dai_set_tdm_slot(cpu_dai,
 				       0x1, 0x1,
 				       1, params_width(params));
-	else
+		if (ret) {
+			dev_err(dev, "failed to set cpu dai tdm slot: %d\n", ret);
+			return ret;
+		}
+
+		ret = snd_soc_dai_set_tdm_slot(codec_dai,
+				       0x1, 0x1,
+				       1, params_width(params));
+		if (ret) {
+			dev_err(dev, "failed to set codec dai tdm slot: %d\n", ret);
+			return ret;
+		}
+	} else {
 		ret = snd_soc_dai_set_tdm_slot(cpu_dai,
 				       BIT(channels) - 1, BIT(channels) - 1,
 				       2, params_physical_width(params));
-	if (ret) {
-		dev_err(dev, "failed to set cpu dai tdm slot: %d\n", ret);
-		return ret;
+		if (ret) {
+			dev_err(dev, "failed to set cpu dai tdm slot: %d\n", ret);
+			return ret;
+		}
+
+		ret = snd_soc_dai_set_tdm_slot(codec_dai,
+				       BIT(channels) - 1, BIT(channels) - 1,
+				       2, params_physical_width(params));
+		if (ret) {
+			dev_err(dev, "failed to set codec dai tdm slot: %d\n", ret);
+			return ret;
+		}
 	}
 
 	return ret;

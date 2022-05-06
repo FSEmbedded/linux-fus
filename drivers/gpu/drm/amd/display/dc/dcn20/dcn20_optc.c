@@ -239,7 +239,6 @@ void optc2_set_odm_combine(struct timing_generator *optc, int *opp_id, int opp_c
 	int mpcc_hactive = (timing->h_addressable + timing->h_border_left + timing->h_border_right)
 			/ opp_cnt;
 	uint32_t memory_mask;
-	uint32_t data_fmt = 0;
 
 	ASSERT(opp_cnt == 2);
 
@@ -250,17 +249,6 @@ void optc2_set_odm_combine(struct timing_generator *optc, int *opp_id, int opp_c
 	 *		MASTER_UPDATE_LOCK_DB_X, 160,
 	 *		MASTER_UPDATE_LOCK_DB_Y, 240);
 	 */
-
-	/* 2 pieces of memory required for up to 5120 displays, 4 for up to 8192,
-	 * however, for ODM combine we can simplify by always using 4.
-	 * To make sure there's no overlap, each instance "reserves" 2 memories and
-	 * they are uniquely combined here.
-	 */
-	memory_mask = 0x3 << (opp_id[0] * 2) | 0x3 << (opp_id[1] * 2);
-
-	if (REG(OPTC_MEMORY_CONFIG))
-		REG_SET(OPTC_MEMORY_CONFIG, 0,
-			OPTC_MEM_SEL, memory_mask);
 
 	/* 2 pieces of memory required for up to 5120 displays, 4 for up to 8192,
 	 * however, for ODM combine we can simplify by always using 4.

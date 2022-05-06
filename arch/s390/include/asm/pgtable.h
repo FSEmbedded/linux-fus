@@ -1215,7 +1215,8 @@ static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
 static inline pte_t mk_pte_phys(unsigned long physpage, pgprot_t pgprot)
 {
 	pte_t __pte;
-	pte_val(__pte) = physpage + pgprot_val(pgprot);
+
+	pte_val(__pte) = physpage | pgprot_val(pgprot);
 	if (!MACHINE_HAS_NX)
 		pte_val(__pte) &= ~_PAGE_NOEXEC;
 	return pte_mkyoung(__pte);
@@ -1314,26 +1315,6 @@ static inline pud_t *pud_offset_lockless(p4d_t *p4dp, p4d_t p4d, unsigned long a
 	return (pud_t *) p4dp;
 }
 #define pud_offset_lockless pud_offset_lockless
-
-static inline pud_t *pud_offset(p4d_t *p4dp, unsigned long address)
-{
-	return pud_offset_lockless(p4dp, *p4dp, address);
-}
-#define pud_offset pud_offset
-
-static inline pmd_t *pmd_offset_lockless(pud_t *pudp, pud_t pud, unsigned long address)
-{
-	if ((pud_val(pud) & _REGION_ENTRY_TYPE_MASK) >= _REGION_ENTRY_TYPE_R3)
-		return (pmd_t *) pud_deref(pud) + pmd_index(address);
-	return (pmd_t *) pudp;
-}
-#define pmd_offset_lockless pmd_offset_lockless
-
-static inline pmd_t *pmd_offset(pud_t *pudp, unsigned long address)
-{
-	return pmd_offset_lockless(pudp, *pudp, address);
-}
-#define pmd_offset pmd_offset
 
 static inline pud_t *pud_offset(p4d_t *p4dp, unsigned long address)
 {

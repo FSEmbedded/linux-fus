@@ -3614,6 +3614,31 @@ static void t4_tx_completion_handler(struct sge_rspq *rspq,
 	t4_sge_eth_txq_egress_update(adapter, txq, -1);
 }
 
+static int cxgb4_validate_lb_pkt(struct port_info *pi, const struct pkt_gl *si)
+{
+	struct adapter *adap = pi->adapter;
+	struct cxgb4_ethtool_lb_test *lb;
+	struct sge *s = &adap->sge;
+	struct net_device *netdev;
+	u8 *data;
+	int i;
+
+	netdev = adap->port[pi->port_id];
+	lb = &pi->ethtool_lb;
+	data = si->va + s->pktshift;
+
+	i = ETH_ALEN;
+	if (!ether_addr_equal(data + i, netdev->dev_addr))
+		return -1;
+
+	i += ETH_ALEN;
+	if (strcmp(&data[i], CXGB4_SELFTEST_LB_STR))
+		lb->result = -EIO;
+
+	complete(&lb->completion);
+	return 0;
+}
+
 /**
  *	t4_ethrx_handler - process an ingress ethernet packet
  *	@q: the response queue that received the packet

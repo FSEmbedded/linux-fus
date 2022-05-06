@@ -97,6 +97,48 @@
 #define AT803X_DEBUG_REG_5			0x05
 #define AT803X_DEBUG_TX_CLK_DLY_EN		BIT(8)
 
+#define AT803X_DEBUG_REG_1F			0x1F
+#define AT803X_DEBUG_PLL_ON			BIT(2)
+#define AT803X_DEBUG_RGMII_1V8			BIT(3)
+
+/* AT803x supports either the XTAL input pad, an internal PLL or the
+ * DSP as clock reference for the clock output pad. The XTAL reference
+ * is only used for 25 MHz output, all other frequencies need the PLL.
+ * The DSP as a clock reference is used in synchronous ethernet
+ * applications.
+ *
+ * By default the PLL is only enabled if there is a link. Otherwise
+ * the PHY will go into low power state and disabled the PLL. You can
+ * set the PLL_ON bit (see debug register 0x1f) to keep the PLL always
+ * enabled.
+ */
+#define AT803X_MMD7_CLK25M			0x8016
+#define AT803X_CLK_OUT_MASK			GENMASK(4, 2)
+#define AT803X_CLK_OUT_25MHZ_XTAL		0
+#define AT803X_CLK_OUT_25MHZ_DSP		1
+#define AT803X_CLK_OUT_50MHZ_PLL		2
+#define AT803X_CLK_OUT_50MHZ_DSP		3
+#define AT803X_CLK_OUT_62_5MHZ_PLL		4
+#define AT803X_CLK_OUT_62_5MHZ_DSP		5
+#define AT803X_CLK_OUT_125MHZ_PLL		6
+#define AT803X_CLK_OUT_125MHZ_DSP		7
+
+/* The AR8035 has another mask which is compatible with the AR8031/AR8033 mask
+ * but doesn't support choosing between XTAL/PLL and DSP.
+ */
+#define AT8035_CLK_OUT_MASK			GENMASK(4, 3)
+
+#define AT803X_CLK_OUT_STRENGTH_MASK		GENMASK(8, 7)
+#define AT803X_CLK_OUT_STRENGTH_FULL		0
+#define AT803X_CLK_OUT_STRENGTH_HALF		1
+#define AT803X_CLK_OUT_STRENGTH_QUARTER		2
+
+#define AT803X_DEFAULT_DOWNSHIFT 5
+#define AT803X_MIN_DOWNSHIFT 2
+#define AT803X_MAX_DOWNSHIFT 9
+
+#define ATH9331_PHY_ID 0x004dd041
+
 #define AT803X_LPI_EN				BIT(8)
 
 #define AT803X_DEBUG_REG_31			0x1f
@@ -111,12 +153,18 @@
 #define AT803X_EEE_FEATURE_DISABLE		(1 << 1)
 #define AT803X_VDDIO_1P8V			(1 << 2)
 
-MODULE_DESCRIPTION("Atheros 803x PHY driver");
+MODULE_DESCRIPTION("Qualcomm Atheros AR803x PHY driver");
 MODULE_AUTHOR("Matus Ujhelyi");
 MODULE_LICENSE("GPL");
 
 struct at803x_priv {
-	bool phy_reset:1;
+	int flags;
+#define AT803X_KEEP_PLL_ENABLED	BIT(0)	/* don't turn off internal PLL */
+	u16 clk_25m_reg;
+	u16 clk_25m_mask;
+	struct regulator_dev *vddio_rdev;
+	struct regulator_dev *vddh_rdev;
+	struct regulator *vddio;
 	u32 quirks;
 };
 
@@ -611,6 +659,16 @@ static int at803x_config_init(struct phy_device *phydev)
 	if (ret < 0)
 		return ret;
 
+	ret = at803x_clk_out_config(phydev);
+	if (ret < 0)
+		return ret;
+
+	if (at803x_match_phy_id(phydev, ATH8031_PHY_ID)) {
+		ret = at8031_pll_config(phydev);
+		if (ret < 0)
+			return ret;
+	}
+
 	if (priv->quirks & AT803X_VDDIO_1P8V) {
 		ret = at803x_set_vddio_1p8v(phydev);
 		if (ret < 0)
@@ -623,7 +681,9 @@ static int at803x_config_init(struct phy_device *phydev)
 			return ret;
 	}
 
-	return ret;
+	at803x_debug_reg_mask(phydev, 0xB, BIT(15), 0);
+
+	return 0;
 }
 
 static int at803x_ack_interrupt(struct phy_device *phydev)

@@ -1344,8 +1344,8 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 				spin_unlock_irqrestore(&xhci->lock, flags);
 				if (!wait_for_completion_timeout(&bus_state->u3exit_done[wIndex],
 								 msecs_to_jiffies(100)))
-					xhci_dbg(xhci, "missing U0 port change event for port %d\n",
-						 wIndex);
+					xhci_dbg(xhci, "missing U0 port change event for port %d-%d\n",
+						 hcd->self.busnum, wIndex + 1);
 				spin_lock_irqsave(&xhci->lock, flags);
 				temp = readl(ports[wIndex]->addr);
 				break;
@@ -1425,6 +1425,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			/* 4.19.6 Port Test Modes (USB2 Test Mode) */
 			if (hcd->speed != HCD_USB2)
 				goto error;
+
 #ifdef CONFIG_USB_HCD_TEST_MODE
 			if (test_mode == EHSET_TEST_SINGLE_STEP_SET_FEATURE) {
 				spin_unlock_irqrestore(&xhci->lock, flags);
@@ -1434,7 +1435,8 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 				break;
 			}
 #endif
-			if (test_mode > TEST_FORCE_EN || test_mode < TEST_J)
+			if (test_mode > USB_TEST_FORCE_ENABLE ||
+			    test_mode < USB_TEST_J)
 				goto error;
 			retval = xhci_enter_test_mode(xhci, test_mode, wIndex,
 						      &flags);
@@ -1607,6 +1609,7 @@ int xhci_bus_suspend(struct usb_hcd *hcd)
 	struct xhci_hub *rhub;
 	struct xhci_port **ports;
 	u32 portsc_buf[USB_MAXCHILDREN];
+	bool wait_port_enter_u3 = false;
 	bool wake_enabled;
 
 	rhub = xhci_get_rhub(hcd);
@@ -1715,6 +1718,7 @@ retry:
 				xhci_stop_device(xhci, slot_id, 1);
 				spin_lock_irqsave(&xhci->lock, flags);
 			}
+			wait_port_enter_u3 = true;
 		}
 		writel(portsc_buf[port_index], ports[port_index]->addr);
 	}
@@ -1722,12 +1726,11 @@ retry:
 	bus_state->next_statechange = jiffies + msecs_to_jiffies(10);
 	spin_unlock_irqrestore(&xhci->lock, flags);
 
-	if (bus_state->bus_suspended)
+	if (wait_port_enter_u3)
 		usleep_range(5000, 10000);
 
 	return 0;
 }
-EXPORT_SYMBOL(xhci_bus_suspend);
 
 /*
  * Workaround for missing Cold Attach Status (CAS) if device re-plugged in S3.

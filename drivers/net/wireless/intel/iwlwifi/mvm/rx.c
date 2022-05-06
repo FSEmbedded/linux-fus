@@ -602,13 +602,6 @@ static void iwl_mvm_stat_iterator(void *_data, u8 *mac,
 		mvmvif->beacon_stats.accu_num_beacons +=
 			mvmvif->beacon_stats.num_beacons;
 
-	/* make sure that beacon statistics don't go backwards with TCM
-	 * request to clear statistics
-	 */
-	if (le32_to_cpu(data->flags) & IWL_STATISTICS_REPLY_FLG_CLEAR)
-		mvmvif->beacon_stats.accu_num_beacons +=
-			mvmvif->beacon_stats.num_beacons;
-
 	if (mvmvif->id != id)
 		return;
 

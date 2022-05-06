@@ -83,18 +83,21 @@ static inline int convert_error(struct zcrypt_queue *zq,
 	int queue = AP_QID_QUEUE(zq->queue->qid);
 
 	switch (ehdr->reply_code) {
-	case REP82_ERROR_OPERAND_INVALID:
-	case REP82_ERROR_OPERAND_SIZE:
-	case REP82_ERROR_EVEN_MOD_IN_OPND:
-	case REP88_ERROR_MESSAGE_MALFORMD:
-	case REP82_ERROR_INVALID_DOMAIN_PRECHECK:
-	case REP82_ERROR_INVALID_DOMAIN_PENDING:
-	case REP82_ERROR_INVALID_SPECIAL_CMD:
-	case REP82_ERROR_FILTERED_BY_HYPERVISOR:
-	//   REP88_ERROR_INVALID_KEY		// '82' CEX2A
-	//   REP88_ERROR_OPERAND		// '84' CEX2A
-	//   REP88_ERROR_OPERAND_EVEN_MOD	// '85' CEX2A
-		/* Invalid input data. */
+	case REP82_ERROR_INVALID_MSG_LEN:	 /* 0x23 */
+	case REP82_ERROR_RESERVD_FIELD:		 /* 0x24 */
+	case REP82_ERROR_FORMAT_FIELD:		 /* 0x29 */
+	case REP82_ERROR_MALFORMED_MSG:		 /* 0x40 */
+	case REP82_ERROR_INVALID_SPECIAL_CMD:	 /* 0x41 */
+	case REP82_ERROR_MESSAGE_LENGTH:	 /* 0x80 */
+	case REP82_ERROR_OPERAND_INVALID:	 /* 0x82 */
+	case REP82_ERROR_OPERAND_SIZE:		 /* 0x84 */
+	case REP82_ERROR_EVEN_MOD_IN_OPND:	 /* 0x85 */
+	case REP82_ERROR_INVALID_DOMAIN_PENDING: /* 0x8A */
+	case REP82_ERROR_FILTERED_BY_HYPERVISOR: /* 0x8B */
+	case REP82_ERROR_PACKET_TRUNCATED:	 /* 0xA0 */
+	case REP88_ERROR_MESSAGE_MALFORMD:	 /* 0x22 */
+	case REP88_ERROR_KEY_TYPE:		 /* 0x34 */
+		/* RY indicates malformed request */
 		ZCRYPT_DBF(DBF_WARN,
 			   "dev=%02x.%04x RY=0x%02x => rc=EINVAL\n",
 			   card, queue, ehdr->reply_code);

@@ -120,13 +120,6 @@ u64 dma_iommu_get_required_mask(struct device *dev)
 	if (!tbl)
 		return 0;
 
-	if (dev_is_pci(dev)) {
-		u64 bypass_mask = dma_direct_get_required_mask(dev);
-
-		if (dma_iommu_bypass_supported(dev, bypass_mask))
-			return bypass_mask;
-	}
-
 	mask = 1ULL << (fls_long(tbl->it_offset + tbl->it_size) +
 			tbl->it_page_shift - 1);
 	mask += mask - 1;

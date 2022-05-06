@@ -1243,6 +1243,15 @@ struct lpfc_hba {
 #define LPFC_POLL_SLOWPATH	1	/* called from slowpath */
 
 	char os_host_name[MAXHOSTNAMELEN];
+
+	/* SCSI host template information - for physical port */
+	struct scsi_host_template port_template;
+	/* SCSI host template information - for all vports */
+	struct scsi_host_template vport_template;
+	atomic_t dbg_log_idx;
+	atomic_t dbg_log_cnt;
+	atomic_t dbg_log_dmping;
+	struct dbg_log_ent dbg_log[DBG_LOG_SZ];
 };
 
 static inline struct Scsi_Host *

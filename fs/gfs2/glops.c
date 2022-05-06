@@ -119,7 +119,7 @@ static int gfs2_ail_empty_gl(struct gfs2_glock *gl)
 			goto flush;
 		if (log_in_flight)
 			log_flush_wait(sdp);
-		return;
+		return 0;
 	}
 
 	/* A shortened, inline version of gfs2_trans_begin()

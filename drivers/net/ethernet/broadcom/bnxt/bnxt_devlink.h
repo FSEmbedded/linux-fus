@@ -40,6 +40,9 @@ static inline void bnxt_link_bp_to_dl(struct bnxt *bp, struct devlink *dl)
 #define NVM_OFF_ENABLE_SRIOV		401
 #define NVM_OFF_NVM_CFG_VER		602
 
+#define BNXT_NVM_CFG_VER_BITS		24
+#define BNXT_NVM_CFG_VER_BYTES		4
+
 #define BNXT_MSIX_VEC_MAX	512
 #define BNXT_MSIX_VEC_MIN_MAX	128
 
@@ -64,6 +67,8 @@ enum bnxt_dl_version_type {
 };
 
 void bnxt_devlink_health_report(struct bnxt *bp, unsigned long event);
+void bnxt_dl_health_status_update(struct bnxt *bp, bool healthy);
+void bnxt_dl_health_recovery_done(struct bnxt *bp);
 void bnxt_dl_fw_reporters_create(struct bnxt *bp);
 void bnxt_dl_fw_reporters_destroy(struct bnxt *bp, bool all);
 int bnxt_dl_register(struct bnxt *bp);

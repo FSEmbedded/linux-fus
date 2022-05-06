@@ -112,6 +112,15 @@
 		VDDA-supply = <&reg_3p3v>;
 		VDDIO-supply = <&sw2_reg>;
 	};
+
+	touchscreen@38 {
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_touchscreen>;
+		compatible = "edt,edt-ft5406";
+		reg = <0x38>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <5 IRQ_TYPE_EDGE_FALLING>; /* GPIO E */
+	};
 };
 
 &iomuxc {

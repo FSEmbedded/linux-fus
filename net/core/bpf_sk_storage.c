@@ -107,61 +107,9 @@ static struct bpf_map *sk_storage_map_alloc(union bpf_attr *attr)
 {
 	struct bpf_local_storage_map *smap;
 
-	if (!capable(CAP_SYS_ADMIN))
-		return -EPERM;
-
-	if (attr->value_size >= KMALLOC_MAX_SIZE -
-	    MAX_BPF_STACK - sizeof(struct bpf_sk_storage_elem) ||
-	    /* U16_MAX is much more than enough for sk local storage
-	     * considering a tcp_sock is ~2k.
-	     */
-	    attr->value_size > U16_MAX - sizeof(struct bpf_sk_storage_elem))
-		return -E2BIG;
-
-	return 0;
-}
-
-static struct bpf_map *bpf_sk_storage_map_alloc(union bpf_attr *attr)
-{
-	struct bpf_sk_storage_map *smap;
-	unsigned int i;
-	u32 nbuckets;
-	u64 cost;
-	int ret;
-
-	smap = kzalloc(sizeof(*smap), GFP_USER | __GFP_NOWARN);
-	if (!smap)
-		return ERR_PTR(-ENOMEM);
-	bpf_map_init_from_attr(&smap->map, attr);
-
-	nbuckets = roundup_pow_of_two(num_possible_cpus());
-	/* Use at least 2 buckets, select_bucket() is undefined behavior with 1 bucket */
-	nbuckets = max_t(u32, 2, nbuckets);
-	smap->bucket_log = ilog2(nbuckets);
-	cost = sizeof(*smap->buckets) * nbuckets + sizeof(*smap);
-
-	ret = bpf_map_charge_init(&smap->map.memory, cost);
-	if (ret < 0) {
-		kfree(smap);
-		return ERR_PTR(ret);
-	}
-
-	smap->buckets = kvcalloc(sizeof(*smap->buckets), nbuckets,
-				 GFP_USER | __GFP_NOWARN);
-	if (!smap->buckets) {
-		bpf_map_charge_finish(&smap->map.memory);
-		kfree(smap);
-		return ERR_PTR(-ENOMEM);
-	}
-
-	for (i = 0; i < nbuckets; i++) {
-		INIT_HLIST_HEAD(&smap->buckets[i].list);
-		raw_spin_lock_init(&smap->buckets[i].lock);
-	}
-
-	smap->elem_size = sizeof(struct bpf_sk_storage_elem) + attr->value_size;
-	smap->cache_idx = (unsigned int)atomic_inc_return(&cache_idx) %
-		BPF_SK_STORAGE_CACHE_SIZE;
+	smap = bpf_local_storage_map_alloc(attr);
+	if (IS_ERR(smap))
+		return ERR_CAST(smap);
 
 	smap->cache_idx = bpf_local_storage_cache_idx_get(&sk_cache);
 	return &smap->map;

@@ -205,7 +205,7 @@ void mlx5_enter_error_state(struct mlx5_core_dev *dev, bool force)
 	bool err_detected = false;
 
 	/* Mark the device as fatal in order to abort FW commands */
-	if ((check_fatal_sensors(dev) || force) &&
+	if ((mlx5_health_check_fatal_sensors(dev) || force) &&
 	    dev->state == MLX5_DEVICE_STATE_UP) {
 		dev->state = MLX5_DEVICE_STATE_INTERNAL_ERROR;
 		err_detected = true;
@@ -218,12 +218,7 @@ void mlx5_enter_error_state(struct mlx5_core_dev *dev, bool force)
 		goto unlock;
 	}
 
-	if (check_fatal_sensors(dev) || force) { /* protected state setting */
-		dev->state = MLX5_DEVICE_STATE_INTERNAL_ERROR;
-		mlx5_cmd_flush(dev);
-	}
-
-	mlx5_notifier_call_chain(dev->priv.events, MLX5_DEV_EVENT_SYS_ERROR, (void *)1);
+	enter_error_state(dev, force);
 unlock:
 	mutex_unlock(&dev->intf_state_mutex);
 }

@@ -487,16 +487,6 @@ static void _local_event_unregister(void *data)
 	sdei_cross_call_return(arg, err);
 }
 
-static int _sdei_event_unregister(struct sdei_event *event)
-{
-	lockdep_assert_held(&sdei_events_lock);
-
-	if (event->type == SDEI_EVENT_TYPE_SHARED)
-		return sdei_api_event_unregister(event->event_num);
-
-	return sdei_do_cross_call(_local_event_unregister, event);
-}
-
 int sdei_event_unregister(u32 event_num)
 {
 	int err;
@@ -512,14 +502,10 @@ int sdei_event_unregister(u32 event_num)
 		goto unlock;
 	}
 
-		spin_lock(&sdei_list_lock);
-		event->reregister = false;
-		event->reenable = false;
-		spin_unlock(&sdei_list_lock);
-
-		err = _sdei_event_unregister(event);
-		if (err)
-			break;
+	spin_lock(&sdei_list_lock);
+	event->reregister = false;
+	event->reenable = false;
+	spin_unlock(&sdei_list_lock);
 
 	if (event->type == SDEI_EVENT_TYPE_SHARED)
 		err = sdei_api_event_unregister(event->event_num);
@@ -585,25 +571,6 @@ static void _local_event_register(void *data)
 	sdei_cross_call_return(arg, err);
 }
 
-static int _sdei_event_register(struct sdei_event *event)
-{
-	int err;
-
-	lockdep_assert_held(&sdei_events_lock);
-
-	if (event->type == SDEI_EVENT_TYPE_SHARED)
-		return sdei_api_event_register(event->event_num,
-					       sdei_entry_point,
-					       event->registered,
-					       SDEI_EVENT_REGISTER_RM_ANY, 0);
-
-	err = sdei_do_cross_call(_local_event_register, event);
-	if (err)
-		sdei_do_cross_call(_local_event_unregister, event);
-
-	return err;
-}
-
 int sdei_event_register(u32 event_num, sdei_event_callback *cb, void *arg)
 {
 	int err;
@@ -612,39 +579,11 @@ int sdei_event_register(u32 event_num, sdei_event_callback *cb, void *arg)
 	WARN_ON(in_nmi());
 
 	mutex_lock(&sdei_events_lock);
-	do {
-		if (sdei_event_find(event_num)) {
-			pr_warn("Event %u already registered\n", event_num);
-			err = -EBUSY;
-			break;
-		}
-
-		event = sdei_event_create(event_num, cb, arg);
-		if (IS_ERR(event)) {
-			err = PTR_ERR(event);
-			pr_warn("Failed to create event %u: %d\n", event_num,
-				err);
-			break;
-		}
-
-		cpus_read_lock();
-		err = _sdei_event_register(event);
-		if (err) {
-			sdei_event_destroy(event);
-			pr_warn("Failed to register event %u: %d\n", event_num,
-				err);
-		} else {
-			spin_lock(&sdei_list_lock);
-			event->reregister = true;
-			spin_unlock(&sdei_list_lock);
-		}
-		cpus_read_unlock();
-	} while (0);
-	mutex_unlock(&sdei_events_lock);
-
-	return err;
-}
-EXPORT_SYMBOL(sdei_event_register);
+	if (sdei_event_find(event_num)) {
+		pr_warn("Event %u already registered\n", event_num);
+		err = -EBUSY;
+		goto unlock;
+	}
 
 	event = sdei_event_create(event_num, cb, arg);
 	if (IS_ERR(event)) {

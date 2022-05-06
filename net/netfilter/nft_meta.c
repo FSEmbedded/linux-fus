@@ -34,7 +34,7 @@
 
 static DEFINE_PER_CPU(struct rnd_state, nft_prandom_state);
 
-static u8 nft_meta_weekday(time64_t secs)
+static u8 nft_meta_weekday(void)
 {
 	time64_t secs = ktime_get_real_seconds();
 	unsigned int dse;
@@ -399,10 +399,14 @@ void nft_meta_get_eval(const struct nft_expr *expr,
 		break;
 	case NFT_META_TIME_NS:
 	case NFT_META_TIME_DAY:
-		nft_reg_store8(dest, nft_meta_weekday(ktime_get_real_seconds()));
-		break;
 	case NFT_META_TIME_HOUR:
-		*dest = nft_meta_hour(ktime_get_real_seconds());
+		nft_meta_get_eval_time(priv->key, dest);
+		break;
+	case NFT_META_SDIF:
+		*dest = nft_meta_get_eval_sdif(pkt);
+		break;
+	case NFT_META_SDIFNAME:
+		nft_meta_get_eval_sdifname(dest, pkt);
 		break;
 	default:
 		WARN_ON(1);

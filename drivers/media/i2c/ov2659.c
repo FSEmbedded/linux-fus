@@ -1187,7 +1187,15 @@ static int ov2659_s_stream(struct v4l2_subdev *sd, int on)
 		goto unlock;
 	}
 
-	ret = ov2659_set_pixel_clock(ov2659);
+	ret = pm_runtime_get_sync(&client->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(&client->dev);
+		goto unlock;
+	}
+
+	ret = ov2659_init(sd, 0);
+	if (!ret)
+		ret = ov2659_set_pixel_clock(ov2659);
 	if (!ret)
 		ret = ov2659_set_frame_size(ov2659);
 	if (!ret)

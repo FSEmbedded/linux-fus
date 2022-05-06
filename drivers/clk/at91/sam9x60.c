@@ -262,8 +262,8 @@ static void __init sam9x60_pmc_setup(struct device_node *np)
 
 	sam9x60_pmc->chws[PMC_MCK] = hw;
 
-	parent_names[0] = "pllack";
-	parent_names[1] = "upllck";
+	parent_names[0] = "pllack_divck";
+	parent_names[1] = "upllck_divck";
 	parent_names[2] = "main_osc";
 	hw = sam9x60_clk_register_usb(regmap, "usbck", parent_names, 3);
 	if (IS_ERR(hw))

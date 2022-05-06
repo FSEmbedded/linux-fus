@@ -1860,7 +1860,6 @@ bool dcn20_update_bandwidth(
 
 void dcn20_enable_writeback(
 		struct dc *dc,
-		const struct dc_stream_status *stream_status,
 		struct dc_writeback_info *wb_info,
 		struct dc_state *context)
 {

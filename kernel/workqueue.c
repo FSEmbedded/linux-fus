@@ -424,9 +424,7 @@ static void show_pwq(struct pool_workqueue *pwq);
  */
 #define for_each_pwq(pwq, wq)						\
 	list_for_each_entry_rcu((pwq), &(wq)->pwqs, pwqs_node,		\
-				lockdep_is_held(&wq->mutex))		\
-		if (({ assert_rcu_or_wq_mutex(wq); false; })) { }	\
-		else
+				 lockdep_is_held(&(wq->mutex)))
 
 #ifdef CONFIG_DEBUG_OBJECTS_WORK
 
@@ -2533,8 +2531,8 @@ repeat:
 			 * being used to relieve memory pressure, don't
 			 * incur MAYDAY_INTERVAL delay inbetween.
 			 */
-			if (need_to_create_worker(pool)) {
-				spin_lock(&wq_mayday_lock);
+			if (pwq->nr_active && need_to_create_worker(pool)) {
+				raw_spin_lock(&wq_mayday_lock);
 				/*
 				 * Queue iff we aren't racing destruction
 				 * and somebody else hasn't queued it already.
@@ -2543,7 +2541,7 @@ repeat:
 					get_pwq(pwq);
 					list_add_tail(&pwq->mayday_node, &wq->maydays);
 				}
-				spin_unlock(&wq_mayday_lock);
+				raw_spin_unlock(&wq_mayday_lock);
 			}
 		}
 
@@ -4387,21 +4385,6 @@ void destroy_workqueue(struct workqueue_struct *wq)
 	/* kill rescuer, if sanity checks fail, leave it w/o rescuer */
 	if (wq->rescuer) {
 		struct worker *rescuer = wq->rescuer;
-
-		/* this prevents new queueing */
-		spin_lock_irq(&wq_mayday_lock);
-		wq->rescuer = NULL;
-		spin_unlock_irq(&wq_mayday_lock);
-
-		/* rescuer will empty maydays list before exiting */
-		kthread_stop(rescuer->task);
-		kfree(rescuer);
-	}
-
-	/* sanity checks */
-	mutex_lock(&wq->mutex);
-	for_each_pwq(pwq, wq) {
-		int i;
 
 		/* this prevents new queueing */
 		raw_spin_lock_irq(&wq_mayday_lock);

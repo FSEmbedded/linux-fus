@@ -15,6 +15,7 @@
 extern struct snd_sof_dsp_ops sof_imx8_ops;
 extern struct snd_sof_dsp_ops sof_imx8x_ops;
 extern struct snd_sof_dsp_ops sof_imx8m_ops;
+extern struct snd_sof_dsp_ops sof_imx8ulp_ops;
 
 /* platform specific devices */
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_IMX8)
@@ -22,7 +23,6 @@ static struct sof_dev_desc sof_of_imx8qxp_desc = {
 	.default_fw_path = "imx/sof",
 	.default_tplg_path = "imx/sof-tplg",
 	.default_fw_filename = "sof-imx8x.ri",
-	.nocodec_fw_filename = "sof-imx8.ri",
 	.nocodec_tplg_filename = "sof-imx8-nocodec.tplg",
 	.ops = &sof_imx8x_ops,
 };
@@ -41,9 +41,18 @@ static struct sof_dev_desc sof_of_imx8mp_desc = {
 	.default_fw_path = "imx/sof",
 	.default_tplg_path = "imx/sof-tplg",
 	.default_fw_filename = "sof-imx8m.ri",
-	.nocodec_fw_filename = "sof-imx8m.ri",
 	.nocodec_tplg_filename = "sof-imx8-nocodec.tplg",
 	.ops = &sof_imx8m_ops,
+};
+#endif
+
+#if IS_ENABLED(CONFIG_SND_SOC_SOF_IMX8ULP)
+static struct sof_dev_desc sof_of_imx8ulp_desc = {
+	.default_fw_path = "imx/sof",
+	.default_tplg_path = "imx/sof-tplg",
+	.default_fw_filename = "sof-imx8ulp.ri",
+	.nocodec_tplg_filename = "sof-imx8ulp-nocodec.tplg",
+	.ops = &sof_imx8ulp_ops,
 };
 #endif
 
@@ -60,11 +69,9 @@ static void sof_of_probe_complete(struct device *dev)
 	/* allow runtime_pm */
 	pm_runtime_set_autosuspend_delay(dev, SND_SOF_SUSPEND_DELAY_MS);
 	pm_runtime_use_autosuspend(dev);
+	pm_runtime_mark_last_busy(dev);
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
-
-	pm_runtime_mark_last_busy(dev);
-	pm_runtime_put_autosuspend(dev);
 }
 
 int sof_of_parse(struct platform_device *pdev)
@@ -93,10 +100,6 @@ static int sof_of_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	const struct sof_dev_desc *desc;
-	/*TODO: create a generic snd_soc_xxx_mach */
-#if IS_ENABLED(CONFIG_SND_SOC_SOF_FORCE_NOCODEC_MODE)
-	struct snd_soc_acpi_mach *mach;
-#endif
 	struct snd_sof_pdata *sof_pdata;
 	const struct snd_sof_dsp_ops *ops;
 	int ret;
@@ -120,23 +123,6 @@ static int sof_of_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-#if IS_ENABLED(CONFIG_SND_SOC_SOF_FORCE_NOCODEC_MODE)
-	/* force nocodec mode */
-	dev_warn(dev, "Force to use nocodec mode\n");
-	mach = devm_kzalloc(dev, sizeof(*mach), GFP_KERNEL);
-	if (!mach)
-		return -ENOMEM;
-
-	mach->drv_name = "sof-nocodec";
-	sof_pdata->fw_filename =  desc->nocodec_fw_filename;
-	sof_pdata->tplg_filename = desc->nocodec_tplg_filename;
-	ret = sof_nocodec_setup(dev, ops);
-	if (ret < 0)
-		return ret;
-#endif
-
-	/* TODO: replace machine with info from DT */
-	sof_pdata->machine = NULL;
 	sof_pdata->desc = desc;
 	sof_pdata->dev = &pdev->dev;
 	sof_pdata->fw_filename = desc->default_fw_filename;
@@ -176,6 +162,8 @@ static int sof_of_probe(struct platform_device *pdev)
 static int sof_of_remove(struct platform_device *pdev)
 {
 	pm_runtime_disable(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
+	pm_runtime_put_noidle(&pdev->dev);
 
 	/* call sof helper for DSP hardware remove */
 	snd_sof_device_remove(&pdev->dev);
@@ -191,7 +179,9 @@ static const struct of_device_id sof_of_ids[] = {
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_IMX8M)
 	{ .compatible = "fsl,imx8mp-dsp", .data = &sof_of_imx8mp_desc},
 #endif
-
+#if IS_ENABLED(CONFIG_SND_SOC_SOF_IMX8ULP)
+	{ .compatible = "fsl,imx8ulp-dsp", .data = &sof_of_imx8ulp_desc},
+#endif
 	{ }
 };
 MODULE_DEVICE_TABLE(of, sof_of_ids);

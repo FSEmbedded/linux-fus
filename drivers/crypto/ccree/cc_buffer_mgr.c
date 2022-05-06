@@ -829,15 +829,12 @@ static int cc_aead_chain_data(struct cc_drvdata *drvdata,
 	areq_ctx->src_offset = offset;
 
 	if (req->src != req->dst) {
-		size_for_map = areq_ctx->assoclen + req->cryptlen;
+		size_for_map = req->assoclen + req->cryptlen;
 
 		if (direct == DRV_CRYPTO_DIRECTION_ENCRYPT)
 			size_for_map += authsize;
 		else
 			size_for_map -= authsize;
-
-		if (is_gcm4543)
-			size_for_map += crypto_aead_ivsize(tfm);
 
 		rc = cc_map_sg(dev, req->dst, size_for_map, DMA_BIDIRECTIONAL,
 			       &areq_ctx->dst.mapped_nents,
@@ -1045,14 +1042,13 @@ int cc_map_aead_request(struct cc_drvdata *drvdata, struct aead_request *req)
 		areq_ctx->gcm_iv_inc2_dma_addr = dma_addr;
 	}
 
-	size_to_map = req->cryptlen + areq_ctx->assoclen;
+	size_to_map = req->cryptlen + req->assoclen;
 	/* If we do in-place encryption, we also need the auth tag */
 	if ((areq_ctx->gen_ctx.op_type == DRV_CRYPTO_DIRECTION_ENCRYPT) &&
 	   (req->src == req->dst)) {
 		size_to_map += authsize;
 	}
-	if (is_gcm4543)
-		size_to_map += crypto_aead_ivsize(tfm);
+
 	rc = cc_map_sg(dev, req->src, size_to_map, DMA_BIDIRECTIONAL,
 		       &areq_ctx->src.mapped_nents,
 		       (LLI_MAX_NUM_OF_ASSOC_DATA_ENTRIES +

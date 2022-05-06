@@ -1883,22 +1883,6 @@ fetch_events:
 		 * event delivery.
 		 */
 		init_wait(&wait);
-		write_lock_irq(&ep->lock);
-		__add_wait_queue_exclusive(&ep->wq, &wait);
-		write_unlock_irq(&ep->lock);
-
-		/*
-		 * Internally init_wait() uses autoremove_wake_function(),
-		 * thus wait entry is removed from the wait queue on each
-		 * wakeup. Why it is important? In case of several waiters
-		 * each new wakeup will hit the next waiter, giving it the
-		 * chance to harvest new event. Otherwise wakeup can be
-		 * lost. This is also good performance-wise, because on
-		 * normal wakeup path no need to call __remove_wait_queue()
-		 * explicitly, thus ep->lock is not taken, which halts the
-		 * event delivery.
-		 */
-		init_wait(&wait);
 
 		write_lock_irq(&ep->lock);
 		/*
@@ -1924,20 +1908,30 @@ fetch_events:
 		}
 		write_unlock_irq(&ep->lock);
 
-		if (!schedule_hrtimeout_range(to, slack, HRTIMER_MODE_ABS)) {
-			timed_out = 1;
-			break;
-		}
+		if (!eavail && !res)
+			timed_out = !schedule_hrtimeout_range(to, slack,
+							      HRTIMER_MODE_ABS);
 
-		/* We were woken up, thus go and try to harvest some events */
+		/*
+		 * We were woken up, thus go and try to harvest some events.
+		 * If timed out and still on the wait queue, recheck eavail
+		 * carefully under lock, below.
+		 */
 		eavail = 1;
-
 	} while (0);
 
 	__set_current_state(TASK_RUNNING);
 
 	if (!list_empty_careful(&wait.entry)) {
 		write_lock_irq(&ep->lock);
+		/*
+		 * If the thread timed out and is not on the wait queue, it
+		 * means that the thread was woken up after its timeout expired
+		 * before it could reacquire the lock. Thus, when wait.entry is
+		 * empty, it needs to harvest events.
+		 */
+		if (timed_out)
+			eavail = list_empty(&wait.entry);
 		__remove_wait_queue(&ep->wq, &wait);
 		write_unlock_irq(&ep->lock);
 	}
@@ -2218,7 +2212,9 @@ int do_epoll_ctl(int epfd, int op, int fd, struct epoll_event *epds,
 				list_add(&tf.file->f_tfile_llink,
 							&tfile_check_list);
 			}
-			mutex_lock_nested(&ep->mtx, 0);
+			error = epoll_mutex_lock(&ep->mtx, 0, nonblock);
+			if (error)
+				goto error_tgt_fput;
 			if (is_file_epoll(tf.file)) {
 				tep = tf.file->private_data;
 				error = epoll_mutex_lock(&tep->mtx, 1, nonblock);

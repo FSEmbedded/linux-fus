@@ -2247,6 +2247,7 @@ lpfc_cmpl_els_prli(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 	IOCB_t *irsp;
 	struct lpfc_nodelist *ndlp;
 	char *mode;
+	u32 loglevel;
 
 	/* we pass cmdiocb to state machine which needs rspiocb as well */
 	cmdiocb->context_un.rsp_iocb = rspiocb;
@@ -2288,13 +2289,16 @@ lpfc_cmpl_els_prli(struct lpfc_hba *phba, struct lpfc_iocbq *cmdiocb,
 		 * could be expected.
 		 */
 		if ((vport->fc_flag & FC_FABRIC) ||
-		    (vport->cfg_enable_fc4_type != LPFC_ENABLE_BOTH))
+		    (vport->cfg_enable_fc4_type != LPFC_ENABLE_BOTH)) {
 			mode = KERN_ERR;
-		else
+			loglevel =  LOG_TRACE_EVENT;
+		} else {
 			mode = KERN_INFO;
+			loglevel =  LOG_ELS;
+		}
 
 		/* PRLI failed */
-		lpfc_printf_vlog(vport, mode, LOG_ELS,
+		lpfc_printf_vlog(vport, mode, loglevel,
 				 "2754 PRLI failure DID:%06X Status:x%x/x%x, "
 				 "data: x%x\n",
 				 ndlp->nlp_DID, irsp->ulpStatus,

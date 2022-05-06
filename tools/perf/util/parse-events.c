@@ -1514,11 +1514,20 @@ int parse_events_add_pmu(struct parse_events_state *parse_state,
 	if (get_config_terms(head_config, &config_terms))
 		return -ENOMEM;
 
-	if (perf_pmu__config(pmu, &attr, head_config, parse_state->error)) {
-		struct perf_evsel_config_term *pos, *tmp;
+	/*
+	 * When using default config, record which bits of attr->config were
+	 * changed by the user.
+	 */
+	if (pmu->default_config && get_config_chgs(pmu, head_config, &config_terms))
+		return -ENOMEM;
+
+	if (!parse_state->fake_pmu && perf_pmu__config(pmu, &attr, head_config, parse_state->error)) {
+		struct evsel_config_term *pos, *tmp;
 
 		list_for_each_entry_safe(pos, tmp, &config_terms, list) {
 			list_del_init(&pos->list);
+			if (pos->free_str)
+				zfree(&pos->val.str);
 			free(pos);
 		}
 		return -EINVAL;
@@ -1527,17 +1536,8 @@ int parse_events_add_pmu(struct parse_events_state *parse_state,
 	evsel = __add_event(list, &parse_state->idx, &attr, true,
 			    get_config_name(head_config), pmu,
 			    &config_terms, auto_merge_stats, NULL);
-	if (evsel) {
-		evsel->unit = info.unit;
-		evsel->scale = info.scale;
-		evsel->per_pkg = info.per_pkg;
-		evsel->snapshot = info.snapshot;
-		evsel->metric_expr = info.metric_expr;
-		evsel->metric_name = info.metric_name;
-		evsel->pmu_name = name ? strdup(name) : NULL;
-		evsel->use_uncore_alias = use_uncore_alias;
-		evsel->percore = config_term_percore(&evsel->config_terms);
-	}
+	if (!evsel)
+		return -ENOMEM;
 
 	evsel->pmu_name = name ? strdup(name) : NULL;
 	evsel->use_uncore_alias = use_uncore_alias;

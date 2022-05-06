@@ -656,10 +656,6 @@ static int gtp_newlink(struct net *src_net, struct net_device *dev,
 
 	gtp = netdev_priv(dev);
 
-	err = gtp_encap_enable(gtp, data);
-	if (err < 0)
-		return err;
-
 	if (!data[IFLA_GTP_PDP_HASHSIZE]) {
 		hashsize = 1024;
 	} else {
@@ -690,9 +686,6 @@ static int gtp_newlink(struct net *src_net, struct net_device *dev,
 
 	return 0;
 
-out_hashtable:
-	kfree(gtp->addr_hash);
-	kfree(gtp->tid_hash);
 out_encap:
 	gtp_encap_disable(gtp);
 out_hashtable:
@@ -928,8 +921,8 @@ static void ipv4_pdp_fill(struct pdp_ctx *pctx, struct genl_info *info)
 	}
 }
 
-static int gtp_pdp_add(struct gtp_dev *gtp, struct sock *sk,
-		       struct genl_info *info)
+static struct pdp_ctx *gtp_pdp_add(struct gtp_dev *gtp, struct sock *sk,
+				   struct genl_info *info)
 {
 	struct pdp_ctx *pctx, *pctx_tid = NULL;
 	struct net_device *dev = gtp->dev;
@@ -962,11 +955,6 @@ static int gtp_pdp_add(struct gtp_dev *gtp, struct sock *sk,
 
 		if (pctx && pctx_tid)
 			return ERR_PTR(-EEXIST);
-		if (!pctx)
-			pctx = pctx_tid;
-
-		if (pctx && pctx_tid)
-			return -EEXIST;
 		if (!pctx)
 			pctx = pctx_tid;
 
@@ -1095,7 +1083,13 @@ static int gtp_genl_new_pdp(struct sk_buff *skb, struct genl_info *info)
 		goto out_unlock;
 	}
 
-	err = gtp_pdp_add(gtp, sk, info);
+	pctx = gtp_pdp_add(gtp, sk, info);
+	if (IS_ERR(pctx)) {
+		err = PTR_ERR(pctx);
+	} else {
+		gtp_tunnel_notify(pctx, GTP_CMD_NEWPDP, GFP_KERNEL);
+		err = 0;
+	}
 
 out_unlock:
 	rtnl_unlock();

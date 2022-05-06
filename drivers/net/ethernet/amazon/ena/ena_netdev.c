@@ -1844,7 +1844,6 @@ static int ena_io_poll(struct napi_struct *napi, int budget)
 {
 	struct ena_napi *ena_napi = container_of(napi, struct ena_napi, napi);
 	struct ena_ring *tx_ring, *rx_ring;
-
 	int tx_work_done;
 	int rx_work_done = 0;
 	int tx_budget;
@@ -4383,6 +4382,7 @@ static void __ena_shutoff(struct pci_dev *pdev, bool shutdown)
 	cancel_work_sync(&adapter->reset_task);
 
 	rtnl_lock(); /* lock released inside the below if-else block */
+	adapter->reset_reason = ENA_REGS_RESET_SHUTDOWN;
 	ena_destroy_device(adapter, true);
 	if (shutdown) {
 		netif_device_detach(netdev);
@@ -4420,19 +4420,6 @@ static void ena_remove(struct pci_dev *pdev)
 }
 
 /* ena_shutdown - Device Shutdown Routine
- * @pdev: PCI device information struct
- *
- * ena_shutdown is called by the PCI subsystem to alert the driver that
- * a shutdown/reboot (or kexec) is happening and device must be disabled.
- */
-
-static void ena_shutdown(struct pci_dev *pdev)
-{
-	__ena_shutoff(pdev, true);
-}
-
-#ifdef CONFIG_PM
-/* ena_suspend - PM suspend callback
  * @pdev: PCI device information struct
  *
  * ena_shutdown is called by the PCI subsystem to alert the driver that
@@ -4493,10 +4480,7 @@ static struct pci_driver ena_pci_driver = {
 	.probe		= ena_probe,
 	.remove		= ena_remove,
 	.shutdown	= ena_shutdown,
-#ifdef CONFIG_PM
-	.suspend    = ena_suspend,
-	.resume     = ena_resume,
-#endif
+	.driver.pm	= &ena_pm_ops,
 	.sriov_configure = pci_sriov_configure_simple,
 };
 

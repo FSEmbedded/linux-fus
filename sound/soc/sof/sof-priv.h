@@ -19,6 +19,8 @@
 #include <sound/sof/trace.h>
 #include <uapi/sound/sof/fw.h>
 
+struct snd_sof_pcm_stream;
+
 /* debug flags */
 #define SOF_DBG_ENABLE_TRACE	BIT(0)
 #define SOF_DBG_REGS		BIT(1)
@@ -77,6 +79,12 @@ enum sof_system_suspend_state {
 	SOF_SUSPEND_NONE = 0,
 	SOF_SUSPEND_S0IX,
 	SOF_SUSPEND_S3,
+};
+
+struct sof_compr_stream {
+	unsigned int copied_total;
+	unsigned int sample_rate;
+	size_t posn_offset;
 };
 
 struct snd_sof_dev;
@@ -196,7 +204,7 @@ struct snd_sof_dsp_ops {
 
 	/* host read DSP stream data */
 	void (*ipc_msg_data)(struct snd_sof_dev *sdev,
-			     struct snd_pcm_substream *substream,
+			     struct snd_sof_pcm_stream *sps,
 			     void *p, size_t sz); /* mandatory */
 
 	/* host configure DSP HW parameters */
@@ -248,7 +256,9 @@ struct snd_sof_dsp_ops {
 				void *pdata); /* optional */
 	void (*machine_unregister)(struct snd_sof_dev *sdev,
 				   void *pdata); /* optional */
-	int (*machine_check)(struct snd_sof_dev *sdev); /* optional */
+	void (*machine_select)(struct snd_sof_dev *sdev); /* optional */
+	void (*set_mach_params)(const struct snd_soc_acpi_mach *mach,
+				struct device *dev); /* optional */
 
 	/* DAI ops */
 	struct snd_soc_dai_driver *drv;
@@ -256,6 +266,8 @@ struct snd_sof_dsp_ops {
 
 	/* ALSA HW info flags, will be stored in snd_pcm_runtime.hw.info */
 	u32 hw_info;
+
+	const struct sof_arch_ops *arch_ops;
 };
 
 /* DSP architecture specific callbacks for oops and stack dumps */
@@ -346,15 +358,6 @@ enum snd_sof_fw_state {
 	SOF_FW_BOOT_COMPLETE,
 };
 
-enum snd_sof_fw_state {
-	SOF_FW_BOOT_NOT_STARTED = 0,
-	SOF_FW_BOOT_PREPARE,
-	SOF_FW_BOOT_IN_PROGRESS,
-	SOF_FW_BOOT_FAILED,
-	SOF_FW_BOOT_READY_FAILED, /* firmware booted but fw_ready op failed */
-	SOF_FW_BOOT_COMPLETE,
-};
-
 /*
  * SOF Device Level.
  */
@@ -378,7 +381,7 @@ struct snd_sof_dev {
 	/* DSP firmware boot */
 	wait_queue_head_t boot_wait;
 	enum snd_sof_fw_state fw_state;
-	u32 first_boot;
+	bool first_boot;
 
 	/* work queue in case the probe is implemented in two steps */
 	struct work_struct probe_work;
@@ -472,10 +475,6 @@ int snd_sof_create_page_table(struct device *dev,
 			      struct snd_dma_buffer *dmab,
 			      unsigned char *page_table, size_t size);
 
-int sof_machine_register(struct snd_sof_dev *sdev, void *pdata);
-void sof_machine_unregister(struct snd_sof_dev *sdev, void *pdata);
-int sof_machine_check(struct snd_sof_dev *sdev);
-
 /*
  * Firmware loading.
  */
@@ -504,65 +503,9 @@ int snd_sof_ipc_valid(struct snd_sof_dev *sdev);
 int sof_ipc_tx_message(struct snd_sof_ipc *ipc, u32 header,
 		       void *msg_data, size_t msg_bytes, void *reply_data,
 		       size_t reply_bytes);
-struct snd_sof_widget *snd_sof_find_swidget(struct snd_sof_dev *sdev,
-					    const char *name);
-struct snd_sof_widget *snd_sof_find_swidget_sname(struct snd_sof_dev *sdev,
-						  const char *pcm_name,
-						  int dir);
-struct snd_sof_dai *snd_sof_find_dai(struct snd_sof_dev *sdev,
-				     const char *name);
-
-static inline
-struct snd_sof_pcm *snd_sof_find_spcm_dai(struct snd_sof_dev *sdev,
-					  struct snd_soc_pcm_runtime *rtd)
-{
-	struct snd_sof_pcm *spcm = NULL;
-
-	list_for_each_entry(spcm, &sdev->pcm_list, list) {
-		if (le32_to_cpu(spcm->pcm.dai_id) == rtd->dai_link->id)
-			return spcm;
-	}
-
-	return NULL;
-}
-
-struct snd_sof_pcm *snd_sof_find_spcm_name(struct snd_sof_dev *sdev,
-					   const char *name);
-struct snd_sof_pcm *snd_sof_find_spcm_comp(struct snd_sof_dev *sdev,
-					   unsigned int comp_id,
-					   int *direction);
-struct snd_sof_pcm *snd_sof_find_spcm_pcm_id(struct snd_sof_dev *sdev,
-					     unsigned int pcm_id);
-void snd_sof_pcm_period_elapsed(struct snd_pcm_substream *substream);
-
-/*
- * Stream IPC
- */
-int snd_sof_ipc_stream_posn(struct snd_sof_dev *sdev,
-			    struct snd_sof_pcm *spcm, int direction,
-			    struct sof_ipc_stream_posn *posn);
-
-/*
- * Mixer IPC
- */
-int snd_sof_ipc_set_get_comp_data(struct snd_sof_ipc *ipc,
-				  struct snd_sof_control *scontrol, u32 ipc_cmd,
-				  enum sof_ipc_ctrl_type ctrl_type,
-				  enum sof_ipc_ctrl_cmd ctrl_cmd,
-				  bool send);
-
-/*
- * Topology.
- * There is no snd_sof_free_topology since topology components will
- * be freed by snd_soc_unregister_component,
- */
-int snd_sof_load_topology(struct snd_sof_dev *sdev, const char *file);
-int snd_sof_complete_pipeline(struct snd_sof_dev *sdev,
-			      struct snd_sof_widget *swidget);
-
-int sof_load_pipeline_ipc(struct snd_sof_dev *sdev,
-			  struct sof_ipc_pipe_new *pipeline,
-			  struct sof_ipc_comp_reply *r);
+int sof_ipc_tx_message_no_pm(struct snd_sof_ipc *ipc, u32 header,
+			     void *msg_data, size_t msg_bytes,
+			     void *reply_data, size_t reply_bytes);
 
 /*
  * Trace/debug
@@ -629,17 +572,17 @@ void sof_block_read(struct snd_sof_dev *sdev, u32 bar, u32 offset, void *dest,
 
 int sof_fw_ready(struct snd_sof_dev *sdev, u32 msg_id);
 
-void intel_ipc_msg_data(struct snd_sof_dev *sdev,
-			struct snd_pcm_substream *substream,
-			void *p, size_t sz);
-int intel_ipc_pcm_params(struct snd_sof_dev *sdev,
-			 struct snd_pcm_substream *substream,
-			 const struct sof_ipc_pcm_params_reply *reply);
+void sof_ipc_msg_data(struct snd_sof_dev *sdev,
+		      struct snd_sof_pcm_stream *sps,
+		      void *p, size_t sz);
+int sof_ipc_pcm_params(struct snd_sof_dev *sdev,
+		       struct snd_pcm_substream *substream,
+		       const struct sof_ipc_pcm_params_reply *reply);
 
-int intel_pcm_open(struct snd_sof_dev *sdev,
-		   struct snd_pcm_substream *substream);
-int intel_pcm_close(struct snd_sof_dev *sdev,
-		    struct snd_pcm_substream *substream);
+int sof_stream_pcm_open(struct snd_sof_dev *sdev,
+			struct snd_pcm_substream *substream);
+int sof_stream_pcm_close(struct snd_sof_dev *sdev,
+			 struct snd_pcm_substream *substream);
 
 int sof_machine_check(struct snd_sof_dev *sdev);
 

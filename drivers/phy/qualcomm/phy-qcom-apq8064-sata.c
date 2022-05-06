@@ -77,14 +77,8 @@ static int poll_timeout(void __iomem *addr, u32 mask)
 {
 	u32 val;
 
-	do {
-		if (readl_relaxed(addr) & mask)
-			return 0;
-
-		usleep_range(DELAY_INTERVAL_US, DELAY_INTERVAL_US + 50);
-	} while (!time_after(jiffies, timeout));
-
-	return (readl_relaxed(addr) & mask) ? 0 : -ETIMEDOUT;
+	return readl_relaxed_poll_timeout(addr, val, (val & mask),
+					DELAY_INTERVAL_US, TIMEOUT_MS * 1000);
 }
 
 static int qcom_apq8064_sata_phy_init(struct phy *generic_phy)

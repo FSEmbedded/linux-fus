@@ -1531,17 +1531,6 @@ static int tegra_xusb_probe(struct platform_device *pdev)
 		goto put_hcd;
 	}
 
-	pm_runtime_enable(&pdev->dev);
-	if (pm_runtime_enabled(&pdev->dev))
-		err = pm_runtime_get_sync(&pdev->dev);
-	else
-		err = tegra_xusb_runtime_resume(&pdev->dev);
-
-	if (err < 0) {
-		dev_err(&pdev->dev, "failed to enable device: %d\n", err);
-		goto disable_phy;
-	}
-
 	/*
 	 * The XUSB Falcon microcontroller can only address 40 bits, so set
 	 * the DMA mask accordingly.
@@ -1638,6 +1627,9 @@ put_rpm:
 		tegra_xusb_runtime_suspend(&pdev->dev);
 put_hcd:
 	usb_put_hcd(tegra->hcd);
+free_firmware:
+	dma_free_coherent(&pdev->dev, tegra->fw.size, tegra->fw.virt,
+			  tegra->fw.phys);
 disable_phy:
 	tegra_xusb_phy_disable(tegra);
 	pm_runtime_disable(&pdev->dev);

@@ -6936,7 +6936,7 @@ static void rbd_print_dne(struct rbd_device *rbd_dev, bool is_snap)
 
 static void rbd_dev_image_release(struct rbd_device *rbd_dev)
 {
-	if (rbd_dev->opts)
+	if (!rbd_is_ro(rbd_dev))
 		rbd_unregister_watch(rbd_dev);
 
 	rbd_dev_unprobe(rbd_dev);
@@ -6986,8 +6986,11 @@ static int rbd_dev_image_probe(struct rbd_device *rbd_dev, int depth)
 		down_write(&rbd_dev->header_rwsem);
 
 	ret = rbd_dev_header_info(rbd_dev);
-	if (ret)
+	if (ret) {
+		if (ret == -ENOENT && !need_watch)
+			rbd_print_dne(rbd_dev, false);
 		goto err_out_probe;
+	}
 
 	/*
 	 * If this image is the one being mapped, we have pool name and
@@ -7031,8 +7034,6 @@ static int rbd_dev_image_probe(struct rbd_device *rbd_dev, int depth)
 	return 0;
 
 err_out_probe:
-	if (!depth)
-		up_write(&rbd_dev->header_rwsem);
 	if (!depth)
 		up_write(&rbd_dev->header_rwsem);
 	if (need_watch)
@@ -7105,10 +7106,6 @@ static ssize_t do_rbd_add(struct bus_type *bus,
 	rc = rbd_dev_image_probe(rbd_dev, 0);
 	if (rc < 0)
 		goto err_out_rbd_dev;
-
-	/* If we are mapping a snapshot it must be marked read-only */
-	if (rbd_dev->spec->snap_id != CEPH_NOSNAP)
-		rbd_dev->opts->read_only = true;
 
 	if (rbd_dev->opts->alloc_size > rbd_dev->layout.object_size) {
 		rbd_warn(rbd_dev, "alloc_size adjusted to %u",

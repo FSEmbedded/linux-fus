@@ -1405,11 +1405,8 @@ static void chv_gpio_irq_handler(struct irq_desc *desc)
 	chained_irq_enter(chip, desc);
 
 	raw_spin_lock_irqsave(&chv_lock, flags);
-	pending = readl(pctrl->regs + CHV_INTSTAT);
+	pending = chv_pctrl_readl(pctrl, CHV_INTSTAT);
 	raw_spin_unlock_irqrestore(&chv_lock, flags);
-
-	for_each_set_bit(intr_line, &pending, pctrl->community->nirqs) {
-		unsigned irq, offset;
 
 	for_each_set_bit(intr_line, &pending, community->nirqs) {
 		unsigned int irq, offset;

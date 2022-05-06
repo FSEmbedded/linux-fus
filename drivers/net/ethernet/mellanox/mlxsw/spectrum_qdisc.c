@@ -520,7 +520,6 @@ mlxsw_sp_qdisc_get_red_xstats(struct mlxsw_sp_port *mlxsw_sp_port,
 	xstats = &mlxsw_sp_port->periodic_hw_stats.xstats;
 
 	early_drops = xstats->wred_drop[tclass_num] - xstats_base->prob_drop;
-	marks = xstats->ecn - xstats_base->prob_mark;
 	pdrops = mlxsw_sp_xstats_tail_drop(xstats, tclass_num) -
 		 xstats_base->pdrop;
 
@@ -545,18 +544,8 @@ mlxsw_sp_qdisc_get_red_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 	xstats = &mlxsw_sp_port->periodic_hw_stats.xstats;
 	stats_base = &mlxsw_sp_qdisc->stats_base;
 
-	mlxsw_sp_qdisc_bstats_per_priority_get(xstats,
-					       mlxsw_sp_qdisc->prio_bitmap,
-					       &tx_packets, &tx_bytes);
-	tx_bytes = tx_bytes - stats_base->tx_bytes;
-	tx_packets = tx_packets - stats_base->tx_packets;
-
-	overlimits = xstats->wred_drop[tclass_num] + xstats->ecn -
-		     stats_base->overlimits;
-	drops = xstats->wred_drop[tclass_num] +
-		mlxsw_sp_xstats_tail_drop(xstats, tclass_num) -
-		stats_base->drops;
-	backlog = mlxsw_sp_xstats_backlog(xstats, tclass_num);
+	mlxsw_sp_qdisc_get_tc_stats(mlxsw_sp_port, mlxsw_sp_qdisc, stats_ptr);
+	overlimits = xstats->wred_drop[tclass_num] - stats_base->overlimits;
 
 	stats_ptr->qstats->overlimits += overlimits;
 	stats_base->overlimits += overlimits;
@@ -709,10 +698,12 @@ mlxsw_sp_qdisc_tbf_check_params(struct mlxsw_sp_port *mlxsw_sp_port,
 	if (err) {
 		u8 highest_shaper_bs = MLXSW_REG_QEEC_HIGHEST_SHAPER_BS;
 
-	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++) {
-		drops += mlxsw_sp_xstats_tail_drop(xstats, i);
-		drops += xstats->wred_drop[i];
-		backlog += mlxsw_sp_xstats_backlog(xstats, i);
+		dev_err(mlxsw_sp->bus_info->dev,
+			"spectrum: TBF: invalid burst size of %u, must be a power of two between %u and %u",
+			p->max_size,
+			mlxsw_sp_qdisc_tbf_max_size(mlxsw_sp->lowest_shaper_bs),
+			mlxsw_sp_qdisc_tbf_max_size(highest_shaper_bs));
+		return -EINVAL;
 	}
 
 	return 0;
@@ -747,11 +738,12 @@ mlxsw_sp_qdisc_tbf_replace(struct mlxsw_sp_port *mlxsw_sp_port, u32 handle,
 					     rate_kbps, burst_size);
 }
 
-	stats_base->drops = 0;
-	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++) {
-		stats_base->drops += mlxsw_sp_xstats_tail_drop(xstats, i);
-		stats_base->drops += xstats->wred_drop[i];
-	}
+static void
+mlxsw_sp_qdisc_tbf_unoffload(struct mlxsw_sp_port *mlxsw_sp_port,
+			     struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
+			     void *params)
+{
+	struct tc_tbf_qopt_offload_replace_params *p = params;
 
 	mlxsw_sp_qdisc_leaf_unoffload(mlxsw_sp_port, mlxsw_sp_qdisc, p->qstats);
 }
@@ -761,34 +753,9 @@ mlxsw_sp_qdisc_get_tbf_stats(struct mlxsw_sp_port *mlxsw_sp_port,
 			     struct mlxsw_sp_qdisc *mlxsw_sp_qdisc,
 			     struct tc_qopt_offload_stats *stats_ptr)
 {
-	int tclass_num = MLXSW_SP_PRIO_BAND_TO_TCLASS(p->band);
-	struct mlxsw_sp_qdisc *old_qdisc;
-
-	/* Check if the grafted qdisc is already in its "new" location. If so -
-	 * nothing needs to be done.
-	 */
-	if (p->band < IEEE_8021QAZ_MAX_TCS &&
-	    mlxsw_sp_port->tclass_qdiscs[tclass_num].handle == p->child_handle)
-		return 0;
-
-	if (!p->child_handle) {
-		/* This is an invisible FIFO replacing the original Qdisc.
-		 * Ignore it--the original Qdisc's destroy will follow.
-		 */
-		return 0;
-	}
-
-	/* See if the grafted qdisc is already offloaded on any tclass. If so,
-	 * unoffload it.
-	 */
-	old_qdisc = mlxsw_sp_qdisc_find_by_handle(mlxsw_sp_port,
-						  p->child_handle);
-	if (old_qdisc)
-		mlxsw_sp_qdisc_destroy(mlxsw_sp_port, old_qdisc);
-
-	mlxsw_sp_qdisc_destroy(mlxsw_sp_port,
-			       &mlxsw_sp_port->tclass_qdiscs[tclass_num]);
-	return -EOPNOTSUPP;
+	mlxsw_sp_qdisc_get_tc_stats(mlxsw_sp_port, mlxsw_sp_qdisc,
+				    stats_ptr);
+	return 0;
 }
 
 static struct mlxsw_sp_qdisc_ops mlxsw_sp_qdisc_ops_tbf = {

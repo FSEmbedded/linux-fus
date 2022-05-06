@@ -602,9 +602,9 @@ void fill_iram_v_2_3(struct iram_table_v_2_2 *ram_table, struct dmcu_iram_parame
 	unsigned int set = params.set;
 
 	ram_table->flags = 0x0;
-
-	ram_table->min_abm_backlight =
-			cpu_to_be16(params.min_abm_backlight);
+	ram_table->min_abm_backlight = (big_endian) ?
+		cpu_to_be16(params.min_abm_backlight) :
+		cpu_to_le16(params.min_abm_backlight);
 
 	for (i = 0; i < NUM_AGGR_LEVEL; i++) {
 		ram_table->hybrid_factor[i] = abm_settings[set][i].brightness_gain;

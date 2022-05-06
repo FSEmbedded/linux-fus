@@ -1730,7 +1730,7 @@ EXPORT_SYMBOL(fman_port_get_qman_channel_id);
 
 /**
  * fman_port_get_device
- * port:	Pointer to the FMan port device
+ * @port:	Pointer to the FMan port device
  *
  * Get the 'struct device' associated to the specified FMan port device
  *

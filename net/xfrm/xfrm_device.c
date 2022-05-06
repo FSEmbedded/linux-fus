@@ -134,10 +134,8 @@ struct sk_buff *validate_xmit_xfrm(struct sk_buff *skb, netdev_features_t featur
 		return skb;
 	}
 
-	xo->flags |= XFRM_XMIT;
-
-	if (skb_is_gso(skb)) {
-		struct net_device *dev = skb->dev;
+	if (skb_is_gso(skb) && unlikely(x->xso.dev != dev)) {
+		struct sk_buff *segs;
 
 		/* Packet got rerouted, fixup features and segment it. */
 		esp_features = esp_features & ~(NETIF_F_HW_ESP | NETIF_F_GSO_ESP);

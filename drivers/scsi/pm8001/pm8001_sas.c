@@ -1248,8 +1248,8 @@ int pm8001_abort_task(struct sas_task *task)
 			 * leaking the task in libsas or losing the race and
 			 * getting a double free.
 			 */
-			PM8001_MSG_DBG(pm8001_ha,
-				pm8001_printk("Waiting for local phy ctl\n"));
+			pm8001_dbg(pm8001_ha, MSG,
+				   "Waiting for local phy ctl\n");
 			ret = wait_for_completion_timeout(&completion,
 					PM8001_TASK_TIMEOUT * HZ);
 			if (!ret || !phy->reset_success) {
@@ -1259,8 +1259,8 @@ int pm8001_abort_task(struct sas_task *task)
 				/* 3. Wait for Port Reset complete or
 				 * Port reset TMO
 				 */
-				PM8001_MSG_DBG(pm8001_ha,
-				pm8001_printk("Waiting for Port reset\n"));
+				pm8001_dbg(pm8001_ha, MSG,
+					   "Waiting for Port reset\n");
 				ret = wait_for_completion_timeout(
 					&completion_reset,
 					PM8001_TASK_TIMEOUT * HZ);

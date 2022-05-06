@@ -161,7 +161,7 @@ err_recovery:
 		health->fw_reporter =
 			devlink_health_reporter_create(bp->dl,
 						       &bnxt_dl_fw_reporter_ops,
-						       0, false, bp);
+						       0, bp);
 		if (IS_ERR(health->fw_reporter)) {
 			netdev_warn(bp->dev, "Failed to create FW health reporter, rc = %ld\n",
 				    PTR_ERR(health->fw_reporter));
@@ -744,6 +744,12 @@ static void bnxt_dl_params_unregister(struct bnxt *bp)
 				       ARRAY_SIZE(bnxt_dl_port_params));
 }
 
+int bnxt_dl_register(struct bnxt *bp)
+{
+	struct devlink_port_attrs attrs = {};
+	struct devlink *dl;
+	int rc;
+
 	if (BNXT_PF(bp))
 		dl = devlink_alloc(&bnxt_dl_ops, sizeof(struct bnxt_dl));
 	else
@@ -769,14 +775,6 @@ static void bnxt_dl_params_unregister(struct bnxt *bp)
 	if (!BNXT_PF(bp))
 		return 0;
 
-	rc = devlink_params_register(dl, bnxt_dl_params,
-				     ARRAY_SIZE(bnxt_dl_params));
-	if (rc) {
-		netdev_warn(bp->dev, "devlink_params_register failed. rc=%d",
-			    rc);
-		goto err_dl_unreg;
-	}
-
 	attrs.flavour = DEVLINK_PORT_FLAVOUR_PHYSICAL;
 	attrs.phys.port_number = bp->pf.port_id;
 	memcpy(attrs.switch_id.id, bp->dsn, sizeof(bp->dsn));
@@ -791,9 +789,6 @@ static void bnxt_dl_params_unregister(struct bnxt *bp)
 	rc = bnxt_dl_params_register(bp);
 	if (rc)
 		goto err_dl_port_unreg;
-	}
-
-	devlink_params_publish(dl);
 
 	return 0;
 
@@ -815,12 +810,8 @@ void bnxt_dl_unregister(struct bnxt *bp)
 		return;
 
 	if (BNXT_PF(bp)) {
-		devlink_port_params_unregister(&bp->dl_port,
-					       bnxt_dl_port_params,
-					       ARRAY_SIZE(bnxt_dl_port_params));
+		bnxt_dl_params_unregister(bp);
 		devlink_port_unregister(&bp->dl_port);
-		devlink_params_unregister(dl, bnxt_dl_params,
-					  ARRAY_SIZE(bnxt_dl_params));
 	}
 	devlink_unregister(dl);
 	devlink_free(dl);

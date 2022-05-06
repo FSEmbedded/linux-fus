@@ -129,10 +129,15 @@ ocelot_find_vcap_filter_that_points_at(struct ocelot *ocelot, int chain)
 	if (block_id == VCAP_IS2) {
 		block = &ocelot->block[VCAP_IS1];
 
-struct ocelot_port_block {
-	struct ocelot_acl_block *block;
-	struct ocelot_port_private *priv;
-};
+		list_for_each_entry(filter, &block->rules, list)
+			if (filter->type == OCELOT_VCAP_FILTER_PAG &&
+			    filter->goto_target == chain)
+				return filter;
+	}
+
+	list_for_each_entry(filter, &ocelot->dummy_rules, list)
+		if (filter->goto_target == chain)
+			return filter;
 
 	return NULL;
 }
@@ -608,9 +613,7 @@ finished_key_parsing:
 	}
 	/* else, a filter of type OCELOT_VCAP_KEY_ANY is implicitly added */
 
-	rule->ocelot = block->priv->port.ocelot;
-	rule->ingress_port_mask = BIT(block->priv->chip_port);
-	return rule;
+	return 0;
 }
 
 static int ocelot_flower_parse(struct ocelot *ocelot, int port, bool ingress,
@@ -626,8 +629,7 @@ static int ocelot_flower_parse(struct ocelot *ocelot, int port, bool ingress,
 	if (ret)
 		return ret;
 
-	port_block->priv->tc.offload_cnt++;
-	return 0;
+	return ocelot_flower_parse_key(ocelot, port, ingress, f, filter);
 }
 
 static struct ocelot_vcap_filter
@@ -636,9 +638,9 @@ static struct ocelot_vcap_filter
 {
 	struct ocelot_vcap_filter *filter;
 
-	rule.prio = f->common.prio;
-	rule.ocelot = port_block->priv->port.ocelot;
-	rule.id = f->cookie;
+	filter = kzalloc(sizeof(*filter), GFP_KERNEL);
+	if (!filter)
+		return NULL;
 
 	if (ingress) {
 		filter->ingress_port_mask = BIT(port);
@@ -646,8 +648,11 @@ static struct ocelot_vcap_filter
 		const struct vcap_props *vcap = &ocelot->vcap[VCAP_ES0];
 		int key_length = vcap->keys[VCAP_ES0_EGR_PORT].length;
 
-	port_block->priv->tc.offload_cnt--;
-	return 0;
+		filter->egress_port.value = port;
+		filter->egress_port.mask = GENMASK(key_length - 1, 0);
+	}
+
+	return filter;
 }
 
 static int ocelot_vcap_dummy_filter_add(struct ocelot *ocelot,
@@ -655,14 +660,6 @@ static int ocelot_vcap_dummy_filter_add(struct ocelot *ocelot,
 {
 	list_add(&filter->list, &ocelot->dummy_rules);
 
-	rule.prio = f->common.prio;
-	rule.ocelot = port_block->priv->port.ocelot;
-	rule.id = f->cookie;
-	ret = ocelot_ace_rule_stats_update(&rule);
-	if (ret)
-		return ret;
-
-	flow_stats_update(&f->stats, 0x0, rule.stats.pkts, 0x0);
 	return 0;
 }
 
@@ -678,20 +675,19 @@ static int ocelot_vcap_dummy_filter_del(struct ocelot *ocelot,
 int ocelot_cls_flower_replace(struct ocelot *ocelot, int port,
 			      struct flow_cls_offload *f, bool ingress)
 {
-	struct ocelot_port_block *port_block = cb_priv;
-
-	if (!tc_cls_can_offload_and_chain0(port_block->priv->dev, type_data))
-		return -EOPNOTSUPP;
+	struct netlink_ext_ack *extack = f->common.extack;
+	struct ocelot_vcap_filter *filter;
+	int chain = f->common.chain_index;
+	int ret;
 
 	if (chain && !ocelot_find_vcap_filter_that_points_at(ocelot, chain)) {
 		NL_SET_ERR_MSG_MOD(extack, "No default GOTO action points to this chain");
 		return -EOPNOTSUPP;
 	}
 
-static struct ocelot_port_block*
-ocelot_port_block_create(struct ocelot_port_private *priv)
-{
-	struct ocelot_port_block *port_block;
+	filter = ocelot_vcap_filter_create(ocelot, port, ingress, f);
+	if (!filter)
+		return -ENOMEM;
 
 	ret = ocelot_flower_parse(ocelot, port, ingress, f, filter);
 	if (ret) {
@@ -699,7 +695,11 @@ ocelot_port_block_create(struct ocelot_port_private *priv)
 		return ret;
 	}
 
-	port_block->priv = priv;
+	/* The non-optional GOTOs for the TCAM skeleton don't need
+	 * to be actually offloaded.
+	 */
+	if (filter->type == OCELOT_VCAP_FILTER_DUMMY)
+		return ocelot_vcap_dummy_filter_add(ocelot, filter);
 
 	return ocelot_vcap_filter_add(ocelot, filter, f->common.extack);
 }
@@ -718,35 +718,16 @@ int ocelot_cls_flower_destroy(struct ocelot *ocelot, int port,
 
 	block = &ocelot->block[block_id];
 
-int ocelot_setup_tc_block_flower_bind(struct ocelot_port_private *priv,
-				      struct flow_block_offload *f)
-{
-	struct ocelot_port_block *port_block;
-	struct flow_block_cb *block_cb;
-	int ret;
+	filter = ocelot_vcap_block_find_filter_by_id(block, f->cookie);
+	if (!filter)
+		return 0;
 
 	if (filter->type == OCELOT_VCAP_FILTER_DUMMY)
 		return ocelot_vcap_dummy_filter_del(ocelot, filter);
 
-	block_cb = flow_block_cb_lookup(f->block,
-					ocelot_setup_tc_block_cb_flower, priv);
-	if (!block_cb) {
-		port_block = ocelot_port_block_create(priv);
-		if (!port_block)
-			return -ENOMEM;
-
-		block_cb = flow_block_cb_alloc(ocelot_setup_tc_block_cb_flower,
-					       priv, port_block,
-					       ocelot_tc_block_unbind);
-		if (IS_ERR(block_cb)) {
-			ret = PTR_ERR(block_cb);
-			goto err_cb_register;
-		}
-		flow_block_cb_add(block_cb, f);
-		list_add_tail(&block_cb->driver_list, f->driver_block_list);
-	} else {
-		port_block = flow_block_cb_priv(block_cb);
-	}
+	return ocelot_vcap_filter_del(ocelot, filter);
+}
+EXPORT_SYMBOL_GPL(ocelot_cls_flower_destroy);
 
 int ocelot_cls_flower_stats(struct ocelot *ocelot, int port,
 			    struct flow_cls_offload *f, bool ingress)
@@ -761,15 +742,13 @@ int ocelot_cls_flower_stats(struct ocelot *ocelot, int port,
 
 	block = &ocelot->block[block_id];
 
-void ocelot_setup_tc_block_flower_unbind(struct ocelot_port_private *priv,
-					 struct flow_block_offload *f)
-{
-	struct flow_block_cb *block_cb;
+	filter = ocelot_vcap_block_find_filter_by_id(block, f->cookie);
+	if (!filter || filter->type == OCELOT_VCAP_FILTER_DUMMY)
+		return 0;
 
-	block_cb = flow_block_cb_lookup(f->block,
-					ocelot_setup_tc_block_cb_flower, priv);
-	if (!block_cb)
-		return;
+	ret = ocelot_vcap_filter_stats_update(ocelot, filter);
+	if (ret)
+		return ret;
 
 	flow_stats_update(&f->stats, 0x0, filter->stats.pkts, 0, 0x0,
 			  FLOW_ACTION_HW_STATS_IMMEDIATE);

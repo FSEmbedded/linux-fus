@@ -243,18 +243,16 @@ static int pcrypt_create_aead(struct crypto_template *tmpl, struct rtattr **tb,
 	ctx = aead_instance_ctx(inst);
 	ctx->psenc = padata_alloc_shell(pencrypt);
 	if (!ctx->psenc)
-		goto out_free_inst;
+		goto err_free_inst;
 
 	ctx->psdec = padata_alloc_shell(pdecrypt);
 	if (!ctx->psdec)
-		goto out_free_psenc;
-
-	crypto_set_aead_spawn(&ctx->spawn, aead_crypto_instance(inst));
+		goto err_free_inst;
 
 	err = crypto_grab_aead(&ctx->spawn, aead_crypto_instance(inst),
 			       crypto_attr_alg_name(tb[1]), 0, mask);
 	if (err)
-		goto out_free_psdec;
+		goto err_free_inst;
 
 	alg = crypto_spawn_aead_alg(&ctx->spawn);
 	err = pcrypt_init_instance(aead_crypto_instance(inst), &alg->base);
@@ -284,16 +282,6 @@ err_free_inst:
 		pcrypt_free(inst);
 	}
 	return err;
-
-out_drop_aead:
-	crypto_drop_aead(&ctx->spawn);
-out_free_psdec:
-	padata_free_shell(ctx->psdec);
-out_free_psenc:
-	padata_free_shell(ctx->psenc);
-out_free_inst:
-	kfree(inst);
-	goto out;
 }
 
 static int pcrypt_create(struct crypto_template *tmpl, struct rtattr **tb)
@@ -375,8 +363,8 @@ static void __exit pcrypt_exit(void)
 {
 	crypto_unregister_template(&pcrypt_tmpl);
 
-	pcrypt_fini_padata(pencrypt);
-	pcrypt_fini_padata(pdecrypt);
+	padata_free(pencrypt);
+	padata_free(pdecrypt);
 
 	kset_unregister(pcrypt_kset);
 }

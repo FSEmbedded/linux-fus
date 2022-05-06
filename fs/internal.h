@@ -51,7 +51,6 @@ static inline void bd_forget(struct inode *inode)
 /*
  * buffer.c
  */
-extern void guard_bio_eod(struct bio *bio);
 extern int __block_write_begin_int(struct page *page, loff_t pos, unsigned len,
 		get_block_t *get_block, struct iomap *iomap);
 

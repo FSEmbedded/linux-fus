@@ -434,6 +434,7 @@ static int ipu_drm_bind(struct device *dev, struct device *master, void *data)
 	struct ipu_client_platformdata *pdata = dev->platform_data;
 	struct drm_device *drm = data;
 	struct ipu_crtc *ipu_crtc;
+	int ret;
 
 	ipu_crtc = dev_get_drvdata(dev);
 	memset(ipu_crtc, 0, sizeof(*ipu_crtc));
@@ -447,8 +448,6 @@ static int ipu_drm_bind(struct device *dev, struct device *master, void *data)
 	drm->mode_config.funcs = &ipuv3_drm_mode_config_funcs;
 	drm->mode_config.helper_private = &ipuv3_drm_mode_config_helpers;
 	drm->mode_config.allow_fb_modifiers = true;
-
-	dev_set_drvdata(dev, ipu_crtc);
 
 	return 0;
 }

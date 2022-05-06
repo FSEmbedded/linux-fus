@@ -443,8 +443,8 @@ static void brcmf_chip_ai_resetcore(struct brcmf_core_priv *core, u32 prereset,
 		d11core2 = brcmf_chip_get_d11core(&ci->pub, 1);
 		if (d11core2) {
 			brcmf_dbg(INFO, "found two d11 cores, reset both\n");
-			d11priv2 = container_of(d11core2, struct brcmf_core_priv,
-						 pub);
+			d11priv2 = container_of(d11core2,
+						struct brcmf_core_priv, pub);
 		}
 	}
 
@@ -496,16 +496,6 @@ char *brcmf_chip_name(u32 id, u32 rev, char *buf, uint len)
 	fmt = ((id > 0xa000) || (id < 0x4000)) ? "BCM%d/%u" : "BCM%x/%u";
 	snprintf(buf, len, fmt, id, rev);
 	return buf;
-}
-
-bool brcmf_chip_has_clm_blob(u32 id)
-{
-	bool ret = true;
-
-	if (id == BRCM_CC_4339_CHIP_ID)
-		return false;
-
-	return ret;
 }
 
 static struct brcmf_core *brcmf_chip_add_core(struct brcmf_chip_priv *ci,

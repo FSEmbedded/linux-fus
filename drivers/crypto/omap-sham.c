@@ -168,6 +168,7 @@ struct omap_sham_hmac_ctx {
 };
 
 struct omap_sham_ctx {
+	struct crypto_engine_ctx	enginectx;
 	unsigned long		flags;
 
 	/* fallback stuff */
@@ -941,7 +942,7 @@ static int omap_sham_update_dma_stop(struct omap_sham_dev *dd)
 	return 0;
 }
 
-struct omap_sham_dev *omap_sham_find_dev(struct omap_sham_reqctx *ctx)
+static struct omap_sham_dev *omap_sham_find_dev(struct omap_sham_reqctx *ctx)
 {
 	struct omap_sham_dev *dd;
 

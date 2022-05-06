@@ -1095,7 +1095,7 @@ static void emulator_put_fpu(void)
 	fpregs_unlock();
 }
 
-static void read_sse_reg(struct x86_emulate_ctxt *ctxt, sse128_t *data, int reg)
+static void read_sse_reg(sse128_t *data, int reg)
 {
 	emulator_get_fpu();
 	switch (reg) {

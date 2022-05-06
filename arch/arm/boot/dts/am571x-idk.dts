@@ -188,6 +188,11 @@
 
 &dsp1 {
 	status = "okay";
+	memory-region = <&dsp1_memory_region>;
+};
+
+&pcie1_rc {
+	status = "okay";
 	gpios = <&gpio5 18 GPIO_ACTIVE_HIGH>;
 };
 

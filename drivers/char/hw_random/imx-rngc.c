@@ -115,12 +115,7 @@ static int imx_rngc_self_test(struct imx_rngc *rngc)
 	if (!ret)
 		return -ETIMEDOUT;
 
-	if (rngc->err_reg != 0) {
-		imx_rngc_irq_mask_clear(rngc);
-		return -EIO;
-	}
-
-	return 0;
+	return rngc->err_reg ? -EIO : 0;
 }
 
 static int imx_rngc_read(struct hwrng *rng, void *data, size_t max, bool wait)

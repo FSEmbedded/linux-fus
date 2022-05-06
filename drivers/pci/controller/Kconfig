@@ -307,4 +307,5 @@ config PCIE_HISI_ERR
 
 source "drivers/pci/controller/dwc/Kconfig"
 source "drivers/pci/controller/mobiveil/Kconfig"
+source "drivers/pci/controller/cadence/Kconfig"
 endmenu

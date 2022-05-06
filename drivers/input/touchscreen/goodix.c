@@ -181,35 +181,11 @@ static const unsigned long goodix_irq_flags[] = {
 static const struct dmi_system_id nine_bytes_report[] = {
 #if defined(CONFIG_DMI) && defined(CONFIG_X86)
 	{
-		.ident = "Teclast X89",
-		.matches = {
-			/* tPAD is too generic, also match on bios date */
-			DMI_MATCH(DMI_BOARD_VENDOR, "TECLAST"),
-			DMI_MATCH(DMI_BOARD_NAME, "tPAD"),
-			DMI_MATCH(DMI_BIOS_DATE, "12/19/2014"),
-		},
-	},
-	{
-		.ident = "WinBook TW100",
+		.ident = "Lenovo YogaBook",
+		/* YB1-X91L/F and YB1-X90L/F */
 		.matches = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Lenovo YB1-X9")
 		}
-	},
-#endif
-	{}
-};
-
-/*
- * Those tablets have their x coordinate inverted
- */
-static const struct dmi_system_id inverted_x_screen[] = {
-#if defined(CONFIG_DMI) && defined(CONFIG_X86)
-	{
-		.ident = "Cube I15-TC",
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Cube"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "I15-TC")
-		},
 	},
 #endif
 	{}
@@ -933,7 +909,7 @@ retry_get_irq_gpio:
 	default:
 		if (ts->gpiod_int && ts->gpiod_rst) {
 			ts->reset_controller_at_probe = true;
-			ts->load_cfg_from_disk = true;
+			ts->load_cfg_from_disk = false;
 			ts->irq_pin_access_method = IRQ_PIN_ACCESS_GPIO;
 		}
 	}
@@ -954,7 +930,7 @@ static void goodix_read_config(struct goodix_ts_data *ts)
 	int error;
 
 	error = goodix_i2c_read(ts->client, ts->chip->config_addr,
-				ts->config, ts->chip->config_len);
+				ts->config, 9);
 	if (error) {
 		dev_warn(&ts->client->dev, "Error reading config: %d\n",
 			 error);
@@ -1379,9 +1355,11 @@ static int __maybe_unused goodix_resume(struct device *dev)
 			return error;
 		}
 
-		error = goodix_send_cfg(ts, ts->config, ts->chip->config_len);
-		if (error)
-			return error;
+		if (ts->load_cfg_from_disk) {
+			error = goodix_send_cfg(ts, ts->config, ts->chip->config_len);
+			if (error)
+				return error;
+		}
 	}
 
 	error = goodix_request_irq(ts);

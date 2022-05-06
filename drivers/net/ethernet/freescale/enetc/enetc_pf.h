@@ -46,9 +46,10 @@ struct enetc_pf {
 
 	struct mii_bus *mdio; /* saved for cleanup */
 	struct mii_bus *imdio;
+	struct lynx_pcs *pcs;
 
-	struct device_node *phy_node;
 	phy_interface_t if_mode;
+	struct phylink_config phylink_config;
 };
 
 #define phylink_to_enetc_pf(config) \

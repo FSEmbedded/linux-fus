@@ -1060,13 +1060,17 @@ static void mcde_display_disable(struct drm_simple_display_pipe *pipe)
 {
 	struct drm_crtc *crtc = &pipe->crtc;
 	struct drm_device *drm = crtc->dev;
-	struct mcde *mcde = drm->dev_private;
+	struct mcde *mcde = to_mcde(drm);
 	struct drm_pending_vblank_event *event;
+	int ret;
 
 	drm_crtc_vblank_off(crtc);
 
 	/* Disable FIFO A flow */
 	mcde_disable_fifo(mcde, MCDE_FIFO_A, true);
+
+	/* This disables the DSI bridge */
+	mcde_dsi_disable(mcde->bridge);
 
 	event = crtc->state->event;
 	if (event) {
@@ -1076,6 +1080,12 @@ static void mcde_display_disable(struct drm_simple_display_pipe *pipe)
 		drm_crtc_send_vblank_event(crtc, event);
 		spin_unlock_irq(&crtc->dev->event_lock);
 	}
+
+	ret = regulator_disable(mcde->epod);
+	if (ret)
+		dev_err(drm->dev, "can't disable EPOD regulator\n");
+	/* Make sure we are powered down (before we may power up again) */
+	usleep_range(50000, 70000);
 
 	dev_info(drm->dev, "MCDE display is disabled\n");
 }

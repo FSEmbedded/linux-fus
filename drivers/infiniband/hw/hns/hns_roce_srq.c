@@ -182,27 +182,35 @@ static void free_srqc(struct hns_roce_dev *hr_dev, struct hns_roce_srq *srq)
 static int alloc_srq_buf(struct hns_roce_dev *hr_dev, struct hns_roce_srq *srq,
 			 struct ib_udata *udata, unsigned long addr)
 {
-	struct hns_roce_dev *hr_dev = to_hr_dev(srq->ibsrq.device);
-	struct hns_roce_ib_create_srq  ucmd;
-	struct hns_roce_buf *buf;
-	int ret;
+	struct ib_device *ibdev = &hr_dev->ib_dev;
+	struct hns_roce_buf_attr buf_attr = {};
+	int err;
 
-	if (ib_copy_from_udata(&ucmd, udata, sizeof(ucmd)))
-		return -EFAULT;
+	srq->wqe_shift = ilog2(roundup_pow_of_two(max(HNS_ROCE_SGE_SIZE,
+						      HNS_ROCE_SGE_SIZE *
+						      srq->max_gs)));
 
-	srq->umem = ib_umem_get(udata, ucmd.buf_addr, srq_buf_size, 0, 0);
-	if (IS_ERR(srq->umem))
-		return PTR_ERR(srq->umem);
+	buf_attr.page_shift = hr_dev->caps.srqwqe_buf_pg_sz + HNS_HW_PAGE_SHIFT;
+	buf_attr.region[0].size = to_hr_hem_entries_size(srq->wqe_cnt,
+							 srq->wqe_shift);
+	buf_attr.region[0].hopnum = hr_dev->caps.srqwqe_hop_num;
+	buf_attr.region_count = 1;
+	buf_attr.fixed_page = true;
 
-	buf = &srq->buf;
-	buf->npages = (ib_umem_page_count(srq->umem) +
-		       (1 << hr_dev->caps.srqwqe_buf_pg_sz) - 1) /
-		      (1 << hr_dev->caps.srqwqe_buf_pg_sz);
-	buf->page_shift = PAGE_SHIFT + hr_dev->caps.srqwqe_buf_pg_sz;
-	ret = hns_roce_mtt_init(hr_dev, buf->npages, buf->page_shift,
-				&srq->mtt);
-	if (ret)
-		goto err_user_buf;
+	err = hns_roce_mtr_create(hr_dev, &srq->buf_mtr, &buf_attr,
+				  hr_dev->caps.srqwqe_ba_pg_sz +
+				  HNS_HW_PAGE_SHIFT, udata, addr);
+	if (err)
+		ibdev_err(ibdev,
+			  "failed to alloc SRQ buf mtr, ret = %d.\n", err);
+
+	return err;
+}
+
+static void free_srq_buf(struct hns_roce_dev *hr_dev, struct hns_roce_srq *srq)
+{
+	hns_roce_mtr_destroy(hr_dev, &srq->buf_mtr);
+}
 
 static int alloc_srq_idx(struct hns_roce_dev *hr_dev, struct hns_roce_srq *srq,
 			 struct ib_udata *udata, unsigned long addr)
@@ -230,16 +238,13 @@ static int alloc_srq_idx(struct hns_roce_dev *hr_dev, struct hns_roce_srq *srq,
 		return err;
 	}
 
-	buf = &srq->idx_que.idx_buf;
-	buf->npages = DIV_ROUND_UP(ib_umem_page_count(srq->idx_que.umem),
-				   1 << hr_dev->caps.idx_buf_pg_sz);
-	buf->page_shift = PAGE_SHIFT + hr_dev->caps.idx_buf_pg_sz;
-	ret = hns_roce_mtt_init(hr_dev, buf->npages, buf->page_shift,
-				&srq->idx_que.mtt);
-	if (ret) {
-		dev_err(hr_dev->dev, "hns_roce_mtt_init error for idx que\n");
-		goto err_user_idx_mtt;
-	}
+	if (!udata) {
+		idx_que->bitmap = bitmap_zalloc(srq->wqe_cnt, GFP_KERNEL);
+		if (!idx_que->bitmap) {
+			ibdev_err(ibdev, "failed to alloc SRQ idx bitmap.\n");
+			err = -ENOMEM;
+			goto err_idx_mtr;
+		}
 
 	}
 

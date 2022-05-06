@@ -825,11 +825,36 @@ static void __dma_rx_do_complete(struct uart_8250_port *p)
 	cookie = dma->rx_cookie;
 	dma->rx_running = 0;
 
-	count = dma->rx_size - state.residue;
-	if (count < dma->rx_size)
-		dmaengine_terminate_async(dma->rxchan);
+	/* Re-enable RX FIFO interrupt now that transfer is complete */
+	if (priv->habit & UART_HAS_RHR_IT_DIS) {
+		reg = serial_in(p, UART_OMAP_IER2);
+		reg &= ~UART_OMAP_IER2_RHR_IT_DIS;
+		serial_out(p, UART_OMAP_IER2, UART_OMAP_IER2_RHR_IT_DIS);
+	}
+
+	dmaengine_tx_status(rxchan, cookie, &state);
+
+	count = dma->rx_size - state.residue + state.in_flight_bytes;
+	if (count < dma->rx_size) {
+		dmaengine_terminate_async(rxchan);
+
+		/*
+		 * Poll for teardown to complete which guarantees in
+		 * flight data is drained.
+		 */
+		if (state.in_flight_bytes) {
+			int poll_count = 25;
+
+			while (dmaengine_tx_status(rxchan, cookie, NULL) &&
+			       poll_count--)
+				cpu_relax();
+
+			if (poll_count == -1)
+				dev_err(p->port.dev, "teardown incomplete\n");
+		}
+	}
 	if (!count)
-		goto unlock;
+		goto out;
 	ret = tty_insert_flip_string(tty_port, dma->rx_buf, count);
 
 	p->port.icount.rx += ret;
@@ -892,6 +917,7 @@ static void omap_8250_rx_dma_flush(struct uart_8250_port *p)
 			priv->rx_dma_broken = true;
 	}
 	__dma_rx_do_complete(p);
+	spin_unlock_irqrestore(&priv->rx_dma_lock, flags);
 }
 
 static int omap_8250_rx_dma(struct uart_8250_port *p)

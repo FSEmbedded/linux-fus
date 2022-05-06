@@ -543,96 +543,19 @@ static int genregs32_get(struct task_struct *target,
 	if (target == current)
 		flushw_user();
 
-	pos /= sizeof(reg);
-	count /= sizeof(reg);
-
-	if (kbuf) {
-		for (; count > 0 && pos < 16; count--)
-			*k++ = regs->u_regs[pos++];
-
-		reg_window = (compat_ulong_t __user *) regs->u_regs[UREG_I6];
-		reg_window -= 16;
-		if (target == current) {
-			for (; count > 0 && pos < 32; count--) {
-				if (get_user(*k++, &reg_window[pos++]))
-					return -EFAULT;
-			}
-		} else {
-			for (; count > 0 && pos < 32; count--) {
-				if (access_process_vm(target,
-						      (unsigned long)
-						      &reg_window[pos],
-						      k, sizeof(*k),
-						      FOLL_FORCE)
-				    != sizeof(*k))
-					return -EFAULT;
-				k++;
-				pos++;
-			}
-		}
-	} else {
-		for (; count > 0 && pos < 16; count--) {
-			if (put_user((compat_ulong_t) regs->u_regs[pos++], u++))
-				return -EFAULT;
-		}
-
-		reg_window = (compat_ulong_t __user *) regs->u_regs[UREG_I6];
-		reg_window -= 16;
-		if (target == current) {
-			for (; count > 0 && pos < 32; count--) {
-				if (get_user(reg, &reg_window[pos++]) ||
-				    put_user(reg, u++))
-					return -EFAULT;
-			}
-		} else {
-			for (; count > 0 && pos < 32; count--) {
-				if (access_process_vm(target,
-						      (unsigned long)
-						      &reg_window[pos++],
-						      &reg, sizeof(reg),
-						      FOLL_FORCE)
-				    != sizeof(reg))
-					return -EFAULT;
-				if (put_user(reg, u++))
-					return -EFAULT;
-			}
-		}
-	}
-	while (count > 0) {
-		switch (pos) {
-		case 32: /* PSR */
-			reg = tstate_to_psr(regs->tstate);
-			break;
-		case 33: /* PC */
-			reg = regs->tpc;
-			break;
-		case 34: /* NPC */
-			reg = regs->tnpc;
-			break;
-		case 35: /* Y */
-			reg = regs->y;
-			break;
-		case 36: /* WIM */
-		case 37: /* TBR */
-			reg = 0;
-			break;
-		default:
-			goto finish;
-		}
-
-		if (kbuf)
-			*k++ = reg;
-		else if (put_user(reg, u++))
-			return -EFAULT;
-		pos++;
-		count--;
-	}
-finish:
-	pos *= sizeof(reg);
-	count *= sizeof(reg);
-
-	return user_regset_copyout_zero(&pos, &count, &kbuf, &ubuf,
-					38 * sizeof(reg), -1);
+	for (i = 0; i < 16; i++)
+		membuf_store(&to, (u32)regs->u_regs[i]);
+	if (!to.left)
+		return 0;
+	if (get_from_target(target, regs->u_regs[UREG_I6],
+			    uregs, sizeof(uregs)))
+		return -EFAULT;
+	membuf_write(&to, uregs, 16 * sizeof(u32));
+	membuf_store(&to, (u32)tstate_to_psr(regs->tstate));
+	membuf_store(&to, (u32)(regs->tpc));
+	membuf_store(&to, (u32)(regs->tnpc));
+	membuf_store(&to, (u32)(regs->y));
+	return membuf_zero(&to, 2 * sizeof(u32));
 }
 
 static int genregs32_set(struct task_struct *target,

@@ -2491,6 +2491,13 @@ static int gemini_ethernet_port_probe(struct platform_device *pdev)
 	if (ret)
 		goto unprepare;
 
+	ret = gmac_setup_phy(netdev);
+	if (ret) {
+		netdev_err(netdev,
+			   "PHY init failed\n");
+		goto unprepare;
+	}
+
 	ret = register_netdev(netdev);
 	if (ret)
 		goto unprepare;
@@ -2499,10 +2506,6 @@ static int gemini_ethernet_port_probe(struct platform_device *pdev)
 		    "irq %d, DMA @ 0x%pap, GMAC @ 0x%pap\n",
 		    port->irq, &dmares->start,
 		    &gmacres->start);
-	ret = gmac_setup_phy(netdev);
-	if (ret)
-		netdev_info(netdev,
-			    "PHY init failed, deferring to ifup time\n");
 	return 0;
 
 unprepare:
@@ -2515,6 +2518,7 @@ static int gemini_ethernet_port_remove(struct platform_device *pdev)
 	struct gemini_ethernet_port *port = platform_get_drvdata(pdev);
 
 	gemini_port_remove(port);
+
 	return 0;
 }
 

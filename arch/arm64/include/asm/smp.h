@@ -53,11 +53,6 @@ static inline void set_cpu_logical_map(int cpu, u64 hwid)
 	__cpu_logical_map[cpu] = hwid;
 }
 
-static inline void set_cpu_logical_map(int cpu, u64 hwid)
-{
-	__cpu_logical_map[cpu] = hwid;
-}
-
 struct seq_file;
 
 /*

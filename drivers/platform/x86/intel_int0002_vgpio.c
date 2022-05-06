@@ -143,18 +143,6 @@ static bool int0002_check_wake(void *data)
 	return (gpe_sts_reg & GPE0A_PME_B0_STS_BIT);
 }
 
-static struct irq_chip int0002_byt_irqchip = {
-	.name			= DRV_NAME,
-	.irq_ack		= int0002_irq_ack,
-	.irq_mask		= int0002_irq_mask,
-	.irq_unmask		= int0002_irq_unmask,
-	.irq_set_wake		= int0002_irq_set_wake,
-};
-
-	gpe_sts_reg = inl(GPE0A_STS_PORT);
-	return (gpe_sts_reg & GPE0A_PME_B0_STS_BIT);
-}
-
 static struct irq_chip int0002_irqchip = {
 	.name			= DRV_NAME,
 	.irq_ack		= int0002_irq_ack,
@@ -239,8 +227,6 @@ static int int0002_probe(struct platform_device *pdev)
 		dev_err(dev, "Error adding gpio chip: %d\n", ret);
 		return ret;
 	}
-
-	gpiochip_set_chained_irqchip(chip, irq_chip, irq, NULL);
 
 	acpi_register_wakeup_handler(irq, int0002_check_wake, NULL);
 	device_init_wakeup(dev, true);

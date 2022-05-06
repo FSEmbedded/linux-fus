@@ -211,12 +211,23 @@ asmlinkage void do_trap_illinsn(struct pt_regs *regs)
 
 asmlinkage void do_trap_fpe(struct pt_regs *regs)
 {
-	int sig;
-	unsigned long vector;
-	siginfo_t info;
-	struct task_struct *tsk = current;
+#ifdef CONFIG_CPU_HAS_FP
+	return fpu_fpe(regs);
+#else
+	do_trap_error(regs, SIGILL, ILL_ILLOPC, regs->pc,
+		      "Oops - fpu instruction exception");
+#endif
+}
 
-	vector = (regs->sr >> 16) & 0xff;
+asmlinkage void do_trap_priv(struct pt_regs *regs)
+{
+#ifdef CONFIG_CPU_HAS_FP
+	if (user_mode(regs) && fpu_libc_helper(regs))
+		return;
+#endif
+	do_trap_error(regs, SIGILL, ILL_PRVOPC, regs->pc,
+		      "Oops - illegal privileged exception");
+}
 
 asmlinkage void trap_c(struct pt_regs *regs)
 {
@@ -228,45 +239,26 @@ asmlinkage void trap_c(struct pt_regs *regs)
 		do_trap_bkpt(regs);
 		break;
 	case VEC_ILLEGAL:
-		tsk->thread.trap_no = vector;
-		die_if_kernel("Kernel mode ILLEGAL", regs, vector);
-#ifndef CONFIG_CPU_NO_USER_BKPT
-		if (*(uint16_t *)instruction_pointer(regs) != USR_BKPT)
-#endif
-		{
-			sig = SIGILL;
-			break;
-		}
-	/* gdbserver  breakpoint */
+		do_trap_illinsn(regs);
+		break;
 	case VEC_TRAP1:
 	case VEC_BREAKPOINT:
 		do_trap_bkpt(regs);
 		break;
 	case VEC_ACCESS:
-		tsk->thread.trap_no = vector;
-		return buserr(regs);
-#ifdef CONFIG_CPU_NEED_SOFTALIGN
+		do_trap_buserr(regs);
+		break;
 	case VEC_ALIGN:
-		tsk->thread.trap_no = vector;
-		return csky_alignment(regs);
-#endif
-#ifdef CONFIG_CPU_HAS_FPU
+		do_trap_misaligned(regs);
+		break;
 	case VEC_FPE:
-		tsk->thread.trap_no = vector;
-		die_if_kernel("Kernel mode FPE", regs, vector);
-		return fpu_fpe(regs);
+		do_trap_fpe(regs);
+		break;
 	case VEC_PRIV:
-		tsk->thread.trap_no = vector;
-		die_if_kernel("Kernel mode PRIV", regs, vector);
-		if (fpu_libc_helper(regs))
-			return;
-#endif
+		do_trap_priv(regs);
+		break;
 	default:
 		do_trap_unknown(regs);
 		break;
 	}
-
-	tsk->thread.trap_no = vector;
-
-	send_sig(sig, current, 0);
 }

@@ -15,7 +15,6 @@
 #include "cpuid.h"
 
 extern const u32 vmx_msr_index[];
-extern u64 host_efer;
 
 #define MSR_TYPE_R	1
 #define MSR_TYPE_W	2
@@ -332,7 +331,6 @@ struct kvm_vmx {
 bool nested_vmx_allowed(struct kvm_vcpu *vcpu);
 void vmx_vcpu_load_vmcs(struct kvm_vcpu *vcpu, int cpu,
 			struct loaded_vmcs *buddy);
-void vmx_vcpu_load(struct kvm_vcpu *vcpu, int cpu);
 int allocate_vpid(void);
 void free_vpid(int vpid);
 void vmx_set_constant_host_state(struct vcpu_vmx *vmx);

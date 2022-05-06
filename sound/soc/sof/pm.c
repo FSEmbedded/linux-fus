@@ -114,7 +114,12 @@ static int sof_resume(struct device *dev, bool runtime_resume)
 		return ret;
 	}
 
-	if (!runtime_resume && pm_runtime_suspended(sdev->dev))
+	/*
+	 * Nothing further to be done for platforms that support the low power
+	 * D0 substate.
+	 */
+	if (!runtime_resume && sof_ops(sdev)->set_power_state &&
+	    old_state == SOF_DSP_PM_D0)
 		return 0;
 
 	sdev->fw_state = SOF_FW_BOOT_PREPARE;
@@ -184,10 +189,7 @@ static int sof_suspend(struct device *dev, bool runtime_suspend)
 		return 0;
 
 	if (sdev->fw_state != SOF_FW_BOOT_COMPLETE)
-		goto power_down;
-
-	/* release trace */
-	snd_sof_release_trace(sdev);
+		goto suspend;
 
 	/* set restore_stream for all streams during system suspend */
 	if (!runtime_suspend) {
@@ -232,13 +234,13 @@ static int sof_suspend(struct device *dev, bool runtime_suspend)
 			 ret);
 	}
 
-power_down:
+suspend:
 
 	/* return if the DSP was not probed successfully */
 	if (sdev->fw_state == SOF_FW_BOOT_NOT_STARTED)
 		return 0;
 
-	/* power down all DSP cores */
+	/* platform-specific suspend */
 	if (runtime_suspend)
 		ret = snd_sof_dsp_runtime_suspend(sdev);
 	else
@@ -248,8 +250,13 @@ power_down:
 			"error: failed to power down DSP during suspend %d\n",
 			ret);
 
+	/* Do not reset FW state if DSP is in D0 */
+	if (target_state == SOF_DSP_PM_D0)
+		return ret;
+
 	/* reset FW state */
 	sdev->fw_state = SOF_FW_BOOT_NOT_STARTED;
+	sdev->enabled_cores_mask = 0;
 
 	return ret;
 }

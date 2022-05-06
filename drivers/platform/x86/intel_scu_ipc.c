@@ -53,33 +53,6 @@
 #define IPC_RWBUF_SIZE    20		/* IPC Read buffer Size */
 #define IPC_IOC	          0x100		/* IPC command register IOC bit */
 
-#define PCI_DEVICE_ID_LINCROFT		0x082a
-#define PCI_DEVICE_ID_PENWELL		0x080e
-#define PCI_DEVICE_ID_CLOVERVIEW	0x08ea
-#define PCI_DEVICE_ID_TANGIER		0x11a0
-
-/* intel scu ipc driver data */
-struct intel_scu_ipc_pdata_t {
-	u32 i2c_base;
-	u32 i2c_len;
-};
-
-static const struct intel_scu_ipc_pdata_t intel_scu_ipc_lincroft_pdata = {
-	.i2c_base = 0xff12b000,
-	.i2c_len = 0x10,
-};
-
-/* Penwell and Cloverview */
-static const struct intel_scu_ipc_pdata_t intel_scu_ipc_penwell_pdata = {
-	.i2c_base = 0xff12b000,
-	.i2c_len = 0x10,
-};
-
-static const struct intel_scu_ipc_pdata_t intel_scu_ipc_tangier_pdata = {
-	.i2c_base  = 0xff00d000,
-	.i2c_len = 0x10,
-};
-
 struct intel_scu_ipc_dev {
 	struct device dev;
 	struct resource mem;
@@ -93,9 +66,6 @@ struct intel_scu_ipc_dev {
 #define IPC_STATUS_IRQ		BIT(2)
 #define IPC_STATUS_ERR		BIT(1)
 #define IPC_STATUS_BUSY		BIT(0)
-
-#define IPC_STATUS		0x04
-#define IPC_STATUS_IRQ		BIT(2)
 
 /*
  * IPC Write/Read Buffers:
@@ -609,9 +579,17 @@ __intel_scu_ipc_register(struct device *parent,
 		goto err_unlock;
 	}
 
-	err = pcim_enable_device(pdev);
-	if (err)
-		return err;
+	scu->owner = owner;
+	scu->dev.parent = parent;
+	scu->dev.class = &intel_scu_ipc_class;
+	scu->dev.release = intel_scu_ipc_release;
+	dev_set_name(&scu->dev, "intel_scu_ipc");
+
+	if (!request_mem_region(scu_data->mem.start, resource_size(&scu_data->mem),
+				"intel_scu_ipc")) {
+		err = -EBUSY;
+		goto err_free;
+	}
 
 	ipc_base = ioremap(scu_data->mem.start, resource_size(&scu_data->mem));
 	if (!ipc_base) {

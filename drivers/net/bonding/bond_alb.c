@@ -1391,7 +1391,7 @@ struct slave *bond_xmit_alb_slave_get(struct bonding *bond,
 	bool do_tx_balance = true;
 	struct ethhdr *eth_data;
 	u32 hash_index = 0;
-	const u8 *hash_start = NULL;
+	int hash_size = 0;
 
 	skb_reset_mac_header(skb);
 	eth_data = eth_hdr(skb);

@@ -72,15 +72,12 @@ static int hsr_newlink(struct net *src_net, struct net_device *dev,
 	else
 		multicast_spec = nla_get_u8(data[IFLA_HSR_MULTICAST_SPEC]);
 
-	if (!data[IFLA_HSR_VERSION]) {
-		hsr_version = 0;
-	} else {
-		hsr_version = nla_get_u8(data[IFLA_HSR_VERSION]);
-		if (hsr_version > 1) {
-			NL_SET_ERR_MSG_MOD(extack,
-					   "Only versions 0..1 are supported");
-			return -EINVAL;
-		}
+	if (data[IFLA_HSR_PROTOCOL])
+		proto = nla_get_u8(data[IFLA_HSR_PROTOCOL]);
+
+	if (proto >= HSR_PROTOCOL_MAX) {
+		NL_SET_ERR_MSG_MOD(extack, "Unsupported protocol");
+		return -EINVAL;
 	}
 
 	if (!data[IFLA_HSR_VERSION]) {

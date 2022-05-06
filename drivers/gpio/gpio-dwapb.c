@@ -416,14 +416,8 @@ static void dwapb_configure_irqs(struct dwapb_gpio *gpio,
 	struct gpio_irq_chip *girq;
 	int err;
 
-	err = irq_alloc_domain_generic_chips(gpio->domain, ngpio, 2,
-					     DWAPB_DRIVER_NAME, handle_level_irq,
-					     IRQ_NOREQUEST, 0,
-					     IRQ_GC_INIT_NESTED_LOCK);
-	if (err) {
-		dev_info(gpio->dev, "irq_alloc_domain_generic_chips failed\n");
-		irq_domain_remove(gpio->domain);
-		gpio->domain = NULL;
+	pirq = devm_kzalloc(gpio->dev, sizeof(*pirq), GFP_KERNEL);
+	if (!pirq)
 		return;
 
 	if (dwapb_convert_irqs(pirq, pp)) {
@@ -524,17 +518,12 @@ static int dwapb_gpio_add_port(struct dwapb_gpio *gpio,
 	if (pp->idx == 0)
 		dwapb_configure_irqs(gpio, port, pp);
 
-	err = gpiochip_add_data(&port->gc, port);
+	err = devm_gpiochip_add_data(gpio->dev, &port->gc, port);
 	if (err) {
 		dev_err(gpio->dev, "failed to register gpiochip for port%d\n",
 			port->idx);
 		return err;
 	}
-
-	/* Add GPIO-signaled ACPI event support */
-	acpi_gpiochip_request_interrupts(&port->gc);
-
-	port->is_registered = true;
 
 	return 0;
 }
@@ -542,16 +531,19 @@ static int dwapb_gpio_add_port(struct dwapb_gpio *gpio,
 static void dwapb_get_irq(struct device *dev, struct fwnode_handle *fwnode,
 			  struct dwapb_port_property *pp)
 {
-	unsigned int m;
+	struct device_node *np = NULL;
+	int irq = -ENXIO, j;
 
-	for (m = 0; m < gpio->nr_ports; ++m) {
-		struct dwapb_gpio_port *port = &gpio->ports[m];
+	if (fwnode_property_read_bool(fwnode, "interrupt-controller"))
+		np = to_of_node(fwnode);
 
-		if (!port->is_registered)
-			continue;
-
-		acpi_gpiochip_free_interrupts(&port->gc);
-		gpiochip_remove(&port->gc);
+	for (j = 0; j < pp->ngpio; j++) {
+		if (np)
+			irq = of_irq_get(np, j);
+		else if (has_acpi_companion(dev))
+			irq = platform_get_irq_optional(to_platform_device(dev), j);
+		if (irq > 0)
+			pp->irq[j] = irq;
 	}
 }
 

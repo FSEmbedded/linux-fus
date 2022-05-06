@@ -673,24 +673,6 @@ static struct cpufreq_governor *cpufreq_parse_governor(char *str_governor)
 	return get_governor(str_governor);
 }
 
-/**
- * cpufreq_parse_governor - parse a governor string only for has_target()
- * @str_governor: Governor name.
- */
-static struct cpufreq_governor *cpufreq_parse_governor(char *str_governor)
-{
-	struct cpufreq_governor *t;
-
-	t = get_governor(str_governor);
-	if (t)
-		return t;
-
-	if (request_module("cpufreq_%s", str_governor))
-		return NULL;
-
-	return get_governor(str_governor);
-}
-
 /*
  * cpufreq_per_cpu_attr_read() / show_##file_name() -
  * print out cpufreq information
@@ -1078,7 +1060,6 @@ static int cpufreq_add_dev_interface(struct cpufreq_policy *policy)
 
 static int cpufreq_init_policy(struct cpufreq_policy *policy)
 {
-	struct cpufreq_governor *def_gov = cpufreq_default_governor();
 	struct cpufreq_governor *gov = NULL;
 	unsigned int pol = CPUFREQ_POLICY_UNKNOWN;
 	int ret;
@@ -1088,22 +1069,25 @@ static int cpufreq_init_policy(struct cpufreq_policy *policy)
 		gov = get_governor(policy->last_governor);
 		if (gov) {
 			pr_debug("Restoring governor %s for cpu %d\n",
-				 policy->governor->name, policy->cpu);
-		} else if (def_gov) {
-			gov = def_gov;
-			__module_get(gov->owner);
+				 gov->name, policy->cpu);
 		} else {
-			return -ENODATA;
+			gov = get_governor(default_governor);
 		}
+
+		if (!gov) {
+			gov = cpufreq_default_governor();
+			__module_get(gov->owner);
+		}
+
 	} else {
 
 		/* Use the default policy if there is no last_policy. */
 		if (policy->last_policy) {
 			pol = policy->last_policy;
-		} else if (def_gov) {
-			pol = cpufreq_parse_policy(def_gov->name);
+		} else {
+			pol = cpufreq_parse_policy(default_governor);
 			/*
-			 * In case the default governor is neiter "performance"
+			 * In case the default governor is neither "performance"
 			 * nor "powersave", fall back to the initial policy
 			 * value set by the driver.
 			 */
@@ -2488,7 +2472,10 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 	pr_debug("setting new policy for CPU %u: %u - %u kHz\n",
 		 new_data.cpu, new_data.min, new_data.max);
 
-	/* verify the cpu speed can be set within this limit */
+	/*
+	 * Verify that the CPU speed can be set within these limits and make sure
+	 * that min <= max.
+	 */
 	ret = cpufreq_driver->verify(&new_data);
 	if (ret)
 		return ret;
@@ -2602,26 +2589,20 @@ EXPORT_SYMBOL_GPL(cpufreq_update_limits);
  *********************************************************************/
 static int cpufreq_boost_set_sw(struct cpufreq_policy *policy, int state)
 {
-	struct cpufreq_policy *policy;
+	int ret;
 
-	for_each_active_policy(policy) {
-		int ret;
+	if (!policy->freq_table)
+		return -ENXIO;
 
-		if (!policy->freq_table)
-			return -ENXIO;
-
-		ret = cpufreq_frequency_table_cpuinfo(policy,
-						      policy->freq_table);
-		if (ret) {
-			pr_err("%s: Policy frequency update failed\n",
-			       __func__);
-			return ret;
-		}
-
-		ret = freq_qos_update_request(policy->max_freq_req, policy->max);
-		if (ret < 0)
-			return ret;
+	ret = cpufreq_frequency_table_cpuinfo(policy, policy->freq_table);
+	if (ret) {
+		pr_err("%s: Policy frequency update failed\n", __func__);
+		return ret;
 	}
+
+	ret = freq_qos_update_request(policy->max_freq_req, policy->max);
+	if (ret < 0)
+		return ret;
 
 	return 0;
 }

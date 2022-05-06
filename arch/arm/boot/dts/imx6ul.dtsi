@@ -218,7 +218,7 @@
 			 reg = <0x100000 0x8000>;
 		};
 
-		gpmi: gpmi-nand@1806000 {
+		gpmi: nand-controller@1806000 {
 			compatible = "fsl,imx6q-gpmi-nand";
 			#address-cells = <1>;
 			#size-cells = <1>;
@@ -387,7 +387,7 @@
 				};
 
 				asrc: asrc@2034000 {
-					compatible = "fsl,imx53-asrc";
+					compatible = "fsl,imx6ul-asrc", "fsl,imx53-asrc";
 					reg = <0x2034000 0x4000>;
 					interrupts = <GIC_SPI 50 IRQ_TYPE_LEVEL_HIGH>;
 					clocks = <&clks IMX6UL_CLK_ASRC_IPG>,
@@ -579,7 +579,7 @@
 					      "enet_clk_ref", "enet_out";
 				fsl,num-tx-queues = <1>;
 				fsl,num-rx-queues = <1>;
-				stop-mode = <&gpr 0x10 4>;
+				fsl,stop-mode = <&gpr 0x10 4>;
 				fsl,magic-packet;
 				fsl,wakeup_irq = <0>;
 				status = "disabled";
@@ -943,7 +943,7 @@
 					      "enet_clk_ref", "enet_out";
 				fsl,num-tx-queues = <1>;
 				fsl,num-rx-queues = <1>;
-				stop-mode = <&gpr 0x10 3>;
+				fsl,stop-mode = <&gpr 0x10 3>;
 				fsl,magic-packet;
 				fsl,wakeup_irq = <0>;
 				status = "disabled";

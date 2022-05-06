@@ -630,7 +630,7 @@ unsigned int aq_nic_map_skb(struct aq_nic_s *self, struct sk_buff *skb,
 				     dx_buff->len,
 				     DMA_TO_DEVICE);
 
-	if (unlikely(dma_mapping_error(aq_nic_get_dev(self), dx_buff->pa))) {
+	if (unlikely(dma_mapping_error(dev, dx_buff->pa))) {
 		ret = 0;
 		goto exit;
 	}

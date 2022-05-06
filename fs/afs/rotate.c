@@ -160,8 +160,8 @@ bool afs_select_fileserver(struct afs_operation *op)
 			op->server_list->vnovol_mask |= 1 << op->index;
 			write_unlock(&op->volume->servers_lock);
 
-			set_bit(AFS_VOLUME_NEEDS_UPDATE, &vnode->volume->flags);
-			error = afs_check_volume_status(vnode->volume, fc);
+			set_bit(AFS_VOLUME_NEEDS_UPDATE, &op->volume->flags);
+			error = afs_check_volume_status(op->volume, op);
 			if (error < 0)
 				goto failed_set_error;
 
@@ -248,9 +248,9 @@ bool afs_select_fileserver(struct afs_operation *op)
 			}
 			op->flags |= AFS_OPERATION_VMOVED;
 
-			set_bit(AFS_VOLUME_WAIT, &vnode->volume->flags);
-			set_bit(AFS_VOLUME_NEEDS_UPDATE, &vnode->volume->flags);
-			error = afs_check_volume_status(vnode->volume, fc);
+			set_bit(AFS_VOLUME_WAIT, &op->volume->flags);
+			set_bit(AFS_VOLUME_NEEDS_UPDATE, &op->volume->flags);
+			error = afs_check_volume_status(op->volume, op);
 			if (error < 0)
 				goto failed_set_error;
 
@@ -309,7 +309,7 @@ start:
 	/* See if we need to do an update of the volume record.  Note that the
 	 * volume may have moved or even have been deleted.
 	 */
-	error = afs_check_volume_status(vnode->volume, fc);
+	error = afs_check_volume_status(op->volume, op);
 	if (error < 0)
 		goto failed_set_error;
 

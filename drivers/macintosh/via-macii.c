@@ -287,20 +287,16 @@ static int macii_write(struct adb_request *req)
 static int macii_autopoll(int devs)
 {
 	unsigned long flags;
-	int err = 0;
 
 	local_irq_save(flags);
 
 	/* bit 1 == device 1, and so on. */
-	autopoll_devs = devs & 0xFFFE;
+	autopoll_devs = (unsigned int)devs & 0xFFFE;
 
-	if (autopoll_devs && !current_req) {
-		/* Send a Talk Reg 0. The controller will repeatedly transmit
-		 * this as long as it is idle.
-		 */
-		adb_request(&req, NULL, ADBREQ_NOSEND, 1,
-		            ADB_READREG(ffs(autopoll_devs) - 1, 0));
-		err = macii_write(&req);
+	if (!current_req) {
+		macii_queue_poll();
+		if (current_req && macii_state == idle)
+			macii_start();
 	}
 
 	local_irq_restore(flags);

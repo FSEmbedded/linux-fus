@@ -33,9 +33,9 @@ netdev_tx_t enetc_xmit(struct sk_buff *skb, struct net_device *ndev)
 		return NETDEV_TX_BUSY;
 	}
 
-	read_lock(&enetc_mdio_lock);
+	enetc_lock_mdio();
 	count = enetc_map_tx_buffs(tx_ring, skb, priv->active_offloads);
-	read_unlock(&enetc_mdio_lock);
+	enetc_unlock_mdio();
 
 	if (unlikely(!count))
 		goto drop_packet_err;
@@ -266,15 +266,14 @@ static irqreturn_t enetc_msix(int irq, void *data)
 	struct enetc_int_vector	*v = data;
 	int i;
 
-	read_lock(&enetc_mdio_lock);
+	enetc_lock_mdio();
 
 	/* disable interrupts */
 	enetc_wr_reg_hot(v->rbier, 0);
+	enetc_wr_reg_hot(v->ricr1, v->rx_ictt);
 
-	for_each_set_bit(i, &v->tx_rings_map, v->count_tx_rings)
+	for_each_set_bit(i, &v->tx_rings_map, ENETC_MAX_NUM_TXQS)
 		enetc_wr_reg_hot(v->tbier_base + ENETC_BDR_OFF(i), 0);
-
-	read_unlock(&enetc_mdio_lock);
 
 	enetc_unlock_mdio();
 
@@ -342,16 +341,19 @@ static int enetc_poll(struct napi_struct *napi, int budget)
 
 	napi_complete_done(napi, work_done);
 
-	read_lock(&enetc_mdio_lock);
+	if (likely(v->rx_dim_en))
+		enetc_rx_net_dim(v);
+
+	v->rx_napi_work = false;
 
 	/* enable interrupts */
 	enetc_wr_reg_hot(v->rbier, ENETC_RBIER_RXTIE);
 
-	for_each_set_bit(i, &v->tx_rings_map, v->count_tx_rings)
+	for_each_set_bit(i, &v->tx_rings_map, ENETC_MAX_NUM_TXQS)
 		enetc_wr_reg_hot(v->tbier_base + ENETC_BDR_OFF(i),
 				 ENETC_TBIER_TXTIE);
 
-	read_unlock(&enetc_mdio_lock);
+	enetc_unlock_mdio();
 
 	return work_done;
 }
@@ -405,9 +407,7 @@ static bool enetc_clean_tx_ring(struct enetc_bdr *tx_ring, int napi_budget)
 	i = tx_ring->next_to_clean;
 	tx_swbd = &tx_ring->tx_swbd[i];
 
-	read_lock(&enetc_mdio_lock);
 	bds_to_clean = enetc_bd_ready_count(tx_ring, i);
-	read_unlock(&enetc_mdio_lock);
 
 	do_tstamp = false;
 
@@ -454,8 +454,6 @@ static bool enetc_clean_tx_ring(struct enetc_bdr *tx_ring, int napi_budget)
 			tx_swbd = tx_ring->tx_swbd;
 		}
 
-		read_lock(&enetc_mdio_lock);
-
 		/* BD iteration loop end */
 		if (is_eof) {
 			tx_frm_cnt++;
@@ -466,8 +464,6 @@ static bool enetc_clean_tx_ring(struct enetc_bdr *tx_ring, int napi_budget)
 
 		if (unlikely(!bds_to_clean))
 			bds_to_clean = enetc_bd_ready_count(tx_ring, i);
-
-		read_unlock(&enetc_mdio_lock);
 	}
 
 	tx_ring->next_to_clean = i;
@@ -545,15 +541,12 @@ static int enetc_refill_rx_ring(struct enetc_bdr *rx_ring, const int buff_cnt)
 	if (likely(j)) {
 		rx_ring->next_to_alloc = i; /* keep track from page reuse */
 		rx_ring->next_to_use = i;
-		/* update ENETC's consumer index */
-		enetc_wr_reg_hot(rx_ring->rcir, i);
 	}
 
 	return j;
 }
 
-#ifdef CONFIG_FSL_ENETC_HW_TIMESTAMPING
-/* Must be called with the read-side enetc_mdio_lock held */
+#ifdef CONFIG_FSL_ENETC_PTP_CLOCK
 static void enetc_get_rx_tstamp(struct net_device *ndev,
 				union enetc_rx_bd *rxbd,
 				struct sk_buff *skb)
@@ -567,7 +560,8 @@ static void enetc_get_rx_tstamp(struct net_device *ndev,
 	if (le16_to_cpu(rxbd->r.flags) & ENETC_RXBD_FLAG_TSTMP) {
 		lo = enetc_rd_reg_hot(hw->reg + ENETC_SICTR0);
 		hi = enetc_rd_reg_hot(hw->reg + ENETC_SICTR1);
-		tstamp_lo = le32_to_cpu(rxbd->r.tstamp);
+		rxbd = enetc_rxbd_ext(rxbd);
+		tstamp_lo = le32_to_cpu(rxbd->ext.tstamp);
 		if (lo <= tstamp_lo)
 			hi -= 1;
 
@@ -732,8 +726,6 @@ static int enetc_clean_rx_ring(struct enetc_bdr *rx_ring,
 		u32 bd_status;
 		u16 size;
 
-		read_lock(&enetc_mdio_lock);
-
 		if (cleaned_cnt >= ENETC_RXBD_BUNDLE) {
 			int count = enetc_refill_rx_ring(rx_ring, cleaned_cnt);
 
@@ -744,19 +736,15 @@ static int enetc_clean_rx_ring(struct enetc_bdr *rx_ring,
 
 		rxbd = enetc_rxbd(rx_ring, i);
 		bd_status = le32_to_cpu(rxbd->r.lstatus);
-		if (!bd_status) {
-			read_unlock(&enetc_mdio_lock);
+		if (!bd_status)
 			break;
-		}
 
 		enetc_wr_reg_hot(rx_ring->idr, BIT(rx_ring->index));
 		dma_rmb(); /* for reading other rxbd fields */
 		size = le16_to_cpu(rxbd->r.buf_len);
 		skb = enetc_map_rx_buff_to_skb(rx_ring, i, size);
-		if (!skb) {
-			read_unlock(&enetc_mdio_lock);
+		if (!skb)
 			break;
-		}
 
 		enetc_get_offloads(rx_ring, rxbd, skb);
 
@@ -768,7 +756,6 @@ static int enetc_clean_rx_ring(struct enetc_bdr *rx_ring,
 
 		if (unlikely(bd_status &
 			     ENETC_RXBD_LSTATUS(ENETC_RXBD_ERR_MASK))) {
-			read_unlock(&enetc_mdio_lock);
 			dev_kfree_skb(skb);
 			while (!(bd_status & ENETC_RXBD_LSTATUS_F)) {
 				dma_rmb();
@@ -807,8 +794,6 @@ static int enetc_clean_rx_ring(struct enetc_bdr *rx_ring,
 		rx_byte_cnt += skb->len;
 
 		enetc_process_skb(rx_ring, skb);
-
-		read_unlock(&enetc_mdio_lock);
 
 		napi_gro_receive(napi, skb);
 
@@ -853,6 +838,9 @@ void enetc_get_si_caps(struct enetc_si *si)
 
 	if (val & ENETC_SIPCAPR0_QBU)
 		si->hw_features |= ENETC_SI_F_QBU;
+
+	if (val & ENETC_SIPCAPR0_PSFP)
+		si->hw_features |= ENETC_SI_F_PSFP;
 }
 
 static int enetc_dma_alloc_bdr(struct enetc_bdr *r, size_t bd_size)
@@ -1447,19 +1435,29 @@ static void enetc_clear_interrupts(struct enetc_ndev_priv *priv)
 static int enetc_phylink_connect(struct net_device *ndev)
 {
 	struct enetc_ndev_priv *priv = netdev_priv(ndev);
-	struct phy_device *phydev = ndev->phydev;
+	struct ethtool_eee edata;
+	int err;
 
-	if (priv->active_offloads & ENETC_F_QBV)
-		enetc_sched_speed_set(ndev);
+	if (!priv->phylink)
+		return 0; /* phy-less mode */
 
-	phy_print_status(phydev);
+	err = phylink_of_phy_connect(priv->phylink, priv->dev->of_node, 0);
+	if (err) {
+		dev_err(&ndev->dev, "could not attach to PHY\n");
+		return err;
+	}
+
+	/* disable EEE autoneg, until ENETC driver supports it */
+	memset(&edata, 0, sizeof(struct ethtool_eee));
+	phylink_ethtool_set_eee(priv->phylink, &edata);
+
+	return 0;
 }
 
 void enetc_start(struct net_device *ndev)
 {
 	struct enetc_ndev_priv *priv = netdev_priv(ndev);
-	struct phy_device *phydev;
-	struct ethtool_eee edata;
+	int i;
 
 	enetc_setup_interrupts(priv);
 
@@ -1476,11 +1474,7 @@ void enetc_start(struct net_device *ndev)
 	else
 		netif_carrier_on(ndev);
 
-	/* disable EEE autoneg, until ENETC driver supports it */
-	memset(&edata, 0, sizeof(struct ethtool_eee));
-	phy_ethtool_set_eee(phydev, &edata);
-
-	return 0;
+	netif_tx_start_all_queues(ndev);
 }
 
 int enetc_open(struct net_device *ndev)
@@ -1571,7 +1565,7 @@ int enetc_close(struct net_device *ndev)
 	return 0;
 }
 
-int enetc_setup_tc_mqprio(struct net_device *ndev, void *type_data)
+static int enetc_setup_tc_mqprio(struct net_device *ndev, void *type_data)
 {
 	struct enetc_ndev_priv *priv = netdev_priv(ndev);
 	struct tc_mqprio_qopt *mqprio = type_data;
@@ -1633,6 +1627,10 @@ int enetc_setup_tc(struct net_device *ndev, enum tc_setup_type type,
 		return enetc_setup_tc_taprio(ndev, type_data);
 	case TC_SETUP_QDISC_CBS:
 		return enetc_setup_tc_cbs(ndev, type_data);
+	case TC_SETUP_QDISC_ETF:
+		return enetc_setup_tc_txtime(ndev, type_data);
+	case TC_SETUP_BLOCK:
+		return enetc_setup_tc_psfp(ndev, type_data);
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -1816,9 +1814,10 @@ int enetc_ioctl(struct net_device *ndev, struct ifreq *rq, int cmd)
 		return enetc_hwtstamp_get(ndev, rq);
 #endif
 
-	if (!ndev->phydev)
-		return -EINVAL;
-	return phy_mii_ioctl(ndev->phydev, rq, cmd);
+	if (!priv->phylink)
+		return -EOPNOTSUPP;
+
+	return phylink_mii_ioctl(priv->phylink, rq, cmd);
 }
 
 int enetc_alloc_msix(struct enetc_ndev_priv *priv)

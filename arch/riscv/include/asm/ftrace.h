@@ -85,6 +85,4 @@ int ftrace_init_nop(struct module *mod, struct dyn_ftrace *rec);
 
 #endif
 
-#endif
-
 #endif /* _ASM_RISCV_FTRACE_H */

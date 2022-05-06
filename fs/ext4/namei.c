@@ -3270,28 +3270,8 @@ static int ext4_unlink(struct inode *dir, struct dentry *dentry)
 				    EXT4_DATA_TRANS_BLOCKS(dir->i_sb));
 	if (IS_ERR(handle)) {
 		retval = PTR_ERR(handle);
-		handle = NULL;
-		goto end_unlink;
+		goto out_trace;
 	}
-
-	if (IS_DIRSYNC(dir))
-		ext4_handle_sync(handle);
-
-	retval = ext4_delete_entry(handle, dir, de, bh);
-	if (retval)
-		goto end_unlink;
-	dir->i_ctime = dir->i_mtime = current_time(dir);
-	ext4_update_dx_flag(dir);
-	ext4_mark_inode_dirty(handle, dir);
-	if (inode->i_nlink == 0)
-		ext4_warning_inode(inode, "Deleting file '%.*s' with no links",
-				   dentry->d_name.len, dentry->d_name.name);
-	else
-		drop_nlink(inode);
-	if (!inode->i_nlink)
-		ext4_orphan_add(handle, inode);
-	inode->i_ctime = current_time(inode);
-	ext4_mark_inode_dirty(handle, inode);
 
 	retval = __ext4_unlink(handle, dir, &dentry->d_name, d_inode(dentry));
 	if (!retval)

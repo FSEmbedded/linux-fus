@@ -377,22 +377,26 @@ void *__ref acpi_os_map_memory(acpi_physical_address phys, acpi_size size)
 }
 EXPORT_SYMBOL_GPL(acpi_os_map_memory);
 
-/* Must be called with mutex_lock(&acpi_ioremap_lock) */
-static unsigned long acpi_os_drop_map_ref(struct acpi_ioremap *map)
+static void acpi_os_map_remove(struct work_struct *work)
 {
-	unsigned long refcount = --map->refcount;
+	struct acpi_ioremap *map = container_of(to_rcu_work(work),
+						struct acpi_ioremap,
+						track.rwork);
 
-	if (!refcount)
-		list_del_rcu(&map->list);
-	return refcount;
+	acpi_unmap(map->phys, map->virt);
+	kfree(map);
 }
 
 /* Must be called with mutex_lock(&acpi_ioremap_lock) */
 static void acpi_os_drop_map_ref(struct acpi_ioremap *map)
 {
-	synchronize_rcu_expedited();
-	acpi_unmap(map->phys, map->virt);
-	kfree(map);
+	if (--map->track.refcount)
+		return;
+
+	list_del_rcu(&map->list);
+
+	INIT_RCU_WORK(&map->track.rwork, acpi_os_map_remove);
+	queue_rcu_work(system_wq, &map->track.rwork);
 }
 
 /**
@@ -412,7 +416,6 @@ static void acpi_os_drop_map_ref(struct acpi_ioremap *map)
 void __ref acpi_os_unmap_iomem(void __iomem *virt, acpi_size size)
 {
 	struct acpi_ioremap *map;
-	unsigned long refcount;
 
 	if (!acpi_permanent_mmap) {
 		__acpi_unmap_table(virt, size);
@@ -427,11 +430,9 @@ void __ref acpi_os_unmap_iomem(void __iomem *virt, acpi_size size)
 		WARN(true, PREFIX "%s: bad address %p\n", __func__, virt);
 		return;
 	}
-	refcount = acpi_os_drop_map_ref(map);
-	mutex_unlock(&acpi_ioremap_lock);
+	acpi_os_drop_map_ref(map);
 
-	if (!refcount)
-		acpi_os_map_cleanup(map);
+	mutex_unlock(&acpi_ioremap_lock);
 }
 EXPORT_SYMBOL_GPL(acpi_os_unmap_iomem);
 
@@ -466,7 +467,6 @@ void acpi_os_unmap_generic_address(struct acpi_generic_address *gas)
 {
 	u64 addr;
 	struct acpi_ioremap *map;
-	unsigned long refcount;
 
 	if (gas->space_id != ACPI_ADR_SPACE_SYSTEM_MEMORY)
 		return;
@@ -483,11 +483,9 @@ void acpi_os_unmap_generic_address(struct acpi_generic_address *gas)
 		mutex_unlock(&acpi_ioremap_lock);
 		return;
 	}
-	refcount = acpi_os_drop_map_ref(map);
-	mutex_unlock(&acpi_ioremap_lock);
+	acpi_os_drop_map_ref(map);
 
-	if (!refcount)
-		acpi_os_map_cleanup(map);
+	mutex_unlock(&acpi_ioremap_lock);
 }
 EXPORT_SYMBOL(acpi_os_unmap_generic_address);
 

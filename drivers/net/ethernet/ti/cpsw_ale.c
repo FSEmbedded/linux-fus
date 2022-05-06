@@ -1178,7 +1178,7 @@ void cpsw_ale_start(struct cpsw_ale *ale)
 
 void cpsw_ale_stop(struct cpsw_ale *ale)
 {
-	del_timer_sync(&ale->timer);
+	cpsw_ale_aging_stop(ale);
 	cpsw_ale_control_set(ale, 0, ALE_CLEAR, 1);
 	cpsw_ale_control_set(ale, 0, ALE_ENABLE, 0);
 }

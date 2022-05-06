@@ -1094,14 +1094,48 @@ static int smsc95xx_bind(struct usbnet *dev, struct usb_interface *intf)
 	if (ret)
 		goto free_pdata;
 
+	pdata->mdiobus = mdiobus_alloc();
+	if (!pdata->mdiobus) {
+		ret = -ENOMEM;
+		goto free_pdata;
+	}
+
+	ret = smsc95xx_read_reg(dev, HW_CFG, &val);
+	if (ret < 0)
+		goto free_mdio;
+
+	is_internal_phy = !(val & HW_CFG_PSEL_);
+	if (is_internal_phy)
+		pdata->mdiobus->phy_mask = ~(1u << SMSC95XX_INTERNAL_PHY_ID);
+
+	pdata->mdiobus->priv = dev;
+	pdata->mdiobus->read = smsc95xx_mdiobus_read;
+	pdata->mdiobus->write = smsc95xx_mdiobus_write;
+	pdata->mdiobus->name = "smsc95xx-mdiobus";
+	pdata->mdiobus->parent = &dev->udev->dev;
+
+	snprintf(pdata->mdiobus->id, ARRAY_SIZE(pdata->mdiobus->id),
+		 "usb-%03d:%03d", dev->udev->bus->busnum, dev->udev->devnum);
+
+	ret = mdiobus_register(pdata->mdiobus);
+	if (ret) {
+		netdev_err(dev->net, "Could not register MDIO bus\n");
+		goto free_mdio;
+	}
+
+	pdata->phydev = phy_find_first(pdata->mdiobus);
+	if (!pdata->phydev) {
+		netdev_err(dev->net, "no PHY found\n");
+		ret = -ENODEV;
+		goto unregister_mdio;
+	}
+
+	pdata->phydev->is_internal = is_internal_phy;
+
 	/* detect device revision as different features may be available */
 	ret = smsc95xx_read_reg(dev, ID_REV, &val);
 	if (ret < 0)
-		goto free_pdata;
-
-	val >>= 16;
-	pdata->chip_id = val;
-	pdata->mdix_ctrl = get_mdix_status(dev->net);
+		goto unregister_mdio;
 
 	val >>= 16;
 	if ((val == ID_REV_CHIP_ID_9500A_) || (val == ID_REV_CHIP_ID_9530_) ||
@@ -1124,7 +1158,8 @@ static int smsc95xx_bind(struct usbnet *dev, struct usb_interface *intf)
 unregister_mdio:
 	mdiobus_unregister(pdata->mdiobus);
 
-	return 0;
+free_mdio:
+	mdiobus_free(pdata->mdiobus);
 
 free_pdata:
 	kfree(pdata);
@@ -1133,14 +1168,38 @@ free_pdata:
 
 static void smsc95xx_unbind(struct usbnet *dev, struct usb_interface *intf)
 {
-	struct smsc95xx_priv *pdata = (struct smsc95xx_priv *)(dev->data[0]);
+	struct smsc95xx_priv *pdata = dev->driver_priv;
 
-	if (pdata) {
-		cancel_delayed_work_sync(&pdata->carrier_check);
-		netif_dbg(dev, ifdown, dev->net, "free pdata\n");
-		kfree(pdata);
-		pdata = NULL;
-		dev->data[0] = 0;
+	mdiobus_unregister(pdata->mdiobus);
+	mdiobus_free(pdata->mdiobus);
+	netif_dbg(dev, ifdown, dev->net, "free pdata\n");
+	kfree(pdata);
+}
+
+static void smsc95xx_handle_link_change(struct net_device *net)
+{
+	struct usbnet *dev = netdev_priv(net);
+
+	phy_print_status(net->phydev);
+	usbnet_defer_kevent(dev, EVENT_LINK_CHANGE);
+}
+
+static int smsc95xx_start_phy(struct usbnet *dev)
+{
+	struct smsc95xx_priv *pdata = dev->driver_priv;
+	struct net_device *net = dev->net;
+	int ret;
+
+	ret = smsc95xx_reset(dev);
+	if (ret < 0)
+		return ret;
+
+	ret = phy_connect_direct(net, pdata->phydev,
+				 &smsc95xx_handle_link_change,
+				 PHY_INTERFACE_MODE_MII);
+	if (ret) {
+		netdev_err(net, "can't attach PHY to %s\n", pdata->mdiobus->id);
+		return ret;
 	}
 
 	phy_attached_info(net->phydev);

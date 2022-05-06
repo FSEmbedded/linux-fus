@@ -83,41 +83,25 @@ static int regwindow32_set(struct task_struct *target,
 
 static int genregs32_get(struct task_struct *target,
 			 const struct user_regset *regset,
-			 unsigned int pos, unsigned int count,
-			 void *kbuf, void __user *ubuf)
+			 struct membuf to)
 {
 	const struct pt_regs *regs = target->thread.kregs;
 	u32 uregs[16];
-	int ret;
 
 	if (target == current)
 		flush_user_windows();
 
-	ret = user_regset_copyout(&pos, &count, &kbuf, &ubuf,
-				  regs->u_regs,
-				  0, 16 * sizeof(u32));
-	if (ret || !count)
-		return ret;
-
-	if (pos < 32 * sizeof(u32)) {
-		if (regwindow32_get(target, regs, uregs))
-			return -EFAULT;
-		ret = user_regset_copyout(&pos, &count, &kbuf, &ubuf,
-					  uregs,
-					  16 * sizeof(u32), 32 * sizeof(u32));
-		if (ret || !count)
-			return ret;
-	}
-
-	uregs[0] = regs->psr;
-	uregs[1] = regs->pc;
-	uregs[2] = regs->npc;
-	uregs[3] = regs->y;
-	uregs[4] = 0;	/* WIM */
-	uregs[5] = 0;	/* TBR */
-	return user_regset_copyout(&pos, &count, &kbuf, &ubuf,
-				  uregs,
-				  32 * sizeof(u32), 38 * sizeof(u32));
+	membuf_write(&to, regs->u_regs, 16 * sizeof(u32));
+	if (!to.left)
+		return 0;
+	if (regwindow32_get(target, regs, uregs))
+		return -EFAULT;
+	membuf_write(&to, uregs, 16 * sizeof(u32));
+	membuf_store(&to, regs->psr);
+	membuf_store(&to, regs->pc);
+	membuf_store(&to, regs->npc);
+	membuf_store(&to, regs->y);
+	return membuf_zero(&to, 2 * sizeof(u32));
 }
 
 static int genregs32_set(struct task_struct *target,
@@ -139,19 +123,18 @@ static int genregs32_set(struct task_struct *target,
 	if (ret || !count)
 		return ret;
 
-	if (pos < 32 * sizeof(u32)) {
-		if (regwindow32_get(target, regs, uregs))
-			return -EFAULT;
-		ret = user_regset_copyin(&pos, &count, &kbuf, &ubuf,
-					 uregs,
-					 16 * sizeof(u32), 32 * sizeof(u32));
-		if (ret)
-			return ret;
-		if (regwindow32_set(target, regs, uregs))
-			return -EFAULT;
-		if (!count)
-			return 0;
-	}
+	if (regwindow32_get(target, regs, uregs))
+		return -EFAULT;
+	ret = user_regset_copyin(&pos, &count, &kbuf, &ubuf,
+				 uregs,
+				 16 * sizeof(u32), 32 * sizeof(u32));
+	if (ret)
+		return ret;
+	if (regwindow32_set(target, regs, uregs))
+		return -EFAULT;
+	if (!count)
+		return 0;
+
 	ret = user_regset_copyin(&pos, &count, &kbuf, &ubuf,
 				 &psr,
 				 32 * sizeof(u32), 33 * sizeof(u32));

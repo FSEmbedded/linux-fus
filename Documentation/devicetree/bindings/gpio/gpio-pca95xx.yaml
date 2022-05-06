@@ -48,6 +48,7 @@ properties:
       - nxp,pcal6416
       - nxp,pcal6524
       - nxp,pcal9535
+      - nxp,pcal9554b
       - nxp,pcal9555a
       - onnn,cat9554
       - onnn,pca9654
@@ -90,6 +91,10 @@ properties:
 
   wakeup-source:
     $ref: /schemas/types.yaml#/definitions/flag
+
+  out-default:
+    description:
+      set the output IO default voltage. Exp: out-default = /bits/ 16 <mask val>;
 
 patternProperties:
   "^(hog-[0-9]+|.+-hog(-[0-9]+)?)$":

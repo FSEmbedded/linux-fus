@@ -184,7 +184,7 @@ int afs_write_end(struct file *file, struct address_space *mapping,
 		write_seqlock(&vnode->cb_lock);
 		i_size = i_size_read(&vnode->vfs_inode);
 		if (maybe_i_size > i_size)
-			i_size_write(&vnode->vfs_inode, maybe_i_size);
+			afs_set_i_size(vnode, maybe_i_size);
 		write_sequnlock(&vnode->cb_lock);
 	}
 
@@ -869,8 +869,10 @@ vm_fault_t afs_page_mkwrite(struct vm_fault *vmf)
 	priv = afs_page_dirty_mmapped(priv);
 	trace_afs_page_dirty(vnode, tracepoint_string("mkwrite"),
 			     vmf->page->index, priv);
-	SetPagePrivate(vmf->page);
-	set_page_private(vmf->page, priv);
+	if (PagePrivate(vmf->page))
+		set_page_private(vmf->page, priv);
+	else
+		attach_page_private(vmf->page, (void *)priv);
 	file_update_time(file);
 
 	sb_end_pagefault(inode->i_sb);

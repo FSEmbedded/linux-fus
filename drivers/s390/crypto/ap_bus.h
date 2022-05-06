@@ -161,6 +161,7 @@ struct ap_card {
 	unsigned int functions;		/* AP device function bitfield. */
 	int queue_depth;		/* AP queue depth.*/
 	int id;				/* AP card number. */
+	bool config;			/* configured state */
 	atomic64_t total_request_count;	/* # requests ever for this AP device.*/
 };
 
@@ -281,8 +282,6 @@ void ap_queue_init_reply(struct ap_queue *aq, struct ap_message *ap_msg);
 struct ap_queue *ap_queue_create(ap_qid_t qid, int device_type);
 void ap_queue_prepare_remove(struct ap_queue *aq);
 void ap_queue_remove(struct ap_queue *aq);
-void ap_queue_suspend(struct ap_device *ap_dev);
-void ap_queue_resume(struct ap_device *ap_dev);
 void ap_queue_init_state(struct ap_queue *aq);
 
 struct ap_card *ap_card_create(int id, int queue_depth, int raw_device_type,

@@ -110,8 +110,7 @@ static const struct imx_sc_pd_range imx8qxp_scu_pd_ranges[] = {
 	{ "kpp", IMX_SC_R_KPP, 1, false, 0 },
 	{ "fspi", IMX_SC_R_FSPI_0, 2, true, 0 },
 	{ "mu_a", IMX_SC_R_MU_0A, 14, true, 0 },
-	{ "mu_8b", IMX_SC_R_MU_8B, 1, true, 8 },
-	{ "mu_b", IMX_SC_R_MU_13B, 1, true, 13 },
+	{ "mu_b", IMX_SC_R_MU_5B, 9, true, 5 },
 
 	/* CONN SS */
 	{ "usb", IMX_SC_R_USB_0, 2, true, 0 },
@@ -122,7 +121,6 @@ static const struct imx_sc_pd_range imx8qxp_scu_pd_ranges[] = {
 	{ "sdhc", IMX_SC_R_SDHC_0, 3, true, 0 },
 	{ "enet", IMX_SC_R_ENET_0, 2, true, 0 },
 	{ "nand", IMX_SC_R_NAND, 1, false, 0 },
-	{ "mlb", IMX_SC_R_MLB_0, 1, true, 0 },
 
 	/* AUDIO SS */
 	{ "audio-pll0", IMX_SC_R_AUDIO_PLL_0, 1, false, 0 },
@@ -172,11 +170,9 @@ static const struct imx_sc_pd_range imx8qxp_scu_pd_ranges[] = {
 	{ "vpu-dec0", IMX_SC_R_VPU_DEC_0, 1, false, 0 },
 	{ "vpu-enc0", IMX_SC_R_VPU_ENC_0, 1, false, 0 },
 	{ "vpu-enc1", IMX_SC_R_VPU_ENC_1, 1, false, 0 },
-	{ "vpu-ts0", IMX_SC_R_VPU_TS_0, 1, false, 0 },
 	{ "vpu-mu0", IMX_SC_R_VPU_MU_0, 1, false, 0 },
 	{ "vpu-mu1", IMX_SC_R_VPU_MU_1, 1, false, 0 },
 	{ "vpu-mu2", IMX_SC_R_VPU_MU_2, 1, false, 0 },
-	{ "vpu-mu3", IMX_SC_R_VPU_MU_3, 1, false, 0 },
 
 	/* GPU SS */
 	{ "gpu0-pid", IMX_SC_R_GPU_0_PID0, 4, true, 0 },
@@ -219,18 +215,29 @@ static const struct imx_sc_pd_range imx8qxp_scu_pd_ranges[] = {
 	{ "dc1-video", IMX_SC_R_DC_1_VIDEO0, 2, true, 0 },
 
 	/* CM40 SS */
-	{ "cm40_i2c", IMX_SC_R_M4_0_I2C, 1, false, 0 },
-	{ "cm40_intmux", IMX_SC_R_M4_0_INTMUX, 1, false, 0 },
-	{ "cm40_pid", IMX_SC_R_M4_0_PID0, 5, true, 0},
-	{ "cm40_mu1a", IMX_SC_R_M4_0_MU_1A, 1, false, 0},
-	{ "cm40_lpuart", IMX_SC_R_M4_0_UART, 1, false, 0},
+	{ "cm40-i2c", IMX_SC_R_M4_0_I2C, 1, false, 0 },
+	{ "cm40-intmux", IMX_SC_R_M4_0_INTMUX, 1, false, 0 },
+	{ "cm40-pid", IMX_SC_R_M4_0_PID0, 5, true, 0},
+	{ "cm40-mu-a1", IMX_SC_R_M4_0_MU_1A, 1, false, 0},
+	{ "cm40-lpuart", IMX_SC_R_M4_0_UART, 1, false, 0},
 
 	/* CM41 SS */
-	{ "cm41_i2c", IMX_SC_R_M4_1_I2C, 1, false, 0 },
-	{ "cm41_intmux", IMX_SC_R_M4_1_INTMUX, 1, false, 0 },
-	{ "cm41_pid", IMX_SC_R_M4_1_PID0, 5, true, 0},
-	{ "cm41_mu1a", IMX_SC_R_M4_1_MU_1A, 1, false, 0},
-	{ "cm41_lpuart", IMX_SC_R_M4_1_UART, 1, false, 0},
+	{ "cm41-i2c", IMX_SC_R_M4_1_I2C, 1, false, 0 },
+	{ "cm41-intmux", IMX_SC_R_M4_1_INTMUX, 1, false, 0 },
+	{ "cm41-pid", IMX_SC_R_M4_1_PID0, 5, true, 0},
+	{ "cm41-mu-a1", IMX_SC_R_M4_1_MU_1A, 1, false, 0},
+	{ "cm41-lpuart", IMX_SC_R_M4_1_UART, 1, false, 0},
+
+	/* SECO SS */
+	{ "seco_mu", IMX_SC_R_SECO_MU_2, 3, true, 2},
+
+	/* V2X SS */
+	{ "v2x_mu", IMX_SC_R_V2X_MU_0, 2, true, 0},
+	{ "v2x_mu", IMX_SC_R_V2X_MU_2, 1, true, 2},
+	{ "v2x_mu", IMX_SC_R_V2X_MU_3, 2, true, 3},
+
+	/* DB SS */
+	{ "perf", IMX_SC_R_PERF, 1, false, 0},
 
 	/* IMAGE SS */
 	{ "img-pdma", IMX_SC_R_ISI_CH0, 8, true, 0 },
@@ -256,22 +263,17 @@ static const struct imx_sc_pd_range imx8qxp_scu_pd_ranges[] = {
 	{ "hdmi-tx-pll0", IMX_SC_R_HDMI_PLL_0, 1, false, 0},
 	{ "hdmi-tx-pll1", IMX_SC_R_HDMI_PLL_1, 1, false, 0},
 
+	/* HDMI RX SS */
+	{ "hdmi-rx", IMX_SC_R_HDMI_RX, 1, false, 0},
+	{ "hdmi-rx-pwm", IMX_SC_R_HDMI_RX_PWM_0, 1, false, 0},
+	{ "hdmi-rx-i2c0", IMX_SC_R_HDMI_RX_I2C_0, 1, false, 0},
+	{ "hdmi-rx-bypass", IMX_SC_R_HDMI_RX_BYPASS, 1, false, 0},
+
 	/* SECURITY SS */
 	{ "sec-jr", IMX_SC_R_CAAM_JR2, 2, true, 2},
 
 	/* BOARD SS */
 	{ "board", IMX_SC_R_BOARD_R0, 8, true, 0},
-
-	/* SECO SS */
-	{ "seco_mu", IMX_SC_R_SECO_MU_2, 3, true, 2},
-
-	/* V2X SS */
-	{ "v2x_mu", IMX_SC_R_V2X_MU_0, 2, true, 0},
-	{ "v2x_mu", IMX_SC_R_V2X_MU_2, 1, true, 2},
-	{ "v2x_mu", IMX_SC_R_V2X_MU_3, 2, true, 3},
-
-	/* DB SS */
-	{ "perf", IMX_SC_R_PERF, 1, false, 0},
 };
 
 static const struct imx_sc_pd_soc imx8qxp_scu_pd = {

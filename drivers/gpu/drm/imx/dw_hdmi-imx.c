@@ -215,7 +215,8 @@ static bool imx8mp_hdmi_check_clk_rate(int rate_khz)
 }
 
 static enum drm_mode_status
-imx8mp_hdmi_mode_valid(struct drm_connector *con,
+imx8mp_hdmi_mode_valid(struct dw_hdmi *hdmi, void *data,
+		       const struct drm_display_info *info,
 		       const struct drm_display_mode *mode)
 {
 	if (mode->clock < 13500)
@@ -257,7 +258,8 @@ static struct dw_hdmi_plat_data imx6dl_hdmi_drv_data = {
 };
 
 static int imx8mp_hdmi_phy_init(struct dw_hdmi *dw_hdmi, void *data,
-			     struct drm_display_mode *mode)
+				const struct drm_display_info *display,
+				const struct drm_display_mode *mode)
 {
 	struct imx_hdmi *hdmi = (struct imx_hdmi *)data;
 	int val;

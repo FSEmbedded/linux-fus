@@ -24,6 +24,7 @@
 #include <linux/init.h>
 #include <linux/bpf.h>
 #include <linux/mm.h>
+#include <linux/kernel.h>
 #include <asm/cacheflush.h>
 #include <asm/dis.h>
 #include <asm/facility.h>

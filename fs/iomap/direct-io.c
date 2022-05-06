@@ -327,6 +327,9 @@ zero_tail:
 		if (pad)
 			iomap_dio_zero(dio, iomap, pos, fs_block_size - pad);
 	}
+out:
+	/* Undo iter limitation to current extent */
+	iov_iter_reexpand(dio->submit.iter, orig_count - copied);
 	if (copied)
 		return copied;
 	return ret;

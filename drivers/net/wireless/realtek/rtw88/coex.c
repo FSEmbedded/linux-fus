@@ -1340,16 +1340,27 @@ static void rtw_coex_action_bt_inquiry(struct rtw_dev *rtwdev)
 		/* Shared-Ant */
 		if (wl_hi_pri) {
 			table_case = 15;
-			if (coex_stat->bt_a2dp_exist &&
-			    !coex_stat->bt_pan_exist) {
-				slot_type = TDMA_4SLOT;
-				tdma_case = 11;
-			} else if (coex_stat->wl_hi_pri_task1) {
+			if (coex_stat->bt_profile_num > 0)
+				tdma_case = 10;
+			else if (coex_stat->wl_hi_pri_task1)
 				tdma_case = 6;
-			} else if (!coex_stat->bt_page) {
+			else if (!coex_stat->bt_page)
 				tdma_case = 8;
-			} else {
+			else
 				tdma_case = 9;
+		} else if (coex_stat->wl_gl_busy) {
+			if (coex_stat->bt_profile_num == 0) {
+				table_case = 12;
+				tdma_case = 18;
+			} else if (coex_stat->bt_profile_num == 1 &&
+				   !coex_stat->bt_a2dp_exist) {
+				slot_type = TDMA_4SLOT;
+				table_case = 12;
+				tdma_case = 20;
+			} else {
+				slot_type = TDMA_4SLOT;
+				table_case = 12;
+				tdma_case = 26;
 			}
 		} else if (coex_stat->wl_connected) {
 			table_case = 9;

@@ -109,7 +109,7 @@ struct htable {
 	u8 htable_bits;		/* size of hash table == 2^htable_bits */
 	u32 maxelem;		/* Maxelem per region */
 	struct ip_set_region *hregion;	/* Region locks and ext sizes */
-	struct hbucket __rcu *bucket[0]; /* hashtable buckets */
+	struct hbucket __rcu *bucket[]; /* hashtable buckets */
 };
 
 #define hbucket(h, i)		((h)->bucket[i])
@@ -630,7 +630,7 @@ mtype_resize(struct ip_set *set, bool retried)
 	struct htype *h = set->data;
 	struct htable *t, *orig;
 	u8 htable_bits;
-	size_t dsize = set->dsize;
+	size_t hsize, dsize = set->dsize;
 #ifdef IP_SET_HASH_WITH_NETS
 	u8 flags;
 	struct mtype_elem *tmp;
@@ -661,12 +661,6 @@ retry:
 		goto hbwarn;
 	t = ip_set_alloc(hsize);
 	if (!t) {
-		ret = -ENOMEM;
-		goto out;
-	}
-	t->hregion = ip_set_alloc(ahash_sizeof_regions(htable_bits));
-	if (!t->hregion) {
-		ip_set_free(t);
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -813,35 +807,6 @@ hbwarn:
 	pr_warn("Cannot increase the hashsize of set %s further\n", set->name);
 	ret = -IPSET_ERR_HASH_FULL;
 	goto out;
-}
-
-/* Get the current number of elements and ext_size in the set  */
-static void
-mtype_ext_size(struct ip_set *set, u32 *elements, size_t *ext_size)
-{
-	struct htype *h = set->data;
-	const struct htable *t;
-	u32 i, j, r;
-	struct hbucket *n;
-	struct mtype_elem *data;
-
-	t = rcu_dereference_bh(h->table);
-	for (r = 0; r < ahash_numof_locks(t->htable_bits); r++) {
-		for (i = ahash_bucket_start(r, t->htable_bits);
-		     i < ahash_bucket_end(r, t->htable_bits); i++) {
-			n = rcu_dereference_bh(hbucket(t, i));
-			if (!n)
-				continue;
-			for (j = 0; j < n->pos; j++) {
-				if (!test_bit(j, n->used))
-					continue;
-				data = ahash_data(n, j, set->dsize);
-				if (!SET_ELEM_EXPIRED(set, data))
-					(*elements)++;
-			}
-		}
-		*ext_size += t->hregion[r].ext_size;
-	}
 }
 
 /* Get the current number of elements and ext_size in the set  */

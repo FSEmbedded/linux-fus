@@ -19,11 +19,8 @@
 static int __init default_appraise_setup(char *str)
 {
 #ifdef CONFIG_IMA_APPRAISE_BOOTPARAM
-	if (arch_ima_get_secureboot()) {
-		pr_info("Secure boot enabled: ignoring ima_appraise=%s boot parameter option",
-			str);
-		return 1;
-	}
+	bool sb_state = arch_ima_get_secureboot();
+	int appraisal_state = ima_appraise;
 
 	if (strncmp(str, "off", 3) == 0)
 		appraisal_state = 0;

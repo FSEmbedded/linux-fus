@@ -10,15 +10,6 @@ fail() { #msg
     exit_fail
 }
 
-# event tracing is currently the only ftrace tracer that uses the
-# tracing error_log, hence this check
-if [ ! -f set_event ]; then
-    echo "event tracing is not supported"
-    exit_unsupported
-fi
-
-[ -f error_log ] || exit_unsupported
-
 ftrace_errlog_check 'event filter parse error' '((sig >= 10 && sig < 15) || dsig ^== 17) && comm != bash' 'events/signal/signal_generate/filter'
 
 exit 0

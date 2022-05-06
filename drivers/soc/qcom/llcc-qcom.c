@@ -86,11 +86,9 @@ struct llcc_slice_config {
 	bool activate_on_init;
 };
 
-static struct regmap_config llcc_regmap_config = {
-	.reg_bits = 32,
-	.reg_stride = 4,
-	.val_bits = 32,
-	.fast_io = true,
+struct qcom_llcc_config {
+	const struct llcc_slice_config *sct_data;
+	int size;
 };
 
 static const struct llcc_slice_config sc7180_data[] =  {

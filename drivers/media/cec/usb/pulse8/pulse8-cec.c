@@ -175,9 +175,7 @@ struct pulse8 {
 	struct serio *serio;
 	struct cec_adapter *adap;
 	unsigned int vers;
-	struct completion cmd_done;
-	struct work_struct work;
-	u8 work_result;
+
 	struct delayed_work ping_eeprom_work;
 
 	struct work_struct irq_work;
@@ -208,124 +206,6 @@ struct pulse8 {
 	bool restoring_config;
 	bool autonomous;
 };
-
-static void pulse8_ping_eeprom_work_handler(struct work_struct *work);
-
-static void pulse8_irq_work_handler(struct work_struct *work)
-{
-	struct pulse8 *pulse8 =
-		container_of(work, struct pulse8, work);
-	u8 result = pulse8->work_result;
-
-	pulse8->work_result = 0;
-	switch (result & 0x3f) {
-	case MSGCODE_FRAME_DATA:
-		cec_received_msg(pulse8->adap, &pulse8->rx_msg);
-		break;
-	case MSGCODE_TRANSMIT_SUCCEEDED:
-		cec_transmit_attempt_done(pulse8->adap, CEC_TX_STATUS_OK);
-		break;
-	case MSGCODE_TRANSMIT_FAILED_ACK:
-		cec_transmit_attempt_done(pulse8->adap, CEC_TX_STATUS_NACK);
-		break;
-	case MSGCODE_TRANSMIT_FAILED_LINE:
-	case MSGCODE_TRANSMIT_FAILED_TIMEOUT_DATA:
-	case MSGCODE_TRANSMIT_FAILED_TIMEOUT_LINE:
-		cec_transmit_attempt_done(pulse8->adap, CEC_TX_STATUS_ERROR);
-		break;
-	}
-}
-
-static irqreturn_t pulse8_interrupt(struct serio *serio, unsigned char data,
-				    unsigned int flags)
-{
-	struct pulse8 *pulse8 = serio_get_drvdata(serio);
-
-	if (!pulse8->started && data != MSGSTART)
-		return IRQ_HANDLED;
-	if (data == MSGESC) {
-		pulse8->escape = true;
-		return IRQ_HANDLED;
-	}
-	if (pulse8->escape) {
-		data += MSGOFFSET;
-		pulse8->escape = false;
-	} else if (data == MSGEND) {
-		struct cec_msg *msg = &pulse8->rx_msg;
-		u8 msgcode = pulse8->buf[0];
-
-		if (debug)
-			dev_info(pulse8->dev, "received: %*ph\n",
-				 pulse8->idx, pulse8->buf);
-		switch (msgcode & 0x3f) {
-		case MSGCODE_FRAME_START:
-			msg->len = 1;
-			msg->msg[0] = pulse8->buf[1];
-			break;
-		case MSGCODE_FRAME_DATA:
-			if (msg->len == CEC_MAX_MSG_SIZE)
-				break;
-			msg->msg[msg->len++] = pulse8->buf[1];
-			if (msgcode & MSGCODE_FRAME_EOM) {
-				WARN_ON(pulse8->work_result);
-				pulse8->work_result = msgcode;
-				schedule_work(&pulse8->work);
-				break;
-			}
-			break;
-		case MSGCODE_TRANSMIT_SUCCEEDED:
-		case MSGCODE_TRANSMIT_FAILED_LINE:
-		case MSGCODE_TRANSMIT_FAILED_ACK:
-		case MSGCODE_TRANSMIT_FAILED_TIMEOUT_DATA:
-		case MSGCODE_TRANSMIT_FAILED_TIMEOUT_LINE:
-			WARN_ON(pulse8->work_result);
-			pulse8->work_result = msgcode;
-			schedule_work(&pulse8->work);
-			break;
-		case MSGCODE_HIGH_ERROR:
-		case MSGCODE_LOW_ERROR:
-		case MSGCODE_RECEIVE_FAILED:
-		case MSGCODE_TIMEOUT_ERROR:
-			break;
-		case MSGCODE_COMMAND_ACCEPTED:
-		case MSGCODE_COMMAND_REJECTED:
-		default:
-			if (pulse8->idx == 0)
-				break;
-			memcpy(pulse8->data, pulse8->buf, pulse8->idx);
-			pulse8->len = pulse8->idx;
-			complete(&pulse8->cmd_done);
-			break;
-		}
-		pulse8->idx = 0;
-		pulse8->started = false;
-		return IRQ_HANDLED;
-	} else if (data == MSGSTART) {
-		pulse8->idx = 0;
-		pulse8->started = true;
-		return IRQ_HANDLED;
-	}
-
-	if (pulse8->idx >= DATA_SIZE) {
-		dev_dbg(pulse8->dev,
-			"throwing away %d bytes of garbage\n", pulse8->idx);
-		pulse8->idx = 0;
-	}
-	pulse8->buf[pulse8->idx++] = data;
-	return IRQ_HANDLED;
-}
-
-static void pulse8_disconnect(struct serio *serio)
-{
-	struct pulse8 *pulse8 = serio_get_drvdata(serio);
-
-	cec_unregister_adapter(pulse8->adap);
-	cancel_delayed_work_sync(&pulse8->ping_eeprom_work);
-	dev_info(&serio->dev, "disconnected\n");
-	serio_close(serio);
-	serio_set_drvdata(serio, NULL);
-	kfree(pulse8);
-}
 
 static int pulse8_send(struct serio *serio, const u8 *command, u8 cmd_len)
 {

@@ -359,19 +359,8 @@ static bool lmb_is_removable(struct drmem_lmb *lmb)
 	if (is_fadump_memory_area(lmb->base_addr, memory_block_size_bytes()))
 		return false;
 #endif
-
-	for (i = 0; i < scns_per_block; i++) {
-		pfn = PFN_DOWN(phys_addr);
-		if (!pfn_present(pfn)) {
-			phys_addr += MIN_MEMORY_BLOCK_SIZE;
-			continue;
-		}
-
-		rc &= is_mem_section_removable(pfn, PAGES_PER_SECTION);
-		phys_addr += MIN_MEMORY_BLOCK_SIZE;
-	}
-
-	return rc ? true : false;
+	/* device_offline() will determine if we can actually remove this lmb */
+	return true;
 }
 
 static int dlpar_add_lmb(struct drmem_lmb *);

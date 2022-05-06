@@ -897,11 +897,8 @@ int nand_choose_best_sdr_timings(struct nand_chip *chip,
 		best_mode = fls(chip->parameters.onfi->async_timing_mode) - 1;
 	}
 
-	/* for (mode = fls(modes) - 1; mode >= 0; mode--) { */
-	for (mode = 1; mode >= 0; mode--) {
-		ret = onfi_fill_data_interface(chip, NAND_SDR_IFACE, mode);
-		if (ret)
-			continue;
+	for (mode = best_mode; mode >= 0; mode--) {
+		onfi_fill_interface_config(chip, iface, NAND_SDR_IFACE, mode);
 
 		ret = ops->setup_interface(chip, NAND_DATA_IFACE_CHECK_ONLY,
 					   iface);

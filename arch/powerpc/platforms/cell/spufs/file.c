@@ -1964,9 +1964,6 @@ static ssize_t spufs_mbox_info_read(struct file *file, char __user *buf,
 	u32 stat, data;
 	int ret;
 
-	if (!access_ok(buf, len))
-		return -EFAULT;
-
 	ret = spu_acquire_saved(ctx);
 	if (ret)
 		return ret;
@@ -2032,19 +2029,6 @@ static size_t spufs_wbox_info_cnt(struct spu_context *ctx)
 	return (4 - ((ctx->csa.prob.mb_stat_R & 0x00ff00) >> 8)) * sizeof(u32);
 }
 
-static ssize_t __spufs_wbox_info_read(struct spu_context *ctx,
-			char __user *buf, size_t len, loff_t *pos)
-{
-	int i, cnt;
-	u32 data[4];
-	u32 wbox_stat;
-
-	wbox_stat = ctx->csa.prob.mb_stat_R;
-	cnt = spufs_wbox_info_cnt(ctx);
-	for (i = 0; i < cnt; i++) {
-		data[i] = ctx->csa.spu_mailbox_data[i];
-	}
-
 static ssize_t spufs_wbox_info_dump(struct spu_context *ctx,
 		struct coredump_params *cprm)
 {
@@ -2058,9 +2042,6 @@ static ssize_t spufs_wbox_info_read(struct file *file, char __user *buf,
 	struct spu_context *ctx = file->private_data;
 	u32 data[ARRAY_SIZE(ctx->csa.spu_mailbox_data)];
 	int ret, count;
-
-	if (!access_ok(buf, len))
-		return -EFAULT;
 
 	ret = spu_acquire_saved(ctx);
 	if (ret)
@@ -2101,13 +2082,6 @@ static void spufs_get_dma_info(struct spu_context *ctx,
 		qp->mfc_cq_data3_RW = spuqp->mfc_cq_data3_RW;
 	}
 }
-
-static ssize_t __spufs_dma_info_read(struct spu_context *ctx,
-			char __user *buf, size_t len, loff_t *pos)
-{
-	struct spu_dma_info info;
-
-	spufs_get_dma_info(ctx, &info);
 
 static ssize_t spufs_dma_info_dump(struct spu_context *ctx,
 		struct coredump_params *cprm)
@@ -2162,18 +2136,6 @@ static void spufs_get_proxydma_info(struct spu_context *ctx,
 		qp->mfc_cq_data3_RW = puqp->mfc_cq_data3_RW;
 	}
 }
-
-static ssize_t __spufs_proxydma_info_read(struct spu_context *ctx,
-			char __user *buf, size_t len, loff_t *pos)
-{
-	struct spu_proxydma_info info;
-	int ret = sizeof info;
-
-	info->proxydma_info_type = ctx->csa.prob.dma_querytype_RW;
-	info->proxydma_info_mask = ctx->csa.prob.dma_querymask_RW;
-	info->proxydma_info_status = ctx->csa.prob.dma_tagstatus_R;
-
-	spufs_get_proxydma_info(ctx, &info);
 
 static ssize_t spufs_proxydma_info_dump(struct spu_context *ctx,
 		struct coredump_params *cprm)

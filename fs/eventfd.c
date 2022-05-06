@@ -27,8 +27,6 @@
 
 DEFINE_PER_CPU(int, eventfd_wake_count);
 
-DEFINE_PER_CPU(int, eventfd_wake_count);
-
 static DEFINE_IDA(eventfd_ida);
 
 struct eventfd_ctx {

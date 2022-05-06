@@ -41,8 +41,7 @@
 /* Max ECC buffer length */
 #define FMC2_MAX_ECC_BUF_LEN		(FMC2_BCHDSRS_LEN * FMC2_MAX_SG)
 
-#define FMC2_TIMEOUT_US			1000
-#define FMC2_TIMEOUT_MS			1000
+#define FMC2_TIMEOUT_MS			5000
 
 /* Timings */
 #define FMC2_THIZ			1
@@ -1290,34 +1289,9 @@ static int stm32_fmc2_nfc_waitrdy(struct nand_chip *chip,
 					1000 * FMC2_TIMEOUT_MS);
 }
 
-static int stm32_fmc2_waitrdy(struct nand_chip *chip, unsigned long timeout_ms)
-{
-	struct stm32_fmc2_nfc *fmc2 = to_stm32_nfc(chip->controller);
-	const struct nand_sdr_timings *timings;
-	u32 isr, sr;
-
-	/* Check if there is no pending requests to the NAND flash */
-	if (readl_relaxed_poll_timeout_atomic(fmc2->io_base + FMC2_SR, sr,
-					      sr & FMC2_SR_NWRF, 1,
-					      FMC2_TIMEOUT_US))
-		dev_warn(fmc2->dev, "Waitrdy timeout\n");
-
-	/* Wait tWB before R/B# signal is low */
-	timings = nand_get_sdr_timings(&chip->data_interface);
-	ndelay(PSEC_TO_NSEC(timings->tWB_max));
-
-	/* R/B# signal is low, clear high level flag */
-	writel_relaxed(FMC2_ICR_CIHLF, fmc2->io_base + FMC2_ICR);
-
-	/* Wait R/B# signal is high */
-	return readl_relaxed_poll_timeout_atomic(fmc2->io_base + FMC2_ISR,
-						 isr, isr & FMC2_ISR_IHLF,
-						 5, 1000 * timeout_ms);
-}
-
-static int stm32_fmc2_exec_op(struct nand_chip *chip,
-			      const struct nand_operation *op,
-			      bool check_only)
+static int stm32_fmc2_nfc_exec_op(struct nand_chip *chip,
+				  const struct nand_operation *op,
+				  bool check_only)
 {
 	struct stm32_fmc2_nfc *nfc = to_stm32_nfc(chip->controller);
 	const struct nand_op_instr *instr = NULL;
@@ -1359,8 +1333,8 @@ static int stm32_fmc2_exec_op(struct nand_chip *chip,
 			break;
 
 		case NAND_OP_WAITRDY_INSTR:
-			ret = stm32_fmc2_waitrdy(chip,
-						 instr->ctx.waitrdy.timeout_ms);
+			timeout = instr->ctx.waitrdy.timeout_ms;
+			ret = stm32_fmc2_nfc_waitrdy(chip, timeout);
 			break;
 		}
 	}

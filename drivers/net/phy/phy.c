@@ -766,6 +766,18 @@ static int phy_check_link_status(struct phy_device *phydev)
 	return 0;
 }
 
+int phy_config_inband_aneg(struct phy_device *phydev, bool enabled)
+{
+	if (!phydev->drv)
+		return -EIO;
+
+	if (!phydev->drv->config_inband_aneg)
+		return -EOPNOTSUPP;
+
+	return phydev->drv->config_inband_aneg(phydev, enabled);
+}
+EXPORT_SYMBOL(phy_config_inband_aneg);
+
 /**
  * phy_start_aneg - start auto-negotiation for this PHY device
  * @phydev: the phy_device struct
@@ -981,9 +993,6 @@ static irqreturn_t phy_interrupt(int irq, void *phy_dat)
 		return IRQ_NONE;
 	}
 
-	/* did_interrupt() may have cleared the interrupt already */
-	if (!phydev->drv->did_interrupt && phy_clear_interrupt(phydev))
-		goto phy_err;
 	return IRQ_HANDLED;
 }
 
@@ -1050,6 +1059,8 @@ EXPORT_SYMBOL(phy_free_interrupt);
  */
 void phy_stop(struct phy_device *phydev)
 {
+	struct net_device *dev = phydev->attached_dev;
+
 	if (!phy_is_started(phydev) && phydev->state != PHY_DOWN) {
 		WARN(1, "called from state %s\n",
 		     phy_state_to_str(phydev->state));

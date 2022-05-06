@@ -20,19 +20,8 @@
 /* Default policer order */
 #define POL_ORDER 0x1d3 /* Ocelot policer order: Serial (QoS -> Port -> VCAP) */
 
-struct qos_policer_conf {
-	enum mscc_qos_rate_mode mode;
-	bool dlb; /* Enable DLB (dual leaky bucket mode */
-	bool cf;  /* Coupling flag (ignored in SLB mode) */
-	u32  cir; /* CIR in kbps/fps (ignored in SLB mode) */
-	u32  cbs; /* CBS in bytes/frames (ignored in SLB mode) */
-	u32  pir; /* PIR in kbps/fps */
-	u32  pbs; /* PBS in bytes/frames */
-	u8   ipg; /* Size of IPG when MSCC_QOS_RATE_MODE_LINE is chosen */
-};
-
-static int qos_policer_conf_set(struct ocelot *ocelot, int port, u32 pol_ix,
-				struct qos_policer_conf *conf)
+int qos_policer_conf_set(struct ocelot *ocelot, int port, u32 pol_ix,
+			 struct qos_policer_conf *conf)
 {
 	u32 cf = 0, cir_ena = 0, frm_mode = POL_MODE_LINERATE;
 	u32 cir = 0, cbs = 0, pir = 0, pbs = 0;

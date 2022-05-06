@@ -174,13 +174,13 @@ bad_area:
 bad_area_nosemaphore:
 	/* User mode accesses just cause a SIGSEGV */
 	if (user_mode(regs)) {
-		tsk->thread.trap_no = (regs->sr >> 16) & 0xff;
+		tsk->thread.trap_no = trap_no(regs);
 		force_sig_fault(SIGSEGV, si_code, (void __user *)address);
 		return;
 	}
 
 no_context:
-	tsk->thread.trap_no = (regs->sr >> 16) & 0xff;
+	tsk->thread.trap_no = trap_no(regs);
 
 	/* Are we prepared to handle this kernel fault? */
 	if (fixup_exception(regs))
@@ -196,7 +196,7 @@ no_context:
 	die(regs, "Oops");
 
 out_of_memory:
-	tsk->thread.trap_no = (regs->sr >> 16) & 0xff;
+	tsk->thread.trap_no = trap_no(regs);
 
 	/*
 	 * We ran out of memory, call the OOM killer, and return the userspace
@@ -206,9 +206,9 @@ out_of_memory:
 	return;
 
 do_sigbus:
-	tsk->thread.trap_no = (regs->sr >> 16) & 0xff;
+	tsk->thread.trap_no = trap_no(regs);
 
-	up_read(&mm->mmap_sem);
+	mmap_read_unlock(mm);
 
 	/* Kernel mode? Handle exceptions or die */
 	if (!user_mode(regs))

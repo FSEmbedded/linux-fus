@@ -21,7 +21,7 @@
 struct {
 	__uint(type, BPF_MAP_TYPE_CPUMAP);
 	__uint(key_size, sizeof(u32));
-	__uint(value_size, sizeof(u32));
+	__uint(value_size, sizeof(struct bpf_cpumap_val));
 	__uint(max_entries, MAX_CPUS);
 } cpu_map SEC(".maps");
 

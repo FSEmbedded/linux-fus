@@ -892,8 +892,9 @@ repeat:
 			kernfs_put(parent);
 		}
 
-		fsnotify(inode, FS_MODIFY, inode, FSNOTIFY_EVENT_INODE,
-			 NULL, 0);
+		if (!p_inode)
+			fsnotify_inode(inode, FS_MODIFY);
+
 		iput(inode);
 	}
 

@@ -764,7 +764,12 @@ static int init_eq(struct hinic_eq *eq, struct hinic_hwif *hwif,
 		return -EINVAL;
 	}
 
-	set_eq_ctrls(eq);
+	err = set_eq_ctrls(eq);
+	if (err) {
+		dev_err(&pdev->dev, "Failed to set eq ctrls\n");
+		return err;
+	}
+
 	eq_update_ci(eq, EQ_ARMED);
 
 	err = alloc_eq_pages(eq);

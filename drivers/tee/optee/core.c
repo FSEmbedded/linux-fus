@@ -735,7 +735,16 @@ static int optee_probe(struct platform_device *pdev)
 	if (optee->sec_caps & OPTEE_SMC_SEC_CAP_DYNAMIC_SHM)
 		pr_info("dynamic shared memory is enabled\n");
 
-	return optee;
+	platform_set_drvdata(pdev, optee);
+
+	rc = optee_enumerate_devices(PTA_CMD_GET_DEVICES);
+	if (rc) {
+		optee_remove(pdev);
+		return rc;
+	}
+
+	pr_info("initialized driver\n");
+	return 0;
 err:
 	if (optee) {
 		/*
@@ -758,56 +767,18 @@ static const struct of_device_id optee_dt_match[] = {
 	{ .compatible = "linaro,optee-tz" },
 	{},
 };
+MODULE_DEVICE_TABLE(of, optee_dt_match);
 
-static struct optee *optee_svc;
-
-static int __init optee_driver_init(void)
-{
-	struct device_node *fw_np = NULL;
-	struct device_node *np = NULL;
-	struct optee *optee = NULL;
-	int rc = 0;
-
-	/* Node is supposed to be below /firmware */
-	fw_np = of_find_node_by_name(NULL, "firmware");
-	if (!fw_np)
-		return -ENODEV;
-
-	np = of_find_matching_node(fw_np, optee_match);
-	if (!np || !of_device_is_available(np)) {
-		of_node_put(np);
-		return -ENODEV;
-	}
-
-	optee = optee_probe(np);
-	of_node_put(np);
-
-	if (IS_ERR(optee))
-		return PTR_ERR(optee);
-
-	rc = optee_enumerate_devices();
-	if (rc) {
-		optee_remove(optee);
-		return rc;
-	}
-
-	pr_info("initialized driver\n");
-
-	optee_svc = optee;
-
-	return 0;
-}
-module_init(optee_driver_init);
-
-static void __exit optee_driver_exit(void)
-{
-	struct optee *optee = optee_svc;
-
-	optee_svc = NULL;
-	if (optee)
-		optee_remove(optee);
-}
-module_exit(optee_driver_exit);
+static struct platform_driver optee_driver = {
+	.probe  = optee_probe,
+	.remove = optee_remove,
+	.shutdown = optee_shutdown,
+	.driver = {
+		.name = "optee",
+		.of_match_table = optee_dt_match,
+	},
+};
+module_platform_driver(optee_driver);
 
 MODULE_AUTHOR("Linaro");
 MODULE_DESCRIPTION("OP-TEE driver");

@@ -62,18 +62,31 @@ Efault:
 	return -EFAULT;
 }
 
-static __always_inline long
-probe_write_common(void __user *dst, const void *src, size_t size)
+long strncpy_from_kernel_nofault(char *dst, const void *unsafe_addr, long count)
 {
-	long ret;
+	const void *src = unsafe_addr;
+
+	if (unlikely(count <= 0))
+		return 0;
+	if (!copy_from_kernel_nofault_allowed(unsafe_addr, count))
+		return -ERANGE;
 
 	pagefault_disable();
-	ret = __copy_to_user_inatomic(dst, src, size);
+	do {
+		__get_kernel_nofault(dst, src, u8, Efault);
+		dst++;
+		src++;
+	} while (dst[-1] && src - unsafe_addr < count);
 	pagefault_enable();
 
-	return ret ? -EFAULT : 0;
+	dst[-1] = '\0';
+	return src - unsafe_addr;
+Efault:
+	pagefault_enable();
+	dst[-1] = '\0';
+	return -EFAULT;
 }
-
+#else /* HAVE_GET_KERNEL_NOFAULT */
 /**
  * copy_from_kernel_nofault(): safely attempt to read from kernel-space
  * @dst: pointer to the buffer that shall take the data
@@ -119,49 +132,21 @@ EXPORT_SYMBOL_GPL(copy_from_kernel_nofault);
  * Safely write to address @dst from the buffer at @src.  If a kernel fault
  * happens, handle that and return -EFAULT.
  */
-
-long __weak probe_kernel_write(void *dst, const void *src, size_t size)
-    __attribute__((alias("__probe_kernel_write")));
-
-long __probe_kernel_write(void *dst, const void *src, size_t size)
+long copy_to_kernel_nofault(void *dst, const void *src, size_t size)
 {
 	long ret;
 	mm_segment_t old_fs = get_fs();
 
 	set_fs(KERNEL_DS);
-	ret = probe_write_common((__force void __user *)dst, src, size);
+	pagefault_disable();
+	ret = __copy_to_user_inatomic((__force void __user *)dst, src, size);
+	pagefault_enable();
 	set_fs(old_fs);
 
-	return ret;
+	if (ret)
+		return -EFAULT;
+	return 0;
 }
-EXPORT_SYMBOL_GPL(probe_kernel_write);
-
-/**
- * probe_user_write(): safely attempt to write to a user-space location
- * @dst: address to write to
- * @src: pointer to the data that shall be written
- * @size: size of the data chunk
- *
- * Safely write to address @dst from the buffer at @src.  If a kernel fault
- * happens, handle that and return -EFAULT.
- */
-
-long __weak probe_user_write(void __user *dst, const void *src, size_t size)
-    __attribute__((alias("__probe_user_write")));
-
-long __probe_user_write(void __user *dst, const void *src, size_t size)
-{
-	long ret = -EFAULT;
-	mm_segment_t old_fs = get_fs();
-
-	set_fs(USER_DS);
-	if (access_ok(dst, size))
-		ret = probe_write_common(dst, src, size);
-	set_fs(old_fs);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(probe_user_write);
 
 /**
  * strncpy_from_kernel_nofault: - Copy a NUL terminated string from unsafe

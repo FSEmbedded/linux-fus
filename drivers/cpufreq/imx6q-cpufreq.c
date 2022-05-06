@@ -495,24 +495,17 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 		goto put_reg;
 	}
 
-	/* Because we have added the OPPs here, we must free them */
-	free_opp = true;
-
 	if (of_machine_is_compatible("fsl,imx6ul") ||
 	    of_machine_is_compatible("fsl,imx6ull")) {
 		ret = imx6ul_opp_check_speed_grading(cpu_dev);
-		if (ret) {
-			if (ret == -EPROBE_DEFER) {
-				dev_err(cpu_dev, "defer the cpufreq\n\n");
-				goto out_free_opp;
-			}
-
+	} else {
+		ret = imx6q_opp_check_speed_grading(cpu_dev);
+	}
+	if (ret) {
+		if (ret != -EPROBE_DEFER)
 			dev_err(cpu_dev, "failed to read ocotp: %d\n",
 				ret);
-			goto out_free_opp;
-		}
-	} else {
-		imx6q_opp_check_speed_grading(cpu_dev);
+		goto out_free_opp;
 	}
 
 	num = dev_pm_opp_get_opp_count(cpu_dev);

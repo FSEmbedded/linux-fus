@@ -890,9 +890,12 @@ static int geneve_xmit_skb(struct sk_buff *skb, struct net_device *dev,
 	__be16 sport;
 	int err;
 
+	if (!pskb_inet_may_pull(skb))
+		return -EINVAL;
+
 	sport = udp_flow_src_port(geneve->net, skb, 1, USHRT_MAX, true);
 	rt = geneve_get_v4_rt(skb, dev, gs4, &fl4, info,
-			      geneve->info.key.tp_dst, sport);
+			      geneve->cfg.info.key.tp_dst, sport);
 	if (IS_ERR(rt))
 		return PTR_ERR(rt);
 
@@ -909,7 +912,28 @@ static int geneve_xmit_skb(struct sk_buff *skb, struct net_device *dev,
 		if (info) {
 			struct ip_tunnel_info *unclone;
 
-	if (geneve->collect_md) {
+			unclone = skb_tunnel_info_unclone(skb);
+			if (unlikely(!unclone)) {
+				dst_release(&rt->dst);
+				return -ENOMEM;
+			}
+
+			unclone->key.u.ipv4.dst = fl4.saddr;
+			unclone->key.u.ipv4.src = fl4.daddr;
+		}
+
+		if (!pskb_may_pull(skb, ETH_HLEN)) {
+			dst_release(&rt->dst);
+			return -EINVAL;
+		}
+
+		skb->protocol = eth_type_trans(skb, geneve->dev);
+		netif_rx(skb);
+		dst_release(&rt->dst);
+		return -EMSGSIZE;
+	}
+
+	if (geneve->cfg.collect_md) {
 		tos = ip_tunnel_ecn_encap(key->tos, ip_hdr(skb), skb);
 		ttl = key->ttl;
 
@@ -963,9 +987,12 @@ static int geneve6_xmit_skb(struct sk_buff *skb, struct net_device *dev,
 	__be16 sport;
 	int err;
 
+	if (!pskb_inet_may_pull(skb))
+		return -EINVAL;
+
 	sport = udp_flow_src_port(geneve->net, skb, 1, USHRT_MAX, true);
 	dst = geneve_get_v6_dst(skb, dev, gs6, &fl6, info,
-				geneve->info.key.tp_dst, sport);
+				geneve->cfg.info.key.tp_dst, sport);
 	if (IS_ERR(dst))
 		return PTR_ERR(dst);
 
@@ -978,7 +1005,31 @@ static int geneve6_xmit_skb(struct sk_buff *skb, struct net_device *dev,
 	} else if (err) {
 		struct ip_tunnel_info *info = skb_tunnel_info(skb);
 
-	if (geneve->collect_md) {
+		if (info) {
+			struct ip_tunnel_info *unclone;
+
+			unclone = skb_tunnel_info_unclone(skb);
+			if (unlikely(!unclone)) {
+				dst_release(dst);
+				return -ENOMEM;
+			}
+
+			unclone->key.u.ipv6.dst = fl6.saddr;
+			unclone->key.u.ipv6.src = fl6.daddr;
+		}
+
+		if (!pskb_may_pull(skb, ETH_HLEN)) {
+			dst_release(dst);
+			return -EINVAL;
+		}
+
+		skb->protocol = eth_type_trans(skb, geneve->dev);
+		netif_rx(skb);
+		dst_release(dst);
+		return -EMSGSIZE;
+	}
+
+	if (geneve->cfg.collect_md) {
 		prio = ip_tunnel_ecn_encap(key->tos, ip_hdr(skb), skb);
 		ttl = key->ttl;
 	} else {
@@ -1032,7 +1083,8 @@ static netdev_tx_t geneve_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (likely(!err))
 		return NETDEV_TX_OK;
 
-	dev_kfree_skb(skb);
+	if (err != -EMSGSIZE)
+		dev_kfree_skb(skb);
 
 	if (err == -ELOOP)
 		dev->stats.collisions++;
@@ -1069,7 +1121,7 @@ static int geneve_fill_metadata_dst(struct net_device *dev, struct sk_buff *skb)
 					  1, USHRT_MAX, true);
 
 		rt = geneve_get_v4_rt(skb, dev, gs4, &fl4, info,
-				      geneve->info.key.tp_dst, sport);
+				      geneve->cfg.info.key.tp_dst, sport);
 		if (IS_ERR(rt))
 			return PTR_ERR(rt);
 
@@ -1085,7 +1137,7 @@ static int geneve_fill_metadata_dst(struct net_device *dev, struct sk_buff *skb)
 					  1, USHRT_MAX, true);
 
 		dst = geneve_get_v6_dst(skb, dev, gs6, &fl6, info,
-					geneve->info.key.tp_dst, sport);
+					geneve->cfg.info.key.tp_dst, sport);
 		if (IS_ERR(dst))
 			return PTR_ERR(dst);
 
@@ -1097,7 +1149,7 @@ static int geneve_fill_metadata_dst(struct net_device *dev, struct sk_buff *skb)
 	}
 
 	info->key.tp_src = sport;
-	info->key.tp_dst = geneve->info.key.tp_dst;
+	info->key.tp_dst = geneve->cfg.info.key.tp_dst;
 	return 0;
 }
 
@@ -1640,12 +1692,8 @@ static int geneve_changelink(struct net_device *dev, struct nlattr *tb[],
 			     struct netlink_ext_ack *extack)
 {
 	struct geneve_dev *geneve = netdev_priv(dev);
-	enum ifla_geneve_df df = geneve->df;
 	struct geneve_sock *gs4, *gs6;
-	struct ip_tunnel_info info;
-	bool metadata;
-	bool use_udp6_rx_checksums;
-	bool ttl_inherit;
+	struct geneve_config cfg;
 	int err;
 
 	/* If the geneve device is configured for metadata (or externally
@@ -1666,11 +1714,7 @@ static int geneve_changelink(struct net_device *dev, struct nlattr *tb[],
 	}
 
 	geneve_quiesce(geneve, &gs4, &gs6);
-	geneve->info = info;
-	geneve->collect_md = metadata;
-	geneve->use_udp6_rx_checksums = use_udp6_rx_checksums;
-	geneve->ttl_inherit = ttl_inherit;
-	geneve->df = df;
+	memcpy(&geneve->cfg, &cfg, sizeof(cfg));
 	geneve_unquiesce(geneve, gs4, gs6);
 
 	return 0;

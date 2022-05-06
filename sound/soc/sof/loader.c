@@ -42,12 +42,20 @@ static int get_ext_windows(struct snd_sof_dev *sdev,
 }
 
 static int get_cc_info(struct snd_sof_dev *sdev,
-		       struct sof_ipc_ext_data_hdr *ext_hdr)
+		       const struct sof_ipc_ext_data_hdr *ext_hdr)
 {
 	int ret;
 
-	struct sof_ipc_cc_version *cc =
+	const struct sof_ipc_cc_version *cc =
 		container_of(ext_hdr, struct sof_ipc_cc_version, ext_hdr);
+
+	if (sdev->cc_version) {
+		if (memcmp(sdev->cc_version, cc, cc->ext_hdr.hdr.size)) {
+			dev_err(sdev->dev, "error: receive diverged cc_version descriptions");
+			return -EINVAL;
+		}
+		return 0;
+	}
 
 	dev_dbg(sdev->dev, "Firmware info: used compiler %s %d:%d:%d%s used optimization flags %s\n",
 		cc->name, cc->major, cc->minor, cc->micro, cc->desc,
@@ -104,14 +112,16 @@ int snd_sof_fw_parse_ext_data(struct snd_sof_dev *sdev, u32 bar, u32 offset)
 
 		/* process structure data */
 		switch (ext_hdr->type) {
-		case SOF_IPC_EXT_DMA_BUFFER:
-			ret = 0;
-			break;
 		case SOF_IPC_EXT_WINDOW:
 			ret = get_ext_windows(sdev, ext_hdr);
 			break;
 		case SOF_IPC_EXT_CC_INFO:
 			ret = get_cc_info(sdev, ext_hdr);
+			break;
+		case SOF_IPC_EXT_UNUSED:
+		case SOF_IPC_EXT_PROBE_INFO:
+		case SOF_IPC_EXT_USER_ABI_INFO:
+			/* They are supported but we don't do anything here */
 			break;
 		default:
 			dev_warn(sdev->dev, "warning: unknown ext header type %d size 0x%x\n",
@@ -799,7 +809,7 @@ int snd_sof_run_firmware(struct snd_sof_dev *sdev)
 	}
 
 	if (sdev->fw_state == SOF_FW_BOOT_COMPLETE)
-		dev_info(sdev->dev, "firmware boot complete\n");
+		dev_dbg(sdev->dev, "firmware boot complete\n");
 	else
 		return -EIO; /* FW boots but fw_ready op failed */
 

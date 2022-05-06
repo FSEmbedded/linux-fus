@@ -1285,6 +1285,12 @@ int amdgpu_amdkfd_gpuvm_free_memory_of_gpu(
 	 * be freed anyway
 	 */
 
+	if (mapped_to_gpu_memory > 0) {
+		pr_debug("BO VA 0x%llx size 0x%lx is still mapped.\n",
+				mem->va, bo_size);
+		return -EBUSY;
+	}
+
 	/* Make sure restore workers don't access the BO any more */
 	bo_list_entry = &mem->validate_list;
 	mutex_lock(&process_info->lock);
@@ -1337,7 +1343,7 @@ int amdgpu_amdkfd_gpuvm_free_memory_of_gpu(
 	}
 
 	/* Free the BO*/
-	drm_gem_object_put_unlocked(&mem->bo->tbo.base);
+	drm_gem_object_put(&mem->bo->tbo.base);
 	mutex_destroy(&mem->lock);
 	kfree(mem);
 
@@ -1675,9 +1681,12 @@ int amdgpu_amdkfd_gpuvm_import_dmabuf(struct kgd_dev *kgd,
 
 	INIT_LIST_HEAD(&(*mem)->bo_va_list);
 	mutex_init(&(*mem)->lock);
-	(*mem)->mapping_flags =
-		AMDGPU_VM_PAGE_READABLE | AMDGPU_VM_PAGE_WRITEABLE |
-		AMDGPU_VM_PAGE_EXECUTABLE | AMDGPU_VM_MTYPE_NC;
+	
+	(*mem)->alloc_flags =
+		((bo->preferred_domains & AMDGPU_GEM_DOMAIN_VRAM) ?
+		KFD_IOC_ALLOC_MEM_FLAGS_VRAM : KFD_IOC_ALLOC_MEM_FLAGS_GTT)
+		| KFD_IOC_ALLOC_MEM_FLAGS_WRITABLE
+		| KFD_IOC_ALLOC_MEM_FLAGS_EXECUTABLE;
 
 	drm_gem_object_get(&bo->tbo.base);
 	(*mem)->bo = bo;

@@ -4,8 +4,10 @@
 #include <linux/mdio.h>
 #include <linux/module.h>
 #include <linux/fsl/enetc_mdio.h>
+#include <linux/of_platform.h>
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
+#include "enetc_ierb.h"
 #include "enetc_pf.h"
 
 #define ENETC_DRV_NAME_STR "ENETC PF driver"
@@ -477,39 +479,52 @@ static void enetc_port_si_configure(struct enetc_si *si)
 	enetc_port_wr(hw, ENETC_PSIVLANFMR, ENETC_PSIVLANFMR_VS);
 }
 
-static void enetc_configure_port_mac(struct enetc_hw *hw,
-				     phy_interface_t phy_mode)
+static void enetc_configure_port_mac(struct enetc_hw *hw)
 {
 	enetc_port_wr(hw, ENETC_PM0_MAXFRM,
 		      ENETC_SET_MAXFRM(ENETC_RX_MAXFRM_SIZE));
 
 	enetc_port_wr(hw, ENETC_PTCMSDUR(0), ENETC_MAC_MAXFRM_SIZE);
-	enetc_port_wr(hw, ENETC_PTXMBAR, 2 * ENETC_MAC_MAXFRM_SIZE);
 
 	enetc_port_wr(hw, ENETC_PM0_CMD_CFG, ENETC_PM0_CMD_PHY_TX_EN |
 		      ENETC_PM0_CMD_TXP	| ENETC_PM0_PROMISC);
 
 	enetc_port_wr(hw, ENETC_PM1_CMD_CFG, ENETC_PM0_CMD_PHY_TX_EN |
-		      ENETC_PM0_CMD_TXP	| ENETC_PM0_PROMISC |
-		      ENETC_PM0_TX_EN | ENETC_PM0_RX_EN);
-	/* set auto-speed for RGMII */
-	if (enetc_port_rd(hw, ENETC_PM0_IF_MODE) & ENETC_PMO_IFM_RG ||
-	    phy_mode == PHY_INTERFACE_MODE_RGMII) {
-		enetc_port_wr(hw, ENETC_PM0_IF_MODE, ENETC_PM0_IFM_RGAUTO);
-		enetc_port_wr(hw, ENETC_PM1_IF_MODE, ENETC_PM0_IFM_RGAUTO);
-	}
+		      ENETC_PM0_CMD_TXP	| ENETC_PM0_PROMISC);
 
-	if (phy_mode == PHY_INTERFACE_MODE_XGMII ||
-	    phy_mode == PHY_INTERFACE_MODE_USXGMII) {
-		enetc_port_wr(hw, ENETC_PM0_IF_MODE, ENETC_PM0_IFM_XGMII);
-		enetc_port_wr(hw, ENETC_PM1_IF_MODE, ENETC_PM0_IFM_XGMII);
-	}
-
-	/* on LS1028A the MAC Rx FIFO defaults to value 2, which is too high and
-	 * may lead to Rx lock-up under traffic.  Set it to 1 instead, as
-	 * recommended by the hardware team.
+	/* On LS1028A, the MAC RX FIFO defaults to 2, which is too high
+	 * and may lead to RX lock-up under traffic. Set it to 1 instead,
+	 * as recommended by the hardware team.
 	 */
 	enetc_port_wr(hw, ENETC_PM0_RX_FIFO, ENETC_PM0_RX_FIFO_VAL);
+}
+
+static void enetc_mac_config(struct enetc_hw *hw, phy_interface_t phy_mode)
+{
+	u32 val;
+
+	if (phy_interface_mode_is_rgmii(phy_mode)) {
+		val = enetc_port_rd(hw, ENETC_PM0_IF_MODE);
+		val &= ~(ENETC_PM0_IFM_EN_AUTO | ENETC_PM0_IFM_IFMODE_MASK);
+		val |= ENETC_PM0_IFM_IFMODE_GMII | ENETC_PM0_IFM_RG;
+		enetc_port_wr(hw, ENETC_PM0_IF_MODE, val);
+	}
+
+	if (phy_mode == PHY_INTERFACE_MODE_USXGMII) {
+		val = ENETC_PM0_IFM_FULL_DPX | ENETC_PM0_IFM_IFMODE_XGMII;
+		enetc_port_wr(hw, ENETC_PM0_IF_MODE, val);
+	}
+}
+
+static void enetc_mac_enable(struct enetc_hw *hw, bool en)
+{
+	u32 val = enetc_port_rd(hw, ENETC_PM0_CMD_CFG);
+
+	val &= ~(ENETC_PM0_TX_EN | ENETC_PM0_RX_EN);
+	val |= en ? (ENETC_PM0_TX_EN | ENETC_PM0_RX_EN) : 0;
+
+	enetc_port_wr(hw, ENETC_PM0_CMD_CFG, val);
+	enetc_port_wr(hw, ENETC_PM1_CMD_CFG, val);
 }
 
 static void enetc_configure_port_pmac(struct enetc_hw *hw)
@@ -532,7 +547,7 @@ static void enetc_configure_port(struct enetc_pf *pf)
 
 	enetc_configure_port_pmac(hw);
 
-	enetc_configure_port_mac(hw, pf->if_mode);
+	enetc_configure_port_mac(hw);
 
 	enetc_port_si_configure(pf->si);
 
@@ -723,13 +738,7 @@ static void enetc_pf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
 		ndev->features &= ~NETIF_F_HW_CSUM;
 	}
 
-	ndev->priv_flags |= IFF_UNICAST_FLT | IFF_LIVE_ADDR_CHANGE;
-
-	if (si->hw_features & ENETC_SI_F_QBV)
-		priv->active_offloads |= ENETC_F_QBV;
-
-	if (enetc_tsn_is_enabled() && (si->hw_features & ENETC_SI_F_QBU))
-		priv->active_offloads |= ENETC_F_QBU;
+	ndev->priv_flags |= IFF_UNICAST_FLT;
 
 	if (si->hw_features & ENETC_SI_F_QBV)
 		priv->active_offloads |= ENETC_F_QBV;
@@ -740,15 +749,17 @@ static void enetc_pf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
 		ndev->hw_features |= NETIF_F_HW_TC;
 	}
 
+	if (enetc_tsn_is_enabled() && (si->hw_features & ENETC_SI_F_QBU))
+		priv->active_offloads |= ENETC_F_QBU;
+
 	/* pick up primary MAC address from SI */
 	enetc_get_primary_mac_addr(&si->hw, ndev->dev_addr);
 }
 
-static int enetc_mdio_probe(struct enetc_pf *pf)
+static int enetc_mdio_probe(struct enetc_pf *pf, struct device_node *np)
 {
 	struct device *dev = &pf->si->pdev->dev;
 	struct enetc_mdio_priv *mdio_priv;
-	struct device_node *np;
 	struct mii_bus *bus;
 	int err;
 
@@ -765,20 +776,12 @@ static int enetc_mdio_probe(struct enetc_pf *pf)
 	mdio_priv->mdio_base = ENETC_EMDIO_BASE;
 	snprintf(bus->id, MII_BUS_ID_SIZE, "%s", dev_name(dev));
 
-	np = of_get_child_by_name(dev->of_node, "mdio");
-	if (!np) {
-		dev_err(dev, "MDIO node missing\n");
-		return -EINVAL;
-	}
-
 	err = of_mdiobus_register(bus, np);
 	if (err) {
-		of_node_put(np);
 		dev_err(dev, "cannot register MDIO bus\n");
 		return err;
 	}
 
-	of_node_put(np);
 	pf->mdio = bus;
 
 	return 0;
@@ -790,28 +793,71 @@ static void enetc_mdio_remove(struct enetc_pf *pf)
 		mdiobus_unregister(pf->mdio);
 }
 
-static int enetc_of_get_phy(struct enetc_pf *pf)
+static int enetc_imdio_create(struct enetc_pf *pf)
 {
 	struct device *dev = &pf->si->pdev->dev;
-	struct device_node *np = dev->of_node;
-	struct device_node *mdio_np;
-	int phy_mode;
+	struct enetc_mdio_priv *mdio_priv;
+	struct lynx_pcs *pcs_lynx;
+	struct mdio_device *pcs;
+	struct mii_bus *bus;
 	int err;
 
-	pf->phy_node = of_parse_phandle(np, "phy-handle", 0);
-	if (!pf->phy_node) {
-		if (!of_phy_is_fixed_link(np)) {
-			dev_err(dev, "PHY not specified\n");
-			return -ENODEV;
-		}
+	bus = mdiobus_alloc_size(sizeof(*mdio_priv));
+	if (!bus)
+		return -ENOMEM;
 
-		err = of_phy_register_fixed_link(np);
-		if (err < 0) {
-			dev_err(dev, "fixed link registration failed\n");
-			return err;
-		}
+	bus->name = "Freescale ENETC internal MDIO Bus";
+	bus->read = enetc_mdio_read;
+	bus->write = enetc_mdio_write;
+	bus->parent = dev;
+	bus->phy_mask = ~0;
+	mdio_priv = bus->priv;
+	mdio_priv->hw = &pf->si->hw;
+	mdio_priv->mdio_base = ENETC_PM_IMDIO_BASE;
+	snprintf(bus->id, MII_BUS_ID_SIZE, "%s-imdio", dev_name(dev));
 
-		pf->phy_node = of_node_get(np);
+	err = mdiobus_register(bus);
+	if (err) {
+		dev_err(dev, "cannot register internal MDIO bus (%d)\n", err);
+		goto free_mdio_bus;
+	}
+
+	pcs = mdio_device_create(bus, 0);
+	if (IS_ERR(pcs)) {
+		err = PTR_ERR(pcs);
+		dev_err(dev, "cannot create pcs (%d)\n", err);
+		goto unregister_mdiobus;
+	}
+
+	pcs_lynx = lynx_pcs_create(pcs);
+	if (!pcs_lynx) {
+		mdio_device_free(pcs);
+		err = -ENOMEM;
+		dev_err(dev, "cannot create lynx pcs (%d)\n", err);
+		goto unregister_mdiobus;
+	}
+
+	pf->imdio = bus;
+	pf->pcs = pcs_lynx;
+
+	return 0;
+
+unregister_mdiobus:
+	mdiobus_unregister(bus);
+free_mdio_bus:
+	mdiobus_free(bus);
+	return err;
+}
+
+static void enetc_imdio_remove(struct enetc_pf *pf)
+{
+	if (pf->pcs) {
+		mdio_device_free(pf->pcs->mdio);
+		lynx_pcs_destroy(pf->pcs);
+	}
+	if (pf->imdio) {
+		mdiobus_unregister(pf->imdio);
+		mdiobus_free(pf->imdio);
 	}
 }
 
@@ -839,16 +885,35 @@ static int enetc_mdiobus_create(struct enetc_pf *pf, struct device_node *node)
 	if (enetc_port_has_pcs(pf)) {
 		err = enetc_imdio_create(pf);
 		if (err) {
-			of_node_put(pf->phy_node);
+			enetc_mdio_remove(pf);
 			return err;
 		}
 	}
 
-	phy_mode = of_get_phy_mode(np);
-	if (phy_mode < 0)
-		pf->if_mode = PHY_INTERFACE_MODE_NA; /* fixed link */
-	else
-		pf->if_mode = phy_mode;
+	return 0;
+}
+
+static void enetc_mdiobus_destroy(struct enetc_pf *pf)
+{
+	enetc_mdio_remove(pf);
+	enetc_imdio_remove(pf);
+}
+
+static void enetc_pl_mac_validate(struct phylink_config *config,
+				  unsigned long *supported,
+				  struct phylink_link_state *state)
+{
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
+
+	if (state->interface != PHY_INTERFACE_MODE_NA &&
+	    state->interface != PHY_INTERFACE_MODE_INTERNAL &&
+	    state->interface != PHY_INTERFACE_MODE_SGMII &&
+	    state->interface != PHY_INTERFACE_MODE_2500BASEX &&
+	    state->interface != PHY_INTERFACE_MODE_USXGMII &&
+	    !phy_interface_mode_is_rgmii(state->interface)) {
+		bitmap_zero(supported, __ETHTOOL_LINK_MODE_MASK_NBITS);
+		return;
+	}
 
 	phylink_set_port_modes(mask);
 	phylink_set(mask, Autoneg);
@@ -923,7 +988,12 @@ static void enetc_pl_mac_link_up(struct phylink_config *config,
 				 int duplex, bool tx_pause, bool rx_pause)
 {
 	struct enetc_pf *pf = phylink_to_enetc_pf(config);
+	u32 pause_off_thresh = 0, pause_on_thresh = 0;
+	u32 init_quanta = 0, refresh_quanta = 0;
+	struct enetc_hw *hw = &pf->si->hw;
 	struct enetc_ndev_priv *priv;
+	u32 rbmr, cmd_cfg;
+	int idx;
 
 	priv = netdev_priv(pf->si->ndev);
 	if (priv->active_offloads & ENETC_F_QBV)
@@ -931,9 +1001,60 @@ static void enetc_pl_mac_link_up(struct phylink_config *config,
 
 	if (!phylink_autoneg_inband(mode) &&
 	    phy_interface_mode_is_rgmii(interface))
-		enetc_force_rgmii_mac(&pf->si->hw, speed, duplex);
+		enetc_force_rgmii_mac(hw, speed, duplex);
 
-	enetc_mac_enable(&pf->si->hw, true);
+	/* Flow control */
+	for (idx = 0; idx < priv->num_rx_rings; idx++) {
+		rbmr = enetc_rxbdr_rd(hw, idx, ENETC_RBMR);
+
+		if (tx_pause)
+			rbmr |= ENETC_RBMR_CM;
+		else
+			rbmr &= ~ENETC_RBMR_CM;
+
+		enetc_rxbdr_wr(hw, idx, ENETC_RBMR, rbmr);
+	}
+
+	if (tx_pause) {
+		/* When the port first enters congestion, send a PAUSE request
+		 * with the maximum number of quanta. When the port exits
+		 * congestion, it will automatically send a PAUSE frame with
+		 * zero quanta.
+		 */
+		init_quanta = 0xffff;
+
+		/* Also, set up the refresh timer to send follow-up PAUSE
+		 * frames at half the quanta value, in case the congestion
+		 * condition persists.
+		 */
+		refresh_quanta = 0xffff / 2;
+
+		/* Start emitting PAUSE frames when 3 large frames (or more
+		 * smaller frames) have accumulated in the FIFO waiting to be
+		 * DMAed to the RX ring.
+		 */
+		pause_on_thresh = 3 * ENETC_MAC_MAXFRM_SIZE;
+		pause_off_thresh = 1 * ENETC_MAC_MAXFRM_SIZE;
+	}
+
+	enetc_port_wr(hw, ENETC_PM0_PAUSE_QUANTA, init_quanta);
+	enetc_port_wr(hw, ENETC_PM1_PAUSE_QUANTA, init_quanta);
+	enetc_port_wr(hw, ENETC_PM0_PAUSE_THRESH, refresh_quanta);
+	enetc_port_wr(hw, ENETC_PM1_PAUSE_THRESH, refresh_quanta);
+	enetc_port_wr(hw, ENETC_PPAUONTR, pause_on_thresh);
+	enetc_port_wr(hw, ENETC_PPAUOFFTR, pause_off_thresh);
+
+	cmd_cfg = enetc_port_rd(hw, ENETC_PM0_CMD_CFG);
+
+	if (rx_pause)
+		cmd_cfg &= ~ENETC_PM0_PAUSE_IGN;
+	else
+		cmd_cfg |= ENETC_PM0_PAUSE_IGN;
+
+	enetc_port_wr(hw, ENETC_PM0_CMD_CFG, cmd_cfg);
+	enetc_port_wr(hw, ENETC_PM1_CMD_CFG, cmd_cfg);
+
+	enetc_mac_enable(hw, true);
 }
 
 static void enetc_pl_mac_link_down(struct phylink_config *config,
@@ -974,95 +1095,99 @@ static int enetc_phylink_create(struct enetc_ndev_priv *priv,
 	return 0;
 }
 
-static void enetc_of_put_phy(struct enetc_pf *pf)
+static void enetc_phylink_destroy(struct enetc_ndev_priv *priv)
 {
-	struct device_node *np = pf->si->pdev->dev.of_node;
-
-	if (np && of_phy_is_fixed_link(np))
-		of_phy_deregister_fixed_link(np);
-	if (pf->phy_node)
-		of_node_put(pf->phy_node);
+	if (priv->phylink)
+		phylink_destroy(priv->phylink);
 }
 
-static void enetc_configure_sgmii(struct mii_bus *imdio)
+/* Initialize the entire shared memory for the flow steering entries
+ * of this port (PF + VFs)
+ */
+static int enetc_init_port_rfs_memory(struct enetc_si *si)
 {
-	/* Set to SGMII mode, use AN */
-	imdio->write(imdio, 0, ENETC_PCS_IF_MODE,
-		     ENETC_PCS_IF_MODE_SGMII_AN);
+	struct enetc_cmd_rfse rfse = {0};
+	struct enetc_hw *hw = &si->hw;
+	int num_rfs, i, err = 0;
+	u32 val;
 
-	/* Dev ability - SGMII */
-	imdio->write(imdio, 0, ENETC_PCS_DEV_ABILITY,
-		     ENETC_PCS_DEV_ABILITY_SGMII);
+	val = enetc_port_rd(hw, ENETC_PRFSCAPR);
+	num_rfs = ENETC_PRFSCAPR_GET_NUM_RFS(val);
 
-	/* Adjust link timer for SGMII */
-	imdio->write(imdio, 0, ENETC_PCS_LINK_TIMER1,
-		     ENETC_PCS_LINK_TIMER1_VAL);
-	imdio->write(imdio, 0, ENETC_PCS_LINK_TIMER2,
-		     ENETC_PCS_LINK_TIMER2_VAL);
+	for (i = 0; i < num_rfs; i++) {
+		err = enetc_set_fs_entry(si, &rfse, i);
+		if (err)
+			break;
+	}
 
-	/* restart PCS AN */
-	imdio->write(imdio, 0, ENETC_PCS_CR,
-		     ENETC_PCS_CR_RESET_AN | ENETC_PCS_CR_DEF_VAL);
+	return err;
 }
 
-static void enetc_configure_sxgmii(struct mii_bus *imdio)
+static int enetc_init_port_rss_memory(struct enetc_si *si)
 {
-	/* Dev ability - SXGMII */
-	imdio->write(imdio, 0, MII_ADDR_C45 | (MDIO_MMD_VEND2 << 16) |
-		     ENETC_PCS_DEV_ABILITY, ENETC_PCS_DEV_ABILITY_SXGMII);
+	struct enetc_hw *hw = &si->hw;
+	int num_rss, err;
+	int *rss_table;
+	u32 val;
 
-	/* Restart PCS AN */
-	imdio->write(imdio, 0, MII_ADDR_C45 | (MDIO_MMD_VEND2 << 16) |
-		     ENETC_PCS_CR,
-		     ENETC_PCS_CR_LANE_RESET | ENETC_PCS_CR_RESET_AN);
-}
-
-static int enetc_imdio_init(struct enetc_pf *pf)
-{
-	struct device *dev = &pf->si->pdev->dev;
-	struct enetc_mdio_priv *mdio_priv;
-	struct mii_bus *bus;
-
-	bus = devm_mdiobus_alloc_size(dev, sizeof(*mdio_priv));
-	if (!bus)
-		return -ENOMEM;
-
-	bus->name = "FSL ENETC internal MDIO Bus";
-	bus->read = enetc_mdio_read;
-	bus->write = enetc_mdio_write;
-	bus->parent = dev;
-	mdio_priv = bus->priv;
-	mdio_priv->hw = &pf->si->hw;
-	mdio_priv->mdio_base = ENETC_PM_IMDIO_BASE;
-	snprintf(bus->id, MII_BUS_ID_SIZE, "%s", dev_name(dev));
-
-	pf->imdio = bus;
-
-	return 0;
-}
-
-static int enetc_configure_serdes(struct enetc_ndev_priv *priv)
-{
-	struct enetc_pf *pf = enetc_si_priv(priv->si);
-	int err;
-
-	if (priv->if_mode != PHY_INTERFACE_MODE_SGMII &&
-	    priv->if_mode != PHY_INTERFACE_MODE_XGMII &&
-	    priv->if_mode != PHY_INTERFACE_MODE_USXGMII)
+	val = enetc_port_rd(hw, ENETC_PRSSCAPR);
+	num_rss = ENETC_PRSSCAPR_GET_NUM_RSS(val);
+	if (!num_rss)
 		return 0;
 
-	err = enetc_imdio_init(pf);
+	rss_table = kcalloc(num_rss, sizeof(*rss_table), GFP_KERNEL);
+	if (!rss_table)
+		return -ENOMEM;
+
+	err = enetc_set_rss_table(si, rss_table, num_rss);
+
+	kfree(rss_table);
+
+	return err;
+}
+
+static void enetc_init_unused_port(struct enetc_si *si)
+{
+	struct device *dev = &si->pdev->dev;
+	struct enetc_hw *hw = &si->hw;
+	int err;
+
+	si->cbd_ring.bd_count = ENETC_CBDR_DEFAULT_SIZE;
+	err = enetc_alloc_cbdr(dev, &si->cbd_ring);
 	if (err)
-		return err;
+		return;
 
-	if (priv->if_mode == PHY_INTERFACE_MODE_SGMII)
-		enetc_configure_sgmii(pf->imdio);
+	enetc_setup_cbdr(hw, &si->cbd_ring);
 
-	if (priv->if_mode == PHY_INTERFACE_MODE_XGMII ||
-	    priv->if_mode == PHY_INTERFACE_MODE_USXGMII)
-		enetc_configure_sxgmii(pf->imdio);
+	enetc_init_port_rfs_memory(si);
+	enetc_init_port_rss_memory(si);
 
-	return 0;
+	enetc_clear_cbdr(hw);
+	enetc_free_cbdr(dev, &si->cbd_ring);
+}
+
+static int enetc_pf_register_with_ierb(struct pci_dev *pdev)
+{
+	struct device_node *node = pdev->dev.of_node;
+	struct platform_device *ierb_pdev;
+	struct device_node *ierb_node;
+
+	/* Don't register with the IERB if the PF itself is disabled */
+	if (!node || !of_device_is_available(node))
+		return 0;
+
+	ierb_node = of_find_compatible_node(NULL, NULL,
+					    "fsl,ls1028a-enetc-ierb");
+	if (!ierb_node || !of_device_is_available(ierb_node))
+		return -ENODEV;
+
+	ierb_pdev = of_find_device_by_node(ierb_node);
+	of_node_put(ierb_node);
+
+	if (!ierb_pdev)
+		return -EPROBE_DEFER;
+
+	return enetc_ierb_register_pf(ierb_pdev, pdev);
 }
 
 static int enetc_pf_probe(struct pci_dev *pdev,
@@ -1074,6 +1199,14 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 	struct enetc_si *si;
 	struct enetc_pf *pf;
 	int err;
+
+	err = enetc_pf_register_with_ierb(pdev);
+	if (err == -EPROBE_DEFER)
+		return err;
+	if (err)
+		dev_warn(&pdev->dev,
+			 "Could not register with IERB driver: %pe, please update the device tree\n",
+			 ERR_PTR(err));
 
 	err = enetc_pci_probe(pdev, KBUILD_MODNAME, sizeof(*pf));
 	if (err) {
@@ -1099,10 +1232,6 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 	pf->si = si;
 	pf->total_vfs = pci_sriov_get_totalvfs(pdev);
 
-	err = enetc_of_get_phy(pf);
-	if (err)
-		dev_warn(&pdev->dev, "Fallback to PHY-less operation\n");
-
 	enetc_configure_port(pf);
 
 	enetc_get_si_caps(si);
@@ -1117,8 +1246,6 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 	enetc_pf_netdev_setup(si, ndev, &enetc_ndev_ops);
 
 	priv = netdev_priv(ndev);
-	priv->phy_node = pf->phy_node;
-	priv->if_mode = pf->if_mode;
 
 	enetc_init_si_rings_params(priv);
 
@@ -1152,24 +1279,29 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 		goto err_alloc_msix;
 	}
 
-	err = enetc_configure_serdes(priv);
-	if (err)
-		dev_warn(&pdev->dev, "Attempted serdes config but failed\n");
+	if (!of_get_phy_mode(node, &pf->if_mode)) {
+		err = enetc_mdiobus_create(pf, node);
+		if (err)
+			goto err_mdiobus_create;
+
+		err = enetc_phylink_create(priv, node);
+		if (err)
+			goto err_phylink_create;
+	}
 
 	err = register_netdev(ndev);
 	if (err)
 		goto err_reg_netdev;
-
-	netif_carrier_off(ndev);
-
-	netif_info(priv, probe, ndev, "%s v%s\n",
-		   enetc_drv_name, enetc_drv_ver);
 
 	enetc_tsn_pf_init(ndev, pdev);
 
 	return 0;
 
 err_reg_netdev:
+	enetc_phylink_destroy(priv);
+err_phylink_create:
+	enetc_mdiobus_destroy(pf);
+err_mdiobus_create:
 	enetc_free_msix(priv);
 err_config_si:
 err_init_port_rss:
@@ -1180,8 +1312,7 @@ err_alloc_si_res:
 	si->ndev = NULL;
 	free_netdev(ndev);
 err_alloc_netdev:
-	enetc_mdio_remove(pf);
-	enetc_of_put_phy(pf);
+err_device_disabled:
 err_map_pf_space:
 	enetc_pci_remove(pdev);
 
@@ -1199,16 +1330,12 @@ static void enetc_pf_remove(struct pci_dev *pdev)
 	if (pf->num_vfs)
 		enetc_sriov_configure(pdev, 0);
 
-	priv = netdev_priv(si->ndev);
-	netif_info(priv, drv, si->ndev, "%s v%s remove\n",
-		   enetc_drv_name, enetc_drv_ver);
-
 	enetc_tsn_pf_deinit(si->ndev);
 
 	unregister_netdev(si->ndev);
 
-	enetc_mdio_remove(pf);
-	enetc_of_put_phy(pf);
+	enetc_phylink_destroy(priv);
+	enetc_mdiobus_destroy(pf);
 
 	enetc_free_msix(priv);
 
@@ -1218,10 +1345,6 @@ static void enetc_pf_remove(struct pci_dev *pdev)
 
 	enetc_pci_remove(pdev);
 }
-
-/* Lock for MDIO access errata on LS1028A */
-DEFINE_RWLOCK(enetc_mdio_lock);
-EXPORT_SYMBOL_GPL(enetc_mdio_lock);
 
 static const struct pci_device_id enetc_pf_id_table[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_FREESCALE, ENETC_DEV_ID_PF) },

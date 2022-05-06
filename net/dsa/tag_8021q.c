@@ -331,11 +331,120 @@ static int dsa_8021q_crosschip_link_apply(struct dsa_8021q_context *ctx,
 				   BRIDGE_VLAN_INFO_UNTAGGED, enabled);
 }
 
-static const struct dsa_device_ops dsa_8021q_netdev_ops = {
-	.name		= "8021q",
-	.proto		= DSA_TAG_PROTO_8021Q,
-	.overhead	= VLAN_HLEN,
-};
+static int dsa_8021q_crosschip_link_add(struct dsa_8021q_context *ctx, int port,
+					struct dsa_8021q_context *other_ctx,
+					int other_port)
+{
+	struct dsa_8021q_crosschip_link *c;
+
+	list_for_each_entry(c, &ctx->crosschip_links, list) {
+		if (c->port == port && c->other_ctx == other_ctx &&
+		    c->other_port == other_port) {
+			refcount_inc(&c->refcount);
+			return 0;
+		}
+	}
+
+	dev_dbg(ctx->ds->dev,
+		"adding crosschip link from port %d to %s port %d\n",
+		port, dev_name(other_ctx->ds->dev), other_port);
+
+	c = kzalloc(sizeof(*c), GFP_KERNEL);
+	if (!c)
+		return -ENOMEM;
+
+	c->port = port;
+	c->other_ctx = other_ctx;
+	c->other_port = other_port;
+	refcount_set(&c->refcount, 1);
+
+	list_add(&c->list, &ctx->crosschip_links);
+
+	return 0;
+}
+
+static void dsa_8021q_crosschip_link_del(struct dsa_8021q_context *ctx,
+					 struct dsa_8021q_crosschip_link *c,
+					 bool *keep)
+{
+	*keep = !refcount_dec_and_test(&c->refcount);
+
+	if (*keep)
+		return;
+
+	dev_dbg(ctx->ds->dev,
+		"deleting crosschip link from port %d to %s port %d\n",
+		c->port, dev_name(c->other_ctx->ds->dev), c->other_port);
+
+	list_del(&c->list);
+	kfree(c);
+}
+
+/* Make traffic from local port @port be received by remote port @other_port.
+ * This means that our @rx_vid needs to be installed on @other_ds's upstream
+ * and user ports. The user ports should be egress-untagged so that they can
+ * pop the dsa_8021q VLAN. But the @other_upstream can be either egress-tagged
+ * or untagged: it doesn't matter, since it should never egress a frame having
+ * our @rx_vid.
+ */
+int dsa_8021q_crosschip_bridge_join(struct dsa_8021q_context *ctx, int port,
+				    struct dsa_8021q_context *other_ctx,
+				    int other_port)
+{
+	/* @other_upstream is how @other_ds reaches us. If we are part
+	 * of disjoint trees, then we are probably connected through
+	 * our CPU ports. If we're part of the same tree though, we should
+	 * probably use dsa_towards_port.
+	 */
+	int other_upstream = dsa_upstream_port(other_ctx->ds, other_port);
+	int rc;
+
+	rc = dsa_8021q_crosschip_link_add(ctx, port, other_ctx, other_port);
+	if (rc)
+		return rc;
+
+	rc = dsa_8021q_crosschip_link_apply(ctx, port, other_ctx,
+					    other_port, true);
+	if (rc)
+		return rc;
+
+	rc = dsa_8021q_crosschip_link_add(ctx, port, other_ctx, other_upstream);
+	if (rc)
+		return rc;
+
+	return dsa_8021q_crosschip_link_apply(ctx, port, other_ctx,
+					      other_upstream, true);
+}
+EXPORT_SYMBOL_GPL(dsa_8021q_crosschip_bridge_join);
+
+int dsa_8021q_crosschip_bridge_leave(struct dsa_8021q_context *ctx, int port,
+				     struct dsa_8021q_context *other_ctx,
+				     int other_port)
+{
+	int other_upstream = dsa_upstream_port(other_ctx->ds, other_port);
+	struct dsa_8021q_crosschip_link *c, *n;
+
+	list_for_each_entry_safe(c, n, &ctx->crosschip_links, list) {
+		if (c->port == port && c->other_ctx == other_ctx &&
+		    (c->other_port == other_port ||
+		     c->other_port == other_upstream)) {
+			struct dsa_8021q_context *other_ctx = c->other_ctx;
+			int other_port = c->other_port;
+			bool keep;
+			int rc;
+
+			dsa_8021q_crosschip_link_del(ctx, c, &keep);
+			if (keep)
+				continue;
+
+			rc = dsa_8021q_crosschip_link_apply(ctx, port,
+							    other_ctx,
+							    other_port,
+							    false);
+			if (rc)
+				return rc;
+		}
+	}
 
 	return 0;
 }

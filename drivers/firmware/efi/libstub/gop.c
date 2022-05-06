@@ -185,35 +185,80 @@ static u8 pixel_bpp(int pixel_format, efi_pixel_bitmask_t pixel_info)
 		return 32;
 }
 
-static efi_status_t
-setup_gop32(efi_system_table_t *sys_table_arg, struct screen_info *si,
-            efi_guid_t *proto, unsigned long size, void **gop_handle)
+static u32 choose_mode_res(efi_graphics_output_protocol_t *gop)
 {
-	struct efi_graphics_output_protocol_32 *gop32, *first_gop;
-	unsigned long nr_gops;
-	u16 width, height;
-	u32 pixels_per_scan_line;
-	u32 ext_lfb_base;
-	u64 fb_base;
-	struct efi_pixel_bitmask pixel_info;
-	int pixel_format;
 	efi_status_t status;
-	u32 *handles = (u32 *)(unsigned long)gop_handle;
-	int i;
 
 	efi_graphics_output_protocol_mode_t *mode;
 	efi_graphics_output_mode_info_t *info;
 	unsigned long info_size;
 
-	nr_gops = size / sizeof(u32);
-	for (i = 0; i < nr_gops; i++) {
-		struct efi_graphics_output_protocol_mode_32 *mode;
-		struct efi_graphics_output_mode_info *info = NULL;
-		efi_guid_t conout_proto = EFI_CONSOLE_OUT_DEVICE_GUID;
-		bool conout_found = false;
-		void *dummy = NULL;
-		efi_handle_t h = (efi_handle_t)(unsigned long)handles[i];
-		u64 current_fb_base;
+	u32 max_mode, cur_mode;
+	int pf;
+	efi_pixel_bitmask_t pi;
+	u32 m, w, h;
+
+	mode = efi_table_attr(gop, mode);
+
+	cur_mode = efi_table_attr(mode, mode);
+	info = efi_table_attr(mode, info);
+	pf = info->pixel_format;
+	pi = info->pixel_information;
+	w  = info->horizontal_resolution;
+	h  = info->vertical_resolution;
+
+	if (w == cmdline.res.width && h == cmdline.res.height &&
+	    (cmdline.res.format < 0 || cmdline.res.format == pf) &&
+	    (!cmdline.res.depth || cmdline.res.depth == pixel_bpp(pf, pi)))
+		return cur_mode;
+
+	max_mode = efi_table_attr(mode, max_mode);
+
+	for (m = 0; m < max_mode; m++) {
+		if (m == cur_mode)
+			continue;
+
+		status = efi_call_proto(gop, query_mode, m,
+					&info_size, &info);
+		if (status != EFI_SUCCESS)
+			continue;
+
+		pf = info->pixel_format;
+		pi = info->pixel_information;
+		w  = info->horizontal_resolution;
+		h  = info->vertical_resolution;
+
+		efi_bs_call(free_pool, info);
+
+		if (pf == PIXEL_BLT_ONLY || pf >= PIXEL_FORMAT_MAX)
+			continue;
+		if (w == cmdline.res.width && h == cmdline.res.height &&
+		    (cmdline.res.format < 0 || cmdline.res.format == pf) &&
+		    (!cmdline.res.depth || cmdline.res.depth == pixel_bpp(pf, pi)))
+			return m;
+	}
+
+	efi_err("Couldn't find requested mode\n");
+
+	return cur_mode;
+}
+
+static u32 choose_mode_auto(efi_graphics_output_protocol_t *gop)
+{
+	efi_status_t status;
+
+	efi_graphics_output_protocol_mode_t *mode;
+	efi_graphics_output_mode_info_t *info;
+	unsigned long info_size;
+
+	u32 max_mode, cur_mode, best_mode, area;
+	u8 depth;
+	int pf;
+	efi_pixel_bitmask_t pi;
+	u32 m, w, h, a;
+	u8 d;
+
+	mode = efi_table_attr(gop, mode);
 
 	cur_mode = efi_table_attr(mode, mode);
 	max_mode = efi_table_attr(mode, max_mode);
@@ -238,44 +283,28 @@ setup_gop32(efi_system_table_t *sys_table_arg, struct screen_info *si,
 		if (status != EFI_SUCCESS)
 			continue;
 
-		status = efi_call_early(handle_protocol, h,
-					&conout_proto, &dummy);
-		if (status == EFI_SUCCESS)
-			conout_found = true;
+		pf = info->pixel_format;
+		pi = info->pixel_information;
+		w  = info->horizontal_resolution;
+		h  = info->vertical_resolution;
 
-		mode = (void *)(unsigned long)gop32->mode;
-		info = (void *)(unsigned long)mode->info;
-		current_fb_base = mode->frame_buffer_base;
+		efi_bs_call(free_pool, info);
 
-		if ((!first_gop || conout_found) &&
-		    info->pixel_format != PIXEL_BLT_ONLY) {
-			/*
-			 * Systems that use the UEFI Console Splitter may
-			 * provide multiple GOP devices, not all of which are
-			 * backed by real hardware. The workaround is to search
-			 * for a GOP implementing the ConOut protocol, and if
-			 * one isn't found, to just fall back to the first GOP.
-			 */
-			width = info->horizontal_resolution;
-			height = info->vertical_resolution;
-			pixel_format = info->pixel_format;
-			pixel_info = info->pixel_information;
-			pixels_per_scan_line = info->pixels_per_scan_line;
-			fb_base = current_fb_base;
-
-			/*
-			 * Once we've found a GOP supporting ConOut,
-			 * don't bother looking any further.
-			 */
-			first_gop = gop32;
-			if (conout_found)
-				break;
+		if (pf == PIXEL_BLT_ONLY || pf >= PIXEL_FORMAT_MAX)
+			continue;
+		a = w * h;
+		if (a < area)
+			continue;
+		d = pixel_bpp(pf, pi);
+		if (a > area || d > depth) {
+			best_mode = m;
+			area = a;
+			depth = d;
 		}
 	}
 
-	/* Did we find any GOPs? */
-	if (!first_gop)
-		return EFI_NOT_FOUND;
+	return best_mode;
+}
 
 static u32 choose_mode_list(efi_graphics_output_protocol_t *gop)
 {
@@ -375,32 +404,79 @@ static void set_mode(efi_graphics_output_protocol_t *gop)
 		return;
 	}
 
-	si->capabilities |= VIDEO_CAPABILITY_SKIP_QUIRKS;
+	mode = efi_table_attr(gop, mode);
+	cur_mode = efi_table_attr(mode, mode);
 
-	return EFI_SUCCESS;
+	if (new_mode == cur_mode)
+		return;
+
+	if (efi_call_proto(gop, set_mode, new_mode) != EFI_SUCCESS)
+		efi_err("Failed to set requested mode\n");
+}
+
+static void find_bits(u32 mask, u8 *pos, u8 *size)
+{
+	if (!mask) {
+		*pos = *size = 0;
+		return;
+	}
+
+	/* UEFI spec guarantees that the set bits are contiguous */
+	*pos  = __ffs(mask);
+	*size = __fls(mask) - *pos + 1;
+}
+
+static void
+setup_pixel_info(struct screen_info *si, u32 pixels_per_scan_line,
+		 efi_pixel_bitmask_t pixel_info, int pixel_format)
+{
+	if (pixel_format == PIXEL_BIT_MASK) {
+		find_bits(pixel_info.red_mask,
+			  &si->red_pos, &si->red_size);
+		find_bits(pixel_info.green_mask,
+			  &si->green_pos, &si->green_size);
+		find_bits(pixel_info.blue_mask,
+			  &si->blue_pos, &si->blue_size);
+		find_bits(pixel_info.reserved_mask,
+			  &si->rsvd_pos, &si->rsvd_size);
+		si->lfb_depth = si->red_size + si->green_size +
+			si->blue_size + si->rsvd_size;
+		si->lfb_linelength = (pixels_per_scan_line * si->lfb_depth) / 8;
+	} else {
+		if (pixel_format == PIXEL_RGB_RESERVED_8BIT_PER_COLOR) {
+			si->red_pos   = 0;
+			si->blue_pos  = 16;
+		} else /* PIXEL_BGR_RESERVED_8BIT_PER_COLOR */ {
+			si->blue_pos  = 0;
+			si->red_pos   = 16;
+		}
+
+		si->green_pos = 8;
+		si->rsvd_pos  = 24;
+		si->red_size = si->green_size =
+			si->blue_size = si->rsvd_size = 8;
+
+		si->lfb_depth = 32;
+		si->lfb_linelength = pixels_per_scan_line * 4;
+	}
 }
 
 static efi_graphics_output_protocol_t *
 find_gop(efi_guid_t *proto, unsigned long size, void **handles)
 {
-	struct efi_graphics_output_protocol_64 *gop64, *first_gop;
-	unsigned long nr_gops;
-	u16 width, height;
-	u32 pixels_per_scan_line;
-	u32 ext_lfb_base;
-	u64 fb_base;
-	struct efi_pixel_bitmask pixel_info;
-	int pixel_format;
-	efi_status_t status;
-	u64 *handles = (u64 *)(unsigned long)gop_handle;
+	efi_graphics_output_protocol_t *first_gop;
+	efi_handle_t h;
 	int i;
 
 	first_gop = NULL;
 
-	nr_gops = size / sizeof(u64);
-	for (i = 0; i < nr_gops; i++) {
-		struct efi_graphics_output_protocol_mode_64 *mode;
-		struct efi_graphics_output_mode_info *info = NULL;
+	for_each_efi_handle(h, handles, size, i) {
+		efi_status_t status;
+
+		efi_graphics_output_protocol_t *gop;
+		efi_graphics_output_protocol_mode_t *mode;
+		efi_graphics_output_mode_info_t *info;
+
 		efi_guid_t conout_proto = EFI_CONSOLE_OUT_DEVICE_GUID;
 		void *dummy = NULL;
 
@@ -426,36 +502,10 @@ find_gop(efi_guid_t *proto, unsigned long size, void **handles)
 		 */
 		status = efi_bs_call(handle_protocol, h, &conout_proto, &dummy);
 		if (status == EFI_SUCCESS)
-			conout_found = true;
+			return gop;
 
-		mode = (void *)(unsigned long)gop64->mode;
-		info = (void *)(unsigned long)mode->info;
-		current_fb_base = mode->frame_buffer_base;
-
-		if ((!first_gop || conout_found) &&
-		    info->pixel_format != PIXEL_BLT_ONLY) {
-			/*
-			 * Systems that use the UEFI Console Splitter may
-			 * provide multiple GOP devices, not all of which are
-			 * backed by real hardware. The workaround is to search
-			 * for a GOP implementing the ConOut protocol, and if
-			 * one isn't found, to just fall back to the first GOP.
-			 */
-			width = info->horizontal_resolution;
-			height = info->vertical_resolution;
-			pixel_format = info->pixel_format;
-			pixel_info = info->pixel_information;
-			pixels_per_scan_line = info->pixels_per_scan_line;
-			fb_base = current_fb_base;
-
-			/*
-			 * Once we've found a GOP supporting ConOut,
-			 * don't bother looking any further.
-			 */
-			first_gop = gop64;
-			if (conout_found)
-				break;
-		}
+		if (!first_gop)
+			first_gop = gop;
 	}
 
 	return first_gop;
@@ -471,8 +521,11 @@ static efi_status_t setup_gop(struct screen_info *si, efi_guid_t *proto,
 	gop = find_gop(proto, size, handles);
 
 	/* Did we find any GOPs? */
-	if (!first_gop)
+	if (!gop)
 		return EFI_NOT_FOUND;
+
+	/* Change mode if requested */
+	set_mode(gop);
 
 	/* EFI framebuffer */
 	mode = efi_table_attr(gop, mode);

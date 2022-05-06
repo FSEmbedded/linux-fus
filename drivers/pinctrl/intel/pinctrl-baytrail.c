@@ -105,16 +105,6 @@ struct intel_pad_context {
 		.pad_map	= (map),\
 	}
 
-struct byt_gpio {
-	struct gpio_chip chip;
-	struct platform_device *pdev;
-	struct pinctrl_dev *pctl_dev;
-	struct pinctrl_desc pctl_desc;
-	const struct intel_pinctrl_soc_data *soc_data;
-	struct intel_community *communities_copy;
-	struct byt_gpio_pin_context *saved_context;
-};
-
 /* SCORE pins, aka GPIOC_<pin_no> or GPIO_S0_SC[<pin_no>] */
 static const struct pinctrl_pin_desc byt_score_pins[] = {
 	PINCTRL_PIN(0, "SATA_GP0"),
@@ -550,7 +540,7 @@ static const struct intel_pinctrl_soc_data *byt_soc_data[] = {
 
 static DEFINE_RAW_SPINLOCK(byt_lock);
 
-static struct intel_community *byt_get_community(struct byt_gpio *vg,
+static struct intel_community *byt_get_community(struct intel_pinctrl *vg,
 						 unsigned int pin)
 {
 	struct intel_community *comm;
@@ -1252,7 +1242,7 @@ static void byt_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 		unsigned int pin;
 
 		raw_spin_lock_irqsave(&byt_lock, flags);
-		pin = vg->soc_data->pins[i].number;
+		pin = vg->soc->pins[i].number;
 		reg = byt_gpio_reg(vg, pin, BYT_CONF0_REG);
 		if (!reg) {
 			seq_printf(s,
@@ -1695,13 +1685,13 @@ static int byt_pinctrl_probe(struct platform_device *pdev)
 #ifdef CONFIG_PM_SLEEP
 static int byt_gpio_suspend(struct device *dev)
 {
-	struct byt_gpio *vg = dev_get_drvdata(dev);
+	struct intel_pinctrl *vg = dev_get_drvdata(dev);
 	unsigned long flags;
 	int i;
 
 	raw_spin_lock_irqsave(&byt_lock, flags);
 
-	for (i = 0; i < vg->soc_data->npins; i++) {
+	for (i = 0; i < vg->soc->npins; i++) {
 		void __iomem *reg;
 		u32 value;
 		unsigned int pin = vg->soc->pins[i].number;
@@ -1727,13 +1717,13 @@ static int byt_gpio_suspend(struct device *dev)
 
 static int byt_gpio_resume(struct device *dev)
 {
-	struct byt_gpio *vg = dev_get_drvdata(dev);
+	struct intel_pinctrl *vg = dev_get_drvdata(dev);
 	unsigned long flags;
 	int i;
 
 	raw_spin_lock_irqsave(&byt_lock, flags);
 
-	for (i = 0; i < vg->soc_data->npins; i++) {
+	for (i = 0; i < vg->soc->npins; i++) {
 		void __iomem *reg;
 		u32 value;
 		unsigned int pin = vg->soc->pins[i].number;

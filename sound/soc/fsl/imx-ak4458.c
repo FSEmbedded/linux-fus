@@ -142,7 +142,7 @@ static int imx_aif_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
 	struct snd_soc_card *card = rtd->card;
 	struct device *dev = card->dev;
 	struct imx_ak4458_data *data = snd_soc_card_get_drvdata(card);
@@ -181,7 +181,7 @@ static int imx_aif_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	for (i = 0; i < rtd->num_codecs; i++) {
-		struct snd_soc_dai *codec_dai = rtd->codec_dais[i];
+		struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, i);
 
 		ret = snd_soc_dai_set_fmt(codec_dai, fmt);
 		if (ret) {
@@ -329,9 +329,9 @@ static int imx_ak4458_probe(struct platform_device *pdev)
 	}
 
 	priv->codec_conf[0].name_prefix = "0";
-	priv->codec_conf[0].of_node = codec_np_0;
+	priv->codec_conf[0].dlc.of_node = codec_np_0;
 	priv->codec_conf[1].name_prefix = "1";
-	priv->codec_conf[1].of_node = codec_np_1;
+	priv->codec_conf[1].dlc.of_node = codec_np_1;
 
 	ak4458_codecs[0].of_node = codec_np_0;
 	ak4458_codecs[1].of_node = codec_np_1;
@@ -355,7 +355,7 @@ static int imx_ak4458_probe(struct platform_device *pdev)
 	priv->one2one_ratio = !of_device_is_compatible(pdev->dev.of_node,
 					"fsl,imx-audio-ak4458-mq");
 
-	priv->pdn_gpio = of_get_named_gpio(pdev->dev.of_node, "ak4458,pdn-gpio", 0);
+	priv->pdn_gpio = of_get_named_gpio(pdev->dev.of_node, "reset-gpios", 0);
 	if (gpio_is_valid(priv->pdn_gpio)) {
 		ret = devm_gpio_request_one(&pdev->dev, priv->pdn_gpio,
 				GPIOF_OUT_INIT_LOW, "ak4458,pdn");
@@ -378,7 +378,8 @@ static int imx_ak4458_probe(struct platform_device *pdev)
 
 	ret = devm_snd_soc_register_card(&pdev->dev, &priv->card);
 	if (ret) {
-		dev_err(&pdev->dev, "snd_soc_register_card failed (%d)\n", ret);
+		if (ret != -EPROBE_DEFER)
+			dev_err(&pdev->dev, "snd_soc_register_card failed (%d)\n", ret);
 		goto fail;
 	}
 

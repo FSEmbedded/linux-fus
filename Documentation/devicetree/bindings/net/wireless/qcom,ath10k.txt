@@ -87,6 +87,25 @@ Optional properties:
 	Value type: <empty>
 	Definition: Quirk specifying that the firmware expects the 8bit version
 		    of the host capability QMI request
+- qcom,xo-cal-data: xo cal offset to be configured in xo trim register.
+
+- qcom,msa-fixed-perm: Boolean context flag to disable SCM call for statically
+		       mapped msa region.
+
+- qcom,coexist-support : should contain eithr "0" or "1" to indicate coex
+			 support by the hardware.
+- qcom,coexist-gpio-pin : gpio pin number  information to support coex
+			  which will be used by wifi firmware.
+
+* Subnodes
+The ath10k wifi node can contain one optional firmware subnode.
+Firmware subnode is needed when the platform does not have TustZone.
+The firmware subnode must have:
+
+- iommus:
+	Usage: required
+	Value type: <prop-encoded-array>
+	Definition: A list of phandle and IOMMU specifier pairs.
 
 
 Example (to supply PCI based wifi block details):

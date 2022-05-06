@@ -417,6 +417,40 @@ nv50_outp_atomic_check(struct drm_encoder *encoder,
 	return 0;
 }
 
+struct nouveau_connector *
+nv50_outp_get_new_connector(struct nouveau_encoder *outp,
+			    struct drm_atomic_state *state)
+{
+	struct drm_connector *connector;
+	struct drm_connector_state *connector_state;
+	struct drm_encoder *encoder = to_drm_encoder(outp);
+	int i;
+
+	for_each_new_connector_in_state(state, connector, connector_state, i) {
+		if (connector_state->best_encoder == encoder)
+			return nouveau_connector(connector);
+	}
+
+	return NULL;
+}
+
+struct nouveau_connector *
+nv50_outp_get_old_connector(struct nouveau_encoder *outp,
+			    struct drm_atomic_state *state)
+{
+	struct drm_connector *connector;
+	struct drm_connector_state *connector_state;
+	struct drm_encoder *encoder = to_drm_encoder(outp);
+	int i;
+
+	for_each_old_connector_in_state(state, connector, connector_state, i) {
+		if (connector_state->best_encoder == encoder)
+			return nouveau_connector(connector);
+	}
+
+	return NULL;
+}
+
 /******************************************************************************
  * DAC
  *****************************************************************************/
@@ -994,19 +1028,13 @@ nv50_msto_atomic_check(struct drm_encoder *encoder,
 	if (!state->duplicated) {
 		const int clock = crtc_state->adjusted_mode.clock;
 
-		/*
-		 * XXX: Since we don't use HDR in userspace quite yet, limit
-		 * the bpc to 8 to save bandwidth on the topology. In the
-		 * future, we'll want to properly fix this by dynamically
-		 * selecting the highest possible bpc that would fit in the
-		 * topology
-		 */
-		asyh->or.bpc = min(connector->display_info.bpc, 8U);
-		asyh->dp.pbn = drm_dp_calc_pbn_mode(clock, asyh->or.bpc * 3);
+		asyh->or.bpc = connector->display_info.bpc;
+		asyh->dp.pbn = drm_dp_calc_pbn_mode(clock, asyh->or.bpc * 3,
+						    false);
 	}
 
 	slots = drm_dp_atomic_find_vcpi_slots(state, &mstm->mgr, mstc->port,
-					      asyh->dp.pbn);
+					      asyh->dp.pbn, 0);
 	if (slots < 0)
 		return slots;
 
@@ -1019,10 +1047,10 @@ static u8
 nv50_dp_bpc_to_depth(unsigned int bpc)
 {
 	switch (bpc) {
-	case  6: return 0x2;
-	case  8: return 0x5;
-	case 10: /* fall-through */
-	default: return 0x6;
+	case  6: return NV837D_SOR_SET_CONTROL_PIXEL_DEPTH_BPP_18_444;
+	case  8: return NV837D_SOR_SET_CONTROL_PIXEL_DEPTH_BPP_24_444;
+	case 10:
+	default: return NV837D_SOR_SET_CONTROL_PIXEL_DEPTH_BPP_30_444;
 	}
 }
 
@@ -1068,7 +1096,6 @@ nv50_msto_enable(struct drm_encoder *encoder, struct drm_atomic_state *state)
 	mstm->outp->update(mstm->outp, head->base.index, armh, proto,
 			   nv50_dp_bpc_to_depth(armh->or.bpc));
 
-	msto->head = head;
 	msto->mstc = mstc;
 	mstm->modified = true;
 }
@@ -1875,12 +1902,11 @@ nv50_pior_enable(struct drm_encoder *encoder, struct drm_atomic_state *state)
 
 	nv50_outp_acquire(nv_encoder, false);
 
-	nv_connector = nouveau_encoder_connector_get(nv_encoder);
 	switch (asyh->or.bpc) {
-	case 10: asyh->or.depth = 0x6; break;
-	case  8: asyh->or.depth = 0x5; break;
-	case  6: asyh->or.depth = 0x2; break;
-	default: asyh->or.depth = 0x0; break;
+	case 10: asyh->or.depth = NV837D_PIOR_SET_CONTROL_PIXEL_DEPTH_BPP_30_444; break;
+	case  8: asyh->or.depth = NV837D_PIOR_SET_CONTROL_PIXEL_DEPTH_BPP_24_444; break;
+	case  6: asyh->or.depth = NV837D_PIOR_SET_CONTROL_PIXEL_DEPTH_BPP_18_444; break;
+	default: asyh->or.depth = NV837D_PIOR_SET_CONTROL_PIXEL_DEPTH_DEFAULT; break;
 	}
 
 	switch (nv_encoder->dcb->type) {

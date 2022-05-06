@@ -2383,7 +2383,7 @@ static int bnxt_qplib_cq_process_req(struct bnxt_qplib_cq *cq,
 			bnxt_qplib_add_flush_qp(qp);
 		} else {
 			/* Before we complete, do WA 9060 */
-			if (do_wa9060(qp, cq, cq_cons, sw_sq_cons,
+			if (do_wa9060(qp, cq, cq_cons, sq->swq_last,
 				      cqe_sq_cons)) {
 				*lib_qp = qp;
 				goto out;

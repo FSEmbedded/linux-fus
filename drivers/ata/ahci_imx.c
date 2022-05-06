@@ -1243,8 +1243,8 @@ static int imx8_sata_probe(struct device *dev, struct imx_ahci_priv *imxpriv)
 	struct device_node *np = dev->of_node;
 	struct regmap_config regconfig = imx_sata_regconfig;
 
-	if (!(dev->bus_dma_mask)) {
-		dev->bus_dma_mask = DMA_BIT_MASK(32);
+	if (!(dev->bus_dma_limit)) {
+		dev->bus_dma_limit = DMA_BIT_MASK(32);
 		dev_info(dev, "imx8qm sata only supports 32bit dma.\n");
 	}
 	if (of_property_read_u32(np, "ext_osc", &imxpriv->ext_osc) < 0) {
@@ -1341,14 +1341,12 @@ static int imx8_sata_probe(struct device *dev, struct imx_ahci_priv *imxpriv)
 	}
 
 	/* Fetch GPIO, then enable the external OSC */
-	imxpriv->clkreq_gpio = of_get_named_gpio(np, "clkreq-gpio", 0);
-	if (gpio_is_valid(imxpriv->clkreq_gpio)) {
-		devm_gpio_request_one(dev, imxpriv->clkreq_gpio,
-					    GPIOF_OUT_INIT_LOW,
-					    "SATA CLKREQ");
-	} else if (imxpriv->clkreq_gpio == -EPROBE_DEFER) {
-		return imxpriv->clkreq_gpio;
-	}
+	imxpriv->clkreq_gpiod = devm_gpiod_get_optional(dev, "clkreq",
+				GPIOD_OUT_LOW | GPIOD_FLAGS_BIT_NONEXCLUSIVE);
+	if (IS_ERR(imxpriv->clkreq_gpiod))
+		return PTR_ERR(imxpriv->clkreq_gpiod);
+	if (imxpriv->clkreq_gpiod)
+		gpiod_set_consumer_name(imxpriv->clkreq_gpiod, "SATA CLKREQ");
 
 	return 0;
 }

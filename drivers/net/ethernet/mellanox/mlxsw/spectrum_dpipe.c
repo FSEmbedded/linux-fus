@@ -249,7 +249,7 @@ start_again:
 err_entry_append:
 err_entry_get:
 err_ctx_prepare:
-	rtnl_unlock();
+	mutex_unlock(&mlxsw_sp->router->lock);
 	devlink_dpipe_entry_clear(&entry);
 	return err;
 }

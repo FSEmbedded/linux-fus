@@ -233,7 +233,10 @@ SYM_FUNC_START(__vmx_vcpu_run)
 	/* VM-Fail.  Out-of-line to avoid a taken Jcc after VM-Exit. */
 2:	mov $1, %eax
 	jmp 1b
-ENDPROC(__vmx_vcpu_run)
+SYM_FUNC_END(__vmx_vcpu_run)
+
+
+.section .text, "ax"
 
 /**
  * vmread_error_trampoline - Trampoline from inline asm to vmread_error()
@@ -243,7 +246,7 @@ ENDPROC(__vmx_vcpu_run)
  * Save and restore volatile registers across a call to vmread_error().  Note,
  * all parameters are passed on the stack.
  */
-ENTRY(vmread_error_trampoline)
+SYM_FUNC_START(vmread_error_trampoline)
 	push %_ASM_BP
 	mov  %_ASM_SP, %_ASM_BP
 
@@ -291,4 +294,37 @@ ENTRY(vmread_error_trampoline)
 	pop %_ASM_BP
 
 	ret
-ENDPROC(vmread_error_trampoline)
+SYM_FUNC_END(vmread_error_trampoline)
+
+SYM_FUNC_START(vmx_do_interrupt_nmi_irqoff)
+	/*
+	 * Unconditionally create a stack frame, getting the correct RSP on the
+	 * stack (for x86-64) would take two instructions anyways, and RBP can
+	 * be used to restore RSP to make objtool happy (see below).
+	 */
+	push %_ASM_BP
+	mov %_ASM_SP, %_ASM_BP
+
+#ifdef CONFIG_X86_64
+	/*
+	 * Align RSP to a 16-byte boundary (to emulate CPU behavior) before
+	 * creating the synthetic interrupt stack frame for the IRQ/NMI.
+	 */
+	and  $-16, %rsp
+	push $__KERNEL_DS
+	push %rbp
+#endif
+	pushf
+	push $__KERNEL_CS
+	CALL_NOSPEC _ASM_ARG1
+
+	/*
+	 * "Restore" RSP from RBP, even though IRET has already unwound RSP to
+	 * the correct value.  objtool doesn't know the callee will IRET and,
+	 * without the explicit restore, thinks the stack is getting walloped.
+	 * Using an unwind hint is problematic due to x86-64's dynamic alignment.
+	 */
+	mov %_ASM_BP, %_ASM_SP
+	pop %_ASM_BP
+	ret
+SYM_FUNC_END(vmx_do_interrupt_nmi_irqoff)

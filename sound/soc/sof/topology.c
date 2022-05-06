@@ -433,7 +433,8 @@ static const struct sof_process_types sof_process[] = {
 	{"CHAN_SELECTOR", SOF_PROCESS_CHAN_SELECTOR, SOF_COMP_SELECTOR},
 	{"MUX", SOF_PROCESS_MUX, SOF_COMP_MUX},
 	{"DEMUX", SOF_PROCESS_DEMUX, SOF_COMP_DEMUX},
-	{"POST_PROCESS", SOF_PROCESS_PP, SOF_COMP_PP},
+	{"DCBLOCK", SOF_PROCESS_DCBLOCK, SOF_COMP_DCBLOCK},
+	{"SMART_AMP", SOF_PROCESS_SMART_AMP, SOF_COMP_SMART_AMP},
 };
 
 static enum sof_ipc_process_type find_process(const char *name)
@@ -727,6 +728,19 @@ static const struct sof_topology_token sai_tokens[] = {
 		offsetof(struct sof_ipc_dai_sai_params, mclk_id), 0},
 };
 
+/* Core tokens */
+static const struct sof_topology_token core_tokens[] = {
+	{SOF_TKN_COMP_CORE_ID,
+		SND_SOC_TPLG_TUPLE_TYPE_WORD, get_token_u32,
+		offsetof(struct sof_ipc_comp, core), 0},
+};
+
+/* Component extended tokens */
+static const struct sof_topology_token comp_ext_tokens[] = {
+	{SOF_TKN_COMP_UUID,
+		SND_SOC_TPLG_TUPLE_TYPE_UUID, get_token_uuid,
+		offsetof(struct sof_ipc_comp_ext, uuid), 0},
+};
 
 /*
  * DMIC PDM Tokens
@@ -2653,8 +2667,10 @@ static int sof_dai_load(struct snd_soc_component *scomp, int index,
 
 	for_each_pcm_streams(stream) {
 		spcm->stream[stream].comp_id = COMP_ID_UNASSIGNED;
-		INIT_WORK(&spcm->stream[stream].period_elapsed_work,
-			  snd_sof_pcm_period_elapsed_work);
+		if (pcm->compress)
+			snd_sof_compr_init_elapsed_work(&spcm->stream[stream].period_elapsed_work);
+		else
+			snd_sof_pcm_init_elapsed_work(&spcm->stream[stream].period_elapsed_work);
 	}
 
 	spcm->pcm = *pcm;
@@ -2926,7 +2942,6 @@ static int sof_link_sai_load(struct snd_soc_component *scomp, int index,
 {
 	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
 	struct snd_soc_tplg_private *private = &cfg->priv;
-	struct sof_ipc_reply reply;
 	u32 size = sizeof(*config);
 	int ret;
 
@@ -2941,12 +2956,14 @@ static int sof_link_sai_load(struct snd_soc_component *scomp, int index,
 			       ARRAY_SIZE(sai_tokens), private->array,
 			       le32_to_cpu(private->size));
 	if (ret != 0) {
-		dev_err(sdev->dev, "error: parse sai tokens failed %d\n",
+		dev_err(scomp->dev, "error: parse sai tokens failed %d\n",
 			le32_to_cpu(private->size));
 		return ret;
 	}
 
 	config->sai.mclk_rate = le32_to_cpu(hw_config->mclk_rate);
+	config->sai.bclk_rate = le32_to_cpu(hw_config->bclk_rate);
+	config->sai.fsync_rate = le32_to_cpu(hw_config->fsync_rate);
 	config->sai.mclk_direction = hw_config->mclk_direction;
 
 	config->sai.tdm_slots = le32_to_cpu(hw_config->tdm_slots);
@@ -2954,33 +2971,22 @@ static int sof_link_sai_load(struct snd_soc_component *scomp, int index,
 	config->sai.rx_slots = le32_to_cpu(hw_config->rx_slots);
 	config->sai.tx_slots = le32_to_cpu(hw_config->tx_slots);
 
-	dev_info(sdev->dev,
+	dev_info(scomp->dev,
 		 "tplg: config SAI%d fmt 0x%x mclk %d width %d slots %d mclk id %d\n",
 		config->dai_index, config->format,
 		config->sai.mclk_rate, config->sai.tdm_slot_width,
 		config->sai.tdm_slots, config->sai.mclk_id);
 
 	if (config->sai.tdm_slots < 1 || config->sai.tdm_slots > 8) {
-		dev_err(sdev->dev, "error: invalid channel count for SAI%d\n",
+		dev_err(scomp->dev, "error: invalid channel count for SAI%d\n",
 			config->dai_index);
 		return -EINVAL;
-	}
-
-	/* send message to DSP */
-	ret = sof_ipc_tx_message(sdev->ipc,
-				 config->hdr.cmd, config, size, &reply,
-				 sizeof(reply));
-
-	if (ret < 0) {
-		dev_err(sdev->dev, "error: failed to set DAI config for SAI%d\n",
-			config->dai_index);
-		return ret;
 	}
 
 	/* set config for all DAI's with name matching the link name */
 	ret = sof_set_dai_config(sdev, size, link, config);
 	if (ret < 0)
-		dev_err(sdev->dev, "error: failed to save DAI config for SAI%d\n",
+		dev_err(scomp->dev, "error: failed to save DAI config for SAI%d\n",
 			config->dai_index);
 
 	return ret;
@@ -2994,7 +3000,6 @@ static int sof_link_esai_load(struct snd_soc_component *scomp, int index,
 {
 	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
 	struct snd_soc_tplg_private *private = &cfg->priv;
-	struct sof_ipc_reply reply;
 	u32 size = sizeof(*config);
 	int ret;
 
@@ -3009,7 +3014,7 @@ static int sof_link_esai_load(struct snd_soc_component *scomp, int index,
 			       ARRAY_SIZE(esai_tokens), private->array,
 			       le32_to_cpu(private->size));
 	if (ret != 0) {
-		dev_err(sdev->dev, "error: parse esai tokens failed %d\n",
+		dev_err(scomp->dev, "error: parse esai tokens failed %d\n",
 			le32_to_cpu(private->size));
 		return ret;
 	}
@@ -3023,32 +3028,22 @@ static int sof_link_esai_load(struct snd_soc_component *scomp, int index,
 	config->esai.rx_slots = le32_to_cpu(hw_config->rx_slots);
 	config->esai.tx_slots = le32_to_cpu(hw_config->tx_slots);
 
-	dev_info(sdev->dev,
+	dev_info(scomp->dev,
 		 "tplg: config ESAI%d fmt 0x%x mclk %d width %d slots %d mclk id %d\n",
 		config->dai_index, config->format,
 		config->esai.mclk_rate, config->esai.tdm_slot_width,
 		config->esai.tdm_slots, config->esai.mclk_id);
 
 	if (config->esai.tdm_slots < 1 || config->esai.tdm_slots > 8) {
-		dev_err(sdev->dev, "error: invalid channel count for ESAI%d\n",
+		dev_err(scomp->dev, "error: invalid channel count for ESAI%d\n",
 			config->dai_index);
 		return -EINVAL;
-	}
-
-	/* send message to DSP */
-	ret = sof_ipc_tx_message(sdev->ipc,
-				 config->hdr.cmd, config, size, &reply,
-				 sizeof(reply));
-	if (ret < 0) {
-		dev_err(sdev->dev, "error: failed to set DAI config for ESAI%d\n",
-			config->dai_index);
-		return ret;
 	}
 
 	/* set config for all DAI's with name matching the link name */
 	ret = sof_set_dai_config(sdev, size, link, config);
 	if (ret < 0)
-		dev_err(sdev->dev, "error: failed to save DAI config for ESAI%d\n",
+		dev_err(scomp->dev, "error: failed to save DAI config for ESAI%d\n",
 			config->dai_index);
 
 	return ret;
@@ -3241,9 +3236,17 @@ static int sof_link_load(struct snd_soc_component *scomp, int index,
 	if (!link->no_pcm) {
 		link->nonatomic = true;
 
-		/* set trigger order */
-		link->trigger[0] = SND_SOC_DPCM_TRIGGER_POST;
-		link->trigger[1] = SND_SOC_DPCM_TRIGGER_POST;
+		/*
+		 * set default trigger order for all links. Exceptions to
+		 * the rule will be handled in sof_pcm_dai_link_fixup()
+		 * For playback, the sequence is the following: start FE,
+		 * start BE, stop BE, stop FE; for Capture the sequence is
+		 * inverted start BE, start FE, stop FE, stop BE
+		 */
+		link->trigger[SNDRV_PCM_STREAM_PLAYBACK] =
+					SND_SOC_DPCM_TRIGGER_PRE;
+		link->trigger[SNDRV_PCM_STREAM_CAPTURE] =
+					SND_SOC_DPCM_TRIGGER_POST;
 
 		/* nothing more to do for FE dai links */
 		return 0;
@@ -3719,7 +3722,7 @@ static struct snd_soc_tplg_ops sof_tplg_ops = {
 	.bytes_ext_ops_count	= ARRAY_SIZE(sof_bytes_ext_ops),
 };
 
-int snd_sof_load_topology(struct snd_sof_dev *sdev, const char *file)
+int snd_sof_load_topology(struct snd_soc_component *scomp, const char *file)
 {
 	const struct firmware *fw;
 	int ret;

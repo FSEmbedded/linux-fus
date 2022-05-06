@@ -787,8 +787,36 @@ int isst_get_process_ctdp(int cpu, int tdp_level, struct isst_pkg_ctdp *pkg_dev)
 		if (ret)
 			continue;
 
+		valid = 1;
 		pkg_dev->processed = 1;
 		ctdp_level->processed = 1;
+
+		if (ctdp_level->pbf_support) {
+			ret = isst_get_pbf_info(cpu, i, &ctdp_level->pbf_info);
+			if (!ret)
+				ctdp_level->pbf_found = 1;
+		}
+
+		if (ctdp_level->fact_support) {
+			ret = isst_get_fact_info(cpu, i, 0xff,
+						 &ctdp_level->fact_info);
+			if (ret)
+				return ret;
+		}
+
+		if (!pkg_dev->enabled) {
+			int freq;
+
+			freq = get_cpufreq_base_freq(cpu);
+			if (freq > 0) {
+				ctdp_level->sse_p1 = freq / 100000;
+				ctdp_level->tdp_ratio = ctdp_level->sse_p1;
+			}
+
+			isst_get_get_trl_from_msr(cpu, ctdp_level->trl_sse_active_cores);
+			isst_get_trl_bucket_info(cpu, &ctdp_level->buckets_info);
+			continue;
+		}
 
 		ret = isst_get_tdp_info(cpu, i, ctdp_level);
 		if (ret)
@@ -831,6 +859,9 @@ int isst_get_process_ctdp(int cpu, int tdp_level, struct isst_pkg_ctdp *pkg_dev)
 		isst_get_p1_info(cpu, i, ctdp_level);
 		isst_get_uncore_mem_freq(cpu, i, ctdp_level);
 	}
+
+	if (!valid)
+		isst_display_error_info_message(0, "Invalid level, Can't get TDP control information at specified levels on cpu", 1, cpu);
 
 	return 0;
 }

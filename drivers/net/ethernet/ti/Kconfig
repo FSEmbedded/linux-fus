@@ -23,7 +23,7 @@ config TI_DAVINCI_EMAC
 	select TI_DAVINCI_MDIO
 	select PHYLIB
 	select GENERIC_ALLOCATOR
-	---help---
+	help
 	  This driver supports TI's DaVinci Ethernet .
 
 	  To compile this driver as a module, choose M here: the module

@@ -305,22 +305,6 @@ static bool reloc_root_is_dead(struct btrfs_root *root)
  *
  * Reloc tree after swap is considered dead, thus not considered as valid.
  * This is enough for most callers, as they don't distinguish dead reloc root
- * from no reloc root.  But should_ignore_root() below is a special case.
- */
-static bool have_reloc_root(struct btrfs_root *root)
-{
-	if (reloc_root_is_dead(root))
-		return false;
-	if (!root->reloc_root)
-		return false;
-	return true;
-}
-
-/*
- * Check if this subvolume tree has valid reloc tree.
- *
- * Reloc tree after swap is considered dead, thus not considered as valid.
- * This is enough for most callers, as they don't distinguish dead reloc root
  * from no reloc root.  But btrfs_should_ignore_reloc_root() below is a
  * special case.
  */
@@ -534,48 +518,7 @@ out:
 	btrfs_backref_iter_free(iter);
 	btrfs_free_path(path);
 	if (err) {
-		while (!list_empty(&useless)) {
-			lower = list_entry(useless.next,
-					   struct backref_node, list);
-			list_del_init(&lower->list);
-		}
-		while (!list_empty(&list)) {
-			edge = list_first_entry(&list, struct backref_edge,
-						list[UPPER]);
-			list_del(&edge->list[UPPER]);
-			list_del(&edge->list[LOWER]);
-			lower = edge->node[LOWER];
-			upper = edge->node[UPPER];
-			free_backref_edge(cache, edge);
-
-			/*
-			 * Lower is no longer linked to any upper backref nodes
-			 * and isn't in the cache, we can free it ourselves.
-			 */
-			if (list_empty(&lower->upper) &&
-			    RB_EMPTY_NODE(&lower->rb_node))
-				list_add(&lower->list, &useless);
-
-			if (!RB_EMPTY_NODE(&upper->rb_node))
-				continue;
-
-			/* Add this guy's upper edges to the list to process */
-			list_for_each_entry(edge, &upper->upper, list[LOWER])
-				list_add_tail(&edge->list[UPPER], &list);
-			if (list_empty(&upper->upper))
-				list_add(&upper->list, &useless);
-		}
-
-		while (!list_empty(&useless)) {
-			lower = list_entry(useless.next,
-					   struct backref_node, list);
-			list_del_init(&lower->list);
-			if (lower == node)
-				node = NULL;
-			free_backref_node(cache, lower);
-		}
-
-		remove_backref_node(cache, node);
+		btrfs_backref_error_cleanup(cache, node);
 		return ERR_PTR(err);
 	}
 	ASSERT(!node || !node->detached);
@@ -718,8 +661,8 @@ static void __del_reloc_root(struct btrfs_root *root)
 
 	if (rc && root->node) {
 		spin_lock(&rc->reloc_root_tree.lock);
-		rb_node = tree_search(&rc->reloc_root_tree.rb_root,
-				      root->commit_root->start);
+		rb_node = rb_simple_search(&rc->reloc_root_tree.rb_root,
+					   root->commit_root->start);
 		if (rb_node) {
 			node = rb_entry(rb_node, struct mapping_node, rb_node);
 			rb_erase(&node->rb_node, &rc->reloc_root_tree.rb_root);
@@ -760,8 +703,8 @@ static int __update_reloc_root(struct btrfs_root *root)
 	struct reloc_control *rc = fs_info->reloc_ctl;
 
 	spin_lock(&rc->reloc_root_tree.lock);
-	rb_node = tree_search(&rc->reloc_root_tree.rb_root,
-			      root->commit_root->start);
+	rb_node = rb_simple_search(&rc->reloc_root_tree.rb_root,
+				   root->commit_root->start);
 	if (rb_node) {
 		node = rb_entry(rb_node, struct mapping_node, rb_node);
 		rb_erase(&node->rb_node, &rc->reloc_root_tree.rb_root);
@@ -774,8 +717,8 @@ static int __update_reloc_root(struct btrfs_root *root)
 
 	spin_lock(&rc->reloc_root_tree.lock);
 	node->bytenr = root->node->start;
-	rb_node = tree_insert(&rc->reloc_root_tree.rb_root,
-			      node->bytenr, &node->rb_node);
+	rb_node = rb_simple_insert(&rc->reloc_root_tree.rb_root,
+				   node->bytenr, &node->rb_node);
 	spin_unlock(&rc->reloc_root_tree.lock);
 	if (rb_node)
 		btrfs_backref_panic(fs_info, node->bytenr, -EEXIST);
@@ -954,7 +897,7 @@ int btrfs_update_reloc_root(struct btrfs_trans_handle *trans,
 	int ret;
 
 	if (!have_reloc_root(root))
-		goto out;
+		return 0;
 
 	reloc_root = root->reloc_root;
 	root_item = &reloc_root->root_item;
@@ -1694,13 +1637,7 @@ static int clean_dirty_subvols(struct reloc_control *rc)
 						ret = ret2;
 				}
 			}
-			/*
-			 * Need barrier to ensure clear_bit() only happens after
-			 * root->reloc_root = NULL. Pairs with have_reloc_root.
-			 */
-			smp_wmb();
-			clear_bit(BTRFS_ROOT_DEAD_RELOC_TREE, &root->state);
-			btrfs_put_fs_root(root);
+			btrfs_put_root(root);
 		} else {
 			/* Orphan reloc tree, just clean it up */
 			ret2 = btrfs_drop_snapshot(root, 0, 1);
@@ -1778,7 +1715,8 @@ static noinline_for_stack int merge_reloc_root(struct reloc_control *rc,
 	 * Thus the needed metadata size is at most root_level * nodesize,
 	 * and * 2 since we have two trees to COW.
 	 */
-	min_reserved = fs_info->nodesize * btrfs_root_level(root_item) * 2;
+	reserve_level = max_t(int, 1, btrfs_root_level(root_item));
+	min_reserved = fs_info->nodesize * reserve_level * 2;
 	memset(&next_key, 0, sizeof(next_key));
 
 	while (1) {
@@ -1999,7 +1937,8 @@ again:
 		reloc_root = list_entry(reloc_roots.next,
 					struct btrfs_root, root_list);
 
-		root = read_fs_root(fs_info, reloc_root->root_key.offset);
+		root = btrfs_get_fs_root(fs_info, reloc_root->root_key.offset,
+					 false);
 		if (btrfs_root_refs(&reloc_root->root_item) > 0) {
 			BUG_ON(IS_ERR(root));
 			BUG_ON(root->reloc_root != reloc_root);
@@ -2013,10 +1952,13 @@ again:
 			}
 		} else {
 			if (!IS_ERR(root)) {
-				if (root->reloc_root == reloc_root)
+				if (root->reloc_root == reloc_root) {
 					root->reloc_root = NULL;
+					btrfs_put_root(reloc_root);
+				}
 				clear_bit(BTRFS_ROOT_DEAD_RELOC_TREE,
 					  &root->state);
+				btrfs_put_root(root);
 			}
 
 			list_del_init(&reloc_root->root_list);

@@ -436,22 +436,6 @@ static int sdhci_am654_platform_execute_tuning(struct sdhci_host *host,
 	return 0;
 }
 
-static int sdhci_am654_execute_tuning(struct mmc_host *mmc, u32 opcode)
-{
-	struct sdhci_host *host = mmc_priv(mmc);
-	int err = sdhci_execute_tuning(mmc, opcode);
-
-	if (err)
-		return err;
-	/*
-	 * Tuning data remains in the buffer after tuning.
-	 * Do a command and data reset to get rid of it
-	 */
-	sdhci_reset(host, SDHCI_RESET_CMD | SDHCI_RESET_DATA);
-
-	return 0;
-}
-
 static struct sdhci_ops sdhci_am654_ops = {
 	.platform_execute_tuning = sdhci_am654_platform_execute_tuning,
 	.get_max_clock = sdhci_pltfm_clk_get_max_clock,

@@ -2825,7 +2825,7 @@ static void qla2x00_els_dcmd2_sp_done(srb_t *sp, int res)
 	struct qla_work_evt *e;
 	struct fc_port *conflict_fcport;
 	port_id_t cid;	/* conflict Nport id */
-	u32 *fw_status = sp->u.iocb_cmd.u.els_plogi.fw_status;
+	const __le32 *fw_status = sp->u.iocb_cmd.u.els_plogi.fw_status;
 	u16 lid;
 
 	ql_dbg(ql_dbg_disc, vha, 0x3072,
@@ -2838,20 +2838,19 @@ static void qla2x00_els_dcmd2_sp_done(srb_t *sp, int res)
 	if (sp->flags & SRB_WAKEUP_ON_COMP)
 		complete(&lio->u.els_plogi.comp);
 	else {
-		switch (fw_status[0]) {
+		switch (le32_to_cpu(fw_status[0])) {
 		case CS_DATA_UNDERRUN:
 		case CS_COMPLETE:
 			memset(&ea, 0, sizeof(ea));
 			ea.fcport = fcport;
-			ea.data[0] = MBS_COMMAND_COMPLETE;
-			ea.sp = sp;
-			qla24xx_handle_plogi_done_event(vha, &ea);
+			ea.rc = res;
+			qla_handle_els_plogi_done(vha, &ea);
 			break;
 
 		case CS_IOCB_ERROR:
-			switch (fw_status[1]) {
+			switch (le32_to_cpu(fw_status[1])) {
 			case LSC_SCODE_PORTID_USED:
-				lid = fw_status[2] & 0xffff;
+				lid = le32_to_cpu(fw_status[2]) & 0xffff;
 				qlt_find_sess_invalidate_other(vha,
 				    wwn_to_u64(fcport->port_name),
 				    fcport->d_id, lid, &conflict_fcport);
@@ -2885,9 +2884,11 @@ static void qla2x00_els_dcmd2_sp_done(srb_t *sp, int res)
 				break;
 
 			case LSC_SCODE_NPORT_USED:
-				cid.b.domain = (fw_status[2] >> 16) & 0xff;
-				cid.b.area   = (fw_status[2] >>  8) & 0xff;
-				cid.b.al_pa  = fw_status[2] & 0xff;
+				cid.b.domain = (le32_to_cpu(fw_status[2]) >> 16)
+					& 0xff;
+				cid.b.area   = (le32_to_cpu(fw_status[2]) >>  8)
+					& 0xff;
+				cid.b.al_pa  = le32_to_cpu(fw_status[2]) & 0xff;
 				cid.b.rsvd_1 = 0;
 
 				ql_dbg(ql_dbg_disc, vha, 0x20ec,
@@ -2910,7 +2911,7 @@ static void qla2x00_els_dcmd2_sp_done(srb_t *sp, int res)
 					    &vha->dpc_flags);
 					qla2xxx_wake_dpc(vha);
 				}
-				/* fall through */
+				fallthrough;
 			default:
 				ql_dbg(ql_dbg_disc, vha, 0x20eb,
 				    "%s %8phC cmd error fw_status 0x%x 0x%x 0x%x\n",
@@ -2918,7 +2919,8 @@ static void qla2x00_els_dcmd2_sp_done(srb_t *sp, int res)
 				    fw_status[0], fw_status[1], fw_status[2]);
 
 				fcport->flags &= ~FCF_ASYNC_SENT;
-				fcport->disc_state = DSC_LOGIN_FAILED;
+				qla2x00_set_fcport_disc_state(fcport,
+				    DSC_LOGIN_FAILED);
 				set_bit(RELOGIN_NEEDED, &vha->dpc_flags);
 				break;
 			}
@@ -2931,7 +2933,7 @@ static void qla2x00_els_dcmd2_sp_done(srb_t *sp, int res)
 			    fw_status[0], fw_status[1], fw_status[2]);
 
 			sp->fcport->flags &= ~FCF_ASYNC_SENT;
-			sp->fcport->disc_state = DSC_LOGIN_FAILED;
+			qla2x00_set_fcport_disc_state(fcport, DSC_LOGIN_FAILED);
 			set_bit(RELOGIN_NEEDED, &vha->dpc_flags);
 			break;
 		}
@@ -2969,7 +2971,7 @@ qla24xx_els_dcmd2_iocb(scsi_qla_host_t *vha, int els_opcode,
 	}
 
 	fcport->flags |= FCF_ASYNC_SENT;
-	fcport->disc_state = DSC_LOGIN_PEND;
+	qla2x00_set_fcport_disc_state(fcport, DSC_LOGIN_PEND);
 	elsio = &sp->u.iocb_cmd;
 	ql_dbg(ql_dbg_io, vha, 0x3073,
 	    "Enter: PLOGI portid=%06x\n", fcport->d_id.b24);

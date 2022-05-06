@@ -97,8 +97,8 @@ static bool fanotify_should_merge(struct fsnotify_event *old_fsn,
 	old = FANOTIFY_E(old_fsn);
 	new = FANOTIFY_E(new_fsn);
 
-	if (old_fsn->objectid != new_fsn->objectid || old->pid != new->pid ||
-	    old->fh_type != new->fh_type || old->fh_len != new->fh_len)
+	if (old_fsn->objectid != new_fsn->objectid ||
+	    old->type != new->type || old->pid != new->pid)
 		return false;
 
 	/*
@@ -308,6 +308,24 @@ static u32 fanotify_group_event_mask(struct fsnotify_group *group,
 	}
 
 	return test_mask & user_mask;
+}
+
+/*
+ * Check size needed to encode fanotify_fh.
+ *
+ * Return size of encoded fh without fanotify_fh header.
+ * Return 0 on failure to encode.
+ */
+static int fanotify_encode_fh_len(struct inode *inode)
+{
+	int dwords = 0;
+
+	if (!inode)
+		return 0;
+
+	exportfs_encode_inode_fh(inode, NULL, &dwords, NULL);
+
+	return dwords << 2;
 }
 
 /*
@@ -583,14 +601,13 @@ static struct fanotify_event *fanotify_alloc_event(struct fsnotify_group *group,
 
 	if (!event)
 		goto out;
-init: __maybe_unused
+
 	/*
 	 * Use the victim inode instead of the watching inode as the id for
 	 * event queue, so event reported on parent is merged with event
 	 * reported on child when both directory and child watches exist.
 	 */
-	fsnotify_init_event(&event->fse, (unsigned long)id);
-	event->mask = mask;
+	fanotify_init_event(event, (unsigned long)id, mask);
 	if (FAN_GROUP_FLAG(group, FAN_REPORT_TID))
 		event->pid = get_pid(task_pid(current));
 	else

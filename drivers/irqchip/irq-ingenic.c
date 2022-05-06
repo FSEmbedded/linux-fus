@@ -91,18 +91,12 @@ static int __init ingenic_intc_of_init(struct device_node *node,
 		goto out_unmap_irq;
 	}
 
-	domain = irq_domain_add_legacy(node, num_chips * 32,
-				       JZ4740_IRQ_BASE, 0,
-				       &irq_domain_simple_ops, NULL);
+	domain = irq_domain_add_linear(node, num_chips * 32,
+				       &irq_generic_chip_ops, NULL);
 	if (!domain) {
 		err = -ENOMEM;
 		goto out_unmap_base;
 	}
-
-	for (i = 0; i < num_chips; i++) {
-		/* Mask all irqs */
-		writel(0xffffffff, intc->base + (i * CHIP_SIZE) +
-		       JZ_REG_INTC_SET_MASK);
 
 	intc->domain = domain;
 
@@ -131,9 +125,13 @@ static int __init ingenic_intc_of_init(struct device_node *node,
 		irq_reg_writel(gc, IRQ_MSK(32), JZ_REG_INTC_SET_MASK);
 	}
 
-	setup_irq(parent_irq, &intc_cascade_action);
+	if (request_irq(parent_irq, intc_cascade, IRQF_NO_SUSPEND,
+			"SoC intc cascade interrupt", NULL))
+		pr_err("Failed to register SoC intc cascade interrupt\n");
 	return 0;
 
+out_domain_remove:
+	irq_domain_remove(domain);
 out_unmap_base:
 	iounmap(intc->base);
 out_unmap_irq:

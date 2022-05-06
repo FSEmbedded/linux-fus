@@ -701,14 +701,11 @@ int blk_rq_map_kern(struct request_queue *q, struct request *rq, void *kbuf,
 		return -EINVAL;
 
 #ifdef CONFIG_AHCI_IMX
-	if (kbuf == sg_io_buffer_hack)
-		do_copy = 0;
-	else
+	if ((kbuf != sg_io_buffer_hack) && (!blk_rq_aligned(q, addr, len)
+			|| object_is_on_stack(kbuf)))
+#else
+	if (!blk_rq_aligned(q, addr, len) || object_is_on_stack(kbuf))
 #endif
-		do_copy = !blk_rq_aligned(q, addr, len)
-			|| object_is_on_stack(kbuf);
-
-	if (do_copy)
 		bio = bio_copy_kern(q, kbuf, len, gfp_mask, reading);
 	else
 		bio = bio_map_kern(q, kbuf, len, gfp_mask);

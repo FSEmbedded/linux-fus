@@ -2723,12 +2723,12 @@ qla28xx_write_flash_data(scsi_qla_host_t *vha, uint32_t *dwptr, uint32_t faddr,
 		ql_log(ql_log_warn + ql_dbg_verbose, vha, 0xffff,
 		    "Region %x is secure\n", region.code);
 
-		switch (region.code) {
+		switch (le16_to_cpu(region.code)) {
 		case FLT_REG_FW:
 		case FLT_REG_FW_SEC_27XX:
 		case FLT_REG_MPI_PRI_28XX:
 		case FLT_REG_MPI_SEC_28XX:
-			fw_array = dwptr;
+			fw_array = (__force __be32 *)dwptr;
 
 			/* 1st fw array */
 			risc_size = be32_to_cpu(fw_array[3]);
@@ -2762,7 +2762,7 @@ qla28xx_write_flash_data(scsi_qla_host_t *vha, uint32_t *dwptr, uint32_t faddr,
 
 		case FLT_REG_PEP_PRI_28XX:
 		case FLT_REG_PEP_SEC_28XX:
-			fw_array = dwptr;
+			fw_array = (__force __be32 *)dwptr;
 
 			/* 1st fw array */
 			risc_size = be32_to_cpu(fw_array[3]);

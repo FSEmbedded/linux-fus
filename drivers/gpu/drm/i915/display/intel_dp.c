@@ -1396,8 +1396,6 @@ intel_dp_aux_xfer(struct intel_dp *intel_dp,
 
 	aux_domain = intel_aux_power_domain(dig_port);
 
-	aux_domain = intel_aux_power_domain(intel_dig_port);
-
 	aux_wakeref = intel_display_power_get(i915, aux_domain);
 	pps_wakeref = pps_lock(intel_dp);
 
@@ -7843,7 +7841,7 @@ intel_dp_init_connector(struct intel_digital_port *dig_port,
 		intel_connector->get_hw_state = intel_connector_get_hw_state;
 
 	/* init MST on ports that can support it */
-	intel_dp_mst_encoder_init(intel_dig_port,
+	intel_dp_mst_encoder_init(dig_port,
 				  intel_connector->base.base.id);
 
 	if (!intel_edp_init_connector(intel_dp, intel_connector)) {

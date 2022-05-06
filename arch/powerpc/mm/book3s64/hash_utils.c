@@ -304,13 +304,22 @@ repeat:
 					       HPTE_V_BOLTED, psize, psize,
 					       ssize);
 		if (ret == -1) {
-			/* Try to remove a non bolted entry */
+			/*
+			 * Try to to keep bolted entries in primary.
+			 * Remove non bolted entries and try insert again
+			 */
 			ret = mmu_hash_ops.hpte_remove(hpteg);
 			if (ret != -1)
 				ret = mmu_hash_ops.hpte_insert(hpteg, vpn, paddr, tprot,
 							       HPTE_V_BOLTED, psize, psize,
 							       ssize);
+			if (ret == -1 && !secondary_hash) {
+				secondary_hash = true;
+				hpteg = ((~hash & htab_hash_mask) * HPTES_PER_GROUP);
+				goto repeat;
+			}
 		}
+
 		if (ret < 0)
 			break;
 

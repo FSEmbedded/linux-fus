@@ -75,7 +75,7 @@ static void setup_hub_mask(struct hub_irq_data *hd, const struct cpumask *mask)
 	if (cpu >= nr_cpu_ids)
 		cpu = cpumask_any(cpu_online_mask);
 
-	nasid = COMPACT_TO_NASID_NODEID(cpu_to_node(cpu));
+	nasid = cpu_to_node(cpu);
 	hd->cpu = cpu;
 	if (!cputoslice(cpu)) {
 		hd->irq_mask[0] = REMOTE_HUB_PTR(nasid, PI_INT_MASK0_A);

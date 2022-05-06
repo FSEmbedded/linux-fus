@@ -330,6 +330,14 @@ static void hvs_open_connection(struct vmbus_channel *chan)
 		vsock_addr_init(&vnew->remote_addr,
 				VMADDR_CID_HOST, VMADDR_PORT_ANY);
 		vnew->remote_addr.svm_port = get_port_by_srv_id(if_instance);
+		ret = vsock_assign_transport(vnew, vsock_sk(sk));
+		/* Transport assigned (looking at remote_addr) must be the
+		 * same where we received the request.
+		 */
+		if (ret || !hvs_check_transport(vnew)) {
+			sock_put(new);
+			goto out;
+		}
 		hvs_new = vnew->trans;
 		hvs_new->chan = chan;
 	} else {
@@ -391,9 +399,8 @@ static void hvs_open_connection(struct vmbus_channel *chan)
 
 	if (conn_from_host) {
 		new->sk_state = TCP_ESTABLISHED;
-		sk->sk_ack_backlog++;
+		sk_acceptq_added(sk);
 
-		hvs_addr_init(&vnew->local_addr, if_type);
 		hvs_new->vm_srv_id = *if_type;
 		hvs_new->host_srv_id = *if_instance;
 

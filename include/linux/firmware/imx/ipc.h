@@ -9,6 +9,7 @@
 #define _SC_IPC_H
 
 #include <linux/device.h>
+#include <linux/types.h>
 
 #define IMX_SC_RPC_VERSION	1
 #define IMX_SC_RPC_MAX_MSG	8
@@ -48,8 +49,6 @@ struct imx_sc_rpc_msg {
  * and returns the result in msg.
  */
 int imx_scu_call_rpc(struct imx_sc_ipc *ipc, void *msg, bool have_resp);
-int imx_scu_call_big_rpc(struct imx_sc_ipc *ipc, void *msg, bool have_resp);
-
 
 /*
  * This function gets the default ipc handle used by SCU
@@ -62,13 +61,6 @@ int imx_scu_get_handle(struct imx_sc_ipc **ipc);
 #else
 static inline int
 imx_scu_call_rpc(struct imx_sc_ipc *ipc, void *msg, bool have_resp)
-{
-	return -EIO;
-
-}
-
-static inline int
-imx_scu_call_big_rpc(struct imx_sc_ipc *ipc, void *msg, bool have_resp)
 {
 	return -EIO;
 

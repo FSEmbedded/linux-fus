@@ -3846,9 +3846,9 @@ static int hisi_sas_debugfs_alloc(struct hisi_hba *hisi_hba, int dump_index)
 	int p, c, d, r, i;
 	size_t sz;
 
-	sz = hw->debugfs_reg_array[DEBUGFS_GLOBAL]->count * 4;
-	hisi_hba->debugfs_regs[DEBUGFS_GLOBAL] =
-				devm_kmalloc(dev, sz, GFP_KERNEL);
+	for (r = 0; r < DEBUGFS_REGS_NUM; r++) {
+		struct hisi_sas_debugfs_regs *regs =
+				&hisi_hba->debugfs_regs[dump_index][r];
 
 		sz = hw->debugfs_reg_array[r]->count * 4;
 		regs->data = devm_kmalloc(dev, sz, GFP_KERNEL);

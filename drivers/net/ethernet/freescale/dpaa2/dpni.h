@@ -527,19 +527,6 @@ int dpni_reset_statistics(struct fsl_mc_io *mc_io,
  * Enable priority flow control pause frames
  */
 #define DPNI_LINK_OPT_PFC_PAUSE		0x0000000000000010ULL
-/**
- * Advertised link speeds
- */
-#define DPNI_ADVERTISED_10BASET_FULL           0x0000000000000001ULL
-#define DPNI_ADVERTISED_100BASET_FULL          0x0000000000000002ULL
-#define DPNI_ADVERTISED_1000BASET_FULL         0x0000000000000004ULL
-#define DPNI_ADVERTISED_10000BASET_FULL        0x0000000000000010ULL
-#define DPNI_ADVERTISED_2500BASEX_FULL         0x0000000000000020ULL
-
-/**
- * Advertise auto-negotiation enabled
- */
-#define DPNI_ADVERTISED_AUTONEG                0x0000000000000008ULL
 
 /**
  * struct - Structure representing DPNI link configuration
@@ -549,18 +536,12 @@ int dpni_reset_statistics(struct fsl_mc_io *mc_io,
 struct dpni_link_cfg {
 	u32 rate;
 	u64 options;
-	u64 advertising;
 };
 
 int dpni_set_link_cfg(struct fsl_mc_io			*mc_io,
 		      u32				cmd_flags,
 		      u16				token,
 		      const struct dpni_link_cfg	*cfg);
-
-int dpni_set_link_cfg_v2(struct fsl_mc_io		*mc_io,
-			 u32				cmd_flags,
-			 u16				token,
-			 const struct dpni_link_cfg	*cfg);
 
 int dpni_get_link_cfg(struct fsl_mc_io			*mc_io,
 		      u32				cmd_flags,
@@ -576,38 +557,13 @@ int dpni_get_link_cfg(struct fsl_mc_io			*mc_io,
 struct dpni_link_state {
 	u32	rate;
 	u64	options;
-	u64	supported;
-	u64	advertising;
 	int	up;
-	int	state_valid;
 };
 
 int dpni_get_link_state(struct fsl_mc_io	*mc_io,
 			u32			cmd_flags,
 			u16			token,
 			struct dpni_link_state	*state);
-
-int dpni_get_link_state_v2(struct fsl_mc_io	*mc_io,
-			   u32			cmd_flags,
-			   u16			token,
-			   struct dpni_link_state	*state);
-
-/**
- * struct dpni_tx_shaping - Structure representing DPNI tx shaping configuration
- * @rate_limit: rate in Mbps
- * @max_burst_size: burst size in bytes (up to 64KB)
- */
-struct dpni_tx_shaping_cfg {
-	u32	rate_limit;
-	u16	max_burst_size;
-};
-
-int dpni_set_tx_shaping(struct fsl_mc_io *mc_io,
-			u32 cmd_flags,
-			u16 token,
-			const struct dpni_tx_shaping_cfg *tx_cr_shaper,
-			const struct dpni_tx_shaping_cfg *tx_er_shaper,
-			int coupled);
 
 int dpni_set_max_frame_length(struct fsl_mc_io	*mc_io,
 			      u32		cmd_flags,

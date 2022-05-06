@@ -643,15 +643,12 @@ static int uniphier_sd_probe(struct platform_device *pdev)
 	if (ret)
 		goto remove_host;
 
-	ret = devm_request_irq(dev, irq, tmio_mmc_irq, IRQF_SHARED,
-			       dev_name(dev), host);
-	if (ret)
-		goto remove_host;
-
 	return 0;
 
 remove_host:
 	tmio_mmc_host_remove(host);
+disable_clk:
+	uniphier_sd_clk_disable(host);
 free_host:
 	tmio_mmc_host_free(host);
 

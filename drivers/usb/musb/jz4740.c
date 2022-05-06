@@ -99,7 +99,15 @@ static int jz4740_musb_role_switch_set(struct usb_role_switch *sw,
 static int jz4740_musb_init(struct musb *musb)
 {
 	struct device *dev = musb->controller->parent;
+	struct jz4740_glue *glue = dev_get_drvdata(dev);
+	struct usb_role_switch_desc role_sw_desc = {
+		.set = jz4740_musb_role_switch_set,
+		.driver_data = glue,
+		.fwnode = dev_fwnode(dev),
+	};
 	int err;
+
+	glue->musb = musb;
 
 	if (dev->of_node)
 		musb->xceiv = devm_usb_get_phy_by_phandle(dev, "phys", 0);

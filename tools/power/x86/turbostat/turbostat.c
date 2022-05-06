@@ -3049,7 +3049,9 @@ int snapshot_gfx_mhz(void)
  * snapshot_gfx_cur_mhz()
  *
  * record snapshot of
- * /sys/devices/system/cpu/cpuidle/low_power_idle_cpu_residency_us
+ * /sys/class/graphics/fb0/device/drm/card0/gt_act_freq_mhz
+ *
+ * return 1 if config change requires a restart, else return 0
  */
 int snapshot_gfx_act_mhz(void)
 {

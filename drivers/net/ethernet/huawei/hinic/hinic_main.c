@@ -558,6 +558,9 @@ int hinic_close(struct net_device *netdev)
 	struct hinic_dev *nic_dev = netdev_priv(netdev);
 	unsigned int flags;
 
+	/* Disable txq napi firstly to aviod rewaking txq in free_tx_poll */
+	disable_txqs_napi(nic_dev);
+
 	down(&nic_dev->mgmt_lock);
 
 	flags = nic_dev->flags;
@@ -569,6 +572,9 @@ int hinic_close(struct net_device *netdev)
 	update_nic_stats(nic_dev);
 
 	up(&nic_dev->mgmt_lock);
+
+	if (!HINIC_IS_VF(nic_dev->hwdev->hwif))
+		hinic_notify_all_vfs_link_changed(nic_dev->hwdev, 0);
 
 	hinic_port_set_state(nic_dev, HINIC_PORT_DISABLE);
 

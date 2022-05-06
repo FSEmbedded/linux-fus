@@ -46,17 +46,19 @@ static bool imx_dma_filter_fn(struct dma_chan *chan, void *param)
 }
 
 /* this may get called several times by oss emulation */
-static int imx_pcm_hw_params(struct snd_pcm_substream *substream,
-			      struct snd_pcm_hw_params *params)
+static int imx_pcm_hw_params(struct snd_soc_component *component,
+			     struct snd_pcm_substream *substream,
+			     struct snd_pcm_hw_params *params)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
 	struct snd_dmaengine_dai_dma_data *dma_data;
 	struct dma_slave_config config;
 	struct dma_chan *chan;
 	int err = 0;
 
-	dma_data = snd_soc_dai_get_dma_data(rtd->cpu_dai, substream);
+	dma_data = snd_soc_dai_get_dma_data(cpu_dai, substream);
 
 	/* return if this is a bufferless transfer e.g.
 	 * codec <--> BT codec or GSM modem -- lg FIXME
@@ -80,21 +82,18 @@ static int imx_pcm_hw_params(struct snd_pcm_substream *substream,
 					dma_data,
 					&config);
 
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		config.dst_fifo_num = dma_data->fifo_num;
-	else
-		config.src_fifo_num = dma_data->fifo_num;
-
 	return dmaengine_slave_config(chan, &config);
 }
 
-static int imx_pcm_hw_free(struct snd_pcm_substream *substream)
+static int imx_pcm_hw_free(struct snd_soc_component *component,
+			   struct snd_pcm_substream *substream)
 {
 	snd_pcm_set_runtime_buffer(substream, NULL);
 	return 0;
 }
 
-static snd_pcm_uframes_t imx_pcm_pointer(struct snd_pcm_substream *substream)
+static snd_pcm_uframes_t imx_pcm_pointer(struct snd_soc_component *component,
+					 struct snd_pcm_substream *substream)
 {
 	return snd_dmaengine_pcm_pointer(substream);
 }
@@ -124,9 +123,11 @@ static void imx_pcm_free_dma_buffers(struct snd_pcm_substream *substream)
 	}
 }
 
-static int imx_pcm_open(struct snd_pcm_substream *substream)
+static int imx_pcm_open(struct snd_soc_component *component,
+			struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
 	struct snd_dmaengine_dai_dma_data *dma_data;
 	struct dma_slave_caps dma_caps;
 	struct dma_chan *chan;
@@ -136,13 +137,13 @@ static int imx_pcm_open(struct snd_pcm_substream *substream)
 	int ret;
 	int i;
 
-	dma_data = snd_soc_dai_get_dma_data(rtd->cpu_dai, substream);
+	dma_data = snd_soc_dai_get_dma_data(cpu_dai, substream);
 
 	/* DT boot: filter_data is the DMA name */
-	if (rtd->cpu_dai->dev->of_node) {
+	if (cpu_dai->dev->of_node) {
 		struct dma_chan *chan;
 
-		chan = dma_request_slave_channel(rtd->cpu_dai->dev,
+		chan = dma_request_slave_channel(cpu_dai->dev,
 						 dma_data->chan_name);
 		ret = snd_dmaengine_pcm_open(substream, chan);
 		if (ret)
@@ -222,8 +223,9 @@ static int imx_pcm_open(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int imx_pcm_mmap(struct snd_pcm_substream *substream,
-	struct vm_area_struct *vma)
+static int imx_pcm_mmap(struct snd_soc_component *component,
+			struct snd_pcm_substream *substream,
+			struct vm_area_struct *vma)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 
@@ -233,25 +235,15 @@ static int imx_pcm_mmap(struct snd_pcm_substream *substream,
 			   runtime->dma_bytes);
 }
 
-static int imx_pcm_close(struct snd_pcm_substream *substream)
+static int imx_pcm_close(struct snd_soc_component *component,
+			 struct snd_pcm_substream *substream)
 {
 	imx_pcm_free_dma_buffers(substream);
 
 	return snd_dmaengine_pcm_close_release_chan(substream);
 }
 
-static struct snd_pcm_ops imx_pcm_ops = {
-	.open		= imx_pcm_open,
-	.close		= imx_pcm_close,
-	.ioctl		= snd_pcm_lib_ioctl,
-	.hw_params	= imx_pcm_hw_params,
-	.hw_free	= imx_pcm_hw_free,
-	.trigger	= snd_dmaengine_pcm_trigger,
-	.pointer	= imx_pcm_pointer,
-	.mmap		= imx_pcm_mmap,
-};
-
-static int imx_pcm_new(struct snd_soc_pcm_runtime *rtd)
+static int imx_pcm_new(struct snd_soc_component *component, struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_card *card = rtd->card->snd_card;
 	int ret = 0;
@@ -263,10 +255,22 @@ static int imx_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	return ret;
 }
 
+static int imx_pcm_trigger(struct snd_soc_component *component,
+			   struct snd_pcm_substream *substream, int cmd)
+{
+	return snd_dmaengine_pcm_trigger(substream, cmd);
+}
+
 static struct snd_soc_component_driver imx_soc_platform = {
 	.name           = "imx-pcm-dma-v2",
-	.ops		= &imx_pcm_ops,
-	.pcm_new	= imx_pcm_new,
+	.pcm_construct	= imx_pcm_new,
+	.open		= imx_pcm_open,
+	.close		= imx_pcm_close,
+	.hw_params	= imx_pcm_hw_params,
+	.hw_free	= imx_pcm_hw_free,
+	.trigger	= imx_pcm_trigger,
+	.pointer	= imx_pcm_pointer,
+	.mmap		= imx_pcm_mmap,
 };
 
 int imx_pcm_platform_register(struct device *dev)

@@ -247,8 +247,8 @@ TRACE_EVENT(
 TRACE_EVENT(
 	fast_page_fault,
 	TP_PROTO(struct kvm_vcpu *vcpu, gpa_t cr2_or_gpa, u32 error_code,
-		 u64 *sptep, u64 old_spte, bool retry),
-	TP_ARGS(vcpu, cr2_or_gpa, error_code, sptep, old_spte, retry),
+		 u64 *sptep, u64 old_spte, int ret),
+	TP_ARGS(vcpu, cr2_or_gpa, error_code, sptep, old_spte, ret),
 
 	TP_STRUCT__entry(
 		__field(int, vcpu_id)

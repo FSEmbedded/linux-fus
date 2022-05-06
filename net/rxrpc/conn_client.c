@@ -671,28 +671,13 @@ static int rxrpc_wait_for_channel(struct rxrpc_bundle *bundle,
 			set_current_state(TASK_UNINTERRUPTIBLE);
 			break;
 		}
-
-		add_wait_queue_exclusive(&call->waitq, &myself);
-		for (;;) {
-			switch (call->interruptibility) {
-			case RXRPC_INTERRUPTIBLE:
-			case RXRPC_PREINTERRUPTIBLE:
-				set_current_state(TASK_INTERRUPTIBLE);
-				break;
-			case RXRPC_UNINTERRUPTIBLE:
-			default:
-				set_current_state(TASK_UNINTERRUPTIBLE);
-				break;
-			}
-			if (call->call_id)
-				break;
-			if ((call->interruptibility == RXRPC_INTERRUPTIBLE ||
-			     call->interruptibility == RXRPC_PREINTERRUPTIBLE) &&
-			    signal_pending(current)) {
-				ret = -ERESTARTSYS;
-				break;
-			}
-			schedule();
+		if (READ_ONCE(call->state) != RXRPC_CALL_CLIENT_AWAIT_CONN)
+			break;
+		if ((call->interruptibility == RXRPC_INTERRUPTIBLE ||
+		     call->interruptibility == RXRPC_PREINTERRUPTIBLE) &&
+		    signal_pending(current)) {
+			ret = -ERESTARTSYS;
+			break;
 		}
 		schedule();
 	}
@@ -809,15 +794,10 @@ void rxrpc_disconnect_client_call(struct rxrpc_bundle *bundle, struct rxrpc_call
 	bool may_reuse;
 	u32 cid;
 
-	spin_lock(&conn->channel_lock);
-	set_bit(RXRPC_CALL_DISCONNECTED, &call->flags);
+	_enter("c=%x", call->debug_id);
 
-	cid = call->cid;
-	if (cid) {
-		channel = cid & RXRPC_CHANNELMASK;
-		chan = &conn->channels[channel];
-	}
-	trace_rxrpc_client(conn, channel, rxrpc_client_chan_disconnect);
+	spin_lock(&bundle->channel_lock);
+	set_bit(RXRPC_CALL_DISCONNECTED, &call->flags);
 
 	/* Calls that have never actually been assigned a channel can simply be
 	 * discarded.
@@ -908,9 +888,7 @@ void rxrpc_disconnect_client_call(struct rxrpc_bundle *bundle, struct rxrpc_call
 	}
 
 out:
-	spin_unlock(&rxnet->client_conn_cache_lock);
-out_2:
-	spin_unlock(&conn->channel_lock);
+	spin_unlock(&bundle->channel_lock);
 	_leave("");
 	return;
 }

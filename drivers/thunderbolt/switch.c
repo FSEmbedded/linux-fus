@@ -349,12 +349,6 @@ out:
 	return ret;
 }
 
-static int tb_switch_nvm_no_read(void *priv, unsigned int offset, void *val,
-				 size_t bytes)
-{
-	return -EPERM;
-}
-
 static int tb_switch_nvm_write(void *priv, unsigned int offset, void *val,
 			       size_t bytes)
 {
@@ -375,35 +369,6 @@ static int tb_switch_nvm_write(void *priv, unsigned int offset, void *val,
 	mutex_unlock(&sw->tb->lock);
 
 	return ret;
-}
-
-static struct nvmem_device *register_nvmem(struct tb_switch *sw, int id,
-					   size_t size, bool active)
-{
-	struct nvmem_config config;
-
-	memset(&config, 0, sizeof(config));
-
-	if (active) {
-		config.name = "nvm_active";
-		config.reg_read = tb_switch_nvm_read;
-		config.read_only = true;
-	} else {
-		config.name = "nvm_non_active";
-		config.reg_read = tb_switch_nvm_no_read;
-		config.reg_write = tb_switch_nvm_write;
-		config.root_only = true;
-	}
-
-	config.id = id;
-	config.stride = 4;
-	config.word_size = 4;
-	config.size = size;
-	config.dev = &sw->dev;
-	config.owner = THIS_MODULE;
-	config.priv = sw;
-
-	return nvmem_register(&config);
 }
 
 static int tb_switch_nvm_add(struct tb_switch *sw)
@@ -1605,15 +1570,17 @@ static ssize_t nvm_authenticate_sysfs(struct device *dev, const char *buf,
 				goto exit_unlock;
 			}
 
-		if (!tb_route(sw)) {
-			/*
-			 * Keep root port from suspending as long as the
-			 * NVM upgrade process is running.
-			 */
-			nvm_authenticate_start(sw);
-			ret = nvm_authenticate_host(sw);
-		} else {
-			ret = nvm_authenticate_device(sw);
+			ret = nvm_validate_and_write(sw);
+			if (ret || val == WRITE_ONLY)
+				goto exit_unlock;
+		}
+		if (val == WRITE_AND_AUTHENTICATE) {
+			if (disconnect) {
+				ret = tb_lc_force_power(sw);
+			} else {
+				sw->nvm->authenticating = true;
+				ret = nvm_authenticate(sw);
+			}
 		}
 	}
 
@@ -2164,7 +2131,7 @@ static int tb_switch_add_dma_port(struct tb_switch *sw)
 		if (tb_route(sw))
 			return 0;
 
-		/* fallthrough */
+		fallthrough;
 	case 3:
 		ret = tb_switch_set_uuid(sw);
 		if (ret)
@@ -2201,7 +2168,7 @@ static int tb_switch_add_dma_port(struct tb_switch *sw)
 	nvm_get_auth_status(sw, &status);
 	if (status) {
 		if (!tb_route(sw))
-			nvm_authenticate_complete(sw);
+			nvm_authenticate_complete_dma_port(sw);
 		return 0;
 	}
 

@@ -328,52 +328,6 @@ static bool focusrite_valid_sample_rate(struct snd_usb_audio *chip,
 }
 
 /*
- * Many Focusrite devices supports a limited set of sampling rates per
- * altsetting. Maximum rate is exposed in the last 4 bytes of Format Type
- * descriptor which has a non-standard bLength = 10.
- */
-static bool focusrite_valid_sample_rate(struct snd_usb_audio *chip,
-					struct audioformat *fp,
-					unsigned int rate)
-{
-	struct usb_interface *iface;
-	struct usb_host_interface *alts;
-	unsigned char *fmt;
-	unsigned int max_rate;
-
-	iface = usb_ifnum_to_if(chip->dev, fp->iface);
-	if (!iface)
-		return true;
-
-	alts = &iface->altsetting[fp->altset_idx];
-	fmt = snd_usb_find_csint_desc(alts->extra, alts->extralen,
-				      NULL, UAC_FORMAT_TYPE);
-	if (!fmt)
-		return true;
-
-	if (fmt[0] == 10) { /* bLength */
-		max_rate = combine_quad(&fmt[6]);
-
-		/* Validate max rate */
-		if (max_rate != 48000 &&
-		    max_rate != 96000 &&
-		    max_rate != 192000 &&
-		    max_rate != 384000) {
-
-			usb_audio_info(chip,
-				"%u:%d : unexpected max rate: %u\n",
-				fp->iface, fp->altsetting, max_rate);
-
-			return true;
-		}
-
-		return rate <= max_rate;
-	}
-
-	return true;
-}
-
-/*
  * Helper function to walk the array of sample rate triplets reported by
  * the device. The problem is that we need to parse whole array first to
  * get to know how many sample rates we have to expect.
@@ -409,6 +363,12 @@ static int parse_uac2_sample_rate_range(struct snd_usb_audio *chip,
 		}
 
 		for (rate = min; rate <= max; rate += res) {
+
+			/* Filter out invalid rates on Presonus Studio 1810c */
+			if (chip->usb_id == USB_ID(0x0194f, 0x010c) &&
+			    !s1810c_valid_sample_rate(fp, rate))
+				goto skip_rate;
+
 			/* Filter out invalid rates on Focusrite devices */
 			if (USB_ID_VENDOR(chip->usb_id) == 0x1235 &&
 			    !focusrite_valid_sample_rate(chip, fp, rate))
@@ -446,24 +406,16 @@ static int line6_parse_audio_format_rates_quirk(struct snd_usb_audio *chip,
 						struct audioformat *fp)
 {
 	switch (chip->usb_id) {
-	case USB_ID(0x0E41, 0x4241): /* Line6 Helix */
-	case USB_ID(0x0E41, 0x4242): /* Line6 Helix Rack */
-	case USB_ID(0x0E41, 0x4244): /* Line6 Helix LT */
-	case USB_ID(0x0E41, 0x4246): /* Line6 HX-Stomp */
-	case USB_ID(0x0E41, 0x4248): /* Line6 Helix >= fw 2.82 */
-	case USB_ID(0x0E41, 0x4249): /* Line6 Helix Rack >= fw 2.82 */
-	case USB_ID(0x0E41, 0x424a): /* Line6 Helix LT >= fw 2.82 */
-		/* supported rates: 48Khz */
-		kfree(fp->rate_table);
-		fp->rate_table = kmalloc(sizeof(int), GFP_KERNEL);
-		if (!fp->rate_table)
-			return -ENOMEM;
-		fp->nr_rates = 1;
-		fp->rate_min = 48000;
-		fp->rate_max = 48000;
-		fp->rates = SNDRV_PCM_RATE_48000;
-		fp->rate_table[0] = 48000;
-		return 0;
+	case USB_ID(0x0e41, 0x4241): /* Line6 Helix */
+	case USB_ID(0x0e41, 0x4242): /* Line6 Helix Rack */
+	case USB_ID(0x0e41, 0x4244): /* Line6 Helix LT */
+	case USB_ID(0x0e41, 0x4246): /* Line6 HX-Stomp */
+	case USB_ID(0x0e41, 0x4247): /* Line6 Pod Go */
+	case USB_ID(0x0e41, 0x4248): /* Line6 Helix >= fw 2.82 */
+	case USB_ID(0x0e41, 0x4249): /* Line6 Helix Rack >= fw 2.82 */
+	case USB_ID(0x0e41, 0x424a): /* Line6 Helix LT >= fw 2.82 */
+	case USB_ID(0x19f7, 0x0011): /* Rode Rodecaster Pro */
+		return set_fixed_rate(fp, 48000, SNDRV_PCM_RATE_48000);
 	}
 
 	return -ENODEV;

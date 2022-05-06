@@ -150,7 +150,7 @@ config IFB
 	tristate "Intermediate Functional Block support"
 	depends on NET_CLS_ACT
 	select NET_REDIRECT
-	---help---
+	help
 	  This is an intermediate driver that allows sharing of
 	  resources.
 	  To compile this driver as a module, choose M here: the module
@@ -596,5 +596,12 @@ config NET_FAILOVER
 config IVSHMEM_NET
 	tristate "IVSHMEM virtual network device"
 	depends on PCI
+
+config IMX_SHMEM_NET
+	tristate "IMX Shared Memory virtual network device"
+	depends on IMX_MBOX
+	help
+	  This driver uses shared memory and mailbox units from i.MX to provide
+	  a virtual network device to communicate with a peer on the same SoC.
 
 endif # NETDEVICES

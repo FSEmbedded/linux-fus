@@ -94,7 +94,7 @@ static int dt_remember_or_free_map(struct pinctrl *p, const char *statename,
 	dt_map->num_maps = num_maps;
 	list_add_tail(&dt_map->node, &p->dt_maps);
 
-	return pinctrl_register_map(map, num_maps, false);
+	return pinctrl_register_mappings(map, num_maps);
 
 err_free_map:
 	dt_free_map(pctldev, map, num_maps);
@@ -192,21 +192,6 @@ static int dt_remember_dummy_state(struct pinctrl *p, const char *statename)
 	map->type = PIN_MAP_TYPE_DUMMY_STATE;
 
 	return dt_remember_or_free_map(p, statename, NULL, map, 1);
-}
-
-bool pinctrl_dt_has_hogs(struct pinctrl_dev *pctldev)
-{
-	struct device_node *np;
-	struct property *prop;
-	int size;
-
-	np = pctldev->dev->of_node;
-	if (!np)
-		return false;
-
-	prop = of_find_property(np, "pinctrl-0", &size);
-
-	return prop ? true : false;
 }
 
 static int dt_gpio_assert_pinctrl(struct pinctrl *p)

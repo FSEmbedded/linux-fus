@@ -40,16 +40,7 @@
 #include <linux/sched.h>
 #include <linux/bitops.h>
 #include <asm/unaligned.h>
-
-#ifdef CONFIG_RANDOM32_SELFTEST
-static void __init prandom_state_selftest(void);
-#else
-static inline void prandom_state_selftest(void)
-{
-}
-#endif
-
-DEFINE_PER_CPU(struct rnd_state, net_rand_state)  __latent_entropy;
+#include <trace/events/random.h>
 
 /**
  *	prandom_u32_state - seeded pseudo-random number generator.

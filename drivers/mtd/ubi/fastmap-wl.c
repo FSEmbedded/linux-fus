@@ -286,26 +286,20 @@ static struct ubi_wl_entry *get_peb_for_wl(struct ubi_device *ubi)
 int ubi_ensure_anchor_pebs(struct ubi_device *ubi)
 {
 	struct ubi_work *wrk;
-	struct ubi_wl_entry *anchor;
 
 	spin_lock(&ubi->wl_lock);
 
-	/* Do we already have an anchor? */
-	if (ubi->fm_anchor) {
-		spin_unlock(&ubi->wl_lock);
-		return 0;
+	/* Do we have a next anchor? */
+	if (!ubi->fm_next_anchor) {
+		ubi->fm_next_anchor = ubi_wl_get_fm_peb(ubi, 1);
+		if (!ubi->fm_next_anchor)
+			/* Tell wear leveling to produce a new anchor PEB */
+			ubi->fm_do_produce_anchor = 1;
 	}
 
-	/* See if we can find an anchor PEB on the list of free PEBs */
-	anchor = ubi_wl_get_fm_peb(ubi, 1);
-	if (anchor) {
-		ubi->fm_anchor = anchor;
-		spin_unlock(&ubi->wl_lock);
-		return 0;
-	}
-
-	/* No luck, trigger wear leveling to produce a new anchor PEB */
-	ubi->fm_do_produce_anchor = 1;
+	/* Do wear leveling to get a new anchor PEB or check the
+	 * existing next anchor candidate.
+	 */
 	if (ubi->wl_scheduled) {
 		spin_unlock(&ubi->wl_lock);
 		return 0;
@@ -385,6 +379,11 @@ static void ubi_fastmap_close(struct ubi_device *ubi)
 	if (ubi->fm_anchor) {
 		return_unused_peb(ubi, ubi->fm_anchor);
 		ubi->fm_anchor = NULL;
+	}
+
+	if (ubi->fm_next_anchor) {
+		return_unused_peb(ubi, ubi->fm_next_anchor);
+		ubi->fm_next_anchor = NULL;
 	}
 
 	if (ubi->fm) {

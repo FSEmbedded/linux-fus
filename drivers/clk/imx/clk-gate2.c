@@ -7,6 +7,7 @@
  */
 
 #include <linux/clk-provider.h>
+#include <linux/export.h>
 #include <linux/imx_sema4.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -37,7 +38,6 @@ struct clk_gate2 {
 };
 
 #define to_clk_gate2(_hw) container_of(_hw, struct clk_gate2, hw)
-#define CCM_CCGR_FULL_ENABLE	0x3
 
 static void clk_gate2_do_hardware(struct clk_gate2 *gate, bool enable)
 {
@@ -45,9 +45,9 @@ static void clk_gate2_do_hardware(struct clk_gate2 *gate, bool enable)
 
 	reg = readl(gate->reg);
 	if (enable)
-		reg |= CCM_CCGR_FULL_ENABLE << gate->bit_idx;
+		reg |= gate->cgr_val << gate->bit_idx;
 	else
-		reg &= ~(CCM_CCGR_FULL_ENABLE << gate->bit_idx);
+		reg &= ~(gate->cgr_val << gate->bit_idx);
 	writel(reg, gate->reg);
 }
 
@@ -87,7 +87,8 @@ static void clk_gate2_do_shared_clks(struct clk_hw *hw, bool enable)
 static int clk_gate2_enable(struct clk_hw *hw)
 {
 	struct clk_gate2 *gate = to_clk_gate2(hw);
-	unsigned long flags = 0;
+	unsigned long flags;
+	int ret = 0;
 
 	spin_lock_irqsave(gate->lock, flags);
 
@@ -104,7 +105,7 @@ out:
 static void clk_gate2_disable(struct clk_hw *hw)
 {
 	struct clk_gate2 *gate = to_clk_gate2(hw);
-	unsigned long flags = 0;
+	unsigned long flags;
 
 	spin_lock_irqsave(gate->lock, flags);
 
@@ -120,11 +121,11 @@ out:
 	spin_unlock_irqrestore(gate->lock, flags);
 }
 
-static int clk_gate2_reg_is_enabled(void __iomem *reg, u8 bit_idx)
+static int clk_gate2_reg_is_enabled(void __iomem *reg, u8 bit_idx, u8 cgr_val)
 {
 	u32 val = readl(reg);
 
-	if (((val >> bit_idx) & 1) == 1)
+	if (((val >> bit_idx) & cgr_val) == 1)
 		return 1;
 
 	return 0;
@@ -133,20 +134,22 @@ static int clk_gate2_reg_is_enabled(void __iomem *reg, u8 bit_idx)
 static int clk_gate2_is_enabled(struct clk_hw *hw)
 {
 	struct clk_gate2 *gate = to_clk_gate2(hw);
+	unsigned long flags;
+	int ret;
 
-	if (gate->flags & IMX_CLK_GATE2_SINGLE_BIT)
-		return clk_gate_ops.is_enabled(hw);
+	spin_lock_irqsave(gate->lock, flags);
 
-	return clk_gate2_reg_is_enabled(gate->reg, gate->bit_idx);
+	ret = clk_gate2_reg_is_enabled(gate->reg, gate->bit_idx, gate->cgr_val);
+
+	spin_unlock_irqrestore(gate->lock, flags);
+
+	return ret;
 }
 
 static void clk_gate2_disable_unused(struct clk_hw *hw)
 {
 	struct clk_gate2 *gate = to_clk_gate2(hw);
-	unsigned long flags = 0;
-
-	if (gate->flags & IMX_CLK_GATE2_SINGLE_BIT)
-		return;
+	unsigned long flags;
 
 	spin_lock_irqsave(gate->lock, flags);
 

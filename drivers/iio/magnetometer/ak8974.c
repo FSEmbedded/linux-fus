@@ -611,18 +611,50 @@ static int ak8974_read_raw(struct iio_dev *indio_dev,
 		}
 		ret = ak8974_measure_channel(ak8974, chan->address, val);
 		if (ret)
-			goto out_unlock;
-		ret = ak8974_getresult(ak8974, hw_values);
-		if (ret)
-			goto out_unlock;
-
-		/*
-		 * We read all axes and discard all but one, for optimized
-		 * reading, use the triggered buffer.
-		 */
-		*val = (s16)le16_to_cpu(hw_values[chan->address]);
-
-		ret = IIO_VAL_INT;
+			return ret;
+		return IIO_VAL_INT;
+	case IIO_CHAN_INFO_SCALE:
+		switch (ak8974->variant) {
+		case AK8974_WHOAMI_VALUE_AMI306:
+		case AK8974_WHOAMI_VALUE_AMI305:
+			/*
+			 * The datasheet for AMI305 and AMI306, page 6
+			 * specifies the range of the sensor to be
+			 * +/- 12 Gauss.
+			 */
+			*val = 12;
+			/*
+			 * 12 bits are used, +/- 2^11
+			 * [ -2048 .. 2047 ] (manual page 20)
+			 * [ 0xf800 .. 0x07ff ]
+			 */
+			*val2 = 11;
+			return IIO_VAL_FRACTIONAL_LOG2;
+		case AK8974_WHOAMI_VALUE_HSCDTD008A:
+			/*
+			 * The datasheet for HSCDTF008A, page 3 specifies the
+			 * range of the sensor as +/- 2.4 mT per axis, which
+			 * corresponds to +/- 2400 uT = +/- 24 Gauss.
+			 */
+			*val = 24;
+			/*
+			 * 15 bits are used (set up in CTRL4), +/- 2^14
+			 * [ -16384 .. 16383 ] (manual page 24)
+			 * [ 0xc000 .. 0x3fff ]
+			 */
+			*val2 = 14;
+			return IIO_VAL_FRACTIONAL_LOG2;
+		default:
+			/* GUESSING +/- 12 Gauss */
+			*val = 12;
+			/* GUESSING 12 bits ADC +/- 2^11 */
+			*val2 = 11;
+			return IIO_VAL_FRACTIONAL_LOG2;
+		}
+		break;
+	default:
+		/* Unknown request */
+		break;
 	}
 
 	return -EINVAL;
@@ -856,9 +888,21 @@ static int ak8974_probe(struct i2c_client *i2c,
 		goto disable_pm;
 	}
 
-	indio_dev->dev.parent = &i2c->dev;
-	indio_dev->channels = ak8974_channels;
-	indio_dev->num_channels = ARRAY_SIZE(ak8974_channels);
+	switch (ak8974->variant) {
+	case AK8974_WHOAMI_VALUE_AMI306:
+	case AK8974_WHOAMI_VALUE_AMI305:
+		indio_dev->channels = ak8974_12_bits_channels;
+		indio_dev->num_channels = ARRAY_SIZE(ak8974_12_bits_channels);
+		break;
+	case AK8974_WHOAMI_VALUE_HSCDTD008A:
+		indio_dev->channels = ak8974_15_bits_channels;
+		indio_dev->num_channels = ARRAY_SIZE(ak8974_15_bits_channels);
+		break;
+	default:
+		indio_dev->channels = ak8974_12_bits_channels;
+		indio_dev->num_channels = ARRAY_SIZE(ak8974_12_bits_channels);
+		break;
+	}
 	indio_dev->info = &ak8974_info;
 	indio_dev->available_scan_masks = ak8974_scan_masks;
 	indio_dev->modes = INDIO_DIRECT_MODE;

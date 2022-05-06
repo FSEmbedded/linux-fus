@@ -613,11 +613,7 @@ static void smc_ib_remove_dev(struct ib_device *ibdev, void *client_data)
 {
 	struct smc_ib_device *smcibdev = client_data;
 
-	smcibdev = ib_get_client_data(ibdev, &smc_ib_client);
-	if (!smcibdev || smcibdev->ibdev != ibdev)
-		return;
-	ib_set_client_data(ibdev, &smc_ib_client, NULL);
-	spin_lock(&smc_ib_devices.lock);
+	mutex_lock(&smc_ib_devices.mutex);
 	list_del_init(&smcibdev->list); /* remove from smc_ib_devices */
 	mutex_unlock(&smc_ib_devices.mutex);
 	pr_warn_ratelimited("smc: removing ib device %s\n",

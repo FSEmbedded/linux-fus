@@ -282,9 +282,6 @@ placeholder:
 		goto err;
 	}
 
-	INIT_LIST_HEAD(&slot->list);
-	list_add(&slot->list, &parent->slots);
-
 	down_read(&pci_bus_sem);
 	list_for_each_entry(dev, &parent->devices, bus_list)
 		if (PCI_SLOT(dev->devfn) == slot_nr)

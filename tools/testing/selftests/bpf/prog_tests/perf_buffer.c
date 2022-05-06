@@ -4,7 +4,8 @@
 #include <sched.h>
 #include <sys/socket.h>
 #include <test_progs.h>
-#include "libbpf_internal.h"
+#include "test_perf_buffer.skel.h"
+#include "bpf/libbpf_internal.h"
 
 static int duration;
 
@@ -44,14 +45,12 @@ int trigger_on_cpu(int cpu)
 
 void test_perf_buffer(void)
 {
-	int err, prog_fd, on_len, nr_on_cpus = 0,  nr_cpus, i, duration = 0;
-	const char *prog_name = "kprobe/sys_nanosleep";
-	const char *file = "./test_perf_buffer.o";
+	int err, on_len, nr_on_cpus = 0, nr_cpus, i;
 	struct perf_buffer_opts pb_opts = {};
 	struct test_perf_buffer *skel;
 	cpu_set_t cpu_seen;
 	struct perf_buffer *pb;
-	struct bpf_link *link;
+	int last_fd = -1, fd;
 	bool *online;
 
 	nr_cpus = libbpf_num_possible_cpus();
@@ -62,17 +61,6 @@ void test_perf_buffer(void)
 				  &online, &on_len);
 	if (CHECK(err, "nr_on_cpus", "err %d\n", err))
 		return;
-
-	for (i = 0; i < on_len; i++)
-		if (online[i])
-			nr_on_cpus++;
-
-	/* load program */
-	err = bpf_prog_load(file, BPF_PROG_TYPE_KPROBE, &obj, &prog_fd);
-	if (CHECK(err, "obj_load", "err %d errno %d\n", err, errno)) {
-		obj = NULL;
-		goto out_close;
-	}
 
 	for (i = 0; i < on_len; i++)
 		if (online[i])
@@ -105,15 +93,6 @@ void test_perf_buffer(void)
 			printf("skipping offline CPU #%d\n", i);
 			continue;
 		}
-
-		CPU_ZERO(&cpu_set);
-		CPU_SET(i, &cpu_set);
-
-		err = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set),
-					     &cpu_set);
-		if (err && CHECK(err, "set_affinity", "cpu #%d, err %d\n",
-				 i, err))
-			goto out_detach;
 
 		if (trigger_on_cpu(i))
 			goto out_close;
@@ -159,6 +138,6 @@ void test_perf_buffer(void)
 out_free_pb:
 	perf_buffer__free(pb);
 out_close:
-	bpf_object__close(obj);
+	test_perf_buffer__destroy(skel);
 	free(online);
 }

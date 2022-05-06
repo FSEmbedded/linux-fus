@@ -1116,9 +1116,6 @@ static int kvmppc_xive_native_create(struct kvm_device *dev, u32 type)
 	xive->single_escalation = xive_native_has_single_escalation();
 	xive->ops = &kvmppc_xive_native_ops;
 
-	if (ret)
-		return ret;
-
 	kvm->arch.xive = xive;
 	return 0;
 }

@@ -1812,8 +1812,6 @@ int sja1105_static_config_reload(struct sja1105_private *priv,
 
 	mutex_lock(&priv->mgmt_lock);
 
-	mutex_lock(&priv->mgmt_lock);
-
 	mac = priv->static_config.tables[BLK_IDX_MAC_CONFIG].entries;
 
 	/* Back up the dynamic link speed changed by sja1105_adjust_port_config
@@ -1878,6 +1876,29 @@ out_unlock_ptp:
 		if (rc < 0)
 			goto out;
 	}
+
+	if (sja1105_supports_sgmii(priv, SJA1105_SGMII_PORT)) {
+		bool an_enabled = !!(bmcr & BMCR_ANENABLE);
+
+		sja1105_sgmii_pcs_config(priv, an_enabled, false);
+
+		if (!an_enabled) {
+			int speed = SPEED_UNKNOWN;
+
+			if (bmcr & BMCR_SPEED1000)
+				speed = SPEED_1000;
+			else if (bmcr & BMCR_SPEED100)
+				speed = SPEED_100;
+			else
+				speed = SPEED_10;
+
+			sja1105_sgmii_pcs_force_speed(priv, speed);
+		}
+	}
+
+	rc = sja1105_reload_cbs(priv);
+	if (rc < 0)
+		goto out;
 out:
 	mutex_unlock(&priv->mgmt_lock);
 

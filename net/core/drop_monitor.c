@@ -1081,6 +1081,8 @@ static void net_dm_hw_monitor_stop(struct netlink_ext_ack *extack)
 		return;
 	}
 
+	ops = net_dm_alert_ops_arr[net_dm_alert_mode];
+
 	monitor_hw = false;
 
 	net_dm_hw_probe_unregister(ops);

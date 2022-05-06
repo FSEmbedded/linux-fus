@@ -234,7 +234,13 @@ static int max17040_get_status(struct max17040_chip *chip)
 	if (max17040_get_soc(chip) > MAX17040_BATTERY_FULL)
 		return POWER_SUPPLY_STATUS_FULL;
 
-	chip->vcell = (vcell >> 4) * 1250;
+	if (chip->pdata->charger_online())
+		if (chip->pdata->charger_enable())
+			return POWER_SUPPLY_STATUS_CHARGING;
+		else
+			return POWER_SUPPLY_STATUS_NOT_CHARGING;
+	else
+		return POWER_SUPPLY_STATUS_DISCHARGING;
 }
 
 static int max17040_get_of_data(struct max17040_chip *chip)

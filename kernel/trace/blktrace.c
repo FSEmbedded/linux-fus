@@ -501,7 +501,8 @@ static int do_blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 	 * bdev can be NULL, as with scsi-generic, this is a helpful as
 	 * we can be.
 	 */
-	if (q->blk_trace) {
+	if (rcu_dereference_protected(q->blk_trace,
+				      lockdep_is_held(&q->debugfs_mutex))) {
 		pr_warn("Concurrent blktraces are not allowed on %s\n",
 			buts->name);
 		return -EBUSY;
@@ -520,18 +521,15 @@ static int do_blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 	if (!bt->msg_data)
 		goto err;
 
-#ifdef CONFIG_BLK_DEBUG_FS
 	/*
-	 * When tracing whole make_request drivers (multiqueue) block devices,
-	 * reuse the existing debugfs directory created by the block layer on
-	 * init. For request-based block devices, all partitions block devices,
+	 * When tracing the whole disk reuse the existing debugfs directory
+	 * created by the block layer on init. For partitions block devices,
 	 * and scsi-generic block devices we create a temporary new debugfs
 	 * directory that will be removed once the trace ends.
 	 */
-	if (queue_is_mq(q) && bdev && bdev == bdev->bd_contains)
+	if (bdev && !bdev_is_partition(bdev))
 		dir = q->debugfs_dir;
 	else
-#endif
 		bt->dir = dir = debugfs_create_dir(buts->name, blk_debugfs_root);
 
 	/*
@@ -661,7 +659,7 @@ static int __blk_trace_startstop(struct request_queue *q, int start)
 	struct blk_trace *bt;
 
 	bt = rcu_dereference_protected(q->blk_trace,
-				       lockdep_is_held(&q->blk_trace_mutex));
+				       lockdep_is_held(&q->debugfs_mutex));
 	if (bt == NULL)
 		return -EINVAL;
 
@@ -770,9 +768,9 @@ int blk_trace_ioctl(struct block_device *bdev, unsigned cmd, char __user *arg)
  **/
 void blk_trace_shutdown(struct request_queue *q)
 {
-	mutex_lock(&q->blk_trace_mutex);
+	mutex_lock(&q->debugfs_mutex);
 	if (rcu_dereference_protected(q->blk_trace,
-				      lockdep_is_held(&q->blk_trace_mutex))) {
+				      lockdep_is_held(&q->debugfs_mutex))) {
 		__blk_trace_startstop(q, 0);
 		__blk_trace_remove(q);
 	}
@@ -961,7 +959,7 @@ static void blk_add_trace_getrq(void *ignore,
 		bt = rcu_dereference(q->blk_trace);
 		if (bt)
 			__blk_add_trace(bt, 0, 0, rw, 0, BLK_TA_GETRQ, 0, 0,
-					NULL, NULL);
+					NULL, 0);
 		rcu_read_unlock();
 	}
 }
@@ -980,7 +978,7 @@ static void blk_add_trace_sleeprq(void *ignore,
 		bt = rcu_dereference(q->blk_trace);
 		if (bt)
 			__blk_add_trace(bt, 0, 0, rw, 0, BLK_TA_SLEEPRQ,
-					0, 0, NULL, NULL);
+					0, 0, NULL, 0);
 		rcu_read_unlock();
 	}
 }
@@ -992,7 +990,7 @@ static void blk_add_trace_plug(void *ignore, struct request_queue *q)
 	rcu_read_lock();
 	bt = rcu_dereference(q->blk_trace);
 	if (bt)
-		__blk_add_trace(bt, 0, 0, 0, 0, BLK_TA_PLUG, 0, 0, NULL, NULL);
+		__blk_add_trace(bt, 0, 0, 0, 0, BLK_TA_PLUG, 0, 0, NULL, 0);
 	rcu_read_unlock();
 }
 
@@ -1839,7 +1837,6 @@ static ssize_t sysfs_blk_trace_attr_show(struct device *dev,
 {
 	struct block_device *bdev = bdget_part(dev_to_part(dev));
 	struct request_queue *q;
-	struct block_device *bdev;
 	struct blk_trace *bt;
 	ssize_t ret = -ENXIO;
 
@@ -1853,7 +1850,7 @@ static ssize_t sysfs_blk_trace_attr_show(struct device *dev,
 	mutex_lock(&q->debugfs_mutex);
 
 	bt = rcu_dereference_protected(q->blk_trace,
-				       lockdep_is_held(&q->blk_trace_mutex));
+				       lockdep_is_held(&q->debugfs_mutex));
 	if (attr == &dev_attr_enable) {
 		ret = sprintf(buf, "%u\n", !!bt);
 		goto out_unlock_bdev;
@@ -1884,7 +1881,6 @@ static ssize_t sysfs_blk_trace_attr_store(struct device *dev,
 {
 	struct block_device *bdev;
 	struct request_queue *q;
-	struct hd_struct *p;
 	struct blk_trace *bt;
 	u64 value;
 	ssize_t ret = -EINVAL;
@@ -1915,7 +1911,7 @@ static ssize_t sysfs_blk_trace_attr_store(struct device *dev,
 	mutex_lock(&q->debugfs_mutex);
 
 	bt = rcu_dereference_protected(q->blk_trace,
-				       lockdep_is_held(&q->blk_trace_mutex));
+				       lockdep_is_held(&q->debugfs_mutex));
 	if (attr == &dev_attr_enable) {
 		if (!!value == !!bt) {
 			ret = 0;
@@ -1932,7 +1928,7 @@ static ssize_t sysfs_blk_trace_attr_store(struct device *dev,
 	if (bt == NULL) {
 		ret = blk_trace_setup_queue(q, bdev);
 		bt = rcu_dereference_protected(q->blk_trace,
-				lockdep_is_held(&q->blk_trace_mutex));
+				lockdep_is_held(&q->debugfs_mutex));
 	}
 
 	if (ret == 0) {

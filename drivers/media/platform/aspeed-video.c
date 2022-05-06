@@ -1689,9 +1689,6 @@ static int aspeed_video_probe(struct platform_device *pdev)
 	const struct of_device_id *match;
 	struct aspeed_video *video;
 	int rc;
-	struct resource *res;
-	struct aspeed_video *video =
-		devm_kzalloc(&pdev->dev, sizeof(*video), GFP_KERNEL);
 
 	video = devm_kzalloc(&pdev->dev, sizeof(*video), GFP_KERNEL);
 	if (!video)

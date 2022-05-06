@@ -253,7 +253,7 @@ config IMX_THERMAL
 
 config IMX_SC_THERMAL
 	tristate "Temperature sensor driver for NXP i.MX SoCs with System Controller"
-	depends on (ARCH_MXC && IMX_SCU) || COMPILE_TEST
+	depends on IMX_SCU
 	depends on OF
 	help
 	  Support for Temperature Monitor (TEMPMON) found on NXP i.MX SoCs with
@@ -262,22 +262,32 @@ config IMX_SC_THERMAL
 	  sensor. It supports one critical trip point and one
 	  passive trip point for each thermal sensor.
 
-config DEVICE_THERMAL
-	tristate "generic device cooling support"
-	help
-	  Support for device cooling.
-	  It supports notification of crossing passive trip for devices,
-	  devices need to do their own actions to cool down the SOC.
-
 config IMX8MM_THERMAL
 	tristate "Temperature sensor driver for Freescale i.MX8MM SoC"
-	depends on ARCH_MXC
+	depends on ARCH_MXC || COMPILE_TEST
 	depends on OF
 	help
 	  Support for Thermal Monitoring Unit (TMU) found on Freescale i.MX8MM SoC.
 	  It supports one critical trip point and one passive trip point. The
 	  cpufreq is used as the cooling device to throttle CPUs when the passive
 	  trip is crossed.
+
+config K3_THERMAL
+	tristate "Texas Instruments K3 thermal support"
+	depends on ARCH_K3 || COMPILE_TEST
+	help
+	  If you say yes here you get thermal support for the Texas Instruments
+	  K3 SoC family. The current chip supported is:
+	  - AM654
+
+	  This includes temperature reading functionality.
+
+config DEVICE_THERMAL
+	tristate "generic device cooling support"
+	help
+	  Support for device cooling.
+	  It supports notification of crossing passive trip for devices,
+	  devices need to do their own actions to cool down the SOC.
 
 config MAX77620_THERMAL
 	tristate "Temperature sensor driver for Maxim MAX77620 PMIC"

@@ -53,7 +53,6 @@
 
 static DEFINE_MUTEX(smack_ipv6_lock);
 static LIST_HEAD(smk_ipv6_port_list);
-static struct kmem_cache *smack_inode_cache;
 struct kmem_cache *smack_rule_cache;
 int smack_enabled;
 
@@ -2861,7 +2860,7 @@ static int smack_socket_connect(struct socket *sock, struct sockaddr *sap,
 	}
 	if (sap->sa_family != AF_INET || addrlen < sizeof(struct sockaddr_in))
 		return 0;
-	rc = smack_netlabel_send(sock->sk, (struct sockaddr_in *)sap);
+	rc = smk_ipv4_check(sock->sk, (struct sockaddr_in *)sap);
 	return rc;
 }
 

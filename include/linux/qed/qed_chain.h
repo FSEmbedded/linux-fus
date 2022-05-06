@@ -72,11 +72,6 @@ struct addr_tbl_entry {
 	dma_addr_t					dma_map;
 };
 
-struct addr_tbl_entry {
-	void *virt_addr;
-	dma_addr_t dma_map;
-};
-
 struct qed_chain {
 	/* Fastpath portion of the chain - required for commands such
 	 * as produce / consume.
@@ -93,7 +88,7 @@ struct qed_chain {
 		 * chain pages, respectively to the physical addresses
 		 * in the pbl table.
 		 */
-		struct addr_tbl_entry *pp_addr_tbl;
+		struct addr_tbl_entry			*pp_addr_tbl;
 
 		union {
 			struct qed_chain_pbl_u16	u16;
@@ -205,33 +200,43 @@ static inline u32 qed_chain_get_prod_idx_u32(const struct qed_chain *chain)
 
 static inline u32 qed_chain_get_cons_idx_u32(const struct qed_chain *chain)
 {
-	u16 elem_per_page = p_chain->elem_per_page;
-	u32 prod = p_chain->u.chain16.prod_idx;
-	u32 cons = p_chain->u.chain16.cons_idx;
+	return chain->u.chain32.cons_idx;
+}
+
+static inline u16 qed_chain_get_elem_used(const struct qed_chain *chain)
+{
+	u32 prod = qed_chain_get_prod_idx(chain);
+	u32 cons = qed_chain_get_cons_idx(chain);
+	u16 elem_per_page = chain->elem_per_page;
 	u16 used;
 
 	if (prod < cons)
 		prod += (u32)U16_MAX + 1;
 
 	used = (u16)(prod - cons);
-	if (p_chain->mode == QED_CHAIN_MODE_NEXT_PTR)
-		used -= prod / elem_per_page - cons / elem_per_page;
+	if (chain->mode == QED_CHAIN_MODE_NEXT_PTR)
+		used -= (u16)(prod / elem_per_page - cons / elem_per_page);
 
 	return used;
 }
 
 static inline u16 qed_chain_get_elem_left(const struct qed_chain *chain)
 {
-	u16 elem_per_page = p_chain->elem_per_page;
-	u64 prod = p_chain->u.chain32.prod_idx;
-	u64 cons = p_chain->u.chain32.cons_idx;
+	return (u16)(chain->capacity - qed_chain_get_elem_used(chain));
+}
+
+static inline u32 qed_chain_get_elem_used_u32(const struct qed_chain *chain)
+{
+	u64 prod = qed_chain_get_prod_idx_u32(chain);
+	u64 cons = qed_chain_get_cons_idx_u32(chain);
+	u16 elem_per_page = chain->elem_per_page;
 	u32 used;
 
 	if (prod < cons)
 		prod += (u64)U32_MAX + 1;
 
 	used = (u32)(prod - cons);
-	if (p_chain->mode == QED_CHAIN_MODE_NEXT_PTR)
+	if (chain->mode == QED_CHAIN_MODE_NEXT_PTR)
 		used -= (u32)(prod / elem_per_page - cons / elem_per_page);
 
 	return used;
@@ -514,118 +519,6 @@ static inline void qed_chain_reset(struct qed_chain *p_chain)
 }
 
 /**
- * @brief qed_chain_init - Initalizes a basic chain struct
- *
- * @param p_chain
- * @param p_virt_addr
- * @param p_phys_addr	physical address of allocated buffer's beginning
- * @param page_cnt	number of pages in the allocated buffer
- * @param elem_size	size of each element in the chain
- * @param intended_use
- * @param mode
- */
-static inline void qed_chain_init_params(struct qed_chain *p_chain,
-					 u32 page_cnt,
-					 u8 elem_size,
-					 enum qed_chain_use_mode intended_use,
-					 enum qed_chain_mode mode,
-					 enum qed_chain_cnt_type cnt_type)
-{
-	/* chain fixed parameters */
-	p_chain->p_virt_addr = NULL;
-	p_chain->p_phys_addr = 0;
-	p_chain->elem_size	= elem_size;
-	p_chain->intended_use = (u8)intended_use;
-	p_chain->mode		= mode;
-	p_chain->cnt_type = (u8)cnt_type;
-
-	p_chain->elem_per_page = ELEMS_PER_PAGE(elem_size);
-	p_chain->usable_per_page = USABLE_ELEMS_PER_PAGE(elem_size, mode);
-	p_chain->elem_per_page_mask = p_chain->elem_per_page - 1;
-	p_chain->elem_unusable = UNUSABLE_ELEMS_PER_PAGE(elem_size, mode);
-	p_chain->next_page_mask = (p_chain->usable_per_page &
-				   p_chain->elem_per_page_mask);
-
-	p_chain->page_cnt = page_cnt;
-	p_chain->capacity = p_chain->usable_per_page * page_cnt;
-	p_chain->size = p_chain->elem_per_page * page_cnt;
-
-	p_chain->pbl_sp.p_phys_table = 0;
-	p_chain->pbl_sp.p_virt_table = NULL;
-	p_chain->pbl.pp_addr_tbl = NULL;
-}
-
-/**
- * @brief qed_chain_init_mem -
- *
- * Initalizes a basic chain struct with its chain buffers
- *
- * @param p_chain
- * @param p_virt_addr	virtual address of allocated buffer's beginning
- * @param p_phys_addr	physical address of allocated buffer's beginning
- *
- */
-static inline void qed_chain_init_mem(struct qed_chain *p_chain,
-				      void *p_virt_addr, dma_addr_t p_phys_addr)
-{
-	p_chain->p_virt_addr = p_virt_addr;
-	p_chain->p_phys_addr = p_phys_addr;
-}
-
-/**
- * @brief qed_chain_init_pbl_mem -
- *
- * Initalizes a basic chain struct with its pbl buffers
- *
- * @param p_chain
- * @param p_virt_pbl	pointer to a pre allocated side table which will hold
- *                      virtual page addresses.
- * @param p_phys_pbl	pointer to a pre-allocated side table which will hold
- *                      physical page addresses.
- * @param pp_virt_addr_tbl
- *                      pointer to a pre-allocated side table which will hold
- *                      the virtual addresses of the chain pages.
- *
- */
-static inline void qed_chain_init_pbl_mem(struct qed_chain *p_chain,
-					  void *p_virt_pbl,
-					  dma_addr_t p_phys_pbl,
-					  struct addr_tbl_entry *pp_addr_tbl)
-{
-	p_chain->pbl_sp.p_phys_table = p_phys_pbl;
-	p_chain->pbl_sp.p_virt_table = p_virt_pbl;
-	p_chain->pbl.pp_addr_tbl = pp_addr_tbl;
-}
-
-/**
- * @brief qed_chain_init_next_ptr_elem -
- *
- * Initalizes a next pointer element
- *
- * @param p_chain
- * @param p_virt_curr	virtual address of a chain page of which the next
- *                      pointer element is initialized
- * @param p_virt_next	virtual address of the next chain page
- * @param p_phys_next	physical address of the next chain page
- *
- */
-static inline void
-qed_chain_init_next_ptr_elem(struct qed_chain *p_chain,
-			     void *p_virt_curr,
-			     void *p_virt_next, dma_addr_t p_phys_next)
-{
-	struct qed_chain_next *p_next;
-	u32 size;
-
-	size = p_chain->elem_size * p_chain->usable_per_page;
-	p_next = (struct qed_chain_next *)((u8 *)p_virt_curr + size);
-
-	DMA_REGPAIR_LE(p_next->next_phys, p_phys_next);
-
-	p_next->next_virt = p_virt_next;
-}
-
-/**
  * @brief qed_chain_get_last_elem -
  *
  * Returns a pointer to the last element of the chain
@@ -732,7 +625,7 @@ static inline void qed_chain_pbl_zero_mem(struct qed_chain *p_chain)
 
 	for (i = 0; i < page_cnt; i++)
 		memset(p_chain->pbl.pp_addr_tbl[i].virt_addr, 0,
-		       QED_CHAIN_PAGE_SIZE);
+		       p_chain->page_size);
 }
 
 #endif

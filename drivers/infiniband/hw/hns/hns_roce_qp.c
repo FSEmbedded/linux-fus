@@ -452,7 +452,7 @@ static int check_sq_size_with_integrity(struct hns_roce_dev *hr_dev,
 	/* Sanity check SQ size before proceeding */
 	if (ucmd->log_sq_stride > max_sq_stride ||
 	    ucmd->log_sq_stride < HNS_ROCE_IB_MIN_SQ_STRIDE) {
-		ibdev_err(&hr_dev->ib_dev, "check SQ size error!\n");
+		ibdev_err(&hr_dev->ib_dev, "failed to check SQ stride size.\n");
 		return -EINVAL;
 	}
 
@@ -473,8 +473,8 @@ static int set_user_sq_size(struct hns_roce_dev *hr_dev,
 	u32 cnt = 0;
 	int ret;
 
-	if (check_shl_overflow(1, ucmd->log_sq_bb_count, &hr_qp->sq.wqe_cnt) ||
-	    hr_qp->sq.wqe_cnt > hr_dev->caps.max_wqes)
+	if (check_shl_overflow(1, ucmd->log_sq_bb_count, &cnt) ||
+	    cnt > hr_dev->caps.max_wqes)
 		return -EINVAL;
 
 	ret = check_sq_size_with_integrity(hr_dev, cap, ucmd);
@@ -484,36 +484,9 @@ static int set_user_sq_size(struct hns_roce_dev *hr_dev,
 		return ret;
 	}
 
-	hr_qp->sq.wqe_shift = ucmd->log_sq_stride;
-
-	max_cnt = max(1U, cap->max_send_sge);
-	if (hr_dev->caps.max_sq_sg <= 2)
-		hr_qp->sq.max_gs = roundup_pow_of_two(max_cnt);
-	else
-		hr_qp->sq.max_gs = max_cnt;
-
-	if (hr_qp->sq.max_gs > 2)
-		hr_qp->sge.sge_cnt = roundup_pow_of_two(hr_qp->sq.wqe_cnt *
-							(hr_qp->sq.max_gs - 2));
-
-	if ((hr_qp->sq.max_gs > 2) && (hr_dev->pci_dev->revision == 0x20)) {
-		if (hr_qp->sge.sge_cnt > hr_dev->caps.max_extend_sg) {
-			dev_err(hr_dev->dev,
-				"The extended sge cnt error! sge_cnt=%d\n",
-				hr_qp->sge.sge_cnt);
-			return -EINVAL;
-		}
-	}
-
-	hr_qp->sge.sge_shift = 4;
-	ex_sge_num = hr_qp->sge.sge_cnt;
-
-	/* Get buf size, SQ and RQ  are aligned to page_szie */
-	if (hr_dev->caps.max_sq_sg <= 2) {
-		hr_qp->buff_size = HNS_ROCE_ALOGN_UP((hr_qp->rq.wqe_cnt <<
-					     hr_qp->rq.wqe_shift), PAGE_SIZE) +
-				   HNS_ROCE_ALOGN_UP((hr_qp->sq.wqe_cnt <<
-					     hr_qp->sq.wqe_shift), PAGE_SIZE);
+	ret = set_extend_sge_param(hr_dev, cnt, hr_qp, cap);
+	if (ret)
+		return ret;
 
 	hr_qp->sq.wqe_shift = ucmd->log_sq_stride;
 	hr_qp->sq.wqe_cnt = cnt;

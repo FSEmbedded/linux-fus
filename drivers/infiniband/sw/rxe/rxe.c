@@ -15,8 +15,6 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 bool rxe_initialized;
 
-bool rxe_initialized;
-
 /* free resources for a rxe device all objects created for this device must
  * have been destroyed
  */
@@ -111,14 +109,6 @@ static void rxe_init_ports(struct rxe_dev *rxe)
 	struct rxe_port *port = &rxe->port;
 
 	rxe_init_port_param(port);
-
-	port->pkey_tbl = kcalloc(port->attr.pkey_tbl_len,
-			sizeof(*port->pkey_tbl), GFP_KERNEL);
-
-	if (!port->pkey_tbl)
-		return -ENOMEM;
-
-	port->pkey_tbl[0] = 0xffff;
 	addrconf_addr_eui48((unsigned char *)&port->port_guid,
 			    rxe->ndev->dev_addr);
 	spin_lock_init(&port->port_lock);

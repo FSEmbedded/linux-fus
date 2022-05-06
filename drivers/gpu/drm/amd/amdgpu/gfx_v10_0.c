@@ -4050,6 +4050,10 @@ static int gfx_v10_0_rlc_init(struct amdgpu_device *adev)
 			return r;
 	}
 
+	/* init spm vmid with 0xf */
+	if (adev->gfx.rlc.funcs->update_spm_vmid)
+		adev->gfx.rlc.funcs->update_spm_vmid(adev, 0xf);
+
 	return 0;
 }
 
@@ -4850,28 +4854,19 @@ static int gfx_v10_0_init_csb(struct amdgpu_device *adev)
 	adev->gfx.rlc.funcs->get_csb_buffer(adev, adev->gfx.rlc.cs_ptr);
 
 	/* csib */
-	WREG32_SOC15(GC, 0, mmRLC_CSIB_ADDR_HI,
-		     adev->gfx.rlc.clear_state_gpu_addr >> 32);
-	WREG32_SOC15(GC, 0, mmRLC_CSIB_ADDR_LO,
-		     adev->gfx.rlc.clear_state_gpu_addr & 0xfffffffc);
-	WREG32_SOC15(GC, 0, mmRLC_CSIB_LENGTH, adev->gfx.rlc.clear_state_size);
-
-	return 0;
-}
-
-static int gfx_v10_0_init_pg(struct amdgpu_device *adev)
-{
-	int i;
-	int r;
-
-	r = gfx_v10_0_init_csb(adev);
-	if (r)
-		return r;
-
-	for (i = 0; i < adev->num_vmhubs; i++)
-		amdgpu_gmc_flush_gpu_tlb(adev, 0, i, 0);
-
-	/* TODO: init power gating */
+	if (adev->asic_type == CHIP_NAVI12) {
+		WREG32_SOC15_RLC(GC, 0, mmRLC_CSIB_ADDR_HI,
+				adev->gfx.rlc.clear_state_gpu_addr >> 32);
+		WREG32_SOC15_RLC(GC, 0, mmRLC_CSIB_ADDR_LO,
+				adev->gfx.rlc.clear_state_gpu_addr & 0xfffffffc);
+		WREG32_SOC15_RLC(GC, 0, mmRLC_CSIB_LENGTH, adev->gfx.rlc.clear_state_size);
+	} else {
+		WREG32_SOC15(GC, 0, mmRLC_CSIB_ADDR_HI,
+				adev->gfx.rlc.clear_state_gpu_addr >> 32);
+		WREG32_SOC15(GC, 0, mmRLC_CSIB_ADDR_LO,
+				adev->gfx.rlc.clear_state_gpu_addr & 0xfffffffc);
+		WREG32_SOC15(GC, 0, mmRLC_CSIB_LENGTH, adev->gfx.rlc.clear_state_size);
+	}
 	return 0;
 }
 
@@ -4973,10 +4968,6 @@ static int gfx_v10_0_rlc_resume(struct amdgpu_device *adev)
 		if (r)
 			return r;
 
-		r = gfx_v10_0_init_pg(adev);
-		if (r)
-			return r;
-
 		gfx_v10_0_init_csb(adev);
 
 		if (!amdgpu_sriov_vf(adev)) /* enable RLC SRM */
@@ -5007,9 +4998,7 @@ static int gfx_v10_0_rlc_resume(struct amdgpu_device *adev)
 				return r;
 		}
 
-		r = gfx_v10_0_init_pg(adev);
-		if (r)
-			return r;
+		gfx_v10_0_init_csb(adev);
 
 		adev->gfx.rlc.funcs->start(adev);
 
@@ -5491,7 +5480,6 @@ static int gfx_v10_0_cp_gfx_enable(struct amdgpu_device *adev, bool enable)
 	} else {
 		WREG32_SOC15(GC, 0, mmCP_ME_CNTL, tmp);
 	}
-	WREG32_SOC15(GC, 0, mmCP_ME_CNTL, tmp);
 
 	for (i = 0; i < adev->usec_timeout; i++) {
 		if (RREG32_SOC15(GC, 0, mmCP_STAT) == 0)
@@ -7629,6 +7617,9 @@ static int gfx_v10_0_set_powergating_state(void *handle,
 	switch (adev->asic_type) {
 	case CHIP_NAVI10:
 	case CHIP_NAVI14:
+	case CHIP_NAVI12:
+	case CHIP_SIENNA_CICHLID:
+	case CHIP_NAVY_FLOUNDER:
 		amdgpu_gfx_off_ctrl(adev, enable);
 		break;
 	default:

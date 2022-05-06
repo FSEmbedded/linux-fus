@@ -349,6 +349,6 @@ static int __init imx8mn_pinctrl_init(void)
 }
 arch_initcall(imx8mn_pinctrl_init);
 
-MODULE_AUTHOR("Bai Ping <ping.bai@nxp.com>");
+MODULE_AUTHOR("Anson Huang <Anson.Huang@nxp.com>");
 MODULE_DESCRIPTION("NXP i.MX8MN pinctrl driver");
 MODULE_LICENSE("GPL v2");

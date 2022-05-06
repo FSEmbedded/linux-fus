@@ -781,7 +781,7 @@ static int sr_probe(struct device *dev)
 	disk->private_data = &cd->driver;
 	disk->queue = sdev->request_queue;
 
-	if (register_cdrom(&cd->cdi))
+	if (register_cdrom(disk, &cd->cdi))
 		goto fail_minor;
 
 	/*

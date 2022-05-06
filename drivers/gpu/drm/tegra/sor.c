@@ -3665,7 +3665,7 @@ static int tegra_sor_parse_dt(struct tegra_sor *sor)
 		 */
 		sor->pad = TEGRA_IO_PAD_HDMI_DP0 + sor->index;
 	} else {
-		if (sor->soc->supports_edp)
+		if (!sor->soc->supports_audio)
 			sor->index = 0;
 		else
 			sor->index = 1;

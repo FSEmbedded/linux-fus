@@ -590,16 +590,16 @@ static void enqueue_timer(struct timer_base *base, struct timer_list *timer,
 	 * effective expiry time of the timer is required here
 	 * (bucket_expiry) instead of timer->expires.
 	 */
-	if (time_before(timer->expires, base->clk)) {
+	if (time_before(bucket_expiry, base->next_expiry)) {
 		/*
-		 * Prevent from forward_timer_base() moving the base->clk
-		 * backward
+		 * Set the next expiry time and kick the CPU so it
+		 * can reevaluate the wheel:
 		 */
-		base->next_expiry = base->clk;
-	} else {
-		base->next_expiry = timer->expires;
+		base->next_expiry = bucket_expiry;
+		base->timers_pending = true;
+		base->next_expiry_recalc = false;
+		trigger_dyntick_cpu(base, timer);
 	}
-	wake_up_nohz_cpu(base->cpu);
 }
 
 static void internal_add_timer(struct timer_base *base, struct timer_list *timer)
@@ -912,7 +912,6 @@ static inline void forward_timer_base(struct timer_base *base)
 			return;
 		base->clk = base->next_expiry;
 	}
-#endif
 }
 
 
@@ -1718,13 +1717,6 @@ void update_process_times(int user_tick)
 	scheduler_tick();
 	if (IS_ENABLED(CONFIG_POSIX_TIMERS))
 		run_posix_cpu_timers();
-
-	/* The current CPU might make use of net randoms without receiving IRQs
-	 * to renew them often enough. Let's update the net_rand_state from a
-	 * non-constant value that's not affine to the number of calls to make
-	 * sure it's updated when there's some activity (we don't care in idle).
-	 */
-	this_cpu_add(net_rand_state.s1, rol32(jiffies, 24) + user_tick);
 }
 
 /**

@@ -500,9 +500,6 @@ static u32 stm32h7_spi_prepare_fthlv(struct stm32_spi *spi, u32 xfer_len)
 	if (!fthlv)
 		fthlv = 1;
 
-	if (!fthlv)
-		fthlv = 1;
-
 	return fthlv;
 }
 
@@ -2010,8 +2007,6 @@ static int stm32_spi_remove(struct platform_device *pdev)
 
 	pinctrl_pm_select_sleep_state(&pdev->dev);
 
-	pinctrl_pm_select_sleep_state(&pdev->dev);
-
 	return 0;
 }
 
@@ -2071,6 +2066,7 @@ static int stm32_spi_resume(struct device *dev)
 
 	ret = pm_runtime_get_sync(dev);
 	if (ret < 0) {
+		pm_runtime_put_noidle(dev);
 		dev_err(dev, "Unable to power device:%d\n", ret);
 		return ret;
 	}

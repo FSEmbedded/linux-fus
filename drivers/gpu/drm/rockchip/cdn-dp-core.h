@@ -7,8 +7,7 @@
 #ifndef _CDN_DP_CORE_H
 #define _CDN_DP_CORE_H
 
-#include <drm/bridge/cdns-mhdp-common.h>
-#include <drm/drmP.h>
+#include <drm/bridge/cdns-mhdp.h>
 #include <drm/drm_dp_helper.h>
 #include <drm/drm_panel.h>
 #include <drm/drm_probe_helper.h>
@@ -58,8 +57,6 @@ struct cdn_dp_device {
 	struct reset_control *core_rst;
 	struct cdn_dp_port *port[MAX_PHY];
 	u8 ports;
-	u8 max_lanes;
-	unsigned int max_rate;
 	u8 lanes;
 	int active_port;
 

@@ -286,7 +286,7 @@ static irqreturn_t do_ext_interrupt(int irq, void *dummy)
 	return IRQ_HANDLED;
 }
 
-void __init init_ext_interrupts(void)
+static void __init init_ext_interrupts(void)
 {
 	int idx;
 
@@ -297,6 +297,14 @@ void __init init_ext_interrupts(void)
 				 &dummy_irq_chip, handle_percpu_irq);
 	if (request_irq(EXT_INTERRUPT, do_ext_interrupt, 0, "EXT", NULL))
 		panic("Failed to register EXT interrupt\n");
+}
+
+void __init init_IRQ(void)
+{
+	BUILD_BUG_ON(ARRAY_SIZE(irqclass_sub_desc) != NR_ARCH_IRQS);
+	init_cio_interrupts();
+	init_airq_interrupts();
+	init_ext_interrupts();
 }
 
 static DEFINE_SPINLOCK(irq_subclass_lock);

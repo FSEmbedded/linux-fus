@@ -19,9 +19,6 @@ static const char *__doc__ =
 #include <time.h>
 #include <linux/limits.h>
 
-#define __must_check
-#include <linux/err.h>
-
 #include <arpa/inet.h>
 #include <linux/if_link.h>
 
@@ -40,18 +37,35 @@ static __u32 prog_id;
 
 static __u32 xdp_flags = XDP_FLAGS_UPDATE_IF_NOEXIST;
 static int n_cpus;
-static int cpu_map_fd;
-static int rx_cnt_map_fd;
-static int redirect_err_cnt_map_fd;
-static int cpumap_enqueue_cnt_map_fd;
-static int cpumap_kthread_cnt_map_fd;
-static int cpus_available_map_fd;
-static int cpus_count_map_fd;
-static int cpus_iterator_map_fd;
-static int exception_cnt_map_fd;
+
+enum map_type {
+	CPU_MAP,
+	RX_CNT,
+	REDIRECT_ERR_CNT,
+	CPUMAP_ENQUEUE_CNT,
+	CPUMAP_KTHREAD_CNT,
+	CPUS_AVAILABLE,
+	CPUS_COUNT,
+	CPUS_ITERATOR,
+	EXCEPTION_CNT,
+};
+
+static const char *const map_type_strings[] = {
+	[CPU_MAP] = "cpu_map",
+	[RX_CNT] = "rx_cnt",
+	[REDIRECT_ERR_CNT] = "redirect_err_cnt",
+	[CPUMAP_ENQUEUE_CNT] = "cpumap_enqueue_cnt",
+	[CPUMAP_KTHREAD_CNT] = "cpumap_kthread_cnt",
+	[CPUS_AVAILABLE] = "cpus_available",
+	[CPUS_COUNT] = "cpus_count",
+	[CPUS_ITERATOR] = "cpus_iterator",
+	[EXCEPTION_CNT] = "exception_cnt",
+};
 
 #define NUM_TP 5
-struct bpf_link *tp_links[NUM_TP] = { 0 };
+#define NUM_MAP 9
+struct bpf_link *tp_links[NUM_TP] = {};
+static int map_fds[NUM_MAP];
 static int tp_cnt = 0;
 
 /* Exit return codes */
@@ -536,7 +550,7 @@ static void stats_collect(struct stats_record *rec)
 	fd = map_fds[REDIRECT_ERR_CNT];
 	map_collect_percpu(fd, 1, &rec->redir_err);
 
-	fd = cpumap_enqueue_cnt_map_fd;
+	fd = map_fds[CPUMAP_ENQUEUE_CNT];
 	for (i = 0; i < n_cpus; i++)
 		map_collect_percpu(fd, i, &rec->enq[i]);
 
@@ -615,7 +629,7 @@ static void mark_cpus_unavailable(void)
 	int ret, i;
 
 	for (i = 0; i < n_cpus; i++) {
-		ret = bpf_map_update_elem(cpus_available_map_fd, &i,
+		ret = bpf_map_update_elem(map_fds[CPUS_AVAILABLE], &i,
 					  &invalid_cpu, 0);
 		if (ret) {
 			fprintf(stderr, "Failed marking CPU unavailable\n");
@@ -668,68 +682,37 @@ static void stats_poll(int interval, bool use_separators, char *prog_name,
 	free_stats_record(prev);
 }
 
-static struct bpf_link * attach_tp(struct bpf_object *obj,
-				   const char *tp_category,
-				   const char* tp_name)
+static int init_tracepoints(struct bpf_object *obj)
 {
 	struct bpf_program *prog;
-	struct bpf_link *link;
-	char sec_name[PATH_MAX];
-	int len;
 
-	len = snprintf(sec_name, PATH_MAX, "tracepoint/%s/%s",
-		       tp_category, tp_name);
-	if (len < 0)
-		exit(EXIT_FAIL);
+	bpf_object__for_each_program(prog, obj) {
+		if (bpf_program__is_tracepoint(prog) != true)
+			continue;
 
-	prog = bpf_object__find_program_by_title(obj, sec_name);
-	if (!prog) {
-		fprintf(stderr, "ERR: finding progsec: %s\n", sec_name);
-		exit(EXIT_FAIL_BPF);
+		tp_links[tp_cnt] = bpf_program__attach(prog);
+		if (libbpf_get_error(tp_links[tp_cnt])) {
+			tp_links[tp_cnt] = NULL;
+			return -EINVAL;
+		}
+		tp_cnt++;
 	}
 
-	link = bpf_program__attach_tracepoint(prog, tp_category, tp_name);
-	if (IS_ERR(link))
-		exit(EXIT_FAIL_BPF);
-
-	return link;
-}
-
-static void init_tracepoints(struct bpf_object *obj) {
-	tp_links[tp_cnt++] = attach_tp(obj, "xdp", "xdp_redirect_err");
-	tp_links[tp_cnt++] = attach_tp(obj, "xdp", "xdp_redirect_map_err");
-	tp_links[tp_cnt++] = attach_tp(obj, "xdp", "xdp_exception");
-	tp_links[tp_cnt++] = attach_tp(obj, "xdp", "xdp_cpumap_enqueue");
-	tp_links[tp_cnt++] = attach_tp(obj, "xdp", "xdp_cpumap_kthread");
+	return 0;
 }
 
 static int init_map_fds(struct bpf_object *obj)
 {
-	/* Maps updated by tracepoints */
-	redirect_err_cnt_map_fd =
-		bpf_object__find_map_fd_by_name(obj, "redirect_err_cnt");
-	exception_cnt_map_fd =
-		bpf_object__find_map_fd_by_name(obj, "exception_cnt");
-	cpumap_enqueue_cnt_map_fd =
-		bpf_object__find_map_fd_by_name(obj, "cpumap_enqueue_cnt");
-	cpumap_kthread_cnt_map_fd =
-		bpf_object__find_map_fd_by_name(obj, "cpumap_kthread_cnt");
+	enum map_type type;
 
-	/* Maps used by XDP */
-	rx_cnt_map_fd = bpf_object__find_map_fd_by_name(obj, "rx_cnt");
-	cpu_map_fd = bpf_object__find_map_fd_by_name(obj, "cpu_map");
-	cpus_available_map_fd =
-		bpf_object__find_map_fd_by_name(obj, "cpus_available");
-	cpus_count_map_fd = bpf_object__find_map_fd_by_name(obj, "cpus_count");
-	cpus_iterator_map_fd =
-		bpf_object__find_map_fd_by_name(obj, "cpus_iterator");
+	for (type = 0; type < NUM_MAP; type++) {
+		map_fds[type] =
+			bpf_object__find_map_fd_by_name(obj,
+							map_type_strings[type]);
 
-	if (cpu_map_fd < 0 || rx_cnt_map_fd < 0 ||
-	    redirect_err_cnt_map_fd < 0 || cpumap_enqueue_cnt_map_fd < 0 ||
-	    cpumap_kthread_cnt_map_fd < 0 || cpus_available_map_fd < 0 ||
-	    cpus_count_map_fd < 0 || cpus_iterator_map_fd < 0 ||
-	    exception_cnt_map_fd < 0)
-		return -ENOENT;
+		if (map_fds[type] < 0)
+			return -ENOENT;
+	}
 
 	return 0;
 }
@@ -834,7 +817,12 @@ int main(int argc, char **argv)
 			strerror(errno));
 		return err;
 	}
-	init_tracepoints(obj);
+
+	if (init_tracepoints(obj) < 0) {
+		fprintf(stderr, "ERR: bpf_program__attach failed\n");
+		return err;
+	}
+
 	if (init_map_fds(obj) < 0) {
 		fprintf(stderr, "bpf_object__find_map_fd_by_name failed\n");
 		return err;

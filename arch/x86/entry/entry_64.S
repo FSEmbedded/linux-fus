@@ -470,8 +470,9 @@ SYM_CODE_END(\asmsym)
  * The macro is only used for one vector, but it is planned to be extended in
  * the future for the #HV exception.
  */
-ENTRY(interrupt_entry)
-	UNWIND_HINT_IRET_REGS offset=16
+.macro idtentry_vc vector asmsym cfunc
+SYM_CODE_START(\asmsym)
+	UNWIND_HINT_IRET_REGS
 	ASM_CLAC
 
 	/*
@@ -487,20 +488,7 @@ ENTRY(interrupt_entry)
 	 */
 	call	paranoid_entry
 
-	 /*
-	  * We have RDI, return address, and orig_ax on the stack on
-	  * top of the IRET frame. That means offset=24
-	  */
-	UNWIND_HINT_IRET_REGS base=%rdi offset=24
-
-	pushq	7*8(%rdi)		/* regs->ss */
-	pushq	6*8(%rdi)		/* regs->rsp */
-	pushq	5*8(%rdi)		/* regs->eflags */
-	pushq	4*8(%rdi)		/* regs->cs */
-	pushq	3*8(%rdi)		/* regs->ip */
-	UNWIND_HINT_IRET_REGS
-	pushq	2*8(%rdi)		/* regs->orig_ax */
-	pushq	8(%rdi)			/* return address */
+	UNWIND_HINT_REGS
 
 	/*
 	 * Switch off the IST stack to make it free for nested exceptions. The

@@ -267,16 +267,6 @@ static void __init mpc85xx_mds_qe_init(void)
 	}
 }
 
-static void __init mpc85xx_mds_qeic_init(void)
-{
-	struct device_node *np;
-
-	np = of_find_compatible_node(NULL, NULL, "fsl,qe");
-	if (!of_device_is_available(np)) {
-		of_node_put(np);
-		return;
-	}
-}
 #else
 static void __init mpc85xx_mds_qe_init(void) { }
 #endif	/* CONFIG_QUICC_ENGINE */

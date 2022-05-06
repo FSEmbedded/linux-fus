@@ -130,9 +130,8 @@ int xsk_reg_pool_at_qid(struct net_device *dev, struct xsk_buff_pool *pool,
 	if (queue_id < dev->real_num_tx_queues)
 		dev->_tx[queue_id].pool = pool;
 
-		memcpy(to_buf, from_buf, first_len);
-		memcpy(next_pg_addr, from_buf + first_len,
-		       len + metalen - first_len);
+	return 0;
+}
 
 void xp_release(struct xdp_buff_xsk *xskb)
 {
@@ -402,7 +401,7 @@ static int xsk_generic_xmit(struct sock *sk)
 		}
 
 		len = desc.len;
-		skb = sock_alloc_send_skb(sk, len, 1, &err);
+		skb = sock_alloc_send_skb(sk, hr + len + tr, 1, &err);
 		if (unlikely(!skb))
 			goto out;
 
@@ -498,16 +497,18 @@ static __poll_t xsk_poll(struct file *file, struct socket *sock,
 	__poll_t mask = 0;
 	struct sock *sk = sock->sk;
 	struct xdp_sock *xs = xdp_sk(sk);
-	struct xdp_umem *umem;
+	struct xsk_buff_pool *pool;
+
+	sock_poll_wait(file, sock, wait);
 
 	if (unlikely(!xsk_is_bound(xs)))
 		return mask;
 
-	umem = xs->umem;
+	pool = xs->pool;
 
-	if (umem->need_wakeup) {
+	if (pool->cached_need_wakeup) {
 		if (xs->zc)
-			xsk_wakeup(xs, umem->need_wakeup);
+			xsk_wakeup(xs, pool->cached_need_wakeup);
 		else
 			/* Poll needs to drive Tx also in copy mode */
 			__xsk_sendmsg(sk);

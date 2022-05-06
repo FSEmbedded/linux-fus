@@ -38,7 +38,6 @@
 #include "chip.h"
 #include "core.h"
 #include "common.h"
-#include "cfg80211.h"
 
 
 enum brcmf_pcie_state {
@@ -191,7 +190,7 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
 #define BRCMF_H2D_HOST_D0_INFORM_IN_USE		0x00000008
 #define BRCMF_H2D_HOST_D0_INFORM		0x00000010
 
-#define BRCMF_PCIE_MBDATA_TIMEOUT		msecs_to_jiffies(5000)
+#define BRCMF_PCIE_MBDATA_TIMEOUT		msecs_to_jiffies(2000)
 
 #define BRCMF_PCIE_CFGREG_STATUS_CMD		0x4
 #define BRCMF_PCIE_CFGREG_PM_CSR		0x4C
@@ -695,7 +694,7 @@ brcmf_pcie_send_mb_data(struct brcmf_pciedev_info *devinfo, u32 htod_mb_data)
 
 	/* Send mailbox interrupt twice as a hardware workaround */
 	core = brcmf_chip_get_core(devinfo->ci, BCMA_CORE_PCIE2);
-	if (core && (core->rev <= 0xd && core->rev != 0xb))
+	if (core->rev <= 13)
 		pci_write_config_dword(devinfo->pdev, BRCMF_PCIE_REG_SBMBX, 1);
 
 	return 0;
@@ -1837,7 +1836,6 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
 	return;
 
 fail:
-	brcmf_free(dev);
 	device_release_driver(dev);
 }
 
@@ -2007,11 +2005,6 @@ brcmf_pcie_remove(struct pci_dev *pdev)
 	dev_set_drvdata(&pdev->dev, NULL);
 }
 
-static void brcmf_pcie_shutdown(struct pci_dev *pdev)
-{
-	brcmf_pcie_remove(pdev);
-	return;
-}
 
 #ifdef CONFIG_PM
 
@@ -2020,22 +2013,11 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 {
 	struct brcmf_pciedev_info *devinfo;
 	struct brcmf_bus *bus;
-	struct brcmf_cfg80211_info *config;
-	int retry = BRCMF_PM_WAIT_MAXRETRY;
 
 	brcmf_dbg(PCIE, "Enter\n");
 
 	bus = dev_get_drvdata(dev);
 	devinfo = bus->bus_priv.pcie->devinfo;
-	config = bus->drvr->config;
-
-	while (retry &&
-	       config->pm_state == BRCMF_CFG80211_PM_STATE_SUSPENDING) {
-		usleep_range(10000, 20000);
-		retry--;
-	}
-	if (!retry && config->pm_state == BRCMF_CFG80211_PM_STATE_SUSPENDING)
-		brcmf_err(bus, "timed out wait for cfg80211 suspended\n");
 
 	brcmf_bus_change_state(bus, BRCMF_BUS_DOWN);
 
@@ -2045,27 +2027,16 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
 	wait_event_timeout(devinfo->mbdata_resp_wait, devinfo->mbdata_completed,
 			   BRCMF_PCIE_MBDATA_TIMEOUT);
 	if (!devinfo->mbdata_completed) {
-		struct brcmf_pcie_shared_info *shared;
-		u32 addr;
-		u32 dtoh_mb_data;
-
-		shared = &devinfo->shared;
-		addr = shared->dtoh_mb_data_addr;
-		dtoh_mb_data = brcmf_pcie_read_tcm32(devinfo, addr);
-
-		if (dtoh_mb_data & BRCMF_D2H_DEV_D3_ACK) {
-			brcmf_dbg(PCIE, "D2H_MB_DATA: D3 ACK\n");
-			devinfo->mbdata_completed = true;
-		}
-
-		if (!devinfo->mbdata_completed)
-			brcmf_err(bus, "Timeout on response for entering D3 substate\n");
+		brcmf_err(bus, "Timeout on response for entering D3 substate\n");
+		brcmf_bus_change_state(bus, BRCMF_BUS_UP);
+		return -EIO;
 	}
 
 	devinfo->state = BRCMFMAC_PCIE_STATE_DOWN;
 
 	return 0;
 }
+
 
 static int brcmf_pcie_pm_leave_D3(struct device *dev)
 {
@@ -2086,7 +2057,6 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
 		if (brcmf_pcie_send_mb_data(devinfo, BRCMF_H2D_HOST_D0_INFORM))
 			goto cleanup;
 		brcmf_dbg(PCIE, "Hot resume, continue....\n");
-		msleep(10);
 		devinfo->state = BRCMFMAC_PCIE_STATE_UP;
 		brcmf_pcie_select_core(devinfo, BCMA_CORE_PCIE2);
 		brcmf_bus_change_state(bus, BRCMF_BUS_UP);
@@ -2161,7 +2131,6 @@ static struct pci_driver brcmf_pciedrvr = {
 	.id_table = brcmf_pcie_devid_table,
 	.probe = brcmf_pcie_probe,
 	.remove = brcmf_pcie_remove,
-	.shutdown = brcmf_pcie_shutdown,
 #ifdef CONFIG_PM
 	.driver.pm = &brcmf_pciedrvr_pm,
 #endif

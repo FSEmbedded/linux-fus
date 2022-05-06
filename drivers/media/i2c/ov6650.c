@@ -653,22 +653,9 @@ static int ov6650_s_fmt(struct v4l2_subdev *sd, struct v4l2_mbus_framefmt *mf)
 		coma_mask |= COMA_QCIF;
 	}
 
-	clkrc = CLKRC_12MHz;
-	mclk = 12000000;
-	priv->pclk_limit = 1334000;
-	dev_dbg(&client->dev, "using 12MHz input clock\n");
-
-	clkrc |= to_clkrc(&priv->tpf, priv->pclk_limit, priv->pclk_max);
-
-	pclk = priv->pclk_max / GET_CLKRC_DIV(clkrc);
-	dev_dbg(&client->dev, "pixel clock divider: %ld.%ld\n",
-			mclk / pclk, 10 * mclk % pclk / pclk);
-
 	ret = ov6650_set_selection(sd, NULL, &sel);
 	if (!ret)
 		ret = ov6650_reg_rmw(client, REG_COMA, coma_set, coma_mask);
-	if (!ret)
-		ret = ov6650_reg_write(client, REG_CLKRC, clkrc);
 	if (!ret) {
 		priv->half_scale = half_scale;
 
@@ -783,14 +770,9 @@ static int ov6650_s_frame_interval(struct v4l2_subdev *sd,
 	else if (div > GET_CLKRC_DIV(CLKRC_DIV_MASK))
 		div = GET_CLKRC_DIV(CLKRC_DIV_MASK);
 
-	tpf->numerator = div;
-	tpf->denominator = FRAME_RATE_MAX;
-
-	clkrc = to_clkrc(tpf, priv->pclk_limit, priv->pclk_max);
-
-	ret = ov6650_reg_rmw(client, REG_CLKRC, clkrc, CLKRC_DIV_MASK);
+	ret = ov6650_reg_rmw(client, REG_CLKRC, to_clkrc(div), CLKRC_DIV_MASK);
 	if (!ret) {
-		priv->tpf.numerator = GET_CLKRC_DIV(clkrc);
+		priv->tpf.numerator = div;
 		priv->tpf.denominator = FRAME_RATE_MAX;
 
 		*tpf = priv->tpf;
@@ -906,7 +888,7 @@ static int ov6650_video_probe(struct v4l2_subdev *sd)
 
 	ret = ov6650_reset(client);
 	if (!ret)
-		ret = ov6650_prog_dflt(client);
+		ret = ov6650_prog_dflt(client, xclk->clkrc);
 	if (!ret) {
 		struct v4l2_mbus_framefmt mf = ov6650_def_fmt;
 

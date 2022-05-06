@@ -189,8 +189,7 @@
 			"IN3R", "AMIC";
 		mux-int-port = <2>;
 		mux-ext-port = <6>;
-		codec-master;
-		hp-det-gpios = <&gpio1 17 1>;
+		hp-det-gpio = <&gpio1 17 GPIO_ACTIVE_LOW>;
 	};
 
 	sound-spdif {
@@ -208,15 +207,6 @@
 		#reset-cells = <0>;
 		status = "disabled";
 	};
-
-	sound-spdif {
-		compatible = "fsl,imx-audio-spdif",
-			   "fsl,imx6sx-sdb-spdif";
-		model = "imx-spdif";
-		spdif-controller = <&spdif>;
-		spdif-out;
-	};
-
 };
 
 &adc1 {
@@ -515,6 +505,7 @@
 };
 
 &pwm4 {
+	#pwm-cells = <2>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm4>;
 	status = "okay";
@@ -537,6 +528,8 @@
 &spdif {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_spdif>;
+	assigned-clocks = <&clks IMX6SX_CLK_SPDIF_PODF>;
+	assigned-clock-rates = <24576000>;
 	status = "okay";
 };
 
@@ -874,13 +867,6 @@
 		pinctrl_vcc_sd3: vccsd3grp {
 			fsl,pins = <
 				MX6SX_PAD_KEY_COL1__GPIO2_IO_11		0x17059
-			>;
-		};
-
-		pinctrl_mqs: mqsgrp {
-			fsl,pins = <
-				MX6SX_PAD_SD2_CLK__MQS_RIGHT 0x120b0
-				MX6SX_PAD_SD2_CMD__MQS_LEFT  0x120b0
 			>;
 		};
 

@@ -296,7 +296,7 @@ int vnt_vt3184_init(struct vnt_private *priv)
 		c_addr = addr;
 
 	ret = vnt_control_out_blocks(priv, VNT_REG_BLOCK_SIZE,
-				     MESSAGE_REQUEST_BBREG, length, array);
+				     MESSAGE_REQUEST_BBREG, length, c_addr);
 	if (ret)
 		goto end;
 

@@ -268,6 +268,7 @@ static int __init pmc_register_ops(void)
 		return -ENODEV;
 
 	pmcreg = device_node_to_regmap(np);
+	of_node_put(np);
 	if (IS_ERR(pmcreg))
 		return PTR_ERR(pmcreg);
 

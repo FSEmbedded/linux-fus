@@ -782,9 +782,9 @@ void cgroup1_release_agent(struct work_struct *work)
 
 	/* prepare argument buffers */
 	pathbuf = kmalloc(PATH_MAX, GFP_KERNEL);
-	agentbuf = kstrdup(cgrp->root->release_agent_path, GFP_KERNEL);
-	if (!pathbuf || !agentbuf || !strlen(agentbuf))
-		goto out;
+	agentbuf = kmalloc(PATH_MAX, GFP_KERNEL);
+	if (!pathbuf || !agentbuf)
+		goto out_free;
 
 	spin_lock(&release_agent_path_lock);
 	strlcpy(agentbuf, cgrp->root->release_agent_path, PATH_MAX);

@@ -44,7 +44,9 @@ static void __speakup_set_selection(struct work_struct *work)
 		goto unref;
 	}
 
-	set_selection_kernel(&sel, tty);
+	console_lock();
+	clear_selection();
+	console_unlock();
 
 	set_selection_kernel(&sel, tty);
 

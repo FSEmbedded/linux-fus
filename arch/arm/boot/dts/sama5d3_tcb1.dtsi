@@ -17,16 +17,6 @@
 
 	ahb {
 		apb {
-			pmc: pmc@fffffc00 {
-				periphck {
-					tcb1_clk: tcb1_clk {
-						#clock-cells = <0>;
-						reg = <27>;
-						atmel,clk-output-range = <0 166000000>;
-					};
-				};
-			};
-
 			tcb1: timer@f8014000 {
 				compatible = "atmel,at91sam9x5-tcb", "simple-mfd", "syscon";
 				#address-cells = <1>;

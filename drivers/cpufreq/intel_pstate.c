@@ -678,32 +678,25 @@ static int intel_pstate_set_energy_pref_index(struct cpudata *cpu_data,
 		epp = cpu_data->epp_default;
 
 	if (boot_cpu_has(X86_FEATURE_HWP_EPP)) {
-		/*
-		 * Use the cached HWP Request MSR value, because the register
-		 * itself may be updated by intel_pstate_hwp_boost_up() or
-		 * intel_pstate_hwp_boost_down() at any time.
-		 */
-		u64 value = READ_ONCE(cpu_data->hwp_req_cached);
-
-		value &= ~GENMASK_ULL(31, 24);
-
-		if (epp == -EINVAL)
+		if (use_raw)
+			epp = raw_epp;
+		else if (epp == -EINVAL)
 			epp = epp_values[pref_index - 1];
 
-		value |= (u64)epp << 24;
 		/*
-		 * The only other updater of hwp_req_cached in the active mode,
-		 * intel_pstate_hwp_set(), is called under the same lock as this
-		 * function, so it cannot run in parallel with the update below.
+		 * To avoid confusion, refuse to set EPP to any values different
+		 * from 0 (performance) if the current policy is "performance",
+		 * because those values would be overridden.
 		 */
-		WRITE_ONCE(cpu_data->hwp_req_cached, value);
-		ret = wrmsrl_on_cpu(cpu_data->cpu, MSR_HWP_REQUEST, value);
+		if (epp > 0 && cpu_data->policy == CPUFREQ_POLICY_PERFORMANCE)
+			return -EBUSY;
+
+		ret = intel_pstate_set_epp(cpu_data, epp);
 	} else {
 		if (epp == -EINVAL)
 			epp = (pref_index - 1) << 2;
 		ret = intel_pstate_set_epb(cpu_data->cpu, epp);
 	}
-	mutex_unlock(&intel_pstate_limits_lock);
 
 	return ret;
 }
@@ -841,8 +834,8 @@ static void intel_pstate_get_hwp_max(struct cpudata *cpu, int *phy_max,
 {
 	u64 cap;
 
-	rdmsrl_on_cpu(cpu, MSR_HWP_CAPABILITIES, &cap);
-	WRITE_ONCE(all_cpu_data[cpu]->hwp_cap_cached, cap);
+	rdmsrl_on_cpu(cpu->cpu, MSR_HWP_CAPABILITIES, &cap);
+	WRITE_ONCE(cpu->hwp_cap_cached, cap);
 	if (global.no_turbo || global.turbo_disabled)
 		*current_max = HWP_GUARANTEED_PERF(cap);
 	else
@@ -1741,6 +1734,7 @@ static void intel_pstate_get_cpu_pstates(struct cpudata *cpu)
 		intel_pstate_get_hwp_max(cpu, &phy_max, &current_max);
 		cpu->pstate.turbo_freq = phy_max * cpu->pstate.scaling;
 		cpu->pstate.turbo_pstate = phy_max;
+		cpu->pstate.max_pstate = HWP_GUARANTEED_PERF(READ_ONCE(cpu->hwp_cap_cached));
 	} else {
 		cpu->pstate.turbo_freq = cpu->pstate.turbo_pstate * cpu->pstate.scaling;
 		cpu->pstate.max_pstate = pstate_funcs.get_max();
@@ -2330,7 +2324,8 @@ static void intel_pstate_adjust_policy_max(struct cpudata *cpu,
 	}
 }
 
-static int intel_pstate_verify_policy(struct cpufreq_policy_data *policy)
+static void intel_pstate_verify_cpu_policy(struct cpudata *cpu,
+					   struct cpufreq_policy_data *policy)
 {
 	int max_freq;
 
@@ -2338,7 +2333,19 @@ static int intel_pstate_verify_policy(struct cpufreq_policy_data *policy)
 	if (hwp_active) {
 		int max_state, turbo_max;
 
+		intel_pstate_get_hwp_max(cpu, &turbo_max, &max_state);
+		max_freq = max_state * cpu->pstate.scaling;
+	} else {
+		max_freq = intel_pstate_get_max_freq(cpu);
+	}
+	cpufreq_verify_within_limits(policy, policy->cpuinfo.min_freq, max_freq);
+
 	intel_pstate_adjust_policy_max(cpu, policy);
+}
+
+static int intel_pstate_verify_policy(struct cpufreq_policy_data *policy)
+{
+	intel_pstate_verify_cpu_policy(all_cpu_data[policy->cpu], policy);
 
 	return 0;
 }
@@ -2486,12 +2493,7 @@ static int intel_cpufreq_verify_policy(struct cpufreq_policy_data *policy)
 {
 	struct cpudata *cpu = all_cpu_data[policy->cpu];
 
-	update_turbo_state();
-	cpufreq_verify_within_limits(policy, policy->cpuinfo.min_freq,
-				     intel_pstate_get_max_freq(cpu));
-
-	intel_pstate_adjust_policy_max(cpu, policy);
-
+	intel_pstate_verify_cpu_policy(cpu, policy);
 	intel_pstate_update_perf_limits(cpu, policy->min, policy->max);
 
 	return 0;
@@ -2806,14 +2808,9 @@ static int intel_pstate_update_status(const char *buf, size_t size)
 		if (hwp_active)
 			return -EBUSY;
 
-	if (size == 3 && !strncmp(buf, "off", size)) {
-		if (!intel_pstate_driver)
-			return -EINVAL;
-
-		if (hwp_active)
-			return -EBUSY;
-
-		return intel_pstate_unregister_driver();
+		cpufreq_unregister_driver(intel_pstate_driver);
+		intel_pstate_driver_cleanup();
+		return 0;
 	}
 
 	if (size == 6 && !strncmp(buf, "active", size)) {

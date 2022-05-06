@@ -685,7 +685,7 @@ sg_write(struct file *filp, const char __user *buf, size_t count, loff_t * ppos)
 	hp->flags = input_size;	/* structure abuse ... */
 	hp->pack_id = old_hdr.pack_id;
 	hp->usr_ptr = NULL;
-	if (__copy_from_user(cmnd, buf, cmd_size)) {
+	if (copy_from_user(cmnd, buf, cmd_size)) {
 		sg_remove_request(sfp, srp);
 		return -EFAULT;
 	}

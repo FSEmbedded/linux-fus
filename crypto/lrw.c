@@ -290,7 +290,7 @@ static void lrw_exit_tfm(struct crypto_skcipher *tfm)
 	crypto_free_skcipher(ctx->child);
 }
 
-static void free_inst(struct skcipher_instance *inst)
+static void lrw_free_instance(struct skcipher_instance *inst)
 {
 	crypto_drop_skcipher(skcipher_instance_ctx(inst));
 	kfree(inst);
@@ -396,7 +396,7 @@ static int lrw_create(struct crypto_template *tmpl, struct rtattr **tb)
 	inst->alg.encrypt = lrw_encrypt;
 	inst->alg.decrypt = lrw_decrypt;
 
-	inst->free = free_inst;
+	inst->free = lrw_free_instance;
 
 	err = skcipher_register_instance(tmpl, inst);
 	if (err) {

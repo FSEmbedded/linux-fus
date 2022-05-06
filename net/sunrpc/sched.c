@@ -383,15 +383,6 @@ static void __rpc_sleep_on_priority(struct rpc_wait_queue *q,
 	__rpc_do_sleep_on_priority(q, task, queue_priority);
 }
 
-static void __rpc_sleep_on_priority(struct rpc_wait_queue *q,
-		struct rpc_task *task,
-		unsigned char queue_priority)
-{
-	if (WARN_ON_ONCE(RPC_IS_QUEUED(task)))
-		return;
-	__rpc_do_sleep_on_priority(q, task, queue_priority);
-}
-
 static void __rpc_sleep_on_priority_timeout(struct rpc_wait_queue *q,
 		struct rpc_task *task, unsigned long timeout,
 		unsigned char queue_priority)

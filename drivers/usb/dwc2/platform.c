@@ -602,7 +602,7 @@ static int dwc2_driver_probe(struct platform_device *dev)
 		if (retval) {
 			hsotg->gadget.udc = NULL;
 			dwc2_hsotg_remove(hsotg);
-			goto error;
+			goto error_debugfs;
 		}
 	}
 #endif /* CONFIG_USB_DWC2_PERIPHERAL || CONFIG_USB_DWC2_DUAL_ROLE */

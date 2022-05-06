@@ -100,27 +100,16 @@ void qe_reset(void)
 		panic("sdma init failed!");
 }
 
-/* issue commands to QE, return 0 on success while -EIO on error
- *
- * @cmd: the command code, should be QE_INIT_TX_RX, QE_STOP_TX and so on
- * @device: which sub-block will run the command, QE_CR_SUBBLOCK_UCCFAST1 - 8
- * , QE_CR_SUBBLOCK_UCCSLOW1 - 8, QE_CR_SUBBLOCK_MCC1 - 3,
- * QE_CR_SUBBLOCK_IDMA1 - 4 and such on.
- * @mcn_protocol: specifies mode for the command for non-MCC, should be
- * QE_CR_PROTOCOL_HDLC_TRANSPARENT, QE_CR_PROTOCOL_QMC, QE_CR_PROTOCOL_UART
- * and such on.
- * @cmd_input: command related data.
- */
 int qe_issue_cmd(u32 cmd, u32 device, u8 mcn_protocol, u32 cmd_input)
 {
 	unsigned long flags;
 	u8 mcn_shift = 0, dev_shift = 0;
+	u32 val;
 	int ret;
-	int i;
 
 	spin_lock_irqsave(&qe_lock, flags);
 	if (cmd == QE_RESET) {
-		iowrite32be((cmd | QE_CR_FLG), &qe_immr->cp.cecr);
+		qe_iowrite32be((u32)(cmd | QE_CR_FLG), &qe_immr->cp.cecr);
 	} else {
 		if (cmd == QE_ASSIGN_PAGE) {
 			/* Here device is the SNUM, not sub-block */
@@ -137,26 +126,18 @@ int qe_issue_cmd(u32 cmd, u32 device, u8 mcn_protocol, u32 cmd_input)
 				mcn_shift = QE_CR_MCN_NORMAL_SHIFT;
 		}
 
-		iowrite32be(cmd_input, &qe_immr->cp.cecdr);
-		iowrite32be((cmd | QE_CR_FLG | ((u32)device << dev_shift) |
-			    (u32)mcn_protocol << mcn_shift), &qe_immr->cp.cecr);
+		qe_iowrite32be(cmd_input, &qe_immr->cp.cecdr);
+		qe_iowrite32be((cmd | QE_CR_FLG | ((u32)device << dev_shift) | (u32)mcn_protocol << mcn_shift),
+			       &qe_immr->cp.cecr);
 	}
 
 	/* wait for the QE_CR_FLG to clear */
-	ret = -EIO;
-	for (i = 0; i < 100; i++) {
-		if ((ioread32be(&qe_immr->cp.cecr) & QE_CR_FLG) == 0) {
-			ret = 0;
-			break;
-		}
-		udelay(1);
-	}
-
-	/* On timeout (e.g. failure), the expression will be false (ret == 0),
-	   otherwise it will be true (ret == 1). */
+	ret = readx_poll_timeout_atomic(qe_ioread32be, &qe_immr->cp.cecr, val,
+					(val & QE_CR_FLG) == 0, 0, 100);
+	/* On timeout, ret is -ETIMEDOUT, otherwise it will be 0. */
 	spin_unlock_irqrestore(&qe_lock, flags);
 
-	return ret;
+	return ret == 0;
 }
 EXPORT_SYMBOL(qe_issue_cmd);
 
@@ -180,8 +161,6 @@ unsigned int qe_get_brg_clk(void)
 	struct device_node *qe;
 	u32 brg;
 	unsigned int mod;
-	u32 val;
-	int ret;
 
 	if (brg_clk)
 		return brg_clk;
@@ -190,9 +169,8 @@ unsigned int qe_get_brg_clk(void)
 	if (!qe)
 		return brg_clk;
 
-	ret = of_property_read_u32(qe, "brg-frequency", &val);
-	if (!ret)
-		brg_clk = val;
+	if (!of_property_read_u32(qe, "brg-frequency", &brg))
+		brg_clk = brg;
 
 	of_node_put(qe);
 
@@ -246,16 +224,14 @@ int qe_setbrg(enum qe_clock brg, unsigned int rate, unsigned int multiplier)
 	/* Errata QE_General4, which affects some MPC832x and MPC836x SOCs, says
 	   that the BRG divisor must be even if you're not using divide-by-16
 	   mode. */
-#ifdef CONFIG_PPC
-	if (pvr_version_is(PVR_VER_836x) || pvr_version_is(PVR_VER_832x))
+	if (qe_general4_errata())
 		if (!div16 && (divisor & 1) && (divisor > 3))
 			divisor++;
-#endif
 
 	tempval = ((divisor - 1) << QE_BRGC_DIVISOR_SHIFT) |
 		QE_BRGC_ENABLE | div16;
 
-	iowrite32be(tempval, &qe_immr->brg.brgc[brg - QE_BRG1]);
+	qe_iowrite32be(tempval, &qe_immr->brg.brgc[brg - QE_BRG1]);
 
 	return 0;
 }
@@ -399,9 +375,10 @@ static int qe_sdma_init(void)
 			return -ENOMEM;
 	}
 
-	iowrite32be((u32)sdma_buf_offset & QE_SDEBCR_BA_MASK, &sdma->sdebcr);
-	iowrite32be((QE_SDMR_GLB_1_MSK | (0x1 << QE_SDMR_CEN_SHIFT)),
-		    &sdma->sdmr);
+	qe_iowrite32be((u32)sdma_buf_offset & QE_SDEBCR_BA_MASK,
+		       &sdma->sdebcr);
+	qe_iowrite32be((QE_SDMR_GLB_1_MSK | (0x1 << QE_SDMR_CEN_SHIFT)),
+		       &sdma->sdmr);
 
 	return 0;
 }
@@ -439,14 +416,14 @@ static void qe_upload_microcode(const void *base,
 			"uploading microcode '%s'\n", ucode->id);
 
 	/* Use auto-increment */
-	iowrite32be(be32_to_cpu(ucode->iram_offset) | QE_IRAM_IADD_AIE |
-		    QE_IRAM_IADD_BADDR, &qe_immr->iram.iadd);
+	qe_iowrite32be(be32_to_cpu(ucode->iram_offset) | QE_IRAM_IADD_AIE | QE_IRAM_IADD_BADDR,
+		       &qe_immr->iram.iadd);
 
 	for (i = 0; i < be32_to_cpu(ucode->count); i++)
-		iowrite32be(be32_to_cpu(code[i]), &qe_immr->iram.idata);
+		qe_iowrite32be(be32_to_cpu(code[i]), &qe_immr->iram.idata);
 	
 	/* Set I-RAM Ready Register */
-	iowrite32be(be32_to_cpu(QE_IRAM_READY), &qe_immr->iram.iready);
+	qe_iowrite32be(QE_IRAM_READY, &qe_immr->iram.iready);
 }
 
 /*
@@ -531,7 +508,7 @@ int qe_upload_firmware(const struct qe_firmware *firmware)
 	 * If the microcode calls for it, split the I-RAM.
 	 */
 	if (!firmware->split)
-		qe_setbits16(&qe_immr->cp.cercr, QE_CP_CERCR_CIR);
+		qe_setbits_be16(&qe_immr->cp.cercr, QE_CP_CERCR_CIR);
 
 	if (firmware->soc.model)
 		printk(KERN_INFO
@@ -565,11 +542,13 @@ int qe_upload_firmware(const struct qe_firmware *firmware)
 			u32 trap = be32_to_cpu(ucode->traps[j]);
 
 			if (trap)
-				iowrite32be(trap, &qe_immr->rsp[i].tibcr[j]);
+				qe_iowrite32be(trap,
+					       &qe_immr->rsp[i].tibcr[j]);
 		}
 
 		/* Enable traps */
-		iowrite32be(be32_to_cpu(ucode->eccr), &qe_immr->rsp[i].eccr);
+		qe_iowrite32be(be32_to_cpu(ucode->eccr),
+			       &qe_immr->rsp[i].eccr);
 	}
 
 	qe_firmware_uploaded = 1;

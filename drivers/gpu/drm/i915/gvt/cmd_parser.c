@@ -1011,7 +1011,6 @@ static int cmd_handler_lri(struct parser_exec_state *s)
 {
 	int i, ret = 0;
 	int cmd_len = cmd_length(s);
-	struct intel_gvt *gvt = s->vgpu->gvt;
 
 	for (i = 1; i < cmd_len; i += 2) {
 		if (IS_BROADWELL(s->engine->i915) && s->engine->id != RCS0) {

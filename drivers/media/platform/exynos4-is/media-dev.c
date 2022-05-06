@@ -1277,28 +1277,6 @@ static ssize_t fimc_md_sysfs_store(struct device *dev,
 static DEVICE_ATTR(subdev_conf_mode, S_IWUSR | S_IRUGO,
 		   fimc_md_sysfs_show, fimc_md_sysfs_store);
 
-static int fimc_md_get_pinctrl(struct fimc_md *fmd)
-{
-	struct device *dev = &fmd->pdev->dev;
-	struct fimc_pinctrl *pctl = &fmd->pinctl;
-
-	pctl->pinctrl = devm_pinctrl_get(dev);
-	if (IS_ERR(pctl->pinctrl))
-		return PTR_ERR(pctl->pinctrl);
-
-	pctl->state_default = pinctrl_lookup_state(pctl->pinctrl,
-					PINCTRL_STATE_DEFAULT);
-	if (IS_ERR(pctl->state_default))
-		return PTR_ERR(pctl->state_default);
-
-	pctl->state_idle = pinctrl_lookup_state(pctl->pinctrl,
-					PINCTRL_STATE_IDLE);
-	if (IS_ERR(pctl->state_idle))
-		return PTR_ERR(pctl->state_idle);
-
-	return 0;
-}
-
 static int cam_clk_prepare(struct clk_hw *hw)
 {
 	struct cam_clk *camclk = to_cam_clk(hw);

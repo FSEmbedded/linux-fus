@@ -261,7 +261,7 @@ static bool __get_mem_config_intel(struct rdt_resource *r)
 	r->num_closid = edx.split.cos_max + 1;
 	max_delay = eax.split.max_delay + 1;
 	r->default_ctrl = MAX_MBA_BW;
-	r->membw.mbm_width = MBM_CNTR_WIDTH;
+	r->membw.arch_needs_linear = true;
 	if (ecx & MBA_IS_LINEAR) {
 		r->membw.delay_linear = true;
 		r->membw.min_bw = MAX_MBA_BW - max_delay;
@@ -299,7 +299,11 @@ static bool __rdt_get_mem_config_amd(struct rdt_resource *r)
 	r->membw.delay_linear = false;
 	r->membw.arch_needs_linear = false;
 
-	r->membw.mbm_width = MBM_CNTR_WIDTH_AMD;
+	/*
+	 * AMD does not use memory delay throttle model to control
+	 * the allocation like Intel does.
+	 */
+	r->membw.throttle_mode = THREAD_THROTTLE_UNDEFINED;
 	r->membw.min_bw = 0;
 	r->membw.bw_gran = 1;
 	/* Max value is 2048, Data width should be 4 in decimal */

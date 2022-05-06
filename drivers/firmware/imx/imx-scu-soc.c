@@ -10,11 +10,9 @@
 #include <linux/platform_device.h>
 #include <linux/of.h>
 
-#define IMX_SCU_SOC_DRIVER_NAME		"imx-scu-soc"
+static struct imx_sc_ipc *imx_sc_soc_ipc_handle;
 
-bool TKT340553_SW_WORKAROUND;
-
-static struct imx_sc_ipc *soc_ipc_handle;
+extern bool TKT340553_SW_WORKAROUND;
 
 struct imx_sc_msg_misc_get_soc_id {
 	struct imx_sc_rpc_msg hdr;
@@ -39,7 +37,6 @@ static int imx_scu_soc_uid(u64 *soc_uid)
 {
 	struct imx_sc_msg_misc_get_soc_uid msg;
 	struct imx_sc_rpc_msg *hdr = &msg.hdr;
-	u64 soc_uid;
 
 	memset(&msg, 0, sizeof(msg));
 
@@ -48,7 +45,7 @@ static int imx_scu_soc_uid(u64 *soc_uid)
 	hdr->func = IMX_SC_MISC_FUNC_UNIQUE_ID;
 	hdr->size = 1;
 
-	imx_scu_call_rpc(soc_ipc_handle, &msg, true);
+	imx_scu_call_rpc(imx_sc_soc_ipc_handle, &msg, true);
 
 	*soc_uid = msg.uid_high;
 	*soc_uid <<= 32;

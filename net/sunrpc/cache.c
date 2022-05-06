@@ -114,18 +114,16 @@ static struct cache_head *sunrpc_cache_add_entry(struct cache_detail *detail,
 	spin_lock(&detail->hash_lock);
 
 	/* check if entry appeared while we slept */
-	hlist_for_each_entry_rcu(tmp, head, cache_list) {
-		if (detail->match(tmp, key)) {
-			if (cache_is_expired(detail, tmp)) {
-				hlist_del_init_rcu(&tmp->cache_list);
-				detail->entries --;
-				freeme = tmp;
-				break;
-			}
-			cache_get(tmp);
-			spin_unlock(&detail->hash_lock);
-			cache_put(new, detail);
-			return tmp;
+	hlist_for_each_entry_rcu(tmp, head, cache_list,
+				 lockdep_is_held(&detail->hash_lock)) {
+		if (!detail->match(tmp, key))
+			continue;
+		if (test_bit(CACHE_VALID, &tmp->flags) &&
+		    cache_is_expired(detail, tmp)) {
+			sunrpc_begin_cache_remove_entry(tmp, detail);
+			trace_cache_entry_expired(detail, tmp);
+			freeme = tmp;
+			break;
 		}
 		cache_get(tmp);
 		spin_unlock(&detail->hash_lock);
@@ -1914,12 +1912,9 @@ void sunrpc_cache_unhash(struct cache_detail *cd, struct cache_head *h)
 {
 	spin_lock(&cd->hash_lock);
 	if (!hlist_unhashed(&h->cache_list)){
-		hlist_del_init_rcu(&h->cache_list);
-		cd->entries--;
-		set_bit(CACHE_CLEANED, &h->flags);
+		sunrpc_begin_cache_remove_entry(h, cd);
 		spin_unlock(&cd->hash_lock);
-		cache_fresh_unlocked(h, cd);
-		cache_put(h, cd);
+		sunrpc_end_cache_remove_entry(h, cd);
 	} else
 		spin_unlock(&cd->hash_lock);
 }

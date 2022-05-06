@@ -707,20 +707,24 @@ static void dspi_xspi_fifo_write(struct fsl_dspi *dspi, int num_words)
 	if (!(dspi->tx_cmd & SPI_PUSHR_CMD_CONT) && num_bytes == dspi->len)
 		tx_cmd |= SPI_PUSHR_CMD_EOQ;
 
-	if (dspi->devtype_data->xspi_mode && dspi->bits_per_word > 16) {
-		/* Write the CMD FIFO entry first, and then the two
-		 * corresponding TX FIFO entries.
-		 */
+	/* Update CTARE */
+	regmap_write(dspi->regmap, SPI_CTARE(0),
+		     SPI_FRAME_EBITS(dspi->oper_bits_per_word) |
+		     SPI_CTARE_DTCP(num_words));
+
+	/*
+	 * Write the CMD FIFO entry first, and then the two
+	 * corresponding TX FIFO entries (or one...).
+	 */
+	dspi_pushr_cmd_write(dspi, tx_cmd);
+
+	/* Fill TX FIFO with as many transfers as possible */
+	while (num_words--) {
 		u32 data = dspi_pop_tx(dspi);
 
-		cmd_fifo_write(dspi);
-		tx_fifo_write(dspi, data & 0xFFFF);
-		tx_fifo_write(dspi, data >> 16);
-	} else {
-		/* Write one entry to both TX FIFO and CMD FIFO
-		 * simultaneously.
-		 */
-		fifo_write(dspi);
+		dspi_pushr_txdata_write(dspi, data & 0xFFFF);
+		if (dspi->oper_bits_per_word > 16)
+			dspi_pushr_txdata_write(dspi, data >> 16);
 	}
 }
 
@@ -939,14 +943,25 @@ static int dspi_transfer_one_message(struct spi_controller *ctlr,
 				   SPI_MCR_CLR_TXF | SPI_MCR_CLR_RXF,
 				   SPI_MCR_CLR_TXF | SPI_MCR_CLR_RXF);
 
-		if (!dspi->irq) {
-			do {
-				status = dspi_poll(dspi);
-			} while (status == -EINPROGRESS);
-		} else if (trans_mode != DSPI_DMA_MODE) {
-			wait_for_completion(&dspi->xfer_done);
-			reinit_completion(&dspi->xfer_done);
+		spi_take_timestamp_pre(dspi->ctlr, dspi->cur_transfer,
+				       dspi->progress, !dspi->irq);
+
+		if (dspi->devtype_data->trans_mode == DSPI_DMA_MODE) {
+			status = dspi_dma_xfer(dspi);
+		} else {
+			dspi_fifo_write(dspi);
+
+			if (dspi->irq) {
+				wait_for_completion(&dspi->xfer_done);
+				reinit_completion(&dspi->xfer_done);
+			} else {
+				do {
+					status = dspi_poll(dspi);
+				} while (status == -EINPROGRESS);
+			}
 		}
+		if (status)
+			break;
 
 		spi_transfer_delay_exec(transfer);
 	}
@@ -1070,7 +1085,7 @@ static int dspi_suspend(struct device *dev)
 
 	if (dspi->irq)
 		disable_irq(dspi->irq);
-	spi_controller_suspend(ctlr);
+	spi_controller_suspend(dspi->ctlr);
 	clk_disable_unprepare(dspi->clk);
 
 	pinctrl_pm_select_sleep_state(dev);
@@ -1088,7 +1103,7 @@ static int dspi_resume(struct device *dev)
 	ret = clk_prepare_enable(dspi->clk);
 	if (ret)
 		return ret;
-	spi_controller_resume(ctlr);
+	spi_controller_resume(dspi->ctlr);
 	if (dspi->irq)
 		enable_irq(dspi->irq);
 
@@ -1333,14 +1348,14 @@ static int dspi_probe(struct platform_device *pdev)
 		goto poll_mode;
 	}
 
+	init_completion(&dspi->xfer_done);
+
 	ret = request_threaded_irq(dspi->irq, dspi_interrupt, NULL,
 				   IRQF_SHARED, pdev->name, dspi);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Unable to attach DSPI interrupt\n");
 		goto out_clk_put;
 	}
-
-	init_completion(&dspi->xfer_done);
 
 poll_mode:
 
@@ -1361,11 +1376,13 @@ poll_mode:
 	ret = spi_register_controller(ctlr);
 	if (ret != 0) {
 		dev_err(&pdev->dev, "Problem registering DSPI ctlr\n");
-		goto out_free_irq;
+		goto out_release_dma;
 	}
 
 	return ret;
 
+out_release_dma:
+	dspi_release_dma(dspi);
 out_free_irq:
 	if (dspi->irq)
 		free_irq(dspi->irq, dspi);

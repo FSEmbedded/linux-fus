@@ -40,6 +40,7 @@
 #include <linux/irq.h>
 #include <linux/bitops.h>
 #include <linux/crash_dump.h>
+#include <linux/cpu.h>
 #include <linux/cpuhotplug.h>
 
 #include <scsi/scsi.h>
@@ -11223,18 +11224,20 @@ found_any:
  *
  * @phba:   pointer to lpfc hba data structure.
  * @cpu:    cpu going offline
- * @eqlist:
+ * @eqlist: eq list to append to
  */
-static void
+static int
 lpfc_cpuhp_get_eq(struct lpfc_hba *phba, unsigned int cpu,
 		  struct list_head *eqlist)
 {
-	struct lpfc_vector_map_info *map;
 	const struct cpumask *maskp;
 	struct lpfc_queue *eq;
-	unsigned int i;
-	cpumask_t tmp;
+	struct cpumask *tmp;
 	u16 idx;
+
+	tmp = kzalloc(cpumask_size(), GFP_KERNEL);
+	if (!tmp)
+		return -ENOMEM;
 
 	for (idx = 0; idx < phba->cfg_irq_chann; idx++) {
 		maskp = pci_irq_get_affinity(phba->pcidev, idx);
@@ -11245,7 +11248,7 @@ lpfc_cpuhp_get_eq(struct lpfc_hba *phba, unsigned int cpu,
 		 * then we don't need to poll the eq attached
 		 * to it.
 		 */
-		if (!cpumask_and(&tmp, maskp, cpumask_of(cpu)))
+		if (!cpumask_and(tmp, maskp, cpumask_of(cpu)))
 			continue;
 		/* get the cpus that are online and are affini-
 		 * tized to this irq vector.  If the count is
@@ -11253,8 +11256,8 @@ lpfc_cpuhp_get_eq(struct lpfc_hba *phba, unsigned int cpu,
 		 * down this vector.  Since this cpu has not
 		 * gone offline yet, we need >1.
 		 */
-		cpumask_and(&tmp, maskp, cpu_online_mask);
-		if (cpumask_weight(&tmp) > 1)
+		cpumask_and(tmp, maskp, cpu_online_mask);
+		if (cpumask_weight(tmp) > 1)
 			continue;
 
 		/* Now that we have an irq to shutdown, get the eq
@@ -11262,16 +11265,11 @@ lpfc_cpuhp_get_eq(struct lpfc_hba *phba, unsigned int cpu,
 		 * the software can share an eq, but eventually
 		 * only eq will be mapped to this vector
 		 */
-		for_each_possible_cpu(i) {
-			map = &phba->sli4_hba.cpu_map[i];
-			if (!(map->irq == pci_irq_vector(phba->pcidev, idx)))
-				continue;
-			eq = phba->sli4_hba.hdwq[map->hdwq].hba_eq;
-			list_add(&eq->_poll_list, eqlist);
-			/* 1 is good enough. others will be a copy of this */
-			break;
-		}
+		eq = phba->sli4_hba.hba_eq_hdl[idx].eq;
+		list_add(&eq->_poll_list, eqlist);
 	}
+	kfree(tmp);
+	return 0;
 }
 
 static void __lpfc_cpuhp_remove(struct lpfc_hba *phba)
@@ -11304,11 +11302,9 @@ static void lpfc_cpuhp_add(struct lpfc_hba *phba)
 
 	rcu_read_lock();
 
-	if (!list_empty(&phba->poll_list)) {
-		timer_setup(&phba->cpuhp_poll_timer, lpfc_sli4_poll_hbtimer, 0);
+	if (!list_empty(&phba->poll_list))
 		mod_timer(&phba->cpuhp_poll_timer,
 			  jiffies + msecs_to_jiffies(LPFC_POLL_HB));
-	}
 
 	rcu_read_unlock();
 
@@ -11332,6 +11328,99 @@ static int __lpfc_cpuhp_checks(struct lpfc_hba *phba, int *retval)
 	return false;
 }
 
+/**
+ * lpfc_irq_set_aff - set IRQ affinity
+ * @eqhdl: EQ handle
+ * @cpu: cpu to set affinity
+ *
+ **/
+static inline void
+lpfc_irq_set_aff(struct lpfc_hba_eq_hdl *eqhdl, unsigned int cpu)
+{
+	cpumask_clear(&eqhdl->aff_mask);
+	cpumask_set_cpu(cpu, &eqhdl->aff_mask);
+	irq_set_status_flags(eqhdl->irq, IRQ_NO_BALANCING);
+	irq_set_affinity_hint(eqhdl->irq, &eqhdl->aff_mask);
+}
+
+/**
+ * lpfc_irq_clear_aff - clear IRQ affinity
+ * @eqhdl: EQ handle
+ *
+ **/
+static inline void
+lpfc_irq_clear_aff(struct lpfc_hba_eq_hdl *eqhdl)
+{
+	cpumask_clear(&eqhdl->aff_mask);
+	irq_clear_status_flags(eqhdl->irq, IRQ_NO_BALANCING);
+}
+
+/**
+ * lpfc_irq_rebalance - rebalances IRQ affinity according to cpuhp event
+ * @phba: pointer to HBA context object.
+ * @cpu: cpu going offline/online
+ * @offline: true, cpu is going offline. false, cpu is coming online.
+ *
+ * If cpu is going offline, we'll try our best effort to find the next
+ * online cpu on the phba's original_mask and migrate all offlining IRQ
+ * affinities.
+ *
+ * If cpu is coming online, reaffinitize the IRQ back to the onlining cpu.
+ *
+ * Note: Call only if NUMA or NHT mode is enabled, otherwise rely on
+ *	 PCI_IRQ_AFFINITY to auto-manage IRQ affinity.
+ *
+ **/
+static void
+lpfc_irq_rebalance(struct lpfc_hba *phba, unsigned int cpu, bool offline)
+{
+	struct lpfc_vector_map_info *cpup;
+	struct cpumask *aff_mask;
+	unsigned int cpu_select, cpu_next, idx;
+	const struct cpumask *orig_mask;
+
+	if (phba->irq_chann_mode == NORMAL_MODE)
+		return;
+
+	orig_mask = &phba->sli4_hba.irq_aff_mask;
+
+	if (!cpumask_test_cpu(cpu, orig_mask))
+		return;
+
+	cpup = &phba->sli4_hba.cpu_map[cpu];
+
+	if (!(cpup->flag & LPFC_CPU_FIRST_IRQ))
+		return;
+
+	if (offline) {
+		/* Find next online CPU on original mask */
+		cpu_next = cpumask_next_wrap(cpu, orig_mask, cpu, true);
+		cpu_select = lpfc_next_online_cpu(orig_mask, cpu_next);
+
+		/* Found a valid CPU */
+		if ((cpu_select < nr_cpu_ids) && (cpu_select != cpu)) {
+			/* Go through each eqhdl and ensure offlining
+			 * cpu aff_mask is migrated
+			 */
+			for (idx = 0; idx < phba->cfg_irq_chann; idx++) {
+				aff_mask = lpfc_get_aff_mask(idx);
+
+				/* Migrate affinity */
+				if (cpumask_test_cpu(cpu, aff_mask))
+					lpfc_irq_set_aff(lpfc_get_eq_hdl(idx),
+							 cpu_select);
+			}
+		} else {
+			/* Rely on irqbalance if no online CPUs left on NUMA */
+			for (idx = 0; idx < phba->cfg_irq_chann; idx++)
+				lpfc_irq_clear_aff(lpfc_get_eq_hdl(idx));
+		}
+	} else {
+		/* Migrate affinity back to this CPU */
+		lpfc_irq_set_aff(lpfc_get_eq_hdl(cpup->eq), cpu);
+	}
+}
+
 static int lpfc_cpu_offline(unsigned int cpu, struct hlist_node *node)
 {
 	struct lpfc_hba *phba = hlist_entry_safe(node, struct lpfc_hba, cpuhp);
@@ -11347,7 +11436,11 @@ static int lpfc_cpu_offline(unsigned int cpu, struct hlist_node *node)
 	if (__lpfc_cpuhp_checks(phba, &retval))
 		return retval;
 
-	lpfc_cpuhp_get_eq(phba, cpu, &eqlist);
+	lpfc_irq_rebalance(phba, cpu, true);
+
+	retval = lpfc_cpuhp_get_eq(phba, cpu, &eqlist);
+	if (retval)
+		return retval;
 
 	/* start polling on these eq's */
 	list_for_each_entry_safe(eq, next, &eqlist, _poll_list) {
@@ -11372,6 +11465,8 @@ static int lpfc_cpu_online(unsigned int cpu, struct hlist_node *node)
 
 	if (__lpfc_cpuhp_checks(phba, &retval))
 		return retval;
+
+	lpfc_irq_rebalance(phba, cpu, false);
 
 	list_for_each_entry_safe(eq, next, &phba->poll_list, _poll_list) {
 		n = lpfc_find_cpu_handle(phba, eq->hdwq, LPFC_FIND_BY_HDWQ);
@@ -13121,7 +13216,7 @@ lpfc_pci_probe_one_s4(struct pci_dev *pdev, const struct pci_device_id *pid)
 	/* Enable RAS FW log support */
 	lpfc_sli4_ras_setup(phba);
 
-	INIT_LIST_HEAD(&phba->poll_list);
+	timer_setup(&phba->cpuhp_poll_timer, lpfc_sli4_poll_hbtimer, 0);
 	cpuhp_state_add_instance_nocalls(lpfc_cpuhp_state, &phba->cpuhp);
 
 	return 0;
@@ -13960,6 +14055,8 @@ unwind:
 cpuhp_failure:
 	fc_release_transport(lpfc_transport_template);
 	fc_release_transport(lpfc_vport_transport_template);
+unregister:
+	misc_deregister(&lpfc_mgmt_dev);
 
 	return error;
 }

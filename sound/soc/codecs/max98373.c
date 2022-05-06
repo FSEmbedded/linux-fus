@@ -384,31 +384,7 @@ static int max98373_probe(struct snd_soc_component *component)
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int max98373_suspend(struct device *dev)
-{
-	struct max98373_priv *max98373 = dev_get_drvdata(dev);
-
-	regcache_cache_only(max98373->regmap, true);
-	regcache_mark_dirty(max98373->regmap);
-	return 0;
-}
-static int max98373_resume(struct device *dev)
-{
-	struct max98373_priv *max98373 = dev_get_drvdata(dev);
-
-	regcache_cache_only(max98373->regmap, false);
-	max98373_reset(max98373, dev);
-	regcache_sync(max98373->regmap);
-	return 0;
-}
-#endif
-
-static const struct dev_pm_ops max98373_pm = {
-	SET_SYSTEM_SLEEP_PM_OPS(max98373_suspend, max98373_resume)
-};
-
-static const struct snd_soc_component_driver soc_codec_dev_max98373 = {
+const struct snd_soc_component_driver soc_codec_dev_max98373 = {
 	.probe			= max98373_probe,
 	.controls		= max98373_snd_controls,
 	.num_controls		= ARRAY_SIZE(max98373_snd_controls),

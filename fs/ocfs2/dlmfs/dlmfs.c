@@ -241,7 +241,6 @@ static ssize_t dlmfs_file_write(struct file *filp,
 {
 	char lvb_buf[DLM_LVB_LEN];
 	int bytes_left;
-	char *lvb_buf;
 	struct inode *inode = file_inode(filp);
 
 	mlog(0, "inode %lu, count = %zu, *ppos = %llu\n",
@@ -251,23 +250,11 @@ static ssize_t dlmfs_file_write(struct file *filp,
 		return -ENOSPC;
 
 	/* don't write past the lvb */
-	if (count > i_size_read(inode) - *ppos)
-		count = i_size_read(inode) - *ppos;
+	if (count > DLM_LVB_LEN - *ppos)
+		count = DLM_LVB_LEN - *ppos;
 
 	if (!count)
 		return 0;
-
-	if (!access_ok(buf, count))
-		return -EFAULT;
-
-	lvb_buf = kmalloc(count, GFP_NOFS);
-	if (!lvb_buf)
-		return -ENOMEM;
-
-	bytes_left = copy_from_user(lvb_buf, buf, count);
-	count -= bytes_left;
-	if (count)
-		user_dlm_write_lvb(inode, lvb_buf, count);
 
 	bytes_left = copy_from_user(lvb_buf, buf, count);
 	count -= bytes_left;

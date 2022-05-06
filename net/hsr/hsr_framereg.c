@@ -147,7 +147,8 @@ void prp_handle_san_frame(bool san, enum hsr_port_type port,
 static struct hsr_node *hsr_add_node(struct hsr_priv *hsr,
 				     struct list_head *node_db,
 				     unsigned char addr[],
-				     u16 seq_out)
+				     u16 seq_out, bool san,
+				     enum hsr_port_type rx_port)
 {
 	struct hsr_node *new_node, *node;
 	unsigned long now;
@@ -168,12 +169,14 @@ static struct hsr_node *hsr_add_node(struct hsr_priv *hsr,
 		new_node->time_out[i] = now;
 	}
 	for (i = 0; i < HSR_PT_PORTS; i++)
-		new_node->time_in[i] = now;
-	for (i = 0; i < HSR_PT_PORTS; i++)
 		new_node->seq_out[i] = seq_out;
 
+	if (san && hsr->proto_ops->handle_san_frame)
+		hsr->proto_ops->handle_san_frame(san, rx_port, new_node);
+
 	spin_lock_bh(&hsr->list_lock);
-	list_for_each_entry_rcu(node, node_db, mac_list) {
+	list_for_each_entry_rcu(node, node_db, mac_list,
+				lockdep_is_held(&hsr->list_lock)) {
 		if (ether_addr_equal(node->macaddress_A, addr))
 			goto out;
 		if (ether_addr_equal(node->macaddress_B, addr))
@@ -203,7 +206,6 @@ struct hsr_node *hsr_get_node(struct hsr_port *port, struct list_head *node_db,
 			      struct sk_buff *skb, bool is_sup,
 			      enum hsr_port_type rx_port)
 {
-	struct list_head *node_db = &port->hsr->node_db;
 	struct hsr_priv *hsr = port->hsr;
 	struct hsr_node *node;
 	struct ethhdr *ethhdr;
@@ -249,7 +251,8 @@ struct hsr_node *hsr_get_node(struct hsr_port *port, struct list_head *node_db,
 		}
 	}
 
-	return hsr_add_node(hsr, node_db, ethhdr->h_source, seq_out);
+	return hsr_add_node(hsr, node_db, ethhdr->h_source, seq_out,
+			    san, rx_port);
 }
 
 /* Use the Supervision frame's info about an eventual macaddress_B for merging
@@ -258,9 +261,12 @@ struct hsr_node *hsr_get_node(struct hsr_port *port, struct list_head *node_db,
  */
 void hsr_handle_sup_frame(struct hsr_frame_info *frame)
 {
+	struct hsr_node *node_curr = frame->node_src;
+	struct hsr_port *port_rcv = frame->port_rcv;
 	struct hsr_priv *hsr = port_rcv->hsr;
 	struct hsr_sup_payload *hsr_sp;
 	struct hsr_node *node_real;
+	struct sk_buff *skb = NULL;
 	struct list_head *node_db;
 	struct ethhdr *ethhdr;
 	int i;
@@ -296,7 +302,8 @@ void hsr_handle_sup_frame(struct hsr_frame_info *frame)
 	if (!node_real)
 		/* No frame received from AddrA of this node yet */
 		node_real = hsr_add_node(hsr, node_db, hsr_sp->macaddress_A,
-					 HSR_SEQNR_START - 1);
+					 HSR_SEQNR_START - 1, true,
+					 port_rcv->type);
 	if (!node_real)
 		goto done; /* No mem */
 	if (node_real == node_curr)

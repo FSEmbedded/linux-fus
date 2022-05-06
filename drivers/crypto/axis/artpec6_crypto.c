@@ -1249,10 +1249,8 @@ static int artpec6_crypto_aead_set_key(struct crypto_aead *tfm, const u8 *key,
 {
 	struct artpec6_cryptotfm_context *ctx = crypto_tfm_ctx(&tfm->base);
 
-	if (len != 16 && len != 24 && len != 32) {
-		crypto_aead_set_flags(tfm, CRYPTO_TFM_RES_BAD_KEY_LEN);
+	if (len != 16 && len != 24 && len != 32)
 		return -EINVAL;
-	}
 
 	ctx->key_length = len;
 

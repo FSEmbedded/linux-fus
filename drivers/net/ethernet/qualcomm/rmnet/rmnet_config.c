@@ -253,6 +253,10 @@ static int rmnet_config_notify_cb(struct notifier_block *nb,
 		netdev_dbg(real_dev, "Kernel unregister\n");
 		rmnet_force_unassociate_device(real_dev);
 		break;
+	case NETDEV_CHANGEMTU:
+		if (rmnet_vnd_validate_real_dev_mtu(real_dev))
+			return NOTIFY_BAD;
+		break;
 	default:
 		break;
 	}

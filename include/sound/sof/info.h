@@ -28,9 +28,11 @@
 
 /* extended data types that can be appended onto end of sof_ipc_fw_ready */
 enum sof_ipc_ext_data {
-	SOF_IPC_EXT_DMA_BUFFER = 0,
-	SOF_IPC_EXT_WINDOW,
-	SOF_IPC_EXT_CC_INFO,
+	SOF_IPC_EXT_UNUSED		= 0,
+	SOF_IPC_EXT_WINDOW		= 1,
+	SOF_IPC_EXT_CC_INFO		= 2,
+	SOF_IPC_EXT_PROBE_INFO		= 3,
+	SOF_IPC_EXT_USER_ABI_INFO	= 4,
 };
 
 /* FW version - SOF_IPC_GLB_VERSION */
@@ -133,19 +135,5 @@ struct sof_ipc_user_abi_version {
 
 	uint32_t abi_dbg_version;
 }  __packed;
-
-struct sof_ipc_cc_version {
-	struct sof_ipc_ext_data_hdr ext_hdr;
-	uint32_t major;
-	uint32_t minor;
-	uint32_t micro;
-
-	/* reserved for future use */
-	uint32_t reserved[4];
-
-	char name[16]; /* null terminated compiler name */
-	char optim[4]; /* null terminated compiler -O flag value */
-	char desc[]; /* null terminated compiler description */
-} __packed;
 
 #endif

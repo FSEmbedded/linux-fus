@@ -1032,6 +1032,19 @@ static void omap2_mcspi_release_dma(struct spi_master *master)
 	}
 }
 
+static void omap2_mcspi_cleanup(struct spi_device *spi)
+{
+	struct omap2_mcspi_cs	*cs;
+
+	if (spi->controller_state) {
+		/* Unlink controller state from context save list */
+		cs = spi->controller_state;
+		list_del(&cs->node);
+
+		kfree(cs);
+	}
+}
+
 static int omap2_mcspi_setup(struct spi_device *spi)
 {
 	bool			initial_setup = false;
@@ -1052,16 +1065,7 @@ static int omap2_mcspi_setup(struct spi_device *spi)
 		spi->controller_state = cs;
 		/* Link this to context save list */
 		list_add_tail(&cs->node, &ctx->cs);
-
-		if (gpio_is_valid(spi->cs_gpio)) {
-			ret = gpio_request(spi->cs_gpio, dev_name(&spi->dev));
-			if (ret) {
-				dev_err(&spi->dev, "failed to request gpio\n");
-				return ret;
-			}
-			gpio_direction_output(spi->cs_gpio,
-					 !(spi->mode & SPI_CS_HIGH));
-		}
+		initial_setup = true;
 	}
 
 	ret = pm_runtime_get_sync(mcspi->dev);
@@ -1081,22 +1085,6 @@ static int omap2_mcspi_setup(struct spi_device *spi)
 	pm_runtime_put_autosuspend(mcspi->dev);
 
 	return ret;
-}
-
-static void omap2_mcspi_cleanup(struct spi_device *spi)
-{
-	struct omap2_mcspi_cs	*cs;
-
-	if (spi->controller_state) {
-		/* Unlink controller state from context save list */
-		cs = spi->controller_state;
-		list_del(&cs->node);
-
-		kfree(cs);
-	}
-
-	if (gpio_is_valid(spi->cs_gpio))
-		gpio_free(spi->cs_gpio);
 }
 
 static irqreturn_t omap2_mcspi_irq_handler(int irq, void *data)

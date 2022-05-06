@@ -478,8 +478,13 @@ static int _genpd_power_off(struct generic_pm_domain *genpd, bool timed)
 	if (atomic_read(&genpd->sd_count) > 0)
 		return -EBUSY;
 
-	if (!timed)
-		return genpd->power_off(genpd);
+	if (!timed) {
+		ret = genpd->power_off(genpd);
+		if (ret)
+			goto busy;
+
+		goto out;
+	}
 
 	time_start = ktime_get();
 	ret = genpd->power_off(genpd);
@@ -585,17 +590,11 @@ static int genpd_power_off(struct generic_pm_domain *genpd, bool one_dev_on,
 	if (!genpd->device_count)
 		genpd->state_idx = genpd->state_count - 1;
 
-	/*
-	 * If sd_count > 0 at this point, one of the subdomains hasn't
-	 * managed to call genpd_power_on() for the master yet after
-	 * incrementing it.  In that case genpd_power_on() will wait
-	 * for us to drop the lock, so we can call .power_off() and let
-	 * the genpd_power_on() restore power for us (this shouldn't
-	 * happen very often).
-	 */
 	ret = _genpd_power_off(genpd, true);
-	if (ret)
+	if (ret) {
+		genpd->states[genpd->state_idx].rejected++;
 		return ret;
+	}
 
 	genpd->status = GENPD_STATE_OFF;
 	genpd_update_accounting(genpd);
@@ -1005,10 +1004,10 @@ static void genpd_sync_power_off(struct generic_pm_domain *genpd, bool use_lock,
 	if (_genpd_power_off(genpd, false))
 		return;
 
-	if (genpd->status == GPD_STATE_POWER_OFF)
+	if (genpd->status == GENPD_STATE_OFF)
 		return;
 
-	genpd->status = GPD_STATE_POWER_OFF;
+	genpd->status = GENPD_STATE_OFF;
 
 	list_for_each_entry(link, &genpd->child_links, child_node) {
 		genpd_sd_counter_dec(link->parent);
@@ -1054,11 +1053,10 @@ static void genpd_sync_power_on(struct generic_pm_domain *genpd, bool use_lock,
 	}
 
 	_genpd_power_on(genpd, false);
-
 	/* restore save power domain state after resume */
 	genpd->state_idx = genpd->state_idx_saved;
 
-	genpd->status = GPD_STATE_ACTIVE;
+	genpd->status = GENPD_STATE_ON;
 }
 
 /**

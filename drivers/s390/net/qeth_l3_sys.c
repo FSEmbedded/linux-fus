@@ -210,9 +210,6 @@ static ssize_t qeth_l3_dev_hsuid_store(struct device *dev,
 	int rc = 0;
 	char *tmp;
 
-	if (!card)
-		return -EINVAL;
-
 	if (!IS_IQD(card))
 		return -EPERM;
 

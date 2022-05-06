@@ -4,9 +4,7 @@
 # requires: set_ftrace_filter
 # flags: instance
 
-[ ! -f set_ftrace_filter ] && exit_unsupported
-
-echo _do_fork:stacktrace >> set_ftrace_filter
+echo $FUNCTION_FORK:stacktrace >> set_ftrace_filter
 
 grep -q "$FUNCTION_FORK:stacktrace:unlimited" set_ftrace_filter
 

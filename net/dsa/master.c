@@ -267,9 +267,9 @@ static void dsa_master_set_promiscuity(struct net_device *dev, int inc)
 	if (!ops->promisc_on_master)
 		return;
 
-	if (cpu_dp->orig_ndo_ops)
-		dev->netdev_ops = cpu_dp->orig_ndo_ops;
-	cpu_dp->orig_ndo_ops = NULL;
+	rtnl_lock();
+	dev_set_promiscuity(dev, inc);
+	rtnl_unlock();
 }
 
 static ssize_t tagging_show(struct device *d, struct device_attribute *attr,

@@ -2373,7 +2373,6 @@ static int journal_unmap_buffer(journal_t *journal, struct buffer_head *bh,
 		if (journal->j_running_transaction && buffer_jbddirty(bh))
 			jh->b_next_transaction = journal->j_running_transaction;
 		jh->b_modified = 0;
-		jbd2_journal_put_journal_head(jh);
 		spin_unlock(&journal->j_list_lock);
 		spin_unlock(&jh->b_state_lock);
 		write_unlock(&journal->j_state_lock);

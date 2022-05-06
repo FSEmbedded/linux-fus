@@ -22,12 +22,6 @@
 
 static struct dentry *hsr_debugfs_root_dir;
 
-static void print_mac_address(struct seq_file *sfp, unsigned char *mac)
-{
-	seq_printf(sfp, "%02x:%02x:%02x:%02x:%02x:%02x:",
-		   mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-}
-
 /* hsr_node_table_show - Formats and prints node_table entries */
 static int
 hsr_node_table_show(struct seq_file *sfp, void *data)
@@ -73,11 +67,6 @@ void hsr_debugfs_rename(struct net_device *dev)
 	struct hsr_priv *priv = netdev_priv(dev);
 	struct dentry *d;
 
-void hsr_debugfs_rename(struct net_device *dev)
-{
-	struct hsr_priv *priv = netdev_priv(dev);
-	struct dentry *d;
-
 	d = debugfs_rename(hsr_debugfs_root_dir, priv->node_tbl_root,
 			   hsr_debugfs_root_dir, dev->name);
 	if (IS_ERR(d))
@@ -85,13 +74,6 @@ void hsr_debugfs_rename(struct net_device *dev)
 	else
 		priv->node_tbl_root = d;
 }
-
-static const struct file_operations hsr_fops = {
-	.open	= hsr_node_table_open,
-	.read	= seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
-};
 
 /* hsr_debugfs_init - create hsr node_table file for dumping
  * the node table
@@ -114,14 +96,13 @@ void hsr_debugfs_init(struct hsr_priv *priv, struct net_device *hsr_dev)
 
 	de = debugfs_create_file("node_table", S_IFREG | 0444,
 				 priv->node_tbl_root, priv,
-				 &hsr_fops);
+				 &hsr_node_table_fops);
 	if (IS_ERR(de)) {
 		pr_err("Cannot create hsr node_table file\n");
 		debugfs_remove(priv->node_tbl_root);
 		priv->node_tbl_root = NULL;
 		return;
 	}
-	priv->node_tbl_file = de;
 }
 
 /* hsr_debugfs_term - Tear down debugfs intrastructure

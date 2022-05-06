@@ -115,13 +115,8 @@ int axg_fifo_pcm_hw_params(struct snd_soc_component *component,
 	struct axg_fifo *fifo = axg_fifo_data(ss);
 	unsigned int burst_num, period, threshold;
 	dma_addr_t end_ptr;
-	int ret;
 
 	period = params_period_bytes(params);
-
-	ret = snd_pcm_lib_malloc_pages(ss, params_buffer_bytes(params));
-	if (ret < 0)
-		return ret;
 
 	/* Setup dma memory pointers */
 	end_ptr = runtime->dma_addr + runtime->dma_bytes - AXG_FIFO_BURST;
@@ -137,8 +132,7 @@ int axg_fifo_pcm_hw_params(struct snd_soc_component *component,
 	 * - Half the fifo size
 	 * - Half the period size
 	 */
-	threshold = min(period / 2,
-			(unsigned int)AXG_FIFO_MIN_DEPTH / 2);
+	threshold = min(period / 2, fifo->depth / 2);
 
 	/*
 	 * With the threshold in bytes, register value is:
@@ -381,6 +375,21 @@ int axg_fifo_probe(struct platform_device *pdev)
 		devm_regmap_field_alloc(dev, fifo->map, data->field_threshold);
 	if (IS_ERR(fifo->field_threshold))
 		return PTR_ERR(fifo->field_threshold);
+
+	ret = of_property_read_u32(dev->of_node, "amlogic,fifo-depth",
+				   &fifo->depth);
+	if (ret) {
+		/* Error out for anything but a missing property */
+		if (ret != -EINVAL)
+			return ret;
+		/*
+		 * If the property is missing, it might be because of an old
+		 * DT. In such case, assume the smallest known fifo depth
+		 */
+		fifo->depth = 256;
+		dev_warn(dev, "fifo depth not found, assume %u bytes\n",
+			 fifo->depth);
+	}
 
 	return devm_snd_soc_register_component(dev, data->component_drv,
 					       data->dai_drv, 1);

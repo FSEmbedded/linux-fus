@@ -1641,8 +1641,8 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 	if (tegra_host->soc_data->nvquirks & NVQUIRK_ENABLE_DDR50)
 		host->mmc->caps |= MMC_CAP_1_8V_DDR;
 
-	/* R1B responses is required to properly manage HW busy detection. */
-	host->mmc->caps |= MMC_CAP_NEED_RSP_BUSY;
+	/* HW busy detection is supported, but R1B responses are required. */
+	host->mmc->caps |= MMC_CAP_WAIT_WHILE_BUSY | MMC_CAP_NEED_RSP_BUSY;
 
 	tegra_sdhci_parse_dt(host);
 
@@ -1674,25 +1674,6 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 			rc = PTR_ERR(clk);
 			if (rc == -EPROBE_DEFER)
 				goto err_power_req;
-
-			dev_warn(&pdev->dev, "failed to get tmclk: %d\n", rc);
-			clk = NULL;
-		}
-
-		clk_set_rate(clk, 12000000);
-		rc = clk_prepare_enable(clk);
-		if (rc) {
-			dev_err(&pdev->dev,
-				"failed to enable tmclk: %d\n", rc);
-			goto err_power_req;
-		}
-
-		tegra_host->tmclk = clk;
-	}
-
-	clk = devm_clk_get(mmc_dev(host->mmc), NULL);
-	if (IS_ERR(clk)) {
-		rc = PTR_ERR(clk);
 
 			dev_warn(&pdev->dev, "failed to get tmclk: %d\n", rc);
 			clk = NULL;

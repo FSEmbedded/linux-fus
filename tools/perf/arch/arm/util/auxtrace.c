@@ -57,8 +57,8 @@ struct auxtrace_record
 	struct evsel *evsel;
 	bool found_etm = false;
 	struct perf_pmu *found_spe = NULL;
-	static struct perf_pmu **arm_spe_pmus = NULL;
-	static int nr_spes = 0;
+	struct perf_pmu **arm_spe_pmus = NULL;
+	int nr_spes = 0;
 	int i = 0;
 
 	if (!evlist)

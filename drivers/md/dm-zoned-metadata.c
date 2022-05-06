@@ -152,6 +152,12 @@ struct dmz_metadata {
 	unsigned int		zone_nr_bitmap_blocks;
 	unsigned int		zone_bits_per_mblk;
 
+	sector_t		zone_nr_blocks;
+	sector_t		zone_nr_blocks_shift;
+
+	sector_t		zone_nr_sectors;
+	sector_t		zone_nr_sectors_shift;
+
 	unsigned int		nr_bitmap_blocks;
 	unsigned int		nr_map_blocks;
 
@@ -688,7 +694,7 @@ static struct dmz_mblock *dmz_get_mblock(struct dmz_metadata *zmd,
 		       TASK_UNINTERRUPTIBLE);
 	if (test_bit(DMZ_META_ERROR, &mblk->state)) {
 		dmz_release_mblock(zmd, mblk);
-		dmz_check_bdev(zmd->dev);
+		dmz_check_bdev(dev);
 		return ERR_PTR(-EIO);
 	}
 
@@ -765,7 +771,7 @@ static int dmz_rdwr_block(struct dmz_dev *dev, int op,
 	bio_put(bio);
 
 	if (ret)
-		dmz_check_bdev(zmd->dev);
+		dmz_check_bdev(dev);
 	return ret;
 }
 
@@ -848,7 +854,7 @@ static int dmz_write_dirty_mblocks(struct dmz_metadata *zmd,
 			       TASK_UNINTERRUPTIBLE);
 		if (test_bit(DMZ_META_ERROR, &mblk->state)) {
 			clear_bit(DMZ_META_ERROR, &mblk->state);
-			dmz_check_bdev(zmd->dev);
+			dmz_check_bdev(dev);
 			ret = -EIO;
 		}
 		nr_mblks_submitted--;
@@ -927,7 +933,7 @@ int dmz_flush_metadata(struct dmz_metadata *zmd)
 
 	/* If there are no dirty metadata blocks, just flush the device cache */
 	if (list_empty(&write_list)) {
-		ret = blkdev_issue_flush(zmd->dev->bdev, GFP_NOIO, NULL);
+		ret = blkdev_issue_flush(dev->bdev, GFP_NOIO);
 		goto err;
 	}
 
@@ -976,7 +982,7 @@ err:
 		list_splice(&write_list, &zmd->mblk_dirty_list);
 		spin_unlock(&zmd->mblk_lock);
 	}
-	if (!dmz_check_bdev(zmd->dev))
+	if (!dmz_check_bdev(dev))
 		ret = -EIO;
 	goto out;
 }
@@ -1394,8 +1400,9 @@ static int dmz_init_zone(struct blk_zone *blkz, unsigned int num, void *data)
 	switch (blkz->type) {
 	case BLK_ZONE_TYPE_CONVENTIONAL:
 		set_bit(DMZ_RND, &zone->flags);
-	} else if (blkz->type == BLK_ZONE_TYPE_SEQWRITE_REQ ||
-		   blkz->type == BLK_ZONE_TYPE_SEQWRITE_PREF) {
+		break;
+	case BLK_ZONE_TYPE_SEQWRITE_REQ:
+	case BLK_ZONE_TYPE_SEQWRITE_PREF:
 		set_bit(DMZ_SEQ, &zone->flags);
 		break;
 	default:
@@ -1483,10 +1490,14 @@ static int dmz_init_zones(struct dmz_metadata *zmd)
 	struct dmz_dev *zoned_dev = &zmd->dev[0];
 
 	/* Init */
-	zmd->zone_bitmap_size = dev->zone_nr_blocks >> 3;
+	zmd->zone_nr_sectors = zmd->dev[0].zone_nr_sectors;
+	zmd->zone_nr_sectors_shift = ilog2(zmd->zone_nr_sectors);
+	zmd->zone_nr_blocks = dmz_sect2blk(zmd->zone_nr_sectors);
+	zmd->zone_nr_blocks_shift = ilog2(zmd->zone_nr_blocks);
+	zmd->zone_bitmap_size = zmd->zone_nr_blocks >> 3;
 	zmd->zone_nr_bitmap_blocks =
 		max_t(sector_t, 1, zmd->zone_bitmap_size >> DMZ_BLOCK_SHIFT);
-	zmd->zone_bits_per_mblk = min_t(sector_t, dev->zone_nr_blocks,
+	zmd->zone_bits_per_mblk = min_t(sector_t, zmd->zone_nr_blocks,
 					DMZ_BLOCK_SIZE_BITS);
 
 	/* Allocate zone array */
@@ -1607,10 +1618,10 @@ static int dmz_update_zone(struct dmz_metadata *zmd, struct dm_zone *zone)
 
 	if (ret == 0)
 		ret = -EIO;
-	if (ret) {
-		dmz_dev_err(zmd->dev, "Get zone %u report failed",
-			    dmz_id(zmd, zone));
-		dmz_check_bdev(zmd->dev);
+	if (ret < 0) {
+		dmz_dev_err(dev, "Get zone %u report failed",
+			    zone->id);
+		dmz_check_bdev(dev);
 		return ret;
 	}
 

@@ -341,7 +341,6 @@ static inline struct ib_qp *_ib_create_qp(struct ib_device *dev,
 	qp->real_qp = qp;
 
 	qp->qp_type = attr->qp_type;
-	qp->qp_context = attr->qp_context;
 	qp->rwq_ind_tbl = attr->rwq_ind_tbl;
 	qp->send_cq = attr->send_cq;
 	qp->recv_cq = attr->recv_cq;
@@ -354,6 +353,7 @@ static inline struct ib_qp *_ib_create_qp(struct ib_device *dev,
 	INIT_LIST_HEAD(&qp->rdma_mrs);
 	INIT_LIST_HEAD(&qp->sig_mrs);
 
+	rdma_restrack_new(&qp->res, RDMA_RESTRACK_QP);
 	/*
 	 * We don't track XRC QPs for now, because they don't have PD
 	 * and more importantly they are created internaly by driver,

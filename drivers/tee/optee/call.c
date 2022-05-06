@@ -262,10 +262,11 @@ int optee_open_session(struct tee_context *ctx,
 	memcpy(&msg_arg->params[0].u.value, arg->uuid, sizeof(arg->uuid));
 	msg_arg->params[1].u.value.c = arg->clnt_login;
 
-	rc = tee_session_calc_client_uuid((uuid_t *)&msg_arg->params[1].u.value,
-					  arg->clnt_login, arg->clnt_uuid);
+	rc = tee_session_calc_client_uuid(&client_uuid, arg->clnt_login,
+					  arg->clnt_uuid);
 	if (rc)
 		goto out;
+	export_uuid(msg_arg->params[1].u.octets, &client_uuid);
 
 	rc = optee_to_msg_param(msg_arg->params + 2, arg->num_params, param);
 	if (rc)
@@ -625,7 +626,7 @@ static int check_mem_type(unsigned long start, size_t num_pages)
 	if (virt_addr_valid(start))
 		return 0;
 
-	down_read(&mm->mmap_sem);
+	mmap_read_lock(mm);
 	rc = __check_mem_type(find_vma(mm, start),
 			      start + num_pages * PAGE_SIZE);
 	mmap_read_unlock(mm);

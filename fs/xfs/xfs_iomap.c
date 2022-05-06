@@ -774,25 +774,8 @@ xfs_direct_write_iomap_begin(
 				&lockmode, flags & IOMAP_DIRECT);
 		if (error)
 			goto out_unlock;
-
-		/*
-		 * For buffered writes we need to report the address of the
-		 * previous block (if there was any) so that the higher level
-		 * write code can perform read-modify-write operations; we
-		 * won't need the CoW fork mapping until writeback.  For direct
-		 * I/O, which must be block aligned, we need to report the
-		 * newly allocated address.  If the data fork has a hole, copy
-		 * the COW fork mapping to avoid allocating to the data fork.
-		 *
-		 * Otherwise, ensure that the imap range does not extend past
-		 * the range allocated/found in cmap.
-		 */
-		if (directio || imap.br_startblock == HOLESTARTBLOCK)
-			imap = cmap;
-		else
-			xfs_trim_extent(&imap, cmap.br_startoff,
-					cmap.br_blockcount);
-
+		if (shared)
+			goto out_found_cow;
 		end_fsb = imap.br_startoff + imap.br_blockcount;
 		length = XFS_FSB_TO_B(mp, end_fsb) - offset;
 	}

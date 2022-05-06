@@ -789,7 +789,7 @@ static  struct thermal_zone_device_ops tzone_ops = {
 
 static void iwl_mvm_thermal_zone_register(struct iwl_mvm *mvm)
 {
-	int i;
+	int i, ret;
 	char name[16];
 	static atomic_t counter = ATOMIC_INIT(0);
 

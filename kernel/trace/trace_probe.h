@@ -235,7 +235,7 @@ struct trace_probe_event {
 	struct trace_event_call		call;
 	struct list_head 		files;
 	struct list_head		probes;
-	struct trace_uprobe_filter	filter[0];
+	struct trace_uprobe_filter	filter[];
 };
 
 struct trace_probe {

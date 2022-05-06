@@ -91,7 +91,7 @@ int sock_map_prog_detach(const union bpf_attr *attr, enum bpf_prog_type ptype)
 	struct fd f;
 	int ret;
 
-	if (attr->attach_flags)
+	if (attr->attach_flags || attr->replace_bpf_fd)
 		return -EINVAL;
 
 	f = fdget(ufd);
@@ -603,10 +603,12 @@ int sock_map_update_elem_sys(struct bpf_map *map, void *key, void *value,
 	}
 
 	sock_map_sk_acquire(sk);
-	if (sk->sk_state != TCP_ESTABLISHED)
+	if (!sock_map_sk_state_allowed(sk))
 		ret = -EOPNOTSUPP;
+	else if (map->map_type == BPF_MAP_TYPE_SOCKMAP)
+		ret = sock_map_update_common(map, *(u32 *)key, sk, flags);
 	else
-		ret = sock_map_update_common(map, idx, sk, flags);
+		ret = sock_hash_update_common(map, key, sk, flags);
 	sock_map_sk_release(sk);
 out:
 	fput(sock->file);
@@ -1057,38 +1059,6 @@ out_free:
 	return ret;
 }
 
-static int sock_hash_update_elem(struct bpf_map *map, void *key,
-				 void *value, u64 flags)
-{
-	u32 ufd = *(u32 *)value;
-	struct socket *sock;
-	struct sock *sk;
-	int ret;
-
-	sock = sockfd_lookup(ufd, &ret);
-	if (!sock)
-		return ret;
-	sk = sock->sk;
-	if (!sk) {
-		ret = -EINVAL;
-		goto out;
-	}
-	if (!sock_map_sk_is_suitable(sk)) {
-		ret = -EOPNOTSUPP;
-		goto out;
-	}
-
-	sock_map_sk_acquire(sk);
-	if (sk->sk_state != TCP_ESTABLISHED)
-		ret = -EOPNOTSUPP;
-	else
-		ret = sock_hash_update_common(map, key, sk, flags);
-	sock_map_sk_release(sk);
-out:
-	fput(sock->file);
-	return ret;
-}
-
 static int sock_hash_get_next_key(struct bpf_map *map, void *key,
 				  void *key_next)
 {
@@ -1193,10 +1163,10 @@ free_htab:
 
 static void sock_hash_free(struct bpf_map *map)
 {
-	struct bpf_htab *htab = container_of(map, struct bpf_htab, map);
-	struct bpf_htab_bucket *bucket;
+	struct bpf_shtab *htab = container_of(map, struct bpf_shtab, map);
+	struct bpf_shtab_bucket *bucket;
 	struct hlist_head unlink_list;
-	struct bpf_htab_elem *elem;
+	struct bpf_shtab_elem *elem;
 	struct hlist_node *node;
 	int i;
 
@@ -1235,9 +1205,6 @@ static void sock_hash_free(struct bpf_map *map)
 			sock_hash_free_elem(htab, elem);
 		}
 	}
-
-	/* wait for psock readers accessing its map link */
-	synchronize_rcu();
 
 	/* wait for psock readers accessing its map link */
 	synchronize_rcu();

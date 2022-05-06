@@ -1,7 +1,7 @@
 /*
  * Samsung MIPI DSIM Bridge
  *
- * Copyright 2018-2019 NXP
+ * Copyright 2018-2021 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,7 +24,7 @@
 #include <linux/of_graph.h>
 #include <linux/pm_runtime.h>
 #include <drm/bridge/sec_mipi_dsim.h>
-#include <drm/drmP.h>
+#include <drm/drm_vblank.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge.h>
 #include <drm/drm_connector.h>
@@ -227,9 +227,6 @@
 #define dsim_read(dsim, reg)		readl(dsim->base + reg)
 #define dsim_write(dsim, val, reg)	writel(val, dsim->base + reg)
 
-/* fixed phy ref clk rate */
-#define PHY_REF_CLK		12000
-
 #define MAX_MAIN_HRESOL		2047
 #define MAX_MAIN_VRESOL		2047
 #define MAX_SUB_HRESOL		1024
@@ -304,11 +301,6 @@ struct sec_mipi_dsim {
 	struct device *dev;
 
 	void __iomem *base;
-	int irq;
-
-	struct clk *clk_cfg;
-	struct clk *clk_pllref;
-	struct clk *pclk;			/* pixel clock */
 
 	/* kHz clocks */
 	uint32_t pix_clk;
@@ -427,53 +419,15 @@ static int sec_mipi_dsim_set_pref_rate(struct sec_mipi_dsim *dsim)
 {
 	int ret;
 	uint32_t rate;
-	struct device *dev = dsim->dev;
 	const struct sec_mipi_dsim_plat_data *pdata = dsim->pdata;
 	const struct sec_mipi_dsim_pll *dpll = pdata->dphy_pll;
 	const struct sec_mipi_dsim_range *fin_range = &dpll->fin;
 
-	ret = of_property_read_u32(dev->of_node, "pref-rate", &rate);
-	if (ret < 0) {
-		dev_dbg(dev, "no valid rate assigned for pref clock\n");
-		dsim->pref_clk = PHY_REF_CLK;
-	} else {
-		if (unlikely(rate < fin_range->min || rate > fin_range->max)) {
-			dev_warn(dev, "pref-rate get is invalid: %uKHz\n",
-				 rate);
-			dsim->pref_clk = PHY_REF_CLK;
-		} else
-			dsim->pref_clk = rate;
-	}
-
-set_rate:
-	ret = clk_set_rate(dsim->clk_pllref,
-			   ((unsigned long)dsim->pref_clk) * 1000);
-	if (ret) {
-		dev_err(dev, "failed to set pll ref clock rate\n");
+	ret = pdata->determine_pll_ref_rate(&rate, fin_range->min, fin_range->max);
+	if (ret)
 		return ret;
-	}
 
-	rate = clk_get_rate(dsim->clk_pllref) / 1000;
-	if (unlikely(!rate)) {
-		dev_err(dev, "failed to get pll ref clock rate\n");
-		return -EINVAL;
-	}
-
-	if (rate != dsim->pref_clk) {
-		if (unlikely(dsim->pref_clk == PHY_REF_CLK)) {
-			/* set default rate failed */
-			dev_err(dev, "no valid pll ref clock rate\n");
-			return -EINVAL;
-		}
-
-		dev_warn(dev, "invalid assigned rate for pref: %uKHz\n",
-			 dsim->pref_clk);
-		dev_warn(dev, "use default pref rate instead: %uKHz\n",
-			 PHY_REF_CLK);
-
-		dsim->pref_clk = PHY_REF_CLK;
-		goto set_rate;
-	}
+	dsim->pref_clk = rate;
 
 	return 0;
 }
@@ -607,10 +561,10 @@ static void sec_mipi_dsim_write_pl_to_sfr_fifo(struct sec_mipi_dsim *dsim,
 	switch (length) {
 	case 3:
 		pl_data |= ((u8 *)payload)[2] << 16;
-		/* fall through */
+		fallthrough;
 	case 2:
 		pl_data |= ((u8 *)payload)[1] << 8;
-		/* fall through */
+		fallthrough;
 	case 1:
 		pl_data |= ((u8 *)payload)[0];
 		dsim_write(dsim, pl_data, DSIM_PAYLOAD);
@@ -657,7 +611,7 @@ static int sec_mipi_dsim_read_pl_from_sfr_fifo(struct sec_mipi_dsim *dsim,
 			((u8 *)payload)[1] = PKTHDR_GET_DATA1(ph);
 			word_count++;
 		}
-		/* fall through */
+		fallthrough;
 	case MIPI_DSI_RX_DCS_SHORT_READ_RESPONSE_1BYTE:
 	case MIPI_DSI_RX_GENERIC_SHORT_READ_RESPONSE_1BYTE:
 		((u8 *)payload)[0] = PKTHDR_GET_DATA0(ph);
@@ -690,10 +644,10 @@ static int sec_mipi_dsim_read_pl_from_sfr_fifo(struct sec_mipi_dsim *dsim,
 			switch (word_count) {
 			case 3:
 				((u8 *)payload)[2] = (pl >> 16) & 0xff;
-				/* fall through */
+				fallthrough;
 			case 2:
 				((u8 *)payload)[1] = (pl >> 8) & 0xff;
-				/* fall through */
+				fallthrough;
 			case 1:
 				((u8 *)payload)[0] = pl & 0xff;
 				break;
@@ -712,6 +666,7 @@ static ssize_t sec_mipi_dsim_host_transfer(struct mipi_dsi_host *host,
 					   const struct mipi_dsi_msg *msg)
 {
 	int ret;
+	ssize_t bytes = 0;
 	bool use_lpm;
 	struct mipi_dsi_packet packet;
 	struct sec_mipi_dsim *dsim = to_sec_mipi_dsim(host);
@@ -782,9 +737,13 @@ static ssize_t sec_mipi_dsim_host_transfer(struct mipi_dsi_host *host,
 							  msg->rx_len);
 		if (ret < 0)
 			return ret;
+
+		bytes = msg->rx_len;
+	} else {
+		bytes = packet.size;
 	}
 
-	return 0;
+	return bytes;
 }
 
 static const struct mipi_dsi_host_ops sec_mipi_dsim_host_ops = {
@@ -793,7 +752,8 @@ static const struct mipi_dsi_host_ops sec_mipi_dsim_host_ops = {
 	.transfer = sec_mipi_dsim_host_transfer,
 };
 
-static int sec_mipi_dsim_bridge_attach(struct drm_bridge *bridge)
+static int sec_mipi_dsim_bridge_attach(struct drm_bridge *bridge,
+					enum drm_bridge_attach_flags flags)
 {
 	int ret;
 	bool attach_bridge = false;
@@ -855,20 +815,17 @@ static int sec_mipi_dsim_bridge_attach(struct drm_bridge *bridge)
 		return -EPROBE_DEFER;
 
 	/* duplicate bridges or next bridge exists */
-	WARN_ON(bridge == next || bridge->next || dsim->next);
+	WARN_ON(bridge == next || drm_bridge_get_next_bridge(bridge) || dsim->next);
 
 	dsim->next = next;
 	next->encoder = encoder;
-	ret = drm_bridge_attach(encoder, next, bridge);
+	ret = drm_bridge_attach(encoder, next, bridge, flags);
 	if (ret) {
 		dev_err(dev, "Unable to attach bridge %s: %d\n",
 			remote->name, ret);
 		dsim->next = NULL;
 		return ret;
 	}
-
-	/* bridge chains */
-	bridge->next = next;
 
 	return 0;
 }
@@ -1327,7 +1284,7 @@ int sec_mipi_dsim_check_pll_out(void *driver_private,
 
 	if (dsim->mode_flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE) {
 		hpar = sec_mipi_dsim_get_hblank_par(mode->name,
-						    mode->vrefresh,
+						    drm_mode_vrefresh(mode),
 						    dsim->lanes);
 		dsim->hpar = hpar;
 		if (!hpar)
@@ -1453,76 +1410,6 @@ static void sec_mipi_dsim_bridge_disable(struct drm_bridge *bridge)
 	}
 }
 
-static bool sec_mipi_dsim_bridge_mode_fixup(struct drm_bridge *bridge,
-					    const struct drm_display_mode *mode,
-					    struct drm_display_mode *adjusted_mode)
-{
-	int private_flags;
-	struct sec_mipi_dsim *dsim = bridge->driver_private;
-
-	/* Since mipi dsi cannot do color conversion,
-	 * so the pixel format output by mipi dsi should
-	 * be the same with the pixel format recieved by
-	 * mipi dsi. And the pixel format information needs
-	 * to be passed to CRTC to be checked with the CRTC
-	 * attached plane fb pixel format.
-	 */
-	switch (dsim->format) {
-	case MIPI_DSI_FMT_RGB888:
-		private_flags = MEDIA_BUS_FMT_RGB888_1X24;
-		break;
-	case MIPI_DSI_FMT_RGB666:
-		private_flags = MEDIA_BUS_FMT_RGB666_1X24_CPADHI;
-		break;
-	case MIPI_DSI_FMT_RGB666_PACKED:
-		private_flags = MEDIA_BUS_FMT_RGB666_1X18;
-		break;
-	case MIPI_DSI_FMT_RGB565:
-		private_flags = MEDIA_BUS_FMT_RGB565_1X16;
-		break;
-	default:
-		return false;
-	}
-
-	adjusted_mode->private_flags = private_flags;
-
-	/* the 'bus_flags' in connector's display_info is useless
-	 * for mipi dsim, since dsim only sends packets with no
-	 * polarities information in the packets. But the dsim
-	 * host has some polarities requirements for the CRTC:
-	 * dsim only can accpet active high Vsync, Hsync and DE
-	 * signals.
-	 */
-	if (adjusted_mode->flags & DRM_MODE_FLAG_NHSYNC) {
-		adjusted_mode->flags &= ~DRM_MODE_FLAG_NHSYNC;
-		adjusted_mode->flags |= DRM_MODE_FLAG_PHSYNC;
-	}
-
-	if (adjusted_mode->flags & DRM_MODE_FLAG_NVSYNC) {
-		adjusted_mode->flags &= ~DRM_MODE_FLAG_NVSYNC;
-		adjusted_mode->flags |= DRM_MODE_FLAG_PVSYNC;
-	}
-
-	/* workaround for CEA standard mode "1280x720@60"
-	 * display on 4 data lanes with Non-burst with sync
-	 * pulse DSI mode, since use the standard horizontal
-	 * timings cannot display correctly. And this code
-	 * cannot be put into the dsim Bridge's mode_fixup,
-	 * since the DSI device lane number change always
-	 * happens after that.
-	 */
-	if (!strcmp(mode->name, "1280x720") &&
-	    mode->vrefresh == 60	    &&
-	    dsim->lanes == 4		    &&
-	    dsim->mode_flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE) {
-		adjusted_mode->hsync_start += 2;
-		adjusted_mode->hsync_end   += 2;
-		adjusted_mode->htotal      += 2;
-	}
-
-	return true;
-}
-
 static void sec_mipi_dsim_bridge_mode_set(struct drm_bridge *bridge,
 					  const struct drm_display_mode *mode,
 					  const struct drm_display_mode *adjusted_mode)
@@ -1540,33 +1427,173 @@ static void sec_mipi_dsim_bridge_mode_set(struct drm_bridge *bridge,
 	drm_display_mode_to_videomode(adjusted_mode, &dsim->vmode);
 }
 
+static u32 *sec_mipi_dsim_atomic_get_input_bus_fmts(struct drm_bridge *bridge,
+						    struct drm_bridge_state *bridge_state,
+						    struct drm_crtc_state *crtc_state,
+						    struct drm_connector_state *conn_state,
+						    u32 output_fmt,
+						    unsigned int *num_input_fmts)
+{
+	u32 *input_fmts;
+	struct sec_mipi_dsim *dsim = bridge->driver_private;
+
+	/* use dsi format to determine output bus format
+	 * if it is passed with MEDIA_BUS_FMT_FIXED
+	 */
+	if (output_fmt == MEDIA_BUS_FMT_FIXED) {
+		switch (dsim->format) {
+		case MIPI_DSI_FMT_RGB888:
+			output_fmt = MEDIA_BUS_FMT_RGB888_1X24;
+			break;
+		case MIPI_DSI_FMT_RGB666:
+			output_fmt = MEDIA_BUS_FMT_RGB666_1X24_CPADHI;
+			break;
+		case MIPI_DSI_FMT_RGB666_PACKED:
+			output_fmt = MEDIA_BUS_FMT_RGB666_1X18;
+			break;
+		case MIPI_DSI_FMT_RGB565:
+			output_fmt = MEDIA_BUS_FMT_RGB565_1X16;
+			break;
+		default:
+			return NULL;
+		}
+	} else {
+		/* check if the output format matches with
+		 * DSI device requested format
+		 */
+		switch (dsim->format) {
+		case MIPI_DSI_FMT_RGB888:
+			if (output_fmt != MEDIA_BUS_FMT_RGB888_1X24)
+				return NULL;
+			break;
+		case MIPI_DSI_FMT_RGB666:
+			if (output_fmt != MEDIA_BUS_FMT_RGB666_1X24_CPADHI)
+				return NULL;
+			break;
+		case MIPI_DSI_FMT_RGB666_PACKED:
+			if (output_fmt != MEDIA_BUS_FMT_RGB666_1X18)
+				return NULL;
+			break;
+		case MIPI_DSI_FMT_RGB565:
+			if (output_fmt != MEDIA_BUS_FMT_RGB565_1X16)
+				return NULL;
+			break;
+		default:
+			return NULL;
+		}
+	}
+
+	/* Since dsim cannot do any color conversion, so the
+	 * bus format output by mipi dsi should just be
+	 * propagated to the bus format recieved by mipi dsi
+	 * directly.
+	 */
+	input_fmts = drm_atomic_helper_bridge_propagate_bus_fmt(bridge,
+								bridge_state,
+								crtc_state,
+								conn_state,
+								output_fmt,
+								num_input_fmts);
+
+	return input_fmts;
+}
+
+static int sec_mipi_dsim_bridge_atomic_check(struct drm_bridge *bridge,
+					     struct drm_bridge_state *bridge_state,
+					     struct drm_crtc_state *crtc_state,
+					     struct drm_connector_state *conn_state)
+{
+	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
+	struct drm_bus_cfg *input_bus_cfg = &bridge_state->input_bus_cfg;
+	struct sec_mipi_dsim *dsim = bridge->driver_private;
+
+	/* seems unnecessary to check the input bus format
+	 * again, since during the negotiation process, it
+	 * has already been checked
+	 */
+	if (bridge_state->output_bus_cfg.format == MEDIA_BUS_FMT_FIXED)
+		bridge_state->output_bus_cfg.format = bridge_state->input_bus_cfg.format;
+
+	/* adjust Hsync and Vsync polarities for drm display mode,
+	 * since DSIM can only accept active high Hsync and Vsync
+	 * signals
+	 */
+	if (adjusted_mode->flags & DRM_MODE_FLAG_NHSYNC) {
+		adjusted_mode->flags &= ~DRM_MODE_FLAG_NHSYNC;
+		adjusted_mode->flags |= DRM_MODE_FLAG_PHSYNC;
+	}
+
+	if (adjusted_mode->flags & DRM_MODE_FLAG_NVSYNC) {
+		adjusted_mode->flags &= ~DRM_MODE_FLAG_NVSYNC;
+		adjusted_mode->flags |= DRM_MODE_FLAG_PVSYNC;
+	}
+
+	/* adjust input DE and pixel data sample polarities for
+	 * input bus_flags, since DSIM can only accept active
+	 * high DE and sample pixel data at clock postive edge
+	 */
+	if (input_bus_cfg->flags & DRM_BUS_FLAG_DE_LOW ||
+	    !(input_bus_cfg->flags & DRM_BUS_FLAG_DE_HIGH)) {
+		input_bus_cfg->flags &= ~DRM_BUS_FLAG_DE_LOW;
+		input_bus_cfg->flags |= DRM_BUS_FLAG_DE_HIGH;
+	}
+
+	if (input_bus_cfg->flags & DRM_BUS_FLAG_PIXDATA_SAMPLE_NEGEDGE ||
+	    !(input_bus_cfg->flags & DRM_BUS_FLAG_PIXDATA_SAMPLE_POSEDGE)) {
+		input_bus_cfg->flags &= ~DRM_BUS_FLAG_PIXDATA_SAMPLE_NEGEDGE;
+		input_bus_cfg->flags |= DRM_BUS_FLAG_PIXDATA_SAMPLE_POSEDGE;
+	}
+
+	/* workaround for CEA standard mode "1280x720@60" "1920x1080p24"
+	 * display on 4 data lanes with Non-burst with sync
+	 * pulse DSI mode, since use the standard horizontal
+	 * timings cannot display correctly. And this code
+	 * cannot be put into the dsim Bridge's mode_fixup,
+	 * since the DSI device lane number change always
+	 * happens after that.
+	 */
+	if (!strcmp(adjusted_mode->name, "1280x720") &&
+	    drm_mode_vrefresh(adjusted_mode) == 60   &&
+	    dsim->lanes == 4		    &&
+	    dsim->mode_flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE) {
+		adjusted_mode->hsync_start += 2;
+		adjusted_mode->hsync_end   += 2;
+		adjusted_mode->htotal      += 2;
+	}
+
+	if (!strcmp(adjusted_mode->name, "1920x1080") &&
+	    drm_mode_vrefresh(adjusted_mode) == 24 &&
+	    dsim->lanes == 4		    &&
+	    dsim->mode_flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE) {
+		adjusted_mode->hsync_start += 2;
+		adjusted_mode->hsync_end   += 2;
+		adjusted_mode->htotal      += 2;
+	}
+
+	return 0;
+}
+
 static const struct drm_bridge_funcs sec_mipi_dsim_bridge_funcs = {
+	.atomic_check = sec_mipi_dsim_bridge_atomic_check,
+	.atomic_reset = drm_atomic_helper_bridge_reset,
+	.atomic_duplicate_state = drm_atomic_helper_bridge_duplicate_state,
+	.atomic_destroy_state = drm_atomic_helper_bridge_destroy_state,
+	.atomic_get_input_bus_fmts = sec_mipi_dsim_atomic_get_input_bus_fmts,
 	.attach     = sec_mipi_dsim_bridge_attach,
 	.enable     = sec_mipi_dsim_bridge_enable,
 	.disable    = sec_mipi_dsim_bridge_disable,
 	.mode_set   = sec_mipi_dsim_bridge_mode_set,
-	.mode_fixup = sec_mipi_dsim_bridge_mode_fixup,
 };
 
 void sec_mipi_dsim_suspend(struct device *dev)
 {
-	struct sec_mipi_dsim *dsim = dev_get_drvdata(dev);
-
 	/* TODO: add dsim reset */
-
-	clk_disable_unprepare(dsim->clk_cfg);
-
-	clk_disable_unprepare(dsim->clk_pllref);
 }
 EXPORT_SYMBOL(sec_mipi_dsim_suspend);
 
 void sec_mipi_dsim_resume(struct device *dev)
 {
 	struct sec_mipi_dsim *dsim = dev_get_drvdata(dev);
-
-	clk_prepare_enable(dsim->clk_pllref);
-
-	clk_prepare_enable(dsim->clk_cfg);
 
 	sec_mipi_dsim_irq_init(dsim);
 
@@ -1801,7 +1828,7 @@ static int sec_mipi_dsim_connector_get_modes(struct drm_connector *connector)
 	if (WARN_ON(!dsim->panel))
 		return -ENODEV;
 
-	return drm_panel_get_modes(dsim->panel);
+	return drm_panel_get_modes(dsim->panel, connector);
 }
 
 static const struct drm_connector_helper_funcs
@@ -1828,7 +1855,7 @@ static const struct drm_connector_funcs sec_mipi_dsim_connector_funcs = {
 };
 
 int sec_mipi_dsim_bind(struct device *dev, struct device *master, void *data,
-		       struct drm_encoder *encoder, struct resource *res,
+		       struct drm_encoder *encoder, void __iomem *base,
 		       int irq, const struct sec_mipi_dsim_plat_data *pdata)
 {
 	int ret, version;
@@ -1847,30 +1874,12 @@ int sec_mipi_dsim_bind(struct device *dev, struct device *master, void *data,
 	}
 
 	dsim->dev = dev;
-	dsim->irq = irq;
+	dsim->base = base;
 	dsim->pdata = pdata;
 	dsim->encoder = encoder;
 
 	dsim->dsi_host.ops = &sec_mipi_dsim_host_ops;
 	dsim->dsi_host.dev = dev;
-
-	dsim->base = devm_ioremap_resource(dev, res);
-	if (IS_ERR(dsim->base))
-		return PTR_ERR(dsim->base);
-
-	dsim->clk_pllref = devm_clk_get(dev, "pll-ref");
-	if (IS_ERR(dsim->clk_pllref)) {
-		ret = PTR_ERR(dsim->clk_pllref);
-		dev_err(dev, "Unable to get phy pll reference clock: %d\n", ret);
-		return ret;
-	}
-
-	dsim->clk_cfg = devm_clk_get(dev, "cfg");
-	if (IS_ERR(dsim->clk_cfg)) {
-		ret = PTR_ERR(dsim->clk_cfg);
-		dev_err(dev, "Unable to get configuration clock: %d\n", ret);
-		return ret;
-	}
 
 	dev_set_drvdata(dev, dsim);
 
@@ -1888,8 +1897,7 @@ int sec_mipi_dsim_bind(struct device *dev, struct device *master, void *data,
 		return ret;
 	}
 
-	ret = devm_request_irq(dev, dsim->irq,
-			       sec_mipi_dsim_irq_handler,
+	ret = devm_request_irq(dev, irq, sec_mipi_dsim_irq_handler,
 			       0, dev_name(dev), dsim);
 	if (ret) {
 		dev_err(dev, "failed to request dsim irq: %d\n", ret);
@@ -1932,7 +1940,7 @@ int sec_mipi_dsim_bind(struct device *dev, struct device *master, void *data,
 	bridge->encoder = encoder;
 
 	/* attach sec dsim bridge and its next bridge if exists */
-	ret = drm_bridge_attach(encoder, bridge, NULL);
+	ret = drm_bridge_attach(encoder, bridge, NULL, 0);
 	if (ret) {
 		dev_err(dev, "Failed to attach bridge: %s\n", dev_name(dev));
 
@@ -1977,10 +1985,6 @@ panel:
 		ret = drm_connector_attach_encoder(connector, encoder);
 		if (ret)
 			goto cleanup_connector;
-
-		ret = drm_panel_attach(dsim->panel, connector);
-		if (ret)
-			goto cleanup_connector;
 	}
 
 	dev_dbg(dev, "sec-dsim bridge bind end\n");
@@ -1999,10 +2003,8 @@ void sec_mipi_dsim_unbind(struct device *dev, struct device *master, void *data)
 {
 	struct sec_mipi_dsim *dsim = dev_get_drvdata(dev);
 
-	if (dsim->panel) {
-		drm_panel_detach(dsim->panel);
+	if (dsim->panel)
 		drm_connector_cleanup(&dsim->connector);
-	}
 
 	mipi_dsi_host_unregister(&dsim->dsi_host);
 }

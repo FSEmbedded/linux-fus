@@ -500,10 +500,6 @@ isert_connect_release(struct isert_conn *isert_conn)
 	if (isert_conn->qp)
 		isert_destroy_qp(isert_conn);
 
-		isert_comp_put(comp);
-		ib_destroy_qp(isert_conn->qp);
-	}
-
 	if (isert_conn->login_desc)
 		isert_free_login_buf(isert_conn);
 

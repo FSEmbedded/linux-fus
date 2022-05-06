@@ -11,6 +11,11 @@ Optional properties:
 - vbus-supply: A phandle to the regulator for USB VBUS.
 - vbus-power-supply: A phandle to the vbus power supply provider, used to
 		     to detect the possible BC charger type of it.
+- fsl,phy-tx-vboost-level: Sets the boosted transmit launch amplitude (mVppd)
+			   Valid settings:
+			   - 011: Corresponds to a launch amplitude of 1.12 V.
+			   - 010: Corresponds to a launch amplitude of 1.04 V.
+			   - 000: Corresponds to a launch amplitude of 0.88 V.
 - fsl,phy-tx-vref-tune: Adjusts the high-speed DC level voltage.
 			- 1111: + 24%
 			- 1110: + 22%

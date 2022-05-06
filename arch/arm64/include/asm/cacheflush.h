@@ -94,9 +94,6 @@ static inline void flush_icache_range(unsigned long start, unsigned long end)
 
 	kick_all_cpus_sync();
 }
-
-	kick_all_cpus_sync();
-}
 #define flush_icache_range flush_icache_range
 
 /*

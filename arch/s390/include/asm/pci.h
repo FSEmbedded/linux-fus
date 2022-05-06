@@ -212,9 +212,7 @@ void zpci_remove_reserved_devices(void);
 /* CLP */
 int clp_setup_writeback_mio(void);
 int clp_scan_pci_devices(void);
-int clp_rescan_pci_devices(void);
-int clp_rescan_pci_devices_simple(u32 *fid);
-int clp_add_pci_device(u32, u32, int);
+int clp_query_pci_fn(struct zpci_dev *zdev);
 int clp_enable_fh(struct zpci_dev *, u8);
 int clp_disable_fh(struct zpci_dev *);
 int clp_get_state(u32 fid, enum zpci_state *state);

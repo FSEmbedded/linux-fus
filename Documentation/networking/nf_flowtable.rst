@@ -83,6 +83,11 @@ flowtable and add one rule to your forward chain::
 		flowtable f {
 			hook ingress priority 0; devices = { eth0, eth1 };
 		}
+		chain y {
+			type filter hook forward priority 0; policy accept;
+			ip protocol tcp flow offload @f
+			counter packets 0 bytes 0
+		}
 	}
 
 This example adds the flowtable 'f' to the ingress hook of the eth0 and eth1

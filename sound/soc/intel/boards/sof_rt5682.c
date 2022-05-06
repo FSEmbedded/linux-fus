@@ -41,6 +41,9 @@
 #define SOF_RT5682_NUM_HDMIDEV_MASK		(GENMASK(12, 10))
 #define SOF_RT5682_NUM_HDMIDEV(quirk)	\
 	((quirk << SOF_RT5682_NUM_HDMIDEV_SHIFT) & SOF_RT5682_NUM_HDMIDEV_MASK)
+#define SOF_RT1015_SPEAKER_AMP_PRESENT		BIT(13)
+#define SOF_MAX98373_SPEAKER_AMP_PRESENT	BIT(14)
+#define SOF_MAX98360A_SPEAKER_AMP_PRESENT	BIT(15)
 
 /* Default: MCLK on, MCLK 19.2M, SSP0  */
 static unsigned long sof_rt5682_quirk = SOF_RT5682_MCLK_EN |
@@ -742,7 +745,7 @@ static int sof_audio_probe(struct platform_device *pdev)
 
 	dmi_check_system(sof_rt5682_quirk_table);
 
-	mach = (&pdev->dev)->platform_data;
+	mach = pdev->dev.platform_data;
 
 	/* A speaker amp might not be present when the quirk claims one is.
 	 * Detect this via whether the machine driver match includes quirk_data.
@@ -876,21 +879,6 @@ static const struct platform_device_id board_ids[] = {
 };
 MODULE_DEVICE_TABLE(platform, board_ids);
 
-static const struct platform_device_id board_ids[] = {
-	{
-		.name = "sof_rt5682",
-	},
-	{
-		.name = "tgl_max98357a_rt5682",
-		.driver_data = (kernel_ulong_t)(SOF_RT5682_MCLK_EN |
-					SOF_RT5682_SSP_CODEC(0) |
-					SOF_SPEAKER_AMP_PRESENT |
-					SOF_RT5682_SSP_AMP(1) |
-					SOF_RT5682_NUM_HDMIDEV(4)),
-	},
-	{ }
-};
-
 static struct platform_driver sof_audio = {
 	.probe = sof_audio_probe,
 	.driver = {
@@ -908,3 +896,6 @@ MODULE_AUTHOR("Sathya Prakash M R <sathya.prakash.m.r@intel.com>");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:sof_rt5682");
 MODULE_ALIAS("platform:tgl_max98357a_rt5682");
+MODULE_ALIAS("platform:jsl_rt5682_rt1015");
+MODULE_ALIAS("platform:tgl_max98373_rt5682");
+MODULE_ALIAS("platform:jsl_rt5682_max98360a");

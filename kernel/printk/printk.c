@@ -424,45 +424,11 @@ static char *log_buf = __log_buf;
 static u32 log_buf_len = __LOG_BUF_LEN;
 
 /*
- * We cannot access per-CPU data (e.g. per-CPU flush irq_work) before
- * per_cpu_areas are initialised. This variable is set to true when
- * it's safe to access per-CPU data.
+ * Define the average message size. This only affects the number of
+ * descriptors that will be available. Underestimating is better than
+ * overestimating (too many available descriptors is better than not enough).
  */
-static bool __printk_percpu_data_ready __read_mostly;
-
-bool printk_percpu_data_ready(void)
-{
-	return __printk_percpu_data_ready;
-}
-
-/* Return log buffer address */
-char *log_buf_addr_get(void)
-{
-	return log_buf;
-}
-
-/* Return log buffer size */
-u32 log_buf_len_get(void)
-{
-	return log_buf_len;
-}
-
-/* human readable text of the record */
-static char *log_text(const struct printk_log *msg)
-{
-	return (char *)msg + sizeof(struct printk_log);
-}
-
-/* optional key/value pair dictionary attached to the record */
-static char *log_dict(const struct printk_log *msg)
-{
-	return (char *)msg + sizeof(struct printk_log) + msg->text_len;
-}
-
-/* get record by index; idx must point to valid msg */
-static struct printk_log *log_from_idx(u32 idx)
-{
-	struct printk_log *msg = (struct printk_log *)(log_buf + idx);
+#define PRB_AVGBITS 5	/* 32 character average length */
 
 #if CONFIG_LOG_BUF_SHIFT <= PRB_AVGBITS
 #error CONFIG_LOG_BUF_SHIFT value too small.
@@ -1113,6 +1079,33 @@ static void __init set_percpu_data_ready(void)
 	__printk_percpu_data_ready = true;
 }
 
+static unsigned int __init add_to_rb(struct printk_ringbuffer *rb,
+				     struct printk_record *r)
+{
+	struct prb_reserved_entry e;
+	struct printk_record dest_r;
+
+	prb_rec_init_wr(&dest_r, r->info->text_len);
+
+	if (!prb_reserve(&e, rb, &dest_r))
+		return 0;
+
+	memcpy(&dest_r.text_buf[0], &r->text_buf[0], r->info->text_len);
+	dest_r.info->text_len = r->info->text_len;
+	dest_r.info->facility = r->info->facility;
+	dest_r.info->level = r->info->level;
+	dest_r.info->flags = r->info->flags;
+	dest_r.info->ts_nsec = r->info->ts_nsec;
+	dest_r.info->caller_id = r->info->caller_id;
+	memcpy(&dest_r.info->dev_info, &r->info->dev_info, sizeof(dest_r.info->dev_info));
+
+	prb_final_commit(&e);
+
+	return prb_record_text_space(&e);
+}
+
+static char setup_text_buf[LOG_LINE_MAX] __initdata;
+
 void __init setup_log_buf(int early)
 {
 	struct printk_info *new_infos;
@@ -1126,14 +1119,6 @@ void __init setup_log_buf(int early)
 	char *new_log_buf;
 	unsigned int free;
 	u64 seq;
-
-	/*
-	 * Some archs call setup_log_buf() multiple times - first is very
-	 * early, e.g. from setup_arch(), and second - when percpu_areas
-	 * are initialised.
-	 */
-	if (!early)
-		set_percpu_data_ready();
 
 	/*
 	 * Some archs call setup_log_buf() multiple times - first is very
@@ -2874,7 +2859,6 @@ void register_console(struct console *newcon)
 		exclusive_console = newcon;
 		exclusive_console_stop_seq = console_seq;
 		console_seq = syslog_seq;
-		console_idx = syslog_idx;
 		logbuf_unlock_irqrestore(flags);
 	}
 	console_unlock();

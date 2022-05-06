@@ -733,7 +733,7 @@ static int meson_ao_cec_g12a_probe(struct platform_device *pdev)
 	return 0;
 
 out_probe_notify:
-	cec_notifier_cec_adap_unregister(ao_cec->notify);
+	cec_notifier_cec_adap_unregister(ao_cec->notify, ao_cec->adap);
 
 out_probe_core_clk:
 	clk_disable_unprepare(ao_cec->core);

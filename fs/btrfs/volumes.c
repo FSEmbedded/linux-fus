@@ -1053,12 +1053,12 @@ static void __btrfs_free_extra_devids(struct btrfs_fs_devices *fs_devices,
 	list_for_each_entry_safe(device, next, &fs_devices->devices, dev_list) {
 		if (test_bit(BTRFS_DEV_STATE_IN_FS_METADATA, &device->dev_state)) {
 			if (!test_bit(BTRFS_DEV_STATE_REPLACE_TGT,
-			     &device->dev_state) &&
+				      &device->dev_state) &&
 			    !test_bit(BTRFS_DEV_STATE_MISSING,
 				      &device->dev_state) &&
-			     (!latest_dev ||
-			      device->generation > latest_dev->generation)) {
-				latest_dev = device;
+			    (!*latest_dev ||
+			     device->generation > (*latest_dev)->generation)) {
+				*latest_dev = device;
 			}
 			continue;
 		}
@@ -2698,7 +2698,7 @@ int btrfs_init_new_device(struct btrfs_fs_info *fs_info, const char *device_path
 	btrfs_forget_devices(device_path);
 
 	/* Update ctime/mtime for blkid or udev */
-	update_dev_time(device_path);
+	update_dev_time(bdev);
 
 	return ret;
 
@@ -3208,7 +3208,7 @@ static int insert_balance_item(struct btrfs_fs_info *fs_info,
 	if (!path)
 		return -ENOMEM;
 
-	trans = btrfs_start_transaction_fallback_global_rsv(root, 0);
+	trans = btrfs_start_transaction(root, 0);
 	if (IS_ERR(trans)) {
 		btrfs_free_path(path);
 		return PTR_ERR(trans);
@@ -4056,7 +4056,7 @@ int btrfs_balance(struct btrfs_fs_info *fs_info,
 
 	/*
 	 * rw_devices will not change at the moment, device add/delete/replace
-	 * are excluded by EXCL_OP
+	 * are exclusive
 	 */
 	num_devices = fs_info->fs_devices->rw_devices;
 
@@ -6573,8 +6573,6 @@ struct btrfs_device *btrfs_alloc_device(struct btrfs_fs_info *fs_info,
 		memcpy(dev->uuid, uuid, BTRFS_UUID_SIZE);
 	else
 		generate_random_uuid(dev->uuid);
-
-	btrfs_init_work(&dev->work, pending_bios_fn, NULL, NULL);
 
 	return dev;
 }

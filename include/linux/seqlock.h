@@ -519,15 +519,8 @@ static inline void write_seqcount_t_begin_nested(seqcount_t *s, int subclass)
  * write_seqcount_begin() - start a seqcount_t write side critical section
  * @s: Pointer to seqcount_t or any of the seqcount_LOCKNAME_t variants
  *
- * Note that, writes surrounding the barrier should be declared atomic (e.g.
- * via WRITE_ONCE): a) to ensure the writes become visible to other threads
- * atomically, avoiding compiler optimizations; b) to document which writes are
- * meant to propagate to the reader critical section. This is necessary because
- * neither writes before and after the barrier are enclosed in a seq-writer
- * critical section that would ensure readers are aware of ongoing writes.
- *
- *      seqcount_t seq;
- *      bool X = true, Y = false;
+ * write_seqcount_begin opens a write side critical section of the given
+ * seqcount_t.
  *
  * Context: seqcount_t write side critical sections must be serialized and
  * non-preemptible. If readers can be invoked from hardirq or softirq
@@ -602,11 +595,11 @@ static inline void write_seqcount_t_end(seqcount_t *s)
  *
  *      void write(void)
  *      {
- *              WRITE_ONCE(Y, true);
+ *		WRITE_ONCE(Y, true);
  *
  *		raw_write_seqcount_barrier(seq);
  *
- *              WRITE_ONCE(X, false);
+ *		WRITE_ONCE(X, false);
  *      }
  */
 #define raw_write_seqcount_barrier(s)					\

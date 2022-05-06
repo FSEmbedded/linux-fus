@@ -225,7 +225,7 @@ int gpiod_get_direction(struct gpio_desc *desc)
 	    test_bit(FLAG_IS_OUT, &desc->flags))
 		return 0;
 
-	if (!chip->get_direction)
+	if (!gc->get_direction)
 		return -ENOTSUPP;
 
 	ret = gc->get_direction(gc, offset);
@@ -768,8 +768,8 @@ err_remove_of_chip:
 	gpiochip_free_hogs(gc);
 	of_gpiochip_remove(gc);
 err_free_gpiochip_mask:
-	gpiochip_remove_pin_ranges(chip);
-	gpiochip_free_valid_mask(chip);
+	gpiochip_remove_pin_ranges(gc);
+	gpiochip_free_valid_mask(gc);
 err_remove_from_list:
 	spin_lock_irqsave(&gpio_lock, flags);
 	list_del(&gdev->list);
@@ -822,11 +822,11 @@ void gpiochip_remove(struct gpio_chip *gc)
 	gpiochip_free_hogs(gc);
 	/* Numb the device, cancelling all outstanding operations */
 	gdev->chip = NULL;
-	gpiochip_irqchip_remove(chip);
-	acpi_gpiochip_remove(chip);
-	of_gpiochip_remove(chip);
-	gpiochip_remove_pin_ranges(chip);
-	gpiochip_free_valid_mask(chip);
+	gpiochip_irqchip_remove(gc);
+	acpi_gpiochip_remove(gc);
+	of_gpiochip_remove(gc);
+	gpiochip_remove_pin_ranges(gc);
+	gpiochip_free_valid_mask(gc);
 	/*
 	 * We accept no more calls into the driver from this point, so
 	 * NULL the driver data pointer
@@ -1167,7 +1167,13 @@ static int gpiochip_hierarchy_irq_domain_alloc(struct irq_domain *d,
 	chip_dbg(gc, "alloc_irqs_parent for %d parent hwirq %d\n",
 		  irq, parent_hwirq);
 	irq_set_lockdep_class(irq, gc->irq.lock_key, gc->irq.request_key);
-	ret = irq_domain_alloc_irqs_parent(d, irq, 1, &parent_fwspec);
+	ret = irq_domain_alloc_irqs_parent(d, irq, 1, parent_arg);
+	/*
+	 * If the parent irqdomain is msi, the interrupts have already
+	 * been allocated, so the EEXIST is good.
+	 */
+	if (irq_domain_is_msi(d->parent) && (ret == -EEXIST))
+		ret = 0;
 	if (ret)
 		chip_err(gc,
 			 "failed to allocate parent hwirq %d for hwirq %lu\n",
@@ -1468,18 +1474,8 @@ static void gpiochip_irq_disable(struct irq_data *d)
 {
 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
 
-	/*
-	 * Since we override .irq_disable() we need to mimic the
-	 * behaviour of __irq_disable() in irq/chip.c.
-	 * First call .irq_disable() if it exists, else mimic the
-	 * behaviour of mask_irq() which calls .irq_mask() if
-	 * it exists.
-	 */
-	if (chip->irq.irq_disable)
-		chip->irq.irq_disable(d);
-	else if (chip->irq.chip->irq_mask)
-		chip->irq.chip->irq_mask(d);
-	gpiochip_disable_irq(chip, d->hwirq);
+	gc->irq.irq_disable(d);
+	gpiochip_disable_irq(gc, d->hwirq);
 }
 
 static void gpiochip_set_irq_hooks(struct gpio_chip *gc)
@@ -3256,7 +3252,7 @@ int gpiochip_lock_as_irq(struct gpio_chip *gc, unsigned int offset)
 	/* To be valid for IRQ the line needs to be input or open drain */
 	if (test_bit(FLAG_IS_OUT, &desc->flags) &&
 	    !test_bit(FLAG_OPEN_DRAIN, &desc->flags)) {
-		chip_err(chip,
+		chip_err(gc,
 			 "%s: tried to flag a GPIO set as output for IRQ\n",
 			 __func__);
 		return -EIO;
@@ -3727,8 +3723,8 @@ static struct gpio_desc *gpiod_find(struct device *dev, const char *con_id,
 		if (gc->ngpio <= p->chip_hwnum) {
 			dev_err(dev,
 				"requested GPIO %u (%u) is out of range [0..%u] for chip %s\n",
-				idx, p->chip_hwnum, chip->ngpio - 1,
-				chip->label);
+				idx, p->chip_hwnum, gc->ngpio - 1,
+				gc->label);
 			return ERR_PTR(-EINVAL);
 		}
 

@@ -271,7 +271,7 @@ static int omap_hdq_break(struct hdq_data *hdq_data)
 	/* check irqstatus */
 	if (!(tmp_status & OMAP_HDQ_INT_STATUS_TIMEOUT)) {
 		dev_dbg(hdq_data->dev, "timeout waiting for TIMEOUT, %x\n",
-				tmp_status);
+			tmp_status);
 		ret = -ETIMEDOUT;
 		goto out;
 	}

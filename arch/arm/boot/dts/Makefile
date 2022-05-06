@@ -625,9 +625,12 @@ dtb-$(CONFIG_SOC_IMX6SL) += \
 	imx6sl-evk-csi.dtb \
 	imx6sl-evk-uart.dtb \
 	imx6sl-evk-btwifi.dtb \
+	imx6sl-tolino-shine2hd.dtb \
+	imx6sl-tolino-shine3.dtb \
 	imx6sl-warp.dtb
 dtb-$(CONFIG_SOC_IMX6SLL) += \
 	imx6sll-evk.dtb \
+	imx6sll-kobo-clarahd.dtb \
 	imx6sll-evk-reva.dtb \
 	imx6sll-evk-btwifi.dtb
 dtb-$(CONFIG_SOC_IMX6SX) += \
@@ -653,14 +656,14 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	imx6ul-14x14-evk-csi.dtb \
 	imx6ul-14x14-evk-emmc.dtb \
 	imx6ul-14x14-evk-btwifi.dtb \
-	imx6ul-14x14-evk-btwifi-oob.dtb \
+	imx6ul-14x14-evk-btwifi-sdio3_0.dtb \
 	imx6ul-14x14-evk-ecspi-slave.dtb \
 	imx6ul-14x14-evk-ecspi.dtb \
 	imx6ul-14x14-evk-gpmi-weim.dtb \
 	imx6ul-9x9-evk.dtb \
 	imx6ul-9x9-evk-ldo.dtb \
 	imx6ul-9x9-evk-btwifi.dtb \
-	imx6ul-9x9-evk-btwifi-oob.dtb \
+	imx6ul-9x9-evk-btwifi-sdio3_0.dtb \
 	imx6ul-ccimx6ulsbcexpress.dtb \
 	imx6ul-ccimx6ulsbcpro.dtb \
 	imx6ul-geam.dtb \
@@ -680,12 +683,12 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	imx6ull-14x14-evk.dtb \
 	imx6ull-14x14-evk-emmc.dtb \
 	imx6ull-14x14-evk-btwifi.dtb \
-	imx6ull-14x14-evk-btwifi-oob.dtb \
+	imx6ull-14x14-evk-btwifi-sdio3_0.dtb \
 	imx6ull-14x14-evk-gpmi-weim.dtb \
 	imx6ull-9x9-evk.dtb \
 	imx6ull-9x9-evk-ldo.dtb \
 	imx6ull-9x9-evk-btwifi.dtb \
-	imx6ull-9x9-evk-btwifi-oob.dtb \
+	imx6ull-9x9-evk-btwifi-sdio3_0.dtb \
 	imx6ull-colibri-eval-v3.dtb \
 	imx6ull-colibri-wifi-eval-v3.dtb \
 	imx6ull-myir-mys-6ulx-eval.dtb \
@@ -695,6 +698,7 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	imx6ull-phytec-segin-lc-rdk-nand.dtb \
 	imx6ulz-14x14-evk.dtb \
 	imx6ulz-14x14-evk-btwifi.dtb \
+	imx6ulz-14x14-evk-btwifi-sdio3_0.dtb \
 	imx6ulz-14x14-evk-gpmi-weim.dtb \
 	imx6ulz-14x14-evk-emmc.dtb
 dtb-$(CONFIG_SOC_IMX7D) += \
@@ -716,6 +720,7 @@ dtb-$(CONFIG_SOC_IMX7D) += \
 	imx7d-sdb-mipi-dsi.dtb \
 	imx7d-sdb-gpmi-weim.dtb \
 	imx7d-sdb-m4.dtb \
+	imx7d-sdb-mqs.dtb \
 	imx7d-sdb-qspi.dtb \
 	imx7d-sdb-reva.dtb \
 	imx7d-sdb-sht11.dtb \
@@ -730,6 +735,7 @@ dtb-$(CONFIG_SOC_IMX7D) += \
 	imx7s-mba7.dtb \
 	imx7s-warp.dtb
 dtb-$(CONFIG_SOC_IMX7ULP) += \
+	imx7ulp-com.dtb \
 	imx7ulp-evk.dtb \
 	imx7ulp-evk-ft5416.dtb \
 	imx7ulp-evk-mipi.dtb \

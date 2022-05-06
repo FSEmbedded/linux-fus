@@ -356,54 +356,7 @@ static const struct iommu_flush_ops mmu_tlb_ops = {
 static struct panfrost_gem_mapping *
 addr_to_mapping(struct panfrost_device *pfdev, int as, u64 addr)
 {
-	struct panfrost_mmu *mmu = &priv->mmu;
-	struct panfrost_device *pfdev = priv->pfdev;
-
-	INIT_LIST_HEAD(&mmu->list);
-	mmu->as = -1;
-
-	mmu->pgtbl_cfg = (struct io_pgtable_cfg) {
-		.pgsize_bitmap	= SZ_4K | SZ_2M,
-		.ias		= FIELD_GET(0xff, pfdev->features.mmu_features),
-		.oas		= FIELD_GET(0xff00, pfdev->features.mmu_features),
-		.tlb		= &mmu_tlb_ops,
-		.iommu_dev	= pfdev->dev,
-	};
-
-	mmu->pgtbl_ops = alloc_io_pgtable_ops(ARM_MALI_LPAE, &mmu->pgtbl_cfg,
-					      priv);
-	if (!mmu->pgtbl_ops)
-		return -EINVAL;
-
-	return 0;
-}
-
-void panfrost_mmu_pgtable_free(struct panfrost_file_priv *priv)
-{
-	struct panfrost_device *pfdev = priv->pfdev;
-	struct panfrost_mmu *mmu = &priv->mmu;
-
-	spin_lock(&pfdev->as_lock);
-	if (mmu->as >= 0) {
-		pm_runtime_get_noresume(pfdev->dev);
-		if (pm_runtime_active(pfdev->dev))
-			panfrost_mmu_disable(pfdev, mmu->as);
-		pm_runtime_put_autosuspend(pfdev->dev);
-
-		clear_bit(mmu->as, &pfdev->as_alloc_mask);
-		clear_bit(mmu->as, &pfdev->as_in_use_mask);
-		list_del(&mmu->list);
-	}
-	spin_unlock(&pfdev->as_lock);
-
-	free_io_pgtable_ops(mmu->pgtbl_ops);
-}
-
-static struct panfrost_gem_mapping *
-addr_to_mapping(struct panfrost_device *pfdev, int as, u64 addr)
-{
 	struct panfrost_gem_mapping *mapping = NULL;
-	struct panfrost_file_priv *priv;
 	struct drm_mm_node *node;
 	u64 offset = addr >> PAGE_SHIFT;
 	struct panfrost_mmu *mmu;
@@ -528,6 +481,7 @@ static int panfrost_mmu_map_fault_addr(struct panfrost_device *pfdev, int as,
 
 	dev_dbg(pfdev->dev, "mapped page fault @ AS%d %llx", as, addr);
 
+out:
 	panfrost_gem_mapping_put(bomapping);
 
 	return 0;
@@ -700,28 +654,12 @@ static irqreturn_t panfrost_mmu_irq_handler_thread(int irq, void *data)
 		access_type = (fault_status >> 8) & 0x3;
 		source_id = (fault_status >> 16);
 
+		mmu_write(pfdev, MMU_INT_CLEAR, mask);
+
 		/* Page fault only */
 		ret = -1;
 		if ((status & mask) == BIT(i) && (exception_type & 0xF8) == 0xC0)
 			ret = panfrost_mmu_map_fault_addr(pfdev, i, addr);
-
-		if (ret)
-			/* terminal fault, print info about the fault */
-			dev_err(pfdev->dev,
-				"Unhandled Page fault in AS%d at VA 0x%016llX\n"
-				"Reason: %s\n"
-				"raw fault status: 0x%X\n"
-				"decoded fault status: %s\n"
-				"exception type 0x%X: %s\n"
-				"access type 0x%X: %s\n"
-				"source id 0x%X\n",
-				i, addr,
-				"TODO",
-				fault_status,
-				(fault_status & (1 << 10) ? "DECODER FAULT" : "SLAVE FAULT"),
-				exception_type, panfrost_exception_name(pfdev, exception_type),
-				access_type, access_type_name(pfdev, fault_status),
-				source_id);
 
 		if (ret)
 			/* terminal fault, print info about the fault */

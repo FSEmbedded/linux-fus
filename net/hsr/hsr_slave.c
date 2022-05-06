@@ -40,6 +40,7 @@ static rx_handler_result_t hsr_handle_frame(struct sk_buff **pskb)
 	port = hsr_port_get_rcu(skb->dev);
 	if (!port)
 		goto finish_pass;
+	hsr = port->hsr;
 
 	if (hsr_addr_is_self(port->hsr, eth_hdr(skb)->h_source)) {
 		/* Directly kill frames sent by ourselves */

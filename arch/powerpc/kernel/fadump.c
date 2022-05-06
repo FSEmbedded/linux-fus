@@ -50,6 +50,7 @@ struct kobject *fadump_kobj;
 
 static atomic_t cpus_in_fadump;
 static DEFINE_MUTEX(fadump_mutex);
+
 struct fadump_mrange_info crash_mrange_info = { "crash", NULL, 0, 0, 0, false };
 
 #define RESERVED_RNGS_SZ	16384 /* 16K - 128 entries */

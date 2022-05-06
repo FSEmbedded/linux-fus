@@ -59,7 +59,10 @@ static u32 clip_scaled(int src, int dst, int *clip)
 	if (dst == 0)
 		return 0;
 
-	tmp = mul_u32_u32(src, dst - clip);
+	/* Only clip what we have. Keeps the result bounded. */
+	*clip = min(*clip, dst);
+
+	tmp = mul_u32_u32(src, dst - *clip);
 
 	/*
 	 * Round toward 1.0 when clipping so that we don't accidentally

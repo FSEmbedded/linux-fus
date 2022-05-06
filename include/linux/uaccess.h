@@ -374,22 +374,9 @@ long notrace copy_to_user_nofault(void __user *dst, const void *src,
 long strncpy_from_kernel_nofault(char *dst, const void *unsafe_addr,
 		long count);
 
-/*
- * probe_user_write(): safely attempt to write to a location in user space
- * @dst: address to write to
- * @src: pointer to the data that shall be written
- * @size: size of the data chunk
- *
- * Safely write to address @dst from the buffer at @src.  If a kernel fault
- * happens, handle that and return -EFAULT.
- */
-extern long notrace probe_user_write(void __user *dst, const void *src, size_t size);
-extern long notrace __probe_user_write(void __user *dst, const void *src, size_t size);
-
-extern long strncpy_from_unsafe(char *dst, const void *unsafe_addr, long count);
-extern long strncpy_from_unsafe_user(char *dst, const void __user *unsafe_addr,
-				     long count);
-extern long strnlen_unsafe_user(const void __user *unsafe_addr, long count);
+long strncpy_from_user_nofault(char *dst, const void __user *unsafe_addr,
+		long count);
+long strnlen_user_nofault(const void __user *unsafe_addr, long count);
 
 /**
  * get_kernel_nofault(): safely attempt to read from a location

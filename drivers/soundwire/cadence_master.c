@@ -263,22 +263,6 @@ static int cdns_config_update(struct sdw_cdns *cdns)
 }
 
 /*
- * all changes to the MCP_CONFIG, MCP_CONTROL, MCP_CMDCTRL and MCP_PHYCTRL
- * need to be confirmed with a write to MCP_CONFIG_UPDATE
- */
-static int cdns_update_config(struct sdw_cdns *cdns)
-{
-	int ret;
-
-	ret = cdns_clear_bit(cdns, CDNS_MCP_CONFIG_UPDATE,
-			     CDNS_MCP_CONFIG_UPDATE_BIT);
-	if (ret < 0)
-		dev_err(cdns->dev, "Config update timedout\n");
-
-	return ret;
-}
-
-/*
  * debugfs
  */
 #ifdef CONFIG_DEBUG_FS
@@ -971,21 +955,23 @@ int sdw_cdns_exit_reset(struct sdw_cdns *cdns)
 		     CDNS_MCP_CONTROL_HW_RST,
 		     CDNS_MCP_CONTROL_HW_RST);
 
-	/* enable bus operations with clock and data */
-	cdns_updatel(cdns, CDNS_MCP_CONFIG,
-		     CDNS_MCP_CONFIG_OP,
-		     CDNS_MCP_CONFIG_OP_NORMAL);
-
 	/* commit changes */
-	return cdns_update_config(cdns);
+	cdns_updatel(cdns, CDNS_MCP_CONFIG_UPDATE,
+		     CDNS_MCP_CONFIG_UPDATE_BIT,
+		     CDNS_MCP_CONFIG_UPDATE_BIT);
+
+	/* don't wait here */
+	return 0;
+
 }
 EXPORT_SYMBOL(sdw_cdns_exit_reset);
 
 /**
- * sdw_cdns_enable_interrupt() - Enable SDW interrupts and update config
+ * sdw_cdns_enable_slave_interrupt() - Enable SDW slave interrupts
  * @cdns: Cadence instance
+ * @state: boolean for true/false
  */
-int sdw_cdns_enable_interrupt(struct sdw_cdns *cdns)
+static void cdns_enable_slave_interrupts(struct sdw_cdns *cdns, bool state)
 {
 	u32 mask;
 
@@ -1043,8 +1029,30 @@ update_masks:
 	if (state) {
 		u32 slave_state;
 
-	/* commit changes */
-	return cdns_update_config(cdns);
+		slave_state = cdns_readl(cdns, CDNS_MCP_SLAVE_INTSTAT0);
+		cdns_writel(cdns, CDNS_MCP_SLAVE_INTSTAT0, slave_state);
+		slave_state = cdns_readl(cdns, CDNS_MCP_SLAVE_INTSTAT1);
+		cdns_writel(cdns, CDNS_MCP_SLAVE_INTSTAT1, slave_state);
+	}
+	cdns->interrupt_enabled = state;
+
+	/*
+	 * Complete any on-going status updates before updating masks,
+	 * and cancel queued status updates.
+	 *
+	 * There could be a race with a new interrupt thrown before
+	 * the 3 mask updates below are complete, so in the interrupt
+	 * we use the 'interrupt_enabled' status to prevent new work
+	 * from being queued.
+	 */
+	if (!state)
+		cancel_work_sync(&cdns->work);
+
+	cdns_writel(cdns, CDNS_MCP_SLAVE_INTMASK0, slave_intmask0);
+	cdns_writel(cdns, CDNS_MCP_SLAVE_INTMASK1, slave_intmask1);
+	cdns_writel(cdns, CDNS_MCP_INTMASK, mask);
+
+	return 0;
 }
 EXPORT_SYMBOL(sdw_cdns_enable_interrupt);
 
@@ -1211,10 +1219,6 @@ int sdw_cdns_init(struct sdw_cdns *cdns)
 	cdns_updatel(cdns, CDNS_MCP_CONTROL, CDNS_MCP_CONTROL_CMD_RST,
 		     CDNS_MCP_CONTROL_CMD_RST);
 
-	/* flush command FIFOs */
-	cdns_updatel(cdns, CDNS_MCP_CONTROL, CDNS_MCP_CONTROL_CMD_RST,
-		     CDNS_MCP_CONTROL_CMD_RST);
-
 	/* Set cmd accept mode */
 	cdns_updatel(cdns, CDNS_MCP_CONTROL, CDNS_MCP_CONTROL_CMD_ACCEPT,
 		     CDNS_MCP_CONTROL_CMD_ACCEPT);
@@ -1241,10 +1245,12 @@ int sdw_cdns_init(struct sdw_cdns *cdns)
 
 	/* leave frame delay to hardware default of 0x1F */
 
+	/* leave command retry to hardware default of 0 */
+
 	cdns_writel(cdns, CDNS_MCP_CONFIG, val);
 
-	/* commit changes */
-	return cdns_update_config(cdns);
+	/* changes will be committed later */
+	return 0;
 }
 EXPORT_SYMBOL(sdw_cdns_init);
 

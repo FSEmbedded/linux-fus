@@ -36,7 +36,14 @@ struct dax_region {
 	unsigned int align;
 	struct ida ida;
 	struct resource res;
-	unsigned long long pfn_flags;
+	struct device *seed;
+	struct device *youngest;
+};
+
+struct dax_mapping {
+	struct device dev;
+	int range_id;
+	int id;
 };
 
 /**

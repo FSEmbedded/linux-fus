@@ -99,7 +99,8 @@ static int dpaa2_dbg_ch_show(struct seq_file *file, void *offset)
 
 	seq_printf(file, "Channel stats for %s:\n", priv->net_dev->name);
 	seq_printf(file, "%s%16s%16s%16s%16s%16s%16s\n",
-		   "CHID", "CPU", "Deq busy", "Frames", "CDANs", "Avg Frm/CDAN", "Buf count");
+		   "CHID", "CPU", "Deq busy", "Frames", "CDANs",
+		   "Avg Frm/CDAN", "Buf count");
 
 	for (i = 0; i < priv->num_channels; i++) {
 		ch = priv->channel[i];
@@ -109,7 +110,7 @@ static int dpaa2_dbg_ch_show(struct seq_file *file, void *offset)
 			   ch->stats.dequeue_portal_busy,
 			   ch->stats.frames,
 			   ch->stats.cdan,
-			   ch->stats.frames / ch->stats.cdan,
+			   div64_u64(ch->stats.frames, ch->stats.cdan),
 			   ch->buf_count);
 	}
 
@@ -176,10 +177,14 @@ static const struct file_operations dpaa2_dbg_reset_mc_ops = {
 
 void dpaa2_dbg_add(struct dpaa2_eth_priv *priv)
 {
+	struct fsl_mc_device *dpni_dev;
 	struct dentry *dir;
+	char name[10];
 
 	/* Create a directory for the interface */
-	dir = debugfs_create_dir(priv->net_dev->name, dpaa2_dbg_root);
+	dpni_dev = to_fsl_mc_device(priv->net_dev->dev.parent);
+	snprintf(name, 10, "dpni.%d", dpni_dev->obj_desc.id);
+	dir = debugfs_create_dir(name, dpaa2_dbg_root);
 	priv->dbg.dir = dir;
 
 	/* per-cpu stats file */
@@ -189,7 +194,7 @@ void dpaa2_dbg_add(struct dpaa2_eth_priv *priv)
 	debugfs_create_file("fq_stats", 0444, dir, priv, &dpaa2_dbg_fqs_fops);
 
 	/* per-fq stats file */
-	debugfs_create_file("ch_stats", 0444, dir, priv, &dpaa2_dbg_ch_ops);
+	debugfs_create_file("ch_stats", 0444, dir, priv, &dpaa2_dbg_ch_fops);
 
 	/* reset stats */
 	debugfs_create_file("reset_stats", 0200, dir, priv,

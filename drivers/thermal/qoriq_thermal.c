@@ -4,8 +4,6 @@
 
 #include <linux/clk.h>
 #include <linux/device_cooling.h>
-#include <linux/module.h>
-#include <linux/platform_device.h>
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/module.h>
@@ -19,8 +17,7 @@
 #include "thermal_core.h"
 #include "thermal_hwmon.h"
 
-#define SITES_MAX	16
-#define TMU_TEMP_PASSIVE_COOL_DELTA	10000
+#define SITES_MAX		16
 #define TMR_DISABLE		0x0
 #define TMR_ME			0x80000000
 #define TMR_ALPF		0x0c000000
@@ -28,105 +25,60 @@
 #define TMTMIR_DEFAULT	0x0000000f
 #define TIER_DISABLE	0x0
 #define TEUMR0_V2		0x51009c00
+#define TMSARA_V2		0xe
 #define TMU_VER1		0x1
 #define TMU_VER2		0x2
+#define TMU_TEMP_PASSIVE_COOL_DELTA	10000
 
-/*
- * QorIQ TMU Registers
- */
-struct qoriq_tmu_site_regs {
-	u32 tritsr;		/* Immediate Temperature Site Register */
-	u32 tratsr;		/* Average Temperature Site Register */
-	u8 res0[0x8];
-};
+#define REGS_TMR	0x000	/* Mode Register */
+#define TMR_DISABLE	0x0
+#define TMR_ME		0x80000000
+#define TMR_ALPF	0x0c000000
+#define TMR_MSITE_ALL	GENMASK(15, 0)
 
-struct qoriq_tmu_regs_v1 {
-	u32 tmr;		/* Mode Register */
-	u32 tsr;		/* Status Register */
-	u32 tmtmir;		/* Temperature measurement interval Register */
-	u8 res0[0x14];
-	u32 tier;		/* Interrupt Enable Register */
-	u32 tidr;		/* Interrupt Detect Register */
-	u32 tiscr;		/* Interrupt Site Capture Register */
-	u32 ticscr;		/* Interrupt Critical Site Capture Register */
-	u8 res1[0x10];
-	u32 tmhtcrh;		/* High Temperature Capture Register */
-	u32 tmhtcrl;		/* Low Temperature Capture Register */
-	u8 res2[0x8];
-	u32 tmhtitr;		/* High Temperature Immediate Threshold */
-	u32 tmhtatr;		/* High Temperature Average Threshold */
-	u32 tmhtactr;	/* High Temperature Average Crit Threshold */
-	u8 res3[0x24];
-	u32 ttcfgr;		/* Temperature Configuration Register */
-	u32 tscfgr;		/* Sensor Configuration Register */
-	u8 res4[0x78];
-	struct qoriq_tmu_site_regs site[SITES_MAX];
-	u8 res5[0x9f8];
-	u32 ipbrr0;		/* IP Block Revision Register 0 */
-	u32 ipbrr1;		/* IP Block Revision Register 1 */
-	u8 res6[0x310];
-	u32 ttrcr[4];		/* Temperature Range Control Register */
-};
+#define REGS_TMTMIR	0x008	/* Temperature measurement interval Register */
+#define TMTMIR_DEFAULT	0x0000000f
 
-struct qoriq_tmu_regs_v2 {
-	u32 tmr;		/* Mode Register */
-	u32 tsr;		/* Status Register */
-	u32 tmsr;		/* monitor site register */
-	u32 tmtmir;		/* Temperature measurement interval Register */
-	u8 res0[0x10];
-	u32 tier;		/* Interrupt Enable Register */
-	u32 tidr;		/* Interrupt Detect Register */
-	u8 res1[0x8];
-	u32 tiiscr;		/* interrupt immediate site capture register */
-	u32 tiascr;		/* interrupt average site capture register */
-	u32 ticscr;		/* Interrupt Critical Site Capture Register */
-	u32 res2;
-	u32 tmhtcr;		/* monitor high temperature capture register */
-	u32 tmltcr;		/* monitor low temperature capture register */
-	u32 tmrtrcr;	/* monitor rising temperature rate capture register */
-	u32 tmftrcr;	/* monitor falling temperature rate capture register */
-	u32 tmhtitr;	/* High Temperature Immediate Threshold */
-	u32 tmhtatr;	/* High Temperature Average Threshold */
-	u32 tmhtactr;	/* High Temperature Average Crit Threshold */
-	u32 res3;
-	u32 tmltitr;	/* monitor low temperature immediate threshold */
-	u32 tmltatr;	/* monitor low temperature average threshold register */
-	u32 tmltactr;	/* monitor low temperature average critical threshold */
-	u32 res4;
-	u32 tmrtrctr;	/* monitor rising temperature rate critical threshold */
-	u32 tmftrctr;	/* monitor falling temperature rate critical threshold*/
-	u8 res5[0x8];
-	u32 ttcfgr;	/* Temperature Configuration Register */
-	u32 tscfgr;	/* Sensor Configuration Register */
-	u8 res6[0x78];
-	struct qoriq_tmu_site_regs site[SITES_MAX];
-	u8 res7[0x9f8];
-	u32 ipbrr0;		/* IP Block Revision Register 0 */
-	u32 ipbrr1;		/* IP Block Revision Register 1 */
-	u8 res8[0x300];
-	u32 teumr0;
-	u32 teumr1;
-	u32 teumr2;
-	u32 res9;
-	u32 ttrcr[4];	/* Temperature Range Control Register */
- };
- 
-struct qoriq_tmu_data;
+#define REGS_V2_TMSR	0x008	/* monitor site register */
+
+#define REGS_V2_TMTMIR	0x00c	/* Temperature measurement interval Register */
+
+#define REGS_TIER	0x020	/* Interrupt Enable Register */
+#define TIER_DISABLE	0x0
+
+
+#define REGS_TTCFGR	0x080	/* Temperature Configuration Register */
+#define REGS_TSCFGR	0x084	/* Sensor Configuration Register */
+
+#define REGS_TRITSR(n)	(0x100 + 16 * (n)) /* Immediate Temperature
+					    * Site Register
+					    */
+#define TRITSR_V	BIT(31)
+#define REGS_V2_TMSAR(n)	(0x304 + 16 * (n))	/* TMU monitoring
+						* site adjustment register
+						*/
+#define REGS_TTRnCR(n)	(0xf10 + 4 * (n)) /* Temperature Range n
+					   * Control Register
+					   */
+#define REGS_IPBRR(n)		(0xbf8 + 4 * (n)) /* IP Block Revision
+						   * Register n
+						   */
+#define REGS_V2_TEUMR(n)	(0xf00 + 4 * (n))
 
 /*
  * Thermal zone data
  */
 struct qoriq_sensor {
 	int				id;
+	struct thermal_zone_device	*tzd;
 	int				temp_passive;
 	int				temp_critical;
-	struct thermal_cooling_device 	*cdev;
+	struct thermal_cooling_device	*cdev;
 };
 
 struct qoriq_tmu_data {
 	int ver;
-	struct qoriq_tmu_regs_v1 __iomem *regs;
-	struct qoriq_tmu_regs_v2 __iomem *regs_v2;
+	struct regmap *regmap;
 	struct clk *clk;
 	struct qoriq_sensor	sensor[SITES_MAX];
 };
@@ -137,7 +89,7 @@ enum tmu_trip {
 	TMU_TRIP_NUM,
 };
 
-static void tmu_write(struct qoriq_tmu_data *p, u32 val, void __iomem *addr)
+static struct qoriq_tmu_data *qoriq_sensor_to_data(struct qoriq_sensor *s)
 {
 	return container_of(s, struct qoriq_tmu_data, sensor[s->id]);
 }
@@ -225,9 +177,16 @@ static const struct thermal_zone_of_device_ops tmu_tz_ops = {
 static int qoriq_tmu_register_tmu_zone(struct device *dev,
 				       struct qoriq_tmu_data *qdata)
 {
-	struct qoriq_tmu_data *qdata = platform_get_drvdata(pdev);
+	int id;
 	const struct thermal_trip *trip;
-	int id, sites = 0, ret;
+
+	if (qdata->ver == TMU_VER1) {
+		regmap_write(qdata->regmap, REGS_TMR,
+			     TMR_MSITE_ALL | TMR_ME | TMR_ALPF);
+	} else {
+		regmap_write(qdata->regmap, REGS_V2_TMSR, TMR_MSITE_ALL);
+		regmap_write(qdata->regmap, REGS_TMR, TMR_ME | TMR_ALPF_V2);
+	}
 
 	for (id = 0; id < SITES_MAX; id++) {
 		struct thermal_zone_device *tzd;
@@ -248,51 +207,39 @@ static int qoriq_tmu_register_tmu_zone(struct device *dev,
 			return ret;
 		}
 
+		sensor->tzd = tzd;
+
+		if (devm_thermal_add_hwmon_sysfs(tzd))
+			dev_warn(dev,
+				 "Failed to add hwmon sysfs attributes\n");
 		/* first thermal zone takes care of system-wide device cooling */
 		if (id == 0) {
-			qdata->sensor[id]->cdev = devfreq_cooling_register();
-			if (IS_ERR(qdata->sensor[id]->cdev)) {
-				ret = PTR_ERR(qdata->sensor[id]->cdev);
+			sensor->cdev = devfreq_cooling_register();
+			if (IS_ERR(sensor->cdev)) {
+				ret = PTR_ERR(sensor->cdev);
 				pr_err("failed to register devfreq cooling device: %d\n",
 					ret);
 				return ret;
 			}
 
-			ret = thermal_zone_bind_cooling_device(qdata->sensor[id]->tzd,
+			ret = thermal_zone_bind_cooling_device(sensor->tzd,
 				TMU_TRIP_PASSIVE,
-				qdata->sensor[id]->cdev,
+				sensor->cdev,
 				THERMAL_NO_LIMIT,
 				THERMAL_NO_LIMIT,
 				THERMAL_WEIGHT_DEFAULT);
 			if (ret) {
 				pr_err("binding zone %s with cdev %s failed:%d\n",
-					qdata->sensor[id]->tzd->type,
-					qdata->sensor[id]->cdev->type,
+					sensor->tzd->type,
+					sensor->cdev->type,
 					ret);
-				devfreq_cooling_unregister(qdata->sensor[id]->cdev);
+				devfreq_cooling_unregister(sensor->cdev);
 				return ret;
 			}
 
-			trip = of_thermal_get_trip_points(qdata->sensor[id]->tzd);
-			qdata->sensor[id]->temp_passive = trip[0].temperature;
-			qdata->sensor[id]->temp_critical = trip[1].temperature;
-		}
-
-		if (qdata->ver == TMU_VER1)
-			sites |= 0x1 << (15 - id);
-		else
-			sites |= 0x1 << id;
-	}
-
-	/* Enable monitoring */
-	if (sites != 0) {
-		if (qdata->ver == TMU_VER1) {
-			tmu_write(qdata, sites | TMR_ME | TMR_ALPF,
-					&qdata->regs->tmr);
-		} else {
-			tmu_write(qdata, sites, &qdata->regs_v2->tmsr);
-			tmu_write(qdata, TMR_ME | TMR_ALPF_V2,
-					&qdata->regs_v2->tmr);
+			trip = of_thermal_get_trip_points(sensor->tzd);
+			sensor->temp_passive = trip[0].temperature;
+			sensor->temp_critical = trip[1].temperature;
 		}
 	}
 
@@ -309,19 +256,19 @@ static int qoriq_tmu_calibration(struct device *dev,
 
 	len = of_property_count_u32_elems(np, "fsl,tmu-range");
 	if (len < 0 || len > 4) {
-		dev_err(&pdev->dev, "invalid range data.\n");
+		dev_err(dev, "invalid range data.\n");
 		return len;
 	}
 
 	val = of_property_read_u32_array(np, "fsl,tmu-range", range, len);
 	if (val != 0) {
-		dev_err(&pdev->dev, "failed to read range data.\n");
+		dev_err(dev, "failed to read range data.\n");
 		return val;
 	}
 
 	/* Init temperature range registers */
 	for (i = 0; i < len; i++)
-		tmu_write(data, range[i], &data->regs->ttrcr[i]);
+		regmap_write(data->regmap, REGS_TTRnCR(i), range[i]);
 
 	calibration = of_get_property(np, "fsl,tmu-calibration", &len);
 	if (calibration == NULL || len % 8) {
@@ -347,11 +294,14 @@ static void qoriq_tmu_init_device(struct qoriq_tmu_data *data)
 	regmap_write(data->regmap, REGS_TIER, TIER_DISABLE);
 
 	/* Set update_interval */
+
 	if (data->ver == TMU_VER1) {
-		tmu_write(data, TMTMIR_DEFAULT, &data->regs->tmtmir);
+		regmap_write(data->regmap, REGS_TMTMIR, TMTMIR_DEFAULT);
 	} else {
-		tmu_write(data, TMTMIR_DEFAULT, &data->regs_v2->tmtmir);
-		tmu_write(data, TEUMR0_V2, &data->regs_v2->teumr0);
+		regmap_write(data->regmap, REGS_V2_TMTMIR, TMTMIR_DEFAULT);
+		regmap_write(data->regmap, REGS_V2_TEUMR(0), TEUMR0_V2);
+		for (i = 0; i < SITES_MAX; i++)
+			regmap_write(data->regmap, REGS_V2_TMSAR(i), TMSARA_V2);
 	}
 
 	/* Disable monitoring */
@@ -447,12 +397,6 @@ static int qoriq_tmu_probe(struct platform_device *pdev)
 		return ret;
 	}
 	data->ver = (ver >> 8) & 0xff;
-
-	/* version register offset at: 0xbf8 on both v1 and v2 */
-	ver = tmu_read(data, &data->regs->ipbrr0);
-	data->ver = (ver >> 8) & 0xff;
-	if (data->ver == TMU_VER2)
-		data->regs_v2 = (void __iomem *)data->regs;
 
 	qoriq_tmu_init_device(data);	/* TMU initialization */
 

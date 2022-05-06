@@ -1336,12 +1336,23 @@ static struct kobj_type devid_ktype = {
 
 int btrfs_sysfs_add_device(struct btrfs_device *device)
 {
-	int error = 0;
-	struct btrfs_device *dev;
+	int ret;
 	unsigned int nofs_flag;
+	struct kobject *devices_kobj;
+	struct kobject *devinfo_kobj;
+
+	/*
+	 * Make sure we use the fs_info::fs_devices to fetch the kobjects even
+	 * for the seed fs_devices
+	 */
+	devices_kobj = device->fs_info->fs_devices->devices_kobj;
+	devinfo_kobj = device->fs_info->fs_devices->devinfo_kobj;
+	ASSERT(devices_kobj);
+	ASSERT(devinfo_kobj);
 
 	nofs_flag = memalloc_nofs_save();
-	list_for_each_entry(dev, &fs_devices->devices, dev_list) {
+
+	if (device->bdev) {
 		struct hd_struct *disk;
 		struct kobject *disk_kobj;
 
@@ -1383,7 +1394,6 @@ static int btrfs_sysfs_add_fs_devices(struct btrfs_fs_devices *fs_devices)
 		if (ret)
 			goto fail;
 	}
-	memalloc_nofs_restore(nofs_flag);
 
 	list_for_each_entry(seed, &fs_devices->seed_list, seed_list) {
 		list_for_each_entry(device, &seed->devices, dev_list) {

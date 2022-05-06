@@ -359,11 +359,6 @@ static int clear_io_resources(struct hinic_hwdev *hwdev)
 	struct hinic_pfhwdev *pfhwdev;
 	int err;
 
-	if (!HINIC_IS_PF(hwif) && !HINIC_IS_PPF(hwif)) {
-		dev_err(&pdev->dev, "Unsupported PCI Function type\n");
-		return -EINVAL;
-	}
-
 	/* sleep 100ms to wait for firmware stopping I/O */
 	msleep(100);
 

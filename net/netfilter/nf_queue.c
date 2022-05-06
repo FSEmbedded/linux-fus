@@ -183,8 +183,8 @@ static int __nf_queue(struct sk_buff *skb, const struct nf_hook_state *state,
 		return -ENOMEM;
 
 	if (skb_dst(skb) && !skb_dst_force(skb)) {
-		status = -ENETDOWN;
-		goto err;
+		kfree(entry);
+		return -ENETDOWN;
 	}
 
 	*entry = (struct nf_queue_entry) {

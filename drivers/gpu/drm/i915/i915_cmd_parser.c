@@ -1261,14 +1261,14 @@ static bool check_cmd(const struct intel_engine_cs *engine,
 			 */
 			if (reg->mask) {
 				if (cmd_desc_is(desc, MI_LOAD_REGISTER_MEM)) {
-					DRM_DEBUG_DRIVER("CMD: Rejected LRM to masked register 0x%08X\n",
-							 reg_addr);
+					DRM_DEBUG("CMD: Rejected LRM to masked register 0x%08X\n",
+						  reg_addr);
 					return false;
 				}
 
 				if (cmd_desc_is(desc, MI_LOAD_REGISTER_REG)) {
-					DRM_DEBUG_DRIVER("CMD: Rejected LRR to masked register 0x%08X\n",
-							 reg_addr);
+					DRM_DEBUG("CMD: Rejected LRR to masked register 0x%08X\n",
+						  reg_addr);
 					return false;
 				}
 
@@ -1494,12 +1494,9 @@ int intel_engine_cmd_parser(struct intel_engine_cs *engine,
 		}
 
 		if (cmd_desc_is(desc, MI_BATCH_BUFFER_START)) {
-			ret = check_bbstart(ctx, cmd, offset, length,
-					    batch_len, batch_start,
-					    shadow_batch_start);
-
-			if (ret)
-				goto err;
+			ret = check_bbstart(cmd, offset, length, batch_length,
+					    batch_addr, shadow_addr,
+					    jump_whitelist);
 			break;
 		}
 

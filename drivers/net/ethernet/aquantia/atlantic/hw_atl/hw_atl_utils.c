@@ -50,7 +50,11 @@
 
 #define FORCE_FLASHLESS 0
 
-static int hw_atl_utils_ver_match(u32 ver_expected, u32 ver_actual);
+enum mcp_area {
+	MCP_AREA_CONFIG = 0x80000000,
+	MCP_AREA_SETTINGS = 0x20000000,
+};
+
 static int hw_atl_utils_mpi_set_state(struct aq_hw_s *self,
 				      enum hal_atl_utils_fw_state_e state);
 static u32 hw_atl_utils_get_mpi_mbox_tid(struct aq_hw_s *self);

@@ -123,100 +123,6 @@ void iwl_pcie_free_dma_ptr(struct iwl_trans *trans, struct iwl_dma_ptr *ptr)
 	memset(ptr, 0, sizeof(*ptr));
 }
 
-static void iwl_pcie_txq_stuck_timer(struct timer_list *t)
-{
-	struct iwl_txq *txq = from_timer(txq, t, stuck_timer);
-	struct iwl_trans_pcie *trans_pcie = txq->trans_pcie;
-	struct iwl_trans *trans = iwl_trans_pcie_get_trans(trans_pcie);
-
-	spin_lock(&txq->lock);
-	/* check if triggered erroneously */
-	if (txq->read_ptr == txq->write_ptr) {
-		spin_unlock(&txq->lock);
-		return;
-	}
-	spin_unlock(&txq->lock);
-
-	iwl_trans_pcie_log_scd_error(trans, txq);
-
-	iwl_force_nmi(trans);
-}
-
-/*
- * iwl_pcie_txq_update_byte_cnt_tbl - Set up entry in Tx byte-count array
- */
-static void iwl_pcie_txq_update_byte_cnt_tbl(struct iwl_trans *trans,
-					     struct iwl_txq *txq, u16 byte_cnt,
-					     int num_tbs)
-{
-	struct iwlagn_scd_bc_tbl *scd_bc_tbl;
-	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
-	int write_ptr = txq->write_ptr;
-	int txq_id = txq->id;
-	u8 sec_ctl = 0;
-	u16 len = byte_cnt + IWL_TX_CRC_SIZE + IWL_TX_DELIMITER_SIZE;
-	__le16 bc_ent;
-	struct iwl_device_tx_cmd *dev_cmd = txq->entries[txq->write_ptr].cmd;
-	struct iwl_tx_cmd *tx_cmd = (void *)dev_cmd->payload;
-	u8 sta_id = tx_cmd->sta_id;
-
-	scd_bc_tbl = trans_pcie->scd_bc_tbls.addr;
-
-	sec_ctl = tx_cmd->sec_ctl;
-
-	switch (sec_ctl & TX_CMD_SEC_MSK) {
-	case TX_CMD_SEC_CCM:
-		len += IEEE80211_CCMP_MIC_LEN;
-		break;
-	case TX_CMD_SEC_TKIP:
-		len += IEEE80211_TKIP_ICV_LEN;
-		break;
-	case TX_CMD_SEC_WEP:
-		len += IEEE80211_WEP_IV_LEN + IEEE80211_WEP_ICV_LEN;
-		break;
-	}
-	if (trans_pcie->bc_table_dword)
-		len = DIV_ROUND_UP(len, 4);
-
-	if (WARN_ON(len > 0xFFF || write_ptr >= TFD_QUEUE_SIZE_MAX))
-		return;
-
-	bc_ent = cpu_to_le16(len | (sta_id << 12));
-
-	scd_bc_tbl[txq_id].tfd_offset[write_ptr] = bc_ent;
-
-	if (write_ptr < TFD_QUEUE_SIZE_BC_DUP)
-		scd_bc_tbl[txq_id].
-			tfd_offset[TFD_QUEUE_SIZE_MAX + write_ptr] = bc_ent;
-}
-
-static void iwl_pcie_txq_inval_byte_cnt_tbl(struct iwl_trans *trans,
-					    struct iwl_txq *txq)
-{
-	struct iwl_trans_pcie *trans_pcie =
-		IWL_TRANS_GET_PCIE_TRANS(trans);
-	struct iwlagn_scd_bc_tbl *scd_bc_tbl = trans_pcie->scd_bc_tbls.addr;
-	int txq_id = txq->id;
-	int read_ptr = txq->read_ptr;
-	u8 sta_id = 0;
-	__le16 bc_ent;
-	struct iwl_device_tx_cmd *dev_cmd = txq->entries[read_ptr].cmd;
-	struct iwl_tx_cmd *tx_cmd = (void *)dev_cmd->payload;
-
-	WARN_ON(read_ptr >= TFD_QUEUE_SIZE_MAX);
-
-	if (txq_id != trans_pcie->cmd_queue)
-		sta_id = tx_cmd->sta_id;
-
-	bc_ent = cpu_to_le16(1 | (sta_id << 12));
-
-	scd_bc_tbl[txq_id].tfd_offset[read_ptr] = bc_ent;
-
-	if (read_ptr < TFD_QUEUE_SIZE_BC_DUP)
-		scd_bc_tbl[txq_id].
-			tfd_offset[TFD_QUEUE_SIZE_MAX + read_ptr] = bc_ent;
-}
-
 /*
  * iwl_pcie_txq_inc_wr_ptr - Send new write index to hardware
  */
@@ -2057,7 +1963,7 @@ int iwl_trans_pcie_tx(struct iwl_trans *trans, struct sk_buff *skb,
 		iwl_txq_stop(trans, txq);
 
 		/* don't put the packet on the ring, if there is no room */
-		if (unlikely(iwl_queue_space(trans, txq) < 3)) {
+		if (unlikely(iwl_txq_space(trans, txq) < 3)) {
 			struct iwl_device_tx_cmd **dev_cmd_ptr;
 
 			dev_cmd_ptr = (void *)((u8 *)skb->cb +

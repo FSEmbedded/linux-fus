@@ -58,15 +58,9 @@ static int mdiobus_register_reset(struct mdio_device *mdiodev)
 {
 	struct reset_control *reset;
 
-	if (mdiodev->dev.of_node)
-		reset = of_reset_control_get_exclusive(mdiodev->dev.of_node,
-						       "phy");
-	if (IS_ERR(reset)) {
-		if (PTR_ERR(reset) == -ENOENT || PTR_ERR(reset) == -ENOTSUPP)
-			reset = NULL;
-		else
-			return PTR_ERR(reset);
-	}
+	reset = reset_control_get_optional_exclusive(&mdiodev->dev, "phy");
+	if (IS_ERR(reset))
+		return PTR_ERR(reset);
 
 	mdiodev->reset_ctrl = reset;
 
@@ -464,8 +458,7 @@ static void of_mdiobus_link_mdiodev(struct mii_bus *bus,
 			continue;
 
 		if (addr == mdiodev->addr) {
-			dev->of_node = child;
-			dev->fwnode = of_fwnode_handle(child);
+			device_set_node(dev, of_fwnode_handle(child));
 			return;
 		}
 	}
@@ -569,7 +562,7 @@ int __mdiobus_register(struct mii_bus *bus, struct module *owner)
 	if (bus->reset) {
 		err = bus->reset(bus);
 		if (err)
-			goto reset_err;
+			goto error_reset_gpiod;
 	}
 
 	for (i = 0; i < PHY_MAX_ADDR; i++) {
@@ -599,8 +592,7 @@ error:
 		mdiodev->device_remove(mdiodev);
 		mdiodev->device_free(mdiodev);
 	}
-
-reset_err:
+error_reset_gpiod:
 	/* Put PHYs in RESET to save power */
 	if (bus->reset_gpiod)
 		gpiod_set_value_cansleep(bus->reset_gpiod, 1);

@@ -108,10 +108,19 @@ static int chap_check_algorithm(const char *a_str)
 		if (!token)
 			goto out;
 
-		if (!strcmp(token, "5")) {
-			pr_debug("Selected MD5 Algorithm\n");
-			kfree(orig);
-			return CHAP_DIGEST_MD5;
+		if (kstrtol(token, 10, &digest_type))
+			continue;
+
+		digest_name = chap_get_digest_name(digest_type);
+		if (!digest_name)
+			continue;
+
+		pr_debug("Selected %s Algorithm\n", digest_name);
+		if (chap_test_algorithm(digest_name) < 0) {
+			pr_err("failed to allocate %s algo\n", digest_name);
+		} else {
+			r = digest_type;
+			goto out;
 		}
 	}
 out:

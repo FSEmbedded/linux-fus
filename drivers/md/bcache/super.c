@@ -616,7 +616,7 @@ int bch_prio_write(struct cache *ca, bool wait)
 	struct bucket *b;
 	struct closure cl;
 
-	pr_debug("free_prio=%zu, free_none=%zu, free_inc=%zu",
+	pr_debug("free_prio=%zu, free_none=%zu, free_inc=%zu\n",
 		 fifo_used(&ca->free[RESERVE_PRIO]),
 		 fifo_used(&ca->free[RESERVE_NONE]),
 		 fifo_used(&ca->free_inc));
@@ -876,9 +876,9 @@ static void bcache_device_free(struct bcache_device *d)
 	lockdep_assert_held(&bch_register_lock);
 
 	if (disk)
-		pr_info("%s stopped", disk->disk_name);
+		pr_info("%s stopped\n", disk->disk_name);
 	else
-		pr_err("bcache device (NULL gendisk) stopped");
+		pr_err("bcache device (NULL gendisk) stopped\n");
 
 	if (d->c)
 		bcache_device_detach(d);
@@ -1394,8 +1394,8 @@ static void cached_dev_free(struct closure *cl)
 
 	mutex_unlock(&bch_register_lock);
 
-	if (dc->sb_bio.bi_inline_vecs[0].bv_page)
-		put_page(bio_first_page_all(&dc->sb_bio));
+	if (dc->sb_disk)
+		put_page(virt_to_page(dc->sb_disk));
 
 	if (!IS_ERR_OR_NULL(dc->bdev))
 		blkdev_put(dc->bdev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
@@ -1874,8 +1874,8 @@ void bch_cache_set_unregister(struct cache_set *c)
 	bch_cache_set_stop(c);
 }
 
-#define alloc_bucket_pages(gfp, c)			\
-	((void *) __get_free_pages(__GFP_ZERO|__GFP_COMP|gfp, ilog2(bucket_pages(c))))
+#define alloc_meta_bucket_pages(gfp, sb)		\
+	((void *) __get_free_pages(__GFP_ZERO|__GFP_COMP|gfp, ilog2(meta_bucket_pages(sb))))
 
 struct cache_set *bch_cache_set_alloc(struct cache_sb *sb)
 {
@@ -2103,8 +2103,7 @@ static int run_cache_set(struct cache_set *c)
 			goto err;
 
 		mutex_lock(&c->bucket_lock);
-		for_each_cache(ca, c, i)
-			bch_prio_write(ca, true);
+		bch_prio_write(ca, true);
 		mutex_unlock(&c->bucket_lock);
 
 		err = "cannot allocate new UUID bucket";
@@ -2201,21 +2200,6 @@ found:
 	if (sysfs_create_link(&ca->kobj, &c->kobj, "set") ||
 	    sysfs_create_link(&c->kobj, &ca->kobj, buf))
 		goto err;
-
-	/*
-	 * A special case is both ca->sb.seq and c->sb.seq are 0,
-	 * such condition happens on a new created cache device whose
-	 * super block is never flushed yet. In this case c->sb.version
-	 * and other members should be updated too, otherwise we will
-	 * have a mistaken super block version in cache set.
-	 */
-	if (ca->sb.seq > c->sb.seq || c->sb.seq == 0) {
-		c->sb.version		= ca->sb.version;
-		memcpy(c->sb.set_uuid, ca->sb.set_uuid, 16);
-		c->sb.flags             = ca->sb.flags;
-		c->sb.seq		= ca->sb.seq;
-		pr_debug("set version = %llu", c->sb.version);
-	}
 
 	kobject_get(&ca->kobj);
 	ca->set = c;
@@ -2569,9 +2553,14 @@ static ssize_t register_bcache(struct kobject *k, struct kobj_attribute *attr,
 	const char *err;
 	char *path = NULL;
 	struct cache_sb *sb;
-	struct block_device *bdev = NULL;
-	struct page *sb_page;
+	struct cache_sb_disk *sb_disk;
+	struct block_device *bdev;
 	ssize_t ret;
+	bool async_registration = false;
+
+#ifdef CONFIG_BCACHE_ASYNC_REGISTRATION
+	async_registration = true;
+#endif
 
 	ret = -EBUSY;
 	err = "failed to reference bcache module";
@@ -2656,10 +2645,8 @@ static ssize_t register_bcache(struct kobject *k, struct kobj_attribute *attr,
 		ret = register_bdev(sb, sb_disk, bdev, dc);
 		mutex_unlock(&bch_register_lock);
 		/* blkdev_put() will be called in cached_dev_free() */
-		if (ret < 0) {
-			bdev = NULL;
-			goto out_put_sb_page;
-		}
+		if (ret < 0)
+			goto out_free_sb;
 	} else {
 		struct cache *ca = kzalloc(sizeof(*ca), GFP_KERNEL);
 
@@ -2667,24 +2654,21 @@ static ssize_t register_bcache(struct kobject *k, struct kobj_attribute *attr,
 			goto out_put_sb_page;
 
 		/* blkdev_put() will be called in bch_cache_release() */
-		if (register_cache(sb, sb_page, bdev, ca) != 0) {
-			bdev = NULL;
-			goto out_put_sb_page;
-		}
+		if (register_cache(sb, sb_disk, bdev, ca) != 0)
+			goto out_free_sb;
 	}
 
-	put_page(sb_page);
 done:
 	kfree(sb);
 	kfree(path);
 	module_put(THIS_MODULE);
+async_done:
 	return size;
 
 out_put_sb_page:
-	put_page(sb_page);
+	put_page(virt_to_page(sb_disk));
 out_blkdev_put:
-	if (bdev)
-		blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
+	blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
 out_free_sb:
 	kfree(sb);
 out_free_path:
@@ -2693,7 +2677,7 @@ out_free_path:
 out_module_put:
 	module_put(THIS_MODULE);
 out:
-	pr_info("error %s: %s", path?path:"", err);
+	pr_info("error %s: %s\n", path?path:"", err);
 	return ret;
 }
 

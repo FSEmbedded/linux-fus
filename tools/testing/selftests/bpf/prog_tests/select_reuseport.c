@@ -703,12 +703,12 @@ static void cleanup_per_test(bool no_inner_map)
 
 	for (i = 0; i < NR_RESULTS; i++) {
 		err = bpf_map_update_elem(result_map, &i, &zero, BPF_ANY);
-		CHECK(err, "reset elem in result_map",
+		RET_IF(err, "reset elem in result_map",
 		       "i:%u err:%d errno:%d\n", i, err, errno);
 	}
 
 	err = bpf_map_update_elem(linum_map, &zero, &zero, BPF_ANY);
-	CHECK(err, "reset line number in linum_map", "err:%d errno:%d\n",
+	RET_IF(err, "reset line number in linum_map", "err:%d errno:%d\n",
 	       err, errno);
 
 	for (i = 0; i < REUSEPORT_ARRAY_SIZE; i++)

@@ -566,12 +566,6 @@ ssize_t __weak cpu_show_srbds(struct device *dev,
 	return sysfs_emit(buf, "Not affected\n");
 }
 
-ssize_t __weak cpu_show_srbds(struct device *dev,
-			      struct device_attribute *attr, char *buf)
-{
-	return sprintf(buf, "Not affected\n");
-}
-
 static DEVICE_ATTR(meltdown, 0444, cpu_show_meltdown, NULL);
 static DEVICE_ATTR(spectre_v1, 0444, cpu_show_spectre_v1, NULL);
 static DEVICE_ATTR(spectre_v2, 0444, cpu_show_spectre_v2, NULL);

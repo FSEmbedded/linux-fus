@@ -1717,27 +1717,26 @@ TRACE_EVENT(svcrdma_send_pullup,
 
 TRACE_EVENT(svcrdma_send_err,
 	TP_PROTO(
-		const struct ib_send_wr *wr
+		const struct svc_rqst *rqst,
+		int status
 	),
 
-	TP_ARGS(wr),
+	TP_ARGS(rqst, status),
 
 	TP_STRUCT__entry(
-		__field(const void *, cqe)
-		__field(unsigned int, num_sge)
-		__field(u32, inv_rkey)
+		__field(int, status)
+		__field(u32, xid)
+		__string(addr, rqst->rq_xprt->xpt_remotebuf)
 	),
 
 	TP_fast_assign(
-		__entry->cqe = wr->wr_cqe;
-		__entry->num_sge = wr->num_sge;
-		__entry->inv_rkey = (wr->opcode == IB_WR_SEND_WITH_INV) ?
-					wr->ex.invalidate_rkey : 0;
+		__entry->status = status;
+		__entry->xid = __be32_to_cpu(rqst->rq_xid);
+		__assign_str(addr, rqst->rq_xprt->xpt_remotebuf);
 	),
 
-	TP_printk("cqe=%p num_sge=%u inv_rkey=0x%08x",
-		__entry->cqe, __entry->num_sge,
-		__entry->inv_rkey
+	TP_printk("addr=%s xid=0x%08x status=%d", __get_str(addr),
+		__entry->xid, __entry->status
 	)
 );
 
@@ -1799,24 +1798,24 @@ DEFINE_COMPLETION_EVENT(svcrdma_wc_receive);
 
 TRACE_EVENT(svcrdma_rq_post_err,
 	TP_PROTO(
-		const void *cqe,
-		int sqecount
+		const struct svcxprt_rdma *rdma,
+		int status
 	),
 
-	TP_ARGS(cqe, sqecount),
+	TP_ARGS(rdma, status),
 
 	TP_STRUCT__entry(
-		__field(const void *, cqe)
-		__field(int, sqecount)
+		__field(int, status)
+		__string(addr, rdma->sc_xprt.xpt_remotebuf)
 	),
 
 	TP_fast_assign(
-		__entry->cqe = cqe;
-		__entry->sqecount = sqecount;
+		__entry->status = status;
+		__assign_str(addr, rdma->sc_xprt.xpt_remotebuf);
 	),
 
-	TP_printk("cqe=%p sqecount=%d",
-		__entry->cqe, __entry->sqecount
+	TP_printk("addr=%s status=%d",
+		__get_str(addr), __entry->status
 	)
 );
 

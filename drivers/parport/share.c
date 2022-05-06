@@ -299,44 +299,11 @@ int __parport_register_driver(struct parport_driver *drv, struct module *owner,
 	if (!ret)
 		get_lowlevel_driver();
 
-	if (drv->devmodel) {
-		/* using device model */
-		int ret;
-
-		/* initialize common driver fields */
-		drv->driver.name = drv->name;
-		drv->driver.bus = &parport_bus_type;
-		drv->driver.owner = owner;
-		drv->driver.mod_name = mod_name;
-		ret = driver_register(&drv->driver);
-		if (ret)
-			return ret;
-
-		/*
-		 * check if bus has any parallel port registered, if
-		 * none is found then load the lowlevel driver.
-		 */
-		ret = bus_for_each_dev(&parport_bus_type, NULL, NULL,
-				       port_detect);
-		if (!ret)
-			get_lowlevel_driver();
-
-		mutex_lock(&registration_lock);
-		if (drv->match_port)
-			bus_for_each_dev(&parport_bus_type, NULL, drv,
-					 port_check);
-		mutex_unlock(&registration_lock);
-	} else {
-		struct parport *port;
-
-		drv->devmodel = false;
-
-		mutex_lock(&registration_lock);
-		list_for_each_entry(port, &portlist, list)
-			drv->attach(port);
-		list_add(&drv->list, &drivers);
-		mutex_unlock(&registration_lock);
-	}
+	mutex_lock(&registration_lock);
+	if (drv->match_port)
+		bus_for_each_dev(&parport_bus_type, NULL, drv,
+				 port_check);
+	mutex_unlock(&registration_lock);
 
 	return 0;
 }

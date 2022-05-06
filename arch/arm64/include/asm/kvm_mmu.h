@@ -124,7 +124,7 @@ int kvm_init_stage2_mmu(struct kvm *kvm, struct kvm_s2_mmu *mmu);
 void kvm_free_stage2_pgd(struct kvm_s2_mmu *mmu);
 int kvm_phys_addr_ioremap(struct kvm *kvm, phys_addr_t guest_ipa,
 			  phys_addr_t pa, unsigned long size, bool writable,
-			  pgprot_t prot);
+			  enum kvm_pgtable_prot prot_device);
 
 int kvm_handle_guest_abort(struct kvm_vcpu *vcpu);
 
@@ -171,40 +171,6 @@ static inline void __invalidate_icache_guest_page(kvm_pfn_t pfn,
 					(unsigned long)va + size);
 	}
 }
-
-static inline void __kvm_flush_dcache_pte(pte_t pte)
-{
-	if (!cpus_have_const_cap(ARM64_HAS_STAGE2_FWB)) {
-		if (pfn_valid(pte_pfn(pte))) {
-			struct page *page = pte_page(pte);
-
-			kvm_flush_dcache_to_poc(page_address(page), PAGE_SIZE);
-		} else {
-			void __iomem *va = ioremap_cache_ns(pte_pfn(pte) << PAGE_SHIFT, PAGE_SIZE);
-
-			kvm_flush_dcache_to_poc(va, PAGE_SIZE);
-			iounmap(va);
-		}
-	}
-}
-
-static inline void __kvm_flush_dcache_pmd(pmd_t pmd)
-{
-	if (!cpus_have_const_cap(ARM64_HAS_STAGE2_FWB)) {
-		struct page *page = pmd_page(pmd);
-		kvm_flush_dcache_to_poc(page_address(page), PMD_SIZE);
-	}
-}
-
-static inline void __kvm_flush_dcache_pud(pud_t pud)
-{
-	if (!cpus_have_const_cap(ARM64_HAS_STAGE2_FWB)) {
-		struct page *page = pud_page(pud);
-		kvm_flush_dcache_to_poc(page_address(page), PUD_SIZE);
-	}
-}
-
-#define kvm_virt_to_phys(x)		__pa_symbol(x)
 
 void kvm_set_way_flush(struct kvm_vcpu *vcpu);
 void kvm_toggle_cache(struct kvm_vcpu *vcpu, bool was_enabled);

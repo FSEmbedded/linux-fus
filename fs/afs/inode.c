@@ -158,7 +158,11 @@ static void afs_apply_status(struct afs_operation *op,
 	struct timespec64 t;
 	umode_t mode;
 	bool data_changed = false;
-	bool change_size = false;
+	bool change_size = vp->set_size;
+
+	_enter("{%llx:%llu.%u} %s",
+	       vp->fid.vid, vp->fid.vnode, vp->fid.unique,
+	       op->type ? op->type->name : "???");
 
 	BUG_ON(test_bit(AFS_VNODE_UNSET, &vnode->flags));
 
@@ -225,15 +229,18 @@ static void afs_apply_status(struct afs_operation *op,
 	}
 
 	if (data_changed) {
-		inode_set_iversion_raw(&vnode->vfs_inode, status->data_version);
+		inode_set_iversion_raw(inode, status->data_version);
 
 		/* Only update the size if the data version jumped.  If the
 		 * file is being modified locally, then we might have our own
 		 * idea of what the size should be that's not the same as
 		 * what's on the server.
 		 */
-		if (change_size)
+		if (change_size) {
 			afs_set_i_size(vnode, status->size);
+			inode->i_ctime = t;
+			inode->i_atime = t;
+		}
 	}
 }
 

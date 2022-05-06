@@ -833,16 +833,8 @@ static int lynxfb_set_fbinfo(struct fb_info *info, int index)
 	pr_info("fix->mmio_start = %lx\n", fix->mmio_start);
 	fix->mmio_len = sm750_dev->vidreg_size;
 	pr_info("fix->mmio_len = %x\n", fix->mmio_len);
-	switch (var->bits_per_pixel) {
-	case 8:
-		fix->visual = FB_VISUAL_PSEUDOCOLOR;
-		break;
-	case 16:
-	case 24:
-	case 32:
-		fix->visual = FB_VISUAL_TRUECOLOR;
-		break;
-	}
+
+	lynxfb_set_visual_mode(info);
 
 	/* set var */
 	var->activate = FB_ACTIVATE_NOW;

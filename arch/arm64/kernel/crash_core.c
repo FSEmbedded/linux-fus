@@ -16,13 +16,6 @@ static inline u64 get_tcr_el1_t1sz(void)
 	return (read_sysreg(tcr_el1) & TCR_T1SZ_MASK) >> TCR_T1SZ_OFFSET;
 }
 
-static inline u64 get_tcr_el1_t1sz(void);
-
-static inline u64 get_tcr_el1_t1sz(void)
-{
-	return (read_sysreg(tcr_el1) & TCR_T1SZ_MASK) >> TCR_T1SZ_OFFSET;
-}
-
 void arch_crash_save_vmcoreinfo(void)
 {
 	VMCOREINFO_NUMBER(VA_BITS);
@@ -31,7 +24,7 @@ void arch_crash_save_vmcoreinfo(void)
 						kimage_voffset);
 	vmcoreinfo_append_str("NUMBER(PHYS_OFFSET)=0x%llx\n",
 						PHYS_OFFSET);
-	vmcoreinfo_append_str("NUMBER(tcr_el1_t1sz)=0x%llx\n",
+	vmcoreinfo_append_str("NUMBER(TCR_EL1_T1SZ)=0x%llx\n",
 						get_tcr_el1_t1sz());
 	vmcoreinfo_append_str("KERNELOFFSET=%lx\n", kaslr_offset());
 	vmcoreinfo_append_str("NUMBER(KERNELPACMASK)=0x%llx\n",

@@ -797,19 +797,26 @@ static void remove_nh_grp_entry(struct net *net, struct nh_grp_entry *nhge,
 		return;
 	}
 
-	newg->has_v4 = nhg->has_v4;
+	newg->has_v4 = false;
 	newg->mpath = nhg->mpath;
+	newg->fdb_nh = nhg->fdb_nh;
 	newg->num_nh = nhg->num_nh;
 
 	/* copy old entries to new except the one getting removed */
 	nhges = nhg->nh_entries;
 	new_nhges = newg->nh_entries;
 	for (i = 0, j = 0; i < nhg->num_nh; ++i) {
+		struct nh_info *nhi;
+
 		/* current nexthop getting removed */
 		if (nhg->nh_entries[i].nh == nh) {
 			newg->num_nh--;
 			continue;
 		}
+
+		nhi = rtnl_dereference(nhges[i].nh->nh_info);
+		if (nhi->family == AF_INET)
+			newg->has_v4 = true;
 
 		list_del(&nhges[i].nh_list);
 		new_nhges[j].nh_parent = nhges[i].nh_parent;
@@ -838,7 +845,7 @@ static void remove_nexthop_from_groups(struct net *net, struct nexthop *nh,
 		remove_nh_grp_entry(net, nhge, nlinfo);
 
 	/* make sure all see the newly published array before releasing rtnl */
-	synchronize_rcu();
+	synchronize_net();
 }
 
 static void remove_nexthop_group(struct nexthop *nh, struct nl_info *nlinfo)
@@ -1236,10 +1243,10 @@ static struct nexthop *nexthop_create_group(struct net *net,
 
 	/* spare group used for removals */
 	nhg->spare = nexthop_grp_alloc(num_nh);
-	if (!nhg) {
+	if (!nhg->spare) {
 		kfree(nhg);
 		kfree(nh);
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 	}
 	nhg->spare->spare = nhg;
 

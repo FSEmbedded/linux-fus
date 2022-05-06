@@ -33,12 +33,12 @@ int mlx5e_xsk_wakeup(struct net_device *dev, u32 qid, u32 flags)
 		if (unlikely(!test_bit(MLX5E_SQ_STATE_ENABLED, &c->async_icosq.state)))
 			return 0;
 
-		if (test_and_set_bit(MLX5E_SQ_STATE_PENDING_XSK_TX, &c->xskicosq.state))
+		if (test_and_set_bit(MLX5E_SQ_STATE_PENDING_XSK_TX, &c->async_icosq.state))
 			return 0;
 
-		spin_lock(&c->xskicosq_lock);
-		mlx5e_trigger_irq(&c->xskicosq);
-		spin_unlock(&c->xskicosq_lock);
+		spin_lock_bh(&c->async_icosq_lock);
+		mlx5e_trigger_irq(&c->async_icosq);
+		spin_unlock_bh(&c->async_icosq_lock);
 	}
 
 	return 0;

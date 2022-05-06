@@ -29,10 +29,10 @@ Supported devices
 smartpqi specific entries in /sys
 =================================
 
-  smartpqi host attributes:
-  -------------------------
-  /sys/class/scsi_host/host*/rescan
-  /sys/class/scsi_host/host*/driver_version
+smartpqi host attributes
+------------------------
+  - /sys/class/scsi_host/host*/rescan
+  - /sys/class/scsi_host/host*/driver_version
 
   The host rescan attribute is a write only attribute. Writing to this
   attribute will trigger the driver to scan for new, changed, or removed

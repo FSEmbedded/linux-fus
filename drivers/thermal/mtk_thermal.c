@@ -654,9 +654,13 @@ static int mtk_thermal_bank_temperature(struct mtk_thermal_bank *bank)
 	for (i = 0; i < conf->bank_data[bank->id].num_sensors; i++) {
 		raw = readl(mt->thermal_base + conf->msr[i]);
 
-		temp = raw_to_mcelsius(mt,
-				       conf->bank_data[bank->id].sensors[i],
-				       raw);
+		if (mt->conf->version == MTK_THERMAL_V1) {
+			temp = raw_to_mcelsius_v1(
+				mt, conf->bank_data[bank->id].sensors[i], raw);
+		} else {
+			temp = raw_to_mcelsius_v2(
+				mt, conf->bank_data[bank->id].sensors[i], raw);
+		}
 
 		/*
 		 * The first read of a sensor often contains very high bogus

@@ -152,8 +152,8 @@ static void pageunmap_range(struct dev_pagemap *pgmap, int range_id)
 	remove_pfn_range_from_zone(page_zone(first_page), PHYS_PFN(range->start),
 				   PHYS_PFN(range_len(range)));
 	if (pgmap->type == MEMORY_DEVICE_PRIVATE) {
-		__remove_pages(PHYS_PFN(res->start),
-			       PHYS_PFN(resource_size(res)), NULL);
+		__remove_pages(PHYS_PFN(range->start),
+			       PHYS_PFN(range_len(range)), NULL);
 	} else {
 		arch_remove_memory(nid, range->start, range_len(range),
 				pgmap_altmap(pgmap));

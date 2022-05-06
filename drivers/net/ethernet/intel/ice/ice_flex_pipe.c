@@ -4949,16 +4949,15 @@ ice_rem_prof_id_flow(struct ice_hw *hw, enum ice_block blk, u16 vsi, u64 hdl)
 	if (!status)
 		status = ice_upd_prof_hw(hw, blk, &chg);
 
-		es->ref_count = devm_kcalloc(ice_hw_to_dev(hw), es->count,
-					     sizeof(*es->ref_count),
-					     GFP_KERNEL);
-		if (!es->ref_count)
-			goto err;
+err_ice_rem_prof_id_flow:
+	list_for_each_entry_safe(del, tmp, &chg, list_entry) {
+		list_del(&del->list_entry);
+		devm_kfree(ice_hw_to_dev(hw), del);
+	}
 
-		es->written = devm_kcalloc(ice_hw_to_dev(hw), es->count,
-					   sizeof(*es->written), GFP_KERNEL);
-		if (!es->written)
-			goto err;
+	list_for_each_entry_safe(del1, tmp1, &copy, list) {
+		list_del(&del1->list);
+		devm_kfree(ice_hw_to_dev(hw), del1);
 	}
 
 	return status;

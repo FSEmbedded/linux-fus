@@ -891,8 +891,7 @@ Fixup:
 static int pci_pm_resume_noirq(struct device *dev)
 {
 	struct pci_dev *pci_dev = to_pci_dev(dev);
-	struct device_driver *drv = dev->driver;
-	int error = 0;
+	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
 	pci_power_t prev_state = pci_dev->current_state;
 	bool skip_bus_pm = pci_dev->skip_bus_pm;
 
@@ -917,8 +916,11 @@ static int pci_pm_resume_noirq(struct device *dev)
 	if (pci_has_legacy_pm_support(pci_dev))
 		return 0;
 
-	if (drv && drv->pm && drv->pm->resume_noirq)
-		error = drv->pm->resume_noirq(dev);
+	if (pm && pm->resume_noirq)
+		return pm->resume_noirq(dev);
+
+	return 0;
+}
 
 static int pci_pm_resume_early(struct device *dev)
 {
@@ -1032,19 +1034,11 @@ static int pci_pm_freeze_noirq(struct device *dev)
 static int pci_pm_thaw_noirq(struct device *dev)
 {
 	struct pci_dev *pci_dev = to_pci_dev(dev);
-	struct device_driver *drv = dev->driver;
-	int error = 0;
-
-	if (pcibios_pm_ops.thaw_noirq) {
-		error = pcibios_pm_ops.thaw_noirq(dev);
-		if (error)
-			return error;
-	}
+	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
 
 	/*
-	 * Both the legacy ->resume_early() and the new pm->thaw_noirq()
-	 * callbacks assume the device has been returned to D0 and its
-	 * config state has been restored.
+	 * The pm->thaw_noirq() callback assumes the device has been
+	 * returned to D0 and its config state has been restored.
 	 *
 	 * In addition, pci_restore_state() restores MSI-X state in MMIO
 	 * space, which requires the device to be in D0, so return it to D0
@@ -1055,10 +1049,7 @@ static int pci_pm_thaw_noirq(struct device *dev)
 	pci_restore_state(pci_dev);
 
 	if (pci_has_legacy_pm_support(pci_dev))
-		return pci_legacy_resume_early(dev);
-
-	if (drv && drv->pm && drv->pm->thaw_noirq)
-		error = drv->pm->thaw_noirq(dev);
+		return 0;
 
 	if (pm && pm->thaw_noirq)
 		return pm->thaw_noirq(dev);
@@ -1291,6 +1282,7 @@ static int pci_pm_runtime_resume(struct device *dev)
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
 	pci_power_t prev_state = pci_dev->current_state;
+	int error = 0;
 
 	/*
 	 * Restoring config space is necessary even if the device is not bound
@@ -1304,9 +1296,6 @@ static int pci_pm_runtime_resume(struct device *dev)
 
 	pci_fixup_device(pci_fixup_resume_early, pci_dev);
 	pci_pm_default_resume(pci_dev);
-
-	if (prev_state == PCI_D3cold)
-		pci_bridge_wait_for_secondary_bus(pci_dev);
 
 	if (prev_state == PCI_D3cold)
 		pci_bridge_wait_for_secondary_bus(pci_dev);

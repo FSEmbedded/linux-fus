@@ -330,9 +330,13 @@ static int sdhci_at91_probe(struct platform_device *pdev)
 
 	priv->mainck = devm_clk_get(&pdev->dev, "baseclk");
 	if (IS_ERR(priv->mainck)) {
-		dev_err(&pdev->dev, "failed to get baseclk\n");
-		ret = PTR_ERR(priv->mainck);
-		goto sdhci_pltfm_free;
+		if (soc_data->baseclk_is_generated_internally) {
+			priv->mainck = NULL;
+		} else {
+			dev_err(&pdev->dev, "failed to get baseclk\n");
+			ret = PTR_ERR(priv->mainck);
+			goto sdhci_pltfm_free;
+		}
 	}
 
 	priv->hclock = devm_clk_get(&pdev->dev, "hclock");

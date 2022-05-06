@@ -156,6 +156,7 @@ static int cc_cipher_init(struct crypto_tfm *tfm)
 				     skcipher_alg.base);
 	struct device *dev = drvdata_to_dev(cc_alg->drvdata);
 	unsigned int max_key_buf_size = cc_alg->skcipher_alg.max_keysize;
+	unsigned int fallback_req_size = 0;
 
 	dev_dbg(dev, "Initializing context @%p for %s\n", ctx_p,
 		crypto_tfm_alg_name(tfm));
@@ -165,18 +166,39 @@ static int cc_cipher_init(struct crypto_tfm *tfm)
 	ctx_p->drvdata = cc_alg->drvdata;
 
 	if (ctx_p->cipher_mode == DRV_CIPHER_ESSIV) {
+		const char *name = crypto_tfm_alg_name(tfm);
+
 		/* Alloc hash tfm for essiv */
-		ctx_p->shash_tfm = crypto_alloc_shash("sha256-generic", 0, 0);
+		ctx_p->shash_tfm = crypto_alloc_shash("sha256", 0, 0);
 		if (IS_ERR(ctx_p->shash_tfm)) {
 			dev_err(dev, "Error allocating hash tfm for ESSIV.\n");
 			return PTR_ERR(ctx_p->shash_tfm);
 		}
+		max_key_buf_size <<= 1;
+
+		/* Alloc fallabck tfm or essiv when key size != 256 bit */
+		ctx_p->fallback_tfm =
+			crypto_alloc_skcipher(name, 0, CRYPTO_ALG_NEED_FALLBACK | CRYPTO_ALG_ASYNC);
+
+		if (IS_ERR(ctx_p->fallback_tfm)) {
+			/* Note we're still allowing registration with no fallback since it's
+			 * better to have most modes supported than none at all.
+			 */
+			dev_warn(dev, "Error allocating fallback algo %s. Some modes may be available.\n",
+			       name);
+			ctx_p->fallback_tfm = NULL;
+		} else {
+			fallback_req_size = crypto_skcipher_reqsize(ctx_p->fallback_tfm);
+		}
 	}
+
+	crypto_skcipher_set_reqsize(__crypto_skcipher_cast(tfm),
+				    sizeof(struct cipher_req_ctx) + fallback_req_size);
 
 	/* Allocate key buffer, cache line aligned */
 	ctx_p->user.key = kzalloc(max_key_buf_size, GFP_KERNEL);
 	if (!ctx_p->user.key)
-		goto free_shash;
+		goto free_fallback;
 
 	dev_dbg(dev, "Allocated key buffer in context. key=@%p\n",
 		ctx_p->user.key);
@@ -197,7 +219,8 @@ static int cc_cipher_init(struct crypto_tfm *tfm)
 
 free_key:
 	kfree(ctx_p->user.key);
-free_shash:
+free_fallback:
+	crypto_free_skcipher(ctx_p->fallback_tfm);
 	crypto_free_shash(ctx_p->shash_tfm);
 
 	return -ENOMEM;
@@ -574,7 +597,6 @@ static void cc_setup_state_desc(struct crypto_tfm *tfm,
 		break;
 	case DRV_CIPHER_XTS:
 	case DRV_CIPHER_ESSIV:
-	case DRV_CIPHER_BITLOCKER:
 		break;
 	default:
 		dev_err(dev, "Unsupported cipher mode (%d)\n", cipher_mode);
@@ -594,16 +616,9 @@ static void cc_setup_xex_state_desc(struct crypto_tfm *tfm,
 	int flow_mode = ctx_p->flow_mode;
 	int direction = req_ctx->gen_ctx.op_type;
 	dma_addr_t key_dma_addr = ctx_p->user.key_dma_addr;
-	unsigned int key_len = ctx_p->keylen;
+	unsigned int key_len = (ctx_p->keylen / 2);
 	dma_addr_t iv_dma_addr = req_ctx->gen_ctx.iv_dma_addr;
-	unsigned int du_size = nbytes;
-
-	struct cc_crypto_alg *cc_alg =
-		container_of(tfm->__crt_alg, struct cc_crypto_alg,
-			     skcipher_alg.base);
-
-	if (cc_alg->data_unit)
-		du_size = cc_alg->data_unit;
+	unsigned int key_offset = key_len;
 
 	switch (cipher_mode) {
 	case DRV_CIPHER_ECB:
@@ -615,7 +630,10 @@ static void cc_setup_xex_state_desc(struct crypto_tfm *tfm,
 		break;
 	case DRV_CIPHER_XTS:
 	case DRV_CIPHER_ESSIV:
-	case DRV_CIPHER_BITLOCKER:
+
+		if (cipher_mode == DRV_CIPHER_ESSIV)
+			key_len = SHA256_DIGEST_SIZE;
+
 		/* load XEX key */
 		hw_desc_init(&desc[*seq_size]);
 		set_cipher_mode(&desc[*seq_size], cipher_mode);

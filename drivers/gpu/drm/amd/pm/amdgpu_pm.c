@@ -78,42 +78,6 @@ static const struct hwmon_temp_label {
 	{PP_TEMP_MEM, "mem"},
 };
 
-void amdgpu_pm_acpi_event_handler(struct amdgpu_device *adev)
-{
-	if (adev->pm.dpm_enabled) {
-		mutex_lock(&adev->pm.mutex);
-		if (power_supply_is_system_supplied() > 0)
-			adev->pm.ac_power = true;
-		else
-			adev->pm.ac_power = false;
-		if (adev->powerplay.pp_funcs &&
-		    adev->powerplay.pp_funcs->enable_bapm)
-			amdgpu_dpm_enable_bapm(adev, adev->pm.ac_power);
-		mutex_unlock(&adev->pm.mutex);
-	}
-}
-
-int amdgpu_dpm_read_sensor(struct amdgpu_device *adev, enum amd_pp_sensors sensor,
-			   void *data, uint32_t *size)
-{
-	int ret = 0;
-
-	if (!data || !size)
-		return -EINVAL;
-
-	if (is_support_sw_smu(adev))
-		ret = smu_read_sensor(&adev->smu, sensor, data, size);
-	else {
-		if (adev->powerplay.pp_funcs && adev->powerplay.pp_funcs->read_sensor)
-			ret = adev->powerplay.pp_funcs->read_sensor((adev)->powerplay.pp_handle,
-								    sensor, data, size);
-		else
-			ret = -EINVAL;
-	}
-
-	return ret;
-}
-
 /**
  * DOC: power_dpm_state
  *
@@ -394,15 +358,6 @@ static ssize_t amdgpu_set_power_dpm_force_performance_level(struct device *dev,
 		}
 	}
 
-	if (adev->asic_type == CHIP_RAVEN) {
-		if (adev->rev_id < 8) {
-			if (current_level != AMD_DPM_FORCED_LEVEL_MANUAL && level == AMD_DPM_FORCED_LEVEL_MANUAL)
-				amdgpu_gfx_off_ctrl(adev, false);
-			else if (current_level == AMD_DPM_FORCED_LEVEL_MANUAL && level != AMD_DPM_FORCED_LEVEL_MANUAL)
-				amdgpu_gfx_off_ctrl(adev, true);
-		}
-	}
-
 	/* profile_exit setting is valid only when current mode is in profile mode */
 	if (!(current_level & (AMD_DPM_FORCED_LEVEL_PROFILE_STANDARD |
 	    AMD_DPM_FORCED_LEVEL_PROFILE_MIN_SCLK |
@@ -474,6 +429,9 @@ static ssize_t amdgpu_get_pp_num_states(struct device *dev,
 	} else {
 		memset(&data, 0, sizeof(data));
 	}
+
+	pm_runtime_mark_last_busy(ddev->dev);
+	pm_runtime_put_autosuspend(ddev->dev);
 
 	buf_len = snprintf(buf, PAGE_SIZE, "states: %d\n", data.nums);
 	for (i = 0; i < data.nums; i++)

@@ -54,6 +54,8 @@ source "drivers/net/dsa/mv88e6xxx/Kconfig"
 
 source "drivers/net/dsa/ocelot/Kconfig"
 
+source "drivers/net/dsa/qca/Kconfig"
+
 source "drivers/net/dsa/sja1105/Kconfig"
 
 config NET_DSA_QCA8K
@@ -81,7 +83,7 @@ config NET_DSA_SMSC_LAN9303
 	tristate
 	select NET_DSA_TAG_LAN9303
 	select REGMAP
-	---help---
+	help
 	  This enables support for the SMSC/Microchip LAN9303 3 port ethernet
 	  switch chips.
 

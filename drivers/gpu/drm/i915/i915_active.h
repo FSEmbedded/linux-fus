@@ -120,41 +120,7 @@ i915_active_fence_get(struct i915_active_fence *active)
 static inline bool
 i915_active_fence_isset(const struct i915_active_fence *active)
 {
-	return rcu_access_pointer(active->request);
-}
-
-/**
- * i915_active_request_retire - waits until the request is retired
- * @active - the active request on which to wait
- *
- * i915_active_request_retire() waits until the request is completed,
- * and then ensures that at least the retirement handler for this
- * @active tracker is called before returning. If the @active
- * tracker is idle, the function returns immediately.
- */
-static inline int __must_check
-i915_active_request_retire(struct i915_active_request *active,
-			   struct mutex *mutex, i915_active_retire_fn retire)
-{
-	struct i915_request *request;
-	long ret;
-
-	request = i915_active_request_raw(active, mutex);
-	if (!request)
-		return 0;
-
-	ret = i915_request_wait(request,
-				I915_WAIT_INTERRUPTIBLE,
-				MAX_SCHEDULE_TIMEOUT);
-	if (ret < 0)
-		return ret;
-
-	list_del_init(&active->link);
-	RCU_INIT_POINTER(active->request, NULL);
-
-	retire(active, request);
-
-	return 0;
+	return rcu_access_pointer(active->fence);
 }
 
 /*

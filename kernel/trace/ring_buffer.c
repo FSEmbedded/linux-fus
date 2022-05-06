@@ -2723,13 +2723,8 @@ rb_update_event(struct ring_buffer_per_cpu *cpu_buffer,
 	 * If we need to add a timestamp, then we
 	 * add it to the start of the reserved space.
 	 */
-	if (unlikely(info->add_timestamp)) {
-		bool abs = ring_buffer_time_stamp_abs(cpu_buffer->buffer);
-
-		event = rb_add_time_stamp(event, abs ? info->delta : delta, abs);
-		length -= RB_LEN_TIME_EXTEND;
-		delta = 0;
-	}
+	if (unlikely(info->add_timestamp))
+		rb_add_timestamp(cpu_buffer, &event, info, &delta, &length);
 
 	event->time_delta = delta;
 	length -= RB_EVNT_HDR_SIZE;
@@ -5653,7 +5648,7 @@ static __init int test_ringbuffer(void)
 	int ret = 0;
 
 	if (security_locked_down(LOCKDOWN_TRACEFS)) {
-		pr_warning("Lockdown is enabled, skipping ring buffer tests\n");
+		pr_warn("Lockdown is enabled, skipping ring buffer tests\n");
 		return 0;
 	}
 

@@ -542,10 +542,6 @@ struct request_queue *blk_alloc_queue(int node_id)
 	if (!q->stats)
 		goto fail_stats;
 
-	q->backing_dev_info->ra_pages = VM_READAHEAD_PAGES;
-	q->backing_dev_info->io_pages = VM_READAHEAD_PAGES;
-	q->backing_dev_info->capabilities = BDI_CAP_CGROUP_WRITEBACK;
-	q->backing_dev_info->name = "block";
 	q->node = node_id;
 
 	atomic_set(&q->nr_active_requests_shared_sbitmap, 0);
@@ -1353,7 +1349,19 @@ unsigned long part_start_io_acct(struct gendisk *disk, struct hd_struct **part,
 }
 EXPORT_SYMBOL_GPL(part_start_io_acct);
 
-	update_io_ticks(part, jiffies, false);
+unsigned long disk_start_io_acct(struct gendisk *disk, unsigned int sectors,
+				 unsigned int op)
+{
+	return __part_start_io_acct(&disk->part0, sectors, op);
+}
+EXPORT_SYMBOL(disk_start_io_acct);
+
+static void __part_end_io_acct(struct hd_struct *part, unsigned int op,
+			       unsigned long start_time)
+{
+	const int sgrp = op_stat_group(op);
+	unsigned long now = READ_ONCE(jiffies);
+	unsigned long duration = now - start_time;
 
 	part_stat_lock();
 	update_io_ticks(part, now, true);

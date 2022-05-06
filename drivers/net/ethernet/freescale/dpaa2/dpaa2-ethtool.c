@@ -81,39 +81,14 @@ static void dpaa2_eth_get_drvinfo(struct net_device *net_dev,
 		sizeof(drvinfo->bus_info));
 }
 
-struct dpaa2_eth_link_mode_map {
-	u64 dpni_lm;
-	u64 ethtool_lm;
-};
-
-static const struct dpaa2_eth_link_mode_map dpaa2_eth_lm_map[] = {
-	{DPNI_ADVERTISED_10BASET_FULL, ETHTOOL_LINK_MODE_10baseT_Full_BIT},
-	{DPNI_ADVERTISED_100BASET_FULL, ETHTOOL_LINK_MODE_100baseT_Full_BIT},
-	{DPNI_ADVERTISED_1000BASET_FULL, ETHTOOL_LINK_MODE_1000baseT_Full_BIT},
-	{DPNI_ADVERTISED_10000BASET_FULL, ETHTOOL_LINK_MODE_10000baseT_Full_BIT},
-	{DPNI_ADVERTISED_2500BASEX_FULL, ETHTOOL_LINK_MODE_2500baseT_Full_BIT},
-	{DPNI_ADVERTISED_AUTONEG, ETHTOOL_LINK_MODE_Autoneg_BIT},
-};
-
-static void link_mode_dpni2ethtool(u64 dpni_lm, unsigned long *ethtool_lm)
+static int dpaa2_eth_nway_reset(struct net_device *net_dev)
 {
-	int i;
+	struct dpaa2_eth_priv *priv = netdev_priv(net_dev);
 
-	for (i = 0; i < ARRAY_SIZE(dpaa2_eth_lm_map); i++) {
-		if (dpni_lm & dpaa2_eth_lm_map[i].dpni_lm)
-			__set_bit(dpaa2_eth_lm_map[i].ethtool_lm, ethtool_lm);
-	}
-}
+	if (dpaa2_eth_is_type_phy(priv))
+		return phylink_ethtool_nway_reset(priv->mac->phylink);
 
-static void link_mode_ethtool2dpni(const unsigned long *ethtool_lm,
-				   u64 *dpni_lm)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(dpaa2_eth_lm_map); i++) {
-		if (test_bit(dpaa2_eth_lm_map[i].ethtool_lm, ethtool_lm))
-			*dpni_lm |= dpaa2_eth_lm_map[i].dpni_lm;
-	}
+	return -EOPNOTSUPP;
 }
 
 static int
@@ -122,68 +97,28 @@ dpaa2_eth_get_link_ksettings(struct net_device *net_dev,
 {
 	struct dpaa2_eth_priv *priv = netdev_priv(net_dev);
 
-	if (priv->link_state.options & DPNI_LINK_OPT_AUTONEG)
-		link_settings->base.autoneg = AUTONEG_ENABLE;
+	if (dpaa2_eth_is_type_phy(priv))
+		return phylink_ethtool_ksettings_get(priv->mac->phylink,
+						     link_settings);
+
+	link_settings->base.autoneg = AUTONEG_DISABLE;
 	if (!(priv->link_state.options & DPNI_LINK_OPT_HALF_DUPLEX))
 		link_settings->base.duplex = DUPLEX_FULL;
 	link_settings->base.speed = priv->link_state.rate;
 
-	if (dpaa2_eth_cmp_dpni_ver(priv, DPNI_LINK_AUTONEG_VER_MAJOR,
-				   DPNI_LINK_AUTONEG_VER_MINOR) >= 0) {
-		link_mode_dpni2ethtool(priv->link_state.supported,
-				       link_settings->link_modes.supported);
-		link_mode_dpni2ethtool(priv->link_state.advertising,
-				       link_settings->link_modes.advertising);
-	}
-
 	return 0;
 }
 
-#define DPNI_DYNAMIC_LINK_SET_VER_MAJOR		7
-#define DPNI_DYNAMIC_LINK_SET_VER_MINOR		1
 static int
 dpaa2_eth_set_link_ksettings(struct net_device *net_dev,
 			     const struct ethtool_link_ksettings *link_settings)
 {
-	struct dpni_link_cfg cfg = {0};
 	struct dpaa2_eth_priv *priv = netdev_priv(net_dev);
-	int err = 0;
 
-	/* If using an older MC version, the DPNI must be down
-	 * in order to be able to change link settings. Taking steps to let
-	 * the user know that.
-	 */
-	if (dpaa2_eth_cmp_dpni_ver(priv, DPNI_DYNAMIC_LINK_SET_VER_MAJOR,
-				   DPNI_DYNAMIC_LINK_SET_VER_MINOR) < 0) {
-		if (netif_running(net_dev)) {
-			netdev_info(net_dev, "Interface must be brought down first.\n");
-			return -EACCES;
-		}
-	}
+	if (!dpaa2_eth_is_type_phy(priv))
+		return -ENOTSUPP;
 
-	cfg.rate = link_settings->base.speed;
-	cfg.options = priv->link_state.options;
-	if (link_settings->base.autoneg == AUTONEG_ENABLE)
-		cfg.options |= DPNI_LINK_OPT_AUTONEG;
-	else
-		cfg.options &= ~DPNI_LINK_OPT_AUTONEG;
-	if (link_settings->base.duplex  == DUPLEX_HALF)
-		cfg.options |= DPNI_LINK_OPT_HALF_DUPLEX;
-	else
-		cfg.options &= ~DPNI_LINK_OPT_HALF_DUPLEX;
-
-	if (dpaa2_eth_cmp_dpni_ver(priv, DPNI_LINK_AUTONEG_VER_MAJOR,
-				   DPNI_LINK_AUTONEG_VER_MINOR) < 0) {
-		err = dpni_set_link_cfg(priv->mc_io, 0, priv->mc_token, &cfg);
-	} else {
-		link_mode_ethtool2dpni(link_settings->link_modes.advertising,
-				       &cfg.advertising);
-		dpni_set_link_cfg_v2(priv->mc_io, 0, priv->mc_token, &cfg);
-	}
-	if (err)
-		netdev_err(net_dev, "dpni_set_link_cfg failed");
-
-	return err;
+	return phylink_ethtool_ksettings_set(priv->mac->phylink, link_settings);
 }
 
 static void dpaa2_eth_get_pauseparam(struct net_device *net_dev,
@@ -191,6 +126,11 @@ static void dpaa2_eth_get_pauseparam(struct net_device *net_dev,
 {
 	struct dpaa2_eth_priv *priv = netdev_priv(net_dev);
 	u64 link_options = priv->link_state.options;
+
+	if (dpaa2_eth_is_type_phy(priv)) {
+		phylink_ethtool_get_pauseparam(priv->mac->phylink, pause);
+		return;
+	}
 
 	pause->rx_pause = dpaa2_eth_rx_pause_enabled(link_options);
 	pause->tx_pause = dpaa2_eth_tx_pause_enabled(link_options);
@@ -210,7 +150,7 @@ static int dpaa2_eth_set_pauseparam(struct net_device *net_dev,
 		return -EOPNOTSUPP;
 	}
 
-	if (priv->mac)
+	if (dpaa2_eth_is_type_phy(priv))
 		return phylink_ethtool_set_pauseparam(priv->mac->phylink,
 						      pause);
 	if (pause->autoneg)
@@ -258,7 +198,7 @@ static void dpaa2_eth_get_strings(struct net_device *netdev, u32 stringset,
 			strlcpy(p, dpaa2_ethtool_extras[i], ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
 		}
-		if (priv->mac)
+		if (dpaa2_eth_has_mac(priv))
 			dpaa2_mac_get_strings(p);
 		break;
 	}
@@ -271,7 +211,7 @@ static int dpaa2_eth_get_sset_count(struct net_device *net_dev, int sset)
 
 	switch (sset) {
 	case ETH_SS_STATS: /* ethtool_get_stats(), ethtool_get_drvinfo() */
-		if (priv->mac)
+		if (dpaa2_eth_has_mac(priv))
 			num_ss_stats += dpaa2_mac_get_sset_count();
 		return num_ss_stats;
 	default:
@@ -373,7 +313,7 @@ static void dpaa2_eth_get_ethtool_stats(struct net_device *net_dev,
 	}
 	*(data + i++) = buf_cnt;
 
-	if (priv->mac)
+	if (dpaa2_eth_has_mac(priv))
 		dpaa2_mac_get_ethtool_stats(priv->mac, data + i);
 }
 
@@ -678,7 +618,7 @@ static int dpaa2_eth_do_cls_rule(struct net_device *net_dev,
 			err = dpni_remove_fs_entry(priv->mc_io, 0,
 						   priv->mc_token, i,
 						   &rule_cfg);
-		if (err)
+		if (err || priv->dpni_attrs.options & DPNI_OPT_SHARED_FS)
 			break;
 	}
 
@@ -701,9 +641,9 @@ static int dpaa2_eth_num_cls_rules(struct dpaa2_eth_priv *priv)
 	return rules;
 }
 
-static int update_cls_rule(struct net_device *net_dev,
-			   struct ethtool_rx_flow_spec *new_fs,
-			   unsigned int location)
+static int dpaa2_eth_update_cls_rule(struct net_device *net_dev,
+				     struct ethtool_rx_flow_spec *new_fs,
+				     unsigned int location)
 {
 	struct dpaa2_eth_priv *priv = netdev_priv(net_dev);
 	struct dpaa2_eth_cls_rule *rule;
@@ -842,6 +782,44 @@ static int dpaa2_eth_get_ts_info(struct net_device *dev,
 	return 0;
 }
 
+static int dpaa2_eth_get_tunable(struct net_device *net_dev,
+				 const struct ethtool_tunable *tuna,
+				 void *data)
+{
+	struct dpaa2_eth_priv *priv = netdev_priv(net_dev);
+	int err = 0;
+
+	switch (tuna->id) {
+	case ETHTOOL_RX_COPYBREAK:
+		*(u32 *)data = priv->rx_copybreak;
+		break;
+	default:
+		err = -EOPNOTSUPP;
+		break;
+	}
+
+	return err;
+}
+
+static int dpaa2_eth_set_tunable(struct net_device *net_dev,
+				 const struct ethtool_tunable *tuna,
+				 const void *data)
+{
+	struct dpaa2_eth_priv *priv = netdev_priv(net_dev);
+	int err = 0;
+
+	switch (tuna->id) {
+	case ETHTOOL_RX_COPYBREAK:
+		priv->rx_copybreak = *(u32 *)data;
+		break;
+	default:
+		err = -EOPNOTSUPP;
+		break;
+	}
+
+	return err;
+}
+
 const struct ethtool_ops dpaa2_ethtool_ops = {
 	.get_drvinfo = dpaa2_eth_get_drvinfo,
 	.nway_reset = dpaa2_eth_nway_reset,
@@ -856,4 +834,6 @@ const struct ethtool_ops dpaa2_ethtool_ops = {
 	.get_rxnfc = dpaa2_eth_get_rxnfc,
 	.set_rxnfc = dpaa2_eth_set_rxnfc,
 	.get_ts_info = dpaa2_eth_get_ts_info,
+	.get_tunable = dpaa2_eth_get_tunable,
+	.set_tunable = dpaa2_eth_set_tunable,
 };

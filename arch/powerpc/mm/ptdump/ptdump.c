@@ -224,12 +224,6 @@ static void note_page(struct pg_state *st, unsigned long addr,
 
 	/* At first no level is set */
 	if (!st->level) {
-		st->level = level;
-		st->current_flags = flag;
-		st->start_address = addr;
-		st->start_pa = pa;
-		st->last_pa = pa;
-		st->page_size = page_size;
 		pt_dump_seq_printf(st->seq, "---[ %s ]---\n", st->marker->name);
 		note_page_update_state(st, addr, level, val, page_size);
 	/*
@@ -263,18 +257,7 @@ static void note_page(struct pg_state *st, unsigned long addr,
 		 * Address indicates we have passed the end of the
 		 * current section of virtual memory
 		 */
-		while (addr >= st->marker[1].start_address) {
-			st->marker++;
-			pt_dump_seq_printf(st->seq, "---[ %s ]---\n", st->marker->name);
-		}
-		st->start_address = addr;
-		st->start_pa = pa;
-		st->last_pa = pa;
-		st->page_size = page_size;
-		st->current_flags = flag;
-		st->level = level;
-	} else {
-		st->last_pa = pa;
+		note_page_update_state(st, addr, level, val, page_size);
 	}
 	st->last_pa = pa;
 }
@@ -362,7 +345,8 @@ static void walk_pagetables(struct pg_state *st)
 		else if (is_hugepd(__hugepd(p4d_val(*p4d))))
 			walk_hugepd(st, (hugepd_t *)p4d, addr, PGDIR_SHIFT, 1);
 		else
-			note_page(st, addr, 1, pgd_val(*pgd), PGDIR_SIZE);
+			/* p4d exists */
+			walk_pud(st, p4d, addr);
 	}
 }
 

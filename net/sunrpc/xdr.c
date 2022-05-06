@@ -606,19 +606,8 @@ xdr_shrink_pagelen(struct xdr_buf *buf, size_t len)
 	unsigned int pglen = buf->page_len;
 	unsigned int result;
 
-	result = 0;
-	tail = buf->tail;
 	if (len > buf->page_len)
 		len = buf-> page_len;
-	tailbuf_len = buf->buflen - buf->head->iov_len - buf->page_len;
-
-	/* Shift the tail first */
-	if (tailbuf_len != 0) {
-		unsigned int free_space = tailbuf_len - tail->iov_len;
-
-		if (len < free_space)
-			free_space = len;
-		tail->iov_len += free_space;
 
 	result = _shift_data_right_tail(buf, pglen - len, len);
 	buf->page_len -= len;

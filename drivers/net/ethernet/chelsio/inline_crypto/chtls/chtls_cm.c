@@ -815,14 +815,6 @@ static void chtls_purge_wr_queue(struct sock *sk)
 		kfree_skb(skb);
 }
 
-static void chtls_purge_wr_queue(struct sock *sk)
-{
-	struct sk_buff *skb;
-
-	while ((skb = dequeue_wr(sk)) != NULL)
-		kfree_skb(skb);
-}
-
 static void chtls_release_resources(struct sock *sk)
 {
 	struct chtls_sock *csk = rcu_dereference_sk_user_data(sk);
@@ -1918,6 +1910,7 @@ static void chtls_peer_close(struct sock *sk, struct sk_buff *skb)
 		else
 			sk_wake_async(sk, SOCK_WAKE_WAITD, POLL_IN);
 	}
+out:
 	kfree_skb(skb);
 }
 

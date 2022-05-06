@@ -366,13 +366,11 @@ static void encode_sattr(struct xdr_stream *xdr, const struct iattr *attr,
 		p = xdr_encode_current_server_time(p, &attr->ia_atime);
 	else
 		p = xdr_time_not_set(p);
-	if (attr->ia_valid & ATTR_MTIME_SET) {
-		ts = timespec64_to_timespec(attr->ia_mtime);
-		xdr_encode_time(p, &ts);
-	} else if (attr->ia_valid & ATTR_MTIME) {
-		ts = timespec64_to_timespec(attr->ia_mtime);
-		xdr_encode_current_server_time(p, &ts);
-	} else
+	if (attr->ia_valid & ATTR_MTIME_SET)
+		xdr_encode_time(p, &attr->ia_mtime);
+	else if (attr->ia_valid & ATTR_MTIME)
+		xdr_encode_current_server_time(p, &attr->ia_mtime);
+	else
 		xdr_time_not_set(p);
 }
 

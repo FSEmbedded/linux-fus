@@ -67,8 +67,8 @@ enum {
 
 struct hisi_zip_req {
 	struct acomp_req *req;
-	int sskip;
-	int dskip;
+	u32 sskip;
+	u32 dskip;
 	struct hisi_acc_hw_sgl *hw_src;
 	struct hisi_acc_hw_sgl *hw_dst;
 	dma_addr_t dma_src;
@@ -135,7 +135,7 @@ static void hisi_zip_config_tag(struct hisi_zip_sqe *sqe, u32 tag)
 
 static void hisi_zip_fill_sqe(struct hisi_zip_sqe *sqe, u8 req_type,
 			      dma_addr_t s_addr, dma_addr_t d_addr, u32 slen,
-			      u32 dlen, int sskip, int dskip)
+			      u32 dlen, u32 sskip, u32 dskip)
 {
 	memset(sqe, 0, sizeof(struct hisi_zip_sqe));
 
@@ -498,7 +498,7 @@ static struct hisi_zip_req *hisi_zip_create_req(struct acomp_req *req,
 	if (req_id >= req_q->size) {
 		write_unlock(&req_q->req_lock);
 		dev_dbg(&qp_ctx->qp->qm->pdev->dev, "req cache is full!\n");
-		return ERR_PTR(-EBUSY);
+		return ERR_PTR(-EAGAIN);
 	}
 	set_bit(req_id, req_q->req_bitmap);
 
@@ -522,7 +522,6 @@ static struct hisi_zip_req *hisi_zip_create_req(struct acomp_req *req,
 static int hisi_zip_do_work(struct hisi_zip_req *req,
 			    struct hisi_zip_qp_ctx *qp_ctx)
 {
-	struct hisi_zip_sqe *zip_sqe = &qp_ctx->zip_sqe;
 	struct acomp_req *a_req = req->req;
 	struct hisi_qp *qp = qp_ctx->qp;
 	struct device *dev = &qp->qm->pdev->dev;
@@ -555,10 +554,10 @@ static int hisi_zip_do_work(struct hisi_zip_req *req,
 	}
 	req->dma_dst = output;
 
-	hisi_zip_fill_sqe(zip_sqe, qp->req_type, input, output, a_req->slen,
+	hisi_zip_fill_sqe(&zip_sqe, qp->req_type, input, output, a_req->slen,
 			  a_req->dlen, req->sskip, req->dskip);
-	hisi_zip_config_buf_type(zip_sqe, HZIP_SGL);
-	hisi_zip_config_tag(zip_sqe, req->req_id);
+	hisi_zip_config_buf_type(&zip_sqe, HZIP_SGL);
+	hisi_zip_config_tag(&zip_sqe, req->req_id);
 
 	/* send command to start a task */
 	atomic64_inc(&dfx->send_cnt);

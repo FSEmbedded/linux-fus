@@ -290,7 +290,8 @@ static struct sk_buff *sja1105_rcv(struct sk_buff *skb,
 
 	hdr = eth_hdr(skb);
 	tpid = ntohs(hdr->h_proto);
-	is_tagged = (tpid == ETH_P_SJA1105);
+	is_tagged = (tpid == ETH_P_SJA1105 || tpid == ETH_P_8021Q ||
+		     skb_vlan_tag_present(skb));
 	is_link_local = sja1105_is_link_local(skb);
 	is_meta = sja1105_is_meta_frame(skb);
 
@@ -299,7 +300,12 @@ static struct sk_buff *sja1105_rcv(struct sk_buff *skb,
 	if (is_tagged) {
 		/* Normal traffic path. */
 		skb_push_rcsum(skb, ETH_HLEN);
-		__skb_vlan_pop(skb, &tci);
+		if (skb_vlan_tag_present(skb)) {
+			tci = skb_vlan_tag_get(skb);
+			__vlan_hwaccel_clear_tag(skb);
+		} else {
+			__skb_vlan_pop(skb, &tci);
+		}
 		skb_pull_rcsum(skb, ETH_HLEN);
 		skb_reset_network_header(skb);
 		skb_reset_transport_header(skb);
@@ -332,6 +338,9 @@ static struct sk_buff *sja1105_rcv(struct sk_buff *skb,
 		netdev_warn(netdev, "Couldn't decode source port\n");
 		return NULL;
 	}
+
+	if (subvlan)
+		sja1105_decode_subvlan(skb, subvlan);
 
 	return sja1105_rcv_meta_state_machine(skb, &meta, is_link_local,
 					      is_meta);

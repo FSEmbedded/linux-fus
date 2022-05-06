@@ -81,8 +81,8 @@ struct padata_cpumask {
  * struct parallel_data - Internal control structure, covers everything
  * that depends on the cpumask in use.
  *
- * @sh: padata_shell object.
- * @pqueue: percpu padata queues used for parallelization.
+ * @ps: padata_shell object.
+ * @reorder_list: percpu reorder lists
  * @squeue: percpu padata queues used for serialuzation.
  * @refcnt: Number of objects holding a reference on this parallel_data.
  * @seq_nr: Sequence number of the parallelized data object.
@@ -94,7 +94,7 @@ struct padata_cpumask {
  */
 struct parallel_data {
 	struct padata_shell		*ps;
-	struct padata_parallel_queue	__percpu *pqueue;
+	struct padata_list		__percpu *reorder_list;
 	struct padata_serial_queue	__percpu *squeue;
 	atomic_t			refcnt;
 	unsigned int			seq_nr;
@@ -148,23 +148,6 @@ struct padata_mt_job {
 };
 
 /**
- * struct padata_shell - Wrapper around struct parallel_data, its
- * purpose is to allow the underlying control structure to be replaced
- * on the fly using RCU.
- *
- * @pinst: padat instance.
- * @pd: Actual parallel_data structure which may be substituted on the fly.
- * @opd: Pointer to old pd to be freed by padata_replace.
- * @list: List entry in padata_instance list.
- */
-struct padata_shell {
-	struct padata_instance		*pinst;
-	struct parallel_data __rcu	*pd;
-	struct parallel_data		*opd;
-	struct list_head		list;
-};
-
-/**
  * struct padata_instance - The overall control structure.
  *
  * @cpu_online_node: Linkage for CPU online callback.
@@ -173,11 +156,6 @@ struct padata_shell {
  * @serial_wq: The workqueue used for serial work.
  * @pslist: List of padata_shell objects attached to this instance.
  * @cpumask: User supplied cpumasks for parallel and serial works.
- * @rcpumask: Actual cpumasks based on user cpumask and cpu_online_mask.
- * @omask: Temporary storage used to compute the notification mask.
- * @cpumask_change_notifier: Notifiers chain for user-defined notify
- *            callbacks that will be called when either @pcpu or @cbcpu
- *            or both cpumasks change.
  * @kobj: padata instance kernel object.
  * @lock: padata instance lock.
  * @flags: padata flags.
@@ -189,9 +167,6 @@ struct padata_instance {
 	struct workqueue_struct		*serial_wq;
 	struct list_head		pslist;
 	struct padata_cpumask		cpumask;
-	struct padata_cpumask		rcpumask;
-	cpumask_var_t			omask;
-	struct blocking_notifier_head	 cpumask_change_notifier;
 	struct kobject                   kobj;
 	struct mutex			 lock;
 	u8				 flags;

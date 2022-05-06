@@ -112,29 +112,67 @@ _LPP_OFFSET	= __LC_LPP
 
 	.macro	SWITCH_ASYNC savearea,timer,clock
 	tmhh	%r8,0x0001		# interrupting from user ?
-	jnz	2f
+	jnz	4f
+#if IS_ENABLED(CONFIG_KVM)
 	lgr	%r14,%r9
-	cghi	%r14,__LC_RETURN_LPSWE
-	je	0f
-	slg	%r14,BASED(.Lcritical_start)
-	clg	%r14,BASED(.Lcritical_length)
-	jhe	1f
-0:
+	larl	%r13,.Lsie_gmap
+	slgr	%r14,%r13
+	lghi	%r13,.Lsie_done - .Lsie_gmap
+	clgr	%r14,%r13
+	jhe	0f
 	lghi	%r11,\savearea		# inside critical section, do cleanup
-	brasl	%r14,cleanup_critical
-	tmhh	%r8,0x0001		# retest problem state after cleanup
-	jnz	2f
-1:	lg	%r14,__LC_ASYNC_STACK	# are we already on the target stack?
+	brasl	%r14,.Lcleanup_sie
+#endif
+0:	larl	%r13,.Lpsw_idle_exit
+	cgr	%r13,%r9
+	jne	3f
+
+	larl	%r1,smp_cpu_mtid
+	llgf	%r1,0(%r1)
+	ltgr	%r1,%r1
+	jz	2f			# no SMT, skip mt_cycles calculation
+	.insn	rsy,0xeb0000000017,%r1,5,__SF_EMPTY+80(%r15)
+	larl	%r3,mt_cycles
+	ag	%r3,__LC_PERCPU_OFFSET
+	la	%r4,__SF_EMPTY+16(%r15)
+1:	lg	%r0,0(%r3)
+	slg	%r0,0(%r4)
+	alg	%r0,64(%r4)
+	stg	%r0,0(%r3)
+	la	%r3,8(%r3)
+	la	%r4,8(%r4)
+	brct	%r1,1b
+
+2:	mvc	__CLOCK_IDLE_EXIT(8,%r2), \clock
+	mvc	__TIMER_IDLE_EXIT(8,%r2), \timer
+	# account system time going idle
+	ni	__LC_CPU_FLAGS+7,255-_CIF_ENABLED_WAIT
+
+	lg	%r13,__LC_STEAL_TIMER
+	alg	%r13,__CLOCK_IDLE_ENTER(%r2)
+	slg	%r13,__LC_LAST_UPDATE_CLOCK
+	stg	%r13,__LC_STEAL_TIMER
+
+	mvc	__LC_LAST_UPDATE_CLOCK(8),__CLOCK_IDLE_EXIT(%r2)
+
+	lg	%r13,__LC_SYSTEM_TIMER
+	alg	%r13,__LC_LAST_UPDATE_TIMER
+	slg	%r13,__TIMER_IDLE_ENTER(%r2)
+	stg	%r13,__LC_SYSTEM_TIMER
+	mvc	__LC_LAST_UPDATE_TIMER(8),__TIMER_IDLE_EXIT(%r2)
+
+	nihh	%r8,0xfcfd		# clear wait state and irq bits
+3:	lg	%r14,__LC_ASYNC_STACK	# are we already on the target stack?
 	slgr	%r14,%r15
 	srag	%r14,%r14,STACK_SHIFT
-	jnz	3f
+	jnz	5f
 	CHECK_STACK \savearea
 	aghi	%r15,-(STACK_FRAME_OVERHEAD + __PT_SIZE)
-	j	4f
-2:	UPDATE_VTIME %r14,%r15,\timer
+	j	6f
+4:	UPDATE_VTIME %r14,%r15,\timer
 	BPENTER __TI_flags(%r12),_TIF_ISOLATE_BP
-3:	lg	%r15,__LC_ASYNC_STACK	# load async stack
-4:	la	%r11,STACK_FRAME_OVERHEAD(%r15)
+5:	lg	%r15,__LC_ASYNC_STACK	# load async stack
+6:	la	%r11,STACK_FRAME_OVERHEAD(%r15)
 	.endm
 
 	.macro UPDATE_VTIME w1,w2,enter_timer
@@ -416,10 +454,8 @@ ENTRY(system_call)
 .Lsysc_skip_fpu:
 	mvc	__LC_RETURN_PSW(16),__PT_PSW(%r11)
 	stpt	__LC_EXIT_TIMER
-	mvc	__VDSO_ECTG_BASE(16,%r14),__LC_EXIT_TIMER
-	lmg	%r11,%r15,__PT_R11(%r11)
-	b	__LC_RETURN_LPSWE(%r0)
-.Lsysc_done:
+	lmg	%r0,%r15,__PT_R0(%r11)
+	b	__LC_RETURN_LPSWE
 
 #
 # One of the work bits is on. Find out which one.
@@ -621,8 +657,10 @@ ENTRY(pgm_check_handler)
 #if IS_ENABLED(CONFIG_KVM)
 	# cleanup critical section for program checks in sie64a
 	lgr	%r14,%r9
-	slg	%r14,BASED(.Lsie_critical_start)
-	clg	%r14,BASED(.Lsie_critical_length)
+	larl	%r13,.Lsie_gmap
+	slgr	%r14,%r13
+	lghi	%r13,.Lsie_done - .Lsie_gmap
+	clgr	%r14,%r13
 	jhe	1f
 	lg	%r14,__SF_SIE_CONTROL(%r15)	# get control block pointer
 	ni	__SIE_PROG0C+3(%r14),0xfe	# no longer in SIE
@@ -674,8 +712,8 @@ ENTRY(pgm_check_handler)
 	mvc	__THREAD_per_address(8,%r14),__LC_PER_ADDRESS
 	mvc	__THREAD_per_cause(2,%r14),__LC_PER_CODE
 	mvc	__THREAD_per_paid(1,%r14),__LC_PER_ACCESS_ID
-6:	REENABLE_IRQS
-	xc	__SF_BACKCHAIN(8,%r15),__SF_BACKCHAIN(%r15)
+6:	xc	__SF_BACKCHAIN(8,%r15),__SF_BACKCHAIN(%r15)
+	RESTORE_SM_CLEAR_PER
 	larl	%r1,pgm_check_table
 	llgh	%r10,__PT_INT_CODE+2(%r11)
 	nill	%r10,0x007f
@@ -771,8 +809,8 @@ ENTRY(io_int_handler)
 	BPEXIT	__TI_flags(%r12),_TIF_ISOLATE_BP
 	stpt	__LC_EXIT_TIMER
 .Lio_exit_kernel:
-	lmg	%r11,%r15,__PT_R11(%r11)
-	b	__LC_RETURN_LPSWE(%r0)
+	lmg	%r0,%r15,__PT_R0(%r11)
+	b	__LC_RETURN_LPSWE
 .Lio_done:
 
 #
@@ -1240,9 +1278,6 @@ ENTRY(stack_overflow)
 ENDPROC(stack_overflow)
 #endif
 
-ENTRY(cleanup_critical)
-	cghi	%r9,__LC_RETURN_LPSWE
-	je	.Lcleanup_lpswe
 #if IS_ENABLED(CONFIG_KVM)
 .Lcleanup_sie:
 	cghi	%r11,__LC_SAVE_AREA_ASYNC	#Is this in normal interrupt?
@@ -1260,123 +1295,6 @@ ENTRY(cleanup_critical)
 	larl	%r9,sie_exit			# skip forward to sie_exit
 	BR_EX	%r14,%r11
 
-.Lcleanup_sysc_restore:
-	# check if stpt has been executed
-	clg	%r9,BASED(.Lcleanup_sysc_restore_insn)
-	jh	0f
-	mvc	__LC_EXIT_TIMER(8),__LC_ASYNC_ENTER_TIMER
-	cghi	%r11,__LC_SAVE_AREA_ASYNC
-	je	0f
-	mvc	__LC_EXIT_TIMER(8),__LC_MCCK_ENTER_TIMER
-0:	clg	%r9,BASED(.Lcleanup_sysc_restore_insn+8)
-	je	1f
-	lg	%r9,24(%r11)		# get saved pointer to pt_regs
-	mvc	__LC_RETURN_PSW(16),__PT_PSW(%r9)
-	mvc	0(64,%r11),__PT_R8(%r9)
-	lmg	%r0,%r7,__PT_R0(%r9)
-.Lcleanup_lpswe:
-1:	lmg	%r8,%r9,__LC_RETURN_PSW
-	BR_EX	%r14,%r11
-.Lcleanup_sysc_restore_insn:
-	.quad	.Lsysc_exit_timer
-	.quad	.Lsysc_done - 4
-
-.Lcleanup_io_tif:
-	larl	%r9,.Lio_tif
-	BR_EX	%r14,%r11
-
-.Lcleanup_io_restore:
-	# check if stpt has been executed
-	clg	%r9,BASED(.Lcleanup_io_restore_insn)
-	jh	0f
-	mvc	__LC_EXIT_TIMER(8),__LC_MCCK_ENTER_TIMER
-0:	clg	%r9,BASED(.Lcleanup_io_restore_insn+8)
-	je	1f
-	lg	%r9,24(%r11)		# get saved r11 pointer to pt_regs
-	mvc	__LC_RETURN_PSW(16),__PT_PSW(%r9)
-	mvc	0(64,%r11),__PT_R8(%r9)
-	lmg	%r0,%r7,__PT_R0(%r9)
-1:	lmg	%r8,%r9,__LC_RETURN_PSW
-	BR_EX	%r14,%r11
-.Lcleanup_io_restore_insn:
-	.quad	.Lio_exit_timer
-	.quad	.Lio_done - 4
-
-.Lcleanup_idle:
-	ni	__LC_CPU_FLAGS+7,255-_CIF_ENABLED_WAIT
-	# copy interrupt clock & cpu timer
-	mvc	__CLOCK_IDLE_EXIT(8,%r2),__LC_INT_CLOCK
-	mvc	__TIMER_IDLE_EXIT(8,%r2),__LC_ASYNC_ENTER_TIMER
-	cghi	%r11,__LC_SAVE_AREA_ASYNC
-	je	0f
-	mvc	__CLOCK_IDLE_EXIT(8,%r2),__LC_MCCK_CLOCK
-	mvc	__TIMER_IDLE_EXIT(8,%r2),__LC_MCCK_ENTER_TIMER
-0:	# check if stck & stpt have been executed
-	clg	%r9,BASED(.Lcleanup_idle_insn)
-	jhe	1f
-	mvc	__CLOCK_IDLE_ENTER(8,%r2),__CLOCK_IDLE_EXIT(%r2)
-	mvc	__TIMER_IDLE_ENTER(8,%r2),__TIMER_IDLE_EXIT(%r2)
-1:	# calculate idle cycles
-	clg	%r9,BASED(.Lcleanup_idle_insn)
-	jl	3f
-	larl	%r1,smp_cpu_mtid
-	llgf	%r1,0(%r1)
-	ltgr	%r1,%r1
-	jz	3f
-	.insn	rsy,0xeb0000000017,%r1,5,__SF_EMPTY+80(%r15)
-	larl	%r3,mt_cycles
-	ag	%r3,__LC_PERCPU_OFFSET
-	la	%r4,__SF_EMPTY+16(%r15)
-2:	lg	%r0,0(%r3)
-	slg	%r0,0(%r4)
-	alg	%r0,64(%r4)
-	stg	%r0,0(%r3)
-	la	%r3,8(%r3)
-	la	%r4,8(%r4)
-	brct	%r1,2b
-3:	# account system time going idle
-	lg	%r9,__LC_STEAL_TIMER
-	alg	%r9,__CLOCK_IDLE_ENTER(%r2)
-	slg	%r9,__LC_LAST_UPDATE_CLOCK
-	stg	%r9,__LC_STEAL_TIMER
-	mvc	__LC_LAST_UPDATE_CLOCK(8),__CLOCK_IDLE_EXIT(%r2)
-	lg	%r9,__LC_SYSTEM_TIMER
-	alg	%r9,__LC_LAST_UPDATE_TIMER
-	slg	%r9,__TIMER_IDLE_ENTER(%r2)
-	stg	%r9,__LC_SYSTEM_TIMER
-	mvc	__LC_LAST_UPDATE_TIMER(8),__TIMER_IDLE_EXIT(%r2)
-	# prepare return psw
-	nihh	%r8,0xfcfd		# clear irq & wait state bits
-	lg	%r9,48(%r11)		# return from psw_idle
-	BR_EX	%r14,%r11
-.Lcleanup_idle_insn:
-	.quad	.Lpsw_idle_lpsw
-
-.Lcleanup_save_fpu_regs:
-	larl	%r9,save_fpu_regs
-	BR_EX	%r14,%r11
-
-.Lcleanup_load_fpu_regs:
-	larl	%r9,load_fpu_regs
-	BR_EX	%r14,%r11
-
-/*
- * Integer constants
- */
-	.align	8
-.Lcritical_start:
-	.quad	.L__critical_start
-.Lcritical_length:
-	.quad	.L__critical_end - .L__critical_start
-#if IS_ENABLED(CONFIG_KVM)
-.Lsie_critical_start:
-	.quad	.Lsie_gmap
-.Lsie_critical_length:
-	.quad	.Lsie_done - .Lsie_gmap
-.Lsie_crit_mcck_start:
-	.quad   .Lsie_entry
-.Lsie_crit_mcck_length:
-	.quad   .Lsie_skip - .Lsie_entry
 #endif
 	.section .rodata, "a"
 #define SYSCALL(esame,emu)	.quad __s390x_ ## esame

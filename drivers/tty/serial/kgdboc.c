@@ -21,6 +21,7 @@
 #include <linux/input.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/serial_core.h>
 
 #define MAX_CONFIG_LEN		40
 
@@ -41,6 +42,11 @@ static struct tty_driver	*kgdb_tty_driver;
 static int			kgdb_tty_line;
 
 static struct platform_device *kgdboc_pdev;
+
+#if IS_BUILTIN(CONFIG_KGDB_SERIAL_CONSOLE)
+static struct kgdb_io		kgdboc_earlycon_io_ops;
+static int                      (*earlycon_orig_exit)(struct console *con);
+#endif /* IS_BUILTIN(CONFIG_KGDB_SERIAL_CONSOLE) */
 
 #ifdef CONFIG_KDB_KEYBOARD
 static int kgdboc_reset_connect(struct input_handler *handler,
@@ -147,6 +153,8 @@ static inline void cleanup_earlycon(void) { }
 
 static void cleanup_kgdboc(void)
 {
+	cleanup_earlycon();
+
 	if (configured != 1)
 		return;
 

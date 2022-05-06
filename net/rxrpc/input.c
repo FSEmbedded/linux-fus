@@ -878,9 +878,19 @@ static void rxrpc_input_ack(struct rxrpc_call *call, struct sk_buff *skb)
 	case RXRPC_ACK_PING_RESPONSE:
 		rxrpc_input_ping_response(call, skb->tstamp, acked_serial,
 					  ack_serial);
-	if (buf.ack.reason == RXRPC_ACK_REQUESTED)
-		rxrpc_input_requested_ack(call, skb->tstamp, acked_serial,
-					  ack_serial);
+		rxrpc_complete_rtt_probe(call, skb->tstamp, acked_serial, ack_serial,
+					 rxrpc_rtt_rx_ping_response);
+		break;
+	case RXRPC_ACK_REQUESTED:
+		rxrpc_complete_rtt_probe(call, skb->tstamp, acked_serial, ack_serial,
+					 rxrpc_rtt_rx_requested_ack);
+		break;
+	default:
+		if (acked_serial != 0)
+			rxrpc_complete_rtt_probe(call, skb->tstamp, acked_serial, ack_serial,
+						 rxrpc_rtt_rx_cancel);
+		break;
+	}
 
 	if (buf.ack.reason == RXRPC_ACK_PING) {
 		_proto("Rx ACK %%%u PING Request", ack_serial);

@@ -560,15 +560,6 @@ static const struct spi_controller_mem_ops stm32_qspi_mem_ops = {
 	.exec_op = stm32_qspi_exec_op,
 };
 
-static void stm32_qspi_release(struct stm32_qspi *qspi)
-{
-	/* disable qspi */
-	writel_relaxed(0, qspi->io_base + QSPI_CR);
-	stm32_qspi_dma_free(qspi);
-	mutex_destroy(&qspi->lock);
-	clk_disable_unprepare(qspi->clk);
-}
-
 static int stm32_qspi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -696,10 +687,6 @@ err_dma_free:
 err_clk_disable:
 	clk_disable_unprepare(qspi->clk);
 err_master_put:
-	spi_master_put(qspi->ctrl);
-
-err:
-	stm32_qspi_release(qspi);
 	spi_master_put(qspi->ctrl);
 
 	return ret;

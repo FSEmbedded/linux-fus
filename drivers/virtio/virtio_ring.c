@@ -2214,6 +2214,7 @@ void vring_del_virtqueue(struct virtqueue *_vq)
 	}
 	if (!vq->packed_ring)
 		kfree(vq->split.desc_state);
+	spin_lock(&vq->vq.vdev->vqs_list_lock);
 	list_del(&_vq->list);
 	spin_unlock(&vq->vq.vdev->vqs_list_lock);
 	kfree(vq);

@@ -1600,8 +1600,8 @@ static void integrity_metadata(struct work_struct *w)
 		char *checksums;
 		unsigned extra_space = unlikely(digest_size > ic->tag_size) ? digest_size - ic->tag_size : 0;
 		char checksums_onstack[max((size_t)HASH_MAX_DIGESTSIZE, MAX_TAG_SIZE)];
-		unsigned sectors_to_process = dio->range.n_sectors;
-		sector_t sector = dio->range.logical_sector;
+		sector_t sector;
+		unsigned sectors_to_process;
 
 		if (unlikely(ic->mode == 'R'))
 			goto skip_io;
@@ -1619,6 +1619,41 @@ static void integrity_metadata(struct work_struct *w)
 				goto error;
 			}
 		}
+
+		if (unlikely(dio->op == REQ_OP_DISCARD)) {
+			sector_t bi_sector = dio->bio_details.bi_iter.bi_sector;
+			unsigned bi_size = dio->bio_details.bi_iter.bi_size;
+			unsigned max_size = likely(checksums != checksums_onstack) ? PAGE_SIZE : HASH_MAX_DIGESTSIZE;
+			unsigned max_blocks = max_size / ic->tag_size;
+			memset(checksums, DISCARD_FILLER, max_size);
+
+			while (bi_size) {
+				unsigned this_step_blocks = bi_size >> (SECTOR_SHIFT + ic->sb->log2_sectors_per_block);
+				this_step_blocks = min(this_step_blocks, max_blocks);
+				r = dm_integrity_rw_tag(ic, checksums, &dio->metadata_block, &dio->metadata_offset,
+							this_step_blocks * ic->tag_size, TAG_WRITE);
+				if (unlikely(r)) {
+					if (likely(checksums != checksums_onstack))
+						kfree(checksums);
+					goto error;
+				}
+
+				/*if (bi_size < this_step_blocks << (SECTOR_SHIFT + ic->sb->log2_sectors_per_block)) {
+					printk("BUGG: bi_sector: %llx, bi_size: %u\n", bi_sector, bi_size);
+					printk("BUGG: this_step_blocks: %u\n", this_step_blocks);
+					BUG();
+				}*/
+				bi_size -= this_step_blocks << (SECTOR_SHIFT + ic->sb->log2_sectors_per_block);
+				bi_sector += this_step_blocks << ic->sb->log2_sectors_per_block;
+			}
+
+			if (likely(checksums != checksums_onstack))
+				kfree(checksums);
+			goto skip_io;
+		}
+
+		sector = dio->range.logical_sector;
+		sectors_to_process = dio->range.n_sectors;
 
 		__bio_for_each_segment(bv, bio, iter, dio->bio_details.bi_iter) {
 			unsigned pos;
@@ -2122,7 +2157,19 @@ offload_to_thread:
 	bio->bi_end_io = integrity_end_io;
 	bio->bi_iter.bi_size = dio->range.n_sectors << SECTOR_SHIFT;
 
-	generic_make_request(bio);
+	if (unlikely(dio->op == REQ_OP_DISCARD) && likely(ic->mode != 'D')) {
+		integrity_metadata(&dio->work);
+		dm_integrity_flush_buffers(ic, false);
+
+		dio->in_flight = (atomic_t)ATOMIC_INIT(1);
+		dio->completion = NULL;
+
+		submit_bio_noacct(bio);
+
+		return;
+	}
+
+	submit_bio_noacct(bio);
 
 	if (need_sync_io) {
 		wait_for_completion_io(&read_comp);

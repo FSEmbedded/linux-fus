@@ -989,10 +989,7 @@ static void elan_report_absolute(struct elan_tp_data *data, u8 *packet,
 
 	pm_wakeup_event(&data->client->dev, 0);
 
-	hover_event = hover_info & 0x40;
-	for (i = 0; i < ETP_MAX_FINGERS; i++) {
-		contact_valid = tp_info & (1U << (3 + i));
-		elan_report_contact(data, i, contact_valid, finger_data);
+	hover_event = hover_info & BIT(6);
 
 	for (i = 0; i < ETP_MAX_FINGERS; i++) {
 		contact_valid = tp_info & BIT(3 + i);

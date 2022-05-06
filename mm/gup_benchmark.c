@@ -72,6 +72,8 @@ static int __gup_benchmark_ioctl(unsigned int cmd,
 	int nr;
 	struct page **pages;
 	int ret = 0;
+	bool needs_mmap_lock =
+		cmd != GUP_FAST_BENCHMARK && cmd != PIN_FAST_BENCHMARK;
 
 	if (gup->size > ULONG_MAX)
 		return -EINVAL;
@@ -125,9 +127,8 @@ static int __gup_benchmark_ioctl(unsigned int cmd,
 					    pages + i, NULL);
 			break;
 		default:
-			kvfree(pages);
 			ret = -EINVAL;
-			goto out;
+			goto unlock;
 		}
 
 		if (nr <= 0)
@@ -160,7 +161,6 @@ unlock:
 		mmap_read_unlock(current->mm);
 free_pages:
 	kvfree(pages);
-out:
 	return ret;
 }
 

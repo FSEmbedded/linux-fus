@@ -497,18 +497,23 @@ config MFD_MX25_TSADC
 	  i.MX25 processors. They consist of a conversion queue for general
 	  purpose ADC and a queue for Touchscreens.
 
+config MFD_IMX_MIX
+	tristate "NXP i.MX Generic Mix Control Driver"
+	depends on OF || COMPILE_TEST
+	help
+	  Enable generic mixes support. On some i.MX platforms, there are
+	  devices that are a mix of multiple functionalities like reset
+	  controllers, clock controllers and some others. In order to split
+	  those functionalities between the right drivers, this MFD populates
+	  with virtual devices based on what's found in the devicetree node,
+	  leaving the rest of the behavior control to the dedicated driver.
+
 config MFD_MXC_HDMI
 	tristate "Freescale HDMI Core"
 	select MFD_CORE
 	help
 	  This is the core driver for the Freescale i.MX6 on-chip HDMI.
 	  This MFD driver connects with the video and audio drivers for HDMI.
-
-config MFD_IMX_AUDIOMIX
-	tristate "NXP i.MX8MP Audiomix Control Driver"
-	depends on OF || COMPILE_TEST
-	help
-	  Enable audiomix support
 
 config MFD_HI6421_PMIC
 	tristate "HiSilicon Hi6421 PMU/Codec IC"
@@ -821,6 +826,14 @@ config MFD_MAX17135
 	help
 	  This is the MAX17135 PMIC support. It includes
 	  core support for communication with the MAX17135 chip.
+
+config MFD_FP9931
+	tristate "Fitipower FP9931 EPD PMIC Core"
+	depends on I2C && OF
+
+	help
+	  This is the FP9931 PMIC support. It includes
+	  core support for communication with the FP9931 chip.
 
 config MFD_MAX77620
 	bool "Maxim Semiconductor MAX77620 and MAX20024 PMIC Support"
@@ -2087,13 +2100,38 @@ config MFD_STMFX
 	  additional drivers must be enabled in order to use the functionality
 	  of the device.
 
-config MFD_PCA9450
-	tristate "PCA9450 Power Management chip"
-	depends on I2C=y
+config MFD_WCD934X
+	tristate "Support for WCD9340/WCD9341 Codec"
+	depends on SLIMBUS
+	select REGMAP
+	select REGMAP_SLIMBUS
+	select REGMAP_IRQ
 	select MFD_CORE
 	help
-	  if you say yes here you get support for the PCA9450
-	  Power Management chips.
+	  Support for the Qualcomm WCD9340/WCD9341 Codec.
+	  This driver provides common support WCD934x audio codec and its
+	  associated Pin Controller, Soundwire Controller and Audio codec.
+
+config MFD_KHADAS_MCU
+	tristate "Support for Khadas System control Microcontroller"
+	depends on I2C
+	depends on ARCH_MESON || ARCH_ROCKCHIP || COMPILE_TEST
+	select MFD_CORE
+	select REGMAP_I2C
+	help
+	  Support for the Khadas System control Microcontroller interface
+	  present on their VIM and Edge boards.
+
+	  This Microcontroller is present on the Khadas VIM1, VIM2, VIM3 and
+	  Edge boards.
+
+	  It provides multiple boot control features like password check,
+	  power-on options, power-off control and system FAN control on recent
+	  boards.
+
+	  This driver provides common support for accessing the device,
+	  additional drivers must be enabled in order to use the functionality
+	  of the device.
 
 menu "Multimedia Capabilities Port drivers"
 	depends on ARCH_SA1100

@@ -8,7 +8,6 @@
 
 enum devm_ioremap_type {
 	DEVM_IOREMAP = 0,
-	DEVM_IOREMAP_NC,
 	DEVM_IOREMAP_UC,
 	DEVM_IOREMAP_WC,
 };
@@ -36,9 +35,6 @@ static void __iomem *__devm_ioremap(struct device *dev, resource_size_t offset,
 	switch (type) {
 	case DEVM_IOREMAP:
 		addr = ioremap(offset, size);
-		break;
-	case DEVM_IOREMAP_UC:
-		addr = ioremap_uc(offset, size);
 		break;
 	case DEVM_IOREMAP_UC:
 		addr = ioremap_uc(offset, size);
@@ -74,21 +70,6 @@ EXPORT_SYMBOL(devm_ioremap);
 
 /**
  * devm_ioremap_uc - Managed ioremap_uc()
- * @dev: Generic device to remap IO address for
- * @offset: Resource address to map
- * @size: Size of map
- *
- * Managed ioremap_uc().  Map is automatically unmapped on driver detach.
- */
-void __iomem *devm_ioremap_uc(struct device *dev, resource_size_t offset,
-			      resource_size_t size)
-{
-	return __devm_ioremap(dev, offset, size, DEVM_IOREMAP_UC);
-}
-EXPORT_SYMBOL_GPL(devm_ioremap_uc);
-
-/**
- * devm_ioremap_nocache - Managed ioremap_nocache()
  * @dev: Generic device to remap IO address for
  * @offset: Resource address to map
  * @size: Size of map

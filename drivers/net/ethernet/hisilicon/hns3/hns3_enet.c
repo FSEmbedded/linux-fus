@@ -60,6 +60,7 @@ MODULE_PARM_DESC(debug, " Network interface message level setting");
 #define HNS3_OUTER_VLAN_TAG	2
 
 #define HNS3_MIN_TX_LEN		33U
+#define HNS3_MIN_TUN_PKT_LEN	65U
 
 /* hns3_pci_tbl - PCI Device ID Table
  *
@@ -783,7 +784,7 @@ static int hns3_get_l4_protocol(struct sk_buff *skb, u8 *ol4_proto,
  * and it is udp packet, which has a dest port as the IANA assigned.
  * the hardware is expected to do the checksum offload, but the
  * hardware will not do the checksum offload when udp dest port is
- * 4789 or 6081.
+ * 4789, 4790 or 6081.
  */
 static bool hns3_tunnel_csum_bug(struct sk_buff *skb)
 {
@@ -793,7 +794,8 @@ static bool hns3_tunnel_csum_bug(struct sk_buff *skb)
 
 	if (!(!skb->encapsulation &&
 	      (l4.udp->dest == htons(IANA_VXLAN_UDP_PORT) ||
-	      l4.udp->dest == htons(GENEVE_UDP_PORT))))
+	      l4.udp->dest == htons(GENEVE_UDP_PORT) ||
+	      l4.udp->dest == htons(4790))))
 		return false;
 
 	return true;
@@ -1407,6 +1409,60 @@ static void hns3_clear_desc(struct hns3_enet_ring *ring, int next_to_use_orig)
 		ring->desc_cb[ring->next_to_use].dma = 0;
 		ring->desc_cb[ring->next_to_use].type = DESC_TYPE_UNKNOWN;
 	}
+}
+
+static int hns3_fill_skb_to_desc(struct hns3_enet_ring *ring,
+				 struct sk_buff *skb, enum hns_desc_type type)
+{
+	unsigned int size = skb_headlen(skb);
+	struct sk_buff *frag_skb;
+	int i, ret, bd_num = 0;
+
+	if (size) {
+		ret = hns3_fill_desc(ring, skb, size, type);
+		if (unlikely(ret < 0))
+			return ret;
+
+		bd_num += ret;
+	}
+
+	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
+
+		size = skb_frag_size(frag);
+		if (!size)
+			continue;
+
+		ret = hns3_fill_desc(ring, frag, size, DESC_TYPE_PAGE);
+		if (unlikely(ret < 0))
+			return ret;
+
+		bd_num += ret;
+	}
+
+	skb_walk_frags(skb, frag_skb) {
+		ret = hns3_fill_skb_to_desc(ring, frag_skb,
+					    DESC_TYPE_FRAGLIST_SKB);
+		if (unlikely(ret < 0))
+			return ret;
+
+		bd_num += ret;
+	}
+
+	return bd_num;
+}
+
+static void hns3_tx_doorbell(struct hns3_enet_ring *ring, int num,
+			     bool doorbell)
+{
+	ring->pending_buf += num;
+
+	if (!doorbell) {
+		u64_stats_update_begin(&ring->syncp);
+		ring->stats.tx_more++;
+		u64_stats_update_end(&ring->syncp);
+		return;
+	}
 
 	if (!ring->pending_buf)
 		return;
@@ -1431,10 +1487,6 @@ netdev_tx_t hns3_nic_net_xmit(struct sk_buff *skb, struct net_device *netdev)
 		hns3_tx_doorbell(ring, 0, !netdev_xmit_more());
 		return NETDEV_TX_OK;
 	}
-
-	/* Hardware can only handle short frames above 32 bytes */
-	if (skb_put_padto(skb, HNS3_MIN_TX_LEN))
-		return NETDEV_TX_OK;
 
 	/* Prefetch the data used later */
 	prefetch(skb->data);

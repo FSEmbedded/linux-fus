@@ -90,7 +90,6 @@ snd-soc-es8316-objs := es8316.o
 snd-soc-es8328-objs := es8328.o
 snd-soc-es8328-i2c-objs := es8328-i2c.o
 snd-soc-es8328-spi-objs := es8328-spi.o
-snd-soc-fsl-mqs-objs := fsl_mqs.o
 snd-soc-gtm601-objs := gtm601.o
 snd-soc-hdac-hdmi-objs := hdac_hdmi.o
 snd-soc-hdac-hda-objs := hdac_hda.o
@@ -300,7 +299,6 @@ snd-soc-zl38060-objs := zl38060.o
 snd-soc-zx-aud96p22-objs := zx_aud96p22.o
 snd-soc-rpmsg-wm8960-objs := rpmsg_wm8960.o
 snd-soc-rpmsg-wm8960-i2c-objs := rpmsg_wm8960_i2c.o
-snd-soc-rpmsg-cs42xx8-objs := rpmsg_cs42xx8.o
 snd-soc-rpmsg-ak4497-objs := rpmsg_ak4497.o
 
 # Amp
@@ -405,7 +403,6 @@ obj-$(CONFIG_SND_SOC_ES8316)    += snd-soc-es8316.o
 obj-$(CONFIG_SND_SOC_ES8328)	+= snd-soc-es8328.o
 obj-$(CONFIG_SND_SOC_ES8328_I2C)+= snd-soc-es8328-i2c.o
 obj-$(CONFIG_SND_SOC_ES8328_SPI)+= snd-soc-es8328-spi.o
-obj-$(CONFIG_SND_SOC_FSL_MQS)	+= snd-soc-fsl-mqs.o
 obj-$(CONFIG_SND_SOC_GTM601)    += snd-soc-gtm601.o
 obj-$(CONFIG_SND_SOC_HDAC_HDMI) += snd-soc-hdac-hdmi.o
 obj-$(CONFIG_SND_SOC_HDAC_HDA) += snd-soc-hdac-hda.o
@@ -616,7 +613,6 @@ obj-$(CONFIG_SND_SOC_ZL38060)	+= snd-soc-zl38060.o
 obj-$(CONFIG_SND_SOC_ZX_AUD96P22) += snd-soc-zx-aud96p22.o
 obj-$(CONFIG_SND_SOC_RPMSG_WM8960)	+= snd-soc-rpmsg-wm8960.o
 obj-$(CONFIG_SND_SOC_RPMSG_WM8960_I2C)	+= snd-soc-rpmsg-wm8960-i2c.o
-obj-$(CONFIG_SND_SOC_RPMSG_CS42XX8)	+= snd-soc-rpmsg-cs42xx8.o
 obj-$(CONFIG_SND_SOC_RPMSG_AK4497)	+= snd-soc-rpmsg-ak4497.o
 
 # Amp

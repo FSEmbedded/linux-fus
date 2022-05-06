@@ -657,8 +657,10 @@ void intel_vgpu_emulate_hotplug(struct intel_vgpu *vgpu, bool connected)
 	struct drm_i915_private *i915 = vgpu->gvt->gt->i915;
 
 	/* TODO: add more platforms support */
-	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv) ||
-		IS_COFFEELAKE(dev_priv)) {
+	if (IS_SKYLAKE(i915) ||
+	    IS_KABYLAKE(i915) ||
+	    IS_COFFEELAKE(i915) ||
+	    IS_COMETLAKE(i915)) {
 		if (connected) {
 			vgpu_vreg_t(vgpu, SFUSE_STRAP) |=
 				SFUSE_STRAP_DDID_DETECTED;

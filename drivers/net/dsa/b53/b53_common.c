@@ -538,8 +538,6 @@ int b53_enable_port(struct dsa_switch *ds, int port, struct phy_device *phy)
 	b53_br_egress_floods(ds, port, true, true);
 	b53_port_set_learning(dev, port, false);
 
-	b53_br_egress_floods(ds, port, true, true);
-
 	if (dev->ops->irq_enable)
 		ret = dev->ops->irq_enable(dev, port);
 	if (ret)
@@ -672,6 +670,7 @@ static void b53_enable_cpu_port(struct b53_device *dev, int port)
 	b53_brcm_hdr_setup(dev->ds, port);
 
 	b53_br_egress_floods(dev->ds, port, true, true);
+	b53_port_set_learning(dev, port, false);
 }
 
 static void b53_enable_mib(struct b53_device *dev)
@@ -1544,7 +1543,7 @@ static int b53_arl_read(struct b53_device *dev, u64 mac,
 	if (ret)
 		return ret;
 
-	bitmap_zero(free_bins, dev->num_arl_entries);
+	bitmap_zero(free_bins, dev->num_arl_bins);
 
 	/* Read the bins */
 	for (i = 0; i < dev->num_arl_bins; i++) {
@@ -1570,10 +1569,10 @@ static int b53_arl_read(struct b53_device *dev, u64 mac,
 		return 0;
 	}
 
-	if (bitmap_weight(free_bins, dev->num_arl_entries) == 0)
+	if (bitmap_weight(free_bins, dev->num_arl_bins) == 0)
 		return -ENOSPC;
 
-	*idx = find_first_bit(free_bins, dev->num_arl_entries);
+	*idx = find_first_bit(free_bins, dev->num_arl_bins);
 
 	return -ENOENT;
 }
@@ -1624,8 +1623,21 @@ static int b53_arl_op(struct b53_device *dev, int op, int port,
 		break;
 	}
 
-	memset(&ent, 0, sizeof(ent));
-	ent.port = port;
+	/* For multicast address, the port is a bitmask and the validity
+	 * is determined by having at least one port being still active
+	 */
+	if (!is_multicast_ether_addr(addr)) {
+		ent.port = port;
+		ent.is_valid = is_valid;
+	} else {
+		if (is_valid)
+			ent.port |= BIT(port);
+		else
+			ent.port &= ~BIT(port);
+
+		ent.is_valid = !!(ent.port);
+	}
+
 	ent.vid = vid;
 	ent.is_static = true;
 	ent.is_age = false;

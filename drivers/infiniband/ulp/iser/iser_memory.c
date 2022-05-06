@@ -150,7 +150,7 @@ void iser_unreg_mem_fastreg(struct iscsi_iser_task *iser_task,
 		ib_check_mr_status(desc->rsc.sig_mr, IB_MR_CHECK_SIG_STATUS,
 				   &mr_status);
 	}
-	device->reg_ops->reg_desc_put(&iser_task->iser_conn->ib_conn, desc);
+	iser_reg_desc_put_fr(&iser_task->iser_conn->ib_conn, reg->mem_h);
 	reg->mem_h = NULL;
 }
 

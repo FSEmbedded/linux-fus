@@ -3080,18 +3080,10 @@ static int debugfs_set_bist_v3_hw(struct hisi_hba *hisi_hba, bool enable)
 					     SAS_PHY_BIST_CODE1_INIT);
 		}
 
-		/* set the bist init value */
-		hisi_sas_phy_write32(hisi_hba, phy_id,
-				     SAS_PHY_BIST_CODE,
-				     SAS_PHY_BIST_CODE_INIT);
-		hisi_sas_phy_write32(hisi_hba, phy_id,
-				     SAS_PHY_BIST_CODE1,
-				     SAS_PHY_BIST_CODE1_INIT);
-
 		mdelay(100);
 		reg_val |= (CFG_RX_BIST_EN_MSK | CFG_TX_BIST_EN_MSK);
-		hisi_sas_phy_write32(hisi_hba, phy_id,
-				     SAS_PHY_BIST_CTRL, reg_val);
+		hisi_sas_phy_write32(hisi_hba, phy_no, SAS_PHY_BIST_CTRL,
+				     reg_val);
 
 		/* clear error bit */
 		mdelay(100);
@@ -3353,7 +3345,7 @@ err_out_free_irq_vectors:
 err_out_debugfs:
 	hisi_sas_debugfs_exit(hisi_hba);
 err_out_ha:
-	hisi_sas_debugfs_exit(hisi_hba);
+	hisi_sas_free(hisi_hba);
 	scsi_host_put(shost);
 err_out_regions:
 	pci_release_regions(pdev);

@@ -272,7 +272,7 @@ static s32 page_pool_inflight(struct page_pool *pool)
 
 	inflight = _distance(hold_cnt, release_cnt);
 
-	trace_page_pool_inflight(pool, inflight, hold_cnt, release_cnt);
+	trace_page_pool_release(pool, inflight, hold_cnt, release_cnt);
 	WARN(inflight < 0, "Negative(%d) inflight packet-pages", inflight);
 
 	return inflight;
@@ -304,16 +304,6 @@ void page_pool_release_page(struct page_pool *pool, struct page *page)
 skip_dma_unmap:
 	/* This may be the last page returned, releasing the pool, so
 	 * it is not safe to reference pool afterwards.
-	 */
-	count = atomic_inc_return(&pool->pages_state_release_cnt);
-	trace_page_pool_state_release(pool, page, count);
-}
-
-/* unmap the page and clean our state */
-void page_pool_unmap_page(struct page_pool *pool, struct page *page)
-{
-	/* When page is unmapped, this implies page will not be
-	 * returned to page_pool.
 	 */
 	count = atomic_inc_return(&pool->pages_state_release_cnt);
 	trace_page_pool_state_release(pool, page, count);
@@ -448,7 +438,7 @@ static void page_pool_free(struct page_pool *pool)
 	kfree(pool);
 }
 
-static void page_pool_scrub(struct page_pool *pool)
+static void page_pool_empty_alloc_cache_once(struct page_pool *pool)
 {
 	struct page *page;
 
@@ -473,7 +463,7 @@ static void page_pool_scrub(struct page_pool *pool)
 	/* No more consumers should exist, but producers could still
 	 * be in-flight.
 	 */
-	__page_pool_empty_ring(pool);
+	page_pool_empty_ring(pool);
 }
 
 static int page_pool_release(struct page_pool *pool)
@@ -535,3 +525,19 @@ void page_pool_destroy(struct page_pool *pool)
 	schedule_delayed_work(&pool->release_dw, DEFER_TIME);
 }
 EXPORT_SYMBOL(page_pool_destroy);
+
+/* Caller must provide appropriate safe context, e.g. NAPI. */
+void page_pool_update_nid(struct page_pool *pool, int new_nid)
+{
+	struct page *page;
+
+	trace_page_pool_update_nid(pool, new_nid);
+	pool->p.nid = new_nid;
+
+	/* Flush pool alloc cache, as refill will check NUMA node */
+	while (pool->alloc.count) {
+		page = pool->alloc.cache[--pool->alloc.count];
+		page_pool_return_page(pool, page);
+	}
+}
+EXPORT_SYMBOL(page_pool_update_nid);

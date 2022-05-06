@@ -8,7 +8,7 @@
 
 #include <sound/hdmi-codec.h>
 
-struct drm_connector;
+struct drm_display_info;
 struct drm_display_mode;
 struct drm_encoder;
 struct dw_hdmi;

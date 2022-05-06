@@ -2865,7 +2865,7 @@ static int build_sriov_qp0_header(struct mlx4_ib_qp *qp,
 
 	sqp->ud_header.lrh.virtual_lane    = 0;
 	sqp->ud_header.bth.solicited_event = !!(wr->wr.send_flags & IB_SEND_SOLICITED);
-	err = ib_get_cached_pkey(ib_dev, sqp->qp.port, 0, &pkey);
+	err = ib_get_cached_pkey(ib_dev, qp->port, 0, &pkey);
 	if (err)
 		return err;
 	sqp->ud_header.bth.pkey = cpu_to_be16(pkey);
@@ -3164,11 +3164,11 @@ static int build_mlx_header(struct mlx4_ib_qp *qp, const struct ib_ud_wr *wr,
 			sqp->ud_header.lrh.source_lid = IB_LID_PERMISSIVE;
 	}
 	sqp->ud_header.bth.solicited_event = !!(wr->wr.send_flags & IB_SEND_SOLICITED);
-	if (!sqp->qp.ibqp.qp_num)
-		err = ib_get_cached_pkey(ib_dev, sqp->qp.port, sqp->pkey_index,
+	if (!qp->ibqp.qp_num)
+		err = ib_get_cached_pkey(ib_dev, qp->port, sqp->pkey_index,
 					 &pkey);
 	else
-		err = ib_get_cached_pkey(ib_dev, sqp->qp.port, wr->pkey_index,
+		err = ib_get_cached_pkey(ib_dev, qp->port, wr->pkey_index,
 					 &pkey);
 	if (err)
 		return err;

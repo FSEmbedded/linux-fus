@@ -226,11 +226,9 @@ static int gpio_clk_driver_probe(struct platform_device *pdev)
 	if (is_mux)
 		hw = clk_hw_register_gpio_mux(dev, gpiod);
 	else
-		clk = clk_register_gpio_gate(&pdev->dev, node->name,
-				parent_names ?  parent_names[0] : NULL, gpiod,
-				CLK_SET_RATE_PARENT);
-	if (IS_ERR(clk))
-		return PTR_ERR(clk);
+		hw = clk_hw_register_gpio_gate(dev, num_parents, gpiod);
+	if (IS_ERR(hw))
+		return PTR_ERR(hw);
 
 	return devm_of_clk_add_hw_provider(dev, of_clk_hw_simple_get, hw);
 }

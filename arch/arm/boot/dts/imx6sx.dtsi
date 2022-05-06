@@ -296,7 +296,7 @@
 			reg = <0x100000 0x8000>;
 		};
 
-		gpmi: gpmi-nand@1806000{
+		gpmi: nand-controller@1806000{
 			compatible = "fsl,imx6sx-gpmi-nand";
 			#address-cells = <1>;
 			#size-cells = <1>;
@@ -414,7 +414,7 @@
 				};
 
 				esai: esai@2024000 {
-					compatible = "fsl,imx35-esai";
+					compatible = "fsl,imx6sx-esai", "fsl,imx35-esai";
 					reg = <0x02024000 0x4000>;
 					interrupts = <GIC_SPI 51 IRQ_TYPE_LEVEL_HIGH>;
 					clocks = <&clks IMX6SX_CLK_ESAI_IPG>,
@@ -473,9 +473,9 @@
 				};
 
 				asrc: asrc@2034000 {
-					compatible = "fsl,imx53-asrc";
+					compatible = "fsl,imx6sx-asrc", "fsl,imx53-asrc";
 					reg = <0x02034000 0x4000>;
-					interrupts = <0 50 IRQ_TYPE_LEVEL_HIGH>;
+					interrupts = <GIC_SPI 50 IRQ_TYPE_LEVEL_HIGH>;
 					clocks = <&clks IMX6SX_CLK_ASRC_IPG>,
 						<&clks IMX6SX_CLK_ASRC_MEM>, <&clks 0>,
 						<&clks 0>, <&clks 0>, <&clks 0>, <&clks 0>,
@@ -488,10 +488,11 @@
 						"asrck_5", "asrck_6", "asrck_7", "asrck_8",
 						"asrck_9", "asrck_a", "asrck_b", "asrck_c",
 						"asrck_d", "asrck_e", "asrck_f", "spba";
-					dmas = <&sdma 17 23 1>, <&sdma 18 23 1>, <&sdma 19 23 1>,
-						<&sdma 20 23 1>, <&sdma 21 23 1>, <&sdma 22 23 1>;
+					dmas = <&sdma 17 23 1>, <&sdma 18 23 1>,
+					       <&sdma 19 23 1>, <&sdma 20 23 1>,
+					       <&sdma 21 23 1>, <&sdma 22 23 1>;
 					dma-names = "rxa", "rxb", "rxc",
-							"txa", "txb", "txc";
+						    "txa", "txb", "txc";
 					fsl,asrc-rate  = <48000>;
 					fsl,asrc-width = <16>;
 					status = "okay";
@@ -653,13 +654,7 @@
 				gpio-ranges = <&iomuxc 0 148 10>, <&iomuxc 10 169 2>;
 			};
 
-			mqs: mqs {
-				compatible = "fsl,imx6sx-mqs";
-				gpr = <&gpr>;
-				status = "disabled";
-			};
-
-			kpp: kpp@20b8000 {
+			kpp: keypad@20b8000 {
 				compatible = "fsl,imx6sx-kpp", "fsl,imx21-kpp";
 				reg = <0x020b8000 0x4000>;
 				interrupts = <GIC_SPI 82 IRQ_TYPE_LEVEL_HIGH>;
@@ -1077,7 +1072,7 @@
 					      "enet_clk_ref", "enet_out";
 				fsl,num-tx-queues = <3>;
 				fsl,num-rx-queues = <3>;
-				stop-mode = <&gpr 0x10 3>;
+				fsl,stop-mode = <&gpr 0x10 3>;
 				fsl,wakeup_irq = <0>;
 				status = "disabled";
 			};
@@ -1196,9 +1191,9 @@
 					 <&clks IMX6SX_CLK_ENET_PTP>;
 				clock-names = "ipg", "ahb", "ptp",
 					      "enet_clk_ref", "enet_out";
+				fsl,stop-mode = <&gpr 0x10 4>;
 				fsl,num-tx-queues=<3>;
 				fsl,num-rx-queues=<3>;
-				stop-mode = <&gpr 0x10 4>;
 				fsl,wakeup_irq = <0>;
 				status = "disabled";
 			};

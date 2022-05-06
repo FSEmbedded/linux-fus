@@ -2326,19 +2326,15 @@ smiapp_sysfs_nvm_read(struct device *dev, struct device_attribute *attr,
 	if (rval < 0)
 		return -ENODEV;
 
-		rval = pm_runtime_get_sync(&client->dev);
-		if (rval < 0) {
-			if (rval != -EBUSY && rval != -EAGAIN)
-				pm_runtime_set_active(&client->dev);
-			pm_runtime_put_noidle(&client->dev);
-			return -ENODEV;
-		}
+	rval = smiapp_read_nvm(sensor, buf, PAGE_SIZE);
+	if (rval < 0) {
+		pm_runtime_put(&client->dev);
+		dev_err(&client->dev, "nvm read failed\n");
+		return -ENODEV;
+	}
 
-		if (smiapp_read_nvm(sensor, sensor->nvm)) {
-			pm_runtime_put(&client->dev);
-			dev_err(&client->dev, "nvm read failed\n");
-			return -ENODEV;
-		}
+	pm_runtime_mark_last_busy(&client->dev);
+	pm_runtime_put_autosuspend(&client->dev);
 
 	/*
 	 * NVM is still way below a PAGE_SIZE, so we can safely
@@ -3105,6 +3101,7 @@ static int smiapp_probe(struct i2c_client *client)
 	return 0;
 
 out_disable_runtime_pm:
+	pm_runtime_put_noidle(&client->dev);
 	pm_runtime_disable(&client->dev);
 
 out_media_entity_cleanup:

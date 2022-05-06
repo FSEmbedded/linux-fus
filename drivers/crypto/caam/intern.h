@@ -105,7 +105,6 @@ struct caam_drv_private {
 	struct caam_job_ring __iomem *jr[4];	/* JobR's register space */
 	dma_addr_t __iomem *sm_base;	/* Secure memory storage base */
 	phys_addr_t sm_phy;		/* Secure memory storage physical */
-	u32 sm_size;
 
 	struct iommu_domain *domain;
 
@@ -269,23 +268,6 @@ static inline void caam_keygen_exit(void)
 }
 
 #endif /* CONFIG_CRYPTO_DEV_FSL_CAAM_TK_API */
-
-#ifdef CONFIG_DEBUG_FS
-static int caam_debugfs_u64_get(void *data, u64 *val)
-{
-	*val = caam64_to_cpu(*(u64 *)data);
-	return 0;
-}
-
-static int caam_debugfs_u32_get(void *data, u64 *val)
-{
-	*val = caam32_to_cpu(*(u32 *)data);
-	return 0;
-}
-
-DEFINE_SIMPLE_ATTRIBUTE(caam_fops_u32_ro, caam_debugfs_u32_get, NULL, "%llu\n");
-DEFINE_SIMPLE_ATTRIBUTE(caam_fops_u64_ro, caam_debugfs_u64_get, NULL, "%llu\n");
-#endif
 
 static inline u64 caam_get_dma_mask(struct device *dev)
 {

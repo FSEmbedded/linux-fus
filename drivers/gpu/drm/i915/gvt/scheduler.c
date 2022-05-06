@@ -429,7 +429,8 @@ static void set_context_ppgtt_from_shadow(struct intel_vgpu_workload *workload,
 			   shadow ppgtt. */
 			if (!pd)
 				break;
-			px_dma(pd) = mm->ppgtt_mm.shadow_pdps[i];
+
+			set_dma_address(pd, mm->ppgtt_mm.shadow_pdps[i]);
 		}
 	}
 }

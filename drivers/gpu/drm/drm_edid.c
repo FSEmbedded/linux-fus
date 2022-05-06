@@ -4605,7 +4605,7 @@ int drm_edid_to_sad(struct edid *edid, struct cea_sad **sads)
 
 	if (cea_revision(cea) < 3) {
 		DRM_DEBUG_KMS("SAD: wrong CEA revision\n");
-		return -EOPNOTSUPP;
+		return 0;
 	}
 
 	if (cea_db_offsets(cea, &start, &end)) {
@@ -4667,7 +4667,7 @@ int drm_edid_to_speaker_allocation(struct edid *edid, u8 **sadb)
 
 	if (cea_revision(cea) < 3) {
 		DRM_DEBUG_KMS("SAD: wrong CEA revision\n");
-		return -EOPNOTSUPP;
+		return 0;
 	}
 
 	if (cea_db_offsets(cea, &start, &end)) {

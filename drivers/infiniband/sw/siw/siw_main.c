@@ -69,7 +69,7 @@ static int siw_device_register(struct siw_device *sdev, const char *name)
 
 	sdev->vendor_part_id = dev_id++;
 
-	rv = ib_register_device(base_dev, name);
+	rv = ib_register_device(base_dev, name, NULL);
 	if (rv) {
 		pr_warn("siw: device registration error %d\n", rv);
 		return rv;

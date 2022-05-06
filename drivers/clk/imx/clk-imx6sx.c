@@ -647,7 +647,7 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	clk_set_parent(hws[IMX6SX_CLK_QSPI1_SEL]->clk, hws[IMX6SX_CLK_PLL2_BUS]->clk);
 	clk_set_parent(hws[IMX6SX_CLK_QSPI2_SEL]->clk, hws[IMX6SX_CLK_PLL2_BUS]->clk);
 
-	imx_register_uart_clocks();
+	imx_register_uart_clocks(2);
 }
 CLK_OF_DECLARE(imx6sx, "fsl,imx6sx-ccm", imx6sx_clocks_init);
 
@@ -685,7 +685,7 @@ static int __init imx_amp_power_init(void)
 
 	amp_power_mutex = imx_sema4_mutex_create(0, MCC_POWER_SHMEM_NUMBER);
 
-	shared_mem_base = ioremap_nocache(shared_mem_paddr, shared_mem_size);
+	shared_mem_base = ioremap(shared_mem_paddr, shared_mem_size);
 
 	if (!amp_power_mutex) {
 		pr_err("Failed to create sema4 mutex!\n");

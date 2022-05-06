@@ -73,11 +73,6 @@ nouveau_sgdma_create_ttm(struct ttm_buffer_object *bo, uint32_t page_flags)
 	if (!nvbe)
 		return NULL;
 
-	if (drm->client.device.info.family < NV_DEVICE_INFO_V0_TESLA)
-		nvbe->ttm.ttm.func = &nv04_sgdma_backend;
-	else
-		nvbe->ttm.ttm.func = &nv50_sgdma_backend;
-
 	if (ttm_dma_tt_init(&nvbe->ttm, bo, page_flags)) {
 		kfree(nvbe);
 		return NULL;

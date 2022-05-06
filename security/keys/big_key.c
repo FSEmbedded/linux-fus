@@ -268,7 +268,7 @@ long big_key_read(const struct key *key, char *buffer, size_t buflen)
 		ret = datalen;
 
 		/* copy out decrypted data */
-		memcpy(buffer, buf->virt, datalen);
+		memcpy(buffer, buf, datalen);
 
 err_fput:
 		fput(file);

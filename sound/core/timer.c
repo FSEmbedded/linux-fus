@@ -308,11 +308,6 @@ int snd_timer_open(struct snd_timer_instance *timeri,
 			err = -EBUSY;
 			goto unlock;
 		}
-		timeri = snd_timer_instance_new(owner, NULL);
-		if (!timeri) {
-			err = -ENOMEM;
-			goto unlock;
-		}
 		timeri->slave_class = tid->dev_sclass;
 		timeri->slave_id = tid->device;
 		timeri->flags |= SNDRV_TIMER_IFLG_SLAVE;
@@ -403,9 +398,11 @@ static void snd_timer_close_locked(struct snd_timer_instance *timeri,
 		spin_unlock_irq(&timer->lock);
 	}
 
-	list_del(&timeri->open_list);
-	if (timeri->flags & SNDRV_TIMER_IFLG_SLAVE)
-		num_slaves--;
+	if (!list_empty(&timeri->open_list)) {
+		list_del_init(&timeri->open_list);
+		if (timeri->flags & SNDRV_TIMER_IFLG_SLAVE)
+			num_slaves--;
+	}
 
 	/* force to stop the timer */
 	snd_timer_stop(timeri);

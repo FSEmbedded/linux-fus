@@ -139,6 +139,7 @@ static int fsl_asrc_dma_hw_params(struct snd_soc_component *component,
 	struct snd_soc_component *component_be = NULL;
 	struct fsl_asrc *asrc = pair->asrc;
 	struct dma_slave_config config_fe, config_be;
+	struct sdma_audio_config audio_config;
 	enum asrc_pair_index index = pair->index;
 	struct device *dev = component->dev;
 	int stream = substream->stream;
@@ -147,8 +148,9 @@ static int fsl_asrc_dma_hw_params(struct snd_soc_component *component,
 	struct device *dev_be;
 	u8 dir = tx ? OUT : IN;
 	dma_cap_mask_t mask;
-	enum sdma_peripheral_type be_peripheral_type;
-	int ret;
+	int ret, width;
+	enum sdma_peripheral_type be_peripheral_type = IMX_DMATYPE_SSI;
+	struct device_node *of_dma_node;
 
 	/* Fetch the Back-End dma_data from DPCM */
 	for_each_dpcm_be(rtd, stream, dpcm) {
@@ -194,49 +196,55 @@ static int fsl_asrc_dma_hw_params(struct snd_soc_component *component,
 		return ret;
 	}
 
+	of_dma_node = pair->dma_chan[!dir]->device->dev->of_node;
 	/* Request and config DMA channel for Back-End */
 	dma_cap_zero(mask);
 	dma_cap_set(DMA_SLAVE, mask);
 	dma_cap_set(DMA_CYCLIC, mask);
 
-	/* Get DMA request of Back-End */
-	tmp_chan = dma_request_slave_channel(dev_be, tx ? "tx" : "rx");
-	if (tmp_chan) {
-		tmp_data = tmp_chan->private;
-		if (tmp_data) {
-			pair->dma_data.dma_request = tmp_data->dma_request;
-			be_peripheral_type = tmp_data->peripheral_type;
-			if (tx && be_peripheral_type == IMX_DMATYPE_SSI_DUAL)
-				pair->dma_data.dst_dualfifo = true;
-			if (!tx && be_peripheral_type == IMX_DMATYPE_SSI_DUAL)
-				pair->dma_data.src_dualfifo = true;
-		}
-		dma_release_channel(tmp_chan);
-	}
-
-	/* Get DMA request of Front-End */
-	tmp_chan = fsl_asrc_get_dma_channel(pair, dir);
-	if (tmp_chan) {
-		tmp_data = tmp_chan->private;
-		if (tmp_data) {
-			pair->dma_data.dma_request2 = tmp_data->dma_request;
-			pair->dma_data.peripheral_type =
-				 tmp_data->peripheral_type;
-			pair->dma_data.priority = tmp_data->priority;
-		}
-		dma_release_channel(tmp_chan);
-	}
-
-	/* For sdma DEV_TO_DEV, there is two dma request
-	 * But for emda DEV_TO_DEV, there is only one dma request, which is
-	 * from the BE.
+	/*
+	 * The Back-End device might have already requested a DMA channel,
+	 * so try to reuse it first, and then request a new one upon NULL.
 	 */
-	if (pair->dma_data.dma_request2 != pair->dma_data.dma_request)
+	component_be = snd_soc_lookup_component_nolocked(dev_be, SND_DMAENGINE_PCM_DRV_NAME);
+	if (component_be) {
+		be_chan = soc_component_to_pcm(component_be)->chan[substream->stream];
+		tmp_chan = be_chan;
+	}
+	if (!tmp_chan)
+		tmp_chan = dma_request_slave_channel(dev_be, tx ? "tx" : "rx");
+
+	/*
+	 * An EDMA DEV_TO_DEV channel is fixed and bound with DMA event of each
+	 * peripheral, unlike SDMA channel that is allocated dynamically. So no
+	 * need to configure dma_request and dma_request2, but get dma_chan of
+	 * Back-End device directly via dma_request_slave_channel.
+	 */
+	if (!asrc->use_edma) {
+		/* Get DMA request of Back-End */
+		tmp_data = tmp_chan->private;
+		pair->dma_data.dma_request = tmp_data->dma_request;
+		be_peripheral_type = tmp_data->peripheral_type;
+		if (!be_chan)
+			dma_release_channel(tmp_chan);
+
+		/* Get DMA request of Front-End */
+		tmp_chan = asrc->get_dma_channel(pair, dir);
+		tmp_data = tmp_chan->private;
+		pair->dma_data.dma_request2 = tmp_data->dma_request;
+		pair->dma_data.peripheral_type = tmp_data->peripheral_type;
+		pair->dma_data.priority = tmp_data->priority;
+		dma_release_channel(tmp_chan);
+
 		pair->dma_chan[dir] =
-			dma_request_channel(mask, filter, &pair->dma_data);
-	else
-		pair->dma_chan[dir] =
-			dma_request_slave_channel(dev_be, tx ? "tx" : "rx");
+			__dma_request_channel(&mask, filter, &pair->dma_data,
+					      of_dma_node);
+		pair->req_dma_chan = true;
+	} else {
+		pair->dma_chan[dir] = tmp_chan;
+		/* Do not flag to release if we are reusing the Back-End one */
+		pair->req_dma_chan = !be_chan;
+	}
 
 	if (!pair->dma_chan[dir]) {
 		dev_err(dev, "failed to request DMA channel for Back-End\n");
@@ -258,12 +266,22 @@ static int fsl_asrc_dma_hw_params(struct snd_soc_component *component,
 		buswidth = DMA_SLAVE_BUSWIDTH_8_BYTES;
 
 	memset(&config_be, 0, sizeof(config_be));
-
 	config_be.direction = DMA_DEV_TO_DEV;
 	config_be.src_addr_width = buswidth;
 	config_be.src_maxburst = dma_params_be->maxburst;
 	config_be.dst_addr_width = buswidth;
 	config_be.dst_maxburst = dma_params_be->maxburst;
+
+	memset(&audio_config, 0, sizeof(audio_config));
+	config_be.peripheral_config = &audio_config;
+	config_be.peripheral_size  = sizeof(audio_config);
+
+	if (tx && (be_peripheral_type == IMX_DMATYPE_SSI_DUAL ||
+		   be_peripheral_type == IMX_DMATYPE_SPDIF))
+		audio_config.dst_fifo_num = 2;
+	if (!tx && (be_peripheral_type == IMX_DMATYPE_SSI_DUAL ||
+		    be_peripheral_type == IMX_DMATYPE_SPDIF))
+		audio_config.src_fifo_num = 2;
 
 	if (tx) {
 		config_be.src_addr = asrc->paddr + asrc->get_fifo_addr(OUT, index);
@@ -276,7 +294,8 @@ static int fsl_asrc_dma_hw_params(struct snd_soc_component *component,
 	ret = dmaengine_slave_config(pair->dma_chan[dir], &config_be);
 	if (ret) {
 		dev_err(dev, "failed to config DMA channel for Back-End\n");
-		dma_release_channel(pair->dma_chan[dir]);
+		if (pair->req_dma_chan)
+			dma_release_channel(pair->dma_chan[dir]);
 		return ret;
 	}
 
@@ -318,16 +337,17 @@ static int fsl_asrc_dma_startup(struct snd_soc_component *component,
 	struct device *dev = component->dev;
 	struct fsl_asrc *asrc = dev_get_drvdata(dev);
 	struct fsl_asrc_pair *pair;
-	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
+	struct dma_chan *tmp_chan = NULL;
 	u8 dir = tx ? OUT : IN;
-	struct dma_slave_caps dma_caps;
-	struct dma_chan *tmp_chan;
-	struct snd_dmaengine_dai_dma_data *dma_data;
-	u32 addr_widths = BIT(DMA_SLAVE_BUSWIDTH_1_BYTE) |
-			  BIT(DMA_SLAVE_BUSWIDTH_2_BYTES) |
-			  BIT(DMA_SLAVE_BUSWIDTH_4_BYTES);
-	int ret;
-	int i;
+	bool release_pair = true;
+	int ret = 0;
+
+	ret = snd_pcm_hw_constraint_integer(substream->runtime,
+					    SNDRV_PCM_HW_PARAM_PERIODS);
+	if (ret < 0) {
+		dev_err(dev, "failed to set pcm hw params periods\n");
+		return ret;
+	}
 
 	pair = kzalloc(sizeof(*pair) + asrc->pair_priv_size, GFP_KERNEL);
 	if (!pair)
@@ -338,78 +358,37 @@ static int fsl_asrc_dma_startup(struct snd_soc_component *component,
 
 	runtime->private_data = pair;
 
-	ret = snd_pcm_hw_constraint_integer(substream->runtime,
-			SNDRV_PCM_HW_PARAM_PERIODS);
-	if (ret < 0) {
-		dev_err(dev, "failed to set pcm hw params periods\n");
-		return ret;
-	}
-
-	dma_data = snd_soc_dai_get_dma_data(rtd->cpu_dai, substream);
-
-	fsl_asrc_request_pair(1, pair);
-
-	tmp_chan = fsl_asrc_get_dma_channel(pair, dir);
-	if (!tmp_chan) {
-		dev_err(dev, "can't get dma channel\n");
-		return -EINVAL;
-	}
-
-	ret = dma_get_slave_caps(tmp_chan, &dma_caps);
-	if (ret == 0) {
-		if (dma_caps.cmd_pause)
-			snd_imx_hardware.info |= SNDRV_PCM_INFO_PAUSE | SNDRV_PCM_INFO_RESUME;
-		if (dma_caps.residue_granularity <= DMA_RESIDUE_GRANULARITY_SEGMENT)
-			snd_imx_hardware.info |= SNDRV_PCM_INFO_BATCH;
-
-		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-			addr_widths = dma_caps.dst_addr_widths;
-		else
-			addr_widths = dma_caps.src_addr_widths;
-	}
-
-	/*
-	 * If SND_DMAENGINE_PCM_DAI_FLAG_PACK is set keep
-	 * hw.formats set to 0, meaning no restrictions are in place.
-	 * In this case it's the responsibility of the DAI driver to
-	 * provide the supported format information.
+	/* Request a dummy pair, which will be released later.
+	 * Request pair function needs channel num as input, for this
+	 * dummy pair, we just request "1" channel temporarily.
 	 */
-	if (!(dma_data->flags & SND_DMAENGINE_PCM_DAI_FLAG_PACK))
-		/*
-		 * Prepare formats mask for valid/allowed sample types. If the
-		 * dma does not have support for the given physical word size,
-		 * it needs to be masked out so user space can not use the
-		 * format which produces corrupted audio.
-		 * In case the dma driver does not implement the slave_caps the
-		 * default assumption is that it supports 1, 2 and 4 bytes
-		 * widths.
-		 */
-		for (i = 0; i <= SNDRV_PCM_FORMAT_LAST; i++) {
-			int bits = snd_pcm_format_physical_width(i);
+	ret = asrc->request_pair(1, pair);
+	if (ret < 0) {
+		dev_err(dev, "failed to request asrc pair\n");
+		goto req_pair_err;
+	}
 
-			/*
-			 * Enable only samples with DMA supported physical
-			 * widths
-			 */
-			switch (bits) {
-			case 8:
-			case 16:
-			case 24:
-			case 32:
-			case 64:
-				if (addr_widths & (1 << (bits / 8)))
-					snd_imx_hardware.formats |= (1LL << i);
-				break;
-			default:
-				/* Unsupported types */
-				break;
-			}
-		}
+	/* Request a dummy dma channel, which will be released later. */
+	tmp_chan = asrc->get_dma_channel(pair, dir);
+	if (!tmp_chan) {
+		dev_err(dev, "failed to get dma channel\n");
+		ret = -EINVAL;
+		goto dma_chan_err;
+	}
 
-	if (tmp_chan)
-		dma_release_channel(tmp_chan);
-	fsl_asrc_release_pair(pair);
+	dma_data = snd_soc_dai_get_dma_data(asoc_rtd_to_cpu(rtd, 0), substream);
 
+	/* Refine the snd_imx_hardware according to caps of DMA. */
+	ret = snd_dmaengine_pcm_refine_runtime_hwparams(substream,
+							dma_data,
+							&snd_imx_hardware,
+							tmp_chan);
+	if (ret < 0) {
+		dev_err(dev, "failed to refine runtime hwparams\n");
+		goto out;
+	}
+
+	release_pair = false;
 	snd_soc_set_runtime_hwparams(substream, &snd_imx_hardware);
 
 out:

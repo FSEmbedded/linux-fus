@@ -60,6 +60,12 @@ struct fsl_mc_addr_translation_range {
 	phys_addr_t start_phys_addr;
 };
 
+#define FSL_MC_FAPR	0x28
+#define MC_FAPR_PL	BIT(18)
+#define MC_FAPR_BMT	BIT(17)
+
+static phys_addr_t mc_portal_base_phys_addr;
+
 /**
  * fsl_mc_bus_match - device to driver matching callback
  * @dev: the fsl-mc device to match against
@@ -134,7 +140,10 @@ static int fsl_mc_dma_configure(struct device *dev)
 	while (dev_is_fsl_mc(dma_dev))
 		dma_dev = dma_dev->parent;
 
-	return of_dma_configure(dev, dma_dev->of_node, 1);
+	if (dev_of_node(dma_dev))
+		return of_dma_configure_id(dev, dma_dev->of_node, 0, &input_id);
+
+	return acpi_dma_configure_id(dev, DEV_DMA_COHERENT, &input_id);
 }
 
 static ssize_t modalias_show(struct device *dev, struct device_attribute *attr,
@@ -152,7 +161,7 @@ static ssize_t driver_override_store(struct device *dev,
 				     const char *buf, size_t count)
 {
 	struct fsl_mc_device *mc_dev = to_fsl_mc_device(dev);
-	const char *driver_override, *old = mc_dev->driver_override;
+	char *driver_override, *old = mc_dev->driver_override;
 	char *cp;
 
 	if (WARN_ON(dev->bus != &fsl_mc_bus_type))
@@ -209,7 +218,7 @@ static int scan_fsl_mc_bus(struct device *dev, void *data)
 	root_mc_dev = to_fsl_mc_device(dev);
 	root_mc_bus = to_fsl_mc_bus(root_mc_dev);
 	mutex_lock(&root_mc_bus->scan_mutex);
-	dprc_scan_objects(root_mc_dev, NULL, true, NULL);
+	dprc_scan_objects(root_mc_dev, NULL);
 	mutex_unlock(&root_mc_bus->scan_mutex);
 
 exit:
@@ -323,10 +332,6 @@ struct device_type fsl_mc_bus_dpsw_type = {
 };
 EXPORT_SYMBOL_GPL(fsl_mc_bus_dpsw_type);
 
-struct device_type fsl_mc_bus_dpdmux_type = {
-	.name = "fsl_mc_bus_dpdmux"
-};
-
 struct device_type fsl_mc_bus_dpbp_type = {
 	.name = "fsl_mc_bus_dpbp"
 };
@@ -382,25 +387,10 @@ struct device_type fsl_mc_bus_dpdmai_type = {
 };
 EXPORT_SYMBOL_GPL(fsl_mc_bus_dpdmai_type);
 
-struct device_type fsl_mc_bus_dpdcei_type = {
-	.name = "fsl_mc_bus_dpdcei"
-};
-
-struct device_type fsl_mc_bus_dpaiop_type = {
-	.name = "fsl_mc_bus_dpaiop"
-};
-
-struct device_type fsl_mc_bus_dpci_type = {
-	.name = "fsl_mc_bus_dpci"
-};
-
-struct device_type fsl_mc_bus_dpdmai_type = {
-	.name = "fsl_mc_bus_dpdmai"
-};
-
 struct device_type fsl_mc_bus_dpdbg_type = {
 	.name = "fsl_mc_bus_dpdbg"
 };
+EXPORT_SYMBOL_GPL(fsl_mc_bus_dpdbg_type);
 
 static struct device_type *fsl_mc_get_device_type(const char *type)
 {
@@ -412,13 +402,13 @@ static struct device_type *fsl_mc_get_device_type(const char *type)
 		{ &fsl_mc_bus_dpni_type, "dpni" },
 		{ &fsl_mc_bus_dpio_type, "dpio" },
 		{ &fsl_mc_bus_dpsw_type, "dpsw" },
-		{ &fsl_mc_bus_dpdmux_type, "dpdmux" },
 		{ &fsl_mc_bus_dpbp_type, "dpbp" },
 		{ &fsl_mc_bus_dpcon_type, "dpcon" },
 		{ &fsl_mc_bus_dpmcp_type, "dpmcp" },
 		{ &fsl_mc_bus_dpmac_type, "dpmac" },
 		{ &fsl_mc_bus_dprtc_type, "dprtc" },
 		{ &fsl_mc_bus_dpseci_type, "dpseci" },
+		{ &fsl_mc_bus_dpdmux_type, "dpdmux" },
 		{ &fsl_mc_bus_dpdcei_type, "dpdcei" },
 		{ &fsl_mc_bus_dpaiop_type, "dpaiop" },
 		{ &fsl_mc_bus_dpci_type, "dpci" },
@@ -576,7 +566,7 @@ EXPORT_SYMBOL_GPL(fsl_mc_get_version);
  * fsl_mc_get_root_dprc - function to traverse to the root dprc
  */
 void fsl_mc_get_root_dprc(struct device *dev,
-			  struct device **root_dprc_dev)
+			 struct device **root_dprc_dev)
 {
 	if (!dev) {
 		*root_dprc_dev = NULL;
@@ -588,7 +578,6 @@ void fsl_mc_get_root_dprc(struct device *dev,
 			*root_dprc_dev = (*root_dprc_dev)->parent;
 	}
 }
-EXPORT_SYMBOL_GPL(fsl_mc_get_root_dprc);
 
 static int get_dprc_attr(struct fsl_mc_io *mc_io,
 			 int container_id, struct dprc_attributes *attr)
@@ -789,7 +778,6 @@ static void fsl_mc_device_release(struct device *dev)
 int fsl_mc_device_add(struct fsl_mc_obj_desc *obj_desc,
 		      struct fsl_mc_io *mc_io,
 		      struct device *parent_dev,
-		      const char *driver_override,
 		      struct fsl_mc_device **new_mc_dev)
 {
 	int error;
@@ -823,19 +811,6 @@ int fsl_mc_device_add(struct fsl_mc_obj_desc *obj_desc,
 
 	mc_dev->obj_desc = *obj_desc;
 	mc_dev->mc_io = mc_io;
-
-	if (driver_override) {
-		/*
-		 * We trust driver_override, so we don't need to use
-		 * kstrndup() here
-		 */
-		mc_dev->driver_override = kstrdup(driver_override, GFP_KERNEL);
-		if (!mc_dev->driver_override) {
-			error = -ENOMEM;
-			goto error_cleanup_dev;
-		}
-	}
-
 	device_initialize(&mc_dev->dev);
 	mc_dev->dev.parent = parent_dev;
 	mc_dev->dev.bus = &fsl_mc_bus_type;
@@ -982,6 +957,32 @@ struct fsl_mc_device *fsl_mc_get_endpoint(struct fsl_mc_device *mc_dev)
 	endpoint_desc.id = endpoint2.id;
 	endpoint = fsl_mc_device_lookup(&endpoint_desc, mc_bus_dev);
 
+	/*
+	 * We know that the device has an endpoint because we verified by
+	 * interrogating the firmware. This is the case when the device was not
+	 * yet discovered by the fsl-mc bus, thus the lookup returned NULL.
+	 * Force a rescan of the devices in this container and retry the lookup.
+	 */
+	if (!endpoint) {
+		struct fsl_mc_bus *mc_bus = to_fsl_mc_bus(mc_bus_dev);
+
+		mutex_lock(&mc_bus->scan_mutex);
+		err = dprc_scan_objects(mc_bus_dev, true);
+		mutex_unlock(&mc_bus->scan_mutex);
+
+		if (err < 0)
+			return ERR_PTR(err);
+	}
+
+	endpoint = fsl_mc_device_lookup(&endpoint_desc, mc_bus_dev);
+	/*
+	 * This means that the endpoint might reside in a different isolation
+	 * context (DPRC/container). Not much to do, so return a permssion
+	 * error.
+	 */
+	if (!endpoint)
+		return ERR_PTR(-EPERM);
+
 	return endpoint;
 }
 EXPORT_SYMBOL_GPL(fsl_mc_get_endpoint);
@@ -1102,8 +1103,8 @@ static int fsl_mc_bus_probe(struct platform_device *pdev)
 	struct fsl_mc_io *mc_io = NULL;
 	int container_id;
 	phys_addr_t mc_portal_phys_addr;
-	u32 mc_portal_size;
-	struct resource res;
+	u32 mc_portal_size, mc_stream_id;
+	struct resource *plat_res;
 
 	mc = devm_kzalloc(&pdev->dev, sizeof(*mc), GFP_KERNEL);
 	if (!mc)
@@ -1187,8 +1188,7 @@ static int fsl_mc_bus_probe(struct platform_device *pdev)
 	obj_desc.irq_count = 1;
 	obj_desc.region_count = 0;
 
-	error = fsl_mc_device_add(&obj_desc, mc_io, &pdev->dev, NULL,
-				 &mc_bus_dev);
+	error = fsl_mc_device_add(&obj_desc, mc_io, &pdev->dev, &mc_bus_dev);
 	if (error < 0)
 		goto error_cleanup_mc_io;
 

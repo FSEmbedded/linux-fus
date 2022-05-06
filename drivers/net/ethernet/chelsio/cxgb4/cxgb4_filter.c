@@ -240,7 +240,7 @@ static void set_nat_params(struct adapter *adap, struct filter_entry *f,
 
 	set_tcb_field(adap, f, tid, TCB_PDU_HDR_LEN_W, WORD_MASK,
 		      (dp ? (nat_lp[1] | nat_lp[0] << 8) : 0) |
-		      (sp ? (nat_fp[1] << 16 | nat_fp[0] << 24) : 0),
+		      (sp ? (nat_fp[1] << 16 | (u64)nat_fp[0] << 24) : 0),
 		      1);
 }
 

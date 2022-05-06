@@ -1559,14 +1559,18 @@
 			compatible = "arm,coresight-etm4x", "arm,primecell";
 			reg = <0x3940000 0x1000>;
 
-			dwc3@7600000 {
-				compatible = "snps,dwc3";
-				reg = <0x7600000 0xcc00>;
-				interrupts = <0 138 IRQ_TYPE_LEVEL_HIGH>;
-				phys = <&hsusb_phy2>;
-				phy-names = "usb2-phy";
-				snps,dis_u2_susphy_quirk;
-				snps,dis_enblslpm_quirk;
+			clocks = <&rpmcc RPM_QDSS_CLK>, <&rpmcc RPM_QDSS_A_CLK>;
+			clock-names = "apb_pclk", "atclk";
+
+			cpu = <&CPU1>;
+
+			out-ports {
+				port {
+					etm1_out: endpoint {
+						remote-endpoint =
+						  <&apss_funnel0_in1>;
+					};
+				};
 			};
 		};
 
@@ -1588,14 +1592,21 @@
 					};
 				};
 
-			dwc3@6a00000 {
-				compatible = "snps,dwc3";
-				reg = <0x6a00000 0xcc00>;
-				interrupts = <0 131 IRQ_TYPE_LEVEL_HIGH>;
-				phys = <&hsusb_phy1>, <&ssusb_phy_0>;
-				phy-names = "usb2-phy", "usb3-phy";
-				snps,dis_u2_susphy_quirk;
-				snps,dis_enblslpm_quirk;
+				port@1 {
+					reg = <1>;
+					apss_funnel0_in1: endpoint {
+						remote-endpoint = <&etm1_out>;
+					};
+				};
+			};
+
+			out-ports {
+				port {
+					apss_funnel0_out: endpoint {
+						remote-endpoint =
+						  <&apss_merge_funnel_in0>;
+					};
+				};
 			};
 		};
 
@@ -1609,138 +1620,22 @@
 			cpu = <&CPU2>;
 		};
 
-		camss: camss@a00000 {
-			compatible = "qcom,msm8996-camss";
-			reg = <0xa34000 0x1000>,
-				<0xa00030 0x4>,
-				<0xa35000 0x1000>,
-				<0xa00038 0x4>,
-				<0xa36000 0x1000>,
-				<0xa00040 0x4>,
-				<0xa30000 0x100>,
-				<0xa30400 0x100>,
-				<0xa30800 0x100>,
-				<0xa30c00 0x100>,
-				<0xa31000 0x500>,
-				<0xa00020 0x10>,
-				<0xa10000 0x1000>,
-				<0xa14000 0x1000>;
-			reg-names = "csiphy0",
-				"csiphy0_clk_mux",
-				"csiphy1",
-				"csiphy1_clk_mux",
-				"csiphy2",
-				"csiphy2_clk_mux",
-				"csid0",
-				"csid1",
-				"csid2",
-				"csid3",
-				"ispif",
-				"csi_clk_mux",
-				"vfe0",
-				"vfe1";
-			interrupts = <GIC_SPI 78 IRQ_TYPE_EDGE_RISING>,
-				<GIC_SPI 79 IRQ_TYPE_EDGE_RISING>,
-				<GIC_SPI 80 IRQ_TYPE_EDGE_RISING>,
-				<GIC_SPI 296 IRQ_TYPE_EDGE_RISING>,
-				<GIC_SPI 297 IRQ_TYPE_EDGE_RISING>,
-				<GIC_SPI 298 IRQ_TYPE_EDGE_RISING>,
-				<GIC_SPI 299 IRQ_TYPE_EDGE_RISING>,
-				<GIC_SPI 309 IRQ_TYPE_EDGE_RISING>,
-				<GIC_SPI 314 IRQ_TYPE_EDGE_RISING>,
-				<GIC_SPI 315 IRQ_TYPE_EDGE_RISING>;
-			interrupt-names = "csiphy0",
-				"csiphy1",
-				"csiphy2",
-				"csid0",
-				"csid1",
-				"csid2",
-				"csid3",
-				"ispif",
-				"vfe0",
-				"vfe1";
-			power-domains = <&mmcc VFE0_GDSC>;
-			clocks = <&mmcc CAMSS_TOP_AHB_CLK>,
-				<&mmcc CAMSS_ISPIF_AHB_CLK>,
-				<&mmcc CAMSS_CSI0PHYTIMER_CLK>,
-				<&mmcc CAMSS_CSI1PHYTIMER_CLK>,
-				<&mmcc CAMSS_CSI2PHYTIMER_CLK>,
-				<&mmcc CAMSS_CSI0_AHB_CLK>,
-				<&mmcc CAMSS_CSI0_CLK>,
-				<&mmcc CAMSS_CSI0PHY_CLK>,
-				<&mmcc CAMSS_CSI0PIX_CLK>,
-				<&mmcc CAMSS_CSI0RDI_CLK>,
-				<&mmcc CAMSS_CSI1_AHB_CLK>,
-				<&mmcc CAMSS_CSI1_CLK>,
-				<&mmcc CAMSS_CSI1PHY_CLK>,
-				<&mmcc CAMSS_CSI1PIX_CLK>,
-				<&mmcc CAMSS_CSI1RDI_CLK>,
-				<&mmcc CAMSS_CSI2_AHB_CLK>,
-				<&mmcc CAMSS_CSI2_CLK>,
-				<&mmcc CAMSS_CSI2PHY_CLK>,
-				<&mmcc CAMSS_CSI2PIX_CLK>,
-				<&mmcc CAMSS_CSI2RDI_CLK>,
-				<&mmcc CAMSS_CSI3_AHB_CLK>,
-				<&mmcc CAMSS_CSI3_CLK>,
-				<&mmcc CAMSS_CSI3PHY_CLK>,
-				<&mmcc CAMSS_CSI3PIX_CLK>,
-				<&mmcc CAMSS_CSI3RDI_CLK>,
-				<&mmcc CAMSS_AHB_CLK>,
-				<&mmcc CAMSS_VFE0_CLK>,
-				<&mmcc CAMSS_CSI_VFE0_CLK>,
-				<&mmcc CAMSS_VFE0_AHB_CLK>,
-				<&mmcc CAMSS_VFE0_STREAM_CLK>,
-				<&mmcc CAMSS_VFE1_CLK>,
-				<&mmcc CAMSS_CSI_VFE1_CLK>,
-				<&mmcc CAMSS_VFE1_AHB_CLK>,
-				<&mmcc CAMSS_VFE1_STREAM_CLK>,
-				<&mmcc CAMSS_VFE_AHB_CLK>,
-				<&mmcc CAMSS_VFE_AXI_CLK>;
-			clock-names = "top_ahb",
-				"ispif_ahb",
-				"csiphy0_timer",
-				"csiphy1_timer",
-				"csiphy2_timer",
-				"csi0_ahb",
-				"csi0",
-				"csi0_phy",
-				"csi0_pix",
-				"csi0_rdi",
-				"csi1_ahb",
-				"csi1",
-				"csi1_phy",
-				"csi1_pix",
-				"csi1_rdi",
-				"csi2_ahb",
-				"csi2",
-				"csi2_phy",
-				"csi2_pix",
-				"csi2_rdi",
-				"csi3_ahb",
-				"csi3",
-				"csi3_phy",
-				"csi3_pix",
-				"csi3_rdi",
-				"ahb",
-				"vfe0",
-				"csi_vfe0",
-				"vfe0_ahb",
-				"vfe0_stream",
-				"vfe1",
-				"csi_vfe1",
-				"vfe1_ahb",
-				"vfe1_stream",
-				"vfe_ahb",
-				"vfe_axi";
-			vdda-supply = <&pm8994_l2>;
-			iommus = <&vfe_smmu 0>,
-				 <&vfe_smmu 1>,
-				 <&vfe_smmu 2>,
-				 <&vfe_smmu 3>;
-			status = "disabled";
-			ports {
-				#address-cells = <1>;
-				#size-cells = <0>;
+		etm@3a40000 {
+			compatible = "arm,coresight-etm4x", "arm,primecell";
+			reg = <0x3a40000 0x1000>;
+
+			clocks = <&rpmcc RPM_QDSS_CLK>, <&rpmcc RPM_QDSS_A_CLK>;
+			clock-names = "apb_pclk", "atclk";
+
+			cpu = <&CPU2>;
+
+			out-ports {
+				port {
+					etm2_out: endpoint {
+						remote-endpoint =
+						  <&apss_funnel1_in0>;
+					};
+				};
 			};
 		};
 

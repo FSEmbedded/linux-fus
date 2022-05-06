@@ -2633,11 +2633,6 @@ static int tegra_pcie_probe(struct platform_device *pdev)
 		goto pm_runtime_put;
 	}
 
-	err = tegra_pcie_request_resources(pcie);
-	if (err)
-		goto pm_runtime_put;
-	}
-
 	host->ops = &tegra_pcie_ops;
 	host->map_irq = tegra_pcie_map_irq;
 

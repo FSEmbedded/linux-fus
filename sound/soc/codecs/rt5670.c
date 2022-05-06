@@ -30,7 +30,7 @@
 #include "rt5670.h"
 #include "rt5670-dsp.h"
 
-#define RT5670_DEV_GPIO			BIT(0)
+#define RT5670_GPIO1_IS_IRQ			BIT(0)
 #define RT5670_IN2_DIFF			BIT(1)
 #define RT5670_DMIC_EN			BIT(2)
 #define RT5670_DMIC1_IN2P		BIT(3)
@@ -1453,7 +1453,7 @@ static int rt5670_spk_event(struct snd_soc_dapm_widget *w,
 	struct snd_soc_component *component = snd_soc_dapm_to_component(w->dapm);
 	struct rt5670_priv *rt5670 = snd_soc_component_get_drvdata(component);
 
-	if (!rt5670->pdata.gpio1_is_ext_spk_en)
+	if (!rt5670->gpio1_is_ext_spk_en)
 		return 0;
 
 	switch (event) {
@@ -2965,10 +2965,6 @@ static int rt5670_i2c_probe(struct i2c_client *i2c,
 		rt5670->gpio1_is_ext_spk_en = true;
 		dev_info(&i2c->dev, "quirk GPIO1 is external speaker enable\n");
 	}
-	if (rt5670_quirk & RT5670_GPIO1_IS_EXT_SPK_EN) {
-		rt5670->pdata.gpio1_is_ext_spk_en = true;
-		dev_info(&i2c->dev, "quirk GPIO1 is external speaker enable\n");
-	}
 	if (rt5670_quirk & RT5670_IN2_DIFF) {
 		rt5670->in2_diff = true;
 		dev_info(&i2c->dev, "quirk IN2_DIFF\n");
@@ -3068,14 +3064,14 @@ static int rt5670_i2c_probe(struct i2c_client *i2c,
 				   RT5670_GP1_PF_MASK, RT5670_GP1_PF_OUT);
 	}
 
-	if (rt5670->pdata.gpio1_is_ext_spk_en) {
+	if (rt5670->gpio1_is_ext_spk_en) {
 		regmap_update_bits(rt5670->regmap, RT5670_GPIO_CTRL1,
 				   RT5670_GP1_PIN_MASK, RT5670_GP1_PIN_GPIO1);
 		regmap_update_bits(rt5670->regmap, RT5670_GPIO_CTRL2,
 				   RT5670_GP1_PF_MASK, RT5670_GP1_PF_OUT);
 	}
 
-	if (rt5670->pdata.jd_mode) {
+	if (rt5670->jd_mode) {
 		regmap_update_bits(rt5670->regmap, RT5670_GLB_CLK,
 				   RT5670_SCLK_SRC_MASK, RT5670_SCLK_SRC_RCCLK);
 		rt5670->sysclk = 0;

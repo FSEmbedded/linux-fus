@@ -30,9 +30,8 @@
 #include <linux/usb/role.h>
 #include <linux/usb/tcpm.h>
 #include <linux/usb/typec_altmode.h>
-#include <linux/workqueue.h>
-#include <linux/extcon.h>
-#include <linux/extcon-provider.h>
+
+#include <uapi/linux/sched/types.h>
 
 #define FOREACH_STATE(S)			\
 	S(INVALID_STATE),			\
@@ -153,12 +152,6 @@ static const char * const tcpm_states[] = {
 	FOREACH_STATE(GENERATE_STRING)
 };
 
-static const unsigned int tcpm_extcon_cable[] = {
-	EXTCON_USB_HOST,
-	EXTCON_USB,
-	EXTCON_NONE,
-};
-
 enum vdm_states {
 	VDM_STATE_ERR_BUSY = -3,
 	VDM_STATE_ERR_SEND = -2,
@@ -252,7 +245,6 @@ struct pd_pps_data {
 
 struct tcpm_port {
 	struct device *dev;
-	struct extcon_dev *edev;
 
 	struct mutex lock;		/* tcpm state machine lock */
 	struct kthread_worker *wq;
@@ -742,20 +734,6 @@ static int tcpm_mux_set(struct tcpm_port *port, int state,
 		ret = usb_role_switch_set_role(port->role_sw, usb_role);
 		if (ret)
 			return ret;
-	} else if (port->edev) {
-		if (usb_role == USB_ROLE_NONE) {
-			extcon_set_state_sync(port->edev, EXTCON_USB_HOST,
-					      false);
-			extcon_set_state_sync(port->edev, EXTCON_USB, false);
-		} else if (usb_role == USB_ROLE_DEVICE) {
-			extcon_set_state_sync(port->edev, EXTCON_USB_HOST,
-					      false);
-			extcon_set_state_sync(port->edev, EXTCON_USB, true);
-		} else {
-			extcon_set_state_sync(port->edev, EXTCON_USB, false);
-			extcon_set_state_sync(port->edev, EXTCON_USB_HOST,
-					      true);
-		}
 	}
 
 	return typec_set_mode(port->typec_port, state);
@@ -3531,7 +3509,18 @@ static void run_state_machine(struct tcpm_port *port)
 		tcpm_set_vbus(port, false);
 		tcpm_set_roles(port, port->self_powered, TYPEC_SOURCE,
 			       tcpm_data_role_for_source(port));
-		tcpm_set_state(port, SRC_HARD_RESET_VBUS_ON, PD_T_SRC_RECOVER);
+		/*
+		 * If tcpc fails to notify vbus off, TCPM will wait for PD_T_SAFE_0V +
+		 * PD_T_SRC_RECOVER before turning vbus back on.
+		 * From Table 7-12 Sequence Description for a Source Initiated Hard Reset:
+		 * 4. Policy Engine waits tPSHardReset after sending Hard Reset Signaling and then
+		 * tells the Device Policy Manager to instruct the power supply to perform a
+		 * Hard Reset. The transition to vSafe0V Shall occur within tSafe0V (t2).
+		 * 5. After tSrcRecover the Source applies power to VBUS in an attempt to
+		 * re-establish communication with the Sink and resume USB Default Operation.
+		 * The transition to vSafe5V Shall occur within tSrcTurnOn(t4).
+		 */
+		tcpm_set_state(port, SRC_HARD_RESET_VBUS_ON, PD_T_SAFE_0V + PD_T_SRC_RECOVER);
 		break;
 	case SRC_HARD_RESET_VBUS_ON:
 		tcpm_set_vconn(port, true);
@@ -4064,14 +4053,6 @@ static void _tcpm_cc_change(struct tcpm_port *port, enum typec_cc_status cc1,
 		 */
 		break;
 
-	case PORT_RESET:
-	case PORT_RESET_WAIT_OFF:
-		/*
-		 * State set back to default mode once the timer completes.
-		 * Ignore CC changes here.
-		 */
-		break;
-
 	default:
 		if (tcpm_port_is_disconnected(port))
 			tcpm_set_state(port, unattached_state(port), 0);
@@ -4132,6 +4113,9 @@ static void _tcpm_pd_vbus_on(struct tcpm_port *port)
 	case SRC_TRY_WAIT:
 	case SRC_TRY_DEBOUNCE:
 		/* Do nothing, waiting for sink detection */
+		break;
+	case FR_SWAP_SNK_SRC_NEW_SINK_READY:
+		tcpm_set_state(port, FR_SWAP_SNK_SRC_SOURCE_VBUS_APPLIED, 0);
 		break;
 
 	case PORT_RESET:
@@ -4210,6 +4194,14 @@ static void _tcpm_pd_vbus_off(struct tcpm_port *port)
 		 * State set back to default mode once the timer completes.
 		 * Ignore vbus changes here.
 		 */
+		break;
+
+	case FR_SWAP_SEND:
+	case FR_SWAP_SEND_TIMEOUT:
+	case FR_SWAP_SNK_SRC_TRANSITION_TO_OFF:
+	case FR_SWAP_SNK_SRC_NEW_SINK_READY:
+	case FR_SWAP_SNK_SRC_SOURCE_VBUS_APPLIED:
+		/* Do nothing, vbus drop expected */
 		break;
 
 	default:
@@ -4991,7 +4983,7 @@ static int tcpm_psy_set_prop(struct power_supply *psy,
 			     const union power_supply_propval *val)
 {
 	struct tcpm_port *port = power_supply_get_drvdata(psy);
-	int ret;
+	int ret = 0;
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:
@@ -5125,12 +5117,21 @@ struct tcpm_port *tcpm_register_port(struct device *dev, struct tcpc_dev *tcpc)
 	mutex_init(&port->lock);
 	mutex_init(&port->swap_lock);
 
-	port->wq = create_freezable_workqueue(dev_name(dev));
-	if (!port->wq)
-		return ERR_PTR(-ENOMEM);
-	INIT_DELAYED_WORK(&port->state_machine, tcpm_state_machine_work);
-	INIT_DELAYED_WORK(&port->vdm_state_machine, vdm_state_machine_work);
-	INIT_WORK(&port->event_work, tcpm_pd_event_handler);
+	port->wq = kthread_create_worker(0, dev_name(dev));
+	if (IS_ERR(port->wq))
+		return ERR_CAST(port->wq);
+	sched_set_fifo(port->wq->task);
+
+	kthread_init_work(&port->state_machine, tcpm_state_machine_work);
+	kthread_init_work(&port->vdm_state_machine, vdm_state_machine_work);
+	kthread_init_work(&port->event_work, tcpm_pd_event_handler);
+	kthread_init_work(&port->enable_frs, tcpm_enable_frs_work);
+	hrtimer_init(&port->state_machine_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	port->state_machine_timer.function = state_machine_timer_handler;
+	hrtimer_init(&port->vdm_state_machine_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	port->vdm_state_machine_timer.function = vdm_state_machine_timer_handler;
+	hrtimer_init(&port->enable_frs_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	port->enable_frs_timer.function = enable_frs_timer_handler;
 
 	spin_lock_init(&port->pd_event_lock);
 
@@ -5172,42 +5173,6 @@ struct tcpm_port *tcpm_register_port(struct device *dev, struct tcpc_dev *tcpc)
 		goto out_role_sw_put;
 	}
 
-	if (tcpc->config && tcpc->config->alt_modes) {
-		const struct typec_altmode_desc *paltmode = tcpc->config->alt_modes;
-
-		i = 0;
-		while (paltmode->svid && i < ARRAY_SIZE(port->port_altmode)) {
-			struct typec_altmode *alt;
-
-			alt = typec_port_register_altmode(port->typec_port,
-							  paltmode);
-			if (IS_ERR(alt)) {
-				tcpm_log(port,
-					 "%s: failed to register port alternate mode 0x%x",
-					 dev_name(dev), paltmode->svid);
-				break;
-			}
-			typec_altmode_set_drvdata(alt, port);
-			alt->ops = &tcpm_altmode_ops;
-			port->port_altmode[i] = alt;
-			i++;
-			paltmode++;
-		}
-	}
-
-	port->edev = devm_extcon_dev_allocate(port->dev, tcpm_extcon_cable);
-	if (IS_ERR(port->edev)) {
-		dev_err(port->dev, "failed to allocate extcon dev.\n");
-		err = -ENOMEM;
-		goto out_role_sw_put;
-	}
-
-	err = devm_extcon_dev_register(port->dev, port->edev);
-	if (err) {
-		dev_err(port->dev, "failed to register extcon dev.\n");
-		goto out_role_sw_put;
-	}
-
 	mutex_lock(&port->lock);
 	tcpm_init(port);
 	mutex_unlock(&port->lock);
@@ -5228,8 +5193,9 @@ void tcpm_unregister_port(struct tcpm_port *port)
 {
 	int i;
 
-	cancel_delayed_work_sync(&port->state_machine);
-	cancel_delayed_work_sync(&port->vdm_state_machine);
+	hrtimer_cancel(&port->enable_frs_timer);
+	hrtimer_cancel(&port->vdm_state_machine_timer);
+	hrtimer_cancel(&port->state_machine_timer);
 
 	tcpm_reset_port(port);
 	for (i = 0; i < ARRAY_SIZE(port->port_altmode); i++)

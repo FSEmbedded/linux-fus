@@ -538,4 +538,4 @@ struct clk_hw *imx_clk_hw_sscg_pll(const char *name,
 
 	return hw;
 }
-EXPORT_SYMBOL_GPL(imx_clk_sccg_pll);
+EXPORT_SYMBOL_GPL(imx_clk_hw_sscg_pll);

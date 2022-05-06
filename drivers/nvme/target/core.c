@@ -584,21 +584,9 @@ int nvmet_ns_enable(struct nvmet_ns *ns)
 	if (ns->nsid > subsys->max_nsid)
 		subsys->max_nsid = ns->nsid;
 
-	/*
-	 * The namespaces list needs to be sorted to simplify the implementation
-	 * of the Identify Namepace List subcommand.
-	 */
-	if (list_empty(&subsys->namespaces)) {
-		list_add_tail_rcu(&ns->dev_link, &subsys->namespaces);
-	} else {
-		struct nvmet_ns *old;
-
-		list_for_each_entry_rcu(old, &subsys->namespaces, dev_link,
-					lockdep_is_held(&subsys->lock)) {
-			BUG_ON(ns->nsid == old->nsid);
-			if (ns->nsid < old->nsid)
-				break;
-		}
+	ret = xa_insert(&subsys->namespaces, ns->nsid, ns, GFP_KERNEL);
+	if (ret)
+		goto out_restore_subsys_maxnsid;
 
 	subsys->nr_namespaces++;
 
@@ -1288,8 +1276,7 @@ static void nvmet_setup_p2p_ns_map(struct nvmet_ctrl *ctrl,
 
 	ctrl->p2p_client = get_device(req->p2p_client);
 
-	list_for_each_entry_rcu(ns, &ctrl->subsys->namespaces, dev_link,
-				lockdep_is_held(&ctrl->subsys->lock))
+	xa_for_each(&ctrl->subsys->namespaces, idx, ns)
 		nvmet_p2pmem_ns_add_p2p(ctrl, ns);
 }
 

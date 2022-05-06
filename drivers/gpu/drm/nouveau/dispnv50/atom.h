@@ -118,6 +118,7 @@ struct nv50_head_atom {
 		u8 nhsync:1;
 		u8 nvsync:1;
 		u8 depth:4;
+		u8 crc_raster:2;
 		u8 bpc;
 	} or;
 

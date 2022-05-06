@@ -680,7 +680,7 @@ static int rsnd_ssi_stop(struct rsnd_mod *mod,
 	/* In multi-SSI mode, stop is performed by setting ssi0129 in
 	 * SSI_CONTROL to 0 (in rsnd_ssio_stop_gen2). Do nothing here.
 	 */
-	if (rsnd_ssi_multi_slaves_runtime(io))
+	if (rsnd_ssi_multi_secondaries_runtime(io))
 		return 0;
 
 	/*
@@ -797,7 +797,6 @@ static void __rsnd_ssi_interrupt(struct rsnd_mod *mod,
 						       SSI_SYS_STATUS(i * 2),
 						       0xf << (id * 4));
 					stop = true;
-					break;
 				}
 			}
 			break;
@@ -815,7 +814,6 @@ static void __rsnd_ssi_interrupt(struct rsnd_mod *mod,
 						SSI_SYS_STATUS((i * 2) + 1),
 						0xf << 4);
 					stop = true;
-					break;
 				}
 			}
 			break;
@@ -893,7 +891,7 @@ static void rsnd_ssi_parent_attach(struct rsnd_mod *mod,
 	if (!rsnd_rdai_is_clk_master(rdai))
 		return;
 
-	if (rsnd_ssi_is_multi_slave(mod, io))
+	if (rsnd_ssi_is_multi_secondary(mod, io))
 		return;
 
 	switch (rsnd_mod_id(mod)) {

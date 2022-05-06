@@ -1345,6 +1345,7 @@ static void qedr_set_common_qp_params(struct qedr_dev *dev,
 		kref_init(&qp->refcnt);
 		init_completion(&qp->iwarp_cm_comp);
 	}
+
 	qp->pd = pd;
 	qp->qp_type = attrs->qp_type;
 	qp->max_inline_data = attrs->cap.max_inline_data;
@@ -1796,9 +1797,6 @@ static void qedr_cleanup_user(struct qedr_dev *dev,
 		qp->urq.umem = NULL;
 	}
 
-	ib_umem_release(qp->urq.umem);
-	qp->urq.umem = NULL;
-
 	if (rdma_protocol_roce(&dev->ibdev, 1)) {
 		qedr_free_pbl(dev, &qp->usq.pbl_info, qp->usq.pbl_tbl);
 		qedr_free_pbl(dev, &qp->urq.pbl_info, qp->urq.pbl_tbl);
@@ -1806,6 +1804,22 @@ static void qedr_cleanup_user(struct qedr_dev *dev,
 		kfree(qp->usq.pbl_tbl);
 		kfree(qp->urq.pbl_tbl);
 	}
+
+	if (qp->usq.db_rec_data) {
+		qedr_db_recovery_del(dev, qp->usq.db_addr,
+				     &qp->usq.db_rec_data->db_data);
+		rdma_user_mmap_entry_remove(qp->usq.db_mmap_entry);
+	}
+
+	if (qp->urq.db_rec_data) {
+		qedr_db_recovery_del(dev, qp->urq.db_addr,
+				     &qp->urq.db_rec_data->db_data);
+		rdma_user_mmap_entry_remove(qp->urq.db_mmap_entry);
+	}
+
+	if (rdma_protocol_iwarp(&dev->ibdev, 1))
+		qedr_db_recovery_del(dev, qp->urq.db_rec_db2_addr,
+				     &qp->urq.db_rec_db2_data);
 }
 
 static int qedr_create_user_qp(struct qedr_dev *dev,
@@ -1824,11 +1838,10 @@ static int qedr_create_user_qp(struct qedr_dev *dev,
 	int rc = 0;
 
 	qp->create_type = QEDR_QP_CREATE_USER;
-	memset(&ureq, 0, sizeof(ureq));
-	rc = ib_copy_from_udata(&ureq, udata, sizeof(ureq));
-	if (rc) {
-		DP_ERR(dev, "Problem copying data from user space\n");
-		return rc;
+
+	if (ibpd) {
+		pd = get_qedr_pd(ibpd);
+		ctx = pd->uctx;
 	}
 
 	if (udata) {
@@ -2788,25 +2801,6 @@ err:
 	return rc;
 }
 
-static int qedr_free_qp_resources(struct qedr_dev *dev, struct qedr_qp *qp,
-				  struct ib_udata *udata)
-{
-	int rc = 0;
-
-	if (qp->qp_type != IB_QPT_GSI) {
-		rc = dev->ops->rdma_destroy_qp(dev->rdma_ctx, qp->qed_qp);
-		if (rc)
-			return rc;
-	}
-
-	if (qp->create_type == QEDR_QP_CREATE_USER)
-		qedr_cleanup_user(dev, qp);
-	else
-		qedr_cleanup_kernel(dev, qp);
-
-	return 0;
-}
-
 int qedr_destroy_qp(struct ib_qp *ibqp, struct ib_udata *udata)
 {
 	struct qedr_qp *qp = get_qedr_qp(ibqp);
@@ -2866,6 +2860,8 @@ int qedr_destroy_qp(struct ib_qp *ibqp, struct ib_udata *udata)
 
 	if (rdma_protocol_iwarp(&dev->ibdev, 1))
 		qedr_iw_qp_rem_ref(&qp->ibqp);
+	else
+		kfree(qp);
 
 	return 0;
 }
@@ -3877,10 +3873,10 @@ int qedr_post_srq_recv(struct ib_srq *ibsrq, const struct ib_recv_wr *wr,
 		 * in first 4 bytes and need to update WQE producer in
 		 * next 4 bytes.
 		 */
-		srq->hw_srq.virt_prod_pair_addr->sge_prod = hw_srq->sge_prod;
+		srq->hw_srq.virt_prod_pair_addr->sge_prod = cpu_to_le32(hw_srq->sge_prod);
 		/* Make sure sge producer is updated first */
 		dma_wmb();
-		srq->hw_srq.virt_prod_pair_addr->wqe_prod = hw_srq->wqe_prod;
+		srq->hw_srq.virt_prod_pair_addr->wqe_prod = cpu_to_le32(hw_srq->wqe_prod);
 
 		wr = wr->next;
 	}

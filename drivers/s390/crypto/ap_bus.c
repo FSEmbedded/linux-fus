@@ -691,7 +691,7 @@ static int ap_device_probe(struct device *dev)
 		mutex_unlock(&ap_perms_mutex);
 		drvres = ap_drv->flags & AP_DRIVER_FLAG_DEFAULT;
 		if (!!devres != !!drvres)
-			return -ENODEV;
+			goto out;
 	}
 
 	/* Add queue/card to list of active queues/cards */

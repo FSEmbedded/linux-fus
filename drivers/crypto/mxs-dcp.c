@@ -323,7 +323,7 @@ static int mxs_dcp_aes_block_crypt(struct crypto_async_request *arq)
 	int init = 0;
 	bool limit_hit = false;
 
-	if (!req->nbytes)
+	if (!req->cryptlen)
 		return 0;
 
 	actx->fill = 0;
@@ -453,8 +453,8 @@ static int mxs_dcp_block_fallback(struct skcipher_request *req, int enc)
 				   req->cryptlen, req->iv);
 
 #ifdef CONFIG_PM_SLEEP
-	set_freezable();
-	try_to_freeze();
+set_freezable();
+try_to_freeze();
 #endif
 	if (enc)
 		ret = crypto_skcipher_encrypt(&rctx->fallback_req);

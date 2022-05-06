@@ -3587,7 +3587,7 @@ static int acpi_nfit_clear_to_send(struct nvdimm_bus_descriptor *nd_desc,
 			call_pkg->nd_family == NVDIMM_FAMILY_INTEL) {
 		func = call_pkg->nd_command;
 		if (func > NVDIMM_CMD_MAX ||
-		    (1 << func) & NVDIMM_INTEL_SECURITY_CMDMASK)
+		    (1 << func) & NVDIMM_INTEL_DENY_CMDMASK)
 			return -EOPNOTSUPP;
 	}
 

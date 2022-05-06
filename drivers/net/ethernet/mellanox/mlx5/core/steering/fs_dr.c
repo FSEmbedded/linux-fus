@@ -266,6 +266,17 @@ static int mlx5_cmd_dr_create_fte(struct mlx5_flow_root_namespace *ns,
 
 	match_sz = sizeof(fte->val);
 
+	/* Drop reformat action bit if destination vport set with reformat */
+	if (fte->action.action & MLX5_FLOW_CONTEXT_ACTION_FWD_DEST) {
+		list_for_each_entry(dst, &fte->node.children, node.list) {
+			if (!contain_vport_reformat_action(dst))
+				continue;
+
+			fte->action.action &= ~MLX5_FLOW_CONTEXT_ACTION_PACKET_REFORMAT;
+			break;
+		}
+	}
+
 	/* The order of the actions are must to be keep, only the following
 	 * order is supported by SW steering:
 	 * TX: modify header -> push vlan -> encap
@@ -373,6 +384,7 @@ static int mlx5_cmd_dr_create_fte(struct mlx5_flow_root_namespace *ns,
 	if (fte->action.action & MLX5_FLOW_CONTEXT_ACTION_FWD_DEST) {
 		list_for_each_entry(dst, &fte->node.children, node.list) {
 			enum mlx5_flow_destination_type type = dst->dest_attr.type;
+			u32 ft_id;
 
 			if (num_actions == MLX5_FLOW_CONTEXT_ACTION_MAX ||
 			    num_term_actions >= MLX5_FLOW_CONTEXT_ACTION_MAX) {
@@ -385,7 +397,16 @@ static int mlx5_cmd_dr_create_fte(struct mlx5_flow_root_namespace *ns,
 
 			switch (type) {
 			case MLX5_FLOW_DESTINATION_TYPE_FLOW_TABLE:
-				tmp_action = create_ft_action(dev, dst);
+				tmp_action = create_ft_action(domain, dst);
+				if (!tmp_action) {
+					err = -ENOMEM;
+					goto free_actions;
+				}
+				fs_dr_actions[fs_dr_num_actions++] = tmp_action;
+				term_actions[num_term_actions++].dest = tmp_action;
+				break;
+			case MLX5_FLOW_DESTINATION_TYPE_VPORT:
+				tmp_action = create_vport_action(domain, dst);
 				if (!tmp_action) {
 					err = -ENOMEM;
 					goto free_actions;

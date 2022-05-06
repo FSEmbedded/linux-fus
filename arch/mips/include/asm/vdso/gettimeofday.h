@@ -20,7 +20,11 @@
 
 #define VDSO_HAS_CLOCK_GETRES		1
 
-#define __VDSO_USE_SYSCALL		ULLONG_MAX
+#if MIPS_ISA_REV < 6
+#define VDSO_SYSCALL_CLOBBERS "hi", "lo",
+#else
+#define VDSO_SYSCALL_CLOBBERS
+#endif
 
 static __always_inline long gettimeofday_fallback(
 				struct __kernel_old_timeval *_tv,

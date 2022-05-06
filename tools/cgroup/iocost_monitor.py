@@ -159,23 +159,13 @@ class IocgStat:
         else:
             self.inflight_pct = 0
 
-        # vdebt used to be an atomic64_t and is now u64, support both
-        try:
-            self.debt_ms = iocg.abs_vdebt.counter.value_() / VTIME_PER_USEC / 1000
-        except:
-            self.debt_ms = iocg.abs_vdebt.value_() / VTIME_PER_USEC / 1000
-
-        self.use_delay = blkg.use_delay.counter.value_()
-        self.delay_ms = blkg.delay_nsec.counter.value_() / 1_000_000
-
-        usage_idx = iocg.usage_idx.value_()
-        self.usages = []
-        self.usage = 0
-        for i in range(NR_USAGE_SLOTS):
-            usage = iocg.usages[(usage_idx + i) % NR_USAGE_SLOTS].value_()
-            upct = usage * 100 / HWEIGHT_WHOLE
-            self.usages.append(upct)
-            self.usage = max(self.usage, upct)
+        self.usage = (100 * iocg.usage_delta_us.value_() /
+                      ioc.period_us.value_()) if self.active else 0
+        self.debt_ms = iocg.abs_vdebt.value_() / VTIME_PER_USEC / 1000
+        if blkg.use_delay.counter.value_() != 0:
+            self.delay_ms = blkg.delay_nsec.counter.value_() / 1_000_000
+        else:
+            self.delay_ms = 0
 
     def dict(self, now, path):
         out = { 'cgroup'                : path,
@@ -188,12 +178,9 @@ class IocgStat:
                 'hweight_inuse_pct'     : self.hwi_pct,
                 'inflight_pct'          : self.inflight_pct,
                 'debt_ms'               : self.debt_ms,
-                'use_delay'             : self.use_delay,
                 'delay_ms'              : self.delay_ms,
                 'usage_pct'             : self.usage,
                 'address'               : self.address }
-        for i in range(len(self.usages)):
-            out[f'usage_pct_{i}'] = str(self.usages[i])
         return out
 
     def table_row_str(self, path):

@@ -2318,26 +2318,10 @@ static void generate_random_aead_testvec(struct aead_request *req,
 	 * Generate the AAD, plaintext, and ciphertext.  Not applicable if the
 	 * key or the authentication tag size couldn't be set.
 	 */
+	vec->novrfy = 0;
 	vec->crypt_error = 0;
-	if (vec->setkey_error || vec->setauthsize_error)
-		goto done;
-
-	/* Ciphertext */
-	sg_init_table(src, 2);
-	i = 0;
-	if (vec->alen)
-		sg_set_buf(&src[i++], vec->assoc, vec->alen);
-	if (vec->plen)
-		sg_set_buf(&src[i++], vec->ptext, vec->plen);
-	sg_init_one(&dst, vec->ctext, vec->alen + vec->clen);
-	memcpy(iv, vec->iv, ivsize);
-	aead_request_set_callback(req, 0, crypto_req_done, &wait);
-	aead_request_set_crypt(req, src, &dst, vec->plen, iv);
-	aead_request_set_ad(req, vec->alen);
-	vec->crypt_error = crypto_wait_req(crypto_aead_encrypt(req), &wait);
-	if (vec->crypt_error == 0)
-		memmove((u8 *)vec->ctext, vec->ctext + vec->alen, vec->clen);
-done:
+	if (vec->setkey_error == 0 && vec->setauthsize_error == 0)
+		generate_aead_message(req, suite, vec, prefer_inauthentic);
 	snprintf(name, max_namelen,
 		 "\"random: alen=%u plen=%u authsize=%u klen=%u novrfy=%d\"",
 		 vec->alen, vec->plen, authsize, vec->klen, vec->novrfy);
@@ -2541,19 +2525,7 @@ static int test_aead_extra(const char *driver,
 	if (err)
 		goto out;
 
-		err = test_aead_vec_cfg(driver, ENCRYPT, &vec, vec_name, cfg,
-					req, tsgls);
-		if (err)
-			goto out;
-		if (vec.crypt_error == 0) {
-			err = test_aead_vec_cfg(driver, DECRYPT, &vec, vec_name,
-						cfg, req, tsgls);
-			if (err)
-				goto out;
-		}
-		cond_resched();
-	}
-	err = 0;
+	err = test_aead_inauthentic_inputs(ctx);
 out:
 	kfree(ctx->vec.key);
 	kfree(ctx->vec.iv);

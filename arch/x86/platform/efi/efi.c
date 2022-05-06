@@ -89,6 +89,10 @@ static const unsigned long * const efi_tables[] = {
 #endif
 	&efi.tpm_log,
 	&efi.tpm_final_log,
+	&efi_rng_seed,
+#ifdef CONFIG_LOAD_UEFI_KEYS
+	&efi.mokvar_table,
+#endif
 };
 
 u64 efi_setup;		/* efi setup_data physical address */
@@ -439,13 +443,9 @@ static int __init efi_config_init(const efi_config_table_type_t *arch_tables)
 
 void __init efi_init(void)
 {
-	efi_char16_t *c16;
-	char vendor[100] = "unknown";
-	int i = 0;
-
-#ifdef CONFIG_X86_32
-	if (boot_params.efi_info.efi_systab_hi ||
-	    boot_params.efi_info.efi_memmap_hi) {
+	if (IS_ENABLED(CONFIG_X86_32) &&
+	    (boot_params.efi_info.efi_systab_hi ||
+	     boot_params.efi_info.efi_memmap_hi)) {
 		pr_info("Table located above 4GB, disabling EFI.\n");
 		return;
 	}
@@ -456,25 +456,7 @@ void __init efi_init(void)
 	if (efi_systab_init(efi_systab_phys))
 		return;
 
-	/*
-	 * Show what we know for posterity
-	 */
-	c16 = early_memremap_ro(efi.systab->fw_vendor,
-				sizeof(vendor) * sizeof(efi_char16_t));
-	if (c16) {
-		for (i = 0; i < sizeof(vendor) - 1 && c16[i]; ++i)
-			vendor[i] = c16[i];
-		vendor[i] = '\0';
-		early_memunmap(c16, sizeof(vendor) * sizeof(efi_char16_t));
-	} else {
-		pr_err("Could not map the firmware vendor!\n");
-	}
-
-	pr_info("EFI v%u.%.02u by %s\n",
-		efi.systab->hdr.revision >> 16,
-		efi.systab->hdr.revision & 0xffff, vendor);
-
-	if (efi_reuse_config(efi.systab->tables, efi.systab->nr_tables))
+	if (efi_reuse_config(efi_config_table, efi_nr_tables))
 		return;
 
 	if (efi_config_init(arch_tables))
@@ -829,9 +811,6 @@ static void __init __efi_enter_virtual_mode(void)
 		pr_info("EFI runtime memory map:\n");
 		efi_print_memmap();
 	}
-
-	if (WARN_ON(!efi.systab))
-		goto err;
 
 	if (efi_setup_page_tables(pa, 1 << pg_shift))
 		goto err;

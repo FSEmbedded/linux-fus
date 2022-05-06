@@ -588,30 +588,11 @@ static void multipath_release_clone(struct request *clone,
 
 static void __multipath_queue_bio(struct multipath *m, struct bio *bio)
 {
-	struct pgpath *pgpath;
-	unsigned long flags;
-	bool queue_io;
-
-	/* Do we need to select a new pgpath? */
-	pgpath = READ_ONCE(m->current_pgpath);
-	if (!pgpath || !test_bit(MPATHF_QUEUE_IO, &m->flags))
-		pgpath = choose_pgpath(m, bio->bi_iter.bi_size);
-
-	/* MPATHF_QUEUE_IO might have been cleared by choose_pgpath. */
-	queue_io = test_bit(MPATHF_QUEUE_IO, &m->flags);
-
-	if ((pgpath && queue_io) ||
-	    (!pgpath && test_bit(MPATHF_QUEUE_IF_NO_PATH, &m->flags))) {
-		/* Queue for the daemon to resubmit */
-		spin_lock_irqsave(&m->lock, flags);
-		bio_list_add(&m->queued_bios, bio);
-		spin_unlock_irqrestore(&m->lock, flags);
-
-		/* PG_INIT_REQUIRED cannot be set without QUEUE_IO */
-		if (queue_io || test_bit(MPATHF_PG_INIT_REQUIRED, &m->flags))
-			pg_init_all_paths(m);
-		else if (!queue_io)
-			queue_work(kmultipathd, &m->process_queued_bios);
+	/* Queue for the daemon to resubmit */
+	bio_list_add(&m->queued_bios, bio);
+	if (!test_bit(MPATHF_QUEUE_IO, &m->flags))
+		queue_work(kmultipathd, &m->process_queued_bios);
+}
 
 static void multipath_queue_bio(struct multipath *m, struct bio *bio)
 {
@@ -620,6 +601,34 @@ static void multipath_queue_bio(struct multipath *m, struct bio *bio)
 	spin_lock_irqsave(&m->lock, flags);
 	__multipath_queue_bio(m, bio);
 	spin_unlock_irqrestore(&m->lock, flags);
+}
+
+static struct pgpath *__map_bio(struct multipath *m, struct bio *bio)
+{
+	struct pgpath *pgpath;
+	unsigned long flags;
+
+	/* Do we need to select a new pgpath? */
+	pgpath = READ_ONCE(m->current_pgpath);
+	if (!pgpath || !mpath_double_check_test_bit(MPATHF_QUEUE_IO, m))
+		pgpath = choose_pgpath(m, bio->bi_iter.bi_size);
+
+	if (!pgpath) {
+		spin_lock_irqsave(&m->lock, flags);
+		if (test_bit(MPATHF_QUEUE_IF_NO_PATH, &m->flags)) {
+			__multipath_queue_bio(m, bio);
+			pgpath = ERR_PTR(-EAGAIN);
+		}
+		spin_unlock_irqrestore(&m->lock, flags);
+
+	} else if (mpath_double_check_test_bit(MPATHF_QUEUE_IO, m) ||
+		   mpath_double_check_test_bit(MPATHF_PG_INIT_REQUIRED, m)) {
+		multipath_queue_bio(m, bio);
+		pg_init_all_paths(m);
+		return ERR_PTR(-EAGAIN);
+	}
+
+	return pgpath;
 }
 
 static int __multipath_map_bio(struct multipath *m, struct bio *bio,
@@ -1977,9 +1986,9 @@ static int multipath_prepare_ioctl(struct dm_target *ti,
 	unsigned long flags;
 	int r;
 
-	current_pgpath = READ_ONCE(m->current_pgpath);
-	if (!current_pgpath || !test_bit(MPATHF_QUEUE_IO, &m->flags))
-		current_pgpath = choose_pgpath(m, 0);
+	pgpath = READ_ONCE(m->current_pgpath);
+	if (!pgpath || !mpath_double_check_test_bit(MPATHF_QUEUE_IO, m))
+		pgpath = choose_pgpath(m, 0);
 
 	if (pgpath) {
 		if (!mpath_double_check_test_bit(MPATHF_QUEUE_IO, m)) {

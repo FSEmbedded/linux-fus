@@ -343,8 +343,37 @@ static u64 notrace read_hv_clock_tsc_cs(struct clocksource *arg)
 
 static u64 notrace read_hv_sched_clock_tsc(void)
 {
-	return (read_hv_clock_tsc(NULL) - hv_sched_clock_offset) *
+	return (read_hv_clock_tsc() - hv_sched_clock_offset) *
 		(NSEC_PER_SEC / HV_CLOCK_HZ);
+}
+
+static void suspend_hv_clock_tsc(struct clocksource *arg)
+{
+	u64 tsc_msr;
+
+	/* Disable the TSC page */
+	hv_get_reference_tsc(tsc_msr);
+	tsc_msr &= ~BIT_ULL(0);
+	hv_set_reference_tsc(tsc_msr);
+}
+
+
+static void resume_hv_clock_tsc(struct clocksource *arg)
+{
+	phys_addr_t phys_addr = virt_to_phys(&tsc_pg);
+	u64 tsc_msr;
+
+	/* Re-enable the TSC page */
+	hv_get_reference_tsc(tsc_msr);
+	tsc_msr &= GENMASK_ULL(11, 0);
+	tsc_msr |= BIT_ULL(0) | (u64)phys_addr;
+	hv_set_reference_tsc(tsc_msr);
+}
+
+static int hv_cs_enable(struct clocksource *cs)
+{
+	hv_enable_vdso_clocksource();
+	return 0;
 }
 
 static struct clocksource hyperv_cs_tsc = {
@@ -377,7 +406,7 @@ static u64 notrace read_hv_clock_msr_cs(struct clocksource *arg)
 
 static u64 notrace read_hv_sched_clock_msr(void)
 {
-	return (read_hv_clock_msr(NULL) - hv_sched_clock_offset) *
+	return (read_hv_clock_msr() - hv_sched_clock_offset) *
 		(NSEC_PER_SEC / HV_CLOCK_HZ);
 }
 

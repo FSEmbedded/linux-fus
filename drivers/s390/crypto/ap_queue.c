@@ -455,6 +455,7 @@ static ssize_t request_count_show(struct device *dev,
 				  char *buf)
 {
 	struct ap_queue *aq = to_ap_queue(dev);
+	bool valid = false;
 	u64 req_cnt;
 
 	spin_lock_bh(&aq->lock);
@@ -463,7 +464,11 @@ static ssize_t request_count_show(struct device *dev,
 		valid = true;
 	}
 	spin_unlock_bh(&aq->lock);
-	return snprintf(buf, PAGE_SIZE, "%llu\n", req_cnt);
+
+	if (valid)
+		return scnprintf(buf, PAGE_SIZE, "%llu\n", req_cnt);
+	else
+		return scnprintf(buf, PAGE_SIZE, "-\n");
 }
 
 static ssize_t request_count_store(struct device *dev,
@@ -744,8 +749,7 @@ struct ap_queue *ap_queue_create(ap_qid_t qid, int device_type)
 	aq->ap_dev.device.type = &ap_queue_type;
 	aq->ap_dev.device_type = device_type;
 	aq->qid = qid;
-	aq->state = AP_STATE_UNBOUND;
-	aq->interrupt = AP_INTR_DISABLED;
+	aq->interrupt = false;
 	spin_lock_init(&aq->lock);
 	INIT_LIST_HEAD(&aq->pendingq);
 	INIT_LIST_HEAD(&aq->requestq);
@@ -777,11 +781,16 @@ int ap_queue_message(struct ap_queue *aq, struct ap_message *ap_msg)
 	BUG_ON(!ap_msg->receive);
 
 	spin_lock_bh(&aq->lock);
-	/* Queue the message. */
-	list_add_tail(&ap_msg->list, &aq->requestq);
-	aq->requestq_count++;
-	aq->total_request_count++;
-	atomic64_inc(&aq->card->total_request_count);
+
+	/* only allow to queue new messages if device state is ok */
+	if (aq->dev_state == AP_DEV_STATE_OPERATING) {
+		list_add_tail(&ap_msg->list, &aq->requestq);
+		aq->requestq_count++;
+		aq->total_request_count++;
+		atomic64_inc(&aq->card->total_request_count);
+	} else
+		rc = -ENODEV;
+
 	/* Send/receive as many request from the queue as possible. */
 	ap_wait(ap_sm_event_loop(aq, AP_SM_EVENT_POLL));
 

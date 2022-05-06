@@ -157,7 +157,7 @@ gk20a_gr_av_to_method(struct gf100_gr *gr, const char *path, const char *name,
 	init = (void *)(pack + max_classes + 1);
 
 	for (i = 0; i < nent; i++, init++) {
-		struct gk20a_fw_av *av = &((struct gk20a_fw_av *)fuc.data)[i];
+		struct gk20a_fw_av *av = &((struct gk20a_fw_av *)blob.data)[i];
 		u32 class = av->addr & 0xffff;
 		u32 addr = (av->addr & 0xffff0000) >> 14;
 

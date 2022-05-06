@@ -551,14 +551,14 @@ acpi_hw_get_gpe_block_status(struct acpi_gpe_xrupt_info *gpe_xrupt_info,
 	for (i = 0; i < gpe_block->register_count; i++) {
 		gpe_register_info = &gpe_block->register_info[i];
 
-		status = acpi_hw_read(&in_enable,
-				      &gpe_register_info->enable_address);
+		status = acpi_hw_gpe_read(&in_enable,
+					  &gpe_register_info->enable_address);
 		if (ACPI_FAILURE(status)) {
 			continue;
 		}
 
-		status = acpi_hw_read(&in_status,
-				      &gpe_register_info->status_address);
+		status = acpi_hw_gpe_read(&in_status,
+					  &gpe_register_info->status_address);
 		if (ACPI_FAILURE(status)) {
 			continue;
 		}

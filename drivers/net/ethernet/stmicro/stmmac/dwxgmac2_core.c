@@ -1437,6 +1437,7 @@ static void dwxgmac3_fpe_configure(void __iomem *ioaddr, u32 num_txq,
 		value &= ~XGMAC_EFPE;
 
 		writel(value, ioaddr + XGMAC_FPE_CTRL_STS);
+		return;
 	}
 
 	value = readl(ioaddr + XGMAC_RXQ_CTRL1);
@@ -1454,6 +1455,67 @@ const struct stmmac_ops dwxgmac210_ops = {
 	.set_mac = dwxgmac2_set_mac,
 	.rx_ipc = dwxgmac2_rx_ipc,
 	.rx_queue_enable = dwxgmac2_rx_queue_enable,
+	.rx_queue_prio = dwxgmac2_rx_queue_prio,
+	.tx_queue_prio = dwxgmac2_tx_queue_prio,
+	.rx_queue_routing = NULL,
+	.prog_mtl_rx_algorithms = dwxgmac2_prog_mtl_rx_algorithms,
+	.prog_mtl_tx_algorithms = dwxgmac2_prog_mtl_tx_algorithms,
+	.set_mtl_tx_queue_weight = dwxgmac2_set_mtl_tx_queue_weight,
+	.map_mtl_to_dma = dwxgmac2_map_mtl_to_dma,
+	.config_cbs = dwxgmac2_config_cbs,
+	.dump_regs = dwxgmac2_dump_regs,
+	.host_irq_status = dwxgmac2_host_irq_status,
+	.host_mtl_irq_status = dwxgmac2_host_mtl_irq_status,
+	.flow_ctrl = dwxgmac2_flow_ctrl,
+	.pmt = dwxgmac2_pmt,
+	.set_umac_addr = dwxgmac2_set_umac_addr,
+	.get_umac_addr = dwxgmac2_get_umac_addr,
+	.set_eee_mode = dwxgmac2_set_eee_mode,
+	.reset_eee_mode = dwxgmac2_reset_eee_mode,
+	.set_eee_timer = dwxgmac2_set_eee_timer,
+	.set_eee_pls = dwxgmac2_set_eee_pls,
+	.pcs_ctrl_ane = NULL,
+	.pcs_rane = NULL,
+	.pcs_get_adv_lp = NULL,
+	.debug = NULL,
+	.set_filter = dwxgmac2_set_filter,
+	.safety_feat_config = dwxgmac3_safety_feat_config,
+	.safety_feat_irq_status = dwxgmac3_safety_feat_irq_status,
+	.safety_feat_dump = dwxgmac3_safety_feat_dump,
+	.set_mac_loopback = dwxgmac2_set_mac_loopback,
+	.rss_configure = dwxgmac2_rss_configure,
+	.update_vlan_hash = dwxgmac2_update_vlan_hash,
+	.rxp_config = dwxgmac3_rxp_config,
+	.get_mac_tx_timestamp = dwxgmac2_get_mac_tx_timestamp,
+	.flex_pps_config = dwxgmac2_flex_pps_config,
+	.sarc_configure = dwxgmac2_sarc_configure,
+	.enable_vlan = dwxgmac2_enable_vlan,
+	.config_l3_filter = dwxgmac2_config_l3_filter,
+	.config_l4_filter = dwxgmac2_config_l4_filter,
+	.set_arp_offload = dwxgmac2_set_arp_offload,
+	.est_configure = dwxgmac3_est_configure,
+	.fpe_configure = dwxgmac3_fpe_configure,
+};
+
+static void dwxlgmac2_rx_queue_enable(struct mac_device_info *hw, u8 mode,
+				      u32 queue)
+{
+	void __iomem *ioaddr = hw->pcsr;
+	u32 value;
+
+	value = readl(ioaddr + XLGMAC_RXQ_ENABLE_CTRL0) & ~XGMAC_RXQEN(queue);
+	if (mode == MTL_QUEUE_AVB)
+		value |= 0x1 << XGMAC_RXQEN_SHIFT(queue);
+	else if (mode == MTL_QUEUE_DCB)
+		value |= 0x2 << XGMAC_RXQEN_SHIFT(queue);
+	writel(value, ioaddr + XLGMAC_RXQ_ENABLE_CTRL0);
+}
+
+const struct stmmac_ops dwxlgmac2_ops = {
+	.core_init = dwxgmac2_core_init,
+	.set_mac = dwxgmac2_set_mac,
+	.rx_ipc = dwxgmac2_rx_ipc,
+	.rx_queue_enable = dwxlgmac2_rx_queue_enable,
 	.rx_queue_prio = dwxgmac2_rx_queue_prio,
 	.tx_queue_prio = dwxgmac2_tx_queue_prio,
 	.rx_queue_routing = NULL,

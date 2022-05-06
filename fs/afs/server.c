@@ -695,10 +695,10 @@ update:
 
 wait:
 	ret = wait_on_bit(&server->flags, AFS_SERVER_FL_UPDATING,
-			  (fc->flags & AFS_FS_CURSOR_INTR) ?
-			  TASK_INTERRUPTIBLE : TASK_UNINTERRUPTIBLE);
+			  (op->flags & AFS_OPERATION_UNINTR) ?
+			  TASK_UNINTERRUPTIBLE : TASK_INTERRUPTIBLE);
 	if (ret == -ERESTARTSYS) {
-		fc->error = ret;
+		op->error = ret;
 		_leave(" = f [intr]");
 		return false;
 	}

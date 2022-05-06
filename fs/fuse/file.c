@@ -749,9 +749,9 @@ static ssize_t fuse_async_req_send(struct fuse_mount *fm,
 
 	ia->ap.args.end = fuse_aio_complete_req;
 	ia->ap.args.may_block = io->should_dirty;
-	err = fuse_simple_background(fc, &ia->ap.args, GFP_KERNEL);
+	err = fuse_simple_background(fm, &ia->ap.args, GFP_KERNEL);
 	if (err)
-		fuse_aio_complete_req(fc, &ia->ap.args, err);
+		fuse_aio_complete_req(fm, &ia->ap.args, err);
 
 	return num_bytes;
 }
@@ -839,10 +839,6 @@ static int fuse_do_readpage(struct file *file, struct page *page)
 	fuse_wait_on_page_writeback(inode, page->index);
 
 	attr_ver = fuse_get_attr_version(fm->fc);
-
-	/* Don't overflow end offset */
-	if (pos + (desc.length - 1) == LLONG_MAX)
-		desc.length--;
 
 	/* Don't overflow end offset */
 	if (pos + (desc.length - 1) == LLONG_MAX)
@@ -950,7 +946,7 @@ static void fuse_send_readpages(struct fuse_io_args *ia, struct file *file)
 		if (!err)
 			return;
 	} else {
-		res = fuse_simple_request(fc, &ap->args);
+		res = fuse_simple_request(fm, &ap->args);
 		err = res < 0 ? res : 0;
 	}
 	fuse_readpages_end(fm, &ap->args, err);
@@ -1109,7 +1105,7 @@ static ssize_t fuse_send_write_pages(struct fuse_io_args *ia,
 	fuse_write_args_fill(ia, ff, pos, count);
 	ia->write.in.flags = fuse_write_flags(iocb);
 
-	err = fuse_simple_request(fc, &ap->args);
+	err = fuse_simple_request(fm, &ap->args);
 	if (!err && ia->write.out.size > count)
 		err = -EIO;
 
@@ -3182,13 +3178,13 @@ fuse_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 	 * By default, we want to optimize all I/Os with async request
 	 * submission to the client filesystem if supported.
 	 */
-	io->async = ff->fc->async_dio;
+	io->async = ff->fm->fc->async_dio;
 	io->iocb = iocb;
 	io->blocking = is_sync_kiocb(iocb);
 
 	/* optimization for short read */
 	if (io->async && !io->write && offset + count > i_size) {
-		iov_iter_truncate(iter, fuse_round_up(ff->fc, i_size - offset));
+		iov_iter_truncate(iter, fuse_round_up(ff->fm->fc, i_size - offset));
 		shortened = count - iov_iter_count(iter);
 		count -= shortened;
 	}

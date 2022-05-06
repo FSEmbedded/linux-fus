@@ -1059,6 +1059,11 @@ static int l2tp_xmit_core(struct l2tp_session *session, struct sk_buff *skb, uns
 		goto out_unlock;
 	}
 
+	/* Report transmitted length before we add encap header, which keeps
+	 * statistics consistent for both UDP and IP encap tx/rx paths.
+	 */
+	*len = skb->len;
+
 	inet = inet_sk(sk);
 	switch (tunnel->encap) {
 	case L2TP_ENCAPTYPE_UDP:

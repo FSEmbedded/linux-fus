@@ -412,9 +412,8 @@ xfs_compat_attrmulti_by_handle(
 
 	error = 0;
 	for (i = 0; i < am_hreq.opcount; i++) {
-		ops[i].am_flags &= ~ATTR_KERNEL_FLAGS;
-
-		ops[i].am_error = strncpy_from_user((char *)attr_name,
+		ops[i].am_error = xfs_ioc_attrmulti_one(parfilp,
+				d_inode(dentry), ops[i].am_opcode,
 				compat_ptr(ops[i].am_attrname),
 				compat_ptr(ops[i].am_attrvalue),
 				&ops[i].am_length, ops[i].am_flags);

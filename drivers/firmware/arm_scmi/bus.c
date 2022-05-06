@@ -159,6 +159,7 @@ scmi_device_create(struct device_node *np, struct device *parent, int protocol,
 
 	id = ida_simple_get(&scmi_bus_id, 1, 0, GFP_KERNEL);
 	if (id < 0) {
+		kfree_const(scmi_dev->name);
 		kfree(scmi_dev);
 		return NULL;
 	}

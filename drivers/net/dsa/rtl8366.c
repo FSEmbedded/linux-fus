@@ -51,47 +51,13 @@ static int rtl8366_obtain_mc(struct realtek_smi *smi, int vid,
 	int ret;
 	int i;
 
-	dev_dbg(smi->dev,
-		"setting VLAN%d 4k members: 0x%02x, untagged: 0x%02x\n",
-		vid, member, untag);
-
-	/* Update the 4K table */
-	ret = smi->ops->get_vlan_4k(smi, vid, &vlan4k);
-	if (ret)
-		return ret;
-
-	vlan4k.member |= member;
-	vlan4k.untag |= untag;
-	vlan4k.fid = fid;
-	ret = smi->ops->set_vlan_4k(smi, &vlan4k);
-	if (ret)
-		return ret;
-
-	dev_dbg(smi->dev,
-		"resulting VLAN%d 4k members: 0x%02x, untagged: 0x%02x\n",
-		vid, vlan4k.member, vlan4k.untag);
-
-	/* Try to find an existing MC entry for this VID */
+	/* Try to find an existing member config entry for this VID */
 	for (i = 0; i < smi->num_vlan_mc; i++) {
 		ret = smi->ops->get_vlan_mc(smi, i, vlanmc);
 		if (ret) {
 			dev_err(smi->dev, "error searching for VLAN MC %d for VID %d\n",
 				i, vid);
 			return ret;
-
-		if (vid == vlanmc.vid) {
-			/* update the MC entry */
-			vlanmc.member |= member;
-			vlanmc.untag |= untag;
-			vlanmc.fid = fid;
-
-			ret = smi->ops->set_vlan_mc(smi, i, &vlanmc);
-
-			dev_dbg(smi->dev,
-				"resulting VLAN%d MC members: 0x%02x, untagged: 0x%02x\n",
-				vid, vlanmc.member, vlanmc.untag);
-
-			break;
 		}
 
 		if (vid == vlanmc->vid)
@@ -464,34 +430,29 @@ void rtl8366_vlan_add(struct dsa_switch *ds, int port,
 		dev_err(smi->dev, "port is DSA or CPU port\n");
 
 	for (vid = vlan->vid_begin; vid <= vlan->vid_end; vid++) {
-		int pvid_val = 0;
-
-		dev_info(smi->dev, "add VLAN %04x\n", vid);
 		member |= BIT(port);
 
 		if (untagged)
 			untag |= BIT(port);
-
-		/* To ensure that we have a valid MC entry for this VLAN,
-		 * initialize the port VLAN ID here.
-		 */
-		ret = rtl8366_get_pvid(smi, port, &pvid_val);
-		if (ret < 0) {
-			dev_err(smi->dev, "could not lookup PVID for port %d\n",
-				port);
-			return;
-		}
-		if (pvid_val == 0) {
-			ret = rtl8366_set_pvid(smi, port, vid);
-			if (ret < 0)
-				return;
-		}
 
 		ret = rtl8366_set_vlan(smi, vid, member, untag, 0);
 		if (ret)
 			dev_err(smi->dev,
 				"failed to set up VLAN %04x",
 				vid);
+
+		if (!pvid)
+			continue;
+
+		ret = rtl8366_set_pvid(smi, port, vid);
+		if (ret)
+			dev_err(smi->dev,
+				"failed to set PVID on port %d to VLAN %04x",
+				port, vid);
+
+		if (!ret)
+			dev_dbg(smi->dev, "VLAN add: added VLAN %d with PVID on port %d\n",
+				vid, port);
 	}
 }
 EXPORT_SYMBOL_GPL(rtl8366_vlan_add);

@@ -327,7 +327,7 @@ static void xts_exit_tfm(struct crypto_skcipher *tfm)
 	crypto_free_cipher(ctx->tweak);
 }
 
-static void free_inst(struct skcipher_instance *inst)
+static void xts_free_instance(struct skcipher_instance *inst)
 {
 	struct xts_instance_ctx *ictx = skcipher_instance_ctx(inst);
 
@@ -432,7 +432,7 @@ static int xts_create(struct crypto_template *tmpl, struct rtattr **tb)
 	inst->alg.encrypt = xts_encrypt;
 	inst->alg.decrypt = xts_decrypt;
 
-	inst->free = free_inst;
+	inst->free = xts_free_instance;
 
 	err = skcipher_register_instance(tmpl, inst);
 	if (err) {

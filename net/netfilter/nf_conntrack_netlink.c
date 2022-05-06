@@ -1394,9 +1394,6 @@ ctnetlink_parse_tuple_filter(const struct nlattr * const cda[],
 	if (err < 0)
 		return err;
 
-	if (!tb[CTA_TUPLE_IP])
-		return -EINVAL;
-
 	if (l3num != NFPROTO_IPV4 && l3num != NFPROTO_IPV6)
 		return -EOPNOTSUPP;
 	tuple->src.l3num = l3num;

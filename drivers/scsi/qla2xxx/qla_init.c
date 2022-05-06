@@ -129,7 +129,7 @@ static void qla24xx_abort_iocb_timeout(void *data)
 	if (sp->cmd_sp)
 		sp->cmd_sp->done(sp->cmd_sp, QLA_OS_TIMER_EXPIRED);
 
-	abt->u.abt.comp_status = CS_TIMEOUT;
+	abt->u.abt.comp_status = cpu_to_le16(CS_TIMEOUT);
 	sp->done(sp, QLA_OS_TIMER_EXPIRED);
 }
 
@@ -532,7 +532,7 @@ static int qla_post_els_plogi_work(struct scsi_qla_host *vha, fc_port_t *fcport)
 
 	e->u.fcport.fcport = fcport;
 	fcport->flags |= FCF_ASYNC_ACTIVE;
-	fcport->disc_state = DSC_LOGIN_PEND;
+	qla2x00_set_fcport_disc_state(fcport, DSC_LOGIN_PEND);
 	return qla2x00_post_work(vha, e);
 }
 
@@ -745,15 +745,6 @@ static void qla24xx_handle_gnl_done_event(scsi_qla_host_t *vha,
 		loop_id = (loop_id & 0x7fff);
 		nvme_cls = e->current_login_state >> 4;
 		current_login_state = e->current_login_state & 0xf;
-
-		if (PRLI_PHASE(nvme_cls)) {
-			current_login_state = nvme_cls;
-			fcport->fc4_type &= ~FS_FC4TYPE_FCP;
-			fcport->fc4_type |= FS_FC4TYPE_NVME;
-		} else if (PRLI_PHASE(current_login_state)) {
-			fcport->fc4_type |= FS_FC4TYPE_FCP;
-			fcport->fc4_type &= ~FS_FC4TYPE_NVME;
-		}
 
 		if (PRLI_PHASE(nvme_cls)) {
 			current_login_state = nvme_cls;
@@ -1945,18 +1936,58 @@ qla24xx_handle_prli_done_event(struct scsi_qla_host *vha, struct event_arg *ea)
 			break;
 		}
 
-		if (ea->fcport->fc4f_nvme) {
-			ql_dbg(ql_dbg_disc, vha, 0x2118,
-				"%s %d %8phC post fc4 prli\n",
-				__func__, __LINE__, ea->fcport->port_name);
-			ea->fcport->fc4f_nvme = 0;
-			return;
-		}
+		ql_dbg(ql_dbg_disc, vha, 0x2118,
+		       "%s %d %8phC priority %s, fc4type %x\n",
+		       __func__, __LINE__, ea->fcport->port_name,
+		       vha->hw->fc4_type_priority == FC4_PRIORITY_FCP ?
+		       "FCP" : "NVMe", ea->fcport->fc4_type);
 
-		ea->fcport->flags &= ~FCF_ASYNC_SENT;
-		ea->fcport->keep_nport_handle = 0;
-		ea->fcport->logout_on_delete = 1;
-		qlt_schedule_sess_for_deletion(ea->fcport);
+		if (N2N_TOPO(vha->hw)) {
+			if (vha->hw->fc4_type_priority == FC4_PRIORITY_NVME) {
+				ea->fcport->fc4_type &= ~FS_FC4TYPE_NVME;
+				ea->fcport->fc4_type |= FS_FC4TYPE_FCP;
+			} else {
+				ea->fcport->fc4_type &= ~FS_FC4TYPE_FCP;
+				ea->fcport->fc4_type |= FS_FC4TYPE_NVME;
+			}
+
+			if (ea->fcport->n2n_link_reset_cnt < 3) {
+				ea->fcport->n2n_link_reset_cnt++;
+				vha->relogin_jif = jiffies + 2 * HZ;
+				/*
+				 * PRLI failed. Reset link to kick start
+				 * state machine
+				 */
+				set_bit(N2N_LINK_RESET, &vha->dpc_flags);
+			} else {
+				ql_log(ql_log_warn, vha, 0x2119,
+				       "%s %d %8phC Unable to reconnect\n",
+				       __func__, __LINE__,
+				       ea->fcport->port_name);
+			}
+		} else {
+			/*
+			 * switch connect. login failed. Take connection down
+			 * and allow relogin to retrigger
+			 */
+			if (NVME_FCP_TARGET(ea->fcport)) {
+				ql_dbg(ql_dbg_disc, vha, 0x2118,
+				       "%s %d %8phC post %s prli\n",
+				       __func__, __LINE__,
+				       ea->fcport->port_name,
+				       (ea->fcport->fc4_type & FS_FC4TYPE_NVME)
+				       ? "NVMe" : "FCP");
+				if (vha->hw->fc4_type_priority == FC4_PRIORITY_NVME)
+					ea->fcport->fc4_type &= ~FS_FC4TYPE_NVME;
+				else
+					ea->fcport->fc4_type &= ~FS_FC4TYPE_FCP;
+			}
+
+			ea->fcport->flags &= ~FCF_ASYNC_SENT;
+			ea->fcport->keep_nport_handle = 0;
+			ea->fcport->logout_on_delete = 1;
+			qlt_schedule_sess_for_deletion(ea->fcport);
+		}
 		break;
 	}
 }
@@ -5198,47 +5229,8 @@ qla2x00_configure_local_loop(scsi_qla_host_t *vha)
 	unsigned long flags;
 
 	/* Inititae N2N login. */
-	if (N2N_TOPO(ha)) {
-		if (test_and_clear_bit(N2N_LOGIN_NEEDED, &vha->dpc_flags)) {
-			/* borrowing */
-			u32 *bp, i, sz;
-
-			memset(ha->init_cb, 0, ha->init_cb_size);
-			sz = min_t(int, sizeof(struct els_plogi_payload),
-			    ha->init_cb_size);
-			rval = qla24xx_get_port_login_templ(vha,
-			    ha->init_cb_dma, (void *)ha->init_cb, sz);
-			if (rval == QLA_SUCCESS) {
-				bp = (uint32_t *)ha->init_cb;
-				for (i = 0; i < sz/4 ; i++, bp++)
-					*bp = cpu_to_be32(*bp);
-
-				memcpy(&ha->plogi_els_payld.data,
-				    (void *)ha->init_cb,
-				    sizeof(ha->plogi_els_payld.data));
-			} else {
-				ql_dbg(ql_dbg_init, vha, 0x00d1,
-				    "PLOGI ELS param read fail.\n");
-				goto skip_login;
-			}
-		}
-
-		list_for_each_entry(fcport, &vha->vp_fcports, list) {
-			if (fcport->n2n_flag) {
-				qla24xx_fcport_handle_login(vha, fcport);
-				return QLA_SUCCESS;
-			}
-		}
-skip_login:
-		spin_lock_irqsave(&vha->work_lock, flags);
-		vha->scan.scan_retry++;
-		spin_unlock_irqrestore(&vha->work_lock, flags);
-
-		if (vha->scan.scan_retry < MAX_SCAN_RETRIES) {
-			set_bit(LOCAL_LOOP_UPDATE, &vha->dpc_flags);
-			set_bit(LOOP_RESYNC_NEEDED, &vha->dpc_flags);
-		}
-	}
+	if (N2N_TOPO(ha))
+		return qla2x00_configure_n2n_loop(vha);
 
 	found_devs = 0;
 	new_fcport = NULL;

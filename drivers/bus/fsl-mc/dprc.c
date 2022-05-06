@@ -86,7 +86,14 @@ EXPORT_SYMBOL_GPL(dprc_close);
  * @cmd_flags:	Command flags; one or more of 'MC_CMD_FLAG_'
  * @token:	Token of DPRC object
  * @child_container_id:	ID of the container to reset
- *
+ * @options: 32 bit options:
+ *   - 0 (no bits set) - all the objects inside the container are
+ *     reset. The child containers are entered recursively and the
+ *     objects reset. All the objects (including the child containers)
+ *     are closed.
+ *   - bit 0 set - all the objects inside the container are reset.
+ *     However the child containers are not entered recursively.
+ *     This option is supported for API versions >= 6.5
  * In case a software context crashes or becomes non-responsive, the parent
  * may wish to reset its resources container before the software context is
  * restarted.
@@ -105,16 +112,39 @@ EXPORT_SYMBOL_GPL(dprc_close);
 int dprc_reset_container(struct fsl_mc_io *mc_io,
 			 u32 cmd_flags,
 			 u16 token,
-			 int child_container_id)
+			 int child_container_id,
+			 u32 options)
 {
 	struct fsl_mc_command cmd = { 0 };
 	struct dprc_cmd_reset_container *cmd_params;
+	u32 cmdid = DPRC_CMDID_RESET_CONT;
+	int err;
+
+	/*
+	 * If the DPRC object version was not yet cached, cache it now.
+	 * Otherwise use the already cached value.
+	 */
+	if (!dprc_major_ver && !dprc_minor_ver) {
+		err = dprc_get_api_version(mc_io, 0,
+				&dprc_major_ver,
+				&dprc_minor_ver);
+		if (err)
+			return err;
+	}
+
+	/*
+	 * MC API 6.5 introduced a new field in the command used to pass
+	 * some flags.
+	 * Bit 0 indicates that the child containers are not recursively reset.
+	 */
+	if (dprc_major_ver > 6 || (dprc_major_ver == 6 && dprc_minor_ver >= 5))
+		cmdid = DPRC_CMDID_RESET_CONT_V2;
 
 	/* prepare command */
-	cmd.header = mc_encode_cmd_header(DPRC_CMDID_RESET_CONT,
-					  cmd_flags, token);
+	cmd.header = mc_encode_cmd_header(cmdid, cmd_flags, token);
 	cmd_params = (struct dprc_cmd_reset_container *)cmd.params;
 	cmd_params->child_container_id = cpu_to_le32(child_container_id);
+	cmd_params->options = cpu_to_le32(options);
 
 	/* send command to mc*/
 	return mc_send_command(mc_io, &cmd);
@@ -548,7 +578,7 @@ int dprc_get_obj_region(struct fsl_mc_io *mc_io,
 	region_desc->size = le32_to_cpu(rsp_params->size);
 	region_desc->type = rsp_params->type;
 	region_desc->flags = le32_to_cpu(rsp_params->flags);
-	if (major_ver > 6 || (major_ver == 6 && minor_ver >= 3))
+	if (dprc_major_ver > 6 || (dprc_major_ver == 6 && dprc_minor_ver >= 3))
 		region_desc->base_address = le64_to_cpu(rsp_params->base_addr);
 	else
 		region_desc->base_address = 0;

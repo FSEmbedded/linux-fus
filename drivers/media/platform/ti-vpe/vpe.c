@@ -1031,7 +1031,8 @@ static void add_out_dtd(struct vpe_ctx *ctx, int port)
 		vpdma_fmt = &vpdma_misc_fmts[VPDMA_DATA_FMT_MV];
 		dma_addr = ctx->mv_buf_dma[mv_buf_selector];
 		q_data = &ctx->q_data[Q_DATA_SRC];
-		stride = ALIGN((q_data->width * vpdma_fmt->depth) >> 3,
+		pix = &q_data->format.fmt.pix_mp;
+		stride = ALIGN((pix->width * vpdma_fmt->depth) >> 3,
 			       VPDMA_STRIDE_ALIGN);
 	} else {
 		/* to incorporate interleaved formats */
@@ -1060,7 +1061,7 @@ static void add_out_dtd(struct vpe_ctx *ctx, int port)
 		}
 		/* Apply the offset */
 		dma_addr += offset;
-		stride = q_data->bytesperline[VPE_LUMA];
+		stride = pix->plane_fmt[VPE_LUMA].bytesperline;
 	}
 
 	if (q_data->flags & Q_DATA_FRAME_1D)
@@ -1071,7 +1072,7 @@ static void add_out_dtd(struct vpe_ctx *ctx, int port)
 	vpdma_set_max_size(ctx->dev->vpdma, VPDMA_MAX_SIZE1,
 			   MAX_W, MAX_H);
 
-	vpdma_add_out_dtd(&ctx->desc_list, q_data->width,
+	vpdma_add_out_dtd(&ctx->desc_list, pix->width,
 			  stride, &q_data->c_rect,
 			  vpdma_fmt, dma_addr, MAX_OUT_WIDTH_REG1,
 			  MAX_OUT_HEIGHT_REG1, p_data->channel, flags);
@@ -1098,7 +1099,7 @@ static void add_in_dtd(struct vpe_ctx *ctx, int port)
 	if (port == VPE_PORT_MV_IN) {
 		vpdma_fmt = &vpdma_misc_fmts[VPDMA_DATA_FMT_MV];
 		dma_addr = ctx->mv_buf_dma[mv_buf_selector];
-		stride = ALIGN((q_data->width * vpdma_fmt->depth) >> 3,
+		stride = ALIGN((pix->width * vpdma_fmt->depth) >> 3,
 			       VPDMA_STRIDE_ALIGN);
 	} else {
 		/* to incorporate interleaved formats */
@@ -1126,7 +1127,7 @@ static void add_in_dtd(struct vpe_ctx *ctx, int port)
 		}
 		/* Apply the offset */
 		dma_addr += offset;
-		stride = q_data->bytesperline[VPE_LUMA];
+		stride = pix->plane_fmt[VPE_LUMA].bytesperline;
 
 		/*
 		 * field used in VPDMA desc  = 0 (top) / 1 (bottom)
@@ -1175,7 +1176,7 @@ static void add_in_dtd(struct vpe_ctx *ctx, int port)
 				fmt->fourcc == V4L2_PIX_FMT_NV21))
 		frame_height /= 2;
 
-	vpdma_add_in_dtd(&ctx->desc_list, q_data->width, stride,
+	vpdma_add_in_dtd(&ctx->desc_list, pix->width, stride,
 			 &q_data->c_rect, vpdma_fmt, dma_addr,
 			 p_data->channel, field, flags, frame_width,
 			 frame_height, 0, 0);
@@ -2322,11 +2323,14 @@ static int vpe_open(struct file *file)
 	v4l2_ctrl_handler_setup(hdl);
 
 	s_q_data = &ctx->q_data[Q_DATA_SRC];
+	pix = &s_q_data->format.fmt.pix_mp;
 	s_q_data->fmt = __find_format(V4L2_PIX_FMT_YUYV);
-	s_q_data->width = 1920;
-	s_q_data->height = 1080;
-	s_q_data->nplanes = 1;
-	s_q_data->bytesperline[VPE_LUMA] = (s_q_data->width *
+	pix->pixelformat = s_q_data->fmt->fourcc;
+	s_q_data->format.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+	pix->width = 1920;
+	pix->height = 1080;
+	pix->num_planes = 1;
+	pix->plane_fmt[VPE_LUMA].bytesperline = (pix->width *
 			s_q_data->fmt->vpdma_fmt[VPE_LUMA]->depth) >> 3;
 	pix->plane_fmt[VPE_LUMA].sizeimage =
 			pix->plane_fmt[VPE_LUMA].bytesperline *

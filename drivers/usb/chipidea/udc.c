@@ -488,9 +488,10 @@ static void ci_add_buffer_entry(struct td_node *node, struct scatterlist *s)
 	int empty_td_slot_index = (CI_MAX_BUF_SIZE - node->td_remaining_size)
 			/ CI_HDRC_PAGE_SIZE;
 	int i;
+	u32 token;
 
-	node->ptr->token +=
-		cpu_to_le32(sg_dma_len(s) << __ffs(TD_TOTAL_BYTES));
+	token = le32_to_cpu(node->ptr->token) + (sg_dma_len(s) << __ffs(TD_TOTAL_BYTES));
+	node->ptr->token = cpu_to_le32(token);
 
 	for (i = empty_td_slot_index; i < TD_PAGE_COUNT; i++) {
 		u32 page = (u32) sg_dma_address(s) +
@@ -1679,15 +1680,21 @@ static int ci_udc_vbus_session(struct usb_gadget *_gadget, int is_active)
 {
 	struct ci_hdrc *ci = container_of(_gadget, struct ci_hdrc, gadget);
 	unsigned long flags;
+	int ret = 0;
 
 	spin_lock_irqsave(&ci->lock, flags);
 	ci->vbus_active = is_active;
 	spin_unlock_irqrestore(&ci->lock, flags);
 
-	if (ci->usb_phy) {
-		/* Charger Detection */
-		ci_usb_charger_connect(ci, is_active);
+	if (ci->usb_phy)
+		usb_phy_set_charger_state(ci->usb_phy, is_active ?
+			USB_CHARGER_PRESENT : USB_CHARGER_ABSENT);
 
+	if (ci->platdata->notify_event)
+		ret = ci->platdata->notify_event(ci,
+				CI_HDRC_CONTROLLER_VBUS_EVENT);
+
+	if (ci->usb_phy) {
 		if (is_active)
 			usb_phy_set_event(ci->usb_phy, USB_EVENT_VBUS);
 		else
@@ -1697,7 +1704,7 @@ static int ci_udc_vbus_session(struct usb_gadget *_gadget, int is_active)
 	if (ci->driver)
 		ci_hdrc_gadget_connect(_gadget, is_active);
 
-	return 0;
+	return ret;
 }
 
 static int ci_udc_wakeup(struct usb_gadget *_gadget)
@@ -1761,13 +1768,12 @@ static int ci_udc_pullup(struct usb_gadget *_gadget, int is_on)
 	if (ci_otg_is_fsm_mode(ci) || ci->role == CI_ROLE_HOST)
 		return 0;
 
-	if (ci->in_lpm)
-		return 0;
-
+	pm_runtime_get_sync(ci->dev);
 	if (is_on)
 		hw_write(ci, OP_USBCMD, USBCMD_RS, USBCMD_RS);
 	else
 		hw_write(ci, OP_USBCMD, USBCMD_RS, 0);
+	pm_runtime_put_sync(ci->dev);
 
 	return 0;
 }
@@ -1917,14 +1923,13 @@ static int ci_udc_start(struct usb_gadget *gadget,
 	ci->driver = driver;
 
 	/* Start otg fsm for B-device */
-	if (ci_otg_is_fsm_mode(ci)) {
-		if (ci->fsm.id)
-			ci_hdrc_otg_fsm_start(ci);
+	if (ci_otg_is_fsm_mode(ci) && ci->fsm.id) {
+		ci_hdrc_otg_fsm_start(ci);
 		return retval;
 	}
 
 	if (ci->vbus_active)
-		ci_hdrc_gadget_connect(&ci->gadget, 1);
+		ci_hdrc_gadget_connect(gadget, 1);
 	else
 		usb_udc_vbus_handler(&ci->gadget, false);
 
@@ -2066,6 +2071,7 @@ static int udc_start(struct ci_hdrc *ci)
 	ci->gadget.name         = ci->platdata->name;
 	ci->gadget.otg_caps	= otg_caps;
 	ci->gadget.sg_supported = 1;
+	ci->gadget.irq		= ci->irq;
 
 	if (ci->platdata->flags & CI_HDRC_REQUIRES_ALIGNED_DMA)
 		ci->gadget.quirk_avoids_skb_reserve = 1;
@@ -2128,57 +2134,6 @@ void ci_hdrc_gadget_destroy(struct ci_hdrc *ci)
 
 	dma_pool_destroy(ci->td_pool);
 	dma_pool_destroy(ci->qh_pool);
-}
-
-int ci_usb_charger_connect(struct ci_hdrc *ci, int is_active)
-{
-	int ret = 0;
-
-	pm_runtime_get_sync(ci->dev);
-
-	if (ci->usb_phy->charger_detect) {
-		usb_phy_set_charger_state(ci->usb_phy, is_active ?
-			USB_CHARGER_PRESENT : USB_CHARGER_ABSENT);
-	} else if (ci->platdata->notify_event) {
-		ret = ci->platdata->notify_event(ci,
-				CI_HDRC_CONTROLLER_VBUS_EVENT);
-		schedule_work(&ci->usb_phy->chg_work);
-	}
-
-	pm_runtime_put_sync(ci->dev);
-	return ret;
-}
-
-/**
- * ci_hdrc_gadget_connect: caller make sure gadget driver is binded
- */
-void ci_hdrc_gadget_connect(struct usb_gadget *gadget, int is_active)
-{
-	struct ci_hdrc *ci = container_of(gadget, struct ci_hdrc, gadget);
-	unsigned long flags;
-
-	if (is_active) {
-		pm_runtime_get_sync(ci->dev);
-		hw_device_reset(ci);
-		spin_lock_irqsave(&ci->lock, flags);
-		if (ci->driver) {
-			hw_device_state(ci, ci->ep0out->qh.dma);
-			usb_gadget_set_state(gadget, USB_STATE_POWERED);
-			usb_udc_vbus_handler(gadget, true);
-		}
-		spin_unlock_irqrestore(&ci->lock, flags);
-	} else {
-		usb_udc_vbus_handler(gadget, false);
-		if (ci->driver)
-			ci->driver->disconnect(gadget);
-		hw_device_state(ci, 0);
-		if (ci->platdata->notify_event)
-			ci->platdata->notify_event(ci,
-			CI_HDRC_CONTROLLER_STOPPED_EVENT);
-		_gadget_stop_activity(gadget);
-		pm_runtime_put_sync(ci->dev);
-		usb_gadget_set_state(gadget, USB_STATE_NOTATTACHED);
-	}
 }
 
 static int udc_id_switch_for_device(struct ci_hdrc *ci)
@@ -2269,9 +2224,9 @@ int ci_hdrc_gadget_init(struct ci_hdrc *ci)
 
 	rdrv->start	= udc_id_switch_for_device;
 	rdrv->stop	= udc_id_switch_for_host;
-	rdrv->irq	= udc_irq;
 	rdrv->suspend	= udc_suspend;
 	rdrv->resume	= udc_resume;
+	rdrv->irq	= udc_irq;
 	rdrv->name	= "gadget";
 
 	ret = udc_start(ci);

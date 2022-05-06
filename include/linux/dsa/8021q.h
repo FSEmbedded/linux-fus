@@ -62,6 +62,10 @@ int dsa_8021q_rx_switch_id(u16 vid);
 
 int dsa_8021q_rx_source_port(u16 vid);
 
+u16 dsa_8021q_rx_subvlan(u16 vid);
+
+bool vid_is_dsa_8021q(u16 vid);
+
 #else
 
 int dsa_8021q_setup(struct dsa_8021q_context *ctx, bool enabled)
@@ -112,6 +116,16 @@ int dsa_8021q_rx_switch_id(u16 vid)
 int dsa_8021q_rx_source_port(u16 vid)
 {
 	return 0;
+}
+
+u16 dsa_8021q_rx_subvlan(u16 vid)
+{
+	return 0;
+}
+
+bool vid_is_dsa_8021q(u16 vid)
+{
+	return false;
 }
 
 #endif /* IS_ENABLED(CONFIG_NET_DSA_TAG_8021Q) */

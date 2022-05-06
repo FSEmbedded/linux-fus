@@ -160,6 +160,50 @@ static int mlxsw_sp_flower_parse_actions(struct mlxsw_sp *mlxsw_sp,
 				return err;
 			break;
 			}
+		case FLOW_ACTION_PRIORITY:
+			err = mlxsw_sp_acl_rulei_act_priority(mlxsw_sp, rulei,
+							      act->priority,
+							      extack);
+			if (err)
+				return err;
+			break;
+		case FLOW_ACTION_MANGLE: {
+			enum flow_action_mangle_base htype = act->mangle.htype;
+			__be32 be_mask = (__force __be32) act->mangle.mask;
+			__be32 be_val = (__force __be32) act->mangle.val;
+			u32 offset = act->mangle.offset;
+			u32 mask = be32_to_cpu(be_mask);
+			u32 val = be32_to_cpu(be_val);
+
+			err = mlxsw_sp_acl_rulei_act_mangle(mlxsw_sp, rulei,
+							    htype, offset,
+							    mask, val, extack);
+			if (err)
+				return err;
+			break;
+			}
+		case FLOW_ACTION_POLICE: {
+			u32 burst;
+
+			if (police_act_count++) {
+				NL_SET_ERR_MSG_MOD(extack, "Multiple police actions per rule are not supported");
+				return -EOPNOTSUPP;
+			}
+
+			/* The kernel might adjust the requested burst size so
+			 * that it is not exactly a power of two. Re-adjust it
+			 * here since the hardware only supports burst sizes
+			 * that are a power of two.
+			 */
+			burst = roundup_pow_of_two(act->police.burst);
+			err = mlxsw_sp_acl_rulei_act_police(mlxsw_sp, rulei,
+							    act->police.index,
+							    act->police.rate_bytes_ps,
+							    burst, extack);
+			if (err)
+				return err;
+			break;
+			}
 		default:
 			NL_SET_ERR_MSG_MOD(extack, "Unsupported action");
 			dev_err(mlxsw_sp->bus_info->dev, "Unsupported action\n");

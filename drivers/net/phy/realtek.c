@@ -30,7 +30,6 @@
 #define RTL8211F_PHYCR1				0x18
 #define RTL8211F_INSR				0x1d
 
-#define RTL8211F_RX_DELAY			BIT(3)
 #define RTL8211F_TX_DELAY			BIT(8)
 #define RTL8211F_RX_DELAY			BIT(3)
 
@@ -65,6 +64,7 @@
 #define RTL8211F_CLKOUT_EN			BIT(0)
 
 #define RTL821X_CLKOUT_EN_FEATURE		(1 << 0)
+#define RTL821X_ALDPS_DISABLE			(1 << 1)
 
 MODULE_DESCRIPTION("Realtek PHY driver");
 MODULE_AUTHOR("Johnson Leung");
@@ -93,8 +93,11 @@ static int rtl821x_probe(struct phy_device *phydev)
 	if (!priv)
 		return -ENOMEM;
 
-	if (of_property_read_bool(dev->of_node, "rtl821x,clkout_en"))
+	if (!of_property_read_bool(dev->of_node, "rtl821x,clkout-disable"))
 		priv->quirks |= RTL821X_CLKOUT_EN_FEATURE;
+
+	if (of_property_read_bool(dev->of_node, "rtl821x,aldps-disable"))
+		priv->quirks |= RTL821X_ALDPS_DISABLE;
 
 	phydev->priv = priv;
 
@@ -209,21 +212,31 @@ static int rtl8211c_config_init(struct phy_device *phydev)
 
 static int rtl8211f_config_init(struct phy_device *phydev)
 {
-	u16 txdly = 0;
-	u16 rxdly = 0;
+	struct device *dev = &phydev->mdio.dev;
+	u16 val_txdly, val_rxdly;
 	int ret;
 	struct rtl821x_priv *priv = phydev->priv;
 
+	if (!(priv->quirks & RTL821X_ALDPS_DISABLE)) {
+		u16 val;
+		val = RTL8211F_ALDPS_ENABLE | RTL8211F_ALDPS_PLL_OFF | RTL8211F_ALDPS_XTAL_OFF;
+		phy_modify_paged_changed(phydev, 0xa43, RTL8211F_PHYCR1, val, val);
+	}
+
 	switch (phydev->interface) {
-	case PHY_INTERFACE_MODE_RGMII_ID:
-		rxdly = RTL8211F_RX_DELAY;
-		txdly = RTL8211F_TX_DELAY;
+	case PHY_INTERFACE_MODE_RGMII:
+		val_txdly = 0;
+		val_rxdly = 0;
 		break;
+
 	case PHY_INTERFACE_MODE_RGMII_RXID:
-		rxdly = RTL8211F_RX_DELAY;
+		val_txdly = 0;
+		val_rxdly = RTL8211F_RX_DELAY;
 		break;
+
 	case PHY_INTERFACE_MODE_RGMII_TXID:
-		txdly = RTL8211F_TX_DELAY;
+		val_txdly = RTL8211F_TX_DELAY;
+		val_rxdly = 0;
 		break;
 
 	case PHY_INTERFACE_MODE_RGMII_ID:
@@ -235,16 +248,34 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 		return 0;
 	}
 
-	ret = phy_modify_paged(phydev, 0xd08, 0x11, RTL8211F_TX_DELAY, txdly);
+	ret = phy_modify_paged_changed(phydev, 0xd08, 0x11, RTL8211F_TX_DELAY,
+				       val_txdly);
 	if (ret < 0) {
-		dev_err(&phydev->mdio.dev, "tx delay set failed\n");
+		dev_err(dev, "Failed to update the TX delay register\n");
 		return ret;
+	} else if (ret) {
+		dev_dbg(dev,
+			"%s 2ns TX delay (and changing the value from pin-strapping RXD1 or the bootloader)\n",
+			val_txdly ? "Enabling" : "Disabling");
+	} else {
+		dev_dbg(dev,
+			"2ns TX delay was already %s (by pin-strapping RXD1 or bootloader configuration)\n",
+			val_txdly ? "enabled" : "disabled");
 	}
 
-	ret = phy_modify_paged(phydev, 0xd08, 0x15, RTL8211F_RX_DELAY, rxdly);
+	ret = phy_modify_paged_changed(phydev, 0xd08, 0x15, RTL8211F_RX_DELAY,
+				       val_rxdly);
 	if (ret < 0) {
-		dev_err(&phydev->mdio.dev, "rx delay set failed\n");
+		dev_err(dev, "Failed to update the RX delay register\n");
 		return ret;
+	} else if (ret) {
+		dev_dbg(dev,
+			"%s 2ns RX delay (and changing the value from pin-strapping RXD0 or the bootloader)\n",
+			val_rxdly ? "Enabling" : "Disabling");
+	} else {
+		dev_dbg(dev,
+			"2ns RX delay was already %s (by pin-strapping RXD0 or bootloader configuration)\n",
+			val_rxdly ? "enabled" : "disabled");
 	}
 
 	if (priv->quirks & RTL821X_CLKOUT_EN_FEATURE) {
@@ -263,7 +294,23 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 		}
 	}
 
-	return ret;
+	return genphy_soft_reset(phydev);
+}
+
+static int rtl821x_resume(struct phy_device *phydev)
+{
+	struct rtl821x_priv *priv = phydev->priv;
+	int ret;
+
+	ret = genphy_resume(phydev);
+	if (ret < 0)
+		return ret;
+
+	/* delay time is collected with ALDPS mode disabled. */
+	if (priv->quirks & RTL821X_ALDPS_DISABLE)
+		msleep(20);
+
+	return 0;
 }
 
 static int rtl8211e_config_init(struct phy_device *phydev)

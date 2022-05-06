@@ -192,11 +192,102 @@ err_clk_prepared:
 	return ret;
 }
 
-static struct nvmem_config econfig = {
-	.name = "qfprom",
-	.stride = 1,
-	.word_size = 1,
-	.reg_read = qfprom_reg_read,
+/**
+ * qfprom_efuse_reg_write() - Write to fuses.
+ * @context: Our driver data.
+ * @reg:     The offset to write at.
+ * @_val:    Pointer to data to write.
+ * @bytes:   The number of bytes to write.
+ *
+ * Writes to fuses.  WARNING: THIS IS PERMANENT.
+ *
+ * Return: 0 or -err.
+ */
+static int qfprom_reg_write(void *context, unsigned int reg, void *_val,
+			    size_t bytes)
+{
+	struct qfprom_priv *priv = context;
+	struct qfprom_touched_values old;
+	int words = bytes / 4;
+	u32 *value = _val;
+	u32 blow_status;
+	int ret;
+	int i;
+
+	dev_dbg(priv->dev,
+		"Writing to raw qfprom region : %#010x of size: %zu\n",
+		reg, bytes);
+
+	/*
+	 * The hardware only allows us to write word at a time, but we can
+	 * read byte at a time.  Until the nvmem framework allows a separate
+	 * word_size and stride for reading vs. writing, we'll enforce here.
+	 */
+	if (bytes % 4) {
+		dev_err(priv->dev,
+			"%zu is not an integral number of words\n", bytes);
+		return -EINVAL;
+	}
+	if (reg % 4) {
+		dev_err(priv->dev,
+			"Invalid offset: %#x.  Must be word aligned\n", reg);
+		return -EINVAL;
+	}
+
+	ret = qfprom_enable_fuse_blowing(priv, &old);
+	if (ret)
+		return ret;
+
+	ret = readl_relaxed_poll_timeout(
+		priv->qfpconf + QFPROM_BLOW_STATUS_OFFSET,
+		blow_status, blow_status == QFPROM_BLOW_STATUS_READY,
+		QFPROM_FUSE_BLOW_POLL_US, QFPROM_FUSE_BLOW_TIMEOUT_US);
+
+	if (ret) {
+		dev_err(priv->dev,
+			"Timeout waiting for initial ready; aborting.\n");
+		goto exit_enabled_fuse_blowing;
+	}
+
+	for (i = 0; i < words; i++)
+		writel(value[i], priv->qfpraw + reg + (i * 4));
+
+	ret = readl_relaxed_poll_timeout(
+		priv->qfpconf + QFPROM_BLOW_STATUS_OFFSET,
+		blow_status, blow_status == QFPROM_BLOW_STATUS_READY,
+		QFPROM_FUSE_BLOW_POLL_US, QFPROM_FUSE_BLOW_TIMEOUT_US);
+
+	/* Give an error, but not much we can do in this case */
+	if (ret)
+		dev_err(priv->dev, "Timeout waiting for finish.\n");
+
+exit_enabled_fuse_blowing:
+	qfprom_disable_fuse_blowing(priv, &old);
+
+	return ret;
+}
+
+static int qfprom_reg_read(void *context,
+			unsigned int reg, void *_val, size_t bytes)
+{
+	struct qfprom_priv *priv = context;
+	u8 *val = _val;
+	int i = 0, words = bytes;
+	void __iomem *base = priv->qfpcorrected;
+
+	if (read_raw_data && priv->qfpraw)
+		base = priv->qfpraw;
+
+	while (words--)
+		*val++ = readb(base + reg + i++);
+
+	return 0;
+}
+
+static const struct qfprom_soc_data qfprom_7_8_data = {
+	.accel_value = 0xD10,
+	.qfprom_blow_timer_value = 25,
+	.qfprom_blow_set_freq = 4800000,
 };
 
 static int qfprom_probe(struct platform_device *pdev)

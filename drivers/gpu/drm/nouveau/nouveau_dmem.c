@@ -660,6 +660,9 @@ nouveau_dmem_migrate_vma(struct nouveau_drm *drm,
 	u64 *pfns;
 	int ret = -ENOMEM;
 
+	if (drm->dmem == NULL)
+		return -ENODEV;
+
 	args.src = kcalloc(max, sizeof(*args.src), GFP_KERNEL);
 	if (!args.src)
 		goto out;

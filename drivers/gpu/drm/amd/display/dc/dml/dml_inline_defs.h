@@ -26,7 +26,6 @@
 #ifndef __DML_INLINE_DEFS_H__
 #define __DML_INLINE_DEFS_H__
 
-#include "dml_common_defs.h"
 #include "dcn_calc_math.h"
 #include "dml_logger.h"
 

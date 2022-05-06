@@ -578,10 +578,3 @@ void __init vmem_map_init(void)
 	pr_info("Write protected kernel read-only data: %luk\n",
 		(unsigned long)(__end_rodata - _stext) >> 10);
 }
-
-	/* we need lowcore executable for our LPSWE instructions */
-	set_memory_x(0, 1);
-
-	pr_info("Write protected kernel read-only data: %luk\n",
-		(unsigned long)(__end_rodata - _stext) >> 10);
-}

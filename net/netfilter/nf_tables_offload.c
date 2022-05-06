@@ -552,8 +552,10 @@ int nft_flow_rule_offload_commit(struct net *net)
 			break;
 		}
 
-		if (err)
+		if (err) {
+			nft_flow_rule_offload_abort(net, trans);
 			break;
+		}
 	}
 
 	list_for_each_entry(trans, &net->nft.commit_list, list) {
@@ -562,6 +564,7 @@ int nft_flow_rule_offload_commit(struct net *net)
 
 		switch (trans->msg_type) {
 		case NFT_MSG_NEWRULE:
+		case NFT_MSG_DELRULE:
 			if (!(trans->ctx.chain->flags & NFT_CHAIN_HW_OFFLOAD))
 				continue;
 
@@ -611,36 +614,6 @@ static struct nft_chain *__nft_offload_get_chain(struct net_device *dev)
 	return NULL;
 }
 
-static void nft_indr_block_cb(struct net_device *dev,
-			      flow_indr_block_bind_cb_t *cb, void *cb_priv,
-			      enum flow_block_command cmd)
-{
-	struct net *net = dev_net(dev);
-	struct nft_chain *chain;
-
-	mutex_lock(&net->nft.commit_mutex);
-	chain = __nft_offload_get_chain(dev);
-	if (chain && chain->flags & NFT_CHAIN_HW_OFFLOAD) {
-		struct nft_base_chain *basechain;
-
-		basechain = nft_base_chain(chain);
-		nft_indr_block_ing_cmd(dev, basechain, cb, cb_priv, cmd);
-	}
-	mutex_unlock(&net->nft.commit_mutex);
-}
-
-static void nft_offload_chain_clean(struct nft_chain *chain)
-{
-	struct nft_rule *rule;
-
-	list_for_each_entry(rule, &chain->rules, list) {
-		nft_flow_offload_rule(chain, rule,
-				      NULL, FLOW_CLS_DESTROY);
-	}
-
-	nft_flow_offload_chain(chain, NULL, FLOW_BLOCK_UNBIND);
-}
-
 static int nft_offload_netdev_event(struct notifier_block *this,
 				    unsigned long event, void *ptr)
 {
@@ -662,30 +635,16 @@ static int nft_offload_netdev_event(struct notifier_block *this,
 	return NOTIFY_DONE;
 }
 
-static struct flow_indr_block_entry block_ing_entry = {
-	.cb	= nft_indr_block_cb,
-	.list	= LIST_HEAD_INIT(block_ing_entry.list),
-};
-
 static struct notifier_block nft_offload_netdev_notifier = {
 	.notifier_call	= nft_offload_netdev_event,
 };
 
 int nft_offload_init(void)
 {
-	int err;
-
-	err = register_netdevice_notifier(&nft_offload_netdev_notifier);
-	if (err < 0)
-		return err;
-
-	flow_indr_add_block_cb(&block_ing_entry);
-
-	return 0;
+	return register_netdevice_notifier(&nft_offload_netdev_notifier);
 }
 
 void nft_offload_exit(void)
 {
-	flow_indr_del_block_cb(&block_ing_entry);
 	unregister_netdevice_notifier(&nft_offload_netdev_notifier);
 }

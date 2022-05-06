@@ -401,7 +401,7 @@ static const struct snd_soc_dai_ops hda_link_dai_ops = {
 };
 
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_HDA_PROBES)
-#include "../compress.h"
+#include "../probe_compress.h"
 
 static struct snd_soc_cdai_ops sof_probe_compr_ops = {
 	.startup	= sof_probe_compr_open,
@@ -532,10 +532,6 @@ struct snd_soc_dai_driver skl_dai[] = {
 		.channels_min = 1,
 		.channels_max = 8,
 	},
-},
-{
-	.name = "iDisp4 Pin",
-	.ops = &hda_link_dai_ops,
 },
 {
 	.name = "Analog CPU DAI",

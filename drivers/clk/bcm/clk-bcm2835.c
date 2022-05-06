@@ -1472,11 +1472,14 @@ static struct clk_hw *bcm2835_register_clock(struct bcm2835_cprman *cprman,
 }
 
 static struct clk_hw *bcm2835_register_gate(struct bcm2835_cprman *cprman,
-					 const struct bcm2835_gate_data *data)
+					    const void *data)
 {
-	return clk_hw_register_gate(cprman->dev, data->name, data->parent,
+	const struct bcm2835_gate_data *gate_data = data;
+
+	return clk_hw_register_gate(cprman->dev, gate_data->name,
+				    gate_data->parent,
 				    CLK_IGNORE_UNUSED | CLK_SET_RATE_GATE,
-				    cprman->regs + data->ctl_reg,
+				    cprman->regs + gate_data->ctl_reg,
 				    CM_GATE_BIT, 0, &cprman->regs_lock);
 }
 

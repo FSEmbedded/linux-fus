@@ -7,6 +7,7 @@
  */
 
 #include <linux/device.h>
+#include <linux/dma-map-ops.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/sys_soc.h>
@@ -80,6 +81,14 @@ static void build_deinstantiation_desc(u32 *desc, int handle)
 	append_jump(desc, JUMP_CLASS_CLASS1 | JUMP_TYPE_HALT);
 }
 
+static const struct of_device_id imx8m_machine_match[] = {
+	{ .compatible = "fsl,imx8mm", },
+	{ .compatible = "fsl,imx8mn", },
+	{ .compatible = "fsl,imx8mp", },
+	{ .compatible = "fsl,imx8mq", },
+	{ }
+};
+
 /*
  * run_descriptor_deco0 - runs a descriptor on DECO0, under direct control of
  *			  the software (no JR/QI used).
@@ -106,10 +115,7 @@ static inline int run_descriptor_deco0(struct device *ctrldev, u32 *desc,
 	     * Apparently on i.MX8M{Q,M,N,P} it doesn't matter if virt_en == 1
 	     * and the following steps should be performed regardless
 	     */
-	    of_machine_is_compatible("fsl,imx8mq") ||
-	    of_machine_is_compatible("fsl,imx8mm") ||
-	    of_machine_is_compatible("fsl,imx8mn") ||
-	    of_machine_is_compatible("fsl,imx8mp")) {
+	    of_match_node(imx8m_machine_match, of_root)) {
 		clrsetbits_32(&ctrl->deco_rsr, 0, DECORSR_JR0);
 
 		while (!(rd_reg32(&ctrl->deco_rsr) & DECORSR_VALID) &&
@@ -334,11 +340,10 @@ static int instantiate_rng(struct device *ctrldev, int state_handle_mask,
 
 	kfree(desc);
 
-	if (!ret)
-		ret = devm_add_action_or_reset(ctrldev, devm_deinstantiate_rng,
-					       ctrldev);
+	if (ret)
+		return ret;
 
-	return ret;
+	return devm_add_action_or_reset(ctrldev, devm_deinstantiate_rng, ctrldev);
 }
 
 /*
@@ -352,7 +357,7 @@ static void kick_trng(struct device *dev, int ent_delay)
 	struct caam_drv_private *ctrlpriv = dev_get_drvdata(dev);
 	struct caam_ctrl __iomem *ctrl;
 	struct rng4tst __iomem *r4tst;
-	u32 val;
+	u32 val, rtsdctl;
 
 	ctrl = (struct caam_ctrl __iomem *)ctrlpriv->ctrl;
 	r4tst = &ctrl->r4tst[0];
@@ -368,34 +373,38 @@ static void kick_trng(struct device *dev, int ent_delay)
 	 * Performance-wise, it does not make sense to
 	 * set the delay to a value that is lower
 	 * than the last one that worked (i.e. the state handles
-	 * were instantiated properly. Thus, instead of wasting
-	 * time trying to set the values controlling the sample
-	 * frequency, the function simply returns.
+	 * were instantiated properly).
 	 */
-	val = (rd_reg32(&r4tst->rtsdctl) & RTSDCTL_ENT_DLY_MASK)
-	      >> RTSDCTL_ENT_DLY_SHIFT;
-	if (ent_delay <= val)
-		goto start_rng;
+	rtsdctl = rd_reg32(&r4tst->rtsdctl);
+	val = (rtsdctl & RTSDCTL_ENT_DLY_MASK) >> RTSDCTL_ENT_DLY_SHIFT;
+	if (ent_delay > val) {
+		val = ent_delay;
+		/* min. freq. count, equal to 1/4 of the entropy sample length */
+		wr_reg32(&r4tst->rtfrqmin, val >> 2);
+		/* max. freq. count, equal to 16 times the entropy sample length */
+		wr_reg32(&r4tst->rtfrqmax, val << 4);
+	}
 
-	val = (ent_delay << RTSDCTL_ENT_DLY_SHIFT) | 512;
-	wr_reg32(&r4tst->rtsdctl, val);
-	/* min. freq. count, equal to 1/4 of the entropy sample length */
-	wr_reg32(&r4tst->rtfrqmin, ent_delay >> 2);
-	/* max. freq. count, equal to 16 times the entropy sample length */
-	wr_reg32(&r4tst->rtfrqmax, ent_delay << 4);
+	wr_reg32(&r4tst->rtsdctl, (val << RTSDCTL_ENT_DLY_SHIFT) |
+		 RTSDCTL_SAMP_SIZE_VAL);
 
-	wr_reg32(&r4tst->rtscmisc, (2 << 16) | 32);
-	wr_reg32(&r4tst->rtpkrrng, 570);
-	wr_reg32(&r4tst->rtpkrmax, 1600);
-	wr_reg32(&r4tst->rtscml, (122 << 16) | 317);
-	wr_reg32(&r4tst->rtscrl[0],(80 << 16) | 107);
-	wr_reg32(&r4tst->rtscrl[1],(57 << 16) | 62);
-	wr_reg32(&r4tst->rtscrl[2],(39 << 16) | 39);
-	wr_reg32(&r4tst->rtscrl[3],(27 << 16) | 26);
-	wr_reg32(&r4tst->rtscrl[4],(19 << 16) | 18);
-	wr_reg32(&r4tst->rtscrl[5],(18 << 16) | 17);
+	/*
+	 * To avoid reprogramming the self-test parameters over and over again,
+	 * use RTSDCTL[SAMP_SIZE] as an indicator.
+	 */
+	if ((rtsdctl & RTSDCTL_SAMP_SIZE_MASK) != RTSDCTL_SAMP_SIZE_VAL) {
+		wr_reg32(&r4tst->rtscmisc, (2 << 16) | 32);
+		wr_reg32(&r4tst->rtpkrrng, 570);
+		wr_reg32(&r4tst->rtpkrmax, 1600);
+		wr_reg32(&r4tst->rtscml, (122 << 16) | 317);
+		wr_reg32(&r4tst->rtscrl[0], (80 << 16) | 107);
+		wr_reg32(&r4tst->rtscrl[1], (57 << 16) | 62);
+		wr_reg32(&r4tst->rtscrl[2], (39 << 16) | 39);
+		wr_reg32(&r4tst->rtscrl[3], (27 << 16) | 26);
+		wr_reg32(&r4tst->rtscrl[4], (19 << 16) | 18);
+		wr_reg32(&r4tst->rtscrl[5], (18 << 16) | 17);
+	}
 
-start_rng:
 	/*
 	 * select raw sampling in both entropy shifter
 	 * and statistical checker; ; put RNG4 into run mode
@@ -452,7 +461,9 @@ static int caam_get_era_from_hw(struct caam_perfmon __iomem *perfmon)
  * by u-boot.
  * In case this property is not passed an attempt to retrieve the CAAM
  * era via register reads will be made.
- **/
+ *
+ * @ctrl:	controller region
+ */
 static int caam_get_era(struct caam_perfmon __iomem *perfmon)
 {
 	struct device_node *caam_node;
@@ -550,6 +561,7 @@ static const struct soc_device_attribute caam_imx_soc_table[] = {
 	{ .soc_id = "i.MX6*",  .data = &caam_imx6_data },
 	{ .soc_id = "i.MX7*",  .data = &caam_imx7_data },
 	{ .soc_id = "i.MX8M*", .data = &caam_imx7_data },
+	{ .soc_id = "VF*",     .data = &caam_vf610_data },
 	{ .family = "Freescale i.MX" },
 	{ /* sentinel */ }
 };
@@ -590,12 +602,10 @@ static int init_clocks(struct device *dev, const struct caam_imx_data *data)
 	return devm_add_action_or_reset(dev, disable_clocks, ctrlpriv);
 }
 
-#ifdef CONFIG_DEBUG_FS
 static void caam_remove_debugfs(void *root)
 {
 	debugfs_remove_recursive(root);
 }
-#endif
 
 static void caam_dma_dev_unregister(void *data)
 {
@@ -647,8 +657,7 @@ static int caam_ctrl_rng_init(struct device *dev)
 		ctrlpriv->rng4_sh_init &= RDSTA_MASK;
 		do {
 			int inst_handles =
-				rd_reg32(&ctrl->r4tst[0].rdsta) &
-								RDSTA_MASK;
+				rd_reg32(&ctrl->r4tst[0].rdsta) & RDSTA_MASK;
 			/*
 			 * If either SH were instantiated by somebody else
 			 * (e.g. u-boot) then it is assumed that the entropy
@@ -668,7 +677,7 @@ static int caam_ctrl_rng_init(struct device *dev)
 			 * if instantiate_rng(...) fails, the loop will rerun
 			 * and the kick_trng(...) function will modify the
 			 * upper and lower limits of the entropy sampling
-			 * interval, leading to a sucessful initialization of
+			 * interval, leading to a successful initialization of
 			 * the RNG.
 			 */
 			ret = instantiate_rng(dev, inst_handles,
@@ -685,8 +694,8 @@ static int caam_ctrl_rng_init(struct device *dev)
 			return ret;
 		}
 		/*
-		 * Set handles init'ed by this module as the complement of the
-		 * already initialized ones
+		 * Set handles initialized by this module as the complement of
+		 * the already initialized ones
 		 */
 		ctrlpriv->rng4_sh_init = ~ctrlpriv->rng4_sh_init & RDSTA_MASK;
 
@@ -843,9 +852,7 @@ static int caam_probe(struct platform_device *pdev)
 	struct caam_ctrl __iomem *ctrl;
 	struct caam_drv_private *ctrlpriv;
 	struct caam_perfmon __iomem *perfmon;
-#ifdef CONFIG_DEBUG_FS
 	struct dentry *dfs_root;
-#endif
 	u32 scfgr, comp_params;
 	int pg_size;
 	int BLOCK_OFFSET = 0;
@@ -860,6 +867,9 @@ static int caam_probe(struct platform_device *pdev)
 	nprop = pdev->dev.of_node;
 
 	imx_soc_match = soc_device_match(caam_imx_soc_table);
+	if (!imx_soc_match && of_match_node(imx8m_machine_match, of_root))
+		return -EPROBE_DEFER;
+
 	caam_imx = (bool)imx_soc_match;
 
 #ifdef CONFIG_PM_SLEEP
@@ -868,6 +878,10 @@ static int caam_probe(struct platform_device *pdev)
 
 	if (imx_soc_match) {
 		np = of_find_compatible_node(NULL, NULL, "fsl,imx-scu");
+
+		if (!np)
+			np = of_find_compatible_node(NULL, NULL, "fsl,imx-sentinel");
+
 		ctrlpriv->scu_en = !!np;
 		of_node_put(np);
 
@@ -1030,17 +1044,6 @@ iomap_ctrl:
 		return PTR_ERR(ctrlpriv->sm_base);
 	}
 
-	if (!of_machine_is_compatible("fsl,imx8mp") &&
-	    !of_machine_is_compatible("fsl,imx8mn") &&
-	    !of_machine_is_compatible("fsl,imx8mm") &&
-	    !of_machine_is_compatible("fsl,imx8mq") &&
-	    !of_machine_is_compatible("fsl,imx8qm") &&
-	    !of_machine_is_compatible("fsl,imx8qxp") &&
-	    !of_machine_is_compatible("fsl,imx8dxl"))
-		ctrlpriv->sm_size = resource_size(&res_regs);
-	else
-		ctrlpriv->sm_size = PG_SIZE_64K;
-
 	ctrlpriv->sm_present = 1;
 	of_node_put(np);
 
@@ -1097,19 +1100,15 @@ set_dma_mask:
 	ctrlpriv->era = caam_get_era(perfmon);
 	ctrlpriv->domain = iommu_get_domain_for_dev(dev);
 
-#ifdef CONFIG_DEBUG_FS
-	/*
-	 * FIXME: needs better naming distinction, as some amalgamation of
-	 * "caam" and nprop->full_name. The OF name isn't distinctive,
-	 * but does separate instances
-	 */
 	dfs_root = debugfs_create_dir(dev_name(dev), NULL);
-	ret = devm_add_action_or_reset(dev, caam_remove_debugfs, dfs_root);
-	if (ret)
-		return ret;
+	if (IS_ENABLED(CONFIG_DEBUG_FS)) {
+		ret = devm_add_action_or_reset(dev, caam_remove_debugfs,
+					       dfs_root);
+		if (ret)
+			return ret;
+	}
 
-	ctrlpriv->ctl = debugfs_create_dir("ctl", dfs_root);
-#endif
+	caam_debugfs_init(ctrlpriv, perfmon, dfs_root);
 
 	/* Check to see if (DPAA 1.x) QI present. If so, enable */
 	if (ctrlpriv->qi_present && !caam_dpaa2) {
@@ -1163,61 +1162,6 @@ set_dma_mask:
 	dev_info(dev, "job rings = %d, qi = %d\n",
 		 ctrlpriv->total_jobrs, ctrlpriv->qi_present);
 
-#ifdef CONFIG_DEBUG_FS
-	debugfs_create_file("rq_dequeued", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->req_dequeued,
-			    &caam_fops_u64_ro);
-	debugfs_create_file("ob_rq_encrypted", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->ob_enc_req,
-			    &caam_fops_u64_ro);
-	debugfs_create_file("ib_rq_decrypted", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->ib_dec_req,
-			    &caam_fops_u64_ro);
-	debugfs_create_file("ob_bytes_encrypted", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->ob_enc_bytes,
-			    &caam_fops_u64_ro);
-	debugfs_create_file("ob_bytes_protected", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->ob_prot_bytes,
-			    &caam_fops_u64_ro);
-	debugfs_create_file("ib_bytes_decrypted", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->ib_dec_bytes,
-			    &caam_fops_u64_ro);
-	debugfs_create_file("ib_bytes_validated", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->ib_valid_bytes,
-			    &caam_fops_u64_ro);
-
-	/* Controller level - global status values */
-	debugfs_create_file("fault_addr", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->faultaddr,
-			    &caam_fops_u32_ro);
-	debugfs_create_file("fault_detail", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->faultdetail,
-			    &caam_fops_u32_ro);
-	debugfs_create_file("fault_status", S_IRUSR | S_IRGRP | S_IROTH,
-			    ctrlpriv->ctl, &perfmon->status,
-			    &caam_fops_u32_ro);
-
-	if (!reg_access)
-		goto probe_jrs;
-
-	/* Internal covering keys (useful in non-secure mode only) */
-	ctrlpriv->ctl_kek_wrap.data = (__force void *)&ctrlpriv->ctrl->kek[0];
-	ctrlpriv->ctl_kek_wrap.size = KEK_KEY_SIZE * sizeof(u32);
-	debugfs_create_blob("kek", S_IRUSR | S_IRGRP | S_IROTH, ctrlpriv->ctl,
-			    &ctrlpriv->ctl_kek_wrap);
-
-	ctrlpriv->ctl_tkek_wrap.data = (__force void *)&ctrlpriv->ctrl->tkek[0];
-	ctrlpriv->ctl_tkek_wrap.size = KEK_KEY_SIZE * sizeof(u32);
-	debugfs_create_blob("tkek", S_IRUSR | S_IRGRP | S_IROTH, ctrlpriv->ctl,
-			    &ctrlpriv->ctl_tkek_wrap);
-
-	ctrlpriv->ctl_tdsk_wrap.data = (__force void *)&ctrlpriv->ctrl->tdsk[0];
-	ctrlpriv->ctl_tdsk_wrap.size = KEK_KEY_SIZE * sizeof(u32);
-	debugfs_create_blob("tdsk", S_IRUSR | S_IRGRP | S_IROTH, ctrlpriv->ctl,
-			    &ctrlpriv->ctl_tdsk_wrap);
-#endif
-
-probe_jrs:
 	ret = devm_of_platform_populate(dev);
 	if (ret)
 		dev_err(dev, "JR platform devices creation error\n");

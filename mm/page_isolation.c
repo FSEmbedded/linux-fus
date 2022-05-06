@@ -178,8 +178,7 @@ __first_valid_page(unsigned long pfn, unsigned long nr_pages)
  * (e.g. __offline_pages will need to call it after check for isolated range for
  * a next retry).
  *
- * Return: the number of isolated pageblocks on success and -EBUSY if any part
- * of range cannot be isolated.
+ * Return: 0 on success and -EBUSY if any part of range cannot be isolated.
  */
 int start_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
 			     unsigned migratetype, int flags)

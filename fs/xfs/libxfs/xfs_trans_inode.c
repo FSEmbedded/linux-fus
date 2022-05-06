@@ -102,6 +102,8 @@ xfs_trans_log_inode(
 	ASSERT(xfs_isilocked(ip, XFS_ILOCK_EXCL));
 	ASSERT(!xfs_iflags_test(ip, XFS_ISTALE));
 
+	tp->t_flags |= XFS_TRANS_DIRTY;
+
 	/*
 	 * Don't bother with i_lock for the I_DIRTY_TIME check here, as races
 	 * don't matter - we either will need an extra transaction in 24 hours

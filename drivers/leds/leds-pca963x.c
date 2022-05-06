@@ -405,39 +405,7 @@ static int pca963x_probe(struct i2c_client *client,
 	/* Disable LED all-call address, and power down initially */
 	i2c_smbus_write_byte_data(client, PCA963X_MODE1, BIT(4));
 
-	if (pdata) {
-		u8 mode2 = i2c_smbus_read_byte_data(pca963x->chip->client,
-						    PCA963X_MODE2);
-		/* Configure output: open-drain or totem pole (push-pull) */
-		if (pdata->outdrv == PCA963X_OPEN_DRAIN)
-			mode2 &= ~PCA963X_MODE2_OUTDRV;
-		else
-			mode2 |= PCA963X_MODE2_OUTDRV;
-		/* Configure direction: normal or inverted */
-		if (pdata->dir == PCA963X_INVERTED)
-			mode2 |= PCA963X_MODE2_INVRT;
-		i2c_smbus_write_byte_data(pca963x->chip->client, PCA963X_MODE2,
-					  mode2);
-	}
-
-	return 0;
-
-exit:
-	while (i--)
-		led_classdev_unregister(&pca963x[i].led_cdev);
-
-	return err;
-}
-
-static int pca963x_remove(struct i2c_client *client)
-{
-	struct pca963x *pca963x = i2c_get_clientdata(client);
-	int i;
-
-	for (i = 0; i < pca963x->chipdef->n_leds; i++)
-		led_classdev_unregister(&pca963x->leds[i].led_cdev);
-
-	return 0;
+	return pca963x_register_leds(client, chip);
 }
 
 static struct i2c_driver pca963x_driver = {

@@ -15,11 +15,6 @@
 #include <linux/numa.h>
 
 void numa_setup(void);
-int numa_pfn_to_nid(unsigned long pfn);
-void numa_update_cpu_topology(void);
-
-extern cpumask_t node_to_cpumask_map[MAX_NUMNODES];
-extern int numa_debug_enabled;
 
 #else
 

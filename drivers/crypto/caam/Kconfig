@@ -12,7 +12,7 @@ config CRYPTO_DEV_FSL_CAAM_KEYBLOB_API_DESC
 	tristate
 
 config CRYPTO_DEV_FSL_CAAM_SECVIO
-	tristate "CAAM/SNVS Security Violation Handler (EXPERIMENTAL)"
+	tristate "CAAM/SNVS Security Violation Handler"
 	depends on ARCH_MXC
 	help
 	  Enables installation of an interrupt handler with registrable
@@ -193,7 +193,8 @@ config CRYPTO_DEV_FSL_CAAM_RNG_TEST
 	  just before the RNG is registered with the hw_random API.
 
 config CRYPTO_DEV_FSL_CAAM_SM
-	bool "CAAM Secure Memory / Keystore API (EXPERIMENTAL)"
+	bool "CAAM Secure Memory / Keystore API"
+	default y
 	help
 	  Enables use of a prototype kernel-level Keystore API with CAAM
 	  Secure Memory for insertion/extraction of bus-protected secrets.
@@ -215,7 +216,7 @@ config CRYPTO_DEV_FSL_CAAM_SM_SLOTSIZE
 		9 => 512 bytes
 
 config CRYPTO_DEV_FSL_CAAM_SM_TEST
-	tristate "CAAM Secure Memory - Keystore Test/Example (EXPERIMENTAL)"
+	tristate "CAAM Secure Memory - Keystore Test/Example"
 	depends on CRYPTO_DEV_FSL_CAAM_SM
 	depends on m
 	help
@@ -226,7 +227,7 @@ config CRYPTO_DEV_FSL_CAAM_SM_TEST
 config CRYPTO_DEV_FSL_CAAM_JR_UIO
 	tristate "Freescale Job Ring UIO support"
 	depends on UIO
-	default y
+	default m
 	help
 	  Selecting this will allow job ring UIO support for
 	  Userspace drivers

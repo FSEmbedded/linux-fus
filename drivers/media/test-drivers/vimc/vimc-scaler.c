@@ -475,7 +475,7 @@ static void vimc_sca_release(struct vimc_ent_device *ved)
 	struct vimc_sca_device *vsca =
 		container_of(ved, struct vimc_sca_device, ved);
 
-	vimc_pads_cleanup(vsca->ved.pads);
+	media_entity_cleanup(vsca->ved.ent);
 	kfree(vsca);
 }
 

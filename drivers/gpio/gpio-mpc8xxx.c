@@ -272,11 +272,6 @@ static const struct mpc8xxx_gpio_devtype mpc512x_gpio_devtype = {
 	.irq_set_type = mpc512x_irq_set_type,
 };
 
-static const struct mpc8xxx_gpio_devtype ls1028a_gpio_devtype = {
-	.gpio_dir_in_init = ls1028a_gpio_dir_in_init,
-	.irq_set_type = mpc8xxx_irq_set_type,
-};
-
 static const struct mpc8xxx_gpio_devtype mpc5125_gpio_devtype = {
 	.gpio_dir_out = mpc5125_gpio_dir_out,
 	.irq_set_type = mpc512x_irq_set_type,
@@ -367,10 +362,19 @@ static int mpc8xxx_probe(struct platform_device *pdev)
 
 	gc->to_irq = mpc8xxx_gpio_to_irq;
 
-	if (of_device_is_compatible(np, "fsl,qoriq-gpio"))
+	/*
+	 * The GPIO Input Buffer Enable register(GPIO_IBE) is used to control
+	 * the input enable of each individual GPIO port.  When an individual
+	 * GPIO port’s direction is set to input (GPIO_GPDIR[DRn=0]), the
+	 * associated input enable must be set (GPIOxGPIE[IEn]=1) to propagate
+	 * the port value to the GPIO Data Register.
+	 */
+	if (of_device_is_compatible(np, "fsl,qoriq-gpio") ||
+	    of_device_is_compatible(np, "fsl,ls1028a-gpio") ||
+	    of_device_is_compatible(np, "fsl,ls1088a-gpio"))
 		gc->write_reg(mpc8xxx_gc->regs + GPIO_IBE, 0xffffffff);
 
-	ret = gpiochip_add_data(gc, mpc8xxx_gc);
+	ret = devm_gpiochip_add_data(&pdev->dev, gc, mpc8xxx_gc);
 	if (ret) {
 		pr_err("%pOF: GPIO chip registration failed with status %d\n",
 		       np, ret);
@@ -422,9 +426,20 @@ static int mpc8xxx_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void mpc8xxx_shutdown(struct platform_device *pdev)
+{
+	struct mpc8xxx_gpio_chip *mpc8xxx_gc = platform_get_drvdata(pdev);
+
+	if (mpc8xxx_gc->irq) {
+		irq_set_chained_handler_and_data(mpc8xxx_gc->irqn, NULL, NULL);
+		irq_domain_remove(mpc8xxx_gc->irq);
+	}
+}
+
 static struct platform_driver mpc8xxx_plat_driver = {
 	.probe		= mpc8xxx_probe,
 	.remove		= mpc8xxx_remove,
+	.shutdown	= mpc8xxx_shutdown,
 	.driver		= {
 		.name = "gpio-mpc8xxx",
 		.of_match_table	= mpc8xxx_gpio_ids,

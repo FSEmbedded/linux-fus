@@ -55,7 +55,7 @@ static int afu_dma_pin_pages(struct dfl_feature_platform_data *pdata,
 		goto free_pages;
 	} else if (pinned != npages) {
 		ret = -EFAULT;
-		goto put_pages;
+		goto unpin_pages;
 	}
 
 	dev_dbg(dev, "%d pages pinned\n", pinned);

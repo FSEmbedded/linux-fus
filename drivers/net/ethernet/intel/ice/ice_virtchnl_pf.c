@@ -1395,6 +1395,10 @@ static void ice_vc_notify_vf_reset(struct ice_vf *vf)
 	if (!vf)
 		return;
 
+	pf = vf->pf;
+	if (ice_validate_vf_id(pf, vf->vf_id))
+		return;
+
 	/* Bail out if VF is in disabled state, neither initialized, nor active
 	 * state - otherwise proceed with notifications
 	 */

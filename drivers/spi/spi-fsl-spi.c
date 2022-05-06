@@ -742,10 +742,14 @@ static int of_fsl_spi_probe(struct platform_device *ofdev)
 		 * supported on the GRLIB variant.
 		 */
 		ret = gpiod_count(dev, "cs");
-		if (ret <= 0)
+		if (ret < 0)
+			ret = 0;
+		if (ret == 0 && !spisel_boot) {
 			pdata->max_chipselect = 1;
-		else
+		} else {
+			pdata->max_chipselect = ret + spisel_boot;
 			pdata->cs_control = fsl_spi_cs_control;
+		}
 	}
 
 	ret = of_address_to_resource(np, 0, &mem);
@@ -755,14 +759,18 @@ static int of_fsl_spi_probe(struct platform_device *ofdev)
 	irq = platform_get_irq(ofdev, 0);
 	if (irq < 0) {
 		ret = irq;
-		goto err;
+		goto unmap_out;
 	}
 
 	master = fsl_spi_probe(dev, &mem, irq);
 
 	return PTR_ERR_OR_ZERO(master);
 
-err:
+unmap_out:
+#if IS_ENABLED(CONFIG_FSL_SOC)
+	if (spisel_boot)
+		iounmap(pinfo->immr_spi_cs);
+#endif
 	return ret;
 }
 

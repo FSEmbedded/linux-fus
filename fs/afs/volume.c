@@ -362,7 +362,7 @@ error:
 /*
  * Make sure the volume record is up to date.
  */
-int afs_check_volume_status(struct afs_volume *volume, struct afs_fs_cursor *fc)
+int afs_check_volume_status(struct afs_volume *volume, struct afs_operation *op)
 {
 	int ret, retries = 0;
 
@@ -379,7 +379,10 @@ retry:
 
 update:
 	if (!test_and_set_bit_lock(AFS_VOLUME_UPDATING, &volume->flags)) {
-		ret = afs_update_volume_status(volume, fc->key);
+		clear_bit(AFS_VOLUME_NEEDS_UPDATE, &volume->flags);
+		ret = afs_update_volume_status(volume, op->key);
+		if (ret < 0)
+			set_bit(AFS_VOLUME_NEEDS_UPDATE, &volume->flags);
 		clear_bit_unlock(AFS_VOLUME_WAIT, &volume->flags);
 		clear_bit_unlock(AFS_VOLUME_UPDATING, &volume->flags);
 		wake_up_bit(&volume->flags, AFS_VOLUME_WAIT);
@@ -394,8 +397,8 @@ wait:
 	}
 
 	ret = wait_on_bit(&volume->flags, AFS_VOLUME_WAIT,
-			  (fc->flags & AFS_FS_CURSOR_INTR) ?
-			  TASK_INTERRUPTIBLE : TASK_UNINTERRUPTIBLE);
+			  (op->flags & AFS_OPERATION_UNINTR) ?
+			  TASK_UNINTERRUPTIBLE : TASK_INTERRUPTIBLE);
 	if (ret == -ERESTARTSYS) {
 		_leave(" = %d", ret);
 		return ret;

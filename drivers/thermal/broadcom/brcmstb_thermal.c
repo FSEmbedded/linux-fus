@@ -120,8 +120,10 @@ struct brcmstb_thermal_priv {
 static inline int avs_tmon_code_to_temp(struct brcmstb_thermal_priv *priv,
 					u32 code)
 {
-	return (AVS_TMON_TEMP_OFFSET -
-		(int)((code & AVS_TMON_TEMP_MAX) * AVS_TMON_TEMP_SLOPE));
+	int offset = priv->temp_params->offset;
+	int mult = priv->temp_params->mult;
+
+	return (offset - (int)((code & AVS_TMON_TEMP_MASK) * mult));
 }
 
 /*
@@ -133,18 +135,19 @@ static inline int avs_tmon_code_to_temp(struct brcmstb_thermal_priv *priv,
 static inline u32 avs_tmon_temp_to_code(struct brcmstb_thermal_priv *priv,
 					int temp, bool low)
 {
+	int offset = priv->temp_params->offset;
+	int mult = priv->temp_params->mult;
+
 	if (temp < AVS_TMON_TEMP_MIN)
 		return AVS_TMON_TEMP_MAX;	/* Maximum code value */
 
-	if (temp >= AVS_TMON_TEMP_OFFSET)
+	if (temp >= offset)
 		return 0;	/* Minimum code value */
 
 	if (low)
-		return (u32)(DIV_ROUND_UP(AVS_TMON_TEMP_OFFSET - temp,
-					  AVS_TMON_TEMP_SLOPE));
+		return (u32)(DIV_ROUND_UP(offset - temp, mult));
 	else
-		return (u32)((AVS_TMON_TEMP_OFFSET - temp) /
-			      AVS_TMON_TEMP_SLOPE);
+		return (u32)((offset - temp) / mult);
 }
 
 static int brcmstb_get_temp(void *data, int *temp)

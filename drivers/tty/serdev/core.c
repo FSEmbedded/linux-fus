@@ -690,8 +690,14 @@ static acpi_status acpi_serdev_add_device(acpi_handle handle, u32 level,
 	if (acpi_bus_get_device(handle, &adev))
 		return AE_OK;
 
+	if (acpi_device_enumerated(adev))
+		return AE_OK;
+
 	/* Skip if black listed */
 	if (!acpi_match_device_ids(adev, serdev_acpi_devices_blacklist))
+		return AE_OK;
+
+	if (acpi_serdev_check_resources(ctrl, adev))
 		return AE_OK;
 
 	return acpi_serdev_register_device(ctrl, adev);

@@ -115,7 +115,6 @@ config ARM_TEGRA_DEVFREQ
 		ARCH_TEGRA_132_SOC || ARCH_TEGRA_124_SOC || \
 		ARCH_TEGRA_210_SOC || \
 		COMPILE_TEST
-	select PM_OPP
 	depends on COMMON_CLK
 	help
 	  This adds the DEVFREQ driver for the Tegra family of SoCs.

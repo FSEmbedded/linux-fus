@@ -1013,20 +1013,12 @@ vm_fault_t iomap_page_mkwrite(struct vm_fault *vmf, const struct iomap_ops *ops)
 	ssize_t ret;
 
 	lock_page(page);
-	size = i_size_read(inode);
-	offset = page_offset(page);
-	if (page->mapping != inode->i_mapping || offset > size) {
-		/* We overload EFAULT to mean page got truncated */
-		ret = -EFAULT;
+	ret = page_mkwrite_check_truncate(page, inode);
+	if (ret < 0)
 		goto out_unlock;
-	}
+	length = ret;
 
-	/* page is wholly or partially inside EOF */
-	if (offset > size - PAGE_SIZE)
-		length = offset_in_page(size);
-	else
-		length = PAGE_SIZE;
-
+	offset = page_offset(page);
 	while (length > 0) {
 		ret = iomap_apply(inode, offset, length,
 				IOMAP_WRITE | IOMAP_FAULT, ops, page,

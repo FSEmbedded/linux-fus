@@ -71,8 +71,8 @@ config DRM_FSL_IMX_LVDS_BRIDGE
 	  Support Freescale i.MX parallel to LVDS Display Bridge (LDB).
 	  This bridge is embedded in a SoC.
 
-config DRM_LVDS_ENCODER
-	tristate "Transparent parallel to LVDS encoder support"
+config DRM_LVDS_CODEC
+	tristate "Transparent LVDS encoders and decoders support"
 	depends on OF
 	select DRM_KMS_HELPER
 	select DRM_PANEL_BRIDGE
@@ -267,8 +267,6 @@ source "drivers/gpu/drm/bridge/analogix/Kconfig"
 
 source "drivers/gpu/drm/bridge/adv7511/Kconfig"
 
-source "drivers/gpu/drm/bridge/nwl-dsi/Kconfig"
-
 source "drivers/gpu/drm/bridge/cadence/Kconfig"
 
 source "drivers/gpu/drm/bridge/synopsys/Kconfig"
@@ -278,8 +276,15 @@ config DRM_ITE_IT6263
 	depends on OF
 	select DRM_KMS_HELPER
 	select REGMAP_I2C
-	select OF_DYNAMIC
-	---help---
+	help
 	  ITE IT6263 bridge chip driver.
+
+config DRM_ITE_IT6161
+	tristate "ITE IT6161 MIPI/HDMI bridge"
+	depends on OF
+	select DRM_KMS_HELPER
+	select REGMAP_I2C
+	help
+	  ITE IT6161 bridge chip driver.
 
 endmenu

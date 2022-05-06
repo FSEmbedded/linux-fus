@@ -201,18 +201,6 @@ int qdio_establish_thinint(struct qdio_irq *irq_ptr)
 {
 	int rc;
 
-	rc = register_adapter_interrupt(&tiqdio_airq);
-	if (rc) {
-		DBF_EVENT("RTI:%x", rc);
-		return rc;
-	}
-	return 0;
-}
-
-int qdio_establish_thinint(struct qdio_irq *irq_ptr)
-{
-	int rc;
-
 	if (!is_thinint_irq(irq_ptr))
 		return 0;
 

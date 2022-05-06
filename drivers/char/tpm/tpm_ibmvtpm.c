@@ -250,7 +250,7 @@ again:
 			goto again;
 		}
 		dev_err(ibmvtpm->dev, "tpm_ibmvtpm_send failed rc=%d\n", rc);
-		ibmvtpm->tpm_processing_cmd = false;
+		ibmvtpm->tpm_processing_cmd = 0;
 	}
 
 	spin_unlock(&ibmvtpm->rtce_lock);
@@ -685,6 +685,20 @@ static int tpm_ibmvtpm_probe(struct vio_dev *vio_dev,
 				HZ)) {
 		dev_err(dev, "CRQ response timed out\n");
 		goto init_irq_cleanup;
+	}
+
+
+	if (!strcmp(id->compat, "IBM,vtpm20"))
+		chip->flags |= TPM_CHIP_FLAG_TPM2;
+
+	rc = tpm_get_timeouts(chip);
+	if (rc)
+		goto init_irq_cleanup;
+
+	if (chip->flags & TPM_CHIP_FLAG_TPM2) {
+		rc = tpm2_get_cc_attrs_tbl(chip);
+		if (rc)
+			goto init_irq_cleanup;
 	}
 
 	return tpm_chip_register(chip);

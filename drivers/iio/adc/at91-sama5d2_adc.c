@@ -740,50 +740,6 @@ static int at91_adc_configure_trigger(struct iio_trigger *trig, bool state)
 	/* set/unset hw trigger */
 	at91_adc_writel(st, AT91_SAMA5D2_TRGR, status);
 
-	for_each_set_bit(bit, indio->active_scan_mask, indio->num_channels) {
-		struct iio_chan_spec const *chan = at91_adc_chan_get(indio, bit);
-		u32 cor;
-
-		if (!chan)
-			continue;
-		/* these channel types cannot be handled by this trigger */
-		if (chan->type == IIO_POSITIONRELATIVE ||
-		    chan->type == IIO_PRESSURE)
-			continue;
-
-		if (state) {
-			cor = at91_adc_readl(st, AT91_SAMA5D2_COR);
-
-			if (chan->differential)
-				cor |= (BIT(chan->channel) |
-					BIT(chan->channel2)) <<
-					AT91_SAMA5D2_COR_DIFF_OFFSET;
-			else
-				cor &= ~(BIT(chan->channel) <<
-				       AT91_SAMA5D2_COR_DIFF_OFFSET);
-
-			at91_adc_writel(st, AT91_SAMA5D2_COR, cor);
-		}
-
-		if (state) {
-			at91_adc_writel(st, AT91_SAMA5D2_CHER,
-					BIT(chan->channel));
-			/* enable irq only if not using DMA */
-			if (!st->dma_st.dma_chan) {
-				at91_adc_writel(st, AT91_SAMA5D2_IER,
-						BIT(chan->channel));
-			}
-		} else {
-			/* disable irq only if not using DMA */
-			if (!st->dma_st.dma_chan) {
-				at91_adc_writel(st, AT91_SAMA5D2_IDR,
-						BIT(chan->channel));
-			}
-			at91_adc_writel(st, AT91_SAMA5D2_CHDR,
-					BIT(chan->channel));
-		}
-	}
-
 	return 0;
 }
 

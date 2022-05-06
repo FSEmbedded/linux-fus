@@ -235,14 +235,6 @@ static int vcnl4200_init(struct vcnl4000_data *data)
 
 	data->rev = (ret >> 8) & 0xf;
 
-	/* Set defaults and enable both channels */
-	ret = i2c_smbus_write_word_data(data->client, VCNL4200_AL_CONF, 0);
-	if (ret < 0)
-		return ret;
-	ret = i2c_smbus_write_word_data(data->client, VCNL4200_PS_CONF1, 0);
-	if (ret < 0)
-		return ret;
-
 	data->vcnl4200_al.reg = VCNL4200_AL_DATA;
 	data->vcnl4200_ps.reg = VCNL4200_PS_DATA;
 	switch (id) {
@@ -322,12 +314,11 @@ static int vcnl4000_measure(struct vcnl4000_data *data, u8 req_mask,
 		goto fail;
 	}
 
-	ret = i2c_smbus_read_word_swapped(data->client, data_reg);
+	ret = vcnl4000_read_data(data, data_reg, val);
 	if (ret < 0)
 		goto fail;
 
 	mutex_unlock(&data->vcnl4000_lock);
-	*val = ret;
 
 	return 0;
 

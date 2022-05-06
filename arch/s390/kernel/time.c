@@ -268,56 +268,6 @@ struct clocksource * __init clocksource_default_clock(void)
 	return &clocksource_tod;
 }
 
-void update_vsyscall(struct timekeeper *tk)
-{
-	u64 nsecps;
-
-	if (tk->tkr_mono.clock != &clocksource_tod)
-		return;
-
-	/* Make userspace gettimeofday spin until we're done. */
-	++vdso_data->tb_update_count;
-	smp_wmb();
-	vdso_data->xtime_tod_stamp = tk->tkr_mono.cycle_last;
-	vdso_data->xtime_clock_sec = tk->xtime_sec;
-	vdso_data->xtime_clock_nsec = tk->tkr_mono.xtime_nsec;
-	vdso_data->wtom_clock_sec =
-		tk->xtime_sec + tk->wall_to_monotonic.tv_sec;
-	vdso_data->wtom_clock_nsec = tk->tkr_mono.xtime_nsec +
-		+ ((u64) tk->wall_to_monotonic.tv_nsec << tk->tkr_mono.shift);
-	nsecps = (u64) NSEC_PER_SEC << tk->tkr_mono.shift;
-	while (vdso_data->wtom_clock_nsec >= nsecps) {
-		vdso_data->wtom_clock_nsec -= nsecps;
-		vdso_data->wtom_clock_sec++;
-	}
-
-	vdso_data->xtime_coarse_sec = tk->xtime_sec;
-	vdso_data->xtime_coarse_nsec =
-		(long)(tk->tkr_mono.xtime_nsec >> tk->tkr_mono.shift);
-	vdso_data->wtom_coarse_sec =
-		vdso_data->xtime_coarse_sec + tk->wall_to_monotonic.tv_sec;
-	vdso_data->wtom_coarse_nsec =
-		vdso_data->xtime_coarse_nsec + tk->wall_to_monotonic.tv_nsec;
-	while (vdso_data->wtom_coarse_nsec >= NSEC_PER_SEC) {
-		vdso_data->wtom_coarse_nsec -= NSEC_PER_SEC;
-		vdso_data->wtom_coarse_sec++;
-	}
-
-	vdso_data->tk_mult = tk->tkr_mono.mult;
-	vdso_data->tk_shift = tk->tkr_mono.shift;
-	vdso_data->hrtimer_res = hrtimer_resolution;
-	smp_wmb();
-	++vdso_data->tb_update_count;
-}
-
-extern struct timezone sys_tz;
-
-void update_vsyscall_tz(void)
-{
-	vdso_data->tz_minuteswest = sys_tz.tz_minuteswest;
-	vdso_data->tz_dsttime = sys_tz.tz_dsttime;
-}
-
 /*
  * Initialize the TOD clock and the CPU timer of
  * the boot cpu.

@@ -235,9 +235,6 @@ int mmc_gpiod_request_ro(struct mmc_host *host, const char *con_id,
 	if (host->caps2 & MMC_CAP2_RO_ACTIVE_HIGH)
 		gpiod_toggle_active_low(desc);
 
-	if (gpio_invert)
-		*gpio_invert = !gpiod_is_active_low(desc);
-
 	ctx->ro_gpio = desc;
 
 	return 0;

@@ -23,15 +23,9 @@
 #include <asm/traps.h>
 #include <asm/sections.h>
 #include <asm/mmu_context.h>
-#include <asm/pgalloc.h>
 #ifdef CONFIG_CPU_HAS_FPU
 #include <abi/fpu.h>
 #endif
-
-struct ipi_data_struct {
-	unsigned long bits ____cacheline_aligned;
-};
-static DEFINE_PER_CPU(struct ipi_data_struct, ipi_data);
 
 enum ipi_message_type {
 	IPI_EMPTY,

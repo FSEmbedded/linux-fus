@@ -786,7 +786,8 @@ void mlxsw_sp_acl_rule_del(struct mlxsw_sp *mlxsw_sp,
 	struct mlxsw_sp_flow_block *block = ruleset->ht_key.block;
 
 	block->egress_blocker_rule_count -= rule->rulei->egress_bind_blocker;
-	ruleset->ht_key.block->rule_count--;
+	block->ingress_blocker_rule_count -= rule->rulei->ingress_bind_blocker;
+	block->rule_count--;
 	mutex_lock(&mlxsw_sp->acl->rules_lock);
 	list_del(&rule->list);
 	mutex_unlock(&mlxsw_sp->acl->rules_lock);

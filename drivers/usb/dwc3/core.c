@@ -80,11 +80,14 @@ static int dwc3_get_dr_mode(struct dwc3 *dwc)
 			mode = USB_DR_MODE_PERIPHERAL;
 
 		/*
-		 * dwc_usb31 does not support OTG mode. If the controller
-		 * supports DRD but the dr_mode is not specified or set to OTG,
-		 * then set the mode to peripheral.
+		 * DWC_usb31 and DWC_usb3 v3.30a and higher do not support OTG
+		 * mode. If the controller supports DRD but the dr_mode is not
+		 * specified or set to OTG, then set the mode to peripheral.
 		 */
-		if (mode == USB_DR_MODE_OTG && dwc3_is_usb31(dwc))
+		if (mode == USB_DR_MODE_OTG &&
+		    (!IS_ENABLED(CONFIG_USB_ROLE_SWITCH) ||
+		     !device_property_read_bool(dwc->dev, "usb-role-switch")) &&
+		    !DWC3_VER_IS_PRIOR(DWC3, 330A))
 			mode = USB_DR_MODE_PERIPHERAL;
 	}
 
@@ -101,14 +104,18 @@ static int dwc3_get_dr_mode(struct dwc3 *dwc)
 
 void dwc3_set_prtcap(struct dwc3 *dwc, u32 mode)
 {
-	u32 reg;
+	u32 reg, reg_mode;
 
-	if (mode != DWC3_GCTL_PRTCAP_NONE) {
-		reg = dwc3_readl(dwc->regs, DWC3_GCTL);
-		reg &= ~(DWC3_GCTL_PRTCAPDIR(DWC3_GCTL_PRTCAP_OTG));
-		reg |= DWC3_GCTL_PRTCAPDIR(mode);
-		dwc3_writel(dwc->regs, DWC3_GCTL, reg);
-	}
+	/* Set PRTCAPDIR to be device mode for disconnect */
+	if (mode == DWC3_GCTL_PRTCAP_NONE)
+		reg_mode = DWC3_GCTL_PRTCAP_DEVICE;
+	else
+		reg_mode = mode;
+
+	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
+	reg &= ~(DWC3_GCTL_PRTCAPDIR(DWC3_GCTL_PRTCAP_OTG));
+	reg |= DWC3_GCTL_PRTCAPDIR(reg_mode);
+	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
 
 	dwc->current_dr_role = mode;
 }
@@ -122,6 +129,8 @@ static void __dwc3_set_mode(struct work_struct *work)
 	unsigned long flags;
 	int ret;
 	u32 reg;
+
+	mutex_lock(&dwc->mutex);
 
 	pm_runtime_get_sync(dwc->dev);
 
@@ -224,6 +233,7 @@ static void __dwc3_set_mode(struct work_struct *work)
 out:
 	pm_runtime_mark_last_busy(dwc->dev);
 	pm_runtime_put_autosuspend(dwc->dev);
+	mutex_unlock(&dwc->mutex);
 }
 
 void dwc3_set_mode(struct dwc3 *dwc, u32 mode)
@@ -323,6 +333,8 @@ static void dwc3_frame_length_adjustment(struct dwc3 *dwc)
 	if (dwc3_pdata && dwc3_pdata->quirks & DWC3_SOFT_ITP_SYNC) {
 		u32 ref_clk_hz, ref_clk_period_integer;
 		unsigned long long temp;
+		struct device_node *node = dwc->dev->of_node;
+		struct clk *ref_clk;
 
 		reg = dwc3_readl(dwc->regs, DWC3_GCTL);
 		reg |= DWC3_GCTL_SOFITPSYNC;
@@ -336,13 +348,19 @@ static void dwc3_frame_length_adjustment(struct dwc3 *dwc)
 		 * where
 		 * - the ref_clk_period_integer is the integer value of
 		 *   the ref_clk period got by truncating the decimal
-		 *   (fractional)  value that is programmed in the
+		 *   (fractional) value that is programmed in the
 		 *   GUCTL.REF_CLK_PERIOD field.
 		 * - the ref_clk_period is the ref_clk period including
 		 *   the fractional value.
 		 */
+		ref_clk = of_clk_get_by_name(node, "ref");
+		if (IS_ERR(ref_clk)) {
+			dev_err(dwc->dev, "Can't get ref clock for fladj\n");
+			return;
+		}
 		reg = dwc3_readl(dwc->regs, DWC3_GFLADJ);
-		ref_clk_hz = clk_get_rate(dwc->clks[0].clk);
+		ref_clk_hz = clk_get_rate(ref_clk);
+		clk_put(ref_clk);
 		if (ref_clk_hz == 0) {
 			dev_err(dwc->dev, "ref clk is 0, can't set fladj\n");
 			return;
@@ -365,7 +383,7 @@ static void dwc3_frame_length_adjustment(struct dwc3 *dwc)
 		dwc3_writel(dwc->regs, DWC3_GUCTL, reg);
 	}
 
-	if (dwc->revision < DWC3_REVISION_250A)
+	if (DWC3_VER_IS_PRIOR(DWC3, 250A))
 		return;
 
 	if (dwc->fladj == 0)
@@ -1057,14 +1075,6 @@ static int dwc3_core_init(struct dwc3 *dwc)
 	 * out which kernel version a bug was found.
 	 */
 	dwc3_writel(dwc->regs, DWC3_GUID, LINUX_VERSION_CODE);
-
-	/* Handle USB2.0-only core configuration */
-	if (DWC3_GHWPARAMS3_SSPHY_IFC(dwc->hwparams.hwparams3) ==
-			DWC3_GHWPARAMS3_SSPHY_IFC_DIS) {
-		if (dwc->maximum_speed == USB_SPEED_SUPER)
-			dwc->maximum_speed = USB_SPEED_HIGH;
-	}
-
 	dwc3_set_power_down_clk_scale(dwc);
 
 	ret = dwc3_phy_setup(dwc);
@@ -1192,21 +1202,6 @@ static int dwc3_core_init(struct dwc3 *dwc)
 		reg |= DWC3_GUCTL_HSTINAUTORETRY;
 
 		dwc3_writel(dwc->regs, DWC3_GUCTL, reg);
-
-		/*
-		 * Disable Park Mode for super speed:
-		 * Park mode is used in host mode when only a single async
-		 * endpoint is active, but which has a known issue cause
-		 * USB3.0 HC may die when read and write at the same time,
-		 * considering the advantages of this mode are minimal,
-		 * this issue only impacts super speed and exist on all IP
-		 * versions, disable it for SS, Synopsys will release a formal
-		 * STAR 9001415732, and disable it by default in next IP
-		 * release.
-		 */
-		reg = dwc3_readl(dwc->regs, DWC3_GUCTL1);
-		reg |= DWC3_GUCTL1_PARKMODE_DISABLE_SS;
-		dwc3_writel(dwc->regs, DWC3_GUCTL1, reg);
 	}
 
 	/*
@@ -1342,8 +1337,8 @@ static int dwc3_core_get_phy(struct dwc3 *dwc)
 
 static int dwc3_core_init_mode(struct dwc3 *dwc)
 {
-	struct device *dev = dwc->dev;
 	struct dwc3_platform_data *dwc3_pdata;
+	struct device *dev = dwc->dev;
 	int ret;
 
 	switch (dwc->dr_mode) {
@@ -1538,6 +1533,8 @@ static void dwc3_get_properties(struct dwc3 *dwc)
 	dwc->dis_metastability_quirk = device_property_read_bool(dev,
 				"snps,dis_metastability_quirk");
 
+	dwc->dis_split_quirk = device_property_read_bool(dev,
+				"snps,dis-split-quirk");
 	dwc->host_vbus_glitches = device_property_read_bool(dev,
 				"snps,host-vbus-glitches");
 
@@ -2017,8 +2014,6 @@ static int dwc3_runtime_suspend(struct device *dev)
 	if (ret)
 		return ret;
 
-	device_init_wakeup(dev, true);
-
 	return 0;
 }
 
@@ -2026,8 +2021,6 @@ static int dwc3_runtime_resume(struct device *dev)
 {
 	struct dwc3     *dwc = dev_get_drvdata(dev);
 	int		ret;
-
-	device_init_wakeup(dev, false);
 
 	ret = dwc3_resume_common(dwc, PMSG_AUTO_RESUME);
 	if (ret)

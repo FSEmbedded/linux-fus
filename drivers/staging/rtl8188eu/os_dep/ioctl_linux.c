@@ -2009,16 +2009,8 @@ static int wpa_supplicant_ioctl(struct net_device *dev, struct iw_point *p)
 	struct ieee_param *param;
 	uint ret = 0;
 
-	if (!p->pointer || p->length != sizeof(struct ieee_param)) {
-		ret = -EINVAL;
-		goto out;
-	}
-
-	param = (struct ieee_param *)rtw_malloc(p->length);
-	if (!param) {
-		ret = -ENOMEM;
-		goto out;
-	}
+	if (!p->pointer || p->length != sizeof(struct ieee_param))
+		return -EINVAL;
 
 	param = memdup_user(p->pointer, p->length);
 	if (IS_ERR(param))
@@ -2786,10 +2778,8 @@ static int rtw_hostapd_ioctl(struct net_device *dev, struct iw_point *p)
 	 * so, we just check hw_init_completed
 	 */
 
-	if (!p->pointer || p->length != sizeof(struct ieee_param)) {
-		ret = -EINVAL;
-		goto out;
-	}
+	if (!padapter->hw_init_completed)
+		return -EPERM;
 
 	if (!p->pointer || p->length != sizeof(struct ieee_param))
 		return -EINVAL;

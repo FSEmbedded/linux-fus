@@ -4708,11 +4708,12 @@ static struct ids_vec *bpf_core_find_cands(const struct btf *local_btf,
 			continue;
 
 		if (strncmp(local_name, targ_name, local_essent_len) == 0) {
-			pr_debug("[%d] %s: found candidate [%d] %s\n",
-				 local_type_id, local_name, i, targ_name);
-			new_ids = reallocarray(cand_ids->data,
-					       cand_ids->len + 1,
-					       sizeof(*cand_ids->data));
+			pr_debug("CO-RE relocating [%d] %s %s: found target candidate [%d] %s %s\n",
+				 local_type_id, btf_kind_str(local_t),
+				 local_name, i, btf_kind_str(t), targ_name);
+			new_ids = libbpf_reallocarray(cand_ids->data,
+						      cand_ids->len + 1,
+						      sizeof(*cand_ids->data));
 			if (!new_ids) {
 				err = -ENOMEM;
 				goto err_out;
@@ -6243,7 +6244,6 @@ bpf_object__reloc_code(struct bpf_object *obj, struct bpf_program *main_prog,
 				prog->name);
 			return -LIBBPF_ERRNO__RELOC;
 		}
-		prog->insns = new_insn;
 
 		/* if it's the first call instruction calling into this
 		 * subprogram (meaning this subprog hasn't been processed
@@ -6278,13 +6278,22 @@ bpf_object__reloc_code(struct bpf_object *obj, struct bpf_program *main_prog,
 				return err;
 		}
 
-		memcpy(new_insn + prog->insns_cnt, text->insns,
-		       text->insns_cnt * sizeof(*insn));
-		prog->main_prog_cnt = prog->insns_cnt;
-		prog->insns_cnt = new_cnt;
-		pr_debug("added %zd insn from %s to prog %s\n",
-			 text->insns_cnt, text->section_name,
-			 prog->section_name);
+		/* main_prog->insns memory could have been re-allocated, so
+		 * calculate pointer again
+		 */
+		insn = &main_prog->insns[prog->sub_insn_off + insn_idx];
+		/* calculate correct instruction position within current main
+		 * prog; each main prog can have a different set of
+		 * subprograms appended (potentially in different order as
+		 * well), so position of any subprog can be different for
+		 * different main programs */
+		insn->imm = subprog->sub_insn_off - (prog->sub_insn_off + insn_idx) - 1;
+
+		if (relo)
+			relo->processed = true;
+
+		pr_debug("prog '%s': insn #%zu relocated, imm %d points to subprog '%s' (now at %zu offset)\n",
+			 prog->name, insn_idx, insn->imm, subprog->name, subprog->sub_insn_off);
 	}
 
 	return 0;
@@ -10633,6 +10642,30 @@ void bpf_program__bpil_offs_to_addr(struct bpf_prog_info_linear *info_linear)
 	}
 }
 
+int bpf_program__set_attach_target(struct bpf_program *prog,
+				   int attach_prog_fd,
+				   const char *attach_func_name)
+{
+	int btf_id;
+
+	if (!prog || attach_prog_fd < 0 || !attach_func_name)
+		return -EINVAL;
+
+	if (attach_prog_fd)
+		btf_id = libbpf_find_prog_btf_id(attach_func_name,
+						 attach_prog_fd);
+	else
+		btf_id = libbpf_find_vmlinux_btf_id(attach_func_name,
+						    prog->expected_attach_type);
+
+	if (btf_id < 0)
+		return btf_id;
+
+	prog->attach_btf_id = btf_id;
+	prog->attach_prog_fd = attach_prog_fd;
+	return 0;
+}
+
 int parse_cpu_mask_str(const char *s, bool **mask, int *mask_sz)
 {
 	int err = 0, n, len, start, end = -1;
@@ -10649,15 +10682,15 @@ int parse_cpu_mask_str(const char *s, bool **mask, int *mask_sz)
 		}
 		n = sscanf(s, "%d%n-%d%n", &start, &len, &end, &len);
 		if (n <= 0 || n > 2) {
-			pr_warning("Failed to get CPU range %s: %d\n", s, n);
+			pr_warn("Failed to get CPU range %s: %d\n", s, n);
 			err = -EINVAL;
 			goto cleanup;
 		} else if (n == 1) {
 			end = start;
 		}
 		if (start < 0 || start > end) {
-			pr_warning("Invalid CPU range [%d,%d] in %s\n",
-				   start, end, s);
+			pr_warn("Invalid CPU range [%d,%d] in %s\n",
+				start, end, s);
 			err = -EINVAL;
 			goto cleanup;
 		}
@@ -10673,7 +10706,7 @@ int parse_cpu_mask_str(const char *s, bool **mask, int *mask_sz)
 		s += len;
 	}
 	if (!*mask_sz) {
-		pr_warning("Empty CPU range\n");
+		pr_warn("Empty CPU range\n");
 		return -EINVAL;
 	}
 	return 0;
@@ -10691,18 +10724,18 @@ int parse_cpu_mask_file(const char *fcpu, bool **mask, int *mask_sz)
 	fd = open(fcpu, O_RDONLY);
 	if (fd < 0) {
 		err = -errno;
-		pr_warning("Failed to open cpu mask file %s: %d\n", fcpu, err);
+		pr_warn("Failed to open cpu mask file %s: %d\n", fcpu, err);
 		return err;
 	}
 	len = read(fd, buf, sizeof(buf));
 	close(fd);
 	if (len <= 0) {
 		err = len ? -errno : -EINVAL;
-		pr_warning("Failed to read cpu mask from %s: %d\n", fcpu, err);
+		pr_warn("Failed to read cpu mask from %s: %d\n", fcpu, err);
 		return err;
 	}
 	if (len >= sizeof(buf)) {
-		pr_warning("CPU mask is too big in file %s\n", fcpu);
+		pr_warn("CPU mask is too big in file %s\n", fcpu);
 		return -E2BIG;
 	}
 	buf[len] = '\0';

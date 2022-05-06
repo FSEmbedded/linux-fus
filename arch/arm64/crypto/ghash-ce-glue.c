@@ -203,20 +203,6 @@ static struct shash_alg ghash_alg = {
 	.base.cra_driver_name	= "ghash-neon",
 	.base.cra_priority	= 150,
 	.base.cra_blocksize	= GHASH_BLOCK_SIZE,
-	.base.cra_ctxsize	= sizeof(struct ghash_key),
-	.base.cra_module	= THIS_MODULE,
-
-	.digestsize		= GHASH_DIGEST_SIZE,
-	.init			= ghash_init,
-	.update			= ghash_update_p8,
-	.final			= ghash_final_p8,
-	.setkey			= ghash_setkey,
-	.descsize		= sizeof(struct ghash_desc_ctx),
-}, {
-	.base.cra_name		= "ghash",
-	.base.cra_driver_name	= "ghash-ce",
-	.base.cra_priority	= 200,
-	.base.cra_blocksize	= GHASH_BLOCK_SIZE,
 	.base.cra_ctxsize	= sizeof(struct ghash_key) + sizeof(u64[2]),
 	.base.cra_module	= THIS_MODULE,
 

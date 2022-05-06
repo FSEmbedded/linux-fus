@@ -1322,6 +1322,8 @@ nfsd4_run_cb_work(struct work_struct *work)
 	struct rpc_clnt *clnt;
 	int flags;
 
+	trace_nfsd_cb_work(clp, cb->cb_msg.rpc_proc->p_name);
+
 	if (cb->cb_need_restart) {
 		cb->cb_need_restart = false;
 	} else {

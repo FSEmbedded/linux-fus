@@ -151,6 +151,7 @@ struct page_pool *page_pool_create(const struct page_pool_params *params);
 #ifdef CONFIG_PAGE_POOL
 void page_pool_destroy(struct page_pool *pool);
 void page_pool_use_xdp_mem(struct page_pool *pool, void (*disconnect)(void *));
+void page_pool_release_page(struct page_pool *pool, struct page *page);
 #else
 static inline void page_pool_destroy(struct page_pool *pool)
 {
@@ -158,6 +159,10 @@ static inline void page_pool_destroy(struct page_pool *pool)
 
 static inline void page_pool_use_xdp_mem(struct page_pool *pool,
 					 void (*disconnect)(void *))
+{
+}
+static inline void page_pool_release_page(struct page_pool *pool,
+					  struct page *page)
 {
 }
 #endif
@@ -181,17 +186,10 @@ static inline void page_pool_put_full_page(struct page_pool *pool,
 static inline void page_pool_recycle_direct(struct page_pool *pool,
 					    struct page *page)
 {
-	__page_pool_put_page(pool, page, true);
+	page_pool_put_full_page(pool, page, true);
 }
 
-/* Disconnects a page (from a page_pool).  API users can have a need
- * to disconnect a page (from a page_pool), to allow it to be used as
- * a regular page (that will eventually be returned to the normal
- * page-allocator via put_page).
- */
-void page_pool_unmap_page(struct page_pool *pool, struct page *page);
-static inline void page_pool_release_page(struct page_pool *pool,
-					  struct page *page)
+static inline dma_addr_t page_pool_get_dma_addr(struct page *page)
 {
 	dma_addr_t ret = page->dma_addr[0];
 	if (sizeof(dma_addr_t) > sizeof(unsigned long))
