@@ -47,27 +47,6 @@ struct mpc8xxx_gpio_chip {
 	unsigned int irqn;
 };
 
-/* The GPIO Input Buffer Enable register(GPIO_IBE) is used to
- * control the input enable of each individual GPIO port.
- * When an individual GPIO port’s direction is set to
- * input (GPIO_GPDIR[DRn=0]), the associated input enable must be
- * set (GPIOxGPIE[IEn]=1) to propagate the port value to the GPIO
- * Data Register.
- */
-static int ls1028a_gpio_dir_in_init(struct gpio_chip *gc)
-{
-	unsigned long flags;
-	struct mpc8xxx_gpio_chip *mpc8xxx_gc = gpiochip_get_data(gc);
-
-	spin_lock_irqsave(&gc->bgpio_lock, flags);
-
-	gc->write_reg(mpc8xxx_gc->regs + GPIO_IBE, 0xffffffff);
-
-	spin_unlock_irqrestore(&gc->bgpio_lock, flags);
-
-	return 0;
-}
-
 /*
  * This hardware has a big endian bit assignment such that GPIO line 0 is
  * connected to bit 31, line 1 to bit 30 ... line 31 to bit 0.
@@ -283,7 +262,6 @@ static const struct irq_domain_ops mpc8xxx_gpio_irq_ops = {
 };
 
 struct mpc8xxx_gpio_devtype {
-	int (*gpio_dir_in_init)(struct gpio_chip *chip);
 	int (*gpio_dir_out)(struct gpio_chip *, unsigned int, int);
 	int (*gpio_get)(struct gpio_chip *, unsigned int);
 	int (*irq_set_type)(struct irq_data *, unsigned int);
@@ -319,8 +297,8 @@ static const struct of_device_id mpc8xxx_gpio_ids[] = {
 	{ .compatible = "fsl,mpc5121-gpio", .data = &mpc512x_gpio_devtype, },
 	{ .compatible = "fsl,mpc5125-gpio", .data = &mpc5125_gpio_devtype, },
 	{ .compatible = "fsl,pq3-gpio",     },
-	{ .compatible = "fsl,ls1028a-gpio", .data = &ls1028a_gpio_devtype, },
-	{ .compatible = "fsl,ls1088a-gpio", .data = &ls1028a_gpio_devtype, },
+	{ .compatible = "fsl,ls1028a-gpio", },
+	{ .compatible = "fsl,ls1088a-gpio", },
 	{ .compatible = "fsl,qoriq-gpio",   },
 	{}
 };
@@ -411,9 +389,6 @@ static int mpc8xxx_probe(struct platform_device *pdev)
 	/* ack and mask all irqs */
 	gc->write_reg(mpc8xxx_gc->regs + GPIO_IER, 0xffffffff);
 	gc->write_reg(mpc8xxx_gc->regs + GPIO_IMR, 0);
-	/* enable input buffer  */
-	if (devtype->gpio_dir_in_init)
-		devtype->gpio_dir_in_init(gc);
 
 	ret = devm_request_irq(&pdev->dev, mpc8xxx_gc->irqn,
 			       mpc8xxx_gpio_irq_cascade,
@@ -427,6 +402,8 @@ static int mpc8xxx_probe(struct platform_device *pdev)
 
 	return 0;
 err:
+	if (mpc8xxx_gc->irq)
+		irq_domain_remove(mpc8xxx_gc->irq);
 	iounmap(mpc8xxx_gc->regs);
 	return ret;
 }
@@ -440,7 +417,6 @@ static int mpc8xxx_remove(struct platform_device *pdev)
 		irq_domain_remove(mpc8xxx_gc->irq);
 	}
 
-	gpiochip_remove(&mpc8xxx_gc->gc);
 	iounmap(mpc8xxx_gc->regs);
 
 	return 0;

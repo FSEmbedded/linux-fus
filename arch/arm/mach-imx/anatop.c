@@ -188,7 +188,7 @@ static void imx_anatop_usb_chrg_detect_disable(void)
 
 void __init imx_init_revision_from_anatop(void)
 {
-	struct device_node *np;
+	struct device_node *np, *src_np;
 	void __iomem *anatop_base;
 	void __iomem *src_base;
 	unsigned int revision;
@@ -240,6 +240,7 @@ void __init imx_init_revision_from_anatop(void)
 		minor_part = digprog & 0xf;
 		revision = ((major_part + 1) << 4) | minor_part;
 	}
+	of_node_put(np);
 
 	mxc_set_cpu_type(digprog >> 16 & 0xff);
 	imx_set_soc_revision(revision);
@@ -248,10 +249,6 @@ void __init imx_init_revision_from_anatop(void)
 void __init imx_anatop_init(void)
 {
 	anatop = syscon_regmap_lookup_by_compatible("fsl,imx6q-anatop");
-	if (IS_ERR(anatop)) {
+	if (IS_ERR(anatop))
 		pr_err("%s: failed to find imx6q-anatop regmap!\n", __func__);
-		return;
-	}
-
-	imx_anatop_usb_chrg_detect_disable();
 }

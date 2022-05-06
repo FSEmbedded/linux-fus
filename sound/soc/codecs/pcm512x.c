@@ -1493,7 +1493,7 @@ static const struct snd_soc_dai_ops pcm512x_dai_ops = {
 	.startup = pcm512x_dai_startup,
 	.hw_params = pcm512x_hw_params,
 	.set_fmt = pcm512x_set_fmt,
-	.digital_mute = pcm512x_digital_mute,
+	.mute_stream = pcm512x_mute,
 	.set_bclk_ratio = pcm512x_set_bclk_ratio,
 	.set_sysclk = pcm512x_set_sysclk,
 };

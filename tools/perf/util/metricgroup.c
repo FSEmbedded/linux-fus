@@ -15,7 +15,6 @@
 #include "rblist.h"
 #include <string.h>
 #include <errno.h>
-#include "pmu-events/pmu-events.h"
 #include "strlist.h"
 #include <assert.h>
 #include <linux/ctype.h>
@@ -75,30 +74,131 @@ static struct rb_node *metric_event_new(struct rblist *rblist __maybe_unused,
 	return &me->nd;
 }
 
+static void metric_event_delete(struct rblist *rblist __maybe_unused,
+				struct rb_node *rb_node)
+{
+	struct metric_event *me = container_of(rb_node, struct metric_event, nd);
+	struct metric_expr *expr, *tmp;
+
+	list_for_each_entry_safe(expr, tmp, &me->head, nd) {
+		free(expr->metric_refs);
+		free(expr->metric_events);
+		free(expr);
+	}
+
+	free(me);
+}
+
 static void metricgroup__rblist_init(struct rblist *metric_events)
 {
 	rblist__init(metric_events);
 	metric_events->node_cmp = metric_event_cmp;
 	metric_events->node_new = metric_event_new;
+	metric_events->node_delete = metric_event_delete;
 }
 
-struct egroup {
+void metricgroup__rblist_exit(struct rblist *metric_events)
+{
+	rblist__exit(metric_events);
+}
+
+/*
+ * A node in the list of referenced metrics. metric_expr
+ * is held as a convenience to avoid a search through the
+ * metric list.
+ */
+struct metric_ref_node {
+	const char *metric_name;
+	const char *metric_expr;
+	struct list_head list;
+};
+
+struct metric {
 	struct list_head nd;
-	int idnum;
-	const char **ids;
+	struct expr_parse_ctx pctx;
 	const char *metric_name;
 	const char *metric_expr;
 	const char *metric_unit;
+	struct list_head metric_refs;
+	int metric_refs_cnt;
+	int runtime;
+	bool has_constraint;
 };
 
-static struct evsel *find_evsel_group(struct evlist *perf_evlist,
-				      const char **ids,
-				      int idnum,
-				      struct evsel **metric_events)
+#define RECURSION_ID_MAX 1000
+
+struct expr_ids {
+	struct expr_id	id[RECURSION_ID_MAX];
+	int		cnt;
+};
+
+static struct expr_id *expr_ids__alloc(struct expr_ids *ids)
 {
-	struct evsel *ev;
-	int i = 0;
-	bool leader_found;
+	if (ids->cnt >= RECURSION_ID_MAX)
+		return NULL;
+	return &ids->id[ids->cnt++];
+}
+
+static void expr_ids__exit(struct expr_ids *ids)
+{
+	int i;
+
+	for (i = 0; i < ids->cnt; i++)
+		free(ids->id[i].id);
+}
+
+static bool contains_event(struct evsel **metric_events, int num_events,
+			const char *event_name)
+{
+	int i;
+
+	for (i = 0; i < num_events; i++) {
+		if (!strcmp(metric_events[i]->name, event_name))
+			return true;
+	}
+	return false;
+}
+
+/**
+ * Find a group of events in perf_evlist that correspond to those from a parsed
+ * metric expression. Note, as find_evsel_group is called in the same order as
+ * perf_evlist was constructed, metric_no_merge doesn't need to test for
+ * underfilling a group.
+ * @perf_evlist: a list of events something like: {metric1 leader, metric1
+ * sibling, metric1 sibling}:W,duration_time,{metric2 leader, metric2 sibling,
+ * metric2 sibling}:W,duration_time
+ * @pctx: the parse context for the metric expression.
+ * @metric_no_merge: don't attempt to share events for the metric with other
+ * metrics.
+ * @has_constraint: is there a contraint on the group of events? In which case
+ * the events won't be grouped.
+ * @metric_events: out argument, null terminated array of evsel's associated
+ * with the metric.
+ * @evlist_used: in/out argument, bitmap tracking which evlist events are used.
+ * @return the first metric event or NULL on failure.
+ */
+static struct evsel *find_evsel_group(struct evlist *perf_evlist,
+				      struct expr_parse_ctx *pctx,
+				      bool metric_no_merge,
+				      bool has_constraint,
+				      struct evsel **metric_events,
+				      unsigned long *evlist_used)
+{
+	struct evsel *ev, *current_leader = NULL;
+	struct expr_id_data *val_ptr;
+	int i = 0, matched_events = 0, events_to_match;
+	const int idnum = (int)hashmap__size(&pctx->ids);
+
+	/*
+	 * duration_time is always grouped separately, when events are grouped
+	 * (ie has_constraint is false) then ignore it in the matching loop and
+	 * add it to metric_events at the end.
+	 */
+	if (!has_constraint &&
+	    hashmap__find(&pctx->ids, "duration_time", (void **)&val_ptr))
+		events_to_match = idnum - 1;
+	else
+		events_to_match = idnum;
 
 	evlist__for_each_entry (perf_evlist, ev) {
 		if (!strcmp(ev->name, ids[i])) {
@@ -116,14 +216,16 @@ static struct evsel *find_evsel_group(struct evlist *perf_evlist,
 				continue;
 			}
 
-			if (!strcmp(ev->name, ids[i]))
-				metric_events[i] = ev;
-			else {
-				/* Discard the whole match and start again */
-				i = 0;
-				memset(metric_events, 0,
-				       sizeof(struct evsel *) * idnum);
-				continue;
+		if (matched_events == events_to_match)
+			break;
+	}
+
+	if (events_to_match != idnum) {
+		/* Add the first duration_time. */
+		evlist__for_each_entry(perf_evlist, ev) {
+			if (!strcmp(ev->name, "duration_time")) {
+				metric_events[matched_events++] = ev;
+				break;
 			}
 		}
 	}
@@ -136,13 +238,30 @@ static struct evsel *find_evsel_group(struct evlist *perf_evlist,
 	metric_events[idnum] = NULL;
 
 	for (i = 0; i < idnum; i++) {
-		leader_found = false;
-		evlist__for_each_entry(perf_evlist, ev) {
-			if (!leader_found && (ev == metric_events[i]))
-				leader_found = true;
-
-			if (leader_found &&
-			    !strcmp(ev->name, metric_events[i]->name)) {
+		ev = metric_events[i];
+		/* Don't free the used events. */
+		set_bit(ev->idx, evlist_used);
+		/*
+		 * The metric leader points to the identically named event in
+		 * metric_events.
+		 */
+		ev->metric_leader = ev;
+		/*
+		 * Mark two events with identical names in the same group (or
+		 * globally) as being in use as uncore events may be duplicated
+		 * for each pmu. Set the metric leader of such events to be the
+		 * event that appears in metric_events.
+		 */
+		evlist__for_each_entry_continue(perf_evlist, ev) {
+			/*
+			 * If events are grouped then the search can terminate
+			 * when then group is left.
+			 */
+			if (!has_constraint &&
+			    ev->leader != metric_events[i]->leader)
+				break;
+			if (!strcmp(metric_events[i]->name, ev->name)) {
+				set_bit(ev->idx, evlist_used);
 				ev->metric_leader = metric_events[i];
 			}
 		}
@@ -152,6 +271,7 @@ static struct evsel *find_evsel_group(struct evlist *perf_evlist,
 }
 
 static int metricgroup__setup_events(struct list_head *groups,
+				     bool metric_no_merge,
 				     struct evlist *perf_evlist,
 				     struct rblist *metric_events_list)
 {
@@ -159,26 +279,35 @@ static int metricgroup__setup_events(struct list_head *groups,
 	struct metric_expr *expr;
 	int i = 0;
 	int ret = 0;
-	struct egroup *eg;
-	struct evsel *evsel;
+	struct metric *m;
+	struct evsel *evsel, *tmp;
+	unsigned long *evlist_used;
 
-	list_for_each_entry (eg, groups, nd) {
+	evlist_used = bitmap_alloc(perf_evlist->core.nr_entries);
+	if (!evlist_used)
+		return -ENOMEM;
+
+	list_for_each_entry (m, groups, nd) {
 		struct evsel **metric_events;
+		struct metric_ref *metric_refs = NULL;
 
-		metric_events = calloc(sizeof(void *), eg->idnum + 1);
+		metric_events = calloc(sizeof(void *),
+				hashmap__size(&m->pctx.ids) + 1);
 		if (!metric_events) {
 			ret = -ENOMEM;
 			break;
 		}
-		evsel = find_evsel_group(perf_evlist, eg->ids, eg->idnum,
-					 metric_events);
+		evsel = find_evsel_group(perf_evlist, &m->pctx,
+					 metric_no_merge,
+					 m->has_constraint, metric_events,
+					 evlist_used);
 		if (!evsel) {
 			pr_debug("Cannot resolve %s: %s\n",
 					eg->metric_name, eg->metric_expr);
 			free(metric_events);
 			continue;
 		}
-		for (i = 0; i < eg->idnum; i++)
+		for (i = 0; metric_events[i]; i++)
 			metric_events[i]->collect_stat = true;
 		me = metricgroup__lookup(metric_events_list, evsel, true);
 		if (!me) {
@@ -192,12 +321,53 @@ static int metricgroup__setup_events(struct list_head *groups,
 			free(metric_events);
 			break;
 		}
-		expr->metric_expr = eg->metric_expr;
-		expr->metric_name = eg->metric_name;
-		expr->metric_unit = eg->metric_unit;
+
+		/*
+		 * Collect and store collected nested expressions
+		 * for metric processing.
+		 */
+		if (m->metric_refs_cnt) {
+			struct metric_ref_node *ref;
+
+			metric_refs = zalloc(sizeof(struct metric_ref) * (m->metric_refs_cnt + 1));
+			if (!metric_refs) {
+				ret = -ENOMEM;
+				free(metric_events);
+				free(expr);
+				break;
+			}
+
+			i = 0;
+			list_for_each_entry(ref, &m->metric_refs, list) {
+				/*
+				 * Intentionally passing just const char pointers,
+				 * originally from 'struct pmu_event' object.
+				 * We don't need to change them, so there's no
+				 * need to create our own copy.
+				 */
+				metric_refs[i].metric_name = ref->metric_name;
+				metric_refs[i].metric_expr = ref->metric_expr;
+				i++;
+			}
+		};
+
+		expr->metric_refs = metric_refs;
+		expr->metric_expr = m->metric_expr;
+		expr->metric_name = m->metric_name;
+		expr->metric_unit = m->metric_unit;
 		expr->metric_events = metric_events;
+		expr->runtime = m->runtime;
 		list_add(&expr->nd, &me->head);
 	}
+
+	evlist__for_each_entry_safe(perf_evlist, tmp, evsel) {
+		if (!test_bit(evsel->idx, evlist_used)) {
+			evlist__remove(perf_evlist, evsel);
+			evsel__delete(evsel);
+		}
+	}
+	bitmap_free(evlist_used);
+
 	return ret;
 }
 
@@ -391,10 +561,12 @@ void metricgroup__print(bool metrics, bool metricgroups, char *filter,
 		}
 	}
 
-	if (metricgroups && !raw)
-		printf("\nMetric Groups:\n\n");
-	else if (metrics && !raw)
-		printf("\nMetrics:\n\n");
+	if (!filter || !rblist__empty(&groups)) {
+		if (metricgroups && !raw)
+			printf("\nMetric Groups:\n\n");
+		else if (metrics && !raw)
+			printf("\nMetrics:\n\n");
+	}
 
 	for (node = rb_first_cached(&groups.entries); node; node = next) {
 		struct mep *me = container_of(node, struct mep, nd);
@@ -411,8 +583,8 @@ void metricgroup__print(bool metrics, bool metricgroups, char *filter,
 	strlist__delete(metriclist);
 }
 
-static int metricgroup__add_metric(const char *metric, struct strbuf *events,
-				   struct list_head *group_list)
+static void metricgroup__add_metric_weak_group(struct strbuf *events,
+					       struct expr_parse_ctx *ctx)
 {
 	struct pmu_events_map *map;
 	struct perf_pmu *pmu;
@@ -489,11 +661,73 @@ static int metricgroup__add_metric(const char *metric, struct strbuf *events,
 		if (ret == 0)
 			return ret;
 	}
+
 	return ret;
 }
 
-static int metricgroup__add_metric_list(const char *list, struct strbuf *events,
-				        struct list_head *group_list)
+static int metricgroup__add_metric(const char *metric, bool metric_no_group,
+				   struct strbuf *events,
+				   struct list_head *metric_list,
+				   struct pmu_events_map *map)
+{
+	struct expr_ids ids = { .cnt = 0, };
+	struct pmu_event *pe;
+	struct metric *m;
+	LIST_HEAD(list);
+	int i, ret;
+	bool has_match = false;
+
+	map_for_each_metric(pe, i, map, metric) {
+		has_match = true;
+		m = NULL;
+
+		ret = add_metric(&list, pe, metric_no_group, &m, NULL, &ids);
+		if (ret)
+			goto out;
+
+		/*
+		 * Process any possible referenced metrics
+		 * included in the expression.
+		 */
+		ret = resolve_metric(metric_no_group,
+				     &list, map, &ids);
+		if (ret)
+			goto out;
+	}
+
+	/* End of pmu events. */
+	if (!has_match) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	list_for_each_entry(m, &list, nd) {
+		if (events->len > 0)
+			strbuf_addf(events, ",");
+
+		if (m->has_constraint) {
+			metricgroup__add_metric_non_group(events,
+							  &m->pctx);
+		} else {
+			metricgroup__add_metric_weak_group(events,
+							   &m->pctx);
+		}
+	}
+
+out:
+	/*
+	 * add to metric_list so that they can be released
+	 * even if it's failed
+	 */
+	list_splice(&list, metric_list);
+	expr_ids__exit(&ids);
+	return ret;
+}
+
+static int metricgroup__add_metric_list(const char *list, bool metric_no_group,
+					struct strbuf *events,
+					struct list_head *metric_list,
+					struct pmu_events_map *map)
 {
 	char *llist, *nlist, *p;
 	int ret = -EINVAL;
@@ -507,7 +741,8 @@ static int metricgroup__add_metric_list(const char *list, struct strbuf *events,
 	strbuf_addf(events, "%s", "");
 
 	while ((p = strsep(&llist, ",")) != NULL) {
-		ret = metricgroup__add_metric(p, events, group_list);
+		ret = metricgroup__add_metric(p, metric_no_group, events,
+					      metric_list, map);
 		if (ret == -EINVAL) {
 			fprintf(stderr, "Cannot find metric or group `%s'\n",
 					p);
@@ -515,52 +750,94 @@ static int metricgroup__add_metric_list(const char *list, struct strbuf *events,
 		}
 	}
 	free(nlist);
+
+	if (!ret)
+		metricgroup___watchdog_constraint_hint(NULL, true);
+
 	return ret;
 }
 
-static void metricgroup__free_egroups(struct list_head *group_list)
+static void metric__free_refs(struct metric *metric)
 {
-	struct egroup *eg, *egtmp;
-	int i;
+	struct metric_ref_node *ref, *tmp;
 
-	list_for_each_entry_safe (eg, egtmp, group_list, nd) {
-		for (i = 0; i < eg->idnum; i++)
-			zfree(&eg->ids[i]);
-		zfree(&eg->ids);
-		list_del_init(&eg->nd);
-		free(eg);
+	list_for_each_entry_safe(ref, tmp, &metric->metric_refs, list) {
+		list_del(&ref->list);
+		free(ref);
 	}
 }
 
-int metricgroup__parse_groups(const struct option *opt,
-			   const char *str,
-			   struct rblist *metric_events)
+static void metricgroup__free_metrics(struct list_head *metric_list)
+{
+	struct metric *m, *tmp;
+
+	list_for_each_entry_safe (m, tmp, metric_list, nd) {
+		metric__free_refs(m);
+		expr__ctx_clear(&m->pctx);
+		list_del_init(&m->nd);
+		free(m);
+	}
+}
+
+static int parse_groups(struct evlist *perf_evlist, const char *str,
+			bool metric_no_group,
+			bool metric_no_merge,
+			struct perf_pmu *fake_pmu,
+			struct rblist *metric_events,
+			struct pmu_events_map *map)
 {
 	struct parse_events_error parse_error;
-	struct evlist *perf_evlist = *(struct evlist **)opt->value;
 	struct strbuf extra_events;
-	LIST_HEAD(group_list);
+	LIST_HEAD(metric_list);
 	int ret;
 
 	if (metric_events->nr_entries == 0)
 		metricgroup__rblist_init(metric_events);
-	ret = metricgroup__add_metric_list(str, &extra_events, &group_list);
+	ret = metricgroup__add_metric_list(str, metric_no_group,
+					   &extra_events, &metric_list, map);
 	if (ret)
 		return ret;
 
 	pr_debug("adding %s\n", extra_events.buf);
-	memset(&parse_error, 0, sizeof(struct parse_events_error));
-	ret = parse_events(perf_evlist, extra_events.buf, &parse_error);
+	bzero(&parse_error, sizeof(parse_error));
+	ret = __parse_events(perf_evlist, extra_events.buf, &parse_error, fake_pmu);
 	if (ret) {
 		parse_events_print_error(&parse_error, extra_events.buf);
 		goto out;
 	}
-	strbuf_release(&extra_events);
-	ret = metricgroup__setup_events(&group_list, perf_evlist,
-					metric_events);
+	ret = metricgroup__setup_events(&metric_list, metric_no_merge,
+					perf_evlist, metric_events);
 out:
-	metricgroup__free_egroups(&group_list);
+	metricgroup__free_metrics(&metric_list);
+	strbuf_release(&extra_events);
 	return ret;
+}
+
+int metricgroup__parse_groups(const struct option *opt,
+			      const char *str,
+			      bool metric_no_group,
+			      bool metric_no_merge,
+			      struct rblist *metric_events)
+{
+	struct evlist *perf_evlist = *(struct evlist **)opt->value;
+	struct pmu_events_map *map = perf_pmu__find_map(NULL);
+
+	if (!map)
+		return 0;
+
+	return parse_groups(perf_evlist, str, metric_no_group,
+			    metric_no_merge, NULL, metric_events, map);
+}
+
+int metricgroup__parse_groups_test(struct evlist *evlist,
+				   struct pmu_events_map *map,
+				   const char *str,
+				   bool metric_no_group,
+				   bool metric_no_merge,
+				   struct rblist *metric_events)
+{
+	return parse_groups(evlist, str, metric_no_group,
+			    metric_no_merge, &perf_pmu__fake, metric_events, map);
 }
 
 bool metricgroup__has_metric(const char *metric)
@@ -591,4 +868,88 @@ bool metricgroup__has_metric(const char *metric)
 		}
 	}
 	return false;
+}
+
+int metricgroup__copy_metric_events(struct evlist *evlist, struct cgroup *cgrp,
+				    struct rblist *new_metric_events,
+				    struct rblist *old_metric_events)
+{
+	unsigned i;
+
+	for (i = 0; i < rblist__nr_entries(old_metric_events); i++) {
+		struct rb_node *nd;
+		struct metric_event *old_me, *new_me;
+		struct metric_expr *old_expr, *new_expr;
+		struct evsel *evsel;
+		size_t alloc_size;
+		int idx, nr;
+
+		nd = rblist__entry(old_metric_events, i);
+		old_me = container_of(nd, struct metric_event, nd);
+
+		evsel = evlist__find_evsel(evlist, old_me->evsel->idx);
+		if (!evsel)
+			return -EINVAL;
+		new_me = metricgroup__lookup(new_metric_events, evsel, true);
+		if (!new_me)
+			return -ENOMEM;
+
+		pr_debug("copying metric event for cgroup '%s': %s (idx=%d)\n",
+			 cgrp ? cgrp->name : "root", evsel->name, evsel->idx);
+
+		list_for_each_entry(old_expr, &old_me->head, nd) {
+			new_expr = malloc(sizeof(*new_expr));
+			if (!new_expr)
+				return -ENOMEM;
+
+			new_expr->metric_expr = old_expr->metric_expr;
+			new_expr->metric_name = old_expr->metric_name;
+			new_expr->metric_unit = old_expr->metric_unit;
+			new_expr->runtime = old_expr->runtime;
+
+			if (old_expr->metric_refs) {
+				/* calculate number of metric_events */
+				for (nr = 0; old_expr->metric_refs[nr].metric_name; nr++)
+					continue;
+				alloc_size = sizeof(*new_expr->metric_refs);
+				new_expr->metric_refs = calloc(nr + 1, alloc_size);
+				if (!new_expr->metric_refs) {
+					free(new_expr);
+					return -ENOMEM;
+				}
+
+				memcpy(new_expr->metric_refs, old_expr->metric_refs,
+				       nr * alloc_size);
+			} else {
+				new_expr->metric_refs = NULL;
+			}
+
+			/* calculate number of metric_events */
+			for (nr = 0; old_expr->metric_events[nr]; nr++)
+				continue;
+			alloc_size = sizeof(*new_expr->metric_events);
+			new_expr->metric_events = calloc(nr + 1, alloc_size);
+			if (!new_expr->metric_events) {
+				free(new_expr->metric_refs);
+				free(new_expr);
+				return -ENOMEM;
+			}
+
+			/* copy evsel in the same position */
+			for (idx = 0; idx < nr; idx++) {
+				evsel = old_expr->metric_events[idx];
+				evsel = evlist__find_evsel(evlist, evsel->idx);
+				if (evsel == NULL) {
+					free(new_expr->metric_events);
+					free(new_expr->metric_refs);
+					free(new_expr);
+					return -EINVAL;
+				}
+				new_expr->metric_events[idx] = evsel;
+			}
+
+			list_add(&new_expr->nd, &new_me->head);
+		}
+	}
+	return 0;
 }

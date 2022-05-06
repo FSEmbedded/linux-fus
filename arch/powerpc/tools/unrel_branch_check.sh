@@ -1,17 +1,11 @@
-# Copyright © 2016 IBM Corporation
+#!/bin/bash
+# SPDX-License-Identifier: GPL-2.0+
+# Copyright © 2016,2020 IBM Corporation
 #
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version
-# 2 of the License, or (at your option) any later version.
-#
-# This script checks the relocations of a vmlinux for "suspicious"
-# branches from unrelocated code (head_64.S code).
+# This script checks the unrelocated code of a vmlinux for "suspicious"
+# branches to relocated code (head_64.S code).
 
-# Turn this on if you want more debug output:
-# set -x
-
-# Have Kbuild supply the path to objdump so we handle cross compilation.
+# Have Kbuild supply the path to objdump and nm so we handle cross compilation.
 objdump="$1"
 vmlinux="$2"
 
@@ -48,10 +42,10 @@ do
 			echo "WARNING: Unrelocated relative branches"
 			bad_branches="yes"
 		fi
-		echo "$from $branch-> $to $sym"
+		printf '%s %s-> %s %s\n' "$from" "$branch" "$to" "$sym"
 	fi
 done
 
-if [ -z "$bad_branches" ]; then
-	exit 0
-fi
+$all_good
+
+}

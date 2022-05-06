@@ -11,8 +11,8 @@
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/ahci_platform.h>
+#include <linux/gpio/consumer.h>
 #include <linux/of_device.h>
-#include <linux/of_gpio.h>
 #include <linux/mfd/syscon.h>
 #include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
 #include <linux/libata.h>
@@ -144,7 +144,7 @@ struct imx_ahci_priv {
 	struct clk *per_clk4;
 	struct clk *per_clk5;
 	void __iomem *phy_base;
-	int clkreq_gpio;
+	struct gpio_desc *clkreq_gpiod;
 	struct regmap *gpr;
 	bool no_device;
 	bool first_time;
@@ -1039,7 +1039,7 @@ static int ahci_imx_softreset(struct ata_link *link, unsigned int *class,
 	struct ata_host *host = dev_get_drvdata(ap->dev);
 	struct ahci_host_priv *hpriv = host->private_data;
 	struct imx_ahci_priv *imxpriv = hpriv->plat_data;
-	int ret = -EIO;
+	int ret;
 
 	if (imxpriv->type == AHCI_IMX53)
 		ret = ahci_pmp_retry_srst_ops.softreset(link, class, deadline);

@@ -21,7 +21,7 @@
 #define VNT_REG_BLOCK_SIZE	64
 
 int vnt_control_out(struct vnt_private *priv, u8 request, u16 value,
-		    u16 index, u16 length, u8 *buffer);
+		    u16 index, u16 length, const u8 *buffer);
 int vnt_control_in(struct vnt_private *priv, u8 request, u16 value,
 		   u16 index, u16 length,  u8 *buffer);
 
@@ -34,6 +34,7 @@ int vnt_control_out_blocks(struct vnt_private *priv,
 int vnt_start_interrupt_urb(struct vnt_private *priv);
 int vnt_submit_rx_urb(struct vnt_private *priv, struct vnt_rcb *rcb);
 int vnt_tx_context(struct vnt_private *priv,
-		   struct vnt_usb_send_context *context);
+		   struct vnt_usb_send_context *context,
+		   struct sk_buff *skb);
 
 #endif /* __USBPIPE_H__ */

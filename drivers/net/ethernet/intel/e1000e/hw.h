@@ -115,6 +115,9 @@ enum e1000_mac_type {
 	e1000_pch_lpt,
 	e1000_pch_spt,
 	e1000_pch_cnp,
+	e1000_pch_tgp,
+	e1000_pch_adp,
+	e1000_pch_mtp,
 };
 
 enum e1000_media_type {

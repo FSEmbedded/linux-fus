@@ -9,6 +9,7 @@
 #include <linux/iopoll.h>
 #include "stmmac.h"
 #include "stmmac_ptp.h"
+#include "dwxlgmac2.h"
 #include "dwxgmac2.h"
 
 static void dwxgmac2_core_init(struct mac_device_info *hw,
@@ -458,7 +459,7 @@ static void dwxgmac2_set_filter(struct mac_device_info *hw,
 
 		for (i = 0; i < XGMAC_MAX_HASH_TABLE; i++)
 			writel(~0x0, ioaddr + XGMAC_HASH_TABLE(i));
-	} else if (!netdev_mc_empty(dev)) {
+	} else if (!netdev_mc_empty(dev) && (dev->flags & IFF_MULTICAST)) {
 		struct netdev_hw_addr *ha;
 
 		value |= XGMAC_FILTER_HMC;
@@ -556,7 +557,7 @@ static int dwxgmac2_rss_configure(struct mac_device_info *hw,
 }
 
 static void dwxgmac2_update_vlan_hash(struct mac_device_info *hw, u32 hash,
-				      bool is_double)
+				      __le16 perfect_match, bool is_double)
 {
 	void __iomem *ioaddr = hw->pcsr;
 
@@ -569,14 +570,44 @@ static void dwxgmac2_update_vlan_hash(struct mac_device_info *hw, u32 hash,
 
 		writel(value, ioaddr + XGMAC_PACKET_FILTER);
 
-		value = XGMAC_VLAN_VTHM | XGMAC_VLAN_ETV;
+		value = readl(ioaddr + XGMAC_VLAN_TAG);
+
+		value |= XGMAC_VLAN_VTHM | XGMAC_VLAN_ETV;
 		if (is_double) {
 			value |= XGMAC_VLAN_EDVLP;
 			value |= XGMAC_VLAN_ESVL;
 			value |= XGMAC_VLAN_DOVLTC;
+		} else {
+			value &= ~XGMAC_VLAN_EDVLP;
+			value &= ~XGMAC_VLAN_ESVL;
+			value &= ~XGMAC_VLAN_DOVLTC;
 		}
 
+		value &= ~XGMAC_VLAN_VID;
 		writel(value, ioaddr + XGMAC_VLAN_TAG);
+	} else if (perfect_match) {
+		u32 value = readl(ioaddr + XGMAC_PACKET_FILTER);
+
+		value |= XGMAC_FILTER_VTFE;
+
+		writel(value, ioaddr + XGMAC_PACKET_FILTER);
+
+		value = readl(ioaddr + XGMAC_VLAN_TAG);
+
+		value &= ~XGMAC_VLAN_VTHM;
+		value |= XGMAC_VLAN_ETV;
+		if (is_double) {
+			value |= XGMAC_VLAN_EDVLP;
+			value |= XGMAC_VLAN_ESVL;
+			value |= XGMAC_VLAN_DOVLTC;
+		} else {
+			value &= ~XGMAC_VLAN_EDVLP;
+			value &= ~XGMAC_VLAN_ESVL;
+			value &= ~XGMAC_VLAN_DOVLTC;
+		}
+
+		value &= ~XGMAC_VLAN_VID;
+		writel(value | perfect_match, ioaddr + XGMAC_VLAN_TAG);
 	} else {
 		u32 value = readl(ioaddr + XGMAC_PACKET_FILTER);
 
@@ -1489,6 +1520,43 @@ int dwxgmac2_setup(struct stmmac_priv *priv)
 	mac->link.xgmii.speed5000 = XGMAC_CONFIG_SS_5000;
 	mac->link.xgmii.speed10000 = XGMAC_CONFIG_SS_10000;
 	mac->link.speed_mask = XGMAC_CONFIG_SS_MASK;
+
+	mac->mii.addr = XGMAC_MDIO_ADDR;
+	mac->mii.data = XGMAC_MDIO_DATA;
+	mac->mii.addr_shift = 16;
+	mac->mii.addr_mask = GENMASK(20, 16);
+	mac->mii.reg_shift = 0;
+	mac->mii.reg_mask = GENMASK(15, 0);
+	mac->mii.clk_csr_shift = 19;
+	mac->mii.clk_csr_mask = GENMASK(21, 19);
+
+	return 0;
+}
+
+int dwxlgmac2_setup(struct stmmac_priv *priv)
+{
+	struct mac_device_info *mac = priv->hw;
+
+	dev_info(priv->device, "\tXLGMAC\n");
+
+	priv->dev->priv_flags |= IFF_UNICAST_FLT;
+	mac->pcsr = priv->ioaddr;
+	mac->multicast_filter_bins = priv->plat->multicast_filter_bins;
+	mac->unicast_filter_entries = priv->plat->unicast_filter_entries;
+	mac->mcast_bits_log2 = 0;
+
+	if (mac->multicast_filter_bins)
+		mac->mcast_bits_log2 = ilog2(mac->multicast_filter_bins);
+
+	mac->link.duplex = 0;
+	mac->link.speed1000 = XLGMAC_CONFIG_SS_1000;
+	mac->link.speed2500 = XLGMAC_CONFIG_SS_2500;
+	mac->link.xgmii.speed10000 = XLGMAC_CONFIG_SS_10G;
+	mac->link.xlgmii.speed25000 = XLGMAC_CONFIG_SS_25G;
+	mac->link.xlgmii.speed40000 = XLGMAC_CONFIG_SS_40G;
+	mac->link.xlgmii.speed50000 = XLGMAC_CONFIG_SS_50G;
+	mac->link.xlgmii.speed100000 = XLGMAC_CONFIG_SS_100G;
+	mac->link.speed_mask = XLGMAC_CONFIG_SS;
 
 	mac->mii.addr = XGMAC_MDIO_ADDR;
 	mac->mii.data = XGMAC_MDIO_DATA;

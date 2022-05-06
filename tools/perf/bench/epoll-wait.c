@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-#ifdef HAVE_EVENTFD
+#ifdef HAVE_EVENTFD_SUPPORT
 /*
  * Copyright (C) 2018 Davidlohr Bueso.
  *
@@ -426,6 +426,7 @@ int bench_epoll_wait(int argc, const char **argv)
 		exit(EXIT_FAILURE);
 	}
 
+	memset(&act, 0, sizeof(act));
 	sigfillset(&act.sa_mask);
 	act.sa_sigaction = toggle_done;
 	sigaction(SIGINT, &act, NULL);
@@ -538,4 +539,4 @@ int bench_epoll_wait(int argc, const char **argv)
 errmem:
 	err(EXIT_FAILURE, "calloc");
 }
-#endif // HAVE_EVENTFD
+#endif // HAVE_EVENTFD_SUPPORT

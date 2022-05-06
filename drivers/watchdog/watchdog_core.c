@@ -39,6 +39,10 @@
 
 static DEFINE_IDA(watchdog_ida);
 
+static int stop_on_reboot = -1;
+module_param(stop_on_reboot, int, 0444);
+MODULE_PARM_DESC(stop_on_reboot, "Stop watchdogs on reboot (0=keep watching, 1=stop)");
+
 /*
  * Deferred Registration infrastructure.
  *

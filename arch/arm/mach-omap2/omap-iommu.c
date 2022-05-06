@@ -2,12 +2,14 @@
 /*
  * OMAP IOMMU quirks for various TI SoCs
  *
- * Copyright (C) 2015-2019 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2015-2019 Texas Instruments Incorporated - https://www.ti.com/
  *      Suman Anna <s-anna@ti.com>
  */
 
 #include <linux/platform_device.h>
 #include <linux/err.h>
+#include <linux/clk.h>
+#include <linux/list.h>
 
 #include "omap_hwmod.h"
 #include "omap_device.h"
@@ -45,20 +47,12 @@ int omap_iommu_set_pwrdm_constraint(struct platform_device *pdev, bool request,
 				    u8 *pwrst)
 {
 	struct powerdomain *pwrdm;
-	struct omap_device *od;
 	u8 next_pwrst;
 	int ret = 0;
 
-	od = to_omap_device(pdev);
-	if (!od)
-		return -ENODEV;
-
-	if (od->hwmods_cnt != 1)
-		return -EINVAL;
-
-	pwrdm = omap_hwmod_get_pwrdm(od->hwmods[0]);
+	pwrdm = _get_pwrdm(&pdev->dev);
 	if (!pwrdm)
-		return -EINVAL;
+		return -ENODEV;
 
 	if (request) {
 		*pwrst = pwrdm_read_next_pwrst(pwrdm);

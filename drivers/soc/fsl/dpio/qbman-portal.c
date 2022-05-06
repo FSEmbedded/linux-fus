@@ -262,6 +262,9 @@ struct qbman_swp *qbman_swp_init(const struct qbman_swp_desc *d)
 
 	if (!p)
 		return NULL;
+
+	spin_lock_init(&p->access_spinlock);
+
 	p->desc = d;
 	p->mc.valid_bit = QB_VALID_BIT;
 	p->sdq = 0;
@@ -618,16 +621,31 @@ void qbman_eq_desc_set_qd(struct qbman_eq_desc *d, u32 qdid,
 #define EQAR_VB(eqar)      ((eqar) & 0x80)
 #define EQAR_SUCCESS(eqar) ((eqar) & 0x100)
 
-static inline void qbman_write_eqcr_am_rt_register(struct qbman_swp *p,
-						   u8 idx)
+#define QB_RT_BIT ((u32)0x100)
+/**
+ * qbman_swp_enqueue_direct() - Issue an enqueue command
+ * @s:  the software portal used for enqueue
+ * @d:  the enqueue descriptor
+ * @fd: the frame descriptor to be enqueued
+ *
+ * Please note that 'fd' should only be NULL if the "action" of the
+ * descriptor is "orp_hole" or "orp_nesn".
+ *
+ * Return 0 for successful enqueue, -EBUSY if the EQCR is not ready.
+ */
+static
+int qbman_swp_enqueue_direct(struct qbman_swp *s,
+			     const struct qbman_eq_desc *d,
+			     const struct dpaa2_fd *fd)
 {
-	if (idx < 16)
-		qbman_write_register(p, QBMAN_CINH_SWP_EQCR_AM_RT + idx * 4,
-				     QMAN_RT_MODE);
+	int flags = 0;
+	int ret = qbman_swp_enqueue_multiple_direct(s, d, fd, &flags, 1);
+
+	if (ret >= 0)
+		ret = 0;
 	else
-		qbman_write_register(p, QBMAN_CINH_SWP_EQCR_AM_RT2 +
-				     (idx - 16) * 4,
-				     QMAN_RT_MODE);
+		ret = -EBUSY;
+	return  ret;
 }
 
 #define QB_RT_BIT ((u32)0x100)

@@ -65,9 +65,7 @@ struct auxtrace_record
 		return NULL;
 
 	cs_etm_pmu = perf_pmu__find(CORESIGHT_ETM_PMU_NAME);
-
-	if (!arm_spe_pmus)
-		arm_spe_pmus = find_all_arm_spe_pmus(&nr_spes, err);
+	arm_spe_pmus = find_all_arm_spe_pmus(&nr_spes, err);
 
 	evlist__for_each_entry(evlist, evsel) {
 		if (cs_etm_pmu &&
@@ -84,6 +82,7 @@ struct auxtrace_record
 			}
 		}
 	}
+	free(arm_spe_pmus);
 
 	if (found_etm && found_spe) {
 		pr_err("Concurrent ARM Coresight ETM and SPE operation not currently supported\n");

@@ -20,13 +20,19 @@ obj-y					+= broadcom/	\
 					   cadence/	\
 					   freescale/	\
 					   hisilicon/	\
+					   intel/	\
 					   lantiq/	\
 					   marvell/	\
+					   mediatek/	\
 					   motorola/	\
 					   mscc/	\
 					   qualcomm/	\
 					   ralink/	\
+					   renesas/	\
+					   rockchip/	\
 					   samsung/	\
 					   socionext/	\
 					   st/		\
-					   ti/
+					   tegra/	\
+					   ti/		\
+					   xilinx/

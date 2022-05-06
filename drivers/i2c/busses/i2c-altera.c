@@ -93,10 +93,7 @@ struct altr_i2c_dev {
 static void
 altr_i2c_int_enable(struct altr_i2c_dev *idev, u32 mask, bool enable)
 {
-	unsigned long flags;
 	u32 int_en;
-
-	spin_lock_irqsave(&idev->lock, flags);
 
 	int_en = readl(idev->base + ALTR_I2C_ISER);
 	if (enable)
@@ -105,8 +102,6 @@ altr_i2c_int_enable(struct altr_i2c_dev *idev, u32 mask, bool enable)
 		idev->isr_mask = int_en & ~mask;
 
 	writel(idev->isr_mask, idev->base + ALTR_I2C_ISER);
-
-	spin_unlock_irqrestore(&idev->lock, flags);
 }
 
 static void altr_i2c_int_clear(struct altr_i2c_dev *idev, u32 mask)
@@ -149,7 +144,7 @@ static void altr_i2c_init(struct altr_i2c_dev *idev)
 		  (ALTR_I2C_THRESHOLD << ALTR_I2C_CTRL_TCT_SHFT);
 	u32 t_high, t_low;
 
-	if (idev->bus_clk_rate <= 100000) {
+	if (idev->bus_clk_rate <= I2C_MAX_STANDARD_MODE_FREQ) {
 		tmp &= ~ALTR_I2C_CTRL_BSPEED;
 		/* Standard mode SCL 50/50 */
 		t_high = divisor * 1 / 2;
@@ -346,6 +341,7 @@ static int altr_i2c_xfer_msg(struct altr_i2c_dev *idev, struct i2c_msg *msg)
 
 	time_left = wait_for_completion_timeout(&idev->msg_complete,
 						ALTR_I2C_XFER_TIMEOUT);
+	mutex_lock(&idev->isr_mutex);
 	altr_i2c_int_enable(idev, imask, false);
 
 	value = readl(idev->base + ALTR_I2C_STATUS) & ALTR_I2C_STAT_CORE;
@@ -358,6 +354,7 @@ static int altr_i2c_xfer_msg(struct altr_i2c_dev *idev, struct i2c_msg *msg)
 	}
 
 	altr_i2c_core_disable(idev);
+	mutex_unlock(&idev->isr_mutex);
 
 	return idev->msg_err;
 }
@@ -389,23 +386,19 @@ static const struct i2c_algorithm altr_i2c_algo = {
 static int altr_i2c_probe(struct platform_device *pdev)
 {
 	struct altr_i2c_dev *idev = NULL;
-	struct resource *res;
 	int irq, ret;
 
 	idev = devm_kzalloc(&pdev->dev, sizeof(*idev), GFP_KERNEL);
 	if (!idev)
 		return -ENOMEM;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	idev->base = devm_ioremap_resource(&pdev->dev, res);
+	idev->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(idev->base))
 		return PTR_ERR(idev->base);
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq < 0) {
-		dev_err(&pdev->dev, "missing interrupt resource\n");
+	if (irq < 0)
 		return irq;
-	}
 
 	idev->i2c_clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(idev->i2c_clk)) {
@@ -430,10 +423,10 @@ static int altr_i2c_probe(struct platform_device *pdev)
 				       &idev->bus_clk_rate);
 	if (ret) {
 		dev_err(&pdev->dev, "Default to 100kHz\n");
-		idev->bus_clk_rate = 100000;	/* default clock rate */
+		idev->bus_clk_rate = I2C_MAX_STANDARD_MODE_FREQ;	/* default clock rate */
 	}
 
-	if (idev->bus_clk_rate > 400000) {
+	if (idev->bus_clk_rate > I2C_MAX_FAST_MODE_FREQ) {
 		dev_err(&pdev->dev, "invalid clock-frequency %d\n",
 			idev->bus_clk_rate);
 		return -EINVAL;
@@ -453,7 +446,9 @@ static int altr_i2c_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	mutex_lock(&idev->isr_mutex);
 	altr_i2c_init(idev);
+	mutex_unlock(&idev->isr_mutex);
 
 	i2c_set_adapdata(&idev->adapter, idev);
 	strlcpy(idev->adapter.name, pdev->name, sizeof(idev->adapter.name));

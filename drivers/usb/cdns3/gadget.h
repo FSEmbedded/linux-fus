@@ -947,6 +947,7 @@ struct cdns3_trb {
 
 #define TRB_SIZE		(sizeof(struct cdns3_trb))
 #define TRB_RING_SIZE		(TRB_SIZE * TRBS_PER_SEGMENT)
+#define TRB_STREAM_RING_SIZE	(TRB_SIZE * TRBS_PER_STREAM_SEGMENT)
 #define TRB_ISO_RING_SIZE	(TRB_SIZE * TRBS_PER_ISOC_SEGMENT)
 #define TRB_CTRL_RING_SIZE	(TRB_SIZE * 2)
 
@@ -998,7 +999,7 @@ struct cdns3_trb {
 #define TRB_TDL_SS_SIZE_GET(p)	(((p) & GENMASK(23, 17)) >> 17)
 
 /* transfer_len bitmasks - bits 31:24 */
-#define TRB_BURST_LEN(p)	(((p) << 24) & GENMASK(31, 24))
+#define TRB_BURST_LEN(p)	((unsigned int)((p) << 24) & GENMASK(31, 24))
 #define TRB_BURST_LEN_GET(p)	(((p) & GENMASK(31, 24)) >> 24)
 
 /* Data buffer pointer bitmasks*/
@@ -1019,7 +1020,7 @@ struct cdns3_trb {
 #define CDNS3_ENDPOINTS_MAX_COUNT	32
 #define CDNS3_EP_ZLP_BUF_SIZE		1024
 
-#define CDNS3_EP_BUF_SIZE		2	/* KB */
+#define CDNS3_EP_BUF_SIZE		4	/* KB */
 #define CDNS3_EP_ISO_HS_MULT		3
 #define CDNS3_EP_ISO_SS_BURST		3
 #define CDNS3_MAX_NUM_DESCMISS_BUF	32
@@ -1049,6 +1050,7 @@ struct cdns3_device;
  * @interval: interval between packets used for ISOC endpoint.
  * @free_trbs: number of free TRBs in transfer ring
  * @num_trbs: number of all TRBs in transfer ring
+ * @alloc_ring_size: size of the allocated TRB ring
  * @pcs: producer cycle state
  * @ccs: consumer cycle state
  * @enqueue: enqueue index in transfer ring
@@ -1090,6 +1092,7 @@ struct cdns3_endpoint {
 
 	int			free_trbs;
 	int			num_trbs;
+	int			alloc_ring_size;
 	u8			pcs;
 	u8			ccs;
 	int			enqueue;
@@ -1100,6 +1103,14 @@ struct cdns3_endpoint {
 	struct cdns3_trb	*wa1_trb;
 	unsigned int		wa1_trb_index;
 	unsigned int		wa1_cycle_bit:1;
+
+	/* Stream related */
+	unsigned int		use_streams:1;
+	unsigned int		prime_flag:1;
+	u32			ep_sts_pending;
+	u16			last_stream_id;
+	u16			pending_tdl;
+	unsigned int		stream_sg_idx;
 };
 
 /**
@@ -1115,7 +1126,7 @@ struct cdns3_aligned_buf {
 	void			*buf;
 	dma_addr_t		dma;
 	u32			size;
-	int			in_use:1;
+	unsigned		in_use:1;
 	struct list_head	list;
 };
 
@@ -1231,8 +1242,8 @@ struct cdns3_device {
 	unsigned			u2_allowed:1;
 	unsigned			is_selfpowered:1;
 	unsigned			setup_pending:1;
-	int				hw_configured_flag:1;
-	int				wake_up_flag:1;
+	unsigned			hw_configured_flag:1;
+	unsigned			wake_up_flag:1;
 	unsigned			status_completion_no_call:1;
 	int				out_mem_is_allocated:1;
 
@@ -1254,8 +1265,6 @@ void cdns3_set_hw_configuration(struct cdns3_device *priv_dev);
 void cdns3_select_ep(struct cdns3_device *priv_dev, u32 ep);
 void cdns3_allow_enable_l1(struct cdns3_device *priv_dev, int enable);
 struct usb_request *cdns3_next_request(struct list_head *list);
-int cdns3_ep_run_transfer(struct cdns3_endpoint *priv_ep,
-			  struct usb_request *request);
 void cdns3_rearm_transfer(struct cdns3_endpoint *priv_ep, u8 rearm);
 int cdns3_allocate_trb_pool(struct cdns3_endpoint *priv_ep);
 u8 cdns3_ep_addr_to_index(u8 ep_addr);
@@ -1273,7 +1282,7 @@ void cdns3_gadget_giveback(struct cdns3_endpoint *priv_ep,
 int cdns3_init_ep0(struct cdns3_device *priv_dev,
 		   struct cdns3_endpoint *priv_ep);
 void cdns3_ep0_config(struct cdns3_device *priv_dev);
-void cdns3_ep_config(struct cdns3_endpoint *priv_ep);
+int cdns3_ep_config(struct cdns3_endpoint *priv_ep, bool enable);
 void cdns3_check_ep0_interrupt_proceed(struct cdns3_device *priv_dev, int dir);
 int __cdns3_gadget_wakeup(struct cdns3_device *priv_dev);
 

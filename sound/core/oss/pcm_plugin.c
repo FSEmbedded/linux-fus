@@ -200,8 +200,7 @@ static snd_pcm_sframes_t plug_client_size(struct snd_pcm_substream *plug,
 					  snd_pcm_uframes_t drv_frames,
 					  bool check_size)
 {
-	struct snd_pcm_plugin *plugin, *plugin_prev, *plugin_next;
-	int stream;
+	struct snd_pcm_plugin *plugin, *plugin_next;
 
 	if (snd_BUG_ON(!plug))
 		return -ENXIO;
@@ -230,19 +229,33 @@ static snd_pcm_sframes_t plug_client_size(struct snd_pcm_substream *plug,
 				drv_frames = plugin->dst_frames(plugin, drv_frames);
 			plugin = plugin_next;
 		}
-	} else
+		if (check_size && plugin->buf_frames &&
+		    frames > plugin->buf_frames)
+			frames = plugin->buf_frames;
+		plugin = plugin_prev;
+	}
+	return frames;
+}
+
+snd_pcm_sframes_t snd_pcm_plug_client_size(struct snd_pcm_substream *plug, snd_pcm_uframes_t drv_frames)
+{
+	if (snd_BUG_ON(!plug))
+		return -ENXIO;
+	switch (snd_pcm_plug_stream(plug)) {
+	case SNDRV_PCM_STREAM_PLAYBACK:
+		return calc_src_frames(plug, drv_frames, false);
+	case SNDRV_PCM_STREAM_CAPTURE:
+		return calc_dst_frames(plug, drv_frames, false);
+	default:
 		snd_BUG();
-	return drv_frames;
+		return -EINVAL;
+	}
 }
 
 static snd_pcm_sframes_t plug_slave_size(struct snd_pcm_substream *plug,
 					 snd_pcm_uframes_t clt_frames,
 					 bool check_size)
 {
-	struct snd_pcm_plugin *plugin, *plugin_prev, *plugin_next;
-	snd_pcm_sframes_t frames;
-	int stream;
-	
 	if (snd_BUG_ON(!plug))
 		return -ENXIO;
 	if (clt_frames == 0)
@@ -279,7 +292,8 @@ static snd_pcm_sframes_t plug_slave_size(struct snd_pcm_substream *plug,
 		}
 	} else
 		snd_BUG();
-	return frames;
+		return -EINVAL;
+	}
 }
 
 snd_pcm_sframes_t snd_pcm_plug_client_size(struct snd_pcm_substream *plug,
@@ -316,7 +330,7 @@ static int snd_pcm_plug_formats(const struct snd_mask *mask,
 	return snd_mask_test(&formats, (__force int)format);
 }
 
-static snd_pcm_format_t preferred_formats[] = {
+static const snd_pcm_format_t preferred_formats[] = {
 	SNDRV_PCM_FORMAT_S16_LE,
 	SNDRV_PCM_FORMAT_S16_BE,
 	SNDRV_PCM_FORMAT_U16_LE,
@@ -381,7 +395,7 @@ snd_pcm_format_t snd_pcm_plug_slave_format(snd_pcm_format_t format,
 				if (snd_mask_test(format_mask, (__force int)format1))
 					return format1;
 			}
-			/* fall through */
+			fallthrough;
 		default:
 			return (__force snd_pcm_format_t)-EINVAL;
 		}

@@ -47,7 +47,7 @@
 #ifdef IP_SET_HASH_WITH_MULTI
 #define AHASH_MAX(h)			((h)->ahash_max)
 
-static inline u8
+static u8
 tune_ahash_max(u8 curr, u32 multi)
 {
 	u32 n;
@@ -76,7 +76,7 @@ struct hbucket {
 	DECLARE_BITMAP(used, AHASH_MAX_TUNED);
 	u8 size;		/* size of the array */
 	u8 pos;			/* position of the first free entry */
-	unsigned char value[0]	/* the array of the values */
+	unsigned char value[]	/* the array of the values */
 		__aligned(__alignof__(u64));
 };
 
@@ -132,29 +132,15 @@ htable_size(u8 hbits)
 {
 	size_t hsize;
 
-	/* We must fit both into u32 in jhash and size_t */
+	/* We must fit both into u32 in jhash and INT_MAX in kvmalloc_node() */
 	if (hbits > 31)
 		return 0;
 	hsize = jhash_size(hbits);
-	if ((((size_t)-1) - sizeof(struct htable)) / sizeof(struct hbucket *)
+	if ((INT_MAX - sizeof(struct htable)) / sizeof(struct hbucket *)
 	    < hsize)
 		return 0;
 
 	return hsize * sizeof(struct hbucket *) + sizeof(struct htable);
-}
-
-/* Compute htable_bits from the user input parameter hashsize */
-static u8
-htable_bits(u32 hashsize)
-{
-	/* Assume that hashsize == 2^htable_bits */
-	u8 bits = fls(hashsize - 1);
-
-	if (jhash_size(bits) != hashsize)
-		/* Round up to the first 2^n value */
-		bits = fls(hashsize);
-
-	return bits;
 }
 
 #ifdef IP_SET_HASH_WITH_NETS
@@ -668,15 +654,19 @@ mtype_resize(struct ip_set *set, bool retried)
 retry:
 	ret = 0;
 	htable_bits++;
-	if (!htable_bits) {
-		/* In case we have plenty of memory :-) */
-		pr_warn("Cannot increase the hashsize of set %s further\n",
-			set->name);
-		ret = -IPSET_ERR_HASH_FULL;
+	if (!htable_bits)
+		goto hbwarn;
+	hsize = htable_size(htable_bits);
+	if (!hsize)
+		goto hbwarn;
+	t = ip_set_alloc(hsize);
+	if (!t) {
+		ret = -ENOMEM;
 		goto out;
 	}
-	t = ip_set_alloc(htable_size(htable_bits));
-	if (!t) {
+	t->hregion = ip_set_alloc(ahash_sizeof_regions(htable_bits));
+	if (!t->hregion) {
+		ip_set_free(t);
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -817,6 +807,41 @@ cleanup:
 	if (ret == -EAGAIN)
 		goto retry;
 	goto out;
+
+hbwarn:
+	/* In case we have plenty of memory :-) */
+	pr_warn("Cannot increase the hashsize of set %s further\n", set->name);
+	ret = -IPSET_ERR_HASH_FULL;
+	goto out;
+}
+
+/* Get the current number of elements and ext_size in the set  */
+static void
+mtype_ext_size(struct ip_set *set, u32 *elements, size_t *ext_size)
+{
+	struct htype *h = set->data;
+	const struct htable *t;
+	u32 i, j, r;
+	struct hbucket *n;
+	struct mtype_elem *data;
+
+	t = rcu_dereference_bh(h->table);
+	for (r = 0; r < ahash_numof_locks(t->htable_bits); r++) {
+		for (i = ahash_bucket_start(r, t->htable_bits);
+		     i < ahash_bucket_end(r, t->htable_bits); i++) {
+			n = rcu_dereference_bh(hbucket(t, i));
+			if (!n)
+				continue;
+			for (j = 0; j < n->pos; j++) {
+				if (!test_bit(j, n->used))
+					continue;
+				data = ahash_data(n, j, set->dsize);
+				if (!SET_ELEM_EXPIRED(set, data))
+					(*elements)++;
+			}
+		}
+		*ext_size += t->hregion[r].ext_size;
+	}
 }
 
 /* Get the current number of elements and ext_size in the set  */
@@ -1152,7 +1177,7 @@ out:
 	return ret;
 }
 
-static inline int
+static int
 mtype_data_match(struct mtype_elem *data, const struct ip_set_ext *ext,
 		 struct ip_set_ext *mext, struct ip_set *set, u32 flags)
 {
@@ -1520,7 +1545,11 @@ IPSET_TOKEN(HTYPE, _create)(struct net *net, struct ip_set *set,
 	if (!h)
 		return -ENOMEM;
 
-	hbits = htable_bits(hashsize);
+	/* Compute htable_bits from the user input parameter hashsize.
+	 * Assume that hashsize == 2^htable_bits,
+	 * otherwise round up to the first 2^n value.
+	 */
+	hbits = fls(hashsize - 1);
 	hsize = htable_size(hbits);
 	if (hsize == 0) {
 		kfree(h);

@@ -112,7 +112,7 @@ void btrfs_free_block_rsv(struct btrfs_fs_info *fs_info,
 {
 	if (!rsv)
 		return;
-	btrfs_block_rsv_release(fs_info, rsv, (u64)-1);
+	btrfs_block_rsv_release(fs_info, rsv, (u64)-1, NULL);
 	kfree(rsv);
 }
 
@@ -179,9 +179,9 @@ int btrfs_block_rsv_refill(struct btrfs_root *root,
 	return ret;
 }
 
-u64 __btrfs_block_rsv_release(struct btrfs_fs_info *fs_info,
-			      struct btrfs_block_rsv *block_rsv,
-			      u64 num_bytes, u64 *qgroup_to_release)
+u64 btrfs_block_rsv_release(struct btrfs_fs_info *fs_info,
+			    struct btrfs_block_rsv *block_rsv, u64 num_bytes,
+			    u64 *qgroup_to_release)
 {
 	struct btrfs_block_rsv *global_rsv = &fs_info->global_block_rsv;
 	struct btrfs_block_rsv *delayed_rsv = &fs_info->delayed_refs_rsv;
@@ -298,9 +298,9 @@ void btrfs_update_global_block_rsv(struct btrfs_fs_info *fs_info)
 
 	if (block_rsv->reserved < block_rsv->size) {
 		num_bytes = block_rsv->size - block_rsv->reserved;
-		block_rsv->reserved += num_bytes;
 		btrfs_space_info_update_bytes_may_use(fs_info, sinfo,
 						      num_bytes);
+		block_rsv->reserved = block_rsv->size;
 	} else if (block_rsv->reserved > block_rsv->size) {
 		num_bytes = block_rsv->reserved - block_rsv->size;
 		btrfs_space_info_update_bytes_may_use(fs_info, sinfo,
@@ -347,7 +347,8 @@ void btrfs_init_global_block_rsv(struct btrfs_fs_info *fs_info)
 
 void btrfs_release_global_block_rsv(struct btrfs_fs_info *fs_info)
 {
-	btrfs_block_rsv_release(fs_info, &fs_info->global_block_rsv, (u64)-1);
+	btrfs_block_rsv_release(fs_info, &fs_info->global_block_rsv, (u64)-1,
+				NULL);
 	WARN_ON(fs_info->trans_block_rsv.size > 0);
 	WARN_ON(fs_info->trans_block_rsv.reserved > 0);
 	WARN_ON(fs_info->chunk_block_rsv.size > 0);
@@ -365,7 +366,7 @@ static struct btrfs_block_rsv *get_block_rsv(
 	struct btrfs_fs_info *fs_info = root->fs_info;
 	struct btrfs_block_rsv *block_rsv = NULL;
 
-	if (test_bit(BTRFS_ROOT_REF_COWS, &root->state) ||
+	if (test_bit(BTRFS_ROOT_SHAREABLE, &root->state) ||
 	    (root == fs_info->csum_root && trans->adding_csums) ||
 	    (root == fs_info->uuid_root))
 		block_rsv = trans->block_rsv;
@@ -418,7 +419,8 @@ again:
 				/*DEFAULT_RATELIMIT_BURST*/ 1);
 		if (__ratelimit(&_rs))
 			WARN(1, KERN_DEBUG
-				"BTRFS: block rsv returned %d\n", ret);
+				"BTRFS: block rsv %d returned %d\n",
+				block_rsv->type, ret);
 	}
 try_reserve:
 	ret = btrfs_reserve_metadata_bytes(root, block_rsv, blocksize,

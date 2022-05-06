@@ -15,6 +15,7 @@
 #ifndef __DRIVERS_USB_CDNS3_HOST_H
 #define __DRIVERS_USB_CDNS3_HOST_H
 
+struct usb_hcd;
 #ifdef CONFIG_USB_CDNS3_HOST
 
 int cdns3_host_init(struct cdns3 *cdns);

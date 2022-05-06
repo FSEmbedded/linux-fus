@@ -5,8 +5,8 @@
  * "rs2" extension for the v2m motherboard
  */
 / {
-	smb@8000000 {
-		motherboard {
+	bus@8000000 {
+		motherboard-bus {
 			arm,v2m-memory-map = "rs2";
 
 			iofpga@300000000 {

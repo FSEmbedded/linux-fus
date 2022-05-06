@@ -8,6 +8,13 @@
 #ifndef __MXSFB_DRV_H__
 #define __MXSFB_DRV_H__
 
+#include <drm/drm_crtc.h>
+#include <drm/drm_device.h>
+#include <drm/drm_encoder.h>
+#include <drm/drm_plane.h>
+
+struct clk;
+
 struct mxsfb_devdata {
 	unsigned int	 transfer_count;
 	unsigned int	 cur_buf;
@@ -36,8 +43,11 @@ struct mxsfb_drm_private {
 	u32				max_bw;
 };
 
-int mxsfb_setup_crtc(struct drm_device *dev);
-int mxsfb_create_output(struct drm_device *dev);
+static inline struct mxsfb_drm_private *
+to_mxsfb_drm_private(struct drm_device *drm)
+{
+	return drm->dev_private;
+}
 
 void mxsfb_crtc_enable(struct mxsfb_drm_private *mxsfb);
 void mxsfb_crtc_disable(struct mxsfb_drm_private *mxsfb);

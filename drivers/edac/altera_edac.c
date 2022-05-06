@@ -14,6 +14,7 @@
 #include <linux/interrupt.h>
 #include <linux/irqchip/chained_irq.h>
 #include <linux/kernel.h>
+#include <linux/mfd/altera-sysmgr.h>
 #include <linux/mfd/syscon.h>
 #include <linux/notifier.h>
 #include <linux/of_address.h>
@@ -275,7 +276,6 @@ release:
 	return ret;
 }
 
-static int socfpga_is_a10(void);
 static int altr_sdram_probe(struct platform_device *pdev)
 {
 	const struct of_device_id *id;
@@ -399,7 +399,7 @@ static int altr_sdram_probe(struct platform_device *pdev)
 		goto err;
 
 	/* Only the Arria10 has separate IRQs */
-	if (socfpga_is_a10()) {
+	if (of_machine_is_compatible("altr,socfpga-arria10")) {
 		/* Arria10 specific initialization */
 		res = a10_init(mc_vbase);
 		if (res < 0)
@@ -1009,16 +1009,6 @@ static int __maybe_unused altr_init_memory_port(void __iomem *ioaddr, int port)
 	return ret;
 }
 
-static int socfpga_is_a10(void)
-{
-	return of_machine_is_compatible("altr,socfpga-arria10");
-}
-
-static int socfpga_is_s10(void)
-{
-	return of_machine_is_compatible("altr,socfpga-stratix10");
-}
-
 static __init int __maybe_unused
 altr_init_a10_ecc_block(struct device_node *np, u32 irq_mask,
 			u32 ecc_ctrl_en_mask, bool dual_port)
@@ -1034,34 +1024,10 @@ altr_init_a10_ecc_block(struct device_node *np, u32 irq_mask,
 	/* Get the ECC Manager - parent of the device EDACs */
 	np_eccmgr = of_get_parent(np);
 
-	if (socfpga_is_a10()) {
-		ecc_mgr_map = syscon_regmap_lookup_by_phandle(np_eccmgr,
-							      "altr,sysmgr-syscon");
-	} else {
-		struct device_node *sysmgr_np;
-		struct resource res;
-		uintptr_t base;
+	ecc_mgr_map =
+		altr_sysmgr_regmap_lookup_by_phandle(np_eccmgr,
+						     "altr,sysmgr-syscon");
 
-		sysmgr_np = of_parse_phandle(np_eccmgr,
-					     "altr,sysmgr-syscon", 0);
-		if (!sysmgr_np) {
-			edac_printk(KERN_ERR, EDAC_DEVICE,
-				    "Unable to find altr,sysmgr-syscon\n");
-			return -ENODEV;
-		}
-
-		if (of_address_to_resource(sysmgr_np, 0, &res)) {
-			of_node_put(sysmgr_np);
-			return -ENOMEM;
-		}
-
-		/* Need physical address for SMCC call */
-		base = res.start;
-
-		ecc_mgr_map = regmap_init(NULL, NULL, (void *)base,
-					  &s10_sdram_regmap_cfg);
-		of_node_put(sysmgr_np);
-	}
 	of_node_put(np_eccmgr);
 	if (IS_ERR(ecc_mgr_map)) {
 		edac_printk(KERN_ERR, EDAC_DEVICE,
@@ -1125,9 +1091,6 @@ static int __init __maybe_unused altr_init_a10_ecc_device_type(char *compat)
 {
 	int irq;
 	struct device_node *child, *np;
-
-	if (!socfpga_is_a10() && !socfpga_is_s10())
-		return -ENODEV;
 
 	np = of_find_compatible_node(NULL, NULL,
 				     "altr,socfpga-a10-ecc-manager");
@@ -2179,33 +2142,9 @@ static int altr_edac_a10_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, edac);
 	INIT_LIST_HEAD(&edac->a10_ecc_devices);
 
-	if (socfpga_is_a10()) {
-		edac->ecc_mgr_map =
-			syscon_regmap_lookup_by_phandle(pdev->dev.of_node,
-							"altr,sysmgr-syscon");
-	} else {
-		struct device_node *sysmgr_np;
-		struct resource res;
-		uintptr_t base;
-
-		sysmgr_np = of_parse_phandle(pdev->dev.of_node,
-					     "altr,sysmgr-syscon", 0);
-		if (!sysmgr_np) {
-			edac_printk(KERN_ERR, EDAC_DEVICE,
-				    "Unable to find altr,sysmgr-syscon\n");
-			return -ENODEV;
-		}
-
-		if (of_address_to_resource(sysmgr_np, 0, &res))
-			return -ENOMEM;
-
-		/* Need physical address for SMCC call */
-		base = res.start;
-
-		edac->ecc_mgr_map = devm_regmap_init(&pdev->dev, NULL,
-						     (void *)base,
-						     &s10_sdram_regmap_cfg);
-	}
+	edac->ecc_mgr_map =
+		altr_sysmgr_regmap_lookup_by_phandle(pdev->dev.of_node,
+						     "altr,sysmgr-syscon");
 
 	if (IS_ERR(edac->ecc_mgr_map)) {
 		edac_printk(KERN_ERR, EDAC_DEVICE,
@@ -2271,18 +2210,7 @@ static int altr_edac_a10_probe(struct platform_device *pdev)
 		if (!of_device_is_available(child))
 			continue;
 
-		if (of_device_is_compatible(child, "altr,socfpga-a10-l2-ecc") || 
-		    of_device_is_compatible(child, "altr,socfpga-a10-ocram-ecc") ||
-		    of_device_is_compatible(child, "altr,socfpga-eth-mac-ecc") ||
-		    of_device_is_compatible(child, "altr,socfpga-nand-ecc") ||
-		    of_device_is_compatible(child, "altr,socfpga-dma-ecc") ||
-		    of_device_is_compatible(child, "altr,socfpga-usb-ecc") ||
-		    of_device_is_compatible(child, "altr,socfpga-qspi-ecc") ||
-#ifdef CONFIG_EDAC_ALTERA_SDRAM
-		    of_device_is_compatible(child, "altr,sdram-edac-s10") ||
-#endif
-		    of_device_is_compatible(child, "altr,socfpga-sdmmc-ecc"))
-
+		if (of_match_node(altr_edac_a10_device_of_match, child))
 			altr_edac_a10_device_add(edac, child);
 
 #ifdef CONFIG_EDAC_ALTERA_SDRAM

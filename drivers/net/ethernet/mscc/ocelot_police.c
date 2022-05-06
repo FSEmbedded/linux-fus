@@ -4,17 +4,8 @@
  * Copyright (c) 2019 Microsemi Corporation
  */
 
+#include <soc/mscc/ocelot.h>
 #include "ocelot_police.h"
-
-enum mscc_qos_rate_mode {
-	MSCC_QOS_RATE_MODE_DISABLED, /* Policer/shaper disabled */
-	MSCC_QOS_RATE_MODE_LINE, /* Measure line rate in kbps incl. IPG */
-	MSCC_QOS_RATE_MODE_DATA, /* Measures data rate in kbps excl. IPG */
-	MSCC_QOS_RATE_MODE_FRAME, /* Measures frame rate in fps */
-	__MSCC_QOS_RATE_MODE_END,
-	NUM_MSCC_QOS_RATE_MODE = __MSCC_QOS_RATE_MODE_END,
-	MSCC_QOS_RATE_MODE_MAX = __MSCC_QOS_RATE_MODE_END - 1,
-};
 
 /* Types for ANA:POL[0-192]:POL_MODE_CFG.FRM_MODE */
 #define POL_MODE_LINERATE   0 /* Incl IPG. Unit: 33 1/3 kbps, 4096 bytes */
@@ -203,6 +194,7 @@ int ocelot_port_policer_add(struct ocelot *ocelot, int port,
 
 	return 0;
 }
+EXPORT_SYMBOL(ocelot_port_policer_add);
 
 int ocelot_port_policer_del(struct ocelot *ocelot, int port)
 {
@@ -225,3 +217,4 @@ int ocelot_port_policer_del(struct ocelot *ocelot, int port)
 
 	return 0;
 }
+EXPORT_SYMBOL(ocelot_port_policer_del);

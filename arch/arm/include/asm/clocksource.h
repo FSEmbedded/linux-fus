@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ASM_CLOCKSOURCE_H
 #define _ASM_CLOCKSOURCE_H
 
@@ -14,4 +15,4 @@ struct arch_clocksource_data {
 	enum vdso_arch_clockmode clock_mode;
 };
 
-#endif
+#endif /* _ASM_CLOCKSOURCE_H */

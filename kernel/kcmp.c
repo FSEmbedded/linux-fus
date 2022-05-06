@@ -75,25 +75,25 @@ get_file_raw_ptr(struct task_struct *task, unsigned int idx)
 	return file;
 }
 
-static void kcmp_unlock(struct mutex *m1, struct mutex *m2)
+static void kcmp_unlock(struct rw_semaphore *l1, struct rw_semaphore *l2)
 {
-	if (likely(m2 != m1))
-		mutex_unlock(m2);
-	mutex_unlock(m1);
+	if (likely(l2 != l1))
+		up_read(l2);
+	up_read(l1);
 }
 
-static int kcmp_lock(struct mutex *m1, struct mutex *m2)
+static int kcmp_lock(struct rw_semaphore *l1, struct rw_semaphore *l2)
 {
 	int err;
 
-	if (m2 > m1)
-		swap(m1, m2);
+	if (l2 > l1)
+		swap(l1, l2);
 
-	err = mutex_lock_killable(m1);
-	if (!err && likely(m1 != m2)) {
-		err = mutex_lock_killable_nested(m2, SINGLE_DEPTH_NESTING);
+	err = down_read_killable(l1);
+	if (!err && likely(l1 != l2)) {
+		err = down_read_killable_nested(l2, SINGLE_DEPTH_NESTING);
 		if (err)
-			mutex_unlock(m1);
+			up_read(l1);
 	}
 
 	return err;

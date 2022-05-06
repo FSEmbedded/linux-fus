@@ -65,32 +65,22 @@ int xfrm4_output_finish(struct sock *sk, struct sk_buff *skb)
 
 static int __xfrm4_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
-	struct xfrm_state *x = skb_dst(skb)->xfrm;
-	const struct xfrm_state_afinfo *afinfo;
-	int ret = -EAFNOSUPPORT;
-
 #ifdef CONFIG_NETFILTER
+	struct xfrm_state *x = skb_dst(skb)->xfrm;
+
 	if (!x) {
 		IPCB(skb)->flags |= IPSKB_REROUTED;
 		return dst_output(net, sk, skb);
 	}
 #endif
 
-	rcu_read_lock();
-	afinfo = xfrm_state_afinfo_get_rcu(x->outer_mode.family);
-	if (likely(afinfo))
-		ret = afinfo->output_finish(sk, skb);
-	else
-		kfree_skb(skb);
-	rcu_read_unlock();
-
-	return ret;
+	return xfrm_output(sk, skb);
 }
 
 int xfrm4_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	return NF_HOOK_COND(NFPROTO_IPV4, NF_INET_POST_ROUTING,
-			    net, sk, skb, NULL, skb_dst(skb)->dev,
+			    net, sk, skb, skb->dev, skb_dst(skb)->dev,
 			    __xfrm4_output,
 			    !(IPCB(skb)->flags & IPSKB_REROUTED));
 }

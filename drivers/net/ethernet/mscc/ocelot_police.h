@@ -9,9 +9,14 @@
 
 #include "ocelot.h"
 
-struct ocelot_policer {
-	u32 rate; /* kilobit per second */
-	u32 burst; /* bytes */
+enum mscc_qos_rate_mode {
+	MSCC_QOS_RATE_MODE_DISABLED, /* Policer/shaper disabled */
+	MSCC_QOS_RATE_MODE_LINE, /* Measure line rate in kbps incl. IPG */
+	MSCC_QOS_RATE_MODE_DATA, /* Measures data rate in kbps excl. IPG */
+	MSCC_QOS_RATE_MODE_FRAME, /* Measures frame rate in fps */
+	__MSCC_QOS_RATE_MODE_END,
+	NUM_MSCC_QOS_RATE_MODE = __MSCC_QOS_RATE_MODE_END,
+	MSCC_QOS_RATE_MODE_MAX = __MSCC_QOS_RATE_MODE_END - 1,
 };
 
 int ocelot_port_policer_add(struct ocelot *ocelot, int port,

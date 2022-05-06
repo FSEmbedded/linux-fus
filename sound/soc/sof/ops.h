@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause) */
+/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-3-Clause) */
 /*
  * This file is provided under a dual BSD/GPLv2 license.  When using or
  * redistributing this file, you may do so under either license.
@@ -146,10 +146,11 @@ static inline int snd_sof_dsp_resume(struct snd_sof_dev *sdev)
 	return 0;
 }
 
-static inline int snd_sof_dsp_suspend(struct snd_sof_dev *sdev)
+static inline int snd_sof_dsp_suspend(struct snd_sof_dev *sdev,
+				      u32 target_state)
 {
 	if (sof_ops(sdev)->suspend)
-		return sof_ops(sdev)->suspend(sdev);
+		return sof_ops(sdev)->suspend(sdev, target_state);
 
 	return 0;
 }
@@ -190,6 +191,17 @@ static inline int snd_sof_dsp_set_clk(struct snd_sof_dev *sdev, u32 freq)
 	if (sof_ops(sdev)->set_clk)
 		return sof_ops(sdev)->set_clk(sdev, freq);
 
+	return 0;
+}
+
+static inline int
+snd_sof_dsp_set_power_state(struct snd_sof_dev *sdev,
+			    const struct sof_dsp_power_state *target_state)
+{
+	if (sof_ops(sdev)->set_power_state)
+		return sof_ops(sdev)->set_power_state(sdev, target_state);
+
+	/* D0 substate is not supported, do nothing here. */
 	return 0;
 }
 

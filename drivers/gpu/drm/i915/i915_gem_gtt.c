@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 /*
  * Copyright © 2010 Daniel Vetter
  * Copyright © 2011-2014 Intel Corporation
@@ -3238,369 +3239,74 @@ out:
  * i915_ggtt_init_hw - Initialize GGTT hardware
  * @dev_priv: i915 device
  */
-int i915_ggtt_init_hw(struct drm_i915_private *dev_priv)
+
+#include <linux/slab.h> /* fault-inject.h is not standalone! */
+
+#include <linux/fault-inject.h>
+#include <linux/log2.h>
+#include <linux/random.h>
+#include <linux/seq_file.h>
+#include <linux/stop_machine.h>
+
+#include <asm/set_memory.h>
+#include <asm/smp.h>
+
+#include "display/intel_frontbuffer.h"
+#include "gt/intel_gt.h"
+#include "gt/intel_gt_requests.h"
+
+#include "i915_drv.h"
+#include "i915_scatterlist.h"
+#include "i915_trace.h"
+#include "i915_vgpu.h"
+
+int i915_gem_gtt_prepare_pages(struct drm_i915_gem_object *obj,
+			       struct sg_table *pages)
 {
-	int ret;
-
-	stash_init(&dev_priv->mm.wc_stash);
-
-	/* Note that we use page colouring to enforce a guard page at the
-	 * end of the address space. This is required as the CS may prefetch
-	 * beyond the end of the batch buffer, across the page boundary,
-	 * and beyond the end of the GTT if we do not provide a guard.
-	 */
-	ret = ggtt_init_hw(&dev_priv->ggtt);
-	if (ret)
-		return ret;
-
-	/*
-	 * Initialise stolen early so that we may reserve preallocated
-	 * objects for the BIOS to KMS transition.
-	 */
-	ret = i915_gem_init_stolen(dev_priv);
-	if (ret)
-		goto out_gtt_cleanup;
-
-	return 0;
-
-out_gtt_cleanup:
-	dev_priv->ggtt.vm.cleanup(&dev_priv->ggtt.vm);
-	return ret;
-}
-
-int i915_ggtt_enable_hw(struct drm_i915_private *dev_priv)
-{
-	if (INTEL_GEN(dev_priv) < 6 && !intel_enable_gtt())
-		return -EIO;
-
-	return 0;
-}
-
-void i915_ggtt_enable_guc(struct i915_ggtt *ggtt)
-{
-	GEM_BUG_ON(ggtt->invalidate != gen6_ggtt_invalidate);
-
-	ggtt->invalidate = guc_ggtt_invalidate;
-
-	ggtt->invalidate(ggtt);
-}
-
-void i915_ggtt_disable_guc(struct i915_ggtt *ggtt)
-{
-	/* XXX Temporary pardon for error unload */
-	if (ggtt->invalidate == gen6_ggtt_invalidate)
-		return;
-
-	/* We should only be called after i915_ggtt_enable_guc() */
-	GEM_BUG_ON(ggtt->invalidate != guc_ggtt_invalidate);
-
-	ggtt->invalidate = gen6_ggtt_invalidate;
-
-	ggtt->invalidate(ggtt);
-}
-
-static void ggtt_restore_mappings(struct i915_ggtt *ggtt)
-{
-	struct i915_vma *vma, *vn;
-	bool flush = false;
-
-	intel_gt_check_and_clear_faults(ggtt->vm.gt);
-
-	mutex_lock(&ggtt->vm.mutex);
-
-	/* First fill our portion of the GTT with scratch pages */
-	ggtt->vm.clear_range(&ggtt->vm, 0, ggtt->vm.total);
-	ggtt->vm.closed = true; /* skip rewriting PTE on VMA unbind */
-
-	/* clflush objects bound into the GGTT and rebind them. */
-	list_for_each_entry_safe(vma, vn, &ggtt->vm.bound_list, vm_link) {
-		struct drm_i915_gem_object *obj = vma->obj;
-
-		if (!(vma->flags & I915_VMA_GLOBAL_BIND))
-			continue;
-
-		mutex_unlock(&ggtt->vm.mutex);
-
-		if (!i915_vma_unbind(vma))
-			goto lock;
-
-		WARN_ON(i915_vma_bind(vma,
-				      obj ? obj->cache_level : 0,
-				      PIN_UPDATE));
-		if (obj) { /* only used during resume => exclusive access */
-			flush |= fetch_and_zero(&obj->write_domain);
-			obj->read_domains |= I915_GEM_DOMAIN_GTT;
-		}
-
-lock:
-		mutex_lock(&ggtt->vm.mutex);
-	}
-
-	ggtt->vm.closed = false;
-	ggtt->invalidate(ggtt);
-
-	mutex_unlock(&ggtt->vm.mutex);
-
-	if (flush)
-		wbinvd_on_all_cpus();
-}
-
-void i915_gem_restore_gtt_mappings(struct drm_i915_private *i915)
-{
-	ggtt_restore_mappings(&i915->ggtt);
-
-	if (INTEL_GEN(i915) >= 8)
-		setup_private_pat(i915);
-}
-
-static struct scatterlist *
-rotate_pages(struct drm_i915_gem_object *obj, unsigned int offset,
-	     unsigned int width, unsigned int height,
-	     unsigned int stride,
-	     struct sg_table *st, struct scatterlist *sg)
-{
-	unsigned int column, row;
-	unsigned int src_idx;
-
-	for (column = 0; column < width; column++) {
-		src_idx = stride * (height - 1) + column + offset;
-		for (row = 0; row < height; row++) {
-			st->nents++;
-			/* We don't need the pages, but need to initialize
-			 * the entries so the sg list can be happily traversed.
-			 * The only thing we need are DMA addresses.
-			 */
-			sg_set_page(sg, NULL, I915_GTT_PAGE_SIZE, 0);
-			sg_dma_address(sg) =
-				i915_gem_object_get_dma_address(obj, src_idx);
-			sg_dma_len(sg) = I915_GTT_PAGE_SIZE;
-			sg = sg_next(sg);
-			src_idx -= stride;
-		}
-	}
-
-	return sg;
-}
-
-static noinline struct sg_table *
-intel_rotate_pages(struct intel_rotation_info *rot_info,
-		   struct drm_i915_gem_object *obj)
-{
-	unsigned int size = intel_rotation_info_size(rot_info);
-	struct sg_table *st;
-	struct scatterlist *sg;
-	int ret = -ENOMEM;
-	int i;
-
-	/* Allocate target SG list. */
-	st = kmalloc(sizeof(*st), GFP_KERNEL);
-	if (!st)
-		goto err_st_alloc;
-
-	ret = sg_alloc_table(st, size, GFP_KERNEL);
-	if (ret)
-		goto err_sg_alloc;
-
-	st->nents = 0;
-	sg = st->sgl;
-
-	for (i = 0 ; i < ARRAY_SIZE(rot_info->plane); i++) {
-		sg = rotate_pages(obj, rot_info->plane[i].offset,
-				  rot_info->plane[i].width, rot_info->plane[i].height,
-				  rot_info->plane[i].stride, st, sg);
-	}
-
-	return st;
-
-err_sg_alloc:
-	kfree(st);
-err_st_alloc:
-
-	DRM_DEBUG_DRIVER("Failed to create rotated mapping for object size %zu! (%ux%u tiles, %u pages)\n",
-			 obj->base.size, rot_info->plane[0].width, rot_info->plane[0].height, size);
-
-	return ERR_PTR(ret);
-}
-
-static struct scatterlist *
-remap_pages(struct drm_i915_gem_object *obj, unsigned int offset,
-	    unsigned int width, unsigned int height,
-	    unsigned int stride,
-	    struct sg_table *st, struct scatterlist *sg)
-{
-	unsigned int row;
-
-	for (row = 0; row < height; row++) {
-		unsigned int left = width * I915_GTT_PAGE_SIZE;
-
-		while (left) {
-			dma_addr_t addr;
-			unsigned int length;
-
-			/* We don't need the pages, but need to initialize
-			 * the entries so the sg list can be happily traversed.
-			 * The only thing we need are DMA addresses.
-			 */
-
-			addr = i915_gem_object_get_dma_address_len(obj, offset, &length);
-
-			length = min(left, length);
-
-			st->nents++;
-
-			sg_set_page(sg, NULL, length, 0);
-			sg_dma_address(sg) = addr;
-			sg_dma_len(sg) = length;
-			sg = sg_next(sg);
-
-			offset += length / I915_GTT_PAGE_SIZE;
-			left -= length;
-		}
-
-		offset += stride - width;
-	}
-
-	return sg;
-}
-
-static noinline struct sg_table *
-intel_remap_pages(struct intel_remapped_info *rem_info,
-		  struct drm_i915_gem_object *obj)
-{
-	unsigned int size = intel_remapped_info_size(rem_info);
-	struct sg_table *st;
-	struct scatterlist *sg;
-	int ret = -ENOMEM;
-	int i;
-
-	/* Allocate target SG list. */
-	st = kmalloc(sizeof(*st), GFP_KERNEL);
-	if (!st)
-		goto err_st_alloc;
-
-	ret = sg_alloc_table(st, size, GFP_KERNEL);
-	if (ret)
-		goto err_sg_alloc;
-
-	st->nents = 0;
-	sg = st->sgl;
-
-	for (i = 0 ; i < ARRAY_SIZE(rem_info->plane); i++) {
-		sg = remap_pages(obj, rem_info->plane[i].offset,
-				 rem_info->plane[i].width, rem_info->plane[i].height,
-				 rem_info->plane[i].stride, st, sg);
-	}
-
-	i915_sg_trim(st);
-
-	return st;
-
-err_sg_alloc:
-	kfree(st);
-err_st_alloc:
-
-	DRM_DEBUG_DRIVER("Failed to create remapped mapping for object size %zu! (%ux%u tiles, %u pages)\n",
-			 obj->base.size, rem_info->plane[0].width, rem_info->plane[0].height, size);
-
-	return ERR_PTR(ret);
-}
-
-static noinline struct sg_table *
-intel_partial_pages(const struct i915_ggtt_view *view,
-		    struct drm_i915_gem_object *obj)
-{
-	struct sg_table *st;
-	struct scatterlist *sg, *iter;
-	unsigned int count = view->partial.size;
-	unsigned int offset;
-	int ret = -ENOMEM;
-
-	st = kmalloc(sizeof(*st), GFP_KERNEL);
-	if (!st)
-		goto err_st_alloc;
-
-	ret = sg_alloc_table(st, count, GFP_KERNEL);
-	if (ret)
-		goto err_sg_alloc;
-
-	iter = i915_gem_object_get_sg(obj, view->partial.offset, &offset);
-	GEM_BUG_ON(!iter);
-
-	sg = st->sgl;
-	st->nents = 0;
 	do {
-		unsigned int len;
+		if (dma_map_sg_attrs(&obj->base.dev->pdev->dev,
+				     pages->sgl, pages->nents,
+				     PCI_DMA_BIDIRECTIONAL,
+				     DMA_ATTR_SKIP_CPU_SYNC |
+				     DMA_ATTR_NO_KERNEL_MAPPING |
+				     DMA_ATTR_NO_WARN))
+			return 0;
 
-		len = min(iter->length - (offset << PAGE_SHIFT),
-			  count << PAGE_SHIFT);
-		sg_set_page(sg, NULL, len, 0);
-		sg_dma_address(sg) =
-			sg_dma_address(iter) + (offset << PAGE_SHIFT);
-		sg_dma_len(sg) = len;
+		/*
+		 * If the DMA remap fails, one cause can be that we have
+		 * too many objects pinned in a small remapping table,
+		 * such as swiotlb. Incrementally purge all other objects and
+		 * try again - if there are no more pages to remove from
+		 * the DMA remapper, i915_gem_shrink will return 0.
+		 */
+		GEM_BUG_ON(obj->mm.pages == pages);
+	} while (i915_gem_shrink(to_i915(obj->base.dev),
+				 obj->base.size >> PAGE_SHIFT, NULL,
+				 I915_SHRINK_BOUND |
+				 I915_SHRINK_UNBOUND));
 
-		st->nents++;
-		count -= len >> PAGE_SHIFT;
-		if (count == 0) {
-			sg_mark_end(sg);
-			i915_sg_trim(st); /* Drop any unused tail entries. */
-
-			return st;
-		}
-
-		sg = __sg_next(sg);
-		iter = __sg_next(iter);
-		offset = 0;
-	} while (1);
-
-err_sg_alloc:
-	kfree(st);
-err_st_alloc:
-	return ERR_PTR(ret);
+	return -ENOSPC;
 }
 
-static int
-i915_get_ggtt_vma_pages(struct i915_vma *vma)
+void i915_gem_gtt_finish_pages(struct drm_i915_gem_object *obj,
+			       struct sg_table *pages)
 {
-	int ret;
+	struct drm_i915_private *dev_priv = to_i915(obj->base.dev);
+	struct device *kdev = &dev_priv->drm.pdev->dev;
+	struct i915_ggtt *ggtt = &dev_priv->ggtt;
 
-	/* The vma->pages are only valid within the lifespan of the borrowed
-	 * obj->mm.pages. When the obj->mm.pages sg_table is regenerated, so
-	 * must be the vma->pages. A simple rule is that vma->pages must only
-	 * be accessed when the obj->mm.pages are pinned.
-	 */
-	GEM_BUG_ON(!i915_gem_object_has_pinned_pages(vma->obj));
-
-	switch (vma->ggtt_view.type) {
-	default:
-		GEM_BUG_ON(vma->ggtt_view.type);
-		/* fall through */
-	case I915_GGTT_VIEW_NORMAL:
-		vma->pages = vma->obj->mm.pages;
-		return 0;
-
-	case I915_GGTT_VIEW_ROTATED:
-		vma->pages =
-			intel_rotate_pages(&vma->ggtt_view.rotated, vma->obj);
-		break;
-
-	case I915_GGTT_VIEW_REMAPPED:
-		vma->pages =
-			intel_remap_pages(&vma->ggtt_view.remapped, vma->obj);
-		break;
-
-	case I915_GGTT_VIEW_PARTIAL:
-		vma->pages = intel_partial_pages(&vma->ggtt_view, vma->obj);
-		break;
+	if (unlikely(ggtt->do_idle_maps)) {
+		/* XXX This does not prevent more requests being submitted! */
+		if (intel_gt_retire_requests_timeout(ggtt->vm.gt,
+						     -MAX_SCHEDULE_TIMEOUT)) {
+			drm_err(&dev_priv->drm,
+				"Failed to wait for idle; VT'd may hang.\n");
+			/* Wait a bit, in hopes it avoids the hang */
+			udelay(10);
+		}
 	}
 
-	ret = 0;
-	if (IS_ERR(vma->pages)) {
-		ret = PTR_ERR(vma->pages);
-		vma->pages = NULL;
-		DRM_ERROR("Failed to get pages for VMA view type %u (%d)!\n",
-			  vma->ggtt_view.type, ret);
-	}
-	return ret;
+	dma_unmap_sg(kdev, pages->sgl, pages->nents, PCI_DMA_BIDIRECTIONAL);
 }
 
 /**
@@ -3728,7 +3434,8 @@ int i915_gem_gtt_insert(struct i915_address_space *vm,
 	u64 offset;
 	int err;
 
-	lockdep_assert_held(&vm->i915->drm.struct_mutex);
+	lockdep_assert_held(&vm->mutex);
+
 	GEM_BUG_ON(!size);
 	GEM_BUG_ON(!IS_ALIGNED(size, I915_GTT_PAGE_SIZE));
 	GEM_BUG_ON(alignment && !is_power_of_2(alignment));
@@ -3823,6 +3530,5 @@ int i915_gem_gtt_insert(struct i915_address_space *vm,
 }
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)
-#include "selftests/mock_gtt.c"
 #include "selftests/i915_gem_gtt.c"
 #endif

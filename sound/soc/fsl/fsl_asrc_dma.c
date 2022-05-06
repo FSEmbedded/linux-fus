@@ -12,7 +12,7 @@
 #include <sound/dmaengine_pcm.h>
 #include <sound/pcm_params.h>
 
-#include "fsl_asrc.h"
+#include "fsl_asrc_common.h"
 
 #define FSL_ASRC_DMABUF_SIZE	(256 * 1024)
 
@@ -52,13 +52,12 @@ static void fsl_asrc_dma_complete(void *arg)
 	snd_pcm_period_elapsed(substream);
 }
 
-static int fsl_asrc_dma_prepare_and_submit(struct snd_pcm_substream *substream)
+static int fsl_asrc_dma_prepare_and_submit(struct snd_pcm_substream *substream,
+					   struct snd_soc_component *component)
 {
 	u8 dir = substream->stream == SNDRV_PCM_STREAM_PLAYBACK ? OUT : IN;
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct fsl_asrc_pair *pair = runtime->private_data;
-	struct snd_soc_component *component = snd_soc_rtdcom_lookup(rtd, DRV_NAME);
 	struct device *dev = component->dev;
 	unsigned long flags = DMA_CTRL_ACK;
 
@@ -95,7 +94,8 @@ static int fsl_asrc_dma_prepare_and_submit(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int fsl_asrc_dma_trigger(struct snd_pcm_substream *substream, int cmd)
+static int fsl_asrc_dma_trigger(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream, int cmd)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct fsl_asrc_pair *pair = runtime->private_data;
@@ -105,7 +105,7 @@ static int fsl_asrc_dma_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-		ret = fsl_asrc_dma_prepare_and_submit(substream);
+		ret = fsl_asrc_dma_prepare_and_submit(substream, component);
 		if (ret)
 			return ret;
 		dma_async_issue_pending(pair->dma_chan[IN]);
@@ -124,25 +124,26 @@ static int fsl_asrc_dma_trigger(struct snd_pcm_substream *substream, int cmd)
 	return 0;
 }
 
-static int fsl_asrc_dma_hw_params(struct snd_pcm_substream *substream,
+static int fsl_asrc_dma_hw_params(struct snd_soc_component *component,
+				  struct snd_pcm_substream *substream,
 				  struct snd_pcm_hw_params *params)
 {
 	enum dma_slave_buswidth buswidth = DMA_SLAVE_BUSWIDTH_2_BYTES;
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
 	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
 	struct snd_dmaengine_dai_dma_data *dma_params_fe = NULL;
 	struct snd_dmaengine_dai_dma_data *dma_params_be = NULL;
-	struct snd_soc_component *component = snd_soc_rtdcom_lookup(rtd, DRV_NAME);
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct fsl_asrc_pair *pair = runtime->private_data;
-	struct fsl_asrc *asrc_priv = pair->asrc_priv;
+	struct dma_chan *tmp_chan = NULL, *be_chan = NULL;
+	struct snd_soc_component *component_be = NULL;
+	struct fsl_asrc *asrc = pair->asrc;
 	struct dma_slave_config config_fe, config_be;
 	enum asrc_pair_index index = pair->index;
 	struct device *dev = component->dev;
 	int stream = substream->stream;
 	struct imx_dma_data *tmp_data;
 	struct snd_soc_dpcm *dpcm;
-	struct dma_chan *tmp_chan;
 	struct device *dev_be;
 	u8 dir = tx ? OUT : IN;
 	dma_cap_mask_t mask;
@@ -153,7 +154,7 @@ static int fsl_asrc_dma_hw_params(struct snd_pcm_substream *substream,
 	for_each_dpcm_be(rtd, stream, dpcm) {
 		struct snd_soc_pcm_runtime *be = dpcm->be;
 		struct snd_pcm_substream *substream_be;
-		struct snd_soc_dai *dai = be->cpu_dai;
+		struct snd_soc_dai *dai = asoc_rtd_to_cpu(be, 0);
 
 		if (dpcm->fe != rtd)
 			continue;
@@ -170,11 +171,11 @@ static int fsl_asrc_dma_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	/* Override dma_data of the Front-End and config its dmaengine */
-	dma_params_fe = snd_soc_dai_get_dma_data(rtd->cpu_dai, substream);
-	dma_params_fe->addr = asrc_priv->paddr + REG_ASRDx(!dir, index);
+	dma_params_fe = snd_soc_dai_get_dma_data(asoc_rtd_to_cpu(rtd, 0), substream);
+	dma_params_fe->addr = asrc->paddr + asrc->get_fifo_addr(!dir, index);
 	dma_params_fe->maxburst = dma_params_be->maxburst;
 
-	pair->dma_chan[!dir] = fsl_asrc_get_dma_channel(pair, !dir);
+	pair->dma_chan[!dir] = asrc->get_dma_channel(pair, !dir);
 	if (!pair->dma_chan[!dir]) {
 		dev_err(dev, "failed to request DMA channel\n");
 		return -EINVAL;
@@ -242,10 +243,19 @@ static int fsl_asrc_dma_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-	if (asrc_priv->asrc_width == 16)
+	width = snd_pcm_format_physical_width(asrc->asrc_format);
+	if (width < 8 || width > 64)
+		return -EINVAL;
+	else if (width == 8)
+		buswidth = DMA_SLAVE_BUSWIDTH_1_BYTE;
+	else if (width == 16)
 		buswidth = DMA_SLAVE_BUSWIDTH_2_BYTES;
-	else
+	else if (width == 24)
+		buswidth = DMA_SLAVE_BUSWIDTH_3_BYTES;
+	else if (width <= 32)
 		buswidth = DMA_SLAVE_BUSWIDTH_4_BYTES;
+	else
+		buswidth = DMA_SLAVE_BUSWIDTH_8_BYTES;
 
 	memset(&config_be, 0, sizeof(config_be));
 
@@ -256,10 +266,10 @@ static int fsl_asrc_dma_hw_params(struct snd_pcm_substream *substream,
 	config_be.dst_maxburst = dma_params_be->maxburst;
 
 	if (tx) {
-		config_be.src_addr = asrc_priv->paddr + REG_ASRDO(index);
+		config_be.src_addr = asrc->paddr + asrc->get_fifo_addr(OUT, index);
 		config_be.dst_addr = dma_params_be->addr;
 	} else {
-		config_be.dst_addr = asrc_priv->paddr + REG_ASRDI(index);
+		config_be.dst_addr = asrc->paddr + asrc->get_fifo_addr(IN, index);
 		config_be.src_addr = dma_params_be->addr;
 	}
 
@@ -275,32 +285,38 @@ static int fsl_asrc_dma_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static int fsl_asrc_dma_hw_free(struct snd_pcm_substream *substream)
+static int fsl_asrc_dma_hw_free(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream)
 {
+	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct fsl_asrc_pair *pair = runtime->private_data;
+	u8 dir = tx ? OUT : IN;
 
 	snd_pcm_set_runtime_buffer(substream, NULL);
 
-	if (pair->dma_chan[IN])
-		dma_release_channel(pair->dma_chan[IN]);
+	if (pair->dma_chan[!dir])
+		dma_release_channel(pair->dma_chan[!dir]);
 
-	if (pair->dma_chan[OUT])
-		dma_release_channel(pair->dma_chan[OUT]);
+	/* release dev_to_dev chan if we aren't reusing the Back-End one */
+	if (pair->dma_chan[dir] && pair->req_dma_chan)
+		dma_release_channel(pair->dma_chan[dir]);
 
-	pair->dma_chan[IN] = NULL;
-	pair->dma_chan[OUT] = NULL;
+	pair->dma_chan[!dir] = NULL;
+	pair->dma_chan[dir] = NULL;
 
 	return 0;
 }
 
-static int fsl_asrc_dma_startup(struct snd_pcm_substream *substream)
+static int fsl_asrc_dma_startup(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream)
 {
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
+	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
-	struct snd_soc_component *component = snd_soc_rtdcom_lookup(rtd, DRV_NAME);
+	struct snd_dmaengine_dai_dma_data *dma_data;
 	struct device *dev = component->dev;
-	struct fsl_asrc *asrc_priv = dev_get_drvdata(dev);
+	struct fsl_asrc *asrc = dev_get_drvdata(dev);
 	struct fsl_asrc_pair *pair;
 	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
 	u8 dir = tx ? OUT : IN;
@@ -313,11 +329,12 @@ static int fsl_asrc_dma_startup(struct snd_pcm_substream *substream)
 	int ret;
 	int i;
 
-	pair = kzalloc(sizeof(struct fsl_asrc_pair), GFP_KERNEL);
+	pair = kzalloc(sizeof(*pair) + asrc->pair_priv_size, GFP_KERNEL);
 	if (!pair)
 		return -ENOMEM;
 
-	pair->asrc_priv = asrc_priv;
+	pair->asrc = asrc;
+	pair->private = (void *)pair + sizeof(struct fsl_asrc_pair);
 
 	runtime->private_data = pair;
 
@@ -395,29 +412,42 @@ static int fsl_asrc_dma_startup(struct snd_pcm_substream *substream)
 
 	snd_soc_set_runtime_hwparams(substream, &snd_imx_hardware);
 
-	return 0;
+out:
+	dma_release_channel(tmp_chan);
+
+dma_chan_err:
+	asrc->release_pair(pair);
+
+req_pair_err:
+	if (release_pair)
+		kfree(pair);
+
+	return ret;
 }
 
-static int fsl_asrc_dma_shutdown(struct snd_pcm_substream *substream)
+static int fsl_asrc_dma_shutdown(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct fsl_asrc_pair *pair = runtime->private_data;
-	struct fsl_asrc *asrc_priv;
+	struct fsl_asrc *asrc;
 
 	if (!pair)
 		return 0;
 
-	asrc_priv = pair->asrc_priv;
+	asrc = pair->asrc;
 
-	if (asrc_priv->pair[pair->index] == pair)
-		asrc_priv->pair[pair->index] = NULL;
+	if (asrc->pair[pair->index] == pair)
+		asrc->pair[pair->index] = NULL;
 
 	kfree(pair);
 
 	return 0;
 }
 
-static snd_pcm_uframes_t fsl_asrc_dma_pcm_pointer(struct snd_pcm_substream *substream)
+static snd_pcm_uframes_t
+fsl_asrc_dma_pcm_pointer(struct snd_soc_component *component,
+			 struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct fsl_asrc_pair *pair = runtime->private_data;
@@ -425,17 +455,8 @@ static snd_pcm_uframes_t fsl_asrc_dma_pcm_pointer(struct snd_pcm_substream *subs
 	return bytes_to_frames(substream->runtime, pair->pos);
 }
 
-static const struct snd_pcm_ops fsl_asrc_dma_pcm_ops = {
-	.ioctl		= snd_pcm_lib_ioctl,
-	.hw_params	= fsl_asrc_dma_hw_params,
-	.hw_free	= fsl_asrc_dma_hw_free,
-	.trigger	= fsl_asrc_dma_trigger,
-	.open		= fsl_asrc_dma_startup,
-	.close		= fsl_asrc_dma_shutdown,
-	.pointer	= fsl_asrc_dma_pcm_pointer,
-};
-
-static int fsl_asrc_dma_pcm_new(struct snd_soc_pcm_runtime *rtd)
+static int fsl_asrc_dma_pcm_new(struct snd_soc_component *component,
+				struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_card *card = rtd->card->snd_card;
 	struct snd_pcm_substream *substream;
@@ -448,7 +469,7 @@ static int fsl_asrc_dma_pcm_new(struct snd_soc_pcm_runtime *rtd)
 		return ret;
 	}
 
-	for (i = SNDRV_PCM_STREAM_PLAYBACK; i <= SNDRV_PCM_STREAM_LAST; i++) {
+	for_each_pcm_streams(i) {
 		substream = pcm->streams[i].substream;
 		if (!substream)
 			continue;
@@ -470,12 +491,13 @@ err:
 	return ret;
 }
 
-static void fsl_asrc_dma_pcm_free(struct snd_pcm *pcm)
+static void fsl_asrc_dma_pcm_free(struct snd_soc_component *component,
+				  struct snd_pcm *pcm)
 {
 	struct snd_pcm_substream *substream;
 	int i;
 
-	for (i = SNDRV_PCM_STREAM_PLAYBACK; i <= SNDRV_PCM_STREAM_LAST; i++) {
+	for_each_pcm_streams(i) {
 		substream = pcm->streams[i].substream;
 		if (!substream)
 			continue;
@@ -488,8 +510,13 @@ static void fsl_asrc_dma_pcm_free(struct snd_pcm *pcm)
 
 struct snd_soc_component_driver fsl_asrc_component = {
 	.name		= DRV_NAME,
-	.ops		= &fsl_asrc_dma_pcm_ops,
-	.pcm_new	= fsl_asrc_dma_pcm_new,
-	.pcm_free	= fsl_asrc_dma_pcm_free,
+	.hw_params	= fsl_asrc_dma_hw_params,
+	.hw_free	= fsl_asrc_dma_hw_free,
+	.trigger	= fsl_asrc_dma_trigger,
+	.open		= fsl_asrc_dma_startup,
+	.close		= fsl_asrc_dma_shutdown,
+	.pointer	= fsl_asrc_dma_pcm_pointer,
+	.pcm_construct	= fsl_asrc_dma_pcm_new,
+	.pcm_destruct	= fsl_asrc_dma_pcm_free,
 };
 EXPORT_SYMBOL_GPL(fsl_asrc_component);

@@ -330,6 +330,9 @@ static void j1939_session_skb_drop_old(struct j1939_session *session)
 
 	if ((do_skcb->offset + do_skb->len) < offset_start) {
 		__skb_unlink(do_skb, &session->skb_queue);
+		/* drop ref taken in j1939_session_skb_queue() */
+		skb_unref(do_skb);
+
 		kfree_skb(do_skb);
 	}
 	spin_unlock_irqrestore(&session->skb_queue.lock, flags);
@@ -349,6 +352,7 @@ void j1939_session_skb_queue(struct j1939_session *session,
 
 	skcb->flags |= J1939_ECU_LOCAL_SRC;
 
+	skb_get(skb);
 	skb_queue_tail(&session->skb_queue, skb);
 }
 
@@ -371,6 +375,10 @@ sk_buff *j1939_session_skb_find_by_offset(struct j1939_session *session,
 			skb = do_skb;
 		}
 	}
+
+	if (skb)
+		skb_get(skb);
+
 	spin_unlock_irqrestore(&session->skb_queue.lock, flags);
 
 	if (!skb)
@@ -580,6 +588,7 @@ sk_buff *j1939_tp_tx_dat_new(struct j1939_priv *priv,
 	skb->dev = priv->ndev;
 	can_skb_reserve(skb);
 	can_skb_prv(skb)->ifindex = priv->ndev->ifindex;
+	can_skb_prv(skb)->skbcnt = 0;
 	/* reserve CAN header */
 	skb_reserve(skb, offsetof(struct can_frame, data));
 
@@ -834,6 +843,12 @@ static int j1939_session_tx_dat(struct j1939_session *session)
 	if (pkt_done)
 		j1939_tp_set_rxtimeout(session, 250);
 
+ out_free:
+	if (ret)
+		kfree_skb(se_skb);
+	else
+		consume_skb(se_skb);
+
 	return ret;
 }
 
@@ -860,7 +875,7 @@ static int j1939_xtp_txnext_transmiter(struct j1939_session *session)
 				return ret;
 		}
 
-		/* fall through */
+		fallthrough;
 	case J1939_TP_CMD_CTS:
 	case 0xff: /* did some data */
 	case J1939_ETP_CMD_DPO:
@@ -1006,7 +1021,7 @@ static int j1939_xtp_txnext_receiver(struct j1939_session *session)
 static int j1939_simple_txnext(struct j1939_session *session)
 {
 	struct j1939_priv *priv = session->priv;
-	struct sk_buff *se_skb = j1939_session_skb_find(session);
+	struct sk_buff *se_skb = j1939_session_skb_get(session);
 	struct sk_buff *skb;
 	int ret;
 
@@ -1014,8 +1029,10 @@ static int j1939_simple_txnext(struct j1939_session *session)
 		return 0;
 
 	skb = skb_clone(se_skb, GFP_ATOMIC);
-	if (!skb)
-		return -ENOMEM;
+	if (!skb) {
+		ret = -ENOMEM;
+		goto out_free;
+	}
 
 	can_skb_set_owner(skb, se_skb->sk);
 
@@ -1023,12 +1040,18 @@ static int j1939_simple_txnext(struct j1939_session *session)
 
 	ret = j1939_send_one(priv, skb);
 	if (ret)
-		return ret;
+		goto out_free;
 
 	j1939_sk_errqueue(session, J1939_ERRQUEUE_SCHED);
 	j1939_sk_queue_activate_next(session);
 
-	return 0;
+ out_free:
+	if (ret)
+		kfree_skb(se_skb);
+	else
+		consume_skb(se_skb);
+
+	return ret;
 }
 
 static bool j1939_session_deactivate_locked(struct j1939_session *session)
@@ -1051,11 +1074,16 @@ static bool j1939_session_deactivate_locked(struct j1939_session *session)
 
 static bool j1939_session_deactivate(struct j1939_session *session)
 {
+	struct j1939_priv *priv = session->priv;
 	bool active;
 
-	j1939_session_list_lock(session->priv);
+	j1939_session_list_lock(priv);
+	/* This function should be called with a session ref-count of at
+	 * least 2.
+	 */
+	WARN_ON_ONCE(kref_read(&session->kref) < 2);
 	active = j1939_session_deactivate_locked(session);
-	j1939_session_list_unlock(session->priv);
+	j1939_session_list_unlock(priv);
 
 	return active;
 }
@@ -1169,9 +1197,10 @@ static void j1939_session_completed(struct j1939_session *session)
 	struct sk_buff *skb;
 
 	if (!session->transmission) {
-		skb = j1939_session_skb_find(session);
+		skb = j1939_session_skb_get(session);
 		/* distribute among j1939 receivers */
 		j1939_sk_recv(session->priv, skb);
+		consume_skb(skb);
 	}
 
 	j1939_session_deactivate_activate_next(session);
@@ -1487,6 +1516,7 @@ j1939_session *j1939_session_fresh_new(struct j1939_priv *priv,
 	skb->dev = priv->ndev;
 	can_skb_reserve(skb);
 	can_skb_prv(skb)->ifindex = priv->ndev->ifindex;
+	can_skb_prv(skb)->skbcnt = 0;
 	skcb = j1939_skb_to_cb(skb);
 	memcpy(skcb, rel_skcb, sizeof(*skcb));
 
@@ -1742,7 +1772,7 @@ static void j1939_xtp_rx_dat_one(struct j1939_session *session,
 {
 	struct j1939_priv *priv = session->priv;
 	struct j1939_sk_buff_cb *skcb;
-	struct sk_buff *se_skb;
+	struct sk_buff *se_skb = NULL;
 	const u8 *dat;
 	u8 *tpdat;
 	int offset;
@@ -1764,12 +1794,12 @@ static void j1939_xtp_rx_dat_one(struct j1939_session *session,
 	case J1939_ETP_CMD_DPO:
 		if (skcb->addr.type == J1939_ETP)
 			break;
-		/* fall through */
-	case J1939_TP_CMD_BAM: /* fall through */
+		fallthrough;
+	case J1939_TP_CMD_BAM:
 	case J1939_TP_CMD_CTS: /* fall through */
 		if (skcb->addr.type != J1939_ETP)
 			break;
-		/* fall through */
+		fallthrough;
 	default:
 		netdev_info(priv->ndev, "%s: 0x%p: last %02x\n", __func__,
 			    session, session->last_cmd);
@@ -1843,14 +1873,16 @@ static void j1939_xtp_rx_dat_one(struct j1939_session *session,
 		if (!session->transmission)
 			j1939_tp_schedule_txtimer(session, 0);
 	} else {
-		j1939_tp_set_rxtimeout(session, 250);
+		j1939_tp_set_rxtimeout(session, 750);
 	}
 	session->last_cmd = 0xff;
+	consume_skb(se_skb);
 	j1939_session_put(session);
 
 	return;
 
  out_session_cancel:
+	kfree_skb(se_skb);
 	j1939_session_timers_cancel(session);
 	j1939_session_cancel(session, J1939_XTP_ABORT_FAULT);
 	j1939_session_put(session);
@@ -1965,8 +1997,8 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb)
 	switch (cmd) {
 	case J1939_ETP_CMD_RTS:
 		extd = J1939_ETP;
-		/* fall through */
-	case J1939_TP_CMD_BAM: /* fall through */
+		fallthrough;
+	case J1939_TP_CMD_BAM:
 	case J1939_TP_CMD_RTS: /* fall through */
 		if (skcb->addr.type != extd)
 			return;
@@ -1987,7 +2019,7 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb)
 
 	case J1939_ETP_CMD_CTS:
 		extd = J1939_ETP;
-		/* fall through */
+		fallthrough;
 	case J1939_TP_CMD_CTS:
 		if (skcb->addr.type != extd)
 			return;
@@ -2014,7 +2046,7 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb)
 
 	case J1939_ETP_CMD_EOMA:
 		extd = J1939_ETP;
-		/* fall through */
+		fallthrough;
 	case J1939_TP_CMD_EOMA:
 		if (skcb->addr.type != extd)
 			return;
@@ -2050,14 +2082,14 @@ int j1939_tp_recv(struct j1939_priv *priv, struct sk_buff *skb)
 	switch (skcb->addr.pgn) {
 	case J1939_ETP_PGN_DAT:
 		skcb->addr.type = J1939_ETP;
-		/* fall through */
+		fallthrough;
 	case J1939_TP_PGN_DAT:
 		j1939_xtp_rx_dat(priv, skb);
 		break;
 
 	case J1939_ETP_PGN_CTL:
 		skcb->addr.type = J1939_ETP;
-		/* fall through */
+		fallthrough;
 	case J1939_TP_PGN_CTL:
 		if (skb->len < 8)
 			return 0; /* Don't care. Nothing to extract here */

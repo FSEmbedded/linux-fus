@@ -107,7 +107,6 @@ static inline int link_mem_sections(int nid, unsigned long start_pfn,
 				    unsigned long end_pfn,
 				    enum meminit_context context)
 {
-	return 0;
 }
 #endif
 

@@ -8,7 +8,11 @@
 # We cannot go as far as adding -Wpedantic since it emits too many warnings.
 UAPI_CFLAGS := -std=c90 -Wall -Werror=implicit-function-declaration
 
-override c_flags = $(UAPI_CFLAGS) -Wp,-MD,$(depfile) -I$(objtree)/usr/include
+# In theory, we do not care -m32 or -m64 for header compile tests.
+# It is here just because CONFIG_CC_CAN_LINK is tested with -m32 or -m64.
+UAPI_CFLAGS += $(filter -m32 -m64, $(KBUILD_CFLAGS))
+
+override c_flags = $(UAPI_CFLAGS) -Wp,-MMD,$(depfile) -I$(objtree)/usr/include
 
 # The following are excluded for now because they fail to build.
 #
@@ -71,38 +75,48 @@ header-test- += xen/privcmd.h
 # More headers are broken in some architectures
 
 ifeq ($(SRCARCH),arc)
-header-test- += linux/bpf_perf_event.h
+no-header-test += linux/bpf_perf_event.h
 endif
 
 ifeq ($(SRCARCH),ia64)
-header-test- += asm/setup.h
-header-test- += asm/sigcontext.h
-header-test- += asm/perfmon.h
-header-test- += asm/perfmon_default_smpl.h
-header-test- += linux/if_bonding.h
+no-header-test += asm/setup.h
+no-header-test += asm/sigcontext.h
+no-header-test += asm/perfmon.h
+no-header-test += asm/perfmon_default_smpl.h
+no-header-test += linux/if_bonding.h
 endif
 
 ifeq ($(SRCARCH),mips)
-header-test- += asm/stat.h
+no-header-test += asm/stat.h
 endif
 
 ifeq ($(SRCARCH),powerpc)
-header-test- += asm/stat.h
-header-test- += linux/bpf_perf_event.h
+no-header-test += asm/stat.h
+no-header-test += linux/bpf_perf_event.h
 endif
 
 ifeq ($(SRCARCH),riscv)
-header-test- += linux/bpf_perf_event.h
+no-header-test += linux/bpf_perf_event.h
 endif
 
 ifeq ($(SRCARCH),sparc)
-header-test- += asm/stat.h
-header-test- += asm/uctx.h
-header-test- += asm/fbio.h
+no-header-test += asm/stat.h
+no-header-test += asm/uctx.h
+no-header-test += asm/fbio.h
 endif
 
 # asm-generic/*.h is used by asm/*.h, and should not be included directly
-header-test- += asm-generic/%
+no-header-test += asm-generic/%
+
+extra-y := $(patsubst $(obj)/%.h,%.hdrtest, $(shell find $(obj) -name '*.h' 2>/dev/null))
+
+# Include the header twice to detect missing include guard.
+quiet_cmd_hdrtest = HDRTEST $<
+      cmd_hdrtest = \
+		$(CC) $(c_flags) -S -o /dev/null -x c /dev/null \
+			$(if $(filter-out $(no-header-test), $*.h), -include $< -include $<); \
+		$(PERL) $(srctree)/scripts/headers_check.pl $(obj) $(SRCARCH) $<; \
+		touch $@
 
 extra-y := $(patsubst $(obj)/%.h,%.hdrtest, $(shell find $(obj) -name '*.h' 2>/dev/null))
 

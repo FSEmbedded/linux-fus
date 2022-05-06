@@ -15,9 +15,13 @@
 #include <linux/platform_device.h>
 #include <linux/suspend.h>
 
+/* Returned when NOT in tablet mode on some HP Stream x360 11 models */
+#define VGBS_TABLET_MODE_FLAG_ALT	0x10
 /* When NOT in tablet mode, VGBS returns with the flag 0x40 */
-#define TABLET_MODE_FLAG 0x40
-#define DOCK_MODE_FLAG   0x80
+#define VGBS_TABLET_MODE_FLAG		0x40
+#define VGBS_DOCK_MODE_FLAG		0x80
+
+#define VGBS_TABLET_MODE_FLAGS (VGBS_TABLET_MODE_FLAG | VGBS_TABLET_MODE_FLAG_ALT)
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("AceLan Kao");
@@ -26,6 +30,7 @@ static const struct acpi_device_id intel_vbtn_ids[] = {
 	{"INT33D6", 0},
 	{"", 0},
 };
+MODULE_DEVICE_TABLE(acpi, intel_vbtn_ids);
 
 /* In theory, these are HID usages. */
 static const struct key_entry intel_vbtn_keymap[] = {
@@ -57,6 +62,24 @@ struct intel_vbtn_priv {
 	bool has_switches;
 	bool wakeup_mode;
 };
+
+static void detect_tablet_mode(struct platform_device *device)
+{
+	struct intel_vbtn_priv *priv = dev_get_drvdata(&device->dev);
+	acpi_handle handle = ACPI_HANDLE(&device->dev);
+	unsigned long long vgbs;
+	acpi_status status;
+	int m;
+
+	status = acpi_evaluate_integer(handle, "VGBS", NULL, &vgbs);
+	if (ACPI_FAILURE(status))
+		return;
+
+	m = !(vgbs & VGBS_TABLET_MODE_FLAGS);
+	input_report_switch(priv->input_dev, SW_TABLET_MODE, m);
+	m = (vgbs & VGBS_DOCK_MODE_FLAG) ? 1 : 0;
+	input_report_switch(priv->input_dev, SW_DOCK, m);
+}
 
 static int intel_vbtn_input_setup(struct platform_device *device)
 {
@@ -90,6 +113,9 @@ static int intel_vbtn_input_setup(struct platform_device *device)
 	priv->input_dev->dev.parent = &device->dev;
 	priv->input_dev->name = "Intel Virtual Button driver";
 	priv->input_dev->id.bustype = BUS_HOST;
+
+	if (priv->has_switches)
+		detect_tablet_mode(device);
 
 	return input_register_device(priv->input_dev);
 }
@@ -136,13 +162,12 @@ out_unknown:
 	dev_dbg(&device->dev, "unknown event index 0x%x\n", event);
 }
 
-static void detect_tablet_mode(struct platform_device *device)
+static bool intel_vbtn_has_buttons(acpi_handle handle)
 {
 	struct intel_vbtn_priv *priv = dev_get_drvdata(&device->dev);
 	acpi_handle handle = ACPI_HANDLE(&device->dev);
 	unsigned long long vgbs;
 	acpi_status status;
-	int m;
 
 	status = acpi_evaluate_integer(handle, "VGBS", NULL, &vgbs);
 	if (ACPI_FAILURE(status))
@@ -177,12 +202,15 @@ static bool intel_vbtn_has_switches(acpi_handle handle)
 static int intel_vbtn_probe(struct platform_device *device)
 {
 	acpi_handle handle = ACPI_HANDLE(&device->dev);
+	bool has_buttons, has_switches;
 	struct intel_vbtn_priv *priv;
 	acpi_status status;
 	int err;
 
-	status = acpi_evaluate_object(handle, "VBDL", NULL, NULL);
-	if (ACPI_FAILURE(status)) {
+	has_buttons = intel_vbtn_has_buttons(handle);
+	has_switches = intel_vbtn_has_switches(handle);
+
+	if (!has_buttons && !has_switches) {
 		dev_warn(&device->dev, "failed to read Intel Virtual Button driver\n");
 		return -ENODEV;
 	}
@@ -274,7 +302,6 @@ static struct platform_driver intel_vbtn_pl_driver = {
 	.probe = intel_vbtn_probe,
 	.remove = intel_vbtn_remove,
 };
-MODULE_DEVICE_TABLE(acpi, intel_vbtn_ids);
 
 static acpi_status __init
 check_acpi_dev(acpi_handle handle, u32 lvl, void *context, void **rv)

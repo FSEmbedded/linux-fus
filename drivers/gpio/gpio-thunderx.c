@@ -15,6 +15,7 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/spinlock.h>
+#include <asm-generic/msi.h>
 
 
 #define GPIO_RX_DAT	0x0
@@ -170,7 +171,10 @@ static int thunderx_gpio_get_direction(struct gpio_chip *chip, unsigned int line
 
 	bit_cfg = readq(txgpio->register_base + bit_cfg_reg(line));
 
-	return !(bit_cfg & GPIO_BIT_CFG_TX_OE);
+	if (bit_cfg & GPIO_BIT_CFG_TX_OE)
+		return GPIO_LINE_DIRECTION_OUT;
+
+	return GPIO_LINE_DIRECTION_IN;
 }
 
 static int thunderx_gpio_set_config(struct gpio_chip *chip,

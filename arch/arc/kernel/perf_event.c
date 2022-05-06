@@ -639,11 +639,15 @@ static int arc_pmu_device_probe(struct platform_device *pdev)
 
 	if (has_interrupts && (irq = platform_get_irq(pdev, 0) >= 0)) {
 
-		arc_pmu->irq = irq;
+			/* intc map function ensures irq_set_percpu_devid() called */
+			ret = request_percpu_irq(irq, arc_pmu_intr, "ARC perf counters",
+						 this_cpu_ptr(&arc_pmu_cpu));
 
-		/* intc map function ensures irq_set_percpu_devid() called */
-		request_percpu_irq(irq, arc_pmu_intr, "ARC perf counters",
-				   this_cpu_ptr(&arc_pmu_cpu));
+			if (!ret)
+				on_each_cpu(arc_cpu_pmu_irq_init, &irq, 1);
+			else
+				irq = -1;
+		}
 
 		on_each_cpu(arc_cpu_pmu_irq_init, &irq, 1);
 	} else {

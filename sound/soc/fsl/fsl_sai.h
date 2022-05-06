@@ -246,6 +246,32 @@ struct fsl_sai_dl_cfg {
 	unsigned int offset[2];
 };
 
+/**
+ * struct fsl_sai_verid - version id data
+ * @major: major version number
+ * @minor: minor version number
+ * @feature: feature specification number
+ *           0000000000000000b - Standard feature set
+ *           0000000000000000b - Standard feature set
+ */
+struct fsl_sai_verid {
+	u32 major;
+	u32 minor;
+	u32 feature;
+};
+
+/**
+ * struct fsl_sai_param - parameter data
+ * @slot_num: The maximum number of slots per frame
+ * @fifo_depth: The number of words in each FIFO (depth)
+ * @dataline: The number of datalines implemented
+ */
+struct fsl_sai_param {
+	u32 slot_num;
+	u32 fifo_depth;
+	u32 dataline;
+};
+
 struct fsl_sai {
 	struct platform_device *pdev;
 	struct regmap *regmap;

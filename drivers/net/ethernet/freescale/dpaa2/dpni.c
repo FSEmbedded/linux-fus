@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 /* Copyright 2013-2016 Freescale Semiconductor Inc.
  * Copyright 2016 NXP
+ * Copyright 2020 NXP
  */
 #include <linux/kernel.h>
 #include <linux/errno.h>
@@ -1745,7 +1746,7 @@ int dpni_reset_statistics(struct fsl_mc_io *mc_io,
  * @cmd_flags:	Command flags; one or more of 'MC_CMD_FLAG_'
  * @token:	Token of DPNI object
  * @cg_point:	Congestion point
- * @q_type:	Queue type on which the taildrop is configured.
+ * @qtype:	Queue type on which the taildrop is configured.
  *		Only Rx queues are supported for now
  * @tc:		bits 7-4 contain ceetm channel index (valid only for TX);
  *		bits 3-0 contain traffic class.
@@ -1792,7 +1793,7 @@ int dpni_set_taildrop(struct fsl_mc_io *mc_io,
  * @cmd_flags:	Command flags; one or more of 'MC_CMD_FLAG_'
  * @token:	Token of DPNI object
  * @cg_point:	Congestion point
- * @q_type:	Queue type on which the taildrop is configured.
+ * @qtype:	Queue type on which the taildrop is configured.
  *		Only Rx queues are supported for now
  * @tc:		bits 7-4 contain ceetm channel index (valid only for TX);
  *		bits 3-0 contain traffic class.

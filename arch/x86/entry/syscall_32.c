@@ -4,7 +4,8 @@
 #include <linux/linkage.h>
 #include <linux/sys.h>
 #include <linux/cache.h>
-#include <asm/asm-offsets.h>
+#include <linux/syscalls.h>
+#include <asm/unistd.h>
 #include <asm/syscall.h>
 
 #ifdef CONFIG_IA32_EMULATION
@@ -20,9 +21,9 @@ extern asmlinkage long sys_ni_syscall(unsigned long, unsigned long, unsigned lon
 #include <asm/syscalls_32.h>
 #undef __SYSCALL_I386
 
-#define __SYSCALL_I386(nr, sym, qual) [nr] = sym,
+#define __SYSCALL_I386(nr, sym) [nr] = __ia32_##sym,
 
-__visible const sys_call_ptr_t ia32_sys_call_table[__NR_syscall_compat_max+1] = {
+__visible const sys_call_ptr_t ia32_sys_call_table[__NR_ia32_syscall_max+1] = {
 	/*
 	 * Smells like a compiler bug -- it doesn't work
 	 * when the & below is removed.

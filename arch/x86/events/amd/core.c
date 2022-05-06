@@ -14,6 +14,10 @@
 static DEFINE_PER_CPU(unsigned long, perf_nmi_tstamp);
 static unsigned long perf_nmi_window;
 
+/* AMD Event 0xFFF: Merge.  Used with Large Increment per Cycle events */
+#define AMD_MERGE_EVENT ((0xFULL << 32) | 0xFFULL)
+#define AMD_MERGE_EVENT_ENABLE (AMD_MERGE_EVENT | ARCH_PERFMON_EVENTSEL_ENABLE)
+
 static __initconst const u64 amd_hw_cache_event_ids
 				[PERF_COUNT_HW_CACHE_MAX]
 				[PERF_COUNT_HW_CACHE_OP_MAX]
@@ -336,8 +340,8 @@ static int amd_core_hw_config(struct perf_event *event)
 	else if (event->attr.exclude_guest)
 		event->hw.config |= AMD64_EVENTSEL_HOSTONLY;
 
-	return 0;
-}
+	if ((x86_pmu.flags & PMU_FL_PAIR) && amd_is_pair_event_code(&event->hw))
+		event->hw.flags |= PERF_X86_EVENT_PAIR;
 
 static inline int amd_is_nb_event(struct hw_perf_event *hwc)
 {
@@ -664,15 +668,7 @@ static void amd_pmu_disable_event(struct perf_event *event)
  */
 static int amd_pmu_handle_irq(struct pt_regs *regs)
 {
-	struct cpu_hw_events *cpuc = this_cpu_ptr(&cpu_hw_events);
-	int active, handled;
-
-	/*
-	 * Obtain the active count before calling x86_pmu_handle_irq() since
-	 * it is possible that x86_pmu_handle_irq() may make a counter
-	 * inactive (through x86_pmu_stop).
-	 */
-	active = __bitmap_weight(cpuc->active_mask, X86_PMC_IDX_MAX);
+	int handled;
 
 	/* Process any counter overflows */
 	handled = x86_pmu_handle_irq(regs);
@@ -682,8 +678,7 @@ static int amd_pmu_handle_irq(struct pt_regs *regs)
 	 * NMIs will be claimed if arriving within that window.
 	 */
 	if (handled) {
-		this_cpu_write(perf_nmi_tstamp,
-			       jiffies + perf_nmi_window);
+		this_cpu_write(perf_nmi_tstamp, jiffies + perf_nmi_window);
 
 		return handled;
 	}

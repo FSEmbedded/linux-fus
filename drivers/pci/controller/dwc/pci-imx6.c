@@ -3,7 +3,7 @@
  * PCIe host controller driver for Freescale i.MX6 SoCs
  *
  * Copyright (C) 2013 Kosagi
- *		http://www.kosagi.com
+ *		https://www.kosagi.com
  *
  * Author: Sean Cross <xobs@kosagi.com>
  */
@@ -197,8 +197,6 @@ struct imx6_pcie {
 
 #define PCIE_PHY_STAT (PL_OFFSET + 0x110)
 #define PCIE_PHY_STAT_ACK		BIT(16)
-
-#define PCIE_LINK_WIDTH_SPEED_CONTROL	0x80C
 
 /* PHY registers (not memory-mapped) */
 #define PCIE_PHY_ATEOVRD			0x10
@@ -1810,6 +1808,7 @@ static int imx6_pcie_establish_link(struct imx6_pcie *imx6_pcie)
 {
 	struct dw_pcie *pci = imx6_pcie->pci;
 	struct device *dev = pci->dev;
+	u8 offset = dw_pcie_find_capability(pci, PCI_CAP_ID_EXP);
 	u32 tmp;
 	int ret;
 
@@ -2506,32 +2505,28 @@ static int imx6_pcie_probe(struct platform_device *pdev)
 
 	/* Fetch clocks */
 	imx6_pcie->pcie_phy = devm_clk_get(dev, "pcie_phy");
-	if (IS_ERR(imx6_pcie->pcie_phy)) {
-		dev_err(dev, "pcie_phy clock source missing or invalid\n");
-		return PTR_ERR(imx6_pcie->pcie_phy);
-	}
+	if (IS_ERR(imx6_pcie->pcie_phy))
+		return dev_err_probe(dev, PTR_ERR(imx6_pcie->pcie_phy),
+				     "pcie_phy clock source missing or invalid\n");
 
 	imx6_pcie->pcie_bus = devm_clk_get(dev, "pcie_bus");
-	if (IS_ERR(imx6_pcie->pcie_bus)) {
-		dev_err(dev, "pcie_bus clock source missing or invalid\n");
-		return PTR_ERR(imx6_pcie->pcie_bus);
-	}
+	if (IS_ERR(imx6_pcie->pcie_bus))
+		return dev_err_probe(dev, PTR_ERR(imx6_pcie->pcie_bus),
+				     "pcie_bus clock source missing or invalid\n");
 
 	imx6_pcie->pcie = devm_clk_get(dev, "pcie");
-	if (IS_ERR(imx6_pcie->pcie)) {
-		dev_err(dev, "pcie clock source missing or invalid\n");
-		return PTR_ERR(imx6_pcie->pcie);
-	}
+	if (IS_ERR(imx6_pcie->pcie))
+		return dev_err_probe(dev, PTR_ERR(imx6_pcie->pcie),
+				     "pcie clock source missing or invalid\n");
 
 	switch (imx6_pcie->drvdata->variant) {
 	case IMX6SX:
 	case IMX6SX_EP:
 		imx6_pcie->pcie_inbound_axi = devm_clk_get(dev,
 							   "pcie_inbound_axi");
-		if (IS_ERR(imx6_pcie->pcie_inbound_axi)) {
-			dev_err(dev, "pcie_inbound_axi clock missing or invalid\n");
-			return PTR_ERR(imx6_pcie->pcie_inbound_axi);
-		}
+		if (IS_ERR(imx6_pcie->pcie_inbound_axi))
+			return dev_err_probe(dev, PTR_ERR(imx6_pcie->pcie_inbound_axi),
+					     "pcie_inbound_axi clock missing or invalid\n");
 		break;
 	case IMX8MP:
 	case IMX8MP_EP:
@@ -2686,10 +2681,8 @@ static int imx6_pcie_probe(struct platform_device *pdev)
 		imx6_pcie->tx_swing_low = 127;
 
 	/* Limit link speed */
-	ret = of_property_read_u32(node, "fsl,max-link-speed",
-				   &imx6_pcie->link_gen);
-	if (ret)
-		imx6_pcie->link_gen = 1;
+	pci->link_gen = 1;
+	ret = of_property_read_u32(node, "fsl,max-link-speed", &pci->link_gen);
 
 	imx6_pcie->vpcie = devm_regulator_get_optional(&pdev->dev, "vpcie");
 	if (IS_ERR(imx6_pcie->vpcie)) {
@@ -2924,7 +2917,7 @@ static void imx6_pcie_quirk(struct pci_dev *dev)
 	if (bus->dev.parent->parent->driver != &imx6_pcie_driver.driver)
 		return;
 
-	if (bus->number == pp->root_bus_nr) {
+	if (pci_is_root_bus(bus)) {
 		struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
 		struct imx6_pcie *imx6_pcie = to_imx6_pcie(pci);
 

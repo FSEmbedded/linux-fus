@@ -285,7 +285,7 @@ struct cpufreq_available_governors *cpufreq_get_available_governors(unsigned
 			} else {
 				first = malloc(sizeof(*first));
 				if (!first)
-					goto error_out;
+					return NULL;
 				current = first;
 			}
 			current->first = first;
@@ -418,7 +418,63 @@ struct cpufreq_available_frequencies
 			} else {
 				first = malloc(sizeof(*first));
 				if (!first)
+					return NULL;
+				current = first;
+			}
+			current->first = first;
+			current->next = NULL;
+
+			memcpy(one_value, linebuf + pos, i - pos);
+			one_value[i - pos] = '\0';
+			if (sscanf(one_value, "%lu", &current->frequency) != 1)
+				goto error_out;
+
+			pos = i + 1;
+		}
+	}
+
+	return first;
+
+ error_out:
+	while (first) {
+		current = first->next;
+		free(first);
+		first = current;
+	}
+	return NULL;
+}
+
+struct cpufreq_available_frequencies
+*cpufreq_get_boost_frequencies(unsigned int cpu)
+{
+	struct cpufreq_available_frequencies *first = NULL;
+	struct cpufreq_available_frequencies *current = NULL;
+	char one_value[SYSFS_PATH_MAX];
+	char linebuf[MAX_LINE_LEN];
+	unsigned int pos, i;
+	unsigned int len;
+
+	len = sysfs_cpufreq_read_file(cpu, "scaling_boost_frequencies",
+				      linebuf, sizeof(linebuf));
+	if (len == 0)
+		return NULL;
+
+	pos = 0;
+	for (i = 0; i < len; i++) {
+		if (linebuf[i] == ' ' || linebuf[i] == '\n') {
+			if (i - pos < 2)
+				continue;
+			if (i - pos >= SYSFS_PATH_MAX)
+				goto error_out;
+			if (current) {
+				current->next = malloc(sizeof(*current));
+				if (!current->next)
 					goto error_out;
+				current = current->next;
+			} else {
+				first = malloc(sizeof(*first));
+				if (!first)
+					return NULL;
 				current = first;
 			}
 			current->first = first;
@@ -493,7 +549,7 @@ static struct cpufreq_affected_cpus *sysfs_get_cpu_list(unsigned int cpu,
 			} else {
 				first = malloc(sizeof(*first));
 				if (!first)
-					goto error_out;
+					return NULL;
 				current = first;
 			}
 			current->first = first;
@@ -726,7 +782,7 @@ struct cpufreq_stats *cpufreq_get_stats(unsigned int cpu,
 			} else {
 				first = malloc(sizeof(*first));
 				if (!first)
-					goto error_out;
+					return NULL;
 				current = first;
 			}
 			current->first = first;

@@ -139,7 +139,7 @@ static int pfuze100_set_ramp_delay(struct regulator_dev *rdev, int ramp_delay)
 	struct pfuze_chip *pfuze100 = rdev_get_drvdata(rdev);
 	int id = rdev_get_id(rdev);
 	bool reg_has_ramp_delay;
-	unsigned int ramp_bits;
+	unsigned int ramp_bits = 0;
 	int ret;
 
 	switch (pfuze100->chip_id) {
@@ -160,8 +160,11 @@ static int pfuze100_set_ramp_delay(struct regulator_dev *rdev, int ramp_delay)
 	}
 
 	if (reg_has_ramp_delay) {
-		ramp_delay = 12500 / ramp_delay;
-		ramp_bits = (ramp_delay >> 1) - (ramp_delay >> 3);
+		if (ramp_delay > 0) {
+			ramp_delay = 12500 / ramp_delay;
+			ramp_bits = (ramp_delay >> 1) - (ramp_delay >> 3);
+		}
+
 		ret = regmap_update_bits(pfuze100->regmap,
 					 rdev->desc->vsel_reg + 4,
 					 0xc0, ramp_bits << 6);
@@ -844,11 +847,14 @@ static int pfuze100_regulator_probe(struct i2c_client *client,
 		 * the switched regulator till yet.
 		 */
 		if (pfuze_chip->flags & PFUZE_FLAG_DISABLE_SW) {
-			if (pfuze_chip->regulator_descs[i].sw_reg) {
-				desc->ops = &pfuze100_sw_disable_regulator_ops;
-				desc->enable_val = 0x8;
-				desc->disable_val = 0x0;
-				desc->enable_time = 500;
+			if (pfuze_chip->chip_id == PFUZE100 ||
+				pfuze_chip->chip_id == PFUZE200) {
+				if (pfuze_chip->regulator_descs[i].sw_reg) {
+					desc->ops = &pfuze100_sw_disable_regulator_ops;
+					desc->enable_val = 0x8;
+					desc->disable_val = 0x0;
+					desc->enable_time = 500;
+				}
 			}
 		}
 

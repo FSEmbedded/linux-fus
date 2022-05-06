@@ -59,8 +59,7 @@ btrfs_workqueue_owner(const struct __btrfs_workqueue *wq)
 	return wq->fs_info;
 }
 
-struct btrfs_fs_info *
-btrfs_work_owner(const struct btrfs_work *work)
+struct btrfs_fs_info * __pure btrfs_work_owner(const struct btrfs_work *work)
 {
 	return work->wq->fs_info;
 }
@@ -304,7 +303,6 @@ static void btrfs_work_helper(struct work_struct *normal_work)
 	struct btrfs_work *work = container_of(normal_work, struct btrfs_work,
 					       normal_work);
 	struct __btrfs_workqueue *wq;
-	void *wtag;
 	int need_order = 0;
 
 	/*
@@ -318,8 +316,6 @@ static void btrfs_work_helper(struct work_struct *normal_work)
 	if (work->ordered_func)
 		need_order = 1;
 	wq = work->wq;
-	/* Safe for tracepoints in case work gets freed by the callback */
-	wtag = work;
 
 	trace_btrfs_work_sched(work);
 	thresh_exec_hook(wq);
@@ -328,8 +324,6 @@ static void btrfs_work_helper(struct work_struct *normal_work)
 		set_bit(WORK_DONE_BIT, &work->flags);
 		run_ordered_work(wq, work);
 	}
-	if (!need_order)
-		trace_btrfs_all_work_done(wq->fs_info, wtag);
 }
 
 void btrfs_init_work(struct btrfs_work *work, btrfs_func_t func,

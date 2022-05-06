@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause) */
+/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-3-Clause) */
 /*
  * This file is provided under a dual BSD/GPLv2 license.  When using or
  * redistributing this file, you may do so under either license.
@@ -56,9 +56,10 @@ struct sof_ipc_comp {
 	uint32_t id;
 	enum sof_comp_type type;
 	uint32_t pipeline_id;
+	uint32_t core;
 
-	/* reserved for future use */
-	uint32_t reserved[2];
+	/* extended data length, 0 if no extended data */
+	uint32_t ext_data_length;
 } __packed;
 
 /*
@@ -77,11 +78,26 @@ struct sof_ipc_comp {
 #define SOF_MEM_CAPS_CACHE			(1 << 6) /**< cacheable */
 #define SOF_MEM_CAPS_EXEC			(1 << 7) /**< executable */
 
+/*
+ * overrun will cause ring buffer overwrite, instead of XRUN.
+ */
+#define SOF_BUF_OVERRUN_PERMITTED	BIT(0)
+
+/*
+ * underrun will cause readback of 0s, instead of XRUN.
+ */
+#define SOF_BUF_UNDERRUN_PERMITTED	BIT(1)
+
+/* the UUID size in bytes, shared between FW and host */
+#define SOF_UUID_SIZE	16
+
 /* create new component buffer - SOF_IPC_TPLG_BUFFER_NEW */
 struct sof_ipc_buffer {
 	struct sof_ipc_comp comp;
 	uint32_t size;		/**< buffer size in bytes */
 	uint32_t caps;		/**< SOF_MEM_CAPS_ */
+	uint32_t flags;		/**< SOF_BUF_ flags defined above */
+	uint32_t reserved;	/**< reserved for future use */
 } __packed;
 
 /* generic component config data - must always be after struct sof_ipc_comp */
@@ -151,6 +167,32 @@ struct sof_ipc_comp_src {
 	uint32_t rate_mask;	/**< SOF_RATE_ supported rates */
 } __packed;
 
+/* generic ASRC component */
+struct sof_ipc_comp_asrc {
+	struct sof_ipc_comp comp;
+	struct sof_ipc_comp_config config;
+	/* either source or sink rate must be non zero */
+	uint32_t source_rate;		/**< Define fixed source rate or */
+					/**< use 0 to indicate need to get */
+					/**< the rate from stream */
+	uint32_t sink_rate;		/**< Define fixed sink rate or */
+					/**< use 0 to indicate need to get */
+					/**< the rate from stream */
+	uint32_t asynchronous_mode;	/**< synchronous 0, asynchronous 1 */
+					/**< When 1 the ASRC tracks and */
+					/**< compensates for drift. */
+	uint32_t operation_mode;	/**< push 0, pull 1, In push mode the */
+					/**< ASRC consumes a defined number */
+					/**< of frames at input, with varying */
+					/**< number of frames at output. */
+					/**< In pull mode the ASRC outputs */
+					/**< a defined number of frames while */
+					/**< number of input frames varies. */
+
+	/* reserved for future use */
+	uint32_t reserved[4];
+} __attribute__((packed));
+
 /* generic MUX component */
 struct sof_ipc_comp_mux {
 	struct sof_ipc_comp comp;
@@ -196,7 +238,7 @@ struct sof_ipc_comp_process {
 	/* reserved for future use */
 	uint32_t reserved[7];
 
-	unsigned char data[0];
+	uint8_t data[0];
 } __packed;
 
 /* frees components, buffers and pipelines
@@ -261,5 +303,10 @@ enum sof_event_types {
 	SOF_EVENT_NONE = 0,
 	SOF_KEYWORD_DETECT_DAPM_EVENT,
 };
+
+/* extended data struct for UUID components */
+struct sof_ipc_comp_ext {
+	uint8_t uuid[SOF_UUID_SIZE];
+}  __packed;
 
 #endif

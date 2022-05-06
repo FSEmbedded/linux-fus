@@ -50,6 +50,42 @@ static void sonic_msg_init(struct net_device *dev)
 		netif_dbg(lp, drv, dev, "%s", version);
 }
 
+static int sonic_alloc_descriptors(struct net_device *dev)
+{
+	struct sonic_local *lp = netdev_priv(dev);
+
+	/* Allocate a chunk of memory for the descriptors. Note that this
+	 * must not cross a 64K boundary. It is smaller than one page which
+	 * means that page alignment is a sufficient condition.
+	 */
+	lp->descriptors =
+		dma_alloc_coherent(lp->device,
+				   SIZEOF_SONIC_DESC *
+				   SONIC_BUS_SCALE(lp->dma_bitmode),
+				   &lp->descriptors_laddr, GFP_KERNEL);
+
+	if (!lp->descriptors)
+		return -ENOMEM;
+
+	lp->cda = lp->descriptors;
+	lp->tda = lp->cda + SIZEOF_SONIC_CDA *
+			    SONIC_BUS_SCALE(lp->dma_bitmode);
+	lp->rda = lp->tda + SIZEOF_SONIC_TD * SONIC_NUM_TDS *
+			    SONIC_BUS_SCALE(lp->dma_bitmode);
+	lp->rra = lp->rda + SIZEOF_SONIC_RD * SONIC_NUM_RDS *
+			    SONIC_BUS_SCALE(lp->dma_bitmode);
+
+	lp->cda_laddr = lp->descriptors_laddr;
+	lp->tda_laddr = lp->cda_laddr + SIZEOF_SONIC_CDA *
+					SONIC_BUS_SCALE(lp->dma_bitmode);
+	lp->rda_laddr = lp->tda_laddr + SIZEOF_SONIC_TD * SONIC_NUM_TDS *
+					SONIC_BUS_SCALE(lp->dma_bitmode);
+	lp->rra_laddr = lp->rda_laddr + SIZEOF_SONIC_RD * SONIC_NUM_RDS *
+					SONIC_BUS_SCALE(lp->dma_bitmode);
+
+	return 0;
+}
+
 /*
  * Open/initialize the SONIC controller.
  *
@@ -107,7 +143,7 @@ static int sonic_open(struct net_device *dev)
 	/*
 	 * Initialize the SONIC
 	 */
-	sonic_init(dev);
+	sonic_init(dev, true);
 
 	netif_start_queue(dev);
 
@@ -184,7 +220,7 @@ static int sonic_close(struct net_device *dev)
 	return 0;
 }
 
-static void sonic_tx_timeout(struct net_device *dev)
+static void sonic_tx_timeout(struct net_device *dev, unsigned int txqueue)
 {
 	struct sonic_local *lp = netdev_priv(dev);
 	int i;
@@ -210,7 +246,7 @@ static void sonic_tx_timeout(struct net_device *dev)
 		}
 	}
 	/* Try to restart the adaptor. */
-	sonic_init(dev);
+	sonic_init(dev, false);
 	lp->stats.tx_errors++;
 	netif_trans_update(dev); /* prevent tx timeout */
 	netif_wake_queue(dev);
@@ -280,22 +316,17 @@ static int sonic_send_packet(struct sk_buff *skb, struct net_device *dev)
 	lp->tx_laddr[entry] = laddr;
 	lp->tx_skb[entry] = skb;
 
-	wmb();
-	sonic_tda_put(dev, lp->eol_tx, SONIC_TD_LINK,
-				  sonic_tda_get(dev, lp->eol_tx, SONIC_TD_LINK) & ~SONIC_EOL);
 	lp->eol_tx = entry;
 
-	lp->next_tx = (entry + 1) & SONIC_TDS_MASK;
-	if (lp->tx_skb[lp->next_tx] != NULL) {
+	entry = (entry + 1) & SONIC_TDS_MASK;
+	if (lp->tx_skb[entry]) {
 		/* The ring is full, the ISR has yet to process the next TD. */
 		netif_dbg(lp, tx_queued, dev, "%s: stopping queue\n", __func__);
 		netif_stop_queue(dev);
 		/* after this packet, wait for ISR to free up some TDAs */
-	} else netif_start_queue(dev);
+	}
 
-	netif_dbg(lp, tx_queued, dev, "%s: issuing Tx command\n", __func__);
-
-	SONIC_WRITE(SONIC_CMD, SONIC_CR_TXP);
+	spin_unlock_irqrestore(&lp->lock, flags);
 
 	spin_unlock_irqrestore(&lp->lock, flags);
 
@@ -678,7 +709,7 @@ static void sonic_multicast_list(struct net_device *dev)
 /*
  * Initialize the SONIC ethernet controller.
  */
-static int sonic_init(struct net_device *dev)
+static int sonic_init(struct net_device *dev, bool may_sleep)
 {
 	struct sonic_local *lp = netdev_priv(dev);
 	int i;
@@ -780,7 +811,7 @@ static int sonic_init(struct net_device *dev)
 
 	SONIC_WRITE(SONIC_UTDA, lp->tda_laddr >> 16);
 	SONIC_WRITE(SONIC_CTDA, lp->tda_laddr & 0xffff);
-	lp->cur_tx = lp->next_tx = 0;
+	lp->cur_tx = 0;
 	lp->eol_tx = SONIC_NUM_TDS - 1;
 
 	/*

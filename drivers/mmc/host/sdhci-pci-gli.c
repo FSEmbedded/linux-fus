@@ -14,6 +14,7 @@
 #include <linux/delay.h>
 #include "sdhci.h"
 #include "sdhci-pci.h"
+#include "cqhci.h"
 
 /*  Genesys Logic extra registers */
 #define SDHCI_GLI_9750_WT         0x800
@@ -31,10 +32,18 @@
 #define   SDHCI_GLI_9750_ALL_RST      (BIT(24)|BIT(25)|BIT(28)|BIT(30))
 
 #define SDHCI_GLI_9750_PLL	      0x864
+#define   SDHCI_GLI_9750_PLL_LDIV       GENMASK(9, 0)
+#define   SDHCI_GLI_9750_PLL_PDIV       GENMASK(14, 12)
+#define   SDHCI_GLI_9750_PLL_DIR        BIT(15)
 #define   SDHCI_GLI_9750_PLL_TX2_INV    BIT(23)
 #define   SDHCI_GLI_9750_PLL_TX2_DLY    GENMASK(22, 20)
 #define   GLI_9750_PLL_TX2_INV_VALUE    0x1
 #define   GLI_9750_PLL_TX2_DLY_VALUE    0x0
+#define   SDHCI_GLI_9750_PLLSSC_STEP    GENMASK(28, 24)
+#define   SDHCI_GLI_9750_PLLSSC_EN      BIT(31)
+
+#define SDHCI_GLI_9750_PLLSSC        0x86C
+#define   SDHCI_GLI_9750_PLLSSC_PPM    GENMASK(31, 16)
 
 #define SDHCI_GLI_9750_SW_CTRL      0x874
 #define   SDHCI_GLI_9750_SW_CTRL_4    GENMASK(7, 6)
@@ -62,6 +71,41 @@
 #define SDHCI_GLI_9750_TUNING_PARAMETERS           0x544
 #define   SDHCI_GLI_9750_TUNING_PARAMETERS_RX_DLY    GENMASK(2, 0)
 #define   GLI_9750_TUNING_PARAMETERS_RX_DLY_VALUE    0x1
+
+#define SDHCI_GLI_9763E_CTRL_HS400  0x7
+
+#define SDHCI_GLI_9763E_HS400_ES_REG      0x52C
+#define   SDHCI_GLI_9763E_HS400_ES_BIT      BIT(8)
+
+#define PCIE_GLI_9763E_VHS	 0x884
+#define   GLI_9763E_VHS_REV	   GENMASK(19, 16)
+#define   GLI_9763E_VHS_REV_R      0x0
+#define   GLI_9763E_VHS_REV_M      0x1
+#define   GLI_9763E_VHS_REV_W      0x2
+#define PCIE_GLI_9763E_MB	 0x888
+#define   GLI_9763E_MB_CMDQ_OFF	   BIT(19)
+#define PCIE_GLI_9763E_SCR	 0x8E0
+#define   GLI_9763E_SCR_AXI_REQ	   BIT(9)
+
+#define SDHCI_GLI_9763E_CQE_BASE_ADDR	 0x200
+#define GLI_9763E_CQE_TRNS_MODE	   (SDHCI_TRNS_MULTI | \
+				    SDHCI_TRNS_BLK_CNT_EN | \
+				    SDHCI_TRNS_DMA)
+
+#define PCI_GLI_9755_WT       0x800
+#define   PCI_GLI_9755_WT_EN    BIT(0)
+#define   GLI_9755_WT_EN_ON     0x1
+#define   GLI_9755_WT_EN_OFF    0x0
+
+#define PCI_GLI_9755_PLL            0x64
+#define   PCI_GLI_9755_PLL_LDIV       GENMASK(9, 0)
+#define   PCI_GLI_9755_PLL_PDIV       GENMASK(14, 12)
+#define   PCI_GLI_9755_PLL_DIR        BIT(15)
+#define   PCI_GLI_9755_PLLSSC_STEP    GENMASK(28, 24)
+#define   PCI_GLI_9755_PLLSSC_EN      BIT(31)
+
+#define PCI_GLI_9755_PLLSSC        0x68
+#define   PCI_GLI_9755_PLLSSC_PPM    GENMASK(15, 0)
 
 #define GLI_MAX_TUNING_LOOP 40
 
@@ -318,8 +362,13 @@ static void sdhci_gli_voltage_switch(struct sdhci_host *host)
 	 *
 	 * Wait 5ms after set 1.8V signal enable in Host Control 2 register
 	 * to ensure 1.8V signal enable bit is set by GL9750/GL9755.
+	 *
+	 * ...however, the controller in the NUC10i3FNK4 (a 9755) requires
+	 * slightly longer than 5ms before the control register reports that
+	 * 1.8V is ready, and far longer still before the card will actually
+	 * work reliably.
 	 */
-	usleep_range(5000, 5500);
+	usleep_range(100000, 110000);
 }
 
 static void sdhci_gl9750_reset(struct sdhci_host *host, u8 mask)
@@ -352,7 +401,7 @@ static int sdhci_pci_gli_resume(struct sdhci_pci_chip *chip)
 #endif
 
 static const struct sdhci_ops sdhci_gl9755_ops = {
-	.set_clock		= sdhci_set_clock,
+	.set_clock		= sdhci_gl9755_set_clock,
 	.enable_dma		= sdhci_pci_enable_dma,
 	.set_bus_width		= sdhci_set_bus_width,
 	.reset			= sdhci_reset,
@@ -372,7 +421,7 @@ const struct sdhci_pci_fixes sdhci_gl9755 = {
 
 static const struct sdhci_ops sdhci_gl9750_ops = {
 	.read_l                 = sdhci_gl9750_readl,
-	.set_clock		= sdhci_set_clock,
+	.set_clock		= sdhci_gl9750_set_clock,
 	.enable_dma		= sdhci_pci_enable_dma,
 	.set_bus_width		= sdhci_set_bus_width,
 	.reset			= sdhci_gl9750_reset,

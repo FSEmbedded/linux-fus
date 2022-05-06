@@ -17,6 +17,8 @@
 
 #include <linux/util_macros.h>
 
+#include <asm/unaligned.h>
+
 #define SI1133_REG_PART_ID		0x00
 #define SI1133_REG_REV_ID		0x01
 #define SI1133_REG_MFR_ID		0x02
@@ -1021,7 +1023,6 @@ static int si1133_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, iio_dev);
 	data->client = client;
 
-	iio_dev->dev.parent = &client->dev;
 	iio_dev->name = id->name;
 	iio_dev->channels = si1133_channels;
 	iio_dev->num_channels = ARRAY_SIZE(si1133_channels);

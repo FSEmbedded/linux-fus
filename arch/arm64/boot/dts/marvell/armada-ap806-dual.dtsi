@@ -31,5 +31,17 @@
 			#cooling-cells = <2>;
 			clocks = <&cpu_clk 0>;
 		};
+
+		l2: l2-cache {
+			compatible = "cache";
+			cache-size = <0x80000>;
+			cache-line-size = <64>;
+			cache-sets = <512>;
+		};
+	};
+
+	thermal-zones {
+		/delete-node/ ap-thermal-cpu2;
+		/delete-node/ ap-thermal-cpu3;
 	};
 };

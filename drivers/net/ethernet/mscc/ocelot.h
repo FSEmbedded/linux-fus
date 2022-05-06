@@ -15,7 +15,6 @@
 #include <linux/phy.h>
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
-#include <linux/ptp_clock_kernel.h>
 #include <linux/regmap.h>
 
 #include <soc/mscc/ocelot_qsys.h>
@@ -60,6 +59,7 @@ struct ocelot_multicast {
 	unsigned char addr[ETH_ALEN];
 	u16 vid;
 	u16 ports;
+	int pgid;
 };
 
 struct ocelot_port_private {

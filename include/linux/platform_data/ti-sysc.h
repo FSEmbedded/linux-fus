@@ -17,6 +17,7 @@ enum ti_sysc_module_type {
 	TI_SYSC_OMAP4_MCASP,
 	TI_SYSC_OMAP4_USB_HOST_FS,
 	TI_SYSC_DRA7_MCAN,
+	TI_SYSC_PRUSS,
 };
 
 struct ti_sysc_cookie {
@@ -142,6 +143,7 @@ struct clk;
 
 struct ti_sysc_platform_data {
 	struct of_dev_auxdata *auxdata;
+	bool (*soc_type_gp)(void);
 	int (*init_clockdomain)(struct device *dev, struct clk *fck,
 				struct clk *ick, struct ti_sysc_cookie *cookie);
 	void (*clkdm_deny_idle)(struct device *dev,

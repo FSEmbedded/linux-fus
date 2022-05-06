@@ -17,7 +17,7 @@
 #include <linux/notifier.h>
 
 static struct crypto_shash __rcu *crct10dif_tfm;
-static struct static_key crct10dif_fallback __read_mostly;
+static DEFINE_STATIC_KEY_TRUE(crct10dif_fallback);
 static DEFINE_MUTEX(crc_t10dif_mutex);
 static struct work_struct crct10dif_rehash_work;
 
@@ -26,9 +26,16 @@ static int crc_t10dif_notify(struct notifier_block *self, unsigned long val, voi
 	struct crypto_alg *alg = data;
 
 	if (val != CRYPTO_MSG_ALG_LOADED ||
-	    static_key_false(&crct10dif_fallback) ||
-	    strncmp(alg->cra_name, CRC_T10DIF_STRING, strlen(CRC_T10DIF_STRING)))
-		return 0;
+	    strcmp(alg->cra_name, CRC_T10DIF_STRING))
+		return NOTIFY_DONE;
+
+	schedule_work(&crct10dif_rehash_work);
+	return NOTIFY_OK;
+}
+
+static void crc_t10dif_rehash(struct work_struct *work)
+{
+	struct crypto_shash *new, *old;
 
 	schedule_work(&crct10dif_rehash_work);
 	return 0;
@@ -65,23 +72,22 @@ __u16 crc_t10dif_update(__u16 crc, const unsigned char *buffer, size_t len)
 {
 	struct {
 		struct shash_desc shash;
-		char ctx[2];
+		__u16 crc;
 	} desc;
 	int err;
 
-	if (static_key_false(&crct10dif_fallback))
+	if (static_branch_unlikely(&crct10dif_fallback))
 		return crc_t10dif_generic(crc, buffer, len);
 
 	rcu_read_lock();
 	desc.shash.tfm = rcu_dereference(crct10dif_tfm);
-	*(__u16 *)desc.ctx = crc;
-
+	desc.crc = crc;
 	err = crypto_shash_update(&desc.shash, buffer, len);
 	rcu_read_unlock();
 
 	BUG_ON(err);
 
-	return *(__u16 *)desc.ctx;
+	return desc.crc;
 }
 EXPORT_SYMBOL(crc_t10dif_update);
 
@@ -143,8 +149,8 @@ unlock:
 	return len;
 }
 
-module_param_call(transform, NULL, crc_t10dif_transform_show, NULL, 0644);
+module_param_call(transform, NULL, crc_t10dif_transform_show, NULL, 0444);
 
-MODULE_DESCRIPTION("T10 DIF CRC calculation");
+MODULE_DESCRIPTION("T10 DIF CRC calculation (library API)");
 MODULE_LICENSE("GPL");
 MODULE_SOFTDEP("pre: crct10dif");

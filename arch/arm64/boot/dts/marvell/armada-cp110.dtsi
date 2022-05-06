@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
- * Copyright (C) 2016 Marvell Technology Group Ltd.
+ * Copyright (C) 2019 Marvell Technology Group Ltd.
  *
  * Device Tree file for Marvell Armada CP110.
  */
 
-#include <dt-bindings/interrupt-controller/mvebu-icu.h>
-#include <dt-bindings/thermal/thermal.h>
+#define CP11X_TYPE cp110
 
-#include "armada-common.dtsi"
+#include "armada-cp11x.dtsi"
 
 #define CP110_PCIEx_IO_BASE(iface)	(CP110_PCIE_IO_BASE + (iface *  0x10000))
 #define CP110_PCIEx_MEM_BASE(iface)	(CP110_PCIE_MEM_BASE + (iface *  0x1000000))

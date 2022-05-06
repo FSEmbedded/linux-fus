@@ -13,7 +13,6 @@
 #ifdef CONFIG_NUMA
 
 #include <linux/numa.h>
-#include <linux/cpumask.h>
 
 void numa_setup(void);
 int numa_pfn_to_nid(unsigned long pfn);
@@ -25,11 +24,7 @@ extern int numa_debug_enabled;
 #else
 
 static inline void numa_setup(void) { }
-static inline void numa_update_cpu_topology(void) { }
-static inline int numa_pfn_to_nid(unsigned long pfn)
-{
-	return 0;
-}
 
 #endif /* CONFIG_NUMA */
+
 #endif /* _ASM_S390_NUMA_H */

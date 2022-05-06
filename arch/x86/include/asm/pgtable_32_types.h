@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-#ifndef _ASM_X86_PGTABLE_32_DEFS_H
-#define _ASM_X86_PGTABLE_32_DEFS_H
+#ifndef _ASM_X86_PGTABLE_32_TYPES_H
+#define _ASM_X86_PGTABLE_32_TYPES_H
 
 /*
  * The Linux x86 paging architecture is 'compile-time dual-mode', it

@@ -1,20 +1,14 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 /* Copyright 2017-2019 NXP */
 
+#include <linux/mdio.h>
 #include <linux/module.h>
 #include <linux/fsl/enetc_mdio.h>
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
 #include "enetc_pf.h"
 
-#define ENETC_DRV_VER_MAJ 1
-#define ENETC_DRV_VER_MIN 0
-
-#define ENETC_DRV_VER_STR __stringify(ENETC_DRV_VER_MAJ) "." \
-			  __stringify(ENETC_DRV_VER_MIN)
-static const char enetc_drv_ver[] = ENETC_DRV_VER_STR;
 #define ENETC_DRV_NAME_STR "ENETC PF driver"
-static const char enetc_drv_name[] = ENETC_DRV_NAME_STR;
 
 static void enetc_pf_get_primary_mac_addr(struct enetc_hw *hw, int si, u8 *addr)
 {
@@ -55,21 +49,6 @@ static void enetc_set_vlan_promisc(struct enetc_hw *hw, char si_map)
 
 	val &= ~ENETC_PSIPVMR_SET_VP(ENETC_VLAN_PROMISC_MAP_ALL);
 	enetc_port_wr(hw, ENETC_PSIPVMR, ENETC_PSIPVMR_SET_VP(si_map) | val);
-}
-
-static bool enetc_si_vlan_promisc_is_on(struct enetc_pf *pf, int si_idx)
-{
-	return pf->vlan_promisc_simap & BIT(si_idx);
-}
-
-static bool enetc_vlan_filter_is_on(struct enetc_pf *pf)
-{
-	int i;
-
-	for_each_set_bit(i, pf->active_vlans, VLAN_N_VID)
-		return true;
-
-	return false;
 }
 
 static void enetc_enable_si_vlan_promisc(struct enetc_pf *pf, int si_idx)
@@ -223,10 +202,6 @@ static void enetc_pf_set_rx_mode(struct net_device *ndev)
 		psipmr = ENETC_PSIPMR_SET_UP(0) | ENETC_PSIPMR_SET_MP(0);
 		uprom = true;
 		mprom = true;
-		/* enable VLAN promisc mode for SI0 */
-		if (!enetc_si_vlan_promisc_is_on(pf, 0))
-			enetc_enable_si_vlan_promisc(pf, 0);
-
 	} else if (ndev->flags & IFF_ALLMULTI) {
 		/* enable multi cast promisc mode for SI0 (PF) */
 		psipmr = ENETC_PSIPMR_SET_MP(0);
@@ -313,9 +288,6 @@ static int enetc_vlan_rx_add_vid(struct net_device *ndev, __be16 prot, u16 vid)
 	struct enetc_pf *pf = enetc_si_priv(priv->si);
 	int idx;
 
-	if (enetc_si_vlan_promisc_is_on(pf, 0))
-		enetc_disable_si_vlan_promisc(pf, 0);
-
 	__set_bit(vid, pf->active_vlans);
 
 	idx = enetc_vid_hash_idx(vid);
@@ -333,9 +305,6 @@ static int enetc_vlan_rx_del_vid(struct net_device *ndev, __be16 prot, u16 vid)
 	__clear_bit(vid, pf->active_vlans);
 	enetc_sync_vlan_ht_filter(pf, true);
 
-	if (!enetc_vlan_filter_is_on(pf))
-		enetc_enable_si_vlan_promisc(pf, 0);
-
 	return 0;
 }
 
@@ -346,7 +315,7 @@ static void enetc_set_loopback(struct net_device *ndev, bool en)
 	u32 reg;
 
 	reg = enetc_port_rd(hw, ENETC_PM0_IF_MODE);
-	if (reg & ENETC_PMO_IFM_RG) {
+	if (reg & ENETC_PM0_IFM_RG) {
 		/* RGMII mode */
 		reg = (reg & ~ENETC_PM0_IFM_RLP) |
 		      (en ? ENETC_PM0_IFM_RLP : 0);
@@ -518,8 +487,7 @@ static void enetc_configure_port_mac(struct enetc_hw *hw,
 	enetc_port_wr(hw, ENETC_PTXMBAR, 2 * ENETC_MAC_MAXFRM_SIZE);
 
 	enetc_port_wr(hw, ENETC_PM0_CMD_CFG, ENETC_PM0_CMD_PHY_TX_EN |
-		      ENETC_PM0_CMD_TXP	| ENETC_PM0_PROMISC |
-		      ENETC_PM0_TX_EN | ENETC_PM0_RX_EN);
+		      ENETC_PM0_CMD_TXP	| ENETC_PM0_PROMISC);
 
 	enetc_port_wr(hw, ENETC_PM1_CMD_CFG, ENETC_PM0_CMD_PHY_TX_EN |
 		      ENETC_PM0_CMD_TXP	| ENETC_PM0_PROMISC |
@@ -690,13 +658,14 @@ static int enetc_pf_set_features(struct net_device *ndev,
 	netdev_features_t changed = ndev->features ^ features;
 	struct enetc_ndev_priv *priv = netdev_priv(ndev);
 
-	if (changed & NETIF_F_HW_VLAN_CTAG_RX)
-		enetc_enable_rxvlan(&priv->si->hw, 0,
-				    !!(features & NETIF_F_HW_VLAN_CTAG_RX));
+	if (changed & NETIF_F_HW_VLAN_CTAG_FILTER) {
+		struct enetc_pf *pf = enetc_si_priv(priv->si);
 
-	if (changed & NETIF_F_HW_VLAN_CTAG_TX)
-		enetc_enable_txvlan(&priv->si->hw, 0,
-				    !!(features & NETIF_F_HW_VLAN_CTAG_TX));
+		if (!!(features & NETIF_F_HW_VLAN_CTAG_FILTER))
+			enetc_disable_si_vlan_promisc(pf, 0);
+		else
+			enetc_enable_si_vlan_promisc(pf, 0);
+	}
 
 	if (changed & NETIF_F_LOOPBACK)
 		enetc_set_loopback(ndev, !!(features & NETIF_F_LOOPBACK));
@@ -740,12 +709,11 @@ static void enetc_pf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
 
 	ndev->hw_features = NETIF_F_SG | NETIF_F_RXCSUM | NETIF_F_HW_CSUM |
 			    NETIF_F_HW_VLAN_CTAG_TX | NETIF_F_HW_VLAN_CTAG_RX |
-			    NETIF_F_LOOPBACK;
+			    NETIF_F_HW_VLAN_CTAG_FILTER | NETIF_F_LOOPBACK;
 	ndev->features = NETIF_F_HIGHDMA | NETIF_F_SG |
 			 NETIF_F_RXCSUM | NETIF_F_HW_CSUM |
 			 NETIF_F_HW_VLAN_CTAG_TX |
-			 NETIF_F_HW_VLAN_CTAG_RX |
-			 NETIF_F_HW_VLAN_CTAG_FILTER;
+			 NETIF_F_HW_VLAN_CTAG_RX;
 
 	if (si->num_rss)
 		ndev->hw_features |= NETIF_F_RXHASH;
@@ -762,6 +730,15 @@ static void enetc_pf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
 
 	if (enetc_tsn_is_enabled() && (si->hw_features & ENETC_SI_F_QBU))
 		priv->active_offloads |= ENETC_F_QBU;
+
+	if (si->hw_features & ENETC_SI_F_QBV)
+		priv->active_offloads |= ENETC_F_QBV;
+
+	if (si->hw_features & ENETC_SI_F_PSFP && !enetc_psfp_enable(priv)) {
+		priv->active_offloads |= ENETC_F_QCI;
+		ndev->features |= NETIF_F_HW_TC;
+		ndev->hw_features |= NETIF_F_HW_TC;
+	}
 
 	/* pick up primary MAC address from SI */
 	enetc_get_primary_mac_addr(&si->hw, ndev->dev_addr);
@@ -836,11 +813,31 @@ static int enetc_of_get_phy(struct enetc_pf *pf)
 
 		pf->phy_node = of_node_get(np);
 	}
+}
 
-	mdio_np = of_get_child_by_name(np, "mdio");
+static bool enetc_port_has_pcs(struct enetc_pf *pf)
+{
+	return (pf->if_mode == PHY_INTERFACE_MODE_SGMII ||
+		pf->if_mode == PHY_INTERFACE_MODE_2500BASEX ||
+		pf->if_mode == PHY_INTERFACE_MODE_USXGMII);
+}
+
+static int enetc_mdiobus_create(struct enetc_pf *pf, struct device_node *node)
+{
+	struct device_node *mdio_np;
+	int err;
+
+	mdio_np = of_get_child_by_name(node, "mdio");
 	if (mdio_np) {
+		err = enetc_mdio_probe(pf, mdio_np);
+
 		of_node_put(mdio_np);
-		err = enetc_mdio_probe(pf);
+		if (err)
+			return err;
+	}
+
+	if (enetc_port_has_pcs(pf)) {
+		err = enetc_imdio_create(pf);
 		if (err) {
 			of_node_put(pf->phy_node);
 			return err;
@@ -852,6 +849,127 @@ static int enetc_of_get_phy(struct enetc_pf *pf)
 		pf->if_mode = PHY_INTERFACE_MODE_NA; /* fixed link */
 	else
 		pf->if_mode = phy_mode;
+
+	phylink_set_port_modes(mask);
+	phylink_set(mask, Autoneg);
+	phylink_set(mask, Pause);
+	phylink_set(mask, Asym_Pause);
+	phylink_set(mask, 10baseT_Half);
+	phylink_set(mask, 10baseT_Full);
+	phylink_set(mask, 100baseT_Half);
+	phylink_set(mask, 100baseT_Full);
+	phylink_set(mask, 100baseT_Half);
+	phylink_set(mask, 1000baseT_Half);
+	phylink_set(mask, 1000baseT_Full);
+
+	if (state->interface == PHY_INTERFACE_MODE_INTERNAL ||
+	    state->interface == PHY_INTERFACE_MODE_2500BASEX ||
+	    state->interface == PHY_INTERFACE_MODE_USXGMII) {
+		phylink_set(mask, 2500baseT_Full);
+		phylink_set(mask, 2500baseX_Full);
+	}
+
+	bitmap_and(supported, supported, mask,
+		   __ETHTOOL_LINK_MODE_MASK_NBITS);
+	bitmap_and(state->advertising, state->advertising, mask,
+		   __ETHTOOL_LINK_MODE_MASK_NBITS);
+}
+
+static void enetc_pl_mac_config(struct phylink_config *config,
+				unsigned int mode,
+				const struct phylink_link_state *state)
+{
+	struct enetc_pf *pf = phylink_to_enetc_pf(config);
+	struct enetc_ndev_priv *priv;
+
+	enetc_mac_config(&pf->si->hw, state->interface);
+
+	priv = netdev_priv(pf->si->ndev);
+	if (pf->pcs)
+		phylink_set_pcs(priv->phylink, &pf->pcs->pcs);
+}
+
+static void enetc_force_rgmii_mac(struct enetc_hw *hw, int speed, int duplex)
+{
+	u32 old_val, val;
+
+	old_val = val = enetc_port_rd(hw, ENETC_PM0_IF_MODE);
+
+	if (speed == SPEED_1000) {
+		val &= ~ENETC_PM0_IFM_SSP_MASK;
+		val |= ENETC_PM0_IFM_SSP_1000;
+	} else if (speed == SPEED_100) {
+		val &= ~ENETC_PM0_IFM_SSP_MASK;
+		val |= ENETC_PM0_IFM_SSP_100;
+	} else if (speed == SPEED_10) {
+		val &= ~ENETC_PM0_IFM_SSP_MASK;
+		val |= ENETC_PM0_IFM_SSP_10;
+	}
+
+	if (duplex == DUPLEX_FULL)
+		val |= ENETC_PM0_IFM_FULL_DPX;
+	else
+		val &= ~ENETC_PM0_IFM_FULL_DPX;
+
+	if (val == old_val)
+		return;
+
+	enetc_port_wr(hw, ENETC_PM0_IF_MODE, val);
+}
+
+static void enetc_pl_mac_link_up(struct phylink_config *config,
+				 struct phy_device *phy, unsigned int mode,
+				 phy_interface_t interface, int speed,
+				 int duplex, bool tx_pause, bool rx_pause)
+{
+	struct enetc_pf *pf = phylink_to_enetc_pf(config);
+	struct enetc_ndev_priv *priv;
+
+	priv = netdev_priv(pf->si->ndev);
+	if (priv->active_offloads & ENETC_F_QBV)
+		enetc_sched_speed_set(priv, speed);
+
+	if (!phylink_autoneg_inband(mode) &&
+	    phy_interface_mode_is_rgmii(interface))
+		enetc_force_rgmii_mac(&pf->si->hw, speed, duplex);
+
+	enetc_mac_enable(&pf->si->hw, true);
+}
+
+static void enetc_pl_mac_link_down(struct phylink_config *config,
+				   unsigned int mode,
+				   phy_interface_t interface)
+{
+	struct enetc_pf *pf = phylink_to_enetc_pf(config);
+
+	enetc_mac_enable(&pf->si->hw, false);
+}
+
+static const struct phylink_mac_ops enetc_mac_phylink_ops = {
+	.validate = enetc_pl_mac_validate,
+	.mac_config = enetc_pl_mac_config,
+	.mac_link_up = enetc_pl_mac_link_up,
+	.mac_link_down = enetc_pl_mac_link_down,
+};
+
+static int enetc_phylink_create(struct enetc_ndev_priv *priv,
+				struct device_node *node)
+{
+	struct enetc_pf *pf = enetc_si_priv(priv->si);
+	struct phylink *phylink;
+	int err;
+
+	pf->phylink_config.dev = &priv->ndev->dev;
+	pf->phylink_config.type = PHYLINK_NETDEV;
+
+	phylink = phylink_create(&pf->phylink_config, of_fwnode_handle(node),
+				 pf->if_mode, &enetc_mac_phylink_ops);
+	if (IS_ERR(phylink)) {
+		err = PTR_ERR(phylink);
+		return err;
+	}
+
+	priv->phylink = phylink;
 
 	return 0;
 }
@@ -950,16 +1068,12 @@ static int enetc_configure_serdes(struct enetc_ndev_priv *priv)
 static int enetc_pf_probe(struct pci_dev *pdev,
 			  const struct pci_device_id *ent)
 {
+	struct device_node *node = pdev->dev.of_node;
 	struct enetc_ndev_priv *priv;
 	struct net_device *ndev;
 	struct enetc_si *si;
 	struct enetc_pf *pf;
 	int err;
-
-	if (pdev->dev.of_node && !of_device_is_available(pdev->dev.of_node)) {
-		dev_info(&pdev->dev, "device is disabled, skipping\n");
-		return -ENODEV;
-	}
 
 	err = enetc_pci_probe(pdev, KBUILD_MODNAME, sizeof(*pf));
 	if (err) {
@@ -972,6 +1086,13 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 		err = -ENODEV;
 		dev_err(&pdev->dev, "could not map PF space, probing a VF?\n");
 		goto err_map_pf_space;
+	}
+
+	if (node && !of_device_is_available(node)) {
+		enetc_init_unused_port(si);
+		dev_info(&pdev->dev, "device is disabled, skipping\n");
+		err = -ENODEV;
+		goto err_device_disabled;
 	}
 
 	pf = enetc_si_priv(si);
@@ -1007,6 +1128,24 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 		goto err_alloc_si_res;
 	}
 
+	err = enetc_init_port_rfs_memory(si);
+	if (err) {
+		dev_err(&pdev->dev, "Failed to initialize RFS memory\n");
+		goto err_init_port_rfs;
+	}
+
+	err = enetc_init_port_rss_memory(si);
+	if (err) {
+		dev_err(&pdev->dev, "Failed to initialize RSS memory\n");
+		goto err_init_port_rss;
+	}
+
+	err = enetc_configure_si(priv);
+	if (err) {
+		dev_err(&pdev->dev, "Failed to configure SI\n");
+		goto err_config_si;
+	}
+
 	err = enetc_alloc_msix(priv);
 	if (err) {
 		dev_err(&pdev->dev, "MSIX alloc failed\n");
@@ -1032,6 +1171,9 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 
 err_reg_netdev:
 	enetc_free_msix(priv);
+err_config_si:
+err_init_port_rss:
+err_init_port_rfs:
 err_alloc_msix:
 	enetc_free_si_resources(priv);
 err_alloc_si_res:
@@ -1051,6 +1193,8 @@ static void enetc_pf_remove(struct pci_dev *pdev)
 	struct enetc_si *si = pci_get_drvdata(pdev);
 	struct enetc_pf *pf = enetc_si_priv(si);
 	struct enetc_ndev_priv *priv;
+
+	priv = netdev_priv(si->ndev);
 
 	if (pf->num_vfs)
 		enetc_sriov_configure(pdev, 0);
@@ -1098,4 +1242,3 @@ module_pci_driver(enetc_pf_driver);
 
 MODULE_DESCRIPTION(ENETC_DRV_NAME_STR);
 MODULE_LICENSE("Dual BSD/GPL");
-MODULE_VERSION(ENETC_DRV_VER_STR);

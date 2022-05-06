@@ -23,24 +23,7 @@ int xfrm6_find_1stfragopt(struct xfrm_state *x, struct sk_buff *skb,
 }
 EXPORT_SYMBOL(xfrm6_find_1stfragopt);
 
-static int xfrm6_local_dontfrag(struct sk_buff *skb)
-{
-	int proto;
-	struct sock *sk = skb->sk;
-
-	if (sk) {
-		if (sk->sk_family != AF_INET6)
-			return 0;
-
-		proto = sk->sk_protocol;
-		if (proto == IPPROTO_UDP || proto == IPPROTO_RAW)
-			return inet6_sk(sk)->dontfrag;
-	}
-
-	return 0;
-}
-
-static void xfrm6_local_rxpmtu(struct sk_buff *skb, u32 mtu)
+void xfrm6_local_rxpmtu(struct sk_buff *skb, u32 mtu)
 {
 	struct flowi6 fl6;
 	struct sock *sk = skb->sk;
@@ -135,16 +118,14 @@ static int __xfrm6_output_state_finish(struct xfrm_state *x, struct sock *sk,
 
 static int __xfrm6_output_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
-	struct xfrm_state *x = skb_dst(skb)->xfrm;
-
-	return __xfrm6_output_state_finish(x, sk, skb);
+	return xfrm_output(sk, skb);
 }
 
 static int __xfrm6_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	struct dst_entry *dst = skb_dst(skb);
 	struct xfrm_state *x = dst->xfrm;
-	int mtu;
+	unsigned int mtu;
 	bool toobig;
 
 #ifdef CONFIG_NETFILTER
@@ -164,7 +145,7 @@ static int __xfrm6_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 
 	toobig = skb->len > mtu && !skb_is_gso(skb);
 
-	if (toobig && xfrm6_local_dontfrag(skb)) {
+	if (toobig && xfrm6_local_dontfrag(skb->sk)) {
 		xfrm6_local_rxpmtu(skb, mtu);
 		kfree_skb(skb);
 		return -EMSGSIZE;
@@ -179,13 +160,13 @@ static int __xfrm6_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 				    __xfrm6_output_finish);
 
 skip_frag:
-	return __xfrm6_output_state_finish(x, sk, skb);
+	return xfrm_output(sk, skb);
 }
 
 int xfrm6_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	return NF_HOOK_COND(NFPROTO_IPV6, NF_INET_POST_ROUTING,
-			    net, sk, skb,  NULL, skb_dst(skb)->dev,
+			    net, sk, skb,  skb->dev, skb_dst(skb)->dev,
 			    __xfrm6_output,
 			    !(IP6CB(skb)->flags & IP6SKB_REROUTED));
 }

@@ -123,3 +123,7 @@
 		crtc = "ipu2-di1";
 	};
 };
+
+&sata {
+	status = "okay";
+};

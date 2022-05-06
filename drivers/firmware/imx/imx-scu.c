@@ -228,6 +228,7 @@ static int imx_scu_ipc_write(struct imx_sc_ipc *sc_ipc, void *msg)
  */
 int imx_scu_call_rpc(struct imx_sc_ipc *sc_ipc, void *msg, bool have_resp)
 {
+	uint8_t saved_svc, saved_func;
 	struct imx_sc_rpc_msg *hdr;
 	struct arm_smccc_res res;
 	int ret;
@@ -425,6 +426,10 @@ static int imx_scu_probe(struct platform_device *pdev)
 	init_completion(&sc_ipc->done);
 
 	imx_sc_ipc_handle = sc_ipc;
+
+	ret = imx_scu_soc_init(dev);
+	if (ret)
+		dev_warn(dev, "failed to initialize SoC info: %d\n", ret);
 
 	ret = imx_scu_enable_general_irq_channel(dev);
 	if (ret)

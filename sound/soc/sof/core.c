@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause)
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-3-Clause)
 //
 // This file is provided under a dual BSD/GPLv2 license.  When using or
 // redistributing this file, you may do so under either license.
@@ -14,117 +14,18 @@
 #include <sound/sof.h>
 #include "sof-priv.h"
 #include "ops.h"
+#if IS_ENABLED(CONFIG_SND_SOC_SOF_DEBUG_PROBES)
+#include "probe.h"
+#endif
+
+/* see SOF_DBG_ flags */
+int sof_core_debug;
+module_param_named(sof_debug, sof_core_debug, int, 0444);
+MODULE_PARM_DESC(sof_debug, "SOF core debug options (0x0 all off)");
 
 /* SOF defaults if not provided by the platform in ms */
 #define TIMEOUT_DEFAULT_IPC_MS  500
 #define TIMEOUT_DEFAULT_BOOT_MS 2000
-
-/*
- * Generic object lookup APIs.
- */
-
-struct snd_sof_pcm *snd_sof_find_spcm_name(struct snd_sof_dev *sdev,
-					   const char *name)
-{
-	struct snd_sof_pcm *spcm;
-
-	list_for_each_entry(spcm, &sdev->pcm_list, list) {
-		/* match with PCM dai name */
-		if (strcmp(spcm->pcm.dai_name, name) == 0)
-			return spcm;
-
-		/* match with playback caps name if set */
-		if (*spcm->pcm.caps[0].name &&
-		    !strcmp(spcm->pcm.caps[0].name, name))
-			return spcm;
-
-		/* match with capture caps name if set */
-		if (*spcm->pcm.caps[1].name &&
-		    !strcmp(spcm->pcm.caps[1].name, name))
-			return spcm;
-	}
-
-	return NULL;
-}
-
-struct snd_sof_pcm *snd_sof_find_spcm_comp(struct snd_sof_dev *sdev,
-					   unsigned int comp_id,
-					   int *direction)
-{
-	struct snd_sof_pcm *spcm;
-
-	list_for_each_entry(spcm, &sdev->pcm_list, list) {
-		if (spcm->stream[SNDRV_PCM_STREAM_PLAYBACK].comp_id == comp_id) {
-			*direction = SNDRV_PCM_STREAM_PLAYBACK;
-			return spcm;
-		}
-		if (spcm->stream[SNDRV_PCM_STREAM_CAPTURE].comp_id == comp_id) {
-			*direction = SNDRV_PCM_STREAM_CAPTURE;
-			return spcm;
-		}
-	}
-
-	return NULL;
-}
-
-struct snd_sof_pcm *snd_sof_find_spcm_pcm_id(struct snd_sof_dev *sdev,
-					     unsigned int pcm_id)
-{
-	struct snd_sof_pcm *spcm;
-
-	list_for_each_entry(spcm, &sdev->pcm_list, list) {
-		if (le32_to_cpu(spcm->pcm.pcm_id) == pcm_id)
-			return spcm;
-	}
-
-	return NULL;
-}
-
-struct snd_sof_widget *snd_sof_find_swidget(struct snd_sof_dev *sdev,
-					    const char *name)
-{
-	struct snd_sof_widget *swidget;
-
-	list_for_each_entry(swidget, &sdev->widget_list, list) {
-		if (strcmp(name, swidget->widget->name) == 0)
-			return swidget;
-	}
-
-	return NULL;
-}
-
-/* find widget by stream name and direction */
-struct snd_sof_widget *snd_sof_find_swidget_sname(struct snd_sof_dev *sdev,
-						  const char *pcm_name, int dir)
-{
-	struct snd_sof_widget *swidget;
-	enum snd_soc_dapm_type type;
-
-	if (dir == SNDRV_PCM_STREAM_PLAYBACK)
-		type = snd_soc_dapm_aif_in;
-	else
-		type = snd_soc_dapm_aif_out;
-
-	list_for_each_entry(swidget, &sdev->widget_list, list) {
-		if (!strcmp(pcm_name, swidget->widget->sname) && swidget->id == type)
-			return swidget;
-	}
-
-	return NULL;
-}
-
-struct snd_sof_dai *snd_sof_find_dai(struct snd_sof_dev *sdev,
-				     const char *name)
-{
-	struct snd_sof_dai *dai;
-
-	list_for_each_entry(dai, &sdev->dai_list, list) {
-		if (dai->name && (strcmp(name, dai->name) == 0))
-			return dai;
-	}
-
-	return NULL;
-}
 
 /*
  * FW Panic/fault handling.
@@ -333,12 +234,20 @@ static int sof_probe_continue(struct snd_sof_dev *sdev)
 		goto fw_run_err;
 	}
 
-	/* init DMA trace */
-	ret = snd_sof_init_trace(sdev);
-	if (ret < 0) {
-		/* non fatal */
-		dev_warn(sdev->dev,
-			 "warning: failed to initialize trace %d\n", ret);
+	if (IS_ENABLED(CONFIG_SND_SOC_SOF_DEBUG_ENABLE_FIRMWARE_TRACE) ||
+	    (sof_core_debug & SOF_DBG_ENABLE_TRACE)) {
+		sdev->dtrace_is_supported = true;
+
+		/* init DMA trace */
+		ret = snd_sof_init_trace(sdev);
+		if (ret < 0) {
+			/* non fatal */
+			dev_warn(sdev->dev,
+				 "warning: failed to initialize trace %d\n",
+				 ret);
+		}
+	} else {
+		dev_dbg(sdev->dev, "SOF firmware trace disabled\n");
 	}
 
 	/* hereafter all FW boot flows are for PM reasons */
@@ -413,6 +322,9 @@ int snd_sof_device_probe(struct device *dev, struct snd_sof_pdata *plat_data)
 	/* initialize sof device */
 	sdev->dev = dev;
 
+	/* initialize default DSP power state */
+	sdev->dsp_power_state.state = SOF_DSP_PM_D0;
+
 	sdev->pdata = plat_data;
 	sdev->first_boot = true;
 	sdev->fw_state = SOF_FW_BOOT_NOT_STARTED;
@@ -422,7 +334,8 @@ int snd_sof_device_probe(struct device *dev, struct snd_sof_pdata *plat_data)
 	if (!sof_ops(sdev) || !sof_ops(sdev)->probe || !sof_ops(sdev)->run ||
 	    !sof_ops(sdev)->block_read || !sof_ops(sdev)->block_write ||
 	    !sof_ops(sdev)->send_msg || !sof_ops(sdev)->load_firmware ||
-	    !sof_ops(sdev)->ipc_msg_data || !sof_ops(sdev)->ipc_pcm_params)
+	    !sof_ops(sdev)->ipc_msg_data || !sof_ops(sdev)->ipc_pcm_params ||
+	    !sof_ops(sdev)->fw_ready)
 		return -EINVAL;
 
 	INIT_LIST_HEAD(&sdev->pcm_list);
@@ -459,6 +372,7 @@ int snd_sof_device_remove(struct device *dev)
 {
 	struct snd_sof_dev *sdev = dev_get_drvdata(dev);
 	struct snd_sof_pdata *pdata = sdev->pdata;
+	int ret;
 
 	if (IS_ENABLED(CONFIG_SND_SOC_SOF_PROBE_WORK_QUEUE))
 		cancel_work_sync(&sdev->probe_work);

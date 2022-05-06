@@ -3,6 +3,8 @@
  *
  * Author(s):
  *	2011-2014 Arvid Brodin, arvid.brodin@alten.se
+ *
+ * include file for HSR and PRP.
  */
 
 #ifndef __HSR_FRAMEREG_H
@@ -47,6 +49,10 @@ int hsr_get_node_data(struct hsr_priv *hsr,
 		      int *if2_age,
 		      u16 *if2_seq);
 
+void prp_handle_san_frame(bool san, enum hsr_port_type port,
+			  struct hsr_node *node);
+void prp_update_san_info(struct hsr_node *node, bool is_sup);
+
 struct hsr_node {
 	struct list_head	mac_list;
 	unsigned char		macaddress_A[ETH_ALEN];
@@ -55,6 +61,10 @@ struct hsr_node {
 	enum hsr_port_type	addr_B_port;
 	unsigned long		time_in[HSR_PT_PORTS];
 	bool			time_in_stale[HSR_PT_PORTS];
+	unsigned long		time_out[HSR_PT_PORTS];
+	/* if the node is a SAN */
+	bool			san_a;
+	bool			san_b;
 	u16			seq_out[HSR_PT_PORTS];
 	struct rcu_head		rcu_head;
 };

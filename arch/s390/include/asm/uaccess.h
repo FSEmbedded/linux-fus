@@ -32,7 +32,7 @@
 #define USER_DS_SACF	(3)
 
 #define get_fs()        (current->thread.mm_segment)
-#define segment_eq(a,b) (((a) & 2) == ((b) & 2))
+#define uaccess_kernel() ((get_fs() & 2) == KERNEL_DS)
 
 void set_fs(mm_segment_t fs);
 
@@ -59,6 +59,9 @@ raw_copy_to_user(void __user *to, const void *from, unsigned long n);
 #define INLINE_COPY_FROM_USER
 #define INLINE_COPY_TO_USER
 #endif
+
+int __put_user_bad(void) __attribute__((noreturn));
+int __get_user_bad(void) __attribute__((noreturn));
 
 #ifdef CONFIG_HAVE_MARCH_Z10_FEATURES
 
@@ -109,6 +112,9 @@ static __always_inline int __put_user_fn(void *x, void __user *ptr, unsigned lon
 					(unsigned long *)x,
 					size, spec);
 		break;
+	default:
+		__put_user_bad();
+		break;
 	}
 	return rc;
 }
@@ -138,6 +144,9 @@ static __always_inline int __get_user_fn(void *x, const void __user *ptr, unsign
 		rc = __put_get_user_asm((unsigned long *)x,
 					(unsigned long __user *)ptr,
 					size, spec);
+		break;
+	default:
+		__get_user_bad();
 		break;
 	}
 	return rc;
@@ -179,7 +188,7 @@ static inline int __get_user_fn(void *x, const void __user *ptr, unsigned long s
 	default:						\
 		__put_user_bad();				\
 		break;						\
-	 }							\
+	}							\
 	__builtin_expect(__pu_err, 0);				\
 })
 
@@ -189,8 +198,6 @@ static inline int __get_user_fn(void *x, const void __user *ptr, unsigned long s
 	__put_user(x, ptr);					\
 })
 
-
-int __put_user_bad(void) __attribute__((noreturn));
 
 #define __get_user(x, ptr)					\
 ({								\
@@ -237,8 +244,6 @@ int __put_user_bad(void) __attribute__((noreturn));
 	might_fault();						\
 	__get_user(x, ptr);					\
 })
-
-int __get_user_bad(void) __attribute__((noreturn));
 
 unsigned long __must_check
 raw_copy_in_user(void __user *to, const void __user *from, unsigned long n);

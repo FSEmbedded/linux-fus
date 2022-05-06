@@ -228,7 +228,7 @@ static int tc_setup_cls_u32(struct stmmac_priv *priv,
 	switch (cls->command) {
 	case TC_CLSU32_REPLACE_KNODE:
 		tc_unfill_entry(priv, cls);
-		/* Fall through */
+		fallthrough;
 	case TC_CLSU32_NEW_KNODE:
 		return tc_config_knode(priv, cls);
 	case TC_CLSU32_DELETE_KNODE:
@@ -330,12 +330,13 @@ static int tc_setup_cbs(struct stmmac_priv *priv,
 
 		priv->plat->tx_queues_cfg[queue].mode_to_use = MTL_QUEUE_AVB;
 	} else if (!qopt->enable) {
-		return stmmac_dma_qmode(priv, priv->ioaddr, queue, MTL_QUEUE_DCB);
-	}
+		ret = stmmac_dma_qmode(priv, priv->ioaddr, queue,
+				       MTL_QUEUE_DCB);
+		if (ret)
+			return ret;
 
-	/* Port Transmit Rate and Speed Divider */
-	ptr = (priv->speed == SPEED_100) ? 4 : 8;
-	speed_div = (priv->speed == SPEED_100) ? 100000 : 1000000;
+		priv->plat->tx_queues_cfg[queue].mode_to_use = MTL_QUEUE_DCB;
+	}
 
 	/* Final adjustments for HW */
 	value = div_s64(qopt->idleslope * 1024ll * ptr, speed_div);
@@ -367,13 +368,17 @@ static int tc_setup_cbs(struct stmmac_priv *priv,
 
 static int tc_parse_flow_actions(struct stmmac_priv *priv,
 				 struct flow_action *action,
-				 struct stmmac_flow_entry *entry)
+				 struct stmmac_flow_entry *entry,
+				 struct netlink_ext_ack *extack)
 {
 	struct flow_action_entry *act;
 	int i;
 
 	if (!flow_action_has_entries(action))
 		return -EINVAL;
+
+	if (!flow_action_basic_hw_stats_check(action, extack))
+		return -EOPNOTSUPP;
 
 	flow_action_for_each(i, act, action) {
 		switch (act->id) {
@@ -530,7 +535,8 @@ static int tc_add_flow(struct stmmac_priv *priv,
 			return -ENOENT;
 	}
 
-	ret = tc_parse_flow_actions(priv, &rule->action, entry);
+	ret = tc_parse_flow_actions(priv, &rule->action, entry,
+				    cls->common.extack);
 	if (ret)
 		return ret;
 

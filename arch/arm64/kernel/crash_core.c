@@ -5,7 +5,16 @@
  */
 
 #include <linux/crash_core.h>
+#include <asm/cpufeature.h>
 #include <asm/memory.h>
+#include <asm/pgtable-hwdef.h>
+
+static inline u64 get_tcr_el1_t1sz(void);
+
+static inline u64 get_tcr_el1_t1sz(void)
+{
+	return (read_sysreg(tcr_el1) & TCR_T1SZ_MASK) >> TCR_T1SZ_OFFSET;
+}
 
 static inline u64 get_tcr_el1_t1sz(void);
 
@@ -25,4 +34,7 @@ void arch_crash_save_vmcoreinfo(void)
 	vmcoreinfo_append_str("NUMBER(tcr_el1_t1sz)=0x%llx\n",
 						get_tcr_el1_t1sz());
 	vmcoreinfo_append_str("KERNELOFFSET=%lx\n", kaslr_offset());
+	vmcoreinfo_append_str("NUMBER(KERNELPACMASK)=0x%llx\n",
+						system_supports_address_auth() ?
+						ptrauth_kernel_pac_mask() : 0);
 }

@@ -111,8 +111,8 @@ struct rsnd_ssi {
 #define rsnd_ssi_nr(priv) ((priv)->ssi_nr)
 #define rsnd_mod_to_ssi(_mod) container_of((_mod), struct rsnd_ssi, mod)
 #define rsnd_ssi_is_parent(ssi, io) ((ssi) == rsnd_io_to_mod_ssip(io))
-#define rsnd_ssi_is_multi_slave(mod, io) \
-	(rsnd_ssi_multi_slaves(io) & (1 << rsnd_mod_id(mod)))
+#define rsnd_ssi_is_multi_secondary(mod, io)				\
+	(rsnd_ssi_multi_secondaries(io) & (1 << rsnd_mod_id(mod)))
 #define rsnd_ssi_is_run_mods(mod, io) \
 	(rsnd_ssi_run_mods(io) & (1 << rsnd_mod_id(mod)))
 #define rsnd_ssi_can_output_clk(mod) (!__rsnd_ssi_is_pin_sharing(mod))
@@ -165,7 +165,7 @@ static void rsnd_ssi_status_check(struct rsnd_mod *mod,
 	dev_warn(dev, "%s status check failed\n", rsnd_mod_name(mod));
 }
 
-static u32 rsnd_ssi_multi_slaves(struct rsnd_dai_stream *io)
+static u32 rsnd_ssi_multi_secondaries(struct rsnd_dai_stream *io)
 {
 	struct rsnd_mod *mod;
 	enum rsnd_mod_type types[] = {
@@ -193,7 +193,7 @@ static u32 rsnd_ssi_run_mods(struct rsnd_dai_stream *io)
 	struct rsnd_mod *ssi_parent_mod = rsnd_io_to_mod_ssip(io);
 	u32 mods;
 
-	mods = rsnd_ssi_multi_slaves_runtime(io) |
+	mods = rsnd_ssi_multi_secondaries_runtime(io) |
 		1 << rsnd_mod_id(ssi_mod);
 
 	if (ssi_parent_mod)
@@ -202,10 +202,10 @@ static u32 rsnd_ssi_run_mods(struct rsnd_dai_stream *io)
 	return mods;
 }
 
-u32 rsnd_ssi_multi_slaves_runtime(struct rsnd_dai_stream *io)
+u32 rsnd_ssi_multi_secondaries_runtime(struct rsnd_dai_stream *io)
 {
 	if (rsnd_runtime_is_multi_ssi(io))
-		return rsnd_ssi_multi_slaves(io);
+		return rsnd_ssi_multi_secondaries(io);
 
 	return 0;
 }
@@ -283,7 +283,7 @@ static int rsnd_ssi_master_clk_start(struct rsnd_mod *mod,
 	if (!rsnd_ssi_can_output_clk(mod))
 		return 0;
 
-	if (rsnd_ssi_is_multi_slave(mod, io))
+	if (rsnd_ssi_is_multi_secondary(mod, io))
 		return 0;
 
 	if (rsnd_runtime_is_tdm_split(io))
@@ -507,9 +507,14 @@ static int rsnd_ssi_init(struct rsnd_mod *mod,
 			 struct rsnd_priv *priv)
 {
 	struct rsnd_ssi *ssi = rsnd_mod_to_ssi(mod);
+	int ret;
 
 	if (!rsnd_ssi_is_run_mods(mod, io))
 		return 0;
+
+	ret = rsnd_ssi_master_clk_start(mod, io);
+	if (ret < 0)
+		return ret;
 
 	ssi->usrcnt++;
 
@@ -626,7 +631,7 @@ static int rsnd_ssi_start(struct rsnd_mod *mod,
 	 * EN will be set via SSIU :: SSI_CONTROL
 	 * if Multi channel mode
 	 */
-	if (rsnd_ssi_multi_slaves_runtime(io))
+	if (rsnd_ssi_multi_secondaries_runtime(io))
 		return 0;
 
 	/*
@@ -930,9 +935,9 @@ static int rsnd_ssi_common_probe(struct rsnd_mod *mod,
 
 	/*
 	 * SSIP/SSIU/IRQ are not needed on
-	 * SSI Multi slaves
+	 * SSI Multi secondaries
 	 */
-	if (rsnd_ssi_is_multi_slave(mod, io))
+	if (rsnd_ssi_is_multi_secondary(mod, io))
 		return 0;
 
 	/*
@@ -1060,13 +1065,6 @@ static int rsnd_ssi_pio_pointer(struct rsnd_mod *mod,
 	return 0;
 }
 
-static int rsnd_ssi_prepare(struct rsnd_mod *mod,
-			    struct rsnd_dai_stream *io,
-			    struct rsnd_priv *priv)
-{
-	return rsnd_ssi_master_clk_start(mod, io);
-}
-
 static struct rsnd_mod_ops rsnd_ssi_pio_ops = {
 	.name		= SSI_NAME,
 	.probe		= rsnd_ssi_common_probe,
@@ -1079,7 +1077,6 @@ static struct rsnd_mod_ops rsnd_ssi_pio_ops = {
 	.pointer	= rsnd_ssi_pio_pointer,
 	.pcm_new	= rsnd_ssi_pcm_new,
 	.hw_params	= rsnd_ssi_hw_params,
-	.prepare	= rsnd_ssi_prepare,
 	.get_status	= rsnd_ssi_get_status,
 };
 
@@ -1091,9 +1088,9 @@ static int rsnd_ssi_dma_probe(struct rsnd_mod *mod,
 
 	/*
 	 * SSIP/SSIU/IRQ/DMA are not needed on
-	 * SSI Multi slaves
+	 * SSI Multi secondaries
 	 */
-	if (rsnd_ssi_is_multi_slave(mod, io))
+	if (rsnd_ssi_is_multi_secondary(mod, io))
 		return 0;
 
 	ret = rsnd_ssi_common_probe(mod, io, priv);
@@ -1166,7 +1163,6 @@ static struct rsnd_mod_ops rsnd_ssi_dma_ops = {
 	.pcm_new	= rsnd_ssi_pcm_new,
 	.fallback	= rsnd_ssi_fallback,
 	.hw_params	= rsnd_ssi_hw_params,
-	.prepare	= rsnd_ssi_prepare,
 	.get_status	= rsnd_ssi_get_status,
 };
 

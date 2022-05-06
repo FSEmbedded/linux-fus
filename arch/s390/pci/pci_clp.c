@@ -24,7 +24,7 @@
 
 bool zpci_unique_uid;
 
-static void update_uid_checking(bool new)
+void update_uid_checking(bool new)
 {
 	if (zpci_unique_uid != new)
 		zpci_dbg(1, "uid checking:%d\n", new);
@@ -102,6 +102,7 @@ static void clp_store_query_pci_fngrp(struct zpci_dev *zdev,
 	zdev->msi_addr = response->msia;
 	zdev->max_msi = response->noi;
 	zdev->fmb_update = response->mui;
+	zdev->version = response->version;
 
 	switch (response->version) {
 	case 1:
@@ -145,7 +146,7 @@ static int clp_store_query_pci_fn(struct zpci_dev *zdev,
 {
 	int i;
 
-	for (i = 0; i < PCI_BAR_COUNT; i++) {
+	for (i = 0; i < PCI_STD_NUM_BARS; i++) {
 		zdev->bars[i].val = le32_to_cpu(response->bar[i]);
 		zdev->bars[i].size = response->bar_size[i];
 	}
@@ -155,17 +156,23 @@ static int clp_store_query_pci_fn(struct zpci_dev *zdev,
 	zdev->pfgid = response->pfgid;
 	zdev->pft = response->pft;
 	zdev->vfn = response->vfn;
+	zdev->port = response->port;
 	zdev->uid = response->uid;
 	zdev->fmb_length = sizeof(u32) * response->fmb_len;
+	zdev->rid_available = response->rid_avail;
+	zdev->is_physfn = response->is_physfn;
+	if (!s390_pci_no_rid && zdev->rid_available)
+		zdev->devfn = response->rid & ZPCI_RID_MASK_DEVFN;
 
 	memcpy(zdev->pfip, response->pfip, sizeof(zdev->pfip));
 	if (response->util_str_avail) {
 		memcpy(zdev->util_str, response->util_str,
 		       sizeof(zdev->util_str));
+		zdev->util_str_avail = 1;
 	}
 	zdev->mio_capable = response->mio_addr_avail;
-	for (i = 0; i < PCI_BAR_COUNT; i++) {
-		if (!(response->mio.valid & (1 << (PCI_BAR_COUNT - i - 1))))
+	for (i = 0; i < PCI_STD_NUM_BARS; i++) {
+		if (!(response->mio.valid & (1 << (PCI_STD_NUM_BARS - i - 1))))
 			continue;
 
 		zdev->bars[i].mio_wb = (void __iomem *) response->mio.addr[i].wb;
@@ -174,7 +181,7 @@ static int clp_store_query_pci_fn(struct zpci_dev *zdev,
 	return 0;
 }
 
-static int clp_query_pci_fn(struct zpci_dev *zdev, u32 fh)
+int clp_query_pci_fn(struct zpci_dev *zdev)
 {
 	struct clp_req_rsp_query_pci *rrb;
 	int rc;
@@ -187,7 +194,7 @@ static int clp_query_pci_fn(struct zpci_dev *zdev, u32 fh)
 	rrb->request.hdr.len = sizeof(rrb->request);
 	rrb->request.hdr.cmd = CLP_QUERY_PCI_FN;
 	rrb->response.hdr.len = sizeof(rrb->response);
-	rrb->request.fh = fh;
+	rrb->request.fh = zdev->fh;
 
 	rc = clp_req(rrb, CLP_LPS_PCI);
 	if (!rc && rrb->response.hdr.rsp == CLP_RC_OK) {
@@ -303,7 +310,6 @@ int clp_enable_fh(struct zpci_dev *zdev, u8 nr_dma_as)
 		if (rc)
 			clp_disable_fh(zdev);
 	}
-out:
 	return rc;
 }
 
@@ -402,21 +408,19 @@ int clp_scan_pci_devices(void)
 	return rc;
 }
 
-int clp_rescan_pci_devices(void)
+static void __clp_refresh_fh(struct clp_fh_list_entry *entry, void *data)
 {
-	struct clp_req_rsp_list_pci *rrb;
-	int rc;
+	struct zpci_dev *zdev;
+	u32 fid = *((u32 *)data);
 
-	zpci_remove_reserved_devices();
+	if (!entry->vendor_id || fid != entry->fid)
+		return;
 
-	rrb = clp_alloc_block(GFP_KERNEL);
-	if (!rrb)
-		return -ENOMEM;
+	zdev = get_zdev_by_fid(fid);
+	if (!zdev)
+		return;
 
-	rc = clp_list_pci(rrb, NULL, __clp_add);
-
-	clp_free_block(rrb);
-	return rc;
+	zdev->fh = entry->fh;
 }
 
 /* Rescan PCI functions and refresh function handles. If fid is non-NULL only
@@ -490,7 +494,7 @@ static int clp_base_command(struct clp_req *req, struct clp_req_hdr *lpcb)
 	}
 }
 
-static int clp_pci_slpc(struct clp_req *req, struct clp_req_rsp_slpc *lpcb)
+static int clp_pci_slpc(struct clp_req *req, struct clp_req_rsp_slpc_pci *lpcb)
 {
 	unsigned long limit = PAGE_SIZE - sizeof(lpcb->request);
 

@@ -291,6 +291,7 @@
 #define ASRMCR1i_OW16(v)		((v) << ASRMCR1i_OW16_SHIFT)
 
 #define ASRC_CLK_MAX_NUM	16
+#define ASRC_CLK_MAP_LEN	0x30
 
 enum asrc_word_width {
 	ASRC_WIDTH_24_BIT = 0,
@@ -304,21 +305,22 @@ struct dma_block {
 };
 
 /**
- * fsl_asrc_pair: ASRC Pair private data
+ * fsl_asrc_soc_data: soc specific data
  *
- * @asrc_priv: pointer to its parent module
- * @config: configuration profile
- * @error: error record
- * @index: pair index (ASRC_PAIR_A, ASRC_PAIR_B, ASRC_PAIR_C)
- * @channels: occupied channel number
- * @desc: input and output dma descriptors
- * @dma_chan: inputer and output DMA channels
- * @dma_data: private dma data
- * @pos: hardware pointer position
- * @private: pair private area
+ * @use_edma: using edma as dma device or not
+ * @channel_bits: width of ASRCNCR register for each pair
  */
-struct fsl_asrc_pair {
-	struct fsl_asrc *asrc_priv;
+struct fsl_asrc_soc_data {
+	bool use_edma;
+	unsigned int channel_bits;
+};
+
+/**
+ * fsl_asrc_pair_priv: ASRC Pair private data
+ *
+ * @config: configuration profile
+ */
+struct fsl_asrc_pair_priv {
 	struct asrc_config *config;
 	unsigned int error;
 
@@ -335,16 +337,8 @@ struct fsl_asrc_pair {
 };
 
 /**
- * fsl_asrc_pair: ASRC private data
+ * fsl_asrc_priv: ASRC private data
  *
- * @dma_params_rx: DMA parameters for receive channel
- * @dma_params_tx: DMA parameters for transmit channel
- * @pdev: platform device pointer
- * @regmap: regmap handler
- * @paddr: physical address to the base address of registers
- * @mem_clk: clock source to access register
- * @ipg_clk: clock source to drive peripheral
- * @spba_clk: SPBA clock (optional, depending on SoC design)
  * @asrck_clk: clock sources to driver ASRC internal logic
  * @lock: spin lock for resource protection
  * @pair: pair pointers
@@ -355,15 +349,7 @@ struct fsl_asrc_pair {
  * @asrc_width: default sample width for ASoC Back-Ends
  * @regcache_cfg: store register value of REG_ASRCFG
  */
-struct fsl_asrc {
-	struct snd_dmaengine_dai_dma_data dma_params_rx;
-	struct snd_dmaengine_dai_dma_data dma_params_tx;
-	struct platform_device *pdev;
-	struct regmap *regmap;
-	unsigned long paddr;
-	struct clk *mem_clk;
-	struct clk *ipg_clk;
-	struct clk *spba_clk;
+struct fsl_asrc_priv {
 	struct clk *asrck_clk[ASRC_CLK_MAX_NUM];
 	unsigned char *clk_map[2];
 	spinlock_t lock;

@@ -13,6 +13,7 @@
 #include <linux/fsl/mc.h>
 
 #include "compat.h"
+#include "debugfs.h"
 #include "regs.h"
 #include "intern.h"
 #include "jr.h"
@@ -55,7 +56,7 @@ static void build_instantiation_desc(u32 *desc, int handle, int do_sk)
 
 		/*
 		 * load 1 to clear written reg:
-		 * resets the done interrrupt and returns the RNG to idle.
+		 * resets the done interrupt and returns the RNG to idle.
 		 */
 		append_load_imm_u32(desc, 1, LDST_SRCDST_WORD_CLRW);
 
@@ -157,7 +158,7 @@ static inline int run_descriptor_deco0(struct device *ctrldev, u32 *desc,
 				     DESC_DER_DECO_STAT_SHIFT;
 
 		/*
-		 * If an error occured in the descriptor, then
+		 * If an error occurred in the descriptor, then
 		 * the DECO status field will be set to 0x0D
 		 */
 		if (deco_state == DECO_STAT_HOST_ERR)
@@ -265,7 +266,7 @@ static void devm_deinstantiate_rng(void *data)
  *	   - -ENODEV if DECO0 couldn't be acquired
  *	   - -EAGAIN if an error occurred when executing the descriptor
  *	      f.i. there was a RNG hardware error due to not "good enough"
- *	      entropy being aquired.
+ *	      entropy being acquired.
  */
 static int instantiate_rng(struct device *ctrldev, int state_handle_mask,
 			   int gen_sk)
@@ -477,7 +478,7 @@ static int caam_get_era(struct caam_perfmon __iomem *perfmon)
  * pipeline to a depth of 1 (from it's default of 4) to preclude this situation
  * from occurring.
  */
-static void handle_imx6_err005766(u32 *mcr)
+static void handle_imx6_err005766(u32 __iomem *mcr)
 {
 	if (of_machine_is_compatible("fsl,imx6q") ||
 	    of_machine_is_compatible("fsl,imx6dl") ||
@@ -533,6 +534,15 @@ static const struct clk_bulk_data caam_imx6ul_clks[] = {
 static const struct caam_imx_data caam_imx6ul_data = {
 	.clks = caam_imx6ul_clks,
 	.num_clks = ARRAY_SIZE(caam_imx6ul_clks),
+};
+
+static const struct clk_bulk_data caam_vf610_clks[] = {
+	{ .id = "ipg" },
+};
+
+static const struct caam_imx_data caam_vf610_data = {
+	.clks = caam_vf610_clks,
+	.num_clks = ARRAY_SIZE(caam_vf610_clks),
 };
 
 static const struct soc_device_attribute caam_imx_soc_table[] = {
@@ -1052,8 +1062,8 @@ mc_fw:
 	handle_imx6_err005766(&ctrl->mcr);
 
 	/*
-	 *  Read the Compile Time paramters and SCFGR to determine
-	 * if Virtualization is enabled for this platform
+	 *  Read the Compile Time parameters and SCFGR to determine
+	 * if virtualization is enabled for this platform
 	 */
 	scfgr = rd_reg32(&ctrl->scfgr);
 

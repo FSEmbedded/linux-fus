@@ -43,7 +43,6 @@
 #include <asm/udbg.h>
 #include <sysdev/fsl_soc.h>
 #include <sysdev/fsl_pci.h>
-#include <sysdev/simple_gpio.h>
 #include <soc/fsl/qe/qe.h>
 #include <asm/mpic.h>
 #include <asm/swiotlb.h>
@@ -237,7 +236,6 @@ static void __init mpc85xx_mds_qe_init(void)
 {
 	struct device_node *np;
 
-	mpc85xx_qe_init();
 	mpc85xx_qe_par_io_init();
 	mpc85xx_mds_reset_ucc_phys();
 
@@ -281,7 +279,6 @@ static void __init mpc85xx_mds_qeic_init(void)
 }
 #else
 static void __init mpc85xx_mds_qe_init(void) { }
-static void __init mpc85xx_mds_qeic_init(void) { }
 #endif	/* CONFIG_QUICC_ENGINE */
 
 static void __init mpc85xx_mds_setup_arch(void)
@@ -336,11 +333,6 @@ machine_arch_initcall(mpc8569_mds, board_fixups);
 
 static int __init mpc85xx_publish_devices(void)
 {
-	if (machine_is(mpc8568_mds))
-		simple_gpiochip_init("fsl,mpc8568mds-bcsr-gpio");
-	if (machine_is(mpc8569_mds))
-		simple_gpiochip_init("fsl,mpc8569mds-bcsr-gpio");
-
 	return mpc85xx_common_publish_devices();
 }
 
@@ -356,7 +348,6 @@ static void __init mpc85xx_mds_pic_init(void)
 	BUG_ON(mpic == NULL);
 
 	mpic_init(mpic);
-	mpc85xx_mds_qeic_init();
 }
 
 static int __init mpc85xx_mds_probe(void)

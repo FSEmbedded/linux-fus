@@ -195,6 +195,11 @@ static int cdns3_host_start(struct cdns3 *cdns)
 	device_set_wakeup_capable(dev, true);
 	dev_dbg(dev, "%s ends\n", __func__);
 
+	/* Glue needs to access xHCI region register for Power management */
+	hcd = platform_get_drvdata(xhci);
+	if (hcd)
+		cdns->xhci_regs = hcd->regs;
+
 	return 0;
 
 err5:

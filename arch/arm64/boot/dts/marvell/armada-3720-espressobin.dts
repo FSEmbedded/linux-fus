@@ -12,8 +12,7 @@
 
 /dts-v1/;
 
-#include <dt-bindings/gpio/gpio.h>
-#include "armada-372x.dtsi"
+#include "armada-3720-espressobin.dtsi"
 
 / {
 	model = "Globalscale Marvell ESPRESSOBin Board";

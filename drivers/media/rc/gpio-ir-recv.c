@@ -51,6 +51,7 @@ static int gpio_ir_recv_probe(struct platform_device *pdev)
 	struct device_node *np = dev->of_node;
 	struct gpio_rc_dev *gpio_dev;
 	struct rc_dev *rcdev;
+	u32 period = 0;
 	int rc;
 
 	if (!np)
@@ -99,6 +100,15 @@ static int gpio_ir_recv_probe(struct platform_device *pdev)
 	if (rc < 0) {
 		dev_err(dev, "failed to register rc device (%d)\n", rc);
 		return rc;
+	}
+
+	of_property_read_u32(np, "linux,autosuspend-period", &period);
+	if (period) {
+		gpio_dev->pmdev = dev;
+		pm_runtime_set_autosuspend_delay(dev, period);
+		pm_runtime_use_autosuspend(dev);
+		pm_runtime_set_suspended(dev);
+		pm_runtime_enable(dev);
 	}
 
 	platform_set_drvdata(pdev, gpio_dev);

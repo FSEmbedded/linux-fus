@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0
+#include <linux/bits.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
 #include <linux/err.h>
 #include <linux/io.h>
+#include <linux/module.h>
 #include <linux/of.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
@@ -26,7 +28,16 @@ void imx_unregister_clocks(struct clk *clks[], unsigned int count)
 }
 EXPORT_SYMBOL_GPL(imx_unregister_clocks);
 
-void __init imx_mmdc_mask_handshake(void __iomem *ccm_base,
+void imx_unregister_hw_clocks(struct clk_hw *hws[], unsigned int count)
+{
+	unsigned int i;
+
+	for (i = 0; i < count; i++)
+		clk_hw_unregister(hws[i]);
+}
+EXPORT_SYMBOL_GPL(imx_unregister_hw_clocks);
+
+void imx_mmdc_mask_handshake(void __iomem *ccm_base,
 				    unsigned int chn)
 {
 	unsigned int reg;
@@ -56,8 +67,9 @@ void imx_check_clk_hws(struct clk_hw *clks[], unsigned int count)
 			pr_err("i.MX clk %u: register failed with %ld\n",
 			       i, PTR_ERR(clks[i]));
 }
+EXPORT_SYMBOL_GPL(imx_check_clk_hws);
 
-static struct clk * __init imx_obtain_fixed_clock_from_dt(const char *name)
+static struct clk *imx_obtain_fixed_clock_from_dt(const char *name)
 {
 	struct of_phandle_args phandle;
 	struct clk *clk = ERR_PTR(-ENODEV);
@@ -77,7 +89,7 @@ static struct clk * __init imx_obtain_fixed_clock_from_dt(const char *name)
 	return clk;
 }
 
-struct clk * __init imx_obtain_fixed_clock(
+struct clk *imx_obtain_fixed_clock(
 			const char *name, unsigned long rate)
 {
 	struct clk *clk;
@@ -88,7 +100,7 @@ struct clk * __init imx_obtain_fixed_clock(
 	return clk;
 }
 
-struct clk_hw * __init imx_obtain_fixed_clock_hw(
+struct clk_hw *imx_obtain_fixed_clock_hw(
 			const char *name, unsigned long rate)
 {
 	struct clk *clk;
@@ -99,8 +111,8 @@ struct clk_hw * __init imx_obtain_fixed_clock_hw(
 	return __clk_get_hw(clk);
 }
 
-struct clk_hw * __init imx_obtain_fixed_clk_hw(struct device_node *np,
-					       const char *name)
+struct clk_hw * imx_obtain_fixed_clk_hw(struct device_node *np,
+					const char *name)
 {
 	struct clk *clk;
 
@@ -110,6 +122,7 @@ struct clk_hw * __init imx_obtain_fixed_clk_hw(struct device_node *np,
 
 	return __clk_get_hw(clk);
 }
+EXPORT_SYMBOL_GPL(imx_obtain_fixed_clk_hw);
 
 /*
  * This fixups the register CCM_CSCMR1 write value.

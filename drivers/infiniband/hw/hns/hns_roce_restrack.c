@@ -76,10 +76,9 @@ err:
 	return -EMSGSIZE;
 }
 
-static int hns_roce_fill_res_cq_entry(struct sk_buff *msg,
-				      struct rdma_restrack_entry *res)
+int hns_roce_fill_res_cq_entry(struct sk_buff *msg,
+			       struct ib_cq *ib_cq)
 {
-	struct ib_cq *ib_cq = container_of(res, struct ib_cq, res);
 	struct hns_roce_dev *hr_dev = to_hr_dev(ib_cq->device);
 	struct hns_roce_cq *hr_cq = to_hr_cq(ib_cq);
 	struct hns_roce_v2_cq_context *context;

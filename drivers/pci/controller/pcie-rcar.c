@@ -1,29 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * PCIe driver for Renesas R-Car SoCs
- *  Copyright (C) 2014 Renesas Electronics Europe Ltd
- *
- * Based on:
- *  arch/sh/drivers/pci/pcie-sh7786.c
- *  arch/sh/drivers/pci/ops-sh7786.c
- *  Copyright (C) 2009 - 2011  Paul Mundt
+ *  Copyright (C) 2014-2020 Renesas Electronics Europe Ltd
  *
  * Author: Phil Edworthy <phil.edworthy@renesas.com>
  */
 
-#include <linux/bitops.h>
-#include <linux/clk.h>
 #include <linux/delay.h>
-#include <linux/interrupt.h>
-#include <linux/irq.h>
-#include <linux/irqdomain.h>
-#include <linux/kernel.h>
-#include <linux/init.h>
-#include <linux/msi.h>
-#include <linux/of_address.h>
-#include <linux/of_irq.h>
-#include <linux/of_pci.h>
-#include <linux/of_platform.h>
 #include <linux/pci.h>
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
@@ -119,61 +102,19 @@
 
 #define INT_PCI_MSI_NR		32
 
-#define RCONF(x)		(PCICONF(0) + (x))
-#define RPMCAP(x)		(PMCAP(0) + (x))
-#define REXPCAP(x)		(EXPCAP(0) + (x))
-#define RVCCAP(x)		(VCCAP(0) + (x))
+#include "pcie-rcar.h"
 
-#define PCIE_CONF_BUS(b)	(((b) & 0xff) << 24)
-#define PCIE_CONF_DEV(d)	(((d) & 0x1f) << 19)
-#define PCIE_CONF_FUNC(f)	(((f) & 0x7) << 16)
-
-#define RCAR_PCI_MAX_RESOURCES	4
-#define MAX_NR_INBOUND_MAPS	6
-
-struct rcar_msi {
-	DECLARE_BITMAP(used, INT_PCI_MSI_NR);
-	struct irq_domain *domain;
-	struct msi_controller chip;
-	unsigned long pages;
-	struct mutex lock;
-	int irq1;
-	int irq2;
-};
-
-static inline struct rcar_msi *to_rcar_msi(struct msi_controller *chip)
-{
-	return container_of(chip, struct rcar_msi, chip);
-}
-
-/* Structure representing the PCIe interface */
-struct rcar_pcie {
-	struct device		*dev;
-	struct phy		*phy;
-	void __iomem		*base;
-	struct list_head	resources;
-	int			root_bus_nr;
-	struct clk		*bus_clk;
-	struct			rcar_msi msi;
-};
-
-static void rcar_pci_write_reg(struct rcar_pcie *pcie, u32 val,
-			       unsigned int reg)
+void rcar_pci_write_reg(struct rcar_pcie *pcie, u32 val, unsigned int reg)
 {
 	writel(val, pcie->base + reg);
 }
 
-static u32 rcar_pci_read_reg(struct rcar_pcie *pcie, unsigned int reg)
+u32 rcar_pci_read_reg(struct rcar_pcie *pcie, unsigned int reg)
 {
 	return readl(pcie->base + reg);
 }
 
-enum {
-	RCAR_PCI_ACCESS_READ,
-	RCAR_PCI_ACCESS_WRITE,
-};
-
-static void rcar_rmw32(struct rcar_pcie *pcie, int where, u32 mask, u32 data)
+void rcar_rmw32(struct rcar_pcie *pcie, int where, u32 mask, u32 data)
 {
 	unsigned int shift = BITS_PER_BYTE * (where & 3);
 	u32 val = rcar_pci_read_reg(pcie, where & ~3);
@@ -183,150 +124,33 @@ static void rcar_rmw32(struct rcar_pcie *pcie, int where, u32 mask, u32 data)
 	rcar_pci_write_reg(pcie, val, where & ~3);
 }
 
-static u32 rcar_read_conf(struct rcar_pcie *pcie, int where)
+int rcar_pcie_wait_for_phyrdy(struct rcar_pcie *pcie)
 {
-	unsigned int shift = BITS_PER_BYTE * (where & 3);
-	u32 val = rcar_pci_read_reg(pcie, where & ~3);
+	unsigned int timeout = 10;
 
-	return val >> shift;
-}
+	while (timeout--) {
+		if (rcar_pci_read_reg(pcie, PCIEPHYSR) & PHYRDY)
+			return 0;
 
-/* Serialization is provided by 'pci_lock' in drivers/pci/access.c */
-static int rcar_pcie_config_access(struct rcar_pcie *pcie,
-		unsigned char access_type, struct pci_bus *bus,
-		unsigned int devfn, int where, u32 *data)
-{
-	unsigned int dev, func, reg, index;
-
-	dev = PCI_SLOT(devfn);
-	func = PCI_FUNC(devfn);
-	reg = where & ~3;
-	index = reg / 4;
-
-	/*
-	 * While each channel has its own memory-mapped extended config
-	 * space, it's generally only accessible when in endpoint mode.
-	 * When in root complex mode, the controller is unable to target
-	 * itself with either type 0 or type 1 accesses, and indeed, any
-	 * controller initiated target transfer to its own config space
-	 * result in a completer abort.
-	 *
-	 * Each channel effectively only supports a single device, but as
-	 * the same channel <-> device access works for any PCI_SLOT()
-	 * value, we cheat a bit here and bind the controller's config
-	 * space to devfn 0 in order to enable self-enumeration. In this
-	 * case the regular ECAR/ECDR path is sidelined and the mangled
-	 * config access itself is initiated as an internal bus transaction.
-	 */
-	if (pci_is_root_bus(bus)) {
-		if (dev != 0)
-			return PCIBIOS_DEVICE_NOT_FOUND;
-
-		if (access_type == RCAR_PCI_ACCESS_READ) {
-			*data = rcar_pci_read_reg(pcie, PCICONF(index));
-		} else {
-			/* Keep an eye out for changes to the root bus number */
-			if (pci_is_root_bus(bus) && (reg == PCI_PRIMARY_BUS))
-				pcie->root_bus_nr = *data & 0xff;
-
-			rcar_pci_write_reg(pcie, *data, PCICONF(index));
-		}
-
-		return PCIBIOS_SUCCESSFUL;
+		msleep(5);
 	}
 
-	if (pcie->root_bus_nr < 0)
-		return PCIBIOS_DEVICE_NOT_FOUND;
-
-	/* Clear errors */
-	rcar_pci_write_reg(pcie, rcar_pci_read_reg(pcie, PCIEERRFR), PCIEERRFR);
-
-	/* Set the PIO address */
-	rcar_pci_write_reg(pcie, PCIE_CONF_BUS(bus->number) |
-		PCIE_CONF_DEV(dev) | PCIE_CONF_FUNC(func) | reg, PCIECAR);
-
-	/* Enable the configuration access */
-	if (bus->parent->number == pcie->root_bus_nr)
-		rcar_pci_write_reg(pcie, CONFIG_SEND_ENABLE | TYPE0, PCIECCTLR);
-	else
-		rcar_pci_write_reg(pcie, CONFIG_SEND_ENABLE | TYPE1, PCIECCTLR);
-
-	/* Check for errors */
-	if (rcar_pci_read_reg(pcie, PCIEERRFR) & UNSUPPORTED_REQUEST)
-		return PCIBIOS_DEVICE_NOT_FOUND;
-
-	/* Check for master and target aborts */
-	if (rcar_read_conf(pcie, RCONF(PCI_STATUS)) &
-		(PCI_STATUS_REC_MASTER_ABORT | PCI_STATUS_REC_TARGET_ABORT))
-		return PCIBIOS_DEVICE_NOT_FOUND;
-
-	if (access_type == RCAR_PCI_ACCESS_READ)
-		*data = rcar_pci_read_reg(pcie, PCIECDR);
-	else
-		rcar_pci_write_reg(pcie, *data, PCIECDR);
-
-	/* Disable the configuration access */
-	rcar_pci_write_reg(pcie, 0, PCIECCTLR);
-
-	return PCIBIOS_SUCCESSFUL;
+	return -ETIMEDOUT;
 }
 
-static int rcar_pcie_read_conf(struct pci_bus *bus, unsigned int devfn,
-			       int where, int size, u32 *val)
+int rcar_pcie_wait_for_dl(struct rcar_pcie *pcie)
 {
-	struct rcar_pcie *pcie = bus->sysdata;
-	int ret;
+	unsigned int timeout = 10000;
 
-	ret = rcar_pcie_config_access(pcie, RCAR_PCI_ACCESS_READ,
-				      bus, devfn, where, val);
-	if (ret != PCIBIOS_SUCCESSFUL) {
-		*val = 0xffffffff;
-		return ret;
+	while (timeout--) {
+		if ((rcar_pci_read_reg(pcie, PCIETSTR) & DATA_LINK_ACTIVE))
+			return 0;
+
+		udelay(5);
+		cpu_relax();
 	}
 
-	if (size == 1)
-		*val = (*val >> (BITS_PER_BYTE * (where & 3))) & 0xff;
-	else if (size == 2)
-		*val = (*val >> (BITS_PER_BYTE * (where & 2))) & 0xffff;
-
-	dev_dbg(&bus->dev, "pcie-config-read: bus=%3d devfn=0x%04x where=0x%04x size=%d val=0x%08x\n",
-		bus->number, devfn, where, size, *val);
-
-	return ret;
-}
-
-/* Serialization is provided by 'pci_lock' in drivers/pci/access.c */
-static int rcar_pcie_write_conf(struct pci_bus *bus, unsigned int devfn,
-				int where, int size, u32 val)
-{
-	struct rcar_pcie *pcie = bus->sysdata;
-	unsigned int shift;
-	u32 data;
-	int ret;
-
-	ret = rcar_pcie_config_access(pcie, RCAR_PCI_ACCESS_READ,
-				      bus, devfn, where, &data);
-	if (ret != PCIBIOS_SUCCESSFUL)
-		return ret;
-
-	dev_dbg(&bus->dev, "pcie-config-write: bus=%3d devfn=0x%04x where=0x%04x size=%d val=0x%08x\n",
-		bus->number, devfn, where, size, val);
-
-	if (size == 1) {
-		shift = BITS_PER_BYTE * (where & 3);
-		data &= ~(0xff << shift);
-		data |= ((val & 0xff) << shift);
-	} else if (size == 2) {
-		shift = BITS_PER_BYTE * (where & 2);
-		data &= ~(0xffff << shift);
-		data |= ((val & 0xffff) << shift);
-	} else
-		data = val;
-
-	ret = rcar_pcie_config_access(pcie, RCAR_PCI_ACCESS_WRITE,
-				      bus, devfn, where, &data);
-
-	return ret;
+	return -ETIMEDOUT;
 }
 
 static struct pci_ops rcar_pcie_ops = {
@@ -338,7 +162,7 @@ static void rcar_pcie_setup_window(int win, struct rcar_pcie *pcie,
 				   struct resource_entry *window)
 {
 	/* Setup PCIe address space mappings for each resource */
-	resource_size_t size;
+	struct resource *res = window->res;
 	resource_size_t res_start;
 	struct resource *res = window->res;
 	u32 mask;
@@ -350,7 +174,10 @@ static void rcar_pcie_setup_window(int win, struct rcar_pcie *pcie,
 	 * keeps things pretty simple.
 	 */
 	size = resource_size(res);
-	mask = (roundup_pow_of_two(size) / SZ_128) - 1;
+	if (size > 128)
+		mask = (roundup_pow_of_two(size) / SZ_128) - 1;
+	else
+		mask = 0x0;
 	rcar_pci_write_reg(pcie, mask << 7, PCIEPAMR(win));
 
 	if (res->flags & IORESOURCE_IO)
@@ -370,7 +197,8 @@ static void rcar_pcie_setup_window(int win, struct rcar_pcie *pcie,
 	rcar_pci_write_reg(pcie, mask, PCIEPTCTLR(win));
 }
 
-static int rcar_pcie_setup(struct list_head *resource, struct rcar_pcie *pci)
+void rcar_pcie_set_inbound(struct rcar_pcie *pcie, u64 cpu_addr,
+			   u64 pci_addr, u64 flags, int idx, bool host)
 {
 	struct resource_entry *win;
 	int i = 0;
@@ -589,8 +417,8 @@ static int rcar_pcie_hw_init(struct rcar_pcie *pcie)
 	rcar_pci_write_reg(pcie, PCI_CLASS_BRIDGE_PCI << 16, IDSETR1);
 
 	/*
-	 * Setup Secondary Bus Number & Subordinate Bus Number, even though
-	 * they aren't used, to avoid bridge being detected as broken.
+	 * Set up 64-bit inbound regions as the range parser doesn't
+	 * distinguish between 32 and 64-bit types.
 	 */
 	rcar_rmw32(pcie, RCONF(PCI_SECONDARY_BUS), 0xff, 1);
 	rcar_rmw32(pcie, RCONF(PCI_SUBORDINATE_BUS), 0xff, 1);
@@ -1060,54 +888,14 @@ static int rcar_pcie_inbound_ranges(struct rcar_pcie *pcie,
 		 */
 		rcar_pci_write_reg(pcie, lower_32_bits(pci_addr),
 				   PCIEPRAR(idx));
-		rcar_pci_write_reg(pcie, lower_32_bits(cpu_addr), PCIELAR(idx));
-		rcar_pci_write_reg(pcie, lower_32_bits(mask) | flags,
-				   PCIELAMR(idx));
+	rcar_pci_write_reg(pcie, lower_32_bits(cpu_addr), PCIELAR(idx));
+	rcar_pci_write_reg(pcie, flags, PCIELAMR(idx));
 
+	if (host)
 		rcar_pci_write_reg(pcie, upper_32_bits(pci_addr),
 				   PCIEPRAR(idx + 1));
-		rcar_pci_write_reg(pcie, upper_32_bits(cpu_addr),
-				   PCIELAR(idx + 1));
-		rcar_pci_write_reg(pcie, 0, PCIELAMR(idx + 1));
-
-		pci_addr += size;
-		cpu_addr += size;
-		idx += 2;
-
-		if (idx > MAX_NR_INBOUND_MAPS) {
-			dev_err(pcie->dev, "Failed to map inbound regions!\n");
-			return -EINVAL;
-		}
-	}
-	*index = idx;
-
-	return 0;
-}
-
-static int rcar_pcie_parse_map_dma_ranges(struct rcar_pcie *pcie,
-					  struct device_node *np)
-{
-	struct of_pci_range range;
-	struct of_pci_range_parser parser;
-	int index = 0;
-	int err;
-
-	if (of_pci_dma_range_parser_init(&parser, np))
-		return -EINVAL;
-
-	/* Get the dma-ranges from DT */
-	for_each_of_pci_range(&parser, &range) {
-		u64 end = range.cpu_addr + range.size - 1;
-
-		dev_dbg(pcie->dev, "0x%08x 0x%016llx..0x%016llx -> 0x%016llx\n",
-			range.flags, range.cpu_addr, end, range.pci_addr);
-
-		err = rcar_pcie_inbound_ranges(pcie, &range, &index);
-		if (err)
-			return err;
-	}
-
-	return 0;
+	rcar_pci_write_reg(pcie, upper_32_bits(cpu_addr), PCIELAR(idx + 1));
+	rcar_pci_write_reg(pcie, 0, PCIELAMR(idx + 1));
 }
 
 static const struct of_device_id rcar_pcie_of_match[] = {
