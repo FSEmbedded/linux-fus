@@ -1,0 +1,202 @@
+/*
+ * Copyright (C) 2019-2020 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+//#define CONFIG_EFUSMX8X_LVDS_DUAL_MODE
+
+//#define CONFIG_EFUSMX8X_4WTOUCH_SX8655_ONBOARD
+//#define CONFIG_EFUSMX8X_4WTOUCH_SX8655_RGBADAPTER
+//#define CONFIG_EFUSMX8X_CAPTOUCH_MXT224
+#define CONFIG_EFUSMX8X_CAPTOUCH_FT5x06
+//#define CONFIG_EFUSMX8X_CAPTOUCH_SITRONIX
+//#define CONFIG_EFUSMX8X_CAPTOUCH_ILITEK
+
+#include "efusmx8x.dts"
+
+/ {
+	/* LVDS backlight PWM on backlight connector */
+	backlight: backlight_ldb {
+		compatible = "pwm-backlight";
+		power-supply = <&reg_ldb_bl>;
+		pwms = <&pwm_mipi_lvds0 0 250000 PWM_POLARITY_INVERTED>;
+		brightness-levels = <135 143 151 159 167 175 183 191
+				     199 207 215 223 231 239 247 255>;
+		default-brightness-level = <14>;
+	};
+
+	lvds0_panel {
+		compatible = "panel-lvds";
+#if 0
+		backlight = <&backlight>;
+#endif
+
+		data-mapping = "vesa-24";
+		width-mm = <154>;
+		height-mm = <86>;
+
+		panel-timing {
+			clock-frequency = <33500000>;
+			hactive = <800>;
+			vactive = <480>;
+			hfront-porch = <4>;
+			hback-porch = <44>;
+			hsync-len = <2>;
+			vback-porch = <21>;
+			vfront-porch = <11>;
+			vsync-len = <2>;
+			hsync-active = <0>;
+			vsync-active = <0>;
+			de-active = <1>;
+			pixelclk-active = <0>;
+		};
+
+		port {
+			panel_lvds0_in: endpoint {
+				remote-endpoint = <&lvds0_out>;
+			};
+		};
+	};
+
+#ifdef CONFIG_EFUSMX8X_LVDS_DUAL_MODE
+	lvds1_panel {
+		compatible = "panel-lvds";
+#if 0
+		backlight = <&backlight>;
+#endif
+
+		data-mapping = "vesa-24";
+		width-mm = <154>;
+		height-mm = <86>;
+
+		panel-timing {
+			clock-frequency = <33500000>;
+			hactive = <800>;
+			vactive = <480>;
+			hfront-porch = <4>;
+			hback-porch = <44>;
+			hsync-len = <2>;
+			vback-porch = <21>;
+			vfront-porch = <11>;
+			vsync-len = <2>;
+			hsync-active = <0>;
+			vsync-active = <0>;
+			de-active = <1>;
+			pixelclk-active = <0>;
+		};
+
+		port {
+			panel_lvds1_in: endpoint {
+				remote-endpoint = <&lvds1_out>;
+			};
+		};
+	};
+#endif
+};
+
+&ldb1_phy {
+	status = "okay";
+};
+
+&ldb1 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ldb1>;
+//	fsl,dual-channel;
+#if 0
+	TODO: Add Dual- and Split-Mode in imx-ldb.c (Split-Mode is more or less "fsl,dual-channel")
+	split-mode;
+	dual-mode;
+#endif
+//	power-domains = <&pd_mipi_dsi_0_dual_lvds>;
+
+	lvds-channel@0 {
+		reg = <0>;
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <24>;
+#ifdef __LVDS0_PRIMARY__
+		primary;
+#endif
+		status = "okay";
+
+		port@1 {
+			reg = <1>;
+
+			lvds0_out: endpoint {
+				remote-endpoint = <&panel_lvds0_in>;
+			};
+		};
+	};
+};
+
+#ifdef CONFIG_EFUSMX8X_LVDS_DUAL_MODE
+&ldb2_phy {
+	status = "okay";
+};
+
+&ldb2 {
+	status = "okay";
+
+	lvds-channel@1 {
+		reg = <0>;
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <24>;
+#ifdef __LVDS1_PRIMARY__
+		primary;
+#endif
+		status = "okay";
+
+		port@1 {
+			reg = <1>;
+
+			lvds1_out: endpoint {
+				remote-endpoint = <&panel_lvds1_in>;
+			};
+		};
+	};
+};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_CAPTOUCH_MXT224
+&i2c1 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	/* Atmel PCAP touch on Touch-Connector (I2C) */
+	mxt224@4a {
+		compatible = "atmel,maxtouch";
+		reg = <0x4a>;
+		interrupt-parent = <&lsio_gpio1>;
+		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
+		atmel,cfg_name = "atmel/mxt224.cfg";
+		atmel,reset-gpio = <&lsio_gpio1 1 GPIO_ACTIVE_LOW>;
+	};
+};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_CAPTOUCH_FT5x06
+&i2c0_mipi_lvds0 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	focaltech@38 {
+		compatible = "focaltech,fts";
+		reg = <0x38>;
+		interrupt-parent = <&lsio_gpio1>;
+		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
+		focaltech,irq-gpio = <&lsio_gpio1 2 IRQ_TYPE_EDGE_FALLING>;
+		focaltech,touchscreen-inverted-x;
+		focaltech,touchscreen-inverted-y;
+		focaltech,reset-gpio = <&lsio_gpio1 1 GPIO_ACTIVE_LOW>;
+		focaltech,num-max-touches = <10>;
+		focaltech,display-coords = <0 0 800 480>;
+	};
+};
+#endif
