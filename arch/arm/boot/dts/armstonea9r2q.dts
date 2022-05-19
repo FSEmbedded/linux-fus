@@ -78,15 +78,15 @@
 #define CONFIG_ARMSTONEA9R2_LVDS0_MAPPING	"spwg"
 #define CONFIG_ARMSTONEA9R2_LVDS0_TIMING \
 wvga {					\
-	clock-frequency = <33500000>;	\
+	clock-frequency = <33300000>;	\
 	hactive = <800>;		\
 	vactive = <480>;		\
-	hfront-porch = <4>;		\
-	hback-porch = <44>;		\
-	hsync-len = <2>;		\
-	vback-porch = <21>;		\
-	vfront-porch = <11>;		\
-	vsync-len = <2>;		\
+	hfront-porch = <210>;		\
+	hback-porch = <45>;		\
+	hsync-len = <1>;		\
+	vback-porch = <22>;		\
+	vfront-porch = <22>;		\
+	vsync-len = <1>;		\
 	hsync-active = <0>;		\
 	vsync-active = <0>;		\
 	de-active = <1>;		\
@@ -126,15 +126,15 @@ wvga {					\
 #define CONFIG_ARMSTONEA9R2_LVDS1_MAPPING	"spwg"
 #define CONFIG_ARMSTONEA9R2_LVDS1_TIMING \
 wvga {					\
-	clock-frequency = <33500000>;	\
+	clock-frequency = <33300000>;	\
 	hactive = <800>;		\
 	vactive = <480>;		\
-	hfront-porch = <4>;		\
-	hback-porch = <44>;		\
-	hsync-len = <2>;		\
-	vback-porch = <21>;		\
-	vfront-porch = <11>;		\
-	vsync-len = <2>;		\
+	hfront-porch = <210>;		\
+	hback-porch = <45>;		\
+	hsync-len = <1>;		\
+	vback-porch = <22>;		\
+	vfront-porch = <22>;		\
+	vsync-len = <1>;		\
 	hsync-active = <0>;		\
 	vsync-active = <0>;		\
 	de-active = <1>;		\
