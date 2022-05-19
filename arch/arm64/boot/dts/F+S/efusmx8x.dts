@@ -237,7 +237,7 @@ wvga {					\
 			 * depending on the ram size. To prevent this,
 			 * uncomment the following line
 			 */
-			//no-uboot-override;
+			no-uboot-override;
 		};
 	};
 
@@ -320,6 +320,14 @@ wvga {					\
 			regulator-always-on;
 		};
 
+		reg_vref_1v8: regulator-vref-1v8 {
+			compatible = "regulator-fixed";
+			regulator-name = "+V1.8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-always-on;
+		};
+
 		reg_vref_1v5: regulator-vref-1v5 {
 			compatible = "regulator-fixed";
 			regulator-name = "+V1.5";
@@ -346,13 +354,6 @@ wvga {					\
 			regulator-always-on;
 			gpio = <&lsio_gpio5 9 GPIO_ACTIVE_HIGH>;
 			enable-active-high;
-		};
-
-		reg_adc_vref_1v8: adc_vref_1v8 {
-			compatible = "regulator-fixed";
-			regulator-name = "vref_1v8";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
 		};
 
 		reg_ldb_bl: backlight_ldb { /* VCFL */
@@ -412,7 +413,7 @@ wvga {					\
 &adc0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_adc0>;
-	vref-supply = <&reg_adc_vref_1v8>;
+	vref-supply = <&reg_vref_1v8>;
 	status = "okay";
 };
 
@@ -460,6 +461,10 @@ wvga {					\
 			fsl,pins = <
 				IMX8QXP_ADC_IN0_ADMA_ADC_IN0		0x60
 				IMX8QXP_ADC_IN1_ADMA_ADC_IN1		0x60
+				IMX8QXP_ADC_IN2_ADMA_ADC_IN2		0x60
+				IMX8QXP_ADC_IN3_ADMA_ADC_IN3		0x60
+				IMX8QXP_ADC_IN4_ADMA_ADC_IN4		0x60
+				IMX8QXP_ADC_IN5_ADMA_ADC_IN5		0x60
 			>;
 		};
 
