@@ -8,14 +8,8 @@
 
 /dts-v1/;
 
-//#define CONFIG_EFUSMX8X_LVDS_DUAL_MODE
-
-//#define CONFIG_EFUSMX8X_4WTOUCH_SX8655_ONBOARD
-//#define CONFIG_EFUSMX8X_4WTOUCH_SX8655_RGBADAPTER
-//#define CONFIG_EFUSMX8X_CAPTOUCH_MXT224
+#define CONFIG_EFUSMX8X_LVDS
 #define CONFIG_EFUSMX8X_CAPTOUCH_FT5x06
-//#define CONFIG_EFUSMX8X_CAPTOUCH_SITRONIX
-//#define CONFIG_EFUSMX8X_CAPTOUCH_ILITEK
 
 #include "efusmx8x.dts"
 
@@ -105,8 +99,6 @@
 
 &ldb1 {
 	status = "okay";
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_ldb1>;
 //	fsl,dual-channel;
 #if 0
 	TODO: Add Dual- and Split-Mode in imx-ldb.c (Split-Mode is more or less "fsl,dual-channel")

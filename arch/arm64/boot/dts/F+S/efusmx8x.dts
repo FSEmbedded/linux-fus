@@ -335,27 +335,7 @@ wvga {					\
 			regulator-max-microvolt = <1500000>;
 			regulator-always-on;
 		};
-
-		reg_audio: fixedregulator@0 {
-			compatible = "regulator-fixed";
-			reg = <2>;
-			regulator-name = "cs42888_supply";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			regulator-always-on;
-		};
-
-		reg_baseboard: fixedregulator@1 {
-			compatible = "regulator-fixed";
-			reg = <2>;
-			regulator-name = "baseboard_supply";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			regulator-always-on;
-			gpio = <&lsio_gpio5 9 GPIO_ACTIVE_HIGH>;
-			enable-active-high;
-		};
-
+#ifdef CONFIG_EFUSMX8X_LVDS
 		reg_ldb_bl: backlight_ldb { /* VCFL */
 			compatible = "regulator-fixed";
 			regulator-name = "ldb-bl";
@@ -364,7 +344,17 @@ wvga {					\
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
 		};
-
+#endif
+#ifdef CONFIG_EFUSMX8X_MIPI_DSI
+		reg_mipi_bl: backlight_mipi { /* VCFL */
+			compatible = "regulator-fixed";
+			regulator-name = "mipi-bl";
+			gpio = <&lsio_gpio3 24 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+#endif
 		/* LCD power on voltage */
 		reg_vlcd: vlcd { /* VLCD_ON */
 			compatible = "regulator-fixed";
@@ -375,17 +365,6 @@ wvga {					\
 			enable-active-high;
 			regulator-always-on;
 		};
-
-#ifdef CONFIG_EFUSMX8X_5V_LVDS
-		/* Switching LVDS power from 3.3V to 5V is available since
-		   board rev. 1.21; on earlier board revisions, this GPIO is
-		   not connected and has no effect */
-		reg_vlcd_5V: vlcd-5V {
-			compatible = "regulator-fixed";
-			regulator-name = "VLCD-5V";
-			gpio = <&lsio_gpio1 29 GPIO_ACTIVE_HIGH>;
-		};
-#endif
 	};
 
 	sound-sgtl5000 {
@@ -560,12 +539,6 @@ wvga {					\
 			fsl,pins = <
 				IMX8QXP_FLEXCAN2_TX_ADMA_FLEXCAN2_TX		0x21
 				IMX8QXP_FLEXCAN2_RX_ADMA_FLEXCAN2_RX		0x21
-			>;
-		};
-
-		pinctrl_ldb1: ldb1_grp {
-			fsl,pins = <
-				IMX8QXP_MIPI_DSI0_GPIO0_01_LSIO_GPIO1_IO28 0xc6000020
 			>;
 		};
 
@@ -992,6 +965,15 @@ wvga {					\
 		spi-tx-bus-width = <4>;
 		spi-rx-bus-width = <4>;
 	};
+};
+
+&i2c0_mipi_lvds0 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c0_mipi_lvds0>;
+	status = "okay";
 };
 
 &i2c1 {
