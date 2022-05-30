@@ -9,161 +9,69 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_EFUSMX8X_BOARD_REVISION	100
+#define CONFIG_EFUSMX8X_BOARD_REVISION	110
 
-/*
- * F&S has changed the default LVDS display. To use the previous settings
- * activate the following define.
- */
-//#define DISPLAY_LVDS_CHIMEI
-//#define DISPLAY_LVDS_INNOLUX
+/* On-board NAND */
+#define CONFIG_EFUSMX8X_NAND
 
-/*
- * Configure LVDS0 settings here (ignored if LVDS0 is not used)
- * Mapping (refers to LVDS_DATA_WIDTH, not LVDS_BPP):
- *
- * - "spwg":  18 bpp or 24 bpp, in case of 24 bpp, bits 6 and 7 of each color
- *            are encoded on fourth LVDS differential data pair
- * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
- *            all other data bits on all four differential data pairs
- */
+/* On-board eMMC */
+#define CONFIG_EFUSMX8X_EMMC
 
-#ifdef DISPLAY_LVDS_INNOLUX
-#define CONFIG_EFUSMX8X_LVDS0_BPP		32
-#define CONFIG_EFUSMX8X_LVDS0_PIX_FMT	"RGB24"
-#define CONFIG_EFUSMX8X_LVDS0_DATA_WIDTH	24
-#define CONFIG_EFUSMX8X_LVDS0_MAPPING	"spwg"
-#define CONFIG_EFUSMX8X_LVDS0_TIMING \
-wvga {					\
-	clock-frequency = <33500000>;	\
-	hactive = <800>;		\
-	vactive = <480>;		\
-	hfront-porch = <40>;		\
-	hback-porch = <88>;		\
-	hsync-len = <128>;		\
-	vback-porch = <33>;		\
-	vfront-porch = <10>;		\
-	vsync-len = <2>;		\
-	hsync-active = <0>;		\
-	vsync-active = <0>;		\
-	de-active = <1>;		\
-	pixelclk-active = <0>;		\
-}
-#else
-#ifndef DISPLAY_LVDS_CHIMEI
-#define CONFIG_EFUSMX8X_LVDS0_BPP		32
-#define CONFIG_EFUSMX8X_LVDS0_PIX_FMT	"RGB24"
-#define CONFIG_EFUSMX8X_LVDS0_DATA_WIDTH	24
-#define CONFIG_EFUSMX8X_LVDS0_MAPPING	"spwg"
-#define CONFIG_EFUSMX8X_LVDS0_TIMING \
-wvga {					\
-	clock-frequency = <33500000>;	\
-	hactive = <800>;		\
-	vactive = <480>;		\
-	hfront-porch = <4>;		\
-	hback-porch = <44>;		\
-	hsync-len = <2>;		\
-	vback-porch = <21>;		\
-	vfront-porch = <11>;		\
-	vsync-len = <2>;		\
-	hsync-active = <0>;		\
-	vsync-active = <0>;		\
-	de-active = <1>;		\
-	pixelclk-active = <0>;		\
-}
-#else
-#define CONFIG_EFUSMX8X_LVDS0_BPP		32
-#define CONFIG_EFUSMX8X_LVDS0_PIX_FMT	"RGB666"
-#define CONFIG_EFUSMX8X_LVDS0_DATA_WIDTH	18
-#define CONFIG_EFUSMX8X_LVDS0_MAPPING	"spwg"
-#define CONFIG_EFUSMX8X_LVDS0_TIMING \
-wvga {					\
-	clock-frequency = <33500000>;	\
-	hactive = <800>;		\
-	vactive = <480>;		\
-	hfront-porch = <40>;		\
-	hback-porch = <88>;		\
-	hsync-len = <128>;		\
-	vback-porch = <33>;		\
-	vfront-porch = <10>;		\
-	vsync-len = <2>;		\
-	hsync-active = <0>;		\
-	vsync-active = <0>;		\
-	de-active = <1>;		\
-	pixelclk-active = <0>;		\
-}
-#endif
+#define CONFIG_EFUSMX8X_ADC
+
+#define CONFIG_EFUSMX8X_CAN_A
+#define CONFIG_EFUSMX8X_CAN_B
+
+#define CONFIG_EFUSMX8X_ETH0
+#define CONFIG_EFUSMX8X_ETH1
+
+#define CONFIG_EFUSMX8X_I2C_A
+#define CONFIG_EFUSMX8X_I2C_B
+#define CONFIG_EFUSMX8X_I2C_C
+
+#define CONFIG_EFUSMX8X_AUDIO
+
+#define CONFIG_EFUSMX8X_PWM_A /* BL_CTRL */
+//#define CONFIG_EFUSMX8X_PWM_B /* I2C_B_CLK */
+
+#define CONFIG_EFUSMX8X_SD_A
+#define CONFIG_EFUSMX8X_SD_A_CD
+#define CONFIG_EFUSMX8X_SD_A_WP
+
+#define CONFIG_EFUSMX8X_SPI_A
+#define CONFIG_EFUSMX8X_SPI_B
+
+#define CONFIG_EFUSMX8X_UART_A
+#define CONFIG_EFUSMX8X_UART_B
+#define CONFIG_EFUSMX8X_UART_B_RTSCTS
+#define CONFIG_EFUSMX8X_UART_C
+#define CONFIG_EFUSMX8X_UART_C_RTSCTS
+#define CONFIG_EFUSMX8X_UART_D
+
+#define CONFIG_EFUSMX8X_USB_OTG
+#define CONFIG_EFUSMX8X_USB_HOST
+
+#define CONFIG_EFUSMX8X_WLAN
+
+/* If SD_A is not used, remove CD and WP */
+#ifndef CONFIG_EFUSMX8X_SD_A
+#undef CONFIG_EFUSMX8X_SD_A_CD
+#undef CONFIG_EFUSMX8X_SD_A_WP
 #endif
 
-/*
- * Configure LVDS1 settings here (ignored if LVDS1 is not used)
- * For mapping value see above.
- */
-#ifdef DISPLAY_LVDS_INNOLUX
-#define CONFIG_EFUSMX8X_LVDS1_BPP		32
-#define CONFIG_EFUSMX8X_LVDS1_PIX_FMT	"RGB888"
-#define CONFIG_EFUSMX8X_LVDS1_DATA_WIDTH	24
-#define CONFIG_EFUSMX8X_LVDS1_MAPPING	"spwg"
-#define CONFIG_EFUSMX8X_LVDS1_TIMING \
-wvga {					\
-	clock-frequency = <33500000>;	\
-	hactive = <800>;		\
-	vactive = <480>;		\
-	hfront-porch = <40>;		\
-	hback-porch = <88>;		\
-	hsync-len = <128>;		\
-	vback-porch = <33>;		\
-	vfront-porch = <10>;		\
-	vsync-len = <2>;		\
-	hsync-active = <0>;		\
-	vsync-active = <0>;		\
-	de-active = <1>;		\
-	pixelclk-active = <0>;		\
-}
-#else
-#ifndef DISPLAY_LVDS_CHIMEI
-#define CONFIG_EFUSMX8X_LVDS1_BPP		32
-#define CONFIG_EFUSMX8X_LVDS1_PIX_FMT	"RGB24"
-#define CONFIG_EFUSMX8X_LVDS1_DATA_WIDTH	24
-#define CONFIG_EFUSMX8X_LVDS1_MAPPING	"spwg"
-#define CONFIG_EFUSMX8X_LVDS1_TIMING \
-wvga {					\
-	clock-frequency = <33500000>;	\
-	hactive = <800>;		\
-	vactive = <480>;		\
-	hfront-porch = <4>;		\
-	hback-porch = <44>;		\
-	hsync-len = <2>;		\
-	vback-porch = <21>;		\
-	vfront-porch = <11>;		\
-	vsync-len = <2>;		\
-	hsync-active = <0>;		\
-	vsync-active = <0>;		\
-	de-active = <1>;		\
-	pixelclk-active = <0>;		\
-}
-#else
-#define CONFIG_EFUSMX8X_LVDS1_BPP		32
-#define CONFIG_EFUSMX8X_LVDS1_PIX_FMT	"RGB666"
-#define CONFIG_EFUSMX8X_LVDS1_DATA_WIDTH	18
-#define CONFIG_EFUSMX8X_LVDS1_MAPPING	"spwg"
-#define CONFIG_EFUSMX8X_LVDS1_TIMING \
-wvga {					\
-	clock-frequency = <33500000>;	\
-	hactive = <800>;		\
-	vactive = <480>;		\
-	hfront-porch = <40>;		\
-	hback-porch = <88>;		\
-	hsync-len = <128>;		\
-	vback-porch = <33>;		\
-	vfront-porch = <10>;		\
-	vsync-len = <2>;		\
-	hsync-active = <0>;		\
-	vsync-active = <0>;		\
-	de-active = <1>;		\
-	pixelclk-active = <0>;		\
-}
+/* If UART_B not used, remove RTS/CTS */
+#ifndef CONFIG_EFUSMX8X_UART_B
+#undef CONFIG_EFUSMX8X_UART_B_RTSCTS
 #endif
+
+/* If UART_C not used, remove RTS/CTS */
+#ifndef CONFIG_EFUSMX8X_UART_C
+#undef CONFIG_EFUSMX8X_UART_C_RTSCTS
+#endif
+
+/* PWM_B is on I2C_B_CLK and can only be used if I2C_B is disabled */
+#ifdef CONFIG_EFUSMX8X_PWM_B
+#undef CONFIG_EFUSMX8X_I2C_B
 #endif
 
 #include "../freescale/imx8qxp.dtsi"
@@ -367,6 +275,7 @@ wvga {					\
 		};
 	};
 
+#ifdef CONFIG_EFUSMX8X_AUDIO
 	sound-sgtl5000 {
 		compatible = "fsl,imx-audio-sgtl5000";
 		model = "imx-sgtl5000";
@@ -378,6 +287,7 @@ wvga {					\
 //###			"Line Out Jack", "LINE_OUT",
 			"Headphone Jack", "HP_OUT";
 	};
+#endif
 
 	/* F&S board information */
 	bdinfo: bdinfo {
@@ -389,12 +299,14 @@ wvga {					\
 	status = "okay";
 };
 
+#ifdef CONFIG_EFUSMX8X_ADC
 &adc0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_adc0>;
 	vref-supply = <&reg_vref_1v8>;
 	status = "okay";
 };
+#endif
 
 &amix {
 	status = "disabled";
@@ -410,6 +322,7 @@ wvga {					\
 	status = "okay";
 };
 
+#ifdef CONFIG_EFUSMX8X_AUDIO
 &sai0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai0>;
@@ -421,377 +334,7 @@ wvga {					\
 	assigned-clock-rates = <786432000>, <49152000>, <12288000>, <49152000>;
 	status = "okay";
 };
-
-&iomuxc {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_hog>;
-	imx8qxp-efusmx8x {
-		pinctrl_hog: hoggrp {
-			fsl,pins = <
-				IMX8QXP_ENET0_REFCLK_125M_25M_LSIO_GPIO5_IO09 0xc600004c
-				IMX8QXP_COMP_CTL_GPIO_1V8_3V3_GPIORHB_PAD	0x000514a0
-				IMX8QXP_QSPI0A_SS1_B_LSIO_GPIO3_IO15	0x06000021
-				IMX8QXP_QSPI0B_DQS_LSIO_GPIO3_IO22		0x06000021
-				IMX8QXP_MIPI_DSI1_I2C0_SDA_LSIO_GPIO1_IO30 0xc6000020
-			>;
-		};
-
-		pinctrl_adc0: adc0grp {
-			fsl,pins = <
-				IMX8QXP_ADC_IN0_ADMA_ADC_IN0		0x60
-				IMX8QXP_ADC_IN1_ADMA_ADC_IN1		0x60
-				IMX8QXP_ADC_IN2_ADMA_ADC_IN2		0x60
-				IMX8QXP_ADC_IN3_ADMA_ADC_IN3		0x60
-				IMX8QXP_ADC_IN4_ADMA_ADC_IN4		0x60
-				IMX8QXP_ADC_IN5_ADMA_ADC_IN5		0x60
-			>;
-		};
-
-		pinctrl_csi0_lpi2c0: csi0lpi2c0grp {
-			fsl,pins = <
-				IMX8QXP_MIPI_CSI0_I2C0_SCL_MIPI_CSI0_I2C0_SCL	0xc2000020
-				IMX8QXP_MIPI_CSI0_I2C0_SDA_MIPI_CSI0_I2C0_SDA	0xc2000020
-			>;
-		};
-
-		pinctrl_sai0: sai0grp {
-			fsl,pins = <
-				IMX8QXP_SAI0_TXD_ADMA_SAI0_TXD		0x06000040
-				IMX8QXP_SAI0_RXD_ADMA_SAI0_RXD		0x06000040
-				IMX8QXP_SAI0_TXC_ADMA_SAI0_TXC		0x06000040
-				IMX8QXP_SAI0_TXFS_ADMA_SAI0_TXFS	0x06000040
-			>;
-		};
-
-		/* On-module SGTL5000 SYS_MCLK */
-		pinctrl_sgtl5000: sgtl5000grp {
-			fsl,pins = <
-				IMX8QXP_MCLK_OUT0_ADMA_ACM_MCLK_OUT0	0x06000041
-			>;
-		};
-
-		pinctrl_esai0: esai0grp {
-			fsl,pins = <
-				IMX8QXP_ESAI0_FSR_ADMA_ESAI0_FSR		0xc6000040
-				IMX8QXP_ESAI0_FST_ADMA_ESAI0_FST		0xc6000040
-				IMX8QXP_ESAI0_SCKR_ADMA_ESAI0_SCKR		0xc6000040
-				IMX8QXP_ESAI0_SCKT_ADMA_ESAI0_SCKT		0xc6000040
-				IMX8QXP_ESAI0_TX0_ADMA_ESAI0_TX0		0xc6000040
-				IMX8QXP_ESAI0_TX1_ADMA_ESAI0_TX1		0xc6000040
-				IMX8QXP_ESAI0_TX2_RX3_ADMA_ESAI0_TX2_RX3	0xc6000040
-				IMX8QXP_ESAI0_TX3_RX2_ADMA_ESAI0_TX3_RX2	0xc6000040
-				IMX8QXP_ESAI0_TX4_RX1_ADMA_ESAI0_TX4_RX1	0xc6000040
-				IMX8QXP_ESAI0_TX5_RX0_ADMA_ESAI0_TX5_RX0	0xc6000040
-			>;
-		};
-
-		pinctrl_fec1: fec1grp {
-			fsl,pins = <
-				IMX8QXP_ENET0_MDC_CONN_ENET0_MDC			0x06000020
-				IMX8QXP_ENET0_MDIO_CONN_ENET0_MDIO			0x06000020
-				IMX8QXP_ENET0_RGMII_TX_CTL_CONN_ENET0_RGMII_TX_CTL	0x00000060
-				IMX8QXP_ENET0_RGMII_TXC_CONN_ENET0_RGMII_TXC	0x00000060
-				IMX8QXP_ENET0_RGMII_TXD0_CONN_ENET0_RGMII_TXD0	0x00000060
-				IMX8QXP_ENET0_RGMII_TXD1_CONN_ENET0_RGMII_TXD1	0x00000060
-				IMX8QXP_ENET0_RGMII_TXD2_CONN_ENET0_RGMII_TXD2	0x00000060
-				IMX8QXP_ENET0_RGMII_TXD3_CONN_ENET0_RGMII_TXD3	0x00000060
-				IMX8QXP_ENET0_RGMII_RXC_CONN_ENET0_RGMII_RXC	0x00000060
-				IMX8QXP_ENET0_RGMII_RX_CTL_CONN_ENET0_RGMII_RX_CTL	0x00000060
-				IMX8QXP_ENET0_RGMII_RXD0_CONN_ENET0_RGMII_RXD0	0x00000060
-				IMX8QXP_ENET0_RGMII_RXD1_CONN_ENET0_RGMII_RXD1	0x00000060
-				IMX8QXP_ENET0_RGMII_RXD2_CONN_ENET0_RGMII_RXD2	0x00000060
-				IMX8QXP_ENET0_RGMII_RXD3_CONN_ENET0_RGMII_RXD3	0x00000060
-			>;
-		};
-
-		pinctrl_fec2: fec2grp {
-			fsl,pins = <
-				IMX8QXP_ESAI0_SCKR_CONN_ENET1_RGMII_TX_CTL		0x00000060
-				IMX8QXP_ESAI0_FSR_CONN_ENET1_RGMII_TXC		0x00000060
-				IMX8QXP_ESAI0_TX4_RX1_CONN_ENET1_RGMII_TXD0	0x00000060
-				IMX8QXP_ESAI0_TX5_RX0_CONN_ENET1_RGMII_TXD1	0x00000060
-				IMX8QXP_ESAI0_FST_CONN_ENET1_RGMII_TXD2		0x00000060
-				IMX8QXP_ESAI0_SCKT_CONN_ENET1_RGMII_TXD3		0x00000060
-				IMX8QXP_ESAI0_TX0_CONN_ENET1_RGMII_RXC		0x00000060
-				IMX8QXP_SPDIF0_TX_CONN_ENET1_RGMII_RX_CTL		0x00000060
-				IMX8QXP_SPDIF0_RX_CONN_ENET1_RGMII_RXD0		0x00000060
-				IMX8QXP_ESAI0_TX3_RX2_CONN_ENET1_RGMII_RXD1	0x00000060
-				IMX8QXP_ESAI0_TX2_RX3_CONN_ENET1_RGMII_RXD2	0x00000060
-				IMX8QXP_ESAI0_TX1_CONN_ENET1_RGMII_RXD3		0x00000060
-			>;
-		};
-
-		pinctrl_flexcan1: flexcan0grp {
-			fsl,pins = <
-				IMX8QXP_FLEXCAN0_TX_ADMA_FLEXCAN0_TX		0x21
-				IMX8QXP_FLEXCAN0_RX_ADMA_FLEXCAN0_RX		0x21
-			>;
-		};
-
-		pinctrl_flexcan2: flexcan1grp {
-			fsl,pins = <
-				IMX8QXP_FLEXCAN1_TX_ADMA_FLEXCAN1_TX		0x21
-				IMX8QXP_FLEXCAN1_RX_ADMA_FLEXCAN1_RX		0x21
-			>;
-		};
-
-		pinctrl_flexcan3: flexcan2grp {
-			fsl,pins = <
-				IMX8QXP_FLEXCAN2_TX_ADMA_FLEXCAN2_TX		0x21
-				IMX8QXP_FLEXCAN2_RX_ADMA_FLEXCAN2_RX		0x21
-			>;
-		};
-
-		pinctrl_i2c0_mipi_lvds0: mipi_lvds0_i2c0_grp {
-			fsl,pins = <
-				IMX8QXP_MIPI_DSI0_I2C0_SCL_MIPI_DSI0_I2C0_SCL	0xc6000020
-				IMX8QXP_MIPI_DSI0_I2C0_SDA_MIPI_DSI0_I2C0_SDA	0xc6000020
-#ifdef CONFIG_EFUSMX8X_CAPTOUCH_FT5x06
-				IMX8QXP_SPI2_SDI_LSIO_GPIO1_IO02				0xc6000020
-				IMX8QXP_SPI2_SDO_LSIO_GPIO1_IO01				0xc6000020
 #endif
-			>;
-		};
-
-		pinctrl_ptn5150: ptn5150 {
-			fsl,pins = <
-				IMX8QXP_SPI0_CS1_LSIO_GPIO1_IO07		0x00000021
-			>;
-		};
-
-		pinctrl_flexspi0: flexspi0grp {
-			fsl,pins = <
-				IMX8QXP_QSPI0A_DATA0_LSIO_QSPI0A_DATA0	0x06000021
-				IMX8QXP_QSPI0A_DATA1_LSIO_QSPI0A_DATA1	0x06000021
-				IMX8QXP_QSPI0A_DATA2_LSIO_QSPI0A_DATA2	0x06000021
-				IMX8QXP_QSPI0A_DATA3_LSIO_QSPI0A_DATA3	0x06000021
-				IMX8QXP_QSPI0A_SS0_B_LSIO_QSPI0A_SS0_B	0x06000021
-				IMX8QXP_QSPI0A_SCLK_LSIO_QSPI0A_SCLK	0x06000021
-				IMX8QXP_QSPI0B_SCLK_LSIO_QSPI0B_SCLK	0x06000021
-				IMX8QXP_QSPI0B_DATA0_LSIO_QSPI0B_DATA0	0x06000021
-				IMX8QXP_QSPI0B_DATA1_LSIO_QSPI0B_DATA1	0x06000021
-				IMX8QXP_QSPI0B_DATA2_LSIO_QSPI0B_DATA2	0x06000021
-				IMX8QXP_QSPI0B_DATA3_LSIO_QSPI0B_DATA3	0x06000021
-				IMX8QXP_QSPI0B_SS0_B_LSIO_QSPI0B_SS0_B	0x06000021
-			>;
-		};
-
-		pinctrl_lpspi0: lpspi0grp {
-			fsl,pins = <
-				IMX8QXP_SPI0_CS0_ADMA_SPI0_CS0 0x0600002c
-				IMX8QXP_SPI0_CS1_ADMA_SPI0_CS1 0x0600002c
-				IMX8QXP_SPI0_SCK_ADMA_SPI0_SCK 0x0600002c
-				IMX8QXP_SPI0_SDI_ADMA_SPI0_SDI 0x0600002c
-				IMX8QXP_SPI0_SDO_ADMA_SPI0_SDO 0x0600002c
-			>;
-		};
-
-		pinctrl_lpspi3: lpspi3grp {
-			fsl,pins = <
-				IMX8QXP_SPI3_CS0_ADMA_SPI3_CS0 0x0600002c
-				IMX8QXP_SPI3_CS1_ADMA_SPI3_CS1 0x0600002c
-				IMX8QXP_SPI3_SCK_ADMA_SPI3_SCK 0x0600002c
-				IMX8QXP_SPI3_SDI_ADMA_SPI3_SDI 0x0600002c
-				IMX8QXP_SPI3_SDO_ADMA_SPI3_SDO 0x0600002c
-			>;
-		};
-
-		pinctrl_lpi2c1: lpi1cgrp {
-			fsl,pins = <
-				IMX8QXP_USB_SS3_TC1_ADMA_I2C1_SCL	0x04000020
-				IMX8QXP_USB_SS3_TC3_ADMA_I2C1_SDA	0x04000020
-#ifndef CONFIG_EFUSMX8X_CAPTOUCH_FT5x06
-				IMX8QXP_SPI2_SDI_LSIO_GPIO1_IO02	0x04000020
-				IMX8QXP_SPI2_SDO_LSIO_GPIO1_IO01	0x04000020
-#endif
-			>;
-		};
-
-		pinctrl_lpi2c2: lpi2cgrp {
-			fsl,pins = <
-				IMX8QXP_MIPI_DSI1_GPIO0_00_ADMA_I2C2_SCL	0x04000020
-				IMX8QXP_MIPI_DSI1_GPIO0_01_ADMA_I2C2_SDA	0x04000020
-				IMX8QXP_USDHC1_RESET_B_LSIO_GPIO4_IO19		0x04000020
-				IMX8QXP_SPI2_SCK_LSIO_GPIO1_IO03			0x04000020
-			>;
-		};
-
-		pinctrl_lpi2c3: lpi3cgrp {
-			fsl,pins = <
-				IMX8QXP_CSI_EN_ADMA_I2C3_SCL		0x04000020
-				IMX8QXP_CSI_RESET_ADMA_I2C3_SDA	0x04000020
-			>;
-		};
-
-		pinctrl_lpuart0: lpuart0grp {
-			fsl,pins = <
-				IMX8QXP_UART0_RX_ADMA_UART0_RX	0x0600002c
-				IMX8QXP_UART0_TX_ADMA_UART0_TX	0x0600002c
-				IMX8QXP_FLEXCAN0_TX_ADMA_UART0_CTS_B	0x0600002c
-				IMX8QXP_FLEXCAN0_RX_ADMA_UART0_RTS_B	0x0600002c
-			>;
-		};
-
-		pinctrl_lpuart1: lpuart1grp {
-			fsl,pins = <
-				IMX8QXP_UART1_TX_ADMA_UART1_TX		0x0600002c
-				IMX8QXP_UART1_RX_ADMA_UART1_RX		0x0600002c
-				IMX8QXP_UART1_RTS_B_ADMA_UART1_RTS_B	0x0600002c
-				IMX8QXP_UART1_CTS_B_ADMA_UART1_CTS_B	0x0600002c
-			>;
-		};
-
-		pinctrl_lpuart2: lpuart2grp {
-			fsl,pins = <
-				IMX8QXP_UART2_RX_ADMA_UART2_RX	0x0600002c
-				IMX8QXP_UART2_TX_ADMA_UART2_TX	0x0600002c
-			>;
-		};
-
-		pinctrl_lpuart3: lpuart3grp {
-			fsl,pins = <
-				IMX8QXP_SCU_GPIO0_00_ADMA_UART3_RX	0x0600002c
-				IMX8QXP_SCU_GPIO0_01_ADMA_UART3_TX	0x0600002c
-			>;
-		};
-
-		pinctrl_pwm0: pwm0grp {
-			fsl,pins = <
-				IMX8QXP_MIPI_DSI0_GPIO0_00_MIPI_DSI0_PWM0_OUT	0x0600002c
-			>;
-		};
-
-		pinctrl_pwm1: pwm1grp {
-			fsl,pins = <
-				IMX8QXP_MIPI_DSI1_GPIO0_00_MIPI_DSI1_PWM0_OUT	0x0600002c
-			>;
-		};
-
-		pinctrl_mlb: mlbgrp {
-			fsl,pins = <
-				IMX8QXP_ESAI0_SCKT_CONN_MLB_SIG		0x21
-				IMX8QXP_ESAI0_FST_CONN_MLB_CLK		0x21
-				IMX8QXP_ESAI0_TX0_CONN_MLB_DATA		0x21
-			>;
-		};
-
-		pinctrl_usdhc1: usdhc1grp {
-			fsl,pins = <
-				IMX8QXP_EMMC0_CLK_CONN_EMMC0_CLK		0x06000041
-				IMX8QXP_EMMC0_CMD_CONN_EMMC0_CMD		0x00000021
-				IMX8QXP_EMMC0_DATA0_CONN_EMMC0_DATA0	0x00000021
-				IMX8QXP_EMMC0_DATA1_CONN_EMMC0_DATA1	0x00000021
-				IMX8QXP_EMMC0_DATA2_CONN_EMMC0_DATA2	0x00000021
-				IMX8QXP_EMMC0_DATA3_CONN_EMMC0_DATA3	0x00000021
-				IMX8QXP_EMMC0_DATA4_CONN_EMMC0_DATA4	0x00000021
-				IMX8QXP_EMMC0_DATA5_CONN_EMMC0_DATA5	0x00000021
-				IMX8QXP_EMMC0_DATA6_CONN_EMMC0_DATA6	0x00000021
-				IMX8QXP_EMMC0_DATA7_CONN_EMMC0_DATA7	0x00000021
-				IMX8QXP_EMMC0_STROBE_CONN_EMMC0_STROBE	0x00000041
-				IMX8QXP_EMMC0_RESET_B_CONN_EMMC0_RESET_B	0x00000021
-			>;
-		};
-
-		pinctrl_usdhc1_100mhz: usdhc1grp100mhz {
-			fsl,pins = <
-				IMX8QXP_EMMC0_CLK_CONN_EMMC0_CLK		0x06000040
-				IMX8QXP_EMMC0_CMD_CONN_EMMC0_CMD		0x00000020
-				IMX8QXP_EMMC0_DATA0_CONN_EMMC0_DATA0	0x00000020
-				IMX8QXP_EMMC0_DATA1_CONN_EMMC0_DATA1	0x00000020
-				IMX8QXP_EMMC0_DATA2_CONN_EMMC0_DATA2	0x00000020
-				IMX8QXP_EMMC0_DATA3_CONN_EMMC0_DATA3	0x00000020
-				IMX8QXP_EMMC0_DATA4_CONN_EMMC0_DATA4	0x00000020
-				IMX8QXP_EMMC0_DATA5_CONN_EMMC0_DATA5	0x00000020
-				IMX8QXP_EMMC0_DATA6_CONN_EMMC0_DATA6	0x00000020
-				IMX8QXP_EMMC0_DATA7_CONN_EMMC0_DATA7	0x00000020
-				IMX8QXP_EMMC0_STROBE_CONN_EMMC0_STROBE	0x00000040
-				IMX8QXP_EMMC0_RESET_B_CONN_EMMC0_RESET_B	0x00000020
-			>;
-		};
-
-		pinctrl_usdhc1_200mhz: usdhc1grp200mhz {
-			fsl,pins = <
-				IMX8QXP_EMMC0_CLK_CONN_EMMC0_CLK		0x06000040
-				IMX8QXP_EMMC0_CMD_CONN_EMMC0_CMD		0x00000020
-				IMX8QXP_EMMC0_DATA0_CONN_EMMC0_DATA0	0x00000020
-				IMX8QXP_EMMC0_DATA1_CONN_EMMC0_DATA1	0x00000020
-				IMX8QXP_EMMC0_DATA2_CONN_EMMC0_DATA2	0x00000020
-				IMX8QXP_EMMC0_DATA3_CONN_EMMC0_DATA3	0x00000020
-				IMX8QXP_EMMC0_DATA4_CONN_EMMC0_DATA4	0x00000020
-				IMX8QXP_EMMC0_DATA5_CONN_EMMC0_DATA5	0x00000020
-				IMX8QXP_EMMC0_DATA6_CONN_EMMC0_DATA6	0x00000020
-				IMX8QXP_EMMC0_DATA7_CONN_EMMC0_DATA7	0x00000020
-				IMX8QXP_EMMC0_STROBE_CONN_EMMC0_STROBE	0x00000040
-				IMX8QXP_EMMC0_RESET_B_CONN_EMMC0_RESET_B	0x00000020
-			>;
-		};
-
-		pinctrl_usdhc2_gpio: usdhc2gpiogrp {
-			fsl,pins = <
-				IMX8QXP_USDHC1_WP_LSIO_GPIO4_IO21		0x00000021
-				IMX8QXP_USDHC1_CD_B_LSIO_GPIO4_IO22	0x00000021
-			>;
-		};
-
-		pinctrl_usdhc2: usdhc2grp {
-			fsl,pins = <
-				IMX8QXP_USDHC1_CLK_CONN_USDHC1_CLK		0x06000041
-				IMX8QXP_USDHC1_CMD_CONN_USDHC1_CMD		0x00000021
-				IMX8QXP_USDHC1_DATA0_CONN_USDHC1_DATA0	0x00000021
-				IMX8QXP_USDHC1_DATA1_CONN_USDHC1_DATA1	0x00000021
-				IMX8QXP_USDHC1_DATA2_CONN_USDHC1_DATA2	0x00000021
-				IMX8QXP_USDHC1_DATA3_CONN_USDHC1_DATA3	0x00000021
-				IMX8QXP_USDHC1_VSELECT_CONN_USDHC1_VSELECT	0x00000021
-			>;
-		};
-
-		pinctrl_usdhc2_100mhz: usdhc2grp100mhz {
-			fsl,pins = <
-				IMX8QXP_USDHC1_CLK_CONN_USDHC1_CLK		0x06000040
-				IMX8QXP_USDHC1_CMD_CONN_USDHC1_CMD		0x00000020
-				IMX8QXP_USDHC1_DATA0_CONN_USDHC1_DATA0	0x00000020
-				IMX8QXP_USDHC1_DATA1_CONN_USDHC1_DATA1	0x00000020
-				IMX8QXP_USDHC1_DATA2_CONN_USDHC1_DATA2	0x00000020
-				IMX8QXP_USDHC1_DATA3_CONN_USDHC1_DATA3	0x00000020
-				IMX8QXP_USDHC1_VSELECT_CONN_USDHC1_VSELECT	0x00000020
-			>;
-		};
-
-		pinctrl_usdhc2_200mhz: usdhc2grp200mhz {
-			fsl,pins = <
-				IMX8QXP_USDHC1_CLK_CONN_USDHC1_CLK		0x06000040
-				IMX8QXP_USDHC1_CMD_CONN_USDHC1_CMD		0x00000020
-				IMX8QXP_USDHC1_DATA0_CONN_USDHC1_DATA0	0x00000020
-				IMX8QXP_USDHC1_DATA1_CONN_USDHC1_DATA1	0x00000020
-				IMX8QXP_USDHC1_DATA2_CONN_USDHC1_DATA2	0x00000020
-				IMX8QXP_USDHC1_DATA3_CONN_USDHC1_DATA3	0x00000020
-				IMX8QXP_USDHC1_VSELECT_CONN_USDHC1_VSELECT	0x00000020
-			>;
-		};
-
-		pinctrl_pcieb: pciebgrp{
-			fsl,pins = <
-				IMX8QXP_PCIE_CTRL0_PERST_B_HSIO_PCIE0_PERST_B		0x06000020
-				IMX8QXP_PCIE_CTRL0_CLKREQ_B_HSIO_PCIE0_CLKREQ_B	0x06000020
-				IMX8QXP_PCIE_CTRL0_WAKE_B_HSIO_PCIE0_WAKE_B		0x06000020
-			>;
-		};
-
-		pinctrl_usbotg1: usbotg1 {
-			fsl,pins = <
-				IMX8QXP_USB_SS3_TC0_CONN_USB_OTG1_PWR	0x06000020
-				IMX8QXP_USB_SS3_TC2_CONN_USB_OTG1_OC	0x06000020
-			>;
-		};
-
-		pinctrl_mipi_csi0_gpio: mipicsi0gpiogrp{
-			fsl,pins = <
-				IMX8QXP_MIPI_CSI0_GPIO0_00_MIPI_CSI0_GPIO0_IO00	0x00000021
-				IMX8QXP_MIPI_CSI0_GPIO0_01_MIPI_CSI0_GPIO0_IO01	0x00000021
-			>;
-		};
-	};
-};
 
 &lsio_gpio0 {
 	status = "okay";
@@ -812,50 +355,8 @@ wvga {					\
 &lsio_gpio5 {
 	status = "okay";
 };
-/*
-&fec1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_fec1>;
-	phy-mode = "rgmii-txid";
-	phy-handle = <&ethphy0>;
-	fsl,magic-packet;
-	fsl,rgmii_rxc_dly;
-	status = "okay";
 
-	mdio {
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		ethphy0: ethernet-phy@0 {
-			compatible = "ethernet-phy-ieee802.3-c22";
-			reg = <4>;
-			reset-gpios = <&lsio_gpio5 9 GPIO_ACTIVE_LOW>;
-			at803x,eee-disabled;
-			at803x,vddio-1p8v;
-		};
-
-		ethphy1: ethernet-phy@1 {
-			compatible = "ethernet-phy-ieee802.3-c22";
-			reg = <5>;
-			reset-gpios = <&lsio_gpio0 29 GPIO_ACTIVE_LOW>;
-			at803x,eee-disabled;
-			at803x,vddio-1p8v;
-			status = "okay";
-		};
-	};
-};
-
-&fec2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_fec2>;
-	phy-mode = "rgmii-txid";
-	phy-handle = <&ethphy1>;
-	fsl,magic-packet;
-	fsl,rgmii_rxc_dly;
-	status = "okay";
-};
-*/
-
+#ifdef CONFIG_EFUSMX8X_ETH0
 &fec1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_fec1>;
@@ -877,16 +378,36 @@ wvga {					\
 			at803x,eee-disabled;
 			at803x,vddio-1p8v;
 		};
+#ifdef CONFIG_EFUSMX8X_ETH1
+		ethphy1: ethernet-phy@5 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <5>;
+			at803x,eee-disabled;
+			at803x,vddio-1p8v;
+		};
+#endif
+	};
+};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_ETH1
+#ifndef CONFIG_EFUSMX8X_ETH0
+&fec1 {
+	status = "okay";
+
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
 
 		ethphy1: ethernet-phy@5 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <5>;
 			at803x,eee-disabled;
 			at803x,vddio-1p8v;
-			status = "disabled";
 		};
 	};
 };
+#endif
 
 &fec2 {
 	pinctrl-names = "default";
@@ -897,31 +418,25 @@ wvga {					\
 	nvmem-cells = <&fec_mac1>;
 	nvmem-cell-names = "mac-address";
 	fsl,rgmii_rxc_dly;
-	status = "disabled";
+	status = "okay";
 };
+#endif
 
-&flexcan1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_flexcan1>;
-	status = "disabled";
-};
-
+#ifdef CONFIG_EFUSMX8X_CAN_A
 &flexcan2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_EFUSMX8X_CAN_B
 &flexcan3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan3>;
 	status = "okay";
 };
-
-&gpio0_mipi_csi0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_mipi_csi0_gpio>;
-};
+#endif
 
 &isi_0 {
 	status = "okay";
@@ -939,6 +454,7 @@ wvga {					\
 	status = "okay";
 };
 
+#ifdef CONFIG_EFUSMX8X_NAND
 &flexspi0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexspi0>;
@@ -966,6 +482,7 @@ wvga {					\
 		spi-rx-bus-width = <4>;
 	};
 };
+#endif
 
 &i2c0_mipi_lvds0 {
 	#address-cells = <1>;
@@ -976,6 +493,7 @@ wvga {					\
 	status = "okay";
 };
 
+#ifdef CONFIG_EFUSMX8X_I2C_A
 &i2c1 {
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -984,7 +502,9 @@ wvga {					\
 	pinctrl-0 = <&pinctrl_lpi2c1>;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_EFUSMX8X_I2C_B
 &i2c2 {
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -993,7 +513,9 @@ wvga {					\
 	pinctrl-0 = <&pinctrl_lpi2c2>;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_EFUSMX8X_I2C_C
 &i2c3 {
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -1002,6 +524,7 @@ wvga {					\
 	pinctrl-0 = <&pinctrl_lpi2c3>;
 	status = "okay";
 
+#ifdef CONFIG_EFUSMX8X_AUDIO
 	sgtl5000: sgtl5000@a {
 		compatible = "fsl,sgtl5000";
 		pinctrl-names = "default";
@@ -1026,6 +549,7 @@ wvga {					\
 		VDDD-supply = <&reg_vref_1v5>;
 		VDDIO-supply = <&reg_module_3v3>;
 	};
+#endif
 
 	rtc85063@51 {
 		#address-cells = <1>;
@@ -1035,28 +559,17 @@ wvga {					\
 		status = "okay";
 	};
 };
+#endif
 
 &rtc {
-	status = "disabled";
+	status = "okay";
 };
 
+#ifdef CONFIG_EFUSMX8X_UART_A
 &dma_subsys {
 	lpuart2 {
 		debug_console;
 	};
-};
-
-&lpuart0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_lpuart0>;
-	status = "okay";
-};
-
-&lpuart1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_lpuart1>;
-	linux,rs485-enabled;
-	status = "okay";
 };
 
 &lpuart2 {
@@ -1064,26 +577,58 @@ wvga {					\
 	pinctrl-0 = <&pinctrl_lpuart2>;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_EFUSMX8X_UART_B
+&lpuart0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lpuart0>;
+#ifdef CONFIG_EFUSMX8X_UART_B_RTSCTS
+	uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_UART_C
+&lpuart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lpuart1>;
+#ifdef CONFIG_EFUSMX8X_UART_C_RTSCTS
+	uart-has-rtscts;
+	linux,rs485-enabled;
+#endif
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_UART_D
 &lpuart3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lpuart3>;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_EFUSMX8X_PWM_A
 &pwm_mipi_lvds0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm0>;
 	#pwm-cells = <3>;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_EFUSMX8X_PWM_B
 &pwm_mipi_lvds1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm1>;
-	status = "disabled";
+	#pwm-cells = <3>;
+	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_EFUSMX8X_SPI_A
 &lpspi0 {
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -1113,7 +658,9 @@ wvga {					\
 		reg = <1>;
 	};
 };
+#endif
 
+#ifdef CONFIG_EFUSMX8X_SPI_B
 &lpspi3 {
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -1135,13 +682,9 @@ wvga {					\
 		spi-max-frequency = <30000000>;
 	};
 };
+#endif
 
-&mlb {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_mlb>;
-	status = "disabled";
-};
-
+#ifdef CONFIG_EFUSMX8X_EMMC
 &usdhc1 {
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
 	pinctrl-0 = <&pinctrl_usdhc1>;
@@ -1151,16 +694,26 @@ wvga {					\
 	non-removable;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_EFUSMX8X_SD_A
 &usdhc2 {
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
-	pinctrl-0 = <&pinctrl_usdhc2>, <&pinctrl_usdhc2_gpio>;
-	pinctrl-1 = <&pinctrl_usdhc2_100mhz>, <&pinctrl_usdhc2_gpio>;
-	pinctrl-2 = <&pinctrl_usdhc2_200mhz>, <&pinctrl_usdhc2_gpio>;
+	pinctrl-0 = <&pinctrl_usdhc2>;
+	pinctrl-1 = <&pinctrl_usdhc2_100mhz>;
+	pinctrl-2 = <&pinctrl_usdhc2_200mhz>;
 	bus-width = <4>;
+#ifdef CONFIG_EFUSMX8X_SD_A_CD
 	cd-gpios = <&lsio_gpio4 22 GPIO_ACTIVE_LOW>;
+#else
+	non-removable;
+#endif
+#ifdef CONFIG_EFUSMX8X_SD_A_WP
+	wp-gpios = <&lsio_gpio4 21 GPIO_ACTIVE_LOW>;
+#endif
 	status = "okay";
 };
+#endif
 
 &gpu_3d0 {
 	status = "okay";
@@ -1170,6 +723,7 @@ wvga {					\
 	status = "okay";
 };
 
+#ifdef CONFIG_EFUSMX8X_USB_OTG
 &usbphy1 {
 	status = "okay";
 };
@@ -1183,7 +737,9 @@ wvga {					\
 	adp-disable;
 	status = "okay";
 };
+#endif
 
+#ifdef CONFIG_EFUSMX8X_USB_HOST
 &usb3phynop1 {
 	status = "okay";
 };
@@ -1196,6 +752,7 @@ wvga {					\
 	compatible = "usb1286,204e";
     };
 };
+#endif
 
 &dc0_pc {
 	status = "okay";
@@ -1265,12 +822,14 @@ wvga {					\
 	status = "okay";
 };
 
+#ifdef CONFIG_EFUSMX8X_WLAN
 &pcieb {
 	ext_osc = <0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcieb>;
 	status = "okay";
 };
+#endif
 
 &cm40_subsys {
 	intmux_cm40 {
@@ -1355,5 +914,549 @@ wvga {					\
 					<&A35_3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
 			};
 		};
+	};
+};
+
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog>;
+	imx8qxp-efusmx8x {
+		pinctrl_hog: hoggrp {
+			fsl,pins = <
+				IMX8QXP_COMP_CTL_GPIO_1V8_3V3_GPIORHB_PAD	0x000514a0
+				/* VLCD_ON */
+				IMX8QXP_MIPI_DSI1_I2C0_SDA_LSIO_GPIO1_IO30 0xc6000020
+				/* PHY1_RST */
+				IMX8QXP_ENET0_REFCLK_125M_25M_LSIO_GPIO5_IO09 0xc6000020
+				/* LCD_R0 */
+				IMX8QXP_QSPI0A_SS1_B_LSIO_GPIO3_IO15	0xc6000020
+				/* LCD_R1 */
+				IMX8QXP_QSPI0B_DQS_LSIO_GPIO3_IO22		0xc6000020
+#ifndef CONFIG_EFUSMX8X_CAN_A
+				IMX8QXP_FLEXCAN1_TX_LSIO_GPIO1_IO18		0xc6000020
+				IMX8QXP_FLEXCAN1_RX_LSIO_GPIO1_IO17		0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_CAN_B
+				IMX8QXP_FLEXCAN2_TX_LSIO_GPIO1_IO20		0xc6000020
+				IMX8QXP_FLEXCAN2_RX_LSIO_GPIO1_IO19		0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_ETH0
+#ifndef CONFIG_EFUSMX8X_ETH1
+				IMX8QXP_ENET0_MDC_LSIO_GPIO5_IO11			0x06000020
+				IMX8QXP_ENET0_MDIO_LSIO_GPIO5_IO10			0x06000020
+#endif
+				IMX8QXP_ENET0_RGMII_TX_CTL_LSIO_GPIO4_IO30	0xc6000020
+				IMX8QXP_ENET0_RGMII_TXC_LSIO_GPIO4_IO29		0xc6000020
+				IMX8QXP_ENET0_RGMII_TXD0_LSIO_GPIO4_IO31	0xc6000020
+				IMX8QXP_ENET0_RGMII_TXD1_LSIO_GPIO5_IO00	0xc6000020
+				IMX8QXP_ENET0_RGMII_TXD2_LSIO_GPIO5_IO01	0xc6000020
+				IMX8QXP_ENET0_RGMII_TXD3_LSIO_GPIO5_IO02	0xc6000020
+				IMX8QXP_ENET0_RGMII_RXC_LSIO_GPIO5_IO03		0xc6000020
+				IMX8QXP_ENET0_RGMII_RX_CTL_LSIO_GPIO5_IO04	0xc6000020
+				IMX8QXP_ENET0_RGMII_RXD0_LSIO_GPIO5_IO05	0xc6000020
+				IMX8QXP_ENET0_RGMII_RXD1_LSIO_GPIO5_IO06	0xc6000020
+				IMX8QXP_ENET0_RGMII_RXD2_LSIO_GPIO5_IO07	0xc6000020
+				IMX8QXP_ENET0_RGMII_RXD3_LSIO_GPIO5_IO08	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_ETH1
+				IMX8QXP_ESAI0_SCKR_LSIO_GPIO0_IO02		0xc6000020
+				IMX8QXP_ESAI0_TX4_RX1_LSIO_GPIO0_IO08	0xc6000020
+				IMX8QXP_ESAI0_TX5_RX0_LSIO_GPIO0_IO09	0xc6000020
+				IMX8QXP_ESAI0_FST_LSIO_GPIO0_IO01		0xc6000020
+				IMX8QXP_ESAI0_SCKT_LSIO_GPIO0_IO03		0xc6000020
+				IMX8QXP_ESAI0_TX0_LSIO_GPIO0_IO04		0xc6000020
+				IMX8QXP_SPDIF0_TX_LSIO_GPIO0_IO11		0xc6000020
+				IMX8QXP_SPDIF0_RX_LSIO_GPIO0_IO10		0xc6000020
+				IMX8QXP_ESAI0_TX3_RX2_LSIO_GPIO0_IO07	0xc6000020
+				IMX8QXP_ESAI0_TX2_RX3_LSIO_GPIO0_IO06	0xc6000020
+				IMX8QXP_ESAI0_TX1_LSIO_GPIO0_IO05		0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_I2C_A
+				IMX8QXP_USB_SS3_TC1_LSIO_GPIO4_IO04	0xc6000020
+				IMX8QXP_USB_SS3_TC3_LSIO_GPIO4_IO06	0xc6000020
+				IMX8QXP_SPI2_SDI_LSIO_GPIO1_IO02	0xc6000020
+				IMX8QXP_SPI2_SDO_LSIO_GPIO1_IO01	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_I2C_B
+#ifndef CONFIG_EFUSMX8X_PWM_B
+				IMX8QXP_MIPI_DSI1_GPIO0_00_LSIO_GPIO1_IO31	0xc6000020
+#endif
+				IMX8QXP_MIPI_DSI1_GPIO0_01_LSIO_GPIO2_IO00	0xc6000020
+				IMX8QXP_USDHC1_RESET_B_LSIO_GPIO4_IO19		0xc6000020
+				IMX8QXP_SPI2_SCK_LSIO_GPIO1_IO03			0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_I2C_C
+				IMX8QXP_CSI_EN_LSIO_GPIO3_IO02		0xc6000020
+				IMX8QXP_CSI_RESET_LSIO_GPIO3_IO03	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_AUDIO
+				IMX8QXP_SAI0_TXD_LSIO_GPIO0_IO25	0xc6000020
+				IMX8QXP_SAI0_RXD_LSIO_GPIO0_IO27	0xc6000020
+				IMX8QXP_SAI0_TXC_LSIO_GPIO0_IO26	0xc6000020
+				IMX8QXP_SAI0_TXFS_LSIO_GPIO0_IO28	0xc6000020
+				IMX8QXP_MCLK_OUT0_LSIO_GPIO0_IO20	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_PWM_A
+				IMX8QXP_MIPI_DSI0_GPIO0_00_LSIO_GPIO1_IO27	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_EMMC
+				IMX8QXP_EMMC0_CLK_LSIO_GPIO4_IO07		0xc6000020
+				IMX8QXP_EMMC0_CMD_LSIO_GPIO4_IO08		0xc6000020
+				IMX8QXP_EMMC0_DATA0_LSIO_GPIO4_IO09		0xc6000020
+				IMX8QXP_EMMC0_DATA1_LSIO_GPIO4_IO10		0xc6000020
+				IMX8QXP_EMMC0_DATA2_LSIO_GPIO4_IO11		0xc6000020
+				IMX8QXP_EMMC0_DATA3_LSIO_GPIO4_IO12		0xc6000020
+				IMX8QXP_EMMC0_DATA4_LSIO_GPIO4_IO13		0xc6000020
+				IMX8QXP_EMMC0_DATA5_LSIO_GPIO4_IO14		0xc6000020
+				IMX8QXP_EMMC0_DATA6_LSIO_GPIO4_IO15		0xc6000020
+				IMX8QXP_EMMC0_DATA7_LSIO_GPIO4_IO16		0xc6000020
+				IMX8QXP_EMMC0_STROBE_LSIO_GPIO4_IO17	0xc6000020
+				IMX8QXP_EMMC0_RESET_B_LSIO_GPIO4_IO18	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_SD_A
+				IMX8QXP_USDHC1_CLK_LSIO_GPIO4_IO23		0xc6000020
+				IMX8QXP_USDHC1_CMD_LSIO_GPIO4_IO24		0xc6000020
+				IMX8QXP_USDHC1_DATA0_LSIO_GPIO4_IO25	0xc6000020
+				IMX8QXP_USDHC1_DATA1_LSIO_GPIO4_IO26	0xc6000020
+				IMX8QXP_USDHC1_DATA2_LSIO_GPIO4_IO27	0xc6000020
+				IMX8QXP_USDHC1_DATA3_LSIO_GPIO4_IO28	0xc6000020
+				IMX8QXP_USDHC1_VSELECT_LSIO_GPIO4_IO20	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_SD_A_CD
+				IMX8QXP_USDHC1_CD_B_LSIO_GPIO4_IO22		0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_SD_A_WP
+				IMX8QXP_USDHC1_WP_LSIO_GPIO4_IO21		0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_UART_A
+				IMX8QXP_UART2_RX_LSIO_GPIO1_IO24	0xc6000020
+				IMX8QXP_UART2_TX_LSIO_GPIO1_IO23	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_UART_B
+				IMX8QXP_UART0_RX_LSIO_GPIO1_IO21	0xc6000020
+				IMX8QXP_UART0_TX_LSIO_GPIO1_IO22	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_UART_B_RTSCTS
+				IMX8QXP_FLEXCAN0_TX_LSIO_GPIO1_IO16	0xc6000020
+				IMX8QXP_FLEXCAN0_RX_LSIO_GPIO1_IO15	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_UART_C
+				IMX8QXP_UART1_TX_LSIO_GPIO0_IO21	0xc6000020
+				IMX8QXP_UART1_RX_LSIO_GPIO0_IO22	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_UART_C_RTSCTS
+				IMX8QXP_UART1_CTS_B_LSIO_GPIO0_IO24	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_UART_D
+				IMX8QXP_SCU_GPIO0_00_LSIO_GPIO2_IO03	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_NAND
+				IMX8QXP_QSPI0A_DATA0_LSIO_GPIO3_IO09	0xc6000020
+				IMX8QXP_QSPI0A_DATA1_LSIO_GPIO3_IO10	0xc6000020
+				IMX8QXP_QSPI0A_DATA2_LSIO_GPIO3_IO11	0xc6000020
+				IMX8QXP_QSPI0A_DATA3_LSIO_GPIO3_IO12	0xc6000020
+				IMX8QXP_QSPI0A_SS0_B_LSIO_GPIO3_IO14	0xc6000020
+				IMX8QXP_QSPI0A_SCLK_LSIO_GPIO3_IO16		0xc6000020
+				IMX8QXP_QSPI0B_SCLK_LSIO_GPIO3_IO17		0xc6000020
+				IMX8QXP_QSPI0B_DATA0_LSIO_GPIO3_IO18	0xc6000020
+				IMX8QXP_QSPI0B_DATA1_LSIO_GPIO3_IO19	0xc6000020
+				IMX8QXP_QSPI0B_DATA2_LSIO_GPIO3_IO20	0xc6000020
+				IMX8QXP_QSPI0B_DATA3_LSIO_GPIO3_IO21	0xc6000020
+				IMX8QXP_QSPI0B_SS0_B_LSIO_GPIO3_IO23	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_USB_OTG
+				IMX8QXP_USB_SS3_TC0_LSIO_GPIO4_IO03	0xc6000020
+				IMX8QXP_USB_SS3_TC2_LSIO_GPIO4_IO05	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_WLAN
+				IMX8QXP_PCIE_CTRL0_PERST_B_LSIO_GPIO4_IO00	0xc6000020
+				IMX8QXP_PCIE_CTRL0_CLKREQ_B_LSIO_GPIO4_IO01	0xc6000020
+				IMX8QXP_PCIE_CTRL0_WAKE_B_LSIO_GPIO4_IO02	0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_SPI_A
+				IMX8QXP_SPI0_CS0_LSIO_GPIO1_IO08 0xc6000020
+				IMX8QXP_SPI0_CS1_LSIO_GPIO1_IO07 0xc6000020
+				IMX8QXP_SPI0_SCK_LSIO_GPIO1_IO04 0xc6000020
+				IMX8QXP_SPI0_SDI_LSIO_GPIO1_IO05 0xc6000020
+				IMX8QXP_SPI0_SDO_LSIO_GPIO1_IO06 0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_SPI_B
+				IMX8QXP_SPI3_CS0_LSIO_GPIO0_IO16 0xc6000020
+				IMX8QXP_SPI3_SCK_LSIO_GPIO0_IO13 0xc6000020
+				IMX8QXP_SPI3_SDI_LSIO_GPIO0_IO15 0xc6000020
+				IMX8QXP_SPI3_SDO_LSIO_GPIO0_IO14 0xc6000020
+#endif
+#ifndef CONFIG_EFUSMX8X_ADC
+				IMX8QXP_ADC_IN0_LSIO_GPIO1_IO10		0xc6000020
+				IMX8QXP_ADC_IN1_LSIO_GPIO1_IO09		0xc6000020
+				IMX8QXP_ADC_IN2_LSIO_GPIO1_IO12		0xc6000020
+				IMX8QXP_ADC_IN3_LSIO_GPIO1_IO11		0xc6000020
+				IMX8QXP_ADC_IN4_LSIO_GPIO1_IO14		0xc6000020
+				IMX8QXP_ADC_IN5_LSIO_GPIO1_IO13		0xc6000020
+#endif
+			>;
+		};
+
+#ifdef CONFIG_EFUSMX8X_ADC
+		pinctrl_adc0: adc0grp {
+			fsl,pins = <
+				IMX8QXP_ADC_IN0_ADMA_ADC_IN0		0x60
+				IMX8QXP_ADC_IN1_ADMA_ADC_IN1		0x60
+				IMX8QXP_ADC_IN2_ADMA_ADC_IN2		0x60
+				IMX8QXP_ADC_IN3_ADMA_ADC_IN3		0x60
+				IMX8QXP_ADC_IN4_ADMA_ADC_IN4		0x60
+				IMX8QXP_ADC_IN5_ADMA_ADC_IN5		0x60
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_AUDIO
+		pinctrl_sai0: sai0grp {
+			fsl,pins = <
+				IMX8QXP_SAI0_TXD_ADMA_SAI0_TXD		0x06000040
+				IMX8QXP_SAI0_RXD_ADMA_SAI0_RXD		0x06000040
+				IMX8QXP_SAI0_TXC_ADMA_SAI0_TXC		0x06000040
+				IMX8QXP_SAI0_TXFS_ADMA_SAI0_TXFS	0x06000040
+			>;
+		};
+
+		/* On-module SGTL5000 SYS_MCLK */
+		pinctrl_sgtl5000: sgtl5000grp {
+			fsl,pins = <
+				IMX8QXP_MCLK_OUT0_ADMA_ACM_MCLK_OUT0	0x06000041
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_ETH0
+		pinctrl_fec1: fec1grp {
+			fsl,pins = <
+				IMX8QXP_ENET0_MDC_CONN_ENET0_MDC			0x06000020
+				IMX8QXP_ENET0_MDIO_CONN_ENET0_MDIO			0x06000020
+				IMX8QXP_ENET0_RGMII_TX_CTL_CONN_ENET0_RGMII_TX_CTL	0x00000060
+				IMX8QXP_ENET0_RGMII_TXC_CONN_ENET0_RGMII_TXC	0x00000060
+				IMX8QXP_ENET0_RGMII_TXD0_CONN_ENET0_RGMII_TXD0	0x00000060
+				IMX8QXP_ENET0_RGMII_TXD1_CONN_ENET0_RGMII_TXD1	0x00000060
+				IMX8QXP_ENET0_RGMII_TXD2_CONN_ENET0_RGMII_TXD2	0x00000060
+				IMX8QXP_ENET0_RGMII_TXD3_CONN_ENET0_RGMII_TXD3	0x00000060
+				IMX8QXP_ENET0_RGMII_RXC_CONN_ENET0_RGMII_RXC	0x00000060
+				IMX8QXP_ENET0_RGMII_RX_CTL_CONN_ENET0_RGMII_RX_CTL	0x00000060
+				IMX8QXP_ENET0_RGMII_RXD0_CONN_ENET0_RGMII_RXD0	0x00000060
+				IMX8QXP_ENET0_RGMII_RXD1_CONN_ENET0_RGMII_RXD1	0x00000060
+				IMX8QXP_ENET0_RGMII_RXD2_CONN_ENET0_RGMII_RXD2	0x00000060
+				IMX8QXP_ENET0_RGMII_RXD3_CONN_ENET0_RGMII_RXD3	0x00000060
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_ETH1
+		pinctrl_fec2: fec2grp {
+			fsl,pins = <
+#ifndef CONFIG_EFUSMX8X_ETH0
+				IMX8QXP_ENET0_MDC_CONN_ENET0_MDC			0x06000020
+				IMX8QXP_ENET0_MDIO_CONN_ENET0_MDIO			0x06000020
+#endif
+				IMX8QXP_ESAI0_SCKR_CONN_ENET1_RGMII_TX_CTL		0x00000060
+				IMX8QXP_ESAI0_FSR_CONN_ENET1_RGMII_TXC		0x00000060
+				IMX8QXP_ESAI0_TX4_RX1_CONN_ENET1_RGMII_TXD0	0x00000060
+				IMX8QXP_ESAI0_TX5_RX0_CONN_ENET1_RGMII_TXD1	0x00000060
+				IMX8QXP_ESAI0_FST_CONN_ENET1_RGMII_TXD2		0x00000060
+				IMX8QXP_ESAI0_SCKT_CONN_ENET1_RGMII_TXD3		0x00000060
+				IMX8QXP_ESAI0_TX0_CONN_ENET1_RGMII_RXC		0x00000060
+				IMX8QXP_SPDIF0_TX_CONN_ENET1_RGMII_RX_CTL		0x00000060
+				IMX8QXP_SPDIF0_RX_CONN_ENET1_RGMII_RXD0		0x00000060
+				IMX8QXP_ESAI0_TX3_RX2_CONN_ENET1_RGMII_RXD1	0x00000060
+				IMX8QXP_ESAI0_TX2_RX3_CONN_ENET1_RGMII_RXD2	0x00000060
+				IMX8QXP_ESAI0_TX1_CONN_ENET1_RGMII_RXD3		0x00000060
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_CAN_A
+		pinctrl_flexcan2: flexcan1grp {
+			fsl,pins = <
+				IMX8QXP_FLEXCAN1_TX_ADMA_FLEXCAN1_TX		0x21
+				IMX8QXP_FLEXCAN1_RX_ADMA_FLEXCAN1_RX		0x21
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_CAN_B
+		pinctrl_flexcan3: flexcan2grp {
+			fsl,pins = <
+				IMX8QXP_FLEXCAN2_TX_ADMA_FLEXCAN2_TX		0x21
+				IMX8QXP_FLEXCAN2_RX_ADMA_FLEXCAN2_RX		0x21
+			>;
+		};
+#endif
+
+		pinctrl_i2c0_mipi_lvds0: mipi_lvds0_i2c0_grp {
+			fsl,pins = <
+				IMX8QXP_MIPI_DSI0_I2C0_SCL_MIPI_DSI0_I2C0_SCL	0xc6000020
+				IMX8QXP_MIPI_DSI0_I2C0_SDA_MIPI_DSI0_I2C0_SDA	0xc6000020
+			>;
+		};
+
+#ifdef CONFIG_EFUSMX8X_NAND
+		pinctrl_flexspi0: flexspi0grp {
+			fsl,pins = <
+				IMX8QXP_QSPI0A_DATA0_LSIO_QSPI0A_DATA0	0x06000021
+				IMX8QXP_QSPI0A_DATA1_LSIO_QSPI0A_DATA1	0x06000021
+				IMX8QXP_QSPI0A_DATA2_LSIO_QSPI0A_DATA2	0x06000021
+				IMX8QXP_QSPI0A_DATA3_LSIO_QSPI0A_DATA3	0x06000021
+				IMX8QXP_QSPI0A_SS0_B_LSIO_QSPI0A_SS0_B	0x06000021
+				IMX8QXP_QSPI0A_SCLK_LSIO_QSPI0A_SCLK	0x06000021
+				IMX8QXP_QSPI0B_SCLK_LSIO_QSPI0B_SCLK	0x06000021
+				IMX8QXP_QSPI0B_DATA0_LSIO_QSPI0B_DATA0	0x06000021
+				IMX8QXP_QSPI0B_DATA1_LSIO_QSPI0B_DATA1	0x06000021
+				IMX8QXP_QSPI0B_DATA2_LSIO_QSPI0B_DATA2	0x06000021
+				IMX8QXP_QSPI0B_DATA3_LSIO_QSPI0B_DATA3	0x06000021
+				IMX8QXP_QSPI0B_SS0_B_LSIO_QSPI0B_SS0_B	0x06000021
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_SPI_A
+		pinctrl_lpspi0: lpspi0grp {
+			fsl,pins = <
+				IMX8QXP_SPI0_CS0_ADMA_SPI0_CS0 0x0600002c
+				IMX8QXP_SPI0_CS1_ADMA_SPI0_CS1 0x0600002c
+				IMX8QXP_SPI0_SCK_ADMA_SPI0_SCK 0x0600002c
+				IMX8QXP_SPI0_SDI_ADMA_SPI0_SDI 0x0600002c
+				IMX8QXP_SPI0_SDO_ADMA_SPI0_SDO 0x0600002c
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_SPI_B
+		pinctrl_lpspi3: lpspi3grp {
+			fsl,pins = <
+				IMX8QXP_SPI3_CS0_ADMA_SPI3_CS0 0x0600002c
+				IMX8QXP_SPI3_CS1_ADMA_SPI3_CS1 0x0600002c
+				IMX8QXP_SPI3_SCK_ADMA_SPI3_SCK 0x0600002c
+				IMX8QXP_SPI3_SDI_ADMA_SPI3_SDI 0x0600002c
+				IMX8QXP_SPI3_SDO_ADMA_SPI3_SDO 0x0600002c
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_I2C_A
+		pinctrl_lpi2c1: lpi1cgrp {
+			fsl,pins = <
+				IMX8QXP_USB_SS3_TC1_ADMA_I2C1_SCL	0x04000020
+				IMX8QXP_USB_SS3_TC3_ADMA_I2C1_SDA	0x04000020
+				IMX8QXP_SPI2_SDI_LSIO_GPIO1_IO02	0x04000020
+				IMX8QXP_SPI2_SDO_LSIO_GPIO1_IO01	0x04000020
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_I2C_B
+		pinctrl_lpi2c2: lpi2cgrp {
+			fsl,pins = <
+				IMX8QXP_MIPI_DSI1_GPIO0_00_ADMA_I2C2_SCL	0x04000020
+				IMX8QXP_MIPI_DSI1_GPIO0_01_ADMA_I2C2_SDA	0x04000020
+				IMX8QXP_USDHC1_RESET_B_LSIO_GPIO4_IO19		0x04000020
+				IMX8QXP_SPI2_SCK_LSIO_GPIO1_IO03			0x04000020
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_I2C_C
+		pinctrl_lpi2c3: lpi3cgrp {
+			fsl,pins = <
+				IMX8QXP_CSI_EN_ADMA_I2C3_SCL		0x04000020
+				IMX8QXP_CSI_RESET_ADMA_I2C3_SDA	0x04000020
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_UART_A
+		pinctrl_lpuart2: lpuart2grp {
+			fsl,pins = <
+				IMX8QXP_UART2_RX_ADMA_UART2_RX	0x0600002c
+				IMX8QXP_UART2_TX_ADMA_UART2_TX	0x0600002c
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_UART_B
+		pinctrl_lpuart0: lpuart0grp {
+			fsl,pins = <
+				IMX8QXP_UART0_RX_ADMA_UART0_RX	0x0600002c
+				IMX8QXP_UART0_TX_ADMA_UART0_TX	0x0600002c
+#ifdef CONFIG_EFUSMX8X_UART_B_RTSCTS
+				IMX8QXP_FLEXCAN0_TX_ADMA_UART0_CTS_B	0x0600002c
+				IMX8QXP_FLEXCAN0_RX_ADMA_UART0_RTS_B	0x0600002c
+#endif
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_UART_C
+		pinctrl_lpuart1: lpuart1grp {
+			fsl,pins = <
+				IMX8QXP_UART1_TX_ADMA_UART1_TX		0x0600002c
+				IMX8QXP_UART1_RX_ADMA_UART1_RX		0x0600002c
+#ifdef CONFIG_EFUSMX8X_UART_C_RTSCTS
+				IMX8QXP_UART1_RTS_B_ADMA_UART1_RTS_B	0x0600002c
+				IMX8QXP_UART1_CTS_B_ADMA_UART1_CTS_B	0x0600002c
+#endif
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_UART_D
+		pinctrl_lpuart3: lpuart3grp {
+			fsl,pins = <
+				IMX8QXP_SCU_GPIO0_00_ADMA_UART3_RX	0x0600002c
+				IMX8QXP_SCU_GPIO0_01_ADMA_UART3_TX	0x0600002c
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_PWM_A
+		pinctrl_pwm0: pwm0grp {
+			fsl,pins = <
+				IMX8QXP_MIPI_DSI0_GPIO0_00_MIPI_DSI0_PWM0_OUT	0x0600002c
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_PWM_B
+		pinctrl_pwm1: pwm1grp {
+			fsl,pins = <
+				IMX8QXP_MIPI_DSI1_GPIO0_00_MIPI_DSI1_PWM0_OUT	0x0600002c
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_EMMC
+		pinctrl_usdhc1: usdhc1grp {
+			fsl,pins = <
+				IMX8QXP_EMMC0_CLK_CONN_EMMC0_CLK		0x06000041
+				IMX8QXP_EMMC0_CMD_CONN_EMMC0_CMD		0x00000021
+				IMX8QXP_EMMC0_DATA0_CONN_EMMC0_DATA0	0x00000021
+				IMX8QXP_EMMC0_DATA1_CONN_EMMC0_DATA1	0x00000021
+				IMX8QXP_EMMC0_DATA2_CONN_EMMC0_DATA2	0x00000021
+				IMX8QXP_EMMC0_DATA3_CONN_EMMC0_DATA3	0x00000021
+				IMX8QXP_EMMC0_DATA4_CONN_EMMC0_DATA4	0x00000021
+				IMX8QXP_EMMC0_DATA5_CONN_EMMC0_DATA5	0x00000021
+				IMX8QXP_EMMC0_DATA6_CONN_EMMC0_DATA6	0x00000021
+				IMX8QXP_EMMC0_DATA7_CONN_EMMC0_DATA7	0x00000021
+				IMX8QXP_EMMC0_STROBE_CONN_EMMC0_STROBE	0x00000041
+				IMX8QXP_EMMC0_RESET_B_CONN_EMMC0_RESET_B	0x00000021
+			>;
+		};
+
+		pinctrl_usdhc1_100mhz: usdhc1grp100mhz {
+			fsl,pins = <
+				IMX8QXP_EMMC0_CLK_CONN_EMMC0_CLK		0x06000040
+				IMX8QXP_EMMC0_CMD_CONN_EMMC0_CMD		0x00000020
+				IMX8QXP_EMMC0_DATA0_CONN_EMMC0_DATA0	0x00000020
+				IMX8QXP_EMMC0_DATA1_CONN_EMMC0_DATA1	0x00000020
+				IMX8QXP_EMMC0_DATA2_CONN_EMMC0_DATA2	0x00000020
+				IMX8QXP_EMMC0_DATA3_CONN_EMMC0_DATA3	0x00000020
+				IMX8QXP_EMMC0_DATA4_CONN_EMMC0_DATA4	0x00000020
+				IMX8QXP_EMMC0_DATA5_CONN_EMMC0_DATA5	0x00000020
+				IMX8QXP_EMMC0_DATA6_CONN_EMMC0_DATA6	0x00000020
+				IMX8QXP_EMMC0_DATA7_CONN_EMMC0_DATA7	0x00000020
+				IMX8QXP_EMMC0_STROBE_CONN_EMMC0_STROBE	0x00000040
+				IMX8QXP_EMMC0_RESET_B_CONN_EMMC0_RESET_B	0x00000020
+			>;
+		};
+
+		pinctrl_usdhc1_200mhz: usdhc1grp200mhz {
+			fsl,pins = <
+				IMX8QXP_EMMC0_CLK_CONN_EMMC0_CLK		0x06000040
+				IMX8QXP_EMMC0_CMD_CONN_EMMC0_CMD		0x00000020
+				IMX8QXP_EMMC0_DATA0_CONN_EMMC0_DATA0	0x00000020
+				IMX8QXP_EMMC0_DATA1_CONN_EMMC0_DATA1	0x00000020
+				IMX8QXP_EMMC0_DATA2_CONN_EMMC0_DATA2	0x00000020
+				IMX8QXP_EMMC0_DATA3_CONN_EMMC0_DATA3	0x00000020
+				IMX8QXP_EMMC0_DATA4_CONN_EMMC0_DATA4	0x00000020
+				IMX8QXP_EMMC0_DATA5_CONN_EMMC0_DATA5	0x00000020
+				IMX8QXP_EMMC0_DATA6_CONN_EMMC0_DATA6	0x00000020
+				IMX8QXP_EMMC0_DATA7_CONN_EMMC0_DATA7	0x00000020
+				IMX8QXP_EMMC0_STROBE_CONN_EMMC0_STROBE	0x00000040
+				IMX8QXP_EMMC0_RESET_B_CONN_EMMC0_RESET_B	0x00000020
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_SD_A
+		pinctrl_usdhc2: usdhc2grp {
+			fsl,pins = <
+				IMX8QXP_USDHC1_CLK_CONN_USDHC1_CLK		0x06000041
+				IMX8QXP_USDHC1_CMD_CONN_USDHC1_CMD		0x00000021
+				IMX8QXP_USDHC1_DATA0_CONN_USDHC1_DATA0	0x00000021
+				IMX8QXP_USDHC1_DATA1_CONN_USDHC1_DATA1	0x00000021
+				IMX8QXP_USDHC1_DATA2_CONN_USDHC1_DATA2	0x00000021
+				IMX8QXP_USDHC1_DATA3_CONN_USDHC1_DATA3	0x00000021
+				IMX8QXP_USDHC1_VSELECT_CONN_USDHC1_VSELECT	0x00000021
+#ifdef CONFIG_EFUSMX8X_SD_A_CD
+				IMX8QXP_USDHC1_CD_B_LSIO_GPIO4_IO22	0x00000021
+#endif
+#ifdef CONFIG_EFUSMX8X_SD_A_WP
+				IMX8QXP_USDHC1_WP_LSIO_GPIO4_IO21		0x00000021
+#endif
+			>;
+		};
+
+		pinctrl_usdhc2_100mhz: usdhc2grp100mhz {
+			fsl,pins = <
+				IMX8QXP_USDHC1_CLK_CONN_USDHC1_CLK		0x06000040
+				IMX8QXP_USDHC1_CMD_CONN_USDHC1_CMD		0x00000020
+				IMX8QXP_USDHC1_DATA0_CONN_USDHC1_DATA0	0x00000020
+				IMX8QXP_USDHC1_DATA1_CONN_USDHC1_DATA1	0x00000020
+				IMX8QXP_USDHC1_DATA2_CONN_USDHC1_DATA2	0x00000020
+				IMX8QXP_USDHC1_DATA3_CONN_USDHC1_DATA3	0x00000020
+				IMX8QXP_USDHC1_VSELECT_CONN_USDHC1_VSELECT	0x00000020
+#ifdef CONFIG_EFUSMX8X_SD_A_CD
+				IMX8QXP_USDHC1_CD_B_LSIO_GPIO4_IO22	0x00000020
+#endif
+#ifdef CONFIG_EFUSMX8X_SD_A_WP
+				IMX8QXP_USDHC1_WP_LSIO_GPIO4_IO21		0x00000020
+#endif
+			>;
+		};
+
+		pinctrl_usdhc2_200mhz: usdhc2grp200mhz {
+			fsl,pins = <
+				IMX8QXP_USDHC1_CLK_CONN_USDHC1_CLK		0x06000040
+				IMX8QXP_USDHC1_CMD_CONN_USDHC1_CMD		0x00000020
+				IMX8QXP_USDHC1_DATA0_CONN_USDHC1_DATA0	0x00000020
+				IMX8QXP_USDHC1_DATA1_CONN_USDHC1_DATA1	0x00000020
+				IMX8QXP_USDHC1_DATA2_CONN_USDHC1_DATA2	0x00000020
+				IMX8QXP_USDHC1_DATA3_CONN_USDHC1_DATA3	0x00000020
+				IMX8QXP_USDHC1_VSELECT_CONN_USDHC1_VSELECT	0x00000020
+#ifdef CONFIG_EFUSMX8X_SD_A_CD
+				IMX8QXP_USDHC1_CD_B_LSIO_GPIO4_IO22	0x00000020
+#endif
+#ifdef CONFIG_EFUSMX8X_SD_A_WP
+				IMX8QXP_USDHC1_WP_LSIO_GPIO4_IO21		0x00000020
+#endif
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_WLAN
+		pinctrl_pcieb: pciebgrp{
+			fsl,pins = <
+				IMX8QXP_PCIE_CTRL0_PERST_B_HSIO_PCIE0_PERST_B		0x06000020
+				IMX8QXP_PCIE_CTRL0_CLKREQ_B_HSIO_PCIE0_CLKREQ_B	0x06000020
+				IMX8QXP_PCIE_CTRL0_WAKE_B_HSIO_PCIE0_WAKE_B		0x06000020
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSMX8X_USB_OTG
+		pinctrl_usbotg1: usbotg1 {
+			fsl,pins = <
+				IMX8QXP_USB_SS3_TC0_CONN_USB_OTG1_PWR	0x06000020
+				IMX8QXP_USB_SS3_TC2_CONN_USB_OTG1_OC	0x06000020
+			>;
+		};
+#endif
 	};
 };
