@@ -904,6 +904,8 @@ static int dsps_probe(struct platform_device *pdev)
 
 	return 0;
 
+unregister_pdev:
+	platform_device_unregister(glue->musb);
 err:
 	pm_runtime_disable(&pdev->dev);
 	iounmap(glue->usbss_base);

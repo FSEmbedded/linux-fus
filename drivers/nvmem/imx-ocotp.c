@@ -172,6 +172,10 @@ static int imx_ocotp_read(void *context, unsigned int offset,
 	if (count > (priv->params->nregs - index))
 		count = priv->params->nregs - index;
 
+	p = kzalloc(num_bytes, GFP_KERNEL);
+	if (!p)
+		return -ENOMEM;
+
 	mutex_lock(&ocotp_mutex);
 
 	p = kzalloc(num_bytes, GFP_KERNEL);

@@ -21,8 +21,7 @@ echo "ksymdeps_$1 := \\"
 
 for s in $ksyms
 do
-	echo $s | sed -e 's:^_*:    $(wildcard include/ksym/:' \
-			-e 's:__*:/:g' -e 's/$/.h) \\/'
+	printf '    $(wildcard include/ksym/%s) \\\n' "$s"
 done
 
 echo

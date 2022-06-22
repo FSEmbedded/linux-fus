@@ -23,6 +23,10 @@
 		serial2 = &lpuart1;
 		spi0 = &fspi;
 		spi1 = &dspi2;
+		mmc0 = &esdhc1;
+		mmc1 = &esdhc;
+		rtc0 = &rtc;
+		rtc1 = &ftm_alarm0;
 	};
 
 	buttons0 {
@@ -58,6 +62,10 @@
 	chosen {
 		stdout-path = "serial0:115200n8";
 	};
+};
+
+&can0 {
+	status = "okay";
 };
 
 &dspi2 {
@@ -109,8 +117,6 @@
 	status = "okay";
 
 	flash@0 {
-		#address-cells = <1>;
-		#size-cells = <1>;
 		compatible = "jedec,spi-nor";
 		m25p,fast-read;
 		spi-max-frequency = <133000000>;
@@ -185,7 +191,7 @@
 &i2c0 {
 	status = "okay";
 
-	rtc@32 {
+	rtc: rtc@32 {
 		compatible = "microcrystal,rv8803";
 		reg = <0x32>;
 	};

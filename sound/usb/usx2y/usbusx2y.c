@@ -70,7 +70,7 @@
 
 2003-11-03 Karsten Wiese
 	Version 0.3:
-	24Bit support. 
+	24Bit support.
 	"arecord -D hw:1 -c 2 -r 48000 -M -f S24_3LE|aplay -D hw:1 -c 2 -r 48000 -M -f S24_3LE" works.
 
 2003-08-22 Karsten Wiese
@@ -94,16 +94,15 @@
 	This helped me much on my slowish PII 400 & PIII 500.
 	ACPI yet untested but might cause the same bad behaviour.
 	Use a kernel with lowlatency and preemptiv patches applied.
-	To autoload snd-usb-midi append a line 
+	To autoload snd-usb-midi append a line
 		post-install snd-usb-us428 modprobe snd-usb-midi
 	to /etc/modules.conf.
 
 	known problems:
 	sliders, knobs, lights not yet handled except MASTER Volume slider.
-       	"pcm -c 2" doesn't work. "pcm -c 2 -m direct_interleaved" does.
+	"pcm -c 2" doesn't work. "pcm -c 2 -m direct_interleaved" does.
 	KDE3: "Enable full duplex operation" deadlocks.
 
-	
 2002-08-31 Karsten Wiese
 	Version 0.0.3: audio also simplex;
 	simplifying: iso urbs only 1 packet, melted structs.
@@ -115,7 +114,7 @@
 	The firmware has been sniffed from win2k us-428 driver 3.09.
 
  *   Copyright (c) 2002 - 2004 Karsten Wiese
-*/
+ */
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -132,15 +131,12 @@
 #include "usbusx2y.h"
 #include "usX2Yhwdep.h"
 
-
-
 MODULE_AUTHOR("Karsten Wiese <annabellesgarden@yahoo.de>");
 MODULE_DESCRIPTION("TASCAM "NAME_ALLCAPS" Version 0.8.7.2");
 MODULE_LICENSE("GPL");
-MODULE_SUPPORTED_DEVICE("{{TASCAM(0x1604),"NAME_ALLCAPS"(0x8001)(0x8005)(0x8007)}}");
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX; /* Index 0-max */
-static char* id[SNDRV_CARDS] = SNDRV_DEFAULT_STR; /* Id for this card */
+static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR; /* Id for this card */
 static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP; /* Enable this card */
 
 module_param_array(index, int, NULL, 0444);
@@ -150,6 +146,7 @@ MODULE_PARM_DESC(id, "ID string for "NAME_ALLCAPS".");
 module_param_array(enable, bool, NULL, 0444);
 MODULE_PARM_DESC(enable, "Enable "NAME_ALLCAPS".");
 
+static int snd_usx2y_card_used[SNDRV_CARDS];
 
 static int snd_usx2y_card_used[SNDRV_CARDS];
 
@@ -192,7 +189,6 @@ static void i_usx2y_in04_int(struct urb *urb)
 			memcpy(usx2y->in04_last, usx2y->in04_buf, sizeof(usx2y->in04_last));
 			us428ctls->ctl_snapshot_last = -1;
 		} else {
-			int i;
 			for (i = 0; i < 21; i++) {
 				if (usx2y->in04_last[i] != ((char*)usx2y->in04_buf)[i]) {
 					if (diff < 0)
@@ -235,8 +231,10 @@ static void i_usx2y_in04_int(struct urb *urb)
 						us428ctls->p4out_sent = send;
 						break;
 					}
+				}
 			}
 		}
+	}
 
 	if (err)
 		snd_printk(KERN_ERR "in04_int() usb_submit_urb err=%i\n", err);
@@ -250,8 +248,10 @@ static void i_usx2y_in04_int(struct urb *urb)
  */
 int usx2y_async_seq04_init(struct usx2ydev *usx2y)
 {
-	int	err = 0,
-		i;
+	int	err = 0, i;
+
+	if (WARN_ON(usx2y->as04.buffer))
+		return -EBUSY;
 
 	usx2y->as04.buffer = kmalloc_array(URBS_ASYNC_SEQ,
 					   URB_DATA_LEN_ASYNC_SEQ, GFP_KERNEL);
@@ -272,6 +272,9 @@ int usx2y_async_seq04_init(struct usx2ydev *usx2y)
 			if (err < 0)
 				break;
 		}
+	}
+	if (err)
+		usx2y_unlinkseq(&usx2y->as04);
 	return err;
 }
 
@@ -309,27 +312,28 @@ static const struct usb_device_id snd_usx2y_usb_id_table[] = {
 	{
 		.match_flags =	USB_DEVICE_ID_MATCH_DEVICE,
 		.idVendor =	0x1604,
-		.idProduct =	USB_ID_US428 
+		.idProduct =	USB_ID_US428
 	},
 	{
 		.match_flags =	USB_DEVICE_ID_MATCH_DEVICE,
 		.idVendor =	0x1604,
-		.idProduct =	USB_ID_US122 
+		.idProduct =	USB_ID_US122
 	},
- 	{
+	{
 		.match_flags =	USB_DEVICE_ID_MATCH_DEVICE,
 		.idVendor =	0x1604,
 		.idProduct =	USB_ID_US224
 	},
 	{ /* terminator */ }
 };
+MODULE_DEVICE_TABLE(usb, snd_usx2y_usb_id_table);
 
 static int usx2y_create_card(struct usb_device *device,
 			     struct usb_interface *intf,
 			     struct snd_card **cardp)
 {
 	int		dev;
-	struct snd_card *	card;
+	struct snd_card *card;
 	int err;
 
 	for (dev = 0; dev < SNDRV_CARDS; ++dev)
@@ -350,7 +354,7 @@ static int usx2y_create_card(struct usb_device *device,
 	strcpy(card->driver, "USB "NAME_ALLCAPS"");
 	sprintf(card->shortname, "TASCAM "NAME_ALLCAPS"");
 	sprintf(card->longname, "%s (%x:%x if %d at %03d/%03d)",
-		card->shortname, 
+		card->shortname,
 		le16_to_cpu(device->descriptor.idVendor),
 		le16_to_cpu(device->descriptor.idProduct),
 		0,//us428(card)->usbmidi.ifnum,
@@ -366,15 +370,22 @@ static int usx2y_usb_probe(struct usb_device *device,
 			   const struct usb_device_id *device_id,
 			   struct snd_card **cardp)
 {
-	int		err;
-	struct snd_card *	card;
+	struct usx2ydev *usx2y = usx2y(card);
 
-	*cardp = NULL;
-	if (le16_to_cpu(device->descriptor.idVendor) != 0x1604 ||
-	    (le16_to_cpu(device->descriptor.idProduct) != USB_ID_US122 &&
-	     le16_to_cpu(device->descriptor.idProduct) != USB_ID_US224 &&
-	     le16_to_cpu(device->descriptor.idProduct) != USB_ID_US428))
-		return -EINVAL;
+	kfree(usx2y->in04_buf);
+	usb_free_urb(usx2y->in04_urb);
+	if (usx2y->us428ctls_sharedmem)
+		free_pages_exact(usx2y->us428ctls_sharedmem,
+				 US428_SHAREDMEM_PAGES);
+	if (usx2y->card_index >= 0 && usx2y->card_index < SNDRV_CARDS)
+		snd_usx2y_card_used[usx2y->card_index] = 0;
+}
+
+static void snd_usx2y_disconnect(struct usb_interface *intf)
+{
+	struct snd_card *card;
+	struct usx2ydev *usx2y;
+	struct list_head *p;
 
 	err = usx2y_create_card(device, intf, &card);
 	if (err < 0)
@@ -384,8 +395,9 @@ static int usx2y_usb_probe(struct usb_device *device,
 		snd_card_free(card);
 		return err;
 	}
-	*cardp = card;
-	return 0;
+	if (usx2y->us428ctls_sharedmem)
+		wake_up(&usx2y->us428ctls_wait_queue_head);
+	snd_card_free(card);
 }
 
 /*
@@ -393,15 +405,22 @@ static int usx2y_usb_probe(struct usb_device *device,
  */
 static int snd_usx2y_probe(struct usb_interface *intf, const struct usb_device_id *id)
 {
+	struct usb_device *device = interface_to_usbdev(intf);
 	struct snd_card *card;
 	int err;
 
 	err = usx2y_usb_probe(interface_to_usbdev(intf), intf, id, &card);
 	if (err < 0)
 		return err;
+	err = usx2y_hwdep_new(card, device);
+	if (err < 0)
+		goto error;
+	err = snd_card_register(card);
+	if (err < 0)
+		goto error;
+
 	dev_set_drvdata(&intf->dev, card);
 	return 0;
-}
 
 static void snd_usx2y_disconnect(struct usb_interface *intf)
 {

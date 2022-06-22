@@ -113,6 +113,7 @@ static const char * const sensor_clk_mux_p[] = { "hosc", "bisp_clk" };
 static const char * const sd_clk_mux_p[] = { "dev_clk", "nand_pll_clk" };
 static const char * const pwm_clk_mux_p[] = { "losc", "hosc" };
 static const char * const ahbprediv_clk_mux_p[] = { "dev_clk", "display_pll_clk", "nand_pll_clk", "ddr_pll_clk" };
+static const char * const nic_clk_mux_p[] = { "dev_clk", "display_pll_clk", "nand_pll_clk", "ddr_pll_clk" };
 static const char * const uart_clk_mux_p[] = { "hosc", "dev_pll_clk" };
 static const char * const de_clk_mux_p[] = { "display_pll_clk", "dev_clk" };
 static const char * const i2s_clk_mux_p[] = { "audio_pll_clk" };
@@ -317,6 +318,10 @@ static OWL_COMP_FIXED_FACTOR(i2c3_clk, "i2c3_clk", "ethernet_pll_clk",
 			OWL_GATE_HW(CMU_DEVCLKEN1, 31, 0),
 			1, 5, 0);
 
+static OWL_COMP_FIXED_FACTOR(ethernet_clk, "ethernet_clk", "ethernet_pll_clk",
+			OWL_GATE_HW(CMU_DEVCLKEN1, 22, 0),
+			1, 20, 0);
+
 static OWL_COMP_DIV(uart0_clk, "uart0_clk", uart_clk_mux_p,
 			OWL_MUX_HW(CMU_UART0CLK, 16, 1),
 			OWL_GATE_HW(CMU_DEVCLKEN1, 6, 0),
@@ -451,6 +456,8 @@ static struct owl_clk_common *s500_clks[] = {
 	&apb_clk.common,
 	&dmac_clk.common,
 	&gpio_clk.common,
+	&nic_clk.common,
+	&ethernet_clk.common,
 };
 
 static struct clk_hw_onecell_data s500_hw_clks = {
@@ -510,6 +517,8 @@ static struct clk_hw_onecell_data s500_hw_clks = {
 		[CLK_APB]		= &apb_clk.common.hw,
 		[CLK_DMAC]		= &dmac_clk.common.hw,
 		[CLK_GPIO]		= &gpio_clk.common.hw,
+		[CLK_NIC]		= &nic_clk.common.hw,
+		[CLK_ETHERNET]		= &ethernet_clk.common.hw,
 	},
 	.num = CLK_NR_CLKS,
 };

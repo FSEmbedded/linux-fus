@@ -79,6 +79,11 @@ struct spi_imx_devtype_data {
 	bool has_slavemode;
 	unsigned int fifo_size;
 	bool dynamic_burst;
+	/*
+	 * ERR009165 fixed or not:
+	 * https://www.nxp.com/docs/en/errata/IMX6DQCE.pdf
+	 */
+	bool tx_glitch_fixed;
 	enum spi_imx_devtype devtype;
 };
 
@@ -1143,12 +1148,8 @@ static void spi_imx_set_burst_len(struct spi_imx_data *spi_imx, int n_bits)
 
 static void spi_imx_push(struct spi_imx_data *spi_imx)
 {
-	unsigned int burst_len, fifo_words;
+	unsigned int burst_len;
 
-	if (spi_imx->dynamic_burst)
-		fifo_words = 4;
-	else
-		fifo_words = spi_imx_bytes_per_word(spi_imx->bits_per_word);
 	/*
 	 * Reload the FIFO when the remaining bytes to be transferred in the
 	 * current burst is 0. This only applies when bits_per_word is a
@@ -1167,7 +1168,7 @@ static void spi_imx_push(struct spi_imx_data *spi_imx)
 
 			spi_imx->remainder = burst_len;
 		} else {
-			spi_imx->remainder = fifo_words;
+			spi_imx->remainder = spi_imx_bytes_per_word(spi_imx->bits_per_word);
 		}
 	}
 
@@ -1175,8 +1176,7 @@ static void spi_imx_push(struct spi_imx_data *spi_imx)
 		if (!spi_imx->count)
 			break;
 		if (spi_imx->dynamic_burst &&
-		    spi_imx->txfifo >= DIV_ROUND_UP(spi_imx->remainder,
-						     fifo_words))
+		    spi_imx->txfifo >= DIV_ROUND_UP(spi_imx->remainder, 4))
 			break;
 		spi_imx->tx(spi_imx);
 		spi_imx->txfifo++;
@@ -1290,6 +1290,7 @@ static int spi_imx_setupxfer(struct spi_device *spi,
 	 * dynamic_burst in that case.
 	 */
 	if (spi_imx->devtype_data->dynamic_burst && !spi_imx->slave_mode &&
+	    !(spi->mode & SPI_CS_WORD) &&
 	    (spi_imx->bits_per_word == 8 ||
 	    spi_imx->bits_per_word == 16 ||
 	    spi_imx->bits_per_word == 32)) {
@@ -1660,14 +1661,12 @@ static int spi_imx_slave_abort(struct spi_master *master)
 static int spi_imx_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
-	const struct of_device_id *of_id =
-			of_match_device(spi_imx_dt_ids, &pdev->dev);
 	struct spi_master *master;
 	struct spi_imx_data *spi_imx;
 	struct resource *res;
 	int ret, irq, spi_drctl;
-	const struct spi_imx_devtype_data *devtype_data = of_id ? of_id->data :
-		(struct spi_imx_devtype_data *)pdev->id_entry->driver_data;
+	const struct spi_imx_devtype_data *devtype_data =
+			of_device_get_match_data(&pdev->dev);
 	bool slave_mode;
 	u32 val;
 
@@ -1725,6 +1724,15 @@ static int spi_imx_probe(struct platform_device *pdev)
 	if (is_imx35_cspi(spi_imx) || is_imx51_ecspi(spi_imx) ||
 	    is_imx53_ecspi(spi_imx))
 		spi_imx->bitbang.master->mode_bits |= SPI_LOOP | SPI_READY;
+
+	if (is_imx51_ecspi(spi_imx) &&
+	    device_property_read_u32(&pdev->dev, "cs-gpios", NULL))
+		/*
+		 * When using HW-CS implementing SPI_CS_WORD can be done by just
+		 * setting the burst length to the word size. This is
+		 * considerably faster than manually controlling the CS.
+		 */
+		spi_imx->bitbang.master->mode_bits |= SPI_CS_WORD;
 
 	spi_imx->spi_drctl = spi_drctl;
 
@@ -1910,13 +1918,12 @@ static struct platform_driver spi_imx_driver = {
 		   .of_match_table = spi_imx_dt_ids,
 		   .pm = &imx_spi_pm,
 	},
-	.id_table = spi_imx_devtype,
 	.probe = spi_imx_probe,
 	.remove = spi_imx_remove,
 };
 module_platform_driver(spi_imx_driver);
 
-MODULE_DESCRIPTION("SPI Controller driver");
+MODULE_DESCRIPTION("i.MX SPI Controller driver");
 MODULE_AUTHOR("Sascha Hauer, Pengutronix");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:" DRIVER_NAME);

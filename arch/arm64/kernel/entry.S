@@ -29,38 +29,13 @@
 #include <asm/asm-uaccess.h>
 #include <asm/unistd.h>
 
-/*
- * Context tracking and irqflag tracing need to instrument transitions between
- * user and kernel mode.
- */
-	.macro user_exit_irqoff
-#if defined(CONFIG_CONTEXT_TRACKING) || defined(CONFIG_TRACE_IRQFLAGS)
-	bl	enter_from_user_mode
-#endif
-	.endm
-
-	.macro user_enter_irqoff
-#if defined(CONFIG_CONTEXT_TRACKING) || defined(CONFIG_TRACE_IRQFLAGS)
-	bl	exit_to_user_mode
-#endif
-	.endm
-
 	.macro	clear_gp_regs
 	.irp	n,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
 	mov	x\n, xzr
 	.endr
 	.endm
 
-/*
- * Bad Abort numbers
- *-----------------
- */
-#define BAD_SYNC	0
-#define BAD_IRQ		1
-#define BAD_FIQ		2
-#define BAD_ERROR	3
-
-	.macro kernel_ventry, el, label, regsize = 64
+	.macro kernel_ventry, el:req, ht:req, regsize:req, label:req
 	.align 7
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
 	.if	\el == 0
@@ -75,7 +50,7 @@ alternative_else_nop_endif
 	.endif
 #endif
 
-	sub	sp, sp, #S_FRAME_SIZE
+	sub	sp, sp, #PT_REGS_SIZE
 #ifdef CONFIG_VMAP_STACK
 	/*
 	 * Test whether the SP has overflowed, without corrupting a GPR.
@@ -87,7 +62,7 @@ alternative_else_nop_endif
 	tbnz	x0, #THREAD_SHIFT, 0f
 	sub	x0, sp, x0			// x0'' = sp' - x0' = (sp + x0) - sp = x0
 	sub	sp, sp, x0			// sp'' = sp' - x0 = (sp + x0) - x0 = sp
-	b	el\()\el\()_\label
+	b	el\el\ht\()_\regsize\()_\label
 
 0:
 	/*
@@ -96,7 +71,7 @@ alternative_else_nop_endif
 	 * userspace, and can clobber EL0 registers to free up GPRs.
 	 */
 
-	/* Stash the original SP (minus S_FRAME_SIZE) in tpidr_el0. */
+	/* Stash the original SP (minus PT_REGS_SIZE) in tpidr_el0. */
 	msr	tpidr_el0, x0
 
 	/* Recover the original x0 value and stash it in tpidrro_el0 */
@@ -119,7 +94,7 @@ alternative_else_nop_endif
 	sub	sp, sp, x0
 	mrs	x0, tpidrro_el0
 #endif
-	b	el\()\el\()_\label
+	b	el\el\ht\()_\regsize\()_\label
 	.endm
 
 	.macro tramp_alias, dst, sym
@@ -154,6 +129,12 @@ alternative_cb_end
 alternative_if_not ARM64_MTE
 	b	1f
 alternative_else_nop_endif
+	/*
+	 * Asynchronous tag check faults are only possible in ASYNC (2) or
+	 * ASYM (3) modes. In each of these modes bit 1 of SCTLR_EL1.TCF0 is
+	 * set, so skip the check if it is unset.
+	 */
+	tbz	\thread_sctlr, #(SCTLR_EL1_TCF0_SHIFT + 1), 1f
 	mrs_s	\tmp, SYS_TFSRE0_EL1
 	tbz	\tmp, #SYS_TFSR_EL1_TF0_SHIFT, 1f
 	/* Asynchronous TCF occurred for TTBR0 access, set the TI flag */
@@ -166,12 +147,46 @@ alternative_else_nop_endif
 	.endm
 
 	/* Clear the MTE asynchronous tag check faults */
-	.macro clear_mte_async_tcf
+	.macro clear_mte_async_tcf thread_sctlr
 #ifdef CONFIG_ARM64_MTE
 alternative_if ARM64_MTE
+	/* See comment in check_mte_async_tcf above. */
+	tbz	\thread_sctlr, #(SCTLR_EL1_TCF0_SHIFT + 1), 1f
 	dsb	ish
 	msr_s	SYS_TFSRE0_EL1, xzr
+1:
 alternative_else_nop_endif
+#endif
+	.endm
+
+	.macro mte_set_gcr, mte_ctrl, tmp
+#ifdef CONFIG_ARM64_MTE
+	ubfx	\tmp, \mte_ctrl, #MTE_CTRL_GCR_USER_EXCL_SHIFT, #16
+	orr	\tmp, \tmp, #SYS_GCR_EL1_RRND
+	msr_s	SYS_GCR_EL1, \tmp
+#endif
+	.endm
+
+	.macro mte_set_kernel_gcr, tmp, tmp2
+#ifdef CONFIG_KASAN_HW_TAGS
+alternative_if_not ARM64_MTE
+	b	1f
+alternative_else_nop_endif
+	mov	\tmp, KERNEL_GCR_EL1
+	msr_s	SYS_GCR_EL1, \tmp
+1:
+#endif
+	.endm
+
+	.macro mte_set_user_gcr, tsk, tmp, tmp2
+#ifdef CONFIG_ARM64_MTE
+alternative_if_not ARM64_MTE
+	b	1f
+alternative_else_nop_endif
+	ldr	\tmp, [\tsk, #THREAD_MTE_CTRL]
+
+	mte_set_gcr \tmp, \tmp2
+1:
 #endif
 	.endm
 
@@ -212,27 +227,34 @@ alternative_else_nop_endif
 	check_mte_async_tcf x22, x23
 	apply_ssbd 1, x22, x23
 
-	ptrauth_keys_install_kernel tsk, x20, x22, x23
+	mte_set_kernel_gcr x22, x23
 
-	scs_load tsk, x20
+	/*
+	 * Any non-self-synchronizing system register updates required for
+	 * kernel entry should be placed before this point.
+	 */
+alternative_if ARM64_MTE
+	isb
+	b	1f
+alternative_else_nop_endif
+alternative_if ARM64_HAS_ADDRESS_AUTH
+	isb
+alternative_else_nop_endif
+1:
+
+	scs_load tsk
 	.else
-	add	x21, sp, #S_FRAME_SIZE
+	add	x21, sp, #PT_REGS_SIZE
 	get_current_task tsk
-	/* Save the task's original addr_limit and set USER_DS */
-	ldr	x20, [tsk, #TSK_TI_ADDR_LIMIT]
-	str	x20, [sp, #S_ORIG_ADDR_LIMIT]
-	mov	x20, #USER_DS
-	str	x20, [tsk, #TSK_TI_ADDR_LIMIT]
-	/* No need to reset PSTATE.UAO, hardware's already set it to 0 for us */
 	.endif /* \el == 0 */
 	mrs	x22, elr_el1
 	mrs	x23, spsr_el1
 	stp	lr, x21, [sp, #S_LR]
 
 	/*
-	 * In order to be able to dump the contents of struct pt_regs at the
-	 * time the exception was taken (in case we attempt to walk the call
-	 * stack later), chain it together with the stack frames.
+	 * For exceptions from EL0, create a final frame record.
+	 * For exceptions from EL1, create a synthetic frame record so the
+	 * interrupted code shows up in the backtrace.
 	 */
 	.if \el == 0
 	stp	xzr, xzr, [sp, #S_STACKFRAME]
@@ -283,12 +305,6 @@ alternative_else_nop_endif
 	.macro	kernel_exit, el
 	.if	\el != 0
 	disable_daif
-
-	/* Restore the task's original addr_limit. */
-	ldr	x20, [sp, #S_ORIG_ADDR_LIMIT]
-	str	x20, [tsk, #TSK_TI_ADDR_LIMIT]
-
-	/* No need to restore UAO, it will be restored from SPSR_EL1 */
 	.endif
 
 	/* Restore pmr */
@@ -326,10 +342,33 @@ alternative_if ARM64_WORKAROUND_845719
 alternative_else_nop_endif
 #endif
 3:
-	scs_save tsk, x0
+	scs_save tsk
 
-	/* No kernel C function calls after this as user keys are set. */
-	ptrauth_keys_install_user tsk, x0, x1, x2
+	/* Ignore asynchronous tag check faults in the uaccess routines */
+	ldr	x0, [tsk, THREAD_SCTLR_USER]
+	clear_mte_async_tcf x0
+
+#ifdef CONFIG_ARM64_PTR_AUTH
+alternative_if ARM64_HAS_ADDRESS_AUTH
+	/*
+	 * IA was enabled for in-kernel PAC. Disable it now if needed, or
+	 * alternatively install the user's IA. All other per-task keys and
+	 * SCTLR bits were updated on task switch.
+	 *
+	 * No kernel C function calls after this.
+	 */
+	tbz	x0, SCTLR_ELx_ENIA_SHIFT, 1f
+	__ptrauth_keys_install_user tsk, x0, x1, x2
+	b	2f
+1:
+	mrs	x0, sctlr_el1
+	bic	x0, x0, SCTLR_ELx_ENIA
+	msr	sctlr_el1, x0
+2:
+alternative_else_nop_endif
+#endif
+
+	mte_set_user_gcr tsk, x0, x1
 
 	apply_ssbd 0, x0, x1
 	.endif
@@ -352,7 +391,7 @@ alternative_else_nop_endif
 	ldp	x26, x27, [sp, #16 * 13]
 	ldp	x28, x29, [sp, #16 * 14]
 	ldr	lr, [sp, #S_LR]
-	add	sp, sp, #S_FRAME_SIZE		// restore sp
+	add	sp, sp, #PT_REGS_SIZE		// restore sp
 
 	.if	\el == 0
 alternative_insn eret, nop, ARM64_UNMAP_KERNEL_AT_EL0
@@ -416,49 +455,6 @@ SYM_CODE_START_LOCAL(__swpan_exit_el0)
 	b	post_ttbr_update_workaround
 SYM_CODE_END(__swpan_exit_el0)
 #endif
-
-	.macro	irq_stack_entry
-	mov	x19, sp			// preserve the original sp
-#ifdef CONFIG_SHADOW_CALL_STACK
-	mov	x24, scs_sp		// preserve the original shadow stack
-#endif
-
-	/*
-	 * Compare sp with the base of the task stack.
-	 * If the top ~(THREAD_SIZE - 1) bits match, we are on a task stack,
-	 * and should switch to the irq stack.
-	 */
-	ldr	x25, [tsk, TSK_STACK]
-	eor	x25, x25, x19
-	and	x25, x25, #~(THREAD_SIZE - 1)
-	cbnz	x25, 9998f
-
-	ldr_this_cpu x25, irq_stack_ptr, x26
-	mov	x26, #IRQ_STACK_SIZE
-	add	x26, x25, x26
-
-	/* switch to the irq stack */
-	mov	sp, x26
-
-#ifdef CONFIG_SHADOW_CALL_STACK
-	/* also switch to the irq shadow stack */
-	adr_this_cpu scs_sp, irq_shadow_call_stack, x26
-#endif
-
-9998:
-	.endm
-
-	/*
-	 * The callee-saved regs (x19-x29) should be preserved between
-	 * irq_stack_entry and irq_stack_exit, but note that kernel_entry
-	 * uses x20-x23 to store data for later use.
-	 */
-	.macro	irq_stack_exit
-	mov	sp, x19
-#ifdef CONFIG_SHADOW_CALL_STACK
-	mov	scs_sp, x24
-#endif
-	.endm
 
 /* GPRs used by entry code */
 tsk	.req	x28		// current thread_info
@@ -543,52 +539,46 @@ alternative_else_nop_endif
 
 	.align	11
 SYM_CODE_START(vectors)
-	kernel_ventry	1, sync_invalid			// Synchronous EL1t
-	kernel_ventry	1, irq_invalid			// IRQ EL1t
-	kernel_ventry	1, fiq_invalid			// FIQ EL1t
-	kernel_ventry	1, error_invalid		// Error EL1t
+	kernel_ventry	1, t, 64, sync		// Synchronous EL1t
+	kernel_ventry	1, t, 64, irq		// IRQ EL1t
+	kernel_ventry	1, t, 64, fiq		// FIQ EL1h
+	kernel_ventry	1, t, 64, error		// Error EL1t
 
-	kernel_ventry	1, sync				// Synchronous EL1h
-	kernel_ventry	1, irq				// IRQ EL1h
-	kernel_ventry	1, fiq_invalid			// FIQ EL1h
-	kernel_ventry	1, error			// Error EL1h
+	kernel_ventry	1, h, 64, sync		// Synchronous EL1h
+	kernel_ventry	1, h, 64, irq		// IRQ EL1h
+	kernel_ventry	1, h, 64, fiq		// FIQ EL1h
+	kernel_ventry	1, h, 64, error		// Error EL1h
 
-	kernel_ventry	0, sync				// Synchronous 64-bit EL0
-	kernel_ventry	0, irq				// IRQ 64-bit EL0
-	kernel_ventry	0, fiq_invalid			// FIQ 64-bit EL0
-	kernel_ventry	0, error			// Error 64-bit EL0
+	kernel_ventry	0, t, 64, sync		// Synchronous 64-bit EL0
+	kernel_ventry	0, t, 64, irq		// IRQ 64-bit EL0
+	kernel_ventry	0, t, 64, fiq		// FIQ 64-bit EL0
+	kernel_ventry	0, t, 64, error		// Error 64-bit EL0
 
-#ifdef CONFIG_COMPAT
-	kernel_ventry	0, sync_compat, 32		// Synchronous 32-bit EL0
-	kernel_ventry	0, irq_compat, 32		// IRQ 32-bit EL0
-	kernel_ventry	0, fiq_invalid_compat, 32	// FIQ 32-bit EL0
-	kernel_ventry	0, error_compat, 32		// Error 32-bit EL0
-#else
-	kernel_ventry	0, sync_invalid, 32		// Synchronous 32-bit EL0
-	kernel_ventry	0, irq_invalid, 32		// IRQ 32-bit EL0
-	kernel_ventry	0, fiq_invalid, 32		// FIQ 32-bit EL0
-	kernel_ventry	0, error_invalid, 32		// Error 32-bit EL0
-#endif
+	kernel_ventry	0, t, 32, sync		// Synchronous 32-bit EL0
+	kernel_ventry	0, t, 32, irq		// IRQ 32-bit EL0
+	kernel_ventry	0, t, 32, fiq		// FIQ 32-bit EL0
+	kernel_ventry	0, t, 32, error		// Error 32-bit EL0
 SYM_CODE_END(vectors)
 
 #ifdef CONFIG_VMAP_STACK
+SYM_CODE_START_LOCAL(__bad_stack)
 	/*
 	 * We detected an overflow in kernel_ventry, which switched to the
 	 * overflow stack. Stash the exception regs, and head to our overflow
 	 * handler.
 	 */
-__bad_stack:
+
 	/* Restore the original x0 value */
 	mrs	x0, tpidrro_el0
 
 	/*
 	 * Store the original GPRs to the new stack. The orginal SP (minus
-	 * S_FRAME_SIZE) was stashed in tpidr_el0 by kernel_ventry.
+	 * PT_REGS_SIZE) was stashed in tpidr_el0 by kernel_ventry.
 	 */
-	sub	sp, sp, #S_FRAME_SIZE
+	sub	sp, sp, #PT_REGS_SIZE
 	kernel_entry 1
 	mrs	x0, tpidr_el0
-	add	x0, x0, #S_FRAME_SIZE
+	add	x0, x0, #PT_REGS_SIZE
 	str	x0, [sp, #S_SP]
 
 	/* Stash the regs for handle_bad_stack */
@@ -597,60 +587,25 @@ __bad_stack:
 	/* Time to die */
 	bl	handle_bad_stack
 	ASM_BUG()
+SYM_CODE_END(__bad_stack)
 #endif /* CONFIG_VMAP_STACK */
 
-/*
- * Invalid mode handlers
- */
-	.macro	inv_entry, el, reason, regsize = 64
+
+	.macro entry_handler el:req, ht:req, regsize:req, label:req
+SYM_CODE_START_LOCAL(el\el\ht\()_\regsize\()_\label)
 	kernel_entry \el, \regsize
 	mov	x0, sp
-	mov	x1, #\reason
-	mrs	x2, esr_el1
-	bl	bad_mode
-	ASM_BUG()
+	bl	el\el\ht\()_\regsize\()_\label\()_handler
+	.if \el == 0
+	b	ret_to_user
+	.else
+	b	ret_to_kernel
+	.endif
+SYM_CODE_END(el\el\ht\()_\regsize\()_\label)
 	.endm
 
-SYM_CODE_START_LOCAL(el0_sync_invalid)
-	inv_entry 0, BAD_SYNC
-SYM_CODE_END(el0_sync_invalid)
-
-SYM_CODE_START_LOCAL(el0_irq_invalid)
-	inv_entry 0, BAD_IRQ
-SYM_CODE_END(el0_irq_invalid)
-
-SYM_CODE_START_LOCAL(el0_fiq_invalid)
-	inv_entry 0, BAD_FIQ
-SYM_CODE_END(el0_fiq_invalid)
-
-SYM_CODE_START_LOCAL(el0_error_invalid)
-	inv_entry 0, BAD_ERROR
-SYM_CODE_END(el0_error_invalid)
-
-#ifdef CONFIG_COMPAT
-SYM_CODE_START_LOCAL(el0_fiq_invalid_compat)
-	inv_entry 0, BAD_FIQ, 32
-SYM_CODE_END(el0_fiq_invalid_compat)
-#endif
-
-SYM_CODE_START_LOCAL(el1_sync_invalid)
-	inv_entry 1, BAD_SYNC
-SYM_CODE_END(el1_sync_invalid)
-
-SYM_CODE_START_LOCAL(el1_irq_invalid)
-	inv_entry 1, BAD_IRQ
-SYM_CODE_END(el1_irq_invalid)
-
-SYM_CODE_START_LOCAL(el1_fiq_invalid)
-	inv_entry 1, BAD_FIQ
-SYM_CODE_END(el1_fiq_invalid)
-
-SYM_CODE_START_LOCAL(el1_error_invalid)
-	inv_entry 1, BAD_ERROR
-SYM_CODE_END(el1_error_invalid)
-
 /*
- * EL1 mode handlers.
+ * Early exception handlers
  */
 	.align	6
 SYM_CODE_START_LOCAL_NOALIGN(el1_sync)
@@ -665,7 +620,7 @@ SYM_CODE_START_LOCAL_NOALIGN(el1_irq)
 	kernel_entry 1
 	el1_interrupt_handler handle_arch_irq
 	kernel_exit 1
-SYM_CODE_END(el1_irq)
+SYM_CODE_END(ret_to_kernel)
 
 /*
  * EL0 mode handlers.
@@ -733,33 +688,12 @@ SYM_CODE_END(el0_error)
  * "slow" syscall return path.
  */
 SYM_CODE_START_LOCAL(ret_to_user)
-	disable_daif
-	gic_prio_kentry_setup tmp=x3
-#ifdef CONFIG_TRACE_IRQFLAGS
-	bl	trace_hardirqs_off
-#endif
-	ldr	x19, [tsk, #TSK_TI_FLAGS]
-	and	x2, x19, #_TIF_WORK_MASK
-	cbnz	x2, work_pending
-finish_ret_to_user:
-	user_enter_irqoff
-	/* Ignore asynchronous tag check faults in the uaccess routines */
-	clear_mte_async_tcf
+	ldr	x19, [tsk, #TSK_TI_FLAGS]	// re-check for single-step
 	enable_step_tsk x19, x2
 #ifdef CONFIG_GCC_PLUGIN_STACKLEAK
 	bl	stackleak_erase
 #endif
 	kernel_exit 0
-
-/*
- * Ok, we need to do extra processing, enter the slow path.
- */
-work_pending:
-	mov	x0, sp				// 'regs'
-	mov	x1, x19
-	bl	do_notify_resume
-	ldr	x19, [tsk, #TSK_TI_FLAGS]	// re-check for single-step
-	b	finish_ret_to_user
 SYM_CODE_END(ret_to_user)
 
 	.popsection				// .entry.text
@@ -910,8 +844,8 @@ SYM_FUNC_START(cpu_switch_to)
 	mov	sp, x9
 	msr	sp_el0, x1
 	ptrauth_keys_install_kernel x1, x8, x9, x10
-	scs_save x0, x8
-	scs_load x1, x8
+	scs_save x0
+	scs_load x1
 	ret
 SYM_FUNC_END(cpu_switch_to)
 NOKPROBE(cpu_switch_to)
@@ -925,9 +859,47 @@ SYM_CODE_START(ret_from_fork)
 	mov	x0, x20
 	blr	x19
 1:	get_current_task tsk
+	mov	x0, sp
+	bl	asm_exit_to_user_mode
 	b	ret_to_user
 SYM_CODE_END(ret_from_fork)
 NOKPROBE(ret_from_fork)
+
+/*
+ * void call_on_irq_stack(struct pt_regs *regs,
+ * 		          void (*func)(struct pt_regs *));
+ *
+ * Calls func(regs) using this CPU's irq stack and shadow irq stack.
+ */
+SYM_FUNC_START(call_on_irq_stack)
+#ifdef CONFIG_SHADOW_CALL_STACK
+	stp	scs_sp, xzr, [sp, #-16]!
+	ldr_this_cpu scs_sp, irq_shadow_call_stack_ptr, x17
+#endif
+	/* Create a frame record to save our LR and SP (implicit in FP) */
+	stp	x29, x30, [sp, #-16]!
+	mov	x29, sp
+
+	ldr_this_cpu x16, irq_stack_ptr, x17
+	mov	x15, #IRQ_STACK_SIZE
+	add	x16, x16, x15
+
+	/* Move to the new stack and call the function there */
+	mov	sp, x16
+	blr	x1
+
+	/*
+	 * Restore the SP from the FP, and restore the FP and LR from the frame
+	 * record.
+	 */
+	mov	sp, x29
+	ldp	x29, x30, [sp], #16
+#ifdef CONFIG_SHADOW_CALL_STACK
+	ldp	scs_sp, xzr, [sp], #16
+#endif
+	ret
+SYM_FUNC_END(call_on_irq_stack)
+NOKPROBE(call_on_irq_stack)
 
 #ifdef CONFIG_ARM_SDE_INTERFACE
 
@@ -964,10 +936,9 @@ SYM_CODE_START(__sdei_asm_entry_trampoline)
 	mov	x4, xzr
 
 	/*
-	 * Use reg->interrupted_regs.addr_limit to remember whether to unmap
-	 * the kernel on exit.
+	 * Remember whether to unmap the kernel on exit.
 	 */
-1:	str	x4, [x1, #(SDEI_EVENT_INTREGS + S_ORIG_ADDR_LIMIT)]
+1:	str	x4, [x1, #(SDEI_EVENT_INTREGS + S_SDEI_TTBR1)]
 
 #ifdef CONFIG_RANDOMIZE_BASE
 	adr	x4, tramp_vectors + PAGE_SIZE
@@ -988,7 +959,7 @@ NOKPROBE(__sdei_asm_entry_trampoline)
  * x4: struct sdei_registered_event argument from registration time.
  */
 SYM_CODE_START(__sdei_asm_exit_trampoline)
-	ldr	x4, [x4, #(SDEI_EVENT_INTREGS + S_ORIG_ADDR_LIMIT)]
+	ldr	x4, [x4, #(SDEI_EVENT_INTREGS + S_SDEI_TTBR1)]
 	cbnz	x4, 1f
 
 	tramp_unmap_kernel	tmp=x4
@@ -1062,9 +1033,9 @@ SYM_CODE_START(__sdei_asm_handler)
 #ifdef CONFIG_SHADOW_CALL_STACK
 	/* Use a separate shadow call stack for normal and critical events */
 	cbnz	w4, 3f
-	adr_this_cpu dst=scs_sp, sym=sdei_shadow_call_stack_normal, tmp=x6
+	ldr_this_cpu dst=scs_sp, sym=sdei_shadow_call_stack_normal_ptr, tmp=x6
 	b	4f
-3:	adr_this_cpu dst=scs_sp, sym=sdei_shadow_call_stack_critical, tmp=x6
+3:	ldr_this_cpu dst=scs_sp, sym=sdei_shadow_call_stack_critical_ptr, tmp=x6
 4:
 #endif
 

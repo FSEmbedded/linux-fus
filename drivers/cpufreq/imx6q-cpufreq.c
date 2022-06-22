@@ -250,7 +250,6 @@ static int imx6q_cpufreq_init(struct cpufreq_policy *policy)
 	policy->cur = clk_get_rate(policy->clk) / 1000;
 	cpufreq_generic_init(policy, freq_table, transition_latency);
 	policy->suspend_freq = max_freq;
-	dev_pm_opp_of_register_em(cpu_dev, policy->cpus);
 
 	if (low_power_run_support && policy->cur > freq_table[0].frequency) {
 		request_bus_freq(BUS_FREQ_HIGH);
@@ -268,6 +267,7 @@ static struct cpufreq_driver imx6q_cpufreq_driver = {
 	.target_index = imx6q_set_target,
 	.get = cpufreq_generic_get,
 	.init = imx6q_cpufreq_init,
+	.register_em = cpufreq_register_em_with_opp,
 	.name = "imx6q-cpufreq",
 	.attr = cpufreq_generic_attr,
 	.suspend = cpufreq_generic_suspend,

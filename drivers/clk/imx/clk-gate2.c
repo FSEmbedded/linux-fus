@@ -32,6 +32,7 @@ struct clk_gate2 {
 	void __iomem	*reg;
 	u8		bit_idx;
 	u8		cgr_val;
+	u8		cgr_mask;
 	u8		flags;
 	spinlock_t	*lock;
 	unsigned int	*share_count;
@@ -88,7 +89,6 @@ static int clk_gate2_enable(struct clk_hw *hw)
 {
 	struct clk_gate2 *gate = to_clk_gate2(hw);
 	unsigned long flags;
-	int ret = 0;
 
 	spin_lock_irqsave(gate->lock, flags);
 
@@ -99,7 +99,7 @@ static int clk_gate2_enable(struct clk_hw *hw)
 out:
 	spin_unlock_irqrestore(gate->lock, flags);
 
-	return ret;
+	return 0;
 }
 
 static void clk_gate2_disable(struct clk_hw *hw)
@@ -168,7 +168,7 @@ static const struct clk_ops clk_gate2_ops = {
 
 struct clk_hw *clk_hw_register_gate2(struct device *dev, const char *name,
 		const char *parent_name, unsigned long flags,
-		void __iomem *reg, u8 bit_idx, u8 cgr_val,
+		void __iomem *reg, u8 bit_idx, u8 cgr_val, u8 cgr_mask,
 		u8 clk_gate2_flags, spinlock_t *lock,
 		unsigned int *share_count)
 {
@@ -185,6 +185,7 @@ struct clk_hw *clk_hw_register_gate2(struct device *dev, const char *name,
 	gate->reg = reg;
 	gate->bit_idx = bit_idx;
 	gate->cgr_val = cgr_val;
+	gate->cgr_mask = cgr_mask;
 	gate->flags = clk_gate2_flags;
 	gate->lock = lock;
 	gate->share_count = share_count;

@@ -981,6 +981,8 @@ add_control(struct hda_gen_spec *spec, int type, const char *name,
 	knew->index = cidx;
 	if (get_amp_nid_(val))
 		knew->subdevice = HDA_SUBDEV_AMP_FLAG;
+	if (knew->access == 0)
+		knew->access = SNDRV_CTL_ELEM_ACCESS_READWRITE;
 	knew->private_value = val;
 	return knew;
 }
@@ -1431,7 +1433,7 @@ static int try_assign_dacs(struct hda_codec *codec, int num_outs,
 			path = snd_hda_add_new_path(codec, dac, pin, 0);
 		}
 		if (!path) {
-			dac = dacs[i] = 0;
+			dacs[i] = 0;
 			badness += bad->no_dac;
 		} else {
 			/* print_nid_path(codec, "output", path); */
@@ -3522,6 +3524,7 @@ static int cap_sw_put(struct snd_kcontrol *kcontrol,
 static const struct snd_kcontrol_new cap_sw_temp = {
 	.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 	.name = "Capture Switch",
+	.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
 	.info = cap_sw_info,
 	.get = cap_sw_get,
 	.put = cap_sw_put,
@@ -3628,8 +3631,11 @@ static int add_single_cap_ctl(struct hda_codec *codec, const char *label,
 			   amp_val_replace_channels(ctl, chs));
 	if (!knew)
 		return -ENOMEM;
-	if (is_switch)
+	if (is_switch) {
 		knew->put = cap_single_sw_put;
+		if (spec->mic_mute_led)
+			knew->access |= SNDRV_CTL_ELEM_ACCESS_MIC_LED;
+	}
 	if (!inv_dmic)
 		return 0;
 
@@ -3644,8 +3650,11 @@ static int add_single_cap_ctl(struct hda_codec *codec, const char *label,
 			   amp_val_replace_channels(ctl, 2));
 	if (!knew)
 		return -ENOMEM;
-	if (is_switch)
+	if (is_switch) {
 		knew->put = cap_single_sw_put;
+		if (spec->mic_mute_led)
+			knew->access |= SNDRV_CTL_ELEM_ACCESS_MIC_LED;
+	}
 	return 0;
 }
 
@@ -3686,6 +3695,8 @@ static int create_bind_cap_vol_ctl(struct hda_codec *codec, int idx,
 		knew->index = idx;
 		knew->private_value = sw_ctl;
 		knew->subdevice = HDA_SUBDEV_AMP_FLAG;
+		if (spec->mic_mute_led)
+			knew->access |= SNDRV_CTL_ELEM_ACCESS_MIC_LED;
 	}
 	return 0;
 }
@@ -3927,13 +3938,8 @@ static int create_mute_led_cdev(struct hda_codec *codec,
 	return devm_led_classdev_register(&codec->core.dev, cdev);
 }
 
-static void vmaster_update_mute_led(void *private_data, int enabled)
-{
-	ledtrig_audio_set(LED_AUDIO_MUTE, enabled ? LED_OFF : LED_ON);
-}
-
 /**
- * snd_dha_gen_add_mute_led_cdev - Create a LED classdev and enable as vmaster mute LED
+ * snd_hda_gen_add_mute_led_cdev - Create a LED classdev and enable as vmaster mute LED
  * @codec: the HDA codec
  * @callback: the callback for LED classdev brightness_set_blocking
  */
@@ -3955,8 +3961,7 @@ int snd_hda_gen_add_mute_led_cdev(struct hda_codec *codec,
 	if (spec->vmaster_mute.hook)
 		codec_err(codec, "vmaster hook already present before cdev!\n");
 
-	spec->vmaster_mute.hook = vmaster_update_mute_led;
-	spec->vmaster_mute_enum = 1;
+	spec->vmaster_mute_led = 1;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_hda_gen_add_mute_led_cdev);
@@ -4084,7 +4089,7 @@ static int add_micmute_led_hook(struct hda_codec *codec)
 }
 
 /**
- * snd_dha_gen_add_micmute_led_cdev - Create a LED classdev and enable as mic-mute LED
+ * snd_hda_gen_add_micmute_led_cdev - Create a LED classdev and enable as mic-mute LED
  * @codec: the HDA codec
  * @callback: the callback for LED classdev brightness_set_blocking
  *
@@ -4101,6 +4106,7 @@ int snd_hda_gen_add_micmute_led_cdev(struct hda_codec *codec,
 				     int (*callback)(struct led_classdev *,
 						     enum led_brightness))
 {
+	struct hda_gen_spec *spec = codec->spec;
 	int err;
 
 	if (callback) {
@@ -4111,7 +4117,8 @@ int snd_hda_gen_add_micmute_led_cdev(struct hda_codec *codec,
 		}
 	}
 
-	return add_micmute_led_hook(codec);
+	spec->mic_mute_led = 1;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_hda_gen_add_micmute_led_cdev);
 #endif /* CONFIG_SND_HDA_GENERIC_LEDS */
@@ -5070,6 +5077,9 @@ int snd_hda_gen_parse_auto_config(struct hda_codec *codec,
 
 	parse_user_hints(codec);
 
+	if (spec->vmaster_mute_led || spec->mic_mute_led)
+		snd_ctl_led_request();
+
 	if (spec->mixer_nid && !spec->mixer_merge_nid)
 		spec->mixer_merge_nid = spec->mixer_nid;
 
@@ -5301,7 +5311,7 @@ int snd_hda_gen_build_controls(struct hda_codec *codec)
 	    !snd_hda_find_mixer_ctl(codec, "Master Playback Volume")) {
 		err = snd_hda_add_vmaster(codec, "Master Playback Volume",
 					  spec->vmaster_tlv, follower_pfxs,
-					  "Playback Volume");
+					  "Playback Volume", 0);
 		if (err < 0)
 			return err;
 	}
@@ -5309,13 +5319,14 @@ int snd_hda_gen_build_controls(struct hda_codec *codec)
 	    !snd_hda_find_mixer_ctl(codec, "Master Playback Switch")) {
 		err = __snd_hda_add_vmaster(codec, "Master Playback Switch",
 					    NULL, follower_pfxs,
-					    "Playback Switch",
-					    true, &spec->vmaster_mute.sw_kctl);
+					    "Playback Switch", true,
+					    spec->vmaster_mute_led ?
+						SNDRV_CTL_ELEM_ACCESS_SPK_LED : 0,
+					    &spec->vmaster_mute.sw_kctl);
 		if (err < 0)
 			return err;
 		if (spec->vmaster_mute.hook) {
-			snd_hda_add_vmaster_hook(codec, &spec->vmaster_mute,
-						 spec->vmaster_mute_enum);
+			snd_hda_add_vmaster_hook(codec, &spec->vmaster_mute);
 			snd_hda_sync_vmaster_hook(&spec->vmaster_mute);
 		}
 	}
@@ -5731,7 +5742,7 @@ static void fill_pcm_stream_name(char *str, size_t len, const char *sfx,
 
 	if (*str)
 		return;
-	strlcpy(str, chip_name, len);
+	strscpy(str, chip_name, len);
 
 	/* drop non-alnum chars after a space */
 	for (p = strchr(str, ' '); p; p = strchr(p + 1, ' ')) {
@@ -6115,24 +6126,6 @@ void snd_hda_gen_free(struct hda_codec *codec)
 }
 EXPORT_SYMBOL_GPL(snd_hda_gen_free);
 
-/**
- * snd_hda_gen_reboot_notify - Make codec enter D3 before rebooting
- * @codec: the HDA codec
- *
- * This can be put as patch_ops reboot_notify function.
- */
-void snd_hda_gen_reboot_notify(struct hda_codec *codec)
-{
-	/* Make the codec enter D3 to avoid spurious noises from the internal
-	 * speaker during (and after) reboot
-	 */
-	snd_hda_codec_set_power_to_all(codec, codec->core.afg, AC_PWRST_D3);
-	snd_hda_codec_write(codec, codec->core.afg, 0,
-			    AC_VERB_SET_POWER_STATE, AC_PWRST_D3);
-	msleep(10);
-}
-EXPORT_SYMBOL_GPL(snd_hda_gen_reboot_notify);
-
 #ifdef CONFIG_PM
 /**
  * snd_hda_gen_check_power_status - check the loopback power save state
@@ -6160,7 +6153,6 @@ static const struct hda_codec_ops generic_patch_ops = {
 	.init = snd_hda_gen_init,
 	.free = snd_hda_gen_free,
 	.unsol_event = snd_hda_jack_unsol_event,
-	.reboot_notify = snd_hda_gen_reboot_notify,
 #ifdef CONFIG_PM
 	.check_power_status = snd_hda_gen_check_power_status,
 #endif

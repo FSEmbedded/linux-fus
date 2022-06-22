@@ -82,6 +82,11 @@
 #define IMX_I2C_I2SR	0x03	/* i2c status */
 #define IMX_I2C_I2DR	0x04	/* i2c transfer data */
 
+/*
+ * All of the layerscape series SoCs support IBIC register.
+ */
+#define IMX_I2C_IBIC	0x05    /* i2c bus interrupt config */
+
 #define IMX_I2C_REGSHIFT	2
 #define VF610_I2C_REGSHIFT	0
 
@@ -100,6 +105,7 @@
 #define I2CR_MSTA	0x20
 #define I2CR_IIEN	0x40
 #define I2CR_IEN	0x80
+#define IBIC_BIIE	0x80 /* Bus idle interrupt enable */
 
 /* register bits different operating codes definition:
  * 1) I2SR: Interrupt flags clear operation differ between SoCs:
@@ -222,11 +228,11 @@ enum imx_i2c_type {
 
 struct imx_i2c_hwdata {
 	enum imx_i2c_type	devtype;
-	unsigned		regshift;
+	unsigned int		regshift;
 	struct imx_i2c_clk_pair	*clk_div;
-	unsigned		ndivs;
-	unsigned		i2sr_clr_opcode;
-	unsigned		i2cr_ien_opcode;
+	unsigned int		ndivs;
+	unsigned int		i2sr_clr_opcode;
+	unsigned int		i2cr_ien_opcode;
 };
 
 struct imx_i2c_dma {
@@ -486,7 +492,7 @@ static int i2c_imx_dma_xfer(struct imx_i2c_struct *i2c_imx,
 	return 0;
 
 err_submit:
-	dmaengine_terminate_all(dma->chan_using);
+	dmaengine_terminate_sync(dma->chan_using);
 err_desc:
 	dma_unmap_single(chan_dev, dma->dma_buf,
 			dma->dma_len, dma->dma_data_dir);
@@ -535,8 +541,6 @@ static int i2c_imx_bus_busy(struct imx_i2c_struct *i2c_imx, int for_busy, bool a
 {
 	unsigned long orig_jiffies = jiffies;
 	unsigned int temp;
-
-	dev_dbg(&i2c_imx->adapter.dev, "<%s>\n", __func__);
 
 	while (1) {
 		temp = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2SR);
@@ -634,7 +638,7 @@ static int i2c_imx_set_clk(struct imx_i2c_struct *i2c_imx,
 
 	i2c_imx->cur_clk = i2c_clk_rate;
 
-	div = (i2c_clk_rate + i2c_imx->bitrate - 1) / i2c_imx->bitrate;
+	div = DIV_ROUND_UP(i2c_clk_rate, i2c_imx->bitrate);
 	if (div < i2c_clk_div[0].div)
 		i = 0;
 	else if (div > i2c_clk_div[i2c_imx->hwdata->ndivs - 1].div)
@@ -652,8 +656,8 @@ static int i2c_imx_set_clk(struct imx_i2c_struct *i2c_imx,
 	 * This delay is used in I2C bus disable function
 	 * to fix chip hardware bug.
 	 */
-	i2c_imx->disable_delay = (500000U * i2c_clk_div[i].div
-		+ (i2c_clk_rate / 2) - 1) / (i2c_clk_rate / 2);
+	i2c_imx->disable_delay = DIV_ROUND_UP(500000U * i2c_clk_div[i].div,
+					      i2c_clk_rate / 2);
 
 #ifdef CONFIG_I2C_DEBUG_BUS
 	dev_dbg(&i2c_imx->adapter.dev, "I2C_CLK=%d, REQ DIV=%d\n",
@@ -726,7 +730,6 @@ static void i2c_imx_stop(struct imx_i2c_struct *i2c_imx, bool atomic)
 
 	if (!i2c_imx->stopped) {
 		/* Stop I2C transaction */
-		dev_dbg(&i2c_imx->adapter.dev, "<%s>\n", __func__);
 		temp = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2CR);
 		if (!(temp & I2CR_MSTA))
 			i2c_imx->stopped = 1;
@@ -800,7 +803,7 @@ static int i2c_imx_dma_write(struct imx_i2c_struct *i2c_imx,
 				&i2c_imx->dma->cmd_complete,
 				msecs_to_jiffies(DMA_TIMEOUT));
 	if (time_left == 0) {
-		dmaengine_terminate_all(dma->chan_using);
+		dmaengine_terminate_sync(dma->chan_using);
 		return -ETIMEDOUT;
 	}
 
@@ -855,7 +858,7 @@ static int i2c_imx_dma_read(struct imx_i2c_struct *i2c_imx,
 				&i2c_imx->dma->cmd_complete,
 				msecs_to_jiffies(DMA_TIMEOUT));
 	if (time_left == 0) {
-		dmaengine_terminate_all(dma->chan_using);
+		dmaengine_terminate_sync(dma->chan_using);
 		return -ETIMEDOUT;
 	}
 
@@ -1067,8 +1070,6 @@ static int i2c_imx_xfer_common(struct i2c_adapter *adapter,
 	int result;
 	bool is_lastmsg = false;
 	struct imx_i2c_struct *i2c_imx = i2c_get_adapdata(adapter);
-
-	dev_dbg(&i2c_imx->adapter.dev, "<%s>\n", __func__);
 
 	/* Start I2C transfer */
 	result = i2c_imx_start(i2c_imx, atomic);
@@ -1570,8 +1571,6 @@ static int i2c_imx_probe(struct platform_device *pdev)
 	dma_addr_t phy_addr;
 	const struct imx_i2c_hwdata *match;
 
-	dev_dbg(&pdev->dev, "<%s>\n", __func__);
-
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
 		return irq;
@@ -1594,7 +1593,7 @@ static int i2c_imx_probe(struct platform_device *pdev)
 				platform_get_device_id(pdev)->driver_data;
 
 	/* Setup i2c_imx driver structure */
-	strlcpy(i2c_imx->adapter.name, pdev->name, sizeof(i2c_imx->adapter.name));
+	strscpy(i2c_imx->adapter.name, pdev->name, sizeof(i2c_imx->adapter.name));
 	i2c_imx->adapter.owner		= THIS_MODULE;
 	i2c_imx->adapter.algo		= &i2c_imx_algo;
 	i2c_imx->adapter.dev.parent	= &pdev->dev;

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2021, NVIDIA CORPORATION & AFFILIATES. All rights reserved
+ *
  * Copyright (C) 2012 Red Hat, Inc.  All rights reserved.
  *     Author: Alex Williamson <alex.williamson@redhat.com>
  *
@@ -18,19 +20,13 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/notifier.h>
-#include <linux/pci.h>
 #include <linux/pm_runtime.h>
 #include <linux/slab.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
-#include <linux/vfio.h>
-#include <linux/vgaarb.h>
-#include <linux/nospec.h>
-#include <linux/sched/mm.h>
 
-#include "vfio_pci_private.h"
+#include <linux/vfio_pci_core.h>
 
-#define DRIVER_VERSION  "0.2"
 #define DRIVER_AUTHOR   "Alex Williamson <alex.williamson@redhat.com>"
 #define DRIVER_DESC     "VFIO PCI - User Level meta-driver"
 
@@ -63,15 +59,6 @@ MODULE_PARM_DESC(enable_sriov, "Enable support for SR-IOV configuration.  Enabli
 static bool disable_denylist;
 module_param(disable_denylist, bool, 0444);
 MODULE_PARM_DESC(disable_denylist, "Disable use of device denylist. Disabling the denylist allows binding to devices with known errata that may lead to exploitable stability or security issues when accessed by untrusted users.");
-
-static inline bool vfio_vga_disabled(void)
-{
-#ifdef CONFIG_VFIO_PCI_VGA
-	return disable_vga;
-#else
-	return true;
-#endif
-}
 
 static bool vfio_pci_dev_in_denylist(struct pci_dev *pdev)
 {
@@ -311,73 +298,14 @@ int vfio_pci_set_power_state(struct vfio_pci_device *vdev, pci_power_t state)
 
 static int vfio_pci_enable(struct vfio_pci_device *vdev)
 {
+	struct vfio_pci_core_device *vdev =
+		container_of(core_vdev, struct vfio_pci_core_device, vdev);
 	struct pci_dev *pdev = vdev->pdev;
 	int ret;
-	u16 cmd;
-	u8 msix_pos;
 
-	vfio_pci_set_power_state(vdev, PCI_D0);
-
-	/* Don't allow our initial saved state to include busmaster */
-	pci_clear_master(pdev);
-
-	ret = pci_enable_device(pdev);
+	ret = vfio_pci_core_enable(vdev);
 	if (ret)
 		return ret;
-
-	/* If reset fails because of the device lock, fail this path entirely */
-	ret = pci_try_reset_function(pdev);
-	if (ret == -EAGAIN) {
-		pci_disable_device(pdev);
-		return ret;
-	}
-
-	vdev->reset_works = !ret;
-	pci_save_state(pdev);
-	vdev->pci_saved_state = pci_store_saved_state(pdev);
-	if (!vdev->pci_saved_state)
-		pci_dbg(pdev, "%s: Couldn't store saved state\n", __func__);
-
-	if (likely(!nointxmask)) {
-		if (vfio_pci_nointx(pdev)) {
-			pci_info(pdev, "Masking broken INTx support\n");
-			vdev->nointx = true;
-			pci_intx(pdev, 0);
-		} else
-			vdev->pci_2_3 = pci_intx_mask_supported(pdev);
-	}
-
-	pci_read_config_word(pdev, PCI_COMMAND, &cmd);
-	if (vdev->pci_2_3 && (cmd & PCI_COMMAND_INTX_DISABLE)) {
-		cmd &= ~PCI_COMMAND_INTX_DISABLE;
-		pci_write_config_word(pdev, PCI_COMMAND, cmd);
-	}
-
-	ret = vfio_config_init(vdev);
-	if (ret) {
-		kfree(vdev->pci_saved_state);
-		vdev->pci_saved_state = NULL;
-		pci_disable_device(pdev);
-		return ret;
-	}
-
-	msix_pos = pdev->msix_cap;
-	if (msix_pos) {
-		u16 flags;
-		u32 table;
-
-		pci_read_config_word(pdev, msix_pos + PCI_MSIX_FLAGS, &flags);
-		pci_read_config_dword(pdev, msix_pos + PCI_MSIX_TABLE, &table);
-
-		vdev->msix_bar = table & PCI_MSIX_TABLE_BIR;
-		vdev->msix_offset = table & PCI_MSIX_TABLE_OFFSET;
-		vdev->msix_size = ((flags & PCI_MSIX_FLAGS_QSIZE) + 1) * 16;
-	} else
-		vdev->msix_bar = 0xFF;
-
-	if (!vfio_vga_disabled() && vfio_pci_is_vga(pdev))
-		vdev->has_vga = true;
-
 
 	if (vfio_pci_is_vga(pdev) &&
 	    pdev->vendor == PCI_VENDOR_ID_INTEL &&
@@ -385,341 +313,155 @@ static int vfio_pci_enable(struct vfio_pci_device *vdev)
 		ret = vfio_pci_igd_init(vdev);
 		if (ret && ret != -ENODEV) {
 			pci_warn(pdev, "Failed to setup Intel IGD regions\n");
-			goto disable_exit;
+			vfio_pci_core_disable(vdev);
+			return ret;
 		}
 	}
 
-	if (pdev->vendor == PCI_VENDOR_ID_NVIDIA &&
-	    IS_ENABLED(CONFIG_VFIO_PCI_NVLINK2)) {
-		ret = vfio_pci_nvdia_v100_nvlink2_init(vdev);
-		if (ret && ret != -ENODEV) {
-			pci_warn(pdev, "Failed to setup NVIDIA NV2 RAM region\n");
-			goto disable_exit;
-		}
-	}
-
-	if (pdev->vendor == PCI_VENDOR_ID_IBM &&
-	    IS_ENABLED(CONFIG_VFIO_PCI_NVLINK2)) {
-		ret = vfio_pci_ibm_npu2_init(vdev);
-		if (ret && ret != -ENODEV) {
-			pci_warn(pdev, "Failed to setup NVIDIA NV2 ATSD region\n");
-			goto disable_exit;
-		}
-	}
-
-	vfio_pci_probe_mmaps(vdev);
+	vfio_pci_core_finish_enable(vdev);
 
 	return 0;
+}
 
-disable_exit:
-	vfio_pci_disable(vdev);
+static const struct vfio_device_ops vfio_pci_ops = {
+	.name		= "vfio-pci",
+	.open_device	= vfio_pci_open_device,
+	.close_device	= vfio_pci_core_close_device,
+	.ioctl		= vfio_pci_core_ioctl,
+	.read		= vfio_pci_core_read,
+	.write		= vfio_pci_core_write,
+	.mmap		= vfio_pci_core_mmap,
+	.request	= vfio_pci_core_request,
+	.match		= vfio_pci_core_match,
+};
+
+static int vfio_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+{
+	struct vfio_pci_core_device *vdev;
+	int ret;
+
+	if (vfio_pci_is_denylisted(pdev))
+		return -EINVAL;
+
+	vdev = kzalloc(sizeof(*vdev), GFP_KERNEL);
+	if (!vdev)
+		return -ENOMEM;
+	vfio_pci_core_init_device(vdev, pdev, &vfio_pci_ops);
+
+	ret = vfio_pci_core_register_device(vdev);
+	if (ret)
+		goto out_free;
+	dev_set_drvdata(&pdev->dev, vdev);
+	return 0;
+
+out_free:
+	vfio_pci_core_uninit_device(vdev);
+	kfree(vdev);
 	return ret;
 }
 
-static void vfio_pci_disable(struct vfio_pci_device *vdev)
+static void vfio_pci_remove(struct pci_dev *pdev)
 {
-	struct pci_dev *pdev = vdev->pdev;
-	struct vfio_pci_dummy_resource *dummy_res, *tmp;
-	struct vfio_pci_ioeventfd *ioeventfd, *ioeventfd_tmp;
-	int i, bar;
+	struct vfio_pci_core_device *vdev = dev_get_drvdata(&pdev->dev);
 
-	/* Stop the device from further DMA */
-	pci_clear_master(pdev);
-
-	vfio_pci_set_irqs_ioctl(vdev, VFIO_IRQ_SET_DATA_NONE |
-				VFIO_IRQ_SET_ACTION_TRIGGER,
-				vdev->irq_type, 0, 0, NULL);
-
-	/* Device closed, don't need mutex here */
-	list_for_each_entry_safe(ioeventfd, ioeventfd_tmp,
-				 &vdev->ioeventfds_list, next) {
-		vfio_virqfd_disable(&ioeventfd->virqfd);
-		list_del(&ioeventfd->next);
-		kfree(ioeventfd);
-	}
-	vdev->ioeventfds_nr = 0;
-
-	vdev->virq_disabled = false;
-
-	for (i = 0; i < vdev->num_regions; i++)
-		vdev->region[i].ops->release(vdev, &vdev->region[i]);
-
-	vdev->num_regions = 0;
-	kfree(vdev->region);
-	vdev->region = NULL; /* don't krealloc a freed pointer */
-
-	vfio_config_free(vdev);
-
-	for (i = 0; i < PCI_STD_NUM_BARS; i++) {
-		bar = i + PCI_STD_RESOURCES;
-		if (!vdev->barmap[bar])
-			continue;
-		pci_iounmap(pdev, vdev->barmap[bar]);
-		pci_release_selected_regions(pdev, 1 << bar);
-		vdev->barmap[bar] = NULL;
-	}
-
-	list_for_each_entry_safe(dummy_res, tmp,
-				 &vdev->dummy_resources_list, res_next) {
-		list_del(&dummy_res->res_next);
-		release_resource(&dummy_res->resource);
-		kfree(dummy_res);
-	}
-
-	vdev->needs_reset = true;
-
-	/*
-	 * If we have saved state, restore it.  If we can reset the device,
-	 * even better.  Resetting with current state seems better than
-	 * nothing, but saving and restoring current state without reset
-	 * is just busy work.
-	 */
-	if (pci_load_and_free_saved_state(pdev, &vdev->pci_saved_state)) {
-		pci_info(pdev, "%s: Couldn't reload saved state\n", __func__);
-
-		if (!vdev->reset_works)
-			goto out;
-
-		pci_save_state(pdev);
-	}
-
-	/*
-	 * Disable INTx and MSI, presumably to avoid spurious interrupts
-	 * during reset.  Stolen from pci_reset_function()
-	 */
-	pci_write_config_word(pdev, PCI_COMMAND, PCI_COMMAND_INTX_DISABLE);
-
-	/*
-	 * Try to get the locks ourselves to prevent a deadlock. The
-	 * success of this is dependent on being able to lock the device,
-	 * which is not always possible.
-	 * We can not use the "try" reset interface here, which will
-	 * overwrite the previously restored configuration information.
-	 */
-	if (vdev->reset_works && pci_cfg_access_trylock(pdev)) {
-		if (device_trylock(&pdev->dev)) {
-			if (!__pci_reset_function_locked(pdev))
-				vdev->needs_reset = false;
-			device_unlock(&pdev->dev);
-		}
-		pci_cfg_access_unlock(pdev);
-	}
-
-	pci_restore_state(pdev);
-out:
-	pci_disable_device(pdev);
-
-	vfio_pci_try_bus_reset(vdev);
-
-	if (!disable_idle_d3)
-		vfio_pci_set_power_state(vdev, PCI_D3hot);
+	vfio_pci_core_unregister_device(vdev);
+	vfio_pci_core_uninit_device(vdev);
+	kfree(vdev);
 }
 
-static struct pci_driver vfio_pci_driver;
-
-static struct vfio_pci_device *get_pf_vdev(struct vfio_pci_device *vdev,
-					   struct vfio_device **pf_dev)
+static int vfio_pci_sriov_configure(struct pci_dev *pdev, int nr_virtfn)
 {
-	struct pci_dev *physfn = pci_physfn(vdev->pdev);
+	if (!enable_sriov)
+		return -ENOENT;
 
-	if (!vdev->pdev->is_virtfn)
-		return NULL;
-
-	*pf_dev = vfio_device_get_from_dev(&physfn->dev);
-	if (!*pf_dev)
-		return NULL;
-
-	if (pci_dev_driver(physfn) != &vfio_pci_driver) {
-		vfio_device_put(*pf_dev);
-		return NULL;
-	}
-
-	return vfio_device_data(*pf_dev);
+	return vfio_pci_core_sriov_configure(pdev, nr_virtfn);
 }
 
-static void vfio_pci_vf_token_user_add(struct vfio_pci_device *vdev, int val)
-{
-	struct vfio_device *pf_dev;
-	struct vfio_pci_device *pf_vdev = get_pf_vdev(vdev, &pf_dev);
+static const struct pci_device_id vfio_pci_table[] = {
+	{ PCI_DRIVER_OVERRIDE_DEVICE_VFIO(PCI_ANY_ID, PCI_ANY_ID) }, /* match all by default */
+	{}
+};
 
-	if (!pf_vdev)
+MODULE_DEVICE_TABLE(pci, vfio_pci_table);
+
+static struct pci_driver vfio_pci_driver = {
+	.name			= "vfio-pci",
+	.id_table		= vfio_pci_table,
+	.probe			= vfio_pci_probe,
+	.remove			= vfio_pci_remove,
+	.sriov_configure	= vfio_pci_sriov_configure,
+	.err_handler		= &vfio_pci_core_err_handlers,
+};
+
+static void __init vfio_pci_fill_ids(void)
+{
+	char *p, *id;
+	int rc;
+
+	/* no ids passed actually */
+	if (ids[0] == '\0')
 		return;
 
-	mutex_lock(&pf_vdev->vf_token->lock);
-	pf_vdev->vf_token->users += val;
-	WARN_ON(pf_vdev->vf_token->users < 0);
-	mutex_unlock(&pf_vdev->vf_token->lock);
+	/* add ids specified in the module parameter */
+	p = ids;
+	while ((id = strsep(&p, ","))) {
+		unsigned int vendor, device, subvendor = PCI_ANY_ID,
+			subdevice = PCI_ANY_ID, class = 0, class_mask = 0;
+		int fields;
 
-	vfio_device_put(pf_dev);
+		if (!strlen(id))
+			continue;
+
+		fields = sscanf(id, "%x:%x:%x:%x:%x:%x",
+				&vendor, &device, &subvendor, &subdevice,
+				&class, &class_mask);
+
+		if (fields < 2) {
+			pr_warn("invalid id string \"%s\"\n", id);
+			continue;
+		}
+
+		rc = pci_add_dynid(&vfio_pci_driver, vendor, device,
+				   subvendor, subdevice, class, class_mask, 0);
+		if (rc)
+			pr_warn("failed to add dynamic id [%04x:%04x[%04x:%04x]] class %#08x/%08x (%d)\n",
+				vendor, device, subvendor, subdevice,
+				class, class_mask, rc);
+		else
+			pr_info("add [%04x:%04x[%04x:%04x]] class %#08x/%08x\n",
+				vendor, device, subvendor, subdevice,
+				class, class_mask);
+	}
 }
 
-static void vfio_pci_release(void *device_data)
+static int __init vfio_pci_init(void)
 {
-	struct vfio_pci_device *vdev = device_data;
+	int ret;
+	bool is_disable_vga = true;
 
-	mutex_lock(&vdev->reflck->lock);
+#ifdef CONFIG_VFIO_PCI_VGA
+	is_disable_vga = disable_vga;
+#endif
 
-	if (!(--vdev->refcnt)) {
-		vfio_pci_vf_token_user_add(vdev, -1);
-		vfio_spapr_pci_eeh_release(vdev->pdev);
-		vfio_pci_disable(vdev);
+	vfio_pci_core_set_params(nointxmask, is_disable_vga, disable_idle_d3);
 
-		mutex_lock(&vdev->igate);
-		if (vdev->err_trigger) {
-			eventfd_ctx_put(vdev->err_trigger);
-			vdev->err_trigger = NULL;
-		}
-		if (vdev->req_trigger) {
-			eventfd_ctx_put(vdev->req_trigger);
-			vdev->req_trigger = NULL;
-		}
-		mutex_unlock(&vdev->igate);
-	}
-
-	mutex_unlock(&vdev->reflck->lock);
-
-	module_put(THIS_MODULE);
-}
-
-static int vfio_pci_open(void *device_data)
-{
-	struct vfio_pci_device *vdev = device_data;
-	int ret = 0;
-
-	if (!try_module_get(THIS_MODULE))
-		return -ENODEV;
-
-	mutex_lock(&vdev->reflck->lock);
-
-	if (!vdev->refcnt) {
-		ret = vfio_pci_enable(vdev);
-		if (ret)
-			goto error;
-
-		vfio_spapr_pci_eeh_open(vdev->pdev);
-		vfio_pci_vf_token_user_add(vdev, 1);
-	}
-	vdev->refcnt++;
-error:
-	mutex_unlock(&vdev->reflck->lock);
+	/* Register and scan for devices */
+	ret = pci_register_driver(&vfio_pci_driver);
 	if (ret)
-		module_put(THIS_MODULE);
-	return ret;
-}
+		return ret;
 
-static int vfio_pci_get_irq_count(struct vfio_pci_device *vdev, int irq_type)
-{
-	if (irq_type == VFIO_PCI_INTX_IRQ_INDEX) {
-		u8 pin;
+	vfio_pci_fill_ids();
 
-		if (!IS_ENABLED(CONFIG_VFIO_PCI_INTX) ||
-		    vdev->nointx || vdev->pdev->is_virtfn)
-			return 0;
-
-		pci_read_config_byte(vdev->pdev, PCI_INTERRUPT_PIN, &pin);
-
-		return pin ? 1 : 0;
-	} else if (irq_type == VFIO_PCI_MSI_IRQ_INDEX) {
-		u8 pos;
-		u16 flags;
-
-		pos = vdev->pdev->msi_cap;
-		if (pos) {
-			pci_read_config_word(vdev->pdev,
-					     pos + PCI_MSI_FLAGS, &flags);
-			return 1 << ((flags & PCI_MSI_FLAGS_QMASK) >> 1);
-		}
-	} else if (irq_type == VFIO_PCI_MSIX_IRQ_INDEX) {
-		u8 pos;
-		u16 flags;
-
-		pos = vdev->pdev->msix_cap;
-		if (pos) {
-			pci_read_config_word(vdev->pdev,
-					     pos + PCI_MSIX_FLAGS, &flags);
-
-			return (flags & PCI_MSIX_FLAGS_QSIZE) + 1;
-		}
-	} else if (irq_type == VFIO_PCI_ERR_IRQ_INDEX) {
-		if (pci_is_pcie(vdev->pdev))
-			return 1;
-	} else if (irq_type == VFIO_PCI_REQ_IRQ_INDEX) {
-		return 1;
-	}
+	if (disable_denylist)
+		pr_warn("device denylist disabled.\n");
 
 	return 0;
 }
+module_init(vfio_pci_init);
 
-static int vfio_pci_count_devs(struct pci_dev *pdev, void *data)
+static void __exit vfio_pci_cleanup(void)
 {
-	(*(int *)data)++;
-	return 0;
-}
-
-struct vfio_pci_fill_info {
-	int max;
-	int cur;
-	struct vfio_pci_dependent_device *devices;
-};
-
-static int vfio_pci_fill_devs(struct pci_dev *pdev, void *data)
-{
-	struct vfio_pci_fill_info *fill = data;
-	struct iommu_group *iommu_group;
-
-	if (fill->cur == fill->max)
-		return -EAGAIN; /* Something changed, try again */
-
-	iommu_group = iommu_group_get(&pdev->dev);
-	if (!iommu_group)
-		return -EPERM; /* Cannot reset non-isolated devices */
-
-	fill->devices[fill->cur].group_id = iommu_group_id(iommu_group);
-	fill->devices[fill->cur].segment = pci_domain_nr(pdev->bus);
-	fill->devices[fill->cur].bus = pdev->bus->number;
-	fill->devices[fill->cur].devfn = pdev->devfn;
-	fill->cur++;
-	iommu_group_put(iommu_group);
-	return 0;
-}
-
-struct vfio_pci_group_entry {
-	struct vfio_group *group;
-	int id;
-};
-
-struct vfio_pci_group_info {
-	int count;
-	struct vfio_pci_group_entry *groups;
-};
-
-static int vfio_pci_validate_devs(struct pci_dev *pdev, void *data)
-{
-	struct vfio_pci_group_info *info = data;
-	struct iommu_group *group;
-	int id, i;
-
-	group = iommu_group_get(&pdev->dev);
-	if (!group)
-		return -EPERM;
-
-	id = iommu_group_id(group);
-
-	for (i = 0; i < info->count; i++)
-		if (info->groups[i].id == id)
-			break;
-
-	iommu_group_put(group);
-
-	return (i == info->count) ? -EINVAL : 0;
-}
-
-static bool vfio_pci_dev_below_slot(struct pci_dev *pdev, struct pci_slot *slot)
-{
-	for (; pdev; pdev = pdev->bus->self)
-		if (pdev->bus == slot->bus)
-			return (pdev->slot == slot);
-	return false;
+	pci_unregister_driver(&vfio_pci_driver);
 }
 
 struct vfio_pci_walk_info {
@@ -2484,7 +2226,6 @@ out_driver:
 module_init(vfio_pci_init);
 module_exit(vfio_pci_cleanup);
 
-MODULE_VERSION(DRIVER_VERSION);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_DESCRIPTION(DRIVER_DESC);

@@ -6,7 +6,7 @@
 
  Its usb's unableness to atomically handle power of 2 period sized data chuncs
  at standard samplerates,
- what led to this part of the usx2y module: 
+ what led to this part of the usx2y module:
  It provides the alsa kernel half of the usx2y-alsa-jack driver pair.
  The pair uses a hardware dependent alsa-device for mmaped pcm transport.
  Advantage achieved:
@@ -35,7 +35,7 @@
  Kernel:
  - rawusb dma pcm buffer transport should go to snd-usb-lib, so also snd-usb-audio
    devices can use it.
-   Currently rawusb dma pcm buffer transport (this file) is only available to snd-usb-usx2y. 
+   Currently rawusb dma pcm buffer transport (this file) is only available to snd-usb-usx2y.
 */
 
 #include <linux/delay.h>
@@ -62,12 +62,15 @@ static int usx2y_usbpcm_urb_capt_retire(struct snd_usx2y_substream *subs)
 	}
 	for (i = 0; i < nr_of_packs(); i++) {
 		if (urb->iso_frame_desc[i].status) { /* active? hmm, skip this */
-			snd_printk(KERN_ERR "active frame status %i. Most probably some hardware problem.\n", urb->iso_frame_desc[i].status);
+			snd_printk(KERN_ERR
+				   "active frame status %i. Most probably some hardware problem.\n",
+				   urb->iso_frame_desc[i].status);
 			return urb->iso_frame_desc[i].status;
 		}
 		lens += urb->iso_frame_desc[i].actual_length / usx2y->stride;
 	}
-	if ((hwptr_done += lens) >= runtime->buffer_size)
+	hwptr_done += lens;
+	if (hwptr_done >= runtime->buffer_size)
 		hwptr_done -= runtime->buffer_size;
 	subs->hwptr_done = hwptr_done;
 	subs->transfer_done += lens;
@@ -103,7 +106,7 @@ static int usx2y_hwdep_urb_play_prepare(struct snd_usx2y_substream *subs,
 	struct snd_usx2y_hwdep_pcm_shm *shm = usx2y->hwdep_pcm_shm;
 	struct snd_pcm_runtime *runtime = subs->pcm_substream->runtime;
 
-	if (0 > shm->playback_iso_start) {
+	if (shm->playback_iso_start < 0) {
 		shm->playback_iso_start = shm->captured_iso_head -
 			usx2y_iso_frames_per_buffer(runtime, usx2y);
 		if (0 > shm->playback_iso_start)
@@ -137,7 +140,10 @@ static int usx2y_hwdep_urb_play_prepare(struct snd_usx2y_substream *subs,
 static inline void usx2y_usbpcm_urb_capt_iso_advance(struct snd_usx2y_substream *subs,
 						     struct urb *urb)
 {
-	int pack;
+	struct usb_iso_packet_descriptor *desc;
+	struct snd_usx2y_hwdep_pcm_shm *shm;
+	int pack, head;
+
 	for (pack = 0; pack < nr_of_packs(); ++pack) {
 		struct usb_iso_packet_descriptor *desc = urb->iso_frame_desc + pack;
 		if (NULL != subs) {
@@ -151,8 +157,8 @@ static inline void usx2y_usbpcm_urb_capt_iso_advance(struct snd_usx2y_substream 
 			shm->captured_iso_head = head;
 			shm->captured_iso_frames++;
 		}
-		if ((desc->offset += desc->length * NRURBS*nr_of_packs()) +
-		    desc->length >= SSS)
+		desc->offset += desc->length * NRURBS * nr_of_packs();
+		if (desc->offset + desc->length >= SSS)
 			desc->offset -= (SSS - desc->length);
 	}
 }
@@ -187,9 +193,8 @@ static inline int usx2y_usbpcm_usbframe_complete(struct snd_usx2y_substream *cap
 		if ((err = usx2y_hwdep_urb_play_prepare(playbacksubs, urb)) ||
 		    (err = usx2y_urb_submit(playbacksubs, urb, frame))) {
 			return err;
-		}
 	}
-	
+
 	playbacksubs->completed_urb = NULL;
 
 	state = atomic_read(&capsubs->state);
@@ -207,9 +212,10 @@ static inline int usx2y_usbpcm_usbframe_complete(struct snd_usx2y_substream *cap
 		if (NULL != capsubs2)
 			if ((err = usx2y_urb_submit(capsubs2, capsubs2->completed_urb, frame)))
 				return err;
+		}
 	}
 	capsubs->completed_urb = NULL;
-	if (NULL != capsubs2)
+	if (capsubs2)
 		capsubs2->completed_urb = NULL;
 	return 0;
 }
@@ -312,7 +318,7 @@ static int usx2y_usbpcm_urbs_allocate(struct snd_usx2y_substream *subs)
 
 	/* allocate and initialize data urbs */
 	for (i = 0; i < NRURBS; i++) {
-		struct urb **purb = subs->urb + i;
+		purb = subs->urb + i;
 		if (*purb) {
 			usb_kill_urb(*purb);
 			continue;
@@ -452,7 +458,7 @@ static int usx2y_usbpcm_urbs_start(struct snd_usx2y_substream *subs)
 	wait_event(usx2y->prepare_wait_queue, NULL == usx2y->prepare_subs);
 	if (atomic_read(&subs->state) != STATE_PREPARED)
 		err = -EPIPE;
-		
+
  cleanup:
 	if (err) {
 		usx2y_subs_startup_finish(usx2y);	// Call it now
@@ -460,6 +466,9 @@ static int usx2y_usbpcm_urbs_start(struct snd_usx2y_substream *subs)
 	}
 	return err;
 }
+
+#define USX2Y_HWDEP_PCM_PAGES	\
+	PAGE_ALIGN(sizeof(struct snd_usx2y_hwdep_pcm_shm))
 
 /*
  * prepare callback
@@ -494,6 +503,7 @@ static int snd_usx2y_usbpcm_prepare(struct snd_pcm_substream *substream)
 		if (usx2y->rate != runtime->rate)
 			if ((err = usx2y_rate_set(usx2y, runtime->rate)) < 0)
 				goto up_prepare_mutex;
+		}
 		snd_printdd("starting capture pipe for %s\n", subs == capsubs ?
 			    "self" : "playpipe");
 		if (0 > (err = usx2y_usbpcm_urbs_start(capsubs)))
@@ -692,6 +702,9 @@ static void snd_usx2y_hwdep_pcm_private_free(struct snd_hwdep *hwdep)
 		free_pages_exact(usx2y->hwdep_pcm_shm, sizeof(struct snd_usx2y_hwdep_pcm_shm));
 }
 
+	if (usx2y->hwdep_pcm_shm)
+		free_pages_exact(usx2y->hwdep_pcm_shm, USX2Y_HWDEP_PCM_PAGES);
+}
 
 int usx2y_hwdep_pcm_new(struct snd_card *card)
 {
@@ -702,7 +715,8 @@ int usx2y_hwdep_pcm_new(struct snd_card *card)
 	if (1 != nr_of_packs())
 		return 0;
 
-	if ((err = snd_hwdep_new(card, SND_USX2Y_USBPCM_ID, 1, &hw)) < 0)
+	err = snd_hwdep_new(card, SND_USX2Y_USBPCM_ID, 1, &hw);
+	if (err < 0)
 		return err;
 
 	hw->iface = SNDRV_HWDEP_IFACE_USX2Y_PCM;
@@ -715,7 +729,7 @@ int usx2y_hwdep_pcm_new(struct snd_card *card)
 	sprintf(hw->name, "/dev/bus/usb/%03d/%03d/hwdeppcm", dev->bus->busnum, dev->devnum);
 
 	err = snd_pcm_new(card, NAME_ALLCAPS" hwdep Audio", 2, 1, 1, &pcm);
-	if (err < 0) {
+	if (err < 0)
 		return err;
 	}
 	snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_PLAYBACK, &snd_usx2y_usbpcm_ops);

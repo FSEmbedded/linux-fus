@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2018 NXP
+ * Copyright 2018-2021 NXP
  *	Dong Aisheng <aisheng.dong@nxp.com>
  */
 
@@ -97,6 +97,80 @@ static const struct of_device_id imx8qxp_match[] = {
 	{ .compatible = "fsl,imx8qm-clk", &imx_clk_scu_rsrc_imx8qm, },
 	{ .compatible = "fsl,imx8dxl-clk", &imx_clk_scu_rsrc_imx8dxl, },
 	{ /* sentinel */ }
+};
+
+static const char *dc0_sels[] = {
+	"clk_dummy",
+	"clk_dummy",
+	"dc0_pll0_clk",
+	"dc0_pll1_clk",
+	"dc0_bypass0_clk",
+};
+
+static const char * const dc1_sels[] = {
+	"clk_dummy",
+	"clk_dummy",
+	"dc1_pll0_clk",
+	"dc1_pll1_clk",
+	"dc1_bypass0_clk",
+};
+
+static const char * const enet0_rgmii_txc_sels[] = {
+	"enet0_ref_div",
+	"clk_dummy",
+};
+
+static const char * const enet1_rgmii_txc_sels[] = {
+	"enet1_ref_div",
+	"clk_dummy",
+};
+
+static const char * const hdmi_sels[] = {
+	"clk_dummy",
+	"hdmi_dig_pll_clk",
+	"clk_dummy",
+	"clk_dummy",
+	"hdmi_av_pll_clk",
+};
+
+static const char * const hdmi_rx_sels[] = {
+	"clk_dummy",
+	"hdmi_rx_dig_pll_clk",
+	"clk_dummy",
+	"clk_dummy",
+	"hdmi_rx_bypass_clk",
+};
+
+static const char * const lcd_pxl_sels[] = {
+	"clk_dummy",
+	"clk_dummy",
+	"clk_dummy",
+	"clk_dummy",
+	"lcd_pxl_bypass_div_clk",
+};
+
+static const char * const mipi_sels[] = {
+	"clk_dummy",
+	"clk_dummy",
+	"mipi_pll_div2_clk",
+	"clk_dummy",
+	"clk_dummy",
+};
+
+static const char * const lcd_sels[] = {
+	"clk_dummy",
+	"clk_dummy",
+	"clk_dummy",
+	"clk_dummy",
+	"elcdif_pll",
+};
+
+static const char * const pi_pll0_sels[] = {
+	"clk_dummy",
+	"pi_dpll_clk",
+	"clk_dummy",
+	"clk_dummy",
+	"clk_dummy",
 };
 
 static int imx8qxp_clk_probe(struct platform_device *pdev)

@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
-/******************************************************************************
- *
- * Copyright(c) 2020 Intel Corporation
- *
- *****************************************************************************/
+/*
+ * Copyright(c) 2020-2021 Intel Corporation
+ */
 
 #include "iwl-drv.h"
 #include "pnvm.h"
@@ -12,6 +10,7 @@
 #include "fw/api/commands.h"
 #include "fw/api/nvm-reg.h"
 #include "fw/api/alive.h"
+#include "fw/uefi.h"
 
 struct iwl_pnvm_section {
 	__le32 offset;
@@ -25,7 +24,7 @@ static bool iwl_pnvm_complete_fn(struct iwl_notif_wait_data *notif_wait,
 	struct iwl_pnvm_init_complete_ntfy *pnvm_ntf = (void *)pkt->data;
 
 	IWL_DEBUG_FW(trans,
-		     "PNVM complete notification received with status %d\n",
+		     "PNVM complete notification received with status 0x%0x\n",
 		     le32_to_cpu(pnvm_ntf->status));
 
 	return true;
@@ -228,6 +227,34 @@ static int iwl_pnvm_parse(struct iwl_trans *trans, const u8 *data,
 	return -ENOENT;
 }
 
+static int iwl_pnvm_get_from_fs(struct iwl_trans *trans, u8 **data, size_t *len)
+{
+	const struct firmware *pnvm;
+	char pnvm_name[MAX_PNVM_NAME];
+	size_t new_len;
+	int ret;
+
+	iwl_pnvm_get_fs_name(trans, pnvm_name, sizeof(pnvm_name));
+
+	ret = firmware_request_nowarn(&pnvm, pnvm_name, trans->dev);
+	if (ret) {
+		IWL_DEBUG_FW(trans, "PNVM file %s not found %d\n",
+			     pnvm_name, ret);
+		return ret;
+	}
+
+	new_len = pnvm->size;
+	*data = kmemdup(pnvm->data, pnvm->size, GFP_KERNEL);
+	release_firmware(pnvm);
+
+	if (!*data)
+		return -ENOMEM;
+
+	*len = new_len;
+
+	return 0;
+}
+
 int iwl_pnvm_load(struct iwl_trans *trans,
 		  struct iwl_notif_wait_data *notif_wait)
 {
@@ -278,6 +305,14 @@ int iwl_pnvm_load(struct iwl_trans *trans,
 			return ret;
 	}
 
+	ret = iwl_trans_set_reduce_power(trans, data, len);
+	if (ret)
+		IWL_DEBUG_FW(trans,
+			     "Failed to set reduce power table %d\n",
+			     ret);
+	kfree(data);
+
+skip_reduce_power:
 	iwl_init_notification_wait(notif_wait, &pnvm_wait,
 				   ntf_cmds, ARRAY_SIZE(ntf_cmds),
 				   iwl_pnvm_complete_fn, trans);

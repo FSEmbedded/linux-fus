@@ -94,6 +94,9 @@ struct rtrs_con {
 	struct ib_cq		*cq;
 	struct rdma_cm_id	*cm_id;
 	unsigned int		cid;
+	int                     nr_cqe;
+	atomic_t		wr_cnt;
+	atomic_t		sq_wr_avail;
 };
 
 struct rtrs_sess {
@@ -104,7 +107,9 @@ struct rtrs_sess {
 	uuid_t			uuid;
 	struct rtrs_con	**con;
 	unsigned int		con_num;
+	unsigned int		irq_con_num;
 	unsigned int		recon_cnt;
+	unsigned int		signal_interval;
 	struct rtrs_ib_dev	*dev;
 	int			dev_ref;
 	struct ib_cqe		*hb_cqe;
@@ -114,6 +119,8 @@ struct rtrs_sess {
 	unsigned int		hb_interval_ms;
 	unsigned int		hb_missed_cnt;
 	unsigned int		hb_missed_max;
+	ktime_t			hb_last_sent;
+	ktime_t			hb_cur_latency;
 };
 
 /* rtrs information unit */
@@ -289,7 +296,7 @@ struct rtrs_msg_rdma_hdr {
 
 /* rtrs.c */
 
-struct rtrs_iu *rtrs_iu_alloc(u32 queue_size, size_t size, gfp_t t,
+struct rtrs_iu *rtrs_iu_alloc(u32 queue_num, size_t size, gfp_t t,
 			      struct ib_device *dev, enum dma_data_direction,
 			      void (*done)(struct ib_cq *cq, struct ib_wc *wc));
 void rtrs_iu_free(struct rtrs_iu *iu, struct ib_device *dev, u32 queue_size);
@@ -300,12 +307,10 @@ int rtrs_iu_post_rdma_write_imm(struct rtrs_con *con, struct rtrs_iu *iu,
 				struct ib_sge *sge, unsigned int num_sge,
 				u32 rkey, u64 rdma_addr, u32 imm_data,
 				enum ib_send_flags flags,
-				struct ib_send_wr *head);
+				struct ib_send_wr *head,
+				struct ib_send_wr *tail);
 
 int rtrs_post_recv_empty(struct rtrs_con *con, struct ib_cqe *cqe);
-int rtrs_post_rdma_write_imm_empty(struct rtrs_con *con, struct ib_cqe *cqe,
-				   u32 imm_data, enum ib_send_flags flags,
-				   struct ib_send_wr *head);
 
 int rtrs_cq_qp_create(struct rtrs_sess *rtrs_sess, struct rtrs_con *con,
 		      u32 max_send_sge, int cq_vector, int cq_size,

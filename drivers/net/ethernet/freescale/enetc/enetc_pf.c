@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 /* Copyright 2017-2019 NXP */
 
+#include <asm/unaligned.h>
 #include <linux/mdio.h>
 #include <linux/module.h>
 #include <linux/fsl/enetc_mdio.h>
@@ -17,15 +18,15 @@ static void enetc_pf_get_primary_mac_addr(struct enetc_hw *hw, int si, u8 *addr)
 	u32 upper = __raw_readl(hw->port + ENETC_PSIPMAR0(si));
 	u16 lower = __raw_readw(hw->port + ENETC_PSIPMAR1(si));
 
-	*(u32 *)addr = upper;
-	*(u16 *)(addr + 4) = lower;
+	put_unaligned_le32(upper, addr);
+	put_unaligned_le16(lower, addr + 4);
 }
 
 static void enetc_pf_set_primary_mac_addr(struct enetc_hw *hw, int si,
 					  const u8 *addr)
 {
-	u32 upper = *(const u32 *)addr;
-	u16 lower = *(const u16 *)(addr + 4);
+	u32 upper = get_unaligned_le32(addr);
+	u16 lower = get_unaligned_le16(addr + 4);
 
 	__raw_writel(upper, hw->port + ENETC_PSIPMAR0(si));
 	__raw_writew(lower, hw->port + ENETC_PSIPMAR1(si));
@@ -131,16 +132,20 @@ static void enetc_clear_mac_ht_flt(struct enetc_si *si, int si_idx, int type)
 }
 
 static void enetc_set_mac_ht_flt(struct enetc_si *si, int si_idx, int type,
-				 u32 *hash)
+				 unsigned long hash)
 {
 	bool err = si->errata & ENETC_ERR_UCMCSWP;
 
 	if (type == UC) {
-		enetc_port_wr(&si->hw, ENETC_PSIUMHFR0(si_idx, err), *hash);
-		enetc_port_wr(&si->hw, ENETC_PSIUMHFR1(si_idx), *(hash + 1));
+		enetc_port_wr(&si->hw, ENETC_PSIUMHFR0(si_idx, err),
+			      lower_32_bits(hash));
+		enetc_port_wr(&si->hw, ENETC_PSIUMHFR1(si_idx),
+			      upper_32_bits(hash));
 	} else { /* MC */
-		enetc_port_wr(&si->hw, ENETC_PSIMMHFR0(si_idx, err), *hash);
-		enetc_port_wr(&si->hw, ENETC_PSIMMHFR1(si_idx), *(hash + 1));
+		enetc_port_wr(&si->hw, ENETC_PSIMMHFR0(si_idx, err),
+			      lower_32_bits(hash));
+		enetc_port_wr(&si->hw, ENETC_PSIMMHFR1(si_idx),
+			      upper_32_bits(hash));
 	}
 }
 
@@ -184,7 +189,7 @@ static void enetc_sync_mac_filters(struct enetc_pf *pf)
 		if (i == UC)
 			enetc_clear_mac_flt_entry(si, pos);
 
-		enetc_set_mac_ht_flt(si, 0, i, (u32 *)f->mac_hash_table);
+		enetc_set_mac_ht_flt(si, 0, i, *f->mac_hash_table);
 	}
 }
 
@@ -250,10 +255,10 @@ static void enetc_pf_set_rx_mode(struct net_device *ndev)
 }
 
 static void enetc_set_vlan_ht_filter(struct enetc_hw *hw, int si_idx,
-				     u32 *hash)
+				     unsigned long hash)
 {
-	enetc_port_wr(hw, ENETC_PSIVHFR0(si_idx), *hash);
-	enetc_port_wr(hw, ENETC_PSIVHFR1(si_idx), *(hash + 1));
+	enetc_port_wr(hw, ENETC_PSIVHFR0(si_idx), lower_32_bits(hash));
+	enetc_port_wr(hw, ENETC_PSIVHFR1(si_idx), upper_32_bits(hash));
 }
 
 static int enetc_vid_hash_idx(unsigned int vid)
@@ -281,7 +286,7 @@ static void enetc_sync_vlan_ht_filter(struct enetc_pf *pf, bool rehash)
 		}
 	}
 
-	enetc_set_vlan_ht_filter(&pf->si->hw, 0, (u32 *)pf->vlan_ht_filter);
+	enetc_set_vlan_ht_filter(&pf->si->hw, 0, *pf->vlan_ht_filter);
 }
 
 static int enetc_vlan_rx_add_vid(struct net_device *ndev, __be16 prot, u16 vid)
@@ -388,23 +393,54 @@ static int enetc_pf_set_vf_spoofchk(struct net_device *ndev, int vf, bool en)
 	return 0;
 }
 
-static void enetc_port_setup_primary_mac_address(struct enetc_si *si)
+static int enetc_setup_mac_address(struct device_node *np, struct enetc_pf *pf,
+				   int si)
 {
-	unsigned char mac_addr[MAX_ADDR_LEN];
-	struct enetc_pf *pf = enetc_si_priv(si);
-	struct enetc_hw *hw = &si->hw;
-	int i;
+	struct device *dev = &pf->si->pdev->dev;
+	struct enetc_hw *hw = &pf->si->hw;
+	u8 mac_addr[ETH_ALEN] = { 0 };
+	int err;
 
-	/* check MAC addresses for PF and all VFs, if any is 0 set it ro rand */
-	for (i = 0; i < pf->total_vfs + 1; i++) {
-		enetc_pf_get_primary_mac_addr(hw, i, mac_addr);
-		if (!is_zero_ether_addr(mac_addr))
-			continue;
-		eth_random_addr(mac_addr);
-		dev_info(&si->pdev->dev, "no MAC address specified for SI%d, using %pM\n",
-			 i, mac_addr);
-		enetc_pf_set_primary_mac_addr(hw, i, mac_addr);
+	/* (1) try to get the MAC address from the device tree */
+	if (np) {
+		err = of_get_mac_address(np, mac_addr);
+		if (err == -EPROBE_DEFER)
+			return err;
 	}
+
+	/* (2) bootloader supplied MAC address */
+	if (is_zero_ether_addr(mac_addr))
+		enetc_pf_get_primary_mac_addr(hw, si, mac_addr);
+
+	/* (3) choose a random one */
+	if (is_zero_ether_addr(mac_addr)) {
+		eth_random_addr(mac_addr);
+		dev_info(dev, "no MAC address specified for SI%d, using %pM\n",
+			 si, mac_addr);
+	}
+
+	enetc_pf_set_primary_mac_addr(hw, si, mac_addr);
+
+	return 0;
+}
+
+static int enetc_setup_mac_addresses(struct device_node *np,
+				     struct enetc_pf *pf)
+{
+	int err, i;
+
+	/* The PF might take its MAC from the device tree */
+	err = enetc_setup_mac_address(np, pf, 0);
+	if (err)
+		return err;
+
+	for (i = 0; i < pf->total_vfs; i++) {
+		err = enetc_setup_mac_address(NULL, pf, i + 1);
+		if (err)
+			return err;
+	}
+
+	return 0;
 }
 
 static void enetc_port_assign_rfs_entries(struct enetc_si *si)
@@ -481,6 +517,8 @@ static void enetc_port_si_configure(struct enetc_si *si)
 
 static void enetc_configure_port_mac(struct enetc_hw *hw)
 {
+	int tc;
+
 	enetc_port_wr(hw, ENETC_PM0_MAXFRM,
 		      ENETC_SET_MAXFRM(ENETC_RX_MAXFRM_SIZE));
 
@@ -557,9 +595,6 @@ static void enetc_configure_port(struct enetc_pf *pf)
 
 	/* split up RFS entries */
 	enetc_port_assign_rfs_entries(pf->si);
-
-	/* fix-up primary MAC addresses, if not set already */
-	enetc_port_setup_primary_mac_address(pf->si);
 
 	/* enforce VLAN promisc mode for all SIs */
 	pf->vlan_promisc_simap = ENETC_VLAN_PROMISC_MAP_ALL;
@@ -701,8 +736,10 @@ static const struct net_device_ops enetc_ndev_ops = {
 	.ndo_set_vf_vlan	= enetc_pf_set_vf_vlan,
 	.ndo_set_vf_spoofchk	= enetc_pf_set_vf_spoofchk,
 	.ndo_set_features	= enetc_pf_set_features,
-	.ndo_do_ioctl		= enetc_ioctl,
+	.ndo_eth_ioctl		= enetc_ioctl,
 	.ndo_setup_tc		= enetc_setup_tc,
+	.ndo_bpf		= enetc_setup_bpf,
+	.ndo_xdp_xmit		= enetc_xdp_xmit,
 };
 
 static void enetc_pf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
@@ -722,21 +759,15 @@ static void enetc_pf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
 	ndev->watchdog_timeo = 5 * HZ;
 	ndev->max_mtu = ENETC_MAX_MTU;
 
-	ndev->hw_features = NETIF_F_SG | NETIF_F_RXCSUM | NETIF_F_HW_CSUM |
+	ndev->hw_features = NETIF_F_SG | NETIF_F_RXCSUM |
 			    NETIF_F_HW_VLAN_CTAG_TX | NETIF_F_HW_VLAN_CTAG_RX |
 			    NETIF_F_HW_VLAN_CTAG_FILTER | NETIF_F_LOOPBACK;
-	ndev->features = NETIF_F_HIGHDMA | NETIF_F_SG |
-			 NETIF_F_RXCSUM | NETIF_F_HW_CSUM |
+	ndev->features = NETIF_F_HIGHDMA | NETIF_F_SG | NETIF_F_RXCSUM |
 			 NETIF_F_HW_VLAN_CTAG_TX |
 			 NETIF_F_HW_VLAN_CTAG_RX;
 
 	if (si->num_rss)
 		ndev->hw_features |= NETIF_F_RXHASH;
-
-	if (si->errata & ENETC_ERR_TXCSUM) {
-		ndev->hw_features &= ~NETIF_F_HW_CSUM;
-		ndev->features &= ~NETIF_F_HW_CSUM;
-	}
 
 	ndev->priv_flags |= IFF_UNICAST_FLT;
 
@@ -1232,6 +1263,10 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 	pf->si = si;
 	pf->total_vfs = pci_sriov_get_totalvfs(pdev);
 
+	err = enetc_setup_mac_addresses(node, pf);
+	if (err)
+		goto err_setup_mac_addresses;
+
 	enetc_configure_port(pf);
 
 	enetc_get_si_caps(si);
@@ -1340,6 +1375,7 @@ static void enetc_pf_remove(struct pci_dev *pdev)
 	enetc_free_msix(priv);
 
 	enetc_free_si_resources(priv);
+	enetc_teardown_cbdr(&si->cbd_ring);
 
 	free_netdev(si->ndev);
 

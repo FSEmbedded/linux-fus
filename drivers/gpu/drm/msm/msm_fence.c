@@ -11,7 +11,8 @@
 
 
 struct msm_fence_context *
-msm_fence_context_alloc(struct drm_device *dev, const char *name)
+msm_fence_context_alloc(struct drm_device *dev, volatile uint32_t *fenceptr,
+		const char *name)
 {
 	struct msm_fence_context *fctx;
 
@@ -22,7 +23,7 @@ msm_fence_context_alloc(struct drm_device *dev, const char *name)
 	fctx->dev = dev;
 	strncpy(fctx->name, name, sizeof(fctx->name));
 	fctx->context = dma_fence_context_alloc(1);
-	init_waitqueue_head(&fctx->event);
+	fctx->fenceptr = fenceptr;
 	spin_lock_init(&fctx->spinlock);
 
 	return fctx;
@@ -83,8 +84,6 @@ void msm_update_fence(struct msm_fence_context *fctx, uint32_t fence)
 	spin_lock(&fctx->spinlock);
 	fctx->completed_fence = max(fence, fctx->completed_fence);
 	spin_unlock(&fctx->spinlock);
-
-	wake_up_all(&fctx->event);
 }
 
 struct msm_fence {

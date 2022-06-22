@@ -1,32 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (C) 2004, 2007-2010, 2011-2012 Synopsys, Inc. (www.synopsys.com)
- *
- * vineetg: May 2011
- *  -Folded PAGE_PRESENT (used by VM) and PAGE_VALID (used by MMU) into 1.
- *     They are semantically the same although in different contexts
- *     VALID marks a TLB entry exists and it will only happen if PRESENT
- *  - Utilise some unused free bits to confine PTE flags to 12 bits
- *     This is a must for 4k pg-sz
- *
- * vineetg: Mar 2011 - changes to accommodate MMU TLB Page Descriptor mods
- *  -TLB Locking never really existed, except for initial specs
- *  -SILENT_xxx not needed for our port
- *  -Per my request, MMU V3 changes the layout of some of the bits
- *     to avoid a few shifts in TLB Miss handlers.
- *
- * vineetg: April 2010
- *  -PGD entry no longer contains any flags. If empty it is 0, otherwise has
- *   Pg-Tbl ptr. Thus pmd_present(), pmd_valid(), pmd_set( ) become simpler
- *
- * vineetg: April 2010
- *  -Switched form 8:11:13 split for page table lookup to 11:8:13
- *  -this speeds up page table allocation itself as we now have to memset 1K
- *    instead of 8k per page table.
- * -TODO: Right now page table alloc is 8K and rest 7K is unused
- *    need to optimise it
- *
- * Amit Bhor, Sameer Dhavale: Codito Technologies 2004
  */
 
 #ifndef _ASM_ARC_PGTABLE_H
@@ -213,8 +187,10 @@
 #define PGDIR_SIZE	BIT(PGDIR_SHIFT)	/* vaddr span, not PDG sz */
 #define PGDIR_MASK	(~(PGDIR_SIZE-1))
 
-#define	PTRS_PER_PTE	BIT(BITS_FOR_PTE)
-#define	PTRS_PER_PGD	BIT(BITS_FOR_PGD)
+#include <asm/pgtable-levels.h>
+#include <asm/pgtable-bits-arcv2.h>
+#include <asm/page.h>
+#include <asm/mmu.h>
 
 /*
  * Number of entries a user land program use.
@@ -222,147 +198,12 @@
  */
 #define	USER_PTRS_PER_PGD	(TASK_SIZE / PGDIR_SIZE)
 
-/*
- * No special requirements for lowest virtual address we permit any user space
- * mapping to be mapped at.
- */
-#define FIRST_USER_ADDRESS      0UL
-
-
-/****************************************************************
- * Bucket load of VM Helpers
- */
-
 #ifndef __ASSEMBLY__
 
-#define pte_ERROR(e) \
-	pr_crit("%s:%d: bad pte %08lx.\n", __FILE__, __LINE__, pte_val(e))
-#define pgd_ERROR(e) \
-	pr_crit("%s:%d: bad pgd %08lx.\n", __FILE__, __LINE__, pgd_val(e))
-
-/* the zero page used for uninitialized and anonymous pages */
 extern char empty_zero_page[PAGE_SIZE];
 #define ZERO_PAGE(vaddr)	(virt_to_page(empty_zero_page))
 
-#define set_pte(pteptr, pteval)	((*(pteptr)) = (pteval))
-#define set_pmd(pmdptr, pmdval)	(*(pmdptr) = pmdval)
-
-/* find the page descriptor of the Page Tbl ref by PMD entry */
-#define pmd_page(pmd)		virt_to_page(pmd_val(pmd) & PAGE_MASK)
-
-/* find the logical addr (phy for ARC) of the Page Tbl ref by PMD entry */
-#define pmd_page_vaddr(pmd)	(pmd_val(pmd) & PAGE_MASK)
-
-/* In a 2 level sys, setup the PGD entry with PTE value */
-static inline void pmd_set(pmd_t *pmdp, pte_t *ptep)
-{
-	pmd_val(*pmdp) = (unsigned long)ptep;
-}
-
-#define pte_none(x)			(!pte_val(x))
-#define pte_present(x)			(pte_val(x) & _PAGE_PRESENT)
-#define pte_clear(mm, addr, ptep)	set_pte_at(mm, addr, ptep, __pte(0))
-
-#define pmd_none(x)			(!pmd_val(x))
-#define	pmd_bad(x)			((pmd_val(x) & ~PAGE_MASK))
-#define pmd_present(x)			(pmd_val(x))
-#define pmd_leaf(x)			(pmd_val(x) & _PAGE_HW_SZ)
-#define pmd_clear(xp)			do { pmd_val(*(xp)) = 0; } while (0)
-
-#define pte_page(pte)		pfn_to_page(pte_pfn(pte))
-#define mk_pte(page, prot)	pfn_pte(page_to_pfn(page), prot)
-#define pfn_pte(pfn, prot)	__pte(__pfn_to_phys(pfn) | pgprot_val(prot))
-
-/* Don't use virt_to_pfn for macros below: could cause truncations for PAE40*/
-#define pte_pfn(pte)		(pte_val(pte) >> PAGE_SHIFT)
-
-/* Zoo of pte_xxx function */
-#define pte_read(pte)		(pte_val(pte) & _PAGE_READ)
-#define pte_write(pte)		(pte_val(pte) & _PAGE_WRITE)
-#define pte_dirty(pte)		(pte_val(pte) & _PAGE_DIRTY)
-#define pte_young(pte)		(pte_val(pte) & _PAGE_ACCESSED)
-#define pte_special(pte)	(pte_val(pte) & _PAGE_SPECIAL)
-
-#define PTE_BIT_FUNC(fn, op) \
-	static inline pte_t pte_##fn(pte_t pte) { pte_val(pte) op; return pte; }
-
-PTE_BIT_FUNC(mknotpresent,	&= ~(_PAGE_PRESENT));
-PTE_BIT_FUNC(wrprotect,	&= ~(_PAGE_WRITE));
-PTE_BIT_FUNC(mkwrite,	|= (_PAGE_WRITE));
-PTE_BIT_FUNC(mkclean,	&= ~(_PAGE_DIRTY));
-PTE_BIT_FUNC(mkdirty,	|= (_PAGE_DIRTY));
-PTE_BIT_FUNC(mkold,	&= ~(_PAGE_ACCESSED));
-PTE_BIT_FUNC(mkyoung,	|= (_PAGE_ACCESSED));
-PTE_BIT_FUNC(exprotect,	&= ~(_PAGE_EXECUTE));
-PTE_BIT_FUNC(mkexec,	|= (_PAGE_EXECUTE));
-PTE_BIT_FUNC(mkspecial,	|= (_PAGE_SPECIAL));
-PTE_BIT_FUNC(mkhuge,	|= (_PAGE_HW_SZ));
-
-static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
-{
-	return __pte((pte_val(pte) & _PAGE_CHG_MASK) | pgprot_val(newprot));
-}
-
-/* Macro to mark a page protection as uncacheable */
-#define pgprot_noncached(prot)	(__pgprot(pgprot_val(prot) & ~_PAGE_CACHEABLE))
-
-static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
-			      pte_t *ptep, pte_t pteval)
-{
-	set_pte(ptep, pteval);
-}
-
-/*
- * Macro to quickly access the PGD entry, utlising the fact that some
- * arch may cache the pointer to Page Directory of "current" task
- * in a MMU register
- *
- * Thus task->mm->pgd (3 pointer dereferences, cache misses etc simply
- * becomes read a register
- *
- * ********CAUTION*******:
- * Kernel code might be dealing with some mm_struct of NON "current"
- * Thus use this macro only when you are certain that "current" is current
- * e.g. when dealing with signal frame setup code etc
- */
-#ifdef ARC_USE_SCRATCH_REG
-#define pgd_offset_fast(mm, addr)	\
-({					\
-	pgd_t *pgd_base = (pgd_t *) read_aux_reg(ARC_REG_SCRATCH_DATA0);  \
-	pgd_base + pgd_index(addr);	\
-})
-#else
-#define pgd_offset_fast(mm, addr)	pgd_offset(mm, addr)
-#endif
-
 extern pgd_t swapper_pg_dir[] __aligned(PAGE_SIZE);
-void update_mmu_cache(struct vm_area_struct *vma, unsigned long address,
-		      pte_t *ptep);
-
-/* Encode swap {type,off} tuple into PTE
- * We reserve 13 bits for 5-bit @type, keeping bits 12-5 zero, ensuring that
- * PAGE_PRESENT is zero in a PTE holding swap "identifier"
- */
-#define __swp_entry(type, off)	((swp_entry_t) { \
-					((type) & 0x1f) | ((off) << 13) })
-
-/* Decode a PTE containing swap "identifier "into constituents */
-#define __swp_type(pte_lookalike)	(((pte_lookalike).val) & 0x1f)
-#define __swp_offset(pte_lookalike)	((pte_lookalike).val >> 13)
-
-/* NOPs, to keep generic kernel happy */
-#define __pte_to_swp_entry(pte)	((swp_entry_t) { pte_val(pte) })
-#define __swp_entry_to_pte(x)	((pte_t) { (x).val })
-
-#define kern_addr_valid(addr)	(1)
-
-/*
- * remap a physical page `pfn' of size `size' with page protection `prot'
- * into virtual address `from'
- */
-#ifdef CONFIG_TRANSPARENT_HUGEPAGE
-#include <asm/hugepage.h>
-#endif
 
 /* to cope with aliasing VIPT cache */
 #define HAVE_ARCH_UNMAPPED_AREA

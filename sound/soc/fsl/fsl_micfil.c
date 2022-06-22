@@ -1723,8 +1723,6 @@ static int fsl_micfil_dai_probe(struct snd_soc_dai *cpu_dai)
 		return ret;
 	}
 
-	snd_soc_dai_set_drvdata(cpu_dai, micfil);
-
 	return 0;
 }
 
@@ -2193,7 +2191,6 @@ static struct kobj_attribute hwvad_en_attr = __ATTR(enable,
 static int fsl_micfil_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
-	const struct of_device_id *of_id;
 	struct fsl_micfil *micfil;
 	struct resource *res;
 	void __iomem *regs;
@@ -2207,11 +2204,7 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 	micfil->pdev = pdev;
 	strncpy(micfil->name, np->name, sizeof(micfil->name) - 1);
 
-	of_id = of_match_device(fsl_micfil_dt_ids, &pdev->dev);
-	if (!of_id || !of_id->data)
-		return -EINVAL;
-
-	micfil->soc = of_id->data;
+	micfil->soc = of_device_get_match_data(&pdev->dev);
 
 	/* ipg_clk is used to control the registers
 	 * ipg_clk_app is used to operate the filter
@@ -2244,8 +2237,7 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 		micfil->clk_src[MICFIL_CLK_EXT3] = NULL;
 
 	/* init regmap */
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	regs = devm_ioremap_resource(&pdev->dev, res);
+	regs = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
 	if (IS_ERR(regs))
 		return PTR_ERR(regs);
 
@@ -2351,7 +2343,6 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "failed to register component %s\n",
 			fsl_micfil_component.name);
-		return ret;
 	}
 
 	ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
@@ -2417,9 +2408,15 @@ static int __maybe_unused fsl_micfil_runtime_resume(struct device *dev)
 	if (state == MICFIL_HWVAD_ON)
 		return 0;
 
-	ret = clk_prepare_enable(micfil->mclk);
+	ret = clk_prepare_enable(micfil->busclk);
 	if (ret < 0)
 		return ret;
+
+	ret = clk_prepare_enable(micfil->mclk);
+	if (ret < 0) {
+		clk_disable_unprepare(micfil->busclk);
+		return ret;
+	}
 
 	regcache_cache_only(micfil->regmap, false);
 	regcache_mark_dirty(micfil->regmap);

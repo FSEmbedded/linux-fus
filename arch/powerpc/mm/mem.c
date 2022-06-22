@@ -12,41 +12,12 @@
  *    Copyright (C) 1991, 1992, 1993, 1994  Linus Torvalds
  */
 
-#include <linux/export.h>
-#include <linux/sched.h>
-#include <linux/kernel.h>
-#include <linux/errno.h>
-#include <linux/string.h>
-#include <linux/gfp.h>
-#include <linux/types.h>
-#include <linux/mm.h>
-#include <linux/stddef.h>
-#include <linux/init.h>
 #include <linux/memblock.h>
 #include <linux/highmem.h>
-#include <linux/initrd.h>
-#include <linux/pagemap.h>
 #include <linux/suspend.h>
-#include <linux/hugetlb.h>
-#include <linux/slab.h>
-#include <linux/vmalloc.h>
-#include <linux/memremap.h>
 #include <linux/dma-direct.h>
-#include <linux/kprobes.h>
 
-#include <asm/prom.h>
-#include <asm/io.h>
-#include <asm/mmu_context.h>
-#include <asm/mmu.h>
-#include <asm/smp.h>
 #include <asm/machdep.h>
-#include <asm/btext.h>
-#include <asm/tlb.h>
-#include <asm/sections.h>
-#include <asm/sparsemem.h>
-#include <asm/vdso.h>
-#include <asm/fixmap.h>
-#include <asm/swiotlb.h>
 #include <asm/rtas.h>
 #include <asm/kasan.h>
 #include <asm/svm.h>
@@ -54,18 +25,11 @@
 
 #include <mm/mmu_decl.h>
 
-#ifndef CPU_FTR_COHERENT_ICACHE
-#define CPU_FTR_COHERENT_ICACHE	0	/* XXX for now */
-#define CPU_FTR_NOEXECUTE	0
-#endif
-
 unsigned long long memory_limit;
 bool init_mem_is_free;
 
-#ifdef CONFIG_HIGHMEM
-pte_t *kmap_pte;
-EXPORT_SYMBOL(kmap_pte);
-#endif
+unsigned long empty_zero_page[PAGE_SIZE / sizeof(unsigned long)] __page_aligned_bss;
+EXPORT_SYMBOL(empty_zero_page);
 
 pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
 			      unsigned long size, pgprot_t vma_prot)
@@ -81,6 +45,7 @@ pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
 EXPORT_SYMBOL(phys_mem_access_prot);
 
 #ifdef CONFIG_MEMORY_HOTPLUG
+static DEFINE_MUTEX(linear_mapping_mutex);
 
 #ifdef CONFIG_NUMA
 int memory_add_physaddr_to_nid(u64 start)
@@ -100,25 +65,42 @@ int __weak remove_section_mapping(unsigned long start, unsigned long end)
 	return -ENODEV;
 }
 
-#define FLUSH_CHUNK_SIZE SZ_1G
-/**
- * flush_dcache_range_chunked(): Write any modified data cache blocks out to
- * memory and invalidate them, in chunks of up to FLUSH_CHUNK_SIZE
- * Does not invalidate the corresponding instruction cache blocks.
- *
- * @start: the start address
- * @stop: the stop address (exclusive)
- * @chunk: the max size of the chunks
- */
-static void flush_dcache_range_chunked(unsigned long start, unsigned long stop,
-				       unsigned long chunk)
+int __ref arch_create_linear_mapping(int nid, u64 start, u64 size,
+				     struct mhp_params *params)
 {
-	unsigned long i;
+	int rc;
 
-	for (i = start; i < stop; i += chunk) {
-		flush_dcache_range(i, min(stop, i + chunk));
-		cond_resched();
+	start = (unsigned long)__va(start);
+	mutex_lock(&linear_mapping_mutex);
+	rc = create_section_mapping(start, start + size, nid,
+				    params->pgprot);
+	mutex_unlock(&linear_mapping_mutex);
+	if (rc) {
+		pr_warn("Unable to create linear mapping for 0x%llx..0x%llx: %d\n",
+			start, start + size, rc);
+		return -EFAULT;
 	}
+	return 0;
+}
+
+void __ref arch_remove_linear_mapping(u64 start, u64 size)
+{
+	int ret;
+
+	/* Remove htab bolted mappings for this section of memory */
+	start = (unsigned long)__va(start);
+
+	mutex_lock(&linear_mapping_mutex);
+	ret = remove_section_mapping(start, start + size);
+	mutex_unlock(&linear_mapping_mutex);
+	if (ret)
+		pr_warn("Unable to remove linear mapping for 0x%llx..0x%llx: %d\n",
+			start, start + size, ret);
+
+	/* Ensure all vmalloc mappings are flushed in case they also
+	 * hit that section of memory
+	 */
+	vm_unmap_aliases();
 }
 
 int __ref arch_add_memory(int nid, u64 start, u64 size,
@@ -128,42 +110,26 @@ int __ref arch_add_memory(int nid, u64 start, u64 size,
 	unsigned long nr_pages = size >> PAGE_SHIFT;
 	int rc;
 
-	start = (unsigned long)__va(start);
-	rc = create_section_mapping(start, start + size, nid,
-				    params->pgprot);
-	if (rc) {
-		pr_warn("Unable to create mapping for hot added memory 0x%llx..0x%llx: %d\n",
-			start, start + size, rc);
-		return -EFAULT;
-	}
-
-	return __add_pages(nid, start_pfn, nr_pages, params);
+	rc = arch_create_linear_mapping(nid, start, size, params);
+	if (rc)
+		return rc;
+	rc = __add_pages(nid, start_pfn, nr_pages, params);
+	if (rc)
+		arch_remove_linear_mapping(start, size);
+	return rc;
 }
 
-void __ref arch_remove_memory(int nid, u64 start, u64 size,
-			     struct vmem_altmap *altmap)
+void __ref arch_remove_memory(u64 start, u64 size, struct vmem_altmap *altmap)
 {
 	unsigned long start_pfn = start >> PAGE_SHIFT;
 	unsigned long nr_pages = size >> PAGE_SHIFT;
-	int ret;
 
 	__remove_pages(start_pfn, nr_pages, altmap);
-
-	/* Remove htab bolted mappings for this section of memory */
-	start = (unsigned long)__va(start);
-	flush_dcache_range_chunked(start, start + size, FLUSH_CHUNK_SIZE);
-
-	ret = remove_section_mapping(start, start + size);
-	WARN_ON_ONCE(ret);
-
-	/* Ensure all vmalloc mappings are flushed in case they also
-	 * hit that section of memory
-	 */
-	vm_unmap_aliases();
+	arch_remove_linear_mapping(start, size);
 }
 #endif
 
-#ifndef CONFIG_NEED_MULTIPLE_NODES
+#ifndef CONFIG_NUMA
 void __init mem_topology_setup(void)
 {
 	max_low_pfn = max_pfn = memblock_end_of_DRAM() >> PAGE_SHIFT;
@@ -198,7 +164,7 @@ static int __init mark_nonram_nosave(void)
 
 	return 0;
 }
-#else /* CONFIG_NEED_MULTIPLE_NODES */
+#else /* CONFIG_NUMA */
 static int __init mark_nonram_nosave(void)
 {
 	return 0;
@@ -236,8 +202,6 @@ void __init paging_init(void)
 
 	map_kernel_page(PKMAP_BASE, 0, __pgprot(0));	/* XXX gross */
 	pkmap_page_table = virt_to_kpte(PKMAP_BASE);
-
-	kmap_pte = virt_to_kpte(__fix_to_virt(FIX_KMAP_BEGIN));
 #endif /* CONFIG_HIGHMEM */
 
 	printk(KERN_DEBUG "Top of RAM: 0x%llx, Total RAM: 0x%llx\n",
@@ -321,7 +285,6 @@ void __init mem_init(void)
 		(mfspr(SPRN_TLB1CFG) & TLBnCFG_N_ENTRY) - 1;
 #endif
 
-	mem_init_print_info(NULL);
 #ifdef CONFIG_PPC32
 	pr_info("Kernel virtual memory layout:\n");
 #ifdef CONFIG_KASAN
@@ -338,6 +301,10 @@ void __init mem_init(void)
 			ioremap_bot, IOREMAP_TOP);
 	pr_info("  * 0x%08lx..0x%08lx  : vmalloc & ioremap\n",
 		VMALLOC_START, VMALLOC_END);
+#ifdef MODULES_VADDR
+	pr_info("  * 0x%08lx..0x%08lx  : modules\n",
+		MODULES_VADDR, MODULES_END);
+#endif
 #endif /* CONFIG_PPC32 */
 }
 

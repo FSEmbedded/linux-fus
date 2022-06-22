@@ -12,6 +12,7 @@
 #include <linux/kernel.h>
 #include <linux/pci.h>
 #include <asm/pci_debug.h>
+#include <asm/pci_dma.h>
 #include <asm/sclp.h>
 
 #include "pci_bus.h"
@@ -73,6 +74,23 @@ void zpci_event_error(void *data)
 		__zpci_event_error(data);
 }
 
+static void zpci_event_hard_deconfigured(struct zpci_dev *zdev, u32 fh)
+{
+	zdev->fh = fh;
+	/* Give the driver a hint that the function is
+	 * already unusable.
+	 */
+	zpci_bus_remove_device(zdev, true);
+	/* Even though the device is already gone we still
+	 * need to free zPCI resources as part of the disable.
+	 */
+	if (zdev->dma_table)
+		zpci_dma_exit_device(zdev);
+	if (zdev_enabled(zdev))
+		zpci_disable_device(zdev);
+	zdev->state = ZPCI_FN_STATE_STANDBY;
+}
+
 static void __zpci_event_availability(struct zpci_ccdf_avail *ccdf)
 {
 	struct zpci_dev *zdev = get_zdev_by_fid(ccdf->fid);
@@ -89,27 +107,7 @@ static void __zpci_event_availability(struct zpci_ccdf_avail *ccdf)
 			zpci_create_device(ccdf->fid, ccdf->fh, ZPCI_FN_STATE_CONFIGURED);
 			break;
 		}
-		/* the configuration request may be stale */
-		if (zdev->state != ZPCI_FN_STATE_STANDBY)
-			break;
-		zdev->fh = ccdf->fh;
-		zdev->state = ZPCI_FN_STATE_CONFIGURED;
-		ret = zpci_enable_device(zdev);
-		if (ret)
-			break;
-
-		/* the PCI function will be scanned once function 0 appears */
-		if (!zdev->zbus->bus)
-			break;
-
-		pdev = pci_scan_single_device(zdev->zbus->bus, zdev->devfn);
-		if (!pdev)
-			break;
-
-		pci_bus_add_device(pdev);
-		pci_lock_rescan_remove();
-		pci_bus_add_devices(zdev->zbus->bus);
-		pci_unlock_rescan_remove();
+		zpci_scan_configured_device(zdev, ccdf->fh);
 		break;
 	case 0x0302: /* Reserved -> Standby */
 		if (!zdev) {
@@ -156,7 +154,7 @@ static void __zpci_event_availability(struct zpci_ccdf_avail *ccdf)
 	case 0x0308: /* Standby -> Reserved */
 		if (!zdev)
 			break;
-		zpci_zdev_put(zdev);
+		zpci_device_reserved(zdev);
 		break;
 	default:
 		break;

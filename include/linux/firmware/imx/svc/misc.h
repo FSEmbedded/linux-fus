@@ -87,4 +87,16 @@ static inline int imx_sc_pm_cpu_start(struct imx_sc_ipc *ipc, u32 resource,
 }
 #endif
 
+static inline int imx_sc_misc_get_control(struct imx_sc_ipc *ipc,
+					  u32 resource, u8 ctrl, u32 *val)
+{
+	return -ENOTSUPP;
+}
+
+static inline int imx_sc_pm_cpu_start(struct imx_sc_ipc *ipc, u32 resource,
+				      bool enable, u64 phys_addr)
+{
+	return -ENOTSUPP;
+}
+#endif
 #endif /* _SC_MISC_API_H */

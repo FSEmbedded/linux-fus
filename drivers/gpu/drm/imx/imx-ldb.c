@@ -22,6 +22,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge.h>
 #include <drm/drm_fb_helper.h>
+#include <drm/drm_managed.h>
 #include <drm/drm_of.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_simple_kms_helper.h>
@@ -37,6 +38,14 @@
 #define LDB_CH1_MODE_EN_TO_DI1		(3 << 2)
 #define LDB_CH1_MODE_EN_MASK		(3 << 2)
 #define LDB_BGREF_RMODE_INT		(1 << 15)
+
+struct imx_ldb_channel;
+
+struct imx_ldb_encoder {
+	struct drm_connector connector;
+	struct drm_encoder encoder;
+	struct imx_ldb_channel *channel;
+};
 
 struct imx_ldb;
 
@@ -56,12 +65,12 @@ struct imx_ldb_channel {
 
 static inline struct imx_ldb_channel *con_to_imx_ldb_ch(struct drm_connector *c)
 {
-	return container_of(c, struct imx_ldb_channel, connector);
+	return container_of(c, struct imx_ldb_encoder, connector)->channel;
 }
 
 static inline struct imx_ldb_channel *enc_to_imx_ldb_ch(struct drm_encoder *e)
 {
-	return container_of(e, struct imx_ldb_channel, encoder);
+	return container_of(e, struct imx_ldb_encoder, encoder)->channel;
 }
 
 struct bus_mux {
@@ -205,6 +214,11 @@ imx_ldb_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	int mux = drm_of_encoder_active_port_id(ldb_ch->child, encoder);
 
 	if (mux < 0 || mux >= ARRAY_SIZE(imx_ldb->clk_sel)) {
+		dev_warn(ldb->dev, "%s: invalid mux %d\n", __func__, mux);
+		return;
+	}
+
+	if (mux < 0 || mux >= ARRAY_SIZE(ldb->clk_sel)) {
 		dev_warn(ldb->dev, "%s: invalid mux %d\n", __func__, mux);
 		return;
 	}
@@ -468,8 +482,9 @@ static int imx_ldb_bind(struct device *dev, struct device *master, void *data)
 	int ret;
 	int i;
 
-	imx_ldb = dev_get_drvdata(dev);
-	memset(imx_ldb, 0, sizeof(*imx_ldb));
+	imx_ldb = devm_kzalloc(dev, sizeof(*imx_ldb), GFP_KERNEL);
+	if (!imx_ldb)
+		return -ENOMEM;
 
 	imx_ldb->lvds_mux = of_id ? of_id->data : NULL;
 
@@ -539,10 +554,9 @@ static int imx_ldb_bind(struct device *dev, struct device *master, void *data)
 	return 0;
 }
 
-static void imx_ldb_unbind(struct device *dev, struct device *master,
-	void *data)
+static int imx_ldb_remove(struct platform_device *pdev)
 {
-	struct imx_ldb *imx_ldb = dev_get_drvdata(dev);
+	struct imx_ldb *imx_ldb = platform_get_drvdata(pdev);
 	int i;
 
 	for (i = 0; i < LDB_CH_NUM; i++) {
@@ -555,26 +569,6 @@ static void imx_ldb_unbind(struct device *dev, struct device *master,
 	dev_set_drvdata(dev, NULL);
 }
 
-static const struct component_ops imx_ldb_ops = {
-	.bind	= imx_ldb_bind,
-	.unbind	= imx_ldb_unbind,
-};
-
-static int imx_ldb_probe(struct platform_device *pdev)
-{
-	struct imx_ldb *imx_ldb;
-
-	imx_ldb = devm_kzalloc(&pdev->dev, sizeof(*imx_ldb), GFP_KERNEL);
-	if (!imx_ldb)
-		return -ENOMEM;
-
-	platform_set_drvdata(pdev, imx_ldb);
-
-	return component_add(&pdev->dev, &imx_ldb_ops);
-}
-
-static int imx_ldb_remove(struct platform_device *pdev)
-{
 	component_del(&pdev->dev, &imx_ldb_ops);
 	return 0;
 }

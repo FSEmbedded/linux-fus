@@ -157,7 +157,7 @@ static const struct {
 	{ ENETC_PM0_TFRM,   "MAC tx frames" },
 	{ ENETC_PM0_TFCS,   "MAC tx fcs errors" },
 	{ ENETC_PM0_TVLAN,  "MAC tx VLAN frames" },
-	{ ENETC_PM0_TERR,   "MAC tx frames" },
+	{ ENETC_PM0_TERR,   "MAC tx frame errors" },
 	{ ENETC_PM0_TUCA,   "MAC tx unicast frames" },
 	{ ENETC_PM0_TMCA,   "MAC tx multicast frames" },
 	{ ENETC_PM0_TBCA,   "MAC tx broadcast frames" },
@@ -207,10 +207,18 @@ static const struct {
 static const char rx_ring_stats[][ETH_GSTRING_LEN] = {
 	"Rx ring %2d frames",
 	"Rx ring %2d alloc errors",
+	"Rx ring %2d XDP drops",
+	"Rx ring %2d recycles",
+	"Rx ring %2d recycle failures",
+	"Rx ring %2d redirects",
+	"Rx ring %2d redirect failures",
+	"Rx ring %2d redirect S/G",
 };
 
 static const char tx_ring_stats[][ETH_GSTRING_LEN] = {
 	"Tx ring %2d frames",
+	"Tx ring %2d XDP frames",
+	"Tx ring %2d XDP drops",
 };
 
 static const char tx_windrop_stats[][ETH_GSTRING_LEN] = {
@@ -314,12 +322,21 @@ static void enetc_get_ethtool_stats(struct net_device *ndev,
 	for (i = 0; i < ARRAY_SIZE(enetc_si_counters); i++)
 		data[o++] = enetc_rd64(hw, enetc_si_counters[i].reg);
 
-	for (i = 0; i < priv->num_tx_rings; i++)
+	for (i = 0; i < priv->num_tx_rings; i++) {
 		data[o++] = priv->tx_ring[i]->stats.packets;
+		data[o++] = priv->tx_ring[i]->stats.xdp_tx;
+		data[o++] = priv->tx_ring[i]->stats.xdp_tx_drops;
+	}
 
 	for (i = 0; i < priv->num_rx_rings; i++) {
 		data[o++] = priv->rx_ring[i]->stats.packets;
 		data[o++] = priv->rx_ring[i]->stats.rx_alloc_errs;
+		data[o++] = priv->rx_ring[i]->stats.xdp_drops;
+		data[o++] = priv->rx_ring[i]->stats.recycles;
+		data[o++] = priv->rx_ring[i]->stats.recycle_failures;
+		data[o++] = priv->rx_ring[i]->stats.xdp_redirect;
+		data[o++] = priv->rx_ring[i]->stats.xdp_redirect_failures;
+		data[o++] = priv->rx_ring[i]->stats.xdp_redirect_sg;
 	}
 
 	if (!enetc_si_is_pf(priv->si))
@@ -627,7 +644,9 @@ static void enetc_get_ringparam(struct net_device *ndev,
 }
 
 static int enetc_get_coalesce(struct net_device *ndev,
-			      struct ethtool_coalesce *ic)
+			      struct ethtool_coalesce *ic,
+			      struct kernel_ethtool_coalesce *kernel_coal,
+			      struct netlink_ext_ack *extack)
 {
 	struct enetc_ndev_priv *priv = netdev_priv(ndev);
 	struct enetc_int_vector *v = priv->int_vector[0];
@@ -644,7 +663,9 @@ static int enetc_get_coalesce(struct net_device *ndev,
 }
 
 static int enetc_set_coalesce(struct net_device *ndev,
-			      struct ethtool_coalesce *ic)
+			      struct ethtool_coalesce *ic,
+			      struct kernel_ethtool_coalesce *kernel_coal,
+			      struct netlink_ext_ack *extack)
 {
 	struct enetc_ndev_priv *priv = netdev_priv(ndev);
 	u32 rx_ictt, tx_ictt;
@@ -713,7 +734,8 @@ static int enetc_get_ts_info(struct net_device *ndev,
 				SOF_TIMESTAMPING_RAW_HARDWARE;
 
 	info->tx_types = (1 << HWTSTAMP_TX_OFF) |
-			 (1 << HWTSTAMP_TX_ON);
+			 (1 << HWTSTAMP_TX_ON) |
+			 (1 << HWTSTAMP_TX_ONESTEP_SYNC);
 	info->rx_filters = (1 << HWTSTAMP_FILTER_NONE) |
 			   (1 << HWTSTAMP_FILTER_ALL);
 #else

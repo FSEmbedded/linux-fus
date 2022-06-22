@@ -32,7 +32,6 @@
 #include <asm/irqflags.h>
 #include <asm/hw_irq.h>
 #include <asm/context_tracking.h>
-#include <asm/tm.h>
 #include <asm/ppc-opcode.h>
 #include <asm/barrier.h>
 #include <asm/export.h>
@@ -48,19 +47,6 @@
 /*
  * System calls.
  */
-	.section	".toc","aw"
-SYS_CALL_TABLE:
-	.tc sys_call_table[TC],sys_call_table
-
-#ifdef CONFIG_COMPAT
-COMPAT_SYS_CALL_TABLE:
-	.tc compat_sys_call_table[TC],compat_sys_call_table
-#endif
-
-/* This value is used to mark exception frames on the stack. */
-exception_marker:
-	.tc	ID_EXC_MARKER[TC],STACK_FRAME_REGS_MARKER
-
 	.section	".text"
 	.align 7
 
@@ -641,149 +627,6 @@ END_FTR_SECTION_IFCLR(CPU_FTR_ARCH_207S)
 	addi	r1,r1,SWITCH_FRAME_SIZE
 	blr
 
-#ifdef CONFIG_PPC_BOOK3S
-	/*
-	 * If MSR EE/RI was never enabled, IRQs not reconciled, NVGPRs not
-	 * touched, no exit work created, then this can be used.
-	 */
-	.balign IFETCH_ALIGN_BYTES
-	.globl fast_interrupt_return
-fast_interrupt_return:
-_ASM_NOKPROBE_SYMBOL(fast_interrupt_return)
-	kuap_check_amr r3, r4
-	ld	r5,_MSR(r1)
-	andi.	r0,r5,MSR_PR
-	bne	.Lfast_user_interrupt_return
-	kuap_restore_amr r3, r4
-	andi.	r0,r5,MSR_RI
-	li	r3,0 /* 0 return value, no EMULATE_STACK_STORE */
-	bne+	.Lfast_kernel_interrupt_return
-	addi	r3,r1,STACK_FRAME_OVERHEAD
-	bl	unrecoverable_exception
-	b	. /* should not get here */
-
-	.balign IFETCH_ALIGN_BYTES
-	.globl interrupt_return
-interrupt_return:
-_ASM_NOKPROBE_SYMBOL(interrupt_return)
-	ld	r4,_MSR(r1)
-	andi.	r0,r4,MSR_PR
-	beq	.Lkernel_interrupt_return
-	addi	r3,r1,STACK_FRAME_OVERHEAD
-	bl	interrupt_exit_user_prepare
-	cmpdi	r3,0
-	bne-	.Lrestore_nvgprs
-
-.Lfast_user_interrupt_return:
-	ld	r11,_NIP(r1)
-	ld	r12,_MSR(r1)
-BEGIN_FTR_SECTION
-	ld	r10,_PPR(r1)
-	mtspr	SPRN_PPR,r10
-END_FTR_SECTION_IFSET(CPU_FTR_HAS_PPR)
-	mtspr	SPRN_SRR0,r11
-	mtspr	SPRN_SRR1,r12
-
-BEGIN_FTR_SECTION
-	stdcx.	r0,0,r1		/* to clear the reservation */
-FTR_SECTION_ELSE
-	ldarx	r0,0,r1
-ALT_FTR_SECTION_END_IFCLR(CPU_FTR_STCX_CHECKS_ADDRESS)
-
-	ld	r3,_CCR(r1)
-	ld	r4,_LINK(r1)
-	ld	r5,_CTR(r1)
-	ld	r6,_XER(r1)
-	li	r0,0
-
-	REST_4GPRS(7, r1)
-	REST_2GPRS(11, r1)
-	REST_GPR(13, r1)
-
-	mtcr	r3
-	mtlr	r4
-	mtctr	r5
-	mtspr	SPRN_XER,r6
-
-	REST_4GPRS(2, r1)
-	REST_GPR(6, r1)
-	REST_GPR(0, r1)
-	REST_GPR(1, r1)
-	RFI_TO_USER
-	b	.	/* prevent speculative execution */
-
-.Lrestore_nvgprs:
-	REST_NVGPRS(r1)
-	b	.Lfast_user_interrupt_return
-
-	.balign IFETCH_ALIGN_BYTES
-.Lkernel_interrupt_return:
-	addi	r3,r1,STACK_FRAME_OVERHEAD
-	bl	interrupt_exit_kernel_prepare
-
-.Lfast_kernel_interrupt_return:
-	cmpdi	cr1,r3,0
-	ld	r11,_NIP(r1)
-	ld	r12,_MSR(r1)
-	mtspr	SPRN_SRR0,r11
-	mtspr	SPRN_SRR1,r12
-
-BEGIN_FTR_SECTION
-	stdcx.	r0,0,r1		/* to clear the reservation */
-FTR_SECTION_ELSE
-	ldarx	r0,0,r1
-ALT_FTR_SECTION_END_IFCLR(CPU_FTR_STCX_CHECKS_ADDRESS)
-
-	ld	r3,_LINK(r1)
-	ld	r4,_CTR(r1)
-	ld	r5,_XER(r1)
-	ld	r6,_CCR(r1)
-	li	r0,0
-
-	REST_4GPRS(7, r1)
-	REST_2GPRS(11, r1)
-
-	mtlr	r3
-	mtctr	r4
-	mtspr	SPRN_XER,r5
-
-	/*
-	 * Leaving a stale exception_marker on the stack can confuse
-	 * the reliable stack unwinder later on. Clear it.
-	 */
-	std	r0,STACK_FRAME_OVERHEAD-16(r1)
-
-	REST_4GPRS(2, r1)
-
-	bne-	cr1,1f /* emulate stack store */
-	mtcr	r6
-	REST_GPR(6, r1)
-	REST_GPR(0, r1)
-	REST_GPR(1, r1)
-	RFI_TO_KERNEL
-	b	.	/* prevent speculative execution */
-
-1:	/*
-	 * Emulate stack store with update. New r1 value was already calculated
-	 * and updated in our interrupt regs by emulate_loadstore, but we can't
-	 * store the previous value of r1 to the stack before re-loading our
-	 * registers from it, otherwise they could be clobbered.  Use
-	 * PACA_EXGEN as temporary storage to hold the store data, as
-	 * interrupts are disabled here so it won't be clobbered.
-	 */
-	mtcr	r6
-	std	r9,PACA_EXGEN+0(r13)
-	addi	r9,r1,INT_FRAME_SIZE /* get original r1 */
-	REST_GPR(6, r1)
-	REST_GPR(0, r1)
-	REST_GPR(1, r1)
-	std	r9,0(r1) /* perform store component of stdu */
-	ld	r9,PACA_EXGEN+0(r13)
-
-	RFI_TO_KERNEL
-	b	.	/* prevent speculative execution */
-#endif /* CONFIG_PPC_BOOK3S */
-
 #ifdef CONFIG_PPC_RTAS
 /*
  * On CHRP, the Run-Time Abstraction Services (RTAS) have to be
@@ -829,7 +672,7 @@ _GLOBAL(enter_rtas)
 	 */
 	lbz	r0,PACAIRQSOFTMASK(r13)
 1:	tdeqi	r0,IRQS_ENABLED
-	EMIT_BUG_ENTRY 1b,__FILE__,__LINE__,BUGFLAG_WARNING
+	EMIT_WARN_ENTRY 1b,__FILE__,__LINE__,BUGFLAG_WARNING
 #endif
 
 	/* Hard-disable interrupts */
@@ -967,7 +810,7 @@ _GLOBAL(enter_prom)
 	mtsrr1	r11
 	rfi
 #else /* CONFIG_PPC_BOOK3E */
-	LOAD_REG_IMMEDIATE(r12, MSR_SF | MSR_ISF | MSR_LE)
+	LOAD_REG_IMMEDIATE(r12, MSR_SF | MSR_LE)
 	andc	r11,r11,r12
 	mtsrr1	r11
 	RFI_TO_KERNEL

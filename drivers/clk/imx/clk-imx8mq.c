@@ -273,6 +273,14 @@ static const char * const imx8mq_clko1_sels[] = {"osc_25m", "sys1_pll_800m", "os
 static const char * const imx8mq_clko2_sels[] = {"osc_25m", "sys2_pll_200m", "sys1_pll_400m", "sys2_pll_166m",
 					  "sys3_pll_out", "audio_pll1_out", "video_pll1_out", "ckil", };
 
+static const char * const pllout_monitor_sels[] = {"osc_25m", "osc_27m", "dummy", "dummy", "ckil",
+						   "audio_pll1_out_monitor", "audio_pll2_out_monitor",
+						   "video_pll1_out_monitor", "gpu_pll_out_monitor",
+						   "vpu_pll_out_monitor", "arm_pll_out_monitor",
+						   "sys_pll1_out_monitor", "sys_pll2_out_monitor",
+						   "sys_pll3_out_monitor", "dram_pll_out_monitor",
+						   "video_pll2_out_monitor", };
+
 static struct clk_hw_onecell_data *clk_hw_data;
 static struct clk_hw **hws;
 
@@ -657,7 +665,7 @@ static struct platform_driver imx8mq_clk_driver = {
 		 * reloading the driver will crash or break devices.
 		 */
 		.suppress_bind_attrs = true,
-		.of_match_table = of_match_ptr(imx8mq_clk_of_match),
+		.of_match_table = imx8mq_clk_of_match,
 	},
 };
 module_platform_driver(imx8mq_clk_driver);

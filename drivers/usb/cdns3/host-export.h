@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Cadence USBSS DRD Driver - Host Export APIs
+ * Cadence USBSS and USBSSP DRD Driver - Host Export APIs
  *
  * Copyright (C) 2017-2018 NXP
  *
@@ -17,7 +17,7 @@ int xhci_cdns3_suspend_quirk(struct usb_hcd *hcd);
 
 #else
 
-static inline int cdns3_host_init(struct cdns3 *cdns)
+static inline int cdns_host_init(struct cdns *cdns)
 {
 	return -ENXIO;
 }
@@ -28,6 +28,6 @@ static inline int xhci_cdns3_suspend_quirk(struct usb_hcd *hcd)
 	return 0;
 }
 
-#endif /* CONFIG_USB_CDNS3_HOST */
+#endif /* USB_CDNS_HOST */
 
 #endif /* __LINUX_CDNS3_HOST_EXPORT */

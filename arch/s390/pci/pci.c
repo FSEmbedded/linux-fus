@@ -92,7 +92,7 @@ void zpci_remove_reserved_devices(void)
 	spin_unlock(&zpci_list_lock);
 
 	list_for_each_entry_safe(zdev, tmp, &remove, entry)
-		zpci_zdev_put(zdev);
+		zpci_device_reserved(zdev);
 }
 
 int pci_domain_nr(struct pci_bus *bus)
@@ -113,13 +113,16 @@ int zpci_register_ioat(struct zpci_dev *zdev, u8 dmaas,
 {
 	u64 req = ZPCI_CREATE_REQ(zdev->fh, dmaas, ZPCI_MOD_FC_REG_IOAT);
 	struct zpci_fib fib = {0};
-	u8 status;
+	u8 cc, status;
 
 	WARN_ON_ONCE(iota & 0x3fff);
 	fib.pba = base;
 	fib.pal = limit;
 	fib.iota = iota | ZPCI_IOTA_RTTO_FLAG;
-	return zpci_mod_fc(req, &fib, &status) ? -EIO : 0;
+	cc = zpci_mod_fc(req, &fib, &status);
+	if (cc)
+		zpci_dbg(3, "reg ioat fid:%x, cc:%d, status:%d\n", zdev->fid, cc, status);
+	return cc;
 }
 
 /* Modify PCI: Unregister I/O address translation parameters */
@@ -130,9 +133,9 @@ int zpci_unregister_ioat(struct zpci_dev *zdev, u8 dmaas)
 	u8 cc, status;
 
 	cc = zpci_mod_fc(req, &fib, &status);
-	if (cc == 3) /* Function already gone. */
-		cc = 0;
-	return cc ? -EIO : 0;
+	if (cc)
+		zpci_dbg(3, "unreg ioat fid:%x, cc:%d, status:%d\n", zdev->fid, cc, status);
+	return cc;
 }
 
 /* Modify PCI: Set PCI function measurement parameters */
@@ -538,6 +541,7 @@ int zpci_setup_bus_resources(struct zpci_dev *zdev,
 		zdev->bars[i].res = res;
 		pci_add_resource(resources, res);
 	}
+	zdev->has_resources = 1;
 
 	return 0;
 }
@@ -554,6 +558,7 @@ static void zpci_cleanup_bus_resources(struct zpci_dev *zdev)
 		release_resource(zdev->bars[i].res);
 		kfree(zdev->bars[i].res);
 	}
+	zdev->has_resources = 0;
 }
 
 int pcibios_add_device(struct pci_dev *pdev)
@@ -664,19 +669,12 @@ int zpci_enable_device(struct zpci_dev *zdev)
 		goto out;
 	}
 
-	rc = zpci_dma_init_device(zdev);
-	if (rc)
-		goto out_dma;
-
-	zdev->state = ZPCI_FN_STATE_ONLINE;
-	return 0;
-
-out_dma:
-	clp_disable_fh(zdev);
-out:
+	if (clp_enable_fh(zdev, &fh, ZPCI_NR_DMA_SPACES))
+		rc = -EIO;
+	else
+		zdev->fh = fh;
 	return rc;
 }
-EXPORT_SYMBOL_GPL(zpci_enable_device);
 
 int zpci_disable_device(struct zpci_dev *zdev)
 {
@@ -720,6 +718,7 @@ void zpci_remove_device(struct zpci_dev *zdev, bool set_error)
 		/* balance pci_get_slot */
 		pci_dev_put(pdev);
 	}
+	return rc;
 }
 
 /**
@@ -766,7 +765,8 @@ int zpci_create_device(u32 fid, u32 fh, enum zpci_state state)
 			goto error_destroy_iommu;
 	}
 
-	rc = zpci_bus_device_register(zdev, &pci_root_ops);
+	rc = sclp_pci_deconfigure(zdev->fid);
+	zpci_dbg(3, "deconf fid:%x, rc:%d\n", zdev->fid, rc);
 	if (rc)
 		goto error_disable;
 
@@ -775,6 +775,7 @@ int zpci_create_device(u32 fid, u32 fh, enum zpci_state state)
 	spin_unlock(&zpci_list_lock);
 
 	return 0;
+}
 
 error_disable:
 	if (zdev->state == ZPCI_FN_STATE_ONLINE)
@@ -790,29 +791,33 @@ error:
 void zpci_release_device(struct kref *kref)
 {
 	struct zpci_dev *zdev = container_of(kref, struct zpci_dev, kref);
+	int ret;
 
 	if (zdev->zbus->bus)
 		zpci_remove_device(zdev, false);
 
 	switch (zdev->state) {
-	case ZPCI_FN_STATE_ONLINE:
 	case ZPCI_FN_STATE_CONFIGURED:
-		zpci_disable_device(zdev);
+		ret = sclp_pci_deconfigure(zdev->fid);
+		zpci_dbg(3, "deconf fid:%x, rc:%d\n", zdev->fid, ret);
 		fallthrough;
 	case ZPCI_FN_STATE_STANDBY:
 		if (zdev->has_hp_slot)
 			zpci_exit_slot(zdev);
-		zpci_cleanup_bus_resources(zdev);
+		spin_lock(&zpci_list_lock);
+		list_del(&zdev->entry);
+		spin_unlock(&zpci_list_lock);
+		zpci_dbg(3, "rsv fid:%x\n", zdev->fid);
+		fallthrough;
+	case ZPCI_FN_STATE_RESERVED:
+		if (zdev->has_resources)
+			zpci_cleanup_bus_resources(zdev);
 		zpci_bus_device_unregister(zdev);
 		zpci_destroy_iommu(zdev);
 		fallthrough;
 	default:
 		break;
 	}
-
-	spin_lock(&zpci_list_lock);
-	list_del(&zdev->entry);
-	spin_unlock(&zpci_list_lock);
 	zpci_dbg(3, "rem fid:%x\n", zdev->fid);
 	kfree(zdev);
 }
@@ -902,8 +907,10 @@ static int __init pci_base_init(void)
 	if (!s390_pci_probe)
 		return 0;
 
-	if (!test_facility(69) || !test_facility(71))
+	if (!test_facility(69) || !test_facility(71)) {
+		pr_info("PCI is not supported because CPU facilities 69 or 71 are not available\n");
 		return 0;
+	}
 
 	if (MACHINE_HAS_PCI_MIO) {
 		static_branch_enable(&have_mio);
@@ -929,6 +936,7 @@ static int __init pci_base_init(void)
 	rc = clp_scan_pci_devices();
 	if (rc)
 		goto out_find;
+	zpci_bus_scan_busses();
 
 	s390_pci_initialized = 1;
 	return 0;

@@ -23,7 +23,6 @@ void mx35_map_io(void);
 void imx21_init_early(void);
 void imx31_init_early(void);
 void imx35_init_early(void);
-void mxc_init_irq(void __iomem *);
 void mx31_init_irq(void);
 void mx35_init_irq(void);
 void mxc_set_cpu_type(unsigned int type);
@@ -112,6 +111,7 @@ bool imx_mu_is_m4_in_low_freq(void);
 bool imx_mu_is_m4_in_stop(void);
 void imx_mu_set_m4_run_mode(void);
 void imx_src_init(void);
+void imx7_src_init(void);
 void imx_gpc_pre_suspend(bool arm_power_off);
 void imx_gpc_post_resume(void);
 void imx_gpc_switch_pupscr_clk(bool flag);
@@ -208,6 +208,7 @@ static inline void imx_init_l2cache(void) {}
 #endif
 
 extern const struct smp_operations imx_smp_ops;
+extern const struct smp_operations imx7_smp_ops;
 extern const struct smp_operations ls1021a_smp_ops;
 
 extern bool uart_from_osc;

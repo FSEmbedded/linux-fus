@@ -82,6 +82,21 @@ static const struct fsl_ddr_devtype_data imx8m_devtype_data = {
 	.type = DDR_PERF_TYPE,
 };
 
+static const struct fsl_ddr_devtype_data imx8mq_devtype_data = {
+	.quirks = DDR_CAP_AXI_ID_FILTER,
+	.identifier = "i.MX8MQ",
+};
+
+static const struct fsl_ddr_devtype_data imx8mm_devtype_data = {
+	.quirks = DDR_CAP_AXI_ID_FILTER,
+	.identifier = "i.MX8MM",
+};
+
+static const struct fsl_ddr_devtype_data imx8mn_devtype_data = {
+	.quirks = DDR_CAP_AXI_ID_FILTER,
+	.identifier = "i.MX8MN",
+};
+
 static const struct fsl_ddr_devtype_data imx8mp_devtype_data = {
 	.quirks = DDR_CAP_AXI_ID_FILTER_ENHANCED,
 	.type = DDR_PERF_TYPE,
@@ -100,6 +115,9 @@ static const struct fsl_ddr_devtype_data imx8dxl_db_devtype_data = {
 static const struct of_device_id imx_ddr_pmu_dt_ids[] = {
 	{ .compatible = "fsl,imx8-ddr-pmu", .data = &imx8_devtype_data},
 	{ .compatible = "fsl,imx8m-ddr-pmu", .data = &imx8m_devtype_data},
+	{ .compatible = "fsl,imx8mq-ddr-pmu", .data = &imx8mq_devtype_data},
+	{ .compatible = "fsl,imx8mm-ddr-pmu", .data = &imx8mm_devtype_data},
+	{ .compatible = "fsl,imx8mn-ddr-pmu", .data = &imx8mn_devtype_data},
 	{ .compatible = "fsl,imx8mp-ddr-pmu", .data = &imx8mp_devtype_data},
 	{ .compatible = "fsl,imx8dxl-ddr-pmu", .data = &imx8dxl_devtype_data},
 	{ .compatible = "fsl,imx8dxl-db-pmu", .data = &imx8dxl_db_devtype_data},
@@ -122,6 +140,40 @@ struct ddr_pmu {
 	spinlock_t lock;
 	struct clk *clk_ipg;
 	struct clk *clk_cnt;
+};
+
+static ssize_t ddr_perf_identifier_show(struct device *dev,
+					struct device_attribute *attr,
+					char *page)
+{
+	struct ddr_pmu *pmu = dev_get_drvdata(dev);
+
+	return sysfs_emit(page, "%s\n", pmu->devtype_data->identifier);
+}
+
+static umode_t ddr_perf_identifier_attr_visible(struct kobject *kobj,
+						struct attribute *attr,
+						int n)
+{
+	struct device *dev = kobj_to_dev(kobj);
+	struct ddr_pmu *pmu = dev_get_drvdata(dev);
+
+	if (!pmu->devtype_data->identifier)
+		return 0;
+	return attr->mode;
+};
+
+static struct device_attribute ddr_perf_identifier_attr =
+	__ATTR(identifier, 0444, ddr_perf_identifier_show, NULL);
+
+static struct attribute *ddr_perf_identifier_attrs[] = {
+	&ddr_perf_identifier_attr.attr,
+	NULL,
+};
+
+static const struct attribute_group ddr_perf_identifier_attr_group = {
+	.attrs = ddr_perf_identifier_attrs,
+	.is_visible = ddr_perf_identifier_attr_visible,
 };
 
 enum ddr_perf_filter_capabilities {
@@ -159,8 +211,7 @@ static ssize_t ddr_perf_filter_cap_show(struct device *dev,
 		container_of(attr, struct dev_ext_attribute, attr);
 	int cap = (long)ea->var;
 
-	return snprintf(buf, PAGE_SIZE, "%u\n",
-			ddr_perf_filter_cap_get(pmu, cap));
+	return sysfs_emit(buf, "%u\n", ddr_perf_filter_cap_get(pmu, cap));
 }
 
 #define PERF_EXT_ATTR_ENTRY(_name, _func, _var)				\
@@ -178,7 +229,7 @@ static struct attribute *ddr_perf_filter_cap_attr[] = {
 	NULL,
 };
 
-static struct attribute_group ddr_perf_filter_cap_attr_group = {
+static const struct attribute_group ddr_perf_filter_cap_attr_group = {
 	.name = "caps",
 	.attrs = ddr_perf_filter_cap_attr,
 };
@@ -199,7 +250,7 @@ static struct attribute *ddr_perf_cpumask_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group ddr_perf_cpumask_attr_group = {
+static const struct attribute_group ddr_perf_cpumask_attr_group = {
 	.attrs = ddr_perf_cpumask_attrs,
 };
 
@@ -210,14 +261,11 @@ ddr_pmu_event_show(struct device *dev, struct device_attribute *attr,
 	struct perf_pmu_events_attr *pmu_attr;
 
 	pmu_attr = container_of(attr, struct perf_pmu_events_attr, attr);
-	return sprintf(page, "event=0x%02llx\n", pmu_attr->id);
+	return sysfs_emit(page, "event=0x%02llx\n", pmu_attr->id);
 }
 
-#define IMX8_DDR_PMU_EVENT_ATTR(_name, _id)				\
-	(&((struct perf_pmu_events_attr[]) {				\
-		{ .attr = __ATTR(_name, 0444, ddr_pmu_event_show, NULL),\
-		  .id = _id, }						\
-	})[0].attr.attr)
+#define IMX8_DDR_PMU_EVENT_ATTR(_name, _id)		\
+	PMU_EVENT_ATTR_ID(_name, ddr_pmu_event_show, _id)
 
 static struct attribute *ddr_perf_events_attrs[] = {
 	IMX8_DDR_PMU_EVENT_ATTR(cycles, EVENT_CYCLES_ID),
@@ -255,7 +303,7 @@ static struct attribute *ddr_perf_events_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group ddr_perf_events_attr_group = {
+static const struct attribute_group ddr_perf_events_attr_group = {
 	.name = "events",
 	.attrs = ddr_perf_events_attrs,
 };
@@ -287,7 +335,7 @@ static struct attribute *ddr_perf_format_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group ddr_perf_format_attr_group = {
+static const struct attribute_group ddr_perf_format_attr_group = {
 	.name = "format",
 	.attrs = ddr_perf_format_attrs,
 };
@@ -298,6 +346,7 @@ static const struct attribute_group *ddr_attr_groups[] = {
 	&ddr_perf_format_attr_group,
 	&ddr_perf_cpumask_attr_group,
 	&ddr_perf_filter_cap_attr_group,
+	&ddr_perf_identifier_attr_group,
 	NULL,
 };
 
@@ -679,7 +728,7 @@ static irqreturn_t ddr_perf_irq_handler(int irq, void *p)
 {
 	int i, ret;
 	struct ddr_pmu *pmu = (struct ddr_pmu *) p;
-	struct perf_event *event, *cycle_event = NULL;
+	struct perf_event *event;
 
 	/* all counter will stop if cycle counter disabled */
 	ddr_perf_counter_enable(pmu,
@@ -704,9 +753,6 @@ static irqreturn_t ddr_perf_irq_handler(int irq, void *p)
 		event = pmu->events[i];
 
 		ddr_perf_event_update(event);
-
-		if (event->hw.idx == EVENT_CYCLES_COUNTER)
-			cycle_event = event;
 	}
 
 	spin_lock(&pmu->lock);
@@ -766,7 +812,7 @@ static int ddr_perf_offline_cpu(unsigned int cpu, struct hlist_node *node)
 	perf_pmu_migrate_context(&pmu->pmu, cpu, target);
 	pmu->cpu = target;
 
-	WARN_ON(irq_set_affinity_hint(pmu->irq, cpumask_of(pmu->cpu)));
+	WARN_ON(irq_set_affinity(pmu->irq, cpumask_of(pmu->cpu)));
 
 	return 0;
 }
@@ -866,7 +912,7 @@ static int ddr_perf_probe(struct platform_device *pdev)
 	}
 
 	pmu->irq = irq;
-	ret = irq_set_affinity_hint(pmu->irq, cpumask_of(pmu->cpu));
+	ret = irq_set_affinity(pmu->irq, cpumask_of(pmu->cpu));
 	if (ret) {
 		dev_err(pmu->dev, "Failed to set interrupt affinity!\n");
 		goto ddr_perf_err;
@@ -900,7 +946,6 @@ static int ddr_perf_remove(struct platform_device *pdev)
 
 	cpuhp_state_remove_instance_nocalls(pmu->cpuhp_state, &pmu->node);
 	cpuhp_remove_multi_state(pmu->cpuhp_state);
-	irq_set_affinity_hint(pmu->irq, NULL);
 
 	perf_pmu_unregister(&pmu->pmu);
 

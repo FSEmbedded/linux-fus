@@ -385,17 +385,11 @@ static int tiadc_iio_buffered_hardware_setup(struct device *dev,
 	unsigned long flags,
 	const struct iio_buffer_setup_ops *setup_ops)
 {
-	struct iio_buffer *buffer;
 	int ret;
 
-	buffer = devm_iio_kfifo_allocate(dev);
-	if (!buffer)
-		return -ENOMEM;
-
-	iio_device_attach_buffer(indio_dev, buffer);
-
-	ret = devm_request_threaded_irq(dev, irq, pollfunc_th, pollfunc_bh,
-				flags, indio_dev->name, indio_dev);
+	ret = devm_iio_kfifo_buffer_setup(dev, indio_dev,
+					  INDIO_BUFFER_SOFTWARE,
+					  setup_ops);
 	if (ret)
 		return ret;
 

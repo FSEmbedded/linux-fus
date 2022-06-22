@@ -119,21 +119,6 @@ struct dp83822_private {
 	u16 fx_sd_enable;
 };
 
-static int dp83822_ack_interrupt(struct phy_device *phydev)
-{
-	int err;
-
-	err = phy_read(phydev, MII_DP83822_MISR1);
-	if (err < 0)
-		return err;
-
-	err = phy_read(phydev, MII_DP83822_MISR2);
-	if (err < 0)
-		return err;
-
-	return 0;
-}
-
 static int dp83822_set_wol(struct phy_device *phydev,
 			   struct ethtool_wolinfo *wol)
 {
@@ -303,7 +288,7 @@ static int dp83822_config_intr(struct phy_device *phydev)
 	return phy_write(phydev, MII_DP83822_PHYSCR, physcr_status);
 }
 
-static int dp8382x_disable_wol(struct phy_device *phydev)
+static irqreturn_t dp83822_handle_interrupt(struct phy_device *phydev)
 {
 	return phy_clear_bits_mmd(phydev, DP83822_DEVADDR, MII_DP83822_WOL_CFG,
 				  DP83822_WOL_EN | DP83822_WOL_MAGIC_EN |
@@ -575,8 +560,8 @@ static int dp83822_resume(struct phy_device *phydev)
 		.read_status	= dp83822_read_status,		\
 		.get_wol = dp83822_get_wol,			\
 		.set_wol = dp83822_set_wol,			\
-		.ack_interrupt = dp83822_ack_interrupt,		\
 		.config_intr = dp83822_config_intr,		\
+		.handle_interrupt = dp83822_handle_interrupt,	\
 		.suspend = dp83822_suspend,			\
 		.resume = dp83822_resume,			\
 	}
@@ -590,8 +575,8 @@ static int dp83822_resume(struct phy_device *phydev)
 		.config_init	= dp8382x_config_init,		\
 		.get_wol = dp83822_get_wol,			\
 		.set_wol = dp83822_set_wol,			\
-		.ack_interrupt = dp83822_ack_interrupt,		\
 		.config_intr = dp83822_config_intr,		\
+		.handle_interrupt = dp83822_handle_interrupt,	\
 		.suspend = dp83822_suspend,			\
 		.resume = dp83822_resume,			\
 	}

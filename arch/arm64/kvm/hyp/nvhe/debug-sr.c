@@ -21,17 +21,11 @@ static void __debug_save_spe(u64 *pmscr_el1)
 	/* Clear pmscr in case of early return */
 	*pmscr_el1 = 0;
 
-	/* SPE present on this CPU? */
-	if (!cpuid_feature_extract_unsigned_field(read_sysreg(id_aa64dfr0_el1),
-						  ID_AA64DFR0_PMSVER_SHIFT))
-		return;
-
-	/* Yes; is it owned by EL3? */
-	reg = read_sysreg_s(SYS_PMBIDR_EL1);
-	if (reg & BIT(SYS_PMBIDR_EL1_P_SHIFT))
-		return;
-
-	/* No; is the host actually using the thing? */
+	/*
+	 * At this point, we know that this CPU implements
+	 * SPE and is available to the host.
+	 * Check if the host is actually using it ?
+	 */
 	reg = read_sysreg_s(SYS_PMBLIMITR_EL1);
 	if (!(reg & BIT(SYS_PMBLIMITR_EL1_E_SHIFT)))
 		return;
@@ -79,7 +73,7 @@ void __debug_switch_to_host(struct kvm_vcpu *vcpu)
 	__debug_switch_to_host_common(vcpu);
 }
 
-u32 __kvm_get_mdcr_el2(void)
+u64 __kvm_get_mdcr_el2(void)
 {
 	return read_sysreg(mdcr_el2);
 }

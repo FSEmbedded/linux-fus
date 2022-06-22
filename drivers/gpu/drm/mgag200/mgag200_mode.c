@@ -9,6 +9,7 @@
  */
 
 #include <linux/delay.h>
+#include <linux/dma-buf-map.h>
 
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic_state_helper.h>
@@ -16,6 +17,7 @@
 #include <drm/drm_damage_helper.h>
 #include <drm/drm_format_helper.h>
 #include <drm/drm_fourcc.h>
+#include <drm/drm_gem_atomic_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_plane_helper.h>
 #include <drm/drm_print.h>
@@ -1146,10 +1148,11 @@ static void mgag200_set_mode_regs(struct mga_device *mdev,
 	WREG8(MGA_MISC_OUT, misc);
 }
 
-static u8 mgag200_get_bpp_shift(struct mga_device *mdev,
-				const struct drm_format_info *format)
+static u8 mgag200_get_bpp_shift(const struct drm_format_info *format)
 {
-	return mdev->bpp_shifts[format->cpp[0] - 1];
+	static const u8 bpp_shift[] = {0, 1, 0, 2};
+
+	return bpp_shift[format->cpp[0] - 1];
 }
 
 /*
@@ -1161,7 +1164,7 @@ static u32 mgag200_calculate_offset(struct mga_device *mdev,
 				    const struct drm_framebuffer *fb)
 {
 	u32 offset = fb->pitches[0] / fb->format->cpp[0];
-	u8 bppshift = mgag200_get_bpp_shift(mdev, fb->format);
+	u8 bppshift = mgag200_get_bpp_shift(fb->format);
 
 	if (fb->format->cpp[0] * 8 == 24)
 		offset = (offset * 3) >> (4 - bppshift);
@@ -1198,7 +1201,7 @@ static void mgag200_set_format_regs(struct mga_device *mdev,
 
 	bpp = format->cpp[0] * 8;
 
-	bppshift = mgag200_get_bpp_shift(mdev, format);
+	bppshift = mgag200_get_bpp_shift(format);
 	switch (bpp) {
 	case 24:
 		scale = ((1 << bppshift) * 3) - 1;
@@ -1559,18 +1562,11 @@ mgag200_simple_display_pipe_mode_valid(struct drm_simple_display_pipe *pipe,
 
 static void
 mgag200_handle_damage(struct mga_device *mdev, struct drm_framebuffer *fb,
-		      struct drm_rect *clip)
+		      struct drm_rect *clip, const struct dma_buf_map *map)
 {
-	struct drm_device *dev = &mdev->base;
-	void *vmap;
+	void *vmap = map->vaddr; /* TODO: Use mapping abstraction properly */
 
-	vmap = drm_gem_shmem_vmap(fb->obj[0]);
-	if (drm_WARN_ON(dev, !vmap))
-		return; /* BUG: SHMEM BO should always be vmapped */
-
-	drm_fb_memcpy_dstclip(mdev->vram, vmap, fb, clip);
-
-	drm_gem_shmem_vunmap(fb->obj[0], vmap);
+	drm_fb_memcpy_dstclip(mdev->vram, fb->pitches[0], vmap, fb, clip);
 
 	/* Always scanout image at VRAM offset 0 */
 	mgag200_set_startadd(mdev, (u32)0);
@@ -1585,8 +1581,11 @@ mgag200_simple_display_pipe_enable(struct drm_simple_display_pipe *pipe,
 	struct drm_crtc *crtc = &pipe->crtc;
 	struct drm_device *dev = crtc->dev;
 	struct mga_device *mdev = to_mga_device(dev);
+	struct mgag200_pll *pixpll = &mdev->pixpll;
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
+	struct mgag200_crtc_state *mgag200_crtc_state = to_mgag200_crtc_state(crtc_state);
 	struct drm_framebuffer *fb = plane_state->fb;
+	struct drm_shadow_plane_state *shadow_plane_state = to_drm_shadow_plane_state(plane_state);
 	struct drm_rect fullscreen = {
 		.x1 = 0,
 		.x2 = fb->width,
@@ -1599,7 +1598,8 @@ mgag200_simple_display_pipe_enable(struct drm_simple_display_pipe *pipe,
 
 	mgag200_set_format_regs(mdev, fb);
 	mgag200_set_mode_regs(mdev, adjusted_mode);
-	mgag200_crtc_set_plls(mdev, adjusted_mode->clock);
+
+	pixpll->funcs->update(pixpll, &mgag200_crtc_state->pixpllc);
 
 	if (mdev->type == G200_ER)
 		mgag200_g200er_reset_tagfifo(mdev);
@@ -1615,7 +1615,7 @@ mgag200_simple_display_pipe_enable(struct drm_simple_display_pipe *pipe,
 	mga_crtc_load_lut(crtc);
 	mgag200_enable_display(mdev);
 
-	mgag200_handle_damage(mdev, fb, &fullscreen);
+	mgag200_handle_damage(mdev, fb, &fullscreen, &shadow_plane_state->data[0]);
 }
 
 static void
@@ -1633,8 +1633,13 @@ mgag200_simple_display_pipe_check(struct drm_simple_display_pipe *pipe,
 				  struct drm_crtc_state *crtc_state)
 {
 	struct drm_plane *plane = plane_state->plane;
+	struct drm_device *dev = plane->dev;
+	struct mga_device *mdev = to_mga_device(dev);
+	struct mgag200_pll *pixpll = &mdev->pixpll;
+	struct mgag200_crtc_state *mgag200_crtc_state = to_mgag200_crtc_state(crtc_state);
 	struct drm_framebuffer *new_fb = plane_state->fb;
 	struct drm_framebuffer *fb = NULL;
+	int ret;
 
 	if (!new_fb)
 		return 0;
@@ -1644,6 +1649,13 @@ mgag200_simple_display_pipe_check(struct drm_simple_display_pipe *pipe,
 
 	if (!fb || (fb->format != new_fb->format))
 		crtc_state->mode_changed = true; /* update PLL settings */
+
+	if (crtc_state->mode_changed) {
+		ret = pixpll->funcs->compute(pixpll, crtc_state->mode.clock,
+					     &mgag200_crtc_state->pixpllc);
+		if (ret)
+			return ret;
+	}
 
 	return 0;
 }
@@ -1656,6 +1668,7 @@ mgag200_simple_display_pipe_update(struct drm_simple_display_pipe *pipe,
 	struct drm_device *dev = plane->dev;
 	struct mga_device *mdev = to_mga_device(dev);
 	struct drm_plane_state *state = plane->state;
+	struct drm_shadow_plane_state *shadow_plane_state = to_drm_shadow_plane_state(state);
 	struct drm_framebuffer *fb = state->fb;
 	struct drm_rect damage;
 
@@ -1663,7 +1676,54 @@ mgag200_simple_display_pipe_update(struct drm_simple_display_pipe *pipe,
 		return;
 
 	if (drm_atomic_helper_damage_merged(old_state, state, &damage))
-		mgag200_handle_damage(mdev, fb, &damage);
+		mgag200_handle_damage(mdev, fb, &damage, &shadow_plane_state->data[0]);
+}
+
+static struct drm_crtc_state *
+mgag200_simple_display_pipe_duplicate_crtc_state(struct drm_simple_display_pipe *pipe)
+{
+	struct drm_crtc *crtc = &pipe->crtc;
+	struct drm_crtc_state *crtc_state = crtc->state;
+	struct mgag200_crtc_state *mgag200_crtc_state = to_mgag200_crtc_state(crtc_state);
+	struct mgag200_crtc_state *new_mgag200_crtc_state;
+
+	if (!crtc_state)
+		return NULL;
+
+	new_mgag200_crtc_state = kzalloc(sizeof(*new_mgag200_crtc_state), GFP_KERNEL);
+	if (!new_mgag200_crtc_state)
+		return NULL;
+	__drm_atomic_helper_crtc_duplicate_state(crtc, &new_mgag200_crtc_state->base);
+
+	memcpy(&new_mgag200_crtc_state->pixpllc, &mgag200_crtc_state->pixpllc,
+	       sizeof(new_mgag200_crtc_state->pixpllc));
+
+	return &new_mgag200_crtc_state->base;
+}
+
+static void mgag200_simple_display_pipe_destroy_crtc_state(struct drm_simple_display_pipe *pipe,
+							   struct drm_crtc_state *crtc_state)
+{
+	struct mgag200_crtc_state *mgag200_crtc_state = to_mgag200_crtc_state(crtc_state);
+
+	__drm_atomic_helper_crtc_destroy_state(&mgag200_crtc_state->base);
+	kfree(mgag200_crtc_state);
+}
+
+static void mgag200_simple_display_pipe_reset_crtc(struct drm_simple_display_pipe *pipe)
+{
+	struct drm_crtc *crtc = &pipe->crtc;
+	struct mgag200_crtc_state *mgag200_crtc_state;
+
+	if (crtc->state) {
+		mgag200_simple_display_pipe_destroy_crtc_state(pipe, crtc->state);
+		crtc->state = NULL; /* must be set to NULL here */
+	}
+
+	mgag200_crtc_state = kzalloc(sizeof(*mgag200_crtc_state), GFP_KERNEL);
+	if (!mgag200_crtc_state)
+		return;
+	__drm_atomic_helper_crtc_reset(crtc, &mgag200_crtc_state->base);
 }
 
 static const struct drm_simple_display_pipe_funcs
@@ -1673,7 +1733,10 @@ mgag200_simple_display_pipe_funcs = {
 	.disable    = mgag200_simple_display_pipe_disable,
 	.check	    = mgag200_simple_display_pipe_check,
 	.update	    = mgag200_simple_display_pipe_update,
-	.prepare_fb = drm_gem_fb_simple_display_pipe_prepare_fb,
+	.reset_crtc = mgag200_simple_display_pipe_reset_crtc,
+	.duplicate_crtc_state = mgag200_simple_display_pipe_duplicate_crtc_state,
+	.destroy_crtc_state = mgag200_simple_display_pipe_destroy_crtc_state,
+	DRM_GEM_SIMPLE_DISPLAY_PIPE_SHADOW_PLANE_FUNCS,
 };
 
 static const uint32_t mgag200_simple_display_pipe_formats[] = {
@@ -1713,11 +1776,6 @@ int mgag200_modeset_init(struct mga_device *mdev)
 	size_t format_count = ARRAY_SIZE(mgag200_simple_display_pipe_formats);
 	int ret;
 
-	mdev->bpp_shifts[0] = 0;
-	mdev->bpp_shifts[1] = 1;
-	mdev->bpp_shifts[2] = 0;
-	mdev->bpp_shifts[3] = 2;
-
 	mgag200_init_regs(mdev);
 
 	ret = drmm_mode_config_init(dev);
@@ -1743,6 +1801,10 @@ int mgag200_modeset_init(struct mga_device *mdev)
 			ret);
 		return ret;
 	}
+
+	ret = mgag200_pixpll_init(&mdev->pixpll, mdev);
+	if (ret)
+		return ret;
 
 	ret = drm_simple_display_pipe_init(dev, pipe,
 					   &mgag200_simple_display_pipe_funcs,

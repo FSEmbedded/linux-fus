@@ -296,6 +296,10 @@ static void *idr_throbber(void *arg)
 	return NULL;
 }
 
+/*
+ * There are always either 1 or 2 objects in the IDR.  If we find nothing,
+ * or we find something at an ID we didn't expect, that's a bug.
+ */
 void idr_find_test_1(int anchor_id, int throbber_id)
 {
 	pthread_t throbber;

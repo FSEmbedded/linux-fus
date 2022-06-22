@@ -80,3 +80,19 @@
 &gpio1_target {
 	 ti,no-reset-on-init;
 };
+
+&wl12xx_gpio {
+	pinctrl-single,pins = <
+		OMAP4_IOPAD(0x066, PIN_OUTPUT | MUX_MODE3)		/* gpmc_a19.gpio_43 */
+		OMAP4_IOPAD(0x070, PIN_OUTPUT_PULLUP | MUX_MODE3)	/* gpmc_a24.gpio_48 */
+	>;
+};
+
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart2_pins &bt_pins>;
+	bluetooth: tiwi {
+		compatible = "ti,wl1271-st";
+		enable-gpios = <&gpio2 14 GPIO_ACTIVE_HIGH>;	/* GPIO_46 */
+	};
+};

@@ -30,6 +30,12 @@ struct ehci_ci_priv {
 	bool enabled;
 };
 
+struct ci_hdrc_dma_aligned_buffer {
+	void *kmalloc_ptr;
+	void *old_xfer_buffer;
+	u8 data[];
+};
+
 static int ehci_ci_portpower(struct usb_hcd *hcd, int portnum, bool enable)
 {
 	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
@@ -161,13 +167,14 @@ static int host_start(struct ci_hdrc *ci)
 		pinctrl_select_state(ci->platdata->pctl,
 				     ci->platdata->pins_host);
 
+	ci->hcd = hcd;
+
 	ret = usb_add_hcd(hcd, 0, 0);
 	if (ret) {
+		ci->hcd = NULL;
 		goto disable_reg;
 	} else {
 		struct usb_otg *otg = &ci->otg;
-
-		ci->hcd = hcd;
 
 		if (ci_otg_is_fsm_mode(ci)) {
 			otg->host = &hcd->self;
@@ -239,6 +246,7 @@ static int ci_ehci_hub_control(
 	u32		temp, suspend_line_state, port_index;
 	unsigned long	flags;
 	int		retval = 0;
+	bool		done = false;
 	struct device *dev = hcd->self.controller;
 	struct ci_hdrc *ci = dev_get_drvdata(dev);
 
@@ -247,6 +255,13 @@ static int ci_ehci_hub_control(
 	status_reg = &ehci->regs->port_status[port_index];
 
 	spin_lock_irqsave(&ehci->lock, flags);
+
+	if (ci->platdata->hub_control) {
+		retval = ci->platdata->hub_control(ci, typeReq, wValue, wIndex,
+						   buf, wLength, &done, &flags);
+		if (done)
+			goto done;
+	}
 
 	if (typeReq == SetPortFeature && wValue == USB_PORT_FEAT_SUSPEND) {
 		if (!wIndex || wIndex > ports) {
@@ -534,6 +549,11 @@ int ci_hdrc_host_init(struct ci_hdrc *ci)
 	rdrv->irq	= host_irq;
 	rdrv->name	= "host";
 	ci->roles[CI_ROLE_HOST] = rdrv;
+
+	if (ci->platdata->flags & CI_HDRC_REQUIRES_ALIGNED_DMA) {
+		ci_ehci_hc_driver.map_urb_for_dma = ci_hdrc_map_urb_for_dma;
+		ci_ehci_hc_driver.unmap_urb_for_dma = ci_hdrc_unmap_urb_for_dma;
+	}
 
 	return 0;
 }

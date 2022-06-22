@@ -19,7 +19,7 @@
 
 #include "sas_internal.h"
 
-#include "../scsi_sas_internal.h"
+#include "scsi_sas_internal.h"
 
 static struct kmem_cache *sas_task_cache;
 static struct kmem_cache *sas_event_cache;
@@ -404,7 +404,8 @@ void sas_resume_ha(struct sas_ha_struct *ha)
 
 		if (phy->suspended) {
 			dev_warn(&phy->phy->dev, "resume timeout\n");
-			sas_notify_phy_event(phy, PHYE_RESUME_TIMEOUT);
+			sas_notify_phy_event(phy, PHYE_RESUME_TIMEOUT,
+					     GFP_KERNEL);
 		}
 	}
 

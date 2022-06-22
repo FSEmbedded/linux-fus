@@ -136,6 +136,7 @@ static int __sas_notify_port_event(struct asd_sas_phy *phy,
 				   struct asd_sas_event *ev)
 {
 	struct sas_ha_struct *ha = phy->ha;
+	struct asd_sas_event *ev;
 	int ret;
 
 	BUG_ON(event >= PORT_NUM_EVENTS);
@@ -148,6 +149,7 @@ static int __sas_notify_port_event(struct asd_sas_phy *phy,
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(sas_notify_port_event);
 
 int sas_notify_port_event_gfp(struct asd_sas_phy *phy, enum port_event event,
 			      gfp_t gfp_flags)
@@ -166,7 +168,7 @@ int sas_notify_port_event(struct asd_sas_phy *phy, enum port_event event)
 {
 	struct asd_sas_event *ev;
 
-	ev = sas_alloc_event(phy);
+	ev = sas_alloc_event(phy, gfp_flags);
 	if (!ev)
 		return -ENOMEM;
 

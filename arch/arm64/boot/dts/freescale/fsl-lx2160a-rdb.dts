@@ -14,6 +14,8 @@
 
 	aliases {
 		crypto = &crypto;
+		mmc0 = &esdhc0;
+		mmc1 = &esdhc1;
 		serial0 = &uart0;
 	};
 
@@ -79,6 +81,7 @@
 	rgmii_phy1: ethernet-phy@1 {
 		/* AR8035 PHY */
 		compatible = "ethernet-phy-id004d.d072";
+		interrupts-extended = <&extirq 4 IRQ_TYPE_LEVEL_LOW>;
 		reg = <0x1>;
 		eee-broken-1000t;
 	};
@@ -86,6 +89,7 @@
 	rgmii_phy2: ethernet-phy@2 {
 		/* AR8035 PHY */
 		compatible = "ethernet-phy-id004d.d072";
+		interrupts-extended = <&extirq 5 IRQ_TYPE_LEVEL_LOW>;
 		reg = <0x2>;
 		eee-broken-1000t;
 	};

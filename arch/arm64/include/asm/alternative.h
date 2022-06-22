@@ -2,17 +2,13 @@
 #ifndef __ASM_ALTERNATIVE_H
 #define __ASM_ALTERNATIVE_H
 
-#include <asm/cpucaps.h>
-#include <asm/insn.h>
-
-#define ARM64_CB_PATCH ARM64_NCAPS
+#include <asm/alternative-macros.h>
 
 #ifndef __ASSEMBLY__
 
 #include <linux/init.h>
 #include <linux/types.h>
 #include <linux/stddef.h>
-#include <linux/stringify.h>
 
 struct alt_instr {
 	s32 orig_offset;	/* offset to original instruction */

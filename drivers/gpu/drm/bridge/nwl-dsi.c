@@ -94,12 +94,6 @@ enum transfer_direction {
 #define NWL_DSI_ENDPOINT_DCNANO	0
 #define NWL_DSI_ENDPOINT_EPDC	1
 
-struct nwl_dsi_plat_clk_config {
-	const char *id;
-	struct clk *clk;
-	bool present;
-};
-
 struct nwl_dsi_transfer {
 	const struct mipi_dsi_msg *msg;
 	struct mipi_dsi_packet packet;
@@ -799,7 +793,7 @@ static irqreturn_t nwl_dsi_irq_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static int nwl_dsi_enable(struct nwl_dsi *dsi)
+static int nwl_dsi_mode_set(struct nwl_dsi *dsi)
 {
 	struct device *dev = dsi->dev;
 	union phy_configure_opts *phy_cfg = &dsi->phy_cfg;
@@ -1334,12 +1328,12 @@ nwl_dsi_bridge_atomic_pre_enable(struct drm_bridge *bridge,
 	/* Step 1 from DSI reset-out instructions */
 	ret = dsi->pdata->pclk_reset(dsi, false);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dsi->dev, "Failed to deassert PCLK: %d\n", ret);
+		DRM_DEV_ERROR(dev, "Failed to deassert PCLK: %d\n", ret);
 		return;
 	}
 
 	/* Step 2 from DSI reset-out instructions */
-	nwl_dsi_enable(dsi);
+	nwl_dsi_mode_set(dsi);
 
 	/* Step 3 from DSI reset-out instructions */
 	ret = dsi->pdata->mipi_reset(dsi, false);
@@ -1424,6 +1418,40 @@ static void nwl_dsi_bridge_detach(struct drm_bridge *bridge)
 {	struct nwl_dsi *dsi = bridge_to_dsi(bridge);
 
 	drm_of_panel_bridge_remove(dsi->dev->of_node, 1, 0);
+}
+
+static u32 *nwl_bridge_atomic_get_input_bus_fmts(struct drm_bridge *bridge,
+						 struct drm_bridge_state *bridge_state,
+						 struct drm_crtc_state *crtc_state,
+						 struct drm_connector_state *conn_state,
+						 u32 output_fmt,
+						 unsigned int *num_input_fmts)
+{
+	u32 *input_fmts, input_fmt;
+
+	*num_input_fmts = 0;
+
+	switch (output_fmt) {
+	/* If MEDIA_BUS_FMT_FIXED is tested, return default bus format */
+	case MEDIA_BUS_FMT_FIXED:
+		input_fmt = MEDIA_BUS_FMT_RGB888_1X24;
+		break;
+	case MEDIA_BUS_FMT_RGB888_1X24:
+	case MEDIA_BUS_FMT_RGB666_1X18:
+	case MEDIA_BUS_FMT_RGB565_1X16:
+		input_fmt = output_fmt;
+		break;
+	default:
+		return NULL;
+	}
+
+	input_fmts = kcalloc(1, sizeof(*input_fmts), GFP_KERNEL);
+	if (!input_fmts)
+		return NULL;
+	input_fmts[0] = input_fmt;
+	*num_input_fmts = 1;
+
+	return input_fmts;
 }
 
 static const struct drm_bridge_funcs nwl_dsi_bridge_funcs = {

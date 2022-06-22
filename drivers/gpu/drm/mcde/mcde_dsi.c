@@ -1052,7 +1052,6 @@ static int mcde_dsi_bridge_attach(struct drm_bridge *bridge,
 {
 	struct mcde_dsi *d = bridge_to_mcde_dsi(bridge);
 	struct drm_device *drm = bridge->dev;
-	int ret;
 
 	if (!drm_core_check_feature(drm, DRIVER_ATOMIC)) {
 		dev_err(d->dev, "we need atomic updates\n");
@@ -1060,13 +1059,7 @@ static int mcde_dsi_bridge_attach(struct drm_bridge *bridge,
 	}
 
 	/* Attach the DSI bridge to the output (panel etc) bridge */
-	ret = drm_bridge_attach(bridge->encoder, d->bridge_out, bridge, flags);
-	if (ret) {
-		dev_err(d->dev, "failed to attach the DSI bridge\n");
-		return ret;
-	}
-
-	return 0;
+	return drm_bridge_attach(bridge->encoder, d->bridge_out, bridge, flags);
 }
 
 static const struct drm_bridge_funcs mcde_dsi_bridge_funcs = {
@@ -1196,10 +1189,8 @@ static int mcde_dsi_probe(struct platform_device *pdev)
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	d->regs = devm_ioremap_resource(dev, res);
-	if (IS_ERR(d->regs)) {
-		dev_err(dev, "no DSI regs\n");
+	if (IS_ERR(d->regs))
 		return PTR_ERR(d->regs);
-	}
 
 	dsi_id = readl(d->regs + DSI_ID_REG);
 	dev_info(dev, "HW revision 0x%08x\n", dsi_id);

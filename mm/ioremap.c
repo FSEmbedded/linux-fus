@@ -8,10 +8,8 @@
  */
 #include <linux/vmalloc.h>
 #include <linux/mm.h>
-#include <linux/sched.h>
 #include <linux/io.h>
 #include <linux/export.h>
-#include <asm/cacheflush.h>
 
 #include "pgalloc-track.h"
 
@@ -287,4 +285,3 @@ void iounmap(volatile void __iomem *addr)
 	vunmap((void *)((unsigned long)addr & PAGE_MASK));
 }
 EXPORT_SYMBOL(iounmap);
-#endif /* CONFIG_GENERIC_IOREMAP */

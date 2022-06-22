@@ -350,7 +350,8 @@ int dprc_scan_objects(struct fsl_mc_device *mc_bus_dev,
  * dprc_scan_container - Scans a physical DPRC and synchronizes Linux bus state
  *
  * @mc_bus_dev: pointer to the fsl-mc device that represents a DPRC object
- *
+ * @alloc_interrupts: if true the function allocates the interrupt pool,
+ *                    otherwise the interrupt allocation is delayed
  * Scans the physical DPRC and synchronizes the state of the Linux
  * bus driver with the actual state of the MC by adding and removing
  * devices as appropriate.
@@ -404,7 +405,7 @@ static DEVICE_ATTR_WO(rescan);
 /**
  * dprc_irq0_handler - Regular ISR for DPRC interrupt 0
  *
- * @irq: IRQ number of the interrupt being handled
+ * @irq_num: IRQ number of the interrupt being handled
  * @arg: Pointer to device structure
  */
 static irqreturn_t dprc_irq0_handler(int irq_num, void *arg)
@@ -415,7 +416,7 @@ static irqreturn_t dprc_irq0_handler(int irq_num, void *arg)
 /**
  * dprc_irq0_handler_thread - Handler thread function for DPRC interrupt 0
  *
- * @irq: IRQ number of the interrupt being handled
+ * @irq_num: IRQ number of the interrupt being handled
  * @arg: Pointer to device structure
  */
 static irqreturn_t dprc_irq0_handler_thread(int irq_num, void *arg)

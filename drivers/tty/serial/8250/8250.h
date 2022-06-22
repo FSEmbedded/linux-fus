@@ -7,6 +7,7 @@
  *  Copyright (C) 2001 Russell King.
  */
 
+#include <linux/bits.h>
 #include <linux/serial_8250.h>
 #include <linux/serial_reg.h>
 #include <linux/dmaengine.h>
@@ -70,16 +71,16 @@ struct serial8250_config {
 	unsigned int	flags;
 };
 
-#define UART_CAP_FIFO	(1 << 8)	/* UART has FIFO */
-#define UART_CAP_EFR	(1 << 9)	/* UART has EFR */
-#define UART_CAP_SLEEP	(1 << 10)	/* UART has IER sleep */
-#define UART_CAP_AFE	(1 << 11)	/* MCR-based hw flow control */
-#define UART_CAP_UUE	(1 << 12)	/* UART needs IER bit 6 set (Xscale) */
-#define UART_CAP_RTOIE	(1 << 13)	/* UART needs IER bit 4 set (Xscale, Tegra) */
-#define UART_CAP_HFIFO	(1 << 14)	/* UART has a "hidden" FIFO */
-#define UART_CAP_RPM	(1 << 15)	/* Runtime PM is active while idle */
-#define UART_CAP_IRDA	(1 << 16)	/* UART supports IrDA line discipline */
-#define UART_CAP_MINI	(1 << 17)	/* Mini UART on BCM283X family lacks:
+#define UART_CAP_FIFO	BIT(8)	/* UART has FIFO */
+#define UART_CAP_EFR	BIT(9)	/* UART has EFR */
+#define UART_CAP_SLEEP	BIT(10)	/* UART has IER sleep */
+#define UART_CAP_AFE	BIT(11)	/* MCR-based hw flow control */
+#define UART_CAP_UUE	BIT(12)	/* UART needs IER bit 6 set (Xscale) */
+#define UART_CAP_RTOIE	BIT(13)	/* UART needs IER bit 4 set (Xscale, Tegra) */
+#define UART_CAP_HFIFO	BIT(14)	/* UART has a "hidden" FIFO */
+#define UART_CAP_RPM	BIT(15)	/* Runtime PM is active while idle */
+#define UART_CAP_IRDA	BIT(16)	/* UART supports IrDA line discipline */
+#define UART_CAP_MINI	BIT(17)	/* Mini UART on BCM283X family lacks:
 					 * STOP PARITY EPAR SPAR WLEN5 WLEN6
 					 */
 

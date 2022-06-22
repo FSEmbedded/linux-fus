@@ -232,9 +232,6 @@ static inline int update_pte_range(pmd_t *pmd, unsigned long addr,
 
 	pte = pte_offset_kernel(pmd, addr);
 	do {
-		if ((addr >= STUB_START) && (addr < STUB_END))
-			continue;
-
 		r = pte_read(*pte);
 		w = pte_write(*pte);
 		x = pte_exec(*pte);

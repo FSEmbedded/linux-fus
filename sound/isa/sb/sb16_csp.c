@@ -112,10 +112,12 @@ int snd_sb_csp_new(struct snd_sb *chip, int device, struct snd_hwdep ** rhwdep)
 	if (csp_detect(chip, &version))
 		return -ENODEV;
 
-	if ((err = snd_hwdep_new(chip->card, "SB16-CSP", device, &hw)) < 0)
+	err = snd_hwdep_new(chip->card, "SB16-CSP", device, &hw);
+	if (err < 0)
 		return err;
 
-	if ((p = kzalloc(sizeof(*p), GFP_KERNEL)) == NULL) {
+	p = kzalloc(sizeof(*p), GFP_KERNEL);
+	if (!p) {
 		snd_device_free(chip->card, hw);
 		return -ENOMEM;
 	}
@@ -388,7 +390,7 @@ static int snd_sb_csp_riff_load(struct snd_sb_csp * p,
 				return err;
 
 			/* fill in codec header */
-			strlcpy(p->codec_name, info.codec_name, sizeof(p->codec_name));
+			strscpy(p->codec_name, info.codec_name, sizeof(p->codec_name));
 			p->func_nr = func_nr;
 			p->mode = le16_to_cpu(funcdesc_h.flags_play_rec);
 			switch (le16_to_cpu(funcdesc_h.VOC_type)) {
@@ -1038,6 +1040,7 @@ static const struct snd_kcontrol_new snd_sb_qsound_space = {
 static int snd_sb_qsound_build(struct snd_sb_csp * p)
 {
 	struct snd_card *card;
+	struct snd_kcontrol *kctl;
 	int err;
 
 	if (snd_BUG_ON(!p))

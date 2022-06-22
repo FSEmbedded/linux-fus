@@ -100,6 +100,7 @@ struct ebt_table {
 	   unsigned int valid_hooks);
 	/* the data used by the kernel */
 	struct ebt_table_info *private;
+	struct nf_hook_ops *ops;
 	struct module *me;
 };
 
@@ -128,4 +129,6 @@ static inline bool ebt_invalid_target(int target)
 	return (target < -NUM_STANDARD_TARGETS || target >= 0);
 }
 
+int ebt_register_template(const struct ebt_table *t, int(*table_init)(struct net *net));
+void ebt_unregister_template(const struct ebt_table *t);
 #endif

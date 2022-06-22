@@ -90,8 +90,7 @@ static int check_keys(struct rxe_dev *rxe, struct rxe_pkt_info *pkt,
 		goto err1;
 	}
 
-	if ((qp_type(qp) == IB_QPT_UD || qp_type(qp) == IB_QPT_GSI) &&
-	    pkt->mask) {
+	if (qp_type(qp) == IB_QPT_UD || qp_type(qp) == IB_QPT_GSI) {
 		u32 qkey = (qpn == 1) ? GSI_QKEY : qp->attr.qkey;
 
 		if (unlikely(deth_qkey(pkt) != qkey)) {
@@ -238,8 +237,6 @@ static void rxe_rcv_mcast_pkt(struct rxe_dev *rxe, struct sk_buff *skb)
 	struct rxe_mc_elem *mce;
 	struct rxe_qp *qp;
 	union ib_gid dgid;
-	struct sk_buff *per_qp_skb;
-	struct rxe_pkt_info *per_qp_pkt;
 	int err;
 
 	if (skb->protocol == htons(ETH_P_IP))
@@ -251,10 +248,15 @@ static void rxe_rcv_mcast_pkt(struct rxe_dev *rxe, struct sk_buff *skb)
 	/* lookup mcast group corresponding to mgid, takes a ref */
 	mcg = rxe_pool_get_key(&rxe->mc_grp_pool, &dgid);
 	if (!mcg)
-		goto err1;	/* mcast group not registered */
+		goto drop;	/* mcast group not registered */
 
 	spin_lock_bh(&mcg->mcg_lock);
 
+	/* this is unreliable datagram service so we let
+	 * failures to deliver a multicast packet to a
+	 * single QP happen and just move on and try
+	 * the rest of them on the list
+	 */
 	list_for_each_entry(mce, &mcg->qp_list, qp_list) {
 		qp = mce->qp;
 
@@ -297,6 +299,7 @@ static void rxe_rcv_mcast_pkt(struct rxe_dev *rxe, struct sk_buff *skb)
 err1:
 	/* free skb if not consumed */
 	kfree_skb(skb);
+	ib_device_put(&rxe->ib_dev);
 }
 
 /**
@@ -346,12 +349,8 @@ void rxe_rcv(struct sk_buff *skb)
 	int err;
 	struct rxe_pkt_info *pkt = SKB_TO_PKT(skb);
 	struct rxe_dev *rxe = pkt->rxe;
-	__be32 *icrcp;
-	u32 calc_icrc, pack_icrc;
 
-	pkt->offset = 0;
-
-	if (unlikely(skb->len < pkt->offset + RXE_BTH_BYTES))
+	if (unlikely(skb->len < RXE_BTH_BYTES))
 		goto drop;
 
 	if (rxe_chk_dgid(rxe, skb) < 0) {
@@ -371,26 +370,9 @@ void rxe_rcv(struct sk_buff *skb)
 	if (unlikely(err))
 		goto drop;
 
-	/* Verify ICRC */
-	icrcp = (__be32 *)(pkt->hdr + pkt->paylen - RXE_ICRC_SIZE);
-	pack_icrc = be32_to_cpu(*icrcp);
-
-	calc_icrc = rxe_icrc_hdr(pkt, skb);
-	calc_icrc = rxe_crc32(rxe, calc_icrc, (u8 *)payload_addr(pkt),
-			      payload_size(pkt) + bth_pad(pkt));
-	calc_icrc = (__force u32)cpu_to_be32(~calc_icrc);
-	if (unlikely(calc_icrc != pack_icrc)) {
-		if (skb->protocol == htons(ETH_P_IPV6))
-			pr_warn_ratelimited("bad ICRC from %pI6c\n",
-					    &ipv6_hdr(skb)->saddr);
-		else if (skb->protocol == htons(ETH_P_IP))
-			pr_warn_ratelimited("bad ICRC from %pI4\n",
-					    &ip_hdr(skb)->saddr);
-		else
-			pr_warn_ratelimited("bad ICRC from unknown\n");
-
+	err = rxe_icrc_check(skb, pkt);
+	if (unlikely(err))
 		goto drop;
-	}
 
 	rxe_counter_inc(rxe, RXE_CNT_RCVD_PKTS);
 
@@ -406,4 +388,5 @@ drop:
 		rxe_drop_ref(pkt->qp);
 
 	kfree_skb(skb);
+	ib_device_put(&rxe->ib_dev);
 }

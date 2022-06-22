@@ -101,7 +101,7 @@ int ap_recv(ap_qid_t qid, unsigned long long *psmid, void *msg, size_t length)
 
 	if (msg == NULL)
 		return -EINVAL;
-	status = ap_dqap(qid, psmid, msg, length);
+	status = ap_dqap(qid, psmid, msg, length, NULL, NULL);
 	switch (status.response_code) {
 	case AP_RESPONSE_NORMAL:
 		return 0;
@@ -137,8 +137,6 @@ static struct ap_queue_status ap_sm_recv(struct ap_queue *aq)
 	struct ap_message *ap_msg;
 	bool found = false;
 
-	status = ap_dqap(aq->qid, &aq->reply->psmid,
-			 aq->reply->msg, aq->reply->len);
 	switch (status.response_code) {
 	case AP_RESPONSE_NORMAL:
 		aq->queue_count = max_t(int, 0, aq->queue_count - 1);
@@ -291,7 +289,7 @@ static enum ap_sm_wait ap_sm_read_write(struct ap_queue *aq)
 
 /**
  * ap_sm_reset(): Reset an AP queue.
- * @qid: The AP queue number
+ * @aq: The AP queue
  *
  * Submit the Reset command to an AP queue.
  */

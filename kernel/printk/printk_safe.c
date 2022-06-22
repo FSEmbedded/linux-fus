@@ -4,45 +4,14 @@
  */
 
 #include <linux/preempt.h>
-#include <linux/spinlock.h>
-#include <linux/debug_locks.h>
 #include <linux/kdb.h>
 #include <linux/smp.h>
 #include <linux/cpumask.h>
-#include <linux/irq_work.h>
 #include <linux/printk.h>
 #include <linux/kprobes.h>
 
 #include "internal.h"
 
-/*
- * printk() could not take logbuf_lock in NMI context. Instead,
- * it uses an alternative implementation that temporary stores
- * the strings into a per-CPU buffer. The content of the buffer
- * is later flushed into the main ring buffer via IRQ work.
- *
- * The alternative implementation is chosen transparently
- * by examining current printk() context mask stored in @printk_context
- * per-CPU variable.
- *
- * The implementation allows to flush the strings also from another CPU.
- * There are situations when we want to make sure that all buffers
- * were handled or when IRQs are blocked.
- */
-
-#define SAFE_LOG_BUF_LEN ((1 << CONFIG_PRINTK_SAFE_LOG_BUF_SHIFT) -	\
-				sizeof(atomic_t) -			\
-				sizeof(atomic_t) -			\
-				sizeof(struct irq_work))
-
-struct printk_safe_seq_buf {
-	atomic_t		len;	/* length of written data */
-	atomic_t		message_lost;
-	struct irq_work		work;	/* IRQ work that flushes the buffer */
-	unsigned char		buffer[SAFE_LOG_BUF_LEN];
-};
-
-static DEFINE_PER_CPU(struct printk_safe_seq_buf, safe_print_seq);
 static DEFINE_PER_CPU(int, printk_context);
 
 static DEFINE_RAW_SPINLOCK(safe_read_lock);
@@ -367,7 +336,7 @@ void __printk_safe_exit(void)
 	this_cpu_dec(printk_context);
 }
 
-__printf(1, 0) int vprintk_func(const char *fmt, va_list args)
+asmlinkage int vprintk(const char *fmt, va_list args)
 {
 #ifdef CONFIG_KGDB_KDB
 	/* Allow to pass printk() to kdb but avoid a recursion. */
@@ -376,47 +345,18 @@ __printf(1, 0) int vprintk_func(const char *fmt, va_list args)
 #endif
 
 	/*
-	 * Try to use the main logbuf even in NMI. But avoid calling console
+	 * Use the main logbuf even in NMI. But avoid calling console
 	 * drivers that might have their own locks.
 	 */
-	if ((this_cpu_read(printk_context) & PRINTK_NMI_DIRECT_CONTEXT_MASK) &&
-	    raw_spin_trylock(&logbuf_lock)) {
+	if (this_cpu_read(printk_context) || in_nmi()) {
 		int len;
 
 		len = vprintk_store(0, LOGLEVEL_DEFAULT, NULL, fmt, args);
-		raw_spin_unlock(&logbuf_lock);
 		defer_console_output();
 		return len;
 	}
 
-	/* Use extra buffer in NMI when logbuf_lock is taken or in safe mode. */
-	if (this_cpu_read(printk_context) & PRINTK_NMI_CONTEXT_MASK)
-		return vprintk_nmi(fmt, args);
-
-	/* Use extra buffer to prevent a recursion deadlock in safe mode. */
-	if (this_cpu_read(printk_context) & PRINTK_SAFE_CONTEXT_MASK)
-		return vprintk_safe(fmt, args);
-
 	/* No obstacles. */
 	return vprintk_default(fmt, args);
 }
-
-void __init printk_safe_init(void)
-{
-	int cpu;
-
-	for_each_possible_cpu(cpu) {
-		struct printk_safe_seq_buf *s;
-
-		s = &per_cpu(safe_print_seq, cpu);
-		init_irq_work(&s->work, __printk_safe_flush);
-
-#ifdef CONFIG_PRINTK_NMI
-		s = &per_cpu(nmi_print_seq, cpu);
-		init_irq_work(&s->work, __printk_safe_flush);
-#endif
-	}
-
-	/* Flush pending messages that did not have scheduled IRQ works. */
-	printk_safe_flush();
-}
+EXPORT_SYMBOL(vprintk);

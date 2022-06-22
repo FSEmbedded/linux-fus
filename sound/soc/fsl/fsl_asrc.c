@@ -618,7 +618,7 @@ static void fsl_asrc_select_clk(struct fsl_asrc_priv *asrc_priv,
 	struct asrc_config *config = pair_priv->config;
 	int rate[2], select_clk[2]; /* Array size 2 means IN and OUT */
 	int clk_rate, clk_index;
-	int i = 0, j = 0;
+	int i, j;
 
 	rate[IN] = in_rate;
 	rate[OUT] = out_rate;
@@ -1020,6 +1020,9 @@ static int fsl_asrc_get_fifo_addr(u8 dir, enum asrc_pair_index index)
 	return REG_ASRDx(dir, index);
 }
 
+static int fsl_asrc_runtime_resume(struct device *dev);
+static int fsl_asrc_runtime_suspend(struct device *dev);
+
 static int fsl_asrc_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -1044,8 +1047,7 @@ static int fsl_asrc_probe(struct platform_device *pdev)
 	asrc->private = asrc_priv;
 
 	/* Get the addresses and IRQ */
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	regs = devm_ioremap_resource(&pdev->dev, res);
+	regs = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
 	if (IS_ERR(regs))
 		return PTR_ERR(regs);
 
@@ -1095,11 +1097,6 @@ static int fsl_asrc_probe(struct platform_device *pdev)
 	}
 
 	asrc_priv->soc = of_device_get_match_data(&pdev->dev);
-	if (!asrc_priv->soc) {
-		dev_err(&pdev->dev, "failed to get soc data\n");
-		return -ENODEV;
-	}
-
 	asrc->use_edma = asrc_priv->soc->use_edma;
 	asrc->get_dma_channel = fsl_asrc_get_dma_channel;
 	asrc->request_pair = fsl_asrc_request_pair;
@@ -1196,15 +1193,35 @@ static int fsl_asrc_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, asrc);
-	pm_runtime_enable(&pdev->dev);
 	spin_lock_init(&asrc->lock);
-	regcache_cache_only(asrc->regmap, true);
+	pm_runtime_enable(&pdev->dev);
+	if (!pm_runtime_enabled(&pdev->dev)) {
+		ret = fsl_asrc_runtime_resume(&pdev->dev);
+		if (ret)
+			goto err_pm_disable;
+	}
+
+	ret = pm_runtime_get_sync(&pdev->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(&pdev->dev);
+		goto err_pm_get_sync;
+	}
+
+	ret = fsl_asrc_init(asrc);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to init asrc %d\n", ret);
+		goto err_pm_get_sync;
+	}
+
+	ret = pm_runtime_put_sync(&pdev->dev);
+	if (ret < 0)
+		goto err_pm_get_sync;
 
 	ret = devm_snd_soc_register_component(&pdev->dev, &fsl_asrc_component,
 					      &fsl_asrc_dai, 1);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to register ASoC DAI\n");
-		return ret;
+		goto err_pm_get_sync;
 	}
 
 	ret = fsl_asrc_m2m_init(asrc);
@@ -1214,9 +1231,24 @@ static int fsl_asrc_probe(struct platform_device *pdev)
 	}
 
 	return 0;
+
+err_pm_get_sync:
+	if (!pm_runtime_status_suspended(&pdev->dev))
+		fsl_asrc_runtime_suspend(&pdev->dev);
+err_pm_disable:
+	pm_runtime_disable(&pdev->dev);
+	return ret;
 }
 
-#ifdef CONFIG_PM
+static int fsl_asrc_remove(struct platform_device *pdev)
+{
+	pm_runtime_disable(&pdev->dev);
+	if (!pm_runtime_status_suspended(&pdev->dev))
+		fsl_asrc_runtime_suspend(&pdev->dev);
+
+	return 0;
+}
+
 static int fsl_asrc_runtime_resume(struct device *dev)
 {
 	struct fsl_asrc *asrc = dev_get_drvdata(dev);
@@ -1305,7 +1337,6 @@ static int fsl_asrc_runtime_suspend(struct device *dev)
 
 	return 0;
 }
-#endif /* CONFIG_PM */
 
 #ifdef CONFIG_PM_SLEEP
 static int fsl_asrc_suspend(struct device *dev)

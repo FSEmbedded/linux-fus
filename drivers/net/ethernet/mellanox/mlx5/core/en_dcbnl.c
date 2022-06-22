@@ -1156,8 +1156,8 @@ static int mlx5e_set_trust_state(struct mlx5e_priv *priv, u8 trust_state)
 
 	mutex_lock(&priv->state_lock);
 
-	new_channels.params = priv->channels.params;
-	mlx5e_params_calc_trust_tx_min_inline_mode(priv->mdev, &new_channels.params,
+	new_params = priv->channels.params;
+	mlx5e_params_calc_trust_tx_min_inline_mode(priv->mdev, &new_params,
 						   trust_state);
 
 	opened = test_bit(MLX5E_STATE_OPENED, &priv->state);
