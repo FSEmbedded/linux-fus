@@ -23,23 +23,10 @@ static const struct snd_malloc_ops *snd_dma_get_ops(struct snd_dma_buffer *dmab)
 static inline gfp_t snd_mem_get_gfp_flags(const struct snd_dma_buffer *dmab,
 					  gfp_t default_gfp)
 {
-	struct device *dev = dmab->dev.dev;
-	struct gen_pool *pool = NULL;
-
-	dmab->area = NULL;
-	dmab->addr = 0;
-
-	if (dev->of_node)
-		pool = of_gen_pool_get(dev->of_node, "iram", 0);
-
-	if (!pool)
-		return;
-
-	/* Assign the pool into private_data field */
-	dmab->private_data = pool;
-
-	dmab->area = gen_pool_dma_alloc_align(pool, size, &dmab->addr,
-					PAGE_SIZE);
+	if (!dmab->dev.dev)
+		return default_gfp;
+	else
+		return (__force gfp_t)(unsigned long)dmab->dev.dev;
 }
 
 static void *__snd_dma_alloc_pages(struct snd_dma_buffer *dmab, size_t size)

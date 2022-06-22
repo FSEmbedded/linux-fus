@@ -201,8 +201,8 @@ static void flow_offload_fixup_ct_timeout(struct nf_conn *ct)
 	if (timeout < 0)
 		timeout = 0;
 
-	if (nf_flow_timeout_delta(ct->timeout) > (__s32)timeout)
-		ct->timeout = nfct_time_stamp + timeout;
+	if (nf_flow_timeout_delta(READ_ONCE(ct->timeout)) > (__s32)timeout)
+		WRITE_ONCE(ct->timeout, nfct_time_stamp + timeout);
 }
 
 static void flow_offload_fixup_ct_state(struct nf_conn *ct)
@@ -327,6 +327,10 @@ void flow_offload_refresh(struct nf_flowtable *flow_table,
 			  struct flow_offload *flow)
 {
 	u32 timeout;
+
+	timeout = nf_flowtable_time_stamp + flow_offload_get_timeout(flow);
+	if (READ_ONCE(flow->timeout) != timeout)
+		WRITE_ONCE(flow->timeout, timeout);
 
 	if (likely(!nf_flowtable_hw_offload(flow_table)))
 		return;
@@ -486,8 +490,6 @@ static void nf_flow_nat_port_tcp(struct sk_buff *skb, unsigned int thoff,
 
 	tcph = (void *)(skb_network_header(skb) + thoff);
 	inet_proto_csum_replace2(&tcph->check, skb, port, new_port, false);
-
-	return 0;
 }
 
 static void nf_flow_nat_port_udp(struct sk_buff *skb, unsigned int thoff,

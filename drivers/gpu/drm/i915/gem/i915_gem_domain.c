@@ -587,6 +587,10 @@ i915_gem_set_domain_ioctl(struct drm_device *dev, void *data,
 	else
 		err = i915_gem_object_set_to_cpu_domain(obj, write_domain);
 
+out_unpin:
+	i915_gem_object_unpin_pages(obj);
+
+out_unlock:
 	i915_gem_object_unlock(obj);
 
 	if (!err && write_domain)

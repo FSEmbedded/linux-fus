@@ -130,8 +130,6 @@ struct ideapad_private {
 	struct ideapad_dytc_priv *dytc;
 	struct dentry *debug;
 	unsigned long cfg;
-	bool has_hw_rfkill_switch;
-	bool has_touchpad_switch;
 	const char *fnesc_guid;
 	struct {
 		bool conservation_mode    : 1;
@@ -655,21 +653,18 @@ static umode_t ideapad_is_visible(struct kobject *kobj,
 	bool supported = true;
 
 	if (attr == &dev_attr_camera_power.attr)
-		supported = test_bit(CFG_CAMERA_BIT, &(priv->cfg));
-	else if (attr == &dev_attr_fan_mode.attr) {
-		unsigned long value;
-		supported = !read_ec_data(priv->adev->handle, VPCCMD_R_FAN,
-					  &value);
-	} else if (attr == &dev_attr_conservation_mode.attr) {
-		supported = acpi_has_method(priv->adev->handle, "GBMD") &&
-			    acpi_has_method(priv->adev->handle, "SBMC");
-	} else if (attr == &dev_attr_fn_lock.attr) {
-		supported = acpi_has_method(priv->adev->handle, "HALS") &&
-			acpi_has_method(priv->adev->handle, "SALS");
-	} else if (attr == &dev_attr_touchpad.attr)
-		supported = priv->has_touchpad_switch;
-	else
-		supported = true;
+		supported = test_bit(CFG_CAP_CAM_BIT, &priv->cfg);
+	else if (attr == &dev_attr_conservation_mode.attr)
+		supported = priv->features.conservation_mode;
+	else if (attr == &dev_attr_fan_mode.attr)
+		supported = priv->features.fan_mode;
+	else if (attr == &dev_attr_fn_lock.attr)
+		supported = priv->features.fn_lock;
+	else if (attr == &dev_attr_touchpad.attr)
+		supported = priv->features.touchpad_ctrl_via_ec &&
+			    test_bit(CFG_CAP_TOUCHPAD_BIT, &priv->cfg);
+	else if (attr == &dev_attr_usb_charging.attr)
+		supported = priv->features.usb_charging;
 
 	return supported ? attr->mode : 0;
 }
@@ -1374,7 +1369,7 @@ static void ideapad_sync_touchpad_state(struct ideapad_private *priv)
 {
 	unsigned long value;
 
-	if (!priv->has_touchpad_switch)
+	if (!priv->features.touchpad_ctrl_via_ec)
 		return;
 
 	/* Without reading from EC touchpad LED doesn't switch state */
@@ -1562,12 +1557,11 @@ static int ideapad_acpi_add(struct platform_device *pdev)
 	priv->adev = adev;
 	priv->platform_device = pdev;
 
-	/* Most ideapads with ELAN0634 touchpad don't use EC touchpad switch */
-	priv->has_touchpad_switch = !acpi_dev_present("ELAN0634", NULL, -1);
+	ideapad_check_features(priv);
 
-	ret = ideapad_sysfs_init(priv);
-	if (ret)
-		return ret;
+	err = ideapad_sysfs_init(priv);
+	if (err)
+		return err;
 
 	ideapad_debugfs_init(priv);
 
@@ -1591,7 +1585,7 @@ static int ideapad_acpi_add(struct platform_device *pdev)
 		write_ec_cmd(priv->adev->handle, VPCCMD_W_RF, 1);
 
 	/* The same for Touchpad */
-	if (!priv->has_touchpad_switch)
+	if (!priv->features.touchpad_ctrl_via_ec)
 		write_ec_cmd(priv->adev->handle, VPCCMD_W_TOUCHPAD, 1);
 
 	for (i = 0; i < IDEAPAD_RFKILL_DEV_NUM; i++)

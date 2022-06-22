@@ -635,17 +635,8 @@ static int btrfs_delayed_inode_reserve_metadata(
 		ASSERT(ret == 0 || ret == -ENOSPC);
 		if (ret)
 			btrfs_qgroup_free_meta_prealloc(root, num_bytes);
-		}
-		if (!ret) {
-			node->bytes_reserved = num_bytes;
-			trace_btrfs_space_reservation(fs_info,
-						      "delayed_inode",
-						      btrfs_ino(inode),
-						      num_bytes, 1);
-		} else {
-			btrfs_qgroup_free_meta_prealloc(root, num_bytes);
-		}
-		return ret;
+	} else {
+		ret = btrfs_block_rsv_migrate(src_rsv, dst_rsv, num_bytes, true);
 	}
 
 	if (!ret) {
@@ -955,7 +946,6 @@ static int __btrfs_update_delayed_inode(struct btrfs_trans_handle *trans,
 		mod = 1;
 
 	ret = btrfs_lookup_inode(trans, root, path, &key, mod);
-	memalloc_nofs_restore(nofs_flag);
 	if (ret > 0)
 		ret = -ENOENT;
 	if (ret < 0)

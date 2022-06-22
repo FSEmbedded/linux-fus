@@ -147,7 +147,9 @@ static int dsm_label_utf16s_to_utf8s(union acpi_object *obj, char *buf)
 			      obj->buffer.length,
 			      UTF16_LITTLE_ENDIAN,
 			      buf, PAGE_SIZE - 1);
-	buf[len] = '\n';
+	buf[len++] = '\n';
+
+	return len;
 }
 
 static int dsm_get_label(struct device *dev, char *buf,

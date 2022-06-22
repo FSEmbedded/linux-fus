@@ -24,9 +24,6 @@ static struct sk_buff *mtk_tag_xmit(struct sk_buff *skb,
 	struct dsa_port *dp = dsa_slave_to_port(dev);
 	u8 xmit_tpid;
 	u8 *mtk_tag;
-	unsigned char *dest = eth_hdr(skb)->h_dest;
-	bool is_multicast_skb = is_multicast_ether_addr(dest) &&
-				!is_broadcast_ether_addr(dest);
 
 	/* Build the special tag after the MAC Source Address. If VLAN header
 	 * is present, it's required that VLAN header and special tag is
@@ -44,7 +41,7 @@ static struct sk_buff *mtk_tag_xmit(struct sk_buff *skb,
 	default:
 		xmit_tpid = MTK_HDR_XMIT_UNTAGGED;
 		skb_push(skb, MTK_HDR_LEN);
-		memmove(skb->data, skb->data + MTK_HDR_LEN, 2 * ETH_ALEN);
+		dsa_alloc_etype_header(skb, MTK_HDR_LEN);
 	}
 
 	mtk_tag = dsa_etype_header_pos_tx(skb);

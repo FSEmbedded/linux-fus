@@ -384,12 +384,11 @@ static int afs_store_data(struct afs_vnode *vnode, struct iov_iter *iter, loff_t
 
 	afs_op_set_vnode(op, 0, vnode);
 	op->file[0].dv_delta = 1;
-	op->store.mapping = mapping;
 	op->file[0].modification = true;
-	op->store.first = first;
-	op->store.last = last;
-	op->store.first_offset = offset;
-	op->store.last_to = to;
+	op->store.write_iter = iter;
+	op->store.pos = pos;
+	op->store.size = size;
+	op->store.i_size = max(pos + size, i_size);
 	op->store.laundering = laundering;
 	op->mtime = vnode->vfs_inode.i_mtime;
 	op->flags |= AFS_OPERATION_UNINTR;

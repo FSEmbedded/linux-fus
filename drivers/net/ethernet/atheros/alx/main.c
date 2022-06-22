@@ -1181,8 +1181,11 @@ static int alx_change_mtu(struct net_device *netdev, int mtu)
 	alx->hw.mtu = mtu;
 	alx->rxbuf_size = max(max_frame, ALX_DEF_RXBUF_SIZE);
 	netdev_update_features(netdev);
-	if (netif_running(netdev))
+	if (netif_running(netdev)) {
+		mutex_lock(&alx->mtx);
 		alx_reinit(alx);
+		mutex_unlock(&alx->mtx);
+	}
 	return 0;
 }
 
@@ -1927,17 +1930,20 @@ static int alx_resume(struct device *dev)
 	mutex_lock(&alx->mtx);
 	alx_reset_phy(hw);
 
-	if (!netif_running(alx->dev))
-		return 0;
+	if (!netif_running(alx->dev)) {
+		err = 0;
+		goto unlock;
+	}
 
 	err = __alx_open(alx, true);
-	rtnl_unlock();
 	if (err)
-		return err;
+		goto unlock;
 
 	netif_device_attach(alx->dev);
 
-	return 0;
+unlock:
+	mutex_unlock(&alx->mtx);
+	return err;
 }
 
 static SIMPLE_DEV_PM_OPS(alx_pm_ops, alx_suspend, alx_resume);

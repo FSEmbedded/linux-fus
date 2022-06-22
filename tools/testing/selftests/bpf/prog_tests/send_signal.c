@@ -74,9 +74,6 @@ static void test_send_signal_common(struct perf_event_attr *attr,
 		/* restore the old priority */
 		ASSERT_OK(setpriority(PRIO_PROCESS, 0, old_prio), "setpriority");
 
-		/* restore the old priority */
-		ASSERT_OK(setpriority(PRIO_PROCESS, 0, old_prio), "setpriority");
-
 		close(pipe_c2p[1]);
 		close(pipe_p2c[0]);
 		exit(0);

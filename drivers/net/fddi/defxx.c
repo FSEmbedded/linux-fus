@@ -492,18 +492,6 @@ static const struct net_device_ops dfx_netdev_ops = {
 	.ndo_set_mac_address	= dfx_ctl_set_mac_address,
 };
 
-static void dfx_register_res_alloc_err(const char *print_name, bool mmio,
-				       bool eisa)
-{
-	pr_err("%s: Cannot use %s, no address set, aborting\n",
-	       print_name, mmio ? "MMIO" : "I/O");
-	pr_err("%s: Recompile driver with \"CONFIG_DEFXX_MMIO=%c\"\n",
-	       print_name, mmio ? 'n' : 'y');
-	if (eisa && mmio)
-		pr_err("%s: Or run ECU and set adapter's MMIO location\n",
-		       print_name);
-}
-
 static void dfx_register_res_err(const char *print_name, bool mmio,
 				 unsigned long start, unsigned long len)
 {
@@ -581,13 +569,13 @@ static int dfx_register(struct device *bdev)
 	bp->bus_dev = bdev;
 	dev_set_drvdata(bdev, dev);
 
-	dfx_get_bars(bdev, bar_start, bar_len);
+	bp->mmio = true;
+
+	dfx_get_bars(bp, bar_start, bar_len);
 	if (bar_len[0] == 0 ||
 	    (dfx_bus_eisa && dfx_use_mmio && bar_start[0] == 0)) {
-		dfx_register_res_alloc_err(print_name, dfx_use_mmio,
-					   dfx_bus_eisa);
-		err = -ENXIO;
-		goto err_out_disable;
+		bp->mmio = false;
+		dfx_get_bars(bp, bar_start, bar_len);
 	}
 
 	if (dfx_use_mmio) {

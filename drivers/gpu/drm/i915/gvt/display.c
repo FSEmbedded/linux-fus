@@ -177,9 +177,10 @@ static void emulate_monitor_status_change(struct intel_vgpu *vgpu)
 		enum port port;
 
 		/* Clear PIPE, DDI, PHY, HPD before setting new */
-		vgpu_vreg_t(vgpu, GEN8_DE_PORT_ISR) &= ~(BXT_DE_PORT_HP_DDIA |
-			BXT_DE_PORT_HP_DDIB |
-			BXT_DE_PORT_HP_DDIC);
+		vgpu_vreg_t(vgpu, GEN8_DE_PORT_ISR) &=
+			~(GEN8_DE_PORT_HOTPLUG(HPD_PORT_A) |
+			  GEN8_DE_PORT_HOTPLUG(HPD_PORT_B) |
+			  GEN8_DE_PORT_HOTPLUG(HPD_PORT_C));
 
 		for_each_pipe(dev_priv, pipe) {
 			vgpu_vreg_t(vgpu, PIPECONF(pipe)) &=
@@ -687,13 +688,13 @@ void intel_vgpu_emulate_hotplug(struct intel_vgpu *vgpu, bool connected)
 		if (intel_vgpu_has_monitor_on_port(vgpu, PORT_A)) {
 			if (connected) {
 				vgpu_vreg_t(vgpu, GEN8_DE_PORT_ISR) |=
-					BXT_DE_PORT_HP_DDIA;
+					GEN8_DE_PORT_HOTPLUG(HPD_PORT_A);
 			} else {
 				vgpu_vreg_t(vgpu, GEN8_DE_PORT_ISR) &=
-					~BXT_DE_PORT_HP_DDIA;
+					~GEN8_DE_PORT_HOTPLUG(HPD_PORT_A);
 			}
 			vgpu_vreg_t(vgpu, GEN8_DE_PORT_IIR) |=
-				BXT_DE_PORT_HP_DDIA;
+				GEN8_DE_PORT_HOTPLUG(HPD_PORT_A);
 			vgpu_vreg_t(vgpu, PCH_PORT_HOTPLUG) &=
 				~PORTA_HOTPLUG_STATUS_MASK;
 			vgpu_vreg_t(vgpu, PCH_PORT_HOTPLUG) |=
@@ -703,17 +704,17 @@ void intel_vgpu_emulate_hotplug(struct intel_vgpu *vgpu, bool connected)
 		if (intel_vgpu_has_monitor_on_port(vgpu, PORT_B)) {
 			if (connected) {
 				vgpu_vreg_t(vgpu, GEN8_DE_PORT_ISR) |=
-					BXT_DE_PORT_HP_DDIB;
+					GEN8_DE_PORT_HOTPLUG(HPD_PORT_B);
 				vgpu_vreg_t(vgpu, SFUSE_STRAP) |=
 					SFUSE_STRAP_DDIB_DETECTED;
 			} else {
 				vgpu_vreg_t(vgpu, GEN8_DE_PORT_ISR) &=
-					~BXT_DE_PORT_HP_DDIB;
+					~GEN8_DE_PORT_HOTPLUG(HPD_PORT_B);
 				vgpu_vreg_t(vgpu, SFUSE_STRAP) &=
 					~SFUSE_STRAP_DDIB_DETECTED;
 			}
 			vgpu_vreg_t(vgpu, GEN8_DE_PORT_IIR) |=
-				BXT_DE_PORT_HP_DDIB;
+				GEN8_DE_PORT_HOTPLUG(HPD_PORT_B);
 			vgpu_vreg_t(vgpu, PCH_PORT_HOTPLUG) &=
 				~PORTB_HOTPLUG_STATUS_MASK;
 			vgpu_vreg_t(vgpu, PCH_PORT_HOTPLUG) |=
@@ -723,17 +724,17 @@ void intel_vgpu_emulate_hotplug(struct intel_vgpu *vgpu, bool connected)
 		if (intel_vgpu_has_monitor_on_port(vgpu, PORT_C)) {
 			if (connected) {
 				vgpu_vreg_t(vgpu, GEN8_DE_PORT_ISR) |=
-					BXT_DE_PORT_HP_DDIC;
+					GEN8_DE_PORT_HOTPLUG(HPD_PORT_C);
 				vgpu_vreg_t(vgpu, SFUSE_STRAP) |=
 					SFUSE_STRAP_DDIC_DETECTED;
 			} else {
 				vgpu_vreg_t(vgpu, GEN8_DE_PORT_ISR) &=
-					~BXT_DE_PORT_HP_DDIC;
+					~GEN8_DE_PORT_HOTPLUG(HPD_PORT_C);
 				vgpu_vreg_t(vgpu, SFUSE_STRAP) &=
 					~SFUSE_STRAP_DDIC_DETECTED;
 			}
 			vgpu_vreg_t(vgpu, GEN8_DE_PORT_IIR) |=
-				BXT_DE_PORT_HP_DDIC;
+				GEN8_DE_PORT_HOTPLUG(HPD_PORT_C);
 			vgpu_vreg_t(vgpu, PCH_PORT_HOTPLUG) &=
 				~PORTC_HOTPLUG_STATUS_MASK;
 			vgpu_vreg_t(vgpu, PCH_PORT_HOTPLUG) |=

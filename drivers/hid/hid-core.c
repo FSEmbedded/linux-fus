@@ -2322,8 +2322,6 @@ static void hid_device_remove(struct device *dev)
 
 	if (!hdev->io_started)
 		up(&hdev->driver_input_lock);
-
-	return 0;
 }
 
 static ssize_t modalias_show(struct device *dev, struct device_attribute *a,

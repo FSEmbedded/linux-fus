@@ -1049,7 +1049,15 @@ struct pptable_funcs {
 	 * @set_fan_control_mode: Set the fan control mode.
 	 */
 	int (*set_fan_control_mode)(struct smu_context *smu, uint32_t mode);
-	int (*set_fan_speed_percent)(struct smu_context *smu, uint32_t speed);
+
+	/**
+	 * @set_fan_speed_pwm: Set a static fan speed in PWM.
+	 */
+	int (*set_fan_speed_pwm)(struct smu_context *smu, uint32_t speed);
+
+	/**
+	 * @set_fan_speed_rpm: Set a static fan speed in rpm.
+	 */
 	int (*set_fan_speed_rpm)(struct smu_context *smu, uint32_t speed);
 
 	/**

@@ -301,14 +301,49 @@ static int anfc_pkt_len_config(unsigned int len, unsigned int *steps,
 	return 0;
 }
 
+static bool anfc_is_gpio_cs(struct arasan_nfc *nfc, int nfc_cs)
+{
+	return nfc_cs >= 0 && nfc->cs_array[nfc_cs];
+}
+
+static int anfc_relative_to_absolute_cs(struct anand *anand, int num)
+{
+	return anand->cs_idx[num];
+}
+
+static void anfc_assert_cs(struct arasan_nfc *nfc, unsigned int nfc_cs_idx)
+{
+	/* CS did not change: do nothing */
+	if (nfc->cur_cs == nfc_cs_idx)
+		return;
+
+	/* Deassert the previous CS if it was a GPIO */
+	if (anfc_is_gpio_cs(nfc, nfc->cur_cs))
+		gpiod_set_value_cansleep(nfc->cs_array[nfc->cur_cs], 1);
+
+	/* Assert the new one */
+	if (anfc_is_gpio_cs(nfc, nfc_cs_idx)) {
+		nfc->native_cs = nfc->spare_cs;
+		gpiod_set_value_cansleep(nfc->cs_array[nfc_cs_idx], 0);
+	} else {
+		nfc->native_cs = nfc_cs_idx;
+	}
+
+	nfc->cur_cs = nfc_cs_idx;
+}
+
 static int anfc_select_target(struct nand_chip *chip, int target)
 {
 	struct anand *anand = to_anand(chip);
 	struct arasan_nfc *nfc = to_anfc(chip->controller);
+	unsigned int nfc_cs_idx = anfc_relative_to_absolute_cs(anand, target);
 	int ret;
 
+	anfc_assert_cs(nfc, nfc_cs_idx);
+
 	/* Update the controller timings and the potential ECC configuration */
-	writel_relaxed(anand->timings, nfc->base + DATA_INTERFACE_REG);
+	writel_relaxed(anand->data_iface, nfc->base + DATA_INTERFACE_REG);
+	writel_relaxed(anand->timings, nfc->base + TIMING_REG);
 
 	/* Update clock frequency */
 	if (nfc->cur_clk != anand->clk) {

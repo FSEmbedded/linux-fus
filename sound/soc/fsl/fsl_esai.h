@@ -354,14 +354,10 @@
 
 /**
  * struct fsl_esai_soc_data - soc specific data
- * @imx: for imx platform
  * @reset_at_xrun: flags for enable reset operaton
- * @use_edma: edma is used.
  */
 struct fsl_esai_soc_data {
-	bool imx;
 	bool reset_at_xrun;
-	bool use_edma;
 };
 
 /**

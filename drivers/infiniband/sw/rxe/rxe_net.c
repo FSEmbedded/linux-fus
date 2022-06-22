@@ -407,10 +407,17 @@ static int rxe_send(struct sk_buff *skb, struct rxe_pkt_info *pkt)
  */
 static int rxe_loopback(struct sk_buff *skb, struct rxe_pkt_info *pkt)
 {
+	memcpy(SKB_TO_PKT(skb), pkt, sizeof(*pkt));
+
 	if (skb->protocol == htons(ETH_P_IP))
 		skb_pull(skb, sizeof(struct iphdr));
 	else
 		skb_pull(skb, sizeof(struct ipv6hdr));
+
+	if (WARN_ON(!ib_device_try_get(&pkt->rxe->ib_dev))) {
+		kfree_skb(skb);
+		return -EIO;
+	}
 
 	rxe_rcv(skb);
 

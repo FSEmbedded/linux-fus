@@ -12,6 +12,8 @@
 
 #define MVM_UCODE_PNVM_TIMEOUT	(HZ / 4)
 
+#define MAX_PNVM_NAME  64
+
 int iwl_pnvm_load(struct iwl_trans *trans,
 		  struct iwl_notif_wait_data *notif_wait);
 

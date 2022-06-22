@@ -30,7 +30,7 @@ static int ecdh_set_secret(struct crypto_kpp *tfm, const void *buf,
 	struct ecdh params;
 
 	if (crypto_ecdh_decode_key(buf, len, &params) < 0 ||
-	    params.key_size > sizeof(ctx->private_key))
+	    params.key_size > sizeof(u64) * ctx->ndigits)
 		return -EINVAL;
 
 	if (!params.key || !params.key_size)

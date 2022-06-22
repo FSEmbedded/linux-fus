@@ -38,9 +38,6 @@ struct idxd_dev {
 	enum idxd_dev_type type;
 };
 
-struct idxd_device;
-struct idxd_wq;
-
 #define IDXD_REG_TIMEOUT	50
 #define IDXD_DRAIN_TIMEOUT	5000
 
@@ -140,7 +137,7 @@ enum idxd_wq_type {
 struct idxd_cdev {
 	struct idxd_wq *wq;
 	struct cdev cdev;
-	struct device dev;
+	struct idxd_dev idxd_dev;
 	int minor;
 };
 
@@ -164,14 +161,12 @@ struct idxd_dma_chan {
 	struct idxd_wq *wq;
 };
 
-struct idxd_dma_chan {
-	struct dma_chan chan;
-	struct idxd_wq *wq;
-};
-
 struct idxd_wq {
-	void __iomem *dportal;
-	struct device conf_dev;
+	void __iomem *portal;
+	u32 portal_offset;
+	struct percpu_ref wq_active;
+	struct completion wq_dead;
+	struct idxd_dev idxd_dev;
 	struct idxd_cdev *idxd_cdev;
 	struct wait_queue_head err_queue;
 	struct idxd_device *idxd;
@@ -240,7 +235,8 @@ struct idxd_dma_dev {
 	struct dma_device dma;
 };
 
-struct idxd_device {
+struct idxd_driver_data {
+	const char *name_prefix;
 	enum idxd_type type;
 	struct device_type *dev_type;
 	int compl_size;
@@ -537,6 +533,14 @@ void idxd_mask_msix_vector(struct idxd_device *idxd, int vec_id);
 void idxd_unmask_msix_vector(struct idxd_device *idxd, int vec_id);
 
 /* device control */
+int idxd_register_idxd_drv(void);
+void idxd_unregister_idxd_drv(void);
+int idxd_device_drv_probe(struct idxd_dev *idxd_dev);
+void idxd_device_drv_remove(struct idxd_dev *idxd_dev);
+int drv_enable_wq(struct idxd_wq *wq);
+int __drv_enable_wq(struct idxd_wq *wq);
+void drv_disable_wq(struct idxd_wq *wq);
+void __drv_disable_wq(struct idxd_wq *wq);
 int idxd_device_init_reset(struct idxd_device *idxd);
 int idxd_device_enable(struct idxd_device *idxd);
 int idxd_device_disable(struct idxd_device *idxd);

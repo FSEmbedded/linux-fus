@@ -9,6 +9,7 @@
 #include <linux/types.h>
 #include <linux/usb/typec.h>
 #include <linux/usb/pd.h>
+#include <linux/usb/role.h>
 
 /* -------------------------------------------------------------------------- */
 

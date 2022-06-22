@@ -811,11 +811,7 @@ int device_not_dax_capable(struct dm_target *ti, struct dm_dev *dev,
 {
 	int blocksize = *(int *) data;
 
-	id = dax_read_lock();
-	rc = !dax_supported(dev->dax_dev, dev->bdev, blocksize, start, len);
-	dax_read_unlock(id);
-
-	return rc;
+	return !dax_supported(dev->dax_dev, dev->bdev, blocksize, start, len);
 }
 
 /* Check devices support synchronous DAX */
@@ -1572,7 +1568,7 @@ static int device_not_zoned_model(struct dm_target *ti, struct dm_dev *dev,
 	struct request_queue *q = bdev_get_queue(dev->bdev);
 	enum blk_zoned_model *zoned_model = data;
 
-	return !q || blk_queue_zoned_model(q) != *zoned_model;
+	return blk_queue_zoned_model(q) != *zoned_model;
 }
 
 /*
@@ -1614,7 +1610,7 @@ static int device_not_matches_zone_sectors(struct dm_target *ti, struct dm_dev *
 	if (!blk_queue_is_zoned(q))
 		return 0;
 
-	return !q || blk_queue_zone_sectors(q) != *zone_sectors;
+	return blk_queue_zone_sectors(q) != *zone_sectors;
 }
 
 /*
@@ -1818,7 +1814,7 @@ static int device_is_rotational(struct dm_target *ti, struct dm_dev *dev,
 {
 	struct request_queue *q = bdev_get_queue(dev->bdev);
 
-	return q && !blk_queue_nonrot(q);
+	return !blk_queue_nonrot(q);
 }
 
 static int device_is_not_random(struct dm_target *ti, struct dm_dev *dev,
@@ -1826,7 +1822,7 @@ static int device_is_not_random(struct dm_target *ti, struct dm_dev *dev,
 {
 	struct request_queue *q = bdev_get_queue(dev->bdev);
 
-	return q && !blk_queue_add_random(q);
+	return !blk_queue_add_random(q);
 }
 
 static int device_not_write_same_capable(struct dm_target *ti, struct dm_dev *dev,
@@ -1980,8 +1976,8 @@ static int device_requires_stable_pages(struct dm_target *ti,
 	return blk_queue_stable_writes(q);
 }
 
-void dm_table_set_restrictions(struct dm_table *t, struct request_queue *q,
-			       struct queue_limits *limits)
+int dm_table_set_restrictions(struct dm_table *t, struct request_queue *q,
+			      struct queue_limits *limits)
 {
 	bool wc = false, fua = false;
 	int page_size = PAGE_SIZE;

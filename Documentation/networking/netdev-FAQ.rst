@@ -142,7 +142,7 @@ Please send incremental versions on top of what has been merged in order to fix
 the patches the way they would look like if your latest patch series was to be
 merged.
 
-Q: Are there special rules regarding stable submissions on netdev?
+Are there special rules regarding stable submissions on netdev?
 ---------------------------------------------------------------
 While it used to be the case that netdev submissions were not supposed
 to carry explicit ``CC: stable@vger.kernel.org`` tags that is no longer
@@ -150,9 +150,9 @@ the case today. Please follow the standard stable rules in
 :ref:`Documentation/process/stable-kernel-rules.rst <stable_kernel_rules>`,
 and make sure you include appropriate Fixes tags!
 
-Q: Is the comment style convention different for the networking content?
-------------------------------------------------------------------------
-A: Yes, in a largely trivial way.  Instead of this::
+Is the comment style convention different for the networking content?
+---------------------------------------------------------------------
+Yes, in a largely trivial way.  Instead of this::
 
   /*
    * foobar blah blah blah

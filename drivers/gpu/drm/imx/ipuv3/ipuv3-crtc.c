@@ -422,50 +422,6 @@ static int ipu_drm_bind(struct device *dev, struct device *master, void *data)
 	disable_irq(ipu_crtc->irq);
 
 	return 0;
-
-err_put_plane1_res:
-	if (ipu_crtc->plane[1])
-		ipu_plane_put_resources(ipu_crtc->plane[1]);
-err_put_plane0_res:
-	ipu_plane_put_resources(ipu_crtc->plane[0]);
-err_put_resources:
-	ipu_put_resources(ipu_crtc);
-
-	return ret;
-}
-
-static int ipu_drm_bind(struct device *dev, struct device *master, void *data)
-{
-	struct ipu_client_platformdata *pdata = dev->platform_data;
-	struct drm_device *drm = data;
-	struct ipu_crtc *ipu_crtc;
-	int ret;
-
-	ipu_crtc = dev_get_drvdata(dev);
-	memset(ipu_crtc, 0, sizeof(*ipu_crtc));
-
-	ipu_crtc->dev = dev;
-
-	ret = ipu_crtc_init(ipu_crtc, pdata, drm);
-	if (ret)
-		return ret;
-
-	drm->mode_config.funcs = &ipuv3_drm_mode_config_funcs;
-	drm->mode_config.helper_private = &ipuv3_drm_mode_config_helpers;
-	drm->mode_config.allow_fb_modifiers = true;
-
-	return 0;
-}
-
-static void ipu_drm_unbind(struct device *dev, struct device *master,
-	void *data)
-{
-	struct ipu_crtc *ipu_crtc = dev_get_drvdata(dev);
-
-	ipu_put_resources(ipu_crtc);
-	if (ipu_crtc->plane[1])
-		ipu_plane_put_resources(ipu_crtc->plane[1]);
-	ipu_plane_put_resources(ipu_crtc->plane[0]);
 }
 
 static const struct component_ops ipu_crtc_ops = {

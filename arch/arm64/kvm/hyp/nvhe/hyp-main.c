@@ -35,18 +35,16 @@ static void handle___kvm_adjust_pc(struct kvm_cpu_context *host_ctxt)
 	__kvm_adjust_pc(kern_hyp_va(vcpu));
 }
 
-		__kvm_tlb_flush_vmid(kern_hyp_va(mmu));
-		break;
-	}
-	case KVM_HOST_SMCCC_FUNC(__kvm_flush_cpu_context): {
-		unsigned long r1 = host_ctxt->regs.regs[1];
-		struct kvm_s2_mmu *mmu = (struct kvm_s2_mmu *)r1;
+static void handle___kvm_flush_vm_context(struct kvm_cpu_context *host_ctxt)
+{
+	__kvm_flush_vm_context();
+}
 
-		__kvm_flush_cpu_context(kern_hyp_va(mmu));
-		break;
-	}
-	case KVM_HOST_SMCCC_FUNC(__kvm_timer_set_cntvoff): {
-		u64 cntvoff = host_ctxt->regs.regs[1];
+static void handle___kvm_tlb_flush_vmid_ipa(struct kvm_cpu_context *host_ctxt)
+{
+	DECLARE_REG(struct kvm_s2_mmu *, mmu, host_ctxt, 1);
+	DECLARE_REG(phys_addr_t, ipa, host_ctxt, 2);
+	DECLARE_REG(int, level, host_ctxt, 3);
 
 	__kvm_tlb_flush_vmid_ipa(kern_hyp_va(mmu), ipa, level);
 }

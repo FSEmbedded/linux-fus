@@ -303,18 +303,7 @@ static int nsim_init_netdevsim(struct netdevsim *ns)
 
 	ns->netdev->netdev_ops = &nsim_netdev_ops;
 
-	dev_net_set(dev, nsim_dev_net(nsim_dev));
-	ns = netdev_priv(dev);
-	ns->netdev = dev;
-	u64_stats_init(&ns->syncp);
-	ns->nsim_dev = nsim_dev;
-	ns->nsim_dev_port = nsim_dev_port;
-	ns->nsim_bus_dev = nsim_dev->nsim_bus_dev;
-	SET_NETDEV_DEV(dev, &ns->nsim_bus_dev->dev);
-	dev->netdev_ops = &nsim_netdev_ops;
-	nsim_ethtool_init(ns);
-
-	err = nsim_udp_tunnels_info_create(nsim_dev, dev);
+	err = nsim_udp_tunnels_info_create(ns->nsim_dev, ns->netdev);
 	if (err)
 		return err;
 

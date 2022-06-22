@@ -205,32 +205,6 @@ void altera_spi_init_master(struct spi_master *master)
 {
 	struct altera_spi *hw = spi_master_get_devdata(master);
 	u32 val;
-	u16 i;
-
-	master = spi_alloc_master(&pdev->dev, sizeof(struct altera_spi));
-	if (!master)
-		return err;
-
-	/* setup the master state. */
-	master->bus_num = pdev->id;
-
-	if (pdata) {
-		if (pdata->num_chipselect > ALTERA_SPI_MAX_CS) {
-			dev_err(&pdev->dev,
-				"Invalid number of chipselect: %hu\n",
-				pdata->num_chipselect);
-			err = -EINVAL;
-			goto exit;
-		}
-
-		master->num_chipselect = pdata->num_chipselect;
-		master->mode_bits = pdata->mode_bits;
-		master->bits_per_word_mask = pdata->bits_per_word_mask;
-	} else {
-		master->num_chipselect = 16;
-		master->mode_bits = SPI_CS_HIGH;
-		master->bits_per_word_mask = SPI_BPW_RANGE_MASK(1, 16);
-	}
 
 	master->transfer_one = altera_spi_txrx;
 	master->set_cs = altera_spi_set_cs;

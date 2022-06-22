@@ -124,8 +124,7 @@ static int ceph_set_page_dirty(struct page *page)
 	 * PagePrivate so that we get invalidatepage callback.
 	 */
 	BUG_ON(PagePrivate(page));
-	page->private = (unsigned long)snapc;
-	SetPagePrivate(page);
+	attach_page_private(page, snapc);
 
 	return __set_page_dirty_nobuffers(page);
 }
@@ -1187,43 +1186,29 @@ ceph_find_incompatible(struct page *page)
 	return NULL;
 }
 
-/**
- * prep_noread_page - prep a page for writing without reading first
- * @page: page being prepared
- * @pos: starting position for the write
- * @len: length of write
- *
- * In some cases, write_begin doesn't need to read at all:
- * - full page write
- * - file is currently zero-length
- * - write that lies in a page that is completely beyond EOF
- * - write that covers the the page from start to EOF or beyond it
- *
- * If any of these criteria are met, then zero out the unwritten parts
- * of the page and return true. Otherwise, return false.
- */
-static bool skip_page_read(struct page *page, loff_t pos, size_t len)
+static int ceph_netfs_check_write_begin(struct file *file, loff_t pos, unsigned int len,
+					struct page *page, void **_fsdata)
 {
-	struct inode *inode = page->mapping->host;
-	loff_t i_size = i_size_read(inode);
-	size_t offset = offset_in_page(pos);
+	struct inode *inode = file_inode(file);
+	struct ceph_inode_info *ci = ceph_inode(inode);
+	struct ceph_snap_context *snapc;
 
-	/* Full page write */
-	if (offset == 0 && len >= PAGE_SIZE)
-		return true;
+	snapc = ceph_find_incompatible(page);
+	if (snapc) {
+		int r;
 
-	/* pos beyond last page in the file */
-	if (pos - offset >= i_size)
-		goto zero_out;
+		unlock_page(page);
+		put_page(page);
+		if (IS_ERR(snapc))
+			return PTR_ERR(snapc);
 
-	/* write that covers the whole page from start to EOF or beyond it */
-	if (offset == 0 && (pos + len) >= i_size)
-		goto zero_out;
-
-	return false;
-zero_out:
-	zero_user_segments(page, 0, offset, offset + len, PAGE_SIZE);
-	return true;
+		ceph_queue_writeback(inode);
+		r = wait_event_killable(ci->i_cap_wq,
+					context_is_writeable_or_written(inode, snapc));
+		ceph_put_snap_context(snapc);
+		return r == 0 ? -EAGAIN : r;
+	}
+	return 0;
 }
 
 /*
@@ -1238,34 +1223,7 @@ static int ceph_write_begin(struct file *file, struct address_space *mapping,
 	struct ceph_inode_info *ci = ceph_inode(inode);
 	struct page *page = NULL;
 	pgoff_t index = pos >> PAGE_SHIFT;
-	int r = 0;
-
-	dout("write_begin file %p inode %p page %p %d~%d\n", file, inode, page, (int)pos, (int)len);
-
-	for (;;) {
-		page = grab_cache_page_write_begin(mapping, index, 0);
-		if (!page) {
-			r = -ENOMEM;
-			break;
-		}
-
-		snapc = ceph_find_incompatible(page);
-		if (snapc) {
-			if (IS_ERR(snapc)) {
-				r = PTR_ERR(snapc);
-				break;
-			}
-			unlock_page(page);
-			put_page(page);
-			page = NULL;
-			ceph_queue_writeback(inode);
-			r = wait_event_killable(ci->i_cap_wq,
-						context_is_writeable_or_written(inode, snapc));
-			ceph_put_snap_context(snapc);
-			if (r != 0)
-				break;
-			continue;
-		}
+	int r;
 
 	/*
 	 * Uninlining should have already been done and everything updated, EXCEPT
@@ -1276,19 +1234,22 @@ static int ceph_write_begin(struct file *file, struct address_space *mapping,
 		if (!page)
 			return -ENOMEM;
 
-		/* No need to read in some cases */
-		if (skip_page_read(page, pos, len))
-			break;
-
 		/*
-		 * We need to read it. If we get back -EINPROGRESS, then the page was
-		 * handed off to fscache and it will be unlocked when the read completes.
-		 * Refind the page in that case so we can reacquire the page lock. Otherwise
-		 * we got a hard error or the read was completed synchronously.
+		 * The inline_version on a new inode is set to 1. If that's the
+		 * case, then the page is brand new and isn't yet Uptodate.
 		 */
-		r = ceph_do_readpage(file, page);
-		if (r != -EINPROGRESS)
-			break;
+		r = 0;
+		if (index == 0 && ci->i_inline_version != 1) {
+			if (!PageUptodate(page)) {
+				WARN_ONCE(1, "ceph: write_begin called on still-inlined inode (inline_version %llu)!\n",
+					  ci->i_inline_version);
+				r = -EINVAL;
+			}
+			goto out;
+		}
+		zero_user_segment(page, 0, thp_size(page));
+		SetPageUptodate(page);
+		goto out;
 	}
 
 	r = netfs_write_begin(file, inode->i_mapping, pos, len, 0, &page, NULL,

@@ -373,7 +373,7 @@ static int dynamic_funnel_probe(struct amba_device *adev,
 	return funnel_probe(&adev->dev, &adev->res);
 }
 
-static int dynamic_funnel_remove(struct amba_device *adev)
+static void dynamic_funnel_remove(struct amba_device *adev)
 {
 	funnel_remove(&adev->dev);
 }

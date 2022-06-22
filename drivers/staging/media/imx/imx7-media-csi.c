@@ -513,35 +513,13 @@ static void imx7_csi_configure(struct imx7_csi *csi)
 
 static int imx7_csi_init(struct imx7_csi *csi)
 {
-	struct imx7_csi *csi = v4l2_get_subdevdata(sd);
-	struct media_entity *src;
-	struct media_pad *pad;
 	int ret;
 
 	ret = clk_prepare_enable(csi->mclk);
 	if (ret < 0)
 		return ret;
 
-	if (!csi->src_sd)
-		return -EPIPE;
-
-	src = &csi->src_sd->entity;
-
-	/*
-	 * if the source is neither a CSI MUX or CSI-2 get the one directly
-	 * upstream from this CSI
-	 */
-	if (src->function != MEDIA_ENT_F_VID_IF_BRIDGE &&
-	    src->function != MEDIA_ENT_F_VID_MUX)
-		src = &csi->sd.entity;
-
-	/*
-	 * find the entity that is selected by the source. This is needed
-	 * to distinguish between a parallel or CSI-2 pipeline.
-	 */
-	pad = imx_media_pipeline_pad(src, 0, 0, true);
-	if (!pad)
-		return -ENODEV;
+	imx7_csi_configure(csi);
 
 	ret = imx7_csi_dma_setup(csi);
 	if (ret < 0)
@@ -1105,6 +1083,8 @@ static int imx7_csi_notify_bound(struct v4l2_async_notifier *notifier,
 	if (sd->entity.function == MEDIA_ENT_F_VID_MUX)
 		sd->grp_id = IMX_MEDIA_GRP_ID_CSI_MUX;
 
+	csi->src_sd = sd;
+
 	return v4l2_create_fwnode_links_to_pad(sd, sink, MEDIA_LNK_FL_ENABLED |
 					       MEDIA_LNK_FL_IMMUTABLE);
 }
@@ -1125,7 +1105,7 @@ static int imx7_csi_async_register(struct imx7_csi *csi)
 					     FWNODE_GRAPH_ENDPOINT_NEXT);
 	if (ep) {
 		asd = v4l2_async_notifier_add_fwnode_remote_subdev(
-			&csi->notifier, ep, sizeof(*asd));
+			&csi->notifier, ep, struct v4l2_async_subdev);
 
 		fwnode_handle_put(ep);
 

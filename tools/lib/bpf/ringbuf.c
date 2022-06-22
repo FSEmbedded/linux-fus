@@ -279,7 +279,7 @@ int ring_buffer__poll(struct ring_buffer *rb, int timeout_ms)
 
 	cnt = epoll_wait(rb->epoll_fd, rb->events, rb->ring_cnt, timeout_ms);
 	if (cnt < 0)
-		return -errno;
+		return libbpf_err(-errno);
 
 	for (i = 0; i < cnt; i++) {
 		__u32 ring_id = rb->events[i].data.fd;
@@ -293,4 +293,10 @@ int ring_buffer__poll(struct ring_buffer *rb, int timeout_ms)
 	if (res > INT_MAX)
 		return INT_MAX;
 	return res;
+}
+
+/* Get an fd that can be used to sleep until data is available in the ring(s) */
+int ring_buffer__epoll_fd(const struct ring_buffer *rb)
+{
+	return rb->epoll_fd;
 }

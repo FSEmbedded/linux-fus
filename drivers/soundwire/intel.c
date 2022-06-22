@@ -498,13 +498,6 @@ static int intel_link_power_down(struct sdw_intel *sdw)
 		}
 	}
 
-			/*
-			 * we leave the sdw->cdns.link_up flag as false since we've disabled
-			 * the link at this point and cannot handle interrupts any longer.
-			 */
-		}
-	}
-
 	mutex_unlock(sdw->link_res->shim_lock);
 
 	return ret;

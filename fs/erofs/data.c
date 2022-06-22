@@ -294,12 +294,25 @@ static ssize_t erofs_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 	return filemap_read(iocb, to, 0);
 }
 
-static sector_t erofs_bmap(struct address_space *mapping, sector_t block)
+/* for uncompressed (aligned) files and raw access for other files */
+const struct address_space_operations erofs_raw_access_aops = {
+	.readpage = erofs_readpage,
+	.readahead = erofs_readahead,
+	.bmap = erofs_bmap,
+	.direct_IO = noop_direct_IO,
+};
+
+#ifdef CONFIG_FS_DAX
+static vm_fault_t erofs_dax_huge_fault(struct vm_fault *vmf,
+		enum page_entry_size pe_size)
 {
-	struct inode *inode = mapping->host;
-	struct erofs_map_blocks map = {
-		.m_la = blknr_to_addr(block),
-	};
+	return dax_iomap_fault(vmf, pe_size, NULL, NULL, &erofs_iomap_ops);
+}
+
+static vm_fault_t erofs_dax_fault(struct vm_fault *vmf)
+{
+	return erofs_dax_huge_fault(vmf, PE_SIZE_PTE);
+}
 
 static const struct vm_operations_struct erofs_dax_vm_ops = {
 	.fault		= erofs_dax_fault,
@@ -311,11 +324,8 @@ static int erofs_file_mmap(struct file *file, struct vm_area_struct *vma)
 	if (!IS_DAX(file_inode(file)))
 		return generic_file_readonly_mmap(file, vma);
 
-	if (!erofs_map_blocks(inode, &map, EROFS_GET_BLOCKS_RAW))
-		return erofs_blknr(map.m_pa);
-
-	return 0;
-}
+	if ((vma->vm_flags & VM_SHARED) && (vma->vm_flags & VM_MAYWRITE))
+		return -EINVAL;
 
 	vma->vm_ops = &erofs_dax_vm_ops;
 	vma->vm_flags |= VM_HUGEPAGE;

@@ -9,10 +9,11 @@
 #define _ASM_RISCV_VDSO_H
 
 
-#ifndef CONFIG_GENERIC_TIME_VSYSCALL
-struct vdso_data {
-};
-#endif
+/*
+ * All systems with an MMU have a VDSO, but systems without an MMU don't
+ * support shared libraries and therefor don't have one.
+ */
+#ifdef CONFIG_MMU
 
 #include <linux/types.h>
 /*

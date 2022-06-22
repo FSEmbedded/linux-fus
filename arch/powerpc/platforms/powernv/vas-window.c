@@ -1071,28 +1071,7 @@ struct vas_window *vas_tx_win_open(int vasid, enum vas_cop_type cop,
 		if (rc)
 			goto free_window;
 
-		mmgrab(txwin->mm);
-		mmput(txwin->mm);
-		mm_context_add_vas_window(txwin->mm);
-		/*
-		 * Process closes window during exit. In the case of
-		 * multithread application, the child thread can open
-		 * window and can exit without closing it. so takes tgid
-		 * reference until window closed to make sure tgid is not
-		 * reused.
-		 */
-		txwin->tgid = find_get_pid(task_tgid_vnr(current));
-		/*
-		 * Even a process that has no foreign real address mapping can
-		 * use an unpaired COPY instruction (to no real effect). Issue
-		 * CP_ABORT to clear any pending COPY and prevent a covert
-		 * channel.
-		 *
-		 * __switch_to() will issue CP_ABORT on future context switches
-		 * if process / thread has any open VAS window (Use
-		 * current->mm->context.vas_windows).
-		 */
-		asm volatile(PPC_CP_ABORT);
+		vas_user_win_add_mm_context(&txwin->vas_win.task_ref);
 	}
 
 	set_vinst_win(vinst, txwin);
@@ -1331,13 +1310,8 @@ int vas_win_close(struct vas_window *vwin)
 	/* if send window, drop reference to matching receive window */
 	if (window->tx_win) {
 		if (window->user_win) {
-			/* Drop references to pid. tgid and mm */
-			put_pid(window->pid);
-			put_pid(window->tgid);
-			if (window->mm) {
-				mm_context_remove_vas_window(window->mm);
-				mmdrop(window->mm);
-			}
+			put_vas_user_win_ref(&vwin->task_ref);
+			mm_context_remove_vas_window(vwin->task_ref.mm);
 		}
 		put_rx_win(window->rxwin);
 	}

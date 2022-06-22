@@ -71,19 +71,13 @@
 
 #define RTL_GENERIC_PHYID			0x001cc800
 
-/* page 0xa43, register 0x19 */
-#define RTL8211F_PHYCR2				0x19
-#define RTL8211F_CLKOUT_EN			BIT(0)
-
-#define RTL821X_CLKOUT_EN_FEATURE		(1 << 0)
-#define RTL821X_ALDPS_DISABLE			(1 << 1)
-
 MODULE_DESCRIPTION("Realtek PHY driver");
 MODULE_AUTHOR("Johnson Leung");
 MODULE_LICENSE("GPL");
 
 struct rtl821x_priv {
-	u32 quirks;
+	u16 phycr1;
+	u16 phycr2;
 };
 
 static int rtl821x_read_page(struct phy_device *phydev)
@@ -100,16 +94,27 @@ static int rtl821x_probe(struct phy_device *phydev)
 {
 	struct device *dev = &phydev->mdio.dev;
 	struct rtl821x_priv *priv;
+	int ret;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
 
-	if (!of_property_read_bool(dev->of_node, "rtl821x,clkout-disable"))
-		priv->quirks |= RTL821X_CLKOUT_EN_FEATURE;
+	ret = phy_read_paged(phydev, 0xa43, RTL8211F_PHYCR1);
+	if (ret < 0)
+		return ret;
 
-	if (of_property_read_bool(dev->of_node, "rtl821x,aldps-disable"))
-		priv->quirks |= RTL821X_ALDPS_DISABLE;
+	priv->phycr1 = ret & (RTL8211F_ALDPS_PLL_OFF | RTL8211F_ALDPS_ENABLE | RTL8211F_ALDPS_XTAL_OFF);
+	if (of_property_read_bool(dev->of_node, "realtek,aldps-enable"))
+		priv->phycr1 |= RTL8211F_ALDPS_PLL_OFF | RTL8211F_ALDPS_ENABLE | RTL8211F_ALDPS_XTAL_OFF;
+
+	ret = phy_read_paged(phydev, 0xa43, RTL8211F_PHYCR2);
+	if (ret < 0)
+		return ret;
+
+	priv->phycr2 = ret & RTL8211F_CLKOUT_EN;
+	if (of_property_read_bool(dev->of_node, "realtek,clkout-disable"))
+		priv->phycr2 &= ~RTL8211F_CLKOUT_EN;
 
 	phydev->priv = priv;
 
@@ -330,12 +335,14 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 	struct device *dev = &phydev->mdio.dev;
 	u16 val_txdly, val_rxdly;
 	int ret;
-	struct rtl821x_priv *priv = phydev->priv;
 
-	if (!(priv->quirks & RTL821X_ALDPS_DISABLE)) {
-		u16 val;
-		val = RTL8211F_ALDPS_ENABLE | RTL8211F_ALDPS_PLL_OFF | RTL8211F_ALDPS_XTAL_OFF;
-		phy_modify_paged_changed(phydev, 0xa43, RTL8211F_PHYCR1, val, val);
+	ret = phy_modify_paged_changed(phydev, 0xa43, RTL8211F_PHYCR1,
+				       RTL8211F_ALDPS_PLL_OFF | RTL8211F_ALDPS_ENABLE | RTL8211F_ALDPS_XTAL_OFF,
+				       priv->phycr1);
+	if (ret < 0) {
+		dev_err(dev, "aldps mode  configuration failed: %pe\n",
+			ERR_PTR(ret));
+		return ret;
 	}
 
 	switch (phydev->interface) {
@@ -393,20 +400,12 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 			val_rxdly ? "enabled" : "disabled");
 	}
 
-	if (priv->quirks & RTL821X_CLKOUT_EN_FEATURE) {
-		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2,
-				       RTL8211F_CLKOUT_EN, RTL8211F_CLKOUT_EN);
-		if (ret < 0) {
-			dev_err(&phydev->mdio.dev, "clkout enable failed\n");
-			return ret;
-		}
-	} else {
-		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2,
-				       RTL8211F_CLKOUT_EN, 0);
-		if (ret < 0) {
-			dev_err(&phydev->mdio.dev, "clkout disable failed\n");
-			return ret;
-		}
+	ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2,
+			       RTL8211F_CLKOUT_EN, priv->phycr2);
+	if (ret < 0) {
+		dev_err(dev, "clkout configuration failed: %pe\n",
+			ERR_PTR(ret));
+		return ret;
 	}
 
 	return genphy_soft_reset(phydev);
@@ -414,16 +413,13 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 
 static int rtl821x_resume(struct phy_device *phydev)
 {
-	struct rtl821x_priv *priv = phydev->priv;
 	int ret;
 
 	ret = genphy_resume(phydev);
 	if (ret < 0)
 		return ret;
 
-	/* delay time is collected with ALDPS mode disabled. */
-	if (priv->quirks & RTL821X_ALDPS_DISABLE)
-		msleep(20);
+	msleep(20);
 
 	return 0;
 }
@@ -1027,6 +1023,14 @@ static struct phy_driver realtek_drvs[] = {
 		.resume		= genphy_resume,
 		.read_page	= rtl821x_read_page,
 		.write_page	= rtl821x_write_page,
+	}, {
+		PHY_ID_MATCH_EXACT(0x001cc942),
+		.name		= "RTL8365MB-VC Gigabit Ethernet",
+		/* Interrupt handling analogous to RTL8366RB */
+		.config_intr	= genphy_no_config_intr,
+		.handle_interrupt = genphy_handle_interrupt_no_ack,
+		.suspend	= genphy_suspend,
+		.resume		= genphy_resume,
 	},
 };
 

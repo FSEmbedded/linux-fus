@@ -149,10 +149,20 @@ __init int load_module_cert(struct key *keyring)
  */
 static __init int load_system_certificate_list(void)
 {
+	const u8 *p;
+	unsigned long size;
+
 	pr_notice("Loading compiled-in X.509 certificates\n");
 
-	return load_certificate_list(system_certificate_list, system_certificate_list_size,
-				     builtin_trusted_keys);
+#ifdef CONFIG_MODULE_SIG
+	p = system_certificate_list;
+	size = system_certificate_list_size;
+#else
+	p = system_certificate_list + module_cert_size;
+	size = system_certificate_list_size - module_cert_size;
+#endif
+
+	return load_certificate_list(p, size, builtin_trusted_keys);
 }
 late_initcall(load_system_certificate_list);
 

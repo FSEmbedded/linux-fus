@@ -740,8 +740,7 @@ static void mipi_csis_clear_counters(struct csi_state *state)
 static void mipi_csis_log_counters(struct csi_state *state, bool non_errors)
 {
 	unsigned int num_events = non_errors ? MIPI_CSIS_NUM_EVENTS
-				: MIPI_CSIS_NUM_EVENTS - 6;
-	struct device *dev = &state->pdev->dev;
+				: MIPI_CSIS_NUM_EVENTS - 8;
 	unsigned long flags;
 	unsigned int i;
 
@@ -1189,7 +1188,7 @@ static int mipi_csis_async_register(struct csi_state *state)
 	dev_dbg(state->dev, "flags: 0x%08x\n", state->bus.flags);
 
 	asd = v4l2_async_notifier_add_fwnode_remote_subdev(
-		&state->notifier, ep, sizeof(*asd));
+		&state->notifier, ep, struct v4l2_async_subdev);
 	if (IS_ERR(asd)) {
 		ret = PTR_ERR(asd);
 		goto err_parse;

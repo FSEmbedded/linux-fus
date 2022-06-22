@@ -63,7 +63,6 @@ static int iqs620_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 			    const struct pwm_state *state)
 {
 	struct iqs620_pwm_private *iqs620_pwm;
-	struct iqs62x_core *iqs62x;
 	unsigned int duty_cycle;
 	unsigned int duty_scale;
 	int ret;
@@ -90,18 +89,6 @@ static int iqs620_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 	 */
 	duty_cycle = min_t(u64, state->duty_cycle, IQS620_PWM_PERIOD_NS);
 	duty_scale = duty_cycle * 256 / IQS620_PWM_PERIOD_NS;
-
-	mutex_lock(&iqs620_pwm->lock);
-
-	if (!state->enabled || !duty_scale) {
-		ret = regmap_update_bits(iqs62x->regmap, IQS620_PWR_SETTINGS,
-					 IQS620_PWR_SETTINGS_PWM_OUT, 0);
-		if (ret)
-			goto err_mutex;
-	}
-
-	if (duty_scale) {
-		u8 duty_val = duty_scale - 1;
 
 	if (!state->enabled)
 		duty_scale = 0;

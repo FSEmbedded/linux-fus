@@ -100,9 +100,13 @@
 
 #define INTEL_FAM6_ROCKETLAKE		0xA7	/* Cypress Cove */
 
-#define	INTEL_FAM6_LAKEFIELD		0x8A
-#define INTEL_FAM6_ALDERLAKE		0x97
-#define INTEL_FAM6_ALDERLAKE_L		0x9A
+#define INTEL_FAM6_TIGERLAKE_L		0x8C	/* Willow Cove */
+#define INTEL_FAM6_TIGERLAKE		0x8D	/* Willow Cove */
+
+#define INTEL_FAM6_SAPPHIRERAPIDS_X	0x8F	/* Golden Cove */
+
+#define INTEL_FAM6_ALDERLAKE		0x97	/* Golden Cove / Gracemont */
+#define INTEL_FAM6_ALDERLAKE_L		0x9A	/* Golden Cove / Gracemont */
 
 /* "Small Core" Processors (Atom) */
 

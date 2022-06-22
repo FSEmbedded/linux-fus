@@ -570,8 +570,13 @@ static void ingenic_drm_plane_atomic_update(struct drm_plane *plane,
 
 		crtc_state = newstate->crtc->state;
 
+		addr = drm_fb_cma_get_gem_addr(newstate->fb, newstate, 0);
+		width = newstate->src_w >> 16;
+		height = newstate->src_h >> 16;
+		cpp = newstate->fb->format->cpp[0];
+
 		if (!priv->soc_info->has_osd || plane == &priv->f0)
-			hwdesc = priv->dma_hwdesc_f0;
+			hwdesc = &priv->dma_hwdescs->hwdesc_f0;
 		else
 			hwdesc = &priv->dma_hwdescs->hwdesc_f1;
 
@@ -949,6 +954,15 @@ static int ingenic_drm_bind(struct device *dev, bool has_components)
 		+ offsetof(struct ingenic_dma_hwdescs, hwdesc_f1);
 	priv->dma_hwdescs->hwdesc_f1.next = dma_hwdesc_phys_f1;
 	priv->dma_hwdescs->hwdesc_f1.id = 0xf1;
+
+	/* Configure DMA hwdesc for palette */
+	priv->dma_hwdescs->hwdesc_pal.next = priv->dma_hwdescs_phys
+		+ offsetof(struct ingenic_dma_hwdescs, hwdesc_f0);
+	priv->dma_hwdescs->hwdesc_pal.id = 0xc0;
+	priv->dma_hwdescs->hwdesc_pal.addr = priv->dma_hwdescs_phys
+		+ offsetof(struct ingenic_dma_hwdescs, palette);
+	priv->dma_hwdescs->hwdesc_pal.cmd = JZ_LCD_CMD_ENABLE_PAL
+		| (sizeof(priv->dma_hwdescs->palette) / 4);
 
 	primary = priv->soc_info->has_osd ? &priv->f1 : &priv->f0;
 

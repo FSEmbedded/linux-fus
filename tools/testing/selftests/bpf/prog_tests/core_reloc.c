@@ -869,17 +869,7 @@ void test_core_reloc(void)
 			  "prog '%s' not found\n", probe_name))
 			goto cleanup;
 
-
-		if (test_case->btf_src_file) {
-			err = access(test_case->btf_src_file, R_OK);
-			if (!ASSERT_OK(err, "btf_src_file"))
-				goto cleanup;
-		}
-
-		load_attr.obj = obj;
-		load_attr.log_level = 0;
-		load_attr.target_btf_path = test_case->btf_src_file;
-		err = bpf_object__load_xattr(&load_attr);
+		err = bpf_object__load(obj);
 		if (err) {
 			if (!test_case->fails)
 				ASSERT_OK(err, "obj_load");

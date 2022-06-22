@@ -177,8 +177,7 @@ static int nft_dynset_init(const struct nft_ctx *ctx,
 
 	if (tb[NFTA_DYNSET_FLAGS]) {
 		u32 flags = ntohl(nla_get_be32(tb[NFTA_DYNSET_FLAGS]));
-
-		if (flags & ~NFT_DYNSET_F_INV)
+		if (flags & ~(NFT_DYNSET_F_INV | NFT_DYNSET_F_EXPR))
 			return -EOPNOTSUPP;
 		if (flags & NFT_DYNSET_F_INV)
 			priv->invert = true;

@@ -523,16 +523,8 @@ static void load_pasid(struct mm_struct *mm, u32 pasid)
 static int intel_svm_alloc_pasid(struct device *dev, struct mm_struct *mm,
 				 unsigned int flags)
 {
-	struct intel_iommu *iommu = device_to_iommu(dev, NULL, NULL);
-	struct device_domain_info *info;
-	struct intel_svm_dev *sdev;
-	struct intel_svm *svm = NULL;
-	unsigned long iflags;
-	int pasid_max;
-	int ret;
-
-	if (!iommu || dmar_disabled)
-		return -EINVAL;
+	ioasid_t max_pasid = dev_is_pci(dev) ?
+			pci_max_pasids(to_pci_dev(dev)) : intel_pasid_max_id;
 
 	return iommu_sva_alloc_pasid(mm, PASID_MIN, max_pasid - 1);
 }
@@ -592,15 +584,7 @@ static struct iommu_sva *intel_svm_bind_mm(struct intel_iommu *iommu,
 	sdev = kzalloc(sizeof(*sdev), GFP_KERNEL);
 	if (!sdev) {
 		ret = -ENOMEM;
-		goto out;
-	}
-	sdev->dev = dev;
-	sdev->iommu = iommu;
-
-	ret = intel_iommu_enable_pasid(iommu, dev);
-	if (ret) {
-		kfree(sdev);
-		goto out;
+		goto free_svm;
 	}
 
 	sdev->dev = dev;
@@ -618,65 +602,22 @@ static struct iommu_sva *intel_svm_bind_mm(struct intel_iommu *iommu,
 			sdev->qdep = 0;
 	}
 
-	/* Finish the setup now we know we're keeping it */
-	sdev->users = 1;
-	sdev->ops = ops;
-	init_rcu_head(&sdev->rcu);
-
-	if (!svm) {
-		svm = kzalloc(sizeof(*svm), GFP_KERNEL);
-		if (!svm) {
-			ret = -ENOMEM;
-			kfree(sdev);
-			goto out;
-		}
-
-		if (pasid_max > intel_pasid_max_id)
-			pasid_max = intel_pasid_max_id;
+	/* Setup the pasid table: */
+	sflags = (flags & SVM_FLAG_SUPERVISOR_MODE) ?
+			PASID_FLAG_SUPERVISOR_MODE : 0;
+	sflags |= cpu_feature_enabled(X86_FEATURE_LA57) ? PASID_FLAG_FL5LP : 0;
+	spin_lock_irqsave(&iommu->lock, iflags);
+	ret = intel_pasid_setup_first_level(iommu, dev, mm->pgd, mm->pasid,
+					    FLPT_DEFAULT_DID, sflags);
+	spin_unlock_irqrestore(&iommu->lock, iflags);
 
 	if (ret)
 		goto free_sdev;
 
-		spin_lock_irqsave(&iommu->lock, iflags);
-		ret = intel_pasid_setup_first_level(iommu, dev,
-				mm ? mm->pgd : init_mm.pgd,
-				svm->pasid, FLPT_DEFAULT_DID,
-				(mm ? 0 : PASID_FLAG_SUPERVISOR_MODE) |
-				(cpu_feature_enabled(X86_FEATURE_LA57) ?
-				 PASID_FLAG_FL5LP : 0));
-		spin_unlock_irqrestore(&iommu->lock, iflags);
-		if (ret) {
-			if (mm)
-				mmu_notifier_unregister(&svm->notifier, mm);
-			ioasid_free(svm->pasid);
-			kfree(svm);
-			kfree(sdev);
-			goto out;
-		}
+	/* The newly allocated pasid is loaded to the mm. */
+	if (!(flags & SVM_FLAG_SUPERVISOR_MODE) && list_empty(&svm->devs))
+		load_pasid(mm, svm->pasid);
 
-		list_add_tail(&svm->list, &global_svm_list);
-		if (mm) {
-			/* The newly allocated pasid is loaded to the mm. */
-			load_pasid(mm, svm->pasid);
-		}
-	} else {
-		/*
-		 * Binding a new device with existing PASID, need to setup
-		 * the PASID entry.
-		 */
-		spin_lock_irqsave(&iommu->lock, iflags);
-		ret = intel_pasid_setup_first_level(iommu, dev,
-						mm ? mm->pgd : init_mm.pgd,
-						svm->pasid, FLPT_DEFAULT_DID,
-						(mm ? 0 : PASID_FLAG_SUPERVISOR_MODE) |
-						(cpu_feature_enabled(X86_FEATURE_LA57) ?
-						PASID_FLAG_FL5LP : 0));
-		spin_unlock_irqrestore(&iommu->lock, iflags);
-		if (ret) {
-			kfree(sdev);
-			goto out;
-		}
-	}
 	list_add_rcu(&sdev->list, &svm->devs);
 success:
 	return &sdev->sva;
@@ -1036,17 +977,7 @@ bad_req:
 			       iommu->name);
 			goto bad_req;
 		}
-		/* We shall not receive page request for supervisor SVM */
-		if (req->pm_req && (req->rd_req | req->wr_req)) {
-			pr_err("Unexpected page request in Privilege Mode");
-			/* No need to find the matching sdev as for bad_req */
-			goto no_pasid;
-		}
-		/* DMA read with exec requeset is not supported. */
-		if (req->exe_req && req->rd_req) {
-			pr_err("Execution request not supported\n");
-			goto no_pasid;
-		}
+
 		if (!svm || svm->pasid != req->pasid) {
 			/*
 			 * It can't go away, because the driver is not permitted
@@ -1072,53 +1003,9 @@ bad_req:
 		if (intel_svm_prq_report(iommu, sdev->dev, req))
 			handle_bad_prq_event(iommu, req, QI_RESP_INVALID);
 
-		ret = handle_mm_fault(vma, address,
-				      req->wr_req ? FAULT_FLAG_WRITE : 0,
-				      NULL);
-		if (ret & VM_FAULT_ERROR)
-			goto invalid;
-
-		result = QI_RESP_SUCCESS;
-invalid:
-		mmap_read_unlock(svm->mm);
-		mmput(svm->mm);
-bad_req:
-		WARN_ON(!sdev);
-		if (sdev && sdev->ops && sdev->ops->fault_cb) {
-			int rwxp = (req->rd_req << 3) | (req->wr_req << 2) |
-				(req->exe_req << 1) | (req->pm_req);
-			sdev->ops->fault_cb(sdev->dev, req->pasid, req->addr,
-					    req->priv_data, rwxp, result);
-		}
-		/* We get here in the error case where the PASID lookup failed,
-		   and these can be NULL. Do not use them below this point! */
-		sdev = NULL;
-		svm = NULL;
-no_pasid:
-		if (req->lpig || req->priv_data_present) {
-			/*
-			 * Per VT-d spec. v3.0 ch7.7, system software must
-			 * respond with page group response if private data
-			 * is present (PDP) or last page in group (LPIG) bit
-			 * is set. This is an additional VT-d feature beyond
-			 * PCI ATS spec.
-			 */
-			resp.qw0 = QI_PGRP_PASID(req->pasid) |
-				QI_PGRP_DID(req->rid) |
-				QI_PGRP_PASID_P(req->pasid_present) |
-				QI_PGRP_PDP(req->priv_data_present) |
-				QI_PGRP_RESP_CODE(result) |
-				QI_PGRP_RESP_TYPE;
-			resp.qw1 = QI_PGRP_IDX(req->prg_index) |
-				QI_PGRP_LPIG(req->lpig);
-			resp.qw2 = 0;
-			resp.qw3 = 0;
-
-			if (req->priv_data_present)
-				memcpy(&resp.qw2, req->priv_data,
-				       sizeof(req->priv_data));
-			qi_submit_sync(iommu, &resp, 1, 0);
-		}
+		trace_prq_report(iommu, sdev->dev, req->qw_0, req->qw_1,
+				 req->priv_data[0], req->priv_data[1],
+				 sdev->prq_seq_number);
 prq_advance:
 		head = (head + sizeof(*req)) & PRQ_RING_MASK;
 	}
@@ -1135,6 +1022,7 @@ prq_advance:
 		head = dmar_readq(iommu->reg + DMAR_PQH_REG) & PRQ_RING_MASK;
 		tail = dmar_readq(iommu->reg + DMAR_PQT_REG) & PRQ_RING_MASK;
 		if (head == tail) {
+			iopf_queue_discard_partial(iommu->iopf_queue);
 			writel(DMA_PRS_PRO, iommu->reg + DMAR_PRS_REG);
 			pr_info_ratelimited("IOMMU: %s: PRQ overflow cleared",
 					    iommu->name);

@@ -791,7 +791,7 @@ static int add_to_accept_list(struct hci_request *req,
 	if (*num_entries >= hdev->le_accept_list_size)
 		return -1;
 
-	/* White list can not be used with RPAs */
+	/* Accept list can not be used with RPAs */
 	if (!allow_rpa &&
 	    !hci_dev_test_flag(hdev, HCI_ENABLE_LL_PRIVACY) &&
 	    hci_find_irk_by_addr(hdev, &params->addr, params->addr_type)) {
@@ -877,7 +877,7 @@ static u8 update_accept_list(struct hci_request *req)
 			continue;
 		}
 
-		/* White list can not be used with RPAs */
+		/* Accept list can not be used with RPAs */
 		if (!allow_rpa &&
 		    !hci_dev_test_flag(hdev, HCI_ENABLE_LL_PRIVACY) &&
 		    hci_find_irk_by_addr(hdev, &b->bdaddr, b->bdaddr_type)) {
@@ -1148,9 +1148,9 @@ static bool adv_instance_is_scannable(struct hci_dev *hdev, u8 instance)
 
 	if (adv_instance->flags & MGMT_ADV_FLAG_APPEARANCE ||
 	    adv_instance->flags & MGMT_ADV_FLAG_LOCAL_NAME)
-		return 1;
+		return true;
 
-	return adv_instance->scan_rsp_len;
+	return adv_instance->scan_rsp_len ? true : false;
 }
 
 static void hci_req_clear_event_filter(struct hci_request *req)
@@ -2318,7 +2318,7 @@ int __hci_req_enable_ext_advertising(struct hci_request *req, u8 instance)
 	/* Set duration per instance since controller is responsible for
 	 * scheduling it.
 	 */
-	if (adv_instance && adv_instance->duration) {
+	if (adv_instance && adv_instance->timeout) {
 		u16 duration = adv_instance->timeout * MSEC_PER_SEC;
 
 		/* Time = N * 10 ms */

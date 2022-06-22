@@ -11,8 +11,9 @@
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/fwnode_mdio.h>
-#include <linux/phy.h>
-#include <linux/phy_fixed.h>
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/netdevice.h>
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/of_mdio.h>

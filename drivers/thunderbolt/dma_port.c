@@ -358,36 +358,8 @@ static int dma_port_flash_write_block(void *data, unsigned int dwaddress,
 int dma_port_flash_read(struct tb_dma_port *dma, unsigned int address,
 			void *buf, size_t size)
 {
-	unsigned int retries = DMA_PORT_RETRIES;
-
-	do {
-		unsigned int offset;
-		size_t nbytes;
-		int ret;
-
-		offset = address & 3;
-		nbytes = min_t(size_t, size + offset, MAIL_DATA_DWORDS * 4);
-
-		ret = dma_port_flash_read_block(dma, address, dma->buf,
-						ALIGN(nbytes, 4));
-		if (ret) {
-			if (ret == -ETIMEDOUT) {
-				if (retries--)
-					continue;
-				ret = -EIO;
-			}
-			return ret;
-		}
-
-		nbytes -= offset;
-		memcpy(buf, dma->buf + offset, nbytes);
-
-		size -= nbytes;
-		address += nbytes;
-		buf += nbytes;
-	} while (size > 0);
-
-	return 0;
+	return tb_nvm_read_data(address, buf, size, DMA_PORT_RETRIES,
+				dma_port_flash_read_block, dma);
 }
 
 /**

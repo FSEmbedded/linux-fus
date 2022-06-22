@@ -366,15 +366,11 @@ static int graph_dai_link_of(struct asoc_simple_priv *priv,
 {
 	struct device *dev = simple_priv_to_dev(priv);
 	struct snd_soc_dai_link *dai_link = simple_priv_to_link(priv, li->link);
-	struct simple_dai_props *dai_props = simple_priv_to_props(priv, li->link);
-	struct device_node *top = dev->of_node;
-	struct asoc_simple_dai *cpu_dai;
-	struct asoc_simple_dai *codec_dai;
-	int ret, single_cpu = 0;
-
-	/* Do it only CPU turn */
-	if (!li->cpu)
-		return 0;
+	struct snd_soc_dai_link_component *cpus = asoc_link_to_cpu(dai_link, 0);
+	struct snd_soc_dai_link_component *codecs = asoc_link_to_codec(dai_link, 0);
+	struct snd_soc_dai_link_component *platforms = asoc_link_to_platform(dai_link, 0);
+	char dai_name[64];
+	int ret, is_single_links = 0;
 
 	dev_dbg(dev, "link_of (%pOF)\n", cpu_ep);
 

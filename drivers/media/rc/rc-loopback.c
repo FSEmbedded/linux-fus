@@ -37,8 +37,8 @@ static int loop_set_tx_mask(struct rc_dev *dev, u32 mask)
 {
 	struct loopback_dev *lodev = dev->priv;
 
-	if ((mask & (RXMASK_REGULAR | RXMASK_LEARNING)) != mask) {
-		dprintk("invalid tx mask: %u\n", mask);
+	if ((mask & (RXMASK_NARROWBAND | RXMASK_WIDEBAND)) != mask) {
+		dev_dbg(&dev->dev, "invalid tx mask: %u\n", mask);
 		return 2;
 	}
 

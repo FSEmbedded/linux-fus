@@ -185,20 +185,11 @@ struct mlx5e_flow_steering {
 	struct mlx5e_ptp_fs            *ptp_fs;
 };
 
-struct ttc_params {
-	struct mlx5_flow_table_attr ft_attr;
-	u32 any_tt_tirn;
-	u32 indir_tirn[MLX5E_NUM_INDIR_TIRS];
-	struct mlx5e_ttc_table *inner_ttc;
-};
+void mlx5e_set_ttc_params(struct mlx5e_priv *priv,
+			  struct ttc_params *ttc_params, bool tunnel);
 
-void mlx5e_set_ttc_basic_params(struct mlx5e_priv *priv, struct ttc_params *ttc_params);
-void mlx5e_set_ttc_ft_params(struct ttc_params *ttc_params);
-
-int mlx5e_create_ttc_table(struct mlx5e_priv *priv, struct ttc_params *params,
-			   struct mlx5e_ttc_table *ttc);
-void mlx5e_destroy_ttc_table(struct mlx5e_priv *priv,
-			     struct mlx5e_ttc_table *ttc);
+void mlx5e_destroy_ttc_table(struct mlx5e_priv *priv);
+int mlx5e_create_ttc_table(struct mlx5e_priv *priv);
 
 void mlx5e_destroy_flow_table(struct mlx5e_flow_table *ft);
 

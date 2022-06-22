@@ -183,7 +183,7 @@ static const struct soc_enum fsl_micfil_hwvad_zcd_enum =
 			    micfil_hwvad_zcd_enable);
 static const struct soc_enum fsl_micfil_hwvad_zcdauto_enum =
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(micfil_hwvad_zcdauto_enable),
-			    micfil_hwvad_zcd_enable);
+			    micfil_hwvad_zcdauto_enable);
 static const struct soc_enum fsl_micfil_hwvad_ndec_enum =
 	SOC_ENUM_SINGLE(REG_MICFIL_VAD0_NCONFIG,
 			MICFIL_VAD0_NCONFIG_NOREN_SHIFT,
@@ -1374,15 +1374,6 @@ static int fsl_micfil_set_mclk_rate(struct fsl_micfil *micfil, int clk_id,
 	if (atomic_read(&micfil->hwvad_state) == MICFIL_HWVAD_ON)
 		return 0;
 
-	/* check if all clock sources are valid */
-	for (i = 0; i < MICFIL_CLK_SRC_NUM; i++) {
-		if (micfil->clk_src[i])
-			continue;
-
-		dev_err(dev, "Clock Source %d is not valid.\n", i);
-		return -EINVAL;
-	}
-
 	while (p) {
 		struct clk *pp = clk_get_parent(p);
 
@@ -1406,8 +1397,10 @@ static int fsl_micfil_set_mclk_rate(struct fsl_micfil *micfil, int clk_id,
 			 * to any known frequency ???
 			 */
 			clk_rate = round_up(clk_rate, 10);
-			if (do_div(clk_rate, ratio) == 0)
+			if (do_div(clk_rate, ratio) == 0) {
 				npll = micfil->clk_src[i];
+				break;
+			}
 		}
 	} else {
 		/* clock id is offseted by 1 since ID=0 means
@@ -1666,7 +1659,7 @@ static int fsl_micfil_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	return 0;
 }
 
-static struct snd_soc_dai_ops fsl_micfil_dai_ops = {
+static const struct snd_soc_dai_ops fsl_micfil_dai_ops = {
 	.startup = fsl_micfil_startup,
 	.trigger = fsl_micfil_trigger,
 	.hw_params = fsl_micfil_hw_params,
@@ -2241,10 +2234,9 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 	if (IS_ERR(regs))
 		return PTR_ERR(regs);
 
-	micfil->regmap = devm_regmap_init_mmio_clk(&pdev->dev,
-						   NULL,
-						   regs,
-						   &fsl_micfil_regmap_config);
+	micfil->regmap = devm_regmap_init_mmio(&pdev->dev,
+					       regs,
+					       &fsl_micfil_regmap_config);
 	if (IS_ERR(micfil->regmap)) {
 		dev_err(&pdev->dev, "failed to init MICFIL regmap: %ld\n",
 			PTR_ERR(micfil->regmap));
@@ -2336,6 +2328,16 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 	pm_runtime_enable(&pdev->dev);
 	regcache_cache_only(micfil->regmap, true);
 
+	/*
+	 * Register platform component before registering cpu dai for there
+	 * is not defer probe for platform component in snd_soc_add_pcm_runtime().
+	 */
+	ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to pcm register\n");
+		return ret;
+	}
+
 	fsl_micfil_dai.capture.formats = micfil->soc->formats;
 
 	ret = devm_snd_soc_register_component(&pdev->dev, &fsl_micfil_component,
@@ -2343,11 +2345,6 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "failed to register component %s\n",
 			fsl_micfil_component.name);
-	}
-
-	ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to pcm register\n");
 		return ret;
 	}
 
@@ -2379,10 +2376,7 @@ static int __maybe_unused fsl_micfil_runtime_suspend(struct device *dev)
 
 	regcache_cache_only(micfil->regmap, true);
 
-	/* Disable the clock only if the hwvad is not enabled */
-	if (state == MICFIL_HWVAD_OFF)
-		clk_disable_unprepare(micfil->mclk);
-
+	clk_disable_unprepare(micfil->mclk);
 	clk_disable_unprepare(micfil->busclk);
 
 	return 0;
@@ -2393,10 +2387,6 @@ static int __maybe_unused fsl_micfil_runtime_resume(struct device *dev)
 	struct fsl_micfil *micfil = dev_get_drvdata(dev);
 	int ret;
 	u32 state;
-
-	ret = clk_prepare_enable(micfil->busclk);
-	if (ret < 0)
-		return ret;
 
 	state = atomic_read(&micfil->hwvad_state);
 

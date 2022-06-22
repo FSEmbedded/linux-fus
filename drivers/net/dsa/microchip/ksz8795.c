@@ -1002,18 +1002,13 @@ static void ksz8_cfg_port_member(struct ksz_device *dev, int port, u8 member)
 	data &= ~PORT_VLAN_MEMBERSHIP;
 	data |= (member & dev->port_mask);
 	ksz_pwrite8(dev, port, P_MIRROR_CTRL, data);
-	dev->ports[port].member = member;
 }
 
 static void ksz8_port_stp_state_set(struct dsa_switch *ds, int port, u8 state)
 {
 	struct ksz_device *dev = ds->priv;
-	int forward = dev->member;
 	struct ksz_port *p;
-	int member = -1;
 	u8 data;
-
-	p = &dev->ports[port];
 
 	ksz_pread8(dev, port, P_STP_CTRL, &data);
 	data &= ~(PORT_TX_ENABLE | PORT_RX_ENABLE | PORT_LEARN_DISABLE);
@@ -1021,38 +1016,18 @@ static void ksz8_port_stp_state_set(struct dsa_switch *ds, int port, u8 state)
 	switch (state) {
 	case BR_STATE_DISABLED:
 		data |= PORT_LEARN_DISABLE;
-		if (port < dev->phy_port_cnt)
-			member = 0;
 		break;
 	case BR_STATE_LISTENING:
 		data |= (PORT_RX_ENABLE | PORT_LEARN_DISABLE);
-		if (port < dev->phy_port_cnt &&
-		    p->stp_state == BR_STATE_DISABLED)
-			member = dev->host_mask | p->vid_member;
 		break;
 	case BR_STATE_LEARNING:
 		data |= PORT_RX_ENABLE;
 		break;
 	case BR_STATE_FORWARDING:
 		data |= (PORT_TX_ENABLE | PORT_RX_ENABLE);
-
-		/* This function is also used internally. */
-		if (port == dev->cpu_port)
-			break;
-
-		/* Port is a member of a bridge. */
-		if (dev->br_member & BIT(port)) {
-			dev->member |= BIT(port);
-			member = dev->member;
-		} else {
-			member = dev->host_mask | p->vid_member;
-		}
 		break;
 	case BR_STATE_BLOCKING:
 		data |= PORT_LEARN_DISABLE;
-		if (port < dev->phy_port_cnt &&
-		    p->stp_state == BR_STATE_DISABLED)
-			member = dev->host_mask | p->vid_member;
 		break;
 	default:
 		dev_err(ds->dev, "invalid STP state: %d\n", state);
@@ -1060,22 +1035,11 @@ static void ksz8_port_stp_state_set(struct dsa_switch *ds, int port, u8 state)
 	}
 
 	ksz_pwrite8(dev, port, P_STP_CTRL, data);
+
+	p = &dev->ports[port];
 	p->stp_state = state;
-	/* Port membership may share register with STP state. */
-	if (member >= 0 && member != p->member)
-		ksz8_cfg_port_member(dev, port, (u8)member);
 
-	/* Check if forwarding needs to be updated. */
-	if (state != BR_STATE_FORWARDING) {
-		if (dev->br_member & BIT(port))
-			dev->member &= ~BIT(port);
-	}
-
-	/* When topology has changed the function ksz_update_port_member
-	 * should be called to modify port forwarding behavior.
-	 */
-	if (forward != dev->member)
-		ksz_update_port_member(dev, port);
+	ksz_update_port_member(dev, port);
 }
 
 static void ksz8_flush_dyn_mac_table(struct ksz_device *dev, int port)
@@ -1130,68 +1094,28 @@ static int ksz8_port_vlan_filtering(struct dsa_switch *ds, int port, bool flag,
 	return 0;
 }
 
-static bool ksz8795_port_vlan_changes_remove_tag(
-	struct dsa_switch *ds, int port,
-	const struct switchdev_obj_port_vlan *vlan)
+static void ksz8_port_enable_pvid(struct ksz_device *dev, int port, bool state)
 {
-	bool untagged = vlan->flags & BRIDGE_VLAN_INFO_UNTAGGED;
-	struct ksz_device *dev = ds->priv;
-	struct ksz_port *p = &dev->ports[port];
-
-	/* If a VLAN is added with untagged flag different from the
-	 * port's Remove Tag flag, we need to change the latter.
-	 * Ignore VID 0, which is always untagged.
-	 * Ignore CPU port, which will always be tagged.
-	 */
-	return untagged != p->remove_tag &&
-		!(vlan->vid_begin == 0 && vlan->vid_end == 0) &&
-		port != dev->cpu_port;
-}
-
-int ksz8795_port_vlan_prepare(struct dsa_switch *ds, int port,
-			      const struct switchdev_obj_port_vlan *vlan)
-{
-	struct ksz_device *dev = ds->priv;
-
-	/* Reject attempts to add a VLAN that requires the Remove Tag
-	 * flag to be changed, unless there are no other VLANs
-	 * currently configured.
-	 */
-	if (ksz8795_port_vlan_changes_remove_tag(ds, port, vlan)) {
-		unsigned int vid;
-
-		for (vid = 1; vid < dev->num_vlans; ++vid) {
-			u8 fid, member, valid;
-
-			/* Skip the VIDs we are going to add or reconfigure */
-			if (vid == vlan->vid_begin) {
-				vid = vlan->vid_end;
-				continue;
-			}
-
-			ksz8795_from_vlan(dev->vlan_cache[vid].table[0],
-					  &fid, &member, &valid);
-			if (valid && (member & BIT(port)))
-				return -EINVAL;
-		}
+	if (ksz_is_ksz88x3(dev)) {
+		ksz_cfg(dev, REG_SW_INSERT_SRC_PVID,
+			0x03 << (4 - 2 * port), state);
+	} else {
+		ksz_pwrite8(dev, port, REG_PORT_CTRL_12, state ? 0x0f : 0x00);
 	}
-
-	return ksz_port_vlan_prepare(ds, port, vlan);
 }
 
-static void ksz8795_port_vlan_add(struct dsa_switch *ds, int port,
-				  const struct switchdev_obj_port_vlan *vlan)
+static int ksz8_port_vlan_add(struct dsa_switch *ds, int port,
+			      const struct switchdev_obj_port_vlan *vlan,
+			      struct netlink_ext_ack *extack)
 {
 	bool untagged = vlan->flags & BRIDGE_VLAN_INFO_UNTAGGED;
 	struct ksz_device *dev = ds->priv;
 	struct ksz_port *p = &dev->ports[port];
-	u16 data, vid, new_pvid = 0;
+	u16 data, new_pvid = 0;
 	u8 fid, member, valid;
 
-	if (ksz8795_port_vlan_changes_remove_tag(ds, port, vlan)) {
-		ksz_port_cfg(dev, port, P_TAG_CTRL, PORT_REMOVE_TAG, untagged);
-		p->remove_tag = untagged;
-	}
+	if (ksz_is_ksz88x3(dev))
+		return -ENOTSUPP;
 
 	/* If a VLAN is added with untagged flag different from the
 	 * port's Remove Tag flag, we need to change the latter.
@@ -1247,7 +1171,7 @@ static void ksz8795_port_vlan_add(struct dsa_switch *ds, int port,
 		vid |= new_pvid;
 		ksz_pwrite16(dev, port, REG_PORT_CTRL_VID, vid);
 
-		ksz_pwrite8(dev, port, REG_PORT_CTRL_12, 0x0f);
+		ksz8_port_enable_pvid(dev, port, true);
 	}
 
 	return 0;
@@ -1257,9 +1181,8 @@ static int ksz8_port_vlan_del(struct dsa_switch *ds, int port,
 			      const struct switchdev_obj_port_vlan *vlan)
 {
 	struct ksz_device *dev = ds->priv;
-	u16 data, vid, pvid;
+	u16 data, pvid;
 	u8 fid, member, valid;
-	bool del_pvid = false;
 
 	if (ksz_is_ksz88x3(dev))
 		return -ENOTSUPP;
@@ -1267,34 +1190,29 @@ static int ksz8_port_vlan_del(struct dsa_switch *ds, int port,
 	ksz_pread16(dev, port, REG_PORT_CTRL_VID, &pvid);
 	pvid = pvid & 0xFFF;
 
-	for (vid = vlan->vid_begin; vid <= vlan->vid_end; vid++) {
-		ksz8795_r_vlan_table(dev, vid, &data);
-		ksz8795_from_vlan(data, &fid, &member, &valid);
+	ksz8_r_vlan_table(dev, vlan->vid, &data);
+	ksz8_from_vlan(dev, data, &fid, &member, &valid);
 
 	member &= ~BIT(port);
 
-		/* Invalidate the entry if no more member. */
-		if (!member) {
-			fid = 0;
-			valid = 0;
-		}
-
-		if (pvid == vid)
-			del_pvid = true;
-
-		ksz8795_to_vlan(fid, member, valid, &data);
-		ksz8795_w_vlan_table(dev, vid, data);
+	/* Invalidate the entry if no more member. */
+	if (!member) {
+		fid = 0;
+		valid = 0;
 	}
 
-	if (del_pvid)
-		ksz_pwrite8(dev, port, REG_PORT_CTRL_12, 0x00);
+	ksz8_to_vlan(dev, fid, member, valid, &data);
+	ksz8_w_vlan_table(dev, vlan->vid, data);
+
+	if (pvid == vlan->vid)
+		ksz8_port_enable_pvid(dev, port, false);
 
 	return 0;
 }
 
 static int ksz8_port_mirror_add(struct dsa_switch *ds, int port,
 				struct dsa_mall_mirror_tc_entry *mirror,
-				bool ingress)
+				bool ingress, struct netlink_ext_ack *extack)
 {
 	struct ksz_device *dev = ds->priv;
 
@@ -1387,7 +1305,7 @@ static void ksz8795_cpu_interface_select(struct ksz_device *dev, int port)
 
 static void ksz8_port_setup(struct ksz_device *dev, int port, bool cpu_port)
 {
-	struct ksz_port *p = &dev->ports[port];
+	struct dsa_switch *ds = dev->ds;
 	struct ksz8 *ksz8 = dev->priv;
 	const u32 *masks;
 	u8 member;
@@ -1414,10 +1332,11 @@ static void ksz8_port_setup(struct ksz_device *dev, int port, bool cpu_port)
 		if (!ksz_is_ksz88x3(dev))
 			ksz8795_cpu_interface_select(dev, port);
 
-		member = dev->port_mask;
+		member = dsa_user_ports(ds);
 	} else {
-		member = dev->host_mask | p->vid_member;
+		member = BIT(dsa_upstream_port(ds, port));
 	}
+
 	ksz8_cfg_port_member(dev, port, member);
 }
 
@@ -1438,20 +1357,13 @@ static void ksz8_config_cpu_port(struct dsa_switch *ds)
 	ksz_cfg(dev, regs[S_TAIL_TAG_CTRL], masks[SW_TAIL_TAG_ENABLE], true);
 
 	p = &dev->ports[dev->cpu_port];
-	p->vid_member = dev->port_mask;
 	p->on = 1;
 
 	ksz8_port_setup(dev, dev->cpu_port, true);
-	dev->member = dev->host_mask;
 
 	for (i = 0; i < dev->phy_port_cnt; i++) {
 		p = &dev->ports[i];
 
-		/* Initialize to non-zero so that ksz_cfg_port_member() will
-		 * be called.
-		 */
-		p->vid_member = BIT(i);
-		p->member = dev->port_mask;
 		ksz8_port_stp_state_set(ds, i, BR_STATE_DISABLED);
 
 		/* Last port may be disabled. */
@@ -1520,7 +1432,8 @@ static int ksz8_setup(struct dsa_switch *ds)
 
 	ksz_cfg(dev, S_MIRROR_CTRL, SW_MIRROR_RX_TX, false);
 
-	ksz_cfg(dev, REG_SW_CTRL_19, SW_INS_TAG_ENABLE, true);
+	if (!ksz_is_ksz88x3(dev))
+		ksz_cfg(dev, REG_SW_CTRL_19, SW_INS_TAG_ENABLE, true);
 
 	/* set broadcast storm protection 10% rate */
 	regmap_update_bits(dev->regmap[1], S_REPLACE_VID_CTRL,
@@ -1616,10 +1529,9 @@ static const struct dsa_switch_ops ksz8_switch_ops = {
 	.port_bridge_leave	= ksz_port_bridge_leave,
 	.port_stp_state_set	= ksz8_port_stp_state_set,
 	.port_fast_age		= ksz_port_fast_age,
-	.port_vlan_filtering	= ksz8795_port_vlan_filtering,
-	.port_vlan_prepare	= ksz8795_port_vlan_prepare,
-	.port_vlan_add		= ksz8795_port_vlan_add,
-	.port_vlan_del		= ksz8795_port_vlan_del,
+	.port_vlan_filtering	= ksz8_port_vlan_filtering,
+	.port_vlan_add		= ksz8_port_vlan_add,
+	.port_vlan_del		= ksz8_port_vlan_del,
 	.port_fdb_dump		= ksz_port_fdb_dump,
 	.port_mdb_add           = ksz_port_mdb_add,
 	.port_mdb_del           = ksz_port_mdb_del,
@@ -1804,16 +1716,6 @@ static int ksz8_switch_init(struct ksz_device *dev)
 
 	/* set the real number of ports */
 	dev->ds->num_ports = dev->port_cnt;
-
-	/* We rely on software untagging on the CPU port, so that we
-	 * can support both tagged and untagged VLANs
-	 */
-	dev->ds->untag_bridge_pvid = true;
-
-	/* VLAN filtering is partly controlled by the global VLAN
-	 * Enable flag
-	 */
-	dev->ds->vlan_filtering_is_global = true;
 
 	/* We rely on software untagging on the CPU port, so that we
 	 * can support both tagged and untagged VLANs

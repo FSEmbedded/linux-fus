@@ -218,11 +218,11 @@ static int fops_vcodec_release(struct file *file)
 	mtk_v4l2_debug(1, "[%d] encoder", ctx->id);
 	mutex_lock(&dev->dev_mutex);
 
+	v4l2_m2m_ctx_release(ctx->m2m_ctx);
 	mtk_vcodec_enc_release(ctx);
 	v4l2_fh_del(&ctx->fh);
 	v4l2_fh_exit(&ctx->fh);
 	v4l2_ctrl_handler_free(&ctx->ctrl_hdl);
-	v4l2_m2m_ctx_release(ctx->m2m_ctx);
 
 	list_del_init(&ctx->list);
 	kfree(ctx);
@@ -286,7 +286,6 @@ static int mtk_vcodec_probe(struct platform_device *pdev)
 		ret = PTR_ERR(dev->reg_base[dev->venc_pdata->core_id]);
 		goto err_res;
 	}
-	mtk_v4l2_debug(2, "reg[%d] base=0x%p", VENC_SYS, dev->reg_base[VENC_SYS]);
 
 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (res == NULL) {
@@ -306,30 +305,6 @@ static int mtk_vcodec_probe(struct platform_device *pdev)
 			dev->enc_irq, ret, dev->venc_pdata->core_id);
 		ret = -EINVAL;
 		goto err_res;
-	}
-
-	if (dev->venc_pdata->has_lt_irq) {
-		res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-		dev->reg_base[VENC_LT_SYS] = devm_ioremap_resource(&pdev->dev, res);
-		if (IS_ERR((__force void *)dev->reg_base[VENC_LT_SYS])) {
-			ret = PTR_ERR((__force void *)dev->reg_base[VENC_LT_SYS]);
-			goto err_res;
-		}
-		mtk_v4l2_debug(2, "reg[%d] base=0x%p", VENC_LT_SYS, dev->reg_base[VENC_LT_SYS]);
-
-		dev->enc_lt_irq = platform_get_irq(pdev, 1);
-		irq_set_status_flags(dev->enc_lt_irq, IRQ_NOAUTOEN);
-		ret = devm_request_irq(&pdev->dev,
-				       dev->enc_lt_irq,
-				       mtk_vcodec_enc_lt_irq_handler,
-				       0, pdev->name, dev);
-		if (ret) {
-			dev_err(&pdev->dev,
-				"Failed to install dev->enc_lt_irq %d (%d)",
-				dev->enc_lt_irq, ret);
-			ret = -EINVAL;
-			goto err_res;
-		}
 	}
 
 	mutex_init(&dev->enc_mutex);

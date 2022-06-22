@@ -5,7 +5,7 @@
 #define __MLX5_VDPA_H__
 
 #include <linux/etherdevice.h>
-#include <linux/if_vlan.h>
+#include <linux/vringh.h>
 #include <linux/vdpa.h>
 #include <linux/mlx5/driver.h>
 

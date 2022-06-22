@@ -453,7 +453,7 @@ static int copy_info_records_to_user(struct fanotify_event *event,
 					    fanotify_info_name(info),
 					    info->name_len, buf, count);
 		if (ret < 0)
-			goto out_close_fd;
+			return ret;
 
 		buf += ret;
 		count -= ret;
@@ -513,7 +513,7 @@ static int copy_info_records_to_user(struct fanotify_event *event,
 	if (pidfd_mode) {
 		ret = copy_pidfd_info_to_user(pidfd, buf, count);
 		if (ret < 0)
-			goto out_close_fd;
+			return ret;
 
 		buf += ret;
 		count -= ret;
@@ -611,15 +611,15 @@ static ssize_t copy_event_to_user(struct fsnotify_group *group,
 	if (fanotify_is_perm_event(event->mask))
 		FANOTIFY_PERM(event)->fd = fd;
 
-	if (f)
-		fd_install(fd, f);
-
 	if (info_mode) {
 		ret = copy_info_records_to_user(event, info, info_mode, pidfd,
 						buf, count);
 		if (ret < 0)
 			goto out_close_fd;
 	}
+
+	if (f)
+		fd_install(fd, f);
 
 	return metadata.event_len;
 

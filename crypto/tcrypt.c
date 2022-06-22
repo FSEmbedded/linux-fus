@@ -70,10 +70,11 @@ static const char *check[] = {
 	"des", "md5", "des3_ede", "rot13", "sha1", "sha224", "sha256", "sm3",
 	"blowfish", "twofish", "serpent", "sha384", "sha512", "md4", "aes",
 	"cast6", "arc4", "michael_mic", "deflate", "crc32c", "tea", "xtea",
-	"khazad", "wp512", "wp384", "wp256", "tnepres", "xeta",  "fcrypt",
-	"camellia", "seed", "salsa20", "rmd128", "rmd160", "rmd256", "rmd320",
+	"khazad", "wp512", "wp384", "wp256", "xeta",  "fcrypt",
+	"camellia", "seed", "rmd160",
 	"lzo", "lzo-rle", "cts", "zlib", "sha3-224", "sha3-256", "sha3-384",
-	"sha3-512", "streebog256", "streebog512", "rsa", NULL
+	"sha3-512", "streebog256", "streebog512", "rsa",
+	NULL
 };
 
 static const int block_sizes[] = { 16, 64, 128, 256, 1024, 1420, 4096, 0 };
@@ -259,7 +260,6 @@ static void test_mb_aead_speed(const char *algo, int enc, int secs,
 	const char *key;
 	const char *e;
 	void *assoc, *assoc_out;
-	u32 *b_size;
 	char *iv;
 	int ret;
 
@@ -393,7 +393,7 @@ static void test_mb_aead_speed(const char *algo, int enc, int secs,
 					     assoc, aad_size);
 
 				sg_init_aead(cur->sgout, cur->xoutbuf,
-					     *b_size + (enc ? authsize : 0),
+					     bs + (enc ? authsize : 0),
 					     assoc_out, aad_size);
 
 				aead_request_set_ad(cur->req, aad_size);
@@ -651,7 +651,7 @@ static void test_aead_speed(const char *algo, int enc, unsigned int secs,
 				     assoc, aad_size);
 
 			sg_init_aead(sgout, xoutbuf,
-				     *b_size + (enc ? authsize : 0), assoc_out,
+				     bs + (enc ? authsize : 0), assoc_out,
 				     aad_size);
 
 			aead_request_set_ad(req, aad_size);
@@ -2074,7 +2074,10 @@ static int do_test(const char *alg, u32 type, u32 mask, int m, u32 num_mb)
 		ret += tcrypt_test("ctr(sm4)");
 		break;
 	case 192:
-		ret += tcrypt_test("tls10(hmac(sha1),cbc(aes))");
+		ret += tcrypt_test("tls11(hmac(sha1),cbc(aes))");
+		break;
+	case 193:
+		ret += tcrypt_test("tls12(hmac(sha256),cbc(aes))");
 		break;
 	case 200:
 		test_cipher_speed("ecb(aes)", ENCRYPT, sec, NULL, 0,

@@ -269,6 +269,9 @@ static enum rdma_link_layer hns_roce_get_link_layer(struct ib_device *device,
 static int hns_roce_query_pkey(struct ib_device *ib_dev, u32 port, u16 index,
 			       u16 *pkey)
 {
+	if (index > 0)
+		return -EINVAL;
+
 	*pkey = PKEY_ID;
 
 	return 0;
@@ -349,7 +352,7 @@ static int hns_roce_mmap(struct ib_ucontext *context,
 		return rdma_user_mmap_io(context, vma,
 					 to_hr_ucontext(context)->uar.pfn,
 					 PAGE_SIZE,
-					 pgprot_noncached(vma->vm_page_prot),
+					 pgprot_device(vma->vm_page_prot),
 					 NULL);
 
 	/* vm_pgoff: 1 -- TPTR */
@@ -766,21 +769,6 @@ static int hns_roce_setup_hca(struct hns_roce_dev *hr_dev)
 	}
 
 	return 0;
-
-err_qp_table_free:
-	hns_roce_cleanup_qp_table(hr_dev);
-
-err_cq_table_free:
-	hns_roce_cleanup_cq_table(hr_dev);
-
-err_mr_table_free:
-	hns_roce_cleanup_mr_table(hr_dev);
-
-err_pd_table_free:
-	hns_roce_cleanup_pd_table(hr_dev);
-
-err_uar_alloc_free:
-	hns_roce_uar_free(hr_dev, &hr_dev->priv_uar);
 
 err_uar_table_free:
 	ida_destroy(&hr_dev->uar_ida.ida);

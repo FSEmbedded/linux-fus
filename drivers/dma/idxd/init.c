@@ -236,6 +236,7 @@ static int idxd_setup_wqs(struct idxd_device *idxd)
 
 		mutex_init(&wq->wq_lock);
 		init_waitqueue_head(&wq->err_queue);
+		init_completion(&wq->wq_dead);
 		wq->max_xfer_bytes = idxd->max_xfer_bytes;
 		wq->max_batch_size = idxd->max_batch_size;
 		wq->wqcfg = kzalloc_node(idxd->wqcfg_size, GFP_KERNEL, dev_to_node(dev));
@@ -890,7 +891,9 @@ module_init(idxd_init_module);
 
 static void __exit idxd_exit_module(void)
 {
-	idxd_unregister_driver();
+	idxd_driver_unregister(&idxd_user_drv);
+	idxd_driver_unregister(&idxd_dmaengine_drv);
+	idxd_driver_unregister(&idxd_drv);
 	pci_unregister_driver(&idxd_pci_driver);
 	idxd_cdev_remove();
 	perfmon_exit();

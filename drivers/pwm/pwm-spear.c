@@ -251,6 +251,8 @@ static int spear_pwm_remove(struct platform_device *pdev)
 {
 	struct spear_pwm_chip *pc = platform_get_drvdata(pdev);
 
+	pwmchip_remove(&pc->chip);
+
 	/* clk was prepared in probe, hence unprepare it here */
 	clk_unprepare(pc->clk);
 

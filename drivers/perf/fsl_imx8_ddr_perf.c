@@ -15,7 +15,6 @@
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/perf_event.h>
-#include <linux/spinlock.h>
 #include <linux/slab.h>
 
 #define COUNTER_CNTL		0x0
@@ -65,12 +64,13 @@ static DEFINE_IDA(db_ida);
 #define DDR_CAP_AXI_ID_PORT_CHANNEL_FILTER	0x4	/* support AXI ID PORT CHANNEL filter */
 
 /* Perf type */
-#define DDR_PERF_TYPE		0x1	/* ddr Perf */
-#define DB_PERF_TYPE		0x2	/* db Perf */
+#define DDR_PERF_TYPE          0x1     /* ddr Perf */
+#define DB_PERF_TYPE           0x2     /* db Perf */
 
 struct fsl_ddr_devtype_data {
 	unsigned int quirks;    /* quirks needed for different DDR Perf core */
-	unsigned int type;	/* types of Perf, point the location of Perf */
+	const char *identifier;	/* system PMU identifier for userspace */
+	unsigned int type;      /* types of Perf, point the location of Perf */
 };
 
 static const struct fsl_ddr_devtype_data imx8_devtype_data = {
@@ -85,30 +85,46 @@ static const struct fsl_ddr_devtype_data imx8m_devtype_data = {
 static const struct fsl_ddr_devtype_data imx8mq_devtype_data = {
 	.quirks = DDR_CAP_AXI_ID_FILTER,
 	.identifier = "i.MX8MQ",
+	.type = DDR_PERF_TYPE,
 };
 
 static const struct fsl_ddr_devtype_data imx8mm_devtype_data = {
 	.quirks = DDR_CAP_AXI_ID_FILTER,
 	.identifier = "i.MX8MM",
+	.type = DDR_PERF_TYPE,
 };
 
 static const struct fsl_ddr_devtype_data imx8mn_devtype_data = {
 	.quirks = DDR_CAP_AXI_ID_FILTER,
 	.identifier = "i.MX8MN",
+	.type = DDR_PERF_TYPE,
 };
 
 static const struct fsl_ddr_devtype_data imx8mp_devtype_data = {
 	.quirks = DDR_CAP_AXI_ID_FILTER_ENHANCED,
+	.identifier = "i.MX8MP",
+	.type = DDR_PERF_TYPE,
+};
+
+static const struct fsl_ddr_devtype_data imx8qxp_devtype_data = {
+	.identifier = "i.MX8QXP",
+	.type = DDR_PERF_TYPE,
+};
+
+static const struct fsl_ddr_devtype_data imx8qm_devtype_data = {
+	.identifier = "i.MX8QM",
 	.type = DDR_PERF_TYPE,
 };
 
 static const struct fsl_ddr_devtype_data imx8dxl_devtype_data = {
 	.quirks = DDR_CAP_AXI_ID_PORT_CHANNEL_FILTER,
+	.identifier = "i.MX8DXL",
 	.type = DDR_PERF_TYPE,
 };
 
 static const struct fsl_ddr_devtype_data imx8dxl_db_devtype_data = {
 	.quirks = DDR_CAP_AXI_ID_PORT_CHANNEL_FILTER,
+	.identifier = "i.MX8DXL",
 	.type = DB_PERF_TYPE,
 };
 
@@ -119,6 +135,8 @@ static const struct of_device_id imx_ddr_pmu_dt_ids[] = {
 	{ .compatible = "fsl,imx8mm-ddr-pmu", .data = &imx8mm_devtype_data},
 	{ .compatible = "fsl,imx8mn-ddr-pmu", .data = &imx8mn_devtype_data},
 	{ .compatible = "fsl,imx8mp-ddr-pmu", .data = &imx8mp_devtype_data},
+	{ .compatible = "fsl,imx8qxp-ddr-pmu", .data = &imx8qxp_devtype_data},
+	{ .compatible = "fsl,imx8qm-ddr-pmu", .data = &imx8qm_devtype_data},
 	{ .compatible = "fsl,imx8dxl-ddr-pmu", .data = &imx8dxl_devtype_data},
 	{ .compatible = "fsl,imx8dxl-db-pmu", .data = &imx8dxl_db_devtype_data},
 	{ /* sentinel */ }
@@ -137,7 +155,6 @@ struct ddr_pmu {
 	const struct fsl_ddr_devtype_data *devtype_data;
 	int irq;
 	int id;
-	spinlock_t lock;
 	struct clk *clk_ipg;
 	struct clk *clk_cnt;
 };
@@ -500,28 +517,6 @@ static int ddr_perf_event_init(struct perf_event *event)
 	return 0;
 }
 
-
-static void ddr_perf_event_update(struct perf_event *event)
-{
-	struct ddr_pmu *pmu = to_ddr_pmu(event->pmu);
-	struct hw_perf_event *hwc = &event->hw;
-	u64 delta, prev_raw_count, new_raw_count;
-	int counter = hwc->idx;
-	unsigned long flags;
-
-	spin_lock_irqsave(&pmu->lock, flags);
-
-	prev_raw_count = local64_read(&hwc->prev_count);
-	new_raw_count = ddr_perf_read_counter(pmu, counter);
-
-	delta = (new_raw_count - prev_raw_count) & 0xFFFFFFFF;
-
-	local64_add(delta, &event->count);
-	local64_set(&hwc->prev_count, new_raw_count);
-
-	spin_unlock_irqrestore(&pmu->lock, flags);
-}
-
 static void ddr_perf_counter_enable(struct ddr_pmu *pmu, int config,
 				  int counter, bool enable)
 {
@@ -566,7 +561,48 @@ static bool ddr_perf_counter_overflow(struct ddr_pmu *pmu, int counter)
 
 	val = readl_relaxed(pmu->base + counter * 4 + COUNTER_CNTL);
 
-	return val & CNTL_OVER ? true : false;
+	return val & CNTL_OVER;
+}
+
+static void ddr_perf_counter_clear(struct ddr_pmu *pmu, int counter)
+{
+	u8 reg = counter * 4 + COUNTER_CNTL;
+	int val;
+
+	val = readl_relaxed(pmu->base + reg);
+	val &= ~CNTL_CLEAR;
+	writel(val, pmu->base + reg);
+
+	val |= CNTL_CLEAR;
+	writel(val, pmu->base + reg);
+}
+
+static void ddr_perf_event_update(struct perf_event *event)
+{
+	struct ddr_pmu *pmu = to_ddr_pmu(event->pmu);
+	struct hw_perf_event *hwc = &event->hw;
+	u64 new_raw_count;
+	int counter = hwc->idx;
+	int ret;
+
+	new_raw_count = ddr_perf_read_counter(pmu, counter);
+	local64_add(new_raw_count, &event->count);
+
+	/*
+	 * For legacy SoCs: event counter continue counting when overflow,
+	 *                  no need to clear the counter.
+	 * For new SoCs: event counter stop counting when overflow, need
+	 *               clear counter to let it count again.
+	 */
+	if (counter != EVENT_CYCLES_COUNTER) {
+		ret = ddr_perf_counter_overflow(pmu, counter);
+		if (ret)
+			dev_warn_ratelimited(pmu->dev,  "events lost due to counter overflow (config 0x%llx)\n",
+					     event->attr.config);
+	}
+
+	/* clear counter every time for both cycle counter and event counter */
+	ddr_perf_counter_clear(pmu, counter);
 }
 
 static void ddr_perf_event_start(struct perf_event *event, int flags)
@@ -575,7 +611,7 @@ static void ddr_perf_event_start(struct perf_event *event, int flags)
 	struct hw_perf_event *hwc = &event->hw;
 	int counter = hwc->idx;
 
-	/* Workaround for i.MX865 */
+	/* Workaround for i.MXMP */
 	if ((pmu->devtype_data->quirks & DDR_CAP_AXI_ID_FILTER_ENHANCED) ==
 	     DDR_CAP_AXI_ID_FILTER_ENHANCED) {
 		if (counter == EVENT_CYCLES_COUNTER)
@@ -726,7 +762,7 @@ static void ddr_perf_init(struct ddr_pmu *pmu, void __iomem *base,
 
 static irqreturn_t ddr_perf_irq_handler(int irq, void *p)
 {
-	int i, ret;
+	int i;
 	struct ddr_pmu *pmu = (struct ddr_pmu *) p;
 	struct perf_event *event;
 
@@ -738,7 +774,9 @@ static irqreturn_t ddr_perf_irq_handler(int irq, void *p)
 	/*
 	 * When the cycle counter overflows, all counters are stopped,
 	 * and an IRQ is raised. If any other counter overflows, it
-	 * stop counting, and no IRQ is raised.
+	 * continues counting, and no IRQ is raised. But for new SoCs,
+	 * such as i.MX8MP, event counter would stop when overflow, so
+	 * we need use cycle counter to stop overflow of event counter.
 	 *
 	 * Cycles occur at least 4 times as often as other events, so we
 	 * can update all events on a cycle counter overflow and not
@@ -754,40 +792,6 @@ static irqreturn_t ddr_perf_irq_handler(int irq, void *p)
 
 		ddr_perf_event_update(event);
 	}
-
-	spin_lock(&pmu->lock);
-
-	for (i = 0; i < NUM_COUNTERS; i++) {
-		if (!pmu->events[i])
-			continue;
-
-		event = pmu->events[i];
-
-		if (event->hw.idx == EVENT_CYCLES_COUNTER)
-			continue;
-
-		/* check non-cycle counters overflow */
-		ret = ddr_perf_counter_overflow(pmu, event->hw.idx);
-		if (ret)
-			dev_warn(pmu->dev, "Event Counter%d overflow happened, data incorrect!!\n", i);
-
-		/* clear non-cycle counters */
-		ddr_perf_counter_enable(pmu, event->attr.config, event->hw.idx, true);
-
-		local64_set(&event->hw.prev_count, 0);
-	}
-
-	/* Workaround for i.MX865 */
-	if ((pmu->devtype_data->quirks & DDR_CAP_AXI_ID_FILTER_ENHANCED) ==
-	    DDR_CAP_AXI_ID_FILTER_ENHANCED) {
-		if (cycle_event)
-			local64_set(&cycle_event->hw.prev_count, 0xe8000000);
-	} else {
-		if (cycle_event)
-			local64_set(&cycle_event->hw.prev_count, 0);
-	}
-
-	spin_unlock(&pmu->lock);
 
 	ddr_perf_counter_enable(pmu,
 			      EVENT_CYCLES_ID,
@@ -839,7 +843,6 @@ static int ddr_perf_probe(struct platform_device *pdev)
 	ddr_perf_init(pmu, base, &pdev->dev);
 
 	platform_set_drvdata(pdev, pmu);
-	spin_lock_init(&pmu->lock);
 
 	pmu->devtype_data = of_device_get_match_data(&pdev->dev);
 	if (pmu->devtype_data->type & DDR_PERF_TYPE) {
@@ -868,6 +871,7 @@ static int ddr_perf_probe(struct platform_device *pdev)
 			return ret;
 	} else
 		return -EINVAL;
+
 	if (!name) {
 		ret = -ENOMEM;
 		goto cpuhp_state_err;

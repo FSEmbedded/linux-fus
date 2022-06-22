@@ -404,9 +404,7 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 			sched_clock_tick();
 		}
 
-		/* Clear the guest paused flag on watchdog reset */
-		kvm_check_and_clear_guest_paused();
-		update_touch_ts();
+		update_report_ts();
 		return HRTIMER_RESTART;
 	}
 
@@ -418,20 +416,13 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 		 * Prevent multiple soft-lockup reports if one cpu is already
 		 * engaged in dumping all cpu back traces.
 		 */
-		if (kvm_check_and_clear_guest_paused())
-			return HRTIMER_RESTART;
-
-		/*
-		 * Prevent multiple soft-lockup reports if one cpu is already
-		 * engaged in dumping all cpu back traces.
-		 */
 		if (softlockup_all_cpu_backtrace) {
 			if (test_and_set_bit_lock(0, &soft_lockup_nmi_warn))
 				return HRTIMER_RESTART;
 		}
 
 		/* Start period for the next softlockup warning. */
-		update_touch_ts();
+		update_report_ts();
 
 		pr_emerg("BUG: soft lockup - CPU#%d stuck for %us! [%s:%d]\n",
 			smp_processor_id(), duration,

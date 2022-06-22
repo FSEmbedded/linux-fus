@@ -42,13 +42,8 @@ config SND_SOC_SOF_BAYTRAIL
 	default SND_SOC_SOF_ACPI
 	select SND_SOC_SOF_INTEL_COMMON
 	select SND_SOC_SOF_INTEL_ATOM_HIFI_EP
-	help
-	  This option is not user-selectable but automagically handled by
-	  'select' statements at a higher level
-
-config SND_SOC_SOF_BROADWELL_SUPPORT
-	bool "SOF support for Broadwell"
-	depends on SND_SOC_INTEL_CATPT=n
+	select SND_SOC_SOF_ACPI_DEV
+	select IOSF_MBI if X86 && PCI
 	help
 	  This adds support for Sound Open Firmware for Intel(R) platforms
 	  using the Baytrail, Braswell or Cherrytrail processors.
@@ -216,7 +211,6 @@ config SND_SOC_SOF_ALDERLAKE
 
 config SND_SOC_SOF_HDA_COMMON
 	tristate
-	select SND_INTEL_DSP_CONFIG
 	select SND_SOC_SOF_INTEL_COMMON
 	select SND_SOC_SOF_PCI_DEV
 	select SND_INTEL_DSP_CONFIG
@@ -270,16 +264,7 @@ config SND_SOC_SOF_HDA
 	select SND_SOC_HDAC_HDA if SND_SOC_SOF_HDA_AUDIO_CODEC
 	help
 	  This option is not user-selectable but automagically handled by
-	  'select' statements at a higher level
-
-config SND_SOC_SOF_INTEL_SOUNDWIRE_LINK
-	bool "SOF support for SoundWire"
-	depends on ACPI
-	help
-	  This adds support for SoundWire with Sound Open Firmware
-		  for Intel(R) platforms.
-	  Say Y if you want to enable SoundWire links with SOF.
-	  If unsure select "N".
+	  'select' statements at a higher level.
 
 config SND_SOC_SOF_INTEL_SOUNDWIRE_LINK_BASELINE
 	tristate
@@ -287,9 +272,11 @@ config SND_SOC_SOF_INTEL_SOUNDWIRE_LINK_BASELINE
 	select SND_INTEL_SOUNDWIRE_ACPI if SND_SOC_SOF_INTEL_SOUNDWIRE
 
 config SND_SOC_SOF_INTEL_SOUNDWIRE
-	tristate
-	select SOUNDWIRE
-	select SOUNDWIRE_INTEL
+	tristate "SOF support for SoundWire"
+	default SND_SOC_SOF_INTEL_SOUNDWIRE_LINK_BASELINE
+	depends on SND_SOC_SOF_INTEL_SOUNDWIRE_LINK_BASELINE
+	depends on ACPI && SOUNDWIRE
+	depends on !(SOUNDWIRE=m && SND_SOC_SOF_INTEL_SOUNDWIRE_LINK_BASELINE=y)
 	help
 	  This adds support for SoundWire with Sound Open Firmware
 	  for Intel(R) platforms.

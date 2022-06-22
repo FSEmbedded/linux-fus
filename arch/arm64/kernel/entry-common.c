@@ -582,7 +582,7 @@ static void noinstr el0_dbg(struct pt_regs *regs, unsigned long esr)
 	/* Only watchpoints write FAR_EL1, otherwise its UNKNOWN */
 	unsigned long far = read_sysreg(far_el1);
 
-	enter_from_user_mode();
+	enter_from_user_mode(regs);
 	do_debug_exception(far, esr, regs);
 	local_daif_restore(DAIF_PROCCTX);
 	exit_to_user_mode(regs);
@@ -590,7 +590,8 @@ static void noinstr el0_dbg(struct pt_regs *regs, unsigned long esr)
 
 static void noinstr el0_svc(struct pt_regs *regs)
 {
-	enter_from_user_mode();
+	enter_from_user_mode(regs);
+	cortex_a76_erratum_1463225_svc_handler();
 	do_el0_svc(regs);
 	exit_to_user_mode(regs);
 }
@@ -720,7 +721,8 @@ static void noinstr el0_cp15(struct pt_regs *regs, unsigned long esr)
 
 static void noinstr el0_svc_compat(struct pt_regs *regs)
 {
-	enter_from_user_mode();
+	enter_from_user_mode(regs);
+	cortex_a76_erratum_1463225_svc_handler();
 	do_el0_svc_compat(regs);
 	exit_to_user_mode(regs);
 }

@@ -122,13 +122,11 @@ static int lpc32xx_pwm_probe(struct platform_device *pdev)
 	val &= ~PWM_PIN_LEVEL;
 	writel(val, lpc32xx->base + (lpc32xx->chip.pwms[0].hwpwm << 2));
 
-	ret = pwmchip_add(&lpc32xx->chip);
+	ret = devm_pwmchip_add(&pdev->dev, &lpc32xx->chip);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to add PWM chip, error %d\n", ret);
 		return ret;
 	}
-
-	platform_set_drvdata(pdev, lpc32xx);
 
 	return 0;
 }

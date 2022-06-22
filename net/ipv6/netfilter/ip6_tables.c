@@ -982,7 +982,7 @@ static int get_info(struct net *net, void __user *user, const int *len)
 	if (!IS_ERR(t)) {
 		struct ip6t_getinfo info;
 		const struct xt_table_info *private = t->private;
-#ifdef CONFIG_COMPAT
+#ifdef CONFIG_NETFILTER_XTABLES_COMPAT
 		struct xt_table_info tmp;
 
 		if (in_compat_syscall()) {

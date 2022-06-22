@@ -63,10 +63,6 @@ static void tegra_bpmp_xlate_flags(u16 flags, u16 *out)
 
 	if (flags & I2C_M_RECV_LEN)
 		*out |= SERIALI2C_RECV_LEN;
-		flags &= ~I2C_M_RECV_LEN;
-	}
-
-	return 0;
 }
 
 /*

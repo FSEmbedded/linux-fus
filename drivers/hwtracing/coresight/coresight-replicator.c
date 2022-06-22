@@ -393,7 +393,7 @@ static int dynamic_replicator_probe(struct amba_device *adev,
 	return replicator_probe(&adev->dev, &adev->res);
 }
 
-static int dynamic_replicator_remove(struct amba_device *adev)
+static void dynamic_replicator_remove(struct amba_device *adev)
 {
 	replicator_remove(&adev->dev);
 }

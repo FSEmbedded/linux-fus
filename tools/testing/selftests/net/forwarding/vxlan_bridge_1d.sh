@@ -662,7 +662,7 @@ test_ecn_decap()
 	# 00 03 is tested in test_ecn_decap_error()
 	__test_ecn_decap 01 00 0x01
 	__test_ecn_decap 01 01 0x01
-	__test_ecn_decap 02 01 0x01
+	__test_ecn_decap 01 02 0x01
 	__test_ecn_decap 01 03 0x03
 	__test_ecn_decap 02 00 0x02
 	__test_ecn_decap 02 01 0x01

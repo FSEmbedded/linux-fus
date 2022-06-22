@@ -155,8 +155,9 @@ static bool fanotify_should_merge(struct fanotify_event *old,
 static int fanotify_merge(struct fsnotify_group *group,
 			  struct fsnotify_event *event)
 {
-	struct fsnotify_event *test_event;
-	struct fanotify_event *new;
+	struct fanotify_event *old, *new = FANOTIFY_E(event);
+	unsigned int bucket = fanotify_event_hash_bucket(group, new);
+	struct hlist_head *hlist = &group->fanotify_data.merge_hash[bucket];
 	int i = 0;
 
 	pr_debug("%s: group=%p event=%p bucket=%u\n", __func__,
@@ -170,11 +171,11 @@ static int fanotify_merge(struct fsnotify_group *group,
 	if (fanotify_is_perm_event(new->mask))
 		return 0;
 
-	list_for_each_entry_reverse(test_event, list, list) {
+	hlist_for_each_entry(old, hlist, merge_list) {
 		if (++i > FANOTIFY_MAX_MERGE_EVENTS)
 			break;
-		if (fanotify_should_merge(test_event, event)) {
-			FANOTIFY_E(test_event)->mask |= new->mask;
+		if (fanotify_should_merge(old, new)) {
+			old->mask |= new->mask;
 			return 1;
 		}
 	}

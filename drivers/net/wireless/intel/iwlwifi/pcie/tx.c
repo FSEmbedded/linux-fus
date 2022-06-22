@@ -225,12 +225,9 @@ static void iwl_pcie_txq_unmap(struct iwl_trans *trans, int txq_id)
 		iwl_txq_free_tfd(trans, txq);
 		txq->read_ptr = iwl_txq_inc_wrap(trans, txq->read_ptr);
 
-		if (txq->read_ptr == txq->write_ptr) {
-			spin_lock(&trans_pcie->reg_lock);
-			if (txq_id == trans->txqs.cmd.q_id)
-				iwl_pcie_clear_cmd_in_flight(trans);
-			spin_unlock(&trans_pcie->reg_lock);
-		}
+		if (txq->read_ptr == txq->write_ptr &&
+		    txq_id == trans->txqs.cmd.q_id)
+			iwl_pcie_clear_cmd_in_flight(trans);
 	}
 
 	while (!skb_queue_empty(&txq->overflow_q)) {
@@ -699,12 +696,8 @@ static void iwl_pcie_cmdq_reclaim(struct iwl_trans *trans, int txq_id, int idx)
 		}
 	}
 
-	if (txq->read_ptr == txq->write_ptr) {
-		/* BHs are also disabled due to txq->lock */
-		spin_lock(&trans_pcie->reg_lock);
+	if (txq->read_ptr == txq->write_ptr)
 		iwl_pcie_clear_cmd_in_flight(trans);
-		spin_unlock(&trans_pcie->reg_lock);
-	}
 
 	iwl_txq_progress(txq);
 }
@@ -1154,19 +1147,16 @@ int iwl_pcie_enqueue_hcmd(struct iwl_trans *trans,
 	if (txq->read_ptr == txq->write_ptr && txq->wd_timeout)
 		mod_timer(&txq->stuck_timer, jiffies + txq->wd_timeout);
 
-	spin_lock(&trans_pcie->reg_lock);
 	ret = iwl_pcie_set_cmd_in_flight(trans, cmd);
 	if (ret < 0) {
 		idx = ret;
-		goto unlock_reg;
+		goto out;
 	}
 
 	/* Increment and update queue's write index */
 	txq->write_ptr = iwl_txq_inc_wrap(trans, txq->write_ptr);
 	iwl_pcie_txq_inc_wr_ptr(trans, txq);
 
- unlock_reg:
-	spin_unlock(&trans_pcie->reg_lock);
  out:
 	spin_unlock_irqrestore(&txq->lock, flags);
  free_dup_buf:

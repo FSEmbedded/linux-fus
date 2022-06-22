@@ -994,8 +994,6 @@ struct ibmvnic_adapter {
 	 */
 	spinlock_t state_lock;
 	enum ibmvnic_reset_reason reset_reason;
-	/* when taking both state and rwi locks, take state lock first */
-	spinlock_t rwi_lock;
 	struct list_head rwi_list;
 	/* Used for serialization of rwi_list. When taking both state
 	 * and rwi locks, take state lock first
@@ -1014,9 +1012,4 @@ struct ibmvnic_adapter {
 
 	struct ibmvnic_tunables desired;
 	struct ibmvnic_tunables fallback;
-
-	/* Used for serialization of state field. When taking both state
-	 * and rwi locks, take state lock first.
-	 */
-	spinlock_t state_lock;
 };

@@ -45,10 +45,9 @@ static void clk_gate2_do_hardware(struct clk_gate2 *gate, bool enable)
 	u32 reg;
 
 	reg = readl(gate->reg);
+	reg &= ~(gate->cgr_mask << gate->bit_idx);
 	if (enable)
-		reg |= gate->cgr_val << gate->bit_idx;
-	else
-		reg &= ~(gate->cgr_val << gate->bit_idx);
+		reg |= (gate->cgr_val & gate->cgr_mask) << gate->bit_idx;
 	writel(reg, gate->reg);
 }
 
@@ -121,11 +120,12 @@ out:
 	spin_unlock_irqrestore(gate->lock, flags);
 }
 
-static int clk_gate2_reg_is_enabled(void __iomem *reg, u8 bit_idx, u8 cgr_val)
+static int clk_gate2_reg_is_enabled(void __iomem *reg, u8 bit_idx,
+					u8 cgr_val, u8 cgr_mask)
 {
 	u32 val = readl(reg);
 
-	if (((val >> bit_idx) & cgr_val) == 1)
+	if (((val >> bit_idx) & cgr_mask) == cgr_val)
 		return 1;
 
 	return 0;
@@ -135,11 +135,12 @@ static int clk_gate2_is_enabled(struct clk_hw *hw)
 {
 	struct clk_gate2 *gate = to_clk_gate2(hw);
 	unsigned long flags;
-	int ret;
+	int ret = 0;
 
 	spin_lock_irqsave(gate->lock, flags);
 
-	ret = clk_gate2_reg_is_enabled(gate->reg, gate->bit_idx, gate->cgr_val);
+	ret = clk_gate2_reg_is_enabled(gate->reg, gate->bit_idx,
+					gate->cgr_val, gate->cgr_mask);
 
 	spin_unlock_irqrestore(gate->lock, flags);
 

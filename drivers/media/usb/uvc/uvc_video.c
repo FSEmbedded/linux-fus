@@ -155,10 +155,10 @@ static void uvc_fixup_video_ctrl(struct uvc_streaming *stream,
 	    ctrl->bmHint > 255) {
 		u8 corrected_format_index = ctrl->bmHint >> 8;
 
-		/* uvc_dbg(stream->dev, VIDEO,
+		uvc_dbg(stream->dev, VIDEO,
 			"Correct USB video probe response from {bmHint: 0x%04x, bFormatIndex: %u} to {bmHint: 0x%04x, bFormatIndex: %u}\n",
 			ctrl->bmHint, ctrl->bFormatIndex,
-			1, corrected_format_index); */
+			1, corrected_format_index);
 		ctrl->bmHint = 1;
 		ctrl->bFormatIndex = corrected_format_index;
 	}
@@ -1961,6 +1961,10 @@ static int uvc_video_start_transfer(struct uvc_streaming *stream,
 		ep = uvc_find_endpoint(&intf->altsetting[0],
 				stream->header.bEndpointAddress);
 		if (ep == NULL)
+			return -EIO;
+
+		/* Reject broken descriptors. */
+		if (usb_endpoint_maxp(&ep->desc) == 0)
 			return -EIO;
 
 		ret = uvc_init_video_bulk(stream, ep, gfp_flags);

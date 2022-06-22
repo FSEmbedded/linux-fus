@@ -71,7 +71,7 @@ static int imx_blk_ctrl_reset_set(struct reset_controller_dev *rcdev,
 	spin_unlock_irqrestore(drvdata->lock, flags);
 
 	if (!assert && test_and_clear_bit(1, &drvdata->rst_hws[id].asserted))
-		pm_runtime_put(rcdev->dev);
+		pm_runtime_put_sync(rcdev->dev);
 
 	return 0;
 }
@@ -339,3 +339,4 @@ static struct platform_driver imx_blk_ctrl_driver = {
 	},
 };
 module_platform_driver(imx_blk_ctrl_driver);
+MODULE_LICENSE("GPL v2");

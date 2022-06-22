@@ -997,12 +997,19 @@ int mlx5_eq_table_create(struct mlx5_core_dev *dev)
 	int num_eqs = MLX5_CAP_GEN(dev, max_num_eqs) ?
 		      MLX5_CAP_GEN(dev, max_num_eqs) :
 		      1 << MLX5_CAP_GEN(dev, log_max_eq);
+	int max_eqs_sf;
 	int err;
 
 	eq_table->num_comp_eqs =
 		min_t(int,
-		      mlx5_irq_get_num_comp(eq_table->irq_table),
+		      mlx5_irq_table_get_num_comp(eq_table->irq_table),
 		      num_eqs - MLX5_MAX_ASYNC_EQS);
+	if (mlx5_core_is_sf(dev)) {
+		max_eqs_sf = min_t(int, MLX5_COMP_EQS_PER_SF,
+				   mlx5_irq_table_get_sfs_vec(eq_table->irq_table));
+		eq_table->num_comp_eqs = min_t(int, eq_table->num_comp_eqs,
+					       max_eqs_sf);
+	}
 
 	err = create_async_eqs(dev);
 	if (err) {

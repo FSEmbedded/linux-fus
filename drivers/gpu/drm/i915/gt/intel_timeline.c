@@ -37,53 +37,8 @@ static void __timeline_retire(struct i915_active *active)
 	struct intel_timeline *tl =
 		container_of(active, typeof(*tl), active);
 
-	spin_lock_irqsave(&gt->hwsp_lock, flags);
-
-	/* As a cacheline becomes available, publish the HWSP on the freelist */
-	if (!hwsp->free_bitmap)
-		list_add_tail(&hwsp->free_link, &gt->hwsp_free_list);
-
-	GEM_BUG_ON(cacheline >= BITS_PER_TYPE(hwsp->free_bitmap));
-	hwsp->free_bitmap |= BIT_ULL(cacheline);
-
-	/* And if no one is left using it, give the page back to the system */
-	if (hwsp->free_bitmap == ~0ull) {
-		i915_vma_put(hwsp->vma);
-		list_del(&hwsp->free_link);
-		kfree(hwsp);
-	}
-
-	spin_unlock_irqrestore(&gt->hwsp_lock, flags);
-}
-
-static void __rcu_cacheline_free(struct rcu_head *rcu)
-{
-	struct intel_timeline_cacheline *cl =
-		container_of(rcu, typeof(*cl), rcu);
-
-	/* Must wait until after all *rq->hwsp are complete before removing */
-	i915_gem_object_unpin_map(cl->hwsp->vma->obj);
-	__idle_hwsp_free(cl->hwsp, ptr_unmask_bits(cl->vaddr, CACHELINE_BITS));
-
-	i915_active_fini(&cl->active);
-	kfree(cl);
-}
-
-static void __idle_cacheline_free(struct intel_timeline_cacheline *cl)
-{
-	GEM_BUG_ON(!i915_active_is_idle(&cl->active));
-	call_rcu(&cl->rcu, __rcu_cacheline_free);
-}
-
-__i915_active_call
-static void __cacheline_retire(struct i915_active *active)
-{
-	struct intel_timeline_cacheline *cl =
-		container_of(active, typeof(*cl), active);
-
-	i915_vma_unpin(cl->hwsp->vma);
-	if (ptr_test_bit(cl->vaddr, CACHELINE_FREE))
-		__idle_cacheline_free(cl);
+	i915_vma_unpin(tl->hwsp_ggtt);
+	intel_timeline_put(tl);
 }
 
 static int __timeline_active(struct i915_active *active)
@@ -103,48 +58,9 @@ intel_timeline_pin_map(struct intel_timeline *timeline)
 	u32 ofs = offset_in_page(timeline->hwsp_offset);
 	void *vaddr;
 
-	GEM_BUG_ON(cacheline >= BIT(CACHELINE_BITS));
-
-	cl = kmalloc(sizeof(*cl), GFP_KERNEL);
-	if (!cl)
-		return ERR_PTR(-ENOMEM);
-
-	vaddr = i915_gem_object_pin_map(hwsp->vma->obj, I915_MAP_WB);
-	if (IS_ERR(vaddr)) {
-		kfree(cl);
-		return ERR_CAST(vaddr);
-	}
-
-	cl->hwsp = hwsp;
-	cl->vaddr = page_pack_bits(vaddr, cacheline);
-
-	i915_active_init(&cl->active, __cacheline_active, __cacheline_retire);
-
-	return cl;
-}
-
-static void cacheline_acquire(struct intel_timeline_cacheline *cl,
-			      u32 ggtt_offset)
-{
-	if (!cl)
-		return;
-
-	cl->ggtt_offset = ggtt_offset;
-	i915_active_acquire(&cl->active);
-}
-
-static void cacheline_release(struct intel_timeline_cacheline *cl)
-{
-	if (cl)
-		i915_active_release(&cl->active);
-}
-
-static void cacheline_free(struct intel_timeline_cacheline *cl)
-{
-	if (!i915_active_acquire_if_busy(&cl->active)) {
-		__idle_cacheline_free(cl);
-		return;
-	}
+	vaddr = i915_gem_object_pin_map(obj, I915_MAP_WB);
+	if (IS_ERR(vaddr))
+		return PTR_ERR(vaddr);
 
 	timeline->hwsp_map = vaddr;
 	timeline->hwsp_seqno = memset(vaddr + ofs, 0, TIMELINE_SEQNO_BYTES);
@@ -210,6 +126,7 @@ static void intel_timeline_fini(struct rcu_head *rcu)
 		i915_gem_object_unpin_map(timeline->hwsp_ggtt->obj);
 
 	i915_vma_put(timeline->hwsp_ggtt);
+	i915_active_fini(&timeline->active);
 
 	/*
 	 * A small race exists between intel_gt_retire_requests_timeout and
@@ -218,6 +135,8 @@ static void intel_timeline_fini(struct rcu_head *rcu)
 	 * the syncmap on fini.
 	 */
 	i915_syncmap_free(&timeline->sync);
+
+	kfree(timeline);
 }
 
 struct intel_timeline *

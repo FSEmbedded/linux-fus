@@ -211,6 +211,12 @@ static void device_link_synchronize_removal(void)
 {
 	synchronize_srcu(&device_links_srcu);
 }
+
+static void device_link_remove_from_lists(struct device_link *link)
+{
+	list_del_rcu(&link->s_node);
+	list_del_rcu(&link->c_node);
+}
 #else /* !CONFIG_SRCU */
 static DECLARE_RWSEM(device_links_lock);
 
@@ -244,6 +250,12 @@ int device_links_read_lock_held(void)
 
 static inline void device_link_synchronize_removal(void)
 {
+}
+
+static void device_link_remove_from_lists(struct device_link *link)
+{
+	list_del(&link->s_node);
+	list_del(&link->c_node);
 }
 #endif /* !CONFIG_SRCU */
 
@@ -473,8 +485,7 @@ static void device_link_release_fn(struct work_struct *work)
 	/* Ensure that all references to the link object have been dropped. */
 	device_link_synchronize_removal();
 
-	while (refcount_dec_not_one(&link->rpm_active))
-		pm_runtime_put(link->supplier);
+	pm_runtime_release_supplier(link, true);
 
 	put_device(link->consumer);
 	put_device(link->supplier);
@@ -1523,10 +1534,6 @@ static void device_links_purge(struct device *dev)
 	if (dev->class == &devlink_class)
 		return;
 
-	mutex_lock(&wfs_lock);
-	list_del_init(&dev->links.needs_suppliers);
-	mutex_unlock(&wfs_lock);
-
 	/*
 	 * Delete all of the remaining links from this device to any other
 	 * devices (either consumers or suppliers).
@@ -2441,33 +2448,24 @@ static ssize_t online_store(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR_RW(online);
 
-static ssize_t suppliers_show(struct device *dev, struct device_attribute *attr,
+static ssize_t removable_show(struct device *dev, struct device_attribute *attr,
 			      char *buf)
 {
-	struct device_link *link;
-	size_t count = 0;
+	const char *loc;
 
-	list_for_each_entry(link, &dev->links.suppliers, c_node)
-		count += scnprintf(buf + count, PAGE_SIZE - count, "%s\n",
-				   dev_name(link->supplier));
-
-	return count;
+	switch (dev->removable) {
+	case DEVICE_REMOVABLE:
+		loc = "removable";
+		break;
+	case DEVICE_FIXED:
+		loc = "fixed";
+		break;
+	default:
+		loc = "unknown";
+	}
+	return sysfs_emit(buf, "%s\n", loc);
 }
-static DEVICE_ATTR_RO(suppliers);
-
-static ssize_t consumers_show(struct device *dev, struct device_attribute *attr,
-			      char *buf)
-{
-	struct device_link *link;
-	size_t count = 0;
-
-	list_for_each_entry(link, &dev->links.consumers, s_node)
-		count += scnprintf(buf + count, PAGE_SIZE - count, "%s\n",
-				   dev_name(link->consumer));
-
-	return count;
-}
-static DEVICE_ATTR_RO(consumers);
+static DEVICE_ATTR_RO(removable);
 
 int device_add_groups(struct device *dev, const struct attribute_group **groups)
 {
@@ -2640,18 +2638,10 @@ static int device_add_attrs(struct device *dev)
 			goto err_remove_dev_groups;
 	}
 
-	error = device_create_file(dev, &dev_attr_suppliers);
-	if (error)
-		goto err_remove_dev_online;
-
-	error = device_create_file(dev, &dev_attr_consumers);
-	if (error)
-		goto err_remove_dev_suppliers;
-
-	if (fw_devlink_flags && !fw_devlink_is_permissive()) {
+	if (fw_devlink_flags && !fw_devlink_is_permissive() && dev->fwnode) {
 		error = device_create_file(dev, &dev_attr_waiting_for_supplier);
 		if (error)
-			goto err_remove_dev_consumers;
+			goto err_remove_dev_online;
 	}
 
 	if (dev_removable_is_valid(dev)) {
@@ -2662,10 +2652,8 @@ static int device_add_attrs(struct device *dev)
 
 	return 0;
 
- err_remove_dev_consumers:
-	device_remove_file(dev, &dev_attr_consumers);
- err_remove_dev_suppliers:
-	device_remove_file(dev, &dev_attr_suppliers);
+ err_remove_dev_waiting_for_supplier:
+	device_remove_file(dev, &dev_attr_waiting_for_supplier);
  err_remove_dev_online:
 	device_remove_file(dev, &dev_attr_online);
  err_remove_dev_groups:
@@ -2687,8 +2675,6 @@ static void device_remove_attrs(struct device *dev)
 
 	device_remove_file(dev, &dev_attr_removable);
 	device_remove_file(dev, &dev_attr_waiting_for_supplier);
-	device_remove_file(dev, &dev_attr_consumers);
-	device_remove_file(dev, &dev_attr_suppliers);
 	device_remove_file(dev, &dev_attr_online);
 	device_remove_groups(dev, dev->groups);
 

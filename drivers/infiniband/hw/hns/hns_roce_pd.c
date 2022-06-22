@@ -52,10 +52,11 @@ int hns_roce_alloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 	int ret = 0;
 	int id;
 
-	ret = hns_roce_pd_alloc(to_hr_dev(ib_dev), &pd->pdn);
-	if (ret) {
-		ibdev_err(ib_dev, "failed to alloc pd, ret = %d.\n", ret);
-		return ret;
+	id = ida_alloc_range(&pd_ida->ida, pd_ida->min, pd_ida->max,
+			     GFP_KERNEL);
+	if (id < 0) {
+		ibdev_err(ib_dev, "failed to alloc pd, id = %d.\n", id);
+		return -ENOMEM;
 	}
 	pd->pdn = (unsigned long)id;
 
@@ -65,7 +66,7 @@ int hns_roce_alloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 		ret = ib_copy_to_udata(udata, &resp,
 				       min(udata->outlen, sizeof(resp)));
 		if (ret) {
-			hns_roce_pd_free(to_hr_dev(ib_dev), pd->pdn);
+			ida_free(&pd_ida->ida, id);
 			ibdev_err(ib_dev, "failed to copy to udata, ret = %d\n", ret);
 		}
 	}

@@ -46,6 +46,8 @@
 					 KVM_PTE_LEAF_ATTR_LO_S2_S2AP_W | \
 					 KVM_PTE_LEAF_ATTR_HI_S2_XN)
 
+#define KVM_PTE_LEAF_ATTR_S2_DEVICE     BIT(55)
+
 #define KVM_INVALID_PTE_OWNER_MASK	GENMASK(9, 2)
 #define KVM_MAX_OWNER_ID		1
 
@@ -163,6 +165,7 @@ static kvm_pte_t kvm_init_valid_leaf_pte(u64 pa, kvm_pte_t attr, u32 level)
 	pte |= attr & (KVM_PTE_LEAF_ATTR_LO | KVM_PTE_LEAF_ATTR_HI);
 	pte |= FIELD_PREP(KVM_PTE_TYPE, type);
 	pte |= KVM_PTE_VALID;
+	pte |= attr & KVM_PTE_LEAF_ATTR_S2_DEVICE;
 
 	return pte;
 }
@@ -562,8 +565,8 @@ static int stage2_set_prot_attr(struct kvm_pgtable *pgt, enum kvm_pgtable_prot p
 				kvm_pte_t *ptep)
 {
 	bool device = prot & KVM_PGTABLE_PROT_DEVICE;
-	kvm_pte_t attr = device ? PAGE_S2_MEMATTR(DEVICE_nGnRE) :
-			    PAGE_S2_MEMATTR(NORMAL);
+	kvm_pte_t attr = device ? KVM_S2_MEMATTR(pgt, DEVICE_nGnRE) :
+			    KVM_S2_MEMATTR(pgt, NORMAL);
 	u32 sh = 0;
 
 	if (!(prot & KVM_PGTABLE_PROT_DEVICE_NS))
@@ -583,6 +586,8 @@ static int stage2_set_prot_attr(struct kvm_pgtable *pgt, enum kvm_pgtable_prot p
 	attr |= FIELD_PREP(KVM_PTE_LEAF_ATTR_LO_S2_SH, sh);
 	attr |= KVM_PTE_LEAF_ATTR_LO_S2_AF;
 	attr |= prot & KVM_PTE_LEAF_ATTR_HI_SW;
+	if ((prot & KVM_PGTABLE_PROT_DEVICE_SH) || (prot & KVM_PGTABLE_PROT_DEVICE_NS))
+		attr |= KVM_PTE_LEAF_ATTR_S2_DEVICE;
 	*ptep = attr;
 
 	return 0;
@@ -689,7 +694,8 @@ static int stage2_map_walker_try_leaf(u64 addr, u64 end, u32 level,
 	}
 
 	/* Perform CMOs before installation of the guest stage-2 PTE */
-	if (mm_ops->dcache_clean_inval_poc && stage2_pte_cacheable(pgt, new))
+	if (mm_ops->dcache_clean_inval_poc && stage2_pte_cacheable(pgt, new) &&
+	    !(new & KVM_PTE_LEAF_ATTR_S2_DEVICE))
 		mm_ops->dcache_clean_inval_poc(kvm_pte_follow(new, mm_ops),
 						granule);
 
@@ -924,13 +930,9 @@ static int stage2_unmap_walker(u64 addr, u64 end, u32 level, kvm_pte_t *ptep,
 	 */
 	stage2_put_pte(ptep, mmu, addr, level, mm_ops);
 
-	if (need_flush) {
-		kvm_pte_t *pte_follow = kvm_pte_follow(pte, mm_ops);
-
-		dcache_clean_inval_poc((unsigned long)pte_follow,
-				    (unsigned long)pte_follow +
-					    kvm_granule_size(level));
-	}
+	if (need_flush && mm_ops->dcache_clean_inval_poc)
+		mm_ops->dcache_clean_inval_poc(kvm_pte_follow(pte, mm_ops),
+					       kvm_granule_size(level));
 
 	if (childp)
 		mm_ops->put_page(childp);
@@ -1092,20 +1094,14 @@ static int stage2_flush_walker(u64 addr, u64 end, u32 level, kvm_pte_t *ptep,
 	struct kvm_pgtable *pgt = arg;
 	struct kvm_pgtable_mm_ops *mm_ops = pgt->mm_ops;
 	kvm_pte_t pte = *ptep;
-	kvm_pte_t *pte_follow;
 
-	if (!kvm_pte_valid(pte) || !stage2_pte_cacheable(pgt, pte))
+	if (!kvm_pte_valid(pte) || !stage2_pte_cacheable(pgt, pte) ||
+	   (pte & KVM_PTE_LEAF_ATTR_S2_DEVICE))
 		return 0;
 
-	if (pfn_valid(__phys_to_pfn(kvm_pte_to_phys(pte)))) {
-		stage2_flush_dcache(kvm_pte_follow(pte), kvm_granule_size(level));
-	} else {
-		void __iomem *va = ioremap_cache_ns(kvm_pte_to_phys(pte), PAGE_SIZE);
-
-		stage2_flush_dcache(va, kvm_granule_size(level));
-		iounmap(va);
-	}
-
+	if (mm_ops->dcache_clean_inval_poc)
+		mm_ops->dcache_clean_inval_poc(kvm_pte_follow(pte, mm_ops),
+					       kvm_granule_size(level));
 	return 0;
 }
 

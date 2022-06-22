@@ -792,11 +792,11 @@ static int cal_async_notifier_register(struct cal_dev *cal)
 		if (!phy->source_node)
 			continue;
 
-		fwnode = of_fwnode_handle(phy->sensor_node);
-		asd = v4l2_async_notifier_add_fwnode_subdev(&cal->notifier,
-							    fwnode,
-							    sizeof(*casd));
-		if (IS_ERR(asd)) {
+		fwnode = of_fwnode_handle(phy->source_node);
+		casd = v4l2_async_notifier_add_fwnode_subdev(&cal->notifier,
+							     fwnode,
+							     struct cal_v4l2_async_subdev);
+		if (IS_ERR(casd)) {
 			phy_err(phy, "Failed to add subdev to notifier\n");
 			ret = PTR_ERR(casd);
 			goto error;

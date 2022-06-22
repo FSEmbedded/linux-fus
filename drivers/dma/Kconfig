@@ -125,13 +125,6 @@ config BCM_SBA_RAID
 	  has the capability to offload memcpy, xor and pq computation
 	  for raid5/6.
 
-config COH901318
-	bool "ST-Ericsson COH901318 DMA support"
-	select DMA_ENGINE
-	depends on ARCH_U300 || COMPILE_TEST
-	help
-	  Enable support for ST-Ericsson COH 901 318 DMA.
-
 config CRYPTO_DEV_FSL_CAAM_DMA
 	tristate "CAAM DMA engine support"
 	depends on CRYPTO_DEV_FSL_CAAM_JR
@@ -499,7 +492,7 @@ config MV_XOR_V2
 	  platforms.
 
 config MXS_DMA
-	bool "MXS DMA support"
+	tristate "MXS DMA support"
 	depends on ARCH_MXS || ARCH_MXC || COMPILE_TEST
 	select STMP_DEVICE
 	select DMA_ENGINE
@@ -770,14 +763,6 @@ config XILINX_ZYNQMP_DPDMA
 	  if you have a Xilinx ZynqMP SoC with a DisplayPort subsystem. The
 	  driver provides the dmaengine required by the DisplayPort subsystem
 	  display driver.
-
-config ZX_DMA
-	tristate "ZTE ZX DMA support"
-	depends on ARCH_ZX || COMPILE_TEST
-	select DMA_ENGINE
-	select DMA_VIRTUAL_CHANNELS
-	help
-	  Support the DMA engine for ZTE ZX family platform devices.
 
 # driver files
 source "drivers/dma/bestcomm/Kconfig"

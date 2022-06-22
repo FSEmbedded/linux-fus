@@ -397,8 +397,8 @@
 			#interrupt-cells = <2>;
 		};
 
-		ifc: ifc@2240000 {
-			compatible = "fsl,ifc", "simple-bus";
+		ifc: memory-controller@2240000 {
+			compatible = "fsl,ifc";
 			reg = <0x0 0x2240000 0x0 0x20000>;
 			interrupts = <0 21 IRQ_TYPE_LEVEL_HIGH>;
 			little-endian;
@@ -407,19 +407,14 @@
 			status = "disabled";
 		};
 
-		ftm0: ftm0@2800000 {
-			compatible = "fsl,ftm-alarm";
-			reg = <0x0 0x2800000 0x0 0x10000>;
-			interrupts = <0 44 4>;
-		};
-
 		i2c0: i2c@2000000 {
 			compatible = "fsl,vf610-i2c", "fsl,ls1088a-vf610-i2c";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <0x0 0x2000000 0x0 0x10000>;
 			interrupts = <0 34 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&clockgen 4 7>;
+			clocks = <&clockgen QORIQ_CLK_PLATFORM_PLL
+					    QORIQ_CLK_PLL_DIV(8)>;
 			scl-gpios = <&gpio3 30 0>;
 			status = "disabled";
 		};
@@ -486,7 +481,7 @@
 			status = "disabled";
 		};
 
-		usb0: usb3@3100000 {
+		usb0: usb@3100000 {
 			compatible = "fsl,ls1088a-dwc3", "snps,dwc3";
 			reg = <0x0 0x3100000 0x0 0x10000>;
 			interrupts = <0 80 IRQ_TYPE_LEVEL_HIGH>;
@@ -499,7 +494,7 @@
 			status = "disabled";
 		};
 
-		usb1: usb3@3110000 {
+		usb1: usb@3110000 {
 			compatible = "fsl,ls1088a-dwc3", "snps,dwc3";
 			reg = <0x0 0x3110000 0x0 0x10000>;
 			interrupts = <0 81 IRQ_TYPE_LEVEL_HIGH>;
@@ -589,15 +584,15 @@
 			status = "disabled";
 		};
 
-		pcie_ep1: pcie_ep@3400000 {
-			compatible = "fsl,ls1088a-pcie-ep","fsl,ls-pcie-ep";
-			reg = <0x00 0x03400000 0x0 0x00100000
-			       0x20 0x00000000 0x8 0x00000000>;
+		pcie_ep1: pcie-ep@3400000 {
+			compatible = "fsl,ls1088a-pcie-ep", "fsl,ls-pcie-ep";
+			reg = <0x00 0x03400000 0x0 0x00100000>,
+			      <0x20 0x00000000 0x8 0x00000000>;
 			reg-names = "regs", "addr_space";
 			interrupts = <GIC_SPI 108 IRQ_TYPE_LEVEL_HIGH>; /* PME interrupt */
 			interrupt-names = "pme";
 			num-ib-windows = <24>;
-			num-ob-windows = <128>;
+			num-ob-windows = <256>;
 			max-functions = /bits/ 8 <2>;
 			big-endian;
 			status = "disabled";
@@ -629,15 +624,15 @@
 			status = "disabled";
 		};
 
-		pcie_ep2: pcie_ep@3500000 {
-			compatible = "fsl,ls1088a-pcie-ep","fsl,ls-pcie-ep";
-			reg = <0x00 0x03500000 0x0 0x00100000
-			       0x28 0x00000000 0x8 0x00000000>;
+		pcie_ep2: pcie-ep@3500000 {
+			compatible = "fsl,ls1088a-pcie-ep", "fsl,ls-pcie-ep";
+			reg = <0x00 0x03500000 0x0 0x00100000>,
+			      <0x28 0x00000000 0x8 0x00000000>;
 			reg-names = "regs", "addr_space";
 			interrupts = <GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH>; /* PME interrupt */
 			interrupt-names = "pme";
 			num-ib-windows = <6>;
-			num-ob-windows = <8>;
+			num-ob-windows = <6>;
 			big-endian;
 			status = "disabled";
 		};
@@ -668,15 +663,16 @@
 			status = "disabled";
 		};
 
-		pcie_ep3: pcie_ep@3600000 {
-			compatible = "fsl,ls1088a-pcie-ep","fsl,ls-pcie-ep";
-			reg = <0x00 0x03600000 0x0 0x00100000
-			       0x30 0x00000000 0x8 0x00000000>;
+		pcie_ep3: pcie-ep@3600000 {
+			compatible = "fsl,ls1088a-pcie-ep", "fsl,ls-pcie-ep";
+			reg = <0x00 0x03600000 0x0 0x00100000>,
+			      <0x30 0x00000000 0x8 0x00000000>;
 			reg-names = "regs", "addr_space";
 			interrupts = <GIC_SPI 118 IRQ_TYPE_LEVEL_HIGH>; /* PME interrupt */
 			interrupt-names = "pme";
 			num-ib-windows = <6>;
-			num-ob-windows = <8>;
+			num-ob-windows = <6>;
+			big-endian;
 			status = "disabled";
 		};
 
@@ -800,6 +796,19 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "disabled";
+		};
+
+		pcs_mdio1: mdio@8c07000 {
+			compatible = "fsl,fman-memac-mdio";
+			reg = <0x0 0x8c07000 0x0 0x1000>;
+			little-endian;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+
+			pcs1: ethernet-phy@0 {
+				reg = <0>;
+			};
 		};
 
 		pcs_mdio2: mdio@8c0b000 {

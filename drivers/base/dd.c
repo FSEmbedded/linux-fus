@@ -102,8 +102,7 @@ static void deferred_probe_work_func(struct work_struct *work)
 
 		get_device(dev);
 
-		kfree(dev->p->deferred_probe_reason);
-		dev->p->deferred_probe_reason = NULL;
+		__device_set_deferred_probe_reason(dev, NULL);
 
 		/*
 		 * Drop the mutex while probing each device; the probe path may
@@ -293,6 +292,8 @@ int driver_deferred_probe_check_state(struct device *dev)
 static void deferred_probe_timeout_work_func(struct work_struct *work)
 {
 	struct device_private *p;
+
+	fw_devlink_drivers_done();
 
 	driver_deferred_probe_timeout = 0;
 	driver_deferred_probe_trigger();
@@ -628,6 +629,9 @@ re_probe:
 			drv->remove(dev);
 
 		devres_release_all(dev);
+		arch_teardown_dma_ops(dev);
+		kfree(dev->dma_range_map);
+		dev->dma_range_map = NULL;
 		driver_sysfs_remove(dev);
 		dev->driver = NULL;
 		dev_set_drvdata(dev, NULL);
@@ -1207,6 +1211,8 @@ static void __device_release_driver(struct device *dev, struct device *parent)
 
 		devres_release_all(dev);
 		arch_teardown_dma_ops(dev);
+		kfree(dev->dma_range_map);
+		dev->dma_range_map = NULL;
 		dev->driver = NULL;
 		dev_set_drvdata(dev, NULL);
 		if (dev->pm_domain && dev->pm_domain->dismiss)

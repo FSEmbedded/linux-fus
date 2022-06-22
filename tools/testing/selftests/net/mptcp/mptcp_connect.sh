@@ -202,6 +202,12 @@ ip -net "$ns4" link set ns4eth3 up
 ip -net "$ns4" route add default via 10.0.3.2
 ip -net "$ns4" route add default via dead:beef:3::2
 
+if $checksum; then
+	for i in "$ns1" "$ns2" "$ns3" "$ns4";do
+		ip netns exec $i sysctl -q net.mptcp.checksum_enabled=1
+	done
+fi
+
 set_ethtool_flags() {
 	local ns="$1"
 	local dev="$2"
@@ -551,11 +557,9 @@ do_transfer()
 		fi
 	fi
 
-	if [ $expect_synrx -ne $stat_synrx_now_l ] ;then
-		echo "${listener_ns} SYNRX: ${cl_proto} -> ${srv_proto}: expect ${expect_synrx}, got ${stat_synrx_now_l}"
-	fi
-	if [ $expect_ackrx -ne $stat_ackrx_now_l ] ;then
-		echo "${listener_ns} ACKRX: ${cl_proto} -> ${srv_proto}: expect ${expect_ackrx}, got ${stat_ackrx_now_l} "
+	if [ ${stat_synrx_now_l} -gt ${expect_synrx} ]; then
+		printf " WARN: SYNRX: expect %d, got %d (probably retransmissions)" \
+			"${expect_synrx}" "${stat_synrx_now_l}"
 	fi
 	if [ ${stat_ackrx_now_l} -gt ${expect_ackrx} ]; then
 		printf " WARN: ACKRX: expect %d, got %d (probably retransmissions)" \
@@ -767,13 +771,8 @@ for sender in $ns1 $ns2 $ns3 $ns4;do
 		ip netns exec "$ns2" sysctl -q net.ipv4.tcp_syncookies=1
 	fi
 
-	# ns1<->ns2 is not subject to reordering/tc delays. Use it to test
-	# mptcp syncookie support.
-	if [ $sender = $ns1 ]; then
-		ip netns exec "$ns2" sysctl -q net.ipv4.tcp_syncookies=2
-	else
-		ip netns exec "$ns2" sysctl -q net.ipv4.tcp_syncookies=1
-	fi
+	run_tests "$ns1" $sender 10.0.1.1
+	run_tests "$ns1" $sender dead:beef:1::1
 
 	run_tests "$ns2" $sender 10.0.1.2
 	run_tests "$ns2" $sender dead:beef:1::2

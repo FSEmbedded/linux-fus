@@ -465,7 +465,14 @@ struct bcm54616s_phy_priv {
 
 static int bcm54616s_probe(struct phy_device *phydev)
 {
+	struct bcm54616s_phy_priv *priv;
 	int val;
+
+	priv = devm_kzalloc(&phydev->mdio.dev, sizeof(*priv), GFP_KERNEL);
+	if (!priv)
+		return -ENOMEM;
+
+	phydev->priv = priv;
 
 	val = bcm_phy_read_shadow(phydev, BCM54XX_SHD_MODE);
 	if (val < 0)
@@ -488,7 +495,7 @@ static int bcm54616s_probe(struct phy_device *phydev)
 		 * 1000BASE-X configuration.
 		 */
 		if (!(val & BCM54616S_100FX_MODE))
-			phydev->dev_flags |= PHY_BCM_FLAGS_MODE_1000BX;
+			priv->mode_1000bx_en = true;
 
 		phydev->port = PORT_FIBRE;
 	}
@@ -761,6 +768,7 @@ static struct phy_driver broadcom_drivers[] = {
 	.phy_id_mask	= 0xfffffff0,
 	.name		= "Broadcom BCM54616S",
 	/* PHY_GBIT_FEATURES */
+	.soft_reset     = genphy_soft_reset,
 	.config_init	= bcm54xx_config_init,
 	.config_aneg	= bcm54616s_config_aneg,
 	.config_intr	= bcm_phy_config_intr,

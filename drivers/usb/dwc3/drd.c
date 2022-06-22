@@ -547,19 +547,17 @@ static int dwc3_setup_role_switch(struct dwc3 *dwc)
 	struct usb_role_switch_desc dwc3_role_switch = {NULL};
 	u32 mode;
 
-	ret = device_property_read_string(dwc->dev, "role-switch-default-mode",
-					  &str);
-	if (ret >= 0) {
-		if (!strncmp(str, "host", strlen("host"))) {
-			dwc->role_switch_default_mode = USB_DR_MODE_HOST;
-			mode = DWC3_GCTL_PRTCAP_HOST;
-		} else if (!strncmp(str, "none", strlen("none"))) {
-			dwc->role_switch_default_mode = USB_DR_MODE_UNKNOWN;
-			mode = DWC3_GCTL_PRTCAP_NONE;
-		}
-	} else {
-		dwc->role_switch_default_mode = USB_DR_MODE_PERIPHERAL;
+	dwc->role_switch_default_mode = usb_get_role_switch_default_mode(dwc->dev);
+	switch (dwc->role_switch_default_mode) {
+	case USB_DR_MODE_HOST:
+		mode = DWC3_GCTL_PRTCAP_HOST;
+		break;
+	case USB_DR_MODE_UNKNOWN:
+		mode = DWC3_GCTL_PRTCAP_NONE;
+		break;
+	default:
 		mode = DWC3_GCTL_PRTCAP_DEVICE;
+		break;
 	}
 
 	dwc3_role_switch.fwnode = dev_fwnode(dwc->dev);

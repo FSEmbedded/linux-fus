@@ -361,7 +361,6 @@ void ionic_rx_fill(struct ionic_queue *q)
 	unsigned int len;
 
 	len = netdev->mtu + ETH_HLEN + VLAN_HLEN;
-	nfrags = round_up(len, PAGE_SIZE) / PAGE_SIZE;
 
 	for (i = ionic_q_space_avail(q); i; i--) {
 		nfrags = 0;
@@ -1155,7 +1154,8 @@ static int ionic_tx_descs_needed(struct ionic_queue *q, struct sk_buff *skb)
 	else
 		ndescs = 1;
 
-	if (skb_shinfo(skb)->nr_frags <= sg_elems)
+	/* If non-TSO, just need 1 desc and nr_frags sg elems */
+	if (skb_shinfo(skb)->nr_frags <= q->max_sg_elems)
 		return ndescs;
 
 	/* Too many frags, so linearize */

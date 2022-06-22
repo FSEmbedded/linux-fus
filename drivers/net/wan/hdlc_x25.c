@@ -25,6 +25,8 @@ struct x25_state {
 	x25_hdlc_proto settings;
 	bool up;
 	spinlock_t up_lock; /* Protects "up" */
+	struct sk_buff_head rx_queue;
+	struct tasklet_struct rx_tasklet;
 };
 
 static int x25_ioctl(struct net_device *dev, struct if_settings *ifs);
@@ -229,13 +231,6 @@ static void x25_close(struct net_device *dev)
 	spin_unlock_bh(&x25st->up_lock);
 
 	lapb_unregister(dev);
-}
-
-	spin_lock_bh(&x25st->up_lock);
-	x25st->up = false;
-	spin_unlock_bh(&x25st->up_lock);
-
-	lapb_unregister(dev);
 	tasklet_kill(&x25st->rx_tasklet);
 }
 
@@ -245,10 +240,8 @@ static int x25_rx(struct sk_buff *skb)
 	hdlc_device *hdlc = dev_to_hdlc(dev);
 	struct x25_state *x25st = state(hdlc);
 
-	spin_lock_bh(&x25st->up_lock);
-	if (!x25st->up) {
-		spin_unlock_bh(&x25st->up_lock);
-		kfree_skb(skb);
+	skb = skb_share_check(skb, GFP_ATOMIC);
+	if (!skb) {
 		dev->stats.rx_dropped++;
 		return NET_RX_DROP;
 	}
@@ -352,6 +345,8 @@ static int x25_ioctl(struct net_device *dev, struct if_settings *ifs)
 		memcpy(&state(hdlc)->settings, &new_settings, size);
 		state(hdlc)->up = false;
 		spin_lock_init(&state(hdlc)->up_lock);
+		skb_queue_head_init(&state(hdlc)->rx_queue);
+		tasklet_setup(&state(hdlc)->rx_tasklet, x25_rx_queue_kick);
 
 		/* There's no header_ops so hard_header_len should be 0. */
 		dev->hard_header_len = 0;

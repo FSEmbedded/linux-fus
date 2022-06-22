@@ -743,6 +743,10 @@ patternProperties:
     description: Mitsubishi Electric Corporation
   "^mixel,.*":
     description: Mixel, Inc
+  "^mntre,.*":
+    description: MNT Research GmbH
+  "^modtronix,.*":
+    description: Modtronix Engineering
   "^mosaixtech,.*":
     description: Mosaix Technologies, Inc.
   "^motorola,.*":

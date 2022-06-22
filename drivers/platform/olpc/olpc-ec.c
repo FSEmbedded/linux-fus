@@ -436,7 +436,7 @@ static int olpc_ec_probe(struct platform_device *pdev)
 	regulator = devm_regulator_register(&pdev->dev, &dcon_desc, &config);
 	if (IS_ERR(regulator)) {
 		dev_err(&pdev->dev, "failed to register DCON regulator\n");
-		err = PTR_ERR(ec->dcon_rdev);
+		err = PTR_ERR(regulator);
 		goto error;
 	}
 

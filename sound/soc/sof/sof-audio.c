@@ -499,11 +499,19 @@ int sof_machine_check(struct snd_sof_dev *sdev)
 
 	if (!IS_ENABLED(CONFIG_SND_SOC_SOF_FORCE_NOCODEC_MODE)) {
 
-	/* find machine */
-	snd_sof_machine_select(sdev);
-	if (sof_pdata->machine || sof_pdata->machine_drv_name) {
-		snd_sof_set_mach_params(sof_pdata->machine, sdev->dev);
-		return 0;
+		/* find machine */
+		snd_sof_machine_select(sdev);
+		if (sof_pdata->machine || sof_pdata->machine_drv_name) {
+			snd_sof_set_mach_params(sof_pdata->machine, sdev);
+			return 0;
+		}
+
+		if (!IS_ENABLED(CONFIG_SND_SOC_SOF_NOCODEC)) {
+			dev_err(sdev->dev, "error: no matching ASoC machine driver found - aborting probe\n");
+			return -ENODEV;
+		}
+	} else {
+		dev_warn(sdev->dev, "Force to use nocodec mode\n");
 	}
 
 	/* select nocodec mode */

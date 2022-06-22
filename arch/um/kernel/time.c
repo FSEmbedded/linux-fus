@@ -270,6 +270,7 @@ static void __time_travel_add_event(struct time_travel_event *e,
 {
 	struct time_travel_event *tmp;
 	bool inserted = false;
+	unsigned long flags;
 
 	if (e->pending)
 		return;

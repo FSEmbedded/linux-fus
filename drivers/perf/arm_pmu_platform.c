@@ -102,7 +102,7 @@ static int pmu_parse_irqs(struct arm_pmu *pmu)
 
 	num_irqs = platform_irq_count(pdev);
 	if (num_irqs < 0)
-		return dev_err_probe(&pdev->dev, num_irqs, "unable to count PMU IRQs\n");
+		return dev_err_probe(dev, num_irqs, "unable to count PMU IRQs\n");
 
 	/*
 	 * In this case we have no idea which CPUs are covered by the PMU.
@@ -230,8 +230,10 @@ int arm_pmu_device_probe(struct platform_device *pdev,
 		goto out_free_irqs;
 
 	ret = armpmu_register(pmu);
-	if (ret)
+	if (ret) {
+		dev_err(dev, "failed to register PMU devices!\n");
 		goto out_free_irqs;
+	}
 
 	return 0;
 

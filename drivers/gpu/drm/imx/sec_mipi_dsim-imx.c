@@ -1,7 +1,7 @@
 /*
  * Samsung MIPI DSI Host Controller on IMX
  *
- * Copyright 2018-2020 NXP
+ * Copyright 2018-2022 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -53,6 +53,8 @@ struct imx_sec_dsim_device {
 	struct reset_control *mipi_reset;
 
 	atomic_t rpm_suspended;
+
+	bool enabled;
 };
 
 #define enc_to_dsim(enc) container_of(enc, struct imx_sec_dsim_device, encoder)
@@ -86,33 +88,92 @@ static int sec_dsim_rstc_reset(struct reset_control *rstc, bool assert)
 	return ret;
 }
 
-static void imx_sec_dsim_encoder_helper_enable(struct drm_encoder *encoder)
+static struct drm_crtc *
+imx_sec_dsim_encoder_get_new_crtc(struct drm_encoder *encoder,
+				  struct drm_atomic_state *state)
+{
+	struct drm_connector *connector;
+	struct drm_connector_state *conn_state;
+
+	connector = drm_atomic_get_new_connector_for_encoder(state, encoder);
+	if (!connector)
+		return NULL;
+
+	conn_state = drm_atomic_get_new_connector_state(state, connector);
+	if (!conn_state)
+		return NULL;
+
+	return conn_state->crtc;
+}
+
+static void
+imx_sec_dsim_encoder_atomic_enable(struct drm_encoder *encoder,
+				   struct drm_atomic_state *state)
 {
 	int ret;
 	struct imx_sec_dsim_device *dsim_dev = enc_to_dsim(encoder);
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *old_crtc_state;
+
+	crtc = imx_sec_dsim_encoder_get_new_crtc(encoder, state);
+	if (!crtc) {
+		dev_err(dsim_dev->dev, "encoder is enabling without CRTC\n");
+		return;
+	}
+
+	old_crtc_state = drm_atomic_get_old_crtc_state(state, crtc);
+	/* Coming back from self refresh, nothing to do. */
+	if (old_crtc_state && old_crtc_state->self_refresh_active &&
+	    dsim_dev->enabled)
+		return;
+
+	if (dsim_dev->enabled)
+		return;
 
 	pm_runtime_get_sync(dsim_dev->dev);
 
 	ret = sec_dsim_rstc_reset(dsim_dev->mipi_reset, false);
 	if (ret)
 		dev_err(dsim_dev->dev, "deassert mipi_reset failed\n");
+
+	dsim_dev->enabled = true;
 }
 
-static void imx_sec_dsim_encoder_helper_disable(struct drm_encoder *encoder)
+static void
+imx_sec_dsim_encoder_atomic_disable(struct drm_encoder *encoder,
+				    struct drm_atomic_state *state)
 {
 	int ret;
 	struct imx_sec_dsim_device *dsim_dev = enc_to_dsim(encoder);
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *new_crtc_state;
+
+	crtc = imx_sec_dsim_encoder_get_new_crtc(encoder, state);
+	/* No CRTC means we're doing a full shutdown. */
+	if (!crtc)
+		goto disable;
+
+	new_crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
+	/* Don't do disablement operation if we're entering PSR. */
+	if (!new_crtc_state || new_crtc_state->self_refresh_active)
+		return;
+
+disable:
+	if (!dsim_dev->enabled)
+		return;
 
 	ret = sec_dsim_rstc_reset(dsim_dev->mipi_reset, true);
 	if (ret)
 		dev_err(dsim_dev->dev, "deassert mipi_reset failed\n");
 
 	pm_runtime_put_sync(dsim_dev->dev);
+
+	dsim_dev->enabled = false;
 }
 
-static int imx_sec_dsim_encoder_helper_atomic_check(struct drm_encoder *encoder,
-						    struct drm_crtc_state *crtc_state,
-						    struct drm_connector_state *conn_state)
+static int imx_sec_dsim_encoder_atomic_check(struct drm_encoder *encoder,
+					     struct drm_crtc_state *crtc_state,
+					     struct drm_connector_state *conn_state)
 {
 	int ret;
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
@@ -142,9 +203,9 @@ static int imx_sec_dsim_encoder_helper_atomic_check(struct drm_encoder *encoder,
 }
 
 static const struct drm_encoder_helper_funcs imx_sec_dsim_encoder_helper_funcs = {
-	.enable  = imx_sec_dsim_encoder_helper_enable,
-	.disable = imx_sec_dsim_encoder_helper_disable,
-	.atomic_check = imx_sec_dsim_encoder_helper_atomic_check,
+	.atomic_enable = imx_sec_dsim_encoder_atomic_enable,
+	.atomic_disable = imx_sec_dsim_encoder_atomic_disable,
+	.atomic_check = imx_sec_dsim_encoder_atomic_check,
 };
 
 static int sec_dsim_determine_pll_ref_rate(u32 *rate, u32 min, u32 max)

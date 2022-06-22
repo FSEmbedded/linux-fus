@@ -95,14 +95,9 @@ static void __net_exit frame_nat_net_pre_exit(struct net *net)
 	ebt_unregister_table_pre_exit(net, "nat");
 }
 
-static void __net_exit frame_nat_net_pre_exit(struct net *net)
-{
-	ebt_unregister_table_pre_exit(net, "nat", ebt_ops_nat);
-}
-
 static void __net_exit frame_nat_net_exit(struct net *net)
 {
-	ebt_unregister_table(net, net->xt.frame_nat);
+	ebt_unregister_table(net, "nat");
 }
 
 static struct pernet_operations frame_nat_net_ops = {

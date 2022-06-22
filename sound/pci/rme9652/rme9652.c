@@ -1718,17 +1718,6 @@ static void snd_rme9652_card_free(struct snd_card *card)
 
 	if (rme9652->irq >= 0)
 		rme9652_stop(rme9652);
-	snd_rme9652_free_buffers(rme9652);
-
-	if (rme9652->irq >= 0)
-		free_irq(rme9652->irq, (void *)rme9652);
-	iounmap(rme9652->iobase);
-	if (rme9652->port)
-		pci_release_regions(rme9652->pci);
-
-	if (pci_is_enabled(rme9652->pci))
-		pci_disable_device(rme9652->pci);
-	return 0;
 }
 
 static int snd_rme9652_initialize_memory(struct snd_rme9652 *rme9652)

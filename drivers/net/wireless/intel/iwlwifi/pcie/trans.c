@@ -1273,8 +1273,7 @@ static int iwl_trans_pcie_start_fw(struct iwl_trans *trans,
 	/* This may fail if AMT took ownership of the device */
 	if (iwl_pcie_prepare_card_hw(trans)) {
 		IWL_WARN(trans, "Exit HW not ready\n");
-		ret = -EIO;
-		goto out;
+		return -EIO;
 	}
 
 	iwl_enable_rfkill_int(trans);
@@ -2012,7 +2011,7 @@ bool __iwl_trans_pcie_grab_nic_access(struct iwl_trans *trans)
 		   CSR_GP_CNTRL_REG_FLAG_GOING_TO_SLEEP;
 	u32 poll = CSR_GP_CNTRL_REG_VAL_MAC_ACCESS_EN;
 
-	spin_lock_bh(&trans_pcie->reg_lock);
+	spin_lock(&trans_pcie->reg_lock);
 
 	if (trans_pcie->cmd_hold_nic_awake)
 		goto out;
@@ -2099,7 +2098,7 @@ bool __iwl_trans_pcie_grab_nic_access(struct iwl_trans *trans)
 		}
 
 err:
-		spin_unlock_bh(&trans_pcie->reg_lock);
+		spin_unlock(&trans_pcie->reg_lock);
 		return false;
 	}
 
@@ -2178,7 +2177,7 @@ static int iwl_trans_pcie_read_mem(struct iwl_trans *trans, u32 addr,
 					break;
 				}
 			}
-			iwl_trans_release_nic_access(trans, &flags);
+			iwl_trans_release_nic_access(trans);
 
 			if (resched)
 				cond_resched();

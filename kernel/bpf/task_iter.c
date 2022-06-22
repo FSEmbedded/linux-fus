@@ -149,26 +149,16 @@ task_file_seq_get_next(struct bpf_iter_seq_task_file_info *info)
 again:
 	if (info->task) {
 		curr_task = info->task;
-		curr_files = info->files;
 		curr_fd = info->fd;
 	} else {
-		curr_task = task_seq_get_next(ns, &curr_tid, true);
-		if (!curr_task) {
-			info->task = NULL;
-			info->files = NULL;
-			info->tid = curr_tid;
-			return NULL;
-		}
+                curr_task = task_seq_get_next(ns, &curr_tid, true);
+                if (!curr_task) {
+                        info->task = NULL;
+                        info->tid = curr_tid;
+                        return NULL;
+                }
 
-		curr_files = get_files_struct(curr_task);
-		if (!curr_files) {
-			put_task_struct(curr_task);
-			curr_tid = curr_tid + 1;
-			info->fd = 0;
-			goto again;
-		}
-
-		info->files = curr_files;
+                /* set info->task and info->tid */
 		info->task = curr_task;
 		if (curr_tid == info->tid) {
 			curr_fd = info->fd;
@@ -197,7 +187,6 @@ again:
 	rcu_read_unlock();
 	put_task_struct(curr_task);
 	info->task = NULL;
-	info->files = NULL;
 	info->fd = 0;
 	curr_tid = ++(info->tid);
 	goto again;
@@ -209,7 +198,6 @@ static void *task_file_seq_start(struct seq_file *seq, loff_t *pos)
 	struct file *file;
 
 	info->task = NULL;
-	info->files = NULL;
 	file = task_file_seq_get_next(info);
 	if (file && *pos == 0)
 		++*pos;

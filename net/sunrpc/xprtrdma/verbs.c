@@ -438,6 +438,7 @@ static int rpcrdma_ep_create(struct rpcrdma_xprt *r_xprt)
 					      IB_POLL_WORKQUEUE);
 	if (IS_ERR(ep->re_attr.send_cq)) {
 		rc = PTR_ERR(ep->re_attr.send_cq);
+		ep->re_attr.send_cq = NULL;
 		goto out_destroy;
 	}
 
@@ -446,6 +447,7 @@ static int rpcrdma_ep_create(struct rpcrdma_xprt *r_xprt)
 					      IB_POLL_WORKQUEUE);
 	if (IS_ERR(ep->re_attr.recv_cq)) {
 		rc = PTR_ERR(ep->re_attr.recv_cq);
+		ep->re_attr.recv_cq = NULL;
 		goto out_destroy;
 	}
 	ep->re_receive_count = 0;
@@ -484,6 +486,7 @@ static int rpcrdma_ep_create(struct rpcrdma_xprt *r_xprt)
 	ep->re_pd = ib_alloc_pd(device, 0);
 	if (IS_ERR(ep->re_pd)) {
 		rc = PTR_ERR(ep->re_pd);
+		ep->re_pd = NULL;
 		goto out_destroy;
 	}
 
@@ -1198,20 +1201,6 @@ rpcrdma_mr_get(struct rpcrdma_xprt *r_xprt)
 	mr = rpcrdma_mr_pop(&buf->rb_mrs);
 	spin_unlock(&buf->rb_lock);
 	return mr;
-}
-
-/**
- * rpcrdma_reply_put - Put reply buffers back into pool
- * @buffers: buffer pool
- * @req: object to return
- *
- */
-void rpcrdma_reply_put(struct rpcrdma_buffer *buffers, struct rpcrdma_req *req)
-{
-	if (req->rl_reply) {
-		rpcrdma_rep_put(buffers, req->rl_reply);
-		req->rl_reply = NULL;
-	}
 }
 
 /**

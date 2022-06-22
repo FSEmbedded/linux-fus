@@ -93,23 +93,6 @@ static void memtrace_clear_range(unsigned long start_pfn,
 {
 	unsigned long pfn;
 
-	/*
-	 * As pages are offline, we cannot trust the memmap anymore. As HIGHMEM
-	 * does not apply, avoid passing around "struct page" and use
-	 * clear_page() instead directly.
-	 */
-	for (pfn = start_pfn; pfn < start_pfn + nr_pages; pfn++) {
-		if (IS_ALIGNED(pfn, PAGES_PER_SECTION))
-			cond_resched();
-		clear_page(__va(PFN_PHYS(pfn)));
-	}
-}
-
-/* called with device_hotplug_lock held */
-static bool memtrace_offline_pages(u32 nid, u64 start_pfn, u64 nr_pages)
-{
-	unsigned long pfn;
-
 	/* As HIGHMEM does not apply, use clear_page() directly. */
 	for (pfn = start_pfn; pfn < start_pfn + nr_pages; pfn++) {
 		if (IS_ALIGNED(pfn, PAGES_PER_SECTION))
@@ -141,36 +124,12 @@ static u64 memtrace_alloc_node(u32 nid, u64 size)
 		return 0;
 	start_pfn = page_to_pfn(page);
 
-	start_pfn = node_start_pfn(nid);
-	end_pfn = node_end_pfn(nid);
-	nr_pages = size >> PAGE_SHIFT;
-
-	/* Trace memory needs to be aligned to the size */
-	end_pfn = round_down(end_pfn - nr_pages, nr_pages);
-
-	lock_device_hotplug();
-	for (base_pfn = end_pfn; base_pfn > start_pfn; base_pfn -= nr_pages) {
-		if (memtrace_offline_pages(nid, base_pfn, nr_pages) == true) {
-			/*
-			 * Clear the range while we still have a linear
-			 * mapping.
-			 */
-			memtrace_clear_range(base_pfn, nr_pages);
-			/*
-			 * Remove memory in memory block size chunks so that
-			 * iomem resources are always split to the same size and
-			 * we never try to remove memory that spans two iomem
-			 * resources.
-			 */
-			end_pfn = base_pfn + nr_pages;
-			for (pfn = base_pfn; pfn < end_pfn; pfn += bytes>> PAGE_SHIFT) {
-				__remove_memory(nid, pfn << PAGE_SHIFT, bytes);
-			}
-			unlock_device_hotplug();
-			return base_pfn << PAGE_SHIFT;
-		}
-	}
-	unlock_device_hotplug();
+	/*
+	 * Clear the range while we still have a linear mapping.
+	 *
+	 * TODO: use __GFP_ZERO with alloc_contig_pages() once supported.
+	 */
+	memtrace_clear_range(start_pfn, nr_pages);
 
 	/*
 	 * Set pages PageOffline(), to indicate that nobody (e.g., hibernation,
@@ -335,16 +294,9 @@ static int memtrace_enable_set(void *data, u64 val)
 
 	mutex_lock(&memtrace_mutex);
 
-	/* Re-add/online previously removed/offlined memory */
-	if (memtrace_size) {
-		if (memtrace_online())
-			goto out_unlock;
-	}
-
-	if (!val) {
-		rc = 0;
+	/* Free all previously allocated memory. */
+	if (memtrace_size && memtrace_free_regions())
 		goto out_unlock;
-	}
 
 	if (!val) {
 		rc = 0;

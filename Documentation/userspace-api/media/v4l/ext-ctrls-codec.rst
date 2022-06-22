@@ -3084,6 +3084,10 @@ enum v4l2_mpeg_video_hevc_size_of_length_field -
       - 0x00000200
       -
 
+.. raw:: latex
+
+    \normalsize
+
 .. c:type:: v4l2_hevc_dpb_entry
 
 .. raw:: latex

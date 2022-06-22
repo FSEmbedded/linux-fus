@@ -174,12 +174,6 @@ struct static_call_tramp_key {
 	s32 key;
 };
 
-/* For finding the key associated with a trampoline */
-struct static_call_tramp_key {
-	s32 tramp;
-	s32 key;
-};
-
 extern void __static_call_update(struct static_call_key *key, void *tramp, void *func);
 extern int static_call_mod_init(struct module *mod);
 extern int static_call_text_reserved(void *start, void *end);
@@ -236,6 +230,7 @@ static inline int static_call_init(void) { return 0; }
 		.func = NULL,						\
 	};								\
 	ARCH_DEFINE_STATIC_CALL_NULL_TRAMP(name)
+
 
 #define static_call_cond(name)	(void)__static_call(name)
 

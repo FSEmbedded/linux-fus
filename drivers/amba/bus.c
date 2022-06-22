@@ -223,11 +223,10 @@ static void amba_remove(struct device *dev)
 {
 	struct amba_device *pcdev = to_amba_device(dev);
 	struct amba_driver *drv = to_amba_driver(dev->driver);
-	int ret = 0;
 
 	pm_runtime_get_sync(dev);
 	if (drv->remove)
-		ret = drv->remove(pcdev);
+		drv->remove(pcdev);
 	pm_runtime_put_noidle(dev);
 
 	/* Undo the runtime PM settings in amba_probe() */
@@ -274,10 +273,20 @@ static int amba_pm_runtime_suspend(struct device *dev)
 
 static int amba_pm_runtime_resume(struct device *dev)
 {
-	struct amba_driver *drv = to_amba_driver(dev->driver);
+	struct amba_device *pcdev = to_amba_device(dev);
+	int ret;
 
-	if (drv->shutdown)
-		drv->shutdown(to_amba_device(dev));
+	if (dev->driver) {
+		if (pm_runtime_is_irq_safe(dev))
+			ret = clk_enable(pcdev->pclk);
+		else
+			ret = clk_prepare_enable(pcdev->pclk);
+		/* Failure is probably fatal to the system, but... */
+		if (ret)
+			return ret;
+	}
+
+	return pm_generic_runtime_resume(dev);
 }
 #endif /* CONFIG_PM */
 
@@ -335,9 +344,6 @@ int amba_driver_register(struct amba_driver *drv)
 		return -EINVAL;
 
 	drv->drv.bus = &amba_bustype;
-	drv->drv.probe = amba_probe;
-	drv->drv.remove = amba_remove;
-	drv->drv.shutdown = amba_shutdown;
 
 	return driver_register(&drv->drv);
 }

@@ -488,7 +488,7 @@ irqentry_state_t noinstr irqentry_nmi_enter(struct pt_regs *regs);
  * @regs:	Pointer to pt_regs (NMI entry regs)
  * @irq_state:	Return value from matching call to irqentry_nmi_enter()
  *
- * Last action before returning to the low level assmenbly code.
+ * Last action before returning to the low level assembly code.
  *
  * Counterpart to irqentry_nmi_enter().
  */

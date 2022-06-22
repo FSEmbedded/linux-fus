@@ -96,9 +96,10 @@ struct irq_info {
 	struct list_head list;
 	struct list_head eoi_list;
 	short refcnt;
-	short spurious_cnt;
-	short type;             /* type */
-	u8 mask_reason;         /* Why is event channel masked */
+	u8 spurious_cnt;
+	u8 is_accounted;
+	short type;		/* type: IRQT_* */
+	u8 mask_reason;		/* Why is event channel masked */
 #define EVT_MASK_REASON_EXPLICIT	0x01
 #define EVT_MASK_REASON_TEMPORARY	0x02
 #define EVT_MASK_REASON_EOI_PENDING	0x04
@@ -821,6 +822,7 @@ static void xen_evtchn_close(evtchn_port_t port)
 		BUG();
 }
 
+/* Not called for lateeoi events. */
 static void event_handler_exit(struct irq_info *info)
 {
 	smp_store_release(&info->is_active, 0);
@@ -853,17 +855,7 @@ static void eoi_pirq(struct irq_data *data)
 	if (!VALID_EVTCHN(evtchn))
 		return;
 
-	if (unlikely(irqd_is_setaffinity_pending(data)) &&
-	    likely(!irqd_irq_disabled(data))) {
-		do_mask(info, EVT_MASK_REASON_TEMPORARY);
-
-		event_handler_exit(info);
-
-		irq_move_masked_irq(data);
-
-		do_unmask(info, EVT_MASK_REASON_TEMPORARY);
-	} else
-		event_handler_exit(info);
+	event_handler_exit(info);
 
 	if (pirq_needs_eoi(data->irq)) {
 		rc = HYPERVISOR_physdev_op(PHYSDEVOP_eoi, &eoi);
@@ -1258,6 +1250,12 @@ int bind_evtchn_to_irq(evtchn_port_t evtchn)
 	return bind_evtchn_to_irq_chip(evtchn, &xen_dynamic_chip, NULL);
 }
 EXPORT_SYMBOL_GPL(bind_evtchn_to_irq);
+
+int bind_evtchn_to_irq_lateeoi(evtchn_port_t evtchn)
+{
+	return bind_evtchn_to_irq_chip(evtchn, &xen_lateeoi_chip, NULL);
+}
+EXPORT_SYMBOL_GPL(bind_evtchn_to_irq_lateeoi);
 
 static int bind_ipi_to_irq(unsigned int ipi, unsigned int cpu)
 {
@@ -1697,6 +1695,10 @@ void handle_irq_for_port(evtchn_port_t port, struct evtchn_loop_ctrl *ctrl)
 	if (xchg_acquire(&info->is_active, 1))
 		return;
 
+	dev = (info->type == IRQT_EVTCHN) ? info->u.interdomain : NULL;
+	if (dev)
+		atomic_inc(&dev->events);
+
 	if (ctrl->defer_eoi) {
 		info->eoi_cpu = smp_processor_id();
 		info->irq_epoch = __this_cpu_read(irq_epoch);
@@ -1849,8 +1851,8 @@ static unsigned int select_target_cpu(const struct cpumask *dest)
 static int set_affinity_irq(struct irq_data *data, const struct cpumask *dest,
 			    bool force)
 {
-	unsigned tcpu = cpumask_first_and(dest, cpu_online_mask);
-	int ret = xen_rebind_evtchn_to_cpu(info_for_irq(data->irq), tcpu);
+	unsigned int tcpu = select_target_cpu(dest);
+	int ret;
 
 	ret = xen_rebind_evtchn_to_cpu(info_for_irq(data->irq), tcpu);
 	if (!ret)
@@ -1882,59 +1884,32 @@ static void ack_dynirq(struct irq_data *data)
 	struct irq_info *info = info_for_irq(data->irq);
 	evtchn_port_t evtchn = info ? info->evtchn : 0;
 
-	if (!VALID_EVTCHN(evtchn))
-		return;
-
-	if (unlikely(irqd_is_setaffinity_pending(data)) &&
-	    likely(!irqd_irq_disabled(data))) {
-		do_mask(info, EVT_MASK_REASON_TEMPORARY);
-
+	if (VALID_EVTCHN(evtchn))
 		event_handler_exit(info);
+}
+
+static void mask_ack_dynirq(struct irq_data *data)
+{
+	disable_dynirq(data);
+	ack_dynirq(data);
+}
 
 static void lateeoi_ack_dynirq(struct irq_data *data)
 {
 	struct irq_info *info = info_for_irq(data->irq);
 	evtchn_port_t evtchn = info ? info->evtchn : 0;
 
-		do_unmask(info, EVT_MASK_REASON_TEMPORARY);
-	} else
-		event_handler_exit(info);
-}
-
-static void lateeoi_mask_ack_dynirq(struct irq_data *data)
-{
-	struct irq_info *info = info_for_irq(data->irq);
-	evtchn_port_t evtchn = info ? info->evtchn : 0;
-
 	if (VALID_EVTCHN(evtchn)) {
-		do_mask(info, EVT_MASK_REASON_EXPLICIT);
-		event_handler_exit(info);
+		do_mask(info, EVT_MASK_REASON_EOI_PENDING);
+		/*
+		 * Don't call event_handler_exit().
+		 * Need to keep is_active non-zero in order to ignore re-raised
+		 * events after cpu affinity changes while a lateeoi is pending.
+		 */
+		clear_evtchn(evtchn);
 	}
 }
 
-static void lateeoi_ack_dynirq(struct irq_data *data)
-{
-	struct irq_info *info = info_for_irq(data->irq);
-	evtchn_port_t evtchn = info ? info->evtchn : 0;
-
-	if (!VALID_EVTCHN(evtchn))
-		return;
-
-	do_mask(info, EVT_MASK_REASON_EOI_PENDING);
-
-	if (unlikely(irqd_is_setaffinity_pending(data)) &&
-	    likely(!irqd_irq_disabled(data))) {
-		do_mask(info, EVT_MASK_REASON_TEMPORARY);
-
-		clear_evtchn(evtchn);
-
-		irq_move_masked_irq(data);
-
-		do_unmask(info, EVT_MASK_REASON_TEMPORARY);
-	} else
-		clear_evtchn(evtchn);
-}
-
 static void lateeoi_mask_ack_dynirq(struct irq_data *data)
 {
 	struct irq_info *info = info_for_irq(data->irq);
@@ -1942,7 +1917,7 @@ static void lateeoi_mask_ack_dynirq(struct irq_data *data)
 
 	if (VALID_EVTCHN(evtchn)) {
 		do_mask(info, EVT_MASK_REASON_EXPLICIT);
-		ack_dynirq(data);
+		event_handler_exit(info);
 	}
 }
 

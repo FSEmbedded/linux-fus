@@ -446,7 +446,7 @@ static struct bio *bio_copy_kern(struct request_queue *q, void *data,
 		if (bytes > len)
 			bytes = len;
 
-		page = alloc_page(GFP_NOIO | gfp_mask);
+		page = alloc_page(GFP_NOIO | __GFP_ZERO | gfp_mask);
 		if (!page)
 			goto cleanup;
 
@@ -642,10 +642,11 @@ int blk_rq_map_kern(struct request_queue *q, struct request *rq, void *kbuf,
 		return -EINVAL;
 
 #ifdef CONFIG_AHCI_IMX
-	if ((kbuf != sg_io_buffer_hack) && (!blk_rq_aligned(q, addr, len)
-			|| object_is_on_stack(kbuf)))
+	if ((kbuf != sg_io_buffer_hack) && (!blk_rq_aligned(q, addr, len) ||
+	    object_is_on_stack(kbuf) || blk_queue_may_bounce(q)))
 #else
-	if (!blk_rq_aligned(q, addr, len) || object_is_on_stack(kbuf))
+	if (!blk_rq_aligned(q, addr, len) || object_is_on_stack(kbuf) ||
+	    blk_queue_may_bounce(q))
 #endif
 		bio = bio_copy_kern(q, kbuf, len, gfp_mask, reading);
 	else

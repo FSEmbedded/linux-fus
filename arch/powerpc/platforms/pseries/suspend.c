@@ -48,21 +48,6 @@ static int pseries_suspend_begin(u64 stream_id)
 }
 
 /**
- * pseries_suspend_enable_irqs
- *
- * Post suspend configuration updates
- *
- **/
-static void pseries_suspend_enable_irqs(void)
-{
-	/*
-	 * Update configuration which can be modified based on device tree
-	 * changes during resume.
-	 */
-	post_mobility_fixup();
-}
-
-/**
  * pseries_suspend_enter - Final phase of hibernation
  *
  * Return value:
@@ -147,7 +132,6 @@ static struct bus_type suspend_subsys = {
 
 static const struct platform_suspend_ops pseries_suspend_ops = {
 	.valid		= suspend_valid_only_mem,
-	.prepare_late	= pseries_prepare_late,
 	.enter		= pseries_suspend_enter,
 };
 

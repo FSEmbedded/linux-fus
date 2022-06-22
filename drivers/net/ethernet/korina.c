@@ -437,13 +437,8 @@ static int korina_send_packet(struct sk_buff *skb, struct net_device *dev)
 
 		if (lp->tx_count == (KORINA_NUM_TDS - 2))
 			netif_stop_queue(dev);
-		else {
-			dev->stats.tx_dropped++;
-			dev_kfree_skb_any(skb);
-			spin_unlock_irqrestore(&lp->lock, flags);
-
-			return NETDEV_TX_OK;
-		}
+		else
+			goto drop_packet;
 	}
 
 	lp->tx_count++;

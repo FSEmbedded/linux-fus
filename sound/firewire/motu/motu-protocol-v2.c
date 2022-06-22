@@ -92,25 +92,36 @@ static int get_clock_source(struct snd_motu *motu, u32 data,
 	case V2_CLOCK_SRC_INTERNAL:
 		*src = SND_MOTU_CLOCK_SOURCE_INTERNAL;
 		break;
-	case 1:
+	case V2_CLOCK_SRC_ADAT_ON_OPT:
 		*src = SND_MOTU_CLOCK_SOURCE_ADAT_ON_OPT;
 		break;
-	case 2:
+	case V2_CLOCK_SRC_SPDIF:
 	{
-		__be32 reg;
+		bool support_iec60958_on_opt = (motu->spec == &snd_motu_spec_828mk2 ||
+						motu->spec == &snd_motu_spec_traveler);
 
-		// To check the configuration of optical interface.
-		int err = snd_motu_transaction_read(motu, V2_IN_OUT_CONF_OFFSET, &reg, sizeof(reg));
-		if (err < 0)
-			return err;
-
-		if (((data & V2_OPT_IN_IFACE_MASK) >> V2_OPT_IN_IFACE_SHIFT) == V2_OPT_IFACE_MODE_SPDIF)
-			*src = SND_MOTU_CLOCK_SOURCE_SPDIF_ON_OPT;
-		else
+		if (motu->spec == &snd_motu_spec_896hd) {
+			*src = SND_MOTU_CLOCK_SOURCE_AESEBU_ON_XLR;
+		} else if (!support_iec60958_on_opt) {
 			*src = SND_MOTU_CLOCK_SOURCE_SPDIF_ON_COAX;
+		} else {
+			__be32 reg;
+
+			// To check the configuration of optical interface.
+			int err = snd_motu_transaction_read(motu, V2_IN_OUT_CONF_OFFSET, &reg,
+							    sizeof(reg));
+			if (err < 0)
+				return err;
+
+			if (((data & V2_OPT_IN_IFACE_MASK) >> V2_OPT_IN_IFACE_SHIFT) ==
+			    V2_OPT_IFACE_MODE_SPDIF)
+				*src = SND_MOTU_CLOCK_SOURCE_SPDIF_ON_OPT;
+			else
+				*src = SND_MOTU_CLOCK_SOURCE_SPDIF_ON_COAX;
+		}
 		break;
 	}
-	case 3:
+	case V2_CLOCK_SRC_SPH:
 		*src = SND_MOTU_CLOCK_SOURCE_SPH;
 		break;
 	case V2_CLOCK_SRC_WORD_ON_BNC:

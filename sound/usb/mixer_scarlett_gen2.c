@@ -485,51 +485,13 @@ static const struct scarlett2_device_info s18i8_gen2_info = {
 		"Headphones 2 R",
 	},
 
-	.ports = {
-		[SCARLETT2_PORT_TYPE_NONE] = {
-			.id = 0x000,
-			.num = { 1, 0, 8, 8, 4 },
-			.src_descr = "Off",
-			.src_num_offset = 0,
-		},
-		[SCARLETT2_PORT_TYPE_ANALOGUE] = {
-			.id = 0x080,
-			.num = { 8, 6, 6, 6, 6 },
-			.src_descr = "Analogue %d",
-			.src_num_offset = 1,
-			.dst_descr = "Analogue Output %02d Playback"
-		},
-		[SCARLETT2_PORT_TYPE_SPDIF] = {
-			.id = 0x180,
-			/* S/PDIF outputs aren't available at 192kHz
-			 * but are included in the USB mux I/O
-			 * assignment message anyway
-			 */
-			.num = { 2, 2, 2, 2, 2 },
-			.src_descr = "S/PDIF %d",
-			.src_num_offset = 1,
-			.dst_descr = "S/PDIF Output %d Playback"
-		},
-		[SCARLETT2_PORT_TYPE_ADAT] = {
-			.id = 0x200,
-			.num = { 8, 0, 0, 0, 0 },
-			.src_descr = "ADAT %d",
-			.src_num_offset = 1,
-		},
-		[SCARLETT2_PORT_TYPE_MIX] = {
-			.id = 0x300,
-			.num = { 10, 18, 18, 18, 18 },
-			.src_descr = "Mix %c",
-			.src_num_offset = 65,
-			.dst_descr = "Mixer Input %02d Capture"
-		},
-		[SCARLETT2_PORT_TYPE_PCM] = {
-			.id = 0x600,
-			.num = { 8, 18, 18, 14, 10 },
-			.src_descr = "PCM %d",
-			.src_num_offset = 1,
-			.dst_descr = "PCM %02d Capture"
-		},
+	.port_count = {
+		[SCARLETT2_PORT_TYPE_NONE]     = {  1,  0 },
+		[SCARLETT2_PORT_TYPE_ANALOGUE] = {  8,  6 },
+		[SCARLETT2_PORT_TYPE_SPDIF]    = {  2,  2 },
+		[SCARLETT2_PORT_TYPE_ADAT]     = {  8,  0 },
+		[SCARLETT2_PORT_TYPE_MIX]      = { 10, 18 },
+		[SCARLETT2_PORT_TYPE_PCM]      = {  8, 18 },
 	},
 
 	.mux_assignment = { {
@@ -1139,14 +1101,9 @@ static int scarlett2_usb(
 
 	/* send a second message to get the response */
 
-	err = snd_usb_ctl_msg(mixer->chip->dev,
-			usb_rcvctrlpipe(mixer->chip->dev, 0),
-			SCARLETT2_USB_VENDOR_SPECIFIC_CMD_RESP,
-			USB_RECIP_INTERFACE | USB_TYPE_CLASS | USB_DIR_IN,
-			0,
-			SCARLETT2_USB_VENDOR_SPECIFIC_INTERFACE,
-			resp,
-			resp_buf_size);
+	err = scarlett2_usb_rx(dev, private->bInterfaceNumber,
+			       SCARLETT2_USB_CMD_RESP,
+			       resp, resp_buf_size);
 
 	/* validate the response */
 
@@ -2068,11 +2025,7 @@ static int scarlett2_sw_hw_enum_ctl_put(struct snd_kcontrol *kctl,
 	if (oval == val)
 		goto unlock;
 
-	private->level_switch[index] = val;
-
-	/* Send switch change to the device */
-	err = scarlett2_usb_set_config(mixer, SCARLETT2_CONFIG_LEVEL_SWITCH,
-				       index, val);
+	err = scarlett2_sw_hw_change(mixer, ctl_index, val);
 	if (err == 0)
 		err = 1;
 
@@ -2968,6 +2921,18 @@ static int scarlett2_dim_mute_ctl_put(struct snd_kcontrol *kctl,
 				       index, val);
 	if (err == 0)
 		err = 1;
+
+	if (index == SCARLETT2_BUTTON_MUTE)
+		for (i = 0; i < num_line_out; i++) {
+			int line_index = line_out_remap(private, i);
+
+			if (private->vol_sw_hw_switch[line_index]) {
+				private->mute_switch[line_index] = val;
+				snd_ctl_notify(mixer->chip->card,
+					       SNDRV_CTL_EVENT_MASK_VALUE,
+					       &private->mute_ctls[i]->id);
+			}
+		}
 
 unlock:
 	mutex_unlock(&private->data_mutex);
@@ -3912,13 +3877,24 @@ static int scarlett2_init_notify(struct usb_mixer_interface *mixer)
 	return usb_submit_urb(mixer->urb, GFP_KERNEL);
 }
 
-static int snd_scarlett_gen2_controls_create(struct usb_mixer_interface *mixer,
-					     const struct scarlett2_device_info *info)
+static int snd_scarlett_gen2_controls_create(struct usb_mixer_interface *mixer)
 {
+	const struct scarlett2_device_info **info = scarlett2_devices;
 	int err;
 
-	/* Initialise private data, routing, sequence number */
-	err = scarlett2_init_private(mixer, info);
+	/* Find device in scarlett2_devices */
+	while (*info && (*info)->usb_id != mixer->chip->usb_id)
+		info++;
+	if (!*info)
+		return -EINVAL;
+
+	/* Initialise private data */
+	err = scarlett2_init_private(mixer, *info);
+	if (err < 0)
+		return err;
+
+	/* Send proprietary USB initialisation sequence */
+	err = scarlett2_usb_init(mixer);
 	if (err < 0)
 		return err;
 
@@ -3992,30 +3968,15 @@ static int snd_scarlett_gen2_controls_create(struct usb_mixer_interface *mixer,
 int snd_scarlett_gen2_init(struct usb_mixer_interface *mixer)
 {
 	struct snd_usb_audio *chip = mixer->chip;
-	const struct scarlett2_device_info *info;
 	int err;
 
 	/* only use UAC_VERSION_2 */
 	if (!mixer->protocol)
 		return 0;
 
-	switch (chip->usb_id) {
-	case USB_ID(0x1235, 0x8203):
-		info = &s6i6_gen2_info;
-		break;
-	case USB_ID(0x1235, 0x8204):
-		info = &s18i8_gen2_info;
-		break;
-	case USB_ID(0x1235, 0x8201):
-		info = &s18i20_gen2_info;
-		break;
-	default: /* device not (yet) supported */
-		return -EINVAL;
-	}
-
 	if (!(chip->setup & SCARLETT2_ENABLE)) {
 		usb_audio_info(chip,
-			"Focusrite Scarlett Gen 2 Mixer Driver disabled; "
+			"Focusrite Scarlett Gen 2/3 Mixer Driver disabled; "
 			"use options snd_usb_audio vid=0x%04x pid=0x%04x "
 			"device_setup=1 to enable and report any issues "
 			"to g@b4.vu",
@@ -4025,10 +3986,10 @@ int snd_scarlett_gen2_init(struct usb_mixer_interface *mixer)
 	}
 
 	usb_audio_info(chip,
-		"Focusrite Scarlett Gen 2 Mixer Driver enabled pid=0x%04x",
+		"Focusrite Scarlett Gen 2/3 Mixer Driver enabled pid=0x%04x",
 		USB_ID_PRODUCT(chip->usb_id));
 
-	err = snd_scarlett_gen2_controls_create(mixer, info);
+	err = snd_scarlett_gen2_controls_create(mixer);
 	if (err < 0)
 		usb_audio_err(mixer->chip,
 			      "Error initialising Scarlett Mixer Driver: %d",

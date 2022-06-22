@@ -672,27 +672,22 @@ static void mvebu_pwm_get_state(struct pwm_chip *chip,
 
 	spin_lock_irqsave(&mvpwm->lock, flags);
 
-	u = readl_relaxed(mvebu_pwmreg_blink_on_duration(mvpwm));
-	val = (unsigned long long) u * NSEC_PER_SEC;
-	do_div(val, mvpwm->clk_rate);
-	if (val > UINT_MAX)
-		state->duty_cycle = UINT_MAX;
-	else if (val)
-		state->duty_cycle = val;
+	regmap_read(mvpwm->regs, mvebu_pwmreg_blink_on_duration(mvpwm), &u);
+	/* Hardware treats zero as 2^32. See mvebu_pwm_apply(). */
+	if (u > 0)
+		val = u;
 	else
-		state->duty_cycle = 1;
+		val = UINT_MAX + 1ULL;
+	state->duty_cycle = DIV_ROUND_UP_ULL(val * NSEC_PER_SEC,
+			mvpwm->clk_rate);
 
-	val = (unsigned long long) u; /* on duration */
+	regmap_read(mvpwm->regs, mvebu_pwmreg_blink_off_duration(mvpwm), &u);
 	/* period = on + off duration */
-	val += readl_relaxed(mvebu_pwmreg_blink_off_duration(mvpwm));
-	val *= NSEC_PER_SEC;
-	do_div(val, mvpwm->clk_rate);
-	if (val > UINT_MAX)
-		state->period = UINT_MAX;
-	else if (val)
-		state->period = val;
+	if (u > 0)
+		val += u;
 	else
-		state->period = 1;
+		val += UINT_MAX + 1ULL;
+	state->period = DIV_ROUND_UP_ULL(val * NSEC_PER_SEC, mvpwm->clk_rate);
 
 	regmap_read(mvchip->regs, GPIO_BLINK_EN_OFF + mvchip->offset, &u);
 	if (u)

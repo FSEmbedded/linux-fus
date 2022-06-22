@@ -40,6 +40,7 @@
 #include "intel_dp_link_training.h"
 #include "intel_dp_mst.h"
 #include "intel_dpio_phy.h"
+#include "intel_drrs.h"
 #include "intel_dsi.h"
 #include "intel_fdi.h"
 #include "intel_fifo_underrun.h"
@@ -1152,27 +1153,18 @@ static void icl_mg_phy_ddi_vswing_sequence(struct intel_encoder *encoder,
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	enum tc_port tc_port = intel_port_to_tc(dev_priv, encoder->port);
-	const struct icl_mg_phy_ddi_buf_trans *ddi_translations;
-	u32 n_entries, val;
-	int ln, rate = 0;
+	const struct intel_ddi_buf_trans *ddi_translations;
+	int n_entries, ln;
+	u32 val;
 
 	if (enc_to_dig_port(encoder)->tc_mode == TC_PORT_TBT_ALT)
 		return;
 
-	if (type != INTEL_OUTPUT_HDMI) {
-		struct intel_dp *intel_dp = enc_to_intel_dp(encoder);
-
-	if (enc_to_dig_port(encoder)->tc_mode == TC_PORT_TBT_ALT)
+	ddi_translations = encoder->get_buf_trans(encoder, crtc_state, &n_entries);
+	if (drm_WARN_ON_ONCE(&dev_priv->drm, !ddi_translations))
 		return;
-
-	ddi_translations = icl_get_mg_buf_trans(encoder, type, rate,
-						&n_entries);
-	if (level >= n_entries) {
-		drm_dbg_kms(&dev_priv->drm,
-			    "DDI translation not found for level %d. Using %d instead.",
-			    level, n_entries - 1);
+	if (drm_WARN_ON_ONCE(&dev_priv->drm, level >= n_entries))
 		level = n_entries - 1;
-	}
 
 	/* Set MG_TX_LINK_PARAMS cri_use_fs32 to 0. */
 	for (ln = 0; ln < 2; ln++) {
@@ -1298,18 +1290,9 @@ tgl_dkl_phy_ddi_vswing_sequence(struct intel_encoder *encoder,
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	enum tc_port tc_port = intel_port_to_tc(dev_priv, encoder->port);
-	const struct tgl_dkl_phy_ddi_buf_trans *ddi_translations;
-	u32 n_entries, val, ln, dpcnt_mask, dpcnt_val;
-	int rate = 0;
-
-	if (enc_to_dig_port(encoder)->tc_mode == TC_PORT_TBT_ALT)
-		return;
-
-	if (type != INTEL_OUTPUT_HDMI) {
-		struct intel_dp *intel_dp = enc_to_intel_dp(encoder);
-
-		rate = intel_dp->link_rate;
-	}
+	const struct intel_ddi_buf_trans *ddi_translations;
+	u32 val, dpcnt_mask, dpcnt_val;
+	int n_entries, ln;
 
 	if (enc_to_dig_port(encoder)->tc_mode == TC_PORT_TBT_ALT)
 		return;
@@ -2450,23 +2433,6 @@ static void dg2_ddi_pre_enable_dp(struct intel_atomic_state *state,
 	intel_dsc_enable(encoder, crtc_state);
 }
 
-static void intel_ddi_power_up_lanes(struct intel_encoder *encoder,
-				     const struct intel_crtc_state *crtc_state)
-{
-	struct drm_i915_private *i915 = to_i915(encoder->base.dev);
-	struct intel_digital_port *dig_port = enc_to_dig_port(encoder);
-	enum phy phy = intel_port_to_phy(i915, encoder->port);
-
-	if (intel_phy_is_combo(i915, phy)) {
-		bool lane_reversal =
-			dig_port->saved_port_bits & DDI_BUF_PORT_REVERSAL;
-
-		intel_combo_phy_power_up_lanes(i915, phy, false,
-					       crtc_state->lane_count,
-					       lane_reversal);
-	}
-}
-
 static void tgl_ddi_pre_enable_dp(struct intel_atomic_state *state,
 				  struct intel_encoder *encoder,
 				  const struct intel_crtc_state *crtc_state,
@@ -2561,6 +2527,11 @@ static void tgl_ddi_pre_enable_dp(struct intel_atomic_state *state,
 	intel_ddi_power_up_lanes(encoder, crtc_state);
 
 	/*
+	 * 7.g Program CoG/MSO configuration bits in DSS_CTL1 if selected.
+	 */
+	intel_ddi_mso_configure(crtc_state);
+
+	/*
 	 * 7.g Configure and enable DDI_BUF_CTL
 	 * 7.h Wait for DDI_BUF_CTL DDI Idle Status = 0b (Not Idle), timeout
 	 *     after 500 us.
@@ -2645,7 +2616,7 @@ static void hsw_ddi_pre_enable_dp(struct intel_atomic_state *state,
 	else if (IS_GEMINILAKE(dev_priv) || IS_BROXTON(dev_priv))
 		bxt_ddi_vswing_sequence(encoder, crtc_state, level);
 	else
-		intel_prepare_dp_ddi_buffers(encoder, crtc_state);
+		hsw_prepare_dp_ddi_buffers(encoder, crtc_state);
 
 	intel_ddi_power_up_lanes(encoder, crtc_state);
 
@@ -4462,6 +4433,7 @@ static void intel_ddi_encoder_shutdown(struct intel_encoder *encoder)
 	enum phy phy = intel_port_to_phy(i915, encoder->port);
 
 	intel_dp_encoder_shutdown(encoder);
+	intel_hdmi_encoder_shutdown(encoder);
 
 	if (!intel_phy_is_tc(i915, phy))
 		return;

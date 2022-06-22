@@ -9,6 +9,7 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>
+#include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/mailbox_controller.h>
 #include <linux/module.h>
@@ -16,7 +17,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/suspend.h>
 #include <linux/slab.h>
-#include <linux/jiffies.h>
 
 #define IMX_MU_CHANS		16
 /* TX0/RX0/RXDB[0-3] */
@@ -329,8 +329,7 @@ static int imx_mu_specific_rx(struct imx_mu_priv *priv, struct imx_mu_con_priv *
 		ret = readl_poll_timeout(priv->base + priv->dcfg->xSR[IMX_MU_RSR], xsr,
 					 xsr & IMX_MU_xSR_RFn(priv->dcfg->type, i % 4), 0, 5 * USEC_PER_SEC);
 		if (ret) {
-			dev_err(priv->dev, "Send data index: %d timeout, msg = %x\n",
-				i, *(u32 *)(priv->msg));
+			dev_err(priv->dev, "Send data index: %d timeout, \n", i);
 			return ret;
 		}
 		*data++ = imx_mu_read(priv, priv->dcfg->xRR + (i % 4) * 4);
@@ -376,12 +375,14 @@ static int imx_mu_seco_tx(struct imx_mu_priv *priv, struct imx_mu_con_priv *cp,
 
 		/* Send signaling */
 		dev_dbg(priv->dev, "Sending signaling\n");
-		imx_mu_xcr_rmw(priv, IMX_MU_GCR, IMX_MU_xCR_GIRn(priv->dcfg->type, cp->idx), 0);
+		imx_mu_xcr_rmw(priv, IMX_MU_GCR,
+			       IMX_MU_xCR_GIRn(priv->dcfg->type, cp->idx), 0);
 
 		/* Send words to fill the mailbox */
 		for (i = 1; i < 4 && i < msg->hdr.size; i++) {
 			dev_dbg(priv->dev, "Sending word %d\n", i);
-			imx_mu_write(priv, *arg++, priv->dcfg->xTR + (i % 4) * 4);
+			imx_mu_write(priv, *arg++,
+				     priv->dcfg->xTR + (i % 4) * 4);
 		}
 
 		/* Send rest of message waiting for remote read */
@@ -440,7 +441,8 @@ static int imx_mu_seco_rxdb(struct imx_mu_priv *priv, struct imx_mu_con_priv *cp
 	}
 
 	/* Clear GIP */
-	imx_mu_write(priv, IMX_MU_xSR_GIPn(priv->dcfg->type, cp->idx), priv->dcfg->xSR[IMX_MU_GSR]);
+	imx_mu_write(priv, IMX_MU_xSR_GIPn(priv->dcfg->type, cp->idx),
+		     priv->dcfg->xSR[IMX_MU_GSR]);
 
 	print_hex_dump_debug("to client ", DUMP_PREFIX_OFFSET, 4, 4,
 			     &msg, byte_size, false);
@@ -500,12 +502,15 @@ static irqreturn_t imx_mu_isr(int irq, void *p)
 	if (!val)
 		return IRQ_NONE;
 
-	if ((val == IMX_MU_xSR_TEn(priv->dcfg->type, cp->idx)) && (cp->type == IMX_MU_TYPE_TX)) {
+	if ((val == IMX_MU_xSR_TEn(priv->dcfg->type, cp->idx)) &&
+	    (cp->type == IMX_MU_TYPE_TX)) {
 		imx_mu_xcr_rmw(priv, IMX_MU_TCR, 0, IMX_MU_xCR_TIEn(priv->dcfg->type, cp->idx));
 		mbox_chan_txdone(chan, 0);
-	} else if ((val == IMX_MU_xSR_RFn(priv->dcfg->type, cp->idx)) && (cp->type == IMX_MU_TYPE_RX)) {
+	} else if ((val == IMX_MU_xSR_RFn(priv->dcfg->type, cp->idx)) &&
+		   (cp->type == IMX_MU_TYPE_RX)) {
 		priv->dcfg->rx(priv, cp);
-	} else if ((val == IMX_MU_xSR_GIPn(priv->dcfg->type, cp->idx)) && (cp->type == IMX_MU_TYPE_RXDB)) {
+	} else if ((val == IMX_MU_xSR_GIPn(priv->dcfg->type, cp->idx)) &&
+		   (cp->type == IMX_MU_TYPE_RXDB)) {
 		priv->dcfg->rxdb(priv, cp);
 	} else {
 		dev_warn_ratelimited(priv->dev, "Not handled interrupt\n");
@@ -513,7 +518,7 @@ static irqreturn_t imx_mu_isr(int irq, void *p)
 	}
 
 	if (priv->suspend)
-		pm_system_wakeup();
+		pm_system_irq_wakeup(priv->irq);
 
 	return IRQ_HANDLED;
 }
@@ -864,6 +869,7 @@ static const struct imx_mu_dcfg imx_mu_cfg_imx7ulp = {
 static const struct imx_mu_dcfg imx_mu_cfg_imx8ulp = {
 	.tx	= imx_mu_generic_tx,
 	.rx	= imx_mu_generic_rx,
+	.rxdb	= imx_mu_generic_rxdb,
 	.init	= imx_mu_init_generic,
 	.rxdb	= imx_mu_generic_rxdb,
 	.type	= IMX_MU_V2,

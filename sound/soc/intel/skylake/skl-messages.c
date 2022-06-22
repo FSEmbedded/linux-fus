@@ -852,13 +852,6 @@ static u16 skl_get_module_param_size(struct skl_dev *skl,
 	case SKL_MODULE_TYPE_KPB:
 		return sizeof(struct skl_base_cfg);
 
-	default:
-		/*
-		 * return only base cfg when no specific module type is
-		 * specified
-		 */
-		return sizeof(struct skl_base_cfg);
-
 	case SKL_MODULE_TYPE_ALGO:
 	default:
 		res = &module->resources[mconfig->res_idx];
@@ -916,10 +909,6 @@ static int skl_set_module_format(struct skl_dev *skl,
 
 	case SKL_MODULE_TYPE_MIXER:
 	case SKL_MODULE_TYPE_KPB:
-		skl_set_base_module_format(skl, module_config, *param_data);
-		break;
-
-	default:
 		skl_set_base_module_format(skl, module_config, *param_data);
 		break;
 

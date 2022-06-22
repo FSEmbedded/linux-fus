@@ -954,32 +954,17 @@ int arch_set_user_pkey_access(struct task_struct *tsk, int pkey,
 }
 #endif /* ! CONFIG_ARCH_HAS_PKEYS */
 
-/*
- * Weird legacy quirk: SSE and YMM states store information in the
- * MXCSR and MXCSR_FLAGS fields of the FP area. That means if the FP
- * area is marked as unused in the xfeatures header, we need to copy
- * MXCSR and MXCSR_FLAGS if either SSE or YMM are in use.
- */
-static inline bool xfeatures_mxcsr_quirk(u64 xfeatures)
-{
-	if (!(xfeatures & (XFEATURE_MASK_SSE|XFEATURE_MASK_YMM)))
-		return false;
-
-	if (xfeatures & XFEATURE_MASK_FP)
-		return false;
-
-	return true;
-}
-
 static void copy_feature(bool from_xstate, struct membuf *to, void *xstate,
 			 void *init_xstate, unsigned int size)
 {
 	membuf_write(to, from_xstate ? xstate : init_xstate, size);
 }
 
-/*
- * Convert from kernel XSAVES compacted format to standard format and copy
- * to a kernel-space ptrace buffer.
+/**
+ * copy_xstate_to_uabi_buf - Copy kernel saved xstate to a UABI buffer
+ * @to:		membuf descriptor
+ * @tsk:	The task from which to copy the saved xstate
+ * @copy_mode:	The requested copy mode
  *
  * Converts from kernel XSAVE or XSAVES compacted format to UABI conforming
  * format, i.e. from the kernel internal hardware dependent storage format
@@ -991,6 +976,7 @@ void copy_xstate_to_uabi_buf(struct membuf to, struct task_struct *tsk,
 			     enum xstate_copy_mode copy_mode)
 {
 	const unsigned int off_mxcsr = offsetof(struct fxregs_state, mxcsr);
+	struct xregs_state *xsave = &tsk->thread.fpu.state.xsave;
 	struct xregs_state *xinit = &init_fpstate.xsave;
 	struct xstate_header header;
 	unsigned int zerofrom;
@@ -998,71 +984,21 @@ void copy_xstate_to_uabi_buf(struct membuf to, struct task_struct *tsk,
 
 	memset(&header, 0, sizeof(header));
 	header.xfeatures = xsave->header.xfeatures;
-	header.xfeatures &= xfeatures_mask_user();
 
-	/* Copy FP state up to MXCSR */
-	copy_feature(header.xfeatures & XFEATURE_MASK_FP, &to, &xsave->i387,
-		     &xinit->i387, off_mxcsr);
+	/* Mask out the feature bits depending on copy mode */
+	switch (copy_mode) {
+	case XSTATE_COPY_FP:
+		header.xfeatures &= XFEATURE_MASK_FP;
+		break;
 
-	/* Copy MXCSR when SSE or YMM are set in the feature mask */
-	copy_feature(header.xfeatures & (XFEATURE_MASK_SSE | XFEATURE_MASK_YMM),
-		     &to, &xsave->i387.mxcsr, &xinit->i387.mxcsr,
-		     MXCSR_AND_FLAGS_SIZE);
+	case XSTATE_COPY_FX:
+		header.xfeatures &= XFEATURE_MASK_FP | XFEATURE_MASK_SSE;
+		break;
 
-	/* Copy the remaining FP state */
-	copy_feature(header.xfeatures & XFEATURE_MASK_FP,
-		     &to, &xsave->i387.st_space, &xinit->i387.st_space,
-		     sizeof(xsave->i387.st_space));
-
-	/* Copy the SSE state - shared with YMM, but independently managed */
-	copy_feature(header.xfeatures & XFEATURE_MASK_SSE,
-		     &to, &xsave->i387.xmm_space, &xinit->i387.xmm_space,
-		     sizeof(xsave->i387.xmm_space));
-
-	/* Zero the padding area */
-	membuf_zero(&to, sizeof(xsave->i387.padding));
-
-	/* Copy xsave->i387.sw_reserved */
-	membuf_write(&to, xstate_fx_sw_bytes, sizeof(xsave->i387.sw_reserved));
-
-	/* Copy the user space relevant state of @xsave->header */
-	membuf_write(&to, &header, sizeof(header));
-
-	zerofrom = offsetof(struct xregs_state, extended_state_area);
-
-	for (i = FIRST_EXTENDED_XFEATURE; i < XFEATURE_MAX; i++) {
-		/*
-		 * The ptrace buffer is in non-compacted XSAVE format.
-		 * In non-compacted format disabled features still occupy
-		 * state space, but there is no state to copy from in the
-		 * compacted init_fpstate. The gap tracking will zero this
-		 * later.
-		 */
-		if (!(xfeatures_mask_user() & BIT_ULL(i)))
-			continue;
-
-		/*
-		 * If there was a feature or alignment gap, zero the space
-		 * in the destination buffer.
-		 */
-		if (zerofrom < xstate_offsets[i])
-			membuf_zero(&to, xstate_offsets[i] - zerofrom);
-
-		copy_feature(header.xfeatures & BIT_ULL(i), &to,
-			     __raw_xsave_addr(xsave, i),
-			     __raw_xsave_addr(xinit, i),
-			     xstate_sizes[i]);
-
-		/*
-		 * Keep track of the last copied state in the non-compacted
-		 * target buffer for gap zeroing.
-		 */
-		zerofrom = xstate_offsets[i] + xstate_sizes[i];
+	case XSTATE_COPY_XSAVE:
+		header.xfeatures &= xfeatures_mask_uabi();
+		break;
 	}
-
-	if (to.left)
-		membuf_zero(&to, to.left);
-}
 
 	/* Copy FP state up to MXCSR */
 	copy_feature(header.xfeatures & XFEATURE_MASK_FP, &to, &xsave->i387,

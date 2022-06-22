@@ -26,12 +26,16 @@
 #define MARVELL_PHY_ID_88E2110		0x002b09b0
 #define MARVELL_PHY_ID_88X2222		0x01410f10
 
+/* Marvel 88E1111 in Finisar SFP module with modified PHY ID */
+#define MARVELL_PHY_ID_88E1111_FINISAR	0x01ff0cc0
+
 /* These Ethernet switch families contain embedded PHYs, but they do
  * not have a model ID. So the switch driver traps reads to the ID2
  * register and returns the switch family ID
  */
 #define MARVELL_PHY_ID_88E6341_FAMILY	0x01410f41
 #define MARVELL_PHY_ID_88E6390_FAMILY	0x01410f90
+#define MARVELL_PHY_ID_88E6393_FAMILY	0x002b0b9b
 
 #define MARVELL_PHY_FAMILY_ID(id)	((id) >> 4)
 

@@ -24,23 +24,14 @@
 
 static struct fsl_esai_soc_data fsl_esai_vf610 = {
 	.reset_at_xrun = true,
-	.use_edma = false,
 };
 
 static struct fsl_esai_soc_data fsl_esai_imx35 = {
 	.reset_at_xrun = true,
-	.use_edma = false,
 };
 
 static struct fsl_esai_soc_data fsl_esai_imx6ull = {
 	.reset_at_xrun = false,
-	.use_edma = false,
-};
-
-static struct fsl_esai_soc_data fsl_esai_imx8qm = {
-	.imx = true,
-	.reset_at_xrun = false,
-	.use_edma = true,
 };
 
 static irqreturn_t esai_isr(int irq, void *devid)
@@ -504,11 +495,6 @@ static int fsl_esai_startup(struct snd_pcm_substream *substream,
 				   ESAI_xCCR_xDC(esai_priv->slots));
 	}
 
-	if (esai_priv->soc->use_edma)
-		snd_pcm_hw_constraint_step(substream->runtime, 0,
-					   SNDRV_PCM_HW_PARAM_PERIOD_SIZE,
-					   tx ? esai_priv->dma_params_tx.maxburst :
-					   esai_priv->dma_params_rx.maxburst);
 	if (esai_priv->sw_mix)
 		fsl_esai_mix_open(substream, &esai_priv->mix[tx]);
 
@@ -988,8 +974,7 @@ static int fsl_esai_probe(struct platform_device *pdev)
 	if (IS_ERR(regs))
 		return PTR_ERR(regs);
 
-	esai_priv->regmap = devm_regmap_init_mmio_clk(&pdev->dev,
-			NULL, regs, &fsl_esai_regmap_config);
+	esai_priv->regmap = devm_regmap_init_mmio(&pdev->dev, regs, &fsl_esai_regmap_config);
 	if (IS_ERR(esai_priv->regmap)) {
 		dev_err(&pdev->dev, "failed to init regmap: %ld\n",
 				PTR_ERR(esai_priv->regmap));
@@ -1070,10 +1055,18 @@ static int fsl_esai_probe(struct platform_device *pdev)
 
 	dev_set_drvdata(&pdev->dev, esai_priv);
 	spin_lock_init(&esai_priv->lock);
+	pm_runtime_enable(&pdev->dev);
+	if (!pm_runtime_enabled(&pdev->dev)) {
+		ret = fsl_esai_runtime_resume(&pdev->dev);
+		if (ret)
+			goto err_pm_disable;
+	}
 
-	ret = clk_prepare_enable(esai_priv->coreclk);
-	if (ret)
-		return ret;
+	ret = pm_runtime_get_sync(&pdev->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(&pdev->dev);
+		goto err_pm_get_sync;
+	}
 
 	ret = fsl_esai_hw_init(esai_priv);
 	if (ret)
@@ -1088,7 +1081,28 @@ static int fsl_esai_probe(struct platform_device *pdev)
 	regmap_write(esai_priv->regmap, REG_ESAI_RSMA, 0);
 	regmap_write(esai_priv->regmap, REG_ESAI_RSMB, 0);
 
-	clk_disable_unprepare(esai_priv->coreclk);
+	ret = pm_runtime_put_sync(&pdev->dev);
+	if (ret < 0)
+		goto err_pm_get_sync;
+
+	/*
+	 * Register platform component before registering cpu dai for there
+	 * is not defer probe for platform component in snd_soc_add_pcm_runtime().
+	 */
+	if (of_property_read_bool(pdev->dev.of_node, "client-dais")) {
+		esai_priv->sw_mix = true;
+		ret = fsl_esai_mix_probe(&pdev->dev, &esai_priv->mix[0], &esai_priv->mix[1]);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
+			goto err_pm_get_sync;
+		}
+	} else {
+		ret = imx_pcm_dma_init(pdev, IMX_ESAI_DMABUF_SIZE);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
+			goto err_pm_get_sync;
+		}
+	}
 
 	ret = devm_snd_soc_register_component(&pdev->dev, &fsl_esai_component,
 					      &fsl_esai_dai, 1);
@@ -1099,20 +1113,7 @@ static int fsl_esai_probe(struct platform_device *pdev)
 
 	INIT_WORK(&esai_priv->work, fsl_esai_hw_reset);
 
-	pm_runtime_enable(&pdev->dev);
-
-	regcache_cache_only(esai_priv->regmap, true);
-
-	if (of_property_read_bool(pdev->dev.of_node, "client-dais")) {
-		esai_priv->sw_mix = true;
-		ret = fsl_esai_mix_probe(&pdev->dev, &esai_priv->mix[0], &esai_priv->mix[1]);
-		if (ret)
-			dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
-	} else {
-		ret = imx_pcm_dma_init(pdev, IMX_ESAI_DMABUF_SIZE);
-		if (ret)
-			dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
-	}
+	return ret;
 
 err_pm_get_sync:
 	if (!pm_runtime_status_suspended(&pdev->dev))
@@ -1142,7 +1143,6 @@ static const struct of_device_id fsl_esai_dt_ids[] = {
 	{ .compatible = "fsl,imx35-esai", .data = &fsl_esai_imx35 },
 	{ .compatible = "fsl,vf610-esai", .data = &fsl_esai_vf610 },
 	{ .compatible = "fsl,imx6ull-esai", .data = &fsl_esai_imx6ull },
-	{ .compatible = "fsl,imx8qm-esai", .data = &fsl_esai_imx8qm },
 	{}
 };
 MODULE_DEVICE_TABLE(of, fsl_esai_dt_ids);

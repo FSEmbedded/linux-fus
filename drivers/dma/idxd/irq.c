@@ -63,6 +63,9 @@ static int process_misc_interrupts(struct idxd_device *idxd, u32 cause)
 	int i;
 	bool err = false;
 
+	if (cause & IDXD_INTC_HALT_STATE)
+		goto halt;
+
 	if (cause & IDXD_INTC_ERR) {
 		spin_lock(&idxd->dev_lock);
 		for (i = 0; i < 4; i++)
@@ -121,6 +124,7 @@ static int process_misc_interrupts(struct idxd_device *idxd, u32 cause)
 	if (!err)
 		return 0;
 
+halt:
 	gensts.bits = ioread32(idxd->reg_base + IDXD_GENSTATS_OFFSET);
 	if (gensts.state == IDXD_DEVICE_STATE_HALT) {
 		idxd->state = IDXD_DEV_HALTED;
@@ -133,15 +137,16 @@ static int process_misc_interrupts(struct idxd_device *idxd, u32 cause)
 			INIT_WORK(&idxd->work, idxd_device_reinit);
 			queue_work(idxd->wq, &idxd->work);
 		} else {
-			spin_lock(&idxd->dev_lock);
+			idxd->state = IDXD_DEV_HALTED;
 			idxd_wqs_quiesce(idxd);
 			idxd_wqs_unmap_portal(idxd);
+			spin_lock(&idxd->dev_lock);
 			idxd_device_clear_state(idxd);
 			dev_err(&idxd->pdev->dev,
 				"idxd halted, need %s.\n",
 				gensts.reset_type == IDXD_DEVICE_RESET_FLR ?
 				"FLR" : "system reset");
-			spin_unlock_bh(&idxd->dev_lock);
+			spin_unlock(&idxd->dev_lock);
 			return -ENXIO;
 		}
 	}
@@ -169,7 +174,6 @@ irqreturn_t idxd_misc_thread(int vec, void *data)
 			iowrite32(cause, idxd->reg_base + IDXD_INTCAUSE_OFFSET);
 	}
 
-	idxd_unmask_msix_vector(idxd, irq_entry->id);
 	return IRQ_HANDLED;
 }
 

@@ -2640,7 +2640,7 @@ detach_group_done:
 	 * to be promoted.
 	 */
 	if (update_dirty_scope) {
-		update_pinned_page_dirty_scope(iommu);
+		iommu->num_non_pinned_groups--;
 		if (iommu->dirty_page_tracking)
 			vfio_iommu_populate_bitmap_full(iommu);
 	}

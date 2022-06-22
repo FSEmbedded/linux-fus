@@ -895,8 +895,8 @@ int dlm_process_incoming_buffer(int nodeid, unsigned char *buf, int len)
 		 * Fixing this issue should be scheduled in future by doing
 		 * the next major version bump.
 		 */
-		msglen = get_unaligned_le16(&hd->h_length);
-		if (msglen > DEFAULT_BUFFER_SIZE ||
+		msglen = le16_to_cpu(hd->h_length);
+		if (msglen > DLM_MAX_SOCKET_BUFSIZE ||
 		    msglen < sizeof(struct dlm_header)) {
 			log_print("received invalid length header: %u from node %d, will abort message parsing",
 				  msglen, nodeid);

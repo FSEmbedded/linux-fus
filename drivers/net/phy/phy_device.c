@@ -1755,6 +1755,9 @@ void phy_detach(struct phy_device *phydev)
 	    phy_driver_is_genphy_10g(phydev))
 		device_release_driver(&phydev->mdio.dev);
 
+	/* Assert the reset signal */
+	phy_device_reset(phydev, 1);
+
 	/*
 	 * The phydev might go away on the put_device() below, so avoid
 	 * a use-after-free bug by reading the underlying bus first.
@@ -1766,9 +1769,6 @@ void phy_detach(struct phy_device *phydev)
 		ndev_owner = dev->dev.parent->driver->owner;
 	if (ndev_owner != bus->owner)
 		module_put(bus->owner);
-
-	/* Assert the reset signal */
-	phy_device_reset(phydev, 1);
 }
 EXPORT_SYMBOL(phy_detach);
 
@@ -2917,90 +2917,6 @@ static bool phy_drv_supports_irq(struct phy_driver *phydrv)
 {
 	return phydrv->config_intr && phydrv->handle_interrupt;
 }
-
-/**
- * fwnode_mdio_find_device - Given a fwnode, find the mdio_device
- * @fwnode: pointer to the mdio_device's fwnode
- *
- * If successful, returns a pointer to the mdio_device with the embedded
- * struct device refcount incremented by one, or NULL on failure.
- * The caller should call put_device() on the mdio_device after its use.
- */
-struct mdio_device *fwnode_mdio_find_device(struct fwnode_handle *fwnode)
-{
-	struct device *d;
-
-	if (!fwnode)
-		return NULL;
-
-	d = bus_find_device_by_fwnode(&mdio_bus_type, fwnode);
-	if (!d)
-		return NULL;
-
-	return to_mdio_device(d);
-}
-EXPORT_SYMBOL(fwnode_mdio_find_device);
-
-/**
- * fwnode_phy_find_device - For provided phy_fwnode, find phy_device.
- *
- * @phy_fwnode: Pointer to the phy's fwnode.
- *
- * If successful, returns a pointer to the phy_device with the embedded
- * struct device refcount incremented by one, or NULL on failure.
- */
-struct phy_device *fwnode_phy_find_device(struct fwnode_handle *phy_fwnode)
-{
-	struct mdio_device *mdiodev;
-
-	mdiodev = fwnode_mdio_find_device(phy_fwnode);
-	if (!mdiodev)
-		return NULL;
-
-	if (mdiodev->flags & MDIO_DEVICE_FLAG_PHY)
-		return to_phy_device(&mdiodev->dev);
-
-	put_device(&mdiodev->dev);
-
-	return NULL;
-}
-EXPORT_SYMBOL(fwnode_phy_find_device);
-
-/**
- * device_phy_find_device - For the given device, get the phy_device
- * @dev: Pointer to the given device
- *
- * Refer return conditions of fwnode_phy_find_device().
- */
-struct phy_device *device_phy_find_device(struct device *dev)
-{
-	return fwnode_phy_find_device(dev_fwnode(dev));
-}
-EXPORT_SYMBOL_GPL(device_phy_find_device);
-
-/**
- * fwnode_get_phy_node - Get the phy_node using the named reference.
- * @fwnode: Pointer to fwnode from which phy_node has to be obtained.
- *
- * Refer return conditions of fwnode_find_reference().
- * For ACPI, only "phy-handle" is supported. Legacy DT properties "phy"
- * and "phy-device" are not supported in ACPI. DT supports all the three
- * named references to the phy node.
- */
-struct fwnode_handle *fwnode_get_phy_node(struct fwnode_handle *fwnode)
-{
-	struct fwnode_handle *phy_node;
-
-	/* Only phy-handle is used for ACPI */
-	phy_node = fwnode_find_reference(fwnode, "phy-handle", 0);
-	if (is_acpi_node(fwnode) || !IS_ERR(phy_node))
-		return phy_node;
-	phy_node = fwnode_find_reference(fwnode, "phy", 0);
-	if (IS_ERR(phy_node))
-		phy_node = fwnode_find_reference(fwnode, "phy-device", 0);
-	return phy_node;
-}
-EXPORT_SYMBOL_GPL(fwnode_get_phy_node);
 
 /**
  * fwnode_mdio_find_device - Given a fwnode, find the mdio_device

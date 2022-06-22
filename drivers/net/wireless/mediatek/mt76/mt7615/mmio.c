@@ -252,7 +252,10 @@ int mt7615_mmio_probe(struct device *pdev, void __iomem *mem_base,
 		goto err_free_irq;
 
 	return 0;
-error:
+
+err_free_irq:
+	devm_free_irq(pdev, irq, dev);
+err_free_dev:
 	mt76_free_device(&dev->mt76);
 
 	return ret;

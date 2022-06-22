@@ -134,10 +134,6 @@ static int tegra_cpuidle_c7_enter(void)
 	if (err && err != -ENOSYS)
 		return err;
 
-	err = call_firmware_op(do_idle, 0);
-	if (err != -ENOSYS)
-		return err;
-
 	return cpu_suspend(0, tegra30_pm_secondary_cpu_suspend);
 }
 

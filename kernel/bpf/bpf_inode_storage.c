@@ -207,7 +207,7 @@ BPF_CALL_2(bpf_inode_storage_delete,
 	if (!inode)
 		return -EINVAL;
 
-	/* This helper must only called from where the inode is gurranteed
+	/* This helper must only called from where the inode is guaranteed
 	 * to have a refcount and cannot be freed.
 	 */
 	return inode_storage_delete(inode, map);

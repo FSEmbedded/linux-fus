@@ -108,14 +108,9 @@ static void __net_exit broute_net_pre_exit(struct net *net)
 	ebt_unregister_table_pre_exit(net, "broute");
 }
 
-static void __net_exit broute_net_pre_exit(struct net *net)
-{
-	ebt_unregister_table_pre_exit(net, "broute", &ebt_ops_broute);
-}
-
 static void __net_exit broute_net_exit(struct net *net)
 {
-	ebt_unregister_table(net, net->xt.broute_table);
+	ebt_unregister_table(net, "broute");
 }
 
 static struct pernet_operations broute_net_ops = {

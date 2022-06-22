@@ -2333,7 +2333,6 @@ out_failure:
 		break;
 	}
 xdp_out:
-	rcu_read_unlock();
 	return result;
 }
 

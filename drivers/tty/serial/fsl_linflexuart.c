@@ -511,20 +511,19 @@ static irqreturn_t linflex_rxint(int irq, void *dev_id)
 		if (status & (LINFLEXD_UARTSR_BOF | LINFLEXD_UARTSR_FEF |
 				LINFLEXD_UARTSR_PE)) {
 			if (status & LINFLEXD_UARTSR_BOF)
-				sport->icount.overrun++;
+				sport->port.icount.overrun++;
 			if (status & LINFLEXD_UARTSR_FEF) {
 				if (!rx) {
 					brk = true;
-					sport->icount.brk++;
+					sport->port.icount.brk++;
 				} else
-					sport->icount.frame++;
+					sport->port.icount.frame++;
 			}
 			if (status & LINFLEXD_UARTSR_PE)
-				sport->icount.parity++;
+				sport->port.icount.parity++;
 		}
 
-		writel(status | LINFLEXD_UARTSR_RMB | LINFLEXD_UARTSR_DRFRFE,
-		       sport->port.membase + UARTSR);
+		writel(status, sport->port.membase + UARTSR);
 		status = readl(sport->port.membase + UARTSR);
 
 		if (brk) {

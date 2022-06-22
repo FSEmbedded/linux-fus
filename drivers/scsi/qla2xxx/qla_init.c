@@ -2062,22 +2062,27 @@ qla24xx_handle_prli_done_event(struct scsi_qla_host *vha, struct event_arg *ea)
 			break;
 		}
 
+		sp = ea->sp;
 		ql_dbg(ql_dbg_disc, vha, 0x2118,
-		       "%s %d %8phC priority %s, fc4type %x\n",
+		       "%s %d %8phC priority %s, fc4type %x prev try %s\n",
 		       __func__, __LINE__, ea->fcport->port_name,
 		       vha->hw->fc4_type_priority == FC4_PRIORITY_FCP ?
-		       "FCP" : "NVMe", ea->fcport->fc4_type);
+		       "FCP" : "NVMe", ea->fcport->fc4_type,
+		       (sp->u.iocb_cmd.u.logio.flags & SRB_LOGIN_NVME_PRLI) ?
+			"NVME" : "FCP");
+
+		if (NVME_FCP_TARGET(ea->fcport)) {
+			if (sp->u.iocb_cmd.u.logio.flags & SRB_LOGIN_NVME_PRLI)
+				ea->fcport->do_prli_nvme = 0;
+			else
+				ea->fcport->do_prli_nvme = 1;
+		} else {
+			ea->fcport->do_prli_nvme = 0;
+		}
 
 		if (N2N_TOPO(vha->hw)) {
-			if (vha->hw->fc4_type_priority == FC4_PRIORITY_NVME) {
-				ea->fcport->fc4_type &= ~FS_FC4TYPE_NVME;
-				ea->fcport->fc4_type |= FS_FC4TYPE_FCP;
-			} else {
-				ea->fcport->fc4_type &= ~FS_FC4TYPE_FCP;
-				ea->fcport->fc4_type |= FS_FC4TYPE_NVME;
-			}
-
-			if (ea->fcport->n2n_link_reset_cnt < 3) {
+			if (ea->fcport->n2n_link_reset_cnt <
+			    vha->hw->login_retry_count) {
 				ea->fcport->n2n_link_reset_cnt++;
 				vha->relogin_jif = jiffies + 2 * HZ;
 				/*
@@ -2085,6 +2090,7 @@ qla24xx_handle_prli_done_event(struct scsi_qla_host *vha, struct event_arg *ea)
 				 * state machine
 				 */
 				set_bit(N2N_LINK_RESET, &vha->dpc_flags);
+				qla2xxx_wake_dpc(vha);
 			} else {
 				ql_log(ql_log_warn, vha, 0x2119,
 				       "%s %d %8phC Unable to reconnect\n",
@@ -2096,19 +2102,6 @@ qla24xx_handle_prli_done_event(struct scsi_qla_host *vha, struct event_arg *ea)
 			 * switch connect. login failed. Take connection down
 			 * and allow relogin to retrigger
 			 */
-			if (NVME_FCP_TARGET(ea->fcport)) {
-				ql_dbg(ql_dbg_disc, vha, 0x2118,
-				       "%s %d %8phC post %s prli\n",
-				       __func__, __LINE__,
-				       ea->fcport->port_name,
-				       (ea->fcport->fc4_type & FS_FC4TYPE_NVME)
-				       ? "NVMe" : "FCP");
-				if (vha->hw->fc4_type_priority == FC4_PRIORITY_NVME)
-					ea->fcport->fc4_type &= ~FS_FC4TYPE_NVME;
-				else
-					ea->fcport->fc4_type &= ~FS_FC4TYPE_FCP;
-			}
-
 			ea->fcport->flags &= ~FCF_ASYNC_SENT;
 			ea->fcport->keep_nport_handle = 0;
 			ea->fcport->logout_on_delete = 1;

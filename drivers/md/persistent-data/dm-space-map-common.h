@@ -112,12 +112,6 @@ struct disk_bitmap_header {
 	__le64 blocknr;
 } __attribute__ ((packed, aligned(8)));
 
-enum allocation_event {
-	SM_NONE,
-	SM_ALLOC,
-	SM_FREE,
-};
-
 /*----------------------------------------------------------------*/
 
 int sm_ll_extend(struct ll_disk *ll, dm_block_t extra_blocks);

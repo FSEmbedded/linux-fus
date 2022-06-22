@@ -308,17 +308,6 @@ int blkdev_zone_mgmt(struct block_device *bdev, enum req_opf op,
 	while (sector < end_sector) {
 		bio = blk_next_bio(bio, 0, gfp_mask);
 		bio_set_dev(bio, bdev);
-
-		/*
-		 * Special case for the zone reset operation that reset all
-		 * zones, this is useful for applications like mkfs.
-		 */
-		if (op == REQ_OP_ZONE_RESET &&
-		    blkdev_allow_reset_all_zones(bdev, sector, nr_sectors)) {
-			bio->bi_opf = REQ_OP_ZONE_RESET_ALL | REQ_SYNC;
-			break;
-		}
-
 		bio->bi_opf = op | REQ_SYNC;
 		bio->bi_iter.bi_sector = sector;
 		sector += zone_sectors;
@@ -440,9 +429,10 @@ int blkdev_zone_mgmt_ioctl(struct block_device *bdev, fmode_t mode,
 		op = REQ_OP_ZONE_RESET;
 
 		/* Invalidate the page cache, including dirty pages. */
+		filemap_invalidate_lock(bdev->bd_inode->i_mapping);
 		ret = blkdev_truncate_zone_range(bdev, mode, &zrange);
 		if (ret)
-			return ret;
+			goto fail;
 		break;
 	case BLKOPENZONE:
 		op = REQ_OP_ZONE_OPEN;
@@ -459,19 +449,6 @@ int blkdev_zone_mgmt_ioctl(struct block_device *bdev, fmode_t mode,
 
 	ret = blkdev_zone_mgmt(bdev, op, zrange.sector, zrange.nr_sectors,
 			       GFP_KERNEL);
-
-	/*
-	 * Invalidate the page cache again for zone reset: writes can only be
-	 * direct for zoned devices so concurrent writes would not add any page
-	 * to the page cache after/during reset. The page cache may be filled
-	 * again due to concurrent reads though and dropping the pages for
-	 * these is fine.
-	 */
-	if (!ret && cmd == BLKRESETZONE)
-		ret = blkdev_truncate_zone_range(bdev, mode, &zrange);
-
-	return ret;
-}
 
 fail:
 	if (cmd == BLKRESETZONE)

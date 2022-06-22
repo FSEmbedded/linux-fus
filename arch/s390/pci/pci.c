@@ -662,12 +662,8 @@ void zpci_free_domain(int domain)
 
 int zpci_enable_device(struct zpci_dev *zdev)
 {
-	int rc;
-
-	if (clp_enable_fh(zdev, ZPCI_NR_DMA_SPACES)) {
-		rc = -EIO;
-		goto out;
-	}
+	u32 fh = zdev->fh;
+	int rc = 0;
 
 	if (clp_enable_fh(zdev, &fh, ZPCI_NR_DMA_SPACES))
 		rc = -EIO;
@@ -678,45 +674,23 @@ int zpci_enable_device(struct zpci_dev *zdev)
 
 int zpci_disable_device(struct zpci_dev *zdev)
 {
-	zpci_dma_exit_device(zdev);
-	/*
-	 * The zPCI function may already be disabled by the platform, this is
-	 * detected in clp_disable_fh() which becomes a no-op.
-	 */
-	return clp_disable_fh(zdev) ? -EIO : 0;
-}
-EXPORT_SYMBOL_GPL(zpci_disable_device);
+	u32 fh = zdev->fh;
+	int cc, rc = 0;
 
-/* zpci_remove_device - Removes the given zdev from the PCI core
- * @zdev: the zdev to be removed from the PCI core
- * @set_error: if true the device's error state is set to permanent failure
- *
- * Sets a zPCI device to a configured but offline state; the zPCI
- * device is still accessible through its hotplug slot and the zPCI
- * API but is removed from the common code PCI bus, making it
- * no longer available to drivers.
- */
-void zpci_remove_device(struct zpci_dev *zdev, bool set_error)
-{
-	struct zpci_bus *zbus = zdev->zbus;
-	struct pci_dev *pdev;
-
-	if (!zdev->zbus->bus)
-		return;
-
-	pdev = pci_get_slot(zbus->bus, zdev->devfn);
-	if (pdev) {
-		if (set_error)
-			pdev->error_state = pci_channel_io_perm_failure;
-		if (pdev->is_virtfn) {
-			zpci_iov_remove_virtfn(pdev, zdev->vfn);
-			/* balance pci_get_slot */
-			pci_dev_put(pdev);
-			return;
+	cc = clp_disable_fh(zdev, &fh);
+	if (!cc) {
+		zdev->fh = fh;
+	} else if (cc == CLP_RC_SETPCIFN_ALRDY) {
+		pr_info("Disabling PCI function %08x had no effect as it was already disabled\n",
+			zdev->fid);
+		/* Function is already disabled - update handle */
+		rc = clp_refresh_fh(zdev->fid, &fh);
+		if (!rc) {
+			zdev->fh = fh;
+			rc = -EINVAL;
 		}
-		pci_stop_and_remove_bus_device_locked(pdev);
-		/* balance pci_get_slot */
-		pci_dev_put(pdev);
+	} else {
+		rc = -EIO;
 	}
 	return rc;
 }
@@ -730,9 +704,9 @@ void zpci_remove_device(struct zpci_dev *zdev, bool set_error)
  * Creates a new zpci device and adds it to its, possibly newly created, zbus
  * as well as zpci_list.
  *
- * Returns: 0 on success, an error value otherwise
+ * Returns: the zdev on success or an error pointer otherwise
  */
-int zpci_create_device(u32 fid, u32 fh, enum zpci_state state)
+struct zpci_dev *zpci_create_device(u32 fid, u32 fh, enum zpci_state state)
 {
 	struct zpci_dev *zdev;
 	int rc;
@@ -740,7 +714,7 @@ int zpci_create_device(u32 fid, u32 fh, enum zpci_state state)
 	zpci_dbg(3, "add fid:%x, fh:%x, c:%d\n", fid, fh, state);
 	zdev = kzalloc(sizeof(*zdev), GFP_KERNEL);
 	if (!zdev)
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 
 	/* FID and Function Handle are the static/dynamic identifiers */
 	zdev->fid = fid;
@@ -759,33 +733,126 @@ int zpci_create_device(u32 fid, u32 fh, enum zpci_state state)
 	if (rc)
 		goto error;
 
-	if (zdev->state == ZPCI_FN_STATE_CONFIGURED) {
-		rc = zpci_enable_device(zdev);
-		if (rc)
-			goto error_destroy_iommu;
-	}
-
-	rc = sclp_pci_deconfigure(zdev->fid);
-	zpci_dbg(3, "deconf fid:%x, rc:%d\n", zdev->fid, rc);
+	rc = zpci_bus_device_register(zdev, &pci_root_ops);
 	if (rc)
-		goto error_disable;
+		goto error_destroy_iommu;
 
 	spin_lock(&zpci_list_lock);
 	list_add_tail(&zdev->entry, &zpci_list);
 	spin_unlock(&zpci_list_lock);
 
-	return 0;
-}
+	return zdev;
 
-error_disable:
-	if (zdev->state == ZPCI_FN_STATE_ONLINE)
-		zpci_disable_device(zdev);
 error_destroy_iommu:
 	zpci_destroy_iommu(zdev);
 error:
 	zpci_dbg(0, "add fid:%x, rc:%d\n", fid, rc);
 	kfree(zdev);
+	return ERR_PTR(rc);
+}
+
+bool zpci_is_device_configured(struct zpci_dev *zdev)
+{
+	enum zpci_state state = zdev->state;
+
+	return state != ZPCI_FN_STATE_RESERVED &&
+		state != ZPCI_FN_STATE_STANDBY;
+}
+
+/**
+ * zpci_scan_configured_device() - Scan a freshly configured zpci_dev
+ * @zdev: The zpci_dev to be configured
+ * @fh: The general function handle supplied by the platform
+ *
+ * Given a device in the configuration state Configured, enables, scans and
+ * adds it to the common code PCI subsystem if possible. If the PCI device is
+ * parked because we can not yet create a PCI bus because we have not seen
+ * function 0, it is ignored but will be scanned once function 0 appears.
+ * If any failure occurs, the zpci_dev is left disabled.
+ *
+ * Return: 0 on success, or an error code otherwise
+ */
+int zpci_scan_configured_device(struct zpci_dev *zdev, u32 fh)
+{
+	int rc;
+
+	zdev->fh = fh;
+	/* the PCI function will be scanned once function 0 appears */
+	if (!zdev->zbus->bus)
+		return 0;
+
+	/* For function 0 on a multi-function bus scan whole bus as we might
+	 * have to pick up existing functions waiting for it to allow creating
+	 * the PCI bus
+	 */
+	if (zdev->devfn == 0 && zdev->zbus->multifunction)
+		rc = zpci_bus_scan_bus(zdev->zbus);
+	else
+		rc = zpci_bus_scan_device(zdev);
+
 	return rc;
+}
+
+/**
+ * zpci_deconfigure_device() - Deconfigure a zpci_dev
+ * @zdev: The zpci_dev to configure
+ *
+ * Deconfigure a zPCI function that is currently configured and possibly known
+ * to the common code PCI subsystem.
+ * If any failure occurs the device is left as is.
+ *
+ * Return: 0 on success, or an error code otherwise
+ */
+int zpci_deconfigure_device(struct zpci_dev *zdev)
+{
+	int rc;
+
+	if (zdev->zbus->bus)
+		zpci_bus_remove_device(zdev, false);
+
+	if (zdev->dma_table) {
+		rc = zpci_dma_exit_device(zdev);
+		if (rc)
+			return rc;
+	}
+	if (zdev_enabled(zdev)) {
+		rc = zpci_disable_device(zdev);
+		if (rc)
+			return rc;
+	}
+
+	rc = sclp_pci_deconfigure(zdev->fid);
+	zpci_dbg(3, "deconf fid:%x, rc:%d\n", zdev->fid, rc);
+	if (rc)
+		return rc;
+	zdev->state = ZPCI_FN_STATE_STANDBY;
+
+	return 0;
+}
+
+/**
+ * zpci_device_reserved() - Mark device as resverved
+ * @zdev: the zpci_dev that was reserved
+ *
+ * Handle the case that a given zPCI function was reserved by another system.
+ * After a call to this function the zpci_dev can not be found via
+ * get_zdev_by_fid() anymore but may still be accessible via existing
+ * references though it will not be functional anymore.
+ */
+void zpci_device_reserved(struct zpci_dev *zdev)
+{
+	if (zdev->has_hp_slot)
+		zpci_exit_slot(zdev);
+	/*
+	 * Remove device from zpci_list as it is going away. This also
+	 * makes sure we ignore subsequent zPCI events for this device.
+	 */
+	spin_lock(&zpci_list_lock);
+	list_del(&zdev->entry);
+	spin_unlock(&zpci_list_lock);
+	zdev->state = ZPCI_FN_STATE_RESERVED;
+	zpci_dbg(3, "rsv fid:%x\n", zdev->fid);
+	zpci_zdev_put(zdev);
 }
 
 void zpci_release_device(struct kref *kref)
@@ -794,7 +861,12 @@ void zpci_release_device(struct kref *kref)
 	int ret;
 
 	if (zdev->zbus->bus)
-		zpci_remove_device(zdev, false);
+		zpci_bus_remove_device(zdev, false);
+
+	if (zdev->dma_table)
+		zpci_dma_exit_device(zdev);
+	if (zdev_enabled(zdev))
+		zpci_disable_device(zdev);
 
 	switch (zdev->state) {
 	case ZPCI_FN_STATE_CONFIGURED:

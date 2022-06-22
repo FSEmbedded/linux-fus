@@ -437,37 +437,8 @@ static inline void sk_psock_cork_free(struct sk_psock *psock)
 static inline void sk_psock_restore_proto(struct sock *sk,
 					  struct sk_psock *psock)
 {
-	if (inet_csk_has_ulp(sk)) {
-		/* TLS does not have an unhash proto in SW cases, but we need
-		 * to ensure we stop using the sock_map unhash routine because
-		 * the associated psock is being removed. So use the original
-		 * unhash handler.
-		 */
-		WRITE_ONCE(sk->sk_prot->unhash, psock->saved_unhash);
-		tcp_update_ulp(sk, psock->sk_proto, psock->saved_write_space);
-	} else {
-		sk->sk_write_space = psock->saved_write_space;
-		/* Pairs with lockless read in sk_clone_lock() */
-		WRITE_ONCE(sk->sk_prot, psock->sk_proto);
-	}
-}
-
-static inline void sk_psock_set_state(struct sk_psock *psock,
-				      enum sk_psock_state_bits bit)
-{
-	set_bit(bit, &psock->state);
-}
-
-static inline void sk_psock_clear_state(struct sk_psock *psock,
-					enum sk_psock_state_bits bit)
-{
-	clear_bit(bit, &psock->state);
-}
-
-static inline bool sk_psock_test_state(const struct sk_psock *psock,
-				       enum sk_psock_state_bits bit)
-{
-	return test_bit(bit, &psock->state);
+	if (psock->psock_update_sk_prot)
+		psock->psock_update_sk_prot(sk, psock, true);
 }
 
 static inline struct sk_psock *sk_psock_get(struct sock *sk)
@@ -482,7 +453,6 @@ static inline struct sk_psock *sk_psock_get(struct sock *sk)
 	return psock;
 }
 
-void sk_psock_stop(struct sock *sk, struct sk_psock *psock);
 void sk_psock_drop(struct sock *sk, struct sk_psock *psock);
 
 static inline void sk_psock_put(struct sock *sk, struct sk_psock *psock)

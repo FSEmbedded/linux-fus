@@ -36,46 +36,12 @@ void msm_fence_context_free(struct msm_fence_context *fctx)
 
 static inline bool fence_completed(struct msm_fence_context *fctx, uint32_t fence)
 {
-	return (int32_t)(fctx->completed_fence - fence) >= 0;
-}
-
-/* legacy path for WAIT_FENCE ioctl: */
-int msm_wait_fence(struct msm_fence_context *fctx, uint32_t fence,
-		ktime_t *timeout, bool interruptible)
-{
-	int ret;
-
-	if (fence > fctx->last_fence) {
-		DRM_ERROR_RATELIMITED("%s: waiting on invalid fence: %u (of %u)\n",
-				fctx->name, fence, fctx->last_fence);
-		return -EINVAL;
-	}
-
-	if (!timeout) {
-		/* no-wait: */
-		ret = fence_completed(fctx, fence) ? 0 : -EBUSY;
-	} else {
-		unsigned long remaining_jiffies = timeout_to_jiffies(timeout);
-
-		if (interruptible)
-			ret = wait_event_interruptible_timeout(fctx->event,
-				fence_completed(fctx, fence),
-				remaining_jiffies);
-		else
-			ret = wait_event_timeout(fctx->event,
-				fence_completed(fctx, fence),
-				remaining_jiffies);
-
-		if (ret == 0) {
-			DBG("timeout waiting for fence: %u (completed: %u)",
-					fence, fctx->completed_fence);
-			ret = -ETIMEDOUT;
-		} else if (ret != -ERESTARTSYS) {
-			ret = 0;
-		}
-	}
-
-	return ret;
+	/*
+	 * Note: Check completed_fence first, as fenceptr is in a write-combine
+	 * mapping, so it will be more expensive to read.
+	 */
+	return (int32_t)(fctx->completed_fence - fence) >= 0 ||
+		(int32_t)(*fctx->fenceptr - fence) >= 0;
 }
 
 /* called from workqueue */

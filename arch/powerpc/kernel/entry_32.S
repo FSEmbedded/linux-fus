@@ -75,43 +75,25 @@ _ASM_NOKPROBE_SYMBOL(prepare_transfer_to_handler)
 
 	.globl	transfer_to_syscall
 transfer_to_syscall:
-#ifdef CONFIG_PPC_BOOK3S_32
-	kuep_lock r11, r12
+	stw	r11, GPR1(r1)
+	stw	r11, 0(r1)
+	mflr	r12
+	stw	r12, _LINK(r1)
+#if defined(CONFIG_BOOKE) || defined(CONFIG_40x)
+	rlwinm	r9,r9,0,14,12		/* clear MSR_WE (necessary?) */
 #endif
-#ifdef CONFIG_TRACE_IRQFLAGS
-	andi.	r12,r9,MSR_EE
-	beq-	trace_syscall_entry_irq_off
-#endif /* CONFIG_TRACE_IRQFLAGS */
-
-/*
- * Handle a system call.
- */
-	.stabs	"arch/powerpc/kernel/",N_SO,0,0,0f
-	.stabs	"entry_32.S",N_SO,0,0,0f
-0:
-
-_GLOBAL(DoSyscall)
-	stw	r3,ORIG_GPR3(r1)
-	li	r12,0
-	stw	r12,RESULT(r1)
-#ifdef CONFIG_TRACE_IRQFLAGS
-	/* Make sure interrupts are enabled */
-	mfmsr	r11
-	andi.	r12,r11,MSR_EE
-	/* We came in with interrupts disabled, we WARN and mark them enabled
-	 * for lockdep now */
-0:	tweqi	r12, 0
-	EMIT_BUG_ENTRY 0b,__FILE__,__LINE__, BUGFLAG_WARNING
-#endif /* CONFIG_TRACE_IRQFLAGS */
-	lwz	r11,TI_FLAGS(r2)
-	andi.	r11,r11,_TIF_SYSCALL_DOTRACE
-	bne-	syscall_dotrace
-syscall_dotrace_cont:
-	cmplwi	0,r0,NR_syscalls
-	lis	r10,sys_call_table@h
-	ori	r10,r10,sys_call_table@l
-	slwi	r0,r0,2
-	bge-	66f
+	lis	r12,STACK_FRAME_REGS_MARKER@ha /* exception frame marker */
+	SAVE_GPR(2, r1)
+	addi	r12,r12,STACK_FRAME_REGS_MARKER@l
+	stw	r9,_MSR(r1)
+	li	r2, INTERRUPT_SYSCALL
+	stw	r12,8(r1)
+	stw	r2,_TRAP(r1)
+	SAVE_GPR(0, r1)
+	SAVE_4GPRS(3, r1)
+	SAVE_2GPRS(7, r1)
+	addi	r2,r10,-THREAD
+	SAVE_NVGPRS(r1)
 
 	/* Calling convention has r9 = orig r0, r10 = regs */
 	addi	r10,r1,STACK_FRAME_OVERHEAD

@@ -86,9 +86,9 @@ static void detect_tablet_mode(struct platform_device *device)
 		return;
 
 	m = !(vgbs & VGBS_TABLET_MODE_FLAGS);
-	input_report_switch(priv->input_dev, SW_TABLET_MODE, m);
+	input_report_switch(priv->switches_dev, SW_TABLET_MODE, m);
 	m = (vgbs & VGBS_DOCK_MODE_FLAG) ? 1 : 0;
-	input_report_switch(priv->input_dev, SW_DOCK, m);
+	input_report_switch(priv->switches_dev, SW_DOCK, m);
 }
 
 /*

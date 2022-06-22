@@ -101,31 +101,28 @@ static int usb4_native_switch_op(struct tb_switch *sw, u16 opcode,
 	if (ret)
 		return ret;
 
-	do {
-		unsigned int dwaddress, dwords;
-		u8 data[USB4_DATA_DWORDS * 4];
-		size_t nbytes;
-		int ret;
+	ret = tb_sw_read(sw, &val, TB_CFG_SWITCH, ROUTER_CS_26, 1);
+	if (ret)
+		return ret;
 
-		offset = address & 3;
-		nbytes = min_t(size_t, size + offset, USB4_DATA_DWORDS * 4);
+	if (val & ROUTER_CS_26_ONS)
+		return -EOPNOTSUPP;
 
-		dwaddress = address / 4;
-		dwords = ALIGN(nbytes, 4) / 4;
+	if (status)
+		*status = (val & ROUTER_CS_26_STATUS_MASK) >>
+			ROUTER_CS_26_STATUS_SHIFT;
 
 	if (metadata) {
 		ret = tb_sw_read(sw, metadata, TB_CFG_SWITCH, ROUTER_CS_25, 1);
 		if (ret)
 			return ret;
-		}
-
-		nbytes -= offset;
-		memcpy(buf, data + offset, nbytes);
-
-		size -= nbytes;
-		address += nbytes;
-		buf += nbytes;
-	} while (size > 0);
+	}
+	if (rx_dwords) {
+		ret = tb_sw_read(sw, rx_data, TB_CFG_SWITCH, ROUTER_CS_9,
+				 rx_dwords);
+		if (ret)
+			return ret;
+	}
 
 	return 0;
 }

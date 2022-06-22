@@ -161,36 +161,7 @@ Onlining of a memory block can be triggered via::
 
 	% echo online > /sys/devices/system/memory/memoryXXX/state
 
-=================== ============================================================
-``phys_index``      read-only and contains memory block id, same as XXX.
-``state``           read-write
-
-                    - at read:  contains online/offline state of memory.
-                    - at write: user can specify "online_kernel",
-
-                    "online_movable", "online", "offline" command
-                    which will be performed on all sections in the block.
-``phys_device``	    read-only: legacy interface only ever used on s390x to
-		    expose the covered storage increment.
-``removable``       read-only: contains an integer value indicating
-                    whether the memory block is removable or not
-                    removable.  A value of 1 indicates that the memory
-                    block is removable and a value of 0 indicates that
-                    it is not removable. A memory block is removable only if
-                    every section in the block is removable.
-``valid_zones``     read-only: designed to show which zones this memory block
-		    can be onlined to.
-
-		    The first column shows it`s default zone.
-
-		    "memory6/valid_zones: Normal Movable" shows this memoryblock
-		    can be onlined to ZONE_NORMAL by default and to ZONE_MOVABLE
-		    by online_movable.
-
-		    "memory7/valid_zones: Movable Normal" shows this memoryblock
-		    can be onlined to ZONE_MOVABLE by default and to ZONE_NORMAL
-		    by online_kernel.
-=================== ============================================================
+Or alternatively::
 
 	% echo 1 > /sys/devices/system/memory/memoryXXX/online
 

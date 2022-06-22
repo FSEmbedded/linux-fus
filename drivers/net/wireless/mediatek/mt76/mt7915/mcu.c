@@ -176,7 +176,7 @@ mt7915_get_phy_mode(struct ieee80211_vif *vif, struct ieee80211_sta *sta)
 		if (ht_cap->ht_supported)
 			mode |= PHY_MODE_GN;
 
-		if (he_cap->has_he)
+		if (he_cap && he_cap->has_he)
 			mode |= PHY_MODE_AX_24G;
 	} else if (band == NL80211_BAND_5GHZ) {
 		mode |= PHY_MODE_A;
@@ -187,7 +187,7 @@ mt7915_get_phy_mode(struct ieee80211_vif *vif, struct ieee80211_sta *sta)
 		if (vht_cap->vht_supported)
 			mode |= PHY_MODE_AC;
 
-		if (he_cap->has_he)
+		if (he_cap && he_cap->has_he)
 			mode |= PHY_MODE_AX_5G;
 	}
 
@@ -3265,8 +3265,8 @@ int mt7915_mcu_set_pulse_th(struct mt7915_dev *dev,
 #undef __req_field
 	};
 
-	return __mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD_SET_RDD_TH,
-				   &req, sizeof(req), true);
+	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD(SET_RDD_TH), &req,
+				 sizeof(req), true);
 }
 
 int mt7915_mcu_set_radar_th(struct mt7915_dev *dev, int index,
@@ -3282,8 +3282,8 @@ int mt7915_mcu_set_radar_th(struct mt7915_dev *dev, int index,
 		u8 max_crpn;
 		u8 min_crpr;
 		u8 min_pw;
-		u32 min_pri;
-		u32 max_pri;
+		__le32 min_pri;
+		__le32 max_pri;
 		u8 max_pw;
 		u8 min_crbn;
 		u8 max_crbn;
@@ -3291,7 +3291,7 @@ int mt7915_mcu_set_radar_th(struct mt7915_dev *dev, int index,
 		u8 max_stgpn;
 		u8 min_stgpr;
 		u8 rsv[2];
-		u32 min_stgpr_diff;
+		__le32 min_stgpr_diff;
 	} __packed req = {
 		.tag = cpu_to_le32(0x2),
 		.radar_type = cpu_to_le16(index),
@@ -3317,8 +3317,8 @@ int mt7915_mcu_set_radar_th(struct mt7915_dev *dev, int index,
 #undef __req_field_u32
 	};
 
-	return __mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD_SET_RDD_TH,
-				   &req, sizeof(req), true);
+	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD(SET_RDD_TH), &req,
+				 sizeof(req), true);
 }
 
 int mt7915_mcu_set_chan_info(struct mt7915_phy *phy, int cmd)

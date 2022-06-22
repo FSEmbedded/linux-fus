@@ -447,6 +447,7 @@ static int snd_rawmidi_open(struct inode *inode, struct file *file)
 		err = -ENOMEM;
 		goto __error;
 	}
+	rawmidi_file->user_pversion = 0;
 	init_waitqueue_entry(&wait, current);
 	add_wait_queue(&rmidi->open_wait, &wait);
 	while (1) {
@@ -1629,6 +1630,8 @@ static void snd_rawmidi_proc_info_read(struct snd_info_entry *entry,
 	struct snd_rawmidi_substream *substream;
 	struct snd_rawmidi_runtime *runtime;
 	unsigned long buffer_size, avail, xruns;
+	unsigned int clock_type;
+	static const char *clock_names[4] = { "none", "realtime", "monotonic", "monotonic raw" };
 
 	rmidi = entry->private_data;
 	snd_iprintf(buffer, "%s\n\n", rmidi->name);
@@ -1684,6 +1687,14 @@ static void snd_rawmidi_proc_info_read(struct snd_info_entry *entry,
 					    "  Avail        : %lu\n"
 					    "  Overruns     : %lu\n",
 					    buffer_size, avail, xruns);
+				if (substream->framing == SNDRV_RAWMIDI_MODE_FRAMING_TSTAMP) {
+					clock_type = substream->clock_type >> SNDRV_RAWMIDI_MODE_CLOCK_SHIFT;
+					if (!snd_BUG_ON(clock_type >= ARRAY_SIZE(clock_names)))
+						snd_iprintf(buffer,
+							    "  Framing      : tstamp\n"
+							    "  Clock type   : %s\n",
+							    clock_names[clock_type]);
+				}
 			}
 		}
 	}

@@ -134,6 +134,12 @@ enum nvme_quirks {
 	NVME_QUIRK_NO_NS_DESC_LIST		= (1 << 15),
 
 	/*
+	 * The controller does not properly handle DMA addresses over
+	 * 48 bits.
+	 */
+	NVME_QUIRK_DMA_ADDRESS_BITS_48		= (1 << 16),
+
+	/*
 	 * The controller requires the command_id value be be limited, so skip
 	 * encoding the generation sequence number.
 	 */
@@ -807,9 +813,6 @@ static inline void nvme_mpath_shutdown_disk(struct nvme_ns_head *head)
 {
 }
 static inline void nvme_trace_bio_complete(struct request *req)
-{
-}
-static inline void nvme_mpath_init_ctrl(struct nvme_ctrl *ctrl)
 {
 }
 static inline void nvme_mpath_init_ctrl(struct nvme_ctrl *ctrl)

@@ -212,10 +212,10 @@ out:
 	return rc;
 }
 
-static int clp_refresh_fh(u32 fid);
 /**
  * clp_set_pci_fn() - Execute a command on a PCI function
  * @zdev: Function that will be affected
+ * @fh: Out parameter for updated function handle
  * @nr_dma_as: DMA address space number
  * @command: The command code to execute
  *
@@ -251,10 +251,7 @@ static int clp_set_pci_fn(struct zpci_dev *zdev, u32 *fh, u8 nr_dma_as, u8 comma
 	} while (rrb->response.hdr.rsp == CLP_RC_SETPCIFN_BUSY);
 
 	if (!rc && rrb->response.hdr.rsp == CLP_RC_OK) {
-		zdev->fh = rrb->response.fh;
-	} else if (!rc && rrb->response.hdr.rsp == CLP_RC_SETPCIFN_ALRDY) {
-		/* Function is already in desired state - update handle */
-		rc = clp_refresh_fh(zdev->fid);
+		*fh = rrb->response.fh;
 	} else {
 		zpci_err("Set PCI FN:\n");
 		zpci_err_clp(rrb->response.hdr.rsp, rc);
@@ -303,10 +300,10 @@ int clp_enable_fh(struct zpci_dev *zdev, u32 *fh, u8 nr_dma_as)
 {
 	int rc;
 
-	rc = clp_set_pci_fn(zdev, nr_dma_as, CLP_SET_ENABLE_PCI_FN);
-	zpci_dbg(3, "ena fid:%x, fh:%x, rc:%d\n", zdev->fid, zdev->fh, rc);
+	rc = clp_set_pci_fn(zdev, fh, nr_dma_as, CLP_SET_ENABLE_PCI_FN);
+	zpci_dbg(3, "ena fid:%x, fh:%x, rc:%d\n", zdev->fid, *fh, rc);
 	if (!rc && zpci_use_mio(zdev)) {
-		rc = clp_set_pci_fn(zdev, nr_dma_as, CLP_SET_ENABLE_MIO);
+		rc = clp_set_pci_fn(zdev, fh, nr_dma_as, CLP_SET_ENABLE_MIO);
 		zpci_dbg(3, "ena mio fid:%x, fh:%x, rc:%d\n",
 				zdev->fid, *fh, rc);
 		if (rc)

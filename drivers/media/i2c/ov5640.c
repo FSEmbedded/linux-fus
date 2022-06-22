@@ -2097,7 +2097,7 @@ static int ov5640_set_power_dvp(struct ov5640_dev *sensor, bool on)
 	if (!on) {
 		/* Reset settings to their default values. */
 		ov5640_write_reg(sensor, OV5640_REG_CCIR656_CTRL00, 0x00);
-		ov5640_write_reg(sensor, OV5640_REG_IO_MIPI_CTRL00, 0x58);
+		ov5640_write_reg(sensor, OV5640_REG_IO_MIPI_CTRL00, 0x00);
 		ov5640_write_reg(sensor, OV5640_REG_POLARITY_CTRL00, 0x20);
 		ov5640_write_reg(sensor, OV5640_REG_PAD_OUTPUT_ENABLE01, 0x00);
 		ov5640_write_reg(sensor, OV5640_REG_PAD_OUTPUT_ENABLE02, 0x00);
@@ -2282,12 +2282,12 @@ static int ov5640_try_frame_interval(struct ov5640_dev *sensor,
 	int i;
 
 	minfps = ov5640_framerates[OV5640_08_FPS];
-	maxfps = ov5640_framerates[OV5640_60_FPS];
+	maxfps = ov5640_framerates[OV5640_30_FPS];
 
 	if (fi->numerator == 0) {
 		fi->denominator = maxfps;
 		fi->numerator = 1;
-		rate = OV5640_60_FPS;
+		rate = OV5640_30_FPS;
 		goto find_mode;
 	}
 

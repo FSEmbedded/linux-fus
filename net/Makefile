@@ -55,12 +55,8 @@ obj-$(CONFIG_SMC)		+= smc/
 obj-$(CONFIG_RFKILL)		+= rfkill/
 obj-$(CONFIG_NET_9P)		+= 9p/
 obj-$(CONFIG_CAIF)		+= caif/
-ifneq ($(CONFIG_DCB),)
-obj-y				+= dcb/
-endif
-ifneq ($(CONFIG_TSN),)
-obj-y 				+= tsn/
-endif
+obj-$(CONFIG_DCB)		+= dcb/
+obj-$(CONFIG_TSN)		+= tsn/
 obj-$(CONFIG_6LOWPAN)		+= 6lowpan/
 obj-$(CONFIG_IEEE802154)	+= ieee802154/
 obj-$(CONFIG_MAC802154)		+= mac802154/

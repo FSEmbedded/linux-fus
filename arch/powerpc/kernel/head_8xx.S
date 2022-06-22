@@ -160,7 +160,12 @@ instruction_counter:
 /* On the MPC8xx, this is a software emulation interrupt.  It occurs
  * for all unimplemented and illegal instructions.
  */
-	EXCEPTION(0x1000, SoftEmu, emulation_assist_interrupt, EXC_XFER_STD)
+	START_EXCEPTION(INTERRUPT_SOFT_EMU_8xx, SoftEmu)
+	EXCEPTION_PROLOG INTERRUPT_SOFT_EMU_8xx SoftEmu
+	prepare_transfer_to_handler
+	bl	emulation_assist_interrupt
+	REST_NVGPRS(r1)
+	b	interrupt_return
 
 /*
  * For the MPC8xx, this is a software tablewalk to load the instruction

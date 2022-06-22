@@ -325,8 +325,8 @@ void isa207_get_mem_weight(u64 *weight, u64 type)
 	if (cpu_has_feature(CPU_FTR_ARCH_31))
 		mantissa = P10_MMCRA_THR_CTR_MANT(mmcra);
 
-	if (val == 0 || val == 7)
-		*weight = 0;
+	if (val == 0 || (val == 7 && !cpu_has_feature(CPU_FTR_ARCH_31)))
+		weight_lat = 0;
 	else
 		weight_lat = mantissa << (2 * exp);
 
@@ -451,9 +451,11 @@ int isa207_get_constraint(u64 event, unsigned long *maskp, unsigned long *valp, 
 	}
 
 	if (cpu_has_feature(CPU_FTR_ARCH_31)) {
-		if (event_is_threshold(event)) {
+		if (event_is_threshold(event) && is_thresh_cmp_valid(event_config1)) {
 			mask  |= CNST_THRESH_CTL_SEL_MASK;
 			value |= CNST_THRESH_CTL_SEL_VAL(event >> EVENT_THRESH_SHIFT);
+			mask  |= p10_CNST_THRESH_CMP_MASK;
+			value |= p10_CNST_THRESH_CMP_VAL(p10_thresh_cmp_val(event_config1));
 		}
 	} else if (cpu_has_feature(CPU_FTR_ARCH_300))  {
 		if (event_is_threshold(event) && is_thresh_cmp_valid(event)) {

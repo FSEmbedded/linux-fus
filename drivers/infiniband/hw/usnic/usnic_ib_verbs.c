@@ -243,7 +243,6 @@ qp_grp_check:
 		usnic_err("Failed to allocate qp_grp\n");
 		if (usnic_ib_share_vf)
 			usnic_uiom_free_dev_list(dev_list);
-		return ERR_PTR(qp_grp ? PTR_ERR(qp_grp) : -ENOMEM);
 	}
 	return ret;
 }

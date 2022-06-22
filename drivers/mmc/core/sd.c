@@ -66,7 +66,7 @@ static const unsigned int sd_au_size[] = {
 		__res & __mask;						\
 	})
 
-#define SD_POWEROFF_NOTIFY_TIMEOUT_MS 2000
+#define SD_POWEROFF_NOTIFY_TIMEOUT_MS 1000
 #define SD_WRITE_EXTR_SINGLE_TIMEOUT_MS 1000
 
 struct sd_busy_data {
@@ -514,12 +514,6 @@ static int sd_set_bus_speed_mode(struct mmc_card *card, u8 *status)
 	else {
 		mmc_set_timing(card->host, timing);
 		mmc_set_clock(card->host, card->sw_caps.uhs_max_dtr);
-		/*
-		 * FIXME: Sandisk SD3.0 cards DDR50 mode requires such
-		 * delay to get stable, without this delay we may encounter
-		 * CRC errors after switch to DDR50 mode
-		 */
-		mmc_delay(100);
 	}
 
 	return 0;
@@ -1668,6 +1662,12 @@ static int sd_poweroff_notify(struct mmc_card *card)
 			mmc_hostname(card->host), err);
 		goto out;
 	}
+
+	/* Find out when the command is completed. */
+	err = mmc_poll_for_busy(card, SD_WRITE_EXTR_SINGLE_TIMEOUT_MS, false,
+				MMC_BUSY_EXTR_SINGLE);
+	if (err)
+		goto out;
 
 	cb_data.card = card;
 	cb_data.reg_buf = reg_buf;

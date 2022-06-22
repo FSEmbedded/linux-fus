@@ -279,7 +279,8 @@ int amdgpu_ras_eeprom_reset_table(struct amdgpu_ras_eeprom_control *control)
 	hdr->checksum = csum;
 	res = __write_table_header(control);
 
-	__decode_table_header_from_buff(hdr, buff);
+	control->ras_num_recs = 0;
+	control->ras_fri = 0;
 
 	amdgpu_ras_debugfs_set_ret_size(control);
 

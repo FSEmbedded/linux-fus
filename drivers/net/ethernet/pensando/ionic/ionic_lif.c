@@ -141,14 +141,7 @@ static void ionic_link_status_check(struct ionic_lif *lif)
 	link_up = link_status == IONIC_PORT_OPER_STATUS_UP;
 
 	if (link_up) {
-		if (lif->netdev->flags & IFF_UP && netif_running(lif->netdev)) {
-			mutex_lock(&lif->queue_lock);
-			ionic_start_queues(lif);
-			mutex_unlock(&lif->queue_lock);
-		}
-
-		if (!netif_carrier_ok(netdev)) {
-			u32 link_speed;
+		int err = 0;
 
 		if (netdev->flags & IFF_UP && netif_running(netdev)) {
 			mutex_lock(&lif->queue_lock);
@@ -1405,12 +1398,8 @@ void ionic_lif_rx_mode(struct ionic_lif *lif)
 
 	mutex_lock(&lif->config_lock);
 
-static void ionic_set_rx_mode(struct net_device *netdev, bool can_sleep)
-{
-	struct ionic_lif *lif = netdev_priv(netdev);
-	struct ionic_deferred_work *work;
-	unsigned int nfilters;
-	unsigned int rx_mode;
+	/* grab the flags once for local use */
+	nd_flags = netdev->flags;
 
 	rx_mode = IONIC_RX_MODE_F_UNICAST;
 	rx_mode |= (nd_flags & IFF_MULTICAST) ? IONIC_RX_MODE_F_MULTICAST : 0;
@@ -1427,10 +1416,6 @@ static void ionic_set_rx_mode(struct net_device *netdev, bool can_sleep)
 	 *       we remove our overflow flag and check the netdev flags
 	 *       to see if we can disable NIC PROMISC
 	 */
-	if (can_sleep)
-		__dev_uc_sync(netdev, ionic_addr_add, ionic_addr_del);
-	else
-		__dev_uc_sync(netdev, ionic_ndo_addr_add, ionic_ndo_addr_del);
 	nfilters = le32_to_cpu(lif->identity->eth.max_ucast_filters);
 	if ((lif->nucast + lif->nmcast) >= nfilters) {
 		rx_mode |= IONIC_RX_MODE_F_PROMISC;
@@ -1446,41 +1431,64 @@ static void ionic_set_rx_mode(struct net_device *netdev, bool can_sleep)
 			rx_mode &= ~IONIC_RX_MODE_F_ALLMULTI;
 	}
 
-	/* same for multicast */
-	if (can_sleep)
-		__dev_mc_sync(netdev, ionic_addr_add, ionic_addr_del);
-	else
-		__dev_mc_sync(netdev, ionic_ndo_addr_add, ionic_ndo_addr_del);
-	nfilters = le32_to_cpu(lif->identity->eth.max_mcast_filters);
-	if (netdev_mc_count(netdev) > nfilters) {
-		rx_mode |= IONIC_RX_MODE_F_ALLMULTI;
-		lif->mc_overflow = true;
-	} else if (lif->mc_overflow) {
-		lif->mc_overflow = false;
-		if (!(netdev->flags & IFF_ALLMULTI))
-			rx_mode &= ~IONIC_RX_MODE_F_ALLMULTI;
-	}
+	i = scnprintf(buf, sizeof(buf), "rx_mode 0x%04x -> 0x%04x:",
+		      lif->rx_mode, rx_mode);
+	if (rx_mode & IONIC_RX_MODE_F_UNICAST)
+		i += scnprintf(&buf[i], REMAIN(i), " RX_MODE_F_UNICAST");
+	if (rx_mode & IONIC_RX_MODE_F_MULTICAST)
+		i += scnprintf(&buf[i], REMAIN(i), " RX_MODE_F_MULTICAST");
+	if (rx_mode & IONIC_RX_MODE_F_BROADCAST)
+		i += scnprintf(&buf[i], REMAIN(i), " RX_MODE_F_BROADCAST");
+	if (rx_mode & IONIC_RX_MODE_F_PROMISC)
+		i += scnprintf(&buf[i], REMAIN(i), " RX_MODE_F_PROMISC");
+	if (rx_mode & IONIC_RX_MODE_F_ALLMULTI)
+		i += scnprintf(&buf[i], REMAIN(i), " RX_MODE_F_ALLMULTI");
+	if (rx_mode & IONIC_RX_MODE_F_RDMA_SNIFFER)
+		i += scnprintf(&buf[i], REMAIN(i), " RX_MODE_F_RDMA_SNIFFER");
+	netdev_dbg(netdev, "lif%d %s\n", lif->index, buf);
 
 	if (lif->rx_mode != rx_mode) {
-		if (!can_sleep) {
-			work = kzalloc(sizeof(*work), GFP_ATOMIC);
-			if (!work) {
-				netdev_err(lif->netdev, "%s OOM\n", __func__);
-				return;
-			}
-			work->type = IONIC_DW_TYPE_RX_MODE;
-			work->rx_mode = rx_mode;
-			netdev_dbg(lif->netdev, "deferred: rx_mode\n");
-			ionic_lif_deferred_enqueue(&lif->deferred, work);
-		} else {
-			ionic_lif_rx_mode(lif, rx_mode);
-		}
+		struct ionic_admin_ctx ctx = {
+			.work = COMPLETION_INITIALIZER_ONSTACK(ctx.work),
+			.cmd.rx_mode_set = {
+				.opcode = IONIC_CMD_RX_MODE_SET,
+				.lif_index = cpu_to_le16(lif->index),
+			},
+		};
+		int err;
+
+		ctx.cmd.rx_mode_set.rx_mode = cpu_to_le16(rx_mode);
+		err = ionic_adminq_post_wait(lif, &ctx);
+		if (err)
+			netdev_warn(netdev, "set rx_mode 0x%04x failed: %d\n",
+				    rx_mode, err);
+		else
+			lif->rx_mode = rx_mode;
 	}
+
+	mutex_unlock(&lif->config_lock);
 }
 
 static void ionic_ndo_set_rx_mode(struct net_device *netdev)
 {
-	ionic_set_rx_mode(netdev, false);
+	struct ionic_lif *lif = netdev_priv(netdev);
+	struct ionic_deferred_work *work;
+
+	/* Sync the kernel filter list with the driver filter list */
+	__dev_uc_sync(netdev, ionic_addr_add, ionic_addr_del);
+	__dev_mc_sync(netdev, ionic_addr_add, ionic_addr_del);
+
+	/* Shove off the rest of the rxmode work to the work task
+	 * which will include syncing the filters to the firmware.
+	 */
+	work = kzalloc(sizeof(*work), GFP_ATOMIC);
+	if (!work) {
+		netdev_err(lif->netdev, "rxmode change dropped\n");
+		return;
+	}
+	work->type = IONIC_DW_TYPE_RX_MODE;
+	netdev_dbg(lif->netdev, "deferred: rx_mode\n");
+	ionic_lif_deferred_enqueue(&lif->deferred, work);
 }
 
 static __le64 ionic_netdev_features_to_nic(netdev_features_t features)
@@ -2125,7 +2133,7 @@ static int ionic_txrx_init(struct ionic_lif *lif)
 	if (lif->netdev->features & NETIF_F_RXHASH)
 		ionic_lif_rss_init(lif);
 
-	ionic_set_rx_mode(lif->netdev, true);
+	ionic_lif_rx_mode(lif);
 
 	return 0;
 
@@ -3275,7 +3283,7 @@ int ionic_lif_init(struct ionic_lif *lif)
 		return -EINVAL;
 	}
 
-	lif->dbid_inuse = bitmap_alloc(lif->dbid_count, GFP_KERNEL);
+	lif->dbid_inuse = bitmap_zalloc(lif->dbid_count, GFP_KERNEL);
 	if (!lif->dbid_inuse) {
 		dev_err(dev, "Failed alloc doorbell id bitmap, aborting\n");
 		return -ENOMEM;

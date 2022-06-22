@@ -1348,8 +1348,18 @@ int intel_ring_submission_setup(struct intel_engine_cs *engine)
 		goto err_ring;
 	}
 
-	if (IS_GEN(engine->i915, 7) && engine->class == RENDER_CLASS) {
-		err = gen7_ctx_switch_bb_init(engine);
+	i915_gem_ww_ctx_init(&ww, false);
+
+retry:
+	err = i915_gem_object_lock(timeline->hwsp_ggtt->obj, &ww);
+	if (!err && gen7_wa_vma)
+		err = i915_gem_object_lock(gen7_wa_vma->obj, &ww);
+	if (!err && engine->legacy.ring->vma->obj)
+		err = i915_gem_object_lock(engine->legacy.ring->vma->obj, &ww);
+	if (!err)
+		err = intel_timeline_pin(timeline, &ww);
+	if (!err) {
+		err = intel_ring_pin(ring, &ww);
 		if (err)
 			intel_timeline_unpin(timeline);
 	}

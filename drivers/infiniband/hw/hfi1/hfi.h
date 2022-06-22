@@ -1358,7 +1358,7 @@ struct hfi1_devdata {
 	/* Lock to protect IRQ SRC register access */
 	spinlock_t irq_src_lock;
 	int vnic_num_vports;
-	struct net_device *dummy_netdev;
+	struct hfi1_netdev_rx *netdev_rx;
 	struct hfi1_affinity_node *affinity_entry;
 
 	/* Keeps track of IPoIB RSM rule users */

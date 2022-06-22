@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017-2019 NXP
+ * Copyright 2017-2020 NXP
  *	Dong Aisheng <aisheng.dong@nxp.com>
  */
 
@@ -308,6 +308,7 @@
 	};
 
 	/* sorted in register address */
+	#include "imx8-ss-img.dtsi"
 	#include "imx8-ss-security.dtsi"
 	#include "imx8-ss-cm40.dtsi"
 	#include "imx8-ss-vpu.dtsi"
@@ -317,16 +318,15 @@
 	#include "imx8-ss-ddr.dtsi"
 	#include "imx8-ss-lsio.dtsi"
 	#include "imx8-ss-hsio.dtsi"
-	#include "imx8-ss-img.dtsi"
 	#include "imx8-ss-gpu0.dtsi"
 	#include "imx8-ss-lcdif.dtsi"
 };
 
+#include "imx8qxp-ss-img.dtsi"
 #include "imx8qxp-ss-adma.dtsi"
 #include "imx8qxp-ss-conn.dtsi"
 #include "imx8qxp-ss-lsio.dtsi"
 #include "imx8qxp-ss-hsio.dtsi"
-#include "imx8qxp-ss-img.dtsi"
 #include "imx8qxp-ss-dc.dtsi"
 #include "imx8qxp-ss-lvds.dtsi"
 #include "imx8qxp-ss-gpu.dtsi"
@@ -346,8 +346,3 @@
 	clock-latency = <61036>;
 	#cooling-cells = <2>;
 };
-
-#include "imx8qxp-ss-img.dtsi"
-#include "imx8qxp-ss-adma.dtsi"
-#include "imx8qxp-ss-conn.dtsi"
-#include "imx8qxp-ss-lsio.dtsi"

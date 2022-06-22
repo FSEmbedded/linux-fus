@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0
-// Copyright 2019-2020 NXP
 
 #define pr_fmt(fmt) "irq-ls-extirq: " fmt
 
@@ -177,9 +176,6 @@ ls_extirq_of_init(struct device_node *node, struct device_node *parent)
 
 	priv->is_ls1021a_or_ls1043a = of_device_is_compatible(node, "fsl,ls1021a-extirq") ||
 				      of_device_is_compatible(node, "fsl,ls1043a-extirq");
-
-	if (of_device_is_compatible(node, "fsl,ls1043a-extirq"))
-		priv->bit_reverse = true;
 
 	domain = irq_domain_add_hierarchy(parent_domain, 0, priv->nirq, node,
 					  &extirq_domain_ops, priv);

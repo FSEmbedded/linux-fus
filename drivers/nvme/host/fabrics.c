@@ -328,12 +328,10 @@ static void nvmf_log_connect_error(struct nvme_ctrl *ctrl,
 			"Connect incompatible format: %d",
 			cmd->connect.recfmt);
 		break;
-
 	case NVME_SC_HOST_PATH_ERROR:
 		dev_err(ctrl->device,
 			"Connect command failed: host path error\n");
 		break;
-
 	default:
 		dev_err(ctrl->device,
 			"Connect command failed, error wo/DNR bit: %d\n",

@@ -1847,7 +1847,6 @@ void hns3_shinfo_pack(struct skb_shared_info *shinfo, __u32 *size)
 
 static int hns3_skb_linearize(struct hns3_enet_ring *ring,
 			      struct sk_buff *skb,
-			      u8 max_non_tso_bd_num,
 			      unsigned int bd_num)
 {
 	/* 'bd_num == UINT_MAX' means the skb' fraglist has a
@@ -1864,8 +1863,7 @@ static int hns3_skb_linearize(struct hns3_enet_ring *ring,
 	 * will not help.
 	 */
 	if (skb->len > HNS3_MAX_TSO_SIZE ||
-	    (!skb_is_gso(skb) && skb->len >
-	     HNS3_MAX_NON_TSO_SIZE(max_non_tso_bd_num))) {
+	    (!skb_is_gso(skb) && skb->len > HNS3_MAX_NON_TSO_SIZE)) {
 		u64_stats_update_begin(&ring->syncp);
 		ring->stats.hw_limitation++;
 		u64_stats_update_end(&ring->syncp);
@@ -1900,8 +1898,7 @@ static int hns3_nic_maybe_stop_tx(struct hns3_enet_ring *ring,
 			goto out;
 		}
 
-		if (hns3_skb_linearize(ring, skb, max_non_tso_bd_num,
-				       bd_num))
+		if (hns3_skb_linearize(ring, skb, bd_num))
 			return -ENOMEM;
 
 		bd_num = hns3_tx_bd_count(skb->len);
@@ -1978,7 +1975,6 @@ static void hns3_clear_desc(struct hns3_enet_ring *ring, int next_to_use_orig)
 static int hns3_fill_skb_to_desc(struct hns3_enet_ring *ring,
 				 struct sk_buff *skb, unsigned int type)
 {
-	unsigned int size = skb_headlen(skb);
 	struct sk_buff *frag_skb;
 	int i, ret, bd_num = 0;
 
@@ -1992,15 +1988,6 @@ static int hns3_fill_skb_to_desc(struct hns3_enet_ring *ring,
 		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
 
 		ret = hns3_map_and_fill_desc(ring, frag, DESC_TYPE_PAGE);
-		if (unlikely(ret < 0))
-			return ret;
-
-		bd_num += ret;
-	}
-
-	skb_walk_frags(skb, frag_skb) {
-		ret = hns3_fill_skb_to_desc(ring, frag_skb,
-					    DESC_TYPE_FRAGLIST_SKB);
 		if (unlikely(ret < 0))
 			return ret;
 
@@ -2233,7 +2220,7 @@ netdev_tx_t hns3_nic_net_xmit(struct sk_buff *skb, struct net_device *netdev)
 	 * zero, which is unlikely, and 'ret > 0' means how many tx desc
 	 * need to be notified to the hw.
 	 */
-	ret = hns3_fill_skb_to_desc(ring, skb, DESC_TYPE_SKB);
+	ret = hns3_handle_desc_filling(ring, skb);
 	if (unlikely(ret <= 0))
 		goto fill_err;
 
@@ -2435,6 +2422,9 @@ static void hns3_nic_get_stats64(struct net_device *netdev,
 			tx_drop += ring->stats.tx_tso_err;
 			tx_drop += ring->stats.over_max_recursion;
 			tx_drop += ring->stats.hw_limitation;
+			tx_drop += ring->stats.copy_bits_err;
+			tx_drop += ring->stats.skb2sgl_err;
+			tx_drop += ring->stats.map_sg_err;
 			tx_errors += ring->stats.sw_err_cnt;
 			tx_errors += ring->stats.tx_vlan_err;
 			tx_errors += ring->stats.tx_l4_proto_err;
@@ -2442,6 +2432,9 @@ static void hns3_nic_get_stats64(struct net_device *netdev,
 			tx_errors += ring->stats.tx_tso_err;
 			tx_errors += ring->stats.over_max_recursion;
 			tx_errors += ring->stats.hw_limitation;
+			tx_errors += ring->stats.copy_bits_err;
+			tx_errors += ring->stats.skb2sgl_err;
+			tx_errors += ring->stats.map_sg_err;
 		} while (u64_stats_fetch_retry_irq(&ring->syncp, start));
 
 		/* fetch the rx stats */
@@ -5174,12 +5167,6 @@ static int hns3_client_init(struct hnae3_handle *handle)
 	netdev->max_mtu = HNS3_MAX_MTU(ae_dev->dev_specs.max_frm_size);
 
 	hns3_state_init(handle);
-
-	ret = register_netdev(netdev);
-	if (ret) {
-		dev_err(priv->dev, "probe register netdev fail!\n");
-		goto out_reg_netdev_fail;
-	}
 
 	ret = register_netdev(netdev);
 	if (ret) {

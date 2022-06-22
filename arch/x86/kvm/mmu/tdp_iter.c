@@ -26,6 +26,7 @@ static gfn_t round_gfn_for_level(gfn_t gfn, int level)
  */
 void tdp_iter_restart(struct tdp_iter *iter)
 {
+	iter->yielded = false;
 	iter->yielded_gfn = iter->next_last_level_gfn;
 	iter->level = iter->root_level;
 
@@ -46,14 +47,10 @@ void tdp_iter_start(struct tdp_iter *iter, u64 *root_pt, int root_level,
 	WARN_ON(root_level > PT64_ROOT_MAX_LEVEL);
 
 	iter->next_last_level_gfn = next_last_level_gfn;
-	iter->yielded_gfn = iter->next_last_level_gfn;
 	iter->root_level = root_level;
 	iter->min_level = min_level;
-	iter->level = root_level;
-	iter->pt_path[iter->level - 1] = root_pt;
-
-	iter->gfn = round_gfn_for_level(iter->next_last_level_gfn, iter->level);
-	tdp_iter_refresh_sptep(iter);
+	iter->pt_path[iter->root_level - 1] = (tdp_ptep_t)root_pt;
+	iter->as_id = kvm_mmu_page_as_id(sptep_to_sp(root_pt));
 
 	tdp_iter_restart(iter);
 }
@@ -164,6 +161,11 @@ static bool try_step_up(struct tdp_iter *iter)
  */
 void tdp_iter_next(struct tdp_iter *iter)
 {
+	if (iter->yielded) {
+		tdp_iter_restart(iter);
+		return;
+	}
+
 	if (try_step_down(iter))
 		return;
 
@@ -172,10 +174,5 @@ void tdp_iter_next(struct tdp_iter *iter)
 			return;
 	} while (try_step_up(iter));
 	iter->valid = false;
-}
-
-u64 *tdp_iter_root_pt(struct tdp_iter *iter)
-{
-	return iter->pt_path[iter->root_level - 1];
 }
 

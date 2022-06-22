@@ -755,7 +755,7 @@ static int __mlx5_lag_dev_add_mdev(struct mlx5_core_dev *dev)
 	if (!MLX5_CAP_GEN(dev, vport_group_manager) ||
 	    !MLX5_CAP_GEN(dev, lag_master) ||
 	    MLX5_CAP_GEN(dev, num_lag_ports) != MLX5_MAX_PORTS)
-		return;
+		return 0;
 
 	tmp_dev = mlx5_get_next_phys_dev(dev);
 	if (tmp_dev)
@@ -786,9 +786,17 @@ void mlx5_lag_remove_mdev(struct mlx5_core_dev *dev)
 	if (!ldev)
 		return;
 
-	for (i = 0; i < MLX5_MAX_PORTS; i++)
-		if (!ldev->pf[i].dev)
-			break;
+recheck:
+	mlx5_dev_list_lock();
+	if (ldev->mode_changes_in_progress) {
+		mlx5_dev_list_unlock();
+		msleep(100);
+		goto recheck;
+	}
+	mlx5_ldev_remove_mdev(ldev, dev);
+	mlx5_dev_list_unlock();
+	mlx5_ldev_put(ldev);
+}
 
 void mlx5_lag_add_mdev(struct mlx5_core_dev *dev)
 {

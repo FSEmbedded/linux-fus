@@ -511,13 +511,6 @@ extern struct page *zero_page_memmap_ptr;
 	__changed;							\
 })
 #endif
-
-#  ifdef CONFIG_VIRTUAL_MEM_MAP
-  /* arch mem_map init routine is needed due to holes in a virtual mem_map */
-void memmap_init(void);
-void arch_memmap_init(unsigned long size, int nid, unsigned long zone,
-		      unsigned long start_pfn);
-#  endif /* CONFIG_VIRTUAL_MEM_MAP */
 # endif /* !__ASSEMBLY__ */
 
 /*

@@ -10,9 +10,17 @@ Similarly to the packed RGB formats, the packed YUV formats store the Y, Cb and
 Cr components consecutively in memory. They may apply subsampling to the chroma
 components and thus differ in how they interlave the three components.
 
-Similar to the packed RGB formats these formats store the Y, Cb and Cr
-component of each pixel next to each other in memory. They occupy 16, 24 or 32
-bits per pixel.
+.. note::
+
+   - In all the tables that follow, bit 7 is the most significant bit in a byte.
+   - 'Y', 'Cb' and 'Cr' denote bits of the luma, blue chroma (also known as
+     'U') and red chroma (also known as 'V') components respectively. 'A'
+     denotes bits of the alpha component (if supported by the format), and 'X'
+     denotes padding bits.
+
+
+4:4:4 Subsampling
+=================
 
 These formats do not subsample the chroma components and store each pixels as a
 full triplet of Y, Cb and Cr values.
@@ -132,41 +140,10 @@ Cb\ :sub:`5-0` Cr\ :sub:`4-0`], and stored in memory in two bytes,
       - Cb\ :sub:`5`
       - Cb\ :sub:`4`
       - Cb\ :sub:`3`
-      -  :cspan:`15`
-      -
-    * .. _V4L2-PIX-FMT-YUV24:
 
-      - ``V4L2_PIX_FMT_YUV24``
-      - 'YUV3'
+.. raw:: latex
 
-      - Y'\ :sub:`7`
-      - Y'\ :sub:`6`
-      - Y'\ :sub:`5`
-      - Y'\ :sub:`4`
-      - Y'\ :sub:`3`
-      - Y'\ :sub:`2`
-      - Y'\ :sub:`1`
-      - Y'\ :sub:`0`
-
-      - Cb\ :sub:`7`
-      - Cb\ :sub:`6`
-      - Cb\ :sub:`5`
-      - Cb\ :sub:`4`
-      - Cb\ :sub:`3`
-      - Cb\ :sub:`2`
-      - Cb\ :sub:`1`
-      - Cb\ :sub:`0`
-
-      - Cr\ :sub:`7`
-      - Cr\ :sub:`6`
-      - Cr\ :sub:`5`
-      - Cr\ :sub:`4`
-      - Cr\ :sub:`3`
-      - Cr\ :sub:`2`
-      - Cr\ :sub:`1`
-      - Cr\ :sub:`0`
-      -
-    * .. _V4L2-PIX-FMT-YUV32:
+    \endgroup
 
 .. note::
 

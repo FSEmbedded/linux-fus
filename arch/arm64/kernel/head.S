@@ -887,12 +887,6 @@ SYM_FUNC_START_LOCAL(__primary_switch)
 	dsb	nsh
 	isb
 
-	msr	sctlr_el1, x19			// re-enable the MMU
-	isb
-	ic	iallu				// flush instructions fetched
-	dsb	nsh				// via old mapping
-	isb
-
 	set_sctlr_el1	x19			// re-enable the MMU
 
 	bl	__relocate_kernel

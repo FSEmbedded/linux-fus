@@ -1777,7 +1777,7 @@ static int logi_dj_probe(struct hid_device *hdev,
 	case recvr_type_bluetooth:	no_dj_interfaces = 2; break;
 	case recvr_type_dinovo:		no_dj_interfaces = 2; break;
 	}
-	if (hid_is_using_ll_driver(hdev, &usb_hid_driver)) {
+	if (hid_is_usb(hdev)) {
 		intf = to_usb_interface(hdev->dev.parent);
 		if (intf && intf->altsetting->desc.bInterfaceNumber >=
 							no_dj_interfaces) {
@@ -1962,10 +1962,6 @@ static const struct hid_device_id logi_dj_receivers[] = {
 	{ /* Logitech G700(s) receiver (0xc531) */
 	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH,
 			 USB_DEVICE_ID_LOGITECH_G700_RECEIVER),
-	 .driver_data = recvr_type_gaming_hidpp},
-	{ /* Logitech G602 receiver (0xc537) */
-	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH,
-		0xc537),
 	 .driver_data = recvr_type_gaming_hidpp},
 	{ /* Logitech G602 receiver (0xc537) */
 	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH,

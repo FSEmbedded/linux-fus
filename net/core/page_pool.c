@@ -240,7 +240,6 @@ static struct page *__page_pool_alloc_page_order(struct page_pool *pool,
 		put_page(page);
 		return NULL;
 	}
-	page_pool_set_dma_addr(page, dma);
 
 	page_pool_set_pp_info(pool, page);
 

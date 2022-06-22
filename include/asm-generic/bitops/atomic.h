@@ -11,19 +11,22 @@
  * See Documentation/atomic_bitops.txt for details.
  */
 
-static __always_inline void set_bit(unsigned int nr, volatile unsigned long *p)
+static __always_inline void
+arch_set_bit(unsigned int nr, volatile unsigned long *p)
 {
 	p += BIT_WORD(nr);
 	arch_atomic_long_or(BIT_MASK(nr), (atomic_long_t *)p);
 }
 
-static __always_inline void clear_bit(unsigned int nr, volatile unsigned long *p)
+static __always_inline void
+arch_clear_bit(unsigned int nr, volatile unsigned long *p)
 {
 	p += BIT_WORD(nr);
 	arch_atomic_long_andnot(BIT_MASK(nr), (atomic_long_t *)p);
 }
 
-static __always_inline void change_bit(unsigned int nr, volatile unsigned long *p)
+static __always_inline void
+arch_change_bit(unsigned int nr, volatile unsigned long *p)
 {
 	p += BIT_WORD(nr);
 	arch_atomic_long_xor(BIT_MASK(nr), (atomic_long_t *)p);

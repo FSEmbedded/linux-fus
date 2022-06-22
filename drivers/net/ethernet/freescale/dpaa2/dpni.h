@@ -497,13 +497,10 @@ int dpni_get_statistics(struct fsl_mc_io	*mc_io,
 			u8			param,
 			union dpni_statistics	*stat);
 
-int dpni_reset_statistics(struct fsl_mc_io *mc_io,
-			  u32 cmd_flags,
-			  u16 token);
+int dpni_reset_statistics(struct fsl_mc_io	*mc_io,
+			  u32			cmd_flags,
+			  u16			token);
 
-/**
- * Enable auto-negotiation
- */
 #define DPNI_LINK_OPT_AUTONEG		0x0000000000000001ULL
 #define DPNI_LINK_OPT_HALF_DUPLEX	0x0000000000000002ULL
 #define DPNI_LINK_OPT_PAUSE		0x0000000000000004ULL
@@ -1132,12 +1129,18 @@ int dpni_set_tx_shaping(struct fsl_mc_io *mc_io,
  * @peer_delay:	For peer-to-peer transparent clocks add this value to the
  *		correction field in addition to the transient time update.
  *		The value expresses nanoseconds.
+ * @ptp_onestep_reg_base: 1588 SINGLE_STEP register base address. This address
+ *			  is used to update directly the register contents.
+ *			  User has to create an address mapping for it.
+ *
+ *
  */
 struct dpni_single_step_cfg {
 	u8	en;
 	u8	ch_update;
 	u16	offset;
 	u32	peer_delay;
+	u32	ptp_onestep_reg_base;
 };
 
 int dpni_set_single_step_cfg(struct fsl_mc_io *mc_io,

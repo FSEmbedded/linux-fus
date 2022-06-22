@@ -229,6 +229,9 @@ struct xt_table {
 	/* Man behind the curtain... */
 	struct xt_table_info *private;
 
+	/* hook ops that register the table with the netfilter core */
+	struct nf_hook_ops *ops;
+
 	/* Set this to THIS_MODULE if you are a module, otherwise NULL */
 	struct module *me;
 
@@ -446,7 +449,10 @@ xt_get_per_cpu_counter(struct xt_counters *cnt, unsigned int cpu)
 
 struct nf_hook_ops *xt_hook_ops_alloc(const struct xt_table *, nf_hookfn *);
 
-#ifdef CONFIG_COMPAT
+int xt_register_template(const struct xt_table *t, int(*table_init)(struct net *net));
+void xt_unregister_template(const struct xt_table *t);
+
+#ifdef CONFIG_NETFILTER_XTABLES_COMPAT
 #include <net/compat.h>
 
 struct compat_xt_entry_match {

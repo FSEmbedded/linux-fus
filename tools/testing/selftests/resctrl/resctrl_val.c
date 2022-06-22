@@ -546,8 +546,8 @@ static void initialize_llc_occu_resctrl(const char *ctrlgrp, const char *mongrp,
 		return;
 	}
 
-	if (!strncmp(resctrl_val, CQM_STR, sizeof(CQM_STR)))
-		set_cqm_path(ctrlgrp, mongrp, resource_id);
+	if (!strncmp(resctrl_val, CMT_STR, sizeof(CMT_STR)))
+		set_cmt_path(ctrlgrp, mongrp, resource_id);
 }
 
 static int
@@ -705,7 +705,7 @@ int resctrl_val(char **benchmark_cmd, struct resctrl_val_param *param)
 
 		initialize_mem_bw_resctrl(param->ctrlgrp, param->mongrp,
 					  param->cpu_no, resctrl_val);
-	} else if (!strncmp(resctrl_val, CQM_STR, sizeof(CQM_STR)))
+	} else if (!strncmp(resctrl_val, CMT_STR, sizeof(CMT_STR)))
 		initialize_llc_occu_resctrl(param->ctrlgrp, param->mongrp,
 					    param->cpu_no, resctrl_val);
 
@@ -744,7 +744,7 @@ int resctrl_val(char **benchmark_cmd, struct resctrl_val_param *param)
 			ret = measure_vals(param, &bw_resc_start);
 			if (ret)
 				break;
-		} else if (!strncmp(resctrl_val, CQM_STR, sizeof(CQM_STR))) {
+		} else if (!strncmp(resctrl_val, CMT_STR, sizeof(CMT_STR))) {
 			ret = param->setup(1, param);
 			if (ret) {
 				ret = 0;

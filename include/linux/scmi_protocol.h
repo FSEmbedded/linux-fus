@@ -128,7 +128,7 @@ struct scmi_perf_proto_ops {
 			     unsigned long *rate, unsigned long *power);
 	bool (*fast_switch_possible)(const struct scmi_protocol_handle *ph,
 				     struct device *dev);
-	bool (*power_scale_mw_get)(const struct scmi_handle *handle);
+	bool (*power_scale_mw_get)(const struct scmi_protocol_handle *ph);
 };
 
 /**
@@ -157,7 +157,7 @@ struct scmi_power_proto_ops {
 };
 
 /**
- * scmi_sensor_reading  - represent a timestamped read
+ * struct scmi_sensor_reading  - represent a timestamped read
  *
  * Used by @reading_get_timestamped method.
  *
@@ -171,7 +171,7 @@ struct scmi_sensor_reading {
 };
 
 /**
- * scmi_range_attrs  - specifies a sensor or axis values' range
+ * struct scmi_range_attrs  - specifies a sensor or axis values' range
  * @min_range: The minimum value which can be represented by the sensor/axis.
  * @max_range: The maximum value which can be represented by the sensor/axis.
  */
@@ -181,7 +181,7 @@ struct scmi_range_attrs {
 };
 
 /**
- * scmi_sensor_axis_info  - describes one sensor axes
+ * struct scmi_sensor_axis_info  - describes one sensor axes
  * @id: The axes ID.
  * @type: Axes type. Chosen amongst one of @enum scmi_sensor_class.
  * @scale: Power-of-10 multiplier applied to the axis unit.
@@ -209,8 +209,8 @@ struct scmi_sensor_axis_info {
 };
 
 /**
- * scmi_sensor_intervals_info  - describes number and type of available update
- * intervals
+ * struct scmi_sensor_intervals_info  - describes number and type of available
+ *	update intervals
  * @segmented: Flag for segmented intervals' representation. When True there
  *	       will be exactly 3 intervals in @desc, with each entry
  *	       representing a member of a segment in this order:
@@ -458,12 +458,12 @@ struct scmi_sensor_proto_ops {
 				 u32 sensor_id, u8 trip_id, u64 trip_value);
 	int (*reading_get)(const struct scmi_protocol_handle *ph, u32 sensor_id,
 			   u64 *value);
-	int (*reading_get_timestamped)(const struct scmi_handle *handle,
+	int (*reading_get_timestamped)(const struct scmi_protocol_handle *ph,
 				       u32 sensor_id, u8 count,
 				       struct scmi_sensor_reading *readings);
-	int (*config_get)(const struct scmi_handle *handle,
+	int (*config_get)(const struct scmi_protocol_handle *ph,
 			  u32 sensor_id, u32 *sensor_config);
-	int (*config_set)(const struct scmi_handle *handle,
+	int (*config_set)(const struct scmi_protocol_handle *ph,
 			  u32 sensor_id, u32 sensor_config);
 };
 
@@ -546,64 +546,6 @@ struct scmi_voltage_proto_ops {
 };
 
 /**
- * struct scmi_voltage_info - describe one available SCMI Voltage Domain
- *
- * @id: the domain ID as advertised by the platform
- * @segmented: defines the layout of the entries of array @levels_uv.
- *	       - when True the entries are to be interpreted as triplets,
- *	         each defining a segment representing a range of equally
- *	         space voltages: <lowest_volts>, <highest_volt>, <step_uV>
- *	       - when False the entries simply represent a single discrete
- *	         supported voltage level
- * @negative_volts_allowed: True if any of the entries of @levels_uv represent
- *			    a negative voltage.
- * @attributes: represents Voltage Domain advertised attributes
- * @name: name assigned to the Voltage Domain by platform
- * @num_levels: number of total entries in @levels_uv.
- * @levels_uv: array of entries describing the available voltage levels for
- *	       this domain.
- */
-struct scmi_voltage_info {
-	unsigned int id;
-	bool segmented;
-	bool negative_volts_allowed;
-	unsigned int attributes;
-	char name[SCMI_MAX_STR_SIZE];
-	unsigned int num_levels;
-#define SCMI_VOLTAGE_SEGMENT_LOW	0
-#define SCMI_VOLTAGE_SEGMENT_HIGH	1
-#define SCMI_VOLTAGE_SEGMENT_STEP	2
-	int *levels_uv;
-};
-
-/**
- * struct scmi_voltage_ops - represents the various operations provided
- * by SCMI Voltage Protocol
- *
- * @num_domains_get: get the count of voltage domains provided by SCMI
- * @info_get: get the information of the specified domain
- * @config_set: set the config for the specified domain
- * @config_get: get the config of the specified domain
- * @level_set: set the voltage level for the specified domain
- * @level_get: get the voltage level of the specified domain
- */
-struct scmi_voltage_ops {
-	int (*num_domains_get)(const struct scmi_handle *handle);
-	const struct scmi_voltage_info __must_check *(*info_get)
-		(const struct scmi_handle *handle, u32 domain_id);
-	int (*config_set)(const struct scmi_handle *handle, u32 domain_id,
-			  u32 config);
-#define	SCMI_VOLTAGE_ARCH_STATE_OFF		0x0
-#define	SCMI_VOLTAGE_ARCH_STATE_ON		0x7
-	int (*config_get)(const struct scmi_handle *handle, u32 domain_id,
-			  u32 *config);
-	int (*level_set)(const struct scmi_handle *handle, u32 domain_id,
-			 u32 flags, s32 volt_uV);
-	int (*level_get)(const struct scmi_handle *handle, u32 domain_id,
-			 s32 *volt_uV);
-};
-
-/**
  * struct scmi_notify_ops  - represents notifications' operations provided by
  * SCMI core
  * @devm_event_notifier_register: Managed registration of a notifier_block for
@@ -667,47 +609,21 @@ struct scmi_notify_ops {
  *
  * @dev: pointer to the SCMI device
  * @version: pointer to the structure containing SCMI version information
- * @power_ops: pointer to set of power protocol operations
- * @perf_ops: pointer to set of performance protocol operations
- * @clk_ops: pointer to set of clock protocol operations
- * @sensor_ops: pointer to set of sensor protocol operations
- * @reset_ops: pointer to set of reset protocol operations
- * @voltage_ops: pointer to set of voltage protocol operations
+ * @devm_protocol_get: devres managed method to acquire a protocol and get specific
+ *		       operations and a dedicated protocol handler
+ * @devm_protocol_put: devres managed method to release a protocol
  * @notify_ops: pointer to set of notifications related operations
- * @perf_priv: pointer to private data structure specific to performance
- *	protocol(for internal use only)
- * @clk_priv: pointer to private data structure specific to clock
- *	protocol(for internal use only)
- * @power_priv: pointer to private data structure specific to power
- *	protocol(for internal use only)
- * @sensor_priv: pointer to private data structure specific to sensors
- *	protocol(for internal use only)
- * @reset_priv: pointer to private data structure specific to reset
- *	protocol(for internal use only)
- * @voltage_priv: pointer to private data structure specific to voltage
- *	protocol(for internal use only)
- * @notify_priv: pointer to private data structure specific to notifications
- *	(for internal use only)
  */
 struct scmi_handle {
 	struct device *dev;
 	struct scmi_revision_info *version;
-	const struct scmi_perf_ops *perf_ops;
-	const struct scmi_clk_ops *clk_ops;
-	const struct scmi_power_ops *power_ops;
-	const struct scmi_sensor_ops *sensor_ops;
-	const struct scmi_reset_ops *reset_ops;
-	const struct scmi_voltage_ops *voltage_ops;
+
+	const void __must_check *
+		(*devm_protocol_get)(struct scmi_device *sdev, u8 proto,
+				     struct scmi_protocol_handle **ph);
+	void (*devm_protocol_put)(struct scmi_device *sdev, u8 proto);
+
 	const struct scmi_notify_ops *notify_ops;
-	/* for protocol internal use */
-	void *perf_priv;
-	void *clk_priv;
-	void *power_priv;
-	void *sensor_priv;
-	void *reset_priv;
-	void *voltage_priv;
-	void *notify_priv;
-	void *system_priv;
 };
 
 enum scmi_std_protocol {

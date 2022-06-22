@@ -236,7 +236,7 @@ restart:
 					return not_found(pvmw);
 				entry = pmd_to_swp_entry(pmde);
 				if (!is_migration_entry(entry) ||
-				    migration_entry_to_page(entry) != page)
+				    pfn_swap_entry_to_page(entry) != page)
 					return not_found(pvmw);
 				return true;
 			}

@@ -1699,10 +1699,6 @@ static int lpt_setup_backlight(struct intel_connector *connector, enum pipe unus
 	cpu_mode = panel->backlight.pwm_enabled && HAS_PCH_LPT(dev_priv) &&
 		   !(pch_ctl1 & BLM_PCH_OVERRIDE_ENABLE) &&
 		   (cpu_ctl2 & BLM_PWM_ENABLE);
-	if (cpu_mode)
-		val = pch_get_backlight(connector);
-	else
-		val = lpt_get_backlight(connector);
 
 	if (cpu_mode) {
 		val = pch_get_backlight(connector, unused);
@@ -1718,10 +1714,6 @@ static int lpt_setup_backlight(struct intel_connector *connector, enum pipe unus
 		intel_de_write(dev_priv, BLC_PWM_CPU_CTL2,
 			       cpu_ctl2 & ~BLM_PWM_ENABLE);
 	}
-
-	val = intel_panel_compute_brightness(connector, val);
-	panel->backlight.level = clamp(val, panel->backlight.min,
-				       panel->backlight.max);
 
 	return 0;
 }

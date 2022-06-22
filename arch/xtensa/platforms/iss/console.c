@@ -136,13 +136,12 @@ static const struct tty_operations serial_ops = {
 
 static int __init rs_init(void)
 {
+	struct tty_driver *driver;
 	int ret;
 
-	serial_driver = alloc_tty_driver(SERIAL_MAX_NUM_LINES);
-	if (!serial_driver)
-		return -ENOMEM;
-
-	tty_port_init(&serial_port);
+	driver = tty_alloc_driver(SERIAL_MAX_NUM_LINES, TTY_DRIVER_REAL_RAW);
+	if (IS_ERR(driver))
+		return PTR_ERR(driver);
 
 	tty_port_init(&serial_port);
 
@@ -171,15 +170,6 @@ static int __init rs_init(void)
 	}
 
 	serial_driver = driver;
-
-	ret = tty_register_driver(serial_driver);
-	if (ret) {
-		pr_err("Couldn't register serial driver\n");
-		tty_driver_kref_put(serial_driver);
-		tty_port_destroy(&serial_port);
-
-		return ret;
-	}
 
 	return 0;
 }

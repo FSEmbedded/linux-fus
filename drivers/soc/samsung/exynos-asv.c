@@ -116,7 +116,7 @@ int exynos_asv_init(struct device *dev, struct regmap *regmap)
 	u32 product_id = 0;
 	int ret, i;
 
-	asv = devm_kzalloc(&pdev->dev, sizeof(*asv), GFP_KERNEL);
+	asv = devm_kzalloc(dev, sizeof(*asv), GFP_KERNEL);
 	if (!asv)
 		return -ENOMEM;
 
@@ -126,14 +126,6 @@ int exynos_asv_init(struct device *dev, struct regmap *regmap)
 			  &product_id);
 	if (ret < 0) {
 		dev_err(dev, "Cannot read revision from ChipID: %d\n", ret);
-		return -ENODEV;
-	}
-
-	ret = regmap_read(asv->chipid_regmap, EXYNOS_CHIPID_REG_PRO_ID,
-			  &product_id);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "Cannot read revision from ChipID: %d\n",
-			ret);
 		return -ENODEV;
 	}
 
@@ -152,7 +144,7 @@ int exynos_asv_init(struct device *dev, struct regmap *regmap)
 	if (ret < 0)
 		return -EPROBE_DEFER;
 
-	ret = of_property_read_u32(pdev->dev.of_node, "samsung,asv-bin",
+	ret = of_property_read_u32(dev->of_node, "samsung,asv-bin",
 				   &asv->of_bin);
 	if (ret < 0)
 		asv->of_bin = -EINVAL;

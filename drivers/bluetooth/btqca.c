@@ -182,7 +182,8 @@ int qca_send_pre_shutdown_cmd(struct hci_dev *hdev)
 }
 EXPORT_SYMBOL_GPL(qca_send_pre_shutdown_cmd);
 
-static void qca_tlv_check_data(struct qca_fw_config *config,
+static void qca_tlv_check_data(struct hci_dev *hdev,
+			       struct qca_fw_config *config,
 		u8 *fw_data, enum qca_btsoc_type soc_type)
 {
 	const u8 *data;
@@ -193,14 +194,6 @@ static void qca_tlv_check_data(struct qca_fw_config *config,
 	struct tlv_type_patch *tlv_patch;
 	struct tlv_type_nvm *tlv_nvm;
 	uint8_t nvm_baud_rate = config->user_baud_rate;
-
-	tlv = (struct tlv_type_hdr *)fw_data;
-
-	type_len = le32_to_cpu(tlv->type_len);
-	length = (type_len >> 8) & 0x00ffffff;
-
-	BT_DBG("TLV Type\t\t : 0x%x", type_len & 0x000000ff);
-	BT_DBG("Length\t\t : %d bytes", length);
 
 	config->dnld_mode = QCA_SKIP_EVT_NONE;
 	config->dnld_type = QCA_SKIP_EVT_NONE;
@@ -453,7 +446,7 @@ static int qca_download_firmware(struct hci_dev *hdev,
 	memcpy(data, fw->data, size);
 	release_firmware(fw);
 
-	qca_tlv_check_data(config, data, soc_type);
+	qca_tlv_check_data(hdev, config, data, soc_type);
 
 	segment = data;
 	remain = size;

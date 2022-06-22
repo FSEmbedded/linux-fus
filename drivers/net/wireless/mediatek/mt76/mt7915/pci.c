@@ -297,6 +297,8 @@ static int mt7915_pci_probe(struct pci_dev *pdev,
 free_irq:
 	devm_free_irq(mdev->dev, pdev->irq, dev);
 error:
+	pci_free_irq_vectors(pdev);
+free:
 	mt76_free_device(&dev->mt76);
 
 	return ret;

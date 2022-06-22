@@ -97,8 +97,7 @@ static int input_send_message(struct rpmsg_input_msg *msg,
 	}
 
 	mutex_lock(&info->lock);
-	cpu_latency_qos_add_request(&info->pm_qos_req,
-			   0);
+	cpu_latency_qos_add_request(&info->pm_qos_req, 0);
 
 	reinit_completion(&info->cmd_complete);
 

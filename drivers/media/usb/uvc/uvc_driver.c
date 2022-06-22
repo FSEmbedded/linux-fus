@@ -1732,7 +1732,7 @@ static int uvc_scan_chain_forward(struct uvc_video_chain *chain,
 				source = uvc_entity_by_id(chain->dev,
 							  entity->baSourceID[0]);
 				if (!source) {
-					uvc_trace(UVC_TRACE_DESCR,
+					uvc_dbg(chain->dev, DESCR,
 						"Can't connect extension unit %u in chain\n",
 						forward->id);
 					break;
@@ -1761,7 +1761,7 @@ static int uvc_scan_chain_forward(struct uvc_video_chain *chain,
 			}
 
 			if (UVC_ENTITY_IS_OTERM(entity)) {
-				uvc_trace(UVC_TRACE_DESCR,
+				uvc_dbg(chain->dev, DESCR,
 					"Unsupported connection between output terminals %u and %u\n",
 					entity->id, forward->id);
 				break;
@@ -2194,7 +2194,6 @@ int uvc_register_video_device(struct uvc_device *dev,
 			      const struct v4l2_file_operations *fops,
 			      const struct v4l2_ioctl_ops *ioctl_ops)
 {
-	const char *name;
 	int ret;
 
 	/* Initialize the video buffers queue. */
@@ -2223,20 +2222,16 @@ int uvc_register_video_device(struct uvc_device *dev,
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
 	default:
 		vdev->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
-		name = "Video Capture";
 		break;
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
 		vdev->device_caps = V4L2_CAP_VIDEO_OUTPUT | V4L2_CAP_STREAMING;
-		name = "Video Output";
 		break;
 	case V4L2_BUF_TYPE_META_CAPTURE:
 		vdev->device_caps = V4L2_CAP_META_CAPTURE | V4L2_CAP_STREAMING;
-		name = "Metadata";
 		break;
 	}
 
-	snprintf(vdev->name, sizeof(vdev->name), "%s %u", name,
-		 stream->header.bTerminalLink);
+	strscpy(vdev->name, dev->name, sizeof(vdev->name));
 
 	/*
 	 * Set the driver data before calling video_register_device, otherwise

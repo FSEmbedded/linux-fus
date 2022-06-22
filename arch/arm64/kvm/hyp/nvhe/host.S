@@ -64,21 +64,12 @@ __host_enter_without_restoring:
 SYM_FUNC_END(__host_exit)
 
 /*
- * void __noreturn __hyp_do_panic(struct kvm_cpu_context *host_ctxt, u64 spsr,
- * 				  u64 elr, u64 par);
+ * void __noreturn __host_enter(struct kvm_cpu_context *host_ctxt);
  */
-SYM_FUNC_START(__hyp_do_panic)
+SYM_FUNC_START(__host_enter)
 	mov	x29, x0
-
-	/* Load the format string into x0 and arguments into x1-7 */
-	ldr	x0, =__hyp_panic_string
-
-	mov	x6, x3
-	get_vcpu_ptr x7, x3
-
-	mrs	x3, esr_el2
-	mrs	x4, far_el2
-	mrs	x5, hpfar_el2
+	b	__host_enter_restore_full
+SYM_FUNC_END(__host_enter)
 
 /*
  * void __noreturn __hyp_do_panic(struct kvm_cpu_context *host_ctxt, u64 spsr,
@@ -92,6 +83,27 @@ SYM_FUNC_START(__hyp_do_panic)
 	ldr	lr, =nvhe_hyp_panic_handler
 	hyp_kimg_va lr, x6
 	msr	elr_el2, lr
+
+	mov	x29, x0
+
+#ifdef CONFIG_NVHE_EL2_DEBUG
+	/* Ensure host stage-2 is disabled */
+	mrs	x0, hcr_el2
+	bic	x0, x0, #HCR_VM
+	msr	hcr_el2, x0
+	isb
+	tlbi	vmalls12e1
+	dsb	nsh
+#endif
+
+	/* Load the panic arguments into x0-7 */
+	mrs	x0, esr_el2
+	mov	x4, x3
+	mov	x3, x2
+	hyp_pa	x3, x6
+	get_vcpu_ptr x5, x6
+	mrs	x6, far_el2
+	mrs	x7, hpfar_el2
 
 	/* Enter the host, conditionally restoring the host context. */
 	cbz	x29, __host_enter_without_restoring
@@ -149,7 +161,7 @@ SYM_FUNC_END(__hyp_do_panic)
 
 .macro invalid_host_el1_vect
 	.align 7
-	mov	x0, xzr		/* host_ctxt = NULL */
+	mov	x0, xzr		/* restore_host = false */
 	mrs	x1, spsr_el2
 	mrs	x2, elr_el2
 	mrs	x3, par_el1

@@ -23,7 +23,7 @@ static struct snd_pcm_hardware snd_imx_hardware = {
 		SNDRV_PCM_INFO_MMAP_VALID,
 	.buffer_bytes_max = FSL_ASRC_DMABUF_SIZE,
 	.period_bytes_min = 128,
-	.period_bytes_max = 65532, /* Limited by SDMA engine */
+	.period_bytes_max = 65535, /* Limited by SDMA engine */
 	.periods_min = 2,
 	.periods_max = 255,
 	.fifo_size = 0,
@@ -151,7 +151,6 @@ static int fsl_asrc_dma_hw_params(struct snd_soc_component *component,
 	dma_cap_mask_t mask;
 	int ret, width;
 	enum sdma_peripheral_type be_peripheral_type = IMX_DMATYPE_SSI;
-	struct device_node *of_dma_node;
 
 	/* Fetch the Back-End dma_data from DPCM */
 	for_each_dpcm_be(rtd, stream, dpcm) {
@@ -197,7 +196,6 @@ static int fsl_asrc_dma_hw_params(struct snd_soc_component *component,
 		return ret;
 	}
 
-	of_dma_node = pair->dma_chan[!dir]->device->dev->of_node;
 	/* Request and config DMA channel for Back-End */
 	dma_cap_zero(mask);
 	dma_cap_set(DMA_SLAVE, mask);

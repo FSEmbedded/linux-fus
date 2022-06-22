@@ -367,24 +367,6 @@ static void omap_sham_copy_ready_hash(struct ahash_request *req)
 			hash[i] = le32_to_cpup((__le32 *)in + i);
 }
 
-static int omap_sham_hw_init(struct omap_sham_dev *dd)
-{
-	int err;
-
-	err = pm_runtime_resume_and_get(dd->dev);
-	if (err < 0) {
-		dev_err(dd->dev, "failed to get sync: %d\n", err);
-		return err;
-	}
-
-	if (!test_bit(FLAGS_INIT, &dd->flags)) {
-		set_bit(FLAGS_INIT, &dd->flags);
-		dd->err = 0;
-	}
-
-	return 0;
-}
-
 static void omap_sham_write_ctrl_omap2(struct omap_sham_dev *dd, size_t length,
 				 int final, int dma)
 {
@@ -2237,26 +2219,6 @@ static int omap_sham_remove(struct platform_device *pdev)
 
 	return 0;
 }
-
-#ifdef CONFIG_PM_SLEEP
-static int omap_sham_suspend(struct device *dev)
-{
-	pm_runtime_put_sync(dev);
-	return 0;
-}
-
-static int omap_sham_resume(struct device *dev)
-{
-	int err = pm_runtime_resume_and_get(dev);
-	if (err < 0) {
-		dev_err(dev, "failed to get sync: %d\n", err);
-		return err;
-	}
-	return 0;
-}
-#endif
-
-static SIMPLE_DEV_PM_OPS(omap_sham_pm_ops, omap_sham_suspend, omap_sham_resume);
 
 static struct platform_driver omap_sham_driver = {
 	.probe	= omap_sham_probe,

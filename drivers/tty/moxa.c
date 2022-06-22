@@ -2034,10 +2034,10 @@ static int moxa_get_serial_info(struct tty_struct *tty,
 	if (!info)
 		return -ENODEV;
 	mutex_lock(&info->port.mutex);
-	ss->type = info->type,
-	ss->line = info->port.tty->index,
-	ss->flags = info->port.flags,
-	ss->baud_base = 921600,
+	ss->type = info->type;
+	ss->line = info->port.tty->index;
+	ss->flags = info->port.flags;
+	ss->baud_base = 921600;
 	ss->close_delay = jiffies_to_msecs(info->port.close_delay) / 10;
 	mutex_unlock(&info->port.mutex);
 	return 0;
@@ -2054,8 +2054,6 @@ static int moxa_set_serial_info(struct tty_struct *tty,
 		return -EINVAL;
 	if (!info)
 		return -ENODEV;
-
-	close_delay = msecs_to_jiffies(ss->close_delay * 10);
 
 	close_delay = msecs_to_jiffies(ss->close_delay * 10);
 

@@ -479,6 +479,15 @@ static struct kobj_type procfs_stats_type = {
 	.release = kfd_procfs_kobj_release,
 };
 
+static const struct sysfs_ops sysfs_counters_ops = {
+	.show = kfd_sysfs_counters_show,
+};
+
+static struct kobj_type sysfs_counters_type = {
+	.sysfs_ops = &sysfs_counters_ops,
+	.release = kfd_procfs_kobj_release,
+};
+
 int kfd_procfs_add_queue(struct queue *q)
 {
 	struct kfd_process *proc;
@@ -1040,33 +1049,7 @@ static void kfd_process_wq_release(struct work_struct *work)
 {
 	struct kfd_process *p = container_of(work, struct kfd_process,
 					     release_work);
-	struct kfd_process_device *pdd;
-
-	/* Remove the procfs files */
-	if (p->kobj) {
-		sysfs_remove_file(p->kobj, &p->attr_pasid);
-		kobject_del(p->kobj_queues);
-		kobject_put(p->kobj_queues);
-		p->kobj_queues = NULL;
-
-		list_for_each_entry(pdd, &p->per_device_data, per_device_list) {
-			sysfs_remove_file(p->kobj, &pdd->attr_vram);
-			sysfs_remove_file(p->kobj, &pdd->attr_sdma);
-
-			sysfs_remove_file(pdd->kobj_stats, &pdd->attr_evict);
-			if (pdd->dev->kfd2kgd->get_cu_occupancy)
-				sysfs_remove_file(pdd->kobj_stats,
-						  &pdd->attr_cu_occupancy);
-			kobject_del(pdd->kobj_stats);
-			kobject_put(pdd->kobj_stats);
-			pdd->kobj_stats = NULL;
-		}
-
-		kobject_del(p->kobj);
-		kobject_put(p->kobj);
-		p->kobj = NULL;
-	}
-
+	kfd_process_remove_sysfs(p);
 	kfd_iommu_unbind_process(p);
 
 	kfd_process_free_outstanding_kfd_bos(p);

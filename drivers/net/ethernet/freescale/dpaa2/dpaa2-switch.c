@@ -8,7 +8,6 @@
  */
 
 #include <linux/module.h>
-
 #include <linux/interrupt.h>
 #include <linux/msi.h>
 #include <linux/kthread.h>
@@ -394,7 +393,8 @@ static int dpaa2_switch_dellink(struct ethsw_core *ethsw, u16 vid)
 
 	for (i = 0; i < ethsw->sw_attr.num_ifs; i++) {
 		ppriv_local = ethsw->ports[i];
-		ppriv_local->vlans[vid] = 0;
+		if (ppriv_local)
+			ppriv_local->vlans[vid] = 0;
 	}
 
 	return 0;
@@ -598,6 +598,7 @@ static int dpaa2_switch_port_link_state_update(struct net_device *netdev)
 {
 	struct ethsw_port_priv *port_priv = netdev_priv(netdev);
 	struct dpsw_link_state state;
+	int tries = 5;
 	int err;
 
 	/* When we manage the MAC/PHY using phylink there is no need
@@ -612,6 +613,7 @@ static int dpaa2_switch_port_link_state_update(struct net_device *netdev)
 	if (!netif_running(netdev))
 		return 0;
 
+get_link_state:
 	err = dpsw_if_get_link_state(port_priv->ethsw_data->mc_io, 0,
 				     port_priv->ethsw_data->dpsw_handle,
 				     port_priv->idx, &state);
@@ -631,7 +633,12 @@ static int dpaa2_switch_port_link_state_update(struct net_device *netdev)
 			netif_tx_stop_all_queues(netdev);
 		}
 		port_priv->link_state = state.up;
+	} else {
+		if (--tries) {
+			goto get_link_state;
+		}
 	}
+
 
 	return 0;
 }
@@ -702,8 +709,10 @@ static int dpaa2_switch_port_open(struct net_device *netdev)
 
 	dpaa2_switch_enable_ctrl_if_napi(ethsw);
 
-	if (dpaa2_switch_port_is_type_phy(port_priv))
+	if (dpaa2_switch_port_is_type_phy(port_priv)) {
+		dpaa2_mac_start(port_priv->mac);
 		phylink_start(port_priv->mac->phylink);
+	}
 
 	return 0;
 }
@@ -716,6 +725,7 @@ static int dpaa2_switch_port_stop(struct net_device *netdev)
 
 	if (dpaa2_switch_port_is_type_phy(port_priv)) {
 		phylink_stop(port_priv->mac->phylink);
+		dpaa2_mac_stop(port_priv->mac);
 	} else {
 		netif_tx_stop_all_queues(netdev);
 		netif_carrier_off(netdev);
@@ -1438,6 +1448,8 @@ static int dpaa2_switch_port_connect_mac(struct ethsw_port_priv *port_priv)
 	if (IS_ERR(dpmac_dev) || dpmac_dev->dev.type != &fsl_mc_bus_dpmac_type)
 		return 0;
 
+	dpaa2_mac_driver_detach(dpmac_dev);
+
 	mac = kzalloc(sizeof(*mac), GFP_KERNEL);
 	if (!mac)
 		return -ENOMEM;
@@ -1480,6 +1492,7 @@ static void dpaa2_switch_port_disconnect_mac(struct ethsw_port_priv *port_priv)
 		return;
 
 	dpaa2_mac_close(port_priv->mac);
+	dpaa2_mac_driver_attach(port_priv->mac->mc_dev);
 	kfree(port_priv->mac);
 	port_priv->mac = NULL;
 }
@@ -1508,12 +1521,10 @@ static irqreturn_t dpaa2_switch_irq0_handler_thread(int irq_num, void *arg)
 	}
 
 	if (status & DPSW_IRQ_EVENT_ENDPOINT_CHANGED) {
-		rtnl_lock();
 		if (dpaa2_switch_port_has_mac(port_priv))
 			dpaa2_switch_port_disconnect_mac(port_priv);
 		else
 			dpaa2_switch_port_connect_mac(port_priv);
-		rtnl_unlock();
 	}
 
 out:
@@ -1872,6 +1883,7 @@ static int dpaa2_switch_port_del_vlan(struct ethsw_port_priv *port_priv, u16 vid
 	vcfg.num_ifs = 1;
 	vcfg.if_id[0] = port_priv->idx;
 	if (port_priv->vlans[vid] & ETHSW_VLAN_UNTAGGED) {
+
 		err = dpsw_vlan_remove_if_untagged(ethsw->mc_io, 0,
 						   ethsw->dpsw_handle,
 						   vid, &vcfg);
@@ -1896,9 +1908,11 @@ static int dpaa2_switch_port_del_vlan(struct ethsw_port_priv *port_priv, u16 vid
 		/* Delete VLAN from switch if it is no longer configured on
 		 * any port
 		 */
-		for (i = 0; i < ethsw->sw_attr.num_ifs; i++)
-			if (ethsw->ports[i]->vlans[vid] & ETHSW_VLAN_MEMBER)
+		for (i = 0; i < ethsw->sw_attr.num_ifs; i++) {
+			if (ethsw->ports[i] &&
+			    ethsw->ports[i]->vlans[vid] & ETHSW_VLAN_MEMBER)
 				return 0; /* Found a port member in VID */
+		}
 
 		ethsw->vlans[vid] &= ~ETHSW_VLAN_GLOBAL;
 
@@ -2930,9 +2944,7 @@ static void dpaa2_switch_remove_port(struct ethsw_core *ethsw,
 {
 	struct ethsw_port_priv *port_priv = ethsw->ports[port_idx];
 
-	rtnl_lock();
 	dpaa2_switch_port_disconnect_mac(port_priv);
-	rtnl_unlock();
 	free_netdev(port_priv->netdev);
 	ethsw->ports[port_idx] = NULL;
 }

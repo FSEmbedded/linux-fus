@@ -26,17 +26,8 @@
 #define job_write(dev, reg, data) writel(data, dev->iomem + (reg))
 #define job_read(dev, reg) readl(dev->iomem + (reg))
 
-enum panfrost_queue_status {
-	PANFROST_QUEUE_STATUS_ACTIVE,
-	PANFROST_QUEUE_STATUS_STOPPED,
-	PANFROST_QUEUE_STATUS_STARTING,
-	PANFROST_QUEUE_STATUS_FAULT_PENDING,
-};
-
 struct panfrost_queue_state {
 	struct drm_gpu_scheduler sched;
-	atomic_t status;
-	struct mutex lock;
 	u64 fence_context;
 	u64 emit_seqno;
 };
@@ -425,64 +416,25 @@ void panfrost_job_enable_interrupts(struct panfrost_device *pfdev)
 	job_write(pfdev, JOB_INT_MASK, irq_mask);
 }
 
-static bool panfrost_scheduler_stop(struct panfrost_queue_state *queue,
-				    struct drm_sched_job *bad)
+static void panfrost_job_handle_err(struct panfrost_device *pfdev,
+				    struct panfrost_job *job,
+				    unsigned int js)
 {
-	enum panfrost_queue_status old_status;
-	bool stopped = false;
+	u32 js_status = job_read(pfdev, JS_STATUS(js));
+	const char *exception_name = panfrost_exception_name(js_status);
+	bool signal_fence = true;
 
-	mutex_lock(&queue->lock);
-	old_status = atomic_xchg(&queue->status,
-				 PANFROST_QUEUE_STATUS_STOPPED);
-	if (old_status == PANFROST_QUEUE_STATUS_STOPPED)
-		goto out;
-
-	WARN_ON(old_status != PANFROST_QUEUE_STATUS_ACTIVE);
-	drm_sched_stop(&queue->sched, bad);
-	if (bad)
-		drm_sched_increase_karma(bad);
-
-	stopped = true;
-
-	/*
-	 * Set the timeout to max so the timer doesn't get started
-	 * when we return from the timeout handler (restored in
-	 * panfrost_scheduler_start()).
-	 */
-	queue->sched.timeout = MAX_SCHEDULE_TIMEOUT;
-
-out:
-	mutex_unlock(&queue->lock);
-
-	return stopped;
-}
-
-static void panfrost_scheduler_start(struct panfrost_queue_state *queue)
-{
-	enum panfrost_queue_status old_status;
-
-	mutex_lock(&queue->lock);
-	old_status = atomic_xchg(&queue->status,
-				 PANFROST_QUEUE_STATUS_STARTING);
-	WARN_ON(old_status != PANFROST_QUEUE_STATUS_STOPPED);
-
-	/* Restore the original timeout before starting the scheduler. */
-	queue->sched.timeout = msecs_to_jiffies(JOB_TIMEOUT_MS);
-	drm_sched_resubmit_jobs(&queue->sched);
-	drm_sched_start(&queue->sched, true);
-	old_status = atomic_xchg(&queue->status,
-				 PANFROST_QUEUE_STATUS_ACTIVE);
-	if (old_status == PANFROST_QUEUE_STATUS_FAULT_PENDING)
-		drm_sched_fault(&queue->sched);
-
-	mutex_unlock(&queue->lock);
-}
-
-static void panfrost_job_timedout(struct drm_sched_job *sched_job)
-{
-	struct panfrost_job *job = to_panfrost_job(sched_job);
-	struct panfrost_device *pfdev = job->pfdev;
-	int js = panfrost_job_get_slot(job);
+	if (!panfrost_exception_is_fault(js_status)) {
+		dev_dbg(pfdev->dev, "js event, js=%d, status=%s, head=0x%x, tail=0x%x",
+			js, exception_name,
+			job_read(pfdev, JS_HEAD_LO(js)),
+			job_read(pfdev, JS_TAIL_LO(js)));
+	} else {
+		dev_err(pfdev->dev, "js fault, js=%d, status=%s, head=0x%x, tail=0x%x",
+			js, exception_name,
+			job_read(pfdev, JS_HEAD_LO(js)),
+			job_read(pfdev, JS_TAIL_LO(js)));
+	}
 
 	if (js_status == DRM_PANFROST_EXCEPTION_STOPPED) {
 		/* Update the job head so we can resume */
@@ -588,13 +540,226 @@ static void panfrost_job_handle_irq(struct panfrost_device *pfdev, u32 status)
 		if (!(js_events & MK_JS_MASK(j)))
 			continue;
 
-	/* Scheduler is already stopped, nothing to do. */
-	if (!panfrost_scheduler_stop(&pfdev->js->queue[js], sched_job))
+		if (failed[j]) {
+			panfrost_job_handle_err(pfdev, failed[j], j);
+		} else if (pfdev->jobs[j][0] && !(js_state & MK_JS_MASK(j))) {
+			/* When the current job doesn't fail, the JM dequeues
+			 * the next job without waiting for an ACK, this means
+			 * we can have 2 jobs dequeued and only catch the
+			 * interrupt when the second one is done. If both slots
+			 * are inactive, but one job remains in pfdev->jobs[j],
+			 * consider it done. Of course that doesn't apply if a
+			 * failure happened since we cancelled execution of the
+			 * job in _NEXT (see above).
+			 */
+			if (WARN_ON(!done[j][0]))
+				done[j][0] = panfrost_dequeue_job(pfdev, j);
+			else
+				done[j][1] = panfrost_dequeue_job(pfdev, j);
+		}
+
+		for (i = 0; i < ARRAY_SIZE(done[0]) && done[j][i]; i++)
+			panfrost_job_handle_done(pfdev, done[j][i]);
+	}
+
+	/* And finally we requeue jobs that were waiting in the second slot
+	 * and have been stopped if we detected a failure on the first slot.
+	 */
+	for (j = 0; j < NUM_JOB_SLOTS; j++) {
+		if (!(js_events & MK_JS_MASK(j)))
+			continue;
+
+		if (!failed[j] || !pfdev->jobs[j][0])
+			continue;
+
+		if (pfdev->jobs[j][0]->jc == 0) {
+			/* The job was cancelled, signal the fence now */
+			struct panfrost_job *canceled = panfrost_dequeue_job(pfdev, j);
+
+			dma_fence_set_error(canceled->done_fence, -ECANCELED);
+			panfrost_job_handle_done(pfdev, canceled);
+		} else if (!atomic_read(&pfdev->reset.pending)) {
+			/* Requeue the job we removed if no reset is pending */
+			job_write(pfdev, JS_COMMAND_NEXT(j), JS_COMMAND_START);
+		}
+	}
+}
+
+static void panfrost_job_handle_irqs(struct panfrost_device *pfdev)
+{
+	u32 status = job_read(pfdev, JOB_INT_RAWSTAT);
+
+	while (status) {
+		pm_runtime_mark_last_busy(pfdev->dev);
+
+		spin_lock(&pfdev->js->job_lock);
+		panfrost_job_handle_irq(pfdev, status);
+		spin_unlock(&pfdev->js->job_lock);
+		status = job_read(pfdev, JOB_INT_RAWSTAT);
+	}
+}
+
+static u32 panfrost_active_slots(struct panfrost_device *pfdev,
+				 u32 *js_state_mask, u32 js_state)
+{
+	u32 rawstat;
+
+	if (!(js_state & *js_state_mask))
+		return 0;
+
+	rawstat = job_read(pfdev, JOB_INT_RAWSTAT);
+	if (rawstat) {
+		unsigned int i;
+
+		for (i = 0; i < NUM_JOB_SLOTS; i++) {
+			if (rawstat & MK_JS_MASK(i))
+				*js_state_mask &= ~MK_JS_MASK(i);
+		}
+	}
+
+	return js_state & *js_state_mask;
+}
+
+static void
+panfrost_reset(struct panfrost_device *pfdev,
+	       struct drm_sched_job *bad)
+{
+	u32 js_state, js_state_mask = 0xffffffff;
+	unsigned int i, j;
+	bool cookie;
+	int ret;
+
+	if (!atomic_read(&pfdev->reset.pending))
 		return;
 
-	/* Schedule a reset if there's no reset in progress. */
-	if (!atomic_xchg(&pfdev->reset.pending, 1))
-		schedule_work(&pfdev->reset.work);
+	/* Stop the schedulers.
+	 *
+	 * FIXME: We temporarily get out of the dma_fence_signalling section
+	 * because the cleanup path generate lockdep splats when taking locks
+	 * to release job resources. We should rework the code to follow this
+	 * pattern:
+	 *
+	 *	try_lock
+	 *	if (locked)
+	 *		release
+	 *	else
+	 *		schedule_work_to_release_later
+	 */
+	for (i = 0; i < NUM_JOB_SLOTS; i++)
+		drm_sched_stop(&pfdev->js->queue[i].sched, bad);
+
+	cookie = dma_fence_begin_signalling();
+
+	if (bad)
+		drm_sched_increase_karma(bad);
+
+	/* Mask job interrupts and synchronize to make sure we won't be
+	 * interrupted during our reset.
+	 */
+	job_write(pfdev, JOB_INT_MASK, 0);
+	synchronize_irq(pfdev->js->irq);
+
+	for (i = 0; i < NUM_JOB_SLOTS; i++) {
+		/* Cancel the next job and soft-stop the running job. */
+		job_write(pfdev, JS_COMMAND_NEXT(i), JS_COMMAND_NOP);
+		job_write(pfdev, JS_COMMAND(i), JS_COMMAND_SOFT_STOP);
+	}
+
+	/* Wait at most 10ms for soft-stops to complete */
+	ret = readl_poll_timeout(pfdev->iomem + JOB_INT_JS_STATE, js_state,
+				 !panfrost_active_slots(pfdev, &js_state_mask, js_state),
+				 10, 10000);
+
+	if (ret)
+		dev_err(pfdev->dev, "Soft-stop failed\n");
+
+	/* Handle the remaining interrupts before we reset. */
+	panfrost_job_handle_irqs(pfdev);
+
+	/* Remaining interrupts have been handled, but we might still have
+	 * stuck jobs. Let's make sure the PM counters stay balanced by
+	 * manually calling pm_runtime_put_noidle() and
+	 * panfrost_devfreq_record_idle() for each stuck job.
+	 */
+	spin_lock(&pfdev->js->job_lock);
+	for (i = 0; i < NUM_JOB_SLOTS; i++) {
+		for (j = 0; j < ARRAY_SIZE(pfdev->jobs[0]) && pfdev->jobs[i][j]; j++) {
+			pm_runtime_put_noidle(pfdev->dev);
+			panfrost_devfreq_record_idle(&pfdev->pfdevfreq);
+		}
+	}
+	memset(pfdev->jobs, 0, sizeof(pfdev->jobs));
+	spin_unlock(&pfdev->js->job_lock);
+
+	/* Proceed with reset now. */
+	panfrost_device_reset(pfdev);
+
+	/* panfrost_device_reset() unmasks job interrupts, but we want to
+	 * keep them masked a bit longer.
+	 */
+	job_write(pfdev, JOB_INT_MASK, 0);
+
+	/* GPU has been reset, we can clear the reset pending bit. */
+	atomic_set(&pfdev->reset.pending, 0);
+
+	/* Now resubmit jobs that were previously queued but didn't have a
+	 * chance to finish.
+	 * FIXME: We temporarily get out of the DMA fence signalling section
+	 * while resubmitting jobs because the job submission logic will
+	 * allocate memory with the GFP_KERNEL flag which can trigger memory
+	 * reclaim and exposes a lock ordering issue.
+	 */
+	dma_fence_end_signalling(cookie);
+	for (i = 0; i < NUM_JOB_SLOTS; i++)
+		drm_sched_resubmit_jobs(&pfdev->js->queue[i].sched);
+	cookie = dma_fence_begin_signalling();
+
+	/* Restart the schedulers */
+	for (i = 0; i < NUM_JOB_SLOTS; i++)
+		drm_sched_start(&pfdev->js->queue[i].sched, true);
+
+	/* Re-enable job interrupts now that everything has been restarted. */
+	job_write(pfdev, JOB_INT_MASK,
+		  GENMASK(16 + NUM_JOB_SLOTS - 1, 16) |
+		  GENMASK(NUM_JOB_SLOTS - 1, 0));
+
+	dma_fence_end_signalling(cookie);
+}
+
+static enum drm_gpu_sched_stat panfrost_job_timedout(struct drm_sched_job
+						     *sched_job)
+{
+	struct panfrost_job *job = to_panfrost_job(sched_job);
+	struct panfrost_device *pfdev = job->pfdev;
+	int js = panfrost_job_get_slot(job);
+
+	/*
+	 * If the GPU managed to complete this jobs fence, the timeout is
+	 * spurious. Bail out.
+	 */
+	if (dma_fence_is_signaled(job->done_fence))
+		return DRM_GPU_SCHED_STAT_NOMINAL;
+
+	dev_err(pfdev->dev, "gpu sched timeout, js=%d, config=0x%x, status=0x%x, head=0x%x, tail=0x%x, sched_job=%p",
+		js,
+		job_read(pfdev, JS_CONFIG(js)),
+		job_read(pfdev, JS_STATUS(js)),
+		job_read(pfdev, JS_HEAD_LO(js)),
+		job_read(pfdev, JS_TAIL_LO(js)),
+		sched_job);
+
+	atomic_set(&pfdev->reset.pending, 1);
+	panfrost_reset(pfdev, sched_job);
+
+	return DRM_GPU_SCHED_STAT_NOMINAL;
+}
+
+static void panfrost_reset_work(struct work_struct *work)
+{
+	struct panfrost_device *pfdev;
+
+	pfdev = container_of(work, struct panfrost_device, reset.work);
+	panfrost_reset(pfdev, NULL);
 }
 
 static const struct drm_sched_backend_ops panfrost_sched_ops = {
@@ -623,116 +788,8 @@ static irqreturn_t panfrost_job_irq_handler(int irq, void *data)
 	if (!status)
 		return IRQ_NONE;
 
-	pm_runtime_mark_last_busy(pfdev->dev);
-
-	for (j = 0; status; j++) {
-		u32 mask = MK_JS_MASK(j);
-
-		if (!(status & mask))
-			continue;
-
-		job_write(pfdev, JOB_INT_CLEAR, mask);
-
-		if (status & JOB_INT_MASK_ERR(j)) {
-			enum panfrost_queue_status old_status;
-
-			job_write(pfdev, JS_COMMAND_NEXT(j), JS_COMMAND_NOP);
-
-			dev_err(pfdev->dev, "js fault, js=%d, status=%s, head=0x%x, tail=0x%x",
-				j,
-				panfrost_exception_name(pfdev, job_read(pfdev, JS_STATUS(j))),
-				job_read(pfdev, JS_HEAD_LO(j)),
-				job_read(pfdev, JS_TAIL_LO(j)));
-
-			/*
-			 * When the queue is being restarted we don't report
-			 * faults directly to avoid races between the timeout
-			 * and reset handlers. panfrost_scheduler_start() will
-			 * call drm_sched_fault() after the queue has been
-			 * started if status == FAULT_PENDING.
-			 */
-			old_status = atomic_cmpxchg(&pfdev->js->queue[j].status,
-						    PANFROST_QUEUE_STATUS_STARTING,
-						    PANFROST_QUEUE_STATUS_FAULT_PENDING);
-			if (old_status == PANFROST_QUEUE_STATUS_ACTIVE)
-				drm_sched_fault(&pfdev->js->queue[j].sched);
-		}
-
-		if (status & JOB_INT_MASK_DONE(j)) {
-			struct panfrost_job *job;
-
-			spin_lock(&pfdev->js->job_lock);
-			job = pfdev->jobs[j];
-			/* Only NULL if job timeout occurred */
-			if (job) {
-				pfdev->jobs[j] = NULL;
-
-				panfrost_mmu_as_put(pfdev, job->file_priv->mmu);
-				panfrost_devfreq_record_idle(&pfdev->pfdevfreq);
-
-				dma_fence_signal_locked(job->done_fence);
-				pm_runtime_put_autosuspend(pfdev->dev);
-			}
-			spin_unlock(&pfdev->js->job_lock);
-		}
-
-		status &= ~mask;
-	}
-
-	return IRQ_HANDLED;
-}
-
-static void panfrost_reset(struct work_struct *work)
-{
-	struct panfrost_device *pfdev = container_of(work,
-						     struct panfrost_device,
-						     reset.work);
-	unsigned long flags;
-	unsigned int i;
-	bool cookie;
-
-	cookie = dma_fence_begin_signalling();
-	for (i = 0; i < NUM_JOB_SLOTS; i++) {
-		/*
-		 * We want pending timeouts to be handled before we attempt
-		 * to stop the scheduler. If we don't do that and the timeout
-		 * handler is in flight, it might have removed the bad job
-		 * from the list, and we'll lose this job if the reset handler
-		 * enters the critical section in panfrost_scheduler_stop()
-		 * before the timeout handler.
-		 *
-		 * Timeout is set to MAX_SCHEDULE_TIMEOUT - 1 because we need
-		 * something big enough to make sure the timer will not expire
-		 * before we manage to stop the scheduler, but we can't use
-		 * MAX_SCHEDULE_TIMEOUT because drm_sched_get_cleanup_job()
-		 * considers that as 'timer is not running' and will dequeue
-		 * the job without making sure the timeout handler is not
-		 * running.
-		 */
-		pfdev->js->queue[i].sched.timeout = MAX_SCHEDULE_TIMEOUT - 1;
-		cancel_delayed_work_sync(&pfdev->js->queue[i].sched.work_tdr);
-		panfrost_scheduler_stop(&pfdev->js->queue[i], NULL);
-	}
-
-	/* All timers have been stopped, we can safely reset the pending state. */
-	atomic_set(&pfdev->reset.pending, 0);
-
-	spin_lock_irqsave(&pfdev->js->job_lock, flags);
-	for (i = 0; i < NUM_JOB_SLOTS; i++) {
-		if (pfdev->jobs[i]) {
-			pm_runtime_put_noidle(pfdev->dev);
-			panfrost_devfreq_record_idle(&pfdev->pfdevfreq);
-			pfdev->jobs[i] = NULL;
-		}
-	}
-	spin_unlock_irqrestore(&pfdev->js->job_lock, flags);
-
-	panfrost_device_reset(pfdev);
-
-	for (i = 0; i < NUM_JOB_SLOTS; i++)
-		panfrost_scheduler_start(&pfdev->js->queue[i]);
-
-	dma_fence_end_signalling(cookie);
+	job_write(pfdev, JOB_INT_MASK, 0);
+	return IRQ_WAKE_THREAD;
 }
 
 int panfrost_job_init(struct panfrost_device *pfdev)
@@ -747,8 +804,6 @@ int panfrost_job_init(struct panfrost_device *pfdev)
 	 */
 	if (!panfrost_has_hw_feature(pfdev, HW_FEATURE_JOBCHAIN_DISAMBIGUATION))
 		nentries = 1;
-
-	INIT_WORK(&pfdev->reset.work, panfrost_reset);
 
 	pfdev->js = js = devm_kzalloc(pfdev->dev, sizeof(*js), GFP_KERNEL);
 	if (!js)
@@ -776,14 +831,14 @@ int panfrost_job_init(struct panfrost_device *pfdev)
 		return -ENOMEM;
 
 	for (j = 0; j < NUM_JOB_SLOTS; j++) {
-		mutex_init(&js->queue[j].lock);
-
 		js->queue[j].fence_context = dma_fence_context_alloc(1);
 
 		ret = drm_sched_init(&js->queue[j].sched,
 				     &panfrost_sched_ops,
-				     1, 0, msecs_to_jiffies(JOB_TIMEOUT_MS),
-				     "pan_js");
+				     nentries, 0,
+				     msecs_to_jiffies(JOB_TIMEOUT_MS),
+				     pfdev->reset.wq,
+				     NULL, "pan_js");
 		if (ret) {
 			dev_err(pfdev->dev, "Failed to create scheduler: %d.", ret);
 			goto err_sched;
@@ -811,7 +866,6 @@ void panfrost_job_fini(struct panfrost_device *pfdev)
 
 	for (j = 0; j < NUM_JOB_SLOTS; j++) {
 		drm_sched_fini(&js->queue[j].sched);
-		mutex_destroy(&js->queue[j].lock);
 	}
 
 	cancel_work_sync(&pfdev->reset.work);

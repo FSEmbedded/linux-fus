@@ -631,26 +631,6 @@ static void mlx5_mr_cache_free(struct mlx5_ib_dev *dev, struct mlx5_ib_mr *mr)
 {
 	struct mlx5_cache_ent *ent = mr->cache_ent;
 
-	mr->cache_ent = NULL;
-	spin_lock_irq(&ent->lock);
-	ent->total_mrs--;
-	spin_unlock_irq(&ent->lock);
-}
-
-void mlx5_mr_cache_free(struct mlx5_ib_dev *dev, struct mlx5_ib_mr *mr)
-{
-	struct mlx5_cache_ent *ent = mr->cache_ent;
-
-	if (!ent)
-		return;
-
-	if (mlx5_mr_cache_invalidate(mr)) {
-		detach_mr_from_cache(mr);
-		destroy_mkey(dev, mr);
-		kfree(mr);
-		return;
-	}
-
 	spin_lock_irq(&ent->lock);
 	list_add_tail(&mr->list, &ent->head);
 	ent->available_mrs++;
@@ -1374,15 +1354,6 @@ err_1:
 	return ERR_PTR(err);
 }
 
-static void set_mr_fields(struct mlx5_ib_dev *dev, struct mlx5_ib_mr *mr,
-			  u64 length, int access_flags)
-{
-	mr->ibmr.lkey = mr->mmkey.key;
-	mr->ibmr.rkey = mr->mmkey.key;
-	mr->ibmr.length = length;
-	mr->access_flags = access_flags;
-}
-
 static struct ib_mr *mlx5_ib_get_dm_mr(struct ib_pd *pd, u64 start_addr,
 				       u64 length, int acc, int mode)
 {
@@ -1503,10 +1474,7 @@ static struct ib_mr *create_real_mr(struct ib_pd *pd, struct ib_umem *umem,
 
 	mlx5_ib_dbg(dev, "mkey 0x%x\n", mr->mmkey.key);
 
-	mr->umem = umem;
-	mr->npages = npages;
-	atomic_add(mr->npages, &dev->mdev->priv.reg_pages);
-	set_mr_fields(dev, mr, length, access_flags);
+	atomic_add(ib_umem_num_pages(umem), &dev->mdev->priv.reg_pages);
 
 	if (xlt_with_umr) {
 		/*
@@ -1758,8 +1726,22 @@ static bool can_use_umr_rereg_pas(struct mlx5_ib_mr *mr,
 	if (!mlx5_ib_can_load_pas_with_umr(dev, new_umem->length))
 		return false;
 
-	if (!mr->umem)
-		return -EINVAL;
+	*page_size =
+		mlx5_umem_find_best_pgsz(new_umem, mkc, log_page_size, 0, iova);
+	if (WARN_ON(!*page_size))
+		return false;
+	return (1ULL << mr->cache_ent->order) >=
+	       ib_umem_num_dma_blocks(new_umem, *page_size);
+}
+
+static int umr_rereg_pas(struct mlx5_ib_mr *mr, struct ib_pd *pd,
+			 int access_flags, int flags, struct ib_umem *new_umem,
+			 u64 iova, unsigned long page_size)
+{
+	struct mlx5_ib_dev *dev = to_mdev(mr->ibmr.device);
+	int upd_flags = MLX5_IB_UPD_XLT_ADDR | MLX5_IB_UPD_XLT_ENABLE;
+	struct ib_umem *old_umem = mr->umem;
+	int err;
 
 	/*
 	 * To keep everything simple the MR is revoked before we start to mess
@@ -1791,18 +1773,8 @@ static bool can_use_umr_rereg_pas(struct mlx5_ib_mr *mr,
 		 * The MR is revoked at this point so there is no issue to free
 		 * new_umem.
 		 */
-		flags |= IB_MR_REREG_TRANS;
-		atomic_sub(mr->npages, &dev->mdev->priv.reg_pages);
-		mr->npages = 0;
-		ib_umem_release(mr->umem);
-		mr->umem = NULL;
-
-		err = mr_umem_get(dev, addr, len, access_flags, &mr->umem,
-				  &npages, &page_shift, &ncont, &order);
-		if (err)
-			goto err;
-		mr->npages = ncont;
-		atomic_add(mr->npages, &dev->mdev->priv.reg_pages);
+		mr->umem = old_umem;
+		return err;
 	}
 
 	atomic_sub(ib_umem_num_pages(old_umem), &dev->mdev->priv.reg_pages);
@@ -1857,10 +1829,10 @@ struct ib_mr *mlx5_ib_rereg_user_mr(struct ib_mr *ib_mr, int flags, u64 start,
 		 */
 		err = revoke_mr(mr);
 		if (err)
-			goto err;
-	}
-
-	set_mr_fields(dev, mr, len, access_flags);
+			return ERR_PTR(err);
+		umem = mr->umem;
+		mr->umem = NULL;
+		atomic_sub(ib_umem_num_pages(umem), &dev->mdev->priv.reg_pages);
 
 		return create_real_mr(new_pd, umem, mr->mmkey.iova,
 				      new_access_flags);

@@ -415,6 +415,12 @@ struct ring_stats {
 			u64 tx_tso_err;
 			u64 over_max_recursion;
 			u64 hw_limitation;
+			u64 tx_bounce;
+			u64 tx_spare_full;
+			u64 copy_bits_err;
+			u64 tx_sgl;
+			u64 skb2sgl_err;
+			u64 map_sg_err;
 		};
 		struct {
 			u64 rx_pkts;

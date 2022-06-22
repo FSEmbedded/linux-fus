@@ -219,7 +219,7 @@ if ($arch eq "x86_64") {
 
 } elsif ($arch eq "s390" && $bits == 64) {
     if ($cc =~ /-DCC_USING_HOTPATCH/) {
-	$mcount_regex = "^\\s*([0-9a-fA-F]+):\\s*c0 04 00 00 00 00\\s*brcl\\s*0,[0-9a-f]+ <([^\+]*)>\$";
+	$mcount_regex = "^\\s*([0-9a-fA-F]+):\\s*c0 04 00 00 00 00\\s*(brcl\\s*0,|jgnop\\s*)[0-9a-f]+ <([^\+]*)>\$";
 	$mcount_adjust = 0;
     }
     $alignment = 8;
@@ -233,9 +233,9 @@ if ($arch eq "x86_64") {
     # force flags for this arch
     $ld .= " -m shlelf_linux";
     if ($endian eq "big") {
-        $objcopy .= " -O elf32-shbig-linux";
+	$objcopy .= " -O elf32-shbig-linux";
     } else {
-        $objcopy .= " -O elf32-sh-linux";
+	$objcopy .= " -O elf32-sh-linux";
     }
 
 } elsif ($arch eq "powerpc") {

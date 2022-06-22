@@ -78,6 +78,7 @@ struct dcss_scaler_ch {
 	u32 c_vstart;
 	u32 c_hstart;
 
+	bool use_nn_interpolation;
 	int ch_num;
 };
 
@@ -810,6 +811,14 @@ static void dcss_scaler_set_rgb10_order(struct dcss_scaler_ch *ch,
 	}
 
 	ch->sdata_ctrl |= a2r10g10b10_format << A2R10G10B10_FORMAT_POS;
+}
+
+void dcss_scaler_set_filter(struct dcss_scaler *scl, int ch_num,
+			    enum drm_scaling_filter scaling_filter)
+{
+	struct dcss_scaler_ch *ch = &scl->ch[ch_num];
+
+	ch->use_nn_interpolation = scaling_filter == DRM_SCALING_FILTER_NEAREST_NEIGHBOR;
 }
 
 static void dcss_scaler_setup_path(struct dcss_scaler_ch *ch,

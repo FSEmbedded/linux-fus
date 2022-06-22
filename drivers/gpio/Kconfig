@@ -682,8 +682,18 @@ config GPIO_VF610
 	help
 	  Say yes here to support Vybrid vf610 GPIOs.
 
+config GPIO_VISCONTI
+	tristate "Toshiba Visconti GPIO support"
+	depends on ARCH_VISCONTI || COMPILE_TEST
+	depends on OF_GPIO
+	select GPIOLIB_IRQCHIP
+	select GPIO_GENERIC
+	select IRQ_DOMAIN_HIERARCHY
+	help
+	  Say yes here to support GPIO on Tohisba Visconti.
+
 config GPIO_IMX_RPMSG
-	bool "NXP i.MX7ULP RPMSG GPIO support"
+	tristate "NXP i.MX7ULP RPMSG GPIO support"
 	depends on ARCH_MXC && RPMSG && GPIOLIB
 	help
 	  This driver support i.MX7ULP RPMSG virtual GPIOs.

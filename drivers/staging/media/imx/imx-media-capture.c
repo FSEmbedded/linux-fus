@@ -700,15 +700,7 @@ static int capture_validate_fmt(struct capture_priv *priv)
 	if (!cc || priv->vdev.cc->cs != cc->cs)
 		return -EPIPE;
 
-	ret = __capture_try_fmt_vid_cap(priv, &fmt_src, &f, &cc, &compose);
-	if (ret)
-		return ret;
-
-	return (priv->vdev.fmt.fmt.pix.width != f.fmt.pix.width ||
-		priv->vdev.fmt.fmt.pix.height != f.fmt.pix.height ||
-		priv->vdev.cc->cs != cc->cs ||
-		priv->vdev.compose.width != compose.width ||
-		priv->vdev.compose.height != compose.height) ? -EPIPE : 0;
+	return 0;
 }
 
 static int capture_start_streaming(struct vb2_queue *vq, unsigned int count)

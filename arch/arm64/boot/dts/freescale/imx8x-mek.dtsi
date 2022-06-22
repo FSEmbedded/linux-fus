@@ -86,16 +86,6 @@
 		#size-cells = <2>;
 		ranges;
 
-		/*
-		 * 0x8800_0000 ~ 0x8FFF_FFFF is reserved for M4
-		 * Shouldn't be used at A core and Linux side.
-		 *
-		 */
-		m4_reserved: m4@0x88000000 {
-			no-map;
-			reg = <0 0x88000000 0 0x8000000>;
-		};
-
 		decoder_boot: decoder-boot@84000000 {
 			reg = <0 0x84000000 0 0x2000000>;
 			no-map;
@@ -270,12 +260,8 @@
 			"Ext Spk", "SPK_LN",
 			"Ext Spk", "SPK_RP",
 			"Ext Spk", "SPK_RN",
-			"LINPUT2", "Mic Jack",
-			"LINPUT3", "Mic Jack",
-			"RINPUT1", "AMIC",
-			"RINPUT2", "AMIC",
-			"Mic Jack", "MICB",
-			"AMIC", "MICB";
+			"LINPUT1", "Mic Jack",
+			"Mic Jack", "MICB";
 	};
 
 	imx8x_cm4: imx8x_cm4@0 {
@@ -660,31 +646,6 @@
 	};
 };
 
-&lpuart0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_lpuart0>;
-	status = "okay";
-};
-
-&lpuart1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_lpuart1>;
-	resets = <&modem_reset>;
-	status = "okay";
-};
-
-&lpuart2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_lpuart2>;
-	status = "okay";
-};
-
-&lpuart3 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_lpuart3>;
-	status = "okay";
-};
-
 &flexcan1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1>;
@@ -785,7 +746,7 @@
 	fsl,magic-packet;
 	nvmem-cells = <&fec_mac0>;
 	nvmem-cell-names = "mac-address";
-	fsl,rgmii_rxc_dly;
+	rx-internal-delay-ps = <2000>;
 	status = "okay";
 
 	mdio {
@@ -795,16 +756,26 @@
 		ethphy0: ethernet-phy@0 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <0>;
-			at803x,eee-disabled;
-			at803x,vddio-1p8v;
+			qca,disable-smarteee;
+			vddio-supply = <&vddio0>;
+
+			vddio0: vddio-regulator {
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+			};
 		};
 
 		ethphy1: ethernet-phy@1 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <1>;
-			at803x,eee-disabled;
-			at803x,vddio-1p8v;
+			qca,disable-smarteee;
+			vddio-supply = <&vddio1>;
 			status = "disabled";
+
+			vddio1: vddio-regulator {
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+			};
 		};
 	};
 };
@@ -818,7 +789,7 @@
 	fsl,magic-packet;
 	nvmem-cells = <&fec_mac1>;
 	nvmem-cell-names = "mac-address";
-	fsl,rgmii_rxc_dly;
+	rx-internal-delay-ps = <2000>;
 	status = "disabled";
 };
 
@@ -879,13 +850,13 @@
 			reg = <2>;
 
 			fxos8700@1e {
-				compatible = "fsl,fxos8700";
+				compatible = "nxp,fxos8700";
 				reg = <0x1e>;
 				interrupt-open-drain;
 			};
 
-			fxas2100x@21 {
-				compatible = "fsl,fxas2100x";
+			fxas21002c@21 {
+				compatible = "nxp,fxas21002c";
 				reg = <0x21>;
 				interrupt-open-drain;
 			};
@@ -919,7 +890,7 @@
 			isl29023@44 {
 				pinctrl-names = "default";
 				pinctrl-0 = <&pinctrl_isl29023>;
-				compatible = "fsl,isl29023";
+				compatible = "isil,isl29023";
 				reg = <0x44>;
 				rext = <499>;
 				interrupt-parent = <&lsio_gpio1>;
@@ -964,6 +935,35 @@
 			};
 		};
 	};
+};
+
+&lpuart0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lpuart0>;
+	status = "okay";
+};
+
+&lpuart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lpuart1>;
+	resets = <&modem_reset>;
+	status = "okay";
+};
+
+&lpuart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lpuart2>;
+	status = "okay";
+};
+
+&lpuart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lpuart3>;
+	status = "okay";
+};
+
+&scu_key {
+	status = "okay";
 };
 
 &thermal_zones {
@@ -1578,8 +1578,4 @@
 			IMX8QXP_SPI0_CS1_ADMA_LCD_PWM0_OUT	0x00000060
 		>;
 	};
-};
-
-&scu_key {
-	status = "okay";
 };

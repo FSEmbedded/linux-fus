@@ -539,7 +539,7 @@ void __init sme_enable(struct boot_params *bp)
 		/*
 		 * No SME if Hypervisor bit is set. This check is here to
 		 * prevent a guest from trying to enable SME. For running as a
-		 * KVM guest the MSR_K8_SYSCFG will be sufficient, but there
+		 * KVM guest the MSR_AMD64_SYSCFG will be sufficient, but there
 		 * might be other hypervisors which emulate that MSR as non-zero
 		 * or even pass it through to the guest.
 		 * A malicious hypervisor can still trick a guest into this

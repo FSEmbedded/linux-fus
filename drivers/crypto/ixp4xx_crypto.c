@@ -152,6 +152,7 @@ struct ablk_ctx {
 	struct buffer_desc *dst;
 	u8 iv[MAX_IVLEN];
 	bool encrypt;
+	struct skcipher_request fallback_req;   // keep at the end
 };
 
 struct aead_ctx {

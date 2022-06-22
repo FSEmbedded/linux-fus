@@ -29,6 +29,11 @@
 		};
 	};
 
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0 0x80000000>;
+	};
+
 	rpmsg_keys: rpmsg-keys {
 		compatible = "fsl,rpmsg-keys";
 
@@ -115,6 +120,11 @@
 			no-map;
 			reg = <0 0xa8500000 0 0x100000>;
 		};
+
+		m33_reserved: m33_noncacheable_section@a8600000 {
+			no-map;
+			reg = <0 0xa8600000 0 0x1000000>;
+		};
 	};
 
 	reg_5v: regulator-5v {
@@ -177,6 +187,11 @@
 	};
 };
 
+&clock_ext_ts {
+	/* External ts clock is 50MHZ from PHY on EVK board. */
+	clock-frequency = <50000000>;
+};
+
 &dcnano {
 	status = "okay";
 };
@@ -203,11 +218,6 @@
 	memory-region = <&dsp_vdev0buffer>, <&dsp_vdev0vring0>,
 			<&dsp_vdev0vring1>, <&dsp_reserved>;
 	status = "okay";
-};
-
-&clock_ext_ts {
-	/* External ts clock is 50MHZ from PHY on EVK board. */
-	clock-frequency = <50000000>;
 };
 
 &fec {
@@ -263,11 +273,6 @@
 	mpl3115@60 {
 		compatible = "fsl,mpl3115";
 		reg = <0x60>;
-	};
-
-	lsm6dsm@6a {
-		compatible = "st,lsm6dso";
-		reg = <0x6a>;
 	};
 
 	wm8960: wm8960@1a {
@@ -395,6 +400,26 @@
 	status = "okay";
 };
 
+&sai5 {
+	#sound-dai-cells = <0>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_sai5>;
+	pinctrl-1 = <&pinctrl_sai5>;
+	assigned-clocks = <&cgc1 IMX8ULP_CLK_SAI5_SEL>;
+	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
+	fsl,dataline = <0 0x08 0x01>;
+	status = "okay";
+};
+
+&spdif {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_spdif>;
+	pinctrl-1 = <&pinctrl_spdif>;
+	assigned-clocks = <&cgc2 IMX8ULP_CLK_SPDIF_SEL>;
+	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
+	status = "okay";
+};
+
 &tpm_rpchip_0 {
 	status = "okay";
 };
@@ -461,8 +486,8 @@
 	bus-width = <4>;
 	keep-power-in-suspend;
 	non-removable;
-	fsl,sdio-interrupt-enabled;
 	wakeup-source;
+	fsl,sdio-async-interrupt-enabled;
 	status = "okay";
 
 	wifi_wake_host {
@@ -615,26 +640,6 @@
 		>;
 	};
 
-};
-
-&sai5 {
-	#sound-dai-cells = <0>;
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&pinctrl_sai5>;
-	pinctrl-1 = <&pinctrl_sai5>;
-	assigned-clocks = <&cgc1 IMX8ULP_CLK_SAI5_SEL>;
-	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
-	fsl,dataline = <0 0x08 0x01>;
-	status = "okay";
-};
-
-&spdif {
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&pinctrl_spdif>;
-	pinctrl-1 = <&pinctrl_spdif>;
-	assigned-clocks = <&cgc2 IMX8ULP_CLK_SPDIF_SEL>;
-	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
-	status = "okay";
 };
 
 &cameradev {

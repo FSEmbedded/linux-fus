@@ -144,6 +144,9 @@ static void qfprom_disable_fuse_blowing(const struct qfprom_priv *priv,
 	writel(old->timer_val, priv->qfpconf + QFPROM_BLOW_TIMER_OFFSET);
 	writel(old->accel_val, priv->qfpconf + QFPROM_ACCEL_OFFSET);
 
+	dev_pm_genpd_set_performance_state(priv->dev, 0);
+	pm_runtime_put(priv->dev);
+
 	/*
 	 * This may be a shared rail and may be able to run at a lower rate
 	 * when we're not blowing fuses.  At the moment, the regulator framework
@@ -198,13 +201,13 @@ static int qfprom_enable_fuse_blowing(const struct qfprom_priv *priv,
 	}
 
 	/*
-	 * Hardware requires 1.8V min for fuse blowing; this may be
-	 * a rail shared do don't specify a max--regulator constraints
-	 * will handle.
+	 * Hardware requires a minimum voltage for fuse blowing.
+	 * This may be a shared rail so don't specify a maximum.
+	 * Regulator constraints will cap to the actual maximum.
 	 */
-	ret = regulator_set_voltage(priv->vcc, 1800000, INT_MAX);
+	ret = regulator_set_voltage(priv->vcc, qfprom_blow_uV, INT_MAX);
 	if (ret) {
-		dev_err(priv->dev, "Failed to set 1.8 voltage\n");
+		dev_err(priv->dev, "Failed to set %duV\n", qfprom_blow_uV);
 		goto err_clk_rate_set;
 	}
 

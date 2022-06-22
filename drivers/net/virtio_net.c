@@ -413,14 +413,7 @@ static struct sk_buff *page_to_skb(struct virtnet_info *vi,
 	offset += hdr_padded_len;
 	p += hdr_padded_len;
 
-	/* Copy all frame if it fits skb->head, otherwise
-	 * we let virtio_net_hdr_to_skb() and GRO pull headers as needed.
-	 */
-	if (len <= skb_tailroom(skb))
-		copy = len;
-	else
-		copy = ETH_HLEN + metasize;
-	skb_put_data(skb, p, copy);
+	shinfo_size = SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
 
 	/* copy small packet so we can reuse these pages */
 	if (!NET_IP_ALIGN && len > GOOD_COPY_LEN && tailroom >= shinfo_size) {
@@ -539,19 +532,20 @@ static int __virtnet_xdp_xmit_one(struct virtnet_info *vi,
  * functions to perfectly solve these three problems at the same time.
  */
 #define virtnet_xdp_get_sq(vi) ({                                       \
+	int cpu = smp_processor_id();                                   \
 	struct netdev_queue *txq;                                       \
 	typeof(vi) v = (vi);                                            \
 	unsigned int qp;                                                \
 									\
 	if (v->curr_queue_pairs > nr_cpu_ids) {                         \
 		qp = v->curr_queue_pairs - v->xdp_queue_pairs;          \
-		qp += smp_processor_id();                               \
+		qp += cpu;                                              \
 		txq = netdev_get_tx_queue(v->dev, qp);                  \
 		__netif_tx_acquire(txq);                                \
 	} else {                                                        \
-		qp = smp_processor_id() % v->curr_queue_pairs;          \
+		qp = cpu % v->curr_queue_pairs;                         \
 		txq = netdev_get_tx_queue(v->dev, qp);                  \
-		__netif_tx_lock(txq, raw_smp_processor_id());           \
+		__netif_tx_lock(txq, cpu);                              \
 	}                                                               \
 	v->sq + qp;                                                     \
 })
@@ -1610,26 +1604,6 @@ static int virtnet_poll_tx(struct napi_struct *napi, int budget)
 	virtqueue_disable_cb(sq->vq);
 	free_old_xmit_skbs(sq, true);
 
-	opaque = virtqueue_enable_cb_prepare(sq->vq);
-
-	done = napi_complete_done(napi, 0);
-
-	if (!done)
-		virtqueue_disable_cb(sq->vq);
-
-	__netif_tx_unlock(txq);
-
-	if (done) {
-		if (unlikely(virtqueue_poll(sq->vq, opaque))) {
-			if (napi_schedule_prep(napi)) {
-				__netif_tx_lock(txq, raw_smp_processor_id());
-				virtqueue_disable_cb(sq->vq);
-				__netif_tx_unlock(txq);
-				__napi_schedule(napi);
-			}
-		}
-	}
-
 	if (sq->vq->num_free >= 2 + MAX_SKB_FRAGS)
 		netif_tx_wake_queue(txq);
 
@@ -2231,11 +2205,11 @@ static int virtnet_set_channels(struct net_device *dev,
 	cpus_read_lock();
 	err = _virtnet_set_queues(vi, queue_pairs);
 	if (err) {
-		put_online_cpus();
+		cpus_read_unlock();
 		goto err;
 	}
 	virtnet_set_affinity(vi);
-	put_online_cpus();
+	cpus_read_unlock();
 
 	netif_set_real_num_tx_queues(dev, queue_pairs);
 	netif_set_real_num_rx_queues(dev, queue_pairs);

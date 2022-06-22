@@ -504,19 +504,10 @@ static int rdacm20_initialize(struct rdacm20_device *dev)
 	 * requires at least 2048 XVCLK cycles (85 micro-seconds at 24MHz)
 	 * before being available. Stay safe and wait up to 500 micro-seconds.
 	 */
-	ret = max9271_enable_gpios(dev->serializer, MAX9271_GPIO1OUT);
+	ret = max9271_set_gpios(&dev->serializer, MAX9271_GPIO1OUT);
 	if (ret)
 		return ret;
-
-	ret = max9271_clear_gpios(dev->serializer, MAX9271_GPIO1OUT);
-	if (ret)
-		return ret;
-	usleep_range(10000, 15000);
-
-	ret = max9271_set_gpios(dev->serializer, MAX9271_GPIO1OUT);
-	if (ret)
-		return ret;
-	usleep_range(10000, 15000);
+	usleep_range(100, 500);
 
 again:
 	ret = ov10635_read16(dev, OV10635_PID);

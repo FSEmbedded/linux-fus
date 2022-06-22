@@ -434,8 +434,8 @@
 			big-endian;
 		};
 
-		ifc: ifc@1530000 {
-			compatible = "fsl,ifc", "simple-bus";
+		ifc: memory-controller@1530000 {
+			compatible = "fsl,ifc";
 			reg = <0x0 0x1530000 0x0 0x10000>;
 			interrupts = <0 43 0x4>;
 		};
@@ -820,17 +820,7 @@
 			status = "disabled";
 		};
 
-		ftm0: ftm0@29d0000 {
-			compatible = "fsl,ftm-alarm";
-			reg = <0x0 0x29d0000 0x0 0x10000>,
-			      <0x0 0x1ee2140 0x0 0x4>;
-			reg-names = "ftm", "FlexTimer1";
-			interrupts = <0 86 0x4>;
-			big-endian;
-			status = "okay";
-		};
-
-		wdog0: wdog@2ad0000 {
+		wdog0: watchdog@2ad0000 {
 			compatible = "fsl,ls1043a-wdt", "fsl,imx21-wdt";
 			reg = <0x0 0x2ad0000 0x0 0x10000>;
 			interrupts = <0 83 0x4>;
@@ -865,7 +855,7 @@
 			ranges;
 			dma-ranges = <0x0 0x0 0x0 0x0 0x100 0x00000000>;
 
-			usb0: usb3@2f00000 {
+			usb0: usb@2f00000 {
 				compatible = "fsl,ls1043a-dwc3", "snps,dwc3";
 				reg = <0x0 0x2f00000 0x0 0x10000>;
 				interrupts = <0 60 0x4>;
@@ -873,15 +863,13 @@
 				snps,quirk-frame-length-adjustment = <0x20>;
 				snps,dis_rxdet_inp3_quirk;
 				usb3-lpm-capable;
-				snps,dis-u1u2-when-u3-quirk;
 				snps,incr-burst-type-adjustment = <1>, <4>, <8>, <16>;
 				snps,host-vbus-glitches;
-				configure-gfladj;
 				dma-coherent;
 				status = "disabled";
 			};
 
-			usb1: usb3@3000000 {
+			usb1: usb@3000000 {
 				compatible = "fsl,ls1043a-dwc3", "snps,dwc3";
 				reg = <0x0 0x3000000 0x0 0x10000>;
 				interrupts = <0 61 0x4>;
@@ -889,15 +877,13 @@
 				snps,quirk-frame-length-adjustment = <0x20>;
 				snps,dis_rxdet_inp3_quirk;
 				usb3-lpm-capable;
-				snps,dis-u1u2-when-u3-quirk;
 				snps,incr-burst-type-adjustment = <1>, <4>, <8>, <16>;
 				snps,host-vbus-glitches;
-				configure-gfladj;
 				dma-coherent;
 				status = "disabled";
 			};
 
-			usb2: usb3@3100000 {
+			usb2: usb@3100000 {
 				compatible = "fsl,ls1043a-dwc3", "snps,dwc3";
 				reg = <0x0 0x3100000 0x0 0x10000>;
 				interrupts = <0 63 0x4>;
@@ -905,10 +891,8 @@
 				snps,quirk-frame-length-adjustment = <0x20>;
 				snps,dis_rxdet_inp3_quirk;
 				usb3-lpm-capable;
-				snps,dis-u1u2-when-u3-quirk;
 				snps,incr-burst-type-adjustment = <1>, <4>, <8>, <16>;
 				snps,host-vbus-glitches;
-				configure-gfladj;
 				dma-coherent;
 				status = "disabled";
 			};
@@ -919,7 +903,9 @@
 					<0x0 0x20140520 0x0 0x4>;
 				reg-names = "ahci", "sata-ecc";
 				interrupts = <0 69 0x4>;
-				clocks = <&clockgen 4 0>;
+				clocks = <&clockgen QORIQ_CLK_PLATFORM_PLL
+						    QORIQ_CLK_PLL_DIV(1)>;
+				dma-coherent;
 			};
 		};
 
@@ -949,8 +935,8 @@
 			reg = <0x00 0x03400000 0x0 0x00100000>, /* controller registers */
 			      <0x40 0x00000000 0x0 0x00002000>; /* configuration space */
 			reg-names = "regs", "config";
-			interrupts = <0 117 0x4>, /* PME interrupt */
-				     <0 118 0x4>; /* aer interrupt */
+			interrupts = <0 117 0x4>,
+				     <0 118 0x4>;
 			interrupt-names = "pme", "aer";
 			#address-cells = <3>;
 			#size-cells = <2>;

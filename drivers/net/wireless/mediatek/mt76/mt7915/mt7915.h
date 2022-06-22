@@ -116,6 +116,14 @@ struct mib_stats {
 	u32 ba_miss_cnt;
 };
 
+struct mt7915_hif {
+	struct list_head list;
+
+	struct device *dev;
+	void __iomem *regs;
+	int irq;
+};
+
 struct mt7915_phy {
 	struct mt76_phy *mt76;
 	struct mt7915_dev *dev;

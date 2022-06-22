@@ -314,6 +314,14 @@ void ceph_metric_destroy(struct ceph_client_metric *m)
 	ceph_put_mds_session(m->session);
 }
 
+#define METRIC_UPDATE_MIN_MAX(min, max, new)	\
+{						\
+	if (unlikely(new < min))		\
+		min = new;			\
+	if (unlikely(new > max))		\
+		max = new;			\
+}
+
 static inline void __update_stdev(ktime_t total, ktime_t lsum,
 				  ktime_t *sq_sump, ktime_t lat)
 {

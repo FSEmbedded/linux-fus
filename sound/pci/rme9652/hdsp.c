@@ -5416,22 +5416,6 @@ static void snd_hdsp_card_free(struct snd_card *card)
 
 	release_firmware(hdsp->firmware);
 	vfree(hdsp->fw_uploaded);
-	iounmap(hdsp->iobase);
-
-	if (hdsp->port)
-		pci_release_regions(hdsp->pci);
-
-	if (pci_is_enabled(hdsp->pci))
-		pci_disable_device(hdsp->pci);
-	return 0;
-}
-
-static void snd_hdsp_card_free(struct snd_card *card)
-{
-	struct hdsp *hdsp = card->private_data;
-
-	if (hdsp)
-		snd_hdsp_free(hdsp);
 }
 
 static int snd_hdsp_probe(struct pci_dev *pci,

@@ -531,8 +531,7 @@ static irqreturn_t arizona_hpdet_irq(int irq, void *data)
 	struct arizona_priv *info = data;
 	struct arizona *arizona = info->arizona;
 	int id_gpio = arizona->pdata.hpdet_id_gpio;
-	unsigned int report = EXTCON_JACK_HEADPHONE;
-	int ret, reading, state;
+	int ret, reading, state, report;
 	bool mic = false;
 
 	mutex_lock(&info->lock);
@@ -545,11 +544,8 @@ static irqreturn_t arizona_hpdet_irq(int irq, void *data)
 	}
 
 	/* If the cable was removed while measuring ignore the result */
-	state = extcon_get_state(info->edev, EXTCON_MECHANICAL);
-	if (state < 0) {
-		dev_err(arizona->dev, "Failed to check cable state: %d\n", state);
-		goto out;
-	} else if (!state) {
+	state = info->jack->status & SND_JACK_MECHANICAL;
+	if (!state) {
 		dev_dbg(arizona->dev, "Ignoring HPDET for removed cable\n");
 		goto done;
 	}
@@ -1606,6 +1602,9 @@ static int arizona_jack_disable_jack_detect(struct arizona_priv *info)
 	bool change;
 	int ret;
 
+	if (!info->jack)
+		return 0;
+
 	if (info->micd_clamp) {
 		jack_irq_rise = ARIZONA_IRQ_MICD_CLAMP_RISE;
 		jack_irq_fall = ARIZONA_IRQ_MICD_CLAMP_FALL;
@@ -1628,11 +1627,10 @@ static int arizona_jack_disable_jack_detect(struct arizona_priv *info)
 				       ARIZONA_MICD_ENA, 0,
 				       &change);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "Failed to disable micd on remove: %d\n",
-			ret);
+		dev_err(arizona->dev, "Failed to disable micd on remove: %d\n", ret);
 	} else if (change) {
 		regulator_disable(info->micvdd);
-		pm_runtime_put(info->dev);
+		pm_runtime_put(arizona->dev);
 	}
 
 	regmap_update_bits(arizona->regmap,
@@ -1642,10 +1640,6 @@ static int arizona_jack_disable_jack_detect(struct arizona_priv *info)
 			   ARIZONA_JD1_ENA, 0);
 	arizona_clk32k_disable(arizona);
 	info->jack = NULL;
-
-	gpiod_put(info->micd_pol_gpio);
-
-	pm_runtime_disable(&pdev->dev);
 
 	return 0;
 }

@@ -797,7 +797,7 @@ int hns_roce_mtr_map(struct hns_roce_dev *hr_dev, struct hns_roce_mtr *mtr,
 		if (r->offset + r->count > page_cnt) {
 			ret = -EINVAL;
 			ibdev_err(ibdev,
-				  "failed to check mtr%u end %u + %u, max %u.\n",
+				  "failed to check mtr%u count %u + %u > %u.\n",
 				  i, r->offset, r->count, page_cnt);
 			return ret;
 		}
@@ -807,8 +807,8 @@ int hns_roce_mtr_map(struct hns_roce_dev *hr_dev, struct hns_roce_mtr *mtr,
 		if (ret < 0) {
 			ibdev_err(ibdev,
 				  "failed to map mtr%u offset %u, ret = %d.\n",
-				  i, r->offset, err);
-			return err;
+				  i, r->offset, ret);
+			return ret;
 		}
 		mapped_cnt += ret;
 		ret = 0;

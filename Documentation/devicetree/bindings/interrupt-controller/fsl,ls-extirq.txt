@@ -11,7 +11,6 @@ Required properties:
 - compatible: should be "fsl,<soc-name>-extirq", e.g. "fsl,ls1021a-extirq".
   "fsl,ls1043a-extirq": for LS1043A, LS1046A.
   "fsl,ls1088a-extirq": for LS1088A, LS208xA, LX216xA.
-
 - #interrupt-cells: Must be 2. The first element is the index of the
   external interrupt line. The second element is the trigger type.
 - #address-cells: Must be 0.

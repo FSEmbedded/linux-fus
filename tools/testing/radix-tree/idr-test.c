@@ -315,7 +315,12 @@ void idr_find_test_1(int anchor_id, int throbber_id)
 		int id = 0;
 		void *entry = idr_get_next(&find_idr, &id);
 		rcu_read_unlock();
-		BUG_ON(entry != xa_mk_value(id));
+		if ((id != anchor_id && id != throbber_id) ||
+		    entry != xa_mk_value(id)) {
+			printf("%s(%d, %d): %p at %d\n", __func__, anchor_id,
+				throbber_id, entry, id);
+			abort();
+		}
 		rcu_read_lock();
 	} while (time(NULL) < start + 11);
 	rcu_read_unlock();

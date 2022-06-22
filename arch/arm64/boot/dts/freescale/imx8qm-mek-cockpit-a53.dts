@@ -116,6 +116,15 @@
 			no-map;
 			reg = <0 0x88000000 0 0x8000000>;
 		};
+		rpmsg_reserved: rpmsg@0x90000000 {
+			no-map;
+			reg = <0 0x90000000 0 0x400000>;
+		};
+		rpmsg_dma_reserved:rpmsg_dma@0x90400000 {
+			compatible = "shared-dma-pool";
+			no-map;
+			reg = <0 0x90400000 0 0x100000>;
+		};
 		shmem_dma_reserved:shmem_dma@0x92000000 {
 			compatible = "shared-dma-pool";
 			no-map;
@@ -129,26 +138,9 @@
 			no-map;
 			reg = <0 0x92200000 0 0x0>;
 		};
-		dsp_reserved: dsp@92400000 {
-			reg = <0 0x92400000 0 0x1000000>;
+		dsp_reserved: dsp@0x92400000 {
 			no-map;
-		};
-		dsp_reserved_heap: dsp_reserved_heap {
-			reg = <0 0x93400000 0 0xef0000>;
-			no-map;
-		};
-		dsp_vdev0vring0: vdev0vring0@942f0000 {
-			reg = <0 0x942f0000 0 0x8000>;
-			no-map;
-		};
-		dsp_vdev0vring1: vdev0vring1@942f8000 {
-			reg = <0 0x942f8000 0 0x8000>;
-			no-map;
-		};
-		dsp_vdev0buffer: vdev0buffer@94300000 {
-			compatible = "shared-dma-pool";
-			reg = <0 0x94300000 0 0x100000>;
-			no-map;
+			reg = <0 0x92400000 0 0x2000000>;
 		};
 		encoder_reserved: encoder_reserved@0x94400000 {
 			no-map;
@@ -432,9 +424,7 @@
 };
 
 &dsp {
-	compatible = "fsl,imx8qm-hifi4";
-	memory-region = <&dsp_vdev0buffer>, <&dsp_vdev0vring0>,
-			<&dsp_vdev0vring1>, <&dsp_reserved>;
+	compatible = "fsl,imx8qm-dsp-v1";
 	status = "okay";
 };
 
@@ -833,7 +823,7 @@
 	fsl,magic-packet;
 	nvmem-cells = <&fec_mac0>;
 	nvmem-cell-names = "mac-address";
-	fsl,rgmii_rxc_dly;
+	rx-internal-delay-ps = <2000>;
 	/delete-property/ iommus;
 	status = "okay";
 
@@ -844,15 +834,25 @@
 		ethphy0: ethernet-phy@0 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <0>;
-			at803x,eee-disabled;
-			at803x,vddio-1p8v;
+			qca,disable-smarteee;
+			vddio-supply = <&vddio0>;
+
+			vddio0: vddio-regulator {
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+			};
 		};
 
 		ethphy1: ethernet-phy@1 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <1>;
-			at803x,eee-disabled;
-			at803x,vddio-1p8v;
+			qca,disable-smarteee;
+			vddio-supply = <&vddio1>;
+
+			vddio1: vddio-regulator {
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+			};
 		};
 	};
 };
@@ -866,7 +866,7 @@
 	fsl,magic-packet;
 	nvmem-cells = <&fec_mac1>;
 	nvmem-cell-names = "mac-address";
-	fsl,rgmii_rxc_dly;
+	rx-internal-delay-ps = <2000>;
 	status = "disabled";
 };
 
@@ -881,8 +881,8 @@
 		#size-cells = <1>;
 		compatible = "jedec,spi-nor";
 		spi-max-frequency = <133000000>;
-		spi-tx-bus-width = <1>;
-		spi-rx-bus-width = <8>;
+		spi-tx-bus-width = <4>;
+		spi-rx-bus-width = <4>;
 	};
 };
 
@@ -893,7 +893,28 @@
 	disable-gpio = <&lsio_gpio4 9 GPIO_ACTIVE_LOW>;
 	ext_osc = <1>;
 	epdev_on-supply = <&epdev_on>;
+	reserved-region = <&rpmsg_reserved>;
 	status = "disabled";
+};
+
+&rpmsg0{
+	/*
+	 * 64K for one rpmsg instance:
+	 */
+	vdev-nums = <2>;
+	reg = <0x0 0x90000000 0x0 0x20000>;
+	memory-region = <&rpmsg_dma_reserved>;
+	status = "okay";
+};
+
+&rpmsg1{
+	/*
+	 * 64K for one rpmsg instance:
+	 */
+	vdev-nums = <2>;
+	reg = <0x0 0x90100000 0x0 0x20000>;
+	memory-region = <&rpmsg_dma_reserved>;
+	status = "okay";
 };
 
 &imx_shmem_net {
@@ -930,9 +951,19 @@
 };
 
 &usbotg3 {
-	dr_mode = "otg";
-	extcon = <&ptn5110>;
 	status = "okay";
+};
+
+&usbotg3_cdns3 {
+	dr_mode = "otg";
+	usb-role-switch;
+	status = "okay";
+
+	port {
+		usb3_drd_sw: endpoint {
+			remote-endpoint = <&typec_dr_sw>;
+		};
+	};
 };
 
 &usdhc1 {
@@ -972,7 +1003,7 @@
 	isl29023@44 {
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_isl29023>;
-		compatible = "fsl,isl29023";
+		compatible = "isil,isl29023";
 		reg = <0x44>;
 		rext = <499>;
 		interrupt-parent = <&lsio_gpio4>;
@@ -980,13 +1011,13 @@
 	};
 
 	fxos8700@1e {
-		compatible = "fsl,fxos8700";
+		compatible = "nxp,fxos8700";
 		reg = <0x1e>;
 		interrupt-open-drain;
 	};
 
-	fxas2100x@20 {
-		compatible = "fsl,fxas2100x";
+	fxas21002c@20 {
+		compatible = "nxp,fxas21002c";
 		reg = <0x20>;
 		interrupt-open-drain;
 	};
@@ -1012,6 +1043,12 @@
 		interrupt-parent = <&lsio_gpio4>;
 		interrupts = <26 IRQ_TYPE_LEVEL_LOW>;
 		status = "okay";
+
+		port {
+			typec_dr_sw: endpoint {
+				remote-endpoint = <&usb3_drd_sw>;
+			};
+		};
 
 		usb_con1: connector {
 			compatible = "usb-c-connector";

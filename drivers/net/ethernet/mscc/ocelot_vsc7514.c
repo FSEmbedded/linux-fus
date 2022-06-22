@@ -20,6 +20,9 @@
 #include <soc/mscc/ocelot_hsio.h>
 #include "ocelot.h"
 
+#define VSC7514_VCAP_POLICER_BASE			128
+#define VSC7514_VCAP_POLICER_MAX			191
+
 static const u32 ocelot_ana_regmap[] = {
 	REG(ANA_ADVLEARN,				0x009000),
 	REG(ANA_VLANMASK,				0x009004),
@@ -1129,6 +1132,10 @@ static int mscc_ocelot_probe(struct platform_device *pdev)
 	ocelot->num_flooding_pgids = 1;
 
 	ocelot->vcap = vsc7514_vcap_props;
+
+	ocelot->vcap_pol.base = VSC7514_VCAP_POLICER_BASE;
+	ocelot->vcap_pol.max = VSC7514_VCAP_POLICER_MAX;
+
 	ocelot->npi = -1;
 
 	err = ocelot_init(ocelot);
@@ -1141,7 +1148,11 @@ static int mscc_ocelot_probe(struct platform_device *pdev)
 
 	err = mscc_ocelot_init_ports(pdev, ports);
 	if (err)
-		goto out_ocelot_deinit;
+		goto out_ocelot_devlink_unregister;
+
+	err = ocelot_devlink_sb_register(ocelot);
+	if (err)
+		goto out_ocelot_release_ports;
 
 	if (ocelot->ptp) {
 		err = ocelot_init_timestamp(ocelot, &ocelot_ptp_clock_info);
@@ -1162,6 +1173,11 @@ static int mscc_ocelot_probe(struct platform_device *pdev)
 
 	return 0;
 
+out_ocelot_release_ports:
+	mscc_ocelot_release_ports(ocelot);
+	mscc_ocelot_teardown_devlink_ports(ocelot);
+out_ocelot_devlink_unregister:
+	devlink_unregister(devlink);
 out_ocelot_deinit:
 	ocelot_deinit(ocelot);
 out_put_ports:

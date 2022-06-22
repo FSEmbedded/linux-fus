@@ -2020,12 +2020,8 @@ static void musb_pm_runtime_check_session(struct musb *musb)
 		MUSB_DEVCTL_HR;
 	switch (devctl & ~s) {
 	case MUSB_QUIRK_B_DISCONNECT_99:
-		if (musb->quirk_retries && !musb->flush_irq_work) {
-			musb_dbg(musb, "Poll devctl in case of suspend after disconnect\n");
-			schedule_delayed_work(&musb->irq_work,
-					      msecs_to_jiffies(1000));
-			musb->quirk_retries--;
-		}
+		musb_state_needs_recheck(musb, devctl,
+			"Poll devctl in case of suspend after disconnect");
 		break;
 	case MUSB_QUIRK_B_INVALID_VBUS_91:
 		if (musb_state_needs_recheck(musb, devctl,

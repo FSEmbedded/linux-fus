@@ -179,6 +179,12 @@ endef
 
 LD += $(EXTRA_LDFLAGS)
 
+HOSTCC  ?= gcc
+HOSTLD  ?= ld
+HOSTAR  ?= ar
+CLANG   ?= clang
+LLVM_STRIP ?= llvm-strip
+
 PKG_CONFIG = $(CROSS_COMPILE)pkg-config
 
 RM      = rm -f

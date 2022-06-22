@@ -355,9 +355,7 @@ static void insert_breadcrumb(struct i915_request *rq)
 	 * its signal completion.
 	 */
 	if (__i915_request_is_complete(rq)) {
-		if (__signal_request(rq) &&
-		    llist_add(&rq->signal_node, &b->signaled_requests))
-			irq_work_queue(&b->irq_work);
+		irq_signal_request(rq, b);
 		return;
 	}
 

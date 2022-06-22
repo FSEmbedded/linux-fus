@@ -47,14 +47,14 @@ static struct sk_buff *rtl4a_tag_xmit(struct sk_buff *skb,
 		   dp->index);
 	skb_push(skb, RTL4_A_HDR_LEN);
 
-	memmove(skb->data, skb->data + RTL4_A_HDR_LEN, 2 * ETH_ALEN);
-	tag = skb->data + 2 * ETH_ALEN;
+	dsa_alloc_etype_header(skb, RTL4_A_HDR_LEN);
+	tag = dsa_etype_header_pos_tx(skb);
 
 	/* Set Ethertype */
 	p = (__be16 *)tag;
 	*p = htons(RTL4_A_ETHERTYPE);
 
-	out = (RTL4_A_PROTOCOL_RTL8366RB << RTL4_A_PROTOCOL_SHIFT) | (2 << 8);
+	out = (RTL4_A_PROTOCOL_RTL8366RB << RTL4_A_PROTOCOL_SHIFT);
 	/* The lower bits indicate the port number */
 	out |= BIT(dp->index);
 

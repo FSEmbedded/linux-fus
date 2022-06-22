@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright 2014-2016 Freescale Semiconductor Inc.
- * Copyright 2017-2020 NXP
+ * Copyright 2017-2021 NXP
  *
  */
 
@@ -12,7 +12,7 @@
 
 /* DPSW Version */
 #define DPSW_VER_MAJOR		8
-#define DPSW_VER_MINOR		5
+#define DPSW_VER_MINOR		9
 
 #define DPSW_CMD_BASE_VERSION	1
 #define DPSW_CMD_VERSION_2	2
@@ -45,6 +45,9 @@
 #define DPSW_CMDID_IF_SET_STP               DPSW_CMD_ID(0x031)
 
 #define DPSW_CMDID_IF_GET_COUNTER           DPSW_CMD_V2(0x034)
+
+#define DPSW_CMDID_IF_ADD_REFLECTION        DPSW_CMD_ID(0x037)
+#define DPSW_CMDID_IF_REMOVE_REFLECTION     DPSW_CMD_ID(0x038)
 
 #define DPSW_CMDID_IF_ENABLE                DPSW_CMD_ID(0x03D)
 #define DPSW_CMDID_IF_DISABLE               DPSW_CMD_ID(0x03E)
@@ -476,5 +479,78 @@ struct dpsw_rsp_acl_add {
 	__le16 acl_id;
 };
 
+struct dpsw_cmd_acl_remove {
+	__le16 acl_id;
+};
+
+struct dpsw_cmd_acl_if {
+	__le16 acl_id;
+	__le16 num_ifs;
+	__le32 pad;
+	__le64 if_id;
+};
+
+struct dpsw_prep_acl_entry {
+	u8 match_l2_dest_mac[6];
+	__le16 match_l2_tpid;
+
+	u8 match_l2_source_mac[6];
+	__le16 match_l2_vlan_id;
+
+	__le32 match_l3_dest_ip;
+	__le32 match_l3_source_ip;
+
+	__le16 match_l4_dest_port;
+	__le16 match_l4_source_port;
+	__le16 match_l2_ether_type;
+	u8 match_l2_pcp_dei;
+	u8 match_l3_dscp;
+
+	u8 mask_l2_dest_mac[6];
+	__le16 mask_l2_tpid;
+
+	u8 mask_l2_source_mac[6];
+	__le16 mask_l2_vlan_id;
+
+	__le32 mask_l3_dest_ip;
+	__le32 mask_l3_source_ip;
+
+	__le16 mask_l4_dest_port;
+	__le16 mask_l4_source_port;
+	__le16 mask_l2_ether_type;
+	u8 mask_l2_pcp_dei;
+	u8 mask_l3_dscp;
+
+	u8 match_l3_protocol;
+	u8 mask_l3_protocol;
+};
+
+#define DPSW_RESULT_ACTION_SHIFT	0
+#define DPSW_RESULT_ACTION_SIZE		4
+
+struct dpsw_cmd_acl_entry {
+	__le16 acl_id;
+	__le16 result_if_id;
+	__le32 precedence;
+	/* from LSB only the first 4 bits */
+	u8 result_action;
+	u8 pad[7];
+	__le64 pad2[4];
+	__le64 key_iova;
+};
+
+struct dpsw_cmd_set_reflection_if {
+	__le16 if_id;
+};
+
+#define DPSW_FILTER_SHIFT	0
+#define DPSW_FILTER_SIZE	2
+
+struct dpsw_cmd_if_reflection {
+	__le16 if_id;
+	__le16 vlan_id;
+	/* only 2 bits from the LSB */
+	u8 filter;
+};
 #pragma pack(pop)
 #endif /* __FSL_DPSW_CMD_H */

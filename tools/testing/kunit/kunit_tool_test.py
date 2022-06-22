@@ -328,7 +328,7 @@ class StrContains(str):
 
 class KUnitMainTest(unittest.TestCase):
 	def setUp(self):
-		path = get_absolute_path('test_data/test_is_test_passed-all_passed.log')
+		path = test_data_path('test_is_test_passed-all_passed.log')
 		with open(path) as file:
 			all_passed_log = file.readlines()
 

@@ -293,7 +293,7 @@ static int udl_handle_damage(struct drm_framebuffer *fb, const struct dma_buf_ma
 	urb = udl_get_urb(dev);
 	if (!urb) {
 		ret = -ENOMEM;
-		goto out_drm_gem_shmem_vunmap;
+		goto out_drm_gem_fb_end_cpu_access;
 	}
 	cmd = urb->transfer_buffer;
 

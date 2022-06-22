@@ -130,24 +130,6 @@ struct bma180_part_info {
 #define BMA250_INT1_DATA_MASK	BIT(0)
 #define BMA250_INT_RESET_MASK	BIT(7) /* Reset pending interrupts */
 
-#define BMA254_RANGE_REG	0x0f
-#define BMA254_BW_REG		0x10
-#define BMA254_POWER_REG	0x11
-#define BMA254_RESET_REG	0x14
-#define BMA254_INT_ENABLE_REG	0x17
-#define BMA254_INT_MAP_REG	0x1a
-#define BMA254_INT_RESET_REG	0x21
-
-#define BMA254_RANGE_MASK	GENMASK(3, 0) /* Range of accel values */
-#define BMA254_BW_MASK		GENMASK(4, 0) /* Accel bandwidth */
-#define BMA254_BW_OFFSET	8
-#define BMA254_SUSPEND_MASK	BIT(7) /* chip will sleep */
-#define BMA254_LOWPOWER_MASK	BIT(6)
-#define BMA254_DATA_INTEN_MASK	BIT(4)
-#define BMA254_INT2_DATA_MASK	BIT(7)
-#define BMA254_INT1_DATA_MASK	BIT(0)
-#define BMA254_INT_RESET_MASK	BIT(7) /* Reset pending interrupts */
-
 struct bma180_data {
 	struct regulator *vdd_supply;
 	struct regulator *vddio_supply;
@@ -880,38 +862,8 @@ static const struct bma180_part_info bma180_part_info[] = {
 		.int_enable_mask = BMA250_DATA_INTEN_MASK,
 		.softreset_reg = BMA250_RESET_REG,
 		.softreset_val = BMA180_RESET_VAL,
-		.chip_config = bma25x_chip_config,
-		.chip_disable = bma25x_chip_disable,
-	},
-	[BMA254] = {
-		.chip_id = BMA254_ID_REG_VAL,
-		.channels = bma254_channels,
-		.num_channels = ARRAY_SIZE(bma254_channels),
-		.scale_table = bma25x_scale_table,
-		.num_scales = ARRAY_SIZE(bma25x_scale_table),
-		.bw_table = bma25x_bw_table,
-		.num_bw = ARRAY_SIZE(bma25x_bw_table),
-		.temp_offset = 46, /* 0 LSB @ 23 degree C */
-		.int_reset_reg = BMA254_INT_RESET_REG,
-		.int_reset_mask = BMA254_INT_RESET_MASK,
-		.sleep_reg = BMA254_POWER_REG,
-		.sleep_mask = BMA254_SUSPEND_MASK,
-		.bw_reg = BMA254_BW_REG,
-		.bw_mask = BMA254_BW_MASK,
-		.bw_offset = BMA254_BW_OFFSET,
-		.scale_reg = BMA254_RANGE_REG,
-		.scale_mask = BMA254_RANGE_MASK,
-		.power_reg = BMA254_POWER_REG,
-		.power_mask = BMA254_LOWPOWER_MASK,
-		.lowpower_val = 1,
-		.int_enable_reg = BMA254_INT_ENABLE_REG,
-		.int_enable_mask = BMA254_DATA_INTEN_MASK,
-		.int_map_reg = BMA254_INT_MAP_REG,
-		.int_enable_dataready_int1_mask = BMA254_INT1_DATA_MASK,
-		.softreset_reg = BMA254_RESET_REG,
-		.softreset_val = BMA180_RESET_VAL,
-		.chip_config = bma25x_chip_config,
-		.chip_disable = bma25x_chip_disable,
+		.chip_config = bma250_chip_config,
+		.chip_disable = bma250_chip_disable,
 	},
 };
 

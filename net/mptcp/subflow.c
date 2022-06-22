@@ -663,8 +663,8 @@ static struct sock *subflow_syn_recv_sock(const struct sock *sk,
 		 * reordered MPC will cause fallback, but we don't have other
 		 * options.
 		 */
-		mptcp_get_options(skb, &mp_opt);
-		if (!mp_opt.mp_capable) {
+		mptcp_get_options(sk, skb, &mp_opt);
+		if (!(mp_opt.suboptions & OPTIONS_MPTCP_MPC)) {
 			fallback = true;
 			goto create_child;
 		}
@@ -800,15 +800,6 @@ enum mapping_status {
 	MAPPING_DATA_FIN,
 	MAPPING_DUMMY
 };
-
-static u64 expand_seq(u64 old_seq, u16 old_data_len, u64 seq)
-{
-	if ((u32)seq == (u32)old_seq)
-		return old_seq;
-
-	/* Assume map covers data not mapped yet. */
-	return seq | ((old_seq + old_data_len + 1) & GENMASK_ULL(63, 32));
-}
 
 static void dbg_bad_map(struct mptcp_subflow_context *subflow, u32 ssn)
 {

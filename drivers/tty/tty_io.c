@@ -1088,23 +1088,6 @@ void tty_write_message(struct tty_struct *tty, char *msg)
 	}
 }
 
-
-/**
- *	tty_write		-	write method for tty device file
- *	@file: tty file pointer
- *	@buf: user data to write
- *	@count: bytes to write
- *	@ppos: unused
- *
- *	Write data to a tty device via the line discipline.
- *
- *	Locking:
- *		Locks the line discipline as required
- *		Writes to the tty driver are serialized by the atomic_write_lock
- *	and are then processed in chunks to the device. The line discipline
- *	write method will not be invoked in parallel for each device.
- */
-
 static ssize_t file_tty_write(struct file *file, struct kiocb *iocb, struct iov_iter *from)
 {
 	struct tty_struct *tty = file_tty(file);
@@ -1129,6 +1112,20 @@ static ssize_t file_tty_write(struct file *file, struct kiocb *iocb, struct iov_
 	return ret;
 }
 
+/**
+ *	tty_write		-	write method for tty device file
+ *	@iocb: kernel I/O control block
+ *	@from: iov_iter with data to write
+ *
+ *	Write data to a tty device via the line discipline.
+ *
+ *	Locking:
+ *		Locks the line discipline as required
+ *		Writes to the tty driver are serialized by the atomic_write_lock
+ *		and are then processed in chunks to the device. The line
+ *		discipline write method will not be invoked in parallel for
+ *		each device.
+ */
 static ssize_t tty_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	return file_tty_write(iocb->ki_filp, iocb, from);
@@ -1144,11 +1141,12 @@ ssize_t redirected_tty_write(struct kiocb *iocb, struct iov_iter *iter)
 	spin_unlock(&redirect_lock);
 
 	/*
-	 * We know the redirected tty is just another tty, we can can
+	 * We know the redirected tty is just another tty, we can
 	 * call file_tty_write() directly with that file pointer.
 	 */
 	if (p) {
 		ssize_t res;
+
 		res = file_tty_write(p, iocb, iter);
 		fput(p);
 		return res;

@@ -74,20 +74,6 @@ static void mlx5e_ktls_priv_rx_get(struct mlx5e_ktls_offload_context_rx *priv_rx
 	refcount_inc(&priv_rx->resync.refcnt);
 }
 
-static int mlx5e_ktls_create_tir(struct mlx5_core_dev *mdev, u32 *tirn, u32 rqtn)
-{
-	if (!refcount_dec_and_test(&priv_rx->resync.refcnt))
-		return false;
-
-	kfree(priv_rx);
-	return true;
-}
-
-static void mlx5e_ktls_priv_rx_get(struct mlx5e_ktls_offload_context_rx *priv_rx)
-{
-	refcount_inc(&priv_rx->resync.refcnt);
-}
-
 struct mlx5e_ktls_resync_resp {
 	/* protects list changes */
 	spinlock_t lock;
@@ -112,25 +98,6 @@ mlx5e_ktls_rx_resync_create_resp_list(void)
 	spin_lock_init(&resp_list->lock);
 
 	return resp_list;
-}
-
-static int mlx5e_ktls_create_tir(struct mlx5_core_dev *mdev, struct mlx5e_tir *tir, u32 rqtn)
-{
-	struct mlx5e_tir_builder *builder;
-	int err;
-
-	builder = mlx5e_tir_builder_alloc(false);
-	if (!builder)
-		return -ENOMEM;
-
-	mlx5e_tir_builder_build_rqt(builder, mdev->mlx5e_res.hw_objs.td.tdn, rqtn, false);
-	mlx5e_tir_builder_build_direct(builder);
-	mlx5e_tir_builder_build_tls(builder);
-	err = mlx5e_tir_init(tir, builder, mdev, false);
-
-	mlx5e_tir_builder_free(builder);
-
-	return err;
 }
 
 static void accel_rule_handle_work(struct work_struct *work)
@@ -623,7 +590,6 @@ int mlx5e_ktls_add_rx(struct net_device *netdev, struct sock *sk,
 	struct mlx5_core_dev *mdev;
 	struct mlx5e_priv *priv;
 	int rxq, err;
-	u32 rqtn;
 
 	tls_ctx = tls_get_ctx(sk);
 	priv = netdev_priv(netdev);
@@ -649,9 +615,7 @@ int mlx5e_ktls_add_rx(struct net_device *netdev, struct sock *sk,
 	priv_rx->sw_stats = &priv->tls->sw_stats;
 	mlx5e_set_ktls_rx_priv_ctx(tls_ctx, priv_rx);
 
-	rqtn = mlx5e_rx_res_get_rqtn_direct(priv->rx_res, rxq);
-
-	err = mlx5e_ktls_create_tir(mdev, &priv_rx->tir, rqtn);
+	err = mlx5e_rx_res_tls_tir_create(priv->rx_res, rxq, &priv_rx->tir);
 	if (err)
 		goto err_create_tir;
 
@@ -714,4 +678,70 @@ void mlx5e_ktls_del_rx(struct net_device *netdev, struct tls_context *tls_ctx)
 	 * processed.
 	 */
 	mlx5e_ktls_priv_rx_put(priv_rx);
+}
+
+bool mlx5e_ktls_rx_handle_resync_list(struct mlx5e_channel *c, int budget)
+{
+	struct mlx5e_ktls_offload_context_rx *priv_rx, *tmp;
+	struct mlx5e_ktls_resync_resp *ktls_resync;
+	struct mlx5_wqe_ctrl_seg *db_cseg;
+	struct mlx5e_icosq *sq;
+	LIST_HEAD(local_list);
+	int i, j;
+
+	sq = &c->async_icosq;
+
+	if (unlikely(!test_bit(MLX5E_SQ_STATE_ENABLED, &sq->state)))
+		return false;
+
+	ktls_resync = sq->ktls_resync;
+	db_cseg = NULL;
+	i = 0;
+
+	spin_lock(&ktls_resync->lock);
+	list_for_each_entry_safe(priv_rx, tmp, &ktls_resync->list, list) {
+		list_move(&priv_rx->list, &local_list);
+		if (++i == budget)
+			break;
+	}
+	if (list_empty(&ktls_resync->list))
+		clear_bit(MLX5E_SQ_STATE_PENDING_TLS_RX_RESYNC, &sq->state);
+	spin_unlock(&ktls_resync->lock);
+
+	spin_lock(&c->async_icosq_lock);
+	for (j = 0; j < i; j++) {
+		struct mlx5_wqe_ctrl_seg *cseg;
+
+		priv_rx = list_first_entry(&local_list,
+					   struct mlx5e_ktls_offload_context_rx,
+					   list);
+		spin_lock(&priv_rx->lock);
+		cseg = post_static_params(sq, priv_rx);
+		if (IS_ERR(cseg)) {
+			spin_unlock(&priv_rx->lock);
+			break;
+		}
+		list_del_init(&priv_rx->list);
+		spin_unlock(&priv_rx->lock);
+		db_cseg = cseg;
+	}
+	if (db_cseg)
+		mlx5e_notify_hw(&sq->wq, sq->pc, sq->uar_map, db_cseg);
+	spin_unlock(&c->async_icosq_lock);
+
+	priv_rx->rq_stats->tls_resync_res_ok += j;
+
+	if (!list_empty(&local_list)) {
+		/* This happens only if ICOSQ is full.
+		 * There is no need to mark busy or explicitly ask for a NAPI cycle,
+		 * it will be triggered by the outstanding ICOSQ completions.
+		 */
+		spin_lock(&ktls_resync->lock);
+		list_splice(&local_list, &ktls_resync->list);
+		set_bit(MLX5E_SQ_STATE_PENDING_TLS_RX_RESYNC, &sq->state);
+		spin_unlock(&ktls_resync->lock);
+		priv_rx->rq_stats->tls_resync_res_retry++;
+	}
+
+	return i == budget;
 }

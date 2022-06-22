@@ -221,7 +221,7 @@
 #define FSL_SAI_MAXBURST_TX 6
 #define FSL_SAI_MAXBURST_RX 6
 
-#define SAI_FLAG_PMQOS   BIT(0)
+#define PMQOS_CPU_LATENCY   BIT(0)
 
 struct fsl_sai_soc_data {
 	bool use_imx_pcm;

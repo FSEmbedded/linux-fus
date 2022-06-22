@@ -108,6 +108,10 @@ _GLOBAL_TOC(plpar_hcall_norets_notrace)
 	mfcr	r0
 	stw	r0,8(r1)
 	HVSC				/* invoke the hypervisor */
+
+	li	r4,0
+	stb	r4,PACASRR_VALID(r13)
+
 	lwz	r0,8(r1)
 	mtcrf	0xff,r0
 	blr				/* return r3 = status */

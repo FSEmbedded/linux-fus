@@ -4484,13 +4484,12 @@ static int mlx5_ib_modify_dct(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 }
 
 static bool mlx5_ib_modify_qp_allowed(struct mlx5_ib_dev *dev,
-				      struct mlx5_ib_qp *qp,
-				      enum ib_qp_type qp_type)
+				      struct mlx5_ib_qp *qp)
 {
 	if (dev->profile != &raw_eth_profile)
 		return true;
 
-	if (qp_type == IB_QPT_RAW_PACKET || qp_type == MLX5_IB_QPT_REG_UMR)
+	if (qp->type == IB_QPT_RAW_PACKET || qp->type == MLX5_IB_QPT_REG_UMR)
 		return true;
 
 	/* Internal QP used for wc testing, with NOPs in wq */
@@ -4515,9 +4514,6 @@ int mlx5_ib_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 		return -EOPNOTSUPP;
 
 	if (attr_mask & ~(IB_QP_ATTR_STANDARD_BITS | IB_QP_RATE_LIMIT))
-		return -EOPNOTSUPP;
-
-	if (!mlx5_ib_modify_qp_allowed(dev, qp, ibqp->qp_type))
 		return -EOPNOTSUPP;
 
 	if (ibqp->rwq_ind_tbl)

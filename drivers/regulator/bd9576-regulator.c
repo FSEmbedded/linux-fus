@@ -901,10 +901,31 @@ static int bd957x_probe(struct platform_device *pdev)
 	struct regmap *regmap;
 	struct bd957x_data *ic_data;
 	struct regulator_config config = { 0 };
-	int i;
-	bool vout_mode, ddr_sel;
-	const struct bd957x_regulator_data *reg_data = &bd9576_regulators[0];
-	unsigned int num_reg_data = ARRAY_SIZE(bd9576_regulators);
+	/* All regulators are related to UVD and thermal IRQs... */
+	struct regulator_dev *rdevs[BD9576_NUM_REGULATORS];
+	/* ...But VoutS1 is not flagged by OVD IRQ */
+	struct regulator_dev *ovd_devs[BD9576_NUM_OVD_REGULATORS];
+	static const struct regulator_irq_desc bd9576_notif_uvd = {
+		.name = "bd9576-uvd",
+		.irq_off_ms = 1000,
+		.map_event = bd9576_uvd_handler,
+		.renable = bd9576_uvd_renable,
+		.data = &bd957x_regulators,
+	};
+	static const struct regulator_irq_desc bd9576_notif_ovd = {
+		.name = "bd9576-ovd",
+		.irq_off_ms = 1000,
+		.map_event = bd9576_ovd_handler,
+		.renable = bd9576_ovd_renable,
+		.data = &bd957x_regulators,
+	};
+	static const struct regulator_irq_desc bd9576_notif_temp = {
+		.name = "bd9576-temp",
+		.irq_off_ms = 1000,
+		.map_event = bd9576_thermal_handler,
+		.renable = bd9576_temp_renable,
+		.data = &bd957x_regulators,
+	};
 	enum rohm_chip_type chip = platform_get_device_id(pdev)->driver_data;
 
 	num_reg_data = ARRAY_SIZE(bd957x_regulators.regulator_data);
@@ -985,6 +1006,25 @@ static int bd957x_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
+	for (i = 0; i < num_reg_data; i++) {
+		struct regulator_desc *d;
+
+		d = &ic_data->regulator_data[i].desc;
+
+
+		if (may_have_irqs) {
+			if (d->id >= ARRAY_SIZE(bd9576_ops_arr))
+				return -EINVAL;
+
+			d->ops = bd9576_ops_arr[d->id];
+		} else {
+			if (d->id >= ARRAY_SIZE(bd9573_ops_arr))
+				return -EINVAL;
+
+			d->ops = bd9573_ops_arr[d->id];
+		}
+	}
+
 	config.dev = pdev->dev.parent;
 	config.regmap = regmap;
 	config.driver_data = ic_data;
@@ -1000,7 +1040,7 @@ static int bd957x_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev,
 				"failed to register %s regulator\n",
 				desc->name);
-			return PTR_ERR(rdev);
+			return PTR_ERR(r->rdev);
 		}
 		/*
 		 * Clear the VOUT1 GPIO setting - rest of the regulators do not
@@ -1072,6 +1112,10 @@ static int bd957x_probe(struct platform_device *pdev)
 			if (PTR_ERR(ret) == -EPROBE_DEFER)
 				return -EPROBE_DEFER;
 
+			dev_warn(&pdev->dev, "Thermal warning disabled %pe\n",
+				 ret);
+		}
+	}
 	return 0;
 }
 

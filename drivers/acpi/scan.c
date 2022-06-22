@@ -577,11 +577,6 @@ static struct acpi_device *handle_to_device(acpi_handle handle,
 	struct acpi_device *adev = NULL;
 	acpi_status status;
 
-	if (!device)
-		return -EINVAL;
-
-	*device = NULL;
-
 	status = acpi_get_data_full(handle, acpi_scan_drop_device,
 				    (void **)&adev, callback);
 	if (ACPI_FAILURE(status) || !adev) {
@@ -626,37 +621,10 @@ static struct acpi_device_bus_id *acpi_device_bus_id_match(const char *dev_id)
 	return NULL;
 }
 
-static struct acpi_device_bus_id *acpi_device_bus_id_match(const char *dev_id)
-{
-	struct acpi_device_bus_id *acpi_device_bus_id;
-
-	/* Find suitable bus_id and instance number in acpi_bus_id_list. */
-	list_for_each_entry(acpi_device_bus_id, &acpi_bus_id_list, node) {
-		if (!strcmp(acpi_device_bus_id->bus_id, dev_id))
-			return acpi_device_bus_id;
-	}
-	return NULL;
-}
-
 static int acpi_device_set_name(struct acpi_device *device,
 				struct acpi_device_bus_id *acpi_device_bus_id)
 {
 	struct ida *instance_ida = &acpi_device_bus_id->instance_ida;
-	int result;
-
-	result = ida_simple_get(instance_ida, 0, ACPI_MAX_DEVICE_INSTANCES, GFP_KERNEL);
-	if (result < 0)
-		return result;
-
-	device->pnp.instance_no = result;
-	dev_set_name(&device->dev, "%s:%02x", acpi_device_bus_id->bus_id, result);
-	return 0;
-}
-
-int acpi_device_add(struct acpi_device *device,
-		    void (*release)(struct device *))
-{
-	struct acpi_device_bus_id *acpi_device_bus_id;
 	int result;
 
 	result = ida_simple_get(instance_ida, 0, ACPI_MAX_DEVICE_INSTANCES, GFP_KERNEL);
@@ -771,7 +739,7 @@ err:
 
 	list_del(&device->wakeup_list);
 
- err_unlock:
+err_unlock:
 	mutex_unlock(&acpi_device_lock);
 
 	acpi_detach_data(device->handle, acpi_scan_drop_device);
@@ -1722,6 +1690,7 @@ static bool acpi_device_enumeration_by_parent(struct acpi_device *device)
 {
 	struct list_head resource_list;
 	bool is_serial_bus_slave = false;
+	static const struct acpi_device_id ignore_serial_bus_ids[] = {
 	/*
 	 * These devices have multiple I2cSerialBus resources and an i2c-client
 	 * must be instantiated for each, each with its own i2c_device_id.
@@ -1730,11 +1699,18 @@ static bool acpi_device_enumeration_by_parent(struct acpi_device *device)
 	 * drivers/platform/x86/i2c-multi-instantiate.c driver, which knows
 	 * which i2c_device_id to use for each resource.
 	 */
-	static const struct acpi_device_id i2c_multi_instantiate_ids[] = {
 		{"BSG1160", },
 		{"BSG2150", },
 		{"INT33FE", },
 		{"INT3515", },
+	/*
+	 * HIDs of device with an UartSerialBusV2 resource for which userspace
+	 * expects a regular tty cdev to be created (instead of the in kernel
+	 * serdev) and which have a kernel driver which expects a platform_dev
+	 * such as the rfkill-gpio driver.
+	 */
+		{"BCM4752", },
+		{"LNV4752", },
 		{}
 	};
 
@@ -1748,8 +1724,7 @@ static bool acpi_device_enumeration_by_parent(struct acpi_device *device)
 	     fwnode_property_present(&device->fwnode, "baud")))
 		return true;
 
-	/* Instantiate a pdev for the i2c-multi-instantiate drv to bind to */
-	if (!acpi_match_device_ids(device, i2c_multi_instantiate_ids))
+	if (!acpi_match_device_ids(device, ignore_serial_bus_ids))
 		return false;
 
 	INIT_LIST_HEAD(&resource_list);

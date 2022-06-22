@@ -260,16 +260,8 @@ long get_mte_ctrl(struct task_struct *task)
 	if (!system_supports_mte())
 		return 0;
 
-	ret = task->thread.gcr_user_incl << PR_MTE_TAG_SHIFT;
-
-	switch (task->thread.sctlr_tcf0) {
-	case SCTLR_EL1_TCF0_NONE:
-		ret |= PR_MTE_TCF_NONE;
-		break;
-	case SCTLR_EL1_TCF0_SYNC:
-		ret |= PR_MTE_TCF_SYNC;
-		break;
-	case SCTLR_EL1_TCF0_ASYNC:
+	ret = incl << PR_MTE_TAG_SHIFT;
+	if (mte_ctrl & MTE_CTRL_TCF_ASYNC)
 		ret |= PR_MTE_TCF_ASYNC;
 	if (mte_ctrl & MTE_CTRL_TCF_SYNC)
 		ret |= PR_MTE_TCF_SYNC;

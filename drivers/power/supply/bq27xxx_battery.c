@@ -1915,28 +1915,6 @@ static int bq27xxx_battery_pwr_avg(struct bq27xxx_device_info *di,
 	return 0;
 }
 
-static int bq27xxx_battery_status(struct bq27xxx_device_info *di,
-				  union power_supply_propval *val)
-{
-	int power;
-
-	power = bq27xxx_read(di, BQ27XXX_REG_AP, false);
-	if (power < 0) {
-		dev_err(di->dev,
-			"error reading average power register %02x: %d\n",
-			BQ27XXX_REG_AP, power);
-		return power;
-	}
-
-	if (di->opts & BQ27XXX_O_ZERO)
-		val->intval = (power * BQ27XXX_POWER_CONSTANT) / BQ27XXX_RS;
-	else
-		/* Other gauges return a signed value in units of 10mW */
-		val->intval = (int)((s16)power) * 10000;
-
-	return 0;
-}
-
 static int bq27xxx_battery_capacity_level(struct bq27xxx_device_info *di,
 					  union power_supply_propval *val)
 {

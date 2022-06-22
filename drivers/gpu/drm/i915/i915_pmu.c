@@ -214,25 +214,13 @@ static void init_rc6(struct i915_pmu *pmu)
 		pmu->sample[__I915_SAMPLE_RC6].cur = __get_rc6(&i915->gt);
 		pmu->sample[__I915_SAMPLE_RC6_LAST_REPORTED].cur =
 					pmu->sample[__I915_SAMPLE_RC6].cur;
-		pmu->sleep_last = ktime_get();
+		pmu->sleep_last = ktime_get_raw();
 	}
 }
 
 static void park_rc6(struct drm_i915_private *i915)
 {
 	struct i915_pmu *pmu = &i915->pmu;
-
-	pmu->sample[__I915_SAMPLE_RC6].cur = __get_rc6(&i915->gt);
-	pmu->sleep_last = ktime_get();
-}
-
-static void park_rc6(struct drm_i915_private *i915)
-{
-	return __get_rc6(gt);
-}
-
-static void init_rc6(struct i915_pmu *pmu) { }
-static void park_rc6(struct drm_i915_private *i915) {}
 
 	pmu->sample[__I915_SAMPLE_RC6].cur = __get_rc6(&i915->gt);
 	pmu->sleep_last = ktime_get_raw();
@@ -1167,7 +1155,7 @@ void i915_pmu_register(struct drm_i915_private *i915)
 	spin_lock_init(&pmu->lock);
 	hrtimer_init(&pmu->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	pmu->timer.function = i915_sample;
-	pmu->cpuhp.slot = CPUHP_INVALID;
+	pmu->cpuhp.cpu = -1;
 	init_rc6(pmu);
 
 	if (!is_igp(i915)) {

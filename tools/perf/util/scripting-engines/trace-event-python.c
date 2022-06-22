@@ -1018,6 +1018,11 @@ static int tuple_set_u64(PyObject *t, unsigned int pos, u64 val)
 #endif
 }
 
+static int tuple_set_u32(PyObject *t, unsigned int pos, u32 val)
+{
+	return PyTuple_SetItem(t, pos, PyLong_FromUnsignedLong(val));
+}
+
 static int tuple_set_s32(PyObject *t, unsigned int pos, s32 val)
 {
 	return PyTuple_SetItem(t, pos, _PyLong_FromLong(val));

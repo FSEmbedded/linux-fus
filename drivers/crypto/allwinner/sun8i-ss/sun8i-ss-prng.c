@@ -165,9 +165,8 @@ err_iv:
 		/* Update seed */
 		memcpy(ctx->seed, d + dlen, ctx->slen);
 	}
-	memzero_explicit(d, todo);
 err_free:
-	kfree(d);
+	kfree_sensitive(d);
 
 	return err;
 }

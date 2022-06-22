@@ -20,7 +20,6 @@
 #include <asm/ptrace.h>
 #include <asm/processor.h>
 #include <linux/ftrace.h>
-#include <linux/delay.h>
 #include <asm/kprobes.h>
 
 #include <asm/paca.h>

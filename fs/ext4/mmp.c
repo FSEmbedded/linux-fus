@@ -239,7 +239,13 @@ static int kmmpd(void *data)
 
 	retval = write_mmp_block(sb, bh);
 
-exit_thread:
+wait_to_exit:
+	while (!kthread_should_stop()) {
+		set_current_state(TASK_INTERRUPTIBLE);
+		if (!kthread_should_stop())
+			schedule();
+	}
+	set_current_state(TASK_RUNNING);
 	return retval;
 }
 

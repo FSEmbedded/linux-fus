@@ -342,66 +342,6 @@ sdw_intel_startup_controller(struct sdw_intel_ctx *ctx)
 	return 0;
 }
 
-static acpi_status sdw_intel_acpi_cb(acpi_handle handle, u32 level,
-				     void *cdata, void **return_value)
-{
-	struct sdw_intel_acpi_info *info = cdata;
-	struct acpi_device *adev;
-	acpi_status status;
-	u64 adr;
-
-	status = acpi_evaluate_integer(handle, METHOD_NAME__ADR, NULL, &adr);
-	if (ACPI_FAILURE(status))
-		return AE_OK; /* keep going */
-
-	if (acpi_bus_get_device(handle, &adev)) {
-		pr_err("%s: Couldn't find ACPI handle\n", __func__);
-		return AE_NOT_FOUND;
-	}
-
-	info->handle = handle;
-
-	/*
-	 * On some Intel platforms, multiple children of the HDAS
-	 * device can be found, but only one of them is the SoundWire
-	 * controller. The SNDW device is always exposed with
-	 * Name(_ADR, 0x40000000), with bits 31..28 representing the
-	 * SoundWire link so filter accordingly
-	 */
-	if (FIELD_GET(GENMASK(31, 28), adr) != SDW_LINK_TYPE)
-		return AE_OK; /* keep going */
-
-	/* device found, stop namespace walk */
-	return AE_CTRL_TERMINATE;
-}
-
-/**
- * sdw_intel_acpi_scan() - SoundWire Intel init routine
- * @parent_handle: ACPI parent handle
- * @info: description of what firmware/DSDT tables expose
- *
- * This scans the namespace and queries firmware to figure out which
- * links to enable. A follow-up use of sdw_intel_probe() and
- * sdw_intel_startup() is required for creation of devices and bus
- * startup
- */
-int sdw_intel_acpi_scan(acpi_handle *parent_handle,
-			struct sdw_intel_acpi_info *info)
-{
-	acpi_status status;
-
-	info->handle = NULL;
-	status = acpi_walk_namespace(ACPI_TYPE_DEVICE,
-				     parent_handle, 1,
-				     sdw_intel_acpi_cb,
-				     NULL, info, NULL);
-	if (ACPI_FAILURE(status) || info->handle == NULL)
-		return -ENODEV;
-
-	return sdw_intel_scan_controller(info);
-}
-EXPORT_SYMBOL_NS(sdw_intel_acpi_scan, SOUNDWIRE_INTEL_INIT);
-
 /**
  * sdw_intel_probe() - SoundWire Intel probe routine
  * @res: resource data

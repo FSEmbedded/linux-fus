@@ -540,13 +540,7 @@ static void set_ext_sge_param(struct hns_roce_dev *hr_dev, u32 sq_wqe_cnt,
 		return;
 	}
 
-	hr_qp->sge.sge_shift = HNS_ROCE_SGE_SHIFT;
-
-	/* If the number of extended sge is not zero, they MUST use the
-	 * space of HNS_HW_PAGE_SIZE at least.
-	 */
-	hr_qp->sge.sge_cnt = cnt ?
-			max(cnt, (u32)HNS_HW_PAGE_SIZE / HNS_ROCE_SGE_SIZE) : 0;
+	hr_qp->sq.max_gs = max(1U, cap->max_send_sge);
 
 	wqe_sge_cnt = get_wqe_ext_sge_cnt(hr_qp);
 
@@ -840,49 +834,24 @@ static int alloc_user_qp_db(struct hns_roce_dev *hr_dev,
 	struct ib_device *ibdev = &hr_dev->ib_dev;
 	int ret;
 
-	if (udata) {
-		if (user_qp_has_sdb(hr_dev, init_attr, udata, resp, ucmd)) {
-			ret = hns_roce_db_map_user(uctx, udata, ucmd->sdb_addr,
-						   &hr_qp->sdb);
-			if (ret) {
-				ibdev_err(ibdev,
-					  "failed to map user SQ doorbell, ret = %d.\n",
-					  ret);
-				goto err_out;
-			}
-			hr_qp->en_flags |= HNS_ROCE_QP_CAP_SQ_RECORD_DB;
+	if (user_qp_has_sdb(hr_dev, init_attr, udata, resp, ucmd)) {
+		ret = hns_roce_db_map_user(uctx, ucmd->sdb_addr, &hr_qp->sdb);
+		if (ret) {
+			ibdev_err(ibdev,
+				  "failed to map user SQ doorbell, ret = %d.\n",
+				  ret);
+			goto err_out;
 		}
 		hr_qp->en_flags |= HNS_ROCE_QP_CAP_SQ_RECORD_DB;
 	}
 
-		if (user_qp_has_rdb(hr_dev, init_attr, udata, resp)) {
-			ret = hns_roce_db_map_user(uctx, udata, ucmd->db_addr,
-						   &hr_qp->rdb);
-			if (ret) {
-				ibdev_err(ibdev,
-					  "failed to map user RQ doorbell, ret = %d.\n",
-					  ret);
-				goto err_sdb;
-			}
-			hr_qp->en_flags |= HNS_ROCE_QP_CAP_RQ_RECORD_DB;
-		}
-	} else {
-		/* QP doorbell register address */
-		hr_qp->sq.db_reg_l = hr_dev->reg_base + hr_dev->sdb_offset +
-				     DB_REG_OFFSET * hr_dev->priv_uar.index;
-		hr_qp->rq.db_reg_l = hr_dev->reg_base + hr_dev->odb_offset +
-				     DB_REG_OFFSET * hr_dev->priv_uar.index;
-
-		if (kernel_qp_has_rdb(hr_dev, init_attr)) {
-			ret = hns_roce_alloc_db(hr_dev, &hr_qp->rdb, 0);
-			if (ret) {
-				ibdev_err(ibdev,
-					  "failed to alloc kernel RQ doorbell, ret = %d.\n",
-					  ret);
-				goto err_out;
-			}
-			*hr_qp->rdb.db_record = 0;
-			hr_qp->en_flags |= HNS_ROCE_QP_CAP_RQ_RECORD_DB;
+	if (user_qp_has_rdb(hr_dev, init_attr, udata, resp)) {
+		ret = hns_roce_db_map_user(uctx, ucmd->db_addr, &hr_qp->rdb);
+		if (ret) {
+			ibdev_err(ibdev,
+				  "failed to map user RQ doorbell, ret = %d.\n",
+				  ret);
+			goto err_sdb;
 		}
 		hr_qp->en_flags |= HNS_ROCE_QP_CAP_RQ_RECORD_DB;
 	}
@@ -1097,34 +1066,34 @@ static int hns_roce_create_qp_common(struct hns_roce_dev *hr_dev,
 
 	ret = alloc_qp_buf(hr_dev, hr_qp, init_attr, udata, ucmd.buf_addr);
 	if (ret) {
-		ibdev_err(ibdev, "failed to alloc QP doorbell, ret = %d.\n",
-			  ret);
-		goto err_wrid;
+		ibdev_err(ibdev, "failed to alloc QP buffer, ret = %d.\n", ret);
+		goto err_buf;
 	}
 
 	ret = alloc_qpn(hr_dev, hr_qp);
 	if (ret) {
-		ibdev_err(ibdev, "failed to alloc QP buffer, ret = %d.\n", ret);
-		goto err_db;
+		ibdev_err(ibdev, "failed to alloc QPN, ret = %d.\n", ret);
+		goto err_qpn;
 	}
 
 	ret = alloc_qp_db(hr_dev, hr_qp, init_attr, udata, &ucmd, &resp);
 	if (ret) {
-		ibdev_err(ibdev, "failed to alloc QPN, ret = %d.\n", ret);
-		goto err_buf;
+		ibdev_err(ibdev, "failed to alloc QP doorbell, ret = %d.\n",
+			  ret);
+		goto err_db;
 	}
 
 	ret = alloc_qpc(hr_dev, hr_qp);
 	if (ret) {
 		ibdev_err(ibdev, "failed to alloc QP context, ret = %d.\n",
 			  ret);
-		goto err_qpn;
+		goto err_qpc;
 	}
 
 	ret = hns_roce_qp_store(hr_dev, hr_qp, init_attr);
 	if (ret) {
 		ibdev_err(ibdev, "failed to store QP, ret = %d.\n", ret);
-		goto err_qpc;
+		goto err_store;
 	}
 
 	if (udata) {

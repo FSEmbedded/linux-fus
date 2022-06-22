@@ -279,8 +279,10 @@ create_sch_ep(struct xhci_hcd_mtk *mtk, struct usb_device *udev,
 	sch_ep->bw_info = bw_info;
 	sch_ep->sch_tt = tt;
 	sch_ep->ep = ep;
+	sch_ep->speed = udev->speed;
 	INIT_LIST_HEAD(&sch_ep->endpoint);
 	INIT_LIST_HEAD(&sch_ep->tt_endpoint);
+	INIT_HLIST_NODE(&sch_ep->hentry);
 
 	return sch_ep;
 }
@@ -445,32 +447,6 @@ static void update_bus_bw(struct mu3h_sch_bw_info *sch_bw,
 				sch_bw->bus_bw[k] -= sch_ep->bw_budget_table[j];
 		}
 	}
-	sch_ep->allocated = used;
-}
-
-static int check_fs_bus_bw(struct mu3h_sch_ep_info *sch_ep, int offset)
-{
-	struct mu3h_sch_tt *tt = sch_ep->sch_tt;
-	u32 num_esit, tmp;
-	int base;
-	int i, j;
-
-	num_esit = XHCI_MTK_MAX_ESIT / sch_ep->esit;
-	for (i = 0; i < num_esit; i++) {
-		base = offset + i * sch_ep->esit;
-
-		/*
-		 * Compared with hs bus, no matter what ep type,
-		 * the hub will always delay one uframe to send data
-		 */
-		for (j = 0; j < sch_ep->cs_count; j++) {
-			tmp = tt->fs_bus_bw[base + j] + sch_ep->bw_cost_per_microframe;
-			if (tmp > FS_PAYLOAD_MAX)
-				return -ERANGE;
-		}
-	}
-
-	return 0;
 }
 
 static int check_fs_bus_bw(struct mu3h_sch_ep_info *sch_ep, int offset)
@@ -517,11 +493,7 @@ static int check_sch_tt(struct mu3h_sch_ep_info *sch_ep, u32 offset)
 		 * must never schedule Start-Split in Y6
 		 */
 		if (!(start_ss == 7 || last_ss < 6))
-			return -ERANGE;
-
-		for (i = 0; i < sch_ep->cs_count; i++)
-			if (test_bit(offset + i, tt->ss_bit_map))
-				return -ERANGE;
+			return -ESCH_SS_Y6;
 
 	} else {
 		u32 cs_count = DIV_ROUND_UP(sch_ep->maxpkt, FS_PAYLOAD_MAX);
@@ -549,11 +521,6 @@ static int check_sch_tt(struct mu3h_sch_ep_info *sch_ep, u32 offset)
 		if (cs_count > 7)
 			cs_count = 7; /* HW limit */
 
-		for (i = 0; i < cs_count + 2; i++) {
-			if (test_bit(offset + i, tt->ss_bit_map))
-				return -ERANGE;
-		}
-
 		sch_ep->cs_count = cs_count;
 		/* one for ss, the other for idle */
 		sch_ep->num_budget_microframes = cs_count + 2;
@@ -569,41 +536,41 @@ static int check_sch_tt(struct mu3h_sch_ep_info *sch_ep, u32 offset)
 	return check_fs_bus_bw(sch_ep, offset);
 }
 
-static void update_sch_tt(struct usb_device *udev,
-	struct mu3h_sch_ep_info *sch_ep, bool used)
+static void update_sch_tt(struct mu3h_sch_ep_info *sch_ep, bool used)
 {
 	struct mu3h_sch_tt *tt = sch_ep->sch_tt;
-	u32 base, num_esit;
-	int bw_updated;
-	int bits;
-	int i, j;
+	u32 base;
+	int i, j, k;
 
-	num_esit = XHCI_MTK_MAX_ESIT / sch_ep->esit;
-	bits = (sch_ep->ep_type == ISOC_OUT_EP) ? sch_ep->cs_count : 1;
-
-	if (used)
-		bw_updated = sch_ep->bw_cost_per_microframe;
-	else
-		bw_updated = -sch_ep->bw_cost_per_microframe;
-
-	for (i = 0; i < num_esit; i++) {
+	for (i = 0; i < sch_ep->num_esit; i++) {
 		base = sch_ep->offset + i * sch_ep->esit;
 
-		for (j = 0; j < bits; j++) {
+		for (j = 0; j < sch_ep->num_budget_microframes; j++) {
+			k = XHCI_MTK_BW_INDEX(base + j);
 			if (used)
-				set_bit(base + j, tt->ss_bit_map);
+				tt->fs_bus_bw[k] += sch_ep->bw_budget_table[j];
 			else
-				clear_bit(base + j, tt->ss_bit_map);
+				tt->fs_bus_bw[k] -= sch_ep->bw_budget_table[j];
 		}
-
-		for (j = 0; j < sch_ep->cs_count; j++)
-			tt->fs_bus_bw[base + j] += bw_updated;
 	}
 
 	if (used)
 		list_add_tail(&sch_ep->tt_endpoint, &tt->ep_list);
 	else
 		list_del(&sch_ep->tt_endpoint);
+}
+
+static int load_ep_bw(struct mu3h_sch_bw_info *sch_bw,
+		      struct mu3h_sch_ep_info *sch_ep, bool loaded)
+{
+	if (sch_ep->sch_tt)
+		update_sch_tt(sch_ep, loaded);
+
+	/* update bus bandwidth info */
+	update_bus_bw(sch_bw, sch_ep, loaded);
+	sch_ep->allocated = loaded;
+
+	return 0;
 }
 
 static int check_sch_bw(struct mu3h_sch_ep_info *sch_ep)
@@ -650,8 +617,12 @@ static int check_sch_bw(struct mu3h_sch_ep_info *sch_ep)
 	return load_ep_bw(sch_bw, sch_ep, true);
 }
 
-		update_sch_tt(udev, sch_ep, 1);
-	}
+static void destroy_sch_ep(struct xhci_hcd_mtk *mtk, struct usb_device *udev,
+			   struct mu3h_sch_ep_info *sch_ep)
+{
+	/* only release ep bw check passed by check_sch_bw() */
+	if (sch_ep->allocated)
+		load_ep_bw(sch_ep->bw_info, sch_ep, false);
 
 	if (sch_ep->sch_tt)
 		drop_tt(udev);
@@ -661,25 +632,8 @@ static int check_sch_bw(struct mu3h_sch_ep_info *sch_ep)
 	kfree(sch_ep);
 }
 
-static void destroy_sch_ep(struct usb_device *udev,
-	struct mu3h_sch_bw_info *sch_bw, struct mu3h_sch_ep_info *sch_ep)
-{
-	/* only release ep bw check passed by check_sch_bw() */
-	if (sch_ep->allocated) {
-		update_bus_bw(sch_bw, sch_ep, 0);
-		if (sch_ep->sch_tt)
-			update_sch_tt(udev, sch_ep, 0);
-	}
-
-	if (sch_ep->sch_tt)
-		drop_tt(udev);
-
-	list_del(&sch_ep->endpoint);
-	kfree(sch_ep);
-}
-
-static bool need_bw_sch(struct usb_host_endpoint *ep,
-	enum usb_device_speed speed, int has_tt)
+static bool need_bw_sch(struct usb_device *udev,
+			struct usb_host_endpoint *ep)
 {
 	bool has_tt = udev->tt && udev->tt->hub->parent;
 
@@ -719,6 +673,7 @@ int xhci_mtk_sch_init(struct xhci_hcd_mtk *mtk)
 	mtk->sch_array = sch_array;
 
 	INIT_LIST_HEAD(&mtk->bw_ep_chk_list);
+	hash_init(mtk->sch_ep_hash);
 
 	return 0;
 }
@@ -754,17 +709,79 @@ static int add_ep_quirk(struct usb_hcd *hcd, struct usb_device *udev,
 		return 0;
 	}
 
-	sch_ep = create_sch_ep(udev, ep, ep_ctx);
+	xhci_dbg(xhci, "%s %s\n", __func__, decode_ep(ep, udev->speed));
+
+	sch_ep = create_sch_ep(mtk, udev, ep, ep_ctx);
 	if (IS_ERR_OR_NULL(sch_ep))
 		return -ENOMEM;
 
 	setup_sch_info(ep_ctx, sch_ep);
 
 	list_add_tail(&sch_ep->endpoint, &mtk->bw_ep_chk_list);
+	hash_add(mtk->sch_ep_hash, &sch_ep->hentry, (unsigned long)ep);
+
+	return 0;
+}
+
+static void drop_ep_quirk(struct usb_hcd *hcd, struct usb_device *udev,
+			  struct usb_host_endpoint *ep)
+{
+	struct xhci_hcd_mtk *mtk = hcd_to_mtk(hcd);
+	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+	struct mu3h_sch_ep_info *sch_ep;
+	struct hlist_node *hn;
+
+	if (!need_bw_sch(udev, ep))
+		return;
+
+	xhci_err(xhci, "%s %s\n", __func__, decode_ep(ep, udev->speed));
+
+	hash_for_each_possible_safe(mtk->sch_ep_hash, sch_ep,
+				    hn, hentry, (unsigned long)ep) {
+		if (sch_ep->ep == ep) {
+			destroy_sch_ep(mtk, udev, sch_ep);
+			break;
+		}
+	}
+}
+
+int xhci_mtk_check_bandwidth(struct usb_hcd *hcd, struct usb_device *udev)
+{
+	struct xhci_hcd_mtk *mtk = hcd_to_mtk(hcd);
+	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+	struct xhci_virt_device *virt_dev = xhci->devs[udev->slot_id];
+	struct mu3h_sch_ep_info *sch_ep;
+	int ret;
+
+	xhci_dbg(xhci, "%s() udev %s\n", __func__, dev_name(&udev->dev));
+
+	list_for_each_entry(sch_ep, &mtk->bw_ep_chk_list, endpoint) {
+		struct xhci_ep_ctx *ep_ctx;
+		struct usb_host_endpoint *ep = sch_ep->ep;
+		unsigned int ep_index = xhci_get_endpoint_index(&ep->desc);
+
+		ret = check_sch_bw(sch_ep);
+		if (ret) {
+			xhci_err(xhci, "Not enough bandwidth! (%s)\n",
+				 sch_error_string(-ret));
+			return -ENOSPC;
+		}
+
+		ep_ctx = xhci_get_ep_ctx(xhci, virt_dev->in_ctx, ep_index);
+		ep_ctx->reserved[0] = cpu_to_le32(EP_BPKTS(sch_ep->pkts)
+			| EP_BCSCOUNT(sch_ep->cs_count)
+			| EP_BBM(sch_ep->burst_mode));
+		ep_ctx->reserved[1] = cpu_to_le32(EP_BOFFSET(sch_ep->offset)
+			| EP_BREPEAT(sch_ep->repeat));
+
+		xhci_dbg(xhci, " PKTS:%x, CSCOUNT:%x, BM:%x, OFFSET:%x, REPEAT:%x\n",
+			sch_ep->pkts, sch_ep->cs_count, sch_ep->burst_mode,
+			sch_ep->offset, sch_ep->repeat);
+	}
 
 	ret = xhci_check_bandwidth(hcd, udev);
 	if (!ret)
-		INIT_LIST_HEAD(&mtk->bw_ep_chk_list);
+		list_del_init(&mtk->bw_ep_chk_list);
 
 	return ret;
 }
@@ -772,13 +789,8 @@ static int add_ep_quirk(struct usb_hcd *hcd, struct usb_device *udev,
 void xhci_mtk_reset_bandwidth(struct usb_hcd *hcd, struct usb_device *udev)
 {
 	struct xhci_hcd_mtk *mtk = hcd_to_mtk(hcd);
-	struct xhci_hcd *xhci;
-	struct xhci_slot_ctx *slot_ctx;
-	struct xhci_virt_device *virt_dev;
-	struct mu3h_sch_bw_info *sch_array;
-	struct mu3h_sch_bw_info *sch_bw;
+	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
 	struct mu3h_sch_ep_info *sch_ep, *tmp;
-	int bw_index;
 
 	xhci_dbg(xhci, "%s() udev %s\n", __func__, dev_name(&udev->dev));
 
@@ -797,79 +809,23 @@ int xhci_mtk_add_ep(struct usb_hcd *hcd, struct usb_device *udev,
 	if (ret)
 		return ret;
 
-	list_for_each_entry_safe(sch_ep, tmp, &sch_bw->bw_ep_list, endpoint) {
-		if (sch_ep->ep == ep) {
-			destroy_sch_ep(udev, sch_bw, sch_ep);
-			break;
-		}
-	}
-}
-EXPORT_SYMBOL_GPL(xhci_mtk_drop_ep_quirk);
+	if (ep->hcpriv)
+		ret = add_ep_quirk(hcd, udev, ep);
 
-int xhci_mtk_check_bandwidth(struct usb_hcd *hcd, struct usb_device *udev)
+	return ret;
+}
+
+int xhci_mtk_drop_ep(struct usb_hcd *hcd, struct usb_device *udev,
+		     struct usb_host_endpoint *ep)
 {
-	struct xhci_hcd_mtk *mtk = hcd_to_mtk(hcd);
-	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
-	struct xhci_virt_device *virt_dev = xhci->devs[udev->slot_id];
-	struct mu3h_sch_bw_info *sch_bw;
-	struct mu3h_sch_ep_info *sch_ep, *tmp;
-	int bw_index, ret;
+	int ret;
 
-	xhci_dbg(xhci, "%s() udev %s\n", __func__, dev_name(&udev->dev));
+	ret = xhci_drop_endpoint(hcd, udev, ep);
+	if (ret)
+		return ret;
 
-	list_for_each_entry(sch_ep, &mtk->bw_ep_chk_list, endpoint) {
-		bw_index = get_bw_index(xhci, udev, sch_ep->ep);
-		sch_bw = &mtk->sch_array[bw_index];
+	if (ep->hcpriv)
+		drop_ep_quirk(hcd, udev, ep);
 
-		ret = check_sch_bw(udev, sch_bw, sch_ep);
-		if (ret) {
-			xhci_err(xhci, "Not enough bandwidth!\n");
-			return -ENOSPC;
-		}
-	}
-
-	list_for_each_entry_safe(sch_ep, tmp, &mtk->bw_ep_chk_list, endpoint) {
-		struct xhci_ep_ctx *ep_ctx;
-		struct usb_host_endpoint *ep = sch_ep->ep;
-		unsigned int ep_index = xhci_get_endpoint_index(&ep->desc);
-
-		bw_index = get_bw_index(xhci, udev, ep);
-		sch_bw = &mtk->sch_array[bw_index];
-
-		list_move_tail(&sch_ep->endpoint, &sch_bw->bw_ep_list);
-
-		ep_ctx = xhci_get_ep_ctx(xhci, virt_dev->in_ctx, ep_index);
-		ep_ctx->reserved[0] = cpu_to_le32(EP_BPKTS(sch_ep->pkts)
-			| EP_BCSCOUNT(sch_ep->cs_count)
-			| EP_BBM(sch_ep->burst_mode));
-		ep_ctx->reserved[1] = cpu_to_le32(EP_BOFFSET(sch_ep->offset)
-			| EP_BREPEAT(sch_ep->repeat));
-
-		xhci_dbg(xhci, " PKTS:%x, CSCOUNT:%x, BM:%x, OFFSET:%x, REPEAT:%x\n",
-			sch_ep->pkts, sch_ep->cs_count, sch_ep->burst_mode,
-			sch_ep->offset, sch_ep->repeat);
-	}
-
-	return xhci_check_bandwidth(hcd, udev);
+	return 0;
 }
-EXPORT_SYMBOL_GPL(xhci_mtk_check_bandwidth);
-
-void xhci_mtk_reset_bandwidth(struct usb_hcd *hcd, struct usb_device *udev)
-{
-	struct xhci_hcd_mtk *mtk = hcd_to_mtk(hcd);
-	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
-	struct mu3h_sch_bw_info *sch_bw;
-	struct mu3h_sch_ep_info *sch_ep, *tmp;
-	int bw_index;
-
-	xhci_dbg(xhci, "%s() udev %s\n", __func__, dev_name(&udev->dev));
-
-	list_for_each_entry_safe(sch_ep, tmp, &mtk->bw_ep_chk_list, endpoint) {
-		bw_index = get_bw_index(xhci, udev, sch_ep->ep);
-		sch_bw = &mtk->sch_array[bw_index];
-		destroy_sch_ep(udev, sch_bw, sch_ep);
-	}
-
-	xhci_reset_bandwidth(hcd, udev);
-}
-EXPORT_SYMBOL_GPL(xhci_mtk_reset_bandwidth);

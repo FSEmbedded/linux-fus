@@ -233,6 +233,7 @@ static const struct clk_div_table clk_div_table[] = {
 	{ .val = 1, .div = 2, },
 	{ .val = 2, .div = 4, },
 	{ .val = 3, .div = 8, },
+	{ /* sentinel */ },
 };
 
 static const struct wiz_clk_div_sel clk_div_sel[] = {
@@ -868,6 +869,44 @@ static void wiz_clock_cleanup(struct wiz *wiz, struct device_node *node)
 		of_clk_del_provider(clk_node);
 		of_node_put(clk_node);
 	}
+
+	of_clk_del_provider(wiz->dev->of_node);
+}
+
+static int wiz_clock_register(struct wiz *wiz)
+{
+	const struct wiz_clk_mux_sel *clk_mux_sel = wiz->clk_mux_sel;
+	struct device *dev = wiz->dev;
+	struct device_node *node = dev->of_node;
+	int clk_index;
+	int ret;
+	int i;
+
+	if (wiz->type != AM64_WIZ_10G)
+		return 0;
+
+	clk_index = TI_WIZ_PLL0_REFCLK;
+	for (i = 0; i < WIZ_MUX_NUM_CLOCKS; i++, clk_index++) {
+		ret = wiz_mux_clk_register(wiz, wiz->mux_sel_field[i], &clk_mux_sel[i], clk_index);
+		if (ret) {
+			dev_err(dev, "Failed to register clk: %s\n", output_clk_names[clk_index]);
+			return ret;
+		}
+	}
+
+	ret = wiz_phy_en_refclk_register(wiz);
+	if (ret) {
+		dev_err(dev, "Failed to add phy-en-refclk\n");
+		return ret;
+	}
+
+	wiz->clk_data.clks = wiz->output_clks;
+	wiz->clk_data.clk_num = WIZ_MAX_OUTPUT_CLOCKS;
+	ret = of_clk_add_provider(node, of_clk_src_onecell_get, &wiz->clk_data);
+	if (ret)
+		dev_err(dev, "Failed to add clock provider: %s\n", node->name);
+
+	return ret;
 }
 
 static int wiz_clock_init(struct wiz *wiz, struct device_node *node)
@@ -1234,10 +1273,20 @@ static int wiz_probe(struct platform_device *pdev)
 		goto err_get_sync;
 	}
 
-	ret = wiz_init(wiz);
-	if (ret) {
-		dev_err(dev, "WIZ initialization failed\n");
-		goto err_wiz_init;
+	for (i = 0; i < wiz->num_lanes; i++) {
+		regmap_field_read(wiz->p_enable[i], &val);
+		if (val & (P_ENABLE | P_ENABLE_FORCE)) {
+			already_configured = true;
+			break;
+		}
+	}
+
+	if (!already_configured) {
+		ret = wiz_init(wiz);
+		if (ret) {
+			dev_err(dev, "WIZ initialization failed\n");
+			goto err_wiz_init;
+		}
 	}
 
 	serdes_pdev = of_platform_device_create(child_node, NULL, dev);

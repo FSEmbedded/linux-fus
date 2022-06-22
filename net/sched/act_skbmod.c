@@ -37,17 +37,7 @@ static int tcf_skbmod_act(struct sk_buff *skb, const struct tc_action *a,
 	if (unlikely(action == TC_ACT_SHOT))
 		goto drop;
 
-	if (!skb->dev || skb->dev->type != ARPHRD_ETHER)
-		return action;
-
-	/* XXX: if you are going to edit more fields beyond ethernet header
-	 * (example when you add IP header replacement or vlan swap)
-	 * then MAX_EDIT_LEN needs to change appropriately
-	*/
-	err = skb_ensure_writable(skb, MAX_EDIT_LEN);
-	if (unlikely(err)) /* best policy is to drop on the floor */
-		goto drop;
-
+	max_edit_len = skb_mac_header_len(skb);
 	p = rcu_dereference_bh(d->skbmod_p);
 	flags = p->flags;
 
@@ -178,7 +168,7 @@ static int tcf_skbmod_init(struct net *net, struct nlattr *nla,
 
 	if (!exists) {
 		ret = tcf_idr_create(tn, index, est, a,
-				     &act_skbmod_ops, bind, true, 0);
+				     &act_skbmod_ops, bind, true, flags);
 		if (ret) {
 			tcf_idr_cleanup(tn, index);
 			return ret;

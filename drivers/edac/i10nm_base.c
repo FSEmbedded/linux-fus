@@ -31,11 +31,23 @@
 #define I10NM_GET_CAPID3_CFG(d, reg)	\
 	pci_read_config_dword((d)->pcu_cr3, 0x90, &(reg))
 #define I10NM_GET_DIMMMTR(m, i, j)	\
-	readl((m)->mbase + 0x2080c + (i) * 0x4000 + (j) * 4)
+	readl((m)->mbase + ((m)->hbm_mc ? 0x80c : 0x2080c) + \
+	(i) * (m)->chan_mmio_sz + (j) * 4)
 #define I10NM_GET_MCDDRTCFG(m, i)	\
-	readl((m)->mbase + 0x20970 + (i) * 0x4000)
+	readl((m)->mbase + ((m)->hbm_mc ? 0x970 : 0x20970) + \
+	(i) * (m)->chan_mmio_sz)
 #define I10NM_GET_MCMTR(m, i)		\
-	readl((m)->mbase + 0x20ef8 + (i) * 0x4000)
+	readl((m)->mbase + ((m)->hbm_mc ? 0xef8 : 0x20ef8) + \
+	(i) * (m)->chan_mmio_sz)
+#define I10NM_GET_AMAP(m, i)		\
+	readl((m)->mbase + ((m)->hbm_mc ? 0x814 : 0x20814) + \
+	(i) * (m)->chan_mmio_sz)
+#define I10NM_GET_REG32(m, i, offset)	\
+	readl((m)->mbase + (i) * (m)->chan_mmio_sz + (offset))
+#define I10NM_GET_REG64(m, i, offset)	\
+	readq((m)->mbase + (i) * (m)->chan_mmio_sz + (offset))
+#define I10NM_SET_REG32(m, i, offset, v)	\
+	writel(v, (m)->mbase + (i) * (m)->chan_mmio_sz + (offset))
 
 #define I10NM_GET_SCK_MMIO_BASE(reg)	(GET_BITFIELD(reg, 0, 28) << 23)
 #define I10NM_GET_IMC_MMIO_OFFSET(reg)	(GET_BITFIELD(reg, 0, 10) << 12)
@@ -346,6 +358,9 @@ static int i10nm_get_hbm_munits(void)
 
 			mbase = ioremap(base + off, I10NM_HBM_IMC_MMIO_SIZE);
 			if (!mbase) {
+				pci_dev_put(d->imc[lmc].mdev);
+				d->imc[lmc].mdev = NULL;
+
 				i10nm_printk(KERN_ERR, "Failed to ioremap for hbm mc 0x%llx\n",
 					     base + off);
 				return -ENOMEM;
@@ -356,6 +371,12 @@ static int i10nm_get_hbm_munits(void)
 
 			mcmtr = I10NM_GET_MCMTR(&d->imc[lmc], 0);
 			if (!I10NM_IS_HBM_IMC(mcmtr)) {
+				iounmap(d->imc[lmc].mbase);
+				d->imc[lmc].mbase = NULL;
+				d->imc[lmc].hbm_mc = false;
+				pci_dev_put(d->imc[lmc].mdev);
+				d->imc[lmc].mdev = NULL;
+
 				i10nm_printk(KERN_ERR, "This isn't an hbm mc!\n");
 				return -ENODEV;
 			}
@@ -437,8 +458,9 @@ static int i10nm_get_dimm_config(struct mem_ctl_info *mci,
 			continue;
 
 		ndimms = 0;
+		amap = I10NM_GET_AMAP(imc, i);
 		mcddrtcfg = I10NM_GET_MCDDRTCFG(imc, i);
-		for (j = 0; j < I10NM_NUM_DIMMS; j++) {
+		for (j = 0; j < imc->num_dimms; j++) {
 			dimm = edac_get_dimm(mci, i, j, 0);
 			mtr = I10NM_GET_DIMMMTR(imc, i, j);
 			edac_dbg(1, "dimmmtr 0x%x mcddrtcfg 0x%x (mc%d ch%d dimm%d)\n",

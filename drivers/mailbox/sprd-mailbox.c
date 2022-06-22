@@ -35,7 +35,7 @@
 /* Bit and mask definition for SPRD_MBOX_IRQ_STS register */
 #define SPRD_MBOX_IRQ_CLR			BIT(0)
 
-/* Bit and mask definiation for outbox's SPRD_MBOX_FIFO_STS register */
+/* Bit and mask definition for outbox's SPRD_MBOX_FIFO_STS register */
 #define SPRD_OUTBOX_FIFO_FULL			BIT(2)
 #define SPRD_OUTBOX_FIFO_WR_SHIFT		16
 #define SPRD_OUTBOX_FIFO_RD_SHIFT		24
@@ -253,6 +253,14 @@ static int sprd_mbox_startup(struct mbox_chan *chan)
 		val = readl(priv->outbox_base + SPRD_MBOX_IRQ_MSK);
 		val &= ~SPRD_OUTBOX_FIFO_NOT_EMPTY_IRQ;
 		writel(val, priv->outbox_base + SPRD_MBOX_IRQ_MSK);
+
+		/* Enable supplementary outbox as the fundamental one */
+		if (priv->supp_base) {
+			writel(0x0, priv->supp_base + SPRD_MBOX_FIFO_RST);
+			val = readl(priv->supp_base + SPRD_MBOX_IRQ_MSK);
+			val &= ~SPRD_OUTBOX_FIFO_NOT_EMPTY_IRQ;
+			writel(val, priv->supp_base + SPRD_MBOX_IRQ_MSK);
+		}
 	}
 	mutex_unlock(&priv->lock);
 
@@ -268,6 +276,10 @@ static void sprd_mbox_shutdown(struct mbox_chan *chan)
 		/* Disable inbox & outbox interrupt */
 		writel(SPRD_INBOX_FIFO_IRQ_MASK, priv->inbox_base + SPRD_MBOX_IRQ_MSK);
 		writel(SPRD_OUTBOX_FIFO_IRQ_MASK, priv->outbox_base + SPRD_MBOX_IRQ_MSK);
+
+		if (priv->supp_base)
+			writel(SPRD_OUTBOX_FIFO_IRQ_MASK,
+			       priv->supp_base + SPRD_MBOX_IRQ_MSK);
 	}
 	mutex_unlock(&priv->lock);
 }

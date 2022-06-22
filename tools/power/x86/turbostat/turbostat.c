@@ -3372,8 +3372,7 @@ static int update_msr_sum(struct thread_data *t, struct core_data *c, struct pkg
 			continue;
 		ret = get_msr(cpu, offset, &msr_cur);
 		if (ret) {
-			fprintf(outf, "Can not update msr(0x%llx)\n",
-				(unsigned long long)offset);
+			fprintf(outf, "Can not update msr(0x%llx)\n", (unsigned long long)offset);
 			continue;
 		}
 
@@ -5023,15 +5022,16 @@ int get_cpu_type(struct thread_data *t, struct core_data *c, struct pkg_data *p)
 int set_temperature_target(struct thread_data *t, struct core_data *c, struct pkg_data *p)
 {
 	unsigned long long msr;
-	unsigned int target_c_local;
+	unsigned int tcc_default, tcc_offset;
 	int cpu;
 
-	/* tcc_activation_temp is used only for dts or ptm */
+	/* tj_max is used only for dts or ptm */
 	if (!(do_dts || do_ptm))
 		return 0;
 
-	if (!tcc_default)
-		goto guess;
+	/* this is a per-package concept */
+	if (!(t->flags & CPU_IS_FIRST_THREAD_IN_CORE) || !(t->flags & CPU_IS_FIRST_CORE_IN_PACKAGE))
+		return 0;
 
 	cpu = t->cpu_id;
 	if (cpu_migrate(cpu)) {
@@ -5039,10 +5039,9 @@ int set_temperature_target(struct thread_data *t, struct core_data *c, struct pk
 		return -1;
 	}
 
-	if (tcc_activation_temp_override != 0) {
-		tcc_activation_temp = tcc_activation_temp_override;
-		fprintf(outf, "cpu%d: Using cmdline TCC Target (%d C)\n",
-			cpu, tcc_activation_temp);
+	if (tj_max_override != 0) {
+		tj_max = tj_max_override;
+		fprintf(outf, "cpu%d: Using cmdline TCC Target (%d C)\n", cpu, tj_max);
 		return 0;
 	}
 
@@ -5053,23 +5052,36 @@ int set_temperature_target(struct thread_data *t, struct core_data *c, struct pk
 	if (get_msr(base_cpu, MSR_IA32_TEMPERATURE_TARGET, &msr))
 		goto guess;
 
-	target_c_local = (msr >> 16) & 0xFF;
+	tcc_default = (msr >> 16) & 0xFF;
 
-	if (!quiet)
-		fprintf(outf, "cpu%d: MSR_IA32_TEMPERATURE_TARGET: 0x%08llx (%d C)\n",
-			cpu, msr, target_c_local);
+	if (!quiet) {
+		switch (tcc_offset_bits) {
+		case 4:
+			tcc_offset = (msr >> 24) & 0xF;
+			fprintf(outf, "cpu%d: MSR_IA32_TEMPERATURE_TARGET: 0x%08llx (%d C) (%d default - %d offset)\n",
+				cpu, msr, tcc_default - tcc_offset, tcc_default, tcc_offset);
+			break;
+		case 6:
+			tcc_offset = (msr >> 24) & 0x3F;
+			fprintf(outf, "cpu%d: MSR_IA32_TEMPERATURE_TARGET: 0x%08llx (%d C) (%d default - %d offset)\n",
+				cpu, msr, tcc_default - tcc_offset, tcc_default, tcc_offset);
+			break;
+		default:
+			fprintf(outf, "cpu%d: MSR_IA32_TEMPERATURE_TARGET: 0x%08llx (%d C)\n", cpu, msr, tcc_default);
+			break;
+		}
+	}
 
-	if (!target_c_local)
+	if (!tcc_default)
 		goto guess;
 
-	tcc_activation_temp = target_c_local;
+	tj_max = tcc_default;
 
 	return 0;
 
 guess:
-	tcc_activation_temp = TJMAX_DEFAULT;
-	fprintf(outf, "cpu%d: Guessing tjMax %d C, Please use -T to specify\n",
-		cpu, tcc_activation_temp);
+	tj_max = TJMAX_DEFAULT;
+	fprintf(outf, "cpu%d: Guessing tjMax %d C, Please use -T to specify\n", cpu, tj_max);
 
 	return 0;
 }

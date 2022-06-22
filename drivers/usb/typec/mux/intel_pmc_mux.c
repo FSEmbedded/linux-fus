@@ -605,7 +605,7 @@ static int pmc_usb_probe_iom(struct pmc_usb *pmc)
 	}
 
 	if (IS_ERR(pmc->iom_base)) {
-		put_device(&adev->dev);
+		acpi_dev_put(adev);
 		return PTR_ERR(pmc->iom_base);
 	}
 

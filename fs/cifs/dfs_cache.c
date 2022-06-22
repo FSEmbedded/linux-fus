@@ -1219,14 +1219,14 @@ void dfs_cache_put_refsrv_sessions(const uuid_t *mount_id)
 	if (!mount_id || uuid_is_null(mount_id))
 		return;
 
-	cifs_dbg(FYI, "%s: fullpath: %s\n", __func__, fullpath);
-
-	spin_lock(&vol_list_lock);
-	vi = find_vol(fullpath);
-	spin_unlock(&vol_list_lock);
-
-	if (!IS_ERR(vi))
-		kref_put(&vi->refcnt, vol_release);
+	mutex_lock(&mount_group_list_lock);
+	mg = find_mount_group_locked(mount_id);
+	if (IS_ERR(mg)) {
+		mutex_unlock(&mount_group_list_lock);
+		return;
+	}
+	mutex_unlock(&mount_group_list_lock);
+	kref_put(&mg->refcount, mount_group_release);
 }
 
 /**

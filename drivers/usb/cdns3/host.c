@@ -23,17 +23,6 @@
 #define CFG_RXDET_P3_EN		BIT(15)
 #define LPM_2_STB_SWITCH_EN	BIT(25)
 
-static const struct xhci_plat_priv xhci_plat_cdns3_xhci = {
-	.quirks = XHCI_SKIP_PHY_INIT | XHCI_AVOID_BEI,
-	.suspend_quirk = xhci_cdns3_suspend_quirk,
-};
-
-#define XECP_PORT_CAP_REG	0x8000
-#define XECP_AUX_CTRL_REG1	0x8120
-
-#define CFG_RXDET_P3_EN		BIT(15)
-#define LPM_2_STB_SWITCH_EN	BIT(25)
-
 static int xhci_cdns3_suspend_quirk(struct usb_hcd *hcd);
 
 static const struct xhci_plat_priv xhci_plat_cdns3_xhci = {
@@ -100,7 +89,7 @@ err1:
 	return ret;
 }
 
-int xhci_cdns3_suspend_quirk(struct usb_hcd *hcd)
+static int xhci_cdns3_suspend_quirk(struct usb_hcd *hcd)
 {
 	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
 	u32 value;
@@ -126,7 +115,7 @@ int xhci_cdns3_suspend_quirk(struct usb_hcd *hcd)
 	return 0;
 }
 
-static void cdns3_host_exit(struct cdns3 *cdns)
+static void cdns_host_exit(struct cdns *cdns)
 {
 	kfree(cdns->xhci_plat_data);
 	platform_device_unregister(cdns->host_dev);

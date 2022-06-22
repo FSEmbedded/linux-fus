@@ -365,7 +365,7 @@ static int ak4458_hw_params(struct snd_pcm_substream *substream,
 	case SNDRV_PCM_FORMAT_DSD_U16_BE:
 	case SNDRV_PCM_FORMAT_DSD_U32_LE:
 	case SNDRV_PCM_FORMAT_DSD_U32_BE:
-		dsd_bclk = nfs1 * params_physical_width(params) * ak4458->slots;
+		dsd_bclk = nfs1 * params_physical_width(params);
 		switch (dsd_bclk) {
 		case 2822400:
 			dsdsel0 = 0;
@@ -447,7 +447,7 @@ static int ak4458_hw_params(struct snd_pcm_substream *substream,
 		(channels > channels_max) ? AK4458_DCHAIN_MASK : 0;
 
 	snd_soc_component_update_bits(component, AK4458_0B_CONTROL7,
-				AK4458_DCHAIN_MASK, dchn);
+				      AK4458_DCHAIN_MASK, dchn);
 
 	ret = ak4458_rstn_control(component, 0);
 	if (ret)
@@ -554,6 +554,7 @@ static int ak4458_set_tdm_slot(struct snd_soc_dai *dai, unsigned int tx_mask,
 	snd_soc_component_update_bits(component, AK4458_0A_CONTROL6,
 			    AK4458_MODE_MASK,
 			    mode);
+
 	return 0;
 }
 

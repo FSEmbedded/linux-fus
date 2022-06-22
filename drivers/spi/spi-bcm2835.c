@@ -68,7 +68,6 @@
 #define BCM2835_SPI_FIFO_SIZE		64
 #define BCM2835_SPI_FIFO_SIZE_3_4	48
 #define BCM2835_SPI_DMA_MIN_LENGTH	96
-#define BCM2835_SPI_NUM_CS		24  /* raise as necessary */
 #define BCM2835_SPI_MODE_BITS	(SPI_CPOL | SPI_CPHA | SPI_CS_HIGH \
 				| SPI_NO_CS | SPI_3WIRE)
 
@@ -1047,6 +1046,7 @@ static int bcm2835_spi_transfer_one(struct spi_controller *ctlr,
 				    struct spi_transfer *tfr)
 {
 	struct bcm2835_spi *bs = spi_controller_get_devdata(ctlr);
+	struct bcm2835_spidev *slv = spi_get_ctldata(spi);
 	unsigned long spi_hz, cdiv;
 	unsigned long hz_per_byte, byte_limit;
 	u32 cs = slv->prepare_cs;
@@ -1217,10 +1217,17 @@ static int bcm2835_spi_setup(struct spi_device *spi)
 	int ret;
 	u32 cs;
 
-	if (spi->chip_select >= BCM2835_SPI_NUM_CS) {
-		dev_err(&spi->dev, "only %d chip-selects supported\n",
-			BCM2835_SPI_NUM_CS - 1);
-		return -EINVAL;
+	if (!slv) {
+		slv = kzalloc(ALIGN(sizeof(*slv), dma_get_cache_alignment()),
+			      GFP_KERNEL);
+		if (!slv)
+			return -ENOMEM;
+
+		spi_set_ctldata(spi, slv);
+
+		ret = bcm2835_spi_setup_dma(ctlr, spi, bs, slv);
+		if (ret)
+			goto err_cleanup;
 	}
 
 	/*

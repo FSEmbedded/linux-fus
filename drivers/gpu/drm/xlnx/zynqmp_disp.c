@@ -1402,11 +1402,11 @@ static void zynqmp_disp_enable(struct zynqmp_disp *disp)
  */
 static void zynqmp_disp_disable(struct zynqmp_disp *disp)
 {
-	zynqmp_disp_audio_disable(&disp->audio);
+	zynqmp_disp_audio_disable(disp);
 
-	zynqmp_disp_avbuf_disable_audio(&disp->avbuf);
-	zynqmp_disp_avbuf_disable_channels(&disp->avbuf);
-	zynqmp_disp_avbuf_disable(&disp->avbuf);
+	zynqmp_disp_avbuf_disable_audio(disp);
+	zynqmp_disp_avbuf_disable_channels(disp);
+	zynqmp_disp_avbuf_disable(disp);
 }
 
 static inline struct zynqmp_disp *crtc_to_disp(struct drm_crtc *crtc)

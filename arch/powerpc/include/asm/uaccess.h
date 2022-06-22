@@ -119,16 +119,6 @@ do {								\
 	}							\
 } while (0)
 
-#define __put_user_nocheck_goto(x, ptr, size, label)		\
-do {								\
-	__typeof__(*(ptr)) __user *__pu_addr = (ptr);		\
-	__chk_user_ptr(ptr);					\
-	__put_user_size_goto((x), __pu_addr, (size), label);	\
-} while (0)
-
-
-extern long __get_user_bad(void);
-
 /*
  * This does an atomic 128 byte aligned load from userspace.
  * Upto caller to do enable_kernel_vmx() before calling!
@@ -271,14 +261,10 @@ do {								\
 	__typeof__(*(ptr)) __user *__gu_addr = (ptr);	\
 	__typeof__(sizeof(*(ptr))) __gu_size = sizeof(*(ptr));	\
 								\
-	__chk_user_ptr(__gu_addr);				\
-	if (do_allow && !is_kernel_addr((unsigned long)__gu_addr)) \
-		might_fault();					\
-	barrier_nospec();					\
-	if (do_allow)								\
-		__get_user_size(__gu_val, __gu_addr, __gu_size, __gu_err);	\
-	else									\
-		__get_user_size_allowed(__gu_val, __gu_addr, __gu_size, __gu_err); \
+	might_fault();					\
+	allow_read_from_user(__gu_addr, __gu_size);		\
+	__get_user_size_allowed(__gu_val, __gu_addr, __gu_size, __gu_err);	\
+	prevent_read_from_user(__gu_addr, __gu_size);		\
 	(x) = (__typeof__(*(ptr)))__gu_val;			\
 								\
 	__gu_err;						\

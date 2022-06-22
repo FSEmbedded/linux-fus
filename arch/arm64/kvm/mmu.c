@@ -640,14 +640,13 @@ void kvm_free_stage2_pgd(struct kvm_s2_mmu *mmu)
  * @writable:   Whether or not to create a writable mapping
  */
 int kvm_phys_addr_ioremap(struct kvm *kvm, phys_addr_t guest_ipa,
-			  phys_addr_t pa, unsigned long size, bool writable,
-			  enum kvm_pgtable_prot prot_device)
+			  phys_addr_t pa, unsigned long size, bool writable)
 {
 	phys_addr_t addr;
 	int ret = 0;
 	struct kvm_mmu_memory_cache cache = { 0, __GFP_ZERO, NULL, };
 	struct kvm_pgtable *pgt = kvm->arch.mmu.pgt;
-	enum kvm_pgtable_prot prot = prot_device |
+	enum kvm_pgtable_prot prot = KVM_PGTABLE_PROT_DEVICE |
 				     KVM_PGTABLE_PROT_R |
 				     (writable ? KVM_PGTABLE_PROT_W : 0);
 
@@ -872,17 +871,85 @@ transparent_hugepage_adjust(struct kvm *kvm, struct kvm_memory_slot *memslot,
 	return PAGE_SIZE;
 }
 
+static int get_vma_page_shift(struct vm_area_struct *vma, unsigned long hva)
+{
+	unsigned long pa;
+
+	if (is_vm_hugetlb_page(vma) && !(vma->vm_flags & VM_PFNMAP))
+		return huge_page_shift(hstate_vma(vma));
+
+	if (!(vma->vm_flags & VM_PFNMAP))
+		return PAGE_SHIFT;
+
+	VM_BUG_ON(is_vm_hugetlb_page(vma));
+
+	pa = (vma->vm_pgoff << PAGE_SHIFT) + (hva - vma->vm_start);
+
+#ifndef __PAGETABLE_PMD_FOLDED
+	if ((hva & (PUD_SIZE - 1)) == (pa & (PUD_SIZE - 1)) &&
+	    ALIGN_DOWN(hva, PUD_SIZE) >= vma->vm_start &&
+	    ALIGN(hva, PUD_SIZE) <= vma->vm_end)
+		return PUD_SHIFT;
+#endif
+
+	if ((hva & (PMD_SIZE - 1)) == (pa & (PMD_SIZE - 1)) &&
+	    ALIGN_DOWN(hva, PMD_SIZE) >= vma->vm_start &&
+	    ALIGN(hva, PMD_SIZE) <= vma->vm_end)
+		return PMD_SHIFT;
+
+	return PAGE_SHIFT;
+}
+
+/*
+ * The page will be mapped in stage 2 as Normal Cacheable, so the VM will be
+ * able to see the page's tags and therefore they must be initialised first. If
+ * PG_mte_tagged is set, tags have already been initialised.
+ *
+ * The race in the test/set of the PG_mte_tagged flag is handled by:
+ * - preventing VM_SHARED mappings in a memslot with MTE preventing two VMs
+ *   racing to santise the same page
+ * - mmap_lock protects between a VM faulting a page in and the VMM performing
+ *   an mprotect() to add VM_MTE
+ */
+static int sanitise_mte_tags(struct kvm *kvm, kvm_pfn_t pfn,
+			     unsigned long size)
+{
+	unsigned long i, nr_pages = size >> PAGE_SHIFT;
+	struct page *page;
+
+	if (!kvm_has_mte(kvm))
+		return 0;
+
+	/*
+	 * pfn_to_online_page() is used to reject ZONE_DEVICE pages
+	 * that may not support tags.
+	 */
+	page = pfn_to_online_page(pfn);
+
+	if (!page)
+		return -EFAULT;
+
+	for (i = 0; i < nr_pages; i++, page++) {
+		if (!test_bit(PG_mte_tagged, &page->flags)) {
+			mte_clear_page_tags(page_address(page));
+			set_bit(PG_mte_tagged, &page->flags);
+		}
+	}
+
+	return 0;
+}
+
 static enum kvm_pgtable_prot stage1_to_stage2_pgprot(pgprot_t prot)
 {
 	switch (pgprot_val(prot) & PTE_ATTRINDX_MASK) {
 	case PTE_ATTRINDX(MT_DEVICE_nGnRE):
 	case PTE_ATTRINDX(MT_DEVICE_nGnRnE):
-	case PTE_ATTRINDX(MT_DEVICE_GRE):
 		return KVM_PGTABLE_PROT_DEVICE;
 	case PTE_ATTRINDX(MT_NORMAL_NC):
 	case PTE_ATTRINDX(MT_NORMAL):
+	case PTE_ATTRINDX(MT_NORMAL_TAGGED):
 		return (pgprot_val(prot) & PTE_SHARED)
-			? 0
+			? KVM_PGTABLE_PROT_DEVICE_SH
 			: KVM_PGTABLE_PROT_DEVICE_NS;
 	}
 
@@ -1081,9 +1148,9 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 		prot_us = stage1_to_stage2_pgprot(__pgprot(pte_val(*pte)));
 		pte_unmap_unlock(pte, ptl);
 		prot |= prot_us;
-	} else if (cpus_have_const_cap(ARM64_HAS_CACHE_DIC)) {
-		prot |= KVM_PGTABLE_PROT_X;
 	}
+	else if (cpus_have_const_cap(ARM64_HAS_CACHE_DIC))
+		prot |= KVM_PGTABLE_PROT_X;
 
 	/*
 	 * Under the premise of getting a FSC_PERM fault, we just need to relax
@@ -1493,30 +1560,9 @@ int kvm_arch_prepare_memory_region(struct kvm *kvm,
 		}
 
 		if (vma->vm_flags & VM_PFNMAP) {
-			gpa_t gpa = mem->guest_phys_addr +
-				    (vm_start - mem->userspace_addr);
-			phys_addr_t pa;
-			enum kvm_pgtable_prot prot;
-			pte_t *pte;
-			spinlock_t *ptl;
-
-			pa = (phys_addr_t)vma->vm_pgoff << PAGE_SHIFT;
-			pa += vm_start - vma->vm_start;
-
 			/* IO region dirty page logging not allowed */
 			if (memslot->flags & KVM_MEM_LOG_DIRTY_PAGES) {
 				ret = -EINVAL;
-				goto out;
-			}
-
-			pte = get_locked_pte(current->mm, mem->userspace_addr, &ptl);
-			prot = stage1_to_stage2_pgprot(__pgprot(pte_val(*pte)));
-			pte_unmap_unlock(pte, ptl);
-
-			ret = kvm_phys_addr_ioremap(kvm, gpa, pa,
-						    vm_end - vm_start,
-						    writable, prot);
-			if (ret)
 				break;
 			}
 		}

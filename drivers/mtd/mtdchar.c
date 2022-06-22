@@ -666,6 +666,7 @@ static int mtdchar_ioctl(struct file *file, u_int cmd, u_long arg)
 	case MEMWRITEOOB64:
 	case MEMWRITE:
 	case OTPLOCK:
+	case OTPERASE:
 		if (!(file->f_mode & FMODE_WRITE))
 			return -EPERM;
 		break;

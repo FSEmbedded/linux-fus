@@ -138,11 +138,9 @@ int hns_roce_get_kmem_bufs(struct hns_roce_dev *hr_dev, dma_addr_t *bufs,
 	int total = 0;
 	int i;
 
-	end = start + buf_cnt;
-	if (end > buf->npages) {
-		dev_err(hr_dev->dev,
-			"failed to check kmem bufs, end %d + %d total %u!\n",
-			start, buf_cnt, buf->npages);
+	if (page_shift > buf->trunk_shift) {
+		dev_err(hr_dev->dev, "failed to check kmem buf shift %u > %u\n",
+			page_shift, buf->trunk_shift);
 		return -EINVAL;
 	}
 
@@ -162,14 +160,6 @@ int hns_roce_get_umem_bufs(struct hns_roce_dev *hr_dev, dma_addr_t *bufs,
 {
 	struct ib_block_iter biter;
 	int total = 0;
-	int idx = 0;
-	u64 addr;
-
-	if (page_shift < HNS_HW_PAGE_SHIFT) {
-		dev_err(hr_dev->dev, "failed to check umem page shift %u!\n",
-			page_shift);
-		return -EINVAL;
-	}
 
 	/* convert system page cnt to hw page cnt */
 	rdma_umem_for_each_dma_block(umem, &biter, 1 << page_shift) {

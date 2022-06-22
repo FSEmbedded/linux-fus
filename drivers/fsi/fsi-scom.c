@@ -248,7 +248,7 @@ static int handle_fsi2pib_status(struct scom_device *scom, uint32_t status)
 		return -EPERM;
 	if (status & SCOM_STATUS_PARITY)
 		return -EIO;
-	/* Return -EBUSY on PIB abort to force a retry */
+
 	if (status & SCOM_STATUS_PIB_ABORT)
 		return -EBUSY;
 	return 0;

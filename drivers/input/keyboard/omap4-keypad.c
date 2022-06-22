@@ -250,9 +250,14 @@ static void omap4_keypad_stop(struct omap4_keypad *keypad_data)
 
 static void omap4_keypad_close(struct input_dev *input)
 {
-	struct omap4_keypad *keypad_data;
+	struct omap4_keypad *keypad_data = input_get_drvdata(input);
+	struct device *dev = input->dev.parent;
+	int error;
 
-	keypad_data = input_get_drvdata(input);
+	error = pm_runtime_get_sync(dev);
+	if (error < 0)
+		pm_runtime_put_noidle(dev);
+
 	disable_irq(keypad_data->irq);
 	omap4_keypad_stop(keypad_data);
 	enable_irq(keypad_data->irq);
@@ -303,6 +308,38 @@ static int omap4_keypad_check_revision(struct device *dev,
 	return 0;
 }
 
+/*
+ * Errata ID i689 "1.32 Keyboard Key Up Event Can Be Missed".
+ * Interrupt may not happen for key-up events. We must clear stuck
+ * key-up events after the keyboard hardware has auto-idled.
+ */
+static int __maybe_unused omap4_keypad_runtime_suspend(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct omap4_keypad *keypad_data = platform_get_drvdata(pdev);
+	u32 active;
+
+	active = kbd_readl(keypad_data, OMAP4_KBD_STATEMACHINE);
+	if (active) {
+		pm_runtime_mark_last_busy(dev);
+		return -EBUSY;
+	}
+
+	omap4_keypad_scan_keys(keypad_data, 0);
+
+	return 0;
+}
+
+static const struct dev_pm_ops omap4_keypad_pm_ops = {
+	SET_RUNTIME_PM_OPS(omap4_keypad_runtime_suspend, NULL, NULL)
+};
+
+static void omap4_disable_pm(void *d)
+{
+	pm_runtime_dont_use_autosuspend(d);
+	pm_runtime_disable(d);
+}
+
 static int omap4_keypad_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -345,27 +382,28 @@ static int omap4_keypad_probe(struct platform_device *pdev)
 	pm_runtime_set_autosuspend_delay(dev, OMAP4_KEYPAD_IDLE_CHECK_MS);
 	pm_runtime_enable(dev);
 
-	pm_runtime_enable(&pdev->dev);
+	error = devm_add_action_or_reset(dev, omap4_disable_pm, dev);
+	if (error) {
+		dev_err(dev, "unable to register cleanup action\n");
+		return error;
+	}
 
 	/*
 	 * Enable clocks for the keypad module so that we can read
 	 * revision register.
 	 */
-	error = pm_runtime_get_sync(&pdev->dev);
+	error = pm_runtime_get_sync(dev);
 	if (error) {
-		dev_err(&pdev->dev, "pm_runtime_get_sync() failed\n");
-		pm_runtime_put_noidle(&pdev->dev);
-	} else {
-		error = omap4_keypad_check_revision(&pdev->dev,
-						    keypad_data);
-		if (!error) {
-			/* Ensure device does not raise interrupts */
-			omap4_keypad_stop(keypad_data);
-		}
-		pm_runtime_put_sync(&pdev->dev);
+		dev_err(dev, "pm_runtime_get_sync() failed\n");
+		pm_runtime_put_noidle(dev);
+		return error;
 	}
-	if (error)
-		goto err_pm_disable;
+
+	error = omap4_keypad_check_revision(dev, keypad_data);
+	if (!error) {
+		/* Ensure device does not raise interrupts */
+		omap4_keypad_stop(keypad_data);
+	}
 
 	pm_runtime_mark_last_busy(dev);
 	pm_runtime_put_autosuspend(dev);
@@ -373,11 +411,9 @@ static int omap4_keypad_probe(struct platform_device *pdev)
 		return error;
 
 	/* input device allocation */
-	keypad_data->input = input_dev = input_allocate_device();
-	if (!input_dev) {
-		error = -ENOMEM;
-		goto err_pm_disable;
-	}
+	keypad_data->input = input_dev = devm_input_allocate_device(dev);
+	if (!input_dev)
+		return -ENOMEM;
 
 	input_dev->name = pdev->name;
 	input_dev->id.bustype = BUS_HOST;
@@ -424,30 +460,17 @@ static int omap4_keypad_probe(struct platform_device *pdev)
 	}
 
 	error = input_register_device(keypad_data->input);
-	if (error < 0) {
-		dev_err(&pdev->dev, "failed to register input device\n");
-		goto err_free_irq;
+	if (error) {
+		dev_err(dev, "failed to register input device\n");
+		return error;
 	}
 
-	device_init_wakeup(&pdev->dev, true);
-	platform_set_drvdata(pdev, keypad_data);
+	device_init_wakeup(dev, true);
+	error = dev_pm_set_wake_irq(dev, keypad_data->irq);
+	if (error)
+		dev_warn(dev, "failed to set up wakeup irq: %d\n", error);
 
 	return 0;
-
-err_free_irq:
-	free_irq(keypad_data->irq, keypad_data);
-err_free_keymap:
-	kfree(keypad_data->keymap);
-err_free_input:
-	input_free_device(input_dev);
-err_pm_disable:
-	pm_runtime_disable(&pdev->dev);
-	iounmap(keypad_data->base);
-err_release_mem:
-	release_mem_region(res->start, resource_size(res));
-err_free_keypad:
-	kfree(keypad_data);
-	return error;
 }
 
 static int omap4_keypad_remove(struct platform_device *pdev)

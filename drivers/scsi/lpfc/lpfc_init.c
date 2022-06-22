@@ -2055,7 +2055,7 @@ lpfc_handle_eratt_s4(struct lpfc_hba *phba)
 		}
 		if (reg_err1 == SLIPORT_ERR1_REG_ERR_CODE_2 &&
 		    reg_err2 == SLIPORT_ERR2_REG_FW_RESTART) {
-			lpfc_printf_log(phba, KERN_ERR, LOG_TRACE_EVENT,
+			lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
 					"3143 Port Down: Firmware Update "
 					"Detected\n");
 			en_rn_msg = false;
@@ -5314,8 +5314,10 @@ lpfc_sli4_async_link_evt(struct lpfc_hba *phba,
 	 */
 	if (!(phba->hba_flag & HBA_FCOE_MODE)) {
 		rc = lpfc_sli_issue_mbox(phba, pmb, MBX_NOWAIT);
-		if (rc == MBX_NOT_FINISHED)
+		if (rc == MBX_NOT_FINISHED) {
+			lpfc_mbuf_free(phba, mp->virt, mp->phys);
 			goto out_free_dmabuf;
+		}
 		return;
 	}
 	/*
@@ -6266,8 +6268,10 @@ lpfc_sli4_async_fc_evt(struct lpfc_hba *phba, struct lpfc_acqe_fc_la *acqe_fc)
 	}
 
 	rc = lpfc_sli_issue_mbox(phba, pmb, MBX_NOWAIT);
-	if (rc == MBX_NOT_FINISHED)
+	if (rc == MBX_NOT_FINISHED) {
+		lpfc_mbuf_free(phba, mp->virt, mp->phys);
 		goto out_free_dmabuf;
+	}
 	return;
 
 out_free_dmabuf:
@@ -13299,6 +13303,240 @@ lpfc_sli4_hba_unset(struct lpfc_hba *phba)
 	/* Stop the SLI4 device port */
 	if (phba->pport)
 		phba->pport->work_port_events = 0;
+}
+
+static uint32_t
+lpfc_cgn_crc32(uint32_t crc, u8 byte)
+{
+	uint32_t msb = 0;
+	uint32_t bit;
+
+	for (bit = 0; bit < 8; bit++) {
+		msb = (crc >> 31) & 1;
+		crc <<= 1;
+
+		if (msb ^ (byte & 1)) {
+			crc ^= LPFC_CGN_CRC32_MAGIC_NUMBER;
+			crc |= 1;
+		}
+		byte >>= 1;
+	}
+	return crc;
+}
+
+static uint32_t
+lpfc_cgn_reverse_bits(uint32_t wd)
+{
+	uint32_t result = 0;
+	uint32_t i;
+
+	for (i = 0; i < 32; i++) {
+		result <<= 1;
+		result |= (1 & (wd >> i));
+	}
+	return result;
+}
+
+/*
+ * The routine corresponds with the algorithm the HBA firmware
+ * uses to validate the data integrity.
+ */
+uint32_t
+lpfc_cgn_calc_crc32(void *ptr, uint32_t byteLen, uint32_t crc)
+{
+	uint32_t  i;
+	uint32_t result;
+	uint8_t  *data = (uint8_t *)ptr;
+
+	for (i = 0; i < byteLen; ++i)
+		crc = lpfc_cgn_crc32(crc, data[i]);
+
+	result = ~lpfc_cgn_reverse_bits(crc);
+	return result;
+}
+
+void
+lpfc_init_congestion_buf(struct lpfc_hba *phba)
+{
+	struct lpfc_cgn_info *cp;
+	struct timespec64 cmpl_time;
+	struct tm broken;
+	uint16_t size;
+	uint32_t crc;
+
+	lpfc_printf_log(phba, KERN_INFO, LOG_CGN_MGMT,
+			"6235 INIT Congestion Buffer %p\n", phba->cgn_i);
+
+	if (!phba->cgn_i)
+		return;
+	cp = (struct lpfc_cgn_info *)phba->cgn_i->virt;
+
+	atomic_set(&phba->cgn_fabric_warn_cnt, 0);
+	atomic_set(&phba->cgn_fabric_alarm_cnt, 0);
+	atomic_set(&phba->cgn_sync_alarm_cnt, 0);
+	atomic_set(&phba->cgn_sync_warn_cnt, 0);
+
+	atomic64_set(&phba->cgn_acqe_stat.alarm, 0);
+	atomic64_set(&phba->cgn_acqe_stat.warn, 0);
+	atomic_set(&phba->cgn_driver_evt_cnt, 0);
+	atomic_set(&phba->cgn_latency_evt_cnt, 0);
+	atomic64_set(&phba->cgn_latency_evt, 0);
+	phba->cgn_evt_minute = 0;
+	phba->hba_flag &= ~HBA_CGN_DAY_WRAP;
+
+	memset(cp, 0xff, LPFC_CGN_DATA_SIZE);
+	cp->cgn_info_size = cpu_to_le16(LPFC_CGN_INFO_SZ);
+	cp->cgn_info_version = LPFC_CGN_INFO_V3;
+
+	/* cgn parameters */
+	cp->cgn_info_mode = phba->cgn_p.cgn_param_mode;
+	cp->cgn_info_level0 = phba->cgn_p.cgn_param_level0;
+	cp->cgn_info_level1 = phba->cgn_p.cgn_param_level1;
+	cp->cgn_info_level2 = phba->cgn_p.cgn_param_level2;
+
+	ktime_get_real_ts64(&cmpl_time);
+	time64_to_tm(cmpl_time.tv_sec, 0, &broken);
+
+	cp->cgn_info_month = broken.tm_mon + 1;
+	cp->cgn_info_day = broken.tm_mday;
+	cp->cgn_info_year = broken.tm_year - 100; /* relative to 2000 */
+	cp->cgn_info_hour = broken.tm_hour;
+	cp->cgn_info_minute = broken.tm_min;
+	cp->cgn_info_second = broken.tm_sec;
+
+	lpfc_printf_log(phba, KERN_INFO, LOG_CGN_MGMT | LOG_INIT,
+			"2643 CGNInfo Init: Start Time "
+			"%d/%d/%d %d:%d:%d\n",
+			cp->cgn_info_day, cp->cgn_info_month,
+			cp->cgn_info_year, cp->cgn_info_hour,
+			cp->cgn_info_minute, cp->cgn_info_second);
+
+	/* Fill in default LUN qdepth */
+	if (phba->pport) {
+		size = (uint16_t)(phba->pport->cfg_lun_queue_depth);
+		cp->cgn_lunq = cpu_to_le16(size);
+	}
+
+	/* last used Index initialized to 0xff already */
+
+	cp->cgn_warn_freq = cpu_to_le16(LPFC_FPIN_INIT_FREQ);
+	cp->cgn_alarm_freq = cpu_to_le16(LPFC_FPIN_INIT_FREQ);
+	crc = lpfc_cgn_calc_crc32(cp, LPFC_CGN_INFO_SZ, LPFC_CGN_CRC32_SEED);
+	cp->cgn_info_crc = cpu_to_le32(crc);
+
+	phba->cgn_evt_timestamp = jiffies +
+		msecs_to_jiffies(LPFC_CGN_TIMER_TO_MIN);
+}
+
+void
+lpfc_init_congestion_stat(struct lpfc_hba *phba)
+{
+	struct lpfc_cgn_info *cp;
+	struct timespec64 cmpl_time;
+	struct tm broken;
+	uint32_t crc;
+
+	lpfc_printf_log(phba, KERN_INFO, LOG_CGN_MGMT,
+			"6236 INIT Congestion Stat %p\n", phba->cgn_i);
+
+	if (!phba->cgn_i)
+		return;
+
+	cp = (struct lpfc_cgn_info *)phba->cgn_i->virt;
+	memset(&cp->cgn_stat_npm, 0, LPFC_CGN_STAT_SIZE);
+
+	ktime_get_real_ts64(&cmpl_time);
+	time64_to_tm(cmpl_time.tv_sec, 0, &broken);
+
+	cp->cgn_stat_month = broken.tm_mon + 1;
+	cp->cgn_stat_day = broken.tm_mday;
+	cp->cgn_stat_year = broken.tm_year - 100; /* relative to 2000 */
+	cp->cgn_stat_hour = broken.tm_hour;
+	cp->cgn_stat_minute = broken.tm_min;
+
+	lpfc_printf_log(phba, KERN_INFO, LOG_CGN_MGMT | LOG_INIT,
+			"2647 CGNstat Init: Start Time "
+			"%d/%d/%d %d:%d\n",
+			cp->cgn_stat_day, cp->cgn_stat_month,
+			cp->cgn_stat_year, cp->cgn_stat_hour,
+			cp->cgn_stat_minute);
+
+	crc = lpfc_cgn_calc_crc32(cp, LPFC_CGN_INFO_SZ, LPFC_CGN_CRC32_SEED);
+	cp->cgn_info_crc = cpu_to_le32(crc);
+}
+
+/**
+ * __lpfc_reg_congestion_buf - register congestion info buffer with HBA
+ * @phba: Pointer to hba context object.
+ * @reg: flag to determine register or unregister.
+ */
+static int
+__lpfc_reg_congestion_buf(struct lpfc_hba *phba, int reg)
+{
+	struct lpfc_mbx_reg_congestion_buf *reg_congestion_buf;
+	union  lpfc_sli4_cfg_shdr *shdr;
+	uint32_t shdr_status, shdr_add_status;
+	LPFC_MBOXQ_t *mboxq;
+	int length, rc;
+
+	if (!phba->cgn_i)
+		return -ENXIO;
+
+	mboxq = mempool_alloc(phba->mbox_mem_pool, GFP_KERNEL);
+	if (!mboxq) {
+		lpfc_printf_log(phba, KERN_ERR, LOG_MBOX,
+				"2641 REG_CONGESTION_BUF mbox allocation fail: "
+				"HBA state x%x reg %d\n",
+				phba->pport->port_state, reg);
+		return -ENOMEM;
+	}
+
+	length = (sizeof(struct lpfc_mbx_reg_congestion_buf) -
+		sizeof(struct lpfc_sli4_cfg_mhdr));
+	lpfc_sli4_config(phba, mboxq, LPFC_MBOX_SUBSYSTEM_COMMON,
+			 LPFC_MBOX_OPCODE_REG_CONGESTION_BUF, length,
+			 LPFC_SLI4_MBX_EMBED);
+	reg_congestion_buf = &mboxq->u.mqe.un.reg_congestion_buf;
+	bf_set(lpfc_mbx_reg_cgn_buf_type, reg_congestion_buf, 1);
+	if (reg > 0)
+		bf_set(lpfc_mbx_reg_cgn_buf_cnt, reg_congestion_buf, 1);
+	else
+		bf_set(lpfc_mbx_reg_cgn_buf_cnt, reg_congestion_buf, 0);
+	reg_congestion_buf->length = sizeof(struct lpfc_cgn_info);
+	reg_congestion_buf->addr_lo =
+		putPaddrLow(phba->cgn_i->phys);
+	reg_congestion_buf->addr_hi =
+		putPaddrHigh(phba->cgn_i->phys);
+
+	rc = lpfc_sli_issue_mbox(phba, mboxq, MBX_POLL);
+	shdr = (union lpfc_sli4_cfg_shdr *)
+		&mboxq->u.mqe.un.sli4_config.header.cfg_shdr;
+	shdr_status = bf_get(lpfc_mbox_hdr_status, &shdr->response);
+	shdr_add_status = bf_get(lpfc_mbox_hdr_add_status,
+				 &shdr->response);
+	mempool_free(mboxq, phba->mbox_mem_pool);
+	if (shdr_status || shdr_add_status || rc) {
+		lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
+				"2642 REG_CONGESTION_BUF mailbox "
+				"failed with status x%x add_status x%x,"
+				" mbx status x%x reg %d\n",
+				shdr_status, shdr_add_status, rc, reg);
+		return -ENXIO;
+	}
+	return 0;
+}
+
+int
+lpfc_unreg_congestion_buf(struct lpfc_hba *phba)
+{
+	lpfc_cmf_stop(phba);
+	return __lpfc_reg_congestion_buf(phba, 0);
+}
+
+int
+lpfc_reg_congestion_buf(struct lpfc_hba *phba)
+{
+	return __lpfc_reg_congestion_buf(phba, 1);
 }
 
 /**

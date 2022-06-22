@@ -13,7 +13,6 @@
 #include "pmu.h"
 #include "expr.h"
 #include "rblist.h"
-#include "header.h"
 #include <string.h>
 #include <errno.h>
 #include "strlist.h"
@@ -639,8 +638,6 @@ void metricgroup__print(bool metrics, bool metricgroups, char *filter,
 	for (i = 0; map; i++) {
 		pe = &map->table[i];
 
-		if (pe->socname && soc_version_check(pe->socname))
-			continue;
 		if (!pe->name && !pe->metric_group && !pe->metric_name)
 			break;
 		if (!pe->metric_expr)

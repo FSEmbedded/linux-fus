@@ -170,17 +170,30 @@ static int scmi_cpufreq_init(struct cpufreq_policy *policy)
 	  */
 	nr_opp = dev_pm_opp_get_opp_count(cpu_dev);
 	if (nr_opp <= 0) {
-		dev_err(cpu_dev, "%s: No OPPs for this device: %d\n",
-			__func__, ret);
+		ret = perf_ops->device_opps_add(ph, cpu_dev);
+		if (ret) {
+			dev_warn(cpu_dev, "failed to add opps to the device\n");
+			goto out_free_cpumask;
+		}
 
-		ret = -ENODEV;
-		goto out_free_opp;
-	}
+		nr_opp = dev_pm_opp_get_opp_count(cpu_dev);
+		if (nr_opp <= 0) {
+			dev_err(cpu_dev, "%s: No OPPs for this device: %d\n",
+				__func__, nr_opp);
 
-	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
-	if (!priv) {
-		ret = -ENOMEM;
-		goto out_free_opp;
+			ret = -ENODEV;
+			goto out_free_opp;
+		}
+
+		ret = dev_pm_opp_set_sharing_cpus(cpu_dev, priv->opp_shared_cpus);
+		if (ret) {
+			dev_err(cpu_dev, "%s: failed to mark OPPs as shared: %d\n",
+				__func__, ret);
+
+			goto out_free_opp;
+		}
+
+		priv->nr_opp = nr_opp;
 	}
 
 	ret = dev_pm_opp_init_cpufreq_table(cpu_dev, &freq_table);

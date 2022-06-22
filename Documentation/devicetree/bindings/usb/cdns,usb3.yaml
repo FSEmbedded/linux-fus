@@ -30,8 +30,9 @@ properties:
     items:
       - description: XHCI host controller interrupt
       - description: Device controller interrupt
-      - description: interrupt used to wake up core, eg: when usbcmd.rs is
-      cleared by xhci core, this interrupt is optional.
+      - description: OTG/DRD controller interrupt
+      - description: interrupt used to wake up core, e.g when usbcmd.rs is
+                     cleared by xhci core, this interrupt is optional
 
   interrupt-names:
     minItems: 3

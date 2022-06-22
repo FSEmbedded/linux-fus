@@ -827,6 +827,7 @@ static int ext4_sample_last_mounted(struct super_block *sb,
 					    EXT4_JTR_NONE);
 	if (err)
 		goto out_journal;
+	lock_buffer(sbi->s_sbh);
 	strncpy(sbi->s_es->s_last_mounted, cp,
 		sizeof(sbi->s_es->s_last_mounted));
 	ext4_superblock_csum_set(sb);

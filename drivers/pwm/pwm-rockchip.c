@@ -358,10 +358,6 @@ static int rockchip_pwm_probe(struct platform_device *pdev)
 	ctrl = readl_relaxed(pc->base + pc->data->regs.ctrl);
 	enabled = (ctrl & enable_conf) == enable_conf;
 
-	enable_conf = pc->data->enable_conf;
-	ctrl = readl_relaxed(pc->base + pc->data->regs.ctrl);
-	enabled = (ctrl & enable_conf) == enable_conf;
-
 	ret = pwmchip_add(&pc->chip);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "pwmchip_add() failed: %d\n", ret);
@@ -387,6 +383,8 @@ err_clk:
 static int rockchip_pwm_remove(struct platform_device *pdev)
 {
 	struct rockchip_pwm_chip *pc = platform_get_drvdata(pdev);
+
+	pwmchip_remove(&pc->chip);
 
 	clk_unprepare(pc->pclk);
 	clk_unprepare(pc->clk);

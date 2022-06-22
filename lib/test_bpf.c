@@ -6242,10 +6242,10 @@ static struct bpf_test tests[] = {
 	{
 		"JMP32_JSGE_K: Small immediate",
 		.u.insns_int = {
-			BPF_LD_IMM64(R0, 0),
-			BPF_LD_IMM64(R1, 0xffffffffffffffffLL),
-			BPF_STX_MEM(BPF_DW, R10, R1, -40),
-			BPF_LDX_MEM(BPF_DW, R0, R10, -40),
+			BPF_ALU32_IMM(BPF_MOV, R0, -123),
+			BPF_JMP32_IMM(BPF_JSGE, R0, -122, 1),
+			BPF_JMP32_IMM(BPF_JSGE, R0, -123, 1),
+			BPF_ALU32_IMM(BPF_MOV, R0, 0),
 			BPF_EXIT_INSN(),
 		},
 		INTERNAL,

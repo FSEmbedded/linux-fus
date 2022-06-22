@@ -71,7 +71,6 @@ static int isert_sg_tablesize_set(const char *val, const struct kernel_param *kp
 	return param_set_int(val, kp);
 }
 
-
 static inline bool
 isert_prot_cmd(struct isert_conn *conn, struct se_cmd *cmd)
 {

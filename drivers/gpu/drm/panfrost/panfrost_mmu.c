@@ -687,6 +687,17 @@ static irqreturn_t panfrost_mmu_irq_handler_thread(int irq, void *data)
 				access_type, access_type_name(pfdev, fault_status),
 				source_id);
 
+			spin_lock(&pfdev->as_lock);
+			/* Ignore MMU interrupts on this AS until it's been
+			 * re-enabled.
+			 */
+			pfdev->as_faulty_mask |= mask;
+
+			/* Disable the MMU to kill jobs on this AS. */
+			panfrost_mmu_disable(pfdev, as);
+			spin_unlock(&pfdev->as_lock);
+		}
+
 		status &= ~mask;
 
 		/* If we received new MMU interrupts, process them before returning. */

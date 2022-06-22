@@ -168,17 +168,39 @@ static ssize_t cluster_##name##_show(struct config_item *item, char *buf)     \
 }                                                                             \
 CONFIGFS_ATTR(cluster_, name);
 
-static int dlm_check_zero(unsigned int x)
+static int dlm_check_protocol_and_dlm_running(unsigned int x)
 {
-	if (!x)
+	switch (x) {
+	case 0:
+		/* TCP */
+		break;
+	case 1:
+		/* SCTP */
+		break;
+	default:
 		return -EINVAL;
+	}
+
+	if (dlm_allow_conn)
+		return -EBUSY;
 
 	return 0;
 }
 
-static int dlm_check_buffer_size(unsigned int x)
+static int dlm_check_zero_and_dlm_running(unsigned int x)
 {
-	if (x < DEFAULT_BUFFER_SIZE)
+	if (!x)
+		return -EINVAL;
+
+	if (dlm_allow_conn)
+		return -EBUSY;
+
+	return 0;
+}
+
+static int dlm_check_zero(unsigned int x)
+{
+	if (!x)
 		return -EINVAL;
 
 	return 0;

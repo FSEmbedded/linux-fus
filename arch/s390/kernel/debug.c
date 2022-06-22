@@ -692,27 +692,6 @@ debug_info_t *debug_register(const char *name, int pages_per_area,
 }
 EXPORT_SYMBOL(debug_register);
 
-/* Remove debugfs entries and remove from internal list. */
-static void _debug_unregister(debug_info_t *id)
-{
-	int i;
-
-	for (i = 0; i < DEBUG_MAX_VIEWS; i++) {
-		if (!id->views[i])
-			continue;
-		debugfs_remove(id->debugfs_entries[i]);
-	}
-	debugfs_remove(id->debugfs_root_entry);
-	if (id == debug_area_first)
-		debug_area_first = id->next;
-	if (id == debug_area_last)
-		debug_area_last = id->prev;
-	if (id->prev)
-		id->prev->next = id->next;
-	if (id->next)
-		id->next->prev = id->prev;
-}
-
 /**
  * debug_register_static() - registers a static debug area
  *

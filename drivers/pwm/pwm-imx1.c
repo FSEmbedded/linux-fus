@@ -159,14 +159,7 @@ static int pwm_imx1_probe(struct platform_device *pdev)
 	if (IS_ERR(imx->mmio_base))
 		return PTR_ERR(imx->mmio_base);
 
-	return pwmchip_add(&imx->chip);
-}
-
-static int pwm_imx1_remove(struct platform_device *pdev)
-{
-	struct pwm_imx1_chip *imx = platform_get_drvdata(pdev);
-
-	return pwmchip_remove(&imx->chip);
+	return devm_pwmchip_add(&pdev->dev, &imx->chip);
 }
 
 static struct platform_driver pwm_imx1_driver = {

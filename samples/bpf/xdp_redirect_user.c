@@ -81,17 +81,9 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (!(xdp_flags & XDP_FLAGS_SKB_MODE))
-		xdp_flags |= XDP_FLAGS_DRV_MODE;
-
-	if (optind + 2 != argc) {
-		printf("usage: %s <IFNAME|IFINDEX>_IN <IFNAME|IFINDEX>_OUT\n", argv[0]);
-		return 1;
-	}
-
-	if (setrlimit(RLIMIT_MEMLOCK, &r)) {
-		perror("setrlimit(RLIMIT_MEMLOCK)");
-		return 1;
+	if (argc <= optind + 1) {
+		sample_usage(argv, long_options, __doc__, mask, true);
+		return ret;
 	}
 
 	ifindex_in = if_nametoindex(argv[optind]);
@@ -173,9 +165,9 @@ int main(int argc, char **argv)
 		ret = EXIT_FAIL;
 		goto end_destroy;
 	}
-
-	poll_stats(2, ifindex_out);
-
-out:
-	return ret;
+	ret = EXIT_OK;
+end_destroy:
+	xdp_redirect__destroy(skel);
+end:
+	sample_exit(ret);
 }

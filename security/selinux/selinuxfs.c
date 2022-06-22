@@ -649,6 +649,7 @@ static ssize_t sel_write_load(struct file *file, const char __user *buf,
 
 	length = sel_make_policy_nodes(fsi, load_state.policy);
 	if (length) {
+		pr_warn_ratelimited("SELinux: failed to initialize selinuxfs\n");
 		selinux_policy_cancel(fsi->state, &load_state);
 		goto out;
 	}

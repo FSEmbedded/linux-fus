@@ -51,6 +51,7 @@ static const struct drm_mode_config_funcs dcss_drm_mode_config_funcs = {
 static const struct drm_driver dcss_kms_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
 	DRM_GEM_CMA_DRIVER_OPS,
+	.gem_prime_import	= drm_gem_prime_import,
 	.fops			= &dcss_cma_fops,
 	.name			= "imx-dcss",
 	.desc			= "i.MX8MQ Display Subsystem",
@@ -151,8 +152,6 @@ struct dcss_kms_dev *dcss_kms_attach(struct dcss_dev *dcss, bool componentized)
 	ret = drm_vblank_init(drm, 1);
 	if (ret)
 		goto cleanup_mode_config;
-
-	drm->irq_enabled = true;
 
 	if (!componentized) {
 		ret = dcss_kms_bridge_connector_init(kms);

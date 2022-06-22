@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright 2019 NXP.
+ * Copyright 2019-2022 NXP.
  */
 
 #include <drm/drm_atomic.h>
@@ -244,7 +244,8 @@ static void dcss_plane_get_hdr10_pipe_cfg(struct drm_plane_state *plane_state,
 		break;
 	}
 
-	ipipe_cfg->pr = plane_state->color_range;
+	ipipe_cfg->pr = plane_state->color_range == DRM_COLOR_YCBCR_FULL_RANGE ?
+			PR_FULL : PR_LIMITED;
 }
 
 static bool
@@ -294,7 +295,7 @@ static int dcss_plane_atomic_check(struct drm_plane *plane,
 										 plane);
 	struct dcss_plane *dcss_plane = to_dcss_plane(plane);
 	struct dcss_dev *dcss = plane->dev->dev_private;
-	struct drm_framebuffer *fb = state->fb;
+	struct drm_framebuffer *fb = new_plane_state->fb;
 	struct drm_gem_cma_object *cma_obj;
 	struct drm_crtc_state *crtc_state;
 	int hdisplay, vdisplay;
@@ -323,7 +324,7 @@ static int dcss_plane_atomic_check(struct drm_plane *plane,
 	dcss_scaler_get_min_max_ratios(dcss->scaler, dcss_plane->ch_num,
 				       &min, &max);
 
-	ret = drm_atomic_helper_check_plane_state(state, crtc_state,
+	ret = drm_atomic_helper_check_plane_state(new_plane_state, crtc_state,
 						  min, max, true, false);
 	if (ret)
 		return ret;
@@ -339,7 +340,8 @@ static int dcss_plane_atomic_check(struct drm_plane *plane,
 		return -EINVAL;
 	}
 
-	if (!dcss_plane_hdr10_pipe_cfg_is_supported(state, crtc_state)) {
+	if (!dcss_plane_hdr10_pipe_cfg_is_supported(new_plane_state,
+						    crtc_state)) {
 		DRM_DEBUG_KMS("requested hdr10 pipe cfg is not supported!\n");
 		return -EINVAL;
 	}
@@ -542,7 +544,7 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
 									   plane);
 	struct dcss_plane *dcss_plane = to_dcss_plane(plane);
 	struct dcss_dev *dcss = plane->dev->dev_private;
-	struct drm_framebuffer *fb = state->fb;
+	struct drm_framebuffer *fb = new_state->fb;
 	struct drm_crtc_state *crtc_state;
 	bool modifiers_present;
 	u32 src_w, src_h, dst_w, dst_h;
@@ -553,13 +555,13 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
 	if (!fb || !new_state->crtc || !new_state->visible)
 		return;
 
-	crtc_state = state->crtc->state;
+	crtc_state = new_state->crtc->state;
 	modifiers_present = !!(fb->flags & DRM_MODE_FB_MODIFIERS);
 
 	if (old_state->fb && !drm_atomic_crtc_needs_modeset(crtc_state) &&
-	    !dcss_plane_needs_setup(state, old_state) &&
+	    !dcss_plane_needs_setup(new_state, old_state) &&
 	    !dcss_dtg_global_alpha_changed(dcss->dtg, dcss_plane->ch_num,
-					   state->alpha >> 8)) {
+					   new_state->alpha >> 8)) {
 		dcss_plane_atomic_set_base(dcss_plane);
 		if (plane->type == DRM_PLANE_TYPE_PRIMARY)
 			dcss_dec400d_shadow_trig(dcss->dec400d);
@@ -577,14 +579,15 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
 	dst_w = drm_rect_width(&dst);
 	dst_h = drm_rect_height(&dst);
 
-	dcss_dpr_format_set(dcss->dpr, dcss_plane->ch_num, state->fb->format,
+	dcss_dpr_format_set(dcss->dpr, dcss_plane->ch_num,
+			    new_state->fb->format,
 			    modifiers_present ? fb->modifier :
 						DRM_FORMAT_MOD_LINEAR);
 
 	if (dcss_plane->use_dtrc) {
 		u32 dtrc_w, dtrc_h;
 
-		dcss_dtrc_set_res(dcss->dtrc, dcss_plane->ch_num, state,
+		dcss_dtrc_set_res(dcss->dtrc, dcss_plane->ch_num, new_state,
 				  &dtrc_w, &dtrc_h);
 		dcss_dpr_set_res(dcss->dpr, dcss_plane->ch_num, dtrc_w, dtrc_h);
 	} else {
@@ -596,11 +599,14 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
 
 	dcss_plane_atomic_set_base(dcss_plane);
 
-	is_rotation_90_or_270 = state->rotation & (DRM_MODE_ROTATE_90 |
+	is_rotation_90_or_270 = new_state->rotation & (DRM_MODE_ROTATE_90 |
 						   DRM_MODE_ROTATE_270);
 
+	dcss_scaler_set_filter(dcss->scaler, dcss_plane->ch_num,
+			       new_state->scaling_filter);
+
 	dcss_scaler_setup(dcss->scaler, dcss_plane->ch_num,
-			  state->fb->format,
+			  new_state->fb->format,
 			  is_rotation_90_or_270 ? src_h : src_w,
 			  is_rotation_90_or_270 ? src_w : src_h,
 			  dst_w, dst_h,
@@ -618,7 +624,7 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
 	else if (dcss_plane->use_dtrc)
 		dcss_dtrc_enable(dcss->dtrc, dcss_plane->ch_num, true);
 
-	if (!dcss_plane->ch_num && (state->alpha >> 8) == 0)
+	if (!dcss_plane->ch_num && (new_state->alpha >> 8) == 0)
 		enable = false;
 
 	dcss_dpr_enable(dcss->dpr, dcss_plane->ch_num, enable);

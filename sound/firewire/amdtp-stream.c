@@ -695,7 +695,7 @@ static void build_it_pkt_header(struct amdtp_stream *s, unsigned int cycle,
 		cip_header = NULL;
 	}
 
-	trace_amdtp_packet(s, cycle, cip_header, payload_length, data_blocks,
+	trace_amdtp_packet(s, cycle, cip_header, payload_length + header_length, data_blocks,
 			   data_block_counter, s->packet_index, index);
 }
 
@@ -803,28 +803,36 @@ static int parse_ir_ctx_header(struct amdtp_stream *s, unsigned int cycle,
 	unsigned int payload_length;
 	const __be32 *cip_header;
 	unsigned int cip_header_size;
-	int err;
 
-	*payload_length = be32_to_cpu(ctx_header[0]) >> ISO_DATA_LENGTH_SHIFT;
+	payload_length = be32_to_cpu(ctx_header[0]) >> ISO_DATA_LENGTH_SHIFT;
 
 	if (!(s->flags & CIP_NO_HEADER))
-		cip_header_size = 8;
+		cip_header_size = CIP_HEADER_SIZE;
 	else
 		cip_header_size = 0;
 
-	if (*payload_length > cip_header_size + s->ctx_data.tx.max_ctx_payload_length) {
+	if (payload_length > cip_header_size + s->ctx_data.tx.max_ctx_payload_length) {
 		dev_err(&s->unit->device,
 			"Detect jumbo payload: %04x %04x\n",
-			*payload_length, cip_header_size + s->ctx_data.tx.max_ctx_payload_length);
+			payload_length, cip_header_size + s->ctx_data.tx.max_ctx_payload_length);
 		return -EIO;
 	}
 
 	if (cip_header_size > 0) {
-		cip_header = ctx_header + 2;
-		err = check_cip_header(s, cip_header, *payload_length,
-				       data_blocks, data_block_counter, syt);
-		if (err < 0)
-			return err;
+		if (payload_length >= cip_header_size) {
+			int err;
+
+			cip_header = ctx_header + IR_CTX_HEADER_DEFAULT_QUADLETS;
+			err = check_cip_header(s, cip_header, payload_length - cip_header_size,
+					       data_blocks, data_block_counter, syt);
+			if (err < 0)
+				return err;
+		} else {
+			// Handle the cycle so that empty packet arrives.
+			cip_header = NULL;
+			*data_blocks = 0;
+			*syt = 0;
+		}
 	} else {
 		cip_header = NULL;
 		*data_blocks = payload_length / sizeof(__be32) / s->data_block_quadlets;
@@ -834,7 +842,7 @@ static int parse_ir_ctx_header(struct amdtp_stream *s, unsigned int cycle,
 			*data_block_counter = 0;
 	}
 
-	trace_amdtp_packet(s, cycle, cip_header, *payload_length, *data_blocks,
+	trace_amdtp_packet(s, cycle, cip_header, payload_length, *data_blocks,
 			   *data_block_counter, packet_index, index);
 
 	return 0;
@@ -893,7 +901,7 @@ static int generate_device_pkt_descs(struct amdtp_stream *s,
 
 	*desc_count = 0;
 	for (i = 0; i < packets; ++i) {
-		struct pkt_desc *desc = descs + i;
+		struct pkt_desc *desc = descs + *desc_count;
 		unsigned int cycle;
 		bool lost;
 		unsigned int data_blocks;
@@ -935,8 +943,8 @@ static int generate_device_pkt_descs(struct amdtp_stream *s,
 			}
 		}
 
-		err = parse_ir_ctx_header(s, cycle, ctx_header, &payload_length,
-					  &data_blocks, &dbc, &syt, packet_index, i);
+		err = parse_ir_ctx_header(s, cycle, ctx_header, &data_blocks, &dbc, &syt,
+					  packet_index, i);
 		if (err < 0)
 			return err;
 
@@ -949,9 +957,9 @@ static int generate_device_pkt_descs(struct amdtp_stream *s,
 		if (!(s->flags & CIP_DBC_IS_END_EVENT))
 			dbc = (dbc + desc->data_blocks) & 0xff;
 
-		ctx_header +=
-			s->ctx_data.tx.ctx_header_size / sizeof(*ctx_header);
-
+		next_cycle = increment_ohci_cycle_count(next_cycle, 1);
+		++(*desc_count);
+		ctx_header += s->ctx_data.tx.ctx_header_size / sizeof(*ctx_header);
 		packet_index = (packet_index + 1) % queue_size;
 	}
 
@@ -1018,7 +1026,7 @@ static void generate_pkt_descs(struct amdtp_stream *s, const __be32 *ctx_header,
 static inline void cancel_stream(struct amdtp_stream *s)
 {
 	s->packet_index = -1;
-	if (in_interrupt())
+	if (in_softirq())
 		amdtp_stream_pcm_abort(s);
 	WRITE_ONCE(s->pcm_buffer_pointer, SNDRV_PCM_POS_XRUN);
 }
@@ -1566,23 +1574,17 @@ static int amdtp_stream_start(struct amdtp_stream *s, int channel, int speed,
 	}
 
 	// initialize packet buffer.
-	max_ctx_payload_size = amdtp_stream_get_max_payload(s);
 	if (s->direction == AMDTP_IN_STREAM) {
 		dir = DMA_FROM_DEVICE;
 		type = FW_ISO_CONTEXT_RECEIVE;
-		if (!(s->flags & CIP_NO_HEADER)) {
-			max_ctx_payload_size -= 8;
+		if (!(s->flags & CIP_NO_HEADER))
 			ctx_header_size = IR_CTX_HEADER_SIZE_CIP;
-		} else {
+		else
 			ctx_header_size = IR_CTX_HEADER_SIZE_NO_CIP;
-		}
 	} else {
 		dir = DMA_TO_DEVICE;
 		type = FW_ISO_CONTEXT_TRANSMIT;
 		ctx_header_size = 0;	// No effect for IT context.
-
-		if (!(s->flags & CIP_NO_HEADER))
-			max_ctx_payload_size -= IT_PKT_HEADER_SIZE_CIP;
 	}
 	max_ctx_payload_size = amdtp_stream_get_max_ctx_payload_size(s);
 
@@ -1941,7 +1943,6 @@ int amdtp_domain_start(struct amdtp_domain *d, unsigned int tx_init_skip_cycles,
 	unsigned int events_per_period = d->events_per_period;
 	unsigned int queue_size;
 	struct amdtp_stream *s;
-	int cycle;
 	bool found = false;
 	int err;
 

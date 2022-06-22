@@ -2322,7 +2322,7 @@ static void ath11k_dp_rx_h_ppdu(struct ath11k *ar, struct hal_rx_desc *rx_desc,
 				struct ieee80211_rx_status *rx_status)
 {
 	u8 channel_num;
-	u32 center_freq;
+	u32 center_freq, meta_data;
 	struct ieee80211_channel *channel;
 
 	rx_status->freq = 0;

@@ -94,39 +94,6 @@
 			"Ext Spk", "SPK_RN",
 			"LINPUT2", "Mic Jack",
 			"LINPUT3", "Mic Jack",
-			"RINPUT1", "Mic Jack",
-			"RINPUT2", "Mic Jack";
-		status = "disabled";
-
-		simple-audio-card,cpu {
-			sound-dai = <&sai2>;
-			status = "disabled";
-		};
-
-		dailink_master: simple-audio-card,codec {
-			sound-dai = <&codec>;
-			clocks = <&clks IMX6UL_CLK_SAI2>;
-			status = "disabled";
-		};
-	};
-
-	sound-wm8960 {
-		compatible = "fsl,imx6ul-evk-wm8960",
-			   "fsl,imx-audio-wm8960";
-		model = "wm8960-audio";
-		audio-cpu = <&sai2>;
-		audio-codec = <&codec>;
-		audio-asrc = <&asrc>;
-		hp-det-gpio = <&gpio5 4 0>;
-		audio-routing =
-			"Headphone Jack", "HP_L",
-			"Headphone Jack", "HP_R",
-			"Ext Spk", "SPK_LP",
-			"Ext Spk", "SPK_LN",
-			"Ext Spk", "SPK_RP",
-			"Ext Spk", "SPK_RN",
-			"LINPUT2", "Mic Jack",
-			"LINPUT3", "Mic Jack",
 			"RINPUT1", "AMIC",
 			"RINPUT2", "AMIC",
 			"Mic Jack", "MICB",
@@ -138,7 +105,6 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_spi4>;
 		status = "okay";
-		pinctrl-assert-gpios = <&gpio5 8 GPIO_ACTIVE_LOW>;
 		gpio-sck = <&gpio5 11 0>;
 		gpio-mosi = <&gpio5 10 0>;
 		cs-gpios = <&gpio5 7 GPIO_ACTIVE_LOW>;
@@ -195,7 +161,7 @@
 		compatible = "ovti,ov5640";
 		reg = <0x3c>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_csi1>;
+		pinctrl-0 = <&pinctrl_csi1 &pinctrl_camera_clock>;
 		clocks = <&clks IMX6UL_CLK_CSI>;
 		clock-names = "csi_mclk";
 		pwn-gpios = <&gpio_spi 6 1>;
@@ -210,6 +176,7 @@
 			};
 		};
 	};
+
 };
 
 &fec1 {

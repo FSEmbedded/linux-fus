@@ -199,7 +199,7 @@ typedef enum _gceFEATURE
     gcvFEATURE_PRIMITIVE_RESTART,
     gcvFEATURE_TEXTURE_LINEAR,
     gcvFEATURE_TEXTURE_YUV_ASSEMBLER,
-    gcvFEATURE_LINEAR_RENDER_TARGET,
+    gcvFEATURE_BIT_PE_64BPP_LINEAR_FORMAT,
     gcvFEATURE_SHADER_HAS_ATOMIC,
     gcvFEATURE_SHADER_HAS_INSTRUCTION_CACHE,
     gcvFEATURE_SHADER_ENHANCEMENTS2,
@@ -699,6 +699,8 @@ typedef enum _gceFEATURE
     gcvFEATURE_IMGLD_WIDTH_LT16_FIX,
 
     gcFEATURE_BIT_IMGLD_COMP_COUNT_FIX,
+
+    gcvFEATURE_LINEAR_RENDER_TARGET,
     /* Insert features above this comment only. */
     gcvFEATURE_COUNT                /* Not a feature. */
 }
@@ -785,6 +787,7 @@ typedef enum _gceSURF_TYPE
     gcvSURF_DMABUF_EXPORTABLE       = 0x400000, /* master node can be exported as dma-buf fd */
     gcvSURF_CACHE_MODE_128          = 0x800000,
     gcvSURF_TILED                   = 0x1000000, /* force create tile buffer, as we will convert it to supertile according to related hardware feature by default */
+    gcvSURF_LINEAR_NO_ALIGNMENT     = 0x2000000, /* only for linear render target buffer */
 
     gcvSURF_TEXTURE_LINEAR               = gcvSURF_TEXTURE
                                          | gcvSURF_LINEAR,

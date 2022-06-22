@@ -56,21 +56,9 @@ static int vfio_fsl_mc_open_device(struct vfio_device *core_vdev)
 	return 0;
 }
 
-static void vfio_fsl_mc_regions_cleanup(struct vfio_fsl_mc_device *vdev)
-{
-	struct fsl_mc_device *mc_dev = vdev->mc_dev;
-	int i;
-
-	for (i = 0; i < mc_dev->obj_desc.region_count; i++)
-		iounmap(vdev->regions[i].ioaddr);
-	kfree(vdev->regions);
-}
-
-
 static int vfio_fsl_mc_reset_device(struct vfio_fsl_mc_device *vdev)
 {
 	struct fsl_mc_device *mc_dev = vdev->mc_dev;
-	u16 token;
 	int ret = 0;
 
 	if (is_fsl_mc_bus_dprc(vdev->mc_dev)) {
@@ -80,6 +68,7 @@ static int vfio_fsl_mc_reset_device(struct vfio_fsl_mc_device *vdev)
 					DPRC_RESET_OPTION_NON_RECURSIVE);
 	} else {
 		int err;
+		u16 token;
 
 		err = fsl_mc_obj_open(mc_dev->mc_io, 0, mc_dev->obj_desc.id,
 				      mc_dev->obj_desc.type,
@@ -94,7 +83,18 @@ static int vfio_fsl_mc_reset_device(struct vfio_fsl_mc_device *vdev)
 	return ret;
 }
 
-static void vfio_fsl_mc_release(void *device_data)
+static void vfio_fsl_mc_regions_cleanup(struct vfio_fsl_mc_device *vdev)
+{
+	struct fsl_mc_device *mc_dev = vdev->mc_dev;
+	int i;
+
+	for (i = 0; i < mc_dev->obj_desc.region_count; i++)
+		iounmap(vdev->regions[i].ioaddr);
+	kfree(vdev->regions);
+}
+
+
+static void vfio_fsl_mc_close_device(struct vfio_device *core_vdev)
 {
 	struct vfio_fsl_mc_device *vdev =
 		container_of(core_vdev, struct vfio_fsl_mc_device, vdev);
@@ -106,27 +106,13 @@ static void vfio_fsl_mc_release(void *device_data)
 	vfio_fsl_mc_regions_cleanup(vdev);
 
 	/* reset the device before cleaning up the interrupts */
-	ret = dprc_reset_container(mc_cont->mc_io, 0, mc_cont->mc_handle,
-				   mc_cont->obj_desc.id,
-				   DPRC_RESET_OPTION_NON_RECURSIVE);
+	ret = vfio_fsl_mc_reset_device(vdev);
 
 	if (WARN_ON(ret))
 		dev_warn(&mc_cont->dev,
 			 "VFIO_FLS_MC: reset device has failed (%d)\n", ret);
 
-		/* reset the device before cleaning up the interrupts */
-		ret = vfio_fsl_mc_reset_device(vdev);
-
-		if (ret) {
-			dev_warn(&mc_cont->dev, "VFIO_FLS_MC: reset device has failed (%d)\n",
-				 ret);
-			WARN_ON(1);
-		}
-
-		vfio_fsl_mc_irqs_cleanup(vdev);
-
-		fsl_mc_cleanup_irq_pool(mc_cont);
-	}
+	vfio_fsl_mc_irqs_cleanup(vdev);
 
 	fsl_mc_cleanup_irq_pool(mc_cont);
 }
@@ -243,18 +229,7 @@ static long vfio_fsl_mc_ioctl(struct vfio_device *core_vdev,
 	}
 	case VFIO_DEVICE_RESET:
 	{
-		int ret;
-		struct fsl_mc_device *mc_dev = vdev->mc_dev;
-
-		/* reset is supported only for the DPRC */
-		if (!is_fsl_mc_bus_dprc(mc_dev))
-			return -ENOTTY;
-
-		ret = dprc_reset_container(mc_dev->mc_io, 0,
-					   mc_dev->mc_handle,
-					   mc_dev->obj_desc.id,
-					   DPRC_RESET_OPTION_NON_RECURSIVE);
-		return ret;
+		return vfio_fsl_mc_reset_device(vdev);
 
 	}
 	default:
@@ -566,37 +541,36 @@ static int vfio_fsl_mc_probe(struct fsl_mc_device *mc_dev)
 	vdev->mc_dev = mc_dev;
 	mutex_init(&vdev->igate);
 
-	ret = vfio_fsl_mc_reflck_attach(vdev);
+	if (is_fsl_mc_bus_dprc(mc_dev))
+		ret = vfio_assign_device_set(&vdev->vdev, &mc_dev->dev);
+	else
+		ret = vfio_assign_device_set(&vdev->vdev, mc_dev->dev.parent);
 	if (ret)
-		goto out_group_put;
+		goto out_uninit;
 
 	ret = vfio_fsl_mc_init_device(vdev);
 	if (ret)
 		goto out_uninit;
 
-	ret = vfio_add_group_dev(dev, &vfio_fsl_mc_ops, vdev);
+	ret = vfio_register_group_dev(&vdev->vdev);
 	if (ret) {
 		dev_err(dev, "VFIO_FSL_MC: Failed to add to vfio group\n");
 		goto out_device;
 	}
 
-	/*
-	 * This triggers recursion into vfio_fsl_mc_probe() on another device
-	 * and the vfio_fsl_mc_reflck_attach() must succeed, which relies on the
-	 * vfio_add_group_dev() above. It has no impact on this vdev, so it is
-	 * safe to be after the vfio device is made live.
-	 */
 	ret = vfio_fsl_mc_scan_container(mc_dev);
 	if (ret)
 		goto out_group_dev;
+	dev_set_drvdata(dev, vdev);
 	return 0;
 
 out_group_dev:
-	vfio_del_group_dev(dev);
+	vfio_unregister_group_dev(&vdev->vdev);
 out_device:
 	vfio_fsl_uninit_device(vdev);
-out_reflck:
-	vfio_fsl_mc_reflck_put(vdev->reflck);
+out_uninit:
+	vfio_uninit_group_dev(&vdev->vdev);
+	kfree(vdev);
 out_group_put:
 	vfio_iommu_group_put(group, dev);
 	return ret;
@@ -612,8 +586,9 @@ static int vfio_fsl_mc_remove(struct fsl_mc_device *mc_dev)
 
 	dprc_remove_devices(mc_dev, NULL, 0);
 	vfio_fsl_uninit_device(vdev);
-	vfio_fsl_mc_reflck_put(vdev->reflck);
 
+	vfio_uninit_group_dev(&vdev->vdev);
+	kfree(vdev);
 	vfio_iommu_group_put(mc_dev->dev.iommu_group, dev);
 
 	return 0;

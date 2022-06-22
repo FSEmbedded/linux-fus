@@ -656,13 +656,6 @@ static void __hrtimer_reprogram(struct hrtimer_cpu_base *cpu_base,
 				struct hrtimer *next_timer,
 				ktime_t expires_next)
 {
-	ktime_t expires_next;
-
-	expires_next = hrtimer_update_next_event(cpu_base);
-
-	if (skip_equal && expires_next == cpu_base->expires_next)
-		return;
-
 	cpu_base->expires_next = expires_next;
 
 	/*
@@ -757,6 +750,27 @@ static void hrtimer_switch_to_hres(void)
 }
 
 #else
+
+static inline int hrtimer_is_hres_enabled(void) { return 0; }
+static inline void hrtimer_switch_to_hres(void) { }
+
+#endif /* CONFIG_HIGH_RES_TIMERS */
+/*
+ * Retrigger next event is called after clock was set with interrupts
+ * disabled through an SMP function call or directly from low level
+ * resume code.
+ *
+ * This is only invoked when:
+ *	- CONFIG_HIGH_RES_TIMERS is enabled.
+ *	- CONFIG_NOHZ_COMMON is enabled
+ *
+ * For the other cases this function is empty and because the call sites
+ * are optimized out it vanishes as well, i.e. no need for lots of
+ * #ifdeffery.
+ */
+static void retrigger_next_event(void *arg)
+{
+	struct hrtimer_cpu_base *base = this_cpu_ptr(&hrtimer_bases);
 
 	/*
 	 * When high resolution mode or nohz is active, then the offsets of
@@ -968,19 +982,10 @@ out_timerfd:
 
 static void clock_was_set_work(struct work_struct *work)
 {
-	clock_was_set();
+	clock_was_set(CLOCK_SET_WALL);
 }
 
 static DECLARE_WORK(hrtimer_work, clock_was_set_work);
-
-/*
- * Called from timekeeping and resume code to reprogram the hrtimer
- * interrupt device on all cpus and to notify timerfd.
- */
-void clock_was_set_delayed(void)
-{
-	schedule_work(&hrtimer_work);
-}
 
 /*
  * Called from timekeeping code to reprogram the hrtimer interrupt device

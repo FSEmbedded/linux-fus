@@ -9,14 +9,14 @@
 #include <asm/errno.h>
 #include <asm/sigp.h>
 
-	.section .dma.text,"ax"
+	.section .amode31.text,"ax"
 /*
  * Simplified version of expoline thunk. The normal thunks can not be used here,
  * because they might be more than 2 GB away, and not reachable by the relative
  * branch. No comdat, exrl, etc. optimizations used here, because it only
  * affects a few functions that are not performance-relevant.
  */
-	.macro BR_EX_DMA_r14
+	.macro BR_EX_AMODE31_r14
 	larl	%r1,0f
 	ex	0,0(%r1)
 	j	.

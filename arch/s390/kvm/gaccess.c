@@ -990,6 +990,7 @@ int kvm_s390_check_low_addr_prot_real(struct kvm_vcpu *vcpu, unsigned long gra)
  * @pgt: pointer to the beginning of the page table for the given address if
  *	 successful (return value 0), or to the first invalid DAT entry in
  *	 case of exceptions (return value > 0)
+ * @dat_protection: referenced memory is write protected
  * @fake: pgt references contiguous guest memory block, not a pgtable
  */
 static int kvm_s390_shadow_tables(struct gmap *sg, unsigned long saddr,

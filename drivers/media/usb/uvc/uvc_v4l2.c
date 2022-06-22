@@ -261,9 +261,9 @@ static int uvc_v4l2_try_format(struct uvc_streaming *stream,
 	}
 
 	if (i == stream->nformats)
-		uvc_trace(UVC_TRACE_FORMAT,
-			  "Unknown bFormatIndex %u, using default\n",
-			  probe->bFormatIndex);
+		uvc_dbg(stream->dev, FORMAT,
+			"Unknown bFormatIndex %u, using default\n",
+			probe->bFormatIndex);
 
 	for (i = 0; i < format->nframes; ++i) {
 		if (probe->bFrameIndex == format->frame[i].bFrameIndex) {
@@ -273,9 +273,9 @@ static int uvc_v4l2_try_format(struct uvc_streaming *stream,
 	}
 
 	if (i == format->nframes)
-		uvc_trace(UVC_TRACE_FORMAT,
-			  "Unknown bFrameIndex %u, using default\n",
-			  probe->bFrameIndex);
+		uvc_dbg(stream->dev, FORMAT,
+			"Unknown bFrameIndex %u, using default\n",
+			probe->bFrameIndex);
 
 	fmt->fmt.pix.width = frame->wWidth;
 	fmt->fmt.pix.height = frame->wHeight;

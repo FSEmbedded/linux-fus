@@ -117,13 +117,6 @@ static int alloc_cqc(struct hns_roce_dev *hr_dev, struct hns_roce_cq *hr_cq)
 		return -EINVAL;
 	}
 
-	cq_table = &hr_dev->cq_table;
-	ret = hns_roce_bitmap_alloc(&cq_table->bitmap, &hr_cq->cqn);
-	if (ret) {
-		ibdev_err(ibdev, "failed to alloc CQ bitmap, ret = %d.\n", ret);
-		return ret;
-	}
-
 	/* Get CQC memory HEM(Hardware Entry Memory) table */
 	ret = hns_roce_table_get(hr_dev, &cq_table->table, hr_cq->cqn);
 	if (ret) {
@@ -215,7 +208,7 @@ static int alloc_cq_buf(struct hns_roce_dev *hr_dev, struct hns_roce_cq *hr_cq,
 	buf_attr.region_count = 1;
 
 	ret = hns_roce_mtr_create(hr_dev, &hr_cq->mtr, &buf_attr,
-				  hr_dev->caps.cqe_ba_pg_sz + HNS_HW_PAGE_SHIFT,
+				  hr_dev->caps.cqe_ba_pg_sz + PAGE_SHIFT,
 				  udata, addr);
 	if (ret)
 		ibdev_err(ibdev, "failed to alloc CQ mtr, ret = %d.\n", ret);
@@ -308,17 +301,19 @@ static int get_cq_ucmd(struct hns_roce_cq *hr_cq, struct ib_udata *udata,
 	struct ib_device *ibdev = hr_cq->ib_cq.device;
 	int ret;
 
-	if (cq_entries < 1 || cq_entries > hr_dev->caps.max_cqes) {
-		ibdev_err(ibdev, "failed to check CQ count %u, max = %u.\n",
-			  cq_entries, hr_dev->caps.max_cqes);
-		return -EINVAL;
+	ret = ib_copy_from_udata(ucmd, udata, min(udata->inlen, sizeof(*ucmd)));
+	if (ret) {
+		ibdev_err(ibdev, "failed to copy CQ udata, ret = %d.\n", ret);
+		return ret;
 	}
 
-	if (vector >= hr_dev->caps.num_comp_vectors) {
-		ibdev_err(ibdev, "failed to check CQ vector = %d, max = %d.\n",
-			  vector, hr_dev->caps.num_comp_vectors);
-		return -EINVAL;
-	}
+	return 0;
+}
+
+static void set_cq_param(struct hns_roce_cq *hr_cq, u32 cq_entries, int vector,
+			 struct hns_roce_ib_create_cq *ucmd)
+{
+	struct hns_roce_dev *hr_dev = to_hr_dev(hr_cq->ib_cq.device);
 
 	cq_entries = max(cq_entries, hr_dev->caps.min_cqes);
 	cq_entries = roundup_pow_of_two(cq_entries);
@@ -375,11 +370,8 @@ int hns_roce_create_cq(struct ib_cq *ib_cq, const struct ib_cq_init_attr *attr,
 		return ret;
 
 	if (udata) {
-		ret = ib_copy_from_udata(&ucmd, udata,
-					 min(udata->inlen, sizeof(ucmd)));
-		if (ret) {
-			ibdev_err(ibdev, "failed to copy CQ udata, ret = %d.\n",
-				  ret);
+		ret = get_cq_ucmd(hr_cq, udata, &ucmd);
+		if (ret)
 			return ret;
 	}
 
@@ -403,8 +395,7 @@ int hns_roce_create_cq(struct ib_cq *ib_cq, const struct ib_cq_init_attr *attr,
 
 	ret = alloc_cqn(hr_dev, hr_cq);
 	if (ret) {
-		ibdev_err(ibdev,
-			  "failed to alloc CQ context, ret = %d.\n", ret);
+		ibdev_err(ibdev, "failed to alloc CQN, ret = %d.\n", ret);
 		goto err_cq_db;
 	}
 

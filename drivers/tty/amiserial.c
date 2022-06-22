@@ -942,9 +942,8 @@ static int set_serial_info(struct tty_struct *tty, struct serial_struct *ss)
 
 	if (!capable(CAP_SYS_ADMIN)) {
 		if ((ss->baud_base != state->baud_base) ||
-		    (ss->close_delay != port->close_delay) ||
-		    (ss->closing_wait != port->closing_wait) ||
-		    (ss->xmit_fifo_size != state->xmit_fifo_size) ||
+		    (close_delay != port->close_delay) ||
+		    (closing_wait != port->closing_wait) ||
 		    ((ss->flags & ~ASYNC_USR_MASK) !=
 		     (port->flags & ~ASYNC_USR_MASK))) {
 			tty_unlock(tty);

@@ -71,6 +71,13 @@ struct memory_block {
 	int online_type;		/* for passing data to online routine */
 	int nid;			/* NID for this memory block */
 	struct device dev;
+	/*
+	 * Number of vmemmap pages. These pages
+	 * lay at the beginning of the memory block.
+	 */
+	unsigned long nr_vmemmap_pages;
+	struct memory_group *group;	/* group (if any) for this block */
+	struct list_head group_next;	/* next block inside memory group */
 };
 
 int arch_get_memory_phys_device(unsigned long start_pfn);

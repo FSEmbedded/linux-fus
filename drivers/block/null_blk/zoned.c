@@ -6,7 +6,10 @@
 #define CREATE_TRACE_POINTS
 #include "trace.h"
 
-#define MB_TO_SECTS(mb) (((sector_t)mb * SZ_1M) >> SECTOR_SHIFT)
+static inline sector_t mb_to_sects(unsigned long mb)
+{
+	return ((sector_t)mb * SZ_1M) >> SECTOR_SHIFT;
+}
 
 static inline unsigned int null_zone_no(struct nullb_device *dev, sector_t sect)
 {
@@ -55,6 +58,7 @@ static inline void null_unlock_zone(struct nullb_device *dev,
 int null_init_zoned_dev(struct nullb_device *dev, struct request_queue *q)
 {
 	sector_t dev_capacity_sects, zone_capacity_sects;
+	struct nullb_zone *zone;
 	sector_t sector = 0;
 	unsigned int i;
 
@@ -76,15 +80,14 @@ int null_init_zoned_dev(struct nullb_device *dev, struct request_queue *q)
 		return -EINVAL;
 	}
 
-	zone_capacity_sects = MB_TO_SECTS(dev->zone_capacity);
-	dev_capacity_sects = MB_TO_SECTS(dev->size);
-	dev->zone_size_sects = MB_TO_SECTS(dev->zone_size);
-	dev->nr_zones = dev_capacity_sects >> ilog2(dev->zone_size_sects);
-	if (dev_capacity_sects & (dev->zone_size_sects - 1))
-		dev->nr_zones++;
+	zone_capacity_sects = mb_to_sects(dev->zone_capacity);
+	dev_capacity_sects = mb_to_sects(dev->size);
+	dev->zone_size_sects = mb_to_sects(dev->zone_size);
+	dev->nr_zones = round_up(dev_capacity_sects, dev->zone_size_sects)
+		>> ilog2(dev->zone_size_sects);
 
-	dev->zones = kvmalloc_array(dev->nr_zones, sizeof(struct blk_zone),
-			GFP_KERNEL | __GFP_ZERO);
+	dev->zones = kvmalloc_array(dev->nr_zones, sizeof(struct nullb_zone),
+				    GFP_KERNEL | __GFP_ZERO);
 	if (!dev->zones)
 		return -ENOMEM;
 
@@ -178,21 +181,6 @@ void null_free_zoned_dev(struct nullb_device *dev)
 {
 	kvfree(dev->zones);
 	dev->zones = NULL;
-}
-
-static inline void null_lock_zone(struct nullb_device *dev, unsigned int zno)
-{
-	if (dev->memory_backed)
-		wait_on_bit_lock_io(dev->zone_locks, zno, TASK_UNINTERRUPTIBLE);
-	spin_lock_irq(&dev->zone_lock);
-}
-
-static inline void null_unlock_zone(struct nullb_device *dev, unsigned int zno)
-{
-	spin_unlock_irq(&dev->zone_lock);
-
-	if (dev->memory_backed)
-		clear_and_wake_up_bit(zno, dev->zone_locks);
 }
 
 int null_report_zones(struct gendisk *disk, sector_t sector,

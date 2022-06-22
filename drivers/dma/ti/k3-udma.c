@@ -4784,18 +4784,11 @@ static int pktdma_setup_resources(struct udma_dev *ud)
 	u32 cap3;
 
 	/* Set up the throughput level start indexes */
-	if (of_device_is_compatible(dev->of_node,
-				    "ti,am654-navss-main-udmap")) {
-		ud->tpl_levels = 2;
-		ud->tpl_start_idx[0] = 8;
-	} else if (of_device_is_compatible(dev->of_node,
-					   "ti,am654-navss-mcu-udmap")) {
-		ud->tpl_levels = 2;
-		ud->tpl_start_idx[0] = 2;
-	} else if (UDMA_CAP3_UCHAN_CNT(cap3)) {
-		ud->tpl_levels = 3;
-		ud->tpl_start_idx[1] = UDMA_CAP3_UCHAN_CNT(cap3);
-		ud->tpl_start_idx[0] = UDMA_CAP3_HCHAN_CNT(cap3);
+	cap3 = udma_read(ud->mmrs[MMR_GCFG], 0x2c);
+	if (UDMA_CAP3_UCHAN_CNT(cap3)) {
+		ud->tchan_tpl.levels = 3;
+		ud->tchan_tpl.start_idx[1] = UDMA_CAP3_UCHAN_CNT(cap3);
+		ud->tchan_tpl.start_idx[0] = UDMA_CAP3_HCHAN_CNT(cap3);
 	} else if (UDMA_CAP3_HCHAN_CNT(cap3)) {
 		ud->tchan_tpl.levels = 2;
 		ud->tchan_tpl.start_idx[0] = UDMA_CAP3_HCHAN_CNT(cap3);

@@ -479,22 +479,17 @@ int cdns_drd_exit(struct cdns *cdns)
 	return 0;
 }
 
+
 /* Indicate the cdns3 core was power lost before */
-bool cdns3_power_is_lost(struct cdns3 *cdns)
+bool cdns_power_is_lost(struct cdns *cdns)
 {
-	int ret = false;
-
-	if (cdns->version == CDNS3_CONTROLLER_V1) {
-		if (!(readl(&cdns->otg_v1_regs->simulate) & BIT(0))) {
-			writel(BIT(0), &cdns->otg_v1_regs->simulate);
-			ret = true;
-		}
+	if (cdns->version == CDNS3_CONTROLLER_V0) {
+		if (!(readl(&cdns->otg_v0_regs->simulate) & BIT(0)))
+			return true;
 	} else {
-		if (!(readl(&cdns->otg_v0_regs->simulate) & BIT(0))) {
-			writel(BIT(0), &cdns->otg_v0_regs->simulate);
-			ret = true;
-		}
+		if (!(readl(&cdns->otg_v1_regs->simulate) & BIT(0)))
+			return true;
 	}
-
-	return ret;
+	return false;
 }
+EXPORT_SYMBOL_GPL(cdns_power_is_lost);

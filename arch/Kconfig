@@ -124,8 +124,8 @@ config HAVE_64BIT_ALIGNED_ACCESS
 	  accesses are required to be 64 bit aligned in this way even
 	  though it is not a 64 bit architecture.
 
-	  See Documentation/unaligned-memory-access.txt for more
-	  information on the topic of unaligned memory accesses.
+	  See Documentation/core-api/unaligned-memory-access.rst for
+	  more information on the topic of unaligned memory accesses.
 
 config HAVE_EFFICIENT_UNALIGNED_ACCESS
 	bool
@@ -1273,11 +1273,23 @@ config ARCH_WANT_LD_ORPHAN_WARN
 	  by the linker, since the locations of such sections can change between linker
 	  versions.
 
+config HAVE_ARCH_PFN_VALID
+	bool
+
+config ARCH_SUPPORTS_DEBUG_PAGEALLOC
+	bool
+
 config ARCH_SPLIT_ARG64
 	bool
 	help
 	   If a 32-bit architecture requires 64-bit arguments to be split into
 	   pairs of 32-bit arguments, select this option.
+
+config ARCH_HAS_ELFCORE_COMPAT
+	bool
+
+config ARCH_HAS_PARANOID_L1D_FLUSH
+	bool
 
 source "kernel/gcov/Kconfig"
 

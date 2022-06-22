@@ -14,67 +14,6 @@
 #include <linux/platform_device.h>
 #include <linux/amba/bus.h>
 
-/* Register definitions */
-#define PL353_SMC_MEMC_STATUS_OFFS	0	/* Controller status reg, RO */
-#define PL353_SMC_CFG_CLR_OFFS		0xC	/* Clear config reg, WO */
-#define PL353_SMC_DIRECT_CMD_OFFS	0x10	/* Direct command reg, WO */
-#define PL353_SMC_SET_CYCLES_OFFS	0x14	/* Set cycles register, WO */
-#define PL353_SMC_SET_OPMODE_OFFS	0x18	/* Set opmode register, WO */
-#define PL353_SMC_ECC_STATUS_OFFS	0x400	/* ECC status register */
-#define PL353_SMC_ECC_MEMCFG_OFFS	0x404	/* ECC mem config reg */
-#define PL353_SMC_ECC_MEMCMD1_OFFS	0x408	/* ECC mem cmd1 reg */
-#define PL353_SMC_ECC_MEMCMD2_OFFS	0x40C	/* ECC mem cmd2 reg */
-#define PL353_SMC_ECC_VALUE0_OFFS	0x418	/* ECC value 0 reg */
-
-/* Controller status register specific constants */
-#define PL353_SMC_MEMC_STATUS_RAW_INT_1_SHIFT	6
-
-/* Clear configuration register specific constants */
-#define PL353_SMC_CFG_CLR_INT_CLR_1	0x10
-#define PL353_SMC_CFG_CLR_ECC_INT_DIS_1	0x40
-#define PL353_SMC_CFG_CLR_INT_DIS_1	0x2
-#define PL353_SMC_CFG_CLR_DEFAULT_MASK	(PL353_SMC_CFG_CLR_INT_CLR_1 | \
-					 PL353_SMC_CFG_CLR_ECC_INT_DIS_1 | \
-					 PL353_SMC_CFG_CLR_INT_DIS_1)
-
-/* Set cycles register specific constants */
-#define PL353_SMC_SET_CYCLES_T0_MASK	0xF
-#define PL353_SMC_SET_CYCLES_T0_SHIFT	0
-#define PL353_SMC_SET_CYCLES_T1_MASK	0xF
-#define PL353_SMC_SET_CYCLES_T1_SHIFT	4
-#define PL353_SMC_SET_CYCLES_T2_MASK	0x7
-#define PL353_SMC_SET_CYCLES_T2_SHIFT	8
-#define PL353_SMC_SET_CYCLES_T3_MASK	0x7
-#define PL353_SMC_SET_CYCLES_T3_SHIFT	11
-#define PL353_SMC_SET_CYCLES_T4_MASK	0x7
-#define PL353_SMC_SET_CYCLES_T4_SHIFT	14
-#define PL353_SMC_SET_CYCLES_T5_MASK	0x7
-#define PL353_SMC_SET_CYCLES_T5_SHIFT	17
-#define PL353_SMC_SET_CYCLES_T6_MASK	0xF
-#define PL353_SMC_SET_CYCLES_T6_SHIFT	20
-
-/* ECC status register specific constants */
-#define PL353_SMC_ECC_STATUS_BUSY	BIT(6)
-#define PL353_SMC_ECC_REG_SIZE_OFFS	4
-
-/* ECC memory config register specific constants */
-#define PL353_SMC_ECC_MEMCFG_MODE_MASK	0xC
-#define PL353_SMC_ECC_MEMCFG_MODE_SHIFT	2
-#define PL353_SMC_ECC_MEMCFG_PGSIZE_MASK	0x3
-
-#define PL353_SMC_DC_UPT_NAND_REGS	((4 << 23) |	/* CS: NAND chip */ \
-				 (2 << 21))	/* UpdateRegs operation */
-
-#define PL353_NAND_ECC_CMD1	((0x80)       |	/* Write command */ \
-				 (0 << 8)     |	/* Read command */ \
-				 (0x30 << 16) |	/* Read End command */ \
-				 (1 << 24))	/* Read End command calid */
-
-#define PL353_NAND_ECC_CMD2	((0x85)	      |	/* Write col change cmd */ \
-				 (5 << 8)     |	/* Read col change cmd */ \
-				 (0xE0 << 16) |	/* Read col change end cmd */ \
-				 (1 << 24)) /* Read col change end cmd valid */
-#define PL353_NAND_ECC_BUSY_TIMEOUT	(1 * HZ)
 /**
  * struct pl353_smc_data - Private smc driver structure
  * @memclk:		Pointer to the peripheral clock

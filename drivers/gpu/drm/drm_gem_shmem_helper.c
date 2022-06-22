@@ -358,7 +358,7 @@ static void drm_gem_shmem_vunmap_locked(struct drm_gem_shmem_object *shmem,
 		return;
 
 	if (obj->import_attach) {
-		dma_buf_vunmap(obj->import_attach->dmabuf, shmem->vaddr);
+		dma_buf_vunmap(obj->import_attach->dmabuf, map);
 	} else {
 		vunmap(shmem->vaddr);
 		drm_gem_shmem_put_pages(shmem);

@@ -8,8 +8,7 @@
 //
 // Based on code from Freescale:
 //
-// Copyright 2004-2016 Freescale Semiconductor, Inc. All Rights Reserved.
-// Copyright 2018 NXP.
+// Copyright 2004-2009 Freescale Semiconductor, Inc. All Rights Reserved.
 
 #include <linux/init.h>
 #include <linux/iopoll.h>
@@ -188,6 +187,67 @@
 #define SDMA_DMA_DIRECTIONS	(BIT(DMA_DEV_TO_MEM) | \
 				 BIT(DMA_MEM_TO_DEV) | \
 				 BIT(DMA_DEV_TO_DEV))
+
+/**
+ * struct sdma_script_start_addrs - SDMA script start pointers
+ *
+ * start addresses of the different functions in the physical
+ * address space of the SDMA engine.
+ */
+struct sdma_script_start_addrs {
+	s32 ap_2_ap_addr;
+	s32 ap_2_bp_addr;
+	s32 ap_2_ap_fixed_addr;
+	s32 bp_2_ap_addr;
+	s32 loopback_on_dsp_side_addr;
+	s32 mcu_interrupt_only_addr;
+	s32 firi_2_per_addr;
+	s32 firi_2_mcu_addr;
+	s32 per_2_firi_addr;
+	s32 mcu_2_firi_addr;
+	s32 uart_2_per_addr;
+	s32 uart_2_mcu_ram_addr;
+	s32 per_2_app_addr;
+	s32 mcu_2_app_addr;
+	s32 per_2_per_addr;
+	s32 uartsh_2_per_addr;
+	s32 uartsh_2_mcu_ram_addr;
+	s32 per_2_shp_addr;
+	s32 mcu_2_shp_addr;
+	s32 ata_2_mcu_addr;
+	s32 mcu_2_ata_addr;
+	s32 app_2_per_addr;
+	s32 app_2_mcu_addr;
+	s32 shp_2_per_addr;
+	s32 shp_2_mcu_addr;
+	s32 mshc_2_mcu_addr;
+	s32 mcu_2_mshc_addr;
+	s32 spdif_2_mcu_addr;
+	s32 mcu_2_spdif_addr;
+	s32 asrc_2_mcu_addr;
+	s32 ext_mem_2_ipu_addr;
+	s32 descrambler_addr;
+	s32 dptc_dvfs_addr;
+	s32 utra_addr;
+	s32 ram_code_start_addr;
+	/* End of v1 array */
+	s32 mcu_2_ssish_addr;
+	s32 ssish_2_mcu_addr;
+	s32 hdmi_dma_addr;
+	/* End of v2 array */
+	s32 zcanfd_2_mcu_addr;
+	s32 zqspi_2_mcu_addr;
+	s32 mcu_2_ecspi_addr;
+	s32 mcu_2_sai_addr;
+	s32 sai_2_mcu_addr;
+	s32 uart_2_mcu_addr;
+	s32 uartsh_2_mcu_addr;
+	s32 i2c_2_mcu_addr;
+	s32 mcu_2_i2c_addr;
+	/* End of v3 array */
+	s32 mcu_2_zqspi_addr;
+	/* End of v4 array */
+};
 
 #define SDMA_WATERMARK_LEVEL_FIFOS_OFF	12
 #define SDMA_WATERMARK_LEVEL_FIFO_OFF_OFF 16
@@ -450,8 +510,8 @@ struct sdma_driver_data {
 	bool check_ratio;
 	/*
 	 * ecspi ERR009165 fixed should be done in sdma script
-	 * and it be fixed in soc from i.mx6ul.
-	 * please get more information from below link:
+	 * and it has been fixed in soc from i.mx6ul.
+	 * please get more information from the below link:
 	 * https://www.nxp.com/docs/en/errata/IMX6DQCE.pdf
 	 */
 	bool ecspi_fixed;
@@ -485,8 +545,8 @@ struct sdma_engine {
 	struct sdma_buffer_descriptor	*bd0;
 	/* clock ratio for AHB:SDMA core. 1:1 is 1, 2:1 is 0*/
 	bool				clk_ratio;
+	bool                            fw_loaded;
 	struct gen_pool			*iram_pool;
-	bool				fw_loaded;
 	u32				fw_fail;
 	u8				*fw_data;
 	unsigned short			ram_code_start;
@@ -586,28 +646,16 @@ static struct sdma_driver_data sdma_imx6q = {
 	.script_addrs = &sdma_script_imx6q,
 };
 
-static struct sdma_script_start_addrs sdma_script_imx6sx = {
-	.ap_2_ap_addr = 642,
-	.uart_2_mcu_addr = 817,
-	.mcu_2_app_addr = 747,
-	.uartsh_2_mcu_addr = 1032,
-	.mcu_2_shp_addr = 960,
-	.app_2_mcu_addr = 683,
-	.shp_2_mcu_addr = 891,
-	.spdif_2_mcu_addr = 1100,
-	.mcu_2_spdif_addr = 1134,
-};
-
 static struct sdma_driver_data sdma_imx6sx = {
 	.chnenbl0 = SDMA_CHNENBL0_IMX35,
 	.num_events = 48,
-	.script_addrs = &sdma_script_imx6sx,
+	.script_addrs = &sdma_script_imx6q,
 };
 
 static struct sdma_driver_data sdma_imx6ul = {
 	.chnenbl0 = SDMA_CHNENBL0_IMX35,
 	.num_events = 48,
-	.script_addrs = &sdma_script_imx6sx,
+	.script_addrs = &sdma_script_imx6q,
 	.ecspi_fixed = true,
 };
 
@@ -646,46 +694,6 @@ static struct sdma_driver_data sdma_imx8mp = {
 	.pm_runtime = true,
 };
 
-static const struct platform_device_id sdma_devtypes[] = {
-	{
-		.name = "imx25-sdma",
-		.driver_data = (unsigned long)&sdma_imx25,
-	}, {
-		.name = "imx31-sdma",
-		.driver_data = (unsigned long)&sdma_imx31,
-	}, {
-		.name = "imx35-sdma",
-		.driver_data = (unsigned long)&sdma_imx35,
-	}, {
-		.name = "imx51-sdma",
-		.driver_data = (unsigned long)&sdma_imx51,
-	}, {
-		.name = "imx53-sdma",
-		.driver_data = (unsigned long)&sdma_imx53,
-	}, {
-		.name = "imx6q-sdma",
-		.driver_data = (unsigned long)&sdma_imx6q,
-	}, {
-		.name = "imx6sx-sdma",
-		.driver_data = (unsigned long)&sdma_imx6sx,
-	}, {
-		.name = "imx7d-sdma",
-		.driver_data = (unsigned long)&sdma_imx7d,
-	}, {
-		.name = "imx6ul-sdma",
-		.driver_data = (unsigned long)&sdma_imx6ul,
-	}, {
-		.name = "imx8mq-sdma",
-		.driver_data = (unsigned long)&sdma_imx8mq,
-	}, {
-		.name = "imx8mp-sdma",
-		.driver_data = (unsigned long)&sdma_imx8mp,
-	}, {
-		/* sentinel */
-	}
-};
-MODULE_DEVICE_TABLE(platform, sdma_devtypes);
-
 static const struct of_device_id sdma_dt_ids[] = {
 	{ .compatible = "fsl,imx6q-sdma", .data = &sdma_imx6q, },
 	{ .compatible = "fsl,imx53-sdma", .data = &sdma_imx53, },
@@ -693,8 +701,8 @@ static const struct of_device_id sdma_dt_ids[] = {
 	{ .compatible = "fsl,imx35-sdma", .data = &sdma_imx35, },
 	{ .compatible = "fsl,imx31-sdma", .data = &sdma_imx31, },
 	{ .compatible = "fsl,imx25-sdma", .data = &sdma_imx25, },
-	{ .compatible = "fsl,imx6sx-sdma", .data = &sdma_imx6sx, },
 	{ .compatible = "fsl,imx7d-sdma", .data = &sdma_imx7d, },
+	{ .compatible = "fsl,imx6sx-sdma", .data = &sdma_imx6sx, },
 	{ .compatible = "fsl,imx6ul-sdma", .data = &sdma_imx6ul, },
 	{ .compatible = "fsl,imx8mq-sdma", .data = &sdma_imx8mq, },
 	{ .compatible = "fsl,imx8mp-sdma", .data = &sdma_imx8mp, },
@@ -706,6 +714,30 @@ MODULE_DEVICE_TABLE(of, sdma_dt_ids);
 #define SDMA_H_CONFIG_RTD_PINS	BIT(11) /* indicates if Real-Time Debug pins are enabled */
 #define SDMA_H_CONFIG_ACR	BIT(4)  /* indicates if AHB freq /core freq = 2 or 1 */
 #define SDMA_H_CONFIG_CSM	(3)       /* indicates which context switch mode is selected*/
+
+static void sdma_pm_clk_enable(struct sdma_engine *sdma, bool direct, bool enable)
+{
+	if (enable) {
+		if (sdma->drvdata->pm_runtime)
+			pm_runtime_get_sync(sdma->dev);
+		else {
+			clk_enable(sdma->clk_ipg);
+			clk_enable(sdma->clk_ahb);
+		}
+	} else {
+		if (sdma->drvdata->pm_runtime) {
+			if (direct) {
+				pm_runtime_put_sync_suspend(sdma->dev);
+			} else {
+				pm_runtime_mark_last_busy(sdma->dev);
+				pm_runtime_put_autosuspend(sdma->dev);
+			}
+		} else {
+			clk_disable(sdma->clk_ipg);
+			clk_disable(sdma->clk_ahb);
+		}
+	}
+}
 
 static inline u32 chnenbl_ofs(struct sdma_engine *sdma, unsigned int event)
 {
@@ -1036,13 +1068,7 @@ static irqreturn_t sdma_int_handler(int irq, void *dev_id)
 	struct sdma_engine *sdma = dev_id;
 	unsigned long stat;
 
-	if (sdma->drvdata->pm_runtime)
-		pm_runtime_get_sync(sdma->dev);
-	else {
-		clk_enable(sdma->clk_ipg);
-		clk_enable(sdma->clk_ahb);
-	}
-
+	sdma_pm_clk_enable(sdma, false, true);
 	stat = readl_relaxed(sdma->regs + SDMA_H_INTR);
 	writel_relaxed(stat, sdma->regs + SDMA_H_INTR);
 	/* channel 0 is special and not handled here, see run_channel0() */
@@ -1072,13 +1098,7 @@ static irqreturn_t sdma_int_handler(int irq, void *dev_id)
 		__clear_bit(channel, &stat);
 	}
 
-	if (sdma->drvdata->pm_runtime) {
-		pm_runtime_mark_last_busy(sdma->dev);
-		pm_runtime_put_autosuspend(sdma->dev);
-	} else {
-		clk_disable(sdma->clk_ipg);
-		clk_disable(sdma->clk_ahb);
-	}
+	sdma_pm_clk_enable(sdma, false, false);
 
 	return IRQ_HANDLED;
 }
@@ -1129,8 +1149,15 @@ static void sdma_get_pc(struct sdma_channel *sdmac,
 		break;
 	case IMX_DMATYPE_CSPI:
 		per_2_emi = sdma->script_addrs->app_2_mcu_addr;
-		emi_2_per = sdma->script_addrs->mcu_2_ecspi_addr;
-		sdmac->is_ram_script = true;
+
+		/* Use rom script mcu_2_app if ERR009165 fixed */
+		if (sdmac->sdma->drvdata->ecspi_fixed) {
+			emi_2_per = sdma->script_addrs->mcu_2_app_addr;
+		} else {
+			emi_2_per = sdma->script_addrs->mcu_2_ecspi_addr;
+			sdmac->is_ram_script = true;
+		}
+
 		break;
 	case IMX_DMATYPE_EXT:
 	case IMX_DMATYPE_SSI:
@@ -1162,7 +1189,6 @@ static void sdma_get_pc(struct sdma_channel *sdmac,
 		per_2_emi = sdma->script_addrs->shp_2_mcu_addr;
 		emi_2_per = sdma->script_addrs->mcu_2_shp_addr;
 		per_2_per = sdma->script_addrs->per_2_per_addr;
-		sdmac->is_ram_script = true;
 		break;
 	case IMX_DMATYPE_MSHC:
 		per_2_emi = sdma->script_addrs->mshc_2_mcu_addr;
@@ -1199,6 +1225,13 @@ static void sdma_get_pc(struct sdma_channel *sdmac,
 	sdmac->pc_to_device = emi_2_per;
 	sdmac->device_to_device = per_2_per;
 	sdmac->pc_to_pc = emi_2_emi;
+
+	if (sdma->ram_code_start &&
+	   ((sdmac->pc_from_device >= sdma->ram_code_start) ||
+	   (sdmac->pc_to_device >= sdma->ram_code_start) ||
+	   (sdmac->device_to_device >= sdma->ram_code_start ||
+	   (sdmac->pc_to_pc >= sdma->ram_code_start))))
+		sdmac->is_ram_script = true;
 }
 
 static int sdma_load_context(struct sdma_channel *sdmac)
@@ -1322,9 +1355,7 @@ static int sdma_terminate_all(struct dma_chan *chan)
 	struct sdma_channel *sdmac = to_sdma_chan(chan);
 	unsigned long flags;
 
-	if (sdmac->sdma->drvdata->pm_runtime)
-		pm_runtime_get_sync(sdmac->sdma->dev);
-
+	sdma_pm_clk_enable(sdmac->sdma, false, true);
 	spin_lock_irqsave(&sdmac->vc.lock, flags);
 
 	sdma_disable_channel(chan);
@@ -1344,10 +1375,7 @@ static int sdma_terminate_all(struct dma_chan *chan)
 
 	spin_unlock_irqrestore(&sdmac->vc.lock, flags);
 
-	if (sdmac->sdma->drvdata->pm_runtime) {
-		pm_runtime_mark_last_busy(sdmac->sdma->dev);
-		pm_runtime_put_autosuspend(sdmac->sdma->dev);
-	}
+	sdma_pm_clk_enable(sdmac->sdma, false, false);
 
 	return 0;
 }
@@ -1473,8 +1501,6 @@ static int sdma_config_channel(struct dma_chan *chan)
 	if (sdmac->event_id1)
 		sdma_event_enable(sdmac, sdmac->event_id1);
 
-	sdma_get_pc(sdmac, sdmac->peripheral_type);
-
 	if ((sdmac->peripheral_type != IMX_DMATYPE_MEMORY) &&
 			(sdmac->peripheral_type != IMX_DMATYPE_DSP)) {
 		/* Handle multiple event channels differently */
@@ -1483,16 +1509,7 @@ static int sdma_config_channel(struct dma_chan *chan)
 			    sdmac->peripheral_type == IMX_DMATYPE_ASRC)
 				sdma_set_watermarklevel_for_p2p(sdmac);
 		} else {
-			/*
-			 * ERR009165 fixed from i.mx6ul, no errata need,
-			 * set bit31 to let sdma script skip the errata.
-			 */
-			if (sdmac->peripheral_type == IMX_DMATYPE_CSPI &&
-			    sdmac->direction == DMA_MEM_TO_DEV &&
-			    sdmac->sdma->drvdata->ecspi_fixed)
-				__set_bit(31, &sdmac->watermark_level);
-			else if (sdmac->peripheral_type ==
-					IMX_DMATYPE_MULTI_SAI)
+			if (sdmac->peripheral_type == IMX_DMATYPE_MULTI_SAI)
 				sdma_set_watermarklevel_for_sais(sdmac);
 
 			__set_bit(sdmac->event_id0, sdmac->event_mask);
@@ -1753,9 +1770,7 @@ static void sdma_free_chan_resources(struct dma_chan *chan)
 	if (unlikely(!sdmac->sdma->fw_data))
 		return;
 
-	if (sdmac->sdma->drvdata->pm_runtime)
-		pm_runtime_get_sync(sdmac->sdma->dev);
-
+	sdma_pm_clk_enable(sdmac->sdma, false, true);
 	sdma_terminate_all(chan);
 
 	sdma_channel_synchronize(chan);
@@ -1771,22 +1786,13 @@ static void sdma_free_chan_resources(struct dma_chan *chan)
 
 	kfree(sdmac->audio_config);
 	sdmac->audio_config = NULL;
-
-	if (sdmac->sdma->drvdata->pm_runtime) {
-		pm_runtime_mark_last_busy(sdmac->sdma->dev);
-		pm_runtime_put_autosuspend(sdmac->sdma->dev);
-	}
+	sdma_pm_clk_enable(sdmac->sdma, false, false);
 }
 
 static struct sdma_desc *sdma_transfer_init(struct sdma_channel *sdmac,
 				enum dma_transfer_direction direction, u32 bds)
 {
 	struct sdma_desc *desc;
-
-	if (!sdmac->sdma->fw_loaded && sdmac->is_ram_script) {
-		dev_err(sdmac->sdma->dev, "sdma firmware not ready!\n");
-		goto err_out;
-	}
 
 	desc = kzalloc((sizeof(*desc)), GFP_NOWAIT);
 	if (!desc)
@@ -1807,8 +1813,10 @@ static struct sdma_desc *sdma_transfer_init(struct sdma_channel *sdmac,
 		goto err_desc_out;
 
 	/* No slave_config called in MEMCPY case, so do here */
-	if (direction == DMA_MEM_TO_MEM)
+	if (direction == DMA_MEM_TO_MEM) {
 		sdma_config_ownership(sdmac, false, true, false);
+		sdma_set_channel_priority(sdmac, sdmac->prio);
+	}
 
 	if (sdma_load_context(sdmac))
 		goto err_desc_out;
@@ -1839,14 +1847,11 @@ static struct dma_async_tx_descriptor *sdma_prep_memcpy(
 	dev_dbg(sdma->dev, "memcpy: %pad->%pad, len=%zu, channel=%d.\n",
 		&dma_src, &dma_dst, len, channel);
 
-	if (sdma->drvdata->pm_runtime)
-		pm_runtime_get_sync(sdmac->sdma->dev);
-
+	sdma_pm_clk_enable(sdmac->sdma, false, true);
 	desc = sdma_transfer_init(sdmac, DMA_MEM_TO_MEM,
 					len / SDMA_BD_MAX_CNT + 1);
 	if (!desc) {
-		if (sdma->drvdata->pm_runtime)
-			pm_runtime_put_sync_suspend(sdmac->sdma->dev);
+		sdma_pm_clk_enable(sdmac->sdma, true, false);
 		return NULL;
 	}
 
@@ -1880,10 +1885,7 @@ static struct dma_async_tx_descriptor *sdma_prep_memcpy(
 		bd->mode.status = param;
 	} while (len);
 
-	if (sdmac->sdma->drvdata->pm_runtime) {
-		pm_runtime_mark_last_busy(sdmac->sdma->dev);
-		pm_runtime_put_autosuspend(sdmac->sdma->dev);
-	}
+	sdma_pm_clk_enable(sdmac->sdma, false, false);
 
 	return vchan_tx_prep(&sdmac->vc, &desc->vd, flags);
 }
@@ -1899,11 +1901,12 @@ static struct dma_async_tx_descriptor *sdma_prep_slave_sg(
 	int channel = sdmac->channel;
 	struct scatterlist *sg;
 	struct sdma_desc *desc;
+	int ret;
 
-	if (sdma->drvdata->pm_runtime)
-		pm_runtime_get_sync(sdmac->sdma->dev);
-
-	sdma_config_write(chan, &sdmac->slave_config, direction);
+	sdma_pm_clk_enable(sdmac->sdma, false, true);
+	ret = sdma_config_write(chan, &sdmac->slave_config, direction);
+	if (ret)
+		goto err_out;
 
 	desc = sdma_transfer_init(sdmac, direction, sg_len);
 	if (!desc)
@@ -1969,10 +1972,7 @@ static struct dma_async_tx_descriptor *sdma_prep_slave_sg(
 		bd->mode.status = param;
 	}
 
-	if (sdmac->sdma->drvdata->pm_runtime) {
-		pm_runtime_mark_last_busy(sdmac->sdma->dev);
-		pm_runtime_put_autosuspend(sdmac->sdma->dev);
-	}
+	sdma_pm_clk_enable(sdmac->sdma, false, false);
 
 	return vchan_tx_prep(&sdmac->vc, &desc->vd, flags);
 err_bd_out:
@@ -1980,8 +1980,8 @@ err_bd_out:
 	kfree(desc);
 err_out:
 	sdmac->status = DMA_ERROR;
-	if (sdma->drvdata->pm_runtime)
-		pm_runtime_put_sync_suspend(sdmac->sdma->dev);
+	sdma_pm_clk_enable(sdmac->sdma, true, false);
+
 	return NULL;
 }
 
@@ -1996,16 +1996,18 @@ static struct dma_async_tx_descriptor *sdma_prep_dma_cyclic(
 	int channel = sdmac->channel;
 	int i = 0, buf = 0;
 	struct sdma_desc *desc;
+	int ret;
 
 	dev_dbg(sdma->dev, "%s channel: %d\n", __func__, channel);
 
-	if (sdma->drvdata->pm_runtime)
-		pm_runtime_get_sync(sdmac->sdma->dev);
+	sdma_pm_clk_enable(sdmac->sdma, false, true);
 
 	if (sdmac->peripheral_type != IMX_DMATYPE_HDMI)
 		num_periods = buf_len / period_len;
 
-	sdma_config_write(chan, &sdmac->slave_config, direction);
+	ret = sdma_config_write(chan, &sdmac->slave_config, direction);
+	if (ret)
+		goto err_out;
 
 	desc = sdma_transfer_init(sdmac, direction, num_periods);
 	if (!desc)
@@ -2056,10 +2058,7 @@ static struct dma_async_tx_descriptor *sdma_prep_dma_cyclic(
 		i++;
 	}
 
-	if (sdmac->sdma->drvdata->pm_runtime) {
-		pm_runtime_mark_last_busy(sdmac->sdma->dev);
-		pm_runtime_put_autosuspend(sdmac->sdma->dev);
-	}
+	sdma_pm_clk_enable(sdmac->sdma, false, false);
 
 	return vchan_tx_prep(&sdmac->vc, &desc->vd, flags);
 err_bd_out:
@@ -2067,8 +2066,8 @@ err_bd_out:
 	kfree(desc);
 err_out:
 	sdmac->status = DMA_ERROR;
-	if (sdma->drvdata->pm_runtime)
-		pm_runtime_put_sync_suspend(sdmac->sdma->dev);
+	sdma_pm_clk_enable(sdmac->sdma, true, false);
+
 	return NULL;
 }
 
@@ -2079,7 +2078,12 @@ static int sdma_config_write(struct dma_chan *chan,
 	struct sdma_channel *sdmac = to_sdma_chan(chan);
 
 	sdmac->watermark_level = 0;
-	sdmac->is_ram_script = false;
+	sdma_get_pc(sdmac, sdmac->peripheral_type);
+
+	if (!sdmac->sdma->fw_loaded && sdmac->is_ram_script) {
+		dev_warn_once(sdmac->sdma->dev, "sdma firmware not ready!\n");
+		return -EPERM;
+	}
 
 	if (direction == DMA_DEV_TO_MEM) {
 		sdmac->per_address = dmaengine_cfg->src_addr;
@@ -2187,18 +2191,13 @@ static void sdma_issue_pending(struct dma_chan *chan)
 	struct sdma_channel *sdmac = to_sdma_chan(chan);
 	unsigned long flags;
 
-	if (sdmac->sdma->drvdata->pm_runtime)
-		pm_runtime_get_sync(sdmac->sdma->dev);
-
+	sdma_pm_clk_enable(sdmac->sdma, false, true);
 	spin_lock_irqsave(&sdmac->vc.lock, flags);
 	if (vchan_issue_pending(&sdmac->vc) && !sdmac->desc)
 		sdma_start_desc(sdmac);
 	spin_unlock_irqrestore(&sdmac->vc.lock, flags);
 
-	if (sdmac->sdma->drvdata->pm_runtime) {
-		pm_runtime_mark_last_busy(sdmac->sdma->dev);
-		pm_runtime_put_autosuspend(sdmac->sdma->dev);
-	}
+	sdma_pm_clk_enable(sdmac->sdma, false, false);
 }
 
 static void sdma_load_firmware(const struct firmware *fw, void *context)
@@ -2211,8 +2210,10 @@ static void sdma_load_firmware(const struct firmware *fw, void *context)
 		if (sdma->fw_fail)
 			dev_info(sdma->dev, "external firmware not found, using ROM firmware\n");
 		else {
+			/*add a bit delay to wait for firmware priv released */
+			msleep(20);
 			request_firmware_nowait(THIS_MODULE,
-					FW_ACTION_HOTPLUG, sdma->fw_name,
+					FW_ACTION_UEVENT, sdma->fw_name,
 					sdma->dev, GFP_KERNEL, sdma,
 					sdma_load_firmware);
 			sdma->fw_fail++;
@@ -2258,7 +2259,7 @@ static void sdma_load_firmware(const struct firmware *fw, void *context)
 		memcpy(sdma->fw_data, fw->data, fw->size);
 
 		if (!sdma->drvdata->pm_runtime)
-			pm_runtime_get_sync(sdma->dev);
+			sdma_runtime_resume(sdma->dev);
 	}
 
 err_firmware:
@@ -2569,35 +2570,30 @@ static int sdma_probe(struct platform_device *pdev)
 		of_node_put(spba_bus);
 	}
 
-	if (pdata) {
-		sdma->fw_name = pdata->fw_name;
-	} else {
-		/*
-		 * Because that device tree does not encode ROM script address,
-		 * the RAM script in firmware is mandatory for device tree
-		 * probe, otherwise it fails.
-		 */
-		ret = of_property_read_string(np, "fsl,sdma-ram-script-name",
-					      &fw_name);
-		if (ret)
-			dev_warn(&pdev->dev, "failed to get firmware name\n");
-		else
-			sdma->fw_name = fw_name;
+	/*
+	 * Because that device tree does not encode ROM script address,
+	 * the RAM script in firmware is mandatory for device tree
+	 * probe, otherwise it fails.
+	 */
+	ret = of_property_read_string(np, "fsl,sdma-ram-script-name",
+				      &fw_name);
+	if (ret)
+		dev_warn(&pdev->dev, "failed to get firmware name\n");
+	else
+		sdma->fw_name = fw_name;
 
-		ret = sdma_get_firmware(sdma, sdma->fw_name);
-		if (ret)
-			dev_warn(sdma->dev, "failed to get firmware.\n");
-	}
+	ret = sdma_get_firmware(sdma, sdma->fw_name);
+	if (ret)
+		dev_warn(sdma->dev, "failed to get firmware.\n");
 
 	/* enable autosuspend for pm_runtime */
 	if (sdma->drvdata->pm_runtime) {
 		pm_runtime_set_autosuspend_delay(&pdev->dev, 8000);
 		pm_runtime_use_autosuspend(&pdev->dev);
 		pm_runtime_mark_last_busy(&pdev->dev);
-		pm_runtime_set_active(&pdev->dev);
+		pm_runtime_set_suspended(&pdev->dev);
+		pm_runtime_enable(&pdev->dev);
 	}
-
-	pm_runtime_enable(&pdev->dev);
 
 	return 0;
 
@@ -2631,9 +2627,12 @@ static int sdma_remove(struct platform_device *pdev)
 		sdma_free_chan_resources(&sdmac->vc.chan);
 	}
 
-	pm_runtime_disable(&pdev->dev);
-	pm_runtime_set_suspended(&pdev->dev);
-	pm_runtime_dont_use_autosuspend(&pdev->dev);
+	if (sdma->drvdata->pm_runtime) {
+		pm_runtime_disable(&pdev->dev);
+		pm_runtime_dont_use_autosuspend(&pdev->dev);
+	} else {
+		sdma_runtime_suspend(&pdev->dev);
+	}
 
 	platform_set_drvdata(pdev, NULL);
 	return 0;
@@ -2646,9 +2645,9 @@ static int sdma_suspend(struct device *dev)
 	struct sdma_engine *sdma = platform_get_drvdata(pdev);
 	int i, ret = 0;
 
-	/* Do nothing if not i.MX6SX or i.MX7D, i.MX8MP */
+	/* Do nothing if not i.MX6SX/6UL or i.MX7D, i.MX8MP */
 	if (sdma->drvdata != &sdma_imx6sx && sdma->drvdata != &sdma_imx7d
-	   && sdma->drvdata != &sdma_imx6ul && sdma->drvdata != &sdma_imx8mp)
+	    && sdma->drvdata != &sdma_imx6ul && sdma->drvdata != &sdma_imx8mp)
 		return 0;
 
 	if (!sdma->is_on)
@@ -2689,7 +2688,7 @@ static int sdma_resume(struct device *dev)
 	struct sdma_engine *sdma = platform_get_drvdata(pdev);
 	int i, ret;
 
-	/* Do nothing if not i.MX6SX or i.MX7D, i.MX8MP*/
+	/* Do nothing if not i.MX6SX/6UL or i.MX7D, i.MX8MP */
 	if (sdma->drvdata != &sdma_imx6sx && sdma->drvdata != &sdma_imx7d
 	    && sdma->drvdata != &sdma_imx6ul && sdma->drvdata != &sdma_imx8mp)
 		return 0;

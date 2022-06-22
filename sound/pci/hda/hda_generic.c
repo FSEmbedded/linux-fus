@@ -91,6 +91,12 @@ static void snd_hda_gen_spec_free(struct hda_gen_spec *spec)
 	free_kctls(spec);
 	snd_array_free(&spec->paths);
 	snd_array_free(&spec->loopback_list);
+#ifdef CONFIG_SND_HDA_GENERIC_LEDS
+	if (spec->led_cdevs[LED_AUDIO_MUTE])
+		led_classdev_unregister(spec->led_cdevs[LED_AUDIO_MUTE]);
+	if (spec->led_cdevs[LED_AUDIO_MICMUTE])
+		led_classdev_unregister(spec->led_cdevs[LED_AUDIO_MICMUTE]);
+#endif
 }
 
 /*
@@ -3922,7 +3928,10 @@ static int create_mute_led_cdev(struct hda_codec *codec,
 						enum led_brightness),
 				bool micmute)
 {
+	struct hda_gen_spec *spec = codec->spec;
 	struct led_classdev *cdev;
+	int idx = micmute ? LED_AUDIO_MICMUTE : LED_AUDIO_MUTE;
+	int err;
 
 	cdev = devm_kzalloc(&codec->core.dev, sizeof(*cdev), GFP_KERNEL);
 	if (!cdev)
@@ -3932,10 +3941,14 @@ static int create_mute_led_cdev(struct hda_codec *codec,
 	cdev->max_brightness = 1;
 	cdev->default_trigger = micmute ? "audio-micmute" : "audio-mute";
 	cdev->brightness_set_blocking = callback;
-	cdev->brightness = ledtrig_audio_get(micmute ? LED_AUDIO_MICMUTE : LED_AUDIO_MUTE);
+	cdev->brightness = ledtrig_audio_get(idx);
 	cdev->flags = LED_CORE_SUSPENDRESUME;
 
-	return devm_led_classdev_register(&codec->core.dev, cdev);
+	err = led_classdev_register(&codec->core.dev, cdev);
+	if (err < 0)
+		return err;
+	spec->led_cdevs[idx] = cdev;
+	return 0;
 }
 
 /**
@@ -3965,128 +3978,6 @@ int snd_hda_gen_add_mute_led_cdev(struct hda_codec *codec,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_hda_gen_add_mute_led_cdev);
-
-/*
- * mic mute LED hook helpers
- */
-enum {
-	MICMUTE_LED_ON,
-	MICMUTE_LED_OFF,
-	MICMUTE_LED_FOLLOW_CAPTURE,
-	MICMUTE_LED_FOLLOW_MUTE,
-};
-
-static void call_micmute_led_update(struct hda_codec *codec)
-{
-	struct hda_gen_spec *spec = codec->spec;
-	unsigned int val;
-
-	switch (spec->micmute_led.led_mode) {
-	case MICMUTE_LED_ON:
-		val = 1;
-		break;
-	case MICMUTE_LED_OFF:
-		val = 0;
-		break;
-	case MICMUTE_LED_FOLLOW_CAPTURE:
-		val = !!spec->micmute_led.capture;
-		break;
-	case MICMUTE_LED_FOLLOW_MUTE:
-	default:
-		val = !spec->micmute_led.capture;
-		break;
-	}
-
-	if (val == spec->micmute_led.led_value)
-		return;
-	spec->micmute_led.led_value = val;
-	ledtrig_audio_set(LED_AUDIO_MICMUTE,
-			  spec->micmute_led.led_value ? LED_ON : LED_OFF);
-}
-
-static void update_micmute_led(struct hda_codec *codec,
-			       struct snd_kcontrol *kcontrol,
-			       struct snd_ctl_elem_value *ucontrol)
-{
-	struct hda_gen_spec *spec = codec->spec;
-	unsigned int mask;
-
-	if (spec->micmute_led.old_hook)
-		spec->micmute_led.old_hook(codec, kcontrol, ucontrol);
-
-	if (!ucontrol)
-		return;
-	mask = 1U << snd_ctl_get_ioffidx(kcontrol, &ucontrol->id);
-	if (!strcmp("Capture Switch", ucontrol->id.name)) {
-		/* TODO: How do I verify if it's a mono or stereo here? */
-		if (ucontrol->value.integer.value[0] ||
-		    ucontrol->value.integer.value[1])
-			spec->micmute_led.capture |= mask;
-		else
-			spec->micmute_led.capture &= ~mask;
-		call_micmute_led_update(codec);
-	}
-}
-
-static int micmute_led_mode_info(struct snd_kcontrol *kcontrol,
-				 struct snd_ctl_elem_info *uinfo)
-{
-	static const char * const texts[] = {
-		"On", "Off", "Follow Capture", "Follow Mute",
-	};
-
-	return snd_ctl_enum_info(uinfo, 1, ARRAY_SIZE(texts), texts);
-}
-
-static int micmute_led_mode_get(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
-{
-	struct hda_codec *codec = snd_kcontrol_chip(kcontrol);
-	struct hda_gen_spec *spec = codec->spec;
-
-	ucontrol->value.enumerated.item[0] = spec->micmute_led.led_mode;
-	return 0;
-}
-
-static int micmute_led_mode_put(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
-{
-	struct hda_codec *codec = snd_kcontrol_chip(kcontrol);
-	struct hda_gen_spec *spec = codec->spec;
-	unsigned int mode;
-
-	mode = ucontrol->value.enumerated.item[0];
-	if (mode > MICMUTE_LED_FOLLOW_MUTE)
-		mode = MICMUTE_LED_FOLLOW_MUTE;
-	if (mode == spec->micmute_led.led_mode)
-		return 0;
-	spec->micmute_led.led_mode = mode;
-	call_micmute_led_update(codec);
-	return 1;
-}
-
-static const struct snd_kcontrol_new micmute_led_mode_ctl = {
-	.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
-	.name = "Mic Mute-LED Mode",
-	.info = micmute_led_mode_info,
-	.get = micmute_led_mode_get,
-	.put = micmute_led_mode_put,
-};
-
-/* Set up the capture sync hook for controlling the mic-mute LED */
-static int add_micmute_led_hook(struct hda_codec *codec)
-{
-	struct hda_gen_spec *spec = codec->spec;
-
-	spec->micmute_led.led_mode = MICMUTE_LED_FOLLOW_MUTE;
-	spec->micmute_led.capture = 0;
-	spec->micmute_led.led_value = -1;
-	spec->micmute_led.old_hook = spec->cap_sync_hook;
-	spec->cap_sync_hook = update_micmute_led;
-	if (!snd_hda_gen_add_kctl(spec, NULL, &micmute_led_mode_ctl))
-		return -ENOMEM;
-	return 0;
-}
 
 /**
  * snd_hda_gen_add_micmute_led_cdev - Create a LED classdev and enable as mic-mute LED

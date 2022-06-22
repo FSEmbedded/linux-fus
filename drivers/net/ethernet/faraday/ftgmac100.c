@@ -1831,7 +1831,7 @@ static int ftgmac100_probe(struct platform_device *pdev)
 		if (!IS_ENABLED(CONFIG_NET_NCSI)) {
 			dev_err(&pdev->dev, "NCSI stack not enabled\n");
 			err = -EINVAL;
-			goto err_ncsi_dev;
+			goto err_phy_connect;
 		}
 
 		dev_info(&pdev->dev, "Using NCSI interface\n");
@@ -1839,7 +1839,7 @@ static int ftgmac100_probe(struct platform_device *pdev)
 		priv->ndev = ncsi_register_dev(netdev, ftgmac100_ncsi_handler);
 		if (!priv->ndev) {
 			err = -EINVAL;
-			goto err_ncsi_dev;
+			goto err_phy_connect;
 		}
 	} else if (np && of_get_property(np, "phy-handle", NULL)) {
 		struct phy_device *phy;
@@ -1860,7 +1860,7 @@ static int ftgmac100_probe(struct platform_device *pdev)
 		if (!phy) {
 			dev_err(&pdev->dev, "Failed to connect to phy\n");
 			err = -EINVAL;
-			goto err_setup_mdio;
+			goto err_phy_connect;
 		}
 
 		/* Indicate that we support PAUSE frames (see comment in

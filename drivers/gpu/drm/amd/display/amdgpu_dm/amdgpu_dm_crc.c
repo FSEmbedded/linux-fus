@@ -182,6 +182,20 @@ int amdgpu_dm_crtc_configure_crc_source(struct drm_crtc *crtc,
 
 	/* Enable CRTC CRC generation if necessary. */
 	if (dm_is_crc_source_crtc(source) || source == AMDGPU_DM_PIPE_CRC_SOURCE_NONE) {
+#if defined(CONFIG_DRM_AMD_SECURE_DISPLAY)
+		if (!enable) {
+			if (adev->dm.crc_rd_wrk) {
+				flush_work(&adev->dm.crc_rd_wrk->notify_ta_work);
+				spin_lock_irq(&adev->dm.crc_rd_wrk->crc_rd_work_lock);
+				if (adev->dm.crc_rd_wrk->crtc == crtc) {
+					dc_stream_stop_dmcu_crc_win_update(stream_state->ctx->dc,
+									dm_crtc_state->stream);
+					adev->dm.crc_rd_wrk->crtc = NULL;
+				}
+				spin_unlock_irq(&adev->dm.crc_rd_wrk->crc_rd_work_lock);
+			}
+		}
+#endif
 		if (!dc_stream_configure_crc(stream_state->ctx->dc,
 					     stream_state, NULL, enable, enable)) {
 			ret = -EINVAL;
@@ -300,6 +314,14 @@ int amdgpu_dm_crtc_set_crc_source(struct drm_crtc *crtc, const char *src_name)
 			ret = -EINVAL;
 			goto cleanup;
 		}
+
+		if ((aconn->base.connector_type != DRM_MODE_CONNECTOR_DisplayPort) &&
+				(aconn->base.connector_type != DRM_MODE_CONNECTOR_eDP)) {
+			DRM_DEBUG_DRIVER("No DP connector available for CRC source\n");
+			ret = -EINVAL;
+			goto cleanup;
+		}
+
 	}
 
 #if defined(CONFIG_DRM_AMD_SECURE_DISPLAY)

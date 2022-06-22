@@ -1616,7 +1616,8 @@ static irqreturn_t phy_bcast_v3_hw(int phy_no, struct hisi_hba *hisi_hba)
 	bcast_status = hisi_sas_phy_read32(hisi_hba, phy_no, RX_PRIMS_STATUS);
 	if ((bcast_status & RX_BCAST_CHG_MSK) &&
 	    !test_bit(HISI_SAS_RESET_BIT, &hisi_hba->flags))
-		sas_notify_port_event(sas_phy, PORTE_BROADCAST_RCVD);
+		sas_notify_port_event(sas_phy, PORTE_BROADCAST_RCVD,
+				      GFP_ATOMIC);
 	hisi_sas_phy_write32(hisi_hba, phy_no, CHL_INT0,
 			     CHL_INT0_SL_RX_BCST_ACK_MSK);
 	hisi_sas_phy_write32(hisi_hba, phy_no, SL_RX_BCAST_CHK_MSK, 0);
@@ -3326,13 +3327,7 @@ static void debugfs_snapshot_itct_reg_v3_hw(struct hisi_hba *hisi_hba)
 
 	read_iost_itct_cache_v3_hw(hisi_hba, HISI_SAS_ITCT_CACHE, cachebuf);
 
-	rc = interrupt_preinit_v3_hw(hisi_hba);
-	if (rc)
-		goto err_out_debugfs;
-	dev_err(dev, "%d hw queues\n", shost->nr_hw_queues);
-	rc = scsi_add_host(shost, dev);
-	if (rc)
-		goto err_out_free_irq_vectors;
+	itct = hisi_hba->itct;
 
 	for (i = 0; i < HISI_SAS_MAX_ITCT_ENTRIES; i++, itct++) {
 		memcpy(databuf, itct, sizeof(struct hisi_sas_itct));
@@ -3359,21 +3354,16 @@ static void debugfs_snapshot_iost_reg_v3_hw(struct hisi_hba *hisi_hba)
 	}
 }
 
-err_out_register_ha:
-	scsi_remove_host(shost);
-err_out_free_irq_vectors:
-	pci_free_irq_vectors(pdev);
-err_out_debugfs:
-	hisi_sas_debugfs_exit(hisi_hba);
-err_out_ha:
-	hisi_sas_free(hisi_hba);
-	scsi_host_put(shost);
-err_out_regions:
-	pci_release_regions(pdev);
-err_out_disable_device:
-	pci_disable_device(pdev);
-err_out:
-	return rc;
+static const char *
+debugfs_to_reg_name_v3_hw(int off, int base_off,
+			  const struct hisi_sas_debugfs_reg_lu *lu)
+{
+	for (; lu->name; lu++) {
+		if (off == lu->off - base_off)
+			return lu->name;
+	}
+
+	return NULL;
 }
 
 static void debugfs_print_reg_v3_hw(u32 *regs_val, struct seq_file *s,
@@ -3381,14 +3371,19 @@ static void debugfs_print_reg_v3_hw(u32 *regs_val, struct seq_file *s,
 {
 	int i;
 
-	devm_free_irq(&pdev->dev, pci_irq_vector(pdev, 1), hisi_hba);
-	devm_free_irq(&pdev->dev, pci_irq_vector(pdev, 2), hisi_hba);
-	devm_free_irq(&pdev->dev, pci_irq_vector(pdev, 11), hisi_hba);
-	for (i = 0; i < hisi_hba->cq_nvecs; i++) {
-		struct hisi_sas_cq *cq = &hisi_hba->cq[i];
-		int nr = hisi_sas_intr_conv ? 16 : 16 + i;
+	for (i = 0; i < reg->count; i++) {
+		int off = i * 4;
+		const char *name;
 
-		devm_free_irq(&pdev->dev, pci_irq_vector(pdev, nr), cq);
+		name = debugfs_to_reg_name_v3_hw(off, reg->base_off,
+						 reg->lu);
+
+		if (name)
+			seq_printf(s, "0x%08x 0x%08x %s\n", off,
+				   regs_val[i], name);
+		else
+			seq_printf(s, "0x%08x 0x%08x\n", off,
+				   regs_val[i]);
 	}
 }
 

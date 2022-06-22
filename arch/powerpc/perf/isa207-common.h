@@ -105,6 +105,10 @@
 #define p10_EVENT_RADIX_SCOPE_QUAL_MASK	0x1
 #define p10_MMCR1_RADIX_SCOPE_QUAL_SHIFT	45
 
+/* Event Threshold Compare bit constant for power10 in config1 attribute */
+#define p10_EVENT_THR_CMP_SHIFT        0
+#define p10_EVENT_THR_CMP_MASK 0x3FFFFull
+
 #define p10_EVENT_VALID_MASK		\
 	((p10_SDAR_MODE_MASK   << p10_SDAR_MODE_SHIFT		|	\
 	(p10_EVENT_THRESH_MASK  << EVENT_THRESH_SHIFT)		|	\
@@ -151,6 +155,9 @@
 
 #define CNST_THRESH_CTL_SEL_VAL(v)	(((v) & 0x7ffull) << 32)
 #define CNST_THRESH_CTL_SEL_MASK	CNST_THRESH_CTL_SEL_VAL(0x7ff)
+
+#define p10_CNST_THRESH_CMP_VAL(v) (((v) & 0x7ffull) << 43)
+#define p10_CNST_THRESH_CMP_MASK   p10_CNST_THRESH_CMP_VAL(0x7ff)
 
 #define CNST_EBB_VAL(v)		(((v) & EVENT_EBB_MASK) << 24)
 #define CNST_EBB_MASK		CNST_EBB_VAL(EVENT_EBB_MASK)

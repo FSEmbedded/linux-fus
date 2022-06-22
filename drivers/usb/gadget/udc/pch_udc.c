@@ -7,7 +7,6 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/delay.h>
-#include <linux/dmi.h>
 #include <linux/errno.h>
 #include <linux/gpio/consumer.h>
 #include <linux/gpio/machine.h>
@@ -1358,43 +1357,6 @@ static irqreturn_t pch_vbus_gpio_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static struct gpiod_lookup_table minnowboard_udc_gpios = {
-	.dev_id		= "0000:02:02.4",
-	.table		= {
-		GPIO_LOOKUP("sch_gpio.33158", 12, NULL, GPIO_ACTIVE_HIGH),
-		{}
-	},
-};
-
-static const struct dmi_system_id pch_udc_gpio_dmi_table[] = {
-	{
-		.ident = "MinnowBoard",
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "MinnowBoard"),
-		},
-		.driver_data = &minnowboard_udc_gpios,
-	},
-	{ }
-};
-
-static void pch_vbus_gpio_remove_table(void *table)
-{
-	gpiod_remove_lookup_table(table);
-}
-
-static int pch_vbus_gpio_add_table(struct pch_udc_dev *dev)
-{
-	struct device *d = &dev->pdev->dev;
-	const struct dmi_system_id *dmi;
-
-	dmi = dmi_first_match(pch_udc_gpio_dmi_table);
-	if (!dmi)
-		return 0;
-
-	gpiod_add_lookup_table(dmi->driver_data);
-	return devm_add_action_or_reset(d, pch_vbus_gpio_remove_table, dmi->driver_data);
-}
-
 /**
  * pch_vbus_gpio_init() - This API initializes GPIO port detecting VBUS.
  * @dev:		Reference to the driver structure
@@ -1412,10 +1374,6 @@ static int pch_vbus_gpio_init(struct pch_udc_dev *dev)
 
 	dev->vbus_gpio.port = NULL;
 	dev->vbus_gpio.intr = 0;
-
-	err = pch_vbus_gpio_add_table(dev);
-	if (err)
-		return err;
 
 	/* Retrieve the GPIO line from the USB gadget device */
 	gpiod = devm_gpiod_get_optional(d, NULL, GPIOD_IN);
@@ -2869,7 +2827,7 @@ static void pch_udc_pcd_reinit(struct pch_udc_dev *dev)
  *
  * Return codes:
  *	0:		Success
- *	-%ERRNO:	All kind of errors when retrieving VBUS GPIO
+ *	-ERRNO:		All kind of errors when retrieving VBUS GPIO
  */
 static int pch_udc_pcd_init(struct pch_udc_dev *dev)
 {
@@ -3095,6 +3053,7 @@ static int pch_udc_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (retval)
 		return retval;
 
+	dev->bar = PCH_UDC_PCI_BAR;
 	dev->pdev = pdev;
 	pci_set_drvdata(pdev, dev);
 
@@ -3110,7 +3069,7 @@ static int pch_udc_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (retval)
 		return retval;
 
-	dev->base_addr = pcim_iomap_table(pdev)[bar];
+	dev->base_addr = pcim_iomap_table(pdev)[dev->bar];
 
 	/* initialize the hardware */
 	retval = pch_udc_pcd_init(dev);

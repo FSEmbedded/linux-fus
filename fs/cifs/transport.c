@@ -1044,14 +1044,17 @@ struct TCP_Server_Info *cifs_pick_channel(struct cifs_ses *ses)
 	if (!ses)
 		return NULL;
 
+	spin_lock(&ses->chan_lock);
 	if (!ses->binding) {
 		/* round robin */
 		if (ses->chan_count > 1) {
 			index = (uint)atomic_inc_return(&ses->chan_seq);
 			index %= ses->chan_count;
 		}
+		spin_unlock(&ses->chan_lock);
 		return ses->chans[index].server;
 	} else {
+		spin_unlock(&ses->chan_lock);
 		return cifs_ses_server(ses);
 	}
 }
@@ -1185,7 +1188,7 @@ compound_send_recv(const unsigned int xid, struct cifs_ses *ses,
 	/*
 	 * Compounding is never used during session establish.
 	 */
-	if ((ses->status == CifsNew) || (optype & CIFS_NEG_OP)) {
+	if ((ses->status == CifsNew) || (optype & CIFS_NEG_OP) || (optype & CIFS_SESS_OP)) {
 		mutex_lock(&server->srv_mutex);
 		smb311_update_preauth_hash(ses, rqst[0].rq_iov,
 					   rqst[0].rq_nvec);

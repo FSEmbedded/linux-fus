@@ -81,7 +81,6 @@
 
 #define TCAN4X5X_MRAM_START 0x8000
 #define TCAN4X5X_MCAN_OFFSET 0x1000
-#define TCAN4X5X_MAX_REGISTER 0x8ffc
 
 #define TCAN4X5X_CLEAR_ALL_INT 0xffffffff
 #define TCAN4X5X_SET_ALL_INT 0xffffffff
@@ -103,21 +102,10 @@
 #define TCAN4X5X_WD_3_S_TIMER BIT(29)
 #define TCAN4X5X_WD_6_S_TIMER (BIT(28) | BIT(29))
 
-struct tcan4x5x_priv {
-	struct regmap *regmap;
-	struct spi_device *spi;
-
-	struct m_can_classdev *mcan_dev;
-
-	struct gpio_desc *reset_gpio;
-	struct gpio_desc *device_wake_gpio;
-	struct gpio_desc *device_state_gpio;
-	struct regulator *power;
-
-	/* Register based ip */
-	int mram_start;
-	int reg_offset;
-};
+static inline struct tcan4x5x_priv *cdev_to_priv(struct m_can_classdev *cdev)
+{
+	return container_of(cdev, struct tcan4x5x_priv, cdev);
+}
 
 static void tcan4x5x_check_wake(struct tcan4x5x_priv *priv)
 {
@@ -247,7 +235,9 @@ static int tcan4x5x_init(struct m_can_classdev *cdev)
 		return ret;
 
 	/* Zero out the MCAN buffers */
-	m_can_init_ram(cdev);
+	ret = m_can_init_ram(cdev);
+	if (ret)
+		return ret;
 
 	ret = regmap_update_bits(tcan4x5x->regmap, TCAN4X5X_CONFIG,
 				 TCAN4X5X_MODE_SEL_MASK, TCAN4X5X_MODE_NORMAL);

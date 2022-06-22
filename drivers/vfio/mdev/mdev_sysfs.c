@@ -111,6 +111,9 @@ static struct mdev_type *add_mdev_supported_type(struct mdev_parent *parent,
 
 	type->kobj.kset = parent->mdev_types_kset;
 	type->parent = parent;
+	/* Pairs with the put in mdev_type_release() */
+	mdev_get_parent(parent);
+	type->type_group_id = type_group_id;
 
 	ret = kobject_init_and_add(&type->kobj, &mdev_type_ktype, NULL,
 				   "%s-%s", dev_driver_string(parent->dev),
@@ -136,8 +139,6 @@ static struct mdev_type *add_mdev_supported_type(struct mdev_parent *parent,
 		ret = -ENOMEM;
 		goto attrs_failed;
 	}
-
-	type->group = group;
 	return type;
 
 attrs_failed:

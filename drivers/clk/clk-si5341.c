@@ -1740,7 +1740,7 @@ static int si5341_probe(struct i2c_client *client,
 			clk_prepare(data->clk[i].hw.clk);
 	}
 
-	err = of_clk_add_hw_provider(client->dev.of_node, of_clk_si5341_get,
+	err = devm_of_clk_add_hw_provider(&client->dev, of_clk_si5341_get,
 			data);
 	if (err) {
 		dev_err(&client->dev, "unable to add clk provider\n");
@@ -1779,22 +1779,6 @@ static int si5341_probe(struct i2c_client *client,
 	if (err) {
 		dev_err(&client->dev, "unable to create sysfs files\n");
 		goto cleanup;
-	}
-
-	/* wait for device to report input clock present and PLL lock */
-	err = regmap_read_poll_timeout(data->regmap, SI5341_STATUS, status,
-		!(status & (SI5341_STATUS_LOSREF | SI5341_STATUS_LOL)),
-	       10000, 250000);
-	if (err) {
-		dev_err(&client->dev, "Error waiting for input clock or PLL lock\n");
-		return err;
-	}
-
-	/* clear sticky alarm bits from initialization */
-	err = regmap_write(data->regmap, SI5341_STATUS_STICKY, 0);
-	if (err) {
-		dev_err(&client->dev, "unable to clear sticky status\n");
-		return err;
 	}
 
 	/* Free the names, clk framework makes copies */

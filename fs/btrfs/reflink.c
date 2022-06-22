@@ -108,9 +108,6 @@ static int copy_inline_to_page(struct btrfs_inode *inode,
 	set_bit(BTRFS_INODE_NO_DELALLOC_FLUSH, &inode->runtime_flags);
 
 	if (comp_type == BTRFS_COMPRESS_NONE) {
-		char *map;
-
-	if (comp_type == BTRFS_COMPRESS_NONE) {
 		memcpy_to_page(page, offset_in_page(file_offset), data_start,
 			       datal);
 		flush_dcache_page(page);
@@ -581,8 +578,8 @@ process_slot:
 			set_bit(BTRFS_INODE_NEEDS_FULL_SYNC,
 				&BTRFS_I(inode)->runtime_flags);
 
-		ret = btrfs_replace_file_extents(inode, path, last_dest_end,
-				destoff + len - 1, NULL, &trans);
+		ret = btrfs_replace_file_extents(BTRFS_I(inode), path,
+				last_dest_end, destoff + len - 1, NULL, &trans);
 		if (ret)
 			goto out;
 

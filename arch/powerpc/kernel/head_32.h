@@ -52,7 +52,7 @@
 1:
 #ifdef CONFIG_VMAP_STACK
 	mtcrf	0x3f, r1
-	bt	32 - THREAD_ALIGN_SHIFT, stack_overflow
+	bt	32 - THREAD_ALIGN_SHIFT, vmap_stack_overflow
 #endif
 .endm
 
@@ -108,55 +108,8 @@
 _ASM_NOKPROBE_SYMBOL(\name\()_virt)
 .endm
 
-.macro SYSCALL_ENTRY trapno
-	mfspr	r12,SPRN_SPRG_THREAD
-	mfspr	r9, SPRN_SRR1
-#ifdef CONFIG_VMAP_STACK
-	mfspr	r11, SPRN_SRR0
-	mtctr	r11
-	andi.	r11, r9, MSR_PR
-	mr	r11, r1
-	lwz	r1,TASK_STACK-THREAD(r12)
-	beq-	99f
-	addi	r1, r1, THREAD_SIZE - INT_FRAME_SIZE
-	li	r10, MSR_KERNEL & ~(MSR_IR | MSR_RI) /* can take DTLB miss */
-	mtmsr	r10
-	isync
-	tovirt(r12, r12)
-	stw	r11,GPR1(r1)
-	stw	r11,0(r1)
-	mr	r11, r1
-#else
-	andi.	r11, r9, MSR_PR
-	lwz	r11,TASK_STACK-THREAD(r12)
-	beq-	99f
-	addi	r11, r11, THREAD_SIZE - INT_FRAME_SIZE
-	tophys(r11, r11)
-	stw	r1,GPR1(r11)
-	stw	r1,0(r11)
-	tovirt(r1, r11)		/* set new kernel sp */
-#endif
-	mflr	r10
-	stw	r10, _LINK(r11)
-#ifdef CONFIG_VMAP_STACK
-	mfctr	r10
-#else
-	mfspr	r10,SPRN_SRR0
-#endif
-	stw	r10,_NIP(r11)
-	mfcr	r10
-	rlwinm	r10,r10,0,4,2	/* Clear SO bit in CR */
-	stw	r10,_CCR(r11)		/* save registers */
-#ifdef CONFIG_40x
-	rlwinm	r9,r9,0,14,12		/* clear MSR_WE (necessary?) */
-#else
-#ifdef CONFIG_VMAP_STACK
-	LOAD_REG_IMMEDIATE(r10, MSR_KERNEL & ~MSR_IR) /* can take exceptions */
-#else
-	LOAD_REG_IMMEDIATE(r10, MSR_KERNEL & ~(MSR_IR|MSR_DR)) /* can take exceptions */
-#endif
-	mtmsr	r10			/* (except for mach check in rtas) */
-#endif
+.macro COMMON_EXCEPTION_PROLOG_END trapno
+	stw	r0,GPR0(r1)
 	lis	r10,STACK_FRAME_REGS_MARKER@ha /* exception frame marker */
 	addi	r10,r10,STACK_FRAME_REGS_MARKER@l
 	stw	r10,8(r1)
@@ -249,17 +202,16 @@ vmap_stack_overflow:
 	mfspr	r1, SPRN_SPRG_THREAD
 	lwz	r1, TASK_CPU - THREAD(r1)
 	slwi	r1, r1, 3
-	addis	r1, r1, emergency_ctx@ha
+	addis	r1, r1, emergency_ctx-PAGE_OFFSET@ha
 #else
-	lis	r1, emergency_ctx@ha
+	lis	r1, emergency_ctx-PAGE_OFFSET@ha
 #endif
-	lwz	r1, emergency_ctx@l(r1)
+	lwz	r1, emergency_ctx-PAGE_OFFSET@l(r1)
 	addi	r1, r1, THREAD_SIZE - INT_FRAME_SIZE
-	EXCEPTION_PROLOG_2
-	SAVE_NVGPRS(r11)
-	addi	r3, r1, STACK_FRAME_OVERHEAD
-	EXC_XFER_STD(0, stack_overflow_exception)
-#endif
+	EXCEPTION_PROLOG_2 0 vmap_stack_overflow
+	prepare_transfer_to_handler
+	bl	stack_overflow_exception
+	b	interrupt_return
 .endm
 
 #endif /* __HEAD_32_H__ */

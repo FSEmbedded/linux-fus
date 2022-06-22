@@ -748,14 +748,14 @@ static bool scmi_fast_switch_possible(const struct scmi_protocol_handle *ph,
 	return dom->fc_info && dom->fc_info->level_set_addr;
 }
 
-static bool scmi_power_scale_mw_get(const struct scmi_handle *handle)
+static bool scmi_power_scale_mw_get(const struct scmi_protocol_handle *ph)
 {
-	struct scmi_perf_info *pi = handle->perf_priv;
+	struct scmi_perf_info *pi = ph->get_priv(ph);
 
 	return pi->power_scale_mw;
 }
 
-static const struct scmi_perf_ops perf_ops = {
+static const struct scmi_perf_proto_ops perf_proto_ops = {
 	.limits_set = scmi_perf_limits_set,
 	.limits_get = scmi_perf_limits_get,
 	.level_set = scmi_perf_level_set,

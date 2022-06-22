@@ -799,8 +799,8 @@ int btrfs_del_csums(struct btrfs_trans_handle *trans,
 	u64 csum_end;
 	struct extent_buffer *leaf;
 	int ret = 0;
-	u16 csum_size = btrfs_super_csum_size(fs_info->super_copy);
-	int blocksize_bits = fs_info->sb->s_blocksize_bits;
+	const u32 csum_size = fs_info->csum_size;
+	u32 blocksize_bits = fs_info->sectorsize_bits;
 
 	ASSERT(root == fs_info->csum_root ||
 	       root->root_key.objectid == BTRFS_TREE_LOG_OBJECTID);

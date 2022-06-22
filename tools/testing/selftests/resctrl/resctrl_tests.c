@@ -40,7 +40,7 @@ static void cmd_help(void)
 	printf("\t-b benchmark_cmd [options]: run specified benchmark for MBM, MBA and CMT\n");
 	printf("\t   default benchmark is builtin fill_buf\n");
 	printf("\t-t test list: run tests specified in the test list, ");
-	printf("e.g. -t mbm,mba,cqm,cat\n");
+	printf("e.g. -t mbm,mba,cmt,cat\n");
 	printf("\t-n no_of_bits: run cache tests using specified no of bits in cache bit mask\n");
 	printf("\t-p cpu_no: specify CPU number to run the test. 1 is default\n");
 	printf("\t-h: help\n");
@@ -158,10 +158,13 @@ int main(int argc, char **argv)
 			while (token) {
 				if (!strncmp(token, MBM_STR, sizeof(MBM_STR))) {
 					mbm_test = true;
+					tests++;
 				} else if (!strncmp(token, MBA_STR, sizeof(MBA_STR))) {
 					mba_test = true;
-				} else if (!strncmp(token, CQM_STR, sizeof(CQM_STR))) {
-					cqm_test = true;
+					tests++;
+				} else if (!strncmp(token, CMT_STR, sizeof(CMT_STR))) {
+					cmt_test = true;
+					tests++;
 				} else if (!strncmp(token, CAT_STR, sizeof(CAT_STR))) {
 					cat_test = true;
 					tests++;
@@ -236,28 +239,13 @@ int main(int argc, char **argv)
 
 	filter_dmesg();
 
-	if (!is_amd && mbm_test) {
-		printf("# Starting MBM BW change ...\n");
-		if (!has_ben)
-			sprintf(benchmark_cmd[5], "%s", MBA_STR);
-		res = mbm_bw_change(span, cpu_no, bw_report, benchmark_cmd);
-		printf("%sok MBM: bw change\n", res ? "not " : "");
-		mbm_test_cleanup();
-		tests_run++;
-	}
+	ksft_set_plan(tests ? : 4);
 
 	if (!is_amd && mbm_test)
 		run_mbm_test(has_ben, benchmark_cmd, span, cpu_no, bw_report);
 
-	if (cqm_test) {
-		printf("# Starting CQM test ...\n");
-		if (!has_ben)
-			sprintf(benchmark_cmd[5], "%s", CQM_STR);
-		res = cqm_resctrl_val(cpu_no, no_of_bits, benchmark_cmd);
-		printf("%sok CQM: test\n", res ? "not " : "");
-		cqm_test_cleanup();
-		tests_run++;
-	}
+	if (!is_amd && mba_test)
+		run_mba_test(has_ben, benchmark_cmd, span, cpu_no, bw_report);
 
 	if (cmt_test)
 		run_cmt_test(has_ben, benchmark_cmd, cpu_no);

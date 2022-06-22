@@ -1225,12 +1225,6 @@ static int pcs_parse_bits_in_pinctrl_entry(struct pcs_device *pcs,
 	(*map)->data.mux.group = np->name;
 	(*map)->data.mux.function = np->name;
 
-	if (PCS_HAS_PINCONF) {
-		dev_err(pcs->dev, "pinconf not supported\n");
-		res = -ENOTSUPP;
-		goto free_pingroups;
-	}
-
 	*num_maps = 1;
 	mutex_unlock(&pcs->mutex);
 

@@ -184,6 +184,9 @@ struct btrfs_block_group {
 	 */
 	int needs_free_space;
 
+	/* Flag indicating this block group is placed on a sequential zone */
+	bool seq_zone;
+
 	/*
 	 * Number of extents in this block group used for swap files.
 	 * All accesses protected by the spinlock 'lock'.
@@ -319,9 +322,6 @@ static inline int btrfs_block_group_done(struct btrfs_block_group *cache)
 
 void btrfs_freeze_block_group(struct btrfs_block_group *cache);
 void btrfs_unfreeze_block_group(struct btrfs_block_group *cache);
-
-bool btrfs_inc_block_group_swap_extents(struct btrfs_block_group *bg);
-void btrfs_dec_block_group_swap_extents(struct btrfs_block_group *bg, int amount);
 
 bool btrfs_inc_block_group_swap_extents(struct btrfs_block_group *bg);
 void btrfs_dec_block_group_swap_extents(struct btrfs_block_group *bg, int amount);

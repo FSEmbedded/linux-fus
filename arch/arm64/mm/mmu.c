@@ -507,8 +507,17 @@ static void __init map_mem(pgd_t *pgdp)
 	int flags = NO_EXEC_MAPPINGS;
 	u64 i;
 
-	if (rodata_full || crash_mem_map || debug_pagealloc_enabled())
-		flags = NO_BLOCK_MAPPINGS | NO_CONT_MAPPINGS;
+	/*
+	 * Setting hierarchical PXNTable attributes on table entries covering
+	 * the linear region is only possible if it is guaranteed that no table
+	 * entries at any level are being shared between the linear region and
+	 * the vmalloc region. Check whether this is true for the PGD level, in
+	 * which case it is guaranteed to be true for all other levels as well.
+	 */
+	BUILD_BUG_ON(pgd_index(direct_map_end - 1) == pgd_index(direct_map_end));
+
+	if (can_set_direct_map() || crash_mem_map || IS_ENABLED(CONFIG_KFENCE))
+		flags |= NO_BLOCK_MAPPINGS | NO_CONT_MAPPINGS;
 
 	/*
 	 * Take care not to create a writable alias for the
@@ -607,6 +616,8 @@ early_param("rodata", parse_rodata);
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
 static int __init map_entry_trampoline(void)
 {
+	int i;
+
 	pgprot_t prot = rodata_enabled ? PAGE_KERNEL_ROX : PAGE_KERNEL_EXEC;
 	phys_addr_t pa_start = __pa_symbol(__entry_tramp_text_start);
 
@@ -615,11 +626,15 @@ static int __init map_entry_trampoline(void)
 
 	/* Map only the text into the trampoline page table */
 	memset(tramp_pg_dir, 0, PGD_SIZE);
-	__create_pgd_mapping(tramp_pg_dir, pa_start, TRAMP_VALIAS, PAGE_SIZE,
-			     prot, __pgd_pgtable_alloc, 0);
+	__create_pgd_mapping(tramp_pg_dir, pa_start, TRAMP_VALIAS,
+			     entry_tramp_text_size(), prot,
+			     __pgd_pgtable_alloc, NO_BLOCK_MAPPINGS);
 
 	/* Map both the text and data into the kernel page table */
-	__set_fixmap(FIX_ENTRY_TRAMP_TEXT, pa_start, prot);
+	for (i = 0; i < DIV_ROUND_UP(entry_tramp_text_size(), PAGE_SIZE); i++)
+		__set_fixmap(FIX_ENTRY_TRAMP_TEXT1 - i,
+			     pa_start + i * PAGE_SIZE, prot);
+
 	if (IS_ENABLED(CONFIG_RANDOMIZE_BASE)) {
 		extern char __entry_tramp_data_start[];
 
@@ -1435,6 +1450,7 @@ static void __remove_pgd_mapping(pgd_t *pgdir, unsigned long start, u64 size)
 
 struct range arch_get_mappable_range(void)
 {
+	struct range mhp_range;
 	u64 start_linear_pa = __pa(_PAGE_OFFSET(vabits_actual));
 	u64 end_linear_pa = __pa(PAGE_END - 1);
 
@@ -1458,7 +1474,10 @@ struct range arch_get_mappable_range(void)
 	 * range which can be mapped inside this linear mapping range, must
 	 * also be derived from its end points.
 	 */
-	return start >= start_linear_pa && (start + size - 1) <= end_linear_pa;
+	mhp_range.start = start_linear_pa;
+	mhp_range.end =  end_linear_pa;
+
+	return mhp_range;
 }
 
 int arch_add_memory(int nid, u64 start, u64 size,

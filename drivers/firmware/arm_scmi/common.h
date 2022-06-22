@@ -414,7 +414,8 @@ struct scmi_desc {
 
 #ifdef CONFIG_ARM_SCMI_TRANSPORT_MAILBOX
 extern const struct scmi_desc scmi_mailbox_desc;
-#ifdef CONFIG_HAVE_ARM_SMCCC_DISCOVERY
+#endif
+#ifdef CONFIG_ARM_SCMI_TRANSPORT_SMC
 extern const struct scmi_desc scmi_smc_desc;
 #endif
 #ifdef CONFIG_ARM_SCMI_TRANSPORT_VIRTIO

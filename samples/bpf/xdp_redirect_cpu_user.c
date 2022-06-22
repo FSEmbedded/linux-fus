@@ -382,8 +382,8 @@ int main(int argc, char **argv)
 		goto end_destroy;
 	}
 
-	/* Parse commands line args */
-	while ((opt = getopt_long(argc, argv, "hSd:s:p:q:c:xzFf:e:r:m:n",
+	prog = skel->progs.xdp_prognum5_lb_hash_ip_pairs;
+	while ((opt = getopt_long(argc, argv, "d:si:Sxp:f:e:r:m:c:q:Fvh",
 				  long_options, &longindex)) != -1) {
 		switch (opt) {
 		case 'd':

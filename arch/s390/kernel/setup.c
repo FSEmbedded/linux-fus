@@ -816,150 +816,31 @@ static void __init setup_memory(void)
 		storage_key_init_range(start, end);
 
 	psw_set_key(PAGE_DEFAULT_KEY);
-
-	/* Only cosmetics */
-	memblock_enforce_memory_limit(memblock_end_of_DRAM());
 }
 
 static void __init relocate_amode31_section(void)
 {
-	static const int stfl_bits[6] = { 0, 2, 7, 17, 19, 21 };
-	struct cpuid cpu_id;
-	int i;
+	unsigned long amode31_addr, amode31_size;
+	long amode31_offset;
+	long *ptr;
 
-	/*
-	 * The store facility list bits numbers as found in the principles
-	 * of operation are numbered with bit 1UL<<31 as number 0 to
-	 * bit 1UL<<0 as number 31.
-	 *   Bit 0: instructions named N3, "backported" to esa-mode
-	 *   Bit 2: z/Architecture mode is active
-	 *   Bit 7: the store-facility-list-extended facility is installed
-	 *   Bit 17: the message-security assist is installed
-	 *   Bit 19: the long-displacement facility is installed
-	 *   Bit 21: the extended-immediate facility is installed
-	 *   Bit 22: extended-translation facility 3 is installed
-	 *   Bit 30: extended-translation facility 3 enhancement facility
-	 * These get translated to:
-	 *   HWCAP_S390_ESAN3 bit 0, HWCAP_S390_ZARCH bit 1,
-	 *   HWCAP_S390_STFLE bit 2, HWCAP_S390_MSA bit 3,
-	 *   HWCAP_S390_LDISP bit 4, HWCAP_S390_EIMM bit 5 and
-	 *   HWCAP_S390_ETF3EH bit 8 (22 && 30).
-	 */
-	for (i = 0; i < 6; i++)
-		if (test_facility(stfl_bits[i]))
-			elf_hwcap |= 1UL << i;
+	/* Allocate a new AMODE31 capable memory region */
+	amode31_size = __eamode31 - __samode31;
+	pr_info("Relocating AMODE31 section of size 0x%08lx\n", amode31_size);
+	amode31_addr = (unsigned long)memblock_alloc_low(amode31_size, PAGE_SIZE);
+	if (!amode31_addr)
+		panic("Failed to allocate memory for AMODE31 section\n");
+	amode31_offset = amode31_addr - __samode31;
 
-	if (test_facility(22) && test_facility(30))
-		elf_hwcap |= HWCAP_S390_ETF3EH;
+	/* Move original AMODE31 section to the new one */
+	memmove((void *)amode31_addr, (void *)__samode31, amode31_size);
+	/* Zero out the old AMODE31 section to catch invalid accesses within it */
+	memset((void *)__samode31, 0, amode31_size);
 
-	/*
-	 * Check for additional facilities with store-facility-list-extended.
-	 * stfle stores doublewords (8 byte) with bit 1ULL<<63 as bit 0
-	 * and 1ULL<<0 as bit 63. Bits 0-31 contain the same information
-	 * as stored by stfl, bits 32-xxx contain additional facilities.
-	 * How many facility words are stored depends on the number of
-	 * doublewords passed to the instruction. The additional facilities
-	 * are:
-	 *   Bit 42: decimal floating point facility is installed
-	 *   Bit 44: perform floating point operation facility is installed
-	 * translated to:
-	 *   HWCAP_S390_DFP bit 6 (42 && 44).
-	 */
-	if ((elf_hwcap & (1UL << 2)) && test_facility(42) && test_facility(44))
-		elf_hwcap |= HWCAP_S390_DFP;
-
-	/*
-	 * Huge page support HWCAP_S390_HPAGE is bit 7.
-	 */
-	if (MACHINE_HAS_EDAT1)
-		elf_hwcap |= HWCAP_S390_HPAGE;
-
-	/*
-	 * 64-bit register support for 31-bit processes
-	 * HWCAP_S390_HIGH_GPRS is bit 9.
-	 */
-	elf_hwcap |= HWCAP_S390_HIGH_GPRS;
-
-	/*
-	 * Transactional execution support HWCAP_S390_TE is bit 10.
-	 */
-	if (MACHINE_HAS_TE)
-		elf_hwcap |= HWCAP_S390_TE;
-
-	/*
-	 * Vector extension HWCAP_S390_VXRS is bit 11. The Vector extension
-	 * can be disabled with the "novx" parameter. Use MACHINE_HAS_VX
-	 * instead of facility bit 129.
-	 */
-	if (MACHINE_HAS_VX) {
-		elf_hwcap |= HWCAP_S390_VXRS;
-		if (test_facility(134))
-			elf_hwcap |= HWCAP_S390_VXRS_BCD;
-		if (test_facility(135))
-			elf_hwcap |= HWCAP_S390_VXRS_EXT;
-		if (test_facility(148))
-			elf_hwcap |= HWCAP_S390_VXRS_EXT2;
-		if (test_facility(152))
-			elf_hwcap |= HWCAP_S390_VXRS_PDE;
-	}
-	if (test_facility(150))
-		elf_hwcap |= HWCAP_S390_SORT;
-	if (test_facility(151))
-		elf_hwcap |= HWCAP_S390_DFLT;
-
-	/*
-	 * Guarded storage support HWCAP_S390_GS is bit 12.
-	 */
-	if (MACHINE_HAS_GS)
-		elf_hwcap |= HWCAP_S390_GS;
-
-	get_cpu_id(&cpu_id);
-	add_device_randomness(&cpu_id, sizeof(cpu_id));
-	switch (cpu_id.machine) {
-	case 0x2064:
-	case 0x2066:
-	default:	/* Use "z900" as default for 64 bit kernels. */
-		strcpy(elf_platform, "z900");
-		break;
-	case 0x2084:
-	case 0x2086:
-		strcpy(elf_platform, "z990");
-		break;
-	case 0x2094:
-	case 0x2096:
-		strcpy(elf_platform, "z9-109");
-		break;
-	case 0x2097:
-	case 0x2098:
-		strcpy(elf_platform, "z10");
-		break;
-	case 0x2817:
-	case 0x2818:
-		strcpy(elf_platform, "z196");
-		break;
-	case 0x2827:
-	case 0x2828:
-		strcpy(elf_platform, "zEC12");
-		break;
-	case 0x2964:
-	case 0x2965:
-		strcpy(elf_platform, "z13");
-		break;
-	case 0x3906:
-	case 0x3907:
-		strcpy(elf_platform, "z14");
-		break;
-	case 0x8561:
-	case 0x8562:
-		strcpy(elf_platform, "z15");
-		break;
-	}
-
-	/*
-	 * Virtualization support HWCAP_INT_SIE is bit 0.
-	 */
-	if (sclp.has_sief2)
-		int_hwcap |= HWCAP_INT_SIE;
+	/* Update all AMODE31 region references */
+	for (ptr = _start_amode31_refs; ptr != _end_amode31_refs; ptr++)
+		*ptr += amode31_offset;
+}
 
 /* This must be called after AMODE31 relocation */
 static void __init setup_cr(void)

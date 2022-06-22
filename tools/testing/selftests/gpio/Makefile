@@ -2,24 +2,7 @@
 
 TEST_PROGS := gpio-mockup.sh
 TEST_FILES := gpio-mockup-sysfs.sh
-TEST_GEN_PROGS_EXTENDED := gpio-mockup-chardev
+TEST_GEN_PROGS_EXTENDED := gpio-mockup-cdev
+CFLAGS += -I../../../../usr/include
 
-KSFT_KHDR_INSTALL := 1
 include ../lib.mk
-
-GPIODIR := $(realpath ../../../gpio)
-GPIOOUT := $(OUTPUT)/tools-gpio/
-GPIOOBJ := $(GPIOOUT)/gpio-utils.o
-
-override define CLEAN
-	$(RM) $(TEST_GEN_PROGS_EXTENDED)
-	$(RM) -rf $(GPIOOUT)
-endef
-
-$(TEST_GEN_PROGS_EXTENDED): $(GPIOOBJ)
-
-$(GPIOOUT):
-	mkdir -p $@
-
-$(GPIOOBJ): $(GPIOOUT)
-	$(MAKE) OUTPUT=$(GPIOOUT) -C $(GPIODIR)

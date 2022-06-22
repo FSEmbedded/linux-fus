@@ -19,6 +19,9 @@ struct posix_acl *fuse_get_acl(struct inode *inode, int type, bool rcu)
 	void *value = NULL;
 	struct posix_acl *acl;
 
+	if (rcu)
+		return ERR_PTR(-ECHILD);
+
 	if (fuse_is_bad(inode))
 		return ERR_PTR(-EIO);
 

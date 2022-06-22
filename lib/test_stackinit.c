@@ -145,13 +145,15 @@ static bool range_contains(char *haystack_start, size_t haystack_size,
 #define INIT_STRING_none(var_type)	[FILL_SIZE_STRING] /**/
 #define INIT_STRING_zero(var_type)	[FILL_SIZE_STRING] = { }
 
-#define INIT_STRUCT_none		/**/
-#define INIT_STRUCT_zero		= { }
-#define INIT_STRUCT_static_partial	= { .two = 0, }
-#define INIT_STRUCT_static_all		= { .one = 0,			\
-					    .two = 0,			\
-					    .three = 0,			\
-					    .four = 0,			\
+#define INIT_STRUCT_none(var_type)	/**/
+#define INIT_STRUCT_zero(var_type)	= { }
+
+
+#define __static_partial		{ .two = 0, }
+#define __static_all			{ .one = 0,			\
+					  .two = 0,			\
+					  .three = 0,			\
+					  .four = 0,			\
 					}
 #define __dynamic_partial		{ .two = arg->two, }
 #define __dynamic_all			{ .one = arg->one,		\
@@ -164,6 +166,31 @@ static bool range_contains(char *haystack_start, size_t haystack_size,
 					var.two = 0;			\
 					var.three = 0;			\
 					var.four = 0
+
+#define INIT_STRUCT_static_partial(var_type)				\
+					= __static_partial
+#define INIT_STRUCT_static_all(var_type)				\
+					= __static_all
+#define INIT_STRUCT_dynamic_partial(var_type)				\
+					= __dynamic_partial
+#define INIT_STRUCT_dynamic_all(var_type)				\
+					= __dynamic_all
+#define INIT_STRUCT_runtime_partial(var_type)				\
+					; __runtime_partial
+#define INIT_STRUCT_runtime_all(var_type)				\
+					; __runtime_all
+
+#define INIT_STRUCT_assigned_static_partial(var_type)			\
+					; var = (var_type)__static_partial
+#define INIT_STRUCT_assigned_static_all(var_type)			\
+					; var = (var_type)__static_all
+#define INIT_STRUCT_assigned_dynamic_partial(var_type)			\
+					; var = (var_type)__dynamic_partial
+#define INIT_STRUCT_assigned_dynamic_all(var_type)			\
+					; var = (var_type)__dynamic_all
+
+#define INIT_STRUCT_assigned_copy(var_type)				\
+					; var = *(arg)
 
 /*
  * @name: unique string name for the test

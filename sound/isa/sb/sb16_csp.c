@@ -1052,14 +1052,16 @@ static int snd_sb_qsound_build(struct snd_sb_csp * p)
 
 	spin_lock_init(&p->q_lock);
 
-	if ((err = snd_ctl_add(card, p->qsound_switch = snd_ctl_new1(&snd_sb_qsound_switch, p))) < 0) {
-		p->qsound_switch = NULL;
+	kctl = snd_ctl_new1(&snd_sb_qsound_switch, p);
+	err = snd_ctl_add(card, kctl);
+	if (err < 0)
 		goto __error;
-	}
-	if ((err = snd_ctl_add(card, p->qsound_space = snd_ctl_new1(&snd_sb_qsound_space, p))) < 0) {
-		p->qsound_space = NULL;
+	p->qsound_switch = kctl;
+	kctl = snd_ctl_new1(&snd_sb_qsound_space, p);
+	err = snd_ctl_add(card, kctl);
+	if (err < 0)
 		goto __error;
-	}
+	p->qsound_space = kctl;
 
 	return 0;
 

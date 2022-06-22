@@ -331,7 +331,6 @@ int mei_irq_read_handler(struct mei_device *dev,
 	struct mei_ext_meta_hdr *meta_hdr = NULL;
 	struct mei_cl *cl;
 	int ret;
-	u32 ext_meta_hdr_u32;
 	u32 hdr_size_left;
 	u32 hdr_size_ext;
 	int i;
@@ -373,19 +372,6 @@ int mei_irq_read_handler(struct mei_device *dev,
 			dev_dbg(dev->dev, "extended header is %08x\n", dev->rd_msg_hdr[1]);
 		}
 		meta_hdr = ((struct mei_ext_meta_hdr *)&dev->rd_msg_hdr[1]);
-		if (check_add_overflow((u32)sizeof(*meta_hdr),
-				       mei_slots2data(meta_hdr->size),
-				       &hdr_size_ext)) {
-			dev_err(dev->dev, "extended message size too big %d\n",
-				meta_hdr->size);
-			return -EBADMSG;
-		}
-		if (hdr_size_left < hdr_size_ext) {
-			dev_err(dev->dev, "corrupted message header len %d\n",
-				mei_hdr->length);
-			return -EBADMSG;
-		}
-		meta_hdr = ((struct mei_ext_meta_hdr *)dev->rd_msg_hdr + 1);
 		if (check_add_overflow((u32)sizeof(*meta_hdr),
 				       mei_slots2data(meta_hdr->size),
 				       &hdr_size_ext)) {

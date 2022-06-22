@@ -105,7 +105,7 @@ config PTP_1588_CLOCK_PCH
 	depends on X86_32 || COMPILE_TEST
 	depends on HAS_IOMEM && PCI
 	depends on NET
-	imply PTP_1588_CLOCK
+	depends on PTP_1588_CLOCK
 	help
 	  This driver adds support for using the PCH EG20T as a PTP
 	  clock. The hardware supports time stamping of PTP packets

@@ -258,23 +258,14 @@ acpi_ev_address_space_dispatch(union acpi_operand_object *region_obj,
 
 		/* Get the Connection (resource_template) buffer */
 
-		context_locked = TRUE;
-
-		status =
-		    acpi_os_acquire_mutex(context_mutex, ACPI_WAIT_FOREVER);
-		if (ACPI_FAILURE(status)) {
-			goto re_enter_interpreter;
-		}
-
-		context_locked = TRUE;
-
-		/* Get the Connection (resource_template) buffer */
-
 		context->connection = field_obj->field.resource_buffer;
 		context->length = field_obj->field.resource_length;
 		context->access_length = field_obj->field.access_length;
-		address = field_obj->field.pin_number_index;
-		bit_width = field_obj->field.bit_length;
+
+		if (region_obj->region.space_id == ACPI_ADR_SPACE_GPIO) {
+			address = field_obj->field.pin_number_index;
+			bit_width = field_obj->field.bit_length;
+		}
 	}
 
 	/* Call the handler */

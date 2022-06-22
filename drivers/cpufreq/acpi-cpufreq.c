@@ -646,7 +646,11 @@ static u64 get_max_boost_ratio(unsigned int cpu)
 		return 0;
 	}
 
-	highest_perf = perf_caps.highest_perf;
+	if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD)
+		highest_perf = amd_get_highest_perf();
+	else
+		highest_perf = perf_caps.highest_perf;
+
 	nominal_perf = perf_caps.nominal_perf;
 
 	if (!highest_perf || !nominal_perf) {
@@ -915,16 +919,6 @@ static int acpi_cpufreq_cpu_exit(struct cpufreq_policy *policy)
 	kfree(data);
 
 	return 0;
-}
-
-static void acpi_cpufreq_cpu_ready(struct cpufreq_policy *policy)
-{
-	struct acpi_processor_performance *perf = per_cpu_ptr(acpi_perf_data,
-							      policy->cpu);
-	unsigned int freq = policy->freq_table[0].frequency;
-
-	if (perf->states[0].core_frequency * 1000 != freq)
-		pr_warn(FW_WARN "P-state 0 is not max freq\n");
 }
 
 static int acpi_cpufreq_resume(struct cpufreq_policy *policy)

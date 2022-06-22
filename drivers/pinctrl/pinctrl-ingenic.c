@@ -3262,8 +3262,8 @@ static void ingenic_gpio_set_value(struct ingenic_gpio_chip *jzgc,
 				   u8 offset, int value)
 {
 	if (jzgc->jzpc->info->version >= ID_JZ4770)
-		ingenic_gpio_set_bit(jzgc, JZ4760_GPIO_PAT0, offset, !!value);
-	else
+		ingenic_gpio_set_bit(jzgc, JZ4770_GPIO_PAT0, offset, !!value);
+	else if (jzgc->jzpc->info->version >= ID_JZ4740)
 		ingenic_gpio_set_bit(jzgc, JZ4740_GPIO_DATA, offset, !!value);
 	else
 		ingenic_gpio_set_bit(jzgc, JZ4730_GPIO_DATA, offset, !!value);
@@ -3299,9 +3299,9 @@ static void irq_set_type(struct ingenic_gpio_chip *jzgc,
 	}
 
 	if (jzgc->jzpc->info->version >= ID_JZ4770) {
-		reg1 = JZ4760_GPIO_PAT1;
-		reg2 = JZ4760_GPIO_PAT0;
-	} else {
+		reg1 = JZ4770_GPIO_PAT1;
+		reg2 = JZ4770_GPIO_PAT0;
+	} else if (jzgc->jzpc->info->version >= ID_JZ4740) {
 		reg1 = JZ4740_GPIO_TRIG;
 		reg2 = JZ4740_GPIO_DIR;
 	} else {
@@ -3357,8 +3357,8 @@ static void ingenic_gpio_irq_enable(struct irq_data *irqd)
 	int irq = irqd->hwirq;
 
 	if (jzgc->jzpc->info->version >= ID_JZ4770)
-		ingenic_gpio_set_bit(jzgc, JZ4760_GPIO_INT, irq, true);
-	else
+		ingenic_gpio_set_bit(jzgc, JZ4770_GPIO_INT, irq, true);
+	else if (jzgc->jzpc->info->version >= ID_JZ4740)
 		ingenic_gpio_set_bit(jzgc, JZ4740_GPIO_SELECT, irq, true);
 	else
 		ingenic_gpio_set_bit(jzgc, JZ4730_GPIO_GPIER, irq, true);
@@ -3375,8 +3375,8 @@ static void ingenic_gpio_irq_disable(struct irq_data *irqd)
 	ingenic_gpio_irq_mask(irqd);
 
 	if (jzgc->jzpc->info->version >= ID_JZ4770)
-		ingenic_gpio_set_bit(jzgc, JZ4760_GPIO_INT, irq, false);
-	else
+		ingenic_gpio_set_bit(jzgc, JZ4770_GPIO_INT, irq, false);
+	else if (jzgc->jzpc->info->version >= ID_JZ4740)
 		ingenic_gpio_set_bit(jzgc, JZ4740_GPIO_SELECT, irq, false);
 	else
 		ingenic_gpio_set_bit(jzgc, JZ4730_GPIO_GPIER, irq, false);
@@ -3403,8 +3403,8 @@ static void ingenic_gpio_irq_ack(struct irq_data *irqd)
 	}
 
 	if (jzgc->jzpc->info->version >= ID_JZ4770)
-		ingenic_gpio_set_bit(jzgc, JZ4760_GPIO_FLAG, irq, false);
-	else
+		ingenic_gpio_set_bit(jzgc, JZ4770_GPIO_FLAG, irq, false);
+	else if (jzgc->jzpc->info->version >= ID_JZ4740)
 		ingenic_gpio_set_bit(jzgc, JZ4740_GPIO_DATA, irq, true);
 	else
 		ingenic_gpio_set_bit(jzgc, JZ4730_GPIO_GPFR, irq, false);
@@ -3462,8 +3462,8 @@ static void ingenic_gpio_irq_handler(struct irq_desc *desc)
 	chained_irq_enter(irq_chip, desc);
 
 	if (jzgc->jzpc->info->version >= ID_JZ4770)
-		flag = ingenic_gpio_read_reg(jzgc, JZ4760_GPIO_FLAG);
-	else
+		flag = ingenic_gpio_read_reg(jzgc, JZ4770_GPIO_FLAG);
+	else if (jzgc->jzpc->info->version >= ID_JZ4740)
 		flag = ingenic_gpio_read_reg(jzgc, JZ4740_GPIO_FLAG);
 	else
 		flag = ingenic_gpio_read_reg(jzgc, JZ4730_GPIO_GPFR);
@@ -3575,8 +3575,12 @@ static int ingenic_gpio_get_direction(struct gpio_chip *gc, unsigned int offset)
 	unsigned int pin = gc->base + offset;
 
 	if (jzpc->info->version >= ID_JZ4770) {
-		if (ingenic_get_pin_config(jzpc, pin, JZ4760_GPIO_INT) ||
-		    ingenic_get_pin_config(jzpc, pin, JZ4760_GPIO_PAT1))
+		if (ingenic_get_pin_config(jzpc, pin, JZ4770_GPIO_INT) ||
+		    ingenic_get_pin_config(jzpc, pin, JZ4770_GPIO_PAT1))
+			return GPIO_LINE_DIRECTION_IN;
+		return GPIO_LINE_DIRECTION_OUT;
+	} else if (jzpc->info->version == ID_JZ4730) {
+		if (!ingenic_get_pin_config(jzpc, pin, JZ4730_GPIO_GPDIR))
 			return GPIO_LINE_DIRECTION_IN;
 		return GPIO_LINE_DIRECTION_OUT;
 	}
@@ -3633,7 +3637,7 @@ static int ingenic_pinmux_set_pin_fn(struct ingenic_pinctrl *jzpc,
 		ingenic_shadow_config_pin(jzpc, pin, JZ4770_GPIO_PAT0, func & 0x1);
 		ingenic_shadow_config_pin_load(jzpc, pin);
 	} else if (jzpc->info->version >= ID_JZ4770) {
-		ingenic_config_pin(jzpc, pin, JZ4760_GPIO_INT, false);
+		ingenic_config_pin(jzpc, pin, JZ4770_GPIO_INT, false);
 		ingenic_config_pin(jzpc, pin, GPIO_MSK, false);
 		ingenic_config_pin(jzpc, pin, JZ4770_GPIO_PAT1, func & 0x2);
 		ingenic_config_pin(jzpc, pin, JZ4770_GPIO_PAT0, func & 0x1);
@@ -3641,6 +3645,9 @@ static int ingenic_pinmux_set_pin_fn(struct ingenic_pinctrl *jzpc,
 		ingenic_config_pin(jzpc, pin, JZ4740_GPIO_FUNC, true);
 		ingenic_config_pin(jzpc, pin, JZ4740_GPIO_TRIG, func & 0x2);
 		ingenic_config_pin(jzpc, pin, JZ4740_GPIO_SELECT, func & 0x1);
+	} else {
+		ingenic_config_pin(jzpc, pin, JZ4730_GPIO_GPIER, false);
+		jz4730_config_pin_function(jzpc, pin, JZ4730_GPIO_GPAUR, JZ4730_GPIO_GPALR, func);
 	}
 
 	return 0;
@@ -3698,7 +3705,7 @@ static int ingenic_pinmux_gpio_set_direction(struct pinctrl_dev *pctldev,
 		ingenic_shadow_config_pin(jzpc, pin, JZ4770_GPIO_PAT1, input);
 		ingenic_shadow_config_pin_load(jzpc, pin);
 	} else if (jzpc->info->version >= ID_JZ4770) {
-		ingenic_config_pin(jzpc, pin, JZ4760_GPIO_INT, false);
+		ingenic_config_pin(jzpc, pin, JZ4770_GPIO_INT, false);
 		ingenic_config_pin(jzpc, pin, GPIO_MSK, true);
 		ingenic_config_pin(jzpc, pin, JZ4770_GPIO_PAT1, input);
 	} else if (jzpc->info->version >= ID_JZ4740) {
@@ -3745,10 +3752,29 @@ static int ingenic_pinconf_get(struct pinctrl_dev *pctldev,
 		unsigned int half = PINS_PER_GPIO_CHIP / 2;
 		unsigned int idxh = (pin % half) * 2;
 
-	if (jzpc->info->version >= ID_JZ4770)
-		pull = !ingenic_get_pin_config(jzpc, pin, JZ4760_GPIO_PEN);
-	else
-		pull = !ingenic_get_pin_config(jzpc, pin, JZ4740_GPIO_PULL_DIS);
+		if (idx < half)
+			regmap_read(jzpc->map, offt * jzpc->info->reg_offset +
+					X1830_GPIO_PEL, &bias);
+		else
+			regmap_read(jzpc->map, offt * jzpc->info->reg_offset +
+					X1830_GPIO_PEH, &bias);
+
+		bias = (bias >> idxh) & (GPIO_PULL_UP | GPIO_PULL_DOWN);
+
+		pullup = (bias == GPIO_PULL_UP) && (jzpc->info->pull_ups[offt] & BIT(idx));
+		pulldown = (bias == GPIO_PULL_DOWN) && (jzpc->info->pull_downs[offt] & BIT(idx));
+
+	} else {
+		if (jzpc->info->version >= ID_JZ4770)
+			pull = !ingenic_get_pin_config(jzpc, pin, JZ4770_GPIO_PEN);
+		else if (jzpc->info->version >= ID_JZ4740)
+			pull = !ingenic_get_pin_config(jzpc, pin, JZ4740_GPIO_PULL_DIS);
+		else
+			pull = ingenic_get_pin_config(jzpc, pin, JZ4730_GPIO_GPPUR);
+
+		pullup = pull && (jzpc->info->pull_ups[offt] & BIT(idx));
+		pulldown = pull && (jzpc->info->pull_downs[offt] & BIT(idx));
+	}
 
 	switch (param) {
 	case PIN_CONFIG_BIAS_DISABLE:
@@ -3839,8 +3865,8 @@ static void ingenic_set_bias(struct ingenic_pinctrl *jzpc,
 		}
 
 	} else if (jzpc->info->version >= ID_JZ4770) {
-		ingenic_config_pin(jzpc, pin, JZ4760_GPIO_PEN, !bias);
-	} else {
+		ingenic_config_pin(jzpc, pin, JZ4770_GPIO_PEN, !bias);
+	} else if (jzpc->info->version >= ID_JZ4740) {
 		ingenic_config_pin(jzpc, pin, JZ4740_GPIO_PULL_DIS, !bias);
 	} else {
 		ingenic_config_pin(jzpc, pin, JZ4730_GPIO_GPPUR, bias);
@@ -3860,8 +3886,8 @@ static void ingenic_set_output_level(struct ingenic_pinctrl *jzpc,
 				     unsigned int pin, bool high)
 {
 	if (jzpc->info->version >= ID_JZ4770)
-		ingenic_config_pin(jzpc, pin, JZ4760_GPIO_PAT0, high);
-	else
+		ingenic_config_pin(jzpc, pin, JZ4770_GPIO_PAT0, high);
+	else if (jzpc->info->version >= ID_JZ4740)
 		ingenic_config_pin(jzpc, pin, JZ4740_GPIO_DATA, high);
 	else
 		ingenic_config_pin(jzpc, pin, JZ4730_GPIO_DATA, high);

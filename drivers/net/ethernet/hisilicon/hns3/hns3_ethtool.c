@@ -32,6 +32,12 @@ static const struct hns3_stats hns3_txq_stats[] = {
 	HNS3_TQP_STAT("tso_err", tx_tso_err),
 	HNS3_TQP_STAT("over_max_recursion", over_max_recursion),
 	HNS3_TQP_STAT("hw_limitation", hw_limitation),
+	HNS3_TQP_STAT("bounce", tx_bounce),
+	HNS3_TQP_STAT("spare_full", tx_spare_full),
+	HNS3_TQP_STAT("copy_bits_err", copy_bits_err),
+	HNS3_TQP_STAT("sgl", tx_sgl),
+	HNS3_TQP_STAT("skb2sgl_err", skb2sgl_err),
+	HNS3_TQP_STAT("map_sg_err", map_sg_err),
 };
 
 #define HNS3_TXQ_STATS_COUNT ARRAY_SIZE(hns3_txq_stats)
@@ -415,6 +421,19 @@ static void hns3_self_test(struct net_device *ndev,
 	hns3_selftest_prepare(ndev, if_running, st_param);
 	hns3_do_selftest(ndev, st_param, eth_test, data);
 	hns3_selftest_restore(ndev, if_running);
+}
+
+static void hns3_update_limit_promisc_mode(struct net_device *netdev,
+					   bool enable)
+{
+	struct hnae3_handle *handle = hns3_get_handle(netdev);
+
+	if (enable)
+		set_bit(HNAE3_PFLAG_LIMIT_PROMISC, &handle->priv_flags);
+	else
+		clear_bit(HNAE3_PFLAG_LIMIT_PROMISC, &handle->priv_flags);
+
+	hns3_request_update_promisc_mode(handle);
 }
 
 static const struct hns3_pflag_desc hns3_priv_flags[HNAE3_PFLAG_MAX] = {
@@ -966,6 +985,7 @@ static int hns3_set_reset(struct net_device *netdev, u32 *flags)
 	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(h->pdev);
 	const struct hnae3_ae_ops *ops = h->ae_algo->ops;
 	const struct hns3_reset_type_map *rst_type_map;
+	enum ethtool_reset_flags rst_flags;
 	u32 i, size;
 
 	if (ops->ae_dev_resetting && ops->ae_dev_resetting(h))
@@ -985,6 +1005,7 @@ static int hns3_set_reset(struct net_device *netdev, u32 *flags)
 	for (i = 0; i < size; i++) {
 		if (rst_type_map[i].rst_flags == *flags) {
 			rst_type = rst_type_map[i].rst_type;
+			rst_flags = rst_type_map[i].rst_flags;
 			break;
 		}
 	}
@@ -999,6 +1020,8 @@ static int hns3_set_reset(struct net_device *netdev, u32 *flags)
 	ops->set_default_reset_request(ae_dev, rst_type);
 
 	ops->reset_event(h->pdev, h);
+
+	*flags &= ~rst_flags;
 
 	return 0;
 }

@@ -1388,30 +1388,6 @@ static void ti_get_serial_info(struct tty_struct *tty, struct serial_struct *ss)
 	struct ti_port *tport = usb_get_serial_port_data(port);
 
 	ss->baud_base = tport->tp_tdev->td_is_3410 ? 921600 : 460800;
-	ss->closing_wait = cwait;
-	return 0;
-}
-
-
-static int ti_set_serial_info(struct tty_struct *tty,
-	struct serial_struct *ss)
-{
-	struct usb_serial_port *port = tty->driver_data;
-	struct tty_port *tport = &port->port;
-	unsigned cwait;
-
-	cwait = ss->closing_wait;
-	if (cwait != ASYNC_CLOSING_WAIT_NONE)
-		cwait = msecs_to_jiffies(10 * ss->closing_wait);
-
-	if (!capable(CAP_SYS_ADMIN)) {
-		if (cwait != tport->closing_wait)
-			return -EPERM;
-	}
-
-	tport->closing_wait = cwait;
-
-	return 0;
 }
 
 

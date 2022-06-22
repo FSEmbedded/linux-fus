@@ -754,10 +754,12 @@ static int __acpi_device_wakeup_enable(struct acpi_device *adev,
 
 	mutex_lock(&acpi_wakeup_lock);
 
-	if (wakeup->enable_count >= INT_MAX) {
-		acpi_handle_info(adev->handle, "Wakeup enable count out of bounds!\n");
-		goto out;
-	}
+	/*
+	 * If the device wakeup power is already enabled, disable it and enable
+	 * it again in case it depends on the configuration of subordinate
+	 * devices and the conditions have changed since it was enabled last
+	 * time.
+	 */
 	if (wakeup->enable_count > 0)
 		acpi_disable_wakeup_device_power(adev);
 

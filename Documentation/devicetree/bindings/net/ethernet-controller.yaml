@@ -228,11 +228,6 @@ properties:
                 Indicates that pause should be enabled.
 
             asym-pause:
-              $ref: /schemas/types.yaml#definitions/flag
-              description:
-                Indicates that pause should be enabled.
-
-            asym-pause:
               $ref: /schemas/types.yaml#/definitions/flag
               description:
                 Indicates that asym_pause should be enabled.

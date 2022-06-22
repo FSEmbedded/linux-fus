@@ -35,6 +35,7 @@ static int __init early_init_dt_alloc_reserved_memory_arch(unsigned long node,
 {
 	phys_addr_t base;
 	phys_addr_t highmem_start = __pa(high_memory - 1) + 1;
+	int err = 0;
 
 	end = !end ? MEMBLOCK_ALLOC_ANYWHERE : end;
 	align = !align ? SMP_CACHE_BYTES : align;
@@ -53,8 +54,9 @@ static int __init early_init_dt_alloc_reserved_memory_arch(unsigned long node,
 	    && of_flat_dt_is_compatible(node, "shared-dma-pool")
 	    && of_get_flat_dt_prop(node, "reusable", NULL) && !nomap) {
 		if (base < highmem_start && (base + size) > highmem_start) {
-			base = memblock_find_in_range(start, highmem_start,
-						      size, align);
+			memblock_free(base, size);
+			base = memblock_phys_alloc_range(size, align, start,
+							 highmem_start);
 			if (!base)
 				return -ENOMEM;
 		}

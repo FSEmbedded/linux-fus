@@ -483,7 +483,6 @@ out:
 
 static void nvmet_execute_identify_ns(struct nvmet_req *req)
 {
-	struct nvmet_ctrl *ctrl = req->sq->ctrl;
 	struct nvme_id_ns *id;
 	u16 status;
 
@@ -500,8 +499,8 @@ static void nvmet_execute_identify_ns(struct nvmet_req *req)
 	}
 
 	/* return an all zeroed buffer if we can't find an active namespace */
-	req->ns = nvmet_find_namespace(ctrl, req->cmd->identify.nsid);
-	if (!req->ns) {
+	status = nvmet_req_find_ns(req);
+	if (status) {
 		status = 0;
 		goto done;
 	}
@@ -544,7 +543,7 @@ static void nvmet_execute_identify_ns(struct nvmet_req *req)
 
 	id->lbaf[0].ds = req->ns->blksize_shift;
 
-	if (ctrl->pi_support && nvmet_ns_has_pi(req->ns)) {
+	if (req->sq->ctrl->pi_support && nvmet_ns_has_pi(req->ns)) {
 		id->dpc = NVME_NS_DPC_PI_FIRST | NVME_NS_DPC_PI_LAST |
 			  NVME_NS_DPC_PI_TYPE1 | NVME_NS_DPC_PI_TYPE2 |
 			  NVME_NS_DPC_PI_TYPE3;
@@ -728,10 +727,7 @@ static void nvmet_execute_identify(struct nvmet_req *req)
 		break;
 	}
 
-	pr_debug("unhandled identify cns %d on qid %d\n",
-	       req->cmd->identify.cns, req->sq->qid);
-	req->error_loc = offsetof(struct nvme_identify, cns);
-	nvmet_req_complete(req, NVME_SC_INVALID_FIELD | NVME_SC_DNR);
+	nvmet_req_cns_error_complete(req);
 }
 
 /*
@@ -1047,9 +1043,4 @@ u16 nvmet_parse_admin_cmd(struct nvmet_req *req)
 	default:
 		return nvmet_report_invalid_opcode(req);
 	}
-
-	pr_debug("unhandled cmd %d on qid %d\n", cmd->common.opcode,
-	       req->sq->qid);
-	req->error_loc = offsetof(struct nvme_common_command, opcode);
-	return NVME_SC_INVALID_OPCODE | NVME_SC_DNR;
 }

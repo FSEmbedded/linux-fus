@@ -946,8 +946,8 @@ int intel_engine_init_cmd_parser(struct intel_engine_cs *engine)
 	int cmd_table_count;
 	int ret;
 
-	if (!IS_GEN(engine->i915, 7) && !(IS_GEN(engine->i915, 9) &&
-					  engine->class == COPY_ENGINE_CLASS))
+	if (GRAPHICS_VER(engine->i915) != 7 && !(GRAPHICS_VER(engine->i915) == 9 &&
+						 engine->class == COPY_ENGINE_CLASS))
 		return 0;
 
 	switch (engine->class) {
@@ -1144,7 +1144,8 @@ find_reg(const struct intel_engine_cs *engine, u32 addr)
 /* Returns a vmap'd pointer to dst_obj, which the caller must unmap */
 static u32 *copy_batch(struct drm_i915_gem_object *dst_obj,
 		       struct drm_i915_gem_object *src_obj,
-		       u32 offset, u32 length)
+		       unsigned long offset, unsigned long length,
+		       bool *needs_clflush_after)
 {
 	unsigned int src_needs_clflush;
 	unsigned int dst_needs_clflush;
@@ -1155,7 +1156,7 @@ static u32 *copy_batch(struct drm_i915_gem_object *dst_obj,
 	if (ret)
 		return ERR_PTR(ret);
 
-	dst = i915_gem_object_pin_map(dst_obj, I915_MAP_FORCE_WB);
+	dst = i915_gem_object_pin_map(dst_obj, I915_MAP_WB);
 	i915_gem_object_finish_access(dst_obj);
 	if (IS_ERR(dst))
 		return dst;
@@ -1213,6 +1214,9 @@ static u32 *copy_batch(struct drm_i915_gem_object *dst_obj,
 	i915_gem_object_finish_access(src_obj);
 
 	memset32(dst + length, 0, (dst_obj->base.size - length) / sizeof(u32));
+
+	/* dst_obj is returned with vmap pinned */
+	*needs_clflush_after = dst_needs_clflush & CLFLUSH_AFTER;
 
 	return dst;
 }
@@ -1443,7 +1447,8 @@ int intel_engine_cmd_parser(struct intel_engine_cs *engine,
 	GEM_BUG_ON(!batch_length);
 
 	cmd = copy_batch(shadow->obj, batch->obj,
-			 batch_offset, batch_length);
+			 batch_offset, batch_length,
+			 &needs_clflush_after);
 	if (IS_ERR(cmd)) {
 		DRM_DEBUG("CMD: Failed to copy batch\n");
 		return PTR_ERR(cmd);

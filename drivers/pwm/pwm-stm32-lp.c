@@ -218,13 +218,6 @@ static int stm32_pwm_lp_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int stm32_pwm_lp_remove(struct platform_device *pdev)
-{
-	struct stm32_pwm_lp *priv = platform_get_drvdata(pdev);
-
-	return pwmchip_remove(&priv->chip);
-}
-
 static int __maybe_unused stm32_pwm_lp_suspend(struct device *dev)
 {
 	struct stm32_pwm_lp *priv = dev_get_drvdata(dev);

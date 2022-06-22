@@ -293,6 +293,7 @@ void idxd_wq_reset(struct idxd_wq *wq)
 
 	operand = BIT(wq->id % 16) | ((wq->id / 16) << 16);
 	idxd_cmd_exec(idxd, IDXD_CMD_RESET_WQ, operand, NULL);
+	idxd_wq_disable_cleanup(wq);
 	wq->state = IDXD_WQ_DISABLED;
 }
 
@@ -337,6 +338,9 @@ void idxd_wqs_unmap_portal(struct idxd_device *idxd)
 int idxd_wq_set_pasid(struct idxd_wq *wq, int pasid)
 {
 	struct idxd_device *idxd = wq->idxd;
+	int rc;
+	union wqcfg wqcfg;
+	unsigned int offset;
 
 	rc = idxd_wq_disable(wq, false);
 	if (rc < 0)
@@ -390,14 +394,46 @@ static void idxd_wq_disable_cleanup(struct idxd_wq *wq)
 	lockdep_assert_held(&wq->wq_lock);
 	memset(wq->wqcfg, 0, idxd->wqcfg_size);
 	wq->type = IDXD_WQT_NONE;
-	wq->size = 0;
-	wq->group = NULL;
 	wq->threshold = 0;
 	wq->priority = 0;
 	wq->ats_dis = 0;
 	clear_bit(WQ_FLAG_DEDICATED, &wq->flags);
 	clear_bit(WQ_FLAG_BLOCK_ON_FAULT, &wq->flags);
 	memset(wq->name, 0, WQ_NAME_SIZE);
+}
+
+static void idxd_wq_device_reset_cleanup(struct idxd_wq *wq)
+{
+	lockdep_assert_held(&wq->wq_lock);
+
+	idxd_wq_disable_cleanup(wq);
+	wq->size = 0;
+	wq->group = NULL;
+}
+
+static void idxd_wq_ref_release(struct percpu_ref *ref)
+{
+	struct idxd_wq *wq = container_of(ref, struct idxd_wq, wq_active);
+
+	complete(&wq->wq_dead);
+}
+
+int idxd_wq_init_percpu_ref(struct idxd_wq *wq)
+{
+	int rc;
+
+	memset(&wq->wq_active, 0, sizeof(wq->wq_active));
+	rc = percpu_ref_init(&wq->wq_active, idxd_wq_ref_release, 0, GFP_KERNEL);
+	if (rc < 0)
+		return rc;
+	reinit_completion(&wq->wq_dead);
+	return 0;
+}
+
+void idxd_wq_quiesce(struct idxd_wq *wq)
+{
+	percpu_ref_kill(&wq->wq_active);
+	wait_for_completion(&wq->wq_dead);
 }
 
 /* Device control bits */
@@ -436,11 +472,6 @@ int idxd_device_init_reset(struct idxd_device *idxd)
 		return -ENXIO;
 	}
 
-	if (idxd_device_is_halted(idxd)) {
-		dev_warn(&idxd->pdev->dev, "Device is HALTED!\n");
-		return -ENXIO;
-	}
-
 	memset(&cmd, 0, sizeof(cmd));
 	cmd.cmd = IDXD_CMD_RESET_DEVICE;
 	dev_dbg(dev, "%s: sending reset for init.\n", __func__);
@@ -450,7 +481,7 @@ int idxd_device_init_reset(struct idxd_device *idxd)
 	while (ioread32(idxd->reg_base + IDXD_CMDSTS_OFFSET) &
 	       IDXD_CMDSTS_ACTIVE)
 		cpu_relax();
-	spin_unlock_irqrestore(&idxd->dev_lock, flags);
+	spin_unlock(&idxd->cmd_lock);
 	return 0;
 }
 
@@ -460,13 +491,6 @@ static void idxd_cmd_exec(struct idxd_device *idxd, int cmd_code, u32 operand,
 	union idxd_command_reg cmd;
 	DECLARE_COMPLETION_ONSTACK(done);
 	u32 stat;
-
-	if (idxd_device_is_halted(idxd)) {
-		dev_warn(&idxd->pdev->dev, "Device is HALTED!\n");
-		if (status)
-			*status = IDXD_CMDSTS_HW_ERR;
-		return;
-	}
 
 	if (idxd_device_is_halted(idxd)) {
 		dev_warn(&idxd->pdev->dev, "Device is HALTED!\n");
@@ -694,6 +718,7 @@ static void idxd_device_wqs_clear_state(struct idxd_device *idxd)
 
 		if (wq->state == IDXD_WQ_ENABLED) {
 			idxd_wq_disable_cleanup(wq);
+			idxd_wq_device_reset_cleanup(wq);
 			wq->state = IDXD_WQ_DISABLED;
 		}
 	}

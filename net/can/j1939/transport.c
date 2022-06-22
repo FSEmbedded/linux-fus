@@ -812,7 +812,8 @@ static int j1939_session_tx_dat(struct j1939_session *session)
 		if (offset + len > se_skb->len) {
 			netdev_err_once(priv->ndev,
 					"%s: 0x%p: requested data outside of queued buffer: offset %i, len %i, pkt.tx: %i\n",
-					__func__, session, skcb->offset, se_skb->len , session->pkt.tx);
+					__func__, session, se_skcb->offset,
+					se_skb->len , session->pkt.tx);
 			ret = -EOVERFLOW;
 			goto out_free;
 		}
@@ -1204,10 +1205,10 @@ static void j1939_session_completed(struct j1939_session *session)
 	struct sk_buff *se_skb;
 
 	if (!session->transmission) {
-		skb = j1939_session_skb_get(session);
+		se_skb = j1939_session_skb_get(session);
 		/* distribute among j1939 receivers */
-		j1939_sk_recv(session->priv, skb);
-		consume_skb(skb);
+		j1939_sk_recv(session->priv, se_skb);
+		consume_skb(se_skb);
 	}
 
 	j1939_session_deactivate_activate_next(session);
@@ -1791,7 +1792,7 @@ static void j1939_xtp_rx_dat_one(struct j1939_session *session,
 {
 	enum j1939_xtp_abort abort = J1939_XTP_ABORT_FAULT;
 	struct j1939_priv *priv = session->priv;
-	struct j1939_sk_buff_cb *skcb;
+	struct j1939_sk_buff_cb *skcb, *se_skcb;
 	struct sk_buff *se_skb = NULL;
 	const u8 *dat;
 	u8 *tpdat;
@@ -2005,7 +2006,7 @@ struct j1939_session *j1939_tp_send(struct j1939_priv *priv,
 		/* set the end-packet for broadcast */
 		session->pkt.last = session->pkt.total;
 
-	skcb->tskey = session->sk->sk_tskey++;
+	skcb->tskey = atomic_inc_return(&session->sk->sk_tskey) - 1;
 	session->tskey = skcb->tskey;
 
 	return session;

@@ -16,7 +16,6 @@
 #include <linux/of_net.h>
 #include <linux/phy.h>
 #include <linux/platform_device.h>
-#include <linux/pm_runtime.h>
 #include <linux/pm_wakeirq.h>
 #include <linux/regmap.h>
 #include <linux/slab.h>
@@ -159,22 +158,6 @@ static int imx_dwmac_init(struct platform_device *pdev, void *priv)
 
 	plat_dat = dwmac->plat_dat;
 
-	ret = pm_runtime_get_sync(&pdev->dev);
-	if (ret < 0)
-		return ret;
-
-	ret = clk_prepare_enable(dwmac->clk_mem);
-	if (ret) {
-		dev_err(&pdev->dev, "mem clock enable failed\n");
-		goto clk_mem_failed;
-	}
-
-	ret = clk_prepare_enable(dwmac->clk_tx);
-	if (ret) {
-		dev_err(&pdev->dev, "tx clock enable failed\n");
-		goto clk_tx_en_failed;
-	}
-
 	if (dwmac->ops->set_intf_mode) {
 		ret = dwmac->ops->set_intf_mode(plat_dat);
 		if (ret)
@@ -182,23 +165,11 @@ static int imx_dwmac_init(struct platform_device *pdev, void *priv)
 	}
 
 	return 0;
-
-intf_mode_failed:
-	clk_disable_unprepare(dwmac->clk_tx);
-clk_tx_en_failed:
-	clk_disable_unprepare(dwmac->clk_mem);
-clk_mem_failed:
-	pm_runtime_put_noidle(&pdev->dev);
-	return ret;
 }
 
 static void imx_dwmac_exit(struct platform_device *pdev, void *priv)
 {
-	struct imx_priv_data *dwmac = priv;
-
-	clk_disable_unprepare(dwmac->clk_tx);
-	clk_disable_unprepare(dwmac->clk_mem);
-	pm_runtime_put(&pdev->dev);
+	/* nothing to do now */
 }
 
 static void imx_dwmac_fix_speed(void *priv, unsigned int speed)
@@ -322,8 +293,9 @@ static int imx_dwmac_probe(struct platform_device *pdev)
 	plat_dat->bsp_priv = dwmac;
 	dwmac->plat_dat = plat_dat;
 
-	/* enable runtime pm to turn off power domain when netif down */
-	pm_runtime_enable(&pdev->dev);
+	ret = imx_dwmac_clks_config(dwmac, true);
+	if (ret)
+		goto err_clks_config;
 
 	ret = imx_dwmac_init(pdev, dwmac);
 	if (ret)
@@ -338,17 +310,12 @@ static int imx_dwmac_probe(struct platform_device *pdev)
 err_drv_probe:
 	imx_dwmac_exit(pdev, plat_dat->bsp_priv);
 err_dwmac_init:
-	pm_runtime_disable(&pdev->dev);
+	imx_dwmac_clks_config(dwmac, false);
+err_clks_config:
 err_parse_dt:
 err_match_data:
 	stmmac_remove_config_dt(pdev, plat_dat);
 	return ret;
-}
-
-int imx_dwmac_remove(struct platform_device *pdev)
-{
-	pm_runtime_disable(&pdev->dev);
-	return stmmac_pltfr_remove(pdev);
 }
 
 static struct imx_dwmac_ops imx8mp_dwmac_data = {
@@ -372,7 +339,7 @@ MODULE_DEVICE_TABLE(of, imx_dwmac_match);
 
 static struct platform_driver imx_dwmac_driver = {
 	.probe  = imx_dwmac_probe,
-	.remove = imx_dwmac_remove,
+	.remove = stmmac_pltfr_remove,
 	.driver = {
 		.name           = "imx-dwmac",
 		.pm		= &stmmac_pltfr_pm_ops,

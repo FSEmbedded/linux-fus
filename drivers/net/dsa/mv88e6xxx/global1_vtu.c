@@ -27,7 +27,7 @@ static int mv88e6xxx_g1_vtu_fid_read(struct mv88e6xxx_chip *chip,
 		return err;
 
 	entry->fid = val & MV88E6352_G1_VTU_FID_MASK;
-
+	entry->policy = !!(val & MV88E6352_G1_VTU_FID_VID_POLICY);
 	return 0;
 }
 
@@ -35,6 +35,9 @@ static int mv88e6xxx_g1_vtu_fid_write(struct mv88e6xxx_chip *chip,
 				      struct mv88e6xxx_vtu_entry *entry)
 {
 	u16 val = entry->fid & MV88E6352_G1_VTU_FID_MASK;
+
+	if (entry->policy)
+		val |= MV88E6352_G1_VTU_FID_VID_POLICY;
 
 	return mv88e6xxx_g1_write(chip, MV88E6352_G1_VTU_FID, val);
 }
@@ -334,39 +337,6 @@ int mv88e6xxx_g1_vtu_getnext(struct mv88e6xxx_chip *chip,
 		return err;
 
 	return mv88e6xxx_g1_vtu_vid_read(chip, entry);
-}
-
-int mv88e6250_g1_vtu_getnext(struct mv88e6xxx_chip *chip,
-			     struct mv88e6xxx_vtu_entry *entry)
-{
-	u16 val;
-	int err;
-
-	err = mv88e6xxx_g1_vtu_getnext(chip, entry);
-	if (err)
-		return err;
-
-	if (entry->valid) {
-		err = mv88e6185_g1_vtu_data_read(chip, entry);
-		if (err)
-			return err;
-
-		err = mv88e6185_g1_stu_data_read(chip, entry);
-		if (err)
-			return err;
-
-		/* VTU DBNum[3:0] are located in VTU Operation 3:0
-		 * VTU DBNum[5:4] are located in VTU Operation 9:8
-		 */
-		err = mv88e6xxx_g1_read(chip, MV88E6XXX_G1_VTU_OP, &val);
-		if (err)
-			return err;
-
-		entry->fid = val & 0x000f;
-		entry->fid |= (val & 0x0300) >> 4;
-	}
-
-	return 0;
 }
 
 int mv88e6185_g1_vtu_getnext(struct mv88e6xxx_chip *chip,

@@ -202,8 +202,7 @@ extern unsigned int s390_pci_no_rid;
   Prototypes
 ----------------------------------------------------------------------------- */
 /* Base stuff */
-int zpci_create_device(u32 fid, u32 fh, enum zpci_state state);
-void zpci_remove_device(struct zpci_dev *zdev, bool set_error);
+struct zpci_dev *zpci_create_device(u32 fid, u32 fh, enum zpci_state state);
 int zpci_enable_device(struct zpci_dev *);
 int zpci_disable_device(struct zpci_dev *);
 int zpci_scan_configured_device(struct zpci_dev *zdev, u32 fh);
@@ -219,8 +218,8 @@ void zpci_remove_reserved_devices(void);
 int clp_setup_writeback_mio(void);
 int clp_scan_pci_devices(void);
 int clp_query_pci_fn(struct zpci_dev *zdev);
-int clp_enable_fh(struct zpci_dev *, u8);
-int clp_disable_fh(struct zpci_dev *);
+int clp_enable_fh(struct zpci_dev *zdev, u32 *fh, u8 nr_dma_as);
+int clp_disable_fh(struct zpci_dev *zdev, u32 *fh);
 int clp_get_state(u32 fid, enum zpci_state *state);
 int clp_refresh_fh(u32 fid, u32 *fh);
 

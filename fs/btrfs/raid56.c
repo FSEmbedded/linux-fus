@@ -2357,19 +2357,19 @@ static noinline void finish_parity_scrub(struct btrfs_raid_bio *rbio,
 
 	if (has_qstripe) {
 		/* RAID6, allocate and map temp space for the Q stripe */
-		q_page = alloc_page(GFP_NOFS | __GFP_HIGHMEM);
+		q_page = alloc_page(GFP_NOFS);
 		if (!q_page) {
 			__free_page(p_page);
 			goto cleanup;
 		}
 		SetPageUptodate(q_page);
-		pointers[rbio->real_stripes - 1] = kmap(q_page);
+		pointers[rbio->real_stripes - 1] = kmap_local_page(q_page);
 	}
 
 	atomic_set(&rbio->error, 0);
 
 	/* Map the parity stripe just once */
-	pointers[nr_data] = kmap(p_page);
+	pointers[nr_data] = kmap_local_page(p_page);
 
 	for_each_set_bit(pagenr, rbio->dbitmap, rbio->stripe_npages) {
 		struct page *p;
@@ -2400,14 +2400,14 @@ static noinline void finish_parity_scrub(struct btrfs_raid_bio *rbio,
 			bitmap_clear(rbio->dbitmap, pagenr, 1);
 		kunmap_local(parity);
 
-		for (stripe = 0; stripe < nr_data; stripe++)
-			kunmap(page_in_rbio(rbio, stripe, pagenr, 0));
+		for (stripe = nr_data - 1; stripe >= 0; stripe--)
+			kunmap_local(pointers[stripe]);
 	}
 
-	kunmap(p_page);
+	kunmap_local(pointers[nr_data]);
 	__free_page(p_page);
 	if (q_page) {
-		kunmap(q_page);
+		kunmap_local(pointers[rbio->real_stripes - 1]);
 		__free_page(q_page);
 	}
 

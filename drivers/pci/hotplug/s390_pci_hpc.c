@@ -54,13 +54,7 @@ static int disable_slot(struct hotplug_slot *hotplug_slot)
 	}
 	pci_dev_put(pdev);
 
-	zpci_remove_device(zdev, false);
-
-	rc = zpci_disable_device(zdev);
-	if (rc)
-		return rc;
-
-	return zdev_deconfigure(zdev);
+	return zpci_deconfigure_device(zdev);
 }
 
 static int get_power_status(struct hotplug_slot *hotplug_slot, u8 *value)

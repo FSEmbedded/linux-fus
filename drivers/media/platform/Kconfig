@@ -147,17 +147,29 @@ config VIDEO_RENESAS_CEU
 	help
 	  This is a v4l2 driver for the Renesas CEU Interface
 
+config VIDEO_ROCKCHIP_ISP1
+	tristate "Rockchip Image Signal Processing v1 Unit driver"
+	depends on VIDEO_V4L2 && OF
+	depends on ARCH_ROCKCHIP || COMPILE_TEST
+	select MEDIA_CONTROLLER
+	select VIDEO_V4L2_SUBDEV_API
+	select VIDEOBUF2_DMA_CONTIG
+	select VIDEOBUF2_VMALLOC
+	select V4L2_FWNODE
+	select GENERIC_PHY_MIPI_DPHY
+	default n
+	help
+	  Enable this to support the Image Signal Processing (ISP) module
+	  present in RK3399 SoCs.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called rockchip-isp1.
+
 config VIDEO_MXC_CAPTURE
 	tristate "MXC Video For Linux Video Capture"
 	depends on VIDEO_V4L2
 	help
 	  This is the video4linux2 capture driver based on i.MX video-in module.
-
-config VIDEO_MX8_CAPTURE
-	tristate "MX8 Video For Linux Video Capture"
-	depends on VIDEO_V4L2
-	help
-	  This is the video4linux2 capture driver based on i.MX8 module.
 
 config VIDEO_MXC_OUTPUT
 	tristate "MXC Video For Linux Video Output"
@@ -166,9 +178,15 @@ config VIDEO_MXC_OUTPUT
 	help
 	This is the video4linux2 output driver based on MXC module.
 
+config VIDEO_MX8_CAPTURE
+	tristate "MX8 Video For Linux Video Capture"
+	depends on VIDEO_V4L2
+	help
+	  This is the video4linux2 capture driver based on i.MX8 module.
+
 source "drivers/media/platform/mxc/capture/Kconfig"
-source "drivers/media/platform/imx8/Kconfig"
 source "drivers/media/platform/mxc/output/Kconfig"
+source "drivers/media/platform/imx8/Kconfig"
 source "drivers/media/platform/exynos4-is/Kconfig"
 source "drivers/media/platform/am437x/Kconfig"
 source "drivers/media/platform/xilinx/Kconfig"

@@ -175,11 +175,14 @@ struct dm_writecache {
 	bool flush_on_suspend:1;
 	bool cleaner:1;
 	bool cleaner_set:1;
+	bool metadata_only:1;
+	bool pause_set:1;
 
 	unsigned high_wm_percent_value;
 	unsigned low_wm_percent_value;
 	unsigned autocommit_time_value;
 	unsigned max_age_value;
+	unsigned pause_value;
 
 	unsigned writeback_all;
 	struct workqueue_struct *writeback_wq;
@@ -997,7 +1000,7 @@ static void writecache_resume(struct dm_target *ti)
 
 	wc_lock(wc);
 
-	wc->data_device_sectors = i_size_read(wc->dev->bdev->bd_inode) >> SECTOR_SHIFT;
+	wc->data_device_sectors = bdev_nr_sectors(wc->dev->bdev);
 
 	if (WC_MODE_PMEM(wc)) {
 		persistent_memory_invalidate_cache(wc->memory_map, wc->memory_map_size);
@@ -1349,17 +1352,17 @@ read_next_block:
 	if (e && read_original_sector(wc, e) == bio->bi_iter.bi_sector) {
 		wc->stats.read_hits++;
 		if (WC_MODE_PMEM(wc)) {
-			writecache_flush(wc);
-			if (writecache_has_error(wc))
-				goto unlock_error;
-			if (unlikely(wc->cleaner))
-				goto unlock_remap_origin;
-			goto unlock_submit;
+			bio_copy_block(wc, bio, memory_data(wc, e));
+			if (bio->bi_iter.bi_size)
+				goto read_next_block;
+			map_op = WC_MAP_SUBMIT;
 		} else {
-			if (dm_bio_get_target_bio_nr(bio))
-				goto unlock_remap_origin;
-			writecache_offload_bio(wc, bio);
-			goto unlock_return;
+			dm_accept_partial_bio(bio, wc->block_size >> SECTOR_SHIFT);
+			bio_set_dev(bio, wc->ssd_dev->bdev);
+			bio->bi_iter.bi_sector = cache_sector(wc, e);
+			if (!writecache_entry_is_committed(wc, e))
+				writecache_wait_for_ios(wc, WRITE);
+			map_op = WC_MAP_REMAP;
 		}
 	} else {
 		map_op = writecache_map_remap_origin(wc, bio, e);
@@ -1448,31 +1451,9 @@ static enum wc_map_op writecache_map_write(struct dm_writecache *wc, struct bio 
 			    (wc->metadata_only && !(bio->bi_opf & REQ_META)))
 				goto direct_write;
 		}
-	} else {
-		do {
-			bool found_entry = false;
-			bool search_used = false;
-			if (writecache_has_error(wc))
-				goto unlock_error;
-			e = writecache_find_entry(wc, bio->bi_iter.bi_sector, 0);
-			if (e) {
-				if (!writecache_entry_is_committed(wc, e)) {
-					search_used = true;
-					goto bio_copy;
-				}
-				if (!WC_MODE_PMEM(wc) && !e->write_in_progress) {
-					wc->overwrote_committed = true;
-					search_used = true;
-					goto bio_copy;
-				}
-				found_entry = true;
-			} else {
-				if (unlikely(wc->cleaner))
-					goto direct_write;
-			}
-			e = writecache_pop_from_freelist(wc, (sector_t)-1);
-			if (unlikely(!e)) {
-				if (!WC_MODE_PMEM(wc) && !found_entry) {
+		e = writecache_pop_from_freelist(wc, (sector_t)-1);
+		if (unlikely(!e)) {
+			if (!WC_MODE_PMEM(wc) && !found_entry) {
 direct_write:
 				wc->stats.writes_around++;
 				e = writecache_find_entry(wc, bio->bi_iter.bi_sector, WFE_RETURN_FOLLOWING);
@@ -1487,42 +1468,11 @@ direct_write:
 		wc->uncommitted_blocks++;
 		wc->stats.writes_allocate++;
 bio_copy:
-			if (WC_MODE_PMEM(wc)) {
-				bio_copy_block(wc, bio, memory_data(wc, e));
-			} else {
-				unsigned bio_size = wc->block_size;
-				sector_t start_cache_sec = cache_sector(wc, e);
-				sector_t current_cache_sec = start_cache_sec + (bio_size >> SECTOR_SHIFT);
-
-				while (bio_size < bio->bi_iter.bi_size) {
-					if (!search_used) {
-						struct wc_entry *f = writecache_pop_from_freelist(wc, current_cache_sec);
-						if (!f)
-							break;
-						write_original_sector_seq_count(wc, f, bio->bi_iter.bi_sector +
-										(bio_size >> SECTOR_SHIFT), wc->seq_count);
-						writecache_insert_entry(wc, f);
-						wc->uncommitted_blocks++;
-					} else {
-						struct wc_entry *f;
-						struct rb_node *next = rb_next(&e->rb_node);
-						if (!next)
-							break;
-						f = container_of(next, struct wc_entry, rb_node);
-						if (f != e + 1)
-							break;
-						if (read_original_sector(wc, f) !=
-						    read_original_sector(wc, e) + (wc->block_size >> SECTOR_SHIFT))
-							break;
-						if (unlikely(f->write_in_progress))
-							break;
-						if (writecache_entry_is_committed(wc, f))
-							wc->overwrote_committed = true;
-						e = f;
-					}
-					bio_size += wc->block_size;
-					current_cache_sec += wc->block_size >> SECTOR_SHIFT;
-				}
+		if (WC_MODE_PMEM(wc))
+			bio_copy_block(wc, bio, memory_data(wc, e));
+		else
+			return writecache_bio_copy_ssd(wc, bio, e, search_used);
+	} while (bio->bi_iter.bi_size);
 
 	if (unlikely(bio->bi_opf & REQ_FUA || wc->uncommitted_blocks >= wc->autocommit_blocks))
 		writecache_flush(wc);
@@ -2781,7 +2731,7 @@ static void writecache_status(struct dm_target *ti, status_type_t type,
 
 static struct target_type writecache_target = {
 	.name			= "writecache",
-	.version		= {1, 4, 0},
+	.version		= {1, 6, 0},
 	.module			= THIS_MODULE,
 	.ctr			= writecache_ctr,
 	.dtr			= writecache_dtr,

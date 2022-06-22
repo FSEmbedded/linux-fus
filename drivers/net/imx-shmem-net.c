@@ -23,6 +23,7 @@
 #include <linux/interrupt.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
+#include <linux/ethtool.h>
 #include <linux/rtnetlink.h>
 #include <linux/virtio_ring.h>
 #include <linux/platform_device.h>
@@ -696,7 +697,7 @@ static void imx_shm_net_state_change(struct work_struct *work)
 			imx_shm_net_run(ndev);
 			break;
 		}
-		/* fall through */
+		fallthrough;
 	case IMX_SHM_NET_STATE_RUN:
 		/* If the remote goes to RESET, */
 		/* we need to follow immediately. */

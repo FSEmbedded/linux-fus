@@ -898,6 +898,7 @@ properties:
           - enum:
               - fsl,ls1021a-moxa-uc-8410a
               - fsl,ls1021a-qds
+              - fsl,ls1021a-tsn
               - fsl,ls1021a-twr
           - const: fsl,ls1021a
 
@@ -992,6 +993,14 @@ properties:
               - fsl,lx2160a-qds
               - fsl,lx2160a-rdb
               - fsl,lx2162a-qds
+          - const: fsl,lx2160a
+
+      - description: SolidRun LX2160A based Boards
+        items:
+          - enum:
+              - solidrun,clearfog-cx
+              - solidrun,honeycomb
+          - const: solidrun,lx2160a-cex7
           - const: fsl,lx2160a
 
       - description: S32V234 based Boards

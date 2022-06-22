@@ -63,49 +63,7 @@ static int bsg_sg_io(struct bsg_device *bd, fmode_t mode, void __user *uarg)
 		return -EFAULT;
 	if (hdr.guard != 'Q')
 		return -EINVAL;
-	ret = q->bsg_dev.ops->check_proto(&hdr);
-	if (ret)
-		return ret;
-
-	rq = blk_get_request(q, hdr.dout_xfer_len ?
-			REQ_OP_SCSI_OUT : REQ_OP_SCSI_IN, 0);
-	if (IS_ERR(rq))
-		return PTR_ERR(rq);
-
-	ret = q->bsg_dev.ops->fill_hdr(rq, &hdr, mode);
-	if (ret) {
-		blk_put_request(rq);
-		return ret;
-	}
-
-	rq->timeout = msecs_to_jiffies(hdr.timeout);
-	if (!rq->timeout)
-		rq->timeout = q->sg_timeout;
-	if (!rq->timeout)
-		rq->timeout = BLK_DEFAULT_SG_TIMEOUT;
-	if (rq->timeout < BLK_MIN_SG_TIMEOUT)
-		rq->timeout = BLK_MIN_SG_TIMEOUT;
-
-	if (hdr.dout_xfer_len) {
-		ret = blk_rq_map_user(q, rq, NULL, uptr64(hdr.dout_xferp),
-				hdr.dout_xfer_len, GFP_KERNEL);
-	} else if (hdr.din_xfer_len) {
-		ret = blk_rq_map_user(q, rq, NULL, uptr64(hdr.din_xferp),
-				hdr.din_xfer_len, GFP_KERNEL);
-	}
-
-	if (ret)
-		goto out_free_rq;
-
-	bio = rq->bio;
-
-	blk_execute_rq(q, NULL, rq, !(hdr.flags & BSG_FLAG_Q_AT_TAIL));
-	ret = rq->q->bsg_dev.ops->complete_rq(rq, &hdr);
-	blk_rq_unmap_user(bio);
-
-out_free_rq:
-	rq->q->bsg_dev.ops->free_rq(rq);
-	blk_put_request(rq);
+	ret = bd->sg_io_fn(bd->queue, &hdr, mode, bsg_timeout(bd, &hdr));
 	if (!ret && copy_to_user(uarg, &hdr, sizeof(hdr)))
 		return -EFAULT;
 	return ret;
@@ -186,9 +144,9 @@ static long bsg_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			min_t(unsigned int, val, queue_max_bytes(q));
 		return 0;
 	case SG_EMULATED_HOST:
-		return scsi_cmd_ioctl(bd->queue, NULL, file->f_mode, cmd, uarg);
+		return put_user(1, intp);
 	case SG_IO:
-		return bsg_sg_io(bd->queue, file->f_mode, uarg);
+		return bsg_sg_io(bd, file->f_mode, uarg);
 	case SCSI_IOCTL_SEND_COMMAND:
 		pr_warn_ratelimited("%s: calling unsupported SCSI_IOCTL_SEND_COMMAND\n",
 				current->comm);

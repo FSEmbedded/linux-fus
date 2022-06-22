@@ -33,7 +33,10 @@ struct enetc_tx_swbd {
 	enum dma_data_direction dir;
 	u8 is_dma_page:1;
 	u8 check_wb:1;
-	u8 do_tstamp:1;
+	u8 do_twostep_tstamp:1;
+	u8 is_eof:1;
+	u8 is_xdp_tx:1;
+	u8 is_xdp_redirect:1;
 	u8 qbv_en:1;
 };
 
@@ -63,7 +66,21 @@ struct enetc_ring_stats {
 	unsigned int packets;
 	unsigned int bytes;
 	unsigned int rx_alloc_errs;
+	unsigned int xdp_drops;
+	unsigned int xdp_tx;
+	unsigned int xdp_tx_drops;
+	unsigned int xdp_redirect;
+	unsigned int xdp_redirect_failures;
+	unsigned int xdp_redirect_sg;
+	unsigned int recycles;
+	unsigned int recycle_failures;
 	unsigned int win_drop;
+};
+
+struct enetc_xdp_data {
+	struct xdp_rxq_info rxq;
+	struct bpf_prog *prog;
+	int xdp_tx_in_flight;
 };
 
 #define ENETC_RX_RING_DEFAULT_SIZE	2048
@@ -100,6 +117,10 @@ struct enetc_bdr {
 	dma_addr_t bd_dma_base;
 	u8 tsd_enable; /* Time specific departure */
 	bool ext_en; /* enable h/w descriptor extensions */
+
+	/* DMA buffer for TSO headers */
+	char *tso_headers;
+	dma_addr_t tso_headers_dma;
 } ____cacheline_aligned_in_smp;
 
 static inline void enetc_bdr_idx_inc(struct enetc_bdr *bdr, int *i)
@@ -237,7 +258,6 @@ struct enetc_si {
 #ifdef CONFIG_ENETC_TSN
 	struct enetc_cbs *ecbs;
 #endif
-
 };
 
 #define ENETC_SI_ALIGN	32
@@ -305,11 +325,18 @@ struct psfp_cap {
 #define ENETC_F_TX_TSTAMP_MASK	0xff
 /* TODO: more hardware offloads */
 enum enetc_active_offloads {
-	ENETC_F_RX_TSTAMP	= BIT(0),
-	ENETC_F_TX_TSTAMP	= BIT(1),
-	ENETC_F_QBV             = BIT(2),
-	ENETC_F_QCI		= BIT(3),
-	ENETC_F_QBU             = BIT(4),
+	/* 8 bits reserved for TX timestamp types (hwtstamp_tx_types) */
+	ENETC_F_TX_TSTAMP		= BIT(0),
+	ENETC_F_TX_ONESTEP_SYNC_TSTAMP	= BIT(1),
+
+	ENETC_F_RX_TSTAMP		= BIT(8),
+	ENETC_F_QBV			= BIT(9),
+	ENETC_F_QCI			= BIT(10),
+	ENETC_F_QBU			= BIT(11),
+};
+
+enum enetc_flags_bit {
+	ENETC_TX_ONESTEP_TSTAMP_IN_PROGRESS = 0,
 };
 
 /* interrupt coalescing modes */
@@ -407,10 +434,9 @@ int enetc_xdp_xmit(struct net_device *ndev, int num_frames,
 void enetc_set_ethtool_ops(struct net_device *ndev);
 
 /* control buffer descriptor ring (CBDR) */
-int enetc_alloc_cbdr(struct device *dev, struct enetc_cbdr *cbdr);
-void enetc_free_cbdr(struct device *dev, struct enetc_cbdr *cbdr);
-void enetc_setup_cbdr(struct enetc_hw *hw, struct enetc_cbdr *cbdr);
-void enetc_clear_cbdr(struct enetc_hw *hw);
+int enetc_setup_cbdr(struct device *dev, struct enetc_hw *hw, int bd_count,
+		     struct enetc_cbdr *cbdr);
+void enetc_teardown_cbdr(struct enetc_cbdr *cbdr);
 int enetc_set_mac_flt_entry(struct enetc_si *si, int index,
 			    char *mac_addr, int si_map);
 int enetc_clear_mac_flt_entry(struct enetc_si *si, int index);

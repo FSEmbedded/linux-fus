@@ -113,8 +113,6 @@ bool _drm_lease_held(struct drm_file *file_priv, int id)
 
 	if (!file_priv)
 		return true;
-	ret = _drm_lease_held_master(master, id);
-	drm_master_put(&master);
 
 	master = drm_file_get_master(file_priv);
 	if (!master)

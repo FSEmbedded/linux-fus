@@ -774,9 +774,11 @@ static int tb_init_port(struct tb_port *port)
 			port->cap_adap = cap;
 	}
 
-	tb_dump_port(port->sw->tb, &port->config);
+	port->total_credits =
+		(port->config.nfc_credits & ADP_CS_4_TOTAL_BUFFERS_MASK) >>
+		ADP_CS_4_TOTAL_BUFFERS_SHIFT;
 
-	INIT_LIST_HEAD(&port->list);
+	tb_dump_port(port->sw->tb, port);
 	return 0;
 }
 

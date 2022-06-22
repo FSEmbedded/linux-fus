@@ -1685,8 +1685,8 @@ static int psp_hdcp_terminate(struct psp_context *psp)
 	if (amdgpu_sriov_vf(psp->adev))
 		return 0;
 
-	if (!psp->hdcp_context.hdcp_initialized) {
-		if (psp->hdcp_context.hdcp_shared_buf)
+	if (!psp->hdcp_context.context.initialized) {
+		if (psp->hdcp_context.context.mem_context.shared_buf)
 			goto out;
 		else
 			return 0;
@@ -1819,12 +1819,150 @@ static int psp_dtm_terminate(struct psp_context *psp)
 	if (amdgpu_sriov_vf(psp->adev))
 		return 0;
 
-	if (!psp->dtm_context.dtm_initialized) {
-		if (psp->dtm_context.dtm_shared_buf)
+	if (!psp->dtm_context.context.initialized) {
+		if (psp->dtm_context.context.mem_context.shared_buf)
 			goto out;
 		else
 			return 0;
 	}
+
+	ret = psp_dtm_unload(psp);
+	if (ret)
+		return ret;
+
+	psp->dtm_context.context.initialized = false;
+
+out:
+	/* free dtm shared memory */
+	psp_ta_free_shared_buf(&psp->dtm_context.context.mem_context);
+
+	return 0;
+}
+// DTM end
+
+// RAP start
+static int psp_rap_init_shared_buf(struct psp_context *psp)
+{
+	return psp_ta_init_shared_buf(psp, &psp->rap_context.context.mem_context,
+				      PSP_RAP_SHARED_MEM_SIZE);
+}
+
+static int psp_rap_load(struct psp_context *psp)
+{
+	int ret;
+	struct psp_gfx_cmd_resp *cmd;
+
+	psp_copy_fw(psp, psp->rap.start_addr, psp->rap.size_bytes);
+
+	cmd = acquire_psp_cmd_buf(psp);
+
+	psp_prep_ta_load_cmd_buf(cmd,
+				 psp->fw_pri_mc_addr,
+				 psp->rap.size_bytes,
+				 psp->rap_context.context.mem_context.shared_mc_addr,
+				 PSP_RAP_SHARED_MEM_SIZE);
+
+	ret = psp_cmd_submit_buf(psp, NULL, cmd, psp->fence_buf_mc_addr);
+
+	if (!ret) {
+		psp->rap_context.context.initialized = true;
+		psp->rap_context.context.session_id = cmd->resp.session_id;
+		mutex_init(&psp->rap_context.mutex);
+	}
+
+	release_psp_cmd_buf(psp);
+
+	return ret;
+}
+
+static int psp_rap_unload(struct psp_context *psp)
+{
+	int ret;
+	struct psp_gfx_cmd_resp *cmd = acquire_psp_cmd_buf(psp);
+
+	psp_prep_ta_unload_cmd_buf(cmd, psp->rap_context.context.session_id);
+
+	ret = psp_cmd_submit_buf(psp, NULL, cmd, psp->fence_buf_mc_addr);
+
+	release_psp_cmd_buf(psp);
+
+	return ret;
+}
+
+static int psp_rap_initialize(struct psp_context *psp)
+{
+	int ret;
+	enum ta_rap_status status = TA_RAP_STATUS__SUCCESS;
+
+	/*
+	 * TODO: bypass the initialize in sriov for now
+	 */
+	if (amdgpu_sriov_vf(psp->adev))
+		return 0;
+
+	if (!psp->rap.size_bytes ||
+	    !psp->rap.start_addr) {
+		dev_info(psp->adev->dev, "RAP: optional rap ta ucode is not available\n");
+		return 0;
+	}
+
+	if (!psp->rap_context.context.initialized) {
+		ret = psp_rap_init_shared_buf(psp);
+		if (ret)
+			return ret;
+	}
+
+	ret = psp_rap_load(psp);
+	if (ret)
+		return ret;
+
+	ret = psp_rap_invoke(psp, TA_CMD_RAP__INITIALIZE, &status);
+	if (ret || status != TA_RAP_STATUS__SUCCESS) {
+		psp_rap_unload(psp);
+
+		psp_ta_free_shared_buf(&psp->rap_context.context.mem_context);
+
+		psp->rap_context.context.initialized = false;
+
+		dev_warn(psp->adev->dev, "RAP TA initialize fail (%d) status %d.\n",
+			 ret, status);
+
+		return ret;
+	}
+
+	return 0;
+}
+
+static int psp_rap_terminate(struct psp_context *psp)
+{
+	int ret;
+
+	if (!psp->rap_context.context.initialized)
+		return 0;
+
+	ret = psp_rap_unload(psp);
+
+	psp->rap_context.context.initialized = false;
+
+	/* free rap shared memory */
+	psp_ta_free_shared_buf(&psp->rap_context.context.mem_context);
+
+	return ret;
+}
+
+int psp_rap_invoke(struct psp_context *psp, uint32_t ta_cmd_id, enum ta_rap_status *status)
+{
+	struct ta_rap_shared_memory *rap_cmd;
+	int ret = 0;
+
+	if (!psp->rap_context.context.initialized)
+		return 0;
+
+	if (ta_cmd_id != TA_CMD_RAP__INITIALIZE &&
+	    ta_cmd_id != TA_CMD_RAP__VALIDATE_L0)
+		return -EINVAL;
+
+	mutex_lock(&psp->rap_context.mutex);
 
 	rap_cmd = (struct ta_rap_shared_memory *)
 		  psp->rap_context.context.mem_context.shared_buf;
@@ -1840,11 +1978,8 @@ static int psp_dtm_terminate(struct psp_context *psp)
 	if (status)
 		*status = rap_cmd->rap_status;
 
-out:
-	/* free hdcp shared memory */
-	amdgpu_bo_free_kernel(&psp->dtm_context.dtm_shared_bo,
-			      &psp->dtm_context.dtm_shared_mc_addr,
-			      &psp->dtm_context.dtm_shared_buf);
+out_unlock:
+	mutex_unlock(&psp->rap_context.mutex);
 
 	return ret;
 }
@@ -2072,12 +2207,16 @@ static int psp_hw_start(struct psp_context *psp)
 		return ret;
 	}
 
+	if (amdgpu_sriov_vf(adev) && amdgpu_in_reset(adev))
+		goto skip_pin_bo;
+
 	ret = psp_tmr_init(psp);
 	if (ret) {
 		DRM_ERROR("PSP tmr init failed!\n");
 		return ret;
 	}
 
+skip_pin_bo:
 	/*
 	 * For ASICs with DF Cstate management centralized
 	 * to PMFW, TMR setup should be performed after PMFW

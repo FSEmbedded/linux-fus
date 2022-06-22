@@ -433,11 +433,9 @@ struct axienet_local {
 	struct phylink *phylink;
 	struct phylink_config phylink_config;
 
-	/* Reference to PCS/PMA PHY if used */
 	struct mdio_device *pcs_phy;
 
-	/* Clock for AXI bus */
-	struct clk *clk;
+	bool switch_x_sgmii;
 
 	struct clk *axi_clk;
 	struct clk_bulk_data misc_clks[XAE_NUM_MISC_CLOCKS];

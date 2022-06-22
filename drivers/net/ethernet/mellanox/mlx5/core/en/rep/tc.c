@@ -483,6 +483,9 @@ int mlx5e_rep_indr_setup_cb(struct net_device *netdev, struct Qdisc *sch, void *
 			    void *data,
 			    void (*cleanup)(struct flow_block_cb *block_cb))
 {
+	if (!netdev)
+		return -EOPNOTSUPP;
+
 	switch (type) {
 	case TC_SETUP_BLOCK:
 		return mlx5e_rep_indr_setup_block(netdev, sch, cb_priv, type_data,
@@ -647,9 +650,7 @@ static void mlx5e_restore_skb_sample(struct mlx5e_priv *priv, struct sk_buff *sk
 			   "Failed to restore tunnel info for sampled packet\n");
 		return;
 	}
-#if IS_ENABLED(CONFIG_MLX5_TC_SAMPLE)
 	mlx5e_tc_sample_skb(skb, mapped_obj);
-#endif /* CONFIG_MLX5_TC_SAMPLE */
 	mlx5_rep_tc_post_napi_receive(tc_priv);
 }
 
@@ -682,12 +683,8 @@ bool mlx5e_rep_tc_update_skb(struct mlx5_cqe64 *cqe,
 		return false;
 	}
 
-	if (chain) {
-		tc_skb_ext = tc_skb_ext_alloc(skb);
-		if (!tc_skb_ext) {
-			WARN_ON(1);
-			return false;
-		}
+	if (mapped_obj.type == MLX5_MAPPED_OBJ_CHAIN) {
+		u32 reg_c1 = be32_to_cpu(cqe->ft_metadata);
 
 		return mlx5e_restore_skb_chain(skb, mapped_obj.chain, reg_c1, tc_priv);
 	} else if (mapped_obj.type == MLX5_MAPPED_OBJ_SAMPLE) {

@@ -82,6 +82,9 @@ static void br_multicast_find_del_pg(struct net_bridge *br,
 				     struct net_bridge_port_group *pg);
 static void __br_multicast_stop(struct net_bridge_mcast *brmctx);
 
+static int br_mc_disabled_update(struct net_device *dev, bool value,
+				 struct netlink_ext_ack *extack);
+
 static struct net_bridge_port_group *
 br_sg_port_find(struct net_bridge *br,
 		struct net_bridge_port_group_sg_key *sg_p)
@@ -1156,6 +1159,7 @@ struct net_bridge_mdb_entry *br_multicast_new_group(struct net_bridge *br,
 		return mp;
 
 	if (atomic_read(&br->mdb_hash_tbl.nelems) >= br->hash_max) {
+		br_mc_disabled_update(br->dev, false, NULL);
 		br_opt_toggle(br, BROPT_MULTICAST_ENABLED, false);
 		return ERR_PTR(-E2BIG);
 	}
@@ -3606,9 +3610,9 @@ static void br_multicast_pim(struct net_bridge_mcast *brmctx,
 	    pim_hdr_type(pimhdr) != PIM_TYPE_HELLO)
 		return;
 
-	spin_lock(&br->multicast_lock);
-	br_multicast_mark_router(br, port);
-	spin_unlock(&br->multicast_lock);
+	spin_lock(&brmctx->br->multicast_lock);
+	br_ip4_multicast_mark_router(brmctx, pmctx);
+	spin_unlock(&brmctx->br->multicast_lock);
 }
 
 static int br_ip4_multicast_mrd_rcv(struct net_bridge_mcast *brmctx,
@@ -3619,9 +3623,9 @@ static int br_ip4_multicast_mrd_rcv(struct net_bridge_mcast *brmctx,
 	    igmp_hdr(skb)->type != IGMP_MRDISC_ADV)
 		return -ENOMSG;
 
-	spin_lock(&br->multicast_lock);
-	br_multicast_mark_router(br, port);
-	spin_unlock(&br->multicast_lock);
+	spin_lock(&brmctx->br->multicast_lock);
+	br_ip4_multicast_mark_router(brmctx, pmctx);
+	spin_unlock(&brmctx->br->multicast_lock);
 
 	return 0;
 }
@@ -3683,16 +3687,16 @@ static int br_multicast_ipv4_rcv(struct net_bridge_mcast *brmctx,
 }
 
 #if IS_ENABLED(CONFIG_IPV6)
-static void br_ip6_multicast_mrd_rcv(struct net_bridge *br,
-				     struct net_bridge_port *port,
+static void br_ip6_multicast_mrd_rcv(struct net_bridge_mcast *brmctx,
+				     struct net_bridge_mcast_port *pmctx,
 				     struct sk_buff *skb)
 {
 	if (icmp6_hdr(skb)->icmp6_type != ICMPV6_MRDISC_ADV)
 		return;
 
-	spin_lock(&br->multicast_lock);
-	br_multicast_mark_router(br, port);
-	spin_unlock(&br->multicast_lock);
+	spin_lock(&brmctx->br->multicast_lock);
+	br_ip6_multicast_mark_router(brmctx, pmctx);
+	spin_unlock(&brmctx->br->multicast_lock);
 }
 
 static int br_multicast_ipv6_rcv(struct net_bridge_mcast *brmctx,
@@ -3712,7 +3716,7 @@ static int br_multicast_ipv6_rcv(struct net_bridge_mcast *brmctx,
 			BR_INPUT_SKB_CB(skb)->mrouters_only = 1;
 		if (err == -ENODATA &&
 		    ipv6_addr_is_all_snoopers(&ipv6_hdr(skb)->daddr))
-			br_ip6_multicast_mrd_rcv(br, port, skb);
+			br_ip6_multicast_mrd_rcv(brmctx, pmctx, skb);
 
 		return 0;
 	} else if (err < 0) {
@@ -4521,6 +4525,38 @@ int br_multicast_set_mld_version(struct net_bridge_mcast *brmctx,
 	return 0;
 }
 #endif
+
+void br_multicast_set_query_intvl(struct net_bridge_mcast *brmctx,
+				  unsigned long val)
+{
+	unsigned long intvl_jiffies = clock_t_to_jiffies(val);
+
+	if (intvl_jiffies < BR_MULTICAST_QUERY_INTVL_MIN) {
+		br_info(brmctx->br,
+			"trying to set multicast query interval below minimum, setting to %lu (%ums)\n",
+			jiffies_to_clock_t(BR_MULTICAST_QUERY_INTVL_MIN),
+			jiffies_to_msecs(BR_MULTICAST_QUERY_INTVL_MIN));
+		intvl_jiffies = BR_MULTICAST_QUERY_INTVL_MIN;
+	}
+
+	brmctx->multicast_query_interval = intvl_jiffies;
+}
+
+void br_multicast_set_startup_query_intvl(struct net_bridge_mcast *brmctx,
+					  unsigned long val)
+{
+	unsigned long intvl_jiffies = clock_t_to_jiffies(val);
+
+	if (intvl_jiffies < BR_MULTICAST_STARTUP_QUERY_INTVL_MIN) {
+		br_info(brmctx->br,
+			"trying to set multicast startup query interval below minimum, setting to %lu (%ums)\n",
+			jiffies_to_clock_t(BR_MULTICAST_STARTUP_QUERY_INTVL_MIN),
+			jiffies_to_msecs(BR_MULTICAST_STARTUP_QUERY_INTVL_MIN));
+		intvl_jiffies = BR_MULTICAST_STARTUP_QUERY_INTVL_MIN;
+	}
+
+	brmctx->multicast_startup_query_interval = intvl_jiffies;
+}
 
 /**
  * br_multicast_list_adjacent - Returns snooped multicast addresses

@@ -29,6 +29,7 @@
 #include <drm/drm_vblank.h>
 #include <video/dpu.h>
 
+#include "dpu/dpu-blit.h"
 #include "imx-drm.h"
 
 static int legacyfb_depth = 16;
@@ -42,12 +43,6 @@ void imx_drm_connector_destroy(struct drm_connector *connector)
 	drm_connector_cleanup(connector);
 }
 EXPORT_SYMBOL_GPL(imx_drm_connector_destroy);
-
-void imx_drm_encoder_destroy(struct drm_encoder *encoder)
-{
-	drm_encoder_cleanup(encoder);
-}
-EXPORT_SYMBOL_GPL(imx_drm_encoder_destroy);
 
 int imx_drm_encoder_parse_of(struct drm_device *drm,
 	struct drm_encoder *encoder, struct device_node *np)
@@ -76,9 +71,9 @@ static const struct drm_ioctl_desc imx_drm_ioctls[] = {
 	/* none so far */
 };
 
-static int imx_drm_dumb_create(struct drm_file *file_priv,
-			       struct drm_device *drm,
-			       struct drm_mode_create_dumb *args)
+static int imx_drm_ipu_dumb_create(struct drm_file *file_priv,
+				   struct drm_device *drm,
+				   struct drm_mode_create_dumb *args)
 {
 	u32 width = args->width;
 	int ret;
@@ -93,11 +88,40 @@ static int imx_drm_dumb_create(struct drm_file *file_priv,
 	return ret;
 }
 
-static const struct drm_driver imx_drm_driver = {
+static struct drm_driver imx_drm_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
-	DRM_GEM_CMA_DRIVER_OPS_WITH_DUMB_CREATE(imx_drm_dumb_create),
+	DRM_GEM_CMA_DRIVER_OPS,
 	.ioctls			= imx_drm_ioctls,
 	.num_ioctls		= ARRAY_SIZE(imx_drm_ioctls),
+	.fops			= &imx_drm_driver_fops,
+	.name			= "imx-drm",
+	.desc			= "i.MX DRM graphics",
+	.date			= "20120507",
+	.major			= 1,
+	.minor			= 0,
+	.patchlevel		= 0,
+};
+
+static const struct drm_driver imx_drm_ipu_driver = {
+	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
+	DRM_GEM_CMA_DRIVER_OPS_WITH_DUMB_CREATE(imx_drm_ipu_dumb_create),
+	.ioctls			= imx_drm_ioctls,
+	.num_ioctls		= ARRAY_SIZE(imx_drm_ioctls),
+	.fops			= &imx_drm_driver_fops,
+	.name			= "imx-drm",
+	.desc			= "i.MX DRM graphics",
+	.date			= "20120507",
+	.major			= 1,
+	.minor			= 0,
+	.patchlevel		= 0,
+};
+
+static const struct drm_driver imx_drm_dpu_driver = {
+	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC |
+				  DRIVER_RENDER,
+	DRM_GEM_CMA_DRIVER_OPS,
+	.ioctls			= imx_drm_dpu_ioctls,
+	.num_ioctls		= ARRAY_SIZE(imx_drm_dpu_ioctls),
 	.fops			= &imx_drm_driver_fops,
 	.name			= "imx-drm",
 	.desc			= "i.MX DRM graphics",
@@ -151,6 +175,13 @@ static int compare_of(struct device *dev, void *data)
 	return dev->of_node == np;
 }
 
+static const char *const imx_drm_ipu_comp_parents[] = {
+	"fsl,imx51-ipu",
+	"fsl,imx53-ipu",
+	"fsl,imx6q-ipu",
+	"fsl,imx6qp-ipu",
+};
+
 static const char *const imx_drm_dpu_comp_parents[] = {
 	"fsl,imx8qm-dpu",
 	"fsl,imx8qxp-dpu",
@@ -182,6 +213,12 @@ static bool imx_drm_parent_is_compatible(struct device *dev,
 	of_node_put(port);
 
 	return ret;
+}
+
+static inline bool has_ipu(struct device *dev)
+{
+	return imx_drm_parent_is_compatible(dev, imx_drm_ipu_comp_parents,
+					    ARRAY_SIZE(imx_drm_ipu_comp_parents));
 }
 
 static inline bool has_dpu(struct device *dev)
@@ -246,10 +283,14 @@ static int imx_drm_bind(struct device *dev)
 	struct drm_device *drm;
 	int ret;
 
-	if (has_dpu(dev))
-		imx_drm_driver.driver_features |= DRIVER_RENDER;
+	if (has_ipu(dev)) {
+		drm = drm_dev_alloc(&imx_drm_ipu_driver, dev);
+	} else if (has_dpu(dev)) {
+		drm = drm_dev_alloc(&imx_drm_dpu_driver, dev);
+	} else {
+		drm = drm_dev_alloc(&imx_drm_driver, dev);
+	}
 
-	drm = drm_dev_alloc(&imx_drm_driver, dev);
 	if (IS_ERR(drm))
 		return PTR_ERR(drm);
 
@@ -313,9 +354,6 @@ err_kms:
 static void imx_drm_unbind(struct device *dev)
 {
 	struct drm_device *drm = dev_get_drvdata(dev);
-
-	if (has_dpu(dev))
-		imx_drm_driver.driver_features &= ~DRIVER_RENDER;
 
 	drm_dev_unregister(drm);
 

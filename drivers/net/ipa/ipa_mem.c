@@ -348,9 +348,8 @@ int ipa_mem_config(struct ipa *ipa)
 	/* For each defined region, write "canary" values in the
 	 * space prior to the region's base address if indicated.
 	 */
-	for (mem_id = 0; mem_id < ipa->mem_count; mem_id++) {
-		const struct ipa_mem *mem = &ipa->mem[mem_id];
-		u16 canary_count;
+	for (i = 0; i < ipa->mem_count; i++) {
+		u16 canary_count = ipa->mem[i].canary_count;
 		__le32 *canary;
 
 		if (!canary_count)
@@ -644,10 +643,6 @@ int ipa_mem_init(struct ipa *ipa, const struct ipa_mem_data *mem_data)
 
 	ipa->mem_addr = res->start;
 	ipa->mem_size = resource_size(res);
-
-	/* The ipa->mem[] array is indexed by enum ipa_mem_id values */
-	ipa->mem_count = mem_data->local_count;
-	ipa->mem = mem_data->local;
 
 	ret = ipa_imem_init(ipa, mem_data->imem_addr, mem_data->imem_size);
 	if (ret)

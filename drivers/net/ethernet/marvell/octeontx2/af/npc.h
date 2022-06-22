@@ -31,9 +31,9 @@ enum npc_kpu_la_ltype {
 	NPC_LT_LA_HIGIG2_ETHER,
 	NPC_LT_LA_IH_NIX_HIGIG2_ETHER,
 	NPC_LT_LA_CUSTOM_L2_90B_ETHER,
-	NPC_LT_LA_CH_LEN_90B_ETHER,
 	NPC_LT_LA_CPT_HDR,
 	NPC_LT_LA_CUSTOM_L2_24B_ETHER,
+	NPC_LT_LA_CUSTOM_PRE_L2_ETHER,
 	NPC_LT_LA_CUSTOM0 = 0xE,
 	NPC_LT_LA_CUSTOM1 = 0xF,
 };
@@ -148,8 +148,80 @@ enum npc_kpu_lh_ltype {
  * Software assigns pkind for each incoming port such as CGX
  * Ethernet interfaces, LBK interfaces, etc.
  */
+#define NPC_UNRESERVED_PKIND_COUNT NPC_RX_CUSTOM_PRE_L2_PKIND
+
 enum npc_pkind_type {
-	NPC_TX_DEF_PKIND = 63ULL,	/* NIX-TX PKIND */
+	NPC_RX_LBK_PKIND = 0ULL,
+	NPC_RX_CUSTOM_PRE_L2_PKIND = 55ULL,
+	NPC_RX_VLAN_EXDSA_PKIND = 56ULL,
+	NPC_RX_CHLEN24B_PKIND = 57ULL,
+	NPC_RX_CPT_HDR_PKIND,
+	NPC_RX_CHLEN90B_PKIND,
+	NPC_TX_HIGIG_PKIND,
+	NPC_RX_HIGIG_PKIND,
+	NPC_RX_EDSA_PKIND,
+	NPC_TX_DEF_PKIND,	/* NIX-TX PKIND */
+};
+
+enum npc_interface_type {
+	NPC_INTF_MODE_DEF,
+};
+
+/* list of known and supported fields in packet header and
+ * fields present in key structure.
+ */
+enum key_fields {
+	NPC_DMAC,
+	NPC_SMAC,
+	NPC_ETYPE,
+	NPC_VLAN_ETYPE_CTAG, /* 0x8100 */
+	NPC_VLAN_ETYPE_STAG, /* 0x88A8 */
+	NPC_OUTER_VID,
+	NPC_TOS,
+	NPC_SIP_IPV4,
+	NPC_DIP_IPV4,
+	NPC_SIP_IPV6,
+	NPC_DIP_IPV6,
+	NPC_IPPROTO_TCP,
+	NPC_IPPROTO_UDP,
+	NPC_IPPROTO_SCTP,
+	NPC_IPPROTO_AH,
+	NPC_IPPROTO_ESP,
+	NPC_IPPROTO_ICMP,
+	NPC_IPPROTO_ICMP6,
+	NPC_SPORT_TCP,
+	NPC_DPORT_TCP,
+	NPC_SPORT_UDP,
+	NPC_DPORT_UDP,
+	NPC_SPORT_SCTP,
+	NPC_DPORT_SCTP,
+	NPC_HEADER_FIELDS_MAX,
+	NPC_CHAN = NPC_HEADER_FIELDS_MAX, /* Valid when Rx */
+	NPC_PF_FUNC, /* Valid when Tx */
+	NPC_ERRLEV,
+	NPC_ERRCODE,
+	NPC_LXMB,
+	NPC_LA,
+	NPC_LB,
+	NPC_LC,
+	NPC_LD,
+	NPC_LE,
+	NPC_LF,
+	NPC_LG,
+	NPC_LH,
+	/* Ethertype for untagged frame */
+	NPC_ETYPE_ETHER,
+	/* Ethertype for single tagged frame */
+	NPC_ETYPE_TAG1,
+	/* Ethertype for double tagged frame */
+	NPC_ETYPE_TAG2,
+	/* outer vlan tci for single tagged frame */
+	NPC_VLAN_TAG1,
+	/* outer vlan tci for double tagged frame */
+	NPC_VLAN_TAG2,
+	/* other header fields programmed to extract but not of our interest */
+	NPC_UNKNOWN,
+	NPC_KEY_FIELDS_MAX,
 };
 
 struct npc_kpu_profile_cam {
@@ -333,6 +405,22 @@ struct nix_rx_action {
 #define NPC_PARSE_NIBBLE_LG_LTYPE	BIT_ULL(27)
 #define NPC_PARSE_NIBBLE_LH_FLAGS	GENMASK_ULL(29, 28)
 #define NPC_PARSE_NIBBLE_LH_LTYPE	BIT_ULL(30)
+
+struct nix_tx_action {
+#if defined(__BIG_ENDIAN_BITFIELD)
+	u64	rsvd_63_48	:16;
+	u64	match_id	:16;
+	u64	index		:20;
+	u64	rsvd_11_8	:8;
+	u64	op		:4;
+#else
+	u64	op		:4;
+	u64	rsvd_11_8	:8;
+	u64	index		:20;
+	u64	match_id	:16;
+	u64	rsvd_63_48	:16;
+#endif
+};
 
 /* NIX Receive Vtag Action Structure */
 #define RX_VTAG0_VALID_BIT		BIT_ULL(15)

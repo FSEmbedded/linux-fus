@@ -44,7 +44,39 @@
  */
 
 void *ftrace_func __read_mostly = ftrace_stub;
-unsigned long ftrace_plt;
+struct ftrace_insn {
+	u16 opc;
+	s32 disp;
+} __packed;
+
+asm(
+	"	.align 16\n"
+	"ftrace_shared_hotpatch_trampoline_br:\n"
+	"	lmg	%r0,%r1,2(%r1)\n"
+	"	br	%r1\n"
+	"ftrace_shared_hotpatch_trampoline_br_end:\n"
+);
+
+#ifdef CONFIG_EXPOLINE
+asm(
+	"	.align 16\n"
+	"ftrace_shared_hotpatch_trampoline_ex:\n"
+	"	lmg	%r0,%r1,2(%r1)\n"
+	"	ex	%r0," __stringify(__LC_BR_R1) "(%r0)\n"
+	"	j	.\n"
+	"ftrace_shared_hotpatch_trampoline_ex_end:\n"
+);
+
+asm(
+	"	.align 16\n"
+	"ftrace_shared_hotpatch_trampoline_exrl:\n"
+	"	lmg	%r0,%r1,2(%r1)\n"
+	"	.insn	ril,0xc60000000000,%r0,0f\n" /* exrl */
+	"	j	.\n"
+	"0:	br	%r1\n"
+	"ftrace_shared_hotpatch_trampoline_exrl_end:\n"
+);
+#endif /* CONFIG_EXPOLINE */
 
 #ifdef CONFIG_MODULES
 static char *ftrace_plt;

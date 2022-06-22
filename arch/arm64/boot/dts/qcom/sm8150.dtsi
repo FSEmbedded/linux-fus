@@ -2876,20 +2876,12 @@
 					};
 				};
 
-		tlmm: pinctrl@3100000 {
-			compatible = "qcom,sm8150-pinctrl";
-			reg = <0x0 0x03100000 0x0 0x300000>,
-			      <0x0 0x03500000 0x0 0x300000>,
-			      <0x0 0x03900000 0x0 0x300000>,
-			      <0x0 0x03D00000 0x0 0x300000>;
-			reg-names = "west", "east", "north", "south";
-			interrupts = <GIC_SPI 208 IRQ_TYPE_LEVEL_HIGH>;
-			gpio-ranges = <&tlmm 0 0 176>;
-			gpio-controller;
-			#gpio-cells = <2>;
-			interrupt-controller;
-			#interrupt-cells = <2>;
-		};
+				port@4 {
+					reg = <4>;
+					apss_funnel_in4: endpoint {
+						remote-endpoint = <&etm4_out>;
+					};
+				};
 
 				port@5 {
 					reg = <5>;

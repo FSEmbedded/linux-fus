@@ -279,99 +279,6 @@ static int bd71837_set_voltage_sel_pickable_restricted(
 }
 
 /*
- * OPS common for BD71847 and BD71850
- */
-BD718XX_OPS(bd718xx_pickable_range_ldo_ops,
-	    regulator_list_voltage_pickable_linear_range, NULL,
-	    bd718xx_set_voltage_sel_pickable_restricted,
-	    regulator_get_voltage_sel_pickable_regmap, NULL, NULL);
-
-/* BD71847 and BD71850 LDO 5 is by default OFF at RUN state */
-static const struct regulator_ops bd718xx_ldo5_ops_hwstate = {
-	.is_enabled = never_enabled_by_hwstate,
-	.list_voltage = regulator_list_voltage_pickable_linear_range,
-	.set_voltage_sel = bd718xx_set_voltage_sel_pickable_restricted,
-	.get_voltage_sel = regulator_get_voltage_sel_pickable_regmap,
-};
-
-BD718XX_OPS(bd718xx_pickable_range_buck_ops,
-	    regulator_list_voltage_pickable_linear_range, NULL,
-	    regulator_set_voltage_sel_pickable_regmap,
-	    regulator_get_voltage_sel_pickable_regmap,
-	    regulator_set_voltage_time_sel, NULL);
-
-BD718XX_OPS(bd718xx_ldo_regulator_ops, regulator_list_voltage_linear_range,
-	    NULL, bd718xx_set_voltage_sel_restricted,
-	    regulator_get_voltage_sel_regmap, NULL, NULL);
-
-BD718XX_OPS(bd718xx_ldo_regulator_nolinear_ops, regulator_list_voltage_table,
-	    NULL, bd718xx_set_voltage_sel_restricted,
-	    regulator_get_voltage_sel_regmap, NULL, NULL);
-
-BD718XX_OPS(bd718xx_buck_regulator_ops, regulator_list_voltage_linear_range,
-	    NULL, regulator_set_voltage_sel_regmap,
-	    regulator_get_voltage_sel_regmap, regulator_set_voltage_time_sel,
-	    NULL);
-
-BD718XX_OPS(bd718xx_buck_regulator_nolinear_ops, regulator_list_voltage_table,
-	    regulator_map_voltage_ascend, regulator_set_voltage_sel_regmap,
-	    regulator_get_voltage_sel_regmap, regulator_set_voltage_time_sel,
-	    NULL);
-
-/*
- * OPS for BD71837
- */
-BD718XX_OPS(bd71837_pickable_range_ldo_ops,
-	    regulator_list_voltage_pickable_linear_range, NULL,
-	    bd71837_set_voltage_sel_pickable_restricted,
-	    regulator_get_voltage_sel_pickable_regmap, NULL, NULL);
-
-BD718XX_OPS(bd71837_pickable_range_buck_ops,
-	    regulator_list_voltage_pickable_linear_range, NULL,
-	    bd71837_set_voltage_sel_pickable_restricted,
-	    regulator_get_voltage_sel_pickable_regmap,
-	    regulator_set_voltage_time_sel, NULL);
-
-BD718XX_OPS(bd71837_ldo_regulator_ops, regulator_list_voltage_linear_range,
-	    NULL, bd71837_set_voltage_sel_restricted,
-	    regulator_get_voltage_sel_regmap, NULL, NULL);
-
-BD718XX_OPS(bd71837_ldo_regulator_nolinear_ops, regulator_list_voltage_table,
-	    NULL, bd71837_set_voltage_sel_restricted,
-	    regulator_get_voltage_sel_regmap, NULL, NULL);
-
-BD718XX_OPS(bd71837_buck_regulator_ops, regulator_list_voltage_linear_range,
-	    NULL, bd71837_set_voltage_sel_restricted,
-	    regulator_get_voltage_sel_regmap, regulator_set_voltage_time_sel,
-	    NULL);
-
-BD718XX_OPS(bd71837_buck_regulator_nolinear_ops, regulator_list_voltage_table,
-	    regulator_map_voltage_ascend, bd71837_set_voltage_sel_restricted,
-	    regulator_get_voltage_sel_regmap, regulator_set_voltage_time_sel,
-	    NULL);
-/*
- * BD71837 bucks 3 and 4 support defining their enable/disable state also
- * when buck enable state is under HW state machine control. In that case the
- * bit [2] in CTRL register is used to indicate if regulator should be ON.
- */
-static const struct regulator_ops bd71837_buck34_ops_hwctrl = {
-	.is_enabled = bd71837_get_buck34_enable_hwctrl,
-	.list_voltage = regulator_list_voltage_linear_range,
-	.set_voltage_sel = regulator_set_voltage_sel_regmap,
-	.get_voltage_sel = regulator_get_voltage_sel_regmap,
-	.set_voltage_time_sel = regulator_set_voltage_time_sel,
-	.set_ramp_delay = bd718xx_buck1234_set_ramp_delay,
-};
-
-/*
- * OPS for all of the ICs - BD718(37/47/50)
- */
-BD718XX_OPS(bd718xx_dvs_buck_regulator_ops, regulator_list_voltage_linear_range,
-	    NULL, regulator_set_voltage_sel_regmap,
-	    regulator_get_voltage_sel_regmap, regulator_set_voltage_time_sel,
-	    bd718xx_buck1234_set_ramp_delay);
-
-/*
  * BD71837 BUCK1/2/3/4
  * BD71847 BUCK1/2
  * 0.70 to 1.30V (10mV step)
@@ -896,6 +803,10 @@ static struct bd718xx_regulator_data bd71847_regulators[] = {
 			.enable_reg = BD718XX_REG_BUCK2_CTRL,
 			.enable_mask = BD718XX_BUCK_EN,
 			.enable_time = BD71847_BUCK2_STARTUP_TIME,
+			.ramp_delay_table = bd718xx_ramp_delay,
+			.n_ramp_values = ARRAY_SIZE(bd718xx_ramp_delay),
+			.ramp_reg = BD718XX_REG_BUCK2_CTRL,
+			.ramp_mask = BUCK_RAMPRATE_MASK,
 			.owner = THIS_MODULE,
 			.of_parse_cb = buck_set_hw_dvs_levels,
 		},
@@ -1203,6 +1114,10 @@ static struct bd718xx_regulator_data bd71837_regulators[] = {
 			.enable_reg = BD718XX_REG_BUCK1_CTRL,
 			.enable_mask = BD718XX_BUCK_EN,
 			.enable_time = BD71837_BUCK1_STARTUP_TIME,
+			.ramp_delay_table = bd718xx_ramp_delay,
+			.n_ramp_values = ARRAY_SIZE(bd718xx_ramp_delay),
+			.ramp_reg = BD718XX_REG_BUCK1_CTRL,
+			.ramp_mask = BUCK_RAMPRATE_MASK,
 			.owner = THIS_MODULE,
 			.of_parse_cb = buck_set_hw_dvs_levels,
 		},
@@ -1237,6 +1152,10 @@ static struct bd718xx_regulator_data bd71837_regulators[] = {
 			.enable_reg = BD718XX_REG_BUCK2_CTRL,
 			.enable_mask = BD718XX_BUCK_EN,
 			.enable_time = BD71837_BUCK2_STARTUP_TIME,
+			.ramp_delay_table = bd718xx_ramp_delay,
+			.n_ramp_values = ARRAY_SIZE(bd718xx_ramp_delay),
+			.ramp_reg = BD718XX_REG_BUCK2_CTRL,
+			.ramp_mask = BUCK_RAMPRATE_MASK,
 			.owner = THIS_MODULE,
 			.of_parse_cb = buck_set_hw_dvs_levels,
 		},
@@ -1268,6 +1187,10 @@ static struct bd718xx_regulator_data bd71837_regulators[] = {
 			.enable_reg = BD71837_REG_BUCK3_CTRL,
 			.enable_mask = BD718XX_BUCK_EN,
 			.enable_time = BD71837_BUCK3_STARTUP_TIME,
+			.ramp_delay_table = bd718xx_ramp_delay,
+			.n_ramp_values = ARRAY_SIZE(bd718xx_ramp_delay),
+			.ramp_reg = BD71837_REG_BUCK3_CTRL,
+			.ramp_mask = BUCK_RAMPRATE_MASK,
 			.owner = THIS_MODULE,
 			.of_parse_cb = buck_set_hw_dvs_levels,
 		},
@@ -1297,6 +1220,10 @@ static struct bd718xx_regulator_data bd71837_regulators[] = {
 			.enable_reg = BD71837_REG_BUCK4_CTRL,
 			.enable_mask = BD718XX_BUCK_EN,
 			.enable_time = BD71837_BUCK4_STARTUP_TIME,
+			.ramp_delay_table = bd718xx_ramp_delay,
+			.n_ramp_values = ARRAY_SIZE(bd718xx_ramp_delay),
+			.ramp_reg = BD71837_REG_BUCK4_CTRL,
+			.ramp_mask = BUCK_RAMPRATE_MASK,
 			.owner = THIS_MODULE,
 			.of_parse_cb = buck_set_hw_dvs_levels,
 		},

@@ -5,7 +5,6 @@
  *  Copyright (C) 2003 Russell King, All Rights Reserved.
  *  Copyright (C) 2007-2008 Pierre Ossman
  *  Copyright (C) 2010 Linus Walleij
- *  Copyright 2020 NXP
  *
  *  MMC host class device management
  */
@@ -81,9 +80,18 @@ static void mmc_host_classdev_release(struct device *dev)
 	kfree(host);
 }
 
+static int mmc_host_classdev_shutdown(struct device *dev)
+{
+	struct mmc_host *host = cls_dev_to_mmc_host(dev);
+
+	__mmc_stop_host(host);
+	return 0;
+}
+
 static struct class mmc_host_class = {
 	.name		= "mmc_host",
 	.dev_release	= mmc_host_classdev_release,
+	.shutdown_pre	= mmc_host_classdev_shutdown,
 	.pm		= MMC_HOST_CLASS_DEV_PM_OPS,
 };
 
@@ -377,8 +385,6 @@ int mmc_of_parse(struct mmc_host *host)
 	if (device_property_read_bool(dev, "wakeup-source") ||
 	    device_property_read_bool(dev, "enable-sdio-wakeup")) /* legacy */
 		host->pm_caps |= MMC_PM_WAKE_SDIO_IRQ;
-	if (device_property_read_bool(dev, "pm-ignore-notify"))
-		host->pm_caps |= MMC_PM_IGNORE_PM_NOTIFY;
 	if (device_property_read_bool(dev, "mmc-ddr-3_3v"))
 		host->caps |= MMC_CAP_3_3V_DDR;
 	if (device_property_read_bool(dev, "mmc-ddr-1_8v"))
@@ -431,56 +437,55 @@ int mmc_of_parse(struct mmc_host *host)
 EXPORT_SYMBOL(mmc_of_parse);
 
 /**
- * mmc_parse_voltage - return mask of supported voltages
- * @dev: The device need to be parsed.
+ * mmc_of_parse_voltage - return mask of supported voltages
+ * @host: host whose properties should be parsed.
  * @mask: mask of voltages available for MMC/SD/SDIO
  *
  * Parse the "voltage-ranges" property, returning zero if it is not
  * found, negative errno if the voltage-range specification is invalid,
  * or one if the voltage-range is specified and successfully parsed.
  */
-int mmc_parse_voltage(struct device *dev, u32 *mask)
+int mmc_of_parse_voltage(struct mmc_host *host, u32 *mask)
 {
+	const char *prop = "voltage-ranges";
+	struct device *dev = host->parent;
 	u32 *voltage_ranges;
 	int num_ranges, i;
 	int ret;
 
-	num_ranges = device_property_read_u32_array(dev, "voltage-ranges",
-						    NULL, 0);
-	if (num_ranges < 0) {
-		dev_err(dev, "voltage-ranges unspecified\n");
+	if (!device_property_present(dev, prop)) {
+		dev_dbg(dev, "%s unspecified\n", prop);
+		return 0;
+	}
+
+	ret = device_property_count_u32(dev, prop);
+	if (ret < 0)
+		return ret;
+
+	num_ranges = ret / 2;
+	if (!num_ranges) {
+		dev_err(dev, "%s empty\n", prop);
 		return -EINVAL;
 	}
 
-	if (num_ranges / 2 == 0) {
-		dev_err(dev, "voltage-ranges empty\n");
-		return -EINVAL;
-	}
-
-	voltage_ranges = kcalloc(num_ranges, sizeof(u32), GFP_KERNEL);
-	if (!voltage_ranges) {
-		dev_err(dev, "kcalloc failed in %s\n", __func__);
+	voltage_ranges = kcalloc(2 * num_ranges, sizeof(*voltage_ranges), GFP_KERNEL);
+	if (!voltage_ranges)
 		return -ENOMEM;
-	}
 
-	ret = device_property_read_u32_array(dev, "voltage-ranges",
-					     voltage_ranges, num_ranges);
+	ret = device_property_read_u32_array(dev, prop, voltage_ranges, 2 * num_ranges);
 	if (ret) {
-		dev_err(dev, "voltage-ranges unspecified\n");
 		kfree(voltage_ranges);
 		return ret;
 	}
-
-	num_ranges = num_ranges / 2;
 
 	for (i = 0; i < num_ranges; i++) {
 		const int j = i * 2;
 		u32 ocr_mask;
 
-		ocr_mask = mmc_vddrange_to_ocrmask(voltage_ranges[j],
+		ocr_mask = mmc_vddrange_to_ocrmask(voltage_ranges[j + 0],
 						   voltage_ranges[j + 1]);
 		if (!ocr_mask) {
-			dev_err(dev, "voltage-range #%d is invalid\n", i);
+			dev_err(dev, "range #%d in %s is invalid\n", i, prop);
 			kfree(voltage_ranges);
 			return -EINVAL;
 		}
@@ -488,9 +493,10 @@ int mmc_parse_voltage(struct device *dev, u32 *mask)
 	}
 
 	kfree(voltage_ranges);
+
 	return 1;
 }
-EXPORT_SYMBOL(mmc_parse_voltage);
+EXPORT_SYMBOL(mmc_of_parse_voltage);
 
 /**
  * mmc_first_nonreserved_index() - get the first index that is not reserved
@@ -608,7 +614,6 @@ int mmc_add_host(struct mmc_host *host)
 #endif
 
 	mmc_start_host(host);
-
 	return 0;
 }
 

@@ -287,7 +287,15 @@ static int __uac_clock_find_source(struct snd_usb_audio *chip,
 
 	selector = snd_usb_find_clock_selector(chip, entity_id, proto);
 	if (selector) {
-		int ret, i, cur, err;
+		pins = GET_VAL(selector, proto, bNrInPins);
+		clock_id = GET_VAL(selector, proto, bClockID);
+		sources = GET_VAL(selector, proto, baCSourceID);
+		cur = 0;
+
+		if (pins == 1) {
+			ret = 1;
+			goto find_source;
+		}
 
 		/* the entity ID we are looking for is a selector.
 		 * find out what it currently selects */
@@ -316,11 +324,8 @@ static int __uac_clock_find_source(struct snd_usb_audio *chip,
 					      sources[ret - 1],
 					      visited, validate);
 		if (ret > 0) {
-			/*
-			 * For Samsung USBC Headset (AKG), setting clock selector again
-			 * will result in incorrect default clock setting problems
-			 */
-			if (chip->usb_id == USB_ID(0x04e8, 0xa051))
+			/* Skip setting clock selector again for some devices */
+			if (chip->quirk_flags & QUIRK_FLAG_SKIP_CLOCK_SELECTOR)
 				return ret;
 			err = uac_clock_selector_set_val(chip, entity_id, cur);
 			if (err < 0)
@@ -332,7 +337,7 @@ static int __uac_clock_find_source(struct snd_usb_audio *chip,
 
 	find_others:
 		/* The current clock source is invalid, try others. */
-		for (i = 1; i <= selector->bNrInPins; i++) {
+		for (i = 1; i <= pins; i++) {
 			if (i == cur)
 				continue;
 
@@ -361,107 +366,6 @@ static int __uac_clock_find_source(struct snd_usb_audio *chip,
 		return __uac_clock_find_source(chip, fmt,
 					       GET_VAL(multiplier, proto, bCSourceID),
 					       visited, validate);
-
-	return -EINVAL;
-}
-
-static int __uac3_clock_find_source(struct snd_usb_audio *chip,
-				    struct audioformat *fmt, int entity_id,
-				    unsigned long *visited, bool validate)
-{
-	struct uac3_clock_source_descriptor *source;
-	struct uac3_clock_selector_descriptor *selector;
-	struct uac3_clock_multiplier_descriptor *multiplier;
-
-	entity_id &= 0xff;
-
-	if (test_and_set_bit(entity_id, visited)) {
-		usb_audio_warn(chip,
-			 "%s(): recursive clock topology detected, id %d.\n",
-			 __func__, entity_id);
-		return -EINVAL;
-	}
-
-	/* first, see if the ID we're looking for is a clock source already */
-	source = snd_usb_find_clock_source_v3(chip->ctrl_intf, entity_id);
-	if (source) {
-		entity_id = source->bClockID;
-		if (validate && !uac_clock_source_is_valid(chip, fmt,
-								entity_id)) {
-			usb_audio_err(chip,
-				"clock source %d is not valid, cannot use\n",
-				entity_id);
-			return -ENXIO;
-		}
-		return entity_id;
-	}
-
-	selector = snd_usb_find_clock_selector_v3(chip->ctrl_intf, entity_id);
-	if (selector) {
-		int ret, i, cur, err;
-
-		/* the entity ID we are looking for is a selector.
-		 * find out what it currently selects */
-		ret = uac_clock_selector_get_val(chip, selector->bClockID);
-		if (ret < 0)
-			return ret;
-
-		/* Selector values are one-based */
-
-		if (ret > selector->bNrInPins || ret < 1) {
-			usb_audio_err(chip,
-				"%s(): selector reported illegal value, id %d, ret %d\n",
-				__func__, selector->bClockID, ret);
-
-			return -EINVAL;
-		}
-
-		cur = ret;
-		ret = __uac3_clock_find_source(chip, fmt,
-					       selector->baCSourceID[ret - 1],
-					       visited, validate);
-		if (ret > 0) {
-			err = uac_clock_selector_set_val(chip, entity_id, cur);
-			if (err < 0)
-				return err;
-		}
-
-		if (!validate || ret > 0 || !chip->autoclock)
-			return ret;
-
-		/* The current clock source is invalid, try others. */
-		for (i = 1; i <= selector->bNrInPins; i++) {
-			int err;
-
-			if (i == cur)
-				continue;
-
-			ret = __uac3_clock_find_source(chip, fmt,
-						       selector->baCSourceID[i - 1],
-						       visited, true);
-			if (ret < 0)
-				continue;
-
-			err = uac_clock_selector_set_val(chip, entity_id, i);
-			if (err < 0)
-				continue;
-
-			usb_audio_info(chip,
-				 "found and selected valid clock source %d\n",
-				 ret);
-			return ret;
-		}
-
-		return -ENXIO;
-	}
-
-	/* FIXME: multipliers only act as pass-thru element for now */
-	multiplier = snd_usb_find_clock_multiplier_v3(chip->ctrl_intf,
-						      entity_id);
-	if (multiplier)
-		return __uac3_clock_find_source(chip, fmt,
-						multiplier->bCSourceID,
-						visited, validate);
 
 	return -EINVAL;
 }

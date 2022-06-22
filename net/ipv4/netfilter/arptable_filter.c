@@ -51,17 +51,12 @@ static int arptable_filter_table_init(struct net *net)
 
 static void __net_exit arptable_filter_net_pre_exit(struct net *net)
 {
-	if (net->ipv4.arptable_filter)
-		arpt_unregister_table_pre_exit(net, net->ipv4.arptable_filter,
-					       arpfilter_ops);
+	arpt_unregister_table_pre_exit(net, "filter");
 }
 
 static void __net_exit arptable_filter_net_exit(struct net *net)
 {
-	if (!net->ipv4.arptable_filter)
-		return;
-	arpt_unregister_table(net, net->ipv4.arptable_filter);
-	net->ipv4.arptable_filter = NULL;
+	arpt_unregister_table(net, "filter");
 }
 
 static struct pernet_operations arptable_filter_net_ops = {

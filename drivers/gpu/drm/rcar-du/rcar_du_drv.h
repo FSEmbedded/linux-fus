@@ -23,7 +23,6 @@
 struct clk;
 struct device;
 struct drm_bridge;
-struct drm_device;
 struct drm_property;
 struct rcar_du_device;
 

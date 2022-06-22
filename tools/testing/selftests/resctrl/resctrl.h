@@ -69,11 +69,10 @@ struct resctrl_val_param {
 
 #define MBM_STR			"mbm"
 #define MBA_STR			"mba"
-#define CQM_STR			"cqm"
+#define CMT_STR			"cmt"
 #define CAT_STR			"cat"
 
 extern pid_t bm_pid, ppid;
-extern int tests_run;
 
 extern char llc_occup_path[1024];
 extern bool is_amd;

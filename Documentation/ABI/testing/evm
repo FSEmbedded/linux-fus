@@ -50,6 +50,11 @@ Description:
 		disable all further modification of policy. This option is now
 		deprecated in favor of::
 
+		  echo 0x80000002 ><securityfs>/evm
+
+		as the outstanding issues that prevent the usage of EVM portable
+		signatures have been solved.
+
 		Echoing a value is additive, the new value is added to the
 		existing initialization flags.
 

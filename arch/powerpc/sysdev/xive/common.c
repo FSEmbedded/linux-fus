@@ -1735,9 +1735,6 @@ static void xive_debug_show_irq(struct seq_file *m, struct irq_data *d)
 	struct xive_irq_data *xd;
 	u64 val;
 
-	if (!is_xive_irq(chip))
-		return;
-
 	rc = xive_ops->get_irq_config(hw_irq, &target, &prio, &lirq);
 	if (rc) {
 		seq_printf(m, "IRQ 0x%08x : no config rc=%d\n", hw_irq, rc);

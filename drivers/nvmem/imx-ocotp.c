@@ -178,9 +178,6 @@ static int imx_ocotp_read(void *context, unsigned int offset,
 
 	mutex_lock(&ocotp_mutex);
 
-	p = kzalloc(num_bytes, GFP_KERNEL);
-	if (!p)
-		return -ENOMEM;
 	buf = p;
 
 	ret = clk_prepare_enable(priv->clk);
@@ -207,7 +204,7 @@ static int imx_ocotp_read(void *context, unsigned int offset,
 		 * software before any new write, read or reload access can be
 		 * issued
 		 */
-		if (*((u32*)buf) == IMX_OCOTP_READ_LOCKED_VAL)
+		if (*((u32 *)buf) == IMX_OCOTP_READ_LOCKED_VAL)
 			imx_ocotp_clr_err_if_set(priv);
 
 		buf += 4;

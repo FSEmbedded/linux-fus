@@ -610,6 +610,9 @@ void set_cpu_sibling_map(int cpu)
 	if (threads > __max_smt_threads)
 		__max_smt_threads = threads;
 
+	for_each_cpu(i, topology_sibling_cpumask(cpu))
+		cpu_data(i).smt_active = threads > 1;
+
 	/*
 	 * This needs a separate iteration over the cpus because we rely on all
 	 * topology_sibling_cpumask links to be set-up.

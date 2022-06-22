@@ -128,13 +128,13 @@ static void ep93xx_gpio_ab_irq_handler(struct irq_desc *desc)
 	 */
 	stat = readb(epg->base + EP93XX_GPIO_A_INT_STATUS);
 	for_each_set_bit(offset, &stat, 8)
-		generic_handle_irq(irq_find_mapping(epg->gc[0].gc.irq.domain,
-						    offset));
+		generic_handle_domain_irq(epg->gc[0].gc.irq.domain,
+					  offset);
 
 	stat = readb(epg->base + EP93XX_GPIO_B_INT_STATUS);
 	for_each_set_bit(offset, &stat, 8)
-		generic_handle_irq(irq_find_mapping(epg->gc[1].gc.irq.domain,
-						    offset));
+		generic_handle_domain_irq(epg->gc[1].gc.irq.domain,
+					  offset);
 
 	chained_irq_exit(irqchip, desc);
 }
@@ -294,14 +294,14 @@ struct ep93xx_gpio_bank {
 
 static struct ep93xx_gpio_bank ep93xx_gpio_banks[] = {
 	/* Bank A has 8 IRQs */
-	EP93XX_GPIO_BANK("A", 0x00, 0x10, 0x90, 0, true, false, 64),
+	EP93XX_GPIO_BANK("A", 0x00, 0x10, 0x90, 0, true, false, EP93XX_GPIO_A_IRQ_BASE),
 	/* Bank B has 8 IRQs */
-	EP93XX_GPIO_BANK("B", 0x04, 0x14, 0xac, 8, true, false, 72),
+	EP93XX_GPIO_BANK("B", 0x04, 0x14, 0xac, 8, true, false, EP93XX_GPIO_B_IRQ_BASE),
 	EP93XX_GPIO_BANK("C", 0x08, 0x18, 0x00, 40, false, false, 0),
 	EP93XX_GPIO_BANK("D", 0x0c, 0x1c, 0x00, 24, false, false, 0),
 	EP93XX_GPIO_BANK("E", 0x20, 0x24, 0x00, 32, false, false, 0),
 	/* Bank F has 8 IRQs */
-	EP93XX_GPIO_BANK("F", 0x30, 0x34, 0x4c, 16, false, true, 0),
+	EP93XX_GPIO_BANK("F", 0x30, 0x34, 0x4c, 16, false, true, EP93XX_GPIO_F_IRQ_BASE),
 	EP93XX_GPIO_BANK("G", 0x38, 0x3c, 0x00, 48, false, false, 0),
 	EP93XX_GPIO_BANK("H", 0x40, 0x44, 0x00, 56, false, false, 0),
 };
@@ -318,15 +318,6 @@ static int ep93xx_gpio_set_config(struct gpio_chip *gc, unsigned offset,
 	ep93xx_gpio_int_debounce(gc, offset, debounce ? true : false);
 
 	return 0;
-}
-
-static void ep93xx_init_irq_chip(struct device *dev, struct irq_chip *ic)
-{
-	ic->irq_ack = ep93xx_gpio_irq_ack;
-	ic->irq_mask_ack = ep93xx_gpio_irq_mask_ack;
-	ic->irq_mask = ep93xx_gpio_irq_mask;
-	ic->irq_unmask = ep93xx_gpio_irq_unmask;
-	ic->irq_set_type = ep93xx_gpio_irq_type;
 }
 
 static void ep93xx_init_irq_chip(struct device *dev, struct irq_chip *ic)

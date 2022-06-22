@@ -43,8 +43,8 @@ static void check(struct kunit *test, struct debug_el *ela, struct debug_el *elb
 	KUNIT_EXPECT_EQ_MSG(test, elb->poison2, TEST_POISON2, "bad poison");
 }
 
-static int __init cmp(void *priv, const struct list_head *a,
-		      const struct list_head *b)
+/* `priv` is the test pointer so check() can fail the test if the list is invalid. */
+static int cmp(void *priv, const struct list_head *a, const struct list_head *b)
 {
 	struct debug_el *ela, *elb;
 

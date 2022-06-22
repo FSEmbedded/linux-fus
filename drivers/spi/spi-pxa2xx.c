@@ -1235,9 +1235,7 @@ static int setup_cs(struct spi_device *spi, struct chip_data *chip,
 			return err;
 		}
 
-		err = gpiod_direction_output(gpiod, !chip->gpio_cs_inverted);
-		if (err)
-			gpiod_put(chip->gpiod_cs);
+		spi->cs_gpio = gpio;
 	}
 
 	return 0;

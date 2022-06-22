@@ -22,6 +22,16 @@
 /* UAC1 spec: 3.7.2.3 Audio Channel Cluster Format */
 #define UAC1_CHANNEL_MASK 0x0FFF
 
+#define USB_OUT_FU_ID	(out_feature_unit_desc->bUnitID)
+#define USB_IN_FU_ID	(in_feature_unit_desc->bUnitID)
+
+#define EPIN_EN(_opts) ((_opts)->p_chmask != 0)
+#define EPOUT_EN(_opts) ((_opts)->c_chmask != 0)
+#define FUIN_EN(_opts) ((_opts)->p_mute_present \
+			|| (_opts)->p_volume_present)
+#define FUOUT_EN(_opts) ((_opts)->c_mute_present \
+			|| (_opts)->c_volume_present)
+
 struct f_uac1 {
 	struct g_audio g_audio;
 	u8 ac_intf, as_in_intf, as_out_intf;
@@ -1091,36 +1101,6 @@ static int f_audio_validate_opts(struct g_audio *audio, struct device *dev)
 		return -EINVAL;
 	} else if ((opts->c_volume_max - opts->c_volume_min) % opts->c_volume_res) {
 		dev_err(dev, "Error: incorrect capture volume resolution\n");
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-static int f_audio_validate_opts(struct g_audio *audio, struct device *dev)
-{
-	struct f_uac1_opts *opts = g_audio_to_uac1_opts(audio);
-
-	if (!opts->p_chmask && !opts->c_chmask) {
-		dev_err(dev, "Error: no playback and capture channels\n");
-		return -EINVAL;
-	} else if (opts->p_chmask & ~UAC1_CHANNEL_MASK) {
-		dev_err(dev, "Error: unsupported playback channels mask\n");
-		return -EINVAL;
-	} else if (opts->c_chmask & ~UAC1_CHANNEL_MASK) {
-		dev_err(dev, "Error: unsupported capture channels mask\n");
-		return -EINVAL;
-	} else if ((opts->p_ssize < 1) || (opts->p_ssize > 4)) {
-		dev_err(dev, "Error: incorrect playback sample size\n");
-		return -EINVAL;
-	} else if ((opts->c_ssize < 1) || (opts->c_ssize > 4)) {
-		dev_err(dev, "Error: incorrect capture sample size\n");
-		return -EINVAL;
-	} else if (!opts->p_srate) {
-		dev_err(dev, "Error: incorrect playback sampling rate\n");
-		return -EINVAL;
-	} else if (!opts->c_srate) {
-		dev_err(dev, "Error: incorrect capture sampling rate\n");
 		return -EINVAL;
 	}
 

@@ -657,10 +657,8 @@ static void scmi_handle_response(struct scmi_chan_info *cinfo,
 	}
 
 	/* rx.len could be shrunk in the sync do_xfer, so reset to maxsz */
-	if (msg_type == MSG_TYPE_DELAYED_RESP)
+	if (xfer->hdr.type == MSG_TYPE_DELAYED_RESP)
 		xfer->rx.len = info->desc->max_msg_size;
-
-	scmi_dump_header_dbg(dev, &xfer->hdr);
 
 	if (priv)
 		xfer->priv = priv;
@@ -871,7 +869,7 @@ static int do_xfer_with_response(const struct scmi_protocol_handle *ph,
 
 	xfer->async_done = &async_response;
 
-	ret = scmi_do_xfer(handle, xfer);
+	ret = do_xfer(ph, xfer);
 	if (!ret) {
 		if (!wait_for_completion_timeout(xfer->async_done, timeout))
 			ret = -ETIMEDOUT;
@@ -1384,10 +1382,10 @@ static int __scmi_xfer_info_init(struct scmi_info *sinfo,
 	const struct scmi_desc *desc = sinfo->desc;
 
 	/* Pre-allocated messages, no more than what hdr.seq can support */
-	if (WARN_ON(!desc->max_msg || desc->max_msg > MSG_TOKEN_MAX)) {
+	if (WARN_ON(!info->max_msg || info->max_msg > MSG_TOKEN_MAX)) {
 		dev_err(dev,
 			"Invalid maximum messages %d, not in range [1 - %lu]\n",
-			desc->max_msg, MSG_TOKEN_MAX);
+			info->max_msg, MSG_TOKEN_MAX);
 		return -EINVAL;
 	}
 
@@ -1600,15 +1598,10 @@ static void scmi_create_protocol_devices(struct device_node *np,
 {
 	struct list_head *phead;
 
-static struct scmi_prot_devnames devnames[] = {
-	{ SCMI_PROTOCOL_POWER,  { "genpd" },},
-	{ SCMI_PROTOCOL_SYSTEM, { "syspower" },},
-	{ SCMI_PROTOCOL_PERF,   { "cpufreq" },},
-	{ SCMI_PROTOCOL_CLOCK,  { "clocks" },},
-	{ SCMI_PROTOCOL_SENSOR, { "hwmon", "iiodev" },},
-	{ SCMI_PROTOCOL_RESET,  { "reset" },},
-	{ SCMI_PROTOCOL_VOLTAGE,  { "regulator" },},
-};
+	mutex_lock(&scmi_requested_devices_mtx);
+	phead = idr_find(&scmi_requested_devices, prot_id);
+	if (phead) {
+		struct scmi_requested_dev *rdev;
 
 		list_for_each_entry(rdev, phead, node)
 			scmi_create_protocol_device(np, info, prot_id,
@@ -1924,7 +1917,7 @@ static int scmi_remove(struct platform_device *pdev)
 {
 	int ret = 0, id;
 	struct scmi_info *info = platform_get_drvdata(pdev);
-	struct idr *idr = &info->tx_idr;
+	struct device_node *child;
 
 	mutex_lock(&scmi_list_mutex);
 	if (info->users)
@@ -1937,10 +1930,6 @@ static int scmi_remove(struct platform_device *pdev)
 		return ret;
 
 	scmi_notification_exit(&info->handle);
-
-	/* Safe to free channels since no more users */
-	ret = idr_for_each(idr, info->desc->ops->chan_free, idr);
-	idr_destroy(&info->tx_idr);
 
 	mutex_lock(&info->protocols_mtx);
 	idr_destroy(&info->protocols);
@@ -2002,10 +1991,10 @@ ATTRIBUTE_GROUPS(versions);
 
 /* Each compatible listed below must have descriptor associated with it */
 static const struct of_device_id scmi_of_match[] = {
-#ifdef CONFIG_MAILBOX
+#ifdef CONFIG_ARM_SCMI_TRANSPORT_MAILBOX
 	{ .compatible = "arm,scmi", .data = &scmi_mailbox_desc },
 #endif
-#ifdef CONFIG_HAVE_ARM_SMCCC_DISCOVERY
+#ifdef CONFIG_ARM_SCMI_TRANSPORT_SMC
 	{ .compatible = "arm,scmi-smc", .data = &scmi_smc_desc},
 #endif
 #ifdef CONFIG_ARM_SCMI_TRANSPORT_VIRTIO
@@ -2123,7 +2112,7 @@ static void __exit scmi_driver_exit(void)
 }
 module_exit(scmi_driver_exit);
 
-MODULE_ALIAS("platform: arm-scmi");
+MODULE_ALIAS("platform:arm-scmi");
 MODULE_AUTHOR("Sudeep Holla <sudeep.holla@arm.com>");
 MODULE_DESCRIPTION("ARM SCMI protocol driver");
 MODULE_LICENSE("GPL v2");

@@ -188,9 +188,22 @@ static inline unsigned long instruction_pointer(struct pt_regs *regs)
 	return regs->nip;
 }
 
-#ifdef __powerpc64__
-#define user_mode(regs) ((((regs)->msr) >> MSR_PR_LG) & 0x1)
-#else
+static inline void instruction_pointer_set(struct pt_regs *regs,
+		unsigned long val)
+{
+	regs_set_return_ip(regs, val);
+}
+
+static inline unsigned long user_stack_pointer(struct pt_regs *regs)
+{
+	return regs->gpr[1];
+}
+
+static inline unsigned long frame_pointer(struct pt_regs *regs)
+{
+	return 0;
+}
+
 #define user_mode(regs) (((regs)->msr & MSR_PR) != 0)
 
 #define force_successful_syscall_return()   \
@@ -208,28 +221,13 @@ static inline unsigned long instruction_pointer(struct pt_regs *regs)
  * "norestart" bit.
  */
 #ifdef __powerpc64__
-#ifdef CONFIG_PPC_BOOK3S
-#define TRAP_FLAGS_MASK		0x10
-#define TRAP(regs)		((regs)->trap & ~TRAP_FLAGS_MASK)
-#define FULL_REGS(regs)		true
-#define SET_FULL_REGS(regs)	do { } while (0)
-#else
-#define TRAP_FLAGS_MASK		0x11
-#define TRAP(regs)		((regs)->trap & ~TRAP_FLAGS_MASK)
-#define FULL_REGS(regs)		(((regs)->trap & 1) == 0)
-#define SET_FULL_REGS(regs)	((regs)->trap &= ~1)
-#endif
-#define CHECK_FULL_REGS(regs)	BUG_ON(!FULL_REGS(regs))
-#define NV_REG_POISON		0xdeadbeefdeadbeefUL
+#define TRAP_FLAGS_MASK		0x1
 #else
 /*
  * On 4xx we use bit 1 in the trap word to indicate whether the exception
  * is a critical exception (1 means it is).
  */
-#define TRAP_FLAGS_MASK		0x1F
-#define TRAP(regs)		((regs)->trap & ~TRAP_FLAGS_MASK)
-#define FULL_REGS(regs)		(((regs)->trap & 1) == 0)
-#define SET_FULL_REGS(regs)	((regs)->trap &= ~1)
+#define TRAP_FLAGS_MASK		0xf
 #define IS_CRITICAL_EXC(regs)	(((regs)->trap & 2) != 0)
 #define IS_MCHECK_EXC(regs)	(((regs)->trap & 4) != 0)
 #define IS_DEBUG_EXC(regs)	(((regs)->trap & 8) != 0)
@@ -311,31 +309,6 @@ static inline void regs_set_unrecoverable(struct pt_regs *regs)
 {
 	if (cpu_has_msr_ri())
 		regs_set_return_msr(regs, regs->msr & ~MSR_RI);
-}
-
-#define kernel_stack_pointer(regs) ((regs)->gpr[1])
-static inline int is_syscall_success(struct pt_regs *regs)
-{
-	if (trap_is_scv(regs))
-		return !IS_ERR_VALUE((unsigned long)regs->gpr[3]);
-	else
-		return !(regs->ccr & 0x10000000);
-}
-
-static inline long regs_return_value(struct pt_regs *regs)
-{
-	if (trap_is_scv(regs))
-		return regs->gpr[3];
-
-	if (is_syscall_success(regs))
-		return regs->gpr[3];
-	else
-		return -regs->gpr[3];
-}
-
-static inline void regs_set_return_value(struct pt_regs *regs, unsigned long rc)
-{
-	regs->gpr[3] = rc;
 }
 
 #define arch_has_single_step()	(1)
