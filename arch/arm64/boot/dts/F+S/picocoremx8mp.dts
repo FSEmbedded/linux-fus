@@ -443,6 +443,8 @@
 #endif
 
 #ifdef SUPPORT_M7
+#if 0
+/* not available anymore. See remote proc */
 &rpmsg{
 	/*
 	 * 64K for one rpmsg instance:
@@ -452,6 +454,7 @@
 	reg = <0x0 0x55800000 0x0 0x10000>;
 	status = "okay";
 };
+#endif
 #endif
 
 
@@ -463,10 +466,13 @@
 	init-on-array = <IMX8MP_CLK_HSIO_ROOT>;
 };
 
+#if 0
+/* not available anymore */
 &audiomix_clk {
 	init-on-array = <IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1
 			IMX8MP_CLK_AUDIOMIX_SAI5_MCLK1>;
 };
+#endif
 
 &A53_0 {
 	cpu-supply = <&buck2_reg>;
@@ -677,7 +683,10 @@
 		compatible = "fsl,sgtl5000";
 		reg = <0xa>;
 		mono2both;
+#if 0
+/* not available anymore. */
 		clocks = <&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>;
+#endif
 		VDDA-supply = <&reg_sgtl5000_vdda>;
 		VDDIO-supply = <&reg_sgtl5000_vddio>;
 		VDDD-supply = <&reg_sgtl5000_vddd>;
@@ -873,6 +882,8 @@
 #endif
 };
 
+#if 0
+/* not available anymore. See remote proc */
 &hdmimix_clk {
 #ifdef CONFIG_PICOCOREMX8MP_HDMI
 	status = "okay";
@@ -904,6 +915,7 @@
 	status = "disabled";
 #endif
 };
+#endif
 
 &hdmiphy {
 #ifdef CONFIG_PICOCOREMX8MP_HDMI
@@ -986,9 +998,12 @@
 	assigned-clocks = <&clk IMX8MP_CLK_SAI5>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <24576000>;
+#if 0
+/* not available anymore. See remote proc */
 	clocks = <&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI5_IPG>, <&clk IMX8MP_CLK_DUMMY>,
 			<&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI5_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
 		 <&clk IMX8MP_CLK_DUMMY>;
+#endif
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 	fsl,sai-mclk-direction-output;
 	fsl,txmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
@@ -1004,9 +1019,12 @@
 	assigned-clocks = <&clk IMX8MP_CLK_SAI2>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <24576000>;
+#if 0
+/* not available anymore. See remote proc */
 	clocks = <&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI2_IPG>, <&clk IMX8MP_CLK_DUMMY>,
 		 <&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
 		 <&clk IMX8MP_CLK_DUMMY>;
+#endif
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 	fsl,sai-mclk-direction-output;
 	/* sai to clock and frame tx/rx master */

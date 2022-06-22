@@ -10,7 +10,6 @@
 #include <linux/clk-provider.h>
 #include <linux/err.h>
 #include <linux/firmware/imx/svc/rm.h>
-#include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/pm_domain.h>
@@ -27,10 +26,8 @@
 
 static struct imx_sc_ipc *ccm_ipc_handle;
 static const struct imx_clk_scu_rsrc_table *rsrc_table;
-static struct delayed_work cpufreq_governor_daemon;
 struct device_node *pd_np;
 u32 clock_cells;
-EXPORT_SYMBOL_GPL(clock_cells);
 
 struct imx_scu_clk_node {
 	const char *name;
@@ -44,7 +41,6 @@ struct imx_scu_clk_node {
 };
 
 struct list_head imx_scu_clks[IMX_SC_R_LAST];
-EXPORT_SYMBOL_GPL(imx_scu_clks);
 
 /*
  * struct clk_scu - Description of one SCU clock
@@ -223,7 +219,6 @@ int imx_clk_scu_init(struct device_node *np, const void *data)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(imx_clk_scu_init);
 
 /*
  * clk_scu_recalc_rate - Get clock rate for a SCU clock
@@ -497,7 +492,7 @@ struct clk_hw *__imx_clk_scu(struct device *dev, const char *name,
 	ret = clk_hw_register(dev, hw);
 	if (ret) {
 		kfree(clk);
-		hw = ERR_PTR(ret);
+		return ERR_PTR(ret);
 	}
 
 	if (dev)
@@ -505,7 +500,6 @@ struct clk_hw *__imx_clk_scu(struct device *dev, const char *name,
 
 	return hw;
 }
-EXPORT_SYMBOL_GPL(__imx_clk_scu);
 
 struct clk_hw *imx_scu_of_clk_src_get(struct of_phandle_args *clkspec,
 				      void *data)
@@ -522,7 +516,6 @@ struct clk_hw *imx_scu_of_clk_src_get(struct of_phandle_args *clkspec,
 
 	return ERR_PTR(-ENODEV);
 }
-EXPORT_SYMBOL_GPL(imx_scu_of_clk_src_get);
 
 static int imx_clk_scu_probe(struct platform_device *pdev)
 {
@@ -531,16 +524,19 @@ static int imx_clk_scu_probe(struct platform_device *pdev)
 	struct clk_hw *hw;
 	int ret;
 
-	pm_runtime_set_suspended(dev);
-	pm_runtime_set_autosuspend_delay(dev, 50);
-	pm_runtime_use_autosuspend(&pdev->dev);
-	pm_runtime_enable(dev);
+       if (!((clk->rsrc == IMX_SC_R_A35) || (clk->rsrc == IMX_SC_R_A53) ||
+           (clk->rsrc == IMX_SC_R_A72))) {
+		pm_runtime_set_suspended(dev);
+		pm_runtime_set_autosuspend_delay(dev, 50);
+		pm_runtime_use_autosuspend(&pdev->dev);
+		pm_runtime_enable(dev);
 
-	ret = pm_runtime_get_sync(dev);
-	if (ret) {
-		pm_genpd_remove_device(dev);
-		pm_runtime_disable(dev);
-		return ret;
+		ret = pm_runtime_get_sync(dev);
+		if (ret) {
+			pm_genpd_remove_device(dev);
+			pm_runtime_disable(dev);
+			return ret;
+		}
 	}
 
 	hw = __imx_clk_scu(dev, clk->name, clk->parents, clk->num_parents,
@@ -553,8 +549,11 @@ static int imx_clk_scu_probe(struct platform_device *pdev)
 	clk->hw = hw;
 	list_add_tail(&clk->node, &imx_scu_clks[clk->rsrc]);
 
-	pm_runtime_mark_last_busy(&pdev->dev);
-	pm_runtime_put_autosuspend(&pdev->dev);
+       if (!((clk->rsrc == IMX_SC_R_A35) || (clk->rsrc == IMX_SC_R_A53) ||
+           (clk->rsrc == IMX_SC_R_A72))) {
+		pm_runtime_mark_last_busy(&pdev->dev);
+		pm_runtime_put_autosuspend(&pdev->dev);
+	}
 
 	dev_dbg(dev, "register SCU clock rsrc:%d type:%d\n", clk->rsrc,
 		clk->clk_type);
@@ -734,7 +733,6 @@ struct clk_hw *imx_clk_scu_alloc_dev(const char *name,
 	/* For API backwards compatiblilty, simply return NULL for success */
 	return NULL;
 }
-EXPORT_SYMBOL_GPL(imx_clk_scu_alloc_dev);
 
 static unsigned long clk_gpr_div_scu_recalc_rate(struct clk_hw *hw,
 						 unsigned long parent_rate)
@@ -914,54 +912,3 @@ struct clk_hw *__imx_clk_gpr_scu(const char *name, const char * const *parent_na
 
 	return hw;
 }
-EXPORT_SYMBOL_GPL(__imx_clk_gpr_scu);
-
-static void cpufreq_governor_daemon_handler(struct work_struct *work)
-{
-	int fd, i;
-	unsigned char cluster_governor[MAX_CLUSTER_NUM][54] = {
-		"/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor",
-		"",
-	};
-
-	/* generate second cluster's cpufreq governor path */
-	sprintf(cluster_governor[MAX_CLUSTER_NUM - 1],
-		"%s%d%s", "/sys/devices/system/cpu/cpu", num_online_cpus() - 1,
-		"/cpufreq/scaling_governor");
-
-	for (i = 0; i < MAX_CLUSTER_NUM; i++) {
-		fd = ksys_open((const char __user __force *)cluster_governor[i],
-				O_RDWR, 0700);
-		if (fd >= 0) {
-			ksys_write(fd, "schedutil", strlen("schedutil"));
-			ksys_close(fd);
-			pr_info("switch cluster %d cpu-freq governor to schedutil\n",
-				i);
-		} else {
-			/* re-schedule if sys write is NOT ready */
-			schedule_delayed_work(&cpufreq_governor_daemon,
-				msecs_to_jiffies(3000));
-			break;
-		}
-	}
-}
-
-static int __init imx_scu_switch_cpufreq_governor(void)
-{
-	int i;
-
-	INIT_DELAYED_WORK(&cpufreq_governor_daemon,
-		cpufreq_governor_daemon_handler);
-
-	for (i = 1; i < num_online_cpus(); i++) {
-		if (topology_physical_package_id(i) == topology_physical_package_id(0))
-			continue;
-
-		schedule_delayed_work(&cpufreq_governor_daemon,
-			msecs_to_jiffies(3000));
-		break;
-	}
-
-	return 0;
-}
-late_initcall(imx_scu_switch_cpufreq_governor);

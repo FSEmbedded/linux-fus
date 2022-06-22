@@ -122,15 +122,8 @@ static inline void imx6sx_enet_init(void)
 
 static void __init imx6sx_init_machine(void)
 {
-	struct device *parent;
+	of_platform_default_populate(NULL, NULL, NULL);
 
-	parent = imx_soc_device_init();
-	if (parent == NULL)
-		pr_warn("failed to initialize soc device\n");
-
-	of_platform_default_populate(NULL, NULL, parent);
-
-	imx_anatop_init();
 #if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 	imx6sx_enet_init();
 #endif

@@ -311,13 +311,8 @@ mcp251xfd_tx_ring_init_tx_obj(const struct mcp251xfd_priv *priv,
 	xfer->tx_buf = &tx_obj->buf;
 	xfer->len = 0;	/* actual len is assigned on the fly */
 	xfer->cs_change = 1;
-#if 0
 	xfer->cs_change_delay.value = 0;
 	xfer->cs_change_delay.unit = SPI_DELAY_UNIT_NSECS;
-#else
-	xfer->cs_change_delay = 0;
-	xfer->cs_change_delay_unit = SPI_DELAY_UNIT_NSECS;
-#endif
 
 	/* FIFO request to send */
 	xfer = &tx_obj->xfer[1];
@@ -1437,7 +1432,7 @@ mcp251xfd_handle_rxif_one(struct mcp251xfd_priv *priv,
 	else
 		skb = alloc_can_skb(priv->ndev, (struct can_frame **)&cfd);
 
-	if (!cfd) {
+	if (!skb) {
 		stats->rx_dropped++;
 		return 0;
 	}
@@ -2744,11 +2739,8 @@ static int mcp251xfd_probe(struct spi_device *spi)
 	int err;
 
 	if (!spi->irq)
-	{
-		dev_err(&spi->dev,
+		return dev_err_probe(&spi->dev, -ENXIO,
 				     "No IRQ specified (maybe node \"interrupts-extended\" in DT missing)!\n");
-		return -ENXIO;
-	}
 
 	rx_int = devm_gpiod_get_optional(&spi->dev, "microchip,rx-int",
 					 GPIOD_IN);
@@ -2832,7 +2824,7 @@ static int mcp251xfd_probe(struct spi_device *spi)
 			spi_get_device_id(spi)->driver_data;
 
 	/* Errata Reference:
-	 * mcp2517fd: DS80000789B, mcp2518fd: DS80000792C 4.
+	 * mcp2517fd: DS80000792C 5., mcp2518fd: DS80000789C 4.
 	 *
 	 * The SPI can write corrupted data to the RAM at fast SPI
 	 * speeds:
@@ -2878,10 +2870,12 @@ static int mcp251xfd_probe(struct spi_device *spi)
 
 	err = mcp251xfd_register(priv);
 	if (err)
-		goto out_free_candev;
+		goto out_can_rx_offload_del;
 
 	return 0;
 
+ out_can_rx_offload_del:
+	can_rx_offload_del(&priv->offload);
  out_free_candev:
 	spi->max_speed_hz = priv->spi_max_speed_hz_orig;
 

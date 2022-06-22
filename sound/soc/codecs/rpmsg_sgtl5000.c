@@ -86,7 +86,7 @@ static void power_vag_down(struct snd_soc_component *component)
 	 * operational to prevent inadvertently starving the
 	 * other one of them.
 	 */
-	if ((snd_soc_component_read32(component, SGTL5000_CHIP_ANA_POWER) &
+	if ((snd_soc_component_read(component, SGTL5000_CHIP_ANA_POWER) &
 			mask) != mask) {
 		snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_POWER,
 			SGTL5000_VAG_POWERUP, 0);
@@ -245,7 +245,7 @@ static int dac_get_volsw(struct snd_kcontrol *kcontrol,
 	int l;
 	int r;
 
-	reg = snd_soc_component_read32(component, SGTL5000_CHIP_DAC_VOL);
+	reg = snd_soc_component_read(component, SGTL5000_CHIP_DAC_VOL);
 
 	/* get left channel volume */
 	l = (reg & SGTL5000_DAC_VOL_LEFT_MASK) >> SGTL5000_DAC_VOL_LEFT_SHIFT;
@@ -374,19 +374,6 @@ static const struct snd_kcontrol_new rpmsg_sgtl5000_snd_controls[] = {
 	SOC_SINGLE("Line Out Playback Switch", SGTL5000_CHIP_ANA_CTRL, 8, 1, 1),
 };
 
-
-/* mute the codec used by alsa core */
-static int sgtl5000_digital_mute(struct snd_soc_dai *codec_dai, int mute)
-{
-	struct snd_soc_component *component = codec_dai->component;
-	u16 adcdac_ctrl = SGTL5000_DAC_MUTE_LEFT | SGTL5000_DAC_MUTE_RIGHT;
-
-	snd_soc_component_update_bits(component, SGTL5000_CHIP_ADCDAC_CTRL,
-			adcdac_ctrl, mute ? adcdac_ctrl : 0);
-
-	return 0;
-}
-
 #define RPMSG_RATES (SNDRV_PCM_RATE_8000_48000)
 
 #define RPMSG_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE )
@@ -454,11 +441,11 @@ static int sgtl5000_set_power_regs(struct snd_soc_component *component)
 	}
 
 	/* reset value */
-	ana_pwr = snd_soc_component_read32(component, SGTL5000_CHIP_ANA_POWER);
+	ana_pwr = snd_soc_component_read(component, SGTL5000_CHIP_ANA_POWER);
 	ana_pwr |= SGTL5000_DAC_STEREO |
 			SGTL5000_ADC_STEREO |
 			SGTL5000_REFTOP_POWERUP;
-	lreg_ctrl = snd_soc_component_read32(component, SGTL5000_CHIP_LINREG_CTRL);
+	lreg_ctrl = snd_soc_component_read(component, SGTL5000_CHIP_LINREG_CTRL);
 
 	if (vddio < 3100 && vdda < 3100) {
 		/* enable internal oscillator used for charge pump */
@@ -589,7 +576,6 @@ static int sgtl5000_hw_params(struct snd_pcm_substream *substream,
 
 static const struct snd_soc_dai_ops sgtl5000_ops = {
 	.hw_params = sgtl5000_hw_params,
-	.digital_mute = sgtl5000_digital_mute,
 };
 
 static struct snd_soc_dai_driver rpmsg_sgtl5000_codec_dai = {

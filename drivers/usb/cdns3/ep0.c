@@ -7,16 +7,14 @@
  *
  * Authors: Pawel Jez <pjez@cadence.com>,
  *          Pawel Laszczak <pawell@cadence.com>
- *	    Peter Chen <peter.chen@nxp.com>
+ *          Peter Chen <peter.chen@nxp.com>
  */
 
-#include <linux/delay.h>
-#include <linux/interrupt.h>
 #include <linux/usb/composite.h>
+#include <linux/iopoll.h>
 
 #include "gadget.h"
 #include "trace.h"
-#include "core.h"
 
 static struct usb_endpoint_descriptor cdns3_gadget_ep0_desc = {
 	.bLength = USB_DT_ENDPOINT_SIZE,
@@ -31,17 +29,29 @@ static struct usb_endpoint_descriptor cdns3_gadget_ep0_desc = {
  * @length: data length
  * @erdy: set it to 1 when ERDY packet should be sent -
  *        exit from flow control state
+ * @zlp: add zero length packet
  */
 static void cdns3_ep0_run_transfer(struct cdns3_device *priv_dev,
 				   dma_addr_t dma_addr,
-				   unsigned int length, int erdy)
+				   unsigned int length, int erdy, int zlp)
 {
 	struct cdns3_usb_regs __iomem *regs = priv_dev->regs;
 	struct cdns3_endpoint *priv_ep = priv_dev->eps[0];
 
-	priv_ep->trb_pool->buffer = TRB_BUFFER(dma_addr);
-	priv_ep->trb_pool->length = TRB_LEN(length);
-	priv_ep->trb_pool->control = TRB_CYCLE | TRB_IOC | TRB_TYPE(TRB_NORMAL);
+	priv_ep->trb_pool[0].buffer = cpu_to_le32(TRB_BUFFER(dma_addr));
+	priv_ep->trb_pool[0].length = cpu_to_le32(TRB_LEN(length));
+
+	if (zlp) {
+		priv_ep->trb_pool[0].control = cpu_to_le32(TRB_CYCLE | TRB_TYPE(TRB_NORMAL));
+		priv_ep->trb_pool[1].buffer = cpu_to_le32(TRB_BUFFER(dma_addr));
+		priv_ep->trb_pool[1].length = cpu_to_le32(TRB_LEN(0));
+		priv_ep->trb_pool[1].control = cpu_to_le32(TRB_CYCLE | TRB_IOC |
+		    TRB_TYPE(TRB_NORMAL));
+	} else {
+		priv_ep->trb_pool[0].control = cpu_to_le32(TRB_CYCLE | TRB_IOC |
+		    TRB_TYPE(TRB_NORMAL));
+		priv_ep->trb_pool[1].control = 0;
+	}
 
 	trace_cdns3_prepare_trb(priv_ep, priv_ep->trb_pool);
 
@@ -51,11 +61,12 @@ static void cdns3_ep0_run_transfer(struct cdns3_device *priv_dev,
 	writel(EP_TRADDR_TRADDR(priv_ep->trb_pool_dma), &regs->ep_traddr);
 	trace_cdns3_doorbell_ep0(priv_dev->ep0_data_dir ? "ep0in" : "ep0out",
 				 readl(&regs->ep_traddr));
+
+	/* TRB should be prepared before starting transfer. */
+	writel(EP_CMD_DRDY, &regs->ep_cmd);
+
 	/* Resume controller before arming transfer. */
 	__cdns3_gadget_wakeup(priv_dev);
-
-	/* TRB should be prepared before starting transfer */
-	writel(EP_CMD_DRDY, &regs->ep_cmd);
 
 	if (erdy)
 		writel(EP_CMD_ERDY, &priv_dev->regs->ep_cmd);
@@ -72,14 +83,11 @@ static void cdns3_ep0_run_transfer(struct cdns3_device *priv_dev,
 static int cdns3_ep0_delegate_req(struct cdns3_device *priv_dev,
 				  struct usb_ctrlrequest *ctrl_req)
 {
-	int ret = 0;
+	int ret;
 
 	spin_unlock(&priv_dev->lock);
 	priv_dev->setup_pending = 1;
-	if (priv_dev->gadget_driver && priv_dev->gadget_driver->setup
-			&& get_gadget_data(&priv_dev->gadget))
-		ret = priv_dev->gadget_driver->setup(&priv_dev->gadget,
-				ctrl_req);
+	ret = priv_dev->gadget_driver->setup(&priv_dev->gadget, ctrl_req);
 	priv_dev->setup_pending = 0;
 	spin_lock(&priv_dev->lock);
 	return ret;
@@ -90,7 +98,7 @@ static void cdns3_prepare_setup_packet(struct cdns3_device *priv_dev)
 	priv_dev->ep0_data_dir = 0;
 	priv_dev->ep0_stage = CDNS3_SETUP_STAGE;
 	cdns3_ep0_run_transfer(priv_dev, priv_dev->setup_dma,
-			       sizeof(struct usb_ctrlrequest), 0);
+			       sizeof(struct usb_ctrlrequest), 0, 0);
 }
 
 static void cdns3_ep0_complete_setup(struct cdns3_device *priv_dev,
@@ -104,7 +112,7 @@ static void cdns3_ep0_complete_setup(struct cdns3_device *priv_dev,
 		list_del_init(&request->list);
 
 	if (send_stall) {
-		cdns3_dbg(priv_ep->cdns3_dev, "STALL for ep0\n");
+		trace_cdns3_halt(priv_ep, send_stall, 0);
 		/* set_stall on ep0 */
 		cdns3_select_ep(priv_dev, 0x00);
 		writel(EP_CMD_SSTALL, &priv_dev->regs->ep_cmd);
@@ -129,47 +137,35 @@ static int cdns3_req_ep0_set_configuration(struct cdns3_device *priv_dev,
 					   struct usb_ctrlrequest *ctrl_req)
 {
 	enum usb_device_state device_state = priv_dev->gadget.state;
-	struct cdns3_endpoint *priv_ep;
 	u32 config = le16_to_cpu(ctrl_req->wValue);
 	int result = 0;
-	int i;
 
 	switch (device_state) {
 	case USB_STATE_ADDRESS:
-		/* Configure non-control EPs */
-		for (i = 0; i < CDNS3_ENDPOINTS_MAX_COUNT; i++) {
-			priv_ep = priv_dev->eps[i];
-			if (!priv_ep)
-				continue;
-
-			if (priv_ep->flags & EP_CLAIMED)
-				cdns3_ep_config(priv_ep);
-		}
-
 		result = cdns3_ep0_delegate_req(priv_dev, ctrl_req);
 
-		if (result)
-			return result;
-
-		if (!config) {
-			cdns3_hw_reset_eps_config(priv_dev);
-			usb_gadget_set_state(&priv_dev->gadget,
-					     USB_STATE_ADDRESS);
-		}
+		if (result || !config)
+			goto reset_config;
 
 		break;
 	case USB_STATE_CONFIGURED:
 		result = cdns3_ep0_delegate_req(priv_dev, ctrl_req);
+		if (!config && !result)
+			goto reset_config;
 
-		if (!config && !result) {
-			cdns3_hw_reset_eps_config(priv_dev);
-			usb_gadget_set_state(&priv_dev->gadget,
-					     USB_STATE_ADDRESS);
-		}
 		break;
 	default:
-		result = -EINVAL;
+		return -EINVAL;
 	}
+
+	return 0;
+
+reset_config:
+	if (result != USB_GADGET_DELAYED_STATUS)
+		cdns3_hw_reset_eps_config(priv_dev);
+
+	usb_gadget_set_state(&priv_dev->gadget,
+			     USB_STATE_ADDRESS);
 
 	return result;
 }
@@ -217,17 +213,18 @@ static int cdns3_req_ep0_set_address(struct cdns3_device *priv_dev,
 /**
  * cdns3_req_ep0_get_status - Handling of GET_STATUS standard USB request
  * @priv_dev: extended gadget object
- * @ctrl_req: pointer to received setup packet
+ * @ctrl: pointer to received setup packet
  *
  * Returns 0 if success, error code on error
  */
 static int cdns3_req_ep0_get_status(struct cdns3_device *priv_dev,
 				    struct usb_ctrlrequest *ctrl)
 {
+	struct cdns3_endpoint *priv_ep;
 	__le16 *response_pkt;
 	u16 usb_status = 0;
 	u32 recip;
-	u32 reg;
+	u8 index;
 
 	recip = ctrl->bRequestType & USB_RECIP_MASK;
 
@@ -243,8 +240,6 @@ static int cdns3_req_ep0_get_status(struct cdns3_device *priv_dev,
 		if (priv_dev->gadget.speed != USB_SPEED_SUPER)
 			break;
 
-		reg = readl(&priv_dev->regs->usb_sts);
-
 		if (priv_dev->u1_allowed)
 			usb_status |= BIT(USB_DEV_STAT_U1_ENABLED);
 
@@ -255,9 +250,13 @@ static int cdns3_req_ep0_get_status(struct cdns3_device *priv_dev,
 	case USB_RECIP_INTERFACE:
 		return cdns3_ep0_delegate_req(priv_dev, ctrl);
 	case USB_RECIP_ENDPOINT:
-		/* check if endpoint is stalled */
-		cdns3_select_ep(priv_dev, ctrl->wIndex);
-		if (EP_STS_STALL(readl(&priv_dev->regs->ep_sts)))
+		index = cdns3_ep_addr_to_index(le16_to_cpu(ctrl->wIndex));
+		priv_ep = priv_dev->eps[index];
+
+		/* check if endpoint is stalled or stall is pending */
+		cdns3_select_ep(priv_dev, le16_to_cpu(ctrl->wIndex));
+		if (EP_STS_STALL(readl(&priv_dev->regs->ep_sts)) ||
+		    (priv_ep->flags & EP_STALL_PENDING))
 			usb_status =  BIT(USB_ENDPOINT_HALT);
 		break;
 	default:
@@ -268,7 +267,7 @@ static int cdns3_req_ep0_get_status(struct cdns3_device *priv_dev,
 	*response_pkt = cpu_to_le16(usb_status);
 
 	cdns3_ep0_run_transfer(priv_dev, priv_dev->setup_dma,
-			       sizeof(*response_pkt), 1);
+			       sizeof(*response_pkt), 1, 0);
 	return 0;
 }
 
@@ -280,15 +279,13 @@ static int cdns3_ep0_feature_handle_device(struct cdns3_device *priv_dev,
 	enum usb_device_speed speed;
 	int ret = 0;
 	u32 wValue;
-	u32 wIndex;
 	u16 tmode;
 
 	wValue = le16_to_cpu(ctrl->wValue);
-	wIndex = le16_to_cpu(ctrl->wIndex);
 	state = priv_dev->gadget.state;
 	speed = priv_dev->gadget.speed;
 
-	switch (ctrl->wValue) {
+	switch (wValue) {
 	case USB_DEVICE_REMOTE_WAKEUP:
 		priv_dev->wake_up_flag = !!set;
 		break;
@@ -318,17 +315,10 @@ static int cdns3_ep0_feature_handle_device(struct cdns3_device *priv_dev,
 
 		tmode >>= 8;
 		switch (tmode) {
-		case TEST_J:
-		case TEST_K:
-		case TEST_SE0_NAK:
-		case TEST_PACKET:
-			cdns3_ep0_complete_setup(priv_dev, 0, 1);
-			/**
-			 *  Little delay to give the controller some time
-			 * for sending status stage.
-			 * This time should be less then 3ms.
-			 */
-			usleep_range(1000, 2000);
+		case USB_TEST_J:
+		case USB_TEST_K:
+		case USB_TEST_SE0_NAK:
+		case USB_TEST_PACKET:
 			cdns3_set_register_bit(&priv_dev->regs->usb_cmd,
 					       USB_CMD_STMODE |
 					       USB_STS_TMODE_SEL(tmode - 1));
@@ -382,48 +372,12 @@ static int cdns3_ep0_feature_handle_endpoint(struct cdns3_device *priv_dev,
 
 	cdns3_select_ep(priv_dev, le16_to_cpu(ctrl->wIndex));
 
-	if (set) {
-		cdns3_dbg(priv_ep->cdns3_dev, "Stall endpoint %s\n",
-			  priv_ep->name);
-		writel(EP_CMD_SSTALL, &priv_dev->regs->ep_cmd);
-		priv_ep->flags |= EP_STALL;
-	} else {
-		struct usb_request *request;
-		struct cdns3_request *priv_req;
-		struct cdns3_trb *trb;
+	if (set)
+		__cdns3_gadget_ep_set_halt(priv_ep);
+	else if (!(priv_ep->flags & EP_WEDGE))
+		ret = __cdns3_gadget_ep_clear_halt(priv_ep);
 
-		if (priv_dev->eps[index]->flags & EP_WEDGE) {
-			cdns3_select_ep(priv_dev, 0x00);
-			return 0;
-		}
-
-		cdns3_dbg(priv_ep->cdns3_dev, "Clear Stalled endpoint %s\n",
-			  priv_ep->name);
-
-		request = cdns3_next_request(&priv_ep->pending_req_list);
-		if (request) {
-			priv_req = to_cdns3_request(request);
-			trb = priv_req->trb;
-			trb->control = trb->control ^ TRB_CYCLE;
-		}
-
-		writel(EP_CMD_CSTALL | EP_CMD_EPRST, &priv_dev->regs->ep_cmd);
-
-		/* wait for EPRST cleared */
-		ret = cdns3_handshake(&priv_dev->regs->ep_cmd,
-				      EP_CMD_EPRST, 0, 100);
-		if (ret)
-			return -EINVAL;
-
-		priv_ep->flags &= ~EP_STALL;
-
-		if (request) {
-			cdns3_dbg(priv_ep->cdns3_dev, "Resume transfer for %s\n",
-				  priv_ep->name);
-			trb->control = trb->control ^ TRB_CYCLE;
-			cdns3_rearm_transfer(priv_ep, 1);
-		}
-	}
+	cdns3_select_ep(priv_dev, 0x00);
 
 	return ret;
 }
@@ -433,7 +387,7 @@ static int cdns3_ep0_feature_handle_endpoint(struct cdns3_device *priv_dev,
  * Handling of GET/SET_FEATURE standard USB request
  *
  * @priv_dev: extended gadget object
- * @ctrl_req: pointer to received setup packet
+ * @ctrl: pointer to received setup packet
  * @set: must be set to 1 for SET_FEATURE request
  *
  * Returns 0 if success, error code on error
@@ -483,7 +437,7 @@ static int cdns3_req_ep0_set_sel(struct cdns3_device *priv_dev,
 		return -EINVAL;
 	}
 
-	cdns3_ep0_run_transfer(priv_dev, priv_dev->setup_dma, 6, 1);
+	cdns3_ep0_run_transfer(priv_dev, priv_dev->setup_dma, 6, 1, 0);
 	return 0;
 }
 
@@ -571,30 +525,6 @@ void cdns3_pending_setup_status_handler(struct work_struct *work)
 }
 
 /**
- * cdns3_gadget_ep_giveback - call struct usb_request's ->complete callback
- * @priv_ep: The endpoint to whom the request belongs to
- * @priv_req: The request we're giving back
- * @status: completion code for the request
- *
- * Must be called with controller's lock held and interrupts disabled. This
- * function will unmap @req and call its ->complete() callback to notify upper
- * layers that it has completed.
- */
-
-void cdns3_gadget_ep0_giveback(struct cdns3_device *priv_dev,
-			       int status)
-{
-	struct cdns3_endpoint *priv_ep;
-	struct usb_request *request;
-
-	priv_ep = priv_dev->eps[0];
-	request = cdns3_next_request(&priv_ep->pending_req_list);
-
-	priv_ep->dir = priv_dev->ep0_data_dir;
-	cdns3_gadget_giveback(priv_ep, to_cdns3_request(request), status);
-}
-
-/**
  * cdns3_ep0_setup_phase - Handling setup USB requests
  * @priv_dev: extended gadget object
  */
@@ -650,10 +580,6 @@ static void cdns3_transfer_completed(struct cdns3_device *priv_dev)
 			TRB_LEN(le32_to_cpu(priv_ep->trb_pool->length));
 
 		priv_ep->dir = priv_dev->ep0_data_dir;
-		if (request->zero && request->length && priv_ep->dir
-		    && (request->length % priv_dev->gadget.ep0->maxpacket == 0))
-			cdns3_ep0_run_transfer(priv_dev, request->dma, 0, 1);
-
 		cdns3_gadget_giveback(priv_ep, to_cdns3_request(request), 0);
 	}
 
@@ -670,7 +596,7 @@ static bool cdns3_check_new_setup(struct cdns3_device *priv_dev)
 {
 	u32 ep_sts_reg;
 
-	cdns3_select_ep(priv_dev, 0 | USB_DIR_OUT);
+	cdns3_select_ep(priv_dev, USB_DIR_OUT);
 	ep_sts_reg = readl(&priv_dev->regs->ep_sts);
 
 	return !!(ep_sts_reg & (EP_STS_SETUP | EP_STS_STPWAIT));
@@ -694,7 +620,11 @@ void cdns3_check_ep0_interrupt_proceed(struct cdns3_device *priv_dev, int dir)
 
 	__pending_setup_status_handler(priv_dev);
 
-	if ((ep_sts_reg & EP_STS_SETUP)) {
+	if (ep_sts_reg & EP_STS_SETUP)
+		priv_dev->wait_for_setup = 1;
+
+	if (priv_dev->wait_for_setup && ep_sts_reg & EP_STS_IOC) {
+		priv_dev->wait_for_setup = 0;
 		cdns3_ep0_setup_phase(priv_dev);
 	} else if ((ep_sts_reg & EP_STS_IOC) || (ep_sts_reg & EP_STS_ISP)) {
 		priv_dev->ep0_data_dir = dir;
@@ -709,6 +639,9 @@ void cdns3_check_ep0_interrupt_proceed(struct cdns3_device *priv_dev, int dir)
 
 /**
  * cdns3_gadget_ep0_enable
+ * @ep: pointer to endpoint zero object
+ * @desc: pointer to usb endpoint descriptor
+ *
  * Function shouldn't be called by gadget driver,
  * endpoint 0 is allways active
  */
@@ -720,6 +653,8 @@ static int cdns3_gadget_ep0_enable(struct usb_ep *ep,
 
 /**
  * cdns3_gadget_ep0_disable
+ * @ep: pointer to endpoint zero object
+ *
  * Function shouldn't be called by gadget driver,
  * endpoint 0 is allways active
  */
@@ -757,12 +692,11 @@ static int cdns3_gadget_ep0_queue(struct usb_ep *ep,
 	struct cdns3_device *priv_dev = priv_ep->cdns3_dev;
 	unsigned long flags;
 	int ret = 0;
-
-	cdns3_dbg(priv_ep->cdns3_dev, "Queue to Ep0%s L: %d\n",
-		  priv_dev->ep0_data_dir ? "IN" : "OUT",
-		  request->length);
+	u8 zlp = 0;
+	int i;
 
 	spin_lock_irqsave(&priv_dev->lock, flags);
+	trace_cdns3_ep0_queue(priv_dev, request);
 
 	/* cancel the request if controller receive new SETUP packet. */
 	if (cdns3_check_new_setup(priv_dev)) {
@@ -772,14 +706,32 @@ static int cdns3_gadget_ep0_queue(struct usb_ep *ep,
 
 	/* send STATUS stage. Should be called only for SET_CONFIGURATION */
 	if (priv_dev->ep0_stage == CDNS3_STATUS_STAGE) {
+		u32 val;
+
 		cdns3_select_ep(priv_dev, 0x00);
+
+		/*
+		 * Configure all non-control EPs which are not enabled by class driver
+		 */
+		for (i = 0; i < CDNS3_ENDPOINTS_MAX_COUNT; i++) {
+			priv_ep = priv_dev->eps[i];
+			if (priv_ep && priv_ep->flags & EP_CLAIMED &&
+			    !(priv_ep->flags & EP_ENABLED))
+				cdns3_ep_config(priv_ep, 0);
+		}
 
 		cdns3_set_hw_configuration(priv_dev);
 		cdns3_ep0_complete_setup(priv_dev, 0, 1);
+		/* wait until configuration set */
+		ret = readl_poll_timeout_atomic(&priv_dev->regs->usb_sts, val,
+					  val & USB_STS_CFGSTS_MASK, 1, 100);
+		if (ret == -ETIMEDOUT)
+			dev_warn(priv_dev->dev, "timeout for waiting configuration set\n");
 
 		request->actual = 0;
 		priv_dev->status_completion_no_call = true;
 		priv_dev->pending_status_request = request;
+		usb_gadget_set_state(&priv_dev->gadget, USB_STATE_CONFIGURED);
 		spin_unlock_irqrestore(&priv_dev->lock, flags);
 
 		/*
@@ -788,7 +740,7 @@ static int cdns3_gadget_ep0_queue(struct usb_ep *ep,
 		 * ep0_queue is back.
 		 */
 		queue_work(system_freezable_wq, &priv_dev->pending_status_wq);
-		return 0;
+		return ret;
 	}
 
 	if (!list_empty(&priv_ep->pending_req_list)) {
@@ -808,7 +760,13 @@ static int cdns3_gadget_ep0_queue(struct usb_ep *ep,
 
 	request->status = -EINPROGRESS;
 	list_add_tail(&request->list, &priv_ep->pending_req_list);
-	cdns3_ep0_run_transfer(priv_dev, request->dma, request->length, 1);
+
+	if (request->zero && request->length &&
+	    (request->length % ep->maxpacket == 0))
+		zlp = 1;
+
+	cdns3_ep0_run_transfer(priv_dev, request->dma, request->length, 1, zlp);
+
 	spin_unlock_irqrestore(&priv_dev->lock, flags);
 
 	return ret;
@@ -854,6 +812,7 @@ void cdns3_ep0_config(struct cdns3_device *priv_dev)
 	struct cdns3_usb_regs __iomem *regs;
 	struct cdns3_endpoint *priv_ep;
 	u32 max_packet_size = 64;
+	u32 ep_cfg;
 
 	regs = priv_dev->regs;
 
@@ -861,7 +820,13 @@ void cdns3_ep0_config(struct cdns3_device *priv_dev)
 		max_packet_size = 512;
 
 	priv_ep = priv_dev->eps[0];
-	INIT_LIST_HEAD(&priv_ep->pending_req_list);
+
+	if (!list_empty(&priv_ep->pending_req_list)) {
+		struct usb_request *request;
+
+		request = cdns3_next_request(&priv_ep->pending_req_list);
+		list_del_init(&request->list);
+	}
 
 	priv_dev->u1_allowed = 0;
 	priv_dev->u2_allowed = 0;
@@ -872,8 +837,17 @@ void cdns3_ep0_config(struct cdns3_device *priv_dev)
 	/* init ep out */
 	cdns3_select_ep(priv_dev, USB_DIR_OUT);
 
-	writel(EP_CFG_ENABLE | EP_CFG_MAXPKTSIZE(max_packet_size),
-	       &regs->ep_cfg);
+	if (priv_dev->dev_ver >= DEV_VER_V3) {
+		cdns3_set_register_bit(&priv_dev->regs->dtrans,
+				       BIT(0) | BIT(16));
+		cdns3_set_register_bit(&priv_dev->regs->tdl_from_trb,
+				       BIT(0) | BIT(16));
+	}
+
+	ep_cfg = EP_CFG_ENABLE | EP_CFG_MAXPKTSIZE(max_packet_size);
+
+	if (!(priv_ep->flags & EP_CONFIGURED))
+		writel(ep_cfg, &regs->ep_cfg);
 
 	writel(EP_STS_EN_SETUPEN | EP_STS_EN_DESCMISEN | EP_STS_EN_TRBERREN,
 	       &regs->ep_sts_en);
@@ -881,8 +855,10 @@ void cdns3_ep0_config(struct cdns3_device *priv_dev)
 	/* init ep in */
 	cdns3_select_ep(priv_dev, USB_DIR_IN);
 
-	writel(EP_CFG_ENABLE | EP_CFG_MAXPKTSIZE(max_packet_size),
-	       &regs->ep_cfg);
+	if (!(priv_ep->flags & EP_CONFIGURED))
+		writel(ep_cfg, &regs->ep_cfg);
+
+	priv_ep->flags |= EP_CONFIGURED;
 
 	writel(EP_STS_EN_SETUPEN | EP_STS_EN_TRBERREN, &regs->ep_sts_en);
 
@@ -892,7 +868,7 @@ void cdns3_ep0_config(struct cdns3_device *priv_dev)
 /**
  * cdns3_init_ep0 Initializes software endpoint 0 of gadget
  * @priv_dev: extended gadget object
- * @ep_priv: extended endpoint object
+ * @priv_ep: extended endpoint object
  *
  * Returns 0 on success else error code.
  */

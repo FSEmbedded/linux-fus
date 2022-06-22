@@ -13,7 +13,6 @@
  * GNU General Public License for more details.
  */
 
-#include <drm/drmP.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_panel.h>
@@ -21,6 +20,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/regulator/consumer.h>
+#include <linux/delay.h>
 #include <video/mipi_display.h>
 #include <video/of_videomode.h>
 #include <video/videomode.h>
@@ -504,10 +504,10 @@ static int nt35521_disable(struct drm_panel *panel)
 	return 0;
 }
 
-static int nt35521_get_modes(struct drm_panel *panel)
+static int nt35521_get_modes(struct drm_panel *panel,
+				struct drm_connector *connector)
 {
 	struct nt35521 *nt = panel_to_nt35521(panel);
-	struct drm_connector *connector = panel->connector;
 	struct drm_display_mode *mode;
 	u32 *bus_flags = &connector->display_info.bus_flags;
 	int ret;
@@ -529,17 +529,17 @@ static int nt35521_get_modes(struct drm_panel *panel)
 		*bus_flags |= DRM_BUS_FLAG_DE_HIGH;
 	if (nt->vm.flags & DISPLAY_FLAGS_DE_LOW)
 		*bus_flags |= DRM_BUS_FLAG_DE_LOW;
-	if (nt->vm.flags & DISPLAY_FLAGS_PIXDATA_NEGEDGE)
-		*bus_flags |= DRM_BUS_FLAG_PIXDATA_NEGEDGE;
-	if (nt->vm.flags & DISPLAY_FLAGS_PIXDATA_POSEDGE)
-		*bus_flags |= DRM_BUS_FLAG_PIXDATA_POSEDGE;
+	if (nt->vm.flags & DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE)
+		*bus_flags |= DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE;
+	if (nt->vm.flags & DRM_BUS_FLAG_PIXDATA_DRIVE_POSEDGE )
+		*bus_flags |= DRM_BUS_FLAG_PIXDATA_DRIVE_POSEDGE ;
 
 	ret = drm_display_info_set_bus_formats(&connector->display_info,
 			nt_bus_formats, ARRAY_SIZE(nt_bus_formats));
 	if (ret)
 		return ret;
 
-	drm_mode_probed_add(panel->connector, mode);
+	drm_mode_probed_add(connector, mode);
 
 	return 1;
 }
@@ -726,14 +726,10 @@ static int nt35521_probe(struct mipi_dsi_device *dsi)
 		return ret;
 	}
 
-	drm_panel_init(&nt->panel);
-	nt->panel.funcs = &nt35521_funcs;
-	nt->panel.dev = dev;
+	drm_panel_init(&nt->panel, dev, &nt35521_funcs,
+		       DRM_MODE_CONNECTOR_DSI);
 
-	ret = drm_panel_add(&nt->panel);
-
-	if (ret < 0)
-		return ret;
+	drm_panel_add(&nt->panel);
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0)

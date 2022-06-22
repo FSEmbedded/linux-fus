@@ -70,6 +70,7 @@ static int tag_black_obj(struct keyblob_info *info, size_t black_max_len,
 
 	return ret;
 }
+
 /**
  * send_err_msg      - Send the error message from kernel to user-space
  *

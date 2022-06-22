@@ -2,8 +2,6 @@
 /*
  * TC358775 DSI to LVDS bridge driver
  *
- * Modified driver from kernel version 5.9
- *
  * Copyright (C) 2020 SMART Wireless Computing
  * Author: Vinay Simha BN <simhavcs@gmail.com>
  *
@@ -389,22 +387,6 @@ static void tc_bridge_enable(struct drm_bridge *bridge)
 	struct drm_display_mode *mode;
 	struct drm_connector *connector = get_connector(bridge->encoder);
 
-	usleep_range(200, 300);
-
-	switch (connector->display_info.bus_formats[0]) {
-	case MEDIA_BUS_FMT_RGB888_1X7X4_SPWG:
-	case MEDIA_BUS_FMT_RGB888_1X7X4_JEIDA:
-		/* RGB888 */
-		tc->bpc = 8;
-		break;
-	case MEDIA_BUS_FMT_RGB666_1X7X3_SPWG:
-		/* RGB666 */
-		tc->bpc = 6;
-		break;
-	default:
-		tc->bpc = 8;
-	}
-
 	mode = &bridge->encoder->crtc->state->adjusted_mode;
 
 	hback_porch = mode->htotal - mode->hsync_end;
@@ -517,6 +499,7 @@ static void tc_bridge_enable(struct drm_bridge *bridge)
 
 static enum drm_mode_status
 tc_mode_valid(struct drm_bridge *bridge,
+	      const struct drm_display_info *info,
 	      const struct drm_display_mode *mode)
 {
 	struct tc_data *tc = bridge_to_tc(bridge);
@@ -528,6 +511,23 @@ tc_mode_valid(struct drm_bridge *bridge,
 	if ((mode->clock > 135000 && tc->lvds_link == SINGLE_LINK) ||
 	    (mode->clock > 270000 && tc->lvds_link == DUAL_LINK))
 		return MODE_CLOCK_HIGH;
+
+	switch (info->bus_formats[0]) {
+	case MEDIA_BUS_FMT_RGB888_1X7X4_SPWG:
+	case MEDIA_BUS_FMT_RGB888_1X7X4_JEIDA:
+		/* RGB888 */
+		tc->bpc = 8;
+		break;
+	case MEDIA_BUS_FMT_RGB666_1X7X3_SPWG:
+		/* RGB666 */
+		tc->bpc = 6;
+		break;
+	default:
+		dev_warn(tc->dev,
+			 "unsupported LVDS bus format 0x%04x\n",
+			 info->bus_formats[0]);
+		return MODE_NOMODE;
+	}
 
 	return MODE_OK;
 }
@@ -581,7 +581,6 @@ static int tc358775_parse_dt(struct device_node *np, struct tc_data *tc)
 	tc->lvds_link = SINGLE_LINK;
 	endpoint = of_graph_get_endpoint_by_regs(tc->dev->of_node,
 						 TC358775_LVDS_OUT1, -1);
-
 	if (endpoint) {
 		remote = of_graph_get_remote_port_parent(endpoint);
 		of_node_put(endpoint);
@@ -599,7 +598,8 @@ static int tc358775_parse_dt(struct device_node *np, struct tc_data *tc)
 	return 0;
 }
 
-static int tc_bridge_attach(struct drm_bridge *bridge)
+static int tc_bridge_attach(struct drm_bridge *bridge,
+			    enum drm_bridge_attach_flags flags)
 {
 	struct tc_data *tc = bridge_to_tc(bridge);
 	struct device *dev = &tc->i2c->dev;
@@ -629,7 +629,7 @@ static int tc_bridge_attach(struct drm_bridge *bridge)
 
 	dsi->lanes = tc->num_dsi_lanes;
 	dsi->format = MIPI_DSI_FMT_RGB888;
-	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST;
+	dsi->mode_flags = MIPI_DSI_MODE_VIDEO;
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
@@ -639,7 +639,7 @@ static int tc_bridge_attach(struct drm_bridge *bridge)
 
 	/* Attach the panel-bridge to the dsi bridge */
 	return drm_bridge_attach(bridge->encoder, tc->panel_bridge,
-				 &tc->bridge);
+				 &tc->bridge, flags);
 err_dsi_attach:
 	mipi_dsi_device_unregister(dsi);
 err_dsi_device:
@@ -675,7 +675,7 @@ static int tc_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	if (!panel)
 		return -ENODEV;
 
-	tc->panel_bridge = devm_drm_panel_bridge_add(dev, panel, DRM_MODE_CONNECTOR_LVDS);
+	tc->panel_bridge = devm_drm_panel_bridge_add(dev, panel);
 	if (IS_ERR(tc->panel_bridge))
 		return PTR_ERR(tc->panel_bridge);
 

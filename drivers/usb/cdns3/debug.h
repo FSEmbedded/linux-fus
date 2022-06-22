@@ -10,6 +10,8 @@
 #ifndef __LINUX_CDNS3_DEBUG
 #define __LINUX_CDNS3_DEBUG
 
+#include "core.h"
+
 static inline char *cdns3_decode_usb_irq(char *str,
 					 enum usb_device_speed speed,
 					 u32 usb_ists)
@@ -26,7 +28,12 @@ static inline char *cdns3_decode_usb_irq(char *str,
 		ret += sprintf(str + ret, "Disconnection ");
 	if (usb_ists & USB_ISTS_L2ENTI)
 		ret += sprintf(str + ret, "suspended ");
-
+	if (usb_ists & USB_ISTS_L1ENTI)
+		ret += sprintf(str + ret, "L1 enter ");
+	if (usb_ists & USB_ISTS_L1EXTI)
+		ret += sprintf(str + ret, "L1 exit ");
+	if (usb_ists & USB_ISTS_L2ENTI)
+		ret += sprintf(str + ret, "L2 enter ");
 	if (usb_ists & USB_ISTS_L2EXTI)
 		ret += sprintf(str + ret, "L2 exit ");
 	if (usb_ists & USB_ISTS_U3EXTI)
@@ -133,7 +140,7 @@ static inline char *cdns3_dbg_ring(struct cdns3_endpoint *priv_ep,
 		trb_per_sector = TRBS_PER_SEGMENT;
 
 	if (trb_per_sector > TRBS_PER_SEGMENT) {
-		sprintf(str + ret, "\t\tTo big transfer ring %d\n",
+		sprintf(str + ret, "\t\tTransfer ring %d too big\n",
 			trb_per_sector);
 		return str;
 	}
@@ -151,5 +158,4 @@ static inline char *cdns3_dbg_ring(struct cdns3_endpoint *priv_ep,
 	return str;
 }
 
-void cdns3_dbg(struct cdns3_device *priv_dev, const char *fmt, ...);
 #endif /*__LINUX_CDNS3_DEBUG*/

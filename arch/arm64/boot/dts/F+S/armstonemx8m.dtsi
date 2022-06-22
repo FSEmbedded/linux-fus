@@ -609,6 +609,8 @@
 	status = "okay";
 };
 
++#if 0
++/* not available anymore. See remote proc */
 &rpmsg{
 	/*
 	* 64K for one rpmsg instance:
@@ -618,6 +620,7 @@
 	reg = <0x0 0xb8000000 0x0 0x10000>;
 	status = "okay";
 };
+#endif
 
 #ifdef CONFIG_ARMSTONEMX8M_NAND
 &gpmi {

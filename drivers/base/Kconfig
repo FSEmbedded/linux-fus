@@ -159,6 +159,11 @@ config AUXILIARY_CORE
 	  If you are not using a board or module from F&S Elektronik Systeme,
 	  you can safely say N.
 
+config PM_QOS_KUNIT_TEST
+	bool "KUnit Test for PM QoS features" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+
 config HMEM_REPORTING
 	bool
 	default n

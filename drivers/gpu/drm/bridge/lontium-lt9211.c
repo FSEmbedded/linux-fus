@@ -1281,10 +1281,12 @@ static void lt9211_bridge_enable(struct drm_bridge *bridge)
 	}
 }
 
-static enum drm_mode_status lt9211_mode_valid(struct drm_bridge *bridge,
+static enum drm_mode_status
+lt9211_mode_valid(struct drm_bridge *bridge,
+	      const struct drm_display_info *info,
 	      const struct drm_display_mode *mode)
 {
-	/*
+/*
 	 * Maximum pixel clock speed < 352MHz
 	 */
 	if (mode->clock >= PCLK_KHZ_352000)
@@ -1293,7 +1295,8 @@ static enum drm_mode_status lt9211_mode_valid(struct drm_bridge *bridge,
 	return MODE_OK;
 }
 
-static int lt9211_bridge_attach(struct drm_bridge *bridge)
+static int lt9211_bridge_attach(struct drm_bridge *bridge,
+				enum drm_bridge_attach_flags flags)
 {
 	struct lt9211 *lt9211 = bridge_to_lt9211(bridge);
 	struct mipi_dsi_host *host;
@@ -1331,7 +1334,7 @@ static int lt9211_bridge_attach(struct drm_bridge *bridge)
 
 	/* Attach the panel-bridge to the dsi bridge */
 	return drm_bridge_attach(bridge->encoder, lt9211->panel_bridge,
-				 &lt9211->bridge);
+				 &lt9211->bridge, flags);
 
 err_dsi_attach:
 	mipi_dsi_device_unregister(dsi);
@@ -1449,8 +1452,7 @@ static int lt9211_probe(struct i2c_client *client,
 	if (!panel)
 		return -ENODEV;
 
-	lt9211->panel_bridge = devm_drm_panel_bridge_add(dev, panel,
-						DRM_MODE_CONNECTOR_LVDS);
+	lt9211->panel_bridge = devm_drm_panel_bridge_add(dev, panel);
 	if (IS_ERR(lt9211->panel_bridge))
 		return PTR_ERR(lt9211->panel_bridge);
 

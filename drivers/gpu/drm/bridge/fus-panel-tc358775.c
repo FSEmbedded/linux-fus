@@ -12,10 +12,10 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_of.h>
 #include <drm/drm_panel.h>
-#include <drm/drmP.h>
 #include <linux/gpio/consumer.h>
 #include <linux/of_graph.h>
 #include <linux/regulator/consumer.h>
+#include <linux/delay.h>
 #include <video/mipi_display.h>
 #include <video/of_videomode.h>
 #include <video/videomode.h>
@@ -365,7 +365,7 @@ static int tc358775_panel_unprepare(struct drm_panel *panel)
 		return 0;
 
 	if (ctx->enabled) {
-		DRM_DEV_ERROR(dev, "Panel still enabled!\n");
+		dev_err(dev, "Panel still enabled!\n");
 		return -EPERM;
 	}
 	gpiod_set_value_cansleep(ctx->gpio_stby, 0);
@@ -392,7 +392,7 @@ static int tc358775_panel_enable(struct drm_panel *panel)
 		return 0;
 
 	if (!ctx->prepared) {
-		DRM_DEV_ERROR(dev, "Panel not prepared!\n");
+		dev_err(dev, "Panel not prepared!\n");
 		return -EPERM;
 	}
 	tc358775_init(ctx);
@@ -441,18 +441,18 @@ static int tc358775_panel_disable(struct drm_panel *panel)
 	return 0;
 }
 
-static int tc358775_get_modes(struct drm_panel *panel)
+static int tc358775_get_modes(struct drm_panel *panel,
+				struct drm_connector *connector)
 {
 	struct tc358775 *ctx = panel_to_tc358775(panel);
 	struct device *dev = ctx->dev;
-	struct drm_connector *connector = panel->connector;
 	struct drm_display_mode *mode;
 	u32 *bus_flags = &connector->display_info.bus_flags;
 	int ret;
 
 	mode = drm_mode_create(connector->dev);
 	if (!mode) {
-		DRM_DEV_ERROR(dev, "Failed to create display mode!\n");
+		dev_err(dev, "Failed to create display mode!\n");
 		return 0;
 	}
 
@@ -467,17 +467,17 @@ static int tc358775_get_modes(struct drm_panel *panel)
 		*bus_flags |= DRM_BUS_FLAG_DE_HIGH;
 	if (ctx->vm.flags & DISPLAY_FLAGS_DE_LOW)
 		*bus_flags |= DRM_BUS_FLAG_DE_LOW;
-	if (ctx->vm.flags & DISPLAY_FLAGS_PIXDATA_NEGEDGE)
-		*bus_flags |= DRM_BUS_FLAG_PIXDATA_NEGEDGE;
-	if (ctx->vm.flags & DISPLAY_FLAGS_PIXDATA_POSEDGE)
-		*bus_flags |= DRM_BUS_FLAG_PIXDATA_POSEDGE;
+	if (ctx->vm.flags & DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE)
+		*bus_flags |= DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE;
+	if (ctx->vm.flags & DRM_BUS_FLAG_PIXDATA_DRIVE_POSEDGE )
+		*bus_flags |= DRM_BUS_FLAG_PIXDATA_DRIVE_POSEDGE ;
 
 	ret = drm_display_info_set_bus_formats(&connector->display_info,
 			tc358775_bus_formats, ARRAY_SIZE(tc358775_bus_formats));
 	if (ret)
 		return ret;
 
-	drm_mode_probed_add(panel->connector, mode);
+	drm_mode_probed_add(connector, mode);
 
 	return 1;
 }
@@ -667,15 +667,10 @@ static int tc358775_probe(struct mipi_dsi_device *dsi)
 		ctx->defconfig_size = 27;
 	}
 
+	drm_panel_init(&ctx->panel, dev, &tc358775_panel_funcs,
+		       DRM_MODE_CONNECTOR_DSI);
 
-	drm_panel_init(&ctx->panel);
-	ctx->panel.funcs = &tc358775_panel_funcs;
-	ctx->panel.dev = dev;
-
-	ret = drm_panel_add(&ctx->panel);
-
-	if (ret < 0)
-		return ret;
+	drm_panel_add(&ctx->panel);
 
 	dev_set_drvdata(dev, &ctx->panel);
 
@@ -696,10 +691,8 @@ static int tc358775_remove(struct mipi_dsi_device *dsi)
 
 	ret = mipi_dsi_detach(dsi);
 	if (ret < 0)
-		DRM_DEV_ERROR(dev, "Failed to detach from host (%d)\n",
+		dev_err(dev, "Failed to detach from host (%d)\n",
 			ret);
-
-	drm_panel_detach(&ctx->panel);
 
 	if (ctx->panel.dev)
 		drm_panel_remove(&ctx->panel);

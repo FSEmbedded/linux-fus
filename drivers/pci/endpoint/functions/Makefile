@@ -4,4 +4,3 @@
 #
 
 obj-$(CONFIG_PCI_EPF_TEST)		+= pci-epf-test.o
-obj-$(CONFIG_IMX_MIC_EPF)		+= imx_mic_epf.o

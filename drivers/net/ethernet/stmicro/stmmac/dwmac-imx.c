@@ -24,10 +24,8 @@
 
 #include "stmmac_platform.h"
 
-#ifdef CONFIG_IMX_SCU_SOC
 #include <dt-bindings/firmware/imx/rsrc.h>
 #include <linux/firmware/imx/sci.h>
-#endif
 
 #define GPR_ENET_QOS_INTF_MODE_MASK	GENMASK(21, 16)
 #define GPR_ENET_QOS_INTF_SEL_MII	(0x0 << 16)
@@ -39,10 +37,9 @@
 
 struct imx_dwmac_ops {
 	u32 addr_width;
-	bool mac_txclk_auto_adj;
+	bool mac_rgmii_txclk_auto_adj;
 
 	int (*set_intf_mode)(struct plat_stmmacenet_data *plat_dat);
-	int (*set_stop_mode)(struct plat_stmmacenet_data *plat_dat, bool is_en);
 };
 
 struct imx_priv_data {
@@ -92,7 +89,8 @@ static int
 imx8dxl_set_intf_mode(struct plat_stmmacenet_data *plat_dat)
 {
 	int ret = 0;
-#ifdef CONFIG_IMX_SCU_SOC
+
+	/* TBD: depends on imx8dxl scu interfaces to be upstreamed */
 	struct imx_sc_ipc *ipc_handle;
 	int val;
 
@@ -123,30 +121,17 @@ imx8dxl_set_intf_mode(struct plat_stmmacenet_data *plat_dat)
 				      IMX_SC_C_INTF_SEL, val >> 16);
 	ret |= imx_sc_misc_set_control(ipc_handle, IMX_SC_R_ENET_1,
 				       IMX_SC_C_CLK_GEN_EN, 0x1);
-#endif
 
 	return ret;
 }
 
-static int
-imx8mp_set_stop_mode(struct plat_stmmacenet_data *plat_dat, bool is_en)
-{
-	/* TBD */
-	return 0;
-};
-
-static int
-imx8dxl_set_stop_mode(struct plat_stmmacenet_data *plat_dat, bool is_en)
-{
-	/* TBD */
-	return 0;
-};
-
 static int imx_dwmac_init(struct platform_device *pdev, void *priv)
 {
+	struct plat_stmmacenet_data *plat_dat;
 	struct imx_priv_data *dwmac = priv;
-	struct plat_stmmacenet_data *plat_dat = dwmac->plat_dat;
 	int ret;
+
+	plat_dat = dwmac->plat_dat;
 
 	ret = pm_runtime_get_sync(&pdev->dev);
 	if (ret < 0)
@@ -164,12 +149,6 @@ static int imx_dwmac_init(struct platform_device *pdev, void *priv)
 		goto clk_tx_en_failed;
 	}
 
-	if (dwmac->ops->set_stop_mode) {
-		ret = dwmac->ops->set_stop_mode(plat_dat, false);
-		if (ret)
-			goto stop_mode_failed;
-	}
-
 	if (dwmac->ops->set_intf_mode) {
 		ret = dwmac->ops->set_intf_mode(plat_dat);
 		if (ret)
@@ -179,7 +158,6 @@ static int imx_dwmac_init(struct platform_device *pdev, void *priv)
 	return 0;
 
 intf_mode_failed:
-stop_mode_failed:
 	clk_disable_unprepare(dwmac->clk_tx);
 clk_tx_en_failed:
 	clk_disable_unprepare(dwmac->clk_mem);
@@ -191,31 +169,22 @@ clk_mem_failed:
 static void imx_dwmac_exit(struct platform_device *pdev, void *priv)
 {
 	struct imx_priv_data *dwmac = priv;
-	struct plat_stmmacenet_data *plat_dat = dwmac->plat_dat;
-	int ret;
 
-	if (dwmac->ops->set_stop_mode) {
-		ret = dwmac->ops->set_stop_mode(plat_dat, true);
-		if (ret) {
-			dev_err(dwmac->dev, "enter stop mode failed %d\n", ret);
-			return;
-		}
-	}
-
-	if (dwmac->clk_tx)
-		clk_disable_unprepare(dwmac->clk_tx);
+	clk_disable_unprepare(dwmac->clk_tx);
 	clk_disable_unprepare(dwmac->clk_mem);
 	pm_runtime_put(&pdev->dev);
 }
 
 static void imx_dwmac_fix_speed(void *priv, unsigned int speed)
 {
+	struct plat_stmmacenet_data *plat_dat;
 	struct imx_priv_data *dwmac = priv;
-	struct plat_stmmacenet_data *plat_dat = dwmac->plat_dat;
 	unsigned long rate;
 	int err;
 
-	if (dwmac->ops->mac_txclk_auto_adj ||
+	plat_dat = dwmac->plat_dat;
+
+	if (dwmac->ops->mac_rgmii_txclk_auto_adj ||
 	    (plat_dat->interface == PHY_INTERFACE_MODE_RMII) ||
 	    (plat_dat->interface == PHY_INTERFACE_MODE_MII))
 		return;
@@ -297,7 +266,7 @@ static int imx_dwmac_probe(struct platform_device *pdev)
 
 	dwmac = devm_kzalloc(&pdev->dev, sizeof(*dwmac), GFP_KERNEL);
 	if (!dwmac)
-		return PTR_ERR(dwmac);
+		return -ENOMEM;
 
 	plat_dat = stmmac_probe_config_dt(pdev, &stmmac_res.mac);
 	if (IS_ERR(plat_dat))
@@ -319,13 +288,7 @@ static int imx_dwmac_probe(struct platform_device *pdev)
 		goto err_parse_dt;
 	}
 
-	ret = dma_set_mask_and_coherent(&pdev->dev,
-					DMA_BIT_MASK(dwmac->ops->addr_width));
-	if (ret) {
-		dev_err(&pdev->dev, "DMA mask set failed\n");
-		goto err_dma_mask;
-	}
-
+	plat_dat->addr64 = dwmac->ops->addr_width;
 	plat_dat->init = imx_dwmac_init;
 	plat_dat->exit = imx_dwmac_exit;
 	plat_dat->fix_mac_speed = imx_dwmac_fix_speed;
@@ -349,7 +312,6 @@ err_drv_probe:
 	imx_dwmac_exit(pdev, plat_dat->bsp_priv);
 err_dwmac_init:
 	pm_runtime_disable(&pdev->dev);
-err_dma_mask:
 err_parse_dt:
 err_match_data:
 	stmmac_remove_config_dt(pdev, plat_dat);
@@ -364,16 +326,14 @@ int imx_dwmac_remove(struct platform_device *pdev)
 
 static struct imx_dwmac_ops imx8mp_dwmac_data = {
 	.addr_width = 34,
-	.mac_txclk_auto_adj = false,
+	.mac_rgmii_txclk_auto_adj = false,
 	.set_intf_mode = imx8mp_set_intf_mode,
-	.set_stop_mode = imx8mp_set_stop_mode,
 };
 
 static struct imx_dwmac_ops imx8dxl_dwmac_data = {
-	.addr_width = 32, /* for bringup */
-	.mac_txclk_auto_adj = true,
+	.addr_width = 32,
+	.mac_rgmii_txclk_auto_adj = true,
 	.set_intf_mode = imx8dxl_set_intf_mode,
-	.set_stop_mode = imx8dxl_set_stop_mode,
 };
 
 static const struct of_device_id imx_dwmac_match[] = {

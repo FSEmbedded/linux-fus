@@ -41,17 +41,33 @@
 };
 
 &lsio_mu1 {
-	compatible = "fsl,imx8qxp-mu", "fsl,imx6sx-mu";
+	compatible = "fsl,imx8-mu-scu", "fsl,imx8qxp-mu", "fsl,imx6sx-mu";
 };
 
 &lsio_mu2 {
-	compatible = "fsl,imx8qxp-mu", "fsl,imx6sx-mu";
+	compatible = "fsl,imx8-mu-scu", "fsl,imx8qxp-mu", "fsl,imx6sx-mu";
 };
 
 &lsio_mu3 {
-	compatible = "fsl,imx8qxp-mu", "fsl,imx6sx-mu";
+	compatible = "fsl,imx8-mu-scu", "fsl,imx8qxp-mu", "fsl,imx6sx-mu";
 };
 
 &lsio_mu4 {
-	compatible = "fsl,imx8qxp-mu", "fsl,imx6sx-mu";
+	compatible = "fsl,imx8-mu-scu", "fsl,imx8qxp-mu", "fsl,imx6sx-mu";
+};
+
+&pwm0 {
+		compatible = "fsl,imx8qxp-pwm", "fsl,imx27-pwm";
+};
+
+&pwm1 {
+		compatible = "fsl,imx8qxp-pwm", "fsl,imx27-pwm";
+};
+
+&pwm2 {
+		compatible = "fsl,imx8qxp-pwm", "fsl,imx27-pwm";
+};
+
+&pwm3 {
+		compatible = "fsl,imx8qxp-pwm", "fsl,imx27-pwm";
 };

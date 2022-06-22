@@ -54,7 +54,6 @@ enum otg_fsm_timer {
 	A_WAIT_ENUM,
 	B_DATA_PLS,
 	B_SSEND_SRP,
-	A_DP_END,
 
 	NUM_OTG_FSM_TIMERS,
 };
@@ -197,6 +196,7 @@ struct otg_fsm {
 	struct mutex lock;
 	u8 *host_req_flag;
 	struct delayed_work hnp_polling_work;
+	bool hnp_work_inited;
 	bool state_changed;
 };
 

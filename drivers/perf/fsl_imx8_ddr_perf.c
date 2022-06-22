@@ -471,7 +471,6 @@ static void ddr_perf_event_update(struct perf_event *event)
 	local64_set(&hwc->prev_count, new_raw_count);
 
 	spin_unlock_irqrestore(&pmu->lock, flags);
-
 }
 
 static void ddr_perf_counter_enable(struct ddr_pmu *pmu, int config,
@@ -507,7 +506,7 @@ static void ddr_perf_counter_enable(struct ddr_pmu *pmu, int config,
 		writel(val, pmu->base + reg);
 	} else {
 		/* Disable counter */
-		val = readl(pmu->base + reg) & CNTL_EN_MASK;
+		val = readl_relaxed(pmu->base + reg) & CNTL_EN_MASK;
 		writel(val, pmu->base + reg);
 	}
 }
@@ -527,7 +526,14 @@ static void ddr_perf_event_start(struct perf_event *event, int flags)
 	struct hw_perf_event *hwc = &event->hw;
 	int counter = hwc->idx;
 
-	local64_set(&hwc->prev_count, 0);
+	/* Workaround for i.MX865 */
+	if ((pmu->devtype_data->quirks & DDR_CAP_AXI_ID_FILTER_ENHANCED) ==
+	     DDR_CAP_AXI_ID_FILTER_ENHANCED) {
+		if (counter == EVENT_CYCLES_COUNTER)
+			local64_set(&hwc->prev_count, 0xe8000000);
+	} else {
+		local64_set(&hwc->prev_count, 0);
+	}
 
 	ddr_perf_counter_enable(pmu, event->attr.config, counter, true);
 
@@ -673,7 +679,7 @@ static irqreturn_t ddr_perf_irq_handler(int irq, void *p)
 {
 	int i, ret;
 	struct ddr_pmu *pmu = (struct ddr_pmu *) p;
-	struct perf_event *event;
+	struct perf_event *event, *cycle_event = NULL;
 
 	/* all counter will stop if cycle counter disabled */
 	ddr_perf_counter_enable(pmu,
@@ -683,7 +689,12 @@ static irqreturn_t ddr_perf_irq_handler(int irq, void *p)
 	/*
 	 * When the cycle counter overflows, all counters are stopped,
 	 * and an IRQ is raised. If any other counter overflows, it
-	 * will stop and no IRQ is raised.
+	 * stop counting, and no IRQ is raised.
+	 *
+	 * Cycles occur at least 4 times as often as other events, so we
+	 * can update all events on a cycle counter overflow and not
+	 * lose events.
+	 *
 	 */
 	for (i = 0; i < NUM_COUNTERS; i++) {
 
@@ -693,6 +704,9 @@ static irqreturn_t ddr_perf_irq_handler(int irq, void *p)
 		event = pmu->events[i];
 
 		ddr_perf_event_update(event);
+
+		if (event->hw.idx == EVENT_CYCLES_COUNTER)
+			cycle_event = event;
 	}
 
 	spin_lock(&pmu->lock);
@@ -701,33 +715,38 @@ static irqreturn_t ddr_perf_irq_handler(int irq, void *p)
 		if (!pmu->events[i])
 			continue;
 
-		if (i == EVENT_CYCLES_COUNTER)
-			continue;
-
 		event = pmu->events[i];
+
+		if (event->hw.idx == EVENT_CYCLES_COUNTER)
+			continue;
 
 		/* check non-cycle counters overflow */
 		ret = ddr_perf_counter_overflow(pmu, event->hw.idx);
 		if (ret)
-			dev_warn(pmu->dev, "Counter%d (not cycle counter) overflow happened, data incorrect!\n", i);
+			dev_warn(pmu->dev, "Event Counter%d overflow happened, data incorrect!!\n", i);
 
 		/* clear non-cycle counters */
 		ddr_perf_counter_enable(pmu, event->attr.config, event->hw.idx, true);
 
-		/* update the prev_conter */
 		local64_set(&event->hw.prev_count, 0);
 	}
 
-	if (pmu->events[EVENT_CYCLES_ID])
-		local64_set(&pmu->events[EVENT_CYCLES_ID]->hw.prev_count, 0);
+	/* Workaround for i.MX865 */
+	if ((pmu->devtype_data->quirks & DDR_CAP_AXI_ID_FILTER_ENHANCED) ==
+	    DDR_CAP_AXI_ID_FILTER_ENHANCED) {
+		if (cycle_event)
+			local64_set(&cycle_event->hw.prev_count, 0xe8000000);
+	} else {
+		if (cycle_event)
+			local64_set(&cycle_event->hw.prev_count, 0);
+	}
 
-	/* enable cycle counter to start all counters */
+	spin_unlock(&pmu->lock);
+
 	ddr_perf_counter_enable(pmu,
 			      EVENT_CYCLES_ID,
 			      EVENT_CYCLES_COUNTER,
 			      true);
-
-	spin_unlock(&pmu->lock);
 
 	return IRQ_HANDLED;
 }
@@ -803,8 +822,10 @@ static int ddr_perf_probe(struct platform_device *pdev)
 			return ret;
 	} else
 		return -EINVAL;
-	if (!name)
-		return -ENOMEM;
+	if (!name) {
+		ret = -ENOMEM;
+		goto cpuhp_state_err;
+	}
 
 	pmu->cpu = raw_smp_processor_id();
 	ret = cpuhp_setup_state_multi(CPUHP_AP_ONLINE_DYN,
@@ -868,6 +889,7 @@ cpuhp_state_err:
 		ddr_perf_clks_disable(pmu);
 		ida_simple_remove(&db_ida, pmu->id);
 	}
+
 	dev_warn(&pdev->dev, "i.MX8 DDR Perf PMU failed (%d), disabled\n", ret);
 	return ret;
 }

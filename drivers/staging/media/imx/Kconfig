@@ -2,8 +2,9 @@
 config VIDEO_IMX_MEDIA
 	tristate "i.MX5/6 V4L2 media core driver"
 	depends on ARCH_MXC || COMPILE_TEST
-	depends on MEDIA_CONTROLLER && VIDEO_V4L2 && IMX_IPUV3_CORE
-	depends on VIDEO_V4L2_SUBDEV_API
+	depends on VIDEO_V4L2 && IMX_IPUV3_CORE
+	select MEDIA_CONTROLLER
+	select VIDEO_V4L2_SUBDEV_API
 	depends on HAS_DMA
 	select VIDEOBUF2_DMA_CONTIG
 	select V4L2_FWNODE
@@ -35,9 +36,10 @@ endif
 config VIDEO_IMX_CAPTURE
 	tristate "i.MX V4L2 media core driver"
 	depends on ARCH_MXC || COMPILE_TEST
-	depends on MEDIA_CONTROLLER && VIDEO_V4L2
-	depends on VIDEO_V4L2_SUBDEV_API
+	depends on VIDEO_V4L2
 	depends on HAS_DMA
+	select MEDIA_CONTROLLER
+	select VIDEO_V4L2_SUBDEV_API
 	select VIDEOBUF2_DMA_CONTIG
 	select V4L2_FWNODE
 	help
@@ -47,13 +49,21 @@ config VIDEO_IMX_CAPTURE
 if VIDEO_IMX_CAPTURE
 menu "i.MX8QXP/QM Camera ISI/MIPI Features support"
 
-config IMX8_MEDIA_DEVICE
-	tristate "IMX8 Media Device Driver"
-	select V4L2_FWNODE
+config IMX8_MIPI_CSI2
+	tristate "IMX8 MIPI CSI2 Controller"
+	depends on VIDEO_V4L2 && VIDEO_V4L2_SUBDEV_API
 	default y
 	help
-	  This media device is a virtual device which used to manage
-	  all modules in image subsystem of imx8qxp/qm platform.
+	  Enable support for video4linux camera sensor interface driver for
+	  i.MX8QM/QXP platform.
+
+config IMX8_MIPI_CSI2_SAM
+	tristate "IMX8 MIPI CSI2 SAMSUNG Controller"
+	depends on VIDEO_V4L2 && VIDEO_V4L2_SUBDEV_API
+	default y
+	help
+	  Enable support for video4linux MIPI CSI2 Samsung driver for
+	  i.MX8MN platform.
 
 config IMX8_ISI_HW
 	tristate "IMX8 Image Sensor Interface hardware driver"
@@ -82,21 +92,20 @@ config IMX8_ISI_M2M
 	depends on IMX8_ISI_HW
 	default y
 
-config IMX8_MIPI_CSI2
-	tristate "IMX8 MIPI CSI2 Controller"
+config GMSL_MAX9286
+	tristate "GMSL MAX8286"
 	depends on VIDEO_V4L2 && VIDEO_V4L2_SUBDEV_API
 	default y
 	help
-	  Enable support for video4linux camera sensor interface driver for
-	  i.MX8QM/QXP platform.
+	  Enable support for video4linux camera sensor driver for GMSL MAX9286
 
-config IMX8_MIPI_CSI2_SAM
-	tristate "IMX8 MIPI CSI2 SAMSUNG Controller"
-	depends on VIDEO_V4L2 && VIDEO_V4L2_SUBDEV_API
+config IMX8_MEDIA_DEVICE
+	tristate "IMX8 Media Device Driver"
+	select V4L2_FWNODE
 	default y
 	help
-	  Enable support for video4linux MIPI CSI2 Samsung driver for
-	  i.MX8MN platform.
+	  This media device is a virtual device which used to manage
+	  all modules in image subsystem of imx8qxp/qm platform.
 
 config IMX8_PARALLEL_CSI
 	tristate "IMX8 Parallel Capture Controller"
@@ -106,12 +115,8 @@ config IMX8_PARALLEL_CSI
 	  Enable support for video4linux parallel camera sensor interface
 	  driver for i.MX8QM/QXP platform.
 
-config GMSL_MAX9286
-	tristate "GMSL MAX8286"
-	depends on VIDEO_V4L2 && VIDEO_V4L2_SUBDEV_API
-	default y
-	help
-	  Enable support for video4linux camera sensor driver for GMSL MAX9286
-
 endmenu
+
+source "drivers/staging/media/imx/hdmirx/Kconfig"
+
 endif  #VIDEO_IMX_CAPTURE

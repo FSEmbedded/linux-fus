@@ -429,7 +429,7 @@ config IR_GPIO_CIR
 config LIRC_GPIOBLASTER
 	tristate "GPIO IR remote control Transmitter"
 	depends on RC_CORE
-	---help---
+	help
 	   Say Y if you want to use GPIO based IR Transmitter.
 
 	   To compile this driver as a module, choose M here: the module will
@@ -538,6 +538,17 @@ config IR_ZX
 
 	   To compile this driver as a module, choose M here: the
 	   module will be called zx-irdec.
+
+config IR_TOY
+	tristate "Infrared Toy and IR Droid"
+	depends on RC_CORE
+	depends on USB_ARCH_HAS_HCD
+	help
+	   Say Y here if you want to use the Infrared Toy or IR Droid, USB
+	   versions.
+
+	   To compile this driver as a module, choose M here: the module will be
+	   called ir_toy.
 
 endif #RC_DEVICES
 

@@ -58,14 +58,11 @@ static int imx_irqsteer_attach_pd(struct irqsteer_data *data)
 	struct device_link *link;
 
 	data->pd_csi = dev_pm_domain_attach_by_name(dev, "pd_csi");
-	if (IS_ERR(data->pd_csi )) {
-		if (PTR_ERR(data->pd_csi) != -EPROBE_DEFER)
-			return PTR_ERR(data->pd_csi);
-		else
-			return PTR_ERR(data->pd_csi);
-	} else if (!data->pd_csi) {
+	if (IS_ERR(data->pd_csi ))
+		return PTR_ERR(data->pd_csi);
+	else if (!data->pd_csi)
 		return 0;
-	}
+
 	link = device_link_add(dev, data->pd_csi,
 			DL_FLAG_STATELESS |
 			DL_FLAG_PM_RUNTIME);
@@ -73,14 +70,11 @@ static int imx_irqsteer_attach_pd(struct irqsteer_data *data)
 		return PTR_ERR(link);
 
 	data->pd_isi = dev_pm_domain_attach_by_name(dev, "pd_isi_ch0");
-	if (IS_ERR(data->pd_isi)) {
-		if (PTR_ERR(data->pd_isi) != -EPROBE_DEFER)
-			return PTR_ERR(data->pd_isi);
-		else
-			return PTR_ERR(data->pd_isi);
-	} else if (!data->pd_isi) {
+	if (IS_ERR(data->pd_isi))
+		return PTR_ERR(data->pd_isi);
+	else if (!data->pd_isi)
 		return 0;
-	}
+
 	link = device_link_add(dev, data->pd_isi,
 			DL_FLAG_STATELESS |
 			DL_FLAG_PM_RUNTIME);
@@ -239,12 +233,9 @@ static int imx_irqsteer_probe(struct platform_device *pdev)
 	}
 
 	data->ipg_clk = devm_clk_get(&pdev->dev, "ipg");
-	if (IS_ERR(data->ipg_clk)) {
-		ret = PTR_ERR(data->ipg_clk);
-		if (ret != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "failed to get ipg clk: %d\n", ret);
-		return ret;
-	}
+	if (IS_ERR(data->ipg_clk))
+		return dev_err_probe(&pdev->dev, PTR_ERR(data->ipg_clk),
+				     "failed to get ipg clk\n");
 
 	ret = imx_irqsteer_attach_pd(data);
 	if (ret < 0 && ret == -EPROBE_DEFER)

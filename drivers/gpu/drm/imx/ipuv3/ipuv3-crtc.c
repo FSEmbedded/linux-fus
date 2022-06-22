@@ -110,20 +110,15 @@ static void ipu_drm_crtc_reset(struct drm_crtc *crtc)
 {
 	struct imx_crtc_state *state;
 
-	if (crtc->state) {
-		if (crtc->state->mode_blob)
-			drm_property_blob_put(crtc->state->mode_blob);
+	if (crtc->state)
+		__drm_atomic_helper_crtc_destroy_state(crtc->state);
 
-		state = to_imx_crtc_state(crtc->state);
-		memset(state, 0, sizeof(*state));
-	} else {
-		state = kzalloc(sizeof(*state), GFP_KERNEL);
-		if (!state)
-			return;
-		crtc->state = &state->base;
-	}
+	kfree(to_imx_crtc_state(crtc->state));
+	crtc->state = NULL;
 
-	state->base.crtc = crtc;
+	state = kzalloc(sizeof(*state), GFP_KERNEL);
+	if (state)
+		__drm_atomic_helper_crtc_reset(crtc, &state->base);
 }
 
 static struct drm_crtc_state *ipu_drm_crtc_duplicate_state(struct drm_crtc *crtc)
@@ -453,8 +448,6 @@ static int ipu_drm_bind(struct device *dev, struct device *master, void *data)
 	drm->mode_config.funcs = &ipuv3_drm_mode_config_funcs;
 	drm->mode_config.helper_private = &ipuv3_drm_mode_config_helpers;
 	drm->mode_config.allow_fb_modifiers = true;
-
-	dev_set_drvdata(dev, ipu_crtc);
 
 	return 0;
 }

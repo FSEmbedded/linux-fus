@@ -37,6 +37,24 @@ dma_subsys: bus@5a000000 {
 		status = "disabled";
 	};
 
+	lpspi1: spi@5a010000 {
+		compatible = "fsl,imx7ulp-spi";
+		reg = <0x5a010000 0x10000>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		interrupts = <GIC_SPI 337 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-parent = <&gic>;
+		clocks = <&spi1_lpcg 0>,
+			 <&spi1_lpcg 1>;
+		clock-names = "per", "ipg";
+		assigned-clocks = <&clk IMX_SC_R_SPI_1 IMX_SC_PM_CLK_PER>;
+		assigned-clock-rates = <60000000>;
+		power-domains = <&pd IMX_SC_R_SPI_1>;
+		dma-names = "tx","rx";
+		dmas = <&edma2 3 0 0>, <&edma2 2 0 1>;
+		status = "disabled";
+	}; 
+
 	lpspi2: spi@5a020000 {
 		compatible = "fsl,imx7ulp-spi";
 		reg = <0x5a020000 0x10000>;
@@ -150,7 +168,8 @@ dma_subsys: bus@5a000000 {
 
 	edma2: dma-controller@5a1f0000 {
 		compatible = "fsl,imx8qm-edma";
-		reg = <0x5a200000 0x10000>, /* channel0 LPSPI0 rx */
+		reg = <0x5a1f0000 0x10000>,
+		      <0x5a200000 0x10000>, /* channel0 LPSPI0 rx */
 		      <0x5a210000 0x10000>, /* channel1 LPSPI0 tx */
 		      <0x5a220000 0x10000>, /* channel2 LPSPI1 rx */
 		      <0x5a230000 0x10000>, /* channel3 LPSPI1 tx */

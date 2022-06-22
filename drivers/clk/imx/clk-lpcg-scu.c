@@ -4,6 +4,7 @@
  *	Dong Aisheng <aisheng.dong@nxp.com>
  */
 
+#include <linux/bits.h>
 #include <linux/clk-provider.h>
 #include <linux/delay.h>
 #include <linux/err.h>
@@ -109,7 +110,6 @@ static const struct clk_ops clk_lpcg_scu_ops = {
 	.enable = clk_lpcg_scu_enable,
 	.disable = clk_lpcg_scu_disable,
 };
-EXPORT_SYMBOL_GPL(imx_clk_lpcg_scu_pm_ops);
 
 struct clk_hw *__imx_clk_lpcg_scu(struct device *dev, const char *name,
 				  const char *parent_name, unsigned long flags,
@@ -140,7 +140,7 @@ struct clk_hw *__imx_clk_lpcg_scu(struct device *dev, const char *name,
 	ret = clk_hw_register(dev, hw);
 	if (ret) {
 		kfree(clk);
-		hw = ERR_PTR(ret);
+		return ERR_PTR(ret);
 	}
 
 	if (dev)
@@ -148,7 +148,6 @@ struct clk_hw *__imx_clk_lpcg_scu(struct device *dev, const char *name,
 
 	return hw;
 }
-EXPORT_SYMBOL_GPL(__imx_clk_lpcg_scu);
 
 int __maybe_unused imx_clk_lpcg_scu_suspend(struct device *dev)
 {

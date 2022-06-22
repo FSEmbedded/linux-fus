@@ -7,7 +7,6 @@
  * Copyright (C) Purism SPC 2019
  */
 
-#include <drm/drmP.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
@@ -23,7 +22,6 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
-#include <drm/drm_print.h>
 
 #define DRV_NAME "panel-sitronix-st7703"
 
@@ -365,8 +363,7 @@ static int st7703_enable(struct drm_panel *panel)
 
 	ret = ctx->desc->init_sequence(ctx);
 	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev, "Panel init sequence failed: %d\n",
-			      ret);
+		dev_err(ctx->dev, "Panel init sequence failed: %d\n", ret);
 		return ret;
 	}
 
@@ -374,7 +371,7 @@ static int st7703_enable(struct drm_panel *panel)
 
 	ret = mipi_dsi_dcs_exit_sleep_mode(dsi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev, "Failed to exit sleep mode: %d\n", ret);
+		dev_err(ctx->dev, "Failed to exit sleep mode: %d\n", ret);
 		return ret;
 	}
 
@@ -385,7 +382,7 @@ static int st7703_enable(struct drm_panel *panel)
 	if (ret)
 		return ret;
 
-	DRM_DEV_DEBUG_DRIVER(ctx->dev, "Panel init sequence done\n");
+	dev_dbg(ctx->dev, "Panel init sequence done\n");
 
 	return 0;
 }
@@ -398,13 +395,11 @@ static int st7703_disable(struct drm_panel *panel)
 
 	ret = mipi_dsi_dcs_set_display_off(dsi);
 	if (ret < 0)
-		DRM_DEV_ERROR(ctx->dev,
-			      "Failed to turn off the display: %d\n", ret);
+		dev_err(ctx->dev, "Failed to turn off the display: %d\n", ret);
 
 	ret = mipi_dsi_dcs_enter_sleep_mode(dsi);
 	if (ret < 0)
-		DRM_DEV_ERROR(ctx->dev,
-			      "Failed to enter sleep mode: %d\n", ret);
+		dev_err(ctx->dev, "Failed to enter sleep mode: %d\n", ret);
 
 	return 0;
 }
@@ -432,17 +427,15 @@ static int st7703_prepare(struct drm_panel *panel)
 	if (ctx->prepared)
 		return 0;
 
-	DRM_DEV_DEBUG_DRIVER(ctx->dev, "Resetting the panel\n");
+	dev_dbg(ctx->dev, "Resetting the panel\n");
 	ret = regulator_enable(ctx->vcc);
 	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev,
-			      "Failed to enable vcc supply: %d\n", ret);
+		dev_err(ctx->dev, "Failed to enable vcc supply: %d\n", ret);
 		return ret;
 	}
 	ret = regulator_enable(ctx->iovcc);
 	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev,
-			      "Failed to enable iovcc supply: %d\n", ret);
+		dev_err(ctx->dev, "Failed to enable iovcc supply: %d\n", ret);
 		goto disable_vcc;
 	}
 
@@ -460,17 +453,17 @@ disable_vcc:
 	return ret;
 }
 
-static int st7703_get_modes(struct drm_panel *panel)
+static int st7703_get_modes(struct drm_panel *panel,
+			    struct drm_connector *connector)
 {
 	struct st7703 *ctx = panel_to_st7703(panel);
-	struct drm_connector *connector = panel->connector;
 	struct drm_display_mode *mode;
 
 	mode = drm_mode_duplicate(connector->dev, ctx->desc->mode);
 	if (!mode) {
-		DRM_DEV_ERROR(ctx->dev, "Failed to add mode %ux%u@%u\n",
-			      ctx->desc->mode->hdisplay, ctx->desc->mode->vdisplay,
-			      drm_mode_vrefresh(ctx->desc->mode));
+		dev_err(ctx->dev, "Failed to add mode %ux%u@%u\n",
+			ctx->desc->mode->hdisplay, ctx->desc->mode->vdisplay,
+			drm_mode_vrefresh(ctx->desc->mode));
 		return -ENOMEM;
 	}
 
@@ -497,7 +490,7 @@ static int allpixelson_set(void *data, u64 val)
 	struct st7703 *ctx = data;
 	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
 
-	DRM_DEV_DEBUG_DRIVER(ctx->dev, "Setting all pixels on\n");
+	dev_dbg(ctx->dev, "Setting all pixels on\n");
 	dsi_generic_write_seq(dsi, ST7703_CMD_ALL_PIXEL_ON);
 	msleep(val * 1000);
 	/* Reset the panel to get video back */
@@ -538,7 +531,7 @@ static int st7703_probe(struct mipi_dsi_device *dsi)
 
 	ctx->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
 	if (IS_ERR(ctx->reset_gpio)) {
-		DRM_DEV_ERROR(dev, "cannot get reset gpio\n");
+		dev_err(dev, "cannot get reset gpio\n");
 		return PTR_ERR(ctx->reset_gpio);
 	}
 
@@ -555,40 +548,37 @@ static int st7703_probe(struct mipi_dsi_device *dsi)
 	if (IS_ERR(ctx->vcc)) {
 		ret = PTR_ERR(ctx->vcc);
 		if (ret != -EPROBE_DEFER)
-			DRM_DEV_ERROR(dev,
-				      "Failed to request vcc regulator: %d\n",
-				      ret);
+			dev_err(dev, "Failed to request vcc regulator: %d\n", ret);
 		return ret;
 	}
 	ctx->iovcc = devm_regulator_get(dev, "iovcc");
 	if (IS_ERR(ctx->iovcc)) {
 		ret = PTR_ERR(ctx->iovcc);
 		if (ret != -EPROBE_DEFER)
-			DRM_DEV_ERROR(dev,
-				      "Failed to request iovcc regulator: %d\n",
-				      ret);
+			dev_err(dev, "Failed to request iovcc regulator: %d\n", ret);
 		return ret;
 	}
 
-	drm_panel_init(&ctx->panel);
-	ctx->panel.dev = &dsi->dev;
-	ctx->panel.funcs = &st7703_drm_funcs;
+	drm_panel_init(&ctx->panel, dev, &st7703_drm_funcs,
+		       DRM_MODE_CONNECTOR_DSI);
+
+	ret = drm_panel_of_backlight(&ctx->panel);
+	if (ret)
+		return ret;
 
 	drm_panel_add(&ctx->panel);
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev,
-			      "mipi_dsi_attach failed (%d). Is host ready?\n",
-			      ret);
+		dev_err(dev, "mipi_dsi_attach failed (%d). Is host ready?\n", ret);
 		drm_panel_remove(&ctx->panel);
 		return ret;
 	}
 
-	DRM_DEV_INFO(dev, "%ux%u@%u %ubpp dsi %udl - ready\n",
-		     ctx->desc->mode->hdisplay, ctx->desc->mode->vdisplay,
-		     drm_mode_vrefresh(ctx->desc->mode),
-		     mipi_dsi_pixel_format_to_bpp(dsi->format), dsi->lanes);
+	dev_info(dev, "%ux%u@%u %ubpp dsi %udl - ready\n",
+		 ctx->desc->mode->hdisplay, ctx->desc->mode->vdisplay,
+		 drm_mode_vrefresh(ctx->desc->mode),
+		 mipi_dsi_pixel_format_to_bpp(dsi->format), dsi->lanes);
 
 	st7703_debugfs_init(ctx);
 	return 0;
@@ -601,13 +591,11 @@ static void st7703_shutdown(struct mipi_dsi_device *dsi)
 
 	ret = drm_panel_unprepare(&ctx->panel);
 	if (ret < 0)
-		DRM_DEV_ERROR(&dsi->dev, "Failed to unprepare panel: %d\n",
-			      ret);
+		dev_err(&dsi->dev, "Failed to unprepare panel: %d\n", ret);
 
 	ret = drm_panel_disable(&ctx->panel);
 	if (ret < 0)
-		DRM_DEV_ERROR(&dsi->dev, "Failed to disable panel: %d\n",
-			      ret);
+		dev_err(&dsi->dev, "Failed to disable panel: %d\n", ret);
 }
 
 static int st7703_remove(struct mipi_dsi_device *dsi)
@@ -619,8 +607,7 @@ static int st7703_remove(struct mipi_dsi_device *dsi)
 
 	ret = mipi_dsi_detach(dsi);
 	if (ret < 0)
-		DRM_DEV_ERROR(&dsi->dev, "Failed to detach from DSI host: %d\n",
-			      ret);
+		dev_err(&dsi->dev, "Failed to detach from DSI host: %d\n", ret);
 
 	drm_panel_remove(&ctx->panel);
 

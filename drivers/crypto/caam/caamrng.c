@@ -52,7 +52,6 @@ static struct caam_rng_ctx *to_caam_rng_ctx(struct hwrng *r)
 	return (struct caam_rng_ctx *)r->priv;
 }
 
-
 static void caam_rng_done(struct device *jrdev, u32 *desc, u32 err,
 			  void *context)
 {
@@ -304,7 +303,6 @@ int caam_rng_init(struct device *ctrldev)
 	}
 
 #ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_RNG_TEST
-	dev_info(ctrldev, "Running self-test\n");
 	self_test(&ctx->rng);
 #endif
 

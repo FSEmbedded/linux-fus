@@ -926,13 +926,14 @@
 		spi-max-frequency = <30000000>;
 	};
 };
-
+#if 0
+/* not available anymore.*/
 &mlb {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_mlb>;
 	status = "disabled";
 };
-
+#endif
 &usdhc1 {
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
 	pinctrl-0 = <&pinctrl_usdhc1>;
@@ -1056,6 +1057,8 @@
 	};
 };
 
+#if 0
+/* not available anymore. See remote proc */
 &rpmsg{
 	/*
 	 * 64K for one rpmsg instance:
@@ -1064,7 +1067,7 @@
 	reg = <0x0 0x90000000 0x0 0x10000>;
 	status = "okay";
 };
-
+#endif
 &ldb1_phy {
 	status = "okay";
 };

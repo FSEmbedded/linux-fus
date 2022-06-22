@@ -2420,7 +2420,8 @@ static void gpmi_fus_exit(struct gpmi_nand_data *priv)
 {
 	struct mtd_info *mtd = nand_to_mtd(&priv->nand);
 
-	nand_release(&priv->nand);
+	mtd_device_unregister(nand_to_mtd(&priv->nand));
+	nand_cleanup(&priv->nand);
 
 	/* Free the DMA buffers */
 	if (priv->cmd_buffer_virt && virt_addr_valid(priv->cmd_buffer_virt))
@@ -2435,7 +2436,7 @@ static void gpmi_fus_exit(struct gpmi_nand_data *priv)
 }
 
 int gpmi_setup_data_interface(struct nand_chip *chip, int chipnr,
-			      const struct nand_data_interface *conf)
+			      const struct nand_interface_config *conf)
 {
 	struct gpmi_nand_data *this = nand_get_controller_data(chip);
 	const struct nand_sdr_timings *sdr;
@@ -2495,7 +2496,7 @@ static int gpmi_fus_nand_attach_chip(struct nand_chip *chip)
 	priv->gf_len = (chunk_shift > 9) ? 14 : 13;
 
 	/* Please note that mtd->oobavail is not yet set here */
-	chip->ecc.mode = NAND_ECC_HW;
+	chip->ecc.engine_type = NAND_ECC_ENGINE_TYPE_ON_HOST;
 	chip->ecc.size = 1 << chunk_shift;
 	chip->ecc.steps = mtd->writesize >> chunk_shift;
 	chip->ecc.total = ecc_strength * chip->ecc.steps * priv->gf_len / 8;
@@ -2568,7 +2569,7 @@ err_out:
 
 static const struct nand_controller_ops gpmi_fus_nand_controller_ops = {
 	.attach_chip = gpmi_fus_nand_attach_chip,
-	.setup_data_interface = gpmi_setup_data_interface,
+	.setup_interface = gpmi_setup_data_interface,
 };
 
 static int gpmi_fus_init(struct gpmi_nand_data *priv)
