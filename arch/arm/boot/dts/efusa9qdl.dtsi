@@ -515,7 +515,7 @@
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
-		fb-names = "mxs-lcdif1";
+		fb-names = "lcd";
 	};
 
 	/* LVDS backlight PWM on backlight connector */
@@ -532,7 +532,7 @@
 				     73 92 113 137 163 192 222 255>;
 #endif
 		default-brightness-level = <14>;
-		fb-names = "mxs-lcdif2";
+		fb-names = "ldb0", "ldb1";
 	};
 
 #ifdef CONFIG_EFUSA9_CAMERA
@@ -575,12 +575,12 @@
 	};
 #endif
 #endif
+#endif
 
 	v4l2_out {
 		compatible = "fsl,mxc_v4l2_output";
 		status = "okay";
 	};
-#endif
 
 	leds {
 		compatible = "gpio-leds";
@@ -616,12 +616,26 @@
 };
 
 &clks {
-	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
+	assigned-clocks =
+#ifdef CONFIG_EFUSA9_LVDS0_CLK
+			  <&clks IMX6QDL_CLK_LDB_DI0_SEL>,
+#endif
+#ifdef CONFIG_EFUSA9_LVDS1_CLK
+			  <&clks IMX6QDL_CLK_LDB_DI1_SEL>,
+#endif
+			  <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 			  <&clks IMX6QDL_CLK_CKO1_SEL>,
 			  <&clks IMX6QDL_CLK_CKO1_PODF>,
 			  <&clks IMX6QDL_CLK_CKO>;
 
-	assigned-clock-parents = <0>,
+	assigned-clock-parents =
+#ifdef CONFIG_EFUSA9_LVDS0_CLK
+				 <&clks CONFIG_EFUSA9_LVDS0_CLK>,
+#endif
+#ifdef CONFIG_EFUSA9_LVDS1_CLK
+				 <&clks CONFIG_EFUSA9_LVDS1_CLK>,
+#endif
+				 <0>,
 				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 				 <0>,
 				 <&clks IMX6QDL_CLK_CKO1>;
@@ -634,11 +648,24 @@
 	 * commonly used bit rates.
 	 *
 	 * Remark: Solo and DualLite have an additional divider that also can
-	 * divide by 1, 2 and 4. So here we could go down to 12.288 MHz, but
-	 * better keep the code common for all boards.
+	 * divide by 1, 2 and 4. So here we can go down to 12.288 MHz.
 	 */
-	//assigned-clock-rates = <98304000>, <98304000>, <12288000>;
-	assigned-clock-rates = <196608000>, <196608000>, <24576000>;
+	assigned-clock-rates =
+#ifdef CONFIG_EFUSA9_LVDS0_CLK
+				<0>,
+#endif
+#ifdef CONFIG_EFUSA9_LVDS1_CLK
+				<0>,
+#endif
+#ifdef CONFIG_EFUSA9_AUDIO_12M288
+				<98304000>,	/* Audio with 12.288 MHz */
+				<98304000>,
+				<12288000>;
+#else
+				<196608000>,	/* Audio with 24.576 MHz */
+				<196608000>,
+				<24576000>;
+#endif
 };
 
 #ifdef CONFIG_EFUSA9_SPI_B
@@ -820,6 +847,7 @@
 		/* not available */
 		rst-gpios = <&gpio5 23 GPIO_ACTIVE_LOW>;
 		csi_id = <0>;
+		v_channel_id = <0>;
 		mclk = <24000000>;
 		mclk_source = <0>;
 	};

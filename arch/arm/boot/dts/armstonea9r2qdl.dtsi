@@ -344,7 +344,7 @@
 				     73 92 113 137 163 192 222 255>;
 #endif
 		default-brightness-level = <14>;
-		fb-names = "mxs-lcdif1";
+		fb-names = "ldb0", "ldb1";
 	};
 
 /* mipi camera interface */
@@ -385,12 +385,12 @@
 		status = "okay";
 	};
 #endif
+#endif
 
 	v4l2_out {
 		compatible = "fsl,mxc_v4l2_output";
 		status = "okay";
 	};
-#endif
 
 	leds {
 		compatible = "gpio-leds";
@@ -462,13 +462,27 @@
 
 /* CKO (via CKO1): 24.576 MHz for Audio Codec, CKO2: 24 MHz for Camera. */
 &clks {
-	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
+	assigned-clocks =
+#ifdef CONFIG_ARMSTONEA9R2_LVDS0_CLK
+			  <&clks IMX6QDL_CLK_LDB_DI0_SEL>,
+#endif
+#ifdef CONFIG_ARMSTONEA9R2_LVDS1_CLK
+			  <&clks IMX6QDL_CLK_LDB_DI1_SEL>,
+#endif
+			  <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 			  <&clks IMX6QDL_CLK_CKO1_SEL>,
 			  <&clks IMX6QDL_CLK_CKO1_PODF>,
 			  <&clks IMX6QDL_CLK_CKO>,
 			  <&clks IMX6QDL_CLK_CKO2_SEL>;
 
-	assigned-clock-parents = <0>,
+	assigned-clock-parents =
+#ifdef CONFIG_ARMSTONEA9R2_LVDS0_CLK
+				 <&clks CONFIG_ARMSTONEA9R2_LVDS0_CLK>,
+#endif
+#ifdef CONFIG_ARMSTONEA9R2_LVDS1_CLK
+				 <&clks CONFIG_ARMSTONEA9R2_LVDS1_CLK>,
+#endif
+				 <0>,
 				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 				 <0>,
 				 <&clks IMX6QDL_CLK_CKO1>,
@@ -482,11 +496,25 @@
 	 * commonly used bit rates.
 	 *
 	 * Remark: Solo and DualLite have an additional divider that also can
-	 * divide by 1, 2 and 4. So here we could go down to 12.288 MHz, but
-	 * better keep the code common for all boards.
+	 * divide by 1, 2 and 4. So here we can go down to 12.288 MHz.
 	 */
-	//assigned-clock-rates = <98304000>, <98304000>, <12288000>, <24000000>;
-	assigned-clock-rates = <196608000>, <196608000>, <24576000>, <24000000>;
+	assigned-clock-rates =
+#ifdef CONFIG_ARMSTONEA9R2_LVDS0_CLK
+			      <0>,
+#endif
+#ifdef CONFIG_ARMSTONEA9R2_LVDS1_CLK
+			      <0>,
+#endif
+#ifdef CONFIG_ARMSTONEA9R2_AUDIO_12M288
+			      <98304000>,	/* Audio with 12.288 MHz */
+			      <98304000>,
+			      <12288000>,
+#else
+			      <196608000>,	/* Audio with 24.576 MHz */
+			      <196608000>,
+			      <24576000>,
+#endif
+			      <24000000>;
 };
 
 #ifdef CONFIG_ARMSTONEA9R2_SPI_FLASH
@@ -671,6 +699,7 @@
 		 * cameras maybe need a gpio to perform a reset. */
 		/* rst-gpios = <dummy>; */
 		csi_id = <0>;
+		v_channel_id = <0>;
 		mclk = <24000000>;		/* OSC out */
 		mclk_source = <0>;
 	};
@@ -704,9 +733,21 @@
 		filt = <0x02>;
 		setdly = <0x08>;
 		pinctrl-names = "default";
+		/* There are 2 irq pins for I2C2. You can either chose the irq from the
+		 * lvds connector or from the hirose connector. below is the
+		 * interrupt from lvds connector defined. Only one interrupt can
+		 * be used for one touch. It is only possible if revision >= 1.20 and
+		 * R223 is not mounted. If R223 is mounted we have the VLCD signal
+		 * on the IRQ pin on LVDS connector (J11/26).
+		 */
+//#if (CONFIG_ARMSTONEA9R2_BOARD_REVISION >= 120)
+		//interrupt-parent = <&gpio2>;
+		//interrupts = <13 IRQ_TYPE_EDGE_FALLING>;
+//#else
 		interrupt-parent = <&gpio1>;
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
+//#endif
 	};
 #endif
 
@@ -719,8 +760,20 @@
 		touchscreen-size-x = <800>;
 		touchscreen-size-y = <480>;
 		threshold = <25>;
+		/* There are 2 irq pins for I2C2. You can either chose the irq from the
+		 * lvds connector or from the hirose connector. below is the
+		 * interrupt from lvds connector defined. Only one interrupt can
+		 * be used for one touch. It is only possible if revision >= 1.20 and
+		 * R223 is not mounted. If R223 is mounted we have the VLCD signal
+		 * on the IRQ pin on LVDS connector (J11/26).
+		 */
+//#if (CONFIG_ARMSTONEA9R2_BOARD_REVISION >= 120)
+		//interrupt-parent = <&gpio2>;
+		//interrupts = <13 IRQ_TYPE_EDGE_FALLING>;
+//#else
 		interrupt-parent = <&gpio1>;
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
+//#endif
 		reset-gpios = <&gpio1 29 GPIO_ACTIVE_LOW>;
 		x-rev;
 		y-rev;
@@ -733,8 +786,20 @@
 	mxt224@4a {
 		compatible = "atmel,maxtouch";
 		reg = <0x4a>;
+		/* There are 2 irq pins for I2C2. You can either chose the irq from the
+		 * lvds connector or from the hirose connector. below is the
+		 * interrupt from lvds connector defined. Only one interrupt can
+		 * be used for one touch. It is only possible if revision >= 1.20 and
+		 * R223 is not mounted. If R223 is mounted we have the VLCD signal
+		 * on the IRQ pin on LVDS connector (J11/26).
+		 */
+//#if (CONFIG_ARMSTONEA9R2_BOARD_REVISION >= 120)
+		//interrupt-parent = <&gpio2>;
+		//interrupts = <13 IRQ_TYPE_EDGE_FALLING>;
+//#else
 		interrupt-parent = <&gpio1>;
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
+//#endif
 		atmel,cfg_name = "atmel/mxt224.cfg";
 		atmel,reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
 	};
@@ -746,8 +811,20 @@
 		compatible = "sitronix";
 		reg = <0x48>;
 		swap-xy;
+		/* There are 2 irq pins for I2C2. You can either chose the irq from the
+		 * lvds connector or from the hirose connector. below is the
+		 * interrupt from lvds connector defined. Only one interrupt can
+		 * be used for one touch. It is only possible if revision >= 1.20 and
+		 * R223 is not mounted. If R223 is mounted we have the VLCD signal
+		 * on the IRQ pin on LVDS connector (J11/26).
+		 */
+//#if (CONFIG_ARMSTONEA9R2_BOARD_REVISION >= 120)
+		//interrupt-parent = <&gpio2>;
+		//interrupts = <13 IRQ_TYPE_EDGE_FALLING>;
+//#else
 		interrupt-parent = <&gpio1>;
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
+//#endif
 		reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
 	};
 #endif
@@ -757,8 +834,20 @@
 	ili210x@41 {
 		compatible = "Ilitek,ili210x";
 		reg = <0x41>;
+		/* There are 2 irq pins for I2C2. You can either chose the irq from the
+		 * lvds connector or from the hirose connector. below is the
+		 * interrupt from lvds connector defined. Only one interrupt can
+		 * be used for one touch. It is only possible if revision >= 1.20 and
+		 * R223 is not mounted. If R223 is mounted we have the VLCD signal
+		 * on the IRQ pin on LVDS connector (J11/26).
+		 */
+//#if (CONFIG_ARMSTONEA9R2_BOARD_REVISION >= 120)
+		//interrupt-parent = <&gpio2>;
+		//interrupts = <13 IRQ_TYPE_EDGE_FALLING>;
+//#else
 		interrupt-parent = <&gpio1>;
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
+//#endif
 		reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
 	};
 #endif
@@ -774,6 +863,15 @@
 	/* define ADC here */
 };
 #endif /* CONFIG_ARMSTONEA9R2_I2C_A */
+
+#ifdef CONFIG_ARMSTONEA9R2_I2C_D
+&i2c4 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c4>;
+	status = "okay";
+};
+#endif /* CONFIG_ARMSTONEA9R2_I2C_D */
 
 /* PWM_B (Pin 30) */
 &pwm1 {
@@ -1131,6 +1229,14 @@
 
 				/* RTC_IRQ */
 				MX6QDL_PAD_ENET_TX_EN__GPIO1_IO28	0x0b0b0
+
+				/* I2C2_IRQ1 (Touch, Hirose) */
+				MX6QDL_PAD_ENET_TXD0__GPIO1_IO30	0x0b0b0
+
+#if (CONFIG_ARMSTONEA9R2_BOARD_REVISION >= 120)
+				/* I2C2_IRQ2 (Touch, LVDS connector) */
+				MX6QDL_PAD_SD4_DAT5__GPIO2_IO13		0x0b0b0
+#endif
 			>;
 		};
 
@@ -1359,6 +1465,16 @@
 			>;
 		};
 #endif /* CONFIG_ARMSTONEA9R2_I2C_C */
+
+#ifdef CONFIG_ARMSTONEA9R2_I2C_D
+		/* I2C_D: additonal bus on pins 8 and 10. Shared with ECSPI3 */
+		pinctrl_i2c4: i2c4grp {
+			fsl,pins = <
+				MX6QDL_PAD_GPIO_8__I2C4_SDA		0x4001b8b1
+				MX6QDL_PAD_GPIO_7__I2C4_SCL		0x4001b8b1
+			>;
+		};
+#endif /* CONFIG_ARMSTONEA9R2_I2C_D */
 
 		pinctrl_i2c5_gpio: i2c5_gpio_grp {
 			fsl,pins = <

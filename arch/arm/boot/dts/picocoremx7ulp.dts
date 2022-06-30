@@ -22,14 +22,12 @@
  */
 
 #define DISPLAY_NONE		0	/* No display on this port */
-#define DISPLAY_LCD		1	/* Via MIPI_DSI 2 RGB converter */
-#define DISPLAY_MIPI_DSI	2	/* MIPI_DSI display */
+#define DISPLAY_MIPI_DSI	1	/* MIPI_DSI display */
 
 /*
  * Set the display configuration:
  *
  * - If you have no display, set LCDIF to DISPLAY_NONE.
- * - If you have a RGB display, set LCDIF to DISPLAY_LCD.
  * - If you have a MIPI DSI display, set LCDIF to DISPLAY_MIPI_DSI.
  */
 #define CONFIG_PICOCOREMX7ULP_LCDIF	DISPLAY_MIPI_DSI
@@ -58,10 +56,6 @@
 #define CONFIG_PICOCOREMX7ULP_SD_CD
 #define CONFIG_PICOCOREMX7ULP_SD_WP
 
-/* Audio: Codec (SGTL5000) on pins 77-80 */
-// TODO: check if it works on lpi2c0, thought its only available from M4 core
-//#define CONFIG_PICOCOREMX7ULP_AUDIO
-
 /* I2C */
 #define CONFIG_PICOCOREMX7ULP_I2C_A
 #define CONFIG_PICOCOREMX7ULP_I2C_B
@@ -69,10 +63,6 @@
 
 /* SPI_A */
 #define CONFIG_PICOCOREMX7ULP_SPI_A
-
-/* QSPI_A */
-//### TODO: not tested yet
-//#define CONFIG_PICOCOREMX7ULP_QSPI_A
 
 /* UART */
 #define CONFIG_PICOCOREMX7ULP_UART_A
@@ -124,7 +114,8 @@
 		compatible = "gpio-reset";
 		/* ### TODO: no reset pin defined */
 		reset-gpios = <&gpio_ptc 19 GPIO_ACTIVE_LOW>;
-		reset-delay-us = <1000>;
+		reset-delay-us = <20>;
+		reset-post-delay-ms =<1>;
 		#reset-cells = <0>;
 	};
 #endif
@@ -153,38 +144,16 @@
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
 		};
-
-#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
-		/* SGTL5000 analog voltage */
-		reg_sgtl5000_vdda: sgtl5000_vdda {
-			compatible = "regulator-fixed";
-			regulator-name = "VDDA-supply";
-			regulator-min-microvolt = <3000000>;
-			regulator-max-microvolt = <3000000>;
-			regulator-always-on;
-		};
-
-		/* SGTL5000 I/O voltage */
-		reg_sgtl5000_vddio: sgtl5000_vddio {
-			compatible = "regulator-fixed";
-			regulator-name = "VDDIO-supply";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			regulator-always-on;
-		};
-
-		/* SGTL5000 internal digital voltage */
-		reg_sgtl5000_vddd: sgtl5000_vddd {
-			compatible = "regulator-fixed";
-			regulator-name = "VDDD-supply";
-			regulator-min-microvolt = <1350000>;
-			regulator-max-microvolt = <1350000>;
-			regulator-always-on;
-		};
-#endif
 	};
 
-	/* TODO check node */
+	extcon_usb1: extcon_usb1 {
+		compatible = "linux,extcon-usb-gpio";
+		id-gpio = <&gpio_ptc 13 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default", "sleep";
+		pinctrl-0 = <&pinctrl_extcon_usb1>;
+		pinctrl-1 = <&pinctrl_extcon_usb1>;
+	};
+
 	pf1550-rpmsg {
 		compatible = "fsl,pf1550-rpmsg";
 		sw1_reg: SW1 {
@@ -257,25 +226,11 @@
 		cpu-dai = <&rpmsg_i2s>;
 	};
 
-#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
-	sound-sgtl5000 {
-		compatible = "fsl,imx-audio-sgtl5000";
-		cpu-dai = <&sai0>;
-		audio-codec = <&sgtl5000>;
-		model = "imx-sgtl5000";
-
-		audio-routing =
-		"LINE_IN", "Line In Jack",
-		//"MIC_IN", "Mic Jack",
-		//"Line Out Jack", "LINE_OUT",
-		"Headphone Jack", "HP_OUT";
-	};
-#endif
-
 	/* F&S board information */
 	bdinfo {
 		compatible = "bdinfo";
 		board_name = "PicoCoreMX7ULP";
+		arch = "fsimx7ulp";
 	};
 };
 
@@ -292,40 +247,17 @@
 	status = "okay";
 };
 
-#if (CONFIG_PICOCOREMX7ULP_LCDIF != DISPLAY_NONE)
+#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
 &lcdif {
 	disp-dev = "mipi_dsi_northwest";
 	display = <&display0>;
-	lcd-supply = <&reg_vsd_3v3>;
 	status = "okay";
-
+	/* This is a dummy definition for a display, needed by the mxsfb driver.
+	   These values will get overwritten by the panel-specific values, defined in the
+	   respective mipi driver file */
 	display0: display@0 {
-#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_LCD)
-		bits-per-pixel = <32>;
-#else
 		bits-per-pixel = <16>;
-#endif
 		bus-width = <24>;
-#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_LCD)
-		display-timings {
-			native-mode = <&timing0>;
-			timing0: timing0 {
-			clock-frequency = <29400000>;
-			hactive = <800>;
-			vactive = <480>;
-			hfront-porch = <210>;
-			hback-porch = <26>;
-			hsync-len = <20>;
-			vback-porch = <21>;
-			vfront-porch = <22>;
-			vsync-len = <2>;
-			hsync-active = <0>;
-			vsync-active = <0>;
-			de-active = <1>;
-			pixelclk-active = <0>;
-			};
-		};
-#elif(CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
 		display-timings {
 			native-mode = <&timing0>;
 			timing0: timing0 {
@@ -344,23 +276,6 @@
 			pixelclk-active = <0>;
 			};
 		};
-#endif
-	};
-};
-#endif
-
-#ifdef CONFIG_PICOCOREMX7ULP_QSPI_A
-&qspi1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_qspi1_1>;
-	status = "okay";
-
-	flash: s25fs512s@0 {
-		compatible = "spansion,s25fs512s";
-		#address-cells = <1>;
-		#size-cells = <1>;
-		reg = <0>;
-		spi-max-frequency = <20000000>;
 	};
 };
 #endif
@@ -458,6 +373,10 @@
 &usbotg1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg1>;
+	/* Set ID Pin as extcon device instead of dedicated ID. There is
+	 * a problem with resume mode if we are using dedicated ID function.
+	 */
+	extcon = <0>, <&extcon_usb1>;
 	srp-disable;
 	hnp-disable;
 	adp-disable;
@@ -469,27 +388,6 @@
 	tx-d-cal = <0xc>;
 };
 
-#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
-&lpi2c0 {
-	#address-cells = <1>;
-	#size-cells = <0>;
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_lpi2c0>;
-	status = "okay";
-
-	sgtl5000: sgtl5000@0a {
-		compatible = "fsl,sgtl5000";
-		reg = <0x0a>;
-		clocks = <&clks_m4 IMX7ULP_CM4_CLK_SAI0_SEL>;
-		// F&S advance which is not implemented here
-		//mono2both;
-		VDDA-supply = <&reg_sgtl5000_vdda>;
-		VDDIO-supply = <&reg_sgtl5000_vddio>;
-		VDDD-supply = <&reg_sgtl5000_vddd>;
-	};
-};
-#endif
-
 #ifdef CONFIG_PICOCOREMX7ULP_I2C_A
 &lpi2c5 {
 	#address-cells = <1>;
@@ -497,22 +395,8 @@
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_lpi2c5>;
 	pinctrl-1 = <&pinctrl_lpi2c5>;
+	clock-frequency = <100000>;
 	status = "okay";
-
-#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_LCD)
-	/* TC358752 DSI --> RGB de-serializer on i2c5 */
-	tc358762: tc358762@0b {
-		compatible = "toshiba,tc358762";
-		reg = <0x0b>;
-		ref-clk = <24000>;
-		dsi-traffic-mode = <0>;
-		bpp = <24>;
-		tlpx = <50>;
-		ths-prepare = <75>;
-		ths-zero = <124>;
-		reset-gpio = <&gpio_ptc 19 GPIO_ACTIVE_LOW>;
-	};
-#endif
 };
 #endif
 
@@ -600,150 +484,23 @@
 };
 #endif
 
-#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_LCD)
-&tc358762 {
-	display = <&display0>;
-	status = "okay";
-
-	port {
-		dsi_to_rgb: endpoint {
-			remote-endpoint = <&mipi_dsi_ep>;
-		};
-	};
-};
-#endif
-
-#if (CONFIG_PICOCOREMX7ULP_LCDIF != DISPLAY_NONE)
+#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
 &mipi_dsi {
 	status = "okay";
-#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_LCD)
-	port {
-		mipi_dsi_ep: endpoint {
-			remote-endpoint = <&dsi_to_rgb>;
-		};
-	};
-#elif(CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_mipi_dsi_reset>;
 	pinctrl-1 = <&pinctrl_mipi_dsi_reset>;
-	lcd_panel = "YES-OPTOELECTRONICS-YTC310KLAA";
+	lcd_panel = "TIANMA_PANEL_TM050JDHG33";
 	resets = <&mipi_dsi_reset>;
-#endif
 };
 #endif
-
-#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
-&sai0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_sai0>;
-	assigned-clocks = <&clks_m4 IMX7ULP_CM4_CLK_SAI0_SEL>,
-			  <&clks_m4 IMX7ULP_CM4_CLK_SAI0_DIV>;
-	assigned-clock-parents = <&clks_m4 IMX7ULP_CM4_CLK_APLL_PFD0_PRE_DIV>;
-	assigned-clock-rates = <0>, <12288000>;
-	fsl,dataline = <0x1 0x1>;
-	status = "okay";
-};
-#endif
-
-/* iomxuc pad settings PTA - PTB */
-&iomuxc {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_hog_0>;
-	status = "okay";
-
-	picocoremx7ulp { //TODO: check node name and subnodes
-		pinctrl_hog_0: hoggrp-0 {
-			fsl,pins = <
-				/* pins for the M4-Core - should be set by
-				 * M4 */
-#if 0
-				/* GPIOs -> default low for M4 */
-				/* 3.3 V */
-				IMX7ULP_PAD_PTA12__PTA12	0x00002
-				IMX7ULP_PAD_PTA13__PTA13	0x00002
-				IMX7ULP_PAD_PTA14__PTA14	0x00002
-				IMX7ULP_PAD_PTA15__PTA15	0x00002
-				IMX7ULP_PAD_PTA23__PTA23	0x00002
-				IMX7ULP_PAD_PTA31__PTA31	0x00002
-
-				/* 1.8 V */
-				IMX7ULP_PAD_PTB1__PTB1		0x00002
-				IMX7ULP_PAD_PTB2__PTB2		0x00002
-				IMX7ULP_PAD_PTB3__PTB3		0x00002
-				IMX7ULP_PAD_PTB9__PTB9		0x00002
-				IMX7ULP_PAD_PTB10__PTB10	0x00002
-				IMX7ULP_PAD_PTB11__PTB11	0x00002
-				IMX7ULP_PAD_PTB14__PTB14	0x00002
-
-				/* BATT_ADC_IN */
-				/* low active, pull low to measure battery
-				 * kernel doesnt boot with this settings */
-				IMX7ULP_PAD_PTA3__PTA3		0x00003
-				/* input measure battery voltage */
-				IMX7ULP_PAD_PTA20__ADC0_CH7A	0x00000
-
-				/* M4_PER_EN -> default high */
-				IMX7ULP_PAD_PTA21__PTA21	0x00003
-
-				/* EWM_OUT_B */
-				IMX7ULP_PAD_PTA22__PTA22	0x20000
-
-				/* A7_POW_EN -> default low so A7 is working */
-				IMX7ULP_PAD_PTA25__PTA25	0x00002
-
-				/* PTB4 bootmode0 */
-				IMX7ULP_PAD_PTB4__PTB4		0x00000
-
-				/* PTB5 bootmode1 */
-				IMX7ULP_PAD_PTB5__PTB5		0x00000
-
-				/* DDR_SW_EN# default low */
-				IMX7ULP_PAD_PTB6__PTB6		0x00002
-
-				/* PMIC INT# input */
-				IMX7ULP_PAD_PTB7__PTB7		0x00000
-#endif
-
-#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
-				/* AUD_PWR_EN active high -> default high */
-				IMX7ULP_PAD_PTA24__PTA24	0x00003
-#endif
-			>;
-		};
-
-#ifdef CONFIG_PICOCOREMX7ULP_AUDIO
-		pinctrl_sai0: sai0_grp {
-			fsl,pins = <
-				IMX7ULP_PAD_PTA4__I2S0_MCLK	0x00700
-				IMX7ULP_PAD_PTA5__I2S0_TX_BCLK	0x00700
-				IMX7ULP_PAD_PTA2__I2S0_RXD0	0x00700
-				IMX7ULP_PAD_PTA6__I2S0_TX_FS	0x00700
-				IMX7ULP_PAD_PTA7__I2S0_TXD0	0x00700
-			>;
-		};
-#endif
-
-#ifdef CONFIG_PICOCOREMX7ULP_QSPI_A
-		pinctrl_qspi1_1: qspi1grp_1 {
-			fsl,pins = <
-				IMX7ULP_PAD_PTB8__QSPIA_SS0_B	0x00043
-				IMX7ULP_PAD_PTB15__QSPIA_SCLK	0x00043
-				IMX7ULP_PAD_PTB16__QSPIA_DATA3	0x00043
-				IMX7ULP_PAD_PTB17__QSPIA_DATA2	0x00043
-				IMX7ULP_PAD_PTB18__QSPIA_DATA1	0x00043
-				IMX7ULP_PAD_PTB19__QSPIA_DATA0	0x00043
-			>;
-		};
-#endif
-	};
-};
 
 /* iomxuc pad settings PTC - PTF */
 &iomuxc1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog_1>;
 
-	picocoremx7ulp { //TODO: check node name and subnodes
+	picocoremx7ulp {
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
 				/* TP 5 */
@@ -792,7 +549,7 @@
 				/* I2C7n RST */
 				IMX7ULP_PAD_PTF1__PTF1		0x20003
 
-#if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_LCD)
+#if (CONFIG_PICOCOREMX7ULP_LCDIF == MIPI_DSI)
 				/* TC358762 RST */
 				IMX7ULP_PAD_PTC19__PTC19	0x20002
 #endif
@@ -849,7 +606,6 @@
 #if (CONFIG_PICOCOREMX7ULP_LCDIF == DISPLAY_MIPI_DSI)
 		pinctrl_mipi_dsi_reset: mipi_dsi_reset_grp {
 			fsl,pins = <
-				/* ### TODO: no reset pin defined */
 				IMX7ULP_PAD_PTC19__PTC19	0x20003
 			>;
 		};
@@ -880,13 +636,11 @@
 				IMX7ULP_PAD_PTF17__LPSPI3_SOUT	0x00000
 				IMX7ULP_PAD_PTF18__LPSPI3_SCK	0x00000
 				IMX7ULP_PAD_PTF19__LPSPI3_PCS0	0x00000
-				//IMX7ULP_PAD_PTF19__PTF19	0x20000
 			>;
 		};
 #endif
 
 #ifdef CONFIG_PICOCOREMX7ULP_EMMC
-		/* emmc */
 		pinctrl_usdhc0_8bit: usdhc0grp_8bit {
 			fsl,pins = <
 				IMX7ULP_PAD_PTD1__SDHC0_CMD	0x00043
@@ -941,8 +695,12 @@
 			fsl,pins = <
 				/* USB otg Power enable */
 				IMX7ULP_PAD_PTE15__USB0_PWR	0x00003
-				/* USB_OTG1_ID: low: host, open: device */
-				IMX7ULP_PAD_PTC13__USB0_ID	0x10003
+			>;
+		};
+
+		pinctrl_extcon_usb1: extcon1grp {
+			fsl,pins = <
+				IMX7ULP_PAD_PTC13__PTC13	0x10003
 			>;
 		};
 	};

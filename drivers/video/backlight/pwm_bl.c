@@ -34,7 +34,6 @@ struct pwm_bl_data {
 	struct regulator	*power_supply;
 	struct gpio_desc	*enable_gpio;
 	unsigned int		scale;
-	struct property		*fb_names_prop;
 	bool			legacy;
 	int			(*notify)(struct device *,
 					  int brightness);
@@ -42,7 +41,9 @@ struct pwm_bl_data {
 					int brightness);
 	int			(*check_fb)(struct device *, struct fb_info *);
 	void			(*exit)(struct device *);
-	char			fb_id[16];
+#ifdef CONFIG_OF
+	struct property		*fb_names_prop;
+#endif
 };
 
 static void pwm_backlight_power_on(struct pwm_bl_data *pb, int brightness)
@@ -121,24 +122,6 @@ static int pwm_backlight_update_status(struct backlight_device *bl)
 	return 0;
 }
 
-#ifdef CONFIG_OF
-static int pwm_backlight_check_fb_dt(struct device *dev,
-				     struct fb_info *info)
-{
-	struct backlight_device *bl = dev_get_drvdata(dev);
-	struct pwm_bl_data *pb = bl_get_data(bl);
-	const char *cp;
-
-	for (cp = of_prop_next_string(pb->fb_names_prop, NULL); cp;
-		     cp = of_prop_next_string(pb->fb_names_prop, cp)) {
-		if(!strcmp(info->fix.id, cp))
-			return (!strcmp(info->fix.id, cp));
-	}
-
-	return 0;
-}
-#endif
-
 static int pwm_backlight_check_fb(struct backlight_device *bl,
 				  struct fb_info *info)
 {
@@ -157,9 +140,13 @@ static int pwm_backlight_check_fb_name(struct device *dev, struct fb_info *info)
 {
 	struct backlight_device *bl = dev_get_drvdata(dev);
 	struct pwm_bl_data *pb = bl_get_data(bl);
+	const char *cp;
 
-	if (strcmp(info->fix.id, pb->fb_id) == 0)
-		return true;
+	for (cp = of_prop_next_string(pb->fb_names_prop, NULL); cp;
+		     cp = of_prop_next_string(pb->fb_names_prop, cp)) {
+		if (!strcmp(info->fix.id, cp))
+			return true;
+	}
 
 	return false;
 }
@@ -172,7 +159,6 @@ static int pwm_backlight_parse_dt(struct device *dev,
 	int length;
 	u32 value;
 	int ret;
-	const char *names;
 
 	if (!node)
 		return -ENODEV;
@@ -209,11 +195,6 @@ static int pwm_backlight_parse_dt(struct device *dev,
 		data->max_brightness--;
 	}
 
-	if (!of_property_read_string(node, "fb-names", &names)){
-		strcpy(data->fb_id, names);
-		data->check_fb = &pwm_backlight_check_fb_name;
-	}
-
 	data->enable_gpio = -EINVAL;
 	return 0;
 }
@@ -244,6 +225,10 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 	struct pwm_args pargs;
 	int ret;
 
+	pb = devm_kzalloc(&pdev->dev, sizeof(*pb), GFP_KERNEL);
+	if (!pb)
+		return -ENOMEM;
+
 	if (!data) {
 		ret = pwm_backlight_parse_dt(&pdev->dev, &defdata);
 		if (ret < 0) {
@@ -252,18 +237,18 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 		}
 
 		data = &defdata;
-	}
 
-	if (data->init) {
-		ret = data->init(&pdev->dev);
-		if (ret < 0)
-			return ret;
-	}
-
-	pb = devm_kzalloc(&pdev->dev, sizeof(*pb), GFP_KERNEL);
-	if (!pb) {
-		ret = -ENOMEM;
-		goto err_alloc;
+#ifdef CONFIG_OF
+		pb->fb_names_prop = of_find_property(node, "fb-names", NULL);
+		if (pb->fb_names_prop)
+			data->check_fb = &pwm_backlight_check_fb_name;
+#endif
+	} else {
+		if (data->init) {
+			ret = data->init(&pdev->dev);
+			if (ret < 0)
+				return ret;
+		}
 	}
 
 	if (data->levels) {
@@ -283,12 +268,6 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 	pb->exit = data->exit;
 	pb->dev = &pdev->dev;
 	pb->enabled = false;
-	strcpy(pb->fb_id, data->fb_id);
-#ifdef CONFIG_OF
-	pb->fb_names_prop = of_find_property(pb->dev->of_node, "fb-names", NULL);
-	if (pb->fb_names_prop)
-		pb->check_fb = pwm_backlight_check_fb_dt;
-#endif
 
 	pb->enable_gpio = devm_gpiod_get_optional(&pdev->dev, "enable",
 						  GPIOD_ASIS);
@@ -319,8 +298,17 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 		 * phandle link pointing to the backlight node, it is safe to
 		 * assume that another driver will enable the backlight at the
 		 * appropriate time. Therefore, if it is disabled, keep it so.
+		 *
+		 * 18.02.2020 F&S: The backlight should always be switched by
+		 * FB_BLANK notifications. By default, the backlight should be
+		 * off until the display is enabled, too. Only in the special
+		 * case when the display was enabled by the bootloader
+		 * already, then it should start in enabled state. So the
+		 * check for an active GPIO (or an active regulator some lines
+		 * below) should be done in any case, not only when the
+		 * backlight is referenced by a phandle.
 		 */
-		if (node && node->phandle &&
+		if (/*node && node->phandle &&*/
 		    gpiod_get_direction(pb->enable_gpio) == GPIOF_DIR_OUT &&
 		    gpiod_get_value(pb->enable_gpio) == 0)
 			initial_blank = FB_BLANK_POWERDOWN;
@@ -334,7 +322,7 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 		goto err_alloc;
 	}
 
-	if (node && node->phandle && !regulator_is_enabled(pb->power_supply))
+	if (/*node && node->phandle &&*/ !regulator_is_enabled(pb->power_supply))
 		initial_blank = FB_BLANK_POWERDOWN;
 
 	pb->pwm = devm_pwm_get(&pdev->dev, NULL);
@@ -393,7 +381,13 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 	}
 
 	bl->props.brightness = data->dft_brightness;
-	bl->props.power = initial_blank;
+	/*
+	 * 18.02.2020 F&S: If the power disabled here, then the backlight will
+	 * not come to life by an FB_BLANK_UNBLANK notification. So use the
+	 * fb_blank entry as this is doing what is intended here.
+	 */
+//	bl->props.power = initial_blank;
+	bl->props.fb_blank = initial_blank;
 	backlight_update_status(bl);
 
 	platform_set_drvdata(pdev, bl);

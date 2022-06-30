@@ -81,6 +81,7 @@ struct mxcfb_info {
 	bool resolve;
 	bool prefetch;
 	bool on_the_fly;
+	u32 unblank_delay;
 	uint32_t final_pfmt;
 	unsigned long gpu_sec_buf_off;
 	unsigned long base;
@@ -109,6 +110,7 @@ struct mxcfb_info {
 	struct completion otf_complete;	/* on the fly */
 
 	void *ipu;
+	struct mxcfb_info *mxcfbi_bg;	/* Valid if overlay is true */
 	struct fb_info *ovfbi;
 
 	struct mxc_dispdrv_handle *dispdrv;
@@ -1410,6 +1412,9 @@ retry:
 	mxc_fbi->cur_fb_pfmt = fbi_to_pixfmt(fbi, true);
 	mxc_fbi->cur_prefetch = mxc_fbi->prefetch;
 
+	if (mxc_fbi->unblank_delay)
+		msleep(mxc_fbi->unblank_delay);
+
 	return retval;
 }
 
@@ -2527,6 +2532,7 @@ mxcfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 	/* Check if DP local alpha is enabled and find the graphic fb */
 	if (mxc_fbi->ipu_ch == MEM_BG_SYNC || mxc_fbi->ipu_ch == MEM_FG_SYNC) {
 		for (i = 0; i < num_registered_fb; i++) {
+#if 0
 			char bg_id[] = "DISP3 BG";
 			char fg_id[] = "DISP3 FG";
 			char *idstr = registered_fb[i]->fix.id;
@@ -2549,6 +2555,27 @@ mxcfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 					active_alpha_phy_addr);
 				break;
 			}
+#else
+			/* Do not rely on fb name to get correct channel */
+			struct mxcfb_info *reg_fb =
+				(struct mxcfb_info *)(registered_fb[i]->par);
+			if ((mxc_fbi->ipu_id == reg_fb->ipu_id) &&
+			    reg_fb->alpha_chan_en) {
+				loc_alpha_en = true;
+				mxc_graphic_fbi = (struct mxcfb_info *)
+						(registered_fb[i]->par);
+				active_alpha_phy_addr =
+					mxc_fbi->cur_ipu_alpha_buf ?
+					mxc_graphic_fbi->alpha_phy_addr1 :
+					mxc_graphic_fbi->alpha_phy_addr0;
+				dev_dbg(info->device, "Updating SDC alpha "
+					"buf %d address=0x%08lX\n",
+					!mxc_fbi->cur_ipu_alpha_buf,
+					active_alpha_phy_addr);
+				break;
+			}
+
+#endif
 		}
 	}
 
@@ -3186,10 +3213,11 @@ static int mxcfb_register(struct fb_info *fbi)
 	struct mxcfb_info *mxcfbi = (struct mxcfb_info *)fbi->par;
 	struct fb_videomode m;
 	int ret = 0;
-	char bg0_id[] = "DISP3 BG";
+	ipu_channel_params_t params;
+#if 0
+	char bg_id[] = "DISP3 BG";
 	char bg1_id[] = "DISP3 BG - DI1";
 	char fg_id[] = "DISP3 FG";
-	ipu_channel_params_t params;
 
 	if (mxcfbi->ipu_di == 0) {
 		bg0_id[4] += mxcfbi->ipu_id;
@@ -3201,6 +3229,27 @@ static int mxcfb_register(struct fb_info *fbi)
 		fg_id[4] += mxcfbi->ipu_id;
 		strcpy(fbi->fix.id, fg_id);
 	}
+#else
+	struct device *dev = fbi->device;
+	const char *name;
+	int ipu_di;
+
+	if (mxcfbi->overlay) {
+		name = mxcfbi->mxcfbi_bg->dispdrv->drv->name;
+		ipu_di = mxcfbi->mxcfbi_bg->ipu_di;
+	} else {
+		name = mxcfbi->dispdrv->drv->name;
+		ipu_di = mxcfbi->ipu_di;
+	}
+	strcpy(fbi->fix.id, name);
+
+	if (!strcmp(name, "ldb")) {
+		fbi->fix.id[3] = '0' + ipu_di;
+		fbi->fix.id[4] = '\0';
+	}
+	if (mxcfbi->overlay)
+		strcat(fbi->fix.id, "_ov");
+#endif
 
 	mxcfb_check_var(&fbi->var, fbi);
 
@@ -3350,6 +3399,7 @@ static int mxcfb_setup_overlay(struct platform_device *pdev,
 	mxcfbi_fg->ipu_di = -1;
 	mxcfbi_fg->ipu_di_pix_fmt = mxcfbi_bg->ipu_di_pix_fmt;
 	mxcfbi_fg->overlay = true;
+	mxcfbi_fg->mxcfbi_bg = mxcfbi_bg;
 	mxcfbi_fg->cur_blank = mxcfbi_fg->next_blank = FB_BLANK_POWERDOWN;
 	mxcfbi_fg->prefetch = false;
 	mxcfbi_fg->resolve = false;
@@ -3421,6 +3471,7 @@ static int mxcfb_get_of_property(struct platform_device *pdev,
 	int len;
 	u32 bpp, int_clk;
 	u32 late_init;
+	u32 unblank_delay = 0;
 
 	err = of_property_read_string(np, "disp_dev", &disp_dev);
 	if (err < 0) {
@@ -3450,7 +3501,11 @@ static int mxcfb_get_of_property(struct platform_device *pdev,
 		dev_dbg(&pdev->dev, "get of property late_init fail\n");
 		return err;
 	}
-
+	err = of_property_read_u32(np, "unblank_delay", &unblank_delay);
+	if (err) {
+		unblank_delay = 0;
+		err = 0;
+	}
 	plat_data->prefetch = of_property_read_bool(np, "prefetch");
 
 	if (!strncmp(pixfmt, "RGB24", 5))
@@ -3493,6 +3548,7 @@ static int mxcfb_get_of_property(struct platform_device *pdev,
 	plat_data->default_bpp = bpp;
 	plat_data->int_clk = (bool)int_clk;
 	plat_data->late_init = (bool)late_init;
+	plat_data->unblank_delay = unblank_delay;
 	return err;
 }
 
@@ -3545,6 +3601,7 @@ static int mxcfb_probe(struct platform_device *pdev)
 	mxcfbi = (struct mxcfb_info *)fbi->par;
 	mxcfbi->ipu_int_clk = plat_data->int_clk;
 	mxcfbi->late_init = plat_data->late_init;
+	mxcfbi->unblank_delay = plat_data->unblank_delay;
 	mxcfbi->first_set_par = true;
 	mxcfbi->prefetch = plat_data->prefetch;
 	mxcfbi->pre_num = -1;

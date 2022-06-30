@@ -138,6 +138,11 @@ void mipid_hx8379_get_lcd_videomode(struct fb_videomode **mode, int *size,
 		struct mipi_lcd_config **data);
 int mipid_hx8379_lcd_setup(struct mipi_dsi_info *);
 #endif
+#ifdef CONFIG_FB_MXC_TIANMA_PANEL_TM050JDHG33
+void mipid_ili9881c_get_lcd_videomode(struct fb_videomode **mode, int *size,
+		struct mipi_lcd_config **data);
+int mipid_ili9881c_lcd_setup(struct mipi_dsi_info *);
+#endif
 
 #ifndef CONFIG_FB_MXC_TRULY_WVGA_SYNC_PANEL
 #error "Please configure MIPI LCD panel, we cannot find one!"

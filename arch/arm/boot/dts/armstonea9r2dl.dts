@@ -9,7 +9,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_ARMSTONEA9R2_BOARD_REVISION	100
+#define CONFIG_ARMSTONEA9R2_BOARD_REVISION	120
 
 #define DISPLAY_NONE	0	/* No display on this port */
 #define DISPLAY_HDMI	1	/* DVI/HDMI via HDMI connector */
@@ -147,6 +147,19 @@ wvga {					\
 #endif
 
 /*
+ * Depending on the needed pixel clock speed, the LVDS clock source must be
+ * selected accordingly. If pixelclock is between 38.7 MHz and 113 MHz,
+ * PLL2_PFD0 is sufficient. Otherwise PLL5 has to be used. If you have two
+ * LVDS displays with different clock requirements, set one to PLL2_PFD0 and the
+ * other to PLL5. If you have activated the displays in U-Boot already and want
+ * to keep these settings in Linux, de-activate all four lines.
+ */
+//#define CONFIG_ARMSTONEA9R2_LVDS0_CLK  IMX6QDL_CLK_PLL2_PFD0_352M
+#define CONFIG_ARMSTONEA9R2_LVDS0_CLK  IMX6QDL_CLK_PLL5_VIDEO_DIV
+//#define CONFIG_ARMSTONEA9R2_LVDS1_CLK  IMX6QDL_CLK_PLL2_PFD0_352M
+#define CONFIG_ARMSTONEA9R2_LVDS1_CLK  IMX6QDL_CLK_PLL5_VIDEO_DIV
+
+/*
  * Define this for a two-channel display, i.e. one display, one framebuffer,
  * but two LVDS channels, even pixels from one channel, odd pixels from the
  * other channel. Only define either DISPLAY_LVDS0 or DISPLAY_LVDS1 in this
@@ -188,6 +201,9 @@ wvga {					\
 /* AUDIO */
 #define CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO
 
+/* Use 12.288 MHz instead of 24.576 MHz for Audio */
+//#define CONFIG_ARMSTONEA9R2_AUDIO_12M288
+
 /* Camera on serial MIPI CSI interface */
 //#define CONFIG_ARMSTONEA9R2_SERIAL_CAMERA
 
@@ -211,6 +227,8 @@ wvga {					\
 #define CONFIG_ARMSTONEA9R2_I2C_A
 #define CONFIG_ARMSTONEA9R2_I2C_B
 #define CONFIG_ARMSTONEA9R2_I2C_C
+/* only available in revison >= 1.20 and if SPI_B is not activated */
+//#define CONFIG_ARMSTONEA9R2_I2C_D
 
 /* SPI */
 #define CONFIG_ARMSTONEA9R2_SPI_A
@@ -226,6 +244,11 @@ wvga {					\
 #define CONFIG_ARMSTONEA9R2_UART_D
 #define CONFIG_ARMSTONEA9R2_UART_D_RTSCTS
 #define CONFIG_ARMSTONEA9R2_UART_E
+
+/* If board revision is less than 1.20, or if SPI_B is activated, I2C_D is not available */
+#if (CONFIG_ARMSTONEA9R2_BOARD_REVISION < 120) || defined(CONFIG_ARMSTONEA9R2_SPI_B)
+#undef CONFIG_ARMSTONEA9R2_I2C_D
+#endif
 
 #include "imx6dl.dtsi"
 #include "armstonea9r2qdl.dtsi"

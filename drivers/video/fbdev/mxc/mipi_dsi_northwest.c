@@ -83,6 +83,12 @@ static struct mipi_dsi_match_lcd mipi_dsi_lcd_db[] = {
 	 {mipid_hx8379_get_lcd_videomode, mipid_hx8379_lcd_setup}
 	},
 #endif
+#ifdef CONFIG_FB_MXC_TIANMA_PANEL_TM050JDHG33
+	{
+	 "TIANMA_PANEL_TM050JDHG33",
+	 {mipid_ili9881c_get_lcd_videomode, mipid_ili9881c_lcd_setup}
+	},
+#endif
 	{
 	"", {NULL, NULL}
 	}

@@ -102,27 +102,43 @@ static const char *vadc_sels[]	= { "pll6_video_div", "pll3_usb_otg_div", "pll3_u
 static const char *ftm_ext_sels[]	= {"sirc_128k", "sxosc", "fxosc_half", "audio_ext", };
 static const char *ftm_fix_sels[]	= { "sxosc", "ipg_bus", };
 /* ### FIXME: The values with ? are not verified yet */
-static const char *cko1_sels[]	= { "qspi0", "dummy", "dummy", "dummy", "dummy", "dummy","pll4",
-				    "pll4_audio_div", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
-				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
-				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
-				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
-				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
-				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
-				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
-				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
-				      "dummy", };
+static const char *cko1_sels[]	= {
+	"qspi0", "dummy", "dummy", "dummy",
+	"enet_50m", "dummy","pll4", "pll4_audio_div",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"sxosc", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy"
+};
 
-static const char *cko2_sels[]	= { "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
-				      "dummy", "dummy", "dummy", "dummy", "dummy", "sai2", "dummy",
-				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
-				      "dummy", "dummy", "dummy", "dummy", "dummy", "pll4",
-				      "pll4_audio_div", "dummy", "dummy", "dummy", "dummy", "dummy",
-				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
-				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
-				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
-				      "dummy", "dummy", "dummy", "dummy", "dummy", "dummy", "dummy",
-				      "dummy", "dummy", "dummy", };
+static const char *cko2_sels[]	= {
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"sai2", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "pll4", "pll4_audio_div",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy",
+	"dummy", "dummy", "dummy", "dummy"
+};
 
 static struct clk_div_table pll4_audio_div_table[] = {
 	{ .val = 0, .div = 1 },
@@ -405,10 +421,10 @@ static void __init vf610_clocks_init(struct device_node *ccm_node)
 
 	clk[VF610_CLK_CKO1_SEL] = imx_clk_mux("cko1_sel", CCM_CCOSR, 0,  6, cko1_sels, ARRAY_SIZE(cko1_sels));
 	clk[VF610_CLK_CKO2_SEL] = imx_clk_mux("cko2_sel", CCM_CCOSR, 16, 6, cko2_sels, ARRAY_SIZE(cko2_sels));
-	clk[VF610_CLK_CKO1] = imx_clk_gate("cko1", "cko1_podf", CCM_CCOSR, 10);
-	clk[VF610_CLK_CKO2] = imx_clk_gate("cko2", "cko2_podf", CCM_CCOSR, 26);
 	clk[VF610_CLK_CKO1_PODF] = imx_clk_divider("cko1_podf", "cko1_sel", CCM_CCOSR, 6, 4);
 	clk[VF610_CLK_CKO2_PODF] = imx_clk_divider("cko2_podf", "cko2_sel", CCM_CCOSR, 22, 4);
+	clk[VF610_CLK_CKO1] = imx_clk_gate("cko1", "cko1_podf", CCM_CCOSR, 10);
+	clk[VF610_CLK_CKO2] = imx_clk_gate("cko2", "cko2_podf", CCM_CCOSR, 26);
 
 	clk[VF610_CLK_ESAI_SEL] = imx_clk_mux("esai_sel", CCM_CSCMR1, 20, 2, esai_sels, 4);
 	clk[VF610_CLK_ESAI_EN] = imx_clk_gate("esai_en", "esai_sel", CCM_CSCDR2, 30);

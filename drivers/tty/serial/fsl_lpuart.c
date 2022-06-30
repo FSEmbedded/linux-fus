@@ -260,6 +260,7 @@ struct lpuart_port {
 	bool			lpuart_dma_tx_use;
 	bool			lpuart_dma_rx_use;
 	bool			dma_rx_chan_active;
+	bool			do_not_use_tx_dma;
 	struct dma_chan		*dma_tx_chan;
 	struct dma_chan		*dma_rx_chan;
 	struct dma_async_tx_descriptor  *dma_tx_desc;
@@ -1318,8 +1319,9 @@ static int lpuart_startup(struct uart_port *port)
 	} else
 		sport->lpuart_dma_rx_use = false;
 
-
-	if (sport->dma_tx_chan && !lpuart_dma_tx_request(port)) {
+	/* FIXME: TX-DMA does not work on Vybrid */
+	if (!sport->do_not_use_tx_dma &&
+	    sport->dma_tx_chan && !lpuart_dma_tx_request(port)) {
 		init_waitqueue_head(&sport->dma_wait);
 		sport->lpuart_dma_tx_use = true;
 		temp = readb(port->membase + UARTCR5);
@@ -2211,6 +2213,8 @@ static int lpuart_probe(struct platform_device *pdev)
 			of_device_is_compatible(np, "fsl,imx7ulp-lpuart") |
 			of_device_is_compatible(np, "fsl,imx8qm-lpuart");
 	sport->dma_eeop = of_device_is_compatible(np, "fsl,imx8qm-lpuart");
+	/* ### FIXME: TX DMA does not work on Vybrid */
+	sport->do_not_use_tx_dma = of_device_is_compatible(np, "fsl,vf610-lpuart");
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	sport->port.membase = devm_ioremap_resource(&pdev->dev, res);

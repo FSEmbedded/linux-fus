@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 F&S Elektronik Systeme GmbH
+ * Copyright (C) 2020 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -9,7 +9,20 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_ARMSTONEA5_BOARD_REVISION	110
+#define CONFIG_ARMSTONEA5_BOARD_REVISION	111
+
+/*
+ * Beginning with board rev. 1.11, the RMII clock is output on CKO1 (PTB10)
+ * instead of RMII_CLKOUT (PTA6). This is needed to work around a silicon bug
+ * of the Vybrid CPU.
+ *
+ * This shows a big disadvantage of device trees. The information is available
+ * in one of the feature bits (in /sys/bdinfo), but it is not easily possible
+ * to modify the device tree according to this information at runtime.
+ */
+#if (CONFIG_ARMSTONEA5_BOARD_REVISION >= 111)
+#define CONFIG_ARMSTONEA5_RMIICLK_CKO1
+#endif
 
 #define DISPLAY_NONE	0	/* No display on this port */
 #define DISPLAY_LCD	1	/* LCD via RGB adapter */
@@ -103,7 +116,7 @@ lvds_wvga {				\
 #define CONFIG_ARMSTONEA5_ETH1
 
 /* AUDIO */
-//#define CONFIG_ARMSTONEA5_SGTL5000_AUDIO
+#define CONFIG_ARMSTONEA5_SGTL5000_AUDIO
 
 /* I2C */
 #define CONFIG_ARMSTONEA5_I2C_A
@@ -258,7 +271,7 @@ lvds_wvga {				\
 	bdinfo: bdinfo {
 		compatible = "bdinfo";
 		board_name = "armstonea5";
-		ecc_strength = "8";
+		ecc_mode = "5";
 	};
 
 #ifdef CONFIG_ARMSTONEA5_SGTL5000_AUDIO
@@ -289,23 +302,74 @@ lvds_wvga {				\
 //			"Line Out Jack", "LINE_OUT";
 	};
 #endif
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_status_leds>;
+
+		status_1 {
+			label = "Status1";
+			gpios = <&gpio3 7 GPIO_ACTIVE_HIGH>;
+			default-state = "keep";
+		};
+
+		status_2 {
+			label = "Status2";
+			gpios = <&gpio3 8 GPIO_ACTIVE_HIGH>;
+			default-state = "keep";
+		};
+	};
 };
 
+/*
+ * New versions of armStoneA5 have a direct connection from CKO1 (PTB10) to
+ * RMII_CLK (PTA6) to work around a silicon bug in Vybrid. In this case, output
+ * the RMII clock of 50 MHz on CKO1 and use RMII_CLK as input.
+ *
+ * The Audio-PLL (PLL4) is set to 1179.648 MHz by default. This can be divided
+ * by 16 with the PLL4_CLK_DIV to get 73.728 MHz and further by 3 or 6 with
+ * SAI2_DIV or CKO2_DIV to get 24.576 MHz or 12.288 Mhz, which are multiples of
+ * the most commonly used bit rates.
+ */
 &clks {
-	/* Set audio clock rate, output on CKO2 */
-	assigned-clocks = <&clks VF610_CLK_PLL4_BYPASS_SRC>,
-			<&clks VF610_CLK_SAI2_SEL>;
-#if 0
-			<&clks VF610_CLK_SAI2>,
-			<&clks VF610_CLK_CKO2_SEL>;
+	assigned-clocks =
+#ifdef CONFIG_ARMSTONEA5_RMIICLK_CKO1
+			<&clks VF610_CLK_CKO1_SEL>,	/* CKO1 (RMII clock) */
+			<&clks VF610_CLK_CKO1_PODF>,
+			<&clks VF610_CLK_CKO1>,
 #endif
-	assigned-clock-parents = <&clks VF610_CLK_FASK_CLK_SEL>,
-			<VF610_CLK_PLL4_MAIN_DIV>;
-#if 0
+			<&clks VF610_CLK_PLL4_MAIN_DIV>,/* CKO2 (Audio) */
+			<&clks VF610_CLK_CKO2_SEL>,
+			<&clks VF610_CLK_CKO2_PODF>;
+#if 0 //###
+			<&clks VF610_CLK_CKO2>;
+#endif
+
+	assigned-clock-parents =
+#ifdef CONFIG_ARMSTONEA5_RMIICLK_CKO1
+			<&clks VF610_CLK_ENET_50M>,	/* CKO1 */
 			<0>,
-			<&clks VF610_CLK_SAI2>;
+			<0>,
 #endif
-	assigned-clock-rates = <0>, <786432000>;//, <12288000>, <0>;
+			<0>,				/* CKO2 */
+			<&clks VF610_CLK_PLL4_MAIN_DIV>;
+
+	assigned-clock-rates =
+#ifdef CONFIG_ARMSTONEA5_RMIICLK_CKO1
+			<0>,				/* CKO1 */
+			<0>,
+			<50000000>,
+#endif
+			<73728000>,			/* CKO2 */
+			<0>,
+			<12288000>;			/* or <24576000> */
+};
+
+&nfc {
+	compatible = "fus,vf610-nfc";
+	fus,ecc-mode = <5>;
+	status = "okay";
 };
 
 &can0 {
@@ -373,7 +437,13 @@ lvds_wvga {				\
 	phy-mode = "rmii";
 	phy-handle = <&ethphy0>;
 	phy-supply = <&reg_vref_3v3>;
-	fsl,ref-clock-out;
+#ifdef CONFIG_ARMSTONEA5_RMIICLK_CKO1
+	/* Do not activate clock enet, but enet_out instead */
+	clocks = <&clks VF610_CLK_ENET0>,
+		<&clks VF610_CLK_ENET0>,
+		<&clks VF610_CLK_CKO1>;
+	clock-names = "ipg", "ahb", "enet_out";
+#endif
 	status = "okay";
 
 	mdio {
@@ -383,6 +453,13 @@ lvds_wvga {				\
 		ethphy0: ethernet-phy@0 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <0>;
+#ifdef CONFIG_ARMSTONEA5_RMIICLK_CKO1
+			clocks = <&clks VF610_CLK_CKO1_PODF>;
+#else
+			clocks = <&clks VF610_CLK_ENET>;
+#endif
+			clock-names = "rmii-ref";
+			micrel,led-mode = <0>;
 		};
 	};
 };
@@ -395,7 +472,13 @@ lvds_wvga {				\
 	phy-mode = "rmii";
 	phy-handle = <&ethphy1>;
 	phy-supply = <&reg_vref_3v3>;
-	fsl,ref-clock-out;
+#ifdef CONFIG_ARMSTONEA5_RMIICLK_CKO1
+	/* Do not activate clock enet, but enet_out instead */
+	clocks = <&clks VF610_CLK_ENET1>,
+		<&clks VF610_CLK_ENET1>,
+		<&clks VF610_CLK_CKO1>;
+	clock-names = "ipg", "ahb", "enet_out";
+#endif
 	status = "okay";
 
 	mdio {
@@ -405,6 +488,13 @@ lvds_wvga {				\
 		ethphy1: ethernet-phy@0 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <0>;
+#ifdef CONFIG_ARMSTONEA5_RMIICLK_CKO1
+			clocks = <&clks VF610_CLK_CKO1_PODF>;
+#else
+			clocks = <&clks VF610_CLK_ENET>;
+#endif
+			clock-names = "rmii-ref";
+			micrel,led-mode = <0>;
 		};
 	};
 };
@@ -413,15 +503,15 @@ lvds_wvga {				\
 #ifdef CONFIG_ARMSTONEA5_SGTL5000_AUDIO
 /* I2C_C (Bitbanging): RTC (PCA8565), SGTL5000 (SKIT) */
 &i2c_gpio {
-		sgtl5000: sgtl5000@0a {
-			compatible = "fsl,sgtl5000";
-			reg = <0x0a>;
-			mono2both;
-			clocks = <&clks VF610_CLK_CKO2>;
-			VDDA-supply = <&reg_sgtl5000_vdda>;
-			VDDIO-supply = <&reg_sgtl5000_vddio>;
-			VDDD-supply = <&reg_sgtl5000_vddd>;
-		};
+	sgtl5000: sgtl5000@0a {
+		compatible = "fsl,sgtl5000";
+		reg = <0x0a>;
+		mono2both;
+		clocks = <&clks VF610_CLK_CKO2>;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+	};
 };
 #endif /* CONFIG_ARMSTONEA5_SGTL5000_AUDIO */
 
@@ -529,6 +619,7 @@ lvds_wvga {				\
 &uart1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1>;
+	uart-has-rtscts;
 	status = "okay";
 };
 #endif
@@ -551,6 +642,14 @@ lvds_wvga {				\
 
 &usbdev0 {
 	disable-over-current;
+	status = "okay";
+};
+
+&usbmisc0 {
+	status = "okay";
+};
+
+&usbphy0 {
 	status = "okay";
 };
 
@@ -591,6 +690,14 @@ lvds_wvga {				\
 			>;
 		};
 
+		pinctrl_status_leds: ledgrp {
+			fsl,pins = <
+				/* Status LEDs */
+				VF610_PAD_PTC30__GPIO_103		0x01ce
+				VF610_PAD_PTC31__GPIO_104		0x01ce
+			>;
+		};
+
 		pinctrl_can0: can0grp {
 			fsl,pins = <
 				VF610_PAD_PTB14__CAN0_RX		0x21e1
@@ -620,7 +727,7 @@ lvds_wvga {				\
 				VF610_PAD_PTA25__ESDHC1_CMD		0x31ef
 				VF610_PAD_PTA26__ESDHC1_DAT0		0x31ef
 				VF610_PAD_PTA27__ESDHC1_DAT1		0x31ef
-				VF610_PAD_PTA28__ESDHC1_DATA2		0x31ef
+				VF610_PAD_PTA28__ESDHC1_DAT2		0x31ef
 				VF610_PAD_PTA29__ESDHC1_DAT3		0x31ef
 				VF610_PAD_PTA7__GPIO_134		0x219d
 			>;
@@ -628,7 +735,13 @@ lvds_wvga {				\
 
 		pinctrl_fec0: fec0grp {
 			fsl,pins = <
+#ifdef CONFIG_ARMSTONEA5_RMIICLK_CKO1
+				/* CKO1 for Ethernet RMII clock */
+				VF610_PAD_PTB10__CKO1			0x00c2
 				VF610_PAD_PTA6__RMII_CLKIN		0xc1
+#else
+				VF610_PAD_PTA6__RMII_CLKOUT		0x3942
+#endif
 				VF610_PAD_PTC0__ENET_RMII0_MDC		0xc2
 				VF610_PAD_PTC1__ENET_RMII0_MDIO		0xc3
 				VF610_PAD_PTC2__ENET_RMII0_CRS		0xc1
@@ -644,7 +757,11 @@ lvds_wvga {				\
 		pinctrl_fec1: fec1grp {
 			fsl,pins = <
 #ifndef CONFIG_ARMSTONEA5_ETH0
+#ifdef CONFIG_ARMSTONEA5_RMIICLK_CKO1
 				VF610_PAD_PTA6__RMII_CLKIN		0xc1
+#else
+				VF610_PAD_PTA6__RMII_CLKOUT		0x3942
+#endif
 #endif
 				VF610_PAD_PTC9__ENET_RMII1_MDC		0xc2
 				VF610_PAD_PTC10__ENET_RMII1_MDIO	0xc3
@@ -672,6 +789,16 @@ lvds_wvga {				\
 			fsl,pins = <
 				VF610_PAD_PTE13__GPIO_118		0x219c
 				VF610_PAD_PTE14__GPIO_119		0x219c
+			>;
+		};
+
+		pinctrl_sai2: sai2grp {
+			fsl,pins = <
+				VF610_PAD_PTA16__SAI2_TX_BCLK		0x02ed
+				VF610_PAD_PTA18__SAI2_TX_DATA		0x02ee
+				VF610_PAD_PTA19__SAI2_TX_SYNC		0x02ed
+				VF610_PAD_PTA22__SAI2_RX_DATA		0x02ed
+				VF610_PAD_PTB11__CKO2			0x1c1
 			>;
 		};
 #endif /* CONFIG_ARMSTONEA5_SGTL5000_AUDIO */
@@ -707,16 +834,6 @@ lvds_wvga {				\
 		pinctrl_pwm0: pwm0grp {
 			fsl,pins = <
 				VF610_PAD_PTB0__FTM0_CH0		0x1182
-			>;
-		};
-
-		pinctrl_sai2: sai2grp {
-			fsl,pins = <
-				VF610_PAD_PTA16__SAI2_TX_BCLK		0x02ed
-				VF610_PAD_PTA18__SAI2_TX_DATA		0x02ee
-				VF610_PAD_PTA19__SAI2_TX_SYNC		0x02ed
-				VF610_PAD_PTA22__SAI2_RX_DATA		0x02ed
-				VF610_PAD_PTB11__CKO2			0x1c1
 			>;
 		};
 

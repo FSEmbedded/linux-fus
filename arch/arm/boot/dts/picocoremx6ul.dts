@@ -79,12 +79,9 @@ wvga {					\
 
 /* NAND/eMMC will be set by U-Boot */
 /* NAND */
-#define CONFIG_PICOCOREMX6UL_NAND
+/* eMMC */
+/* Will be set by Uboot */
 
-/* EMMC
- * If NAND is equipped, EMMC is not possible.
- */
-#define CONFIG_PICOCOREMX6UL_EMMC
 
 /* Network */
 #define CONFIG_PICOCOREMX6UL_ETH0
@@ -356,7 +353,9 @@ wvga {					\
 	iram = <&ocram>;
 };
 
-#ifdef CONFIG_PICOCOREMX6UL_NAND
+/* Default boot device. Will be disabled by Uboot
+ * if eMMC is used as boot device.
+ */
 &gpmi {
 	/* Switch to F&S implementation of GPMI NAND driver */
 	compatible = "fus,imx6ul-gpmi-nand", "fus,imx6q-gpmi-nand";
@@ -366,7 +365,6 @@ wvga {					\
 	fus,ecc_strength = <8>;
 	status = "okay";
 };
-#endif
 
 #ifdef CONFIG_PICOCOREMX6UL_SPI_A
 &ecspi2 {
@@ -764,7 +762,9 @@ wvga {					\
 };
 #endif
 
-#ifdef CONFIG_PICOCOREMX6UL_EMMC
+/* Keep disabled. Will be activated by Uboot
+ * if eMMC is used as boot device.
+ */
 &usdhc2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc2>;
@@ -774,9 +774,8 @@ wvga {					\
 	voltage-ranges = <3300 3300>;
 	no-1-8-v;
 	keep-power-in-suspend;
-	status = "okay";
+	status = "disabled";
 };
-#endif
 
 #ifdef CONFIG_PICOCOREMX6UL_ULL
 &iomuxc_snvs {
@@ -1147,7 +1146,6 @@ wvga {					\
 		};
 #endif /* CONFIG_PICOCOREMX6UL_SD_A */
 
-#ifdef CONFIG_PICOCOREMX6UL_EMMC
 		pinctrl_usdhc2: usdhc2grp {
 			fsl,pins = <
 				MX6UL_PAD_NAND_WE_B__USDHC2_CMD		0x17091
@@ -1173,7 +1171,6 @@ wvga {					\
 				MX6UL_PAD_NAND_DQS__GPIO4_IO16		0x030b0
 			>;
 		};
-#endif /* CONFIG_PICOCOREMX6UL_EMMC */
 
 	};
 };

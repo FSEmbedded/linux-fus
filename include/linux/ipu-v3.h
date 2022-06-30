@@ -766,6 +766,9 @@ struct ipuv3_fb_platform_data {
 
 	/* Enable the PRE resolve engine or not? */
 	bool				resolve;
+
+	/* Delay after unblanking the framebuffer */
+	u32				unblank_delay;
 };
 
 #endif /* __LINUX_IPU_V3_H_ */

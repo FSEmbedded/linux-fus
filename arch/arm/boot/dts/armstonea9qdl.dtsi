@@ -517,7 +517,7 @@
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
-		fb-names = "mxs-lcdif1";
+		fb-names = "lcd";
 	};
 
 	/* LVDS backlight PWM on LVDS connector and backlight connector */
@@ -534,7 +534,7 @@
 				     73 92 113 137 163 192 222 255>;
 #endif
 		default-brightness-level = <14>;
-		fb-names = "mxs-lcdif2";
+		fb-names = "ldb0", "ldb1";
 	};
 
 #ifdef CONFIG_ARMSTONEA9_PARALLEL_CAMERA
@@ -547,11 +547,13 @@
 		status = "okay";
 	};
 
+
+#endif
+
 	v4l2_out {
 		compatible = "fsl,mxc_v4l2_output";
 		status = "okay";
 	};
-#endif
 
 	leds {
 		compatible = "gpio-leds";
@@ -608,19 +610,46 @@
  * restriction to 24.576 MHz on Dual/Quad. See netdcua9qdl.dtsi/efusa9qdl.dtsi.
  */
 &clks {
-	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
+	assigned-clocks =
+#ifdef CONFIG_ARMSTONEA9_LVDS0_CLK
+			  <&clks IMX6QDL_CLK_LDB_DI0_SEL>,
+#endif
+#ifdef CONFIG_ARMSTONEA9_LVDS1_CLK
+			  <&clks IMX6QDL_CLK_LDB_DI1_SEL>,
+#endif
+			  <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 			  <&clks IMX6QDL_CLK_SSI1_SEL>,
 			  <&clks IMX6QDL_CLK_SSI1>,
-			  <&clks IMX6QDL_CLK_CKO2_SEL>,
-			  <&clks IMX6QDL_CLK_CKO>;
+			  <&clks IMX6QDL_CLK_CKO>,
+			  <&clks IMX6QDL_CLK_CKO2_SEL>;
 
-	assigned-clock-parents = <0>,
+	assigned-clock-parents =
+#ifdef CONFIG_ARMSTONEA9_LVDS0_CLK
+				 <&clks CONFIG_ARMSTONEA9_LVDS0_CLK>,
+#endif
+#ifdef CONFIG_ARMSTONEA9_LVDS1_CLK
+				 <&clks CONFIG_ARMSTONEA9_LVDS1_CLK>,
+#endif
+				 <0>,
 				 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 				 <0>,
 				 <&clks IMX6QDL_CLK_SSI1>,
 				 <&clks IMX6QDL_CLK_CKO2>;
-//###	assigned-clock-rates = <786432000>, <0>, <24576000>;
-	assigned-clock-rates = <786432000>, <0>, <12288000>;
+
+	assigned-clock-rates =
+#ifdef CONFIG_ARMSTONEA9_LVDS0_CLK
+				<0>,
+#endif
+#ifdef CONFIG_ARMSTONEA9_LVDS1_CLK
+				<0>,
+#endif
+				<786432000>,
+#ifdef CONFIG_ARMSTONEA9_AUDIO_12M288
+				<12288000>,	/* Audio with 12.288 MHz */
+#else
+				<24576000>,	/* Audio with 24.576 MHz */
+#endif
+				<0>;
 };
 #endif
 
