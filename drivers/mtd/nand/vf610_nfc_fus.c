@@ -1348,7 +1348,6 @@ static int fus_nfc_probe(struct platform_device *pdev)
 	u32 oobavail;
 	struct mtd_part_parser_data ppdata = {};
 
-	printk("### cf610_nfc_fus\n");
 	dev_info(&pdev->dev, "F&S VF610 NFC MTD NAND driver %s\n", DRV_VERSION);
 	prv = devm_kzalloc(&pdev->dev, sizeof(*prv), GFP_KERNEL);
 	if (!prv) {
@@ -1486,8 +1485,6 @@ static int fus_nfc_probe(struct platform_device *pdev)
 	oobavail = mtd->oobsize - chip->ecc.bytes - 4;
 	mtd->oobavail = oobavail;
 	mtd->bitflip_threshold = bitflip_threshold[prv->eccmode];
-	printk("#### eccmode=%d, ecc_strength=%d, bitflip_thershold=%d\n",
-	       prv->eccmode, mtd->ecc_strength, mtd->bitflip_threshold);
 	mtd_set_ooblayout(mtd, &fus_nfc_ooblayout_ops);
 
 	if (chip->onfi_version) {

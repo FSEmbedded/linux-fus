@@ -38,6 +38,7 @@
 #define MX3_PWMCR_DOZEEN		(1 << 24)
 #define MX3_PWMCR_WAITEN		(1 << 23)
 #define MX3_PWMCR_DBGEN			(1 << 22)
+#define MX3_PWMCR_POUTC			(1 << 18)
 #define MX3_PWMCR_CLKSRC_IPG_HIGH	(2 << 16)
 #define MX3_PWMCR_CLKSRC_IPG		(1 << 16)
 #define MX3_PWMCR_SWR			(1 << 3)
@@ -52,6 +53,8 @@ struct imx_chip {
 	struct clk	*clk_ipg;
 
 	void __iomem	*mmio_base;
+
+	int keep_power;
 
 	struct pwm_chip	chip;
 
@@ -161,10 +164,6 @@ static int imx_pwm_config_v2(struct pwm_chip *chip,
 	do_div(c, period_ns);
 	duty_cycles = c;
 
-	/* invert polarity */
-	if (pwm->args.polarity)
-		duty_cycles = period_cycles - duty_cycles;
-
 	/*
 	 * according to imx pwm RM, the real period value should be
 	 * PERIOD value in PWMPR plus 2.
@@ -181,8 +180,11 @@ static int imx_pwm_config_v2(struct pwm_chip *chip,
 		MX3_PWMCR_DOZEEN | MX3_PWMCR_WAITEN |
 		MX3_PWMCR_DBGEN | MX3_PWMCR_CLKSRC_IPG_HIGH;
 
-	if (enable)
+	if (enable | imx->keep_power)
 		cr |= MX3_PWMCR_EN;
+
+	if (pwm->state.polarity)
+		cr |= MX3_PWMCR_POUTC;
 
 	writel(cr, imx->mmio_base + MX3_PWMCR);
 
@@ -252,7 +254,8 @@ static void imx_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
 {
 	struct imx_chip *imx = to_imx_chip(chip);
 
-	imx->set_enable(chip, false);
+	if (!imx->keep_power)
+		imx->set_enable(chip, false);
 
 	clk_disable_unprepare(imx->clk_ipg);
 	clk_disable_unprepare(imx->clk_per);
@@ -350,8 +353,13 @@ static int imx_pwm_probe(struct platform_device *pdev)
 	/* set xlate according to cell size found in device tree */
 	ret = of_property_read_u32(np, "#pwm-cells", &i);
 	if (ret < 0)
-		return ret;	 
-	
+		return ret;
+
+	if (of_property_read_bool(np, "keep-power"))
+		imx->keep_power = 1;
+	else
+		imx->keep_power = 0;
+
 	/* 
 	 * We support 2 and 3 pwm cells. One case we handle here, the other case
 	 * is automatically handled in of_pwmchip_add() in drivers/pwm/core.c.

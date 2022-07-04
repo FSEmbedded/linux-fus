@@ -1290,6 +1290,7 @@ lvds_wvga {				\
 &pwm1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm1>;
+	keep-power;		/* Necessary if PWM is inverted */
 	status = "okay";
 };
 #else
@@ -1297,6 +1298,7 @@ lvds_wvga {				\
 &pwm5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm5>;
+	keep-power;		/* Necessary if PWM is inverted */
 	status = "okay";
 };
 #endif
@@ -1309,6 +1311,7 @@ lvds_wvga {				\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm2>;
 	#pwm-cells = <3>;
+	keep-power;		/* Necessary if PWM is inverted */
 	status = "okay";
 };
 #else
@@ -1317,6 +1320,7 @@ lvds_wvga {				\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm6>;
 	#pwm-cells = <3>;
+	keep-power;		/* Necessary if PWM is inverted */
 	status = "okay";
 };
 #endif

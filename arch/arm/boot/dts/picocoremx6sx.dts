@@ -870,6 +870,7 @@ lcd_wvga {				\
 &pwm4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm4>;
+	keep-power;		/* Necessary if PWM is inverted */
 	status = "okay";
 };
 #endif /* CONFIG_PICOCOREMX6SX_PWM_A */
@@ -879,6 +880,7 @@ lcd_wvga {				\
 &pwm2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm2>;
+	keep-power;		/* Necessary if PWM is inverted */
 	status = "okay";
 };
 #endif /* CONFIG_PICOCOREMX6SX_BL_CTRL */
