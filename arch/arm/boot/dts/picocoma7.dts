@@ -297,7 +297,7 @@ lcd_wvga {				\
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
-		fb-names = "mxs-lcdif0";
+		fb-names = "mxs-lcdif";
 	};
 #endif
 
@@ -641,6 +641,7 @@ lcd_wvga {				\
 	measure-delay-time = <0xffff>;
 	pre-charge-time = <0xffff>;
 	/* In Kernel 4.14 the feature average-samples will be added */
+	touchscreen-average-samples = <32>;
 
 	/* Invert y-axis because of hardwarebug on PicoCOM2 SINTF2.
 	 * Remove this for other baseboards.
@@ -866,7 +867,6 @@ lcd_wvga {				\
 		};
 #endif
 
-#ifndef CONFIG_GARDEROS
 #ifdef CONFIG_PICOCOMA7_ETH_A
 		pinctrl_enet1: enet1grp {
 			fsl,pins = <
@@ -918,50 +918,6 @@ lcd_wvga {				\
 #endif
 			>;
 		};
-#endif
-#else
-#ifdef CONFIG_PICOCOMA7_ETH_A
-		pinctrl_enet1: enet1grp {
-			fsl,pins = <
-				/* FEC1 */
-				MX6UL_PAD_ENET1_RX_EN__ENET1_RX_EN	0x0b0e9
-				MX6UL_PAD_ENET1_RX_ER__ENET1_RX_ER	0x0b0e9
-				MX6UL_PAD_ENET1_RX_DATA0__ENET1_RDATA00	0x030e9
-				MX6UL_PAD_ENET1_RX_DATA1__ENET1_RDATA01	0x030e9
-				MX6UL_PAD_ENET1_TX_EN__ENET1_TX_EN	0x0b0e9
-				MX6UL_PAD_ENET1_TX_DATA0__ENET1_TDATA00	0x0b0e9
-				MX6UL_PAD_ENET1_TX_DATA1__ENET1_TDATA01	0x0b0e9
-				MX6UL_PAD_ENET1_TX_CLK__ENET1_REF_CLK1	0x4001b008
-				/* Phy reset IO pin */
-#ifndef CONFIG_PICOCOMA7_ULL
-				MX6UL_PAD_SNVS_TAMPER5__GPIO5_IO05			0x0b0b0
-#endif
-			>;
-		};
-#endif
-
-#ifdef CONFIG_PICOCOMA7_ETH_B
-		pinctrl_enet2: enet2grp {
-			fsl,pins = <
-				/* MDIO */
-				MX6UL_PAD_GPIO1_IO07__ENET2_MDC		0x1b0b0
-				MX6UL_PAD_GPIO1_IO06__ENET2_MDIO	0x1b829
-				/* FEC2 */
-				MX6UL_PAD_ENET2_RX_EN__ENET2_RX_EN	0x0b0e9
-				MX6UL_PAD_ENET2_RX_ER__ENET2_RX_ER	0x0b0e9
-				MX6UL_PAD_ENET2_RX_DATA0__ENET2_RDATA00	0x030e9
-				MX6UL_PAD_ENET2_RX_DATA1__ENET2_RDATA01	0x030e9
-				MX6UL_PAD_ENET2_TX_EN__ENET2_TX_EN	0x0b0e9
-				MX6UL_PAD_ENET2_TX_DATA0__ENET2_TDATA00	0x0b0e9
-				MX6UL_PAD_ENET2_TX_DATA1__ENET2_TDATA01	0x0b0e9
-				MX6UL_PAD_ENET2_TX_CLK__ENET2_REF_CLK2	0x4001b008
-				/* Phy reset IO pin */
-#ifndef CONFIG_PICOCOMA7_ULL
-				MX6UL_PAD_SNVS_TAMPER6__GPIO5_IO06			0x0b0b0
-#endif
-			>;
-		};
-#endif
 #endif
 
 #if (CONFIG_PICOCOMA7_LCDIF0 == DISPLAY_LCD)

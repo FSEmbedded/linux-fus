@@ -61,6 +61,7 @@ wvga {					\
  * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
  * - PCAP touch based on Sitronix controller (ST1633i), on Touch Connector
  * - PCAP touch based on Ilitek controller (ILI12xx), on Touch Connector
+ * - PCAP touch based on TI controller (TSC2004), on aStone2EDT2 adapter
  *
  * On efusA7UL, all touches use the same interrupt line and I2C bus, so do not
  * select more than one entry! Select none if you do not need touch support.
@@ -71,6 +72,7 @@ wvga {					\
 //#define CONFIG_EFUSA7UL_CAPTOUCH_FT5x06
 //#define CONFIG_EFUSA7UL_CAPTOUCH_SITRONIX
 //#define CONFIG_EFUSA7UL_CAPTOUCH_ILITEK
+//#define CONFIG_EFUSA7UL_CAPTOUCH_TSC2004
 
 /* CMA: Set 64 MB for Continuous Memory Allocator */
 #define CONFIG_EFUSA7UL_CMA_SIZE 0x4000000
@@ -187,7 +189,7 @@ wvga {					\
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
-		fb-names = "mxs-lcdif0";
+		fb-names = "mxs-lcdif";
 	};
 
 	backlight {
@@ -197,7 +199,7 @@ wvga {					\
 				     73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
 		power-supply = <&reg_backlight>;
-		fb-names = "mxs-lcdif0";
+		fb-names = "mxs-lcdif";
 	};
 
 	pxp_v4l2 {
@@ -748,11 +750,30 @@ wvga {					\
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
 	};
 #endif
+
+#ifdef CONFIG_EFUSA7UL_CAPTOUCH_TSC2004
+	tsc2004@4a {
+		compatible = "ti,tsc2004";
+		reg = <0x4a>;
+		vio-supply = <&reg_vref_3v3>;
+		interrupts-extended = <&gpio5 0 IRQ_TYPE_EDGE_FALLING>;
+		touchscreen-fuzz-x = <4>;
+		touchscreen-fuzz-y = <7>;
+		touchscreen-fuzz-pressure = <20>;
+		touchscreen-size-x = <4096>;
+		touchscreen-size-y = <4096>;
+		touchscreen-max-pressure = <2048>;
+		touchscreen-inverted-y;
+		ti,x-plate-ohms = <280>;
+		ti,pre-charge-time = <4>;
+		ti,sense-time-sel = <3>;
+	};
+#endif
 };
 
 /* I2C_B: Feature Connector (SKIT) */
 &i2c2 {
-	clock_frequency = <100000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";

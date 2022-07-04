@@ -589,7 +589,7 @@ chosen {
 #ifdef CONFIG_PICOCOM1_2_I2C_A
 /* I2C_A implemented by I2C2 */
 &i2c2 {
-	clock_frequency = <100000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";

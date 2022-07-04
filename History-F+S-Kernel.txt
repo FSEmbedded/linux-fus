@@ -169,6 +169,104 @@ Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
 
 
 
+linux-4.9.88-fsimx6ul-Y2020.03.1 (15.03.2022)
+---------------------------------------------
+Supported boards: efusA7UL, PicoCoreMX6UL, PicoCoreMX6UL100, PicoMODA7
+
+- Add support for RTC PCF85263
+- Improve support for imx6ul-touchscreen controller
+- Add driver for lontium-lt9211 RGB2LVDS converter
+- Add full device-tree support for PicoCOMA7
+- Improve support for picocoremx6ul revision 1.20
+- Add support for picocoremx6ul100 on architecture fsimx6ul
+- Add support for TSC2004 on fsimx6ul
+- Fix i2c frequency entry in device trees
+
+
+
+linux-4.9.88-fsimx6ul-Y2020.03 (27.03.2020)
+-------------------------------------------
+Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, efusA9X,  PicoCOMA9X, PicoCoreMX6SX,
+                  CONT1, efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2
+Not tested:       CUBEA5, armStoneA5,
+                  NetDCUA5, PicoCOMA5, AGATEWAY, HGATEWAY,CubeA7UL, Cube2.0
+
+- Fix  wrong framebuffer name in devicetree for picocoremx6ul & efusa7ull
+- Fix Gar1/2 i2c1 default speed
+
+
+
+linux-4.9.88-fsimx6x-Y2020.03 (24.03.2020)
+-------------------------------------------
+Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6SX,
+                  CONT1
+Not tested:       efusA7UL, PicoCoreMX6UL, PicoCOM1.2, GAR1, CUBEA5, armStoneA5,
+                  NetDCUA5, PicoCOMA5, AGATEWAY, HGATEWAY,CubeA7UL, Cube2.0
+
+
+
+
+linux-4.9.88-fsimx6-Y2020.03 (20.03.2020)
+-----------------------------------------
+Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2,
+Not tested:       efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, efusA9X,
+                  PicoCOMA9X, PicoCoreMX6SX, CONT1, CUBEA5, armStoneA5,
+                  NetDCUA5, PicoCOMA5, AGATEWAY, HGATEWAY,  CubeA7UL, Cube2.0,
+                  PicoCoreMX7ULP
+
+- Add LED support for gar2.dts
+- Add LVDS clock source and audio clock speed selection to fsimx6 boards
+- Fix video output dependency from enabled camera on imx6 boards
+- Fix clock problems on Vybrid
+- Rename VF610_PAD_PTA28__ESDHC1_DATA2 to VF610_PAD_PTA28__ESDHC1_DAT2
+- Make fsvybrid_defconfig more similar to other fs... defconfigs
+- Add F&S NAND driver vf610_nfc_fus
+- Add support for UART, ETH, LEDs and audio to armStoneA5
+- Add optional clock to sdhci-esdhc-imx.c
+- Add device tree for CubeA5
+- Add cube_defconfig for all Cube boards
+- Improve LED naming and iomux setup for GAR2
+- Improve imx-uart driver
+- Fix USB device port settings on fsvybrid
+- Add cont1.dtb to arch/arm/boot/dts/Makefile
+- Add device tree for AGATEWAY
+- Fix indentation in mxs-dma-ext.c to avoid compiler warning
+- Fix Ethernet LED trigger settings for GAR2
+- Handle several fb references in PWM backlight driver
+- Use meaningful framebuffer names im mxc_ipuv3_fb.c
+- Add device tree property unblank_delay to mxc_ipuv3_fb.c
+- Handle initial state in pwm_bl.c more consistently
+- Do not switch ldb regulator too often on i.MX6 platforms
+- Fix mxcfb driver probe fail
+- Fix wrong framebuffer name in devicetree for picomoda9
+- Add support for LCD-MI0700AJT
+- Add support for armstonea9r2 revision 1.20
+
+
+
+linux-4.9.88-fsimx7ulp-B2019.12 (18.12.2019)
+--------------------------------------------
+Supported boards: PicoCoreMX7ULP
+Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6SX,
+                  CONT1, efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2,
+                  CubeA7UL, Cube2.0CUBEA5, armStoneA5, NetDCUA5, PicoCOMA5,
+                  AGATEWAY, HGATEWAY
+
+- Fix Ubis crashes after resume from suspend
+- Fix ov564x_mipi devicetree entry
+- Improve mxs-dma driver by adding runtime_suspend support
+- Improve USB settings of picocoremx7ulp.dts
+- Improve picocoremx7ulp device-tree
+- Add support for mipi display TM050JDHG33
+- Improve picocoremx7ulp devicetree, set new default MIPI display
+- Improve picocormx7ulp lpi2c5 node
+
+
+
 linux-4.9.88-fsimx6sx-B2019.11 (29.11.2019)
 -------------------------------------------
 Supported boards: efusA9X, PicoCOMA9X, PicoCoreMX6SX, CONT1, efusA7UL,
