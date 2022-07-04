@@ -3,6 +3,61 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight
 
+
+linux-4.9.88-??? (not released yet)
+-----------------------------------
+This is a version that combines all i.MX6 variants for kernel 4.9.88
+again. They had split up in several loose ends. In addition this
+version contains the new Silex WLAN driver v4.5.25.38. If any new
+releases are done with 4.9.88, they should be based on this version.
+
+Changes since fsimx6ul-B2019.11.1:
+- Sysctl support for TCP/IP parameters for performance
+- cfg80211: Rename SAE_DATA to more generic AUTH_DATA
+- cfg80211: Add feature flag for Fast Initial Link Setup (FILS) as STA
+- cfg80211: Define IEEE P802.11ai (FILS) information elements
+- cfg80211: Add Fast Initial Link Setup (FILS) auth algs
+- cfg80211: Add KEK/nonces for FILS association frames
+- cfg80211: Add support for FILS shared key authentication offload
+- cfg80211: Add macros to indicate backport support for FILS
+- cfg80211: size various nl80211 messages correctly
+- cfg80211: Modifiying __cfg80211_connect_result API for FILS
+- cfg80211: Match 4.9.11+ kernel cfg80211 nl80211_attrs
+- cfg80211: Use a structure to pass connect response params
+- cfg80211: Define macro to indicate support for new cfg80211 connect api
+- cfg80211: SAE/OWE enable patch
+- sap-sae-owe
+- nl80211: fix nlmsg allocation in cfg80211_ft_event
+- cfg80211: fix NAN bands definition
+- Revert db.txt to default
+- Add Silex db.txt
+- nl80211: add NL80211_CMD_UPDATE_FT_IES to supported commands
+- sdhci-esdhc-imx: fix imx7 SDIO3.0, SDR104 tuning
+- Silex: add cfg80211_channel_switch_update_channel()
+- CFG80211: Add support for radartool.
+- Fix power save for qca9377 radio modules.
+- Activate internal regdb in fsimx6sx/ul
+- Fix SOC compatible entry for QBlissA9dl and QBlissA9r2q
+- Merge all fsimx6/fsimx6sx/fsimx6ul/fsimx7ulp versions based on 4.9.88
+
+
+
+linux-4.9.88-fsimx6ul-Y2020.03.1 (15.03.2022)
+---------------------------------------------
+Supported boards: efusA7UL, PicoCoreMX6UL, PicoCoreMX6UL100, PicoMODA7
+
+Changes since linux-4.9.88-fsimx6ul-2020.03:
+- Add support for RTC PCF85263
+- Improve support for imx6ul-touchscreen controller
+- Add driver for lontium-lt9211 RGB2LVDS converter
+- Add full device-tree support for PicoCOMA7
+- Improve support for picocoremx6ul revision 1.20
+- Add support for picocoremx6ul100 on architecture fsimx6ul
+- Add support for TSC2004 on fsimx6ul
+- Fix i2c frequency entry in device trees
+
+
+
 linux-4.9.88-fsimx6-B2020.04.1 (01.02.2022)
 -------------------------------------------
 Supported boards: armStoneA9, armStoneA9r2, efusA9, efusA9r2, PicoMODA9,
@@ -12,14 +67,34 @@ Not tested:       efusA9X, PicoCOMA9X, PicoCoreMX6SX, PicoCoreMX7ULP,
                   CONT1, efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2,
                   CubeA7UL, NetDCUA5, PicoCOMA5, HGATEWAY
 
+Changes since linux-4.9.88-fsimx6-B2020.04:
 - Add rx delay support for RTL8211F
 - Add support for efusA9r2
 - Add phy fixup for efusA9r2
 
 
 
+linux-4.9.88-fsimx6ul-B2019.11.1 (03.08.2021)
+---------------------------------------------
+Supported boards: efusA7UL, PicoCOM1.2, PicoCoreMX6UL, PicoCoreMX6UL100,
+                  PicoCOMA7
+Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+                  QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6SX,
+                  CONT1, CUBEA5, armStoneA5, NetDCUA5, PicoCOMA5, AGATEWAY,
+                  HGATEWAY, GAR1, GAR2, CubeA7UL, Cube2.0
+
+Changes since linux-4.9.88-fsimx6ul-B2019.11:
+- Add support for RTC PCF85263
+- Improve support for imx6ul-touchscreen controller
+- Add driver for lontium-lt9211 RGB2LVDS converter
+- Add full device-tree support for PicoCOMA7
+- Improve support for picocoremx6ul revision 1.20
+- Add support for picocoremx6ul100 on architecture fsimx6ul
+
+
+
 linux-4.9.88-picocoremx6sx-Y2020.03 (02.09.2020)
---------------------------------------------
+------------------------------------------------
 Supported boards: PicoCoreMX6SX, VC600
 Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
                   QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6UL
@@ -32,7 +107,7 @@ Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
 
 
 linux-4.9.88-picocoremx6sx-B2019.11 (21.08.2020)
---------------------------------------------
+------------------------------------------------
 Supported boards: PicoCoreMX6SX, VC600
 Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
                   QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6UL
@@ -49,7 +124,7 @@ Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
 
 
 linux-4.9.88-picocoremx6ul-B2019.11 (14.08.2020)
---------------------------------------------
+------------------------------------------------
 Supported boards: PicoCoreMX6UL
 Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
                   QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6SX
@@ -70,122 +145,15 @@ Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
                   HGATEWAY, efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2,
                   CubeA7UL, Cube2.0
 
+CHanges since linux-4.9.88-fsimx6ul-B2019.11:
 - Add full device-tree support for PicoCOMA7
 - Add imx6ul-touchscreen controller support
 - Add generic touchscreen functions to mx6ul-tsc driver
 
 
 
-linux-4.9.88-fsimx6x-Y2020.03 (24.03.2020)
--------------------------------------------
-Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
-                  QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6SX,
-                  CONT1
-Not tested:       efusA7UL, PicoCoreMX6UL, PicoCOM1.2, GAR1, CUBEA5, armStoneA5,
-                  NetDCUA5, PicoCOMA5, AGATEWAY, HGATEWAY,CubeA7UL, Cube2.0
-
-
-
-
-linux-4.9.88-fsimx6-Y2020.03 (20.03.2020)
------------------------------------------
-Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
-                  QBlissA9, QBlissA9r2,
-Not tested:       efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, efusA9X,
-                  PicoCOMA9X, PicoCoreMX6SX, CONT1, CUBEA5, armStoneA5,
-                  NetDCUA5, PicoCOMA5, AGATEWAY, HGATEWAY,  CubeA7UL, Cube2.0,
-                  PicoCoreMX7ULP
-
-- Add LED support for gar2.dts
-- Add LVDS clock source and audio clock speed selection to fsimx6 boards
-- Fix video output dependency from enabled camera on imx6 boards
-- Fix clock problems on Vybrid
-- Rename VF610_PAD_PTA28__ESDHC1_DATA2 to VF610_PAD_PTA28__ESDHC1_DAT2
-- Make fsvybrid_defconfig more similar to other fs... defconfigs
-- Add F&S NAND driver vf610_nfc_fus
-- Add support for UART, ETH, LEDs and audio to armStoneA5
-- Add optional clock to sdhci-esdhc-imx.c
-- Add device tree for CubeA5
-- Add cube_defconfig for all Cube boards
-- Improve LED naming and iomux setup for GAR2
-- Improve imx-uart driver
-- Fix USB device port settings on fsvybrid
-- Add cont1.dtb to arch/arm/boot/dts/Makefile
-- Add device tree for AGATEWAY
-- Fix indentation in mxs-dma-ext.c to avoid compiler warning
-- Fix Ethernet LED trigger settings for GAR2
-- Handle several fb references in PWM backlight driver
-- Use meaningful framebuffer names im mxc_ipuv3_fb.c
-- Add device tree property unblank_delay to mxc_ipuv3_fb.c
-- Handle initial state in pwm_bl.c more consistently
-- Do not switch ldb regulator too often on i.MX6 platforms
-- Fix mxcfb driver probe fail
-- Fix wrong framebuffer name in devicetree for picomoda9
-- Add support for LCD-MI0700AJT
-- Add support for armstonea9r2 revision 1.20
-
-
-
-linux-4.9.88-fsimx7ulp-B2019.12 (18.12.2019)
---------------------------------------------
-Supported boards: PicoCoreMX7ULP
-Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
-                  QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6SX,
-                  CONT1, efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2,
-                  CubeA7UL, Cube2.0CUBEA5, armStoneA5, NetDCUA5, PicoCOMA5,
-                  AGATEWAY, HGATEWAY
-
-- Fix Ubis crashes after resume from suspend
-- Fix ov564x_mipi devicetree entry
-- Improve mxs-dma driver by adding runtime_suspend support
-- Improve USB settings of picocoremx7ulp.dts
-- Improve picocoremx7ulp device-tree
-- Add support for mipi display TM050JDHG33
-- Improve picocoremx7ulp devicetree, set new default MIPI display
-- Improve picocormx7ulp lpi2c5 node
-
-
-
-linux-4.9.88-fsimx6sx-B2019.11 (29.11.2019)
--------------------------------------------
-Supported boards: efusA9X, PicoCOMA9X, PicoCoreMX6SX, CONT1, efusA7UL,
-                  PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2, CubeA7UL, Cube2.0
-Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
-                  QBlissA9, QBlissA9r2, CUBEA5, armStoneA5, NetDCUA5,
-                  PicoCOMA5, AGATEWAY, HGATEWAY
-
-- Support gstreamer imxv4l2sink with PXP on fsimx6sx
-- Add RTC IRQ settings on efusA9 and efusA9X
-- Add check for valid memory-region to auxcore-driver
-- Improve cont1 device tree - update board revision
-- Improve fsimx6sx/fsimx6ul device-trees
-- Improve picocoremx6sx device tree - fix bl_pwm
-- Improve PicoCoreMX6SX/UL device-tree - VLCD_ON pin
-- Remove rpmsg message from efusa9x.dts
-- Add missing RTS/CTS for UART_C on PicoCoreMX6SX
-
-
-
-linux-4.9.88-fsimx6ul-B2019.11.1 (03.08.2021)
----------------------------------------------
-Supported boards: efusA7UL, PicoCOM1.2, PicoCoreMX6UL, PicoCoreMX6UL100,
-                  PicoCOMA7
-Not tested:       armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
-                  QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6SX,
-                  CONT1, CUBEA5, armStoneA5, NetDCUA5, PicoCOMA5, AGATEWAY,
-                  HGATEWAY, GAR1, GAR2, CubeA7UL, Cube2.0
-
-- Add support for RTC PCF85263
-- Improve support for imx6ul-touchscreen controller
-- Add driver for lontium-lt9211 RGB2LVDS converter
-- Add full device-tree support for PicoCOMA7
-- Improve support for picocoremx6ul revision 1.20
-- Add support for picocoremx6ul100 on architecture fsimx6ul
-
-
-
 linux-4.9.88-fsimx6-B2020.04 (21.04.2020)
-------------------------------------------
+-----------------------------------------
 Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
                   QBlissA9, QBlissA9r2, armStoneA5, Cube2.0, CubeA5,
                   AGATEWAY
@@ -204,7 +172,7 @@ Not tested:       efusA9X, PicoCOMA9X, PicoCoreMX6SX, PicoCoreMX7ULP,
 
 
 linux-4.9.88-fsimx7ulp-Y2020.03 (30.03.2020)
--------------------------------------------
+--------------------------------------------
 Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
                   QBlissA9, QBlissA9r2, efusA9X,  PicoCOMA9X, PicoCoreMX6SX,
                   CONT1, efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2
@@ -213,21 +181,6 @@ Not tested:       CUBEA5, armStoneA5, NetDCUA5, PicoCOMA5, AGATEWAY,
                   HGATEWAY, CubeA7UL, Cube2.0
 
 (no changes)
-
-
-
-linux-4.9.88-fsimx6ul-Y2020.03.1 (15.03.2022)
----------------------------------------------
-Supported boards: efusA7UL, PicoCoreMX6UL, PicoCoreMX6UL100, PicoMODA7
-
-- Add support for RTC PCF85263
-- Improve support for imx6ul-touchscreen controller
-- Add driver for lontium-lt9211 RGB2LVDS converter
-- Add full device-tree support for PicoCOMA7
-- Improve support for picocoremx6ul revision 1.20
-- Add support for picocoremx6ul100 on architecture fsimx6ul
-- Add support for TSC2004 on fsimx6ul
-- Fix i2c frequency entry in device trees
 
 
 
@@ -244,7 +197,7 @@ Not tested:       CUBEA5, armStoneA5, NetDCUA5, PicoCOMA5, AGATEWAY,
 
 
 
-linux-4.9.88-fsimx6x-Y2020.03 (24.03.2020)
+linux-4.9.88-fsimx6sx-Y2020.03 (24.03.2020)
 -------------------------------------------
 Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
                   QBlissA9, QBlissA9r2, efusA9X, PicoCOMA9X, PicoCoreMX6SX,
