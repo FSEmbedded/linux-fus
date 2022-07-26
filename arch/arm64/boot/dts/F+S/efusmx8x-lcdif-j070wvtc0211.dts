@@ -154,12 +154,12 @@
 };
 #endif
 
-#ifdef CONFIG_EFUSMX8X_CAPTOUCH_MXT224
 &i2c1 {
 	#address-cells = <1>;
 	#size-cells = <0>;
 	status = "okay";
 
+#ifdef CONFIG_EFUSMX8X_CAPTOUCH_MXT224
 	/* Atmel PCAP touch on Touch-Connector (I2C) */
 	mxt224@4a {
 		compatible = "atmel,maxtouch";
@@ -169,15 +169,9 @@
 		atmel,cfg_name = "atmel/mxt224.cfg";
 		atmel,reset-gpio = <&lsio_gpio1 1 GPIO_ACTIVE_LOW>;
 	};
-};
 #endif
 
 #ifdef CONFIG_EFUSMX8X_CAPTOUCH_FT5x06
-&i2c0_mipi_lvds0 {
-	#address-cells = <1>;
-	#size-cells = <0>;
-	status = "okay";
-
 	focaltech@38 {
 		compatible = "focaltech,fts";
 		reg = <0x38>;
@@ -190,5 +184,5 @@
 		focaltech,num-max-touches = <10>;
 		focaltech,display-coords = <0 0 800 480>;
 	};
-};
 #endif
+};

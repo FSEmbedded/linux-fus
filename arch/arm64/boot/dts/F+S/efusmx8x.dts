@@ -720,7 +720,7 @@
 	non-removable;
 #endif
 #ifdef CONFIG_EFUSMX8X_SD_A_WP
-	wp-gpios = <&lsio_gpio4 21 GPIO_ACTIVE_LOW>;
+	wp-gpios = <&lsio_gpio4 21 GPIO_ACTIVE_HIGH>;
 #endif
 	status = "okay";
 };
@@ -763,6 +763,7 @@
 	compatible = "usb1286,204e";
     };
 };
+
 #endif
 
 &dc0_pc {
