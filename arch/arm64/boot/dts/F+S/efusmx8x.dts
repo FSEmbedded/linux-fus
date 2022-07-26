@@ -76,6 +76,7 @@
 
 #include "../freescale/imx8qxp.dtsi"
 #include <dt-bindings/pwm/pwm.h>
+#include <dt-bindings/rtc/nxp,pcf85263.h>
 
 / {
     model = "F&S efusMX8X";
@@ -551,13 +552,23 @@
 	};
 #endif
 
+#if CONFIG_EFUSMX8X_BOARD_REVISION < 110
 	rtc85063@51 {
-		#address-cells = <1>;
-		#size-cells = <0>;
 		compatible = "nxp,pcf85063";
 		reg = <0x51>;
 		status = "okay";
 	};
+#else
+	rtc85263@51 {
+		compatible = "nxp,pcf85263";
+		reg = <0x51>;
+		clock-out = <PCF85263_CLK_OUT_32p768kHz>;
+
+		quartz-load-capacitance = <PCF85263_QUARTZCAP_12p5pF>;
+		quartz-drive-strength = <PCF85263_QUARTZDRIVE_LOW>;
+		status = "okay";
+	};
+#endif
 };
 #endif
 
