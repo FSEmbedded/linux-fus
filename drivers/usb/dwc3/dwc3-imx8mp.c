@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/**
+/*
  * dwc3-imx8mp.c - NXP imx8mp Specific Glue layer
  *
  * Copyright (c) 2020 NXP.
@@ -7,12 +7,12 @@
 
 #include <linux/busfreq-imx.h>
 #include <linux/clk.h>
-#include <linux/module.h>
-#include <linux/kernel.h>
 #include <linux/interrupt.h>
-#include <linux/platform_device.h>
 #include <linux/io.h>
+#include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 
 #include "core.h"
@@ -88,11 +88,6 @@ static irqreturn_t dwc3_imx8mp_interrupt(int irq, void *_dwc3_imx)
 	disable_irq_nosync(dwc3_imx->irq);
 	dwc3_imx->wakeup_pending = true;
 
-	if (!dwc) {
-		pm_runtime_resume(dwc3_imx->dev);
-		return IRQ_HANDLED;
-	}
-
 	if ((dwc->current_dr_role == DWC3_GCTL_PRTCAP_HOST) && dwc->xhci)
 		pm_runtime_resume(&dwc->xhci->dev);
 	else if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_DEVICE)
@@ -123,8 +118,7 @@ static void dwc3_imx8mp_set_role_post(struct dwc3 *dwc, u32 role)
 }
 
 static struct xhci_plat_priv dwc3_imx8mp_xhci_priv = {
-	.quirks = XHCI_NO_64BIT_SUPPORT |
-		  XHCI_MISSING_CAS |
+	.quirks = XHCI_MISSING_CAS |
 		  XHCI_SKIP_PHY_INIT,
 };
 
@@ -177,7 +171,7 @@ static int dwc3_imx8mp_probe(struct platform_device *pdev)
 	err = clk_prepare_enable(dwc3_imx->hsio_clk);
 	if (err) {
 		dev_err(dev, "Failed to enable hsio clk, err=%d\n", err);
-		goto disable_clk;
+		return err;
 	}
 
 	dwc3_imx->suspend_clk = devm_clk_get(dev, "suspend");
@@ -196,16 +190,9 @@ static int dwc3_imx8mp_probe(struct platform_device *pdev)
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
 		err = irq;
-		goto disable_clk;
+		goto disable_clks;
 	}
 	dwc3_imx->irq = irq;
-
-	err = devm_request_threaded_irq(dev, irq, NULL, dwc3_imx8mp_interrupt,
-					IRQF_ONESHOT, dev_name(dev), dwc3_imx);
-	if (err) {
-		dev_err(dev, "failed to request IRQ #%d --> %d\n", irq, err);
-		goto disable_clk;
-	}
 
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
@@ -213,8 +200,9 @@ static int dwc3_imx8mp_probe(struct platform_device *pdev)
 	if (err < 0)
 		goto disable_rpm;
 
-	dwc3_np = of_get_child_by_name(node, "dwc3");
+	dwc3_np = of_get_compatible_child(node, "snps,dwc3");
 	if (!dwc3_np) {
+		err = -ENODEV;
 		dev_err(dev, "failed to find dwc3 core child\n");
 		goto disable_rpm;
 	}
@@ -233,6 +221,13 @@ static int dwc3_imx8mp_probe(struct platform_device *pdev)
 	}
 	of_node_put(dwc3_np);
 
+	err = devm_request_threaded_irq(dev, irq, NULL, dwc3_imx8mp_interrupt,
+					IRQF_ONESHOT, dev_name(dev), dwc3_imx);
+	if (err) {
+		dev_err(dev, "failed to request IRQ #%d --> %d\n", irq, err);
+		goto depopulate;
+	}
+
 	device_set_wakeup_capable(dev, true);
 	pm_runtime_put(dev);
 
@@ -245,7 +240,7 @@ err_node_put:
 disable_rpm:
 	pm_runtime_disable(dev);
 	pm_runtime_put_noidle(dev);
-disable_clk:
+disable_clks:
 	clk_disable_unprepare(dwc3_imx->suspend_clk);
 disable_hsio_clk:
 	clk_disable_unprepare(dwc3_imx->hsio_clk);
@@ -262,6 +257,8 @@ static int dwc3_imx8mp_remove(struct platform_device *pdev)
 
 	pm_runtime_get_sync(dev);
 	of_platform_depopulate(dev);
+
+	clk_disable_unprepare(dwc3_imx->suspend_clk);
 	clk_disable_unprepare(dwc3_imx->hsio_clk);
 	release_bus_freq(BUS_FREQ_HIGH);
 	pm_runtime_disable(dev);
@@ -303,7 +300,7 @@ static int __maybe_unused dwc3_imx8mp_resume(struct dwc3_imx8mp *dwc3_imx,
 
 	if (dwc3_imx->wakeup_pending) {
 		dwc3_imx->wakeup_pending = false;
-		if (dwc && dwc->current_dr_role == DWC3_GCTL_PRTCAP_DEVICE) {
+		if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_DEVICE) {
 			pm_runtime_mark_last_busy(dwc->dev);
 			pm_runtime_put_autosuspend(dwc->dev);
 		} else {
@@ -332,7 +329,6 @@ static int __maybe_unused dwc3_imx8mp_pm_suspend(struct device *dev)
 		clk_disable_unprepare(dwc3_imx->suspend_clk);
 
 	clk_disable_unprepare(dwc3_imx->hsio_clk);
-
 	dev_dbg(dev, "dwc3 imx8mp pm suspend.\n");
 
 	return ret;

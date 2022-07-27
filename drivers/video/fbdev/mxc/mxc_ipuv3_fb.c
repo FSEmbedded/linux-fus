@@ -2,7 +2,7 @@
  * Copyright 2004-2016 Freescale Semiconductor, Inc. All Rights Reserved.
  */
 
-/* Copyright 2019 NXP */
+/* Copyright 2019,2021,2022 NXP */
 
 /*
  * The code contained herein is licensed under the GNU General Public
@@ -599,6 +599,7 @@ static int _setup_disp_channel2(struct fb_info *fbi)
 				}
 			}
 		} else {
+			pre.field_inverse = 0;
 			pre.interlaced = 0;
 			pre.interlace_offset = 0;
 		}
@@ -1083,7 +1084,7 @@ static void mxcfb_check_resolve(struct fb_info *fbi)
 	case IPU_PIX_FMT_GPU16_ST:
 	case IPU_PIX_FMT_GPU16_SRT:
 		mxc_fbi->gpu_sec_buf_off = 0;
-		/* fall-through */
+		fallthrough;
 	case IPU_PIX_FMT_GPU32_SB_ST:
 	case IPU_PIX_FMT_GPU32_SB_SRT:
 	case IPU_PIX_FMT_GPU16_SB_ST:
@@ -3790,4 +3791,3 @@ module_exit(mxcfb_exit);
 MODULE_AUTHOR("Freescale Semiconductor, Inc.");
 MODULE_DESCRIPTION("MXC framebuffer driver");
 MODULE_LICENSE("GPL");
-MODULE_SUPPORTED_DEVICE("fb");

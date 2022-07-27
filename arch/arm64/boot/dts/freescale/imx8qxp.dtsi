@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017-2019 NXP
+ * Copyright 2017-2020 NXP
  *	Dong Aisheng <aisheng.dong@nxp.com>
  */
 
 #include <dt-bindings/clock/imx8-clock.h>
+#include <dt-bindings/clock/imx8-lpcg.h>
 #include <dt-bindings/firmware/imx/rsrc.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
@@ -152,7 +153,7 @@
 	};
 
 	pmu {
-		compatible = "arm,armv8-pmuv3";
+		compatible = "arm,cortex-a35-pmu";
 		interrupts = <GIC_PPI 7 IRQ_TYPE_LEVEL_HIGH>;
 	};
 
@@ -307,6 +308,7 @@
 	};
 
 	/* sorted in register address */
+	#include "imx8-ss-img.dtsi"
 	#include "imx8-ss-security.dtsi"
 	#include "imx8-ss-cm40.dtsi"
 	#include "imx8-ss-vpu.dtsi"
@@ -316,16 +318,15 @@
 	#include "imx8-ss-ddr.dtsi"
 	#include "imx8-ss-lsio.dtsi"
 	#include "imx8-ss-hsio.dtsi"
-	#include "imx8-ss-img.dtsi"
 	#include "imx8-ss-gpu0.dtsi"
 	#include "imx8-ss-lcdif.dtsi"
 };
 
+#include "imx8qxp-ss-img.dtsi"
 #include "imx8qxp-ss-adma.dtsi"
 #include "imx8qxp-ss-conn.dtsi"
 #include "imx8qxp-ss-lsio.dtsi"
 #include "imx8qxp-ss-hsio.dtsi"
-#include "imx8qxp-ss-img.dtsi"
 #include "imx8qxp-ss-dc.dtsi"
 #include "imx8qxp-ss-lvds.dtsi"
 #include "imx8qxp-ss-gpu.dtsi"

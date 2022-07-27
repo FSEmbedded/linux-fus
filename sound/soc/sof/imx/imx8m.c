@@ -21,7 +21,7 @@
 #include <linux/firmware/imx/dsp.h>
 
 #include "../ops.h"
-#include "../sof-audio.h"
+#include "../sof-of-dev.h"
 #include "imx-common.h"
 
 #define MBOX_OFFSET	0x800000
@@ -379,7 +379,14 @@ static int imx8m_remove(struct snd_sof_dev *sdev)
 /* on i.MX8 there is 1 to 1 match between type and BAR idx */
 static int imx8m_get_bar_index(struct snd_sof_dev *sdev, u32 type)
 {
-	return type;
+	/* Only IRAM and SRAM bars are valid */
+	switch (type) {
+	case SOF_FW_BLK_TYPE_IRAM:
+	case SOF_FW_BLK_TYPE_SRAM:
+		return type;
+	default:
+		return -EINVAL;
+	}
 }
 
 static struct snd_soc_dai_driver imx8m_dai[] = {
@@ -420,7 +427,7 @@ int imx8m_resume(struct snd_sof_dev *sdev)
 	struct imx8m_priv *priv = (struct imx8m_priv *)sdev->pdata->hw_pdata;
 	int i;
 
-	imx8m_prepare_clocks(priv->sdev);
+	imx8m_prepare_clocks(sdev);
 
 	for (i = 0; i < DSP_MU_CHAN_NUM; i++)
 		imx_dsp_request_channel(priv->dsp_ipc, i);
@@ -436,7 +443,7 @@ int imx8m_suspend(struct snd_sof_dev *sdev)
 	for (i = 0; i < DSP_MU_CHAN_NUM; i++)
 		imx_dsp_free_channel(priv->dsp_ipc, i);
 
-	imx8m_disable_clocks(priv->sdev);
+	imx8m_disable_clocks(sdev);
 
 	return 0;
 }
@@ -498,7 +505,7 @@ static int imx8m_dsp_suspend(struct snd_sof_dev *sdev, unsigned int target_state
 }
 
 /* i.MX8 ops */
-struct snd_sof_dsp_ops sof_imx8m_ops = {
+static const struct snd_sof_dsp_ops sof_imx8m_ops = {
 	/* probe and remove */
 	.probe		= imx8m_probe,
 	.remove		= imx8m_remove,
@@ -555,7 +562,32 @@ struct snd_sof_dsp_ops sof_imx8m_ops = {
 		SNDRV_PCM_INFO_PAUSE |
 		SNDRV_PCM_INFO_NO_PERIOD_WAKEUP,
 };
-EXPORT_SYMBOL(sof_imx8m_ops);
+
+static struct sof_dev_desc sof_of_imx8mp_desc = {
+	.default_fw_path = "imx/sof",
+	.default_tplg_path = "imx/sof-tplg",
+	.default_fw_filename = "sof-imx8m.ri",
+	.nocodec_tplg_filename = "sof-imx8-nocodec.tplg",
+	.ops = &sof_imx8m_ops,
+};
+
+static const struct of_device_id sof_of_imx8m_ids[] = {
+	{ .compatible = "fsl,imx8mp-dsp", .data = &sof_of_imx8mp_desc},
+	{ }
+};
+MODULE_DEVICE_TABLE(of, sof_of_imx8m_ids);
+
+/* DT driver definition */
+static struct platform_driver snd_sof_of_imx8m_driver = {
+	.probe = sof_of_probe,
+	.remove = sof_of_remove,
+	.driver = {
+		.name = "sof-audio-of-imx8m",
+		.pm = &sof_of_pm,
+		.of_match_table = sof_of_imx8m_ids,
+	},
+};
+module_platform_driver(snd_sof_of_imx8m_driver);
 
 MODULE_IMPORT_NS(SND_SOC_SOF_XTENSA);
 MODULE_LICENSE("Dual BSD/GPL");

@@ -65,6 +65,7 @@ struct imx2_wdt_device {
 	struct regmap *regmap;
 	struct watchdog_device wdog;
 	bool ext_reset;
+	bool clk_is_on;
 };
 
 static bool nowayout = WATCHDOG_NOWAYOUT;
@@ -159,6 +160,9 @@ static inline bool imx2_wdt_is_running(struct imx2_wdt_device *wdev)
 static int imx2_wdt_ping(struct watchdog_device *wdog)
 {
 	struct imx2_wdt_device *wdev = watchdog_get_drvdata(wdog);
+
+	if (!wdev->clk_is_on)
+		return 0;
 
 	regmap_write(wdev->regmap, IMX2_WDT_WSR, IMX2_WDT_SEQ1);
 	regmap_write(wdev->regmap, IMX2_WDT_WSR, IMX2_WDT_SEQ2);
@@ -301,6 +305,8 @@ static int __init imx2_wdt_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	wdev->clk_is_on = true;
+
 	regmap_read(wdev->regmap, IMX2_WDT_WRSR, &val);
 	wdog->bootstatus = val & IMX2_WDT_WRSR_TOUT ? WDIOF_CARDRESET : 0;
 
@@ -311,6 +317,7 @@ static int __init imx2_wdt_probe(struct platform_device *pdev)
 	watchdog_set_nowayout(wdog, nowayout);
 	watchdog_set_restart_priority(wdog, 128);
 	watchdog_init_timeout(wdog, timeout, dev);
+	watchdog_stop_ping_on_suspend(wdog);
 
 	if (imx2_wdt_is_running(wdev)) {
 		imx2_wdt_set_timeout(wdog, wdog->timeout);
@@ -357,16 +364,11 @@ static int __maybe_unused imx2_wdt_suspend(struct device *dev)
 		 */
 		__imx2_wdt_set_timeout(wdog, IMX2_WDT_MAX_TIME);
 		imx2_wdt_ping(wdog);
-
-		/*
-		 * clear WDOG_HW_RUNNING to prevent watchdog_ping_work running
-		 * before imx2_wdt_resume where clock enabled, otherwise kernel
-		 * will hang and watchdog reset happen then.
-		 */
-		clear_bit(WDOG_HW_RUNNING, &wdog->status);
 	}
 
 	clk_disable_unprepare(wdev->clk);
+
+	wdev->clk_is_on = false;
 
 	return 0;
 }
@@ -382,6 +384,8 @@ static int __maybe_unused imx2_wdt_resume(struct device *dev)
 	if (ret)
 		return ret;
 
+	wdev->clk_is_on = true;
+
 	if (watchdog_active(wdog) && !imx2_wdt_is_running(wdev)) {
 		/*
 		 * If the watchdog is still active and resumes
@@ -393,7 +397,6 @@ static int __maybe_unused imx2_wdt_resume(struct device *dev)
 	if (imx2_wdt_is_running(wdev)) {
 		imx2_wdt_set_timeout(wdog, wdog->timeout);
 		imx2_wdt_ping(wdog);
-		set_bit(WDOG_HW_RUNNING, &wdog->status);
 	}
 
 	return 0;

@@ -1354,6 +1354,7 @@ static void btmrvl_sdio_coredump(struct device *dev)
 	u8 *dbg_ptr, *end_ptr, *fw_dump_data, *fw_dump_ptr;
 	u8 dump_num = 0, idx, i, read_reg, doneflag = 0;
 	u32 memory_size, fw_dump_len = 0;
+	int size = 0;
 
 	card = sdio_get_drvdata(func);
 	priv = card->priv;
@@ -1465,9 +1466,7 @@ static void btmrvl_sdio_coredump(struct device *dev)
 					BT_ERR("Allocated buffer not enough");
 			}
 
-			if (stat != RDWR_STATUS_DONE) {
-				continue;
-			} else {
+			if (stat == RDWR_STATUS_DONE) {
 				BT_INFO("%s done: size=0x%tx",
 					entry->mem_name,
 					dbg_ptr - entry->mem_ptr);
@@ -1484,7 +1483,7 @@ done:
 	if (fw_dump_len == 0)
 		return;
 
-	fw_dump_data = vzalloc(fw_dump_len+1);
+	fw_dump_data = vzalloc(fw_dump_len + 1);
 	if (!fw_dump_data) {
 		BT_ERR("Vzalloc fw_dump_data fail!");
 		return;
@@ -1499,20 +1498,18 @@ done:
 		struct memory_type_mapping *entry = &mem_type_mapping_tbl[idx];
 
 		if (entry->mem_ptr) {
-			strcpy(fw_dump_ptr, "========Start dump ");
-			fw_dump_ptr += strlen("========Start dump ");
+			size += scnprintf(fw_dump_ptr + size,
+					  fw_dump_len + 1 - size,
+					  "========Start dump %s========\n",
+					  entry->mem_name);
 
-			strcpy(fw_dump_ptr, entry->mem_name);
-			fw_dump_ptr += strlen(entry->mem_name);
+			memcpy(fw_dump_ptr + size, entry->mem_ptr,
+			       entry->mem_size);
+			size += entry->mem_size;
 
-			strcpy(fw_dump_ptr, "========\n");
-			fw_dump_ptr += strlen("========\n");
-
-			memcpy(fw_dump_ptr, entry->mem_ptr, entry->mem_size);
-			fw_dump_ptr += entry->mem_size;
-
-			strcpy(fw_dump_ptr, "\n========End dump========\n");
-			fw_dump_ptr += strlen("\n========End dump========\n");
+			size += scnprintf(fw_dump_ptr + size,
+					  fw_dump_len + 1 - size,
+					  "\n========End dump========\n");
 
 			vfree(mem_type_mapping_tbl[idx].mem_ptr);
 			mem_type_mapping_tbl[idx].mem_ptr = NULL;

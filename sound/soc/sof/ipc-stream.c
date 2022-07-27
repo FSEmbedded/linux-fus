@@ -35,8 +35,8 @@ void sof_ipc_msg_data(struct snd_sof_dev *sdev,
 	} else {
 		struct snd_pcm_substream *substream = sps->substream;
 		struct snd_compr_stream *cstream = sps->cstream;
-		struct sof_pcm_stream *pstream;
-		struct sof_compr_stream *sstream;
+		struct sof_pcm_stream *pstream = NULL;
+		struct sof_compr_stream *sstream = NULL;
 		size_t posn_offset;
 
 		if (substream) {
@@ -84,6 +84,13 @@ int sof_stream_pcm_open(struct snd_sof_dev *sdev,
 
 	/* binding pcm substream to hda stream */
 	substream->runtime->private_data = stream;
+
+	/* align to DMA minimum transfer size */
+	snd_pcm_hw_constraint_step(substream->runtime, 0, SNDRV_PCM_HW_PARAM_PERIOD_BYTES, 4);
+
+	/* avoid circular buffer wrap in middle of period */
+	snd_pcm_hw_constraint_integer(substream->runtime,
+				      SNDRV_PCM_HW_PARAM_PERIODS);
 
 	return 0;
 }

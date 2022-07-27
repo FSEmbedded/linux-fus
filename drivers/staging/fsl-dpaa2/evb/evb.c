@@ -34,6 +34,7 @@
 #include <linux/etherdevice.h>
 #include <linux/rtnetlink.h>
 #include <linux/if_vlan.h>
+#include <linux/ethtool.h>
 
 #include <uapi/linux/if_bridge.h>
 #include <net/netlink.h>

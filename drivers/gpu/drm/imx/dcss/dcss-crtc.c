@@ -4,6 +4,7 @@
  */
 
 #include <drm/bridge/cdns-mhdp.h>
+#include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic_state_helper.h>
 #include <drm/drm_connector.h>
@@ -110,13 +111,13 @@ static const struct drm_crtc_funcs dcss_crtc_funcs = {
 };
 
 static void dcss_crtc_atomic_begin(struct drm_crtc *crtc,
-				   struct drm_crtc_state *old_crtc_state)
+				   struct drm_atomic_state *state)
 {
 	drm_crtc_vblank_on(crtc);
 }
 
 static void dcss_crtc_atomic_flush(struct drm_crtc *crtc,
-				   struct drm_crtc_state *old_crtc_state)
+				   struct drm_atomic_state *state)
 {
 	struct dcss_crtc *dcss_crtc = to_dcss_crtc(crtc);
 	struct dcss_dev *dcss = dcss_crtc->base.dev->dev_private;
@@ -134,8 +135,10 @@ static void dcss_crtc_atomic_flush(struct drm_crtc *crtc,
 }
 
 static void dcss_crtc_atomic_enable(struct drm_crtc *crtc,
-				    struct drm_crtc_state *old_crtc_state)
+				    struct drm_atomic_state *state)
 {
+	struct drm_crtc_state *old_crtc_state = drm_atomic_get_old_crtc_state(state,
+									      crtc);
 	struct dcss_crtc *dcss_crtc = to_dcss_crtc(crtc);
 	struct dcss_dev *dcss = dcss_crtc->base.dev->dev_private;
 	struct dcss_crtc_state *dcss_crtc_state =
@@ -169,8 +172,10 @@ static void dcss_crtc_atomic_enable(struct drm_crtc *crtc,
 }
 
 static void dcss_crtc_atomic_disable(struct drm_crtc *crtc,
-				     struct drm_crtc_state *old_crtc_state)
+				     struct drm_atomic_state *state)
 {
+	struct drm_crtc_state *old_crtc_state = drm_atomic_get_old_crtc_state(state,
+									      crtc);
 	struct dcss_crtc *dcss_crtc = to_dcss_crtc(crtc);
 	struct dcss_dev *dcss = dcss_crtc->base.dev->dev_private;
 	struct drm_display_mode *mode = &crtc->state->adjusted_mode;

@@ -51,6 +51,8 @@ struct nfs4_pnfs_ds_addr {
 	size_t			da_addrlen;
 	struct list_head	da_node;  /* nfs4_pnfs_dev_hlist dev_dslist */
 	char			*da_remotestr;	/* human readable addr+port */
+	const char		*da_netid;
+	int			da_transport;
 };
 
 struct nfs4_pnfs_ds {
@@ -515,7 +517,7 @@ pnfs_mark_request_commit(struct nfs_page *req, struct pnfs_layout_segment *lseg,
 {
 	struct pnfs_ds_commit_info *fl_cinfo = cinfo->ds;
 
-	if (!lseg || !fl_cinfo->ops->mark_request_commit)
+	if (!lseg || !fl_cinfo->ops || !fl_cinfo->ops->mark_request_commit)
 		return false;
 	fl_cinfo->ops->mark_request_commit(req, lseg, cinfo, ds_commit_idx);
 	return true;

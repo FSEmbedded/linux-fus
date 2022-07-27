@@ -213,7 +213,6 @@
 		compatible = "arm,cortex-a53-pmu";
 		interrupts = <GIC_PPI 7 IRQ_TYPE_LEVEL_HIGH>;
 		interrupt-parent = <&gic>;
-		interrupt-affinity = <&A53_0>, <&A53_1>, <&A53_2>, <&A53_3>;
 	};
 
 	psci {
@@ -284,7 +283,7 @@
 	};
 
 	soc@0 {
-		compatible = "fsl,imx8mq-soc", "simple-bus";
+		compatible = "simple-bus";
 		#address-cells = <1>;
 		#size-cells = <1>;
 		ranges = <0x0 0x0 0x0 0x3e000000>;
@@ -542,7 +541,7 @@
 				assigned-clock-rates = <0>, <0>, <0>, <594000000>;
 				status = "disabled";
 
-				port@0 {
+				port {
 					lcdif_mipi_dsi: endpoint {
 						remote-endpoint = <&mipi_dsi_lcdif_in>;
 					};
@@ -567,7 +566,7 @@
 			};
 
 			ocotp: efuse@30350000 {
-				compatible = "fsl,imx8mq-ocotp", "syscon";
+				compatible = "fsl,imx8mq-ocotp", "syscon", "simple-mfd";
 				reg = <0x30350000 0x10000>;
 				clocks = <&clk IMX8MQ_CLK_OCOTP_ROOT>;
 				#address-cells = <1>;
@@ -581,8 +580,14 @@
 					reg = <0x10 4>;
 				};
 
-				fec_mac_address: mac-address@640 {
+				fec_mac_address: mac-address@90 {
 					reg = <0x90 6>;
+				};
+
+				imx8mq_soc: imx8mq-soc {
+					compatible = "fsl,imx8mq-soc";
+					nvmem-cells = <&imx8mq_uid>;
+					nvmem-cell-names = "soc_unique_id";
 				};
 			};
 
@@ -648,20 +653,30 @@
 				              "clk_ext3", "clk_ext4";
 				assigned-clocks = <&clk IMX8MQ_CLK_A53_SRC>,
 						  <&clk IMX8MQ_CLK_A53_CORE>,
-						  <&clk IMX8MQ_CLK_NAND_USDHC_BUS>,
 						  <&clk IMX8MQ_CLK_NOC>,
 						  <&clk IMX8MQ_CLK_AUDIO_AHB>,
+						  <&clk IMX8MQ_AUDIO_PLL1_BYPASS>,
+						  <&clk IMX8MQ_AUDIO_PLL2_BYPASS>,
 						  <&clk IMX8MQ_AUDIO_PLL1>,
-						  <&clk IMX8MQ_AUDIO_PLL2>;
-				assigned-clock-rates = <0>, <0>, <266000000>,
-						       <800000000>, <0>,
+						  <&clk IMX8MQ_AUDIO_PLL2>,
+						  <&clk IMX8MQ_CLK_NAND_USDHC_BUS>;
+				assigned-clock-rates = <0>, <0>,
+						       <800000000>,
+						       <0>,
+						       <0>,
+						       <0>,
 						       <786432000>,
-						       <722534400>;
+						       <722534400>,
+						       <0>;
 				assigned-clock-parents = <&clk IMX8MQ_SYS1_PLL_800M>,
 							 <&clk IMX8MQ_ARM_PLL_OUT>,
-							 <0>,
 							 <&clk IMX8MQ_SYS1_PLL_800M>,
-							 <&clk IMX8MQ_SYS2_PLL_500M>;
+							 <&clk IMX8MQ_SYS2_PLL_500M>,
+							 <&clk IMX8MQ_AUDIO_PLL1>,
+							 <&clk IMX8MQ_AUDIO_PLL2>,
+							 <0>,
+						         <0>,
+							 <&clk IMX8MQ_SYS1_PLL_266M>;
 			};
 
 			src: reset-controller@30390000 {
@@ -864,6 +879,8 @@
 				clocks = <&clk IMX8MQ_CLK_ECSPI1_ROOT>,
 					 <&clk IMX8MQ_CLK_ECSPI1_ROOT>;
 				clock-names = "ipg", "per";
+				dmas = <&sdma1 0 7 1>, <&sdma1 1 7 2>;
+				dma-names = "rx", "tx";
 				status = "disabled";
 			};
 
@@ -876,6 +893,8 @@
 				clocks = <&clk IMX8MQ_CLK_ECSPI2_ROOT>,
 					 <&clk IMX8MQ_CLK_ECSPI2_ROOT>;
 				clock-names = "ipg", "per";
+				dmas = <&sdma1 2 7 1>, <&sdma1 3 7 2>;
+				dma-names = "rx", "tx";
 				status = "disabled";
 			};
 
@@ -888,6 +907,8 @@
 				clocks = <&clk IMX8MQ_CLK_ECSPI3_ROOT>,
 					 <&clk IMX8MQ_CLK_ECSPI3_ROOT>;
 				clock-names = "ipg", "per";
+				dmas = <&sdma1 4 7 1>, <&sdma1 5 7 2>;
+				dma-names = "rx", "tx";
 				status = "disabled";
 			};
 
@@ -1067,9 +1088,14 @@
 				reg = <0x30a00300 0x100>;
 				clocks = <&clk IMX8MQ_CLK_DSI_PHY_REF>;
 				clock-names = "phy_ref";
-				assigned-clocks = <&clk IMX8MQ_CLK_DSI_PHY_REF>;
-				assigned-clock-parents = <&clk IMX8MQ_VIDEO_PLL1_OUT>;
-				assigned-clock-rates = <24000000>;
+				assigned-clocks = <&clk IMX8MQ_VIDEO_PLL1_REF_SEL>,
+						  <&clk IMX8MQ_VIDEO_PLL1_BYPASS>,
+						  <&clk IMX8MQ_CLK_DSI_PHY_REF>,
+						  <&clk IMX8MQ_VIDEO_PLL1>;
+				assigned-clock-parents = <&clk IMX8MQ_CLK_25M>,
+						  <&clk IMX8MQ_VIDEO_PLL1>,
+						  <&clk IMX8MQ_VIDEO_PLL1_OUT>;
+				assigned-clock-rates = <0>, <0>, <24000000>, <594000000>;
 				#phy-cells = <0>;
 				power-domains = <&pgc_mipi>;
 				status = "disabled";
@@ -1298,9 +1324,11 @@
 				opp-133M {
 					opp-hz = /bits/ 64 <133333333>;
 				};
+
 				opp-400M {
 					opp-hz = /bits/ 64 <400000000>;
 				};
+
 				opp-800M {
 					opp-hz = /bits/ 64 <800000000>;
 				};
@@ -1511,8 +1539,8 @@
 			                <0 0 0 2 &gic GIC_SPI 124 IRQ_TYPE_LEVEL_HIGH>,
 			                <0 0 0 3 &gic GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>,
 			                <0 0 0 4 &gic GIC_SPI 122 IRQ_TYPE_LEVEL_HIGH>;
-			linux,pci-domain = <0>;
 			fsl,max-link-speed = <2>;
+			linux,pci-domain = <0>;
 			power-domains = <&pgc_pcie>;
 			resets = <&src IMX8MQ_RESET_PCIEPHY>,
 			         <&src IMX8MQ_RESET_PCIE_CTRL_APPS_EN>,
@@ -1551,8 +1579,8 @@
 					<0 0 0 2 &gic GIC_SPI 76 IRQ_TYPE_LEVEL_HIGH>,
 					<0 0 0 3 &gic GIC_SPI 75 IRQ_TYPE_LEVEL_HIGH>,
 					<0 0 0 4 &gic GIC_SPI 74 IRQ_TYPE_LEVEL_HIGH>;
-			linux,pci-domain = <1>;
 			fsl,max-link-speed = <2>;
+			linux,pci-domain = <1>;
 			power-domains = <&pgc_pcie>;
 			resets = <&src IMX8MQ_RESET_PCIEPHY2>,
 			         <&src IMX8MQ_RESET_PCIE2_CTRL_APPS_EN>,

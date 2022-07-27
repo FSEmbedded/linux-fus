@@ -192,6 +192,8 @@
 #define FEC_RXIC0		0xfff
 #define FEC_RXIC1		0xfff
 #define FEC_RXIC2		0xfff
+#define FEC_LPI_SLEEP		0xfff
+#define FEC_LPI_WAKE		0xfff
 #endif /* CONFIG_M5272 */
 
 
@@ -378,6 +380,9 @@ struct bufdesc_ex {
 #define FEC_ENET_WAKEUP	((uint)0x00020000)	/* Wakeup request */
 #define FEC_ENET_TXF	(FEC_ENET_TXF_0 | FEC_ENET_TXF_1 | FEC_ENET_TXF_2)
 #define FEC_ENET_RXF	(FEC_ENET_RXF_0 | FEC_ENET_RXF_1 | FEC_ENET_RXF_2)
+#define FEC_ENET_RXF_GET(X)	(((X) == 0) ? FEC_ENET_RXF_0 :	\
+				(((X) == 1) ? FEC_ENET_RXF_1 :	\
+				FEC_ENET_RXF_2))
 #define FEC_ENET_TS_AVAIL       ((uint)0x00010000)
 #define FEC_ENET_TS_TIMER       ((uint)0x00008000)
 
@@ -471,19 +476,35 @@ struct bufdesc_ex {
  */
 #define FEC_QUIRK_CLEAR_SETUP_MII	(1 << 17)
 
+/* Some link partners do not tolerate the momentary reset of the REF_CLK
+ * frequency when the RNCTL register is cleared by hardware reset.
+ */
+#define FEC_QUIRK_NO_HARD_RESET		(1 << 18)
+
+/* i.MX6SX ENET IP supports multiple queues (3 queues), use this quirk to
+ * represents this ENET IP.
+ */
+#define FEC_QUIRK_HAS_MULTI_QUEUES	(1 << 19)
+
 /* i.MX8MQ ENET IP version add new feature to support IEEE 802.3az EEE
  * standard. For the transmission, MAC supply two user registers to set
  * Sleep (TS) and Wake (TW) time.
  */
-#define FEC_QUIRK_HAS_EEE		(1 << 18)
+#define FEC_QUIRK_HAS_EEE		(1 << 20)
+
 /* i.MX8QM ENET IP version add new feture to generate delayed TXC/RXC
  * as an alternative option to make sure it works well with various PHYs.
  * For the implementation of delayed clock, ENET takes synchronized 250MHz
  * clocks to generate 2ns delay.
  */
-#define FEC_QUIRK_DELAYED_CLKS_SUPPORT	(1 << 19)
+#define FEC_QUIRK_DELAYED_CLKS_SUPPORT	(1 << 21)
+
+
+/* i.MX8MQ SoC integration mix wakeup interrupt signal into "int2" interrupt line. */
+#define FEC_QUIRK_WAKEUP_FROM_INT2	(1 << 22)
+
 /* request pmqos during low power */
-#define FEC_QUIRK_HAS_PMQOS		(1 << 20)
+#define FEC_QUIRK_HAS_PMQOS		(1 << 23)
 
 struct bufdesc_prop {
 	int qid;

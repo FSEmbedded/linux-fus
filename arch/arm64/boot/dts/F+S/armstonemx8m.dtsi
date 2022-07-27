@@ -609,8 +609,8 @@
 	status = "okay";
 };
 
-+#if 0
-+/* not available anymore. See remote proc */
+#if 0
+/* not available anymore. See remote proc */
 &rpmsg{
 	/*
 	* 64K for one rpmsg instance:

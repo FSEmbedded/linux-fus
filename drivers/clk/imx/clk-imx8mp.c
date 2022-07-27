@@ -127,7 +127,7 @@ static struct imx_blk_ctrl_hw imx8mp_hdmi_blk_ctrl_hws[] = {
 	IMX_BLK_CTRL_RESET_MASK(IMX8MP_HDMI_BLK_CTRL_HDMI_TX_RESET, 0x20, 6, 0x33),
 	IMX_BLK_CTRL_RESET(IMX8MP_HDMI_BLK_CTRL_HDMI_PHY_RESET, 0x20, 12),
 	IMX_BLK_CTRL_RESET(IMX8MP_HDMI_BLK_CTRL_HDMI_PAI_RESET, 0x20, 18),
-	IMX_BLK_CTRL_RESET(IMX8MP_HDMI_BLK_CTRL_HDMI_PAI_RESET, 0x20, 22),
+	IMX_BLK_CTRL_RESET(IMX8MP_HDMI_BLK_CTRL_HDMI_PVI_RESET, 0x20, 22),
 	IMX_BLK_CTRL_RESET(IMX8MP_HDMI_BLK_CTRL_HDMI_TRNG_RESET, 0x20, 20),
 	IMX_BLK_CTRL_RESET(IMX8MP_HDMI_BLK_CTRL_IRQ_STEER_RESET, 0x20, 16),
 	IMX_BLK_CTRL_RESET(IMX8MP_HDMI_BLK_CTRL_HDMI_HDCP_RESET, 0x20, 13),
@@ -250,15 +250,16 @@ static struct imx_blk_ctrl_hw imx8mp_audio_blk_ctrl_hws[] = {
 	IMX_BLK_CTRL_RESET(IMX8MP_AUDIO_BLK_CTRL_EARC_PHY_RESET, 0x200, 1),
 };
 
-const struct imx_blk_ctrl_dev_data imx8mp_hdmi_blk_ctrl_dev_data __initconst = {
+const struct imx_blk_ctrl_dev_data imx8mp_hdmi_blk_ctrl_dev_data = {
 	.hws = imx8mp_hdmi_blk_ctrl_hws,
 	.hws_num = ARRAY_SIZE(imx8mp_hdmi_blk_ctrl_hws),
 	.clocks_max = IMX8MP_CLK_HDMI_BLK_CTRL_END,
 	.resets_max = IMX8MP_HDMI_BLK_CTRL_RESET_NUM,
 	.pm_runtime_saved_regs_num = 0
 };
+EXPORT_SYMBOL_GPL(imx8mp_hdmi_blk_ctrl_dev_data);
 
-const struct imx_blk_ctrl_dev_data imx8mp_media_blk_ctrl_dev_data __initconst = {
+const struct imx_blk_ctrl_dev_data imx8mp_media_blk_ctrl_dev_data = {
 	.hws = imx8mp_media_blk_ctrl_hws,
 	.hws_num = ARRAY_SIZE(imx8mp_media_blk_ctrl_hws),
 	.clocks_max = IMX8MP_CLK_MEDIA_BLK_CTRL_END,
@@ -269,8 +270,9 @@ const struct imx_blk_ctrl_dev_data imx8mp_media_blk_ctrl_dev_data __initconst = 
 		IMX_MEDIA_BLK_CTRL_CLK_EN,
 	},
 };
+EXPORT_SYMBOL_GPL(imx8mp_media_blk_ctrl_dev_data);
 
-const struct imx_blk_ctrl_dev_data imx8mp_audio_blk_ctrl_dev_data __initconst = {
+const struct imx_blk_ctrl_dev_data imx8mp_audio_blk_ctrl_dev_data = {
 	.hws = imx8mp_audio_blk_ctrl_hws,
 	.hws_num = ARRAY_SIZE(imx8mp_audio_blk_ctrl_hws),
 	.clocks_max = IMX8MP_CLK_AUDIO_BLK_CTRL_END,
@@ -295,6 +297,7 @@ const struct imx_blk_ctrl_dev_data imx8mp_audio_blk_ctrl_dev_data __initconst = 
 		IMX_AUDIO_BLK_CTRL_IPG_LP_CTRL
 	},
 };
+EXPORT_SYMBOL_GPL(imx8mp_audio_blk_ctrl_dev_data);
 
 static const char * const pll_ref_sels[] = { "osc_24m", "dummy", "dummy", "dummy", };
 static const char * const audio_pll1_bypass_sels[] = {"audio_pll1", "audio_pll1_ref_sel", };
@@ -658,14 +661,6 @@ static const char * const imx8mp_memrepair_sels[] = {"osc_24m", "sys_pll2_100m",
 							"sys_pll1_800m", "sys_pll2_1000m", "sys_pll3_out",
 							"clk_ext3", "audio_pll2_out", };
 
-static const char * const imx8mp_pcie2_ctrl_sels[] = {"osc_24m", "sys_pll2_250m", "sys_pll2_200m",
-						      "sys_pll1_266m", "sys_pll1_800m", "sys_pll2_500m",
-						      "sys_pll2_333m", "sys_pll3_out", };
-
-static const char * const imx8mp_pcie2_phy_sels[] = {"osc_24m", "sys_pll2_100m", "sys_pll2_500m",
-						     "clk_ext1", "clk_ext2", "clk_ext3",
-						     "clk_ext4", "sys_pll1_400m", };
-
 static const char * const imx8mp_media_mipi_test_byte_sels[] = {"osc_24m", "sys_pll2_200m", "sys_pll2_50m",
 								"sys_pll3_out", "sys_pll2_100m",
 								"sys_pll1_80m", "sys_pll1_160m",
@@ -723,7 +718,7 @@ static int imx_clk_init_on(struct device_node *np,
 static int imx8mp_clocks_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct device_node *np = dev->of_node;
+	struct device_node *np;
 	void __iomem *anatop_base, *ccm_base;
 
 	check_m4_enabled();
@@ -925,8 +920,6 @@ static int imx8mp_clocks_probe(struct platform_device *pdev)
 	hws[IMX8MP_CLK_MEDIA_CAM2_PIX] = imx8m_clk_hw_composite("media_cam2_pix", imx8mp_media_cam2_pix_sels, ccm_base + 0xbe80);
 	hws[IMX8MP_CLK_MEDIA_LDB] = imx8m_clk_hw_composite("media_ldb", imx8mp_media_ldb_sels, ccm_base + 0xbf00);
 	hws[IMX8MP_CLK_MEMREPAIR] = imx8m_clk_hw_composite_critical("mem_repair", imx8mp_memrepair_sels, ccm_base + 0xbf80);
-	hws[IMX8MP_CLK_PCIE2_CTRL] = imx8m_clk_hw_composite("pcie2_ctrl", imx8mp_pcie2_ctrl_sels, ccm_base + 0xc000);
-	hws[IMX8MP_CLK_PCIE2_PHY] = imx8m_clk_hw_composite("pcie2_phy", imx8mp_pcie2_phy_sels, ccm_base + 0xc080);
 	hws[IMX8MP_CLK_MEDIA_MIPI_TEST_BYTE] = imx8m_clk_hw_composite("media_mipi_test_byte", imx8mp_media_mipi_test_byte_sels, ccm_base + 0xc100);
 	hws[IMX8MP_CLK_ECSPI3] = imx8m_clk_hw_composite("ecspi3", imx8mp_ecspi3_sels, ccm_base + 0xc180);
 	hws[IMX8MP_CLK_PDM] = imx8m_clk_hw_composite("pdm", imx8mp_pdm_sels, ccm_base + 0xc200);
@@ -1030,7 +1023,7 @@ static int imx8mp_clocks_probe(struct platform_device *pdev)
 	of_clk_add_hw_provider(np, of_clk_hw_onecell_get, clk_hw_data);
 
 	imx_clk_init_on(np, hws);
-
+	
 	imx_register_uart_clocks(4);
 
 	return 0;
@@ -1051,7 +1044,7 @@ static struct platform_driver imx8mp_clk_driver = {
 		 * reloading the driver will crash or break devices.
 		 */
 		.suppress_bind_attrs = true,
-		.of_match_table = of_match_ptr(imx8mp_clk_of_match),
+		.of_match_table = imx8mp_clk_of_match,
 	},
 };
 module_platform_driver(imx8mp_clk_driver);

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2018 NXP
+ * Copyright 2018-2019 NXP
  *	Dong Aisheng <aisheng.dong@nxp.com>
  */
 
@@ -109,16 +109,6 @@
 		encoder_boot: encoder_boot@0x86000000 {
 			no-map;
 			reg = <0 0x86000000 0 0x400000>;
-		};
-		/*
-		 * reserved-memory layout
-		 * 0x8800_0000 ~ 0x8FFF_FFFF is reserved for M4
-		 * Shouldn't be used at A core and Linux side.
-		 *
-		 */
-		m4_reserved: m4@0x88000000 {
-			no-map;
-			reg = <0 0x88000000 0 0x8000000>;
 		};
 		decoder_rpc: decoder_rpc@0x92000000 {
 			no-map;
@@ -319,12 +309,8 @@
 			"Ext Spk", "SPK_LN",
 			"Ext Spk", "SPK_RP",
 			"Ext Spk", "SPK_RN",
-			"LINPUT2", "Mic Jack",
-			"LINPUT3", "Mic Jack",
-			"RINPUT1", "AMIC",
-			"RINPUT2", "AMIC",
-			"Mic Jack", "MICB",
-			"AMIC", "MICB";
+			"LINPUT1", "Mic Jack",
+			"Mic Jack", "MICB";
 	};
 
 	imx8qm_cm40: imx8qm_cm4@0 {
@@ -953,7 +939,7 @@
 	fsl,magic-packet;
 	nvmem-cells = <&fec_mac0>;
 	nvmem-cell-names = "mac-address";
-	fsl,rgmii_rxc_dly;
+	rx-internal-delay-ps = <2000>;
 	status = "okay";
 
 	mdio {
@@ -963,15 +949,25 @@
 		ethphy0: ethernet-phy@0 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <0>;
-			at803x,eee-disabled;
-			at803x,vddio-1p8v;
+			qca,disable-smarteee;
+			vddio-supply = <&vddio0>;
+
+			vddio0: vddio-regulator {
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+			};
 		};
 
 		ethphy1: ethernet-phy@1 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <1>;
-			at803x,eee-disabled;
-			at803x,vddio-1p8v;
+			qca,disable-smarteee;
+			vddio-supply = <&vddio1>;
+
+			vddio1: vddio-regulator {
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+			};
 		};
 	};
 };
@@ -985,7 +981,7 @@
 	fsl,magic-packet;
 	nvmem-cells = <&fec_mac1>;
 	nvmem-cell-names = "mac-address";
-	fsl,rgmii_rxc_dly;
+	rx-internal-delay-ps = <2000>;
 	status = "okay";
 };
 
@@ -1104,7 +1100,7 @@
 	isl29023@44 {
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_isl29023>;
-		compatible = "fsl,isl29023";
+		compatible = "isil,isl29023";
 		reg = <0x44>;
 		rext = <499>;
 		interrupt-parent = <&lsio_gpio4>;
@@ -1112,13 +1108,13 @@
 	};
 
 	fxos8700@1e {
-		compatible = "fsl,fxos8700";
+		compatible = "nxp,fxos8700";
 		reg = <0x1e>;
 		interrupt-open-drain;
 	};
 
-	fxas2100x@20 {
-		compatible = "fsl,fxas2100x";
+	fxas21002c@20 {
+		compatible = "nxp,fxas21002c";
 		reg = <0x20>;
 		interrupt-open-drain;
 	};

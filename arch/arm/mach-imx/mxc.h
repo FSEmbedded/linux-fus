@@ -94,7 +94,7 @@ static inline bool cpu_is_imx6(void)
 {
 	return cpu_is_imx6q() || cpu_is_imx6dl() || cpu_is_imx6sl()
 		|| cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull()
-		|| cpu_is_imx6sll();
+		|| cpu_is_imx6sll() || cpu_is_imx6ulz();
 }
 
 #ifdef CONFIG_SOC_IMX7D

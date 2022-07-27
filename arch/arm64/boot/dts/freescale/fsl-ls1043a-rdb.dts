@@ -38,6 +38,10 @@
 		compatible = "adi,adt7461";
 		reg = <0x4c>;
 	};
+	rtc@51 {
+		compatible = "nxp,pcf85263";
+		reg = <0x51>;
+	};
 	eeprom@52 {
 		compatible = "atmel,24c512";
 		reg = <0x52>;
@@ -49,10 +53,6 @@
 	rtc@68 {
 		compatible = "pericom,pt7c4338";
 		reg = <0x68>;
-	};
-	rtc@51 {
-		compatible = "nxp,pcf85263";
-		reg = <0x51>;
 	};
 };
 
@@ -166,12 +166,10 @@
 	mdio@fc000 {
 		rgmii_phy1: ethernet-phy@1 {
 			reg = <0x1>;
-			rtl821x,aldps-disable;
 		};
 
 		rgmii_phy2: ethernet-phy@2 {
 			reg = <0x2>;
-			rtl821x,aldps-disable;
 		};
 
 		qsgmii_phy1: ethernet-phy@4 {

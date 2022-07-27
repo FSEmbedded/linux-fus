@@ -14,6 +14,8 @@
 
 	aliases {
 		crypto = &crypto;
+		mmc0 = &esdhc0;
+		mmc1 = &esdhc1;
 		serial0 = &uart0;
 	};
 
@@ -28,22 +30,6 @@
 		regulator-max-microvolt = <3300000>;
 		regulator-boot-on;
 		regulator-always-on;
-	};
-};
-
-&can0 {
-	status = "okay";
-
-	can-transceiver {
-		max-bitrate = <5000000>;
-	};
-};
-
-&can1 {
-	status = "okay";
-
-	can-transceiver {
-		max-bitrate = <5000000>;
 	};
 };
 
@@ -63,6 +49,14 @@
 	managed = "in-band-status";
 };
 
+&dpmac5 {
+	phy-handle = <&inphi_phy>;
+};
+
+&dpmac6 {
+	phy-handle = <&inphi_phy>;
+};
+
 &dpmac17 {
 	phy-handle = <&rgmii_phy1>;
 	phy-connection-type = "rgmii-id";
@@ -79,6 +73,7 @@
 	rgmii_phy1: ethernet-phy@1 {
 		/* AR8035 PHY */
 		compatible = "ethernet-phy-id004d.d072";
+		interrupts-extended = <&extirq 4 IRQ_TYPE_LEVEL_LOW>;
 		reg = <0x1>;
 		eee-broken-1000t;
 	};
@@ -86,6 +81,7 @@
 	rgmii_phy2: ethernet-phy@2 {
 		/* AR8035 PHY */
 		compatible = "ethernet-phy-id004d.d072";
+		interrupts-extended = <&extirq 5 IRQ_TYPE_LEVEL_LOW>;
 		reg = <0x2>;
 		eee-broken-1000t;
 	};
@@ -93,20 +89,41 @@
 	aquantia_phy1: ethernet-phy@4 {
 		/* AQR107 PHY */
 		compatible = "ethernet-phy-ieee802.3-c45";
-		interrupts = <GIC_SPI 2 IRQ_TYPE_LEVEL_HIGH>;
+		interrupts-extended = <&extirq 2 IRQ_TYPE_LEVEL_LOW>;
 		reg = <0x4>;
 	};
 
 	aquantia_phy2: ethernet-phy@5 {
 		/* AQR107 PHY */
 		compatible = "ethernet-phy-ieee802.3-c45";
-		interrupts = <GIC_SPI 3 IRQ_TYPE_LEVEL_HIGH>;
+		interrupts-extended = <&extirq 3 IRQ_TYPE_LEVEL_LOW>;
 		reg = <0x5>;
+	};
+};
+
+&can0 {
+	status = "okay";
+
+	can-transceiver {
+		max-bitrate = <5000000>;
+	};
+};
+
+&can1 {
+	status = "okay";
+
+	can-transceiver {
+		max-bitrate = <5000000>;
 	};
 };
 
 &emdio2 {
 	status = "okay";
+
+	inphi_phy: ethernet-phy@0 {
+		compatible = "ethernet-phy-id0210.7440";
+		reg = <0x0>;
+	};
 };
 
 &esdhc0 {
@@ -202,6 +219,10 @@
 	};
 };
 
+&optee {
+	status = "okay";
+};
+
 &pcs_mdio3 {
 	status = "okay";
 };
@@ -240,19 +261,4 @@
 
 &usb1 {
 	status = "okay";
-};
-
-&emdio2 {
-	inphi_phy: ethernet-phy@0 {
-		compatible = "ethernet-phy-id0210.7440";
-		reg = <0x0>;
-	};
-};
-
-&dpmac5 {
-	phy-handle = <&inphi_phy>;
-};
-
-&dpmac6 {
-	phy-handle = <&inphi_phy>;
 };

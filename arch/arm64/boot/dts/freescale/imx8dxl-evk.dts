@@ -25,16 +25,6 @@
 		#size-cells = <2>;
 		ranges;
 
-		/*
-		 * 0x8800_0000 ~ 0x8FFF_FFFF is reserved for M4
-		 * Shouldn't be used at A core and Linux side.
-		 *
-		 */
-		m4_reserved: m4@0x88000000 {
-			no-map;
-			reg = <0 0x88000000 0 0x8000000>;
-		};
-
 /*
  *		Memory reserved for optee usage. Please do not use.
  *		This will be automaticky added to dtb if OP-TEE is installed.
@@ -294,8 +284,13 @@
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <0>;
 			eee-broken-1000t;
-			at803x,eee-disabled;
-			at803x,vddio-1p8v;
+			qca,disable-smarteee;
+			vddio-supply = <&vddio0>;
+
+			vddio0: vddio-regulator {
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+			};
 		};
 
 	};
@@ -307,7 +302,7 @@
 	phy-mode = "rgmii-txid";
 	phy-handle = <&ethphy1>;
 	fsl,magic-packet;
-	fsl,rgmii_rxc_dly;
+	rx-internal-delay-ps = <2000>;
 	nvmem-cells = <&fec_mac0>;
 	nvmem-cell-names = "mac-address";
 	phy-reset-gpios = <&pca6416_1 0 GPIO_ACTIVE_LOW>;
@@ -322,8 +317,13 @@
 		ethphy1: ethernet-phy@1 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <1>;
-			at803x,eee-disabled;
-			at803x,vddio-1p8v;
+			qca,disable-smarteee;
+			vddio-supply = <&vddio1>;
+
+			vddio1: vddio-regulator {
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+			};
 		};
 	};
 };
@@ -348,7 +348,7 @@
 &imx8dxl_cm4 {
 	memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
 			<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
-	status = "disabled";
+	status = "okay";
 };
 
 &lpspi3 {
@@ -379,7 +379,6 @@
 		reg = <0x20>;
 		gpio-controller;
 		#gpio-cells = <2>;
-		power-domains = <&pd IMX_SC_R_BOARD_R1>;
 	};
 
 	pca6416_2: gpio@21 {
@@ -387,7 +386,6 @@
 		reg = <0x21>;
 		gpio-controller;
 		#gpio-cells = <2>;
-		power-domains = <&pd IMX_SC_R_BOARD_R2>;
 	};
 
 	pca9548_1: pca9548@70 {
@@ -395,7 +393,6 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		reg = <0x70>;
-		power-domains = <&pd IMX_SC_R_BOARD_R0>;
 
 		i2c@0 {
 			#address-cells = <1>;
@@ -512,7 +509,6 @@
 		#gpio-cells = <2>;
 		interrupt-parent = <&lsio_gpio2>;
 		interrupts = <5 IRQ_TYPE_EDGE_RISING>;
-		power-domains = <&pd IMX_SC_R_BOARD_R4>;
 	};
 
 	pca9548_2: pca9548@70 {
@@ -520,7 +516,6 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		reg = <0x70>;
-		power-domains = <&pd IMX_SC_R_BOARD_R3>;
 
 		i2c@0 {
 			#address-cells = <1>;
@@ -555,7 +550,7 @@
 };
 
 &cm40_intmux {
-	status = "okay";
+	status = "disabled";
 };
 
 &lpuart0 {
@@ -574,7 +569,7 @@
 &cm40_lpuart {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_cm40_lpuart>;
-	status = "okay";
+	status = "disabled";
 };
 
 &flexcan2 {

@@ -115,7 +115,8 @@ struct mxc_epdc_fb_data {
 	struct fb_var_screeninfo epdc_fb_var; /* Internal copy of screeninfo
 						so we can sync changes to it */
 	u32 pseudo_palette[16];
-	char fw_str[24];
+#define FW_STR_LEN	32
+	char fw_str[FW_STR_LEN];
 	struct list_head list;
 	struct imx_epdc_fb_mode *cur_mode;
 	struct imx_epdc_fb_platform_data *pdata;
@@ -3309,7 +3310,8 @@ static int mxc_epdc_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			if (put_user(pwrdown_delay,
 				(int __user *)argp))
 				ret = -EFAULT;
-			ret = 0;
+			else
+				ret = 0;
 			break;
 		}
 
@@ -4287,7 +4289,7 @@ static void mxc_epdc_fb_fw_handler(const struct firmware *fw,
 		dev_dbg(fb_data->dev,
 			"Can't find firmware. Trying fallback fw\n");
 		fb_data->fw_default_load = true;
-		ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
+		ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_UEVENT,
 			"imx/epdc/epdc.fw", fb_data->dev, GFP_KERNEL, fb_data,
 			mxc_epdc_fb_fw_handler);
 		if (ret)
@@ -4414,13 +4416,15 @@ static int mxc_epdc_fb_init_hw(struct fb_info *info)
 	 */
 	if (fb_data->cur_mode) {
 		strcpy(fb_data->fw_str, "imx/epdc/epdc_");
-		strcat(fb_data->fw_str, fb_data->cur_mode->vmode->name);
-		strcat(fb_data->fw_str, ".fw");
+		strncat(fb_data->fw_str, fb_data->cur_mode->vmode->name,
+			FW_STR_LEN - strlen(fb_data->fw_str) - 1);
+		strncat(fb_data->fw_str, ".fw",
+			FW_STR_LEN - strlen(fb_data->fw_str) - 1);
 	}
 
 	fb_data->fw_default_load = false;
 
-	ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
+	ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_UEVENT,
 				fb_data->fw_str, fb_data->dev, GFP_KERNEL,
 				fb_data, mxc_epdc_fb_fw_handler);
 	if (ret)
@@ -5332,7 +5336,7 @@ static int pxp_process_update(struct mxc_epdc_fb_data *fb_data,
 	dma_chan = &fb_data->pxp_chan->dma_chan;
 
 	txd = dma_chan->device->device_prep_slave_sg(dma_chan, sg, 2,
-						     DMA_TO_DEVICE,
+						     DMA_MEM_TO_DEV,
 						     DMA_PREP_INTERRUPT,
 						     NULL);
 	if (!txd) {
@@ -5590,4 +5594,3 @@ module_exit(mxc_epdc_fb_exit);
 MODULE_AUTHOR("Freescale Semiconductor, Inc.");
 MODULE_DESCRIPTION("MXC EPDC framebuffer driver");
 MODULE_LICENSE("GPL");
-MODULE_SUPPORTED_DEVICE("fb");

@@ -60,7 +60,6 @@ enum spi_imx_devtype {
 	IMX35_CSPI,	/* CSPI on all i.mx except above */
 	IMX51_ECSPI,	/* ECSPI on i.mx51 */
 	IMX53_ECSPI,	/* ECSPI on i.mx53 and later */
-	IMX6UL_ECSPI,	/* ERR009165 fix from i.mx6ul */
 };
 
 struct spi_imx_data;
@@ -79,6 +78,11 @@ struct spi_imx_devtype_data {
 	bool has_slavemode;
 	unsigned int fifo_size;
 	bool dynamic_burst;
+	/*
+	 * ERR009165 fixed or not:
+	 * https://www.nxp.com/docs/en/errata/IMX6DQCE.pdf
+	 */
+	bool tx_glitch_fixed;
 	enum spi_imx_devtype devtype;
 };
 
@@ -132,8 +136,7 @@ static inline int is_imx35_cspi(struct spi_imx_data *d)
 
 static inline int is_imx51_ecspi(struct spi_imx_data *d)
 {
-	return d->devtype_data->devtype == IMX51_ECSPI ||
-	       d->devtype_data->devtype == IMX6UL_ECSPI;
+	return d->devtype_data->devtype == IMX51_ECSPI;
 }
 
 static inline int is_imx53_ecspi(struct spi_imx_data *d)
@@ -492,23 +495,16 @@ static void mx51_ecspi_intctrl(struct spi_imx_data *spi_imx, int enable)
 
 static void mx51_ecspi_trigger(struct spi_imx_data *spi_imx)
 {
-	u32 reg = readl(spi_imx->base + MX51_ECSPI_CTRL);
-	/*
-	 * To workaround ERR008517, SDMA script need use XCH instead of SMC
-	 * just like PIO mode and it fix on i.mx6ul
-	 */
-	if (!spi_imx->usedma)
-		reg |= MX51_ECSPI_CTRL_XCH;
-	else if (spi_imx->devtype_data->devtype == IMX6UL_ECSPI)
-		reg |= MX51_ECSPI_CTRL_SMC;
-	else
-		reg &= ~MX51_ECSPI_CTRL_SMC;
-	writel(reg, spi_imx->base + MX51_ECSPI_CTRL);
+	u32 reg;
 
 	if (spi_imx->usedma) {
 		reg = readl(spi_imx->base + MX51_ECSPI_DMA);
 		reg |= MX51_ECSPI_DMA_TEDEN | MX51_ECSPI_DMA_RXDEN;
 		writel(reg, spi_imx->base + MX51_ECSPI_DMA);
+	} else {
+		reg = readl(spi_imx->base + MX51_ECSPI_CTRL);
+		reg |= MX51_ECSPI_CTRL_XCH;
+		writel(reg, spi_imx->base + MX51_ECSPI_CTRL);
 	}
 }
 
@@ -618,7 +614,7 @@ static int mx51_ecspi_prepare_message(struct spi_imx_data *spi_imx,
 	}
 
 	delay = (2 * 1000000) / min_speed_hz;
-	if (likely(delay < 10))	/* SCLK is faster than 100 kHz */
+	if (likely(delay < 10))	/* SCLK is faster than 200 kHz */
 		udelay(delay);
 	else			/* SCLK is _very_ slow */
 		usleep_range(delay, delay + 10);
@@ -644,6 +640,7 @@ static int mx51_ecspi_prepare_transfer(struct spi_imx_data *spi_imx,
 	/* set clock speed */
 	ctrl &= ~(0xf << MX51_ECSPI_CTRL_POSTDIV_OFFSET |
 		  0xf << MX51_ECSPI_CTRL_PREDIV_OFFSET);
+
 	if (!spi_imx->slave_mode) {
 		ctrl |= mx51_ecspi_clkdiv(spi_imx, spi_imx->spi_bus_clk, &clk);
 		spi_imx->spi_bus_clk = clk;
@@ -653,12 +650,10 @@ static int mx51_ecspi_prepare_transfer(struct spi_imx_data *spi_imx,
 	 * ERR009165: work in XHC mode instead of SMC as PIO on the chips
 	 * before i.mx6ul.
 	 */
-	if (spi_imx->usedma) {
-		if (spi_imx->devtype_data->devtype == IMX6UL_ECSPI)
-			ctrl |= MX51_ECSPI_CTRL_SMC;
-		else
-			ctrl &= ~MX51_ECSPI_CTRL_SMC;
-	}
+	if (spi_imx->usedma && spi_imx->devtype_data->tx_glitch_fixed)
+		ctrl |= MX51_ECSPI_CTRL_SMC;
+	else
+		ctrl &= ~MX51_ECSPI_CTRL_SMC;
 
 	writel(ctrl, spi_imx->base + MX51_ECSPI_CTRL);
 
@@ -669,7 +664,7 @@ static void mx51_setup_wml(struct spi_imx_data *spi_imx)
 {
 	u32 tx_wml = 0;
 
-	if (spi_imx->devtype_data->devtype == IMX6UL_ECSPI)
+	if (spi_imx->devtype_data->tx_glitch_fixed)
 		tx_wml = spi_imx->wml;
 	/*
 	 * Configure the DMA register: setup the watermark
@@ -1084,38 +1079,9 @@ static struct spi_imx_devtype_data imx6ul_ecspi_devtype_data = {
 	.has_dmamode = true,
 	.dynamic_burst = true,
 	.has_slavemode = true,
+	.tx_glitch_fixed = true,
 	.disable = mx51_ecspi_disable,
-	.devtype = IMX6UL_ECSPI,
-};
-
-static const struct platform_device_id spi_imx_devtype[] = {
-	{
-		.name = "imx1-cspi",
-		.driver_data = (kernel_ulong_t) &imx1_cspi_devtype_data,
-	}, {
-		.name = "imx21-cspi",
-		.driver_data = (kernel_ulong_t) &imx21_cspi_devtype_data,
-	}, {
-		.name = "imx27-cspi",
-		.driver_data = (kernel_ulong_t) &imx27_cspi_devtype_data,
-	}, {
-		.name = "imx31-cspi",
-		.driver_data = (kernel_ulong_t) &imx31_cspi_devtype_data,
-	}, {
-		.name = "imx35-cspi",
-		.driver_data = (kernel_ulong_t) &imx35_cspi_devtype_data,
-	}, {
-		.name = "imx51-ecspi",
-		.driver_data = (kernel_ulong_t) &imx51_ecspi_devtype_data,
-	}, {
-		.name = "imx53-ecspi",
-		.driver_data = (kernel_ulong_t) &imx53_ecspi_devtype_data,
-	}, {
-		.name = "imx6ul-ecspi",
-		.driver_data = (kernel_ulong_t) &imx6ul_ecspi_devtype_data,
-	}, {
-		/* sentinel */
-	}
+	.devtype = IMX51_ECSPI,
 };
 
 static const struct of_device_id spi_imx_dt_ids[] = {
@@ -1143,12 +1109,8 @@ static void spi_imx_set_burst_len(struct spi_imx_data *spi_imx, int n_bits)
 
 static void spi_imx_push(struct spi_imx_data *spi_imx)
 {
-	unsigned int burst_len, fifo_words;
+	unsigned int burst_len;
 
-	if (spi_imx->dynamic_burst)
-		fifo_words = 4;
-	else
-		fifo_words = spi_imx_bytes_per_word(spi_imx->bits_per_word);
 	/*
 	 * Reload the FIFO when the remaining bytes to be transferred in the
 	 * current burst is 0. This only applies when bits_per_word is a
@@ -1167,7 +1129,7 @@ static void spi_imx_push(struct spi_imx_data *spi_imx)
 
 			spi_imx->remainder = burst_len;
 		} else {
-			spi_imx->remainder = fifo_words;
+			spi_imx->remainder = spi_imx_bytes_per_word(spi_imx->bits_per_word);
 		}
 	}
 
@@ -1175,8 +1137,7 @@ static void spi_imx_push(struct spi_imx_data *spi_imx)
 		if (!spi_imx->count)
 			break;
 		if (spi_imx->dynamic_burst &&
-		    spi_imx->txfifo >= DIV_ROUND_UP(spi_imx->remainder,
-						     fifo_words))
+		    spi_imx->txfifo >= DIV_ROUND_UP(spi_imx->remainder, 4))
 			break;
 		spi_imx->tx(spi_imx);
 		spi_imx->txfifo++;
@@ -1272,15 +1233,17 @@ static int spi_imx_setupxfer(struct spi_device *spi,
 	if (!t)
 		return 0;
 
-	if (!t->speed_hz) {
-		if (!spi->max_speed_hz) {
-			dev_err(&spi->dev, "no speed_hz provided!\n");
-			return -EINVAL;
-		}
-		dev_dbg(&spi->dev, "using spi->max_speed_hz!\n");
-		spi_imx->spi_bus_clk = spi->max_speed_hz;
-	} else
-		spi_imx->spi_bus_clk = t->speed_hz;
+	if (!spi_imx->slave_mode) {
+		if (!t->speed_hz) {
+			if (!spi->max_speed_hz) {
+				dev_err(&spi->dev, "no speed_hz provided!\n");
+				return -EINVAL;
+			}
+			dev_dbg(&spi->dev, "using spi->max_speed_hz!\n");
+			spi_imx->spi_bus_clk = spi->max_speed_hz;
+		} else
+			spi_imx->spi_bus_clk = t->speed_hz;
+	}
 
 	spi_imx->bits_per_word = t->bits_per_word;
 
@@ -1290,6 +1253,7 @@ static int spi_imx_setupxfer(struct spi_device *spi,
 	 * dynamic_burst in that case.
 	 */
 	if (spi_imx->devtype_data->dynamic_burst && !spi_imx->slave_mode &&
+	    !(spi->mode & SPI_CS_WORD) &&
 	    (spi_imx->bits_per_word == 8 ||
 	    spi_imx->bits_per_word == 16 ||
 	    spi_imx->bits_per_word == 32)) {
@@ -1477,9 +1441,9 @@ static int spi_imx_dma_transfer(struct spi_imx_data *spi_imx,
 	reinit_completion(&spi_imx->dma_tx_completion);
 	dma_async_issue_pending(master->dma_tx);
 
-	transfer_timeout = spi_imx_calculate_timeout(spi_imx, transfer->len);
-
 	spi_imx->devtype_data->trigger(spi_imx);
+
+	transfer_timeout = spi_imx_calculate_timeout(spi_imx, transfer->len);
 
 	/* Wait SDMA to finish the data transfer.*/
 	timeout = wait_for_completion_timeout(&spi_imx->dma_tx_completion,
@@ -1660,14 +1624,12 @@ static int spi_imx_slave_abort(struct spi_master *master)
 static int spi_imx_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
-	const struct of_device_id *of_id =
-			of_match_device(spi_imx_dt_ids, &pdev->dev);
 	struct spi_master *master;
 	struct spi_imx_data *spi_imx;
 	struct resource *res;
 	int ret, irq, spi_drctl;
-	const struct spi_imx_devtype_data *devtype_data = of_id ? of_id->data :
-		(struct spi_imx_devtype_data *)pdev->id_entry->driver_data;
+	const struct spi_imx_devtype_data *devtype_data =
+			of_device_get_match_data(&pdev->dev);
 	bool slave_mode;
 	u32 val;
 
@@ -1725,6 +1687,15 @@ static int spi_imx_probe(struct platform_device *pdev)
 	if (is_imx35_cspi(spi_imx) || is_imx51_ecspi(spi_imx) ||
 	    is_imx53_ecspi(spi_imx))
 		spi_imx->bitbang.master->mode_bits |= SPI_LOOP | SPI_READY;
+
+	if (is_imx51_ecspi(spi_imx) &&
+	    device_property_read_u32(&pdev->dev, "cs-gpios", NULL))
+		/*
+		 * When using HW-CS implementing SPI_CS_WORD can be done by just
+		 * setting the burst length to the word size. This is
+		 * considerably faster than manually controlling the CS.
+		 */
+		spi_imx->bitbang.master->mode_bits |= SPI_CS_WORD;
 
 	spi_imx->spi_drctl = spi_drctl;
 
@@ -1910,13 +1881,12 @@ static struct platform_driver spi_imx_driver = {
 		   .of_match_table = spi_imx_dt_ids,
 		   .pm = &imx_spi_pm,
 	},
-	.id_table = spi_imx_devtype,
 	.probe = spi_imx_probe,
 	.remove = spi_imx_remove,
 };
 module_platform_driver(spi_imx_driver);
 
-MODULE_DESCRIPTION("SPI Controller driver");
+MODULE_DESCRIPTION("i.MX SPI Controller driver");
 MODULE_AUTHOR("Sascha Hauer, Pengutronix");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:" DRIVER_NAME);

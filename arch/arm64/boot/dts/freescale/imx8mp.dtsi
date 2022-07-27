@@ -38,6 +38,7 @@
 		serial1 = &uart2;
 		serial2 = &uart3;
 		serial3 = &uart4;
+		spi0 = &flexspi;
 		isi0 = &isi_0;
 		isi1 = &isi_1;
 		csi0 = &mipi_csi_0;
@@ -493,11 +494,9 @@
 	};
 
 	pmu {
-		compatible = "arm,armv8-pmuv3";
-		interrupt-parent = <&gic>;
+		compatible = "arm,cortex-a53-pmu";
 		interrupts = <GIC_PPI 7
-			     (GIC_CPU_MASK_SIMPLE(6) | IRQ_TYPE_LEVEL_HIGH)>;
-		interrupt-affinity = <&A53_0>, <&A53_1>, <&A53_2>, <&A53_3>;
+			     (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_HIGH)>;
 	};
 
 	psci {
@@ -569,17 +568,17 @@
 
 	timer {
 		compatible = "arm,armv8-timer";
-		interrupts = <GIC_PPI 13 (GIC_CPU_MASK_SIMPLE(6) | IRQ_TYPE_LEVEL_LOW)>,
-			     <GIC_PPI 14 (GIC_CPU_MASK_SIMPLE(6) | IRQ_TYPE_LEVEL_LOW)>,
-			     <GIC_PPI 11 (GIC_CPU_MASK_SIMPLE(6) | IRQ_TYPE_LEVEL_LOW)>,
-			     <GIC_PPI 10 (GIC_CPU_MASK_SIMPLE(6) | IRQ_TYPE_LEVEL_LOW)>;
+		interrupts = <GIC_PPI 13 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>,
+			     <GIC_PPI 14 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>,
+			     <GIC_PPI 11 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>,
+			     <GIC_PPI 10 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>;
 		clock-frequency = <8000000>;
 		arm,no-tick-in-suspend;
 		interrupt-parent = <&gic>;
 	};
 
 	soc@0 {
-		compatible = "fsl,imx8mp-soc", "simple-bus";
+		compatible = "simple-bus";
 		#address-cells = <1>;
 		#size-cells = <1>;
 		ranges = <0x0 0x0 0x0 0x3e000000>;
@@ -678,6 +677,22 @@
 				status = "disabled";
 			};
 
+			wdog2: watchdog@30290000 {
+				compatible = "fsl,imx8mp-wdt", "fsl,imx21-wdt";
+				reg = <0x30290000 0x10000>;
+				interrupts = <GIC_SPI 79 IRQ_TYPE_LEVEL_HIGH>;
+				clocks = <&clk IMX8MP_CLK_WDOG2_ROOT>;
+				status = "disabled";
+			};
+
+			wdog3: watchdog@302a0000 {
+				compatible = "fsl,imx8mp-wdt", "fsl,imx21-wdt";
+				reg = <0x302a0000 0x10000>;
+				interrupts = <GIC_SPI 10 IRQ_TYPE_LEVEL_HIGH>;
+				clocks = <&clk IMX8MP_CLK_WDOG3_ROOT>;
+				status = "disabled";
+			};
+
 			iomuxc: pinctrl@30330000 {
 				compatible = "fsl,imx8mp-iomuxc";
 				reg = <0x30330000 0x10000>;
@@ -690,7 +705,7 @@
 			};
 
 			ocotp: efuse@30350000 {
-				compatible = "fsl,imx8mp-ocotp", "fsl,imx8mm-ocotp", "syscon";
+				compatible = "fsl,imx8mp-ocotp", "fsl,imx8mm-ocotp", "syscon", "simple-mfd";
 				reg = <0x30350000 0x10000>;
 				clocks = <&clk IMX8MP_CLK_OCOTP_ROOT>;
 				/* For nvmem subnodes */
@@ -705,12 +720,18 @@
 					reg = <0x10 4>;
 				};
 
-				eth_mac1: mac-address@640 {
+				eth_mac1: mac-address@90 {
 					reg = <0x90 6>;
 				};
 
 				eth_mac2: mac-address@650 {
 					reg = <0x96 6>;
+				};
+
+				imx8mp_soc: imx8mp-soc {
+					compatible = "fsl,imx8mp-soc";
+					nvmem-cells = <&imx8mp_uid>;
+					nvmem-cell-names = "soc_unique_id";
 				};
 			};
 
@@ -959,7 +980,7 @@
 			};
 
 			flexcan1: can@308c0000 {
-				compatible = "fsl,imx8mp-flexcan", "fsl,imx6q-flexcan";
+				compatible = "fsl,imx8mp-flexcan";
 				reg = <0x308c0000 0x10000>;
 				interrupts = <GIC_SPI 142 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&clk IMX8MP_CLK_IPG_ROOT>,
@@ -968,13 +989,13 @@
 				assigned-clocks = <&clk IMX8MP_CLK_CAN1>;
 				assigned-clock-parents = <&clk IMX8MP_SYS_PLL1_40M>;
 				assigned-clock-rates = <40000000>;
-				fsl,clk-source= <0>;
-				fsl,stop-mode = <&gpr 0x10 4 0x10 20>;
+				fsl,clk-source = /bits/ 8 <0>;
+				fsl,stop-mode = <&gpr 0x10 4>;
 				status = "disabled";
 			};
 
 			flexcan2: can@308d0000 {
-				compatible = "fsl,imx8mp-flexcan", "fsl,imx6q-flexcan";
+				compatible = "fsl,imx8mp-flexcan";
 				reg = <0x308d0000 0x10000>;
 				interrupts = <GIC_SPI 144 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&clk IMX8MP_CLK_IPG_ROOT>,
@@ -983,8 +1004,8 @@
 				assigned-clocks = <&clk IMX8MP_CLK_CAN2>;
 				assigned-clock-parents = <&clk IMX8MP_SYS_PLL1_40M>;
 				assigned-clock-rates = <40000000>;
-				fsl,clk-source= <0>;
-				fsl,stop-mode = <&gpr 0x10 5 0x10 21>;
+				fsl,clk-source = /bits/ 8 <0>;
+				fsl,stop-mode = <&gpr 0x10 5>;
 				status = "disabled";
 			};
 
@@ -1140,19 +1161,18 @@
 				status = "disabled";
 			};
 
-
 			flexspi: spi@30bb0000 {
-				#address-cells = <1>;
-				#size-cells = <0>;
-				compatible = "nxp,imx8mm-fspi";
-				reg = <0x30bb0000 0x10000>, <0x08000000 0x10000000>;
+				compatible = "nxp,imx8mp-fspi";
+				reg = <0x30bb0000 0x10000>, <0x8000000 0x10000000>;
 				reg-names = "fspi_base", "fspi_mmap";
 				interrupts = <GIC_SPI 107 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&clk IMX8MP_CLK_QSPI_ROOT>,
-				<&clk IMX8MP_CLK_QSPI_ROOT>;
+					 <&clk IMX8MP_CLK_QSPI_ROOT>;
 				clock-names = "fspi", "fspi_en";
 				assigned-clock-rates = <80000000>;
 				assigned-clocks = <&clk IMX8MP_CLK_QSPI>;
+				#address-cells = <1>;
+				#size-cells = <0>;
 				status = "disabled";
 			};
 
@@ -1194,8 +1214,8 @@
 				fsl,num-rx-queues = <3>;
 				nvmem-cells = <&eth_mac1>;
 				nvmem-cell-names = "mac-address";
-				nvmem_macaddr_swap;
 				fsl,stop-mode = <&gpr 0x10 3>;
+				nvmem_macaddr_swap;
 				fsl,wakeup_irq = <2>;
 				status = "disabled";
 			};
@@ -1203,9 +1223,9 @@
 			eqos: ethernet@30bf0000 {
 				compatible = "nxp,imx8mp-dwmac-eqos", "snps,dwmac-5.10a";
 				reg = <0x30bf0000 0x10000>;
-				interrupts = <GIC_SPI 134 IRQ_TYPE_LEVEL_HIGH>,
-					     <GIC_SPI 135 IRQ_TYPE_LEVEL_HIGH>;
-				interrupt-names = "eth_wake_irq", "macirq";
+				interrupts = <GIC_SPI 135 IRQ_TYPE_LEVEL_HIGH>,
+					     <GIC_SPI 134 IRQ_TYPE_LEVEL_HIGH>;
+				interrupt-names = "macirq", "eth_wake_irq";
 				clocks = <&clk IMX8MP_CLK_ENET_QOS_ROOT>,
 					 <&clk IMX8MP_CLK_QOS_ENET_ROOT>,
 					 <&clk IMX8MP_CLK_ENET_QOS_TIMER>,
@@ -1748,7 +1768,7 @@
 						    "ctx1_rx", "ctx1_tx",
 						    "ctx2_rx", "ctx2_tx",
 						    "ctx3_rx", "ctx3_tx";
-					fsl,easrc-ram-script-name = "imx/easrc/easrc-imx8mn.bin";
+					firmware-name = "imx/easrc/easrc-imx8mn.bin";
 					fsl,asrc-rate  = <8000>;
 					fsl,asrc-width = <16>;
 					power-domains = <&audiomix_pd>;
@@ -1863,6 +1883,7 @@
 				compatible = "fsl,imx8-mu-dsp", "fsl,imx6sx-mu";
 				reg = <0x30E60000 0x10000>;
 				interrupts = <GIC_SPI 136 IRQ_TYPE_LEVEL_HIGH>;
+				fsl,dsp_ap_mu_id = <2>;
 				 #mbox-cells = <2>;
 				clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_MU2_ROOT>;
 				status = "okay";
@@ -2013,93 +2034,6 @@
 			interrupt-parent = <&gic>;
 		};
 
-		usb3_phy0: usb-phy@381f0040 {
-			compatible = "fsl,imx8mp-usb-phy";
-			reg = <0x381f0040 0x40>;
-			clocks = <&clk IMX8MP_CLK_USB_PHY_ROOT>;
-			clock-names = "phy";
-			assigned-clocks = <&clk IMX8MP_CLK_USB_PHY_REF>;
-			assigned-clock-parents = <&clk IMX8MP_CLK_24M>;
-			#phy-cells = <0>;
-			status = "disabled";
-		};
-
-		usb3_0: usb@32f10100 {
-			compatible = "fsl,imx8mp-dwc3";
-			reg = <0x32f10100 0x8>;
-			clocks = <&clk IMX8MP_CLK_HSIO_ROOT>,
-				 <&clk IMX8MP_CLK_USB_ROOT>;
-			clock-names = "hsio", "suspend";
-			interrupts = <GIC_SPI 148 IRQ_TYPE_LEVEL_HIGH>;
-			power-domains = <&hsiomix_pd>;
-			#address-cells = <1>;
-			#size-cells = <1>;
-			ranges;
-			status = "disabled";
-
-			usb_dwc3_0: dwc3@38100000 {
-				compatible = "snps,dwc3";
-				reg = <0x38100000 0x10000>;
-				clocks = <&clk IMX8MP_CLK_HSIO_AXI>,
-					 <&clk IMX8MP_CLK_USB_CORE_REF>,
-					 <&clk IMX8MP_CLK_USB_ROOT>;
-				clock-names = "bus_early", "ref", "suspend";
-				assigned-clocks = <&clk IMX8MP_CLK_HSIO_AXI>;
-				assigned-clock-parents = <&clk IMX8MP_SYS_PLL2_500M>;
-				assigned-clock-rates = <500000000>;
-				interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>;
-				phys = <&usb3_phy0>, <&usb3_phy0>;
-				phy-names = "usb2-phy", "usb3-phy";
-				snps,dis-u2-freeclk-exists-quirk;
-				snps,usb2-lpm-disable;
-				status = "disabled";
-			};
-
-		};
-
-		usb3_phy1: usb-phy@382f0040 {
-			compatible = "fsl,imx8mp-usb-phy";
-			reg = <0x382f0040 0x40>;
-			clocks = <&clk IMX8MP_CLK_USB_PHY_ROOT>;
-			clock-names = "phy";
-			assigned-clocks = <&clk IMX8MP_CLK_USB_PHY_REF>;
-			assigned-clock-parents = <&clk IMX8MP_CLK_24M>;
-			#phy-cells = <0>;
-			status = "disabled";
-		};
-
-		usb3_1: usb@32f10108 {
-			compatible = "fsl,imx8mp-dwc3";
-			reg = <0x32f10108 0x8>;
-			clocks = <&clk IMX8MP_CLK_HSIO_ROOT>,
-				 <&clk IMX8MP_CLK_USB_ROOT>;
-			clock-names = "hsio", "suspend";
-			interrupts = <GIC_SPI 149 IRQ_TYPE_LEVEL_HIGH>;
-			power-domains = <&hsiomix_pd>;
-			#address-cells = <1>;
-			#size-cells = <1>;
-			ranges;
-			status = "disabled";
-
-			usb_dwc3_1: dwc3@38200000 {
-				compatible = "snps,dwc3";
-				reg = <0x38200000 0x10000>;
-				clocks = <&clk IMX8MP_CLK_HSIO_AXI>,
-					 <&clk IMX8MP_CLK_USB_CORE_REF>,
-					 <&clk IMX8MP_CLK_USB_ROOT>;
-				clock-names = "bus_early", "ref", "suspend";
-				assigned-clocks = <&clk IMX8MP_CLK_HSIO_AXI>;
-				assigned-clock-parents = <&clk IMX8MP_SYS_PLL2_500M>;
-				assigned-clock-rates = <500000000>;
-				interrupts = <GIC_SPI 41 IRQ_TYPE_LEVEL_HIGH>;
-				phys = <&usb3_phy1>, <&usb3_phy1>;
-				phy-names = "usb2-phy", "usb3-phy";
-				snps,dis-u2-freeclk-exists-quirk;
-				snps,usb2-lpm-disable;
-				status = "disabled";
-			};
-		};
-
 		dma_apbh: dma-apbh@33000000 {
 			compatible = "fsl,imx7d-dma-apbh", "fsl,imx28-dma-apbh";
 			reg = <0x33000000 0x2000>;
@@ -2191,6 +2125,90 @@
 			compatible = "fsl,imx8mp-ddr-pmu", "fsl,imx8m-ddr-pmu";
 			reg = <0x3d800000 0x400000>;
 			interrupts = <GIC_SPI 98 IRQ_TYPE_LEVEL_HIGH>;
+		};
+
+		usb3_phy0: usb-phy@381f0040 {
+			compatible = "fsl,imx8mp-usb-phy";
+			reg = <0x381f0040 0x40>;
+			clocks = <&clk IMX8MP_CLK_USB_PHY_ROOT>;
+			clock-names = "phy";
+			assigned-clocks = <&clk IMX8MP_CLK_USB_PHY_REF>;
+			assigned-clock-parents = <&clk IMX8MP_CLK_24M>;
+			#phy-cells = <0>;
+			status = "disabled";
+		};
+
+		usb3_0: usb@32f10100 {
+			compatible = "fsl,imx8mp-dwc3";
+			reg = <0x32f10100 0x8>;
+			clocks = <&clk IMX8MP_CLK_HSIO_ROOT>,
+				 <&clk IMX8MP_CLK_USB_ROOT>;
+			clock-names = "hsio", "suspend";
+			interrupts = <GIC_SPI 148 IRQ_TYPE_LEVEL_HIGH>;
+			power-domains = <&hsiomix_pd>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			dma-ranges = <0x40000000 0x40000000 0xc0000000>;
+			ranges;
+			status = "disabled";
+
+			usb_dwc3_0: usb@38100000 {
+				compatible = "snps,dwc3";
+				reg = <0x38100000 0x10000>;
+				clocks = <&clk IMX8MP_CLK_HSIO_AXI>,
+					 <&clk IMX8MP_CLK_USB_CORE_REF>,
+					 <&clk IMX8MP_CLK_USB_ROOT>;
+				clock-names = "bus_early", "ref", "suspend";
+				assigned-clocks = <&clk IMX8MP_CLK_HSIO_AXI>;
+				assigned-clock-parents = <&clk IMX8MP_SYS_PLL2_500M>;
+				assigned-clock-rates = <500000000>;
+				interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>;
+				phys = <&usb3_phy0>, <&usb3_phy0>;
+				phy-names = "usb2-phy", "usb3-phy";
+				snps,dis-u2-freeclk-exists-quirk;
+			};
+
+		};
+
+		usb3_phy1: usb-phy@382f0040 {
+			compatible = "fsl,imx8mp-usb-phy";
+			reg = <0x382f0040 0x40>;
+			clocks = <&clk IMX8MP_CLK_USB_PHY_ROOT>;
+			clock-names = "phy";
+			assigned-clocks = <&clk IMX8MP_CLK_USB_PHY_REF>;
+			assigned-clock-parents = <&clk IMX8MP_CLK_24M>;
+			#phy-cells = <0>;
+		};
+
+		usb3_1: usb@32f10108 {
+			compatible = "fsl,imx8mp-dwc3";
+			reg = <0x32f10108 0x8>;
+			clocks = <&clk IMX8MP_CLK_HSIO_ROOT>,
+				 <&clk IMX8MP_CLK_USB_ROOT>;
+			clock-names = "hsio", "suspend";
+			interrupts = <GIC_SPI 149 IRQ_TYPE_LEVEL_HIGH>;
+			power-domains = <&hsiomix_pd>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			dma-ranges = <0x40000000 0x40000000 0xc0000000>;
+			ranges;
+			status = "disabled";
+
+			usb_dwc3_1: usb@38200000 {
+				compatible = "snps,dwc3";
+				reg = <0x38200000 0x10000>;
+				clocks = <&clk IMX8MP_CLK_HSIO_AXI>,
+					 <&clk IMX8MP_CLK_USB_CORE_REF>,
+					 <&clk IMX8MP_CLK_USB_ROOT>;
+				clock-names = "bus_early", "ref", "suspend";
+				assigned-clocks = <&clk IMX8MP_CLK_HSIO_AXI>;
+				assigned-clock-parents = <&clk IMX8MP_SYS_PLL2_500M>;
+				assigned-clock-rates = <500000000>;
+				interrupts = <GIC_SPI 41 IRQ_TYPE_LEVEL_HIGH>;
+				phys = <&usb3_phy1>, <&usb3_phy1>;
+				phy-names = "usb2-phy", "usb3-phy";
+				snps,dis-u2-freeclk-exists-quirk;
+			};
 		};
 
 		edacmc: memory-controller@3d400000 {
@@ -2329,13 +2347,13 @@
 		clock-names = "dsp_clk1", "dsp_clk2", "dsp_clk3";
 		firmware-name = "imx/dsp/hifi4.bin";
 		power-domains = <&audiomix_pd>;
-		mbox-names = "tx0", "rx0", "rxdb0";
+		mbox-names = "tx", "rx", "rxdb";
 		mboxes = <&mu2 0 0>,
 			 <&mu2 1 0>,
 			 <&mu2 3 0>;
 		memory-region = <&dsp_vdev0buffer>, <&dsp_vdev0vring0>,
 				<&dsp_vdev0vring1>, <&dsp_reserved>;
-		syscon = <&audio_blk_ctrl>;
+		fsl,dsp-ctrl = <&audio_blk_ctrl>;
 		status = "disabled";
 	};
 

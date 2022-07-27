@@ -14,6 +14,18 @@
 	compatible = "fsl,imx8mn-evk", "fsl,imx8mn";
 };
 
+&A53_1 {
+	cpu-supply = <&buck2>;
+};
+
+&A53_2 {
+	cpu-supply = <&buck2>;
+};
+
+&A53_3 {
+	cpu-supply = <&buck2>;
+};
+
 &i2c1 {
 	pmic: pmic@25 {
 		compatible = "nxp,pca9450b";
