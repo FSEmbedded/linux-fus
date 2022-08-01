@@ -647,7 +647,8 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lpspi0>;
 /*** KM-2019-11-15: Set clock-rate from 20MHz to 60MHz to ensure maximum SPI clk rates of 30MHz ***/
-	assigned-clock-rates = <60000000>;
+/*** KM-2022-08-01: Set clock-rate to 61MHz, because the clock otherwise gets rounded down ***/
+	assigned-clock-rates = <61000000>;
 	cs-gpios = <&lsio_gpio1 9 GPIO_ACTIVE_LOW>, <&lsio_gpio1 7 GPIO_ACTIVE_LOW>;
 	status = "okay";
 
@@ -678,7 +679,7 @@
 	fsl,spi-num-chipselects = <2>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lpspi3>;
-	assigned-clock-rates = <60000000>;
+	assigned-clock-rates = <61000000>;
 	cs-gpios = <&lsio_gpio0 16 GPIO_ACTIVE_LOW>, <&lsio_gpio0 17 GPIO_ACTIVE_LOW>;
 	status = "okay";
 
