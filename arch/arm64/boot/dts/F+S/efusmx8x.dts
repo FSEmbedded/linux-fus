@@ -86,6 +86,13 @@
 		stdout-path = &lpuart2;
 	};
 
+	aliases {
+		/* NXP sets i2c_rpmsg as aliases, so set the i2c order explicitly */
+		i2c1 = &i2c1;
+		i2c2 = &i2c2;
+		i2c3 = &i2c3;
+	};
+
 	memory@80000000 {
 		device_type = "memory";
 		reg = <0x00000000 0x80000000 0 0x40000000>;
