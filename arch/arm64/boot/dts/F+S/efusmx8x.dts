@@ -844,9 +844,10 @@
 
 #ifdef CONFIG_EFUSMX8X_WLAN
 &pcieb {
-	ext_osc = <0>;
+	compatible = "fsl,imx8qxp-pcie","snps,dw-pcie";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcieb>;
+	ext_osc = <0>;
 	status = "okay";
 };
 #endif
