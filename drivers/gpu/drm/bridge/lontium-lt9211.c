@@ -1415,9 +1415,10 @@ static int lt9211_parse_dt(struct device_node *np, struct lt9211 *lt9211)
 
 	ret = of_property_read_u8(np, "bus-fmt", &lt9211->bus_fmt);
 	if (!ret) {
-		if (lt9211->bus_fmt != 6 && lt9211->bus_fmt != 8)
-			lt9211->bus_fmt = 0;
-			dev_dbg(lt9211->dev, "Bus format not legal!\n");
+		if (lt9211->bus_fmt != 6 && lt9211->bus_fmt != 8) {
+				lt9211->bus_fmt = 0;
+				dev_dbg(lt9211->dev, "Bus format not legal!\n");
+		}
 	} else {
 		lt9211->bus_fmt = 0;
 		dev_dbg(lt9211->dev, "No bus format set!\n");

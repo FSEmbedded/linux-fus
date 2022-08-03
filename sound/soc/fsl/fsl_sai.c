@@ -1678,7 +1678,6 @@ static int fsl_sai_runtime_resume(struct device *dev)
 	struct fsl_sai *sai = dev_get_drvdata(dev);
 	unsigned int ofs = sai->soc_data->reg_offset;
 	int ret;
-	uint32_t id;
 
 	ret = clk_prepare_enable(sai->bus_clk);
 	if (ret) {

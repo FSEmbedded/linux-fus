@@ -236,7 +236,7 @@ static int pcf85263_read_time(struct device *dev, struct rtc_time *tm)
 	const int first = PCF85263_REG_RTC_SC;
 	const int last = PCF85263_REG_RTC_YR;
 	const int len = last - first + 1;
-	u8 regs[len];
+	u8 regs[PCF85263_REG_RTC_YR - PCF85263_REG_RTC_SC + 1];
 	u8 hr_reg;
 	int ret;
 
@@ -361,7 +361,7 @@ static int pcf85263_read_alarm(struct device *dev, struct rtc_wkalrm *alarm)
 	const int first = PCF85263_REG_ALM1_SC;
 	const int last = PCF85263_REG_ALM1_MO;
 	const int len = last - first + 1;
-	u8 regs[len];
+	u8 regs[PCF85263_REG_ALM1_MO - PCF85263_REG_ALM1_SC +1];
 	u8 hr_reg;
 	unsigned int regval;
 	int ret;
@@ -402,9 +402,9 @@ static int pcf85263_set_alarm(struct device *dev, struct rtc_wkalrm *alarm)
 	struct pcf85263 *pcf85263 = dev_get_drvdata(dev);
 	struct rtc_time *tm = &alarm->time;
 	const int first = PCF85263_REG_ALM1_SC;
-	const int last = PCF85263_REG_ALM1_MO;
-	const int len = last - first + 1;
-	u8 regs[len];
+	//const int last = PCF85263_REG_ALM1_MO;
+
+	u8 regs[PCF85263_REG_ALM1_MO - PCF85263_REG_ALM1_SC + 1];
 	int ret;
 
 	/* Disable alarm comparison during update */
