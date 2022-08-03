@@ -1349,8 +1349,7 @@ static int ksz9477_setup(struct dsa_switch *ds)
 	return 0;
 }
 
-static void ksz9477_set_gpio_phylink(struct ksz_device *dev,
-									 struct phy_device *phydev, int port)
+static void ksz9477_set_gpio_phylink(struct ksz_device *dev, int port, bool up)
 {
 	uint16_t LED_OVERRIDE_REGISTER = 0x123;
 	uint16_t LED_OUTPUT_REGISTER = 0x127;
@@ -1369,27 +1368,44 @@ static void ksz9477_set_gpio_phylink(struct ksz_device *dev,
 
 		reg_led_override |= 0x1 << shift;
 
-		if (phydev->link)
-			reg_led_output &= ~(0x1 << shift);
-		else
+		if (up)
 			reg_led_output |= 0x1 << shift;
+		else
+			reg_led_output &= ~(0x1 << shift);
 
 		ksz_write8(dev, LED_OUTPUT_REGISTER, reg_led_output);
 		ksz_write8(dev, LED_OVERRIDE_REGISTER, reg_led_override);
 	}
 }
 
-static void ksz9477_adjust_link(struct dsa_switch *ds, int port,
-		     struct phy_device *phydev)
+static void ksz9477_mac_link_down(struct dsa_switch *ds, int port,
+								  unsigned int mode,
+								  phy_interface_t interface)
 {
 	struct ksz_device *dev = ds->priv;
-
-	//ksz_adjust_link(ds, port, phydev);
 
 	/* Check if LEDs are used as GPIO */
 	if (dev->led_gpio_phy_link >= 0)
 	{
-		ksz9477_set_gpio_phylink(dev, phydev, port);
+		ksz9477_set_gpio_phylink(dev, port, 1);
+	}
+
+	ksz_mac_link_down(ds, port, mode, interface);
+}
+
+static void ksz9477_mac_link_up(struct dsa_switch *ds, int port,
+				       unsigned int mode,
+				       phy_interface_t interface,
+				       struct phy_device *phydev,
+				       int speed, int duplex,
+				       bool tx_pause, bool rx_pause)
+{
+	struct ksz_device *dev = ds->priv;
+
+	/* Check if LEDs are used as GPIO */
+	if (dev->led_gpio_phy_link >= 0)
+	{
+		ksz9477_set_gpio_phylink(dev, port, 0);
 	}
 }
 
@@ -1398,7 +1414,8 @@ static const struct dsa_switch_ops ksz9477_switch_ops = {
 	.setup			= ksz9477_setup,
 	.phy_read		= ksz9477_phy_read16,
 	.phy_write		= ksz9477_phy_write16,
-	.phylink_mac_link_down	= ksz_mac_link_down,
+	.phylink_mac_link_down	= ksz9477_mac_link_down,
+	.phylink_mac_link_up    = ksz9477_mac_link_up,
 	.port_enable		= ksz_enable_port,
 	.get_strings		= ksz9477_get_strings,
 	.get_ethtool_stats	= ksz_get_ethtool_stats,
