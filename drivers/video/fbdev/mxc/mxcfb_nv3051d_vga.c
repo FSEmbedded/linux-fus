@@ -89,7 +89,7 @@ static int nv3051d_brightness;
 #define    LCM_HSA         2
 #define    LCM_VFP         12
 #define    LCM_VBP         4
-#define    LCM_VSA         2
+#define    LCM_VSA         1
 
 static struct fb_videomode truly_lcd_modedb[] = {
 	{
@@ -124,7 +124,7 @@ int mipid_nv3051d_lcd_setup(struct mipi_dsi_info *mipi_dsi)
 	u8 buf[DSI_CMD_BUF_MAXSIZE];
 	int err = 0;
 
-	dev_dbg(&mipi_dsi->pdev->dev, "MIPI DSI LCD setup.\n");
+	dev_info(&mipi_dsi->pdev->dev, "MIPI DSI LCD setup.\n");
 
 	TC358763_DCS_write_1A_1P(0xFF,0x30);
 	TC358763_DCS_write_1A_1P(0xFF,0x52);
@@ -335,10 +335,10 @@ int mipid_nv3051d_lcd_setup(struct mipi_dsi_info *mipi_dsi)
 	TC358763_DCS_write_1A_1P(0x36,0x02);
 
 	TC358763_DCS_write_1A_0P(0x11);
-	msleep(200);
+	mdelay(200);
 
 	TC358763_DCS_write_1A_0P(0x29);
-	msleep(10);
+	mdelay(10);
 
 	return err;
 }

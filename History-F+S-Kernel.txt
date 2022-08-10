@@ -25,6 +25,17 @@ Supported boards: efusMX8X
 
 
 
+linux-5.4.70-fsimx7ulp-Y2022.05 (11.05.2022)
+--------------------------------------------
+Supported boards: PicoCoreMX7ULP
+
+- Fix backlight polarity for rgt070qyh-13cp
+- Improve picocoremx7up device tree
+- Improve the EE0350ET-2CP driver for fbdev
+- Improve fbdev mipi_dsi_northwest driver
+
+
+
 linux-5.4.70-fsimx6ul-B2022.04 (11.04.2022)
 -------------------------------------------
 Supported boards: efusA7UL PicoCOM1.2 PicoCoreMX6UL PicoCoreMX6UL100 PicoCOMA7

@@ -34,7 +34,10 @@
 /* USB */
 #define CONFIG_PICOCOREMX8MX_USB_OTG1
 #define CONFIG_PICOCOREMX8MX_USB_HOST
-//#define CONFIG_PICOCOREMX8MX_USB_OTG1_USBC
+#define CONFIG_PICOCOREMX8MX_USB_OTG1_USBC
+/* USB Type-C ALERT signal is available on J2_77 on BBDSI baseboard since
+   Revision 1.40. Otherwise use polling with ~100ms */
+#define CONFIG_PICOCOREMX8MX_USB_OTG1_USBC_ALERT
 
 /* PCIe */
 #define CONFIG_PICOCOREMX8MX_PCIE
@@ -109,12 +112,12 @@
 
 #ifdef SUPPORT_M4
 #undef CONFIG_PICOCOREMX8MX_UART_C
-//#undef CONFIG_PICOCOREMX8MM_I2C_A
-//#undef CONFIG_PICOCOREMX8MM_SPI_A
-//#undef CONFIG_PICOCOREMX8MM_SPI_B
+//#undef CONFIG_PICOCOREMX8MX_I2C_A
+//#undef CONFIG_PICOCOREMX8MX_SPI_A
+//#undef CONFIG_PICOCOREMX8MX_SPI_B
 /* Only undef if using audio/sai examples */
-//#undef CONFIG_PICOCOREMX8MM_I2C_D
-//#undef CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
+//#undef CONFIG_PICOCOREMX8MX_I2C_D
+//#undef CONFIG_PICOCOREMX8MX_SGTL5000_AUDIO
 #endif
 
 /* Check for invalid CONFIG combinations */
@@ -122,6 +125,10 @@
 #undef CONFIG_PICOCOREMX8MX_USB_OTG1_USBC
 #endif
 
+#if !defined(CONFIG_PICOCOREMX8MX_USB_OTG1_USB) \
+    || (CONFIG_PICOCOREBBDSI_BOARD_REVISION < 140)
+#undef CONFIG_PICOCOREMX8MX_USB_OTG1_USBC_ALERT
+#endif
 
 #include "../freescale/imx8mm.dtsi"
 #include <dt-bindings/pwm/pwm.h>
@@ -500,11 +507,13 @@
 	/* USB-C */
 	ptn5110: tcpc@52 {
 		compatible = "nxp,ptn5110";
+#ifdef CONFIG_PICOCOREMX8MX_USB_OTG1_USBC_ALERT
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_typec1>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
+#endif
 		reg = <0x52>;
-		interrupt-parent = <&gpio5>;
-		interrupts = <9 8>;
 		status = "okay";
 
 		port {
@@ -1629,12 +1638,12 @@
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREMX8MX_USB_OTG1_USBC
-	pinctrl_typec1: typec1grp {
-		fsl,pins = <
-			MX8MM_IOMUXC_ECSPI1_SS0_GPIO5_IO9		0x00159
-		>;
-	};
+#ifdef CONFIG_PICOCOREMX8MX_USB_OTG1_USBC_ALERT
+		pinctrl_typec1: typec1grp {
+			fsl,pins = <
+				MX8MM_IOMUXC_SAI1_RXFS_GPIO4_IO0	0x001c6
+			>;
+		};
 #endif
 
 #ifdef CONFIG_PICOCOREMX8MX_USB_HOST
