@@ -3,5 +3,7 @@ Realtek PHY properties.
 These properties cover the base properties Realtek PHYs.
 
 Optional properties:
- - rtl821x,clkout_en : enable clkout to supply clocks for MAC.
-
+ - rtl821x,clkout_en : enable clkout to supply clocks for MAC without ssc.
+ - rtl821x,enable-clkout-ssc : enable spread spectrum clocking and clock on clkout.
+ - rtl821x,enable-sysclk-ssc : enable spread spectrum clocking on system clock.
+ - rtl821x,enable-rxc-ssc : enable spread spectrum clocking on rxc.
