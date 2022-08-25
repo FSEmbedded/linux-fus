@@ -180,6 +180,7 @@
 			reg = <4>;
             rtl821x,enable-sysclk-ssc;
             rtl821x,enable-rxc-ssc;
+            rtl821x,led-cnfg-mode-b;
             reset-gpios = <&gpio1 5 GPIO_ACTIVE_LOW>;
             reset-assert-us = <10000>;
             reset-deassert-us = <50000>;

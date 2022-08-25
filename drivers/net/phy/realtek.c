@@ -61,6 +61,7 @@
 #define RTL821X_CLKOUT_SSC_EN_FEATURE           (1 << 1)
 #define RTL821X_RXC_SSC_EN_FEATURE              (1 << 2)
 #define RTL821X_SYSCLK_SSC_EN_FEATURE           (1 << 3)
+#define RTL8211F_LED_CNFG_MODE_B                (1 << 4)
 
 /* page 0x0c44, register 0x13 */
 /* RXC SSC initialization and enable */
@@ -73,6 +74,10 @@
 /* page 0x0d09, register 0x10 */
 /* CLK_OUT SSC initialization */
 #define RTL8211F_CLKOUT_SSC_INIT                0x10
+
+/* page 0x0d04, register 0x10 */
+/* LED_CNFG initialization */
+#define RTL8211F_LED_CNFG                       0x10
 
 
 MODULE_DESCRIPTION("Realtek PHY driver");
@@ -113,6 +118,9 @@ static int rtl821x_probe(struct phy_device *phydev)
 
 	if (of_property_read_bool(dev->of_node, "rtl821x,enable-rxc-ssc"))
 		priv->quirks |= RTL821X_RXC_SSC_EN_FEATURE;
+
+	if (of_property_read_bool(dev->of_node, "rtl821x,led-cnfg-mode-b"))
+		priv->quirks |= RTL8211F_LED_CNFG_MODE_B;
 
 	phydev->priv = priv;
 
@@ -325,6 +333,13 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 		}
 	}
 
+	if (priv->quirks & RTL8211F_LED_CNFG_MODE_B) {
+		ret = phy_modify_paged(phydev, 0xd04, RTL8211F_LED_CNFG, 0xff00, 0xae00);
+		if (ret < 0) {
+			dev_err(&phydev->mdio.dev, "rxc ssc init and enable failed\n");
+			return ret;
+		}
+	}
 
 	/* phy reset required */
 	return genphy_soft_reset(phydev);
