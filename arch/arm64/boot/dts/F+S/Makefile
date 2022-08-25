@@ -25,3 +25,8 @@ dtb-$(CONFIG_ARCH_MXC) += picocoremx8mn.dtb \
 			  picocoremx8mn-lcdif-tc358764-j070wvtc0211.dtb \
 			  picocoremx8mx-nano.dtb \
 			  picocoremx8mx-nano-lcdif-tc358764-j070wvtc0211.dtb
+dtb-$(CONFIG_ARCH_MXC) += picocoremx8mmr2.dtb \
+			  picocoremx8mmr2-lcdif-tc358764-g070y2-l01.dtb \
+			  picocoremx8mmr2-lcdif-tc358764-j070wvtc0211.dtb \
+			  picocoremx8mmr2-lcdif-g050tan01.dtb \
+			  picocoremx8mmr2-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtb \
