@@ -53,9 +53,27 @@
 
 /* page 0xa43, register 0x19 */
 #define RTL8211F_PHYCR2				0x19
+#define RTL8211F_SYSCLK_SSC_EN                  BIT(3)
 #define RTL8211F_CLKOUT_EN			BIT(0)
 
 #define RTL821X_CLKOUT_EN_FEATURE		(1 << 0)
+/* spread spectrum clock feature */
+#define RTL821X_CLKOUT_SSC_EN_FEATURE           (1 << 1)
+#define RTL821X_RXC_SSC_EN_FEATURE              (1 << 2)
+#define RTL821X_SYSCLK_SSC_EN_FEATURE           (1 << 3)
+
+/* page 0x0c44, register 0x13 */
+/* RXC SSC initialization and enable */
+#define RTL8211F_RXC_SSC_INIT_EN                0x13
+
+/* page 0x0xc44, register 0x17 */
+/* system clock SSC initialization */
+#define RTL8211F_SYSCLK_SSC_INIT                0x17
+
+/* page 0x0d09, register 0x10 */
+/* CLK_OUT SSC initialization */
+#define RTL8211F_CLKOUT_SSC_INIT                0x10
+
 
 MODULE_DESCRIPTION("Realtek PHY driver");
 MODULE_AUTHOR("Johnson Leung");
@@ -86,6 +104,15 @@ static int rtl821x_probe(struct phy_device *phydev)
 
 	if (of_property_read_bool(dev->of_node, "rtl821x,clkout_en"))
 		priv->quirks |= RTL821X_CLKOUT_EN_FEATURE;
+
+	if (of_property_read_bool(dev->of_node, "rtl821x,enable-clkout-ssc"))
+		priv->quirks |= RTL821X_CLKOUT_SSC_EN_FEATURE;
+
+	if (of_property_read_bool(dev->of_node, "rtl821x,enable-sysclk-ssc"))
+		priv->quirks |= RTL821X_SYSCLK_SSC_EN_FEATURE;
+
+	if (of_property_read_bool(dev->of_node, "rtl821x,enable-rxc-ssc"))
+		priv->quirks |= RTL821X_RXC_SSC_EN_FEATURE;
 
 	phydev->priv = priv;
 
@@ -235,23 +262,72 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 		return ret;
 	}
 
-	if (priv->quirks & RTL821X_CLKOUT_EN_FEATURE) {
+	if (priv->quirks & RTL821X_RXC_SSC_EN_FEATURE) {
+		ret = phy_modify_paged(phydev, 0x0c44, RTL8211F_RXC_SSC_INIT_EN, 0xff00, 0x5f00);
+		if (ret < 0) {
+			dev_err(&phydev->mdio.dev, "rxc ssc init and enable failed\n");
+			return ret;
+		}
+	}
+
+	if (priv->quirks & RTL821X_SYSCLK_SSC_EN_FEATURE) {
+		ret = phy_modify_paged(phydev, 0x0c44, RTL8211F_SYSCLK_SSC_INIT, 0xff00, 0x4f00);
+		if (ret < 0) {
+			dev_err(&phydev->mdio.dev, "sysclk ssc init failed\n");
+			return ret;
+		}
+
 		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2,
-				       RTL8211F_CLKOUT_EN, RTL8211F_CLKOUT_EN);
+				       RTL8211F_SYSCLK_SSC_EN, 1);
+		if (ret < 0) {
+			dev_err(&phydev->mdio.dev, "sysclk ssc enable failed\n");
+			return ret;
+		}
+	} else {
+		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2,
+				       RTL8211F_SYSCLK_SSC_EN, 0);
+		if (ret < 0) {
+			dev_err(&phydev->mdio.dev, "sysclk disable failed\n");
+			return ret;
+		}
+	}
+
+
+	if (priv->quirks & RTL821X_CLKOUT_SSC_EN_FEATURE) {
+		ret = phy_modify_paged(phydev, 0x0d09, RTL8211F_CLKOUT_SSC_INIT,
+				       0xff00, 0xcf00);
+		if (ret < 0) {
+			dev_err(&phydev->mdio.dev, "clkout ssc init failed\n");
+			return ret;
+		}
+
+		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2,
+				       0xffff, 0x38c3);
 		if (ret < 0) {
 			dev_err(&phydev->mdio.dev, "clkout enable failed\n");
 			return ret;
 		}
 	} else {
-		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2,
+		if (priv->quirks & RTL821X_CLKOUT_EN_FEATURE) {
+			ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2,
+					       RTL8211F_CLKOUT_EN, RTL8211F_CLKOUT_EN);
+			if (ret < 0) {
+				dev_err(&phydev->mdio.dev, "clkout enable failed\n");
+				return ret;
+			}
+		} else {
+			ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2,
 				       RTL8211F_CLKOUT_EN, 0);
-		if (ret < 0) {
-			dev_err(&phydev->mdio.dev, "clkout disable failed\n");
-			return ret;
+			if (ret < 0) {
+				dev_err(&phydev->mdio.dev, "clkout disable failed\n");
+				return ret;
+			}
 		}
 	}
 
-	return ret;
+
+	/* phy reset required */
+	return genphy_soft_reset(phydev);
 }
 
 static int rtl8211e_config_init(struct phy_device *phydev)

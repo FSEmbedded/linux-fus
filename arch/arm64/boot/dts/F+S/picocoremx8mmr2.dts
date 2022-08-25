@@ -178,6 +178,8 @@
 		ethphy4: ethernet-phy@4 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <4>;
+            rtl821x,enable-sysclk-ssc;
+            rtl821x,enable-rxc-ssc;
             reset-gpios = <&gpio1 5 GPIO_ACTIVE_LOW>;
             reset-assert-us = <10000>;
             reset-deassert-us = <50000>;
