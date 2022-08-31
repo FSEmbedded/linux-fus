@@ -553,6 +553,8 @@ int tsc200x_probe(struct device *dev, int irq, const struct input_id *tsc_id,
 
 	input_set_drvdata(input_dev, ts);
 
+	tsc200x_reset(ts);
+
 	__set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
 	input_set_capability(input_dev, EV_KEY, BTN_TOUCH);
 
