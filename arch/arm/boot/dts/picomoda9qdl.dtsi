@@ -879,7 +879,27 @@
 		interrupts = <6 IRQ_TYPE_EDGE_FALLING>;
 	};
 
-#ifdef CONFIG_PICOMODA9_4WTOUCH_SX8655_ONBOARD
+#ifdef CONFIG_PICOMODA9_4WTOUCH_ONBOARD
+#if (CONFIG_PICOMODA9_BOARD_REVISION >= 120)
+	/* 4/5 wire analog resistive touch, controller on picomod rev 1.20 and higher */
+	tsc2004@4a {
+		compatible = "ti,tsc2004";
+		reg = <0x4a>;
+		vio-supply = <&reg_vref_3v3>;
+		interrupts-extended = <&gpio4 5 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio1 7 GPIO_ACTIVE_LOW>;
+		touchscreen-fuzz-x = <4>;
+		touchscreen-fuzz-y = <7>;
+		touchscreen-fuzz-pressure = <20>;
+		touchscreen-size-x = <4096>;
+		touchscreen-size-y = <4096>;
+		touchscreen-max-pressure = <2048>;
+		touchscreen-inverted-y;
+		ti,x-plate-ohms = <280>;
+		ti,pre-charge-time = <4>;
+		ti,sense-time-sel = <3>;
+	};
+#else
 	/* 4/5 wire analog resistive touch, controller on picomod */
 	sx8654@48 {
 		compatible = "semtech,sx8654";
@@ -892,7 +912,9 @@
 		interrupt-parent = <&gpio4>;
 		interrupts = <5 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpio = <&gpio1 7 GPIO_ACTIVE_LOW>;
+		y-rev;
 	};
+#endif
 #endif
 };
 #endif /* CONFIG_PICOMODA9_I2C_B */

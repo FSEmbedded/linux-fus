@@ -746,6 +746,27 @@
 	};
 #endif
 
+#ifdef CONFIG_QBLISSA9_4WTOUCH_TSC2004
+	/* 4/5 wire analog resistive touch */
+	tsc2004@4a {
+		compatible = "ti,tsc2004";
+		reg = <0x4a>;
+		vio-supply = <&reg_vref_3v3>;
+		interrupts-extended = <&gpio4 23 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio4 31 GPIO_ACTIVE_LOW>;
+		touchscreen-fuzz-x = <4>;
+		touchscreen-fuzz-y = <7>;
+		touchscreen-fuzz-pressure = <20>;
+		touchscreen-size-x = <4096>;
+		touchscreen-size-y = <4096>;
+		touchscreen-max-pressure = <2048>;
+		touchscreen-inverted-y;
+		ti,x-plate-ohms = <280>;
+		ti,pre-charge-time = <4>;
+		ti,sense-time-sel = <3>;
+	};
+#endif
+
 #ifdef CONFIG_QBLISSA9_CAPTOUCH_FT5x06
 	/* F&S driver V3.0 */
 	ft5x06_ts@38 {

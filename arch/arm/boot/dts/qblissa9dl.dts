@@ -197,6 +197,7 @@ wvga {					\
  * Select none if you do not need touch support.
  */
 //#define CONFIG_QBLISSA9_4WTOUCH_SX8655
+//#define CONFIG_QBLISSA9_4WTOUCH_TSC2004
 //#define CONFIG_QBLISSA9_CAPTOUCH_MXT224
 #define CONFIG_QBLISSA9_CAPTOUCH_FT5x06
 //#define CONFIG_QBLISSA9_CAPTOUCH_SITRONIX

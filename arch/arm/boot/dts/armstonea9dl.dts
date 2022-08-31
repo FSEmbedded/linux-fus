@@ -9,7 +9,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_ARMSTONEA9_BOARD_REVISION	110
+#define CONFIG_ARMSTONEA9_BOARD_REVISION	120
 
 #define DISPLAY_NONE	0	/* No display on this port */
 #define DISPLAY_LCD	1	/* LCD via RGB adapter */
@@ -206,6 +206,7 @@ wvga {					\
  * Select none if you do not need touch support.
  */
 #define CONFIG_ARMSTONEA9_4WTOUCH_SX8655_RGBADAPTER
+//#define CONFIG_ARMSTONEA9_4WTOUCH_TSC2004_RGBADAPTER
 //#define CONFIG_ARMSTONEA9_4WTOUCH_SX8655
 //#define CONFIG_ARMSTONEA9_CAPTOUCH_MXT224
 //#define CONFIG_ARMSTONEA9_CAPTOUCH_FT5x06
