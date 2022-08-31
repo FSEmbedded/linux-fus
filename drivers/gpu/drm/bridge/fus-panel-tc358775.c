@@ -296,9 +296,9 @@ static inline struct tc358775 *panel_to_tc358775(struct drm_panel *panel)
 
 static void tc358775_reset(struct tc358775 *ctx)
 {
-	gpiod_set_value(ctx->gpio_reset, 0);
+	gpiod_set_value_cansleep(ctx->gpio_reset, 0);
 	usleep_range(1000, 2000);
-	gpiod_set_value(ctx->gpio_reset, 1);
+	gpiod_set_value_cansleep(ctx->gpio_reset, 1);
 	usleep_range(1000, 2000);
 }
 
@@ -345,7 +345,7 @@ static int tc358775_panel_prepare(struct drm_panel *panel)
 	}
 	udelay(500);
 	if (ctx->gpio_stby){
-		gpiod_set_value(ctx->gpio_stby, 1);
+		gpiod_set_value_cansleep(ctx->gpio_stby, 1);
 		udelay(50);
 	}
 	tc358775_reset(ctx);
@@ -368,7 +368,7 @@ static int tc358775_panel_unprepare(struct drm_panel *panel)
 		DRM_DEV_ERROR(dev, "Panel still enabled!\n");
 		return -EPERM;
 	}
-	gpiod_set_value(ctx->gpio_stby, 0);
+	gpiod_set_value_cansleep(ctx->gpio_stby, 0);
 
 	if (ctx->extclk != NULL) {
 		clk_disable_unprepare(ctx->extclk);

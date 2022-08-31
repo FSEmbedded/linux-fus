@@ -1,0 +1,90 @@
+/*
+* Copyright (C) 2019 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+
+#define CONFIG_PICOCOREMX8MM_MIPI_DSI
+#include <dt-bindings/interrupt-controller/irq.h>
+#include "picocoremx8mm-lpddr4.dts"
+
+/ {
+	regulators {
+		/* BL_ON on adapter board MIPI2MIPI1 */
+		reg_mipi_bl: backlight_mipi {
+			compatible = "regulator-fixed";
+			regulator-name = "mipi-bl";
+			gpio = <&max7315 0 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+	};
+
+	/* MIPI-DSI backlight PWM on adapter MIPI2MIPI1 */
+	backlight_mipi_dsi {
+		compatible = "pwm-backlight";
+		/* only 32 kHz available */
+		pwms = <&max7315 1 31250 PWM_POLARITY_INVERTED>;
+		power-supply = <&reg_mipi_bl>;
+		/* calculated without sigma so it´s linear */
+		brightness-levels = <0 17 34 51 68 85 102 119 136
+				     153 170 187 204 221 238 255>;
+		default-brightness-level = <14>;
+		fb-names = "mipi_dsi";
+	};
+};
+
+&lcdif {
+	status = "okay";
+};
+
+&mipi_dsi {
+	status = "okay";
+
+	panel@0 {
+		compatible = "eagleeyetech,ee0350et-2";
+		reg = <0>;
+		reset-gpios = <&max7315 4 GPIO_ACTIVE_LOW>;
+		/* VLCD is not needed */
+		//vci-supply = <&reg_vlcd>;
+		status = "okay";
+	};
+};
+
+&i2c2 {
+	/* LED-driver on adapter board MIPI2MIPI1 */
+	max7315: max7315@20 { /* LED-driver */
+		compatible = "maxim,max7315";
+		reg = <0x20>;
+		/* interrupt not yet supported */
+		//interrupt-parent = <&gpio4>;
+		//interrupts = <31 IRQ_TYPE_LEVEL_LOW>;
+		//#interrupt-cells = <2>;
+		//interrupt-controller;
+		gpio-controller;
+		#gpio-cells = <2>;
+		pwm-controller;
+		#pwm-cells = <3>;
+		//#interrupt-cells = <2>;
+		//interrupt-controller;
+};
+
+	/* Atmel PCAP touch on Touch Connector (I2C) */
+	mxt336u@4a {
+		compatible = "atmel,maxtouch";
+		reg = <0x4a>;
+#if CONFIG_PICOCOREMX8MM_BOARD_REVISION >= 130
+		interrupt-parent = <&gpio1>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+
+#else
+		interrupt-parent = <&gpio4>;
+		interrupts = <31 IRQ_TYPE_EDGE_FALLING>;
+#endif
+		atmel,cfg_name = "atmel/mxt336u-gloves.cfg";
+		reset-gpios = <&max7315 6 GPIO_ACTIVE_LOW>;
+	};
+};

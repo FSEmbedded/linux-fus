@@ -41,6 +41,7 @@ static struct fsl_sai_soc_data fsl_sai_vf610 = {
 	.fifo_depth = 32,
 	.flags = 0,
 	.constrain_period_size = false,
+	.mclk0_is_mclk1 = false,
 };
 
 static struct fsl_sai_soc_data fsl_sai_imx6sx = {
@@ -51,6 +52,7 @@ static struct fsl_sai_soc_data fsl_sai_imx6sx = {
 	.flags = 0,
 	.reg_offset = 0,
 	.constrain_period_size = false,
+	.mclk0_is_mclk1 = true,
 };
 
 static struct fsl_sai_soc_data fsl_sai_imx6ul = {
@@ -61,6 +63,7 @@ static struct fsl_sai_soc_data fsl_sai_imx6ul = {
 	.flags = 0,
 	.reg_offset = 0,
 	.constrain_period_size = false,
+	.mclk0_is_mclk1 = true,
 };
 
 static struct fsl_sai_soc_data fsl_sai_imx7ulp = {
@@ -71,6 +74,7 @@ static struct fsl_sai_soc_data fsl_sai_imx7ulp = {
 	.flags = SAI_FLAG_PMQOS,
 	.reg_offset = 8,
 	.constrain_period_size = false,
+	.mclk0_is_mclk1 = false,
 };
 
 static struct fsl_sai_soc_data fsl_sai_imx8mq = {
@@ -81,6 +85,7 @@ static struct fsl_sai_soc_data fsl_sai_imx8mq = {
 	.flags = 0,
 	.reg_offset = 8,
 	.constrain_period_size = false,
+	.mclk0_is_mclk1 = false,
 };
 
 static struct fsl_sai_soc_data fsl_sai_imx8qm = {
@@ -91,6 +96,7 @@ static struct fsl_sai_soc_data fsl_sai_imx8qm = {
 	.flags = 0,
 	.reg_offset = 0,
 	.constrain_period_size = true,
+	.mclk0_is_mclk1 = false,
 };
 
 static const unsigned int fsl_sai_rates[] = {
@@ -528,7 +534,15 @@ static int fsl_sai_set_bclk(struct snd_soc_dai *dai, bool tx, u32 freq)
 	if (sai->slave_mode[tx])
 		return 0;
 
-	for (id = 0; id < FSL_SAI_MCLK_MAX; id++) {
+	/*
+	 * There is no point in polling MCLK0 if it is identical to MCLK1.
+	 * And given that MQS use case has to use MCLK1 though two clocks
+	 * are the same, we simply skip MCLK0 and start to find from MCLK1.
+	 */
+	id = sai->soc->mclk0_is_mclk1 ? 1 : 0;
+
+	for (; id < FSL_SAI_MCLK_MAX; id++) {
+//	for (id = 0; id < FSL_SAI_MCLK_MAX; id++) {
 		clk_rate = clk_get_rate(sai->mclk_clk[id]);
 		if (!clk_rate)
 			continue;
@@ -1400,7 +1414,7 @@ static int fsl_sai_probe(struct platform_device *pdev)
 		sai->bus_clk = NULL;
 	}
 
-	for (i = 0; i < FSL_SAI_MCLK_MAX; i++) {
+	for (i = 1; i < FSL_SAI_MCLK_MAX; i++) {
 		sprintf(tmp, "mclk%d", i);
 		sai->mclk_clk[i] = devm_clk_get(&pdev->dev, tmp);
 		if (IS_ERR(sai->mclk_clk[i])) {
@@ -1449,6 +1463,11 @@ static int fsl_sai_probe(struct platform_device *pdev)
 			&sai->masterflag[FSL_FMT_RECEIVER]))
 			sai->masterflag[FSL_FMT_RECEIVER] <<= 12;
 	}
+
+	if (sai->soc->mclk0_is_mclk1)
+		sai->mclk_clk[0] = sai->mclk_clk[1];
+	else
+		sai->mclk_clk[0] = sai->bus_clk;
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
@@ -1520,6 +1539,7 @@ static int fsl_sai_probe(struct platform_device *pdev)
 
 	if (of_find_property(np, "fsl,sai-mclk-direction-output", NULL) &&
 	    sai->verid.id >= FSL_SAI_VERID_0301) {
+		/* SAI is in master mode so enable MCLK as output */
 		regmap_update_bits(sai->regmap, FSL_SAI_MCTL,
 				   FSL_SAI_MCTL_MCLK_EN, FSL_SAI_MCTL_MCLK_EN);
 	}
@@ -1643,6 +1663,19 @@ static int fsl_sai_runtime_resume(struct device *dev)
 	usleep_range(1000, 2000);
 	regmap_write(sai->regmap, FSL_SAI_TCSR(offset), 0);
 	regmap_write(sai->regmap, FSL_SAI_RCSR(offset), 0);
+
+	/*
+	 * Audio codecs like SGTL5000 need the MCLK during setup of the codec.
+	 * For the i.MX8MP it is gated with the receiver/transmiter BCE
+	 * bit. So enable the bit already here.
+	 */
+	if((sai->masterflag[FSL_FMT_TRANSMITTER] & SND_SOC_DAIFMT_CBM_CFM) == SND_SOC_DAIFMT_CBM_CFM)
+	{
+		if(!fsl_sai_check_ver(dev) && sai->verid.id >= FSL_SAI_VERID_0301)
+			/* Enable transmit clock early.*/
+			regmap_update_bits(sai->regmap, FSL_SAI_xCSR(1, offset),
+					FSL_SAI_CSR_BCE, FSL_SAI_CSR_BCE);
+	}
 
 	ret = regcache_sync(sai->regmap);
 	if (ret)

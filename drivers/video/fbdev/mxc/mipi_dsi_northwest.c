@@ -90,6 +90,12 @@ static struct mipi_dsi_match_lcd mipi_dsi_lcd_db[] = {
 	 {mipid_ili9881c_get_lcd_videomode, mipid_ili9881c_lcd_setup}
 	},
 #endif
+#ifdef CONFIG_FB_MXC_NEWVISION_PANEL_NV3051D
+	{
+	 "NEWVISION_PANEL_NV3051D",
+	 {mipid_nv3051d_get_lcd_videomode, mipid_nv3051d_lcd_setup}
+	},
+#endif
 #ifdef CONFIG_FB_MXC_RK_PANEL_RK055AHD042
 	{
 	 "ROCKTECH-WXGA-RK055AHD042",
@@ -909,7 +915,7 @@ static int mipi_dsi_enable(struct mxc_dispdrv_handle *disp,
 			msleep(60);
 
 			mipi_dsi_init_interrupt(mipi_dsi);
-
+			mipi_dsi_set_mode(mipi_dsi, DSI_LP_MODE);
 			ret = mipi_dsi->lcd_callback->mipi_lcd_setup(mipi_dsi);
 			if (ret < 0) {
 				dev_err(&mipi_dsi->pdev->dev,
@@ -939,6 +945,7 @@ static int mipi_dsi_enable(struct mxc_dispdrv_handle *disp,
 				return -EINVAL;
 			}
 		}
+		mipi_dsi_set_mode(mipi_dsi, DSI_HS_MODE);
 	}
 
 	return 0;
@@ -1042,7 +1049,7 @@ static int mipi_dsi_pkt_write(struct mipi_dsi_info *mipi_dsi,
 		dev_err(&pdev->dev, "wait tx done timeout!\n");
 		return -ETIMEDOUT;
 	}
-	mdelay(10);
+	mdelay(1);
 
 	return 0;
 }
@@ -1118,6 +1125,7 @@ static void mipi_dsi_disable(struct mxc_dispdrv_handle *disp,
 	if (!mipi_dsi->encoder)
 		mipi_display_enter_sleep(mipi_dsi->disp_mipi);
 
+	mipi_dsi_set_mode(mipi_dsi, DSI_LP_MODE);
 #ifndef CONFIG_FB_IMX64
 	clk_disable_unprepare(mipi_dsi->esc_clk);
 #endif

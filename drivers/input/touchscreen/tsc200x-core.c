@@ -77,6 +77,7 @@ struct tsc200x {
 	struct regmap		*regmap;
 	__u16                   bustype;
 
+	struct touchscreen_properties props;
 	struct input_dev	*idev;
 	char			phys[32];
 
@@ -96,6 +97,8 @@ struct tsc200x {
 	unsigned long		last_valid_interrupt;
 
 	unsigned int		x_plate_ohm;
+	u_int8_t		pre_charge_time;
+	u_int8_t		sense_time_sel;
 
 	bool			opened;
 	bool			suspended;
@@ -113,8 +116,7 @@ static void tsc200x_update_pen_state(struct tsc200x *ts,
 				     int x, int y, int pressure)
 {
 	if (pressure) {
-		input_report_abs(ts->idev, ABS_X, x);
-		input_report_abs(ts->idev, ABS_Y, y);
+		touchscreen_report_pos(ts->idev, &ts->props, x, y, false);
 		input_report_abs(ts->idev, ABS_PRESSURE, pressure);
 		if (!ts->pen_down) {
 			input_report_key(ts->idev, BTN_TOUCH, !!pressure);
@@ -204,9 +206,23 @@ static void tsc200x_penup_timer(struct timer_list *t)
 	spin_unlock_irqrestore(&ts->lock, flags);
 }
 
+static u_int16_t check_config_reg(struct tsc200x *ts)
+{
+	u_int16_t cfr0_init_val = TSC200X_CFR0_INITVALUE;
+
+	cfr0_init_val &= ~TSC200X_CFR0_PRECHARGE_MASK;
+	cfr0_init_val |= ts->pre_charge_time << TSC200X_CFR0_PRECHARGE_OFFSET;
+
+	cfr0_init_val &= ~TSC200X_CFR0_SNS_MASK;
+	cfr0_init_val |= ts->sense_time_sel << TSC200X_CFR0_SNS_OFFSET;
+
+	return cfr0_init_val;
+}
+
 static void tsc200x_start_scan(struct tsc200x *ts)
 {
-	regmap_write(ts->regmap, TSC200X_REG_CFR0, TSC200X_CFR0_INITVALUE);
+	u_int16_t cfr0_init_val = check_config_reg(ts);
+	regmap_write(ts->regmap, TSC200X_REG_CFR0, cfr0_init_val);
 	regmap_write(ts->regmap, TSC200X_REG_CFR1, TSC200X_CFR1_INITVALUE);
 	regmap_write(ts->regmap, TSC200X_REG_CFR2, TSC200X_CFR2_INITVALUE);
 	ts->tsc200x_cmd(ts->dev, TSC200X_CMD_NORMAL);
@@ -360,6 +376,7 @@ static void tsc200x_esd_work(struct work_struct *work)
 	struct tsc200x *ts = container_of(work, struct tsc200x, esd_work.work);
 	int error;
 	unsigned int r;
+	u_int16_t cfr0_init_val;
 
 	if (!mutex_trylock(&ts->mutex)) {
 		/*
@@ -374,10 +391,11 @@ static void tsc200x_esd_work(struct work_struct *work)
 				  msecs_to_jiffies(ts->esd_timeout)))
 		goto out;
 
+	cfr0_init_val = check_config_reg(ts);
 	/* We should be able to read register without disabling interrupts. */
 	error = regmap_read(ts->regmap, TSC200X_REG_CFR0, &r);
 	if (!error &&
-	    !((r ^ TSC200X_CFR0_INITVALUE) & TSC200X_CFR0_RW_MASK)) {
+	    !((r ^ cfr0_init_val) & TSC200X_CFR0_RW_MASK)) {
 		goto out;
 	}
 
@@ -445,6 +463,8 @@ int tsc200x_probe(struct device *dev, int irq, const struct input_id *tsc_id,
 	struct input_dev *input_dev;
 	u32 x_plate_ohm;
 	u32 esd_timeout;
+	u32 pre_charge_time;
+	u32 sense_time_sel;
 	int error;
 
 	if (irq <= 0) {
@@ -480,6 +500,16 @@ int tsc200x_probe(struct device *dev, int irq, const struct input_id *tsc_id,
 	error = device_property_read_u32(dev, "ti,esd-recovery-timeout-ms",
 					 &esd_timeout);
 	ts->esd_timeout = error ? 0 : esd_timeout;
+
+	error = device_property_read_u32(dev, "ti,pre-charge-time",
+							&pre_charge_time);
+	ts->pre_charge_time = (error ? (TSC200X_CFR0_PRECHARGE_276US >>
+		TSC200X_CFR0_PRECHARGE_OFFSET) : pre_charge_time) & 0x7;
+
+	error = device_property_read_u32(dev,
+				"ti,sense-time-sel", &sense_time_sel);
+	ts->sense_time_sel = (error ? (TSC200X_CFR0_SNS_32US >>
+			TSC200X_CFR0_SNS_OFFSET) : sense_time_sel) & 0x7;
 
 	ts->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ts->reset_gpio)) {
@@ -533,7 +563,7 @@ int tsc200x_probe(struct device *dev, int irq, const struct input_id *tsc_id,
 	input_set_abs_params(input_dev, ABS_PRESSURE,
 			     0, MAX_12BIT, TSC200X_DEF_P_FUZZ, 0);
 
-	touchscreen_parse_properties(input_dev, false, NULL);
+	touchscreen_parse_properties(input_dev, false, &ts->props);
 
 	/* Ensure the touchscreen is off */
 	tsc200x_stop_scan(ts);

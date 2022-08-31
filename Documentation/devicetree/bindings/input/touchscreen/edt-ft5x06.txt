@@ -53,6 +53,9 @@ Optional properties:
                 Range from 0 to 80, only supported by evervision,ev-ft5726
                 devices.
 
+- no-dummy-write: Do not execute the dummy write. Some controllers don´t
+                support the dummy write and don´t work after this command.
+
  - touchscreen-size-x	   : See touchscreen.txt
  - touchscreen-size-y	   : See touchscreen.txt
  - touchscreen-fuzz-x      : See touchscreen.txt

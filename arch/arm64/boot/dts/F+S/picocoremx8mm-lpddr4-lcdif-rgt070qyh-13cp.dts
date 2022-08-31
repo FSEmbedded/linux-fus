@@ -1,0 +1,163 @@
+/*
+* Copyright (C) 2022 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+
+#define CONFIG_PICOCOREMX8MM_MIPI_DSI
+#include "picocoremx8mm-lpddr4.dts"
+
+/ {
+	regulators {
+		reg_mipi_bl: backlight_mipi {
+			compatible = "regulator-fixed";
+			regulator-name = "mipi-bl";
+			gpio = <&pca963x 0 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+	};
+
+	backlight_mipi_dsi: backlight_mipi_dsi {
+		compatible = "pwm-backlight";
+		pwms = <&pca963x 1 640000 PWM_POLARITY_INVERTED>;
+		power-supply = <&reg_mipi_bl>;
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <13>;
+	};
+};
+
+&mipi_dsi {
+	status = "okay";
+
+	panel@0 {
+		status = "okay";
+		compatible = "rongen,t070qyh-13cp";
+		reg = <0>;
+		pinctrl-0 = <&pinctrl_mipi_dsi_en>;
+		reset-gpios = <&pca963x 3 GPIO_ACTIVE_LOW>;
+		vci-supply = <&reg_vlcd>;
+		dsi-lanes = <4>;
+		/* Video mode
+		 * 0: burst mode
+		 * 1: non-burst mode with sync event
+		 * 2: non-burst mode with sync pulse
+		 */
+		video-mode = <0>;
+		panel-width-mm = <94>;
+		panel-height-mm = <150>;
+
+		display-timings {
+			timing {
+				clock-frequency = <72000000>;
+				hactive = <800>;
+				vactive = <1280>;
+				hback-porch = <72>;
+				hfront-porch = <56>;
+				vback-porch = <38>;
+				vfront-porch = <3>;
+				hsync-len = <128>;
+				vsync-len = <10>;
+				hsync-active = <0>;
+				vsync-active = <0>;
+				de-active = <0>;
+				pixelclk-active = <0>;
+			};
+		};
+	};
+};
+
+&lcdif {
+	status = "okay";
+};
+
+&i2c2 {
+	pca963x: pca9634@61 {
+			compatible = "nxp,pca9634";
+			reg = <0x61>;
+			nxp,totem-pole;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			#pwm-cells = <3>;
+			#gpio-cells = <2>;
+			led@0 {
+				reg = <0>;
+				label = "BL_ON";
+				type = "GPIO";
+				active-high;
+				default-on;		/* or: keep-value */
+			};
+			led@1 {
+				reg = <1>;
+				label = "BL_PWM";
+				type = "PWM";
+				active-high;
+			};
+			led@2 {
+				reg = <2>;
+				label = "2-unused";
+				type = "LED";
+				active-low;
+			};
+			led@3 {
+				reg = <3>;
+				label = "MIPI_RST";
+				type = "GPIO";
+				active-high;
+				default-on;		/* or: keep-value */
+			};
+			led@4 {
+				reg = <4>;
+				label = "4-unused";
+				type = "LED";
+				active-low;
+			};
+			led@5 {
+				reg = <5>;
+				label = "TOUCH_RST";
+				type = "GPIO";
+				active-high;
+				default-on;		/* or: keep-value */
+			};
+			led@6 {
+				reg = <6>;
+				label = "6-unused";
+				type = "LED";
+				active-low;
+			};
+			led@7 {
+				reg = <7>;
+				label = "7-unused";
+				type = "LED";
+				active-low;
+			};
+		};
+
+	/* touch I2C */
+	focaltech@38 {
+		compatible = "focaltech,fts";
+		reg = <0x38>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_touch>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		focaltech,irq-gpio = <&gpio1 0 IRQ_TYPE_EDGE_FALLING>;
+		focaltech,swap-xy;
+		focaltech,touchscreen-inverted-y;
+		focaltech,reset-gpio = <&gpio1 13 GPIO_ACTIVE_LOW>;
+		focaltech,num-max-touches = <10>;
+		focaltech,display-coords = <0 0 800 1280>;
+	};
+};
+
+&iomuxc {
+		pinctrl_touch: touch_grp {
+			fsl,pins = <
+				MX8MM_IOMUXC_GPIO1_IO13_GPIO1_IO13	0x00104
+			>;
+		};
+};

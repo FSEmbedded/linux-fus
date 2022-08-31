@@ -11,6 +11,7 @@
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
+#include <linux/workqueue.h>
 #include <linux/property.h>
 #include <linux/regmap.h>
 #include <linux/usb/pd.h>
@@ -21,6 +22,9 @@
 
 #define PD_RETRY_COUNT 3
 
+/* Polling time in msecs */
+#define TCPC_POLL_TIME 100
+
 struct tcpci {
 	struct device *dev;
 
@@ -29,6 +33,8 @@ struct tcpci {
 	struct regmap *regmap;
 
 	bool controls_vbus;
+
+	struct delayed_work poll;
 
 	struct tcpc_dev tcpc;
 	struct tcpci_data *data;
@@ -429,6 +435,21 @@ static int tcpci_init(struct tcpc_dev *tcpc)
 	return tcpci_write16(tcpci, TCPC_ALERT_MASK, reg);
 }
 
+/* Worker function for polling of the status register */
+void tcpci_poll(struct work_struct *work)
+{
+	struct delayed_work *poll = to_delayed_work(work);
+	struct tcpci *tcpci = container_of(poll, struct tcpci, poll);
+
+	/* Call interrupt routine */
+	tcpci_irq(tcpci);
+
+	/* Schedule next work */
+	schedule_delayed_work(&tcpci->poll, msecs_to_jiffies(TCPC_POLL_TIME));
+
+	return;
+}
+
 irqreturn_t tcpci_irq(struct tcpci *tcpci)
 {
 	u16 status;
@@ -617,18 +638,23 @@ static int tcpci_probe(struct i2c_client *client,
 	chip->tcpci = tcpci_register_port(&client->dev, &chip->data);
 	if (IS_ERR(chip->tcpci))
 		return PTR_ERR(chip->tcpci);
+	if (client->irq) {
+		irq_set_status_flags(client->irq, IRQ_DISABLE_UNLAZY);
+		err = devm_request_threaded_irq(&client->dev, client->irq, NULL,
+						_tcpci_irq,
+						IRQF_ONESHOT | IRQF_TRIGGER_LOW,
+						dev_name(&client->dev), chip);
+		if (err < 0) {
+			tcpci_unregister_port(chip->tcpci);
+			return err;
+		}
 
-	irq_set_status_flags(client->irq, IRQ_DISABLE_UNLAZY);
-	err = devm_request_threaded_irq(&client->dev, client->irq, NULL,
-					_tcpci_irq,
-					IRQF_ONESHOT | IRQF_TRIGGER_LOW,
-					dev_name(&client->dev), chip);
-	if (err < 0) {
-		tcpci_unregister_port(chip->tcpci);
-		return err;
+		device_set_wakeup_capable(chip->tcpci->dev, true);
 	}
-
-	device_set_wakeup_capable(chip->tcpci->dev, true);
+	else {
+		INIT_DELAYED_WORK(&chip->tcpci->poll, tcpci_poll);
+		schedule_delayed_work(&chip->tcpci->poll, msecs_to_jiffies(TCPC_POLL_TIME));
+	}
 
 	return 0;
 }

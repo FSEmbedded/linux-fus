@@ -101,6 +101,7 @@
 #ifdef CONFIG_QBLISSA9_HDMI
 		i2c5 = &i2c_gpio_hdmi;
 #endif
+		nand = &gpmi;
 		};
 
 	memory {

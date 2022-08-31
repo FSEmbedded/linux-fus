@@ -9,7 +9,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 100 for board rev. 1.00 */
-#define CONFIG_GAR2_BOARD_REVISION	110
+#define CONFIG_GAR2_BOARD_REVISION	140
 
 /* CMA: Set 72 MB for Continuous Memory Allocator */
 #define CONFIG_GAR2_CMA_SIZE 0x4800000
@@ -31,6 +31,7 @@
 	aliases {
 		ethernet0 = &fec1;
 		ethernet1 = &fec2;
+		nand = &gpmi;
 	};
 #if 0
 	chosen {
@@ -310,7 +311,7 @@
 
 /* I2C_B: RTC (PCA8565) */
 &i2c2 {
-	clock_frequency = <100000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";

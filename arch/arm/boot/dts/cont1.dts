@@ -36,6 +36,13 @@
 	model = "F&S CONT1";
 	compatible = "fus,imx6sx-CONT1", "fsl,imx6sx";
 
+ 	aliases {
+ 		nand = &gpmi;
+	 	rpmsg = &rpmsg;
+		gpc = &gpc;
+		gpu3d = &gpu3d;
+ 	};
+
 	clocks {
 		codec_osc: anaclk2 {
 			#clock-cells = <0>;
@@ -463,11 +470,6 @@
 //###	trx-stby-gpio = <&max7310_b 4 GPIO_ACTIVE_HIGH>;
 //###	trx-wakeup-gpio = <&max7310_b 7 GPIO_ACTIVE_HIGH>;
 	status = "okay";
-};
-
-/* This board uses CPU variant MCIMX6X2EVN10 which does not have a GPU */
-&gpu {
-	status = "disabled";
 };
 
 #ifdef CONFIG_CONT1_I2C_C

@@ -163,6 +163,7 @@
 #ifdef CONFIG_ARMSTONEA9_HDMI
 		i2c6 = &i2c_gpio_hdmi;
 #endif
+		nand = &gpmi;
 	};
 
 	memory {

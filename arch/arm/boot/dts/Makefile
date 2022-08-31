@@ -467,6 +467,7 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	netdcua9dl.dtb \
 	picomoda9dl.dtb \
 	efusa9dl.dtb \
+	efusa9r2dl.dtb \
 	armstonea9dl.dtb \
 	armstonea9r2dl.dtb \
 	qblissa9dl.dtb \
@@ -567,6 +568,7 @@ dtb-$(CONFIG_SOC_IMX6Q) += \
 	netdcua9q.dtb \
 	picomoda9q.dtb \
 	efusa9q.dtb \
+	efusa9r2q.dtb \
 	armstonea9q.dtb \
 	armstonea9r2q.dtb \
 	qblissa9q.dtb \
@@ -619,6 +621,7 @@ dtb-$(CONFIG_SOC_IMX6SX) += \
 	bema9x.dtb \
 	picocoma9x.dtb \
 	cont1.dtb \
+	vand3.dtb \
 	imx6sx-sdb-m4.dtb \
 	imx6sx-sdb-mqs.dtb \
 	imx6sx-sdb-btwifi.dtb \
@@ -659,10 +662,12 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	picocom1.2.dtb \
 	picocoma7.dtb \
 	picocoremx6ul.dtb \
+	picocoremx6ul100.dtb \
 	cubea7ul.dtb \
 	cube2.0.dtb \
 	gar1.dtb \
 	gar2.dtb \
+	gar3.dtb \
 	imx6ull-14x14-evk.dtb \
 	imx6ull-14x14-evk-emmc.dtb \
 	imx6ull-14x14-evk-btwifi.dtb \
@@ -670,7 +675,9 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	imx6ull-14x14-evk-gpmi-weim.dtb \
 	efusa7ull.dtb \
 	cube2.0ull.dtb \
+	picocoma7ull.dtb \
 	picocoremx6ull.dtb \
+	picocoremx6ull100.dtb \
 	imx6ull-9x9-evk.dtb \
 	imx6ull-9x9-evk-ldo.dtb \
 	imx6ull-9x9-evk-btwifi.dtb \

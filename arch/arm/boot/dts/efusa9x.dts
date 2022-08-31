@@ -75,16 +75,16 @@ lcd_wvga {				\
 #define CONFIG_EFUSA9X_LVDS_BUS_WIDTH	24
 #define CONFIG_EFUSA9X_LVDS_MAPPING	"spwg"
 #define CONFIG_EFUSA9X_LVDS_TIMING \
-lvds_wvga {					\
-	clock-frequency = <33500000>;	\
+wvga {					\
+	clock-frequency = <33300000>;	\
 	hactive = <800>;		\
 	vactive = <480>;		\
-	hfront-porch = <4>;		\
-	hback-porch = <44>;		\
-	hsync-len = <2>;		\
-	vback-porch = <21>;		\
-	vfront-porch = <11>;		\
-	vsync-len = <2>;		\
+	hfront-porch = <210>;		\
+	hback-porch = <45>;		\
+	hsync-len = <1>;		\
+	vback-porch = <22>;		\
+	vfront-porch = <22>;		\
+	vsync-len = <1>;		\
 	hsync-active = <0>;		\
 	vsync-active = <0>;		\
 	de-active = <1>;		\
@@ -292,6 +292,11 @@ lvds_wvga {				\
 / {
 	model = "F&S efusA9X";
 	compatible = "fus,imx6sx-efusa9x", "fsl,imx6sx";
+
+ 	aliases {
+ 		nand = &gpmi;
+		rpmsg = &rpmsg;
+ 	};
 
 #ifdef CONFIG_EFUSA9X_I2C_A
 #if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LCD

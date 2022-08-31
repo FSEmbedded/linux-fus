@@ -12,6 +12,7 @@
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/slab.h>
 #include <linux/types.h>
 
 #include "clk.h"
@@ -54,6 +55,32 @@ static const char *imx_sai7_mclk1_sels[] = {"sai7", "dummy", };
 static const char *imx_pdm_sels[] = {"pdm", "sai_pll_div2", "dummy", "dummy" };
 static const char *imx_sai_pll_ref_sels[] = {"osc_24m", "dummy", "dummy", "dummy", };
 static const char *imx_sai_pll_bypass_sels[] = {"sai_pll", "sai_pll_ref_sel", };
+
+static int imx_clk_init_on(struct device_node *np,
+				  struct clk * const clks[])
+{
+	u32 *array;
+	int i, ret, elems;
+
+	elems = of_property_count_u32_elems(np, "init-on-array");
+	if (elems < 0)
+		return elems;
+	array = kcalloc(elems, sizeof(elems), GFP_KERNEL);
+	if (IS_ERR_OR_NULL(array))
+		return PTR_ERR(array);
+
+	ret = of_property_read_u32_array(np, "init-on-array", array, elems);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < elems; i++) {
+		ret = clk_prepare_enable(clks[array[i]]);
+		if (ret)
+			pr_err("clk_prepare_enable failed %d\n", array[i]);
+	}
+
+	return 0;
+}
 
 static int imx_audiomix_clk_runtime_suspend(struct device *dev)
 {
@@ -210,6 +237,9 @@ static int imx_audiomix_clk_probe(struct platform_device *pdev)
 		pr_err("failed to register clks for i.MX8MP\n");
 		return -EINVAL;
 	}
+
+	/* Initialize audiomix clocks defined in device tree. */
+	imx_clk_init_on(np, clks);
 
 	pm_runtime_put_sync(dev);
 

@@ -318,53 +318,6 @@ static const struct rtc_class_ops pcf85063_rtc_ops = {
 	.ioctl		= pcf85063_ioctl,
 };
 
-#if IS_ENABLED(CONFIG_OF)
-static int pcf85063_dt_init(struct i2c_client *client)
-{
-	struct device_node *np = client->dev.of_node;
-	u8 ctrl1, new;
-
-	/*
-	 * After changing the CAP_SEL bit, the RTC needs some time until the
-	 * oscillator is stable again. This means the OS flag (in the seconds
-	 * register) is asserted. If the time is set (clearing the OS flag)
-	 * before the oscillator is stable, the OS bit will be asserted again.
-	 *
-	 * There are three cases:
-	 *
-	 * 1. OS flag clear, device tree is unchanged: this is a no-op here
-	 * 2. OS flag clear, device tree is changed: OS flag will be set to
-	 *    indicate an inaccurate time value because of the time base change
-	 * 3. OS flag asserted: this was a power loss anyway so the action
-	 *    here does no additional harm
-	 *
-	 * In cases 2 and 3, when the clock is started much later by setting
-	 * the time (e.g. hwclock --systohc), the oscillator should be stable
-	 * again and the OS flag should stay clear.
-	 */
-	ctrl1 = i2c_smbus_read_byte_data(client, PCF85063_REG_CTRL1);
-	if (ctrl1 < 0) {
-		dev_err(&client->dev, "Failing to read CTRL1\n");
-		return -EIO;
-	}
-	if (of_property_read_bool(np, "cap_12_5pf"))
-		new = ctrl1 | PCF85063_REG_CTRL1_CAP_SEL;
-	else
-		new = ctrl1 & ~PCF85063_REG_CTRL1_CAP_SEL;
-	if (new != ctrl1) {
-		dev_info(&client->dev, "Set CAP_SEL to %spF\n",
-			 (new & PCF85063_REG_CTRL1_CAP_SEL) ? "12.5" : "7");
-		if (i2c_smbus_write_byte_data(client,
-					      PCF85063_REG_CTRL1, new) < 0) {
-			dev_err(&client->dev, "Failing to write CTRL1\n");
-			return -EIO;
-		}
-	}
-
-	return 0;
-}
-#endif
-
 static const struct rtc_class_ops pcf85063_rtc_ops_alarm = {
 	.read_time	= pcf85063_rtc_read_time,
 	.set_time	= pcf85063_rtc_set_time,
@@ -479,15 +432,6 @@ static int pcf85063_probe(struct i2c_client *client)
 		dev_err(&client->dev, "RTC chip is not present\n");
 		return err;
 	}
-
-#if IS_ENABLED(CONFIG_OF)
-	{
-		int ret = pcf85063_dt_init(client);
-
-		if (ret < 0)
-			return ret;
-	}
-#endif
 
 	pcf85063->rtc = devm_rtc_allocate_device(&client->dev);
 	if (IS_ERR(pcf85063->rtc))

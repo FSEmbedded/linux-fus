@@ -163,6 +163,11 @@ void mipid_ili9881c_get_lcd_videomode(struct fb_videomode **mode, int *size,
 		struct mipi_lcd_config **data);
 int mipid_ili9881c_lcd_setup(struct mipi_dsi_info *);
 #endif
+#ifdef CONFIG_FB_MXC_NEWVISION_PANEL_NV3051D
+void mipid_nv3051d_get_lcd_videomode(struct fb_videomode **mode, int *size,
+		struct mipi_lcd_config **data);
+int mipid_nv3051d_lcd_setup(struct mipi_dsi_info *);
+#endif
 #ifdef CONFIG_FB_MXC_RK_PANEL_RK055AHD042
 void mipid_rm68200_get_lcd_videomode(struct fb_videomode **mode, int *size,
                                      struct mipi_lcd_config **data);

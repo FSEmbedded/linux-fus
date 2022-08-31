@@ -15,6 +15,24 @@ Optional properties:
  - ti,esd-recovery-timeout-ms : integer, if the touchscreen does not respond after
 				the configured time (in milli seconds), the driver
 				will reset it. This is disabled by default.
+ - ti,pre-charge-time         : integer, precharge time selection:
+                                0: 20 µs
+                                1: 84 µs
+                                2: 276 µs (default)
+                                3: 340 µs
+                                4: 1.044 ms
+                                5: 1.108 ms
+                                6: 1.300 ms
+                                7: 1.364 ms
+ - ti,sense-time-sel          : integer, sense time selection:
+                                0: 32 µs (default)
+                                1: 96 µs
+                                2: 544 µs
+                                3: 608 µs
+                                4: 2.080 ms
+                                5: 2.144 ms
+                                6: 2.592 ms
+                                7: 2.656 ms
  - properties defined in touchscreen.txt
 
 Example:

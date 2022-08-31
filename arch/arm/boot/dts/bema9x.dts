@@ -18,6 +18,10 @@
 	model = "F&S bemA9X";
 	compatible = "fus,imx6sx-bema9x", "fsl,imx6sx";
 
+ 	aliases {
+ 		nand = &gpmi;
+		rpmsg = &rpmsg;
+ 	};
 
 	backlight_lcd {
 		compatible = "pwm-backlight";
@@ -29,24 +33,24 @@
 		enable-gpios = <&gpio3 24 GPIO_ACTIVE_HIGH>;
 	};
 
-pwmleds {
-	compatible = "pwm-leds";
-	red {
-		label = "led_red";
-		pwms = <&pwm5 0 7812500>;
-		max-brightness = <255>;
+	pwmleds {
+		compatible = "pwm-leds";
+		red {
+			label = "led_red";
+			pwms = <&pwm5 0 7812500>;
+			max-brightness = <255>;
+		};
+		blue {
+			label = "led_blue";
+			pwms = <&pwm6 0 7812500>;
+			max-brightness = <255>;
+		};
+		yellow{
+			label = "led_yellow";
+			pwms = <&pwm7 0 7812500>;
+			max-brightness = <255>;
+		};
 	};
-	blue {
-		label = "led_blue";
-		pwms = <&pwm6 0 7812500>;
-		max-brightness = <255>;
-	};
-	yellow{
-		label = "led_yellow";
-		pwms = <&pwm7 0 7812500>;
-		max-brightness = <255>;
-	};
-};
 
 #if 0
 	memory {

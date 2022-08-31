@@ -103,6 +103,7 @@
 #ifdef CONFIG_QBLISSA9R2_SERIAL_CAMERA
 		i2c6 = &i2c_gpio_cam1;
 #endif
+		nand = &gpmi;
 	};
 
 	memory {
@@ -1166,7 +1167,7 @@
 				MX6QDL_PAD_SD4_DAT0__GPIO2_IO08		0x030b0
 
 				/* RTC_IRQ */
-				MX6QDL_PAD_ENET_TX_EN__GPIO1_IO28	0x030b0
+				MX6QDL_PAD_ENET_TX_EN__GPIO1_IO28	0x0b0b0
 				/* SUSPEND S3*/
 				MX6QDL_PAD_EIM_DA0__GPIO3_IO00		0x0b0b0
 				/* SUSPEND S5*/

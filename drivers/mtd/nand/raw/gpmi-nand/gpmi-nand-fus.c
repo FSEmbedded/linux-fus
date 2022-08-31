@@ -396,8 +396,8 @@ static int gpmi_ooblayout_fus_ecc(struct mtd_info *mtd, int section,
 	if (section)
 		return -ERANGE;
 
-	oobregion->offset = mtd->oobsize - chip->ecc.bytes;
-	oobregion->length = chip->ecc.bytes;
+	oobregion->offset = mtd->oobsize - chip->ecc.total;
+	oobregion->length = chip->ecc.total;
 
 	return 0;
 }
@@ -412,7 +412,7 @@ static int gpmi_ooblayout_fus_free(struct mtd_info *mtd, int section,
 
 	/* The available oob size we have. */
 	oobregion->offset = 4;
-	oobregion->length = mtd->oobsize - chip->ecc.bytes - 4;
+	oobregion->length = mtd->oobsize - chip->ecc.total - 4;
 
 	return 0;
 }
@@ -1953,7 +1953,8 @@ static void gpmi_fus_command(struct nand_chip *chip, uint command, int column,
 	case NAND_CMD_RNDOUTSTART:
 	case NAND_CMD_STATUS:
 		column = -1;
-		/* Fall through to case NAND_CMD_READID */
+		/* Fall through */
+		/* to case NAND_CMD_READID */
 	case NAND_CMD_READID:
 	case NAND_CMD_SET_FEATURES:
 		/* Add DMA descriptor with command and up to one byte */
@@ -2468,7 +2469,6 @@ static int gpmi_fus_nand_attach_chip(struct nand_chip *chip)
 	unsigned int ecc_strength;
 	unsigned int skipblocks;
 	unsigned int oobavail;
-	unsigned int ecc_bytes;
 	int ret;
 
 	chunk_shift = 9;
@@ -2498,11 +2498,12 @@ static int gpmi_fus_nand_attach_chip(struct nand_chip *chip)
 	chip->ecc.mode = NAND_ECC_HW;
 	chip->ecc.size = 1 << chunk_shift;
 	chip->ecc.steps = mtd->writesize >> chunk_shift;
-	ecc_bytes = ecc_strength * chip->ecc.steps * priv->gf_len / 8;
-	chip->ecc.bytes = ecc_bytes;
-	oobavail = mtd->oobsize - ecc_bytes - 4;
+	chip->ecc.total = ecc_strength * chip->ecc.steps * priv->gf_len / 8;
+	/* Attention! ecc.total/ecc.steps may not be an integer, do not use! */
+	chip->ecc.bytes = chip->ecc.total / chip->ecc.steps;
 	mtd_set_ooblayout(mtd, &gpmi_ooblayout_fus_ops);
 
+	oobavail = mtd->oobsize - chip->ecc.total - 4;
 	mtd->oobavail = oobavail;
 	mtd->ecc_strength = ecc_strength;
 

@@ -16,6 +16,225 @@ Supported boards: PicoCoreMX8MM PicoCoreMX8MMr2 PicoCoreMX8MX
 
 
 
+linux-5.4.70-fsimx8x-Y2022.08 (09.08.2022)
+------------------------------------------
+Supported boards: efusMX8X
+
+- Fix efusMX8X for kernel 5.4.70
+- Fix QuadSPI for fsimx8x
+- Use default timings for J070WVTC0211
+- Fix CMA and ADC nodes for fsimx8x
+- Fix Device Tree entries for lvds regulators
+- Add Novatek MIPI display for fsimx8x
+- Adjust device tree for efusmx8x
+- Set legacyfb_depth to 32 for fbdev emulation
+- Add PCF85263 to fsimx8x
+- Fix device tree for fsimx8x
+- Reduce entries in fsimx8x_defconfig
+- Increase SPI clock slightly to ensure a clock bigger than 60MHz
+- Fix order of i2c devices for efusmx8x
+- Use the right pcie driver for efusmx8x
+
+
+
+linux-5.4.70-fsimx7ulp-Y2022.05 (11.05.2022)
+--------------------------------------------
+Supported boards: PicoCoreMX7ULP
+
+- Fix backlight polarity for rgt070qyh-13cp
+- Improve picocoremx7up device tree
+- Improve the EE0350ET-2CP driver for fbdev
+- Improve fbdev mipi_dsi_northwest driver
+
+
+
+linux-5.4.70-fsimx6ul-B2022.04 (11.04.2022)
+-------------------------------------------
+Supported boards: efusA7UL PicoCOM1.2 PicoCoreMX6UL PicoCoreMX6UL100 PicoCOMA7
+
+- Fix SOC compatible entry for QBlissA9dl and QBlissA9r2q
+- Merge commit '54f9f3642c1a00bbed02a4f4eba5773aae9a9265'
+- In gpmi-nand-fus.c, set and use ecc.total/ecc.bytes correctly
+- Correct the clock source for mclk0
+- Add fsimx6sx/ul alias for gpmi/emmc/rpmsg
+- Improve edt-ft5x06 touch driver
+- Add support for tbs2 revision 1.20
+- Add support for mipi display EE0350ET-2CP for i.MX7ULP
+- Improve atmel_mxt_ts touch driver - read size
+- Add support for EE0350ET-2CP on architecture fsimx7ulp
+- Improve imx7ulp.dtsi
+- Improve target fsimx7ulp for kernel version 5.4.70
+- Add rx delay support for RTL8211F
+- Improve focaltech touch driver
+- Add display support for Rongen T070QYH
+- Improve gpc support for i.MX6SX
+- Improve fsimx6sx device trees for eMMC/GPU support
+- Fix armv7 default cpu frequency governor
+- Fix disabling of dma for a specific UART Port by DTS
+- Fix imx6sx/ul device tree pathes for backwards compatibility
+- Fix rtc-pfc856063 driver
+- Fix picocoma7 device tree
+- Fix picocoremx6ul100 DTS
+
+
+
+linux-4.9.88-fsimx6ul-Y2020.03.1 (15.03.2022)
+---------------------------------------------
+Supported boards: efusA7UL, PicoCoreMX6UL, PicoCoreMX6UL100, PicoMODA7
+
+- Add support for RTC PCF85263
+- Improve support for imx6ul-touchscreen controller
+- Add driver for lontium-lt9211 RGB2LVDS converter
+- Add full device-tree support for PicoCOMA7
+- Improve support for picocoremx6ul revision 1.20
+- Add support for picocoremx6ul100 on architecture fsimx6ul
+- Add support for TSC2004 on fsimx6ul
+- Fix i2c frequency entry in device trees
+
+
+
+linux-4.9.88-fsimx6-B2020.04.1 (01.02.2022)
+-------------------------------------------
+Supported boards: armStoneA9, armStoneA9r2, efusA9, efusA9r2, PicoMODA9,
+                  NetDCUA9, QBlissA9, QBlissA9r2, armStoneA5, Cube2.0, CubeA5,
+                  AGATEWAY
+Not tested:       efusA9X, PicoCOMA9X, PicoCoreMX6SX, PicoCoreMX7ULP,
+                  CONT1, efusA7UL, PicoCOM1.2, PicoCoreMX6UL, GAR1, GAR2,
+                  CubeA7UL, NetDCUA5, PicoCOMA5, HGATEWAY
+
+- Add rx delay support for RTL8211F
+- Add support for efusA9r2
+- Add phy fixup for efusA9r2
+
+
+
+linux-5.4.70-fsimx8mn-Y2021.10 (30.10.2021)
+-------------------------------------------
+Supported boards: PicoCoreMX8MN
+
+- Improve tsc200x-core touch driver
+- Improve tsc200x-core touchscreen driver
+- Improve panel-simple driver of drm/panel
+- Improve sec_mipi_dsim-imx.c driver
+- Improve lontium-lt9211.c bridge driver
+- Improve devicetree picocoremx8mm-ddr3l-lcdif-adp-mipi2rgb.dts
+- Add new devicetree picocoremx8mm-ddr3l-lcdif-g050tan01.dts
+- Add tbs2 mipi2rgb device tree
+- Enable adp-mipi2rgb for fsimx8mn
+- Use panel-lvds driver for output of TC358775
+- Enable USB Type-C for picocoremx8mn-lpddr4
+- Enable adp-mipi2lvds1 for fsimx8mn
+
+
+
+linux-5.4.70-fsimx6-B2021.10.1 (19.10.2021)
+-------------------------------------------
+Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+QBlissA9, QBlissA9r2
+
+
+
+
+linux-5.4.70-fsimx6-B2021.10 (15.10.2021)
+-----------------------------------------
+Supported boards: armStoneA9, armStoneA9r2, efusA9, PicoMODA9, NetDCUA9,
+QBlissA9, QBlissA9r2
+
+- fsimx8mp: Improve device tree for mipi-dsi panel ee0350et-2cp
+- Fix qblissa9r2q SoC compatible in device tree
+- Add fsimx6 etnaviv support
+- Fix imx6 device tree pathes for backwards compatibility
+- Add fsimx6 alias for gpmi
+- Fix switch_case fallthrough warning
+- Fix qblissa9dl SoC compatible in device tree
+- Fix qiblisa9r2dl RTC IRQ pad setting
+- Fix netdcua9qdl framebuffer bit depth for LVDS
+- Improve netdcua9 ax88796 driver support
+- Fix fus-ac97 driver
+- Fix picomoda9qdl kernel warning  for pinctrl_gpmi_nand_1
+- Improve armstonea9qdl.dtsi
+
+
+
+linux-5.4.70-fsimx8mn-Y2021.09 (24.09.2021)
+-------------------------------------------
+Supported boards: PicoCoreMX8MN
+
+- Fix ee0350-mipi-disp touch interrupt pin
+- Revert NXP commit MLK-24133 arm64: SAI1_RXD0 and SAI1_MCLK pins only
+- Enable I2S_B for PicoCoreMX8MP
+- Add cpu freq powersave, conservative governor fix to fsimx8mp_defconfig
+- Add mwifiex node to picocoremx8mp device tree
+- Improve picocoremx8mp Cortex-M7 support
+- Improve support for imx6ul-touchscreen controller
+- Add driver for lontium-lt9211 RGB2LVDS converter
+- Add full device-tree support for PicoCOMA7
+- Improve support for picocoremx6ul revision 1.20
+- Add support for picocoremx6ul100 on architecture fsimx6ul
+- Improve support for picocom1.2
+- Improve architecture fsimx6 PCIe setup
+- Improve support for ADP-MIPI2LVDS1 for fsimx8mm
+- Add support for ADP-MIPI2RGB adapter for fsimx8mm
+- LF-3132: dmaengine: imx-sdma: raise up channel0 priority after resume
+- Enable Polling of the status register for USB-C ptn5110
+- Change naming for device trees of PicoCoreMX8MM_MN_Mx
+- Use simple-panel driver for tc358775 with j070wvtc0211
+- Improve device trees for fsimx8mn
+
+
+
+linux-5.4.70-fsimx8mp-Y2021.07.1 (19.07.2021)
+-------------------------------------------
+Supported boards: PicoCoreMX8MP
+
+
+
+linux-5.4.70-fsimx8mp-Y2021.07 (09.07.2021)
+-------------------------------------------
+Supported boards: PicoCoreMX8MP
+
+- Improve gar1/gar2/gar3 device trees
+- Improve uart imx.c to disable dtrd
+- Add support for micrel phy on fsimx6sx_defconfig
+- Add support for device tree vand3
+- Improve support for architecture fsimx8mn
+- Improve device tree support for j070wvtc0211 display
+- Improve device tree picocoremx8mp
+- Improve eth support in picocoremx8mp
+
+
+
+linux-5.4.70-fsimx8mm-B2021.06 (23.06.2021)
+-------------------------------------------
+Supported boards: PicoCoreMX8MM
+
+- Fix picocoremx8mm/mx8mx pcie
+
+
+
+linux-5.4.70-fsimx8mp-Y2021.06.1 (11.06.2021)
+-------------------------------------------
+Supported boards: PicoCoreMX8MP
+
+- Improve device tree for F&S standard panel
+
+
+
+linux-5.4.70-fsimx8mp-Y2021.06 (31.05.2021)
+-------------------------------------------
+Supported boards: PicoCoreMX8MP
+
+- Add support for Marvel BT modules on fsimx8mm
+- Improve device tree for SAI1 pins on picocoremx8mm.dts
+- Merge to NXP rel_imx_5.4.70_2.3.2
+- Add support for PicoCoreMX8MP
+- Enable MCLK early for SGTL5000
+- Enable audiomix clocks by device tree
+- Revert commit MLK-24910-3 phy
+- Fix mode clock to support F&S standard display
+
+
+
 linux-5.4.70-fsimx8mm-Y2021.04 (21.04.2021)
 -------------------------------------------
 Supported boards: PicoCoreMX8MM
@@ -71,19 +290,17 @@ linux-4.14.98-fsimx8m(m,n)-B2020.08 (11.08.2020)
 ------------------------------------------------
 Supported boards: PicoCoreMX8MN, PicoCoreMX8MM, armStoneMX8M, efusMX8X
 
-- Improve pmic regulator voltages for PicoCoreMX8MM
-- Improve fsimx8mm support
-- Update copyright messages in device trees
-- Improve support for g070y2-l01 panel (armStoneMX8M only)
-- Add support for j070wvtc0211 panel (armStoneMX8M only)
-- Improve clock calculation for NWL MIPI-DSI core
-- Add support for panel sitronix ST7703
-- Add support for PicoCoreMX8MX PCB
-- Improve rtc-pcf85263 driver - support generating output clock
-- Add support for MCP25XXFD
 - Add panel g185han01 support for armStoneMX8M
-- NXP version rel_imx_4.14.98_2.3.2_patch
-- Merge branch 'fsimx8mx-B2019.11-pre'
+- Add support for MCP25XXFD
+- Improve rtc-pcf85263 driver - support generating output clock
+- Add support for PicoCoreMX8MX PCB
+- Add support for panel sitronix ST7703
+- Improve clock calculation for NWL MIPI-DSI core
+- Add support for j070wvtc0211 panel (armStoneMX8M only)
+- Improve support for g070y2-l01 panel (armStoneMX8M only)
+- Update copyright messages in device trees
+- Improve fsimx8mm support
+- Improve pmic regulator voltages for PicoCoreMX8MM
 
 
 
@@ -92,8 +309,6 @@ linux-4.14.98-fsimx8mn-Y2020.06 (18.06.2020)
 Supported boards: PicoCoreMX8MN, PicoCoreMX8MM, armStoneMX8M, efusMX8X
 
 - Correct device tree support for picocoremx8mn
-- Update history file to linux-4.14.98-fsimx8mm-Y2020.06
-- Update history to fsimx8m(m,n)-Y2020.05(6)
 
 
 
@@ -107,14 +322,8 @@ linux-4.14.98-fsimx8mn-Y2020.06 (09.06.2020)
 --------------------------------------------
 Supported boards: PicoCoreMX8MN, PicoCoreMX8MM, armStoneMX8M, efusMX8X
 
-- Add support for PicoCoreMX8MN
 - Add HDMI support for armStoneMX8M
-
-
-
-linux-4.14.98-fsimx8m-Y2020.05 (14.05.2020)
--------------------------------------------
-Supported boards: PicoCoreMX8MM, armStoneMX8M, efusMX8X
+- Add support for PicoCoreMX8MN
 
 
 
@@ -122,47 +331,47 @@ linux-4.14.98-fsimx8mm-Y2020.05 (14.05.2020)
 --------------------------------------------
 Supported boards: PicoCoreMX8MM, armStoneMX8M, efusMX8X
 
-- Improve support for panel j070wvtc0211
-- Add support for MIPI-DSI panel rf3500d-ayw-mng1
-- Add support for F&S adp-mipi2lvds1 board with j070wvtc0211 panel
-- Merge commit rel_imx_4.14.98_2.3.1_patch into fsimx8mx-B2019.11-pre
-- Merge commit rel_imx_4.14.98_2.3.0 into fsimx8mx-B2019.11-pre
-- Improve device tree for PicoCoreMX8MM
-  UART pin names because of merge
-- Merge commit imx_4.14.98_2.2.0 into fsimx8mx-B2019.11-pr
-- Add driver support to fsimx8m_defconfig
-  SGTL5000, MCP251X SPI CAN driver
-- Improve device tree support for armStoneMX8M
-- Improve audio support for armStoneMX8M
-- Improve device tree support for picocoremx8mm
-- Merge branch rel_imx_4.14.98_2.1.0 into fsimx8mx-B2019.11-pre
-- Merge to rel_imx_4.14.98_2.0.0_ga
-- Improve imx-sgtl5000
-- Improve compiler warnings
-- Add support for inversion of x,y coordinates
-  focaltech touch driver
-- Add audio support for SGTL5000
-- Add spidev support
-- Remove old display timings
-- Add DT support for board rev. 1.10
-- Add support for g050tan01 panel
-- Add dynamic calculation of pll pms
-- Add device tree support for DSI2LVDS panels
-  g070y2-l01, j070wvtc0211
-- Add basic support for TC358764
-- Add IOMUX configuration for UART
-- Add CLKO2 support
-- Corrects some compatible strings
-- Add support for PicoCoreMX8MM
-- Add 'best-match' attribute to set precise clock
-- Add sn65dsi84 to default configuration
-- Add support for sn65dsi84
+- NXP Version rel_imx_4.14.78_1.0.0_ga
+- Add support for armStoneMX8M
+- Correct compatible string for USB3 nodes
+- Add BDIInfo driver
 - Add support for display panels
   g070y2-l01, g070y2-l01
-- Add BDIInfo driver
-- Correct compatible string for USB3 nodes
-- Add support for armStoneMX8M
-- NXP Version rel_imx_4.14.78_1.0.0_ga
+- Add support for sn65dsi84
+- Add sn65dsi84 to default configuration
+- Add 'best-match' attribute to set precise clock
+- Add support for PicoCoreMX8MM
+- Corrects some compatible strings
+- Add CLKO2 support
+- Add IOMUX configuration for UART
+- Add basic support for TC358764
+- Add device tree support for DSI2LVDS panels
+  g070y2-l01, j070wvtc0211
+- Add dynamic calculation of pll pms
+- Add support for g050tan01 panel
+- Add DT support for board rev. 1.10
+- Remove old display timings
+- Add spidev support
+- Add audio support for SGTL5000
+- Add support for inversion of x,y coordinates
+  focaltech touch driver
+- Improve compiler warnings
+- Improve imx-sgtl5000
+- Merge to rel_imx_4.14.98_2.0.0_ga
+- Merge branch rel_imx_4.14.98_2.1.0 into fsimx8mx-B2019.11-pre
+- Improve device tree support for picocoremx8mm
+- Improve audio support for armStoneMX8M
+- Improve device tree support for armStoneMX8M
+- Add driver support to fsimx8m_defconfig
+  SGTL5000, MCP251X SPI CAN driver
+- Merge commit imx_4.14.98_2.2.0 into fsimx8mx-B2019.11-pr
+- Improve device tree for PicoCoreMX8MM
+  UART pin names because of merge
+- Merge commit rel_imx_4.14.98_2.3.0 into fsimx8mx-B2019.11-pre
+- Merge commit rel_imx_4.14.98_2.3.1_patch into fsimx8mx-B2019.11-pre
+- Add support for F&S adp-mipi2lvds1 board with j070wvtc0211 panel
+- Add support for MIPI-DSI panel rf3500d-ayw-mng1
+- Improve support for panel j070wvtc0211
 
 
 

@@ -245,7 +245,7 @@
 			 reg = <0x100000 0x8000>;
 		};
 
-		gpmi: gpmi-nand@1806000 {
+		gpmi: gpmi-nand@01806000 {
 			compatible = "fsl,imx6q-gpmi-nand";
 			#address-cells = <1>;
 			#size-cells = <1>;
@@ -444,7 +444,7 @@
 				reg = <0x02040000 0x4000>, <0x0219c000 0x4000>;
 				interrupts = <GIC_SPI 3 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 101 IRQ_TYPE_LEVEL_HIGH>;
-				clocks = <&clks IMX6UL_CLK_IPG>,
+				clocks = <&clks IMX6UL_CLK_TSC>,
 					 <&clks IMX6UL_CLK_ADC2>;
 				clock-names = "tsc", "adc";
 				status = "disabled";

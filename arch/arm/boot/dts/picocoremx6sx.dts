@@ -152,10 +152,6 @@ lcd_wvga {				\
 #undef CONFIG_PICOCOREMX6SX_UART_C_RTSCTS
 #endif
 
-/* IF NAND is used, eMMC can´t be used */
-#ifdef CONFIG_PICOCOREMX6SX_NAND
-#undef CONFIG_PICOCOREMX6SX_EMMC
-#endif
 
 
 #include "imx6sx.dtsi"
@@ -164,6 +160,14 @@ lcd_wvga {				\
 / {
 	model = "F&S picocoreMX6SX";
 	compatible = "fus,imx6sx-picocoremx6sx", "fsl,imx6sx";
+
+ 	aliases {
+ 		nand = &gpmi;
+ 		emmc = &usdhc2;
+		rpmsg = &rpmsg;
+		gpc = &gpc;
+		gpu3d = &gpu3d;
+ 	};
 
 #if defined(CONFIG_PICOCOREMX6SX_I2C_B) && (CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD)
 	backlight_lcd {
@@ -704,7 +708,7 @@ lcd_wvga {				\
 	rtc85063@51 {
 		compatible = "nxp,pcf85063";
 		reg = <0x51>;
-		cap_12_5pf;
+		quartz-load-femtofarads = <12500>;
 	};
 };
 #endif /* CONFIG_PICOCOREMX6SX_I2C_C */

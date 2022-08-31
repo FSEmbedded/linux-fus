@@ -14,6 +14,7 @@
 #include <sound/soc.h>
 #include <linux/clk.h>
 #include "imx-audmux.h"
+#define DRV_NAME "fus-wm9715"
 
 struct fus_audio_data {
 	struct snd_soc_card *card;
@@ -21,12 +22,24 @@ struct fus_audio_data {
 	struct clk *mclk;
 };
 
+static struct snd_soc_dai_link_component fs_fabric_dai_codecs = {
+	.dai_name = "wm9712-hifi",
+	.name = "wm9712-codec",
+};
+
+static struct snd_soc_dai_link_component fs_fabric_dai_cpu;
+static struct snd_soc_dai_link_component fs_fabric_dai_platform;
+
 static struct snd_soc_dai_link fs_fabric_dai[] = {
 {
 	.name = "AC97 HiFi",
 	.stream_name = "AC97 HiFi",
-	.codec_dai_name = "wm9712-hifi",
-	.codec_name = "wm9712-codec",
+	.codecs = &fs_fabric_dai_codecs,
+	.num_codecs=1,
+	.cpus = &fs_fabric_dai_cpu,
+	.num_cpus=1,
+	.platforms = &fs_fabric_dai_platform,
+	.num_platforms=1,
 	.dai_fmt = SND_SOC_DAIFMT_AC97,
 },
 };
@@ -148,8 +161,8 @@ static int fus_wm9715_probe(struct platform_device *pdev)
 	/* initialize sound card */
 	data->card = &fs_wm9715_card;
 	data->card->dev = &pdev->dev;
-	data->card->dai_link->cpu_of_node = cpu_np;
-	data->card->dai_link->platform_of_node = cpu_np;
+	data->card->dai_link->cpus->of_node = cpu_np;
+	data->card->dai_link->platforms->of_node = cpu_np;
 
 	ret = snd_soc_of_parse_card_name(data->card, "fus,model");
 	if (ret)
@@ -193,7 +206,7 @@ static struct platform_driver fs_wm9715_driver = {
 	.probe		= fus_wm9715_probe,
 	.remove		= fus_wm9715_remove,
 	.driver		= {
-		.name	= "fus-wm9715",
+		.name	= DRV_NAME,
 		.of_match_table    = fus_audio_match,
 	},
 };

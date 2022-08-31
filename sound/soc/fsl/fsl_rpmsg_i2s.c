@@ -26,8 +26,9 @@
 #include "fsl_rpmsg_i2s.h"
 #include "imx-pcm.h"
 
-#define FSL_RPMSG_I2S_RATES	(SNDRV_PCM_RATE_8000_48000)
-#define FSL_RPMSG_I2S_FORMATS	(SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE)
+#define FSL_RPMSG_I2S_RATES	(SNDRV_PCM_RATE_8000|SNDRV_PCM_RATE_16000|\
+				SNDRV_PCM_RATE_48000)
+#define FSL_RPMSG_I2S_FORMATS	SNDRV_PCM_FMTBIT_S16_LE
 
 static int i2s_send_message(struct i2s_rpmsg *msg,
 			       struct i2s_info *info)
@@ -151,6 +152,7 @@ static const struct snd_soc_component_driver fsl_component = {
 
 static const struct of_device_id fsl_rpmsg_i2s_ids[] = {
 	{ .compatible = "fsl,imx7ulp-rpmsg-i2s"},
+	{ .compatible = "fsl,fsimx7ulp-rpmsg-i2s"},
 	{ .compatible = "fsl,imx8mq-rpmsg-i2s"},
 	{ .compatible = "fsl,imx8qxp-rpmsg-i2s"},
 	{ .compatible = "fsl,imx8qm-rpmsg-i2s"},
@@ -258,6 +260,18 @@ static int fsl_rpmsg_i2s_probe(struct platform_device *pdev)
 				SNDRV_PCM_RATE_16000 |
 				SNDRV_PCM_RATE_48000;
 		rpmsg_i2s->formats =  SNDRV_PCM_FMTBIT_S16_LE;
+		fsl_rpmsg_i2s_dai.playback.rates = rpmsg_i2s->rates;
+		fsl_rpmsg_i2s_dai.playback.formats = rpmsg_i2s->formats;
+		fsl_rpmsg_i2s_dai.capture.rates = rpmsg_i2s->rates;
+		fsl_rpmsg_i2s_dai.capture.formats = rpmsg_i2s->formats;
+	}
+
+	if (of_device_is_compatible(pdev->dev.of_node,
+				    "fsl,fsimx7ulp-rpmsg-i2s")) {
+		rpmsg_i2s->codec_sgtl5000 = 1;
+		rpmsg_i2s->version = 1;
+		rpmsg_i2s->rates = SNDRV_PCM_RATE_8000_48000;
+		rpmsg_i2s->formats =  SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE;
 		fsl_rpmsg_i2s_dai.playback.rates = rpmsg_i2s->rates;
 		fsl_rpmsg_i2s_dai.playback.formats = rpmsg_i2s->formats;
 		fsl_rpmsg_i2s_dai.capture.rates = rpmsg_i2s->rates;

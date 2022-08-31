@@ -9,12 +9,15 @@
 #include <linux/delay.h>
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
+#include <linux/sys_soc.h>
 
 #define PHY_PLL_LOCK_WAIT_MAX_RETRIES	2000
 #define IMX8MP_PCIE_PHY_FLAG_EXT_OSC	BIT(0)
 
 #define IMX8MP_PCIE_PHY_CMN_REG020	0x80
 #define  PLL_ANA_LPF_R_SEL_FINE_0_4	0x04
+#define IMX8MP_PCIE_PHY_CMN_REG036	0xD8
+#define  PLL_PMS_SDIV_8_4		0x32
 #define IMX8MP_PCIE_PHY_CMN_REG061	0x184
 #define  ANA_PLL_CLK_OUT_TO_EXT_IO_EN	BIT(0)
 #define IMX8MP_PCIE_PHY_CMN_REG062	0x188
@@ -34,6 +37,14 @@
 #define  LANE_TX_DATA_CLK_MUX_SEL	0x00
 
 #define IMX8MP_PCIE_PHY_TRSV_REG001	0x404
+#define IMX8MP_PCIE_PHY_TRSV_REG020	0x480
+#define  LN0_RX_CDR_REFDIV_1_2		1
+#define IMX8MP_PCIE_PHY_TRSV_REG022	0x488
+#define  LN0_RX_CDR_REFDIV_1_1		0
+#define IMX8MP_PCIE_PHY_TRSV_REG0BB	0x6EC
+#define  LN0_TXD_DESKEW_BYPASS		BIT(2)
+#define IMX8MP_PCIE_PHY_TRSV_REG0CF	0x73C
+#define  LN0_MISC_TX_CLK_SRC		BIT(2)
 #define  LN0_OVRD_TX_DRV_LVL		0x3F
 #define IMX8MP_PCIE_PHY_TRSV_REG005	0x414
 #define  LN0_OVRD_TX_DRV_PST_LVL_G1	0x2B
@@ -62,11 +73,19 @@
 #define IMX8MP_PCIE_PHY_TRSV_REG206	0x738
 #define  LN0_TG_RX_SIGVAL_LBF_DELAY	0x4
 
+static int imx8_pcie_phy_tuned;
 struct imx8_pcie_phy {
 	struct phy *phy;
 	struct clk *clk;
 	void __iomem *base;
 	u32 flags;
+};
+
+static const struct soc_device_attribute imx8_soc[] = {
+	{
+		.soc_id   = "i.MX8MP",
+		.revision = "1.0",
+	},
 };
 
 static int imx8_pcie_phy_init(struct phy *phy)
@@ -115,13 +134,21 @@ static int imx8_pcie_phy_cal(struct phy *phy)
 {
 	u32 value;
 	struct imx8_pcie_phy *imx8_phy = phy_get_drvdata(phy);
+	const struct soc_device_attribute *match;
+
+	match = soc_device_match(imx8_soc);
 
 	/* export clock to ep when internal clock is used as PHY REF clock */
 	if ((imx8_phy->flags & IMX8MP_PCIE_PHY_FLAG_EXT_OSC) == 0) {
+		/* PLL low-frequency clock output to external I/O enable */
 		writel(ANA_PLL_CLK_OUT_TO_EXT_IO_EN,
 		       imx8_phy->base + IMX8MP_PCIE_PHY_CMN_REG061);
+		/* PLL low-frequency clock output to external I/O selection
+		 * 1 -> reference clock bypass  for MPHY
+		 *  */
 		writel(ANA_PLL_CLK_OUT_TO_EXT_IO_SEL,
 		       imx8_phy->base + IMX8MP_PCIE_PHY_CMN_REG062);
+		/* AUX_IN -> PLL clock -> from syspll */
 		writel(AUX_PLL_REFCLK_SEL_SYS_PLL,
 		       imx8_phy->base + IMX8MP_PCIE_PHY_CMN_REG063);
 		value = ANA_AUX_RX_TX_SEL_TX | ANA_AUX_TX_TERM;
@@ -135,34 +162,36 @@ static int imx8_pcie_phy_cal(struct phy *phy)
 	 * Fine tune the parameters of the PHY, let PCIe link up to GEN3
 	 * between two EVK boards in the EP/RC validation system.
 	 */
-	writel(LN0_OVRD_TX_DRV_LVL,
-	       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG001);
-	writel(LN0_OVRD_TX_DRV_PST_LVL_G1,
-	       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG005);
-	writel(LN0_OVRD_TX_DRV_PST_LVL_G2,
-	       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG006);
-	writel(LN0_OVRD_TX_DRV_PST_LVL_G3,
-	       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG007);
-	writel(LN0_OVRD_TX_DRV_PRE_LVL_G1,
-	       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG009);
-	writel(LN0_OVRD_RX_CTLE_RS1_G1,
-	       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG059);
-	writel(LN0_OVRD_RX_CTLE_RS1_G2_G3,
-	       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG060);
-	writel(LN0_ANA_RX_CTLE_IBLEED,
-	       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG069);
-	writel(LN0_OVRD_RX_RTERM_VCM_EN,
-	       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG107);
-	writel(LN0_ANA_OVRD_RX_SQHS_DIFN_OC,
-	       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG109);
-	writel(LN0_ANA_OVRD_RX_SQHS_DIFP_OC,
-	       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG110);
-	writel(LN0_RX_CDR_FBB_FINE_G1_G2,
-	       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG158);
-	writel(LN0_RX_CDR_FBB_FINE_G3_G4,
-	       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG159);
-	writel(LN0_TG_RX_SIGVAL_LBF_DELAY,
-	       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG206);
+	if (imx8_pcie_phy_tuned) {
+		writel(LN0_OVRD_TX_DRV_LVL,
+		       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG001);
+		writel(LN0_OVRD_TX_DRV_PST_LVL_G1,
+		       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG005);
+		writel(LN0_OVRD_TX_DRV_PST_LVL_G2,
+		       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG006);
+		writel(LN0_OVRD_TX_DRV_PST_LVL_G3,
+		       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG007);
+		writel(LN0_OVRD_TX_DRV_PRE_LVL_G1,
+		       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG009);
+		writel(LN0_OVRD_RX_CTLE_RS1_G1,
+		       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG059);
+		writel(LN0_OVRD_RX_CTLE_RS1_G2_G3,
+		       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG060);
+		writel(LN0_ANA_RX_CTLE_IBLEED,
+		       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG069);
+		writel(LN0_OVRD_RX_RTERM_VCM_EN,
+		       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG107);
+		writel(LN0_ANA_OVRD_RX_SQHS_DIFN_OC,
+		       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG109);
+		writel(LN0_ANA_OVRD_RX_SQHS_DIFP_OC,
+		       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG110);
+		writel(LN0_RX_CDR_FBB_FINE_G1_G2,
+		       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG158);
+		writel(LN0_RX_CDR_FBB_FINE_G3_G4,
+		       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG159);
+		writel(LN0_TG_RX_SIGVAL_LBF_DELAY,
+		       imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG206);
+	}
 
 	writel(PLL_ANA_LPF_R_SEL_FINE_0_4,
 	       imx8_phy->base + IMX8MP_PCIE_PHY_CMN_REG020);
@@ -170,6 +199,25 @@ static int imx8_pcie_phy_cal(struct phy *phy)
 	       imx8_phy->base + IMX8MP_PCIE_PHY_CMN_REG076);
 	writel(LANE_TX_DATA_CLK_MUX_SEL,
 	       imx8_phy->base + IMX8MP_PCIE_PHY_CMN_REG078);
+
+	/* workaround ERR050442 for iMX8MP A0
+	 * revert commit MLK-24910-3 phy: pcie: imx8mp: remove the pcie workaround
+	 * */
+	if (match && !strcmp(match->soc_id, "i.MX8MP") && !strcmp(match->revision, "1.0"))
+	{
+		udelay(1);
+		writel(PLL_PMS_SDIV_8_4,
+			   imx8_phy->base + IMX8MP_PCIE_PHY_CMN_REG036);
+		writel(LN0_RX_CDR_REFDIV_1_2,
+			   imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG020);
+		writel(LN0_RX_CDR_REFDIV_1_1,
+			   imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG022);
+		writel(LN0_MISC_TX_CLK_SRC,
+			   imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG0CF);
+		writel(LN0_TXD_DESKEW_BYPASS,
+			   imx8_phy->base + IMX8MP_PCIE_PHY_TRSV_REG0BB);
+		udelay(1);
+	}
 
 	return 0;
 }
@@ -197,6 +245,17 @@ static struct phy_ops imx8_pcie_phy_ops = {
 	.power_off	= imx8_pcie_phy_power_off,
 	.owner		= THIS_MODULE,
 };
+
+static int __init imx8_pcie_phy_fine_tune(char *str)
+{
+	if (!strcmp(str, "yes")) {
+		pr_info("i.MX PCIe PHY is fine tuned in EP/RC SYS.\n");
+		imx8_pcie_phy_tuned = 1;
+	}
+	return 1;
+}
+
+__setup("pcie_phy_tuned=", imx8_pcie_phy_fine_tune);
 
 static int imx8_pcie_phy_probe(struct platform_device *pdev)
 {

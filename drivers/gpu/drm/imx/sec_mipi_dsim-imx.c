@@ -46,6 +46,8 @@ struct imx_sec_dsim_device {
 	struct reset_control *mipi_reset;
 	struct regmap *blk_ctl;
 
+	u32 bus_fmt;
+
 	atomic_t rpm_suspended;
 };
 
@@ -133,7 +135,8 @@ static int imx_sec_dsim_encoder_helper_atomic_check(struct drm_encoder *encoder,
 	bus_format = adjusted_mode->private_flags & 0xffff;
 
 	for (i = 0; i < num_bus_formats; i++) {
-		if (display_info->bus_formats[i] != bus_format)
+		if (display_info->bus_formats[i] != bus_format &&
+			dsim_dev->bus_fmt != bus_format)
 			continue;
 		break;
 	}
@@ -262,6 +265,18 @@ static int sec_dsim_of_parse_resets(struct imx_sec_dsim_device *dsim)
 	return 0;
 }
 
+static void sec_dsim_of_parse_flags(struct imx_sec_dsim_device *dsim)
+{
+	int ret;
+	struct device *dev = dsim->dev;
+	struct device_node *np = dev->of_node;
+
+	ret = of_property_read_u32(np, "bus-fmt", &dsim->bus_fmt);
+	if (ret < 0) {
+		dsim->bus_fmt = 0;
+	}
+}
+
 static void sec_dsim_of_put_resets(struct imx_sec_dsim_device *dsim)
 {
 	if (dsim->soft_resetn)
@@ -304,6 +319,8 @@ static int imx_sec_dsim_bind(struct device *dev, struct device *master,
 	ret = sec_dsim_of_parse_resets(dsim_dev);
 	if (ret)
 		return ret;
+
+	sec_dsim_of_parse_flags(dsim_dev);
 
 	encoder = &dsim_dev->encoder;
 	ret = imx_drm_encoder_parse_of(drm_dev, encoder, np);

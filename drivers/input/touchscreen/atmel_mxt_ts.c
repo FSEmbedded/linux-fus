@@ -30,6 +30,8 @@
 #include <media/videobuf2-v4l2.h>
 #include <media/videobuf2-vmalloc.h>
 
+static u32 max_read_size;
+
 /* Firmware files */
 #define MXT_FW_NAME		"maxtouch.fw"
 
@@ -886,7 +888,8 @@ static int __mxt_read_reg(struct i2c_client *client,
 {
 	struct i2c_msg xfer[2];
 	u8 buf[2];
-	int ret;
+	int ret = 0;
+	u16 size = len, tmp_size, count = 0;
 
 	buf[0] = reg & 0xff;
 	buf[1] = (reg >> 8) & 0xff;
@@ -897,20 +900,50 @@ static int __mxt_read_reg(struct i2c_client *client,
 	xfer[0].len = 2;
 	xfer[0].buf = buf;
 
-	/* Read data */
-	xfer[1].addr = client->addr;
-	xfer[1].flags = I2C_M_RD;
-	xfer[1].len = len;
-	xfer[1].buf = val;
+	if (max_read_size == 0) {
+		/* Read data */
+		xfer[1].addr = client->addr;
+		xfer[1].flags = I2C_M_RD;
+		xfer[1].len = len;
+		xfer[1].buf = val;
 
-	ret = i2c_transfer(client->adapter, xfer, 2);
-	if (ret == 2) {
-		ret = 0;
-	} else {
-		if (ret >= 0)
-			ret = -EIO;
-		dev_err(&client->dev, "%s: i2c transfer failed (%d)\n",
-			__func__, ret);
+		ret = i2c_transfer(client->adapter, xfer, 2);
+		if (ret == 2) {
+			ret = 0;
+		} else {
+			if (ret >= 0) {
+				ret = -EIO;
+				dev_err(&client->dev, "%s: i2c transfer failed (%d)\n",
+				__func__, ret);
+			}
+		}
+	}
+	else {
+		while (count < len) {
+			if (size - count > max_read_size )
+				tmp_size = max_read_size;
+			else
+				tmp_size = size - count;
+
+			/* Read data */
+			xfer[1].addr = client->addr;
+			xfer[1].flags = I2C_M_RD;
+			xfer[1].len = tmp_size;
+			xfer[1].buf = val + count;
+
+			ret = i2c_transfer(client->adapter, xfer, 2);
+			if (ret == 2) {
+				ret = 0;
+			} else {
+				if (ret >= 0) {
+					ret = -EIO;
+					dev_err(&client->dev, "%s: i2c transfer failed (%d)\n",
+					__func__, ret);
+					return ret;
+				}
+			}
+			count += tmp_size;
+		}
 	}
 
 	return ret;
@@ -4040,6 +4073,9 @@ static int mxt_parse_device_properties(struct mxt_data *data)
         if (device_property_read_string(dev, "atmel,cfg_name",
 					&data->cfg_name) < 0)
 		data->cfg_name = MXT_CFG_NAME;
+
+        if (of_property_read_u32(dev->of_node, "max-read-size", &max_read_size))
+		max_read_size = 0;
 
 	return 0;
 }

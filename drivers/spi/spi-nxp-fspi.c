@@ -547,7 +547,7 @@ static void nxp_fspi_prepare_lut(struct nxp_fspi *f,
 		 * Due to FlexSPI controller limitation number of PAD for dummy
 		 * buswidth needs to be programmed as equal to data buswidth.
 		 */
-					      LUT_PAD(op->data.buswidth),
+					      LUT_PAD(op->dummy.buswidth),
 					      op->dummy.nbytes * 8 /
 					      op->dummy.buswidth);
 		lutidx++;
@@ -954,7 +954,7 @@ static int nxp_fspi_default_setup(struct nxp_fspi *f)
 
 	/* enable module */
 	fspi_writel(f, FSPI_MCR0_AHB_TIMEOUT(0xFF) |
-		    FSPI_MCR0_IP_TIMEOUT(0xFF) | (u32) FSPI_MCR0_OCTCOMB_EN,
+		    FSPI_MCR0_IP_TIMEOUT(0xFF) /*| (u32) FSPI_MCR0_OCTCOMB_EN*/,
 		    base + FSPI_MCR0);
 
 	/*
@@ -1168,7 +1168,7 @@ static int nxp_fspi_need_reinit(struct nxp_fspi *f)
 	/* register bit to determine if the controller once lost power, such as */
 	/* suspend/resume, and need to be re-init */
 
-	return !(readl(f->iobase + FSPI_MCR0) & FSPI_MCR0_OCTCOMB_EN);
+	return 0;
 }
 
 

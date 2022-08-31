@@ -423,11 +423,13 @@
 	/* USB-C */
 	ptn5110: tcpc@52 {
 		compatible = "nxp,ptn5110";
+#ifdef CONFIG_PICOCOREMX8MM_USB_OTG1_USBC_ALERT
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_typec1>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <8 IRQ_TYPE_LEVEL_LOW>;
+#endif
 		reg = <0x52>;
-		interrupt-parent = <&gpio5>;
-		interrupts = <9 8>;
 		status = "okay";
 
 		port {
@@ -633,7 +635,15 @@
 		 <&clk IMX8MM_CLK_PCIE1_PHY>,
 		 <&pcie0_refclk>;
 	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
+	assigned-clocks = <&clk IMX8MM_CLK_PCIE1_AUX>,
+			  <&clk IMX8MM_CLK_PCIE1_PHY>,
+			  <&clk IMX8MM_CLK_PCIE1_CTRL>;
+	assigned-clock-rates = <10000000>, <100000000>, <250000000>;
+	assigned-clock-parents = <&clk IMX8MM_SYS_PLL2_50M>,
+				 <&clk IMX8MM_SYS_PLL2_100M>,
+				 <&clk IMX8MM_SYS_PLL2_250M>;
 	ext_osc = <0>;
+	l1ss-disabled;
 	reserved-region = <&rpmsg_reserved>;
 	status = "okay";
 };
@@ -1395,12 +1405,12 @@
 		};
 #endif
 
-#ifdef CONFIG_PICOCOREMX8MM_USB_OTG1_USBC
-	pinctrl_typec1: typec1grp {
-		fsl,pins = <
-			MX8MM_IOMUXC_ECSPI1_SS0_GPIO5_IO9		0x00159
-		>;
-	};
+#ifdef CONFIG_PICOCOREMX8MM_USB_OTG1_USBC_ALERT
+		pinctrl_typec1: typec1grp {
+			fsl,pins = <
+				MX8MM_IOMUXC_SAI1_RXD6_GPIO4_IO8	0x001c6
+			>;
+		};
 #endif
 
 #ifdef CONFIG_PICOCOREMX8MM_USB_HOST

@@ -158,6 +158,7 @@
 		mxcfb2 = &mxcfb2;
 		mxcfb3 = &mxcfb3;
 		ethernet1 = &ax88796;
+		nand = &gpmi;
 	};
 
 	memory {
@@ -911,6 +912,7 @@
 	ranges = <0 0 0x08000000 0x04000000>,
 		 <1 0 0x0c000000 0x04000000>;
 	fsl,weim-cs-gpr = <&gpr>;
+	status = "okay";
 
 	ax88796: ax88796 {
 		compatible = "asix,ax88796-eth";
