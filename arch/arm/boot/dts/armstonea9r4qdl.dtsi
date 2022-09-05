@@ -591,6 +591,9 @@
 			reg = <4>;
 			/* Set the maximum link speed if required */
 			//max-speed = <100>;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
 		};
 	};
 };
