@@ -13,6 +13,7 @@
  * option) any later version.
  *
  */
+#include <linux/of.h>
 #include <linux/phy.h>
 #include <linux/module.h>
 
@@ -30,9 +31,45 @@
 #define RTL8211F_TX_DELAY	0x100
 #define RTL8211F_RX_DELAY	0x8
 
+#define RTL8211F_SSC_CLKOUT 0x3080
+#define RTL8211F_SSC_SYSCLK 0x0008
+
+//#define RTL821X_CLKOUT_EN_FEATURE		(1 << 0)
+//#define RTL821X_ALDPS_DISABLE			(1 << 1)
+#define RTL821X_SSC_RXC_EN_FEATURE		(1 << 2)
+#define RTL821X_SSC_SYSCLK_EN_FEATURE		(1 << 3)
+#define RTL821X_SSC_CLKOUT_EN_FEATURE		(1 << 4)
+
 MODULE_DESCRIPTION("Realtek PHY driver");
 MODULE_AUTHOR("Johnson Leung");
 MODULE_LICENSE("GPL");
+
+struct rtl821x_priv {
+	u32 quirks;
+};
+
+static int rtl821x_probe(struct phy_device *phydev)
+{
+	struct device *dev = &phydev->mdio.dev;
+	struct rtl821x_priv *priv;
+
+	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+	if (!priv)
+		return -ENOMEM;
+
+	if (of_property_read_bool(dev->of_node, "rtl821x,ssc-rxc-enable"))
+		priv->quirks |= RTL821X_SSC_RXC_EN_FEATURE;
+
+	if (of_property_read_bool(dev->of_node, "rtl821x,ssc-sysclk-enable"))
+		priv->quirks |= RTL821X_SSC_SYSCLK_EN_FEATURE;
+
+	if (of_property_read_bool(dev->of_node, "rtl821x,ssc-clkout-enable"))
+		priv->quirks |= RTL821X_SSC_CLKOUT_EN_FEATURE;
+
+	phydev->priv = priv;
+
+	return 0;
+}
 
 static int rtl821x_ack_interrupt(struct phy_device *phydev)
 {
@@ -98,6 +135,7 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 {
 	int ret;
 	u16 reg;
+	struct rtl821x_priv *priv = phydev->priv;
 
 	ret = genphy_config_init(phydev);
 	if (ret < 0)
@@ -124,10 +162,35 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 		reg &= ~RTL8211F_RX_DELAY;
 
 	phy_write(phydev, 0x15, reg);
+
+	phy_write(phydev, RTL8211F_PAGE_SELECT, 0xa43);
+	reg = phy_read(phydev, 0x19);
+
+
+	if ((priv->quirks & RTL821X_SSC_RXC_EN_FEATURE)) {
+		phy_write(phydev, RTL8211F_PAGE_SELECT, 0x0C44);
+		phy_write(phydev, 0x13, 0x5F00); // RXC SSC initialization & enable RXC SSC
+	}
+
+	if ((priv->quirks & RTL821X_SSC_SYSCLK_EN_FEATURE)) {
+		phy_write(phydev, RTL8211F_PAGE_SELECT, 0x0C44);
+		phy_write(phydev, 0x17, 0x5F00); // System Clock SSC initialization
+		reg |= RTL8211F_SSC_SYSCLK;
+	}
+
+	if ((priv->quirks & RTL821X_SSC_CLKOUT_EN_FEATURE)) {
+		phy_write(phydev, RTL8211F_PAGE_SELECT, 0x0D09);
+		phy_write(phydev, 0x10, 0xCF00); // CLK_OUT SSC initialization
+		reg |= RTL8211F_SSC_CLKOUT;
+	}
+
+	phy_write(phydev, RTL8211F_PAGE_SELECT, 0xa43);
+	phy_write(phydev, 0x19, reg);
+
 	/* restore to default page 0 */
 	phy_write(phydev, RTL8211F_PAGE_SELECT, 0x0);
 
-	return 0;
+	return genphy_soft_reset(phydev);
 }
 
 static struct phy_driver realtek_drvs[] = {
@@ -179,6 +242,7 @@ static struct phy_driver realtek_drvs[] = {
 		.phy_id_mask	= 0x001fffff,
 		.features	= PHY_GBIT_FEATURES,
 		.flags		= PHY_HAS_INTERRUPT,
+		.probe		= rtl821x_probe,
 		.config_aneg	= &genphy_config_aneg,
 		.config_init	= &rtl8211f_config_init,
 		.read_status	= &genphy_read_status,
