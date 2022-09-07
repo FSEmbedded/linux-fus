@@ -752,6 +752,8 @@
 			rtl821x,ssc-rxc-enable;
 			rtl821x,ssc-sysclk-enable;
 			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <2>;
+			rtl821x,led-act = <1>;
 		};
 	};
 };
