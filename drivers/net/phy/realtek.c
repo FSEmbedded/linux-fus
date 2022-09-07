@@ -26,6 +26,7 @@
 #define RTL8211E_INER_LINK_STATUS 0x400
 
 #define RTL8211F_INER_LINK_STATUS 0x0010
+#define RTL8211F_LCR		0x10
 #define RTL8211F_INSR		0x1d
 #define RTL8211F_PAGE_SELECT	0x1f
 #define RTL8211F_TX_DELAY	0x100
@@ -40,12 +41,22 @@
 #define RTL821X_SSC_SYSCLK_EN_FEATURE		(1 << 3)
 #define RTL821X_SSC_CLKOUT_EN_FEATURE		(1 << 4)
 
+#define LED_MODE_B (1 << 15)
+#define LED_LINK(X) (0x0b << (5*X))
+#define LED_ACT(X) (0x10 << (5*X))
+#define LED_LINK_MASK (LED_LINK(2)|LED_LINK(1)|LED_LINK(0))
+#define LED_ACT_MASK (LED_ACT(2)|LED_ACT(1)|LED_ACT(0))
+
 MODULE_DESCRIPTION("Realtek PHY driver");
 MODULE_AUTHOR("Johnson Leung");
 MODULE_LICENSE("GPL");
 
 struct rtl821x_priv {
 	u32 quirks;
+	u32 led_link;
+	u32 led_act;
+	bool set_link;
+	bool set_act;
 };
 
 static int rtl821x_probe(struct phy_device *phydev)
@@ -57,6 +68,10 @@ static int rtl821x_probe(struct phy_device *phydev)
 	if (!priv)
 		return -ENOMEM;
 
+	/* Set default values */
+	priv->set_link = false;
+	priv->set_act = false;
+
 	if (of_property_read_bool(dev->of_node, "rtl821x,ssc-rxc-enable"))
 		priv->quirks |= RTL821X_SSC_RXC_EN_FEATURE;
 
@@ -65,6 +80,12 @@ static int rtl821x_probe(struct phy_device *phydev)
 
 	if (of_property_read_bool(dev->of_node, "rtl821x,ssc-clkout-enable"))
 		priv->quirks |= RTL821X_SSC_CLKOUT_EN_FEATURE;
+
+	if (!of_property_read_u32(dev->of_node,"rtl821x,led-link", &priv->led_link))
+		priv->set_link = true;
+
+	if (!of_property_read_u32(dev->of_node,"rtl821x,led-act", &priv->led_act))
+		priv->set_act = true;
 
 	phydev->priv = priv;
 
@@ -186,6 +207,24 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 
 	phy_write(phydev, RTL8211F_PAGE_SELECT, 0xa43);
 	phy_write(phydev, 0x19, reg);
+
+	/* Set LED Configuration Register */
+	phy_write(phydev, RTL8211F_PAGE_SELECT, 0xd04);
+	reg = phy_read(phydev, RTL8211F_LCR);
+	/* Default to LED Mode B */
+	reg |= LED_MODE_B;
+	/* Set LED for link indication if specified */
+	if (priv->set_link) {
+		reg &= ~LED_LINK_MASK;
+		reg |= LED_LINK(priv->led_link);
+	}
+	/* Set LED for activity if specified */
+	if (priv->set_act) {
+		reg &= ~LED_ACT_MASK;
+		reg |= LED_ACT(priv->led_act);
+	}
+	/* Write the actual register */
+	phy_write(phydev, RTL8211F_LCR, reg);
 
 	/* restore to default page 0 */
 	phy_write(phydev, RTL8211F_PAGE_SELECT, 0x0);

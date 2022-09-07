@@ -786,6 +786,8 @@
 			reg = <1>;
 			/* Set the maximum link speed if required */
 			//max-speed = <100>;
+			dp83848,led-activity;
+			dp83848,auto-mdix;
 		};
 	};
 };

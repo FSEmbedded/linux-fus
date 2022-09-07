@@ -25,6 +25,7 @@
 /* Registers */
 #define DP83848_MICR			0x11 /* MII Interrupt Control Register */
 #define DP83848_MISR			0x12 /* MII Interrupt Status Register */
+#define DP83848_PHYCR			0x19 /* PHY Control Register */
 
 /* MICR Register Fields */
 #define DP83848_MICR_INT_OE		BIT(0) /* Interrupt Output Enable */
@@ -40,11 +41,39 @@
 #define DP83848_MISR_ED_INT_EN		BIT(6) /* Energy detect */
 #define DP83848_MISR_LQM_INT_EN		BIT(7) /* Link Quality Monitor */
 
+/* PHYCR Register Fields */
+#define DP83848_PHYCR_LED_CNFG		BIT(5) /* LED Configuration (0: Link, 1: Link+Activity) */
+#define DP83848_PHYCR_MDIX_EN		BIT(15) /* Auto-MDIX (0: Disabled, 1: Enabled) */
+
 #define DP83848_INT_EN_MASK		\
 	(DP83848_MISR_ANC_INT_EN |	\
 	 DP83848_MISR_DUP_INT_EN |	\
 	 DP83848_MISR_SPD_INT_EN |	\
 	 DP83848_MISR_LINK_INT_EN)
+
+struct dp83848_priv {
+	u32 quirks;
+};
+
+static int dp83848_probe(struct phy_device *phydev)
+{
+	struct device *dev = &phydev->mdio.dev;
+	struct dp83848_priv *priv;
+
+	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+	if (!priv)
+		return -ENOMEM;
+
+	if (of_property_read_bool(dev->of_node, "dp83848,led-activity"))
+		priv->quirks |= DP83848_PHYCR_LED_CNFG;
+
+	if (of_property_read_bool(dev->of_node, "dp83848,auto-mdix"))
+		priv->quirks |= DP83848_PHYCR_MDIX_EN;
+
+	phydev->priv = priv;
+
+	return 0;
+}
 
 static int dp83848_ack_interrupt(struct phy_device *phydev)
 {
@@ -75,6 +104,33 @@ static int dp83848_config_intr(struct phy_device *phydev)
 	return phy_write(phydev, DP83848_MICR, control);
 }
 
+static int dp83848_config_init(struct phy_device *phydev)
+{
+	int ret;
+	u16 reg;
+	struct dp83848_priv *priv = phydev->priv;
+
+	ret = genphy_config_init(phydev);
+	if (ret < 0)
+		return ret;
+
+	reg = phy_read(phydev, DP83848_PHYCR);
+
+	/* If not set by the Device-Tree, disable LED Activity */
+	if ((priv->quirks & DP83848_PHYCR_LED_CNFG))
+		reg |= DP83848_PHYCR_LED_CNFG;
+	else
+		reg &= ~DP83848_PHYCR_LED_CNFG;
+
+	/* If enabled by HW, do not disable Auto-MDIX */
+	if ((priv->quirks & DP83848_PHYCR_MDIX_EN))
+		reg |= DP83848_PHYCR_MDIX_EN;
+
+	phy_write(phydev, 0x19, DP83848_PHYCR);
+
+	return 0;
+}
+
 static struct mdio_device_id __maybe_unused dp83848_tbl[] = {
 	{ TI_DP83848C_PHY_ID, 0xfffffff0 },
 	{ NS_DP83848C_PHY_ID, 0xfffffff0 },
@@ -93,8 +149,9 @@ MODULE_DEVICE_TABLE(mdio, dp83848_tbl);
 		.features	= PHY_BASIC_FEATURES,		\
 		.flags		= PHY_HAS_INTERRUPT,		\
 								\
+		.probe = dp83848_probe,		\
 		.soft_reset	= genphy_soft_reset,		\
-		.config_init	= genphy_config_init,		\
+		.config_init	= dp83848_config_init,		\
 		.suspend	= genphy_suspend,		\
 		.resume		= genphy_resume,		\
 		.config_aneg	= genphy_config_aneg,		\
