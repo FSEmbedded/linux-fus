@@ -1,0 +1,24 @@
+Natsemi DP83848 Ethernet PHY
+
+DP83848:
+
+  Optional properties:
+
+    - dp83848,led-activity : Enable LED Activity. If not set, Activity will be disabled.
+    - dp83848,auto-mdix : Enable Auto-MDIX. If not set, HW option will be used.
+
+Examples:
+
+	mdio {
+		phy0: ethernet-phy@0 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <0>;
+			dp83848,led-activity;
+			dp83848,auto-mdix;
+		};
+	};
+	ethernet@70000 {
+		status = "okay";
+		phy = <&phy0>;
+		phy-mode = "rgmii-id";
+	};
