@@ -16,6 +16,7 @@ RTL8211F:
     - rtl821x,ssc-clkout-enable : Spread-Spectrum Clocking for CLKOUT
     - rtl821x,led-link : LED used for link indication
     - rtl821x,led-act : LED used for activity
+    - rtl821x,gbit-disable : Disable 1000Mbps
 
 Examples:
 

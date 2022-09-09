@@ -26,7 +26,9 @@
 #define RTL8211E_INER_LINK_STATUS 0x400
 
 #define RTL8211F_INER_LINK_STATUS 0x0010
+#define RTL8211F_GBCR		0x09
 #define RTL8211F_LCR		0x10
+#define RTL8211F_EEELCR		0x11
 #define RTL8211F_PHYCR1		0x18
 #define RTL8211F_PHYCR2		0x19
 #define RTL8211F_INSR		0x1d
@@ -43,11 +45,14 @@
 
 #define RTL8211F_CLKOUT_EN			(1 << 0)
 
+#define RTL8211F_GBIT			(1 << 9)
+
 #define RTL821X_CLKOUT_DISABLE		(1 << 0)
 #define RTL821X_ALDPS_ENABLE			(1 << 1)
 #define RTL821X_SSC_RXC_EN_FEATURE		(1 << 2)
 #define RTL821X_SSC_SYSCLK_EN_FEATURE		(1 << 3)
 #define RTL821X_SSC_CLKOUT_EN_FEATURE		(1 << 4)
+#define RTL821X_GBIT_DISABLE		(1 << 5)
 
 #define LED_MODE_B (1 << 15)
 #define LED_LINK(X) (0x0b << (5*X))
@@ -100,6 +105,9 @@ static int rtl821x_probe(struct phy_device *phydev)
 
 	if (!of_property_read_u32(dev->of_node, "rtl821x,led-act", &priv->led_act))
 		priv->set_act = true;
+
+	if (of_property_read_bool(dev->of_node, "rtl821x,gbit-disable"))
+		priv->quirks |= RTL821X_GBIT_DISABLE;
 
 	phydev->priv = priv;
 
@@ -248,8 +256,14 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 	/* Write the actual register */
 	phy_write(phydev, RTL8211F_LCR, reg);
 
+	/* Disable EEE LED indication */
+	phy_write(phydev, RTL8211F_EEELCR, 0x0);
+
 	/* restore to default page 0 */
 	phy_write(phydev, RTL8211F_PAGE_SELECT, 0x0);
+
+	if ((priv->quirks & RTL821X_GBIT_DISABLE))
+		phydev->supported &= ~(SUPPORTED_1000baseT_Half | SUPPORTED_1000baseT_Full);
 
 	return genphy_soft_reset(phydev);
 }
