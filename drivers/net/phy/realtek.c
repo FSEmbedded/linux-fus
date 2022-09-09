@@ -27,6 +27,8 @@
 
 #define RTL8211F_INER_LINK_STATUS 0x0010
 #define RTL8211F_LCR		0x10
+#define RTL8211F_PHYCR1		0x18
+#define RTL8211F_PHYCR2		0x19
 #define RTL8211F_INSR		0x1d
 #define RTL8211F_PAGE_SELECT	0x1f
 #define RTL8211F_TX_DELAY	0x100
@@ -35,8 +37,14 @@
 #define RTL8211F_SSC_CLKOUT 0x3080
 #define RTL8211F_SSC_SYSCLK 0x0008
 
-//#define RTL821X_CLKOUT_EN_FEATURE		(1 << 0)
-//#define RTL821X_ALDPS_DISABLE			(1 << 1)
+#define RTL8211F_ALDPS_PLL_OFF			(1 << 1)
+#define RTL8211F_ALDPS_ENABLE			(1 << 2)
+#define RTL8211F_ALDPS_XTAL_OFF			(1 << 12)
+
+#define RTL8211F_CLKOUT_EN			(1 << 0)
+
+#define RTL821X_CLKOUT_DISABLE		(1 << 0)
+#define RTL821X_ALDPS_ENABLE			(1 << 1)
 #define RTL821X_SSC_RXC_EN_FEATURE		(1 << 2)
 #define RTL821X_SSC_SYSCLK_EN_FEATURE		(1 << 3)
 #define RTL821X_SSC_CLKOUT_EN_FEATURE		(1 << 4)
@@ -72,6 +80,12 @@ static int rtl821x_probe(struct phy_device *phydev)
 	priv->set_link = false;
 	priv->set_act = false;
 
+	if (of_property_read_bool(dev->of_node, "rtl821x,clkout-disable"))
+		priv->quirks |= RTL821X_CLKOUT_DISABLE;
+
+	if (of_property_read_bool(dev->of_node, "rtl821x,aldps-enable"))
+		priv->quirks |= RTL821X_ALDPS_ENABLE;
+
 	if (of_property_read_bool(dev->of_node, "rtl821x,ssc-rxc-enable"))
 		priv->quirks |= RTL821X_SSC_RXC_EN_FEATURE;
 
@@ -81,10 +95,10 @@ static int rtl821x_probe(struct phy_device *phydev)
 	if (of_property_read_bool(dev->of_node, "rtl821x,ssc-clkout-enable"))
 		priv->quirks |= RTL821X_SSC_CLKOUT_EN_FEATURE;
 
-	if (!of_property_read_u32(dev->of_node,"rtl821x,led-link", &priv->led_link))
+	if (!of_property_read_u32(dev->of_node, "rtl821x,led-link", &priv->led_link))
 		priv->set_link = true;
 
-	if (!of_property_read_u32(dev->of_node,"rtl821x,led-act", &priv->led_act))
+	if (!of_property_read_u32(dev->of_node, "rtl821x,led-act", &priv->led_act))
 		priv->set_act = true;
 
 	phydev->priv = priv;
@@ -185,8 +199,16 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 	phy_write(phydev, 0x15, reg);
 
 	phy_write(phydev, RTL8211F_PAGE_SELECT, 0xa43);
-	reg = phy_read(phydev, 0x19);
+	reg = phy_read(phydev, RTL8211F_PHYCR1);
 
+	if ((priv->quirks & RTL821X_ALDPS_ENABLE))
+		reg |= RTL8211F_ALDPS_PLL_OFF | RTL8211F_ALDPS_ENABLE | RTL8211F_ALDPS_XTAL_OFF;
+
+	phy_write(phydev, RTL8211F_PHYCR1, reg);
+	reg = phy_read(phydev, RTL8211F_PHYCR2);
+
+	if ((priv->quirks & RTL821X_CLKOUT_DISABLE))
+		reg &= ~RTL8211F_CLKOUT_EN;
 
 	if ((priv->quirks & RTL821X_SSC_RXC_EN_FEATURE)) {
 		phy_write(phydev, RTL8211F_PAGE_SELECT, 0x0C44);
@@ -206,7 +228,7 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 	}
 
 	phy_write(phydev, RTL8211F_PAGE_SELECT, 0xa43);
-	phy_write(phydev, 0x19, reg);
+	phy_write(phydev, RTL8211F_PHYCR2, reg);
 
 	/* Set LED Configuration Register */
 	phy_write(phydev, RTL8211F_PAGE_SELECT, 0xd04);

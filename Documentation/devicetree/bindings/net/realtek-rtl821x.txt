@@ -9,6 +9,8 @@ RTL8211F:
 
   Optional properties:
 
+    - rtl821x,clkout-disable : Disable CLKOUT
+    - rtl821x,aldps-enable : Enable Automatic Link Down Power Saving Mode
     - rtl821x,ssc-rxc-enable : Spread-Spectrum Clocking for RXC
     - rtl821x,ssc-sysclk-enable : Spread-Spectrum Clocking for SYSCLK
     - rtl821x,ssc-clkout-enable : Spread-Spectrum Clocking for CLKOUT
