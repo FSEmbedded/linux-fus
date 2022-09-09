@@ -612,7 +612,7 @@ chosen {
 /* Internal I2C (bitbanging): RTC (PCA8565), SGTL5000 (SKIT) */
 &i2c_gpio {
 #ifdef CONFIG_PICOCOM1_2_AUDIO
-	sgtl5000: sgtl5000@0a {
+	sgtl5000: sgtl5000@a {
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
 		clocks = <&clks IMX6UL_CLK_SAI1>;

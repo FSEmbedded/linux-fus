@@ -397,7 +397,7 @@
 #ifdef CONFIG_AGATEWAY_SGTL5000_AUDIO
 /* I2C_C (Bitbanging): RTC (PCA8565), SGTL5000 (SKIT) */
 &i2c_gpio {
-	sgtl5000: sgtl5000@0a {
+	sgtl5000: sgtl5000@a {
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
 		mono2both;

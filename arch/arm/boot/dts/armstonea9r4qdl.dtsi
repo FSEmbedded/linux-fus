@@ -672,7 +672,7 @@
 #endif
 
 #ifdef CONFIG_ARMSTONEA9R4_SGTL5000_AUDIO
-	sgtl5000: sgtl5000@0a {
+	sgtl5000: sgtl5000@a {
 		compatible = "fsl,sgtl5000";
 		reg = <0x0a>;
 		mono2both;
