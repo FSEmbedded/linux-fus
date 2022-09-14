@@ -1,0 +1,38 @@
+Realtek RTL821x Gigabit Ethernet PHY
+
+RTL8211F:
+
+  Spread-Spectrum clocking can be used by setting the optional flags
+  in the Device-Tree. Additionally a LED can be configured for link
+  indication and activity. HW default is used if those are not
+  specified.
+
+  Optional properties:
+
+    - rtl821x,clkout-disable : Disable CLKOUT
+    - rtl821x,aldps-enable : Enable Automatic Link Down Power Saving Mode
+    - rtl821x,ssc-rxc-enable : Spread-Spectrum Clocking for RXC
+    - rtl821x,ssc-sysclk-enable : Spread-Spectrum Clocking for SYSCLK
+    - rtl821x,ssc-clkout-enable : Spread-Spectrum Clocking for CLKOUT
+    - rtl821x,led-link : LED used for link indication
+    - rtl821x,led-act : LED used for activity
+    - rtl821x,gbit-disable : Disable 1000Mbps
+
+Examples:
+
+	mdio {
+		phy0: ethernet-phy@0 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <0>;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <1>; // LED1 for link indication
+			rtl821x,led-act = <0>; // LED0 for activity
+		};
+	};
+	ethernet@70000 {
+		status = "okay";
+		phy = <&phy0>;
+		phy-mode = "rgmii-id";
+	};
