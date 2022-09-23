@@ -4,6 +4,23 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight,
         MM: M Mini, MN: M Nano
 
+linux-5.4.70-fsimx6-Y2022.09 (21.09.2022)
+-----------------------------------------
+Supported boards: efusA9 efusA9r2 armStoneA9 armStoneA9r2 PicoModA9 NetDCUA9
+QBlissA9 armStoneA9 armStoneA9r2 armStoneA9r3
+
+- Merge remote-tracking branch 'origin/master'
+- Support more features for Realtek PHY
+- Add TSC2004 support for fsimx6
+- Add support for armStoneA9r3 and armStoneA9r4
+- Add ssc support for rtl8211f
+- Support configuration of Auto-MDIX and LED Activity for dp83848
+- Move LED configuration for ETH-PHYs to device-trees
+- Support ALDPS-Enable and CLKOUT-Disable for Realtek PHY
+- Fix compiler warnings for sgtl5000 node
+
+
+
 linux-5.4.70-fsimx8mm-Y2021.04.1 (25.08.2022)
 ---------------------------------------------
 Supported boards: PicoCoreMX8MM PicoCoreMX8MMr2 PicoCoreMX8MX
