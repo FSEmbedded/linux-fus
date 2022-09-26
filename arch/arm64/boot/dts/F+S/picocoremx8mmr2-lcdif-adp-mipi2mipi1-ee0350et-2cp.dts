@@ -8,9 +8,11 @@
 
 #define CONFIG_PICOCOREMX8MM_MIPI_DSI
 
-#define IMX8MM_MIPI_RESET_GPIO_BANK	gpio1
-#define IMX8MM_MIPI_RESET_GPIO_NUM	1
+#define IMX8MM_TOUCH_INTERRUPT_GPIO_BANK	gpio1
+#define IMX8MM_TOUCH_INTERRUPT_GPIO_NUM		0
 
-#include "picocoremx8mm.dts"
-#include "displays/imx8mm-lcdif-g050tan01.dtsi"
+#define IMX8MM_TOUCH_I2C i2c2
+
+#include "picocoremx8mmr2.dts"
+#include "displays/imx8mm-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtsi"
 

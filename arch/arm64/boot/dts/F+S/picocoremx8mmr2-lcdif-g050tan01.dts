@@ -11,6 +11,6 @@
 #define IMX8MM_MIPI_RESET_GPIO_BANK	gpio1
 #define IMX8MM_MIPI_RESET_GPIO_NUM	1
 
-#include "picocoremx8mm.dts"
+#include "picocoremx8mmr2.dts"
 #include "displays/imx8mm-lcdif-g050tan01.dtsi"
 

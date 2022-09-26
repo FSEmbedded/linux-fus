@@ -9,9 +9,9 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_PICOCOREMX8MM_BOARD_REVISION	130
+#define CONFIG_PICOCOREMX8MM_BOARD_REVISION	100
 /* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_PICOCOREBBDSI_BOARD_REVISION	130
+#define CONFIG_PICOCOREBBDSI_BOARD_REVISION	140
 
 /* Activate this if you want to use the Cortex-M4 core */
 //#define SUPPORT_M4
@@ -145,12 +145,6 @@
 #undef CONFIG_PICOCOREMX8MM_SD_B_WP
 #endif
 
-/* Set different settings for corresponding revision */
-#if CONFIG_PICOCOREMX8MM_BOARD_REVISION < 130
-#undef CONFIG_PICOCOREMX8MM_CAN_A
-#undef CONFIG_PICOCOREMX8MM_AUDIO_B
-#endif
-
 /* Set different settings for corresponding baseboard revision */
 #if CONFIG_PICOCOREBBDSI_BOARD_REVISION >= 130
 #undef CONFIG_PICOCOREMX8MM_SPI_A_CAN_CONVERTER
@@ -161,11 +155,11 @@
 #include "picocoremx8mm.dtsi"
 
 / {
-	model = "F&S PicoCoreMX8MM";
+	model = "F&S PicoCoreMX8MMr2";
 };
 
 &bdinfo{
-	board_name = "picocoremx8mm";
+	board_name = "picocoremx8mmr2";
 };
 
 #ifdef CONFIG_PICOCOREMX8MM_ETH
@@ -173,7 +167,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_fec1>;
 	phy-mode = "rgmii-id";
-	phy-handle = <&ethphy0>;
+	phy-handle = <&ethphy4>;
 	fsl,magic-packet;
 	status = "okay";
 
@@ -181,12 +175,19 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		ethphy0: ethernet-phy@0 {
+		ethphy4: ethernet-phy@4 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <4>;
-			at803x,led-act-blind-workaround;
-			at803x,eee-okay;
-			at803x,vddio-1p8v;
+			rtl821x,clkout-disable;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <1>; // LED1 for link indication
+			rtl821x,led-act = <1>; // LED1 for activity
+			interrupt-parent = <&gpio1>;
+			interrupts = <4 IRQ_TYPE_LEVEL_LOW>;
+			eee-broken-1000t;
 		};
 	};
 };

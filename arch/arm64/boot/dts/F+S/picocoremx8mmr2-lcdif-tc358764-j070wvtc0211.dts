@@ -21,6 +21,6 @@
 #define IMX8MM_TOUCH_I2C i2c2
 #define IMX8MM_BACKLIGHT_PWM pwm2
 
-#include "picocoremx8mm.dts"
+#include "picocoremx8mmr2.dts"
 #include "displays/imx8mm-lcdif-tc358764-j070wvtc0211.dtsi"
 
