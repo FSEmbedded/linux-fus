@@ -1,0 +1,1959 @@
+/*
+ * Copyright (C) 2016-2019 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_EFUSA9X_BOARD_REVISION	122
+
+/* Activate this if you want to use the Cortex-M4 core */
+//#define SUPPORT_M4
+
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_LCD	1	/* LCD via RGB adapter */
+#define DISPLAY_LVDS	2	/* LVDS */
+
+/* VLCDON used to enable or disable a display */
+#define CONFIG_EFUSA9X_VLCDON
+
+/*
+ * Set the display configuration:
+ *
+ * - If you have no display, set both settings to DISPLAY_NONE.
+ * - If you have one display, set LCDIF0 to one of the display types above
+ *   and leave LCDIF1 at DISPLAY_NONE.
+ * - If you have two displays, set LCDIF0 to DISPLAY_LCD and LCDIF1 to
+ *   DISPLAY_LVDS.
+ */
+#define CONFIG_EFUSA9X_LCDIF0		DISPLAY_LCD
+#define CONFIG_EFUSA9X_LCDIF1		DISPLAY_NONE
+
+/*
+ * Configure LCD settings here (ignored if LCD is not used)
+ */
+#define CONFIG_EFUSA9X_LCD_BPP		32
+#define CONFIG_EFUSA9X_LCD_BUS_WIDTH	18
+#define CONFIG_EFUSA9X_LCD_TIMING \
+lcd_wvga {				\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;  		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <1>;		\
+}
+
+/*
+ * F&S has changed the default LVDS display. To use the previous settings
+ * activate the following define.
+ */
+//#define DISPLAY_LVDS_CHIMEI
+
+/*
+ * Configure LVDS settings here (ignored if LVDS is not used)
+ * Mapping (refers to LVDS_BUS_WIDTH, not LVDS_BPP):
+ *
+ * - "spwg":  18 bpp or 24 bpp, in case of 24 bpp, bits 6 and 7 of each color
+ *            are encoded on fourth LVDS differential data pair
+ * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
+ *            all other data bits on all four differential data pairs
+ */
+#ifndef DISPLAY_LVDS_CHIMEI
+#define CONFIG_EFUSA9X_LVDS_BPP		32
+#define CONFIG_EFUSA9X_LVDS_BUS_WIDTH	24
+#define CONFIG_EFUSA9X_LVDS_MAPPING	"spwg"
+#define CONFIG_EFUSA9X_LVDS_TIMING \
+lvds_wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <4>;		\
+	hback-porch = <44>;		\
+	hsync-len = <2>;		\
+	vback-porch = <21>;		\
+	vfront-porch = <11>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#else
+#define CONFIG_EFUSA9X_LVDS_BPP		32
+#define CONFIG_EFUSA9X_LVDS_BUS_WIDTH	18
+#define CONFIG_EFUSA9X_LVDS_MAPPING	"spwg"
+#define CONFIG_EFUSA9X_LVDS_TIMING \
+lvds_wvga {				\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#endif
+
+/*
+ * Define this if your LVDS display requires 5V I/O logic voltage. Default is
+ * 3.3V. ATTENTION: Setting 5V on a 3.3V display may damage the display!
+ * Remark: This setting requires board revision 1.10 or newer; older board
+ * revisions only support 3.3V.
+ */
+//#define CONFIG_EFUSA9X_5V_LVDS
+
+/*
+ * Configure touch screen:
+ *
+ * - 4-wire/5-wire analog resistive touch, touch controller on SKIT
+ * - 4-wire/5-wire analog resistive touch, touch controller on RGB LCD adapter
+ * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
+ * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ * - PCAP touch based on Sitronix controller (ST1633i), on Touch Connector
+ * - PCAP touch based on Ilitek controller (ILI12xx), on Touch Connector
+ *
+ * On efusA9X, all touches use the same interrupt line and I2C bus, so do not
+ * select more than one entry! Select none if you do not need touch support.
+ */
+//#define CONFIG_EFUSA9X_4WTOUCH_SX8655_ONBOARD
+#define CONFIG_EFUSA9X_4WTOUCH_SX8655_RGBADAPTER
+//#define CONFIG_EFUSA9X_CAPTOUCH_MXT224
+//#define CONFIG_EFUSA9X_CAPTOUCH_FT5x06
+//#define CONFIG_EFUSA9X_CAPTOUCH_SITRONIX
+//#define CONFIG_EFUSA9X_CAPTOUCH_ILITEK
+
+/* CMA: Set 320 MB for Continuous Memory Allocator */
+#define CONFIG_EFUSA9X_CMA_SIZE 0x14000000
+
+/* On-board NAND */
+#define CONFIG_EFUSA9X_NAND
+
+/* On-board eMMC */
+#define CONFIG_EFUSA9X_EMMC
+
+/* Network */
+#define CONFIG_EFUSA9X_ETH0
+#define CONFIG_EFUSA9X_ETH1
+
+/* WLAN/BLUETOOTH; either WLAN-only or combined WLAN/Bluetooth chip */
+#define CONFIG_EFUSA9X_WLAN
+#define CONFIG_EFUSA9X_BLUETOOTH
+
+/* USB - USB OTG1 has over-current detection on OC pin */
+#define CONFIG_EFUSA9X_USB_OTG1
+#define CONFIG_EFUSA9X_USB_OTG1_OC
+#define CONFIG_EFUSA9X_USB_HOST
+
+/* PCIe */
+//#define CONFIG_EFUSA9X_PCIE
+
+/* CAN */
+#define CONFIG_EFUSA9X_CAN_A
+#define CONFIG_EFUSA9X_CAN_B
+
+/* I2C */
+#define CONFIG_EFUSA9X_I2C_A
+#define CONFIG_EFUSA9X_I2C_B
+#define CONFIG_EFUSA9X_I2C_C
+
+/* PWM and backlight brightness */
+#define CONFIG_EFUSA9X_PWM_A
+#define CONFIG_EFUSA9X_BL_CTRL
+
+/* UART; UART_C is only available if Bluetooth is not equipped */
+#define CONFIG_EFUSA9X_UART_A
+#define CONFIG_EFUSA9X_UART_B
+#define CONFIG_EFUSA9X_UART_B_RTSCTS
+#define CONFIG_EFUSA9X_UART_C
+#define CONFIG_EFUSA9X_UART_C_RTSCTS
+#define CONFIG_EFUSA9X_UART_D
+
+/* SPI; SPI_B can only use CS2 if UART_C does not use RTS */
+#define CONFIG_EFUSA9X_SPI_A
+#define CONFIG_EFUSA9X_SPI_B
+
+/* Audio */
+#define CONFIG_EFUSA9X_AUDIO
+
+/* Parallel camera */
+#define CONFIG_EFUSA9X_PARALLEL_CAMERA
+
+/* Analog camera */
+#define CONFIG_EFUSA9X_ANALOG_CAMERA
+
+/*
+ * SD_A - External SD port with Card Detect (CD) and Write Protect (WP)
+ * On board revisions before 1.20: only available if WLAN is not equipped.
+ * On board revisions since 1.20: only available if eMMC is not equipped.
+ * On efus SKIT: external port is Micro-SD card slot with CD but without WP
+ */
+#define CONFIG_EFUSA9X_SD_A
+#define CONFIG_EFUSA9X_SD_A_CD
+//#define CONFIG_EFUSA9X_SD_A_WP
+
+/*
+ * SD_B - External SD port with Card Detect (CD) and Write Protect (WP)
+ * On efus SKIT: external port is normal-sized SD card slot with CD and WP
+ */
+#define CONFIG_EFUSA9X_SD_B
+#define CONFIG_EFUSA9X_SD_B_CD
+#define CONFIG_EFUSA9X_SD_B_WP
+
+/* Check for invalid CONFIG combinations */
+
+/*
+ * Exclude devices from Linux that are used by the Cortex-M4 FreeRTOS examples
+ *
+ * - UART_B: used for debug output/UART examples
+ * - SPI_B:  MISO/MOSI/CLK/CS1 used in SPI examples
+ * - CAN_B:  TX/RX used in CAN examples
+ * - I2C_B:  SCL/SDA used in I2C examples
+ * - I2C_B:  IRQ used as KEY input
+ * - PWM_A:  used as LED output
+ *
+ * In addition the following pins are already predefined in FreeRTOS to be used
+ * as arbitrary GPIOs. Please remove the comment of the appropriate line of
+ * each device from which you use any signal in your own application.
+ *
+ * - SPI_A:  MISO/MOSI/CLK/CS1/CS2
+ * - CAN_A:  TX/RX
+ * - I2C_A:  SCL/SDA
+ * - BL_CTL: (PWM)
+ */
+#ifdef SUPPORT_M4
+#undef CONFIG_EFUSA9X_UART_B
+#undef CONFIG_EFUSA9X_SPI_B
+#undef CONFIG_EFUSA9X_CAN_B
+#undef CONFIG_EFUSA9X_I2C_B
+#undef CONFIG_EFUSA9X_PWM_A
+//#undef CONFIG_EFUSA9X_SPI_A
+//#undef CONFIG_EFUSA9X_CAN_A
+//#undef CONFIG_EFUSA9X_I2C_A
+//#undef CONFIG_EFUSA9X_BL_CTRL
+#endif
+
+/* On board revisions before 1.20, parallel camera does not work correctly */
+#if (CONFIG_EFUSA9X_BOARD_REVISION < 120)
+#undef CONFIG_EFUSA9X_PARALLEL_CAMERA
+#undef CONFIG_EFUSA9X_VLCDON
+#endif
+
+/* On board revisions before 1.20, if WLAN is equipped, SD_A is not available */
+#if (CONFIG_EFUSA9X_BOARD_REVISION < 120) && defined(CONFIG_EFUSA9X_WLAN)
+#undef CONFIG_EFUSA9X_SD_A
+#undef CONFIG_EFUSA9X_SD_A_CD
+#undef CONFIG_EFUSA9X_SD_A_WP
+#endif
+
+/* On board revisions since 1.20, if eMMC is equipped, SD_A is not available */
+#if (CONFIG_EFUSA9X_BOARD_REVISION >= 120) && defined(CONFIG_EFUSA9X_EMMC)
+#undef CONFIG_EFUSA9X_SD_A
+#undef CONFIG_EFUSA9X_SD_A_CD
+#undef CONFIG_EFUSA9X_SD_A_WP
+#endif
+
+/* If Bluetooth is used, UART_C is not available */
+#ifdef CONFIG_EFUSA9X_BLUETOOTH
+#undef CONFIG_EFUSA9X_UART_C
+#endif
+
+/* If UART_B is not used, also RTS/CTS may not be used */
+#ifndef CONFIG_EFUSA9X_UART_B
+#undef CONFIG_EFUSA9X_UART_B_RTSCTS
+#endif
+
+/* If UART_C is not used, also RTS/CTS may not be used */
+#ifndef CONFIG_EFUSA9X_UART_C
+#undef CONFIG_EFUSA9X_UART_C_RTSCTS
+#endif
+
+
+#include "imx6sx.dtsi"
+#include <dt-bindings/pwm/pwm.h>
+
+/ {
+	model = "F&S efusA9X";
+	compatible = "fus,imx6sx-efusa9x", "fsl,imx6sx";
+
+#ifdef CONFIG_EFUSA9X_I2C_A
+#if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LCD
+	backlight_lcd {
+		compatible = "pwm-backlight";
+		pwms = <&pca963x 1 640000 0>;
+		power-supply = <&reg_lcd_bl>;
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+		fb-names = "mxs-lcdif0";
+	};
+#endif
+#endif
+
+#ifdef CONFIG_EFUSA9X_BL_CTRL
+#if ((CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS) \
+	|| (CONFIG_EFUSA9X_LCDIF1 == DISPLAY_LVDS))
+	backlight_ldb {
+		compatible = "pwm-backlight";
+#if (CONFIG_EFUSA9X_BOARD_REVISION < 111)
+#ifndef DISPLAY_LVDS_CHIMEI
+		pwms = <&pwm2 0 250000 PWM_POLARITY_INVERTED>;
+#else
+		pwms = <&pwm2 0 5000000 0>;
+#endif
+#else
+#ifndef DISPLAY_LVDS_CHIMEI
+		pwms = <&pwm6 0 250000 PWM_POLARITY_INVERTED>;
+#else
+		pwms = <&pwm6 0 5000000 0>;
+#endif
+#endif
+		power-supply = <&reg_ldb_bl>;
+#ifndef DISPLAY_LVDS_CHIMEI
+		brightness-levels = <135 143 151 159 167 175 183 191
+				     199 207 215 223 231 239 247 255>;
+#else
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+#endif
+		default-brightness-level = <14>;
+#if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS
+		fb-names = "mxs-lcdif0";
+#else
+		fb-names = "mxs-lcdif1";
+#endif
+	};
+#endif
+#endif
+
+	clocks {
+		codec_osc: anaclk2 {
+			#clock-cells = <0>;
+			compatible = "fixed-clock";
+			clock-frequency = <24576000>;
+		};
+	};
+
+	memory {
+		reg = <0x80000000 0x80000000>;
+	};
+
+	pxp_v4l2_out {
+		compatible = "fsl,imx6sx-pxp-v4l2", "fsl,imx6sl-pxp-v4l2";
+		status = "okay";
+	};
+
+	regulators {
+		compatible = "simple-bus";
+
+#ifdef CONFIG_EFUSA9X_AUDIO
+		/* SGTL5000 analog voltage */
+		reg_sgtl5000_vdda: sgtl5000_vdda {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDA-supply";
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 I/O voltage */
+		reg_sgtl5000_vddio: sgtl5000_vddio {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 internal digital voltage */
+		reg_sgtl5000_vddd: sgtl5000_vddd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDD-supply";
+			regulator-min-microvolt = <1500000>;
+			regulator-max-microvolt = <1500000>;
+			regulator-always-on;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_VLCDON
+		reg_vlcdon: vlcdon {
+			compatible = "regulator-fixed";
+			regulator-name = "VLCDON";
+			gpio = <&gpio1 11 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+#endif
+		reg_disp_3v3: disp-3v3 {
+			compatible = "regulator-fixed";
+			regulator-name = "disp-3v3";
+			gpio = <&gpio3 19 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+#ifdef CONFIG_EFUSA9X_VLCDON
+			vin-supply = <&reg_vlcdon>;
+#endif
+		};
+
+#if defined(CONFIG_EFUSA9X_5V_LVDS) && (CONFIG_EFUSA9X_BOARD_REVISION >= 110)
+		/* Switching LVDS power from 3.3V to 5V is available since
+		   board rev. 1.10; on earlier board revisions, this GPIO is
+		   not connected and has no effect */
+		reg_disp_5V: disp-5V {
+			compatible = "regulator-fixed";
+			regulator-name = "VLCD-5V";
+			gpio = <&gpio2 5 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_I2C_A
+		reg_lcd_bl: lcd-bl {
+			compatible = "regulator-fixed";
+			regulator-name = "lcd-bl";
+			gpio = <&pca963x 0 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+#endif
+		reg_ldb_bl: ldb-bl {
+			compatible = "regulator-fixed";
+			regulator-name = "ldb-bl";
+			gpio = <&gpio3 20 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+
+#ifdef CONFIG_EFUSA9X_PARALLEL_CAMERA
+		reg_camera_dovdd: camera_dovdd {
+			compatible = "regulator-fixed";
+			regulator-name = "DOVDD-supply";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+		};
+
+		reg_camera_avdd: camera_avdd {
+			compatible = "regulator-fixed";
+			regulator-name = "VAVDD-supply";
+			regulator-min-microvolt = <2800000>;
+			regulator-max-microvolt = <2800000>;
+		};
+
+		reg_camera_dvdd: camera_dvdd {
+			compatible = "regulator-fixed";
+			regulator-name = "DVDD-supply";
+			regulator-min-microvolt = <1500000>;
+			regulator-max-microvolt = <1500000>;
+		};
+#endif
+
+#if 0
+		reg_atmel_mxt_vdd: atmel_mxt_vdd {
+			compatible = "regulator-fixed";
+			regulator-name = "mxt-3v3";
+			status = "enabled";
+		};
+
+		reg_atmel_mxt_avdd: atmel_mxt_avdd {
+			compatible = "regulator-fixed";
+			regulator-name = "mxt-3v3";
+			status = "enabled";
+		};
+#endif
+
+		reg_vref_3v3: regulator@0 {
+			compatible = "regulator-fixed";
+			regulator-name = "vref-3v3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* USB_OTG1_PWR done by USB controller, no regulator needed */
+#if 0 //###
+		reg_usb_otg1_vbus: usb_otg1_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_otg1_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio1 9 0>;
+			enable-active-high;
+		};
+#endif //###
+
+		/* USB_OTG2_PWR done by USB controller, no regulator needed */
+#if 0 //###
+		reg_usb_otg2_vbus: usb_otg2_vbus {
+			compatible = "regulator-fixed";
+			regulator-name = "usb_otg2_vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio1 12 0>;
+			enable-active-high;
+		};
+#endif //###
+	};
+
+#ifdef CONFIG_EFUSA9X_AUDIO
+	sound-sgtl5000 {
+		compatible = "fsl,imx-audio-sgtl5000";
+		cpu-dai = <&ssi1>;
+		audio-codec = <&sgtl5000>;
+		model = "imx-sgtl5000";
+		mux-int-port = <1>;  /* SSI1=1, SSI2=2, SSI3=7 */
+		mux-ext-port = <6>;
+		audio-routing =
+			"LINE_IN", "Line In Jack",
+//###			"MIC_IN", "Mic Jack",
+//###			"Line Out Jack", "LINE_OUT",
+			"Headphone Jack", "HP_OUT";
+	};
+#endif
+
+	/* F&S board information */
+	bdinfo {
+		compatible = "bdinfo";
+		board_name = "efusa9x";
+		ecc_strength = "8";
+	};
+
+#ifdef SUPPORT_M4
+	/* F&S auxiliary core driver */
+	auxiliary_core {
+		compatible = "auxiliary-core";
+		clocks = <&clks IMX6SX_CLK_M4>;
+	};
+#endif
+};
+
+/* RAM size for Continues Memory Allocator */
+&cma {
+	size = <CONFIG_EFUSA9X_CMA_SIZE>;
+};
+
+&busfreq {
+	/* Disable bus frequency scaling, because reducing bus frequency to
+	   24 MHz does not work with all types of DDR3 RAM */
+	disable-scaling;
+};
+
+&adc1 {
+	vref-supply = <&reg_vref_3v3>;
+	num-channels = <2>;
+	status = "okay";
+};
+
+&adc2 {
+	vref-supply = <&reg_vref_3v3>;
+	num-channels = <2>;
+	status = "okay";
+};
+
+&clks {
+	assigned-clocks = <&clks IMX6SX_PLL4_BYPASS_SRC>,
+			  <&clks IMX6SX_PLL4_BYPASS>,
+			  <&clks IMX6SX_CLK_PLL4_POST_DIV>;
+	assigned-clock-parents = <&clks IMX6SX_CLK_LVDS2_IN>,
+				 <&clks IMX6SX_PLL4_BYPASS_SRC>;
+	assigned-clock-rates = <0>, <0>, <24576000>;
+/* Needed for low power mode to tell A9 which clocks might be shared with M4 */
+#ifdef SUPPORT_M4
+	/* Shared memory in OCRAM, keep clear from Linux */
+	fsl,shared-mem-addr = <0x91F000>;
+	fsl,shared-mem-size = <0x1000>;
+	fsl,shared-clks-number = <0x23>;
+	fsl,shared-clks-index = <IMX6SX_CLK_PLL2_BUS
+				 IMX6SX_CLK_PLL2_PFD0
+				 IMX6SX_CLK_PLL2_PFD2
+				 IMX6SX_CLK_PLL3_USB_OTG
+				 IMX6SX_CLK_PLL3_PFD1
+				 IMX6SX_CLK_PLL3_PFD2
+				 IMX6SX_CLK_PLL3_PFD3
+				 IMX6SX_CLK_PLL4_AUDIO
+				 IMX6SX_CLK_PLL5_VIDEO
+				 IMX6SX_CLK_OCRAM
+				 IMX6SX_CLK_CAN1_SERIAL
+				 IMX6SX_CLK_CAN1_IPG
+				 IMX6SX_CLK_CAN2_SERIAL
+				 IMX6SX_CLK_CAN2_IPG
+				 IMX6SX_CLK_CANFD
+				 IMX6SX_CLK_ECSPI1
+				 IMX6SX_CLK_ECSPI2
+				 IMX6SX_CLK_ECSPI3
+				 IMX6SX_CLK_ECSPI4
+				 IMX6SX_CLK_ECSPI5
+				 IMX6SX_CLK_QSPI1
+				 IMX6SX_CLK_QSPI2
+				 IMX6SX_CLK_SSI1
+				 IMX6SX_CLK_SSI2
+				 IMX6SX_CLK_SSI3
+				 IMX6SX_CLK_UART_SERIAL
+				 IMX6SX_CLK_UART_IPG
+				 IMX6SX_CLK_PERIPH_CLK2_SEL
+				 IMX6SX_CLK_DUMMY
+				 IMX6SX_CLK_I2C1
+				 IMX6SX_CLK_I2C2
+				 IMX6SX_CLK_I2C3
+				 IMX6SX_CLK_I2C4
+				 IMX6SX_CLK_EPIT1
+				 IMX6SX_CLK_EPIT2>;
+#endif
+};
+
+#ifdef SUPPORT_M4
+/* epit1 and epit2 are used by Cortex-M4 examples for timing purposes */
+&epit1{
+	status = "disabled";
+};
+
+&epit2{
+	status = "disabled";
+};
+
+/* rpmsg is used for communication between Cortex-A9 and Cortex-M4 cores */
+
+&rpmsg{
+	vdev-nums = <1>;
+	reg = <0xBFFF0000 0x10000>;
+	status = "okay";
+};
+
+/* Keep interrupts on GPIO7 if M4 already owns it */
+&gpio7 {
+	keep-interrupts;
+};
+
+/*
+ * OCRAM usage (128KB):
+ *   0x00900000 - 0x00900FFF: Cortex-A9/Linux: CPU idle + bus frequency code
+ *   0x00901000 - 0x0090FFFF: Cortex-A9/Linux: DMA descriptors, GPU
+ *   0x00910000 - 0x0091EFFF: Cortex-M4/FreeRTOS: Code/Data
+ *   0x0091F000 - 0x0091FFFF: Cortex-A9+M4: Shared memory for shared clocks
+ */
+&ocram {
+	reg = <0x00901000 0xf000>;
+};
+#endif
+
+#ifdef CONFIG_EFUSA9X_ETH0
+&fec1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_enet1>;
+	phy-mode = "rgmii-id";
+	phy-handle = <&ethphy0>;
+	phy-supply = <&reg_vref_3v3>;
+	fsl,magic-packet;
+	status = "okay";
+
+	/* The MDIO bus on FEC1 holds both PHYs */
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy0: ethernet-phy@4 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <4>;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <2>;
+			rtl821x,led-act = <1>;
+		};
+
+#ifdef CONFIG_EFUSA9X_ETH1
+		ethphy1: ethernet-phy@5 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <5>;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <2>;
+			rtl821x,led-act = <1>;
+		};
+#endif
+	};
+};
+#endif /* CONFIG_EFUSA9X_ETH0 */
+
+#ifdef CONFIG_EFUSA9X_ETH1
+&fec2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_enet2>;
+	phy-mode = "rgmii-id";
+	phy-handle = <&ethphy1>;
+	fsl,magic-packet;
+	status = "okay";
+};
+#endif /* CONFIG_EFUSA9X_ETH1 */
+
+#ifdef CONFIG_EFUSA9X_CAN_A
+&flexcan1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_flexcan1>;
+//###	trx-en-gpio = <&max7310_b 5 GPIO_ACTIVE_HIGH>;
+//###	trx-stby-gpio = <&max7310_b 4 GPIO_ACTIVE_HIGH>;
+//###	trx-wakeup-gpio = <&max7310_b 7 GPIO_ACTIVE_HIGH>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_EFUSA9X_CAN_B
+&flexcan2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_flexcan2>;
+//###	trx-en-gpio = <&max7310_b 5 GPIO_ACTIVE_HIGH>;
+//###	trx-stby-gpio = <&max7310_b 4 GPIO_ACTIVE_HIGH>;
+//###	trx-wakeup-gpio = <&max7310_b 7 GPIO_ACTIVE_HIGH>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_EFUSA9X_I2C_A
+/*
+ * I2C_A implemented via I2C2
+ * On efus SKIT: RGB adapter, SX8655, touch connnector, feature connector
+ */
+&i2c2 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c2>;
+	status = "okay";
+
+	pca963x: pca9632@60 {
+		compatible = "nxp,pca9632";
+		reg = <0x60>;
+		nxp,totem-pole;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#pwm-cells = <3>;
+		#gpio-cells = <2>;
+		led@0 {
+			reg = <0>;
+			label = "0-PWRCTL";
+			type = "GPIO";
+			default-on;		/* or: keep-value */
+			active-high;
+		};
+		led@1 {
+			reg = <1>;
+			label = "1-LEDCTRL";
+			type = "PWM";
+			default-on;		/* or: keep-value */
+			active-low;
+		};
+		led@2 {
+			reg = <2>;
+			label = "2-ROTATE";
+			type = "GPIO";
+			active-high;		/* optionally: keep value */
+		};
+		led@3 {
+			reg = <3>;
+			label = "3-unused";
+			type = "LED";
+			active-low;
+		};
+	};
+
+#ifdef CONFIG_EFUSA9X_CAPTOUCH_MXT224
+	mxt224@4a {
+		compatible = "atmel,maxtouch";
+		reg = <0x4a>;
+		interrupt-parent = <&gpio7>;
+		interrupts = <0 2>;
+		atmel,cfg_name = "atmel/mxt224.cfg";
+		atmel,reset-gpio = <&gpio3 21 GPIO_ACTIVE_LOW>;
+#if 0
+		atmel,suspend-mode = <2>;
+		vdd = <&reg_atmel_mxt_vdd>;
+		avdd = <&reg_atmel_mxt_avdd>;
+#endif
+	};
+#endif
+
+        /* Touch driver Focaltech  */
+#if 0
+	/* Mainline driver, may only work on EDT displays */
+	edt-ft5x06@38 {
+		compatible = "edt,edt-ft5306";
+		reg = <0x38>;
+		threshold = <25>;
+		gain = <8>;
+		offset = <0>;
+		interrupt-parent = <&gpio7>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&gpio3 21 GPIO_ACTIVE_LOW>;
+	};
+#else
+
+#ifdef CONFIG_EFUSA9X_CAPTOUCH_FT5x06
+	/* F&S driver V3.0 */
+	ft5x06_ts@38 {
+		compatible = "FocalTech,ft5306";
+		reg = <0x38>;
+		fingers = <2>;
+		touchscreen-size-x = <800>;
+		touchscreen-size-y = <480>;
+		threshold = <25>;
+		interrupt-parent = <&gpio7>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&gpio3 21 GPIO_ACTIVE_LOW>;
+		x-rev;
+		y-rev;
+		linux,wakeup;
+	};
+#endif
+
+#endif
+
+	/* Touch driver SX8654 */
+#ifdef CONFIG_EFUSA9X_4WTOUCH_SX8655_ONBOARD
+	sx8654@48 {
+		compatible = "semtech,sx8654";
+		reg = <0x48>;
+		touchrate = <0x30>;
+		powdly = <0x06>;
+		filt = <0x02>;
+		setdly = <0x08>;
+		pinctrl-names = "default";
+		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
+		interrupt-parent = <&gpio7>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+	};
+#endif
+
+#ifdef CONFIG_EFUSA9X_4WTOUCH_SX8655_RGBADAPTER
+	sx8654@49 {
+		compatible = "semtech,sx8654";
+		reg = <0x49>;
+		touchrate = <0x30>;
+		powdly = <0x06>;
+		filt = <0x02>;
+		setdly = <0x08>;
+		pinctrl-names = "default";
+		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
+		interrupt-parent = <&gpio7>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		x-rev;
+		y-rev;
+	};
+#endif
+
+
+#ifdef CONFIG_EFUSA9X_CAPTOUCH_SITRONIX
+	/* Sitronix PCAP touch on Touch-Connector (I2C) */
+	st1633i@48 {
+		compatible = "sitronix";
+		reg = <0x48>;
+		swap-xy;
+		interrupt-parent = <&gpio7>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio3 21 GPIO_ACTIVE_LOW>;
+	};
+#endif
+
+#ifdef CONFIG_EFUSA9X_CAPTOUCH_ILITEK
+	/* Ilitek PCAP touch on Touch-Connector (I2C) */
+	ili210x@41 {
+		compatible = "Ilink,ili210x";
+		reg = <0x41>;
+		interrupt-parent = <&gpio7>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio3 21 GPIO_ACTIVE_LOW>;
+	};
+#endif
+
+#if 0
+	egalax_ts@04 {
+		compatible = "eeti,egalax_ts";
+		reg = <0x04>;
+		interrupt-parent = <&gpio6>;
+		interrupts = <22 2>;
+		wakeup-gpios = <&gpio6 22 0>;
+	};
+#endif
+};
+#endif /* CONFIG_EFUSA9X_I2C_A */
+
+
+#ifdef CONFIG_EFUSA9X_I2C_B
+/* I2C_B; on efus SKIT: available on feature connector */
+&i2c3 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c3>;
+	status = "okay";
+
+	// ### TODO: Touch interfaces optionally on I2C_B
+};
+#endif /* CONFIG_EFUSA9X_I2C_B */
+
+#ifdef CONFIG_EFUSA9X_I2C_C
+/*
+ * I2C_C implemented via I2C1; used for on-board RTC, on-board LVDS connector;
+ * On efus SKIT: Audio Codec (SGTL5000), Parallel Camera, HDMI, Mini-PCIe
+ */
+&i2c1 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c1>;
+	status = "okay";
+
+#ifdef CONFIG_EFUSA9X_AUDIO
+	sgtl5000: sgtl5000@0a {
+		compatible = "fsl,sgtl5000";
+		reg = <0x0a>;
+		mono2both;
+		clocks = <&clks IMX6SX_CLK_AUDIO>;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+	};
+#endif
+
+	rtc8565@51 {
+		compatible = "nxp,pcf8565", "nxp,pcf8563";
+		reg = <0x51>;
+		interrupt-parent = <&gpio2>;
+		interrupts = <4 IRQ_TYPE_EDGE_FALLING>;
+	};
+
+#if 0
+	ov5640: ov5640@3c {
+		compatible = "ovti,ov5640";
+		reg = <0x3c>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_csi1>;
+		clocks = <&clks IMX6SX_CLK_CSI>;
+		clock-names = "csi_mclk";
+		AVDD-supply = <&vgen3_reg>;  /* 2.8v */
+		DVDD-supply = <&vgen2_reg>;  /* 1.5v*/
+		pwn-gpios = <&gpio1 22 0>;
+		rst-gpios = <&gpio3 27 0>;
+		csi_id = <0>;
+		mclk = <24000000>;
+		mclk_source = <0>;
+		port {
+			ov5640_ep: endpoint {
+				remote-endpoint = <&csi1_ep>;
+			};
+		};
+	};
+#endif
+
+#ifdef CONFIG_EFUSA9X_PARALLEL_CAMERA
+	ov9665: ov9665@30 {
+		compatible = "ovti,ov9665";
+		reg = <0x30>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_csi1>;
+		clocks = <&clks IMX6SX_CLK_CSI>;
+		clock-names = "csi_mclk";
+		DOVDD-supply = <&reg_camera_dovdd>;	/* 1.8v */
+		AVDD-supply = <&reg_camera_avdd>;	/* 2.8v */
+		DVDD-supply = <&reg_camera_dvdd>;	/* 1.5v */
+		pwn-gpios = <&gpio1 22 GPIO_ACTIVE_LOW>;
+		rst-gpios = <&gpio3 27 GPIO_ACTIVE_HIGH>;
+		csi_id = <0>;
+		mclk = <24000000>;
+		mclk_source = <0>;
+		port {
+			ov9665_ep: endpoint {
+				remote-endpoint = <&csi1_ep>;
+			};
+		};
+	};
+#endif
+};
+#endif /* CONFIG_EFUSA9X_I2C_C */
+
+#ifdef CONFIG_EFUSA9X_AUDIO
+&audmux {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_audmux_6>;
+	status = "okay";
+};
+
+&ssi1 {
+//###	fsl,mode = "i2s-master";
+	fsl,mode = "i2s-slave";
+	status = "okay";
+};
+#endif /* CONFIG_EFUSA9X_AUDIO */
+
+#if CONFIG_EFUSA9X_LCDIF0 != DISPLAY_NONE
+/* The first lcdif can be used with LCD or LVDS */
+&lcdif1 {
+#if (CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS)
+	disp-dev = "ldb";
+#elif (CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LCD)
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lcdif1>;		/* Remove when already active */
+#endif
+	display = <&display0>;			/* Remove when already active */
+	lcd-supply = <&reg_disp_3v3>;
+	status = "okay";
+
+	display0: lcd {
+#if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LCD
+		bits-per-pixel = <CONFIG_EFUSA9X_LCD_BPP>;
+		bus-width = <CONFIG_EFUSA9X_LCD_BUS_WIDTH>;
+		display-timings {
+			native-mode = <&timing_lcd>;
+			timing_lcd: CONFIG_EFUSA9X_LCD_TIMING;
+		};
+#endif
+#if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS
+		bits-per-pixel = <CONFIG_EFUSA9X_LVDS_BPP>;
+		bus-width = <CONFIG_EFUSA9X_LVDS_BUS_WIDTH>;
+		display-timings {
+			native-mode = <&timing_lvds>;
+			timing_lvds: CONFIG_EFUSA9X_LVDS_TIMING;
+		};
+#endif
+	};
+};
+#endif /* CONFIG_EFUSA9X_LCDIF0 */
+
+#if CONFIG_EFUSA9X_LCDIF1 != DISPLAY_NONE
+/* On efusA9X, the second lcdif can only be used with LVDS */
+&lcdif2 {
+	display = <&display1>;
+	disp-dev = "ldb";
+	lcd-supply = <&reg_disp_3v3>;
+	status = "okay";
+
+	display1: ldb {
+		bits-per-pixel = <CONFIG_EFUSA9X_LVDS_BPP>;
+		bus-width = <CONFIG_EFUSA9X_LVDS_BUS_WIDTH>;
+		display-timings {
+			native-mode = <&timing_lvds>;
+			timing_lvds: CONFIG_EFUSA9X_LVDS_TIMING;
+		};
+	};
+};
+#endif /* CONFIG_EFUSA9X_LCDIF1 */
+
+#if ((CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS) \
+	|| (CONFIG_EFUSA9X_LCDIF1 == DISPLAY_LVDS))
+&ldb {
+	status = "okay";
+
+	lvds-channel@0 {
+		fsl,data-mapping = CONFIG_EFUSA9X_LVDS_MAPPING;
+		fsl,data-width = <CONFIG_EFUSA9X_LVDS_BUS_WIDTH>;
+#if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LVDS
+		crtc = "lcdif1";
+#else
+		crtc = "lcdif2";
+#endif
+		status = "okay";
+
+		display-timings {
+			native-mode = <&timing_ldb>;
+			timing_ldb: CONFIG_EFUSA9X_LVDS_TIMING;
+		};
+	};
+};
+#endif /* DISPLAY_LVDS */
+
+#if 0 //### TODO
+/* Display Content Integrity Checker */
+&dcic1 {
+	dcic_id = <0>;
+	dcic_mux = "dcic-lcdif1";
+	status = "okay";
+};
+
+&dcic2 {
+	dcic_id = <1>;
+	dcic_mux = "dcic-lvds";
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_EFUSA9X_PCIE
+&pcie {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pcie>;
+	reset-gpio = <&gpio2 1 0>;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_EFUSA9X_UART_A
+/* UART_A implemented via UART1; TXD, RXD only; efus SKIT: RS232-level */
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1>;
+	status = "okay";
+};
+#endif /* CONFIG_EFUSA9X_UART_A */
+
+#ifdef CONFIG_EFUSA9X_UART_B
+/* UART_B implemented by UART3: TXD, RXD, RTS, CTS; efus SKIT: RS232-level */
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3>;
+#ifdef CONFIG_EFUSA9X_UART_B_RTSCTS
+	uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif /* CONFIG_EFUSA9X_UART_B */
+
+#ifdef CONFIG_EFUSA9X_UART_C
+/*
+ * UART_C implemented via UART5: TXD, RXD, RTS, CTS; only available if
+ * Bluetooth is not equipped; efus-SKIT: RS485 (TXD, RXD, RTS)
+ */
+&uart5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart5>;
+#ifdef CONFIG_EFUSA9X_UART_C_RTSCTS
+	uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif /* CONFIG_EFUSA9X_UART_C */
+
+#ifdef CONFIG_EFUSA9X_UART_D
+/* UART_D implemeted via UART6: TXD, RXD only, efus SKIT: TTL-level */
+&uart6 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart6>;
+	status = "okay";
+};
+#endif /* CONFIG_EFUSA9X_UART_D */
+
+#ifdef CONFIG_EFUSA9X_BLUETOOTH
+/* Bluetooth also uses UART5 with RTS/CTS */
+&uart5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart5_bt>;
+	uart-has-rtscts;
+	status = "okay";
+};
+#endif /* CONFIG_EFUSA9X_BLUETOOTH */
+
+#ifdef CONFIG_EFUSA9X_USB_OTG1
+&usbotg1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg1>;
+//###	vbus-supply = <&reg_usb_otg1_vbus>;
+#ifdef CONFIG_EFUSA9X_USB_OTG1_OC
+	over-current-active-low;
+#else
+	disable-over-current;
+#endif
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_EFUSA9X_USB_HOST
+&usbotg2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg2>;
+//###	vbus-supply = <&reg_usb_otg2_vbus>;
+	dr_mode = "host";
+	pwr-active-high;
+	disable-over-current;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_EFUSA9X_WLAN
+/* On-board WLAN implemented via USDHC1 */
+&usdhc1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc1_wlan>;
+	bus-width = <4>;
+	/* WLAN is non-removable, but CD tells us if it is equipped or not */
+#if (CONFIG_EFUSA9X_BOARD_REVISION < 110)
+	non-removable;
+#else
+	cd-gpios = <&gpio1 2 GPIO_ACTIVE_LOW>;
+	//non-removable;
+#endif
+	vmmc-supply = <&reg_vref_3v3>;
+	vqmmc-supply = <&reg_vref_3v3>;
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+	keep-power-in-suspend;
+	enable-sdio-wakeup;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_EFUSA9X_SD_A
+/* SD_A, efus SKIT: Micro-SD slot with CD, no WP */
+#if (CONFIG_EFUSA9X_BOARD_REVISION < 120)
+/* SD_A implemented via USDHC1 on board revisions before 1.20 */
+&usdhc1 {
+	/* External Micro-SD slot on efus SKIT, or on-board WLAN/BT */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc1_sd_a>;
+#ifdef CONFIG_EFUSA9X_SD_A_CD
+	cd-gpios = <&gpio1 2 GPIO_ACTIVE_LOW>;
+#else
+	non-removable;
+#endif
+#ifdef CONFIG_EFUSA9X_SD_A_WP
+	wp-gpios = <&gpio1 3 GPIO_ACTIVE_HIGH>;
+#endif
+	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+	keep-power-in-suspend;
+	status = "okay";
+};
+#else
+/* SD_A implemented via USDHC4 on board revisions since 1.20 */
+&usdhc4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc4_sd_a>;
+#ifdef CONFIG_EFUSA9X_SD_A_CD
+	cd-gpios = <&gpio6 21 GPIO_ACTIVE_LOW>;
+#else
+	non-removable;
+#endif
+#ifdef CONFIG_EFUSA9X_SD_A_WP
+	wp-gpios = <&gpio6 20 GPIO_ACTIVE_HIGH>;
+#endif
+	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;	/* VDD */
+	vqmmc-supply = <&reg_vref_3v3>;	/* VDD_IO */
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+	keep-power-in-suspend;
+	status = "okay";
+};
+#endif /* CONFIG_EFUSA9X_BOARD_REVISION < 120 */
+#endif /* CONFIG_EFUSA9X_SD_A */
+
+#ifdef CONFIG_EFUSA9X_SD_B
+/* SD_B implemented via USDHC2, efus SKIT: normal sized SD clot with CD/WP */
+&usdhc2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc2_sd_b>;
+#ifdef CONFIG_EFUSA9X_SD_B_CD
+	cd-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;
+#else
+	non-removable;
+#endif
+#ifdef CONFIG_EFUSA9X_SD_B_WP
+	wp-gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>;
+#endif
+	bus-width = <4>;
+	vmmc-supply = <&reg_vref_3v3>;
+	vqmmc-supply = <&reg_vref_3v3>;
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+	keep-power-in-suspend;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_EFUSA9X_EMMC
+/* On-board eMMC implemented via USDHC4 */
+&usdhc4 {
+	/* On-board EMMC (optional) */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc4_emmc>;
+	non-removable;
+	bus-width = <8>;
+	vmmc-supply = <&reg_vref_3v3>;
+	vqmmc-supply = <&reg_vref_3v3>;
+	voltage-ranges = <3300 3300>;
+	no-1-8-v;
+	keep-power-in-suspend;
+	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_EFUSA9X_PWM_A
+#if (CONFIG_EFUSA9X_BOARD_REVISION < 111)
+/* PWM_A implemented by PWM1 */
+&pwm1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm1>;
+	keep-power;		/* Necessary if PWM is inverted */
+	status = "okay";
+};
+#else
+/* PWM_A implmented by PWM5 */
+&pwm5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm5>;
+	keep-power;		/* Necessary if PWM is inverted */
+	status = "okay";
+};
+#endif
+#endif /* CONFIG_EFUSA9X_PWM_A */
+
+#ifdef CONFIG_EFUSA9X_BL_CTRL
+#if (CONFIG_EFUSA9X_BOARD_REVISION < 111)
+/* Backlight PWM implemented by PWM2 */
+&pwm2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm2>;
+	#pwm-cells = <3>;
+	keep-power;		/* Necessary if PWM is inverted */
+	status = "okay";
+};
+#else
+/* Backlight PWM implemented by PWM6 */
+&pwm6 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm6>;
+	#pwm-cells = <3>;
+	keep-power;		/* Necessary if PWM is inverted */
+	status = "okay";
+};
+#endif
+#endif /* CONFIG_EFUSA9X_BL_CTRL */
+
+&pxp {
+	status = "okay";
+};
+
+#ifdef CONFIG_EFUSA9X_PARALLEL_CAMERA
+&csi1 {
+	status = "okay";
+
+	port {
+		csi1_ep: endpoint {
+			remote-endpoint = <&ov9665_ep>;
+		};
+	};
+};
+#endif
+
+#ifdef CONFIG_EFUSA9X_ANALOG_CAMERA
+&csi2 {
+	status = "okay";
+	port {
+		csi2_ep: endpoint {
+			remote-endpoint = <&vadc_ep>;
+		};
+	};
+};
+
+&vadc {
+	vadc_in = <0>;
+	csi_id = <1>;
+	status = "okay";
+	port {
+		vadc_ep: endpoint {
+			remote-endpoint = <&csi2_ep>;
+		};
+	};
+};
+#endif
+
+#ifdef CONFIG_EFUSA9X_SPI_A
+/* SPI_A implemented via ECSPI5, 2x CS */
+&ecspi5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi5>;
+	fsl,spi-num-chipselects = <2>;
+	cs-gpios = <&gpio4 28 0>, <&gpio4 18 0>;
+	status = "okay";
+
+	spidev@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+	};
+
+	spidev@1 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <1>;
+	};
+};
+#endif /* CONFIG_EFUSA9X_SPI_A */
+
+#ifdef CONFIG_EFUSA9X_SPI_B
+/* SPI_B implemented via ECSPI1, 1x or 2x CS, depending on RTS of UART_C */
+&ecspi1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi1>;
+#if defined(CONFIG_EFUSA9X_BLUETOOTH) || defined(CONFIG_EFUSA9X_UART_C_RTSCTS)
+	/* If UART_C uses RTS, we have only one CS for SPI_B */
+	fsl,spi-num-chipselects = <1>;
+	cs-gpios = <&gpio4 22 0>;
+#else
+	/* If UART_C does not use RTS, we can have a second CS on SPI_B */
+	fsl,spi-num-chipselects = <2>;
+	cs-gpios = <&gpio4 22 0>, <&gpio2 17 0>;
+#endif
+	status = "okay";
+
+	spidev@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+	};
+
+#if !defined(CONFIG_EFUSA9X_BLUETOOTH) && !defined(CONFIG_EFUSA9X_UART_C_RTSCTS)
+	spidev@1 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <1>;
+	};
+#endif
+};
+#endif /* CONFIG_EFUSA9X_SPI_B */
+
+#ifdef CONFIG_EFUSA9X_NAND
+&dma_apbh {
+	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
+	compatible = "fus,imx6sx-dma-apbh", "fus,imx28-dma-apbh";
+	iram = <&ocram>;
+};
+
+&gpmi {
+	/* Switch to F&S implementation of GPMI NAND driver */
+	compatible = "fus,imx6sx-gpmi-nand";
+	pinctrl-names = "default";
+//###	pinctrl-0 = <&pinctrl_gpmi_nand>;
+	fus,skipblocks = <2>;
+	fus,chunk1k;
+	fus,ecc_strength = <8>;		/* Spare area 64 bytes */
+//###	fus,ecc_strength = <52>;	/* Spare area 224 bytes */
+	status = "okay";
+};
+#endif /* CONFIG_EFUSA9X_NAND */
+
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog>;
+
+	efusa9x {
+		pinctrl_hog: hoggrp {
+			fsl,pins = <
+				/* VBL_ON on SKIT J3 */
+				MX6SX_PAD_LCD1_DATA19__GPIO3_IO_20	0x17059
+				/* VLCD_ON */
+				MX6SX_PAD_LCD1_DATA18__GPIO3_IO_19	0x17059
+#ifdef CONFIG_EFUSA9X_VLCDON
+				/* VLCDON can be used to enable/disable display */
+				MX6SX_PAD_GPIO1_IO11__GPIO1_IO_11	0x13059
+#elif (CONFIG_EFUSA9X_BOARD_REVISION >= 120)
+				/* I2C1_IRQn */
+				MX6SX_PAD_GPIO1_IO11__GPIO1_IO_11	0x0b0b0
+#endif
+				/* I2C2_IRQn (SX8655, ext. touch) */
+				MX6SX_PAD_SD3_CLK__GPIO7_IO_0		0x0b0b0
+				/* RESETOUTn */
+				MX6SX_PAD_ENET1_CRS__GPIO2_IO_1		0x0b0b0
+				/* Reset for external touches on I2C_A */
+				MX6SX_PAD_LCD1_DATA20__GPIO3_IO_21	0x0b0b0
+#if (CONFIG_EFUSA9X_BOARD_REVISION >= 110)
+				MX6SX_PAD_ENET1_TX_CLK__GPIO2_IO_5	0x030b0
+#endif
+				/* PHY_RST */
+				MX6SX_PAD_ENET1_MDC__GPIO2_IO_2		0x1b0b0
+#if (CONFIG_EFUSA9X_BOARD_REVISION >= 120)
+				/* DVS */
+				MX6SX_PAD_USB_H_STROBE__GPIO7_IO_11	0x130b0
+#endif
+				/* RTC IRQ */
+				MX6SX_PAD_ENET1_RX_CLK__GPIO2_IO_4	0x0b0b0
+			>;
+		};
+
+#ifdef CONFIG_EFUSA9X_PCIE
+		pinctrl_pcie: pciegrp {
+			fsl,pins = <
+				/* PCIE_WAKEn */
+				MX6SX_PAD_ENET1_COL__GPIO2_IO_0 0x10b0
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_AUDIO
+		pinctrl_audmux_6: audmux-6 {
+			fsl,pins = <
+				MX6SX_PAD_SD3_DATA0__AUDMUX_AUD6_RXD	0x130b0
+				MX6SX_PAD_SD3_DATA1__AUDMUX_AUD6_TXC	0x130b0
+				MX6SX_PAD_SD3_DATA2__AUDMUX_AUD6_TXFS	0x130b0
+				MX6SX_PAD_SD3_DATA3__AUDMUX_AUD6_TXD	0x130b0
+				MX6SX_PAD_ENET1_MDIO__AUDMUX_MCLK	0x130b0 //###???
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_ETH0
+		pinctrl_enet1: enet1grp {
+			fsl,pins = <
+				/* MDIO */
+				MX6SX_PAD_ENET2_CRS__ENET1_MDIO		0x0a0b1
+				MX6SX_PAD_ENET2_COL__ENET1_MDC		0x0a0b1
+
+				/* FEC1 */
+				MX6SX_PAD_ENET2_RX_CLK__ENET2_REF_CLK_25M 0x0a0b9
+//				MX6SX_PAD_ENET1_TX_CLK__ENET1_REF_CLK1	0x0a0b1
+				MX6SX_PAD_RGMII1_TXC__ENET1_RGMII_TXC	0x0a0b9
+				MX6SX_PAD_RGMII1_TD0__ENET1_TX_DATA_0	0x0a0b1
+				MX6SX_PAD_RGMII1_TD1__ENET1_TX_DATA_1	0x0a0b1
+				MX6SX_PAD_RGMII1_TD2__ENET1_TX_DATA_2	0x0a0b1
+				MX6SX_PAD_RGMII1_TD3__ENET1_TX_DATA_3	0x0a0b1
+				MX6SX_PAD_RGMII1_TX_CTL__ENET1_TX_EN	0x0a0b1
+				MX6SX_PAD_RGMII1_RXC__ENET1_RX_CLK	0x03081
+				MX6SX_PAD_RGMII1_RD0__ENET1_RX_DATA_0	0x03081
+				MX6SX_PAD_RGMII1_RD1__ENET1_RX_DATA_1	0x03081
+				MX6SX_PAD_RGMII1_RD2__ENET1_RX_DATA_2	0x03081
+				MX6SX_PAD_RGMII1_RD3__ENET1_RX_DATA_3	0x03081
+				MX6SX_PAD_RGMII1_RX_CTL__ENET1_RX_EN	0x03081
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_ETH1
+		pinctrl_enet2: enet2grp {
+			fsl,pins = <
+				/* FEC2 uses MDIO bus from FEC1 */
+				MX6SX_PAD_RGMII2_TXC__ENET2_RGMII_TXC	0x0a0b9
+				MX6SX_PAD_RGMII2_TD0__ENET2_TX_DATA_0	0x0a0b1
+				MX6SX_PAD_RGMII2_TD1__ENET2_TX_DATA_1	0x0a0b1
+				MX6SX_PAD_RGMII2_TD2__ENET2_TX_DATA_2	0x0a0b1
+				MX6SX_PAD_RGMII2_TD3__ENET2_TX_DATA_3	0x0a0b1
+				MX6SX_PAD_RGMII2_TX_CTL__ENET2_TX_EN	0x0a0b1
+				MX6SX_PAD_RGMII2_RXC__ENET2_RX_CLK	0x03081
+				MX6SX_PAD_RGMII2_RD0__ENET2_RX_DATA_0	0x03081
+				MX6SX_PAD_RGMII2_RD1__ENET2_RX_DATA_1	0x03081
+				MX6SX_PAD_RGMII2_RD2__ENET2_RX_DATA_2	0x03081
+				MX6SX_PAD_RGMII2_RD3__ENET2_RX_DATA_3	0x03081
+				MX6SX_PAD_RGMII2_RX_CTL__ENET2_RX_EN	0x03081
+			>;
+		};
+#endif
+
+#if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LCD
+		pinctrl_lcdif1: lcd1grp {
+			fsl,pins = <
+				MX6SX_PAD_LCD1_CLK__LCDIF1_CLK		0x000b0
+				MX6SX_PAD_LCD1_DATA00__LCDIF1_DATA_0	0x000b0
+				MX6SX_PAD_LCD1_DATA01__LCDIF1_DATA_1	0x000b0
+				MX6SX_PAD_LCD1_DATA02__LCDIF1_DATA_2	0x000b0
+				MX6SX_PAD_LCD1_DATA03__LCDIF1_DATA_3	0x000b0
+				MX6SX_PAD_LCD1_DATA04__LCDIF1_DATA_4	0x000b0
+				MX6SX_PAD_LCD1_DATA05__LCDIF1_DATA_5	0x000b0
+				MX6SX_PAD_LCD1_DATA06__LCDIF1_DATA_6	0x000b0
+				MX6SX_PAD_LCD1_DATA07__LCDIF1_DATA_7	0x000b0
+				MX6SX_PAD_LCD1_DATA08__LCDIF1_DATA_8	0x000b0
+				MX6SX_PAD_LCD1_DATA09__LCDIF1_DATA_9	0x000b0
+				MX6SX_PAD_LCD1_DATA10__LCDIF1_DATA_10	0x000b0
+				MX6SX_PAD_LCD1_DATA11__LCDIF1_DATA_11	0x000b0
+				MX6SX_PAD_LCD1_DATA12__LCDIF1_DATA_12	0x000b0
+				MX6SX_PAD_LCD1_DATA13__LCDIF1_DATA_13	0x000b0
+				MX6SX_PAD_LCD1_DATA14__LCDIF1_DATA_14	0x000b0
+				MX6SX_PAD_LCD1_DATA15__LCDIF1_DATA_15	0x000b0
+				MX6SX_PAD_LCD1_DATA16__LCDIF1_DATA_16	0x000b0
+				MX6SX_PAD_LCD1_DATA17__LCDIF1_DATA_17	0x000b0
+				MX6SX_PAD_LCD1_ENABLE__LCDIF1_ENABLE	0x000b0
+				MX6SX_PAD_LCD1_HSYNC__LCDIF1_HSYNC	0x000b0
+				MX6SX_PAD_LCD1_VSYNC__LCDIF1_VSYNC	0x000b0
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_CAN_A
+		pinctrl_flexcan1: flexcan1grp {
+			fsl,pins = <
+				MX6SX_PAD_SD3_DATA5__CAN1_TX		0x1b020
+				MX6SX_PAD_SD3_DATA7__CAN1_RX		0x1b020
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_CAN_B
+		pinctrl_flexcan2: flexcan2grp {
+			fsl,pins = <
+				MX6SX_PAD_SD3_DATA6__CAN2_TX		0x1b020
+				MX6SX_PAD_SD3_DATA4__CAN2_RX		0x1b020
+			>;
+		};
+#endif
+
+#if 0
+		pinctrl_gpmi_nand: gpmi-nand {
+			/* Already configured in NBoot/U-Boot */
+			fsl,pins = <
+				MX6SX_PAD_NAND_CLE__RAWNAND_CLE		0x0b0b1
+				MX6SX_PAD_NAND_ALE__RAWNAND_ALE		0x0b0b1
+				MX6SX_PAD_NAND_WP_B__RAWNAND_WP_B	0x0b0b1
+				MX6SX_PAD_NAND_READY_B__RAWNAND_READY_B	0x0b000
+				MX6SX_PAD_NAND_CE0_B__RAWNAND_CE0_B	0x0b0b1
+				//MX6SX_PAD_NAND_CE1_B__RAWNAND_CE1_B	0x0b0b1
+				MX6SX_PAD_NAND_RE_B__RAWNAND_RE_B	0x0b0b1
+				MX6SX_PAD_NAND_WE_B__RAWNAND_WE_B	0x0b0b1
+				MX6SX_PAD_NAND_DATA00__RAWNAND_DATA00	0x0b0b1
+				MX6SX_PAD_NAND_DATA01__RAWNAND_DATA01	0x0b0b1
+				MX6SX_PAD_NAND_DATA02__RAWNAND_DATA02	0x0b0b1
+				MX6SX_PAD_NAND_DATA03__RAWNAND_DATA03	0x0b0b1
+				MX6SX_PAD_NAND_DATA04__RAWNAND_DATA04	0x0b0b1
+				MX6SX_PAD_NAND_DATA05__RAWNAND_DATA05	0x0b0b1
+				MX6SX_PAD_NAND_DATA06__RAWNAND_DATA06	0x0b0b1
+				MX6SX_PAD_NAND_DATA07__RAWNAND_DATA07	0x0b0b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_I2C_A
+		/* I2C_A: RGB-Connector (SKIT -> SX8655, LED-driver PCA9632),
+		   Touch Connector (SKIT -> FT5x06, MXT), SX8655 (SKIT),
+		   Feature Connector (SKIT) */
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <
+				MX6SX_PAD_QSPI1B_DATA2__I2C2_SDA	0x4001b8b1
+				MX6SX_PAD_QSPI1B_DATA3__I2C2_SCL	0x4001b8b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_I2C_B
+		/* I2C_B: Feature Connector (SKIT) */
+		pinctrl_i2c3: i2c3grp {
+			fsl,pins = <
+				MX6SX_PAD_KEY_ROW4__I2C3_SDA		0x4001b8b1
+				MX6SX_PAD_KEY_COL4__I2C3_SCL		0x4001b8b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_I2C_C
+		/* I2C_C: RTC (PCA8565), LVDS-Connector, SGTL5000 (SKIT),
+		   Mini-PCIe (SKIT), Camera (SKIT, 2x) */
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO01__I2C1_SDA		0x4001b8b1
+				MX6SX_PAD_GPIO1_IO00__I2C1_SCL		0x4001b8b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_SPI_A
+		pinctrl_ecspi5: ecspi5grp {
+			fsl,pins = <
+				MX6SX_PAD_QSPI1B_SS1_B__ECSPI5_SCLK	0x100b1
+				MX6SX_PAD_QSPI1A_DQS__ECSPI5_MOSI	0x100b1
+				MX6SX_PAD_QSPI1A_SS1_B__ECSPI5_MISO	0x100b1
+				MX6SX_PAD_QSPI1B_DQS__GPIO4_IO_28	0x1b0b0
+				MX6SX_PAD_QSPI1A_DATA2__GPIO4_IO_18	0x1b0b0
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_SPI_B
+		pinctrl_ecspi1: ecspi1grp {
+			fsl,pins = <
+				MX6SX_PAD_QSPI1A_SCLK__ECSPI1_SCLK	0x100b1
+				MX6SX_PAD_QSPI1A_DATA0__ECSPI1_MOSI	0x100b1
+				MX6SX_PAD_QSPI1A_DATA1__ECSPI1_MISO	0x100b1
+				MX6SX_PAD_QSPI1A_SS0_B__GPIO4_IO_22	0x1b0b0
+#if !defined(CONFIG_EFUSA9X_BLUETOOTH) && !defined(CONFIG_EFUSA9X_UART_C_RTSCTS)
+				MX6SX_PAD_KEY_ROW2__GPIO2_IO_17		0x1b0b0
+#endif
+			>;
+		};
+#endif /* CONFIG_EFUSA9X_SPI_B */
+
+#ifdef CONFIG_EFUSA9X_PWM_A
+#if (CONFIG_EFUSA9X_BOARD_REVISION < 111)
+		/* PWM_A implemented by PWM1 */
+		pinctrl_pwm1: pwm1grp {
+			fsl,pins = <
+				MX6SX_PAD_USB_H_STROBE__PWM1_OUT	0x110b0
+			>;
+		};
+#else
+		/* PWM_A implemented by PWM5 */
+		pinctrl_pwm5: pwm5grp {
+			fsl,pins = <
+				MX6SX_PAD_LCD1_DATA23__PWM5_OUT		0x110b0
+			>;
+		};
+#endif
+#endif /* CONFIG_EFUSA9X_PWM_A */
+
+#ifdef CONFIG_EFUSA9X_BL_CTRL
+#if (CONFIG_EFUSA9X_BOARD_REVISION < 111)
+		/* Backlight PWM implemented by PWM2 */
+		pinctrl_pwm2: pwm2grp {
+			fsl,pins = <
+				MX6SX_PAD_USB_H_DATA__PWM2_OUT		0x110b0
+			>;
+		};
+#else
+		/* Backlight PWM implemented by PWM6 */
+		pinctrl_pwm6: pwm6grp {
+			fsl,pins = <
+				MX6SX_PAD_LCD1_DATA22__PWM6_OUT		0x110b0
+			>;
+		};
+#endif
+#endif /* CONFIG_EFUSA9X_BL_CTRL */
+
+#ifdef CONFIG_EFUSA9X_UART_A
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <
+				MX6SX_PAD_GPIO1_IO04__UART1_TX		0x1b0b1
+				MX6SX_PAD_GPIO1_IO05__UART1_RX		0x1b0b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_UART_B
+		pinctrl_uart3: uart3grp {
+			fsl,pins = <
+				MX6SX_PAD_QSPI1B_SS0_B__UART3_TX	0x1b0b1
+				MX6SX_PAD_QSPI1B_SCLK__UART3_RX		0x1b0b1
+#ifdef CONFIG_EFUSA9X_UART_B_RTSCTS
+				MX6SX_PAD_QSPI1B_DATA1__UART3_RTS_B	0x1b0b1
+				MX6SX_PAD_QSPI1B_DATA0__UART3_CTS_B	0x1b0b1
+#endif
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_UART_C
+		pinctrl_uart5: uart5grp {
+			fsl,pins = <
+				MX6SX_PAD_KEY_ROW3__UART5_RX		0x1b0b1
+				MX6SX_PAD_KEY_COL3__UART5_TX		0x1b0b1
+#ifdef CONFIG_EFUSA9X_UART_C_RTSCTS
+				MX6SX_PAD_KEY_ROW2__UART5_CTS_B		0x1b0b1
+				MX6SX_PAD_KEY_COL2__UART5_RTS_B		0x1b0b1
+#endif
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_UART_D
+		pinctrl_uart6: uart6grp {
+			fsl,pins = <
+				MX6SX_PAD_KEY_ROW1__UART6_RX		0x1b0b1
+				MX6SX_PAD_KEY_COL1__UART6_TX		0x1b0b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_BLUETOOTH
+		pinctrl_uart5_bt: uart5grp-bt {
+			fsl,pins = <
+				MX6SX_PAD_KEY_ROW3__UART5_RX		0x1b0b1
+				MX6SX_PAD_KEY_COL3__UART5_TX		0x1b0b1
+				MX6SX_PAD_KEY_ROW2__UART5_CTS_B		0x1b0b1
+				MX6SX_PAD_KEY_COL2__UART5_RTS_B		0x1b0b1
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_USB_OTG1
+		pinctrl_usbotg1: usbotg1grp {
+			fsl,pins = <
+				/* USB_OTG1_PWR, active low */
+//###				MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9	0x0b030
+				MX6SX_PAD_GPIO1_IO09__USB_OTG1_PWR	0x0b030
+#ifdef CONFIG_EFUSA9X_USB_OTG1_OC
+				/* USB_OTG1_OC, active low */
+				MX6SX_PAD_GPIO1_IO08__USB_OTG1_OC	0x1b000
+#endif
+				/* USB_OTG1_ID: low: host, open: device */
+				MX6SX_PAD_GPIO1_IO10__ANATOP_OTG1_ID	0x1b000
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_USB_HOST
+		pinctrl_usbotg2: usbotg2grp {
+			fsl,pins = <
+				/* USB_OTG2_PWR, active high */
+//###				MX6SX_PAD_GPIO1_IO12__GPIO1_IO_12	0x03030
+				MX6SX_PAD_GPIO1_IO12__USB_OTG2_PWR	0x03030
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_WLAN
+		/* On-board WLAN */
+		pinctrl_usdhc1_wlan: usdhc1grp-wlan {
+			fsl,pins = <
+				MX6SX_PAD_SD1_CMD__USDHC1_CMD		0x17091
+				MX6SX_PAD_SD1_CLK__USDHC1_CLK		0x10091
+				MX6SX_PAD_SD1_DATA0__USDHC1_DATA0	0x17091
+				MX6SX_PAD_SD1_DATA1__USDHC1_DATA1	0x17091
+				MX6SX_PAD_SD1_DATA2__USDHC1_DATA2	0x17091
+				MX6SX_PAD_SD1_DATA3__USDHC1_DATA3	0x17091
+				/* CD */
+				MX6SX_PAD_GPIO1_IO02__GPIO1_IO_2	0x17000
+#if (CONFIG_EFUSA9X_BOARD_REVISION >= 120)
+				/* WLANBT_EN */
+				MX6SX_PAD_GPIO1_IO03__GPIO1_IO_3	0x1b0b0
+#endif
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_SD_A
+#if (CONFIG_EFUSA9X_BOARD_REVISION < 120)
+		/* Micro-SD slot on efus-SKIT if WLAN not equipped */
+		pinctrl_usdhc1_sd_a: usdhc1grp-sd_a {
+			fsl,pins = <
+				MX6SX_PAD_SD1_CMD__USDHC1_CMD		0x170b1
+				MX6SX_PAD_SD1_CLK__USDHC1_CLK		0x100b1
+				MX6SX_PAD_SD1_DATA0__USDHC1_DATA0	0x170b1
+				MX6SX_PAD_SD1_DATA1__USDHC1_DATA1	0x170b1
+				MX6SX_PAD_SD1_DATA2__USDHC1_DATA2	0x170b1
+				MX6SX_PAD_SD1_DATA3__USDHC1_DATA3	0x170b1
+#ifdef CONFIG_EFUSA9X_SD_A_CD
+				/* Card Detect (CD), active low (pull-up) */
+				MX6SX_PAD_GPIO1_IO02__GPIO1_IO_2	0x17000
+#endif
+#ifdef CONFIG_EFUSA9X_SD_A_WP
+				/*
+				 * Write Protect (WP), active high (pull-up)
+				 * lock:   WP switch open, pulled high
+				 * unlock: WP switch closed, connects to GND
+				 */
+				MX6SX_PAD_GPIO1_IO03__GPIO1_IO_3	0x17000
+#endif
+			>;
+		};
+#else
+		/* Micro-SD slot on efus-SKIT if eMMC not equipped */
+		pinctrl_usdhc4_sd_a: usdhc4grp-sd_a {
+			fsl,pins = <
+				MX6SX_PAD_SD4_CMD__USDHC4_CMD		0x170b1
+				MX6SX_PAD_SD4_CLK__USDHC4_CLK		0x100b1
+				MX6SX_PAD_SD4_DATA0__USDHC4_DATA0	0x170b1
+				MX6SX_PAD_SD4_DATA1__USDHC4_DATA1	0x170b1
+				MX6SX_PAD_SD4_DATA2__USDHC4_DATA2	0x170b1
+				MX6SX_PAD_SD4_DATA3__USDHC4_DATA3	0x170b1
+#ifdef CONFIG_EFUSA9X_SD_A_CD
+				/* Card Detect (CD), active low (pull-up) */
+				MX6SX_PAD_SD4_DATA7__GPIO6_IO_21	0x17000
+#endif
+#ifdef CONFIG_EFUSA9X_SD_A_WP
+				/*
+				 * Write Protect (WP), active high (pull-up)
+				 * lock:   WP switch open, pulled high
+				 * unlock: WP switch closed, connects to GND
+				 */
+				MX6SX_PAD_SD4_DATA6__GPIO6_IO_20	0x17000
+#endif
+			>;
+		};
+#endif
+#endif /* CONFIG_EFUSA9X_SD_A */
+
+#ifdef CONFIG_EFUSA9X_SD_B
+		/* Normal-size SD slot on efus-SKIT */
+		pinctrl_usdhc2_sd_b: usdhc2grp-sd_b {
+			fsl,pins = <
+				MX6SX_PAD_SD2_CMD__USDHC2_CMD		0x170b1
+				MX6SX_PAD_SD2_CLK__USDHC2_CLK		0x100b1
+				MX6SX_PAD_SD2_DATA0__USDHC2_DATA0	0x170b1
+				MX6SX_PAD_SD2_DATA1__USDHC2_DATA1	0x170b1
+				MX6SX_PAD_SD2_DATA2__USDHC2_DATA2	0x170b1
+				MX6SX_PAD_SD2_DATA3__USDHC2_DATA3	0x170b1
+#ifdef CONFIG_EFUSA9X_SD_B_CD
+				/* Card Detect (CD), active low (pull-up) */
+				MX6SX_PAD_GPIO1_IO06__GPIO1_IO_6	0x17000
+#endif
+#ifdef CONFIG_EFUSA9X_SD_B_WP
+				/*
+				 * Write Protect (WP), active high (pull-up)
+				 * lock:   WP switch open, pulled high
+				 * unlock: WP switch closed, connects to GND
+				 */
+				MX6SX_PAD_GPIO1_IO07__GPIO1_IO_7	0x17000
+#endif
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_EMMC
+		/* On-board eMMC */
+		pinctrl_usdhc4_emmc: usdhc4grp-emmc {
+			fsl,pins = <
+				MX6SX_PAD_SD4_CMD__USDHC4_CMD		0x17091
+				MX6SX_PAD_SD4_CLK__USDHC4_CLK		0x10091
+				MX6SX_PAD_SD4_DATA0__USDHC4_DATA0	0x17091
+				MX6SX_PAD_SD4_DATA1__USDHC4_DATA1	0x17091
+				MX6SX_PAD_SD4_DATA2__USDHC4_DATA2	0x17091
+				MX6SX_PAD_SD4_DATA3__USDHC4_DATA3	0x17091
+				MX6SX_PAD_SD4_DATA4__USDHC4_DATA4	0x17091
+				MX6SX_PAD_SD4_DATA5__USDHC4_DATA5	0x17091
+				MX6SX_PAD_SD4_DATA6__USDHC4_DATA6	0x17091
+				MX6SX_PAD_SD4_DATA7__USDHC4_DATA7	0x17091
+				MX6SX_PAD_SD4_RESET_B__USDHC4_RESET_B	0x17091
+			>;
+		};
+#endif
+
+#ifdef CONFIG_EFUSA9X_PARALLEL_CAMERA
+		/* Parallel camera */
+		pinctrl_csi1: csi1grp {
+			fsl,pins = <
+				MX6SX_PAD_CSI_MCLK__CSI1_MCLK		0x110b0
+				MX6SX_PAD_CSI_PIXCLK__CSI1_PIXCLK	0x11080
+				MX6SX_PAD_CSI_VSYNC__CSI1_VSYNC		0x11080
+				MX6SX_PAD_CSI_HSYNC__CSI1_HSYNC		0x11080
+				MX6SX_PAD_CSI_DATA00__CSI1_DATA_2	0x11080
+				MX6SX_PAD_CSI_DATA01__CSI1_DATA_3	0x11080
+				MX6SX_PAD_CSI_DATA02__CSI1_DATA_4	0x11080
+				MX6SX_PAD_CSI_DATA03__CSI1_DATA_5	0x11080
+				MX6SX_PAD_CSI_DATA04__CSI1_DATA_6	0x11080
+				MX6SX_PAD_CSI_DATA05__CSI1_DATA_7	0x11080
+				MX6SX_PAD_CSI_DATA06__CSI1_DATA_8	0x11080
+				MX6SX_PAD_CSI_DATA07__CSI1_DATA_9	0x11080
+#if !defined(CONFIG_EFUSA9X_SPI_B)
+				MX6SX_PAD_QSPI1A_SS0_B__CSI1_DATA_0	0x11080
+				MX6SX_PAD_QSPI1A_SCLK__CSI1_DATA_1	0x11080
+#endif
+				/* Reset */
+				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x17038
+				/* PWDN */
+				MX6SX_PAD_USB_H_DATA__GPIO7_IO_10	0x17038
+			>;
+		};
+#endif
+	};
+};

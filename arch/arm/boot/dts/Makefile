@@ -489,7 +489,9 @@ dtb-$(CONFIG_SOC_IMX6SX) += \
 	imx6sx-sdb-emmc.dtb \
 	imx6sx-sdb-lcdif1.dtb \
 	efusa9x.dtb \
+	efusa9xr2.dtb \
 	picocoremx6sx.dtb \
+	picocoremx6sxr2.dtb \
 	vc600.dtb \
 	bema9x.dtb \
 	picocoma9x.dtb \
