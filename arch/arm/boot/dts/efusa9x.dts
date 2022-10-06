@@ -135,6 +135,7 @@ lvds_wvga {				\
  */
 //#define CONFIG_EFUSA9X_4WTOUCH_SX8655_ONBOARD
 #define CONFIG_EFUSA9X_4WTOUCH_SX8655_RGBADAPTER
+//#define CONFIG_EFUSA9X_4WTOUCH_TSC2004_RGBADAPTER
 //#define CONFIG_EFUSA9X_CAPTOUCH_MXT224
 //#define CONFIG_EFUSA9X_CAPTOUCH_FT5x06
 //#define CONFIG_EFUSA9X_CAPTOUCH_SITRONIX
@@ -845,11 +846,32 @@ lvds_wvga {				\
 		/*pinctrl-0 = <&pinctrl_touchscreen>;*/
 		interrupt-parent = <&gpio7>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio3 21 GPIO_ACTIVE_LOW>;
 		x-rev;
 		y-rev;
 	};
 #endif
 
+#ifdef CONFIG_EFUSA9X_4WTOUCH_TSC2004_RGBADAPTER
+	/* 4/5 wire analog resistive touch on RGB-Adapter */
+	tsc2004@4a {
+		compatible = "ti,tsc2004";
+		reg = <0x4a>;
+		vio-supply = <&reg_vref_3v3>;
+		interrupts-extended = <&gpio7 0 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio3 21 GPIO_ACTIVE_LOW>;
+		touchscreen-fuzz-x = <4>;
+		touchscreen-fuzz-y = <7>;
+		touchscreen-fuzz-pressure = <20>;
+		touchscreen-size-x = <4096>;
+		touchscreen-size-y = <4096>;
+		touchscreen-max-pressure = <2048>;
+		touchscreen-inverted-y;
+		ti,x-plate-ohms = <280>;
+		ti,pre-charge-time = <4>;
+		ti,sense-time-sel = <3>;
+	};
+#endif
 
 #ifdef CONFIG_EFUSA9X_CAPTOUCH_SITRONIX
 	/* Sitronix PCAP touch on Touch-Connector (I2C) */
