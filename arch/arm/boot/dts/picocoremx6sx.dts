@@ -47,12 +47,6 @@ lcd_wvga {				\
 	pixelclk-active = <1>;		\
 }
 
-/* GPU is only available on CPU variants MCIMX6X3... and MCIMX6X4... */
-#define CONFIG_PICOCOREMX6SX_GPU
-
-/* Keep VLCD on when pca and touch are powered through VLCD */
-//#define CONFIG_KEEP_VLCD_ON
-
 /*
  * Configure touch screen:
  *
@@ -75,10 +69,11 @@ lcd_wvga {				\
 /* CMA: Set 320 MB for Continuous Memory Allocator */
 #define CONFIG_PICOCOREMX6SX_CMA_SIZE 0x14000000
 
-/* NAND */
-/* eMMC */
-/* Will be set by Uboot */
+/* On-board NAND */
+#define CONFIG_PICOCOREMX6SX_NAND
 
+/* EMMC - SD_B - Internal SD port */
+#define CONFIG_PICOCOREMX6SX_EMMC
 
 /* Network */
 #define CONFIG_PICOCOREMX6SX_ETH0
@@ -158,6 +153,8 @@ lcd_wvga {				\
 #undef CONFIG_PICOCOREMX6SX_UART_C_RTSCTS
 #endif
 
+
+
 #include "imx6sx.dtsi"
 #include <dt-bindings/pwm/pwm.h>
 
@@ -165,9 +162,13 @@ lcd_wvga {				\
 	model = "F&S picocoreMX6SX";
 	compatible = "fus,imx6sx-picocoremx6sx", "fsl,imx6sx";
 
-	aliases {
-		nand=&gpmi;
-	};
+ 	aliases {
+ 		nand = &gpmi;
+ 		emmc = &usdhc2;
+		rpmsg = &rpmsg;
+		gpc = &gpc;
+		gpu3d = &gpu; // This entry needs to be changed to gpu3d for kernel 5.4.70
+ 	};
 
 #if defined(CONFIG_PICOCOREMX6SX_I2C_B) && (CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD)
 	backlight_lcd {
@@ -245,7 +246,6 @@ lcd_wvga {				\
 #endif
 
 #if (CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD)
-#ifndef CONFIG_KEEP_VLCD_ON
 		reg_disp_3v3: disp-3v3 {
 			compatible = "regulator-fixed";
 			regulator-name = "disp-3v3";
@@ -254,7 +254,6 @@ lcd_wvga {				\
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
 		};
-#endif
 #endif
 
 #if defined(CONFIG_PICOCOREMX6SX_I2C_B) && (CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD)
@@ -640,8 +639,11 @@ lcd_wvga {				\
 		interrupt-parent = <&gpio1>;
 		interrupts = <8 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpio = <&gpio3 21 GPIO_ACTIVE_LOW>;
-		x-rev;
-		y-rev;
+		/* using global touchscreen_parse_properties, instead of
+		 * specific parsing.
+		 */
+		touchscreen-inverted-x;
+		touchscreen-inverted-y;
 	};
 #endif
 
@@ -752,9 +754,7 @@ lcd_wvga {				\
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcdif1>;		/* Remove when already active */
 	display = <&display0>;			/* Remove when already active */
-#ifndef CONFIG_KEEP_VLCD_ON
 	lcd-supply = <&reg_disp_3v3>;
-#endif
 	// pattern = <5>;
 	status = "okay";
 
@@ -769,13 +769,6 @@ lcd_wvga {				\
 	};
 };
 #endif /* CONFIG_PICOCOREMX6SX_LCDIF0 */
-
-#ifndef CONFIG_PICOCOREMX6SX_GPU
-&gpu {
-	status = "disabled";
-};
-#endif
-
 
 #ifdef CONFIG_PICOCOREMX6SX_UART_A
 /* UART_A implemented by UART1: TXD, RXD only */
@@ -872,9 +865,8 @@ lcd_wvga {				\
 };
 #endif /* CONFIG_PICOCOREMX6SX_SD_A */
 
-/* Keep disabled. Will be activated by Uboot
- * if eMMC is used as boot device.
- */
+#ifdef CONFIG_PICOCOREMX6SX_EMMC
+/* EMMC implemented via USDHC2 */
 &usdhc2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc2_emmc>;
@@ -884,8 +876,9 @@ lcd_wvga {				\
 	voltage-ranges = <3300 3300>;
 	no-1-8-v;
 	keep-power-in-suspend;
-	status = "disabled";
+	status = "okay";
 };
+#endif
 
 #ifdef CONFIG_PICOCOREMX6SX_PWM_A
 /* PWM_A implemented by PWM4 */
@@ -944,6 +937,7 @@ lcd_wvga {				\
 };
 #endif /* CONFIG_PICOCOREMX6SX_SPI_A */
 
+#ifdef CONFIG_PICOCOREMX6SX_NAND
 &dma_apbh {
 	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
 	compatible = "fus,imx6sx-dma-apbh", "fus,imx28-dma-apbh";
@@ -961,6 +955,7 @@ lcd_wvga {				\
 //###	fus,ecc_strength = <52>;	/* Spare area 224 bytes */
 	status = "okay";
 };
+#endif /* CONFIG_PICOCOREMX6SX_NAND */
 
 &iomuxc {
 	pinctrl-names = "default";
@@ -991,9 +986,7 @@ lcd_wvga {				\
 				MX6SX_PAD_GPIO1_IO08__GPIO1_IO_8	0x0b0b0
 
 				/* VLCD_ON - active high */
-#ifndef CONFIG_KEEP_VLCD_ON
 				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x130b0
-#else
 				/* ### HW-Bug:
 				 * There is a hardware bug on the Starterkit
 				 * baseboard PicoCoreBBRGB Rev 1.20. Instead of
@@ -1003,19 +996,16 @@ lcd_wvga {				\
 				 * on VLCD_ON itself. Because VLCD_ON is low on
 				 * startup, the PCA9632 chip is not powered and
 				 * can not be initialized, causing the display
-				 * to fail. The same happens for the touch
-				 * controller at startup of Yocto, because the
-				 * LCD is powered down during changes in buffer.
-				 * By defining CONFIG_KEEP_VLCD_ON, you can use
-				 * a workaround that keeps VLCD_ON high all the
-				 * time. Then the display will work (with some
-				 * restrictions).
+				 * to fail.
+				 * By disabling the line above and enabling the
+				 * line below, you can use a workaround that
+				 * keeps VLCD_ON high at startup. Then the
+				 * display will work (with some restrictions).
 				 * Please note that this is not a bug on the
 				 * PicoCoreMX6SX module itself, only on the
 				 * Starterkit baseboard.
 				 */
-				MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x1b0b0
-#endif
+				//MX6SX_PAD_LCD1_RESET__GPIO3_IO_27	0x1b0b0
 
 				/* PHY_RST */
 				MX6SX_PAD_ENET1_MDC__GPIO2_IO_2		0x0b0b0
@@ -1362,6 +1352,7 @@ lcd_wvga {				\
 		};
 #endif /* CONFIG_PICOCOREMX6SX_SD_A */
 
+#ifdef CONFIG_PICOCOREMX6SX_EMMC
 		/* EMMC */
 		pinctrl_usdhc2_emmc: usdhc2grp-emmc {
 			fsl,pins = <
@@ -1378,6 +1369,7 @@ lcd_wvga {				\
 				MX6SX_PAD_NAND_RE_B__USDHC2_RESET_B	0x17091
 			>;
 		};
+#endif
 
 	};
 };
