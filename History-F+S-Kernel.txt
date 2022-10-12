@@ -13,6 +13,14 @@ PicoMODA9, NetDCUA9, QBlissA9, QBlissA9r2
 
 
 
+linux-5.4.70-fsimx8mm-B2021.06.1 (26.09.2022)
+---------------------------------------------
+Supported boards: PicoCoreMX8MM PicoCoreMX8MMr2 PicoCoreMX8MX
+
+- Merge tag 'fsimx8mm-Y2021.04.2' into HEAD
+
+
+
 linux-5.4.70-fsimx6-Y2022.09 (21.09.2022)
 -----------------------------------------
 Supported boards: efusA9 efusA9r2 armStoneA9 armStoneA9r2 PicoModA9 NetDCUA9
