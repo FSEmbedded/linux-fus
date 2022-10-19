@@ -1371,7 +1371,7 @@
 				MX8MP_IOMUXC_UART3_RXD__CAN2_TX		0x154
 			>;
 		};
-#endif /* CONFIG_PICOCOREMX8MP_CAN_B */
+#endif /* CONFIG_ARMSTONEMX8MP_CAN_B */
 
 #ifdef CONFIG_ARMSTONEMX8MP_I2C_D
 		pinctrl_i2c1: i2c1grp {
@@ -1492,7 +1492,7 @@
 		};
 #endif /* CONFIG_ARMSTONEMX8MP_UART_A */
 
-#ifdef CONFIG_PICOCOREMX8MP_UART_B
+#ifdef CONFIG_ARMSTONEMX8MP_UART_B
 		pinctrl_uart3: uart3grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_ECSPI1_SCLK__UART3_DCE_RX	0x140
@@ -1503,7 +1503,7 @@
 #endif
 			>;
 		};
-#endif /* CONFIG_PICOCOREMX8MP_UART_B */
+#endif /* CONFIG_ARMSTONEMX8MP_UART_B */
 
 
 #ifdef CONFIG_ARMSTONEMX8MP_UART_D
