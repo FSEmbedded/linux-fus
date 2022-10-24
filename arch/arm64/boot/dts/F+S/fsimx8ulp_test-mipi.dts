@@ -1,0 +1,2 @@
+#include "fsimx8ulp.dtsi"
+#include "displays/imx8ulp-lcd-ee0350et-2cp-v1.2.dtsi"
