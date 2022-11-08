@@ -1,0 +1,177 @@
+/*
+* Copyright (C) 2021 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+/ {
+	regulators {
+		/* BL_ON on adapter board MIPI2MIPI1 */
+		reg_mipi_bl: backlight_mipi {
+			compatible = "regulator-fixed";
+			regulator-name = "mipi-bl";
+#if CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION == 120
+			gpio = <&max7315 0 GPIO_ACTIVE_HIGH>;
+#elif CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION == 100
+			gpio = <&pca963x 1 GPIO_ACTIVE_HIGH>;
+#endif
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+	};
+
+	/* MIPI-DSI backlight PWM on adapter MIPI2MIPI1 */
+	backlight_mipi_dsi {
+		compatible = "pwm-backlight";
+#if CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION == 120
+		/* only 32 kHz available */
+		pwms = <&max7315 1 31250 PWM_POLARITY_INVERTED>;
+		power-supply = <&reg_mipi_bl>;
+		/* calculated without sigma so it´s linear */
+		brightness-levels = <0 17 34 51 68 85 102 119 136
+				     153 170 187 204 221 238 255>;
+#elif CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION == 100
+		pwms = <&pca963x 0 640000 0>; /* 1.5625 kHz */
+		power-supply = <&reg_mipi_bl>;
+		brightness-levels = <0 30 32 35 39 46 55 66
+				     80 96 115 137 162 190 221 255>;
+#endif
+		default-brightness-level = <14>;
+		fb-names = "mipi_dsi";
+	};
+};
+
+&lcdif1 {
+	status = "okay";
+};
+
+&lcdif2 {
+	status = "disabled";
+};
+
+&ldb {
+	status = "disabled";
+
+	/* DSI_A */
+	lvds-channel@0 {
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <24>;
+		status = "disabled";
+	};
+
+	/* DSI_B */
+	lvds-channel@1 {
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <24>;
+		status = "disabled";
+	};
+};
+
+&ldb_phy {
+	status = "disabled";
+};
+
+&lcdif3 {
+	status = "disabled";
+
+	thres-low  = <1 2>;             /* (FIFO * 1 / 2) */
+	thres-high = <3 4>;             /* (FIFO * 3 / 4) */
+};
+
+
+&mipi_dsi {
+	status = "okay";
+
+	panel@0 {
+		compatible = "eagleeyetech,ee0350et-2";
+		reg = <0>;
+#if CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION == 120
+		reset-gpios = <&max7315 4 GPIO_ACTIVE_LOW>;
+#elif CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION == 100
+		reset-gpios = <&pca963x 2 GPIO_ACTIVE_HIGH>;
+		vci-supply = <&reg_vlcd>;
+#endif
+		status = "okay";
+	};
+};
+
+&i2c4 {
+
+#if CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION == 120
+	/* LED-driver on adapter board MIPI2MIPI1 */
+	max7315: max7315@20 { /* LED-driver */
+		compatible = "maxim,max7315";
+		reg = <0x20>;
+		/* interrupt not yet supported */
+		//interrupt-parent = <&gpio4>;
+		//interrupts = <31 IRQ_TYPE_LEVEL_LOW>;
+		//#interrupt-cells = <2>;
+		//interrupt-controller;
+		gpio-controller;
+		#gpio-cells = <2>;
+		pwm-controller;
+		#pwm-cells = <3>;
+		};
+
+	/* Atmel PCAP touch on Touch Connector (I2C) */
+	mxt336u@4a {
+		compatible = "atmel,maxtouch";
+		reg = <0x4a>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <13 IRQ_TYPE_EDGE_FALLING>;
+		atmel,cfg_name = "atmel/mxt336u-gloves.cfg";
+		//reset-gpios = <&max7315 6 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&gpio5 5 GPIO_ACTIVE_LOW>;
+	};
+#elif CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION == 100
+	/* LED-driver on adapter board MIPI2MIPI1 */
+	pca963x: pca9632@60 { /* LED-driver */
+		compatible = "nxp,pca9632";
+		reg = <0x60>;
+		nxp,totem-pole;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#pwm-cells = <3>;
+		#gpio-cells = <2>;
+		led@0 {
+			reg = <0>;
+			label = "1-LEDCTRL";
+			type = "PWM";
+			default-on;		/* or: keep-value */
+			active-low;
+		};
+		led@1 {
+			reg = <1>;
+			label = "0-PWRCTL";
+			type = "GPIO";
+			default-on;		/* or: keep-value */
+			active-high;
+		};
+		led@2 {
+			reg = <2>;
+			label = "2-TOUCH-RST";
+			type = "GPIO";
+			active-low;
+		};
+		led@3 {
+			reg = <3>;
+			label = "2-MIPI-RST";
+			type = "GPIO";
+			active-low;
+		};
+	};
+
+	/* Atmel PCAP touch on Touch Connector (I2C) */
+	mxt336u@4a {
+		compatible = "atmel,maxtouch";
+		reg = <0x4a>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <13 IRQ_TYPE_EDGE_FALLING>;
+		atmel,cfg_name = "atmel/mxt336u-gloves.cfg";
+		reset-gpios = <&gpio5 5 GPIO_ACTIVE_LOW>;
+	};
+#endif
+};
+
