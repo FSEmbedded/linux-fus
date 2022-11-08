@@ -1,86 +1,68 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
- * Copyright (C) 2022 F&S Elektronik Systeme GmbH
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
-*/
+ * Copyright 2021 NXP
+ */
 
 /dts-v1/;
-
 
 #include "../freescale/imx8ulp.dtsi"
 #include "../freescale/imx8ulp-rpmsg.dtsi"
 #include <dt-bindings/input/input.h>
 
-
 / {
-    compatible = "fus,imx8ulp-soldercoremx8ulp", "fsl,imx8ulp";
+	model = "NXP i.MX8ULP EVK";
+	compatible = "fsl,imx8ulp-evk", "fsl,imx8ulp";
 
-	/* -------------------- BOARD INFO -------------------- */
-    bdinfo: bdinfo {
-        compatible = "bdinfo";
-    };
+	chosen {
+		stdout-path = &lpuart5;
+	};
 
-#if 0
-    chosen {
-        bootargs = "console=ttyLP1,115200"
-         "earlycon"
-         "root=/dev/mmcblk0p2"
-         "rootwait"
-         "rw";
-        stdout-path = &serial1;
-    };
-#endif
+	gpio-keys {
+		compatible = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_gpio_keys>;
 
-    // gpio-keys {
-	// 	compatible = "gpio-keys";
-	// 	pinctrl-names = "default";
-	// 	pinctrl-0 = <&pinctrl_gpio_keys>;
+		power-on {
+			label = "PowerOn";
+			gpios = <&gpiof 31 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_POWER>;
+		};
+	};
 
-	// 	power-on {
-	// 		label = "PowerOn";
-	// 		gpios = <&gpiof 31 GPIO_ACTIVE_LOW>;
-	// 		linux,code = <KEY_POWER>;
-	// 	};
-	// };
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0 0x80000000>;
+	};
 
-	// memory@40000000 {
-	// 	device_type = "memory";
-	// 	reg = <0x0 0x80000000 0 0x80000000>;
-	// };
+	rpmsg_keys: rpmsg-keys {
+		compatible = "fsl,rpmsg-keys";
 
-	// rpmsg_keys: rpmsg-keys {
-	// 	compatible = "fsl,rpmsg-keys";
+		volume-up {
+			label = "VolumeUp";
+			linux,code = <KEY_VOLUMEUP>;
+			rpmsg-key,wakeup;
+		};
 
-	// 	volume-up {
-	// 		label = "VolumeUp";
-	// 		linux,code = <KEY_VOLUMEUP>;
-	// 		rpmsg-key,wakeup;
-	// 	};
+		volume-down {
+			label = "VolumeDown";
+			linux,code = <KEY_VOLUMEDOWN>;
+			rpmsg-key,wakeup;
+		};
+	};
 
-	// 	volume-down {
-	// 		label = "VolumeDown";
-	// 		linux,code = <KEY_VOLUMEDOWN>;
-	// 		rpmsg-key,wakeup;
-	// 	};
-	// };
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
 
+		linux,cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0 0x28000000>;
+			linux,cma-default;
+		};
 
-    reserved-memory {
-        #adress-cells = <2>;
-        #size-cells = <2>;
-        ranges;
-
-        /* global autoconfigured region for contiguous allocations */
-        linux,cma {
-            compatible = "shared-dma-pool";
-            reusable;
-            size = <0 0x14000000>;
-            linux,cma-default;
-        };
-
-        rsc_table: rsc_table@1fff8000{
+		rsc_table: rsc_table@1fff8000{
 			reg = <0 0x1fff8000 0 0x1000>;
 			no-map;
 		};
@@ -163,7 +145,7 @@
 		compatible = "linux,bt-sco";
 	};
 
-    sound-bt-sco {
+	sound-bt-sco {
 		compatible = "simple-audio-card";
 		simple-audio-card,name = "bt-sco-audio";
 		simple-audio-card,format = "dsp_a";
@@ -205,12 +187,10 @@
 	};
 };
 
-
 &clock_ext_ts {
 	/* External ts clock is 50MHZ from PHY on EVK board. */
 	clock-frequency = <50000000>;
 };
-
 
 &dcnano {
 	status = "okay";
@@ -522,6 +502,7 @@
 	pinctrl_dsi: dsigrp {
 		fsl,pins = <
 			MX8ULP_PAD_PTF8__PTF8		0x3
+			MX8ULP_PAD_PTF9__PTF9		0x3
 		>;
 	};
 

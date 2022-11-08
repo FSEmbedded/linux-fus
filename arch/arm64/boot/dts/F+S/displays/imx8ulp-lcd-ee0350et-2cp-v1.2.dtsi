@@ -1,82 +1,69 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
-* Copyright (C) 2022 F&S Elektronik Systeme GmbH
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License version 2 as
-* published by the Free Software Foundation.
-*/
+ * Copyright 2022 NXP
+ */
 
-#include <dt-bindings/interrupt-controller/irq.h>
 / {
-    regulators {
-        /*LCD_VBL_ON*/
-        reg_mipi_bl: backlight_mipi {
-            compatible = "regulator-fixed";
-            regulator-name = "mipi-bl";
-            gpio = <&gpioe 0 GPIO_ACTIVE_HIGH>;
-            regulator-min-microvolt = <3300000>;
-            regulator-max-microvolt = <3300000>;
-            enable-active-high;
-        };
-
-        reg_vlcd: vlcd {
-            compatible = "regulator-fixed";
-            regulator-name = "VLCD";
-            gpio = <&gpioe 1 GPIO_ACTIVE_HIGH>;
-            regulator-min-microvolt = <3300000>;
-            regulator-max-microvolt = <3300000>;
-            enable-active-high;
-        };
-    };
-
-    // backlight_mipi_dsi {
-    //     compatible = "pwm-backlight";
-    //     /* only 32 KHz available */
-    //     pwms = <&gpioe 2 31250 PWM_POLARITY_INVERTED>;
-	// 	power-supply = <&reg_mipi_bl>;
-	// 	/* calculated without sigma so it´s linear */
-	// 	brightness-levels = <0 17 34 51 68 85 102 119 136 153 170 187 204 221 238 255>;
-	// 	default-brightness-level = <14>;
-	// 	fb-names = "mipi_dsi";
-    // };
-};
-
-&dsi {
-	status = "okay";
-
-	panel@0 {
-		compatible = "eagleeyetech,ee0350et-2";
-		reg = <0>;
-		reset-gpios = <&gpioe 3 GPIO_ACTIVE_LOW>;
-		vci-supply = <&reg_vlcd>;
-		status = "okay";
+	pwm_backlight: backlight {
+		compatible = "pwm-backlight";
+		pwms = <&tpm_rpchip_0 2 50000 0>;
+		brightness-levels = < 0  1  2  3  4  5  6  7  8  9
+				     10 11 12 13 14 15 16 17 18 19
+				     20 21 22 23 24 25 26 27 28 29
+				     30 31 32 33 34 35 36 37 38 39
+				     40 41 42 43 44 45 46 47 48 49
+				     50 51 52 53 54 55 56 57 58 59
+				     60 61 62 63 64 65 66 67 68 69
+				     70 71 72 73 74 75 76 77 78 79
+				     80 81 82 83 84 85 86 87 88 89
+				     90 91 92 93 94 95 96 97 98 99
+				    100>;
+		default-brightness-level = <100>;
 	};
 };
 
-// &IMX8MM_TOUCH_I2C {
-// 	/* LED-driver on adapter board MIPI2MIPI1 */
-// 	max7315: max7315@20 { /* LED-driver */
-// 		compatible = "maxim,max7315";
-// 		reg = <0x20>;
-// 		/* interrupt not yet supported */
-// 		//interrupt-parent = <&gpio4>;
-// 		//interrupts = <31 IRQ_TYPE_LEVEL_LOW>;
-// 		//#interrupt-cells = <2>;
-// 		//interrupt-controller;
-// 		gpio-controller;
-// 		#gpio-cells = <2>;
-// 		pwm-controller;
-// 		#pwm-cells = <3>;
-// 		//#interrupt-cells = <2>;
-// 		//interrupt-controller;
-// };
+/delete-node/ &ite_bridge;
 
-// 	/* Atmel PCAP touch on Touch Connector (I2C) */
-// 	mxt336u@4a {
-// 		compatible = "atmel,maxtouch";
-// 		reg = <0x4a>;
-// 		interrupt-parent = <&IMX8MM_TOUCH_INTERRUPT_GPIO_BANK>;
-// 		interrupts = <IMX8MM_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_FALLING>;
-// 		atmel,cfg_name = "atmel/mxt336u-gloves.cfg";
-// 		reset-gpios = <&max7315 6 GPIO_ACTIVE_LOW>;
+&dsi {
+	panel@0 {
+        compatible = "eagleeyetech,ee0350et-2";
+        reg = <0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_dsi>;
+		himax,dsi-lanes = <2>;
+		enable-gpios = <&gpiof 9 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpiof 8 GPIO_ACTIVE_LOW>;
+		vcc-supply = <&reg_5v>;
+		iovcc-supply = <&reg_5v>;
+		backlight = <&pwm_backlight>;
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&mipi_dsi_out>;
+			};
+		};
+	};
+
+	ports {
+		port@1 {
+			reg = <1>;
+
+			mipi_dsi_out: endpoint {
+				remote-endpoint = <&panel_in>;
+			};
+		};
+	};
+};
+
+// &i2c_rpbus_1 {
+// 	goodix@14 {
+// 		compatible = "goodix,gt911";
+// 		reg = <0x14>;
+// 		interrupt-parent = <&rpmsg_gpiob>;
+// 		interrupts = <5 IRQ_TYPE_EDGE_FALLING>;
+// 		irq-gpios = <&rpmsg_gpiob 5 GPIO_ACTIVE_HIGH>;
+// 		reset-gpios = <&pca6416_1 5 GPIO_ACTIVE_HIGH>;
+// 		touchscreen-size-x = <720>;
+// 		touchscreen-size-y = <1280>;
 // 	};
+// };
