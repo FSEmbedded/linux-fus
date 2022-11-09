@@ -29,6 +29,8 @@
 		ldb = &ldb;
 		ldb_phy = &ldb_phy;
 		snvs_rtc = &snvs_rtc;
+		ethernet0 = &eqos;
+		ethernet1 = &fec;
 	};
 
 	/* -------------------- BOARD INFO -------------------- */

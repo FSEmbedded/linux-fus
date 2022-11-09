@@ -67,6 +67,11 @@
 		stdout-path = &uart2;
 	};
 
+	aliases {
+		ethernet0 = &eqos;
+		ethernet1 = &fec;
+	};
+
 	reserved-memory {
 		#address-cells = <2>;
 		#size-cells = <2>;
