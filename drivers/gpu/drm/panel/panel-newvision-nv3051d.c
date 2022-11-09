@@ -300,7 +300,8 @@ static const struct drm_display_mode ee0350et_mode = {
 	.vsync_start = 480 + 4,
 	.vsync_end   = 480 + 4 + 2,
 	.vtotal	     = 480 + 4 + 2 + 12,
-	.clock	     = 20378,
+	//.clock	     = 20378,
+	.clock	     = 20000,
 	.flags	     = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
 	.width_mm    = 70,
 	.height_mm   = 52,
@@ -427,7 +428,7 @@ static int nv3051d_get_modes(struct drm_panel *panel,
 	struct drm_display_mode *mode;
 	int ret;
 
-	mode = drm_mode_duplicate(connector->dev, ctx->desc->mode);
+	mode = drm_mode_duplicate(connector->dev, &ee0350et_mode);
 	if (!mode) {
 		DRM_DEV_ERROR(ctx->dev, "Failed to add mode %ux%u@%u\n",
 			      ctx->desc->mode->hdisplay, ctx->desc->mode->vdisplay,
