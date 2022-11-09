@@ -6,6 +6,20 @@ Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight,
 
 linux-5.4.70-fsimx6-B2022.10 (30.09.2022)
 -----------------------------------------
+Supported boards: armStoneMX8MP, PicoCoreMX8MP, PicoCoreMX8MPr2
+
+- mmc: sdhci-esdhc-imx: disable CMDQ support
+- Change fsimx8mp aliases for fec and eqos
+- Add support for picocoremx8mpr2
+- Rework device tree support for picocoremx8mp
+- Correct define names in armstonemx8mp device tree include file
+- Improve lvds display timings for armstonemx8mp
+- MLK-25498 gpu: drm: imx: Add missing PHY init to cdns_mhdp_imx_resume
+- Add support for armstonemx8mp
+- Merge tag 'fsimx8mm-B2021.06.1'
+
+linux-5.4.70-fsimx6-B2022.10 (30.09.2022)
+-----------------------------------------
 Supported boards: armStoneA9, armStoneA9r2, armStoneA9r3, efusA9, efusA9r2
 PicoMODA9, NetDCUA9, QBlissA9, QBlissA9r2
 
