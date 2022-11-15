@@ -104,6 +104,7 @@
 #if defined(CONFIG_PICOCOREMX8MP_MIPI_DSI) \
 || defined(CONFIG_PICOCOREMX8MP_MIPI_DSI_LVDS)
 		/* LCD power on voltage */
+		/omit-if-no-ref/
 		reg_vlcd: vlcd {
 			compatible = "regulator-fixed";
 			regulator-name = "VLCD";

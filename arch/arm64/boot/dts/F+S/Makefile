@@ -47,7 +47,8 @@ dtb-$(CONFIG_ARCH_MXC) += picocoremx8mn-lpddr4.dtb \
 dtb-$(CONFIG_ARCH_MXC) += picocoremx8mp.dtb \
 			  picocoremx8mp-lcdif-adp-mipi2lvds1-j070wvtc0211-single-display.dtb \
 			  picocoremx8mp-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtb \
-			  picocoremx8mp-lcdif-j070wvtc0211.dtb
+			  picocoremx8mp-lcdif-j070wvtc0211.dtb \
+			  picocoremx8mp-lcdif-g133han01.dtb
 dtb-$(CONFIG_ARCH_MXC) += picocoremx8mmr2-lpddr4.dtb \
 			  picocoremx8mmr2-lpddr4-lcdif-tc358764-g070y2-l01.dtb \
 			  picocoremx8mmr2-lpddr4-lcdif-tc358764-j070wvtc0211.dtb \
@@ -58,4 +59,5 @@ dtb-$(CONFIG_ARCH_MXC) += picocoremx8mpr2.dtb \
 			  picocoremx8mpr2-lcdif-j070wvtc0211.dtb \
 			  picocoremx8mpr2-lcdif-j070wvtc0211.dtb \
 			  picocoremx8mpr2-lcdif-adp-mipi2lvds1-j070wvtc0211-single-display.dtb \
-			  picocoremx8mpr2-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtb
+			  picocoremx8mpr2-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtb \
+			  picocoremx8mpr2-lcdif-g133han01.dtb

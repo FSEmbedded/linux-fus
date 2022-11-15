@@ -1,0 +1,149 @@
+/*
+ * Copyright (C) 2021 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/* Do we have LVDS0? */
+#if ((CONFIG_PICOCOREMX8MP_PANEL0 == DISPLAY_LVDS0) \
+    || (CONFIG_PICOCOREMX8MP_PANEL1 == DISPLAY_LVDS0) \
+    || (CONFIG_PICOCOREMX8MP_PANEL2 == DISPLAY_LVDS0))
+#define CONFIG_PICOCOREMX8MP_LVDS0
+#endif
+
+/* Do we have LVDS1? */
+#if ((CONFIG_PICOCOREMX8MP_PANEL0 == DISPLAY_LVDS1) \
+    || (CONFIG_PICOCOREMX8MP_PANEL1 == DISPLAY_LVDS1) \
+    || (CONFIG_PICOCOREMX8MP_PANEL2 == DISPLAY_LVDS1))
+/* Is dual mode enabled? */
+#ifndef CONFIG_PICOCOREMX8MP_LVDS_DUAL_CHANNEL
+#define CONFIG_PICOCOREMX8MP_LVDS1
+#endif
+#endif
+
+/* Do we have MIPI_DSI1? */
+#if ((CONFIG_PICOCOREMX8MP_PANEL0 == DISPLAY_MIPI0) \
+    || (CONFIG_PICOCOREMX8MP_PANEL1 == DISPLAY_MIPI0) \
+    || (CONFIG_PICOCOREMX8MP_PANEL2 == DISPLAY_MIPI0))
+/* LVDS0 and MIPI_DSI0 don't allowed at same time */
+#ifndef CONFIG_PICOCOREMX8MP_LVDS0
+#define CONFIG_PICOCOREMX8MP_MIPI_DSI0
+#endif
+#endif
+
+/ {
+
+#ifdef CONFIG_PICOCOREMX8MP_LVDS0
+	lvds0_panel {
+		compatible = "panel-lvds";
+		power-supply = <&reg_vlcd>;
+		backlight = <&backlight_ldb>;
+		data-mapping = CONFIG_PICOCOREMX8MP_LVDS0_PANEL_MAPPING;
+		label = CONFIG_PICOCOREMX8MP_LVDS0_PANEL_LABEL;
+		width-mm = <CONFIG_PICOCOREMX8MP_LVDS0_PANEL_WIDTH>;
+		height-mm = <CONFIG_PICOCOREMX8MP_LVDS0_PANEL_HEIGHT>;
+		status = "okay";
+
+		panel-timing {
+			CONFIG_PICOCOREMX8MP_LVDS0_PANEL_TIMING
+		};
+
+		port {
+			panel_lvds0_in: endpoint {
+				remote-endpoint = <&lvds0_out>;
+			};
+		};
+	};
+#endif /* CONFIG_PICOCOREMX8MP_LVDS0 */
+
+#ifdef CONFIG_PICOCOREMX8MP_LVDS1
+	lvds1_panel {
+		compatible = "panel-lvds";
+		power-supply = <&reg_vlcd>;
+		backlight = <&backlight_ldb>;
+		data-mapping = CONFIG_PICOCOREMX8MP_LVDS1_PANEL_MAPPING;
+		label = CONFIG_PICOCOREMX8MP_LVDS1_PANEL_LABEL;
+		width-mm = <CONFIG_PICOCOREMX8MP_LVDS1_PANEL_WIDTH>;
+		height-mm = <CONFIG_PICOCOREMX8MP_LVDS1_PANEL_HEIGHT>;
+		status = "okay";
+
+		panel-timing {
+			CONFIG_PICOCOREMX8MP_LVDS1_PANEL_TIMING
+		};
+
+		port {
+			panel_lvds1_in: endpoint {
+				remote-endpoint = <&lvds1_out>;
+			};
+		};
+	};
+#endif /* CONFIG_PICOCOREMX8MP_LVDS1 */
+};
+
+&mipi_dsi {
+	status = "disabled";
+};
+
+/* MIPI-DSI */
+&lcdif1 {
+	status = "disabled";
+};
+
+/* LVDS */
+&lcdif2 {
+	status = "okay";
+};
+
+/* HDMI */
+&lcdif3 {
+	status = "disabled";
+	thres-low  = <1 2>;             /* (FIFO * 1 / 2) */
+	thres-high = <3 4>;             /* (FIFO * 3 / 4) */
+};
+
+&ldb_phy {
+	status = "okay";
+};
+
+&ldb {
+	status = "okay";
+#ifdef CONFIG_PICOCOREMX8MP_LVDS_DUAL_CHANNEL
+	fsl,dual-channel;
+#endif /* CONFIG_PICOCOREMX8MP_LVDS_DUAL_CHANNEL */
+
+#ifdef CONFIG_PICOCOREMX8MP_LVDS0
+	/* LVDSA or DSI */
+	lvds-channel@0 {
+		fsl,data-mapping = CONFIG_PICOCOREMX8MP_LVDS0_CHANNEL_MAPPING;
+		fsl,data-width = <CONFIG_PICOCOREMX8MP_LVDS0_CHANNEL_DATA_WIDTH>;
+		status = "okay";
+
+		port@1 {
+			reg = <1>;
+			lvds0_out: endpoint {
+				remote-endpoint = <&panel_lvds0_in>;
+			};
+		};
+	};
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MP_LVDS1
+	/* LVDSB */
+	lvds-channel@1 {
+		fsl,data-mapping = CONFIG_PICOCOREMX8MP_LVDS1_CHANNEL_MAPPING;
+		fsl,data-width = <CONFIG_PICOCOREMX8MP_LVDS1_CHANNEL_DATA_WIDTH>;
+#ifndef CONFIG_PICOCOREMX8MP_LVDS_DUAL_CHANNEL
+		status = "okay";
+#endif
+
+		port@1 {
+			reg = <1>;
+			lvds1_out: endpoint {
+				remote-endpoint = <&panel_lvds1_in>;
+			};
+		};
+	};
+#endif
+};
