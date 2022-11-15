@@ -28,8 +28,8 @@
 			vfront-porch = <11>;
 			vsync-len = <1>;
 			de-active = <1>;
-			vsync-active = <0>;
-			hsync-active = <0>;
+			vsync-active = <1>;
+			hsync-active = <1>;
 		};
 
 		port {
@@ -60,8 +60,8 @@
 			vfront-porch = <11>;
 			vsync-len = <1>;
 			de-active = <1>;
-			vsync-active = <0>;
-			hsync-active = <0>;
+			vsync-active = <1>;
+			hsync-active = <1>;
 		};
 
 		port {
@@ -164,4 +164,3 @@
 &mipi_dsi {
 	status = "okay";
 };
-
