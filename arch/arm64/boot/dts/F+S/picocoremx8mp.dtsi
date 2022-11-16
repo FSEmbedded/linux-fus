@@ -31,6 +31,8 @@
 		snvs_rtc = &snvs_rtc;
 		ethernet0 = &eqos;
 		ethernet1 = &fec;
+		spi1 = &ecspi2;
+		spi2 = &ecspi3;
 	};
 
 	/* -------------------- BOARD INFO -------------------- */

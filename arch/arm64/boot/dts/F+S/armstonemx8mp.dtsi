@@ -70,6 +70,8 @@
 	aliases {
 		ethernet0 = &eqos;
 		ethernet1 = &fec;
+		spi0 = &ecspi2;
+		spi1 = &ecspi3;
 	};
 
 	reserved-memory {
