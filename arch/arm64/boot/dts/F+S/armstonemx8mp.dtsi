@@ -56,6 +56,11 @@
 #undef CONFIG_ARMSTONEMX8MP_UART_B_RTSCTS
 #endif
 
+#ifdef CONFIG_ARMSTONEMX8MP_SPI_B
+#undef CONFIG_ARMSTONEMX8MP_I2C_A
+#endif
+
+
 #if defined(CONFIG_ARMSTONEMX8MP_UART_D) || defined(CONFIG_ARMSTONEMX8MP_UART_D_RTSCTS) \
 	|| defined(CONFIG_ARMSTONEMX8MP_SPI_B) || defined(CONFIG_ARMSTONEMX8MP_I2C_C) \
 	|| defined(CONFIG_ARMSTONEMX8MP_UART_B) || defined(CONFIG_ARMSTONEMX8MP_UART_C)
@@ -72,6 +77,12 @@
 		ethernet1 = &fec;
 		spi0 = &ecspi2;
 		spi1 = &ecspi3;
+		i2c0 = &i2c1;
+		i2c1 = &i2c2;
+		i2c2 = &i2c3;
+		i2c3 = &i2c4;
+		i2c4 = &i2c5;
+		i2c5 = &i2c6;
 	};
 
 	reserved-memory {
