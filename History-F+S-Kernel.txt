@@ -4,10 +4,16 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight,
         MM: M Mini, MN: M Nano
 
-linux-5.4.70-fsimx6-B2022.10 (30.09.2022)
+linux-5.4.70-fsimx6-Y2022.11 (22.11.2022)
 -----------------------------------------
 Supported boards: armStoneMX8MP, PicoCoreMX8MP, PicoCoreMX8MPr2
 
+- Improve picocoremx8mp.dtsi
+- Improve armstonemx8mp.dtsi
+- [fsimx8mp]: Add aliases for spi_a/b
+- Improve lvds display timings for picocoremx8mp(r2)
+- Improve picocoremx8mpr2 g133han01 display
+- Add g133han01 lvds display support for picocoremx8mp(r2)
 - mmc: sdhci-esdhc-imx: disable CMDQ support
 - Change fsimx8mp aliases for fec and eqos
 - Add support for picocoremx8mpr2
