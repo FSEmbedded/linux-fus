@@ -1,0 +1,43 @@
+/*
+ * Copyright (C) 2022 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#include "picocoremx8mp.dts"
+
+/ {
+	sound_sgtl5000_ext: sound-sgtl5000-ext {
+		compatible = "fsl,imx-audio-sgtl5000";
+		model = "imx-sgtl5000-ext";
+		cpu-dai = <&sai5>;
+		audio-codec = <&sgtl5000_ext>;
+		codec-master;
+		audio-routing =
+			"LINE_IN", "Line In Jack",
+//###			"MIC_IN", "Mic Jack",
+//###			"Line Out Jack", "LINE_OUT",
+			"Headphone Jack", "HP_OUT";
+	};
+};
+
+&i2c4 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c4>;
+	status = "okay";
+
+	sgtl5000_ext: sgtl5000-ext@a {
+		#sound-dai-cells = <0>;
+		compatible = "fsl,sgtl5000";
+		reg = <0xa>;
+		mono2both;
+		clocks = <&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI5_MCLK1>;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+		status = "okay";
+	};
+};
