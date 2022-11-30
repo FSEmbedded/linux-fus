@@ -68,6 +68,7 @@
 #define RTLGEN_SPEED_MASK			0x0630
 
 #define RTL_GENERIC_PHYID			0x001cc800
+#define RTL_8211FVD_PHYID			0x001cc878
 
 /* page 0x0d04, register 0x10 */
 #define RTL8211F_LCR                    0x10
@@ -129,6 +130,11 @@ struct rtl821x_priv {
 	bool set_act;
 };
 
+static bool is_rtl8211fvd(u32 phy_id)
+{
+	return phy_id == RTL_8211FVD_PHYID;
+}
+
 static int rtl821x_read_page(struct phy_device *phydev)
 {
 	return __phy_read(phydev, RTL821x_PAGE_SELECT);
@@ -143,6 +149,7 @@ static int rtl821x_probe(struct phy_device *phydev)
 {
 	struct device *dev = &phydev->mdio.dev;
 	struct rtl821x_priv *priv;
+	u32 phy_id = phydev->drv->phy_id;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -393,6 +400,7 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 {
 	struct rtl821x_priv *priv = phydev->priv;
 	struct device *dev = &phydev->mdio.dev;
+	u32 phy_id = phydev->drv->phy_id;
 	u16 val_txdly, val_rxdly;
 	int ret;
 
@@ -1060,6 +1068,18 @@ static struct phy_driver realtek_drvs[] = {
 	}, {
 		PHY_ID_MATCH_EXACT(0x001cc916),
 		.name		= "RTL8211F Gigabit Ethernet",
+		.probe		= rtl821x_probe,
+		.config_init	= &rtl8211f_config_init,
+		.read_status	= rtlgen_read_status,
+		.config_intr	= &rtl8211f_config_intr,
+		.handle_interrupt = rtl8211f_handle_interrupt,
+		.suspend	= genphy_suspend,
+		.resume		= rtl821x_resume,
+		.read_page	= rtl821x_read_page,
+		.write_page	= rtl821x_write_page,
+	}, {
+		PHY_ID_MATCH_EXACT(RTL_8211FVD_PHYID),
+		.name		= "RTL8211F-VD Gigabit Ethernet",
 		.probe		= rtl821x_probe,
 		.config_init	= &rtl8211f_config_init,
 		.read_status	= rtlgen_read_status,
