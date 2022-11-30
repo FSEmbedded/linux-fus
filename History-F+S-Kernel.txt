@@ -4,6 +4,103 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight,
         MM: M Mini, MN: M Nano
 
+linux-5.4.70-fsimx6-Y2022.11 (22.11.2022)
+-----------------------------------------
+Supported boards: armStoneMX8MP, PicoCoreMX8MP, PicoCoreMX8MPr2
+
+- Improve picocoremx8mp.dtsi
+- Improve armstonemx8mp.dtsi
+- [fsimx8mp]: Add aliases for spi_a/b
+- Improve lvds display timings for picocoremx8mp(r2)
+- Improve picocoremx8mpr2 g133han01 display
+- Add g133han01 lvds display support for picocoremx8mp(r2)
+- mmc: sdhci-esdhc-imx: disable CMDQ support
+- Change fsimx8mp aliases for fec and eqos
+- Add support for picocoremx8mpr2
+- Rework device tree support for picocoremx8mp
+- Correct define names in armstonemx8mp device tree include file
+- Improve lvds display timings for armstonemx8mp
+- MLK-25498 gpu: drm: imx: Add missing PHY init to cdns_mhdp_imx_resume
+- Add support for armstonemx8mp
+- Merge tag 'fsimx8mm-B2021.06.1'
+
+linux-5.4.70-fsimx6-B2022.10 (30.09.2022)
+-----------------------------------------
+Supported boards: armStoneA9, armStoneA9r2, armStoneA9r3, efusA9, efusA9r2
+PicoMODA9, NetDCUA9, QBlissA9, QBlissA9r2
+
+- Add missing GPIO1 (Pin 40) signal to picocoma7.dts
+
+
+
+linux-5.4.70-fsimx8mm-B2021.06.1 (26.09.2022)
+---------------------------------------------
+Supported boards: PicoCoreMX8MM PicoCoreMX8MMr2 PicoCoreMX8MX
+
+- Merge tag 'fsimx8mm-Y2021.04.2' into HEAD
+
+
+
+linux-5.4.70-fsimx6-Y2022.09 (21.09.2022)
+-----------------------------------------
+Supported boards: efusA9 efusA9r2 armStoneA9 armStoneA9r2 PicoModA9 NetDCUA9
+QBlissA9 armStoneA9 armStoneA9r2 armStoneA9r3
+
+- Merge remote-tracking branch 'origin/master'
+- Support more features for Realtek PHY
+- Add TSC2004 support for fsimx6
+- Add support for armStoneA9r3 and armStoneA9r4
+- Add ssc support for rtl8211f
+- Support configuration of Auto-MDIX and LED Activity for dp83848
+- Move LED configuration for ETH-PHYs to device-trees
+- Support ALDPS-Enable and CLKOUT-Disable for Realtek PHY
+- Fix compiler warnings for sgtl5000 node
+
+
+
+linux-5.4.70-fsimx8mm-Y2021.04.2 (15.09.2022)
+---------------------------------------------
+Supported boards: PicoCoreMX8MM PicoCoreMX8MMr2 PicoCoreMX8MX
+
+- Support more features for Realtek PHY
+- Improve realtek driver
+- Improve picocoremx8mmr2 device tree
+
+
+
+linux-5.4.70-fsimx8mm-Y2021.04.1 (25.08.2022)
+---------------------------------------------
+Supported boards: PicoCoreMX8MM PicoCoreMX8MMr2 PicoCoreMX8MX
+
+- Improve picocoremx8mm device tree layout
+- Add PicoCoreMX8MMr2 support
+- net: phy: realtek: Support SSC for the RTL8211F
+- Add rtl8211f phy led mode fixup via device tree
+- Add support for Marvel BT modules on fsimx8mm
+
+
+
+linux-5.4.70-fsimx8x-Y2022.08 (09.08.2022)
+------------------------------------------
+Supported boards: efusMX8X
+
+- Fix efusMX8X for kernel 5.4.70
+- Fix QuadSPI for fsimx8x
+- Use default timings for J070WVTC0211
+- Fix CMA and ADC nodes for fsimx8x
+- Fix Device Tree entries for lvds regulators
+- Add Novatek MIPI display for fsimx8x
+- Adjust device tree for efusmx8x
+- Set legacyfb_depth to 32 for fbdev emulation
+- Add PCF85263 to fsimx8x
+- Fix device tree for fsimx8x
+- Reduce entries in fsimx8x_defconfig
+- Increase SPI clock slightly to ensure a clock bigger than 60MHz
+- Fix order of i2c devices for efusmx8x
+- Use the right pcie driver for efusmx8x
+
+
+
 linux-5.4.70-fsimx7ulp-Y2022.05 (11.05.2022)
 --------------------------------------------
 Supported boards: PicoCoreMX7ULP

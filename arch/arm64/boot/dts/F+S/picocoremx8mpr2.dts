@@ -1,0 +1,305 @@
+/*
+ * Copyright (C) 2021 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOREMX8MP_BOARD_REVISION	100
+/* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOREBBDSI_BOARD_REVISION	140
+//#define SUPPORT_M7
+
+/* HDMI */
+//#define CONFIG_PICOCOREMX8MP_HDMI
+
+/* Network */
+#define CONFIG_PICOCOREMX8MP_ETH_A
+#define CONFIG_PICOCOREMX8MP_ETH_B
+
+/* WLAN/BLUETOOTH; either WLAN-only or combined WLAN/Bluetooth chip */
+#define CONFIG_PICOCOREMX8MP_WLAN
+#define CONFIG_PICOCOREMX8MP_WLAN_MARVELL_DRV
+
+/* USB */
+#define CONFIG_PICOCOREMX8MP_USB_OTG
+//#define CONFIG_PICOCOREMX8MP_USB_OTG_PWR
+#define CONFIG_PICOCOREMX8MP_USB_HOST
+
+/* EEPROM - default not mounted */
+#define CONFIG_PICOCOREMX8MP_EEPROM
+
+/* PCIe */
+#define CONFIG_PICOCOREMX8MP_PCIE
+
+/* CAN - default not mounted */
+#define CONFIG_PICOCOREMX8MP_CAN_A
+#define CONFIG_PICOCOREMX8MP_CAN_B
+
+/* I2C */
+/* default CAN_B */
+#define CONFIG_PICOCOREMX8MP_I2C_A
+#define CONFIG_PICOCOREMX8MP_I2C_B
+#define CONFIG_PICOCOREMX8MP_I2C_C
+#define CONFIG_PICOCOREMX8MP_I2C_D
+#define CONFIG_PICOCOREMX8MP_I2C_E
+//#define CONFIG_PICOCOREMX8MP_I2C_D_A71CH
+
+/* PWM and backlight brightness */
+#define CONFIG_PICOCOREMX8MP_PWM_A
+#define CONFIG_PICOCOREMX8MP_BL_CTRL
+
+/* UART_A - UART2 */
+#define CONFIG_PICOCOREMX8MP_UART_A
+#define CONFIG_PICOCOREMX8MP_UART_A_RTSCTS
+
+/* UART_B - UART4 */
+#define CONFIG_PICOCOREMX8MP_UART_B
+#define CONFIG_PICOCOREMX8MP_UART_B_RTSCTS
+
+/* UART_C - UART1 */
+#define CONFIG_PICOCOREMX8MP_UART_C
+
+/* UART_D - UART3 */
+#define CONFIG_PICOCOREMX8MP_UART_D
+
+/* SPI */
+#define CONFIG_PICOCOREMX8MP_SPI_A
+#define CONFIG_PICOCOREMX8MP_SPI_B
+#define CONFIG_PICOCOREMX8MP_SPI_C
+
+/* Audio */
+#define CONFIG_PICOCOREMX8MP_I2S_A
+#define CONFIG_PICOCOREMX8MP_I2S_B
+/* SGTL5000 needs I2S_A */
+#define CONFIG_PICOCOREMX8MP_SGTL5000_AUDIO
+
+
+/* External RTC - default not mounted */
+#define CONFIG_PICOCOREMX8MP_EXT_RTC
+
+#define CONFIG_PICOCOREMX8MP_CAMERA
+
+/* Camera on parallel CSI interface */
+//#define CONFIG_PICOCOREMX8MP_PARALLEL_CAMERA
+
+/* Camera on serial MIPI CSI interface */
+//#define CONFIG_PICOCOREMX8MP_SERIAL_CAMERA
+
+/*
+ * SD_A - External SD port with Card Detect (CD) and Write Protect (WP)
+ * On picocoremx8mp SKIT: external port is Micro-SD card slot with CD but without WP
+ */
+#define CONFIG_PICOCOREMX8MP_SD_A
+#define CONFIG_PICOCOREMX8MP_SD_A_CD
+//#define CONFIG_PICOCOREMX8MP_SD_A_WP
+//#define CONFIG_PICOCOREMX8MP_SD_A_8_Bit
+
+/*
+ * SD_B - External SD port with Card Detect (CD) and Write Protect (WP)
+ * only available if WLAN is not equipped.
+ */
+#define CONFIG_PICOCOREMX8MP_SD_B
+#define CONFIG_PICOCOREMX8MP_SD_B_CD
+#define CONFIG_PICOCOREMX8MP_SD_B_WP
+
+
+/* If WLAN is equipped, SD_B is not available */
+#ifdef CONFIG_PICOCOREMX8MP_WLAN
+#undef CONFIG_PICOCOREMX8MP_SD_B
+#undef CONFIG_PICOCOREMX8MP_SD_B_CD
+#undef CONFIG_PICOCOREMX8MP_SD_B_WP
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MP_HDMI
+#define CONFIG_PICOCOREMX8MP_HDMI_CEC
+#define CONFIG_PICOCOREMX8MP_HDMI_HPD
+#undef CONFIG_PICOCOREMX8MP_I2C_A
+#undef CONFIG_PICOCOREMX8MP_CAN_B
+#undef CONFIG_PICOCOREMX8MP_CAN_A
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MP_CAN_B
+#undef CONFIG_PICOCOREMX8MP_I2C_A
+#undef CONFIG_PICOCOREMX8MP_HDMI_CEC
+#undef CONFIG_PICOCOREMX8MP_HDMI_HPD
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MP_I2C_A
+#undef CONFIG_PICOCOREMX8MP_CAN_B
+#undef CONFIG_PICOCOREMX8MP_HDMI_CEC
+#undef CONFIG_PICOCOREMX8MP_HDMI_HPD
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MP_SGTL5000_AUDIO
+#define CONFIG_PICOCOREMX8MP_I2S_A
+#endif
+
+/*
+ * Exclude devices from Linux that are used by the Cortex-M7 FreeRTOS examples
+ *
+ * - UART_C: Debug Console for Cortex-M7
+ * - PWM_A: PWM Signal for the PWM example
+ * - CAN_A: CAN-Signal for FlexCAN examples
+ * - I2C_A:  I2C Bus used in I2C examples
+ * - SPI_B:  SPI_B is used for ECSPI examples
+ *
+ */
+
+#ifdef SUPPORT_M7
+#undef CONFIG_PICOCOREMX8MP_UART_C
+#undef CONFIG_PICOCOREMX8MP_PWM_A
+#undef CONFIG_PICOCOREMX8MP_CAN_A
+#undef CONFIG_PICOCOREMX8MP_I2C_A
+#undef CONFIG_PICOCOREMX8MP_SPI_B
+#endif
+
+#include "picocoremx8mp.dtsi"
+
+/ {
+	model = "F&S PicoCoreMX8MPr2";
+
+#ifdef CONFIG_PICOCOREMX8MP_WLAN
+	reg_wlan_pdn: regulator-usdhc2-wlan {
+		compatible = "regulator-fixed";
+		regulator-name = "WLAN_RESET";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		gpio = <&gpio4 18 GPIO_ACTIVE_HIGH>;
+		off-on-delay-us = <1000>;
+		enable-active-low;
+	};
+#endif
+};
+
+/* -------------------- BOARD INFO -------------------- */
+&bdinfo {
+	board_name = "picocoremx8mpr2";
+};
+
+#ifdef CONFIG_PICOCOREMX8MP_ETH_A
+&eqos {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_eqos>;
+	phy-mode = "rgmii-id";
+	phy-handle = <&ethphy0>;
+	status = "okay";
+
+	mdio {
+		compatible = "snps,dwmac-mdio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy0: ethernet-phy@4 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <4>;
+			rtl821x,clkout-disable;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <1>; // LED1 for link indication
+			rtl821x,led-act = <1>; // LED1 for activity
+			reset-gpios = <&gpio1 11 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <10000>;
+			reset-deassert-us = <50000>;
+			interrupt-parent = <&gpio1>;
+			interrupts = <4 IRQ_TYPE_LEVEL_LOW>;
+			eee-broken-1000t;
+		};
+	};
+};
+#endif /* CONFIG_PICOCOREMX8MP_ETH_A */
+
+#ifdef CONFIG_PICOCOREMX8MP_ETH_B
+&fec {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_fec>;
+	phy-mode = "rgmii-id";
+	phy-handle = <&ethphy1>;
+	fsl,magic-packet;
+	status = "okay";
+
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy1: ethernet-phy@5 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <5>;
+			rtl821x,clkout-disable;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <1>; // LED1 for link indication
+			rtl821x,led-act = <1>; // LED1 for activity
+			reset-gpios = <&gpio4 28 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <10000>;
+			reset-deassert-us = <50000>;
+			interrupt-parent = <&gpio4>;
+			interrupts = <29 IRQ_TYPE_LEVEL_LOW>;
+			eee-broken-1000t;
+		};
+	};
+};
+#endif /* CONFIG_PICOCOREMX8MP_ETH_B */
+
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog>;
+
+#ifdef CONFIG_PICOCOREMX8MP_ETH_A
+	pinctrl_eqos: eqosgrp {
+		fsl,pins = <
+			MX8MP_IOMUXC_ENET_MDC__ENET_QOS_MDC	0x3
+			MX8MP_IOMUXC_ENET_MDIO__ENET_QOS_MDIO	0x3
+			MX8MP_IOMUXC_ENET_RD0__ENET_QOS_RGMII_RD0	0x91
+			MX8MP_IOMUXC_ENET_RD1__ENET_QOS_RGMII_RD1	0x91
+			MX8MP_IOMUXC_ENET_RD2__ENET_QOS_RGMII_RD2	0x91
+			MX8MP_IOMUXC_ENET_RD3__ENET_QOS_RGMII_RD3	0x91
+			MX8MP_IOMUXC_ENET_RXC__CCM_ENET_QOS_CLOCK_GENERATE_RX_CLK	0x91
+			MX8MP_IOMUXC_ENET_RX_CTL__ENET_QOS_RGMII_RX_CTL	0x91
+			MX8MP_IOMUXC_ENET_TD0__ENET_QOS_RGMII_TD0		0x1f
+			MX8MP_IOMUXC_ENET_TD1__ENET_QOS_RGMII_TD1		0x1f
+			MX8MP_IOMUXC_ENET_TD2__ENET_QOS_RGMII_TD2		0x1f
+			MX8MP_IOMUXC_ENET_TD3__ENET_QOS_RGMII_TD3		0x1f
+			MX8MP_IOMUXC_ENET_TX_CTL__ENET_QOS_RGMII_TX_CTL	0x1f
+			MX8MP_IOMUXC_ENET_TXC__CCM_ENET_QOS_CLOCK_GENERATE_TX_CLK	0x1f
+			/* ETH_A_PHY_INTn */
+			MX8MP_IOMUXC_GPIO1_IO04__GPIO1_IO04		0x19
+			/* ETH_A_PHY_RSTn */
+			MX8MP_IOMUXC_GPIO1_IO11__GPIO1_IO11		0x19
+		>;
+	};
+#endif /* CONFIG_PICOCOREMX8MP_ETH_A */
+
+#ifdef CONFIG_PICOCOREMX8MP_ETH_B
+	pinctrl_fec: fecgrp {
+		fsl,pins = <
+			MX8MP_IOMUXC_SAI1_RXD2__ENET1_MDC		0x3
+			MX8MP_IOMUXC_SAI1_RXD3__ENET1_MDIO		0x3
+			MX8MP_IOMUXC_SAI1_RXD4__ENET1_RGMII_RD0		0x91
+			MX8MP_IOMUXC_SAI1_RXD5__ENET1_RGMII_RD1		0x91
+			MX8MP_IOMUXC_SAI1_RXD6__ENET1_RGMII_RD2		0x91
+			MX8MP_IOMUXC_SAI1_RXD7__ENET1_RGMII_RD3		0x91
+			MX8MP_IOMUXC_SAI1_TXC__ENET1_RGMII_RXC		0x91
+			MX8MP_IOMUXC_SAI1_TXFS__ENET1_RGMII_RX_CTL	0x91
+			MX8MP_IOMUXC_SAI1_TXD0__ENET1_RGMII_TD0		0x1f
+			MX8MP_IOMUXC_SAI1_TXD1__ENET1_RGMII_TD1		0x1f
+			MX8MP_IOMUXC_SAI1_TXD2__ENET1_RGMII_TD2		0x1f
+			MX8MP_IOMUXC_SAI1_TXD3__ENET1_RGMII_TD3		0x1f
+			MX8MP_IOMUXC_SAI1_TXD4__ENET1_RGMII_TX_CTL	0x1f
+			MX8MP_IOMUXC_SAI1_TXD5__ENET1_RGMII_TXC		0x1f
+			/* ETH_B_PHY_INTn */
+			MX8MP_IOMUXC_SAI3_RXC__GPIO4_IO29		0x19
+			/* ETH_B_PHY_RSTn */
+			MX8MP_IOMUXC_SAI3_RXFS__GPIO4_IO28		0x19
+		>;
+	};
+#endif /* CONFIG_PICOCOREMX8MP_ETH_B */
+};

@@ -42,8 +42,6 @@
 #define RTL8211E_TX_DELAY			BIT(12)
 #define RTL8211E_RX_DELAY			BIT(11)
 
-#define RTL8211F_CLKOUT_EN			BIT(0)
-
 #define RTL8201F_ISR				0x1e
 #define RTL8201F_ISR_ANERR			BIT(15)
 #define RTL8201F_ISR_DUPLEX			BIT(13)
@@ -71,13 +69,64 @@
 
 #define RTL_GENERIC_PHYID			0x001cc800
 
+/* page 0x0d04, register 0x10 */
+#define RTL8211F_LCR                    0x10
+/* page 0x0d04, register 0x10 */
+#define RTL8211F_EEELCR                 0x11
+/* page 0xa43, register 0x18 */
+#define RTL8211F_PHYCR1                 0x18
+/* page 0xa43, register 0x19 */
+#define RTL8211F_PHYCR2				0x19
+
+#define RTL821X_CLKOUT_EN_FEATURE		(1 << 0)
+
+#define RTL_GENERIC_PHYID			0x001cc800
+
+/* page 0x0d04, register 0x10 */
+#define RTL8211F_LCR                    0x10
+/* page 0x0d04, register 0x10 */
+#define RTL8211F_EEELCR                 0x11
+/* page 0xa43, register 0x18 */
+#define RTL8211F_PHYCR1                 0x18
+/* page 0xa43, register 0x19 */
+#define RTL8211F_PHYCR2                 0x19
+
+#define RTL8211F_SSC_CLKOUT             0x3080
+#define RTL8211F_SSC_SYSCLK             0x0008
+
+#define RTL8211F_ALDPS_PLL_OFF          BIT(1)
+#define RTL8211F_ALDPS_ENABLE           BIT(2)
+#define RTL8211F_ALDPS_XTAL_OFF         BIT(12)
+#define RTL8211F_ALDPS_MASK             (RTL8211F_ALDPS_PLL_OFF | RTL8211F_ALDPS_ENABLE | RTL8211F_ALDPS_XTAL_OFF)
+
+#define RTL8211F_CLKOUT_EN              (1 << 0)
+
+#define RTL821X_CLKOUT_DISABLE          (1 << 0)
+#define RTL821X_ALDPS_ENABLE            (1 << 1)
+#define RTL821X_SSC_RXC_EN_FEATURE      (1 << 2)
+#define RTL821X_SSC_SYSCLK_EN_FEATURE   (1 << 3)
+#define RTL821X_SSC_CLKOUT_EN_FEATURE   (1 << 4)
+#define RTL821X_GBIT_DISABLE            (1 << 5)
+
+#define LED_MODE_B                      BIT(15)
+#define LED_LINK(X)                     (0x0b << (5*X))
+#define LED_ACT(X)                      (0x10 << (5*X))
+#define LED_LINK_MASK                   (LED_LINK(2)|LED_LINK(1)|LED_LINK(0))
+#define LED_ACT_MASK                    (LED_ACT(2)|LED_ACT(1)|LED_ACT(0))
+#define EEE_LED_MASK                    (BIT(3)|BIT(2)|BIT(1))
+
 MODULE_DESCRIPTION("Realtek PHY driver");
 MODULE_AUTHOR("Johnson Leung");
 MODULE_LICENSE("GPL");
 
 struct rtl821x_priv {
+	u32 quirks;
 	u16 phycr1;
 	u16 phycr2;
+	u32 led_link;
+	u32 led_act;
+	bool set_link;
+	bool set_act;
 };
 
 static int rtl821x_read_page(struct phy_device *phydev)
@@ -94,27 +143,38 @@ static int rtl821x_probe(struct phy_device *phydev)
 {
 	struct device *dev = &phydev->mdio.dev;
 	struct rtl821x_priv *priv;
-	int ret;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
 
-	ret = phy_read_paged(phydev, 0xa43, RTL8211F_PHYCR1);
-	if (ret < 0)
-		return ret;
+	/* Set default values */
+	priv->set_link = false;
+	priv->set_act = false;
 
-	priv->phycr1 = ret & (RTL8211F_ALDPS_PLL_OFF | RTL8211F_ALDPS_ENABLE | RTL8211F_ALDPS_XTAL_OFF);
-	if (of_property_read_bool(dev->of_node, "realtek,aldps-enable"))
-		priv->phycr1 |= RTL8211F_ALDPS_PLL_OFF | RTL8211F_ALDPS_ENABLE | RTL8211F_ALDPS_XTAL_OFF;
+	if (of_property_read_bool(dev->of_node, "rtl821x,clkout-disable"))
+		priv->quirks |= RTL821X_CLKOUT_DISABLE;
 
-	ret = phy_read_paged(phydev, 0xa43, RTL8211F_PHYCR2);
-	if (ret < 0)
-		return ret;
+	if (of_property_read_bool(dev->of_node, "rtl821x,aldps-enable"))
+		priv->quirks |= RTL821X_ALDPS_ENABLE;
 
-	priv->phycr2 = ret & RTL8211F_CLKOUT_EN;
-	if (of_property_read_bool(dev->of_node, "realtek,clkout-disable"))
-		priv->phycr2 &= ~RTL8211F_CLKOUT_EN;
+	if (of_property_read_bool(dev->of_node, "rtl821x,ssc-rxc-enable"))
+		priv->quirks |= RTL821X_SSC_RXC_EN_FEATURE;
+
+	if (of_property_read_bool(dev->of_node, "rtl821x,ssc-sysclk-enable"))
+		priv->quirks |= RTL821X_SSC_SYSCLK_EN_FEATURE;
+
+	if (of_property_read_bool(dev->of_node, "rtl821x,ssc-clkout-enable"))
+		priv->quirks |= RTL821X_SSC_CLKOUT_EN_FEATURE;
+
+	if (!of_property_read_u32(dev->of_node, "rtl821x,led-link", &priv->led_link))
+		priv->set_link = true;
+
+	if (!of_property_read_u32(dev->of_node, "rtl821x,led-act", &priv->led_act))
+		priv->set_act = true;
+
+	if (of_property_read_bool(dev->of_node, "rtl821x,gbit-disable"))
+		priv->quirks |= RTL821X_GBIT_DISABLE;
 
 	phydev->priv = priv;
 
@@ -336,15 +396,6 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 	u16 val_txdly, val_rxdly;
 	int ret;
 
-	ret = phy_modify_paged_changed(phydev, 0xa43, RTL8211F_PHYCR1,
-				       RTL8211F_ALDPS_PLL_OFF | RTL8211F_ALDPS_ENABLE | RTL8211F_ALDPS_XTAL_OFF,
-				       priv->phycr1);
-	if (ret < 0) {
-		dev_err(dev, "aldps mode  configuration failed: %pe\n",
-			ERR_PTR(ret));
-		return ret;
-	}
-
 	switch (phydev->interface) {
 	case PHY_INTERFACE_MODE_RGMII:
 		val_txdly = 0;
@@ -400,14 +451,109 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 			val_rxdly ? "enabled" : "disabled");
 	}
 
-	ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2,
-			       RTL8211F_CLKOUT_EN, priv->phycr2);
+	if ((priv->quirks & RTL821X_ALDPS_ENABLE)) {
+		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR1, RTL8211F_ALDPS_MASK,
+				RTL8211F_ALDPS_ENABLE | RTL8211F_ALDPS_PLL_OFF | RTL8211F_ALDPS_XTAL_OFF);
+		if (ret < 0) {
+			dev_err(&phydev->mdio.dev, "aldps enable failed\n");
+			return ret;
+		}
+	} else {
+		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR1, RTL8211F_ALDPS_MASK, 0);
+		if (ret < 0) {
+			dev_err(&phydev->mdio.dev, "aldps disable failed\n");
+			return ret;
+		}
+	}
+	if ((priv->quirks & RTL821X_CLKOUT_DISABLE)) {
+		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2, RTL8211F_CLKOUT_EN, 0);
+		if (ret < 0) {
+			dev_err(&phydev->mdio.dev, "clkout disable failed\n");
+			return ret;
+		}
+	} else {
+		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2, RTL8211F_CLKOUT_EN, RTL8211F_CLKOUT_EN);
+		if (ret < 0) {
+			dev_err(&phydev->mdio.dev, "clkout enable failed\n");
+			return ret;
+		}
+	}
+
+	if ((priv->quirks & RTL821X_SSC_RXC_EN_FEATURE)) {
+		ret = phy_modify_paged(phydev, 0x0C44, 0x13, 0x5F00, 0x5F00); // RXC SSC initialization & enable RXC SSC
+		if (ret < 0) {
+			dev_err(&phydev->mdio.dev, "rxc ssc init and enable failed\n");
+			return ret;
+		}
+	}
+
+	if ((priv->quirks & RTL821X_SSC_SYSCLK_EN_FEATURE)) {
+		ret = phy_modify_paged(phydev, 0x0C44, 0x17, 0x5F00, 0x5F00); // System Clock SSC initialization
+		if (ret < 0) {
+			dev_err(&phydev->mdio.dev, "sysclock ssc init failed\n");
+			return ret;
+		}
+		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2, RTL8211F_SSC_SYSCLK, RTL8211F_SSC_SYSCLK);
+		if (ret < 0) {
+			dev_err(&phydev->mdio.dev, "sysclock ssc enable failed\n");
+			return ret;
+		}
+	}
+
+	/* If CLKOUT is disabled, do not enable SSC for it */
+	if (!(priv->quirks & RTL821X_CLKOUT_DISABLE)) {
+		if ((priv->quirks & RTL821X_SSC_CLKOUT_EN_FEATURE)) {
+			ret = phy_modify_paged(phydev, 0x0D09, 0x10, 0xCF00, 0xCF00); // CLK_OUT SSC initialization
+			if (ret < 0) {
+				dev_err(&phydev->mdio.dev, "clkout ssc init failed\n");
+				return ret;
+			}
+			ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2, RTL8211F_SSC_CLKOUT, RTL8211F_SSC_CLKOUT);
+			if (ret < 0) {
+				dev_err(&phydev->mdio.dev, "clkout ssc enable failed\n");
+				return ret;
+			}
+		}
+	}
+
+	/* Set LED Configuration Register */
+
+	/* Default to LED Mode B */
+	ret = phy_modify_paged(phydev, 0xd04, RTL8211F_LCR, LED_MODE_B, LED_MODE_B);
 	if (ret < 0) {
-		dev_err(dev, "clkout configuration failed: %pe\n",
-			ERR_PTR(ret));
+		dev_err(&phydev->mdio.dev, "led mode b failed\n");
+		return ret;
+	}
+	/* Set LED for link indication if specified */
+	if (priv->set_link) {
+		ret = phy_modify_paged(phydev, 0xd04, RTL8211F_LCR, LED_LINK_MASK, LED_LINK(priv->led_link));
+		if (ret < 0) {
+			dev_err(&phydev->mdio.dev, "led link indication failed\n");
+			return ret;
+		}
+	}
+	/* Set LED for activity if specified */
+	if (priv->set_act) {
+		ret = phy_modify_paged(phydev, 0xd04, RTL8211F_LCR, LED_ACT_MASK, LED_ACT(priv->led_act));
+		if (ret < 0) {
+			dev_err(&phydev->mdio.dev, "led activity failed\n");
+			return ret;
+		}
+	}
+
+	/* Disable EEE LED indication */
+	ret = phy_modify_paged(phydev, 0xd04, RTL8211F_EEELCR, EEE_LED_MASK, 0);
+	if (ret < 0) {
+		dev_err(&phydev->mdio.dev, "eee led disable failed\n");
 		return ret;
 	}
 
+	if ((priv->quirks & RTL821X_GBIT_DISABLE)) {
+		linkmode_clear_bit(ETHTOOL_LINK_MODE_1000baseT_Half_BIT, phydev->supported);
+		linkmode_clear_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT, phydev->supported);
+    }
+
+	/* phy reset required */
 	return genphy_soft_reset(phydev);
 }
 

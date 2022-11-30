@@ -16,6 +16,7 @@
 /* Registers */
 #define DP83848_MICR			0x11 /* MII Interrupt Control Register */
 #define DP83848_MISR			0x12 /* MII Interrupt Status Register */
+#define DP83848_PHYCR			0x19 /* PHY Control Register */
 
 /* MICR Register Fields */
 #define DP83848_MICR_INT_OE		BIT(0) /* Interrupt Output Enable */
@@ -30,6 +31,10 @@
 #define DP83848_MISR_LINK_INT_EN	BIT(5) /* Link status */
 #define DP83848_MISR_ED_INT_EN		BIT(6) /* Energy detect */
 #define DP83848_MISR_LQM_INT_EN		BIT(7) /* Link Quality Monitor */
+
+/* PHYCR Register Fields */
+#define DP83848_PHYCR_LED_CNFG		BIT(5) /* LED Configuration (0: Link, 1: Link+Activity) */
+#define DP83848_PHYCR_MDIX_EN		BIT(15) /* Auto-MDIX (0: Disabled, 1: Enabled) */
 
 #define DP83848_INT_EN_MASK		\
 	(DP83848_MISR_ANC_INT_EN |	\
@@ -50,6 +55,30 @@
 	 DP83848_MISR_DUP_INT |	\
 	 DP83848_MISR_SPD_INT |	\
 	 DP83848_MISR_LINK_INT)
+
+struct dp83848_priv {
+	u32 quirks;
+};
+
+static int dp83848_probe(struct phy_device *phydev)
+{
+	struct device *dev = &phydev->mdio.dev;
+	struct dp83848_priv *priv;
+
+	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+	if (!priv)
+		return -ENOMEM;
+
+	if (of_property_read_bool(dev->of_node, "dp83848,led-activity"))
+		priv->quirks |= DP83848_PHYCR_LED_CNFG;
+
+	if (of_property_read_bool(dev->of_node, "dp83848,auto-mdix"))
+		priv->quirks |= DP83848_PHYCR_MDIX_EN;
+
+	phydev->priv = priv;
+
+	return 0;
+}
 
 static int dp83848_ack_interrupt(struct phy_device *phydev)
 {
@@ -111,6 +140,33 @@ static irqreturn_t dp83848_handle_interrupt(struct phy_device *phydev)
 
 static int dp83848_config_init(struct phy_device *phydev)
 {
+	int ret;
+	u16 reg;
+	struct dp83848_priv *priv = phydev->priv;
+
+	ret = genphy_config_init(phydev);
+	if (ret < 0)
+		return ret;
+
+	reg = phy_read(phydev, DP83848_PHYCR);
+
+	/* If not set by the Device-Tree, disable LED Activity */
+	if ((priv->quirks & DP83848_PHYCR_LED_CNFG))
+		reg |= DP83848_PHYCR_LED_CNFG;
+	else
+		reg &= ~DP83848_PHYCR_LED_CNFG;
+
+	/* If enabled by HW, do not disable Auto-MDIX */
+	if ((priv->quirks & DP83848_PHYCR_MDIX_EN))
+		reg |= DP83848_PHYCR_MDIX_EN;
+
+	phy_write(phydev, 0x19, DP83848_PHYCR);
+
+	return 0;
+}
+
+static int dp83620_config_init(struct phy_device *phydev)
+{
 	int val;
 
 	/* DP83620 always reports Auto Negotiation Ability on BMSR. Instead,
@@ -132,13 +188,14 @@ static struct mdio_device_id __maybe_unused dp83848_tbl[] = {
 };
 MODULE_DEVICE_TABLE(mdio, dp83848_tbl);
 
-#define DP83848_PHY_DRIVER(_id, _name, _config_init)		\
+#define DP83848_PHY_DRIVER(_id, _name, _config_init, _probe)	\
 	{							\
 		.phy_id		= _id,				\
 		.phy_id_mask	= 0xfffffff0,			\
 		.name		= _name,			\
 		/* PHY_BASIC_FEATURES */			\
 								\
+		.probe		= _probe,			\
 		.soft_reset	= genphy_soft_reset,		\
 		.config_init	= _config_init,			\
 		.suspend	= genphy_suspend,		\
@@ -151,13 +208,13 @@ MODULE_DEVICE_TABLE(mdio, dp83848_tbl);
 
 static struct phy_driver dp83848_driver[] = {
 	DP83848_PHY_DRIVER(TI_DP83848C_PHY_ID, "TI DP83848C 10/100 Mbps PHY",
-			   NULL),
+			   NULL, NULL),
 	DP83848_PHY_DRIVER(NS_DP83848C_PHY_ID, "NS DP83848C 10/100 Mbps PHY",
-			   NULL),
+			   dp83848_config_init, dp83848_probe),
 	DP83848_PHY_DRIVER(TI_DP83620_PHY_ID, "TI DP83620 10/100 Mbps PHY",
-			   dp83848_config_init),
+			   dp83620_config_init, NULL),
 	DP83848_PHY_DRIVER(TLK10X_PHY_ID, "TI TLK10X 10/100 Mbps PHY",
-			   NULL),
+			   NULL, NULL),
 };
 module_phy_driver(dp83848_driver);
 

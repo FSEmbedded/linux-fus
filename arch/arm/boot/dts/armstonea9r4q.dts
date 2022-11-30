@@ -1,0 +1,286 @@
+/*
+ * Copyright (C) 2016-2017 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_ARMSTONEA9R4_BOARD_REVISION	200
+
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_HDMI	1	/* DVI/HDMI via HDMI connector */
+#define DISPLAY_LVDS0	2	/* LVDS channel 0 */
+#define DISPLAY_LVDS1	3	/* LVDS channel 1 */
+
+/*
+ * Set the display configuration:
+ *
+ * - If you have no display, set all three settings to DISPLAY_NONE.
+ * - If you have one display, set MXCFB0 to one of the display types above and
+ *   leave the other settings at DISPLAY_NONE.
+ * - If you have two displays, set MXCFB0 and MXCFB1 to a display type from
+ *   above and leave MXCFB2 at DISPLAY_NONE.
+ * - If you have three displays, set all three settings to a display type.
+ *
+ * You have to use a different type for each display. If you want two LVDS
+ * displays, set one to DISPLAY_LVDS0 and the other to DISPLAY_LVDS1. This
+ * corresponds to the LVDS channel where the display is connected to.
+ *
+ * The first two displays will also get a video overlay, so MXCFB0 will use
+ * /dev/fb0 and /dev/fb1, MXCFB1 will use /dev/fb2 and /dev/fb3, and MXCFB2
+ * will use /dev/fb4. If you want to restrict the display output to one IPU
+ * (i.MX6 Dual/Quad has two IPUs), for example for energy saving reasons, you
+ * must set CONFIG_ARMSTONEA9R4_USE_ONE_IPU below and you must not use more
+ * than two displays. Then only MXCFB0 will get a video overlay and uses
+ * /dev/fb0 and /dev/fb1, and MXCFB1 will only use /dev/fb2.
+ */
+#define CONFIG_ARMSTONEA9R4_MXCFB0	DISPLAY_LVDS0
+#define CONFIG_ARMSTONEA9R4_MXCFB1	DISPLAY_NONE
+#define CONFIG_ARMSTONEA9R4_MXCFB2	DISPLAY_NONE
+
+/*
+ * Define this if you only want to use one IPU. This means that you can use
+ * at most two displays and only the first display can have a video overlay.
+ * If you want to have more than two displays or if you want to have two
+ * displays with a video overlay each, then you need to use both IPUs of the
+ * i.MX6 Dual/Quad CPU.
+ */
+//#define CONFIG_ARMSTONEA9R4_USE_ONE_IPU
+
+/* Configure HDMI settings here (ignored if HDMI is not used) */
+#define CONFIG_ARMSTONEA9R4_HDMI_BPP		32
+#define CONFIG_ARMSTONEA9R4_HDMI_PIX_FMT	"RGB24"
+#define CONFIG_ARMSTONEA9R4_HDMI_MODE_STR	"1920x1080M@60"
+
+/*
+ * F&S has changed the default LVDS display. To use the previous settings
+ * activate the following define.
+ */
+//#define DISPLAY_LVDS_CHIMEI
+
+/*
+ * Configure LVDS0 settings here (ignored if LVDS0 is not used)
+ * Mapping (refers to LVDS_DATA_WIDTH, not LVDS_BPP):
+ *
+ * - "spwg":  18 bpp or 24 bpp, in case of 24 bpp, bits 6 and 7 of each color
+ *            are encoded on fourth LVDS differential data pair
+ * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
+ *            all other data bits on all four differential data pairs
+ */
+#ifndef DISPLAY_LVDS_CHIMEI
+#define CONFIG_ARMSTONEA9R4_LVDS0_BPP		32
+#define CONFIG_ARMSTONEA9R4_LVDS0_PIX_FMT	"RGB24"
+#define CONFIG_ARMSTONEA9R4_LVDS0_DATA_WIDTH	24
+#define CONFIG_ARMSTONEA9R4_LVDS0_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9R4_LVDS0_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <4>;		\
+	hback-porch = <44>;		\
+	hsync-len = <2>;		\
+	vback-porch = <21>;		\
+	vfront-porch = <11>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#else
+#define CONFIG_ARMSTONEA9R4_LVDS0_BPP		32
+#define CONFIG_ARMSTONEA9R4_LVDS0_PIX_FMT	"RGB666"
+#define CONFIG_ARMSTONEA9R4_LVDS0_DATA_WIDTH	18
+#define CONFIG_ARMSTONEA9R4_LVDS0_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9R4_LVDS0_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#endif
+
+/*
+ * Configure LVDS1 settings here (ignored if LVDS1 is not used)
+ * For mapping value see above.
+ */
+#ifndef DISPLAY_LVDS_CHIMEI
+#define CONFIG_ARMSTONEA9R4_LVDS1_BPP		32
+#define CONFIG_ARMSTONEA9R4_LVDS1_PIX_FMT	"RGB24"
+#define CONFIG_ARMSTONEA9R4_LVDS1_DATA_WIDTH	24
+#define CONFIG_ARMSTONEA9R4_LVDS1_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9R4_LVDS1_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <4>;		\
+	hback-porch = <44>;		\
+	hsync-len = <2>;		\
+	vback-porch = <21>;		\
+	vfront-porch = <11>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#else
+#define CONFIG_ARMSTONEA9R4_LVDS1_BPP		32
+#define CONFIG_ARMSTONEA9R4_LVDS1_PIX_FMT	"RGB666"
+#define CONFIG_ARMSTONEA9R4_LVDS1_DATA_WIDTH	18
+#define CONFIG_ARMSTONEA9R4_LVDS1_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9R4_LVDS1_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#endif
+
+/*
+ * Depending on the needed pixel clock speed, the LVDS clock source must be
+ * selected accordingly. If pixelclock is between 38.7 MHz and 113 MHz,
+ * PLL2_PFD0 is sufficient. Otherwise PLL5 has to be used. If you have two
+ * LVDS displays with different clock requirements, set one to PLL2_PFD0 and the
+ * other to PLL5. If you have activated the displays in U-Boot already and want
+ * to keep these settings in Linux, de-activate all four lines.
+ */
+//#define CONFIG_ARMSTONEA9R4_LVDS0_CLK  IMX6QDL_CLK_PLL2_PFD0_352M
+#define CONFIG_ARMSTONEA9R4_LVDS0_CLK  IMX6QDL_CLK_PLL5_VIDEO_DIV
+//#define CONFIG_ARMSTONEA9R4_LVDS1_CLK  IMX6QDL_CLK_PLL2_PFD0_352M
+#define CONFIG_ARMSTONEA9R4_LVDS1_CLK  IMX6QDL_CLK_PLL5_VIDEO_DIV
+
+/*
+ * Define this for a two-channel display, i.e. one display, one framebuffer,
+ * but two LVDS channels, even pixels from one channel, odd pixels from the
+ * other channel. Only define either DISPLAY_LVDS0 or DISPLAY_LVDS1 in this
+ * case, using the full display resolution.
+ */
+//#define CONFIG_ARMSTONEA9R4_LVDS_SPLIT_MODE
+
+/*
+ * Define this if you have two similar displays (same resolution and timings),
+ * one on each LVDS channel. The display content of the framebuffer is shown
+ * on both displays simultaneously (cloned). Only define either DISPLAY_LVDS0
+ * or DISPLAY_LVDS1 in this case, using the resolution of one of the displays.
+ */
+//#define CONFIG_ARMSTONEA9R4_LVDS_DUAL_MODE
+
+/*
+ * Configure touch screen:
+ *
+ * - 4-wire/5-wire analog resistive touch (SX8655), on Touch Connector
+ * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
+ * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ * - PCAP touch based on Sitronix controller (ST1633i), on Touch Connector
+ * - PCAP touch based on Ilitek controller (ILI12xx), on Touch Connector
+ *
+ * Select none if you do not need touch support.
+ */
+//#define CONFIG_ARMSTONEA9R4_4WTOUCH_SX8655
+//#define CONFIG_ARMSTONEA9R4_4WTOUCH_TSC2004
+//#define CONFIG_ARMSTONEA9R4_CAPTOUCH_MXT224
+#define CONFIG_ARMSTONEA9R4_CAPTOUCH_FT5x06
+//#define CONFIG_ARMSTONEA9R4_CAPTOUCH_SITRONIX
+//#define CONFIG_ARMSTONEA9R4_CAPTOUCH_ILITEK
+
+/* CMA: Set 320 MB for Continuous Memory Allocator */
+#define CONFIG_ARMSTONEA9R4_CMA_SIZE	0x14000000
+
+/* NAND */
+#define CONFIG_ARMSTONEA9R4_NAND
+
+/* AUDIO */
+#define CONFIG_ARMSTONEA9R4_SGTL5000_AUDIO
+
+/* Camera on serial MIPI CSI interface */
+//#define CONFIG_ARMSTONEA9R4_SERIAL_CAMERA
+
+/* In case of MIPI, select one of the following cameras */
+//#define CONFIG_ARMSTONEA9R4_MIPI_CAMERA_OV564X
+#define CONFIG_ARMSTONEA9R4_MIPI_CAMERA_ISL7998X
+
+/* SD-CARD - SD_A is WLAN */
+#define CONFIG_ARMSTONEA9R4_WLAN
+/* SD-CARD - SD_B is micro SD */
+#define CONFIG_ARMSTONEA9R4_SD_A
+/* SD-CARD - SD_C is eMMC */
+#define CONFIG_ARMSTONEA9R4_EMMC
+
+/* PCIe */
+//#define CONFIG_ARMSTONEA9R4_PCIE
+
+/* I2C */
+#define CONFIG_ARMSTONEA9R4_I2C_A
+#define CONFIG_ARMSTONEA9R4_I2C_B
+#define CONFIG_ARMSTONEA9R4_I2C_C
+/* only available in revison >= 1.20 and if SPI_B is not activated */
+//#define CONFIG_ARMSTONEA9R4_I2C_D
+
+/* SPI */
+#define CONFIG_ARMSTONEA9R4_SPI_A
+#define CONFIG_ARMSTONEA9R4_SPI_B
+#define CONFIG_ARMSTONEA9R4_SPI_FLASH
+
+/* SATA */
+#define CONFIG_ARMSTONEA9R4_SATA
+
+/* UART */
+#define CONFIG_ARMSTONEA9R4_UART_A
+#define CONFIG_ARMSTONEA9R4_UART_A_RTSCTS
+#define CONFIG_ARMSTONEA9R4_UART_B
+#define CONFIG_ARMSTONEA9R4_UART_B_RTSCTS
+#define CONFIG_ARMSTONEA9R4_UART_C
+#define CONFIG_ARMSTONEA9R4_UART_D
+#define CONFIG_ARMSTONEA9R4_UART_D_RTSCTS
+#define CONFIG_ARMSTONEA9R4_UART_E
+
+/* If SPI_B is activated, I2C_D is not available */
+#if defined(CONFIG_ARMSTONEA9R4_SPI_B)
+#undef CONFIG_ARMSTONEA9R4_I2C_D
+#endif
+
+#include "imx6q.dtsi"
+#include "armstonea9r4qdl.dtsi"
+
+/ {
+	model = "F&S i.MX6 Dual/Quad armStoneA9r4";
+	compatible = "fsl,imx6q-armstonea9r4", "fsl,imx6q";
+};
+
+&bdinfo {
+	board_name = "armstonea9r4q";
+};
+
+/* i.MX6 Dual and Quad can have SATA */
+#ifdef CONFIG_ARMSTONEA9R4_SATA
+&sata {
+	status = "okay";
+};
+#endif
