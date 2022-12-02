@@ -172,6 +172,35 @@ static struct clk_hw *imx_blk_ctrl_register_one_clock(struct device *dev,
 	return clk_hw;
 }
 
+static int imx_clk_init_on(struct device_node *np,
+				  struct clk_hw * const clks[])
+{
+	u32 *array;
+	int i, ret, elems;
+
+	elems = of_property_count_u32_elems(np, "init-on-array");
+	if (elems < 0)
+		return elems;
+	array = kcalloc(elems, sizeof(elems), GFP_KERNEL);
+	if (!array)
+		return -ENOMEM;
+
+	ret = of_property_read_u32_array(np, "init-on-array", array, elems);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < elems; i++) {
+		ret = clk_prepare_enable(clks[array[i]]->clk);
+		if (ret)
+			pr_err("clk_prepare_enable failed %d\n", array[i]);
+	}
+
+	kfree(array);
+
+	return 0;
+}
+
+
 static int imx_blk_ctrl_register_clock_controller(struct device *dev)
 {
 	const struct imx_blk_ctrl_dev_data *dev_data = of_device_get_match_data(dev);
@@ -197,6 +226,7 @@ static int imx_blk_ctrl_register_clock_controller(struct device *dev)
 	}
 
 	imx_check_clk_hws(hws, dev_data->clocks_max);
+	imx_clk_init_on(dev->of_node, hws);
 
 	return of_clk_add_hw_provider(dev->of_node, of_clk_hw_onecell_get,
 					clk_hw_data);

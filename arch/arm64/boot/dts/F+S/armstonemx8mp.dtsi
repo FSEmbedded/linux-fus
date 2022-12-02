@@ -199,37 +199,23 @@
 #endif
 
 #ifdef CONFIG_ARMSTONEMX8MP_AUDIO_CODEC
-	sound_card: sound-card {
-	    compatible = "simple-audio-card";
-	    simple-audio-card,format = "i2s";
-	    simple-audio-card,name = "wm8960-soundcard";
-	    status = "okay";
-	    simple-audio-card,widgets =
-	            "Microphone", "Mic Jack",
-	            "Line", "Line In",
-	            "Line", "Line Out",
-	            "Speaker", "Speaker",
-	            "Headphone", "Headphone Jack";
-	    simple-audio-card,routing =
-	            "Headphone Jack", "HP_L",
-	            "Headphone Jack", "HP_R",
-	            "Speaker", "SPK_LP",
-	            "Speaker", "SPK_LN",
-	            "Speaker", "SPK_RP",
-	            "Speaker", "SPK_RN",
-				"LINPUT1", "Mic Jack",
-				"Mic Jack", "MICB",
-	            "Line In", "LINPUT3",
-				"Line In", "RINPUT3";
-
-	    simple-audio-card,cpu {
-	        sound-dai = <&sai2>;
-	    };
-	    dailink0_slave: simple-audio-card,codec {
-	        sound-dai = <&codec>;
-	        clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI2_MCLK1>;
-	        clock-names = "mclk";
-	    };
+	sound-wm8960 {
+		compatible = "fsl,imx-audio-wm8960";
+		model = "wm8960-audio";
+		audio-cpu = <&sai2>;
+		audio-codec = <&codec>;
+		audio-asrc = <&easrc>;
+		audio-routing =
+			"Headphone Jack", "HP_L",
+			"Headphone Jack", "HP_R",
+			"Ext Spk", "SPK_LP",
+			"Ext Spk", "SPK_LN",
+			"Ext Spk", "SPK_RP",
+			"Ext Spk", "SPK_RN",
+			"LINPUT1", "Mic Jack",
+			"Mic Jack", "MICB",
+            "LINPUT3", "Line In Jack",
+			"RINPUT3", "Line In Jack";
 	};
 #endif /* CONFIG_ARMSTONEMX8MP_AUDIO_CODEC */
 
