@@ -18,10 +18,16 @@
 
 	aliases {
 		rtcpcf85263 = &rtc85263;
+#ifdef CONFIG_PICOCOREMX8MP_SGTL5000_AUDIO
 		sound-sgtl5000 = &sound_sgtl5000;
 		sgtl5000 = &sgtl5000;
+#endif
+#ifdef CONFIG_PICOCOREMX8MP_WLAN
 		wlan-reset = &reg_wlan_pdn;
+#endif
+#ifdef CONFIG_PICOCOREMX8MP_EEPROM
 		eeprom = &eeprom;
+#endif
 		mipi_dsi = &mipi_dsi;
 		lcdif1 = &lcdif1;
 		lcdif2 = &lcdif2;
@@ -56,9 +62,18 @@
 		#size-cells = <2>;
 		ranges;
 
-		rpmsg_reserved: rpmsg@0x55800000 {
-			no-map;
-			reg = <0 0x55800000 0 0x400000>;
+		linux,cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0 0x14000000>;
+			alloc-ranges = <0 0x40000000 0 0x40000000>;
+			linux,cma-default;
+			/*
+			 * The propertiy "size" is overwritten by UBoot,
+			 * depending on the ram size. To prevent this,
+			 * uncomment the following line
+			 */
+			//no-uboot-override;
 		};
 
 		/* remove this node because the region used
@@ -176,20 +191,6 @@
 #endif /* CONFIG_PICOCOREMX8MP_CAMERA */
 	};
 
-
-#ifdef CONFIG_PICOCOREMX8MP_USB_HOST
-	reg_usb1_host_vbus: regulator-usb1-vbus {
-		compatible = "regulator-fixed";
-		regulator-name = "usb1_host_vbus";
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_usb1_pwr>;
-		regulator-min-microvolt = <5000000>;
-		regulator-max-microvolt = <5000000>;
-		gpio = <&gpio1 12 GPIO_ACTIVE_HIGH>;
-		enable-active-high;
-	};
-#endif
-
 #ifdef CONFIG_PICOCOREMX8MP_USB_OTG_PWR
 	reg_usb2_otg_vbus: regulator-usb2-vbus {
 		compatible = "regulator-fixed";
@@ -233,17 +234,18 @@
 	sound_sgtl5000: sound-sgtl5000 {
 		compatible = "fsl,imx-audio-sgtl5000";
 		model = "imx-sgtl5000";
-		cpu-dai = <&sai2>;
+		audio-cpu = <&sai2>;
 		audio-codec = <&sgtl5000>;
-		codec-master;
+		audio-asrc = <&easrc>;
 		audio-routing =
 			"LINE_IN", "Line In Jack",
-//###			"MIC_IN", "Mic Jack",
-//###			"Line Out Jack", "LINE_OUT",
+			"MIC_IN", "Mic Jack",
+			"Line Out Jack", "LINE_OUT",
 			"Headphone Jack", "HP_OUT";
 	};
 #endif
 
+#ifdef CONFIG_PICOCOREMX8MP_USB_OTG
 	cbtl04gp {
 		compatible = "nxp,cbtl04gp";
 		pinctrl-names = "default";
@@ -257,6 +259,7 @@
 			};
 		};
 	};
+#endif
 
 	sound-hdmi {
 		compatible = "fsl,imx-audio-cdnhdmi";
@@ -297,34 +300,38 @@
 };
 
 &A53_0 {
-	cpu-supply = <&buck2_reg>;
+	cpu-supply = <&buck2>;
+};
+&A53_1 {
+	cpu-supply = <&buck2>;
+};
+&A53_2 {
+	cpu-supply = <&buck2>;
+};
+&A53_3 {
+	cpu-supply = <&buck2>;
 };
 
 /* PMIC */
 &i2c5 {
-	clock-frequency = <100000>;
+	clock-frequency = <400000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c5>;
 	status = "okay";
 
 	pmic: pca9450@25 {
 		reg = <0x25>;
-		compatible = "nxp,pca9450";
-		/* PMIC PCA9450 PMIC_nINT GPIO4_IO19 */
+		compatible = "nxp,pca9450c";
+		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_pmic>;
-		gpio_intr = <&gpio4 19 GPIO_ACTIVE_LOW>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <19 IRQ_TYPE_LEVEL_LOW>;
 
 		regulators {
-			#address-cells = <1>;
-			#size-cells = <0>;
 
-			pca9450,pmic-buck2-uses-i2c-dvs;
-			/* Run/Standby voltage */
-			pca9450,pmic-buck2-dvs-voltage = <950000>, <850000>;
 
-			buck1_reg: regulator@0 {
-				reg = <0>;
-				regulator-compatible = "buck1";
+			buck1: BUCK1 {
+				regulator-name = "BUCK1";
 				regulator-min-microvolt = <600000>;
 				regulator-max-microvolt = <2187500>;
 				regulator-boot-on;
@@ -332,84 +339,80 @@
 				regulator-ramp-delay = <3125>;
 			};
 
-			buck2_reg: regulator@1 {
-				reg = <1>;
-				regulator-compatible = "buck2";
+			buck2: BUCK2 {
+				regulator-name = "BUCK2";
 				regulator-min-microvolt = <600000>;
 				regulator-max-microvolt = <2187500>;
 				regulator-boot-on;
 				regulator-always-on;
 				regulator-ramp-delay = <3125>;
+				nxp,dvs-run-voltage = <950000>;
+				nxp,dvs-standby-voltage = <850000>;
 			};
 
-			buck4_reg: regulator@3 {
-				reg = <3>;
-				regulator-compatible = "buck4";
+			buck4: BUCK4{
+				regulator-name = "BUCK4";
 				regulator-min-microvolt = <3300000>;
 				regulator-max-microvolt = <3300000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
-			buck5_reg: regulator@4 {
-				reg = <4>;
-				regulator-compatible = "buck5";
+			buck5: BUCK5{
+				regulator-name = "BUCK5";
 				regulator-min-microvolt = <1800000>;
 				regulator-max-microvolt = <1800000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
-			buck6_reg: regulator@5 {
-				reg = <5>;
-				regulator-compatible = "buck6";
+			buck6: BUCK6 {
+				regulator-name = "BUCK6";
 				regulator-min-microvolt = <600000>;
 				regulator-max-microvolt = <3400000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
-			ldo1_reg: regulator@6 {
-				reg = <6>;
-				regulator-compatible = "ldo1";
+			ldo1: LDO1 {
+				regulator-name = "LDO1";
 				regulator-min-microvolt = <1600000>;
 				regulator-max-microvolt = <3300000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
-			ldo2_reg: regulator@7 {
-				reg = <7>;
-				regulator-compatible = "ldo2";
+			ldo2: LDO2 {
+				regulator-name = "LDO";
 				regulator-min-microvolt = <800000>;
 				regulator-max-microvolt = <1150000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
-			ldo3_reg: regulator@8 {
-				reg = <8>;
-				regulator-compatible = "ldo3";
+			ldo3: LDO3 {
+				regulator-name = "LDO3";
 				regulator-min-microvolt = <800000>;
 				regulator-max-microvolt = <3300000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
-			ldo4_reg: regulator@9 {
-				reg = <9>;
-				regulator-compatible = "ldo4";
+			ldo4: LDO4 {
+				regulator-name = "LDO4";
 				regulator-min-microvolt = <800000>;
 				regulator-max-microvolt = <3300000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
 
-			ldo5_reg: regulator@10 {
-				reg = <10>;
+			ldo5: LDO5 {
+				regulator-name = "LDO5";
 				regulator-compatible = "ldo5";
 				regulator-min-microvolt = <1800000>;
 				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
 			};
 		};
 	};
@@ -417,7 +420,7 @@
 
 #ifdef CONFIG_PICOCOREMX8MP_I2C_E
 &i2c1 {
-	clock-frequency = <100000>;
+	clock-frequency = <400000>;
 	pinctrl-names = "default", "gpio";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	pinctrl-1 = <&pinctrl_i2c1_gpio>;
@@ -464,7 +467,7 @@
 
 #ifdef CONFIG_PICOCOREMX8MP_I2C_C
 &i2c2 {
-	clock-frequency = <100000>;
+	clock-frequency = <400000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
@@ -473,11 +476,11 @@
 
 #ifdef CONFIG_PICOCOREMX8MP_I2C_D
 &i2c3 {
-	clock-frequency = <100000>;
+	clock-frequency = <400000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c3>;
 	status = "okay";
-
+#ifdef CONFIG_PICOCOREMX8MP_USB_OTG
 	ptn5110: tcpc@52 {
 		compatible = "nxp,ptn5110";
 		pinctrl-names = "default";
@@ -517,6 +520,8 @@
 			};
 		};
 	};
+#endif
+
 
 #ifdef CONFIG_PICOCOREMX8MP_SERIAL_CAMERA
 	ov5640_mipi: ov5640_mipi@3c {
@@ -640,6 +645,14 @@
 };
 #endif /* CONFIG_PICOCOREMX8MP_CAN_B */
 
+&hdmi_blk_ctrl {
+#ifdef CONFIG_PICOCOREMX8MP_HDMI
+	status = "okay";
+#else
+	status = "disabled";
+#endif
+};
+
 &irqsteer_hdmi {
 #ifdef CONFIG_PICOCOREMX8MP_HDMI
 	status = "okay";
@@ -704,7 +717,7 @@
 
 &easrc {
 	fsl,asrc-rate  = <48000>;
-	status = "disabled";
+	status = "okay";
 };
 
 #ifdef CONFIG_PICOCOREMX8MP_PCIE
@@ -820,9 +833,9 @@
 #ifdef CONFIG_PICOCOREMX8MP_USB_OTG
 &usb3_phy1 {
 	vbus-power-supply = <&ptn5110>;
-	fsl,phy-tx-vref-tune = <6>;
-	fsl,phy-tx-rise-tune = <0>;
+	fsl,phy-tx-vref-tune = <0xe>;
 	fsl,phy-tx-preemp-amp-tune = <3>;
+	fsl,phy-tx-vboost-level = <5>;
 	fsl,phy-comp-dis-tune = <7>;
 	fsl,pcs-tx-deemph-3p5db = <0x21>;
 	fsl,phy-pcs-tx-swing-full = <0x7f>;
@@ -840,6 +853,7 @@
 	srp-disable;
 	adp-disable;
 	usb-role-switch;
+	role-switch-default-mode = "none";
 	status = "okay";
 
 	port {
@@ -853,7 +867,8 @@
 #ifdef CONFIG_PICOCOREMX8MP_USB_HOST
 /* USB2 */
 &usb3_phy0 {
-	vbus-supply = <&reg_usb1_host_vbus>;
+	fsl,phy-tx-preemp-amp-tune = <3>;
+	fsl,phy-tx-vref-tune = <0xb>;
 	status = "okay";
 };
 
@@ -862,6 +877,8 @@
 };
 
 &usb_dwc3_0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usb1_pwr>;
 	dr_mode = "host";
 	status = "okay";
 };
@@ -870,6 +887,8 @@
 #ifdef CONFIG_PICOCOREMX8MP_SD_A
 /* SD-Card */
 &usdhc1 {
+	assigned-clocks = <&clk IMX8MP_CLK_USDHC1>;
+	assigned-clock-rates = <400000000>;
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
 	pinctrl-0 = <&pinctrl_usdhc1>, <&pinctrl_usdhc1_gpio>;
 	pinctrl-1 = <&pinctrl_usdhc1_100mhz>, <&pinctrl_usdhc1_gpio>;
@@ -888,6 +907,8 @@
 #if defined(CONFIG_PICOCOREMX8MP_SD_B) || defined(CONFIG_PICOCOREMX8MP_WLAN)
 /* WLAN */
 &usdhc2 {
+	assigned-clocks = <&clk IMX8MP_CLK_USDHC2>;
+	assigned-clock-rates = <400000000>;
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
 	pinctrl-0 = <&pinctrl_usdhc2>, <&pinctrl_usdhc2_gpio>;
 	pinctrl-1 = <&pinctrl_usdhc2_100mhz>, <&pinctrl_usdhc2_gpio>;
@@ -921,6 +942,8 @@
 
 /* eMMC */
 &usdhc3 {
+	assigned-clocks = <&clk IMX8MP_CLK_USDHC3>;
+	assigned-clock-rates = <100000000>;
 	pinctrl-names = "default",
 #ifdef CONFIG_PICOCOREMX8MP_EMMC_HS400
 			"state_100mhz", "state_200mhz";
@@ -982,6 +1005,10 @@
 	status = "okay";
 };
 
+&vpu_v4l2 {
+	status = "okay";
+};
+
 &gpu_3d {
 	status = "okay";
 };
@@ -1010,7 +1037,7 @@
 };
 
 &isi_0 {
-	status = "disabled";
+	status = "okay";
 
 	cap_device {
 		status = "okay";
@@ -1377,7 +1404,7 @@
 #ifdef CONFIG_PICOCOREMX8MP_USB_HOST
 	pinctrl_usb1_pwr: usb1grp {
 		fsl,pins = <
-			MX8MP_IOMUXC_GPIO1_IO12__GPIO1_IO12	0x19
+			MX8MP_IOMUXC_GPIO1_IO12__USB1_PWR	0x19
 		>;
 	};
 #endif
