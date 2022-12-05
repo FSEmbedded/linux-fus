@@ -1,0 +1,1 @@
+dtb-$(CONFIG_ARCH_LAYERSCAPE) += fs-gal1.dtb

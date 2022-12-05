@@ -1,0 +1,341 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * F&S Elektronik Systeme GmbH device tree source
+ *
+ * Copyright 2022 F&S Elektronik Systeme GmbH
+ *
+ */
+
+/dts-v1/;
+#include "../freescale/fsl-ls1028a.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/leds/common.h>
+
+/ {
+     model = "F&S GAL1 Board";
+     compatible = "fus,gal1", "fsl,ls1028a";
+
+     aliases {
+          crypto = &crypto;
+          serial0 = &duart0;
+		serial1 = &duart1;
+    };
+
+     chosen {
+		stdout-path = "serial0:115200n8";
+     };
+
+     memory@80000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0x0 0x40000000>; //1GiB in DRAM region 1
+     };
+
+	leds {
+		compatible = "gpio-leds";
+
+		D4-GN {
+			lable = "D4-LED_green";
+			gpios = <&gpio4 4 GPIO_ACTIVE_HIGH>;
+			default-state = "off";	
+		};
+
+		D5-GN {
+			lable = "D5-LED_green";
+			gpios = <&gpio4 5 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		D6-RD {
+			lable = "D6-LED_red";
+			gpios = <&gpio4 6 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		D6-GN {
+			lable = "D6-LED_green";
+			gpios = <&gpio4 7 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		D7-RD {
+			lable = "D7-LED_red";
+			gpios = <&gpio4 8 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		D7-GN {
+			lable = "D7-LED_green";
+			gpios = <&gpio4 9 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		D7-BL {
+			lable = "D7-LED_blue";
+			gpios = <&gpio4 10 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+	};
+
+	regulators {
+		reg_pcie1: pcie1_pwr {
+			compatible = "regulator-fixed";
+			regulator-name = "PCIe1_PWR";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			
+			gpio = <&gpio4 11 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+
+		reg_pcie2: pcie2_pwr {
+			compatible = "regulator-fixed";
+			regulator-name = "PCIe2_PWR";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+
+			gpio = <&gpio4 14 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+
+		reg_usb1: usb1_pwr {
+			compatible = "regulator-fixed";
+			regulator-name = "USB1_PWR";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+
+			gpio = <&gpio3 18 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+			regulator-always-on;
+		};
+
+	};
+};
+
+&esdhc1 {
+	/* EMMC */
+	mmc-hs200-1_8v;
+	mmc-hs400-1_8v;
+	bus-width = <8>;
+	status = "okay";
+};
+
+&i2c0 {
+	status = "okay";
+
+	gpio4: pca6524@44 {
+		/* extern GPIO controller */
+		compatible = "nxp,pcal6524";
+		reg  = <0x44>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <6 IRQ_TYPE_NONE>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		interrupt-controller;
+		#interrupt-cells = <2>;
+
+		ddr_rst_hog {
+			gpio-hog;
+			gpios = <0 GPIO_ACTIVE_HIGH>;
+			output-low;
+			line-name = "DDR-RST-B_GPIO";
+		};
+
+		emmc_rst_hog {
+			gpio-hog;
+			gpios = <1 GPIO_ACTIVE_HIGH>;
+			output-low;
+			line-name = "EMMC-RST-B_GPIO";
+		};
+
+		pcie_clkgen_hog {
+			gpio-hog;
+			gpios = <2 ( GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN )>;
+			output-low;
+			line-name = "PCIe_CLKGEN";	
+		};
+
+		pcie1_wake_hog {
+			gpio-hog;
+			gpios = <13 GPIO_ACTIVE_HIGH>;
+			output-low;
+			line-name = "PCIe1_WAKE";
+		};
+
+		pcie2_wake_hog {
+			gpio-hog;
+			gpios = <16 GPIO_ACTIVE_HIGH>;
+			output-low;
+			line-name = "PCIe2_WAKE";
+		};
+
+		pcie1_clkreq {
+			gpio-hog;
+			gpios = <17 GPIO_ACTIVE_HIGH>;
+			input;
+			line-name = "PCIe1_CLKREQ";
+		};
+
+		pcie2_clkreq {
+			gpio-hog;
+			gpios = <18 GPIO_ACTIVE_HIGH>;
+			input;
+			line-name = "PCIe2_CLKREQ";
+		};
+
+		sim_switch {
+			/* Activate left- and right-handed SIM*/
+			gpio-hog;
+			gpios = <3 GPIO_ACTIVE_HIGH>;
+			output-low;
+			line-name = "eSIM_Switch";
+		};
+	};
+
+	temp-sensor@49 {
+		compatible = "nxp,pct2075";
+		reg = <0x49>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <23 IRQ_TYPE_EDGE_FALLING>;
+	};
+
+	rtc@51 {
+		compatible = "nxp,pcf85263";
+		reg = <0x51>;
+	};
+
+};
+
+&i2c1 {
+	status="okay";
+};
+
+&i2c4 {
+	status="okay";
+};
+
+&i2c5 {
+	status="okay";
+};
+
+&duart0 {
+	status="okay";
+};
+
+&pcie1 {
+	reset-gpio = <&gpio4 12 ( GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN )>;
+};
+
+&pcie2 {
+	reset-gpio = <&gpio4 15 ( GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN )>;
+};
+
+&enetc_mdio_pf3 {
+	rgmii_phy0: ethernet-phy@1 {
+		/* Realtek RTL8211FSI-PHY */
+		reg = <1>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <20 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&gpio4 19 GPIO_ACTIVE_HIGH>;
+	};
+
+	qsgmii_phy0: ethernet-phy@10 {
+		/* Microsemi VSC8514XMK */
+		reg = <0x10>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
+	};
+
+	qsgmii_phy1: ethernet-phy@11 {
+		/* Microsemi VSC8514XMK */
+		reg = <0x11>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
+	};
+
+	qsgmii_phy2: ethernet-phy@12 {
+		/* Microsemi VSC8514XMK */
+		reg = <0x12>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
+	};
+
+	qsgmii_phy3: ethernet-phy@13 {
+		/* Microsemi VSC8514XMK */
+		reg = <0x13>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+&enetc_port0 {
+	/* SFP Connector */
+	status = "okay";
+};
+
+&enetc_port1 {
+	/* internal Ethernet */
+	status = "okay";
+};
+
+&enetc_port2 {
+	/* connected to TSN Switch */
+	status = "okay";
+};
+
+&mscc_felix {
+	/* TSN Switch */
+	status = "okay";
+};
+
+&mscc_felix_port0 {
+	label = "swp0";
+	managed = "in-band-status";
+	phy-handle = <&qsgmii_phy0>;
+	phy-mode = "qsgmii";
+	status = "okay";
+};
+
+&mscc_felix_port0 {
+	label = "swp0";
+	managed = "in-band-status";
+	phy-handle = <&qsgmii_phy0>;
+	phy-mode = "qsgmii";
+	status = "okay";
+};
+
+&mscc_felix_port1 {
+	label = "swp1";
+	managed = "in-band-status";
+	phy-handle = <&qsgmii_phy1>;
+	phy-mode = "qsgmii";
+	status = "okay";
+};
+// Following two ports are not connected on GAL1
+// But these are used on GAL2
+&mscc_felix_port2 {
+	label = "swp2";
+	managed = "in-band-status";
+	phy-handle = <&qsgmii_phy2>;
+	phy-mode = "qsgmii";
+	status = "disabled";
+};
+
+&mscc_felix_port3 {
+	label = "swp3";
+	managed = "in-band-status";
+	phy-handle = <&qsgmii_phy3>;
+	phy-mode = "qsgmii";
+	status = "disabled";
+};
+
+&usb0 {
+	status = "okay";
+};
+
+&usb1 {
+	status = "okay";
+};
