@@ -22,7 +22,7 @@
 	};
 };
 
-/delete-node/ &ite_bridge;
+// /delete-node/ &ite_bridge;
 
 &dsi {
 	panel@0 {
@@ -31,7 +31,6 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_dsi>;
 		himax,dsi-lanes = <2>;
-		enable-gpios = <&gpiof 9 GPIO_ACTIVE_HIGH>;
 		reset-gpios = <&gpiof 8 GPIO_ACTIVE_LOW>;
 		vcc-supply = <&reg_5v>;
 		iovcc-supply = <&reg_5v>;
