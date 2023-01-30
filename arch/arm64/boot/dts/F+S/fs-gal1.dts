@@ -16,9 +16,19 @@
      compatible = "fus,gal1", "fsl,ls1028a";
 
      aliases {
-          crypto = &crypto;
-          serial0 = &duart0;
+        crypto = &crypto;
+        serial0 = &duart0;
 		serial1 = &duart1;
+
+		/* Needed for UBOOT to set MAC-ADDRESS */
+		ethernet0 = &enetc_port0;
+		ethernet1 = &enetc_port1;
+		ethernet2 = &enetc_port2;
+		ethernet3 = &mscc_felix_port0;
+		ethernet4 = &mscc_felix_port1;
+		ethernet5 = &mscc_felix_port2;
+		ethernet6 = &mscc_felix_port3;
+		ethernet7 = &enetc_port3;
     };
 
      chosen {
@@ -240,34 +250,34 @@
 
 	qsgmii_phy0: ethernet-phy@10 {
 		/* Microsemi VSC8514XMK */
-		reg = <0x10>;
-		interrupt-parent = <&gpio4>;
-		interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
-		reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
+		   reg = <0x10>;
+		// interrupt-parent = <&gpio4>;
+		// interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
+		// reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
 	};
 
 	qsgmii_phy1: ethernet-phy@11 {
 		/* Microsemi VSC8514XMK */
-		reg = <0x11>;
-		interrupt-parent = <&gpio4>;
-		interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
-		reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
+			reg = <0x11>;
+		// interrupt-parent = <&gpio4>;
+		// interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
+		// reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
 	};
 
 	qsgmii_phy2: ethernet-phy@12 {
 		/* Microsemi VSC8514XMK */
-		reg = <0x12>;
-		interrupt-parent = <&gpio4>;
-		interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
-		reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
+			reg = <0x12>;
+		// interrupt-parent = <&gpio4>;
+		// interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
+		// reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
 	};
 
 	qsgmii_phy3: ethernet-phy@13 {
 		/* Microsemi VSC8514XMK */
-		reg = <0x13>;
-		interrupt-parent = <&gpio4>;
-		interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
-		reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
+			reg = <0x13>;
+		// interrupt-parent = <&gpio4>;
+		// interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
+		// reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
 	};
 };
 
@@ -282,20 +292,17 @@
 };
 
 &enetc_port2 {
-	/* connected to TSN Switch */
+	/* connected to TSN Switch swp4*/
 	status = "okay";
+};
+
+&enetc_port3 {
+	/* connected to TSN Switch swp5 */
+	status = "disable";
 };
 
 &mscc_felix {
 	/* TSN Switch */
-	status = "okay";
-};
-
-&mscc_felix_port0 {
-	label = "swp0";
-	managed = "in-band-status";
-	phy-handle = <&qsgmii_phy0>;
-	phy-mode = "qsgmii";
 	status = "okay";
 };
 
@@ -330,6 +337,16 @@
 	phy-handle = <&qsgmii_phy3>;
 	phy-mode = "qsgmii";
 	status = "disabled";
+};
+
+&mscc_felix_port4{
+	ethernet = <&enetc_port2>;
+	status = "okay";
+};
+
+&mscc_felix_port5{
+	ethernet = <&enetc_port3>;
+	status = "disable";
 };
 
 &usb0 {
