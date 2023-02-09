@@ -9,5 +9,5 @@
 #define CONFIG_PICOCOREMX8MP_INVERTED_XY
 /* TODO: does not work */
 //#define CONFIG_PICOCOREMX8MP_LDB_DUAL_CHANNEL
-#include "picocoremx8mp.dts"
+#include "picocoremx8mpr2.dts"
 #include "displays/imx8mp-lcdif-j070wvtc0211.dtsi"
