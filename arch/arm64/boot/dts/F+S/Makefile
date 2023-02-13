@@ -63,3 +63,4 @@ dtb-$(CONFIG_ARCH_MXC) += picocoremx8mpr2.dtb \
 			  picocoremx8mpr2-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtb \
 			  picocoremx8mpr2-lcdif-g133han01.dtb \
 			  picocoremx8mpr2-adp-aud1.dtb
+dtb-$(CONFIG_ARCH_MXC) += efusmx8mp.dtb

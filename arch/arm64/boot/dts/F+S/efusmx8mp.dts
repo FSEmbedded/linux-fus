@@ -1,0 +1,272 @@
+/*
+* Copyright (C) 2023 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_EFUSMX8MP_BOARD_REVISION	100
+
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_HDMI	1	/* DVI/HDMI via HDMI connector */
+#define DISPLAY_LVDS0	2	/* LVDS channel 0 - LVDSA on J2 */
+#define DISPLAY_LVDS1	3	/* LVDS channel 1 - LVDSB on J2 */
+#define DISPLAY_LCD	4	/* LCD via RGB adapter */
+
+/*
+ * Set the display configuration:
+ *
+ * - If you have no display, set all three settings to DISPLAY_NONE.
+ * - If you have one display, set PANEL0 to one of the display types above and
+ *   leave the other settings at DISPLAY_NONE.
+ * - If you have two displays, set PANEL0 and PANEL1 to a display type from
+ *   above and leave PANEL2 at DISPLAY_NONE.
+ * - If you have three displays, set all three settings to a display type.
+ * - LVDS0 and MIPI0 at same time are not allowed. In case both are
+ *   configured LVDS0 would be used and MIPI0 disabled.
+ * - If dual mode is enabled LVDS1 would not used.
+ *
+ * You have to use a different type for each display. If you want two LVDS
+ * displays, set one to DISPLAY_LVDS0 and the other to DISPLAY_LVDS1. This
+ * corresponds to the LVDS channel where the display is connected to.
+ *
+ */
+#define CONFIG_EFUSMX8MP_PANEL0	DISPLAY_HDMI //DISPLAY_LVDS1
+#define CONFIG_EFUSMX8MP_PANEL1	DISPLAY_LVDS0
+#define CONFIG_EFUSMX8MP_PANEL2	DISPLAY_NONE
+
+/*
+ * F&S has changed the default LVDS display. To use the previous settings
+ * activate the following define.
+ */
+#define DISPLAY_LVDS_J070WVTC0211
+
+/* Enables support for AUO G133HAN01.0 - 19:9 FHD, 1920(H)x1080(V) panel */
+//#define DISPLAY_LVDS_G133HAN010
+
+/* 4-wire/5-wire analog resistive touch, touch controller on RGB LCD adapter */
+//#define CONFIG_EFUSMX8MP_4WTOUCH_SX8655_RGBADAPTER
+
+/* The mode allows to use dual asynchronous channels (8 data, 2 clocks).
+ * This is intended for single panel with 2 interfaces, transferring
+ * across two channels (even pixel/odd pixel). This is supported at up to
+ * 160MHz pixel clock, which is up to 80MHz LVDS clock.
+ *  */
+//#define CONFIG_EFUSMX8MP_LVDS_DUAL_CHANNEL
+
+/*
+ * Configure LVDS0 settings here (ignored if LVDS0 is not used)
+ * Mapping (refers to LVDS_DATA_WIDTH, not LVDS_BPP):
+ *
+ * - "spwg":  18 bpp or 24 bpp, in case of 24 bpp, bits 6 and 7 of each color
+ *            are encoded on fourth LVDS differential data pair
+ * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
+ *            all other data bits on all four differential data pairs
+ */
+#ifdef DISPLAY_LVDS_J070WVTC0211
+
+#if ((CONFIG_EFUSMX8MP_PANEL0 == DISPLAY_LVDS1) \
+	|| (CONFIG_EFUSMX8MP_PANEL1 == DISPLAY_LVDS1))
+#define CONFIG_EFUSMX8MP_LVDS1_CHANNEL_MAPPING	"spwg"
+#define CONFIG_EFUSMX8MP_LVDS1_CHANNEL_DATA_WIDTH	24
+
+#define CONFIG_EFUSMX8MP_LVDS1_PANEL_MAPPING	"vesa-24"
+#define CONFIG_EFUSMX8MP_LVDS1_PANEL_LABEL	"j070wvtc0211"
+#define CONFIG_EFUSMX8MP_LVDS1_PANEL_WIDTH	154
+#define CONFIG_EFUSMX8MP_LVDS1_PANEL_HEIGHT	85
+#define CONFIG_EFUSMX8MP_LVDS1_PANEL_TIMING \
+	clock-frequency = <33300000>;	\
+	hactive = <800>; \
+	vactive = <480>; \
+	hback-porch = <46>; \
+	hfront-porch = <209>;	\
+	hsync-len = <1>;	\
+	vback-porch = <23>;	\
+	vfront-porch = <11>;	\
+	vsync-len = <1>;	\
+	de-active = <1>;	\
+	vsync-active = <1>;	\
+	hsync-active = <1>;
+#endif
+
+#if ((CONFIG_EFUSMX8MP_PANEL0 == DISPLAY_LVDS0) \
+	|| (CONFIG_EFUSMX8MP_PANEL1 == DISPLAY_LVDS0))
+#define CONFIG_EFUSMX8MP_LVDS0_CHANNEL_MAPPING	"spwg"
+#define CONFIG_EFUSMX8MP_LVDS0_CHANNEL_DATA_WIDTH	24
+
+#define CONFIG_EFUSMX8MP_LVDS0_PANEL_MAPPING	"vesa-24"
+#define CONFIG_EFUSMX8MP_LVDS0_PANEL_LABEL	"j070wvtc0211"
+#define CONFIG_EFUSMX8MP_LVDS0_PANEL_WIDTH	154
+#define CONFIG_EFUSMX8MP_LVDS0_PANEL_HEIGHT	85
+#define CONFIG_EFUSMX8MP_LVDS0_PANEL_TIMING \
+	clock-frequency = <33300000>;	\
+	hactive = <800>; \
+	vactive = <480>; \
+	hback-porch = <46>; \
+	hfront-porch = <209>;	\
+	hsync-len = <1>;	\
+	vback-porch = <23>;	\
+	vfront-porch = <11>;	\
+	vsync-len = <1>;	\
+	de-active = <1>;	\
+	vsync-active = <1>;	\
+	hsync-active = <1>;
+#endif
+
+/* J070WVTC0211 and G133HAN010 can't be configured together
+ * because G133HAN010 has 8 lanes support.
+*/
+#ifdef DISPLAY_LVDS_G133HAN010
+#warning "Undefine  DISPLAY_LVDS_G133HAN010 because of DISPLAY_LVDS_J070WVTC0211 configuration!"
+#undef DISPLAY_LVDS_G133HAN010
+#endif
+
+#endif /* DISPLAY_LVDS_J070WVTC0211 */
+
+#ifdef DISPLAY_LVDS_G133HAN010
+#define CONFIG_EFUSMX8MP_LVDS0_CHANNEL_MAPPING	"jeida"
+#define CONFIG_EFUSMX8MP_LVDS0_CHANNEL_DATA_WIDTH	24
+
+#define CONFIG_EFUSMX8MP_LVDS0_PANEL_MAPPING	"jeida-24"
+#define CONFIG_EFUSMX8MP_LVDS0_PANEL_LABEL	"g133han01"
+#define CONFIG_EFUSMX8MP_LVDS0_PANEL_WIDTH	293
+#define CONFIG_EFUSMX8MP_LVDS0_PANEL_HEIGHT	165
+#define CONFIG_EFUSMX8MP_LVDS0_PANEL_TIMING \
+	clock-frequency = <141200000>;	\
+	hactive = <1920>;	\
+	vactive = <1080>;	\
+	hback-porch = <20>;	\
+	hfront-porch = <159>;	\
+	hsync-len = <70>;	\
+	vback-porch = <37>;	\
+	vfront-porch = <11>;	\
+	vsync-len = <1>;	\
+	pixelclk-active = <0>;
+#endif
+
+/*
+ * Configure touch screen:
+ *
+ * - PCAP touch based on Focaltech controller (FT5x26), on Touch Connector
+ *
+ * Select none if you do not need touch support.
+ */
+#ifdef DISPLAY_LVDS_J070WVTC0211
+#define CONFIG_EFUSMX8MP_CAPTOUCH_FT5x26
+#define CONFIG_EFUSMX8MP_CAPTOUCH_FT5x26_INVERTED_XY
+#endif
+
+/* Network */
+#define CONFIG_EFUSMX8MP_ETH_A
+#define CONFIG_EFUSMX8MP_ETH_B
+
+/* CAN */
+/* CAN_A: Goldfinger 29,31
+ * J13 - pins 3,4 */
+#define CONFIG_EFUSMX8MP_CAN_A
+/* CAN_B: Goldfinger 35,37
+ *	SKIT: J22 feature connector 55,56 */
+#define CONFIG_EFUSMX8MP_CAN_B
+
+/* I2C busses */
+/* I2C_A: Goldfinger connector 151,155*/
+#define CONFIG_EFUSMX8MP_I2C_A
+/* I2C_B: Goldfinger connector 82,84*/
+#define CONFIG_EFUSMX8MP_I2C_B
+/* I2C_C: Goldfinger connector 130,132*/
+#define CONFIG_EFUSMX8MP_I2C_C
+/* I2C_E: internal */
+#define CONFIG_EFUSMX8MP_I2C_E
+
+/*
+ * SD_A (default) or WLAN: Goldfinger connector 
+ * pins 16,18,20,22,24,26,28,32,34
+ * in case of WLAN pins are not connected.
+ *	SKIT:
+ *		J28 Micro-SD if WLAN is not equipped.
+ */
+#define CONFIG_EFUSMX8MP_SD_A
+#define CONFIG_EFUSMX8MP_SD_A_CD
+#define CONFIG_EFUSMX8MP_SD_A_WP
+/* enable HS400 for highspeed micro SD cards */
+//#define CONFIG_EFUSMX8MP_SD_A_HS400
+/* WLAN is in U-Boot not supported */
+/* wlan specific settigs */
+#define CONFIG_EFUSMX8MP_WLAN
+/* Add entry configuration for marvell wlan, bluetooth driver.
+ * The entry is for NXP driver not needed. */
+#define CONFIG_EFUSMX8MP_WLAN_MARVELL_DRV
+
+/* SD_B or QSPI_NAND (default) */
+#define CONFIG_EFUSMX8MP_SD_B
+
+/* SD_C: eMMC internal */
+#define CONFIG_EFUSMX8MP_SD_C
+
+/* PWM and backlight brightness */
+/* PWM_A - Goldfinger connector J3 pin 25 */
+#define CONFIG_EFUSMX8MP_PWM_A
+/* PWM_B - Goldfinger connector J3 pin 23 */
+#define CONFIG_EFUSMX8MP_PWM_B
+/* BL_PWM - Goldfinger connector J3 pin 87 */
+#define CONFIG_EFUSMX8MP_BL_CTRL
+
+/* UARTs */
+/* UART_A - Goldfinger connector J3 pins 92,94 */
+#define CONFIG_EFUSMX8MP_UART_A
+/* UART_B - Goldfinger connector J3 pins 102,104,106,108 */
+#define CONFIG_EFUSMX8MP_UART_B
+#define CONFIG_EFUSMX8MP_UART_B_RTSCTS
+/* UART_C - Goldfinger connector J3 pins 15,17,19,21 */
+#define CONFIG_EFUSMX8MP_UART_C
+#define CONFIG_EFUSMX8MP_UART_C_RTSCTS
+/* UART_D - Goldfinger connector J3 pins 96,98*/
+#define CONFIG_EFUSMX8MP_UART_D
+
+/* SPIs */
+/* SPI_A - Goldfinger connector J3 pins 66,68,70,72,74,76,78 */
+#define CONFIG_EFUSMX8MP_SPI_A
+/* SPI_B - Goldfinger connector J3 pins 50,52,54,56,58,60,62 */
+#define CONFIG_EFUSMX8MP_SPI_B
+
+/* Audio */
+/* I2S - Goldfinger connector J3 pins 112,116,120,124,126 */
+#define CONFIG_EFUSMX8MP_I2S_A
+/* Codec SKIT: SGTL5000 */
+#define CONFIG_EFUSMX8MP_SGTL5000_AUDIO
+
+/* Camera on serial MIPI CSI interface */
+#define CONFIG_EFUSMX8MP_CSI_A
+/* Enable Basler da4200 camera */
+//#define CONFIG_EFUSMX8MP_CAMERA_BASLER_daA4200
+
+/* USB */
+#define CONFIG_EFUSMX8MP_USB_OTG
+#define CONFIG_EFUSMX8MP_USB_HOST
+/* External RTC */
+#define CONFIG_EFUSMX8MP_EXT_RTC
+/* Analog I/O */
+#define CONFIG_EFUSMX8MP_ADC
+/* Security chip */
+#define CONFIG_EFUSMX8MP_SECURE
+#define CONFIG_EFUSMX8MP_EEPROM
+/* PCIE */
+#define CONFIG_EFUSMX8MP_PCIE
+
+/* TODO: */
+
+#include "../freescale/imx8mp.dtsi"
+#include "efusmx8mp.dtsi"
+
+/ {
+	model = "F&S efusMX8MP";
+	compatible = "fus,imx8mp-efusmx8mp", "fsl,imx8mp";
+};
+
+&bdinfo {
+	board_name = "efusmx8mp";
+};
