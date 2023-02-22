@@ -595,7 +595,7 @@
 			rtl821x,ssc-rxc-enable;
 			rtl821x,ssc-sysclk-enable;
 			rtl821x,ssc-clkout-enable;
-			rtl821x,led-link = <0>;
+			rtl821x,led-link = <2>;
 			rtl821x,led-act = <1>;
 		};
 	};
@@ -658,7 +658,7 @@
 	status = "okay";
 
 	rtc8565@51 {
-		compatible = "nxp,pcf8565", "nxp,pcf8563";
+		compatible = "nxp,pcf85263";
 		reg = <0x51>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
