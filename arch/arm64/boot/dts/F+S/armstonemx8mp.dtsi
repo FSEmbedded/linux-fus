@@ -561,6 +561,7 @@
 		clocks = <&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>;
 		clock-names = "mclk";
 		wlf,shared-lrclk;
+		wlf,gpio-cfg = <1 0>;
 		SPKVDD1-supply = <&reg_vref_3v3>;
 	};
 #endif
