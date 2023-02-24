@@ -4,6 +4,20 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight,
         MM: M Mini, MN: M Nano
 
+linux-5.4.70-fsimx6-Y2022.12 (23.12.2022)
+-----------------------------------------
+Supported boards: armStoneMX8MP, PicoCoreMX8MP, PicoCoreMX8MPr2
+
+- thermal/core: Add NULL pointer check before using cooling device stats
+- thermal/drivers/cpufreq_cooling: Update cpufreq_state only if state has changed
+- thermal:thermal_of: Fix error return code of thermal_of_populate_bind_params
+- thermal:core: Reset previous low and high trip during thermal zone init
+- thermal/core: Correct function name thermal_zone_device_unregister()
+- thermal/core: Potential buffer overflow in thermal_build_list_of_policies()
+- thermal:imx8mm:Improve imx8mm_thermal driver
+- Add picocorem8mp(r2)-adp-aud1 device trees for ADP-AUD1
+
+
 linux-5.4.70-fsimx6-Y2022.11 (22.11.2022)
 -----------------------------------------
 Supported boards: armStoneMX8MP, PicoCoreMX8MP, PicoCoreMX8MPr2
