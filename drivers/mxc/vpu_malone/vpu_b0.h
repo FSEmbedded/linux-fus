@@ -69,19 +69,17 @@ extern unsigned int vpu_dbg_level_decoder;
 
 #define V4L2_PIX_FMT_NV12_10BIT    v4l2_fourcc('N', 'T', '1', '2') /*  Y/CbCr 4:2:0 for 10bit  */
 #define	VPU_FRAME_DEPTH_MAX     512
-#define VPU_FRAME_DEPTH_DEFAULT 256
 #define DECODER_NODE_NUMBER 12 // use /dev/video12 as vpu decoder
 #define DEFAULT_LOG_DEPTH 20
 #define DEFAULT_FRMDBG_ENABLE 0
 #define DEFAULT_FRMDBG_LEVEL 0
 #define VPU_DEC_CMD_DATA_MAX_NUM	16
+#define VPU_DEC_MIN_WIDTH		16
+#define VPU_DEC_MIN_HEIGHT		16
 #define VPU_DEC_MAX_WIDTH		8188
 #define VPU_DEC_MAX_HEIGTH		8188
 #define VPU_DEC_FMT_DIVX_MASK		(1 << 20)
 #define VPU_DEC_FMT_RV_MASK		(1 << 21)
-
-#define V4L2_EVENT_DECODE_ERROR		(V4L2_EVENT_PRIVATE_START + 1)
-#define V4L2_EVENT_SKIP			(V4L2_EVENT_PRIVATE_START + 2)
 
 struct vpu_v4l2_control {
 	uint32_t id;
@@ -141,30 +139,10 @@ typedef enum{
 #define VPU_PIX_FMT_SPK         v4l2_fourcc('S', 'P', 'K', '0')
 #define VPU_PIX_FMT_DIV3        v4l2_fourcc('D', 'I', 'V', '3')
 #define VPU_PIX_FMT_DIVX        v4l2_fourcc('D', 'I', 'V', 'X')
-#define VPU_PIX_FMT_HEVC        v4l2_fourcc('H', 'E', 'V', 'C')
 #define VPU_PIX_FMT_LOGO        v4l2_fourcc('L', 'O', 'G', 'O')
 
 #define VPU_PIX_FMT_TILED_8     v4l2_fourcc('Z', 'T', '0', '8')
 #define VPU_PIX_FMT_TILED_10    v4l2_fourcc('Z', 'T', '1', '0')
-
-#define V4L2_CID_USER_RAW_BASE  (V4L2_CID_USER_BASE + 0x1100)
-#define V4L2_CID_USER_FRAME_DEPTH (V4L2_CID_USER_BASE + 0x1200)
-#define V4L2_CID_USER_FRAME_DIS_REORDER (V4L2_CID_USER_BASE + 0x1300)
-#define V4L2_CID_USER_TS_THRESHOLD	(V4L2_CID_USER_BASE + 0x1101)
-#define V4L2_CID_USER_BS_L_THRESHOLD	(V4L2_CID_USER_BASE + 0x1102)
-#define V4L2_CID_USER_BS_H_THRESHOLD	(V4L2_CID_USER_BASE + 0x1103)
-
-#define V4L2_CID_USER_FRAME_COLORDESC		(V4L2_CID_USER_BASE + 0x1104)
-#define V4L2_CID_USER_FRAME_TRANSFERCHARS	(V4L2_CID_USER_BASE + 0x1105)
-#define V4L2_CID_USER_FRAME_MATRIXCOEFFS	(V4L2_CID_USER_BASE + 0x1106)
-#define V4L2_CID_USER_FRAME_FULLRANGE		(V4L2_CID_USER_BASE + 0x1107)
-#define V4L2_CID_USER_FRAME_VUIPRESENT		(V4L2_CID_USER_BASE + 0x1108)
-
-#define V4L2_CID_USER_STREAM_INPUT_MODE		(V4L2_CID_USER_BASE + 0x1109)
-#define V4L2_CID_USER_FRAME_THRESHOLD		(V4L2_CID_USER_BASE + 0x110A)
-
-#define IMX_V4L2_DEC_CMD_START		(0x09000000)
-#define IMX_V4L2_DEC_CMD_RESET		(IMX_V4L2_DEC_CMD_START + 1)
 
 enum vpu_pixel_format {
 	VPU_HAS_COLOCATED = 0x00000001,
@@ -241,6 +219,7 @@ struct queue_data {
 	unsigned long dqbuf_count;
 	unsigned long process_count;
 	bool enable;
+	struct v4l2_rect rect;
 	struct vpu_ctx *ctx;
 };
 
@@ -342,16 +321,26 @@ struct vpu_dev {
 	struct device_link *pd_mu_link;
 };
 
+#define VDEC_EVENT_RECORD_LAST		VID_API_EVENT_PIC_SKIPPED
 struct vpu_statistic {
 	unsigned long cmd[VID_API_CMD_TS + 2];
-	unsigned long event[VID_API_EVENT_DEC_CFG_INFO + 2];
+	unsigned long event[VDEC_EVENT_RECORD_LAST + 2];
 	unsigned long current_cmd;
 	unsigned long current_event;
 	unsigned long skipped_frame_count;
+	unsigned long error_frame_count;
 	struct timespec64 ts_cmd;
 	struct timespec64 ts_event;
 	atomic64_t total_dma_size;
 	atomic64_t total_alloc_size;
+	unsigned long frame_input;
+	unsigned long frame_hdr;
+	unsigned long frame_decoded;
+	unsigned long frame_ready;
+	unsigned long frame_display;
+	unsigned long eos_cnt;
+	unsigned long eos_frames;
+	unsigned long eos_bytes;
 };
 
 struct dma_buffer {
@@ -459,18 +448,11 @@ struct vpu_ctx {
 	struct file *crc_fp;
 	loff_t pos;
 
-	int frm_dis_delay;
-	int frm_dec_delay;
-	int frm_total_num;
-
 	long total_qbuf_bytes;
 	long total_write_bytes;
 	u32 extra_size;
 	s64 output_ts;
 	s64 capture_ts;
-	s64 ts_threshold;
-	u32 bs_l_threshold;
-	u32 bs_h_threshold;
 
 	struct v4l2_fract fixed_frame_interval;
 	struct v4l2_fract frame_interval;
@@ -493,6 +475,12 @@ struct vpu_ctx {
 	u8 xfer_func;
 	u8 ycbcr_enc;
 	u8 quantization;
+
+	u32 out_min_buffer;
+	u32 cap_min_buffer;
+
+	u32 out_sequence;
+	u32 cap_sequence;
 };
 
 #define LVL_WARN		(1 << 0)
@@ -509,6 +497,7 @@ struct vpu_ctx {
 #define LVL_BIT_FUNC		(1 << 12)
 #define LVL_BIT_FLOW		(1 << 13)
 #define LVL_BIT_FRAME_COUNT	(1 << 14)
+#define LVL_BIT_STRM_INFO	(1 << 15)
 
 #define vpu_err(fmt, arg...) pr_info("[VPU Decoder] " fmt, ## arg)
 
@@ -517,6 +506,15 @@ struct vpu_ctx {
 		if (vpu_dbg_level_decoder & (level)) \
 			pr_info("[VPU Decoder] " fmt, ## arg); \
 	} while (0)
+
+#define vpu_warn(ctx, fmt, arg...)	\
+	vpu_dbg(LVL_WARN, "warning: ctx[%d] %c%c%c%c: "fmt, \
+			ctx->str_index, \
+			ctx->q_data[0].fourcc, \
+			ctx->q_data[0].fourcc >> 8, \
+			ctx->q_data[0].fourcc >> 16, \
+			ctx->q_data[0].fourcc >> 24, \
+			## arg)
 
 #define V4L2_NXP_BUF_FLAG_CODECCONFIG		0x00200000
 #define V4L2_NXP_BUF_FLAG_TIMESTAMP_INVALID	0x00400000
@@ -531,6 +529,9 @@ struct vpu_ctx {
 #define V4L2_NXP_FRAME_HORIZONTAL_ALIGN		512
 
 #define VPU_IMX_DECODER_FUSE_OFFSET		14
+
+#define VPU_IMX_OUT_MIN_BUFFER			8
+#define VPU_IMX_CAP_MIN_BUFFER			8
 
 pSTREAM_BUFFER_DESCRIPTOR_TYPE get_str_buffer_desc(struct vpu_ctx *ctx);
 u_int32 got_free_space(u_int32 wptr, u_int32 rptr, u_int32 start, u_int32 end);

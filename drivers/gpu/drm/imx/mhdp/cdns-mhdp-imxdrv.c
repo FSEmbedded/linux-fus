@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 NXP Semiconductor, Inc.
+ * Copyright 2019-2020 NXP
  *
  * this program is free software; you can redistribute it and/or modify
  * it under the terms of the gnu general public license version 2 as
@@ -19,16 +19,27 @@
 
 static void cdns_mhdp_imx_encoder_disable(struct drm_encoder *encoder)
 {
-	struct cdns_mhdp_device *mhdp = encoder->bridge->driver_private;
+	struct drm_bridge *bridge = drm_bridge_chain_get_first_bridge(encoder);
+	struct cdns_mhdp_device *mhdp = bridge->driver_private;
+
+	if (mhdp->is_dp)
+		cdns_dp_phy_shutdown(mhdp);
+	else
+		cdns_hdmi_phy_shutdown(mhdp);
 
 	cdns_mhdp_plat_call(mhdp, plat_init);
 }
 
 static void cdns_mhdp_imx_encoder_enable(struct drm_encoder *encoder)
 {
-	struct cdns_mhdp_device *mhdp = encoder->bridge->driver_private;
+	struct drm_bridge *bridge = drm_bridge_chain_get_first_bridge(encoder);
+	struct cdns_mhdp_device *mhdp = bridge->driver_private;
 
-	cdns_mhdp_plat_call(mhdp, plat_deinit);
+	cdns_mhdp_plat_call(mhdp, plat_init);
+	if (mhdp->is_dp)
+		cdns_dp_phy_power_up(mhdp);
+	else
+		cdns_hdmi_phy_power_up(mhdp);
 }
 
 static int cdns_mhdp_imx_encoder_atomic_check(struct drm_encoder *encoder,
@@ -36,14 +47,17 @@ static int cdns_mhdp_imx_encoder_atomic_check(struct drm_encoder *encoder,
 				    struct drm_connector_state *conn_state)
 {
 	struct imx_crtc_state *imx_crtc_state = to_imx_crtc_state(crtc_state);
-	struct cdns_mhdp_device *mhdp = encoder->bridge->driver_private;
+	struct drm_bridge *bridge = drm_bridge_chain_get_first_bridge(encoder);
+	struct cdns_mhdp_device *mhdp = bridge->driver_private;
 
 	if (mhdp->plat_data->video_format != 0)
 		imx_crtc_state->bus_format = mhdp->plat_data->video_format;
 
-	/* Force mode set to recovery weston  hdmi2.0 and DP dispaly */
-	if (mhdp->force_mode_set && conn_state->state->allow_modeset)
+	if (mhdp->force_mode_set) {
 		crtc_state->mode_changed = true;
+		/* reset force mode set flag */
+		mhdp->force_mode_set = false;
+	}
 
 	return 0;
 }
@@ -82,7 +96,6 @@ static struct cdns_plat_data imx8qm_hdmi_drv_data = {
 	.phy_set = cdns_hdmi_phy_set_imx8qm,
 	.phy_video_valid = cdns_hdmi_phy_video_valid_imx8qm,
 	.power_on = cdns_mhdp_power_on_imx8qm,
-	.power_off = cdns_mhdp_power_off_imx8qm,
 	.firmware_init = cdns_mhdp_firmware_init_imx8qm,
 	.resume = cdns_mhdp_resume_imx8qm,
 	.suspend = cdns_mhdp_suspend_imx8qm,
@@ -99,7 +112,6 @@ static struct cdns_plat_data imx8qm_dp_drv_data = {
 	.unbind	= cdns_dp_unbind,
 	.phy_set = cdns_dp_phy_set_imx8qm,
 	.power_on = cdns_mhdp_power_on_imx8qm,
-	.power_off = cdns_mhdp_power_off_imx8qm,
 	.firmware_init = cdns_mhdp_firmware_init_imx8qm,
 	.resume = cdns_mhdp_resume_imx8qm,
 	.suspend = cdns_mhdp_suspend_imx8qm,
@@ -183,6 +195,7 @@ static int cdns_mhdp_imx_bind(struct device *dev, struct device *master,
 
 	imx_mhdp->mhdp.plat_data = plat_data;
 	imx_mhdp->mhdp.dev = dev;
+	imx_mhdp->mhdp.drm_dev = drm;
 	imx_mhdp->mhdp.bus_type = plat_data->bus_type;
 	ret = plat_data->bind(pdev, encoder, &imx_mhdp->mhdp);
 	/*

@@ -28,8 +28,9 @@
 #define VPU_MEM_PATTERN			0x5a5a5a5a
 
 #define VPU_TAIL_SERACH_SIZE		16
-#define VPU_STRM_END_PATTERN		{0x0, 0x0, 0x1, 0xb}
+#define VPU_STRM_END_OF_STREAM		{0x0, 0x0, 0x1, 0xb}
 #define VPU_STRM_BEGIN_PATTERN		{0x0, 0x0, 0x1}
+#define VPU_STRM_END_OF_SEQ		{0x0, 0x0, 0x1, 0xa}
 
 #define MSG_DATA_DEFAULT_SIZE		256
 #define MSG_COUNT_THD			16

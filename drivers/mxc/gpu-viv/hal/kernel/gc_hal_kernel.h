@@ -75,6 +75,8 @@
 extern "C" {
 #endif
 
+#define gcdRECOVERY_FORCE_TIMEOUT 100
+
 /*******************************************************************************
 ***** New MMU Defination *******************************************************/
 
@@ -203,24 +205,40 @@ extern "C" {
 /*******************************************************************************
 ***** Stuck Dump Level ********************************************************/
 
-/* Dump nonthing when stuck happens. */
-#define gcvSTUCK_DUMP_NONE          0
+/*
+  Stuck Dump Level
 
-/* Dump GPU state and memory near stuck point. */
-#define gcvSTUCK_DUMP_NEARBY_MEMORY 1
+  Level  1 ~  5 : NORMAL model, when recovery is enabled, stuck dump is invalid
+  Level 11 ~ 15 : FORCE model, whether recovery is enabled or not, driver will
+                  dump as level set
 
-/* Beside gcvSTUCK_DUMP_NEARBY_MEMORY, dump context buffer and user command buffer. */
-#define gcvSTUCK_DUMP_USER_COMMAND  2
+  NONE : Dump nothing when stuck happens.
 
-/* Beside gcvSTUCK_DUMP_USER_COMMAND, commit will be stall
-** to make sure command causing stuck isn't missed. */
-#define gcvSTUCK_DUMP_STALL_COMMAND 3
+  NEARBY_MEMORY : Dump GPU state and memory near stuck point.
+  USER_COMMAND  : Beside NEARBY_MEMORY, dump context buffer and user command
+                  buffer.
+  STALL_COMMAND : Beside USER_COMMAND, commit will be stall to make sure command
+                  causing stuck isn't missed.
+  ALL_COMMAND   : Beside USER_COMMAND, dump kernel command buffer.
+  ALL_CORE      : Dump all the cores with ALL_COMMAND level.
+*/
+typedef enum _gceSTUCK_DUMP_LEVEL
+{
+    gcvSTUCK_DUMP_NONE = 0,
 
-/* Beside gcvSTUCK_DUMP_USER_COMMAND, dump kernel command buffer. */
-#define gcvSTUCK_DUMP_ALL_COMMAND   4
+    gcvSTUCK_DUMP_NEARBY_MEMORY = 1,
+    gcvSTUCK_DUMP_USER_COMMAND,
+    gcvSTUCK_DUMP_STALL_COMMAND,
+    gcvSTUCK_DUMP_ALL_COMMAND,
+    gcvSTUCK_DUMP_ALL_CORE,
 
-/* Dump all the cores with level 4 dump. */
-#define gcvSTUCK_DUMP_ALL_CORE      5
+    gcvSTUCK_FORCE_DUMP_NEARBY_MEMORY = 11,
+    gcvSTUCK_FORCE_DUMP_USER_COMMAND,
+    gcvSTUCK_FORCE_DUMP_STALL_COMMAND,
+    gcvSTUCK_FORCE_DUMP_ALL_COMMAND,
+    gcvSTUCK_FORCE_DUMP_ALL_CORE,
+}
+gceSTUCK_DUMP_LEVEL;
 
 /*******************************************************************************
 ***** Page table **************************************************************/
@@ -327,6 +345,13 @@ gcsFDPRIVATE;
 
 typedef struct _gcsRECORDER * gckRECORDER;
 
+
+typedef enum _gceEVENT_FAULT
+{
+    gcvEVENT_NO_FAULT,
+    gcvEVENT_BUS_ERROR_FAULT,
+}
+gceEVENT_FAULT;
 
 /* Create a process database that will contain all its allocations. */
 gceSTATUS
@@ -567,10 +592,7 @@ struct _gckKERNEL
     gctPOINTER                  atomClients;
 
 #if VIVANTE_PROFILER
-    /* Enable profiling */
-    gctBOOL                     profileEnable;
-    /* Clear profile register or not*/
-    gctBOOL                     profileCleanRegister;
+    gckPROFILER                 profiler;
 #endif
 
 #ifdef QNX_SINGLE_THREADED_DEBUGGING
@@ -644,6 +666,7 @@ struct _gckKERNEL
 
     gctUINT32                   timeoutPID;
     gctBOOL                     threadInitialized;
+    gctPOINTER                  resetStatus;
 };
 
 struct _FrequencyHistory
@@ -1061,7 +1084,8 @@ gckEVENT_Commit(
 gceSTATUS
 gckEVENT_Notify(
     IN gckEVENT Event,
-    IN gctUINT32 IDs
+    IN gctUINT32 IDs,
+    OUT gceEVENT_FAULT *Fault
     );
 
 /* Event callback routine. */
@@ -1161,6 +1185,8 @@ typedef union _gcuVIDMEM_NODE
         /* Customer private handle */
         gctUINT32               gid;
 
+        gctUINT32               processID;
+
         /* Page table information. */
         /* Used only when node is not contiguous */
         gctSIZE_T               pageCount;
@@ -1212,6 +1238,8 @@ typedef union _gcuVIDMEM_NODE
 
         /* Kernel virtual address. */
         gctPOINTER              kvaddr;
+
+        gctUINT32               processID;
 
         /* Locked counter. */
     }
@@ -1281,12 +1309,12 @@ typedef struct _gcsVIDMEM_BLOCK
 
     /* 1M page count. */
     gctUINT32                   pageCount;
+    gctUINT32                   fixedPageCount;
 
     /* Gpu virtual base of this video memory heap. */
     gctUINT32                   addresses[gcvHARDWARE_NUM_TYPES];
     gctPOINTER                  pageTables[gcvHARDWARE_NUM_TYPES];
 
-    /* TODO: */
     gceVIDMEM_TYPE              type;
 
     /* Virtual chunk. */
@@ -1439,6 +1467,10 @@ typedef struct _gcsDEVICE
 
     /* Mutex for multi-core combine mode command submission */
     gctPOINTER                  commitMutex;
+
+    /* Mutex for recovery all core */
+    gctPOINTER                  recoveryMutex;
+
 }
 gcsDEVICE;
 
@@ -1793,6 +1825,7 @@ struct _gckMMU
     gctUINT32                   contiguousBaseAddress;
     gctUINT32                   externalBaseAddress;
     gctUINT32                   internalBaseAddress;
+    gctUINT                     mmuException;
 };
 
 

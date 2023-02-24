@@ -291,7 +291,7 @@
 	};
 
 	sound-rpmsg {
-		compatible = "fsl,imx-audio-rpmsg";
+		compatible = "fus,imx7ulp-rpmsg-audio";
 		model = "sgtl5000-audio";
 		cpu-dai = <&rpmsg_i2s>;
 		rpmsg-out;
@@ -421,7 +421,8 @@
 	pinctrl-1 = <&pinctrl_pwm0>;
 	status = "okay";
 };
-
+#if 0
+/* not available anymore. See remote proc */
 &rpmsg{
 	/*
 	 * 64K for one rpmsg instance, default using 2 rpmsg instances:
@@ -432,7 +433,7 @@
 	reg = <0x9FF00000 0x20000>;
 	status = "okay";
 };
-
+#endif
 #ifdef CONFIG_PICOCOREMX7ULP_EMMC
 &usdhc0 { /* emmc */
 	pinctrl-names = "default", "sleep";

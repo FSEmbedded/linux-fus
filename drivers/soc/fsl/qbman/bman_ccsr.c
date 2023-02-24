@@ -1,4 +1,5 @@
 /* Copyright (c) 2009 - 2016 Freescale Semiconductor, Inc.
+ * Copyright 2020 Puresoftware Ltd.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +30,7 @@
  */
 
 #include "bman_priv.h"
-#include <linux/iommu.h>
+#include <linux/acpi.h>
 
 u16 bman_ip_rev;
 EXPORT_SYMBOL(bman_ip_rev);
@@ -211,7 +212,6 @@ static int fsl_bman_probe(struct platform_device *pdev)
 	int ret, err_irq;
 	struct device *dev = &pdev->dev;
 	struct device_node *node = dev->of_node;
-	struct iommu_domain *domain;
 	struct resource *res;
 	u16 id, bm_pool_cnt;
 	u8 major, minor;
@@ -249,7 +249,8 @@ static int fsl_bman_probe(struct platform_device *pdev)
 	 * try using the of_reserved_mem_device method
 	 */
 	if (!fbpr_a) {
-		ret = qbman_init_private_mem(dev, 0, &fbpr_a, &fbpr_sz);
+		ret = qbman_init_private_mem(dev, 0, &fbpr_a, &fbpr_sz,
+					     DPAA_BMAN_DEV);
 		if (ret) {
 			dev_err(dev, "qbman_init_private_mem() failed 0x%x\n",
 				ret);
@@ -258,15 +259,6 @@ static int fsl_bman_probe(struct platform_device *pdev)
 	}
 
 	dev_dbg(dev, "Allocated FBPR 0x%llx 0x%zx\n", fbpr_a, fbpr_sz);
-
-	/* Create an 1-to-1 iommu mapping for FBPR area */
-	domain = iommu_get_domain_for_dev(dev);
-	if (domain) {
-		ret = iommu_map(domain, fbpr_a, fbpr_a, PAGE_ALIGN(fbpr_sz),
-				IOMMU_READ | IOMMU_WRITE | IOMMU_CACHE);
-		if (ret)
-			dev_warn(dev, "failed to iommu_map() %d\n", ret);
-	}
 
 	bm_set_memory(fbpr_a, fbpr_sz);
 
@@ -309,6 +301,7 @@ static int fsl_bman_probe(struct platform_device *pdev)
 
 	__bman_probed = 1;
 
+	dev_dbg(dev, "Bman probed successfully [%d]\n", __bman_probed);
 	return 0;
 };
 
@@ -319,10 +312,15 @@ static const struct of_device_id fsl_bman_ids[] = {
 	{}
 };
 
+static const struct acpi_device_id fsl_bman_acpi_ids[] = {
+	{"NXP0021", 0}
+};
+
 static struct platform_driver fsl_bman_driver = {
 	.driver = {
 		.name = KBUILD_MODNAME,
 		.of_match_table = fsl_bman_ids,
+		.acpi_match_table = ACPI_PTR(fsl_bman_acpi_ids),
 		.suppress_bind_attrs = true,
 	},
 	.probe = fsl_bman_probe,

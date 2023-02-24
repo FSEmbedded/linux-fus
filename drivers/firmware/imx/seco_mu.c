@@ -138,6 +138,8 @@ struct seco_mu_device_ctx {
 	u32 temp_cmd[MAX_MESSAGE_SIZE];
 	u32 temp_resp[MAX_RECV_SIZE];
 	u32 temp_resp_size;
+	struct notifier_block scu_notify;
+	bool v2x_reset;
 };
 
 /* Private struct for seco MU driver. */
@@ -166,6 +168,9 @@ struct seco_mu_priv {
 
 	struct imx_sc_ipc *ipc_scu;
 	u8 seco_part_owner;
+
+	int max_ctx;
+	struct seco_mu_device_ctx **ctxs;
 };
 
 /* macro to log operation of a misc device */
@@ -275,6 +280,7 @@ static int seco_mu_fops_open(struct inode *nd, struct file *fp)
 	dev_ctx->status = MU_OPENED;
 
 	dev_ctx->pending_hdr = 0;
+	dev_ctx->v2x_reset = 0;
 
 	goto exit;
 
@@ -423,7 +429,7 @@ static ssize_t seco_mu_fops_write(struct file *fp, const char __user *buf,
 	 * carried in the message.
 	 */
 	nb_words = MESSAGE_SIZE(header);
-	if (nb_words * sizeof(u32) > size) {
+	if (nb_words * sizeof(u32) != size) {
 		devctx_err(dev_ctx, "User buffer too small\n");
 		goto exit;
 	}
@@ -472,10 +478,21 @@ static ssize_t seco_mu_fops_read(struct file *fp, char __user *buf,
 		goto exit;
 	}
 
+	if (dev_ctx->v2x_reset) {
+		err = -EINVAL;
+		goto exit;
+	}
+
 	/* Wait until the complete message is received on the MU. */
 	err = wait_event_interruptible(dev_ctx->wq, dev_ctx->pending_hdr != 0);
 	if (err) {
 		devctx_err(dev_ctx, "Interrupted by signal\n");
+		goto exit;
+	}
+
+	if (dev_ctx->v2x_reset) {
+		err = -EINVAL;
+		dev_ctx->v2x_reset = 0;
 		goto exit;
 	}
 
@@ -995,6 +1012,20 @@ exit:
 	return ret;
 }
 
+static int imx_sc_v2x_reset_notify(struct notifier_block *nb,
+                                      unsigned long event, void *group)
+{
+	struct seco_mu_device_ctx *dev_ctx = container_of(nb,
+					struct seco_mu_device_ctx, scu_notify);
+
+	if (!(event & IMX_SC_IRQ_V2X_RESET))
+		return 0;
+
+	dev_ctx->v2x_reset = true;
+
+	wake_up_interruptible(&dev_ctx->wq);
+	return 0;
+}
 /* Driver probe.*/
 static int seco_mu_probe(struct platform_device *pdev)
 {
@@ -1093,6 +1124,9 @@ static int seco_mu_probe(struct platform_device *pdev)
 		goto exit;
 	}
 
+	priv->max_ctx = max_nb_users;
+	priv->ctxs = devm_kzalloc(dev, sizeof(dev_ctx) * max_nb_users, GFP_KERNEL);
+
 	/* Create users */
 	for (i = 0; i < max_nb_users; i++) {
 		dev_ctx = devm_kzalloc(dev, sizeof(*dev_ctx), GFP_KERNEL);
@@ -1106,6 +1140,9 @@ static int seco_mu_probe(struct platform_device *pdev)
 		dev_ctx->dev = dev;
 		dev_ctx->status = MU_FREE;
 		dev_ctx->mu_priv = priv;
+
+		priv->ctxs[i] = dev_ctx;
+
 		/* Default value invalid for an header. */
 		init_waitqueue_head(&dev_ctx->wq);
 
@@ -1134,14 +1171,44 @@ static int seco_mu_probe(struct platform_device *pdev)
 
 		ret = devm_add_action(dev, if_misc_deregister,
 				      &dev_ctx->miscdev);
+
+		dev_ctx->scu_notify.notifier_call = imx_sc_v2x_reset_notify;
+
+		ret = imx_scu_irq_register_notifier(&dev_ctx->scu_notify);
+		if (ret) {
+			dev_err(&pdev->dev, "v2x reqister scu notifier failed.\n");
+			return ret;
+		}
+
 		if (ret)
 			dev_warn(dev,
 				 "failed to add managed removal of miscdev\n");
 	}
 
+	ret = imx_scu_irq_group_enable(IMX_SC_IRQ_GROUP_WAKE,
+					IMX_SC_IRQ_V2X_RESET, true);
+	if (ret) {
+		dev_warn(&pdev->dev, "v2x Enable irq failed.\n");
+		return ret;
+	}
+
 exit:
 	return ret;
 }
+
+#ifdef CONFIG_PM_SLEEP
+static int secu_mu_resume(struct device *dev)
+{
+	struct seco_mu_priv *priv = dev_get_drvdata(dev);
+	int i=0;
+
+	for (i = 0; i < priv->max_ctx; i++) {
+		priv->ctxs[i]->v2x_reset = true;
+		wake_up_interruptible(&priv->ctxs[i]->wq);
+	}
+	return 0;
+}
+#endif
 
 static const struct of_device_id seco_mu_match[] = {
 	{
@@ -1151,10 +1218,15 @@ static const struct of_device_id seco_mu_match[] = {
 };
 MODULE_DEVICE_TABLE(of, seco_mu_match);
 
+static const struct dev_pm_ops secu_mu_pm = {
+        SET_SYSTEM_SLEEP_PM_OPS(NULL, secu_mu_resume)
+};
+
 static struct platform_driver seco_mu_driver = {
 	.driver = {
 		.name = "seco_mu",
 		.of_match_table = seco_mu_match,
+		.pm = &secu_mu_pm,
 	},
 	.probe       = seco_mu_probe,
 };

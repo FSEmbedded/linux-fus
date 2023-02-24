@@ -122,14 +122,10 @@ static void imx6ul_sai_init(void)
 
 static void __init imx6ul_init_machine(void)
 {
-	struct device *parent;
+	imx_print_silicon_rev(cpu_is_imx6ull() ? "i.MX6ULL" : "i.MX6UL",
+		imx_get_soc_revision());
 
-	parent = imx_soc_device_init();
-	if (parent == NULL)
-		pr_warn("failed to initialize soc device\n");
-
-	of_platform_default_populate(NULL, NULL, parent);
-	imx_anatop_init();
+	of_platform_default_populate(NULL, NULL, NULL);
 #if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
 	imx6ul_enet_init();
 #endif

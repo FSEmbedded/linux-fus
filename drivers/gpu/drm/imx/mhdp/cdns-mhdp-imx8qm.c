@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 NXP Semiconductor, Inc.
+ * Copyright 2019-2022 NXP
  *
  * this program is free software; you can redistribute it and/or modify
  * it under the terms of the gnu general public license version 2 as
@@ -102,7 +102,7 @@ static void imx8qm_pixel_link_sync_disable(u32 dual_mode)
 		imx_sc_misc_set_control(handle, IMX_SC_R_DC_0, IMX_SC_C_SYNC_CTRL0, 0);
 }
 
-static void imx8qm_phy_reset(u8 reset)
+void imx8qm_phy_reset(u8 reset)
 {
 	struct imx_sc_ipc *handle;
 
@@ -373,65 +373,6 @@ static int imx8qm_ipg_clk_enable(struct imx_mhdp_device *imx_mhdp)
 	return ret;
 }
 
-static int imx8qm_ipg_clk_disable(struct imx_mhdp_device *imx_mhdp)
-{
-	int ret;
-	struct imx_hdp_clks *clks = &imx_mhdp->clks;
-	struct device *dev = imx_mhdp->mhdp.dev;
-
-	ret = clk_prepare_enable(clks->clk_i2s_bypass);
-	if (ret < 0) {
-		dev_err(dev, "%s, pre clk i2s bypass error\n", __func__);
-		return ret;
-	}
-	ret = clk_prepare_enable(clks->lpcg_i2s);
-	if (ret < 0) {
-		dev_err(dev, "%s, pre clk i2s error\n", __func__);
-		return ret;
-	}
-	ret = clk_prepare_enable(clks->lpcg_apb_ctrl);
-	if (ret < 0) {
-		dev_err(dev, "%s, pre clk apb ctrl error\n", __func__);
-		return ret;
-	}
-	ret = clk_prepare_enable(clks->lpcg_apb_csr);
-	if (ret < 0) {
-		dev_err(dev, "%s, pre clk apb csr error\n", __func__);
-		return ret;
-	}
-	ret = clk_prepare_enable(clks->lpcg_msi);
-	if (ret < 0) {
-		dev_err(dev, "%s, pre clk msierror\n", __func__);
-		return ret;
-	}
-	ret = clk_prepare_enable(clks->lpcg_lis);
-	if (ret < 0) {
-		dev_err(dev, "%s, pre clk lis error\n", __func__);
-		return ret;
-	}
-	ret = clk_prepare_enable(clks->lpcg_apb);
-	if (ret < 0) {
-		dev_err(dev, "%s, pre clk apb error\n", __func__);
-		return ret;
-	}
-	ret = clk_prepare_enable(clks->clk_core);
-	if (ret < 0) {
-		dev_err(dev, "%s, pre clk core error\n", __func__);
-		return ret;
-	}
-	ret = clk_prepare_enable(clks->clk_ipg);
-	if (ret < 0) {
-		dev_err(dev, "%s, pre clk_ipg error\n", __func__);
-		return ret;
-	}
-	ret = clk_prepare_enable(clks->dig_pll);
-	if (ret < 0) {
-		dev_err(dev, "%s, pre dig pll error\n", __func__);
-		return ret;
-	}
-	return ret;
-}
-
 static void imx8qm_ipg_clk_set_rate(struct imx_mhdp_device *imx_mhdp)
 {
 	struct imx_hdp_clks *clks = &imx_mhdp->clks;
@@ -523,7 +464,6 @@ int cdns_mhdp_power_on_imx8qm(struct cdns_mhdp_device *mhdp)
 {
 	struct imx_mhdp_device *imx_mhdp =
 				container_of(mhdp, struct imx_mhdp_device, mhdp);
-
 	/* Power on PM Domains */
 
 	imx8qm_attach_pm_domains(imx_mhdp);
@@ -547,22 +487,7 @@ int cdns_mhdp_power_on_imx8qm(struct cdns_mhdp_device *mhdp)
 	return 0;
 }
 
-int cdns_mhdp_power_off_imx8qm(struct cdns_mhdp_device *mhdp)
-{
-	struct imx_mhdp_device *imx_mhdp =
-		container_of(mhdp, struct imx_mhdp_device, mhdp);
-
-	imx8qm_phy_reset(0);
-	imx8qm_pixel_clk_disable(imx_mhdp);
-	imx8qm_ipg_clk_disable(imx_mhdp);
-
-	/* Power off PM Domains */
-	imx8qm_detach_pm_domains(imx_mhdp);
-
-	return 0;
-}
-
-void cdns_mhdp_plat_init_imx8qm(struct cdns_mhdp_device *mhdp)
+void cdns_mhdp_plat_deinit_imx8qm(struct cdns_mhdp_device *mhdp)
 {
 	struct imx_mhdp_device *imx_mhdp =
 				container_of(mhdp, struct imx_mhdp_device, mhdp);
@@ -572,7 +497,7 @@ void cdns_mhdp_plat_init_imx8qm(struct cdns_mhdp_device *mhdp)
 	imx8qm_pixel_link_invalid(dual_mode);
 }
 
-void cdns_mhdp_plat_deinit_imx8qm(struct cdns_mhdp_device *mhdp)
+void cdns_mhdp_plat_init_imx8qm(struct cdns_mhdp_device *mhdp)
 {
 	struct imx_mhdp_device *imx_mhdp =
 				container_of(mhdp, struct imx_mhdp_device, mhdp);
@@ -587,12 +512,16 @@ void cdns_mhdp_pclk_rate_imx8qm(struct cdns_mhdp_device *mhdp)
 	struct imx_mhdp_device *imx_mhdp =
 				container_of(mhdp, struct imx_mhdp_device, mhdp);
 
+	mutex_lock(&mhdp->iolock);
+
 	/* set pixel clock before video mode setup */
 	imx8qm_pixel_clk_disable(imx_mhdp);
 
 	imx8qm_pixel_clk_set_rate(imx_mhdp, imx_mhdp->mhdp.mode.clock * 1000);
 
 	imx8qm_pixel_clk_enable(imx_mhdp);
+
+	mutex_unlock(&mhdp->iolock);
 
 	/* Config pixel link mux */
 	imx8qm_pixel_link_mux(imx_mhdp);
@@ -640,7 +569,7 @@ static int cdns_mhdp_firmware_load(struct imx_mhdp_device *imx_mhdp)
 		goto out;
 
 	if (!imx_mhdp->fw) {
-		ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_NOHOTPLUG,
+		ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_NOUEVENT,
 						imx_mhdp->firmware_name,
 						imx_mhdp->mhdp.dev, GFP_KERNEL,
 						imx_mhdp,

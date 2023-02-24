@@ -95,7 +95,7 @@ static struct key *nvdimm_lookup_user_key(struct nvdimm *nvdimm,
 	struct encrypted_key_payload *epayload;
 	struct device *dev = &nvdimm->dev;
 
-	keyref = lookup_user_key(id, 0, 0);
+	keyref = lookup_user_key(id, 0, KEY_NEED_SEARCH);
 	if (IS_ERR(keyref))
 		return NULL;
 
@@ -378,11 +378,6 @@ static int security_overwrite(struct nvdimm *nvdimm, unsigned int keyid)
 	if (!nvdimm->sec.ops || !nvdimm->sec.ops->overwrite
 			|| !nvdimm->sec.flags)
 		return -EOPNOTSUPP;
-
-	if (dev->driver == NULL) {
-		dev_dbg(dev, "Unable to overwrite while DIMM active.\n");
-		return -EINVAL;
-	}
 
 	rc = check_security_state(nvdimm);
 	if (rc)

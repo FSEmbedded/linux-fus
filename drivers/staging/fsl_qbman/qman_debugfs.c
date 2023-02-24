@@ -163,7 +163,7 @@ static const struct mask_to_text stashing_text_list[] = {
 static int user_input_convert(const char __user *user_buf, size_t count,
 				unsigned long *val)
 {
-	char buf[12];
+	char buf[12] = {0};
 
 	if (count > sizeof(buf) - 1)
 		return -EINVAL;
@@ -1211,7 +1211,7 @@ static int qman_fqd_dest_wq_show(struct seq_file *file, void *offset)
 	for (i = 0; i < 0xFFFF; i++) {
 		if (wq[i])
 			seq_printf(file, "Channel: 0x%x WQ: 0x%x WQ_ID: 0x%x, "
-				"count = %u\n", i >> 3, i & 0x3, i, wq[i]);
+				"count = %u\n", i >> 3, i & 0x7, i, wq[i]);
 	}
 	vfree(wq);
 	return 0;

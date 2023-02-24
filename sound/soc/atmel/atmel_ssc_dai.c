@@ -280,7 +280,10 @@ static int atmel_ssc_startup(struct snd_pcm_substream *substream,
 
 	/* Enable PMC peripheral clock for this SSC */
 	pr_debug("atmel_ssc_dai: Starting clock\n");
-	clk_enable(ssc_p->ssc->clk);
+	ret = clk_enable(ssc_p->ssc->clk);
+	if (ret)
+		return ret;
+
 	ssc_p->mck_rate = clk_get_rate(ssc_p->ssc->clk);
 
 	/* Reset the SSC unless initialized to keep it in a clean state */
@@ -760,12 +763,12 @@ static int atmel_ssc_trigger(struct snd_pcm_substream *substream,
 }
 
 #ifdef CONFIG_PM
-static int atmel_ssc_suspend(struct snd_soc_dai *cpu_dai)
+static int atmel_ssc_suspend(struct snd_soc_component *component)
 {
 	struct atmel_ssc_info *ssc_p;
-	struct platform_device *pdev = to_platform_device(cpu_dai->dev);
+	struct platform_device *pdev = to_platform_device(component->dev);
 
-	if (!cpu_dai->active)
+	if (!snd_soc_component_active(component))
 		return 0;
 
 	ssc_p = &ssc_info[pdev->id];
@@ -787,15 +790,13 @@ static int atmel_ssc_suspend(struct snd_soc_dai *cpu_dai)
 	return 0;
 }
 
-
-
-static int atmel_ssc_resume(struct snd_soc_dai *cpu_dai)
+static int atmel_ssc_resume(struct snd_soc_component *component)
 {
 	struct atmel_ssc_info *ssc_p;
-	struct platform_device *pdev = to_platform_device(cpu_dai->dev);
+	struct platform_device *pdev = to_platform_device(component->dev);
 	u32 cr;
 
-	if (!cpu_dai->active)
+	if (!snd_soc_component_active(component))
 		return 0;
 
 	ssc_p = &ssc_info[pdev->id];
@@ -839,8 +840,6 @@ static const struct snd_soc_dai_ops atmel_ssc_dai_ops = {
 };
 
 static struct snd_soc_dai_driver atmel_ssc_dai = {
-		.suspend = atmel_ssc_suspend,
-		.resume = atmel_ssc_resume,
 		.playback = {
 			.channels_min = 1,
 			.channels_max = 2,
@@ -860,6 +859,8 @@ static struct snd_soc_dai_driver atmel_ssc_dai = {
 
 static const struct snd_soc_component_driver atmel_ssc_component = {
 	.name		= "atmel-ssc",
+	.suspend	= atmel_ssc_suspend,
+	.resume		= atmel_ssc_resume,
 };
 
 static int asoc_ssc_init(struct device *dev)
@@ -889,6 +890,7 @@ static int asoc_ssc_init(struct device *dev)
 
 /**
  * atmel_ssc_set_audio - Allocate the specified SSC for audio use.
+ * @ssc_id: SSD ID in [0, NUM_SSC_DEVICES[
  */
 int atmel_ssc_set_audio(int ssc_id)
 {

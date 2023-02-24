@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/**
+/*
  * xhci-dbc.c - xHCI debug capability early driver
  *
  * Copyright (C) 2016 Intel Corporation
@@ -18,10 +18,10 @@
 #include <asm/fixmap.h>
 #include <linux/bcd.h>
 #include <linux/export.h>
-#include <linux/version.h>
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/kthread.h>
+#include <linux/usb/xhci-dbgp.h>
 
 #include "../host/xhci.h"
 #include "xhci-dbc.h"
@@ -135,6 +135,7 @@ static int handshake(void __iomem *ptr, u32 mask, u32 done, int wait, int delay)
 {
 	u32 result;
 
+	/* Can not use readl_poll_timeout_atomic() for early boot things */
 	do {
 		result = readl(ptr);
 		result &= mask;
@@ -971,7 +972,7 @@ static int __init xdbc_init(void)
 		goto free_and_quit;
 	}
 
-	base = ioremap_nocache(xdbc.xhci_start, xdbc.xhci_length);
+	base = ioremap(xdbc.xhci_start, xdbc.xhci_length);
 	if (!base) {
 		xdbc_trace("failed to remap the io address\n");
 		ret = -ENOMEM;

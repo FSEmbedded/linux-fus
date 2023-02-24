@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2016 Freescale Semiconductor, Inc.
+ * Copyright (C) 2011-2021 Freescale Semiconductor, Inc.
  *
  * The code contained herein is licensed under the GNU General Public
  * License. You may obtain a copy of the GNU General Public License
@@ -1766,6 +1766,8 @@ static void hdmi_disable_overflow_interrupts(void)
 
 static void mxc_hdmi_notify_fb(struct mxc_hdmi *hdmi)
 {
+	int ret;
+
 	dev_dbg(&hdmi->pdev->dev, "%s\n", __func__);
 
 	/* Don't notify if we aren't registered yet */
@@ -1782,7 +1784,8 @@ static void mxc_hdmi_notify_fb(struct mxc_hdmi *hdmi)
 	 */
 	hdmi->fbi->var.activate |= FB_ACTIVATE_FORCE;
 	console_lock();
-	if (!fb_set_var(hdmi->fbi, &hdmi->fbi->var))
+	ret = fb_set_var(hdmi->fbi, &hdmi->fbi->var);
+	if (!ret)
 		fbcon_update_vcs(hdmi->fbi, hdmi->fbi->var.activate & FB_ACTIVATE_ALL);
 	console_unlock();
 
@@ -1964,9 +1967,9 @@ static void mxc_hdmi_cable_connected(struct mxc_hdmi *hdmi)
 
 	case HDMI_EDID_FAIL:
 		mxc_hdmi_default_edid_cfg(hdmi);
-		/* fall through */
+		fallthrough;
 	case HDMI_EDID_NO_MODES:
-		/* fall through */
+		fallthrough;
 	default:
 		mxc_hdmi_default_modelist(hdmi);
 		break;

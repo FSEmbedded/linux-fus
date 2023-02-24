@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
- * Copyright 2019 NXP
+ * Copyright 2019,2022 NXP
  */
 
 #include <linux/busfreq-imx.h>
@@ -82,6 +82,7 @@ static struct lcdifv3_soc_pdata imx8mp_lcdif3_pdata = {
 	.hdmimix     = true,
 };
 static const struct of_device_id imx_lcdifv3_dt_ids[] = {
+	{ .compatible = "fsl,imx93-lcdif", },
 	{ .compatible = "fsl,imx8mp-lcdif1", .data = &imx8mp_lcdif1_pdata, },
 	{ .compatible = "fsl,imx8mp-lcdif2", .data = &imx8mp_lcdif2_pdata, },
 	{ .compatible = "fsl,imx8mp-lcdif3", .data = &imx8mp_lcdif3_pdata,},
@@ -265,7 +266,6 @@ EXPORT_SYMBOL(lcdifv3_get_bus_fmt_from_pix_fmt);
 
 int lcdifv3_set_pix_fmt(struct lcdifv3_soc *lcdifv3, u32 format)
 {
-	struct drm_format_name_buf format_name;
 	uint32_t ctrldescl0_5 = 0;
 
 	ctrldescl0_5 = readl(lcdifv3->base + LCDIFV3_CTRLDESCL0_5);
@@ -289,8 +289,8 @@ int lcdifv3_set_pix_fmt(struct lcdifv3_soc *lcdifv3, u32 format)
 		ctrldescl0_5 |= CTRLDESCL0_5_BPP(BPP32_ABGR8888);
 		break;
 	default:
-		dev_err(lcdifv3->dev, "unsupported pixel format: %s\n",
-			drm_get_format_name(format, &format_name));
+		dev_err(lcdifv3->dev, "unsupported pixel format: %p4cc\n",
+			&format);
 		return -EINVAL;
 	}
 
@@ -542,6 +542,8 @@ static int hdmimix_lcdif3_setup(struct lcdifv3_soc *lcdifv3)
 
 	/* power up hdmimix lcdif and nor */
 	ret = device_reset(dev);
+	if (ret)
+		dev_warn(dev, "No hdmimix sub reset found\n");
 	if (ret == -EPROBE_DEFER)
 		return ret;
 
@@ -684,7 +686,6 @@ static int imx_lcdifv3_probe(struct platform_device *pdev)
 	struct device_node *np = dev->of_node;
 	struct lcdifv3_soc *lcdifv3;
 	struct resource *res;
-	struct regmap *blk_ctl;
 	const struct of_device_id *of_id;
 	const struct lcdifv3_soc_pdata *soc_pdata;
 
@@ -710,14 +711,15 @@ static int imx_lcdifv3_probe(struct platform_device *pdev)
 
 	lcdifv3->irq = platform_get_irq(pdev, 0);
 	if (lcdifv3->irq < 0) {
-		dev_err(dev, "No irq get\n");
-		return -EPROBE_DEFER;
+		dev_err(dev, "No irq get, ret=%d\n", lcdifv3->irq);
+		return lcdifv3->irq;
 	}
 
 	lcdifv3->clk_pix = devm_clk_get(dev, "pix");
 	if (IS_ERR(lcdifv3->clk_pix)) {
-		dev_err(dev, "No pix clock get\n");
-		return -EPROBE_DEFER;
+		ret = PTR_ERR(lcdifv3->clk_pix);
+		dev_err(dev, "No pix clock get: %d\n", ret);
+		return ret;
 	}
 
 	lcdifv3->clk_disp_axi = devm_clk_get(dev, "disp-axi");
@@ -732,23 +734,34 @@ static int imx_lcdifv3_probe(struct platform_device *pdev)
 	if (IS_ERR(lcdifv3->base))
 		return PTR_ERR(lcdifv3->base);
 
+	if (of_device_is_compatible(np, "fsl,imx93-lcdif")) {
+		lcdifv3->gpr = syscon_regmap_lookup_by_phandle(np, "fsl,gpr");
+		if (IS_ERR(lcdifv3->gpr)) {
+			ret = PTR_ERR(lcdifv3->gpr);
+			dev_err(dev, "failed to get gpr: %d\n", ret);
+			return ret;
+		}
+	}
+
 	lcdifv3->dev = dev;
 
 	/* reset controller to avoid any conflict
 	 * with uboot splash screen settings.
 	 */
-	blk_ctl = syscon_regmap_lookup_by_phandle(np, "blk-ctl");
-	if (IS_ERR(blk_ctl))
-		blk_ctl = NULL;
-
-	if (blk_ctl) {
+	if (of_device_is_compatible(np, "fsl,imx8mp-lcdif1")) {
+		/* TODO: Maybe the clock enable should
+		 *	 be done in reset driver.
+		 */
+		clk_prepare_enable(lcdifv3->clk_disp_axi);
 		clk_prepare_enable(lcdifv3->clk_disp_apb);
+
 		writel(CTRL_SW_RESET, lcdifv3->base + LCDIFV3_CTRL_CLR);
 
-		/* reset LCDIFv3 controller */
-		regmap_update_bits(blk_ctl, 0x0, BIT(5), 0x0);
-		regmap_update_bits(blk_ctl, 0x0, BIT(5), BIT(5));
+		ret = device_reset(dev);
+		if (ret)
+			dev_warn(dev, "lcdif1 reset failed: %d\n", ret);
 
+		clk_disable_unprepare(lcdifv3->clk_disp_axi);
 		clk_disable_unprepare(lcdifv3->clk_disp_apb);
 	}
 
@@ -756,7 +769,7 @@ static int imx_lcdifv3_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, lcdifv3);
 
-	if (soc_pdata->hdmimix) {
+	if (soc_pdata && soc_pdata->hdmimix) {
 		ret = hdmimix_lcdif3_setup(lcdifv3);
 		if (ret < 0) {
 			dev_err(dev, "hdmimix lcdif3 setup failed\n");
@@ -792,6 +805,10 @@ static int imx_lcdifv3_runtime_suspend(struct device *dev)
 
 	release_bus_freq(BUS_FREQ_HIGH);
 
+	/* clear LCDIF QoS and cache */
+	if (of_device_is_compatible(dev->of_node, "fsl,imx93-lcdif"))
+		regmap_write(lcdifv3->gpr, 0xc, 0x0);
+
 	return 0;
 }
 
@@ -807,6 +824,10 @@ static int imx_lcdifv3_runtime_resume(struct device *dev)
 
 	if (!atomic_dec_and_test(&lcdifv3->rpm_suspended))
 		return 0;
+
+	/* set LCDIF QoS and cache */
+	if (of_device_is_compatible(dev->of_node, "fsl,imx93-lcdif"))
+		regmap_write(lcdifv3->gpr, 0xc, 0x3712);
 
 	request_bus_freq(BUS_FREQ_HIGH);
 

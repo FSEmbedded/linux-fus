@@ -108,7 +108,7 @@ typedef struct {
 	u32 core_id; //core id for driver and sw internal use
 	u32 is_valid; //indicate this core is hantro's core or not
 	u32 is_reserved; //indicate this core is occupied by user or not
-	int pid; //indicate which process is occupying the core
+	struct file *filp; //indicate which instance is occupying the core
 	u32 irq_received; //indicate this core receives irq
 	u32 irq_status;
 	char *buffer;
@@ -127,7 +127,7 @@ typedef struct {
 static int ReserveIO(void);
 static void ReleaseIO(void);
 static void ResetAsic(hantroenc_t *dev);
-static int CheckCoreOccupation(hantroenc_t *dev);
+static int CheckCoreOccupation(hantroenc_t *dev, struct file *filp);
 
 #ifdef hantroenc_DEBUG
 static void dump_regs(unsigned long data);
@@ -146,7 +146,6 @@ static unsigned int sram_size;
 /* and this is our MAJOR; use 0 for dynamic allocation (recommended)*/
 static int hantroenc_major;
 static int total_core_num;
-static volatile unsigned int asic_status;
 /* dynamic allocation*/
 static hantroenc_t *hantroenc_data;
 //static unsigned int pcie = 0;          /* used in hantro_mmu.c*/
@@ -281,7 +280,7 @@ static int WaitEncReady(hantroenc_t *dev, u32 *core_info, u32 *irq_status)
 	return 0;
 }
 
-static int CheckCoreOccupation(hantroenc_t *dev)
+static int CheckCoreOccupation(hantroenc_t *dev, struct file *filp)
 {
 	int ret = 0;
 	unsigned long flags;
@@ -289,9 +288,8 @@ static int CheckCoreOccupation(hantroenc_t *dev)
 	spin_lock_irqsave(&owner_lock, flags);
 	if (!dev->is_reserved) {
 		dev->is_reserved = 1;
-		dev->pid = current->pid;
+		dev->filp = filp;
 		ret = 1;
-		PDEBUG("%s pid=%d\n", __func__, dev->pid);
 	}
 
 	spin_unlock_irqrestore(&owner_lock, flags);
@@ -299,7 +297,7 @@ static int CheckCoreOccupation(hantroenc_t *dev)
 	return ret;
 }
 
-static int GetWorkableCore(hantroenc_t *dev, u32 *core_info, u32 *core_info_tmp)
+static int GetWorkableCore(hantroenc_t *dev, u32 *core_info, u32 *core_info_tmp, struct file *filp)
 {
 	int ret = 0;
 	u32 i = 0;
@@ -326,7 +324,7 @@ static int GetWorkableCore(hantroenc_t *dev, u32 *core_info, u32 *core_info_tmp)
 				if (i > total_core_num-1)
 					break;
 				core_id = i;
-				if (dev[core_id].is_valid && CheckCoreOccupation(&dev[core_id])) {
+				if (dev[core_id].is_valid && CheckCoreOccupation(&dev[core_id], filp)) {
 					*core_info_tmp = ((((*core_info_tmp & 0xF00) >> 8)-1)<<8)|(*core_info_tmp & 0x0FF);
 					*core_info_tmp = *core_info_tmp | (1<<core_id);
 					if (((*core_info_tmp & 0xF00) >> 8) == 0) {
@@ -348,7 +346,7 @@ static int GetWorkableCore(hantroenc_t *dev, u32 *core_info, u32 *core_info_tmp)
 	return ret;
 }
 
-static long ReserveEncoder(hantroenc_t *dev, u32 *core_info)
+static long ReserveEncoder(hantroenc_t *dev, u32 *core_info, struct file *filp)
 {
 	u32 core_info_tmp = 0;
 
@@ -359,13 +357,13 @@ static long ReserveEncoder(hantroenc_t *dev, u32 *core_info)
 	}
 
 	/* lock a core that has specified core id*/
-	if (wait_event_interruptible(hw_queue, GetWorkableCore(dev, core_info, &core_info_tmp) != 0))
+	if (wait_event_interruptible(hw_queue, GetWorkableCore(dev, core_info, &core_info_tmp, filp) != 0))
 		return -ERESTARTSYS;
 
 	return 0;
 }
 
-static void ReleaseEncoder(hantroenc_t *dev, u32 *core_info)
+static void ReleaseEncoder(hantroenc_t *dev, u32 *core_info, struct file *filp)
 {
 	unsigned long flags;
 	u32 core_num = 0;
@@ -382,16 +380,14 @@ static void ReleaseEncoder(hantroenc_t *dev, u32 *core_info)
 		if (core_mapping & 0x1)	{
 			core_id = i;
 			spin_lock_irqsave(&owner_lock, flags);
-			PDEBUG("dev[core_id].pid=%d,current->pid=%d\n", dev[core_id].pid, current->pid);
-			if (dev[core_id].is_reserved && dev[core_id].pid == current->pid) {
-				dev[core_id].pid = -1;
+			if (dev[core_id].is_reserved && dev[core_id].filp == filp) {
+				dev[core_id].filp = NULL;
 				dev[core_id].is_reserved = 0;
 				dev[core_id].irq_received = 0;
 				dev[core_id].irq_status = 0;
 				dev[core_id].reg_corrupt = 0;
-			} else if (dev[core_id].pid != current->pid)
-				pr_err("WARNING:pid(%d) is trying to release core reserved by pid(%d)\n",
-					current->pid, dev[core_id].pid);
+			} else if (dev[core_id].filp != filp)
+				pr_err("WARNING: trying to release core reserved by another instance\n");
 
 			spin_unlock_irqrestore(&owner_lock, flags);
 
@@ -407,6 +403,66 @@ static void ReleaseEncoder(hantroenc_t *dev, u32 *core_info)
 		up(&enc_core_sem);
 
 }
+
+static int hantroenc_write_regs(unsigned long arg)
+{
+	struct enc_regs_buffer regs;
+	hantroenc_t *dev;
+	u32 *reg_buf;
+	u32 i;
+	int ret;
+
+	ret = copy_from_user(&regs, (void *)arg, sizeof(regs));
+	if (ret)
+		return ret;
+	if (regs.core_id >= total_core_num ||
+	    (regs.offset + regs.size) > sizeof(hantroenc_data[regs.core_id].reg_buf)) {
+		pr_err("%s invalid param, core_id:%d, offset:%d, size:%d\n",
+			__func__, regs.core_id, regs.offset, regs.size);
+		return -EINVAL;
+	}
+
+	dev = &hantroenc_data[regs.core_id];
+	reg_buf = &dev->reg_buf[regs.offset / 4];
+	ret = copy_from_user(reg_buf, (void *)regs.regs, regs.size);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < regs.size / 4; i++)
+		iowrite32(reg_buf[i], (dev->hwregs + regs.offset) + i * 4);
+
+	return ret;
+}
+
+static int hantroenc_read_regs(unsigned long arg)
+{
+	struct enc_regs_buffer regs;
+	hantroenc_t *dev;
+	u32 *reg_buf;
+	u32 i;
+	int ret;
+
+	ret = copy_from_user(&regs, (void *)arg, sizeof(regs));
+	if (ret)
+		return ret;
+	if (regs.core_id >= total_core_num ||
+	    (regs.offset + regs.size) > sizeof(hantroenc_data[regs.core_id].reg_buf)) {
+		pr_err("%s invalid param, core_id:%d, offset:%d, size:%d\n",
+			__func__, regs.core_id, regs.offset, regs.size);
+		return -EINVAL;
+	}
+
+	dev = &hantroenc_data[regs.core_id];
+	reg_buf = &dev->reg_buf[regs.offset / 4];
+
+	for (i = 0; i < regs.size / 4; i++)
+		reg_buf[i] = ioread32((dev->hwregs + regs.offset) + i * 4);
+
+	ret = copy_to_user((void *)regs.regs, reg_buf, regs.size);
+
+	return ret;
+}
+
 
 static long hantroenc_ioctl(struct file *filp,
 		unsigned int cmd, unsigned long arg)
@@ -487,7 +543,7 @@ static long hantroenc_ioctl(struct file *filp,
 
 		PDEBUG("Reserve ENC Cores\n");
 		__get_user(core_info, (u32 *)arg);
-		ret = ReserveEncoder(hantroenc_data, &core_info);
+		ret = ReserveEncoder(hantroenc_data, &core_info, filp);
 		if (ret == 0)
 			__put_user(core_info, (u32 *) arg);
 		return ret;
@@ -499,7 +555,7 @@ static long hantroenc_ioctl(struct file *filp,
 
 		PDEBUG("Release ENC Core\n");
 
-		ReleaseEncoder(hantroenc_data, &core_info);
+		ReleaseEncoder(hantroenc_data, &core_info, filp);
 
 		break;
 	}
@@ -562,6 +618,18 @@ static long hantroenc_ioctl(struct file *filp,
 
 		break;
 	}
+	case _IOC_NR(HX280ENC_IOC_WRITE_REGS): {
+		err = hantroenc_write_regs(arg);
+		if (err)
+			return err;
+		break;
+	}
+	case _IOC_NR(HX280ENC_IOC_READ_REGS): {
+		err = hantroenc_read_regs(arg);
+		if (err)
+			return err;
+		break;
+	}
 	default: {
 #ifdef HANTROMMU_SUPPORT
 	if (_IOC_TYPE(cmd) == HANTRO_IOC_MMU)
@@ -601,8 +669,8 @@ static int hantroenc_release(struct inode *inode, struct file *filp)
 
 	for (core_id = 0; core_id < total_core_num; core_id++) {
 		spin_lock_irqsave(&owner_lock, flags);
-		if (dev[core_id].is_reserved == 1 && dev[core_id].pid == current->pid) {
-			dev[core_id].pid = -1;
+		if (dev[core_id].is_reserved == 1 && dev[core_id].filp == filp) {
+			dev[core_id].filp = NULL;
 			dev[core_id].is_reserved = 0;
 			dev[core_id].irq_received = 0;
 			dev[core_id].irq_status = 0;
@@ -627,18 +695,19 @@ static int hantroenc_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
+#ifdef CONFIG_COMPAT
 static long hantroenc_ioctl32(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	long err = 0;
 
 #define HX280ENC_IOCTL32(err, filp, cmd, arg) { \
-	mm_segment_t old_fs = get_fs(); \
-	set_fs(KERNEL_DS); \
+	mm_segment_t old_fs = force_uaccess_begin(); \
 	err = hantroenc_ioctl(filp, cmd, arg); \
 	if (err) \
 		return err; \
-	set_fs(old_fs); \
+	force_uaccess_end(old_fs); \
 }
+#endif
 
 union {
 	unsigned long kux;
@@ -714,6 +783,17 @@ union {
 		HX280ENC_IOCTL32(err, filp, cmd, (unsigned long)up);
 		break;
 	}
+
+	case _IOC_NR(HX280ENC_IOC_WRITE_REGS): {
+		HX280ENC_IOCTL32(err, filp, cmd, (unsigned long)up);
+		break;
+	}
+
+	case _IOC_NR(HX280ENC_IOC_READ_REGS): {
+		HX280ENC_IOCTL32(err, filp, cmd, (unsigned long)up);
+		break;
+	}
+
 	}
 	return 0;
 }

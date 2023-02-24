@@ -18,8 +18,7 @@
 	init-on-array = <IMX8MQ_CLK_UART2_ROOT
 			 IMX8MQ_CLK_UART2
 			 IMX8MQ_CLK_USDHC1_ROOT
-			 IMX8MQ_CLK_NAND_USDHC_BUS
-			 IMX8MQ_CLK_OCOTP_ROOT>;
+			 IMX8MQ_CLK_NAND_USDHC_BUS>;
 };
 
 &iomuxc {
@@ -69,6 +68,14 @@
 	pci_reserved: pci@bfc00000 {
 		no-map;
 		reg = <0 0xbfb00000 0x0 0x00200000>;
+	};
+
+	linux,cma {
+		compatible = "shared-dma-pool";
+		reusable;
+		size = <0 0x30000000>;
+		alloc-ranges = <0 0x80000000 0 0x30000000>;
+		linux,cma-default;
 	};
 };
 

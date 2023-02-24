@@ -131,9 +131,11 @@
 };
 
 &iomuxc {
+	imx8mn-picocoremx8mx {
 		pinctrl_touch: touch_grp {
 			fsl,pins = <
 				MX8MN_IOMUXC_GPIO1_IO13_GPIO1_IO13	0x00104
 			>;
 		};
+	};
 };

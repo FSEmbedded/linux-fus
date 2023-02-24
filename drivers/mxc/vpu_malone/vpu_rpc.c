@@ -331,14 +331,20 @@ void rpc_send_cmd_buf(struct shared_addr *This,
 		u_int32 *local_cmddata)
 {
 	pDEC_RPC_HOST_IFACE pSharedInterface = (pDEC_RPC_HOST_IFACE)This->shared_mem_vir;
-	MediaIPFW_Video_BufDesc *pCmdDesc = &pSharedInterface->StreamCmdBufferDesc;
+	MediaIPFW_Video_BufDesc *pCmdDesc;
 	BUFFER_DESCRIPTOR_TYPE *desc = NULL;
 	u_int32 *cmddata;
 	u_int32 i;
-	u_int32 *cmdword = (u_int32 *)(This->cmd_mem_vir+pCmdDesc->uWrPtr - pCmdDesc->uStart);
+	u_int32 *cmdword;
 	u_int32 uIgnore;
 	u_int32 uSpace;
 
+	if (!pSharedInterface)
+		return;
+	pCmdDesc = &pSharedInterface->StreamCmdBufferDesc;
+	if (pCmdDesc->uWrPtr < pCmdDesc->uStart || pCmdDesc->uWrPtr >= pCmdDesc->uEnd)
+		return;
+	cmdword = (u_int32 *)(This->cmd_mem_vir + pCmdDesc->uWrPtr - pCmdDesc->uStart);
 	uSpace = rpc_MediaIPFW_Video_buffer_space_check(pCmdDesc,
 							FALSE,
 							0,
@@ -356,7 +362,7 @@ void rpc_send_cmd_buf(struct shared_addr *This,
 	rpc_update_cmd_buffer_ptr(pCmdDesc);
 
 	for (i = 0; i < cmdnum; i++) {
-		cmddata = (u_int32 *)(This->cmd_mem_vir+pCmdDesc->uWrPtr - pCmdDesc->uStart);
+		cmddata = (u_int32 *)(This->cmd_mem_vir + pCmdDesc->uWrPtr - pCmdDesc->uStart);
 		*cmddata = local_cmddata[i];
 		rpc_update_cmd_buffer_ptr(pCmdDesc);
 	}
@@ -373,15 +379,21 @@ u_int32 rpc_MediaIPFW_Video_message_check(struct shared_addr *This)
 	u_int32 uSpace;
 	u_int32 uIgnore;
 	pDEC_RPC_HOST_IFACE pSharedInterface = (pDEC_RPC_HOST_IFACE)This->shared_mem_vir;
-	MediaIPFW_Video_BufDesc *pMsgDesc = &pSharedInterface->StreamMsgBufferDesc;
+	MediaIPFW_Video_BufDesc *pMsgDesc;
 	u_int32 msgword;
 	u_int32 msgnum;
 
+	if (!pSharedInterface)
+		return API_MSG_UNAVAILABLE;
+
+	pMsgDesc = &pSharedInterface->StreamMsgBufferDesc;
+	if (pMsgDesc->uRdPtr < pMsgDesc->uStart || pMsgDesc->uRdPtr >= pMsgDesc->uEnd)
+		return API_MSG_UNAVAILABLE;
 	uSpace = rpc_MediaIPFW_Video_buffer_space_check(pMsgDesc, TRUE, 0, &uIgnore);
 	uSpace = (uSpace >> 2);
 	if (uSpace) {
 		/* get current msgword word */
-		msgword      = *((u_int32 *)(This->msg_mem_vir+pMsgDesc->uRdPtr - pMsgDesc->uStart));
+		msgword = *((u_int32 *)(This->msg_mem_vir + pMsgDesc->uRdPtr - pMsgDesc->uStart));
 		/* Find the number of additional words */
 		msgnum  = ((msgword & 0x00ff0000) >> 16);
 
@@ -419,16 +431,22 @@ void rpc_receive_msg_buf(struct shared_addr *This, struct event_msg *msg)
 {
 	unsigned int i;
 	pDEC_RPC_HOST_IFACE pSharedInterface = (pDEC_RPC_HOST_IFACE)This->shared_mem_vir;
-	MediaIPFW_Video_BufDesc *pMsgDesc = &pSharedInterface->StreamMsgBufferDesc;
-	u_int32 msgword = *((u_int32 *)(This->msg_mem_vir+pMsgDesc->uRdPtr - pMsgDesc->uStart));
+	MediaIPFW_Video_BufDesc *pMsgDesc;
+	u_int32 msgword;
 
+	if (!pSharedInterface)
+		return;
+	pMsgDesc = &pSharedInterface->StreamMsgBufferDesc;
+	if (pMsgDesc->uRdPtr < pMsgDesc->uStart || pMsgDesc->uRdPtr >= pMsgDesc->uEnd)
+		return;
+	msgword = *((u_int32 *)(This->msg_mem_vir + pMsgDesc->uRdPtr - pMsgDesc->uStart));
 	msg->idx = ((msgword & 0xff000000) >> 24);
 	msg->msgnum = ((msgword & 0x00ff0000) >> 16);
 	msg->msgid = ((msgword & 0x00003fff) >> 0);
 	rpc_update_msg_buffer_ptr(pMsgDesc);
 
 	for (i = 0; i < msg->msgnum; i++) {
-		msg->msgdata[i] = *((u_int32 *)(This->msg_mem_vir+pMsgDesc->uRdPtr - pMsgDesc->uStart));
+		msg->msgdata[i] = *((u_int32 *)(This->msg_mem_vir + pMsgDesc->uRdPtr - pMsgDesc->uStart));
 		rpc_update_msg_buffer_ptr(pMsgDesc);
 	}
 }
@@ -484,4 +502,34 @@ void rpc_init_instance(struct shared_addr *This, u32 idx)
 	desc->wptr = desc->rptr;
 	if (desc->wptr >= desc->end)
 		desc->wptr = desc->start;
+}
+
+struct rpc_region_t {
+	dma_addr_t start;
+	dma_addr_t end;
+	u32 type;
+};
+
+u32 rpc_check_memory_region(dma_addr_t base, dma_addr_t addr, u32 size)
+{
+	const struct rpc_region_t rpc_regions[] = {
+		{0x00000000, 0x08000000, VPU_RPC_MEMORY_CACHED},
+		{0x08000000, 0x10000000, VPU_RPC_MEMORY_UNCACHED},
+		{0x10000000, 0x20000000, VPU_RPC_MEMORY_CACHED},
+		{0x20000000, 0x40000000, VPU_RPC_MEMORY_UNCACHED}
+	};
+	int i;
+
+	if (addr < base)
+		return VPU_RPC_MEMORY_INVALID;
+
+	addr -= base;
+	for (i = 0; i < ARRAY_SIZE(rpc_regions); i++) {
+		const struct rpc_region_t *region = &rpc_regions[i];
+
+		if (addr >= region->start && addr + size < region->end)
+			return region->type;
+	}
+
+	return VPU_RPC_MEMORY_INVALID;
 }

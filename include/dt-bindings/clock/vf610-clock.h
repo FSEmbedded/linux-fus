@@ -201,6 +201,8 @@
 #define VF610_CLK_CKO2_PODF		192
 #define VF610_CLK_CKO1			193
 #define VF610_CLK_CKO2			194
-#define VF610_CLK_END			195
+#define VF610_CLK_CAAM			195
+#define VF610_CLK_CRC			196
+#define VF610_CLK_END			197
 
 #endif /* __DT_BINDINGS_CLOCK_VF610_H */

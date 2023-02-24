@@ -125,7 +125,6 @@ static bool is_yuv(u32 pix_fmt)
 	if ((pix_fmt == V4L2_PIX_FMT_YUYV)  ||
 	    (pix_fmt == V4L2_PIX_FMT_YUV32) ||
 	    (pix_fmt == V4L2_PIX_FMT_YUV444M) ||
-	    (pix_fmt == V4L2_PIX_FMT_YUV24) ||
 	    (pix_fmt == V4L2_PIX_FMT_NV12))
 		return true;
 	else
@@ -192,10 +191,8 @@ struct mxc_isi_dev *mxc_isi_get_hostdata(struct platform_device *pdev)
 		return NULL;
 
 	mxc_isi = (struct mxc_isi_dev *)dev_get_drvdata(pdev->dev.parent);
-	if (!mxc_isi) {
-		dev_err(&pdev->dev, "Cann't get host data\n");
+	if (!mxc_isi)
 		return NULL;
-	}
 
 	return mxc_isi;
 }
@@ -206,44 +203,29 @@ void mxc_isi_channel_set_outbuf(struct mxc_isi_dev *mxc_isi,
 {
 	struct vb2_buffer *vb2_buf = &buf->v4l2_buf.vb2_buf;
 	u32 framecount = buf->v4l2_buf.sequence;
-	struct frame_addr *paddr = &buf->paddr;
-	struct mxc_isi_cap_dev *isi_cap;
-	struct v4l2_pix_format_mplane *pix;
-	int val = 0;
+	dma_addr_t *dma_addrs = buf->dma_addrs;
+	struct mxc_isi_cap_dev *isi_cap = mxc_isi->isi_cap;
+	int val = 0, i;
 
-	if (buf->discard) {
-		isi_cap = mxc_isi->isi_cap;
-		pix = &isi_cap->pix;
-		paddr->y = isi_cap->discard_buffer_dma[0];
-		if (pix->num_planes == 2)
-			paddr->cb = isi_cap->discard_buffer_dma[1];
-		if (pix->num_planes == 3) {
-			paddr->cb = isi_cap->discard_buffer_dma[1];
-			paddr->cr = isi_cap->discard_buffer_dma[2];
-		}
-	} else {
-		paddr->y = vb2_dma_contig_plane_dma_addr(vb2_buf, 0);
-
-		if (vb2_buf->num_planes == 2)
-			paddr->cb = vb2_dma_contig_plane_dma_addr(vb2_buf, 1);
-		if (vb2_buf->num_planes == 3) {
-			paddr->cb = vb2_dma_contig_plane_dma_addr(vb2_buf, 1);
-			paddr->cr = vb2_dma_contig_plane_dma_addr(vb2_buf, 2);
-		}
+	for (i = 0; i < vb2_buf->num_planes; ++i) {
+		if (buf->discard)
+			dma_addrs[i] = isi_cap->discard_buffer_dma[i];
+		else
+			dma_addrs[i] = vb2_dma_contig_plane_dma_addr(vb2_buf, i);
 	}
 
 	val = readl(mxc_isi->regs + CHNL_OUT_BUF_CTRL);
 
 	if (framecount == 0 || ((is_buf_active(mxc_isi, 2)) && (framecount != 1))) {
-		writel(paddr->y, mxc_isi->regs + CHNL_OUT_BUF1_ADDR_Y);
-		writel(paddr->cb, mxc_isi->regs + CHNL_OUT_BUF1_ADDR_U);
-		writel(paddr->cr, mxc_isi->regs + CHNL_OUT_BUF1_ADDR_V);
+		writel(dma_addrs[0], mxc_isi->regs + CHNL_OUT_BUF1_ADDR_Y);
+		writel(dma_addrs[1], mxc_isi->regs + CHNL_OUT_BUF1_ADDR_U);
+		writel(dma_addrs[2], mxc_isi->regs + CHNL_OUT_BUF1_ADDR_V);
 		val ^= CHNL_OUT_BUF_CTRL_LOAD_BUF1_ADDR_MASK;
 		buf->id = MXC_ISI_BUF1;
 	} else if (framecount == 1 || is_buf_active(mxc_isi, 1)) {
-		writel(paddr->y, mxc_isi->regs + CHNL_OUT_BUF2_ADDR_Y);
-		writel(paddr->cb, mxc_isi->regs + CHNL_OUT_BUF2_ADDR_U);
-		writel(paddr->cr, mxc_isi->regs + CHNL_OUT_BUF2_ADDR_V);
+		writel(dma_addrs[0], mxc_isi->regs + CHNL_OUT_BUF2_ADDR_Y);
+		writel(dma_addrs[1], mxc_isi->regs + CHNL_OUT_BUF2_ADDR_U);
+		writel(dma_addrs[2], mxc_isi->regs + CHNL_OUT_BUF2_ADDR_V);
 		val ^= CHNL_OUT_BUF_CTRL_LOAD_BUF2_ADDR_MASK;
 		buf->id = MXC_ISI_BUF2;
 	}
@@ -255,11 +237,11 @@ void mxc_isi_channel_set_m2m_src_addr(struct mxc_isi_dev *mxc_isi,
 			struct mxc_isi_buffer *buf)
 {
 	struct vb2_buffer *vb2_buf = &buf->v4l2_buf.vb2_buf;
-	struct frame_addr *paddr = &buf->paddr;
+	dma_addr_t *dma_addrs = buf->dma_addrs;
 
 	/* Only support one plane */
-	paddr->y = vb2_dma_contig_plane_dma_addr(vb2_buf, 0);
-	writel(paddr->y, mxc_isi->regs + CHNL_IN_BUF_ADDR);
+	dma_addrs[0] = vb2_dma_contig_plane_dma_addr(vb2_buf, 0);
+	writel(dma_addrs[0], mxc_isi->regs + CHNL_IN_BUF_ADDR);
 }
 EXPORT_SYMBOL_GPL(mxc_isi_channel_set_m2m_src_addr);
 
@@ -464,52 +446,41 @@ void mxc_isi_channel_set_deinterlace(struct mxc_isi_dev *mxc_isi)
 	val &= ~CHNL_IMG_CTRL_DEINT_MASK;
 	if (mxc_isi->deinterlace)
 		val |= mxc_isi->deinterlace << CHNL_IMG_CTRL_DEINT_OFFSET;
-	if (mxc_isi->deinterlace == CHNL_IMG_CTRL_DEINT_LDOUBLE_ODD_EVEN ||
-	    mxc_isi->deinterlace == CHNL_IMG_CTRL_DEINT_LDOUBLE_EVEN_ODD)
+	if ((mxc_isi->deinterlace == CHNL_IMG_CTRL_DEINT_LDOUBLE_ODD_EVEN) ||
+	    (mxc_isi->deinterlace == CHNL_IMG_CTRL_DEINT_LDOUBLE_EVEN_ODD))
 		mxc_isi_channel_deinterlace_init(mxc_isi);
 
 	writel(val, mxc_isi->regs + CHNL_IMG_CTRL);
 }
 
-void mxc_isi_channel_set_crop(struct mxc_isi_dev *mxc_isi)
+void mxc_isi_channel_set_crop(struct mxc_isi_dev *mxc_isi,
+			      struct mxc_isi_frame *dst_f)
 {
-	struct mxc_isi_frame *src_f = &mxc_isi->isi_cap->src_f;
 	struct v4l2_rect crop;
-	u32 val, val0, val1, temp;
+	u32 val, val0, val1;
 
 	val = readl(mxc_isi->regs + CHNL_IMG_CTRL);
 	val &= ~CHNL_IMG_CTRL_CROP_EN_MASK;
 
-	if ((src_f->o_height == src_f->height) &&
-	    (src_f->o_width == src_f->width)) {
+	if ((dst_f->o_height == dst_f->c_height) &&
+	    (dst_f->o_width == dst_f->c_width)) {
 		mxc_isi->crop = 0;
 		writel(val, mxc_isi->regs + CHNL_IMG_CTRL);
 		return;
 	}
 
-	if (mxc_isi->scale) {
-		temp = (src_f->h_off << 12) / mxc_isi->xfactor;
-		crop.left = temp >> mxc_isi->pre_dec_x;
-		temp = (src_f->v_off << 12) / mxc_isi->yfactor;
-		crop.top = temp >> mxc_isi->pre_dec_y;
-		temp = (src_f->width << 12) / mxc_isi->xfactor;
-		crop.width = temp >> mxc_isi->pre_dec_x;
-		temp = (src_f->height << 12) / mxc_isi->yfactor;
-		crop.height = temp >> mxc_isi->pre_dec_y;
-	} else {
-		crop.left = src_f->h_off;
-		crop.top = src_f->v_off;
-		crop.width = src_f->width;
-		crop.height = src_f->height;
-	}
+	crop.left = dst_f->h_off;
+	crop.top  = dst_f->v_off;
+	crop.width  = dst_f->c_width - 1;
+	crop.height = dst_f->c_height - 1;
 
 	mxc_isi->crop = 1;
 	val |= (CHNL_IMG_CTRL_CROP_EN_ENABLE << CHNL_IMG_CTRL_CROP_EN_OFFSET);
 	val0 = crop.top | (crop.left << CHNL_CROP_ULC_X_OFFSET);
-	val1 = crop.height | (crop.width << CHNL_CROP_LRC_X_OFFSET);
+	val1 = (crop.top + crop.height) | ((crop.left + crop.width) << CHNL_CROP_LRC_X_OFFSET);
 
 	writel(val0, mxc_isi->regs + CHNL_CROP_ULC);
-	writel((val1 + val0), mxc_isi->regs + CHNL_CROP_LRC);
+	writel(val1, mxc_isi->regs + CHNL_CROP_LRC);
 	writel(val, mxc_isi->regs + CHNL_IMG_CTRL);
 }
 
@@ -658,6 +629,9 @@ void mxc_isi_channel_config(struct mxc_isi_dev *mxc_isi,
 	mxc_isi_channel_set_csc(mxc_isi, src_f, dst_f);
 
 	mxc_isi_channel_set_scaling(mxc_isi, src_f, dst_f);
+
+	/* set cropping */
+	mxc_isi_channel_set_crop(mxc_isi, dst_f);
 
 	/* select the source input / src type / virtual channel for mipi*/
 	mxc_isi_channel_source_config(mxc_isi);

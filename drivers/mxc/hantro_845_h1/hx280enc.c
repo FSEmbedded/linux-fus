@@ -72,6 +72,7 @@ static struct clk *hantro_clk_h1_bus;
 #endif
 
 #include <linux/delay.h>
+#include <linux/compat.h>
 
 /* module description */
 MODULE_LICENSE("GPL");
@@ -132,12 +133,14 @@ typedef struct {
 	u32 hw_id; //hw id to indicate project
 	u32 is_valid; //indicate this core is hantro's core or not
 	u32 is_reserved; //indicate this core is occupied by user or not
-	int pid; //indicate which process is occupying the core
+	struct file *filp;  //indicate which instance is occupying the core
 	u32 irq_received; //indicate this core receives irq
 	u32 irq_status;
 	int irq;
 	unsigned long iobaseaddr;
 	unsigned int iosize;
+	u32 reg_corrupt;
+	struct semaphore core_suspend_sem;
 
 	volatile u8 *hwregs;
 	struct fasync_struct *async_queue;
@@ -190,7 +193,7 @@ static int hantro_h1_ctrlblk_reset(struct device *dev)
 
 	//config H1
 	hantro_h1_clk_enable(dev);
-	iobase = (volatile u8 *)ioremap_nocache(BLK_CTL_BASE, 0x10000);
+	iobase = (volatile u8 *)ioremap(BLK_CTL_BASE, 0x10000);
 
 	val = ioread32(iobase);
 	val &= (~0x4);
@@ -301,7 +304,7 @@ unsigned int WaitEncReady(hx280enc_t *dev)
 	return 0;
 }
 
-int CheckCoreOccupation(hx280enc_t *dev)
+int CheckCoreOccupation(hx280enc_t *dev, struct file *filp)
 {
 	int ret = 0;
 	unsigned long flags;
@@ -309,46 +312,44 @@ int CheckCoreOccupation(hx280enc_t *dev)
 	spin_lock_irqsave(&owner_lock, flags);
 	if (!dev->is_reserved) {
 		dev->is_reserved = 1;
-		dev->pid = current->pid;
+		dev->filp = filp;
 		ret = 1;
-		PDEBUG("CheckCoreOccupation pid=%d\n", dev->pid);
 	}
 	spin_unlock_irqrestore(&owner_lock, flags);
 
 	return ret;
 }
 
-int GetWorkableCore(hx280enc_t *dev)
+int GetWorkableCore(hx280enc_t *dev, struct file *filp)
 {
 	int ret = 0;
 
 	PDEBUG("GetWorkableCore\n");
 
-	if (dev->is_valid && CheckCoreOccupation(dev))
+	if (dev->is_valid && CheckCoreOccupation(dev, filp))
 		ret = 1;
 
 	return ret;
 }
 
-long ReserveEncoder(hx280enc_t *dev)
+long ReserveEncoder(hx280enc_t *dev, struct file *filp)
 {
 	/* lock a core that has specified core id*/
-	if (wait_event_interruptible(enc_hw_queue, GetWorkableCore(dev) != 0))
+	if (wait_event_interruptible(enc_hw_queue, GetWorkableCore(dev, filp) != 0))
 		return -ERESTARTSYS;
 
 	return 0;
 }
 
-void ReleaseEncoder(hx280enc_t *dev)
+void ReleaseEncoder(hx280enc_t *dev, struct file *filp)
 {
 	unsigned long flags;
 
 	PDEBUG("ReleaseEncoder\n");
 
 	spin_lock_irqsave(&owner_lock, flags);
-	PDEBUG("relase reseve by pid=%d with current->pid=%d\n", dev->pid, current->pid);
-	if (dev->is_reserved && dev->pid == current->pid) {
-		dev->pid = -1;
+	if (dev->is_reserved && dev->filp == filp) {
+		dev->filp = NULL;
 		dev->is_reserved = 0;
 	}
 
@@ -371,6 +372,60 @@ static long EncRefreshRegs(hx280enc_t *dev, unsigned int *regs)
 	return 0;
 }
 
+static int hx280enc_write_regs(unsigned long arg)
+{
+	struct enc_regs_buffer regs;
+	hx280enc_t *dev = &hx280enc_data;
+	u32 *reg_buf;
+	u32 i;
+	int ret;
+
+	ret = copy_from_user(&regs, (void *)arg, sizeof(regs));
+	if (ret)
+		return ret;
+	if ((regs.offset + regs.size) > sizeof(dev->mirror_regs)) {
+		pr_err("%s invalid param, offset:%d, size:%d\n",
+			__func__, regs.offset, regs.size);
+		return -EINVAL;
+	}
+
+	reg_buf = &dev->mirror_regs[regs.offset / 4];
+	ret = copy_from_user((void *)reg_buf, (void *)regs.regs, regs.size);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < regs.size / 4; i++)
+		iowrite32(reg_buf[i], (dev->hwregs + regs.offset) + i * 4);
+
+	return ret;
+}
+
+static int hx280enc_read_regs(unsigned long arg)
+{
+	struct enc_regs_buffer regs;
+	hx280enc_t *dev = &hx280enc_data;
+	u32 *reg_buf;
+	u32 i;
+	int ret;
+
+	ret = copy_from_user(&regs, (void *)arg, sizeof(regs));
+	if (ret)
+		return ret;
+	if ((regs.offset + regs.size) > sizeof(dev->mirror_regs)) {
+		pr_err("%s invalid param, offset:%d, size:%d\n",
+			__func__, regs.offset, regs.size);
+		return -EINVAL;
+	}
+
+	reg_buf = &dev->mirror_regs[regs.offset / 4];
+
+	for (i = 0; i < regs.size / 4; i++)
+		reg_buf[i] = ioread32((dev->hwregs + regs.offset) + i * 4);
+
+	ret = copy_to_user((void *)regs.regs, (void *)reg_buf, regs.size);
+
+	return ret;
+}
 
 static long hx280enc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
@@ -410,12 +465,12 @@ static long hx280enc_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 		int ret;
 
 		PDEBUG("Reserve ENC Cores\n");
-		ret = ReserveEncoder(&hx280enc_data);
+		ret = ReserveEncoder(&hx280enc_data, filp);
 		return ret;
 	}
 	case _IOC_NR(HX280ENC_IOCH_ENC_RELEASE):
 		PDEBUG("Release ENC Core\n");
-		ReleaseEncoder(&hx280enc_data);
+		ReleaseEncoder(&hx280enc_data, filp);
 		break;
 	case _IOC_NR(HX280ENC_IOCG_CORE_WAIT): {
 		unsigned int *regs = (unsigned int *)arg;
@@ -429,6 +484,42 @@ static long hx280enc_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 			return ret1;
 		break;
 	}
+	case _IOC_NR(HX280ENC_IOC_WRITE_REGS): {
+		err = hx280enc_write_regs(arg);
+		if (err)
+			return err;
+		break;
+	}
+	case _IOC_NR(HX280ENC_IOC_READ_REGS): {
+		err = hx280enc_read_regs(arg);
+		if (err)
+			return err;
+		break;
+	}
+	case _IOC_NR(HX280ENC_IOCG_EN_CORE): {
+		u32 reg_value;
+
+		PDEBUG("Enable ENC Core\n");
+
+		if (hx280enc_data.is_reserved == 0)
+			return -EPERM;
+		if (hx280enc_data.reg_corrupt == 1) {
+			hx280enc_data.reg_corrupt = 0;
+			return -EAGAIN;
+		}
+
+		if (down_interruptible(&hx280enc_data.core_suspend_sem))
+			return -ERESTARTSYS;
+
+		reg_value = readl(hx280enc_data.hwregs + 14 * 4);
+		reg_value |= 0x01;
+		writel(reg_value, hx280enc_data.hwregs + 14 * 4);
+		// printk("%s reg_value:%d\n", __func__, reg_value);
+
+		break;
+	}
+	default:
+		break;
 	}
 	return 0;
 }
@@ -459,8 +550,8 @@ static int hx280enc_release(struct inode *inode, struct file *filp)
 
 	PDEBUG("dev closed\n");
 	spin_lock_irqsave(&owner_lock, flags);
-	if (dev->is_reserved == 1 && dev->pid == current->pid) {
-		dev->pid = -1;
+	if (dev->is_reserved == 1 && dev->filp == filp) {
+		dev->filp = NULL;
 		dev->is_reserved = 0;
 		dev->irq_received = 0;
 		dev->irq_status = 0;
@@ -482,12 +573,11 @@ static long hx280enc_ioctl32(struct file *filp, unsigned int cmd, unsigned long 
 {
     long err = 0;
 #define HX280ENC_IOCTL32(err, filp, cmd, arg) { \
-	mm_segment_t old_fs = get_fs(); \
-	set_fs(KERNEL_DS); \
+	mm_segment_t old_fs = force_uaccess_begin(); \
 	err = hx280enc_ioctl(filp, cmd, arg); \
 	if (err) \
 	return err; \
-	set_fs(old_fs); \
+	force_uaccess_end(old_fs); \
 }
 
 union {
@@ -514,20 +604,30 @@ union {
     case _IOC_NR(HX280ENC_IOCH_ENC_RESERVE): {
 	    int ret;
 	    PDEBUG("Reserve ENC Cores\n");
-	    ret = ReserveEncoder(&hx280enc_data);
+	    ret = ReserveEncoder(&hx280enc_data, filp);
 	    return ret;
 	}
     case _IOC_NR(HX280ENC_IOCH_ENC_RELEASE): {
 	    PDEBUG("Release ENC Core\n");
-	    ReleaseEncoder(&hx280enc_data);
+	    ReleaseEncoder(&hx280enc_data, filp);
 	    break;
 	}
 	case _IOC_NR(HX280ENC_IOCG_CORE_WAIT): {
 		HX280ENC_IOCTL32(err, filp, cmd, (unsigned long)up);
 		break;
 	}
+	case _IOC_NR(HX280ENC_IOC_WRITE_REGS): {
+		HX280ENC_IOCTL32(err, filp, cmd, (unsigned long)up);
+		break;
 	}
-    return 0;
+	case _IOC_NR(HX280ENC_IOC_READ_REGS): {
+		HX280ENC_IOCTL32(err, filp, cmd, (unsigned long)up);
+		break;
+	}
+	default:
+		break;
+	}
+	return 0;
 }
 #endif
 
@@ -560,6 +660,7 @@ static int __init hx280enc_init(void)
 	hx280enc_data.irq = irq;
 	hx280enc_data.async_queue = NULL;
 	hx280enc_data.hwregs = NULL;
+	sema_init(&hx280enc_data.core_suspend_sem, 1);
 
 	result = register_chrdev(hx280enc_major, "hx280enc", &hx280enc_fops);
 	if (result < 0) {
@@ -638,7 +739,7 @@ static int ReserveIO(void)
 		PDEBUG(KERN_INFO "hx280enc: failed to reserve HW regs\n");
 		return -EBUSY;
 	}
-	hx280enc_data.hwregs = (volatile u8 *) ioremap_nocache(hx280enc_data.iobaseaddr, hx280enc_data.iosize);
+	hx280enc_data.hwregs = (volatile u8 *) ioremap(hx280enc_data.iobaseaddr, hx280enc_data.iosize);
 	if (hx280enc_data.hwregs == NULL)	{
 		PDEBUG(KERN_INFO "hx280enc: failed to ioremap HW regs\n");
 		ReleaseIO();
@@ -713,6 +814,9 @@ irqreturn_t hx280enc_isr(int irq, void *dev_id)
 		dev->irq_received = 1;
 		dev->irq_status = irq_status & (~0x01);
 		spin_unlock_irqrestore(&owner_lock, flags);
+
+		if (irq_status & 0x04)
+			up(&hx280enc_data.core_suspend_sem);
 
 		wake_up_all(&enc_wait_queue);
 
@@ -853,9 +957,52 @@ static int hantro_h1_dev_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static int hx280enc_suspend(struct device *dev)
+{
+	int ret = 0;
+	int i;
+
+	PDEBUG("%s start..\n", __func__);
+
+	if (hx280enc_data.is_reserved == 0)
+		return ret;
+
+	ret = down_interruptible(&hx280enc_data.core_suspend_sem);
+	if (ret)
+		return ret;
+	hx280enc_data.reg_corrupt = 1;
+	if (hx280enc_data.irq_status & 0x04) {
+		for (i = 0; i < hx280enc_data.iosize; i += 4)
+			hx280enc_data.mirror_regs[i/4] = readl(hx280enc_data.hwregs + i);
+	}
+	up(&hx280enc_data.core_suspend_sem);
+
+	return ret;
+}
+
+static int hx280enc_resume(struct device *dev)
+{
+	int ret = 0;
+	int i;
+
+	PDEBUG("%s start..\n", __func__);
+
+	if (hx280enc_data.is_reserved == 0 || hx280enc_data.reg_corrupt == 0)
+		return ret;
+
+	if (hx280enc_data.irq_status & 0x04) {
+		for (i = 0; i < hx280enc_data.iosize; i += 4)
+			writel(hx280enc_data.mirror_regs[i/4], hx280enc_data.hwregs + i);
+		hx280enc_data.reg_corrupt = 0;
+	}
+
+	return ret;
+}
+
 #ifdef CONFIG_PM
 static int __maybe_unused hantro_h1_suspend(struct device *dev)
 {
+	hx280enc_suspend(dev);
 	pm_runtime_put_sync_suspend(dev);   //power off
 	return 0;
 }
@@ -865,6 +1012,7 @@ static int __maybe_unused hantro_h1_resume(struct device *dev)
 
 	hantro_h1_power_on_disirq(hx280enc);
 	hantro_h1_ctrlblk_reset(dev);
+	hx280enc_resume(dev);
 	return 0;
 }
 static int hantro_h1_runtime_suspend(struct device *dev)

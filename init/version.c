@@ -9,6 +9,7 @@
 
 #include <generated/compile.h>
 #include <linux/build-salt.h>
+#include <linux/elfnote-lto.h>
 #include <linux/export.h>
 #include <linux/uts.h>
 #include <linux/utsname.h>
@@ -17,16 +18,8 @@
 #include <linux/version.h>
 #include <linux/proc_ns.h>
 
-#ifndef CONFIG_KALLSYMS
-#define version(a) Version_ ## a
-#define version_string(a) version(a)
-
-extern int version_string(LINUX_VERSION_CODE);
-int version_string(LINUX_VERSION_CODE);
-#endif
-
 struct uts_namespace init_uts_ns = {
-	.kref = KREF_INIT(2),
+	.ns.count = REFCOUNT_INIT(2),
 	.name = {
 		.sysname	= UTS_SYSNAME,
 		.nodename	= UTS_NODENAME,
@@ -57,3 +50,4 @@ const char fs_linux_version[] =
 	UTS_RELEASE FS_LINUX_VERSION;
 
 BUILD_SALT;
+BUILD_LTO_INFO;

@@ -63,6 +63,10 @@
 #include "gc_hal_driver_vg.h"
 #endif
 
+#if defined(__QNXNTO__)
+#include <sys/siginfo.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -547,7 +551,7 @@ typedef struct _gcsHAL_ATTACH
 
 #if gcdCAPTURE_ONLY_MODE
     IN gctBOOL                  queryCapSize;
-    IN gctPOINTER               contextLogical[gcdCONTEXT_BUFFER_NUM];
+    IN gctPOINTER               contextLogical[gcdCONTEXT_BUFFER_COUNT];
     OUT gctSIZE_T               captureSize;
 #endif
 }
@@ -602,7 +606,7 @@ typedef struct _gcsHAL_COMMAND_LOCATION
     gctUINT64                   next;
 
 #if gcdCAPTURE_ONLY_MODE
-    gctPOINTER                  contextLogical[gcdCONTEXT_BUFFER_NUM];
+    gctPOINTER                  contextLogical[gcdCONTEXT_BUFFER_COUNT];
 #endif
 }
 gcsHAL_COMMAND_LOCATION;
@@ -700,8 +704,8 @@ typedef struct _gcsHAL_SIGNAL
     IN gctUINT64                process;
 
 #if defined(__QNXNTO__)
-    /* Client pulse side-channel connection ID. Set by client in gcoOS_CreateSignal. */
-    IN gctINT32                 coid;
+    /* Client pulse event. */
+    IN struct sigevent          event;
 
     /* Set by server. */
     IN gctINT32                 rcvid;
@@ -776,6 +780,8 @@ typedef struct _gcsHAL_GET_PROFILE_SETTING
 {
     /* Enable profiling */
     OUT gctBOOL                 enable;
+    /* Profile mode */
+    OUT gceProfilerMode         profileMode;
 }
 gcsHAL_GET_PROFILE_SETTING;
 
@@ -784,6 +790,8 @@ typedef struct _gcsHAL_SET_PROFILE_SETTING
 {
     /* Enable profiling */
     IN gctBOOL                  enable;
+    /* Profile mode */
+    IN gceProfilerMode          profileMode;
 }
 gcsHAL_SET_PROFILE_SETTING;
 
@@ -847,6 +855,7 @@ gcsHAL_QUERY_POWER_MANAGEMENT;
 typedef struct _gcsHAL_CONFIG_POWER_MANAGEMENT
 {
     IN gctBOOL                  enable;
+    OUT gctBOOL                 oldValue;
 }
 gcsHAL_CONFIG_POWER_MANAGEMENT;
 

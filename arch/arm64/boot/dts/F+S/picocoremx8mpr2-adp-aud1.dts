@@ -34,7 +34,7 @@
 		compatible = "fsl,sgtl5000";
 		reg = <0xa>;
 		mono2both;
-		clocks = <&audiomix_clk IMX8MP_CLK_AUDIOMIX_SAI5_MCLK1>;
+		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI5_MCLK1>;
 		VDDA-supply = <&reg_sgtl5000_vdda>;
 		VDDIO-supply = <&reg_sgtl5000_vddio>;
 		VDDD-supply = <&reg_sgtl5000_vddd>;

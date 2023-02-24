@@ -58,7 +58,8 @@ static const struct ci_hdrc_imx_platform_flag imx6sx_usb_data = {
 
 static const struct ci_hdrc_imx_platform_flag imx6ul_usb_data = {
 	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM |
-		CI_HDRC_TURN_VBUS_EARLY_ON,
+		CI_HDRC_TURN_VBUS_EARLY_ON |
+		CI_HDRC_DISABLE_DEVICE_STREAMING,
 };
 
 static const struct ci_hdrc_imx_platform_flag imx7d_usb_data = {
@@ -88,6 +89,7 @@ struct ci_hdrc_imx_data {
 	struct usb_phy *phy;
 	struct platform_device *ci_pdev;
 	struct clk *clk;
+	struct clk *clk_wakeup;
 	struct imx_usbmisc_data *usbmisc_data;
 	bool supports_runtime_pm;
 	bool override_phy_control;
@@ -139,9 +141,13 @@ static struct imx_usbmisc_data *usbmisc_get_init_data(struct device *dev)
 	misc_pdev = of_find_device_by_node(args.np);
 	of_node_put(args.np);
 
-	if (!misc_pdev || !platform_get_drvdata(misc_pdev))
+	if (!misc_pdev)
 		return ERR_PTR(-EPROBE_DEFER);
 
+	if (!platform_get_drvdata(misc_pdev)) {
+		put_device(&misc_pdev->dev);
+		return ERR_PTR(-EPROBE_DEFER);
+	}
 	data->dev = &misc_pdev->dev;
 
 	/*
@@ -166,9 +172,9 @@ static struct imx_usbmisc_data *usbmisc_get_init_data(struct device *dev)
 	if (of_usb_get_phy_mode(np) == USBPHY_INTERFACE_MODE_ULPI)
 		data->ulpi = 1;
 
-	of_property_read_u32(np, "picophy,pre-emp-curr-control",
+	of_property_read_u32(np, "samsung,picophy-pre-emp-curr-control",
 			&data->emp_curr_control);
-	of_property_read_u32(np, "picophy,dc-vol-level-adjust",
+	of_property_read_u32(np, "samsung,picophy-dc-vol-level-adjust",
 			&data->dc_vol_level_adjust);
 
 	return data;
@@ -182,13 +188,25 @@ static int imx_get_clks(struct device *dev)
 
 	data->clk_ipg = devm_clk_get(dev, "ipg");
 	if (IS_ERR(data->clk_ipg)) {
-		/* If the platform only needs one clocks */
+		/* If the platform only needs one primary clock */
 		data->clk = devm_clk_get(dev, NULL);
 		if (IS_ERR(data->clk)) {
 			ret = PTR_ERR(data->clk);
 			dev_err(dev,
 				"Failed to get clks, err=%ld,%ld\n",
 				PTR_ERR(data->clk), PTR_ERR(data->clk_ipg));
+			return ret;
+		}
+		/* Get wakeup clock. Not all of the platforms need to
+		 * handle this clock. So make it optional.
+		 */
+		data->clk_wakeup = devm_clk_get_optional(dev,
+							 "usb_wakeup_clk");
+		if (IS_ERR(data->clk_wakeup)) {
+			ret = PTR_ERR(data->clk_wakeup);
+			dev_err(dev,
+				"Failed to get wakeup clk, err=%ld\n",
+				PTR_ERR(data->clk_wakeup));
 			return ret;
 		}
 		return ret;
@@ -291,7 +309,7 @@ static int ci_hdrc_imx_notify_event(struct ci_hdrc *ci, unsigned int event)
 		}
 		break;
 	case CI_HDRC_IMX_HSIC_SUSPEND_EVENT:
-		ret = imx_usbmisc_hsic_set_connect(data->usbmisc_data);
+		ret = imx_usbmisc_hsic_set_connect(mdata);
 		if (ret)
 			dev_err(dev,
 				"hsic_set_connect failed, err=%d\n", ret);
@@ -301,6 +319,8 @@ static int ci_hdrc_imx_notify_event(struct ci_hdrc *ci, unsigned int event)
 			ret = imx_usbmisc_charger_detection(mdata, true);
 		else
 			ret = imx_usbmisc_charger_detection(mdata, false);
+		if (ci->usb_phy)
+			schedule_work(&ci->usb_phy->chg_work);
 		break;
 	default:
 		break;
@@ -318,16 +338,11 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 		.notify_event	= ci_hdrc_imx_notify_event,
 	};
 	int ret;
-	const struct of_device_id *of_id;
 	const struct ci_hdrc_imx_platform_flag *imx_platform_flag;
 	struct device_node *np = pdev->dev.of_node;
 	struct device *dev = &pdev->dev;
 
-	of_id = of_match_device(ci_hdrc_imx_dt_ids, dev);
-	if (!of_id)
-		return -ENODEV;
-
-	imx_platform_flag = of_id->data;
+	imx_platform_flag = of_device_get_match_data(&pdev->dev);
 
 	data = devm_kzalloc(&pdev->dev, sizeof(*data), GFP_KERNEL);
 	if (!data)
@@ -406,8 +421,7 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 	}
 
 	if (pdata.flags & CI_HDRC_PMQOS)
-		pm_qos_add_request(&data->pm_qos_req,
-			PM_QOS_CPU_DMA_LATENCY, 0);
+		cpu_latency_qos_add_request(&data->pm_qos_req, 0);
 
 	request_bus_freq(BUS_FREQ_HIGH);
 	ret = imx_get_clks(dev);
@@ -418,14 +432,23 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 	if (ret)
 		goto disable_hsic_regulator;
 
+	ret = clk_prepare_enable(data->clk_wakeup);
+	if (ret)
+		goto err_wakeup_clk;
+
 	data->phy = devm_usb_get_phy_by_phandle(dev, "fsl,usbphy", 0);
 	if (IS_ERR(data->phy)) {
 		ret = PTR_ERR(data->phy);
-		/* Return -EINVAL if no usbphy is available */
-		if (ret == -ENODEV)
-			data->phy = NULL;
-		else
+		if (ret != -ENODEV)
 			goto err_clk;
+		data->phy = devm_usb_get_phy_by_phandle(dev, "phys", 0);
+		if (IS_ERR(data->phy)) {
+			ret = PTR_ERR(data->phy);
+			if (ret == -ENODEV)
+				data->phy = NULL;
+			else
+				goto err_clk;
+		}
 	}
 
 	pdata.usb_phy = data->phy;
@@ -465,23 +488,25 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 		goto err_clk;
 	}
 
-	if (!IS_ERR(pdata.id_extcon.edev) ||
-	    of_property_read_bool(np, "usb-role-switch"))
-		data->usbmisc_data->ext_id = 1;
+	if (data->usbmisc_data) {
+		if (!IS_ERR(pdata.id_extcon.edev) ||
+		    of_property_read_bool(np, "usb-role-switch"))
+			data->usbmisc_data->ext_id = 1;
 
-	if (!IS_ERR(pdata.vbus_extcon.edev) ||
-	    of_property_read_bool(np, "usb-role-switch"))
-		data->usbmisc_data->ext_vbus = 1;
+		if (!IS_ERR(pdata.vbus_extcon.edev) ||
+		    of_property_read_bool(np, "usb-role-switch"))
+			data->usbmisc_data->ext_vbus = 1;
+
+		/* usbmisc needs to know dr mode to choose wakeup setting */
+		data->usbmisc_data->available_role =
+			ci_hdrc_query_available_role(data->ci_pdev);
+	}
 
 	ret = imx_usbmisc_init_post(data->usbmisc_data);
 	if (ret) {
 		dev_err(dev, "usbmisc post failed, ret=%d\n", ret);
 		goto disable_device;
 	}
-
-	/* usbmisc needs to know dr mode to choose wakeup setting */
-	data->usbmisc_data->available_role =
-			ci_hdrc_query_available_role(data->ci_pdev);
 
 	if (data->supports_runtime_pm) {
 		pm_runtime_set_active(dev);
@@ -495,6 +520,8 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 disable_device:
 	ci_hdrc_remove_device(data->ci_pdev);
 err_clk:
+	clk_disable_unprepare(data->clk_wakeup);
+err_wakeup_clk:
 	imx_disable_unprepare_clks(dev);
 disable_hsic_regulator:
 	release_bus_freq(BUS_FREQ_HIGH);
@@ -502,7 +529,7 @@ disable_hsic_regulator:
 		/* don't overwrite original ret (cf. EPROBE_DEFER) */
 		regulator_disable(data->hsic_pad_regulator);
 	if (pdata.flags & CI_HDRC_PMQOS)
-		pm_qos_remove_request(&data->pm_qos_req);
+		cpu_latency_qos_remove_request(&data->pm_qos_req);
 	data->ci_pdev = NULL;
 	return ret;
 }
@@ -522,9 +549,10 @@ static int ci_hdrc_imx_remove(struct platform_device *pdev)
 		usb_phy_shutdown(data->phy);
 	if (data->ci_pdev) {
 		imx_disable_unprepare_clks(&pdev->dev);
+		clk_disable_unprepare(data->clk_wakeup);
 		release_bus_freq(BUS_FREQ_HIGH);
 		if (data->plat_data->flags & CI_HDRC_PMQOS)
-			pm_qos_remove_request(&data->pm_qos_req);
+			cpu_latency_qos_remove_request(&data->pm_qos_req);
 		if (data->hsic_pad_regulator)
 			regulator_disable(data->hsic_pad_regulator);
 	}
@@ -556,7 +584,7 @@ static int __maybe_unused imx_controller_suspend(struct device *dev,
 	imx_disable_unprepare_clks(dev);
 	release_bus_freq(BUS_FREQ_HIGH);
 	if (data->plat_data->flags & CI_HDRC_PMQOS)
-		pm_qos_remove_request(&data->pm_qos_req);
+		cpu_latency_qos_remove_request(&data->pm_qos_req);
 
 	data->in_lpm = true;
 
@@ -575,8 +603,7 @@ static int __maybe_unused imx_controller_resume(struct device *dev,
 		return 0;
 
 	if (data->plat_data->flags & CI_HDRC_PMQOS)
-		pm_qos_add_request(&data->pm_qos_req,
-			PM_QOS_CPU_DMA_LATENCY, 0);
+		cpu_latency_qos_add_request(&data->pm_qos_req, 0);
 
 	request_bus_freq(BUS_FREQ_HIGH);
 	ret = imx_prepare_enable_clks(dev);

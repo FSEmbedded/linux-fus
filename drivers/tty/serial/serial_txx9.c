@@ -12,10 +12,6 @@
  *  Serial driver for TX3927/TX4927/TX4925/TX4938 internal SIO controller
  */
 
-#if defined(CONFIG_SERIAL_TXX9_CONSOLE) && defined(CONFIG_MAGIC_SYSRQ)
-#define SUPPORT_SYSRQ
-#endif
-
 #include <linux/module.h>
 #include <linux/ioport.h>
 #include <linux/init.h>
@@ -28,7 +24,7 @@
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
 
-#include <asm/io.h>
+#include <linux/io.h>
 
 static char *serial_version = "1.11";
 static char *serial_name = "TX39/49 Serial driver";
@@ -334,9 +330,9 @@ receive_chars(struct uart_txx9_port *up, unsigned int *status)
 		up->port.ignore_status_mask = next_ignore_status_mask;
 		disr = sio_in(up, TXX9_SIDISR);
 	} while (!(disr & TXX9_SIDISR_UVALID) && (max_count-- > 0));
-	spin_unlock(&up->port.lock);
+
 	tty_flip_buffer_push(&up->port.state->port);
-	spin_lock(&up->port.lock);
+
 	*status = disr;
 }
 
@@ -648,6 +644,8 @@ serial_txx9_set_termios(struct uart_port *port, struct ktermios *termios,
 	case CS6:	/* not supported */
 	case CS8:
 		cval |= TXX9_SILCR_UMODE_8BIT;
+		termios->c_cflag &= ~CSIZE;
+		termios->c_cflag |= CS8;
 		break;
 	}
 
@@ -1095,6 +1093,7 @@ static int serial_txx9_probe(struct platform_device *dev)
 		port.flags	= p->flags;
 		port.mapbase	= p->mapbase;
 		port.dev	= &dev->dev;
+		port.has_sysrq	= IS_ENABLED(CONFIG_SERIAL_TXX9_CONSOLE);
 		ret = serial_txx9_register_port(&port);
 		if (ret < 0) {
 			dev_err(&dev->dev, "unable to register port at index %d "
@@ -1283,6 +1282,9 @@ static int __init serial_txx9_init(void)
 
 #ifdef ENABLE_SERIAL_TXX9_PCI
 	ret = pci_register_driver(&serial_txx9_pci_driver);
+	if (ret) {
+		platform_driver_unregister(&serial_txx9_plat_driver);
+	}
 #endif
 	if (ret == 0)
 		goto out;

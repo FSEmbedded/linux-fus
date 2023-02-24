@@ -1,4 +1,5 @@
 /* Copyright 2008 - 2016 Freescale Semiconductor, Inc.
+ * Copyright 2020 Puresoftware Ltd.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,6 +30,7 @@
  */
 
 #include "bman_priv.h"
+#include <linux/acpi.h>
 
 static struct bman_portal *affine_bportals[NR_CPUS];
 static struct cpumask portal_cpus;
@@ -160,13 +162,10 @@ static int bman_portal_probe(struct platform_device *pdev)
 		__bman_portals_probed = 1;
 		/* unassigned portal, skip init */
 		spin_unlock(&bman_lock);
-		return 0;
+		goto check_cleanup;
 	}
 
 	cpumask_set_cpu(cpu, &portal_cpus);
-	if (!__bman_portals_probed &&
-	    cpumask_weight(&portal_cpus) == num_online_cpus())
-		__bman_portals_probed = 1;
 	spin_unlock(&bman_lock);
 	pcfg->cpu = cpu;
 
@@ -179,6 +178,7 @@ static int bman_portal_probe(struct platform_device *pdev)
 	if (!cpu_online(cpu))
 		bman_offline_cpu(cpu);
 
+check_cleanup:
 	if (__bman_portals_probed == 1 && bman_requires_cleanup()) {
 		/*
 		 * BMan wasn't reset prior to boot (Kexec for example)
@@ -194,7 +194,8 @@ static int bman_portal_probe(struct platform_device *pdev)
 		}
 		bman_done_cleanup();
 	}
-
+	dev_dbg(dev, "Bman : Portal[%d] probed successfully [%d]\n",
+		cpu, __bman_portals_probed);
 	return 0;
 
 err_portal_init:
@@ -215,10 +216,16 @@ static const struct of_device_id bman_portal_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, bman_portal_ids);
 
+static const struct acpi_device_id bman_portal_acpi_ids[] = {
+	{"NXP0023", 0}
+};
+MODULE_DEVICE_TABLE(acpi, bman_portal_acpi_ids);
+
 static struct platform_driver bman_portal_driver = {
 	.driver = {
 		.name = KBUILD_MODNAME,
 		.of_match_table = bman_portal_ids,
+		.acpi_match_table = ACPI_PTR(bman_portal_acpi_ids),
 	},
 	.probe = bman_portal_probe,
 };

@@ -125,7 +125,7 @@ static const struct irq_domain_ops mpc8xx_pic_host_ops = {
 	.xlate = mpc8xx_pic_host_xlate,
 };
 
-int mpc8xx_pic_init(void)
+int __init mpc8xx_pic_init(void)
 {
 	struct resource res;
 	struct device_node *np;
@@ -153,6 +153,7 @@ int mpc8xx_pic_init(void)
 	if (mpc8xx_pic_host == NULL) {
 		printk(KERN_ERR "MPC8xx PIC: failed to allocate irq host!\n");
 		ret = -ENOMEM;
+		goto out;
 	}
 
 	ret = 0;

@@ -521,7 +521,7 @@ static int ov5640_update_slave_id(struct ov5640 *sensor)
 	tmp_client = sensor->i2c_client;
 
 	sensor->i2c_client =
-		i2c_new_dummy(tmp_client->adapter, DEFAULT_SCCB_ID >> 1);
+		i2c_new_dummy_device(tmp_client->adapter, DEFAULT_SCCB_ID >> 1);
 	if (!sensor->i2c_client) {
 		dev_err(dev, "Failed to communicate on 0x%x\n",
 			DEFAULT_SCCB_ID);
@@ -1229,8 +1229,14 @@ static int ov5640_init_mode(struct ov5640 *sensor,
 		return -1;
 	}
 
-	dn_mode = ov5640_mode_info_data[frame_rate][mode].dn_mode;
-	orig_dn_mode = ov5640_mode_info_data[frame_rate][orig_mode].dn_mode;
+	if (mode == ov5640_mode_INIT) {
+		dn_mode = 0;
+		orig_dn_mode = 0;
+	} else {
+		dn_mode = ov5640_mode_info_data[frame_rate][mode].dn_mode;
+		orig_dn_mode = ov5640_mode_info_data[frame_rate][orig_mode].dn_mode;
+	}
+
 	if (mode == ov5640_mode_INIT) {
 		pModeSetting = ov5640_init_setting_30fps_VGA;
 		ArySize = ARRAY_SIZE(ov5640_init_setting_30fps_VGA);
@@ -1450,7 +1456,7 @@ static int ov5640_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *a)
 }
 
 static int ov5640_set_fmt(struct v4l2_subdev *sd,
-			struct v4l2_subdev_pad_config *cfg,
+			struct v4l2_subdev_state *sd_state,
 			struct v4l2_subdev_format *format)
 {
 	struct v4l2_mbus_framefmt *mf = &format->format;
@@ -1487,7 +1493,7 @@ static int ov5640_set_fmt(struct v4l2_subdev *sd,
 
 
 static int ov5640_get_fmt(struct v4l2_subdev *sd,
-			  struct v4l2_subdev_pad_config *cfg,
+			  struct v4l2_subdev_state *sd_state,
 			  struct v4l2_subdev_format *format)
 {
 	struct v4l2_mbus_framefmt *mf = &format->format;
@@ -1509,7 +1515,7 @@ static int ov5640_get_fmt(struct v4l2_subdev *sd,
 }
 
 static int ov5640_enum_mbus_code(struct v4l2_subdev *sd,
-				 struct v4l2_subdev_pad_config *cfg,
+				 struct v4l2_subdev_state *sd_state,
 				 struct v4l2_subdev_mbus_code_enum *code)
 {
 	if (code->pad || code->index >= ARRAY_SIZE(ov5640_colour_fmts))
@@ -1528,7 +1534,7 @@ static int ov5640_enum_mbus_code(struct v4l2_subdev *sd,
  * Return 0 if successful, otherwise -EINVAL.
  */
 static int ov5640_enum_framesizes(struct v4l2_subdev *sd,
-			       struct v4l2_subdev_pad_config *cfg,
+			       struct v4l2_subdev_state *sd_state,
 			       struct v4l2_subdev_frame_size_enum *fse)
 {
 	if (fse->index > ov5640_mode_MAX)
@@ -1554,14 +1560,14 @@ static int ov5640_enum_framesizes(struct v4l2_subdev *sd,
  * Return 0 if successful, otherwise -EINVAL.
  */
 static int ov5640_enum_frameintervals(struct v4l2_subdev *sd,
-		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_state *sd_state,
 		struct v4l2_subdev_frame_interval_enum *fie)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct device *dev = &client->dev;
 	int i, j, count = 0;
 
-	if (fie->index < 0 || fie->index > ov5640_mode_MAX)
+	if (fie->index > ov5640_mode_MAX)
 		return -EINVAL;
 
 	if (fie->width == 0 || fie->height == 0 ||

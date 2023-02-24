@@ -70,12 +70,16 @@ struct xdp_umem_reg {
 	__u32 chunk_size;
 	__u32 headroom;
 	__u32 flags;
+	__u32 tx_headroom;
 };
 
 struct xdp_statistics {
-	__u64 rx_dropped; /* Dropped for reasons other than invalid desc */
+	__u64 rx_dropped; /* Dropped for other reasons */
 	__u64 rx_invalid_descs; /* Dropped due to invalid descriptor */
 	__u64 tx_invalid_descs; /* Dropped due to invalid descriptor */
+	__u64 rx_ring_full; /* Dropped due to rx ring being full */
+	__u64 rx_fill_ring_empty_descs; /* Failed to retrieve item from fill ring */
+	__u64 tx_ring_empty_descs; /* Failed to retrieve item from tx ring */
 };
 
 struct xdp_options {

@@ -87,6 +87,19 @@
 #include <linux/dma-buf.h>
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
+#if defined(CONFIG_TRACE_GPU_MEM)
+#   include <trace/events/gpu_mem.h>
+typedef struct trace_mem {
+    gctUINT32 pid;
+    atomic64_t total;
+    struct trace_mem *next;
+} traceMem;
+
+traceMem *memTraceList;
+#endif
+#endif
+
 #define _GC_OBJ_ZONE    gcvZONE_OS
 
 #include "gc_hal_kernel_allocator.h"
@@ -163,7 +176,7 @@ _DestroyMdlMap(
     return gcvSTATUS_OK;
 }
 
-/* Must hold Mdl->mpasMutex before call this function. */
+/* Must hold Mdl->mapsMutex before call this function. */
 extern PLINUX_MDL_MAP
 FindMdlMap(
     IN PLINUX_MDL Mdl,
@@ -492,11 +505,6 @@ _QueryProcessPageTable(
             return gcvSTATUS_NOT_FOUND;
 
         pte = pte_offset_map_lock(current->mm, pmd, logical, &ptl);
-        if (!pte)
-        {
-            spin_unlock(ptl);
-            return gcvSTATUS_NOT_FOUND;
-        }
 
         if (!pte_present(*pte))
         {
@@ -874,6 +882,22 @@ gckOS_Destroy(
     /* Mark the gckOS object as unknown. */
     Os->object.type = gcvOBJ_UNKNOWN;
 
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
+#if defined(CONFIG_TRACE_GPU_MEM)
+    while (gcvTRUE) {
+        if (memTraceList) {
+            traceMem *p_node = memTraceList;
+
+            memTraceList = memTraceList->next;
+            gckOS_Free(Os, p_node);
+            p_node = NULL;
+        } else {
+            break;
+        }
+    }
+#endif
+#endif
 
 #if gcdDUMP_IN_KERNEL
     mutex_lock(&Os->dumpFilpMutex);
@@ -1627,7 +1651,7 @@ gckOS_RequestReservedMemory(
     gckALLOCATOR allocator;
     gcsATTACH_DESC desc;
 
-    gcmkHEADER_ARG("start=0x%lx size=0x%lx name=%s", Start, Size, Name);
+    gcmkHEADER_ARG("start=0x%llx size=0x%lx name=%s", Start, Size, Name);
 
     /* Round up to page size. */
     Size = (Size + ~PAGE_MASK) & PAGE_MASK;
@@ -2049,7 +2073,7 @@ _GetPhysicalAddressProcess(
 
 OnError:
     /* Return the status. */
-    gcmkFOOTER_ARG("*Address=%p", *Address);
+    gcmkFOOTER_ARG("*Address=0x%llx", *Address);
     return status;
 }
 
@@ -2966,6 +2990,49 @@ gckOS_Delay(
 
 /*******************************************************************************
 **
+**  gckOS_Udelay
+**
+**  Delay execution of the current thread for a number of microseconds.
+**
+**  INPUT:
+**
+**      gckOS Os
+**          Pointer to an gckOS object.
+**
+**      gctUINT32 Delay
+**          Delay to sleep, specified in microseconds.
+**
+**  OUTPUT:
+**
+**      Nothing.
+*/
+gceSTATUS
+gckOS_Udelay(
+    IN gckOS Os,
+    IN gctUINT32 Delay
+    )
+{
+    gcmkHEADER_ARG("Os=%p Delay=%u", Os, Delay);
+
+    if (Delay > 0)
+    {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)
+        ktime_t delay = ktime_set((Delay / USEC_PER_SEC), (Delay % USEC_PER_SEC) * NSEC_PER_USEC);
+        __set_current_state(TASK_UNINTERRUPTIBLE);
+        schedule_hrtimeout(&delay, HRTIMER_MODE_REL);
+#else
+        usleep_range((unsigned long)Delay, (unsigned long)Delay + 1);
+#endif
+    }
+
+    /* Success. */
+    gcmkFOOTER_NO();
+    return gcvSTATUS_OK;
+}
+
+
+/*******************************************************************************
+**
 **  gckOS_GetTicks
 **
 **  Get the number of milliseconds since the system started.
@@ -3341,7 +3408,7 @@ gckOS_LockPages(
     PLINUX_MDL_MAP  mdlMap;
     gckALLOCATOR    allocator;
 
-    gcmkHEADER_ARG("Os=%p Physical=%p Bytes=0x%zx", Os, Physical, Logical);
+    gcmkHEADER_ARG("Os=%p Physical=%p Bytes=0x%zx, Logical=%p", Os, Physical, Bytes, Logical);
 
     /* Verify the arguments. */
     gcmkVERIFY_OBJECT(Os, gcvOBJ_OS);
@@ -3452,7 +3519,7 @@ gckOS_MapPagesEx(
     while (PageCount-- > 0)
     {
         gctUINT i;
-        gctPHYS_ADDR_T phys = ~0U;
+        gctPHYS_ADDR_T phys = ~0ULL;
 
         gcmALLOCATOR_Physical(allocator, mdl, offset, &phys);
 
@@ -3475,7 +3542,7 @@ gckOS_MapPagesEx(
 
             gcmkTRACE_ZONE(
                 gcvLEVEL_INFO, gcvZONE_OS,
-                "%s(%d): Setup mapping in IOMMU %x => %x",
+                "%s(%d): Setup mapping in IOMMU 0x%x => 0x%llx",
                 __FUNCTION__, __LINE__,
                 Address + offset, phys
                 );
@@ -3610,7 +3677,6 @@ gckOS_Map1MPages(
     PLINUX_MDL mdl;
     gctUINT32* table;
     gctUINT32  offset = 0;
-
     gctSIZE_T bytes = PageCount * 4;
     gckALLOCATOR allocator;
 
@@ -3657,7 +3723,7 @@ gckOS_Map1MPages(
 
     while (PageCount-- > 0)
     {
-        gctPHYS_ADDR_T phys = ~0U;
+        gctPHYS_ADDR_T phys = ~0ULL;
 
         gcmALLOCATOR_Physical(allocator, mdl, offset, &phys);
 
@@ -3673,14 +3739,15 @@ gckOS_Map1MPages(
         }
 
         /* Get the start physical of 1M page. */
-        phys &= ~((1 << 20) - 1);
+        phys &= ~(gcd1M_PAGE_SIZE - 1);
 
-        gcmkONERROR(
-            gckMMU_SetPage(Os->device->kernels[Core]->mmu,
+        gcmkONERROR(gckMMU_SetPage(
+            Os->device->kernels[Core]->mmu,
             phys,
             gcvPAGE_TYPE_1M,
             Writable,
-            table++));
+            table++
+            ));
 
         offset += gcd1M_PAGE_SIZE;
     }
@@ -4101,7 +4168,7 @@ gckOS_ReadMappedPointer(
     )
 {
     gceSTATUS status = gcvSTATUS_OK;
-    gcmkHEADER_ARG("Os=%p Address=%p Data=%u", Os, Address, Data);
+    gcmkHEADER_ARG("Os=%p Address=%p Data=%p", Os, Address, Data);
 
     /* Verify the arguments. */
     gcmkVERIFY_ARGUMENT(Address != gcvNULL);
@@ -4368,7 +4435,7 @@ gckOS_CacheClean(
 {
     gceSTATUS status;
 
-    gcmkHEADER_ARG("Os=%p ProcessID=%d Handle=%p Offset=0x%llx Logical=%p Bytes=0x%zx",
+    gcmkHEADER_ARG("Os=%p ProcessID=%d Handle=%p Offset=0x%zx Logical=%p Bytes=0x%zx",
                    Os, ProcessID, Handle, Offset, Logical, Bytes);
 
     gcmkONERROR(_CacheOperation(Os, ProcessID,
@@ -4416,7 +4483,7 @@ gckOS_CacheInvalidate(
 {
     gceSTATUS status;
 
-    gcmkHEADER_ARG("Os=%p ProcessID=%d Handle=%p Offset=0x%llx Logical=%p Bytes=0x%zx",
+    gcmkHEADER_ARG("Os=%p ProcessID=%d Handle=%p Offset=0x%zx Logical=%p Bytes=0x%zx",
                    Os, ProcessID, Handle, Offset, Logical, Bytes);
 
     gcmkONERROR(_CacheOperation(Os, ProcessID,
@@ -4464,7 +4531,7 @@ gckOS_CacheFlush(
 {
     gceSTATUS status;
 
-    gcmkHEADER_ARG("Os=%p ProcessID=%d Handle=%p Offset=0x%llx Logical=%p Bytes=0x%zx",
+    gcmkHEADER_ARG("Os=%p ProcessID=%d Handle=%p Offset=0x%zx Logical=%p Bytes=0x%zx",
                    Os, ProcessID, Handle, Offset, Logical, Bytes);
 
     gcmkONERROR(_CacheOperation(Os, ProcessID,
@@ -5526,6 +5593,13 @@ gckOS_Signal(
 #endif
     unsigned long flags = 0;
 
+    /*
+     * Default interruptible set to false.
+     * Can be used in the future as argument, received from userspace through
+     * the interfacem similas as gckOS_WaitSignal() does.
+     */
+    gctBOOL interruptible = gcvFALSE;
+
     gcmkHEADER_ARG("Os=%p Signal=%p State=%d", Os, Signal, State);
 
     /* Verify the arguments. */
@@ -5563,7 +5637,28 @@ gckOS_Signal(
     {
         signal->done = 1;
 
-        wake_up(&signal->wait);
+        if (signal->manualReset)
+        {
+            if (interruptible)
+            {
+                wake_up_interruptible_all(&signal->wait);
+            }
+            else
+            {
+                wake_up_all(&signal->wait);
+            }
+        }
+        else
+        {
+            if (interruptible)
+            {
+                wake_up_interruptible(&signal->wait);
+            }
+            else
+            {
+                wake_up(&signal->wait);
+            }
+        }
 
 #if gcdLINUX_SYNC_FILE
 #ifndef CONFIG_SYNC_FILE
@@ -5905,7 +6000,7 @@ gckOS_CreateUserSignal(
     )
 {
     gceSTATUS status;
-    gctSIZE_T signal;
+    gctSIZE_T signal = 0;
 
     /* Create a new signal. */
     gcmkONERROR(gckOS_CreateSignal(Os, ManualReset, (gctSIGNAL *) &signal));
@@ -7111,7 +7206,7 @@ gckOS_CPUPhysicalToGPUPhysical(
     )
 {
     gcsPLATFORM * platform;
-    gcmkHEADER_ARG("CPUPhysical=%p", CPUPhysical);
+    gcmkHEADER_ARG("CPUPhysical=%llx", CPUPhysical);
 
     platform = Os->device->platform;
 
@@ -7248,10 +7343,6 @@ gckOS_QueryOption(
     {
         *Value = 0;
     }
-    else if (!strcmp(Option, "gpuProfiler"))
-    {
-        *Value = device->args.gpuProfiler;
-    }
     else if (!strcmp(Option, "userClusterMask"))
     {
         *Value = device->args.userClusterMask;
@@ -7259,22 +7350,6 @@ gckOS_QueryOption(
     else if (!strcmp(Option, "smallBatch"))
     {
         *Value = device->args.smallBatch;
-    }
-    else if (!strcmp(Option, "sRAMBases"))
-    {
-        memcpy(Value, device->args.sRAMBases, gcmSIZEOF(gctUINT64) * gcvSRAM_INTER_COUNT * gcvCORE_COUNT);
-    }
-    else if (!strcmp(Option, "sRAMSizes"))
-    {
-        memcpy(Value, device->args.sRAMSizes, gcmSIZEOF(gctUINT32) * gcvSRAM_INTER_COUNT * gcvCORE_COUNT);
-    }
-    else if (!strcmp(Option, "extSRAMBases"))
-    {
-        memcpy(Value, device->args.extSRAMBases, gcmSIZEOF(gctUINT64) * gcvSRAM_EXT_COUNT);
-    }
-    else if (!strcmp(Option, "extSRAMSizes"))
-    {
-        memcpy(Value, device->args.extSRAMSizes, gcmSIZEOF(gctUINT32) * gcvSRAM_EXT_COUNT);
     }
     else if (!strcmp(Option, "sRAMRequested"))
     {
@@ -7300,12 +7375,53 @@ gckOS_QueryOption(
     {
         *Value = device->args.allMapInOne;
     }
+    else if (!strcmp(Option, "mmuException"))
+    {
+        *Value = device->args.mmuException;
+    }
+    else if (!strcmp(Option, "extSRAMSizes"))
+    {
+        memcpy(Value, device->args.extSRAMSizes,
+                gcmSIZEOF(gctUINT32) * gcvSRAM_EXT_COUNT);
+    }
+    else if (!strcmp(Option, "extSRAMBases"))
+    {
+        memcpy(Value, device->args.extSRAMBases,
+                gcmSIZEOF(gctUINT64) * gcvSRAM_EXT_COUNT);
+    }
+    else if (!strcmp(Option, "sRAMSizes"))
+    {
+        memcpy(Value, device->args.sRAMSizes,
+                gcmSIZEOF(gctUINT32) * gcvSRAM_INTER_COUNT * gcvCORE_COUNT);
+    }
+    else if (!strcmp(Option, "sRAMBases"))
+    {
+        memcpy(Value, device->args.sRAMBases,
+                gcmSIZEOF(gctUINT64) * gcvSRAM_INTER_COUNT * gcvCORE_COUNT);
+    }
+    /*Ascend the strcmp by its memcpy size to remove the coverity issue*/
     else
     {
         status = gcvSTATUS_NOT_SUPPORTED;
     }
 
     return status;
+}
+
+gceSTATUS
+gckOS_QueryKernel(
+    IN gckKERNEL Kernel,
+    IN gctINT index,
+    OUT gckKERNEL * KernelOut
+    )
+{
+    if (Kernel && KernelOut)
+    {
+        gckGALDEVICE device = Kernel->os->device;
+        *KernelOut = device->kernels[index];
+    }
+
+    return gcvSTATUS_OK;
 }
 
 gceSTATUS
@@ -7558,3 +7674,93 @@ gckOS_GetPolicyID(
     return status;
 }
 
+gceSTATUS
+gckOS_TraceGpuMemory(
+    IN gckOS Os,
+    IN gctINT32 ProcessID,
+    IN gctINT64 Delta
+    )
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
+#if defined(CONFIG_TRACE_GPU_MEM)
+    traceMem *traceList = gcvNULL;
+    gctBOOL addNodeFlag = gcvTRUE;
+
+    /* if first node is null, create it. */
+    if (!memTraceList) {
+        gctPOINTER pointer = gcvNULL;
+
+        gckOS_Allocate(Os, sizeof(traceMem), &pointer);
+        gckOS_ZeroMemory(pointer, sizeof(traceMem));
+        memTraceList = pointer;
+        memTraceList->pid = 0;
+        atomic64_set(&memTraceList->total, 0);
+        memTraceList->next = gcvNULL;
+    }
+
+    traceList = memTraceList;
+
+    /* traverse all the node */
+    while (gcvTRUE) {
+        /* hit the matched node */
+        if (ProcessID == traceList->pid) {
+            if (Delta > 0)
+                atomic64_add(Delta, &traceList->total);
+            else
+                atomic64_sub(-Delta, &traceList->total);
+            addNodeFlag = gcvFALSE;
+            break;
+        } else if (traceList->pid == 0) {
+        /* hit the first node update the global usage */
+            if (Delta > 0)
+                atomic64_add(Delta, &memTraceList->total);
+            else
+                atomic64_sub(-Delta, &memTraceList->total);
+        }
+        if (!traceList->next)
+            break;
+        else
+            traceList = traceList->next;
+    }
+
+    /* if there isn't matched node, create one */
+    if (!traceList->next && addNodeFlag) {
+        gctPOINTER pointer = gcvNULL;
+        traceMem *newNode = gcvNULL;
+
+        gckOS_Allocate(Os, sizeof(traceMem), &pointer);
+        gckOS_ZeroMemory(newNode, sizeof(traceMem));
+
+        newNode = pointer;
+        newNode->pid = ProcessID;
+        atomic64_set(&newNode->total, Delta);
+        newNode->next = gcvNULL;
+        traceList->next = newNode;
+        traceList = traceList->next;
+    }
+
+    if (trace_gpu_mem_total_enabled()) {
+        trace_gpu_mem_total(0, 0, (gctUINT64)atomic64_read(&memTraceList->total));
+        trace_gpu_mem_total(0, ProcessID, (gctUINT64)atomic64_read(&traceList->total));
+    }
+
+    /* clean useless node */
+    while (gcvTRUE) {
+        traceMem *t_node = traceList->next;
+
+        if (t_node) {
+            if (atomic64_read(&t_node->total) <= 0) {
+                traceList->next = t_node->next;
+                gckOS_Free(Os, t_node);
+                t_node = NULL;
+            } else {
+                traceList = traceList->next;
+            }
+        } else {
+            break;
+        }
+    }
+#endif
+#endif
+    return gcvSTATUS_OK;
+}

@@ -5,7 +5,6 @@
  * Copyright (C) Purism SPC 2019
  */
 
-#include <drm/drmP.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
@@ -420,10 +419,10 @@ disable_vci:
 	return ret;
 }
 
-static int nv3051d_get_modes(struct drm_panel *panel)
+static int nv3051d_get_modes(struct drm_panel *panel,
+				struct drm_connector *connector)
 {
 	struct nv3051d *ctx = panel_to_nv3051d(panel);
-	struct drm_connector *connector = panel->connector;
 	struct drm_display_mode *mode;
 	int ret;
 
@@ -542,9 +541,8 @@ static int nv3051d_probe(struct mipi_dsi_device *dsi)
 		return ret;
 	}
 
-	drm_panel_init(&ctx->panel);
-	ctx->panel.dev = &dsi->dev;
-	ctx->panel.funcs = &nv3051d_drm_funcs;
+	drm_panel_init(&ctx->panel, dev, &nv3051d_drm_funcs,
+		       DRM_MODE_CONNECTOR_DSI);
 
 	drm_panel_add(&ctx->panel);
 

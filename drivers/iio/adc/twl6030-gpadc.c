@@ -94,9 +94,9 @@ struct twl6030_gpadc_data;
  * struct twl6030_gpadc_platform_data - platform specific data
  * @nchannels:		number of GPADC channels
  * @iio_channels:	iio channels
- * @twl6030_ideal:	pointer to calibration parameters
+ * @ideal:		pointer to calibration parameters
  * @start_conversion:	pointer to ADC start conversion function
- * @channel_to_reg	pointer to ADC function to convert channel to
+ * @channel_to_reg:	pointer to ADC function to convert channel to
  *			register address for reading conversion result
  * @calibrate:		pointer to calibration function
  */
@@ -911,6 +911,8 @@ static int twl6030_gpadc_probe(struct platform_device *pdev)
 	ret = devm_request_threaded_irq(dev, irq, NULL,
 				twl6030_gpadc_irq_handler,
 				IRQF_ONESHOT, "twl6030_gpadc", indio_dev);
+	if (ret)
+		return ret;
 
 	ret = twl6030_gpadc_enable_irq(TWL6030_GPADC_RT_SW1_EOC_MASK);
 	if (ret < 0) {
@@ -926,7 +928,6 @@ static int twl6030_gpadc_probe(struct platform_device *pdev)
 	}
 
 	indio_dev->name = DRIVER_NAME;
-	indio_dev->dev.parent = dev;
 	indio_dev->info = &twl6030_gpadc_iio_info;
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->channels = pdata->iio_channels;

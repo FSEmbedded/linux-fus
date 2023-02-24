@@ -6,6 +6,7 @@
  *         Anton Vorontsov <avorontsov@ru.mvista.com>
  *
  * Copyright (c) 2006-2007 MontaVista Software, Inc.
+ * Copyright (c) 2020 Puresoftware Ltd.
  */
 
 #include <linux/kernel.h>
@@ -19,7 +20,6 @@
 #include <linux/slab.h>
 #include <linux/of.h>
 #include <linux/gpio/consumer.h>
-#include <linux/seqlock.h>
 #include <linux/idr.h>
 #include <linux/netdevice.h>
 #include <linux/linkmode.h>
@@ -34,7 +34,6 @@ struct fixed_mdio_bus {
 struct fixed_phy {
 	int addr;
 	struct phy_device *phydev;
-	seqcount_t seqcount;
 	struct fixed_phy_status status;
 	bool no_carrier;
 	int (*link_update)(struct net_device *, struct fixed_phy_status *);
@@ -80,19 +79,17 @@ static int fixed_mdio_read(struct mii_bus *bus, int phy_addr, int reg_num)
 	list_for_each_entry(fp, &fmb->phys, node) {
 		if (fp->addr == phy_addr) {
 			struct fixed_phy_status state;
-			int s;
 
-			do {
-				s = read_seqcount_begin(&fp->seqcount);
-				fp->status.link = !fp->no_carrier;
-				/* Issue callback if user registered it. */
-				if (fp->link_update)
-					fp->link_update(fp->phydev->attached_dev,
-							&fp->status);
-				/* Check the GPIO for change in status */
-				fixed_phy_update(fp);
-				state = fp->status;
-			} while (read_seqcount_retry(&fp->seqcount, s));
+			fp->status.link = !fp->no_carrier;
+
+			/* Issue callback if user registered it. */
+			if (fp->link_update)
+				fp->link_update(fp->phydev->attached_dev,
+						&fp->status);
+
+			/* Check the GPIO for change in status */
+			fixed_phy_update(fp);
+			state = fp->status;
 
 			return swphy_read_reg(reg_num, &state);
 		}
@@ -150,8 +147,6 @@ static int fixed_phy_add_gpiod(unsigned int irq, int phy_addr,
 	if (!fp)
 		return -ENOMEM;
 
-	seqcount_init(&fp->seqcount);
-
 	if (irq != PHY_POLL)
 		fmb->mii_bus->irq[phy_addr] = irq;
 
@@ -167,8 +162,8 @@ static int fixed_phy_add_gpiod(unsigned int irq, int phy_addr,
 }
 
 int fixed_phy_add(unsigned int irq, int phy_addr,
-		  struct fixed_phy_status *status) {
-
+		  struct fixed_phy_status *status)
+{
 	return fixed_phy_add_gpiod(irq, phy_addr, status, NULL);
 }
 EXPORT_SYMBOL_GPL(fixed_phy_add);
@@ -210,8 +205,8 @@ static struct gpio_desc *fixed_phy_get_gpiod(struct device_node *np)
 	 * Linux device associated with it, we simply have obtain
 	 * the GPIO descriptor from the device tree like this.
 	 */
-	gpiod = gpiod_get_from_of_node(fixed_link_node, "link-gpios", 0,
-				       GPIOD_IN, "mdio");
+	gpiod = fwnode_gpiod_get_index(of_fwnode_handle(fixed_link_node),
+				       "link", 0, GPIOD_IN, "mdio");
 	if (IS_ERR(gpiod) && PTR_ERR(gpiod) != -EPROBE_DEFER) {
 		if (PTR_ERR(gpiod) != -ENOENT)
 			pr_err("error getting GPIO for fixed link %pOF, proceed without\n",
@@ -228,6 +223,78 @@ static struct gpio_desc *fixed_phy_get_gpiod(struct device_node *np)
 	return NULL;
 }
 #endif
+
+struct phy_device *fwnode_fixed_phy_register(struct fwnode_handle *fwnode_np,
+					     struct fixed_phy_status *status)
+{
+	struct fixed_mdio_bus *fmb = &platform_fmb;
+	struct phy_device *phy;
+	int phy_addr;
+	int ret;
+
+	if (!fmb->mii_bus || fmb->mii_bus->state != MDIOBUS_REGISTERED)
+		return ERR_PTR(-EPROBE_DEFER);
+
+	phy_addr = ida_simple_get(&phy_fixed_ida, 0, PHY_MAX_ADDR, GFP_KERNEL);
+	if (phy_addr < 0)
+		return ERR_PTR(phy_addr);
+
+	ret = fixed_phy_add_gpiod(PHY_POLL, phy_addr, status, NULL);
+	if (ret < 0) {
+		ida_simple_remove(&phy_fixed_ida, phy_addr);
+		return ERR_PTR(ret);
+	}
+
+	phy = get_phy_device(fmb->mii_bus, phy_addr, false);
+	if (IS_ERR(phy)) {
+		fixed_phy_del(phy_addr);
+		return ERR_PTR(-EINVAL);
+	}
+
+	phy->link = status->link;
+	if (status->link) {
+		phy->speed = status->speed;
+		phy->duplex = status->duplex;
+		phy->pause = status->pause;
+		phy->asym_pause = status->asym_pause;
+	}
+
+	phy->mdio.dev.fwnode = fwnode_np;
+	phy->is_pseudo_fixed_link = true;
+
+	switch (status->speed) {
+	case SPEED_1000:
+		linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Half_BIT,
+				 phy->supported);
+		linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
+				 phy->supported);
+		fallthrough;
+	case SPEED_100:
+		linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Half_BIT,
+				 phy->supported);
+		linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT,
+				 phy->supported);
+		fallthrough;
+	case SPEED_10:
+	default:
+		linkmode_set_bit(ETHTOOL_LINK_MODE_10baseT_Half_BIT,
+				 phy->supported);
+		linkmode_set_bit(ETHTOOL_LINK_MODE_10baseT_Full_BIT,
+				 phy->supported);
+	}
+
+	phy_advertise_supported(phy);
+
+	ret = phy_device_register(phy);
+	if (ret) {
+		phy_device_free(phy);
+		fixed_phy_del(phy_addr);
+		return ERR_PTR(ret);
+	}
+
+	return phy;
+}
+EXPORT_SYMBOL_GPL(fwnode_fixed_phy_register);
 
 static struct phy_device *__fixed_phy_register(unsigned int irq,
 					       struct fixed_phy_status *status,
@@ -285,13 +352,13 @@ static struct phy_device *__fixed_phy_register(unsigned int irq,
 				 phy->supported);
 		linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
 				 phy->supported);
-		/* fall through */
+		fallthrough;
 	case SPEED_100:
 		linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Half_BIT,
 				 phy->supported);
 		linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT,
 				 phy->supported);
-		/* fall through */
+		fallthrough;
 	case SPEED_10:
 	default:
 		linkmode_set_bit(ETHTOOL_LINK_MODE_10baseT_Half_BIT,

@@ -1,5 +1,6 @@
 /*
  * Copyright 2008-2015 Freescale Semiconductor Inc.
+ * Copyright 2020 Puresoftware Ltd.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -111,6 +112,7 @@ do {									\
 
 #define IF_MODE_MASK		0x00000003 /* 30-31 Mask on i/f mode bits */
 #define IF_MODE_10G		0x00000000 /* 30-31 10G interface */
+#define IF_MODE_MII		0x00000001 /* 30-31 MII interface */
 #define IF_MODE_GMII		0x00000002 /* 30-31 GMII (1G) interface */
 #define IF_MODE_RGMII		0x00000004
 #define IF_MODE_RGMII_AUTO	0x00008000
@@ -442,6 +444,9 @@ static int init(struct memac_regs __iomem *regs, struct memac_cfg *cfg,
 	case PHY_INTERFACE_MODE_XGMII:
 		tmp |= IF_MODE_10G;
 		break;
+	case PHY_INTERFACE_MODE_MII:
+		tmp |= IF_MODE_MII;
+		break;
 	default:
 		tmp |= IF_MODE_GMII;
 		if (phy_if == PHY_INTERFACE_MODE_RGMII ||
@@ -528,7 +533,7 @@ static void setup_sgmii_internal_phy(struct fman_mac *memac,
 		case 100:
 			tmp_reg16 |= IF_MODE_SGMII_SPEED_100M;
 		break;
-		case 1000: /* fallthrough */
+		case 1000:
 		default:
 			tmp_reg16 |= IF_MODE_SGMII_SPEED_1G;
 		break;
@@ -596,10 +601,6 @@ static void setup_sgmii_internal_phy_base_x(struct fman_mac *memac)
 
 static int check_init_parameters(struct fman_mac *memac)
 {
-	if (memac->addr == 0) {
-		pr_err("Ethernet MAC must have a valid MAC address\n");
-		return -EINVAL;
-	}
 	if (!memac->exception_cb) {
 		pr_err("Uninitialized exception handler\n");
 		return -EINVAL;
@@ -782,7 +783,7 @@ int memac_adjust_link(struct fman_mac *memac, u16 speed)
 	/* Set full duplex */
 	tmp &= ~IF_MODE_HD;
 
-	if (memac->phy_if == PHY_INTERFACE_MODE_RGMII) {
+	if (phy_interface_mode_is_rgmii(memac->phy_if)) {
 		/* Configure RGMII in manual mode */
 		tmp &= ~IF_MODE_RGMII_AUTO;
 		tmp &= ~IF_MODE_RGMII_SP_MASK;
@@ -1056,8 +1057,10 @@ int memac_init(struct fman_mac *memac)
 	}
 
 	/* MAC Address */
-	MAKE_ENET_ADDR_FROM_UINT64(memac->addr, eth_addr);
-	add_addr_in_paddr(memac->regs, (u8 *)eth_addr, 0);
+	if (memac->addr != 0) {
+		MAKE_ENET_ADDR_FROM_UINT64(memac->addr, eth_addr);
+		add_addr_in_paddr(memac->regs, (u8 *)eth_addr, 0);
+	}
 
 	fixed_link = memac_drv_param->fixed_link;
 
@@ -1152,6 +1155,29 @@ int memac_free(struct fman_mac *memac)
 	return 0;
 }
 
+static struct phy_device *memac_get_pcsphy(struct fman_mac_params *params)
+{
+	struct phy_device *phy;
+	struct device *dev;
+
+	/* in case of DTB, of_ calls are applicable */
+	if (params->internal_phy_node) {
+		phy = of_phy_find_device(params->internal_phy_node);
+	/* in case of ACPI, fwnode_ calls are applicable */
+	} else if (params->internal_phy_fwnode) {
+		dev = bus_find_device_by_fwnode(&mdio_bus_type,
+						params->internal_phy_fwnode);
+		if (dev)
+			phy = to_phy_device(dev);
+		else
+			phy = NULL;
+	} else {
+		phy = NULL;
+	}
+
+	return phy;
+}
+
 struct fman_mac *memac_config(struct fman_mac_params *params)
 {
 	struct fman_mac *memac;
@@ -1195,15 +1221,9 @@ struct fman_mac *memac_config(struct fman_mac_params *params)
 
 	if (memac->phy_if == PHY_INTERFACE_MODE_SGMII ||
 	    memac->phy_if == PHY_INTERFACE_MODE_QSGMII) {
-		if (!params->internal_phy_node) {
-			pr_err("PCS PHY node is not available\n");
-			memac_free(memac);
-			return NULL;
-		}
-
-		memac->pcsphy = of_phy_find_device(params->internal_phy_node);
+		memac->pcsphy = memac_get_pcsphy(params);
 		if (!memac->pcsphy) {
-			pr_err("of_phy_find_device (PCS PHY) failed\n");
+			pr_err("memac_get_pcsphy failed\n");
 			memac_free(memac);
 			return NULL;
 		}
