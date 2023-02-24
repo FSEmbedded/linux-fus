@@ -26,7 +26,6 @@
 #include <linux/platform_device.h>	/* struct platform_device */
 #include <linux/of.h>			/* __setup() */
 #include <linux/ctype.h>
-
 #define GET_CELL(p)	(p += 4, *((const uint32_t *)(p-4)))
 #define fdt32_to_cpu(x) be32_to_cpu(x)
 
@@ -288,14 +287,21 @@ static int bdinfo_init(struct platform_device *pdev)
 	int ret = 0;
 	int i = 0;
 
-	bdi.acount = 0;
 	bdi.mode = 0400;
+	bdi.acount = 0;
 
+	/* fs_linux_version = 1 */
+	bdi.acount += 1;
 	/* login_speed and login_tty = 2 */
 	if (login_tty)
-		bdi.acount = 2;
+		bdi.acount += 2;
 
 	i = dt_init(pdev, &bdi, prefix, pdev->dev.of_node);
+
+	bdi.prop_name[i] = "fs_linux_version";
+	bdi.prop_val[i] = fs_linux_version;
+	bdi.prop_length[i] = strlen(fs_linux_version)+1;
+	i++;
 
 	if (login_tty) {
 		ret = login_tty_init(pdev, i);

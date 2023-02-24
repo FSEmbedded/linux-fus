@@ -13,6 +13,7 @@
 #include <linux/uts.h>
 #include <linux/utsname.h>
 #include <generated/utsrelease.h>
+#include <generated/fsversion.h>
 #include <linux/version.h>
 #include <linux/proc_ns.h>
 
@@ -51,5 +52,8 @@ const char linux_proc_banner[] =
 	"%s version %s"
 	" (" LINUX_COMPILE_BY "@" LINUX_COMPILE_HOST ")"
 	" (" LINUX_COMPILER ") %s\n";
+
+const char fs_linux_version[] =
+	UTS_RELEASE FS_LINUX_VERSION;
 
 BUILD_SALT;

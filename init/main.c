@@ -94,7 +94,7 @@
 #include <linux/rodata_test.h>
 #include <linux/jump_label.h>
 #include <linux/mem_encrypt.h>
-
+#include <generated/fsversion.h>
 #include <asm/io.h>
 #include <asm/bugs.h>
 #include <asm/setup.h>
@@ -595,6 +595,7 @@ asmlinkage __visible void __init start_kernel(void)
 	boot_cpu_init();
 	page_address_init();
 	pr_notice("%s", linux_banner);
+	pr_notice("F&S Linux Version: %s",fs_linux_version);
 	early_security_init();
 	setup_arch(&command_line);
 	setup_command_line(command_line);

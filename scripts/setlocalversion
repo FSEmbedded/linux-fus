@@ -66,6 +66,8 @@ scm_version()
 			else
 				printf '%s%s' -g $head
 			fi
+		else
+			printf '%s' "-`git describe --exact-match 2>/dev/null`"
 		fi
 
 		# Is this git on svn?
@@ -184,5 +186,5 @@ if test "$CONFIG_LOCALVERSION_AUTO" = "y"; then
 #		res="$res${scm:++}"
 #	fi
 fi
-
+echo "#define FS_LINUX_VERSION \"$(scm_version)\"" > include/generated/fsversion.h
 echo "$res"
