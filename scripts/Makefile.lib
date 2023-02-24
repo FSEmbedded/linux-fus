@@ -173,7 +173,10 @@ cpp_flags      = -Wp,-MD,$(depfile) $(NOSTDINC_FLAGS) $(LINUXINCLUDE)     \
 
 ld_flags       = $(KBUILD_LDFLAGS) $(ldflags-y) $(LDFLAGS_$(@F))
 
-DTC_INCLUDE    := $(srctree)/scripts/dtc/include-prefixes
+ # Add include/generated/ to the include path to get the <fsversion.h>
+ # for device tree versioning
+DTC_INCLUDE    := $(srctree)/scripts/dtc/include-prefixes	\
+		  $(objtree)/include/generated/
 
 dtc_cpp_flags  = -Wp,-MD,$(depfile).pre.tmp -nostdinc                    \
 		 $(addprefix -I,$(DTC_INCLUDE))                          \
