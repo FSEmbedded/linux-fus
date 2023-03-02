@@ -19,6 +19,8 @@
 
 #include "lontium-lt9211.h"
 
+/* TODO: */
+//#define ENABLE_IRQ
 
 static inline struct lt9211 *bridge_to_lt9211(struct drm_bridge *b)
 {
@@ -31,11 +33,11 @@ static int LT9211_SystemInt(struct lt9211 *lt9211)
 	const struct reg_sequence seq[] = {
 		/* Switch to 0x82xx */
 		{ 0xff, 0x82 },
-		/* Set reg 0x8201 */
+		/* Set reg 0x01 */
 		{ 0x01, 0x18 },
 		/* Switch to 0x86xx */
 		{ 0xff, 0x86 },
-		/* Set reg 0x8606 */
+		/* Set reg 0x06 */
 		{ 0x06, 0x61 },
 		/* fm for sys_clk */
 		{ 0x07, 0xa8 },
@@ -784,7 +786,7 @@ static int LT9211_TxDigital(struct lt9211 *lt9211)
 	int ret = 0;
 	u8 val = lt9211->rx_source << 6;
 	struct reg_sequence seq[] = {
-		/* Switch to 0x82xx */
+		/* Switch to 0x85xx */
 		{ 0xff, 0x85 },
 		/* Chip active RX source select: MIPI rx; MIPI and LVDS tx
 		 * shared logic select, 1 for MIPI tx, 0 for LVDS tx.
@@ -801,7 +803,7 @@ static int LT9211_TxDigital(struct lt9211 *lt9211)
 		/* Output 24 bit active data. */
 		/* ### TODO: dynamic e.g. via Device / simple panel */
 		{ 0x6e, 0x00 },
-		/* Switch to 0x82xx */
+		/* Switch to 0x81xx */
 		{ 0xff, 0x81 },
 		/* enable pix clock / bt clock */
 		{ 0x36, 0xc0 },
@@ -818,18 +820,13 @@ static int LT9211_TxDigital(struct lt9211 *lt9211)
 	if (lt9211->bus_fmt)
 		lt9211->bpc = lt9211->bus_fmt;
 
-	if (lt9211->bpc == 6) {
-		/* high/low 18 bit ??? */
-		val = 0x4 << 5;
-	} else if (lt9211->bpc == 8) {
-		val = 0x0 << 5;
-	} else {
+	if(lt9211->bpc == 0) {
 		dev_err(lt9211->dev, "bus format not supported!\n");
 		return -EINVAL;
 	}
-
+	val = lt9211->rgb_output_mode << 5;
+	/* set 0x856d 24B_mode_sel register */
 	seq[3].def = val;
-
 	ret = regmap_multi_reg_write(lt9211->regmap, seq, ARRAY_SIZE(seq));
 
 	return ret;
@@ -1131,6 +1128,17 @@ static int lt9211_init(struct lt9211 *lt9211)
 	return ret;
 }
 
+#ifdef ENABLE_IRQ
+static irqreturn_t lt9211_irq_thread_handler(int irq, void *dev_id)
+{
+	struct lt9211 *lt9211 = dev_id;
+	/* TODO: */
+	dev_info(lt9211->dev, "irq occured\n");
+
+	return IRQ_HANDLED;
+}
+#endif
+
 static int lt9211_regulator_init(struct lt9211 *lt9211)
 {
 	int ret;
@@ -1422,6 +1430,15 @@ static int lt9211_parse_dt(struct device_node *np, struct lt9211 *lt9211)
 
 	lt9211->pclk_invert = of_property_read_bool(np, "pclk-invert");
 
+	ret = of_property_read_u8(np, "rgb-output-mode", &lt9211->rgb_output_mode);
+	if (!ret) {
+		if(lt9211->rgb_output_mode > 7)
+			lt9211->rgb_output_mode = 4;
+	} else {
+		/* default output mode */
+		lt9211->rgb_output_mode = 4;
+	}
+
 	return ret;
 }
 
@@ -1454,13 +1471,14 @@ static int lt9211_probe(struct i2c_client *client,
 	if (IS_ERR(lt9211->panel_bridge))
 		return PTR_ERR(lt9211->panel_bridge);
 
+	lt9211->dev = dev;
+	lt9211->client = client;
+
 	ret = lt9211_parse_dt(dev->of_node, lt9211);
 	if (ret) {
 		dev_err(dev, "failed to parse device tree\n");
 		return ret;
 	}
-
-	lt9211->dev = &client->dev;
 
 	lt9211->regmap = devm_regmap_init_i2c(client, &lt9211_regmap_config);
 	if (IS_ERR(lt9211->regmap)) {
@@ -1476,6 +1494,15 @@ static int lt9211_probe(struct i2c_client *client,
 	if (ret < 0)
 		goto err_of_put;
 
+#ifdef ENABLE_IRQ
+	ret = devm_request_threaded_irq(dev, client->irq, NULL,
+					lt9211_irq_thread_handler,
+					IRQF_ONESHOT, "lt9211", lt9211);
+	if (ret) {
+		dev_err(dev, "failed to request irq\n");
+		goto err_disable_regulators;
+	}
+#endif
 	i2c_set_clientdata(client, lt9211);
 
 	ret = lt9211_read_device_rev(lt9211);
