@@ -4,7 +4,29 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight,
         MM: M Mini, MN: M Nano
 
-linux-5.4.70-fsimx6-Y2022.12 (23.12.2022)
+linux-5.4.70-fsimx8mp-Y2023.03 (09.03.2023)
+-----------------------------------------
+Supported boards: armStoneMX8MP, PicoCoreMX8MP, PicoCoreMX8MPr2, efusMX8MP
+
+- fsimx8mp: Enable drivers for efusmx8mp in fsxim8mp_defconfig
+- drm:bridge:lt9211: Improve rgb output mode
+- drm/fb-helper: Add missed unlocks in setcmap_legacy()
+- MLK-25731: drm: imx: hdp: correct ipg clk disable
+- squash gpu: drm: bridge: synopsys: dw-hdmi: turn off power at end of interrupt routine
+- gpu: drm: bridge: synopsys: dw-hdmi: turn off power at end of interrupt routine
+- gpu: drm: bridge: cadence: cdns-hdmi-core: set cec phys_addr from edid
+- drm: bridge: dw-hdmi: check hdmi value in resume
+- Add support for efusmx8mp
+- Fix armstonemx8mp recording issue
+- ASoC: wm8960: Support headphone jack detection function
+- Add device tree version
+- Add ads1015 adc driver to defconfig
+- Add F&S Linux Version
+- Fix picocoremx8mpr2-lcdif-j070wvtc0211.dts
+- Improve bdinfo driver
+
+
+linux-5.4.70-fsimx8mp-Y2022.12 (23.12.2022)
 -----------------------------------------
 Supported boards: armStoneMX8MP, PicoCoreMX8MP, PicoCoreMX8MPr2
 
@@ -18,7 +40,7 @@ Supported boards: armStoneMX8MP, PicoCoreMX8MP, PicoCoreMX8MPr2
 - Add picocorem8mp(r2)-adp-aud1 device trees for ADP-AUD1
 
 
-linux-5.4.70-fsimx6-Y2022.11 (22.11.2022)
+linux-5.4.70-fsimx8mp-Y2022.11 (22.11.2022)
 -----------------------------------------
 Supported boards: armStoneMX8MP, PicoCoreMX8MP, PicoCoreMX8MPr2
 
