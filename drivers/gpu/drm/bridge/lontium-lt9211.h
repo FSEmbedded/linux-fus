@@ -68,6 +68,7 @@ struct lt9211 {
 	struct gpio_desc *enable_gpio;
 	struct regulator_bulk_data supplies[2];
 	struct drm_display_mode mode;
+	struct i2c_client *client;
 	bool debug_pattern;
 	bool pclk_invert;
 	u32 chip_rev;
@@ -75,6 +76,7 @@ struct lt9211 {
 	u8 rx_source;
 	u8 bpc;
 	u8 bus_fmt;
+	u8 rgb_output_mode;
 };
 
 static const struct regmap_range_cfg lt9211_ranges[] = {
