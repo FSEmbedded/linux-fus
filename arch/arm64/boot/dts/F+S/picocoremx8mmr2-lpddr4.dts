@@ -178,15 +178,16 @@
 		ethphy4: ethernet-phy@4 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <4>;
-            rtl821x,enable-sysclk-ssc;
-            rtl821x,enable-rxc-ssc;
-            rtl821x,led-cnfg-mode-b;
-            reset-gpios = <&gpio1 5 GPIO_ACTIVE_LOW>;
-            reset-assert-us = <10000>;
-            reset-deassert-us = <50000>;
-            interrupt-parent = <&gpio1>;
-            interrupts = <4 IRQ_TYPE_LEVEL_LOW>;
-            eee-broken-1000t;
+			rtl821x,clkout-disable;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <1>; // LED1 for link indication
+			rtl821x,led-act = <1>; // LED1 for activity
+			interrupt-parent = <&gpio1>;
+			interrupts = <4 IRQ_TYPE_LEVEL_LOW>;
+			eee-broken-1000t;
 		};
 	};
 };
