@@ -178,7 +178,7 @@ const static struct tc_def_reg_config tc_defconfig [] = {
 	{0x04A0, 0x0044802D}, /* after 100us delay*/
 	{0x04A0, 0x0004802D},
 	{0x0504, 0x00000004},
-/* color mapping settings	*/
+	/* color mapping settings	*/
 	{0x0480, 0x03020100},
 	{0x0484, 0x08050704},
 	{0x0488, 0x0F0E0A09},
@@ -186,7 +186,7 @@ const static struct tc_def_reg_config tc_defconfig [] = {
 	{0x0490, 0x12111716},
 	{0x0494, 0x1B151413},
 	{0x0498, 0x061A1918},
- /* LVDS enable */
+	/* LVDS enable */
 	{0x049C, 0x00000031},
 };
 
@@ -198,7 +198,7 @@ struct tc358775 {
 
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
-	//struct backlight_device *backlight;
+	struct backlight_device *backlight;
 
 	int error;
 
@@ -208,13 +208,29 @@ struct tc358775 {
 	struct videomode vm;
 	u32 width_mm;
 	u32 height_mm;
-    u32 mode_flags;
+	u32 mode_flags;
 
 	struct clk *extclk;
 	u32 clk_rate;
-    struct tc_def_reg_config *def_config;
+	struct tc_def_reg_config *def_config;
 	size_t defconfig_size;
-
+	/**
+	 * @prepare: the time (in milliseconds) that it takes for the panel to
+	 *           become ready and start receiving video data
+	 * @enable: the time (in milliseconds) that it takes for the panel to
+	 *          display the first valid frame after starting to receive
+	 *          video data
+	 * @disable: the time (in milliseconds) that it takes for the panel to
+	 *           turn the display off (no content is visible)
+	 * @unprepare: the time (in milliseconds) that it takes for the panel
+	 *             to power itself down completely
+	 */
+	struct {
+		u32 prepare;
+		u32 enable;
+		u32 disable;
+		u32 unprepare;
+	} delay;
 };
 
 static int tc358775_clear_error(struct tc358775 *ctx)
@@ -273,14 +289,17 @@ static int tc358775_init(struct tc358775 *ctx)
 		return tc358775_clear_error(ctx);
 	dev_info(ctx->dev, "ID: %#x\n", v);
 
+	tc358775_write(ctx, SYS_RST, SYS_RST_REG | SYS_RST_DSIRX | SYS_RST_BM |
+		  SYS_RST_LCD | SYS_RST_I2CM);
+	usleep_range(30000, 40000);
+
 	/* write config */
 	for(i = 0; i < ctx->defconfig_size; i++)
 	{
 		/* write default config */
 		tc358775_write(ctx, ctx->def_config[i].address, ctx->def_config[i].data);
 
-
-		if( (0x04A0 == ctx->def_config[i].address) && (ctx->def_config[i].data & 0x00400000))
+		if((0x04A0 == ctx->def_config[i].address) && (ctx->def_config[i].data & 0x00400000))
 		{
 			udelay(100);
 		}
@@ -329,8 +348,8 @@ static int tc358775_panel_prepare(struct drm_panel *panel)
 		dev_err(ctx->dev, "error enabling regulators (%d)\n", ret);
 
 	if (ctx->extclk != NULL) {
-	/* Set extclk before clk on */
-	ret = clk_set_rate(ctx->extclk, ctx->clk_rate);
+		/* Set extclk before clk on */
+		ret = clk_set_rate(ctx->extclk, ctx->clk_rate);
 		if (ret < 0) {
 			dev_info(ctx->dev, "set rate %d failed. Ret: %u\n",ctx->clk_rate, ret);
 		}
@@ -396,6 +415,20 @@ static int tc358775_panel_enable(struct drm_panel *panel)
 		return -EPERM;
 	}
 	tc358775_init(ctx);
+
+	if(ctx->delay.enable)
+		msleep(ctx->delay.enable);
+
+	if(ctx->backlight) {
+		int ret;
+		ctx->backlight->props.power = FB_BLANK_UNBLANK;
+		ret = backlight_update_status(ctx->backlight);
+		if (ret) {
+			DRM_DEV_ERROR(dev,"Failed to enable backlight %d\n", ret);
+			return ret;
+		}
+	}
+
 	ctx->enabled = true;
 
 	return 0;
@@ -405,36 +438,26 @@ static int tc358775_panel_enable(struct drm_panel *panel)
 static int tc358775_panel_disable(struct drm_panel *panel)
 {
 	struct tc358775 *ctx = panel_to_tc358775(panel);
-#if 0
 	struct mipi_dsi_device *dsi = ctx->dsi;
 	struct device *dev = &dsi->dev;
-	int ret;
-#endif
 
 	if (!ctx->enabled)
 		return 0;
 
-#if 0
+	if(ctx->backlight) {
+		int ret;
+		struct backlight_device *backlight = ctx->backlight;
 
-	ret = mipi_dsi_dcs_set_display_off(dsi);
-	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to set display OFF (%d)\n", ret);
-		return ret;
-    }
-
-	usleep_range(60000, 70000);
-
-	ret = mipi_dsi_dcs_enter_sleep_mode(dsi);
-	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to enter sleep mode (%d)\n", ret);
-		return ret;
+		backlight->props.power = FB_BLANK_POWERDOWN;
+		ret = backlight_update_status(backlight);
+		if (ret) {
+			dev_err(dev,"Failed to disable backlight %d\n", ret);
+			return ret;
+		}
 	}
 
-	usleep_range(60000, 70000);
-
-	rad->backlight->props.power = FB_BLANK_POWERDOWN;
-	backlight_update_status(rad->backlight);
-#endif
+	if(ctx->delay.disable)
+		msleep(ctx->delay.disable);
 
 	ctx->enabled = false;
 
@@ -666,6 +689,21 @@ static int tc358775_probe(struct mipi_dsi_device *dsi)
 		ctx->def_config = (struct tc_def_reg_config*) tc_defconfig;
 		ctx->defconfig_size = 27;
 	}
+
+	np = of_parse_phandle(dev->of_node, "backlight", 0);
+	if (np) {
+		ctx->backlight = of_find_backlight_by_node(np);
+		of_node_put(np);
+
+		if (!ctx->backlight) {
+			return -EPROBE_DEFER;
+		}
+	}
+
+	if(of_property_read_u32(np, "enable-time", &ctx->delay.enable))
+		ctx->delay.enable = 0;
+	if(of_property_read_u32(np, "disable-time", &ctx->delay.disable))
+		ctx->delay.disable = 0;
 
 	drm_panel_init(&ctx->panel, dev, &tc358775_panel_funcs,
 		       DRM_MODE_CONNECTOR_DSI);
