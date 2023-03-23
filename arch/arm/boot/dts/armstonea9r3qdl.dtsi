@@ -163,6 +163,7 @@
 #ifdef CONFIG_ARMSTONEA9R3_HDMI
 		i2c6 = &i2c_gpio_hdmi;
 #endif
+		nand = &gpmi;
 	};
 
 	memory {
@@ -311,6 +312,7 @@
 			>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_i2c5_gpio>;
+		/* can´t set these flags because there are no PU on the SDA/SCL pins */
 //		i2c-gpio,sda-open-drain;
 //		i2c-gpio,scl-open-drain;
 		i2c-gpio,delay-us = <2>;        /* ~100 kHz */
@@ -620,8 +622,8 @@
 			  <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
 			  <&clks IMX6QDL_CLK_SSI1_SEL>,
 			  <&clks IMX6QDL_CLK_SSI1>,
-			  <&clks IMX6QDL_CLK_CKO>,
-			  <&clks IMX6QDL_CLK_CKO2_SEL>;
+			  <&clks IMX6QDL_CLK_CKO2_SEL>,
+			  <&clks IMX6QDL_CLK_CKO>;
 
 	assigned-clock-parents =
 #ifdef CONFIG_ARMSTONEA9R3_LVDS0_CLK
@@ -644,6 +646,7 @@
 				<0>,
 #endif
 				<786432000>,
+				<0>,
 #ifdef CONFIG_ARMSTONEA9R3_AUDIO_12M288
 				<12288000>,	/* Audio with 12.288 MHz */
 #else
@@ -962,8 +965,11 @@
 		interrupt-parent = <&gpio1>;
 		interrupts = <30 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpio = <&gpio1 29 GPIO_ACTIVE_LOW>;
-		x-rev;
-		y-rev;
+		/* using global touchscreen_parse_properties, instead of
+		 * specific parsing.
+		 */
+		touchscreen-inverted-x;
+		touchscreen-inverted-y;
 	};
 #endif
 

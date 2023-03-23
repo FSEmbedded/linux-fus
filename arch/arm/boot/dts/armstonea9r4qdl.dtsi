@@ -69,7 +69,7 @@
 		mxcfb0 = &mxcfb0;
 		mxcfb1 = &mxcfb1;
 		mxcfb2 = &mxcfb2;
-		i2c5 = &i2c_lvds;
+		nand = &gpmi;
 	};
 
 	memory {
@@ -218,20 +218,6 @@
 	sdhci1_pwrseq: sdhci1_pwrseq {
 		compatible = "mmc-pwrseq-simple";
 		reset-gpios = <&gpio1 27 GPIO_ACTIVE_LOW>;
-	};
-
-	i2c_lvds: i2c-gpio-lvds {
-		compatible = "i2c-gpio";
-		gpios = <&gpio2 15 GPIO_ACTIVE_HIGH /* sda */
-			 &gpio2 14 GPIO_ACTIVE_HIGH /* scl */
-			>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_i2c5_gpio>;
-//		i2c-gpio,sda-open-drain;
-//		i2c-gpio,scl-open-drain;
-		i2c-gpio,delay-us = <2>;        /* ~100 kHz */
-		#address-cells = <1>;
-		#size-cells = <0>;
 	};
 
 #ifdef CONFIG_ARMSTONEA9R4_SGTL5000_AUDIO
@@ -595,7 +581,7 @@
 			rtl821x,ssc-rxc-enable;
 			rtl821x,ssc-sysclk-enable;
 			rtl821x,ssc-clkout-enable;
-			rtl821x,led-link = <0>;
+			rtl821x,led-link = <2>;
 			rtl821x,led-act = <1>;
 		};
 	};
@@ -658,7 +644,7 @@
 	status = "okay";
 
 	rtc8565@51 {
-		compatible = "nxp,pcf8565", "nxp,pcf8563";
+		compatible = "nxp,pcf85263";
 		reg = <0x51>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
@@ -1266,6 +1252,9 @@
 
 				/* I2C2_IRQ2 (Touch, LVDS connector) */
 				MX6QDL_PAD_SD4_DAT5__GPIO2_IO13		0x0b0b0
+
+				/* I2C2_RSTn(Touch, LVDS connector) */
+				MX6QDL_PAD_SD4_DAT6__GPIO2_IO14		0x0b0b0
 			>;
 		};
 
@@ -1504,13 +1493,6 @@
 			>;
 		};
 #endif /* CONFIG_ARMSTONEA9R4_I2C_D */
-
-		pinctrl_i2c5_gpio: i2c5_gpio_grp {
-			fsl,pins = <
-				MX6QDL_PAD_SD4_DAT6__GPIO2_IO14		0x070b1
-				MX6QDL_PAD_SD4_DAT7__GPIO2_IO15		0x070b1
-			>;
-		};
 
 #if defined(CONFIG_ARMSTONEA9R4_SGTL5000_AUDIO)
 		pinctrl_audmux_4: audmux-4 {
