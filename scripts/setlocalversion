@@ -62,11 +62,11 @@ scm_version()
 			if atag="$(git describe 2>/dev/null)"; then
 				echo "$atag" | awk -F- '{printf("-%05d", $(NF-1))}'
 			fi
-		else
-			printf '%s' "-`git describe --exact-match 2>/dev/null`"
 
 			# Add -g and exactly 12 hex chars.
 			printf '%s%s' -g "$(echo $head | cut -c1-12)"
+		else
+			printf '%s' "-`git describe --exact-match 2>/dev/null`"
 		fi
 
 		# Check for uncommitted changes.
