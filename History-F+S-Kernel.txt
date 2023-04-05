@@ -4,6 +4,16 @@ Version History for Linux Kernel on i.MX based F&S Boards and Modules
 Remark: Q/D=Quad/Dual, DL/S: DualLite/Solo, SX: Solo-X, UL: UltraLight,
         MM: M Mini, MN: M Nano
 
+linux-5.4.70-fsimx6-B2022.10.1 (03.04.2023)
+-------------------------------------------
+Supported boards: armStoneA9, armStoneA9r2, armStoneA9r3, armStoneA9r4,
+efusA9, efusA9r2 PicoMODA9, NetDCUA9, QBlissA9, QBlissA9r2
+
+- Fix eth-link-led and rtc for armstonea9r4
+- Apply updates from armstonea9/r2 to armstonea9r3/r4
+
+
+
 linux-5.4.70-fsimx8mp-Y2023.03 (09.03.2023)
 -----------------------------------------
 Supported boards: armStoneMX8MP, PicoCoreMX8MP, PicoCoreMX8MPr2, efusMX8MP
