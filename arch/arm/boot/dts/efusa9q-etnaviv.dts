@@ -1,6 +1,7 @@
 #include "efusa9q.dts"
 
 / {
+#ifdef CONFIG_EFUSA9_LCD
 	backlight_lcd:backlight_lcd {
 	};
 
@@ -46,7 +47,34 @@
 			};
 		};
 	};
+#endif
 
+#ifdef CONFIG_EFUSA9_LVDS0
+	panel-lvds0 {
+		compatible = "panel-lvds";
+		data-mapping = "vesa-24";
+		width-mm = <154>;
+		height-mm = <86>;
+		power-supply = <&reg_vlcd>;
+		panel-timing {
+				clock-frequency = <33600000>;
+				hactive = <800>;
+				vactive = <480>;
+				hback-porch = <42>;
+				hfront-porch = <210>;
+				hsync-len = <4>;
+				vback-porch = <22>;
+				vfront-porch = <22>;
+				vsync-len = <1>;
+				pixelclk-active = <0>;
+		};
+		port {
+			panel_in_lvds0: endpoint {
+				remote-endpoint = <&lvds0_out>;
+			};
+		};
+	};
+#endif
 };
 
 &gpu {
@@ -60,8 +88,34 @@
 &gpu_3d {
 	status = "okay";
 };
-
+#ifdef CONFIG_EFUSA9_LCD
 &ipu1_di0_disp0 {
 	remote-endpoint = <&lcd_display_in>;
 };
+#endif
 
+#ifdef CONFIG_EFUSA9_LVDS0
+&ldb {
+	clocks = <&clks IMX6QDL_CLK_LDB_DI0_SEL>, <&clks IMX6QDL_CLK_LDB_DI1_SEL>,
+		 <&clks IMX6QDL_CLK_IPU1_DI0_SEL>, <&clks IMX6QDL_CLK_IPU1_DI1_SEL>,
+		 <&clks IMX6QDL_CLK_IPU2_DI0_SEL>, <&clks IMX6QDL_CLK_IPU2_DI1_SEL>,
+		 <&clks IMX6QDL_CLK_LDB_DI0>, <&clks IMX6QDL_CLK_LDB_DI1>;
+	clock-names = "di0_pll", "di1_pll",
+		      "di0_sel", "di1_sel", "di2_sel", "di3_sel",
+		      "di0", "di1";
+
+	status = "okay";
+
+	lvds-channel@0 {
+		status = "okay";
+
+		port@4 {
+			reg = <4>;
+
+			lvds0_out: endpoint {
+				remote-endpoint = <&panel_in_lvds0>;
+			};
+		};
+	};
+};
+#endif
