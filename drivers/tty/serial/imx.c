@@ -242,6 +242,7 @@ struct imx_port {
 	unsigned int		rx_periods;
 	dma_cookie_t		rx_cookie;
 	unsigned int		rx_fifo_trig;
+	unsigned int		tx_fifo_trig;
 	unsigned int		tx_bytes;
 	unsigned int		dma_tx_nents;
 	unsigned int            saved_reg[10];
@@ -1365,7 +1366,7 @@ static int imx_uart_dma_init(struct imx_port *sport)
 	slave_config.direction = DMA_MEM_TO_DEV;
 	slave_config.dst_addr = sport->port.mapbase + URTX0;
 	slave_config.dst_addr_width = DMA_SLAVE_BUSWIDTH_1_BYTE;
-	slave_config.dst_maxburst = TXTL_DMA;
+	slave_config.dst_maxburst = sport->tx_fifo_trig;
 	slave_config.peripheral_config = NULL;
 	slave_config.peripheral_size = 0;
 	ret = dmaengine_slave_config(sport->dma_chan_tx, &slave_config);
@@ -1384,7 +1385,7 @@ static void imx_uart_enable_dma(struct imx_port *sport)
 {
 	u32 ucr1;
 
-	imx_uart_setup_ufcr(sport, TXTL_DMA, sport->rx_fifo_trig);
+	imx_uart_setup_ufcr(sport, sport->tx_fifo_trig, sport->rx_fifo_trig);
 
 	/* set UCR1 except TXDMAEN which would be enabled in imx_uart_dma_tx */
 	ucr1 = imx_uart_readl(sport, UCR1);
@@ -2259,6 +2260,7 @@ static int imx_uart_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	sport->rx_fifo_trig = RXTL_DMA;
+	sport->tx_fifo_trig = TXTL_DMA;
 	sport->devdata = of_device_get_match_data(&pdev->dev);
 
 	ret = of_alias_get_id(np, "serial");
@@ -2294,6 +2296,9 @@ static int imx_uart_probe(struct platform_device *pdev)
 
 	if(of_property_read_u32(np, "fsl,rx_fifo_trig", &sport->rx_fifo_trig))
 		sport->rx_fifo_trig = RXTL_DMA;
+
+	if(of_property_read_u32(np, "fsl,tx_fifo_trig", &sport->tx_fifo_trig))
+			sport->tx_fifo_trig = TXTL_DMA;
 
 	/* Disables dma for this uart. The uart is now interrupt-driven,
           does not buffer the received data and supports parity check. */
