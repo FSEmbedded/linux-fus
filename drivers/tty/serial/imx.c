@@ -1384,7 +1384,7 @@ static void imx_uart_enable_dma(struct imx_port *sport)
 {
 	u32 ucr1;
 
-	imx_uart_setup_ufcr(sport, TXTL_DMA, RXTL_DMA);
+	imx_uart_setup_ufcr(sport, TXTL_DMA, sport->rx_fifo_trig);
 
 	/* set UCR1 except TXDMAEN which would be enabled in imx_uart_dma_tx */
 	ucr1 = imx_uart_readl(sport, UCR1);
@@ -2291,7 +2291,9 @@ static int imx_uart_probe(struct platform_device *pdev)
 		sport->rx_period_length = RX_DMA_PERIOD_LEN;
 		sport->rx_periods = RX_DMA_PERIODS;
 	}
-	of_property_read_u32(np, "fsl,rx_fifo_trig", &sport->rx_fifo_trig);
+
+	if(of_property_read_u32(np, "fsl,rx_fifo_trig", &sport->rx_fifo_trig))
+		sport->rx_fifo_trig = RXTL_DMA;
 
 	/* Disables dma for this uart. The uart is now interrupt-driven,
           does not buffer the received data and supports parity check. */
