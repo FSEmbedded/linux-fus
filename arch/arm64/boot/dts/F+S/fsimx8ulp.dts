@@ -8,6 +8,7 @@
 #include "../freescale/imx8ulp.dtsi"
 #include "../freescale/imx8ulp-rpmsg.dtsi"
 #include <dt-bindings/input/input.h>
+#include <dt-bindings/pwm/pwm.h>
 
 / {
 	model = "NXP i.MX8ULP EVK";
@@ -34,7 +35,7 @@
 			linux,cma-default;
 		};
 
-		rsc_table: rsc_table@1fff8000{
+		rsc_table: rsc-table@1fff8000{
 			reg = <0 0x1fff8000 0 0x1000>;
 			no-map;
 		};
@@ -87,7 +88,7 @@
 			no-map;
 		};
 
-		audio_reserved: audio@0xa8500000 {
+		audio_reserved: audio@a8500000 {
 			compatible = "shared-dma-pool";
 			no-map;
 			reg = <0 0xa8500000 0 0x100000>;
@@ -106,11 +107,8 @@
 		regulator-max-microvolt = <5000000>;
 		regulator-always-on;
 	};
-};
 
-&clock_ext_ts {
-	/* External ts clock is 50MHZ from PHY on EVK board. */
-	clock-frequency = <50000000>;
+
 };
 
 &dcnano {
@@ -235,14 +233,15 @@
 };
 
 &iomuxc1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_hoggrp>;
 
-	pinctrl_hoggrp: hoggrp {
-		fsl,pins = <
-			MX8ULP_PAD_PTE23__PTE23	0x3
-		>;
-	};
+	//pinctrl-names = "default";
+	//pinctrl-0 = <&pinctrl_hoggrp>;
+
+	//pinctrl_hoggrp: hoggrp {
+	//	fsl,pins = <
+	//		MX8ULP_PAD_PTE23__PTE23	0x3
+	//	>;
+	//};
 
 	pinctrl_lpuart5: lpuart5grp {
 		fsl,pins = <
