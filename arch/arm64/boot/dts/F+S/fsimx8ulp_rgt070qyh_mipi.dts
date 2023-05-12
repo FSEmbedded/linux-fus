@@ -1,0 +1,2 @@
+#include "fsimx8ulp.dts"
+#include "displays/imx8ulp-lcd-rgt070qyh-13cp.dtsi"
