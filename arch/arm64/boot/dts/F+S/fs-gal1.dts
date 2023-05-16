@@ -120,6 +120,18 @@
 
 	};
 
+	thermal-zones {
+		core-cluster {
+			cooling-maps {
+				map0 {
+					cooling-device =
+						<&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+				};
+			};
+		};
+	};
+};
+
 &cpu1 {
 	status = "disabled";
 };
