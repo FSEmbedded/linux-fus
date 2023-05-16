@@ -119,6 +119,9 @@
 		};
 
 	};
+
+&cpu1 {
+	status = "disabled";
 };
 
 &esdhc1 {
