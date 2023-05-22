@@ -328,7 +328,7 @@
 	managed = "in-band-status";
 	phy-handle = <&qsgmii_phy2>;
 	phy-mode = "qsgmii";
-	status = "disabled";
+	status = "okay";
 };
 
 &mscc_felix_port3 {
@@ -336,7 +336,7 @@
 	managed = "in-band-status";
 	phy-handle = <&qsgmii_phy3>;
 	phy-mode = "qsgmii";
-	status = "disabled";
+	status = "okay";
 };
 
 &mscc_felix_port4{
