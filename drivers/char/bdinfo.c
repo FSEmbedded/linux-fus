@@ -26,7 +26,8 @@
 #include <linux/platform_device.h>	/* struct platform_device */
 #include <linux/of.h>			/* __setup() */
 #include <linux/ctype.h>
-#define GET_CELL(p)	(p += 4, *((const uint32_t *)(p-4)))
+
+#define GET_CELL(p)	(*(const uint32_t *)(p))
 #define fdt32_to_cpu(x) be32_to_cpu(x)
 
 struct bdinfo {
@@ -110,12 +111,12 @@ static ssize_t bdinfo_show(struct kobject *kobj,
 	/* If value is a int32 */
 	else if ((bdiTmp->prop_length[i] % 4) == 0) {
 		for (j = 0; j < bdiTmp->prop_length[i]; j += 4)
-			num += sprintf(buf + num,"0x%08x%s", fdt32_to_cpu(GET_CELL(bdiTmp->prop_val[i])),
+			num += sprintf(buf + num,"0x%08x%s", fdt32_to_cpu(GET_CELL(bdiTmp->prop_val[i]+j)),
 			       j < (bdiTmp->prop_length[i] - 4) ? " " : "");
 	}
 	else {
 		for (j = 0; j < bdiTmp->prop_length[i]; j++)
-			num += sprintf(buf + num,"%02x%s", *bdiTmp->prop_val[i]++, j < bdiTmp->prop_length[i] - 1 ? " " : "");
+			num += sprintf(buf + num,"%02x%s", *(bdiTmp->prop_val[i]+j), j < bdiTmp->prop_length[i] - 1 ? " " : "");
 	}
 
 	return num;
