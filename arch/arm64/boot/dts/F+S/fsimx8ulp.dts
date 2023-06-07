@@ -239,8 +239,8 @@
 
 	pinctrl_hoggrp: hoggpp {
 		fsl,pins = <
-//			MX8ULP_PAD_PTE23__PTE23	0x3
-//			MX8ULP_PAD_PTE19__PTE19 0x3
+			//MX8ULP_PAD_PTE23__PTE23 0x3
+			//MX8ULP_PAD_PTE19__PTE19 0x3
 		>;
 	};
 
