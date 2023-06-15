@@ -33,8 +33,9 @@
 /* EEPROM - default not mounted */
 #define CONFIG_PICOCOREMX8MP_EEPROM
 
-/* PCIe */
+/* PCIe; CLKREQ is optional and is available on pin 14 */
 #define CONFIG_PICOCOREMX8MP_PCIE
+//#define CONFIG_PICOCOREMX8MP_PCIE_CLKREQ
 
 /* CAN - default not mounted */
 #define CONFIG_PICOCOREMX8MP_CAN_A
@@ -137,6 +138,10 @@
 
 #ifdef CONFIG_PICOCOREMX8MP_SGTL5000_AUDIO
 #define CONFIG_PICOCOREMX8MP_I2S_A
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MP_PCIE_CLKREQ
+#undef CONFIG_PICOCOREMX8MP_UART_A_RTSCTS
 #endif
 
 /*
