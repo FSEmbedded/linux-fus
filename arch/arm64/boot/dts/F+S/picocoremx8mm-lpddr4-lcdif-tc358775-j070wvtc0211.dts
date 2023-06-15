@@ -19,8 +19,9 @@
 #define IMX8MM_TOUCH_RESET_GPIO_NUM 13
 
 #define IMX8MM_TOUCH_I2C i2c2
+#define IMX8MM_LVDS_I2C i2c4
 #define IMX8MM_BACKLIGHT_PWM pwm2
 
-#include "picocoremx8mmr2-lpddr4.dts"
-#include "displays/imx8mm-lcdif-tc358764-j070wvtc0211.dtsi"
+#include "picocoremx8mm-lpddr4.dts"
+#include "displays/imx8mm-lcdif-tc358775-j070wvtc0211.dtsi"
 

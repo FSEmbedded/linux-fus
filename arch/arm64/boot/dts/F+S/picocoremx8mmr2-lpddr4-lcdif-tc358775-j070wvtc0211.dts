@@ -5,7 +5,6 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-
 #define CONFIG_PICOCOREMX8MM_MIPI_DSI_LVDS
 #define CONFIG_IMX8MM_INVERTED_XY
 
@@ -19,8 +18,9 @@
 #define IMX8MM_TOUCH_RESET_GPIO_NUM 13
 
 #define IMX8MM_TOUCH_I2C i2c2
+#define IMX8MM_LVDS_I2C i2c4
 #define IMX8MM_BACKLIGHT_PWM pwm2
 
-#include "picocoremx8mm-lpddr4.dts"
-#include "displays/imx8mm-lcdif-tc358764-j070wvtc0211.dtsi"
+#include "picocoremx8mmr2-lpddr4.dts"
+#include "displays/imx8mm-lcdif-tc358775-j070wvtc0211.dtsi"
 

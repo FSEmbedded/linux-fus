@@ -3,7 +3,7 @@
 dtb-$(CONFIG_ARCH_MXC) += armstonemx8mp.dtb
 dtb-$(CONFIG_ARCH_MXC) += picocoremx8mm-lpddr4.dtb \
 			  picocoremx8mm-lpddr4-lcdif-tc358764-g070y2-l01.dtb \
-			  picocoremx8mm-lpddr4-lcdif-tc358764-j070wvtc0211.dtb \
+			  picocoremx8mm-lpddr4-lcdif-tc358775-j070wvtc0211.dtb \
 			  picocoremx8mm-lpddr4-lcdif-g050tan01.dtb \
 			  picocoremx8mm-lpddr4-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtb \
 			  picocoremx8mm-lpddr4-lcdif-adp-mipi2rgb.dtb \
@@ -44,7 +44,7 @@ dtb-$(CONFIG_ARCH_MXC) += picocoremx8mp.dtb \
 			  picocoremx8mp-adp-aud1.dtb
 dtb-$(CONFIG_ARCH_MXC) += picocoremx8mmr2-lpddr4.dtb \
 			  picocoremx8mmr2-lpddr4-lcdif-tc358764-g070y2-l01.dtb \
-			  picocoremx8mmr2-lpddr4-lcdif-tc358764-j070wvtc0211.dtb \
+			  picocoremx8mmr2-lpddr4-lcdif-tc358775-j070wvtc0211.dtb \
 			  picocoremx8mmr2-lpddr4-lcdif-g050tan01.dtb \
 			  picocoremx8mmr2-lpddr4-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtb \
 			  picocoremx8mmr2-lpddr4-lcdif-adp-mipi2rgb.dtb
