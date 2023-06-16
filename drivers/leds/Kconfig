@@ -512,6 +512,17 @@ config LEDS_PCA963X
 	  LED driver chip accessed via the I2C bus. Supported
 	  devices include PCA9633 and PCA9634
 
+config LEDS_PCA963X_FUS
+	bool "F&S version of LED support for PCA963x I2C chip"
+	depends on LEDS_CLASS
+	depends on I2C
+	depends on ! LEDS_PCA963X
+	help
+	  This option enables support for LEDs connected to the PCA963x
+	  LED driver chip accessed via the I2C bus. Supported
+	  devices include PCA9633 and PCA9634. Add support for gpio and pwm
+	  pin functionality.
+
 
 config LEDS_PCA995X
 	tristate "LED Support for PCA995x I2C chips"
