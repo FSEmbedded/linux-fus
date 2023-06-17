@@ -149,7 +149,6 @@ static int rtl821x_probe(struct phy_device *phydev)
 {
 	struct device *dev = &phydev->mdio.dev;
 	struct rtl821x_priv *priv;
-	u32 phy_id = phydev->drv->phy_id;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -473,17 +472,19 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 			return ret;
 		}
 	}
-	if ((priv->quirks & RTL821X_CLKOUT_DISABLE)) {
-		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2, RTL8211F_CLKOUT_EN, 0);
-		if (ret < 0) {
-			dev_err(&phydev->mdio.dev, "clkout disable failed\n");
-			return ret;
-		}
-	} else {
-		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2, RTL8211F_CLKOUT_EN, RTL8211F_CLKOUT_EN);
-		if (ret < 0) {
-			dev_err(&phydev->mdio.dev, "clkout enable failed\n");
-			return ret;
+	if (!is_rtl8211fvd(phy_id)) {
+		if ((priv->quirks & RTL821X_CLKOUT_DISABLE)) {
+			ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2, RTL8211F_CLKOUT_EN, 0);
+			if (ret < 0) {
+				dev_err(&phydev->mdio.dev, "clkout disable failed\n");
+				return ret;
+			}
+		} else {
+			ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2, RTL8211F_CLKOUT_EN, RTL8211F_CLKOUT_EN);
+			if (ret < 0) {
+				dev_err(&phydev->mdio.dev, "clkout enable failed\n");
+				return ret;
+			}
 		}
 	}
 
