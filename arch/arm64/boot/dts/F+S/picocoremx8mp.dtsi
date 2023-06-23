@@ -1118,6 +1118,15 @@
 	status = "okay";
 };
 
+&snvs_pwrkey {
+	status = "okay";
+};
+
+/* Disable CPU RTC - external available */
+&snvs_rtc {
+	status = "disabled";
+};
+
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
