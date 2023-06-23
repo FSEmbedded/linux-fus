@@ -919,6 +919,10 @@
 #endif
 #endif
 
+&snvs_pwrkey {
+	status = "okay";
+};
+
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
