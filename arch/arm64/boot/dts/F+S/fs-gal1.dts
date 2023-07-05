@@ -40,7 +40,7 @@
 		reg = <0x0 0x80000000 0x0 0x40000000>; //1GiB in DRAM region 1
      };
 
-	leds {
+	/*leds {
 		compatible = "gpio-leds";
 
 		D4-GN {
@@ -84,7 +84,7 @@
 			gpios = <&gpio4 10 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
 		};
-	};
+	};*/
 
 	regulators {
 		reg_pcie1: pcie1_pwr {
@@ -155,18 +155,45 @@
 &i2c0 {
 	status = "okay";
 
-	gpio4: pca6524@44 {
+	gpio4: pca6524@22 {
 		/* extern GPIO controller */
 		compatible = "nxp,pcal6524";
-		reg  = <0x44>;
+		reg  = <0x22>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <6 IRQ_TYPE_NONE>;
 		gpio-controller;
 		#gpio-cells = <2>;
 		interrupt-controller;
 		#interrupt-cells = <2>;
+		gpio-line-names = /* Port 1 */
+				  "DDR_RST_B_1V8",
+				  "eMMC_RST_B_1V8",
+				  "PCIe_CLKGEN",
+				  "PCIe_SIM_SW",
+				  "LED_G2_GPIO_1V8",
+				  "LED_G3_GPIO_1V8",
+				  "LED_R1_GPIO_1V8",
+				  "LED_G4_GPIO_1V8",
+				  /* Port 2 */
+				  "LED_R2_GPIO_1V8",
+				  "LED_G5_GPIO_1V8",
+				  "LED_B1_GPIO_1V8",
+				  "PCIe1_PWR_EN",
+				  "PCIe1_RST_B_1V8",
+				  "PCIe1_WAKE_B_1V8",
+				  "PCIe2_PWR_EN",
+				  "PCIe2_RST_B_1V8", 
+				  /* Port 3 */
+				  "PCIe2_WAKE_B_1V8",
+				  "PCIe2_CLKREQ_B_1V8",
+				  "PCIe1_CLKREQ_B_1V8",
+				  "RGMII_RST_1V8",
+				  "RGMII_IRQ_1V8",
+				  "QSGMII_RST_1V8",
+				  "QSGMII_IRQ_1V8",
+				  "TEMP_IRQ_1V8";
 
-		ddr_rst_hog {
+		/*ddr_rst_hog {
 			gpio-hog;
 			gpios = <0 GPIO_ACTIVE_HIGH>;
 			output-low;
@@ -216,12 +243,12 @@
 		};
 
 		sim_switch {
-			/* Activate left- and right-handed SIM*/
+			/* Activate left- and right-handed SIM*
 			gpio-hog;
 			gpios = <3 GPIO_ACTIVE_HIGH>;
 			output-low;
 			line-name = "eSIM_Switch";
-		};
+		};*/
 	};
 
 	temp-sensor@49 {
@@ -235,7 +262,6 @@
 		compatible = "nxp,pcf85263";
 		reg = <0x51>;
 	};
-
 };
 
 &i2c1 {
