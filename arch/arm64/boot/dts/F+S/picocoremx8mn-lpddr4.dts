@@ -780,8 +780,6 @@
 &uart1 { /* console */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1>;
-	assigned-clocks = <&clk IMX8MN_CLK_UART1>;
-	assigned-clock-parents = <&clk IMX8MN_SYS_PLL1_80M>;
 #ifdef CONFIG_PICOCOREMX8MN_UART_A_RTSCTS
 	fsl,uart-has-rtscts;
 #endif
@@ -793,6 +791,8 @@
 &uart2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2>;
+	assigned-clocks = <&clk IMX8MN_CLK_UART2>;
+	assigned-clock-parents = <&clk IMX8MN_SYS_PLL1_80M>;
 #ifdef CONFIG_PICOCOREMX8MN_UART_B_RTSCTS
 	fsl,uart-has-rtscts;
 #endif
