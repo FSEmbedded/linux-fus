@@ -668,7 +668,7 @@
 		focaltech,display-coords = <0 0 800 480>;
 	};
 #endif
-#ifdef CONFIG_EFUSMX8MP_4WTOUCH_SX8655_RGBADAPTER
+#ifdef CONFIG_EFUSMX8MP_4WTOUCH_SX8655_RGBADAPTER_EDT1
 	/* 4/5 wire analog resistive touch on RGB-Adapter */
 	
 	sx8654@49 {
@@ -686,6 +686,26 @@
 		 */
 		touchscreen-inverted-x;
 		touchscreen-inverted-y;
+	};
+#endif
+#ifdef CONFIG_EFUSMX8MP_4WTOUCH_TSC2004_RGBADAPTER_EDT2
+	tsc2004@4a {
+		compatible = "ti,tsc2004";
+		reg = <0x4a>;
+		vio-supply = <&reg_vref_3v3>;
+
+		interrupts-extended = <&gpio1 9 IRQ_TYPE_EDGE_FALLING>;
+		touchscreen-fuzz-x = <4>;
+		touchscreen-fuzz-y = <7>;
+		touchscreen-fuzz-pressure = <20>;
+		touchscreen-size-x = <4096>;
+		touchscreen-size-y = <4096>;
+		touchscreen-max-pressure = <2048>;
+		touchscreen-inverted-y;
+		ti,x-plate-ohms = <280>;
+		ti,pre-charge-time = <4>;
+		ti,sense-time-sel = <3>;
+		//ti,esd-recovery-timeout-ms = <8000>;
 	};
 #endif
 };

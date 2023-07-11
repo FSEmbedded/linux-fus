@@ -49,8 +49,8 @@
 //#define DISPLAY_LVDS_G133HAN010
 
 /* 4-wire/5-wire analog resistive touch, touch controller on RGB LCD adapter */
-//#define CONFIG_EFUSMX8MP_4WTOUCH_SX8655_RGBADAPTER
-
+//#define CONFIG_EFUSMX8MP_4WTOUCH_SX8655_RGBADAPTER_EDT1
+//#define CONFIG_EFUSMX8MP_4WTOUCH_TSC2004_RGBADAPTER_EDT2
 /* The mode allows to use dual asynchronous channels (8 data, 2 clocks).
  * This is intended for single panel with 2 interfaces, transferring
  * across two channels (even pixel/odd pixel). This is supported at up to
