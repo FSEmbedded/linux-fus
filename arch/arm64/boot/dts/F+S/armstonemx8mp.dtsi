@@ -622,6 +622,27 @@
 		};
 	};
 #endif
+
+#ifdef CONFIG_ARMSTONEMX8MP_CAMERA_BASLER_daA3840
+	basler_camera_vvcam@36 {
+		compatible = "basler,basler-camera-vvcam", "basler-camera-vvcam";
+		reg = <0x36>;
+		csi_id = <0x00>;
+		status = "okay";
+
+		port {
+			basler_ep_0: endpoint {
+				data-lanes = <1 2 3 4>;
+				clock-lanes = <0>;
+				link-frequencies = /bits/ 64 <750000000>;
+				max-lane-frequency = /bits/ 64 <750000000>;
+				max-pixel-frequency = /bits/ 64 <500000000>;
+				max-data-rate = /bits/ 64 <0>;
+				remote-endpoint = <&mipi_csi0_ep>;
+			};
+		};
+	};
+#endif
 };
 #endif /* CONFIG_ARMSTONEMX8MP_I2C_D */
 
@@ -1042,7 +1063,8 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 	status = "okay";
-#ifdef CONFIG_ARMSTONEMX8MP_CAMERA_BASLER_daA4200
+#if defined (CONFIG_ARMSTONEMX8MP_CAMERA_BASLER_daA4200) || \
+    defined (CONFIG_ARMSTONEMX8MP_CAMERA_BASLER_daA3840)
 	port@0 {
 		reg = <0>;
 		mipi_csi0_ep: endpoint {
@@ -1195,11 +1217,19 @@
 	 * only by tuning tool
 	 * */
 	/delete-property/memory-region;
+#ifdef CONFIG_ARMSTONEMX8MP_CAMERA_BASLER_daA3840
+	status = "okay";
+#else
 	status = "disabled";
+#endif
 };
 
 &isi_0 {
+#ifdef CONFIG_ARMSTONEMX8MP_CAMERA_BASLER_daA4200
 	status = "okay";
+#else
+	status = "disabled";
+#endif
 	dma-coherent;
 	bsl,dma-invalidate;
 	fsl,chain_buf;
@@ -1227,7 +1257,11 @@
 };
 
 &dewarp {
+#ifdef CONFIG_ARMSTONEMX8MP_CAMERA_BASLER_daA3840
+	status = "okay";
+#else
 	status = "disabled";
+#endif
 };
 
 &iomuxc {
