@@ -1175,31 +1175,49 @@
 	status = "okay";
 };
 
-#ifdef CONFIG_EFUSMX8MP_HDMI
 &irqsteer_hdmi {
+#ifdef CONFIG_EFUSMX8MP_HDMI
 	status = "okay";
+#else
+	status="disabled";
+#endif
 };
 
 &hdmi_pavi {
+#ifdef CONFIG_EFUSMX8MP_HDMI
 	status = "okay";
+#else
+	status="disabled";
+#endif
 };
 
 &hdmi {
 #ifndef CONFIG_EFUSMX8MP_HDMI_I2C
 	ddc-i2c-bus = <&i2c5>;
 #endif
+#ifdef CONFIG_EFUSMX8MP_HDMI
 	status = "okay";
+#else
+	status="disabled";
+#endif
 };
 
 &hdmiphy {
+#ifdef CONFIG_EFUSMX8MP_HDMI
 	status = "okay";
+#else
+	status="disabled";
+#endif
 };
 
 
 &hdmi_blk_ctrl {
+#ifdef CONFIG_EFUSMX8MP_HDMI
 	status = "okay";
-};
+#else
+	status="disabled";
 #endif
+};
 
 &lcdif1 {
 	status = "okay";
