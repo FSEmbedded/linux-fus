@@ -255,9 +255,9 @@
 	sound_sgtl5000: sound-sgtl5000 {
 		compatible = "fsl,imx-audio-sgtl5000";
 		model = "imx-sgtl5000";
-		cpu-dai = <&sai2>;
+		audio-cpu = <&sai2>;
 		audio-codec = <&sgtl5000>;
-		codec-master;
+		audio-asrc = <&easrc>;
 		audio-routing =
 			"LINE_IN", "Line In Jack",
 			"Mic Jack", "Mic Bias",
@@ -930,20 +930,19 @@
 
 #ifdef CONFIG_EFUSMX8MP_I2S_A
 &sai2 {
-	#sound-dai-cells = <0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai2>;
 	assigned-clocks = <&clk IMX8MP_CLK_SAI2>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <12288000>;
+	assigned-clock-rates = <24576000>;
 	clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI2_IPG>, <&clk IMX8MP_CLK_DUMMY>,
 		 <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI2_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
 		 <&clk IMX8MP_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 	fsl,sai-mclk-direction-output;
 	/* sai to clock and frame tx/rx master */
-	//fsl,txmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
-	//fsl,rxmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
+	fsl,txmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
+	fsl,rxmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
 	status = "okay";
 };
 #endif /* CONFIG_EFUSMX8MP_I2S_A */
@@ -1285,12 +1284,12 @@
 		};
 	};
 };
-#ifdef CONFIG_EFUSMX8MP_HDMI
+
 &easrc {
 	fsl,asrc-rate  = <48000>;
 	status = "okay";
 };
-#endif
+
 
 &vpu_g1 {
 	status = "okay";
