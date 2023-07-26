@@ -5,7 +5,6 @@
  * Copyright (C) Purism SPC 2019
  */
 
-#include <drm/drmP.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
@@ -583,7 +582,7 @@ static void nv3051d_shutdown(struct mipi_dsi_device *dsi)
 			      ret);
 }
 
-static int nv3051d_remove(struct mipi_dsi_device *dsi)
+static void nv3051d_remove(struct mipi_dsi_device *dsi)
 {
 	struct nv3051d *ctx = mipi_dsi_get_drvdata(dsi);
 	int ret;
@@ -599,7 +598,6 @@ static int nv3051d_remove(struct mipi_dsi_device *dsi)
 
 	nv3051d_debugfs_remove(ctx);
 
-	return 0;
 }
 
 static const struct of_device_id nv3051d_of_match[] = {
