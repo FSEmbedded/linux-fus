@@ -1406,6 +1406,13 @@ config REGULATOR_TPS65132
 	  This driver supports TPS65132 single inductor - dual output
 	  power supply specifically designed for display panels.
 
+config REGULATOR_TPS65185
+	tristate "TI TPS65185 PMIC-Regulator for EPD"
+	depends on MFD_TPS65185
+	help
+	  This driver supports TPS65132 single inductor - dual output
+	  power supply specifically designed for display panels.
+
 config REGULATOR_TPS65217
 	tristate "TI TPS65217 Power regulators"
 	depends on MFD_TPS65217
