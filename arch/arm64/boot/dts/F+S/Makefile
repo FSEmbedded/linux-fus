@@ -4,4 +4,5 @@ dtb-$(CONFIG_ARCH_MXC) += \
 		fsimx8ulp_rgt070qyh_mipi.dtb \
 		fsimx8ulp_drm+cam.dtb \
 		fsimx8ulp_eth_adp.dtb\
-		fsimx8ulp_epdc.dtb
+		fsimx8ulp_epdc.dtb\
+		soldercore8ulp-bbhd.dtb
