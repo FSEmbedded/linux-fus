@@ -131,6 +131,11 @@
 			};
 		};
 	};
+
+	sfp_eth0: sfp_eth0 {
+	 	compatible = "sff,sfp";
+	 	i2c-bus = <&i2c1>;
+	};
 };
 
 &cpu1 {
@@ -146,10 +151,7 @@
 };
 
 &esdhc {
-	sd-uhs-sdr104;
-	sd-uhs-sdr50;
-	sd-uhs-sdr25;
-	sd-uhs-sdr12;
+/*SD-Adapter*/
 	status = "okay";
 };
 
@@ -243,13 +245,20 @@
 			line-name = "PCIe2_CLKREQ";
 		};
 
-		sim_switch {
-			/* Activate left- and right-handed SIM*
-			gpio-hog;
-			gpios = <3 GPIO_ACTIVE_HIGH>;
-			output-low;
-			line-name = "eSIM_Switch";
-		};*/
+		// rgmii_phy_rst_hog {
+		// 	gpio-hog;
+		// 	gpios = <19 GPIO_ACTIVE_HIGH>;
+		// 	output-low;
+		// 	line-name = "RGMII-PHY-RESET";
+		// };
+
+		// sim_switch {
+		// 	Activate left- and right-handed SIM*
+		// 	gpio-hog;
+		// 	gpios = <3 GPIO_ACTIVE_HIGH>;
+		// 	output-low;
+		// 	line-name = "eSIM_Switch";
+		// }; */
 	};
 
 	temp-sensor@2c {
@@ -332,10 +341,21 @@
 &enetc_port0 {
 	/* SFP Connector */
 	status = "okay";
+	phy-connection-type = "sgmii";
+	managed = "in-band-status";
+	sfp = <&sfp_eth0>;
+
+	/*This setting is like in U-Boot*/
+	// fixed-link {
+	// 	speed = <1000>;
+	// 	full-duplex;
+	// };
 };
 
 &enetc_port1 {
 	/* internal Ethernet */
+	phy-handle = <&rgmii_phy0>;
+	phy-mode = "rgmii";
 	status = "okay";
 };
 
