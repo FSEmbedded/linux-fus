@@ -201,9 +201,8 @@
 
 	pinctrl_touch: touchgrp {
 		fsl,pins = <
-		MX8ULP_PAD_PTE2__PTE2	0x3 //int
-		MX8ULP_PAD_PTE5__PTE5  0x3 //reset
-		//MX8ULP_PAD_PTE3__PTE3	0x3 //reset
+			MX8ULP_PAD_PTE2__PTE2	0x3 //int
+			MX8ULP_PAD_PTE5__PTE5  0x3 //reset
 		>;
 	};
 

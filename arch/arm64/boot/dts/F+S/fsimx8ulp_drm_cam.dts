@@ -1,0 +1,4 @@
+#include "fsimx8ulp.dts"
+#include "displays/imx8ulp-lcd-ee0350et-2cp-v1.2.dtsi"
+//#include "cameras/imx8ulp-basler-camera.dtsi"
+#include "cameras/imx8ulp-omnivision.dtsi"
