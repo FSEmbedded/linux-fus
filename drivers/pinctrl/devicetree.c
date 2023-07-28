@@ -305,8 +305,9 @@ int pinctrl_dt_to_map(struct pinctrl *p, struct pinctrl_dev *pctldev)
 			}
 
 			/* Parse the node */
-			ret = dt_to_map_one_config(p, pctldev, statename,
-						   np_config);
+			if(of_device_is_available(np_config))
+				ret = dt_to_map_one_config(p, pctldev, statename,
+							   np_config);
 			of_node_put(np_config);
 			if (ret < 0)
 				goto err;
