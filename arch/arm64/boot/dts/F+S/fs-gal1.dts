@@ -10,6 +10,7 @@
 #include "../freescale/fsl-ls1028a.dtsi"
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/leds/common.h>
+#include <dt-bindings/net/mscc-phy-vsc8531.h>
 
 / {
      model = "F&S GAL1 Board";
@@ -299,35 +300,32 @@
 
 	qsgmii_phy0: ethernet-phy@10 {
 		/* Microsemi VSC8514XMK */
-		   reg = <0x10>;
-		// interrupt-parent = <&gpio4>;
-		// interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
-		// reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
+		vsc8531,led-0-mode = <VSC8531_ACTIVITY>;
+		vsc8531,led-2-mode = <VSC8531_DUPLEX_COLLISION>;
+		reg = <0x10>;
 	};
 
 	qsgmii_phy1: ethernet-phy@11 {
 		/* Microsemi VSC8514XMK */
-			reg = <0x11>;
-		// interrupt-parent = <&gpio4>;
-		// interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
-		// reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
+		vsc8531,led-0-mode = <VSC8531_ACTIVITY>;
+		vsc8531,led-2-mode = <VSC8531_DUPLEX_COLLISION>;
+		reg = <0x11>;
 	};
 
 	qsgmii_phy2: ethernet-phy@12 {
 		/* Microsemi VSC8514XMK */
-			reg = <0x12>;
-		// interrupt-parent = <&gpio4>;
-		// interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
-		// reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
+		vsc8531,led-0-mode = <VSC8531_ACTIVITY>;
+		vsc8531,led-2-mode = <VSC8531_DUPLEX_COLLISION>;
+		reg = <0x12>;
 	};
 
 	qsgmii_phy3: ethernet-phy@13 {
 		/* Microsemi VSC8514XMK */
-			reg = <0x13>;
-		// interrupt-parent = <&gpio4>;
-		// interrupts = <22 IRQ_TYPE_EDGE_FALLING>;
-		// reset-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>;
+		vsc8531,led-0-mode = <VSC8531_ACTIVITY>;
+		vsc8531,led-2-mode = <VSC8531_DUPLEX_COLLISION>;
+		reg = <0x13>;
 	};
+
 };
 
 &enetc_port0 {
@@ -355,13 +353,6 @@
 	status = "okay";
 };
 
-&mscc_felix_port0 {
-	label = "swp0";
-	managed = "in-band-status";
-	phy-handle = <&qsgmii_phy0>;
-	phy-mode = "qsgmii";
-	status = "okay";
-};
 
 &mscc_felix_port1 {
 	label = "swp1";
@@ -370,12 +361,22 @@
 	phy-mode = "qsgmii";
 	status = "okay";
 };
-// Following two ports are not connected on GAL1
-// But these are used on GAL2
+
 &mscc_felix_port2 {
 	label = "swp2";
 	managed = "in-band-status";
 	phy-handle = <&qsgmii_phy2>;
+	phy-mode = "qsgmii";
+	status = "okay";
+};
+
+/* Following two ports are not connected on GAL1
+ * But these are used on GAL2
+ */
+&mscc_felix_port0 {
+	label = "swp0";
+	managed = "in-band-status";
+	phy-handle = <&qsgmii_phy0>;
 	phy-mode = "qsgmii";
 	status = "okay";
 };
