@@ -1111,6 +1111,7 @@
 	keep-power-in-suspend;
 	non-removable;
 	cap-power-off-card;
+	fsl,sdio-async-interrupt-enabled;
 	#address-cells = <1>;
 	#size-cells = <0>;
 	mwifiex: wifi@1 {

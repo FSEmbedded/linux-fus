@@ -777,6 +777,7 @@
 #ifdef CONFIG_PICOCOREMX8MM_WLAN
 	enable-sdio-wakeup;
 	cap-power-off-card;
+	fsl,sdio-async-interrupt-enabled;
 #endif
 	status = "okay";
 

@@ -929,6 +929,7 @@ wvga {					\
 	vqmmc-supply = <&reg_vref_1v8>;	/* VDD_IO */
 	wifi-host; /* needed for BCM wifi cards */
 	enable-sdio-wakeup;
+	fsl,sdio-async-interrupt-enabled;
 #endif
 #ifdef CONFIG_PICOCOREMX6UL100_SD_A
 	vmmc-supply = <&reg_vref_3v3>;	/* VDD */

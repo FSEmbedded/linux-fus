@@ -462,6 +462,7 @@
 	/* needed for BCM wifi cards */
 	wifi-host;
 	enable-sdio-wakeup;
+	fsl,sdio-async-interrupt-enabled;
 #endif
 #ifdef CONFIG_PICOCOREMX7ULP_SD_CD
 	cd-gpios = <&gpio_pte 13 GPIO_ACTIVE_HIGH>;

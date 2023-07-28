@@ -988,6 +988,7 @@
 #endif
 #ifdef CONFIG_PICOCOREMX8MP_WLAN
 	vmmc-supply = <&reg_wlan_pdn>;
+	fsl,sdio-async-interrupt-enabled;
 #else
 	vmmc-supply = <&reg_vref_3v3>;
 #endif
