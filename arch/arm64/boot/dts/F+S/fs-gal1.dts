@@ -41,7 +41,7 @@
 		reg = <0x0 0x80000000 0x0 0x40000000>; //1GiB in DRAM region 1
      };
 
-	/*leds {
+	leds {
 		compatible = "gpio-leds";
 
 		D4-GN {
@@ -85,7 +85,7 @@
 			gpios = <&gpio4 10 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
 		};
-	};*/
+	};
 
 	regulators {
 		reg_pcie1: pcie1_pwr {
@@ -154,14 +154,14 @@
 };
 
 &i2c0 {
+	clock-frequency = <100000>;
 	status = "okay";
-
 	gpio4: pca6524@22 {
 		/* extern GPIO controller */
 		compatible = "nxp,pcal6524";
 		reg  = <0x22>;
 		interrupt-parent = <&gpio1>;
-		interrupts = <6 IRQ_TYPE_NONE>;
+		interrupts = <6 IRQ_TYPE_EDGE_FALLING>;
 		gpio-controller;
 		#gpio-cells = <2>;
 		interrupt-controller;
@@ -252,9 +252,9 @@
 		};*/
 	};
 
-	temp-sensor@49 {
+	temp-sensor@2c {
 		compatible = "nxp,pct2075";
-		reg = <0x49>;
+		reg = <0x2c>;
 		interrupt-parent = <&gpio4>;
 		interrupts = <23 IRQ_TYPE_EDGE_FALLING>;
 	};
@@ -267,6 +267,7 @@
 
 &i2c1 {
 	status="okay";
+	clock-frequency = <100000>;
 };
 
 &i2c4 {
