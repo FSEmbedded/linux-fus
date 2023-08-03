@@ -96,6 +96,7 @@
 			
 			gpio = <&gpio4 11 GPIO_ACTIVE_HIGH>;
 			enable-active-high;
+			regulator-always-on;
 		};
 
 		reg_pcie2: pcie2_pwr {
@@ -106,6 +107,7 @@
 
 			gpio = <&gpio4 14 GPIO_ACTIVE_HIGH>;
 			enable-active-high;
+			regulator-always-on;
 		};
 
 		reg_usb1: usb1_pwr {
@@ -208,16 +210,27 @@
 			gpios = <1 GPIO_ACTIVE_HIGH>;
 			output-low;
 			line-name = "EMMC-RST-B_GPIO";
-		};
+		}; */
 
 		pcie_clkgen_hog {
 			gpio-hog;
-			gpios = <2 ( GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN )>;
-			output-low;
-			line-name = "PCIe_CLKGEN";	
+			gpios = <2 GPIO_ACTIVE_LOW>;
+			output-high;
 		};
 
-		pcie1_wake_hog {
+		PCIe1_rst_hog {
+			gpio-hog;
+			gpios = <12 GPIO_ACTIVE_LOW>;
+			output-low;
+		};
+
+		PCIe2_rst_hog {
+			gpio-hog;
+			gpios = <15 GPIO_ACTIVE_LOW>;
+			output-low;
+		};
+
+		/*pcie1_wake_hog {
 			gpio-hog;
 			gpios = <13 GPIO_ACTIVE_HIGH>;
 			output-low;
@@ -243,22 +256,14 @@
 			gpios = <18 GPIO_ACTIVE_HIGH>;
 			input;
 			line-name = "PCIe2_CLKREQ";
+		};*/
+
+		sim_switch {
+			/* Activate left- and right-handed SIM */
+			gpio-hog;
+			gpios = <3 GPIO_ACTIVE_HIGH>;
+			output-low;
 		};
-
-		// rgmii_phy_rst_hog {
-		// 	gpio-hog;
-		// 	gpios = <19 GPIO_ACTIVE_HIGH>;
-		// 	output-low;
-		// 	line-name = "RGMII-PHY-RESET";
-		// };
-
-		// sim_switch {
-		// 	Activate left- and right-handed SIM*
-		// 	gpio-hog;
-		// 	gpios = <3 GPIO_ACTIVE_HIGH>;
-		// 	output-low;
-		// 	line-name = "eSIM_Switch";
-		// }; */
 	};
 
 	temp-sensor@2c {
@@ -292,11 +297,11 @@
 };
 
 &pcie1 {
-	reset-gpio = <&gpio4 12 ( GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN )>;
-};
+	status = "okay";
+	};
 
 &pcie2 {
-	reset-gpio = <&gpio4 15 ( GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN )>;
+	status = "okay";
 };
 
 &enetc_mdio_pf3 {
