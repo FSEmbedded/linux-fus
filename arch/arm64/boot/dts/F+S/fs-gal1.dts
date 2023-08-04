@@ -117,6 +117,7 @@
 			
 			gpio = <&gpio4 11 GPIO_ACTIVE_HIGH>;
 			enable-active-high;
+			regulator-boot-on;
 			regulator-always-on;
 		};
 
@@ -128,6 +129,7 @@
 
 			gpio = <&gpio4 14 GPIO_ACTIVE_HIGH>;
 			enable-active-high;
+			regulator-boot-on;
 			regulator-always-on;
 		};
 
@@ -138,6 +140,7 @@
 			regulator-max-microvolt = <3300000>;
 
 			gpio = <&gpio3 18 GPIO_ACTIVE_HIGH>;
+			regulator-boot-on;
 			enable-active-high;
 			regulator-always-on;
 		};
