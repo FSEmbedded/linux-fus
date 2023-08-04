@@ -88,7 +88,28 @@
 	};
 
 	regulators {
-		reg_pcie1: pcie1_pwr {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		regulator_3v3: regulator_3V3@0 {
+			compatible = "regulator-fixed";
+			regulator-name = "3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-boot-on;
+			regulator-always-on;
+		};
+		regulator_1v8: pmic_1V8@1 {
+			compatible = "regulator-fixed";
+			regulator-name = "1V8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-boot-on;
+			regulator-always-on;
+		};
+
+		pcie1_pwr@2 {
 			compatible = "regulator-fixed";
 			regulator-name = "PCIe1_PWR";
 			regulator-min-microvolt = <3300000>;
@@ -99,7 +120,7 @@
 			regulator-always-on;
 		};
 
-		reg_pcie2: pcie2_pwr {
+		pcie2_pwr@3 {
 			compatible = "regulator-fixed";
 			regulator-name = "PCIe2_PWR";
 			regulator-min-microvolt = <3300000>;
@@ -110,7 +131,7 @@
 			regulator-always-on;
 		};
 
-		reg_usb1: usb1_pwr {
+		usb1_pwr@4 {
 			compatible = "regulator-fixed";
 			regulator-name = "USB1_PWR";
 			regulator-min-microvolt = <3300000>;
@@ -137,6 +158,7 @@
 	sfp_eth0: sfp_eth0 {
 	 	compatible = "sff,sfp";
 	 	i2c-bus = <&i2c1>;
+		vcc-supply = <&regulator_3v3>;
 	};
 };
 
@@ -170,6 +192,7 @@
 		#gpio-cells = <2>;
 		interrupt-controller;
 		#interrupt-cells = <2>;
+		vcc-supply = <&regulator_1v8>;
 		gpio-line-names = /* Port 1 */
 				  "DDR_RST_B_1V8",
 				  "eMMC_RST_B_1V8",
@@ -271,11 +294,13 @@
 		reg = <0x2c>;
 		interrupt-parent = <&gpio4>;
 		interrupts = <23 IRQ_TYPE_EDGE_FALLING>;
+		vcc-supply = <&regulator_3v3>;
 	};
 
 	rtc@51 {
 		compatible = "nxp,pcf85263";
 		reg = <0x51>;
+		vcc-supply = <&regulator_3v3>;
 	};
 };
 
