@@ -12,6 +12,14 @@
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/net/mscc-phy-vsc8531.h>
 
+/delete-node/ &dpclk;
+/delete-node/ &hdptx0;
+/delete-node/ &malidp0;
+
+&soc {
+	/delete-node/ gpu@f0c0000;
+};
+
 / {
      model = "F&S GAL1 Board";
      compatible = "fus,gal1", "fsl,ls1028a";
