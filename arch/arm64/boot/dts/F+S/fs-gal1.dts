@@ -224,19 +224,17 @@
 				  "QSGMII_IRQ_1V8",
 				  "TEMP_IRQ_1V8";
 
-		/*ddr_rst_hog {
+		ddr_rst_hog {
 			gpio-hog;
 			gpios = <0 GPIO_ACTIVE_HIGH>;
 			output-low;
-			line-name = "DDR-RST-B_GPIO";
 		};
 
 		emmc_rst_hog {
 			gpio-hog;
-			gpios = <1 GPIO_ACTIVE_HIGH>;
+			gpios = <1 GPIO_ACTIVE_LOW>;
 			output-low;
-			line-name = "EMMC-RST-B_GPIO";
-		}; */
+		};
 
 		pcie_clkgen_hog {
 			gpio-hog;
@@ -253,41 +251,6 @@
 		PCIe2_rst_hog {
 			gpio-hog;
 			gpios = <15 GPIO_ACTIVE_LOW>;
-			output-low;
-		};
-
-		/*pcie1_wake_hog {
-			gpio-hog;
-			gpios = <13 GPIO_ACTIVE_HIGH>;
-			output-low;
-			line-name = "PCIe1_WAKE";
-		};
-
-		pcie2_wake_hog {
-			gpio-hog;
-			gpios = <16 GPIO_ACTIVE_HIGH>;
-			output-low;
-			line-name = "PCIe2_WAKE";
-		};
-
-		pcie1_clkreq {
-			gpio-hog;
-			gpios = <17 GPIO_ACTIVE_HIGH>;
-			input;
-			line-name = "PCIe1_CLKREQ";
-		};
-
-		pcie2_clkreq {
-			gpio-hog;
-			gpios = <18 GPIO_ACTIVE_HIGH>;
-			input;
-			line-name = "PCIe2_CLKREQ";
-		};*/
-
-		sim_switch {
-			/* Activate left- and right-handed SIM */
-			gpio-hog;
-			gpios = <3 GPIO_ACTIVE_HIGH>;
 			output-low;
 		};
 	};
@@ -318,6 +281,35 @@
 
 &i2c5 {
 	status="okay";
+};
+
+&gpio2 {
+	gpio-line-names = 
+		/* Line 0-19*/
+		"","","","","","","","","","",
+		"","","","","","","","","","",
+		/* Line 20-23 for GPIO */
+		"GPIO-1",
+		"GPIO-0",
+		"GPIO-2",
+		"GPIO-3",
+		/* Line 24-31 */
+		"","","","",
+		"RS232_DTR",
+		"RS232_RI",
+		"RS232_DSR",
+		"RS232_DCD";
+};
+
+&gpio3 {
+	gpio-line-names =
+		/* Line 0-12 */
+		"","","","","","","","","","","","",
+		/* Line 13 -16 for GPIO */
+		"GPIO-7",
+		"GPIO-6",
+		"GPIO-4",
+		"GPIO-5";
 };
 
 &duart0 {
