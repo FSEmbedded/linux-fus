@@ -53,43 +53,43 @@
 		compatible = "gpio-leds";
 
 		D4-GN {
-			lable = "D4-LED_green";
+			label = "D4-LED_green";
 			gpios = <&gpio4 4 GPIO_ACTIVE_HIGH>;
 			default-state = "off";	
 		};
 
 		D5-GN {
-			lable = "D5-LED_green";
+			label = "D5-LED_green";
 			gpios = <&gpio4 5 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
 		};
 
 		D6-RD {
-			lable = "D6-LED_red";
+			label = "D6-LED_red";
 			gpios = <&gpio4 6 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
 		};
 
 		D6-GN {
-			lable = "D6-LED_green";
+			label = "D6-LED_green";
 			gpios = <&gpio4 7 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
 		};
 
 		D7-RD {
-			lable = "D7-LED_red";
+			label = "D7-LED_red";
 			gpios = <&gpio4 8 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
 		};
 
 		D7-GN {
-			lable = "D7-LED_green";
+			label = "D7-LED_green";
 			gpios = <&gpio4 9 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
 		};
 
 		D7-BL {
-			lable = "D7-LED_blue";
+			label = "D7-LED_blue";
 			gpios = <&gpio4 10 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
 		};
