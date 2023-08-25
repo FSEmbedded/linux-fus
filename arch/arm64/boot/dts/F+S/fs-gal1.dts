@@ -93,6 +93,7 @@
 			gpios = <&gpio4 10 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
 		};
+
 	};
 
 	regulators {
@@ -171,6 +172,11 @@
 	 	i2c-bus = <&i2c1>;
 		vcc-supply = <&regulator_3v3>;
 	};
+	
+	esdhc1_pwrseq: emmc_pwrseq {
+		compatible = "mmc-pwrseq-emmc";
+		reset-gpios = <&gpio4 1 (GPIO_ACTIVE_LOW|GPIO_OPEN_DRAIN)>;
+	};
 };
 
 &cpu1 {
@@ -182,6 +188,7 @@
 	mmc-hs200-1_8v;
 	mmc-hs400-1_8v;
 	bus-width = <8>;
+	mmc-pwrseq = <&esdhc1_pwrseq>;
 	status = "okay";
 };
 
@@ -235,12 +242,6 @@
 		ddr_rst_hog {
 			gpio-hog;
 			gpios = <0 GPIO_ACTIVE_HIGH>;
-			output-low;
-		};
-
-		emmc_rst_hog {
-			gpio-hog;
-			gpios = <1 GPIO_ACTIVE_LOW>;
 			output-low;
 		};
 
