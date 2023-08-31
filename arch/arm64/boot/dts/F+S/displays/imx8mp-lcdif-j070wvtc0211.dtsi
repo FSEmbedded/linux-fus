@@ -74,14 +74,9 @@
 
 &backlight_ldb {
 	pwms = <&pwm2 0 250000 PWM_POLARITY_INVERTED>;
-	brightness-levels = <0 155 159 174 176 177 179 180 182 183
-				184 186 187 189 190 191 192 193 194 196
-				198 199 200 202 203 204 206 207 208 209
-				210 212 213 214 215 217 218 219 220 221
-				223 224 225 226 227 228 230 231 232 233
-				234 235 236 238 239 240 241 242 243 244
-				245 246 248 249 250 251 252 253 254 255>;
-	default-brightness-level = <35>;
+	brightness-levels = <135 143 151 159 167 175 183 191
+			     199 207 215 223 231 239 247 255>;
+	default-brightness-level = <14>;
 
 	status = "okay";
 };
@@ -98,7 +93,7 @@
 
 /* HDMI */
 &lcdif3 {
-	status = "disbled";
+	status = "disabled";
 };
 
 &ldb_phy {
@@ -159,8 +154,4 @@
 		focaltech,num-max-touches = <10>;
 		focaltech,display-coords = <0 0 800 480>;
 	};
-};
-
-&mipi_dsi {
-	status = "okay";
 };
