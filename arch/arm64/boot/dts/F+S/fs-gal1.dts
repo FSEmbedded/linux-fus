@@ -27,7 +27,8 @@
      aliases {
         crypto = &crypto;
         serial0 = &duart0;
-		serial1 = &duart1;
+        serial1 = &lpuart0;
+        serial2 = &lpuart2;
 
 		/* Needed for UBOOT to set MAC-ADDRESS */
 		ethernet0 = &enetc_port0;
@@ -192,11 +193,6 @@
 	status = "okay";
 };
 
-&esdhc {
-/*SD-Adapter*/
-	status = "okay";
-};
-
 &i2c0 {
 	clock-frequency = <100000>;
 	status = "okay";
@@ -279,19 +275,6 @@
 	};
 };
 
-&i2c1 {
-	status="okay";
-	clock-frequency = <100000>;
-};
-
-&i2c4 {
-	status="okay";
-};
-
-&i2c5 {
-	status="okay";
-};
-
 &gpio2 {
 	gpio-line-names = 
 		/* Line 0-19*/
@@ -322,12 +305,24 @@
 };
 
 &duart0 {
-	status="okay";
+	status = "okay";
+};
+
+&lpuart0 {
+	status = "okay";
+};
+
+&lpuart2 {
+	status = "okay";
+    dtr-gpios = <&gpio2 28 GPIO_ACTIVE_HIGH>;
+    rng-gpios = <&gpio2 29 GPIO_ACTIVE_HIGH>;
+    dsr-gpios = <&gpio2 30 GPIO_ACTIVE_HIGH>;
+    dcd-gpios = <&gpio2 31 GPIO_ACTIVE_HIGH>;
 };
 
 &pcie1 {
 	status = "okay";
-	};
+};
 
 &pcie2 {
 	status = "okay";
@@ -456,10 +451,8 @@
 
 &usb0 {
 	dr_mode = "host";
-	status = "okay";
 };
 
 &usb1 {
 	dr_mode = "host";
-	status = "okay";
 };

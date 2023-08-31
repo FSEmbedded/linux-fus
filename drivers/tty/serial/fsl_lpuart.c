@@ -5,6 +5,8 @@
  *  Copyright 2012-2014 Freescale Semiconductor, Inc.
  */
 
+#include <linux/bitfield.h>
+#include <linux/bits.h>
 #include <linux/clk.h>
 #include <linux/console.h>
 #include <linux/delay.h>
@@ -202,7 +204,7 @@
 #define UARTDATA_MASK		0x3ff
 
 #define UARTMODIR_IREN		0x00020000
-#define UARTMODIR_RTSWATER_S	0x8
+#define UARTMODIR_RTSWATER	GENMASK(10, 8)
 #define UARTMODIR_TXCTSSRC	0x00000020
 #define UARTMODIR_TXCTSC	0x00000010
 #define UARTMODIR_RXRTSE	0x00000008
@@ -1339,7 +1341,7 @@ static void lpuart_timer_func(struct timer_list *t)
 		lpuart_copy_rx_to_tty(sport);
 	else
 		mod_timer(&sport->lpuart_timer,
-				jiffies + sport->dma_rx_timeout);
+			  jiffies + sport->dma_rx_timeout);
 
 	if (spin_trylock_irqsave(&sport->port.lock, flags)) {
 		sport->last_residue = state.residue;
@@ -1362,8 +1364,8 @@ static void lpuart_get_rx_dma_rng_len(struct lpuart_port *sport)
 	sport->rx_dma_rng_buf_len = (DMA_RX_TIMEOUT * baud /  bits / 1000) * 2;
 	sport->rx_dma_rng_buf_len = (1 << fls(sport->rx_dma_rng_buf_len));
 	sport->rx_dma_rng_buf_len = max_t(int,
-			sport->rxfifo_size * 2,
-			sport->rx_dma_rng_buf_len);
+					  sport->rxfifo_size * 2,
+					  sport->rx_dma_rng_buf_len);
 
 	/*
 	 * Keep this condition check in case rxfifo_size is unavailable
@@ -1615,7 +1617,7 @@ static void lpuart32_break_ctl(struct uart_port *port, int break_state)
 			lpuart32_write(port, modem | UARTMODIR_TXCTSE, UARTMODIR);
 	}
 
-	lpuart32_write(port, temp, UARTCTRL);
+		lpuart32_write(port, temp, UARTCTRL);
 }
 
 static void lpuart_setup_watermark(struct lpuart_port *sport)
@@ -1695,7 +1697,7 @@ static void lpuart32_setup_watermark(struct lpuart_port *sport)
 	/* set RTS watermark */
 	if (!uart_console(&sport->port)) {
 		val = lpuart32_read(&sport->port, UARTMODIR);
-		val = (sport->rxfifo_size >> 1) << UARTMODIR_RTSWATER_S;
+		val |= FIELD_PREP(UARTMODIR_RTSWATER, sport->rxfifo_size >> 1);
 		lpuart32_write(&sport->port, val, UARTMODIR);
 	}
 
