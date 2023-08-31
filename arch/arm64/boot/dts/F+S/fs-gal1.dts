@@ -313,7 +313,7 @@
 &gpio3 {
 	gpio-line-names =
 		/* Line 0-12 */
-		"","","","","","","","","","","","",
+		"","","","","","","","","","","","","",
 		/* Line 13 -16 for GPIO */
 		"GPIO-7",
 		"GPIO-6",
@@ -455,9 +455,11 @@
 };
 
 &usb0 {
+	dr_mode = "host";
 	status = "okay";
 };
 
 &usb1 {
+	dr_mode = "host";
 	status = "okay";
 };
