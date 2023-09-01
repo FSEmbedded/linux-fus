@@ -14,6 +14,7 @@
 #include <dt-bindings/usb/pd.h>
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/rtc/nxp,pcf85263.h>
+#include <fsversion.h>
 
 /* Do we have HDMI? */
 #if ((CONFIG_EFUSMX8MP_PANEL0 == DISPLAY_HDMI) \
@@ -123,6 +124,7 @@
 	bdinfo: bdinfo {
 		compatible = "bdinfo";
 		board_name = "efusmx8mp";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 	regulators {

@@ -12,6 +12,7 @@
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/rtc/nxp,pcf85263.h>
 #include "../freescale/imx8mp.dtsi"
+#include <fsversion.h>
 
 / {
 	compatible = "fus,imx8mp-picocoremx8mp", "fsl,imx8mp";
@@ -50,6 +51,7 @@
 	/* -------------------- BOARD INFO -------------------- */
 	bdinfo: bdinfo {
 		compatible = "bdinfo";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 	chosen {
