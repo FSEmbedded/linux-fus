@@ -354,7 +354,7 @@
 		/* Realtek RTL8211FSI-PHY */
 		reg = <1>;
 		interrupt-parent = <&gpio4>;
-		interrupts = <20 IRQ_TYPE_EDGE_FALLING>;
+		interrupts = <20 IRQ_TYPE_EDGE_RISING>;
 		reset-gpios = <&gpio4 19 GPIO_ACTIVE_HIGH>;
 	};
 
@@ -405,7 +405,7 @@
 &enetc_port1 {
 	/* internal Ethernet */
 	phy-handle = <&rgmii_phy0>;
-	phy-mode = "rgmii";
+	phy-mode = "rgmii-id";
 	status = "okay";
 };
 
