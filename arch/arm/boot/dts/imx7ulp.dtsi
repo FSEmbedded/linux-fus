@@ -41,23 +41,6 @@
 			compatible = "arm,cortex-a7";
 			device_type = "cpu";
 			reg = <0xf00>;
-			operating-points = <
-				/* KHz	uV */
-				720000	1125000
-				500210	1025000
-			>;
-			clocks = <&smc1 IMX7ULP_CLK_ARM>,
-				 <&scg1 IMX7ULP_CLK_CORE_DIV>,
-				 <&scg1 IMX7ULP_CLK_SYS_SEL>,
-				 <&scg1 IMX7ULP_CLK_HSRUN_SYS_SEL>,
-				 <&scg1 IMX7ULP_CLK_HSRUN_CORE_DIV>,
-				 <&scg1 IMX7ULP_CLK_SPLL_PFD0>,
-				 <&scg1 IMX7ULP_CLK_SPLL_SEL>,
-				 <&scg1 IMX7ULP_CLK_FIRC>,
-				 <&scg1 IMX7ULP_CLK_SPLL>;
-			clock-names = "arm", "core_div", "sys_sel", "hsrun_sys_sel",
-				      "hsrun_core", "spll_pfd0", "spll_sel", "firc",
-				      "spll";
 		};
 	};
 
@@ -117,16 +100,6 @@
 		clock-frequency = <480000000>;
 		clock-output-names = "upll";
 		#clock-cells = <0>;
-	};
-
-	sram: sram@20000000 {
-		compatible = "fsl,lpm-sram";
-		reg = <0x1fffc000 0x4000>;
-	};
-
-	caam_sm: caam-sm@26000000 {
-		 compatible = "fsl,imx6q-caam-sm";
-		 reg = <0x26000000 0x8000>;
 	};
 
 	ahbbridge0: bus@40000000 {
@@ -230,13 +203,13 @@
 				 <&scg1 IMX7ULP_CLK_NIC1_BUS_DIV>;
 			clock-names = "aclk", "ipg";
 
-			sec_jr0: jr0@1000 {
+			sec_jr0: jr@1000 {
 				compatible = "fsl,sec-v4.0-job-ring";
 				reg = <0x1000 0x1000>;
 				interrupts = <GIC_SPI 54 IRQ_TYPE_LEVEL_HIGH>;
 			};
 
-			sec_jr1: jr1@2000 {
+			sec_jr1: jr@2000 {
 				compatible = "fsl,sec-v4.0-job-ring";
 				reg = <0x2000 0x1000>;
 				interrupts = <GIC_SPI 54 IRQ_TYPE_LEVEL_HIGH>;
@@ -349,9 +322,6 @@
 				 <&scg1 IMX7ULP_CLK_NIC1_DIV>,
 				 <&pcc2 IMX7ULP_CLK_USDHC0>;
 			clock-names = "ipg", "ahb", "per";
-			assigned-clocks = <&scg1 IMX7ULP_CLK_APLL_PFD1>, <&pcc2 IMX7ULP_CLK_USDHC0>;
-			assigned-clock-parents = <0>, <&scg1 IMX7ULP_CLK_APLL_PFD1>;
-			assigned-clock-rates = <0>, <352800000>;
 			bus-width = <4>;
 			fsl,tuning-start-tap = <20>;
 			fsl,tuning-step = <2>;
@@ -366,9 +336,6 @@
 				 <&scg1 IMX7ULP_CLK_NIC1_DIV>,
 				 <&pcc2 IMX7ULP_CLK_USDHC1>;
 			clock-names = "ipg", "ahb", "per";
-			assigned-clocks = <&scg1 IMX7ULP_CLK_APLL_PFD1>, <&pcc2 IMX7ULP_CLK_USDHC1>;
-			assigned-clock-parents = <0>, <&scg1 IMX7ULP_CLK_APLL_PFD1>;
-			assigned-clock-rates = <0>, <352800000>;
 			bus-width = <4>;
 			fsl,tuning-start-tap = <20>;
 			fsl,tuning-step = <2>;
@@ -385,27 +352,12 @@
 			#clock-cells = <1>;
 		};
 
-		wdog1: wdog@403D0000 {
+		wdog1: watchdog@403d0000 {
 			compatible = "fsl,imx7ulp-wdt";
-			reg = <0x403D0000 0x10000>;
+			reg = <0x403d0000 0x10000>;
 			interrupts = <GIC_SPI 55 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&pcc2 IMX7ULP_CLK_WDG1>;
 			assigned-clocks = <&pcc2 IMX7ULP_CLK_WDG1>;
-			assigned-clocks-parents = <&scg1 IMX7ULP_CLK_FIRC_BUS_CLK>;
-			/*
-			 * As the 1KHz LPO clock rate is not trimed,the actually clock
-			 * is about 667Hz, so the init timeout 60s should set 40*1000
-			 * in the TOVAL register.
-			 */
-			timeout-sec = <40>;
-		};
-
-		wdog2: wdog@40430000 {
-			compatible = "fsl,imx7ulp-wdt";
-			reg = <0x40430000 0x10000>;
-			interrupts = <GIC_SPI 56 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&pcc2 IMX7ULP_CLK_WDG2>;
-			assigned-clocks = <&pcc2 IMX7ULP_CLK_WDG2>;
 			assigned-clocks-parents = <&scg1 IMX7ULP_CLK_FIRC_BUS_CLK>;
 			timeout-sec = <40>;
 		};
@@ -620,28 +572,6 @@
 			clock-names = "gpio", "port";
 			gpio-ranges = <&iomuxc1 0 96 20>;
 		};
-
-		gpu: gpu@41800000 {
-			compatible = "fsl,imx7ulp-gpu", "fsl,imx6q-gpu";
-			reg = <0x41800000 0x80000>, <0x41880000 0x80000>,
-				<0x60000000 0x40000000>, <0x0 0x4000000>;
-			reg-names = "iobase_3d", "iobase_2d",
-				"phys_baseaddr", "contiguous_mem";
-			interrupts = <GIC_SPI 44 IRQ_TYPE_LEVEL_HIGH>,
-				<GIC_SPI 52 IRQ_TYPE_LEVEL_HIGH>;
-			interrupt-names = "irq_3d", "irq_2d";
-			clocks = <&pcc3 IMX7ULP_CLK_GPU3D>,
-				<&scg1 IMX7ULP_CLK_DUMMY>,
-				<&scg1 IMX7ULP_CLK_GPU_DIV>,
-				<&pcc3 IMX7ULP_CLK_GPU2D>,
-				<&scg1 IMX7ULP_CLK_NIC1_DIV>;
-			clock-names = "gpu3d_clk", "gpu3d_shader_clk",
-				"gpu3d_axi_clk", "gpu2d_clk",
-				"gpu2d_axi_clk";
-			assigned-clocks =  <&scg1 IMX7ULP_CLK_APLL_PFD2>, <&pcc3 IMX7ULP_CLK_GPU3D>, <&pcc3 IMX7ULP_CLK_GPU2D>;
-			assigned-clock-parents = <0>, <&scg1 IMX7ULP_CLK_APLL_PFD2>, <&scg1 IMX7ULP_CLK_APLL_PFD2>;
-			assigned-clock-rates = <400000000>, <400000000>, <400000000>;
-		};
 	};
 
 	m4aips1: bus@41080000 {
@@ -661,7 +591,7 @@
 			reg = <0x410a3000 0x1000>;
 		};
 
-		ocotp: ocotp-ctrl@410a6000 {
+		ocotp: efuse@410a6000 {
 			compatible = "fsl,imx7ulp-ocotp", "syscon";
 			reg = <0x410a6000 0x4000>;
 			clocks = <&scg1 IMX7ULP_CLK_DUMMY>;

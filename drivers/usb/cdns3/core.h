@@ -48,7 +48,15 @@ struct cdns3_role_driver {
 	const char *name;
 };
 
-#define CDNS3_NUM_OF_CLKS	5
+#define CDNS3_XHCI_RESOURCES_NUM	2
+
+struct cdns3_platform_data {
+	int (*platform_suspend)(struct device *dev,
+			bool suspend, bool wakeup);
+	unsigned long quirks;
+#define CDNS3_DEFAULT_PM_RUNTIME_ALLOW	BIT(0)
+};
+
 /**
  * struct cdns3 - Representation of Cadence USB3 DRD controller.
  * @dev: pointer to Cadence device struct
@@ -58,7 +66,9 @@ struct cdns3_role_driver {
  * @none_core_regs: pointer to base of nxp wrapper registers
  * @phy_regs: pointer to base of phy registers
  * @otg_regs: pointer to base of otg registers
- * @irq: irq number for controller
+ * @otg_irq: irq number for otg controller
+ * @dev_irq: irq number for device controller
+ * @wakeup_irq: irq number for wakeup event, it is optional
  * @roles: array of supported roles for this controller
  * @role: current role
  * @host_dev: the child host device pointer for cdns3 core
@@ -71,28 +81,50 @@ struct cdns3_role_driver {
  * @in_lpm: the controller in low power mode
  * @wakeup_int: the wakeup interrupt
  * @mutex: the mutex for concurrent code at driver
+ * @dr_mode: supported mode of operation it can be only Host, only Device
+ *           or OTG mode that allow to switch between Device and Host mode.
+ *           This field based on firmware setting, kernel configuration
+ *           and hardware configuration.
+ * @role_sw: pointer to role switch object.
+ * @in_lpm: indicate the controller is in low power mode
+ * @wakeup_pending: wakeup interrupt pending
+ * @pdata: platform data from glue layer
+ * @lock: spinlock structure
+ * @xhci_plat_data: xhci private data structure pointer
  */
 struct cdns3 {
-	struct device *dev;
-	void __iomem *xhci_regs;
-	struct resource *xhci_res;
-	struct cdns3_usb_regs __iomem *dev_regs;
-	void __iomem *none_core_regs;
-	void __iomem *phy_regs;
-	void __iomem *otg_regs;
-	int irq;
-	struct cdns3_role_driver *roles[CDNS3_ROLE_END];
-	enum cdns3_roles role;
-	struct device *host_dev;
-	struct cdns3_device *gadget_dev;
-	struct usb_phy *usbphy;
-	struct clk *cdns3_clks[CDNS3_NUM_OF_CLKS];
-	struct extcon_dev *extcon;
-	struct notifier_block extcon_nb;
-	struct work_struct role_switch_wq;
-	bool in_lpm;
-	bool wakeup_int;
-	struct mutex mutex;
+	struct device			*dev;
+	void __iomem			*xhci_regs;
+	struct resource			xhci_res[CDNS3_XHCI_RESOURCES_NUM];
+	struct cdns3_usb_regs __iomem	*dev_regs;
+
+	struct resource			otg_res;
+	struct cdns3_otg_legacy_regs	*otg_v0_regs;
+	struct cdns3_otg_regs		*otg_v1_regs;
+	struct cdns3_otg_common_regs	*otg_regs;
+#define CDNS3_CONTROLLER_V0	0
+#define CDNS3_CONTROLLER_V1	1
+	u32				version;
+	bool				phyrst_a_enable;
+
+	int				otg_irq;
+	int				dev_irq;
+	int				wakeup_irq;
+	struct cdns3_role_driver	*roles[USB_ROLE_DEVICE + 1];
+	enum usb_role			role;
+	struct platform_device		*host_dev;
+	struct cdns3_device		*gadget_dev;
+	struct phy			*usb2_phy;
+	struct phy			*usb3_phy;
+	/* mutext used in workqueue*/
+	struct mutex			mutex;
+	enum usb_dr_mode		dr_mode;
+	struct usb_role_switch		*role_sw;
+	bool				in_lpm;
+	bool				wakeup_pending;
+	struct cdns3_platform_data	*pdata;
+	spinlock_t			lock;
+	struct xhci_plat_priv		*xhci_plat_data;
 };
 
 static inline struct cdns3_role_driver *cdns3_role(struct cdns3 *cdns)

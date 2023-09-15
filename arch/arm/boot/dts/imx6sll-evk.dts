@@ -178,6 +178,31 @@
 		codec-master;
 		hp-det-gpios = <&gpio4 24 1>;
 	};
+
+	sound {
+		compatible = "fsl,imx6sl-evk-wm8962", "fsl,imx-audio-wm8962";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_hp>;
+		model = "wm8962-audio";
+		audio-cpu = <&ssi2>;
+		audio-codec = <&wm8962>;
+		audio-routing =
+			"Headphone Jack", "HPOUTL",
+			"Headphone Jack", "HPOUTR",
+			"Ext Spk", "SPKOUTL",
+			"Ext Spk", "SPKOUTR",
+			"AMIC", "MICBIAS",
+			"IN3R", "AMIC";
+		mux-int-port = <2>;
+		mux-ext-port = <3>;
+		hp-det-gpio = <&gpio4 24 GPIO_ACTIVE_LOW>;
+	};
+};
+
+&audmux {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_audmux3>;
+	status = "okay";
 };
 
 &audmux {
@@ -404,6 +429,27 @@
 	};
 };
 
+&i2c3 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c3>;
+	status = "okay";
+
+	wm8962: audio-codec@1a {
+		compatible = "wlf,wm8962";
+		reg = <0x1a>;
+		clocks = <&clks IMX6SLL_CLK_EXTERN_AUDIO>;
+		DCVDD-supply = <&vgen3_reg>;
+		DBVDD-supply = <&reg_aud3v>;
+		AVDD-supply = <&vgen3_reg>;
+		CPVDD-supply = <&vgen3_reg>;
+		MICVDD-supply = <&reg_aud3v>;
+		PLLVDD-supply = <&vgen3_reg>;
+		SPKVDD1-supply = <&reg_aud4v>;
+		SPKVDD2-supply = <&reg_aud4v>;
+	};
+};
+
 &lcdif {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcd>;
@@ -438,12 +484,9 @@
 };
 
 &pwm1 {
+	#pwm-cells = <2>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm1>;
-	status = "okay";
-};
-
-&pxp {
 	status = "okay";
 };
 
@@ -536,19 +579,6 @@
 };
 
 &iomuxc {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_hog>;
-
-	pinctrl_hog: hoggrp {
-		fsl,pins = <
-			MX6SLL_PAD_GPIO4_IO24__GPIO4_IO24 0x17059 /* HP DETECT */
-			/* CHG_FLT, CHG_UOK/DOK, CHG_STATUS */
-			MX6SLL_PAD_ECSPI2_MISO__GPIO4_IO14 0x17000
-			MX6SLL_PAD_ECSPI2_MOSI__GPIO4_IO13 0x17000
-			MX6SLL_PAD_ECSPI2_SS0__GPIO4_IO15  0x17000
-		>;
-	};
-
 	pinctrl_audmux3: audmux3grp {
 		fsl,pins = <
 			MX6SLL_PAD_AUD_TXC__AUD3_TXC		0x4130b0
@@ -559,43 +589,9 @@
 		>;
 	};
 
-	pinctrl_epdc0: epdcgrp0 {
+	pinctrl_hp: hpgrp {
 		fsl,pins = <
-			MX6SLL_PAD_EPDC_DATA00__EPDC_DATA00	0x100b1
-			MX6SLL_PAD_EPDC_DATA01__EPDC_DATA01	0x100b1
-			MX6SLL_PAD_EPDC_DATA02__EPDC_DATA02	0x100b1
-			MX6SLL_PAD_EPDC_DATA03__EPDC_DATA03	0x100b1
-			MX6SLL_PAD_EPDC_DATA04__EPDC_DATA04	0x100b1
-			MX6SLL_PAD_EPDC_DATA05__EPDC_DATA05	0x100b1
-			MX6SLL_PAD_EPDC_DATA06__EPDC_DATA06	0x100b1
-			MX6SLL_PAD_EPDC_DATA07__EPDC_DATA07	0x100b1
-			MX6SLL_PAD_EPDC_DATA08__EPDC_DATA08	0x100b1
-			MX6SLL_PAD_EPDC_DATA09__EPDC_DATA09	0x100b1
-			MX6SLL_PAD_EPDC_DATA10__EPDC_DATA10	0x100b1
-			MX6SLL_PAD_EPDC_DATA11__EPDC_DATA11	0x100b1
-			MX6SLL_PAD_EPDC_DATA12__EPDC_DATA12	0x100b1
-			MX6SLL_PAD_EPDC_DATA13__EPDC_DATA13	0x100b1
-			MX6SLL_PAD_EPDC_DATA14__EPDC_DATA14	0x100b1
-			MX6SLL_PAD_EPDC_DATA15__EPDC_DATA15	0x100b1
-			MX6SLL_PAD_EPDC_SDCLK__EPDC_SDCLK_P	0x100b1
-			MX6SLL_PAD_EPDC_SDLE__EPDC_SDLE		0x100b1
-			MX6SLL_PAD_EPDC_SDOE__EPDC_SDOE		0x100b1
-			MX6SLL_PAD_EPDC_SDSHR__EPDC_SDSHR	0x100b1
-			MX6SLL_PAD_EPDC_SDCE0__EPDC_SDCE0	0x100b1
-			MX6SLL_PAD_EPDC_GDCLK__EPDC_GDCLK	0x100b1
-			MX6SLL_PAD_EPDC_GDOE__EPDC_GDOE		0x100b1
-			MX6SLL_PAD_EPDC_GDRL__EPDC_GDRL		0x100b1
-			MX6SLL_PAD_EPDC_GDSP__EPDC_GDSP		0x100b1
-		>;
-	};
-
-	pinctrl_max17135: max17135grp-1 {
-		fsl,pins = <
-			MX6SLL_PAD_EPDC_PWR_STAT__GPIO2_IO13	0x80000000  /* pwrgood */
-			MX6SLL_PAD_EPDC_VCOM0__GPIO2_IO03	0x80000000  /* vcom_ctrl */
-			MX6SLL_PAD_EPDC_PWR_WAKE__GPIO2_IO14	0x80000000  /* wakeup */
-			MX6SLL_PAD_EPDC_PWR_CTRL0__GPIO2_IO07	0x80000000  /* v3p3 */
-			MX6SLL_PAD_EPDC_PWR_IRQ__GPIO2_IO12	0x80000000  /* pwr int */
+			MX6SLL_PAD_GPIO4_IO24__GPIO4_IO24 0x17059 /* HP DETECT */
 		>;
 	};
 

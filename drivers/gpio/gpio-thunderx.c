@@ -15,6 +15,7 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/spinlock.h>
+#include <asm-generic/msi.h>
 
 
 #define GPIO_RX_DAT	0x0
@@ -170,7 +171,10 @@ static int thunderx_gpio_get_direction(struct gpio_chip *chip, unsigned int line
 
 	bit_cfg = readq(txgpio->register_base + bit_cfg_reg(line));
 
-	return !(bit_cfg & GPIO_BIT_CFG_TX_OE);
+	if (bit_cfg & GPIO_BIT_CFG_TX_OE)
+		return GPIO_LINE_DIRECTION_OUT;
+
+	return GPIO_LINE_DIRECTION_IN;
 }
 
 static int thunderx_gpio_set_config(struct gpio_chip *chip,
@@ -414,36 +418,31 @@ static int thunderx_gpio_irq_translate(struct irq_domain *d,
 				       irq_hw_number_t *hwirq,
 				       unsigned int *type)
 {
-	struct thunderx_gpio *txgpio = d->host_data;
+	struct thunderx_gpio *txgpio = gpiochip_get_data(gc);
+	struct irq_data *irqd;
+	unsigned int irq;
 
-	if (WARN_ON(fwspec->param_count < 2))
+	irq = txgpio->msix_entries[child].vector;
+	irqd = irq_domain_get_irq_data(gc->irq.parent_domain, irq);
+	if (!irqd)
 		return -EINVAL;
-	if (fwspec->param[0] >= txgpio->chip.ngpio)
-		return -EINVAL;
-	*hwirq = fwspec->param[0];
-	*type = fwspec->param[1] & IRQ_TYPE_SENSE_MASK;
+	*parent = irqd_to_hwirq(irqd);
+	*parent_type = IRQ_TYPE_LEVEL_HIGH;
 	return 0;
 }
 
-static int thunderx_gpio_irq_alloc(struct irq_domain *d, unsigned int virq,
-				   unsigned int nr_irqs, void *arg)
+static void *thunderx_gpio_populate_parent_alloc_info(struct gpio_chip *chip,
+						      unsigned int parent_hwirq,
+						      unsigned int parent_type)
 {
-	struct thunderx_line *txline = arg;
+	msi_alloc_info_t *info;
 
-	return irq_domain_set_hwirq_and_chip(d, virq, txline->line,
-					     &thunderx_gpio_irq_chip, txline);
-}
+	info = kmalloc(sizeof(*info), GFP_KERNEL);
+	if (!info)
+		return NULL;
 
-static const struct irq_domain_ops thunderx_gpio_irqd_ops = {
-	.alloc		= thunderx_gpio_irq_alloc,
-	.translate	= thunderx_gpio_irq_translate
-};
-
-static int thunderx_gpio_to_irq(struct gpio_chip *chip, unsigned int offset)
-{
-	struct thunderx_gpio *txgpio = gpiochip_get_data(chip);
-
-	return irq_find_mapping(txgpio->irqd, offset);
+	info->hwirq = parent_hwirq;
+	return info;
 }
 
 static int thunderx_gpio_probe(struct pci_dev *pdev,
@@ -574,10 +573,34 @@ static int thunderx_gpio_probe(struct pci_dev *pdev,
 	chip->set = thunderx_gpio_set;
 	chip->set_multiple = thunderx_gpio_set_multiple;
 	chip->set_config = thunderx_gpio_set_config;
-	chip->to_irq = thunderx_gpio_to_irq;
+	girq = &chip->irq;
+	girq->chip = &thunderx_gpio_irq_chip;
+	girq->fwnode = of_node_to_fwnode(dev->of_node);
+	girq->parent_domain =
+		irq_get_irq_data(txgpio->msix_entries[0].vector)->domain;
+	girq->child_to_parent_hwirq = thunderx_gpio_child_to_parent_hwirq;
+	girq->populate_parent_alloc_arg = thunderx_gpio_populate_parent_alloc_info;
+	girq->handler = handle_bad_irq;
+	girq->default_type = IRQ_TYPE_NONE;
+
 	err = devm_gpiochip_add_data(dev, chip, txgpio);
 	if (err)
 		goto out;
+
+	/* Push on irq_data and the domain for each line. */
+	for (i = 0; i < ngpio; i++) {
+		struct irq_fwspec fwspec;
+
+		fwspec.fwnode = of_node_to_fwnode(dev->of_node);
+		fwspec.param_count = 2;
+		fwspec.param[0] = i;
+		fwspec.param[1] = IRQ_TYPE_NONE;
+		err = irq_domain_push_irq(girq->domain,
+					  txgpio->msix_entries[i].vector,
+					  &fwspec);
+		if (err < 0)
+			dev_err(dev, "irq_domain_push_irq: %d\n", err);
+	}
 
 	dev_info(dev, "ThunderX GPIO: %d lines with base %d.\n",
 		 ngpio, chip->base);

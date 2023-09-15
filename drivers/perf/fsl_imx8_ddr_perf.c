@@ -62,11 +62,6 @@ static DEFINE_IDA(db_ida);
 /* DDR Perf hardware feature */
 #define DDR_CAP_AXI_ID_FILTER			0x1     /* support AXI ID filter */
 #define DDR_CAP_AXI_ID_FILTER_ENHANCED		0x3     /* support enhanced AXI ID filter */
-#define DDR_CAP_AXI_ID_PORT_CHANNEL_FILTER	0x4	/* support AXI ID PORT CHANNEL filter */
-
-/* Perf type */
-#define DDR_PERF_TYPE		0x1	/* ddr Perf */
-#define DB_PERF_TYPE		0x2	/* db Perf */
 
 struct fsl_ddr_devtype_data {
 	unsigned int quirks;    /* quirks needed for different DDR Perf core */
@@ -97,12 +92,14 @@ static const struct fsl_ddr_devtype_data imx8dxl_db_devtype_data = {
 	.type = DB_PERF_TYPE,
 };
 
+static const struct fsl_ddr_devtype_data imx8mp_devtype_data = {
+	.quirks = DDR_CAP_AXI_ID_FILTER_ENHANCED,
+};
+
 static const struct of_device_id imx_ddr_pmu_dt_ids[] = {
 	{ .compatible = "fsl,imx8-ddr-pmu", .data = &imx8_devtype_data},
 	{ .compatible = "fsl,imx8m-ddr-pmu", .data = &imx8m_devtype_data},
 	{ .compatible = "fsl,imx8mp-ddr-pmu", .data = &imx8mp_devtype_data},
-	{ .compatible = "fsl,imx8dxl-ddr-pmu", .data = &imx8dxl_devtype_data},
-	{ .compatible = "fsl,imx8dxl-db-pmu", .data = &imx8dxl_db_devtype_data},
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, imx_ddr_pmu_dt_ids);
@@ -175,6 +172,61 @@ static struct attribute *ddr_perf_filter_cap_attr[] = {
 	PERF_FILTER_EXT_ATTR_ENTRY(filter, PERF_CAP_AXI_ID_FILTER),
 	PERF_FILTER_EXT_ATTR_ENTRY(enhanced_filter, PERF_CAP_AXI_ID_FILTER_ENHANCED),
 	PERF_FILTER_EXT_ATTR_ENTRY(super_filter, PERF_CAP_AXI_ID_PORT_CHANNEL_FILTER),
+	NULL,
+};
+
+static struct attribute_group ddr_perf_filter_cap_attr_group = {
+	.name = "caps",
+	.attrs = ddr_perf_filter_cap_attr,
+};
+
+enum ddr_perf_filter_capabilities {
+	PERF_CAP_AXI_ID_FILTER = 0,
+	PERF_CAP_AXI_ID_FILTER_ENHANCED,
+	PERF_CAP_AXI_ID_FEAT_MAX,
+};
+
+static u32 ddr_perf_filter_cap_get(struct ddr_pmu *pmu, int cap)
+{
+	u32 quirks = pmu->devtype_data->quirks;
+
+	switch (cap) {
+	case PERF_CAP_AXI_ID_FILTER:
+		return !!(quirks & DDR_CAP_AXI_ID_FILTER);
+	case PERF_CAP_AXI_ID_FILTER_ENHANCED:
+		quirks &= DDR_CAP_AXI_ID_FILTER_ENHANCED;
+		return quirks == DDR_CAP_AXI_ID_FILTER_ENHANCED;
+	default:
+		WARN(1, "unknown filter cap %d\n", cap);
+	}
+
+	return 0;
+}
+
+static ssize_t ddr_perf_filter_cap_show(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	struct ddr_pmu *pmu = dev_get_drvdata(dev);
+	struct dev_ext_attribute *ea =
+		container_of(attr, struct dev_ext_attribute, attr);
+	int cap = (long)ea->var;
+
+	return snprintf(buf, PAGE_SIZE, "%u\n",
+			ddr_perf_filter_cap_get(pmu, cap));
+}
+
+#define PERF_EXT_ATTR_ENTRY(_name, _func, _var)				\
+	(&((struct dev_ext_attribute) {					\
+		__ATTR(_name, 0444, _func, NULL), (void *)_var		\
+	}).attr.attr)
+
+#define PERF_FILTER_EXT_ATTR_ENTRY(_name, _var)				\
+	PERF_EXT_ATTR_ENTRY(_name, ddr_perf_filter_cap_show, _var)
+
+static struct attribute *ddr_perf_filter_cap_attr[] = {
+	PERF_FILTER_EXT_ATTR_ENTRY(filter, PERF_CAP_AXI_ID_FILTER),
+	PERF_FILTER_EXT_ATTR_ENTRY(enhanced_filter, PERF_CAP_AXI_ID_FILTER_ENHANCED),
 	NULL,
 };
 
@@ -300,35 +352,6 @@ static const struct attribute_group *ddr_attr_groups[] = {
 	&ddr_perf_filter_cap_attr_group,
 	NULL,
 };
-
-static const struct attribute_group *db_attr_groups[] = {
-	&db_perf_events_attr_group,
-	&ddr_perf_format_attr_group,
-	&ddr_perf_cpumask_attr_group,
-	&ddr_perf_filter_cap_attr_group,
-	NULL,
-};
-
-static int ddr_perf_clks_enable(struct ddr_pmu *pmu)
-{
-	int err;
-
-	err = clk_prepare_enable(pmu->clk_ipg);
-	if (err)
-		return err;
-
-	err = clk_prepare_enable(pmu->clk_cnt);
-	if (err)
-		clk_disable_unprepare(pmu->clk_ipg);
-
-	return err;
-}
-
-static void ddr_perf_clks_disable(struct ddr_pmu *pmu)
-{
-	clk_disable_unprepare(pmu->clk_cnt);
-	clk_disable_unprepare(pmu->clk_ipg);
-}
 
 static bool ddr_perf_is_filtered(struct perf_event *event)
 {
@@ -507,7 +530,7 @@ static void ddr_perf_counter_enable(struct ddr_pmu *pmu, int config,
 		writel(val, pmu->base + reg);
 	} else {
 		/* Disable counter */
-		val = readl(pmu->base + reg) & CNTL_EN_MASK;
+		val = readl_relaxed(pmu->base + reg) & CNTL_EN_MASK;
 		writel(val, pmu->base + reg);
 	}
 }
@@ -774,7 +797,13 @@ static int ddr_perf_probe(struct platform_device *pdev)
 	ddr_perf_init(pmu, base, &pdev->dev);
 
 	platform_set_drvdata(pdev, pmu);
-	spin_lock_init(&pmu->lock);
+
+	name = devm_kasprintf(&pdev->dev, GFP_KERNEL, DDR_PERF_DEV_NAME "%d",
+			      num);
+	if (!name) {
+		ret = -ENOMEM;
+		goto cpuhp_state_err;
+	}
 
 	pmu->devtype_data = of_device_get_match_data(&pdev->dev);
 	if (pmu->devtype_data->type & DDR_PERF_TYPE) {
@@ -862,12 +891,7 @@ ddr_perf_err:
 cpuhp_instance_err:
 	cpuhp_remove_multi_state(pmu->cpuhp_state);
 cpuhp_state_err:
-	if (pmu->devtype_data->type & DDR_PERF_TYPE)
-		ida_simple_remove(&ddr_ida, pmu->id);
-	else {
-		ddr_perf_clks_disable(pmu);
-		ida_simple_remove(&db_ida, pmu->id);
-	}
+	ida_simple_remove(&ddr_ida, pmu->id);
 	dev_warn(&pdev->dev, "i.MX8 DDR Perf PMU failed (%d), disabled\n", ret);
 	return ret;
 }

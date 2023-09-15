@@ -260,11 +260,6 @@
 #define ANA_SG_CONFIG_REG_3_INIT_IPS(x)                   (((x) << 21) & GENMASK(24, 21))
 #define ANA_SG_CONFIG_REG_3_INIT_IPS_M                    GENMASK(24, 21)
 #define ANA_SG_CONFIG_REG_3_INIT_IPS_X(x)                 (((x) & GENMASK(24, 21)) >> 21)
-#define ANA_SG_CONFIG_REG_3_IPV_VALID                     BIT(24)
-#define ANA_SG_CONFIG_REG_3_IPV_INVALID(x)		  (((x) << 24) & GENMASK(24, 24))
-#define ANA_SG_CONFIG_REG_3_INIT_IPV(x)                   (((x) << 21) & GENMASK(23, 21))
-#define ANA_SG_CONFIG_REG_3_INIT_IPV_M                    GENMASK(23, 21)
-#define ANA_SG_CONFIG_REG_3_INIT_IPV_X(x)                 (((x) & GENMASK(23, 21)) >> 21)
 #define ANA_SG_CONFIG_REG_3_INIT_GATE_STATE               BIT(25)
 
 #define ANA_SG_GCL_GS_CONFIG_RSZ                          0x4

@@ -397,16 +397,14 @@ static int __init imx_gpcv2_irqchip_init(struct device_node *node,
 		for (i = 0; i < IMR_NUM; i++) {
 			void __iomem *reg = cd->gpc_base + i * 4;
 
-			switch (core_num) {
-			case 4:
-				writel_relaxed(~0, reg + GPC_IMR1_CORE2);
-				writel_relaxed(~0, reg + GPC_IMR1_CORE3);
-				/* fall through */
-			case 2:
-				writel_relaxed(~0, reg + GPC_IMR1_CORE0);
-				writel_relaxed(~0, reg + GPC_IMR1_CORE1);
-			}
-			cd->wakeup_sources[i] = ~0;
+		switch (core_num) {
+		case 4:
+			writel_relaxed(~0, reg + GPC_IMR1_CORE2);
+			writel_relaxed(~0, reg + GPC_IMR1_CORE3);
+			fallthrough;
+		case 2:
+			writel_relaxed(~0, reg + GPC_IMR1_CORE0);
+			writel_relaxed(~0, reg + GPC_IMR1_CORE1);
 		}
 
 		/* Let CORE0 as the default CPU to wake up by GPC */

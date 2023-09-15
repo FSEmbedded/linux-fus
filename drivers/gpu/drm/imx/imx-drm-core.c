@@ -22,6 +22,7 @@
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
+#include <drm/drm_managed.h>
 #include <drm/drm_of.h>
 #include <drm/drm_plane_helper.h>
 #include <drm/drm_probe_helper.h>
@@ -42,11 +43,80 @@ void imx_drm_connector_destroy(struct drm_connector *connector)
 }
 EXPORT_SYMBOL_GPL(imx_drm_connector_destroy);
 
-void imx_drm_encoder_destroy(struct drm_encoder *encoder)
+static int imx_drm_atomic_check(struct drm_device *dev,
+				struct drm_atomic_state *state)
 {
-	drm_encoder_cleanup(encoder);
+	int ret;
+
+	ret = drm_atomic_helper_check(dev, state);
+	if (ret)
+		return ret;
+
+	/*
+	 * Check modeset again in case crtc_state->mode_changed is
+	 * updated in plane's ->atomic_check callback.
+	 */
+	ret = drm_atomic_helper_check_modeset(dev, state);
+	if (ret)
+		return ret;
+
+	/* Assign PRG/PRE channels and check if all constrains are satisfied. */
+	ret = ipu_planes_assign_pre(dev, state);
+	if (ret)
+		return ret;
+
+	return ret;
 }
-EXPORT_SYMBOL_GPL(imx_drm_encoder_destroy);
+
+static const struct drm_mode_config_funcs imx_drm_mode_config_funcs = {
+	.fb_create = drm_gem_fb_create,
+	.atomic_check = imx_drm_atomic_check,
+	.atomic_commit = drm_atomic_helper_commit,
+};
+
+static void imx_drm_atomic_commit_tail(struct drm_atomic_state *state)
+{
+	struct drm_device *dev = state->dev;
+	struct drm_plane *plane;
+	struct drm_plane_state *old_plane_state, *new_plane_state;
+	bool plane_disabling = false;
+	int i;
+
+	drm_atomic_helper_commit_modeset_disables(dev, state);
+
+	drm_atomic_helper_commit_planes(dev, state,
+				DRM_PLANE_COMMIT_ACTIVE_ONLY |
+				DRM_PLANE_COMMIT_NO_DISABLE_AFTER_MODESET);
+
+	drm_atomic_helper_commit_modeset_enables(dev, state);
+
+	for_each_oldnew_plane_in_state(state, plane, old_plane_state, new_plane_state, i) {
+		if (drm_atomic_plane_disabling(old_plane_state, new_plane_state))
+			plane_disabling = true;
+	}
+
+	/*
+	 * The flip done wait is only strictly required by imx-drm if a deferred
+	 * plane disable is in-flight. As the core requires blocking commits
+	 * to wait for the flip it is done here unconditionally. This keeps the
+	 * workitem around a bit longer than required for the majority of
+	 * non-blocking commits, but we accept that for the sake of simplicity.
+	 */
+	drm_atomic_helper_wait_for_flip_done(dev, state);
+
+	if (plane_disabling) {
+		for_each_old_plane_in_state(state, plane, old_plane_state, i)
+			ipu_plane_disable_deferred(plane);
+
+	}
+
+	drm_atomic_helper_commit_hw_done(state);
+}
+
+static const struct drm_mode_config_helper_funcs imx_drm_mode_config_helpers = {
+	.atomic_commit_tail = imx_drm_atomic_commit_tail,
+};
+
 
 int imx_drm_encoder_parse_of(struct drm_device *drm,
 	struct drm_encoder *encoder, struct device_node *np)
@@ -64,8 +134,8 @@ int imx_drm_encoder_parse_of(struct drm_device *drm,
 
 	encoder->possible_crtcs = crtc_mask;
 
-	/* FIXME: this is the mask of outputs which can clone this output. */
-	encoder->possible_clones = ~0;
+	/* FIXME: cloning support not clear, disable it all for now */
+	encoder->possible_clones = 0;
 
 	return 0;
 }
@@ -77,17 +147,7 @@ static const struct drm_ioctl_desc imx_drm_ioctls[] = {
 
 static struct drm_driver imx_drm_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
-	.gem_free_object_unlocked = drm_gem_cma_free_object,
-	.gem_vm_ops		= &drm_gem_cma_vm_ops,
-	.dumb_create		= drm_gem_cma_dumb_create,
-
-	.prime_handle_to_fd	= drm_gem_prime_handle_to_fd,
-	.prime_fd_to_handle	= drm_gem_prime_fd_to_handle,
-	.gem_prime_get_sg_table	= drm_gem_cma_prime_get_sg_table,
-	.gem_prime_import_sg_table = drm_gem_cma_prime_import_sg_table,
-	.gem_prime_vmap		= drm_gem_cma_prime_vmap,
-	.gem_prime_vunmap	= drm_gem_cma_prime_vunmap,
-	.gem_prime_mmap		= drm_gem_cma_prime_mmap,
+	DRM_GEM_CMA_DRIVER_OPS,
 	.ioctls			= imx_drm_ioctls,
 	.num_ioctls		= ARRAY_SIZE(imx_drm_ioctls),
 	.fops			= &imx_drm_driver_fops,
@@ -267,7 +327,9 @@ static int imx_drm_bind(struct device *dev)
 	drm->mode_config.max_height = 4096;
 	drm->mode_config.normalize_zpos = true;
 
-	drm_mode_config_init(drm);
+	ret = drmm_mode_config_init(drm);
+	if (ret)
+		goto err_kms;
 
 	ret = drm_vblank_init(drm, MAX_CRTC);
 	if (ret)
@@ -306,7 +368,6 @@ err_poll_fini:
 	drm_kms_helper_poll_fini(drm);
 	component_unbind_all(drm->dev, drm);
 err_kms:
-	drm_mode_config_cleanup(drm);
 	drm_dev_put(drm);
 
 	return ret;
@@ -325,11 +386,9 @@ static void imx_drm_unbind(struct device *dev)
 
 	component_unbind_all(drm->dev, drm);
 
-	drm_mode_config_cleanup(drm);
+	drm_dev_put(drm);
 
 	dev_set_drvdata(dev, NULL);
-
-	drm_dev_put(drm);
 }
 
 static const struct component_master_ops imx_drm_ops = {

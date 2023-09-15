@@ -66,14 +66,6 @@ algs_unlock:
 	mutex_unlock(&algs_lock);
 }
 
-static int jr_driver_probed;
-
-int caam_jr_driver_probed(void)
-{
-	return jr_driver_probed;
-}
-EXPORT_SYMBOL(caam_jr_driver_probed);
-
 static void caam_jr_crypto_engine_exit(void *data)
 {
 	struct device *jrdev = data;
@@ -83,12 +75,7 @@ static void caam_jr_crypto_engine_exit(void *data)
 	crypto_engine_exit(jrpriv->engine);
 }
 
-/*
- * Put the CAAM in quiesce, ie stop
- *
- * Must be called with itr disabled
- */
-static int caam_jr_stop_processing(struct device *dev, u32 jrcr_bits)
+static int caam_reset_hw_jr(struct device *dev)
 {
 	struct caam_drv_private_jr *jrp = dev_get_drvdata(dev);
 	unsigned int timeout = 100000;
@@ -426,7 +413,7 @@ EXPORT_SYMBOL(caam_jridx_alloc);
 
 /**
  * caam_jr_free() - Free the Job Ring
- * @rdev     - points to the dev that identifies the Job ring to
+ * @rdev:      points to the dev that identifies the Job ring to
  *             be released.
  **/
 void caam_jr_free(struct device *rdev)
@@ -451,15 +438,15 @@ EXPORT_SYMBOL(caam_jr_free);
  *        of this request. This has the form:
  *        callback(struct device *dev, u32 *desc, u32 stat, void *arg)
  *        where:
- *        @dev:    contains the job ring device that processed this
+ *        dev:     contains the job ring device that processed this
  *                 response.
- *        @desc:   descriptor that initiated the request, same as
+ *        desc:    descriptor that initiated the request, same as
  *                 "desc" being argued to caam_jr_enqueue().
- *        @status: untranslated status received from CAAM. See the
+ *        status:  untranslated status received from CAAM. See the
  *                 reference manual for a detailed description of
  *                 error meaning, or see the JRSTA definitions in the
  *                 register header file
- *        @areq:   optional pointer to an argument passed with the
+ *        areq:    optional pointer to an argument passed with the
  *                 original request
  * @areq: optional pointer to a user argument for use at callback
  *        time.
@@ -767,11 +754,7 @@ static int caam_jr_probe(struct platform_device *pdev)
 
 	atomic_set(&jrpriv->tfm_count, 0);
 
-	device_init_wakeup(&pdev->dev, 1);
-	device_set_wakeup_enable(&pdev->dev, false);
-
 	register_algs(jrpriv, jrdev->parent);
-	jr_driver_probed++;
 
 	return 0;
 }

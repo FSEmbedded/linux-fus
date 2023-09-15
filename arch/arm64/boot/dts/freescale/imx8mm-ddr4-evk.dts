@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2018 NXP
+ * Copyright 2020 NXP
  */
 
 /dts-v1/;
 
-#include "imx8mm-evk-qca-wifi.dts"
+#include "imx8mm-evk.dtsi"
 
 / {
 	model = "FSL i.MX8MM DDR4 EVK with CYW43455 WIFI/BT board";
+	compatible = "fsl,imx8mm-ddr4-evk", "fsl,imx8mm";
 
 	leds {
 		pinctrl-0 = <&pinctrl_gpio_led_2>;
@@ -19,8 +20,15 @@
 	};
 };
 
+&gpmi {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_gpmi_nand>;
+	nand-on-flash-bbt;
+	status = "okay";
+};
+
 &iomuxc {
-	pinctrl_gpmi_nand_1: gpmi-nand-1 {
+	pinctrl_gpmi_nand: gpmi-nand {
 		fsl,pins = <
 			MX8MM_IOMUXC_NAND_ALE_RAWNAND_ALE		0x00000096
 			MX8MM_IOMUXC_NAND_CE0_B_RAWNAND_CE0_B		0x00000096
@@ -46,36 +54,4 @@
 			MX8MM_IOMUXC_NAND_CE3_B_GPIO3_IO4	0x19
 		>;
 	};
-};
-
-&gpmi {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
-	status = "okay";
-	nand-on-flash-bbt;
-};
-
-&snvs_pwrkey {
-	status = "okay";
-};
-
-&usdhc1 {
-	#address-cells = <1>;
-	#size-cells = <0>;
-
-	brcmf: bcrmf@1 {
-		reg = <1>;
-		compatible = "brcm,bcm4329-fmac";
-		interrupt-parent = <&gpio2>;
-		interrupts = <9 IRQ_TYPE_LEVEL_HIGH>;
-		interrupt-names = "host-wake";
-	};
-};
-
-&usdhc3 {
-	status = "disabled";
-};
-
-&flexspi {
-	status = "disabled";
 };

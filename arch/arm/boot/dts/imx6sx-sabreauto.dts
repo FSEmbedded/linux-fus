@@ -67,14 +67,7 @@
 		vin-supply = <&reg_can_en>;
 	};
 
-	reg_vref_3v3: regulator-adc-verf {
-		compatible = "regulator-fixed";
-		regulator-name = "vref-3v3";
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
-	};
-
-	reg_audio: cs42888_supply {
+	reg_cs42888: cs42888_supply {
 		compatible = "regulator-fixed";
 		regulator-name = "cs42888_supply";
 		regulator-min-microvolt = <3300000>;
@@ -82,56 +75,26 @@
 		regulator-always-on;
 	};
 
-	si4763_vio1: vio1_tnr {
-		compatible = "regulator-fixed";
-		regulator-name = "vio1";
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
-		regulator-always-on;
-	};
-
-	si4763_vio2: vio2_tnr {
-		compatible = "regulator-fixed";
-		regulator-name = "vio2";
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
-		regulator-always-on;
-	};
-
-	si4763_vd: f3v3_tnr {
-		compatible = "regulator-fixed";
-		regulator-name = "vd";
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
-		regulator-always-on;
-	};
-
-	si4763_va: f5v_tnr {
-		compatible = "regulator-fixed";
-		regulator-name = "va";
-		regulator-min-microvolt = <5000000>;
-		regulator-max-microvolt = <5000000>;
-		regulator-always-on;
-	};
-
 	sound-cs42888 {
 		compatible = "fsl,imx6-sabreauto-cs42888",
-			   "fsl,imx-audio-cs42888";
+			     "fsl,imx-audio-cs42888";
 		model = "imx-cs42888";
-		esai-controller = <&esai>;
-		asrc-controller = <&asrc>;
-		audio-codec = <&codec>;
-	};
-
-	sound-fm {
-		compatible = "fsl,imx-audio-si476x",
-			   "fsl,imx-tuner-si476x";
-		model = "imx-radio-si4763";
-
-		ssi-controller = <&ssi2>;
-		fm-controller = <&si476x_codec>;
-		mux-int-port = <2>;
-		mux-ext-port = <5>;
+		audio-cpu = <&esai>;
+		audio-asrc = <&asrc>;
+		audio-codec = <&cs42888>;
+		audio-routing =
+			"Line Out Jack", "AOUT1L",
+			"Line Out Jack", "AOUT1R",
+			"Line Out Jack", "AOUT2L",
+			"Line Out Jack", "AOUT2R",
+			"Line Out Jack", "AOUT3L",
+			"Line Out Jack", "AOUT3R",
+			"Line Out Jack", "AOUT4L",
+			"Line Out Jack", "AOUT4R",
+			"AIN1L", "Line In Jack",
+			"AIN1R", "Line In Jack",
+			"AIN2L", "Line In Jack",
+			"AIN2R", "Line In Jack";
 	};
 
 	sound-spdif {
@@ -142,24 +105,8 @@
 	};
 };
 
-&adc1 {
-	vref-supply = <&reg_vref_3v3>;
-	status = "okay";
-};
-
-&adc2 {
-	vref-supply = <&reg_vref_3v3>;
-	status = "okay";
-};
-
 &anaclk2 {
 	clock-frequency = <24576000>;
-};
-
-&audmux {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_audmux_3>;
-	status = "okay";
 };
 
 &clks {
@@ -173,43 +120,11 @@
 
 &esai {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esai_2>;
+	pinctrl-0 = <&pinctrl_esai>;
 	assigned-clocks = <&clks IMX6SX_CLK_ESAI_SEL>,
 			<&clks IMX6SX_CLK_ESAI_EXTAL>;
 	assigned-clock-parents = <&clks IMX6SX_CLK_PLL4_AUDIO_DIV>;
 	assigned-clock-rates = <0>, <24576000>;
-	status = "okay";
-};
-
-&spdif {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_spdif_3>;
-	status = "okay";
-};
-
-&ssi2 {
-	fsl,mode = "i2s-master";
-	status = "okay";
-};
-
-&csi2 {
-	status = "okay";
-	port {
-		csi2_ep: endpoint {
-			remote-endpoint = <&vadc_ep>;
-		};
-	};
-};
-
-&dcic1 {
-	dcic_id = <0>;
-	dcic_mux = "dcic-lcdif1";
-	status = "okay";
-};
-
-&dcic2 {
-	dcic_id = <1>;
-	dcic_mux = "dcic-lvds";
 	status = "okay";
 };
 
@@ -394,7 +309,7 @@
 		>;
 	};
 
-	pinctrl_esai_2: esaigrp-2 {
+	pinctrl_esai: esaigrp {
 		fsl,pins = <
 			MX6SX_PAD_CSI_DATA00__ESAI_TX_CLK   0x1b030
 			MX6SX_PAD_CSI_DATA01__ESAI_TX_FS    0x1b030
@@ -406,12 +321,6 @@
 			MX6SX_PAD_CSI_DATA03__ESAI_RX_FS    0x1b030
 			MX6SX_PAD_CSI_VSYNC__ESAI_TX5_RX0   0x1b030
 			MX6SX_PAD_CSI_DATA05__ESAI_TX4_RX1  0x1b030
-		>;
-	};
-
-	pinctrl_spdif_3: spdifgrp-3 {
-		fsl,pins = <
-			MX6SX_PAD_ENET2_COL__SPDIF_IN           0x1b0b0
 		>;
 	};
 
@@ -470,27 +379,16 @@
 		>;
 	};
 
-	pinctrl_qspi1_1: qspi1grp_1 {
+	pinctrl_spdif: spdifgrp {
 		fsl,pins = <
-			MX6SX_PAD_QSPI1A_DATA0__QSPI1_A_DATA_0  0x70a1
-			MX6SX_PAD_QSPI1A_DATA1__QSPI1_A_DATA_1  0x70a1
-			MX6SX_PAD_QSPI1A_DATA2__QSPI1_A_DATA_2  0x70a1
-			MX6SX_PAD_QSPI1A_DATA3__QSPI1_A_DATA_3  0x70a1
-			MX6SX_PAD_QSPI1A_SCLK__QSPI1_A_SCLK     0x70a1
-			MX6SX_PAD_QSPI1A_SS0_B__QSPI1_A_SS0_B   0x70a1
-			MX6SX_PAD_QSPI1B_DATA0__QSPI1_B_DATA_0  0x70a1
-			MX6SX_PAD_QSPI1B_DATA1__QSPI1_B_DATA_1  0x70a1
-			MX6SX_PAD_QSPI1B_DATA2__QSPI1_B_DATA_2  0x70a1
-			MX6SX_PAD_QSPI1B_DATA3__QSPI1_B_DATA_3  0x70a1
-			MX6SX_PAD_QSPI1B_SCLK__QSPI1_B_SCLK     0x70a1
-			MX6SX_PAD_QSPI1B_SS0_B__QSPI1_B_SS0_B   0x70a1
+			MX6SX_PAD_ENET2_COL__SPDIF_IN           0x1b0b0
 		>;
 	};
 
 	pinctrl_uart1: uart1grp {
 		fsl,pins = <
-			MX6SX_PAD_GPIO1_IO04__UART1_TX		0x1b0b1
-			MX6SX_PAD_GPIO1_IO05__UART1_RX		0x1b0b1
+			MX6SX_PAD_GPIO1_IO04__UART1_DCE_TX		0x1b0b1
+			MX6SX_PAD_GPIO1_IO05__UART1_DCE_RX		0x1b0b1
 		>;
 	};
 
@@ -598,29 +496,15 @@
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 
-	codec: cs42888@48 {
+	cs42888: cs42888@48 {
 		compatible = "cirrus,cs42888";
 		reg = <0x48>;
 		clocks = <&anaclk2 0>;
 		clock-names = "mclk";
-		VA-supply = <&reg_audio>;
-		VD-supply = <&reg_audio>;
-		VLS-supply = <&reg_audio>;
-		VLC-supply = <&reg_audio>;
-	};
-
-	si4763: si4763@63 {
-		compatible = "si4761";
-		reg = <0x63>;
-		va-supply = <&si4763_va>;
-		vd-supply = <&si4763_vd>;
-		vio1-supply = <&si4763_vio1>;
-		vio2-supply = <&si4763_vio2>;
-		revision-a10; /* set to default A10 compatible command set */
-
-		si476x_codec: si476x-codec {
-			compatible = "si476x-codec";
-		};
+		VA-supply = <&reg_cs42888>;
+		VD-supply = <&reg_cs42888>;
+		VLS-supply = <&reg_cs42888>;
+		VLC-supply = <&reg_cs42888>;
 	};
 
 	touchscreen@4 {
@@ -798,6 +682,14 @@
 			remote-endpoint = <&csi2_ep>;
 		};
 	};
+};
+
+&spdif {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_spdif>;
+	assigned-clocks = <&clks IMX6SX_CLK_SPDIF_PODF>;
+	assigned-clock-rates = <24576000>;
+	status = "okay";
 };
 
 &wdog1 {

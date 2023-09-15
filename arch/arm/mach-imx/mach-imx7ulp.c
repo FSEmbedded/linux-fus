@@ -70,7 +70,7 @@ static void __init imx7ulp_init_machine(void)
 
 	mxc_set_cpu_type(MXC_CPU_IMX7ULP);
 	imx7ulp_set_revision();
-	of_platform_default_populate(NULL, NULL, imx_soc_device_init());
+	of_platform_default_populate(NULL, NULL, NULL);
 }
 
 static const char *const imx7ulp_dt_compat[] __initconst = {
@@ -86,8 +86,8 @@ static void __init imx7ulp_map_io(void)
 
 static void __init imx7ulp_init_late(void)
 {
-	if (IS_ENABLED(CONFIG_ARM_IMX7ULP_CPUFREQ))
-		platform_device_register_simple("imx7ulp-cpufreq", -1, NULL, 0);
+	if (IS_ENABLED(CONFIG_ARM_IMX_CPUFREQ_DT))
+		platform_device_register_simple("imx-cpufreq-dt", -1, NULL, 0);
 
 	imx7ulp_cpuidle_init();
 	imx7ulp_enable_nmi();

@@ -19,33 +19,63 @@
 /* SAI Register Map Register */
 #define FSL_SAI_VERID	0x00 /* SAI Version ID Register */
 #define FSL_SAI_PARAM	0x04 /* SAI Parameter Register */
-#define FSL_SAI_TCSR(offset) (0x00 + offset) /* SAI Transmit Control */
-#define FSL_SAI_TCR1(offset) (0x04 + offset) /* SAI Transmit Configuration 1 */
-#define FSL_SAI_TCR2(offset) (0x08 + offset) /* SAI Transmit Configuration 2 */
-#define FSL_SAI_TCR3(offset) (0x0c + offset) /* SAI Transmit Configuration 3 */
-#define FSL_SAI_TCR4(offset) (0x10 + offset) /* SAI Transmit Configuration 4 */
-#define FSL_SAI_TCR5(offset) (0x14 + offset) /* SAI Transmit Configuration 5 */
-#define FSL_SAI_TDR0    0x20 /* SAI Transmit Data */
-#define FSL_SAI_TDR1    0x24 /* SAI Transmit Data */
-#define FSL_SAI_TDR2    0x28 /* SAI Transmit Data */
-#define FSL_SAI_TDR3    0x2C /* SAI Transmit Data */
-#define FSL_SAI_TDR4    0x30 /* SAI Transmit Data */
-#define FSL_SAI_TDR5    0x34 /* SAI Transmit Data */
-#define FSL_SAI_TDR6    0x38 /* SAI Transmit Data */
-#define FSL_SAI_TDR7    0x3C /* SAI Transmit Data */
-#define FSL_SAI_TFR0    0x40 /* SAI Transmit FIFO */
-#define FSL_SAI_TFR1    0x44 /* SAI Transmit FIFO */
-#define FSL_SAI_TFR2    0x48 /* SAI Transmit FIFO */
-#define FSL_SAI_TFR3    0x4C /* SAI Transmit FIFO */
-#define FSL_SAI_TFR4    0x50 /* SAI Transmit FIFO */
-#define FSL_SAI_TFR5    0x54 /* SAI Transmit FIFO */
-#define FSL_SAI_TFR6    0x58 /* SAI Transmit FIFO */
-#define FSL_SAI_TFR7    0x5C /* SAI Transmit FIFO */
+#define FSL_SAI_TCSR(ofs)	(0x00 + ofs) /* SAI Transmit Control */
+#define FSL_SAI_TCR1(ofs)	(0x04 + ofs) /* SAI Transmit Configuration 1 */
+#define FSL_SAI_TCR2(ofs)	(0x08 + ofs) /* SAI Transmit Configuration 2 */
+#define FSL_SAI_TCR3(ofs)	(0x0c + ofs) /* SAI Transmit Configuration 3 */
+#define FSL_SAI_TCR4(ofs)	(0x10 + ofs) /* SAI Transmit Configuration 4 */
+#define FSL_SAI_TCR5(ofs)	(0x14 + ofs) /* SAI Transmit Configuration 5 */
+#define FSL_SAI_TDR0	0x20 /* SAI Transmit Data 0 */
+#define FSL_SAI_TDR1	0x24 /* SAI Transmit Data 1 */
+#define FSL_SAI_TDR2	0x28 /* SAI Transmit Data 2 */
+#define FSL_SAI_TDR3	0x2C /* SAI Transmit Data 3 */
+#define FSL_SAI_TDR4	0x30 /* SAI Transmit Data 4 */
+#define FSL_SAI_TDR5	0x34 /* SAI Transmit Data 5 */
+#define FSL_SAI_TDR6	0x38 /* SAI Transmit Data 6 */
+#define FSL_SAI_TDR7	0x3C /* SAI Transmit Data 7 */
+#define FSL_SAI_TFR0	0x40 /* SAI Transmit FIFO 0 */
+#define FSL_SAI_TFR1	0x44 /* SAI Transmit FIFO 1 */
+#define FSL_SAI_TFR2	0x48 /* SAI Transmit FIFO 2 */
+#define FSL_SAI_TFR3	0x4C /* SAI Transmit FIFO 3 */
+#define FSL_SAI_TFR4	0x50 /* SAI Transmit FIFO 4 */
+#define FSL_SAI_TFR5	0x54 /* SAI Transmit FIFO 5 */
+#define FSL_SAI_TFR6	0x58 /* SAI Transmit FIFO 6 */
+#define FSL_SAI_TFR7	0x5C /* SAI Transmit FIFO 7 */
 #define FSL_SAI_TMR	0x60 /* SAI Transmit Mask */
 #define FSL_SAI_TTCTL	0x70 /* SAI Transmit Timestamp Control Register */
 #define FSL_SAI_TTCTN	0x74 /* SAI Transmit Timestamp Counter Register */
 #define FSL_SAI_TBCTN	0x78 /* SAI Transmit Bit Counter Register */
 #define FSL_SAI_TTCAP	0x7C /* SAI Transmit Timestamp Capture */
+#define FSL_SAI_RCSR(ofs)	(0x80 + ofs) /* SAI Receive Control */
+#define FSL_SAI_RCR1(ofs)	(0x84 + ofs)/* SAI Receive Configuration 1 */
+#define FSL_SAI_RCR2(ofs)	(0x88 + ofs) /* SAI Receive Configuration 2 */
+#define FSL_SAI_RCR3(ofs)	(0x8c + ofs) /* SAI Receive Configuration 3 */
+#define FSL_SAI_RCR4(ofs)	(0x90 + ofs) /* SAI Receive Configuration 4 */
+#define FSL_SAI_RCR5(ofs)	(0x94 + ofs) /* SAI Receive Configuration 5 */
+#define FSL_SAI_RDR0	0xa0 /* SAI Receive Data 0 */
+#define FSL_SAI_RDR1	0xa4 /* SAI Receive Data 1 */
+#define FSL_SAI_RDR2	0xa8 /* SAI Receive Data 2 */
+#define FSL_SAI_RDR3	0xac /* SAI Receive Data 3 */
+#define FSL_SAI_RDR4	0xb0 /* SAI Receive Data 4 */
+#define FSL_SAI_RDR5	0xb4 /* SAI Receive Data 5 */
+#define FSL_SAI_RDR6	0xb8 /* SAI Receive Data 6 */
+#define FSL_SAI_RDR7	0xbc /* SAI Receive Data 7 */
+#define FSL_SAI_RFR0	0xc0 /* SAI Receive FIFO 0 */
+#define FSL_SAI_RFR1	0xc4 /* SAI Receive FIFO 1 */
+#define FSL_SAI_RFR2	0xc8 /* SAI Receive FIFO 2 */
+#define FSL_SAI_RFR3	0xcc /* SAI Receive FIFO 3 */
+#define FSL_SAI_RFR4	0xd0 /* SAI Receive FIFO 4 */
+#define FSL_SAI_RFR5	0xd4 /* SAI Receive FIFO 5 */
+#define FSL_SAI_RFR6	0xd8 /* SAI Receive FIFO 6 */
+#define FSL_SAI_RFR7	0xdc /* SAI Receive FIFO 7 */
+#define FSL_SAI_RMR	0xe0 /* SAI Receive Mask */
+#define FSL_SAI_RTCTL	0xf0 /* SAI Receive Timestamp Control Register */
+#define FSL_SAI_RTCTN	0xf4 /* SAI Receive Timestamp Counter Register */
+#define FSL_SAI_RBCTN	0xf8 /* SAI Receive Bit Counter Register */
+#define FSL_SAI_RTCAP	0xfc /* SAI Receive Timestamp Capture */
+
+#define FSL_SAI_MCTL	0x100 /* SAI MCLK Control Register */
+#define FSL_SAI_MDIV	0x104 /* SAI MCLK Divide Register */
 
 #define FSL_SAI_RCSR(offset) (0x80 + offset) /* SAI Receive Control */
 #define FSL_SAI_RCR1(offset) (0x84 + offset) /* SAI Receive Configuration 1 */
@@ -126,8 +156,8 @@
 #define FSL_SAI_CR2_DIV_MASK	0xff
 
 /* SAI Transmit and Receive Configuration 3 Register */
-#define FSL_SAI_CR3_TRCE_MASK	(0xff << 16)
-#define FSL_SAI_CR3_TRCE(x)	(x << 16)
+#define FSL_SAI_CR3_TRCE(x)     ((x) << 16)
+#define FSL_SAI_CR3_TRCE_MASK	GENMASK(23, 16)
 #define FSL_SAI_CR3_WDFL(x)	(x)
 #define FSL_SAI_CR3_WDFL_MASK	0x1f
 
@@ -143,8 +173,8 @@
 #define FSL_SAI_CR4_FRSZ_MASK	(0x1f << 16)
 #define FSL_SAI_CR4_SYWD(x)	(((x) - 1) << 8)
 #define FSL_SAI_CR4_SYWD_MASK	(0x1f << 8)
-#define FSL_SAI_CR4_CHMOD	(1 << 5)
-#define FSL_SAI_CR4_CHMOD_MASK	(1 << 5)
+#define FSL_SAI_CR4_CHMOD       BIT(5)
+#define FSL_SAI_CR4_CHMOD_MASK  BIT(5)
 #define FSL_SAI_CR4_MF		BIT(4)
 #define FSL_SAI_CR4_FSE		BIT(3)
 #define FSL_SAI_CR4_FSP		BIT(1)
@@ -170,20 +200,30 @@
 #define FSL_SAI_MCTL_DIV_MASK	0xFF
 
 /* SAI VERID Register */
-#define FSL_SAI_VER_ID_SHIFT	16
-#define FSL_SAI_VER_ID_MASK	(0xFFFF << FSL_SAI_VER_ID_SHIFT)
-#define FSL_SAI_VER_EFIFO_EN	BIT(0)
-#define FSL_SAI_VER_TSTMP_EN	BIT(1)
+#define FSL_SAI_VERID_MAJOR_SHIFT   24
+#define FSL_SAI_VERID_MAJOR_MASK    GENMASK(31, 24)
+#define FSL_SAI_VERID_MINOR_SHIFT   16
+#define FSL_SAI_VERID_MINOR_MASK    GENMASK(23, 16)
+#define FSL_SAI_VERID_FEATURE_SHIFT 0
+#define FSL_SAI_VERID_FEATURE_MASK  GENMASK(15, 0)
+#define FSL_SAI_VERID_EFIFO_EN	    BIT(0)
+#define FSL_SAI_VERID_TSTMP_EN	    BIT(1)
 
 /* SAI PARAM Register */
-#define FSL_SAI_PAR_SPF_SHIFT	16
-#define FSL_SAI_PAR_SPF_MASK	(0x0F << FSL_SAI_PAR_SPF_SHIFT)
-#define FSL_SAI_PAR_WPF_SHIFT	8
-#define FSL_SAI_PAR_WPF_MASK	(0x0F << FSL_SAI_PAR_WPF_SHIFT)
-#define FSL_SAI_PAR_DLN_MASK	(0x0F)
+#define FSL_SAI_PARAM_SPF_SHIFT	    16
+#define FSL_SAI_PARAM_SPF_MASK	    GENMASK(19, 16)
+#define FSL_SAI_PARAM_WPF_SHIFT	    8
+#define FSL_SAI_PARAM_WPF_MASK	    GENMASK(11, 8)
+#define FSL_SAI_PARAM_DLN_MASK	    GENMASK(3, 0)
 
 /* SAI MCLK Divide Register */
-#define FSL_SAI_MDIV_MASK	0xFFFFF
+#define FSL_SAI_MDIV_MASK	    0xFFFFF
+
+/* SAI timestamp and bitcounter */
+#define FSL_SAI_xTCTL_TSEN         BIT(0)
+#define FSL_SAI_xTCTL_TSINC        BIT(1)
+#define FSL_SAI_xTCTL_RTSC         BIT(8)
+#define FSL_SAI_xTCTL_RBC          BIT(9)
 
 /* SAI type */
 #define FSL_SAI_DMA		BIT(0)
@@ -246,6 +286,32 @@ struct fsl_sai_dl_cfg {
 	unsigned int offset[2];
 };
 
+/**
+ * struct fsl_sai_verid - version id data
+ * @major: major version number
+ * @minor: minor version number
+ * @feature: feature specification number
+ *           0000000000000000b - Standard feature set
+ *           0000000000000000b - Standard feature set
+ */
+struct fsl_sai_verid {
+	u32 major;
+	u32 minor;
+	u32 feature;
+};
+
+/**
+ * struct fsl_sai_param - parameter data
+ * @slot_num: The maximum number of slots per frame
+ * @fifo_depth: The number of words in each FIFO (depth)
+ * @dataline: The number of datalines implemented
+ */
+struct fsl_sai_param {
+	u32 slot_num;
+	u32 fifo_depth;
+	u32 dataline;
+};
+
 struct fsl_sai {
 	struct platform_device *pdev;
 	struct regmap *regmap;
@@ -279,16 +345,12 @@ struct fsl_sai {
 	unsigned int slot_width;
 	unsigned int bitclk_ratio;
 
+	const struct fsl_sai_soc_data *soc_data;
+	struct snd_soc_dai_driver cpu_dai_drv;
 	struct snd_dmaengine_dai_dma_data dma_params_rx;
 	struct snd_dmaengine_dai_dma_data dma_params_tx;
-	const struct fsl_sai_soc_data *soc;
-	struct pm_qos_request pm_qos_req;
-	struct pinctrl *pinctrl;
-	struct pinctrl_state *pins_state;
-
 	struct fsl_sai_verid verid;
 	struct fsl_sai_param param;
-	struct snd_soc_dai_driver cpu_dai_drv;
 };
 
 const struct attribute_group *fsl_sai_get_dev_attribute_group(bool monitor_spdif);

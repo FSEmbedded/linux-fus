@@ -24,8 +24,6 @@ enum imx_sc_rpc_svc {
 	IMX_SC_RPC_SVC_PAD = 6,
 	IMX_SC_RPC_SVC_MISC = 7,
 	IMX_SC_RPC_SVC_IRQ = 8,
-	IMX_SC_RPC_SVC_SECO = 9,
-	IMX_SC_RPC_SVC_ABORT = 10,
 };
 
 struct imx_sc_rpc_msg {

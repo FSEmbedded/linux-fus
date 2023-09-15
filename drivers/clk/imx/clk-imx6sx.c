@@ -4,6 +4,7 @@
  */
 
 #include <dt-bindings/clock/imx6sx-clock.h>
+#include <linux/bits.h>
 #include <linux/clk.h>
 #include <linux/clkdev.h>
 #include <linux/clk-provider.h>
@@ -127,39 +128,6 @@ static u32 share_count_ssi3;
 static u32 share_count_sai1;
 static u32 share_count_sai2;
 
-/*
- * As IMX6SX_CLK_M4_PRE_SEL is NOT a glitchless MUX, so when
- * M4 is trying to change its clk parent, need to ask A9 to
- * help do it, and M4 must be hold in wfi. To avoid glitch
- * occur, need to gate M4 clk first before switching its parent.
- */
-void imx6sx_set_m4_highfreq(bool high_freq)
-{
-	static struct clk *m4_high_freq_sel;
-
-	imx_gpc_hold_m4_in_sleep();
-
-	clk_disable_unprepare(hws[IMX6SX_CLK_M4]->clk);
-	clk_set_parent(hws[IMX6SX_CLK_M4_SEL]->clk,
-		hws[IMX6SX_CLK_LDB_DI0]->clk);
-
-	if (high_freq) {
-		/* FIXME: m4_high_freq_sel possible used without intialization? */ 
-		clk_set_parent(hws[IMX6SX_CLK_M4_PRE_SEL]->clk,
-			m4_high_freq_sel);
-	} else {
-		m4_high_freq_sel = clk_get_parent(hws[IMX6SX_CLK_M4_PRE_SEL]->clk);
-		clk_set_parent(hws[IMX6SX_CLK_M4_PRE_SEL]->clk,
-			hws[IMX6SX_CLK_OSC]->clk);
-	}
-
-	clk_set_parent(hws[IMX6SX_CLK_M4_SEL]->clk,
-		       hws[IMX6SX_CLK_M4_PRE_SEL]->clk);
-	clk_prepare_enable(hws[IMX6SX_CLK_M4]->clk);
-
-	imx_gpc_release_m4_in_sleep();
-}
-
 static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 {
 	struct device_node *np;
@@ -175,16 +143,16 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 
 	hws[IMX6SX_CLK_DUMMY] = imx_clk_hw_fixed("dummy", 0);
 
-	hws[IMX6SX_CLK_CKIL] = __clk_get_hw(of_clk_get_by_name(ccm_node, "ckil"));
-	hws[IMX6SX_CLK_OSC] = __clk_get_hw(of_clk_get_by_name(ccm_node, "osc"));
+	hws[IMX6SX_CLK_CKIL] = imx_obtain_fixed_clk_hw(ccm_node, "ckil");
+	hws[IMX6SX_CLK_OSC] = imx_obtain_fixed_clk_hw(ccm_node, "osc");
 
 	/* ipp_di clock is external input */
-	hws[IMX6SX_CLK_IPP_DI0] = __clk_get_hw(of_clk_get_by_name(ccm_node, "ipp_di0"));
-	hws[IMX6SX_CLK_IPP_DI1] = __clk_get_hw(of_clk_get_by_name(ccm_node, "ipp_di1"));
+	hws[IMX6SX_CLK_IPP_DI0] = imx_obtain_fixed_clk_hw(ccm_node, "ipp_di0");
+	hws[IMX6SX_CLK_IPP_DI1] = imx_obtain_fixed_clk_hw(ccm_node, "ipp_di1");
 
 	/* Clock source from external clock via CLK1/2 PAD */
-	hws[IMX6SX_CLK_ANACLK1] = __clk_get_hw(of_clk_get_by_name(ccm_node, "anaclk1"));
-	hws[IMX6SX_CLK_ANACLK2] = __clk_get_hw(of_clk_get_by_name(ccm_node, "anaclk2"));
+	hws[IMX6SX_CLK_ANACLK1] = imx_obtain_fixed_clk_hw(ccm_node, "anaclk1");
+	hws[IMX6SX_CLK_ANACLK2] = imx_obtain_fixed_clk_hw(ccm_node, "anaclk2");
 
 	np = of_find_compatible_node(NULL, NULL, "fsl,imx6sx-anatop");
 	base = of_iomap(np, 0);
@@ -646,7 +614,7 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 	clk_set_parent(hws[IMX6SX_CLK_QSPI1_SEL]->clk, hws[IMX6SX_CLK_PLL2_BUS]->clk);
 	clk_set_parent(hws[IMX6SX_CLK_QSPI2_SEL]->clk, hws[IMX6SX_CLK_PLL2_BUS]->clk);
 
-	imx_register_uart_clocks();
+	imx_register_uart_clocks(2);
 }
 CLK_OF_DECLARE(imx6sx, "fsl,imx6sx-ccm", imx6sx_clocks_init);
 

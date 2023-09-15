@@ -332,6 +332,7 @@ static int __cold dpaa2_qdma_setup(struct fsl_mc_device *ls_dev)
 	}
 
 	if (priv->dpdmai_attr.version.major > DPDMAI_VER_MAJOR) {
+		err = -EINVAL;
 		dev_err(dev, "DPDMAI major version mismatch\n"
 			     "Found %u.%u, supported version is %u.%u\n",
 				priv->dpdmai_attr.version.major,
@@ -341,6 +342,7 @@ static int __cold dpaa2_qdma_setup(struct fsl_mc_device *ls_dev)
 	}
 
 	if (priv->dpdmai_attr.version.minor > DPDMAI_VER_MINOR) {
+		err = -EINVAL;
 		dev_err(dev, "DPDMAI minor version mismatch\n"
 			     "Found %u.%u, supported version is %u.%u\n",
 				priv->dpdmai_attr.version.major,
@@ -475,6 +477,7 @@ static int __cold dpaa2_qdma_dpio_setup(struct dpaa2_qdma_priv *priv)
 		ppriv->store =
 			dpaa2_io_store_create(DPAA2_QDMA_STORE_SIZE, dev);
 		if (!ppriv->store) {
+			err = -ENOMEM;
 			dev_err(dev, "dpaa2_io_store_create() failed\n");
 			goto err_store;
 		}
@@ -790,6 +793,20 @@ static int dpaa2_qdma_remove(struct fsl_mc_device *ls_dev)
 	return 0;
 }
 
+static void dpaa2_qdma_shutdown(struct fsl_mc_device *ls_dev)
+{
+	struct dpaa2_qdma_priv *priv;
+	struct device *dev;
+
+	dev = &ls_dev->dev;
+	priv = dev_get_drvdata(dev);
+
+	dpdmai_disable(priv->mc_io, 0, ls_dev->mc_handle);
+	dpaa2_dpdmai_dpio_unbind(priv);
+	dpdmai_close(priv->mc_io, 0, ls_dev->mc_handle);
+	dpdmai_destroy(priv->mc_io, 0, ls_dev->mc_handle);
+}
+
 static const struct fsl_mc_device_id dpaa2_qdma_id_table[] = {
 	{
 		.vendor = FSL_MC_VENDOR_FREESCALE,
@@ -805,6 +822,7 @@ static struct fsl_mc_driver dpaa2_qdma_driver = {
 	},
 	.probe          = dpaa2_qdma_probe,
 	.remove		= dpaa2_qdma_remove,
+	.shutdown	= dpaa2_qdma_shutdown,
 	.match_id_table	= dpaa2_qdma_id_table
 };
 

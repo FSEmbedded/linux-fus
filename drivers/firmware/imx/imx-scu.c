@@ -33,7 +33,6 @@ struct imx_sc_chan {
 	struct mbox_chan *ch;
 	int idx;
 	struct completion tx_done;
-	u8 rx_pos;
 };
 
 struct imx_sc_ipc {
@@ -141,6 +140,25 @@ static void imx_scu_rx_callback(struct mbox_client *c, void *msg)
 		return;
 	}
 
+	if (!sc_ipc->msg) {
+		dev_warn(sc_ipc->dev, "unexpected rx idx %d 0x%08x, ignore!\n",
+				sc_chan->idx, *data);
+		return;
+	}
+
+	if (sc_ipc->fast_ipc) {
+		hdr = msg;
+		sc_ipc->rx_size = hdr->size;
+		sc_ipc->msg[0] = *data++;
+
+		for (i = 1; i < sc_ipc->rx_size; i++)
+			sc_ipc->msg[i] = *data++;
+
+		complete(&sc_ipc->done);
+
+		return;
+	}
+
 	if (sc_chan->rx_pos == 0) {
 		hdr = msg;
 		sc_ipc->rx_size = hdr->size;
@@ -228,6 +246,7 @@ static int imx_scu_ipc_write(struct imx_sc_ipc *sc_ipc, void *msg)
  */
 int imx_scu_call_rpc(struct imx_sc_ipc *sc_ipc, void *msg, bool have_resp)
 {
+	uint8_t saved_svc, saved_func;
 	struct imx_sc_rpc_msg *hdr;
 	struct arm_smccc_res res;
 	int ret;
@@ -238,10 +257,16 @@ int imx_scu_call_rpc(struct imx_sc_ipc *sc_ipc, void *msg, bool have_resp)
 
 	mutex_lock(&sc_ipc->lock);
 
-	for (i = 4; i < 8; i++) {
-		struct imx_sc_chan *sc_chan = &sc_ipc->chans[i];
-
-		sc_chan->rx_pos = sc_chan->idx;
+	if (have_resp) {
+		sc_ipc->msg = msg;
+		saved_svc = ((struct imx_sc_rpc_msg *)msg)->svc;
+		saved_func = ((struct imx_sc_rpc_msg *)msg)->func;
+	}
+	sc_ipc->count = 0;
+	ret = imx_scu_ipc_write(sc_ipc, msg);
+	if (ret < 0) {
+		dev_err(sc_ipc->dev, "RPC send msg failed: %d\n", ret);
+		goto out;
 	}
 
 	reinit_completion(&sc_ipc->done);
@@ -266,18 +291,19 @@ int imx_scu_call_rpc(struct imx_sc_ipc *sc_ipc, void *msg, bool have_resp)
 			goto out;
 		}
 
-		if (have_resp) {
-			if (!wait_for_completion_timeout(&sc_ipc->done,
-							 MAX_RX_TIMEOUT)) {
-				dev_err(sc_ipc->dev, "RPC send msg timeout\n");
-				mutex_unlock(&sc_ipc->lock);
-				return -ETIMEDOUT;
-			}
-
-			/* response status is stored in hdr->func field */
-			hdr = msg;
-			ret = hdr->func;
-		}
+		/* response status is stored in hdr->func field */
+		hdr = msg;
+		ret = hdr->func;
+		/*
+		 * Some special SCU firmware APIs do NOT have return value
+		 * in hdr->func, but they do have response data, those special
+		 * APIs are defined as void function in SCU firmware, so they
+		 * should be treated as return success always.
+		 */
+		if ((saved_svc == IMX_SC_RPC_SVC_MISC) &&
+			(saved_func == IMX_SC_MISC_FUNC_UNIQUE_ID ||
+			 saved_func == IMX_SC_MISC_FUNC_GET_BUTTON_STATUS))
+			ret = 0;
 	}
 
 out:
@@ -425,6 +451,10 @@ static int imx_scu_probe(struct platform_device *pdev)
 	init_completion(&sc_ipc->done);
 
 	imx_sc_ipc_handle = sc_ipc;
+
+	ret = imx_scu_soc_init(dev);
+	if (ret)
+		dev_warn(dev, "failed to initialize SoC info: %d\n", ret);
 
 	ret = imx_scu_enable_general_irq_channel(dev);
 	if (ret)

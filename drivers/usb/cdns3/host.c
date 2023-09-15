@@ -26,7 +26,20 @@
 
 #include "core.h"
 #include "host-export.h"
-#include "cdns3-nxp-reg-def.h"
+#include <linux/usb/hcd.h>
+#include "../host/xhci.h"
+#include "../host/xhci-plat.h"
+
+#define XECP_PORT_CAP_REG	0x8000
+#define XECP_AUX_CTRL_REG1	0x8120
+
+#define CFG_RXDET_P3_EN		BIT(15)
+#define LPM_2_STB_SWITCH_EN	BIT(25)
+
+static const struct xhci_plat_priv xhci_plat_cdns3_xhci = {
+	.quirks = XHCI_SKIP_PHY_INIT,
+	.suspend_quirk = xhci_cdns3_suspend_quirk,
+};
 
 #define XHCI_WAKEUP_STATUS     (PORT_RC | PORT_PLC)
 
@@ -45,235 +58,94 @@ static void xhci_cdns3_quirks(struct device *dev, struct xhci_hcd *xhci)
 static int xhci_cdns3_setup(struct usb_hcd *hcd)
 {
 	int ret;
-	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
-	u32 command;
-
-	ret = xhci_gen_setup(hcd, xhci_cdns3_quirks);
-	if (ret)
-		return ret;
-	/* set usbcmd.EU3S */
-	command = readl(&xhci->op_regs->command);
-	command |= CMD_PM_INDEX;
-	writel(command, &xhci->op_regs->command);
-
-	return 0;
-}
-
-struct cdns3_host {
-	struct device dev;
 	struct usb_hcd *hcd;
-	struct cdns3 *cdns;
-};
 
-static int xhci_cdns3_bus_suspend(struct usb_hcd *hcd)
-{
-	struct device *dev = hcd->self.controller;
-	struct cdns3_host *host = container_of(dev, struct cdns3_host, dev);
-	struct cdns3 *cdns = host->cdns;
-	void __iomem *xhci_regs = cdns->xhci_regs;
-	u32 value;
-	int ret;
+	cdns3_drd_host_on(cdns);
 
-	ret = xhci_bus_suspend(hcd);
-	if (ret)
-		return ret;
-
-	value = readl(xhci_regs + XECP_AUX_CTRL_REG1);
-	value |= CFG_RXDET_P3_EN;
-	writel(value, xhci_regs + XECP_AUX_CTRL_REG1);
-
-	return 0;
-}
-
-static const struct xhci_driver_overrides xhci_cdns3_overrides __initconst = {
-	.extra_priv_size = sizeof(struct xhci_hcd),
-	.reset = xhci_cdns3_setup,
-	.bus_suspend = xhci_cdns3_bus_suspend,
-};
-
-static irqreturn_t cdns3_host_irq(struct cdns3 *cdns)
-{
-	struct device *dev = cdns->host_dev;
-	struct usb_hcd	*hcd;
-
-	if (dev)
-		hcd = dev_get_drvdata(dev);
-	else
-		return IRQ_NONE;
-
-	if (hcd)
-		return usb_hcd_irq(cdns->irq, hcd);
-	else
-		return IRQ_NONE;
-}
-
-static void cdns3_host_release(struct device *dev)
-{
-	struct cdns3_host *host = container_of(dev, struct cdns3_host, dev);
-
-	dev_dbg(dev, "releasing '%s'\n", dev_name(dev));
-	kfree(host);
-}
-
-static int cdns3_host_start(struct cdns3 *cdns)
-{
-	struct cdns3_host *host;
-	struct device *dev;
-	struct device *sysdev;
-	struct xhci_hcd	*xhci;
-	int ret;
-
-	host = kzalloc(sizeof(*host), GFP_KERNEL);
-	if (!host)
+	xhci = platform_device_alloc("xhci-hcd", PLATFORM_DEVID_AUTO);
+	if (!xhci) {
+		dev_err(cdns->dev, "couldn't allocate xHCI device\n");
 		return -ENOMEM;
+	}
 
-	dev = &host->dev;
-	dev->release = cdns3_host_release;
-	dev->parent = cdns->dev;
-	dev_set_name(dev, "xhci-cdns3");
-	cdns->host_dev = dev;
-	host->cdns = cdns;
-	ret = device_register(dev);
-	if (ret)
-		goto err1;
+	xhci->dev.parent = cdns->dev;
+	cdns->host_dev = xhci;
 
-	sysdev = cdns->dev;
-	/* Try to set 64-bit DMA first */
-	if (WARN_ON(!sysdev->dma_mask))
-		/* Platform did not initialize dma_mask */
-		ret = dma_coerce_mask_and_coherent(sysdev,
-						   DMA_BIT_MASK(64));
-	else
-		ret = dma_set_mask_and_coherent(sysdev, DMA_BIT_MASK(64));
-
-	/* If setting 64-bit DMA mask fails, fall back to 32-bit DMA mask */
+	ret = platform_device_add_resources(xhci, cdns->xhci_res,
+					    CDNS3_XHCI_RESOURCES_NUM);
 	if (ret) {
-		ret = dma_set_mask_and_coherent(sysdev, DMA_BIT_MASK(32));
-		if (ret)
-			return ret;
+		dev_err(cdns->dev, "couldn't add resources to xHCI device\n");
+		goto err1;
 	}
-	pm_runtime_set_active(dev);
-	pm_runtime_no_callbacks(dev);
-	pm_runtime_enable(dev);
 
-	host->hcd = __usb_create_hcd(&xhci_cdns3_hc_driver, sysdev, dev,
-			       dev_name(dev), NULL);
-	if (!host->hcd) {
+	cdns->xhci_plat_data = kmemdup(&xhci_plat_cdns3_xhci,
+			sizeof(struct xhci_plat_priv), GFP_KERNEL);
+	if (!cdns->xhci_plat_data) {
 		ret = -ENOMEM;
-		goto err2;
+		goto err1;
 	}
 
-	host->hcd->regs = cdns->xhci_regs;
-	host->hcd->rsrc_start = cdns->xhci_res->start;
-	host->hcd->rsrc_len = resource_size(cdns->xhci_res);
+	if (cdns->pdata && (cdns->pdata->quirks & CDNS3_DEFAULT_PM_RUNTIME_ALLOW))
+		cdns->xhci_plat_data->quirks |= XHCI_DEFAULT_PM_RUNTIME_ALLOW;
 
-	device_wakeup_enable(host->hcd->self.controller);
+	ret = platform_device_add_data(xhci, cdns->xhci_plat_data,
+			sizeof(struct xhci_plat_priv));
+	if (ret)
+		goto free_memory;
 
-	xhci = hcd_to_xhci(host->hcd);
-
-	xhci->main_hcd = host->hcd;
-	xhci->shared_hcd = __usb_create_hcd(&xhci_cdns3_hc_driver, sysdev, dev,
-			dev_name(dev), host->hcd);
-	if (!xhci->shared_hcd) {
-		ret = -ENOMEM;
-		goto err3;
+	ret = platform_device_add(xhci);
+	if (ret) {
+		dev_err(cdns->dev, "failed to register xHCI device\n");
+		goto free_memory;
 	}
-	host->hcd->tpl_support = of_usb_host_tpl_support(sysdev->of_node);
-	xhci->shared_hcd->tpl_support = host->hcd->tpl_support;
 
-	ret = usb_add_hcd(host->hcd, 0, IRQF_SHARED);
-	if (ret)
-		goto err4;
-
-	if (HCC_MAX_PSA(xhci->hcc_params) >= 4)
-		xhci->shared_hcd->can_do_streams = 1;
-
-	ret = usb_add_hcd(xhci->shared_hcd, 0, IRQF_SHARED);
-	if (ret)
-		goto err5;
-
-	device_set_wakeup_capable(dev, true);
-	dev_dbg(dev, "%s ends\n", __func__);
+	/* Glue needs to access xHCI region register for Power management */
+	hcd = platform_get_drvdata(xhci);
+	if (hcd)
+		cdns->xhci_regs = hcd->regs;
 
 	return 0;
 
-err5:
-	usb_remove_hcd(host->hcd);
-err4:
-	usb_put_hcd(xhci->shared_hcd);
-err3:
-	usb_put_hcd(host->hcd);
-err2:
-	device_del(dev);
+free_memory:
+	kfree(cdns->xhci_plat_data);
 err1:
 	put_device(dev);
 	cdns->host_dev = NULL;
 	return ret;
 }
 
-static void cdns3_host_stop(struct cdns3 *cdns)
+int xhci_cdns3_suspend_quirk(struct usb_hcd *hcd)
 {
-	struct device *dev = cdns->host_dev;
-	struct usb_hcd	*hcd, *shared_hcd;
-	struct xhci_hcd	*xhci;
+	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
+	u32 value;
 
-	if (dev) {
-		hcd = dev_get_drvdata(dev);
-		xhci = hcd_to_xhci(hcd);
-		shared_hcd = xhci->shared_hcd;
-		xhci->xhc_state |= XHCI_STATE_REMOVING;
-		usb_remove_hcd(shared_hcd);
-		xhci->shared_hcd = NULL;
-		usb_remove_hcd(hcd);
-		synchronize_irq(cdns->irq);
-		usb_put_hcd(shared_hcd);
-		usb_put_hcd(hcd);
-		cdns->host_dev = NULL;
-		pm_runtime_set_suspended(dev);
-		pm_runtime_disable(dev);
-		device_del(dev);
-		put_device(dev);
-	}
-}
-
-static int cdns3_host_suspend(struct cdns3 *cdns, bool do_wakeup)
-{
-	struct device *dev = cdns->host_dev;
-	struct xhci_hcd	*xhci;
-	void __iomem *xhci_regs = cdns->xhci_regs;
-	u32 portsc_usb2, portsc_usb3;
-	int ret;
-
-	if (!dev)
+	if (pm_runtime_status_suspended(hcd->self.controller))
 		return 0;
 
-	xhci = hcd_to_xhci(dev_get_drvdata(dev));
-	ret = xhci_suspend(xhci, do_wakeup);
-	if (ret)
-		return ret;
+	/* set usbcmd.EU3S */
+	value = readl(&xhci->op_regs->command);
+	value |= CMD_PM_INDEX;
+	writel(value, &xhci->op_regs->command);
 
-	portsc_usb2 = readl(xhci_regs + 0x480);
-	portsc_usb3 = readl(xhci_regs + 0x490);
-	if ((portsc_usb2 & XHCI_WAKEUP_STATUS) ||
-		(portsc_usb3 & XHCI_WAKEUP_STATUS)) {
-		dev_dbg(cdns->dev, "wakeup occurs\n");
-		cdns3_role(cdns)->resume(cdns, false);
-		return -EBUSY;
+	if (hcd->regs) {
+		value = readl(hcd->regs + XECP_AUX_CTRL_REG1);
+		value |= CFG_RXDET_P3_EN;
+		writel(value, hcd->regs + XECP_AUX_CTRL_REG1);
+
+		value = readl(hcd->regs + XECP_PORT_CAP_REG);
+		value |= LPM_2_STB_SWITCH_EN;
+		writel(value, hcd->regs + XECP_PORT_CAP_REG);
 	}
 
-	return ret;
+	return 0;
 }
 
-static int cdns3_host_resume(struct cdns3 *cdns, bool hibernated)
+static void cdns3_host_exit(struct cdns3 *cdns)
 {
-	struct device *dev = cdns->host_dev;
-	struct xhci_hcd	*xhci;
-
-	if (!dev)
-		return 0;
-
-	xhci = hcd_to_xhci(dev_get_drvdata(dev));
-	return xhci_resume(xhci, hibernated);
+	kfree(cdns->xhci_plat_data);
+	platform_device_unregister(cdns->host_dev);
+	cdns->host_dev = NULL;
+	cdns3_drd_host_off(cdns);
 }
 
 int cdns3_host_init(struct cdns3 *cdns)

@@ -86,6 +86,4 @@
 #define AK4458_DSDSEL_MASK		(0x1 << 0)
 #define AK4458_DP_MASK			(0x1 << 7)
 
-#define AK4458_DCHAIN_MASK		(0x1 << 1)
-
 #endif

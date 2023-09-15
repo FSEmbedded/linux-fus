@@ -12,6 +12,7 @@
 #include <linux/of_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
+#include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 
 #include <sound/initval.h>
@@ -24,11 +25,6 @@
 
 #include "ak5558.h"
 
-#define AK5558_SLAVE_CKS_AUTO
-
-/* enable debug */
-/* #define AK5558_DEBUG */
-
 #define AK5558_NUM_SUPPLIES 2
 static const char *ak5558_supply_names[AK5558_NUM_SUPPLIES] = {
 	"DVDD",
@@ -37,6 +33,7 @@ static const char *ak5558_supply_names[AK5558_NUM_SUPPLIES] = {
 
 /* AK5558 Codec Private Data */
 struct ak5558_priv {
+	struct regulator_bulk_data supplies[AK5558_NUM_SUPPLIES];
 	struct snd_soc_component component;
 	struct regmap *regmap;
 	struct i2c_client *i2c;
@@ -323,7 +320,7 @@ static void ak5558_power_off(struct ak5558_priv *ak5558)
 	if (!ak5558->reset_gpiod)
 		return;
 
-	gpiod_set_value_cansleep(ak5558->reset_gpiod, 0);
+	gpiod_set_value_cansleep(ak5558->reset_gpiod, 1);
 	usleep_range(1000, 2000);
 }
 
@@ -332,7 +329,7 @@ static void ak5558_power_on(struct ak5558_priv *ak5558)
 	if (!ak5558->reset_gpiod)
 		return;
 
-	gpiod_set_value_cansleep(ak5558->reset_gpiod, 1);
+	gpiod_set_value_cansleep(ak5558->reset_gpiod, 0);
 	usleep_range(1000, 2000);
 }
 
@@ -358,12 +355,22 @@ static int __maybe_unused ak5558_runtime_suspend(struct device *dev)
 	regcache_cache_only(ak5558->regmap, true);
 	ak5558_power_off(ak5558);
 
+	regulator_bulk_disable(ARRAY_SIZE(ak5558->supplies),
+			       ak5558->supplies);
 	return 0;
 }
 
 static int __maybe_unused ak5558_runtime_resume(struct device *dev)
 {
 	struct ak5558_priv *ak5558 = dev_get_drvdata(dev);
+	int ret;
+
+	ret = regulator_bulk_enable(ARRAY_SIZE(ak5558->supplies),
+				    ak5558->supplies);
+	if (ret != 0) {
+		dev_err(dev, "Failed to enable supplies: %d\n", ret);
+		return ret;
+	}
 
 	ak5558_power_off(ak5558);
 	ak5558_power_on(ak5558);
@@ -446,31 +453,20 @@ static int ak5558_i2c_probe(struct i2c_client *i2c)
 		ak5558->supplies[i].supply = ak5558_supply_names[i];
 
 	ret = devm_regulator_bulk_get(&i2c->dev, ARRAY_SIZE(ak5558->supplies),
-				 ak5558->supplies);
+				      ak5558->supplies);
 	if (ret != 0) {
 		dev_err(&i2c->dev, "Failed to request supplies: %d\n", ret);
 		return ret;
 	}
 
-	ret = regulator_bulk_enable(ARRAY_SIZE(ak5558->supplies),
-				    ak5558->supplies);
-	if (ret != 0) {
-		dev_err(&i2c->dev, "Failed to enable supplies: %d\n", ret);
-		return ret;
-	}
-
-	if (of_device_is_compatible(i2c->dev.of_node, "asahi-kasei,ak5552"))
-		ret = devm_snd_soc_register_component(&i2c->dev,
-						      &soc_codec_dev_ak5552,
-						      &ak5552_dai, 1);
-	else
-		ret = devm_snd_soc_register_component(&i2c->dev,
-						      &soc_codec_dev_ak5558,
-						      &ak5558_dai, 1);
+	ret = devm_snd_soc_register_component(&i2c->dev,
+				     &soc_codec_dev_ak5558,
+				     &ak5558_dai, 1);
 	if (ret)
 		return ret;
 
 	pm_runtime_enable(&i2c->dev);
+	regcache_cache_only(ak5558->regmap, true);
 
 	return 0;
 }
@@ -487,6 +483,7 @@ static const struct of_device_id ak5558_i2c_dt_ids[] = {
 	{ .compatible = "asahi-kasei,ak5552", },
 	{ }
 };
+MODULE_DEVICE_TABLE(of, ak5558_i2c_dt_ids);
 
 static struct i2c_driver ak5558_i2c_driver = {
 	.driver = {

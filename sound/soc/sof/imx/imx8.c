@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause)
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-3-Clause)
 //
 // Copyright 2019 NXP
 //
@@ -22,6 +22,7 @@
 #include <linux/firmware/imx/svc/misc.h>
 #include <dt-bindings/firmware/imx/rsrc.h>
 #include "../ops.h"
+#include "imx-common.h"
 
 /* DSP memories */
 #define IRAM_OFFSET		0x10000
@@ -172,8 +173,16 @@ static void imx8_dsp_handle_reply(struct imx_dsp_ipc *ipc)
 static void imx8_dsp_handle_request(struct imx_dsp_ipc *ipc)
 {
 	struct imx8_priv *priv = imx_dsp_get_data(ipc);
+	u32 p; /* panic code */
 
-	snd_sof_ipc_msgs_rx(priv->sdev);
+	/* Read the message from the debug box. */
+	sof_mailbox_read(priv->sdev, priv->sdev->debug_box.offset + 4, &p, sizeof(p));
+
+	/* Check to see if the message is a panic code (0x0dead***) */
+	if ((p & SOF_IPC_PANIC_MAGIC_MASK) == SOF_IPC_PANIC_MAGIC)
+		snd_sof_dsp_panic(priv->sdev, p);
+	else
+		snd_sof_ipc_msgs_rx(priv->sdev);
 }
 
 static struct imx_dsp_ops dsp_ops = {
@@ -183,7 +192,7 @@ static struct imx_dsp_ops dsp_ops = {
 
 static int imx8_send_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 {
-	struct imx8_priv *priv = (struct imx8_priv *)sdev->private;
+	struct imx8_priv *priv = sdev->pdata->hw_pdata;
 
 	sof_mailbox_write(sdev, sdev->host_box.offset, msg->msg_data,
 			  msg->msg_size);
@@ -197,7 +206,7 @@ static int imx8_send_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
  */
 static int imx8x_run(struct snd_sof_dev *sdev)
 {
-	struct imx8_priv *dsp_priv = (struct imx8_priv *)sdev->private;
+	struct imx8_priv *dsp_priv = sdev->pdata->hw_pdata;
 	int ret;
 
 	ret = imx_sc_misc_set_control(dsp_priv->sc_ipc, IMX_SC_R_DSP,
@@ -237,7 +246,7 @@ static int imx8x_run(struct snd_sof_dev *sdev)
 
 static int imx8_run(struct snd_sof_dev *sdev)
 {
-	struct imx8_priv *dsp_priv = (struct imx8_priv *)sdev->private;
+	struct imx8_priv *dsp_priv = sdev->pdata->hw_pdata;
 	int ret;
 
 	ret = imx_sc_misc_set_control(dsp_priv->sc_ipc, IMX_SC_R_DSP,
@@ -270,7 +279,7 @@ static int imx8_probe(struct snd_sof_dev *sdev)
 	if (!priv)
 		return -ENOMEM;
 
-	sdev->private = priv;
+	sdev->pdata->hw_pdata = priv;
 	priv->dev = sdev->dev;
 	priv->sdev = sdev;
 
@@ -374,8 +383,7 @@ done_pm:
 	}
 
 	sdev->bar[SOF_FW_BLK_TYPE_SRAM] = devm_ioremap_wc(sdev->dev, res.start,
-							  res.end - res.start +
-							  1);
+							  resource_size(&res));
 	if (!sdev->bar[SOF_FW_BLK_TYPE_SRAM]) {
 		dev_err(sdev->dev, "failed to ioremap mem 0x%x size 0x%x\n",
 			base, size);
@@ -386,9 +394,6 @@ done_pm:
 
 	/* set default mailbox offset for FW ready message */
 	sdev->dsp_box.offset = MBOX_OFFSET;
-
-	imx8_init_clocks(sdev);
-	imx8_prepare_clocks(sdev);
 
 	return 0;
 
@@ -405,7 +410,7 @@ exit_unroll_pm:
 
 static int imx8_remove(struct snd_sof_dev *sdev)
 {
-	struct imx8_priv *priv = (struct imx8_priv *)sdev->private;
+	struct imx8_priv *priv = sdev->pdata->hw_pdata;
 	int i;
 
 	platform_device_unregister(priv->ipc_dev);
@@ -503,9 +508,25 @@ int imx8_dsp_suspend(struct snd_sof_dev *sdev)
 static struct snd_soc_dai_driver imx8_dai[] = {
 {
 	.name = "esai0",
+	.playback = {
+		.channels_min = 1,
+		.channels_max = 8,
+	},
+	.capture = {
+		.channels_min = 1,
+		.channels_max = 8,
+	},
 },
 {
 	.name = "sai1",
+	.playback = {
+		.channels_min = 1,
+		.channels_max = 32,
+	},
+	.capture = {
+		.channels_min = 1,
+		.channels_max = 32,
+	},
 },
 };
 
@@ -521,6 +542,9 @@ struct snd_sof_dsp_ops sof_imx8_ops = {
 	.block_read	= sof_block_read,
 	.block_write	= sof_block_write,
 
+	/* Module IO */
+	.read64	= sof_io_read64,
+
 	/* ipc */
 	.send_msg	= imx8_send_msg,
 	.fw_ready	= sof_fw_ready,
@@ -536,22 +560,22 @@ struct snd_sof_dsp_ops sof_imx8_ops = {
 	/* firmware loading */
 	.load_firmware	= snd_sof_load_firmware_memcpy,
 
+	/* Debug information */
+	.dbg_dump = imx8_dump,
+
+	/* Firmware ops */
+	.arch_ops = &sof_xtensa_arch_ops,
+
 	/* DAI drivers */
 	.drv = imx8_dai,
-	.num_drv = 2, /* we use ESAI0 / SAI1 i.MX8 */
-
-	/* PM */
-	.suspend		= imx8_dsp_suspend,
-	.resume			= imx8_dsp_resume,
-	.runtime_suspend	= imx8_dsp_runtime_suspend,
-	.runtime_resume		= imx8_dsp_runtime_resume,
+	.num_drv = ARRAY_SIZE(imx8_dai),
 
 	/* ALSA HW info flags */
 	.hw_info =	SNDRV_PCM_INFO_MMAP |
 			SNDRV_PCM_INFO_MMAP_VALID |
 			SNDRV_PCM_INFO_INTERLEAVED |
 			SNDRV_PCM_INFO_PAUSE |
-			SNDRV_PCM_INFO_NO_PERIOD_WAKEUP
+			SNDRV_PCM_INFO_NO_PERIOD_WAKEUP,
 };
 EXPORT_SYMBOL(sof_imx8_ops);
 
@@ -567,6 +591,9 @@ struct snd_sof_dsp_ops sof_imx8x_ops = {
 	.block_read	= sof_block_read,
 	.block_write	= sof_block_write,
 
+	/* Module IO */
+	.read64	= sof_io_read64,
+
 	/* ipc */
 	.send_msg	= imx8_send_msg,
 	.fw_ready	= sof_fw_ready,
@@ -582,15 +609,15 @@ struct snd_sof_dsp_ops sof_imx8x_ops = {
 	/* firmware loading */
 	.load_firmware	= snd_sof_load_firmware_memcpy,
 
+	/* Debug information */
+	.dbg_dump = imx8_dump,
+
+	/* Firmware ops */
+	.arch_ops = &sof_xtensa_arch_ops,
+
 	/* DAI drivers */
 	.drv = imx8_dai,
-	.num_drv = 2, /* we use ESAI0 / SAI1 on i.MX8X*/
-
-	/* PM */
-	.suspend		= imx8_dsp_suspend,
-	.resume			= imx8_dsp_resume,
-	.runtime_suspend	= imx8_dsp_runtime_suspend,
-	.runtime_resume		= imx8_dsp_runtime_resume,
+	.num_drv = ARRAY_SIZE(imx8_dai),
 
 	/* ALSA HW info flags */
 	.hw_info =	SNDRV_PCM_INFO_MMAP |
@@ -601,4 +628,5 @@ struct snd_sof_dsp_ops sof_imx8x_ops = {
 };
 EXPORT_SYMBOL(sof_imx8x_ops);
 
+MODULE_IMPORT_NS(SND_SOC_SOF_XTENSA);
 MODULE_LICENSE("Dual BSD/GPL");

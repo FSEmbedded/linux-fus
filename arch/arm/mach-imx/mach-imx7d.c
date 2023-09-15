@@ -115,12 +115,6 @@ static inline void imx7d_disable_arm_arch_timer(void)
 
 static void __init imx7d_init_machine(void)
 {
-	struct device *parent;
-
-	parent = imx_soc_device_init();
-	if (parent == NULL)
-		pr_warn("failed to initialize soc device\n");
-
 	imx_anatop_init();
 	of_platform_default_populate(NULL, NULL, parent);
 	imx7d_pm_init();

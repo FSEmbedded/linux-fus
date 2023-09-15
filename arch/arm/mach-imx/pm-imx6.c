@@ -1090,12 +1090,24 @@ static int __init imx6q_suspend_init(const struct imx6_pm_socdata *socdata)
 	 */
 	iram_paddr = iram_tlb_phys_addr + MX6_SUSPEND_IRAM_ADDR_OFFSET;
 
-	/* Make sure iram_paddr is 8 byte aligned. */
-	if ((uintptr_t)(iram_paddr) & (FNCPY_ALIGN - 1))
-		iram_paddr += FNCPY_ALIGN - iram_paddr % (FNCPY_ALIGN);
+	ocram_pool = gen_pool_get(&pdev->dev, NULL);
+	if (!ocram_pool) {
+		pr_warn("%s: ocram pool unavailable!\n", __func__);
+		ret = -ENODEV;
+		goto put_device;
+	}
 
-	/* Get the virtual address of the suspend code. */
-	suspend_ocram_base = (void *)IMX_IO_P2V(iram_paddr);
+	ocram_base = gen_pool_alloc(ocram_pool, MX6Q_SUSPEND_OCRAM_SIZE);
+	if (!ocram_base) {
+		pr_warn("%s: unable to alloc ocram!\n", __func__);
+		ret = -ENOMEM;
+		goto put_device;
+	}
+
+	ocram_pbase = gen_pool_virt_to_phys(ocram_pool, ocram_base);
+
+	suspend_ocram_base = __arm_ioremap_exec(ocram_pbase,
+		MX6Q_SUSPEND_OCRAM_SIZE, false);
 
 	memset(suspend_ocram_base, 0, sizeof(*pm_info));
 	pm_info = suspend_ocram_base;
@@ -1111,9 +1123,11 @@ static int __init imx6q_suspend_init(const struct imx6_pm_socdata *socdata)
 	pm_info->ccm_base.vbase = (void __iomem *)
 				   IMX_IO_P2V(MX6Q_CCM_BASE_ADDR);
 
-	pm_info->mmdc0_base.pbase = MX6Q_MMDC_P0_BASE_ADDR;
-	pm_info->mmdc0_base.vbase = (void __iomem *)
-				    IMX_IO_P2V(MX6Q_MMDC_P0_BASE_ADDR);
+	ret = imx6_pm_get_base(&pm_info->mmdc_base, socdata->mmdc_compat);
+	if (ret) {
+		pr_warn("%s: failed to get mmdc base %d!\n", __func__, ret);
+		goto put_device;
+	}
 
 	pm_info->mmdc1_base.pbase = MX6Q_MMDC_P1_BASE_ADDR;
 	pm_info->mmdc1_base.vbase = (void __iomem *)
@@ -1226,6 +1240,21 @@ static int __init imx6q_suspend_init(const struct imx6_pm_socdata *socdata)
 		&imx6_suspend,
 		MX6Q_SUSPEND_OCRAM_SIZE - sizeof(*pm_info));
 
+	goto put_device;
+
+pl310_cache_map_failed:
+	iounmap(pm_info->gpc_base.vbase);
+gpc_map_failed:
+	iounmap(pm_info->iomuxc_base.vbase);
+iomuxc_map_failed:
+	iounmap(pm_info->src_base.vbase);
+src_map_failed:
+	iounmap(pm_info->mmdc_base.vbase);
+put_device:
+	put_device(&pdev->dev);
+put_node:
+	of_node_put(node);
+
 	return ret;
 }
 
@@ -1273,6 +1302,11 @@ void __init imx6_pm_ccm_init(const char *ccm_compat)
 	val = readl_relaxed(ccm_base + CLPCR);
 	val &= ~BM_CLPCR_LPM;
 	writel_relaxed(val, ccm_base + CLPCR);
+
+	if (of_property_read_bool(np, "fsl,pmic-stby-poweroff"))
+		imx6_pm_stby_poweroff_probe();
+
+	of_node_put(np);
 }
 
 void __init imx6q_pm_init(void)
