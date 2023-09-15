@@ -1344,9 +1344,9 @@ static void rtw_coex_action_bt_inquiry(struct rtw_dev *rtwdev)
 				tdma_case = 10;
 			else if (coex_stat->wl_hi_pri_task1)
 				tdma_case = 6;
-			} else if (!coex_stat->bt_page) {
+			else if (!coex_stat->bt_page)
 				tdma_case = 8;
-			} else {
+			else
 				tdma_case = 9;
 		} else if (coex_stat->wl_gl_busy) {
 			if (coex_stat->bt_profile_num == 0) {

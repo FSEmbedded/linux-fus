@@ -7,6 +7,7 @@
 #define __FSL_SAI_H
 
 #include <linux/pm_qos.h>
+#include <linux/platform_data/dma-imx.h>
 #include <sound/dmaengine_pcm.h>
 
 #define FSL_SAI_FORMATS (SNDRV_PCM_FMTBIT_S16_LE |\
@@ -77,43 +78,14 @@
 #define FSL_SAI_MCTL	0x100 /* SAI MCLK Control Register */
 #define FSL_SAI_MDIV	0x104 /* SAI MCLK Divide Register */
 
-#define FSL_SAI_RCSR(offset) (0x80 + offset) /* SAI Receive Control */
-#define FSL_SAI_RCR1(offset) (0x84 + offset) /* SAI Receive Configuration 1 */
-#define FSL_SAI_RCR2(offset) (0x88 + offset) /* SAI Receive Configuration 2 */
-#define FSL_SAI_RCR3(offset) (0x8c + offset) /* SAI Receive Configuration 3 */
-#define FSL_SAI_RCR4(offset) (0x90 + offset) /* SAI Receive Configuration 4 */
-#define FSL_SAI_RCR5(offset) (0x94 + offset) /* SAI Receive Configuration 5 */
-#define FSL_SAI_RDR0    0xa0 /* SAI Receive Data */
-#define FSL_SAI_RDR1    0xa4 /* SAI Receive Data */
-#define FSL_SAI_RDR2    0xa8 /* SAI Receive Data */
-#define FSL_SAI_RDR3    0xac /* SAI Receive Data */
-#define FSL_SAI_RDR4    0xb0 /* SAI Receive Data */
-#define FSL_SAI_RDR5    0xb4 /* SAI Receive Data */
-#define FSL_SAI_RDR6    0xb8 /* SAI Receive Data */
-#define FSL_SAI_RDR7    0xbc /* SAI Receive Data */
-#define FSL_SAI_RFR0    0xc0 /* SAI Receive FIFO */
-#define FSL_SAI_RFR1    0xc4 /* SAI Receive FIFO */
-#define FSL_SAI_RFR2    0xc8 /* SAI Receive FIFO */
-#define FSL_SAI_RFR3    0xcc /* SAI Receive FIFO */
-#define FSL_SAI_RFR4    0xd0 /* SAI Receive FIFO */
-#define FSL_SAI_RFR5    0xd4 /* SAI Receive FIFO */
-#define FSL_SAI_RFR6    0xd8 /* SAI Receive FIFO */
-#define FSL_SAI_RFR7    0xdc /* SAI Receive FIFO */
-#define FSL_SAI_RMR	0xe0 /* SAI Receive Mask */
-#define FSL_SAI_RTCTL	0xf0 /* SAI Receive Timestamp Control Register */
-#define FSL_SAI_RTCTN	0xf4 /* SAI Receive Timestamp Counter Register */
-#define FSL_SAI_RBCTN	0xf8 /* SAI Receive Bit Counter Register */
-#define FSL_SAI_RTCAP	0xfc /* SAI Receive Timestamp Capture */
-
-#define FSL_SAI_MCTL	0x100 /* SAI MCLK Control Register */
-#define FSL_SAI_MDIV	0x104 /* SAI MCLK Divide Register */
-
-#define FSL_SAI_xCSR(tx, off)	(tx ? FSL_SAI_TCSR(off) : FSL_SAI_RCSR(off))
-#define FSL_SAI_xCR1(tx, off)	(tx ? FSL_SAI_TCR1(off) : FSL_SAI_RCR1(off))
-#define FSL_SAI_xCR2(tx, off)	(tx ? FSL_SAI_TCR2(off) : FSL_SAI_RCR2(off))
-#define FSL_SAI_xCR3(tx, off)	(tx ? FSL_SAI_TCR3(off) : FSL_SAI_RCR3(off))
-#define FSL_SAI_xCR4(tx, off)	(tx ? FSL_SAI_TCR4(off) : FSL_SAI_RCR4(off))
-#define FSL_SAI_xCR5(tx, off)	(tx ? FSL_SAI_TCR5(off) : FSL_SAI_RCR5(off))
+#define FSL_SAI_xCSR(tx, ofs)	(tx ? FSL_SAI_TCSR(ofs) : FSL_SAI_RCSR(ofs))
+#define FSL_SAI_xCR1(tx, ofs)	(tx ? FSL_SAI_TCR1(ofs) : FSL_SAI_RCR1(ofs))
+#define FSL_SAI_xCR2(tx, ofs)	(tx ? FSL_SAI_TCR2(ofs) : FSL_SAI_RCR2(ofs))
+#define FSL_SAI_xCR3(tx, ofs)	(tx ? FSL_SAI_TCR3(ofs) : FSL_SAI_RCR3(ofs))
+#define FSL_SAI_xCR4(tx, ofs)	(tx ? FSL_SAI_TCR4(ofs) : FSL_SAI_RCR4(ofs))
+#define FSL_SAI_xCR5(tx, ofs)	(tx ? FSL_SAI_TCR5(ofs) : FSL_SAI_RCR5(ofs))
+#define FSL_SAI_xDR(tx, ofs)	(tx ? FSL_SAI_TDR(ofs) : FSL_SAI_RDR(ofs))
+#define FSL_SAI_xFR(tx, ofs)	(tx ? FSL_SAI_TFR(ofs) : FSL_SAI_RFR(ofs))
 #define FSL_SAI_xMR(tx)		(tx ? FSL_SAI_TMR : FSL_SAI_RMR)
 
 /* SAI Transmit/Receive Control Register */
@@ -243,6 +215,7 @@
 #define FSL_SAI_CLK_MAST3	3
 
 #define FSL_SAI_MCLK_MAX	4
+#define FSL_SAI_CLK_BIT		5
 
 /* SAI data transfer numbers per DMA request */
 #define FSL_SAI_MAXBURST_TX 6
@@ -250,40 +223,15 @@
 
 #define SAI_FLAG_PMQOS   BIT(0)
 
-/* SAI timestamp and bitcounter */
-#define FSL_SAI_xTCTL_TSEN BIT(0)
-#define FSL_SAI_xTCTL_TSINC BIT(1)
-#define FSL_SAI_xTCTL_RTSC BIT(8)
-#define FSL_SAI_xTCTL_RBC BIT(9)
-
 struct fsl_sai_soc_data {
+	bool use_imx_pcm;
+	bool use_edma;
 	unsigned int fifo_depth;
+	unsigned int reg_offset;
 	unsigned int fifos;
 	unsigned int dataline;
 	unsigned int flags;
-	unsigned char reg_offset;
-	bool imx;
-	/* True for EDMA because it needs period size multiple of maxburst */
-	bool constrain_period_size;
-};
-
-struct fsl_sai_verid {
-	u32 id;
-	bool timestamp_en;
-	bool extfifo_en;
-	bool loaded;
-};
-
-struct fsl_sai_param {
-	u32 spf; /* max slots per frame */
-	u32 wpf; /* words in fifo */
-	u32 dln; /* number of datalines implemented */
-};
-
-struct fsl_sai_dl_cfg {
-	unsigned int pins;
-	unsigned int mask[2];
-	unsigned int offset[2];
+	unsigned int max_register;
 };
 
 /**
@@ -312,6 +260,13 @@ struct fsl_sai_param {
 	u32 dataline;
 };
 
+struct fsl_sai_dl_cfg {
+	unsigned int pins;
+	unsigned int mask[2];
+	unsigned int start_off[2];
+	unsigned int next_off[2];
+};
+
 struct fsl_sai {
 	struct platform_device *pdev;
 	struct regmap *regmap;
@@ -320,13 +275,13 @@ struct fsl_sai {
 	struct clk *mclk_clk[FSL_SAI_MCLK_MAX];
 	struct clk *pll8k_clk;
 	struct clk *pll11k_clk;
+	struct resource *res;
 
 	bool slave_mode[2];
 	bool is_lsb_first;
 	bool is_dsp_mode;
 	bool is_multi_lane;
 	bool synchronous[2];
-	bool is_stream_opened[2];
 	bool is_dsd;
 	bool monitor_spdif;
 	bool monitor_spdif_start;
@@ -343,7 +298,7 @@ struct fsl_sai {
 	unsigned int mclk_streams;
 	unsigned int slots;
 	unsigned int slot_width;
-	unsigned int bitclk_ratio;
+	unsigned int bclk_ratio;
 
 	const struct fsl_sai_soc_data *soc_data;
 	struct snd_soc_dai_driver cpu_dai_drv;
@@ -351,6 +306,10 @@ struct fsl_sai {
 	struct snd_dmaengine_dai_dma_data dma_params_tx;
 	struct fsl_sai_verid verid;
 	struct fsl_sai_param param;
+	struct pm_qos_request pm_qos_req;
+	struct sdma_audio_config audio_config[2];
+	struct pinctrl *pinctrl;
+	struct pinctrl_state *pins_state;
 };
 
 const struct attribute_group *fsl_sai_get_dev_attribute_group(bool monitor_spdif);

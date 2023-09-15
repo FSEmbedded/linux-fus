@@ -1061,7 +1061,6 @@ static int unmap_device_va(struct hl_ctx *ctx, u64 vaddr, bool ctx_free)
 
 	if (*vm_type == VM_TYPE_USERPTR) {
 		is_userptr = true;
-		va_range = &ctx->host_va_range;
 		userptr = hnode->ptr;
 		rc = init_phys_pg_pack_from_userptr(ctx, userptr,
 							&phys_pg_pack);

@@ -128,7 +128,7 @@ static inline void debug_active_assert(struct i915_active *ref) { }
 #endif
 
 static void
-__active_retire(struct i915_active *ref, bool lock)
+__active_retire(struct i915_active *ref)
 {
 	struct rb_root root = RB_ROOT;
 	struct active_node *it, *n;
@@ -192,7 +192,7 @@ active_work(struct work_struct *wrk)
 }
 
 static void
-active_retire(struct i915_active *ref, bool lock)
+active_retire(struct i915_active *ref)
 {
 	GEM_BUG_ON(!atomic_read(&ref->count));
 	if (atomic_add_unless(&ref->count, -1, 1))
@@ -579,7 +579,7 @@ int i915_active_acquire_for_context(struct i915_active *ref, u64 idx)
 void i915_active_release(struct i915_active *ref)
 {
 	debug_active_assert(ref);
-	active_retire(ref, true);
+	active_retire(ref);
 }
 
 static void enable_signaling(struct i915_active_fence *active)

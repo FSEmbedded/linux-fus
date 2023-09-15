@@ -13,8 +13,6 @@
 
 #define WILC_SCAN_WID_LIST_SIZE		6
 
-#define WILC_SCAN_WID_LIST_SIZE		6
-
 struct wilc_rcvd_mac_info {
 	u8 status;
 };

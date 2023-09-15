@@ -8,22 +8,6 @@
 #define LINK_TRAINING_TIMEOUT_MS	500
 #define LINK_TRAINING_RETRY_MS		20
 
-static inline u32 get_unaligned_be24(const void *p)
-{
-       const u8 *_p = p;
-
-       return _p[0] << 16 | _p[1] << 8 | _p[2];
-}
-
-static inline void put_unaligned_be24(u32 val, void *p)
-{
-       u8 *_p = p;
-
-       _p[0] = val >> 16;
-       _p[1] = val >> 8;
-       _p[2] = val;
-}
-
 int cdns_mhdp_dpcd_read(struct cdns_mhdp_device *mhdp,
 			u32 addr, u8 *data, u16 len)
 {
@@ -241,7 +225,7 @@ err_training_start:
 
 static int cdns_mhdp_get_training_status(struct cdns_mhdp_device *mhdp)
 {
-	u8 status[10];
+	u8 status[13];
 	int ret;
 
 	ret = cdns_mhdp_mailbox_send(mhdp, MB_MODULE_ID_DP_TX,

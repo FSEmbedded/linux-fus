@@ -323,7 +323,7 @@ static int mxs_dcp_aes_block_crypt(struct crypto_async_request *arq)
 	int init = 0;
 	bool limit_hit = false;
 
-	if (!req->nbytes)
+	if (!req->cryptlen)
 		return 0;
 
 	actx->fill = 0;
@@ -340,7 +340,7 @@ static int mxs_dcp_aes_block_crypt(struct crypto_async_request *arq)
 		memset(key + AES_KEYSIZE_128, 0, AES_KEYSIZE_128);
 	}
 
-	for_each_sg(req->src, src, sg_nents(src), i) {
+	for_each_sg(req->src, src, sg_nents(req->src), i) {
 		src_buf = sg_virt(src);
 		len = sg_dma_len(src);
 		tlen += len;
@@ -453,8 +453,8 @@ static int mxs_dcp_block_fallback(struct skcipher_request *req, int enc)
 				   req->cryptlen, req->iv);
 
 #ifdef CONFIG_PM_SLEEP
-	set_freezable();
-	try_to_freeze();
+set_freezable();
+try_to_freeze();
 #endif
 	if (enc)
 		ret = crypto_skcipher_encrypt(&rctx->fallback_req);

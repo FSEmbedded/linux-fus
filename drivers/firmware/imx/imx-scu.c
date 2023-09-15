@@ -140,62 +140,22 @@ static void imx_scu_rx_callback(struct mbox_client *c, void *msg)
 		return;
 	}
 
-	if (!sc_ipc->msg) {
-		dev_warn(sc_ipc->dev, "unexpected rx idx %d 0x%08x, ignore!\n",
-				sc_chan->idx, *data);
-		return;
-	}
-
-	if (sc_ipc->fast_ipc) {
-		hdr = msg;
-		sc_ipc->rx_size = hdr->size;
-		sc_ipc->msg[0] = *data++;
-
-		for (i = 1; i < sc_ipc->rx_size; i++)
-			sc_ipc->msg[i] = *data++;
-
-		complete(&sc_ipc->done);
-
-		return;
-	}
-
-	if (sc_chan->rx_pos == 0) {
+	if (sc_chan->idx == 0) {
 		hdr = msg;
 		sc_ipc->rx_size = hdr->size;
 		dev_dbg(sc_ipc->dev, "msg rx size %u\n", sc_ipc->rx_size);
+		if (sc_ipc->rx_size > 4)
+			dev_warn(sc_ipc->dev, "RPC does not support receiving over 4 words: %u\n",
+				 sc_ipc->rx_size);
 	}
 
-	sc_ipc->msg[sc_chan->rx_pos] = *data;
-	sc_chan->rx_pos += 4;
+	sc_ipc->msg[sc_chan->idx] = *data;
 	sc_ipc->count++;
 
 	dev_dbg(sc_ipc->dev, "mu %u msg %u 0x%x\n", sc_chan->idx,
 		sc_ipc->count, *data);
 
-	if (sc_ipc->count == sc_ipc->rx_size)
-		complete(&sc_ipc->done);
-}
-
-static void imx_scu_big_rx_callback(struct mbox_client *c, void *msg)
-{
-	struct imx_sc_chan *sc_chan = container_of(c, struct imx_sc_chan, cl);
-	struct imx_sc_ipc *sc_ipc = sc_chan->sc_ipc;
-	struct imx_sc_rpc_msg *hdr;
-	u32 *data = msg;
-
-	if (sc_ipc->count == 0) {
-		hdr = msg;
-		sc_ipc->rx_size = hdr->size;
-		dev_dbg(sc_ipc->dev, "msg rx size %u\n", sc_ipc->rx_size);
-	}
-
-	sc_ipc->msg[sc_ipc->count] = *data;
-	sc_ipc->count++;
-
-	dev_dbg(sc_ipc->dev, "mu %u msg %u 0x%x\n", sc_chan->idx,
-		sc_ipc->count, *data);
-
-	if (sc_ipc->count == sc_ipc->rx_size)
+	if ((sc_ipc->rx_size != 0) && (sc_ipc->count == sc_ipc->rx_size))
 		complete(&sc_ipc->done);
 }
 
@@ -250,92 +210,18 @@ int imx_scu_call_rpc(struct imx_sc_ipc *sc_ipc, void *msg, bool have_resp)
 	struct imx_sc_rpc_msg *hdr;
 	struct arm_smccc_res res;
 	int ret;
-	int i;
 
 	if (WARN_ON(!sc_ipc || !msg))
 		return -EINVAL;
 
 	mutex_lock(&sc_ipc->lock);
+	reinit_completion(&sc_ipc->done);
 
 	if (have_resp) {
 		sc_ipc->msg = msg;
 		saved_svc = ((struct imx_sc_rpc_msg *)msg)->svc;
 		saved_func = ((struct imx_sc_rpc_msg *)msg)->func;
 	}
-	sc_ipc->count = 0;
-	ret = imx_scu_ipc_write(sc_ipc, msg);
-	if (ret < 0) {
-		dev_err(sc_ipc->dev, "RPC send msg failed: %d\n", ret);
-		goto out;
-	}
-
-	reinit_completion(&sc_ipc->done);
-
-	if (have_resp)
-		sc_ipc->msg = msg;
-	sc_ipc->count = 0;
-	sc_ipc->rx_size = 0;
-
-	if (xen_initial_domain()) {
-		arm_smccc_hvc(FSL_HVC_SC, (uint64_t)msg, !have_resp, 0, 0, 0,
-			      0, 0, &res);
-		if (res.a0)
-			printk("Error FSL_HVC_SC %ld\n", res.a0);
-
-		ret = res.a0;
-
-	} else {
-		ret = imx_scu_ipc_write(sc_ipc, msg);
-		if (ret < 0) {
-			dev_err(sc_ipc->dev, "RPC send msg failed: %d\n", ret);
-			goto out;
-		}
-
-		/* response status is stored in hdr->func field */
-		hdr = msg;
-		ret = hdr->func;
-		/*
-		 * Some special SCU firmware APIs do NOT have return value
-		 * in hdr->func, but they do have response data, those special
-		 * APIs are defined as void function in SCU firmware, so they
-		 * should be treated as return success always.
-		 */
-		if ((saved_svc == IMX_SC_RPC_SVC_MISC) &&
-			(saved_func == IMX_SC_MISC_FUNC_UNIQUE_ID ||
-			 saved_func == IMX_SC_MISC_FUNC_GET_BUTTON_STATUS))
-			ret = 0;
-	}
-
-out:
-	sc_ipc->msg = NULL;
-	mutex_unlock(&sc_ipc->lock);
-
-	dev_dbg(sc_ipc->dev, "RPC SVC done\n");
-
-	return imx_sc_to_linux_errno(ret);
-}
-EXPORT_SYMBOL(imx_scu_call_rpc);
-
-int imx_scu_call_big_rpc(struct imx_sc_ipc *sc_ipc, void *msg, bool have_resp)
-{
-	struct imx_sc_rpc_msg *hdr;
-	struct arm_smccc_res res;
-	int ret;
-	int i;
-
-	if (WARN_ON(!sc_ipc || !msg))
-		return -EINVAL;
-
-	mutex_lock(&sc_ipc->lock);
-	for (i = 4; i < 8; i++) {
-		struct mbox_client *cl = &sc_ipc->chans[i].cl;
-
-		cl->rx_callback = imx_scu_big_rx_callback;
-	}
-
-	reinit_completion(&sc_ipc->done);
-
-	sc_ipc->msg = msg;
 	sc_ipc->count = 0;
 	sc_ipc->rx_size = 0;
 	if (xen_initial_domain()) {
@@ -364,22 +250,29 @@ int imx_scu_call_big_rpc(struct imx_sc_ipc *sc_ipc, void *msg, bool have_resp)
 			/* response status is stored in hdr->func field */
 			hdr = msg;
 			ret = hdr->func;
+
+			/*
+			 * Some special SCU firmware APIs do NOT have return value
+			 * in hdr->func, but they do have response data, those special
+			 * APIs are defined as void function in SCU firmware, so they
+			 * should be treated as return success always.
+			 */
+			if ((saved_svc == IMX_SC_RPC_SVC_MISC) &&
+				(saved_func == IMX_SC_MISC_FUNC_UNIQUE_ID ||
+				 saved_func == IMX_SC_MISC_FUNC_GET_BUTTON_STATUS))
+				ret = 0;
 		}
 	}
 
 out:
-	for (i = 4; i < 8; i++) {
-		struct mbox_client *cl = &sc_ipc->chans[i].cl;
-
-		cl->rx_callback = imx_scu_rx_callback;
-	}
+	sc_ipc->msg = NULL;
 	mutex_unlock(&sc_ipc->lock);
 
 	dev_dbg(sc_ipc->dev, "RPC SVC done\n");
 
 	return imx_sc_to_linux_errno(ret);
 }
-EXPORT_SYMBOL(imx_scu_call_big_rpc);
+EXPORT_SYMBOL(imx_scu_call_rpc);
 
 static int imx_scu_probe(struct platform_device *pdev)
 {

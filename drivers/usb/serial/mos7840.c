@@ -108,9 +108,6 @@
 #define BANDB_DEVICE_ID_USOPTL4_4        0xAC44
 #define BANDB_DEVICE_ID_USOPTL4_4P       0xBC03
 
-#define USB_VENDOR_ID_MOXA		0x110a
-#define MOXA_DEVICE_ID_2210		0x2210
-
 /* Interrupt Routine Defines    */
 
 #define SERIAL_IIR_RLS      0x06
@@ -1500,11 +1497,6 @@ static int mos7840_probe(struct usb_serial *serial,
 	/* Skip device-type detection if we already have device flags. */
 	if (device_flags)
 		goto out;
-
-	if (vid == USB_VENDOR_ID_MOXA && product == MOXA_DEVICE_ID_2210) {
-		device_type = MOSCHIP_DEVICE_ID_7820;
-		goto out;
-	}
 
 	buf = kzalloc(VENDOR_READ_LENGTH, GFP_KERNEL);
 	if (!buf)

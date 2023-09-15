@@ -643,25 +643,6 @@ void kobject_del(struct kobject *kobj)
 	__kobject_del(kobj);
 	kobject_put(parent);
 }
-
-/**
- * kobject_del() - Unlink kobject from hierarchy.
- * @kobj: object.
- *
- * This is the function that should be called to delete an object
- * successfully added via kobject_add().
- */
-void kobject_del(struct kobject *kobj)
-{
-	struct kobject *parent;
-
-	if (!kobj)
-		return;
-
-	parent = kobj->parent;
-	__kobject_del(kobj);
-	kobject_put(parent);
-}
 EXPORT_SYMBOL(kobject_del);
 
 /**

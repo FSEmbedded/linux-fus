@@ -79,12 +79,6 @@ struct virtio_fs_req_work {
 	struct work_struct done_work;
 };
 
-struct virtio_fs_req_work {
-	struct fuse_req *req;
-	struct virtio_fs_vq *fsvq;
-	struct work_struct done_work;
-};
-
 static int virtio_fs_enqueue_req(struct virtio_fs_vq *fsvq,
 				 struct fuse_req *req, bool in_flight);
 

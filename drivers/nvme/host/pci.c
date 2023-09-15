@@ -1451,23 +1451,6 @@ static void nvme_reap_pending_cqes(struct nvme_dev *dev)
 	}
 }
 
-/*
- * Called only on a device that has been disabled and after all other threads
- * that can check this device's completion queues have synced. This is the
- * last chance for the driver to see a natural completion before
- * nvme_cancel_request() terminates all incomplete requests.
- */
-static void nvme_reap_pending_cqes(struct nvme_dev *dev)
-{
-	u16 start, end;
-	int i;
-
-	for (i = dev->ctrl.queue_count - 1; i > 0; i--) {
-		nvme_process_cq(&dev->queues[i], &start, &end, -1);
-		nvme_complete_cqes(&dev->queues[i], start, end);
-	}
-}
-
 static int nvme_cmb_qdepth(struct nvme_dev *dev, int nr_io_queues,
 				int entry_size)
 {

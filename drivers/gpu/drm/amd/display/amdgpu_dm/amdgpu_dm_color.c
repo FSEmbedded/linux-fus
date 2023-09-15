@@ -215,8 +215,6 @@ static int __set_legacy_tf(struct dc_transfer_func *func,
 
 	dc_gamma_release(&gamma);
 
-	dc_gamma_release(&gamma);
-
 	return res ? 0 : -ENOMEM;
 }
 

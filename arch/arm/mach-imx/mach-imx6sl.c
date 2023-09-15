@@ -53,7 +53,6 @@ static void __init imx6sl_init_machine(void)
 {
 	of_platform_default_populate(NULL, NULL, NULL);
 
-	imx_anatop_init();
 	if (cpu_is_imx6sl())
 		imx6sl_fec_init();
 	imx_anatop_init();

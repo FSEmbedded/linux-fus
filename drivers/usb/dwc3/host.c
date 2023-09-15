@@ -87,10 +87,10 @@ int dwc3_host_init(struct dwc3 *dwc)
 {
 	struct property_entry	props[4];
 	struct platform_device	*xhci;
+	struct dwc3_platform_data *dwc3_pdata;
 	int			ret, irq;
 	struct resource		*res;
 	struct platform_device	*dwc3_pdev = to_platform_device(dwc->dev);
-	struct dwc3_platform_data *dwc3_pdata;
 	int			prop_idx = 0;
 
 	/*

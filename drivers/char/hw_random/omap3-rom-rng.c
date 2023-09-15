@@ -165,12 +165,6 @@ static const struct dev_pm_ops omap_rom_rng_pm_ops = {
 				omap_rom_rng_runtime_resume)
 };
 
-static const struct of_device_id omap_rom_rng_match[] = {
-	{ .compatible = "nokia,n900-rom-rng", .data = omap3_rom_rng_read, },
-	{ /* sentinel */ },
-};
-MODULE_DEVICE_TABLE(of, omap_rom_rng_match);
-
 static struct platform_driver omap3_rom_rng_driver = {
 	.driver = {
 		.name		= "omap3-rom-rng",

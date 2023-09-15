@@ -844,10 +844,6 @@ static int fuse_do_readpage(struct file *file, struct page *page)
 	if (pos + (desc.length - 1) == LLONG_MAX)
 		desc.length--;
 
-	/* Don't overflow end offset */
-	if (pos + (desc.length - 1) == LLONG_MAX)
-		desc.length--;
-
 	fuse_read_args_fill(&ia, file, pos, desc.length, FUSE_READ);
 	res = fuse_simple_request(fm, &ia.ap.args);
 	if (res < 0)

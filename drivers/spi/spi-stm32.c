@@ -500,9 +500,6 @@ static u32 stm32h7_spi_prepare_fthlv(struct stm32_spi *spi, u32 xfer_len)
 	if (!fthlv)
 		fthlv = 1;
 
-	if (!fthlv)
-		fthlv = 1;
-
 	return fthlv;
 }
 
@@ -2007,8 +2004,6 @@ static int stm32_spi_remove(struct platform_device *pdev)
 
 	clk_disable_unprepare(spi->clk);
 
-
-	pinctrl_pm_select_sleep_state(&pdev->dev);
 
 	pinctrl_pm_select_sleep_state(&pdev->dev);
 

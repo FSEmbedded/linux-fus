@@ -41,6 +41,34 @@
 			compatible = "arm,cortex-a7";
 			device_type = "cpu";
 			reg = <0xf00>;
+			clocks = <&smc1 IMX7ULP_CLK_ARM>,
+				 <&scg1 IMX7ULP_CLK_CORE>,
+				 <&scg1 IMX7ULP_CLK_SYS_SEL>,
+				 <&scg1 IMX7ULP_CLK_HSRUN_CORE>,
+				 <&scg1 IMX7ULP_CLK_HSRUN_SYS_SEL>,
+				 <&scg1 IMX7ULP_CLK_FIRC>;
+			clock-names = "arm", "core", "scs_sel",
+				      "hsrun_core", "hsrun_scs_sel",
+				      "firc";
+			operating-points-v2 = <&cpu0_opp_table>;
+		};
+	};
+
+	cpu0_opp_table: opp-table {
+		compatible = "operating-points-v2";
+		opp-shared;
+
+		opp-500210000 {
+			opp-hz = /bits/ 64 <500210000>;
+			opp-microvolt = <1025000>;
+			clock-latency-ns = <150000>;
+			opp-suspend;
+		};
+
+		opp-720000000 {
+			opp-hz = /bits/ 64 <720000000>;
+			opp-microvolt = <1125000>;
+			clock-latency-ns = <150000>;
 		};
 	};
 
@@ -100,6 +128,16 @@
 		clock-frequency = <480000000>;
 		clock-output-names = "upll";
 		#clock-cells = <0>;
+	};
+
+	sram: sram@20000000 {
+		compatible = "fsl,lpm-sram";
+		reg = <0x1fffc000 0x4000>;
+	};
+
+	caam_sm: caam-sm@26000000 {
+		 compatible = "fsl,imx6q-caam-sm";
+		 reg = <0x26000000 0x8000>;
 	};
 
 	ahbbridge0: bus@40000000 {
@@ -226,6 +264,8 @@
 			assigned-clocks = <&pcc2 IMX7ULP_CLK_LPI2C4>;
 			assigned-clock-parents = <&scg1 IMX7ULP_CLK_FIRC_BUS_CLK>;
 			assigned-clock-rates = <48000000>;
+			dmas = <&edma1 0 10>, <&edma1 0 9>;
+			dma-names = "tx","rx";
 			status = "disabled";
 		};
 
@@ -239,6 +279,8 @@
 			assigned-clocks = <&pcc2 IMX7ULP_CLK_LPI2C5>;
 			assigned-clock-parents = <&scg1 IMX7ULP_CLK_FIRC_BUS_CLK>;
 			assigned-clock-rates = <48000000>;
+			dmas = <&edma1 0 12>, <&edma1 0 11>;
+			dma-names = "tx","rx";
 		};
 
 		lpuart4: serial@402d0000 {
@@ -359,6 +401,21 @@
 			clocks = <&pcc2 IMX7ULP_CLK_WDG1>;
 			assigned-clocks = <&pcc2 IMX7ULP_CLK_WDG1>;
 			assigned-clocks-parents = <&scg1 IMX7ULP_CLK_FIRC_BUS_CLK>;
+			/*
+			 * As the 1KHz LPO clock rate is not trimed,the actually clock
+			 * is about 667Hz, so the init timeout 60s should set 40*1000
+			 * in the TOVAL register.
+			 */
+			timeout-sec = <40>;
+		};
+
+		wdog2: wdog@40430000 {
+			compatible = "fsl,imx7ulp-wdt";
+			reg = <0x40430000 0x10000>;
+			interrupts = <GIC_SPI 56 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&pcc2 IMX7ULP_CLK_WDG2>;
+			assigned-clocks = <&pcc2 IMX7ULP_CLK_WDG2>;
+			assigned-clocks-parents = <&scg1 IMX7ULP_CLK_FIRC_BUS_CLK>;
 			timeout-sec = <40>;
 		};
 
@@ -438,6 +495,8 @@
 			assigned-clocks = <&pcc3 IMX7ULP_CLK_LPI2C6>;
 			assigned-clock-parents = <&scg1 IMX7ULP_CLK_FIRC_BUS_CLK>;
 			assigned-clock-rates = <48000000>;
+			dmas = <&edma1 0 14>, <&edma1 0 13>;
+			dma-names = "tx","rx";
 			status = "disabled";
 		};
 
@@ -451,6 +510,8 @@
 			assigned-clocks = <&pcc3 IMX7ULP_CLK_LPI2C7>;
 			assigned-clock-parents = <&scg1 IMX7ULP_CLK_FIRC_BUS_CLK>;
 			assigned-clock-rates = <48000000>;
+			dmas = <&edma1 0 16>, <&edma1 0 15>;
+			dma-names = "tx","rx";
 			status = "disabled";
 		};
 
@@ -488,6 +549,8 @@
 			interrupts = <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&pcc3 IMX7ULP_CLK_DSI>;
 			clock-names = "mipi_dsi_clk";
+			assigned-clocks = <&pcc3 IMX7ULP_CLK_DSI>;
+			assigned-clock-parents = <&scg1 IMX7ULP_CLK_NIC1_DIV>;
 			data-lanes-num = <2>;
 			phy-ref-clkfreq = <24000000>;
 			max-data-rate  = <800000000>;
@@ -503,6 +566,8 @@
 				 <&pcc3 IMX7ULP_CLK_LCDIF>,
 				 <&scg1 IMX7ULP_CLK_DUMMY>;
 			clock-names = "axi", "pix", "disp_axi";
+			assigned-clocks = <&pcc3 IMX7ULP_CLK_LCDIF>;
+			assigned-clock-parents = <&scg1 IMX7ULP_CLK_NIC1_DIV>;
 			status = "disabled";
 		};
 
@@ -572,6 +637,28 @@
 			clock-names = "gpio", "port";
 			gpio-ranges = <&iomuxc1 0 96 20>;
 		};
+
+		gpu: gpu@41800000 {
+			compatible = "fsl,imx7ulp-gpu", "fsl,imx6q-gpu";
+			reg = <0x41800000 0x80000>, <0x41880000 0x80000>,
+				<0x60000000 0x40000000>, <0x0 0x4000000>;
+			reg-names = "iobase_3d", "iobase_2d",
+				"phys_baseaddr", "contiguous_mem";
+			interrupts = <GIC_SPI 44 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 52 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "irq_3d", "irq_2d";
+			clocks = <&pcc3 IMX7ULP_CLK_GPU3D>,
+				<&scg1 IMX7ULP_CLK_DUMMY>,
+				<&scg1 IMX7ULP_CLK_GPU_DIV>,
+				<&pcc3 IMX7ULP_CLK_GPU2D>,
+				<&scg1 IMX7ULP_CLK_NIC1_DIV>;
+			clock-names = "gpu3d_clk", "gpu3d_shader_clk",
+				"gpu3d_axi_clk", "gpu2d_clk",
+				"gpu2d_axi_clk";
+			assigned-clocks =  <&scg1 IMX7ULP_CLK_APLL_PFD2>, <&pcc3 IMX7ULP_CLK_GPU3D>, <&pcc3 IMX7ULP_CLK_GPU2D>;
+			assigned-clock-parents = <0>, <&scg1 IMX7ULP_CLK_APLL_PFD2>, <&scg1 IMX7ULP_CLK_APLL_PFD2>;
+			assigned-clock-rates = <400000000>, <400000000>, <400000000>;
+		};
 	};
 
 	m4aips1: bus@41080000 {
@@ -596,20 +683,6 @@
 			reg = <0x410a6000 0x4000>;
 			clocks = <&scg1 IMX7ULP_CLK_DUMMY>;
 		};
-	};
-
-	rpmsg: rpmsg{
-		compatible = "fsl,imx7ulp-rpmsg";
-		/* up to now, the following channels are used in imx rpmsg
-		 * - tx1/rx1: messages channel.
-		 * - general interrupt1: remote proc finish re-init rpmsg stack
-		 *   when A core is partition reset.
-		 */
-		mbox-names = "tx", "rx", "rxdb";
-		mboxes = <&mu 0 1
-			  &mu 1 1
-			  &mu 3 1>;
-		status = "disabled";
 	};
 
         heartbeat-rpmsg {

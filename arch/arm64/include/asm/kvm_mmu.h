@@ -124,7 +124,7 @@ int kvm_init_stage2_mmu(struct kvm *kvm, struct kvm_s2_mmu *mmu);
 void kvm_free_stage2_pgd(struct kvm_s2_mmu *mmu);
 int kvm_phys_addr_ioremap(struct kvm *kvm, phys_addr_t guest_ipa,
 			  phys_addr_t pa, unsigned long size, bool writable,
-			  pgprot_t prot);
+			  enum kvm_pgtable_prot prot_device);
 
 int kvm_handle_guest_abort(struct kvm_vcpu *vcpu);
 

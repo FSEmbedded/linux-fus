@@ -78,6 +78,7 @@ struct tja11xx_priv {
 	struct device	*hwmon_dev;
 	struct phy_device *phydev;
 	struct work_struct phy_register_work;
+	u32 quirks;
 };
 
 struct tja11xx_phy_stats {
@@ -286,6 +287,17 @@ static int tja11xx_config_init(struct phy_device *phydev)
 			return ret;
 		break;
 	case PHY_ID_TJA1101:
+		reg_mask = MII_CFG1_MII_MODE;
+		if (phydev->interface == PHY_INTERFACE_MODE_RMII) {
+			if (priv->quirks & TJA110X_REFCLK_IN)
+				reg_val = MII_CFG1_MODE_REFCLK_IN;
+			else
+				reg_val = MII_CFG1_MODE_REFCLK_OUT;
+		}
+		ret = phy_modify(phydev, MII_CFG1, reg_mask, reg_val);
+		if (ret)
+			return ret;
+		/* Fall Through */
 	case PHY_ID_TJA1102:
 		ret = phy_set_bits(phydev, MII_COMMCFG, MII_COMMCFG_AUTO_OP);
 		if (ret)
@@ -450,6 +462,122 @@ static const struct hwmon_ops tja11xx_hwmon_hwmon_ops = {
 static const struct hwmon_chip_info tja11xx_hwmon_chip_info = {
 	.ops		= &tja11xx_hwmon_hwmon_ops,
 	.info		= tja11xx_hwmon_info,
+};
+
+/* Helper function, configures phy as master or slave
+ * @param  phydev    the phy to be configured
+ * @param  setmaster ==0: set to slave
+ *                   !=0: set to master
+ * @return           0 on success, error code on failure
+ */
+static int set_master_cfg(struct phy_device *phydev, int setmaster)
+{
+	int err;
+
+	/* disable link control prior to master/slave cfg */
+	tja11xx_disable_link_control(phydev);
+
+	err = phy_modify(phydev, MII_CFG1, MII_CFG1_MASTER_SLAVE,
+			 setmaster ? MII_CFG1_MASTER_SLAVE : 0);
+	if (err < 0)
+		goto phy_configure_error;
+
+	/* enable link control after master/slave cfg was set */
+	tja11xx_enable_link_control(phydev);
+
+	return 0;
+
+/* error handling */
+phy_configure_error:
+	dev_err(&phydev->mdio.dev, "phy r/w error\n");
+	return err;
+}
+
+/* Helper function, reads master/slave configuration of phy
+ * @param  phydev    the phy to be read
+ *
+ * @return           ==0: is slave
+ *                   !=0: is master
+ */
+static int get_master_cfg(struct phy_device *phydev)
+{
+	int reg_val;
+
+	/* read the current configuration */
+	reg_val = phy_read(phydev, MII_CFG1);
+	if (reg_val < 0)
+		goto phy_read_error;
+
+	return reg_val & MII_CFG1_MASTER_SLAVE;
+
+/* error handling */
+phy_read_error:
+	dev_err(&phydev->mdio.dev, "read error\n");
+	return reg_val;
+}
+
+/* This function handles read accesses to the node 'master_cfg' in
+ * sysfs.
+ * Depending on current configuration of the phy, the node reads
+ * 'master' or 'slave'
+ */
+static ssize_t master_cfg_show(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	int is_master;
+	struct phy_device *phydev = to_phy_device(dev);
+
+	is_master = get_master_cfg(phydev);
+
+	/* write result into the buffer */
+	return scnprintf(buf, PAGE_SIZE, "%s\n",
+			 is_master ? "master" : "slave");
+}
+
+/* This function handles write accesses to the node 'master_cfg' in sysfs.
+ * Depending on the value written to it, the phy is configured as
+ * master or slave
+ */
+static ssize_t master_cfg_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	int err;
+	int setmaster;
+	struct phy_device *phydev = to_phy_device(dev);
+
+	/* parse the buffer */
+	err = kstrtoint(buf, 10, &setmaster);
+	if (err < 0)
+		goto phy_parse_error;
+
+	/* write configuration to the phy */
+	err = set_master_cfg(phydev, setmaster);
+	if (err < 0)
+		goto phy_cfg_error;
+
+	return count;
+
+/* error handling */
+phy_parse_error:
+	dev_err(&phydev->mdio.dev, "parse failed\n");
+	return err;
+
+phy_cfg_error:
+	dev_err(&phydev->mdio.dev, "phy cfg error\n");
+	return err;
+}
+
+static DEVICE_ATTR_RW(master_cfg);
+
+static struct attribute *nxp_sysfs_entries[] = {
+	&dev_attr_master_cfg.attr,
+	NULL
+};
+
+static struct attribute_group nxp_attribute_group = {
+	.name = "configuration",
+	.attrs = nxp_sysfs_entries,
 };
 
 static int tja11xx_hwmon_register(struct phy_device *phydev,

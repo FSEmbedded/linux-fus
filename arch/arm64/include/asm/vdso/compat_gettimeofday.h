@@ -11,7 +11,6 @@
 #include <asm/unistd.h>
 #include <asm/errno.h>
 
-#include <asm/vdso/clocksource.h>
 #include <asm/vdso/compat_barrier.h>
 
 #define VDSO_HAS_CLOCK_GETRES		1

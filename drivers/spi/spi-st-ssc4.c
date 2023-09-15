@@ -383,7 +383,6 @@ static int spi_st_probe(struct platform_device *pdev)
 rpm_disable:
 	pm_runtime_disable(&pdev->dev);
 clk_disable:
-	pm_runtime_disable(&pdev->dev);
 	clk_disable_unprepare(spi_st->clk);
 put_master:
 	spi_master_put(master);

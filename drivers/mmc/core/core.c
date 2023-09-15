@@ -52,8 +52,6 @@
 
 static const unsigned freqs[] = { 400000, 300000, 200000, 100000 };
 
-static int __mmc_max_reserved_idx = -1;
-
 /*
  * Enabling software CRCs on the data blocks can be a significant (30%)
  * performance cost, and for other reasons may not always be desired.
@@ -2363,8 +2361,6 @@ void mmc_stop_host(struct mmc_host *host)
 static int __init mmc_init(void)
 {
 	int ret;
-
-	mmc_of_reserve_idx();
 
 	ret = mmc_register_bus();
 	if (ret)

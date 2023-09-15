@@ -19,11 +19,8 @@
 #include <linux/pm_qos.h>
 #include <linux/ptp_clock_kernel.h>
 #include <linux/timecounter.h>
-
-#ifdef CONFIG_IMX_SCU_SOC
 #include <dt-bindings/firmware/imx/rsrc.h>
 #include <linux/firmware/imx/sci.h>
-#endif
 
 #if defined(CONFIG_M523x) || defined(CONFIG_M527x) || defined(CONFIG_M528x) || \
     defined(CONFIG_M520x) || defined(CONFIG_M532x) || defined(CONFIG_ARM) || \
@@ -467,31 +464,26 @@ struct bufdesc_ex {
  * those FIFO receive registers are resolved in other platforms.
  */
 #define FEC_QUIRK_HAS_FRREG		(1 << 16)
-/* i.MX8MQ ENET IP version add new feature to support IEEE 802.3az EEE
- * standard. For the transmission, MAC supply two user registers to set
- * Sleep (TS) and Wake (TW) time.
- */
-#define FEC_QUIRK_HAS_EEE		(1 << 17)
-/* i.MX8QM ENET IP version add new feture to generate delayed TXC/RXC
- * as an alternative option to make sure it works well with various PHYs.
- * For the implementation of delayed clock, ENET takes synchronized 250MHz
- * clocks to generate 2ns delay.
- */
-#define FEC_QUIRK_DELAYED_CLKS_SUPPORT	(1 << 18)
-/* request pmqos during low power */
-#define FEC_QUIRK_HAS_PMQOS		(1 << 19)
-
-struct fec_enet_stop_mode {
-	struct regmap *gpr;
-	u8 req_gpr;
-	u8 req_bit;
-};
 
 /* Some FEC hardware blocks need the MMFR cleared at setup time to avoid
  * the generation of an MII event. This must be avoided in the older
  * FEC blocks where it will stop MII events being generated.
  */
 #define FEC_QUIRK_CLEAR_SETUP_MII	(1 << 17)
+
+/* i.MX8MQ ENET IP version add new feature to support IEEE 802.3az EEE
+ * standard. For the transmission, MAC supply two user registers to set
+ * Sleep (TS) and Wake (TW) time.
+ */
+#define FEC_QUIRK_HAS_EEE		(1 << 18)
+/* i.MX8QM ENET IP version add new feture to generate delayed TXC/RXC
+ * as an alternative option to make sure it works well with various PHYs.
+ * For the implementation of delayed clock, ENET takes synchronized 250MHz
+ * clocks to generate 2ns delay.
+ */
+#define FEC_QUIRK_DELAYED_CLKS_SUPPORT	(1 << 19)
+/* request pmqos during low power */
+#define FEC_QUIRK_HAS_PMQOS		(1 << 20)
 
 struct bufdesc_prop {
 	int qid;
@@ -605,6 +597,7 @@ struct fec_enet_private {
 	struct delayed_work time_keep;
 	struct regulator *reg_phy;
 	struct fec_stop_mode_gpr stop_gpr;
+	struct pm_qos_request pm_qos_req;
 
 	unsigned int tx_align;
 	unsigned int rx_align;
@@ -630,6 +623,8 @@ struct fec_enet_private {
 	unsigned int reload_period;
 	int pps_enable;
 	unsigned int next_counter;
+
+	struct imx_sc_ipc *ipc_handle;
 
 	u64 ethtool_stats[];
 };

@@ -677,13 +677,6 @@ static int hns_roce_v2_post_send(struct ib_qp *ibqp,
 		owner_bit =
 		       ~(((qp->sq.head + nreq) >> ilog2(qp->sq.wqe_cnt)) & 0x1);
 
-		for (i = 0; i < wr->num_sge; i++) {
-			if (likely(wr->sg_list[i].length)) {
-				tmp_len += wr->sg_list[i].length;
-				valid_num_sge++;
-			}
-		}
-
 		/* Corresponding to the QP type, wqe process separately */
 		if (ibqp->qp_type == IB_QPT_GSI)
 			ret = set_ud_wqe(qp, wr, wqe, &sge_idx, owner_bit);

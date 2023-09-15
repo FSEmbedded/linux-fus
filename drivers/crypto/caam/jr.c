@@ -27,21 +27,50 @@ static struct jr_driver_data driver_data;
 static DEFINE_MUTEX(algs_lock);
 static unsigned int active_devs;
 
-static void register_algs(struct caam_drv_private_jr *jrpriv,
-			  struct device *dev)
+static void init_misc_func(struct caam_drv_private_jr *jrpriv,
+			   struct device *dev)
+{
+	mutex_lock(&algs_lock);
+
+	if (active_devs != 1)
+		goto algs_unlock;
+
+	jrpriv->hwrng = !caam_rng_init(dev);
+	caam_sm_startup(dev);
+	caam_keygen_init();
+
+algs_unlock:
+	mutex_unlock(&algs_lock);
+}
+
+static void exit_misc_func(struct caam_drv_private_jr *jrpriv,
+			   struct device *dev)
+{
+	mutex_lock(&algs_lock);
+
+	if (active_devs != 1)
+		goto algs_unlock;
+
+	caam_keygen_exit();
+	caam_sm_shutdown(dev);
+	if (jrpriv->hwrng)
+		caam_rng_exit(dev);
+
+algs_unlock:
+	mutex_unlock(&algs_lock);
+}
+
+static void register_algs(struct device *dev)
 {
 	mutex_lock(&algs_lock);
 
 	if (++active_devs != 1)
 		goto algs_unlock;
 
-	caam_sm_startup(dev);
 	caam_algapi_init(dev);
 	caam_algapi_hash_init(dev);
 	caam_pkc_init(dev);
-	jrpriv->hwrng = !caam_rng_init(dev);
 	caam_qi_algapi_init(dev);
-	caam_keygen_init();
 
 algs_unlock:
 	mutex_unlock(&algs_lock);
@@ -54,17 +83,23 @@ static void unregister_algs(struct device *dev)
 	if (--active_devs != 0)
 		goto algs_unlock;
 
-	caam_keygen_exit();
 	caam_qi_algapi_exit();
 
 	caam_pkc_exit();
 	caam_algapi_hash_exit();
 	caam_algapi_exit();
-	caam_sm_shutdown(dev);
 
 algs_unlock:
 	mutex_unlock(&algs_lock);
 }
+
+static int jr_driver_probed;
+
+int caam_jr_driver_probed(void)
+{
+	return jr_driver_probed;
+}
+EXPORT_SYMBOL(caam_jr_driver_probed);
 
 static void caam_jr_crypto_engine_exit(void *data)
 {
@@ -75,7 +110,12 @@ static void caam_jr_crypto_engine_exit(void *data)
 	crypto_engine_exit(jrpriv->engine);
 }
 
-static int caam_reset_hw_jr(struct device *dev)
+/*
+ * Put the CAAM in quiesce, ie stop
+ *
+ * Must be called with itr disabled
+ */
+static int caam_jr_stop_processing(struct device *dev, u32 jrcr_bits)
 {
 	struct caam_drv_private_jr *jrp = dev_get_drvdata(dev);
 	unsigned int timeout = 100000;
@@ -190,8 +230,7 @@ static int caam_jr_remove(struct platform_device *pdev)
 	jrdev = &pdev->dev;
 	jrpriv = dev_get_drvdata(jrdev);
 
-	if (jrpriv->hwrng)
-		caam_rng_exit(jrdev->parent);
+	exit_misc_func(jrpriv, jrdev->parent);
 
 	/*
 	 * Return EBUSY if job ring already allocated.
@@ -231,7 +270,7 @@ static irqreturn_t caam_jr_interrupt(int irq, void *st_dev)
 	 * tasklet if jobs done.
 	 */
 	irqstate = rd_reg32(&jrp->rregs->jrintstatus);
-	if (!(irqstate & ~JRINT_ERR_HALT_MASK))
+	if (!(irqstate & JRINT_JR_INT))
 		return IRQ_NONE;
 
 	/*
@@ -712,7 +751,9 @@ static int caam_jr_probe(struct platform_device *pdev)
 	}
 
 	/* Initialize crypto engine */
-	jrpriv->engine = crypto_engine_alloc_init(jrdev, false);
+	jrpriv->engine = crypto_engine_alloc_init_and_set(jrdev, true, NULL,
+							  false,
+							  CRYPTO_ENGINE_MAX_QLEN);
 	if (!jrpriv->engine) {
 		dev_err(jrdev, "Could not init crypto-engine\n");
 		return -ENOMEM;
@@ -754,7 +795,12 @@ static int caam_jr_probe(struct platform_device *pdev)
 
 	atomic_set(&jrpriv->tfm_count, 0);
 
-	register_algs(jrpriv, jrdev->parent);
+	device_init_wakeup(&pdev->dev, 1);
+	device_set_wakeup_enable(&pdev->dev, false);
+
+	register_algs(jrdev->parent);
+	init_misc_func(jrpriv, jrdev->parent);
+	jr_driver_probed++;
 
 	return 0;
 }

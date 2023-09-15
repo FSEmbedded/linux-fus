@@ -187,12 +187,6 @@ static int svc_sock_read_payload(struct svc_rqst *rqstp, unsigned int offset,
 	return 0;
 }
 
-static int svc_sock_read_payload(struct svc_rqst *rqstp, unsigned int offset,
-				 unsigned int length)
-{
-	return 0;
-}
-
 /*
  * Report socket names for nfsdfs
  */

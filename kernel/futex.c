@@ -655,8 +655,6 @@ again:
 		rcu_read_unlock();
 	}
 
-	get_futex_key_refs(key); /* implies smp_mb(); (B) */
-
 out:
 	put_page(page);
 	return err;

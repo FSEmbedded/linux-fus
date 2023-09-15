@@ -1,19 +1,13 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * host-export.h - Host Export APIs
+ * Cadence USBSS DRD Driver - Host Export APIs
  *
- * Copyright 2017 NXP
+ * Copyright (C) 2017-2018 NXP
+ *
  * Authors: Peter Chen <peter.chen@nxp.com>
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
  */
-
-#ifndef __DRIVERS_USB_CDNS3_HOST_H
-#define __DRIVERS_USB_CDNS3_HOST_H
+#ifndef __LINUX_CDNS3_HOST_EXPORT
+#define __LINUX_CDNS3_HOST_EXPORT
 
 struct usb_hcd;
 #ifdef CONFIG_USB_CDNS3_HOST
@@ -36,4 +30,4 @@ static inline int xhci_cdns3_suspend_quirk(struct usb_hcd *hcd)
 
 #endif /* CONFIG_USB_CDNS3_HOST */
 
-#endif /* __DRIVERS_USB_CDNS3_HOST_H */
+#endif /* __LINUX_CDNS3_HOST_EXPORT */

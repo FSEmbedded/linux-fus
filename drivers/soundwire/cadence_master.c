@@ -263,22 +263,6 @@ static int cdns_config_update(struct sdw_cdns *cdns)
 }
 
 /*
- * all changes to the MCP_CONFIG, MCP_CONTROL, MCP_CMDCTRL and MCP_PHYCTRL
- * need to be confirmed with a write to MCP_CONFIG_UPDATE
- */
-static int cdns_update_config(struct sdw_cdns *cdns)
-{
-	int ret;
-
-	ret = cdns_clear_bit(cdns, CDNS_MCP_CONFIG_UPDATE,
-			     CDNS_MCP_CONFIG_UPDATE_BIT);
-	if (ret < 0)
-		dev_err(cdns->dev, "Config update timedout\n");
-
-	return ret;
-}
-
-/*
  * debugfs
  */
 #ifdef CONFIG_DEBUG_FS
@@ -1230,10 +1214,6 @@ int sdw_cdns_init(struct sdw_cdns *cdns)
 
 	/* reset msg_count to default value of FIFOLEVEL */
 	cdns->msg_count = cdns_readl(cdns, CDNS_MCP_FIFOLEVEL);
-
-	/* flush command FIFOs */
-	cdns_updatel(cdns, CDNS_MCP_CONTROL, CDNS_MCP_CONTROL_CMD_RST,
-		     CDNS_MCP_CONTROL_CMD_RST);
 
 	/* flush command FIFOs */
 	cdns_updatel(cdns, CDNS_MCP_CONTROL, CDNS_MCP_CONTROL_CMD_RST,

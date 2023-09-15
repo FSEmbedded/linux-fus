@@ -286,7 +286,6 @@ static struct ubi_wl_entry *get_peb_for_wl(struct ubi_device *ubi)
 int ubi_ensure_anchor_pebs(struct ubi_device *ubi)
 {
 	struct ubi_work *wrk;
-	struct ubi_wl_entry *anchor;
 
 	spin_lock(&ubi->wl_lock);
 

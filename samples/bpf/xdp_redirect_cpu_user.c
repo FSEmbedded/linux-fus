@@ -68,10 +68,6 @@ struct bpf_link *tp_links[NUM_TP] = {};
 static int map_fds[NUM_MAP];
 static int tp_cnt = 0;
 
-#define NUM_TP 5
-struct bpf_link *tp_links[NUM_TP] = { 0 };
-static int tp_cnt = 0;
-
 /* Exit return codes */
 #define EXIT_OK		0
 #define EXIT_FAIL		1

@@ -2,8 +2,7 @@
 /*
  * otg.c - ChipIdea USB IP core OTG driver
  *
- * Copyright (C) 2013-2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright (C) 2013 Freescale Semiconductor, Inc.
  *
  * Author: Peter Chen
  */
@@ -21,7 +20,6 @@
 #include "bits.h"
 #include "otg.h"
 #include "otg_fsm.h"
-#include "host.h"
 
 /**
  * hw_read_otgsc returns otgsc register bits value.
@@ -130,20 +128,6 @@ enum ci_role ci_otg_role(struct ci_hdrc *ci)
 	return role;
 }
 
-void ci_handle_vbus_connected(struct ci_hdrc *ci)
-{
-	/*
-	 * TODO: if the platform does not supply 5v to udc, or use other way
-	 * to supply 5v, it needs to use other conditions to call
-	 * usb_gadget_vbus_connect.
-	 */
-	if (!ci->is_otg)
-		return;
-
-	if (hw_read_otgsc(ci, OTGSC_BSV))
-		usb_gadget_vbus_connect(&ci->gadget);
-}
-
 void ci_handle_vbus_change(struct ci_hdrc *ci)
 {
 	if (!ci->is_otg)
@@ -169,22 +153,12 @@ static int hw_wait_vbus_lower_bsv(struct ci_hdrc *ci)
 	u32 mask = OTGSC_BSV;
 
 	while (hw_read_otgsc(ci, mask)) {
-
-		msleep(20);
-
-		/*
-		 * If the vbus is higher than AVV after 20ms,
-		 * we will think this vbus is from remote and
-		 * don't wait any longer.
-		 */
-		if (hw_read_otgsc(ci, OTGSC_AVV))
-			return 0;
-
 		if (time_after(jiffies, elapse)) {
 			dev_err(ci->dev, "timeout waiting for %08x in OTGSC\n",
 					mask);
 			return -ETIMEDOUT;
 		}
+		msleep(20);
 	}
 
 	return 0;
@@ -219,20 +193,11 @@ void ci_handle_id_switch(struct ci_hdrc *ci)
 			 * external connector status.
 			 */
 			hw_wait_vbus_lower_bsv(ci);
-		else if (ci->vbus_active)
-			/*
-			 * If the role switch happens(e.g. during
-			 * system sleep), and we lose vbus drop
-			 * event, disconnect gadget for it before
-			 * start host.
-			 */
-			usb_gadget_vbus_disconnect(&ci->gadget);
 
 		ci_role_start(ci, role);
 		/* vbus change may have already occurred */
 		if (role == CI_ROLE_GADGET)
 			ci_handle_vbus_change(ci);
-
 	}
 	mutex_unlock(&ci->mutex);
 }

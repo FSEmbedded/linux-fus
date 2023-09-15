@@ -189,6 +189,7 @@ struct stmmac_priv {
 
 	struct phylink_config phylink_config;
 	struct phylink *phylink;
+	bool is_phy_started;
 
 	struct stmmac_extra_stats xstats ____cacheline_aligned_in_smp;
 	struct stmmac_safety_stats sstats;
@@ -293,5 +294,7 @@ static inline int stmmac_selftest_get_count(struct stmmac_priv *priv)
 	return -EOPNOTSUPP;
 }
 #endif /* CONFIG_STMMAC_SELFTESTS */
+
+int stmmac_bus_clks_enable(struct stmmac_priv *priv, bool enabled);
 
 #endif /* __STMMAC_H__ */

@@ -1371,11 +1371,8 @@ static int svcauth_gss_proxy_init(struct svc_rqst *rqstp,
 		break;
 	case GSS_S_COMPLETE:
 		status = gss_proxy_save_rsc(sn->rsc_cache, &ud, &handle);
-		if (status) {
-			pr_info("%s: gss_proxy_save_rsc failed (%d)\n",
-				__func__, status);
+		if (status)
 			goto out;
-		}
 		cli_handle.data = (u8 *)&handle;
 		cli_handle.len = sizeof(handle);
 		break;
@@ -1385,16 +1382,12 @@ static int svcauth_gss_proxy_init(struct svc_rqst *rqstp,
 
 	/* Got an answer to the upcall; use it: */
 	if (gss_write_init_verf(sn->rsc_cache, rqstp,
-				&cli_handle, &ud.major_status)) {
-		pr_info("%s: gss_write_init_verf failed\n", __func__);
+				&cli_handle, &ud.major_status))
 		goto out;
-	}
 	if (gss_write_resv(resv, PAGE_SIZE,
 			   &cli_handle, &ud.out_token,
-			   ud.major_status, ud.minor_status)) {
-		pr_info("%s: gss_write_resv failed\n", __func__);
+			   ud.major_status, ud.minor_status))
 		goto out;
-	}
 
 	ret = SVC_COMPLETE;
 out:

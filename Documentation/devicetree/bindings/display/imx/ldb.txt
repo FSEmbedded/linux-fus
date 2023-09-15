@@ -48,7 +48,11 @@ Required properties:
                 "ldb" - ldb root clock
         The needed clock numbers for each are documented in
         Documentation/devicetree/bindings/clock/imx5-clock.yaml, and in
-        Documentation/devicetree/bindings/clock/imx6q-clock.yaml.
+        Documentation/devicetree/bindings/clock/imx6q-clock.yaml and in
+        Documentation/devicetree/bindings/clock/imx8qm-lpcg.txt, and in
+        Documentation/devicetree/bindings/clock/imx8qxp-lpcg.txt.
+- power-domains : phandle pointing to power domain, only required by i.MX8qm and
+                  i.MX8qxp.
 
 Optional properties:
  - pinctrl-names : should be "default" on i.MX53, not used on i.MX6q, i.MX8qm

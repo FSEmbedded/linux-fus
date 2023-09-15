@@ -60,6 +60,10 @@
 #include <crypto/xts.h>
 #include <asm/unaligned.h>
 
+#ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_TK_API
+#include "tag_object.h"
+#endif /* CONFIG_CRYPTO_DEV_FSL_CAAM_TK_API */
+
 /*
  * crypto alg
  */
@@ -124,14 +128,6 @@ struct caam_ctx {
 struct caam_skcipher_req_ctx {
 	struct skcipher_edesc *edesc;
 	struct skcipher_request fallback_req;
-};
-
-struct caam_aead_req_ctx {
-	struct aead_edesc *edesc;
-};
-
-struct caam_skcipher_req_ctx {
-	struct skcipher_edesc *edesc;
 };
 
 struct caam_aead_req_ctx {
@@ -830,6 +826,63 @@ static int ctr_skcipher_setkey(struct crypto_skcipher *skcipher,
 
 	return skcipher_setkey(skcipher, key, keylen, ctx1_iv_off);
 }
+
+
+#ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_TK_API
+static int tk_skcipher_setkey(struct crypto_skcipher *skcipher,
+			      const u8 *key, unsigned int keylen)
+{
+	struct caam_ctx *ctx = crypto_skcipher_ctx(skcipher);
+	struct device *jrdev = ctx->jrdev;
+	struct header_conf *header;
+	struct tagged_object *tag_obj;
+	int ret;
+
+	ctx->cdata.key_inline = true;
+
+	/* Check if one can retrieve the tag object header configuration */
+	if (keylen <= TAG_OVERHEAD_SIZE)
+		return -EINVAL;
+
+	/* Retrieve the tag object */
+	tag_obj = (struct tagged_object *)key;
+
+	/*
+	 * Check tag object header configuration
+	 * and retrieve the tag object header configuration
+	 */
+	if (is_valid_header_conf(&tag_obj->header)) {
+		header = &tag_obj->header;
+	} else {
+		dev_err(jrdev,
+			"unable to get tag object header configuration\n");
+		return -EINVAL;
+	}
+
+	/* Check if the tag object header is a black key */
+	if (!is_black_key(header)) {
+		dev_err(jrdev,
+			"tagged key provided is not a black key\n");
+		return -EINVAL;
+	}
+
+	/* Retrieve the black key configuration */
+	get_key_conf(header,
+		     &ctx->cdata.key_real_len,
+		     &ctx->cdata.keylen,
+		     &ctx->cdata.key_cmd_opt);
+
+	/* Retrieve the address of the data of the tagged object */
+	ctx->cdata.key_virt = &tag_obj->object;
+
+	/* Validate key length for AES algorithms */
+	ret = aes_check_keylen(ctx->cdata.key_real_len);
+	if (ret)
+		return ret;
+
+	return skcipher_setkey(skcipher, NULL, 0, 0);
+}
+#endif /* CONFIG_CRYPTO_DEV_FSL_CAAM_TK_API */
 
 static int des_skcipher_setkey(struct crypto_skcipher *skcipher,
 			       const u8 *key, unsigned int keylen)
@@ -1549,6 +1602,9 @@ static int aead_do_one_req(struct crypto_engine *engine, void *areq)
 
 	ret = caam_jr_enqueue(ctx->jrdev, desc, aead_crypt_done, req);
 
+	if (ret == -ENOSPC && engine->retry_support)
+		return ret;
+
 	if (ret != -EINPROGRESS) {
 		aead_unmap(ctx->jrdev, rctx->edesc, req);
 		kfree(rctx->edesc);
@@ -1777,6 +1833,9 @@ static int skcipher_do_one_req(struct crypto_engine *engine, void *areq)
 	rctx->edesc->bklog = true;
 
 	ret = caam_jr_enqueue(ctx->jrdev, desc, skcipher_crypt_done, req);
+
+	if (ret == -ENOSPC && engine->retry_support)
+		return ret;
 
 	if (ret != -EINPROGRESS) {
 		skcipher_unmap(ctx->jrdev, rctx->edesc, req);
@@ -3603,8 +3662,8 @@ int caam_algapi_init(struct device *ctrldev)
 		des_inst = rd_reg32(&vreg->desa) & CHA_VER_NUM_MASK;
 		aes_inst = aesa & CHA_VER_NUM_MASK;
 		md_inst = mdha & CHA_VER_NUM_MASK;
-		ccha_inst = rd_reg32(&priv->ctrl->vreg.ccha) & CHA_VER_NUM_MASK;
-		ptha_inst = rd_reg32(&priv->ctrl->vreg.ptha) & CHA_VER_NUM_MASK;
+		ccha_inst = rd_reg32(&vreg->ccha) & CHA_VER_NUM_MASK;
+		ptha_inst = rd_reg32(&vreg->ptha) & CHA_VER_NUM_MASK;
 
 		gcm_support = aesa & CHA_VER_MISC_AES_GCM;
 	}

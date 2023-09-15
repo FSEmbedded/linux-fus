@@ -170,6 +170,14 @@ int (*qbman_swp_release_ptr)(struct qbman_swp *s,
 			     unsigned int num_buffers)
 			= qbman_swp_release_direct;
 
+#define dccvac(p) { asm volatile("dc cvac, %0;" : : "r" (p) : "memory"); }
+#define dcivac(p) { asm volatile("dc ivac, %0" : : "r"(p) : "memory"); }
+static inline void qbman_inval_prefetch(struct qbman_swp *p, u32 offset)
+{
+	dcivac(p->addr_cena + offset);
+	prefetch(p->addr_cena + offset);
+}
+
 /* Portal Access */
 
 static inline u32 qbman_read_register(struct qbman_swp *p, u32 offset)
@@ -283,7 +291,7 @@ struct qbman_swp *qbman_swp_init(const struct qbman_swp_desc *d)
 	if ((p->desc->qman_version & QMAN_REV_MASK) < QMAN_REV_5000) {
 
 		reg = qbman_set_swp_cfg(p->dqrr.dqrr_size,
-			1, /* Writes Non-cacheable */
+			0, /* Writes Non-cacheable */
 			0, /* EQCR_CI stashing threshold */
 			3, /* RPM: RCR in array mode */
 			2, /* DCM: Discrete consumption ack */
@@ -292,12 +300,12 @@ struct qbman_swp *qbman_swp_init(const struct qbman_swp_desc *d)
 			1, /* mem stashing priority enable */
 			1, /* mem stashing enable */
 			1, /* dequeue stashing priority enable */
-			0, /* dequeue stashing enable enable */
+			1, /* dequeue stashing enable enable */
 			0); /* EQCR_CI stashing priority enable */
 	} else {
 		memset(p->addr_cena, 0, 64 * 1024);
 		reg = qbman_set_swp_cfg(p->dqrr.dqrr_size,
-			1, /* Writes Non-cacheable */
+			0, /* Writes Non-cacheable */
 			1, /* EQCR_CI stashing threshold */
 			3, /* RPM: RCR in array mode */
 			2, /* DCM: Discrete consumption ack */
@@ -306,7 +314,7 @@ struct qbman_swp *qbman_swp_init(const struct qbman_swp_desc *d)
 			1, /* mem stashing priority enable */
 			1, /* mem stashing enable */
 			1, /* dequeue stashing priority enable */
-			0, /* dequeue stashing enable */
+			1, /* dequeue stashing enable */
 			0); /* EQCR_CI stashing priority enable */
 		reg |= 1 << SWP_CFG_CPBS_SHIFT | /* memory-backed mode */
 		       1 << SWP_CFG_VPM_SHIFT |  /* VDQCR read triggered mode */
@@ -687,6 +695,7 @@ int qbman_swp_enqueue_multiple_direct(struct qbman_swp *s,
 	const uint32_t *cl = (uint32_t *)d;
 	uint32_t eqcr_ci, eqcr_pi, half_mask, full_mask;
 	int i, num_enqueued = 0;
+	uint64_t addr_cena;
 
 	spin_lock(&s->access_spinlock);
 	half_mask = (s->eqcr.pi_ci_mask>>1);
@@ -714,8 +723,8 @@ int qbman_swp_enqueue_multiple_direct(struct qbman_swp *s,
 	for (i = 0; i < num_enqueued; i++) {
 		p = (s->addr_cena + QBMAN_CENA_SWP_EQCR(eqcr_pi & half_mask));
 		/* Skip copying the verb */
-		memcpy(&p[1], &cl[1], EQ_DESC_SIZE_WITHOUT_FD - 1);
-		memcpy(&p[EQ_DESC_SIZE_FD_START/sizeof(uint32_t)],
+		memcpy_toio(&p[1], &cl[1], EQ_DESC_SIZE_WITHOUT_FD - 1);
+		memcpy_toio(&p[EQ_DESC_SIZE_FD_START/sizeof(uint32_t)],
 		       &fd[i], sizeof(*fd));
 		eqcr_pi++;
 	}
@@ -741,7 +750,11 @@ int qbman_swp_enqueue_multiple_direct(struct qbman_swp *s,
 	/* Flush all the cacheline without load/store in between */
 	eqcr_pi = s->eqcr.pi;
 	for (i = 0; i < num_enqueued; i++)
+	addr_cena = (size_t)s->addr_cena;
+	for (i = 0; i < num_enqueued; i++) {
+		dccvac((addr_cena + QBMAN_CENA_SWP_EQCR(eqcr_pi & half_mask)));
 		eqcr_pi++;
+	}
 	s->eqcr.pi = eqcr_pi & full_mask;
 	spin_unlock(&s->access_spinlock);
 
@@ -798,8 +811,8 @@ int qbman_swp_enqueue_multiple_mem_back(struct qbman_swp *s,
 	for (i = 0; i < num_enqueued; i++) {
 		p = (s->addr_cena + QBMAN_CENA_SWP_EQCR(eqcr_pi & half_mask));
 		/* Skip copying the verb */
-		memcpy(&p[1], &cl[1], EQ_DESC_SIZE_WITHOUT_FD - 1);
-		memcpy(&p[EQ_DESC_SIZE_FD_START/sizeof(uint32_t)],
+		memcpy_toio(&p[1], &cl[1], EQ_DESC_SIZE_WITHOUT_FD - 1);
+		memcpy_toio(&p[EQ_DESC_SIZE_FD_START/sizeof(uint32_t)],
 		       &fd[i], sizeof(*fd));
 		eqcr_pi++;
 	}
@@ -850,6 +863,7 @@ int qbman_swp_enqueue_multiple_desc_direct(struct qbman_swp *s,
 	const uint32_t *cl;
 	uint32_t eqcr_ci, eqcr_pi, half_mask, full_mask;
 	int i, num_enqueued = 0;
+	uint64_t addr_cena;
 
 	half_mask = (s->eqcr.pi_ci_mask>>1);
 	full_mask = s->eqcr.pi_ci_mask;
@@ -872,8 +886,8 @@ int qbman_swp_enqueue_multiple_desc_direct(struct qbman_swp *s,
 		p = (s->addr_cena + QBMAN_CENA_SWP_EQCR(eqcr_pi & half_mask));
 		cl = (uint32_t *)(&d[i]);
 		/* Skip copying the verb */
-		memcpy(&p[1], &cl[1], EQ_DESC_SIZE_WITHOUT_FD - 1);
-		memcpy(&p[EQ_DESC_SIZE_FD_START/sizeof(uint32_t)],
+		memcpy_toio(&p[1], &cl[1], EQ_DESC_SIZE_WITHOUT_FD - 1);
+		memcpy_toio(&p[EQ_DESC_SIZE_FD_START/sizeof(uint32_t)],
 		       &fd[i], sizeof(*fd));
 		eqcr_pi++;
 	}
@@ -893,8 +907,12 @@ int qbman_swp_enqueue_multiple_desc_direct(struct qbman_swp *s,
 
 	/* Flush all the cacheline without load/store in between */
 	eqcr_pi = s->eqcr.pi;
-	for (i = 0; i < num_enqueued; i++)
+	addr_cena = (uint64_t)s->addr_cena;
+	for (i = 0; i < num_enqueued; i++) {
+		dccvac((uint64_t *)(addr_cena +
+			QBMAN_CENA_SWP_EQCR(eqcr_pi & half_mask)));
 		eqcr_pi++;
+	}
 	s->eqcr.pi = eqcr_pi & full_mask;
 
 	return num_enqueued;
@@ -942,8 +960,8 @@ int qbman_swp_enqueue_multiple_desc_mem_back(struct qbman_swp *s,
 		p = (s->addr_cena + QBMAN_CENA_SWP_EQCR(eqcr_pi & half_mask));
 		cl = (uint32_t *)(&d[i]);
 		/* Skip copying the verb */
-		memcpy(&p[1], &cl[1], EQ_DESC_SIZE_WITHOUT_FD - 1);
-		memcpy(&p[EQ_DESC_SIZE_FD_START/sizeof(uint32_t)],
+		memcpy_toio(&p[1], &cl[1], EQ_DESC_SIZE_WITHOUT_FD - 1);
+		memcpy_toio(&p[EQ_DESC_SIZE_FD_START/sizeof(uint32_t)],
 		       &fd[i], sizeof(*fd));
 		eqcr_pi++;
 	}
@@ -1154,6 +1172,7 @@ int qbman_swp_pull_direct(struct qbman_swp *s, struct qbman_pull_desc *d)
 	/* Set the verb byte, have to substitute in the valid-bit */
 	p->verb = d->verb | s->vdq.valid_bit;
 	s->vdq.valid_bit ^= QB_VALID_BIT;
+	dccvac(p);
 
 	return 0;
 }
@@ -1249,98 +1268,6 @@ const struct dpaa2_dq *qbman_swp_dqrr_next_direct(struct qbman_swp *s)
 	}
 
 	p = qbman_get_cmd(s, QBMAN_CENA_SWP_DQRR(s->dqrr.next_idx));
-	verb = p->dq.verb;
-
-	/*
-	 * If the valid-bit isn't of the expected polarity, nothing there. Note,
-	 * in the DQRR reset bug workaround, we shouldn't need to skip these
-	 * check, because we've already determined that a new entry is available
-	 * and we've invalidated the cacheline before reading it, so the
-	 * valid-bit behaviour is repaired and should tell us what we already
-	 * knew from reading PI.
-	 */
-	if ((verb & QB_VALID_BIT) != s->dqrr.valid_bit) {
-		prefetch(qbman_get_cmd(s,
-				       QBMAN_CENA_SWP_DQRR(s->dqrr.next_idx)));
-		return NULL;
-	}
-	/*
-	 * There's something there. Move "next_idx" attention to the next ring
-	 * entry (and prefetch it) before returning what we found.
-	 */
-	s->dqrr.next_idx++;
-	s->dqrr.next_idx &= s->dqrr.dqrr_size - 1; /* Wrap around */
-	if (!s->dqrr.next_idx)
-		s->dqrr.valid_bit ^= QB_VALID_BIT;
-
-	/*
-	 * If this is the final response to a volatile dequeue command
-	 * indicate that the vdq is available
-	 */
-	flags = p->dq.stat;
-	response_verb = verb & QBMAN_RESULT_MASK;
-	if ((response_verb == QBMAN_RESULT_DQ) &&
-	    (flags & DPAA2_DQ_STAT_VOLATILE) &&
-	    (flags & DPAA2_DQ_STAT_EXPIRED))
-		atomic_inc(&s->vdq.available);
-
-	prefetch(qbman_get_cmd(s, QBMAN_CENA_SWP_DQRR(s->dqrr.next_idx)));
-
-	return p;
-}
-
-/**
- * qbman_swp_dqrr_next_mem_back() - Get an valid DQRR entry
- * @s: the software portal object
- *
- * Return NULL if there are no unconsumed DQRR entries. Return a DQRR entry
- * only once, so repeated calls can return a sequence of DQRR entries, without
- * requiring they be consumed immediately or in any particular order.
- */
-const struct dpaa2_dq *qbman_swp_dqrr_next_mem_back(struct qbman_swp *s)
-{
-	u32 verb;
-	u32 response_verb;
-	u32 flags;
-	struct dpaa2_dq *p;
-
-	/* Before using valid-bit to detect if something is there, we have to
-	 * handle the case of the DQRR reset bug...
-	 */
-	if (unlikely(s->dqrr.reset_bug)) {
-		/*
-		 * We pick up new entries by cache-inhibited producer index,
-		 * which means that a non-coherent mapping would require us to
-		 * invalidate and read *only* once that PI has indicated that
-		 * there's an entry here. The first trip around the DQRR ring
-		 * will be much less efficient than all subsequent trips around
-		 * it...
-		 */
-		u8 pi = qbman_read_register(s, QBMAN_CINH_SWP_DQPI) &
-			QMAN_DQRR_PI_MASK;
-
-		/* there are new entries if pi != next_idx */
-		if (pi == s->dqrr.next_idx)
-			return NULL;
-
-		/*
-		 * if next_idx is/was the last ring index, and 'pi' is
-		 * different, we can disable the workaround as all the ring
-		 * entries have now been DMA'd to so valid-bit checking is
-		 * repaired. Note: this logic needs to be based on next_idx
-		 * (which increments one at a time), rather than on pi (which
-		 * can burst and wrap-around between our snapshots of it).
-		 */
-		if (s->dqrr.next_idx == (s->dqrr.dqrr_size - 1)) {
-			pr_debug("next_idx=%d, pi=%d, clear reset bug\n",
-				 s->dqrr.next_idx, pi);
-			s->dqrr.reset_bug = 0;
-		}
-		prefetch(qbman_get_cmd(s,
-				       QBMAN_CENA_SWP_DQRR(s->dqrr.next_idx)));
-	}
-
-	p = qbman_get_cmd(s, QBMAN_CENA_SWP_DQRR_MEM(s->dqrr.next_idx));
 	verb = p->dq.verb;
 
 	/*
@@ -1595,6 +1522,7 @@ int qbman_swp_release_direct(struct qbman_swp *s,
 	 */
 	dma_wmb();
 	p->verb = d->verb | RAR_VB(rar) | num_buffers;
+	dccvac(p);
 
 	return 0;
 }

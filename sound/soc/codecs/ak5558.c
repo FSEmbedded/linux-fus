@@ -21,7 +21,6 @@
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
 #include <sound/tlv.h>
-#include <linux/regulator/consumer.h>
 
 #include "ak5558.h"
 
@@ -40,7 +39,6 @@ struct ak5558_priv {
 	struct gpio_desc *reset_gpiod; /* Reset & Power down GPIO */
 	int slots;
 	int slot_width;
-	struct regulator_bulk_data supplies[AK5558_NUM_SUPPLIES];
 };
 
 /* ak5558 register cache & default register settings */
@@ -459,9 +457,14 @@ static int ak5558_i2c_probe(struct i2c_client *i2c)
 		return ret;
 	}
 
-	ret = devm_snd_soc_register_component(&i2c->dev,
-				     &soc_codec_dev_ak5558,
-				     &ak5558_dai, 1);
+	if (of_device_is_compatible(i2c->dev.of_node, "asahi-kasei,ak5552"))
+		ret = devm_snd_soc_register_component(&i2c->dev,
+						      &soc_codec_dev_ak5552,
+						      &ak5552_dai, 1);
+	else
+		ret = devm_snd_soc_register_component(&i2c->dev,
+						      &soc_codec_dev_ak5558,
+						      &ak5558_dai, 1);
 	if (ret)
 		return ret;
 

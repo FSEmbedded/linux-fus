@@ -138,6 +138,19 @@
 	memory {
 		reg = <0x80000000 0x80000000>;
 	};
+
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		linux,cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0x14000000>;
+			linux,cma-default;
+		};
+	};
 };
 
 &adc1 {
@@ -146,7 +159,7 @@
 };
 
 &cpu0 {
-	arm-supply = <&sw1a_reg>;
+	cpu-supply = <&sw1a_reg>;
 };
 
 &epdc {
@@ -919,6 +932,14 @@
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_sim1_1>;
 	pinctrl-1 = <&pinctrl_sim1_1>;
+	status = "okay";
+};
+
+&snvs_poweroff {
+	status = "okay";
+};
+
+&snvs_pwrkey {
 	status = "okay";
 };
 

@@ -125,12 +125,6 @@ static int imx_dsp_setup_channels(struct imx_dsp_ipc *dsp_ipc)
 		dev_dbg(dev, "request mbox chan %s\n", chan_name);
 	}
 
-	dsp_ipc->dev = dev;
-
-	dev_set_drvdata(dev, dsp_ipc);
-
-	dev_info(dev, "NXP i.MX DSP IPC initialized\n");
-
 	return 0;
 out:
 	for (j = 0; j < i; j++) {

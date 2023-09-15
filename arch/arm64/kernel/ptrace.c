@@ -1303,9 +1303,6 @@ static int compat_vfp_get(struct task_struct *target,
 	if (!system_supports_fpsimd())
 		return -EINVAL;
 
-	if (!system_supports_fpsimd())
-		return -EINVAL;
-
 	uregs = &target->thread.uw.fpsimd_state;
 
 	if (target == current)

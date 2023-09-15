@@ -6003,26 +6003,6 @@ void ata_pci_shutdown_one(struct pci_dev *pdev)
 }
 EXPORT_SYMBOL_GPL(ata_pci_shutdown_one);
 
-void ata_pci_shutdown_one(struct pci_dev *pdev)
-{
-	struct ata_host *host = pci_get_drvdata(pdev);
-	int i;
-
-	for (i = 0; i < host->n_ports; i++) {
-		struct ata_port *ap = host->ports[i];
-
-		ap->pflags |= ATA_PFLAG_FROZEN;
-
-		/* Disable port interrupts */
-		if (ap->ops->freeze)
-			ap->ops->freeze(ap);
-
-		/* Stop the port DMA engines */
-		if (ap->ops->port_stop)
-			ap->ops->port_stop(ap);
-	}
-}
-
 /* move to PCI subsystem */
 int pci_test_config_bits(struct pci_dev *pdev, const struct pci_bits *bits)
 {

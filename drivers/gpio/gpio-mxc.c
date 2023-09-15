@@ -57,13 +57,13 @@ struct imx_sc_msg_gpio_get_pad_wakeup {
 			u8 wakeup;
 		} resp;
 	} data;
-} __packed;
+} __packed __aligned(4);
 
 struct imx_sc_msg_gpio_set_pad_wakeup {
 	struct imx_sc_rpc_msg hdr;
 	u16 pad;
 	u8 wakeup;
-} __packed;
+} __packed __aligned(4);
 
 #endif
 
@@ -511,6 +511,8 @@ static int mxc_gpio_init_gc(struct mxc_gpio_port *port, int irq_base,
 	ct->chip.irq_unmask = irq_gc_mask_set_bit;
 	ct->chip.irq_set_type = gpio_set_irq_type;
 	ct->chip.irq_set_wake = gpio_set_wake_irq;
+	ct->chip.irq_request_resources = mxc_gpio_irq_reqres;
+	ct->chip.irq_release_resources = mxc_gpio_irq_relres,
 	ct->chip.flags = IRQCHIP_MASK_ON_SUSPEND | IRQCHIP_ENABLE_WAKEUP_ON_SUSPEND;
 	ct->regs.ack = GPIO_ISR;
 	ct->regs.mask = GPIO_IMR;
@@ -611,7 +613,7 @@ static int mxc_gpio_probe(struct platform_device *pdev)
 		return irq_count;
 
 	if (irq_count > 1) {
-		port->irq_high = platform_get_irq(pdev, 1);
+		port->irq_high = platform_get_irq_optional(pdev, 1);
 		if (port->irq_high < 0)
 			port->irq_high = 0;
 	}
@@ -699,8 +701,14 @@ static int mxc_gpio_probe(struct platform_device *pdev)
 	if (err)
 		goto out_bgio;
 
-	port->gc.request = gpiochip_generic_request;
-	port->gc.free = gpiochip_generic_free;
+	if (of_property_read_bool(np, "gpio_ranges"))
+		port->gpio_ranges = true;
+	else
+		port->gpio_ranges = false;
+
+	port->gc.request = mxc_gpio_request;
+	port->gc.free = mxc_gpio_free;
+	port->gc.parent = &pdev->dev;
 	port->gc.to_irq = mxc_gpio_to_irq;
 	port->gc.base = (pdev->id < 0) ? of_alias_get_id(np, "gpio") * 32 :
 					     pdev->id * 32;

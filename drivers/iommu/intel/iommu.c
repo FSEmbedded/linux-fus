@@ -6128,23 +6128,6 @@ static bool risky_device(struct pci_dev *pdev)
 	return false;
 }
 
-/*
- * Check that the device does not live on an external facing PCI port that is
- * marked as untrusted. Such devices should not be able to apply quirks and
- * thus not be able to bypass the IOMMU restrictions.
- */
-static bool risky_device(struct pci_dev *pdev)
-{
-	if (pdev->untrusted) {
-		pci_info(pdev,
-			 "Skipping IOMMU quirk for dev [%04X:%04X] on untrusted PCI link\n",
-			 pdev->vendor, pdev->device);
-		pci_info(pdev, "Please check with your BIOS/Platform vendor about this\n");
-		return true;
-	}
-	return false;
-}
-
 const struct iommu_ops intel_iommu_ops = {
 	.capable		= intel_iommu_capable,
 	.domain_alloc		= intel_iommu_domain_alloc,

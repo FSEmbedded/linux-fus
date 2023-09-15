@@ -5865,7 +5865,6 @@ static int dm_plane_helper_prepare_fb(struct drm_plane *plane,
 	struct ww_acquire_ctx ticket;
 	uint32_t domain;
 	int r;
-	bool force_disable_dcc = false;
 
 	if (!new_state->fb) {
 		DRM_DEBUG_DRIVER("No FB bound\n");
@@ -5932,7 +5931,6 @@ static int dm_plane_helper_prepare_fb(struct drm_plane *plane,
 			dm_plane_state_new->dc_state;
 		bool force_disable_dcc = !plane_state->dcc.enable;
 
-		force_disable_dcc = adev->asic_type == CHIP_RAVEN && adev->in_suspend;
 		fill_plane_buffer_attributes(
 			adev, afb, plane_state->format, plane_state->rotation,
 			dm_plane_state_new->tiling_flags,
@@ -8678,30 +8676,6 @@ static int validate_overlay(struct drm_atomic_state *state)
 
 	return 0;
 }
-#if defined(CONFIG_DRM_AMD_DC_DCN)
-static int add_affected_mst_dsc_crtcs(struct drm_atomic_state *state, struct drm_crtc *crtc)
-{
-	struct drm_connector *connector;
-	struct drm_connector_state *conn_state;
-	struct amdgpu_dm_connector *aconnector = NULL;
-	int i;
-	for_each_new_connector_in_state(state, connector, conn_state, i) {
-		if (conn_state->crtc != crtc)
-			continue;
-
-		aconnector = to_amdgpu_dm_connector(connector);
-		if (!aconnector->port || !aconnector->mst_port)
-			aconnector = NULL;
-		else
-			break;
-	}
-
-	if (!aconnector)
-		return 0;
-
-	return drm_dp_mst_add_affected_dsc_crtcs(state, &aconnector->mst_port->mst_mgr);
-}
-#endif
 
 /**
  * amdgpu_dm_atomic_check() - Atomic check implementation for AMDgpu DM.

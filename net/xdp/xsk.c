@@ -353,7 +353,7 @@ static int xsk_wakeup(struct xdp_sock *xs, u8 flags)
 	return err;
 }
 
-static int xsk_wakeup(struct xdp_sock *xs, u8 flags)
+static int xsk_zc_xmit(struct xdp_sock *xs)
 {
 	return xsk_wakeup(xs, XDP_WAKEUP_TX);
 }

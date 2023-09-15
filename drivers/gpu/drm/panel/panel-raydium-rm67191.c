@@ -103,7 +103,7 @@ static const struct cmd_set_entry mcs_rm67199[] = {
 	{0x45, 0x02}, {0x46, 0x00}, {0x47, 0x00}, {0x48, 0x06},
 	{0x49, 0x02}, {0x4A, 0x8A}, {0x4B, 0x00}, {0x5F, 0xCA},
 	{0x60, 0x01}, {0x61, 0xE8}, {0x62, 0x09}, {0x63, 0x00},
-	{0x64, 0x07}, {0x65, 0x00}, {0x66, 0x30}, {0x67, 0x00},
+	{0x64, 0x07}, {0x65, 0x00}, {0x66, 0x30}, {0x67, 0x80},
 	{0x9B, 0x03}, {0xA9, 0x07}, {0xAA, 0x06}, {0xAB, 0x02},
 	{0xAC, 0x10}, {0xAD, 0x11}, {0xAE, 0x05}, {0xAF, 0x04},
 	{0xB0, 0x10}, {0xB1, 0x10}, {0xB2, 0x10}, {0xB3, 0x10},
@@ -143,7 +143,7 @@ struct rad_platform_data {
 };
 
 static const struct drm_display_mode default_mode = {
-	.clock = 132000,
+	.clock = 121000,
 	.hdisplay = 1080,
 	.hsync_start = 1080 + 20,
 	.hsync_end = 1080 + 20 + 2,
@@ -356,7 +356,7 @@ static int rm67199_enable(struct rad_panel *panel)
 				      &mcs_rm67199[0],
 				      ARRAY_SIZE(mcs_rm67199));
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to send MCS (%d)\n", ret);
+		dev_err(dev, "Failed to send MCS (%d)\n", ret);
 		goto fail;
 	}
 
@@ -366,35 +366,35 @@ static int rm67199_enable(struct rad_panel *panel)
 		goto fail;
 
 	/* Set DSI mode */
-	ret = mipi_dsi_generic_write(dsi, (u8[]){ 0xC2, 0x08 }, 2);
+	ret = mipi_dsi_generic_write(dsi, (u8[]){ 0xC2, 0x0B }, 2);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to set DSI mode (%d)\n", ret);
+		dev_err(dev, "Failed to set DSI mode (%d)\n", ret);
 		goto fail;
 	}
 	/* Set tear ON */
 	ret = mipi_dsi_dcs_set_tear_on(dsi, MIPI_DSI_DCS_TEAR_MODE_VBLANK);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to set tear ON (%d)\n", ret);
+		dev_err(dev, "Failed to set tear ON (%d)\n", ret);
 		goto fail;
 	}
 	/* Set tear scanline */
 	ret = mipi_dsi_dcs_set_tear_scanline(dsi, 0x00);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to set tear scanline (%d)\n", ret);
+		dev_err(dev, "Failed to set tear scanline (%d)\n", ret);
 		goto fail;
 	}
 	/* Set pixel format */
 	ret = mipi_dsi_dcs_set_pixel_format(dsi, color_format);
-	DRM_DEV_DEBUG_DRIVER(dev, "Interface color format set to 0x%x\n",
+	dev_dbg(dev, "Interface color format set to 0x%x\n",
 			     color_format);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to set pixel format (%d)\n", ret);
+		dev_err(dev, "Failed to set pixel format (%d)\n", ret);
 		goto fail;
 	}
 	/* Exit sleep mode */
 	ret = mipi_dsi_dcs_exit_sleep_mode(dsi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to exit sleep mode (%d)\n", ret);
+		dev_err(dev, "Failed to exit sleep mode (%d)\n", ret);
 		goto fail;
 	}
 
@@ -407,7 +407,7 @@ static int rm67199_enable(struct rad_panel *panel)
 
 	ret = mipi_dsi_dcs_set_display_on(dsi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to set display ON (%d)\n", ret);
+		dev_err(dev, "Failed to set display ON (%d)\n", ret);
 		goto fail;
 	}
 
@@ -610,7 +610,9 @@ static int rad_panel_probe(struct mipi_dsi_device *dsi)
 	panel->pdata = of_id->data;
 
 	dsi->format = MIPI_DSI_FMT_RGB888;
-	dsi->mode_flags =  MIPI_DSI_MODE_VIDEO_HSE | MIPI_DSI_MODE_VIDEO;
+	dsi->mode_flags = MIPI_DSI_MODE_VIDEO_HSE |
+			  MIPI_DSI_MODE_VIDEO |
+			  MIPI_DSI_MODE_EOT_PACKET;
 
 	ret = of_property_read_u32(np, "video-mode", &video_mode);
 	if (!ret) {

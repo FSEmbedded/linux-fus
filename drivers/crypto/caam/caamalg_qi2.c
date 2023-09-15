@@ -600,10 +600,10 @@ static struct tls_edesc *tls_edesc_alloc(struct aead_request *req,
 	int src_nents, mapped_src_nents, dst_nents = 0, mapped_dst_nents = 0;
 	struct tls_edesc *edesc;
 	dma_addr_t qm_sg_dma, iv_dma = 0;
-	int ivsize = 0;
+	int ivsize = crypto_aead_ivsize(tls);
 	u8 *iv;
 	int qm_sg_index, qm_sg_ents = 0, qm_sg_bytes;
-	int in_len, out_len;
+	int src_len, dst_len, data_len;
 	struct dpaa2_sg_entry *sg_table;
 	struct scatterlist *dst;
 
@@ -622,14 +622,16 @@ static struct tls_edesc *tls_edesc_alloc(struct aead_request *req,
 		return ERR_PTR(-ENOMEM);
 	}
 
+	data_len = req->assoclen + req->cryptlen;
+	dst_len = req->cryptlen + (encrypt ? authsize : 0);
+
 	if (likely(req->src == req->dst)) {
-		src_nents = sg_nents_for_len(req->src, req->assoclen +
-					     req->cryptlen +
-					     (encrypt ? authsize : 0));
+		src_len = req->assoclen + dst_len;
+
+		src_nents = sg_nents_for_len(req->src, src_len);
 		if (unlikely(src_nents < 0)) {
 			dev_err(dev, "Insufficient bytes (%d) in src S/G\n",
-				req->assoclen + req->cryptlen +
-				(encrypt ? authsize : 0));
+				src_len);
 			qi_cache_free(edesc);
 			return ERR_PTR(src_nents);
 		}
@@ -643,22 +645,22 @@ static struct tls_edesc *tls_edesc_alloc(struct aead_request *req,
 		}
 		dst = req->dst;
 	} else {
-		src_nents = sg_nents_for_len(req->src, req->assoclen +
-					     req->cryptlen);
+		src_len = data_len;
+
+		src_nents = sg_nents_for_len(req->src, src_len);
 		if (unlikely(src_nents < 0)) {
 			dev_err(dev, "Insufficient bytes (%d) in src S/G\n",
-				req->assoclen + req->cryptlen);
+				src_len);
 			qi_cache_free(edesc);
 			return ERR_PTR(src_nents);
 		}
 
 		dst = scatterwalk_ffwd(edesc->tmp, req->dst, req->assoclen);
-		dst_nents = sg_nents_for_len(dst, req->cryptlen +
-					     (encrypt ? authsize : 0));
+
+		dst_nents = sg_nents_for_len(dst, dst_len);
 		if (unlikely(dst_nents < 0)) {
 			dev_err(dev, "Insufficient bytes (%d) in dst S/G\n",
-				req->cryptlen +
-				(encrypt ? authsize : 0));
+				dst_len);
 			qi_cache_free(edesc);
 			return ERR_PTR(dst_nents);
 		}
@@ -694,7 +696,6 @@ static struct tls_edesc *tls_edesc_alloc(struct aead_request *req,
 	sg_table = &edesc->sgt[0];
 	qm_sg_bytes = qm_sg_ents * sizeof(*sg_table);
 
-	ivsize = crypto_aead_ivsize(tls);
 	iv = (u8 *)(sg_table + qm_sg_ents);
 	/* Make sure IV is located in a DMAable area */
 	memcpy(iv, req->iv, ivsize);
@@ -715,12 +716,11 @@ static struct tls_edesc *tls_edesc_alloc(struct aead_request *req,
 	dma_to_qm_sg_one(sg_table, iv_dma, ivsize, 0);
 	qm_sg_index = 1;
 
-	sg_to_qm_sg_last(req->src, mapped_src_nents, sg_table + qm_sg_index, 0);
+	sg_to_qm_sg_last(req->src, src_len, sg_table + qm_sg_index, 0);
 	qm_sg_index += mapped_src_nents;
 
 	if (mapped_dst_nents > 1)
-		sg_to_qm_sg_last(dst, mapped_dst_nents, sg_table +
-				 qm_sg_index, 0);
+		sg_to_qm_sg_last(dst, dst_len, sg_table + qm_sg_index, 0);
 
 	qm_sg_dma = dma_map_single(dev, sg_table, qm_sg_bytes, DMA_TO_DEVICE);
 	if (dma_mapping_error(dev, qm_sg_dma)) {
@@ -734,14 +734,11 @@ static struct tls_edesc *tls_edesc_alloc(struct aead_request *req,
 	edesc->qm_sg_dma = qm_sg_dma;
 	edesc->qm_sg_bytes = qm_sg_bytes;
 
-	out_len = req->cryptlen + (encrypt ? authsize : 0);
-	in_len = ivsize + req->assoclen + req->cryptlen;
-
 	memset(&req_ctx->fd_flt, 0, sizeof(req_ctx->fd_flt));
 	dpaa2_fl_set_final(in_fle, true);
 	dpaa2_fl_set_format(in_fle, dpaa2_fl_sg);
 	dpaa2_fl_set_addr(in_fle, qm_sg_dma);
-	dpaa2_fl_set_len(in_fle, in_len);
+	dpaa2_fl_set_len(in_fle, ivsize + data_len);
 
 	if (req->dst == req->src) {
 		dpaa2_fl_set_format(out_fle, dpaa2_fl_sg);
@@ -757,7 +754,7 @@ static struct tls_edesc *tls_edesc_alloc(struct aead_request *req,
 				  sizeof(*sg_table));
 	}
 
-	dpaa2_fl_set_len(out_fle, out_len);
+	dpaa2_fl_set_len(out_fle, dst_len);
 
 	return edesc;
 }
@@ -917,7 +914,6 @@ static int tls_setkey(struct crypto_aead *tls, const u8 *key,
 	memzero_explicit(&keys, sizeof(keys));
 	return tls_set_sh_desc(tls);
 badkey:
-	crypto_aead_set_flags(tls, CRYPTO_TFM_RES_BAD_KEY_LEN);
 	memzero_explicit(&keys, sizeof(keys));
 	return -EINVAL;
 }
@@ -1592,7 +1588,7 @@ static void skcipher_unmap(struct device *dev, struct skcipher_edesc *edesc,
 		   edesc->qm_sg_bytes);
 }
 
-static void aead_encrypt_done(void *cbk_ctx, u32 status)
+static void aead_crypt_done(void *cbk_ctx, u32 status)
 {
 	struct crypto_async_request *areq = cbk_ctx;
 	struct aead_request *req = container_of(areq, struct aead_request,
@@ -1613,194 +1609,103 @@ static void aead_encrypt_done(void *cbk_ctx, u32 status)
 	aead_request_complete(req, ecode);
 }
 
-static void aead_decrypt_done(void *cbk_ctx, u32 status)
+static int aead_crypt(struct aead_request *req, enum optype op)
 {
-	struct crypto_async_request *areq = cbk_ctx;
-	struct aead_request *req = container_of(areq, struct aead_request,
-						base);
-	struct caam_request *req_ctx = to_caam_req(areq);
-	struct aead_edesc *edesc = req_ctx->edesc;
+	struct aead_edesc *edesc;
 	struct crypto_aead *aead = crypto_aead_reqtfm(req);
 	struct caam_ctx *ctx = crypto_aead_ctx(aead);
-	int ecode = 0;
+	struct caam_request *caam_req = aead_request_ctx(req);
+	int ret;
 
-	dev_dbg(ctx->dev, "%s %d: err 0x%x\n", __func__, __LINE__, status);
+	/* allocate extended descriptor */
+	edesc = aead_edesc_alloc(req, op == ENCRYPT);
+	if (IS_ERR(edesc))
+		return PTR_ERR(edesc);
 
-	if (unlikely(status))
-		ecode = caam_qi2_strstatus(ctx->dev, status);
+	caam_req->flc = &ctx->flc[op];
+	caam_req->flc_dma = ctx->flc_dma[op];
+	caam_req->cbk = aead_crypt_done;
+	caam_req->ctx = &req->base;
+	caam_req->edesc = edesc;
+	ret = dpaa2_caam_enqueue(ctx->dev, caam_req);
+	if (ret != -EINPROGRESS &&
+	    !(ret == -EBUSY && req->base.flags & CRYPTO_TFM_REQ_MAY_BACKLOG)) {
+		aead_unmap(ctx->dev, edesc, req);
+		qi_cache_free(edesc);
+	}
 
-	aead_unmap(ctx->dev, edesc, req);
-	qi_cache_free(edesc);
-	aead_request_complete(req, ecode);
+	return ret;
 }
 
 static int aead_encrypt(struct aead_request *req)
 {
-	struct aead_edesc *edesc;
-	struct crypto_aead *aead = crypto_aead_reqtfm(req);
-	struct caam_ctx *ctx = crypto_aead_ctx(aead);
-	struct caam_request *caam_req = aead_request_ctx(req);
-	int ret;
-
-	/* allocate extended descriptor */
-	edesc = aead_edesc_alloc(req, true);
-	if (IS_ERR(edesc))
-		return PTR_ERR(edesc);
-
-	caam_req->flc = &ctx->flc[ENCRYPT];
-	caam_req->flc_dma = ctx->flc_dma[ENCRYPT];
-	caam_req->cbk = aead_encrypt_done;
-	caam_req->ctx = &req->base;
-	caam_req->edesc = edesc;
-	ret = dpaa2_caam_enqueue(ctx->dev, caam_req);
-	if (ret != -EINPROGRESS &&
-	    !(ret == -EBUSY && req->base.flags & CRYPTO_TFM_REQ_MAY_BACKLOG)) {
-		aead_unmap(ctx->dev, edesc, req);
-		qi_cache_free(edesc);
-	}
-
-	return ret;
+	return aead_crypt(req, ENCRYPT);
 }
 
 static int aead_decrypt(struct aead_request *req)
 {
-	struct aead_edesc *edesc;
-	struct crypto_aead *aead = crypto_aead_reqtfm(req);
-	struct caam_ctx *ctx = crypto_aead_ctx(aead);
+	return aead_crypt(req, DECRYPT);
+}
+
+static void tls_crypt_done(void *cbk_ctx, u32 status)
+{
+	struct crypto_async_request *areq = cbk_ctx;
+	struct aead_request *req = container_of(areq, struct aead_request,
+						base);
+	struct caam_request *req_ctx = to_caam_req(areq);
+	struct tls_edesc *edesc = req_ctx->edesc;
+	struct crypto_aead *tls = crypto_aead_reqtfm(req);
+	struct caam_ctx *ctx = crypto_aead_ctx(tls);
+	int ecode = 0;
+
+#ifdef DEBUG
+	dev_err(ctx->dev, "%s %d: err 0x%x\n", __func__, __LINE__, status);
+#endif
+
+	if (unlikely(status))
+		ecode = caam_qi2_strstatus(ctx->dev, status);
+
+	tls_unmap(ctx->dev, edesc, req);
+	qi_cache_free(edesc);
+	aead_request_complete(req, ecode);
+}
+
+static int tls_crypt(struct aead_request *req, enum optype op)
+{
+	struct tls_edesc *edesc;
+	struct crypto_aead *tls = crypto_aead_reqtfm(req);
+	struct caam_ctx *ctx = crypto_aead_ctx(tls);
 	struct caam_request *caam_req = aead_request_ctx(req);
 	int ret;
 
 	/* allocate extended descriptor */
-	edesc = aead_edesc_alloc(req, false);
+	edesc = tls_edesc_alloc(req, op == ENCRYPT);
 	if (IS_ERR(edesc))
 		return PTR_ERR(edesc);
 
-	caam_req->flc = &ctx->flc[DECRYPT];
-	caam_req->flc_dma = ctx->flc_dma[DECRYPT];
-	caam_req->cbk = aead_decrypt_done;
+	caam_req->flc = &ctx->flc[op];
+	caam_req->flc_dma = ctx->flc_dma[op];
+	caam_req->cbk = tls_crypt_done;
 	caam_req->ctx = &req->base;
 	caam_req->edesc = edesc;
 	ret = dpaa2_caam_enqueue(ctx->dev, caam_req);
 	if (ret != -EINPROGRESS &&
 	    !(ret == -EBUSY && req->base.flags & CRYPTO_TFM_REQ_MAY_BACKLOG)) {
-		aead_unmap(ctx->dev, edesc, req);
+		tls_unmap(ctx->dev, edesc, req);
 		qi_cache_free(edesc);
 	}
 
 	return ret;
-}
-
-static void tls_encrypt_done(void *cbk_ctx, u32 status)
-{
-	struct crypto_async_request *areq = cbk_ctx;
-	struct aead_request *req = container_of(areq, struct aead_request,
-						base);
-	struct caam_request *req_ctx = to_caam_req(areq);
-	struct tls_edesc *edesc = req_ctx->edesc;
-	struct crypto_aead *tls = crypto_aead_reqtfm(req);
-	struct caam_ctx *ctx = crypto_aead_ctx(tls);
-	int ecode = 0;
-
-#ifdef DEBUG
-	dev_err(ctx->dev, "%s %d: err 0x%x\n", __func__, __LINE__, status);
-#endif
-
-	if (unlikely(status)) {
-		caam_qi2_strstatus(ctx->dev, status);
-		ecode = -EIO;
-	}
-
-	tls_unmap(ctx->dev, edesc, req);
-	qi_cache_free(edesc);
-	aead_request_complete(req, ecode);
-}
-
-static void tls_decrypt_done(void *cbk_ctx, u32 status)
-{
-	struct crypto_async_request *areq = cbk_ctx;
-	struct aead_request *req = container_of(areq, struct aead_request,
-						base);
-	struct caam_request *req_ctx = to_caam_req(areq);
-	struct tls_edesc *edesc = req_ctx->edesc;
-	struct crypto_aead *tls = crypto_aead_reqtfm(req);
-	struct caam_ctx *ctx = crypto_aead_ctx(tls);
-	int ecode = 0;
-
-#ifdef DEBUG
-	dev_err(ctx->dev, "%s %d: err 0x%x\n", __func__, __LINE__, status);
-#endif
-
-	if (unlikely(status)) {
-		caam_qi2_strstatus(ctx->dev, status);
-		/*
-		 * verify hw auth check passed else return -EBADMSG
-		 */
-		if ((status & JRSTA_CCBERR_ERRID_MASK) ==
-		     JRSTA_CCBERR_ERRID_ICVCHK)
-			ecode = -EBADMSG;
-		else
-			ecode = -EIO;
-	}
-
-	tls_unmap(ctx->dev, edesc, req);
-	qi_cache_free(edesc);
-	aead_request_complete(req, ecode);
 }
 
 static int tls_encrypt(struct aead_request *req)
 {
-	struct tls_edesc *edesc;
-	struct crypto_aead *tls = crypto_aead_reqtfm(req);
-	struct caam_ctx *ctx = crypto_aead_ctx(tls);
-	struct caam_request *caam_req = aead_request_ctx(req);
-	int ret;
-
-	/* allocate extended descriptor */
-	edesc = tls_edesc_alloc(req, true);
-	if (IS_ERR(edesc))
-		return PTR_ERR(edesc);
-
-	caam_req->flc = &ctx->flc[ENCRYPT];
-	caam_req->flc_dma = ctx->flc_dma[ENCRYPT];
-	caam_req->cbk = tls_encrypt_done;
-	caam_req->ctx = &req->base;
-	caam_req->edesc = edesc;
-	ret = dpaa2_caam_enqueue(ctx->dev, caam_req);
-	if (ret != -EINPROGRESS &&
-	    !(ret == -EBUSY && req->base.flags & CRYPTO_TFM_REQ_MAY_BACKLOG)) {
-		tls_unmap(ctx->dev, edesc, req);
-		qi_cache_free(edesc);
-	}
-
-	return ret;
+	return tls_crypt(req, ENCRYPT);
 }
 
 static int tls_decrypt(struct aead_request *req)
 {
-	struct tls_edesc *edesc;
-	struct crypto_aead *tls = crypto_aead_reqtfm(req);
-	struct caam_ctx *ctx = crypto_aead_ctx(tls);
-	struct caam_request *caam_req = aead_request_ctx(req);
-	int ret;
-
-	/* allocate extended descriptor */
-	edesc = tls_edesc_alloc(req, false);
-	if (IS_ERR(edesc))
-		return PTR_ERR(edesc);
-
-	caam_req->flc = &ctx->flc[DECRYPT];
-	caam_req->flc_dma = ctx->flc_dma[DECRYPT];
-	caam_req->cbk = tls_decrypt_done;
-	caam_req->ctx = &req->base;
-	caam_req->edesc = edesc;
-	ret = dpaa2_caam_enqueue(ctx->dev, caam_req);
-	if (ret != -EINPROGRESS &&
-	    !(ret == -EBUSY && req->base.flags & CRYPTO_TFM_REQ_MAY_BACKLOG)) {
-		tls_unmap(ctx->dev, edesc, req);
-		qi_cache_free(edesc);
-	}
-
-	return ret;
+	return tls_crypt(req, DECRYPT);
 }
 
 static int ipsec_gcm_encrypt(struct aead_request *req)
@@ -1813,45 +1718,7 @@ static int ipsec_gcm_decrypt(struct aead_request *req)
 	return crypto_ipsec_check_assoclen(req->assoclen) ? : aead_decrypt(req);
 }
 
-static void skcipher_encrypt_done(void *cbk_ctx, u32 status)
-{
-	struct crypto_async_request *areq = cbk_ctx;
-	struct skcipher_request *req = skcipher_request_cast(areq);
-	struct caam_request *req_ctx = to_caam_req(areq);
-	struct crypto_skcipher *skcipher = crypto_skcipher_reqtfm(req);
-	struct caam_ctx *ctx = crypto_skcipher_ctx(skcipher);
-	struct skcipher_edesc *edesc = req_ctx->edesc;
-	int ecode = 0;
-	int ivsize = crypto_skcipher_ivsize(skcipher);
-
-	dev_dbg(ctx->dev, "%s %d: err 0x%x\n", __func__, __LINE__, status);
-
-	if (unlikely(status))
-		ecode = caam_qi2_strstatus(ctx->dev, status);
-
-	print_hex_dump_debug("dstiv  @" __stringify(__LINE__)": ",
-			     DUMP_PREFIX_ADDRESS, 16, 4, req->iv,
-			     edesc->src_nents > 1 ? 100 : ivsize, 1);
-	caam_dump_sg("dst    @" __stringify(__LINE__)": ",
-		     DUMP_PREFIX_ADDRESS, 16, 4, req->dst,
-		     edesc->dst_nents > 1 ? 100 : req->cryptlen, 1);
-
-	skcipher_unmap(ctx->dev, edesc, req);
-
-	/*
-	 * The crypto API expects us to set the IV (req->iv) to the last
-	 * ciphertext block (CBC mode) or last counter (CTR mode).
-	 * This is used e.g. by the CTS mode.
-	 */
-	if (!ecode)
-		memcpy(req->iv, (u8 *)&edesc->sgt[0] + edesc->qm_sg_bytes,
-		       ivsize);
-
-	qi_cache_free(edesc);
-	skcipher_request_complete(req, ecode);
-}
-
-static void skcipher_decrypt_done(void *cbk_ctx, u32 status)
+static void skcipher_crypt_done(void *cbk_ctx, u32 status)
 {
 	struct crypto_async_request *areq = cbk_ctx;
 	struct skcipher_request *req = skcipher_request_cast(areq);
@@ -1897,7 +1764,7 @@ static inline bool xts_skcipher_ivsize(struct skcipher_request *req)
 	return !!get_unaligned((u64 *)(req->iv + (ivsize / 2)));
 }
 
-static int skcipher_encrypt(struct skcipher_request *req)
+static int skcipher_crypt(struct skcipher_request *req, enum optype op)
 {
 	struct skcipher_edesc *edesc;
 	struct crypto_skcipher *skcipher = crypto_skcipher_reqtfm(req);
@@ -1924,7 +1791,9 @@ static int skcipher_encrypt(struct skcipher_request *req)
 		skcipher_request_set_crypt(&caam_req->fallback_req, req->src,
 					   req->dst, req->cryptlen, req->iv);
 
-		return crypto_skcipher_encrypt(&caam_req->fallback_req);
+		return (op == ENCRYPT) ?
+			crypto_skcipher_encrypt(&caam_req->fallback_req) :
+			crypto_skcipher_decrypt(&caam_req->fallback_req);
 	}
 
 	/* allocate extended descriptor */
@@ -1932,9 +1801,9 @@ static int skcipher_encrypt(struct skcipher_request *req)
 	if (IS_ERR(edesc))
 		return PTR_ERR(edesc);
 
-	caam_req->flc = &ctx->flc[ENCRYPT];
-	caam_req->flc_dma = ctx->flc_dma[ENCRYPT];
-	caam_req->cbk = skcipher_encrypt_done;
+	caam_req->flc = &ctx->flc[op];
+	caam_req->flc_dma = ctx->flc_dma[op];
+	caam_req->cbk = skcipher_crypt_done;
 	caam_req->ctx = &req->base;
 	caam_req->edesc = edesc;
 	ret = dpaa2_caam_enqueue(ctx->dev, caam_req);
@@ -1947,54 +1816,14 @@ static int skcipher_encrypt(struct skcipher_request *req)
 	return ret;
 }
 
+static int skcipher_encrypt(struct skcipher_request *req)
+{
+	return skcipher_crypt(req, ENCRYPT);
+}
+
 static int skcipher_decrypt(struct skcipher_request *req)
 {
-	struct skcipher_edesc *edesc;
-	struct crypto_skcipher *skcipher = crypto_skcipher_reqtfm(req);
-	struct caam_ctx *ctx = crypto_skcipher_ctx(skcipher);
-	struct caam_request *caam_req = skcipher_request_ctx(req);
-	struct dpaa2_caam_priv *priv = dev_get_drvdata(ctx->dev);
-	int ret;
-
-	/*
-	 * XTS is expected to return an error even for input length = 0
-	 * Note that the case input length < block size will be caught during
-	 * HW offloading and return an error.
-	 */
-	if (!req->cryptlen && !ctx->fallback)
-		return 0;
-
-	if (ctx->fallback && ((priv->sec_attr.era <= 8 && xts_skcipher_ivsize(req)) ||
-			      ctx->xts_key_fallback)) {
-		skcipher_request_set_tfm(&caam_req->fallback_req, ctx->fallback);
-		skcipher_request_set_callback(&caam_req->fallback_req,
-					      req->base.flags,
-					      req->base.complete,
-					      req->base.data);
-		skcipher_request_set_crypt(&caam_req->fallback_req, req->src,
-					   req->dst, req->cryptlen, req->iv);
-
-		return crypto_skcipher_decrypt(&caam_req->fallback_req);
-	}
-
-	/* allocate extended descriptor */
-	edesc = skcipher_edesc_alloc(req);
-	if (IS_ERR(edesc))
-		return PTR_ERR(edesc);
-
-	caam_req->flc = &ctx->flc[DECRYPT];
-	caam_req->flc_dma = ctx->flc_dma[DECRYPT];
-	caam_req->cbk = skcipher_decrypt_done;
-	caam_req->ctx = &req->base;
-	caam_req->edesc = edesc;
-	ret = dpaa2_caam_enqueue(ctx->dev, caam_req);
-	if (ret != -EINPROGRESS &&
-	    !(ret == -EBUSY && req->base.flags & CRYPTO_TFM_REQ_MAY_BACKLOG)) {
-		skcipher_unmap(ctx->dev, edesc, req);
-		qi_cache_free(edesc);
-	}
-
-	return ret;
+	return skcipher_crypt(req, DECRYPT);
 }
 
 static int caam_cra_init(struct caam_ctx *ctx, struct caam_alg_entry *caam,

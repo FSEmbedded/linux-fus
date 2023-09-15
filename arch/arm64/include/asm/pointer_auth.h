@@ -3,6 +3,7 @@
 #define __ASM_POINTER_AUTH_H
 
 #include <linux/bitops.h>
+#include <linux/random.h>
 
 #include <asm/cpufeature.h>
 #include <asm/memory.h>

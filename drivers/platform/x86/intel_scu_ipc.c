@@ -67,9 +67,6 @@ struct intel_scu_ipc_dev {
 #define IPC_STATUS_ERR		BIT(1)
 #define IPC_STATUS_BUSY		BIT(0)
 
-#define IPC_STATUS		0x04
-#define IPC_STATUS_IRQ		BIT(2)
-
 /*
  * IPC Write/Read Buffers:
  * 16 byte buffer for sending and receiving data to and from SCU.

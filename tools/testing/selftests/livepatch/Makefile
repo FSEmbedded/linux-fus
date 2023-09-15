@@ -10,6 +10,4 @@ TEST_PROGS := \
 
 TEST_FILES := settings
 
-TEST_FILES := settings
-
 include ../lib.mk

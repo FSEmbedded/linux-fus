@@ -823,14 +823,14 @@ static void dw_hdmi_gp_audio_enable(struct dw_hdmi *hdmi)
 	hdmi_set_cts_n(hdmi, hdmi->audio_cts, hdmi->audio_n);
 	hdmi_enable_audio_clk(hdmi, true);
 
-	hdmi_writeb(hdmi, 0x1, HDMI_FC_AUDSCHNL0);
-	hdmi_writeb(hdmi, hdmi->channels, HDMI_FC_AUDSCHNL2);
-	hdmi_writeb(hdmi, 0x22, HDMI_FC_AUDSCHNL3);
-	hdmi_writeb(hdmi, 0x22, HDMI_FC_AUDSCHNL4);
-	hdmi_writeb(hdmi, 0x11, HDMI_FC_AUDSCHNL5);
-	hdmi_writeb(hdmi, 0x11, HDMI_FC_AUDSCHNL6);
-	hdmi_writeb(hdmi, (0x3 << 4) | sample_freq, HDMI_FC_AUDSCHNL7);
-	hdmi_writeb(hdmi, (org_sample_freq << 4) | 0xb, HDMI_FC_AUDSCHNL8);
+	hdmi_writeb(hdmi, 0x1, HDMI_FC_AUDSCHNLS0);
+	hdmi_writeb(hdmi, hdmi->channels, HDMI_FC_AUDSCHNLS2);
+	hdmi_writeb(hdmi, 0x22, HDMI_FC_AUDSCHNLS3);
+	hdmi_writeb(hdmi, 0x22, HDMI_FC_AUDSCHNLS4);
+	hdmi_writeb(hdmi, 0x11, HDMI_FC_AUDSCHNLS5);
+	hdmi_writeb(hdmi, 0x11, HDMI_FC_AUDSCHNLS6);
+	hdmi_writeb(hdmi, (0x3 << 4) | sample_freq, HDMI_FC_AUDSCHNLS7);
+	hdmi_writeb(hdmi, (org_sample_freq << 4) | 0xb, HDMI_FC_AUDSCHNLS8);
 
 	hdmi_writeb(hdmi, ch_mask, HDMI_GP_CONF1);
 	hdmi_writeb(hdmi, 0x02, HDMI_GP_CONF2);
@@ -2201,9 +2201,9 @@ static void dw_hdmi_clear_overflow(struct dw_hdmi *hdmi)
 	 *
 	 * The number of iterations matters and depends on the HDMI TX revision
 	 * (and possibly on the platform). So far i.MX6Q (v1.30a), i.MX6DL
-	 * (v1.31a) and multiple Allwinner SoCs (v1.32a) have been identified
-	 * as needing the workaround, with 4 iterations for v1.30a and 1
-	 * iteration for others.
+	 * (v1.31a), iMX865(v2.13a) and multiple Allwinner SoCs (v1.32a)
+	 * have been identified as needing the workaround,
+	 * with 4 iterations for v1.30a and 1 iteration for others.
 	 * The Amlogic Meson GX SoCs (v2.01a) have been identified as needing
 	 * the workaround with a single iteration.
 	 * The Rockchip RK3288 SoC (v2.00a) and RK3328/RK3399 SoCs (v2.11a) have
@@ -2220,6 +2220,7 @@ static void dw_hdmi_clear_overflow(struct dw_hdmi *hdmi)
 	case 0x201a:
 	case 0x211a:
 	case 0x212a:
+	case 0x213a:
 		count = 1;
 		break;
 	default:

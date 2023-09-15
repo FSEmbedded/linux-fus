@@ -22,7 +22,6 @@
 struct rcar_fcp_device {
 	struct list_head list;
 	struct device *dev;
-	struct device_dma_parameters dma_parms;
 };
 
 static LIST_HEAD(fcp_devices);

@@ -1396,8 +1396,6 @@ intel_dp_aux_xfer(struct intel_dp *intel_dp,
 
 	aux_domain = intel_aux_power_domain(dig_port);
 
-	aux_domain = intel_aux_power_domain(intel_dig_port);
-
 	aux_wakeref = intel_display_power_get(i915, aux_domain);
 	pps_wakeref = pps_lock(intel_dp);
 

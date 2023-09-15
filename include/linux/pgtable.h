@@ -1452,16 +1452,6 @@ typedef unsigned int pgtbl_mod_mask;
 #endif
 #endif
 
-#ifndef p4d_offset_lockless
-#define p4d_offset_lockless(pgdp, pgd, address) p4d_offset(&(pgd), address)
-#endif
-#ifndef pud_offset_lockless
-#define pud_offset_lockless(p4dp, p4d, address) pud_offset(&(p4d), address)
-#endif
-#ifndef pmd_offset_lockless
-#define pmd_offset_lockless(pudp, pud, address) pmd_offset(&(pud), address)
-#endif
-
 /*
  * On some architectures it depends on the mm if the p4d/pud or pmd
  * layer of the page table hierarchy is folded or not.

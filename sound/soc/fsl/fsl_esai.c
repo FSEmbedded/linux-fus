@@ -22,83 +22,28 @@
 				SNDRV_PCM_FMTBIT_S20_3LE | \
 				SNDRV_PCM_FMTBIT_S24_LE)
 
-/**
- * struct fsl_esai_soc_data - soc specific data
- * @imx: for imx platform
- * @reset_at_xrun: flags for enable reset operaton
- */
-struct fsl_esai_soc_data {
-	bool imx;
-	bool reset_at_xrun;
-};
-
-/**
- * struct fsl_esai - ESAI private data
- * @dma_params_rx: DMA parameters for receive channel
- * @dma_params_tx: DMA parameters for transmit channel
- * @pdev: platform device pointer
- * @regmap: regmap handler
- * @coreclk: clock source to access register
- * @extalclk: esai clock source to derive HCK, SCK and FS
- * @fsysclk: system clock source to derive HCK, SCK and FS
- * @spbaclk: SPBA clock (optional, depending on SoC design)
- * @work: work to handle the reset operation
- * @soc: soc specific data
- * @lock: spin lock between hw_reset() and trigger()
- * @fifo_depth: depth of tx/rx FIFO
- * @slot_width: width of each DAI slot
- * @slots: number of slots
- * @tx_mask: slot mask for TX
- * @rx_mask: slot mask for RX
- * @channels: channel num for tx or rx
- * @hck_rate: clock rate of desired HCKx clock
- * @sck_rate: clock rate of desired SCKx clock
- * @hck_dir: the direction of HCKx pads
- * @sck_div: if using PSR/PM dividers for SCKx clock
- * @slave_mode: if fully using DAI slave mode
- * @synchronous: if using tx/rx synchronous mode
- * @name: driver name
- */
-struct fsl_esai {
-	struct snd_dmaengine_dai_dma_data dma_params_rx;
-	struct snd_dmaengine_dai_dma_data dma_params_tx;
-	struct platform_device *pdev;
-	struct regmap *regmap;
-	struct clk *coreclk;
-	struct clk *extalclk;
-	struct clk *fsysclk;
-	struct clk *spbaclk;
-	struct work_struct work;
-	const struct fsl_esai_soc_data *soc;
-	spinlock_t lock; /* Protect hw_reset and trigger */
-	u32 fifo_depth;
-	u32 slot_width;
-	u32 slots;
-	u32 tx_mask;
-	u32 rx_mask;
-	u32 channels[2];
-	u32 hck_rate[2];
-	u32 sck_rate[2];
-	bool hck_dir[2];
-	bool sck_div[2];
-	bool slave_mode;
-	bool synchronous;
-	char name[32];
-};
-
 static struct fsl_esai_soc_data fsl_esai_vf610 = {
 	.imx = false,
 	.reset_at_xrun = true,
+	.use_edma = false,
 };
 
 static struct fsl_esai_soc_data fsl_esai_imx35 = {
 	.imx = true,
 	.reset_at_xrun = true,
+	.use_edma = false,
 };
 
 static struct fsl_esai_soc_data fsl_esai_imx6ull = {
 	.imx = true,
 	.reset_at_xrun = false,
+	.use_edma = false,
+};
+
+static struct fsl_esai_soc_data fsl_esai_imx8qm = {
+	.imx = true,
+	.reset_at_xrun = false,
+	.use_edma = true,
 };
 
 static irqreturn_t esai_isr(int irq, void *devid)
@@ -816,6 +761,7 @@ static int fsl_esai_trigger(struct snd_pcm_substream *substream, int cmd,
 	struct fsl_esai *esai_priv = snd_soc_dai_get_drvdata(dai);
 	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
 	unsigned long lock_flags;
+	u32 state;
 
 	if (esai_priv->sw_mix)
 		esai_priv->channels[tx] = esai_priv->mix[tx].channels;
@@ -826,6 +772,12 @@ static int fsl_esai_trigger(struct snd_pcm_substream *substream, int cmd,
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		if (esai_priv->sw_mix) {
+			state = atomic_cmpxchg(&esai_priv->mix[tx].active, 0, 1);
+			if (!state)
+				fsl_esai_mix_trigger(substream, cmd, &esai_priv->mix[tx]);
+		}
+
 		spin_lock_irqsave(&esai_priv->lock, lock_flags);
 		fsl_esai_trigger_start(esai_priv, tx);
 		spin_unlock_irqrestore(&esai_priv->lock, lock_flags);
@@ -833,6 +785,12 @@ static int fsl_esai_trigger(struct snd_pcm_substream *substream, int cmd,
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		if (esai_priv->sw_mix) {
+			state = atomic_cmpxchg(&esai_priv->mix[tx].active, 1, 0);
+			if (state)
+				fsl_esai_mix_trigger(substream, cmd, &esai_priv->mix[tx]);
+		}
+
 		spin_lock_irqsave(&esai_priv->lock, lock_flags);
 		fsl_esai_trigger_stop(esai_priv, tx);
 		spin_unlock_irqrestore(&esai_priv->lock, lock_flags);
@@ -1015,7 +973,6 @@ static int fsl_esai_probe(struct platform_device *pdev)
 	const __be32 *iprop;
 	void __iomem *regs;
 	int irq, ret;
-	unsigned long irqflag = 0;
 
 	esai_priv = devm_kzalloc(&pdev->dev, sizeof(*esai_priv), GFP_KERNEL);
 	if (!esai_priv)
@@ -1067,10 +1024,8 @@ static int fsl_esai_probe(struct platform_device *pdev)
 				PTR_ERR(esai_priv->spbaclk));
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq < 0) {
-		dev_err(&pdev->dev, "no irq for node %s\n", pdev->name);
+	if (irq < 0)
 		return irq;
-	}
 
 	ret = devm_request_irq(&pdev->dev, irq, esai_isr, IRQF_SHARED,
 			       esai_priv->name, esai_priv);
@@ -1091,8 +1046,6 @@ static int fsl_esai_probe(struct platform_device *pdev)
 
 	esai_priv->dma_params_tx.maxburst = 16;
 	esai_priv->dma_params_rx.maxburst = 16;
-	esai_priv->dma_params_rx.chan_name = "rx";
-	esai_priv->dma_params_tx.chan_name = "tx";
 	esai_priv->dma_params_tx.addr = res->start + REG_ESAI_ETDR;
 	esai_priv->dma_params_rx.addr = res->start + REG_ESAI_ERDR;
 
@@ -1123,6 +1076,11 @@ static int fsl_esai_probe(struct platform_device *pdev)
 	dev_set_drvdata(&pdev->dev, esai_priv);
 
 	spin_lock_init(&esai_priv->lock);
+
+	ret = clk_prepare_enable(esai_priv->coreclk);
+	if (ret)
+		return ret;
+
 	ret = fsl_esai_hw_init(esai_priv);
 	if (ret)
 		return ret;
@@ -1157,7 +1115,7 @@ static int fsl_esai_probe(struct platform_device *pdev)
 		if (ret)
 			dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
 	} else {
-		ret = imx_pcm_platform_register(&pdev->dev);
+		ret = imx_pcm_dma_init(pdev, IMX_ESAI_DMABUF_SIZE);
 		if (ret)
 			dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
 	}
@@ -1182,6 +1140,7 @@ static const struct of_device_id fsl_esai_dt_ids[] = {
 	{ .compatible = "fsl,imx35-esai", .data = &fsl_esai_imx35 },
 	{ .compatible = "fsl,vf610-esai", .data = &fsl_esai_vf610 },
 	{ .compatible = "fsl,imx6ull-esai", .data = &fsl_esai_imx6ull },
+	{ .compatible = "fsl,imx8qm-esai", .data = &fsl_esai_imx8qm },
 	{}
 };
 MODULE_DEVICE_TABLE(of, fsl_esai_dt_ids);

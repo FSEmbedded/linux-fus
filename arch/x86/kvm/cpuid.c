@@ -892,9 +892,6 @@ out:
 static int do_cpuid_func(struct kvm_cpuid_array *array, u32 func,
 			 unsigned int type)
 {
-	if (*nent >= maxnent)
-		return -E2BIG;
-
 	if (type == KVM_GET_EMULATED_CPUID)
 		return __do_cpuid_func_emulated(array, func);
 

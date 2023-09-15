@@ -2253,14 +2253,26 @@ static int device_add_attrs(struct device *dev)
 			goto err_remove_dev_groups;
 	}
 
+	error = device_create_file(dev, &dev_attr_suppliers);
+	if (error)
+		goto err_remove_dev_online;
+
+	error = device_create_file(dev, &dev_attr_consumers);
+	if (error)
+		goto err_remove_dev_suppliers;
+
 	if (fw_devlink_flags && !fw_devlink_is_permissive()) {
 		error = device_create_file(dev, &dev_attr_waiting_for_supplier);
 		if (error)
-			goto err_remove_dev_online;
+			goto err_remove_dev_consumers;
 	}
 
 	return 0;
 
+ err_remove_dev_consumers:
+	device_remove_file(dev, &dev_attr_consumers);
+ err_remove_dev_suppliers:
+	device_remove_file(dev, &dev_attr_suppliers);
  err_remove_dev_online:
 	device_remove_file(dev, &dev_attr_online);
  err_remove_dev_groups:
@@ -2281,6 +2293,8 @@ static void device_remove_attrs(struct device *dev)
 	const struct device_type *type = dev->type;
 
 	device_remove_file(dev, &dev_attr_waiting_for_supplier);
+	device_remove_file(dev, &dev_attr_consumers);
+	device_remove_file(dev, &dev_attr_suppliers);
 	device_remove_file(dev, &dev_attr_online);
 	device_remove_groups(dev, dev->groups);
 
@@ -4380,6 +4394,13 @@ void device_set_of_node_from_dev(struct device *dev, const struct device *dev2)
 	dev->of_node_reused = true;
 }
 EXPORT_SYMBOL_GPL(device_set_of_node_from_dev);
+
+void device_set_node(struct device *dev, struct fwnode_handle *fwnode)
+{
+	dev->fwnode = fwnode;
+	dev->of_node = to_of_node(fwnode);
+}
+EXPORT_SYMBOL_GPL(device_set_node);
 
 int device_match_name(struct device *dev, const void *name)
 {

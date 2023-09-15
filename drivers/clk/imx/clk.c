@@ -17,6 +17,8 @@
 DEFINE_SPINLOCK(imx_ccm_lock);
 EXPORT_SYMBOL_GPL(imx_ccm_lock);
 
+bool uart_from_osc;
+
 void imx_unregister_clocks(struct clk *clks[], unsigned int count)
 {
 	unsigned int i;
@@ -24,7 +26,6 @@ void imx_unregister_clocks(struct clk *clks[], unsigned int count)
 	for (i = 0; i < count; i++)
 		clk_unregister(clks[i]);
 }
-EXPORT_SYMBOL_GPL(imx_unregister_clocks);
 
 void imx_unregister_hw_clocks(struct clk_hw *hws[], unsigned int count)
 {
@@ -54,7 +55,6 @@ void imx_check_clocks(struct clk *clks[], unsigned int count)
 			pr_err("i.MX clk %u: register failed with %ld\n",
 			       i, PTR_ERR(clks[i]));
 }
-EXPORT_SYMBOL_GPL(imx_check_clocks);
 
 void imx_check_clk_hws(struct clk_hw *clks[], unsigned int count)
 {
@@ -194,12 +194,6 @@ void imx_register_uart_clocks(unsigned int clk_count)
 #endif
 }
 
-void imx_register_uart_clocks(void)
-{
-	imx_earlycon_uart_clks_onoff(true);
-}
-EXPORT_SYMBOL_GPL(imx_register_uart_clocks);
-
 static int __init imx_clk_disable_uart(void)
 {
 	if (imx_keep_uart_clocks && imx_enabled_uart_clocks) {
@@ -215,6 +209,14 @@ static int __init imx_clk_disable_uart(void)
 	return 0;
 }
 late_initcall_sync(imx_clk_disable_uart);
+
+static int __init setup_uart_clk(char *uart_rate)
+{
+       uart_from_osc = true;
+       return 1;
+}
+__setup("uart_from_osc", setup_uart_clk);
+
 #endif
 
 MODULE_LICENSE("GPL v2");

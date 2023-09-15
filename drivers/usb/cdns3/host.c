@@ -1,30 +1,17 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * host.c - Cadence USB3 host controller driver
+ * Cadence USBSS DRD Driver - host side
  *
- * Copyright 2017 NXP
+ * Copyright (C) 2018-2019 Cadence Design Systems.
+ * Copyright (C) 2017-2018 NXP
+ *
  * Authors: Peter Chen <peter.chen@nxp.com>
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
+ *          Pawel Laszczak <pawell@cadence.com>
  */
 
-#include <linux/kernel.h>
-#include <linux/device.h>
-#include <linux/io.h>
-#include <linux/slab.h>
-#include <linux/dma-mapping.h>
-#include <linux/usb.h>
-#include <linux/usb/hcd.h>
-#include <linux/pm_runtime.h>
-#include <linux/usb/of.h>
-
-#include "../host/xhci.h"
-
+#include <linux/platform_device.h>
 #include "core.h"
+#include "drd.h"
 #include "host-export.h"
 #include <linux/usb/hcd.h>
 #include "../host/xhci.h"
@@ -37,26 +24,13 @@
 #define LPM_2_STB_SWITCH_EN	BIT(25)
 
 static const struct xhci_plat_priv xhci_plat_cdns3_xhci = {
-	.quirks = XHCI_SKIP_PHY_INIT,
+	.quirks = XHCI_SKIP_PHY_INIT | XHCI_AVOID_BEI,
 	.suspend_quirk = xhci_cdns3_suspend_quirk,
 };
 
-#define XHCI_WAKEUP_STATUS     (PORT_RC | PORT_PLC)
-
-static struct hc_driver __read_mostly xhci_cdns3_hc_driver;
-
-static void xhci_cdns3_quirks(struct device *dev, struct xhci_hcd *xhci)
+static int __cdns3_host_init(struct cdns3 *cdns)
 {
-	/*
-	 * As of now platform drivers don't provide MSI support so we ensure
-	 * here that the generic code does not try to make a pci_dev from our
-	 * dev struct in order to setup MSI
-	 */
-	xhci->quirks |= (XHCI_PLAT | XHCI_AVOID_BEI | XHCI_CDNS_HOST);
-}
-
-static int xhci_cdns3_setup(struct usb_hcd *hcd)
-{
+	struct platform_device *xhci;
 	int ret;
 	struct usb_hcd *hcd;
 
@@ -109,8 +83,7 @@ static int xhci_cdns3_setup(struct usb_hcd *hcd)
 free_memory:
 	kfree(cdns->xhci_plat_data);
 err1:
-	put_device(dev);
-	cdns->host_dev = NULL;
+	platform_device_put(xhci);
 	return ret;
 }
 
@@ -156,23 +129,12 @@ int cdns3_host_init(struct cdns3 *cdns)
 	if (!rdrv)
 		return -ENOMEM;
 
-	rdrv->start	= cdns3_host_start;
-	rdrv->stop	= cdns3_host_stop;
-	rdrv->irq	= cdns3_host_irq;
-	rdrv->suspend	= cdns3_host_suspend;
-	rdrv->resume	= cdns3_host_resume;
+	rdrv->start	= __cdns3_host_init;
+	rdrv->stop	= cdns3_host_exit;
+	rdrv->state	= CDNS3_ROLE_STATE_INACTIVE;
 	rdrv->name	= "host";
-	cdns->roles[CDNS3_ROLE_HOST] = rdrv;
+
+	cdns->roles[USB_ROLE_HOST] = rdrv;
 
 	return 0;
-}
-
-void cdns3_host_remove(struct cdns3 *cdns)
-{
-	cdns3_host_stop(cdns);
-}
-
-void __init cdns3_host_driver_init(void)
-{
-	xhci_init_driver(&xhci_cdns3_hc_driver, &xhci_cdns3_overrides);
 }

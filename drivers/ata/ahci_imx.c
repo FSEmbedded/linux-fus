@@ -1237,13 +1237,14 @@ static struct scsi_host_template ahci_platform_sht = {
 
 static int imx8_sata_probe(struct device *dev, struct imx_ahci_priv *imxpriv)
 {
-	struct resource *phy_res;
+	void __iomem *iomem;
+	struct resource *res, *phy_res;
 	struct platform_device *pdev = imxpriv->ahci_pdev;
 	struct device_node *np = dev->of_node;
 	struct regmap_config regconfig = imx_sata_regconfig;
 
-	if (!(dev->bus_dma_mask)) {
-		dev->bus_dma_mask = DMA_BIT_MASK(32);
+	if (!(dev->bus_dma_limit)) {
+		dev->bus_dma_limit = DMA_BIT_MASK(32);
 		dev_info(dev, "imx8qm sata only supports 32bit dma.\n");
 	}
 	if (of_property_read_u32(np, "ext_osc", &imxpriv->ext_osc) < 0) {

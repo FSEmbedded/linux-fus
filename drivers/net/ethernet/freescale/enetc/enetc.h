@@ -11,6 +11,9 @@
 #include <linux/if_vlan.h>
 #include <linux/phylink.h>
 #include <linux/dim.h>
+#ifdef CONFIG_ENETC_TSN
+#include <net/tsn.h>
+#endif
 
 #include "enetc_hw.h"
 
@@ -177,6 +180,7 @@ enum enetc_errata {
 };
 
 #define ENETC_SI_F_QBV BIT(0)
+#define ENETC_SI_F_QBU BIT(1)
 #define ENETC_SI_F_PSFP BIT(1)
 
 /* PCI IEP device data */
@@ -195,6 +199,10 @@ struct enetc_si {
 	int num_rss; /* number of RSS buckets */
 	unsigned short pad;
 	int hw_features;
+#ifdef CONFIG_ENETC_TSN
+	struct enetc_cbs *ecbs;
+#endif
+
 };
 
 #define ENETC_SI_ALIGN	32
@@ -207,6 +215,22 @@ static inline void *enetc_si_priv(const struct enetc_si *si)
 static inline bool enetc_si_is_pf(struct enetc_si *si)
 {
 	return !!(si->hw.port);
+}
+
+static inline int enetc_pf_to_port(struct pci_dev *pf_pdev)
+{
+	switch (pf_pdev->devfn) {
+	case 0:
+		return 0;
+	case 1:
+		return 1;
+	case 2:
+		return 2;
+	case 6:
+		return 3;
+	default:
+		return -1;
+	}
 }
 
 #define ENETC_MAX_NUM_TXQS	8
@@ -249,6 +273,7 @@ enum enetc_active_offloads {
 	ENETC_F_TX_TSTAMP	= BIT(1),
 	ENETC_F_QBV             = BIT(2),
 	ENETC_F_QCI		= BIT(3),
+	ENETC_F_QBU             = BIT(4),
 };
 
 /* interrupt coalescing modes */
@@ -434,4 +459,16 @@ static inline int enetc_psfp_disable(struct enetc_ndev_priv *priv)
 {
 	return 0;
 }
+#endif
+#ifdef CONFIG_ENETC_TSN
+void enetc_tsn_pf_init(struct net_device *netdev, struct pci_dev *pdev);
+void enetc_tsn_pf_deinit(struct net_device *netdev);
+#ifndef CONFIG_FSL_ENETC_QOS
+void enetc_pspeed_set(struct enetc_ndev_priv *priv, int speed);
+#undef enetc_sched_speed_set
+#define enetc_sched_speed_set(priv, speed) enetc_pspeed_set(priv, speed)
+#endif
+#else
+#define enetc_tsn_pf_init(netdev, pdev) (void)0
+#define enetc_tsn_pf_deinit(netdev) (void)0
 #endif

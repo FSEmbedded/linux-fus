@@ -27,6 +27,7 @@
 #define ANADIG_REG_2P5		0x130
 #define ANADIG_REG_CORE		0x140
 #define ANADIG_ANA_MISC0	0x150
+#define ANADIG_ANA_MISC2	0x170
 #define ANADIG_DIGPROG		0x260
 #define ANADIG_DIGPROG_IMX6SL	0x280
 #define ANADIG_DIGPROG_IMX7D	0x800
@@ -44,6 +45,8 @@
 #define BP_ANADIG_ANA_MISC2_REG1_STEP_TIME	(26)
 /* Below MISC0_DISCON_HIGH_SNVS is only for i.MX6SL */
 #define BM_ANADIG_ANA_MISC0_DISCON_HIGH_SNVS	0x2000
+/* Since i.MX6SX, DISCON_HIGH_SNVS is changed to bit 12 */
+#define BM_ANADIG_ANA_MISC0_V2_DISCON_HIGH_SNVS	0x1000
 
 #define LDO_RAMP_UP_UNIT_IN_CYCLES      64 /* 64 cycles per step */
 #define LDO_RAMP_UP_FREQ_IN_MHZ         24 /* cycle based on 24M OSC */
@@ -190,10 +193,11 @@ void __init imx_init_revision_from_anatop(void)
 	iounmap(anatop_base);
 
 	if ((digprog >> 16) == MXC_CPU_IMX6ULL) {
-		np = of_find_compatible_node(NULL, NULL, "fsl,imx6ul-src");
-		if (np) {
-			src_base = of_iomap(np, 0);
+		src_np = of_find_compatible_node(NULL, NULL, "fsl,imx6ul-src");
+		if (src_np) {
+			src_base = of_iomap(src_np, 0);
 			WARN_ON(!src_base);
+			of_node_put(src_np);
 			sbmr2 = readl_relaxed(src_base + 0x1c);
 			iounmap(src_base);
 		}
@@ -222,25 +226,6 @@ void __init imx_init_revision_from_anatop(void)
 		major_part = (digprog >> 8) & 0xf;
 		minor_part = digprog & 0xf;
 		revision = ((major_part + 1) << 4) | minor_part;
-
-		if ((digprog >> 16) == MXC_CPU_IMX6ULL) {
-			void __iomem *src_base;
-			u32 sbmr2;
-
-			src_np = of_find_compatible_node(NULL, NULL,
-						     "fsl,imx6ul-src");
-			src_base = of_iomap(src_np, 0);
-			of_node_put(src_np);
-			WARN_ON(!src_base);
-			sbmr2 = readl_relaxed(src_base + SRC_SBMR2);
-			iounmap(src_base);
-
-			/* src_sbmr2 bit 6 is to identify if it is i.MX6ULZ */
-			if (sbmr2 & (1 << 6)) {
-				digprog &= ~(0xff << 16);
-				digprog |= (MXC_CPU_IMX6ULZ << 16);
-			}
-		}
 	}
 	of_node_put(np);
 

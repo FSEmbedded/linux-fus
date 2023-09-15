@@ -702,12 +702,6 @@ static void dr_cq_complete(struct mlx5_core_cq *mcq,
 	pr_err("CQ completion CQ: #%u\n", mcq->cqn);
 }
 
-static void dr_cq_complete(struct mlx5_core_cq *mcq,
-			   struct mlx5_eqe *eqe)
-{
-	pr_err("CQ completion CQ: #%u\n", mcq->cqn);
-}
-
 static struct mlx5dr_cq *dr_create_cq(struct mlx5_core_dev *mdev,
 				      struct mlx5_uars_page *uar,
 				      size_t ncqe)

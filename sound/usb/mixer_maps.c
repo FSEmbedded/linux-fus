@@ -357,58 +357,6 @@ static const struct usbmix_name_map dell_alc4020_map[] = {
 	{ 0 }
 };
 
-/* Some mobos shipped with a dummy HD-audio show the invalid GET_MIN/GET_MAX
- * response for Input Gain Pad (id=19, control=12) and the connector status
- * for SPDIF terminal (id=18).  Skip them.
- */
-static const struct usbmix_name_map asus_rog_map[] = {
-	{ 18, NULL }, /* OT, connector control */
-	{ 19, NULL, 12 }, /* FU, Input Gain Pad */
-	{}
-};
-
-/* TRX40 mobos with Realtek ALC1220-VB */
-static const struct usbmix_name_map trx40_mobo_map[] = {
-	{ 18, NULL }, /* OT, IEC958 - broken response, disabled */
-	{ 19, NULL, 12 }, /* FU, Input Gain Pad - broken response, disabled */
-	{ 16, "Speaker" },		/* OT */
-	{ 22, "Speaker Playback" },	/* FU */
-	{ 7, "Line" },			/* IT */
-	{ 19, "Line Capture" },		/* FU */
-	{ 17, "Front Headphone" },	/* OT */
-	{ 23, "Front Headphone Playback" },	/* FU */
-	{ 8, "Mic" },			/* IT */
-	{ 20, "Mic Capture" },		/* FU */
-	{ 9, "Front Mic" },		/* IT */
-	{ 21, "Front Mic Capture" },	/* FU */
-	{ 24, "IEC958 Playback" },	/* FU */
-	{}
-};
-
-static const struct usbmix_connector_map trx40_mobo_connector_map[] = {
-	{ 10, 16 },	/* (Back) Speaker */
-	{ 11, 17 },	/* Front Headphone */
-	{ 13, 7 },	/* Line */
-	{ 14, 8 },	/* Mic */
-	{ 15, 9 },	/* Front Mic */
-	{}
-};
-
-/* Rear panel + front mic on Gigabyte TRX40 Aorus Master with ALC1220-VB */
-static const struct usbmix_name_map aorus_master_alc1220vb_map[] = {
-	{ 17, NULL },			/* OT, IEC958?, disabled */
-	{ 19, NULL, 12 }, /* FU, Input Gain Pad - broken response, disabled */
-	{ 16, "Line Out" },		/* OT */
-	{ 22, "Line Out Playback" },	/* FU */
-	{ 7, "Line" },			/* IT */
-	{ 19, "Line Capture" },		/* FU */
-	{ 8, "Mic" },			/* IT */
-	{ 20, "Mic Capture" },		/* FU */
-	{ 9, "Front Mic" },		/* IT */
-	{ 21, "Front Mic Capture" },	/* FU */
-	{}
-};
-
 /*
  * Corsair Virtuoso calls everything "Headset" without this, leading to
  * applications moving the sidetone control instead of the main one.

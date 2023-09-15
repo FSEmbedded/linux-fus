@@ -1,54 +1,99 @@
-NXP imx8M Plus DWC3 glue logic
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# Copyright (c) 2020 NXP
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/usb/fsl,imx8mp-dwc3.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
 
-This file documents the parameters for the dwc3-imx8mp driver.
-This driver controls the glue logic used to configure the dwc3 core on
-imx8mp based platforms.
+title: NXP iMX8MP Soc USB Controller
 
-Required properties:
- - compatible	: must be "fsl,imx8mp-dwc3"
- - reg		: glue logic base address and size
- - clocks	: A list of phandle + clock-specifier pairs for the
-		  clocks listed in clock-names
- - clock-names	: Should contain the following:
-		  "hsio" hsio root clock
-		  "bus" System bus AXI clock
-		  "suspend" Suspend clock, used for wakeup.
- - interrupts	: specifies interrupt from controller wrapper used
-		  to wakeup from low power/susepnd state.
+maintainers:
+  - Li Jun <jun.li@nxp.com>
 
-Sub-nodes:
-The dwc3 core should be added as subnode to imx8mp DWC3 glue as shown in the
-example below. The DT binding details of dwc3 can be found in:
-Documentation/devicetree/bindings/usb/dwc3.txt
+properties:
+  compatible:
+    items:
+    - const: fsl,imx8mp-dwc3
 
-Example:
+  reg:
+    maxItems: 1
+    description: Address and length of the register set for the wrapper of
+      dwc3 core on the SOC.
 
-	usb3_0: usb@32f10100 {
-		compatible = "fsl,imx8mp-dwc3";
-		reg = <0 0x32f10100 0 0x8>;
-		clocks = <&clk IMX8MP_CLK_HSIO_AXI_DIV>,
-			 <&clk IMX8MP_CLK_USB_ROOT>;
-		clock-names = "bus", "sleep";
-		assigned-clocks = <&clk IMX8MP_CLK_HSIO_AXI_SRC>;
-		assigned-clock-parents = <&clk IMX8MP_SYS_PLL2_500M>;
-		assigned-clock-rates = <500000000>;
-		interrupts = <GIC_SPI 148 IRQ_TYPE_LEVEL_HIGH>;
-		#address-cells = <2>;
-		#size-cells = <2>;
-		ranges;
-		status = "disabled";
+  "#address-cells":
+    enum: [ 1, 2 ]
 
-		usb_dwc3_0: dwc3@38100000 {
-			compatible = "snps,dwc3";
-			reg = <0 0x38100000 0 0x10000>;
-			interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>;
-			phys = <&usb3_phy0>, <&usb3_phy0>;
-			phy-names = "usb2-phy", "usb3-phy";
-			xhci-no-64bit-support;
-			usb3-resume-missing-cas;
-			snps,dis_u2_susphy_quirk;
-			snps,dis_u3_susphy_quirk;
-			status = "disabled";
-		};
+  "#size-cells":
+    enum: [ 1, 2 ]
 
-	};
+  ranges: true
+
+  interrupts:
+    maxItems: 1
+    description: The interrupt that is asserted when a wakeup event is
+      received.
+
+  clocks:
+    description:
+      A list of phandle and clock-specifier pairs for the clocks
+      listed in clock-names.
+    items:
+      - description: system hsio root clock.
+      - description: suspend clock, used for usb wakeup logic.
+
+  clock-names:
+    items:
+      - const: hsio
+      - const: suspend
+
+# Required child node:
+
+patternProperties:
+  "^dwc3@[0-9a-f]+$":
+    type: object
+    description:
+      A child node must exist to represent the core DWC3 IP block
+      The content of the node is defined in dwc3.txt.
+
+required:
+  - compatible
+  - reg
+  - "#address-cells"
+  - "#size-cells"
+  - ranges
+  - clocks
+  - clock-names
+  - interrupts
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/clock/imx8mp-clock.h>
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+    usb3_0: usb@32f10100 {
+      compatible = "fsl,imx8mp-dwc3";
+      reg = <0x32f10100 0x8>;
+      clocks = <&clk IMX8MP_CLK_HSIO_ROOT>,
+               <&clk IMX8MP_CLK_USB_ROOT>;
+      clock-names = "hsio", "suspend";
+      interrupts = <GIC_SPI 148 IRQ_TYPE_LEVEL_HIGH>;
+      #address-cells = <1>;
+      #size-cells = <1>;
+      ranges;
+
+      dwc3@38100000 {
+        compatible = "snps,dwc3";
+        reg = <0x38100000 0x10000>;
+        clocks = <&clk IMX8MP_CLK_HSIO_AXI>,
+                 <&clk IMX8MP_CLK_USB_CORE_REF>,
+                 <&clk IMX8MP_CLK_USB_ROOT>;
+        clock-names = "bus_early", "ref", "suspend";
+        assigned-clocks = <&clk IMX8MP_CLK_HSIO_AXI>;
+        assigned-clock-parents = <&clk IMX8MP_SYS_PLL2_500M>;
+        assigned-clock-rates = <500000000>;
+        interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>;
+        phys = <&usb3_phy0>, <&usb3_phy0>;
+        phy-names = "usb2-phy", "usb3-phy";
+      };
+    };

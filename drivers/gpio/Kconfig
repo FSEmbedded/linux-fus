@@ -427,6 +427,12 @@ config GPIO_MXC
 	select GPIO_GENERIC
 	select GENERIC_IRQ_CHIP
 
+config GPIO_SCU
+	def_bool y
+	depends on IMX_SCU
+	help
+	  Say Y here to enable the imx8 gpio over SCFW MISC API
+
 config GPIO_MXS
 	bool "Freescale MXS GPIO support" if COMPILE_TEST
 	depends on ARCH_MXS || COMPILE_TEST
@@ -618,6 +624,7 @@ config GPIO_THUNDERX
 	tristate "Cavium ThunderX/OCTEON-TX GPIO"
 	depends on ARCH_THUNDER || (64BIT && COMPILE_TEST)
 	depends on PCI_MSI
+	select GPIOLIB_IRQCHIP
 	select IRQ_DOMAIN_HIERARCHY
 	select IRQ_FASTEOI_HIERARCHY_HANDLERS
 	help
@@ -634,16 +641,10 @@ config GPIO_UNIPHIER
 
 config GPIO_VF610
 	def_bool y
-	depends on ARCH_MXC && SOC_VF610
+	depends on ARCH_MXC
 	select GPIOLIB_IRQCHIP
 	help
 	  Say yes here to support Vybrid vf610 GPIOs.
-
-config GPIO_IMX_RPMSG
-	bool "NXP i.MX7ULP RPMSG GPIO support"
-	depends on ARCH_MXC && RPMSG && GPIOLIB
-	help
-	  This driver support i.MX7ULP RPMSG virtual GPIOs.
 
 config GPIO_IMX_RPMSG
 	bool "NXP i.MX7ULP RPMSG GPIO support"

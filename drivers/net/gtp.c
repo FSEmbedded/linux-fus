@@ -958,11 +958,6 @@ static struct pdp_ctx *gtp_pdp_add(struct gtp_dev *gtp, struct sock *sk,
 		if (!pctx)
 			pctx = pctx_tid;
 
-		if (pctx && pctx_tid)
-			return -EEXIST;
-		if (!pctx)
-			pctx = pctx_tid;
-
 		ipv4_pdp_fill(pctx, info);
 
 		if (pctx->gtp_version == GTP_V0)

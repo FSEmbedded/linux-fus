@@ -1678,7 +1678,6 @@ minstrel_ht_alloc(struct ieee80211_hw *hw)
 
 	return mp;
 }
-#endif
 
 #ifdef CONFIG_MAC80211_DEBUGFS
 static void minstrel_ht_add_debugfs(struct ieee80211_hw *hw, void *priv,

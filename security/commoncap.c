@@ -834,7 +834,6 @@ int cap_bprm_creds_from_file(struct linux_binprm *bprm, struct file *file)
 	int ret;
 	kuid_t root_uid;
 
-	new->cap_ambient = old->cap_ambient;
 	if (WARN_ON(!cap_ambient_invariant_ok(old)))
 		return -EPERM;
 

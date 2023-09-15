@@ -39,9 +39,6 @@ static void __iomem *__devm_ioremap(struct device *dev, resource_size_t offset,
 	case DEVM_IOREMAP_UC:
 		addr = ioremap_uc(offset, size);
 		break;
-	case DEVM_IOREMAP_UC:
-		addr = ioremap_uc(offset, size);
-		break;
 	case DEVM_IOREMAP_WC:
 		addr = ioremap_wc(offset, size);
 		break;

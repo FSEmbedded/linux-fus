@@ -6,6 +6,7 @@
 #include <linux/cpufreq.h>
 #include <linux/cpu_cooling.h>
 #include <linux/delay.h>
+#include <linux/device_cooling.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/mfd/syscon.h>
@@ -198,7 +199,7 @@ static struct thermal_soc_data thermal_imx7d_data = {
 struct imx_thermal_data {
 	struct cpufreq_policy *policy;
 	struct thermal_zone_device *tz;
-	struct thermal_cooling_device *cdev;
+	struct thermal_cooling_device *cdev[2];
 	struct regmap *tempmon;
 	u32 c1, c2; /* See formula in imx_init_calib() */
 	int temp_passive;
@@ -257,7 +258,8 @@ static int imx_get_temp(struct thermal_zone_device *tz, int *temp)
 	bool wait, run_measurement;
 	u32 val;
 
-	run_measurement = !data->irq_enabled;
+	regmap_read(map, soc_data->sensor_ctrl, &val);
+	run_measurement = val & soc_data->power_down_mask;
 	if (!run_measurement) {
 		/* Check if a measurement is currently in progress */
 		regmap_read(map, soc_data->temp_data, &val);
@@ -674,8 +676,21 @@ static int imx_thermal_register_legacy_cooling(struct imx_thermal_data *data)
 	}
 
 	of_node_put(np);
+	if (ret)
+		return ret;
 
-	return ret;
+	data->cdev[1] = devfreq_cooling_register();
+	if (IS_ERR(data->cdev[1])) {
+		ret = PTR_ERR(data->cdev[1]);
+		if (ret != -EPROBE_DEFER) {
+			pr_err("failed to register cpufreq cooling device: %d\n",
+				ret);
+			cpufreq_cooling_unregister(data->cdev[0]);
+		}
+		return ret;
+	}
+
+	return 0;
 }
 
 static void imx_thermal_unregister_legacy_cooling(struct imx_thermal_data *data)

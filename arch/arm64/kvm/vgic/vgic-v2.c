@@ -342,7 +342,7 @@ int vgic_v2_map_resources(struct kvm *kvm)
 		ret = kvm_phys_addr_ioremap(kvm, dist->vgic_cpu_base,
 					    kvm_vgic_global_state.vcpu_base,
 					    KVM_VGIC_V2_CPU_SIZE, true,
-					    PAGE_S2_DEVICE);
+					    KVM_PGTABLE_PROT_DEVICE);
 		if (ret) {
 			kvm_err("Unable to remap VGIC CPU to VCPU\n");
 			goto out;

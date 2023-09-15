@@ -98,7 +98,8 @@
 #define OV5640_REG_AVG_READOUT		0x56a1
 
 enum ov5640_mode_id {
-	OV5640_MODE_QCIF_176_144 = 0,
+	OV5640_MODE_QQVGA_160_120 = 0,
+	OV5640_MODE_QCIF_176_144,
 	OV5640_MODE_QVGA_320_240,
 	OV5640_MODE_VGA_640_480,
 	OV5640_MODE_NTSC_720_480,
@@ -537,7 +538,7 @@ static const struct reg_value ov5640_setting_1080P_1920_1080[] = {
 	{0x3a0e, 0x03, 0, 0}, {0x3a0d, 0x04, 0, 0}, {0x3a14, 0x04, 0, 0},
 	{0x3a15, 0x60, 0, 0}, {0x4407, 0x04, 0, 0},
 	{0x460b, 0x37, 0, 0}, {0x460c, 0x20, 0, 0}, {0x3824, 0x04, 0, 0},
-	{0x4005, 0x1a, 0, 0},
+	{0x4005, 0x1a, 0, 0}, {0x3008, 0x02, 0, 10},
 };
 
 static const struct reg_value ov5640_setting_QSXGA_2592_1944[] = {
@@ -943,6 +944,7 @@ static int ov5640_check_valid_mode(struct ov5640_dev *sensor,
 	int ret = 0;
 
 	switch (mode->id) {
+	case OV5640_MODE_QQVGA_160_120:
 	case OV5640_MODE_QCIF_176_144:
 	case OV5640_MODE_QVGA_320_240:
 	case OV5640_MODE_NTSC_720_480:
@@ -1289,7 +1291,17 @@ static int ov5640_set_stream_dvp(struct ov5640_dev *sensor, bool on)
 
 static int ov5640_set_stream_mipi(struct ov5640_dev *sensor, bool on)
 {
+	const struct ov5640_mode_info *mode;
+	u8 line_sync;
 	int ret;
+
+	mode = sensor->current_mode;
+	line_sync = (mode->id == OV5640_MODE_XGA_1024_768 ||
+		     mode->id == OV5640_MODE_QSXGA_2592_1944) ? 0 : 1;
+	ret = ov5640_write_reg(sensor, OV5640_REG_MIPI_CTRL00,
+			       0x24 | (line_sync << 4));
+	if (ret)
+		return ret;
 
 	/*
 	 * Enable/disable the MIPI interface
@@ -1609,12 +1621,9 @@ ov5640_find_mode(struct ov5640_dev *sensor, enum ov5640_frame_rate fr,
 				      width, height);
 
 	if (!mode ||
-	    (!nearest && (mode->hact != width || mode->vact != height)))
+	    (!nearest && (mode->hact != width || mode->vact != height))) {
 		return NULL;
-
-	/* Check to see if the current mode exceeds the max frame rate */
-	if (ov5640_framerates[fr] > ov5640_framerates[mode->max_fps])
-		return NULL;
+	}
 
 	return mode;
 }
@@ -2003,7 +2012,7 @@ static int ov5640_set_power_mipi(struct ov5640_dev *sensor, bool on)
 
 	if (!on) {
 		/* Reset MIPI bus settings to their default values. */
-		ov5640_write_reg(sensor, OV5640_REG_IO_MIPI_CTRL00, 0x58);
+		ov5640_write_reg(sensor, OV5640_REG_IO_MIPI_CTRL00, 0x40);
 		ov5640_write_reg(sensor, OV5640_REG_MIPI_CTRL00, 0x04);
 		ov5640_write_reg(sensor, OV5640_REG_PAD_OUTPUT00, 0x00);
 		return 0;
@@ -2019,7 +2028,7 @@ static int ov5640_set_power_mipi(struct ov5640_dev *sensor, bool on)
 	 * [3] = 0	: Power up MIPI LS Rx
 	 * [2] = 0	: MIPI interface disabled
 	 */
-	ret = ov5640_write_reg(sensor, OV5640_REG_IO_MIPI_CTRL00, 0x40);
+	ret = ov5640_write_reg(sensor, OV5640_REG_IO_MIPI_CTRL00, 0x45);
 	if (ret)
 		return ret;
 
@@ -2028,9 +2037,10 @@ static int ov5640_set_power_mipi(struct ov5640_dev *sensor, bool on)
 	 *
 	 * 0x4800 = 0x24
 	 * [5] = 1	: Gate clock when 'no packets'
+	 * [4] = 1	: Line sync enable
 	 * [2] = 1	: MIPI bus in LP11 when 'no packets'
 	 */
-	ret = ov5640_write_reg(sensor, OV5640_REG_MIPI_CTRL00, 0x24);
+	ret = ov5640_write_reg(sensor, OV5640_REG_MIPI_CTRL00, 0x34);
 	if (ret)
 		return ret;
 
@@ -2145,7 +2155,7 @@ static int ov5640_set_power_dvp(struct ov5640_dev *sensor, bool on)
 	 * [3] = 1	: Power down MIPI LS Rx
 	 * [2] = 0	: DVP enable (MIPI disable)
 	 */
-	ret = ov5640_write_reg(sensor, OV5640_REG_IO_MIPI_CTRL00, 0x18);
+	ret = ov5640_write_reg(sensor, OV5640_REG_IO_MIPI_CTRL00, 0x58);
 	if (ret)
 		return ret;
 
@@ -2377,6 +2387,9 @@ static int ov5640_set_fmt(struct v4l2_subdev *sd,
 
 	__v4l2_ctrl_s_ctrl_int64(sensor->ctrls.pixel_rate,
 				 ov5640_calc_pixel_rate(sensor));
+
+	if (sensor->pending_mode_change || sensor->pending_fmt_change)
+		sensor->fmt = *mbus_fmt;
 out:
 	mutex_unlock(&sensor->lock);
 	return ret;

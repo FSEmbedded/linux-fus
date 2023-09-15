@@ -2087,9 +2087,6 @@ static int bnxt_async_event_process(struct bnxt *bp,
 		if (!bp->fw_health)
 			goto async_event_process_exit;
 
-		if (!bp->fw_health)
-			goto async_event_process_exit;
-
 		bp->fw_reset_timestamp = jiffies;
 		bp->fw_reset_min_dsecs = cmpl->timestamp_lo;
 		if (!bp->fw_reset_min_dsecs)
@@ -12639,14 +12636,6 @@ static int bnxt_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	if (pci_is_bridge(pdev))
 		return -ENODEV;
-
-	/* Clear any pending DMA transactions from crash kernel
-	 * while loading driver in capture kernel.
-	 */
-	if (is_kdump_kernel()) {
-		pci_clear_master(pdev);
-		pcie_flr(pdev);
-	}
 
 	/* Clear any pending DMA transactions from crash kernel
 	 * while loading driver in capture kernel.

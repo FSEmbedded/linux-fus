@@ -136,18 +136,4 @@ struct sof_ipc_user_abi_version {
 	uint32_t abi_dbg_version;
 }  __packed;
 
-struct sof_ipc_cc_version {
-	struct sof_ipc_ext_data_hdr ext_hdr;
-	uint32_t major;
-	uint32_t minor;
-	uint32_t micro;
-
-	/* reserved for future use */
-	uint32_t reserved[4];
-
-	char name[16]; /* null terminated compiler name */
-	char optim[4]; /* null terminated compiler -O flag value */
-	char desc[]; /* null terminated compiler description */
-} __packed;
-
 #endif

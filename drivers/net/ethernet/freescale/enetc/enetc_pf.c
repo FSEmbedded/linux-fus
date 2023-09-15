@@ -4,8 +4,10 @@
 #include <linux/mdio.h>
 #include <linux/module.h>
 #include <linux/fsl/enetc_mdio.h>
+#include <linux/of_platform.h>
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
+#include "enetc_ierb.h"
 #include "enetc_pf.h"
 
 #define ENETC_DRV_NAME_STR "ENETC PF driver"
@@ -477,14 +479,12 @@ static void enetc_port_si_configure(struct enetc_si *si)
 	enetc_port_wr(hw, ENETC_PSIVLANFMR, ENETC_PSIVLANFMR_VS);
 }
 
-static void enetc_configure_port_mac(struct enetc_hw *hw,
-				     phy_interface_t phy_mode)
+static void enetc_configure_port_mac(struct enetc_hw *hw)
 {
 	enetc_port_wr(hw, ENETC_PM0_MAXFRM,
 		      ENETC_SET_MAXFRM(ENETC_RX_MAXFRM_SIZE));
 
 	enetc_port_wr(hw, ENETC_PTCMSDUR(0), ENETC_MAC_MAXFRM_SIZE);
-	enetc_port_wr(hw, ENETC_PTXMBAR, 2 * ENETC_MAC_MAXFRM_SIZE);
 
 	enetc_port_wr(hw, ENETC_PM0_CMD_CFG, ENETC_PM0_CMD_PHY_TX_EN |
 		      ENETC_PM0_CMD_TXP	| ENETC_PM0_PROMISC);
@@ -547,7 +547,7 @@ static void enetc_configure_port(struct enetc_pf *pf)
 
 	enetc_configure_port_pmac(hw);
 
-	enetc_configure_port_mac(hw, pf->if_mode);
+	enetc_configure_port_mac(hw);
 
 	enetc_port_si_configure(pf->si);
 
@@ -738,13 +738,7 @@ static void enetc_pf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
 		ndev->features &= ~NETIF_F_HW_CSUM;
 	}
 
-	ndev->priv_flags |= IFF_UNICAST_FLT | IFF_LIVE_ADDR_CHANGE;
-
-	if (si->hw_features & ENETC_SI_F_QBV)
-		priv->active_offloads |= ENETC_F_QBV;
-
-	if (enetc_tsn_is_enabled() && (si->hw_features & ENETC_SI_F_QBU))
-		priv->active_offloads |= ENETC_F_QBU;
+	ndev->priv_flags |= IFF_UNICAST_FLT;
 
 	if (si->hw_features & ENETC_SI_F_QBV)
 		priv->active_offloads |= ENETC_F_QBV;
@@ -754,6 +748,9 @@ static void enetc_pf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
 		ndev->features |= NETIF_F_HW_TC;
 		ndev->hw_features |= NETIF_F_HW_TC;
 	}
+
+	if (enetc_tsn_is_enabled() && (si->hw_features & ENETC_SI_F_QBU))
+		priv->active_offloads |= ENETC_F_QBU;
 
 	/* pick up primary MAC address from SI */
 	enetc_get_primary_mac_addr(&si->hw, ndev->dev_addr);
@@ -991,7 +988,12 @@ static void enetc_pl_mac_link_up(struct phylink_config *config,
 				 int duplex, bool tx_pause, bool rx_pause)
 {
 	struct enetc_pf *pf = phylink_to_enetc_pf(config);
+	u32 pause_off_thresh = 0, pause_on_thresh = 0;
+	u32 init_quanta = 0, refresh_quanta = 0;
+	struct enetc_hw *hw = &pf->si->hw;
 	struct enetc_ndev_priv *priv;
+	u32 rbmr, cmd_cfg;
+	int idx;
 
 	priv = netdev_priv(pf->si->ndev);
 	if (priv->active_offloads & ENETC_F_QBV)
@@ -999,9 +1001,60 @@ static void enetc_pl_mac_link_up(struct phylink_config *config,
 
 	if (!phylink_autoneg_inband(mode) &&
 	    phy_interface_mode_is_rgmii(interface))
-		enetc_force_rgmii_mac(&pf->si->hw, speed, duplex);
+		enetc_force_rgmii_mac(hw, speed, duplex);
 
-	enetc_mac_enable(&pf->si->hw, true);
+	/* Flow control */
+	for (idx = 0; idx < priv->num_rx_rings; idx++) {
+		rbmr = enetc_rxbdr_rd(hw, idx, ENETC_RBMR);
+
+		if (tx_pause)
+			rbmr |= ENETC_RBMR_CM;
+		else
+			rbmr &= ~ENETC_RBMR_CM;
+
+		enetc_rxbdr_wr(hw, idx, ENETC_RBMR, rbmr);
+	}
+
+	if (tx_pause) {
+		/* When the port first enters congestion, send a PAUSE request
+		 * with the maximum number of quanta. When the port exits
+		 * congestion, it will automatically send a PAUSE frame with
+		 * zero quanta.
+		 */
+		init_quanta = 0xffff;
+
+		/* Also, set up the refresh timer to send follow-up PAUSE
+		 * frames at half the quanta value, in case the congestion
+		 * condition persists.
+		 */
+		refresh_quanta = 0xffff / 2;
+
+		/* Start emitting PAUSE frames when 3 large frames (or more
+		 * smaller frames) have accumulated in the FIFO waiting to be
+		 * DMAed to the RX ring.
+		 */
+		pause_on_thresh = 3 * ENETC_MAC_MAXFRM_SIZE;
+		pause_off_thresh = 1 * ENETC_MAC_MAXFRM_SIZE;
+	}
+
+	enetc_port_wr(hw, ENETC_PM0_PAUSE_QUANTA, init_quanta);
+	enetc_port_wr(hw, ENETC_PM1_PAUSE_QUANTA, init_quanta);
+	enetc_port_wr(hw, ENETC_PM0_PAUSE_THRESH, refresh_quanta);
+	enetc_port_wr(hw, ENETC_PM1_PAUSE_THRESH, refresh_quanta);
+	enetc_port_wr(hw, ENETC_PPAUONTR, pause_on_thresh);
+	enetc_port_wr(hw, ENETC_PPAUOFFTR, pause_off_thresh);
+
+	cmd_cfg = enetc_port_rd(hw, ENETC_PM0_CMD_CFG);
+
+	if (rx_pause)
+		cmd_cfg &= ~ENETC_PM0_PAUSE_IGN;
+	else
+		cmd_cfg |= ENETC_PM0_PAUSE_IGN;
+
+	enetc_port_wr(hw, ENETC_PM0_CMD_CFG, cmd_cfg);
+	enetc_port_wr(hw, ENETC_PM1_CMD_CFG, cmd_cfg);
+
+	enetc_mac_enable(hw, true);
 }
 
 static void enetc_pl_mac_link_down(struct phylink_config *config,
@@ -1113,6 +1166,30 @@ static void enetc_init_unused_port(struct enetc_si *si)
 	enetc_free_cbdr(dev, &si->cbd_ring);
 }
 
+static int enetc_pf_register_with_ierb(struct pci_dev *pdev)
+{
+	struct device_node *node = pdev->dev.of_node;
+	struct platform_device *ierb_pdev;
+	struct device_node *ierb_node;
+
+	/* Don't register with the IERB if the PF itself is disabled */
+	if (!node || !of_device_is_available(node))
+		return 0;
+
+	ierb_node = of_find_compatible_node(NULL, NULL,
+					    "fsl,ls1028a-enetc-ierb");
+	if (!ierb_node || !of_device_is_available(ierb_node))
+		return -ENODEV;
+
+	ierb_pdev = of_find_device_by_node(ierb_node);
+	of_node_put(ierb_node);
+
+	if (!ierb_pdev)
+		return -EPROBE_DEFER;
+
+	return enetc_ierb_register_pf(ierb_pdev, pdev);
+}
+
 static int enetc_pf_probe(struct pci_dev *pdev,
 			  const struct pci_device_id *ent)
 {
@@ -1122,6 +1199,14 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 	struct enetc_si *si;
 	struct enetc_pf *pf;
 	int err;
+
+	err = enetc_pf_register_with_ierb(pdev);
+	if (err == -EPROBE_DEFER)
+		return err;
+	if (err)
+		dev_warn(&pdev->dev,
+			 "Could not register with IERB driver: %pe, please update the device tree\n",
+			 ERR_PTR(err));
 
 	err = enetc_pci_probe(pdev, KBUILD_MODNAME, sizeof(*pf));
 	if (err) {
@@ -1147,10 +1232,6 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 	pf->si = si;
 	pf->total_vfs = pci_sriov_get_totalvfs(pdev);
 
-	err = enetc_of_get_phy(pf);
-	if (err)
-		dev_warn(&pdev->dev, "Fallback to PHY-less operation\n");
-
 	enetc_configure_port(pf);
 
 	enetc_get_si_caps(si);
@@ -1165,8 +1246,6 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 	enetc_pf_netdev_setup(si, ndev, &enetc_ndev_ops);
 
 	priv = netdev_priv(ndev);
-	priv->phy_node = pf->phy_node;
-	priv->if_mode = pf->if_mode;
 
 	enetc_init_si_rings_params(priv);
 
@@ -1214,6 +1293,8 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 	if (err)
 		goto err_reg_netdev;
 
+	enetc_tsn_pf_init(ndev, pdev);
+
 	return 0;
 
 err_reg_netdev:
@@ -1249,6 +1330,8 @@ static void enetc_pf_remove(struct pci_dev *pdev)
 	if (pf->num_vfs)
 		enetc_sriov_configure(pdev, 0);
 
+	enetc_tsn_pf_deinit(si->ndev);
+
 	unregister_netdev(si->ndev);
 
 	enetc_phylink_destroy(priv);
@@ -1262,10 +1345,6 @@ static void enetc_pf_remove(struct pci_dev *pdev)
 
 	enetc_pci_remove(pdev);
 }
-
-/* Lock for MDIO access errata on LS1028A */
-DEFINE_RWLOCK(enetc_mdio_lock);
-EXPORT_SYMBOL_GPL(enetc_mdio_lock);
 
 static const struct pci_device_id enetc_pf_id_table[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_FREESCALE, ENETC_DEV_ID_PF) },

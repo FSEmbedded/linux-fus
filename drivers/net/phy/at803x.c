@@ -138,11 +138,20 @@
 #define AT803X_MAX_DOWNSHIFT 9
 
 #define ATH9331_PHY_ID 0x004dd041
+
+#define AT803X_LPI_EN				BIT(8)
+
+#define AT803X_DEBUG_REG_31			0x1f
+#define AT803X_VDDIO_1P8V_EN			0x8
+
 #define ATH8030_PHY_ID 0x004dd076
 #define ATH8031_PHY_ID 0x004dd074
 #define ATH8032_PHY_ID 0x004dd023
 #define ATH8035_PHY_ID 0x004dd072
 #define AT8030_PHY_ID_MASK			0xffffffef
+
+#define AT803X_EEE_FEATURE_DISABLE		(1 << 1)
+#define AT803X_VDDIO_1P8V			(1 << 2)
 
 MODULE_DESCRIPTION("Qualcomm Atheros AR803x PHY driver");
 MODULE_AUTHOR("Matus Ujhelyi");
@@ -156,6 +165,7 @@ struct at803x_priv {
 	struct regulator_dev *vddio_rdev;
 	struct regulator_dev *vddh_rdev;
 	struct regulator *vddio;
+	u32 quirks;
 };
 
 struct at803x_context {
@@ -658,6 +668,20 @@ static int at803x_config_init(struct phy_device *phydev)
 		if (ret < 0)
 			return ret;
 	}
+
+	if (priv->quirks & AT803X_VDDIO_1P8V) {
+		ret = at803x_set_vddio_1p8v(phydev);
+		if (ret < 0)
+			return ret;
+	}
+
+	if (priv->quirks & AT803X_EEE_FEATURE_DISABLE) {
+		ret = at803x_disable_eee(phydev);
+		if (ret < 0)
+			return ret;
+	}
+
+	at803x_debug_reg_mask(phydev, 0xB, BIT(15), 0);
 
 	return 0;
 }

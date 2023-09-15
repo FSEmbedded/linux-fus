@@ -1,32 +1,20 @@
-/**
- * core.h - Cadence USB3 DRD Controller Core header file
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Cadence USBSS DRD Header File.
  *
- * Copyright 2017-2019 NXP
+ * Copyright (C) 2017-2018 NXP
+ * Copyright (C) 2018-2019 Cadence.
  *
  * Authors: Peter Chen <peter.chen@nxp.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2  of
- * the License as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *          Pawel Laszczak <pawell@cadence.com>
  */
+#include <linux/usb/otg.h>
+#include <linux/usb/role.h>
 
-#ifndef __DRIVERS_USB_CDNS3_CORE_H
-#define __DRIVERS_USB_CDNS3_CORE_H
+#ifndef __LINUX_CDNS3_CORE_H
+#define __LINUX_CDNS3_CORE_H
 
 struct cdns3;
-enum cdns3_roles {
-	CDNS3_ROLE_HOST = 0,
-	CDNS3_ROLE_GADGET,
-	CDNS3_ROLE_END,
-};
 
 /**
  * struct cdns3_role_driver - host/gadget role driver
@@ -35,17 +23,18 @@ enum cdns3_roles {
  * @suspend: suspend callback for this role
  * @resume: resume callback for this role
  * @irq: irq handler for this role
- * @thread_irq: thread irq handler for this role
  * @name: role name string (host/gadget)
+ * @state: current state
  */
 struct cdns3_role_driver {
-	int (*start)(struct cdns3 *);
-	void (*stop)(struct cdns3 *);
-	int (*suspend)(struct cdns3 *, bool do_wakeup);
-	int (*resume)(struct cdns3 *, bool hibernated);
-	irqreturn_t (*irq)(struct cdns3 *);
-	irqreturn_t (*thread_irq)(struct cdns3 *);
+	int (*start)(struct cdns3 *cdns);
+	void (*stop)(struct cdns3 *cdns);
+	int (*suspend)(struct cdns3 *cdns, bool do_wakeup);
+	int (*resume)(struct cdns3 *cdns, bool hibernated);
 	const char *name;
+#define CDNS3_ROLE_STATE_INACTIVE	0
+#define CDNS3_ROLE_STATE_ACTIVE		1
+	int state;
 };
 
 #define CDNS3_XHCI_RESOURCES_NUM	2
@@ -63,8 +52,9 @@ struct cdns3_platform_data {
  * @xhci_regs: pointer to base of xhci registers
  * @xhci_res: the resource for xhci
  * @dev_regs: pointer to base of dev registers
- * @none_core_regs: pointer to base of nxp wrapper registers
- * @phy_regs: pointer to base of phy registers
+ * @otg_res: the resource for otg
+ * @otg_v0_regs: pointer to base of v0 otg registers
+ * @otg_v1_regs: pointer to base of v1 otg registers
  * @otg_regs: pointer to base of otg registers
  * @otg_irq: irq number for otg controller
  * @dev_irq: irq number for device controller
@@ -73,13 +63,8 @@ struct cdns3_platform_data {
  * @role: current role
  * @host_dev: the child host device pointer for cdns3 core
  * @gadget_dev: the child gadget device pointer for cdns3 core
- * @usbphy: usbphy for this controller
- * @cdns3_clks: Clock pointer array for cdns3 core
- * @extcon: Type-C extern connector
- * @extcon_nb: notifier block for Type-C extern connector
- * @role_switch_wq: work queue item for role switch
- * @in_lpm: the controller in low power mode
- * @wakeup_int: the wakeup interrupt
+ * @usb2_phy: pointer to USB2 PHY
+ * @usb3_phy: pointer to USB3 PHY
  * @mutex: the mutex for concurrent code at driver
  * @dr_mode: supported mode of operation it can be only Host, only Device
  *           or OTG mode that allow to switch between Device and Host mode.
@@ -127,40 +112,6 @@ struct cdns3 {
 	struct xhci_plat_priv		*xhci_plat_data;
 };
 
-static inline struct cdns3_role_driver *cdns3_role(struct cdns3 *cdns)
-{
-	WARN_ON(cdns->role >= CDNS3_ROLE_END || !cdns->roles[cdns->role]);
-	return cdns->roles[cdns->role];
-}
+int cdns3_hw_role_switch(struct cdns3 *cdns);
 
-static inline int cdns3_role_start(struct cdns3 *cdns, enum cdns3_roles role)
-{
-	int ret;
-	if (role >= CDNS3_ROLE_END)
-		return 0;
-
-	if (!cdns->roles[role])
-		return -ENXIO;
-
-	mutex_lock(&cdns->mutex);
-	cdns->role = role;
-	ret = cdns->roles[role]->start(cdns);
-	mutex_unlock(&cdns->mutex);
-	return ret;
-}
-
-static inline void cdns3_role_stop(struct cdns3 *cdns)
-{
-	enum cdns3_roles role = cdns->role;
-
-	if (role == CDNS3_ROLE_END)
-		return;
-
-	mutex_lock(&cdns->mutex);
-	cdns->roles[role]->stop(cdns);
-	cdns->role = CDNS3_ROLE_END;
-	mutex_unlock(&cdns->mutex);
-}
-int cdns3_handshake(void __iomem *ptr, u32 mask, u32 done, int usec);
-
-#endif /* __DRIVERS_USB_CDNS3_CORE_H */
+#endif /* __LINUX_CDNS3_CORE_H */

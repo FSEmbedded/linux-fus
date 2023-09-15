@@ -19,7 +19,7 @@
 	};
 };
 
-&pcie {
+&pcie1 {
 	status = "okay";
 };
 
@@ -84,7 +84,7 @@
 		#size-cells = <0>;
 		reg = <0x1>;	/* GEM_ID */
 		fsl,mdio-mux-val = <0x0>;
-		phy-mode = "rgmii-txid";
+		phy-mode = "rgmii-id";
 		phy-handle = <&rgmii_phy>;
 	};
 	mdio@0 {
@@ -114,5 +114,4 @@
 		spi-rx-bus-width = <1>;
 		spi-tx-bus-width = <1>;
 	};
-
 };

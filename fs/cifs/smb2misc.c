@@ -798,7 +798,7 @@ __smb2_handle_cancelled_cmd(struct cifs_tcon *tcon, __u16 cmd, __u64 mid,
 	INIT_WORK(&cancelled->work, smb2_cancelled_close_fid);
 	WARN_ON(queue_work(cifsiod_wq, &cancelled->work) == false);
 
-	return rc;
+	return 0;
 }
 
 int

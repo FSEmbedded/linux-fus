@@ -17,6 +17,7 @@
  *	Copyright (C) 2008 Darius Augulis <darius.augulis at teltonika.lt>
  *
  *	Copyright 2013 Freescale Semiconductor, Inc.
+ *	Copyright 2020 NXP
  *
  */
 
@@ -55,6 +56,8 @@
 
 /* This will be the driver name the kernel reports */
 #define DRIVER_NAME "imx-i2c"
+
+#define IMX_I2C_MAX_E_BIT_RATE	384000	/* 384kHz from e7805 errata*/
 
 /*
  * Enable DMA if transfer byte size is bigger than this threshold.
@@ -161,6 +164,7 @@ static const struct of_device_id scfg_device_ids[] = {
 	{ .compatible = "fsl,ls1046a-scfg", },
 	{}
 };
+
 /*
  * sorted list of clock divider, register value pairs
  * taken from table 26-5, p.26-9, Freescale i.MX
@@ -334,6 +338,10 @@ static const struct acpi_device_id i2c_imx_acpi_ids[] = {
 	{ }
 };
 MODULE_DEVICE_TABLE(acpi, i2c_imx_acpi_ids);
+
+#if IS_ENABLED(CONFIG_I2C_SLAVE)
+static int i2c_imx_slave_init(struct imx_i2c_struct *i2c_imx);
+#endif
 
 static inline int is_imx1_i2c(struct imx_i2c_struct *i2c_imx)
 {
@@ -515,6 +523,14 @@ static void i2c_imx_clear_irq(struct imx_i2c_struct *i2c_imx, unsigned int bits)
 	imx_i2c_write_reg(temp, i2c_imx, IMX_I2C_I2SR);
 }
 
+/* Clear arbitration lost bit */
+static void i2c_imx_clr_al_bit(unsigned int status, struct imx_i2c_struct *i2c_imx)
+{
+	status &= ~I2SR_IAL;
+	status |= (i2c_imx->hwdata->i2sr_clr_opcode & I2SR_IAL);
+	imx_i2c_write_reg(status, i2c_imx, IMX_I2C_I2SR);
+}
+
 static int i2c_imx_bus_busy(struct imx_i2c_struct *i2c_imx, int for_busy, bool atomic)
 {
 	unsigned long orig_jiffies = jiffies;
@@ -527,7 +543,7 @@ static int i2c_imx_bus_busy(struct imx_i2c_struct *i2c_imx, int for_busy, bool a
 
 		/* check for arbitration lost */
 		if (temp & I2SR_IAL) {
-			i2c_imx_clear_irq(i2c_imx, I2SR_IAL);
+			i2c_imx_clr_al_bit(temp, i2c_imx);
 			return -EAGAIN;
 		}
 
@@ -579,15 +595,6 @@ static int i2c_imx_trx_complete(struct imx_i2c_struct *i2c_imx, bool atomic)
 	if (unlikely(!(i2c_imx->i2csr & I2SR_IIF))) {
 		dev_dbg(&i2c_imx->adapter.dev, "<%s> Timeout\n", __func__);
 		return -ETIMEDOUT;
-	}
-
-	/* check for arbitration lost */
-	if (i2c_imx->i2csr & I2SR_IAL) {
-		dev_dbg(&i2c_imx->adapter.dev, "<%s> Arbitration lost\n", __func__);
-		i2c_imx_clear_irq(i2c_imx, I2SR_IAL);
-
-		i2c_imx->i2csr = 0;
-		return -EAGAIN;
 	}
 
 	dev_dbg(&i2c_imx->adapter.dev, "<%s> TRX complete\n", __func__);
@@ -709,6 +716,7 @@ static int i2c_imx_start(struct imx_i2c_struct *i2c_imx, bool atomic)
 
 	temp &= ~I2CR_DMAEN;
 	imx_i2c_write_reg(temp, i2c_imx, IMX_I2C_I2CR);
+
 	return result;
 }
 
@@ -751,17 +759,9 @@ static void i2c_imx_clr_if_bit(unsigned int status, struct imx_i2c_struct *i2c_i
 	imx_i2c_write_reg(status, i2c_imx, IMX_I2C_I2SR);
 }
 
-	temp = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2SR);
-	if (temp & I2SR_IIF) {
-		/* save status register */
-		i2c_imx->i2csr = temp;
-		i2c_imx_clear_irq(i2c_imx, I2SR_IIF);
-		wake_up(&i2c_imx->queue);
-		return IRQ_HANDLED;
-	}
-
+static irqreturn_t i2c_imx_master_isr(struct imx_i2c_struct *i2c_imx, unsigned int status)
+{
 	/* Save status register */
-	status = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2SR);
 	i2c_imx->i2csr = status | I2SR_IIF;
 
 	wake_up(&i2c_imx->queue);
@@ -1066,7 +1066,6 @@ static int i2c_imx_xfer_common(struct i2c_adapter *adapter,
 	unsigned int i, temp;
 	int result;
 	bool is_lastmsg = false;
-	bool enable_runtime_pm = false;
 	struct imx_i2c_struct *i2c_imx = i2c_get_adapdata(adapter);
 
 	dev_dbg(&i2c_imx->adapter.dev, "<%s>\n", __func__);
@@ -1142,23 +1141,132 @@ fail0:
 	dev_dbg(&i2c_imx->adapter.dev, "<%s> exit with: %s: %d\n", __func__,
 		(result < 0) ? "error" : "success msg",
 			(result < 0) ? result : num);
+#if IS_ENABLED(CONFIG_I2C_SLAVE)
+	/* After data is transfered, switch to slave mode(as a receiver) */
+	if (i2c_imx->slave) {
+	    if (i2c_imx_slave_init(i2c_imx) < 0)
+		dev_err(&i2c_imx->adapter.dev, "failed to switch to slave mode");
+	}
+#endif
+
 	return (result < 0) ? result : num;
+}
+
+/*
+ * Based on the I2C specification, if the data line (SDA) is
+ * stuck low, the master should send nine  * clock pulses.
+ * The I2C slave device that held the bus low should release it
+ * sometime within  * those nine clocks. Due to this erratum,
+ * the I2C controller cannot generate nine clock pulses.
+ */
+static int i2c_imx_recovery_for_layerscape(struct imx_i2c_struct *i2c_imx)
+{
+	u32 pmuxcr = 0;
+	int ret;
+	unsigned int i, temp;
+
+	/* configure IICx_SCL/GPIO pin as a GPIO */
+	if (i2c_imx->need_set_pmuxcr == 1) {
+		pmuxcr = ioread32be(i2c_imx->pmuxcr_addr);
+		if (i2c_imx->pmuxcr_endian == BIG_ENDIAN)
+			iowrite32be(i2c_imx->pmuxcr_set|pmuxcr,
+				    i2c_imx->pmuxcr_addr);
+		else
+			iowrite32(i2c_imx->pmuxcr_set|pmuxcr,
+				  i2c_imx->pmuxcr_addr);
+	}
+
+	ret = gpio_request(i2c_imx->gpio, i2c_imx->adapter.name);
+	if (ret) {
+		dev_err(&i2c_imx->adapter.dev,
+			"can't get gpio: %d\n", ret);
+		return ret;
+	}
+
+	/* Configure GPIO pin as an output and open drain. */
+	gpio_direction_output(i2c_imx->gpio, 1);
+	udelay(10);
+
+	/* Write data to generate 9 pulses */
+	for (i = 0; i < 9; i++) {
+		gpio_set_value(i2c_imx->gpio, 1);
+		udelay(10);
+		gpio_set_value(i2c_imx->gpio, 0);
+		udelay(10);
+	}
+	/* ensure that the last level sent is always high */
+	gpio_set_value(i2c_imx->gpio, 1);
+
+	/*
+	 * Set I2Cx_IBCR = 0h00 to generate a STOP
+	 */
+	imx_i2c_write_reg(i2c_imx->hwdata->i2cr_ien_opcode, i2c_imx, IMX_I2C_I2CR);
+
+	/*
+	 * Set I2Cx_IBCR = 0h80 to reset the I2Cx controller
+	 */
+	imx_i2c_write_reg(i2c_imx->hwdata->i2cr_ien_opcode | I2CR_IEN, i2c_imx, IMX_I2C_I2CR);
+
+	/* Restore the saved value of the register SCFG_RCWPMUXCR0 */
+	if (i2c_imx->need_set_pmuxcr == 1) {
+		if (i2c_imx->pmuxcr_endian == BIG_ENDIAN)
+			iowrite32be(pmuxcr, i2c_imx->pmuxcr_addr);
+		else
+			iowrite32(pmuxcr, i2c_imx->pmuxcr_addr);
+	}
+	/*
+	 * Set I2C_IBSR[IBAL] to clear the IBAL bit if-
+	 * I2C_IBSR[IBAL] = 1
+	 */
+	temp = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2SR);
+	if (temp & I2SR_IAL)
+		i2c_imx_clr_al_bit(temp, i2c_imx);
+
+	return 0;
 }
 
 static int i2c_imx_xfer(struct i2c_adapter *adapter,
 			struct i2c_msg *msgs, int num)
 {
 	struct imx_i2c_struct *i2c_imx = i2c_get_adapdata(adapter);
+	bool enable_runtime_pm = false;
 	int result;
 
+	if (!pm_runtime_enabled(i2c_imx->adapter.dev.parent)) {
+		pm_runtime_enable(i2c_imx->adapter.dev.parent);
+		enable_runtime_pm = true;
+	}
+
 	result = pm_runtime_resume_and_get(i2c_imx->adapter.dev.parent);
-	if (result < 0)
+	if (result < 0) {
+		if (enable_runtime_pm)
+			pm_runtime_disable(i2c_imx->adapter.dev.parent);
 		return result;
+	}
+
+	/*
+	 * workaround for ERR010027: ensure that the I2C BUS is idle
+	 * before switching to master mode and attempting a Start cycle
+	 */
+	result =  i2c_imx_bus_busy(i2c_imx, 0, false);
+	if (result) {
+		/* timeout */
+		if ((result == -ETIMEDOUT) && (i2c_imx->layerscape_bus_recover == 1))
+			i2c_imx_recovery_for_layerscape(i2c_imx);
+		else {
+			if (enable_runtime_pm)
+				pm_runtime_disable(i2c_imx->adapter.dev.parent);
+			return result;
+		}
+	}
 
 	result = i2c_imx_xfer_common(adapter, msgs, num, false);
 
 	pm_runtime_mark_last_busy(i2c_imx->adapter.dev.parent);
 	pm_runtime_put_autosuspend(i2c_imx->adapter.dev.parent);
+
+	if (enable_runtime_pm)
+		pm_runtime_disable(i2c_imx->adapter.dev.parent);
 
 	return result;
 }
@@ -1301,7 +1409,7 @@ static int i2c_imx_slave_init(struct imx_i2c_struct *i2c_imx)
 	int temp;
 
 	/* Resume */
-	temp = pm_runtime_get_sync(i2c_imx->adapter.dev.parent);
+	temp = pm_runtime_resume_and_get(i2c_imx->adapter.dev.parent);
 	if (temp < 0) {
 		dev_err(&i2c_imx->adapter.dev, "failed to resume i2c controller");
 		return temp;
@@ -1325,20 +1433,12 @@ static int i2c_imx_slave_init(struct imx_i2c_struct *i2c_imx)
 	return 0;
 }
 
-static irqreturn_t i2c_imx_slave_isr(struct imx_i2c_struct *i2c_imx)
+static irqreturn_t i2c_imx_slave_isr(struct imx_i2c_struct *i2c_imx, unsigned int status, unsigned int ctl)
 {
-	unsigned int status, ctl;
 	u8 value;
 
-	if (!i2c_imx->slave) {
-		dev_err(&i2c_imx->adapter.dev, "cannot deal with slave irq,i2c_imx->slave is null");
-		return IRQ_NONE;
-	}
-
-	status = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2SR);
-	ctl = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2CR);
 	if (status & I2SR_IAL) { /* Arbitration lost */
-		i2c_imx_clr_al_bit(status, i2c_imx);
+		i2c_imx_clr_al_bit(status | I2SR_IIF, i2c_imx);
 	} else if (status & I2SR_IAAS) { /* Addressed as a slave */
 		if (status & I2SR_SRW) { /* Master wants to read from us*/
 			dev_dbg(&i2c_imx->adapter.dev, "read requested");
@@ -1383,7 +1483,9 @@ static irqreturn_t i2c_imx_slave_isr(struct imx_i2c_struct *i2c_imx)
 		ctl &= ~I2CR_MTX;
 		imx_i2c_write_reg(ctl, i2c_imx, IMX_I2C_I2CR);
 		imx_i2c_read_reg(i2c_imx, IMX_I2C_I2DR);
+		i2c_slave_event(i2c_imx->slave, I2C_SLAVE_STOP, &value);
 	}
+
 	return IRQ_HANDLED;
 }
 
@@ -1431,22 +1533,28 @@ static const struct i2c_algorithm i2c_imx_algo = {
 	.master_xfer = i2c_imx_xfer,
 	.master_xfer_atomic = i2c_imx_xfer_atomic,
 	.functionality = i2c_imx_func,
+#if IS_ENABLED(CONFIG_I2C_SLAVE)
+	.reg_slave	= i2c_imx_reg_slave,
+	.unreg_slave	= i2c_imx_unreg_slave,
+#endif
 };
 
 static irqreturn_t i2c_imx_isr(int irq, void *dev_id)
 {
 	struct imx_i2c_struct *i2c_imx = dev_id;
-	unsigned int status;
+	unsigned int ctl, status;
 
 	status = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2SR);
+	ctl = imx_i2c_read_reg(i2c_imx, IMX_I2C_I2CR);
 
 	if (status & I2SR_IIF) {
 		i2c_imx_clr_if_bit(status, i2c_imx);
 #if IS_ENABLED(CONFIG_I2C_SLAVE)
-		if (i2c_imx->slave)
-			return i2c_imx_slave_isr(i2c_imx);
+		if (i2c_imx->slave && !(ctl & I2CR_MSTA)) {
+			return i2c_imx_slave_isr(i2c_imx, status, ctl);
+		}
 #endif
-		return i2c_imx_master_isr(i2c_imx);
+		return i2c_imx_master_isr(i2c_imx, status);
 	}
 
 	return IRQ_NONE;
@@ -1521,12 +1629,13 @@ static int i2c_imx_probe(struct platform_device *pdev)
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 
-	ret = pm_runtime_get_sync(&pdev->dev);
+	ret = pm_runtime_resume_and_get(&pdev->dev);
 	if (ret < 0)
 		goto rpm_disable;
 
 	/* Request IRQ */
-	ret = request_threaded_irq(irq, i2c_imx_isr, NULL, IRQF_SHARED,
+	ret = request_threaded_irq(irq, i2c_imx_isr, NULL,
+				   IRQF_SHARED | IRQF_NO_SUSPEND,
 				   pdev->name, i2c_imx);
 	if (ret) {
 		dev_err(&pdev->dev, "can't claim irq %d\n", irq);

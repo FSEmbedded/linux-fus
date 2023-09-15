@@ -100,17 +100,6 @@ void qe_reset(void)
 		panic("sdma init failed!");
 }
 
-/* issue commands to QE, return 0 on success while -EIO on error
- *
- * @cmd: the command code, should be QE_INIT_TX_RX, QE_STOP_TX and so on
- * @device: which sub-block will run the command, QE_CR_SUBBLOCK_UCCFAST1 - 8
- * , QE_CR_SUBBLOCK_UCCSLOW1 - 8, QE_CR_SUBBLOCK_MCC1 - 3,
- * QE_CR_SUBBLOCK_IDMA1 - 4 and such on.
- * @mcn_protocol: specifies mode for the command for non-MCC, should be
- * QE_CR_PROTOCOL_HDLC_TRANSPARENT, QE_CR_PROTOCOL_QMC, QE_CR_PROTOCOL_UART
- * and such on.
- * @cmd_input: command related data.
- */
 int qe_issue_cmd(u32 cmd, u32 device, u8 mcn_protocol, u32 cmd_input)
 {
 	unsigned long flags;
@@ -172,8 +161,6 @@ unsigned int qe_get_brg_clk(void)
 	struct device_node *qe;
 	u32 brg;
 	unsigned int mod;
-	u32 val;
-	int ret;
 
 	if (brg_clk)
 		return brg_clk;
@@ -240,7 +227,6 @@ int qe_setbrg(enum qe_clock brg, unsigned int rate, unsigned int multiplier)
 	if (qe_general4_errata())
 		if (!div16 && (divisor & 1) && (divisor > 3))
 			divisor++;
-#endif
 
 	tempval = ((divisor - 1) << QE_BRGC_DIVISOR_SHIFT) |
 		QE_BRGC_ENABLE | div16;

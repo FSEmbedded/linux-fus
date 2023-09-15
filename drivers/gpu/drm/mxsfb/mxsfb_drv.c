@@ -43,27 +43,6 @@ enum mxsfb_devtype {
 	MXSFB_V6,
 };
 
-/*
- * When adding new formats, make sure to update the num_formats from
- * mxsfb_devdata below.
- */
-static const u32 mxsfb_formats[] = {
-	/* MXSFB_V3 */
-	DRM_FORMAT_XRGB8888,
-	DRM_FORMAT_ARGB8888,
-	DRM_FORMAT_RGB565,
-	/* MXSFB_V4 */
-	DRM_FORMAT_XBGR8888,
-	DRM_FORMAT_ABGR8888,
-	DRM_FORMAT_RGBX8888,
-	DRM_FORMAT_RGBA8888,
-	DRM_FORMAT_ARGB1555,
-	DRM_FORMAT_XRGB1555,
-	DRM_FORMAT_ABGR1555,
-	DRM_FORMAT_XBGR1555,
-	DRM_FORMAT_BGR565
-};
-
 static const struct mxsfb_devdata mxsfb_devdata[] = {
 	[MXSFB_V3] = {
 		.transfer_count	= LCDC_V3_TRANSFER_COUNT,
@@ -72,7 +51,7 @@ static const struct mxsfb_devdata mxsfb_devdata[] = {
 		.hs_wdth_mask	= 0xff,
 		.hs_wdth_shift	= 24,
 		.has_overlay	= false,
-		.has_ctrl2	= false,
+		.ipversion	= 3,
 	},
 	[MXSFB_V4] = {
 		.transfer_count	= LCDC_V4_TRANSFER_COUNT,
@@ -81,7 +60,7 @@ static const struct mxsfb_devdata mxsfb_devdata[] = {
 		.hs_wdth_mask	= 0x3fff,
 		.hs_wdth_shift	= 18,
 		.has_overlay	= false,
-		.has_ctrl2	= true,
+		.ipversion	= 4,
 	},
 	[MXSFB_V6] = {
 		.transfer_count	= LCDC_V4_TRANSFER_COUNT,
@@ -90,38 +69,20 @@ static const struct mxsfb_devdata mxsfb_devdata[] = {
 		.hs_wdth_mask	= 0x3fff,
 		.hs_wdth_shift	= 18,
 		.has_overlay	= true,
-		.has_ctrl2	= true,
+		.ipversion	= 6,
 	},
 };
 
 void mxsfb_enable_axi_clk(struct mxsfb_drm_private *mxsfb)
 {
-	struct drm_crtc *crtc;
-	struct drm_crtc_state *new_state;
-	int i, ret;
+	if (mxsfb->clk_axi)
+		clk_prepare_enable(mxsfb->clk_axi);
+}
 
-	ret = drm_atomic_helper_check(dev, state);
-	if (ret)
-		return ret;
-
-	for_each_new_crtc_in_state(state, crtc, new_state, i) {
-		struct drm_plane_state *primary_state;
-		int old_bpp = 0;
-		int new_bpp = 0;
-
-		if (!crtc->primary || !crtc->primary->old_fb)
-			continue;
-		primary_state =
-			drm_atomic_get_plane_state(state, crtc->primary);
-		if (!primary_state || !primary_state->fb)
-			continue;
-		old_bpp = crtc->primary->old_fb->format->depth;
-		new_bpp = primary_state->fb->format->depth;
-		if (old_bpp != new_bpp)
-			new_state->mode_changed = true;
-	}
-
-	return ret;
+void mxsfb_disable_axi_clk(struct mxsfb_drm_private *mxsfb)
+{
+	if (mxsfb->clk_axi)
+		clk_disable_unprepare(mxsfb->clk_axi);
 }
 
 static struct drm_framebuffer *
@@ -189,7 +150,7 @@ static int mxsfb_attach_bridge(struct mxsfb_drm_private *mxsfb)
 	mxsfb->connector = drm_connector_list_iter_next(&iter);
 	drm_connector_list_iter_end(&iter);
 
-	return ret;
+	return 0;
 }
 
 static int mxsfb_load(struct drm_device *drm,
@@ -225,9 +186,6 @@ static int mxsfb_load(struct drm_device *drm,
 	if (IS_ERR(mxsfb->clk_disp_axi))
 		mxsfb->clk_disp_axi = NULL;
 
-	of_property_read_u32(drm->dev->of_node, "max-memory-bandwidth",
-			     &mxsfb->max_bw);
-
 	ret = dma_set_mask_and_coherent(drm->dev, DMA_BIT_MASK(32));
 	if (ret)
 		return ret;
@@ -258,6 +216,9 @@ static int mxsfb_load(struct drm_device *drm,
 			dev_err(drm->dev, "Cannot connect bridge: %d\n", ret);
 		goto err_vblank;
 	}
+
+	of_property_read_u32(drm->dev->of_node, "max-memory-bandwidth",
+			     &mxsfb->max_bw);
 
 	drm->mode_config.min_width	= MXSFB_MIN_XRES;
 	drm->mode_config.min_height	= MXSFB_MIN_YRES;

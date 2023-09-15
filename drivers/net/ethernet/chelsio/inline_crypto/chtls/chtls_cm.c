@@ -815,14 +815,6 @@ static void chtls_purge_wr_queue(struct sock *sk)
 		kfree_skb(skb);
 }
 
-static void chtls_purge_wr_queue(struct sock *sk)
-{
-	struct sk_buff *skb;
-
-	while ((skb = dequeue_wr(sk)) != NULL)
-		kfree_skb(skb);
-}
-
 static void chtls_release_resources(struct sock *sk)
 {
 	struct chtls_sock *csk = rcu_dereference_sk_user_data(sk);

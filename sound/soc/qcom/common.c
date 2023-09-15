@@ -4,7 +4,6 @@
 
 #include <linux/module.h>
 #include "common.h"
-#include "qdsp6/q6afe.h"
 
 int qcom_snd_parse_of(struct snd_soc_card *card)
 {
@@ -142,8 +141,6 @@ int qcom_snd_parse_of(struct snd_soc_card *card)
 			link->codecs->dai_name = "snd-soc-dummy-dai";
 			link->codecs->name = "snd-soc-dummy";
 			link->dynamic = 1;
-			link->dpcm_playback = 1;
-			link->dpcm_capture = 1;
 		}
 
 		if (platform || !codec) {

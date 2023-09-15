@@ -797,7 +797,6 @@ void __mod_memcg_lruvec_state(struct lruvec *lruvec, enum node_stat_item idx,
 void __mod_lruvec_state(struct lruvec *lruvec, enum node_stat_item idx,
 			int val);
 void __mod_lruvec_slab_state(void *p, enum node_stat_item idx, int val);
-void mod_memcg_obj_state(void *p, int idx, int val);
 
 void mod_memcg_obj_state(void *p, int idx, int val);
 

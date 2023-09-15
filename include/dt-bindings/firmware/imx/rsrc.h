@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0+ */
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017-2018,2020 NXP
+ * Copyright 2017-2018 NXP
  */
 
 #ifndef __DT_BINDINGS_RSCRC_IMX_H
@@ -263,7 +263,6 @@
 #define IMX_SC_R_SDHC_2			250
 #define IMX_SC_R_ENET_0			251
 #define IMX_SC_R_ENET_1			252
-#define IMX_SC_R_MLB_0			253
 #define IMX_SC_R_DMA_2_CH0		254
 #define IMX_SC_R_DMA_2_CH1		255
 #define IMX_SC_R_DMA_2_CH2		256

@@ -1128,14 +1128,6 @@ void __init setup_log_buf(int early)
 	if (!early)
 		set_percpu_data_ready();
 
-	/*
-	 * Some archs call setup_log_buf() multiple times - first is very
-	 * early, e.g. from setup_arch(), and second - when percpu_areas
-	 * are initialised.
-	 */
-	if (!early)
-		set_percpu_data_ready();
-
 	if (log_buf != __log_buf)
 		return;
 

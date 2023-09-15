@@ -67,7 +67,6 @@
 		serial4 = &lpuart4;
 		serial5 = &lpuart5;
 		sysclk = &sysclk;
-		rtc1 = &ftm_alarm0;
 	};
 
 	cpus {
@@ -603,6 +602,16 @@
 			status = "disabled";
 		};
 
+		ftm0: ftm0@29d0000 {
+			compatible = "fsl,ftm-alarm";
+			reg = <0x0 0x29d0000 0x0 0x10000>,
+			      <0x0 0x1ee2140 0x0 0x4>;
+			reg-names = "ftm", "FlexTimer1";
+			interrupts = <GIC_SPI 118 IRQ_TYPE_LEVEL_HIGH>;
+			big-endian;
+			status = "okay";
+		};
+
 		pwm1: pwm@29e0000 {
 			compatible = "fsl,vf610-ftm-pwm";
 			#pwm-cells = <3>;
@@ -702,9 +711,8 @@
 			reg = <0x0 0x2b50000 0x0 0x10000>;
 			interrupts = <GIC_SPI 132 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&clockgen 4 1>, <&clockgen 4 1>,
-				 <&clockgen 4 1>, <&clockgen 4 1>,
-				 <&clockgen 4 1>;
-			clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
+				 <&clockgen 4 1>, <&clockgen 4 1>;
+			clock-names = "bus", "mclk1", "mclk2", "mclk3";
 			dma-names = "tx", "rx";
 			dmas = <&edma0 1 47>,
 			       <&edma0 1 46>;
@@ -717,9 +725,8 @@
 			reg = <0x0 0x2b60000 0x0 0x10000>;
 			interrupts = <GIC_SPI 133 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&clockgen 4 1>, <&clockgen 4 1>,
-				 <&clockgen 4 1>, <&clockgen 4 1>,
-				 <&clockgen 4 1>;
-			clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
+				 <&clockgen 4 1>, <&clockgen 4 1>;
+			clock-names = "bus", "mclk1", "mclk2", "mclk3";
 			dma-names = "tx", "rx";
 			dmas = <&edma0 1 45>,
 			       <&edma0 1 44>;
@@ -1020,13 +1027,19 @@
 			compatible = "fsl,ls1021a-rcpm", "fsl,qoriq-rcpm-2.1+";
 			reg = <0x0 0x1ee2140 0x0 0x8>;
 			#fsl,rcpm-wakeup-cells = <2>;
+
+			/*
+			 * The second and third entry compose an alt offset
+			 * address for IPPDEXPCR1(SCFG_SPARECR8)
+			 */
+			fsl,ippdexpcr1-alt-addr = <&scfg 0x0 0x51c>;
 		};
 
 		ftm_alarm0: timer0@29d0000 {
 			compatible = "fsl,ls1021a-ftm-alarm";
 			reg = <0x0 0x29d0000 0x0 0x10000>;
 			reg-names = "ftm";
-			fsl,rcpm-wakeup = <&rcpm 0x20000 0x0>;
+			fsl,rcpm-wakeup = <&rcpm 0x0 0x20000000>;
 			interrupts = <GIC_SPI 118 IRQ_TYPE_LEVEL_HIGH>;
 			big-endian;
 		};

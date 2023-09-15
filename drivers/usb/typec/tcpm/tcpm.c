@@ -152,12 +152,6 @@ static const char * const tcpm_states[] = {
 	FOREACH_STATE(GENERATE_STRING)
 };
 
-static const unsigned int tcpm_extcon_cable[] = {
-	EXTCON_USB_HOST,
-	EXTCON_USB,
-	EXTCON_NONE,
-};
-
 enum vdm_states {
 	VDM_STATE_ERR_BUSY = -3,
 	VDM_STATE_ERR_SEND = -2,
@@ -251,7 +245,6 @@ struct pd_pps_data {
 
 struct tcpm_port {
 	struct device *dev;
-	struct extcon_dev *edev;
 
 	struct mutex lock;		/* tcpm state machine lock */
 	struct kthread_worker *wq;
@@ -741,20 +734,6 @@ static int tcpm_mux_set(struct tcpm_port *port, int state,
 		ret = usb_role_switch_set_role(port->role_sw, usb_role);
 		if (ret)
 			return ret;
-	} else if (port->edev) {
-		if (usb_role == USB_ROLE_NONE) {
-			extcon_set_state_sync(port->edev, EXTCON_USB_HOST,
-					      false);
-			extcon_set_state_sync(port->edev, EXTCON_USB, false);
-		} else if (usb_role == USB_ROLE_DEVICE) {
-			extcon_set_state_sync(port->edev, EXTCON_USB_HOST,
-					      false);
-			extcon_set_state_sync(port->edev, EXTCON_USB, true);
-		} else {
-			extcon_set_state_sync(port->edev, EXTCON_USB, false);
-			extcon_set_state_sync(port->edev, EXTCON_USB_HOST,
-					      true);
-		}
 	}
 
 	return typec_set_mode(port->typec_port, state);
@@ -4074,14 +4053,6 @@ static void _tcpm_cc_change(struct tcpm_port *port, enum typec_cc_status cc1,
 		 */
 		break;
 
-	case PORT_RESET:
-	case PORT_RESET_WAIT_OFF:
-		/*
-		 * State set back to default mode once the timer completes.
-		 * Ignore CC changes here.
-		 */
-		break;
-
 	default:
 		if (tcpm_port_is_disconnected(port))
 			tcpm_set_state(port, unattached_state(port), 0);
@@ -5012,7 +4983,7 @@ static int tcpm_psy_set_prop(struct power_supply *psy,
 			     const union power_supply_propval *val)
 {
 	struct tcpm_port *port = power_supply_get_drvdata(psy);
-	int ret;
+	int ret = 0;
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:

@@ -44,9 +44,6 @@ struct ghes_hw_desc {
 /* GHES registration mutex */
 static DEFINE_MUTEX(ghes_reg_mutex);
 
-/* GHES registration mutex */
-static DEFINE_MUTEX(ghes_reg_mutex);
-
 /*
  * Sync with other, potentially concurrent callers of
  * ghes_edac_report_mem_error(). We don't know what the

@@ -15,8 +15,6 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 bool rxe_initialized;
 
-bool rxe_initialized;
-
 /* free resources for a rxe device all objects created for this device must
  * have been destroyed
  */

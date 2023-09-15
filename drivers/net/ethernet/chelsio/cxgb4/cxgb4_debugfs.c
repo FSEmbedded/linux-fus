@@ -3188,9 +3188,6 @@ static int sge_queue_entries(struct adapter *adap)
 	if (!is_uld(adap))
 		goto lld_only;
 
-	if (!is_uld(adap))
-		goto lld_only;
-
 	mutex_lock(&uld_mutex);
 	for (i = 0; i < CXGB4_TX_MAX; i++)
 		tot_uld_entries += sge_qinfo_uld_txq_entries(adap, i);

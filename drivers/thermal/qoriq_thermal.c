@@ -3,6 +3,7 @@
 // Copyright 2016 Freescale Semiconductor, Inc.
 
 #include <linux/clk.h>
+#include <linux/device_cooling.h>
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/module.h>
@@ -27,6 +28,7 @@
 #define TMSARA_V2		0xe
 #define TMU_VER1		0x1
 #define TMU_VER2		0x2
+#define TMU_TEMP_PASSIVE_COOL_DELTA	10000
 
 #define REGS_TMR	0x000	/* Mode Register */
 #define TMR_DISABLE	0x0
@@ -68,9 +70,10 @@
  */
 struct qoriq_sensor {
 	int				id;
+	struct thermal_zone_device	*tzd;
 	int				temp_passive;
 	int				temp_critical;
-	struct thermal_cooling_device 	*cdev;
+	struct thermal_cooling_device	*cdev;
 };
 
 struct qoriq_tmu_data {
@@ -78,6 +81,12 @@ struct qoriq_tmu_data {
 	struct regmap *regmap;
 	struct clk *clk;
 	struct qoriq_sensor	sensor[SITES_MAX];
+};
+
+enum tmu_trip {
+	TMU_TRIP_PASSIVE,
+	TMU_TRIP_CRITICAL,
+	TMU_TRIP_NUM,
 };
 
 static struct qoriq_tmu_data *qoriq_sensor_to_data(struct qoriq_sensor *s)
@@ -169,6 +178,7 @@ static int qoriq_tmu_register_tmu_zone(struct device *dev,
 				       struct qoriq_tmu_data *qdata)
 {
 	int id;
+	const struct thermal_trip *trip;
 
 	if (qdata->ver == TMU_VER1) {
 		regmap_write(qdata->regmap, REGS_TMR,
@@ -197,10 +207,40 @@ static int qoriq_tmu_register_tmu_zone(struct device *dev,
 			return ret;
 		}
 
+		sensor->tzd = tzd;
+
 		if (devm_thermal_add_hwmon_sysfs(tzd))
 			dev_warn(dev,
 				 "Failed to add hwmon sysfs attributes\n");
+		/* first thermal zone takes care of system-wide device cooling */
+		if (id == 0) {
+			sensor->cdev = devfreq_cooling_register();
+			if (IS_ERR(sensor->cdev)) {
+				ret = PTR_ERR(sensor->cdev);
+				pr_err("failed to register devfreq cooling device: %d\n",
+					ret);
+				return ret;
+			}
 
+			ret = thermal_zone_bind_cooling_device(sensor->tzd,
+				TMU_TRIP_PASSIVE,
+				sensor->cdev,
+				THERMAL_NO_LIMIT,
+				THERMAL_NO_LIMIT,
+				THERMAL_WEIGHT_DEFAULT);
+			if (ret) {
+				pr_err("binding zone %s with cdev %s failed:%d\n",
+					sensor->tzd->type,
+					sensor->cdev->type,
+					ret);
+				devfreq_cooling_unregister(sensor->cdev);
+				return ret;
+			}
+
+			trip = of_thermal_get_trip_points(sensor->tzd);
+			sensor->temp_passive = trip[0].temperature;
+			sensor->temp_critical = trip[1].temperature;
+		}
 	}
 
 	return 0;

@@ -7964,10 +7964,6 @@ static bool __update_blocked_fair(struct rq *rq, bool *done)
 				decayed = true;
 		}
 
-			if (cfs_rq == &rq->cfs)
-				decayed = true;
-		}
-
 		/* Propagate pending load changes to the parent, if any: */
 		se = cfs_rq->tg->se[cpu];
 		if (se && !skip_blocked_update(se))

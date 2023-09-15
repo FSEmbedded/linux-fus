@@ -2018,18 +2018,6 @@ static int tegra_pmc_irq_alloc(struct irq_domain *domain, unsigned int virq,
 	if (i == soc->num_wake_events)
 		err = irq_domain_disconnect_hierarchy(domain, virq);
 
-		/*
-		 * Interrupts without a wake event don't have a corresponding
-		 * interrupt in the parent controller (GIC). Pass NULL for the
-		 * chip here, which causes a dummy IRQ chip to be installed
-		 * for the interrupt in the parent domain, to make this
-		 * explicit.
-		 */
-		if (domain->parent)
-			irq_domain_set_hwirq_and_chip(domain->parent, virq, 0,
-						      NULL, NULL);
-	}
-
 	return err;
 }
 

@@ -343,6 +343,7 @@ static int brcm_ahci_suspend(struct device *dev)
 	struct ata_host *host = dev_get_drvdata(dev);
 	struct ahci_host_priv *hpriv = host->private_data;
 	struct brcm_ahci_priv *priv = hpriv->plat_data;
+	int ret;
 
 	brcm_sata_phys_disable(priv);
 

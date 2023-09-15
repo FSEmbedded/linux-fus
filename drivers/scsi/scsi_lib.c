@@ -559,15 +559,6 @@ static void scsi_run_queue_async(struct scsi_device *sdev)
 	}
 }
 
-static void scsi_run_queue_async(struct scsi_device *sdev)
-{
-	if (scsi_target(sdev)->single_lun ||
-	    !list_empty(&sdev->host->starved_list))
-		kblockd_schedule_work(&sdev->requeue_work);
-	else
-		blk_mq_run_hw_queues(sdev->request_queue, true);
-}
-
 /* Returns false when no more bytes to process, true if there are more */
 static bool scsi_end_request(struct request *req, blk_status_t error,
 		unsigned int bytes)

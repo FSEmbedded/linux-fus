@@ -1159,8 +1159,6 @@ static int stm32_dfsdm_single_conv(struct iio_dev *indio_dev,
 
 	stm32_dfsdm_process_data(adc, res);
 
-	stm32_dfsdm_process_data(adc, res);
-
 stop_dfsdm:
 	stm32_dfsdm_stop_dfsdm(adc->dfsdm);
 

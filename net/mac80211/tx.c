@@ -4048,9 +4048,6 @@ void __ieee80211_subif_start_xmit(struct sk_buff *skb,
 		if (skb->protocol == sdata->control_port_protocol)
 			ctrl_flags |= IEEE80211_TX_CTRL_SKIP_MPATH_LOOKUP;
 
-		if (skb->protocol == sdata->control_port_protocol)
-			ctrl_flags |= IEEE80211_TX_CTRL_SKIP_MPATH_LOOKUP;
-
 		skb = ieee80211_build_hdr(sdata, skb, info_flags,
 					  sta, ctrl_flags, cookie);
 		if (IS_ERR(skb)) {

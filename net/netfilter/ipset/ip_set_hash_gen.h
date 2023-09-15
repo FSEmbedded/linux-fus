@@ -838,35 +838,6 @@ mtype_ext_size(struct ip_set *set, u32 *elements, size_t *ext_size)
 	}
 }
 
-/* Get the current number of elements and ext_size in the set  */
-static void
-mtype_ext_size(struct ip_set *set, u32 *elements, size_t *ext_size)
-{
-	struct htype *h = set->data;
-	const struct htable *t;
-	u32 i, j, r;
-	struct hbucket *n;
-	struct mtype_elem *data;
-
-	t = rcu_dereference_bh(h->table);
-	for (r = 0; r < ahash_numof_locks(t->htable_bits); r++) {
-		for (i = ahash_bucket_start(r, t->htable_bits);
-		     i < ahash_bucket_end(r, t->htable_bits); i++) {
-			n = rcu_dereference_bh(hbucket(t, i));
-			if (!n)
-				continue;
-			for (j = 0; j < n->pos; j++) {
-				if (!test_bit(j, n->used))
-					continue;
-				data = ahash_data(n, j, set->dsize);
-				if (!SET_ELEM_EXPIRED(set, data))
-					(*elements)++;
-			}
-		}
-		*ext_size += t->hregion[r].ext_size;
-	}
-}
-
 /* Add an element to a hash and update the internal counters when succeeded,
  * otherwise report the proper error code.
  */

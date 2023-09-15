@@ -3201,9 +3201,6 @@ static ssize_t loop_rw_iter(int rw, struct io_kiocb *req, struct iov_iter *iter)
 					       iovec.iov_len, io_kiocb_ppos(kiocb));
 		}
 
-		if (iov_iter_is_bvec(iter))
-			kunmap(iter->bvec->bv_page);
-
 		if (nr < 0) {
 			if (!ret)
 				ret = nr;
@@ -4572,8 +4569,6 @@ static int __io_compat_recvmsg_copy_hdr(struct io_kiocb *req,
 				   &iomsg->msg.msg_iter, true);
 		if (ret < 0)
 			return ret;
-		if (ret == -ERESTARTSYS)
-			ret = -EINTR;
 	}
 
 	return 0;
@@ -6439,23 +6434,6 @@ static int io_submit_sqe(struct io_kiocb *req, const struct io_uring_sqe *sqe,
 {
 	struct io_ring_ctx *ctx = req->ctx;
 	int ret;
-
-#if defined(CONFIG_NET)
-	switch (req->submit.opcode) {
-	case IORING_OP_SENDMSG:
-	case IORING_OP_RECVMSG:
-		spin_lock(&current->fs->lock);
-		if (!current->fs->in_exec) {
-			req->fs = current->fs;
-			req->fs->users++;
-		}
-		spin_unlock(&current->fs->lock);
-		if (!req->fs) {
-			ret = -EAGAIN;
-			goto err_req;
-		}
-	}
-#endif
 
 	/*
 	 * If we already have a head request, queue this one for async
@@ -8616,16 +8594,6 @@ static void io_ring_ctx_wait_and_kill(struct io_ring_ctx *ctx)
 	queue_work(system_unbound_wq, &ctx->exit_work);
 }
 
-static int io_uring_flush(struct file *file, void *data)
-{
-	struct io_ring_ctx *ctx = file->private_data;
-
-	if (fatal_signal_pending(current) || (current->flags & PF_EXITING))
-		io_cancel_async_work(ctx, current);
-
-	return 0;
-}
-
 static int io_uring_release(struct inode *inode, struct file *file)
 {
 	struct io_ring_ctx *ctx = file->private_data;
@@ -9494,12 +9462,6 @@ static int io_uring_create(unsigned entries, struct io_uring_params *p,
 	io_account_mem(ctx, ring_pages(p->sq_entries, p->cq_entries),
 		       ACCT_LOCKED);
 	ctx->limit_mem = limit_mem;
-
-	ctx->creds = get_current_cred();
-	if (!ctx->creds) {
-		ret = -ENOMEM;
-		goto err;
-	}
 
 	ret = io_allocate_scq_urings(ctx, p);
 	if (ret)

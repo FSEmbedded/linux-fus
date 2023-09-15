@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0+
+// SPDX-License-Identifier: GPL- .0+
 /*
  * Freescale GPMI NAND Flash Driver
  *
@@ -153,10 +153,6 @@ static int gpmi_init(struct gpmi_nand_data *this)
 {
 	struct resources *r = &this->resources;
 	int ret = 0;
-
-	ret = pm_runtime_get_sync(this->dev);
-	if (ret < 0)
-		return ret;
 
 	ret = pm_runtime_get_sync(this->dev);
 	if (ret < 0) {
@@ -448,16 +444,18 @@ static int set_geometry_for_large_oob(struct gpmi_nand_data *this)
 	struct bch_geometry *geo = &this->bch_geometry;
 	struct nand_chip *chip = &this->nand;
 	struct mtd_info *mtd = nand_to_mtd(chip);
+	const struct nand_ecc_props *requirements =
+		nanddev_get_ecc_requirements(&chip->base);
 	unsigned int block_mark_bit_offset;
 	unsigned int max_ecc;
 	unsigned int bbm_chunk;
 	unsigned int i;
 
 	/* sanity check for the minimum ecc nand required */
-	if (!(chip->base.eccreq.strength > 0 &&
-	      chip->base.eccreq.step_size > 0))
+	if (!(requirements->strength > 0 &&
+	      requirements->step_size > 0))
 		return -EINVAL;
-	geo->ecc_strength = chip->base.eccreq.strength;
+	geo->ecc_strength = requirements->strength;
 
 	/* check if platform can support this nand */
 	if (!gpmi_check_ecc(this)) {
@@ -479,7 +477,7 @@ static int set_geometry_for_large_oob(struct gpmi_nand_data *this)
 
 	/* search a supported ecc strength that makes bbm */
 	/* located in data chunk  */
-	geo->ecc_strength = chip->base.eccreq.strength;
+	geo->ecc_strength = requirements->strength;
 	while (!(geo->ecc_strength > max_ecc)) {
 		if (bbm_in_data_chunk(this, &bbm_chunk))
 			goto geo_setting;
@@ -488,7 +486,7 @@ static int set_geometry_for_large_oob(struct gpmi_nand_data *this)
 
 	/* if none of them works, keep using the minimum ecc */
 	/* nand required but changing ecc page layout  */
-	geo->ecc_strength = chip->base.eccreq.strength;
+	geo->ecc_strength = requirements->strength;
 	/* add extra ecc for meta data */
 	geo->ecc_chunk0_size = 0;
 	geo->ecc_chunk_count = (mtd->writesize / geo->ecc_chunkn_size) + 1;
@@ -686,17 +684,18 @@ static int legacy_set_geometry(struct gpmi_nand_data *this)
 static int common_nfc_set_geometry(struct gpmi_nand_data *this)
 {
 	struct nand_chip *chip = &this->nand;
+	struct mtd_info *mtd = nand_to_mtd(&this->nand);
 	const struct nand_ecc_props *requirements =
 		nanddev_get_ecc_requirements(&chip->base);
 
-	if (chip->base.eccreq.strength > 0 && chip->base.eccreq.step_size > 0) {
+	if (requirements->strength > 0 && requirements->step_size > 0) {
 		if (mtd->oobsize > 1024
-		    || chip->base.eccreq.step_size < mtd->oobsize)
+		    || requirements->step_size < mtd->oobsize)
 			return set_geometry_for_large_oob(this);
 		else
 			return set_geometry_by_ecc_info(this,
-						chip->base.eccreq.strength,
-						chip->base.eccreq.step_size);
+						requirements->strength,
+						requirements->step_size);
 	}
 
 	if ((of_property_read_bool(this->dev->of_node, "fsl,use-minimum-ecc"))
@@ -927,6 +926,8 @@ static void gpmi_nfc_apply_timings(struct gpmi_nand_data *this)
 	unsigned int dll_wait_time_us;
 
 	clk_disable_unprepare(r->clock[0]);
+	if (GPMI_IS_MX6SX(this) && hw->clk_rate > 88000000)
+		hw->clk_rate = 88000000;
 	clk_set_rate(r->clock[0], hw->clk_rate);
 	clk_prepare_enable(r->clock[0]);
 
@@ -2215,7 +2216,7 @@ static int mx23_boot_init(struct gpmi_nand_data  *this)
 		 */
 		chipnr = block >> (chip->chip_shift - chip->phys_erase_shift);
 		page = block << (chip->phys_erase_shift - chip->page_shift);
-		byte = block <<  chip->phys_erase_shift;
+		byte = (loff_t)block <<  chip->phys_erase_shift;
 
 		/* Send the command to read the conventional block mark. */
 		nand_select_target(chip, chipnr);
@@ -2302,7 +2303,7 @@ static int gpmi_init_last(struct gpmi_nand_data *this)
 	ecc->read_oob_raw = gpmi_ecc_read_oob_raw;
 	ecc->write_oob_raw = gpmi_ecc_write_oob_raw;
 	ecc->engine_type = NAND_ECC_ENGINE_TYPE_ON_HOST;
-	ecc->size	= bch_geo->ecc_chunk_size;
+	ecc->size	= bch_geo->ecc_chunkn_size;
 	ecc->strength	= bch_geo->ecc_strength;
 	mtd_set_ooblayout(mtd, &gpmi_ooblayout_ops);
 
@@ -2314,7 +2315,7 @@ static int gpmi_init_last(struct gpmi_nand_data *this)
 	if ((GPMI_IS_MX6(this) || GPMI_IS_MX8(this))  &&
 		((bch_geo->gf_len * bch_geo->ecc_strength) % 8) == 0) {
 		ecc->read_subpage = gpmi_ecc_read_subpage;
-		chip->options |= NAND_SUBPAGE_READ | NAND_BBM_FIRSTPAGE | NAND_BBM_SECONDPAGE;
+		chip->options |= NAND_SUBPAGE_READ;
 	}
 
 	return 0;
@@ -2597,11 +2598,11 @@ static int gpmi_nfc_exec_op(struct nand_chip *chip,
 						   &direct);
 			break;
 		}
+	}
 
-		if (!desc) {
-			ret = -ENXIO;
-			goto unmap;
-		}
+	if (!desc) {
+		ret = -ENXIO;
+		goto unmap;
 	}
 
 	dev_dbg(this->dev, "%s setup done\n", __func__);
@@ -2725,7 +2726,7 @@ static int gpmi_nand_init(struct gpmi_nand_data *this)
 	max_cs = (GPMI_IS_MX6(this) || GPMI_IS_MX8(this)) ? 2 : 1;
 
 	/* override the max_cs if board has other limitations */
-	of_property_read_u32(this->pdev->dev.of_node, "max-cs", &max_cs);
+	of_property_read_u32(this->pdev->dev.of_node, "fsl,max-nand-cs", &max_cs);
 
 	ret = nand_scan(chip, max_cs);
 	if (ret)
@@ -2808,10 +2809,7 @@ static int gpmi_nand_probe(struct platform_device *pdev)
 	if (ret)
 		goto exit_acquire_resources;
 
-	ret = __gpmi_enable_clk(this, true);
-	if (ret)
-		goto exit_acquire_resources;
-
+	pm_runtime_enable(&pdev->dev);
 	pm_runtime_set_autosuspend_delay(&pdev->dev, 500);
 	pm_runtime_use_autosuspend(&pdev->dev);
 

@@ -302,6 +302,12 @@ static int fsl_lpspi_set_bitrate(struct fsl_lpspi_data *fsl_lpspi)
 
 	perclk_rate = clk_get_rate(fsl_lpspi->clk_per);
 
+	if (!config.speed_hz) {
+		dev_err(fsl_lpspi->dev,
+			"error: the transmission speed provided is 0!\n");
+		return -EINVAL;
+	}
+
 	if (config.speed_hz > perclk_rate / 2) {
 		dev_err(fsl_lpspi->dev,
 		      "per-clk should be at least two times of transfer speed");
@@ -822,11 +828,6 @@ static int fsl_lpspi_probe(struct platform_device *pdev)
 	u32 temp;
 	bool is_slave;
 
-	if (!np && !lpspi_platform_info) {
-		dev_err(&pdev->dev, "can't get the platform data\n");
-		return -EINVAL;
-	}
-
 	is_slave = of_property_read_bool((&pdev->dev)->of_node, "spi-slave");
 	if (is_slave)
 		controller = spi_alloc_slave(&pdev->dev,
@@ -839,16 +840,6 @@ static int fsl_lpspi_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	platform_set_drvdata(pdev, controller);
-
-	ret = of_property_read_u32(np, "fsl,spi-num-chipselects", &num_cs);
-	if (ret < 0) {
-		if (lpspi_platform_info) {
-			num_cs = lpspi_platform_info->num_chipselect;
-			controller->num_chipselect = num_cs;
-		}
-	} else {
-		controller->num_chipselect = num_cs;
-	}
 
 	fsl_lpspi = spi_controller_get_devdata(controller);
 	fsl_lpspi->dev = &pdev->dev;
@@ -867,36 +858,6 @@ static int fsl_lpspi_probe(struct platform_device *pdev)
 	controller->slave_abort = fsl_lpspi_slave_abort;
 	if (!fsl_lpspi->is_slave)
 		controller->use_gpio_descriptors = true;
-
-	if (!fsl_lpspi->is_slave) {
-		controller->cs_gpios = devm_kzalloc(&controller->dev,
-			sizeof(int) * controller->num_chipselect, GFP_KERNEL);
-
-		for (i = 0; i < controller->num_chipselect; i++) {
-			int cs_gpio = of_get_named_gpio(np, "cs-gpios", i);
-
-			if (cs_gpio == -EPROBE_DEFER) {
-				ret = -EPROBE_DEFER;
-				goto out_controller_put;
-			}
-
-			if (!gpio_is_valid(cs_gpio) && lpspi_platform_info)
-				cs_gpio = lpspi_platform_info->chipselect[i];
-
-			controller->cs_gpios[i] = cs_gpio;
-			if (!gpio_is_valid(cs_gpio))
-				continue;
-
-			ret = devm_gpio_request(&pdev->dev,
-						controller->cs_gpios[i],
-						DRIVER_NAME);
-			if (ret) {
-				dev_err(&pdev->dev, "can't get cs gpios\n");
-				goto out_controller_put;
-			}
-		}
-		controller->prepare_message = fsl_lpspi_prepare_message;
-	}
 
 	init_completion(&fsl_lpspi->xfer_done);
 
@@ -951,7 +912,6 @@ static int fsl_lpspi_probe(struct platform_device *pdev)
 	ret = fsl_lpspi_dma_init(&pdev->dev, fsl_lpspi, controller);
 	if (ret == -EPROBE_DEFER)
 		goto out_pm_get;
-
 	if (ret < 0)
 		dev_err(&pdev->dev, "dma setup error %d, use pio\n", ret);
 	else

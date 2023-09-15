@@ -1356,10 +1356,6 @@ DECLARE_PCI_FIXUP_CLASS_EARLY(PCI_VENDOR_ID_AL, PCI_ANY_ID,
    occur when mode detecting */
 DECLARE_PCI_FIXUP_CLASS_EARLY(PCI_VENDOR_ID_VIA, PCI_ANY_ID,
 				PCI_CLASS_STORAGE_IDE, 8, quirk_no_ata_d3);
-/* Quirk the CYW4356 WIFI chip because the firmware still doesn't support
-   D3 mode */
-DECLARE_PCI_FIXUP_CLASS_EARLY(PCI_VENDOR_ID_BROADCOM, 0x43ec,
-				PCI_CLASS_NETWORK_OTHER, 8, quirk_no_ata_d3);
 
 /*
  * This was originally an Alpha-specific thing, but it really fits here.
@@ -2520,33 +2516,6 @@ static void quirk_disable_all_msi(struct pci_dev *dev)
 	pci_no_msi();
 	pci_warn(dev, "MSI quirk detected; MSI disabled\n");
 }
-
-static void quirk_disable_nxp_imx_msi(struct pci_dev *dev)
-{
-	struct pci_dev *host_bridge;
-	bool msi_dis = false;
-
-	host_bridge = pci_get_domain_bus_and_slot(pci_domain_nr(dev->bus), 0,
-						  PCI_DEVFN(0, 0));
-	if (host_bridge) {
-		switch (host_bridge->vendor) {
-		case PCI_VENDOR_ID_SYNOPSYS:
-			if (host_bridge->device == 0xabcd)
-				msi_dis = true;
-			break;
-		case PCI_VENDOR_ID_FREESCALE:
-			if (host_bridge->device == 0x0)
-				msi_dis = true;
-		default:
-			break;
-		}
-
-		if (msi_dis)
-			pci_no_msi();
-		pci_dev_put(host_bridge);
-	}
-}
-
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_SERVERWORKS, PCI_DEVICE_ID_SERVERWORKS_GCNB_LE, quirk_disable_all_msi);
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, PCI_DEVICE_ID_ATI_RS400_200, quirk_disable_all_msi);
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI, PCI_DEVICE_ID_ATI_RS480, quirk_disable_all_msi);
@@ -2555,11 +2524,9 @@ DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_VIA, PCI_DEVICE_ID_VIA_VT3351, quirk_disab
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_VIA, PCI_DEVICE_ID_VIA_VT3364, quirk_disable_all_msi);
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_VIA, PCI_DEVICE_ID_VIA_8380_0, quirk_disable_all_msi);
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_SI, 0x0761, quirk_disable_all_msi);
-DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_BROADCOM, 0x43ec, quirk_disable_nxp_imx_msi);
-DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_BROADCOM, 0x43ef, quirk_disable_nxp_imx_msi);
-DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_MARVELL_EXT, 0x2b42, quirk_disable_nxp_imx_msi);
-DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_MARVELL_EXT, 0x2b43, quirk_disable_nxp_imx_msi);
-DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_MARVELL_EXT, 0x2b44, quirk_disable_nxp_imx_msi);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_MARVELL_EXT, 0x2b42, quirk_disable_all_msi);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_MARVELL_EXT, 0x2b43, quirk_disable_all_msi);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_MARVELL_EXT, 0x2b44, quirk_disable_all_msi);
 
 /* Disable MSI on chipsets that are known to not support it */
 static void quirk_disable_msi(struct pci_dev *dev)
@@ -5678,21 +5645,6 @@ SWITCHTEC_QUIRK(0x4268);  /* PAX 68XG4  */
 SWITCHTEC_QUIRK(0x4252);  /* PAX 52XG4  */
 SWITCHTEC_QUIRK(0x4236);  /* PAX 36XG4  */
 SWITCHTEC_QUIRK(0x4228);  /* PAX 28XG4  */
-
-/*
- * The PLX NTB uses devfn proxy IDs to move TLPs between NT endpoints.
- * These IDs are used to forward responses to the originator on the other
- * side of the NTB.  Alias all possible IDs to the NTB to permit access when
- * the IOMMU is turned on.
- */
-static void quirk_plx_ntb_dma_alias(struct pci_dev *pdev)
-{
-	pci_info(pdev, "Setting PLX NTB proxy ID aliases\n");
-	/* PLX NTB may use all 256 devfns */
-	pci_add_dma_alias(pdev, 0, 256);
-}
-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_PLX, 0x87b0, quirk_plx_ntb_dma_alias);
-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_PLX, 0x87b1, quirk_plx_ntb_dma_alias);
 
 /*
  * The PLX NTB uses devfn proxy IDs to move TLPs between NT endpoints.

@@ -83,7 +83,6 @@ struct wm8962_priv {
 #endif
 
 	int irq;
-	u32 cache_clocking2_reg;
 };
 
 /* We can't use the same notifier block for more than one supply and
@@ -1779,11 +1778,8 @@ SND_SOC_BYTES("HD Bass Coefficients", WM8962_HDBASS_AI_1, 30),
 
 SOC_DOUBLE("ALC Switch", WM8962_ALC1, WM8962_ALCL_ENA_SHIFT,
 		WM8962_ALCR_ENA_SHIFT, 1, 0),
-SND_SOC_BYTES_MASK("ALC1", WM8962_ALC1, 1,
+SND_SOC_BYTES_MASK("ALC Coefficients", WM8962_ALC1, 4,
 		WM8962_ALCL_ENA_MASK | WM8962_ALCR_ENA_MASK),
-SND_SOC_BYTES("ALC2", WM8962_ALC2, 1),
-SND_SOC_BYTES("ALC3", WM8962_ALC3, 1),
-SND_SOC_BYTES("Noise Gate", WM8962_NOISE_GATE, 1),
 };
 
 static const struct snd_kcontrol_new wm8962_spk_mono_controls[] = {
@@ -3834,10 +3830,6 @@ static int wm8962_runtime_resume(struct device *dev)
 
 	regcache_sync(wm8962->regmap);
 
-	regmap_update_bits(wm8962->regmap, WM8962_CLOCKING2,
-				WM8962_SYSCLK_SRC_MASK,
-				wm8962->cache_clocking2_reg);
-
 	regmap_update_bits(wm8962->regmap, WM8962_ANTI_POP,
 			   WM8962_STARTUP_BIAS_ENA | WM8962_VMID_BUF_ENA,
 			   WM8962_STARTUP_BIAS_ENA | WM8962_VMID_BUF_ENA);
@@ -3866,9 +3858,6 @@ static int wm8962_runtime_suspend(struct device *dev)
 	regmap_update_bits(wm8962->regmap, WM8962_ANTI_POP,
 			   WM8962_STARTUP_BIAS_ENA |
 			   WM8962_VMID_BUF_ENA, 0);
-
-	regmap_read(wm8962->regmap, WM8962_CLOCKING2,
-				&wm8962->cache_clocking2_reg);
 
 	regcache_cache_only(wm8962->regmap, true);
 

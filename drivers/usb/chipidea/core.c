@@ -1019,7 +1019,8 @@ static void ci_start_new_role(struct ci_hdrc *ci)
 	} else if (role == CI_ROLE_GADGET) {
 		if (ci->vbus_active)
 			usb_gadget_vbus_disconnect(&ci->gadget);
-		ci_handle_vbus_connected(ci);
+		if (hw_read_otgsc(ci, OTGSC_BSV))
+			usb_gadget_vbus_connect(&ci->gadget);
 	}
 }
 
@@ -1188,25 +1189,7 @@ static int ci_hdrc_probe(struct platform_device *pdev)
 		}
 	}
 
-	if (ci->roles[CI_ROLE_HOST] && ci->roles[CI_ROLE_GADGET]) {
-		if (ci->is_otg) {
-			ci->role = ci_otg_role(ci);
-			/* Enable ID change irq */
-			hw_write_otgsc(ci, OTGSC_IDIE, OTGSC_IDIE);
-		} else {
-			/*
-			 * If the controller is not OTG capable, but support
-			 * role switch, the defalt role is gadget, and the
-			 * user can switch it through debugfs.
-			 */
-			ci->role = CI_ROLE_GADGET;
-		}
-	} else {
-		ci->role = ci->roles[CI_ROLE_HOST]
-			? CI_ROLE_HOST
-			: CI_ROLE_GADGET;
-	}
-
+	ci->role = ci_get_role(ci);
 	if (!ci_otg_is_fsm_mode(ci)) {
 		/* only update vbus status for peripheral */
 		if (ci->role == CI_ROLE_GADGET) {
@@ -1215,7 +1198,6 @@ static int ci_hdrc_probe(struct platform_device *pdev)
 			ci_handle_vbus_change(ci);
 		}
 
-	if (!ci_otg_is_fsm_mode(ci)) {
 		ret = ci_role_start(ci, ci->role);
 		if (ret) {
 			dev_err(dev, "can't start %s role\n",
@@ -1244,8 +1226,6 @@ static int ci_hdrc_probe(struct platform_device *pdev)
 	if (ci_otg_is_fsm_mode(ci))
 		ci_hdrc_otg_fsm_start(ci);
 
-	device_set_wakeup_capable(&pdev->dev, true);
-	dbg_create_files(ci);
 	/* Init workqueue for controller power lost handling */
 	ci->power_lost_wq = create_freezable_workqueue("ci_power_lost");
 	if (!ci->power_lost_wq) {
@@ -1254,6 +1234,8 @@ static int ci_hdrc_probe(struct platform_device *pdev)
 	}
 
 	INIT_WORK(&ci->power_lost_work, ci_power_lost_work);
+	device_set_wakeup_capable(&pdev->dev, true);
+	dbg_create_files(ci);
 	mutex_init(&ci->mutex);
 
 	return 0;
@@ -1320,10 +1302,13 @@ static void ci_otg_fsm_wakeup_by_srp(struct ci_hdrc *ci)
 {
 	if ((ci->fsm.otg->state == OTG_STATE_A_IDLE) &&
 		(ci->fsm.a_bus_drop == 1) && (ci->fsm.a_bus_req == 0)) {
-		if (!hw_read_otgsc(ci, OTGSC_ID))
-			otg_add_timer(&ci->fsm, A_DP_END);
-		else
+		if (!hw_read_otgsc(ci, OTGSC_ID)) {
+			ci->fsm.a_srp_det = 1;
+			ci->fsm.a_bus_drop = 0;
+		} else {
 			ci->fsm.id = 1;
+		}
+		ci_otg_queue_work(ci);
 	}
 }
 
@@ -1440,9 +1425,9 @@ static int ci_suspend(struct device *dev)
 static int ci_resume(struct device *dev)
 {
 	struct ci_hdrc *ci = dev_get_drvdata(dev);
+	int ret;
 	bool power_lost = false;
 	u32 sample_reg_val;
-	int ret;
 
 	/* Check if controller resume from power lost */
 	sample_reg_val = hw_read(ci, OP_ENDPTLISTADDR, ~0);

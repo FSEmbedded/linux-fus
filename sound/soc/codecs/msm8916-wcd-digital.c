@@ -592,12 +592,6 @@ static int msm8916_wcd_digital_enable_interpolator(
 		snd_soc_component_update_bits(component, LPASS_CDC_CLK_RX_RESET_CTL,
 					      1 << w->shift, 0x0);
 		break;
-	case SND_SOC_DAPM_POST_PMD:
-		snd_soc_component_update_bits(component, LPASS_CDC_CLK_RX_RESET_CTL,
-					      1 << w->shift, 1 << w->shift);
-		snd_soc_component_update_bits(component, LPASS_CDC_CLK_RX_RESET_CTL,
-					      1 << w->shift, 0x0);
-		break;
 	}
 	return 0;
 }

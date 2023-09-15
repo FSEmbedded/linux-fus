@@ -60,8 +60,6 @@ struct padata_mt_job_state {
 static void padata_free_pd(struct parallel_data *pd);
 static void __init padata_mt_helper(struct work_struct *work);
 
-static void padata_free_pd(struct parallel_data *pd);
-
 static int padata_index_to_cpu(struct parallel_data *pd, int cpu_index)
 {
 	int cpu, target_cpu;
@@ -570,9 +568,6 @@ static struct parallel_data *padata_alloc_pd(struct padata_shell *ps)
 	struct padata_instance *pinst = ps->pinst;
 	struct parallel_data *pd;
 
-	cbcpumask = pinst->rcpumask.cbcpu;
-	pcpumask = pinst->rcpumask.pcpu;
-
 	pd = kzalloc(sizeof(struct parallel_data), GFP_KERNEL);
 	if (!pd)
 		goto err;
@@ -1035,12 +1030,6 @@ struct padata_instance *padata_alloc(const char *name)
 
 	return pinst;
 
-err_free_omask:
-	free_cpumask_var(pinst->omask);
-err_free_rcpumask_cbcpu:
-	free_cpumask_var(pinst->rcpumask.cbcpu);
-err_free_rcpumask_pcpu:
-	free_cpumask_var(pinst->rcpumask.pcpu);
 err_free_masks:
 	free_cpumask_var(pinst->cpumask.pcpu);
 	free_cpumask_var(pinst->cpumask.cbcpu);

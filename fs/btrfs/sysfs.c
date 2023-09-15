@@ -1367,7 +1367,6 @@ int btrfs_sysfs_add_device(struct btrfs_device *device)
 			goto out;
 		}
 	}
-	memalloc_nofs_restore(nofs_flag);
 
 	init_completion(&device->kobj_unregister);
 	ret = kobject_init_and_add(&device->devid_kobj, &devid_ktype,

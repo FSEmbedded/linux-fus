@@ -70,7 +70,6 @@ struct pci_epc_ops {
  * @phys_base: physical base address of the PCI address window
  * @size: the size of the PCI address window
  * @page_size: size of each page
- * @lock: mutex to protect bitmap
  */
 struct pci_epc_mem_window {
 	phys_addr_t	phys_base;

@@ -349,12 +349,6 @@ out:
 	return ret;
 }
 
-static int tb_switch_nvm_no_read(void *priv, unsigned int offset, void *val,
-				 size_t bytes)
-{
-	return -EPERM;
-}
-
 static int tb_switch_nvm_write(void *priv, unsigned int offset, void *val,
 			       size_t bytes)
 {

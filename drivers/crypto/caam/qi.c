@@ -113,7 +113,7 @@ int caam_qi_enqueue(struct device *qidev, struct caam_drv_req *req)
 	}
 
 	do {
-		ret = qman_enqueue(req->drv_ctx->req_fq, &fd);
+		ret = qman_enqueue(req->drv_ctx->req_fq, &fd, 0);
 		if (likely(!ret)) {
 			refcount_inc(&req->drv_ctx->refcnt);
 			return 0;
@@ -149,7 +149,7 @@ static void caam_fq_ern_cb(struct qman_portal *qm, struct qman_fq *fq,
 
 	refcount_dec(&drv_req->drv_ctx->refcnt);
 
-	if (qm_fd_get_format(fd) != qm_fd_compound) {
+	if (fd->format != qm_fd_compound) {
 		dev_err(qidev, "Non-compound FD from CAAM\n");
 		return;
 	}
@@ -577,7 +577,7 @@ static enum qman_cb_dqrr_result caam_rsp_fq_dqrr_cb(struct qman_portal *p,
 
 	fd = &dqrr->fd;
 
-	drv_req = caam_iova_to_virt(priv->domain, qm_fd_addr_get64(fd));
+	drv_req = caam_iova_to_virt(priv->domain, fd->addr);
 	if (unlikely(!drv_req)) {
 		dev_err(qidev,
 			"Can't find original request for caam response\n");
@@ -586,10 +586,9 @@ static enum qman_cb_dqrr_result caam_rsp_fq_dqrr_cb(struct qman_portal *p,
 
 	refcount_dec(&drv_req->drv_ctx->refcnt);
 
-	status = be32_to_cpu(fd->status);
-	if (unlikely(status)) {
-		u32 ssrc = status & JRSTA_SSRC_MASK;
-		u8 err_id = status & JRSTA_CCBERR_ERRID_MASK;
+	if (unlikely(fd->status)) {
+		u32 ssrc = fd->status & JRSTA_SSRC_MASK;
+		u8 err_id = fd->status & JRSTA_CCBERR_ERRID_MASK;
 
 		if (ssrc != JRSTA_SSRC_CCB_ERROR ||
 		    err_id != JRSTA_CCBERR_ERRID_ICVCHK)

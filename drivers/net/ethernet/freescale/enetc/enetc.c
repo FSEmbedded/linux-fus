@@ -408,7 +408,6 @@ static bool enetc_clean_tx_ring(struct enetc_bdr *tx_ring, int napi_budget)
 	tx_swbd = &tx_ring->tx_swbd[i];
 
 	bds_to_clean = enetc_bd_ready_count(tx_ring, i);
-	read_unlock(&enetc_mdio_lock);
 
 	do_tstamp = false;
 
@@ -455,8 +454,6 @@ static bool enetc_clean_tx_ring(struct enetc_bdr *tx_ring, int napi_budget)
 			tx_swbd = tx_ring->tx_swbd;
 		}
 
-		read_lock(&enetc_mdio_lock);
-
 		/* BD iteration loop end */
 		if (is_eof) {
 			tx_frm_cnt++;
@@ -467,8 +464,6 @@ static bool enetc_clean_tx_ring(struct enetc_bdr *tx_ring, int napi_budget)
 
 		if (unlikely(!bds_to_clean))
 			bds_to_clean = enetc_bd_ready_count(tx_ring, i);
-
-		read_unlock(&enetc_mdio_lock);
 	}
 
 	tx_ring->next_to_clean = i;
@@ -731,8 +726,6 @@ static int enetc_clean_rx_ring(struct enetc_bdr *rx_ring,
 		u32 bd_status;
 		u16 size;
 
-		read_lock(&enetc_mdio_lock);
-
 		if (cleaned_cnt >= ENETC_RXBD_BUNDLE) {
 			int count = enetc_refill_rx_ring(rx_ring, cleaned_cnt);
 
@@ -743,19 +736,15 @@ static int enetc_clean_rx_ring(struct enetc_bdr *rx_ring,
 
 		rxbd = enetc_rxbd(rx_ring, i);
 		bd_status = le32_to_cpu(rxbd->r.lstatus);
-		if (!bd_status) {
-			read_unlock(&enetc_mdio_lock);
+		if (!bd_status)
 			break;
-		}
 
 		enetc_wr_reg_hot(rx_ring->idr, BIT(rx_ring->index));
 		dma_rmb(); /* for reading other rxbd fields */
 		size = le16_to_cpu(rxbd->r.buf_len);
 		skb = enetc_map_rx_buff_to_skb(rx_ring, i, size);
-		if (!skb) {
-			read_unlock(&enetc_mdio_lock);
+		if (!skb)
 			break;
-		}
 
 		enetc_get_offloads(rx_ring, rxbd, skb);
 
@@ -767,7 +756,6 @@ static int enetc_clean_rx_ring(struct enetc_bdr *rx_ring,
 
 		if (unlikely(bd_status &
 			     ENETC_RXBD_LSTATUS(ENETC_RXBD_ERR_MASK))) {
-			read_unlock(&enetc_mdio_lock);
 			dev_kfree_skb(skb);
 			while (!(bd_status & ENETC_RXBD_LSTATUS_F)) {
 				dma_rmb();
@@ -806,8 +794,6 @@ static int enetc_clean_rx_ring(struct enetc_bdr *rx_ring,
 		rx_byte_cnt += skb->len;
 
 		enetc_process_skb(rx_ring, skb);
-
-		read_unlock(&enetc_mdio_lock);
 
 		napi_gro_receive(napi, skb);
 
@@ -849,6 +835,9 @@ void enetc_get_si_caps(struct enetc_si *si)
 
 	if (val & ENETC_SIPCAPR0_QBV)
 		si->hw_features |= ENETC_SI_F_QBV;
+
+	if (val & ENETC_SIPCAPR0_QBU)
+		si->hw_features |= ENETC_SI_F_QBU;
 
 	if (val & ENETC_SIPCAPR0_PSFP)
 		si->hw_features |= ENETC_SI_F_PSFP;
@@ -1461,10 +1450,6 @@ static int enetc_phylink_connect(struct net_device *ndev)
 	/* disable EEE autoneg, until ENETC driver supports it */
 	memset(&edata, 0, sizeof(struct ethtool_eee));
 	phylink_ethtool_set_eee(priv->phylink, &edata);
-
-	/* disable EEE autoneg, until ENETC driver supports it */
-	memset(&edata, 0, sizeof(struct ethtool_eee));
-	phy_ethtool_set_eee(phydev, &edata);
 
 	return 0;
 }

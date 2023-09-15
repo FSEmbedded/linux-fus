@@ -2612,11 +2612,6 @@ static inline bool cow_user_page(struct page *dst, struct page *src,
 		return true;
 	}
 
-	if (likely(src)) {
-		copy_user_highpage(dst, src, addr, vma);
-		return true;
-	}
-
 	/*
 	 * If the source page was a PFN mapping, we don't have
 	 * a "struct page" for it. We do a best-effort copy by

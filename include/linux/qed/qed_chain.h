@@ -72,11 +72,6 @@ struct addr_tbl_entry {
 	dma_addr_t					dma_map;
 };
 
-struct addr_tbl_entry {
-	void *virt_addr;
-	dma_addr_t dma_map;
-};
-
 struct qed_chain {
 	/* Fastpath portion of the chain - required for commands such
 	 * as produce / consume.

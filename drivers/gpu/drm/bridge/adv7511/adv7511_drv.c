@@ -86,7 +86,6 @@ static const int valid_clocks[] = {
 	148500,
 	135000,
 	132000,
-	119000,
 	108000,
 	78750,
 	74250,
@@ -652,6 +651,8 @@ static int adv7511_get_modes(struct adv7511 *adv7511,
 {
 	struct edid *edid;
 	unsigned int count;
+	u32 bus_format = MEDIA_BUS_FMT_RGB888_1X24;
+	int ret;
 
 	edid = adv7511_get_edid(adv7511, connector);
 
@@ -661,7 +662,7 @@ static int adv7511_get_modes(struct adv7511 *adv7511,
 	kfree(edid);
 
 	connector->display_info.bus_flags = DRM_BUS_FLAG_DE_LOW |
-					    DRM_BUS_FLAG_PIXDATA_NEGEDGE;
+					    DRM_BUS_FLAG_PIXDATA_SAMPLE_POSEDGE;
 
 	ret = drm_display_info_set_bus_formats(&connector->display_info,
 					       &bus_format, 1);
@@ -713,7 +714,7 @@ adv7511_detect(struct adv7511 *adv7511, struct drm_connector *connector)
 }
 
 static enum drm_mode_status adv7511_mode_valid(struct adv7511 *adv7511,
-			      struct drm_display_mode *mode)
+			      const struct drm_display_mode *mode)
 {
 	size_t i, num_modes = ARRAY_SIZE(valid_clocks);
 	bool clock_ok = false;
@@ -823,9 +824,6 @@ static void adv7511_mode_set(struct adv7511 *adv7511,
 
 	regmap_update_bits(adv7511->regmap, 0x17,
 		0x60, (vsync_polarity << 6) | (hsync_polarity << 5));
-
-	if (adv7511->type == ADV7533 || adv7511->type == ADV7535)
-		adv7533_mode_set(adv7511, adj_mode);
 
 	drm_mode_copy(&adv7511->curr_mode, adj_mode);
 
@@ -937,6 +935,23 @@ static void adv7511_bridge_disable(struct drm_bridge *bridge)
 	adv7511_power_off(adv);
 }
 
+static int adv7511_bridge_get_modes(struct drm_bridge *bridge,
+				    struct drm_connector *connector)
+{
+	struct adv7511 *adv = bridge_to_adv7511(bridge);
+
+	return adv7511_get_modes(adv, connector);
+}
+
+static enum drm_mode_status adv7511_bridge_mode_valid(struct drm_bridge *bridge,
+					   const struct drm_display_info *info,
+					   const struct drm_display_mode *mode)
+{
+	struct adv7511 *adv = bridge_to_adv7511(bridge);
+
+	return adv7511_mode_valid(adv, mode);
+}
+
 static void adv7511_bridge_mode_set(struct drm_bridge *bridge,
 				    const struct drm_display_mode *mode,
 				    const struct drm_display_mode *adj_mode)
@@ -992,14 +1007,30 @@ static void adv7511_bridge_hpd_notify(struct drm_bridge *bridge,
 		cec_phys_addr_invalidate(adv->cec_adap);
 }
 
+static void adv7511_bridge_detach(struct drm_bridge *bridge)
+{
+	struct adv7511 *adv = bridge_to_adv7511(bridge);
+
+	if (adv->i2c_main->irq)
+		regmap_write(adv->regmap, ADV7511_REG_INT_ENABLE(0), 0);
+
+	if (adv->type == ADV7533 || adv->type == ADV7535)
+		adv7533_detach_dsi(adv);
+
+	drm_connector_cleanup(&adv->connector);
+}
+
 static const struct drm_bridge_funcs adv7511_bridge_funcs = {
 	.enable = adv7511_bridge_enable,
 	.disable = adv7511_bridge_disable,
+	.get_modes = adv7511_bridge_get_modes,
+	.mode_valid = adv7511_bridge_mode_valid,
 	.mode_set = adv7511_bridge_mode_set,
 	.attach = adv7511_bridge_attach,
 	.detect = adv7511_bridge_detect,
 	.get_edid = adv7511_bridge_get_edid,
 	.hpd_notify = adv7511_bridge_hpd_notify,
+	.detach = adv7511_bridge_detach,
 };
 
 /* -----------------------------------------------------------------------------
@@ -1205,8 +1236,10 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	struct adv7511_link_config link_config;
 	struct adv7511 *adv7511;
 	struct device *dev = &i2c->dev;
+#if IS_ENABLED(CONFIG_OF_DYNAMIC)
 	struct device_node *remote_node = NULL, *endpoint = NULL;
 	struct of_changeset ocs;
+#endif
 	unsigned int main_i2c_addr = i2c->addr << 1;
 	unsigned int edid_i2c_addr = main_i2c_addr + 4;
 	unsigned int cec_i2c_addr = main_i2c_addr - 2;
@@ -1369,6 +1402,7 @@ err_i2c_unregister_edid:
 	i2c_unregister_device(adv7511->i2c_edid);
 uninit_regulators:
 	adv7511_uninit_regulators(adv7511);
+#if IS_ENABLED(CONFIG_OF_DYNAMIC)
 	endpoint = of_graph_get_next_endpoint(dev->of_node, NULL);
 	if (endpoint)
 		remote_node = of_graph_get_remote_port_parent(endpoint);
@@ -1398,6 +1432,7 @@ uninit_regulators:
 		dev_warn(dev,
 			 "Probe failed. Remote port '%s' disabled\n",
 			 remote_node->full_name);
+#endif
 
 	return ret;
 }
@@ -1406,8 +1441,6 @@ static int adv7511_remove(struct i2c_client *i2c)
 {
 	struct adv7511 *adv7511 = i2c_get_clientdata(i2c);
 
-	if (adv7511->type == ADV7533 || adv7511->type == ADV7535)
-		adv7533_detach_dsi(adv7511);
 	i2c_unregister_device(adv7511->i2c_cec);
 	if (adv7511->cec_clk)
 		clk_disable_unprepare(adv7511->cec_clk);

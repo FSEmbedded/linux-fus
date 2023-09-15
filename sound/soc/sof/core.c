@@ -150,7 +150,7 @@ static int sof_probe_continue(struct snd_sof_dev *sdev)
 	sdev->fw_state = SOF_FW_BOOT_PREPARE;
 
 	/* check machine info */
-	ret = snd_sof_machine_check(sdev);
+	ret = sof_machine_check(sdev);
 	if (ret < 0) {
 		dev_err(sdev->dev, "error: failed to get machine info %d\n",
 			ret);

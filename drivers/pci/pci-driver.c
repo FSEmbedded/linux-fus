@@ -1300,9 +1300,6 @@ static int pci_pm_runtime_resume(struct device *dev)
 	if (prev_state == PCI_D3cold)
 		pci_bridge_wait_for_secondary_bus(pci_dev);
 
-	if (prev_state == PCI_D3cold)
-		pci_bridge_wait_for_secondary_bus(pci_dev);
-
 	if (pm && pm->runtime_resume)
 		error = pm->runtime_resume(dev);
 

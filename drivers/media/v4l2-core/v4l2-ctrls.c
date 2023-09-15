@@ -3412,7 +3412,6 @@ static void v4l2_ctrl_request_unbind(struct media_request_object *obj)
 
 	mutex_lock(main_hdl->lock);
 	list_del_init(&hdl->requests);
-	mutex_lock(main_hdl->lock);
 	if (hdl->request_is_queued) {
 		list_del_init(&hdl->requests_queued);
 		hdl->request_is_queued = false;

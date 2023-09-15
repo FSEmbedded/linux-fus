@@ -854,36 +854,6 @@ int dpni_set_link_cfg(struct fsl_mc_io *mc_io,
 }
 
 /**
- * dpni_set_link_cfg_v2() - set the link configuration.
- * @mc_io:      Pointer to MC portal's I/O object
- * @cmd_flags:  Command flags; one or more of 'MC_CMD_FLAG_'
- * @token:      Token of DPNI object
- * @cfg:        Link configuration
- *
- * Return:      '0' on Success; Error code otherwise.
- */
-int dpni_set_link_cfg_v2(struct fsl_mc_io *mc_io,
-			 u32 cmd_flags,
-			 u16 token,
-			 const struct dpni_link_cfg *cfg)
-{
-	struct fsl_mc_command cmd = { 0 };
-	struct dpni_cmd_set_link_cfg_v2 *cmd_params;
-
-	/* prepare command */
-	cmd.header = mc_encode_cmd_header(DPNI_CMDID_SET_LINK_CFG_V2,
-					  cmd_flags,
-					  token);
-	cmd_params = (struct dpni_cmd_set_link_cfg_v2 *)cmd.params;
-	cmd_params->rate = cpu_to_le32(cfg->rate);
-	cmd_params->options = cpu_to_le64(cfg->options);
-	cmd_params->advertising = cpu_to_le64(cfg->advertising);
-
-	/* send command to mc*/
-	return mc_send_command(mc_io, &cmd);
-}
-
-/**
  * dpni_get_link_cfg() - return the link configuration
  * @mc_io:	Pointer to MC portal's I/O object
  * @cmd_flags:	Command flags; one or more of 'MC_CMD_FLAG_'
@@ -954,84 +924,6 @@ int dpni_get_link_state(struct fsl_mc_io *mc_io,
 	state->options = le64_to_cpu(rsp_params->options);
 
 	return 0;
-}
-
-/**
- * dpni_get_link_state_v2() - Return the link state (either up or down)
- * @mc_io:      Pointer to MC portal's I/O object
- * @cmd_flags:  Command flags; one or more of 'MC_CMD_FLAG_'
- * @token:      Token of DPNI object
- * @state:      Returned link state;
- *
- * Return:      '0' on Success; Error code otherwise.
- */
-int dpni_get_link_state_v2(struct fsl_mc_io *mc_io,
-			   u32 cmd_flags,
-			   u16 token,
-			   struct dpni_link_state *state)
-{
-	struct fsl_mc_command cmd = { 0 };
-	struct dpni_rsp_get_link_state_v2 *rsp_params;
-	int err;
-
-	/* prepare command */
-	cmd.header = mc_encode_cmd_header(DPNI_CMDID_GET_LINK_STATE_V2,
-					  cmd_flags,
-					  token);
-
-	/* send command to mc*/
-	err = mc_send_command(mc_io, &cmd);
-	if (err)
-		return err;
-
-	/* retrieve response parameters */
-	rsp_params = (struct dpni_rsp_get_link_state_v2 *)cmd.params;
-	state->up = dpni_get_field(rsp_params->flags, LINK_STATE);
-	state->state_valid = dpni_get_field(rsp_params->flags, STATE_VALID);
-	state->rate = le32_to_cpu(rsp_params->rate);
-	state->options = le64_to_cpu(rsp_params->options);
-	state->supported = le64_to_cpu(rsp_params->supported);
-	state->advertising = le64_to_cpu(rsp_params->advertising);
-
-	return 0;
-}
-
-/**
- * dpni_set_tx_shaping() - Set the transmit shaping
- * @mc_io:		Pointer to MC portal's I/O object
- * @cmd_flags:		Command flags; one or more of 'MC_CMD_FLAG_'
- * @token:		Token of DPNI object
- * @tx_cr_shaper:	TX committed rate shaping configuration
- * @tx_er_shaper:	TX excess rate shaping configuration
- * @coupled:		Committed and excess rate shapers are coupled
- *
- * Return:	'0' on Success; Error code otherwise.
- */
-int dpni_set_tx_shaping(struct fsl_mc_io *mc_io,
-			u32 cmd_flags,
-			u16 token,
-			const struct dpni_tx_shaping_cfg *tx_cr_shaper,
-			const struct dpni_tx_shaping_cfg *tx_er_shaper,
-			int coupled)
-{
-	struct fsl_mc_command cmd = { 0 };
-	struct dpni_cmd_set_tx_shaping *cmd_params;
-
-	/* prepare command */
-	cmd.header = mc_encode_cmd_header(DPNI_CMDID_SET_TX_SHAPING,
-					  cmd_flags,
-					  token);
-	cmd_params = (struct dpni_cmd_set_tx_shaping *)cmd.params;
-	cmd_params->tx_cr_max_burst_size =
-				cpu_to_le16(tx_cr_shaper->max_burst_size);
-	cmd_params->tx_er_max_burst_size =
-				cpu_to_le16(tx_er_shaper->max_burst_size);
-	cmd_params->tx_cr_rate_limit = cpu_to_le32(tx_cr_shaper->rate_limit);
-	cmd_params->tx_er_rate_limit = cpu_to_le32(tx_er_shaper->rate_limit);
-	dpni_set_field(cmd_params->coupled, COUPLED, coupled);
-
-	/* send command to mc*/
-	return mc_send_command(mc_io, &cmd);
 }
 
 /**
@@ -1519,7 +1411,10 @@ int dpni_set_rx_tc_dist(struct fsl_mc_io *mc_io,
  * @cmd_flags:	Command flags; one or more of 'MC_CMD_FLAG_'
  * @token:	Token of DPNI object
  * @qtype:	Type of queue - Rx, Tx and Tx confirm types are supported
- * @tc_id:	Traffic class selection (0-7)
+ * @tc_id:	bits 7-4 contain ceetm channel index (valid only for TX);
+ *		bits 3-0 contain traffic class.
+ *		Use macro DPNI_BUILD_CH_TC() to build correct value for
+ *		tc_id parameter
  * @cfg:	Congestion notification configuration
  *
  * Return:	'0' on Success; error code otherwise.
@@ -1745,7 +1640,10 @@ int dpni_reset_statistics(struct fsl_mc_io *mc_io,
  * @cg_point:	Congestion point
  * @qtype:	Queue type on which the taildrop is configured.
  *		Only Rx queues are supported for now
- * @tc:		Traffic class to apply this taildrop to
+ * @tc:		bits 7-4 contain ceetm channel index (valid only for TX);
+ *		bits 3-0 contain traffic class.
+ *		Use macro DPNI_BUILD_CH_TC() to build correct value for
+ *		tc parameter.
  * @index:	Index of the queue if the DPNI supports multiple queues for
  *		traffic distribution. Ignored if CONGESTION_POINT is not 0.
  * @taildrop:	Taildrop structure
@@ -1789,7 +1687,10 @@ int dpni_set_taildrop(struct fsl_mc_io *mc_io,
  * @cg_point:	Congestion point
  * @qtype:	Queue type on which the taildrop is configured.
  *		Only Rx queues are supported for now
- * @tc:		Traffic class to apply this taildrop to
+ * @tc:		bits 7-4 contain ceetm channel index (valid only for TX);
+ *		bits 3-0 contain traffic class.
+ *		Use macro DPNI_BUILD_CH_TC() to build correct value for
+ *		tc parameter.
  * @index:	Index of the queue if the DPNI supports multiple queues for
  *		traffic distribution. Ignored if CONGESTION_POINT is not 0.
  * @taildrop:	Taildrop structure

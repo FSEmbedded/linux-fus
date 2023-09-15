@@ -74,23 +74,6 @@ static const char *rproc_crash_to_string(enum rproc_crash_type type)
 }
 
 /*
- * rproc_memcpy() - memcpy verison for remoteproc usage
- * @flags:
- *	- 0 means to DA
- *	- 1 means from DA
- *
- */
-void *rproc_memcpy(struct rproc *rproc, void *dest,
-		   const void *src, size_t count, int flags)
-{
-	if (rproc->ops->memcpy)
-		return rproc->ops->memcpy(rproc, dest, src, count, flags);
-
-	return memcpy(dest, src, count);
-}
-EXPORT_SYMBOL(rproc_memcpy);
-
-/*
  * This is the IOMMU fault handler we register with the IOMMU API
  * (when relevant; not all remote processors access memory through
  * an IOMMU).
@@ -1488,11 +1471,7 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 	if (ret)
 		return ret;
 
-	if (fw)
-		dev_info(dev, "Booting fw image %s, size %zd\n", name,
-			 fw->size);
-	else
-		dev_info(dev, "Synchronizing with preloaded co-processor\n");
+	dev_info(dev, "Booting fw image %s, size %zd\n", name, fw->size);
 
 	/*
 	 * if enabling an IOMMU isn't relevant for this rproc, this is
@@ -1706,7 +1685,7 @@ static int rproc_stop(struct rproc *rproc, bool crashed)
  */
 int rproc_trigger_recovery(struct rproc *rproc)
 {
-	const struct firmware *firmware_p;
+	const struct firmware *firmware_p = NULL;
 	struct device *dev = &rproc->dev;
 	int ret;
 
@@ -1724,11 +1703,11 @@ int rproc_trigger_recovery(struct rproc *rproc)
 	if (ret)
 		goto unlock_mutex;
 
-	if (!rproc->skip_fw_load) {
-		/* generate coredump */
-		rproc_coredump(rproc);
+	/* generate coredump */
+	rproc_coredump(rproc);
 
-		/* load firmware */
+	/* load firmware */
+	if (!rproc->skip_fw_recovery) {
 		ret = request_firmware(&firmware_p, rproc->firmware, dev);
 		if (ret < 0) {
 			dev_err(dev, "request_firmware failed: %d\n", ret);
@@ -1739,7 +1718,7 @@ int rproc_trigger_recovery(struct rproc *rproc)
 	/* boot the remote processor up again */
 	ret = rproc_start(rproc, firmware_p);
 
-	if (!rproc->skip_fw_load)
+	if (!rproc->skip_fw_recovery)
 		release_firmware(firmware_p);
 
 unlock_mutex:
@@ -1785,22 +1764,16 @@ static void rproc_crash_handler_work(struct work_struct *work)
  * rproc_boot() - boot a remote processor
  * @rproc: handle of a remote processor
  *
- * Boot a remote processor (i.e. load its firmware, power it on, ...) from
- * different contexts:
- * - power off
- * - preloaded firmware
- * - started before kernel execution
- * The different operations are selected thanks to properties defined by
- * platform driver.
+ * Boot a remote processor (i.e. load its firmware, power it on, ...).
  *
- * If the remote processor is already powered on at rproc level, this function
- * immediately returns (successfully).
+ * If the remote processor is already powered on, this function immediately
+ * returns (successfully).
  *
  * Returns 0 on success, and an appropriate error value otherwise.
  */
 int rproc_boot(struct rproc *rproc)
 {
-	const struct firmware *firmware_p = NULL;
+	const struct firmware *firmware_p;
 	struct device *dev;
 	int ret;
 

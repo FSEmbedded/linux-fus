@@ -1923,19 +1923,6 @@ static void gss_update_rslack(struct rpc_task *task, struct rpc_cred *cred,
 	}
 }
 
-/*
- * RFC 2203, Section 5.3.2.2
- *
- *	struct rpc_gss_integ_data {
- *		opaque databody_integ<>;
- *		opaque checksum<>;
- *	};
- *
- *	struct rpc_gss_data_t {
- *		unsigned int seq_num;
- *		proc_req_arg_t arg;
- *	};
- */
 static int
 gss_unwrap_resp_auth(struct rpc_task *task, struct rpc_cred *cred)
 {

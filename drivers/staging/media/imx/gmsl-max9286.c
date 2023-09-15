@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 NXP Semiconductor
+ * Copyright 2019-2021 NXP
  */
 
 #include <linux/module.h>
@@ -2388,7 +2388,7 @@ static int max9271_write_reg(struct sensor_data *max9286_data, int index, u8 reg
 	max9286_data->i2c_client->addr = ADDR_MAX9271 + index;
 	for (retry = 0; retry < timeout; retry++) {
 		ret = i2c_smbus_write_byte_data(client, reg, val);
-		if (val < 0)
+		if (ret < 0)
 			msleep(5);
 		else
 			break;
@@ -2780,7 +2780,7 @@ static int max9286_enum_frame_interval(struct v4l2_subdev *sd,
 {
 	int i, j, count;
 
-	if (fie->index < 0 || fie->index > ov10635_mode_MAX)
+	if (fie->index > ov10635_mode_MAX)
 		return -EINVAL;
 
 	if (fie->width == 0 || fie->height == 0 || fie->code == 0) {

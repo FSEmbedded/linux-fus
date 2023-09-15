@@ -28,7 +28,7 @@ struct gpio_rc_dev {
 
 static irqreturn_t gpio_ir_recv_irq(int irq, void *dev_id)
 {
-	int ret, val;
+	int val;
 	struct gpio_rc_dev *gpio_dev = dev_id;
 	struct device *pmdev = gpio_dev->pmdev;
 
@@ -124,11 +124,6 @@ static int gpio_ir_recv_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, gpio_dev);
-
-	pm_runtime_set_autosuspend_delay(dev, (rcdev->timeout / 1000 / 1000));
-	pm_runtime_use_autosuspend(dev);
-	pm_runtime_set_suspended(dev);
-	pm_runtime_enable(dev);
 
 	return devm_request_irq(dev, gpio_dev->irq, gpio_ir_recv_irq,
 				IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING,

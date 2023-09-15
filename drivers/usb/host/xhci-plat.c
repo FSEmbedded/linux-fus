@@ -329,10 +329,6 @@ static int xhci_plat_probe(struct platform_device *pdev)
 		if (device_property_read_bool(tmpdev,
 					      "usb3-resume-missing-cas"))
 			xhci->quirks |= XHCI_MISSING_CAS;
-
-		if (device_property_read_bool(tmpdev,
-					      "xhci-no-64bit-support"))
-			xhci->quirks |= XHCI_NO_64BIT_SUPPORT;
 	}
 
 	hcd->usb_phy = devm_usb_get_phy_by_phandle(sysdev, "usb-phy", 0);
@@ -380,7 +376,8 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	 * Prevent runtime pm from being on as default, users should enable
 	 * runtime pm using power/control in sysfs.
 	 */
-	pm_runtime_forbid(&pdev->dev);
+	if (!(xhci->quirks & XHCI_DEFAULT_PM_RUNTIME_ALLOW))
+		pm_runtime_forbid(&pdev->dev);
 
 	return 0;
 

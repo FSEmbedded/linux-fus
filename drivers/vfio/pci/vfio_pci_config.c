@@ -1739,15 +1739,6 @@ int vfio_config_init(struct vfio_pci_device *vdev)
 				 vconfig[PCI_INTERRUPT_PIN]);
 
 		vconfig[PCI_INTERRUPT_PIN] = 0; /* Gratuitous for good VFs */
-
-		/*
-		 * VFs do no implement the memory enable bit of the COMMAND
-		 * register therefore we'll not have it set in our initial
-		 * copy of config space after pci_enable_device().  For
-		 * consistency with PFs, set the virtual enable bit here.
-		 */
-		*(__le16 *)&vconfig[PCI_COMMAND] |=
-					cpu_to_le16(PCI_COMMAND_MEMORY);
 	}
 	if (pdev->no_command_memory) {
 		/*

@@ -174,16 +174,14 @@ int __must_check fsl_mc_portal_allocate(struct fsl_mc_device *mc_dev,
 	int error = -EINVAL;
 	struct fsl_mc_resource *resource = NULL;
 	struct fsl_mc_io *mc_io = NULL;
-	struct device *root_dprc_dev;
 
-	if (fsl_mc_is_root_dprc(&mc_dev->dev)) {
+	if (mc_dev->flags & FSL_MC_IS_DPRC) {
 		mc_bus_dev = mc_dev;
 	} else {
-		fsl_mc_get_root_dprc(&mc_dev->dev, &root_dprc_dev);
-		if (WARN_ON(!root_dprc_dev))
-			return -EINVAL;
+		if (!dev_is_fsl_mc(mc_dev->dev.parent))
+			return error;
 
-		mc_bus_dev = to_fsl_mc_device(root_dprc_dev);
+		mc_bus_dev = to_fsl_mc_device(mc_dev->dev.parent);
 	}
 
 	mc_bus = to_fsl_mc_bus(mc_bus_dev);

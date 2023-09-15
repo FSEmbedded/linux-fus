@@ -2965,10 +2965,6 @@ static int rt5670_i2c_probe(struct i2c_client *i2c,
 		rt5670->gpio1_is_ext_spk_en = true;
 		dev_info(&i2c->dev, "quirk GPIO1 is external speaker enable\n");
 	}
-	if (rt5670_quirk & RT5670_GPIO1_IS_EXT_SPK_EN) {
-		rt5670->pdata.gpio1_is_ext_spk_en = true;
-		dev_info(&i2c->dev, "quirk GPIO1 is external speaker enable\n");
-	}
 	if (rt5670_quirk & RT5670_IN2_DIFF) {
 		rt5670->in2_diff = true;
 		dev_info(&i2c->dev, "quirk IN2_DIFF\n");

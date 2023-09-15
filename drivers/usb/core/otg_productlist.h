@@ -9,18 +9,23 @@
  */
 
 static struct usb_device_id productlist_table[] = {
-
-/* hubs are optional in OTG, but very handy ... */
-{ USB_DEVICE_INFO(USB_CLASS_HUB, 0, 0), },
-{ USB_DEVICE_INFO(USB_CLASS_HUB, 0, 1), },
-
-#ifdef	CONFIG_USB_PRINTER		/* ignoring nonstatic linkage! */
-/* FIXME actually, printers are NOT supposed to use device classes;
- * they're supposed to use interface classes...
- */
-{ USB_DEVICE_INFO(7, 1, 1) },
-{ USB_DEVICE_INFO(7, 1, 2) },
-{ USB_DEVICE_INFO(7, 1, 3) },
+/* Add FSL i.mx whitelist, the default list is for USB Compliance Test */
+#if defined(CONFIG_USB_EHSET_TEST_FIXTURE)	\
+	|| defined(CONFIG_USB_EHSET_TEST_FIXTURE_MODULE)
+#define TEST_SE0_NAK_PID			0x0101
+#define TEST_J_PID				0x0102
+#define TEST_K_PID				0x0103
+#define TEST_PACKET_PID				0x0104
+#define TEST_HS_HOST_PORT_SUSPEND_RESUME	0x0106
+#define TEST_SINGLE_STEP_GET_DEV_DESC		0x0107
+#define TEST_SINGLE_STEP_SET_FEATURE		0x0108
+{ USB_DEVICE(0x1a0a, TEST_SE0_NAK_PID) },
+{ USB_DEVICE(0x1a0a, TEST_J_PID) },
+{ USB_DEVICE(0x1a0a, TEST_K_PID) },
+{ USB_DEVICE(0x1a0a, TEST_PACKET_PID) },
+{ USB_DEVICE(0x1a0a, TEST_HS_HOST_PORT_SUSPEND_RESUME) },
+{ USB_DEVICE(0x1a0a, TEST_SINGLE_STEP_GET_DEV_DESC) },
+{ USB_DEVICE(0x1a0a, TEST_SINGLE_STEP_SET_FEATURE) },
 #endif
 
 #define USB_INTERFACE_CLASS_INFO(cl) \

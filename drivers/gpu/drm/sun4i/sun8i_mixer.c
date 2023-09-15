@@ -91,13 +91,6 @@ static const struct de2_fmt_info de2_formats[] = {
 		.de2_fmt = SUN8I_MIXER_FBFMT_ARGB4444,
 	},
 	{
-		/* for DE2 VI layer which ignores alpha */
-		.drm_fmt = DRM_FORMAT_XRGB4444,
-		.de2_fmt = SUN8I_MIXER_FBFMT_ARGB4444,
-		.rgb = true,
-		.csc = SUN8I_CSC_MODE_OFF,
-	},
-	{
 		.drm_fmt = DRM_FORMAT_ABGR4444,
 		.de2_fmt = SUN8I_MIXER_FBFMT_ABGR4444,
 	},
@@ -105,13 +98,6 @@ static const struct de2_fmt_info de2_formats[] = {
 		/* for DE2 VI layer which ignores alpha */
 		.drm_fmt = DRM_FORMAT_XBGR4444,
 		.de2_fmt = SUN8I_MIXER_FBFMT_ABGR4444,
-	},
-	{
-		/* for DE2 VI layer which ignores alpha */
-		.drm_fmt = DRM_FORMAT_XBGR4444,
-		.de2_fmt = SUN8I_MIXER_FBFMT_ABGR4444,
-		.rgb = true,
-		.csc = SUN8I_CSC_MODE_OFF,
 	},
 	{
 		.drm_fmt = DRM_FORMAT_RGBA4444,
@@ -123,13 +109,6 @@ static const struct de2_fmt_info de2_formats[] = {
 		.de2_fmt = SUN8I_MIXER_FBFMT_RGBA4444,
 	},
 	{
-		/* for DE2 VI layer which ignores alpha */
-		.drm_fmt = DRM_FORMAT_RGBX4444,
-		.de2_fmt = SUN8I_MIXER_FBFMT_RGBA4444,
-		.rgb = true,
-		.csc = SUN8I_CSC_MODE_OFF,
-	},
-	{
 		.drm_fmt = DRM_FORMAT_BGRA4444,
 		.de2_fmt = SUN8I_MIXER_FBFMT_BGRA4444,
 	},
@@ -137,13 +116,6 @@ static const struct de2_fmt_info de2_formats[] = {
 		/* for DE2 VI layer which ignores alpha */
 		.drm_fmt = DRM_FORMAT_BGRX4444,
 		.de2_fmt = SUN8I_MIXER_FBFMT_BGRA4444,
-	},
-	{
-		/* for DE2 VI layer which ignores alpha */
-		.drm_fmt = DRM_FORMAT_BGRX4444,
-		.de2_fmt = SUN8I_MIXER_FBFMT_BGRA4444,
-		.rgb = true,
-		.csc = SUN8I_CSC_MODE_OFF,
 	},
 	{
 		.drm_fmt = DRM_FORMAT_ARGB1555,
@@ -155,13 +127,6 @@ static const struct de2_fmt_info de2_formats[] = {
 		.de2_fmt = SUN8I_MIXER_FBFMT_ARGB1555,
 	},
 	{
-		/* for DE2 VI layer which ignores alpha */
-		.drm_fmt = DRM_FORMAT_XRGB1555,
-		.de2_fmt = SUN8I_MIXER_FBFMT_ARGB1555,
-		.rgb = true,
-		.csc = SUN8I_CSC_MODE_OFF,
-	},
-	{
 		.drm_fmt = DRM_FORMAT_ABGR1555,
 		.de2_fmt = SUN8I_MIXER_FBFMT_ABGR1555,
 	},
@@ -171,13 +136,6 @@ static const struct de2_fmt_info de2_formats[] = {
 		.de2_fmt = SUN8I_MIXER_FBFMT_ABGR1555,
 	},
 	{
-		/* for DE2 VI layer which ignores alpha */
-		.drm_fmt = DRM_FORMAT_XBGR1555,
-		.de2_fmt = SUN8I_MIXER_FBFMT_ABGR1555,
-		.rgb = true,
-		.csc = SUN8I_CSC_MODE_OFF,
-	},
-	{
 		.drm_fmt = DRM_FORMAT_RGBA5551,
 		.de2_fmt = SUN8I_MIXER_FBFMT_RGBA5551,
 	},
@@ -185,13 +143,6 @@ static const struct de2_fmt_info de2_formats[] = {
 		/* for DE2 VI layer which ignores alpha */
 		.drm_fmt = DRM_FORMAT_RGBX5551,
 		.de2_fmt = SUN8I_MIXER_FBFMT_RGBA5551,
-	},
-	{
-		/* for DE2 VI layer which ignores alpha */
-		.drm_fmt = DRM_FORMAT_RGBX5551,
-		.de2_fmt = SUN8I_MIXER_FBFMT_RGBA5551,
-		.rgb = true,
-		.csc = SUN8I_CSC_MODE_OFF,
 	},
 	{
 		.drm_fmt = DRM_FORMAT_BGRA5551,
@@ -217,37 +168,6 @@ static const struct de2_fmt_info de2_formats[] = {
 	{
 		.drm_fmt = DRM_FORMAT_BGRA1010102,
 		.de2_fmt = SUN8I_MIXER_FBFMT_BGRA1010102,
-	},
-	{
-		/* for DE2 VI layer which ignores alpha */
-		.drm_fmt = DRM_FORMAT_BGRX5551,
-		.de2_fmt = SUN8I_MIXER_FBFMT_BGRA5551,
-		.rgb = true,
-		.csc = SUN8I_CSC_MODE_OFF,
-	},
-	{
-		.drm_fmt = DRM_FORMAT_ARGB2101010,
-		.de2_fmt = SUN8I_MIXER_FBFMT_ARGB2101010,
-		.rgb = true,
-		.csc = SUN8I_CSC_MODE_OFF,
-	},
-	{
-		.drm_fmt = DRM_FORMAT_ABGR2101010,
-		.de2_fmt = SUN8I_MIXER_FBFMT_ABGR2101010,
-		.rgb = true,
-		.csc = SUN8I_CSC_MODE_OFF,
-	},
-	{
-		.drm_fmt = DRM_FORMAT_RGBA1010102,
-		.de2_fmt = SUN8I_MIXER_FBFMT_RGBA1010102,
-		.rgb = true,
-		.csc = SUN8I_CSC_MODE_OFF,
-	},
-	{
-		.drm_fmt = DRM_FORMAT_BGRA1010102,
-		.de2_fmt = SUN8I_MIXER_FBFMT_BGRA1010102,
-		.rgb = true,
-		.csc = SUN8I_CSC_MODE_OFF,
 	},
 	{
 		.drm_fmt = DRM_FORMAT_UYVY,
@@ -312,18 +232,6 @@ static const struct de2_fmt_info de2_formats[] = {
 	{
 		.drm_fmt = DRM_FORMAT_P210,
 		.de2_fmt = SUN8I_MIXER_FBFMT_P210_YUV,
-	},
-	{
-		.drm_fmt = DRM_FORMAT_P010,
-		.de2_fmt = SUN8I_MIXER_FBFMT_P010_YUV,
-		.rgb = false,
-		.csc = SUN8I_CSC_MODE_YUV2RGB,
-	},
-	{
-		.drm_fmt = DRM_FORMAT_P210,
-		.de2_fmt = SUN8I_MIXER_FBFMT_P210_YUV,
-		.rgb = false,
-		.csc = SUN8I_CSC_MODE_YUV2RGB,
 	},
 };
 

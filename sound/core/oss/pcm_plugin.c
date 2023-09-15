@@ -255,9 +255,7 @@ snd_pcm_sframes_t snd_pcm_plug_client_size(struct snd_pcm_substream *plug, snd_p
 	}
 }
 
-static snd_pcm_sframes_t plug_slave_size(struct snd_pcm_substream *plug,
-					 snd_pcm_uframes_t clt_frames,
-					 bool check_size)
+snd_pcm_sframes_t snd_pcm_plug_slave_size(struct snd_pcm_substream *plug, snd_pcm_uframes_t clt_frames)
 {
 	if (snd_BUG_ON(!plug))
 		return -ENXIO;
@@ -270,18 +268,6 @@ static snd_pcm_sframes_t plug_slave_size(struct snd_pcm_substream *plug,
 		snd_BUG();
 		return -EINVAL;
 	}
-}
-
-snd_pcm_sframes_t snd_pcm_plug_client_size(struct snd_pcm_substream *plug,
-					   snd_pcm_uframes_t drv_frames)
-{
-	return plug_client_size(plug, drv_frames, false);
-}
-
-snd_pcm_sframes_t snd_pcm_plug_slave_size(struct snd_pcm_substream *plug,
-					  snd_pcm_uframes_t clt_frames)
-{
-	return plug_slave_size(plug, clt_frames, false);
 }
 
 static int snd_pcm_plug_formats(const struct snd_mask *mask,

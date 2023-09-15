@@ -5192,13 +5192,11 @@ static int prepare_func_exit(struct bpf_verifier_env *env, int *insn_idx)
 	return 0;
 }
 
-static int do_refine_retval_range(struct bpf_verifier_env *env,
-				  struct bpf_reg_state *regs, int ret_type,
-				  int func_id, struct bpf_call_arg_meta *meta)
+static void do_refine_retval_range(struct bpf_reg_state *regs, int ret_type,
+				   int func_id,
+				   struct bpf_call_arg_meta *meta)
 {
 	struct bpf_reg_state *ret_reg = &regs[BPF_REG_0];
-	struct bpf_reg_state tmp_reg = *ret_reg;
-	bool ret;
 
 	if (ret_type != RET_INTEGER ||
 	    (func_id != BPF_FUNC_get_stack &&
@@ -5527,9 +5525,7 @@ static int check_helper_call(struct bpf_verifier_env *env, int func_id, int insn
 		regs[BPF_REG_0].ref_obj_id = id;
 	}
 
-	err = do_refine_retval_range(env, regs, fn->ret_type, func_id, &meta);
-	if (err)
-		return err;
+	do_refine_retval_range(regs, fn->ret_type, func_id, &meta);
 
 	err = check_map_func_compatibility(env, meta.map_ptr, func_id);
 	if (err)
@@ -7462,70 +7458,6 @@ static int is_branch_taken(struct bpf_reg_state *reg, u64 val, u8 opcode,
 	if (is_jmp32)
 		return is_branch32_taken(reg, val, opcode);
 	return is_branch64_taken(reg, val, opcode);
-}
-
-/* Constrain the possible values of @reg with unsigned upper bound @bound.
- * If @is_exclusive, @bound is an exclusive limit, otherwise it is inclusive.
- * If @is_jmp32, @bound is a 32-bit value that only constrains the low 32 bits
- * of @reg.
- */
-static void set_upper_bound(struct bpf_reg_state *reg, u64 bound, bool is_jmp32,
-			    bool is_exclusive)
-{
-	if (is_exclusive) {
-		/* There are no values for `reg` that make `reg<0` true. */
-		if (bound == 0)
-			return;
-		bound--;
-	}
-	if (is_jmp32) {
-		/* Constrain the register's value in the tnum representation.
-		 * For 64-bit comparisons this happens later in
-		 * __reg_bound_offset(), but for 32-bit comparisons, we can be
-		 * more precise than what can be derived from the updated
-		 * numeric bounds.
-		 */
-		struct tnum t = tnum_range(0, bound);
-
-		t.mask |= ~0xffffffffULL; /* upper half is unknown */
-		reg->var_off = tnum_intersect(reg->var_off, t);
-
-		/* Compute the 64-bit bound from the 32-bit bound. */
-		bound += gen_hi_max(reg->var_off);
-	}
-	reg->umax_value = min(reg->umax_value, bound);
-}
-
-/* Constrain the possible values of @reg with unsigned lower bound @bound.
- * If @is_exclusive, @bound is an exclusive limit, otherwise it is inclusive.
- * If @is_jmp32, @bound is a 32-bit value that only constrains the low 32 bits
- * of @reg.
- */
-static void set_lower_bound(struct bpf_reg_state *reg, u64 bound, bool is_jmp32,
-			    bool is_exclusive)
-{
-	if (is_exclusive) {
-		/* There are no values for `reg` that make `reg>MAX` true. */
-		if (bound == (is_jmp32 ? U32_MAX : U64_MAX))
-			return;
-		bound++;
-	}
-	if (is_jmp32) {
-		/* Constrain the register's value in the tnum representation.
-		 * For 64-bit comparisons this happens later in
-		 * __reg_bound_offset(), but for 32-bit comparisons, we can be
-		 * more precise than what can be derived from the updated
-		 * numeric bounds.
-		 */
-		struct tnum t = tnum_range(bound, U32_MAX);
-
-		t.mask |= ~0xffffffffULL; /* upper half is unknown */
-		reg->var_off = tnum_intersect(reg->var_off, t);
-
-		/* Compute the 64-bit bound from the 32-bit bound. */
-		bound += gen_hi_min(reg->var_off);
-	}
-	reg->umin_value = max(reg->umin_value, bound);
 }
 
 /* Adjusts the register min/max values in the case that the dst_reg is the

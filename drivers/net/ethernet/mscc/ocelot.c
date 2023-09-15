@@ -1174,6 +1174,8 @@ EXPORT_SYMBOL(ocelot_port_mdb_del);
 int ocelot_port_bridge_join(struct ocelot *ocelot, int port,
 			    struct net_device *bridge)
 {
+	struct ocelot_port *ocelot_port = ocelot->ports[port];
+
 	if (!ocelot->bridge_mask) {
 		ocelot->hw_bridge_dev = bridge;
 	} else {
@@ -1184,6 +1186,12 @@ int ocelot_port_bridge_join(struct ocelot *ocelot, int port,
 	}
 
 	ocelot->bridge_mask |= BIT(port);
+
+	/* Direct CPU traffic to PCU port, this should override any existing
+	 * entries
+	 */
+	ocelot_mact_learn(ocelot, PGID_CPU, bridge->dev_addr, ocelot_port->pvid,
+			  ENTRYTYPE_LOCKED);
 
 	return 0;
 }
@@ -1489,82 +1497,6 @@ static void ocelot_cpu_port_init(struct ocelot *ocelot)
 				 ANA_PORT_VLAN_CFG_VLAN_POP_CNT(1),
 			 ANA_PORT_VLAN_CFG, cpu);
 }
-
-void ocelot_set_cpu_port(struct ocelot *ocelot, int cpu,
-			 enum ocelot_tag_prefix injection,
-			 enum ocelot_tag_prefix extraction)
-{
-	int port;
-
-	for (port = 0; port < ocelot->num_phys_ports; port++) {
-		/* Disable old CPU port and enable new one */
-		ocelot_rmw_rix(ocelot, 0, BIT(ocelot->cpu),
-			       ANA_PGID_PGID, PGID_SRC + port);
-		if (port == cpu)
-			continue;
-		ocelot_rmw_rix(ocelot, BIT(cpu), BIT(cpu),
-			       ANA_PGID_PGID, PGID_SRC + port);
-	}
-
-	/* Configure and enable the CPU port. */
-	ocelot_write_rix(ocelot, 0, ANA_PGID_PGID, cpu);
-	ocelot_write_rix(ocelot, BIT(cpu), ANA_PGID_PGID, PGID_CPU);
-	ocelot_write_gix(ocelot, ANA_PORT_PORT_CFG_RECV_ENA |
-			 ANA_PORT_PORT_CFG_PORTID_VAL(cpu),
-			 ANA_PORT_PORT_CFG, cpu);
-
-	/* If the CPU port is a physical port, set up the port in Node
-	 * Processor Interface (NPI) mode. This is the mode through which
-	 * frames can be injected from and extracted to an external CPU.
-	 * Only one port can be an NPI at the same time.
-	 */
-	if (cpu < ocelot->num_phys_ports) {
-		int mtu = VLAN_ETH_FRAME_LEN + OCELOT_TAG_LEN;
-
-		ocelot_write(ocelot, QSYS_EXT_CPU_CFG_EXT_CPUQ_MSK_M |
-			     QSYS_EXT_CPU_CFG_EXT_CPU_PORT(cpu),
-			     QSYS_EXT_CPU_CFG);
-
-		if (injection == OCELOT_TAG_PREFIX_SHORT)
-			mtu += OCELOT_SHORT_PREFIX_LEN;
-		else if (injection == OCELOT_TAG_PREFIX_LONG)
-			mtu += OCELOT_LONG_PREFIX_LEN;
-
-		ocelot_port_set_mtu(ocelot, cpu, mtu);
-	}
-
-	/* CPU port Injection/Extraction configuration */
-	ocelot_write_rix(ocelot, QSYS_SWITCH_PORT_MODE_INGRESS_DROP_MODE |
-			 QSYS_SWITCH_PORT_MODE_SCH_NEXT_CFG(1) |
-			 QSYS_SWITCH_PORT_MODE_PORT_ENA,
-			 QSYS_SWITCH_PORT_MODE, cpu);
-	ocelot_write_rix(ocelot, SYS_PORT_MODE_INCL_XTR_HDR(extraction) |
-			 SYS_PORT_MODE_INCL_INJ_HDR(injection),
-			 SYS_PORT_MODE, cpu);
-
-	/* Configure the CPU port to be VLAN aware */
-	ocelot_write_gix(ocelot, ANA_PORT_VLAN_CFG_VLAN_VID(0) |
-				 ANA_PORT_VLAN_CFG_VLAN_AWARE_ENA |
-				 ANA_PORT_VLAN_CFG_VLAN_POP_CNT(1),
-			 ANA_PORT_VLAN_CFG, cpu);
-
-	ocelot->cpu = cpu;
-}
-EXPORT_SYMBOL(ocelot_set_cpu_port);
-
-/* Entry for PTP over Ethernet (etype 0x88f7)
- * Action: trap to CPU port
- */
-static struct ocelot_ace_rule ptp_rule = {
-	.prio		= 1,
-	.type		= OCELOT_ACE_TYPE_ETYPE,
-	.dmac_mc	= OCELOT_VCAP_BIT_1,
-	.action		= OCELOT_ACL_ACTION_TRAP,
-	.frame.etype.etype.value[0]	= 0x88,
-	.frame.etype.etype.value[1]	= 0xf7,
-	.frame.etype.etype.mask[0]	= 0xff,
-	.frame.etype.etype.mask[1]	= 0xff,
-};
 
 int ocelot_init(struct ocelot *ocelot)
 {
