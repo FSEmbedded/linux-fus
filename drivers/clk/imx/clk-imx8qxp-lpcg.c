@@ -81,8 +81,9 @@ static int imx8qxp_lpcg_clk_probe(struct platform_device *pdev)
 	pm_runtime_use_autosuspend(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 
-	for (i = 0; i < clk_data->num; i++) {
-		if (bit_offset[i] > 31) {
+	for (i = 0; i < count; i++) {
+		idx = bit_offset[i] / 4;
+		if (idx >= IMX_LPCG_MAX_CLKS) {
 			dev_warn(&pdev->dev, "invalid bit offset of clock %d\n",
 				 i);
 			ret = -EINVAL;
