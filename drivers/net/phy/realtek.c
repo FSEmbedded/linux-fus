@@ -210,7 +210,7 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 	reg = phy_read(phydev, RTL8211F_PHYCR1);
 
 	if ((priv->quirks & RTL821X_ALDPS_ENABLE))
-		reg |= RTL8211F_ALDPS_PLL_OFF | RTL8211F_ALDPS_ENABLE | RTL8211F_ALDPS_XTAL_OFF;
+		reg |= RTL8211F_ALDPS_PLL_OFF | RTL8211F_ALDPS_ENABLE;
 
 	phy_write(phydev, RTL8211F_PHYCR1, reg);
 	reg = phy_read(phydev, RTL8211F_PHYCR2);
