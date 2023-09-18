@@ -50,6 +50,7 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		idle-state = <0>;
+
 		i2c@1 {
 			#address-cells = <1>;
 			#size-cells = <0>;

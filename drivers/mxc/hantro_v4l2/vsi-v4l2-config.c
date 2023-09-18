@@ -294,31 +294,36 @@ static void vsi_enum_decfsize(struct v4l2_frmsizeenum *f, u32 pixel_format)
 	if (vsi_v4l2_hwconfig.max_dec_resolution > 1920) {
 		switch (pixel_format) {
 		case V4L2_PIX_FMT_HEVC:
+		case V4L2_PIX_FMT_VP9:
 			f->stepwise.min_width = 144;
 			f->stepwise.max_width = 4096;
 			f->stepwise.min_height = 144;
-			f->stepwise.max_height = 2160;
+			f->stepwise.max_height = 2304;
 			break;
 		case V4L2_PIX_FMT_H264:
-			f->stepwise.min_width = 96;
+		case V4L2_PIX_FMT_VP8:
+		case V4L2_PIX_FMT_VC1_ANNEX_G:
+		case V4L2_PIX_FMT_VC1_ANNEX_L:
+			f->stepwise.min_width = 48;
 			f->stepwise.max_width = 4096;
 			f->stepwise.min_height = 48;
-			f->stepwise.max_height = 2160;
+			f->stepwise.max_height = 4096;
 			break;
-		case V4L2_PIX_FMT_VP9:
-			f->stepwise.min_width = 96;
-			f->stepwise.max_width = 4096;
-			f->stepwise.min_height = 72;
-			f->stepwise.max_height = 2160;
-			break;
-		case V4L2_PIX_FMT_VP8:
 		case V4L2_PIX_FMT_MPEG4:
 		case V4L2_PIX_FMT_XVID:
 		case V4L2_PIX_FMT_MPEG2:
 		case V4L2_PIX_FMT_H263:
-		case V4L2_PIX_FMT_VC1_ANNEX_G:
-		case V4L2_PIX_FMT_VC1_ANNEX_L:
+			f->stepwise.min_width = 48;
+			f->stepwise.max_width = 1920;
+			f->stepwise.min_height = 48;
+			f->stepwise.max_height = 1088;
+			break;
 		case V4L2_PIX_FMT_JPEG:
+			f->stepwise.min_width = 48;
+			f->stepwise.max_width = 16368;
+			f->stepwise.min_height = 48;
+			f->stepwise.max_height = 16368;
+			break;
 		default:
 			f->stepwise.min_width = 48;
 			f->stepwise.max_width = 1920;
@@ -329,23 +334,34 @@ static void vsi_enum_decfsize(struct v4l2_frmsizeenum *f, u32 pixel_format)
 	} else {
 		switch (pixel_format) {
 		case V4L2_PIX_FMT_HEVC:
-			f->stepwise.min_width = 144;
-			f->stepwise.min_height = 144;
-			break;
 		case V4L2_PIX_FMT_VP9:
-			f->stepwise.min_width = 72;
-			f->stepwise.min_height = 72;
+			f->stepwise.min_width = 144;
+			f->stepwise.max_width = 1920;
+			f->stepwise.min_height = 144;
+			f->stepwise.max_height = 1088;
 			break;
 		case V4L2_PIX_FMT_H264:
 		case V4L2_PIX_FMT_VP8:
 			f->stepwise.min_width = 48;
+			f->stepwise.max_width = 1920;
 			f->stepwise.min_height = 48;
+			f->stepwise.max_height = 4096;
 			break;
 		default:
+			f->stepwise.min_width = 144;
+			f->stepwise.max_width = 1920;
+			f->stepwise.min_height = 144;
+			f->stepwise.max_height = 1088;
 			break;
 		}
-		f->stepwise.max_width = 1920;
-		f->stepwise.max_height = 1088;
+	}
+
+	if (pixel_format == V4L2_PIX_FMT_HEVC || pixel_format == V4L2_PIX_FMT_VP9) {
+		f->stepwise.step_width = 8;
+		f->stepwise.step_height = 8;
+	} else {
+		f->stepwise.step_width = 16;
+		f->stepwise.step_height = 16;
 	}
 }
 
@@ -635,11 +651,11 @@ void vsi_enum_encfsize(struct v4l2_frmsizeenum *f, u32 pixel_format)
 {
 	switch (pixel_format) {
 	case V4L2_PIX_FMT_HEVC:
-		f->stepwise.min_width = 132;
+		f->stepwise.min_width = 136;
 		f->stepwise.max_width = 1920;
 		f->stepwise.step_width = 2;
-		f->stepwise.min_height = 128;
-		f->stepwise.max_height = 1088;
+		f->stepwise.min_height = 136;
+		f->stepwise.max_height = 8192;
 		f->stepwise.step_height = 2;
 		break;
 	case V4L2_PIX_FMT_H264:
@@ -648,13 +664,13 @@ void vsi_enum_encfsize(struct v4l2_frmsizeenum *f, u32 pixel_format)
 			f->stepwise.max_width = 1920;
 			f->stepwise.step_width = 4;
 			f->stepwise.min_height = 96;
-			f->stepwise.max_height = 2944;
-			f->stepwise.step_height = 2;
+			f->stepwise.max_height = 4080;
+			f->stepwise.step_height = 4;
 		} else {
-			f->stepwise.min_width = 132;
+			f->stepwise.min_width = 144;
 			f->stepwise.max_width = 1920;
 			f->stepwise.step_width = 2;
-			f->stepwise.min_height = 128;
+			f->stepwise.min_height = 144;
 			f->stepwise.max_height = 8192;
 			f->stepwise.step_height = 2;
 		}
@@ -665,7 +681,7 @@ void vsi_enum_encfsize(struct v4l2_frmsizeenum *f, u32 pixel_format)
 		f->stepwise.step_width = 4;
 		f->stepwise.min_height = 96;
 		f->stepwise.max_height = 4080;
-		f->stepwise.step_height = 2;
+		f->stepwise.step_height = 4;
 		break;
 	default:
 		if (vsi_v4l2_hwconfig.enc_isH1) {
@@ -673,14 +689,14 @@ void vsi_enum_encfsize(struct v4l2_frmsizeenum *f, u32 pixel_format)
 			f->stepwise.max_width = 1920;
 			f->stepwise.step_width = 4;
 			f->stepwise.min_height = 96;
-			f->stepwise.max_height = 1088;
-			f->stepwise.step_height = 2;
+			f->stepwise.max_height = 4080;
+			f->stepwise.step_height = 4;
 		} else {
-			f->stepwise.min_width = 132;
+			f->stepwise.min_width = 144;
 			f->stepwise.max_width = 1920;
 			f->stepwise.step_width = 2;
-			f->stepwise.min_height = 128;
-			f->stepwise.max_height = 1088;
+			f->stepwise.min_height = 144;
+			f->stepwise.max_height = 8192;
 			f->stepwise.step_height = 2;
 		}
 		break;
@@ -1131,11 +1147,36 @@ static int get_fmtprofile(struct vsi_v4l2_mediacfg *pcfg)
 	}
 }
 
+static int vsi_calc_table_size(int pixelformat, int width, int height)
+{
+	int luma_table_size = 0;
+	int chroma_table_size = 0;
+	int width_in_cbs;
+	int height_in_cbs;
+
+	if (pixelformat != V4L2_PIX_FMT_RFC && pixelformat != V4L2_PIX_FMT_RFCX)
+		return 0;
+
+	/*luma table size*/
+	width_in_cbs = ALIGN(DIV_ROUND_UP(width, 8), 16);
+	height_in_cbs = DIV_ROUND_UP(height, 8);
+	luma_table_size = ALIGN(width_in_cbs * height_in_cbs, 16);
+
+	/*chroma table size*/
+	width_in_cbs = ALIGN(DIV_ROUND_UP(width, 16), 16);
+	height_in_cbs = DIV_ROUND_UP(height / 2, 4);
+	chroma_table_size = ALIGN(width_in_cbs * height_in_cbs, 16);
+
+	return luma_table_size + chroma_table_size;
+}
+
 static void verifyPlanesize(unsigned int psize[], int braw, int pixelformat, int width, int height, int planeno, int bdecoder)
 {
 	int totalsize = 0;
 	int basesize = width * height, extsize = 0, quadsize = 0;
 	int padsize = 0;
+	int tablesize = 0;
+	int mvssize = 0;
 
 	if (braw) {
 		if (enc_isRGBformat(pixelformat)) {
@@ -1177,8 +1218,19 @@ static void verifyPlanesize(unsigned int psize[], int braw, int pixelformat, int
 				break;
 			}
 		}
+		switch (pixelformat) {
+		case V4L2_PIX_FMT_RFC:
+		case V4L2_PIX_FMT_RFCX:
+			mvssize = DIV_ROUND_UP(width, 64) * DIV_ROUND_UP(height, 64) * 64 * 16;
+			padsize = max_t(int, padsize, mvssize);
+			tablesize = vsi_calc_table_size(pixelformat, width, height);
+			break;
+		default:
+			tablesize = 0;
+			break;
+		}
 		if (planeno == 1) {
-			totalsize = basesize + extsize + padsize;
+			totalsize = basesize + extsize + padsize + tablesize;
 			psize[0] = max_t(int, totalsize, psize[0]);
 		} else if (planeno == 2) {
 			psize[0] = basesize;
@@ -1461,6 +1513,7 @@ static int vsiv4l2_setfmt_dec(struct vsi_v4l2_ctx *ctx, struct v4l2_format *fmt)
 {
 	struct vsi_v4l2_mediacfg *pcfg = &ctx->mediacfg;
 	struct v4l2_pix_format *pix = &fmt->fmt.pix;
+	struct v4l2_pix_format pix_ori = fmt->fmt.pix;
 	struct vsi_video_fmt *targetfmt;
 	int ret = 0;
 
@@ -1475,16 +1528,24 @@ static int vsiv4l2_setfmt_dec(struct vsi_v4l2_ctx *ctx, struct v4l2_format *fmt)
 		pcfg->infmt_fourcc = pix->pixelformat;
 	} else {
 		pcfg->outfmt_fourcc = pix->pixelformat;
+		pcfg->decparams.dec_info.io_buffer.outputPixelDepth =
+				vsiv4l2_decidepixeldepth(targetfmt->dec_fmt, pcfg->src_pixeldepth);
 
 		if (!test_bit(CTX_FLAG_SRCCHANGED_BIT, &ctx->flag)) {
+			struct v4l2_frmsizeenum fmsize;
+
 			pcfg->decparams.dec_info.io_buffer.output_width = pix->width;
 			pcfg->decparams.dec_info.io_buffer.output_height = pix->height;
 			pcfg->decparams.dec_info.io_buffer.outBufFormat = targetfmt->dec_fmt;
 			pcfg->bytesperline = pix->bytesperline;
+
+			vsi_enum_decfsize(&fmsize, pcfg->infmt_fourcc);
 			pcfg->decparams.dec_info.dec_info.visible_rect.left = 0;
 			pcfg->decparams.dec_info.dec_info.visible_rect.top = 0;
-			pcfg->decparams.dec_info.dec_info.visible_rect.width = pix->width;
-			pcfg->decparams.dec_info.dec_info.visible_rect.height = pix->height;
+			pcfg->decparams.dec_info.dec_info.visible_rect.width =
+				clamp(pix_ori.width, fmsize.stepwise.min_width, fmsize.stepwise.max_width);
+			pcfg->decparams.dec_info.dec_info.visible_rect.height =
+				clamp(pix_ori.height, fmsize.stepwise.min_height, fmsize.stepwise.max_height);
 		} else {
 			//dtrc is only for HEVC and VP9
 			if (istiledfmt(targetfmt->dec_fmt)
@@ -1496,8 +1557,6 @@ static int vsiv4l2_setfmt_dec(struct vsi_v4l2_ctx *ctx, struct v4l2_format *fmt)
 			if (pcfg->decparams.dec_info.io_buffer.output_height)
 				pix->height = pcfg->decparams.dec_info.io_buffer.output_height;
 			pcfg->decparams.dec_info.io_buffer.outBufFormat = targetfmt->dec_fmt;
-			pcfg->decparams.dec_info.io_buffer.outputPixelDepth =
-				vsiv4l2_decidepixeldepth(targetfmt->dec_fmt, pcfg->src_pixeldepth);
 			pcfg->bytesperline = pix->width * pcfg->decparams.dec_info.io_buffer.outputPixelDepth / 8;
 			pcfg->bytesperline = ALIGN(pcfg->bytesperline, 16);
 			pix->bytesperline = pcfg->bytesperline;
@@ -1563,10 +1622,8 @@ static int vsiv4l2_verifyfmt_enc(struct vsi_v4l2_ctx *ctx, struct v4l2_format *f
 		fmsize.pixel_format = pixmp->pixelformat;
 	vsi_enum_encfsize(&fmsize, fmsize.pixel_format);
 
-	pixmp->width = min(pixmp->width, fmsize.stepwise.max_width);
-	pixmp->width = max_t(u32, pixmp->width, fmsize.stepwise.min_width);
-	pixmp->height = min(pixmp->height, fmsize.stepwise.max_height);
-	pixmp->height = max_t(u32, pixmp->height, fmsize.stepwise.min_height);
+	pixmp->width = clamp(pixmp->width, fmsize.stepwise.min_width, fmsize.stepwise.max_width);
+	pixmp->height = clamp(pixmp->height, fmsize.stepwise.min_height, fmsize.stepwise.max_height);
 
 	if (vsi_v4l2_hwconfig.enc_isH1) {
 		if (pixmp->width & 0x3)
@@ -1643,10 +1700,12 @@ static int vsiv4l2_verifyfmt_dec(struct vsi_v4l2_ctx *ctx, struct v4l2_format *f
 		fmsize.pixel_format = pcfg->infmt_fourcc;
 
 	vsi_enum_decfsize(&fmsize, fmsize.pixel_format);
-	pix->width = min(pix->width, fmsize.stepwise.max_width);
-	pix->width = max_t(u32, pix->width, fmsize.stepwise.min_width);
-	pix->height = min(pix->height, fmsize.stepwise.max_height);
-	pix->height = max_t(u32, pix->height, fmsize.stepwise.min_height);
+	if (V4L2_TYPE_IS_CAPTURE(fmt->type)) {
+		pix->width = ALIGN(pix->width, fmsize.stepwise.step_width);
+		pix->height = ALIGN(pix->height, fmsize.stepwise.step_height);
+	}
+	pix->width = clamp(pix->width, fmsize.stepwise.min_width, fmsize.stepwise.max_width);
+	pix->height = clamp(pix->height, fmsize.stepwise.min_height, fmsize.stepwise.max_height);
 
 	if (braw) {
 		if (!test_bit(CTX_FLAG_SRCCHANGED_BIT, &ctx->flag)) {

@@ -1795,6 +1795,19 @@ static void soc_check_tplg_fes(struct snd_soc_card *card)
 match:
 		/* machine matches, so override the rtd data */
 		for_each_card_prelinks(card, i, dai_link) {
+			struct snd_soc_dai_link_component *dlc;
+			struct snd_soc_dai *dai;
+
+			/*
+			 * ignore dailinks exposed by other components, with the
+			 * assumption that all cpu_dais are exposed by the same
+			 * component
+			 */
+			dlc = asoc_link_to_cpu(dai_link, 0);
+			dai = snd_soc_find_dai(dlc);
+
+			if (!dai || dai->component != component)
+				continue;
 
 			/* ignore this FE */
 			if (dai_link->dynamic) {
@@ -3208,7 +3221,7 @@ int snd_soc_get_dai_name(const struct of_phandle_args *args,
 	for_each_component(pos) {
 		struct device_node *component_of_node = soc_component_to_node(pos);
 
-		if (component_of_node != args->np)
+		if (component_of_node != args->np || !pos->num_dai)
 			continue;
 
 		ret = snd_soc_component_of_xlate_dai_name(pos, args, dai_name);

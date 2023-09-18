@@ -5,7 +5,6 @@
  *  Copyright (C) 2003 Russell King, All Rights Reserved.
  *  Copyright (C) 2007-2008 Pierre Ossman
  *  Copyright (C) 2010 Linus Walleij
- *  Copyright 2020 NXP
  *
  *  MMC host class device management
  */
@@ -386,8 +385,6 @@ int mmc_of_parse(struct mmc_host *host)
 	if (device_property_read_bool(dev, "wakeup-source") ||
 	    device_property_read_bool(dev, "enable-sdio-wakeup")) /* legacy */
 		host->pm_caps |= MMC_PM_WAKE_SDIO_IRQ;
-	if (device_property_read_bool(dev, "pm-ignore-notify"))
-		host->pm_caps |= MMC_PM_IGNORE_PM_NOTIFY;
 	if (device_property_read_bool(dev, "mmc-ddr-3_3v"))
 		host->caps |= MMC_CAP_3_3V_DDR;
 	if (device_property_read_bool(dev, "mmc-ddr-1_8v"))
@@ -499,7 +496,7 @@ int mmc_of_parse_voltage(struct mmc_host *host, u32 *mask)
 
 	return 1;
 }
-EXPORT_SYMBOL(mmc_parse_voltage);
+EXPORT_SYMBOL(mmc_of_parse_voltage);
 
 /**
  * mmc_first_nonreserved_index() - get the first index that is not reserved

@@ -183,7 +183,7 @@ static const struct soc_enum fsl_micfil_hwvad_zcd_enum =
 			    micfil_hwvad_zcd_enable);
 static const struct soc_enum fsl_micfil_hwvad_zcdauto_enum =
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(micfil_hwvad_zcdauto_enable),
-			    micfil_hwvad_zcd_enable);
+			    micfil_hwvad_zcdauto_enable);
 static const struct soc_enum fsl_micfil_hwvad_ndec_enum =
 	SOC_ENUM_SINGLE(REG_MICFIL_VAD0_NCONFIG,
 			MICFIL_VAD0_NCONFIG_NOREN_SHIFT,
@@ -1374,15 +1374,6 @@ static int fsl_micfil_set_mclk_rate(struct fsl_micfil *micfil, int clk_id,
 	if (atomic_read(&micfil->hwvad_state) == MICFIL_HWVAD_ON)
 		return 0;
 
-	/* check if all clock sources are valid */
-	for (i = 0; i < MICFIL_CLK_SRC_NUM; i++) {
-		if (micfil->clk_src[i])
-			continue;
-
-		dev_err(dev, "Clock Source %d is not valid.\n", i);
-		return -EINVAL;
-	}
-
 	while (p) {
 		struct clk *pp = clk_get_parent(p);
 
@@ -1406,8 +1397,10 @@ static int fsl_micfil_set_mclk_rate(struct fsl_micfil *micfil, int clk_id,
 			 * to any known frequency ???
 			 */
 			clk_rate = round_up(clk_rate, 10);
-			if (do_div(clk_rate, ratio) == 0)
+			if (do_div(clk_rate, ratio) == 0) {
 				npll = micfil->clk_src[i];
+				break;
+			}
 		}
 	} else {
 		/* clock id is offseted by 1 since ID=0 means
@@ -1639,6 +1632,31 @@ static int fsl_micfil_set_dai_sysclk(struct snd_soc_dai *dai, int clk_id,
 			clk_get_rate(micfil->mclk), freq);
 
 	return ret;
+}
+
+static int fsl_micfil_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
+{
+	struct fsl_micfil *micfil = snd_soc_dai_get_drvdata(dai);
+
+	/* DAI MODE */
+	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
+	case SND_SOC_DAIFMT_I2S:
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	/* DAI CLK INVERSION */
+	switch (fmt & SND_SOC_DAIFMT_INV_MASK) {
+	case SND_SOC_DAIFMT_NB_NF:
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	micfil->slave_mode = false;
+
+	return 0;
 }
 
 static const struct snd_soc_dai_ops fsl_micfil_dai_ops = {
@@ -2198,6 +2216,19 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 		return PTR_ERR(micfil->busclk);
 	}
 
+	/* get audio pll1 and pll2 */
+	micfil->clk_src[MICFIL_AUDIO_PLL1] = devm_clk_get(&pdev->dev, "pll8k");
+	if (IS_ERR(micfil->clk_src[MICFIL_AUDIO_PLL1]))
+		micfil->clk_src[MICFIL_AUDIO_PLL1] = NULL;
+
+	micfil->clk_src[MICFIL_AUDIO_PLL2] = devm_clk_get(&pdev->dev, "pll11k");
+	if (IS_ERR(micfil->clk_src[MICFIL_AUDIO_PLL2]))
+		micfil->clk_src[MICFIL_AUDIO_PLL2] = NULL;
+
+	micfil->clk_src[MICFIL_CLK_EXT3] = devm_clk_get(&pdev->dev, "clkext3");
+	if (IS_ERR(micfil->clk_src[MICFIL_CLK_EXT3]))
+		micfil->clk_src[MICFIL_CLK_EXT3] = NULL;
+
 	/* init regmap */
 	regs = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
 	if (IS_ERR(regs))
@@ -2307,14 +2338,31 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	fsl_micfil_dai.capture.formats = micfil->soc->formats;
+
 	ret = devm_snd_soc_register_component(&pdev->dev, &fsl_micfil_component,
 					      &fsl_micfil_dai, 1);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to register component %s\n",
 			fsl_micfil_component.name);
+		return ret;
 	}
 
-	return ret;
+	/* create sysfs entry used to enable hwvad from userspace */
+	micfil->hwvad_kobject = kobject_create_and_add("hwvad",
+						       &pdev->dev.kobj);
+	if (!micfil->hwvad_kobject)
+		return -ENOMEM;
+
+	ret = sysfs_create_file(micfil->hwvad_kobject,
+				&hwvad_en_attr.attr);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to create file for hwvad_enable\n");
+		kobject_put(micfil->hwvad_kobject);
+		return -ENOMEM;
+	}
+
+	return 0;
 }
 
 static int __maybe_unused fsl_micfil_runtime_suspend(struct device *dev)
@@ -2339,10 +2387,6 @@ static int __maybe_unused fsl_micfil_runtime_resume(struct device *dev)
 	struct fsl_micfil *micfil = dev_get_drvdata(dev);
 	int ret;
 	u32 state;
-
-	ret = clk_prepare_enable(micfil->busclk);
-	if (ret < 0)
-		return ret;
 
 	state = atomic_read(&micfil->hwvad_state);
 

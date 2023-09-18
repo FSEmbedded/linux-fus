@@ -33,22 +33,6 @@
 	};
 };
 
-&can0 {
-	status = "okay";
-
-	can-transceiver {
-		max-bitrate = <5000000>;
-	};
-};
-
-&can1 {
-	status = "okay";
-
-	can-transceiver {
-		max-bitrate = <5000000>;
-	};
-};
-
 &crypto {
 	status = "okay";
 };
@@ -63,6 +47,14 @@
 	phy-handle = <&aquantia_phy2>;
 	phy-connection-type = "usxgmii";
 	managed = "in-band-status";
+};
+
+&dpmac5 {
+	phy-handle = <&inphi_phy>;
+};
+
+&dpmac6 {
+	phy-handle = <&inphi_phy>;
 };
 
 &dpmac17 {
@@ -122,6 +114,15 @@
 
 	can-transceiver {
 		max-bitrate = <5000000>;
+	};
+};
+
+&emdio2 {
+	status = "okay";
+
+	inphi_phy: ethernet-phy@0 {
+		compatible = "ethernet-phy-id0210.7440";
+		reg = <0x0>;
 	};
 };
 
@@ -218,6 +219,10 @@
 	};
 };
 
+&optee {
+	status = "okay";
+};
+
 &pcs_mdio3 {
 	status = "okay";
 };
@@ -256,19 +261,4 @@
 
 &usb1 {
 	status = "okay";
-};
-
-&emdio2 {
-	inphi_phy: ethernet-phy@0 {
-		compatible = "ethernet-phy-id0210.7440";
-		reg = <0x0>;
-	};
-};
-
-&dpmac5 {
-	phy-handle = <&inphi_phy>;
-};
-
-&dpmac6 {
-	phy-handle = <&inphi_phy>;
 };

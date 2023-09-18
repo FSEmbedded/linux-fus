@@ -441,7 +441,6 @@ static int wcn36xx_config(struct ieee80211_hw *hw, u32 changed)
 				}
 			}
 			wcn36xx_smd_start_scan(wcn, ch);
-			wcn->sw_scan_channel = ch;
 		} else {
 			wcn36xx_change_opchannel(wcn, ch);
 		}

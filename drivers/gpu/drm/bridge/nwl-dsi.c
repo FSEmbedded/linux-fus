@@ -24,6 +24,7 @@
 #include <linux/sys_soc.h>
 #include <linux/time64.h>
 
+#include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic_state_helper.h>
 #include <drm/drm_bridge.h>
 #include <drm/drm_mipi_dsi.h>
@@ -322,7 +323,7 @@ static int nwl_dsi_config_host(struct nwl_dsi *dsi)
 	else
 		nwl_dsi_write(dsi, NWL_DSI_CFG_NONCONTINUOUS_CLK, 0x00);
 
-	if (dsi->dsi_mode_flags & MIPI_DSI_MODE_EOT_PACKET)
+	if (dsi->dsi_mode_flags & MIPI_DSI_MODE_NO_EOT_PACKET)
 		nwl_dsi_write(dsi, NWL_DSI_CFG_AUTOINSERT_EOTP, 0x00);
 	else
 		nwl_dsi_write(dsi, NWL_DSI_CFG_AUTOINSERT_EOTP, 0x01);
@@ -414,15 +415,17 @@ static int nwl_dsi_config_dpi(struct nwl_dsi *dsi)
 	}
 
 	if (of_device_is_compatible(dsi->panel_bridge->of_node,
-				    "raydium,rm68200")) {
+				    "raydium,rm68200") ||
+	    of_device_is_compatible(dsi->panel_bridge->of_node,
+				    "rocktech,hx8394f")) {
 		int bytes = mipi_dsi_pixel_format_to_bpp(dsi->format) >> 3;
 
 		/*
 		 * FIXME: This is a workaround for display shift
-		 * of the RM68200 panel. It is based on previous
-		 * knowledge got from support task for external
-		 * DSI bridges by turning the hfp/hbp/hsa to be
-		 * in bytes and substracting certain magic values.
+		 * of the RM68200 and HX8394F panels. It is based
+		 * on previous knowledge got from support task for
+		 * external DSI bridges by turning the hfp/hbp/hsa
+		 * to be in bytes and substracting certain magic values.
 		 * Furthermore, rounding hsa up to 2 is needed.
 		 * This can be fixed as soon as formulas to
 		 * determine the settings are available.
@@ -790,7 +793,7 @@ static irqreturn_t nwl_dsi_irq_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static int nwl_dsi_mode_set(struct nwl_dsi *dsi)
+static int nwl_dsi_enable(struct nwl_dsi *dsi)
 {
 	struct device *dev = dsi->dev;
 	union phy_configure_opts *phy_cfg = &dsi->phy_cfg;
@@ -876,8 +879,8 @@ static int nwl_dsi_disable(struct nwl_dsi *dsi)
 }
 
 static void
-nwl_dsi_bridge_atomic_disable(struct drm_bridge *bridge,
-			      struct drm_bridge_state *old_bridge_state)
+nwl_dsi_bridge_atomic_post_disable(struct drm_bridge *bridge,
+				   struct drm_bridge_state *old_bridge_state)
 {
 	struct nwl_dsi *dsi = bridge_to_dsi(bridge);
 	int ret;
@@ -1161,7 +1164,7 @@ nwl_dsi_bridge_mode_valid(struct drm_bridge *bridge,
 	int bit_rate;
 
 	bit_rate = nwl_dsi_get_bit_clock(dsi, mode->clock * 1000, dsi->lanes);
-
+ 
 	DRM_DEV_DEBUG_DRIVER(dsi->dev, "Validating mode:");
 	drm_mode_debug_printmodeline(mode);
 
@@ -1187,20 +1190,56 @@ static int nwl_dsi_bridge_atomic_check(struct drm_bridge *bridge,
 				       struct drm_crtc_state *crtc_state,
 				       struct drm_connector_state *conn_state)
 {
-	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
+	struct nwl_dsi *dsi = bridge_to_dsi(bridge);
+	struct drm_display_mode *adjusted = &crtc_state->adjusted_mode;
+	struct mode_config *config;
+	unsigned long pll_rate;
 
-	/* At least LCDIF + NWL needs active high sync */
-	adjusted_mode->flags |= (DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC);
-	adjusted_mode->flags &= ~(DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC);
+	DRM_DEV_DEBUG_DRIVER(dsi->dev, "atomic check:\n");
+	drm_mode_debug_printmodeline(adjusted);
 
-	/*
-	 * Do a full modeset if crtc_state->active is changed to be true.
-	 * This ensures our ->mode_set() is called to get the DSI controller
-	 * and the PHY ready to send DCS commands, when only the connector's
-	 * DPMS is brought out of "Off" status.
-	 */
-	if (crtc_state->active_changed && crtc_state->active)
-		crtc_state->mode_changed = true;
+	config = nwl_dsi_mode_probe(dsi, adjusted);
+	if (!config)
+		return -EINVAL;
+
+	DRM_DEV_DEBUG_DRIVER(dsi->dev, "lanes=%u, data_rate=%lu\n",
+			     config->lanes, config->bitclock);
+	if (config->lanes < 2 || config->lanes > 4)
+		return -EINVAL;
+
+	/* Max data rate for this controller is 1.5Gbps */
+	if (config->bitclock > 1500000000)
+		return -EINVAL;
+
+	pll_rate = config->pll_rates[config->phy_rate_idx];
+	if (dsi->pll_clk && pll_rate) {
+		clk_set_rate(dsi->pll_clk, pll_rate);
+		DRM_DEV_DEBUG_DRIVER(dsi->dev,
+				     "Video pll rate: %lu (actual: %lu)",
+				     pll_rate, clk_get_rate(dsi->pll_clk));
+	}
+	/* Update the crtc_clock to be used by display controller */
+	if (config->crtc_clock)
+		adjusted->crtc_clock = config->crtc_clock / 1000;
+	else if (dsi->clk_drop_lvl) {
+		int div;
+		unsigned long phy_ref_rate;
+
+		phy_ref_rate = config->phy_rates[config->phy_rate_idx];
+		pll_rate = config->bitclock;
+		div = DIV_ROUND_CLOSEST(pll_rate, config->clock);
+		pll_rate -= phy_ref_rate * dsi->clk_drop_lvl;
+		adjusted->crtc_clock = (pll_rate / div) / 1000;
+	}
+
+	if (!dsi->use_dcss && !dsi->pdata->use_dcnano_or_epdc) {
+		/* At least LCDIF + NWL needs active high sync */
+		adjusted->flags |= (DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC);
+		adjusted->flags &= ~(DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC);
+	} else {
+		adjusted->flags &= ~(DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC);
+		adjusted->flags |= (DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC);
+	}
 
 	return 0;
 }
@@ -1245,15 +1284,22 @@ nwl_dsi_bridge_mode_set(struct drm_bridge *bridge,
 	if (ret < 0)
 		return;
 
-	phy_ref_rate = clk_get_rate(dsi->phy_ref_clk);
-	DRM_DEV_DEBUG_DRIVER(dev, "PHY at ref rate: %lu\n", phy_ref_rate);
+	DRM_DEV_DEBUG_DRIVER(dev,
+			     "PHY at ref rate: %lu (actual: %lu)\n",
+			     phy_ref_rate, clk_get_rate(dsi->phy_ref_clk));
+
 	/* Save the new desired phy config */
 	memcpy(&dsi->phy_cfg, &new_cfg, sizeof(new_cfg));
+}
 
-	memcpy(&dsi->mode, adjusted_mode, sizeof(dsi->mode));
-	drm_mode_debug_printmodeline(adjusted_mode);
+static void
+nwl_dsi_bridge_atomic_pre_enable(struct drm_bridge *bridge,
+				 struct drm_bridge_state *old_bridge_state)
+{
+	struct nwl_dsi *dsi = bridge_to_dsi(bridge);
+	int ret;
 
-	pm_runtime_get_sync(dev);
+	pm_runtime_get_sync(dsi->dev);
 
 	dsi->pdata->dpi_reset(dsi, true);
 	dsi->pdata->mipi_reset(dsi, true);
@@ -1282,22 +1328,17 @@ nwl_dsi_bridge_mode_set(struct drm_bridge *bridge,
 	/* Step 1 from DSI reset-out instructions */
 	ret = dsi->pdata->pclk_reset(dsi, false);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to deassert PCLK: %d\n", ret);
+		DRM_DEV_ERROR(dsi->dev, "Failed to deassert PCLK: %d\n", ret);
 		return;
 	}
 
 	/* Step 2 from DSI reset-out instructions */
-	nwl_dsi_mode_set(dsi);
+	nwl_dsi_enable(dsi);
 
 	/* Step 3 from DSI reset-out instructions */
 	ret = dsi->pdata->mipi_reset(dsi, false);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to deassert ESC: %d\n", ret);
-		return;
-	}
-	ret = reset_control_deassert(dsi->rst_byte);
-	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to deassert BYTE: %d\n", ret);
+		DRM_DEV_ERROR(dsi->dev, "Failed to deassert DSI: %d\n", ret);
 		return;
 	}
 
@@ -1418,13 +1459,23 @@ static const struct drm_bridge_funcs nwl_dsi_bridge_funcs = {
 	.atomic_destroy_state	= drm_atomic_helper_bridge_destroy_state,
 	.atomic_reset		= drm_atomic_helper_bridge_reset,
 	.atomic_check		= nwl_dsi_bridge_atomic_check,
+	.atomic_pre_enable	= nwl_dsi_bridge_atomic_pre_enable,
 	.atomic_enable		= nwl_dsi_bridge_atomic_enable,
-	.atomic_disable		= nwl_dsi_bridge_atomic_disable,
+	.atomic_post_disable	= nwl_dsi_bridge_atomic_post_disable,
 	.atomic_get_input_bus_fmts = nwl_bridge_atomic_get_input_bus_fmts,
 	.mode_set		= nwl_dsi_bridge_mode_set,
 	.mode_valid		= nwl_dsi_bridge_mode_valid,
 	.attach			= nwl_dsi_bridge_attach,
 	.detach			= nwl_dsi_bridge_detach,
+};
+
+static void nwl_dsi_encoder_destroy(struct drm_encoder *encoder)
+{
+	drm_encoder_cleanup(encoder);
+}
+
+static const struct drm_encoder_funcs nwl_dsi_encoder_funcs = {
+	.destroy = nwl_dsi_encoder_destroy,
 };
 
 static int nwl_dsi_parse_dt(struct nwl_dsi *dsi)

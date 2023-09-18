@@ -110,7 +110,7 @@ static void __init imx7d_init_irq(void)
 {
 	imx_gpcv2_check_dt();
 	imx_init_revision_from_anatop();
-	imx7_src_init();
+	imx_src_init();
 	irqchip_init();
 #ifndef CONFIG_SMP
 	imx7d_disable_arm_arch_timer();
@@ -131,7 +131,8 @@ static const char *const imx7d_dt_compat[] __initconst = {
 };
 
 DT_MACHINE_START(IMX7D, "Freescale i.MX7 Dual (Device Tree)")
-	.smp            = smp_ops(imx7_smp_ops),
+	.map_io         = imx7d_map_io,
+	.smp            = smp_ops(imx_smp_ops),
 	.init_irq	= imx7d_init_irq,
 	.init_machine	= imx7d_init_machine,
 	.init_late      = imx7d_init_late,

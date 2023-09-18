@@ -1,7 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- *  Copyright 2020 NXP
- *
  *  linux/include/linux/mmc/host.h
  *
  *  Host driver specific definitions.

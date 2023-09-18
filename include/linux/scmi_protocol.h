@@ -546,64 +546,6 @@ struct scmi_voltage_proto_ops {
 };
 
 /**
- * struct scmi_voltage_info - describe one available SCMI Voltage Domain
- *
- * @id: the domain ID as advertised by the platform
- * @segmented: defines the layout of the entries of array @levels_uv.
- *	       - when True the entries are to be interpreted as triplets,
- *	         each defining a segment representing a range of equally
- *	         space voltages: <lowest_volts>, <highest_volt>, <step_uV>
- *	       - when False the entries simply represent a single discrete
- *	         supported voltage level
- * @negative_volts_allowed: True if any of the entries of @levels_uv represent
- *			    a negative voltage.
- * @attributes: represents Voltage Domain advertised attributes
- * @name: name assigned to the Voltage Domain by platform
- * @num_levels: number of total entries in @levels_uv.
- * @levels_uv: array of entries describing the available voltage levels for
- *	       this domain.
- */
-struct scmi_voltage_info {
-	unsigned int id;
-	bool segmented;
-	bool negative_volts_allowed;
-	unsigned int attributes;
-	char name[SCMI_MAX_STR_SIZE];
-	unsigned int num_levels;
-#define SCMI_VOLTAGE_SEGMENT_LOW	0
-#define SCMI_VOLTAGE_SEGMENT_HIGH	1
-#define SCMI_VOLTAGE_SEGMENT_STEP	2
-	int *levels_uv;
-};
-
-/**
- * struct scmi_voltage_ops - represents the various operations provided
- * by SCMI Voltage Protocol
- *
- * @num_domains_get: get the count of voltage domains provided by SCMI
- * @info_get: get the information of the specified domain
- * @config_set: set the config for the specified domain
- * @config_get: get the config of the specified domain
- * @level_set: set the voltage level for the specified domain
- * @level_get: get the voltage level of the specified domain
- */
-struct scmi_voltage_ops {
-	int (*num_domains_get)(const struct scmi_handle *handle);
-	const struct scmi_voltage_info __must_check *(*info_get)
-		(const struct scmi_handle *handle, u32 domain_id);
-	int (*config_set)(const struct scmi_handle *handle, u32 domain_id,
-			  u32 config);
-#define	SCMI_VOLTAGE_ARCH_STATE_OFF		0x0
-#define	SCMI_VOLTAGE_ARCH_STATE_ON		0x7
-	int (*config_get)(const struct scmi_handle *handle, u32 domain_id,
-			  u32 *config);
-	int (*level_set)(const struct scmi_handle *handle, u32 domain_id,
-			 u32 flags, s32 volt_uV);
-	int (*level_get)(const struct scmi_handle *handle, u32 domain_id,
-			 s32 *volt_uV);
-};
-
-/**
  * struct scmi_notify_ops  - represents notifications' operations provided by
  * SCMI core
  * @devm_event_notifier_register: Managed registration of a notifier_block for

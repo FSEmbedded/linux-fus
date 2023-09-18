@@ -161,7 +161,7 @@ static const struct imx_sc_pd_range imx8qxp_scu_pd_ranges[] = {
 	/* DMA SS */
 	{ "can", IMX_SC_R_CAN_0, 3, true, 0 },
 	{ "ftm", IMX_SC_R_FTM_0, 2, true, 0 },
-	{ "lpi2c", IMX_SC_R_I2C_0, 4, true, 0 },
+	{ "lpi2c", IMX_SC_R_I2C_0, 5, true, 0 },
 	{ "adc", IMX_SC_R_ADC_0, 2, true, 0 },
 	{ "lcd", IMX_SC_R_LCD_0, 1, true, 0 },
 	{ "lcd-pll", IMX_SC_R_ELCDIF_PLL, 1, true, 0 },
@@ -205,12 +205,25 @@ static const struct imx_sc_pd_range imx8qxp_scu_pd_ranges[] = {
 
 	/* LVDS SS */
 	{ "lvds0", IMX_SC_R_LVDS_0, 1, false, 0 },
+	{ "lvds0-pwm", IMX_SC_R_LVDS_0_PWM_0, 1, false, 0 },
+	{ "lvds0-lpi2c", IMX_SC_R_LVDS_0_I2C_0, 2, true, 0 },
 	{ "lvds1", IMX_SC_R_LVDS_1, 1, false, 0 },
+	{ "lvds1-pwm", IMX_SC_R_LVDS_1_PWM_0, 1, false, 0 },
+	{ "lvds1-lpi2c", IMX_SC_R_LVDS_1_I2C_0, 2, true, 0 },
+
+	{ "mipi1", IMX_SC_R_MIPI_1, 1, 0 },
+	{ "mipi1-pwm0", IMX_SC_R_MIPI_1_PWM_0, 1, 0 },
+	{ "mipi1-i2c", IMX_SC_R_MIPI_1_I2C_0, 2, 1 },
+	{ "lvds1", IMX_SC_R_LVDS_1, 1, 0 },
 
 	/* DC SS */
 	{ "dc0", IMX_SC_R_DC_0, 1, false, 0 },
 	{ "dc0-pll", IMX_SC_R_DC_0_PLL_0, 2, true, 0 },
 	{ "dc0-video", IMX_SC_R_DC_0_VIDEO0, 2, true, 0 },
+
+	{ "dc1", IMX_SC_R_DC_1, 1, false, 0 },
+	{ "dc1-pll", IMX_SC_R_DC_1_PLL_0, 2, true, 0 },
+	{ "dc1-video", IMX_SC_R_DC_1_VIDEO0, 2, true, 0 },
 
 	/* CM40 SS */
 	{ "cm40-i2c", IMX_SC_R_M4_0_I2C, 1, false, 0 },
@@ -226,11 +239,56 @@ static const struct imx_sc_pd_range imx8qxp_scu_pd_ranges[] = {
 	{ "cm41-mu-a1", IMX_SC_R_M4_1_MU_1A, 1, false, 0},
 	{ "cm41-lpuart", IMX_SC_R_M4_1_UART, 1, false, 0},
 
+	/* CM41 SS */
+	{ "cm41_i2c", IMX_SC_R_M4_1_I2C, 1, false, 0 },
+	{ "cm41_intmux", IMX_SC_R_M4_1_INTMUX, 1, false, 0 },
+
+	/* DB SS */
+	{ "perf", IMX_SC_R_PERF, 1, false, 0},
+
 	/* IMAGE SS */
 	{ "img-jpegdec-mp", IMX_SC_R_MJPEG_DEC_MP, 1, false, 0 },
 	{ "img-jpegdec-s0", IMX_SC_R_MJPEG_DEC_S0, 4, true, 0 },
 	{ "img-jpegenc-mp", IMX_SC_R_MJPEG_ENC_MP, 1, false, 0 },
 	{ "img-jpegenc-s0", IMX_SC_R_MJPEG_ENC_S0, 4, true, 0 },
+
+	/* SECO SS */
+	{ "seco_mu", IMX_SC_R_SECO_MU_2, 3, true, 2},
+
+	/* V2X SS */
+	{ "v2x_mu", IMX_SC_R_V2X_MU_0, 2, true, 0},
+	{ "v2x_mu", IMX_SC_R_V2X_MU_2, 1, true, 2},
+	{ "v2x_mu", IMX_SC_R_V2X_MU_3, 2, true, 3},
+	{ "img-pdma", IMX_SC_R_ISI_CH0, 8, true, 0 },
+	{ "img-csi0", IMX_SC_R_CSI_0, 1, false, 0 },
+	{ "img-csi0-i2c0", IMX_SC_R_CSI_0_I2C_0, 1, false, 0 },
+	{ "img-csi0-pwm0", IMX_SC_R_CSI_0_PWM_0, 1, false, 0 },
+	{ "img-csi1", IMX_SC_R_CSI_1, 1, false, 0 },
+	{ "img-csi1-i2c0", IMX_SC_R_CSI_1_I2C_0, 1, false, 0 },
+	{ "img-csi1-pwm0", IMX_SC_R_CSI_1_PWM_0, 1, false, 0 },
+	{ "img-parallel", IMX_SC_R_PI_0, 1, false, 0 },
+	{ "img-parallel-i2c0", IMX_SC_R_PI_0_I2C_0, 1, false, 0 },
+	{ "img-parallel-pwm0", IMX_SC_R_PI_0_PWM_0, 2, true, 0 },
+	{ "img-parallel-pll", IMX_SC_R_PI_0_PLL, 1, false, 0 },
+
+	/* HDMI TX SS */
+	{ "hdmi-tx", IMX_SC_R_HDMI, 1, false, 0},
+	{ "hdmi-tx-i2s", IMX_SC_R_HDMI_I2S, 1, false, 0},
+	{ "hdmi-tx-i2c0", IMX_SC_R_HDMI_I2C_0, 1, false, 0},
+	{ "hdmi-tx-pll0", IMX_SC_R_HDMI_PLL_0, 1, false, 0},
+	{ "hdmi-tx-pll1", IMX_SC_R_HDMI_PLL_1, 1, false, 0},
+
+	/* HDMI RX SS */
+	{ "hdmi-rx", IMX_SC_R_HDMI_RX, 1, false, 0},
+	{ "hdmi-rx-pwm", IMX_SC_R_HDMI_RX_PWM_0, 1, false, 0},
+	{ "hdmi-rx-i2c0", IMX_SC_R_HDMI_RX_I2C_0, 1, false, 0},
+	{ "hdmi-rx-bypass", IMX_SC_R_HDMI_RX_BYPASS, 1, false, 0},
+
+	/* SECURITY SS */
+	{ "sec-jr", IMX_SC_R_CAAM_JR2, 2, true, 2},
+
+	/* BOARD SS */
+	{ "board", IMX_SC_R_BOARD_R0, 8, true, 0},
 };
 
 static const struct imx_sc_pd_soc imx8qxp_scu_pd = {
@@ -244,6 +302,56 @@ static inline struct imx_sc_pm_domain *
 to_imx_sc_pd(struct generic_pm_domain *genpd)
 {
 	return container_of(genpd, struct imx_sc_pm_domain, pd);
+}
+
+static int imx_pm_domains_suspend(void)
+{
+	struct arm_smccc_res res;
+	u32 offset;
+	int i;
+
+	for (i = 0; i < wu_num; i++) {
+		offset = GICD_ISENABLER + ((wu[i] + 32) / 32) * 4;
+		if (BIT(wu[i] % 32) & readl_relaxed(gic_dist_base + offset)) {
+			arm_smccc_smc(IMX_SIP_WAKEUP_SRC,
+				      IMX_SIP_WAKEUP_SRC_IRQSTEER,
+				      0, 0, 0, 0, 0, 0, &res);
+			return 0;
+		}
+	}
+
+	arm_smccc_smc(IMX_SIP_WAKEUP_SRC,
+		      IMX_SIP_WAKEUP_SRC_SCU,
+		      0, 0, 0, 0, 0, 0, &res);
+
+	return 0;
+}
+
+struct syscore_ops imx_pm_domains_syscore_ops = {
+	.suspend = imx_pm_domains_suspend,
+};
+
+static void imx_sc_pd_enable_irqsteer_wakeup(struct device_node *np)
+{
+	struct device_node *gic_node;
+	unsigned int i;
+
+	wu_num = of_property_count_u32_elems(np, "wakeup-irq");
+	if (wu_num <= 0) {
+		pr_warn("no irqsteer wakeup source supported!\n");
+		return;
+	}
+
+	gic_node = of_find_compatible_node(NULL, NULL, "arm,gic-v3");
+	WARN_ON(!gic_node);
+
+	gic_dist_base = of_iomap(gic_node, 0);
+	WARN_ON(!gic_dist_base);
+
+	for (i = 0; i < wu_num; i++)
+		WARN_ON(of_property_read_u32_index(np, "wakeup-irq", i, &wu[i]));
+
+	register_syscore_ops(&imx_pm_domains_syscore_ops);
 }
 
 static void imx_sc_pd_get_console_rsrc(void)
@@ -286,6 +394,12 @@ static int imx_sc_pd_power(struct generic_pm_domain *domain, bool power_on)
                 return 0;
 
 	ret = imx_scu_call_rpc(pm_ipc_handle, &msg, true);
+	if (ret == -EACCES)
+	{
+		pr_warn("Resource %d not owned by partition, power state unchanged\n",
+			pd->rsrc);
+		return 0;
+	}
 	if (ret)
 		dev_err(&domain->dev, "failed to power %s resource %d ret %d\n",
 			power_on ? "up" : "off", pd->rsrc, ret);
@@ -328,6 +442,7 @@ imx_scu_add_pm_domain(struct device *dev, int idx,
 		      const struct imx_sc_pd_range *pd_ranges)
 {
 	struct imx_sc_pm_domain *sc_pd;
+	struct genpd_power_state *states;
 	bool is_off = true;
 	int ret;
 
@@ -365,7 +480,7 @@ imx_scu_add_pm_domain(struct device *dev, int idx,
 
 	sc_pd->pd.name = sc_pd->name;
 	if (imx_con_rsrc == sc_pd->rsrc) {
-		sc_pd->pd.flags = GENPD_FLAG_RPM_ALWAYS_ON;
+		sc_pd->pd.flags |= GENPD_FLAG_RPM_ALWAYS_ON;
 		is_off = false;
 	}
 
@@ -446,6 +561,7 @@ static int imx_sc_pd_probe(struct platform_device *pdev)
 		return -ENODEV;
 
 	imx_sc_pd_get_console_rsrc();
+	imx_sc_pd_enable_irqsteer_wakeup(pdev->dev.of_node);
 
 	return imx_scu_init_pm_domains(&pdev->dev, pd_soc);
 }

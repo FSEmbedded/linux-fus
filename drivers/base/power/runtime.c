@@ -358,23 +358,6 @@ static void rpm_suspend_suppliers(struct device *dev)
 	device_links_read_unlock(idx);
 }
 
-static void rpm_put_suppliers(struct device *dev)
-{
-	__rpm_put_suppliers(dev, true);
-}
-
-static void rpm_suspend_suppliers(struct device *dev)
-{
-	struct device_link *link;
-	int idx = device_links_read_lock();
-
-	list_for_each_entry_rcu(link, &dev->links.suppliers, c_node,
-				device_links_read_lock_held())
-		pm_request_idle(link->supplier);
-
-	device_links_read_unlock(idx);
-}
-
 /**
  * __rpm_callback - Run a given runtime PM callback for a given device.
  * @cb: Runtime PM callback to run.

@@ -79,6 +79,7 @@ struct dcss_scaler_ch {
 	u32 c_hstart;
 
 	bool use_nn_interpolation;
+	int ch_num;
 };
 
 struct dcss_scaler {
@@ -818,6 +819,43 @@ void dcss_scaler_set_filter(struct dcss_scaler *scl, int ch_num,
 	struct dcss_scaler_ch *ch = &scl->ch[ch_num];
 
 	ch->use_nn_interpolation = scaling_filter == DRM_SCALING_FILTER_NEAREST_NEIGHBOR;
+}
+
+static void dcss_scaler_setup_path(struct dcss_scaler_ch *ch,
+				   u32 pix_format, int dst_xres,
+				   int dst_yres, u32 vrefresh_hz,
+				   bool wrscl_needed)
+{
+	struct dcss_scaler *scl = ch->scl;
+	u32 base_addr;
+
+	/* nothing to do if WRSCL path is needed but it's already used */
+	if (wrscl_needed && scl->ch_using_wrscl != -1 &&
+	    scl->ch_using_wrscl != ch->ch_num)
+		return;
+
+	if (!wrscl_needed) {
+		/* Channel has finished using WRSCL. Release WRSCL/RDSRC. */
+		if (scl->ch_using_wrscl == ch->ch_num) {
+			dcss_wrscl_disable(scl->wrscl);
+			dcss_rdsrc_disable(scl->rdsrc);
+
+			scl->ch_using_wrscl = -1;
+		}
+
+		return;
+	}
+
+	base_addr = dcss_wrscl_setup(scl->wrscl, pix_format, vrefresh_hz,
+				     dst_xres, dst_yres);
+
+	dcss_rdsrc_setup(scl->rdsrc, pix_format, dst_xres, dst_yres,
+			 base_addr);
+
+	dcss_wrscl_enable(scl->wrscl);
+	dcss_rdsrc_enable(scl->rdsrc);
+
+	scl->ch_using_wrscl = ch->ch_num;
 }
 
 void dcss_scaler_setup(struct dcss_scaler *scl, int ch_num,

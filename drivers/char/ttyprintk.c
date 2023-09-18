@@ -149,16 +149,6 @@ static void tpk_port_shutdown(struct tty_port *tport)
 	spin_unlock_irqrestore(&tpkp->spinlock, flags);
 }
 
-/*
- * TTY operations hangup function.
- */
-static void tpk_hangup(struct tty_struct *tty)
-{
-	struct ttyprintk_port *tpkp = tty->driver_data;
-
-	tty_port_hangup(&tpkp->port);
-}
-
 static const struct tty_operations ttyprintk_ops = {
 	.open = tpk_open,
 	.close = tpk_close,

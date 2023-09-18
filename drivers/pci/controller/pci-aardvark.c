@@ -158,53 +158,12 @@
 #define     OB_WIN_TYPE_CONFIG_TYPE1		0x9
 #define     OB_WIN_TYPE_MSG			0xc
 
-/* PCIe window configuration */
-#define OB_WIN_BASE_ADDR			0x4c00
-#define OB_WIN_BLOCK_SIZE			0x20
-#define OB_WIN_COUNT				8
-#define OB_WIN_REG_ADDR(win, offset)		(OB_WIN_BASE_ADDR + \
-						 OB_WIN_BLOCK_SIZE * (win) + \
-						 (offset))
-#define OB_WIN_MATCH_LS(win)			OB_WIN_REG_ADDR(win, 0x00)
-#define     OB_WIN_ENABLE			BIT(0)
-#define OB_WIN_MATCH_MS(win)			OB_WIN_REG_ADDR(win, 0x04)
-#define OB_WIN_REMAP_LS(win)			OB_WIN_REG_ADDR(win, 0x08)
-#define OB_WIN_REMAP_MS(win)			OB_WIN_REG_ADDR(win, 0x0c)
-#define OB_WIN_MASK_LS(win)			OB_WIN_REG_ADDR(win, 0x10)
-#define OB_WIN_MASK_MS(win)			OB_WIN_REG_ADDR(win, 0x14)
-#define OB_WIN_ACTIONS(win)			OB_WIN_REG_ADDR(win, 0x18)
-#define OB_WIN_DEFAULT_ACTIONS			(OB_WIN_ACTIONS(OB_WIN_COUNT-1) + 0x4)
-#define     OB_WIN_FUNC_NUM_MASK		GENMASK(31, 24)
-#define     OB_WIN_FUNC_NUM_SHIFT		24
-#define     OB_WIN_FUNC_NUM_ENABLE		BIT(23)
-#define     OB_WIN_BUS_NUM_BITS_MASK		GENMASK(22, 20)
-#define     OB_WIN_BUS_NUM_BITS_SHIFT		20
-#define     OB_WIN_MSG_CODE_ENABLE		BIT(22)
-#define     OB_WIN_MSG_CODE_MASK		GENMASK(21, 14)
-#define     OB_WIN_MSG_CODE_SHIFT		14
-#define     OB_WIN_MSG_PAYLOAD_LEN		BIT(12)
-#define     OB_WIN_ATTR_ENABLE			BIT(11)
-#define     OB_WIN_ATTR_TC_MASK			GENMASK(10, 8)
-#define     OB_WIN_ATTR_TC_SHIFT		8
-#define     OB_WIN_ATTR_RELAXED			BIT(7)
-#define     OB_WIN_ATTR_NOSNOOP			BIT(6)
-#define     OB_WIN_ATTR_POISON			BIT(5)
-#define     OB_WIN_ATTR_IDO			BIT(4)
-#define     OB_WIN_TYPE_MASK			GENMASK(3, 0)
-#define     OB_WIN_TYPE_SHIFT			0
-#define     OB_WIN_TYPE_MEM			0x0
-#define     OB_WIN_TYPE_IO			0x4
-#define     OB_WIN_TYPE_CONFIG_TYPE0		0x8
-#define     OB_WIN_TYPE_CONFIG_TYPE1		0x9
-#define     OB_WIN_TYPE_MSG			0xc
-
 /* LMI registers base address and register offsets */
 #define LMI_BASE_ADDR				0x6000
 #define CFG_REG					(LMI_BASE_ADDR + 0x0)
 #define     LTSSM_SHIFT				24
 #define     LTSSM_MASK				0x3f
 #define     RC_BAR_CONFIG			0x300
-#define VENDOR_ID_REG				(LMI_BASE_ADDR + 0x44)
 
 /* LTSSM values in CFG_REG */
 enum {
@@ -484,35 +443,6 @@ static void advk_pcie_train_link(struct advk_pcie *pcie)
 		dev_err(dev, "link never came up\n");
 	else
 		dev_info(dev, "link up\n");
-}
-
-/*
- * Set PCIe address window register which could be used for memory
- * mapping.
- */
-static void advk_pcie_set_ob_win(struct advk_pcie *pcie, u8 win_num,
-				 phys_addr_t match, phys_addr_t remap,
-				 phys_addr_t mask, u32 actions)
-{
-	advk_writel(pcie, OB_WIN_ENABLE |
-			  lower_32_bits(match), OB_WIN_MATCH_LS(win_num));
-	advk_writel(pcie, upper_32_bits(match), OB_WIN_MATCH_MS(win_num));
-	advk_writel(pcie, lower_32_bits(remap), OB_WIN_REMAP_LS(win_num));
-	advk_writel(pcie, upper_32_bits(remap), OB_WIN_REMAP_MS(win_num));
-	advk_writel(pcie, lower_32_bits(mask), OB_WIN_MASK_LS(win_num));
-	advk_writel(pcie, upper_32_bits(mask), OB_WIN_MASK_MS(win_num));
-	advk_writel(pcie, actions, OB_WIN_ACTIONS(win_num));
-}
-
-static void advk_pcie_disable_ob_win(struct advk_pcie *pcie, u8 win_num)
-{
-	advk_writel(pcie, 0, OB_WIN_MATCH_LS(win_num));
-	advk_writel(pcie, 0, OB_WIN_MATCH_MS(win_num));
-	advk_writel(pcie, 0, OB_WIN_REMAP_LS(win_num));
-	advk_writel(pcie, 0, OB_WIN_REMAP_MS(win_num));
-	advk_writel(pcie, 0, OB_WIN_MASK_LS(win_num));
-	advk_writel(pcie, 0, OB_WIN_MASK_MS(win_num));
-	advk_writel(pcie, 0, OB_WIN_ACTIONS(win_num));
 }
 
 /*
@@ -1003,7 +933,6 @@ static struct pci_bridge_emul_ops advk_pci_bridge_emul_ops = {
 static int advk_sw_pci_bridge_init(struct advk_pcie *pcie)
 {
 	struct pci_bridge_emul *bridge = &pcie->bridge;
-	int ret;
 
 	bridge->conf.vendor =
 		cpu_to_le16(advk_readl(pcie, PCIE_CORE_DEV_ID_REG) & 0xffff);
@@ -1033,15 +962,7 @@ static int advk_sw_pci_bridge_init(struct advk_pcie *pcie)
 	bridge->data = pcie;
 	bridge->ops = &advk_pci_bridge_emul_ops;
 
-	/* PCIe config space can be initialized after pci_bridge_emul_init() */
-	ret = pci_bridge_emul_init(bridge, 0);
-	if (ret < 0)
-		return ret;
-
-	/* Indicates supports for Completion Retry Status */
-	bridge->pcie_conf.rootcap = cpu_to_le16(PCI_EXP_RTCAP_CRSVIS);
-
-	return 0;
+	return pci_bridge_emul_init(bridge, 0);
 }
 
 static bool advk_pcie_valid_device(struct advk_pcie *pcie, struct pci_bus *bus,

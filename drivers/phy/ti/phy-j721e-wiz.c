@@ -1297,14 +1297,6 @@ static int wiz_probe(struct platform_device *pdev)
 	}
 	wiz->serdes_pdev = serdes_pdev;
 
-	serdes_pdev = of_platform_device_create(child_node, NULL, dev);
-	if (!serdes_pdev) {
-		dev_WARN(dev, "Unable to create SERDES platform device\n");
-		ret = -ENOMEM;
-		goto err_wiz_init;
-	}
-	wiz->serdes_pdev = serdes_pdev;
-
 	of_node_put(child_node);
 	return 0;
 

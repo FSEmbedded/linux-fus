@@ -520,10 +520,13 @@ struct dpcon_cmd_set_notification {
 	__le64 user_ctx;
 };
 
+/*
+ * Generic FSL MC API
+ */
+
 /* generic command versioning */
 #define OBJ_CMD_BASE_VERSION		1
 #define OBJ_CMD_ID_OFFSET		4
-#define OBJ_CMD_MODULE_OFFSET           8
 
 #define OBJ_CMD(id)	(((id) << OBJ_CMD_ID_OFFSET) | OBJ_CMD_BASE_VERSION)
 
@@ -631,8 +634,6 @@ int __init fsl_mc_allocator_driver_init(void);
 void fsl_mc_allocator_driver_exit(void);
 
 void fsl_mc_init_all_resource_pools(struct fsl_mc_device *mc_bus_dev);
-
-void fsl_mc_cleanup_all_resource_pools(struct fsl_mc_device *mc_bus_dev);
 
 int __must_check fsl_mc_resource_allocate(struct fsl_mc_bus *mc_bus,
 					  enum fsl_mc_pool_type pool_type,

@@ -803,33 +803,6 @@ static int qdio_cancel_ccw(struct qdio_irq *irq, int how)
 	return rc;
 }
 
-static int qdio_cancel_ccw(struct qdio_irq *irq, int how)
-{
-	struct ccw_device *cdev = irq->cdev;
-	int rc;
-
-	spin_lock_irq(get_ccwdev_lock(cdev));
-	qdio_set_state(irq, QDIO_IRQ_STATE_CLEANUP);
-	if (how & QDIO_FLAG_CLEANUP_USING_CLEAR)
-		rc = ccw_device_clear(cdev, QDIO_DOING_CLEANUP);
-	else
-		/* default behaviour is halt */
-		rc = ccw_device_halt(cdev, QDIO_DOING_CLEANUP);
-	spin_unlock_irq(get_ccwdev_lock(cdev));
-	if (rc) {
-		DBF_ERROR("%4x SHUTD ERR", irq->schid.sch_no);
-		DBF_ERROR("rc:%4d", rc);
-		return rc;
-	}
-
-	wait_event_interruptible_timeout(cdev->private->wait_q,
-					 irq->state == QDIO_IRQ_STATE_INACTIVE ||
-					 irq->state == QDIO_IRQ_STATE_ERR,
-					 10 * HZ);
-
-	return 0;
-}
-
 /**
  * qdio_shutdown - shut down a qdio subchannel
  * @cdev: associated ccw device

@@ -508,7 +508,6 @@ int cdns_suspend(struct cdns *cdns)
 {
 	struct device *dev = cdns->dev;
 	unsigned long flags;
-	int ret;
 
 	if (pm_runtime_status_suspended(dev))
 		pm_runtime_resume(dev);

@@ -184,6 +184,13 @@
 		audio-cpu = <&sai3>;
 		hdmi-out;
 	};
+
+	usdhc2_pwrseq: usdhc2_pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_brcm_reg>;
+		reset-gpios = <&gpio4 21 GPIO_ACTIVE_LOW>;
+	};
 };
 
 &adc1 {
@@ -235,8 +242,8 @@
 		ti,x-max = /bits/ 16 <0>;
 		ti,y-min = /bits/ 16 <0>;
 		ti,y-max = /bits/ 16 <0>;
+		ti,pressure-max = /bits/ 16 <0>;
 		ti,x-plate-ohms = /bits/ 16 <400>;
-		touchscreen-max-pressure = <255>;
 		wakeup-source;
 	};
 };
@@ -440,12 +447,12 @@
 	status = "okay";
 
 	fxas2100x@20 {
-		compatible = "fsl,fxas2100x";
+		compatible = "nxp,fxas21002c";
 		reg = <0x20>;
 	};
 
 	fxos8700@1e {
-		compatible = "fsl,fxos8700";
+		compatible = "nxp,fxos8700";
 		reg = <0x1e>;
 	};
 
@@ -646,16 +653,6 @@
 			  <&clks IMX7D_SAI3_ROOT_CLK>;
 	assigned-clock-parents = <&clks IMX7D_PLL_AUDIO_POST_DIV>;
 	assigned-clock-rates = <0>, <884736000>, <36864000>;
-	status = "okay";
-};
-
-&sai3 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_sai3 &pinctrl_sai3_mclk>;
-	assigned-clocks = <&clks IMX7D_SAI3_ROOT_SRC>,
-			  <&clks IMX7D_SAI3_ROOT_CLK>;
-	assigned-clock-parents = <&clks IMX7D_PLL_AUDIO_POST_DIV>;
-	assigned-clock-rates = <0>, <36864000>;
 	status = "okay";
 };
 

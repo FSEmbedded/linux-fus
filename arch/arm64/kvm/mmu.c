@@ -640,14 +640,13 @@ void kvm_free_stage2_pgd(struct kvm_s2_mmu *mmu)
  * @writable:   Whether or not to create a writable mapping
  */
 int kvm_phys_addr_ioremap(struct kvm *kvm, phys_addr_t guest_ipa,
-			  phys_addr_t pa, unsigned long size, bool writable,
-			  enum kvm_pgtable_prot prot_device)
+			  phys_addr_t pa, unsigned long size, bool writable)
 {
 	phys_addr_t addr;
 	int ret = 0;
 	struct kvm_mmu_memory_cache cache = { 0, __GFP_ZERO, NULL, };
 	struct kvm_pgtable *pgt = kvm->arch.mmu.pgt;
-	enum kvm_pgtable_prot prot = prot_device |
+	enum kvm_pgtable_prot prot = KVM_PGTABLE_PROT_DEVICE |
 				     KVM_PGTABLE_PROT_R |
 				     (writable ? KVM_PGTABLE_PROT_W : 0);
 
@@ -940,6 +939,23 @@ static int sanitise_mte_tags(struct kvm *kvm, kvm_pfn_t pfn,
 	return 0;
 }
 
+static enum kvm_pgtable_prot stage1_to_stage2_pgprot(pgprot_t prot)
+{
+	switch (pgprot_val(prot) & PTE_ATTRINDX_MASK) {
+	case PTE_ATTRINDX(MT_DEVICE_nGnRE):
+	case PTE_ATTRINDX(MT_DEVICE_nGnRnE):
+		return KVM_PGTABLE_PROT_DEVICE;
+	case PTE_ATTRINDX(MT_NORMAL_NC):
+	case PTE_ATTRINDX(MT_NORMAL):
+	case PTE_ATTRINDX(MT_NORMAL_TAGGED):
+		return (pgprot_val(prot) & PTE_SHARED)
+			? KVM_PGTABLE_PROT_DEVICE_SH
+			: KVM_PGTABLE_PROT_DEVICE_NS;
+	}
+
+	return KVM_PGTABLE_PROT_DEVICE;
+}
+
 static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 			  struct kvm_memory_slot *memslot, unsigned long hva,
 			  unsigned long fault_status)
@@ -1132,9 +1148,9 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 		prot_us = stage1_to_stage2_pgprot(__pgprot(pte_val(*pte)));
 		pte_unmap_unlock(pte, ptl);
 		prot |= prot_us;
-	} else if (cpus_have_const_cap(ARM64_HAS_CACHE_DIC)) {
-		prot |= KVM_PGTABLE_PROT_X;
 	}
+	else if (cpus_have_const_cap(ARM64_HAS_CACHE_DIC))
+		prot |= KVM_PGTABLE_PROT_X;
 
 	/*
 	 * Under the premise of getting a FSC_PERM fault, we just need to relax

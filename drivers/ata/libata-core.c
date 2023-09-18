@@ -2209,25 +2209,6 @@ static bool ata_dev_check_adapter(struct ata_device *dev,
 	return false;
 }
 
-static bool ata_dev_check_adapter(struct ata_device *dev,
-				  unsigned short vendor_id)
-{
-	struct pci_dev *pcidev = NULL;
-	struct device *parent_dev = NULL;
-
-	for (parent_dev = dev->tdev.parent; parent_dev != NULL;
-	     parent_dev = parent_dev->parent) {
-		if (dev_is_pci(parent_dev)) {
-			pcidev = to_pci_dev(parent_dev);
-			if (pcidev->vendor == vendor_id)
-				return true;
-			break;
-		}
-	}
-
-	return false;
-}
-
 static int ata_dev_config_ncq(struct ata_device *dev,
 			       char *desc, size_t desc_sz)
 {

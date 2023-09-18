@@ -263,12 +263,12 @@ static int rm68200_unprepare(struct drm_panel *panel)
 	if (!ctx->prepared)
 		return 0;
 
-	gpiod_set_value_cansleep(ctx->enable_gpio, 0);
-
 	if (ctx->reset_gpio) {
 		gpiod_set_value_cansleep(ctx->reset_gpio, 1);
 		msleep(20);
 	}
+
+	gpiod_set_value_cansleep(ctx->enable_gpio, 0);
 
 	regulator_disable(ctx->supply);
 
@@ -291,14 +291,14 @@ static int rm68200_prepare(struct drm_panel *panel)
 		return ret;
 	}
 
+	gpiod_set_value_cansleep(ctx->enable_gpio, 1);
+
 	if (ctx->reset_gpio) {
 		gpiod_set_value_cansleep(ctx->reset_gpio, 1);
 		msleep(20);
 		gpiod_set_value_cansleep(ctx->reset_gpio, 0);
 		msleep(100);
 	}
-
-	gpiod_set_value_cansleep(ctx->enable_gpio, 1);
 
 	ctx->prepared = true;
 
@@ -403,8 +403,8 @@ static int rm68200_probe(struct mipi_dsi_device *dsi)
 
 	dsi->lanes = 2;
 	dsi->format = MIPI_DSI_FMT_RGB888;
-	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST |
-			  MIPI_DSI_MODE_LPM | MIPI_DSI_CLOCK_NON_CONTINUOUS;
+	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE |
+			  MIPI_DSI_MODE_LPM;
 
 	drm_panel_init(&ctx->panel, dev, &rm68200_drm_funcs,
 		       DRM_MODE_CONNECTOR_DSI);

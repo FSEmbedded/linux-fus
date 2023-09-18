@@ -1577,10 +1577,9 @@ static int amdtp_stream_start(struct amdtp_stream *s, int channel, int speed,
 	if (s->direction == AMDTP_IN_STREAM) {
 		dir = DMA_FROM_DEVICE;
 		type = FW_ISO_CONTEXT_RECEIVE;
-		if (!(s->flags & CIP_NO_HEADER)) {
-			max_ctx_payload_size -= 8;
+		if (!(s->flags & CIP_NO_HEADER))
 			ctx_header_size = IR_CTX_HEADER_SIZE_CIP;
-		} else {
+		else
 			ctx_header_size = IR_CTX_HEADER_SIZE_NO_CIP;
 	} else {
 		dir = DMA_TO_DEVICE;

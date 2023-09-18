@@ -1110,9 +1110,9 @@ struct dwc3_platform_data {
  *	2	- No de-emphasis
  *	3	- Reserved
  * @dis_metastability_quirk: set to disable metastability quirk.
+ * @dis_split_quirk: set to disable split boundary.
  * @host_vbus_glitches: set to avoid vbus glitch during
  *                      xhci reset.
- * @dis_split_quirk: set to disable split boundary.
  * @imod_interval: set the interrupt moderation interval in 250ns
  *			increments or 0 to disable.
  * @max_cfg_eps: current max number of IN eps used across all USB configs.
@@ -1194,6 +1194,7 @@ struct dwc3 {
 	u32			gadget_max_speed;
 	enum usb_ssp_rate	max_ssp_rate;
 	enum usb_ssp_rate	gadget_ssp_rate;
+	struct usb_otg_caps	otg_caps;
 
 	u32			ip;
 

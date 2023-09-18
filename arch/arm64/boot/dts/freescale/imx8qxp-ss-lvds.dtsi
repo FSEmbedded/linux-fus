@@ -122,8 +122,6 @@
 			#phy-cells = <0>;
 			clocks = <&clk IMX_SC_R_LVDS_0 IMX_SC_PM_CLK_MISC3>;
 			clock-names = "phy";
-			assigned-clocks = <&clk IMX_SC_R_LVDS_0 IMX_SC_PM_CLK_MISC3>;
-			assigned-clock-parents = <&clk IMX_SC_R_LVDS_0 IMX_SC_PM_CLK_BYPASS>;
 			power-domains = <&pd IMX_SC_R_LVDS_0>;
 			status = "disabled";
 		};
@@ -138,10 +136,6 @@
 				 <&clk IMX_SC_R_LVDS_1 IMX_SC_PM_CLK_BYPASS>;
 			clock-names = "pixel", "bypass",
 				      "aux_pixel", "aux_bypass";
-			assigned-clocks = <&clk IMX_SC_R_LVDS_0 IMX_SC_PM_CLK_MISC2>,
-					  <&clk IMX_SC_R_LVDS_1 IMX_SC_PM_CLK_MISC2>;
-			assigned-clock-parents = <&clk IMX_SC_R_LVDS_0 IMX_SC_PM_CLK_BYPASS>,
-						 <&clk IMX_SC_R_LVDS_1 IMX_SC_PM_CLK_BYPASS>;
 			power-domains = <&pd IMX_SC_R_LVDS_0>,
 					<&pd IMX_SC_R_LVDS_1>;
 			power-domain-names = "main", "aux";
@@ -290,8 +284,6 @@
 			#phy-cells = <0>;
 			clocks = <&clk IMX_SC_R_LVDS_1 IMX_SC_PM_CLK_MISC3>;
 			clock-names = "phy";
-			assigned-clocks = <&clk IMX_SC_R_LVDS_1 IMX_SC_PM_CLK_MISC3>;
-			assigned-clock-parents = <&clk IMX_SC_R_LVDS_1 IMX_SC_PM_CLK_BYPASS>;
 			power-domains = <&pd IMX_SC_R_LVDS_1>;
 			status = "disabled";
 		};
@@ -306,10 +298,6 @@
 				 <&clk IMX_SC_R_LVDS_0 IMX_SC_PM_CLK_BYPASS>;
 			clock-names = "pixel", "bypass",
 				      "aux_pixel", "aux_bypass";
-			assigned-clocks = <&clk IMX_SC_R_LVDS_1 IMX_SC_PM_CLK_MISC2>,
-					  <&clk IMX_SC_R_LVDS_0 IMX_SC_PM_CLK_MISC2>;
-			assigned-clock-parents = <&clk IMX_SC_R_LVDS_1 IMX_SC_PM_CLK_BYPASS>,
-						 <&clk IMX_SC_R_LVDS_0 IMX_SC_PM_CLK_BYPASS>;
 			power-domains = <&pd IMX_SC_R_LVDS_1>,
 					<&pd IMX_SC_R_LVDS_0>;
 			power-domain-names = "main", "aux";

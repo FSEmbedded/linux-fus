@@ -98,6 +98,9 @@ Required properties:
 The clock consumer should specify the desired clock by having the clock
 ID in its "clocks" phandle cell.
 
+See the full list of clock IDs from:
+include/dt-bindings/clock/imx8qxp-clock.h
+
 Pinctrl bindings based on SCU Message Protocol
 ------------------------------------------------------------
 

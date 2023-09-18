@@ -70,6 +70,12 @@ static inline int imx_sc_misc_get_control(struct imx_sc_ipc *ipc,
 {
 	return -ENOTSUPP;
 }
+static inline int
+imx_sc_misc_set_dma_group(struct imx_sc_ipc *ipc, u32 resource,
+			    u32 val)
+{
+	return -EIO;
+}
 
 static inline int imx_sc_pm_cpu_start(struct imx_sc_ipc *ipc, u32 resource,
 				      bool enable, u64 phys_addr)

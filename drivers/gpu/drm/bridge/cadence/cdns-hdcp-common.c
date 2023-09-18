@@ -289,6 +289,8 @@ static int cdns_hdcp_auth_check(struct cdns_mhdp_device *mhdp)
 		DRM_INFO("Authentication completed successfully!\n");
 		/* Dump hdmi and phy register */
 		mhdp->hdcp.state = HDCP_STATE_AUTHENTICATED;
+		mhdp->hdcp.value = DRM_MODE_CONTENT_PROTECTION_ENABLED;
+		schedule_work(&mhdp->hdcp.prop_work);
 		return 0;
 	}
 
@@ -393,7 +395,7 @@ static int cdns_hdcp_check_receviers(struct cdns_mhdp_device *mhdp)
 	DRM_INFO("INFO: Number of Receivers: %d\n", hdcp_num_rec);
 
 	for (i = 0; i < hdcp_num_rec; ++i) {
-		DRM_INFO("\tReveiver ID%2d: %.2X%.2X%.2X%.2X%.2X\n",
+		DRM_INFO("\tReceiver ID%2d: %.2X%.2X%.2X%.2X%.2X\n",
 			 i,
 			 hdcp_rec_id[i][0],
 			 hdcp_rec_id[i][1],
@@ -743,7 +745,7 @@ static int _cdns_hdcp_disable(struct cdns_mhdp_device *mhdp)
 
 static int _cdns_hdcp_enable(struct cdns_mhdp_device *mhdp)
 {
-	int i, ret = 0, tries = 9;
+	int i, ret = 0, tries = 9, tries14 = 50;
 	u8 hpd_sts;
 
 	hpd_sts = cdns_mhdp_read_hpd(mhdp);
@@ -771,7 +773,7 @@ static int _cdns_hdcp_enable(struct cdns_mhdp_device *mhdp)
 		}
 	}
 
-	for (i = 0; i < tries; i++) {
+	for (i = 0; i < tries14; i++) {
 		if (mhdp->hdcp.config & HDCP_CONFIG_1_4) {
 			ret = cdns_hdcp_auth(mhdp, HDCP_TX_1);
 			if (ret == 0)
@@ -807,7 +809,6 @@ static void cdns_hdcp_prop_work(struct work_struct *work)
 					   struct cdns_mhdp_device, hdcp);
 
 	struct drm_device *dev = mhdp->drm_dev;
-	struct drm_connector_state *state;
 
 	drm_modeset_lock(&dev->mode_config.connection_mutex, NULL);
 	mutex_lock(&mhdp->hdcp.mutex);
@@ -818,8 +819,8 @@ static void cdns_hdcp_prop_work(struct work_struct *work)
 	 * we're running just after hdcp has been disabled, so just exit
 	 */
 	if (mhdp->hdcp.value != DRM_MODE_CONTENT_PROTECTION_UNDESIRED) {
-		state = mhdp->connector.base.state;
-		state->content_protection = mhdp->hdcp.value;
+		drm_hdcp_update_content_protection(&mhdp->connector.base,
+				mhdp->hdcp.value);
 	}
 
 	mutex_unlock(&mhdp->hdcp.mutex);
@@ -830,7 +831,7 @@ static void show_hdcp_supported(struct cdns_mhdp_device *mhdp)
 {
 	if ((mhdp->hdcp.config & (HDCP_CONFIG_1_4 | HDCP_CONFIG_2_2)) ==
 		    (HDCP_CONFIG_1_4 | HDCP_CONFIG_2_2))
-		DRM_INFO("Both HDCP 1.4 and 2 2 are enabled\n");
+		DRM_INFO("Both HDCP 1.4 and 2.2 are enabled\n");
 	else if (mhdp->hdcp.config & HDCP_CONFIG_1_4)
 		DRM_INFO("Only HDCP 1.4 is enabled\n");
 	else if (mhdp->hdcp.config & HDCP_CONFIG_2_2)

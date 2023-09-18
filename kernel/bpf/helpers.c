@@ -414,7 +414,6 @@ BPF_CALL_2(bpf_get_local_storage, struct bpf_map *, map, u64, flags)
 	struct bpf_cgroup_storage *storage;
 	struct bpf_cg_run_ctx *ctx;
 	void *ptr;
-	int i;
 
 	/* get current cgroup storage from BPF run context */
 	ctx = container_of(current->bpf_ctx, struct bpf_cg_run_ctx, run_ctx);

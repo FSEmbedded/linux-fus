@@ -1964,7 +1964,7 @@ static int fsl_easrc_probe(struct platform_device *pdev)
 		easrc->asrc_format = SNDRV_PCM_FORMAT_S24_LE;
 	}
 
-	ret = of_property_read_string(np, "fsl,easrc-ram-script-name",
+	ret = of_property_read_string(np, "firmware-name",
 				      &easrc_priv->fw_name);
 	if (ret) {
 		dev_err(dev, "failed to get firmware name\n");

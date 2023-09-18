@@ -1054,10 +1054,6 @@ static int stm32_usart_init_port(struct stm32_port *stm32port,
 	if (irq < 0)
 		return irq;
 
-	ret = platform_get_irq(pdev, 0);
-	if (ret <= 0)
-		return ret ? : -ENODEV;
-
 	port->iotype	= UPIO_MEM;
 	port->flags	= UPF_BOOT_AUTOCONF;
 	port->ops	= &stm32_uart_ops;

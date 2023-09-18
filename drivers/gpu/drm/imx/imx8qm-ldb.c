@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2020,2022 NXP
+ * Copyright 2020 NXP
  */
 
 #include <dt-bindings/firmware/imx/rsrc.h>
@@ -392,14 +392,7 @@ imx8qm_ldb_bind(struct device *dev, struct device *master, void *data)
 	if (IS_ERR(imx8qm_ldb->clk_bypass))
 		return PTR_ERR(imx8qm_ldb->clk_bypass);
 
-	for_each_child_of_node(np, child) {
-		ret = of_property_read_u32(child, "reg", &i);
-		if (ret || i < 0 || i > 1)
-			return -EINVAL;
-
-		if (!of_device_is_available(child))
-			continue;
-
+	for (i = 0; i < LDB_CH_NUM; i++) {
 		encoder[i] = &imx8qm_ldb->channel[i].encoder;
 
 		drm_encoder_helper_add(encoder[i],
@@ -456,9 +449,10 @@ get_phy:
 
 	for (i = 0; i < LDB_CH_NUM; i++) {
 		ldb_ch = &imx8qm_ldb->channel[i].base;
-
-		if (!ldb_ch->is_valid)
+		if (!ldb_ch->is_valid) {
+			drm_encoder_cleanup(encoder[i]);
 			continue;
+		}
 
 		ret = imx_drm_encoder_parse_of(drm, encoder[i], ldb_ch->child);
 		if (ret)

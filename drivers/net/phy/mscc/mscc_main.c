@@ -2189,6 +2189,12 @@ static int vsc85xx_read_status(struct phy_device *phydev)
 	return genphy_read_status(phydev);
 }
 
+static int vsc8514_validate_inband_aneg(struct phy_device *phydev,
+					phy_interface_t interface)
+{
+	return PHY_INBAND_ANEG_OFF | PHY_INBAND_ANEG_ON;
+}
+
 static int vsc8514_config_inband_aneg(struct phy_device *phydev, bool enabled)
 {
 	int reg_val = 0;
@@ -2391,7 +2397,6 @@ static struct phy_driver vsc85xx_driver[] = {
 	.phy_id_mask	= 0xfffffff0,
 	.soft_reset	= &genphy_soft_reset,
 	.config_init    = &vsc8514_config_init,
-	.config_inband_aneg = vsc8514_config_inband_aneg,
 	.config_aneg    = &vsc85xx_config_aneg,
 	.read_status	= &vsc85xx_read_status,
 	.handle_interrupt = vsc85xx_handle_interrupt,
@@ -2408,6 +2413,8 @@ static struct phy_driver vsc85xx_driver[] = {
 	.get_sset_count = &vsc85xx_get_sset_count,
 	.get_strings    = &vsc85xx_get_strings,
 	.get_stats      = &vsc85xx_get_stats,
+	.validate_inband_aneg = vsc8514_validate_inband_aneg,
+	.config_inband_aneg = vsc8514_config_inband_aneg,
 },
 {
 	.phy_id		= PHY_ID_VSC8530,

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright 2019 NXP.
+ * Copyright 2019-2022 NXP.
  */
 
 #include <drm/drm_atomic.h>
@@ -185,7 +185,8 @@ static bool dcss_plane_can_rotate(const struct drm_format_info *format,
 				     DRM_MODE_REFLECT_MASK;
 	else if (!format->is_yuv &&
 		 (modifier == DRM_FORMAT_MOD_VIVANTE_TILED ||
-		  modifier == DRM_FORMAT_MOD_VIVANTE_SUPER_TILED))
+		  modifier == DRM_FORMAT_MOD_VIVANTE_SUPER_TILED ||
+		  modifier == DRM_FORMAT_MOD_VIVANTE_SUPER_TILED_FC))
 		supported_rotation = DRM_MODE_ROTATE_MASK |
 				     DRM_MODE_REFLECT_MASK;
 	else if (format->is_yuv && linear_format &&
@@ -243,7 +244,8 @@ static void dcss_plane_get_hdr10_pipe_cfg(struct drm_plane_state *plane_state,
 		break;
 	}
 
-	ipipe_cfg->pr = plane_state->color_range;
+	ipipe_cfg->pr = plane_state->color_range == DRM_COLOR_YCBCR_FULL_RANGE ?
+			PR_FULL : PR_LIMITED;
 }
 
 static bool
@@ -294,7 +296,6 @@ static int dcss_plane_atomic_check(struct drm_plane *plane,
 	struct dcss_plane *dcss_plane = to_dcss_plane(plane);
 	struct dcss_dev *dcss = plane->dev->dev_private;
 	struct drm_framebuffer *fb = new_plane_state->fb;
-	bool is_primary_plane = plane->type == DRM_PLANE_TYPE_PRIMARY;
 	struct drm_gem_cma_object *cma_obj;
 	struct drm_crtc_state *crtc_state;
 	int hdisplay, vdisplay;
@@ -324,8 +325,7 @@ static int dcss_plane_atomic_check(struct drm_plane *plane,
 				       &min, &max);
 
 	ret = drm_atomic_helper_check_plane_state(new_plane_state, crtc_state,
-						  min, max, !is_primary_plane,
-						  false);
+						  min, max, true, false);
 	if (ret)
 		return ret;
 
@@ -340,11 +340,9 @@ static int dcss_plane_atomic_check(struct drm_plane *plane,
 		return -EINVAL;
 	}
 
-	if ((new_plane_state->crtc_x < 0 || new_plane_state->crtc_y < 0 ||
-	     new_plane_state->crtc_x + new_plane_state->crtc_w > hdisplay ||
-	     new_plane_state->crtc_y + new_plane_state->crtc_h > vdisplay) &&
-	    !dcss_plane_fb_is_linear(fb)) {
-		DRM_DEBUG_KMS("requested cropping operation is not allowed!\n");
+	if (!dcss_plane_hdr10_pipe_cfg_is_supported(new_plane_state,
+						    crtc_state)) {
+		DRM_DEBUG_KMS("requested hdr10 pipe cfg is not supported!\n");
 		return -EINVAL;
 	}
 
@@ -561,7 +559,9 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
 	modifiers_present = !!(fb->flags & DRM_MODE_FB_MODIFIERS);
 
 	if (old_state->fb && !drm_atomic_crtc_needs_modeset(crtc_state) &&
-	    !dcss_plane_needs_setup(new_state, old_state)) {
+	    !dcss_plane_needs_setup(new_state, old_state) &&
+	    !dcss_dtg_global_alpha_changed(dcss->dtg, dcss_plane->ch_num,
+					   new_state->alpha >> 8)) {
 		dcss_plane_atomic_set_base(dcss_plane);
 		if (plane->type == DRM_PLANE_TYPE_PRIMARY)
 			dcss_dec400d_shadow_trig(dcss->dec400d);
@@ -579,10 +579,6 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
 	dst_w = drm_rect_width(&dst);
 	dst_h = drm_rect_height(&dst);
 
-	if (plane->type == DRM_PLANE_TYPE_OVERLAY &&
-	    modifiers_present && fb->modifier == DRM_FORMAT_MOD_LINEAR)
-		modifiers_present = false;
-
 	dcss_dpr_format_set(dcss->dpr, dcss_plane->ch_num,
 			    new_state->fb->format,
 			    modifiers_present ? fb->modifier :
@@ -591,7 +587,7 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
 	if (dcss_plane->use_dtrc) {
 		u32 dtrc_w, dtrc_h;
 
-		dcss_dtrc_set_res(dcss->dtrc, dcss_plane->ch_num, state,
+		dcss_dtrc_set_res(dcss->dtrc, dcss_plane->ch_num, new_state,
 				  &dtrc_w, &dtrc_h);
 		dcss_dpr_set_res(dcss->dpr, dcss_plane->ch_num, dtrc_w, dtrc_h);
 	} else {
@@ -622,6 +618,11 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
 			       dst.x1, dst.y1, dst_w, dst_h);
 	dcss_dtg_plane_alpha_set(dcss->dtg, dcss_plane->ch_num,
 				 fb->format, new_state->alpha >> 8);
+
+	if (plane->type == DRM_PLANE_TYPE_PRIMARY)
+		dcss_dec400d_enable(dcss->dec400d);
+	else if (dcss_plane->use_dtrc)
+		dcss_dtrc_enable(dcss->dtrc, dcss_plane->ch_num, true);
 
 	if (!dcss_plane->ch_num && (new_state->alpha >> 8) == 0)
 		enable = false;

@@ -447,32 +447,6 @@ static void update_bus_bw(struct mu3h_sch_bw_info *sch_bw,
 				sch_bw->bus_bw[k] -= sch_ep->bw_budget_table[j];
 		}
 	}
-	sch_ep->allocated = used;
-}
-
-static int check_fs_bus_bw(struct mu3h_sch_ep_info *sch_ep, int offset)
-{
-	struct mu3h_sch_tt *tt = sch_ep->sch_tt;
-	u32 num_esit, tmp;
-	int base;
-	int i, j;
-
-	num_esit = XHCI_MTK_MAX_ESIT / sch_ep->esit;
-	for (i = 0; i < num_esit; i++) {
-		base = offset + i * sch_ep->esit;
-
-		/*
-		 * Compared with hs bus, no matter what ep type,
-		 * the hub will always delay one uframe to send data
-		 */
-		for (j = 0; j < sch_ep->cs_count; j++) {
-			tmp = tt->fs_bus_bw[base + j] + sch_ep->bw_cost_per_microframe;
-			if (tmp > FS_PAYLOAD_MAX)
-				return -ERANGE;
-		}
-	}
-
-	return 0;
 }
 
 static int check_fs_bus_bw(struct mu3h_sch_ep_info *sch_ep, int offset)

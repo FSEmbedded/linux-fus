@@ -277,16 +277,6 @@ config AT803X_PHY
 	  Currently supports the AR8030, AR8031, AR8033, AR8035 and internal
 	  QCA8337(Internal qca8k PHY) model
 
-config AT803X_PHY_SMART_EEE
-	depends on AT803X_PHY
-	default n
-	tristate "SmartEEE feature for AT803X PHYs"
-	help
-	  Enables the Atheros SmartEEE feature (not IEEE 802.3az). When 2 PHYs
-	  which support this feature are connected back-to-back, they may
-	  negotiate a low-power sleep mode autonomously, without the Ethernet
-	  controller's knowledge.  May cause packet loss.
-
 config QSEMI_PHY
 	tristate "Quality Semiconductor PHYs"
 	help

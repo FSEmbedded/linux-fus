@@ -774,7 +774,7 @@ static struct phy_driver aqr_driver[] = {
 	.name		= "Aquantia AQR112",
 	.config_aneg    = aqr_config_aneg_set_prot,
 	.config_intr	= aqr_config_intr,
-	.ack_interrupt	= aqr_ack_interrupt,
+	.handle_interrupt = aqr_handle_interrupt,
 	.read_status	= aqr_read_status,
 },
 {
@@ -782,7 +782,7 @@ static struct phy_driver aqr_driver[] = {
 	.name		= "Aquantia AQR412",
 	.config_aneg    = aqr_config_aneg_set_prot,
 	.config_intr	= aqr_config_intr,
-	.ack_interrupt	= aqr_ack_interrupt,
+	.handle_interrupt = aqr_handle_interrupt,
 	.read_status	= aqr_read_status,
 },
 };

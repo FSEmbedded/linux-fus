@@ -34,6 +34,13 @@ struct imx_hdmi_encoder {
 	struct imx_hdmi *hdmi;
 };
 
+/* GPR reg */
+struct imx_hdmi_chip_data {
+	int	reg_offset;
+	u32	mask_bits;
+	u32	shift_bit;
+};
+
 struct imx_hdmi {
 	struct device *dev;
 	struct drm_bridge *bridge;
@@ -396,7 +403,9 @@ static int dw_hdmi_imx_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	const struct of_device_id *match = of_match_node(dw_hdmi_imx_dt_ids, np);
+	struct dw_hdmi_plat_data *plat_data;
 	struct imx_hdmi *hdmi;
+	int ret;
 
 	hdmi = devm_kzalloc(&pdev->dev, sizeof(*hdmi), GFP_KERNEL);
 	if (!hdmi)
@@ -411,7 +420,29 @@ static int dw_hdmi_imx_probe(struct platform_device *pdev)
 		return PTR_ERR(hdmi->regmap);
 	}
 
-	hdmi->hdmi = dw_hdmi_probe(pdev, match->data);
+	hdmi->phy = devm_phy_optional_get(hdmi->dev, "hdmi");
+	if (IS_ERR(hdmi->phy)) {
+		ret = PTR_ERR(hdmi->phy);
+		if (ret != -EPROBE_DEFER)
+			dev_err(hdmi->dev, "failed to get phy\n");
+		return ret;
+	}
+
+	plat_data = devm_kmemdup(&pdev->dev, match->data,
+				sizeof(*plat_data), GFP_KERNEL);
+	if (!plat_data)
+		return -ENOMEM;
+
+	hdmi->chip_data = plat_data->phy_data;
+	plat_data->phy_data = hdmi;
+
+	if (of_device_is_compatible(pdev->dev.of_node, "fsl,imx8mp-hdmi")) {
+		ret = imx8mp_hdmimix_setup(hdmi);
+		if (ret < 0)
+			return ret;
+	}
+
+	hdmi->hdmi = dw_hdmi_probe(pdev, plat_data);
 	if (IS_ERR(hdmi->hdmi))
 		return PTR_ERR(hdmi->hdmi);
 

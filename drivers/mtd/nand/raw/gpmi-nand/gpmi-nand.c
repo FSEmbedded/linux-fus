@@ -933,6 +933,9 @@ static int gpmi_nfc_apply_timings(struct gpmi_nand_data *this)
 	if (GPMI_IS_MX6Q(this) || GPMI_IS_MX6SX(this))
 		clk_disable_unprepare(r->clock[0]);
 
+	if (GPMI_IS_MX6SX(this) && hw->clk_rate > 88000000)
+		hw->clk_rate = 88000000;
+
 	ret = clk_set_rate(r->clock[0], hw->clk_rate);
 	if (ret) {
 		dev_err(this->dev, "cannot set clock rate to %lu Hz: %d\n", hw->clk_rate, ret);
@@ -1293,6 +1296,15 @@ static int gpmi_get_clks(struct gpmi_nand_data *this)
 
 		r->clock[i] = clk;
 	}
+
+	if (GPMI_IS_MX6(this) || GPMI_IS_MX8(this))
+		/*
+		 * Set the default value for the gpmi clock.
+		 *
+		 * If you want to use the ONFI nand which is in the
+		 * Synchronous Mode, you should change the clock as you need.
+		 */
+		clk_set_rate(r->clock[0], 22000000);
 
 	return 0;
 
@@ -2765,8 +2777,12 @@ static const struct of_device_id gpmi_nand_id_table[] = {
 	{ .compatible = "fsl,imx23-gpmi-nand", .data = &gpmi_devdata_imx23, },
 	{ .compatible = "fsl,imx28-gpmi-nand", .data = &gpmi_devdata_imx28, },
 	{ .compatible = "fsl,imx6q-gpmi-nand", .data = &gpmi_devdata_imx6q, },
+	{ .compatible = "fsl,imx6qp-gpmi-nand", .data = &gpmi_devdata_imx6qp, },
 	{ .compatible = "fsl,imx6sx-gpmi-nand", .data = &gpmi_devdata_imx6sx, },
-	{ .compatible = "fsl,imx7d-gpmi-nand", .data = &gpmi_devdata_imx7d,},
+	{ .compatible = "fsl,imx7d-gpmi-nand", .data = &gpmi_devdata_imx7d, },
+	{ .compatible = "fsl,imx6ul-gpmi-nand", .data = &gpmi_devdata_imx6ul, },
+	{ .compatible = "fsl,imx6ull-gpmi-nand", .data = &gpmi_devdata_imx6ull, },
+	{ .compatible = "fsl,imx8qxp-gpmi-nand", .data = &gpmi_devdata_imx8qxp, },
 	{}
 };
 MODULE_DEVICE_TABLE(of, gpmi_nand_id_table);

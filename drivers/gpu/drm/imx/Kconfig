@@ -78,6 +78,7 @@ config IMX8MP_HDMI_PAVI
 config DRM_IMX_HDMI
 	tristate "Freescale i.MX DRM HDMI"
 	select DRM_DW_HDMI
+	select IMX8MP_HDMI_PAVI
 	depends on DRM_IMX && OF
 	help
 	  Choose this if you want to use HDMI on i.MX6/i.MX8.

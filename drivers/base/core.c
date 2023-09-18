@@ -2641,7 +2641,7 @@ static int device_add_attrs(struct device *dev)
 	if (fw_devlink_flags && !fw_devlink_is_permissive() && dev->fwnode) {
 		error = device_create_file(dev, &dev_attr_waiting_for_supplier);
 		if (error)
-			goto err_remove_dev_consumers;
+			goto err_remove_dev_online;
 	}
 
 	if (dev_removable_is_valid(dev)) {
@@ -2675,8 +2675,6 @@ static void device_remove_attrs(struct device *dev)
 
 	device_remove_file(dev, &dev_attr_removable);
 	device_remove_file(dev, &dev_attr_waiting_for_supplier);
-	device_remove_file(dev, &dev_attr_consumers);
-	device_remove_file(dev, &dev_attr_suppliers);
 	device_remove_file(dev, &dev_attr_online);
 	device_remove_groups(dev, dev->groups);
 

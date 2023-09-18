@@ -453,7 +453,7 @@ static int copy_info_records_to_user(struct fanotify_event *event,
 					    fanotify_info_name(info),
 					    info->name_len, buf, count);
 		if (ret < 0)
-			goto out_close_fd;
+			return ret;
 
 		buf += ret;
 		count -= ret;
@@ -503,7 +503,7 @@ static int copy_info_records_to_user(struct fanotify_event *event,
 					    info_type, dot, dot_len,
 					    buf, count);
 		if (ret < 0)
-			goto out_close_fd;
+			return ret;
 
 		buf += ret;
 		count -= ret;

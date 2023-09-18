@@ -22,87 +22,16 @@
 				SNDRV_PCM_FMTBIT_S20_3LE | \
 				SNDRV_PCM_FMTBIT_S24_LE)
 
-/**
- * struct fsl_esai_soc_data - soc specific data
- * @reset_at_xrun: flags for enable reset operaton
- */
-struct fsl_esai_soc_data {
-	bool reset_at_xrun;
-};
-
-/**
- * struct fsl_esai - ESAI private data
- * @dma_params_rx: DMA parameters for receive channel
- * @dma_params_tx: DMA parameters for transmit channel
- * @pdev: platform device pointer
- * @regmap: regmap handler
- * @coreclk: clock source to access register
- * @extalclk: esai clock source to derive HCK, SCK and FS
- * @fsysclk: system clock source to derive HCK, SCK and FS
- * @spbaclk: SPBA clock (optional, depending on SoC design)
- * @work: work to handle the reset operation
- * @soc: soc specific data
- * @lock: spin lock between hw_reset() and trigger()
- * @fifo_depth: depth of tx/rx FIFO
- * @slot_width: width of each DAI slot
- * @slots: number of slots
- * @tx_mask: slot mask for TX
- * @rx_mask: slot mask for RX
- * @channels: channel num for tx or rx
- * @hck_rate: clock rate of desired HCKx clock
- * @sck_rate: clock rate of desired SCKx clock
- * @hck_dir: the direction of HCKx pads
- * @sck_div: if using PSR/PM dividers for SCKx clock
- * @slave_mode: if fully using DAI slave mode
- * @synchronous: if using tx/rx synchronous mode
- * @name: driver name
- */
-struct fsl_esai {
-	struct snd_dmaengine_dai_dma_data dma_params_rx;
-	struct snd_dmaengine_dai_dma_data dma_params_tx;
-	struct platform_device *pdev;
-	struct regmap *regmap;
-	struct clk *coreclk;
-	struct clk *extalclk;
-	struct clk *fsysclk;
-	struct clk *spbaclk;
-	struct work_struct work;
-	const struct fsl_esai_soc_data *soc;
-	spinlock_t lock; /* Protect hw_reset and trigger */
-	u32 fifo_depth;
-	u32 slot_width;
-	u32 slots;
-	u32 tx_mask;
-	u32 rx_mask;
-	u32 channels[2];
-	u32 hck_rate[2];
-	u32 sck_rate[2];
-	bool hck_dir[2];
-	bool sck_div[2];
-	bool slave_mode;
-	bool synchronous;
-	char name[32];
-};
-
 static struct fsl_esai_soc_data fsl_esai_vf610 = {
 	.reset_at_xrun = true,
-	.use_edma = false,
 };
 
 static struct fsl_esai_soc_data fsl_esai_imx35 = {
 	.reset_at_xrun = true,
-	.use_edma = false,
 };
 
 static struct fsl_esai_soc_data fsl_esai_imx6ull = {
 	.reset_at_xrun = false,
-	.use_edma = false,
-};
-
-static struct fsl_esai_soc_data fsl_esai_imx8qm = {
-	.imx = true,
-	.reset_at_xrun = false,
-	.use_edma = true,
 };
 
 static irqreturn_t esai_isr(int irq, void *devid)
@@ -566,11 +495,6 @@ static int fsl_esai_startup(struct snd_pcm_substream *substream,
 				   ESAI_xCCR_xDC(esai_priv->slots));
 	}
 
-	if (esai_priv->soc->use_edma)
-		snd_pcm_hw_constraint_step(substream->runtime, 0,
-					   SNDRV_PCM_HW_PARAM_PERIOD_SIZE,
-					   tx ? esai_priv->dma_params_tx.maxburst :
-					   esai_priv->dma_params_rx.maxburst);
 	if (esai_priv->sw_mix)
 		fsl_esai_mix_open(substream, &esai_priv->mix[tx]);
 
@@ -1165,10 +1089,19 @@ static int fsl_esai_probe(struct platform_device *pdev)
 	 * Register platform component before registering cpu dai for there
 	 * is not defer probe for platform component in snd_soc_add_pcm_runtime().
 	 */
-	ret = imx_pcm_dma_init(pdev, IMX_ESAI_DMABUF_SIZE);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
-		goto err_pm_get_sync;
+	if (of_property_read_bool(pdev->dev.of_node, "client-dais")) {
+		esai_priv->sw_mix = true;
+		ret = fsl_esai_mix_probe(&pdev->dev, &esai_priv->mix[0], &esai_priv->mix[1]);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
+			goto err_pm_get_sync;
+		}
+	} else {
+		ret = imx_pcm_dma_init(pdev, IMX_ESAI_DMABUF_SIZE);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
+			goto err_pm_get_sync;
+		}
 	}
 
 	ret = devm_snd_soc_register_component(&pdev->dev, &fsl_esai_component,
@@ -1210,7 +1143,6 @@ static const struct of_device_id fsl_esai_dt_ids[] = {
 	{ .compatible = "fsl,imx35-esai", .data = &fsl_esai_imx35 },
 	{ .compatible = "fsl,vf610-esai", .data = &fsl_esai_vf610 },
 	{ .compatible = "fsl,imx6ull-esai", .data = &fsl_esai_imx6ull },
-	{ .compatible = "fsl,imx8qm-esai", .data = &fsl_esai_imx8qm },
 	{}
 };
 MODULE_DEVICE_TABLE(of, fsl_esai_dt_ids);

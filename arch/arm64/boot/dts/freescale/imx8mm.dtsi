@@ -403,13 +403,18 @@
 	};
 
 	soc@0 {
-		compatible = "fsl,imx8mm-soc", "simple-bus";
+		compatible = "simple-bus";
 		#address-cells = <1>;
 		#size-cells = <1>;
 		ranges = <0x0 0x0 0x0 0x3e000000>;
 		dma-ranges = <0x40000000 0x0 0x40000000 0xc0000000>;
 		nvmem-cells = <&imx8mm_uid>;
 		nvmem-cell-names = "soc_unique_id";
+
+		caam_sm: caam-sm@100000 {
+			compatible = "fsl,imx6q-caam-sm";
+			reg = <0x100000 0x8000>;
+		};
 
 		aips1: bus@30000000 {
 			compatible = "fsl,aips-bus", "simple-bus";
@@ -430,12 +435,13 @@
 					compatible = "fsl,imx8mm-sai", "fsl,imx8mq-sai";
 					reg = <0x30010000 0x10000>;
 					interrupts = <GIC_SPI 95 IRQ_TYPE_LEVEL_HIGH>;
-					clocks = <&clk IMX8MM_CLK_SAI1_IPG>,
+					clocks = <&clk IMX8MM_CLK_SAI1_IPG>, <&clk IMX8MM_CLK_DUMMY>,
 						 <&clk IMX8MM_CLK_SAI1_ROOT>,
 						 <&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
-					clock-names = "bus", "mclk1", "mclk2", "mclk3";
+					clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 					dmas = <&sdma2 0 2 0>, <&sdma2 1 2 0>;
 					dma-names = "rx", "tx";
+					fsl,dataline = <0 0xff 0xff>;
 					status = "disabled";
 				};
 
@@ -444,10 +450,10 @@
 					compatible = "fsl,imx8mm-sai", "fsl,imx8mq-sai";
 					reg = <0x30020000 0x10000>;
 					interrupts = <GIC_SPI 96 IRQ_TYPE_LEVEL_HIGH>;
-					clocks = <&clk IMX8MM_CLK_SAI2_IPG>,
+					clocks = <&clk IMX8MM_CLK_SAI2_IPG>, <&clk IMX8MM_CLK_DUMMY>,
 						<&clk IMX8MM_CLK_SAI2_ROOT>,
 						<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
-					clock-names = "bus", "mclk1", "mclk2", "mclk3";
+					clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 					dmas = <&sdma2 2 2 0>, <&sdma2 3 2 0>;
 					dma-names = "rx", "tx";
 					status = "disabled";
@@ -458,10 +464,10 @@
 					compatible = "fsl,imx8mm-sai", "fsl,imx8mq-sai";
 					reg = <0x30030000 0x10000>;
 					interrupts = <GIC_SPI 50 IRQ_TYPE_LEVEL_HIGH>;
-					clocks = <&clk IMX8MM_CLK_SAI3_IPG>,
+					clocks = <&clk IMX8MM_CLK_SAI3_IPG>, <&clk IMX8MM_CLK_DUMMY>,
 						 <&clk IMX8MM_CLK_SAI3_ROOT>,
 						 <&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
-					clock-names = "bus", "mclk1", "mclk2", "mclk3";
+					clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 					dmas = <&sdma2 4 2 0>, <&sdma2 5 2 0>;
 					dma-names = "rx", "tx";
 					status = "disabled";
@@ -472,12 +478,13 @@
 					compatible = "fsl,imx8mm-sai", "fsl,imx8mq-sai";
 					reg = <0x30050000 0x10000>;
 					interrupts = <GIC_SPI 90 IRQ_TYPE_LEVEL_HIGH>;
-					clocks = <&clk IMX8MM_CLK_SAI5_IPG>,
+					clocks = <&clk IMX8MM_CLK_SAI5_IPG>, <&clk IMX8MM_CLK_DUMMY>,
 						 <&clk IMX8MM_CLK_SAI5_ROOT>,
 						 <&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
-					clock-names = "bus", "mclk1", "mclk2", "mclk3";
+					clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 					dmas = <&sdma2 8 2 0>, <&sdma2 9 2 0>;
 					dma-names = "rx", "tx";
+					fsl,dataline = <0 0xf 0xf>;
 					status = "disabled";
 				};
 
@@ -486,10 +493,10 @@
 					compatible = "fsl,imx8mm-sai", "fsl,imx8mq-sai";
 					reg = <0x30060000 0x10000>;
 					interrupts = <GIC_SPI 90 IRQ_TYPE_LEVEL_HIGH>;
-					clocks = <&clk IMX8MM_CLK_SAI6_IPG>,
+					clocks = <&clk IMX8MM_CLK_SAI6_IPG>, <&clk IMX8MM_CLK_DUMMY>,
 						 <&clk IMX8MM_CLK_SAI6_ROOT>,
 						 <&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
-					clock-names = "bus", "mclk1", "mclk2", "mclk3";
+					clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 					dmas = <&sdma2 10 2 0>, <&sdma2 11 2 0>;
 					dma-names = "rx", "tx";
 					status = "disabled";
@@ -537,49 +544,6 @@
 					dma-names = "rx", "tx";
 					status = "disabled";
 				};
-			};
-
-			micfil: micfil@30080000 {
-				compatible = "fsl,imx8mm-micfil";
-				reg = <0x30080000 0x10000>;
-				interrupts = <GIC_SPI 109 IRQ_TYPE_LEVEL_HIGH>,
-					     <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>,
-					     <GIC_SPI 44 IRQ_TYPE_LEVEL_HIGH>,
-					     <GIC_SPI 45 IRQ_TYPE_LEVEL_HIGH>;
-				clocks = <&clk IMX8MM_CLK_PDM_IPG>,
-					 <&clk IMX8MM_CLK_PDM_ROOT>,
-					 <&clk IMX8MM_AUDIO_PLL1_OUT>,
-					 <&clk IMX8MM_AUDIO_PLL2_OUT>,
-					 <&clk IMX8MM_CLK_EXT3>;
-				clock-names = "ipg_clk", "ipg_clk_app",
-					      "pll8k", "pll11k", "clkext3";
-				dmas = <&sdma2 24 25 0x80000000>;
-				dma-names = "rx";
-				status = "disabled";
-			};
-
-			spdif1: spdif@30090000 {
-				compatible = "fsl,imx8mm-spdif";
-				reg = <0x30090000 0x10000>;
-				interrupts = <GIC_SPI 6 IRQ_TYPE_LEVEL_HIGH>;
-				clocks = <&clk IMX8MM_CLK_AUDIO_AHB>, /* core */
-					 <&clk IMX8MM_CLK_24M>, /* rxtx0 */
-					 <&clk IMX8MM_CLK_SPDIF1>, /* rxtx1 */
-					 <&clk IMX8MM_CLK_DUMMY>, /* rxtx2 */
-					 <&clk IMX8MM_CLK_DUMMY>, /* rxtx3 */
-					 <&clk IMX8MM_CLK_DUMMY>, /* rxtx4 */
-					 <&clk IMX8MM_CLK_AUDIO_AHB>, /* rxtx5 */
-					 <&clk IMX8MM_CLK_DUMMY>, /* rxtx6 */
-					 <&clk IMX8MM_CLK_DUMMY>, /* rxtx7 */
-					 <&clk IMX8MM_CLK_DUMMY>; /* spba */
-				clock-names = "core", "rxtx0",
-					      "rxtx1", "rxtx2",
-					      "rxtx3", "rxtx4",
-					      "rxtx5", "rxtx6",
-					      "rxtx7", "spba";
-				dmas = <&sdma2 28 18 0>, <&sdma2 29 18 0>;
-				dma-names = "rx", "tx";
-				status = "disabled";
 			};
 
 			gpio1: gpio@30200000 {
@@ -711,7 +675,7 @@
 			};
 
 			ocotp: efuse@30350000 {
-				compatible = "fsl,imx8mm-ocotp", "syscon";
+				compatible = "fsl,imx8mm-ocotp", "syscon", "simple-mfd";
 				reg = <0x30350000 0x10000>;
 				clocks = <&clk IMX8MM_CLK_OCOTP_ROOT>;
 				/* For nvmem subnodes */
@@ -728,6 +692,12 @@
 
 				fec_mac_address: mac-address@90 {
 					reg = <0x90 6>;
+				};
+
+				imx8mm_soc: imx8mm-soc {
+					compatible = "fsl,imx8mm-soc";
+					nvmem-cells = <&imx8mm_uid>;
+					nvmem-cell-names = "soc_unique_id";
 				};
 			};
 
@@ -1154,6 +1124,7 @@
 				nvmem-cell-names = "mac-address";
 				nvmem_macaddr_swap;
 				fsl,stop-mode = <&gpr 0x10 3>;
+				fsl,wakeup_irq = <2>;
 				status = "disabled";
 			};
 

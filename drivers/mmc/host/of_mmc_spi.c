@@ -3,7 +3,6 @@
  * OpenFirmware bindings for the MMC-over-SPI driver
  *
  * Copyright (c) MontaVista Software, Inc. 2008.
- * Copyright 2020 NXP
  *
  * Author: Anton Vorontsov <avorontsov@ru.mvista.com>
  */

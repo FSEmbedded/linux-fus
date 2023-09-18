@@ -981,7 +981,7 @@ static int genpd_runtime_suspend(struct device *dev)
 
 	genpd_lock(genpd);
 	gpd_data->rpm_pstate = genpd_drop_performance_state(dev);
-	genpd_power_off(genpd, true, 0);
+	ret = genpd_power_off(genpd, true, 0);
 	genpd_unlock(genpd);
 
 	if (!ret)
@@ -1025,17 +1025,14 @@ static int genpd_runtime_resume(struct device *dev)
 		goto out;
 	}
 
-	genpd_lock(genpd);
-	ret = genpd_power_on(genpd, 0);
-	if (!ret)
-		genpd_restore_performance_state(dev, gpd_data->rpm_pstate);
-	genpd_unlock(genpd);
-
+	ret = pm_genpd_enable_clks(genpd);
 	if (ret)
 		return ret;
 
 	genpd_lock(genpd);
 	ret = genpd_power_on(genpd, 0, &pd_was_on);
+	if (!ret)
+		genpd_restore_performance_state(dev, gpd_data->rpm_pstate);
 	genpd_unlock(genpd);
 
 	if (ret) {
@@ -1538,11 +1535,15 @@ static void genpd_complete(struct device *dev)
 static void genpd_switch_state(struct device *dev, bool suspend)
 {
 	struct generic_pm_domain *genpd;
+	bool need_disable_clk = false;
 	bool use_lock;
 
 	genpd = dev_to_genpd_safe(dev);
 	if (!genpd)
 		return;
+
+	if (!suspend)
+		pm_genpd_enable_clks(genpd);
 
 	use_lock = genpd_is_irq_safe(genpd);
 
@@ -1551,14 +1552,17 @@ static void genpd_switch_state(struct device *dev, bool suspend)
 
 	if (suspend) {
 		genpd->suspended_count++;
-		genpd_sync_power_off(genpd, use_lock, 0);
+		genpd_sync_power_off(genpd, use_lock, 0, &need_disable_clk);
 	} else {
-		genpd_sync_power_on(genpd, use_lock, 0);
+		genpd_sync_power_on(genpd, use_lock, 0, &need_disable_clk);
 		genpd->suspended_count--;
 	}
 
 	if (use_lock)
 		genpd_unlock(genpd);
+
+	if (need_disable_clk)
+		pm_genpd_disable_clks(genpd);
 }
 
 /**
@@ -2773,6 +2777,7 @@ static int __genpd_dev_pm_attach(struct device *dev, struct device *base_dev,
 {
 	struct of_phandle_args pd_args;
 	struct generic_pm_domain *pd;
+	bool pd_was_on = false;
 	int pstate;
 	int ret;
 
@@ -2817,8 +2822,11 @@ static int __genpd_dev_pm_attach(struct device *dev, struct device *base_dev,
 	}
 
 	if (ret) {
+		pm_genpd_disable_clks(pd);
 		genpd_remove_device(pd, dev);
 		return -EPROBE_DEFER;
+	} else if (pd_was_on) {
+		pm_genpd_disable_clks(pd);
 	}
 
 	/* Set the default performance state */
@@ -2837,6 +2845,7 @@ static int __genpd_dev_pm_attach(struct device *dev, struct device *base_dev,
 err:
 	dev_err(dev, "failed to set required performance state for power-domain %s: %d\n",
 		pd->name, ret);
+	pm_genpd_disable_clks(pd);
 	genpd_remove_device(pd, dev);
 	return ret;
 }

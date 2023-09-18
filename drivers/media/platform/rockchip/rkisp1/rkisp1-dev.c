@@ -272,7 +272,6 @@ static int rkisp1_subdev_notifier(struct rkisp1_device *rkisp1)
 			goto err_parse;
 		}
 
-		rk_asd = container_of(asd, struct rkisp1_sensor_async, asd);
 		rk_asd->mbus_type = vep.bus_type;
 		rk_asd->mbus_flags = vep.bus.mipi_csi2.flags;
 		rk_asd->lanes = vep.bus.mipi_csi2.num_data_lanes;

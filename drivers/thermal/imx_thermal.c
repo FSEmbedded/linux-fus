@@ -404,8 +404,6 @@ static int imx_get_trend(struct thermal_zone_device *tz,
 	else
 		*trend = THERMAL_TREND_DROP_FULL;
 
-	pm_runtime_put(data->dev);
-
 	return 0;
 }
 

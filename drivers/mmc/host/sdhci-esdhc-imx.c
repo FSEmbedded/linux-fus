@@ -5,7 +5,6 @@
  * derived from the OF-version.
  *
  * Copyright (c) 2010 Pengutronix e.K.
- * Copyright 2020 NXP
  *   Author: Wolfram Sang <kernel@pengutronix.de>
  */
 
@@ -95,8 +94,6 @@
 #define ESDHC_STROBE_DLL_STS_SLV_LOCK	0x1
 
 #define ESDHC_VEND_SPEC2		0xc8
-#define ESDHC_VEND_SPEC2_TUNING_EN_MASK	0x00000070
-#define ESDHC_VEND_SPEC2_TUNING_EN_SHIFT	4
 #define ESDHC_VEND_SPEC2_EN_BUSY_IRQ	(1 << 8)
 #define ESDHC_VEND_SPEC2_AUTO_TUNE_8BIT_EN	(1 << 4)
 #define ESDHC_VEND_SPEC2_AUTO_TUNE_4BIT_EN	(0 << 4)
@@ -232,6 +229,7 @@ struct esdhc_platform_data {
 	unsigned int tuning_step;       /* The delay cell steps in tuning procedure */
 	unsigned int tuning_start_tap;	/* The start delay cell point in tuning procedure */
 	unsigned int strobe_dll_delay_target;	/* The delay cell for strobe pad (read clock) */
+	bool sdio_async_interrupt_enabled;
 };
 
 struct esdhc_soc_data {
@@ -319,7 +317,12 @@ static struct esdhc_soc_data usdhc_imx8mm_data = {
 	.flags = ESDHC_FLAG_USDHC | ESDHC_FLAG_STD_TUNING
 			| ESDHC_FLAG_HAVE_CAP1 | ESDHC_FLAG_HS200
 			| ESDHC_FLAG_HS400 | ESDHC_FLAG_HS400_ES
-			| ESDHC_FLAG_STATE_LOST_IN_LPMODE,
+			| ESDHC_FLAG_STATE_LOST_IN_LPMODE
+			| ESDHC_FLAG_BUSFREQ,
+};
+
+static struct esdhc_soc_data usdhc_s32v234_data = {
+	.flags = ESDHC_FLAG_USDHC,
 };
 
 struct pltfm_imx_data {
@@ -369,6 +372,11 @@ static inline int is_imx25_esdhc(struct pltfm_imx_data *data)
 static inline int is_imx53_esdhc(struct pltfm_imx_data *data)
 {
 	return data->socdata == &esdhc_imx53_data;
+}
+
+static inline int is_s32v234_usdhc(struct pltfm_imx_data *data)
+{
+	return data->socdata == &usdhc_s32v234_data;
 }
 
 static inline int esdhc_is_usdhc(struct pltfm_imx_data *data)
@@ -426,6 +434,8 @@ static inline void esdhc_wait_for_card_clock_gate_off(struct sdhci_host *host)
 /* Enable the auto tuning circuit to check the CMD line and BUS line */
 static inline void usdhc_auto_tuning_mode_sel(struct sdhci_host *host)
 {
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct pltfm_imx_data *imx_data = sdhci_pltfm_priv(pltfm_host);
 	u32 buswidth, auto_tune_buswidth;
 
 	buswidth = USDHC_GET_BUSWIDTH(readl(host->ioaddr + SDHCI_HOST_CONTROL));
@@ -441,6 +451,18 @@ static inline void usdhc_auto_tuning_mode_sel(struct sdhci_host *host)
 		auto_tune_buswidth = ESDHC_VEND_SPEC2_AUTO_TUNE_1BIT_EN;
 		break;
 	}
+
+	/*
+	 * If sdio device use async interrupt, it will use DAT[1] to signal
+	 * the device's interrupt asynchronous when use 4 data lines.
+	 * Then hardware auto tuning circuit MUST NOT check the DAT[1] line,
+	 * otherwise auto tuning will be impacted by this async interrupt,
+	 * and change the delay cell incorrectly, which then cause data/cmd
+	 * errors.
+	 * This is the hardware auto tuning circuit limitation.
+	 */
+	if (imx_data->boarddata.sdio_async_interrupt_enabled)
+		auto_tune_buswidth = ESDHC_VEND_SPEC2_AUTO_TUNE_1BIT_EN;
 
 	esdhc_clrset_le(host, ESDHC_VEND_SPEC2_AUTO_TUNE_MODE_MASK,
 			auto_tune_buswidth | ESDHC_VEND_SPEC2_AUTO_TUNE_CMD_EN,
@@ -1453,14 +1475,6 @@ static void sdhci_esdhc_imx_hwinit(struct sdhci_host *host)
 			writel(tmp, host->ioaddr + ESDHC_TUNING_CTRL);
 		}
 
-		/* uSDHC auto tuning mechanism should use DAT[0] and CMD lines
-		 * if SDIO card is enabling SDIO Interrupts on DAT[1].
-		 */
-		if (imx_data->boarddata.sdio_interrupt_enabled)
-			esdhc_clrset_le(host, ESDHC_VEND_SPEC2_TUNING_EN_MASK,
-					0x6 << ESDHC_VEND_SPEC2_TUNING_EN_SHIFT,
-			                ESDHC_VEND_SPEC2);
-
 		/*
 		 * On i.MX8MM, we are running Dual Linux OS, with 1st Linux using SD Card
 		 * as rootfs storage, 2nd Linux using eMMC as rootfs storage. We let the
@@ -1569,15 +1583,16 @@ sdhci_esdhc_imx_probe_dt(struct platform_device *pdev,
 	if (of_find_property(np, "no-1-8-v", NULL))
 		host->quirks2 |= SDHCI_QUIRK2_NO_1_8_V;
 
-	if (of_property_read_bool(np, "fsl,sdio-interrupt-enabled"))
-		boarddata->sdio_interrupt_enabled = true;
-
 	if (of_property_read_u32(np, "fsl,delay-line", &boarddata->delay_line))
 		boarddata->delay_line = 0;
 
+	if (of_property_read_bool(np, "fsl,sdio-async-interrupt-enabled"))
+		boarddata->sdio_async_interrupt_enabled = true;
+
 	mmc_of_parse_voltage(host->mmc, &host->ocr_mask);
 
-	if (esdhc_is_usdhc(imx_data) && !IS_ERR(imx_data->pinctrl)) {
+	if (!is_s32v234_usdhc(imx_data) && esdhc_is_usdhc(imx_data) 
+					&& !IS_ERR(imx_data->pinctrl)) {
 		imx_data->pins_100mhz = pinctrl_lookup_state(imx_data->pinctrl,
 						ESDHC_PINCTRL_STATE_100MHZ);
 		imx_data->pins_200mhz = pinctrl_lookup_state(imx_data->pinctrl,
@@ -1716,10 +1731,6 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 		goto disable_ahb_clk;
 
 	sdhci_esdhc_imx_hwinit(host);
-
-	if ((host->mmc->pm_caps & MMC_PM_KEEP_POWER) &&
-		(host->mmc->pm_caps & MMC_PM_WAKE_SDIO_IRQ))
-		device_set_wakeup_capable(&pdev->dev, 1);
 
 	err = sdhci_add_host(host);
 	if (err)

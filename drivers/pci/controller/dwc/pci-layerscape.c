@@ -30,12 +30,6 @@
 #define PCIE_ABSERR		0x8d0 /* Bridge Slave Error Response Register */
 #define PCIE_ABSERR_SETTING	0x9401 /* Forward error of non-posted request */
 
-#define PCIE_PM_SCR		0x44
-#define PCIE_PM_SCR_PMEPS_D0	0x0
-#define PCIE_PM_SCR_PMEPS_D3	0x3
-
-#define PCIE_LNKCTL		0x80  /* PCIe link ctrl Register */
-
 /* PF Message Command Register */
 #define LS_PCIE_PF_MCR		0x2c
 #define PF_MCR_PTOMR		BIT(0)
@@ -120,38 +114,6 @@ static void ls_pcie_drop_msg_tlp(struct ls_pcie *pcie)
 	val = ioread32(pci->dbi_base + PCIE_STRFMR1);
 	val &= 0xDFFFFFFF;
 	iowrite32(val, pci->dbi_base + PCIE_STRFMR1);
-}
-
-static int ls1021_pcie_link_up(struct dw_pcie *pci)
-{
-	u32 state;
-	struct ls_pcie *pcie = to_ls_pcie(pci);
-
-	if (!pcie->scfg)
-		return 0;
-
-	regmap_read(pcie->scfg, SCFG_PEXMSCPORTSR(pcie->index), &state);
-	state = (state >> LTSSM_STATE_SHIFT) & LTSSM_STATE_MASK;
-
-	if (state < LTSSM_PCIE_L0)
-		return 0;
-
-	return 1;
-}
-
-static int ls_pcie_link_up(struct dw_pcie *pci)
-{
-	struct ls_pcie *pcie = to_ls_pcie(pci);
-	u32 state;
-
-	state = (ioread32(pcie->lut + pcie->drvdata->lut_dbg) >>
-		 pcie->drvdata->ltssm_shift) &
-		 LTSSM_STATE_MASK;
-
-	if (state < LTSSM_PCIE_L0)
-		return 0;
-
-	return 1;
 }
 
 /* Forward error response of outbound non-posted requests */
@@ -273,11 +235,12 @@ static void ls_pcie_exit_from_l2(struct ls_pcie *pcie)
 static void ls_pcie_retrain_link(struct ls_pcie *pcie)
 {
 	struct dw_pcie *pci = pcie->pci;
+	u8 offset = dw_pcie_find_capability(pci, PCI_CAP_ID_EXP);
 	u32 val;
 
-	val = dw_pcie_readw_dbi(pci, PCIE_LNKCTL);
+	val = dw_pcie_readw_dbi(pci, offset + PCI_EXP_LNKCTL);
 	val |= PCI_EXP_LNKCTL_RL;
-	dw_pcie_writew_dbi(pci, PCIE_LNKCTL, val);
+	dw_pcie_writew_dbi(pci, offset + PCI_EXP_LNKCTL, val);
 }
 
 static void ls1021a_pcie_exit_from_l2(struct ls_pcie *pcie)
@@ -356,12 +319,13 @@ static int ls_pcie_pm_init(struct ls_pcie *pcie)
 static void ls_pcie_set_dstate(struct ls_pcie *pcie, u32 dstate)
 {
 	struct dw_pcie *pci = pcie->pci;
+	u8 offset = dw_pcie_find_capability(pci, PCI_CAP_ID_PM);
 	u32 val;
 
-	val = dw_pcie_readw_dbi(pci, PCIE_PM_SCR);
+	val = dw_pcie_readw_dbi(pci, offset + PCI_PM_CTRL);
 	val &= ~PCI_PM_CTRL_STATE_MASK;
 	val |= dstate;
-	dw_pcie_writew_dbi(pci, PCIE_PM_SCR, val);
+	dw_pcie_writew_dbi(pci, offset + PCI_PM_CTRL, val);
 }
 
 static int ls_pcie_host_init(struct pcie_port *pp)
@@ -380,35 +344,22 @@ static int ls_pcie_host_init(struct pcie_port *pp)
 	return 0;
 }
 
-static int ls1021_pcie_host_init(struct pcie_port *pp)
-{
-	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
-	struct ls_pcie *pcie = to_ls_pcie(pci);
-	struct device *dev = pci->dev;
-	u32 index[2];
-	int ret;
+static struct ls_pcie_host_pm_ops ls1021a_pcie_host_pm_ops = {
+	.pm_init = &ls1021a_pcie_pm_init,
+	.send_turn_off_message = &ls1021a_pcie_send_turnoff_msg,
+	.exit_from_l2 = &ls1021a_pcie_exit_from_l2,
+};
 
-	pcie->scfg = syscon_regmap_lookup_by_phandle(dev->of_node,
-						     "fsl,pcie-scfg");
-	if (IS_ERR(pcie->scfg)) {
-		ret = PTR_ERR(pcie->scfg);
-		dev_err(dev, "No syscfg phandle specified\n");
-		pcie->scfg = NULL;
-		return ret;
-	}
+static struct ls_pcie_host_pm_ops ls1043a_pcie_host_pm_ops = {
+	.pm_init = &ls1021a_pcie_pm_init,
+	.send_turn_off_message = &ls1043a_pcie_send_turnoff_msg,
+	.exit_from_l2 = &ls1043a_pcie_exit_from_l2,
+};
 
-	if (of_property_read_u32_array(dev->of_node,
-				       "fsl,pcie-scfg", index, 2)) {
-		pcie->scfg = NULL;
-		return -EINVAL;
-	}
-	pcie->index = index[1];
-
-	return ls_pcie_host_init(pp);
-}
-
-static const struct dw_pcie_host_ops ls1021_pcie_host_ops = {
-	.host_init = ls1021_pcie_host_init,
+static struct ls_pcie_host_pm_ops ls_pcie_host_pm_ops = {
+	.pm_init = &ls_pcie_pm_init,
+	.send_turn_off_message = &ls_pcie_send_turnoff_msg,
+	.exit_from_l2 = &ls_pcie_exit_from_l2,
 };
 
 static const struct dw_pcie_host_ops ls_pcie_host_ops = {
@@ -452,6 +403,7 @@ static int ls_pcie_probe(struct platform_device *pdev)
 	struct dw_pcie *pci;
 	struct ls_pcie *pcie;
 	struct resource *dbi_base;
+	int ret;
 
 	pcie = devm_kzalloc(dev, sizeof(*pcie), GFP_KERNEL);
 	if (!pcie)
@@ -464,7 +416,6 @@ static int ls_pcie_probe(struct platform_device *pdev)
 	pcie->drvdata = of_device_get_match_data(dev);
 
 	pci->dev = dev;
-	pci->ops = pcie->drvdata->dw_pcie_ops;
 	pci->pp.ops = pcie->drvdata->ops;
 
 	pcie->pci = pci;
@@ -487,7 +438,20 @@ static int ls_pcie_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, pcie);
 
-	return dw_pcie_host_init(&pci->pp);
+	ret = dw_pcie_host_init(&pci->pp);
+	if (ret)
+		return ret;
+
+	if (dw_pcie_link_up(pci)) {
+		dev_dbg(pci->dev, "Endpoint is present\n");
+		pcie->ep_presence = true;
+	}
+
+	if (pcie->drvdata->pm_ops && pcie->drvdata->pm_ops->pm_init &&
+	    !pcie->drvdata->pm_ops->pm_init(pcie))
+		pcie->pm_support = true;
+
+	return 0;
 }
 
 static bool ls_pcie_pm_check(struct ls_pcie *pcie)
@@ -524,7 +488,7 @@ static int ls_pcie_suspend_noirq(struct device *dev)
 		return ret;
 	}
 
-	ls_pcie_set_dstate(pcie, PCIE_PM_SCR_PMEPS_D3);
+	ls_pcie_set_dstate(pcie, 0x3);
 
 	return 0;
 }
@@ -538,7 +502,7 @@ static int ls_pcie_resume_noirq(struct device *dev)
 	if (!ls_pcie_pm_check(pcie))
 		return 0;
 
-	ls_pcie_set_dstate(pcie, PCIE_PM_SCR_PMEPS_D0);
+	ls_pcie_set_dstate(pcie, 0x0);
 
 	pcie->drvdata->pm_ops->exit_from_l2(pcie);
 
@@ -550,6 +514,8 @@ static int ls_pcie_resume_noirq(struct device *dev)
 		dev_err(dev, "ls_pcie_host_init failed! ret = 0x%x\n", ret);
 		return ret;
 	}
+
+	dw_pcie_setup_rc(&pci->pp);
 
 	ret = dw_pcie_wait_for_link(pci);
 	if (ret) {

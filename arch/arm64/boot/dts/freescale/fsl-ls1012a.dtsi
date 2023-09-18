@@ -19,8 +19,6 @@
 
 	aliases {
 		crypto = &crypto;
-		mmc0 = &esdhc0;
-		mmc1 = &esdhc1;
 		rtc1 = &ftm_alarm0;
 		rtic-a = &rtic_a;
 		rtic-b = &rtic_b;
@@ -352,6 +350,7 @@
 			interrupts = <0 56 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&clockgen QORIQ_CLK_PLATFORM_PLL
 					    QORIQ_CLK_PLL_DIV(4)>;
+			scl-gpios = <&gpio0 13 0>;
 			status = "disabled";
 		};
 
@@ -486,7 +485,7 @@
 		};
 
 		usb0: usb@2f00000 {
-			compatible = "snps,dwc3";
+			compatible = "fsl,ls1012a-dwc3", "snps,dwc3";
 			reg = <0x0 0x2f00000 0x0 0x10000>;
 			interrupts = <0 60 0x4>;
 			dr_mode = "host";

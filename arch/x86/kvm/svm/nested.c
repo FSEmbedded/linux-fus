@@ -1356,8 +1356,6 @@ static int svm_set_nested_state(struct kvm_vcpu *vcpu,
 	    (save->rflags & X86_EFLAGS_VM) ||
 	    !nested_vmcb_valid_sregs(vcpu, save))
 		goto out_free;
-	if (!(save->efer & EFER_SVME))
-		goto out_free;
 
 
 	/*

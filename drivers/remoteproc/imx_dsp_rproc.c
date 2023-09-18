@@ -33,7 +33,6 @@ enum imx_dsp_rp_mbox_messages {
 };
 
 #define DSP_RPROC_CLK_MAX 32
-#define DSP_RPROC_MEM_MAX 32
 
 #define REMOTE_IS_READY			BIT(0)
 #define REMOTE_READY_WAIT_MAX_RETRIES	500
@@ -71,18 +70,6 @@ enum imx_dsp_rp_mbox_messages {
 
 #define IMX8ULP_SIP_HIFI_XRDC         0xc200000e
 
-/*
- * struct imx_dsp_rproc_mem - slim internal memory structure
- * @cpu_addr: MPU virtual address of the memory region
- * @sys_addr: Bus address used to access the memory region
- * @size: Size of the memory region
- */
-struct imx_dsp_rproc_mem {
-	void __iomem *cpu_addr;
-	phys_addr_t sys_addr;
-	size_t size;
-};
-
 /* address translation table */
 struct imx_dsp_rproc_att {
 	u32 da;	/* device address (From Cortex M4 view)*/
@@ -103,7 +90,6 @@ struct imx_dsp_rproc {
 	struct regmap			*regmap;
 	struct rproc			*rproc;
 	const struct imx_dsp_rproc_dcfg	*dcfg;
-	struct imx_dsp_rproc_mem	mem[DSP_RPROC_MEM_MAX];
 	struct clk			*clks[DSP_RPROC_CLK_MAX];
 	struct mbox_client		cl;
 	struct mbox_client		cl_rxdb;
@@ -337,110 +323,6 @@ static int imx_dsp_rproc_stop(struct rproc *rproc)
 	return ret;
 }
 
-/*
- * Custom memory copy implementation for DSP Cores
- */
-static int imx_dsp_rproc_memcpy(void *dest, const void *src, size_t count)
-{
-	const u32 *s = src;
-	u32 *d = dest;
-	size_t size = count / 4;
-	u32 *tmp_src = NULL;
-
-	/*
-	 * TODO: relax limitation of 4-byte aligned dest addresses and copy
-	 * sizes
-	 */
-	if ((long)dest % 4 || count % 4)
-		return -EINVAL;
-
-	/* src offsets in ELF firmware image can be non-aligned */
-	if ((long)src % 4) {
-		tmp_src = kmemdup(src, count, GFP_KERNEL);
-		if (!tmp_src)
-			return -ENOMEM;
-		s = tmp_src;
-	}
-
-	while (size--)
-		*d++ = *s++;
-
-	kfree(tmp_src);
-
-	return 0;
-}
-
-static int imx_dsp_rproc_load_elf_segments(struct rproc *rproc, const struct firmware *fw)
-{
-	struct device *dev = &rproc->dev;
-	const void *ehdr, *phdr;
-	int i, ret = 0;
-	u16 phnum;
-	const u8 *elf_data = fw->data;
-	u8 class = fw_elf_get_class(fw);
-	u32 elf_phdr_get_size = elf_size_of_phdr(class);
-
-	ehdr = elf_data;
-	phnum = elf_hdr_get_e_phnum(class, ehdr);
-	phdr = elf_data + elf_hdr_get_e_phoff(class, ehdr);
-
-	/* go through the available ELF segments */
-	for (i = 0; i < phnum; i++, phdr += elf_phdr_get_size) {
-		u64 da = elf_phdr_get_p_paddr(class, phdr);
-		u64 memsz = elf_phdr_get_p_memsz(class, phdr);
-		u64 filesz = elf_phdr_get_p_filesz(class, phdr);
-		u64 offset = elf_phdr_get_p_offset(class, phdr);
-		u32 type = elf_phdr_get_p_type(class, phdr);
-		void *ptr;
-
-		if (type != PT_LOAD || !filesz)
-			continue;
-
-		dev_dbg(dev, "phdr: type %d da 0x%llx memsz 0x%llx filesz 0x%llx\n",
-			type, da, memsz, filesz);
-
-		if (filesz > memsz) {
-			dev_err(dev, "bad phdr filesz 0x%llx memsz 0x%llx\n",
-				filesz, memsz);
-			ret = -EINVAL;
-			break;
-		}
-
-		if (offset + filesz > fw->size) {
-			dev_err(dev, "truncated fw: need 0x%llx avail 0x%zx\n",
-				offset + filesz, fw->size);
-			ret = -EINVAL;
-			break;
-		}
-
-		if (!rproc_u64_fit_in_size_t(memsz)) {
-			dev_err(dev, "size (%llx) does not fit in size_t type\n",
-				memsz);
-			ret = -EOVERFLOW;
-			break;
-		}
-
-		/* grab the kernel address for this device address */
-		ptr = rproc_da_to_va(rproc, da, memsz);
-		if (!ptr) {
-			dev_err(dev, "bad phdr da 0x%llx mem 0x%llx\n", da,
-				memsz);
-			ret = -EINVAL;
-			break;
-		}
-
-		/* put the segment where the remote processor expects it */
-		ret = imx_dsp_rproc_memcpy(ptr, elf_data + offset, filesz);
-		if (ret) {
-			dev_err(dev, "memcpy failed for da 0x%llx mem 0x%llx\n",
-				da, memsz);
-			break;
-		}
-	}
-
-	return ret;
-}
-
 static int imx_dsp_rproc_sys_to_da(struct imx_dsp_rproc *priv, u64 sys,
 				   size_t len, u64 *da)
 {
@@ -460,88 +342,6 @@ static int imx_dsp_rproc_sys_to_da(struct imx_dsp_rproc *priv, u64 sys,
 	}
 
 	return -ENOENT;
-}
-
-static int imx_dsp_rproc_da_to_sys(struct imx_dsp_rproc *priv, u64 da,
-				   size_t len, u64 *sys)
-{
-	const struct imx_dsp_rproc_dcfg *dcfg = priv->dcfg;
-	int i;
-
-	/* parse address translation table */
-	for (i = 0; i < dcfg->att_size; i++) {
-		const struct imx_dsp_rproc_att *att = &dcfg->att[i];
-
-		if (da >= att->da && da + len <= att->da + att->size) {
-			unsigned int offset = da - att->da;
-
-			*sys = att->sa + offset;
-			return 0;
-		}
-	}
-
-	return -ENOENT;
-}
-
-static void *imx_dsp_rproc_da_to_va(struct rproc *rproc, u64 da, size_t len)
-{
-	struct imx_dsp_rproc *priv = rproc->priv;
-	void *va = NULL;
-	u64 sys;
-	int i;
-
-	if (len == 0)
-		return NULL;
-
-	/*
-	 * On device side we have many aliases, so we need to convert device
-	 * address (DSP) to system bus address first.
-	 */
-	if (imx_dsp_rproc_da_to_sys(priv, da, len, &sys))
-		return NULL;
-
-	for (i = 0; i < DSP_RPROC_MEM_MAX; i++) {
-		if (sys >= priv->mem[i].sys_addr && sys + len <=
-		    priv->mem[i].sys_addr +  priv->mem[i].size) {
-			unsigned int offset = sys - priv->mem[i].sys_addr;
-			/* __force to make sparse happy with type conversion */
-			va = (__force void *)(priv->mem[i].cpu_addr + offset);
-			break;
-		}
-	}
-
-	dev_dbg(&rproc->dev, "da = 0x%llx len = 0x%zx va = 0x%p\n",
-		da, len, va);
-	return va;
-}
-
-static int imx_dsp_rproc_mem_alloc(struct rproc *rproc,
-				   struct rproc_mem_entry *mem)
-{
-	struct device *dev = rproc->dev.parent;
-	void *va;
-
-	dev_dbg(dev, "map memory: %p+%zx\n", &mem->dma, mem->len);
-	va = ioremap_wc(mem->dma, mem->len);
-	if (IS_ERR_OR_NULL(va)) {
-		dev_err(dev, "Unable to map memory region: %p+%zx\n",
-			&mem->dma, mem->len);
-		return -ENOMEM;
-	}
-
-	/* Update memory entry va */
-	mem->va = va;
-
-	return 0;
-}
-
-static int imx_dsp_rproc_mem_release(struct rproc *rproc,
-				     struct rproc_mem_entry *mem)
-{
-	dev_dbg(rproc->dev.parent, "unmap memory: %pa\n", &mem->dma);
-	iounmap(mem->va);
-
-	return 0;
 }
 
 static void imx_dsp_rproc_vq_work(struct work_struct *work)
@@ -603,7 +403,7 @@ static int imx_dsp_rproc_mbox_init(struct imx_dsp_rproc *priv)
 	cl->knows_txdone = false;
 	cl->rx_callback = imx_dsp_rproc_rx_callback;
 
-	priv->tx_ch = mbox_request_channel_byname(cl, "tx0");
+	priv->tx_ch = mbox_request_channel_byname(cl, "tx");
 	if (IS_ERR(priv->tx_ch)) {
 		ret = PTR_ERR(priv->tx_ch);
 		dev_dbg(cl->dev, "failed to request tx mailbox channel: %d\n",
@@ -611,7 +411,7 @@ static int imx_dsp_rproc_mbox_init(struct imx_dsp_rproc *priv)
 		goto err_out;
 	}
 
-	priv->rx_ch = mbox_request_channel_byname(cl, "rx0");
+	priv->rx_ch = mbox_request_channel_byname(cl, "rx");
 	if (IS_ERR(priv->rx_ch)) {
 		ret = PTR_ERR(priv->rx_ch);
 		dev_dbg(cl->dev, "failed to request rx mailbox channel: %d\n",
@@ -627,7 +427,7 @@ static int imx_dsp_rproc_mbox_init(struct imx_dsp_rproc *priv)
 	 * RX door bell is used to receive the ready signal from remote
 	 * after the partition reset of A core.
 	 */
-	priv->rxdb_ch = mbox_request_channel_byname(cl, "rxdb0");
+	priv->rxdb_ch = mbox_request_channel_byname(cl, "rxdb");
 	if (IS_ERR(priv->rxdb_ch)) {
 		ret = PTR_ERR(priv->rxdb_ch);
 		dev_dbg(cl->dev, "failed to request mbox chan rxdb, ret %d\n",
@@ -655,16 +455,45 @@ static void imx_dsp_rproc_free_mbox(struct imx_dsp_rproc *priv)
 	mbox_free_channel(priv->rxdb_ch);
 }
 
-static int imx_dsp_rproc_prepare(struct rproc *rproc)
+static int imx_dsp_rproc_add_carveout(struct imx_dsp_rproc *priv)
 {
-	struct imx_dsp_rproc *priv = rproc->priv;
+	const struct imx_dsp_rproc_dcfg *dcfg = priv->dcfg;
+	struct rproc *rproc = priv->rproc;
 	struct device *dev = priv->dev;
 	struct device_node *np = dev->of_node;
 	struct of_phandle_iterator it;
 	struct rproc_mem_entry *mem;
 	struct reserved_mem *rmem;
+	void __iomem *cpu_addr;
+	int a;
 	u64 da;
-	int i;
+
+	/* remap required addresses */
+	for (a = 0; a < dcfg->att_size; a++) {
+		const struct imx_dsp_rproc_att *att = &dcfg->att[a];
+
+		if (!(att->flags & ATT_OWN))
+			continue;
+
+		if (imx_dsp_rproc_sys_to_da(priv, att->sa, att->size, &da))
+			return -EINVAL;
+
+		cpu_addr = devm_ioremap_wc(dev, att->sa, att->size);
+
+		/* Register memory region */
+		mem = rproc_mem_entry_init(dev, cpu_addr, (dma_addr_t)att->sa,
+					   att->size, da,
+					   NULL,
+					   NULL,
+					   "dsp_mem");
+
+		if (mem)
+			rproc_coredump_add_segment(rproc, da, att->size);
+		else
+			return -ENOMEM;
+
+		rproc_add_carveout(rproc, mem);
+	}
 
 	of_phandle_iterator_init(&it, np, "memory-region", NULL, 0);
 	while (of_phandle_iterator_next(&it) == 0) {
@@ -684,11 +513,13 @@ static int imx_dsp_rproc_prepare(struct rproc *rproc)
 		if (imx_dsp_rproc_sys_to_da(priv, rmem->base, rmem->size, &da))
 			return -EINVAL;
 
+		cpu_addr = devm_ioremap_wc(dev, rmem->base, rmem->size);
+
 		/* Register memory region */
-		mem = rproc_mem_entry_init(dev, NULL, (dma_addr_t)rmem->base,
+		mem = rproc_mem_entry_init(dev, cpu_addr, (dma_addr_t)rmem->base,
 					   rmem->size, da,
-					   imx_dsp_rproc_mem_alloc,
-					   imx_dsp_rproc_mem_release,
+					   NULL,
+					   NULL,
 					   it.node->name);
 
 		if (mem)
@@ -699,11 +530,112 @@ static int imx_dsp_rproc_prepare(struct rproc *rproc)
 		rproc_add_carveout(rproc, mem);
 	}
 
+	return 0;
+}
+
+/*
+ * imx_dsp_rproc_elf_load_segments() specially check if memsz is zero
+ * or not.
+ */
+static int imx_dsp_rproc_elf_load_segments(struct rproc *rproc,
+					   const struct firmware *fw)
+{
+	struct device *dev = &rproc->dev;
+	u8 class = fw_elf_get_class(fw);
+	u32 elf_phdr_get_size = elf_size_of_phdr(class);
+	const u8 *elf_data = fw->data;
+	const void *ehdr, *phdr;
+	int i, ret = 0;
+	u16 phnum;
+
+	ehdr = elf_data;
+	phnum = elf_hdr_get_e_phnum(class, ehdr);
+	phdr = elf_data + elf_hdr_get_e_phoff(class, ehdr);
+
+	/* go through the available ELF segments */
+	for (i = 0; i < phnum; i++, phdr += elf_phdr_get_size) {
+		u64 da = elf_phdr_get_p_paddr(class, phdr);
+		u64 memsz = elf_phdr_get_p_memsz(class, phdr);
+		u64 filesz = elf_phdr_get_p_filesz(class, phdr);
+		u64 offset = elf_phdr_get_p_offset(class, phdr);
+		u32 type = elf_phdr_get_p_type(class, phdr);
+		void *ptr;
+		bool is_iomem;
+
+		if (type != PT_LOAD || !memsz)
+			continue;
+
+		dev_dbg(dev, "phdr: type %d da 0x%llx memsz 0x%llx filesz 0x%llx\n",
+			type, da, memsz, filesz);
+
+		if (filesz > memsz) {
+			dev_err(dev, "bad phdr filesz 0x%llx memsz 0x%llx\n",
+				filesz, memsz);
+			ret = -EINVAL;
+			break;
+		}
+
+		if (offset + filesz > fw->size) {
+			dev_err(dev, "truncated fw: need 0x%llx avail 0x%zx\n",
+				offset + filesz, fw->size);
+			ret = -EINVAL;
+			break;
+		}
+
+		if (!rproc_u64_fit_in_size_t(memsz)) {
+			dev_err(dev, "size (%llx) does not fit in size_t type\n",
+				memsz);
+			ret = -EOVERFLOW;
+			break;
+		}
+
+		/* grab the kernel address for this device address */
+		ptr = rproc_da_to_va(rproc, da, memsz, &is_iomem);
+		if (!ptr) {
+			dev_err(dev, "bad phdr da 0x%llx mem 0x%llx\n", da,
+				memsz);
+			ret = -EINVAL;
+			break;
+		}
+
+		/* put the segment where the remote processor expects it */
+		if (filesz)
+			memcpy(ptr, elf_data + offset, filesz);
+
+		/*
+		 * Zero out remaining memory for this segment.
+		 *
+		 * This isn't strictly required since dma_alloc_coherent already
+		 * did this for us. albeit harmless, we may consider removing
+		 * this.
+		 */
+		if (memsz > filesz)
+			memset(ptr + filesz, 0, memsz - filesz);
+	}
+
+	return ret;
+}
+
+static int imx_dsp_rproc_prepare(struct rproc *rproc)
+{
+	struct imx_dsp_rproc *priv = rproc->priv;
+	struct device *dev = priv->dev;
+	struct rproc_mem_entry *carveout;
+	int ret;
+
+	ret = imx_dsp_rproc_add_carveout(priv);
+	if (ret) {
+		dev_err(dev, "failed on imx_dsp_rproc_add_carveout\n");
+		return ret;
+	}
+
 	pm_runtime_get_sync(dev);
 
-	for (i = 0; i < DSP_RPROC_MEM_MAX; i++)
-		if (priv->mem[i].cpu_addr)
-			memset_io(priv->mem[i].cpu_addr, 0, priv->mem[i].size);
+	/* clear buffers */
+	list_for_each_entry(carveout, &rproc->carveouts, node) {
+		if (carveout->va)
+			memset(carveout->va, 0, carveout->len);
+	}
 
 	return  0;
 }
@@ -746,76 +678,11 @@ static const struct rproc_ops imx_dsp_rproc_ops = {
 	.start		= imx_dsp_rproc_start,
 	.stop		= imx_dsp_rproc_stop,
 	.kick		= imx_dsp_rproc_kick,
-	.da_to_va       = imx_dsp_rproc_da_to_va,
-	.load		= imx_dsp_rproc_load_elf_segments,
+	.load		= imx_dsp_rproc_elf_load_segments,
 	.parse_fw	= rproc_elf_load_rsc_table,
 	.sanity_check	= rproc_elf_sanity_check,
 	.get_boot_addr	= rproc_elf_get_boot_addr,
 };
-
-static int imx_dsp_rproc_addr_init(struct imx_dsp_rproc *priv)
-{
-	const struct imx_dsp_rproc_dcfg *dcfg = priv->dcfg;
-	struct device *dev = priv->dev;
-	struct device_node *np = dev->of_node;
-	int a, b = 0, err, nph;
-
-	/* remap required addresses */
-	for (a = 0; a < dcfg->att_size; a++) {
-		const struct imx_dsp_rproc_att *att = &dcfg->att[a];
-
-		if (!(att->flags & ATT_OWN))
-			continue;
-
-		if (b >= DSP_RPROC_MEM_MAX)
-			break;
-
-		priv->mem[b].cpu_addr = devm_ioremap(priv->dev,
-						     att->sa, att->size);
-		if (!priv->mem[b].cpu_addr) {
-			dev_err(dev, "failed to remap %#x bytes from %#x\n", att->size, att->sa);
-			return -ENOMEM;
-		}
-		priv->mem[b].sys_addr = att->sa;
-		priv->mem[b].size = att->size;
-		b++;
-	}
-
-	nph = of_count_phandle_with_args(np, "memory-region", NULL);
-	if (nph <= 0)
-		return 0;
-
-	/* remap optional addresses */
-	for (a = 0; a < nph; a++) {
-		struct device_node *node;
-		struct resource res;
-
-		node = of_parse_phandle(np, "memory-region", a);
-		err = of_address_to_resource(node, 0, &res);
-		if (err) {
-			dev_err(dev, "unable to resolve memory region\n");
-			return err;
-		}
-
-		of_node_put(node);
-
-		if (b >= DSP_RPROC_MEM_MAX)
-			break;
-
-		/* Not use resource version, because we might share region */
-		priv->mem[b].cpu_addr = devm_ioremap(priv->dev, res.start,
-						     resource_size(&res));
-		if (!priv->mem[b].cpu_addr) {
-			dev_err(dev, "failed to remap %pr\n", &res);
-			return -ENOMEM;
-		}
-		priv->mem[b].sys_addr = res.start;
-		priv->mem[b].size = resource_size(&res);
-		b++;
-	}
-
-	return 0;
-}
 
 static int imx_dsp_attach_pm_domains(struct imx_dsp_rproc *priv)
 {
@@ -896,7 +763,7 @@ static int imx_dsp_rproc_detect_mode(struct imx_dsp_rproc *priv)
 			return ret;
 		return 0;
 	case IMX_DSP_MMIO:
-		regmap = syscon_regmap_lookup_by_phandle(dev->of_node, "syscon");
+		regmap = syscon_regmap_lookup_by_phandle(dev->of_node, "fsl,dsp-ctrl");
 		if (IS_ERR(regmap)) {
 			dev_err(dev, "failed to find syscon\n");
 			return PTR_ERR(regmap);
@@ -915,12 +782,10 @@ static const char *imx_dsp_clks_names[DSP_RPROC_CLK_MAX] = {
 	"dsp_clk1", "dsp_clk2", "dsp_clk3", "dsp_clk4", "dsp_clk5", "dsp_clk6",
 	"dsp_clk7", "dsp_clk8",
 
-	/* mbox clocks */
-	"mu_a", "mu_b",
-
 	/* Peripheral clocks */
 	"per_clk1", "per_clk2", "per_clk3", "per_clk4", "per_clk5", "per_clk6",
 	"per_clk7", "per_clk8", "per_clk9", "per_clk10", "per_clk11", "per_clk12",
+	"per_clk13", "per_clk14", "per_clk15", "per_clk16", "per_clk17", "per_clk18",
 };
 
 static int imx_dsp_rproc_clk_get(struct imx_dsp_rproc *priv)
@@ -1011,12 +876,6 @@ static int imx_dsp_rproc_probe(struct platform_device *pdev)
 
 	INIT_WORK(&priv->rproc_work, imx_dsp_rproc_vq_work);
 
-	ret = imx_dsp_rproc_addr_init(priv);
-	if (ret) {
-		dev_err(dev, "failed on imx_dsp_rproc_addr_init\n");
-		goto err_addr;
-	}
-
 	ret = imx_dsp_rproc_detect_mode(priv);
 	if (ret) {
 		dev_err(dev, "failed on imx_dsp_rproc_detect_mode\n");
@@ -1052,7 +911,6 @@ err_clk_get:
 	imx_dsp_detach_pm_domains(priv);
 err_pm:
 err_detect:
-err_addr:
 	destroy_workqueue(priv->workqueue);
 err_wkq:
 	rproc_free(rproc);
@@ -1170,7 +1028,7 @@ static int imx_dsp_resume(struct device *dev)
 	if (rproc->state == RPROC_RUNNING) {
 		/*TODO: load firmware and start */
 		ret = request_firmware_nowait(THIS_MODULE,
-					      FW_ACTION_HOTPLUG,
+					      FW_ACTION_UEVENT,
 					      rproc->firmware,
 					      dev,
 					      GFP_KERNEL,

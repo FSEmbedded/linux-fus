@@ -155,16 +155,6 @@ static inline unsigned long nr_slots(u64 val)
 	return DIV_ROUND_UP(val, IO_TLB_SIZE);
 }
 
-static inline unsigned long io_tlb_offset(unsigned long val)
-{
-	return val & (IO_TLB_SEGSIZE - 1);
-}
-
-static inline unsigned long nr_slots(u64 val)
-{
-	return DIV_ROUND_UP(val, IO_TLB_SIZE);
-}
-
 /*
  * Early SWIOTLB allocation may be too early to allow an architecture to
  * perform the desired operations.  This function allows the architecture to

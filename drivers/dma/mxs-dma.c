@@ -959,5 +959,10 @@ static struct platform_driver mxs_dma_driver = {
 		.pm = &mxs_dma_pm_ops,
 		.of_match_table = mxs_dma_dt_ids,
 	},
+	.remove		= mxs_dma_remove,
+	.probe = mxs_dma_probe,
 };
 module_platform_driver(mxs_dma_driver);
+
+MODULE_DESCRIPTION("MXS DMA driver");
+MODULE_LICENSE("GPL");

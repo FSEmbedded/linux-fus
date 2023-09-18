@@ -977,17 +977,7 @@ bad_req:
 			       iommu->name);
 			goto bad_req;
 		}
-		/* We shall not receive page request for supervisor SVM */
-		if (req->pm_req && (req->rd_req | req->wr_req)) {
-			pr_err("Unexpected page request in Privilege Mode");
-			/* No need to find the matching sdev as for bad_req */
-			goto no_pasid;
-		}
-		/* DMA read with exec requeset is not supported. */
-		if (req->exe_req && req->rd_req) {
-			pr_err("Execution request not supported\n");
-			goto no_pasid;
-		}
+
 		if (!svm || svm->pasid != req->pasid) {
 			/*
 			 * It can't go away, because the driver is not permitted

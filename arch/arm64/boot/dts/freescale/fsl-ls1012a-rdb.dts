@@ -18,6 +18,8 @@
 		serial0 = &duart0;
 		mmc0 = &esdhc0;
 		mmc1 = &esdhc1;
+		ethernet0 = &pfe_mac0;
+		ethernet1 = &pfe_mac1;
 	};
 };
 
@@ -96,8 +98,8 @@
 		spi-max-frequency = <50000000>;
 		m25p,fast-read;
 		reg = <0>;
-		spi-rx-bus-width = <2>;
-		spi-tx-bus-width = <2>;
+		spi-rx-bus-width = <1>;
+		spi-tx-bus-width = <1>;
 	};
 };
 
@@ -140,20 +142,5 @@
 		rgmii_phy: ethernet-phy@1 {
 			reg = <0x1>;
 		};
-	};
-};
-
-&qspi {
-	status = "okay";
-
-	s25fs512s0: flash@0 {
-		compatible = "jedec,spi-nor";
-		#address-cells = <1>;
-		#size-cells = <1>;
-		spi-max-frequency = <20000000>;
-		m25p,fast-read;
-		reg = <0>;
-		spi-rx-bus-width = <1>;
-		spi-tx-bus-width = <1>;
 	};
 };

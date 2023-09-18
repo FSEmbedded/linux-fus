@@ -2,7 +2,7 @@
 //
 // Device Tree file for LX2160AQDS
 //
-// Copyright 2018-2019 NXP
+// Copyright 2018 NXP
 
 /dts-v1/;
 
@@ -165,14 +165,6 @@
 	status = "okay";
 };
 
-&can0 {
-	status = "okay";
-};
-
-&can1 {
-	status = "okay";
-};
-
 &crypto {
 	status = "okay";
 };
@@ -309,6 +301,10 @@
 	};
 };
 
+&optee {
+	status = "okay";
+};
+
 &sata0 {
 	status = "okay";
 };
@@ -338,21 +334,5 @@
 };
 
 &usb1 {
-	status = "okay";
-};
-
-&sata0 {
-	status = "okay";
-};
-
-&sata1 {
-	status = "okay";
-};
-
-&sata2 {
-	status = "okay";
-};
-
-&sata3 {
 	status = "okay";
 };

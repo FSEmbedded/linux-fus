@@ -1468,7 +1468,6 @@ out_no_maps:
 
 static ssize_t xps_cpus_show(struct netdev_queue *queue, char *buf)
 {
-	int cpu, len, ret, num_tc = 1, tc = 0;
 	struct net_device *dev = queue->dev;
 	unsigned int index;
 	int len, tc;
@@ -1543,7 +1542,6 @@ static struct netdev_queue_attribute xps_cpus_attribute __ro_after_init
 
 static ssize_t xps_rxqs_show(struct netdev_queue *queue, char *buf)
 {
-	int j, len, ret, num_tc = 1, tc = 0;
 	struct net_device *dev = queue->dev;
 	unsigned int index;
 	int tc;

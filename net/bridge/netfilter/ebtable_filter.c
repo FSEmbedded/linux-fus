@@ -96,11 +96,6 @@ static void __net_exit frame_filter_net_pre_exit(struct net *net)
 	ebt_unregister_table_pre_exit(net, "filter");
 }
 
-static void __net_exit frame_filter_net_pre_exit(struct net *net)
-{
-	ebt_unregister_table_pre_exit(net, "filter", ebt_ops_filter);
-}
-
 static void __net_exit frame_filter_net_exit(struct net *net)
 {
 	ebt_unregister_table(net, "filter");

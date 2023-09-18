@@ -38,9 +38,6 @@ struct idxd_dev {
 	enum idxd_dev_type type;
 };
 
-struct idxd_device;
-struct idxd_wq;
-
 #define IDXD_REG_TIMEOUT	50
 #define IDXD_DRAIN_TIMEOUT	5000
 
@@ -164,11 +161,6 @@ struct idxd_dma_chan {
 	struct idxd_wq *wq;
 };
 
-struct idxd_dma_chan {
-	struct dma_chan chan;
-	struct idxd_wq *wq;
-};
-
 struct idxd_wq {
 	void __iomem *portal;
 	u32 portal_offset;
@@ -249,11 +241,6 @@ struct idxd_driver_data {
 	struct device_type *dev_type;
 	int compl_size;
 	int align;
-};
-
-struct idxd_dma_dev {
-	struct idxd_device *idxd;
-	struct dma_device dma;
 };
 
 struct idxd_device {

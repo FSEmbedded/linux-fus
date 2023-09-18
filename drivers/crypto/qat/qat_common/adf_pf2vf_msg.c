@@ -320,8 +320,6 @@ static int adf_vf2pf_request_version(struct adf_accel_dev *accel_dev)
 
 	reinit_completion(&accel_dev->vf.iov_msg_completion);
 
-	reinit_completion(&accel_dev->vf.iov_msg_completion);
-
 	/* Send request from VF to PF */
 	ret = adf_iov_putmsg(accel_dev, msg, 0);
 	if (ret) {

@@ -214,22 +214,10 @@ pci_ers_result_t pcie_do_recovery(struct pci_dev *dev,
 
 	if (status == PCI_ERS_RESULT_NEED_RESET) {
 		/*
-		 * TODO: Optimize the call to pci_reset_bus()
-		 *
-		 * There are two components to pci_reset_bus().
-		 *
-		 * 1. Do platform specific slot/bus reset.
-		 * 2. Save/Restore all devices in the bus.
-		 *
-		 * For hotplug capable devices and fatal errors,
-		 * device is already in reset state due to link
-		 * reset. So repeating platform specific slot/bus
-		 * reset via pci_reset_bus() call is redundant. So
-		 * can optimize this logic and conditionally call
-		 * pci_reset_bus().
+		 * TODO: Should call platform-specific
+		 * functions to reset slot before calling
+		 * drivers' slot_reset callbacks?
 		 */
-		pci_reset_bus(dev);
-
 		status = PCI_ERS_RESULT_RECOVERED;
 		pci_dbg(bridge, "broadcast slot_reset message\n");
 		pci_walk_bridge(bridge, report_slot_reset, &status);

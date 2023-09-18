@@ -1641,10 +1641,6 @@ static int arizona_jack_disable_jack_detect(struct arizona_priv *info)
 	arizona_clk32k_disable(arizona);
 	info->jack = NULL;
 
-	gpiod_put(info->micd_pol_gpio);
-
-	pm_runtime_disable(&pdev->dev);
-
 	return 0;
 }
 

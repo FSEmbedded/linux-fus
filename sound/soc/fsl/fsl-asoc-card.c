@@ -46,6 +46,8 @@ enum fsl_asoc_card_type {
 	CARD_TLV320AIC32X4,
 	CARD_MQS,
 	CARD_WM8524,
+	CARD_SI476X,
+	CARD_WM8958,
 };
 
 /**
@@ -157,6 +159,15 @@ static const struct snd_soc_dapm_route audio_map_rx[] = {
 	{"CPU-Capture",  NULL, "Capture"},
 	/* 2nd half -- ASRC DAPM routes */
 	{"ASRC-Capture",  NULL, "CPU-Capture"},
+};
+
+static const struct snd_soc_dapm_route audio_map_esai[] = {
+	{"Playback",  NULL, "CPU-Playback"},/* dai route for be and fe */
+	{"CPU-Capture",  NULL, "Capture"},
+	{"CPU-Playback",  NULL, "CLIENT0-Playback"},
+	{"CLIENT0-Capture",  NULL, "CPU-Capture"},
+	{"CPU-Playback",  NULL, "CLIENT1-Playback"},
+	{"CLIENT1-Capture",  NULL, "CPU-Capture"},
 };
 
 /* Add all possible widgets into here without being redundant */
@@ -356,7 +367,9 @@ static int fsl_asoc_card_startup(struct snd_pcm_substream *substream)
 				 priv->codec_priv.mclk_freq);
 	}
 
-	if ((priv->card_type == CARD_WM8960 || priv->card_type == CARD_WM8962)
+	if ((priv->card_type == CARD_WM8960 ||
+	     priv->card_type == CARD_WM8962 ||
+	     priv->card_type == CARD_WM8958)
 	    && !priv->is_codec_master) {
 		support_rates[0] = 8000;
 		support_rates[1] = 16000;
@@ -817,11 +830,13 @@ static int fsl_asoc_card_probe(struct platform_device *pdev)
 		priv->cpu_priv.slot_width = 32;
 		priv->card.dapm_routes = audio_map_tx;
 		priv->card.num_dapm_routes = ARRAY_SIZE(audio_map_tx);
+		priv->card_type = CARD_WM8524;
 	} else if (of_device_is_compatible(np, "fsl,imx-audio-si476x")) {
 		codec_dai_name = "si476x-codec";
 		priv->dai_fmt |= SND_SOC_DAIFMT_CBS_CFS;
 		priv->card.dapm_routes = audio_map_rx;
 		priv->card.num_dapm_routes = ARRAY_SIZE(audio_map_rx);
+		priv->card_type = CARD_SI476X;
 	} else if (of_device_is_compatible(np, "fsl,imx-audio-wm8958")) {
 		codec_dai_name = "wm8994-aif1";
 		priv->dai_fmt |= SND_SOC_DAIFMT_CBM_CFM;
@@ -831,6 +846,7 @@ static int fsl_asoc_card_probe(struct platform_device *pdev)
 		priv->codec_priv.free_freq = priv->codec_priv.mclk_freq;
 		priv->card.dapm_routes = NULL;
 		priv->card.num_dapm_routes = 0;
+		priv->card_type = CARD_WM8958;
 	} else {
 		dev_err(&pdev->dev, "unknown Device Tree compatible\n");
 		ret = -EINVAL;

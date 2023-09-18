@@ -111,7 +111,6 @@ bool imx_mu_is_m4_in_low_freq(void);
 bool imx_mu_is_m4_in_stop(void);
 void imx_mu_set_m4_run_mode(void);
 void imx_src_init(void);
-void imx7_src_init(void);
 void imx_gpc_pre_suspend(bool arm_power_off);
 void imx_gpc_post_resume(void);
 void imx_gpc_switch_pupscr_clk(bool flag);
@@ -119,12 +118,20 @@ void imx_gpc_mask_all(void);
 void imx_gpc_restore_all(void);
 void imx_gpc_hwirq_mask(unsigned int hwirq);
 void imx_gpc_hwirq_unmask(unsigned int hwirq);
-void imx_gpcv2_set_core1_pdn_pup_by_software(bool pdn);
+unsigned int imx_gpc_is_mf_mix_off(void);
 void imx_anatop_init(void);
 void imx_anatop_pre_suspend(void);
 void imx_anatop_post_resume(void);
 int imx6_set_lpm(enum mxc_cpu_pwr_mode mode);
 void imx6_set_int_mem_clk_lpm(bool enable);
+void imx6_enet_mac_init(const char *enet_compat, const char *ocotp_compat);
+void imx6sl_low_power_idle(void);
+void imx6sll_low_power_idle(void);
+void imx6sx_low_power_idle(void);
+void imx6ul_low_power_idle(void);
+void imx6ull_low_power_idle(void);
+void imx7d_low_power_idle(void);
+#ifdef CONFIG_HAVE_IMX_MMDC
 int imx_mmdc_get_ddr_type(void);
 int imx_mmdc_get_lpddr2_2ch_mode(void);
 #else
@@ -199,7 +206,6 @@ static inline void imx_init_l2cache(void) {}
 #endif
 
 extern const struct smp_operations imx_smp_ops;
-extern const struct smp_operations imx7_smp_ops;
 extern const struct smp_operations ls1021a_smp_ops;
 
 extern bool uart_from_osc;

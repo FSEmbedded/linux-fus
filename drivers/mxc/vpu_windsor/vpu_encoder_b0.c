@@ -465,11 +465,10 @@ static int vpu_enc_v4l2_ioctl_g_fmt(struct file *file,
 	pix_mp->width = q_data->width;
 	pix_mp->height = q_data->height;
 	pix_mp->field = V4L2_FIELD_NONE;
-	for (i = 0; i < pix_mp->num_planes; i++)
+	for (i = 0; i < pix_mp->num_planes; i++) {
 		pix_mp->plane_fmt[i].sizeimage = q_data->sizeimage[i];
-
-	if (!V4L2_TYPE_IS_OUTPUT(f->type))
-		pix_mp->plane_fmt[0].bytesperline = q_data->width;
+		pix_mp->plane_fmt[i].bytesperline = q_data->stride[i];
+	}
 
 	pix_mp->colorspace = ctx->colorspace;
 	pix_mp->xfer_func = ctx->xfer_func;
@@ -866,11 +865,18 @@ static int set_yuv_queue_fmt(struct queue_data *q_data, struct v4l2_format *f)
 	q_data->rect.top = 0;
 	q_data->rect.width = pix_mp->width;
 	q_data->rect.height = pix_mp->height;
-	q_data->sizeimage[0] = pix_mp->width * pix_mp->height;
-	q_data->sizeimage[1] = pix_mp->width * pix_mp->height / 2;
 	pix_mp->num_planes = fmt->num_planes;
-	for (i = 0; i < pix_mp->num_planes; i++)
+	for (i = 0; i < pix_mp->num_planes; i++) {
+		unsigned int stride = max(pix_mp->width, pix_mp->plane_fmt[i].bytesperline);
+		unsigned int sizeimage = stride * pix_mp->height;
+
+		if (i)
+			sizeimage = sizeimage >> 1;
+		sizeimage = max(sizeimage, pix_mp->plane_fmt[i].sizeimage);
+		q_data->stride[i] = stride;
+		q_data->sizeimage[i] = sizeimage;
 		pix_mp->plane_fmt[i].sizeimage = q_data->sizeimage[i];
+	}
 
 	q_data->current_fmt = fmt;
 
@@ -2006,7 +2012,7 @@ static void update_encode_size(struct vpu_ctx *ctx)
 	dst = &ctx->q_data[V4L2_DST];
 	pEncParam = &attr->param;
 
-	pEncParam->uSrcStride           = src->width;
+	pEncParam->uSrcStride           = src->stride[0];
 	pEncParam->uSrcWidth            = src->width;
 	pEncParam->uSrcHeight           = src->height;
 	pEncParam->uSrcOffset_x         = src->rect.left;
@@ -2338,8 +2344,8 @@ static int kmp_search(u8 *s, int s_len, const u8 *p, int p_len, int *next)
 
 static int get_stuff_data_size(u8 *data, int size)
 {
-	const u8 pattern[] = VPU_STRM_END_PATTERN;
-	int next[] = VPU_STRM_END_PATTERN;
+	const u8 pattern[] = VPU_STRM_END_OF_STREAM;
+	int next[] = VPU_STRM_END_OF_STREAM;
 	int index;
 
 	if (size < ARRAY_SIZE(pattern))
@@ -2663,43 +2669,16 @@ static int transfer_stream_output(struct vpu_ctx *ctx,
 static int append_empty_end_frame(struct vb2_data_req *p_data_req)
 {
 	struct vb2_buffer *vb = NULL;
-	const u8 pattern[] = VPU_STRM_END_OF_SEQ;
-	void *pdst;
 
 	WARN_ON(!p_data_req);
 
 	vb = p_data_req->vb2_buf;
-	pdst = vb2_plane_vaddr(vb, 0);
-	memcpy(pdst, pattern, ARRAY_SIZE(pattern));
-
-	vb2_set_plane_payload(vb, 0, ARRAY_SIZE(pattern));
+	vb2_set_plane_payload(vb, 0, 0);
 	p_data_req->buffer_flags = V4L2_BUF_FLAG_LAST;
 
 	vpu_dbg(LVL_INFO, "append the last frame\n");
 
 	return 0;
-}
-
-static s64 calculate_timestamp_for_eos(struct vpu_ctx *ctx)
-{
-	struct vpu_attr *attr = NULL;
-	struct v4l2_fract *fival;
-	s64 timestamp;
-	u64 delta = 0;
-
-	timestamp = ctx->timestamp;
-	attr = get_vpu_ctx_attr(ctx);
-	fival = &attr->fival;
-	if (ctx->timestamp != VPU_ENC_INVALID_TIMESTAMP && fival->denominator) {
-		delta = NSEC_PER_SEC * fival->numerator / fival->denominator;
-		timestamp += delta;
-	}
-
-	vpu_dbg(LVL_INFO, "[%d]eos ts : %lld, delta = %lld, %lld, %d / %d\n",
-			ctx->str_index,
-			timestamp, delta, ctx->timestamp,
-			fival->numerator, fival->denominator);
-	return timestamp;
 }
 
 static bool is_valid_frame_read_pos(u32 ptr, struct vpu_frame_info *frame)
@@ -3183,7 +3162,7 @@ static int handle_event_stop_done(struct vpu_ctx *ctx)
 	frame = get_idle_frame(queue);
 	if (frame) {
 		frame->eos = true;
-		frame->timestamp = calculate_timestamp_for_eos(ctx);
+		frame->timestamp = ctx->timestamp;
 		frame->info.uFrameID = ctx->sequence;
 		list_add_tail(&frame->list, &queue->frame_q);
 	} else {

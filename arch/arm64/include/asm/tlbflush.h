@@ -251,9 +251,16 @@ static inline void flush_tlb_mm(struct mm_struct *mm)
 
 	dsb(ishst);
 	asid = __TLBI_VADDR(0, ASID(mm));
-	__tlbi(aside1is, asid);
-	__tlbi_user(aside1is, asid);
-	dsb(ish);
+	if (TKT340553_SW_WORKAROUND) {
+		/* Flush the entire TLB */
+		__tlbi(vmalle1is);
+		dsb(ish);
+		isb();
+	} else {
+		__tlbi(aside1is, asid);
+		__tlbi_user(aside1is, asid);
+		dsb(ish);
+	}
 }
 
 static inline void flush_tlb_page_nosync(struct vm_area_struct *vma,
@@ -263,8 +270,15 @@ static inline void flush_tlb_page_nosync(struct vm_area_struct *vma,
 
 	dsb(ishst);
 	addr = __TLBI_VADDR(uaddr, ASID(vma->vm_mm));
-	__tlbi(vale1is, addr);
-	__tlbi_user(vale1is, addr);
+	if (TKT340553_SW_WORKAROUND) {
+		/* Flush the entire TLB */
+		__tlbi(vmalle1is);
+		dsb(ish);
+		isb();
+	} else {
+		__tlbi(vale1is, addr);
+		__tlbi_user(vale1is, addr);
+	}
 }
 
 static inline void flush_tlb_page(struct vm_area_struct *vma,
@@ -308,6 +322,14 @@ static inline void __flush_tlb_range(struct vm_area_struct *vma,
 
 	dsb(ishst);
 	asid = ASID(vma->vm_mm);
+
+	if (TKT340553_SW_WORKAROUND) {
+		/* Flush the entire TLB and exit */
+		__tlbi(vmalle1is);
+		dsb(ish);
+		isb();
+		return;
+	}
 
 	/*
 	 * When the CPU does not support TLB range operations, flush the TLB

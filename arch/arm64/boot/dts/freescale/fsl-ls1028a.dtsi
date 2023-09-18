@@ -66,6 +66,13 @@
 		};
 	};
 
+	rtc_clk: rtc-clk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <32768>;
+		clock-output-names = "rtc_clk";
+	};
+
 	sysclk: sysclk {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
@@ -1061,6 +1068,7 @@
 				fixed-link {
 					speed = <2500>;
 					full-duplex;
+					pause;
 				};
 			};
 
@@ -1113,13 +1121,13 @@
 					/* Internal ports */
 					mscc_felix_port4: port@4 {
 						reg = <4>;
-						ethernet = <&enetc_port2>;
 						phy-mode = "internal";
 						status = "disabled";
 
 						fixed-link {
 							speed = <2500>;
 							full-duplex;
+							pause;
 						};
 					};
 
@@ -1131,6 +1139,7 @@
 						fixed-link {
 							speed = <1000>;
 							full-duplex;
+							pause;
 						};
 					};
 				};
@@ -1145,6 +1154,7 @@
 				fixed-link {
 					speed = <1000>;
 					full-duplex;
+					pause;
 				};
 			};
 
@@ -1153,12 +1163,6 @@
 				/* IEP INT_A */
 				interrupts = <GIC_SPI 94 IRQ_TYPE_LEVEL_HIGH>;
 			};
-		};
-
-		/* Integrated Endpoint Register Block */
-		ierb@1f0800000 {
-			compatible = "fsl,ls1028a-enetc-ierb";
-			reg = <0x01 0xf0800000 0x0 0x10000>;
 		};
 
 		/* Integrated Endpoint Register Block */
@@ -1276,13 +1280,6 @@
 			fsl,rcpm-wakeup = <&rcpm 0x0 0x0 0x0 0x0 0x4000 0x0 0x0>;
 			interrupts = <GIC_SPI 45 IRQ_TYPE_LEVEL_HIGH>;
 			status = "disabled";
-		};
-	};
-
-	firmware {
-		optee {
-			compatible = "linaro,optee-tz";
-			method = "smc";
 		};
 	};
 

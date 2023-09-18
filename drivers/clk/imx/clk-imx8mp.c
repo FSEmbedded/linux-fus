@@ -127,7 +127,7 @@ static struct imx_blk_ctrl_hw imx8mp_hdmi_blk_ctrl_hws[] = {
 	IMX_BLK_CTRL_RESET_MASK(IMX8MP_HDMI_BLK_CTRL_HDMI_TX_RESET, 0x20, 6, 0x33),
 	IMX_BLK_CTRL_RESET(IMX8MP_HDMI_BLK_CTRL_HDMI_PHY_RESET, 0x20, 12),
 	IMX_BLK_CTRL_RESET(IMX8MP_HDMI_BLK_CTRL_HDMI_PAI_RESET, 0x20, 18),
-	IMX_BLK_CTRL_RESET(IMX8MP_HDMI_BLK_CTRL_HDMI_PAI_RESET, 0x20, 22),
+	IMX_BLK_CTRL_RESET(IMX8MP_HDMI_BLK_CTRL_HDMI_PVI_RESET, 0x20, 22),
 	IMX_BLK_CTRL_RESET(IMX8MP_HDMI_BLK_CTRL_HDMI_TRNG_RESET, 0x20, 20),
 	IMX_BLK_CTRL_RESET(IMX8MP_HDMI_BLK_CTRL_IRQ_STEER_RESET, 0x20, 16),
 	IMX_BLK_CTRL_RESET(IMX8MP_HDMI_BLK_CTRL_HDMI_HDCP_RESET, 0x20, 13),
@@ -250,15 +250,16 @@ static struct imx_blk_ctrl_hw imx8mp_audio_blk_ctrl_hws[] = {
 	IMX_BLK_CTRL_RESET(IMX8MP_AUDIO_BLK_CTRL_EARC_PHY_RESET, 0x200, 1),
 };
 
-const struct imx_blk_ctrl_dev_data imx8mp_hdmi_blk_ctrl_dev_data __initconst = {
+const struct imx_blk_ctrl_dev_data imx8mp_hdmi_blk_ctrl_dev_data = {
 	.hws = imx8mp_hdmi_blk_ctrl_hws,
 	.hws_num = ARRAY_SIZE(imx8mp_hdmi_blk_ctrl_hws),
 	.clocks_max = IMX8MP_CLK_HDMI_BLK_CTRL_END,
 	.resets_max = IMX8MP_HDMI_BLK_CTRL_RESET_NUM,
 	.pm_runtime_saved_regs_num = 0
 };
+EXPORT_SYMBOL_GPL(imx8mp_hdmi_blk_ctrl_dev_data);
 
-const struct imx_blk_ctrl_dev_data imx8mp_media_blk_ctrl_dev_data __initconst = {
+const struct imx_blk_ctrl_dev_data imx8mp_media_blk_ctrl_dev_data = {
 	.hws = imx8mp_media_blk_ctrl_hws,
 	.hws_num = ARRAY_SIZE(imx8mp_media_blk_ctrl_hws),
 	.clocks_max = IMX8MP_CLK_MEDIA_BLK_CTRL_END,
@@ -269,8 +270,9 @@ const struct imx_blk_ctrl_dev_data imx8mp_media_blk_ctrl_dev_data __initconst = 
 		IMX_MEDIA_BLK_CTRL_CLK_EN,
 	},
 };
+EXPORT_SYMBOL_GPL(imx8mp_media_blk_ctrl_dev_data);
 
-const struct imx_blk_ctrl_dev_data imx8mp_audio_blk_ctrl_dev_data __initconst = {
+const struct imx_blk_ctrl_dev_data imx8mp_audio_blk_ctrl_dev_data = {
 	.hws = imx8mp_audio_blk_ctrl_hws,
 	.hws_num = ARRAY_SIZE(imx8mp_audio_blk_ctrl_hws),
 	.clocks_max = IMX8MP_CLK_AUDIO_BLK_CTRL_END,
@@ -295,6 +297,7 @@ const struct imx_blk_ctrl_dev_data imx8mp_audio_blk_ctrl_dev_data __initconst = 
 		IMX_AUDIO_BLK_CTRL_IPG_LP_CTRL
 	},
 };
+EXPORT_SYMBOL_GPL(imx8mp_audio_blk_ctrl_dev_data);
 
 static const char * const pll_ref_sels[] = { "osc_24m", "dummy", "dummy", "dummy", };
 static const char * const audio_pll1_bypass_sels[] = {"audio_pll1", "audio_pll1_ref_sel", };
@@ -684,11 +687,41 @@ static const char * const imx8mp_dram_core_sels[] = {"dram_pll_out", "dram_alt_r
 static struct clk_hw **hws;
 static struct clk_hw_onecell_data *clk_hw_data;
 
+static int imx_clk_init_on(struct device_node *np,
+				  struct clk_hw * const clks[])
+{
+	u32 *array;
+	int i, ret, elems;
+
+	elems = of_property_count_u32_elems(np, "init-on-array");
+	if (elems < 0)
+		return elems;
+	array = kcalloc(elems, sizeof(elems), GFP_KERNEL);
+	if (!array)
+		return -ENOMEM;
+
+	ret = of_property_read_u32_array(np, "init-on-array", array, elems);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < elems; i++) {
+		ret = clk_prepare_enable(clks[array[i]]->clk);
+		if (ret)
+			pr_err("clk_prepare_enable failed %d\n", array[i]);
+	}
+
+	kfree(array);
+
+	return 0;
+}
+
 static int imx8mp_clocks_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct device_node *np;
 	void __iomem *anatop_base, *ccm_base;
+
+	check_m4_enabled();
 
 	np = of_find_compatible_node(NULL, NULL, "fsl,imx8mp-anatop");
 	anatop_base = of_iomap(np, 0);
@@ -989,6 +1022,8 @@ static int imx8mp_clocks_probe(struct platform_device *pdev)
 
 	of_clk_add_hw_provider(np, of_clk_hw_onecell_get, clk_hw_data);
 
+	imx_clk_init_on(np, hws);
+	
 	imx_register_uart_clocks(4);
 
 	return 0;

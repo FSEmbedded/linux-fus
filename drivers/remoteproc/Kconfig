@@ -37,6 +37,7 @@ config IMX_REMOTEPROC
 config IMX_DSP_REMOTEPROC
 	tristate "i.MX DSP remoteproc support"
 	depends on ARCH_MXC
+	depends on HAVE_ARM_SMCCC
 	select MAILBOX
 	help
 	  Say y here to support iMX's DSP remote processors via the remote

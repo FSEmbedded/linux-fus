@@ -1770,7 +1770,8 @@ nla_put_failure:
 	return -EMSGSIZE;
 }
 
-static int ceetm_cls_delete(struct Qdisc *sch, unsigned long arg)
+static int ceetm_cls_delete(struct Qdisc *sch, unsigned long arg,
+			    struct netlink_ext_ack *extack)
 {
 	struct ceetm_class *cl = (struct ceetm_class *)arg;
 	struct ceetm_qdisc *priv = qdisc_priv(sch);
@@ -1942,7 +1943,7 @@ static struct ceetm_class *ceetm_classify(struct sk_buff *skb,
 
 	*qerr = NET_XMIT_SUCCESS | __NET_XMIT_BYPASS;
 	tcf = priv->filter_list;
-	while (tcf && (result = tcf_classify(skb, tcf, &res, false)) >= 0) {
+	while (tcf && (result = tcf_classify(skb, priv->block, tcf, &res, false)) >= 0) {
 #ifdef CONFIG_NET_CLS_ACT
 		switch (result) {
 		case TC_ACT_QUEUED:

@@ -364,13 +364,6 @@ static int __maybe_unused imx2_wdt_suspend(struct device *dev)
 		 */
 		__imx2_wdt_set_timeout(wdog, IMX2_WDT_MAX_TIME);
 		imx2_wdt_ping(wdog);
-
-		/*
-		 * clear WDOG_HW_RUNNING to prevent watchdog_ping_work running
-		 * before imx2_wdt_resume where clock enabled, otherwise kernel
-		 * will hang and watchdog reset happen then.
-		 */
-		clear_bit(WDOG_HW_RUNNING, &wdog->status);
 	}
 
 	clk_disable_unprepare(wdev->clk);
@@ -404,7 +397,6 @@ static int __maybe_unused imx2_wdt_resume(struct device *dev)
 	if (imx2_wdt_is_running(wdev)) {
 		imx2_wdt_set_timeout(wdog, wdog->timeout);
 		imx2_wdt_ping(wdog);
-		set_bit(WDOG_HW_RUNNING, &wdog->status);
 	}
 
 	return 0;

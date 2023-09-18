@@ -2,7 +2,7 @@
 /*
  * Device Tree fragment for LS1028A QDS board, serdes 85xx
  *
- * Copyright 2019 NXP
+ * Copyright 2019-2021 NXP
  *
  * Requires a LS1028A QDS board without lane B rework.
  * Requires a SCH-24801 card in slot 1.

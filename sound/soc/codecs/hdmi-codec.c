@@ -927,14 +927,6 @@ static const struct snd_soc_dai_driver hdmi_i2s_dai = {
 		.sig_bits = 24,
 	},
 	.ops = &hdmi_codec_i2s_dai_ops,
-	.capture = {
-		.stream_name = "Capture",
-		.channels_min = 2,
-		.channels_max = 8,
-		.rates = HDMI_RATES,
-		.formats = I2S_FORMATS,
-		.sig_bits = 24,
-	},
 	.pcm_new = hdmi_codec_pcm_new,
 };
 
@@ -958,13 +950,6 @@ static const struct snd_soc_dai_driver hdmi_spdif_dai = {
 		.formats = SPDIF_FORMATS,
 	},
 	.ops = &hdmi_codec_spdif_dai_ops,
-	.capture = {
-		.stream_name = "Capture",
-		.channels_min = 2,
-		.channels_max = 2,
-		.rates = HDMI_RATES,
-		.formats = SPDIF_FORMATS,
-	},
 	.pcm_new = hdmi_codec_pcm_new,
 };
 

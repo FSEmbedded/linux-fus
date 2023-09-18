@@ -311,31 +311,6 @@ static inline void regs_set_unrecoverable(struct pt_regs *regs)
 		regs_set_return_msr(regs, regs->msr & ~MSR_RI);
 }
 
-#define kernel_stack_pointer(regs) ((regs)->gpr[1])
-static inline int is_syscall_success(struct pt_regs *regs)
-{
-	if (trap_is_scv(regs))
-		return !IS_ERR_VALUE((unsigned long)regs->gpr[3]);
-	else
-		return !(regs->ccr & 0x10000000);
-}
-
-static inline long regs_return_value(struct pt_regs *regs)
-{
-	if (trap_is_scv(regs))
-		return regs->gpr[3];
-
-	if (is_syscall_success(regs))
-		return regs->gpr[3];
-	else
-		return -regs->gpr[3];
-}
-
-static inline void regs_set_return_value(struct pt_regs *regs, unsigned long rc)
-{
-	regs->gpr[3] = rc;
-}
-
 #define arch_has_single_step()	(1)
 #define arch_has_block_step()	(true)
 #define ARCH_HAS_USER_SINGLE_STEP_REPORT

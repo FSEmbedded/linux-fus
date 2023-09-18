@@ -126,6 +126,15 @@ config DRM_ITE_IT66121
 	help
 	  Support for ITE IT66121 HDMI bridge.
 
+config DRM_FSL_IMX_LVDS_BRIDGE
+	tristate "Freescale i.MX LVDS display bridge"
+	depends on MFD_SYSCON
+	depends on OF
+	select DRM_PANEL_BRIDGE
+	help
+	  Support Freescale i.MX parallel to LVDS Display Bridge (LDB).
+	  This bridge is embedded in a SoC.
+
 config DRM_LVDS_CODEC
 	tristate "Transparent LVDS encoders and decoders support"
 	depends on OF
@@ -217,7 +226,6 @@ config DRM_SII902X
 	tristate "Silicon Image sii902x RGB/HDMI bridge"
 	depends on OF
 	select DRM_KMS_HELPER
-	select DRM_MIPI_DSI
 	select REGMAP_I2C
 	select I2C_MUX
 	select SND_SOC_HDMI_CODEC if SND_SOC
@@ -268,7 +276,6 @@ config DRM_TOSHIBA_TC358767
 	tristate "Toshiba TC358767 eDP bridge"
 	depends on OF
 	select DRM_KMS_HELPER
-	select DRM_MIPI_DSI
 	select REGMAP_I2C
 	select DRM_PANEL
 	help

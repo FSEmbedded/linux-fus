@@ -229,7 +229,10 @@ struct fsl_sai_soc_data {
 	bool mclk0_is_mclk1;
 	unsigned int fifo_depth;
 	unsigned int reg_offset;
+	unsigned int fifos;
+	unsigned int dataline;
 	unsigned int flags;
+	unsigned int max_register;
 };
 
 /**
@@ -305,6 +308,9 @@ struct fsl_sai {
 	struct fsl_sai_verid verid;
 	struct fsl_sai_param param;
 	struct pm_qos_request pm_qos_req;
+	struct sdma_audio_config audio_config[2];
+	struct pinctrl *pinctrl;
+	struct pinctrl_state *pins_state;
 };
 
 const struct attribute_group *fsl_sai_get_dev_attribute_group(bool monitor_spdif);

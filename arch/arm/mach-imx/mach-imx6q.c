@@ -156,27 +156,6 @@ static void __init imx6q_csi_mux_init(void)
 	}
 }
 
-static void __init imx6q_enet_clk_sel(void)
-{
-	struct regmap *gpr;
-
-	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6q-iomuxc-gpr");
-	if (!IS_ERR(gpr))
-		regmap_update_bits(gpr, IOMUXC_GPR5,
-				   IMX6Q_GPR5_ENET_TX_CLK_SEL, IMX6Q_GPR5_ENET_TX_CLK_SEL);
-	else
-		pr_err("failed to find fsl,imx6q-iomux-gpr regmap\n");
-}
-
-static inline void imx6q_enet_init(void)
-{
-	imx6_enet_mac_init("fsl,imx6q-fec", "fsl,imx6q-ocotp");
-	imx6q_enet_phy_init();
-	imx6q_1588_init();
-	if (cpu_is_imx6q() && imx_get_soc_revision() >= IMX_CHIP_REVISION_2_0)
-		imx6q_enet_clk_sel();
-}
-
 static void __init imx6q_axi_init(void)
 {
 	struct regmap *gpr;
@@ -223,12 +202,14 @@ static void __init imx6q_init_machine(void)
 		imx_print_silicon_rev(cpu_is_imx6dl() ? "i.MX6DL" : "i.MX6Q",
 				imx_get_soc_revision());
 
+	imx6q_enet_phy_init();
+
 	of_platform_default_populate(NULL, NULL, NULL);
 
 	imx_anatop_init();
-	imx6q_enet_init();
 	imx6q_csi_mux_init();
 	cpu_is_imx6q() ?  imx6q_pm_init() : imx6dl_pm_init();
+	imx6q_1588_init();
 	imx6q_axi_init();
 }
 

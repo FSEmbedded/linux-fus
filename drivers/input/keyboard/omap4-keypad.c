@@ -304,8 +304,6 @@ static int omap4_keypad_check_revision(struct device *dev,
 		dev_err(dev, "Keypad reports unsupported revision %d", rev);
 		return -EINVAL;
 	}
-	if (error)
-		goto err_pm_disable;
 
 	return 0;
 }

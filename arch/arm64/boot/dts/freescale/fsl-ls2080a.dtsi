@@ -119,18 +119,6 @@
 	};
 };
 
-&timer {
-	fsl,erratum-a008585;
-};
-
-&usb0 {
-	snps,incr-burst-type-adjustment = <1>, <4>, <8>, <16>;
-};
-
-&usb1 {
-	snps,incr-burst-type-adjustment = <1>, <4>, <8>, <16>;
-};
-
 &pcie1 {
 	reg = <0x00 0x03400000 0x0 0x00100000>, /* controller registers */
 	      <0x10 0x00000000 0x0 0x00002000>; /* configuration space */
@@ -161,4 +149,16 @@
 
 	ranges = <0x81000000 0x0 0x00000000 0x16 0x00010000 0x0 0x00010000   /* downstream I/O */
 		  0x82000000 0x0 0x40000000 0x16 0x40000000 0x0 0x40000000>; /* non-prefetchable memory */
+};
+
+&timer {
+	fsl,erratum-a008585;
+};
+
+&usb0 {
+	snps,incr-burst-type-adjustment = <1>, <4>, <8>, <16>;
+};
+
+&usb1 {
+	snps,incr-burst-type-adjustment = <1>, <4>, <8>, <16>;
 };

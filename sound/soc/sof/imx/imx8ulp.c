@@ -24,6 +24,7 @@
 #include <linux/firmware/imx/svc/misc.h>
 #include <dt-bindings/firmware/imx/rsrc.h>
 #include "../ops.h"
+#include "../sof-of-dev.h"
 #include "imx-common.h"
 
 /* SIM Domain register */
@@ -65,11 +66,6 @@ struct imx8ulp_priv {
 	/* DSP IPC handler */
 	struct imx_dsp_ipc *dsp_ipc;
 	struct platform_device *ipc_dev;
-
-	/* Power domain handling */
-	int num_domains;
-	struct device **pd_dev;
-	struct device_link **link;
 
 	struct regmap *regmap_sim;
 	struct clk *dsp_clks[IMX8ULP_DSP_CLK_NUM];
@@ -290,7 +286,6 @@ static int imx8ulp_probe(struct snd_sof_dev *sdev)
 	struct resource res;
 	u32 base, size;
 	int ret = 0;
-	int i;
 
 	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -383,10 +378,6 @@ static int imx8ulp_probe(struct snd_sof_dev *sdev)
 exit_pdev_unregister:
 	platform_device_unregister(priv->ipc_dev);
 exit_unroll_pm:
-	while (--i >= 0) {
-		device_link_del(priv->link[i]);
-		dev_pm_domain_detach(priv->pd_dev[i], false);
-	}
 
 	return ret;
 }
@@ -394,14 +385,8 @@ exit_unroll_pm:
 static int imx8ulp_remove(struct snd_sof_dev *sdev)
 {
 	struct imx8ulp_priv *priv = sdev->pdata->hw_pdata;
-	int i;
 
 	platform_device_unregister(priv->ipc_dev);
-
-	for (i = 0; i < priv->num_domains; i++) {
-		device_link_del(priv->link[i]);
-		dev_pm_domain_detach(priv->pd_dev[i], false);
-	}
 
 	return 0;
 }
@@ -530,6 +515,17 @@ static struct snd_soc_dai_driver imx8ulp_dai[] = {
 		.channels_max = 32,
 	},
 },
+{
+	.name = "sai6",
+	.playback = {
+		.channels_min = 1,
+		.channels_max = 32,
+	},
+	.capture = {
+		.channels_min = 1,
+		.channels_max = 32,
+	},
+},
 };
 
 int imx8ulp_dsp_set_power_state(struct snd_sof_dev *sdev,
@@ -607,6 +603,33 @@ struct snd_sof_dsp_ops sof_imx8ulp_ops = {
 			SNDRV_PCM_INFO_NO_PERIOD_WAKEUP
 };
 EXPORT_SYMBOL(sof_imx8ulp_ops);
+
+
+static struct sof_dev_desc sof_of_imx8ulp_desc = {
+	.default_fw_path = "imx/sof",
+	.default_tplg_path = "imx/sof-tplg",
+	.default_fw_filename = "sof-imx8ulp.ri",
+	.nocodec_tplg_filename = "sof-imx8ulp-nocodec.tplg",
+	.ops = &sof_imx8ulp_ops,
+};
+
+static const struct of_device_id sof_of_imx8ulp_ids[] = {
+	{ .compatible = "fsl,imx8ulp-dsp", .data = &sof_of_imx8ulp_desc},
+	{ }
+};
+MODULE_DEVICE_TABLE(of, sof_of_imx8ulp_ids);
+
+/* DT driver definition */
+static struct platform_driver snd_sof_of_imx8ulp_driver = {
+	.probe = sof_of_probe,
+	.remove = sof_of_remove,
+	.driver = {
+		.name = "sof-audio-of-imx8ulp",
+		.pm = &sof_of_pm,
+		.of_match_table = sof_of_imx8ulp_ids,
+	},
+};
+module_platform_driver(snd_sof_of_imx8ulp_driver);
 
 MODULE_IMPORT_NS(SND_SOC_SOF_XTENSA);
 MODULE_LICENSE("Dual BSD/GPL");

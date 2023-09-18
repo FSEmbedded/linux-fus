@@ -995,7 +995,10 @@ static void dwc3_set_incr_burst_type(struct dwc3 *dwc)
 
 static void dwc3_set_power_down_clk_scale(struct dwc3 *dwc)
 {
-	u32 reg, scale;
+	struct device		*dev = dwc->dev;
+	struct device_node	*node = dev->of_node;
+	struct clk		*suspend_clk;
+	u32 			reg, scale;
 
 	if (dwc->num_clks == 0)
 		return;
@@ -1005,7 +1008,11 @@ static void dwc3_set_power_down_clk_scale(struct dwc3 *dwc)
 	 * periods fit into a 16KHz clock period. When performing
 	 * the division, round up the remainder.
 	 */
-	scale = DIV_ROUND_UP(clk_get_rate(dwc->clks[2].clk), 16384);
+	suspend_clk = of_clk_get_by_name(node, "suspend");
+	if (IS_ERR(suspend_clk))
+		return;
+
+	scale = DIV_ROUND_UP(clk_get_rate(suspend_clk), 16384);
 	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
 	reg &= ~(DWC3_GCTL_PWRDNSCALE_MASK);
 	reg |= DWC3_GCTL_PWRDNSCALE(scale);
@@ -1078,6 +1085,7 @@ static int dwc3_core_init(struct dwc3 *dwc)
 	 * out which kernel version a bug was found.
 	 */
 	dwc3_writel(dwc->regs, DWC3_GUID, LINUX_VERSION_CODE);
+
 	dwc3_set_power_down_clk_scale(dwc);
 
 	ret = dwc3_phy_setup(dwc);
@@ -1549,6 +1557,7 @@ static void dwc3_get_properties(struct dwc3 *dwc)
 
 	dwc->dis_split_quirk = device_property_read_bool(dev,
 				"snps,dis-split-quirk");
+
 	dwc->host_vbus_glitches = device_property_read_bool(dev,
 				"snps,host-vbus-glitches");
 

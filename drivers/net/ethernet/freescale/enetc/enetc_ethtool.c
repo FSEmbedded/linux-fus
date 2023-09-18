@@ -219,6 +219,7 @@ static const char tx_ring_stats[][ETH_GSTRING_LEN] = {
 	"Tx ring %2d frames",
 	"Tx ring %2d XDP frames",
 	"Tx ring %2d XDP drops",
+	"Tx window drop %2d frames",
 };
 
 static const char tx_windrop_stats[][ETH_GSTRING_LEN] = {
@@ -326,6 +327,7 @@ static void enetc_get_ethtool_stats(struct net_device *ndev,
 		data[o++] = priv->tx_ring[i]->stats.packets;
 		data[o++] = priv->tx_ring[i]->stats.xdp_tx;
 		data[o++] = priv->tx_ring[i]->stats.xdp_tx_drops;
+		data[o++] = priv->tx_ring[i]->stats.win_drop;
 	}
 
 	for (i = 0; i < priv->num_rx_rings; i++) {
@@ -350,12 +352,6 @@ static void enetc_get_ethtool_stats(struct net_device *ndev,
 
 	for (i = 0; i < ARRAY_SIZE(enetc_pmac_counters); i++)
 		data[o++] = enetc_port_rd(hw, enetc_pmac_counters[i].reg);
-
-	if (!((priv->active_offloads & ENETC_F_QBV)))
-		return;
-
-	for (i = 0; i < priv->num_tx_rings; i++)
-		data[o++] = priv->tx_ring[i]->stats.win_drop;
 }
 
 #define ENETC_RSSHASH_L3 (RXH_L2DA | RXH_VLAN | RXH_L3_PROTO | RXH_IP_SRC | \

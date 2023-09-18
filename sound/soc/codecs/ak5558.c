@@ -94,11 +94,6 @@ static const struct snd_kcontrol_new ak5552_snd_controls[] = {
 	SOC_ENUM("Digital Filter", ak5558_adcset_enum[0]),
 };
 
-static const struct snd_kcontrol_new ak5552_snd_controls[] = {
-	SOC_ENUM("AK5552 Monaural Mode", ak5552_mono_enum[0]),
-	SOC_ENUM("AK5552 Digital Filter", ak5558_adcset_enum[0]),
-};
-
 static const struct snd_soc_dapm_widget ak5558_dapm_widgets[] = {
 	/* Analog Input */
 	SND_SOC_DAPM_INPUT("AIN1"),
