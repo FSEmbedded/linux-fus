@@ -103,7 +103,7 @@ struct mmdc_pmu {
 	struct device *dev;
 	struct perf_event *mmdc_events[MMDC_NUM_COUNTERS];
 	struct hlist_node node;
-	const struct fsl_mmdc_devtype_data *devtype_data;
+	struct fsl_mmdc_devtype_data *devtype_data;
 	struct clk *mmdc_ipg_clk;
 };
 

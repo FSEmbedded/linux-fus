@@ -82,8 +82,14 @@ static int rcpm_pm_prepare(struct device *dev)
 		if (ret)
 			continue;
 
+		/*
+		 * For DT mode, would handle devices with "fsl,rcpm-wakeup"
+		 * pointing to the current RCPM node.
+		 *
+		 * For ACPI mode, currently we assume there is only one
+		 * RCPM controller existing.
+		 */
 		if (is_of_node(dev->fwnode))
-			/*  Should refer to current rcpm device */
 			if (np->phandle != value[0])
 				continue;
 

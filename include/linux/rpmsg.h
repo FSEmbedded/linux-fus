@@ -237,16 +237,6 @@ static inline struct rpmsg_endpoint *rpmsg_create_ept(struct rpmsg_device *rpdev
 	return NULL;
 }
 
-static inline struct rpmsg_endpoint *rpmsg_create_default_ept(struct rpmsg_device *rpdev,
-							      rpmsg_rx_cb_t cb, void *priv,
-							      struct rpmsg_channel_info chinfo)
-{
-	/* This shouldn't be possible */
-	WARN_ON(1);
-
-	return NULL;
-}
-
 static inline int rpmsg_send(struct rpmsg_endpoint *ept, void *data, int len)
 {
 	/* This shouldn't be possible */

@@ -67,6 +67,8 @@
 #include <net/sock.h>
 #include <net/scm.h>
 #include <net/netlink.h>
+#define CREATE_TRACE_POINTS
+#include <trace/events/netlink.h>
 
 #include "af_netlink.h"
 
@@ -146,6 +148,12 @@ static BLOCKING_NOTIFIER_HEAD(netlink_chain);
 
 
 static const struct rhashtable_params netlink_rhashtable_params;
+
+void do_trace_netlink_extack(const char *msg)
+{
+	trace_netlink_extack(msg);
+}
+EXPORT_SYMBOL(do_trace_netlink_extack);
 
 static inline u32 netlink_group_mask(u32 group)
 {
@@ -343,7 +351,7 @@ static void netlink_overrun(struct sock *sk)
 		if (!test_and_set_bit(NETLINK_S_CONGESTED,
 				      &nlk_sk(sk)->state)) {
 			sk->sk_err = ENOBUFS;
-			sk->sk_error_report(sk);
+			sk_error_report(sk);
 		}
 	}
 	atomic_inc(&sk->sk_drops);
@@ -586,7 +594,10 @@ static int netlink_insert(struct sock *sk, u32 portid)
 
 	/* We need to ensure that the socket is hashed and visible. */
 	smp_wmb();
-	nlk_sk(sk)->bound = portid;
+	/* Paired with lockless reads from netlink_bind(),
+	 * netlink_connect() and netlink_sendmsg().
+	 */
+	WRITE_ONCE(nlk_sk(sk)->bound, portid);
 
 err:
 	release_sock(sk);
@@ -1004,7 +1015,8 @@ static int netlink_bind(struct socket *sock, struct sockaddr *addr,
 	if (nlk->ngroups < BITS_PER_LONG)
 		groups &= (1UL << nlk->ngroups) - 1;
 
-	bound = nlk->bound;
+	/* Paired with WRITE_ONCE() in netlink_insert() */
+	bound = READ_ONCE(nlk->bound);
 	if (bound) {
 		/* Ensure nlk->portid is up-to-date. */
 		smp_rmb();
@@ -1013,7 +1025,6 @@ static int netlink_bind(struct socket *sock, struct sockaddr *addr,
 			return -EINVAL;
 	}
 
-	netlink_lock_table();
 	if (nlk->netlink_bind && groups) {
 		int group;
 
@@ -1025,13 +1036,14 @@ static int netlink_bind(struct socket *sock, struct sockaddr *addr,
 			if (!err)
 				continue;
 			netlink_undo_bind(group, groups, sk);
-			goto unlock;
+			return err;
 		}
 	}
 
 	/* No need for barriers here as we return to user-space without
 	 * using any of the bound attributes.
 	 */
+	netlink_lock_table();
 	if (!bound) {
 		err = nladdr->nl_pid ?
 			netlink_insert(sk, nladdr->nl_pid) :
@@ -1090,8 +1102,9 @@ static int netlink_connect(struct socket *sock, struct sockaddr *addr,
 
 	/* No need for barriers here as we return to user-space without
 	 * using any of the bound attributes.
+	 * Paired with WRITE_ONCE() in netlink_insert().
 	 */
-	if (!nlk->bound)
+	if (!READ_ONCE(nlk->bound))
 		err = netlink_autobind(sock);
 
 	if (err == 0) {
@@ -1568,7 +1581,7 @@ static int do_one_set_err(struct sock *sk, struct netlink_set_err_data *p)
 	}
 
 	sk->sk_err = p->code;
-	sk->sk_error_report(sk);
+	sk_error_report(sk);
 out:
 	return ret;
 }
@@ -1858,6 +1871,11 @@ static int netlink_sendmsg(struct socket *sock, struct msghdr *msg, size_t len)
 	if (msg->msg_flags & MSG_OOB)
 		return -EOPNOTSUPP;
 
+	if (len == 0) {
+		pr_warn_once("Zero length message leads to an empty skb\n");
+		return -ENODATA;
+	}
+
 	err = scm_send(sock, msg, &scm, true);
 	if (err < 0)
 		return err;
@@ -1880,7 +1898,8 @@ static int netlink_sendmsg(struct socket *sock, struct msghdr *msg, size_t len)
 		dst_group = nlk->dst_group;
 	}
 
-	if (!nlk->bound) {
+	/* Paired with WRITE_ONCE() in netlink_insert() */
+	if (!READ_ONCE(nlk->bound)) {
 		err = netlink_autobind(sock);
 		if (err)
 			goto out;
@@ -2004,7 +2023,7 @@ static int netlink_recvmsg(struct socket *sock, struct msghdr *msg, size_t len,
 		ret = netlink_dump(sk);
 		if (ret) {
 			sk->sk_err = -ret;
-			sk->sk_error_report(sk);
+			sk_error_report(sk);
 		}
 	}
 
@@ -2431,7 +2450,7 @@ void netlink_ack(struct sk_buff *in_skb, struct nlmsghdr *nlh, int err,
 	skb = nlmsg_new(payload + tlvlen, GFP_KERNEL);
 	if (!skb) {
 		NETLINK_CB(in_skb).sk->sk_err = ENOBUFS;
-		NETLINK_CB(in_skb).sk->sk_error_report(NETLINK_CB(in_skb).sk);
+		sk_error_report(NETLINK_CB(in_skb).sk);
 		return;
 	}
 
@@ -2463,7 +2482,7 @@ void netlink_ack(struct sk_buff *in_skb, struct nlmsghdr *nlh, int err,
 
 	nlmsg_end(skb, rep);
 
-	netlink_unicast(in_skb->sk, skb, NETLINK_CB(in_skb).portid, MSG_DONTWAIT);
+	nlmsg_unicast(in_skb->sk, skb, NETLINK_CB(in_skb).portid);
 }
 EXPORT_SYMBOL(netlink_ack);
 

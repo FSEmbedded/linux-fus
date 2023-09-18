@@ -12,6 +12,7 @@
 #include <linux/of_device.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
+#include <linux/pm_qos.h>
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/slab.h>
@@ -441,7 +442,14 @@ static int fsl_sai_set_bclk(struct snd_soc_dai *dai, bool tx, u32 freq)
 	if (sai->slave_mode[tx])
 		return 0;
 
-	for (id = 0; id < FSL_SAI_MCLK_MAX; id++) {
+	/*
+	 * There is no point in polling MCLK0 if it is identical to MCLK1.
+	 * And given that MQS use case has to use MCLK1 though two clocks
+	 * are the same, we simply skip MCLK0 and start to find from MCLK1.
+	 */
+	id = sai->soc_data->mclk0_is_mclk1 ? 1 : 0;
+
+	for (; id < FSL_SAI_MCLK_MAX; id++) {
 		clk_rate = clk_get_rate(sai->mclk_clk[id]);
 		if (!clk_rate)
 			continue;
@@ -932,8 +940,6 @@ static int fsl_sai_dai_probe(struct snd_soc_dai *cpu_dai)
 	snd_soc_dai_init_dma_data(cpu_dai, &sai->dma_params_tx,
 				&sai->dma_params_rx);
 
-	snd_soc_dai_set_drvdata(cpu_dai, sai);
-
 	return 0;
 }
 
@@ -1226,81 +1232,8 @@ static int fsl_sai_check_version(struct device *dev)
 	return 0;
 }
 
-static unsigned int fsl_sai_calc_dl_off(unsigned long dl_mask)
-{
-	int fbidx, nbidx, offset;
-
-	fbidx = find_first_bit(&dl_mask, 8);
-	nbidx = find_next_bit(&dl_mask, 8, fbidx + 1);
-	offset = nbidx - fbidx - 1;
-
-	return (offset < 0 || offset >= 7 ? 0 : offset);
-}
-
-static int fsl_sai_read_dlcfg(struct platform_device *pdev, char *pn,
-	struct fsl_sai_dl_cfg **rcfg, unsigned int soc_dl)
-{
-	int ret, elems, i, index, num_cfg;
-	struct device_node *np = pdev->dev.of_node;
-	struct fsl_sai_dl_cfg *cfg;
-	unsigned long dl_mask;
-	u32 rx, tx, pins;
-
-	*rcfg = NULL;
-
-	elems = of_property_count_u32_elems(np, pn);
-
-	/* consider default value "0 0x1 0x1" if property is missing */
-	if (elems <= 0)
-		elems = 3;
-
-	if (elems % 3) {
-		dev_err(&pdev->dev,
-			"Number of elements in %s must be divisible to 3.\n", pn);
-		return -EINVAL;
-	}
-
-	num_cfg = elems / 3;
-	cfg = devm_kzalloc(&pdev->dev, num_cfg * sizeof(*cfg), GFP_KERNEL);
-	if (cfg == NULL) {
-		dev_err(&pdev->dev, "Cannot allocate memory for %s.\n", pn);
-		return -ENOMEM;
-	}
-
-	for (i = 0, index = 0; i < num_cfg; i++) {
-		ret = of_property_read_u32_index(np, pn, index++, &pins);
-		if (ret)
-			pins = 0;
-
-		ret = of_property_read_u32_index(np, pn, index++, &rx);
-		if (ret)
-			rx = 1;
-
-		ret = of_property_read_u32_index(np, pn, index++, &tx);
-		if (ret)
-			tx = 1;
-
-		if ((rx & ~soc_dl) || (tx & ~soc_dl)) {
-			dev_err(&pdev->dev,
-				"%s: dataline cfg[%d] setting error, mask is 0x%x\n",
-				 pn, i, soc_dl);
-			return -EINVAL;
-		}
-
-		cfg[i].pins = pins;
-		cfg[i].mask[0] = rx;
-		dl_mask = rx;
-		cfg[i].start_off[0] = find_first_bit(&dl_mask, 8);
-		cfg[i].next_off[0] = fsl_sai_calc_dl_off(rx);
-		cfg[i].mask[1] = tx;
-		dl_mask = tx;
-		cfg[i].start_off[1] = find_first_bit(&dl_mask, 8);
-		cfg[i].next_off[1] = fsl_sai_calc_dl_off(tx);
-	}
-
-	*rcfg = cfg;
-	return num_cfg;
-}
+static int fsl_sai_runtime_suspend(struct device *dev);
+static int fsl_sai_runtime_resume(struct device *dev);
 
 static int fsl_sai_probe(struct platform_device *pdev)
 {
@@ -1321,8 +1254,7 @@ static int fsl_sai_probe(struct platform_device *pdev)
 
 	sai->is_lsb_first = of_property_read_bool(np, "lsb-first");
 
-	sai->res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	base = devm_ioremap_resource(&pdev->dev, sai->res);
+	base = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
 	if (IS_ERR(base))
 		return PTR_ERR(base);
 
@@ -1333,23 +1265,24 @@ static int fsl_sai_probe(struct platform_device *pdev)
 			ARRAY_SIZE(fsl_sai_reg_defaults_ofs8);
 	}
 
-	sai->regmap = devm_regmap_init_mmio_clk(&pdev->dev,
-			NULL, base, &fsl_sai_regmap_config);
+	sai->regmap = devm_regmap_init_mmio(&pdev->dev, base, &fsl_sai_regmap_config);
 	if (IS_ERR(sai->regmap)) {
 		dev_err(&pdev->dev, "regmap init failed\n");
 		return PTR_ERR(sai->regmap);
 	}
 
-	/* No error out for old DTB cases but only mark the clock NULL */
 	sai->bus_clk = devm_clk_get(&pdev->dev, "bus");
+	/* Compatible with old DTB cases */
+	if (IS_ERR(sai->bus_clk) && PTR_ERR(sai->bus_clk) != -EPROBE_DEFER)
+		sai->bus_clk = devm_clk_get(&pdev->dev, "sai");
 	if (IS_ERR(sai->bus_clk)) {
 		dev_err(&pdev->dev, "failed to get bus clock: %ld\n",
 				PTR_ERR(sai->bus_clk));
+		/* -EPROBE_DEFER */
 		return PTR_ERR(sai->bus_clk);
-		sai->bus_clk = NULL;
 	}
 
-	for (i = 0; i < FSL_SAI_MCLK_MAX; i++) {
+	for (i = 1; i < FSL_SAI_MCLK_MAX; i++) {
 		sprintf(tmp, "mclk%d", i);
 		sai->mclk_clk[i] = devm_clk_get(&pdev->dev, tmp);
 		if (IS_ERR(sai->mclk_clk[i])) {
@@ -1359,45 +1292,10 @@ static int fsl_sai_probe(struct platform_device *pdev)
 		}
 	}
 
-	sai->pll8k_clk = devm_clk_get(&pdev->dev, "pll8k");
-	if (IS_ERR(sai->pll8k_clk))
-		sai->pll8k_clk = NULL;
-
-	sai->pll11k_clk = devm_clk_get(&pdev->dev, "pll11k");
-	if (IS_ERR(sai->pll11k_clk))
-		sai->pll11k_clk = NULL;
-
-	if (of_find_property(np, "fsl,sai-multi-lane", NULL))
-		sai->is_multi_lane = true;
-
-	/*dataline mask for rx and tx*/
-	ret = fsl_sai_read_dlcfg(pdev, "fsl,dataline", &sai->pcm_dl_cfg,
-					sai->soc_data->dataline);
-	if (ret < 0)
-		return ret;
-
-	sai->pcm_dl_cfg_cnt = ret;
-
-	ret = fsl_sai_read_dlcfg(pdev, "fsl,dataline,dsd", &sai->dsd_dl_cfg,
-					sai->soc_data->dataline);
-	if (ret < 0)
-		return ret;
-
-	sai->dsd_dl_cfg_cnt = ret;
-
-	if ((of_find_property(np, "fsl,i2s-xtor", NULL) != NULL) ||
-	    (of_find_property(np, "fsl,txm-rxs", NULL) != NULL))
-	{
-		sai->masterflag[FSL_FMT_TRANSMITTER] = SND_SOC_DAIFMT_CBS_CFS;
-		sai->masterflag[FSL_FMT_RECEIVER] = SND_SOC_DAIFMT_CBM_CFM;
-	} else {
-		if (!of_property_read_u32(np, "fsl,txmasterflag",
-			&sai->masterflag[FSL_FMT_TRANSMITTER]))
-			sai->masterflag[FSL_FMT_TRANSMITTER] <<= 12;
-		if (!of_property_read_u32(np, "fsl,rxmasterflag",
-			&sai->masterflag[FSL_FMT_RECEIVER]))
-			sai->masterflag[FSL_FMT_RECEIVER] <<= 12;
-	}
+	if (sai->soc_data->mclk0_is_mclk1)
+		sai->mclk_clk[0] = sai->mclk_clk[1];
+	else
+		sai->mclk_clk[0] = sai->bus_clk;
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
@@ -1416,9 +1314,9 @@ static int fsl_sai_probe(struct platform_device *pdev)
 	/* Sync Tx with Rx as default by following old DT binding */
 	sai->synchronous[RX] = true;
 	sai->synchronous[TX] = false;
-	sai->cpu_dai_drv.symmetric_rates = 1;
+	sai->cpu_dai_drv.symmetric_rate = 1;
 	sai->cpu_dai_drv.symmetric_channels = 1;
-	sai->cpu_dai_drv.symmetric_samplebits = 1;
+	sai->cpu_dai_drv.symmetric_sample_bits = 1;
 
 	if (of_find_property(np, "fsl,sai-synchronous-rx", NULL) &&
 	    of_find_property(np, "fsl,sai-asynchronous", NULL)) {
@@ -1435,9 +1333,9 @@ static int fsl_sai_probe(struct platform_device *pdev)
 		/* Discard all settings for asynchronous mode */
 		sai->synchronous[RX] = false;
 		sai->synchronous[TX] = false;
-		sai->cpu_dai_drv.symmetric_rates = 0;
+		sai->cpu_dai_drv.symmetric_rate = 0;
 		sai->cpu_dai_drv.symmetric_channels = 0;
-		sai->cpu_dai_drv.symmetric_samplebits = 0;
+		sai->cpu_dai_drv.symmetric_sample_bits = 0;
 	}
 
 	if (of_find_property(np, "fsl,sai-mclk-direction-output", NULL) &&
@@ -1465,7 +1363,17 @@ static int fsl_sai_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, sai);
 	pm_runtime_enable(&pdev->dev);
-	pm_runtime_get_sync(&pdev->dev);
+	if (!pm_runtime_enabled(&pdev->dev)) {
+		ret = fsl_sai_runtime_resume(&pdev->dev);
+		if (ret)
+			goto err_pm_disable;
+	}
+
+	ret = pm_runtime_get_sync(&pdev->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(&pdev->dev);
+		goto err_pm_get_sync;
+	}
 
 	/* Get sai version */
 	ret = fsl_sai_check_version(&pdev->dev);
@@ -1479,54 +1387,34 @@ static int fsl_sai_probe(struct platform_device *pdev)
 				   FSL_SAI_MCTL_MCLK_EN, FSL_SAI_MCTL_MCLK_EN);
 	}
 
-	if (sai->verid.feature & FSL_SAI_VERID_TSTMP_EN) {
-		if (of_find_property(np, "fsl,sai-monitor-spdif", NULL) &&
-		    of_device_is_compatible(np, "fsl,imx8mm-sai")) {
-			sai->regmap_gpr = syscon_regmap_lookup_by_compatible("fsl,imx8mm-iomuxc-gpr");
-			if (IS_ERR(sai->regmap_gpr))
-				dev_warn(&pdev->dev, "cannot find iomuxc registers\n");
+	ret = pm_runtime_put_sync(&pdev->dev);
+	if (ret < 0)
+		goto err_pm_get_sync;
 
-			sai->gpr_idx = of_alias_get_id(np, "sai");
-			if (sai->gpr_idx < 0)
-				dev_warn(&pdev->dev, "cannot find sai alias id\n");
-
-			if (sai->gpr_idx > 0 && !IS_ERR(sai->regmap_gpr))
-				sai->monitor_spdif = true;
-		}
-
-		ret = sysfs_create_group(&pdev->dev.kobj,
-					 fsl_sai_get_dev_attribute_group(sai->monitor_spdif));
-		if (ret) {
-			dev_err(&pdev->dev, "fail to create sys group\n");
-			goto err_pm_disable;
-		}
+	/*
+	 * Register platform component before registering cpu dai for there
+	 * is not defer probe for platform component in snd_soc_add_pcm_runtime().
+	 */
+	if (sai->soc_data->use_imx_pcm) {
+		ret = imx_pcm_dma_init(pdev, IMX_SAI_DMABUF_SIZE);
+		if (ret)
+			goto err_pm_get_sync;
+	} else {
+		ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
+		if (ret)
+			goto err_pm_get_sync;
 	}
-
-	pm_runtime_put_sync(&pdev->dev);
-	regcache_cache_only(sai->regmap, true);
 
 	ret = devm_snd_soc_register_component(&pdev->dev, &fsl_component,
 					      &sai->cpu_dai_drv, 1);
 	if (ret)
-		goto err_component_register;
-
-	if (sai->soc_data->use_imx_pcm) {
-		ret = imx_pcm_dma_init(pdev, IMX_SAI_DMABUF_SIZE);
-		if (ret)
-			goto err_component_register;
-	} else {
-		ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
-		if (ret)
-			goto err_component_register;
-	}
+		goto err_pm_get_sync;
 
 	return ret;
 
-err_component_register:
-	if (sai->verid.feature & FSL_SAI_VERID_TSTMP_EN)
-		sysfs_remove_group(&pdev->dev.kobj,
-				   fsl_sai_get_dev_attribute_group(sai->monitor_spdif));
-
+err_pm_get_sync:
+	if (!pm_runtime_status_suspended(&pdev->dev))
+		fsl_sai_runtime_suspend(&pdev->dev);
 err_pm_disable:
 	pm_runtime_disable(&pdev->dev);
 
@@ -1538,6 +1426,8 @@ static int fsl_sai_remove(struct platform_device *pdev)
 	struct fsl_sai *sai = dev_get_drvdata(&pdev->dev);
 
 	pm_runtime_disable(&pdev->dev);
+	if (!pm_runtime_status_suspended(&pdev->dev))
+		fsl_sai_runtime_suspend(&pdev->dev);
 
 	if (sai->verid.feature & FSL_SAI_VERID_TSTMP_EN)
 		sysfs_remove_group(&pdev->dev.kobj,  fsl_sai_get_dev_attribute_group(sai->monitor_spdif));
@@ -1550,10 +1440,8 @@ static const struct fsl_sai_soc_data fsl_sai_vf610_data = {
 	.use_edma = false,
 	.fifo_depth = 32,
 	.reg_offset = 0,
-	.dataline = 0x1,
-	.fifos = 1,
+	.mclk0_is_mclk1 = false,
 	.flags = 0,
-	.max_register = FSL_SAI_RMR,
 };
 
 static const struct fsl_sai_soc_data fsl_sai_imx6sx_data = {
@@ -1561,10 +1449,8 @@ static const struct fsl_sai_soc_data fsl_sai_imx6sx_data = {
 	.use_edma = false,
 	.fifo_depth = 32,
 	.reg_offset = 0,
-	.dataline = 0x1,
-	.fifos = 1,
+	.mclk0_is_mclk1 = true,
 	.flags = 0,
-	.max_register = FSL_SAI_RMR,
 };
 
 static const struct fsl_sai_soc_data fsl_sai_imx7ulp_data = {
@@ -1572,10 +1458,8 @@ static const struct fsl_sai_soc_data fsl_sai_imx7ulp_data = {
 	.use_edma = false,
 	.fifo_depth = 16,
 	.reg_offset = 8,
-	.dataline = 0x3,
-	.fifos = 2,
-	.flags = SAI_FLAG_PMQOS,
-	.max_register = FSL_SAI_RMR,
+	.mclk0_is_mclk1 = false,
+	.flags = PMQOS_CPU_LATENCY,
 };
 
 static const struct fsl_sai_soc_data fsl_sai_imx8mq_data = {
@@ -1583,10 +1467,8 @@ static const struct fsl_sai_soc_data fsl_sai_imx8mq_data = {
 	.use_edma = false,
 	.fifo_depth = 128,
 	.reg_offset = 8,
-	.dataline = 0xff,
-	.fifos = 8,
+	.mclk0_is_mclk1 = false,
 	.flags = 0,
-	.max_register = FSL_SAI_RMR,
 };
 
 static const struct fsl_sai_soc_data fsl_sai_imx8qm_data = {
@@ -1594,43 +1476,8 @@ static const struct fsl_sai_soc_data fsl_sai_imx8qm_data = {
 	.use_edma = true,
 	.fifo_depth = 64,
 	.reg_offset = 0,
-	.dataline = 0xf,
-	.fifos = 1,
+	.mclk0_is_mclk1 = false,
 	.flags = 0,
-	.max_register = FSL_SAI_RMR,
-};
-
-static const struct fsl_sai_soc_data fsl_sai_imx8mm_data = {
-	.use_imx_pcm = true,
-	.use_edma = false,
-	.fifo_depth = 128,
-	.reg_offset = 8,
-	.dataline = 0xff,
-	.fifos = 8,
-	.flags = 0,
-	.max_register = FSL_SAI_MCTL,
-};
-
-static const struct fsl_sai_soc_data fsl_sai_imx8mp_data = {
-	.use_imx_pcm = true,
-	.use_edma = false,
-	.fifo_depth = 128,
-	.reg_offset = 8,
-	.dataline = 0xff,
-	.fifos = 8,
-	.flags = 0,
-	.max_register = FSL_SAI_MDIV,
-};
-
-static const struct fsl_sai_soc_data fsl_sai_imx8ulp_data = {
-	.use_imx_pcm = true,
-	.use_edma = true,
-	.fifo_depth = 16,
-	.reg_offset = 8,
-	.dataline = 0xf,
-	.fifos = 4,
-	.flags = SAI_FLAG_PMQOS,
-	.max_register = FSL_SAI_RTCAP,
 };
 
 static const struct of_device_id fsl_sai_ids[] = {
@@ -1647,7 +1494,6 @@ static const struct of_device_id fsl_sai_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, fsl_sai_ids);
 
-#ifdef CONFIG_PM
 static int fsl_sai_runtime_suspend(struct device *dev)
 {
 	struct fsl_sai *sai = dev_get_drvdata(dev);
@@ -1662,7 +1508,7 @@ static int fsl_sai_runtime_suspend(struct device *dev)
 
 	clk_disable_unprepare(sai->bus_clk);
 
-	if (sai->soc_data->flags & SAI_FLAG_PMQOS)
+	if (sai->soc_data->flags & PMQOS_CPU_LATENCY)
 		cpu_latency_qos_remove_request(&sai->pm_qos_req);
 
 	regcache_cache_only(sai->regmap, true);
@@ -1694,11 +1540,8 @@ static int fsl_sai_runtime_resume(struct device *dev)
 			goto disable_tx_clk;
 	}
 
-	request_bus_freq(BUS_FREQ_AUDIO);
-
-	if (sai->soc_data->flags & SAI_FLAG_PMQOS)
+	if (sai->soc_data->flags & PMQOS_CPU_LATENCY)
 		cpu_latency_qos_add_request(&sai->pm_qos_req, 0);
-
 
 	regcache_cache_only(sai->regmap, false);
 	regcache_mark_dirty(sai->regmap);
@@ -1725,7 +1568,6 @@ disable_bus_clk:
 
 	return ret;
 }
-#endif /* CONFIG_PM */
 
 static const struct dev_pm_ops fsl_sai_pm_ops = {
 	SET_RUNTIME_PM_OPS(fsl_sai_runtime_suspend,

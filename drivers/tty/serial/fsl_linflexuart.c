@@ -508,24 +508,23 @@ static irqreturn_t linflex_rxint(int irq, void *dev_id)
 		flg = TTY_NORMAL;
 		sport->port.icount.rx++;
 
-		if (status & (LINFLEXD_UARTSR_BOF | LINFLEXD_UARTSR_SZF |
-			      LINFLEXD_UARTSR_FEF | LINFLEXD_UARTSR_PE)) {
-			if (status & LINFLEXD_UARTSR_SZF)
-				status |= LINFLEXD_UARTSR_SZF;
+		if (status & (LINFLEXD_UARTSR_BOF | LINFLEXD_UARTSR_FEF |
+				LINFLEXD_UARTSR_PE)) {
 			if (status & LINFLEXD_UARTSR_BOF)
-				status |= LINFLEXD_UARTSR_BOF;
+				sport->icount.overrun++;
 			if (status & LINFLEXD_UARTSR_FEF) {
-				if (!rx)
+				if (!rx) {
 					brk = true;
-				status |= LINFLEXD_UARTSR_FEF;
+					sport->icount.brk++;
+				} else
+					sport->icount.frame++;
 			}
 			if (status & LINFLEXD_UARTSR_PE)
-				status |=  LINFLEXD_UARTSR_PE;
+				sport->icount.parity++;
 		}
 
-		writel(status | LINFLEXD_UARTSR_RMB | LINFLEXD_UARTSR_DRFRFE,
-		       sport->port.membase + UARTSR);
-		status = readl(sport->port.membase + UARTSR);
+		writel(status, sport->membase + UARTSR);
+		status = readl(sport->membase + UARTSR);
 
 		if (brk) {
 			uart_handle_break(&sport->port);
@@ -1347,49 +1346,19 @@ static int linflex_probe(struct platform_device *pdev)
 	if (IS_ERR(sport->port.membase))
 		return PTR_ERR(sport->port.membase);
 
-	sport->port.dev = &pdev->dev;
-	sport->port.type = PORT_LINFLEXUART;
-	sport->port.iotype = UPIO_MEM;
-	sport->port.irq = platform_get_irq(pdev, 0);
-	sport->port.ops = &linflex_pops;
-	sport->port.flags = UPF_BOOT_AUTOCONF;
-	sport->port.has_sysrq =
-		IS_ENABLED(CONFIG_SERIAL_FSL_LINFLEXUART_CONSOLE);
-	sport->clk = devm_clk_get(&pdev->dev, "lin");
-	if (IS_ERR(sport->clk)) {
-		ret = PTR_ERR(sport->clk);
-		dev_err(&pdev->dev, "failed to get uart clk: %d\n", ret);
-		return ret;
-	}
+	sport->dev = &pdev->dev;
+	sport->type = PORT_LINFLEXUART;
+	sport->iotype = UPIO_MEM;
+	sport->irq = platform_get_irq(pdev, 0);
+	sport->ops = &linflex_pops;
+	sport->flags = UPF_BOOT_AUTOCONF;
+	sport->has_sysrq = IS_ENABLED(CONFIG_SERIAL_FSL_LINFLEXUART_CONSOLE);
 
-	ret = clk_prepare_enable(sport->clk);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to enable uart clk: %d\n", ret);
-		return ret;
-	}
+	linflex_ports[sport->line] = sport;
 
-	sport->port.uartclk = clk_get_rate(sport->clk);
-	linflex_ports[sport->port.line] = sport;
+	platform_set_drvdata(pdev, sport);
 
-	platform_set_drvdata(pdev, &sport->port);
-
-	ret = uart_add_one_port(&linflex_reg, &sport->port);
-	if (ret) {
-		clk_disable_unprepare(sport->clk);
-		return ret;
-	}
-
-	sport->dma_tx_chan = dma_request_slave_channel(sport->port.dev, "tx");
-	if (!sport->dma_tx_chan)
-		dev_info(sport->port.dev,
-			"DMA tx channel request failed, operating without tx DMA\n");
-
-	sport->dma_rx_chan = dma_request_slave_channel(sport->port.dev, "rx");
-	if (!sport->dma_rx_chan)
-		dev_info(sport->port.dev,
-			"DMA rx channel request failed, operating without rx DMA\n");
-
-	return 0;
+	return uart_add_one_port(&linflex_reg, sport);
 }
 
 static int linflex_remove(struct platform_device *pdev)

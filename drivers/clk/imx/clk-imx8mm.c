@@ -291,36 +291,13 @@ static const char *imx8mm_clko1_sels[] = {"osc_24m", "sys_pll1_800m", "dummy", "
 static const char *imx8mm_clko2_sels[] = {"osc_24m", "sys_pll2_200m", "sys_pll1_400m", "sys_pll2_166m",
 					  "sys_pll3_out", "audio_pll1_out", "video_pll1_out", "osc_32k", };
 
+static const char * const clkout_sels[] = {"audio_pll1_out", "audio_pll2_out", "video_pll1_out",
+					   "dummy", "dummy", "gpu_pll_out", "vpu_pll_out",
+					   "arm_pll_out", "sys_pll1", "sys_pll2", "sys_pll3",
+					   "dummy", "dummy", "osc_24m", "dummy", "osc_32k"};
+
 static struct clk_hw_onecell_data *clk_hw_data;
 static struct clk_hw **hws;
-
-static int imx_clk_init_on(struct device_node *np,
-				  struct clk_hw * const clks[])
-{
-	u32 *array;
-	int i, ret, elems;
-
-	elems = of_property_count_u32_elems(np, "init-on-array");
-	if (elems < 0)
-		return elems;
-	array = kcalloc(elems, sizeof(elems), GFP_KERNEL);
-	if (!array)
-		return -ENOMEM;
-
-	ret = of_property_read_u32_array(np, "init-on-array", array, elems);
-	if (ret)
-		return ret;
-
-	for (i = 0; i < elems; i++) {
-		ret = clk_prepare_enable(clks[array[i]]->clk);
-		if (ret)
-			pr_err("clk_prepare_enable failed %d\n", array[i]);
-	}
-
-	kfree(array);
-
-	return 0;
-}
 
 static int imx8mm_clocks_probe(struct platform_device *pdev)
 {
@@ -328,8 +305,6 @@ static int imx8mm_clocks_probe(struct platform_device *pdev)
 	struct device_node *np = dev->of_node;
 	void __iomem *base;
 	int ret;
-
-	check_m4_enabled();
 
 	clk_hw_data = kzalloc(struct_size(clk_hw_data, hws,
 					  IMX8MM_CLK_END), GFP_KERNEL);
@@ -418,6 +393,13 @@ static int imx8mm_clocks_probe(struct platform_device *pdev)
 	hws[IMX8MM_SYS_PLL2_333M] = imx_clk_hw_fixed_factor("sys_pll2_333m", "sys_pll2_out", 1, 3);
 	hws[IMX8MM_SYS_PLL2_500M] = imx_clk_hw_fixed_factor("sys_pll2_500m", "sys_pll2_out", 1, 2);
 	hws[IMX8MM_SYS_PLL2_1000M] = imx_clk_hw_fixed_factor("sys_pll2_1000m", "sys_pll2_out", 1, 1);
+
+	hws[IMX8MM_CLK_CLKOUT1_SEL] = imx_clk_hw_mux2("clkout1_sel", base + 0x128, 4, 4, clkout_sels, ARRAY_SIZE(clkout_sels));
+	hws[IMX8MM_CLK_CLKOUT1_DIV] = imx_clk_hw_divider("clkout1_div", "clkout1_sel", base + 0x128, 0, 4);
+	hws[IMX8MM_CLK_CLKOUT1] = imx_clk_hw_gate("clkout1", "clkout1_div", base + 0x128, 8);
+	hws[IMX8MM_CLK_CLKOUT2_SEL] = imx_clk_hw_mux2("clkout2_sel", base + 0x128, 20, 4, clkout_sels, ARRAY_SIZE(clkout_sels));
+	hws[IMX8MM_CLK_CLKOUT2_DIV] = imx_clk_hw_divider("clkout2_div", "clkout2_sel", base + 0x128, 16, 4);
+	hws[IMX8MM_CLK_CLKOUT2] = imx_clk_hw_gate("clkout2", "clkout2_div", base + 0x128, 24);
 
 	np = dev->of_node;
 	base = devm_platform_ioremap_resource(pdev, 0);
@@ -632,12 +614,6 @@ static int imx8mm_clocks_probe(struct platform_device *pdev)
 		goto unregister_hws;
 	}
 
-	imx_clk_init_on(np, hws);
-
-	clk_set_parent(hws[IMX8MM_CLK_CSI1_CORE]->clk, hws[IMX8MM_SYS_PLL2_1000M]->clk);
-	clk_set_parent(hws[IMX8MM_CLK_CSI1_PHY_REF]->clk, hws[IMX8MM_SYS_PLL2_1000M]->clk);
-	clk_set_parent(hws[IMX8MM_CLK_CSI1_ESC]->clk, hws[IMX8MM_SYS_PLL1_800M]->clk);
-
 	imx_register_uart_clocks(4);
 
 	return 0;
@@ -663,7 +639,7 @@ static struct platform_driver imx8mm_clk_driver = {
 		 * reloading the driver will crash or break devices.
 		 */
 		.suppress_bind_attrs = true,
-		.of_match_table = of_match_ptr(imx8mm_clk_of_match),
+		.of_match_table = imx8mm_clk_of_match,
 	},
 };
 module_platform_driver(imx8mm_clk_driver);

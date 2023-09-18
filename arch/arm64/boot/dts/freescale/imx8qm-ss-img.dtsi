@@ -1,16 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2019 NXP
+ * Copyright 2021 NXP
  */
 
-&pi0_pxl_lpcg {
-	status = "disabled";
+&jpegdec {
+	compatible = "nxp,imx8qm-jpgdec", "nxp,imx8qxp-jpgdec";
 };
 
-&pi0_ipg_lpcg {
-	status = "disabled";
-};
-
-&pi0_misc_lpcg {
-	status = "disabled";
+&jpegenc {
+	compatible = "nxp,imx8qm-jpgdec", "nxp,imx8qxp-jpgenc";
 };

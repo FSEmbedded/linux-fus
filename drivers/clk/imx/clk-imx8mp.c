@@ -658,14 +658,6 @@ static const char * const imx8mp_memrepair_sels[] = {"osc_24m", "sys_pll2_100m",
 							"sys_pll1_800m", "sys_pll2_1000m", "sys_pll3_out",
 							"clk_ext3", "audio_pll2_out", };
 
-static const char * const imx8mp_pcie2_ctrl_sels[] = {"osc_24m", "sys_pll2_250m", "sys_pll2_200m",
-						      "sys_pll1_266m", "sys_pll1_800m", "sys_pll2_500m",
-						      "sys_pll2_333m", "sys_pll3_out", };
-
-static const char * const imx8mp_pcie2_phy_sels[] = {"osc_24m", "sys_pll2_100m", "sys_pll2_500m",
-						     "clk_ext1", "clk_ext2", "clk_ext3",
-						     "clk_ext4", "sys_pll1_400m", };
-
 static const char * const imx8mp_media_mipi_test_byte_sels[] = {"osc_24m", "sys_pll2_200m", "sys_pll2_50m",
 								"sys_pll3_out", "sys_pll2_100m",
 								"sys_pll1_80m", "sys_pll1_160m",
@@ -692,41 +684,11 @@ static const char * const imx8mp_dram_core_sels[] = {"dram_pll_out", "dram_alt_r
 static struct clk_hw **hws;
 static struct clk_hw_onecell_data *clk_hw_data;
 
-static int imx_clk_init_on(struct device_node *np,
-				  struct clk_hw * const clks[])
-{
-	u32 *array;
-	int i, ret, elems;
-
-	elems = of_property_count_u32_elems(np, "init-on-array");
-	if (elems < 0)
-		return elems;
-	array = kcalloc(elems, sizeof(elems), GFP_KERNEL);
-	if (!array)
-		return -ENOMEM;
-
-	ret = of_property_read_u32_array(np, "init-on-array", array, elems);
-	if (ret)
-		return ret;
-
-	for (i = 0; i < elems; i++) {
-		ret = clk_prepare_enable(clks[array[i]]->clk);
-		if (ret)
-			pr_err("clk_prepare_enable failed %d\n", array[i]);
-	}
-
-	kfree(array);
-
-	return 0;
-}
-
 static int imx8mp_clocks_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct device_node *np = dev->of_node;
+	struct device_node *np;
 	void __iomem *anatop_base, *ccm_base;
-
-	check_m4_enabled();
 
 	np = of_find_compatible_node(NULL, NULL, "fsl,imx8mp-anatop");
 	anatop_base = of_iomap(np, 0);
@@ -925,8 +887,6 @@ static int imx8mp_clocks_probe(struct platform_device *pdev)
 	hws[IMX8MP_CLK_MEDIA_CAM2_PIX] = imx8m_clk_hw_composite("media_cam2_pix", imx8mp_media_cam2_pix_sels, ccm_base + 0xbe80);
 	hws[IMX8MP_CLK_MEDIA_LDB] = imx8m_clk_hw_composite("media_ldb", imx8mp_media_ldb_sels, ccm_base + 0xbf00);
 	hws[IMX8MP_CLK_MEMREPAIR] = imx8m_clk_hw_composite_critical("mem_repair", imx8mp_memrepair_sels, ccm_base + 0xbf80);
-	hws[IMX8MP_CLK_PCIE2_CTRL] = imx8m_clk_hw_composite("pcie2_ctrl", imx8mp_pcie2_ctrl_sels, ccm_base + 0xc000);
-	hws[IMX8MP_CLK_PCIE2_PHY] = imx8m_clk_hw_composite("pcie2_phy", imx8mp_pcie2_phy_sels, ccm_base + 0xc080);
 	hws[IMX8MP_CLK_MEDIA_MIPI_TEST_BYTE] = imx8m_clk_hw_composite("media_mipi_test_byte", imx8mp_media_mipi_test_byte_sels, ccm_base + 0xc100);
 	hws[IMX8MP_CLK_ECSPI3] = imx8m_clk_hw_composite("ecspi3", imx8mp_ecspi3_sels, ccm_base + 0xc180);
 	hws[IMX8MP_CLK_PDM] = imx8m_clk_hw_composite("pdm", imx8mp_pdm_sels, ccm_base + 0xc200);
@@ -1029,8 +989,6 @@ static int imx8mp_clocks_probe(struct platform_device *pdev)
 
 	of_clk_add_hw_provider(np, of_clk_hw_onecell_get, clk_hw_data);
 
-	imx_clk_init_on(np, hws);
-
 	imx_register_uart_clocks(4);
 
 	return 0;
@@ -1051,7 +1009,7 @@ static struct platform_driver imx8mp_clk_driver = {
 		 * reloading the driver will crash or break devices.
 		 */
 		.suppress_bind_attrs = true,
-		.of_match_table = of_match_ptr(imx8mp_clk_of_match),
+		.of_match_table = imx8mp_clk_of_match,
 	},
 };
 module_platform_driver(imx8mp_clk_driver);

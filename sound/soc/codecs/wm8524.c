@@ -229,8 +229,7 @@ static int wm8524_codec_probe(struct platform_device *pdev)
 	wm8524->mute = devm_gpiod_get(&pdev->dev, "wlf,mute", GPIOD_OUT_LOW);
 	if (IS_ERR(wm8524->mute)) {
 		ret = PTR_ERR(wm8524->mute);
-		if (ret != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "Failed to get mute line: %d\n", ret);
+		dev_err_probe(&pdev->dev, ret, "Failed to get mute line\n");
 		return ret;
 	}
 

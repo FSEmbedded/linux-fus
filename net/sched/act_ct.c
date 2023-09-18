@@ -183,6 +183,7 @@ static void tcf_ct_flow_table_add_action_meta(struct nf_conn *ct,
 					     IP_CT_ESTABLISHED_REPLY;
 	/* aligns with the CT reference on the SKB nf_ct_set */
 	entry->ct_metadata.cookie = (unsigned long)ct | ctinfo;
+	entry->ct_metadata.orig_dir = dir == IP_CT_DIR_ORIGINAL;
 
 	act_ct_labels = entry->ct_metadata.labels;
 	ct_labels = nf_ct_labels_find(ct);
@@ -296,7 +297,8 @@ static int tcf_ct_flow_table_get(struct tcf_ct_params *params)
 		goto err_insert;
 
 	ct_ft->nf_ft.type = &flowtable_ct;
-	ct_ft->nf_ft.flags |= NF_FLOWTABLE_HW_OFFLOAD;
+	ct_ft->nf_ft.flags |= NF_FLOWTABLE_HW_OFFLOAD |
+			      NF_FLOWTABLE_COUNTER;
 	err = nf_flow_table_init(&ct_ft->nf_ft);
 	if (err)
 		goto err_init;
@@ -514,11 +516,6 @@ static bool tcf_ct_flow_table_lookup(struct tcf_ct_params *p,
 	struct nf_conn *ct;
 	u8 dir;
 
-	/* Previously seen or loopback */
-	ct = nf_ct_get(skb, &ctinfo);
-	if ((ct && !nf_ct_is_template(ct)) || ctinfo == IP_CT_UNTRACKED)
-		return false;
-
 	switch (family) {
 	case NFPROTO_IPV4:
 		if (!tcf_ct_flow_table_fill_tuple_ipv4(skb, &tuple, &tcph))
@@ -551,7 +548,8 @@ static bool tcf_ct_flow_table_lookup(struct tcf_ct_params *p,
 	flow_offload_refresh(nf_ft, flow);
 	nf_conntrack_get(&ct->ct_general);
 	nf_ct_set(skb, ct, ctinfo);
-	nf_ct_acct_update(ct, dir, skb->len);
+	if (nf_ft->flags & NF_FLOWTABLE_COUNTER)
+		nf_ct_acct_update(ct, dir, skb->len);
 
 	return true;
 }
@@ -687,10 +685,10 @@ static int tcf_ct_handle_fragments(struct net *net, struct sk_buff *skb,
 				   u8 family, u16 zone, bool *defrag)
 {
 	enum ip_conntrack_info ctinfo;
-	struct qdisc_skb_cb cb;
 	struct nf_conn *ct;
 	int err = 0;
 	bool frag;
+	u16 mru;
 
 	/* Previously seen (loopback)? Ignore. */
 	ct = nf_ct_get(skb, &ctinfo);
@@ -705,7 +703,7 @@ static int tcf_ct_handle_fragments(struct net *net, struct sk_buff *skb,
 		return err;
 
 	skb_get(skb);
-	cb = *qdisc_skb_cb(skb);
+	mru = tc_skb_cb(skb)->mru;
 
 	if (family == NFPROTO_IPV4) {
 		enum ip_defrag_users user = IP_DEFRAG_CONNTRACK_IN + zone;
@@ -719,7 +717,7 @@ static int tcf_ct_handle_fragments(struct net *net, struct sk_buff *skb,
 
 		if (!err) {
 			*defrag = true;
-			cb.mru = IPCB(skb)->frag_max_size;
+			mru = IPCB(skb)->frag_max_size;
 		}
 	} else { /* NFPROTO_IPV6 */
 #if IS_ENABLED(CONFIG_NF_DEFRAG_IPV6)
@@ -732,7 +730,7 @@ static int tcf_ct_handle_fragments(struct net *net, struct sk_buff *skb,
 
 		if (!err) {
 			*defrag = true;
-			cb.mru = IP6CB(skb)->frag_max_size;
+			mru = IP6CB(skb)->frag_max_size;
 		}
 #else
 		err = -EOPNOTSUPP;
@@ -740,7 +738,8 @@ static int tcf_ct_handle_fragments(struct net *net, struct sk_buff *skb,
 #endif
 	}
 
-	*qdisc_skb_cb(skb) = cb;
+	if (err != -EINPROGRESS)
+		tc_skb_cb(skb)->mru = mru;
 	skb_clear_hash(skb);
 	skb->ignore_df = 1;
 	return err;
@@ -835,6 +834,12 @@ static int ct_nat_execute(struct sk_buff *skb, struct nf_conn *ct,
 	}
 
 	err = nf_nat_packet(ct, ctinfo, hooknum, skb);
+	if (err == NF_ACCEPT) {
+		if (maniptype == NF_NAT_MANIP_SRC)
+			tc_skb_cb(skb)->post_ct_snat = 1;
+		if (maniptype == NF_NAT_MANIP_DST)
+			tc_skb_cb(skb)->post_ct_dnat = 1;
+	}
 out:
 	return err;
 }
@@ -956,15 +961,17 @@ static int tcf_ct_act(struct sk_buff *skb, const struct tc_action *a,
 	tmpl = p->tmpl;
 
 	tcf_lastuse_update(&c->tcf_tm);
+	tcf_action_update_bstats(&c->common, skb);
 
 	if (clear) {
+		tc_skb_cb(skb)->post_ct = false;
 		ct = nf_ct_get(skb, &ctinfo);
 		if (ct) {
 			nf_conntrack_put(&ct->ct_general);
 			nf_ct_set(skb, NULL, IP_CT_UNTRACKED);
 		}
 
-		goto out;
+		goto out_clear;
 	}
 
 	family = tcf_ct_skb_nf_family(skb);
@@ -979,7 +986,7 @@ static int tcf_ct_act(struct sk_buff *skb, const struct tc_action *a,
 	err = tcf_ct_handle_fragments(net, skb, family, p->zone, &defrag);
 	if (err == -EINPROGRESS) {
 		retval = TC_ACT_STOLEN;
-		goto out;
+		goto out_clear;
 	}
 	if (err)
 		goto drop;
@@ -1002,9 +1009,7 @@ static int tcf_ct_act(struct sk_buff *skb, const struct tc_action *a,
 
 		/* Associate skb with specified zone. */
 		if (tmpl) {
-			ct = nf_ct_get(skb, &ctinfo);
-			if (skb_nfct(skb))
-				nf_conntrack_put(skb_nfct(skb));
+			nf_conntrack_put(skb_nfct(skb));
 			nf_conntrack_get(&tmpl->ct_general);
 			nf_ct_set(skb, tmpl, IP_CT_NEW);
 		}
@@ -1044,8 +1049,9 @@ do_nat:
 out_push:
 	skb_push_rcsum(skb, nh_ofs);
 
-out:
-	tcf_action_update_bstats(&c->common, skb);
+	tc_skb_cb(skb)->post_ct = true;
+	tc_skb_cb(skb)->zone = p->zone;
+out_clear:
 	if (defrag)
 		qdisc_skb_cb(skb)->pkt_len = skb->len;
 	return retval;
@@ -1231,11 +1237,11 @@ static int tcf_ct_fill_params(struct net *net,
 
 static int tcf_ct_init(struct net *net, struct nlattr *nla,
 		       struct nlattr *est, struct tc_action **a,
-		       int replace, int bind, bool rtnl_held,
 		       struct tcf_proto *tp, u32 flags,
 		       struct netlink_ext_ack *extack)
 {
 	struct tc_action_net *tn = net_generic(net, ct_net_id);
+	bool bind = flags & TCA_ACT_FLAGS_BIND;
 	struct tcf_ct_params *params = NULL;
 	struct nlattr *tb[TCA_CT_MAX + 1];
 	struct tcf_chain *goto_ch = NULL;
@@ -1275,7 +1281,7 @@ static int tcf_ct_init(struct net *net, struct nlattr *nla,
 		if (bind)
 			return 0;
 
-		if (!replace) {
+		if (!(flags & TCA_ACT_FLAGS_REPLACE)) {
 			tcf_idr_release(*a, bind);
 			return -EEXIST;
 		}
@@ -1556,6 +1562,8 @@ static int __init ct_init_module(void)
 	if (err)
 		goto err_register;
 
+	static_branch_inc(&tcf_frag_xmit_count);
+
 	return 0;
 
 err_register:
@@ -1567,6 +1575,7 @@ err_tbl_init:
 
 static void __exit ct_cleanup_module(void)
 {
+	static_branch_dec(&tcf_frag_xmit_count);
 	tcf_unregister_action(&act_ct_ops, &ct_net_ops);
 	tcf_ct_flow_tables_uninit();
 	destroy_workqueue(act_ct_wq);

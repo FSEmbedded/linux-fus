@@ -350,7 +350,8 @@ int dprc_scan_objects(struct fsl_mc_device *mc_bus_dev,
  * dprc_scan_container - Scans a physical DPRC and synchronizes Linux bus state
  *
  * @mc_bus_dev: pointer to the fsl-mc device that represents a DPRC object
- *
+ * @alloc_interrupts: if true the function allocates the interrupt pool,
+ *                    otherwise the interrupt allocation is delayed
  * Scans the physical DPRC and synchronizes the state of the Linux
  * bus driver with the actual state of the MC by adding and removing
  * devices as appropriate.
@@ -374,37 +375,10 @@ int dprc_scan_container(struct fsl_mc_device *mc_bus_dev,
 }
 EXPORT_SYMBOL_GPL(dprc_scan_container);
 
-static ssize_t rescan_store(struct device *dev,
-			    struct device_attribute *attr,
-			    const char *buf, size_t count)
-{
-	struct fsl_mc_device *root_mc_dev;
-	struct fsl_mc_bus *root_mc_bus;
-	unsigned long val;
-
-	if (!fsl_mc_is_root_dprc(dev))
-		return -EINVAL;
-
-	root_mc_dev = to_fsl_mc_device(dev);
-	root_mc_bus = to_fsl_mc_bus(root_mc_dev);
-
-	if (kstrtoul(buf, 0, &val) < 0)
-		return -EINVAL;
-
-	if (val) {
-		mutex_lock(&root_mc_bus->scan_mutex);
-		dprc_scan_objects(root_mc_dev, NULL);
-		mutex_unlock(&root_mc_bus->scan_mutex);
-	}
-
-	return count;
-}
-static DEVICE_ATTR_WO(rescan);
-
 /**
  * dprc_irq0_handler - Regular ISR for DPRC interrupt 0
  *
- * @irq: IRQ number of the interrupt being handled
+ * @irq_num: IRQ number of the interrupt being handled
  * @arg: Pointer to device structure
  */
 static irqreturn_t dprc_irq0_handler(int irq_num, void *arg)
@@ -415,7 +389,7 @@ static irqreturn_t dprc_irq0_handler(int irq_num, void *arg)
 /**
  * dprc_irq0_handler_thread - Handler thread function for DPRC interrupt 0
  *
- * @irq: IRQ number of the interrupt being handled
+ * @irq_num: IRQ number of the interrupt being handled
  * @arg: Pointer to device structure
  */
 static irqreturn_t dprc_irq0_handler_thread(int irq_num, void *arg)
@@ -679,9 +653,8 @@ int dprc_setup(struct fsl_mc_device *mc_dev)
 		mc_io_created = true;
 	} else {
 		error = fsl_mc_uapi_create_device_file(mc_bus);
-		if (error < 0) {
+		if (error < 0)
 			return -EPROBE_DEFER;
-		}
 		uapi_created = true;
 	}
 

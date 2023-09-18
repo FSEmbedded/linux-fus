@@ -283,6 +283,9 @@ static __maybe_unused int mdio_bus_phy_suspend(struct device *dev)
 {
 	struct phy_device *phydev = to_phy_device(dev);
 
+	if (phydev->mac_managed_pm)
+		return 0;
+
 	/* We must stop the state machine manually, otherwise it stops out of
 	 * control, possibly with the phydev->lock held. Upon resume, netdev
 	 * may call phy routines that try to grab the same lock, and that may
@@ -303,6 +306,9 @@ static __maybe_unused int mdio_bus_phy_resume(struct device *dev)
 {
 	struct phy_device *phydev = to_phy_device(dev);
 	int ret;
+
+	if (phydev->mac_managed_pm)
+		return 0;
 
 	if (!phydev->suspended_by_mdio_bus)
 		goto no_resume;
@@ -522,10 +528,21 @@ phy_has_fixups_show(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR_RO(phy_has_fixups);
 
+static ssize_t phy_dev_flags_show(struct device *dev,
+				  struct device_attribute *attr,
+				  char *buf)
+{
+	struct phy_device *phydev = to_phy_device(dev);
+
+	return sprintf(buf, "0x%08x\n", phydev->dev_flags);
+}
+static DEVICE_ATTR_RO(phy_dev_flags);
+
 static struct attribute *phy_dev_attrs[] = {
 	&dev_attr_phy_id.attr,
 	&dev_attr_phy_interface.attr,
 	&dev_attr_phy_has_fixups.attr,
+	&dev_attr_phy_dev_flags.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(phy_dev);
@@ -884,6 +901,18 @@ struct phy_device *get_phy_device(struct mii_bus *bus, int addr, bool is_c45)
 	if (r)
 		return ERR_PTR(r);
 
+	/* PHY device such as the Marvell Alaska 88E2110 will return a PHY ID
+	 * of 0 when probed using get_phy_c22_id() with no error. Proceed to
+	 * probe with C45 to see if we're able to get a valid PHY ID in the C45
+	 * space, if successful, create the C45 PHY device.
+	 */
+	if (!is_c45 && phy_id == 0 && bus->probe_capabilities >= MDIOBUS_C45) {
+		r = get_phy_c45_ids(bus, addr, &c45_ids);
+		if (!r)
+			return phy_device_create(bus, addr, phy_id,
+						 true, &c45_ids);
+	}
+
 	return phy_device_create(bus, addr, phy_id, is_c45, &c45_ids);
 }
 EXPORT_SYMBOL(get_phy_device);
@@ -947,6 +976,20 @@ void phy_device_remove(struct phy_device *phydev)
 	mdiobus_unregister_device(&phydev->mdio);
 }
 EXPORT_SYMBOL(phy_device_remove);
+
+/**
+ * phy_get_c45_ids - Read 802.3-c45 IDs for phy device.
+ * @phydev: phy_device structure to read 802.3-c45 IDs
+ *
+ * Returns zero on success, %-EIO on bus access error, or %-ENODEV if
+ * the "devices in package" is invalid.
+ */
+int phy_get_c45_ids(struct phy_device *phydev)
+{
+	return get_phy_c45_ids(phydev->mdio.bus, phydev->mdio.addr,
+			       &phydev->c45_ids);
+}
+EXPORT_SYMBOL(phy_get_c45_ids);
 
 /**
  * phy_find_first - finds the first PHY device on the bus
@@ -1166,7 +1209,7 @@ void phy_attached_info(struct phy_device *phydev)
 }
 EXPORT_SYMBOL(phy_attached_info);
 
-#define ATTACHED_FMT "attached PHY driver [%s] (mii_bus:phy_addr=%s, irq=%s)"
+#define ATTACHED_FMT "attached PHY driver %s(mii_bus:phy_addr=%s, irq=%s)"
 char *phy_attached_info_irq(struct phy_device *phydev)
 {
 	char *irq_str;
@@ -1176,8 +1219,8 @@ char *phy_attached_info_irq(struct phy_device *phydev)
 	case PHY_POLL:
 		irq_str = "POLL";
 		break;
-	case PHY_IGNORE_INTERRUPT:
-		irq_str = "IGNORE";
+	case PHY_MAC_INTERRUPT:
+		irq_str = "MAC";
 		break;
 	default:
 		snprintf(irq_num, sizeof(irq_num), "%d", phydev->irq);
@@ -1191,19 +1234,17 @@ EXPORT_SYMBOL(phy_attached_info_irq);
 
 void phy_attached_print(struct phy_device *phydev, const char *fmt, ...)
 {
-	const char *drv_name = phydev->drv ? phydev->drv->name : "unbound";
+	const char *unbound = phydev->drv ? "" : "[unbound] ";
 	char *irq_str = phy_attached_info_irq(phydev);
 
 	if (!fmt) {
-		phydev_info(phydev, ATTACHED_FMT "\n",
-			 drv_name, phydev_name(phydev),
-			 irq_str);
+		phydev_info(phydev, ATTACHED_FMT "\n", unbound,
+			    phydev_name(phydev), irq_str);
 	} else {
 		va_list ap;
 
-		phydev_info(phydev, ATTACHED_FMT,
-			 drv_name, phydev_name(phydev),
-			 irq_str);
+		phydev_info(phydev, ATTACHED_FMT, unbound,
+			    phydev_name(phydev), irq_str);
 
 		va_start(ap, fmt);
 		vprintk(fmt, ap);
@@ -1388,6 +1429,8 @@ int phy_attach_direct(struct net_device *dev, struct phy_device *phydev,
 
 		if (phydev->sfp_bus_attached)
 			dev->sfp_bus = phydev->sfp_bus;
+		else if (dev->sfp_bus)
+			phydev->is_on_sfp_module = true;
 	}
 
 	/* Some Ethernet drivers try to connect to a PHY device before
@@ -1712,6 +1755,9 @@ void phy_detach(struct phy_device *phydev)
 	    phy_driver_is_genphy_10g(phydev))
 		device_release_driver(&phydev->mdio.dev);
 
+	/* Assert the reset signal */
+	phy_device_reset(phydev, 1);
+
 	/*
 	 * The phydev might go away on the put_device() below, so avoid
 	 * a use-after-free bug by reading the underlying bus first.
@@ -1723,9 +1769,6 @@ void phy_detach(struct phy_device *phydev)
 		ndev_owner = dev->dev.parent->driver->owner;
 	if (ndev_owner != bus->owner)
 		module_put(bus->owner);
-
-	/* Assert the reset signal */
-	phy_device_reset(phydev, 1);
 }
 EXPORT_SYMBOL(phy_detach);
 
@@ -1760,7 +1803,7 @@ int __phy_resume(struct phy_device *phydev)
 	struct phy_driver *phydrv = phydev->drv;
 	int ret;
 
-	WARN_ON(!mutex_is_locked(&phydev->lock));
+	lockdep_assert_held(&phydev->lock);
 
 	if (!phydrv || !phydrv->resume)
 		return 0;
@@ -1787,8 +1830,10 @@ EXPORT_SYMBOL(phy_resume);
 
 int phy_loopback(struct phy_device *phydev, bool enable)
 {
-	struct phy_driver *phydrv = to_phy_driver(phydev->mdio.dev.driver);
 	int ret = 0;
+
+	if (!phydev->drv)
+		return -EIO;
 
 	mutex_lock(&phydev->lock);
 
@@ -1802,10 +1847,10 @@ int phy_loopback(struct phy_device *phydev, bool enable)
 		goto out;
 	}
 
-	if (phydev->drv && phydrv->set_loopback)
-		ret = phydrv->set_loopback(phydev, enable);
+	if (phydev->drv->set_loopback)
+		ret = phydev->drv->set_loopback(phydev, enable);
 	else
-		ret = -EOPNOTSUPP;
+		ret = genphy_loopback(phydev, enable);
 
 	if (ret)
 		goto out;
@@ -2481,6 +2526,19 @@ int genphy_soft_reset(struct phy_device *phydev)
 }
 EXPORT_SYMBOL(genphy_soft_reset);
 
+irqreturn_t genphy_handle_interrupt_no_ack(struct phy_device *phydev)
+{
+	/* It seems there are cases where the interrupts are handled by another
+	 * entity (ie an IRQ controller embedded inside the PHY) and do not
+	 * need any other interraction from phylib. In this case, just trigger
+	 * the state machine directly.
+	 */
+	phy_trigger_machine(phydev);
+
+	return 0;
+}
+EXPORT_SYMBOL(genphy_handle_interrupt_no_ack);
+
 /**
  * genphy_read_abilities - read PHY abilities from Clause 22 registers
  * @phydev: target phy_device struct
@@ -2562,8 +2620,32 @@ EXPORT_SYMBOL(genphy_resume);
 
 int genphy_loopback(struct phy_device *phydev, bool enable)
 {
-	return phy_modify(phydev, MII_BMCR, BMCR_LOOPBACK,
-			  enable ? BMCR_LOOPBACK : 0);
+	if (enable) {
+		u16 val, ctl = BMCR_LOOPBACK;
+		int ret;
+
+		if (phydev->speed == SPEED_1000)
+			ctl |= BMCR_SPEED1000;
+		else if (phydev->speed == SPEED_100)
+			ctl |= BMCR_SPEED100;
+
+		if (phydev->duplex == DUPLEX_FULL)
+			ctl |= BMCR_FULLDPLX;
+
+		phy_modify(phydev, MII_BMCR, ~0, ctl);
+
+		ret = phy_read_poll_timeout(phydev, MII_BMSR, val,
+					    val & BMSR_LSTATUS,
+				    5000, 500000, true);
+		if (ret)
+			return ret;
+	} else {
+		phy_modify(phydev, MII_BMCR, BMCR_LOOPBACK, 0);
+
+		phy_config_aneg(phydev);
+	}
+
+	return 0;
 }
 EXPORT_SYMBOL(genphy_loopback);
 
@@ -2753,7 +2835,7 @@ static int phy_get_int_delay_property(struct device *dev, const char *name)
 #endif
 
 /**
- * phy_get_delay_index - returns the index of the internal delay
+ * phy_get_internal_delay - returns the index of the internal delay
  * @phydev: phy_device struct
  * @dev: pointer to the devices device struct
  * @delay_values: array of delays the PHY supports
@@ -2833,7 +2915,7 @@ EXPORT_SYMBOL(phy_get_internal_delay);
 
 static bool phy_drv_supports_irq(struct phy_driver *phydrv)
 {
-	return phydrv->config_intr && phydrv->ack_interrupt;
+	return phydrv->config_intr && phydrv->handle_interrupt;
 }
 
 /**
@@ -2940,7 +3022,7 @@ static int phy_probe(struct device *dev)
 	/* Disable the interrupt if the PHY doesn't support it
 	 * but the interrupt is still a valid one
 	 */
-	 if (!phy_drv_supports_irq(phydrv) && phy_interrupt_is_valid(phydev))
+	if (!phy_drv_supports_irq(phydrv) && phy_interrupt_is_valid(phydev))
 		phydev->irq = PHY_POLL;
 
 	if (phydrv->flags & PHY_IS_INTERNAL)
@@ -2961,15 +3043,14 @@ static int phy_probe(struct device *dev)
 	 * a controller will attach, and may modify one
 	 * or both of these values
 	 */
-	if (phydrv->features) {
+	if (phydrv->features)
 		linkmode_copy(phydev->supported, phydrv->features);
-	} else if (phydrv->get_features) {
+	else if (phydrv->get_features)
 		err = phydrv->get_features(phydev);
-	} else if (phydev->is_c45) {
+	else if (phydev->is_c45)
 		err = genphy_c45_pma_read_abilities(phydev);
-	} else {
+	else
 		err = genphy_read_abilities(phydev);
-	}
 
 	if (err)
 		goto out;
@@ -3049,6 +3130,16 @@ static int phy_remove(struct device *dev)
 	return 0;
 }
 
+static void phy_shutdown(struct device *dev)
+{
+	struct phy_device *phydev = to_phy_device(dev);
+
+	if (phydev->state == PHY_READY || !phydev->attached_dev)
+		return;
+
+	phy_disable_interrupts(phydev);
+}
+
 /**
  * phy_driver_register - register a phy_driver with the PHY layer
  * @new_driver: new phy_driver to register
@@ -3072,6 +3163,7 @@ int phy_driver_register(struct phy_driver *new_driver, struct module *owner)
 	new_driver->mdiodrv.driver.bus = &mdio_bus_type;
 	new_driver->mdiodrv.driver.probe = phy_probe;
 	new_driver->mdiodrv.driver.remove = phy_remove;
+	new_driver->mdiodrv.driver.shutdown = phy_shutdown;
 	new_driver->mdiodrv.driver.owner = owner;
 	new_driver->mdiodrv.driver.probe_type = PROBE_FORCE_SYNCHRONOUS;
 

@@ -468,6 +468,7 @@ static void musb_do_idle(struct timer_list *t)
 		fallthrough;
 	case OTG_STATE_A_IDLE:
 		tusb_musb_set_vbus(musb, 0);
+		break;
 	default:
 		break;
 	}
@@ -1103,6 +1104,11 @@ static int tusb_musb_init(struct musb *musb)
 
 	/* dma address for async dma */
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!mem) {
+		pr_debug("no async dma resource?\n");
+		ret = -ENODEV;
+		goto done;
+	}
 	musb->async = mem->start;
 
 	/* dma address for sync dma */

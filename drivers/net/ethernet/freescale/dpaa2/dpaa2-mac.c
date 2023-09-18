@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 /* Copyright 2019 NXP */
 
-#include <linux/fsl/mc.h>
-#include <linux/msi.h>
 #include <linux/acpi.h>
 #include <linux/property.h>
 
@@ -39,20 +37,10 @@ static int phy_mode(enum dpmac_eth_if eth_if, phy_interface_t *if_mode)
 	return 0;
 }
 
-static bool dpaa2_mac_is_type_phy(struct dpaa2_mac *mac)
-{
-	if (mac &&
-	    (mac->attr.link_type == DPMAC_LINK_TYPE_PHY ||
-	     mac->attr.link_type == DPMAC_LINK_TYPE_BACKPLANE))
-		return true;
-
-	return false;
-}
-
 static struct fwnode_handle *dpaa2_mac_get_node(struct device *dev,
 						u16 dpmac_id)
 {
-	struct fwnode_handle *fwnode, *parent = NULL, *child  = NULL;
+	struct fwnode_handle *fwnode, *parent, *child  = NULL;
 	struct device_node *dpmacs = NULL;
 	int err;
 	u32 id;
@@ -66,9 +54,6 @@ static struct fwnode_handle *dpaa2_mac_get_node(struct device *dev,
 	} else if (is_acpi_node(fwnode)) {
 		parent = fwnode;
 	}
-
-	if (!parent)
-		return NULL;
 
 	fwnode_for_each_child_node(parent, child) {
 		err = -EINVAL;
@@ -85,7 +70,6 @@ static struct fwnode_handle *dpaa2_mac_get_node(struct device *dev,
 		}
 	}
 	of_node_put(dpmacs);
-
 	return NULL;
 }
 
@@ -372,9 +356,7 @@ int dpaa2_mac_connect(struct dpaa2_mac *mac)
 	if (mac->pcs)
 		phylink_set_pcs(mac->phylink, &mac->pcs->pcs);
 
-	rtnl_lock();
 	err = phylink_fwnode_phy_connect(mac->phylink, dpmac_node, 0);
-	rtnl_unlock();
 	if (err) {
 		netdev_err(net_dev, "phylink_fwnode_phy_connect() = %d\n", err);
 		goto err_phylink_destroy;

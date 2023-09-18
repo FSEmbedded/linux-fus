@@ -179,18 +179,10 @@
 	};
 
 	sound-hdmi {
-		compatible = "fsl,imx7d-sdb-sii902x",
-			   "fsl,imx-audio-sii902x";
+		compatible = "fsl,imx-audio-sii902x";
 		model = "sii902x-audio";
-		cpu-dai = <&sai3>;
-		hdmi-controller = <&sii902x>;
-	};
-
-	usdhc2_pwrseq: usdhc2_pwrseq {
-		compatible = "mmc-pwrseq-simple";
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_brcm_reg>;
-		reset-gpios = <&gpio4 21 GPIO_ACTIVE_LOW>;
+		audio-cpu = <&sai3>;
+		hdmi-out;
 	};
 };
 

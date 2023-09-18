@@ -82,9 +82,6 @@ static inline void print_system_hash_info(void) {}
 
 #else /* CONFIG_PPC_MMU_NOHASH */
 
-extern void _tlbie(unsigned long address);
-extern void _tlbia(void);
-
 void print_system_hash_info(void);
 
 #endif /* CONFIG_PPC_MMU_NOHASH */
@@ -96,8 +93,6 @@ void cleartlbcam(unsigned long virt, unsigned int pid);
 
 #ifdef CONFIG_PPC32
 
-void hash_preload(struct mm_struct *mm, unsigned long ea);
-
 extern void mapin_ram(void);
 extern void setbat(int index, unsigned long virt, phys_addr_t phys,
 		   unsigned int size, pgprot_t prot);
@@ -106,7 +101,6 @@ extern int __map_without_bats;
 extern unsigned int rtas_data, rtas_size;
 
 struct hash_pte;
-extern struct hash_pte *Hash;
 extern u8 early_hash[];
 
 #endif /* CONFIG_PPC32 */
@@ -191,8 +185,13 @@ static inline void mmu_mark_rodata_ro(void) { }
 void __init mmu_mapin_immr(void);
 #endif
 
-#ifdef CONFIG_PPC_DEBUG_WX
+#ifdef CONFIG_DEBUG_WX
 void ptdump_check_wx(void);
 #else
 static inline void ptdump_check_wx(void) { }
 #endif
+
+static inline bool debug_pagealloc_enabled_or_kfence(void)
+{
+	return IS_ENABLED(CONFIG_KFENCE) || debug_pagealloc_enabled();
+}

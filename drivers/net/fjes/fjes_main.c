@@ -90,16 +90,8 @@ static struct platform_driver fjes_driver = {
 };
 
 static struct resource fjes_resource[] = {
-	{
-		.flags = IORESOURCE_MEM,
-		.start = 0,
-		.end = 0,
-	},
-	{
-		.flags = IORESOURCE_IRQ,
-		.start = 0,
-		.end = 0,
-	},
+	DEFINE_RES_MEM(0, 1),
+	DEFINE_RES_IRQ(0)
 };
 
 static bool is_extended_socket_device(struct acpi_device *device)
@@ -1269,6 +1261,11 @@ static int fjes_probe(struct platform_device *plat_dev)
 	hw->hw_res.start = res->start;
 	hw->hw_res.size = resource_size(res);
 	hw->hw_res.irq = platform_get_irq(plat_dev, 0);
+	if (hw->hw_res.irq < 0) {
+		err = hw->hw_res.irq;
+		goto err_free_control_wq;
+	}
+
 	err = fjes_hw_init(&adapter->hw);
 	if (err)
 		goto err_free_control_wq;

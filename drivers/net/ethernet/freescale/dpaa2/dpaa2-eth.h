@@ -575,7 +575,6 @@ struct dpaa2_eth_priv {
 	struct dpaa2_eth_trap_data *trap_data;
 	struct devlink_port devlink_port;
 
-	bool ceetm_en;
 	u32 rx_copybreak;
 };
 
@@ -701,11 +700,6 @@ static inline unsigned int dpaa2_eth_needed_headroom(struct sk_buff *skb)
 static inline unsigned int dpaa2_eth_rx_head_room(struct dpaa2_eth_priv *priv)
 {
 	return priv->tx_data_offset - DPAA2_ETH_RX_HWA_SIZE;
-}
-
-static inline int dpaa2_eth_ch_count(struct dpaa2_eth_priv *priv)
-{
-	return 1;
 }
 
 static inline bool dpaa2_eth_is_type_phy(struct dpaa2_eth_priv *priv)

@@ -70,7 +70,7 @@ static DEFINE_IDA(db_ida);
 
 struct fsl_ddr_devtype_data {
 	unsigned int quirks;    /* quirks needed for different DDR Perf core */
-	unsigned int type;	/* types of Perf, point the location of Perf */
+	const char *identifier;	/* system PMU identifier for userspace */
 };
 
 static const struct fsl_ddr_devtype_data imx8_devtype_data = {
@@ -82,24 +82,32 @@ static const struct fsl_ddr_devtype_data imx8m_devtype_data = {
 	.type = DDR_PERF_TYPE,
 };
 
+static const struct fsl_ddr_devtype_data imx8mq_devtype_data = {
+	.quirks = DDR_CAP_AXI_ID_FILTER,
+	.identifier = "i.MX8MQ",
+};
+
+static const struct fsl_ddr_devtype_data imx8mm_devtype_data = {
+	.quirks = DDR_CAP_AXI_ID_FILTER,
+	.identifier = "i.MX8MM",
+};
+
+static const struct fsl_ddr_devtype_data imx8mn_devtype_data = {
+	.quirks = DDR_CAP_AXI_ID_FILTER,
+	.identifier = "i.MX8MN",
+};
+
 static const struct fsl_ddr_devtype_data imx8mp_devtype_data = {
 	.quirks = DDR_CAP_AXI_ID_FILTER_ENHANCED,
-	.type = DDR_PERF_TYPE,
-};
-
-static const struct fsl_ddr_devtype_data imx8dxl_devtype_data = {
-	.quirks = DDR_CAP_AXI_ID_PORT_CHANNEL_FILTER,
-	.type = DDR_PERF_TYPE,
-};
-
-static const struct fsl_ddr_devtype_data imx8dxl_db_devtype_data = {
-	.quirks = DDR_CAP_AXI_ID_PORT_CHANNEL_FILTER,
-	.type = DB_PERF_TYPE,
+	.identifier = "i.MX8MP",
 };
 
 static const struct of_device_id imx_ddr_pmu_dt_ids[] = {
 	{ .compatible = "fsl,imx8-ddr-pmu", .data = &imx8_devtype_data},
 	{ .compatible = "fsl,imx8m-ddr-pmu", .data = &imx8m_devtype_data},
+	{ .compatible = "fsl,imx8mq-ddr-pmu", .data = &imx8mq_devtype_data},
+	{ .compatible = "fsl,imx8mm-ddr-pmu", .data = &imx8mm_devtype_data},
+	{ .compatible = "fsl,imx8mn-ddr-pmu", .data = &imx8mn_devtype_data},
 	{ .compatible = "fsl,imx8mp-ddr-pmu", .data = &imx8mp_devtype_data},
 	{ .compatible = "fsl,imx8dxl-ddr-pmu", .data = &imx8dxl_devtype_data},
 	{ .compatible = "fsl,imx8dxl-db-pmu", .data = &imx8dxl_db_devtype_data},
@@ -122,6 +130,40 @@ struct ddr_pmu {
 	spinlock_t lock;
 	struct clk *clk_ipg;
 	struct clk *clk_cnt;
+};
+
+static ssize_t ddr_perf_identifier_show(struct device *dev,
+					struct device_attribute *attr,
+					char *page)
+{
+	struct ddr_pmu *pmu = dev_get_drvdata(dev);
+
+	return sysfs_emit(page, "%s\n", pmu->devtype_data->identifier);
+}
+
+static umode_t ddr_perf_identifier_attr_visible(struct kobject *kobj,
+						struct attribute *attr,
+						int n)
+{
+	struct device *dev = kobj_to_dev(kobj);
+	struct ddr_pmu *pmu = dev_get_drvdata(dev);
+
+	if (!pmu->devtype_data->identifier)
+		return 0;
+	return attr->mode;
+};
+
+static struct device_attribute ddr_perf_identifier_attr =
+	__ATTR(identifier, 0444, ddr_perf_identifier_show, NULL);
+
+static struct attribute *ddr_perf_identifier_attrs[] = {
+	&ddr_perf_identifier_attr.attr,
+	NULL,
+};
+
+static const struct attribute_group ddr_perf_identifier_attr_group = {
+	.attrs = ddr_perf_identifier_attrs,
+	.is_visible = ddr_perf_identifier_attr_visible,
 };
 
 enum ddr_perf_filter_capabilities {
@@ -159,8 +201,7 @@ static ssize_t ddr_perf_filter_cap_show(struct device *dev,
 		container_of(attr, struct dev_ext_attribute, attr);
 	int cap = (long)ea->var;
 
-	return snprintf(buf, PAGE_SIZE, "%u\n",
-			ddr_perf_filter_cap_get(pmu, cap));
+	return sysfs_emit(buf, "%u\n", ddr_perf_filter_cap_get(pmu, cap));
 }
 
 #define PERF_EXT_ATTR_ENTRY(_name, _func, _var)				\
@@ -178,7 +219,7 @@ static struct attribute *ddr_perf_filter_cap_attr[] = {
 	NULL,
 };
 
-static struct attribute_group ddr_perf_filter_cap_attr_group = {
+static const struct attribute_group ddr_perf_filter_cap_attr_group = {
 	.name = "caps",
 	.attrs = ddr_perf_filter_cap_attr,
 };
@@ -199,7 +240,7 @@ static struct attribute *ddr_perf_cpumask_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group ddr_perf_cpumask_attr_group = {
+static const struct attribute_group ddr_perf_cpumask_attr_group = {
 	.attrs = ddr_perf_cpumask_attrs,
 };
 
@@ -210,14 +251,11 @@ ddr_pmu_event_show(struct device *dev, struct device_attribute *attr,
 	struct perf_pmu_events_attr *pmu_attr;
 
 	pmu_attr = container_of(attr, struct perf_pmu_events_attr, attr);
-	return sprintf(page, "event=0x%02llx\n", pmu_attr->id);
+	return sysfs_emit(page, "event=0x%02llx\n", pmu_attr->id);
 }
 
-#define IMX8_DDR_PMU_EVENT_ATTR(_name, _id)				\
-	(&((struct perf_pmu_events_attr[]) {				\
-		{ .attr = __ATTR(_name, 0444, ddr_pmu_event_show, NULL),\
-		  .id = _id, }						\
-	})[0].attr.attr)
+#define IMX8_DDR_PMU_EVENT_ATTR(_name, _id)		\
+	PMU_EVENT_ATTR_ID(_name, ddr_pmu_event_show, _id)
 
 static struct attribute *ddr_perf_events_attrs[] = {
 	IMX8_DDR_PMU_EVENT_ATTR(cycles, EVENT_CYCLES_ID),
@@ -255,7 +293,7 @@ static struct attribute *ddr_perf_events_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group ddr_perf_events_attr_group = {
+static const struct attribute_group ddr_perf_events_attr_group = {
 	.name = "events",
 	.attrs = ddr_perf_events_attrs,
 };
@@ -287,7 +325,7 @@ static struct attribute *ddr_perf_format_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group ddr_perf_format_attr_group = {
+static const struct attribute_group ddr_perf_format_attr_group = {
 	.name = "format",
 	.attrs = ddr_perf_format_attrs,
 };
@@ -298,6 +336,7 @@ static const struct attribute_group *ddr_attr_groups[] = {
 	&ddr_perf_format_attr_group,
 	&ddr_perf_cpumask_attr_group,
 	&ddr_perf_filter_cap_attr_group,
+	&ddr_perf_identifier_attr_group,
 	NULL,
 };
 
@@ -451,28 +490,6 @@ static int ddr_perf_event_init(struct perf_event *event)
 	return 0;
 }
 
-
-static void ddr_perf_event_update(struct perf_event *event)
-{
-	struct ddr_pmu *pmu = to_ddr_pmu(event->pmu);
-	struct hw_perf_event *hwc = &event->hw;
-	u64 delta, prev_raw_count, new_raw_count;
-	int counter = hwc->idx;
-	unsigned long flags;
-
-	spin_lock_irqsave(&pmu->lock, flags);
-
-	prev_raw_count = local64_read(&hwc->prev_count);
-	new_raw_count = ddr_perf_read_counter(pmu, counter);
-
-	delta = (new_raw_count - prev_raw_count) & 0xFFFFFFFF;
-
-	local64_add(delta, &event->count);
-	local64_set(&hwc->prev_count, new_raw_count);
-
-	spin_unlock_irqrestore(&pmu->lock, flags);
-}
-
 static void ddr_perf_counter_enable(struct ddr_pmu *pmu, int config,
 				  int counter, bool enable)
 {
@@ -517,7 +534,48 @@ static bool ddr_perf_counter_overflow(struct ddr_pmu *pmu, int counter)
 
 	val = readl_relaxed(pmu->base + counter * 4 + COUNTER_CNTL);
 
-	return val & CNTL_OVER ? true : false;
+	return val & CNTL_OVER;
+}
+
+static void ddr_perf_counter_clear(struct ddr_pmu *pmu, int counter)
+{
+	u8 reg = counter * 4 + COUNTER_CNTL;
+	int val;
+
+	val = readl_relaxed(pmu->base + reg);
+	val &= ~CNTL_CLEAR;
+	writel(val, pmu->base + reg);
+
+	val |= CNTL_CLEAR;
+	writel(val, pmu->base + reg);
+}
+
+static void ddr_perf_event_update(struct perf_event *event)
+{
+	struct ddr_pmu *pmu = to_ddr_pmu(event->pmu);
+	struct hw_perf_event *hwc = &event->hw;
+	u64 new_raw_count;
+	int counter = hwc->idx;
+	int ret;
+
+	new_raw_count = ddr_perf_read_counter(pmu, counter);
+	local64_add(new_raw_count, &event->count);
+
+	/*
+	 * For legacy SoCs: event counter continue counting when overflow,
+	 *                  no need to clear the counter.
+	 * For new SoCs: event counter stop counting when overflow, need
+	 *               clear counter to let it count again.
+	 */
+	if (counter != EVENT_CYCLES_COUNTER) {
+		ret = ddr_perf_counter_overflow(pmu, counter);
+		if (ret)
+			dev_warn_ratelimited(pmu->dev,  "events lost due to counter overflow (config 0x%llx)\n",
+					     event->attr.config);
+	}
+
+	/* clear counter every time for both cycle counter and event counter */
+	ddr_perf_counter_clear(pmu, counter);
 }
 
 static void ddr_perf_event_start(struct perf_event *event, int flags)
@@ -679,7 +737,7 @@ static irqreturn_t ddr_perf_irq_handler(int irq, void *p)
 {
 	int i, ret;
 	struct ddr_pmu *pmu = (struct ddr_pmu *) p;
-	struct perf_event *event, *cycle_event = NULL;
+	struct perf_event *event;
 
 	/* all counter will stop if cycle counter disabled */
 	ddr_perf_counter_enable(pmu,
@@ -689,7 +747,9 @@ static irqreturn_t ddr_perf_irq_handler(int irq, void *p)
 	/*
 	 * When the cycle counter overflows, all counters are stopped,
 	 * and an IRQ is raised. If any other counter overflows, it
-	 * stop counting, and no IRQ is raised.
+	 * continues counting, and no IRQ is raised. But for new SoCs,
+	 * such as i.MX8MP, event counter would stop when overflow, so
+	 * we need use cycle counter to stop overflow of event counter.
 	 *
 	 * Cycles occur at least 4 times as often as other events, so we
 	 * can update all events on a cycle counter overflow and not
@@ -704,9 +764,6 @@ static irqreturn_t ddr_perf_irq_handler(int irq, void *p)
 		event = pmu->events[i];
 
 		ddr_perf_event_update(event);
-
-		if (event->hw.idx == EVENT_CYCLES_COUNTER)
-			cycle_event = event;
 	}
 
 	spin_lock(&pmu->lock);
@@ -766,7 +823,7 @@ static int ddr_perf_offline_cpu(unsigned int cpu, struct hlist_node *node)
 	perf_pmu_migrate_context(&pmu->pmu, cpu, target);
 	pmu->cpu = target;
 
-	WARN_ON(irq_set_affinity_hint(pmu->irq, cpumask_of(pmu->cpu)));
+	WARN_ON(irq_set_affinity(pmu->irq, cpumask_of(pmu->cpu)));
 
 	return 0;
 }
@@ -793,7 +850,13 @@ static int ddr_perf_probe(struct platform_device *pdev)
 	ddr_perf_init(pmu, base, &pdev->dev);
 
 	platform_set_drvdata(pdev, pmu);
-	spin_lock_init(&pmu->lock);
+
+	name = devm_kasprintf(&pdev->dev, GFP_KERNEL, DDR_PERF_DEV_NAME "%d",
+			      num);
+	if (!name) {
+		ret = -ENOMEM;
+		goto cpuhp_state_err;
+	}
 
 	pmu->devtype_data = of_device_get_match_data(&pdev->dev);
 	if (pmu->devtype_data->type & DDR_PERF_TYPE) {
@@ -866,7 +929,7 @@ static int ddr_perf_probe(struct platform_device *pdev)
 	}
 
 	pmu->irq = irq;
-	ret = irq_set_affinity_hint(pmu->irq, cpumask_of(pmu->cpu));
+	ret = irq_set_affinity(pmu->irq, cpumask_of(pmu->cpu));
 	if (ret) {
 		dev_err(pmu->dev, "Failed to set interrupt affinity!\n");
 		goto ddr_perf_err;
@@ -900,7 +963,6 @@ static int ddr_perf_remove(struct platform_device *pdev)
 
 	cpuhp_state_remove_instance_nocalls(pmu->cpuhp_state, &pmu->node);
 	cpuhp_remove_multi_state(pmu->cpuhp_state);
-	irq_set_affinity_hint(pmu->irq, NULL);
 
 	perf_pmu_unregister(&pmu->pmu);
 

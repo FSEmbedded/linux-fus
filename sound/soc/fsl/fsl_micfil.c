@@ -1641,32 +1641,7 @@ static int fsl_micfil_set_dai_sysclk(struct snd_soc_dai *dai, int clk_id,
 	return ret;
 }
 
-static int fsl_micfil_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
-{
-	struct fsl_micfil *micfil = snd_soc_dai_get_drvdata(dai);
-
-	/* DAI MODE */
-	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
-	case SND_SOC_DAIFMT_I2S:
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	/* DAI CLK INVERSION */
-	switch (fmt & SND_SOC_DAIFMT_INV_MASK) {
-	case SND_SOC_DAIFMT_NB_NF:
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	micfil->slave_mode = false;
-
-	return 0;
-}
-
-static struct snd_soc_dai_ops fsl_micfil_dai_ops = {
+static const struct snd_soc_dai_ops fsl_micfil_dai_ops = {
 	.startup = fsl_micfil_startup,
 	.trigger = fsl_micfil_trigger,
 	.hw_params = fsl_micfil_hw_params,
@@ -1722,8 +1697,6 @@ static int fsl_micfil_dai_probe(struct snd_soc_dai *cpu_dai)
 		dev_err(dev, "failed to set FIFOWMK\n");
 		return ret;
 	}
-
-	snd_soc_dai_set_drvdata(cpu_dai, micfil);
 
 	return 0;
 }
@@ -2193,7 +2166,6 @@ static struct kobj_attribute hwvad_en_attr = __ATTR(enable,
 static int fsl_micfil_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
-	const struct of_device_id *of_id;
 	struct fsl_micfil *micfil;
 	struct resource *res;
 	void __iomem *regs;
@@ -2207,11 +2179,7 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 	micfil->pdev = pdev;
 	strncpy(micfil->name, np->name, sizeof(micfil->name) - 1);
 
-	of_id = of_match_device(fsl_micfil_dt_ids, &pdev->dev);
-	if (!of_id || !of_id->data)
-		return -EINVAL;
-
-	micfil->soc = of_id->data;
+	micfil->soc = of_device_get_match_data(&pdev->dev);
 
 	/* ipg_clk is used to control the registers
 	 * ipg_clk_app is used to operate the filter
@@ -2230,29 +2198,14 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 		return PTR_ERR(micfil->busclk);
 	}
 
-	/* get audio pll1 and pll2 */
-	micfil->clk_src[MICFIL_AUDIO_PLL1] = devm_clk_get(&pdev->dev, "pll8k");
-	if (IS_ERR(micfil->clk_src[MICFIL_AUDIO_PLL1]))
-		micfil->clk_src[MICFIL_AUDIO_PLL1] = NULL;
-
-	micfil->clk_src[MICFIL_AUDIO_PLL2] = devm_clk_get(&pdev->dev, "pll11k");
-	if (IS_ERR(micfil->clk_src[MICFIL_AUDIO_PLL2]))
-		micfil->clk_src[MICFIL_AUDIO_PLL2] = NULL;
-
-	micfil->clk_src[MICFIL_CLK_EXT3] = devm_clk_get(&pdev->dev, "clkext3");
-	if (IS_ERR(micfil->clk_src[MICFIL_CLK_EXT3]))
-		micfil->clk_src[MICFIL_CLK_EXT3] = NULL;
-
 	/* init regmap */
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	regs = devm_ioremap_resource(&pdev->dev, res);
+	regs = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
 	if (IS_ERR(regs))
 		return PTR_ERR(regs);
 
-	micfil->regmap = devm_regmap_init_mmio_clk(&pdev->dev,
-						   NULL,
-						   regs,
-						   &fsl_micfil_regmap_config);
+	micfil->regmap = devm_regmap_init_mmio(&pdev->dev,
+					       regs,
+					       &fsl_micfil_regmap_config);
 	if (IS_ERR(micfil->regmap)) {
 		dev_err(&pdev->dev, "failed to init MICFIL regmap: %ld\n",
 			PTR_ERR(micfil->regmap));
@@ -2344,37 +2297,24 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 	pm_runtime_enable(&pdev->dev);
 	regcache_cache_only(micfil->regmap, true);
 
-	fsl_micfil_dai.capture.formats = micfil->soc->formats;
-
-	ret = devm_snd_soc_register_component(&pdev->dev, &fsl_micfil_component,
-					      &fsl_micfil_dai, 1);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to register component %s\n",
-			fsl_micfil_component.name);
-		return ret;
-	}
-
+	/*
+	 * Register platform component before registering cpu dai for there
+	 * is not defer probe for platform component in snd_soc_add_pcm_runtime().
+	 */
 	ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to pcm register\n");
 		return ret;
 	}
 
-	/* create sysfs entry used to enable hwvad from userspace */
-	micfil->hwvad_kobject = kobject_create_and_add("hwvad",
-						       &pdev->dev.kobj);
-	if (!micfil->hwvad_kobject)
-		return -ENOMEM;
-
-	ret = sysfs_create_file(micfil->hwvad_kobject,
-				&hwvad_en_attr.attr);
+	ret = devm_snd_soc_register_component(&pdev->dev, &fsl_micfil_component,
+					      &fsl_micfil_dai, 1);
 	if (ret) {
-		dev_err(&pdev->dev, "failed to create file for hwvad_enable\n");
-		kobject_put(micfil->hwvad_kobject);
-		return -ENOMEM;
+		dev_err(&pdev->dev, "failed to register component %s\n",
+			fsl_micfil_component.name);
 	}
 
-	return 0;
+	return ret;
 }
 
 static int __maybe_unused fsl_micfil_runtime_suspend(struct device *dev)
@@ -2388,10 +2328,7 @@ static int __maybe_unused fsl_micfil_runtime_suspend(struct device *dev)
 
 	regcache_cache_only(micfil->regmap, true);
 
-	/* Disable the clock only if the hwvad is not enabled */
-	if (state == MICFIL_HWVAD_OFF)
-		clk_disable_unprepare(micfil->mclk);
-
+	clk_disable_unprepare(micfil->mclk);
 	clk_disable_unprepare(micfil->busclk);
 
 	return 0;
@@ -2417,9 +2354,15 @@ static int __maybe_unused fsl_micfil_runtime_resume(struct device *dev)
 	if (state == MICFIL_HWVAD_ON)
 		return 0;
 
-	ret = clk_prepare_enable(micfil->mclk);
+	ret = clk_prepare_enable(micfil->busclk);
 	if (ret < 0)
 		return ret;
+
+	ret = clk_prepare_enable(micfil->mclk);
+	if (ret < 0) {
+		clk_disable_unprepare(micfil->busclk);
+		return ret;
+	}
 
 	regcache_cache_only(micfil->regmap, false);
 	regcache_mark_dirty(micfil->regmap);

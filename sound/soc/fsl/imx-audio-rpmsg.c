@@ -74,10 +74,6 @@ static int imx_audio_rpmsg_cb(struct rpmsg_device *rpdev, void *data, int len,
 static int imx_audio_rpmsg_probe(struct rpmsg_device *rpdev)
 {
 	struct imx_audio_rpmsg *data;
-	struct platform_device *codec_pdev;
-	struct rpmsg_codec codec;
-	const char *model_string;
-	struct device_node *np;
 	int ret = 0;
 
 	dev_info(&rpdev->dev, "new channel: 0x%x -> 0x%x!\n",
@@ -92,46 +88,13 @@ static int imx_audio_rpmsg_probe(struct rpmsg_device *rpdev)
 	/* Register platform driver for rpmsg routine */
 	data->rpmsg_pdev = platform_device_register_data(&rpdev->dev,
 							 IMX_PCM_DRV_NAME,
-							 PLATFORM_DEVID_AUTO,
+							 PLATFORM_DEVID_NONE,
 							 NULL, 0);
 	if (IS_ERR(data->rpmsg_pdev)) {
 		dev_err(&rpdev->dev, "failed to register rpmsg platform.\n");
 		ret = PTR_ERR(data->rpmsg_pdev);
 	}
 
-	if (!strcmp(rpdev->id.name, "rpmsg-micfil-channel"))
-		return ret;
-	np = of_find_node_by_name(NULL, "rpmsg_audio");
-	of_property_read_string(np, "model", &model_string);
-	if (np && of_device_is_compatible(np, "fsl,imx7ulp-rpmsg-audio")) {
-		codec.audioindex = 0;
-		codec.shared_lrclk = true;
-		codec.capless = false;
-		codec_pdev = platform_device_register_data(&data->rpmsg_pdev->dev,
-							   RPMSG_CODEC_DRV_NAME_WM8960,
-							   PLATFORM_DEVID_NONE,
-							   &codec,
-							   sizeof(struct rpmsg_codec));
-		if (IS_ERR(codec_pdev)) {
-			dev_err(&rpdev->dev, "failed to register rpmsg codec\n");
-			ret = PTR_ERR(codec_pdev);
-			goto fail;
-		}
-	} else if (np && of_device_is_compatible(np, "fsl,imx8mm-rpmsg-audio") &&
-			!strcmp("ak4497-audio", model_string)) {
-		codec.audioindex = 0;
-		codec_pdev = platform_device_register_data(&data->rpmsg_pdev->dev,
-							   RPMSG_CODEC_DRV_NAME_AK4497,
-							   PLATFORM_DEVID_NONE,
-							   &codec,
-							   sizeof(struct rpmsg_codec));
-		if (IS_ERR(codec_pdev)) {
-			dev_err(&rpdev->dev, "failed to register rpmsg codec\n");
-			ret = PTR_ERR(codec_pdev);
-			goto fail;
-		}
-	}
-fail:
 	return ret;
 }
 
@@ -147,7 +110,6 @@ static void imx_audio_rpmsg_remove(struct rpmsg_device *rpdev)
 
 static struct rpmsg_device_id imx_audio_rpmsg_id_table[] = {
 	{ .name	= "rpmsg-audio-channel" },
-	{ .name = "rpmsg-micfil-channel" },
 	{ },
 };
 
@@ -160,17 +122,7 @@ static struct rpmsg_driver imx_audio_rpmsg_driver = {
 	.remove		= imx_audio_rpmsg_remove,
 };
 
-static int __init imx_audio_rpmsg_init(void)
-{
-	return register_rpmsg_driver(&imx_audio_rpmsg_driver);
-}
-
-static void __exit imx_audio_rpmsg_exit(void)
-{
-	unregister_rpmsg_driver(&imx_audio_rpmsg_driver);
-}
-module_init(imx_audio_rpmsg_init);
-module_exit(imx_audio_rpmsg_exit);
+module_rpmsg_driver(imx_audio_rpmsg_driver);
 
 MODULE_DESCRIPTION("Freescale SoC Audio RPMSG interface");
 MODULE_AUTHOR("Shengjiu Wang <shengjiu.wang@nxp.com>");

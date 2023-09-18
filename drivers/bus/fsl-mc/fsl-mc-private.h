@@ -664,6 +664,8 @@ void fsl_mc_get_root_dprc(struct device *dev,
 struct fsl_mc_device *fsl_mc_device_lookup(struct fsl_mc_obj_desc *obj_desc,
 					   struct fsl_mc_device *mc_bus_dev);
 
+u16 mc_cmd_hdr_read_cmdid(struct fsl_mc_command *cmd);
+
 #ifdef CONFIG_FSL_MC_UAPI_SUPPORT
 
 int fsl_mc_uapi_create_device_file(struct fsl_mc_bus *mc_bus);

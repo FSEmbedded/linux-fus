@@ -8,3 +8,4 @@ obj-$(CONFIG_JAILHOUSE_DBGCON)	+= jailhouse_dbgcon.o
 obj-y				+= vboxguest/
 
 obj-$(CONFIG_NITRO_ENCLAVES)	+= nitro_enclaves/
+obj-$(CONFIG_ACRN_HSM)		+= acrn/

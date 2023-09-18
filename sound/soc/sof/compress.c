@@ -10,8 +10,13 @@
 #include "sof-audio.h"
 #include "sof-priv.h"
 
-static void sof_set_transferred_bytes(struct sof_compr_stream *sstream,
-				      u64 host_pos, u64 buffer_size)
+const struct snd_compress_ops sof_probe_compressed_ops = {
+	.copy		= sof_probe_compr_copy,
+};
+EXPORT_SYMBOL(sof_probe_compressed_ops);
+
+int sof_probe_compr_open(struct snd_compr_stream *cstream,
+		struct snd_soc_dai *dai)
 {
 	u64 prev_pos;
 	unsigned int copied;

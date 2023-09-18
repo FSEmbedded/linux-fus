@@ -118,7 +118,7 @@ struct ad5770r_out_range {
 };
 
 /**
- * struct ad5770R_state - driver instance specific data
+ * struct ad5770r_state - driver instance specific data
  * @spi:		spi_device
  * @regmap:		regmap
  * @vref_reg:		fixed regulator for reference configuration
@@ -433,7 +433,7 @@ static ssize_t ad5770r_read_dac_powerdown(struct iio_dev *indio_dev,
 {
 	struct ad5770r_state *st = iio_priv(indio_dev);
 
-	return sprintf(buf, "%d\n", st->ch_pwr_down[chan->channel]);
+	return sysfs_emit(buf, "%d\n", st->ch_pwr_down[chan->channel]);
 }
 
 static ssize_t ad5770r_write_dac_powerdown(struct iio_dev *indio_dev,
@@ -522,7 +522,7 @@ static int ad5770r_channel_config(struct ad5770r_state *st)
 		return -EINVAL;
 
 	device_for_each_child_node(&st->spi->dev, child) {
-		ret = fwnode_property_read_u32(child, "num", &num);
+		ret = fwnode_property_read_u32(child, "reg", &num);
 		if (ret)
 			goto err_child_out;
 		if (num >= AD5770R_MAX_CHANNELS) {

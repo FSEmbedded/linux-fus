@@ -38,7 +38,6 @@
 #include <linux/workqueue.h>
 
 #include <asm/irq.h>
-#include <linux/platform_data/dma-imx-sdma.h>
 #include <linux/platform_data/dma-imx.h>
 #include <linux/regmap.h>
 #include <linux/mfd/syscon.h>
@@ -190,11 +189,64 @@
 				 BIT(DMA_MEM_TO_DEV) | \
 				 BIT(DMA_DEV_TO_DEV))
 
-#define SDMA_WATERMARK_LEVEL_FIFOS_OFF	12
-#define SDMA_WATERMARK_LEVEL_FIFO_OFF_OFF 16
-#define SDMA_WATERMARK_LEVEL_SW_DONE	BIT(23)
-#define SDMA_WATERMARK_LEVEL_SW_DONE_SEL_OFF 24
-#define SDMA_WATERMARK_LEVEL_WORDS_PER_FIFO_OFF 28
+/**
+ * struct sdma_script_start_addrs - SDMA script start pointers
+ *
+ * start addresses of the different functions in the physical
+ * address space of the SDMA engine.
+ */
+struct sdma_script_start_addrs {
+	s32 ap_2_ap_addr;
+	s32 ap_2_bp_addr;
+	s32 ap_2_ap_fixed_addr;
+	s32 bp_2_ap_addr;
+	s32 loopback_on_dsp_side_addr;
+	s32 mcu_interrupt_only_addr;
+	s32 firi_2_per_addr;
+	s32 firi_2_mcu_addr;
+	s32 per_2_firi_addr;
+	s32 mcu_2_firi_addr;
+	s32 uart_2_per_addr;
+	s32 uart_2_mcu_ram_addr;
+	s32 per_2_app_addr;
+	s32 mcu_2_app_addr;
+	s32 per_2_per_addr;
+	s32 uartsh_2_per_addr;
+	s32 uartsh_2_mcu_ram_addr;
+	s32 per_2_shp_addr;
+	s32 mcu_2_shp_addr;
+	s32 ata_2_mcu_addr;
+	s32 mcu_2_ata_addr;
+	s32 app_2_per_addr;
+	s32 app_2_mcu_addr;
+	s32 shp_2_per_addr;
+	s32 shp_2_mcu_addr;
+	s32 mshc_2_mcu_addr;
+	s32 mcu_2_mshc_addr;
+	s32 spdif_2_mcu_addr;
+	s32 mcu_2_spdif_addr;
+	s32 asrc_2_mcu_addr;
+	s32 ext_mem_2_ipu_addr;
+	s32 descrambler_addr;
+	s32 dptc_dvfs_addr;
+	s32 utra_addr;
+	s32 ram_code_start_addr;
+	/* End of v1 array */
+	s32 mcu_2_ssish_addr;
+	s32 ssish_2_mcu_addr;
+	s32 hdmi_dma_addr;
+	/* End of v2 array */
+	s32 zcanfd_2_mcu_addr;
+	s32 zqspi_2_mcu_addr;
+	s32 mcu_2_ecspi_addr;
+	s32 mcu_2_sai_addr;
+	s32 sai_2_mcu_addr;
+	s32 uart_2_mcu_addr;
+	s32 uartsh_2_mcu_addr;
+	/* End of v3 array */
+	s32 mcu_2_zqspi_addr;
+	/* End of v4 array */
+};
 
 /*
  * Mode/Count of data node descriptors - IPCv2
@@ -399,7 +451,6 @@ struct sdma_channel {
 	struct work_struct		terminate_worker;
 	struct list_head                terminated;
 	bool				is_ram_script;
-	int				prio;
 };
 
 #define IMX_DMA_SG_LOOP		BIT(0)
@@ -451,13 +502,11 @@ struct sdma_driver_data {
 	bool check_ratio;
 	/*
 	 * ecspi ERR009165 fixed should be done in sdma script
-	 * and it be fixed in soc from i.mx6ul.
-	 * please get more information from below link:
+	 * and it has been fixed in soc from i.mx6ul.
+	 * please get more information from the below link:
 	 * https://www.nxp.com/docs/en/errata/IMX6DQCE.pdf
 	 */
 	bool ecspi_fixed;
-	bool has_done0;
-	bool pm_runtime;
 };
 
 struct sdma_engine {
@@ -486,11 +535,7 @@ struct sdma_engine {
 	struct sdma_buffer_descriptor	*bd0;
 	/* clock ratio for AHB:SDMA core. 1:1 is 1, 2:1 is 0*/
 	bool				clk_ratio;
-	struct gen_pool			*iram_pool;
-	bool				fw_loaded;
-	u32				fw_fail;
-	u8				*fw_data;
-	unsigned short			ram_code_start;
+	bool                            fw_loaded;
 };
 
 static int sdma_config_write(struct dma_chan *chan,
@@ -587,28 +632,10 @@ static struct sdma_driver_data sdma_imx6q = {
 	.script_addrs = &sdma_script_imx6q,
 };
 
-static struct sdma_script_start_addrs sdma_script_imx6sx = {
-	.ap_2_ap_addr = 642,
-	.uart_2_mcu_addr = 817,
-	.mcu_2_app_addr = 747,
-	.uartsh_2_mcu_addr = 1032,
-	.mcu_2_shp_addr = 960,
-	.app_2_mcu_addr = 683,
-	.shp_2_mcu_addr = 891,
-	.spdif_2_mcu_addr = 1100,
-	.mcu_2_spdif_addr = 1134,
-};
-
-static struct sdma_driver_data sdma_imx6sx = {
-	.chnenbl0 = SDMA_CHNENBL0_IMX35,
-	.num_events = 48,
-	.script_addrs = &sdma_script_imx6sx,
-};
-
 static struct sdma_driver_data sdma_imx6ul = {
 	.chnenbl0 = SDMA_CHNENBL0_IMX35,
 	.num_events = 48,
-	.script_addrs = &sdma_script_imx6sx,
+	.script_addrs = &sdma_script_imx6q,
 	.ecspi_fixed = true,
 };
 
@@ -636,56 +663,6 @@ static struct sdma_driver_data sdma_imx8mq = {
 	.script_addrs = &sdma_script_imx7d,
 	.check_ratio = 1,
 };
-
-static struct sdma_driver_data sdma_imx8mp = {
-	.chnenbl0 = SDMA_CHNENBL0_IMX35,
-	.num_events = 48,
-	.script_addrs = &sdma_script_imx7d,
-	.check_ratio = 1,
-	.ecspi_fixed = true,
-	.has_done0 = true,
-	.pm_runtime = true,
-};
-
-static const struct platform_device_id sdma_devtypes[] = {
-	{
-		.name = "imx25-sdma",
-		.driver_data = (unsigned long)&sdma_imx25,
-	}, {
-		.name = "imx31-sdma",
-		.driver_data = (unsigned long)&sdma_imx31,
-	}, {
-		.name = "imx35-sdma",
-		.driver_data = (unsigned long)&sdma_imx35,
-	}, {
-		.name = "imx51-sdma",
-		.driver_data = (unsigned long)&sdma_imx51,
-	}, {
-		.name = "imx53-sdma",
-		.driver_data = (unsigned long)&sdma_imx53,
-	}, {
-		.name = "imx6q-sdma",
-		.driver_data = (unsigned long)&sdma_imx6q,
-	}, {
-		.name = "imx6sx-sdma",
-		.driver_data = (unsigned long)&sdma_imx6sx,
-	}, {
-		.name = "imx7d-sdma",
-		.driver_data = (unsigned long)&sdma_imx7d,
-	}, {
-		.name = "imx6ul-sdma",
-		.driver_data = (unsigned long)&sdma_imx6ul,
-	}, {
-		.name = "imx8mq-sdma",
-		.driver_data = (unsigned long)&sdma_imx8mq,
-	}, {
-		.name = "imx8mp-sdma",
-		.driver_data = (unsigned long)&sdma_imx8mp,
-	}, {
-		/* sentinel */
-	}
-};
-MODULE_DEVICE_TABLE(platform, sdma_devtypes);
 
 static const struct of_device_id sdma_dt_ids[] = {
 	{ .compatible = "fsl,imx6q-sdma", .data = &sdma_imx6q, },
@@ -1114,6 +1091,7 @@ static void sdma_get_pc(struct sdma_channel *sdmac,
 	sdmac->pc_to_device = 0;
 	sdmac->device_to_device = 0;
 	sdmac->pc_to_pc = 0;
+	sdmac->is_ram_script = false;
 
 	switch (peripheral_type) {
 	case IMX_DMATYPE_MEMORY:
@@ -1141,8 +1119,15 @@ static void sdma_get_pc(struct sdma_channel *sdmac,
 		break;
 	case IMX_DMATYPE_CSPI:
 		per_2_emi = sdma->script_addrs->app_2_mcu_addr;
-		emi_2_per = sdma->script_addrs->mcu_2_ecspi_addr;
-		sdmac->is_ram_script = true;
+
+		/* Use rom script mcu_2_app if ERR009165 fixed */
+		if (sdmac->sdma->drvdata->ecspi_fixed) {
+			emi_2_per = sdma->script_addrs->mcu_2_app_addr;
+		} else {
+			emi_2_per = sdma->script_addrs->mcu_2_ecspi_addr;
+			sdmac->is_ram_script = true;
+		}
+
 		break;
 	case IMX_DMATYPE_EXT:
 	case IMX_DMATYPE_SSI:
@@ -1266,31 +1251,6 @@ static int sdma_load_context(struct sdma_channel *sdmac)
 	bd0->mode.count = sizeof(*context) / 4;
 	bd0->buffer_addr = sdma->context_phys;
 	bd0->ext_buffer_addr = 2048 + (sizeof(*context) / 4) * channel;
-	ret = sdma_run_channel0(sdma);
-
-	spin_unlock_irqrestore(&sdma->channel_0_lock, flags);
-
-	return ret;
-}
-
-static int sdma_save_restore_context(struct sdma_engine *sdma, bool save)
-{
-	struct sdma_context_data *context = sdma->context;
-	struct sdma_buffer_descriptor *bd0 = sdma->bd0;
-	unsigned long flags;
-	int ret;
-
-	spin_lock_irqsave(&sdma->channel_0_lock, flags);
-
-	if (save)
-		bd0->mode.command = C0_GETDM;
-	else
-		bd0->mode.command = C0_SETDM;
-
-	bd0->mode.status = BD_DONE | BD_WRAP | BD_EXTD;
-	bd0->mode.count = MAX_DMA_CHANNELS * sizeof(*context) / 4;
-	bd0->buffer_addr = sdma->context_phys;
-	bd0->ext_buffer_addr = 2048;
 	ret = sdma_run_channel0(sdma);
 
 	spin_unlock_irqrestore(&sdma->channel_0_lock, flags);
@@ -1509,6 +1469,22 @@ static int sdma_config_channel(struct dma_chan *chan)
 	} else {
 		sdmac->watermark_level = 0; /* FIXME: M3_BASE_ADDRESS */
 	}
+
+	return 0;
+}
+
+static int sdma_set_channel_priority(struct sdma_channel *sdmac,
+		unsigned int priority)
+{
+	struct sdma_engine *sdma = sdmac->sdma;
+	int channel = sdmac->channel;
+
+	if (priority < MXC_SDMA_MIN_PRIORITY
+	    || priority > MXC_SDMA_MAX_PRIORITY) {
+		return -EINVAL;
+	}
+
+	writel_relaxed(priority, sdma->regs + SDMA_CHNPRI_0 + 4 * channel);
 
 	return 0;
 }
@@ -1781,6 +1757,11 @@ static struct sdma_desc *sdma_transfer_init(struct sdma_channel *sdmac,
 				enum dma_transfer_direction direction, u32 bds)
 {
 	struct sdma_desc *desc;
+
+	if (!sdmac->sdma->fw_loaded && sdmac->is_ram_script) {
+		dev_warn_once(sdmac->sdma->dev, "sdma firmware not ready!\n");
+		goto err_out;
+	}
 
 	desc = kzalloc((sizeof(*desc)), GFP_NOWAIT);
 	if (!desc)
@@ -2186,7 +2167,46 @@ static void sdma_issue_pending(struct dma_chan *chan)
 		sdma_start_desc(sdmac);
 	spin_unlock_irqrestore(&sdmac->vc.lock, flags);
 
-	sdma_pm_clk_enable(sdmac->sdma, false, false);
+#define SDMA_SCRIPT_ADDRS_ARRAY_SIZE_V1	34
+#define SDMA_SCRIPT_ADDRS_ARRAY_SIZE_V2	38
+#define SDMA_SCRIPT_ADDRS_ARRAY_SIZE_V3	45
+#define SDMA_SCRIPT_ADDRS_ARRAY_SIZE_V4	46
+
+static void sdma_add_scripts(struct sdma_engine *sdma,
+		const struct sdma_script_start_addrs *addr)
+{
+	s32 *addr_arr = (u32 *)addr;
+	s32 *saddr_arr = (u32 *)sdma->script_addrs;
+	int i;
+
+	/* use the default firmware in ROM if missing external firmware */
+	if (!sdma->script_number)
+		sdma->script_number = SDMA_SCRIPT_ADDRS_ARRAY_SIZE_V1;
+
+	if (sdma->script_number > sizeof(struct sdma_script_start_addrs)
+				  / sizeof(s32)) {
+		dev_err(sdma->dev,
+			"SDMA script number %d not match with firmware.\n",
+			sdma->script_number);
+		return;
+	}
+
+	for (i = 0; i < sdma->script_number; i++)
+		if (addr_arr[i] > 0)
+			saddr_arr[i] = addr_arr[i];
+
+	/*
+	 * get uart_2_mcu_addr/uartsh_2_mcu_addr rom script specially because
+	 * they are now replaced by uart_2_mcu_ram_addr/uartsh_2_mcu_ram_addr
+	 * to be compatible with legacy freescale/nxp sdma firmware, and they
+	 * are located in the bottom part of sdma_script_start_addrs which are
+	 * beyond the SDMA_SCRIPT_ADDRS_ARRAY_SIZE_V1.
+	 */
+	if (addr->uart_2_mcu_addr)
+		sdma->script_addrs->uart_2_mcu_addr = addr->uart_2_mcu_addr;
+	if (addr->uartsh_2_mcu_addr)
+		sdma->script_addrs->uartsh_2_mcu_addr = addr->uartsh_2_mcu_addr;
+
 }
 
 static void sdma_load_firmware(const struct firmware *fw, void *context)
@@ -2247,9 +2267,11 @@ static void sdma_load_firmware(const struct firmware *fw, void *context)
 
 		memcpy(sdma->fw_data, fw->data, fw->size);
 
-		if (!sdma->drvdata->pm_runtime)
-			sdma_runtime_resume(sdma->dev);
-	}
+	sdma->fw_loaded = true;
+
+	dev_info(sdma->dev, "loaded firmware %d.%d\n",
+			header->version_major,
+			header->version_minor);
 
 err_firmware:
 	release_firmware(fw);
@@ -2327,7 +2349,7 @@ static int sdma_get_firmware(struct sdma_engine *sdma,
 	int ret;
 
 	ret = request_firmware_nowait(THIS_MODULE,
-			FW_ACTION_HOTPLUG, fw_name, sdma->dev,
+			FW_ACTION_UEVENT, fw_name, sdma->dev,
 			GFP_KERNEL, sdma, sdma_load_firmware);
 
 	return ret;
@@ -2407,8 +2429,6 @@ static struct dma_chan *sdma_xlate(struct of_phandle_args *dma_spec,
 
 static int sdma_probe(struct platform_device *pdev)
 {
-	const struct of_device_id *of_id =
-			of_match_device(sdma_dt_ids, &pdev->dev);
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *spba_bus;
 	const char *fw_name;
@@ -2416,21 +2436,9 @@ static int sdma_probe(struct platform_device *pdev)
 	int irq;
 	struct resource *iores;
 	struct resource spba_res;
-	struct sdma_platform_data *pdata = dev_get_platdata(&pdev->dev);
 	int i;
 	struct sdma_engine *sdma;
 	s32 *saddr_arr;
-	const struct sdma_driver_data *drvdata = NULL;
-
-	if (of_id)
-		drvdata = of_id->data;
-	else if (pdev->id_entry)
-		drvdata = (void *)pdev->id_entry->driver_data;
-
-	if (!drvdata) {
-		dev_err(&pdev->dev, "unable to find driver data\n");
-		return -EINVAL;
-	}
 
 	ret = dma_coerce_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
 	if (ret)
@@ -2443,7 +2451,7 @@ static int sdma_probe(struct platform_device *pdev)
 	spin_lock_init(&sdma->channel_0_lock);
 
 	sdma->dev = &pdev->dev;
-	sdma->drvdata = drvdata;
+	sdma->drvdata = of_device_get_match_data(sdma->dev);
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
@@ -2529,8 +2537,6 @@ static int sdma_probe(struct platform_device *pdev)
 
 	if (sdma->drvdata->script_addrs)
 		sdma_add_scripts(sdma, sdma->drvdata->script_addrs);
-	if (pdata && pdata->script_addrs)
-		sdma_add_scripts(sdma, pdata->script_addrs);
 
 	sdma->dma_device.dev = &pdev->dev;
 
@@ -2575,33 +2581,19 @@ static int sdma_probe(struct platform_device *pdev)
 		of_node_put(spba_bus);
 	}
 
-	if (pdata) {
-		sdma->fw_name = pdata->fw_name;
+	/*
+	 * Because that device tree does not encode ROM script address,
+	 * the RAM script in firmware is mandatory for device tree
+	 * probe, otherwise it fails.
+	 */
+	ret = of_property_read_string(np, "fsl,sdma-ram-script-name",
+				      &fw_name);
+	if (ret) {
+		dev_warn(&pdev->dev, "failed to get firmware name\n");
 	} else {
-		/*
-		 * Because that device tree does not encode ROM script address,
-		 * the RAM script in firmware is mandatory for device tree
-		 * probe, otherwise it fails.
-		 */
-		ret = of_property_read_string(np, "fsl,sdma-ram-script-name",
-					      &fw_name);
+		ret = sdma_get_firmware(sdma, fw_name);
 		if (ret)
-			dev_warn(&pdev->dev, "failed to get firmware name\n");
-		else
-			sdma->fw_name = fw_name;
-
-		ret = sdma_get_firmware(sdma, sdma->fw_name);
-		if (ret)
-			dev_warn(sdma->dev, "failed to get firmware.\n");
-	}
-
-	/* enable autosuspend for pm_runtime */
-	if (sdma->drvdata->pm_runtime) {
-		pm_runtime_set_autosuspend_delay(&pdev->dev, 8000);
-		pm_runtime_use_autosuspend(&pdev->dev);
-		pm_runtime_mark_last_busy(&pdev->dev);
-		pm_runtime_set_suspended(&pdev->dev);
-		pm_runtime_enable(&pdev->dev);
+			dev_warn(&pdev->dev, "failed to get firmware from device tree\n");
 	}
 
 	return 0;
@@ -2761,7 +2753,6 @@ static struct platform_driver sdma_driver = {
 		.of_match_table = sdma_dt_ids,
 		.pm = &sdma_pm_ops,
 	},
-	.id_table	= sdma_devtypes,
 	.remove		= sdma_remove,
 	.probe		= sdma_probe,
 };

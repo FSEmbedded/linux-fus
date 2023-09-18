@@ -105,11 +105,6 @@
 		linux,autosuspend-period = <125>;
 	};
 
-	bt_sco_codec: bt_sco_codec {
-		#sound-dai-cells = <1>;
-		compatible = "linux,bt-sco";
-	};
-
 	wm8524: audio-codec {
 		#sound-dai-cells = <0>;
 		compatible = "wlf,wm8524";
@@ -160,22 +155,6 @@
 		};
 	};
 
-	sound-hdmi {
-		compatible = "fsl,imx8mq-evk-cdnhdmi",
-				"fsl,imx-audio-cdnhdmi";
-		model = "imx-audio-hdmi";
-		audio-cpu = <&sai4>;
-		protocol = <1>;
-		hdmi-out;
-		constraint-rate = <44100>,
-				<88200>,
-				<176400>,
-				<32000>,
-				<48000>,
-				<96000>,
-				<192000>;
-	};
-
 	sound-spdif {
 		compatible = "fsl,imx-audio-spdif";
 		model = "imx-spdif";
@@ -189,29 +168,6 @@
 		model = "imx-hdmi-arc";
 		spdif-controller = <&spdif2>;
 		spdif-in;
-	};
-
-	sound-ak4458 {
-		compatible = "fsl,imx-audio-ak4458-mq";
-		model = "ak4458-audio";
-		audio-cpu = <&sai1>;
-		audio-codec = <&ak4458_1>, <&ak4458_2>;
-		reset-gpios = <&gpio3 18 GPIO_ACTIVE_LOW>;
-	};
-
-	sound-ak5558 {
-		compatible = "fsl,imx-audio-ak5558-mq";
-		model = "ak5558-audio";
-		audio-cpu = <&sai5>;
-		audio-codec = <&ak5558>;
-	};
-
-	sound-ak4497 {
-		compatible = "fsl,imx-audio-ak4497-mq";
-		model = "ak4497-audio";
-		audio-cpu = <&sai1>;
-		audio-codec = <&ak4497>;
-		status = "disabled";
 	};
 };
 
@@ -592,16 +548,7 @@
 		 <&clk IMX8MQ_CLK_PCIE1_PHY>,
 		 <&pcie0_refclk>;
 	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
-	assigned-clocks = <&clk IMX8MQ_CLK_PCIE1_AUX>,
-			  <&clk IMX8MQ_CLK_PCIE1_PHY>,
-			  <&clk IMX8MQ_CLK_PCIE1_CTRL>;
-	assigned-clock-rates = <10000000>, <100000000>, <250000000>;
-	assigned-clock-parents = <&clk IMX8MQ_SYS2_PLL_50M>,
-				 <&clk IMX8MQ_SYS2_PLL_100M>,
-				 <&clk IMX8MQ_SYS2_PLL_250M>;
-	hard-wired = <1>;
 	vph-supply = <&vgen5_reg>;
-	l1ss-disabled;
 	status = "okay";
 };
 
@@ -660,23 +607,15 @@
 	power-supply = <&sw1c_reg>;
 };
 
-&sai1 {
-	pinctrl-names = "default", "pcm_b2m", "dsd";
-	pinctrl-0 = <&pinctrl_sai1_pcm>;
-	pinctrl-1 = <&pinctrl_sai1_pcm_b2m>;
-	pinctrl-2 = <&pinctrl_sai1_dsd>;
-	assigned-clocks = <&clk IMX8MQ_CLK_SAI1>;
-	assigned-clock-parents = <&clk IMX8MQ_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <49152000>;
-	clocks = <&clk IMX8MQ_CLK_SAI1_IPG>, <&clk IMX8MQ_CLK_DUMMY>,
-		<&clk IMX8MQ_CLK_SAI1_ROOT>, <&clk IMX8MQ_CLK_DUMMY>,
-		<&clk IMX8MQ_CLK_DUMMY>, <&clk IMX8MQ_AUDIO_PLL1_OUT>,
-		<&clk IMX8MQ_AUDIO_PLL2_OUT>;
-	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3", "pll8k", "pll11k";
-	fsl,sai-multi-lane;
-	fsl,dataline,dsd = <0 0xff 0xff 2 0xff 0x11>;
-	dmas = <&sdma2 8 25 0>, <&sdma2 9 25 0>;
-	status = "okay";
+	n25q256a: flash@0 {
+		reg = <0>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "micron,n25q256a", "jedec,spi-nor";
+		spi-max-frequency = <29000000>;
+		spi-tx-bus-width = <1>;
+		spi-rx-bus-width = <4>;
+	};
 };
 
 &sai2 {
@@ -735,14 +674,6 @@
 	assigned-clocks = <&clk IMX8MQ_CLK_SPDIF1>;
 	assigned-clock-parents = <&clk IMX8MQ_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <24576000>;
-	clocks = <&clk IMX8MQ_CLK_IPG_ROOT>, <&clk IMX8MQ_CLK_25M>,
-		<&clk IMX8MQ_CLK_SPDIF1>, <&clk IMX8MQ_CLK_DUMMY>,
-		<&clk IMX8MQ_CLK_DUMMY>, <&clk IMX8MQ_CLK_DUMMY>,
-		<&clk IMX8MQ_CLK_IPG_ROOT>, <&clk IMX8MQ_CLK_DUMMY>,
-		<&clk IMX8MQ_CLK_DUMMY>, <&clk IMX8MQ_CLK_DUMMY>,
-		<&clk IMX8MQ_AUDIO_PLL1_OUT>, <&clk IMX8MQ_AUDIO_PLL2_OUT>;
-	clock-names = "core", "rxtx0", "rxtx1", "rxtx2", "rxtx3", "rxtx4",
-		      "rxtx5", "rxtx6", "rxtx7", "spba", "pll8k", "pll11k";
 	status = "okay";
 };
 
@@ -751,23 +682,6 @@
 	assigned-clock-parents = <&clk IMX8MQ_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <24576000>;
 	status = "okay";
-};
-
-&qspi0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_qspi>;
-	status = "okay";
-
-	flash0: n25q256a@0 {
-		reg = <0>;
-		#address-cells = <1>;
-		#size-cells = <1>;
-		compatible = "jedec,spi-nor";
-		spi-max-frequency = <29000000>;
-		spi-tx-bus-width = <1>;
-		spi-rx-bus-width = <4>;
-		spi-nor,ddr-quad-read-dummy = <6>;
-	};
 };
 
 &uart1 {
@@ -839,9 +753,9 @@
 	assigned-clocks = <&clk IMX8MQ_CLK_USDHC2>;
 	assigned-clock-rates = <200000000>;
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
-	pinctrl-0 = <&pinctrl_usdhc2>;
-	pinctrl-1 = <&pinctrl_usdhc2_100mhz>;
-	pinctrl-2 = <&pinctrl_usdhc2_200mhz>;
+	pinctrl-0 = <&pinctrl_usdhc2>, <&pinctrl_usdhc2_gpio>;
+	pinctrl-1 = <&pinctrl_usdhc2_100mhz>, <&pinctrl_usdhc2_gpio>;
+	pinctrl-2 = <&pinctrl_usdhc2_200mhz>, <&pinctrl_usdhc2_gpio>;
 	cd-gpios = <&gpio2 12 GPIO_ACTIVE_LOW>;
 	vmmc-supply = <&reg_usdhc2_vmmc>;
 	status = "okay";
@@ -872,7 +786,6 @@
 		fsl,pins = <
 			MX8MQ_IOMUXC_GPIO1_IO13_GPIO1_IO13		0x19
 		>;
-
 	};
 
 	pinctrl_csi1_pwn: csi1_pwn_grp {
@@ -970,7 +883,6 @@
 			MX8MQ_IOMUXC_NAND_DATA01_QSPI_A_DATA1	0x82
 			MX8MQ_IOMUXC_NAND_DATA02_QSPI_A_DATA2	0x82
 			MX8MQ_IOMUXC_NAND_DATA03_QSPI_A_DATA3	0x82
-
 		>;
 	};
 
@@ -1080,6 +992,13 @@
 		>;
 	};
 
+	pinctrl_spdif1: spdif1grp {
+		fsl,pins = <
+			MX8MQ_IOMUXC_SPDIF_TX_SPDIF1_OUT	0xd6
+			MX8MQ_IOMUXC_SPDIF_RX_SPDIF1_IN		0xd6
+		>;
+	};
+
 	pinctrl_uart1: uart1grp {
 		fsl,pins = <
 			MX8MQ_IOMUXC_UART1_RXD_UART1_DCE_RX		0x49
@@ -1145,6 +1064,12 @@
 			MX8MQ_IOMUXC_SD1_DATA7_USDHC1_DATA7		0xdf
 			MX8MQ_IOMUXC_SD1_STROBE_USDHC1_STROBE		0x9f
 			MX8MQ_IOMUXC_SD1_RESET_B_USDHC1_RESET_B		0xc1
+		>;
+	};
+
+	pinctrl_usdhc2_gpio: usdhc2gpiogrp {
+		fsl,pins = <
+			MX8MQ_IOMUXC_SD2_CD_B_GPIO2_IO12		0x41
 		>;
 	};
 

@@ -128,9 +128,9 @@ static struct snd_soc_dai_driver fsl_rpmsg_dai = {
 		.rates = SNDRV_PCM_RATE_KNOT,
 		.formats = FSL_RPMSG_FORMATS,
 	},
-	.symmetric_rates       = 1,
+	.symmetric_rate        = 1,
 	.symmetric_channels    = 1,
-	.symmetric_samplebits  = 1,
+	.symmetric_sample_bits = 1,
 	.ops = &fsl_rpmsg_dai_ops,
 };
 
@@ -138,43 +138,11 @@ static const struct snd_soc_component_driver fsl_component = {
 	.name           = "fsl-rpmsg",
 };
 
-static const struct fsl_rpmsg_soc_data imx7ulp_data = {
-	.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
-		 SNDRV_PCM_RATE_48000,
-	.formats = SNDRV_PCM_FMTBIT_S16_LE,
-};
-
-static const struct fsl_rpmsg_soc_data imx8mm_data = {
-	.rates = SNDRV_PCM_RATE_KNOT,
-	.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE |
-		   SNDRV_PCM_FMTBIT_S32_LE | SNDRV_PCM_FMTBIT_DSD_U8 |
-		   SNDRV_PCM_FMTBIT_DSD_U16_LE | SNDRV_PCM_FMTBIT_DSD_U32_LE,
-};
-
-static const struct fsl_rpmsg_soc_data imx8mn_data = {
-	.rates = SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |
-		 SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_88200 |
-		 SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_176400 |
-		 SNDRV_PCM_RATE_192000,
-	.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE |
-		   SNDRV_PCM_FMTBIT_S32_LE,
-};
-
-static const struct fsl_rpmsg_soc_data imx8mp_data = {
-	.rates = SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |
-		 SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_88200 |
-		 SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_176400 |
-		 SNDRV_PCM_RATE_192000,
-	.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE |
-		   SNDRV_PCM_FMTBIT_S32_LE,
-};
-
 static const struct of_device_id fsl_rpmsg_ids[] = {
-	{ .compatible = "fsl,imx7ulp-rpmsg-audio", .data = &imx7ulp_data},
-	{ .compatible = "fsl,imx8mm-rpmsg-audio", .data = &imx8mm_data},
-	{ .compatible = "fsl,imx8mn-rpmsg-audio", .data = &imx8mn_data},
-	{ .compatible = "fsl,imx8mp-rpmsg-audio", .data = &imx8mp_data},
-	{ .compatible = "fsl,imx8ulp-rpmsg-audio", .data = &imx7ulp_data},
+	{ .compatible = "fsl,imx7ulp-rpmsg-audio"},
+	{ .compatible = "fsl,imx8mm-rpmsg-audio"},
+	{ .compatible = "fsl,imx8mn-rpmsg-audio"},
+	{ .compatible = "fsl,imx8mp-rpmsg-audio"},
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, fsl_rpmsg_ids);
@@ -182,42 +150,17 @@ MODULE_DEVICE_TABLE(of, fsl_rpmsg_ids);
 static int fsl_rpmsg_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
-	struct snd_soc_dai_driver *dai_drv;
 	struct fsl_rpmsg *rpmsg;
 	int ret;
-
-	dai_drv = devm_kzalloc(&pdev->dev, sizeof(struct snd_soc_dai_driver), GFP_KERNEL);
-	if (!dai_drv)
-		return -ENOMEM;
-	memcpy(dai_drv, &fsl_rpmsg_dai, sizeof(fsl_rpmsg_dai));
 
 	rpmsg = devm_kzalloc(&pdev->dev, sizeof(struct fsl_rpmsg), GFP_KERNEL);
 	if (!rpmsg)
 		return -ENOMEM;
 
-	rpmsg->soc_data = of_device_get_match_data(&pdev->dev);
-	if (rpmsg->soc_data) {
-		dai_drv->playback.rates = rpmsg->soc_data->rates;
-		dai_drv->capture.rates = rpmsg->soc_data->rates;
-		dai_drv->playback.formats = rpmsg->soc_data->formats;
-		dai_drv->capture.formats = rpmsg->soc_data->formats;
-
-		/* setup rpmsg-micfil channels and rates */
-		if (of_node_name_eq(np, "rpmsg_micfil")) {
-			rpmsg->buffer_size = 0x100000;
-			dai_drv->capture.channels_min = 1;
-			dai_drv->capture.channels_max = 8;
-			dai_drv->capture.rates = SNDRV_PCM_RATE_8000_48000;
-			dai_drv->capture.formats = SNDRV_PCM_FMTBIT_S32_LE;
-			if (of_device_is_compatible(np, "fsl,imx8mm-rpmsg-audio"))
-				dai_drv->capture.formats = SNDRV_PCM_FMTBIT_S16_LE;
-		}
-	}
-
 	if (of_property_read_bool(np, "fsl,enable-lpa")) {
 		rpmsg->enable_lpa = 1;
 		rpmsg->buffer_size = LPA_LARGE_BUFFER_SIZE;
-	} else if (!rpmsg->buffer_size) {
+	} else {
 		rpmsg->buffer_size = IMX_DEFAULT_DMABUF_SIZE;
 	}
 
@@ -246,13 +189,13 @@ static int fsl_rpmsg_probe(struct platform_device *pdev)
 	pm_runtime_enable(&pdev->dev);
 
 	ret = devm_snd_soc_register_component(&pdev->dev, &fsl_component,
-					      dai_drv, 1);
+					      &fsl_rpmsg_dai, 1);
 	if (ret)
 		return ret;
 
 	rpmsg->card_pdev = platform_device_register_data(&pdev->dev,
 							 "imx-audio-rpmsg",
-							 PLATFORM_DEVID_AUTO,
+							 PLATFORM_DEVID_NONE,
 							 NULL,
 							 0);
 	if (IS_ERR(rpmsg->card_pdev)) {
@@ -315,6 +258,8 @@ static const struct dev_pm_ops fsl_rpmsg_pm_ops = {
 	SET_RUNTIME_PM_OPS(fsl_rpmsg_runtime_suspend,
 			   fsl_rpmsg_runtime_resume,
 			   NULL)
+	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
+				pm_runtime_force_resume)
 };
 
 static struct platform_driver fsl_rpmsg_driver = {

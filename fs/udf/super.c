@@ -57,6 +57,7 @@
 #include <linux/crc-itu-t.h>
 #include <linux/log2.h>
 #include <asm/byteorder.h>
+#include <linux/iversion.h>
 
 #include "udf_sb.h"
 #include "udf_i.h"
@@ -149,6 +150,7 @@ static struct inode *udf_alloc_inode(struct super_block *sb)
 	init_rwsem(&ei->i_data_sem);
 	ei->cached_extent.lstart = -1;
 	spin_lock_init(&ei->i_extent_cache_lock);
+	inode_set_iversion(&ei->vfs_inode, 1);
 
 	return &ei->vfs_inode;
 }
@@ -453,6 +455,7 @@ static int udf_parse_options(char *options, struct udf_options *uopt,
 {
 	char *p;
 	int option;
+	unsigned int uv;
 
 	uopt->novrs = 0;
 	uopt->session = 0xFFFFFFFF;
@@ -502,17 +505,17 @@ static int udf_parse_options(char *options, struct udf_options *uopt,
 			uopt->flags &= ~(1 << UDF_FLAG_USE_SHORT_AD);
 			break;
 		case Opt_gid:
-			if (match_int(args, &option))
+			if (match_uint(args, &uv))
 				return 0;
-			uopt->gid = make_kgid(current_user_ns(), option);
+			uopt->gid = make_kgid(current_user_ns(), uv);
 			if (!gid_valid(uopt->gid))
 				return 0;
 			uopt->flags |= (1 << UDF_FLAG_GID_SET);
 			break;
 		case Opt_uid:
-			if (match_int(args, &option))
+			if (match_uint(args, &uv))
 				return 0;
-			uopt->uid = make_kuid(current_user_ns(), option);
+			uopt->uid = make_kuid(current_user_ns(), uv);
 			if (!uid_valid(uopt->uid))
 				return 0;
 			uopt->flags |= (1 << UDF_FLAG_UID_SET);

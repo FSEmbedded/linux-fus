@@ -122,12 +122,36 @@ static void ls_pcie_drop_msg_tlp(struct ls_pcie *pcie)
 	iowrite32(val, pci->dbi_base + PCIE_STRFMR1);
 }
 
-static void ls_pcie_disable_outbound_atus(struct ls_pcie *pcie)
+static int ls1021_pcie_link_up(struct dw_pcie *pci)
 {
-	int i;
+	u32 state;
+	struct ls_pcie *pcie = to_ls_pcie(pci);
 
-	for (i = 0; i < PCIE_IATU_NUM; i++)
-		dw_pcie_disable_atu(pcie->pci, i, DW_PCIE_REGION_OUTBOUND);
+	if (!pcie->scfg)
+		return 0;
+
+	regmap_read(pcie->scfg, SCFG_PEXMSCPORTSR(pcie->index), &state);
+	state = (state >> LTSSM_STATE_SHIFT) & LTSSM_STATE_MASK;
+
+	if (state < LTSSM_PCIE_L0)
+		return 0;
+
+	return 1;
+}
+
+static int ls_pcie_link_up(struct dw_pcie *pci)
+{
+	struct ls_pcie *pcie = to_ls_pcie(pci);
+	u32 state;
+
+	state = (ioread32(pcie->lut + pcie->drvdata->lut_dbg) >>
+		 pcie->drvdata->ltssm_shift) &
+		 LTSSM_STATE_MASK;
+
+	if (state < LTSSM_PCIE_L0)
+		return 0;
+
+	return 1;
 }
 
 /* Forward error response of outbound non-posted requests */
@@ -345,12 +369,6 @@ static int ls_pcie_host_init(struct pcie_port *pp)
 	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
 	struct ls_pcie *pcie = to_ls_pcie(pci);
 
-	/*
-	 * Disable outbound windows configured by the bootloader to avoid
-	 * one transaction hitting multiple outbound windows.
-	 * dw_pcie_setup_rc() will reconfigure the outbound windows.
-	 */
-	ls_pcie_disable_outbound_atus(pcie);
 	ls_pcie_fix_error_response(pcie);
 
 	dw_pcie_dbi_ro_wr_en(pci);
@@ -359,55 +377,42 @@ static int ls_pcie_host_init(struct pcie_port *pp)
 
 	ls_pcie_drop_msg_tlp(pcie);
 
-	dw_pcie_setup_rc(pp);
-
 	return 0;
 }
 
-static int ls_pcie_msi_host_init(struct pcie_port *pp)
+static int ls1021_pcie_host_init(struct pcie_port *pp)
 {
 	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
+	struct ls_pcie *pcie = to_ls_pcie(pci);
 	struct device *dev = pci->dev;
-	struct device_node *np = dev->of_node;
-	struct device_node *msi_node;
+	u32 index[2];
+	int ret;
 
-	/*
-	 * The MSI domain is set by the generic of_msi_configure().  This
-	 * .msi_host_init() function keeps us from doing the default MSI
-	 * domain setup in dw_pcie_host_init() and also enforces the
-	 * requirement that "msi-parent" exists.
-	 */
-	msi_node = of_parse_phandle(np, "msi-parent", 0);
-	if (!msi_node) {
-		dev_err(dev, "failed to find msi-parent\n");
-		return -EINVAL;
+	pcie->scfg = syscon_regmap_lookup_by_phandle(dev->of_node,
+						     "fsl,pcie-scfg");
+	if (IS_ERR(pcie->scfg)) {
+		ret = PTR_ERR(pcie->scfg);
+		dev_err(dev, "No syscfg phandle specified\n");
+		pcie->scfg = NULL;
+		return ret;
 	}
 
-	of_node_put(msi_node);
-	return 0;
+	if (of_property_read_u32_array(dev->of_node,
+				       "fsl,pcie-scfg", index, 2)) {
+		pcie->scfg = NULL;
+		return -EINVAL;
+	}
+	pcie->index = index[1];
+
+	return ls_pcie_host_init(pp);
 }
 
-static struct ls_pcie_host_pm_ops ls1021a_pcie_host_pm_ops = {
-	.pm_init = &ls1021a_pcie_pm_init,
-	.send_turn_off_message = &ls1021a_pcie_send_turnoff_msg,
-	.exit_from_l2 = &ls1021a_pcie_exit_from_l2,
-};
-
-static struct ls_pcie_host_pm_ops ls1043a_pcie_host_pm_ops = {
-	.pm_init = &ls1021a_pcie_pm_init,
-	.send_turn_off_message = &ls1043a_pcie_send_turnoff_msg,
-	.exit_from_l2 = &ls1043a_pcie_exit_from_l2,
-};
-
-static struct ls_pcie_host_pm_ops ls_pcie_host_pm_ops = {
-	.pm_init = &ls_pcie_pm_init,
-	.send_turn_off_message = &ls_pcie_send_turnoff_msg,
-	.exit_from_l2 = &ls_pcie_exit_from_l2,
+static const struct dw_pcie_host_ops ls1021_pcie_host_ops = {
+	.host_init = ls1021_pcie_host_init,
 };
 
 static const struct dw_pcie_host_ops ls_pcie_host_ops = {
 	.host_init = ls_pcie_host_init,
-	.msi_host_init = ls_pcie_msi_host_init,
 };
 
 static const struct ls_pcie_drvdata ls1021a_drvdata = {
@@ -441,40 +446,12 @@ static const struct of_device_id ls_pcie_of_match[] = {
 	{ },
 };
 
-static int __init ls_add_pcie_port(struct ls_pcie *pcie)
-{
-	struct dw_pcie *pci = pcie->pci;
-	struct pcie_port *pp = &pci->pp;
-	struct device *dev = pci->dev;
-	int ret;
-
-	pp->ops = pcie->drvdata->ops;
-
-	ret = dw_pcie_host_init(pp);
-	if (ret) {
-		dev_err(dev, "failed to initialize host\n");
-		return ret;
-	}
-
-	if (dw_pcie_link_up(pci)) {
-		dev_dbg(pci->dev, "Endpoint is present\n");
-		pcie->ep_presence = true;
-	}
-
-	if (pcie->drvdata->pm_ops && pcie->drvdata->pm_ops->pm_init &&
-	    !pcie->drvdata->pm_ops->pm_init(pcie))
-		pcie->pm_support = true;
-
-	return 0;
-}
-
-static int __init ls_pcie_probe(struct platform_device *pdev)
+static int ls_pcie_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct dw_pcie *pci;
 	struct ls_pcie *pcie;
 	struct resource *dbi_base;
-	int ret;
 
 	pcie = devm_kzalloc(dev, sizeof(*pcie), GFP_KERNEL);
 	if (!pcie)
@@ -487,6 +464,8 @@ static int __init ls_pcie_probe(struct platform_device *pdev)
 	pcie->drvdata = of_device_get_match_data(dev);
 
 	pci->dev = dev;
+	pci->ops = pcie->drvdata->dw_pcie_ops;
+	pci->pp.ops = pcie->drvdata->ops;
 
 	pcie->pci = pci;
 
@@ -508,11 +487,7 @@ static int __init ls_pcie_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, pcie);
 
-	ret = ls_add_pcie_port(pcie);
-	if (ret < 0)
-		return ret;
-
-	return 0;
+	return dw_pcie_host_init(&pci->pp);
 }
 
 static bool ls_pcie_pm_check(struct ls_pcie *pcie)
@@ -592,6 +567,7 @@ static const struct dev_pm_ops ls_pcie_pm_ops = {
 };
 
 static struct platform_driver ls_pcie_driver = {
+	.probe = ls_pcie_probe,
 	.driver = {
 		.name = "layerscape-pcie",
 		.of_match_table = ls_pcie_of_match,
@@ -599,4 +575,4 @@ static struct platform_driver ls_pcie_driver = {
 		.pm = &ls_pcie_pm_ops,
 	},
 };
-builtin_platform_driver_probe(ls_pcie_driver, ls_pcie_probe);
+builtin_platform_driver(ls_pcie_driver);

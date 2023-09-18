@@ -29,8 +29,7 @@ snd-soc-fsl-utils-objs := fsl_utils.o
 snd-soc-fsl-dma-objs := fsl_dma.o
 snd-soc-fsl-mqs-objs := fsl_mqs.o
 snd-soc-fsl-easrc-objs := fsl_easrc.o
-snd-soc-fsl-xcvr-objs := fsl_xcvr.o fsl_xcvr_sysfs.o
-snd-soc-fsl-esai-client-objs := fsl_esai_client.o
+snd-soc-fsl-xcvr-objs := fsl_xcvr.o
 snd-soc-fsl-aud2htx-objs := fsl_aud2htx.o
 snd-soc-fsl-rpmsg-objs := fsl_rpmsg.o
 
@@ -51,7 +50,6 @@ obj-$(CONFIG_SND_SOC_FSL_EASRC) += snd-soc-fsl-easrc.o
 obj-$(CONFIG_SND_SOC_FSL_HDMI) += snd-soc-fsl-hdmi.o
 obj-$(CONFIG_SND_SOC_POWERPC_DMA) += snd-soc-fsl-dma.o
 obj-$(CONFIG_SND_SOC_FSL_XCVR) += snd-soc-fsl-xcvr.o
-obj-$(CONFIG_SND_SOC_FSL_ESAI_CLIENT) += snd-soc-fsl-esai-client.o
 obj-$(CONFIG_SND_SOC_FSL_AUD2HTX) += snd-soc-fsl-aud2htx.o
 obj-$(CONFIG_SND_SOC_FSL_RPMSG) += snd-soc-fsl-rpmsg.o
 
@@ -65,64 +63,33 @@ obj-$(CONFIG_SND_MPC52xx_SOC_PCM030) += pcm030-audio-fabric.o
 obj-$(CONFIG_SND_MPC52xx_SOC_EFIKA) += efika-audio-fabric.o
 
 # i.MX Platform Support
-snd-soc-imx-ssi-objs := imx-ssi.o
 snd-soc-imx-audmux-objs := imx-audmux.o
-obj-$(CONFIG_SND_SOC_IMX_SSI) += snd-soc-imx-ssi.o
 obj-$(CONFIG_SND_SOC_IMX_AUDMUX) += snd-soc-imx-audmux.o
 
 obj-$(CONFIG_SND_SOC_IMX_PCM_FIQ) += imx-pcm-fiq.o
-obj-$(CONFIG_SND_SOC_IMX_PCM_DMA) += imx-pcm-dma.o imx-pcm-dma-v2.o
+obj-$(CONFIG_SND_SOC_IMX_PCM_DMA) += imx-pcm-dma.o
 obj-$(CONFIG_SND_SOC_IMX_AUDIO_RPMSG) += imx-audio-rpmsg.o
 obj-$(CONFIG_SND_SOC_IMX_PCM_RPMSG) += imx-pcm-rpmsg.o
-obj-$(CONFIG_SND_SOC_IMX_HDMI_DMA) += imx-hdmi-dma.o hdmi_pcm.o
 
 # i.MX Machine Support
 snd-soc-eukrea-tlv320-objs := eukrea-tlv320.o
-snd-soc-phycore-ac97-objs := phycore-ac97.o
-snd-soc-mx27vis-aic32x4-objs := mx27vis-aic32x4.o
-snd-soc-wm1133-ev1-objs := wm1133-ev1.o
 snd-soc-imx-es8328-objs := imx-es8328.o
 snd-soc-imx-sgtl5000-objs := imx-sgtl5000.o
 snd-soc-imx-wm8958-objs := imx-wm8958.o
 snd-soc-imx-sii902x-objs := imx-sii902x.o
 snd-soc-imx-spdif-objs := imx-spdif.o
-snd-soc-imx-mc13783-objs := imx-mc13783.o
 snd-soc-imx-audmix-objs := imx-audmix.o
-snd-soc-imx-rpmsg-objs := imx-rpmsg.o
-snd-soc-imx-xcvr-objs := imx-xcvr.o
-snd-soc-imx-pdm-objs := imx-pdm.o
-snd-soc-imx-ak4458-objs := imx-ak4458.o
-snd-soc-imx-ak5558-objs := imx-ak5558.o
-snd-soc-imx-ak4497-objs := imx-ak4497.o
-snd-soc-imx-micfil-objs := imx-micfil.o
-snd-soc-imx-pcm512x-objs := imx-pcm512x.o
-snd-soc-imx-dsp-objs := imx-dsp.o
-snd-soc-imx-si476x-objs := imx-si476x.o
 snd-soc-imx-hdmi-objs := imx-hdmi.o
-snd-soc-imx-cdnhdmi-objs := imx-cdnhdmi.o
+snd-soc-imx-rpmsg-objs := imx-rpmsg.o
+snd-soc-imx-card-objs := imx-card.o
 
 obj-$(CONFIG_SND_SOC_EUKREA_TLV320) += snd-soc-eukrea-tlv320.o
-obj-$(CONFIG_SND_SOC_PHYCORE_AC97) += snd-soc-phycore-ac97.o
-obj-$(CONFIG_SND_SOC_MX27VIS_AIC32X4) += snd-soc-mx27vis-aic32x4.o
-obj-$(CONFIG_SND_MXC_SOC_WM1133_EV1) += snd-soc-wm1133-ev1.o
 obj-$(CONFIG_SND_SOC_IMX_ES8328) += snd-soc-imx-es8328.o
 obj-$(CONFIG_SND_SOC_IMX_SGTL5000) += snd-soc-imx-sgtl5000.o
 obj-${CONFIG_SND_SOC_IMX_WM8958} += snd-soc-imx-wm8958.o
 obj-$(CONFIG_SND_SOC_IMX_SII902X) += snd-soc-imx-sii902x.o
 obj-$(CONFIG_SND_SOC_IMX_SPDIF) += snd-soc-imx-spdif.o
-obj-$(CONFIG_SND_SOC_IMX_MC13783) += snd-soc-imx-mc13783.o
 obj-$(CONFIG_SND_SOC_IMX_AUDMIX) += snd-soc-imx-audmix.o
-obj-$(CONFIG_SND_SOC_IMX_RPMSG) += snd-soc-imx-rpmsg.o
-obj-$(CONFIG_SND_SOC_IMX_XCVR) += snd-soc-imx-xcvr.o
-obj-$(CONFIG_SND_SOC_IMX_PDM_MIC) += snd-soc-imx-pdm.o
-obj-$(CONFIG_SND_SOC_IMX_AK4458) += snd-soc-imx-ak4458.o
-obj-$(CONFIG_SND_SOC_IMX_AK5558) += snd-soc-imx-ak5558.o
-obj-$(CONFIG_SND_SOC_IMX_AK4497) += snd-soc-imx-ak4497.o
-obj-$(CONFIG_SND_SOC_IMX_MICFIL) += snd-soc-imx-micfil.o
-obj-$(CONFIG_SND_SOC_IMX_PCM512X) += snd-soc-imx-pcm512x.o
-obj-$(CONFIG_SND_SOC_IMX_DSP) += snd-soc-imx-dsp.o
-obj-$(CONFIG_SND_SOC_IMX_SI476X) += snd-soc-imx-si476x.o
 obj-$(CONFIG_SND_SOC_IMX_HDMI) += snd-soc-imx-hdmi.o
-obj-$(CONFIG_SND_SOC_IMX_CDNHDMI) += snd-soc-imx-cdnhdmi.o
-
-AFLAGS_hdmi_pcm.o := -march=armv7-a -mtune=cortex-a9 -mfpu=neon -mfloat-abi=softfp
+obj-$(CONFIG_SND_SOC_IMX_RPMSG) += snd-soc-imx-rpmsg.o
+obj-$(CONFIG_SND_SOC_IMX_CARD) += snd-soc-imx-card.o

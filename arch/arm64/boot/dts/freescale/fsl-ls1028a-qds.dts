@@ -23,6 +23,9 @@
 		gpio2 = &gpio3;
 		serial0 = &duart0;
 		serial1 = &duart1;
+		mmc0 = &esdhc;
+		mmc1 = &esdhc1;
+		rtc1 = &ftm_alarm0;
 	};
 
 	chosen {
@@ -131,7 +134,11 @@
 	};
 };
 
-&ftm_alarm1 {
+&can0 {
+	status = "okay";
+};
+
+&can1 {
 	status = "okay";
 };
 
@@ -425,6 +432,7 @@
 
 &i2c1 {
 	status = "okay";
+
 	rtc@51 {
 		compatible = "nxp,pcf2129";
 		reg = <0x51>;
