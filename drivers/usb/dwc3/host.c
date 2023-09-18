@@ -10,48 +10,12 @@
 #include <linux/acpi.h>
 #include <linux/platform_device.h>
 
-#include "../host/xhci.h"
-
+#include "../host/xhci-plat.h"
 #include "core.h"
 
-
-#define XHCI_HCSPARAMS1		0x4
-#define XHCI_PORTSC_BASE	0x400
-
-/*
- * dwc3_power_off_all_roothub_ports - Power off all Root hub ports
- * @dwc3: Pointer to our controller context structure
- */
-static void dwc3_power_off_all_roothub_ports(struct dwc3 *dwc)
-{
-	int i, port_num;
-	u32 reg, op_regs_base, offset;
-	void __iomem *xhci_regs;
-
-	/* xhci regs is not mapped yet, do it temperary here */
-	if (dwc->xhci_resources[0].start) {
-		xhci_regs = ioremap(dwc->xhci_resources[0].start,
-				DWC3_XHCI_REGS_END);
-		if (IS_ERR(xhci_regs)) {
-			dev_err(dwc->dev, "Failed to ioremap xhci_regs\n");
-			return;
-		}
-
-		op_regs_base = HC_LENGTH(readl(xhci_regs));
-		reg = readl(xhci_regs + XHCI_HCSPARAMS1);
-		port_num = HCS_MAX_PORTS(reg);
-
-		for (i = 1; i <= port_num; i++) {
-			offset = op_regs_base + XHCI_PORTSC_BASE + 0x10*(i-1);
-			reg = readl(xhci_regs + offset);
-			reg &= ~PORT_POWER;
-			writel(reg, xhci_regs + offset);
-		}
-
-		iounmap(xhci_regs);
-	} else
-		dev_err(dwc->dev, "xhci base reg invalid\n");
-}
+static const struct xhci_plat_priv dwc3_xhci_plat_priv = {
+	.quirks = XHCI_SKIP_PHY_INIT,
+};
 
 static int dwc3_host_get_irq(struct dwc3 *dwc)
 {
@@ -136,6 +100,11 @@ int dwc3_host_init(struct dwc3 *dwc)
 		goto err;
 	}
 
+	ret = platform_device_add_data(xhci, &dwc3_xhci_plat_priv,
+					sizeof(dwc3_xhci_plat_priv));
+	if (ret)
+		goto err;
+
 	memset(props, 0, sizeof(struct property_entry) * ARRAY_SIZE(props));
 
 	if (dwc->usb3_lpm_capable)
@@ -187,4 +156,5 @@ err:
 void dwc3_host_exit(struct dwc3 *dwc)
 {
 	platform_device_unregister(dwc->xhci);
+	dwc->xhci = NULL;
 }

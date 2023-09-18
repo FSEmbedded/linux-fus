@@ -95,6 +95,9 @@
 #define VEND1_GLOBAL_FW_ID_MAJOR		GENMASK(15, 8)
 #define VEND1_GLOBAL_FW_ID_MINOR		GENMASK(7, 0)
 
+#define VEND1_GLOBAL_GEN_STAT2			0xc831
+#define VEND1_GLOBAL_GEN_STAT2_OP_IN_PROG	BIT(15)
+
 #define VEND1_GLOBAL_RSVD_STAT1			0xc885
 #define VEND1_GLOBAL_RSVD_STAT1_FW_BUILD_ID	GENMASK(7, 4)
 #define VEND1_GLOBAL_RSVD_STAT1_PROV_ID		GENMASK(3, 0)
@@ -129,28 +132,11 @@
 #define VEND1_GLOBAL_INT_VEND_MASK_GLOBAL2	BIT(1)
 #define VEND1_GLOBAL_INT_VEND_MASK_GLOBAL3	BIT(0)
 
-/* registers in MDIO_MMD_VEND1 region */
-#define AQUANTIA_VND1_GLOBAL_SC			0x000
-#define  AQUANTIA_VND1_GLOBAL_SC_LP		BIT(0xb)
-
-/* global start rate, the protocol associated with this speed is used by default
- * on SI.
+/* Sleep and timeout for checking if the Processor-Intensive
+ * MDIO operation is finished
  */
-#define AQUANTIA_VND1_GSTART_RATE		0x31a
-#define  AQUANTIA_VND1_GSTART_RATE_OFF		0
-#define  AQUANTIA_VND1_GSTART_RATE_100M		1
-#define  AQUANTIA_VND1_GSTART_RATE_1G		2
-#define  AQUANTIA_VND1_GSTART_RATE_10G		3
-#define  AQUANTIA_VND1_GSTART_RATE_2_5G		4
-#define  AQUANTIA_VND1_GSTART_RATE_5G		5
-
-/* SYSCFG registers for 100M, 1G, 2.5G, 5G, 10G */
-#define AQUANTIA_VND1_GSYSCFG_BASE		0x31b
-#define AQUANTIA_VND1_GSYSCFG_100M		0
-#define AQUANTIA_VND1_GSYSCFG_1G		1
-#define AQUANTIA_VND1_GSYSCFG_2_5G		2
-#define AQUANTIA_VND1_GSYSCFG_5G		3
-#define AQUANTIA_VND1_GSYSCFG_10G		4
+#define AQR107_OP_IN_PROG_SLEEP		1000
+#define AQR107_OP_IN_PROG_TIMEOUT	100000
 
 struct aqr107_hw_stat {
 	const char *name;
@@ -681,16 +667,52 @@ static void aqr107_link_change_notify(struct phy_device *phydev)
 		phydev_info(phydev, "Aquantia 1000Base-T2 mode active\n");
 }
 
+static int aqr107_wait_processor_intensive_op(struct phy_device *phydev)
+{
+	int val, err;
+
+	/* The datasheet notes to wait at least 1ms after issuing a
+	 * processor intensive operation before checking.
+	 * We cannot use the 'sleep_before_read' parameter of read_poll_timeout
+	 * because that just determines the maximum time slept, not the minimum.
+	 */
+	usleep_range(1000, 5000);
+
+	err = phy_read_mmd_poll_timeout(phydev, MDIO_MMD_VEND1,
+					VEND1_GLOBAL_GEN_STAT2, val,
+					!(val & VEND1_GLOBAL_GEN_STAT2_OP_IN_PROG),
+					AQR107_OP_IN_PROG_SLEEP,
+					AQR107_OP_IN_PROG_TIMEOUT, false);
+	if (err) {
+		phydev_err(phydev, "timeout: processor-intensive MDIO operation\n");
+		return err;
+	}
+
+	return 0;
+}
+
 static int aqr107_suspend(struct phy_device *phydev)
 {
-	return phy_set_bits_mmd(phydev, MDIO_MMD_VEND1, MDIO_CTRL1,
-				MDIO_CTRL1_LPOWER);
+	int err;
+
+	err = phy_set_bits_mmd(phydev, MDIO_MMD_VEND1, MDIO_CTRL1,
+			       MDIO_CTRL1_LPOWER);
+	if (err)
+		return err;
+
+	return aqr107_wait_processor_intensive_op(phydev);
 }
 
 static int aqr107_resume(struct phy_device *phydev)
 {
-	return phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, MDIO_CTRL1,
-				  MDIO_CTRL1_LPOWER);
+	int err;
+
+	err = phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, MDIO_CTRL1,
+				 MDIO_CTRL1_LPOWER);
+	if (err)
+		return err;
+
+	return aqr107_wait_processor_intensive_op(phydev);
 }
 
 static int aqr107_probe(struct phy_device *phydev)
