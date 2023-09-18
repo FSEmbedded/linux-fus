@@ -584,6 +584,7 @@
 			dmas = <&edma0 1 38>,
 			       <&edma0 1 39>;
 			dma-names = "rx", "tx";
+			scl-gpios = <&gpio4 12 0>;
 			status = "disabled";
 		};
 

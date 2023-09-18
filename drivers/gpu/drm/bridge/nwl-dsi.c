@@ -1299,18 +1299,37 @@ nwl_dsi_bridge_atomic_pre_enable(struct drm_bridge *bridge,
 	struct nwl_dsi *dsi = bridge_to_dsi(bridge);
 	int ret;
 
-	if (pm_runtime_resume_and_get(dev) < 0)
+	if (pm_runtime_resume_and_get(dsi->dev) < 0)
 		return;
 
-	if (clk_prepare_enable(dsi->lcdif_clk) < 0)
+	dsi->pdata->dpi_reset(dsi, true);
+	dsi->pdata->mipi_reset(dsi, true);
+	dsi->pdata->pclk_reset(dsi, true);
+
+	if (dsi->lcdif_clk && clk_prepare_enable(dsi->lcdif_clk) < 0)
 		goto runtime_put;
-	if (clk_prepare_enable(dsi->core_clk) < 0)
+	if (dsi->core_clk && clk_prepare_enable(dsi->core_clk) < 0)
 		goto runtime_put;
+	if (dsi->bypass_clk && clk_prepare_enable(dsi->bypass_clk) < 0)
+		goto runtime_put;
+	if (dsi->pixel_clk && clk_prepare_enable(dsi->pixel_clk) < 0)
+		goto runtime_put;
+	/*
+	 * Enable rx_esc clock for some platforms to access DSI host controller
+	 * and PHY registers.
+	 */
+	if (dsi->pdata->rx_clk_quirk && clk_prepare_enable(dsi->rx_esc_clk) < 0)
+		goto runtime_put;
+
+	/* Always use normal mode(full mode) for Type-4 display */
+	if (dsi->pdata->reg_cm)
+		regmap_update_bits(dsi->csr, dsi->pdata->reg_cm,
+				   IMX8ULP_DSI_CM_MASK, IMX8ULP_DSI_CM_NORMAL);
 
 	/* Step 1 from DSI reset-out instructions */
 	ret = dsi->pdata->pclk_reset(dsi, false);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to deassert PCLK: %d\n", ret);
+		DRM_DEV_ERROR(dsi->dev, "Failed to deassert PCLK: %d\n", ret);
 		goto runtime_put;
 	}
 
@@ -1320,19 +1339,22 @@ nwl_dsi_bridge_atomic_pre_enable(struct drm_bridge *bridge,
 	/* Step 3 from DSI reset-out instructions */
 	ret = dsi->pdata->mipi_reset(dsi, false);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to deassert ESC: %d\n", ret);
+		DRM_DEV_ERROR(dsi->dev, "Failed to deassert DSI: %d\n", ret);
 		goto runtime_put;
 	}
-	ret = reset_control_deassert(dsi->rst_byte);
-	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to deassert BYTE: %d\n", ret);
-		goto runtime_put;
-	}
+
+	/*
+	 * We need to force call enable for the panel here, in order to
+	 * make the panel initialization execute before our call to
+	 * bridge_enable, where we will enable the DPI and start streaming
+	 * pixels on the data lanes.
+	 */
+	drm_bridge_chain_enable(dsi->panel_bridge);
 
 	return;
 
 runtime_put:
-	pm_runtime_put_sync(dev);
+	pm_runtime_put_sync(dsi->dev);
 }
 
 static void
