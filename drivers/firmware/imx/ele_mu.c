@@ -19,6 +19,7 @@
 #include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/of_platform.h>
+#include <linux/of_reserved_mem.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
@@ -30,22 +31,27 @@
 #define ELE_PING_INTERVAL	(3600 * HZ)
 #define ELE_TRNG_STATE_OK	0x203
 
+#define RESERVED_DMA_POOL	BIT(1)
+
 struct ele_mu_priv *ele_priv_export;
 
 struct imx_info {
 	bool socdev;
 	/* platform specific flag to enable/disable the Sentinel True RNG */
 	bool enable_ele_trng;
+	bool reserved_dma_ranges;
 };
 
 static const struct imx_info imx8ulp_info = {
 	.socdev = true,
 	.enable_ele_trng = false,
+	.reserved_dma_ranges = true,
 };
 
 static const struct imx_info imx93_info = {
 	.socdev = false,
 	.enable_ele_trng = true,
+	.reserved_dma_ranges = true,
 };
 
 static const struct of_device_id ele_mu_match[] = {
@@ -231,7 +237,7 @@ static int imx_soc_device_register(struct platform_device *pdev)
 	return 0;
 }
 
-static int ele_trng_enable(struct platform_device *pdev)
+static int ele_do_start_rng(void)
 {
 	int ret;
 	int count = 5;
@@ -262,8 +268,9 @@ static int ele_trng_enable(struct platform_device *pdev)
 			return -EIO;
 	}
 
-	return ele_trng_init(&pdev->dev);
+	return 0;
 }
+
 /*
  * File operations for user-space
  */
@@ -936,6 +943,9 @@ static int ele_mu_probe(struct platform_device *pdev)
 		goto exit;
 	}
 
+	priv->max_dev_ctx = max_nb_users;
+	priv->ctxs = devm_kzalloc(dev, sizeof(dev_ctx) * max_nb_users, GFP_KERNEL);
+
 	/* Create users */
 	for (i = 0; i < max_nb_users; i++) {
 		dev_ctx = devm_kzalloc(dev, sizeof(*dev_ctx), GFP_KERNEL);
@@ -949,6 +959,9 @@ static int ele_mu_probe(struct platform_device *pdev)
 		dev_ctx->dev = dev;
 		dev_ctx->status = MU_FREE;
 		dev_ctx->priv = priv;
+
+		priv->ctxs[i] = dev_ctx;
+
 		/* Default value invalid for an header. */
 		init_waitqueue_head(&dev_ctx->wq);
 
@@ -990,6 +1003,16 @@ static int ele_mu_probe(struct platform_device *pdev)
 
 	ele_priv_export = priv;
 
+	if (info && info->reserved_dma_ranges) {
+		ret = of_reserved_mem_device_init(dev);
+		if (ret) {
+			dev_err(dev, "failed to init reserved memory region %d\n", ret);
+			priv->flags &= (~RESERVED_DMA_POOL);
+			goto exit;
+		}
+		priv->flags |= RESERVED_DMA_POOL;
+	}
+
 	if (info && info->socdev) {
 		ret = imx_soc_device_register(pdev);
 		if (ret) {
@@ -999,8 +1022,13 @@ static int ele_mu_probe(struct platform_device *pdev)
 		}
 	}
 
-	if (info && info->enable_ele_trng) {
-		ret = ele_trng_enable(pdev);
+	/* start ele rng */
+	ret = ele_do_start_rng();
+	if (ret)
+		dev_err(dev, "Failed to start ele rng\n");
+
+	if (!ret && info && info->enable_ele_trng) {
+		ret = ele_trng_init(dev);
 		if (ret)
 			dev_err(dev, "Failed to init ele-trng\n");
 	}
@@ -1015,6 +1043,13 @@ static int ele_mu_probe(struct platform_device *pdev)
 	return devm_of_platform_populate(dev);
 
 exit:
+	/* if execution control reaches here, ele-mu probe fail.
+	 * hence doing the cleanup
+	 */
+	if (priv->flags & RESERVED_DMA_POOL) {
+		of_reserved_mem_device_release(dev);
+		priv->flags &= (~RESERVED_DMA_POOL);
+	}
 	return ret;
 }
 
@@ -1027,13 +1062,40 @@ static int ele_mu_remove(struct platform_device *pdev)
 	mbox_free_channel(priv->tx_chan);
 	mbox_free_channel(priv->rx_chan);
 
+	if (priv->flags & RESERVED_DMA_POOL) {
+		of_reserved_mem_device_release(&pdev->dev);
+		priv->flags &= (~RESERVED_DMA_POOL);
+	}
+
 	return 0;
 }
+
+#ifdef CONFIG_PM_SLEEP
+static int ele_mu_resume(struct device *dev)
+{
+	struct ele_mu_priv *priv = dev_get_drvdata(dev);
+	int i, ret;
+
+	for (i = 0; i < priv->max_dev_ctx; i++)
+		wake_up_interruptible(&priv->ctxs[i]->wq);
+
+	ret = ele_do_start_rng();
+	if (ret)
+		dev_err(dev, "Failed to start ele rng on resume\n");
+
+	return 0;
+}
+#endif
+
+static const struct dev_pm_ops ele_mu_pm = {
+	SET_SYSTEM_SLEEP_PM_OPS(NULL, ele_mu_resume)
+};
 
 static struct platform_driver ele_mu_driver = {
 	.driver = {
 		.name = "fsl-ele-mu",
 		.of_match_table = ele_mu_match,
+		.pm = &ele_mu_pm,
 	},
 	.probe = ele_mu_probe,
 	.remove = ele_mu_remove,
