@@ -135,6 +135,12 @@ struct ele_mu_priv {
 	struct ele_api_msg tx_msg, rx_msg;
 	struct completion done;
 	spinlock_t lock;
+	/* Flag to retain the state of initialization done at
+	 * the time of ele-mu probe.
+	 */
+	int flags;
+	int max_dev_ctx;
+	struct ele_mu_device_ctx **ctxs;
 };
 
 int get_ele_mu_priv(struct ele_mu_priv **export);
