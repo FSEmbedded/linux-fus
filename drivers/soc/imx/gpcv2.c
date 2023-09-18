@@ -151,107 +151,11 @@ static int imx_gpc_pu_pgc_sw_pxx_req(struct generic_pm_domain *genpd,
 		}
 	}
 
-	reset_control_assert(domain->reset);
-
 	/* Enable reset clocks for all devices in the domain */
 	for (i = 0; i < domain->num_clks; i++)
 		clk_prepare_enable(domain->clk[i]);
 
-	/* delays for reset to propagate */
-	udelay(5);
-
-	if (domain->bits.pxx) {
-		/* request the domain to power up */
-		regmap_update_bits(domain->regmap, GPC_PU_PGC_SW_PUP_REQ,
-				   domain->bits.pxx, domain->bits.pxx);
-		/*
-		 * As per "5.5.9.4 Example Code 4" in IMX7DRM.pdf wait
-		 * for PUP_REQ/PDN_REQ bit to be cleared
-		 */
-		ret = regmap_read_poll_timeout(domain->regmap,
-					       GPC_PU_PGC_SW_PUP_REQ, reg_val,
-					       !(reg_val & domain->bits.pxx),
-					       0, USEC_PER_MSEC);
-		if (ret) {
-			dev_err(domain->dev, "failed to command PGC\n");
-			goto out_clk_disable;
-		}
-
-		/* disable power control */
-		regmap_clear_bits(domain->regmap, GPC_PGC_CTRL(domain->pgc),
-				  GPC_PGC_CTRL_PCR);
-	}
-
-	/* delay for reset to propagate */
-	udelay(5);
-
-	reset_control_deassert(domain->reset);
-
-	/* request the ADB400 to power up */
-	if (domain->bits.hskreq) {
-		regmap_update_bits(domain->regmap, GPC_PU_PWRHSK,
-				   domain->bits.hskreq, domain->bits.hskreq);
-
-		/*
-		 * ret = regmap_read_poll_timeout(domain->regmap, GPC_PU_PWRHSK, reg_val,
-		 *				  (reg_val & domain->bits.hskack), 0,
-		 *				  USEC_PER_MSEC);
-		 * Technically we need the commented code to wait handshake. But that needs
-		 * the BLK-CTL module BUS clk-en bit being set.
-		 *
-		 * There is a separate BLK-CTL module and we will have such a driver for it,
-		 * that driver will set the BUS clk-en bit and handshake will be triggered
-		 * automatically there. Just add a delay and suppose the handshake finish
-		 * after that.
-		 */
-	}
-
-	/* Disable reset clocks for all devices in the domain */
-	clk_bulk_disable_unprepare(domain->num_clks, domain->clks);
-
-	return 0;
-
-out_clk_disable:
-	clk_bulk_disable_unprepare(domain->num_clks, domain->clks);
-out_regulator_disable:
-	if (!IS_ERR(domain->regulator))
-		regulator_disable(domain->regulator);
-out_put_pm:
-	pm_runtime_put(domain->dev);
-
-	return ret;
-}
-
-static int imx_pgc_power_down(struct generic_pm_domain *genpd)
-{
-	struct imx_pgc_domain *domain = to_imx_pgc_domain(genpd);
-	u32 reg_val;
-	int ret;
-
-	/* Enable reset clocks for all devices in the domain */
-	ret = clk_bulk_prepare_enable(domain->num_clks, domain->clks);
-	if (ret) {
-		dev_err(domain->dev, "failed to enable reset clocks\n");
-		return ret;
-	}
-
-	/* request the ADB400 to power down */
-	if (domain->bits.hskreq) {
-		regmap_clear_bits(domain->regmap, GPC_PU_PWRHSK,
-				  domain->bits.hskreq);
-
-		ret = regmap_read_poll_timeout(domain->regmap, GPC_PU_PWRHSK,
-					       reg_val,
-					       !(reg_val & domain->bits.hskack),
-					       0, USEC_PER_MSEC);
-		if (ret) {
-			dev_err(domain->dev, "failed to power down ADB400\n");
-			goto out_clk_disable;
-		}
-	}
-
-	if (domain->bits.pxx) {
-		/* enable power control */
+	if (enable_power_control)
 		regmap_update_bits(domain->regmap, GPC_PGC_CTRL(domain->pgc),
 				   GPC_PGC_CTRL_PCR, GPC_PGC_CTRL_PCR);
 

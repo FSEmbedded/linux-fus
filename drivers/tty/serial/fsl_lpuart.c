@@ -1960,6 +1960,7 @@ static void lpuart_dma_shutdown(struct lpuart_port *sport)
 	if (sport->lpuart_dma_rx_use) {
 		lpuart_del_timer_sync(sport);
 		lpuart_dma_rx_free(&sport->port, true);
+		sport->lpuart_dma_rx_use = false;
 	}
 
 	if (sport->lpuart_dma_tx_use) {
@@ -1968,6 +1969,7 @@ static void lpuart_dma_shutdown(struct lpuart_port *sport)
 			sport->dma_tx_in_progress = false;
 			dmaengine_terminate_sync(sport->dma_tx_chan);
 		}
+		sport->lpuart_dma_tx_use = false;
 	}
 
 	if (sport->dma_tx_chan)
@@ -2954,13 +2956,18 @@ static int lpuart_probe(struct platform_device *pdev)
 		handler = lpuart_int;
 	}
 
-	ret = lpuart_global_reset(sport);
-	if (ret)
-		goto failed_reset;
+	pm_runtime_use_autosuspend(&pdev->dev);
+	pm_runtime_set_autosuspend_delay(&pdev->dev, UART_AUTOSUSPEND_TIMEOUT);
+	pm_runtime_set_active(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
 
 	ret = uart_add_one_port(&lpuart_reg, &sport->port);
 	if (ret)
 		goto failed_attach_port;
+
+	ret = lpuart_global_reset(sport);
+	if (ret)
+		goto failed_reset;
 
 	ret = uart_get_rs485_mode(&sport->port);
 	if (ret)
@@ -2984,9 +2991,12 @@ static int lpuart_probe(struct platform_device *pdev)
 
 failed_irq_request:
 failed_get_rs485:
+failed_reset:
 	uart_remove_one_port(&lpuart_reg, &sport->port);
 failed_attach_port:
-failed_reset:
+	pm_runtime_disable(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
+	pm_runtime_dont_use_autosuspend(&pdev->dev);
 	lpuart_disable_clks(sport);
 	return ret;
 }
@@ -3031,18 +3041,24 @@ static int __maybe_unused lpuart_runtime_resume(struct device *dev)
 
 static void serial_lpuart_enable_wakeup(struct lpuart_port *sport, bool on)
 {
-	unsigned int val;
+	unsigned int val, baud;
 
 	if (lpuart_is_32(sport)) {
 		val = lpuart32_read(&sport->port, UARTCTRL);
+		baud = lpuart32_read(&sport->port, UARTBAUD);
 		if (on) {
 			/* set rx_watermark to 0 in wakeup source mode */
 			lpuart32_write(&sport->port, 0, UARTWATER);
 			val |= UARTCTRL_RIE;
+			/* clear RXEDGIF flag before enable RXEDGIE interrupt */
+			lpuart32_write(&sport->port, UARTSTAT_RXEDGIF, UARTSTAT);
+			baud |= UARTBAUD_RXEDGIE;
 		} else {
 			val &= ~UARTCTRL_RIE;
+			baud &= ~UARTBAUD_RXEDGIE;
 		}
 		lpuart32_write(&sport->port, val, UARTCTRL);
+		lpuart32_write(&sport->port, baud, UARTBAUD);
 	} else {
 		val = readb(sport->port.membase + UARTCR2);
 		if (on)

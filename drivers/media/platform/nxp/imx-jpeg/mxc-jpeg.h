@@ -64,6 +64,7 @@ struct mxc_jpeg_fmt {
 	int					v_align;
 	u32					flags;
 	u8					precision;
+	u8					is_rgb;
 };
 
 struct mxc_jpeg_desc {
@@ -98,6 +99,9 @@ struct mxc_jpeg_ctx {
 	unsigned int			slot;
 	unsigned int			source_change;
 	bool				header_parsed;
+	struct v4l2_ctrl_handler	ctrl_handler;
+	u8				jpeg_quality;
+	struct delayed_work		task_timer;
 };
 
 struct mxc_jpeg_slot_data {

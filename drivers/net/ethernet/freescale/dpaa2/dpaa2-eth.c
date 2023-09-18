@@ -1760,11 +1760,14 @@ static int dpaa2_eth_add_bufs(struct dpaa2_eth_priv *priv,
 			if (unlikely(dma_mapping_error(dev, addr)))
 				goto err_map;
 
-		/* tracing point */
-		trace_dpaa2_eth_buf_seed(priv->net_dev, page_address(page),
-					 DPAA2_ETH_RX_BUF_RAW_SIZE,
-					 addr, priv->rx_buf_size,
-					 bpid);
+			buf_array[i] = addr;
+
+			/* tracing point */
+			trace_dpaa2_xsk_buf_seed(priv->net_dev,
+						 page, DPAA2_ETH_RX_BUF_RAW_SIZE,
+						 addr, priv->rx_buf_size,
+						 ch->bp->bpid);
+		}
 	}
 
 release_bufs:
