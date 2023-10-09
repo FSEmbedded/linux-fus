@@ -31,14 +31,21 @@ static int layerscape_sfp_read(void *context, unsigned int offset, void *val,
 {
 	struct layerscape_sfp_priv *priv = context;
 
-	return regmap_bulk_read(priv->regmap,
-				LAYERSCAPE_SFP_OTP_OFFSET + offset, val,
-				bytes / 4);
+	return regmap_bulk_read(priv->regmap, offset, val, bytes / 4);
+}
+
+static int layerscape_sfp_write(void* context, unsigned int offset, void *val, size_t bytes)
+{
+	struct layerscape_sfp_priv * priv = context;
+
+	return regmap_bulk_write(priv->regmap, offset, val, bytes / 4);
 }
 
 static struct nvmem_config layerscape_sfp_nvmem_config = {
 	.name = "fsl-sfp",
 	.reg_read = layerscape_sfp_read,
+	.reg_write = layerscape_sfp_write,
+	.root_only = true,
 	.word_size = 4,
 	.stride = 4,
 };
@@ -64,7 +71,7 @@ static int layerscape_sfp_probe(struct platform_device *pdev)
 	config.reg_stride = 4;
 	config.val_bits = 32;
 	config.val_format_endian = data->endian;
-	config.max_register = LAYERSCAPE_SFP_OTP_OFFSET + data->size - 4;
+	config.max_register = data->size;
 	priv->regmap = devm_regmap_init_mmio(&pdev->dev, base, &config);
 	if (IS_ERR(priv->regmap))
 		return PTR_ERR(priv->regmap);
@@ -84,7 +91,7 @@ static const struct layerscape_sfp_data ls1021a_data = {
 };
 
 static const struct layerscape_sfp_data ls1028a_data = {
-	.size = 0x88,
+	.size = 0x288,
 	.endian = REGMAP_ENDIAN_LITTLE,
 };
 
