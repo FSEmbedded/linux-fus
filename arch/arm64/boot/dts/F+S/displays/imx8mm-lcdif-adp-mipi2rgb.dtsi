@@ -1,0 +1,234 @@
+/*
+ * Copyright (C) 2021 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#define CONFIG_PICOCOREMX8MM_MIPI_DSI
+
+/ {
+	regulators {
+		reg_lcd_bl: backlight_lcd {
+			compatible = "regulator-fixed";
+			regulator-name = "lcd-bl";
+			gpio = <&pca963x 0 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+
+		/* LCD power on voltage */
+		reg_vlcd_adp: vlcd_adp {
+			compatible = "regulator-fixed";
+			regulator-name = "VLCD-ADP";
+			gpio = <&pca963x 4 0>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+	};
+
+	backlight_lcd: backlight_lcd {
+		compatible = "pwm-backlight";
+		pwms = <&pca963x 1 640000 0>;
+		power-supply = <&reg_lcd_bl>;
+
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+	};
+
+	/* Simple panel driver */
+	panel: panel {
+		compatible = "fus,disp-template";
+		backlight = <&backlight_lcd>;
+		power-supply = <&reg_vlcd>;
+ 
+		/* refresh-rate in Hz */
+		refresh-rate = <60>;
+		/* bits per color */
+		bits-per-color = <8>;
+		/* DRM_BUS_FLAG_DE_HIGH */
+		bus-flags = <2>;
+		/* MEDIA_BUS_FMT_RBG888_1X24 */
+		bus-format = <0x100e>;
+		panel-width-mm = <211>;
+		panel-height-mm = <158>;
+
+		display-timings {
+			native-mode = <&timing0>;
+			timing0: ET070080DH6 {
+				clock-frequency = <33000000>;
+				hactive = <800>;
+				vactive = <480>;
+				hback-porch = <216>;
+				hfront-porch = <24>;
+				hsync-len = <8>;
+				vback-porch = <35>;
+				vfront-porch = <8>;
+				vsync-len = <2>;
+			};
+		};
+
+		port@0 {
+			panel1_in: endpoint {
+				remote-endpoint = <&lt9211_out>;
+			};
+		};
+	};
+};
+
+&lcdif {
+	status = "okay";
+	/* important to overwrite max-res otherwise DRM lcdif will fail to find a suitable connector */
+	max-res = <4096>, <4096>;
+};
+
+&mipi_dsi {
+	status = "okay";
+
+	bus-fmt = <0x100a>;
+
+	port@1 {
+		reg = <1>;
+		dsim_to_lt9211: endpoint {
+			remote-endpoint = <&lt9211_in>;
+			data-lanes = <0 1 2 3>;
+			attach-bridge;
+		};
+	};
+};
+
+&IMX8MM_I2C {
+    /* mipi to RGB controller  */
+	rgb-bridge@2d {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		compatible = "lontium,lt9211";
+		reg = <0x2d>;
+		/* 0 = LVDS, 1 = MIPI, 2 = TTL */
+		rx-source = /bits/ 8 <1>;
+		/* optional: normally taken from simple panel display but can be
+		 * overwritten by bus-fmt flag: 6 = RGB666, 8 = RGB888
+		 */
+		bus-fmt = /bits/ 8 <8>;
+		/* PCLK will inverted because dotclock polarity from sec_mipi_dsim-imx
+		 * is set to neg edge. The display needs dotclock pos edge therefore
+		 * we inverte dotclock polarity.
+		 */
+		pclk-invert;
+
+		/* s. datasheet reg 0x856d rgd_ttl_tx_24B_mode_sel 
+		 * 	0 - output 3 channel 8 bit data
+		 * 	1 - output 2 channel 12 bit data
+		 *  ...
+		 *  4 - output 3 channel 6 bit (high 18 bit active)
+		 *  5 - output 3 channel 6 bit (low 18 bit active)
+		 *  ...
+		 * */
+		rgb-output-mode = /bits/ 8 <0>; 
+        reset-gpios = <&pca963x 3 GPIO_ACTIVE_HIGH>;
+		/* TODO: in driver not supported */
+		//interrupts-extended = <&gpio4 20 IRQ_TYPE_EDGE_FALLING>;
+		vdd-supply = <&reg_vref_1v8>;
+		vcc-supply = <&reg_vref_3v3>;
+
+		port@0 {
+			reg = <0>;
+			lt9211_in: endpoint {
+				remote-endpoint = <&dsim_to_lt9211>;
+			};
+		};
+
+		port@1 {
+			reg = <1>;
+			lt9211_out: endpoint {
+				remote-endpoint = <&panel1_in>;
+			};
+		};
+    };
+
+	pca963x: pca9634@61 {
+			compatible = "nxp,pca9634";
+			reg = <0x61>;
+			nxp,totem-pole;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			#pwm-cells = <3>;
+			#gpio-cells = <2>;
+			led@0 {
+				reg = <0>;
+				label = "BL_ON";
+				type = "GPIO";
+				default-on;		/* or: keep-value */
+				active-high;
+			};
+			led@1 {
+				reg = <1>;
+				label = "BL_PWM";
+				type = "PWM";
+				default-on;		/* or: keep-value */
+				active-low;
+			};
+			led@2 {
+				reg = <2>;
+				label = "ROTATE";
+				type = "GPIO";
+				active-high;
+			};
+			led@3 {
+				reg = <3>;
+				label = "MIPI_RST";
+				type = "GPIO";
+				active-high;
+				default-on;		/* or: keep-value */
+			};
+			led@4 {
+				reg = <4>;
+				label = "VLCD_ON";
+				type = "GPIO";
+				default-on;		/* or: keep-value */
+				active-high;
+			};
+			led@5 {
+				reg = <5>;
+				label = "TOUCH_RST";
+				type = "GPIO";
+				active-high;
+				default-on;		/* or: keep-value */
+			};
+			led@6 {
+				reg = <6>;
+				label = "6-unused";
+				type = "LED";
+				active-low;
+			};
+			led@7 {
+				reg = <7>;
+				label = "7-unused";
+				type = "LED";
+				active-low;
+			};
+		};
+
+	tsc2004@4a {
+		compatible = "ti,tsc2004";
+		reg = <0x4a>;
+		vio-supply = <&reg_vref_3v3>;
+		reset-gpios = <&pca963x 5 GPIO_ACTIVE_LOW>;
+		interrupts-extended = <&IMX8MM_TOUCH_INTERRUPT_GPIO_BANK IMX8MM_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_FALLING>;
+
+		touchscreen-fuzz-x = <4>;
+		touchscreen-fuzz-y = <7>;
+		touchscreen-fuzz-pressure = <20>;
+		touchscreen-size-x = <4096>;
+		touchscreen-size-y = <4096>;
+		touchscreen-max-pressure = <2048>;
+		touchscreen-inverted-y;
+		ti,x-plate-ohms = <280>;
+		//ti,esd-recovery-timeout-ms = <8000>;
+	};
+};
+

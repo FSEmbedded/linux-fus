@@ -69,7 +69,7 @@
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
-		fb-names = "mxs-lcdif0";
+		fb-names = "imx-drmdrmfb";
 	};
 #endif
 
