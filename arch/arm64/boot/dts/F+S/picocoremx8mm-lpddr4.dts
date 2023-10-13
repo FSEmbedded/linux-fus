@@ -174,7 +174,7 @@
 };
 
 &bdinfo{
-	board_name = "picocoremx8mm";
+	board_name = "picocoremx8mm-lpddr4";
 };
 
 #ifdef CONFIG_PICOCOREMX8MM_ETH

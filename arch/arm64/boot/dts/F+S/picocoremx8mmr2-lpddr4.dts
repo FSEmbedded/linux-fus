@@ -155,11 +155,11 @@
 #include "picocoremx8mm.dtsi"
 
 / {
-	model = "F&S PicoCoreMX8MMr2";
+	model = "F&S PicoCoreMX8MMr2-LPDDR4";
 };
 
 &bdinfo{
-	board_name = "picocoremx8mmr2";
+	board_name = "picocoremx8mmr2-lpddr4";
 };
 
 #ifdef CONFIG_PICOCOREMX8MM_ETH

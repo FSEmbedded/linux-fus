@@ -136,7 +136,7 @@
 #include <dt-bindings/usb/pd.h>
 
 / {
-	model = "F&S PicoCoreMX8MX";
+	model = "F&S PicoCoreMX8MM-DDR3L";
 	compatible = "fus,imx8mm-picocoremx8mm", "fsl,imx8mm";
 
 	aliases {
@@ -169,7 +169,7 @@
 	/* -------------------- BOARD INFO -------------------- */
 	bdinfo {
 		compatible = "bdinfo";
-		board_name = "picocoremx8mx";
+		board_name = "picocoremx8mm-ddr3l";
 	};
 
 #if 0
