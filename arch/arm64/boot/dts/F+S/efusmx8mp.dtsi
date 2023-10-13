@@ -278,7 +278,7 @@
 
 #ifdef CONFIG_EFUSMX8MP_HDMI_AUDIO
 	sound-hdmi {
-		compatible = "fsl,imx-audio-cdnhdmi";
+		compatible = "fsl,imx-audio-hdmi";
 		model = "audio-hdmi";
 		audio-cpu = <&aud2htx>;
 		hdmi-out;
