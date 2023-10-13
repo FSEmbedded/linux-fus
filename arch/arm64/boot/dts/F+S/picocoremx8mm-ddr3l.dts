@@ -179,6 +179,11 @@
 		stdout-path = &uart1;
 	};
 #endif
+	/* Busfreq scaling is not working with DDR3L-RAM so we
+     * disable it for now */
+	busfreq {
+		status="disabled";
+	};
 
 	reserved-memory {
 		/* global autoconfigured region for contiguous allocations */
