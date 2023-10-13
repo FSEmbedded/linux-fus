@@ -134,6 +134,7 @@
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/rtc/nxp,pcf85263.h>
 #include <dt-bindings/usb/pd.h>
+#include <fsversion.h>
 
 / {
 	model = "F&S PicoCoreMX8MM-DDR3L";
@@ -170,6 +171,7 @@
 	bdinfo {
 		compatible = "bdinfo";
 		board_name = "picocoremx8mm-ddr3l";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 #if 0

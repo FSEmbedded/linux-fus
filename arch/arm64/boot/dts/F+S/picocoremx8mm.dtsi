@@ -13,6 +13,7 @@
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/rtc/nxp,pcf85263.h>
 #include <dt-bindings/usb/pd.h>
+#include <fsversion.h>
 
 / {
 	compatible = "fus,imx8mm-picocoremx8mm", "fsl,imx8mm";
@@ -33,6 +34,7 @@
 	/* -------------------- BOARD INFO -------------------- */
 	bdinfo: bdinfo {
 		compatible = "bdinfo";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 #if 0
