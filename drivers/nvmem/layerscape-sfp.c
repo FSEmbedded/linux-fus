@@ -16,6 +16,7 @@
 #include <linux/regmap.h>
 
 #define LAYERSCAPE_SFP_OTP_OFFSET	0x0200
+#define SECMON_REG_HPSR			0x1e90014ul
 
 struct layerscape_sfp_priv {
 	struct regmap *regmap;
@@ -50,6 +51,34 @@ static struct nvmem_config layerscape_sfp_nvmem_config = {
 	.stride = 4,
 };
 
+int read_from_sfp(u32 sfp_address, char* buf)
+{
+     void volatile *sfp_mapped_address;
+     u32 register_value;
+     int ret = 0;
+
+     sfp_mapped_address = ioremap(sfp_address, sizeof(u32));
+     if(!sfp_mapped_address)
+     {
+          pr_err("Error while mapping %d\n", -ENOMEM);
+          snprintf(buf, PAGE_SIZE, "Read-Error\n");
+          return -ENOMEM;
+     }
+
+     register_value = readl(sfp_mapped_address);
+     ret = snprintf(buf, PAGE_SIZE, "0x%08x\n", register_value);
+
+     iounmap(sfp_mapped_address);
+     return ret;
+}
+
+static ssize_t secmon_hp_status_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+     return read_from_sfp(SECMON_REG_HPSR, buf);
+}
+
+static struct kobj_attribute secmon_hp_status = __ATTR_RO(secmon_hp_status);
+
 static int layerscape_sfp_probe(struct platform_device *pdev)
 {
 	const struct layerscape_sfp_data *data;
@@ -81,6 +110,11 @@ static int layerscape_sfp_probe(struct platform_device *pdev)
 	layerscape_sfp_nvmem_config.priv = priv;
 
 	nvmem = devm_nvmem_register(&pdev->dev, &layerscape_sfp_nvmem_config);
+
+	if(sysfs_create_file(&pdev->dev.kobj, &secmon_hp_status.attr)){
+		sysfs_remove_file(&pdev->dev.kobj, &secmon_hp_status.attr);
+		printk("Unable to create secmon file\n");
+	}
 
 	return PTR_ERR_OR_ZERO(nvmem);
 }
