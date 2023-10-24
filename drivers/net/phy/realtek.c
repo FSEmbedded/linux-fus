@@ -460,7 +460,7 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 
 	if ((priv->quirks & RTL821X_ALDPS_ENABLE)) {
 		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR1, RTL8211F_ALDPS_MASK,
-				RTL8211F_ALDPS_ENABLE | RTL8211F_ALDPS_PLL_OFF | RTL8211F_ALDPS_XTAL_OFF);
+				RTL8211F_ALDPS_ENABLE | RTL8211F_ALDPS_PLL_OFF);
 		if (ret < 0) {
 			dev_err(&phydev->mdio.dev, "aldps enable failed\n");
 			return ret;
