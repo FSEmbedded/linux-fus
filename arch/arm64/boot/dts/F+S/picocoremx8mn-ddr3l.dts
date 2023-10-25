@@ -1008,7 +1008,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
 	status = "okay";
-	nand-on-flash-bbt;
 };
 #endif
 
