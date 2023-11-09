@@ -491,3 +491,7 @@
 &usb1 {
 	dr_mode = "host";
 };
+
+&optee {
+	status = "okay";
+};
