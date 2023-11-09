@@ -282,11 +282,11 @@
 	};
 
 	temp-sensor@2c {
+		/* enabled in U-Boot */
 		compatible = "nxp,pct2075";
 		reg = <0x2c>;
-		interrupt-parent = <&gpio4>;
-		interrupts = <23 IRQ_TYPE_EDGE_FALLING>;
 		vs-supply = <&regulator_3v3>;
+		status = "disabled";
 	};
 
 	rtc@51 {
