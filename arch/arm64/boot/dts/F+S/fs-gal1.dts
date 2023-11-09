@@ -254,7 +254,7 @@
 				  "RGMII_IRQ_1V8",
 				  "QSGMII_RST_1V8",
 				  "QSGMII_IRQ_1V8",
-				  "TEMP_IRQ_1V8";
+				  "SFP_INT_LINK_1V8";
 
 		ddr_rst_hog {
 			gpio-hog;
@@ -294,6 +294,18 @@
 		reg = <0x51>;
 		vcc-supply = <&regulator_3v3>;
 	};
+};
+
+&gpio1 {
+	gpio-line-names = 
+		/* Line 0-14 */
+		"","","","","","","","","","",
+		"","","","","",
+		/* LED (15)*/
+		"SFP_EXT_LINK_1V8",
+		/* Line 16-31 */
+		"","","","","","","","","","",
+		"","","","","","";
 };
 
 &gpio2 {
@@ -390,22 +402,18 @@
 
 &enetc_port0 {
 	/* SFP Connector */
-	status = "okay";
 	phy-connection-type = "sgmii";
 	managed = "in-band-status";
 	sfp = <&sfp_eth0>;
-
-	/*This setting is like in U-Boot*/
-	// fixed-link {
-	// 	speed = <1000>;
-	// 	full-duplex;
-	// };
+	link-gpios = <&gpio1 15 GPIO_ACTIVE_HIGH>;
+	status = "okay";
 };
 
 &enetc_port1 {
 	/* internal Ethernet */
 	phy-handle = <&rgmii_phy0>;
 	phy-mode = "rgmii-id";
+	link-gpios = <&gpio4 23 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 };
 
