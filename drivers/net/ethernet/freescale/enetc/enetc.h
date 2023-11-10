@@ -437,6 +437,9 @@ int enetc_setup_bpf(struct net_device *ndev, struct netdev_bpf *bpf);
 int enetc_xdp_xmit(struct net_device *ndev, int num_frames,
 		   struct xdp_frame **frames, u32 flags);
 int enetc_xsk_wakeup(struct net_device *dev, u32 queue, u32 flags);
+#if defined(CONFIG_OF)
+void enetc_set_netdev_name(struct enetc_si *si, struct net_device *ndev);
+#endif
 
 /* ethtool */
 void enetc_set_ethtool_ops(struct net_device *ndev);

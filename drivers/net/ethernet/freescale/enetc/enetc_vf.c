@@ -149,6 +149,9 @@ static void enetc_vf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
 
 	/* pick up primary MAC address from SI */
 	enetc_load_primary_mac_addr(&si->hw, ndev);
+#if defined(CONFIG_OF)
+	enetc_set_netdev_name(si, ndev);
+#endif
 }
 
 static int enetc_vf_probe(struct pci_dev *pdev,

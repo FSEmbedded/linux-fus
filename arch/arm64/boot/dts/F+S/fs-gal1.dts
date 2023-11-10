@@ -402,6 +402,7 @@
 
 &enetc_port0 {
 	/* SFP Connector */
+	label = "eth2";
 	phy-connection-type = "sgmii";
 	managed = "in-band-status";
 	sfp = <&sfp_eth0>;
@@ -411,6 +412,7 @@
 
 &enetc_port1 {
 	/* internal Ethernet */
+	label = "eth3";
 	phy-handle = <&rgmii_phy0>;
 	phy-mode = "rgmii-id";
 	link-gpios = <&gpio4 23 GPIO_ACTIVE_HIGH>;
@@ -419,11 +421,13 @@
 
 &enetc_port2 {
 	/* connected to TSN Switch swp4*/
+	label = "sw";
 	status = "okay";
 };
 
 &enetc_port3 {
 	/* connected to TSN Switch swp5 */
+	label = "sw-ctrl";
 	status = "disable";
 };
 
@@ -434,7 +438,7 @@
 
 
 &mscc_felix_port1 {
-	label = "swp1";
+	label = "eth1";
 	managed = "in-band-status";
 	phy-handle = <&qsgmii_phy1>;
 	phy-mode = "qsgmii";
@@ -442,7 +446,7 @@
 };
 
 &mscc_felix_port2 {
-	label = "swp2";
+	label = "eth0";
 	managed = "in-band-status";
 	phy-handle = <&qsgmii_phy2>;
 	phy-mode = "qsgmii";
@@ -453,7 +457,7 @@
  * But these are used on GAL2
  */
 &mscc_felix_port0 {
-	label = "swp0";
+	label = "swp0-disabled";
 	managed = "in-band-status";
 	phy-handle = <&qsgmii_phy0>;
 	phy-mode = "qsgmii";
@@ -461,7 +465,7 @@
 };
 
 &mscc_felix_port3 {
-	label = "swp3";
+	label = "swp3-disabled";
 	managed = "in-band-status";
 	phy-handle = <&qsgmii_phy3>;
 	phy-mode = "qsgmii";
@@ -469,11 +473,13 @@
 };
 
 &mscc_felix_port4{
+	label = "sw-int";
 	ethernet = <&enetc_port2>;
 	status = "okay";
 };
 
 &mscc_felix_port5{
+	label = "sw-int-ctrl";
 	ethernet = <&enetc_port3>;
 	status = "disable";
 };

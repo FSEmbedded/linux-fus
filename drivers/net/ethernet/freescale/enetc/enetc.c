@@ -11,6 +11,8 @@
 #include <net/pkt_sched.h>
 #include <net/tso.h>
 #include <net/xdp_sock_drv.h>
+#include <linux/of.h>
+#include <uapi/linux/if.h>
 
 static int enetc_num_stack_tx_queues(struct enetc_ndev_priv *priv)
 {
@@ -3349,6 +3351,31 @@ static void enetc_detect_errata(struct enetc_si *si)
 	if (si->pdev->revision == ENETC_REV1)
 		si->errata = ENETC_ERR_VLAN_ISOL | ENETC_ERR_UCMCSWP;
 }
+
+#if defined(CONFIG_OF)
+void enetc_set_netdev_name(struct enetc_si *si, struct net_device *ndev)
+{
+	struct device_node *of_node;
+	const char *of_label;
+	char dev_name[IFNAMSIZ];
+
+	if (!si->pdev->dev.of_node)
+		return;
+
+	of_node = si->pdev->dev.of_node;
+	of_label = of_get_property(of_node, "label", NULL);
+
+	if (!of_label)
+		return;
+
+	strncpy(dev_name, of_label, IFNAMSIZ);
+
+	if (dev_alloc_name(ndev, dev_name) < 0)
+		dev_err(&si->pdev->dev,
+			"Failed to set label \"%s\" as netdev name",
+			dev_name);
+}
+#endif
 
 int enetc_pci_probe(struct pci_dev *pdev, const char *name, int sizeof_priv)
 {
