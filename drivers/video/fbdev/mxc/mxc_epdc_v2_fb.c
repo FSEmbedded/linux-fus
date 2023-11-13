@@ -1600,11 +1600,14 @@ static void epdc_powerup(struct mxc_epdc_fb_data *fb_data)
 
 	epdc_init_settings(fb_data);
 
+/* TODO: Use devicetree Propety for Voltage regulation */
 	ret = regulator_set_voltage(fb_data->vcom_regulator,
-						1640000, 1640000);
+						1420000, 1420000);
 	if (ret) {
 		dev_dbg(fb_data->dev, "Unable to set VCOM voltage "
 			"ret = %d\n", ret);
+		mutex_unlock(&fb_data->power_mutex);
+		return;
 	}
 
 	ret = regulator_enable(fb_data->vcom_regulator);

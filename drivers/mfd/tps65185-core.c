@@ -103,7 +103,8 @@ static int tps65185_i2c_probe(struct i2c_client *client,
 	int ret;
 	struct tps65185 *tps65185;
 	struct device *dev = &client->dev;
-	
+	uint8_t tmp;
+
 	tps65185 = devm_kzalloc(dev, sizeof(*tps65185), GFP_KERNEL);
 	if (!tps65185)
 		return -ENOMEM;
@@ -160,8 +161,22 @@ static int tps65185_i2c_probe(struct i2c_client *client,
 	if (ret)
 		return ret;
 
+	/*
+	 * Since I2C is Up and Running, we can redefine PowerUp/Down Sequences
+	 * TODO: Implement Devicetree Properties for Power-Sequences
+	 */
+	ret = tps65185_reg_write(client, TPS65185_REG_UPSEQ0, 0xE1);
+	if(ret){
+		return ret;
+	}
+
+	ret = tps65185_reg_read(client, TPS65185_REG_UPSEQ0, &tmp);
+	if(tmp != 0xE1){
+		dev_err(dev, "PSEQ REG was not writeable!\n");
+		return -EINVAL;
+	}
+
 	tps65185->pdata = devm_kzalloc(dev, sizeof(*tps65185->pdata), GFP_KERNEL);
-	
 	if (!tps65185->pdata)
 		return -ENOMEM;
 
