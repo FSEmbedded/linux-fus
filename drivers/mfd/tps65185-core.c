@@ -103,7 +103,7 @@ static int tps65185_i2c_probe(struct i2c_client *client,
 	int ret;
 	struct tps65185 *tps65185;
 	struct device *dev = &client->dev;
-
+	
 	tps65185 = devm_kzalloc(dev, sizeof(*tps65185), GFP_KERNEL);
 	if (!tps65185)
 		return -ENOMEM;
@@ -161,6 +161,7 @@ static int tps65185_i2c_probe(struct i2c_client *client,
 		return ret;
 
 	tps65185->pdata = devm_kzalloc(dev, sizeof(*tps65185->pdata), GFP_KERNEL);
+	
 	if (!tps65185->pdata)
 		return -ENOMEM;
 
@@ -174,12 +175,11 @@ static int tps65185_i2c_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int tps65185_i2c_remove(struct i2c_client *i2c)
+static void tps65185_i2c_remove(struct i2c_client *i2c)
 {
 	struct tps65185 *tps65185 = dev_get_drvdata(&i2c->dev);
 	/* set PMIC in SLEEP state */
 	gpio_set_value(tps65185->gpio_pmic_wakeup, 0);
-	return 0;
 }
 
 static const struct i2c_device_id tps65185_id[] = {
