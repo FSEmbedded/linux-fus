@@ -1440,6 +1440,8 @@ enum nl80211_commands {
 	NL80211_CMD_COLOR_CHANGE_ABORTED,
 	NL80211_CMD_COLOR_CHANGE_COMPLETED,
 
+	NL80211_CMD_BANGRADAR,
+
 	/* add new commands above here */
 
 	/* used to define NL80211_CMD_MAX below */

@@ -14942,6 +14942,18 @@ out:
 	return err;
 }
 
+#if 1 /* silex add for test */
+static int nl80211_bangradar(struct sk_buff *skb, struct genl_info *info)
+{
+       struct cfg80211_registered_device *rdev = info->user_ptr[0];
+       struct net_device *dev = info->user_ptr[1];
+
+       rdev_bangradar(rdev, dev);
+
+       return 0;
+}
+#endif
+
 #define NL80211_FLAG_NEED_WIPHY		0x01
 #define NL80211_FLAG_NEED_NETDEV	0x02
 #define NL80211_FLAG_NEED_RTNL		0x04
@@ -15944,6 +15956,15 @@ static const struct genl_small_ops nl80211_small_ops[] = {
 		.flags = GENL_UNS_ADMIN_PERM,
 		.internal_flags = NL80211_FLAG_NEED_NETDEV_UP,
 	},
+#if 1 /* silex add for test */
+       {
+               .cmd = NL80211_CMD_BANGRADAR,
+               .doit = nl80211_bangradar,
+               .flags = GENL_UNS_ADMIN_PERM,
+               .internal_flags = NL80211_FLAG_NEED_NETDEV_UP |
+                                 NL80211_FLAG_NEED_RTNL,
+       },
+#endif
 };
 
 static struct genl_family nl80211_fam __ro_after_init = {
