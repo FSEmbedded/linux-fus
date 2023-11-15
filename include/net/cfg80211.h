@@ -8311,4 +8311,9 @@ static inline int cfg80211_color_change_notify(struct net_device *dev)
 					 0, 0);
 }
 
+struct cfg80211_bss * __must_check
+cfg80211_channel_switch_update_channel(struct wiphy *wiphy,
+                                       struct cfg80211_inform_bss *data,
+                                       struct ieee80211_mgmt *mgmt, size_t len,
+                                       gfp_t gfp);
 #endif /* __NET_CFG80211_H */

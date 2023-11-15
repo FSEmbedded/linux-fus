@@ -1385,6 +1385,88 @@ static int cmp_bss(struct cfg80211_bss *a,
 	}
 }
 
+static int cmp_bss_bssid_only(struct cfg80211_bss *a,
+                   struct cfg80211_bss *b,
+                   enum bss_compare_mode mode)
+{
+        const struct cfg80211_bss_ies *a_ies, *b_ies;
+        const u8 *ie1 = NULL;
+        const u8 *ie2 = NULL;
+        int i, r;
+
+       /*
+        * printk("bssid: %02x:%02x:%02x:%02x:%02x:%02x\n",
+        *              b->bssid[0], b->bssid[1], b->bssid[2],
+        *              b->bssid[3], b->bssid[4], b->bssid[5]);
+        */
+
+       a_ies = rcu_access_pointer(a->ies);
+       if (!a_ies) {
+               //printk("a_ies NULL...\n");
+               return -1;
+       }
+       b_ies = rcu_access_pointer(b->ies);
+       if (!b_ies) {
+               //printk("b_ies NULL...\n");
+               return 1;
+       }
+
+       r = memcmp(a->bssid, b->bssid, sizeof(a->bssid));
+       if (r)
+               return r;
+
+       ie1 = cfg80211_find_ie(WLAN_EID_SSID, a_ies->data, a_ies->len);
+       ie2 = cfg80211_find_ie(WLAN_EID_SSID, b_ies->data, b_ies->len);
+
+       //printk("ie1=%x ie2=%x\n", ie1, ie2);
+
+       if (!ie1 && !ie2)
+               return 0;
+
+       /*
+        * Note that with "hide_ssid", the function returns a match if
+        * the already-present BSS ("b") is a hidden SSID beacon for
+        * the new BSS ("a").
+        */
+
+       /* sort missing IE before (left of) present IE */
+       if (!ie1)
+               return -1;
+       if (!ie2)
+               return 1;
+
+       switch (mode) {
+       case BSS_CMP_HIDE_ZLEN:
+               /*
+                * In ZLEN mode we assume the BSS entry we're
+                * looking for has a zero-length SSID. So if
+                * the one we're looking at right now has that,
+                * return 0. Otherwise, return the difference
+                * in length, but since we're looking for the
+                * 0-length it's really equivalent to returning
+                * the length of the one we're looking at.
+                *
+                * No content comparison is needed as we assume
+                * the content length is zero.
+                */
+               return ie2[1];
+       case BSS_CMP_REGULAR:
+       default:
+               /* sort by length first, then by contents */
+               if (ie1[1] != ie2[1])
+                       return ie2[1] - ie1[1];
+               return memcmp(ie1 + 2, ie2 + 2, ie1[1]);
+       case BSS_CMP_HIDE_NUL:
+               if (ie1[1] != ie2[1])
+                       return ie2[1] - ie1[1];
+               /* this is equivalent to memcmp(zeroes, ie2 + 2, len) */
+               for (i = 0; i < ie2[1]; i++)
+                       if (ie2[i + 2])
+                               return -1;
+               return 0;
+       }
+}
+
 static bool cfg80211_bss_type_match(u16 capability,
 				    enum nl80211_band band,
 				    enum ieee80211_bss_type bss_type)
@@ -1532,6 +1614,24 @@ rb_find_bss(struct cfg80211_registered_device *rdev,
 	}
 
 	return NULL;
+}
+
+static struct cfg80211_internal_bss *
+find_bss_bssid_only(struct cfg80211_registered_device *rdev,
+            struct cfg80211_internal_bss *res,
+            enum bss_compare_mode mode)
+{
+       struct cfg80211_internal_bss *bss, *tmp;
+       int r;
+
+       list_for_each_entry_safe(bss, tmp, &rdev->bss_list, list) {
+               r = cmp_bss_bssid_only(&res->pub, &bss->pub, mode);
+
+               if (r == 0)
+                       return bss;
+       }
+
+       return NULL;
 }
 
 static bool cfg80211_combine_bsses(struct cfg80211_registered_device *rdev,
@@ -2529,6 +2629,89 @@ cfg80211_inform_bss_frame_data(struct wiphy *wiphy,
 }
 EXPORT_SYMBOL(cfg80211_inform_bss_frame_data);
 
+static struct cfg80211_internal_bss *
+cfg80211_csa_update_channel(struct cfg80211_registered_device *rdev,
+                            struct cfg80211_internal_bss *tmp)
+{
+       struct cfg80211_internal_bss *found = NULL;
+
+       spin_lock_bh(&rdev->bss_lock);
+
+       found = find_bss_bssid_only(rdev, tmp, BSS_CMP_REGULAR);
+
+       if (found) {
+               /* printk("found!! %p bssid=%02x:%02x:%02x:%02x:%02x:%02x channel=%p\n",
+                *              found, found->pub.bssid[0], found->pub.bssid[1], found->pub.bssid[2],
+                *              found->pub.bssid[3], found->pub.bssid[4], found->pub.bssid[5],
+                *              found->pub.channel);
+                */
+               found->pub.channel = tmp->pub.channel;
+       }
+
+       spin_unlock_bh(&rdev->bss_lock);
+       return found;
+}
+
+struct cfg80211_bss *
+cfg80211_channel_switch_update_channel(struct wiphy *wiphy,
+                                       struct cfg80211_inform_bss *data,
+                                       struct ieee80211_mgmt *mgmt, size_t len,
+                                       gfp_t gfp)
+{
+       struct cfg80211_internal_bss tmp = {}, *res;
+       struct cfg80211_bss_ies *ies;
+       struct ieee80211_channel *channel;
+       size_t ielen = len;
+
+       BUILD_BUG_ON(offsetof(struct ieee80211_mgmt, u.probe_resp.variable) != offsetof(struct ieee80211_mgmt, u.beacon.variable));
+
+       trace_cfg80211_inform_bss_frame(wiphy, data, mgmt, len);
+
+       if (WARN_ON(!mgmt))
+               return NULL;
+
+       if (WARN_ON(!wiphy))
+               return NULL;
+
+       if (WARN_ON(wiphy->signal_type == CFG80211_SIGNAL_TYPE_UNSPEC && (data->signal < 0 || data->signal > 100)))
+               return NULL;
+
+       if (WARN_ON(len < offsetof(struct ieee80211_mgmt, u.probe_resp.variable)))
+               return NULL;
+
+       channel = data->chan;
+
+       ies = kzalloc(sizeof(*ies) + ielen, gfp);
+       if (!ies)
+               return NULL;
+       ies->len = ielen;
+       ies->tsf = le64_to_cpu(mgmt->u.probe_resp.timestamp);
+       ies->from_beacon = ieee80211_is_beacon(mgmt->frame_control);
+       memcpy(ies->data, mgmt->u.probe_resp.variable, ielen);
+
+       if (ieee80211_is_probe_resp(mgmt->frame_control))
+               rcu_assign_pointer(tmp.pub.proberesp_ies, ies);
+       else
+               rcu_assign_pointer(tmp.pub.beacon_ies, ies);
+       rcu_assign_pointer(tmp.pub.ies, ies);
+
+       memcpy(tmp.pub.bssid, mgmt->bssid, ETH_ALEN);
+       tmp.pub.channel = channel;
+       tmp.pub.scan_width = data->scan_width;
+       tmp.pub.signal = data->signal;
+       tmp.pub.beacon_interval = le16_to_cpu(mgmt->u.probe_resp.beacon_int);
+       tmp.pub.capability = le16_to_cpu(mgmt->u.probe_resp.capab_info);
+       tmp.ts_boottime = data->boottime_ns;
+
+       res = cfg80211_csa_update_channel(wiphy_to_rdev(wiphy), &tmp);
+       if (!res)
+               return NULL;
+
+       trace_cfg80211_return_bss(&res->pub);
+       return &res->pub;
+}
+EXPORT_SYMBOL(cfg80211_channel_switch_update_channel);
+
 void cfg80211_ref_bss(struct wiphy *wiphy, struct cfg80211_bss *pub)
 {
 	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wiphy);
@@ -3222,4 +3405,6 @@ int cfg80211_wext_giwscan(struct net_device *dev,
 	return res;
 }
 EXPORT_WEXT_HANDLER(cfg80211_wext_giwscan);
+
+
 #endif
