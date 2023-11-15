@@ -1389,4 +1389,13 @@ static inline void rdev_bangradar(struct cfg80211_registered_device *rdev,
        trace_rdev_return_void(&rdev->wiphy);
 }
 
+static inline int rdev_get_power_mgmt(struct cfg80211_registered_device *rdev,
+            struct net_device *dev, bool *enabled,
+            int timeout)
+{
+      int ret;
+      ret = rdev->ops->get_power_mgmt(&rdev->wiphy, dev, enabled, timeout);
+      return ret;
+}
+
 #endif /* __CFG80211_RDEV_OPS */

@@ -4352,6 +4352,8 @@ struct cfg80211_ops {
 				struct net_device *dev,
 				struct cfg80211_color_change_settings *params);
 	void	(*bangradar)(struct wiphy *wiphy, struct net_device *dev);
+	int	(*get_power_mgmt)(struct wiphy *wiphy, struct net_device *dev,
+				  bool *enabled, int timeout);
 };
 
 /*

@@ -11585,6 +11585,7 @@ static int nl80211_set_power_save(struct sk_buff *skb, struct genl_info *info)
 	struct net_device *dev = info->user_ptr[1];
 	u8 ps_state;
 	bool state;
+	bool dev_state;
 	int err;
 
 	if (!info->attrs[NL80211_ATTR_PS_STATE])
@@ -11598,9 +11599,18 @@ static int nl80211_set_power_save(struct sk_buff *skb, struct genl_info *info)
 		return -EOPNOTSUPP;
 
 	state = (ps_state == NL80211_PS_ENABLED) ? true : false;
-
+#if 0
 	if (state == wdev->ps)
 		return 0;
+#endif
+
+        err = rdev_get_power_mgmt(rdev, dev, &dev_state, wdev->ps_timeout);
+
+        if (!err)
+            return err;
+
+        if (state == dev_state)
+             return 0;
 
 	err = rdev_set_power_mgmt(rdev, dev, state, wdev->ps_timeout);
 	if (!err)
@@ -11617,6 +11627,7 @@ static int nl80211_get_power_save(struct sk_buff *skb, struct genl_info *info)
 	struct sk_buff *msg;
 	void *hdr;
 	int err;
+	bool ps_mode;
 
 	wdev = dev->ieee80211_ptr;
 
@@ -11634,7 +11645,12 @@ static int nl80211_get_power_save(struct sk_buff *skb, struct genl_info *info)
 		goto free_msg;
 	}
 
-	if (wdev->ps)
+        err = rdev_get_power_mgmt(rdev, dev, &ps_mode, wdev->ps_timeout);
+
+        if (!err)
+                return err;
+
+        if (ps_mode)
 		ps_state = NL80211_PS_ENABLED;
 	else
 		ps_state = NL80211_PS_DISABLED;
