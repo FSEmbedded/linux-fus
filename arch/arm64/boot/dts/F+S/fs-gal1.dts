@@ -119,63 +119,6 @@
 			regulator-always-on;
 		};
 
-		pcie1_pwr: pcie1_pwr@2 {
-			compatible = "regulator-fixed";
-			regulator-name = "PCIe1_PWR";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-
-			gpio = <&gpio4 11 GPIO_ACTIVE_HIGH>;
-			enable-active-high;
-			regulator-boot-on;
-		};
-
-		pcie2_pwr: pcie2_pwr@3 {
-			compatible = "regulator-fixed";
-			regulator-name = "PCIe2_PWR";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-
-			gpio = <&gpio4 14 GPIO_ACTIVE_HIGH>;
-			enable-active-high;
-			regulator-boot-on;
-		};
-
-		usbint_pwr: usb1_pwr@4 {
-			compatible = "regulator-fixed";
-			regulator-name = "USB1_PWR";
-			regulator-min-microvolt = <5000000>;
-			regulator-max-microvolt = <5000000>;
-
-			gpio = <&gpio3 18 GPIO_ACTIVE_HIGH>;
-			regulator-boot-on;
-			enable-active-high;
-		};
-
-	};
-
-	usbint_vbus {
-        compatible = "regulator-output";
-        regulator-name = "USBVBUS-Enable";
-        regulator-supplies = "usbvbus";
-        usbvbus-supply = <&usbint_pwr>;
-        regulator-boot-on;
-	};
-
-    pcie1_pwr {
-        compatible = "regulator-output";
-        regulator-name = "PCIe1-Enable";
-        regulator-supplies = "pcie1pwr";
-        pcie1pwr-supply = <&pcie1_pwr>;
-        regulator-boot-on;
-	};
-
-    pcie2_pwr {
-        compatible = "regulator-output";
-        regulator-name = "PCIe2-Enable";
-        regulator-supplies = "pcie2pwr";
-        pcie2pwr-supply = <&pcie2_pwr>;
-        regulator-boot-on;
 	};
 
 	thermal-zones {
