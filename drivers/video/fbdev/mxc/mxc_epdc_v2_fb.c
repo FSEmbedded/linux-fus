@@ -416,6 +416,23 @@ static struct fb_videomode ed060kc1 = {
 	.flag = 0,
 };
 
+static struct fb_videomode opm103E2mode = {
+	.name = "OPM103E2",
+	.refresh = 85,
+	.xres = 2240,
+	.yres = 1680,
+	.pixclock = 133320000,
+	.left_margin = 17*4,
+	.right_margin = 7*4,
+	.upper_margin = 4,
+	.lower_margin = 12,
+	.hsync_len = 18*4,
+	.vsync_len = 1,
+	.sync = 0,
+	.vmode = FB_VMODE_NONINTERLACED,
+	.flag = 0,
+};
+
 static struct imx_epdc_fb_mode panel_modes[] = {
 	{
 		&ed060kc1,
@@ -510,6 +527,19 @@ static struct imx_epdc_fb_mode panel_modes[] = {
 	},
 	{
 		&e97_v110_mode,
+		8,      /* vscan_holdoff */
+		10,     /* sdoed_width */
+		20,     /* sdoed_delay */
+		10,     /* sdoez_width */
+		20,     /* sdoez_delay */
+		632,    /* gdclk_hp_offs */
+		20,     /* gdsp_offs */
+		0,      /* gdoe_offs */
+		1,      /* gdclk_offs */
+		3,      /* num_ce */
+	},
+	{
+		&opm103E2mode,
 		8,      /* vscan_holdoff */
 		10,     /* sdoed_width */
 		20,     /* sdoed_delay */
@@ -1602,7 +1632,7 @@ static void epdc_powerup(struct mxc_epdc_fb_data *fb_data)
 
 /* TODO: Use devicetree Propety for Voltage regulation */
 	ret = regulator_set_voltage(fb_data->vcom_regulator,
-						1420000, 1420000);
+						800000, 800000);
 	if (ret) {
 		dev_dbg(fb_data->dev, "Unable to set VCOM voltage "
 			"ret = %d\n", ret);
