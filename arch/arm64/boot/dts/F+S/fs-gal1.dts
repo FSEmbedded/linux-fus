@@ -220,7 +220,7 @@
 		};
 	};
 
-	temp-sensor@2c {
+	temp_sensor: temp_sensor@2c {
 		/* enabled in U-Boot */
 		compatible = "nxp,pct2075";
 		reg = <0x2c>;
