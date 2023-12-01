@@ -311,6 +311,8 @@
 		/* Realtek RTL8211FSI-PHY */
 		reg = <0x1>;
 		reset-gpios = <&gpio4 19 GPIO_ACTIVE_HIGH>;
+		reset-assert-us = <50000>;
+		reset-deassert-us = <200000>;
 	};
 
 	qsgmii_phy0: ethernet-phy@10 {
