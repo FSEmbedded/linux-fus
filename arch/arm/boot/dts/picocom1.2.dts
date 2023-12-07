@@ -124,6 +124,8 @@
 #endif
 
 #include <dt-bindings/input/input.h>
+#include <fsversion.h>
+
 #include "imx6ul.dtsi"
 
 / {
@@ -279,6 +281,7 @@ chosen {
 		compatible = "bdinfo";
 		board_name = "PicoCOM1.2";
 		ecc_strength = "8";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 	leds {
@@ -312,7 +315,7 @@ chosen {
 };
 
 &cpu0 {
-	dc-supply = <&reg_dvfs>;
+	//dc-supply = <&reg_dvfs>;
 };
 
 &clks {

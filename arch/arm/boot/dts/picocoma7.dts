@@ -9,7 +9,7 @@
  /dts-v1/;
 
  /* Set board revision as 3-digit number, e.g. 100 for board rev. 1.00 */
-#define CONFIG_PICOCOMA7_BOARD_REVISION	110
+#define CONFIG_PICOCOMA7_BOARD_REVISION	120
 
 #define DISPLAY_NONE	0	/* No display on this port */
 #define DISPLAY_LCD	1	/* LCD via RGB adapter */
@@ -136,6 +136,7 @@ lcd_wvga {				\
 
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/pwm/pwm.h>
+#include <fsversion.h>
 
 #ifdef CONFIG_PICOCOMA7_ULL
 #include "imx6ull.dtsi"
@@ -310,6 +311,7 @@ lcd_wvga {				\
 			compatible = "bdinfo";
 			board_name = "PicoCOMA7";
 			ecc_strength = "8";
+			dts_version = FS_LINUX_VERSION;
 	};
 };
 
@@ -372,6 +374,10 @@ lcd_wvga {				\
 			timing0: CONFIG_PICOCOMA7_LCD_TIMING;
 		};
 	};
+};
+
+&pxp {
+	status = "okay";
 };
 #endif /* CONFIG_PICOCOMA7_LCDIF0 == DISPLAY_LCD */
 
@@ -581,9 +587,7 @@ lcd_wvga {				\
 };
 
 &cpu0 {
-	arm-supply = <&reg_arm>;
-	soc-supply = <&reg_soc>;
-	dc-supply = <&reg_dvfs>;
+	//dc-supply = <&reg_dvfs>;
 };
 
 

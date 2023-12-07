@@ -154,6 +154,7 @@ wvga {					\
 
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/pwm/pwm.h>
+#include <fsversion.h>
 
 #ifdef CONFIG_EFUSA7UL_ULL
 #include "imx6ull.dtsi"
@@ -195,7 +196,7 @@ wvga {					\
 
 	backlight {
 		compatible = "pwm-backlight";
-		pwms = <&pwm1 0 5000000>;
+		pwms = <&pwm1 0 5000000 0>;
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
@@ -351,6 +352,7 @@ wvga {					\
 		compatible = "bdinfo";
 		board_name = "efusA7UL";
 		ecc_strength = "8";
+		dts_version = FS_LINUX_VERSION;
 	};
 };
 
@@ -366,7 +368,7 @@ wvga {					\
 };
 
 &cpu0 {
-	dc-supply = <&reg_dvfs>;
+	//dc-supply = <&reg_dvfs>;
 };
 
 &clks {
@@ -483,6 +485,10 @@ wvga {					\
 			timing0: CONFIG_EFUSA7UL_LCD_TIMING;
 		};
 	};
+};
+
+&pxp {
+	status = "okay";
 };
 #endif /* CONFIG_EFUSA7UL_LCDIF0 == DISPLAY_LCD */
 

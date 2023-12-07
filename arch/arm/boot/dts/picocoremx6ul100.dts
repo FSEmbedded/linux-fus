@@ -194,6 +194,7 @@ wvga {					\
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/rtc/nxp,pcf85263.h>
+#include <fsversion.h>
 
 #ifdef CONFIG_PICOCOREMX6UL_ULL_100
 #include "imx6ull.dtsi"
@@ -399,6 +400,7 @@ wvga {					\
 	bdinfo {
 		compatible = "bdinfo";
 		board_name = "PicoCoreMX6UL100";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 };
@@ -415,7 +417,7 @@ wvga {					\
 };
 
 &cpu0 {
-	dc-supply = <&reg_dvfs>;
+	//dc-supply = <&reg_dvfs>;
 };
 
 &clks {
@@ -808,6 +810,10 @@ wvga {					\
 			timing0: CONFIG_PICOCOREMX6UL100_LCD_TIMING;
 		};
 	};
+};
+
+&pxp {
+	status = "okay";
 };
 #endif /* CONFIG_PICOCOREMX6UL100_LCDIF0 != DISPLAY_NONE */
 
