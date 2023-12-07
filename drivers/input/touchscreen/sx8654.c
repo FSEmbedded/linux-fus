@@ -555,7 +555,6 @@ static int sx8654_probe(struct i2c_client *client,
 
 	__set_bit(INPUT_PROP_DIRECT, input->propbit);
 	input_set_capability(input, EV_KEY, BTN_TOUCH);
-	input_set_capability(input, EV_ABS, BTN_TOUCH);
 	input_set_abs_params(input, ABS_X, 0, MAX_12BIT, 0, 0);
 	input_set_abs_params(input, ABS_Y, 0, MAX_12BIT, 0, 0);
 
