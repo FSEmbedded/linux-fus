@@ -93,7 +93,7 @@ static void __init imx6sx_enet_clk_sel(void)
 		return;
 	}
 
-	np = of_find_node_by_path("/soc/aips-bus@2100000/ethernet@2188000");
+	np = of_find_node_by_path("/soc/bus@2100000/ethernet@2188000");
 	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				   IMX6SX_GPR1_ENET1_CLOCK_MASK,
@@ -102,7 +102,7 @@ static void __init imx6sx_enet_clk_sel(void)
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				   IMX6SX_GPR1_ENET1_CLOCK_MASK, 0);
 
-	np = of_find_node_by_path("/soc/aips-bus@2100000/ethernet@21b4000");
+	np = of_find_node_by_path("/soc/bus@2100000/ethernet@21b4000");
 	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				   IMX6SX_GPR1_ENET2_CLOCK_MASK,

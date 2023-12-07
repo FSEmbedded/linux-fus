@@ -30,7 +30,7 @@ static void __init imx6ul_enet_clk_init(void)
 		return;
 	}
 
-	np = of_find_node_by_path("/soc/aips-bus@2100000/ethernet@2188000");
+	np = of_find_node_by_path("/soc/bus@2100000/ethernet@2188000");
 	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				   IMX6UL_GPR1_ENET1_CLK_OUTPUT,
@@ -39,7 +39,7 @@ static void __init imx6ul_enet_clk_init(void)
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				   IMX6UL_GPR1_ENET1_CLK_OUTPUT, 0);
 
-	np = of_find_node_by_path("/soc/aips-bus@2000000/ethernet@20b4000");
+	np = of_find_node_by_path("/soc/bus@2000000/ethernet@20b4000");
 	if (np && of_get_property(np, "fsl,ref-clock-out", NULL))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				   IMX6UL_GPR1_ENET2_CLK_OUTPUT,
@@ -94,7 +94,7 @@ static void imx6ul_sai_init(void)
 	}
 
 	/* Set MCLK direction depending on fsl,mclk-out property */
-	np = of_find_node_by_path("/soc/aips-bus@2000000/spba-bus@2000000/sai@2028000");
+	np = of_find_node_by_path("/soc/bus@2000000/spba-bus@2000000/sai@2028000");
 	if (np && of_get_property(np, "fsl,mclk-out", NULL))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				IMX6UL_GPR1_SAI1_MCLK_DIR, IMX6UL_GPR1_SAI1_MCLK_DIR);
@@ -102,7 +102,7 @@ static void imx6ul_sai_init(void)
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				IMX6UL_GPR1_SAI1_MCLK_DIR, 0);
 
-	np = of_find_node_by_path("/soc/aips-bus@2000000/spba-bus@2000000/sai@202c000");
+	np = of_find_node_by_path("/soc/bus@2000000/spba-bus@2000000/sai@202c000");
 	if (np && of_get_property(np, "fsl,mclk-out", NULL))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				IMX6UL_GPR1_SAI2_MCLK_DIR, IMX6UL_GPR1_SAI2_MCLK_DIR);
@@ -110,7 +110,7 @@ static void imx6ul_sai_init(void)
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				IMX6UL_GPR1_SAI2_MCLK_DIR, 0);
 
-	np = of_find_node_by_path("/soc/aips-bus@2000000/spba-bus@2000000/sai@2030000");
+	np = of_find_node_by_path("/soc/bus@2000000/spba-bus@2000000/sai@2030000");
 	if (np && of_get_property(np, "fsl,mclk-out", NULL))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				IMX6UL_GPR1_SAI3_MCLK_DIR, IMX6UL_GPR1_SAI3_MCLK_DIR);
