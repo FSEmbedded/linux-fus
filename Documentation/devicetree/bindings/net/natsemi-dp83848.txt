@@ -4,7 +4,7 @@ DP83848:
 
   Optional properties:
 
-    - dp83848,led-activity : Enable LED Activity. If not set, Activity will be disabled.
+    - dp83848,no-led-activity : Disable LED Activity. If not set, Activity will be enabled.
     - dp83848,auto-mdix : Enable Auto-MDIX. If not set, HW option will be used.
 
 Examples:

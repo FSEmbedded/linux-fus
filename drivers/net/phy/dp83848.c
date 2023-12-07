@@ -7,6 +7,7 @@
 
 #include <linux/module.h>
 #include <linux/phy.h>
+#include <linux/of.h>
 
 #define TI_DP83848C_PHY_ID		0x20005ca0
 #define TI_DP83620_PHY_ID		0x20005ce0
@@ -33,7 +34,7 @@
 #define DP83848_MISR_LQM_INT_EN		BIT(7) /* Link Quality Monitor */
 
 /* PHYCR Register Fields */
-#define DP83848_PHYCR_LED_CNFG		BIT(5) /* LED Configuration (0: Link, 1: Link+Activity) */
+#define DP83848_PHYCR_LED_CNFG		BIT(5) /* LED Configuration (0: Link+Activity, 1: Link) */
 #define DP83848_PHYCR_MDIX_EN		BIT(15) /* Auto-MDIX (0: Disabled, 1: Enabled) */
 
 #define DP83848_INT_EN_MASK		\
@@ -69,7 +70,7 @@ static int dp83848_probe(struct phy_device *phydev)
 	if (!priv)
 		return -ENOMEM;
 
-	if (of_property_read_bool(dev->of_node, "dp83848,led-activity"))
+	if (of_property_read_bool(dev->of_node, "dp83848,no-led-activity"))
 		priv->quirks |= DP83848_PHYCR_LED_CNFG;
 
 	if (of_property_read_bool(dev->of_node, "dp83848,auto-mdix"))
@@ -140,13 +141,10 @@ static irqreturn_t dp83848_handle_interrupt(struct phy_device *phydev)
 
 static int dp83848_config_init(struct phy_device *phydev)
 {
-	int ret;
 	u16 reg;
-	struct dp83848_priv *priv = phydev->priv;
+	int val;
 
-	ret = genphy_config_init(phydev);
-	if (ret < 0)
-		return ret;
+	struct dp83848_priv *priv = phydev->priv;
 
 	reg = phy_read(phydev, DP83848_PHYCR);
 
@@ -160,7 +158,7 @@ static int dp83848_config_init(struct phy_device *phydev)
 	if ((priv->quirks & DP83848_PHYCR_MDIX_EN))
 		reg |= DP83848_PHYCR_MDIX_EN;
 
-	phy_write(phydev, 0x19, DP83848_PHYCR);
+	phy_write(phydev,DP83848_PHYCR, reg);
 
 	return 0;
 }
