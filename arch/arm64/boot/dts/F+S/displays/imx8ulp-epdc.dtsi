@@ -80,7 +80,17 @@
 };
 
 &iomuxc1 {
-		pinctrl_epdc0: epdcgrp0 {
+
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hoggrp>;
+
+	pinctrl_hoggrp: hoggpp {
+		fsl,pins = <
+			MX8ULP_PAD_PTE23__PTE23 0x3
+		>;
+	};
+	
+	pinctrl_epdc0: epdcgrp0 {
 		fsl,pins = <
 			MX8ULP_PAD_PTF23__EPDC0_D0	0x43
 			MX8ULP_PAD_PTF22__EPDC0_D1	0x43

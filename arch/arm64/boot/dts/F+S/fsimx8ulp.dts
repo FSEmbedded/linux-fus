@@ -234,16 +234,6 @@
 
 &iomuxc1 {
 
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_hoggrp>;
-
-	pinctrl_hoggrp: hoggpp {
-		fsl,pins = <
-			//MX8ULP_PAD_PTE23__PTE23 0x3
-			//MX8ULP_PAD_PTE19__PTE19 0x3
-		>;
-	};
-
 	pinctrl_lpuart5: lpuart5grp {
 		fsl,pins = <
 			MX8ULP_PAD_PTE6__LPUART5_TX	0x3
