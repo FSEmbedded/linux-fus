@@ -1678,16 +1678,14 @@ fec_enet_rx_queue(struct net_device *ndev, int budget, u16 queue_id)
 		skb = build_skb(page_address(page), PAGE_SIZE);
 		if (unlikely(!skb)) {
 			page_pool_recycle_direct(rxq->page_pool, page);
-			ndev->stats.rx_packets--;
-			ndev->stats.rx_bytes -= pkt_len;
 			ndev->stats.rx_dropped++;
 
-			netdev_err(ndev, "build_skb failed!\n");
+			netdev_err_once(ndev, "build_skb failed!\n");
 			goto rx_processing_done;
 		}
 
-		skb_reserve(skb, data_start);
-		skb_put(skb, pkt_len - sub_len);
+		skb_reserve(skb, FEC_ENET_XDP_HEADROOM);
+		skb_put(skb, pkt_len - 4);
 		skb_mark_for_recycle(skb);
 
 		if (unlikely(need_swap)) {
@@ -3220,9 +3218,6 @@ static void fec_enet_free_buffers(struct net_device *ndev)
 		rxq = fep->rx_queue[q];
 		for (i = 0; i < rxq->bd.ring_size; i++)
 			page_pool_put_full_page(rxq->page_pool, rxq->rx_skb_info[i].page, false);
-
-		for (i = 0; i < XDP_STATS_TOTAL; i++)
-			rxq->stats[i] = 0;
 
 		if (xdp_rxq_info_is_reg(&rxq->xdp_rxq))
 			xdp_rxq_info_unreg(&rxq->xdp_rxq);

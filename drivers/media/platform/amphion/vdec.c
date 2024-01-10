@@ -791,10 +791,6 @@ static bool vdec_check_source_change(struct vpu_inst *inst)
 	if (vdec->reset_codec)
 		return false;
 
-	sibling = vpu_helper_find_sibling(inst, inst->cap_format.type, inst->cap_format.pixfmt);
-	if (sibling && vdec->codec_info.pixfmt == sibling->pixfmt)
-		vdec->codec_info.pixfmt = inst->cap_format.pixfmt;
-
 	if (!vb2_is_streaming(v4l2_m2m_get_dst_vq(inst->fh.m2m_ctx)))
 		return true;
 	if (inst->cap_format.pixfmt != vdec->codec_info.pixfmt)
