@@ -184,31 +184,24 @@ static void __handle_ksmbd_work(struct ksmbd_work *work,
 		goto send;
 	}
 
-	do {
-		if (conn->ops->check_user_session) {
-			rc = conn->ops->check_user_session(work);
+	if (conn->ops->check_user_session) {
+		rc = conn->ops->check_user_session(work);
+		if (rc < 0) {
+			command = conn->ops->get_cmd_val(work);
+			conn->ops->set_rsp_status(work,
+					STATUS_USER_SESSION_DELETED);
+			goto send;
+		} else if (rc > 0) {
+			rc = conn->ops->get_ksmbd_tcon(work);
 			if (rc < 0) {
-				if (rc == -EINVAL)
-					conn->ops->set_rsp_status(work,
-						STATUS_INVALID_PARAMETER);
-				else
-					conn->ops->set_rsp_status(work,
-						STATUS_USER_SESSION_DELETED);
+				conn->ops->set_rsp_status(work,
+					STATUS_NETWORK_NAME_DELETED);
 				goto send;
-			} else if (rc > 0) {
-				rc = conn->ops->get_ksmbd_tcon(work);
-				if (rc < 0) {
-					if (rc == -EINVAL)
-						conn->ops->set_rsp_status(work,
-							STATUS_INVALID_PARAMETER);
-					else
-						conn->ops->set_rsp_status(work,
-							STATUS_NETWORK_NAME_DELETED);
-					goto send;
-				}
 			}
 		}
+	}
 
+	do {
 		rc = __process_request(work, conn, &command);
 		if (rc == SERVER_HANDLER_ABORT)
 			break;
@@ -266,7 +259,13 @@ static void handle_ksmbd_work(struct work_struct *wk)
 
 	ksmbd_conn_try_dequeue_request(work);
 	ksmbd_free_work_struct(work);
-	atomic_dec(&conn->r_count);
+	/*
+	 * Checking waitqueue to dropping pending requests on
+	 * disconnection. waitqueue_active is safe because it
+	 * uses atomic operation for condition.
+	 */
+	if (!atomic_dec_return(&conn->r_count) && waitqueue_active(&conn->r_count_q))
+		wake_up(&conn->r_count_q);
 }
 
 /**
@@ -590,7 +589,7 @@ static int __init ksmbd_server_init(void)
 	if (ret)
 		goto err_crypto_destroy;
 
-	pr_warn_once("The ksmbd server is experimental, use at your own risk.\n");
+	pr_warn_once("The ksmbd server is experimental\n");
 
 	return 0;
 
@@ -618,7 +617,6 @@ err_unregister:
 static void __exit ksmbd_server_exit(void)
 {
 	ksmbd_server_shutdown();
-	rcu_barrier();
 	ksmbd_release_inode_hash();
 }
 
@@ -628,7 +626,6 @@ MODULE_DESCRIPTION("Linux kernel CIFS/SMB SERVER");
 MODULE_LICENSE("GPL");
 MODULE_SOFTDEP("pre: ecb");
 MODULE_SOFTDEP("pre: hmac");
-MODULE_SOFTDEP("pre: md4");
 MODULE_SOFTDEP("pre: md5");
 MODULE_SOFTDEP("pre: nls");
 MODULE_SOFTDEP("pre: aes");

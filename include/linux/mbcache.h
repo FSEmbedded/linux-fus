@@ -10,12 +10,6 @@
 
 struct mb_cache;
 
-/* Cache entry flags */
-enum {
-	MBE_REFERENCED_B = 0,
-	MBE_REUSABLE_B
-};
-
 struct mb_cache_entry {
 	/* List of entries in cache - protected by cache->c_list_lock */
 	struct list_head	e_list;
@@ -32,7 +26,8 @@ struct mb_cache_entry {
 	atomic_t		e_refcnt;
 	/* Key in hash - stable during lifetime of the entry */
 	u32			e_key;
-	unsigned long		e_flags;
+	u32			e_referenced:1;
+	u32			e_reusable:1;
 	/* User provided value - stable during lifetime of the entry */
 	u64			e_value;
 };
@@ -60,7 +55,6 @@ static inline void mb_cache_entry_put(struct mb_cache *cache,
 
 struct mb_cache_entry *mb_cache_entry_delete_or_get(struct mb_cache *cache,
 						    u32 key, u64 value);
-void mb_cache_entry_delete(struct mb_cache *cache, u32 key, u64 value);
 struct mb_cache_entry *mb_cache_entry_get(struct mb_cache *cache, u32 key,
 					  u64 value);
 struct mb_cache_entry *mb_cache_entry_find_first(struct mb_cache *cache,

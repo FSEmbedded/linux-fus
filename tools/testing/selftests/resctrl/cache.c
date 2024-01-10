@@ -244,12 +244,10 @@ int cat_val(struct resctrl_val_param *param)
 	while (1) {
 		if (!strncmp(resctrl_val, CAT_STR, sizeof(CAT_STR))) {
 			ret = param->setup(1, param);
-			if (ret == END_OF_TESTS) {
+			if (ret) {
 				ret = 0;
 				break;
 			}
-			if (ret < 0)
-				break;
 			ret = reset_enable_llc_perf(bm_pid, param->cpu_no);
 			if (ret)
 				break;

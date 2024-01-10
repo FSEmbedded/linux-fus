@@ -126,7 +126,6 @@ static u32 esdhc_readl_fixup(struct sdhci_host *host,
 			return ret;
 		}
 	}
-
 	/*
 	 * The DAT[3:0] line signal levels and the CMD line signal level are
 	 * not compatible with standard SDHC register. The line signal levels
@@ -138,16 +137,6 @@ static u32 esdhc_readl_fixup(struct sdhci_host *host,
 		ret = value & 0x000fffff;
 		ret |= (value >> 4) & SDHCI_DATA_LVL_MASK;
 		ret |= (value << 1) & SDHCI_CMD_LVL;
-
-		/*
-		 * Some controllers have unreliable Data Line Active
-		 * bit for commands with busy signal. This affects
-		 * Command Inhibit (data) bit. Just ignore it since
-		 * MMC core driver has already polled card status
-		 * with CMD13 after any command with busy siganl.
-		 */
-		if (esdhc->quirk_ignore_data_inhibit)
-			ret &= ~SDHCI_DATA_INHIBIT;
 		return ret;
 	}
 
@@ -159,6 +148,19 @@ static u32 esdhc_readl_fixup(struct sdhci_host *host,
 	if (spec_reg == SDHCI_CAPABILITIES_1) {
 		ret = value & ~(SDHCI_SUPPORT_SDR50 | SDHCI_SUPPORT_SDR104 |
 				SDHCI_SUPPORT_DDR50);
+		return ret;
+	}
+
+	/*
+	 * Some controllers have unreliable Data Line Active
+	 * bit for commands with busy signal. This affects
+	 * Command Inhibit (data) bit. Just ignore it since
+	 * MMC core driver has already polled card status
+	 * with CMD13 after any command with busy siganl.
+	 */
+	if ((spec_reg == SDHCI_PRESENT_STATE) &&
+	(esdhc->quirk_ignore_data_inhibit == true)) {
+		ret = value & ~SDHCI_DATA_INHIBIT;
 		return ret;
 	}
 
@@ -933,7 +935,7 @@ static struct soc_device_attribute soc_tuning_erratum_type1[] = {
 	{ .family = "QorIQ T1040", },
 	{ .family = "QorIQ T2080", },
 	{ .family = "QorIQ LS1021A", },
-	{ },
+	{ /* sentinel */ }
 };
 
 static struct soc_device_attribute soc_tuning_erratum_type2[] = {
@@ -943,7 +945,7 @@ static struct soc_device_attribute soc_tuning_erratum_type2[] = {
 	{ .family = "QorIQ LS1080A", },
 	{ .family = "QorIQ LS2080A", },
 	{ .family = "QorIQ LA1575A", },
-	{ },
+	{ /* sentinel */ }
 };
 
 static void esdhc_tuning_block_enable(struct sdhci_host *host, bool enable)
@@ -1315,21 +1317,21 @@ static const struct sdhci_pltfm_data sdhci_esdhc_le_pdata = {
 static struct soc_device_attribute soc_incorrect_hostver[] = {
 	{ .family = "QorIQ T4240", .revision = "1.0", },
 	{ .family = "QorIQ T4240", .revision = "2.0", },
-	{ },
+	{ /* sentinel */ }
 };
 
 static struct soc_device_attribute soc_fixup_sdhc_clkdivs[] = {
 	{ .family = "QorIQ LX2160A", .revision = "1.0", },
 	{ .family = "QorIQ LX2160A", .revision = "2.0", },
 	{ .family = "QorIQ LS1028A", .revision = "1.0", },
-	{ },
+	{ /* sentinel */ }
 };
 
 static struct soc_device_attribute soc_unreliable_pulse_detection[] = {
 	{ .family = "QorIQ LX2160A", .revision = "1.0", },
 	{ .family = "QorIQ LX2160A", .revision = "2.0", },
 	{ .family = "QorIQ LS1028A", .revision = "1.0", },
-	{ },
+	{ /* sentinel */ }
 };
 
 static void esdhc_init(struct platform_device *pdev, struct sdhci_host *host)
@@ -1417,7 +1419,7 @@ static int esdhc_hs400_prepare_ddr(struct mmc_host *mmc)
 static int sdhci_esdhc_probe(struct platform_device *pdev)
 {
 	struct sdhci_host *host;
-	struct device_node *np;
+	struct device_node *np, *tp;
 	struct sdhci_pltfm_host *pltfm_host;
 	struct sdhci_esdhc *esdhc;
 	int ret;
@@ -1462,7 +1464,9 @@ static int sdhci_esdhc_probe(struct platform_device *pdev)
 	if (esdhc->vendor_ver > VENDOR_V_22)
 		host->quirks &= ~SDHCI_QUIRK_NO_BUSY_IRQ;
 
-	if (of_find_compatible_node(NULL, NULL, "fsl,p2020-esdhc")) {
+	tp = of_find_compatible_node(NULL, NULL, "fsl,p2020-esdhc");
+	if (tp) {
+		of_node_put(tp);
 		host->quirks |= SDHCI_QUIRK_RESET_AFTER_REQUEST;
 		host->quirks |= SDHCI_QUIRK_BROKEN_TIMEOUT_VAL;
 	}

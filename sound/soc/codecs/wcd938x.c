@@ -6,6 +6,7 @@
 #include <linux/platform_device.h>
 #include <linux/device.h>
 #include <linux/delay.h>
+#include <linux/gpio/consumer.h>
 #include <linux/kernel.h>
 #include <linux/pm_runtime.h>
 #include <linux/component.h>
@@ -194,6 +195,7 @@ struct wcd938x_priv {
 	int ear_rx_path;
 	int variant;
 	int reset_gpio;
+	struct gpio_desc *us_euro_gpio;
 	u32 micb1_mv;
 	u32 micb2_mv;
 	u32 micb3_mv;
@@ -1296,7 +1298,6 @@ static struct regmap_irq_chip wcd938x_regmap_irq_chip = {
 	.num_regs = 3,
 	.status_base = WCD938X_DIGITAL_INTR_STATUS_0,
 	.mask_base = WCD938X_DIGITAL_INTR_MASK_0,
-	.type_base = WCD938X_DIGITAL_INTR_LEVEL_0,
 	.ack_base = WCD938X_DIGITAL_INTR_CLEAR_0,
 	.use_ack = 1,
 	.runtime_pm = true,
@@ -3101,7 +3102,7 @@ static int wcd938x_mbhc_micb_ctrl_threshold_mic(struct snd_soc_component *compon
 						int micb_num, bool req_en)
 {
 	struct wcd938x_priv *wcd938x = snd_soc_component_get_drvdata(component);
-	int rc, micb_mv;
+	int micb_mv;
 
 	if (micb_num != MIC_BIAS_2)
 		return -EINVAL;
@@ -3115,9 +3116,7 @@ static int wcd938x_mbhc_micb_ctrl_threshold_mic(struct snd_soc_component *compon
 
 	micb_mv = req_en ? WCD_MBHC_THR_HS_MICB_MV : wcd938x->micb2_mv;
 
-	rc = wcd938x_mbhc_micb_adjust_voltage(component, micb_mv, MIC_BIAS_2);
-
-	return rc;
+	return wcd938x_mbhc_micb_adjust_voltage(component, micb_mv, MIC_BIAS_2);
 }
 
 static inline void wcd938x_mbhc_get_result_params(struct wcd938x_priv *wcd938x,
@@ -3621,8 +3620,6 @@ static int wcd938x_mbhc_init(struct snd_soc_component *component)
 						     WCD938X_IRQ_HPHR_OCP_INT);
 
 	wcd938x->wcd_mbhc = wcd_mbhc_init(component, &mbhc_cb, intr_ids, wcd_mbhc_fields, true);
-	if (IS_ERR(wcd938x->wcd_mbhc))
-		return PTR_ERR(wcd938x->wcd_mbhc);
 
 	snd_soc_add_component_controls(component, impedance_detect_controls,
 				       ARRAY_SIZE(impedance_detect_controls));
@@ -3631,14 +3628,6 @@ static int wcd938x_mbhc_init(struct snd_soc_component *component)
 
 	return 0;
 }
-
-static void wcd938x_mbhc_deinit(struct snd_soc_component *component)
-{
-	struct wcd938x_priv *wcd938x = snd_soc_component_get_drvdata(component);
-
-	wcd_mbhc_deinit(wcd938x->wcd_mbhc);
-}
-
 /* END MBHC */
 
 static const struct snd_kcontrol_new wcd938x_snd_controls[] = {
@@ -4086,33 +4075,16 @@ static int wcd938x_irq_init(struct wcd938x_priv *wcd, struct device *dev)
 static int wcd938x_soc_codec_probe(struct snd_soc_component *component)
 {
 	struct wcd938x_priv *wcd938x = snd_soc_component_get_drvdata(component);
-	struct sdw_slave *tx_sdw_dev = wcd938x->tx_sdw_dev;
 	struct device *dev = component->dev;
-	unsigned long time_left;
 	int ret, i;
 
-	time_left = wait_for_completion_timeout(&tx_sdw_dev->initialization_complete,
-						msecs_to_jiffies(2000));
-	if (!time_left) {
-		dev_err(dev, "soundwire device init timeout\n");
-		return -ETIMEDOUT;
-	}
-
 	snd_soc_component_init_regmap(component, wcd938x->regmap);
-
-	ret = pm_runtime_resume_and_get(dev);
-	if (ret < 0)
-		return ret;
 
 	wcd938x->variant = snd_soc_component_read_field(component,
 						 WCD938X_DIGITAL_EFUSE_REG_0,
 						 WCD938X_ID_MASK);
 
 	wcd938x->clsh_info = wcd_clsh_ctrl_alloc(component, WCD938X);
-	if (IS_ERR(wcd938x->clsh_info)) {
-		pm_runtime_put(dev);
-		return PTR_ERR(wcd938x->clsh_info);
-	}
 
 	wcd938x_io_init(wcd938x);
 	/* Set all interrupts as edge triggered */
@@ -4120,8 +4092,6 @@ static int wcd938x_soc_codec_probe(struct snd_soc_component *component)
 		regmap_write(wcd938x->regmap,
 			     (WCD938X_DIGITAL_INTR_LEVEL_0 + i), 0);
 	}
-
-	pm_runtime_put(dev);
 
 	wcd938x->hphr_pdm_wd_int = regmap_irq_get_virq(wcd938x->irq_chip,
 						       WCD938X_IRQ_HPHR_PDM_WD_INT);
@@ -4134,26 +4104,20 @@ static int wcd938x_soc_codec_probe(struct snd_soc_component *component)
 	ret = request_threaded_irq(wcd938x->hphr_pdm_wd_int, NULL, wcd938x_wd_handle_irq,
 				   IRQF_ONESHOT | IRQF_TRIGGER_RISING,
 				   "HPHR PDM WD INT", wcd938x);
-	if (ret) {
+	if (ret)
 		dev_err(dev, "Failed to request HPHR WD interrupt (%d)\n", ret);
-		goto err_free_clsh_ctrl;
-	}
 
 	ret = request_threaded_irq(wcd938x->hphl_pdm_wd_int, NULL, wcd938x_wd_handle_irq,
 				   IRQF_ONESHOT | IRQF_TRIGGER_RISING,
 				   "HPHL PDM WD INT", wcd938x);
-	if (ret) {
+	if (ret)
 		dev_err(dev, "Failed to request HPHL WD interrupt (%d)\n", ret);
-		goto err_free_hphr_pdm_wd_int;
-	}
 
 	ret = request_threaded_irq(wcd938x->aux_pdm_wd_int, NULL, wcd938x_wd_handle_irq,
 				   IRQF_ONESHOT | IRQF_TRIGGER_RISING,
 				   "AUX PDM WD INT", wcd938x);
-	if (ret) {
+	if (ret)
 		dev_err(dev, "Failed to request Aux WD interrupt (%d)\n", ret);
-		goto err_free_hphl_pdm_wd_int;
-	}
 
 	/* Disable watchdog interrupt for HPH and AUX */
 	disable_irq_nosync(wcd938x->hphr_pdm_wd_int);
@@ -4168,7 +4132,7 @@ static int wcd938x_soc_codec_probe(struct snd_soc_component *component)
 			dev_err(component->dev,
 				"%s: Failed to add snd ctrls for variant: %d\n",
 				__func__, wcd938x->variant);
-			goto err_free_aux_pdm_wd_int;
+			goto err;
 		}
 		break;
 	case WCD9385:
@@ -4178,7 +4142,7 @@ static int wcd938x_soc_codec_probe(struct snd_soc_component *component)
 			dev_err(component->dev,
 				"%s: Failed to add snd ctrls for variant: %d\n",
 				__func__, wcd938x->variant);
-			goto err_free_aux_pdm_wd_int;
+			goto err;
 		}
 		break;
 	default:
@@ -4186,36 +4150,10 @@ static int wcd938x_soc_codec_probe(struct snd_soc_component *component)
 	}
 
 	ret = wcd938x_mbhc_init(component);
-	if (ret) {
+	if (ret)
 		dev_err(component->dev,  "mbhc initialization failed\n");
-		goto err_free_aux_pdm_wd_int;
-	}
-
-	return 0;
-
-err_free_aux_pdm_wd_int:
-	free_irq(wcd938x->aux_pdm_wd_int, wcd938x);
-err_free_hphl_pdm_wd_int:
-	free_irq(wcd938x->hphl_pdm_wd_int, wcd938x);
-err_free_hphr_pdm_wd_int:
-	free_irq(wcd938x->hphr_pdm_wd_int, wcd938x);
-err_free_clsh_ctrl:
-	wcd_clsh_ctrl_free(wcd938x->clsh_info);
-
+err:
 	return ret;
-}
-
-static void wcd938x_soc_codec_remove(struct snd_soc_component *component)
-{
-	struct wcd938x_priv *wcd938x = snd_soc_component_get_drvdata(component);
-
-	wcd938x_mbhc_deinit(component);
-
-	free_irq(wcd938x->aux_pdm_wd_int, wcd938x);
-	free_irq(wcd938x->hphl_pdm_wd_int, wcd938x);
-	free_irq(wcd938x->hphr_pdm_wd_int, wcd938x);
-
-	wcd_clsh_ctrl_free(wcd938x->clsh_info);
 }
 
 static int wcd938x_codec_set_jack(struct snd_soc_component *comp,
@@ -4234,7 +4172,6 @@ static int wcd938x_codec_set_jack(struct snd_soc_component *comp,
 static const struct snd_soc_component_driver soc_codec_dev_wcd938x = {
 	.name = "wcd938x_codec",
 	.probe = wcd938x_soc_codec_probe,
-	.remove = wcd938x_soc_codec_remove,
 	.controls = wcd938x_snd_controls,
 	.num_controls = ARRAY_SIZE(wcd938x_snd_controls),
 	.dapm_widgets = wcd938x_dapm_widgets,
@@ -4242,6 +4179,7 @@ static const struct snd_soc_component_driver soc_codec_dev_wcd938x = {
 	.dapm_routes = wcd938x_audio_map,
 	.num_dapm_routes = ARRAY_SIZE(wcd938x_audio_map),
 	.set_jack = wcd938x_codec_set_jack,
+	.endianness = 1,
 };
 
 static void wcd938x_dt_parse_micbias_info(struct device *dev, struct wcd938x_priv *wcd)
@@ -4275,6 +4213,22 @@ static void wcd938x_dt_parse_micbias_info(struct device *dev, struct wcd938x_pri
 		dev_info(dev, "%s: Micbias4 DT property not found\n", __func__);
 }
 
+static bool wcd938x_swap_gnd_mic(struct snd_soc_component *component, bool active)
+{
+	int value;
+
+	struct wcd938x_priv *wcd938x;
+
+	wcd938x = snd_soc_component_get_drvdata(component);
+
+	value = gpiod_get_value(wcd938x->us_euro_gpio);
+
+	gpiod_set_value(wcd938x->us_euro_gpio, !value);
+
+	return true;
+}
+
+
 static int wcd938x_populate_dt_data(struct wcd938x_priv *wcd938x, struct device *dev)
 {
 	struct wcd_mbhc_config *cfg = &wcd938x->mbhc_cfg;
@@ -4286,6 +4240,15 @@ static int wcd938x_populate_dt_data(struct wcd938x_priv *wcd938x, struct device 
 			wcd938x->reset_gpio);
 		return wcd938x->reset_gpio;
 	}
+
+	wcd938x->us_euro_gpio = devm_gpiod_get_optional(dev, "us-euro",
+						GPIOD_OUT_LOW);
+	if (IS_ERR(wcd938x->us_euro_gpio)) {
+		dev_err(dev, "us-euro swap Control GPIO not found\n");
+		return PTR_ERR(wcd938x->us_euro_gpio);
+	}
+
+	cfg->swap_gnd_mic = wcd938x_swap_gnd_mic;
 
 	wcd938x->supplies[0].supply = "vdd-rxtx";
 	wcd938x->supplies[1].supply = "vdd-io";
@@ -4496,16 +4459,6 @@ static const struct component_master_ops wcd938x_comp_ops = {
 	.unbind = wcd938x_unbind,
 };
 
-static int wcd938x_compare_of(struct device *dev, void *data)
-{
-	return dev->of_node == data;
-}
-
-static void wcd938x_release_of(struct device *dev, void *data)
-{
-	of_node_put(data);
-}
-
 static int wcd938x_add_slave_components(struct wcd938x_priv *wcd938x,
 					struct device *dev,
 					struct component_match **matchptr)
@@ -4521,8 +4474,8 @@ static int wcd938x_add_slave_components(struct wcd938x_priv *wcd938x,
 	}
 
 	of_node_get(wcd938x->rxnode);
-	component_match_add_release(dev, matchptr, wcd938x_release_of,
-				    wcd938x_compare_of,	wcd938x->rxnode);
+	component_match_add_release(dev, matchptr, component_release_of,
+				    component_compare_of, wcd938x->rxnode);
 
 	wcd938x->txnode = of_parse_phandle(np, "qcom,tx-device", 0);
 	if (!wcd938x->txnode) {
@@ -4530,8 +4483,8 @@ static int wcd938x_add_slave_components(struct wcd938x_priv *wcd938x,
 		return -ENODEV;
 	}
 	of_node_get(wcd938x->txnode);
-	component_match_add_release(dev, matchptr, wcd938x_release_of,
-				    wcd938x_compare_of,	wcd938x->txnode);
+	component_match_add_release(dev, matchptr, component_release_of,
+				    component_compare_of, wcd938x->txnode);
 	return 0;
 }
 

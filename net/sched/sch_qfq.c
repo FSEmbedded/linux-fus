@@ -113,7 +113,6 @@
 
 #define QFQ_MTU_SHIFT		16	/* to support TSO/GSO */
 #define QFQ_MIN_LMAX		512	/* see qfq_slot_insert */
-#define QFQ_MAX_LMAX		(1UL << QFQ_MTU_SHIFT)
 
 #define QFQ_MAX_AGG_CLASSES	8 /* max num classes per aggregate allowed */
 
@@ -132,7 +131,7 @@ struct qfq_class {
 
 	unsigned int filter_cnt;
 
-	struct gnet_stats_basic_packed bstats;
+	struct gnet_stats_basic_sync bstats;
 	struct gnet_stats_queue qstats;
 	struct net_rate_estimator __rcu *rate_est;
 	struct Qdisc *qdisc;
@@ -215,14 +214,9 @@ static struct qfq_class *qfq_find_class(struct Qdisc *sch, u32 classid)
 	return container_of(clc, struct qfq_class, common);
 }
 
-static struct netlink_range_validation lmax_range = {
-	.min = QFQ_MIN_LMAX,
-	.max = QFQ_MAX_LMAX,
-};
-
 static const struct nla_policy qfq_policy[TCA_QFQ_MAX + 1] = {
-	[TCA_QFQ_WEIGHT] = NLA_POLICY_RANGE(NLA_U32, 1, QFQ_MAX_WEIGHT),
-	[TCA_QFQ_LMAX] = NLA_POLICY_FULL_RANGE(NLA_U32, &lmax_range),
+	[TCA_QFQ_WEIGHT] = { .type = NLA_U32 },
+	[TCA_QFQ_LMAX] = { .type = NLA_U32 },
 };
 
 /*
@@ -381,13 +375,8 @@ static int qfq_change_agg(struct Qdisc *sch, struct qfq_class *cl, u32 weight,
 			   u32 lmax)
 {
 	struct qfq_sched *q = qdisc_priv(sch);
-	struct qfq_aggregate *new_agg;
+	struct qfq_aggregate *new_agg = qfq_find_agg(q, lmax, weight);
 
-	/* 'lmax' can range from [QFQ_MIN_LMAX, pktlen + stab overhead] */
-	if (lmax > QFQ_MAX_LMAX)
-		return -EINVAL;
-
-	new_agg = qfq_find_agg(q, lmax, weight);
 	if (new_agg == NULL) { /* create new aggregate */
 		new_agg = kzalloc(sizeof(*new_agg), GFP_ATOMIC);
 		if (new_agg == NULL)
@@ -419,26 +408,27 @@ static int qfq_change_class(struct Qdisc *sch, u32 classid, u32 parentid,
 	}
 
 	err = nla_parse_nested_deprecated(tb, TCA_QFQ_MAX, tca[TCA_OPTIONS],
-					  qfq_policy, extack);
+					  qfq_policy, NULL);
 	if (err < 0)
 		return err;
 
-	if (tb[TCA_QFQ_WEIGHT])
+	if (tb[TCA_QFQ_WEIGHT]) {
 		weight = nla_get_u32(tb[TCA_QFQ_WEIGHT]);
-	else
+		if (!weight || weight > (1UL << QFQ_MAX_WSHIFT)) {
+			pr_notice("qfq: invalid weight %u\n", weight);
+			return -EINVAL;
+		}
+	} else
 		weight = 1;
 
 	if (tb[TCA_QFQ_LMAX]) {
 		lmax = nla_get_u32(tb[TCA_QFQ_LMAX]);
-	} else {
-		/* MTU size is user controlled */
-		lmax = psched_mtu(qdisc_dev(sch));
-		if (lmax < QFQ_MIN_LMAX || lmax > QFQ_MAX_LMAX) {
-			NL_SET_ERR_MSG_MOD(extack,
-					   "MTU size out of bounds for qfq");
+		if (lmax < QFQ_MIN_LMAX || lmax > (1UL << QFQ_MTU_SHIFT)) {
+			pr_notice("qfq: invalid max length %u\n", lmax);
 			return -EINVAL;
 		}
-	}
+	} else
+		lmax = psched_mtu(qdisc_dev(sch));
 
 	inv_w = ONE_FP / weight;
 	weight = ONE_FP / inv_w;
@@ -461,7 +451,7 @@ static int qfq_change_class(struct Qdisc *sch, u32 classid, u32 parentid,
 			err = gen_replace_estimator(&cl->bstats, NULL,
 						    &cl->rate_est,
 						    NULL,
-						    qdisc_root_sleeping_running(sch),
+						    true,
 						    tca[TCA_RATE]);
 			if (err)
 				return err;
@@ -475,6 +465,7 @@ static int qfq_change_class(struct Qdisc *sch, u32 classid, u32 parentid,
 	if (cl == NULL)
 		return -ENOBUFS;
 
+	gnet_stats_basic_sync_init(&cl->bstats);
 	cl->common.classid = classid;
 	cl->deficit = lmax;
 
@@ -487,7 +478,7 @@ static int qfq_change_class(struct Qdisc *sch, u32 classid, u32 parentid,
 		err = gen_new_estimator(&cl->bstats, NULL,
 					&cl->rate_est,
 					NULL,
-					qdisc_root_sleeping_running(sch),
+					true,
 					tca[TCA_RATE]);
 		if (err)
 			goto destroy_class;
@@ -649,8 +640,7 @@ static int qfq_dump_class_stats(struct Qdisc *sch, unsigned long arg,
 	xstats.weight = cl->agg->class_weight;
 	xstats.lmax = cl->agg->lmax;
 
-	if (gnet_stats_copy_basic(qdisc_root_sleeping_running(sch),
-				  d, NULL, &cl->bstats) < 0 ||
+	if (gnet_stats_copy_basic(d, NULL, &cl->bstats, true) < 0 ||
 	    gnet_stats_copy_rate_est(d, &cl->rate_est) < 0 ||
 	    qdisc_qstats_copy(d, cl->qdisc) < 0)
 		return -1;
@@ -669,15 +659,8 @@ static void qfq_walk(struct Qdisc *sch, struct qdisc_walker *arg)
 
 	for (i = 0; i < q->clhash.hashsize; i++) {
 		hlist_for_each_entry(cl, &q->clhash.hash[i], common.hnode) {
-			if (arg->count < arg->skip) {
-				arg->count++;
-				continue;
-			}
-			if (arg->fn(sch, (unsigned long)cl, arg) < 0) {
-				arg->stop = 1;
+			if (!tc_qdisc_stats_dump(sch, (unsigned long)cl, arg))
 				return;
-			}
-			arg->count++;
 		}
 	}
 }
@@ -1244,8 +1227,7 @@ static int qfq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 		return err;
 	}
 
-	cl->bstats.bytes += len;
-	cl->bstats.packets += gso_segs;
+	_bstats_update(&cl->bstats, len, gso_segs);
 	sch->qstats.backlog += len;
 	++sch->q.qlen;
 

@@ -9,14 +9,7 @@
 #include <linux/phy.h>
 
 #if IS_ENABLED(CONFIG_ACPI_MDIO)
-int __acpi_mdiobus_register(struct mii_bus *mdio, struct fwnode_handle *fwnode,
-			    struct module *owner);
-
-static inline int
-acpi_mdiobus_register(struct mii_bus *mdio, struct fwnode_handle *handle)
-{
-	return __acpi_mdiobus_register(mdio, handle, THIS_MODULE);
-}
+int acpi_mdiobus_register(struct mii_bus *mdio, struct fwnode_handle *fwnode);
 #else /* CONFIG_ACPI_MDIO */
 static inline int
 acpi_mdiobus_register(struct mii_bus *mdio, struct fwnode_handle *fwnode)

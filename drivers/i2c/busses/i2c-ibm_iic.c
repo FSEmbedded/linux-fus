@@ -694,8 +694,10 @@ static int iic_probe(struct platform_device *ofdev)
 	int ret;
 
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
-	if (!dev)
+	if (!dev) {
+		dev_err(&ofdev->dev, "failed to allocate device data\n");
 		return -ENOMEM;
+	}
 
 	platform_set_drvdata(ofdev, dev);
 
@@ -736,7 +738,7 @@ static int iic_probe(struct platform_device *ofdev)
 	adap = &dev->adap;
 	adap->dev.parent = &ofdev->dev;
 	adap->dev.of_node = of_node_get(np);
-	strlcpy(adap->name, "IBM IIC", sizeof(adap->name));
+	strscpy(adap->name, "IBM IIC", sizeof(adap->name));
 	i2c_set_adapdata(adap, dev);
 	adap->class = I2C_CLASS_HWMON | I2C_CLASS_SPD;
 	adap->algo = &iic_algo;

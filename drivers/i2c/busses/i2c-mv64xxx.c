@@ -520,17 +520,6 @@ mv64xxx_i2c_intr(int irq, void *dev_id)
 
 	while (readl(drv_data->reg_base + drv_data->reg_offsets.control) &
 						MV64XXX_I2C_REG_CONTROL_IFLG) {
-		/*
-		 * It seems that sometime the controller updates the status
-		 * register only after it asserts IFLG in control register.
-		 * This may result in weird bugs when in atomic mode. A delay
-		 * of 100 ns before reading the status register solves this
-		 * issue. This bug does not seem to appear when using
-		 * interrupts.
-		 */
-		if (drv_data->atomic)
-			ndelay(100);
-
 		status = readl(drv_data->reg_base + drv_data->reg_offsets.status);
 		mv64xxx_i2c_fsm(drv_data, status);
 		mv64xxx_i2c_do_action(drv_data);
@@ -1000,7 +989,7 @@ mv64xxx_i2c_probe(struct platform_device *pd)
 	if (IS_ERR(drv_data->reg_base))
 		return PTR_ERR(drv_data->reg_base);
 
-	strlcpy(drv_data->adapter.name, MV64XXX_I2C_CTLR_NAME " adapter",
+	strscpy(drv_data->adapter.name, MV64XXX_I2C_CTLR_NAME " adapter",
 		sizeof(drv_data->adapter.name));
 
 	init_waitqueue_head(&drv_data->waitq);

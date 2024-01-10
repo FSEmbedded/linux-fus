@@ -6,17 +6,19 @@
  * Copyright (C) 2012 Regents of the University of California
  */
 
+#include <linux/compat.h>
 #include <linux/signal.h>
 #include <linux/uaccess.h>
 #include <linux/syscalls.h>
-#include <linux/tracehook.h>
+#include <linux/resume_user_mode.h>
 #include <linux/linkage.h>
 
 #include <asm/ucontext.h>
 #include <asm/vdso.h>
+#include <asm/signal.h>
+#include <asm/signal32.h>
 #include <asm/switch_to.h>
 #include <asm/csr.h>
-#include <asm/cacheflush.h>
 
 extern u32 __user_rt_sigreturn[2];
 
@@ -179,7 +181,6 @@ static int setup_rt_frame(struct ksignal *ksig, sigset_t *set,
 {
 	struct rt_sigframe __user *frame;
 	long err = 0;
-	unsigned long __maybe_unused addr;
 
 	frame = get_sigframe(ksig, regs, sizeof(*frame));
 	if (!access_ok(frame, sizeof(*frame)))
@@ -208,12 +209,7 @@ static int setup_rt_frame(struct ksignal *ksig, sigset_t *set,
 	if (copy_to_user(&frame->sigreturn_code, __user_rt_sigreturn,
 			 sizeof(frame->sigreturn_code)))
 		return -EFAULT;
-
-	addr = (unsigned long)&frame->sigreturn_code;
-	/* Make sure the two instructions are pushed to icache. */
-	flush_icache_range(addr, addr + sizeof(frame->sigreturn_code));
-
-	regs->ra = addr;
+	regs->ra = (unsigned long)&frame->sigreturn_code;
 #endif /* CONFIG_MMU */
 
 	/*
@@ -267,8 +263,13 @@ static void handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 		}
 	}
 
+	rseq_signal_deliver(ksig, regs);
+
 	/* Set up the stack frame */
-	ret = setup_rt_frame(ksig, oldset, regs);
+	if (is_compat_task())
+		ret = compat_setup_rt_frame(ksig, oldset, regs);
+	else
+		ret = setup_rt_frame(ksig, oldset, regs);
 
 	signal_setup_done(ret, ksig, 0);
 }
@@ -326,5 +327,5 @@ asmlinkage __visible void do_notify_resume(struct pt_regs *regs,
 		do_signal(regs);
 
 	if (thread_info_flags & _TIF_NOTIFY_RESUME)
-		tracehook_notify_resume(regs);
+		resume_user_mode_work(regs);
 }

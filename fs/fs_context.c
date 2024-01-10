@@ -561,8 +561,7 @@ static int legacy_parse_param(struct fs_context *fc, struct fs_parameter *param)
 			return -ENOMEM;
 	}
 
-	if (size)
-		ctx->legacy_data[size++] = ',';
+	ctx->legacy_data[size++] = ',';
 	len = strlen(param->key);
 	memcpy(ctx->legacy_data + size, param->key, len);
 	size += len;

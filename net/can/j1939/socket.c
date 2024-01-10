@@ -798,14 +798,14 @@ static int j1939_sk_recvmsg(struct socket *sock, struct msghdr *msg,
 	struct j1939_sk_buff_cb *skcb;
 	int ret = 0;
 
-	if (flags & ~(MSG_DONTWAIT | MSG_ERRQUEUE | MSG_CMSG_COMPAT))
+	if (flags & ~(MSG_DONTWAIT | MSG_ERRQUEUE))
 		return -EINVAL;
 
 	if (flags & MSG_ERRQUEUE)
 		return sock_recv_errqueue(sock->sk, msg, size, SOL_CAN_J1939,
 					  SCM_J1939_ERRQUEUE);
 
-	skb = skb_recv_datagram(sk, flags, 0, &ret);
+	skb = skb_recv_datagram(sk, flags, &ret);
 	if (!skb)
 		return ret;
 
@@ -844,7 +844,7 @@ static int j1939_sk_recvmsg(struct socket *sock, struct msghdr *msg,
 		paddr->can_addr.j1939.pgn = skcb->addr.pgn;
 	}
 
-	sock_recv_ts_and_drops(msg, sk, skb);
+	sock_recv_cmsgs(msg, sk, skb);
 	msg->msg_flags |= skcb->msg_flags;
 	skb_free_datagram(sk, skb);
 
@@ -1088,11 +1088,6 @@ void j1939_sk_errqueue(struct j1939_session *session,
 
 void j1939_sk_send_loop_abort(struct sock *sk, int err)
 {
-	struct j1939_sock *jsk = j1939_sk(sk);
-
-	if (jsk->state & J1939_SOCK_ERRQUEUE)
-		return;
-
 	sk->sk_err = err;
 
 	sk_error_report(sk);

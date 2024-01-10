@@ -269,12 +269,14 @@ static void __es_find_extent_range(struct inode *inode,
 
 	/* see if the extent has been cached */
 	es->es_lblk = es->es_len = es->es_pblk = 0;
-	es1 = READ_ONCE(tree->cache_es);
-	if (es1 && in_range(lblk, es1->es_lblk, es1->es_len)) {
-		es_debug("%u cached by [%u/%u) %llu %x\n",
-			 lblk, es1->es_lblk, es1->es_len,
-			 ext4_es_pblock(es1), ext4_es_status(es1));
-		goto out;
+	if (tree->cache_es) {
+		es1 = tree->cache_es;
+		if (in_range(lblk, es1->es_lblk, es1->es_len)) {
+			es_debug("%u cached by [%u/%u) %llu %x\n",
+				 lblk, es1->es_lblk, es1->es_len,
+				 ext4_es_pblock(es1), ext4_es_status(es1));
+			goto out;
+		}
 	}
 
 	es1 = __es_tree_search(&tree->root, lblk);
@@ -293,7 +295,7 @@ out:
 	}
 
 	if (es1 && matching_fn(es1)) {
-		WRITE_ONCE(tree->cache_es, es1);
+		tree->cache_es = es1;
 		es->es_lblk = es1->es_lblk;
 		es->es_len = es1->es_len;
 		es->es_pblk = es1->es_pblk;
@@ -665,8 +667,7 @@ static void ext4_es_insert_extent_ext_check(struct inode *inode,
 		}
 	}
 out:
-	ext4_ext_drop_refs(path);
-	kfree(path);
+	ext4_free_ext_path(path);
 }
 
 static void ext4_es_insert_extent_ind_check(struct inode *inode,
@@ -932,12 +933,14 @@ int ext4_es_lookup_extent(struct inode *inode, ext4_lblk_t lblk,
 
 	/* find extent in cache firstly */
 	es->es_lblk = es->es_len = es->es_pblk = 0;
-	es1 = READ_ONCE(tree->cache_es);
-	if (es1 && in_range(lblk, es1->es_lblk, es1->es_len)) {
-		es_debug("%u cached by [%u/%u)\n",
-			 lblk, es1->es_lblk, es1->es_len);
-		found = 1;
-		goto out;
+	if (tree->cache_es) {
+		es1 = tree->cache_es;
+		if (in_range(lblk, es1->es_lblk, es1->es_len)) {
+			es_debug("%u cached by [%u/%u)\n",
+				 lblk, es1->es_lblk, es1->es_len);
+			found = 1;
+			goto out;
+		}
 	}
 
 	node = tree->root.rb_node;
@@ -1368,7 +1371,7 @@ retry:
 		if (count_reserved)
 			count_rsvd(inode, lblk, orig_es.es_len - len1 - len2,
 				   &orig_es, &rc);
-		goto out_get_reserved;
+		goto out;
 	}
 
 	if (len1 > 0) {
@@ -1410,7 +1413,6 @@ retry:
 		}
 	}
 
-out_get_reserved:
 	if (count_reserved)
 		*reserved = get_rsvd(inode, end, es, &rc);
 out:
@@ -1651,7 +1653,8 @@ int ext4_es_register_shrinker(struct ext4_sb_info *sbi)
 	sbi->s_es_shrinker.scan_objects = ext4_es_scan;
 	sbi->s_es_shrinker.count_objects = ext4_es_count;
 	sbi->s_es_shrinker.seeks = DEFAULT_SEEKS;
-	err = register_shrinker(&sbi->s_es_shrinker);
+	err = register_shrinker(&sbi->s_es_shrinker, "ext4-es:%s",
+				sbi->s_sb->s_id);
 	if (err)
 		goto err4;
 

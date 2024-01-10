@@ -549,10 +549,8 @@ struct ip_vs_conn {
 	 */
 	struct ip_vs_app        *app;           /* bound ip_vs_app object */
 	void                    *app_data;      /* Application private data */
-	struct_group(sync_conn_opt,
-		struct ip_vs_seq  in_seq;       /* incoming seq. struct */
-		struct ip_vs_seq  out_seq;      /* outgoing seq. struct */
-	);
+	struct ip_vs_seq        in_seq;         /* incoming seq. struct */
+	struct ip_vs_seq        out_seq;        /* outgoing seq. struct */
 
 	const struct ip_vs_pe	*pe;
 	char			*pe_data;
@@ -933,6 +931,7 @@ struct netns_ipvs {
 	int			sysctl_conn_reuse_mode;
 	int			sysctl_schedule_icmp;
 	int			sysctl_ignore_tunneled;
+	int			sysctl_run_estimation;
 
 	/* ip_vs_lblc */
 	int			sysctl_lblc_expiration;
@@ -1073,6 +1072,11 @@ static inline int sysctl_cache_bypass(struct netns_ipvs *ipvs)
 	return ipvs->sysctl_cache_bypass;
 }
 
+static inline int sysctl_run_estimation(struct netns_ipvs *ipvs)
+{
+	return ipvs->sysctl_run_estimation;
+}
+
 #else
 
 static inline int sysctl_sync_threshold(struct netns_ipvs *ipvs)
@@ -1163,6 +1167,11 @@ static inline int sysctl_ignore_tunneled(struct netns_ipvs *ipvs)
 static inline int sysctl_cache_bypass(struct netns_ipvs *ipvs)
 {
 	return 0;
+}
+
+static inline int sysctl_run_estimation(struct netns_ipvs *ipvs)
+{
+	return 1;
 }
 
 #endif

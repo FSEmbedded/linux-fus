@@ -21,7 +21,6 @@
 #include "builtin.h"
 #include "bench/bench.h"
 
-#include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -93,6 +92,13 @@ static struct bench internals_benchmarks[] = {
 	{ NULL,		NULL,					NULL			}
 };
 
+static struct bench breakpoint_benchmarks[] = {
+	{ "thread", "Benchmark thread start/finish with breakpoints", bench_breakpoint_thread},
+	{ "enable", "Benchmark breakpoint enable/disable", bench_breakpoint_enable},
+	{ "all", "Run all breakpoint benchmarks", NULL},
+	{ NULL,	NULL, NULL },
+};
+
 struct collection {
 	const char	*name;
 	const char	*summary;
@@ -111,6 +117,7 @@ static struct collection collections[] = {
 	{"epoll",       "Epoll stressing benchmarks",                   epoll_benchmarks        },
 #endif
 	{ "internals",	"Perf-internals benchmarks",			internals_benchmarks	},
+	{ "breakpoint",	"Breakpoint benchmarks",			breakpoint_benchmarks	},
 	{ "all",	"All benchmarks",				NULL			},
 	{ NULL,		NULL,						NULL			}
 };
@@ -249,7 +256,6 @@ int cmd_bench(int argc, const char **argv)
 
 	/* Unbuffered output */
 	setvbuf(stdout, NULL, _IONBF, 0);
-	setlocale(LC_ALL, "");
 
 	if (argc < 2) {
 		/* No collection specified. */

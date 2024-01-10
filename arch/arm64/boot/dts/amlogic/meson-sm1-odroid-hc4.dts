@@ -76,17 +76,9 @@
 };
 
 &cpu_thermal {
-	trips {
-		cpu_active: cpu-active {
-			temperature = <60000>; /* millicelsius */
-			hysteresis = <2000>; /* millicelsius */
-			type = "active";
-		};
-	};
-
 	cooling-maps {
 		map {
-			trip = <&cpu_active>;
+			trip = <&cpu_passive>;
 			cooling-device = <&fan0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
 		};
 	};
@@ -129,7 +121,7 @@
 	pinctrl-0 = <&nor_pins>;
 	pinctrl-names = "default";
 
-	spi-flash@0 {
+	flash@0 {
 		#address-cells = <1>;
 		#size-cells = <1>;
 		compatible = "jedec,spi-nor";

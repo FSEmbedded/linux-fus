@@ -1325,9 +1325,7 @@ void cx23885_free_buffer(struct cx23885_dev *dev, struct cx23885_buffer *buf)
 {
 	struct cx23885_riscmem *risc = &buf->risc;
 
-	if (risc->cpu)
-		dma_free_coherent(&dev->pci->dev, risc->size, risc->cpu, risc->dma);
-	memset(risc, 0, sizeof(*risc));
+	dma_free_coherent(&dev->pci->dev, risc->size, risc->cpu, risc->dma);
 }
 
 static void cx23885_tsport_reg_dump(struct cx23885_tsport *port)
@@ -2088,6 +2086,9 @@ static struct {
 	/* 0x1419 is the PCI ID for the IOMMU found on 15h (Models 10h-1fh) family
 	 */
 	{ PCI_VENDOR_ID_AMD, 0x1419 },
+	/* 0x1631 is the PCI ID for the IOMMU found on Renoir/Cezanne
+	 */
+	{ PCI_VENDOR_ID_AMD, 0x1631 },
 	/* 0x5a23 is the PCI ID for the IOMMU found on RD890S/RD990
 	 */
 	{ PCI_VENDOR_ID_ATI, 0x5a23 },

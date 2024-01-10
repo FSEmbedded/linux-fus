@@ -28,6 +28,7 @@
 #include "qed_dev_api.h"
 #include <linux/qed/qed_eth_if.h>
 #include "qed_hsi.h"
+#include "qed_iro_hsi.h"
 #include "qed_hw.h"
 #include "qed_int.h"
 #include "qed_l2.h"
@@ -36,7 +37,6 @@
 #include "qed_reg_addr.h"
 #include "qed_sp.h"
 #include "qed_sriov.h"
-
 
 #define QED_MAX_SGES_NUM 16
 #define CRC32_POLY 0x1edc6f41
@@ -904,9 +904,10 @@ qed_eth_pf_rx_queue_start(struct qed_hwfn *p_hwfn,
 {
 	u32 init_prod_val = 0;
 
-	*pp_prod = p_hwfn->regview +
-		   GTT_BAR0_MAP_REG_MSDM_RAM +
-		    MSTORM_ETH_PF_PRODS_OFFSET(p_cid->abs.queue_id);
+	*pp_prod = (u8 __iomem *)
+	    p_hwfn->regview +
+	    GET_GTT_REG_ADDR(GTT_BAR0_MAP_REG_MSDM_RAM,
+			     MSTORM_ETH_PF_PRODS, p_cid->abs.queue_id);
 
 	/* Init the rcq, rx bd and rx sge (if valid) producers to 0 */
 	__internal_ram_wr(p_hwfn, *pp_prod, sizeof(u32),
@@ -1110,7 +1111,6 @@ qed_eth_pf_tx_queue_start(struct qed_hwfn *p_hwfn,
 			  u16 pbl_size, void __iomem **pp_doorbell)
 {
 	int rc;
-
 
 	rc = qed_eth_txq_start_ramrod(p_hwfn, p_cid,
 				      pbl_addr, pbl_size,
@@ -1863,8 +1863,7 @@ static void __qed_get_vport_stats(struct qed_hwfn *p_hwfn,
 }
 
 static void _qed_get_vport_stats(struct qed_dev *cdev,
-				 struct qed_eth_stats *stats,
-				 bool is_atomic)
+				 struct qed_eth_stats *stats)
 {
 	u8 fw_vport = 0;
 	int i;
@@ -1873,11 +1872,10 @@ static void _qed_get_vport_stats(struct qed_dev *cdev,
 
 	for_each_hwfn(cdev, i) {
 		struct qed_hwfn *p_hwfn = &cdev->hwfns[i];
-		struct qed_ptt *p_ptt;
+		struct qed_ptt *p_ptt = IS_PF(cdev) ? qed_ptt_acquire(p_hwfn)
+						    :  NULL;
 		bool b_get_port_stats;
 
-		p_ptt = IS_PF(cdev) ? qed_ptt_acquire_context(p_hwfn, is_atomic)
-				    : NULL;
 		if (IS_PF(cdev)) {
 			/* The main vport index is relative first */
 			if (qed_fw_vport(p_hwfn, 0, &fw_vport)) {
@@ -1903,21 +1901,14 @@ out:
 
 void qed_get_vport_stats(struct qed_dev *cdev, struct qed_eth_stats *stats)
 {
-	qed_get_vport_stats_context(cdev, stats, false);
-}
-
-void qed_get_vport_stats_context(struct qed_dev *cdev,
-				 struct qed_eth_stats *stats,
-				 bool is_atomic)
-{
 	u32 i;
 
-	if (!cdev || cdev->recov_in_prog) {
+	if (!cdev) {
 		memset(stats, 0, sizeof(*stats));
 		return;
 	}
 
-	_qed_get_vport_stats(cdev, stats, is_atomic);
+	_qed_get_vport_stats(cdev, stats);
 
 	if (!cdev->reset_stats)
 		return;
@@ -1969,7 +1960,7 @@ void qed_reset_vport_stats(struct qed_dev *cdev)
 	if (!cdev->reset_stats) {
 		DP_INFO(cdev, "Reset stats not allocated\n");
 	} else {
-		_qed_get_vport_stats(cdev, cdev->reset_stats, false);
+		_qed_get_vport_stats(cdev, cdev->reset_stats);
 		cdev->reset_stats->common.link_change_count = 0;
 	}
 }
@@ -2019,7 +2010,7 @@ qed_configure_rfs_ntuple_filter(struct qed_hwfn *p_hwfn,
 				struct qed_spq_comp_cb *p_cb,
 				struct qed_ntuple_filter_params *p_params)
 {
-	struct rx_update_gft_filter_data *p_ramrod = NULL;
+	struct rx_update_gft_filter_ramrod_data *p_ramrod = NULL;
 	struct qed_spq_entry *p_ent = NULL;
 	struct qed_sp_init_data init_data;
 	u16 abs_rx_q_id = 0;
@@ -2040,7 +2031,7 @@ qed_configure_rfs_ntuple_filter(struct qed_hwfn *p_hwfn,
 	}
 
 	rc = qed_sp_init_request(p_hwfn, &p_ent,
-				 ETH_RAMROD_GFT_UPDATE_FILTER,
+				 ETH_RAMROD_RX_UPDATE_GFT_FILTER,
 				 PROTOCOLID_ETH, &init_data);
 	if (rc)
 		return rc;
@@ -2109,7 +2100,7 @@ int qed_get_rxq_coalesce(struct qed_hwfn *p_hwfn,
 			      CAU_SB_ENTRY_TIMER_RES0);
 
 	address = BAR0_MAP_REG_USDM_RAM +
-		  USTORM_ETH_QUEUE_ZONE_OFFSET(p_cid->abs.queue_id);
+		  USTORM_ETH_QUEUE_ZONE_GTT_OFFSET(p_cid->abs.queue_id);
 	coalesce = qed_rd(p_hwfn, p_ptt, address);
 
 	is_valid = GET_FIELD(coalesce, COALESCING_TIMESET_VALID);
@@ -2143,7 +2134,7 @@ int qed_get_txq_coalesce(struct qed_hwfn *p_hwfn,
 			      CAU_SB_ENTRY_TIMER_RES1);
 
 	address = BAR0_MAP_REG_XSDM_RAM +
-		  XSTORM_ETH_QUEUE_ZONE_OFFSET(p_cid->abs.queue_id);
+		  XSTORM_ETH_QUEUE_ZONE_GTT_OFFSET(p_cid->abs.queue_id);
 	coalesce = qed_rd(p_hwfn, p_ptt, address);
 
 	is_valid = GET_FIELD(coalesce, COALESCING_TIMESET_VALID);
@@ -2857,7 +2848,7 @@ static int qed_fp_cqe_completion(struct qed_dev *dev,
 				      cqe);
 }
 
-static int qed_req_bulletin_update_mac(struct qed_dev *cdev, u8 *mac)
+static int qed_req_bulletin_update_mac(struct qed_dev *cdev, const u8 *mac)
 {
 	int i, ret;
 

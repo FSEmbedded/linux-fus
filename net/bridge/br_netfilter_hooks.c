@@ -868,17 +868,11 @@ static unsigned int ip_sabotage_in(void *priv,
 {
 	struct nf_bridge_info *nf_bridge = nf_bridge_info_get(skb);
 
-	if (nf_bridge) {
-		if (nf_bridge->sabotage_in_done)
-			return NF_ACCEPT;
-
-		if (!nf_bridge->in_prerouting &&
-		    !netif_is_l3_master(skb->dev) &&
-		    !netif_is_l3_slave(skb->dev)) {
-			nf_bridge->sabotage_in_done = 1;
-			state->okfn(state->net, state->sk, skb);
-			return NF_STOLEN;
-		}
+	if (nf_bridge && !nf_bridge->in_prerouting &&
+	    !netif_is_l3_master(skb->dev) &&
+	    !netif_is_l3_slave(skb->dev)) {
+		state->okfn(state->net, state->sk, skb);
+		return NF_STOLEN;
 	}
 
 	return NF_ACCEPT;
@@ -975,7 +969,7 @@ static int brnf_device_event(struct notifier_block *unused, unsigned long event,
 	struct net *net;
 	int ret;
 
-	if (event != NETDEV_REGISTER || !(dev->priv_flags & IFF_EBRIDGE))
+	if (event != NETDEV_REGISTER || !netif_is_bridge_master(dev))
 		return NOTIFY_DONE;
 
 	ASSERT_RTNL();

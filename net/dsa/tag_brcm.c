@@ -7,7 +7,6 @@
 
 #include <linux/dsa/brcm.h>
 #include <linux/etherdevice.h>
-#include <linux/if_vlan.h>
 #include <linux/list.h>
 #include <linux/slab.h>
 
@@ -35,7 +34,7 @@
 /* Newer Broadcom tag (4 bytes) */
 #define BRCM_TAG_LEN	4
 
-/* Tag is constructed and desconstructed using byte by byte access
+/* Tag is constructed and deconstructed using byte by byte access
  * because the tag is placed after the MAC Source Address, which does
  * not make it 4-bytes aligned, so this might cause unaligned accesses
  * on most systems where this is used.
@@ -104,7 +103,7 @@ static struct sk_buff *brcm_tag_xmit_ll(struct sk_buff *skb,
 
 	brcm_tag = skb->data + offset;
 
-	/* Set the ingress opcode, traffic class, tag enforcment is
+	/* Set the ingress opcode, traffic class, tag enforcement is
 	 * deprecated
 	 */
 	brcm_tag[0] = (1 << BRCM_OPCODE_SHIFT) |
@@ -249,7 +248,6 @@ static struct sk_buff *brcm_leg_tag_xmit(struct sk_buff *skb,
 static struct sk_buff *brcm_leg_tag_rcv(struct sk_buff *skb,
 					struct net_device *dev)
 {
-	int len = BRCM_LEG_TAG_LEN;
 	int source_port;
 	u8 *brcm_tag;
 
@@ -264,16 +262,12 @@ static struct sk_buff *brcm_leg_tag_rcv(struct sk_buff *skb,
 	if (!skb->dev)
 		return NULL;
 
-	/* VLAN tag is added by BCM63xx internal switch */
-	if (netdev_uses_dsa(skb->dev))
-		len += VLAN_HLEN;
-
 	/* Remove Broadcom tag and update checksum */
-	skb_pull_rcsum(skb, len);
+	skb_pull_rcsum(skb, BRCM_LEG_TAG_LEN);
 
 	dsa_default_offload_fwd_mark(skb);
 
-	dsa_strip_etype_header(skb, len);
+	dsa_strip_etype_header(skb, BRCM_LEG_TAG_LEN);
 
 	return skb;
 }

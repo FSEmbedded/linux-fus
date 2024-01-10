@@ -134,7 +134,7 @@ int ksmbd_lookup_protocol_idx(char *str)
  */
 int ksmbd_verify_smb_message(struct ksmbd_work *work)
 {
-	struct smb2_hdr *smb2_hdr = work->request_buf + work->next_smb2_rcv_hdr_off;
+	struct smb2_hdr *smb2_hdr = ksmbd_req_buf_next(work);
 	struct smb_hdr *hdr;
 
 	if (smb2_hdr->ProtocolId == SMB2_PROTO_NUMBER)
@@ -243,14 +243,14 @@ int ksmbd_lookup_dialect_by_id(__le16 *cli_dialects, __le16 dialects_count)
 static int ksmbd_negotiate_smb_dialect(void *buf)
 {
 	int smb_buf_length = get_rfc1002_len(buf);
-	__le32 proto = ((struct smb2_hdr *)buf)->ProtocolId;
+	__le32 proto = ((struct smb2_hdr *)smb2_get_msg(buf))->ProtocolId;
 
 	if (proto == SMB2_PROTO_NUMBER) {
 		struct smb2_negotiate_req *req;
 		int smb2_neg_size =
-			offsetof(struct smb2_negotiate_req, Dialects) - 4;
+			offsetof(struct smb2_negotiate_req, Dialects);
 
-		req = (struct smb2_negotiate_req *)buf;
+		req = (struct smb2_negotiate_req *)smb2_get_msg(buf);
 		if (smb2_neg_size > smb_buf_length)
 			goto err_out;
 
@@ -423,7 +423,7 @@ int ksmbd_extract_shortname(struct ksmbd_conn *conn, const char *longname,
 	out[baselen + 3] = PERIOD;
 
 	if (dot_present)
-		memcpy(out + baselen + 4, extension, 4);
+		memcpy(&out[baselen + 4], extension, 4);
 	else
 		out[baselen + 4] = '\0';
 	smbConvertToUTF16((__le16 *)shortname, out, PATH_MAX,
@@ -434,7 +434,7 @@ int ksmbd_extract_shortname(struct ksmbd_conn *conn, const char *longname,
 
 static int __smb2_negotiate(struct ksmbd_conn *conn)
 {
-	return (conn->dialect >= SMB20_PROT_ID &&
+	return (conn->dialect >= SMB21_PROT_ID &&
 		conn->dialect <= SMB311_PROT_ID);
 }
 
@@ -442,26 +442,9 @@ static int smb_handle_negotiate(struct ksmbd_work *work)
 {
 	struct smb_negotiate_rsp *neg_rsp = work->response_buf;
 
-	ksmbd_debug(SMB, "Unsupported SMB1 protocol\n");
-
-	/*
-	 * Remove 4 byte direct TCP header, add 2 byte bcc and
-	 * 2 byte DialectIndex.
-	 */
-	*(__be32 *)work->response_buf =
-		cpu_to_be32(sizeof(struct smb_hdr) - 4 + 2 + 2);
-	neg_rsp->hdr.Status.CifsError = STATUS_SUCCESS;
-
-	neg_rsp->hdr.Command = SMB_COM_NEGOTIATE;
-	*(__le32 *)neg_rsp->hdr.Protocol = SMB1_PROTO_NUMBER;
-	neg_rsp->hdr.Flags = SMBFLG_RESPONSE;
-	neg_rsp->hdr.Flags2 = SMBFLG2_UNICODE | SMBFLG2_ERR_STATUS |
-		SMBFLG2_EXT_SEC | SMBFLG2_IS_LONG_NAME;
-
-	neg_rsp->hdr.WordCount = 1;
-	neg_rsp->DialectIndex = cpu_to_le16(work->conn->dialect);
-	neg_rsp->ByteCount = 0;
-	return 0;
+	ksmbd_debug(SMB, "Unsupported SMB protocol\n");
+	neg_rsp->hdr.Status.CifsError = STATUS_INVALID_LOGON_TYPE;
+	return -EINVAL;
 }
 
 int ksmbd_smb_negotiate_common(struct ksmbd_work *work, unsigned int command)
@@ -469,11 +452,12 @@ int ksmbd_smb_negotiate_common(struct ksmbd_work *work, unsigned int command)
 	struct ksmbd_conn *conn = work->conn;
 	int ret;
 
-	conn->dialect = ksmbd_negotiate_smb_dialect(work->request_buf);
+	conn->dialect =
+		ksmbd_negotiate_smb_dialect(work->request_buf);
 	ksmbd_debug(SMB, "conn->dialect 0x%x\n", conn->dialect);
 
 	if (command == SMB2_NEGOTIATE_HE) {
-		struct smb2_hdr *smb2_hdr = work->request_buf;
+		struct smb2_hdr *smb2_hdr = smb2_get_msg(work->request_buf);
 
 		if (smb2_hdr->ProtocolId != SMB2_PROTO_NUMBER) {
 			ksmbd_debug(SMB, "Downgrade to SMB1 negotiation\n");
@@ -481,7 +465,7 @@ int ksmbd_smb_negotiate_common(struct ksmbd_work *work, unsigned int command)
 		}
 	}
 
-	if (command == SMB2_NEGOTIATE_HE) {
+	if (command == SMB2_NEGOTIATE_HE && __smb2_negotiate(conn)) {
 		ret = smb2_handle_negotiate(work);
 		init_smb2_neg_rsp(work);
 		return ret;

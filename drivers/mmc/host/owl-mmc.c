@@ -638,7 +638,7 @@ static int owl_mmc_probe(struct platform_device *pdev)
 
 	owl_host->irq = platform_get_irq(pdev, 0);
 	if (owl_host->irq < 0) {
-		ret = owl_host->irq;
+		ret = -EINVAL;
 		goto err_release_channel;
 	}
 

@@ -9,6 +9,7 @@
  *
  */
 
+#include <linux/aperture.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/errno.h>
@@ -763,8 +764,6 @@ static int nvidiafb_check_var(struct fb_var_screeninfo *var,
 	int pitch, err = 0;
 
 	NVTRACE_ENTER();
-	if (!var->pixclock)
-		return -EINVAL;
 
 	var->transp.offset = 0;
 	var->transp.length = 0;
@@ -1278,10 +1277,14 @@ static int nvidiafb_probe(struct pci_dev *pd, const struct pci_device_id *ent)
 	struct nvidia_par *par;
 	struct fb_info *info;
 	unsigned short cmd;
-
+	int ret;
 
 	NVTRACE_ENTER();
 	assert(pd != NULL);
+
+	ret = aperture_remove_conflicting_pci_devices(pd, "nvidiafb");
+	if (ret)
+		return ret;
 
 	info = framebuffer_alloc(sizeof(struct nvidia_par), &pd->dev);
 

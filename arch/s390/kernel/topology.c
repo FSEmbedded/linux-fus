@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  *    Copyright IBM Corp. 2007, 2011
- *    Author(s): Heiko Carstens <heiko.carstens@de.ibm.com>
  */
 
 #define KMSG_COMPONENT "cpu"
@@ -96,7 +95,7 @@ out:
 static void cpu_thread_map(cpumask_t *dst, unsigned int cpu)
 {
 	static cpumask_t mask;
-	unsigned int max_cpu;
+	int i;
 
 	cpumask_clear(&mask);
 	if (!cpumask_test_cpu(cpu, &cpu_setup_mask))
@@ -105,10 +104,9 @@ static void cpu_thread_map(cpumask_t *dst, unsigned int cpu)
 	if (topology_mode != TOPOLOGY_MODE_HW)
 		goto out;
 	cpu -= cpu % (smp_cpu_mtid + 1);
-	max_cpu = min(cpu + smp_cpu_mtid, nr_cpu_ids - 1);
-	for (; cpu <= max_cpu; cpu++) {
-		if (cpumask_test_cpu(cpu, &cpu_setup_mask))
-			cpumask_set_cpu(cpu, &mask);
+	for (i = 0; i <= smp_cpu_mtid; i++) {
+		if (cpumask_test_cpu(cpu + i, &cpu_setup_mask))
+			cpumask_set_cpu(cpu + i, &mask);
 	}
 out:
 	cpumask_copy(dst, &mask);
@@ -125,26 +123,25 @@ static void add_cpus_to_mask(struct topology_core *tl_core,
 	unsigned int core;
 
 	for_each_set_bit(core, &tl_core->mask, TOPOLOGY_CORE_BITS) {
-		unsigned int max_cpu, rcore;
-		int cpu;
+		unsigned int rcore;
+		int lcpu, i;
 
 		rcore = TOPOLOGY_CORE_BITS - 1 - core + tl_core->origin;
-		cpu = smp_find_processor_id(rcore << smp_cpu_mt_shift);
-		if (cpu < 0)
+		lcpu = smp_find_processor_id(rcore << smp_cpu_mt_shift);
+		if (lcpu < 0)
 			continue;
-		max_cpu = min(cpu + smp_cpu_mtid, nr_cpu_ids - 1);
-		for (; cpu <= max_cpu; cpu++) {
-			topo = &cpu_topology[cpu];
+		for (i = 0; i <= smp_cpu_mtid; i++) {
+			topo = &cpu_topology[lcpu + i];
 			topo->drawer_id = drawer->id;
 			topo->book_id = book->id;
 			topo->socket_id = socket->id;
 			topo->core_id = rcore;
-			topo->thread_id = cpu;
+			topo->thread_id = lcpu + i;
 			topo->dedicated = tl_core->d;
-			cpumask_set_cpu(cpu, &drawer->mask);
-			cpumask_set_cpu(cpu, &book->mask);
-			cpumask_set_cpu(cpu, &socket->mask);
-			smp_cpu_set_polarization(cpu, tl_core->pp);
+			cpumask_set_cpu(lcpu + i, &drawer->mask);
+			cpumask_set_cpu(lcpu + i, &book->mask);
+			cpumask_set_cpu(lcpu + i, &socket->mask);
+			smp_cpu_set_polarization(lcpu + i, tl_core->pp);
 		}
 	}
 }

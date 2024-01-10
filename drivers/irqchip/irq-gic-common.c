@@ -16,13 +16,7 @@ void gic_enable_of_quirks(const struct device_node *np,
 			  const struct gic_quirk *quirks, void *data)
 {
 	for (; quirks->desc; quirks++) {
-		if (!quirks->compatible && !quirks->property)
-			continue;
-		if (quirks->compatible &&
-		    !of_device_is_compatible(np, quirks->compatible))
-			continue;
-		if (quirks->property &&
-		    !of_property_read_bool(np, quirks->property))
+		if (!of_device_is_compatible(np, quirks->compatible))
 			continue;
 		if (quirks->init(data))
 			pr_info("GIC: enabling workaround for %s\n",
@@ -34,7 +28,7 @@ void gic_enable_quirks(u32 iidr, const struct gic_quirk *quirks,
 		void *data)
 {
 	for (; quirks->desc; quirks++) {
-		if (quirks->compatible || quirks->property)
+		if (quirks->compatible)
 			continue;
 		if (quirks->iidr != (quirks->mask & iidr))
 			continue;

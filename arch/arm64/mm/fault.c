@@ -297,6 +297,8 @@ static void die_kernel_fault(const char *msg, unsigned long addr,
 	pr_alert("Unable to handle kernel %s at virtual address %016lx\n", msg,
 		 addr);
 
+	kasan_non_canonical_hook(addr);
+
 	mem_abort_decode(esr);
 
 	show_pte(addr);
@@ -333,7 +335,8 @@ static void do_tag_recovery(unsigned long addr, unsigned long esr,
 	 * It will be done lazily on the other CPUs when they will hit a
 	 * tag fault.
 	 */
-	sysreg_clear_set(sctlr_el1, SCTLR_ELx_TCF_MASK, SCTLR_ELx_TCF_NONE);
+	sysreg_clear_set(sctlr_el1, SCTLR_EL1_TCF_MASK,
+			 SYS_FIELD_PREP_ENUM(SCTLR_EL1, TCF, NONE));
 	isb();
 }
 
@@ -348,11 +351,6 @@ static bool is_el1_mte_sync_tag_check_fault(unsigned long esr)
 		return true;
 
 	return false;
-}
-
-static bool is_translation_fault(unsigned long esr)
-{
-	return (esr & ESR_ELx_FSC_TYPE) == ESR_ELx_FSC_FAULT;
 }
 
 static void __do_kernel_fault(unsigned long addr, unsigned long esr,
@@ -387,8 +385,7 @@ static void __do_kernel_fault(unsigned long addr, unsigned long esr,
 	} else if (addr < PAGE_SIZE) {
 		msg = "NULL pointer dereference";
 	} else {
-		if (is_translation_fault(esr) &&
-		    kfence_handle_page_fault(addr, esr & ESR_ELx_WNR, regs))
+		if (kfence_handle_page_fault(addr, esr & ESR_ELx_WNR, regs))
 			return;
 
 		msg = "paging request";
@@ -473,8 +470,8 @@ static void do_bad_area(unsigned long far, unsigned long esr,
 	}
 }
 
-#define VM_FAULT_BADMAP		((__force vm_fault_t)0x010000)
-#define VM_FAULT_BADACCESS	((__force vm_fault_t)0x020000)
+#define VM_FAULT_BADMAP		0x010000
+#define VM_FAULT_BADACCESS	0x020000
 
 static vm_fault_t __do_page_fault(struct mm_struct *mm, unsigned long addr,
 				  unsigned int mm_flags, unsigned long vm_flags,
@@ -611,11 +608,13 @@ retry:
 		return 0;
 	}
 
+	/* The fault is fully completed (including releasing mmap lock) */
+	if (fault & VM_FAULT_COMPLETED)
+		return 0;
+
 	if (fault & VM_FAULT_RETRY) {
-		if (mm_flags & FAULT_FLAG_ALLOW_RETRY) {
-			mm_flags |= FAULT_FLAG_TRIED;
-			goto retry;
-		}
+		mm_flags |= FAULT_FLAG_TRIED;
+		goto retry;
 	}
 	mmap_read_unlock(mm);
 
@@ -692,6 +691,9 @@ static int __kprobes do_translation_fault(unsigned long far,
 static int do_alignment_fault(unsigned long far, unsigned long esr,
 			      struct pt_regs *regs)
 {
+	if (IS_ENABLED(CONFIG_COMPAT_ALIGNMENT_FIXUPS) &&
+	    compat_user_mode(regs))
+		return do_compat_alignment_fixup(far, regs);
 	do_bad_area(far, esr, regs);
 	return 0;
 }
@@ -819,11 +821,8 @@ void do_mem_abort(unsigned long far, unsigned long esr, struct pt_regs *regs)
 	if (!inf->fn(far, esr, regs))
 		return;
 
-	if (!user_mode(regs)) {
-		pr_alert("Unhandled fault at 0x%016lx\n", addr);
-		mem_abort_decode(esr);
-		show_pte(addr);
-	}
+	if (!user_mode(regs))
+		die_kernel_fault(inf->name, addr, esr, regs);
 
 	/*
 	 * At this point we have an unrecognized fault type whose tag bits may
@@ -935,6 +934,5 @@ struct page *alloc_zeroed_user_highpage_movable(struct vm_area_struct *vma,
 void tag_clear_highpage(struct page *page)
 {
 	mte_zero_clear_page_tags(page_address(page));
-	page_kasan_tag_reset(page);
 	set_bit(PG_mte_tagged, &page->flags);
 }

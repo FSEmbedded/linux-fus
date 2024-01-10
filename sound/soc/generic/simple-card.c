@@ -393,8 +393,7 @@ static int __simple_for_each_link(struct asoc_simple_priv *priv,
 			 * or has convert-xxx property
 			 */
 			if (dpcm_selectable &&
-			    (num > 2 ||
-			     adata.convert_rate || adata.convert_channels)) {
+			    (num > 2 || asoc_simple_is_convert_required(&adata))) {
 				/*
 				 * np
 				 *	 |1(CPU)|0(Codec)  li->cpu
@@ -417,7 +416,6 @@ static int __simple_for_each_link(struct asoc_simple_priv *priv,
 
 			if (ret < 0) {
 				of_node_put(codec);
-				of_node_put(plat);
 				of_node_put(np);
 				goto error;
 			}
@@ -667,8 +665,7 @@ static int asoc_simple_probe(struct platform_device *pdev)
 
 		ret = simple_parse_of(priv, li);
 		if (ret < 0) {
-			if (ret != -EPROBE_DEFER)
-				dev_err(dev, "parse error %d\n", ret);
+			dev_err_probe(dev, ret, "parse error\n");
 			goto err;
 		}
 

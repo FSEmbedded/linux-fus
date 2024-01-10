@@ -799,11 +799,6 @@ static int jfs_link(struct dentry *old_dentry,
 	if (rc)
 		goto out;
 
-	if (isReadOnly(ip)) {
-		jfs_error(ip->i_sb, "read-only filesystem\n");
-		return -EROFS;
-	}
-
 	tid = txBegin(ip->i_sb, 0);
 
 	mutex_lock_nested(&JFS_IP(dir)->commit_mutex, COMMIT_MUTEX_PARENT);
@@ -951,7 +946,7 @@ static int jfs_symlink(struct user_namespace *mnt_userns, struct inode *dip,
 	if (ssize <= IDATASIZE) {
 		ip->i_op = &jfs_fast_symlink_inode_operations;
 
-		ip->i_link = JFS_IP(ip)->i_inline_all;
+		ip->i_link = JFS_IP(ip)->i_inline;
 		memcpy(ip->i_link, name, ssize);
 		ip->i_size = ssize - 1;
 

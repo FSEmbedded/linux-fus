@@ -154,7 +154,8 @@ static void ubsan_epilogue(void)
 
 	current->in_ubsan--;
 
-	check_panic_on_warn("UBSAN");
+	if (panic_on_warn)
+		panic("panic_on_warn set ...\n");
 }
 
 void __ubsan_handle_divrem_overflow(void *_data, void *lhs, void *rhs)

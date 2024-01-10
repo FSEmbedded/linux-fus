@@ -72,8 +72,7 @@ xfs_sb_validate_v5_features(
 }
 
 /*
- * We current support XFS v5 formats with known features and v4 superblocks with
- * at least V2 directories.
+ * We support all XFS versions newer than a v4 superblock with V2 directories.
  */
 bool
 xfs_sb_good_version(
@@ -87,14 +86,14 @@ xfs_sb_good_version(
 	if (xfs_sb_is_v5(sbp))
 		return xfs_sb_validate_v5_features(sbp);
 
-	/* versions prior to v4 are not supported */
-	if (XFS_SB_VERSION_NUM(sbp) != XFS_SB_VERSION_4)
-		return false;
-
 	/* We must not have any unknown v4 feature bits set */
 	if ((sbp->sb_versionnum & ~XFS_SB_VERSION_OKBITS) ||
 	    ((sbp->sb_versionnum & XFS_SB_VERSION_MOREBITSBIT) &&
 	     (sbp->sb_features2 & ~XFS_SB_VERSION2_OKBITS)))
+		return false;
+
+	/* versions prior to v4 are not supported */
+	if (XFS_SB_VERSION_NUM(sbp) < XFS_SB_VERSION_4)
 		return false;
 
 	/* V4 filesystems need v2 directories and unwritten extents */
@@ -172,6 +171,9 @@ xfs_sb_version_to_features(
 		features |= XFS_FEAT_BIGTIME;
 	if (sbp->sb_features_incompat & XFS_SB_FEAT_INCOMPAT_NEEDSREPAIR)
 		features |= XFS_FEAT_NEEDSREPAIR;
+	if (sbp->sb_features_incompat & XFS_SB_FEAT_INCOMPAT_NREXT64)
+		features |= XFS_FEAT_NREXT64;
+
 	return features;
 }
 
@@ -546,7 +548,7 @@ xfs_sb_quota_from_disk(struct xfs_sb *sbp)
 static void
 __xfs_sb_from_disk(
 	struct xfs_sb	*to,
-	xfs_dsb_t	*from,
+	struct xfs_dsb	*from,
 	bool		convert_xquota)
 {
 	to->sb_magicnum = be32_to_cpu(from->sb_magicnum);
@@ -622,7 +624,7 @@ __xfs_sb_from_disk(
 void
 xfs_sb_from_disk(
 	struct xfs_sb	*to,
-	xfs_dsb_t	*from)
+	struct xfs_dsb	*from)
 {
 	__xfs_sb_from_disk(to, from, true);
 }
@@ -962,6 +964,11 @@ xfs_log_sb(
 	 * reservations that have been taken out percpu counters. If we have an
 	 * unclean shutdown, this will be corrected by log recovery rebuilding
 	 * the counters from the AGF block counts.
+	 *
+	 * Do not update sb_frextents here because it is not part of the lazy
+	 * sb counters, despite having a percpu counter. It is always kept
+	 * consistent with the ondisk rtbitmap by xfs_trans_apply_sb_deltas()
+	 * and hence we don't need have to update it here.
 	 */
 	if (xfs_has_lazysbcount(mp)) {
 		mp->m_sb.sb_icount = percpu_counter_sum(&mp->m_icount);
@@ -1186,6 +1193,8 @@ xfs_fs_geometry(
 	} else {
 		geo->logsectsize = BBSIZE;
 	}
+	if (xfs_has_large_extent_counts(mp))
+		geo->flags |= XFS_FSOP_GEOM_FLAGS_NREXT64;
 	geo->rtsectsize = sbp->sb_blocksize;
 	geo->dirblocksize = xfs_dir2_dirblock_bytes(sbp);
 

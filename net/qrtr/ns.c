@@ -83,10 +83,7 @@ static struct qrtr_node *node_get(unsigned int node_id)
 
 	node->id = node_id;
 
-	if (radix_tree_insert(&nodes, node_id, node)) {
-		kfree(node);
-		return NULL;
-	}
+	radix_tree_insert(&nodes, node_id, node);
 
 	return node;
 }
@@ -273,7 +270,7 @@ err:
 	return NULL;
 }
 
-static int server_del(struct qrtr_node *node, unsigned int port, bool bcast)
+static int server_del(struct qrtr_node *node, unsigned int port)
 {
 	struct qrtr_lookup *lookup;
 	struct qrtr_server *srv;
@@ -286,7 +283,7 @@ static int server_del(struct qrtr_node *node, unsigned int port, bool bcast)
 	radix_tree_delete(&node->servers, port);
 
 	/* Broadcast the removal of local servers */
-	if (srv->node == qrtr_ns.local_node && bcast)
+	if (srv->node == qrtr_ns.local_node)
 		service_announce_del(&qrtr_ns.bcast_sq, srv);
 
 	/* Announce the service's disappearance to observers */
@@ -372,7 +369,7 @@ static int ctrl_cmd_bye(struct sockaddr_qrtr *from)
 		}
 		slot = radix_tree_iter_resume(slot, &iter);
 		rcu_read_unlock();
-		server_del(node, srv->port, true);
+		server_del(node, srv->port);
 		rcu_read_lock();
 	}
 	rcu_read_unlock();
@@ -458,13 +455,10 @@ static int ctrl_cmd_del_client(struct sockaddr_qrtr *from,
 		kfree(lookup);
 	}
 
-	/* Remove the server belonging to this port but don't broadcast
-	 * DEL_SERVER. Neighbours would've already removed the server belonging
-	 * to this port due to the DEL_CLIENT broadcast from qrtr_port_remove().
-	 */
+	/* Remove the server belonging to this port */
 	node = node_get(node_id);
 	if (node)
-		server_del(node, port, false);
+		server_del(node, port);
 
 	/* Advertise the removal of this client to all local servers */
 	local_node = node_get(qrtr_ns.local_node);
@@ -569,7 +563,7 @@ static int ctrl_cmd_del_server(struct sockaddr_qrtr *from,
 	if (!node)
 		return -ENOENT;
 
-	return server_del(node, port, true);
+	return server_del(node, port);
 }
 
 static int ctrl_cmd_new_lookup(struct sockaddr_qrtr *from,

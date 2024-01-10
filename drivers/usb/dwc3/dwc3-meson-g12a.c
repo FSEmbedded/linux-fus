@@ -188,7 +188,7 @@ static int dwc3_meson_gxl_usb_post_init(struct dwc3_meson_g12a *priv);
  * reset to recover usage of the port.
  */
 
-static struct dwc3_meson_g12a_drvdata gxl_drvdata = {
+static const struct dwc3_meson_g12a_drvdata gxl_drvdata = {
 	.otg_switch_supported = true,
 	.otg_phy_host_port_disable = true,
 	.clks = meson_gxl_clocks,
@@ -202,7 +202,7 @@ static struct dwc3_meson_g12a_drvdata gxl_drvdata = {
 	.usb_post_init = dwc3_meson_gxl_usb_post_init,
 };
 
-static struct dwc3_meson_g12a_drvdata gxm_drvdata = {
+static const struct dwc3_meson_g12a_drvdata gxm_drvdata = {
 	.otg_switch_supported = true,
 	.otg_phy_host_port_disable = true,
 	.clks = meson_gxl_clocks,
@@ -216,7 +216,7 @@ static struct dwc3_meson_g12a_drvdata gxm_drvdata = {
 	.usb_post_init = dwc3_meson_gxl_usb_post_init,
 };
 
-static struct dwc3_meson_g12a_drvdata axg_drvdata = {
+static const struct dwc3_meson_g12a_drvdata axg_drvdata = {
 	.otg_switch_supported = true,
 	.clks = meson_gxl_clocks,
 	.num_clks = ARRAY_SIZE(meson_gxl_clocks),
@@ -229,7 +229,7 @@ static struct dwc3_meson_g12a_drvdata axg_drvdata = {
 	.usb_post_init = dwc3_meson_gxl_usb_post_init,
 };
 
-static struct dwc3_meson_g12a_drvdata g12a_drvdata = {
+static const struct dwc3_meson_g12a_drvdata g12a_drvdata = {
 	.otg_switch_supported = true,
 	.clks = meson_g12a_clocks,
 	.num_clks = ARRAY_SIZE(meson_g12a_clocks),
@@ -241,7 +241,7 @@ static struct dwc3_meson_g12a_drvdata g12a_drvdata = {
 	.usb_init = dwc3_meson_g12a_usb_init,
 };
 
-static struct dwc3_meson_g12a_drvdata a1_drvdata = {
+static const struct dwc3_meson_g12a_drvdata a1_drvdata = {
 	.otg_switch_supported = false,
 	.clks = meson_a1_clocks,
 	.num_clks = ARRAY_SIZE(meson_a1_clocks),
@@ -805,16 +805,13 @@ static int dwc3_meson_g12a_probe(struct platform_device *pdev)
 
 	ret = dwc3_meson_g12a_otg_init(pdev, priv);
 	if (ret)
-		goto err_plat_depopulate;
+		goto err_phys_power;
 
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
 	pm_runtime_get_sync(dev);
 
 	return 0;
-
-err_plat_depopulate:
-	of_platform_depopulate(dev);
 
 err_phys_power:
 	for (i = 0 ; i < PHY_COUNT ; ++i)
@@ -934,12 +931,6 @@ static int __maybe_unused dwc3_meson_g12a_resume(struct device *dev)
 
 	if (priv->vbus && priv->otg_phy_mode == PHY_MODE_USB_HOST) {
 		ret = regulator_enable(priv->vbus);
-		if (ret)
-			return ret;
-	}
-
-	if (priv->drvdata->usb_post_init) {
-		ret = priv->drvdata->usb_post_init(priv);
 		if (ret)
 			return ret;
 	}

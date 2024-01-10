@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * linux/fs/9p/trans_rdma.c
- *
  * RDMA transport layer based on the trans_fd.c implementation.
  *
  *  Copyright (C) 2008 by Tom Tucker <tom@opengridcomputing.com>
@@ -388,7 +386,6 @@ post_recv(struct p9_client *client, struct p9_rdma_context *c)
 	struct p9_trans_rdma *rdma = client->trans;
 	struct ib_recv_wr wr;
 	struct ib_sge sge;
-	int ret;
 
 	c->busa = ib_dma_map_single(rdma->cm_id->device,
 				    c->rc.sdata, client->msize,
@@ -406,12 +403,7 @@ post_recv(struct p9_client *client, struct p9_rdma_context *c)
 	wr.wr_cqe = &c->cqe;
 	wr.sg_list = &sge;
 	wr.num_sge = 1;
-
-	ret = ib_post_recv(rdma->qp, &wr, NULL);
-	if (ret)
-		ib_dma_unmap_single(rdma->cm_id->device, c->busa,
-				    client->msize, DMA_FROM_DEVICE);
-	return ret;
+	return ib_post_recv(rdma->qp, &wr, NULL);
 
  error:
 	p9_debug(P9_DEBUG_ERROR, "EIO\n");
@@ -508,7 +500,7 @@ dont_need_post_recv:
 
 	if (down_interruptible(&rdma->sq_sem)) {
 		err = -EINTR;
-		goto dma_unmap;
+		goto send_error;
 	}
 
 	/* Mark request as `sent' *before* we actually send it,
@@ -518,14 +510,11 @@ dont_need_post_recv:
 	req->status = REQ_STATUS_SENT;
 	err = ib_post_send(rdma->qp, &wr, NULL);
 	if (err)
-		goto dma_unmap;
+		goto send_error;
 
 	/* Success */
 	return 0;
 
-dma_unmap:
-	ib_dma_unmap_single(rdma->cm_id->device, c->busa,
-			    c->req->tc.size, DMA_TO_DEVICE);
  /* Handle errors that happened during or while preparing the send: */
  send_error:
 	req->status = REQ_STATUS_ERROR;
@@ -750,6 +739,7 @@ error:
 static struct p9_trans_module p9_rdma_trans = {
 	.name = "rdma",
 	.maxsize = P9_RDMA_MAXSIZE,
+	.pooled_rbuffers = true,
 	.def = 0,
 	.owner = THIS_MODULE,
 	.create = rdma_create_trans,
@@ -776,6 +766,7 @@ static void __exit p9_trans_rdma_exit(void)
 
 module_init(p9_trans_rdma_init);
 module_exit(p9_trans_rdma_exit);
+MODULE_ALIAS_9P("rdma");
 
 MODULE_AUTHOR("Tom Tucker <tom@opengridcomputing.com>");
 MODULE_DESCRIPTION("RDMA Transport for 9P");

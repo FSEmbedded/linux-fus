@@ -19,10 +19,10 @@ void ipvlan_count_rx(const struct ipvl_dev *ipvlan,
 
 		pcptr = this_cpu_ptr(ipvlan->pcpu_stats);
 		u64_stats_update_begin(&pcptr->syncp);
-		pcptr->rx_pkts++;
-		pcptr->rx_bytes += len;
+		u64_stats_inc(&pcptr->rx_pkts);
+		u64_stats_add(&pcptr->rx_bytes, len);
 		if (mcast)
-			pcptr->rx_mcast++;
+			u64_stats_inc(&pcptr->rx_mcast);
 		u64_stats_update_end(&pcptr->syncp);
 	} else {
 		this_cpu_inc(ipvlan->pcpu_stats->rx_errs);
@@ -291,8 +291,7 @@ void ipvlan_process_multicast(struct work_struct *work)
 			else
 				kfree_skb(skb);
 		}
-		if (dev)
-			dev_put(dev);
+		dev_put(dev);
 		cond_resched();
 	}
 }
@@ -437,9 +436,6 @@ static int ipvlan_process_v4_outbound(struct sk_buff *skb)
 		goto err;
 	}
 	skb_dst_set(skb, &rt->dst);
-
-	memset(IPCB(skb), 0, sizeof(*IPCB(skb)));
-
 	err = ip_local_out(net, skb->sk, skb);
 	if (unlikely(net_xmit_eval(err)))
 		dev->stats.tx_errors++;
@@ -478,9 +474,6 @@ static int ipvlan_process_v6_outbound(struct sk_buff *skb)
 		goto err;
 	}
 	skb_dst_set(skb, dst);
-
-	memset(IP6CB(skb), 0, sizeof(*IP6CB(skb)));
-
 	err = ip6_local_out(net, skb->sk, skb);
 	if (unlikely(net_xmit_eval(err)))
 		dev->stats.tx_errors++;
@@ -563,7 +556,7 @@ static void ipvlan_multicast_enqueue(struct ipvl_port *port,
 		schedule_work(&port->wq);
 	} else {
 		spin_unlock(&port->backlog.lock);
-		atomic_long_inc(&skb->dev->rx_dropped);
+		dev_core_stats_rx_dropped_inc(skb->dev);
 		kfree_skb(skb);
 	}
 }
@@ -586,8 +579,7 @@ static int ipvlan_xmit_mode_l3(struct sk_buff *skb, struct net_device *dev)
 				consume_skb(skb);
 				return NET_XMIT_DROP;
 			}
-			ipvlan_rcv_frame(addr, &skb, true);
-			return NET_XMIT_SUCCESS;
+			return ipvlan_rcv_frame(addr, &skb, true);
 		}
 	}
 out:
@@ -613,8 +605,7 @@ static int ipvlan_xmit_mode_l2(struct sk_buff *skb, struct net_device *dev)
 					consume_skb(skb);
 					return NET_XMIT_DROP;
 				}
-				ipvlan_rcv_frame(addr, &skb, true);
-				return NET_XMIT_SUCCESS;
+				return ipvlan_rcv_frame(addr, &skb, true);
 			}
 		}
 		skb = skb_share_check(skb, GFP_ATOMIC);
@@ -626,8 +617,7 @@ static int ipvlan_xmit_mode_l2(struct sk_buff *skb, struct net_device *dev)
 		 * the skb for the main-dev. At the RX side we just return
 		 * RX_PASS for it to be processed further on the stack.
 		 */
-		dev_forward_skb(ipvlan->phy_dev, skb);
-		return NET_XMIT_SUCCESS;
+		return dev_forward_skb(ipvlan->phy_dev, skb);
 
 	} else if (is_multicast_ether_addr(eth->h_dest)) {
 		skb_reset_mac_header(skb);

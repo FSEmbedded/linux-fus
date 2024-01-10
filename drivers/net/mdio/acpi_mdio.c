@@ -18,18 +18,16 @@ MODULE_AUTHOR("Calvin Johnson <calvin.johnson@oss.nxp.com>");
 MODULE_LICENSE("GPL");
 
 /**
- * __acpi_mdiobus_register - Register mii_bus and create PHYs from the ACPI ASL.
+ * acpi_mdiobus_register - Register mii_bus and create PHYs from the ACPI ASL.
  * @mdio: pointer to mii_bus structure
  * @fwnode: pointer to fwnode of MDIO bus. This fwnode is expected to represent
- * @owner: module owning this @mdio object.
  * an ACPI device object corresponding to the MDIO bus and its children are
  * expected to correspond to the PHY devices on that bus.
  *
  * This function registers the mii_bus structure and registers a phy_device
  * for each child node of @fwnode.
  */
-int __acpi_mdiobus_register(struct mii_bus *mdio, struct fwnode_handle *fwnode,
-			    struct module *owner)
+int acpi_mdiobus_register(struct mii_bus *mdio, struct fwnode_handle *fwnode)
 {
 	struct fwnode_handle *child;
 	u32 addr;
@@ -37,7 +35,7 @@ int __acpi_mdiobus_register(struct mii_bus *mdio, struct fwnode_handle *fwnode,
 
 	/* Mask out all PHYs from auto probing. */
 	mdio->phy_mask = GENMASK(31, 0);
-	ret = __mdiobus_register(mdio, owner);
+	ret = mdiobus_register(mdio);
 	if (ret)
 		return ret;
 
@@ -57,4 +55,4 @@ int __acpi_mdiobus_register(struct mii_bus *mdio, struct fwnode_handle *fwnode,
 	}
 	return 0;
 }
-EXPORT_SYMBOL(__acpi_mdiobus_register);
+EXPORT_SYMBOL(acpi_mdiobus_register);

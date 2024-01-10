@@ -12,6 +12,9 @@
 #include <linux/slab.h>
 #include <linux/stat.h>
 #include <linux/pm_runtime.h>
+#include <linux/random.h>
+#include <linux/scatterlist.h>
+#include <linux/sysfs.h>
 
 #include <linux/mmc/host.h>
 #include <linux/mmc/card.h>
@@ -80,6 +83,12 @@ struct sd_busy_data {
 void mmc_decode_cid(struct mmc_card *card)
 {
 	u32 *resp = card->raw_cid;
+
+	/*
+	 * Add the raw card ID (cid) data to the entropy pool. It doesn't
+	 * matter that not all of it is unique, it's just bonus entropy.
+	 */
+	add_device_randomness(&card->raw_cid, sizeof(card->raw_cid));
 
 	/*
 	 * SD doesn't currently have a version field so we will
@@ -707,18 +716,16 @@ MMC_DEV_ATTR(ocr, "0x%08x\n", card->ocr);
 MMC_DEV_ATTR(rca, "0x%04x\n", card->rca);
 
 
-static ssize_t mmc_dsr_show(struct device *dev,
-                           struct device_attribute *attr,
-                           char *buf)
+static ssize_t mmc_dsr_show(struct device *dev, struct device_attribute *attr,
+			    char *buf)
 {
-       struct mmc_card *card = mmc_dev_to_card(dev);
-       struct mmc_host *host = card->host;
+	struct mmc_card *card = mmc_dev_to_card(dev);
+	struct mmc_host *host = card->host;
 
-       if (card->csd.dsr_imp && host->dsr_req)
-               return sprintf(buf, "0x%x\n", host->dsr);
-       else
-               /* return default DSR value */
-               return sprintf(buf, "0x%x\n", 0x404);
+	if (card->csd.dsr_imp && host->dsr_req)
+		return sysfs_emit(buf, "0x%x\n", host->dsr);
+	/* return default DSR value */
+	return sysfs_emit(buf, "0x%x\n", 0x404);
 }
 
 static DEVICE_ATTR(dsr, S_IRUGO, mmc_dsr_show, NULL);
@@ -734,9 +741,9 @@ static ssize_t info##num##_show(struct device *dev, struct device_attribute *att
 												\
 	if (num > card->num_info)								\
 		return -ENODATA;								\
-	if (!card->info[num-1][0])								\
+	if (!card->info[num - 1][0])								\
 		return 0;									\
-	return sprintf(buf, "%s\n", card->info[num-1]);						\
+	return sysfs_emit(buf, "%s\n", card->info[num - 1]);					\
 }												\
 static DEVICE_ATTR_RO(info##num)
 
@@ -786,7 +793,7 @@ static umode_t sd_std_is_visible(struct kobject *kobj, struct attribute *attr,
 	     attr == &dev_attr_info2.attr ||
 	     attr == &dev_attr_info3.attr ||
 	     attr == &dev_attr_info4.attr
-	    ) && card->type != MMC_TYPE_SD_COMBO)
+	    ) &&!mmc_card_sd_combo(card))
 		return 0;
 
 	return attr->mode;
@@ -1252,7 +1259,7 @@ static int sd_read_ext_regs(struct mmc_card *card)
 	 */
 	err = sd_read_ext_reg(card, 0, 0, 0, 512, gen_info_buf);
 	if (err) {
-		pr_err("%s: error %d reading general info of SD ext reg\n",
+		pr_warn("%s: error %d reading general info of SD ext reg\n",
 			mmc_hostname(card->host), err);
 		goto out;
 	}
@@ -1266,12 +1273,7 @@ static int sd_read_ext_regs(struct mmc_card *card)
 	/* Number of extensions to be find. */
 	num_ext = gen_info_buf[4];
 
-	/*
-	 * We only support revision 0 and limit it to 512 bytes for simplicity.
-	 * No matter what, let's return zero to allow us to continue using the
-	 * card, even if we can't support the features from the SD function
-	 * extensions registers.
-	 */
+	/* We support revision 0, but limit it to 512 bytes for simplicity. */
 	if (rev != 0 || len > 512) {
 		pr_warn("%s: non-supported SD ext reg layout\n",
 			mmc_hostname(card->host));
@@ -1286,7 +1288,7 @@ static int sd_read_ext_regs(struct mmc_card *card)
 	for (i = 0; i < num_ext; i++) {
 		err = sd_parse_ext_reg(card, gen_info_buf, &next_ext_addr);
 		if (err) {
-			pr_err("%s: error %d parsing SD ext reg\n",
+			pr_warn("%s: error %d parsing SD ext reg\n",
 				mmc_hostname(card->host), err);
 			goto out;
 		}
@@ -1667,7 +1669,7 @@ static int sd_poweroff_notify(struct mmc_card *card)
 
 	cb_data.card = card;
 	cb_data.reg_buf = reg_buf;
-	err = __mmc_poll_for_busy(card, SD_POWEROFF_NOTIFY_TIMEOUT_MS,
+	err = __mmc_poll_for_busy(card->host, 0, SD_POWEROFF_NOTIFY_TIMEOUT_MS,
 				  &sd_busy_poweroff_notify_cb, &cb_data);
 
 out:

@@ -62,6 +62,7 @@ enum cifs_param {
 	Opt_noblocksend,
 	Opt_noautotune,
 	Opt_nolease,
+	Opt_nosparse,
 	Opt_hard,
 	Opt_soft,
 	Opt_perm,
@@ -98,6 +99,7 @@ enum cifs_param {
 	Opt_nosharesock,
 	Opt_persistent,
 	Opt_resilient,
+	Opt_tcp_nodelay,
 	Opt_domainauto,
 	Opt_rdma,
 	Opt_modesid,
@@ -170,6 +172,7 @@ struct smb3_fs_context {
 	char *server_hostname;
 	char *UNC;
 	char *nodename;
+	char workstation_name[CIFS_MAX_WORKSTATION_LEN];
 	char *iocharset;  /* local code page for mapping to and from Unicode */
 	char source_rfc1001_name[RFC1001_NAME_LEN_WITH_NULL]; /* clnt nb name */
 	char target_rfc1001_name[RFC1001_NAME_LEN_WITH_NULL]; /* srvr nb name */
@@ -221,6 +224,7 @@ struct smb3_fs_context {
 	bool noautotune:1;
 	bool nostrictsync:1; /* do not force expensive SMBflush on every sync */
 	bool no_lease:1;     /* disable requesting leases */
+	bool no_sparse:1;    /* do not attempt to set files sparse */
 	bool fsc:1;	/* enable fscache */
 	bool mfsymlinks:1; /* use Minshall+French Symlinks */
 	bool multiuser:1;
@@ -282,8 +286,5 @@ extern void smb3_update_mnt_flags(struct cifs_sb_info *cifs_sb);
  * max deferred close timeout (jiffies) - 2^30
  */
 #define SMB3_MAX_DCLOSETIMEO (1 << 30)
-#define SMB3_DEF_DCLOSETIMEO (1 * HZ) /* even 1 sec enough to help eg open/write/close/open/read */
-
-extern char *cifs_sanitize_prepath(char *prepath, gfp_t gfp);
-
+#define SMB3_DEF_DCLOSETIMEO (5 * HZ) /* Can increase later, other clients use larger */
 #endif

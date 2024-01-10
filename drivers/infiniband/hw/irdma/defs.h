@@ -190,30 +190,32 @@ enum irdma_cqp_op_type {
 	IRDMA_OP_MANAGE_VF_PBLE_BP		= 25,
 	IRDMA_OP_QUERY_FPM_VAL			= 26,
 	IRDMA_OP_COMMIT_FPM_VAL			= 27,
-	IRDMA_OP_AH_CREATE			= 28,
-	IRDMA_OP_AH_MODIFY			= 29,
-	IRDMA_OP_AH_DESTROY			= 30,
-	IRDMA_OP_MC_CREATE			= 31,
-	IRDMA_OP_MC_DESTROY			= 32,
-	IRDMA_OP_MC_MODIFY			= 33,
-	IRDMA_OP_STATS_ALLOCATE			= 34,
-	IRDMA_OP_STATS_FREE			= 35,
-	IRDMA_OP_STATS_GATHER			= 36,
-	IRDMA_OP_WS_ADD_NODE			= 37,
-	IRDMA_OP_WS_MODIFY_NODE			= 38,
-	IRDMA_OP_WS_DELETE_NODE			= 39,
-	IRDMA_OP_WS_FAILOVER_START		= 40,
-	IRDMA_OP_WS_FAILOVER_COMPLETE		= 41,
-	IRDMA_OP_SET_UP_MAP			= 42,
-	IRDMA_OP_GEN_AE				= 43,
-	IRDMA_OP_QUERY_RDMA_FEATURES		= 44,
-	IRDMA_OP_ALLOC_LOCAL_MAC_ENTRY		= 45,
-	IRDMA_OP_ADD_LOCAL_MAC_ENTRY		= 46,
-	IRDMA_OP_DELETE_LOCAL_MAC_ENTRY		= 47,
-	IRDMA_OP_CQ_MODIFY			= 48,
+	IRDMA_OP_REQ_CMDS			= 28,
+	IRDMA_OP_CMPL_CMDS			= 29,
+	IRDMA_OP_AH_CREATE			= 30,
+	IRDMA_OP_AH_MODIFY			= 31,
+	IRDMA_OP_AH_DESTROY			= 32,
+	IRDMA_OP_MC_CREATE			= 33,
+	IRDMA_OP_MC_DESTROY			= 34,
+	IRDMA_OP_MC_MODIFY			= 35,
+	IRDMA_OP_STATS_ALLOCATE			= 36,
+	IRDMA_OP_STATS_FREE			= 37,
+	IRDMA_OP_STATS_GATHER			= 38,
+	IRDMA_OP_WS_ADD_NODE			= 39,
+	IRDMA_OP_WS_MODIFY_NODE			= 40,
+	IRDMA_OP_WS_DELETE_NODE			= 41,
+	IRDMA_OP_WS_FAILOVER_START		= 42,
+	IRDMA_OP_WS_FAILOVER_COMPLETE		= 43,
+	IRDMA_OP_SET_UP_MAP			= 44,
+	IRDMA_OP_GEN_AE				= 45,
+	IRDMA_OP_QUERY_RDMA_FEATURES		= 46,
+	IRDMA_OP_ALLOC_LOCAL_MAC_ENTRY		= 47,
+	IRDMA_OP_ADD_LOCAL_MAC_ENTRY		= 48,
+	IRDMA_OP_DELETE_LOCAL_MAC_ENTRY		= 49,
+	IRDMA_OP_CQ_MODIFY			= 50,
 
 	/* Must be last entry*/
-	IRDMA_MAX_CQP_OPS			= 49,
+	IRDMA_MAX_CQP_OPS			= 51,
 };
 
 /* CQP SQ WQES */
@@ -963,7 +965,7 @@ enum irdma_cqp_op_type {
 			(_ring).head = ((_ring).head + 1) % size; \
 			(_retcode) = 0; \
 		} else { \
-			(_retcode) = IRDMA_ERR_RING_FULL; \
+			(_retcode) = -ENOMEM; \
 		} \
 	}
 #define IRDMA_RING_MOVE_HEAD_BY_COUNT(_ring, _count, _retcode) \
@@ -974,7 +976,7 @@ enum irdma_cqp_op_type {
 			(_ring).head = ((_ring).head + (_count)) % size; \
 			(_retcode) = 0; \
 		} else { \
-			(_retcode) = IRDMA_ERR_RING_FULL; \
+			(_retcode) = -ENOMEM; \
 		} \
 	}
 #define IRDMA_SQ_RING_MOVE_HEAD(_ring, _retcode) \
@@ -985,7 +987,7 @@ enum irdma_cqp_op_type {
 			(_ring).head = ((_ring).head + 1) % size; \
 			(_retcode) = 0; \
 		} else { \
-			(_retcode) = IRDMA_ERR_RING_FULL; \
+			(_retcode) = -ENOMEM; \
 		} \
 	}
 #define IRDMA_SQ_RING_MOVE_HEAD_BY_COUNT(_ring, _count, _retcode) \
@@ -996,7 +998,7 @@ enum irdma_cqp_op_type {
 			(_ring).head = ((_ring).head + (_count)) % size; \
 			(_retcode) = 0; \
 		} else { \
-			(_retcode) = IRDMA_ERR_RING_FULL; \
+			(_retcode) = -ENOMEM; \
 		} \
 	}
 #define IRDMA_RING_MOVE_HEAD_BY_COUNT_NOCHECK(_ring, _count) \

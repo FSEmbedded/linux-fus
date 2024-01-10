@@ -37,10 +37,8 @@ struct rtrs_iu *rtrs_iu_alloc(u32 iu_num, size_t size, gfp_t gfp_mask,
 			goto err;
 
 		iu->dma_addr = ib_dma_map_single(dma_dev, iu->buf, size, dir);
-		if (ib_dma_mapping_error(dma_dev, iu->dma_addr)) {
-			kfree(iu->buf);
+		if (ib_dma_mapping_error(dma_dev, iu->dma_addr))
 			goto err;
-		}
 
 		iu->cqe.done  = done;
 		iu->size      = size;
@@ -177,7 +175,7 @@ int rtrs_iu_post_rdma_write_imm(struct rtrs_con *con, struct rtrs_iu *iu,
 	 * length error
 	 */
 	for (i = 0; i < num_sge; i++)
-		if (WARN_ON(sge[i].length == 0))
+		if (WARN_ONCE(sge[i].length == 0, "sg %d is zero length\n", i))
 			return -EINVAL;
 
 	return rtrs_post_send(con->qp, head, &wr.wr, tail);
@@ -481,7 +479,6 @@ static int rtrs_str_to_sockaddr(const char *addr, size_t len,
  */
 int sockaddr_to_str(const struct sockaddr *addr, char *buf, size_t len)
 {
-
 	switch (addr->sa_family) {
 	case AF_IB:
 		return scnprintf(buf, len, "gid:%pI6",

@@ -140,23 +140,6 @@ static bool __init check_loader_disabled_bsp(void)
 	return *res;
 }
 
-extern struct builtin_fw __start_builtin_fw[];
-extern struct builtin_fw __end_builtin_fw[];
-
-bool get_builtin_firmware(struct cpio_data *cd, const char *name)
-{
-	struct builtin_fw *b_fw;
-
-	for (b_fw = __start_builtin_fw; b_fw != __end_builtin_fw; b_fw++) {
-		if (!strcmp(name, b_fw->name)) {
-			cd->size = b_fw->size;
-			cd->data = b_fw->data;
-			return true;
-		}
-	}
-	return false;
-}
-
 void __init load_ucode_bsp(void)
 {
 	unsigned int cpuid_1_eax;
@@ -315,7 +298,7 @@ struct cpio_data find_microcode_in_initrd(const char *path, bool use_pa)
 #endif
 }
 
-void reload_early_microcode(unsigned int cpu)
+void reload_early_microcode(void)
 {
 	int vendor, family;
 
@@ -329,7 +312,7 @@ void reload_early_microcode(unsigned int cpu)
 		break;
 	case X86_VENDOR_AMD:
 		if (family >= 0x10)
-			reload_ucode_amd(cpu);
+			reload_ucode_amd();
 		break;
 	default:
 		break;
@@ -509,26 +492,19 @@ wait_for_siblings:
 static int microcode_reload_late(void)
 {
 	int old = boot_cpu_data.microcode, ret;
-	struct cpuinfo_x86 prev_info;
+
+	pr_err("Attempting late microcode loading - it is dangerous and taints the kernel.\n");
+	pr_err("You should switch to early loading, if possible.\n");
 
 	atomic_set(&late_cpus_in,  0);
 	atomic_set(&late_cpus_out, 0);
 
-	/*
-	 * Take a snapshot before the microcode update in order to compare and
-	 * check whether any bits changed after an update.
-	 */
-	store_cpu_caps(&prev_info);
-
 	ret = stop_machine_cpuslocked(__reload_late, NULL, cpu_online_mask);
-	if (!ret) {
-		pr_info("Reload succeeded, microcode revision: 0x%x -> 0x%x\n",
-			old, boot_cpu_data.microcode);
-		microcode_check(&prev_info);
-	} else {
-		pr_info("Reload failed, current microcode revision: 0x%x\n",
-			boot_cpu_data.microcode);
-	}
+	if (ret == 0)
+		microcode_check();
+
+	pr_info("Reload completed, microcode revision: 0x%x -> 0x%x\n",
+		old, boot_cpu_data.microcode);
 
 	return ret;
 }
@@ -568,6 +544,8 @@ put:
 
 	if (ret == 0)
 		ret = size;
+
+	add_taint(TAINT_CPU_OUT_OF_SPEC, LOCKDEP_STILL_OK);
 
 	return ret;
 }
@@ -707,7 +685,7 @@ void microcode_bsp_resume(void)
 	if (uci->valid && uci->mc)
 		microcode_ops->apply_microcode(cpu);
 	else if (!uci->mc)
-		reload_early_microcode(cpu);
+		reload_early_microcode();
 }
 
 static struct syscore_ops mc_syscore_ops = {
@@ -779,10 +757,7 @@ static int __init microcode_init(void)
 
 	cpus_read_lock();
 	mutex_lock(&microcode_mutex);
-
 	error = subsys_interface_register(&mc_cpu_interface);
-	if (!error)
-		perf_check_microcode();
 	mutex_unlock(&microcode_mutex);
 	cpus_read_unlock();
 

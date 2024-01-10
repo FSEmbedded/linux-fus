@@ -523,7 +523,7 @@ static int arcfb_probe(struct platform_device *dev)
 
 	info = framebuffer_alloc(sizeof(struct arcfb_par), &dev->dev);
 	if (!info)
-		goto err_fb_alloc;
+		goto err;
 
 	info->screen_base = (char __iomem *)videomemory;
 	info->fbops = &arcfb_ops;
@@ -535,7 +535,7 @@ static int arcfb_probe(struct platform_device *dev)
 
 	if (!dio_addr || !cio_addr || !c2io_addr) {
 		printk(KERN_WARNING "no IO addresses supplied\n");
-		goto err_addr;
+		goto err1;
 	}
 	par->dio_addr = dio_addr;
 	par->cio_addr = cio_addr;
@@ -551,12 +551,12 @@ static int arcfb_probe(struct platform_device *dev)
 			printk(KERN_INFO
 				"arcfb: Failed req IRQ %d\n", par->irq);
 			retval = -EBUSY;
-			goto err_addr;
+			goto err1;
 		}
 	}
 	retval = register_framebuffer(info);
 	if (retval < 0)
-		goto err_register_fb;
+		goto err1;
 	platform_set_drvdata(dev, info);
 	fb_info(info, "Arc frame buffer device, using %dK of video memory\n",
 		videomemorysize >> 10);
@@ -580,12 +580,9 @@ static int arcfb_probe(struct platform_device *dev)
 	}
 
 	return 0;
-
-err_register_fb:
-	free_irq(par->irq, info);
-err_addr:
+err1:
 	framebuffer_release(info);
-err_fb_alloc:
+err:
 	vfree(videomemory);
 	return retval;
 }

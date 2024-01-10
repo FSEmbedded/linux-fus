@@ -326,7 +326,8 @@ static struct dentry *ovl_obtain_alias(struct super_block *sb,
 	if (upper_alias)
 		ovl_dentry_set_upper_alias(dentry);
 
-	ovl_dentry_init_reval(dentry, upper);
+	ovl_dentry_update_reval(dentry, upper,
+			DCACHE_OP_REVALIDATE | DCACHE_OP_WEAK_REVALIDATE);
 
 	return d_instantiate_anon(dentry, inode);
 
@@ -390,6 +391,11 @@ static struct dentry *ovl_lookup_real_one(struct dentry *connected,
 	 * pointer because we hold no lock on the real dentry.
 	 */
 	take_dentry_name_snapshot(&name, real);
+	/*
+	 * No mnt_userns handling here: it's an internal lookup.  Could skip
+	 * permission checking altogether, but for now just use non-mnt_userns
+	 * transformed ids.
+	 */
 	this = lookup_one_len(name.name.name, connected, name.name.len);
 	release_dentry_name_snapshot(&name);
 	err = PTR_ERR(this);
@@ -790,7 +796,7 @@ static struct ovl_fh *ovl_fid_to_fh(struct fid *fid, int buflen, int fh_type)
 		return ERR_PTR(-ENOMEM);
 
 	/* Copy unaligned inner fh into aligned buffer */
-	memcpy(fh->buf, fid, buflen - OVL_FH_WIRE_OFFSET);
+	memcpy(&fh->fb, fid, buflen - OVL_FH_WIRE_OFFSET);
 	return fh;
 }
 

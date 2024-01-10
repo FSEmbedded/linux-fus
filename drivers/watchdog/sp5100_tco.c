@@ -10,6 +10,7 @@
  *				https://www.kernelconcepts.de
  *
  *	See AMD Publication 43009 "AMD SB700/710/750 Register Reference Guide",
+ *	    AMD Publication 44413 "AMD SP5100 Register Reference Guide"
  *	    AMD Publication 45482 "AMD SB800-Series Southbridges Register
  *	                                                      Reference Guide"
  *	    AMD Publication 48751 "BIOS and Kernel Developer’s Guide (BKDG)
@@ -64,6 +65,12 @@ static struct pci_dev *sp5100_tco_pci;
 
 /* module parameters */
 
+#define WATCHDOG_ACTION 0
+static bool action = WATCHDOG_ACTION;
+module_param(action, bool, 0);
+MODULE_PARM_DESC(action, "Action taken when watchdog expires, 0 to reset, 1 to poweroff (default="
+		 __MODULE_STRING(WATCHDOG_ACTION) ")");
+
 #define WATCHDOG_HEARTBEAT 60	/* 60 sec default heartbeat. */
 static int heartbeat = WATCHDOG_HEARTBEAT;  /* in seconds */
 module_param(heartbeat, int, 0);
@@ -89,7 +96,7 @@ static enum tco_reg_layout tco_reg_layout(struct pci_dev *dev)
 	    sp5100_tco_pci->device == PCI_DEVICE_ID_AMD_KERNCZ_SMBUS &&
 	    sp5100_tco_pci->revision >= AMD_ZEN_SMBUS_PCI_REV) {
 		return efch_mmio;
-	} else if ((dev->vendor == PCI_VENDOR_ID_AMD || dev->vendor == PCI_VENDOR_ID_HYGON) &&
+	} else if (dev->vendor == PCI_VENDOR_ID_AMD &&
 	    ((dev->device == PCI_DEVICE_ID_AMD_HUDSON2_SMBUS &&
 	     dev->revision >= 0x41) ||
 	    (dev->device == PCI_DEVICE_ID_AMD_KERNCZ_SMBUS &&
@@ -106,10 +113,6 @@ static int tco_timer_start(struct watchdog_device *wdd)
 
 	val = readl(SP5100_WDT_CONTROL(tco->tcobase));
 	val |= SP5100_WDT_START_STOP_BIT;
-	writel(val, SP5100_WDT_CONTROL(tco->tcobase));
-
-	/* This must be a distinct write. */
-	val |= SP5100_WDT_TRIGGER_BIT;
 	writel(val, SP5100_WDT_CONTROL(tco->tcobase));
 
 	return 0;
@@ -150,6 +153,13 @@ static int tco_timer_set_timeout(struct watchdog_device *wdd,
 	wdd->timeout = t;
 
 	return 0;
+}
+
+static unsigned int tco_timer_get_timeleft(struct watchdog_device *wdd)
+{
+	struct sp5100_tco *tco = watchdog_get_drvdata(wdd);
+
+	return readl(SP5100_WDT_COUNT(tco->tcobase));
 }
 
 static u8 sp5100_tco_read_pm_reg8(u8 index)
@@ -293,8 +303,11 @@ static int sp5100_tco_timer_init(struct sp5100_tco *tco)
 	if (val & SP5100_WDT_FIRED)
 		wdd->bootstatus = WDIOF_CARDRESET;
 
-	/* Set watchdog action to reset the system */
-	val &= ~SP5100_WDT_ACTION_RESET;
+	/* Set watchdog action */
+	if (action)
+		val |= SP5100_WDT_ACTION_RESET;
+	else
+		val &= ~SP5100_WDT_ACTION_RESET;
 	writel(val, SP5100_WDT_CONTROL(tco->tcobase));
 
 	/* Set a reasonable heartbeat before we stop the timer */
@@ -495,6 +508,7 @@ static const struct watchdog_ops sp5100_tco_wdt_ops = {
 	.stop = tco_timer_stop,
 	.ping = tco_timer_ping,
 	.set_timeout = tco_timer_set_timeout,
+	.get_timeleft = tco_timer_get_timeleft,
 };
 
 static int sp5100_tco_probe(struct platform_device *pdev)
@@ -560,8 +574,6 @@ static const struct pci_device_id sp5100_tco_pci_tbl[] = {
 	{ PCI_VENDOR_ID_AMD, PCI_DEVICE_ID_AMD_HUDSON2_SMBUS, PCI_ANY_ID,
 	  PCI_ANY_ID, },
 	{ PCI_VENDOR_ID_AMD, PCI_DEVICE_ID_AMD_KERNCZ_SMBUS, PCI_ANY_ID,
-	  PCI_ANY_ID, },
-	{ PCI_VENDOR_ID_HYGON, PCI_DEVICE_ID_AMD_KERNCZ_SMBUS, PCI_ANY_ID,
 	  PCI_ANY_ID, },
 	{ 0, },			/* End of list */
 };

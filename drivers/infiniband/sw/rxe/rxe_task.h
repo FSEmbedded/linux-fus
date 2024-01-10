@@ -25,6 +25,7 @@ struct rxe_task {
 	void			*arg;
 	int			(*func)(void *arg);
 	int			ret;
+	char			name[16];
 	bool			destroyed;
 };
 
@@ -33,7 +34,8 @@ struct rxe_task {
  *	arg  => parameter to pass to fcn
  *	func => function to call until it returns != 0
  */
-int rxe_init_task(struct rxe_task *task, void *arg, int (*func)(void *));
+int rxe_init_task(struct rxe_task *task,
+		  void *arg, int (*func)(void *), char *name);
 
 /* cleanup task */
 void rxe_cleanup_task(struct rxe_task *task);

@@ -755,7 +755,7 @@ static void set_clock_mux(struct uart_port *up, struct brcmuart_priv *priv,
 
 static void brcmstb_set_termios(struct uart_port *up,
 				struct ktermios *termios,
-				struct ktermios *old)
+				const struct ktermios *old)
 {
 	struct uart_8250_port *p8250 = up_to_u8250p(up);
 	struct brcmuart_priv *priv = up->private_data;
@@ -941,7 +941,7 @@ static int brcmuart_probe(struct platform_device *pdev)
 	struct brcmuart_priv *priv;
 	struct clk *baud_mux_clk;
 	struct uart_8250_port up;
-	struct resource *irq;
+	int irq;
 	void __iomem *membase = NULL;
 	resource_size_t mapbase = 0;
 	u32 clk_rate = 0;
@@ -952,11 +952,9 @@ static int brcmuart_probe(struct platform_device *pdev)
 		"uart", "dma_rx", "dma_tx", "dma_intr2", "dma_arb"
 	};
 
-	irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	if (!irq) {
-		dev_err(dev, "missing irq\n");
-		return -EINVAL;
-	}
+	irq = platform_get_irq(pdev, 0);
+	if (irq < 0)
+		return irq;
 	priv = devm_kzalloc(dev, sizeof(struct brcmuart_priv),
 			GFP_KERNEL);
 	if (!priv)
@@ -1016,18 +1014,16 @@ static int brcmuart_probe(struct platform_device *pdev)
 	of_property_read_u32(np, "clock-frequency", &clk_rate);
 
 	/* See if a Baud clock has been specified */
-	baud_mux_clk = devm_clk_get(dev, "sw_baud");
+	baud_mux_clk = of_clk_get_by_name(np, "sw_baud");
 	if (IS_ERR(baud_mux_clk)) {
-		if (PTR_ERR(baud_mux_clk) == -EPROBE_DEFER) {
-			ret = -EPROBE_DEFER;
-			goto release_dma;
-		}
+		if (PTR_ERR(baud_mux_clk) == -EPROBE_DEFER)
+			return -EPROBE_DEFER;
 		dev_dbg(dev, "BAUD MUX clock not specified\n");
 	} else {
 		dev_dbg(dev, "BAUD MUX clock found\n");
 		ret = clk_prepare_enable(baud_mux_clk);
 		if (ret)
-			goto release_dma;
+			return ret;
 		priv->baud_mux_clk = baud_mux_clk;
 		init_real_clk_rates(dev, priv);
 		clk_rate = priv->default_mux_rate;
@@ -1035,8 +1031,7 @@ static int brcmuart_probe(struct platform_device *pdev)
 
 	if (clk_rate == 0) {
 		dev_err(dev, "clock-frequency or clk not defined\n");
-		ret = -EINVAL;
-		goto err_clk_disable;
+		return -EINVAL;
 	}
 
 	dev_dbg(dev, "DMA is %senabled\n", priv->dma_enabled ? "" : "not ");
@@ -1047,7 +1042,7 @@ static int brcmuart_probe(struct platform_device *pdev)
 	up.port.dev = dev;
 	up.port.mapbase = mapbase;
 	up.port.membase = membase;
-	up.port.irq = irq->start;
+	up.port.irq = irq;
 	up.port.handle_irq = brcmuart_handle_irq;
 	up.port.regshift = 2;
 	up.port.iotype = of_device_is_big_endian(np) ?
@@ -1080,7 +1075,7 @@ static int brcmuart_probe(struct platform_device *pdev)
 						   priv->rx_size,
 						   &priv->rx_addr, GFP_KERNEL);
 		if (!priv->rx_bufs) {
-			ret = -EINVAL;
+			ret = -ENOMEM;
 			goto err;
 		}
 		priv->tx_size = UART_XMIT_SIZE;
@@ -1088,7 +1083,7 @@ static int brcmuart_probe(struct platform_device *pdev)
 						  priv->tx_size,
 						  &priv->tx_addr, GFP_KERNEL);
 		if (!priv->tx_buf) {
-			ret = -EINVAL;
+			ret = -ENOMEM;
 			goto err;
 		}
 	}
@@ -1123,11 +1118,7 @@ err1:
 	serial8250_unregister_port(priv->line);
 err:
 	brcmuart_free_bufs(dev, priv);
-err_clk_disable:
-	clk_disable_unprepare(baud_mux_clk);
-release_dma:
-	if (priv->dma_enabled)
-		brcmuart_arbitration(priv, 0);
+	brcmuart_arbitration(priv, 0);
 	return ret;
 }
 
@@ -1139,9 +1130,7 @@ static int brcmuart_remove(struct platform_device *pdev)
 	hrtimer_cancel(&priv->hrt);
 	serial8250_unregister_port(priv->line);
 	brcmuart_free_bufs(&pdev->dev, priv);
-	clk_disable_unprepare(priv->baud_mux_clk);
-	if (priv->dma_enabled)
-		brcmuart_arbitration(priv, 0);
+	brcmuart_arbitration(priv, 0);
 	return 0;
 }
 
@@ -1223,17 +1212,9 @@ static struct platform_driver brcmuart_platform_driver = {
 
 static int __init brcmuart_init(void)
 {
-	int ret;
-
 	brcmuart_debugfs_root = debugfs_create_dir(
 		brcmuart_platform_driver.driver.name, NULL);
-	ret = platform_driver_register(&brcmuart_platform_driver);
-	if (ret) {
-		debugfs_remove_recursive(brcmuart_debugfs_root);
-		return ret;
-	}
-
-	return 0;
+	return platform_driver_register(&brcmuart_platform_driver);
 }
 module_init(brcmuart_init);
 

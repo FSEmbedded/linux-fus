@@ -661,8 +661,6 @@ int st_nci_se_io(struct nci_dev *ndev, u32 se_idx,
 {
 	struct st_nci_info *info = nci_get_drvdata(ndev);
 
-	pr_debug("\n");
-
 	switch (se_idx) {
 	case ST_NCI_ESE_HOST_ID:
 		info->se_info.cb = cb;
@@ -674,12 +672,6 @@ int st_nci_se_io(struct nci_dev *ndev, u32 se_idx,
 					ST_NCI_EVT_TRANSMIT_DATA, apdu,
 					apdu_length);
 	default:
-		/* Need to free cb_context here as at the moment we can't
-		 * clearly indicate to the caller if the callback function
-		 * would be called (and free it) or not. In both cases a
-		 * negative value may be returned to the caller.
-		 */
-		kfree(cb_context);
 		return -ENODEV;
 	}
 }
@@ -700,8 +692,6 @@ static void st_nci_se_wt_timeout(struct timer_list *t)
 	u8 param = 0x01;
 	struct st_nci_info *info = from_timer(info, t, se_info.bwi_timer);
 
-	pr_debug("\n");
-
 	info->se_info.bwi_active = false;
 
 	if (!info->se_info.xch_error) {
@@ -720,8 +710,6 @@ static void st_nci_se_activation_timeout(struct timer_list *t)
 {
 	struct st_nci_info *info = from_timer(info, t,
 					      se_info.se_active_timer);
-
-	pr_debug("\n");
 
 	info->se_info.se_active = false;
 

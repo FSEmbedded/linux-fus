@@ -133,7 +133,7 @@ static inline unsigned long idx_to_kaddr(struct xenvif_queue *queue,
 
 /* Find the containing VIF's structure from a pointer in pending_tx_info array
  */
-static inline struct xenvif_queue *ubuf_to_queue(const struct ubuf_info *ubuf)
+static inline struct xenvif_queue *ubuf_to_queue(const struct ubuf_info_msgzc *ubuf)
 {
 	u16 pending_idx = ubuf->desc;
 	struct pending_tx_info *temp =
@@ -334,7 +334,6 @@ static int xenvif_count_requests(struct xenvif_queue *queue,
 struct xenvif_tx_cb {
 	u16 copy_pending_idx[XEN_NETBK_LEGACY_SLOTS_MAX + 1];
 	u8 copy_count;
-	u32 split_mask;
 };
 
 #define XENVIF_TX_CB(skb) ((struct xenvif_tx_cb *)(skb)->cb)
@@ -362,8 +361,6 @@ static inline struct sk_buff *xenvif_alloc_skb(unsigned int size)
 	struct sk_buff *skb =
 		alloc_skb(size + NET_SKB_PAD + NET_IP_ALIGN,
 			  GFP_ATOMIC | __GFP_NOWARN);
-
-	BUILD_BUG_ON(sizeof(*XENVIF_TX_CB(skb)) > sizeof(skb->cb));
 	if (unlikely(skb == NULL))
 		return NULL;
 
@@ -396,16 +393,14 @@ static void xenvif_get_requests(struct xenvif_queue *queue,
 	struct gnttab_map_grant_ref *gop = queue->tx_map_ops + *map_ops;
 	struct xen_netif_tx_request *txp = first;
 
-	nr_slots = shinfo->nr_frags + frag_overflow + 1;
+	nr_slots = shinfo->nr_frags + 1;
 
 	copy_count(skb) = 0;
-	XENVIF_TX_CB(skb)->split_mask = 0;
 
 	/* Create copy ops for exactly data_len bytes into the skb head. */
 	__skb_put(skb, data_len);
 	while (data_len > 0) {
 		int amount = data_len > txp->size ? txp->size : data_len;
-		bool split = false;
 
 		cop->source.u.ref = txp->gref;
 		cop->source.domid = queue->vif->domid;
@@ -418,13 +413,6 @@ static void xenvif_get_requests(struct xenvif_queue *queue,
 		cop->dest.u.gmfn = virt_to_gfn(skb->data + skb_headlen(skb)
 				               - data_len);
 
-		/* Don't cross local page boundary! */
-		if (cop->dest.offset + amount > XEN_PAGE_SIZE) {
-			amount = XEN_PAGE_SIZE - cop->dest.offset;
-			XENVIF_TX_CB(skb)->split_mask |= 1U << copy_count(skb);
-			split = true;
-		}
-
 		cop->len = amount;
 		cop->flags = GNTCOPY_source_gref;
 
@@ -432,8 +420,7 @@ static void xenvif_get_requests(struct xenvif_queue *queue,
 		pending_idx = queue->pending_ring[index];
 		callback_param(queue, pending_idx).ctx = NULL;
 		copy_pending_idx(skb, copy_count(skb)) = pending_idx;
-		if (!split)
-			copy_count(skb)++;
+		copy_count(skb)++;
 
 		cop++;
 		data_len -= amount;
@@ -454,16 +441,15 @@ static void xenvif_get_requests(struct xenvif_queue *queue,
 			nr_slots--;
 		} else {
 			/* The copy op partially covered the tx_request.
-			 * The remainder will be mapped or copied in the next
-			 * iteration.
+			 * The remainder will be mapped.
 			 */
 			txp->offset += amount;
 			txp->size -= amount;
 		}
 	}
 
-	for (shinfo->nr_frags = 0; nr_slots > 0 && shinfo->nr_frags < MAX_SKB_FRAGS;
-	     shinfo->nr_frags++, gop++, nr_slots--) {
+	for (shinfo->nr_frags = 0; shinfo->nr_frags < nr_slots;
+	     shinfo->nr_frags++, gop++) {
 		index = pending_index(queue->pending_cons++);
 		pending_idx = queue->pending_ring[index];
 		xenvif_tx_create_map_op(queue, pending_idx, txp,
@@ -476,12 +462,12 @@ static void xenvif_get_requests(struct xenvif_queue *queue,
 			txp++;
 	}
 
-	if (nr_slots > 0) {
+	if (frag_overflow) {
 
 		shinfo = skb_shinfo(nskb);
 		frags = shinfo->frags;
 
-		for (shinfo->nr_frags = 0; shinfo->nr_frags < nr_slots;
+		for (shinfo->nr_frags = 0; shinfo->nr_frags < frag_overflow;
 		     shinfo->nr_frags++, txp++, gop++) {
 			index = pending_index(queue->pending_cons++);
 			pending_idx = queue->pending_ring[index];
@@ -492,11 +478,6 @@ static void xenvif_get_requests(struct xenvif_queue *queue,
 		}
 
 		skb_shinfo(skb)->frag_list = nskb;
-	} else if (nskb) {
-		/* A frag_list skb was allocated but it is no longer needed
-		 * because enough slots were converted to copy ops above.
-		 */
-		kfree_skb(nskb);
 	}
 
 	(*copy_ops) = cop - queue->tx_copy_ops;
@@ -558,13 +539,6 @@ static int xenvif_tx_check_gop(struct xenvif_queue *queue,
 		pending_idx = copy_pending_idx(skb, i);
 
 		newerr = (*gopp_copy)->status;
-
-		/* Split copies need to be handled together. */
-		if (XENVIF_TX_CB(skb)->split_mask & (1U << i)) {
-			(*gopp_copy)++;
-			if (!newerr)
-				newerr = (*gopp_copy)->status;
-		}
 		if (likely(!newerr)) {
 			/* The first frag might still have this slot mapped */
 			if (i < copy_count(skb) - 1 || !sharedslot)
@@ -926,7 +900,7 @@ static void xenvif_tx_build_gops(struct xenvif_queue *queue,
 			break;
 		}
 
-		work_to_do = RING_HAS_UNCONSUMED_REQUESTS(&queue->tx);
+		work_to_do = XEN_RING_NR_UNCONSUMED_REQUESTS(&queue->tx);
 		if (!work_to_do)
 			break;
 
@@ -1001,8 +975,10 @@ static void xenvif_tx_build_gops(struct xenvif_queue *queue,
 
 		/* No crossing a page as the payload mustn't fragment. */
 		if (unlikely((txreq.offset + txreq.size) > XEN_PAGE_SIZE)) {
-			netdev_err(queue->vif->dev, "Cross page boundary, txreq.offset: %u, size: %u\n",
-				   txreq.offset, txreq.size);
+			netdev_err(queue->vif->dev,
+				   "txreq.offset: %u, size: %u, end: %lu\n",
+				   txreq.offset, txreq.size,
+				   (unsigned long)(txreq.offset&~XEN_PAGE_MASK) + txreq.size);
 			xenvif_fatal_tx_err(queue->vif);
 			break;
 		}
@@ -1248,9 +1224,7 @@ static int xenvif_tx_submit(struct xenvif_queue *queue)
 			}
 
 			mss = skb_shinfo(skb)->gso_size;
-			hdrlen = skb_transport_header(skb) -
-				skb_mac_header(skb) +
-				tcp_hdrlen(skb);
+			hdrlen = skb_tcp_all_headers(skb);
 
 			skb_shinfo(skb)->gso_segs =
 				DIV_ROUND_UP(skb->len - hdrlen, mss);
@@ -1277,11 +1251,12 @@ static int xenvif_tx_submit(struct xenvif_queue *queue)
 	return work_done;
 }
 
-void xenvif_zerocopy_callback(struct sk_buff *skb, struct ubuf_info *ubuf,
+void xenvif_zerocopy_callback(struct sk_buff *skb, struct ubuf_info *ubuf_base,
 			      bool zerocopy_success)
 {
 	unsigned long flags;
 	pending_ring_idx_t index;
+	struct ubuf_info_msgzc *ubuf = uarg_to_msgzc(ubuf_base);
 	struct xenvif_queue *queue = ubuf_to_queue(ubuf);
 
 	/* This is the only place where we grab this lock, to protect callbacks
@@ -1290,7 +1265,7 @@ void xenvif_zerocopy_callback(struct sk_buff *skb, struct ubuf_info *ubuf,
 	spin_lock_irqsave(&queue->callback_lock, flags);
 	do {
 		u16 pending_idx = ubuf->desc;
-		ubuf = (struct ubuf_info *) ubuf->ctx;
+		ubuf = (struct ubuf_info_msgzc *) ubuf->ctx;
 		BUG_ON(queue->dealloc_prod - queue->dealloc_cons >=
 			MAX_PENDING_REQS);
 		index = pending_index(queue->dealloc_prod);
@@ -1523,7 +1498,7 @@ int xenvif_map_frontend_data_rings(struct xenvif_queue *queue,
 	struct xen_netif_tx_sring *txs;
 	struct xen_netif_rx_sring *rxs;
 	RING_IDX rsp_prod, req_prod;
-	int err = -ENOMEM;
+	int err;
 
 	err = xenbus_map_ring_valloc(xenvif_to_xenbus_device(queue->vif),
 				     &tx_ring_ref, 1, &addr);

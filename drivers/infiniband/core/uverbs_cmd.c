@@ -337,7 +337,7 @@ static void copy_query_dev_fields(struct ib_ucontext *ucontext,
 	resp->hw_ver		= attr->hw_ver;
 	resp->max_qp		= attr->max_qp;
 	resp->max_qp_wr		= attr->max_qp_wr;
-	resp->device_cap_flags	= lower_32_bits(attr->device_cap_flags);
+	resp->device_cap_flags  = lower_32_bits(attr->device_cap_flags);
 	resp->max_sge		= min(attr->max_send_sge, attr->max_recv_sge);
 	resp->max_sge_rd	= attr->max_sge_rd;
 	resp->max_cq		= attr->max_cq;
@@ -1402,7 +1402,6 @@ static int create_qp(struct uverbs_attr_bundle *attrs,
 	attr.sq_sig_type   = cmd->sq_sig_all ? IB_SIGNAL_ALL_WR :
 					      IB_SIGNAL_REQ_WR;
 	attr.qp_type       = cmd->qp_type;
-	attr.create_flags  = 0;
 
 	attr.cap.max_send_wr     = cmd->max_send_wr;
 	attr.cap.max_recv_wr     = cmd->max_recv_wr;
@@ -1851,13 +1850,8 @@ static int modify_qp(struct uverbs_attr_bundle *attrs,
 		attr->path_mtu = cmd->base.path_mtu;
 	if (cmd->base.attr_mask & IB_QP_PATH_MIG_STATE)
 		attr->path_mig_state = cmd->base.path_mig_state;
-	if (cmd->base.attr_mask & IB_QP_QKEY) {
-		if (cmd->base.qkey & IB_QP_SET_QKEY && !capable(CAP_NET_RAW)) {
-			ret = -EPERM;
-			goto release_qp;
-		}
+	if (cmd->base.attr_mask & IB_QP_QKEY)
 		attr->qkey = cmd->base.qkey;
-	}
 	if (cmd->base.attr_mask & IB_QP_RQ_PSN)
 		attr->rq_psn = cmd->base.rq_psn;
 	if (cmd->base.attr_mask & IB_QP_SQ_PSN)

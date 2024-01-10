@@ -15,7 +15,6 @@
 #include <linux/extable.h>
 #include <linux/kdebug.h>
 #include <linux/kallsyms.h>
-#include <linux/kgdb.h>
 #include <linux/ftrace.h>
 #include <linux/objtool.h>
 #include <linux/pgtable.h>
@@ -46,8 +45,8 @@ unsigned long __recover_optprobed_insn(kprobe_opcode_t *buf, unsigned long addr)
 		/* This function only handles jump-optimized kprobe */
 		if (kp && kprobe_optimized(kp)) {
 			op = container_of(kp, struct optimized_kprobe, kp);
-			/* If op is optimized or under unoptimizing */
-			if (list_empty(&op->list) || optprobe_queued_unopt(op))
+			/* If op->list is not empty, op is under optimizing */
+			if (list_empty(&op->list))
 				goto found;
 		}
 	}
@@ -107,7 +106,8 @@ asm (
 			".global optprobe_template_entry\n"
 			"optprobe_template_entry:\n"
 #ifdef CONFIG_X86_64
-			/* We don't bother saving the ss register */
+			"       pushq $" __stringify(__KERNEL_DS) "\n"
+			/* Save the 'sp - 8', this will be fixed later. */
 			"	pushq %rsp\n"
 			"	pushfq\n"
 			".global optprobe_template_clac\n"
@@ -122,14 +122,17 @@ asm (
 			".global optprobe_template_call\n"
 			"optprobe_template_call:\n"
 			ASM_NOP5
-			/* Move flags to rsp */
+			/* Copy 'regs->flags' into 'regs->ss'. */
 			"	movq 18*8(%rsp), %rdx\n"
-			"	movq %rdx, 19*8(%rsp)\n"
+			"	movq %rdx, 20*8(%rsp)\n"
 			RESTORE_REGS_STRING
-			/* Skip flags entry */
-			"	addq $8, %rsp\n"
+			/* Skip 'regs->flags' and 'regs->sp'. */
+			"	addq $16, %rsp\n"
+			/* And pop flags register from 'regs->ss'. */
 			"	popfq\n"
 #else /* CONFIG_X86_32 */
+			"	pushl %ss\n"
+			/* Save the 'sp - 4', this will be fixed later. */
 			"	pushl %esp\n"
 			"	pushfl\n"
 			".global optprobe_template_clac\n"
@@ -143,12 +146,13 @@ asm (
 			".global optprobe_template_call\n"
 			"optprobe_template_call:\n"
 			ASM_NOP5
-			/* Move flags into esp */
+			/* Copy 'regs->flags' into 'regs->ss'. */
 			"	movl 14*4(%esp), %edx\n"
-			"	movl %edx, 15*4(%esp)\n"
+			"	movl %edx, 16*4(%esp)\n"
 			RESTORE_REGS_STRING
-			/* Skip flags entry */
-			"	addl $4, %esp\n"
+			/* Skip 'regs->flags' and 'regs->sp'. */
+			"	addl $8, %esp\n"
+			/* And pop flags register from 'regs->ss'. */
 			"	popfl\n"
 #endif
 			".global optprobe_template_end\n"
@@ -180,6 +184,8 @@ optimized_callback(struct optimized_kprobe *op, struct pt_regs *regs)
 		kprobes_inc_nmissed_count(&op->kp);
 	} else {
 		struct kprobe_ctlblk *kcb = get_kprobe_ctlblk();
+		/* Adjust stack pointer */
+		regs->sp += sizeof(long);
 		/* Save skipped registers */
 		regs->cs = __KERNEL_CS;
 #ifdef CONFIG_X86_32
@@ -273,6 +279,19 @@ static int insn_is_indirect_jump(struct insn *insn)
 	return ret;
 }
 
+static bool is_padding_int3(unsigned long addr, unsigned long eaddr)
+{
+	unsigned char ops;
+
+	for (; addr < eaddr; addr++) {
+		if (get_kernel_nofault(ops, (void *)addr) < 0 ||
+		    ops != INT3_INSN_OPCODE)
+			return false;
+	}
+
+	return true;
+}
+
 /* Decode whole function to ensure any instructions don't jump into target */
 static int can_optimize(unsigned long paddr)
 {
@@ -315,15 +334,15 @@ static int can_optimize(unsigned long paddr)
 		ret = insn_decode_kernel(&insn, (void *)recovered_insn);
 		if (ret < 0)
 			return 0;
-#ifdef CONFIG_KGDB
+
 		/*
-		 * If there is a dynamically installed kgdb sw breakpoint,
-		 * this function should not be probed.
+		 * In the case of detecting unknown breakpoint, this could be
+		 * a padding INT3 between functions. Let's check that all the
+		 * rest of the bytes are also INT3.
 		 */
-		if (insn.opcode.bytes[0] == INT3_INSN_OPCODE &&
-		    kgdb_has_hit_break(addr))
-			return 0;
-#endif
+		if (insn.opcode.bytes[0] == INT3_INSN_OPCODE)
+			return is_padding_int3(addr, paddr - offset + size) ? 1 : 0;
+
 		/* Recover address */
 		insn.kaddr = (void *)addr;
 		insn.next_byte = (void *)(addr + insn.length);
@@ -346,7 +365,7 @@ int arch_check_optimized_kprobe(struct optimized_kprobe *op)
 
 	for (i = 1; i < op->optinsn.size; i++) {
 		p = get_kprobe(op->kp.addr + i);
-		if (p && !kprobe_disarmed(p))
+		if (p && !kprobe_disabled(p))
 			return -EEXIST;
 	}
 
@@ -355,10 +374,10 @@ int arch_check_optimized_kprobe(struct optimized_kprobe *op)
 
 /* Check the addr is within the optimized instructions. */
 int arch_within_optimized_kprobe(struct optimized_kprobe *op,
-				 unsigned long addr)
+				 kprobe_opcode_t *addr)
 {
-	return ((unsigned long)op->kp.addr <= addr &&
-		(unsigned long)op->kp.addr + op->optinsn.size > addr);
+	return (op->kp.addr <= addr &&
+		op->kp.addr + op->optinsn.size > addr);
 }
 
 /* Free optimized instruction slot */

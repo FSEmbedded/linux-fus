@@ -32,7 +32,7 @@ static int cmt_setup(int num, ...)
 
 	/* Run NUM_OF_RUNS times */
 	if (p->num_of_runs >= NUM_OF_RUNS)
-		return END_OF_TESTS;
+		return -1;
 
 	p->num_of_runs++;
 

@@ -37,6 +37,8 @@
 #include "rfc1002pdu.h"
 #include "fs_context.h"
 
+static DEFINE_MUTEX(cifs_mount_mutex);
+
 static const match_table_t cifs_smb_version_tokens = {
 	{ Smb_1, SMB1_VERSION_STRING },
 	{ Smb_20, SMB20_VERSION_STRING},
@@ -116,6 +118,8 @@ const struct fs_parameter_spec smb3_fs_parameters[] = {
 	fsparam_flag("nosharesock", Opt_nosharesock),
 	fsparam_flag_no("persistenthandles", Opt_persistent),
 	fsparam_flag_no("resilienthandles", Opt_resilient),
+	fsparam_flag_no("tcpnodelay", Opt_tcp_nodelay),
+	fsparam_flag("nosparse", Opt_nosparse),
 	fsparam_flag("domainauto", Opt_domainauto),
 	fsparam_flag("rdma", Opt_rdma),
 	fsparam_flag("modesid", Opt_modesid),
@@ -437,14 +441,13 @@ out:
  * but there are some bugs that prevent rename from working if there are
  * multiple delimiters.
  *
- * Returns a sanitized duplicate of @path. @gfp indicates the GFP_* flags
- * for kstrdup.
- * The caller is responsible for freeing the original.
+ * Returns a sanitized duplicate of @path. The caller is responsible for
+ * cleaning up the original.
  */
 #define IS_DELIM(c) ((c) == '/' || (c) == '\\')
-char *cifs_sanitize_prepath(char *prepath, gfp_t gfp)
+static char *sanitize_path(char *path)
 {
-	char *cursor1 = prepath, *cursor2 = prepath;
+	char *cursor1 = path, *cursor2 = path;
 
 	/* skip all prepended delimiters */
 	while (IS_DELIM(*cursor1))
@@ -466,7 +469,7 @@ char *cifs_sanitize_prepath(char *prepath, gfp_t gfp)
 		cursor2--;
 
 	*(cursor2) = '\0';
-	return kstrdup(prepath, gfp);
+	return kstrdup(path, GFP_KERNEL);
 }
 
 /*
@@ -528,7 +531,7 @@ smb3_parse_devname(const char *devname, struct smb3_fs_context *ctx)
 	if (!*pos)
 		return 0;
 
-	ctx->prepath = cifs_sanitize_prepath(pos, GFP_KERNEL);
+	ctx->prepath = sanitize_path(pos);
 	if (!ctx->prepath)
 		return -ENOMEM;
 
@@ -706,10 +709,14 @@ static int smb3_get_tree_common(struct fs_context *fc)
 static int smb3_get_tree(struct fs_context *fc)
 {
 	int err = smb3_fs_context_validate(fc);
+	int ret;
 
 	if (err)
 		return err;
-	return smb3_get_tree_common(fc);
+	mutex_lock(&cifs_mount_mutex);
+	ret = smb3_get_tree_common(fc);
+	mutex_unlock(&cifs_mount_mutex);
+	return ret;
 }
 
 static void smb3_fs_context_free(struct fs_context *fc)
@@ -759,6 +766,10 @@ static int smb3_verify_reconfigure_ctx(struct fs_context *fc,
 		cifs_errorf(fc, "can not change domainname during remount\n");
 		return -EINVAL;
 	}
+	if (strcmp(new_ctx->workstation_name, old_ctx->workstation_name)) {
+		cifs_errorf(fc, "can not change workstation_name during remount\n");
+		return -EINVAL;
+	}
 	if (new_ctx->nodename &&
 	    (!old_ctx->nodename || strcmp(new_ctx->nodename, old_ctx->nodename))) {
 		cifs_errorf(fc, "can not change nodename during remount\n");
@@ -780,6 +791,13 @@ do {									\
 	cifs_sb->ctx->field = NULL;					\
 } while (0)
 
+#define STEAL_STRING_SENSITIVE(cifs_sb, ctx, field)			\
+do {									\
+	kfree_sensitive(ctx->field);					\
+	ctx->field = cifs_sb->ctx->field;				\
+	cifs_sb->ctx->field = NULL;					\
+} while (0)
+
 static int smb3_reconfigure(struct fs_context *fc)
 {
 	struct smb3_fs_context *ctx = smb3_fc2context(fc);
@@ -792,14 +810,15 @@ static int smb3_reconfigure(struct fs_context *fc)
 		return rc;
 
 	/*
-	 * We can not change UNC/username/password/domainname/nodename/iocharset
+	 * We can not change UNC/username/password/domainname/
+	 * workstation_name/nodename/iocharset
 	 * during reconnect so ignore what we have in the new context and
 	 * just use what we already have in cifs_sb->ctx.
 	 */
 	STEAL_STRING(cifs_sb, ctx, UNC);
 	STEAL_STRING(cifs_sb, ctx, source);
 	STEAL_STRING(cifs_sb, ctx, username);
-	STEAL_STRING(cifs_sb, ctx, password);
+	STEAL_STRING_SENSITIVE(cifs_sb, ctx, password);
 	STEAL_STRING(cifs_sb, ctx, domainname);
 	STEAL_STRING(cifs_sb, ctx, nodename);
 	STEAL_STRING(cifs_sb, ctx, iocharset);
@@ -884,14 +903,6 @@ static int smb3_fs_context_parse_param(struct fs_context *fc,
 			ctx->sfu_remap = false; /* disable SFU mapping */
 		}
 		break;
-	case Opt_mapchars:
-		if (result.negated)
-			ctx->sfu_remap = false;
-		else {
-			ctx->sfu_remap = true;
-			ctx->remap = false; /* disable SFM (mapposix) mapping */
-		}
-		break;
 	case Opt_user_xattr:
 		if (result.negated)
 			ctx->no_xattr = 1;
@@ -936,6 +947,9 @@ static int smb3_fs_context_parse_param(struct fs_context *fc,
 		break;
 	case Opt_nolease:
 		ctx->no_lease = 1;
+		break;
+	case Opt_nosparse:
+		ctx->no_sparse = 1;
 		break;
 	case Opt_nodelete:
 		ctx->nodelete = 1;
@@ -1155,7 +1169,7 @@ static int smb3_fs_context_parse_param(struct fs_context *fc,
 		}
 		break;
 	case Opt_pass:
-		kfree(ctx->password);
+		kfree_sensitive(ctx->password);
 		ctx->password = NULL;
 		if (strlen(param->string) == 0)
 			break;
@@ -1444,6 +1458,13 @@ static int smb3_fs_context_parse_param(struct fs_context *fc,
 			}
 		}
 		break;
+	case Opt_tcp_nodelay:
+		/* tcp nodelay should not usually be needed since we CORK/UNCORK the socket */
+		if (result.negated)
+			ctx->sockopt_tcp_nodelay = false;
+		else
+			ctx->sockopt_tcp_nodelay = true;
+		break;
 	case Opt_domainauto:
 		ctx->domainauto = true;
 		break;
@@ -1456,6 +1477,7 @@ static int smb3_fs_context_parse_param(struct fs_context *fc,
 	return 0;
 
  cifs_parse_mount_err:
+	kfree_sensitive(ctx->password);
 	return -EINVAL;
 }
 
@@ -1468,6 +1490,8 @@ int smb3_init_fs_context(struct fs_context *fc)
 	ctx = kzalloc(sizeof(struct smb3_fs_context), GFP_KERNEL);
 	if (unlikely(!ctx))
 		return -ENOMEM;
+
+	strscpy(ctx->workstation_name, nodename, sizeof(ctx->workstation_name));
 
 	/*
 	 * does not have to be perfect mapping since field is

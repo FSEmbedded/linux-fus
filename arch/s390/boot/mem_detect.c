@@ -7,7 +7,7 @@
 #include <asm/sections.h>
 #include <asm/mem_detect.h>
 #include <asm/sparsemem.h>
-#include "compressed/decompressor.h"
+#include "decompressor.h"
 #include "boot.h"
 
 struct mem_detect_info __bootdata(mem_detect);
@@ -165,7 +165,7 @@ static void search_mem_end(void)
 
 unsigned long detect_memory(void)
 {
-	unsigned long max_physmem_end = 0;
+	unsigned long max_physmem_end;
 
 	sclp_early_get_memsize(&max_physmem_end);
 

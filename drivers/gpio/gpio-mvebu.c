@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * GPIO driver for Marvell SoCs
  *
@@ -6,10 +7,6 @@
  * Thomas Petazzoni <thomas.petazzoni@free-electrons.com>
  * Andrew Lunn <andrew@lunn.ch>
  * Sebastian Hesselbarth <sebastian.hesselbarth@gmail.com>
- *
- * This file is licensed under the terms of the GNU General Public
- * License version 2.  This program is licensed "as is" without any
- * warranty of any kind, whether express or implied.
  *
  * This driver is a fairly straightforward GPIO driver for the
  * complete family of Marvell EBU SoC platforms (Orion, Dove,
@@ -874,7 +871,7 @@ static int mvebu_pwm_probe(struct platform_device *pdev,
 
 	spin_lock_init(&mvpwm->lock);
 
-	return devm_pwmchip_add(dev, &mvpwm->chip);
+	return pwmchip_add(&mvpwm->chip);
 }
 
 #ifdef CONFIG_DEBUG_FS
@@ -1112,13 +1109,6 @@ static int mvebu_gpio_probe_syscon(struct platform_device *pdev,
 	return 0;
 }
 
-static void mvebu_gpio_remove_irq_domain(void *data)
-{
-	struct irq_domain *domain = data;
-
-	irq_domain_remove(domain);
-}
-
 static int mvebu_gpio_probe(struct platform_device *pdev)
 {
 	struct mvebu_gpio_chip *mvchip;
@@ -1183,7 +1173,6 @@ static int mvebu_gpio_probe(struct platform_device *pdev)
 	mvchip->chip.base = id * MVEBU_MAX_GPIO_PER_BANK;
 	mvchip->chip.ngpio = ngpios;
 	mvchip->chip.can_sleep = false;
-	mvchip->chip.of_node = np;
 	mvchip->chip.dbg_show = mvebu_gpio_dbg_show;
 
 	if (soc_variant == MVEBU_GPIO_SOC_VARIANT_A8K)
@@ -1251,13 +1240,9 @@ static int mvebu_gpio_probe(struct platform_device *pdev)
 	if (!mvchip->domain) {
 		dev_err(&pdev->dev, "couldn't allocate irq domain %s (DT).\n",
 			mvchip->chip.label);
-		return -ENODEV;
+		err = -ENODEV;
+		goto err_pwm;
 	}
-
-	err = devm_add_action_or_reset(&pdev->dev, mvebu_gpio_remove_irq_domain,
-				       mvchip->domain);
-	if (err)
-		return err;
 
 	err = irq_alloc_domain_generic_chips(
 	    mvchip->domain, ngpios, 2, np->name, handle_level_irq,
@@ -1265,7 +1250,7 @@ static int mvebu_gpio_probe(struct platform_device *pdev)
 	if (err) {
 		dev_err(&pdev->dev, "couldn't allocate irq chips %s (DT).\n",
 			mvchip->chip.label);
-		return err;
+		goto err_domain;
 	}
 
 	/*
@@ -1305,6 +1290,13 @@ static int mvebu_gpio_probe(struct platform_device *pdev)
 	}
 
 	return 0;
+
+err_domain:
+	irq_domain_remove(mvchip->domain);
+err_pwm:
+	pwmchip_remove(&mvchip->mvpwm->chip);
+
+	return err;
 }
 
 static struct platform_driver mvebu_gpio_driver = {

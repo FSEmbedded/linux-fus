@@ -11,25 +11,27 @@
 
 #include <linux/bio.h>
 #include <linux/blkdev.h>
-#include <linux/keyslot-manager.h>
+#include <linux/blk-crypto-profile.h>
 #include <linux/module.h>
-#include <linux/ratelimit.h>
 #include <linux/slab.h>
 
 #include "blk-crypto-internal.h"
 
 const struct blk_crypto_mode blk_crypto_modes[] = {
 	[BLK_ENCRYPTION_MODE_AES_256_XTS] = {
+		.name = "AES-256-XTS",
 		.cipher_str = "xts(aes)",
 		.keysize = 64,
 		.ivsize = 16,
 	},
 	[BLK_ENCRYPTION_MODE_AES_128_CBC_ESSIV] = {
+		.name = "AES-128-CBC-ESSIV",
 		.cipher_str = "essiv(cbc(aes),sha256)",
 		.keysize = 16,
 		.ivsize = 16,
 	},
 	[BLK_ENCRYPTION_MODE_ADIANTUM] = {
+		.name = "Adiantum",
 		.cipher_str = "adiantum(xchacha12,aes)",
 		.keysize = 32,
 		.ivsize = 32,
@@ -112,7 +114,6 @@ int __bio_crypt_clone(struct bio *dst, struct bio *src, gfp_t gfp_mask)
 	*dst->bi_crypt_context = *src->bi_crypt_context;
 	return 0;
 }
-EXPORT_SYMBOL_GPL(__bio_crypt_clone);
 
 /* Increments @dun by @inc, treating @dun as a multi-limb integer. */
 void bio_crypt_dun_increment(u64 dun[BLK_CRYPTO_DUN_ARRAY_SIZE],
@@ -217,26 +218,27 @@ static bool bio_crypt_check_alignment(struct bio *bio)
 	return true;
 }
 
-blk_status_t __blk_crypto_rq_get_keyslot(struct request *rq)
+blk_status_t __blk_crypto_init_request(struct request *rq)
 {
-	return blk_ksm_get_slot_for_key(rq->q->ksm, rq->crypt_ctx->bc_key,
-					&rq->crypt_keyslot);
+	return blk_crypto_get_keyslot(rq->q->crypto_profile,
+				      rq->crypt_ctx->bc_key,
+				      &rq->crypt_keyslot);
 }
 
-void __blk_crypto_rq_put_keyslot(struct request *rq)
-{
-	blk_ksm_put_slot(rq->crypt_keyslot);
-	rq->crypt_keyslot = NULL;
-}
-
+/**
+ * __blk_crypto_free_request - Uninitialize the crypto fields of a request.
+ *
+ * @rq: The request whose crypto fields to uninitialize.
+ *
+ * Completely uninitializes the crypto fields of a request. If a keyslot has
+ * been programmed into some inline encryption hardware, that keyslot is
+ * released. The rq->crypt_ctx is also freed.
+ */
 void __blk_crypto_free_request(struct request *rq)
 {
-	/* The keyslot, if one was needed, should have been released earlier. */
-	if (WARN_ON_ONCE(rq->crypt_keyslot))
-		__blk_crypto_rq_put_keyslot(rq);
-
+	blk_crypto_put_keyslot(rq->crypt_keyslot);
 	mempool_free(rq->crypt_ctx, bio_crypt_ctx_pool);
-	rq->crypt_ctx = NULL;
+	blk_crypto_rq_set_defaults(rq);
 }
 
 /**
@@ -265,6 +267,7 @@ bool __blk_crypto_bio_prep(struct bio **bio_ptr)
 {
 	struct bio *bio = *bio_ptr;
 	const struct blk_crypto_key *bc_key = bio->bi_crypt_context->bc_key;
+	struct blk_crypto_profile *profile;
 
 	/* Error if bio has no data. */
 	if (WARN_ON_ONCE(!bio_has_data(bio))) {
@@ -281,8 +284,8 @@ bool __blk_crypto_bio_prep(struct bio **bio_ptr)
 	 * Success if device supports the encryption context, or if we succeeded
 	 * in falling back to the crypto API.
 	 */
-	if (blk_ksm_crypto_cfg_supported(bio->bi_bdev->bd_disk->queue->ksm,
-					 &bc_key->crypto_cfg))
+	profile = bdev_get_queue(bio->bi_bdev)->crypto_profile;
+	if (__blk_crypto_cfg_supported(profile, &bc_key->crypto_cfg))
 		return true;
 
 	if (blk_crypto_fallback_bio_prep(bio_ptr))
@@ -358,7 +361,7 @@ bool blk_crypto_config_supported(struct request_queue *q,
 				 const struct blk_crypto_config *cfg)
 {
 	return IS_ENABLED(CONFIG_BLK_INLINE_ENCRYPTION_FALLBACK) ||
-	       blk_ksm_crypto_cfg_supported(q->ksm, cfg);
+	       __blk_crypto_cfg_supported(q->crypto_profile, cfg);
 }
 
 /**
@@ -379,45 +382,34 @@ bool blk_crypto_config_supported(struct request_queue *q,
 int blk_crypto_start_using_key(const struct blk_crypto_key *key,
 			       struct request_queue *q)
 {
-	if (blk_ksm_crypto_cfg_supported(q->ksm, &key->crypto_cfg))
+	if (__blk_crypto_cfg_supported(q->crypto_profile, &key->crypto_cfg))
 		return 0;
 	return blk_crypto_fallback_start_using_mode(key->crypto_cfg.crypto_mode);
 }
 
 /**
- * blk_crypto_evict_key() - Evict a blk_crypto_key from a request_queue
- * @q: a request_queue on which I/O using the key may have been done
- * @key: the key to evict
+ * blk_crypto_evict_key() - Evict a key from any inline encryption hardware
+ *			    it may have been programmed into
+ * @q: The request queue who's associated inline encryption hardware this key
+ *     might have been programmed into
+ * @key: The key to evict
  *
- * For a given request_queue, this function removes the given blk_crypto_key
- * from the keyslot management structures and evicts it from any underlying
- * hardware keyslot(s) or blk-crypto-fallback keyslot it may have been
- * programmed into.
+ * Upper layers (filesystems) must call this function to ensure that a key is
+ * evicted from any hardware that it might have been programmed into.  The key
+ * must not be in use by any in-flight IO when this function is called.
  *
- * Upper layers must call this before freeing the blk_crypto_key.  It must be
- * called for every request_queue the key may have been used on.  The key must
- * no longer be in use by any I/O when this function is called.
- *
- * Context: May sleep.
+ * Return: 0 on success or if the key wasn't in any keyslot; -errno on error.
  */
-void blk_crypto_evict_key(struct request_queue *q,
-			  const struct blk_crypto_key *key)
+int blk_crypto_evict_key(struct request_queue *q,
+			 const struct blk_crypto_key *key)
 {
-	int err;
+	if (__blk_crypto_cfg_supported(q->crypto_profile, &key->crypto_cfg))
+		return __blk_crypto_evict_key(q->crypto_profile, key);
 
-	if (blk_ksm_crypto_cfg_supported(q->ksm, &key->crypto_cfg))
-		err = blk_ksm_evict_key(q->ksm, key);
-	else
-		err = blk_crypto_fallback_evict_key(key);
 	/*
-	 * An error can only occur here if the key failed to be evicted from a
-	 * keyslot (due to a hardware or driver issue) or is allegedly still in
-	 * use by I/O (due to a kernel bug).  Even in these cases, the key is
-	 * still unlinked from the keyslot management structures, and the caller
-	 * is allowed and expected to free it right away.  There's nothing
-	 * callers can do to handle errors, so just log them and return void.
+	 * If the request_queue didn't support the key, then blk-crypto-fallback
+	 * may have been used, so try to evict the key from blk-crypto-fallback.
 	 */
-	if (err)
-		pr_warn_ratelimited("error %d evicting key\n", err);
+	return blk_crypto_fallback_evict_key(key);
 }
 EXPORT_SYMBOL_GPL(blk_crypto_evict_key);

@@ -545,7 +545,7 @@ static int find_dup_cset_node_entry(struct overlay_changeset *ovcs,
 
 		fn_1 = kasprintf(GFP_KERNEL, "%pOF", ce_1->np);
 		fn_2 = kasprintf(GFP_KERNEL, "%pOF", ce_2->np);
-		node_path_match = !fn_1 || !fn_2 || !strcmp(fn_1, fn_2);
+		node_path_match = !strcmp(fn_1, fn_2);
 		kfree(fn_1);
 		kfree(fn_2);
 		if (node_path_match) {
@@ -580,7 +580,7 @@ static int find_dup_cset_prop(struct overlay_changeset *ovcs,
 
 		fn_1 = kasprintf(GFP_KERNEL, "%pOF", ce_1->np);
 		fn_2 = kasprintf(GFP_KERNEL, "%pOF", ce_2->np);
-		node_path_match = !fn_1 || !fn_2 || !strcmp(fn_1, fn_2);
+		node_path_match = !strcmp(fn_1, fn_2);
 		kfree(fn_1);
 		kfree(fn_2);
 		if (node_path_match &&
@@ -811,7 +811,6 @@ static int init_overlay_changeset(struct overlay_changeset *ovcs)
 		if (!fragment->target) {
 			pr_err("symbols in overlay, but not in live tree\n");
 			ret = -EINVAL;
-			of_node_put(node);
 			goto err_out;
 		}
 
@@ -904,12 +903,6 @@ static int of_overlay_apply(struct overlay_changeset *ovcs)
 {
 	int ret = 0, ret_revert, ret_tmp;
 
-	if (devicetree_corrupt()) {
-		pr_err("devicetree state suspect, refuse to apply overlay\n");
-		ret = -EBUSY;
-		goto out;
-	}
-
 	ret = of_resolve_phandles(ovcs->overlay_root);
 	if (ret)
 		goto out;
@@ -953,6 +946,25 @@ out:
 	return ret;
 }
 
+/*
+ * of_overlay_fdt_apply() - Create and apply an overlay changeset
+ * @overlay_fdt:	pointer to overlay FDT
+ * @overlay_fdt_size:	number of bytes in @overlay_fdt
+ * @ret_ovcs_id:	pointer for returning created changeset id
+ *
+ * Creates and applies an overlay changeset.
+ *
+ * See of_overlay_apply() for important behavior information.
+ *
+ * Return: 0 on success, or a negative error number.  *@ret_ovcs_id is set to
+ * the value of overlay changeset id, which can be passed to of_overlay_remove()
+ * to remove the overlay.
+ *
+ * On error return, the changeset may be partially applied.  This is especially
+ * likely if an OF_OVERLAY_POST_APPLY notifier returns an error.  In this case
+ * the caller should call of_overlay_remove() with the value in *@ret_ovcs_id.
+ */
+
 int of_overlay_fdt_apply(const void *overlay_fdt, u32 overlay_fdt_size,
 			 int *ret_ovcs_id)
 {
@@ -964,6 +976,11 @@ int of_overlay_fdt_apply(const void *overlay_fdt, u32 overlay_fdt_size,
 	struct overlay_changeset *ovcs;
 
 	*ret_ovcs_id = 0;
+
+	if (devicetree_corrupt()) {
+		pr_err("devicetree state suspect, refuse to apply overlay\n");
+		return -EBUSY;
+	}
 
 	if (overlay_fdt_size < sizeof(struct fdt_header) ||
 	    fdt_check_header(overlay_fdt)) {
@@ -1020,22 +1037,21 @@ int of_overlay_fdt_apply(const void *overlay_fdt, u32 overlay_fdt_size,
 	ovcs->overlay_mem = overlay_mem;
 
 	ret = of_overlay_apply(ovcs);
-	if (ret < 0)
-		goto err_free_ovcs;
-
-	mutex_unlock(&of_mutex);
-	of_overlay_mutex_unlock();
-
+	/*
+	 * If of_overlay_apply() error, calling free_overlay_changeset() may
+	 * result in a memory leak if the apply partly succeeded, so do NOT
+	 * goto err_free_ovcs.  Instead, the caller of of_overlay_fdt_apply()
+	 * can call of_overlay_remove();
+	 */
 	*ret_ovcs_id = ovcs->id;
-
-	return 0;
+	goto out_unlock;
 
 err_free_ovcs:
 	free_overlay_changeset(ovcs);
 
+out_unlock:
 	mutex_unlock(&of_mutex);
 	of_overlay_mutex_unlock();
-
 	return ret;
 }
 EXPORT_SYMBOL_GPL(of_overlay_fdt_apply);

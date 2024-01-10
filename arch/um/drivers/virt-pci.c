@@ -131,11 +131,8 @@ static int um_pci_send_cmd(struct um_pci_device *dev,
 				out ? 1 : 0,
 				posted ? cmd : HANDLE_NO_FREE(cmd),
 				GFP_ATOMIC);
-	if (ret) {
-		if (posted)
-			kfree(cmd);
+	if (ret)
 		goto out;
-	}
 
 	if (posted) {
 		virtqueue_kick(dev->cmd_vq);
@@ -547,6 +544,8 @@ static int um_pci_init_vqs(struct um_pci_device *dev)
 	dev->cmd_vq = vqs[0];
 	dev->irq_vq = vqs[1];
 
+	virtio_device_ready(dev->vdev);
+
 	for (i = 0; i < NUM_IRQ_MSGS; i++) {
 		void *msg = kzalloc(MAX_IRQ_MSG_SIZE, GFP_KERNEL);
 
@@ -590,7 +589,7 @@ static int um_pci_virtio_probe(struct virtio_device *vdev)
 	dev->irq = irq_alloc_desc(numa_node_id());
 	if (dev->irq < 0) {
 		err = dev->irq;
-		goto error;
+		goto err_reset;
 	}
 	um_pci_devices[free].dev = dev;
 	vdev->priv = dev;
@@ -607,6 +606,9 @@ static int um_pci_virtio_probe(struct virtio_device *vdev)
 
 	um_pci_rescan();
 	return 0;
+err_reset:
+	virtio_reset_device(vdev);
+	vdev->config->del_vqs(vdev);
 error:
 	mutex_unlock(&um_pci_mtx);
 	kfree(dev);
@@ -618,33 +620,22 @@ static void um_pci_virtio_remove(struct virtio_device *vdev)
 	struct um_pci_device *dev = vdev->priv;
 	int i;
 
+        /* Stop all virtqueues */
+        virtio_reset_device(vdev);
+        vdev->config->del_vqs(vdev);
+
 	device_set_wakeup_enable(&vdev->dev, false);
 
 	mutex_lock(&um_pci_mtx);
 	for (i = 0; i < MAX_DEVICES; i++) {
 		if (um_pci_devices[i].dev != dev)
 			continue;
-
 		um_pci_devices[i].dev = NULL;
 		irq_free_desc(dev->irq);
-
-		break;
 	}
 	mutex_unlock(&um_pci_mtx);
 
-	if (i < MAX_DEVICES) {
-		struct pci_dev *pci_dev;
-
-		pci_dev = pci_get_slot(bridge->bus, i);
-		if (pci_dev)
-			pci_stop_and_remove_bus_device_locked(pci_dev);
-	}
-
-	/* Stop all virtqueues */
-	virtio_reset_device(vdev);
-	dev->cmd_vq = NULL;
-	dev->irq_vq = NULL;
-	vdev->config->del_vqs(vdev);
+	um_pci_rescan();
 
 	kfree(dev);
 }
@@ -866,7 +857,7 @@ void *pci_root_bus_fwnode(struct pci_bus *bus)
 	return um_pci_fwnode;
 }
 
-static int um_pci_init(void)
+static int __init um_pci_init(void)
 {
 	int err, i;
 
@@ -949,7 +940,7 @@ free:
 }
 module_init(um_pci_init);
 
-static void um_pci_exit(void)
+static void __exit um_pci_exit(void)
 {
 	unregister_virtio_driver(&um_pci_virtio_driver);
 	irq_domain_remove(um_pci_msi_domain);

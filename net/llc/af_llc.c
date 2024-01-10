@@ -224,7 +224,7 @@ static int llc_ui_release(struct socket *sock)
 	} else {
 		release_sock(sk);
 	}
-	dev_put(llc->dev);
+	netdev_put(llc->dev, &llc->dev_tracker);
 	sock_put(sk);
 	llc_sk_free(sk);
 out:
@@ -307,6 +307,7 @@ static int llc_ui_autobind(struct socket *sock, struct sockaddr_llc *addr)
 
 	/* Note: We do not expect errors from this point. */
 	llc->dev = dev;
+	netdev_tracker_alloc(llc->dev, &llc->dev_tracker, GFP_KERNEL);
 	dev = NULL;
 
 	memcpy(llc->laddr.mac, llc->dev->dev_addr, IFHWADDRLEN);
@@ -410,6 +411,7 @@ static int llc_ui_bind(struct socket *sock, struct sockaddr *uaddr, int addrlen)
 
 	/* Note: We do not expect errors from this point. */
 	llc->dev = dev;
+	netdev_tracker_alloc(llc->dev, &llc->dev_tracker, GFP_KERNEL);
 	dev = NULL;
 
 	llc->laddr.lsap = addr->sllc_sap;
@@ -581,8 +583,7 @@ static int llc_ui_wait_for_disc(struct sock *sk, long timeout)
 
 	add_wait_queue(sk_sleep(sk), &wait);
 	while (1) {
-		if (sk_wait_event(sk, &timeout,
-				  READ_ONCE(sk->sk_state) == TCP_CLOSE, &wait))
+		if (sk_wait_event(sk, &timeout, sk->sk_state == TCP_CLOSE, &wait))
 			break;
 		rc = -ERESTARTSYS;
 		if (signal_pending(current))
@@ -602,8 +603,7 @@ static bool llc_ui_wait_for_conn(struct sock *sk, long timeout)
 
 	add_wait_queue(sk_sleep(sk), &wait);
 	while (1) {
-		if (sk_wait_event(sk, &timeout,
-				  READ_ONCE(sk->sk_state) != TCP_SYN_SENT, &wait))
+		if (sk_wait_event(sk, &timeout, sk->sk_state != TCP_SYN_SENT, &wait))
 			break;
 		if (signal_pending(current) || !timeout)
 			break;
@@ -622,7 +622,7 @@ static int llc_ui_wait_for_busy_core(struct sock *sk, long timeout)
 	while (1) {
 		rc = 0;
 		if (sk_wait_event(sk, &timeout,
-				  (READ_ONCE(sk->sk_shutdown) & RCV_SHUTDOWN) ||
+				  (sk->sk_shutdown & RCV_SHUTDOWN) ||
 				  (!llc_data_accept_state(llc->state) &&
 				   !llc->remote_busy_flag &&
 				   !llc->p_flag), &wait))

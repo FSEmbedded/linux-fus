@@ -15,7 +15,7 @@
 #include "iscsi_target_parameters.h"
 
 int iscsi_login_rx_data(
-	struct iscsi_conn *conn,
+	struct iscsit_conn *conn,
 	char *buf,
 	int length)
 {
@@ -37,7 +37,7 @@ int iscsi_login_rx_data(
 }
 
 int iscsi_login_tx_data(
-	struct iscsi_conn *conn,
+	struct iscsit_conn *conn,
 	char *pdu_buf,
 	char *text_buf,
 	int text_length)
@@ -955,7 +955,7 @@ out:
 }
 
 static int iscsi_check_acceptor_state(struct iscsi_param *param, char *value,
-				struct iscsi_conn *conn)
+				struct iscsit_conn *conn)
 {
 	u8 acceptor_boolean_value = 0, proposer_boolean_value = 0;
 	char *negotiated_value = NULL;
@@ -1262,20 +1262,18 @@ static struct iscsi_param *iscsi_check_key(
 		return param;
 
 	if (!(param->phase & phase)) {
-		char *phase_name;
-
+		pr_err("Key \"%s\" may not be negotiated during ",
+				param->name);
 		switch (phase) {
 		case PHASE_SECURITY:
-			phase_name = "Security";
+			pr_debug("Security phase.\n");
 			break;
 		case PHASE_OPERATIONAL:
-			phase_name = "Operational";
+			pr_debug("Operational phase.\n");
 			break;
 		default:
-			phase_name = "Unknown";
+			pr_debug("Unknown phase.\n");
 		}
-		pr_err("Key \"%s\" may not be negotiated during %s phase.\n",
-				param->name, phase_name);
 		return NULL;
 	}
 
@@ -1354,7 +1352,7 @@ int iscsi_decode_text_input(
 	u8 sender,
 	char *textbuf,
 	u32 length,
-	struct iscsi_conn *conn)
+	struct iscsit_conn *conn)
 {
 	struct iscsi_param_list *param_list = conn->param_list;
 	char *tmpbuf, *start = NULL, *end = NULL;

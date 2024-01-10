@@ -9,16 +9,15 @@
 #ifdef CONFIG_SHADOW_CALL_STACK
 	scs_sp	.req	x18
 
-	.macro scs_load_current
-	get_current_task scs_sp
-	ldr	scs_sp, [scs_sp, #TSK_TI_SCS_SP]
+	.macro scs_load tsk
+	ldr	scs_sp, [\tsk, #TSK_TI_SCS_SP]
 	.endm
 
 	.macro scs_save tsk
 	str	scs_sp, [\tsk, #TSK_TI_SCS_SP]
 	.endm
 #else
-	.macro scs_load_current
+	.macro scs_load tsk
 	.endm
 
 	.macro scs_save tsk

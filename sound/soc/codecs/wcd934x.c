@@ -3044,17 +3044,6 @@ static int wcd934x_mbhc_init(struct snd_soc_component *component)
 
 	return 0;
 }
-
-static void wcd934x_mbhc_deinit(struct snd_soc_component *component)
-{
-	struct wcd934x_codec *wcd = snd_soc_component_get_drvdata(component);
-
-	if (!wcd->mbhc)
-		return;
-
-	wcd_mbhc_deinit(wcd->mbhc);
-}
-
 static int wcd934x_comp_probe(struct snd_soc_component *component)
 {
 	struct wcd934x_codec *wcd = dev_get_drvdata(component->dev);
@@ -3088,7 +3077,6 @@ static void wcd934x_comp_remove(struct snd_soc_component *comp)
 {
 	struct wcd934x_codec *wcd = dev_get_drvdata(comp->dev);
 
-	wcd934x_mbhc_deinit(comp);
 	wcd_clsh_ctrl_free(wcd->clsh_ctrl);
 }
 
@@ -3414,7 +3402,7 @@ static int wcd934x_int_dem_inp_mux_put(struct snd_kcontrol *kc,
 {
 	struct soc_enum *e = (struct soc_enum *)kc->private_value;
 	struct snd_soc_component *component;
-	int reg, val, ret;
+	int reg, val;
 
 	component = snd_soc_dapm_kcontrol_component(kc);
 	val = ucontrol->value.enumerated.item[0];
@@ -3437,9 +3425,7 @@ static int wcd934x_int_dem_inp_mux_put(struct snd_kcontrol *kc,
 					      WCD934X_RX_DLY_ZN_EN_MASK,
 					      WCD934X_RX_DLY_ZN_DISABLE);
 
-	ret = snd_soc_dapm_put_enum_double(kc, ucontrol);
-
-	return ret;
+	return snd_soc_dapm_put_enum_double(kc, ucontrol);
 }
 
 static int wcd934x_dec_enum_put(struct snd_kcontrol *kcontrol,
@@ -5861,6 +5847,7 @@ static const struct snd_soc_component_driver wcd934x_component_drv = {
 	.dapm_routes = wcd934x_audio_map,
 	.num_dapm_routes = ARRAY_SIZE(wcd934x_audio_map),
 	.set_jack = wcd934x_codec_set_jack,
+	.endianness = 1,
 };
 
 static int wcd934x_codec_parse_data(struct wcd934x_codec *wcd)

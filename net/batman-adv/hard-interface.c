@@ -9,11 +9,12 @@
 
 #include <linux/atomic.h>
 #include <linux/byteorder/generic.h>
+#include <linux/container_of.h>
+#include <linux/errno.h>
 #include <linux/gfp.h>
 #include <linux/if.h>
 #include <linux/if_arp.h>
 #include <linux/if_ether.h>
-#include <linux/kernel.h>
 #include <linux/kref.h>
 #include <linux/limits.h>
 #include <linux/list.h>
@@ -168,9 +169,9 @@ static bool batadv_is_on_batman_iface(const struct net_device *net_dev)
 
 	/* recurse over the parent device */
 	parent_dev = __dev_get_by_index((struct net *)parent_net, iflink);
-	/* if we got a NULL parent_dev there is something broken.. */
 	if (!parent_dev) {
-		pr_err("Cannot find parent device\n");
+		pr_warn("Cannot find parent device. Skipping batadv-on-batadv check for %s\n",
+			net_dev->name);
 		return false;
 	}
 
@@ -307,9 +308,11 @@ static bool batadv_is_cfg80211_netdev(struct net_device *net_device)
 	if (!net_device)
 		return false;
 
+#if IS_ENABLED(CONFIG_CFG80211)
 	/* cfg80211 drivers have to set ieee80211_ptr */
 	if (net_device->ieee80211_ptr)
 		return true;
+#endif
 
 	return false;
 }
@@ -627,19 +630,7 @@ out:
  */
 void batadv_update_min_mtu(struct net_device *soft_iface)
 {
-	struct batadv_priv *bat_priv = netdev_priv(soft_iface);
-	int limit_mtu;
-	int mtu;
-
-	mtu = batadv_hardif_min_mtu(soft_iface);
-
-	if (bat_priv->mtu_set_by_user)
-		limit_mtu = bat_priv->mtu_set_by_user;
-	else
-		limit_mtu = ETH_DATA_LEN;
-
-	mtu = min(mtu, limit_mtu);
-	dev_set_mtu(soft_iface, mtu);
+	soft_iface->mtu = batadv_hardif_min_mtu(soft_iface);
 
 	/* Check if the local translate table should be cleaned up to match a
 	 * new (and smaller) MTU.
@@ -709,6 +700,9 @@ int batadv_hardif_enable_interface(struct batadv_hard_iface *hard_iface,
 	__be16 ethertype = htons(ETH_P_BATMAN);
 	int max_header_len = batadv_max_header_len();
 	int ret;
+
+	if (hard_iface->net_dev->mtu < ETH_MIN_MTU + max_header_len)
+		return -EINVAL;
 
 	if (hard_iface->if_status != BATADV_IF_NOT_IN_USE)
 		goto out;

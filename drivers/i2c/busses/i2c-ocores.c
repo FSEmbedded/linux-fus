@@ -342,18 +342,18 @@ static int ocores_poll_wait(struct ocores_i2c *i2c)
  * ocores_isr(), we just add our polling code around it.
  *
  * It can run in atomic context
- *
- * Return: 0 on success, -ETIMEDOUT on timeout
  */
-static int ocores_process_polling(struct ocores_i2c *i2c)
+static void ocores_process_polling(struct ocores_i2c *i2c)
 {
-	irqreturn_t ret;
-	int err = 0;
-
 	while (1) {
+		irqreturn_t ret;
+		int err;
+
 		err = ocores_poll_wait(i2c);
-		if (err)
+		if (err) {
+			i2c->state = STATE_ERROR;
 			break; /* timeout */
+		}
 
 		ret = ocores_isr(-1, i2c);
 		if (ret == IRQ_NONE)
@@ -364,15 +364,13 @@ static int ocores_process_polling(struct ocores_i2c *i2c)
 					break;
 		}
 	}
-
-	return err;
 }
 
 static int ocores_xfer_core(struct ocores_i2c *i2c,
 			    struct i2c_msg *msgs, int num,
 			    bool polling)
 {
-	int ret = 0;
+	int ret;
 	u8 ctrl;
 
 	ctrl = oc_getreg(i2c, OCI2C_CONTROL);
@@ -390,16 +388,15 @@ static int ocores_xfer_core(struct ocores_i2c *i2c,
 	oc_setreg(i2c, OCI2C_CMD, OCI2C_CMD_START);
 
 	if (polling) {
-		ret = ocores_process_polling(i2c);
+		ocores_process_polling(i2c);
 	} else {
-		if (wait_event_timeout(i2c->wait,
-				       (i2c->state == STATE_ERROR) ||
-				       (i2c->state == STATE_DONE), HZ) == 0)
-			ret = -ETIMEDOUT;
-	}
-	if (ret) {
-		ocores_process_timeout(i2c);
-		return ret;
+		ret = wait_event_timeout(i2c->wait,
+					 (i2c->state == STATE_ERROR) ||
+					 (i2c->state == STATE_DONE), HZ);
+		if (ret == 0) {
+			ocores_process_timeout(i2c);
+			return -ETIMEDOUT;
+		}
 	}
 
 	return (i2c->state == STATE_DONE) ? num : -EIO;

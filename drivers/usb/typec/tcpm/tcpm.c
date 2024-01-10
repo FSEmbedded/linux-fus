@@ -394,6 +394,14 @@ struct tcpm_port {
 	bool explicit_contract;
 	unsigned int rx_msgid;
 
+	/* USB PD objects */
+	struct usb_power_delivery *pd;
+	struct usb_power_delivery_capabilities *port_source_caps;
+	struct usb_power_delivery_capabilities *port_sink_caps;
+	struct usb_power_delivery *partner_pd;
+	struct usb_power_delivery_capabilities *partner_source_caps;
+	struct usb_power_delivery_capabilities *partner_sink_caps;
+
 	/* Partner capabilities/requests */
 	u32 sink_request;
 	u32 source_caps[PDO_MAX_OBJECTS];
@@ -471,7 +479,7 @@ struct tcpm_port {
 
 	/*
 	 * When set, port requests PD_P_SNK_STDBY_MW upon entering SNK_DISCOVERY and
-	 * the actual currrent limit after RX of PD_CTRL_PSRDY for PD link,
+	 * the actual current limit after RX of PD_CTRL_PSRDY for PD link,
 	 * SNK_READY for non-pd link.
 	 */
 	bool slow_charger_loop;
@@ -1428,18 +1436,10 @@ static int tcpm_ams_start(struct tcpm_port *port, enum tcpm_ams ams)
 static void tcpm_queue_vdm(struct tcpm_port *port, const u32 header,
 			   const u32 *data, int cnt)
 {
-	u32 vdo_hdr = port->vdo_data[0];
-
 	WARN_ON(!mutex_is_locked(&port->lock));
 
-	/* If is sending discover_identity, handle received message first */
-	if (PD_VDO_SVDM(vdo_hdr) && PD_VDO_CMD(vdo_hdr) == CMD_DISCOVER_IDENT) {
-		port->send_discover = true;
-		mod_send_discover_delayed_work(port, SEND_DISCOVER_RETRY_MS);
-	} else {
-		/* Make sure we are not still processing a previous VDM packet */
-		WARN_ON(port->vdm_state > VDM_STATE_DONE);
-	}
+	/* Make sure we are not still processing a previous VDM packet */
+	WARN_ON(port->vdm_state > VDM_STATE_DONE);
 
 	port->vdo_count = cnt + 1;
 	port->vdo_data[0] = header;
@@ -1506,21 +1506,7 @@ static bool svdm_consume_svids(struct tcpm_port *port, const u32 *p, int cnt)
 		pmdata->svids[pmdata->nsvids++] = svid;
 		tcpm_log(port, "SVID %d: 0x%x", pmdata->nsvids, svid);
 	}
-
-	/*
-	 * PD3.0 Spec 6.4.4.3.2: The SVIDs are returned 2 per VDO (see Table
-	 * 6-43), and can be returned maximum 6 VDOs per response (see Figure
-	 * 6-19). If the Respondersupports 12 or more SVID then the Discover
-	 * SVIDs Command Shall be executed multiple times until a Discover
-	 * SVIDs VDO is returned ending either with a SVID value of 0x0000 in
-	 * the last part of the last VDO or with a VDO containing two SVIDs
-	 * with values of 0x0000.
-	 *
-	 * However, some odd dockers support SVIDs less than 12 but without
-	 * 0x0000 in the last VDO, so we need to break the Discover SVIDs
-	 * request and return false here.
-	 */
-	return cnt == 7;
+	return true;
 abort:
 	tcpm_log(port, "SVID_DISCOVERY_MAX(%d) too low!", SVID_DISCOVERY_MAX);
 	return false;
@@ -1956,13 +1942,11 @@ static void vdm_run_state_machine(struct tcpm_port *port)
 			switch (PD_VDO_CMD(vdo_hdr)) {
 			case CMD_DISCOVER_IDENT:
 				res = tcpm_ams_start(port, DISCOVER_IDENTITY);
-				if (res == 0) {
+				if (res == 0)
 					port->send_discover = false;
-				} else if (res == -EAGAIN) {
-					port->vdo_data[0] = 0;
+				else if (res == -EAGAIN)
 					mod_send_discover_delayed_work(port,
 								       SEND_DISCOVER_RETRY_MS);
-				}
 				break;
 			case CMD_DISCOVER_SVID:
 				res = tcpm_ams_start(port, DISCOVER_SVIDS);
@@ -2045,7 +2029,6 @@ static void vdm_run_state_machine(struct tcpm_port *port)
 			unsigned long timeout;
 
 			port->vdm_retries = 0;
-			port->vdo_data[0] = 0;
 			port->vdm_state = VDM_STATE_BUSY;
 			timeout = vdm_ready_timeout(vdo_hdr);
 			mod_vdm_delayed_work(port, timeout);
@@ -2377,6 +2360,52 @@ static void tcpm_pd_handle_msg(struct tcpm_port *port,
 	}
 }
 
+static int tcpm_register_source_caps(struct tcpm_port *port)
+{
+	struct usb_power_delivery_desc desc = { port->negotiated_rev };
+	struct usb_power_delivery_capabilities_desc caps = { };
+	struct usb_power_delivery_capabilities *cap;
+
+	if (!port->partner_pd)
+		port->partner_pd = usb_power_delivery_register(NULL, &desc);
+	if (IS_ERR(port->partner_pd))
+		return PTR_ERR(port->partner_pd);
+
+	memcpy(caps.pdo, port->source_caps, sizeof(u32) * port->nr_source_caps);
+	caps.role = TYPEC_SOURCE;
+
+	cap = usb_power_delivery_register_capabilities(port->partner_pd, &caps);
+	if (IS_ERR(cap))
+		return PTR_ERR(cap);
+
+	port->partner_source_caps = cap;
+
+	return 0;
+}
+
+static int tcpm_register_sink_caps(struct tcpm_port *port)
+{
+	struct usb_power_delivery_desc desc = { port->negotiated_rev };
+	struct usb_power_delivery_capabilities_desc caps = { };
+	struct usb_power_delivery_capabilities *cap;
+
+	if (!port->partner_pd)
+		port->partner_pd = usb_power_delivery_register(NULL, &desc);
+	if (IS_ERR(port->partner_pd))
+		return PTR_ERR(port->partner_pd);
+
+	memcpy(caps.pdo, port->sink_caps, sizeof(u32) * port->nr_sink_caps);
+	caps.role = TYPEC_SINK;
+
+	cap = usb_power_delivery_register_capabilities(port->partner_pd, &caps);
+	if (IS_ERR(cap))
+		return PTR_ERR(cap);
+
+	port->partner_sink_caps = cap;
+
+	return 0;
+}
+
 static void tcpm_pd_data_request(struct tcpm_port *port,
 				 const struct pd_message *msg)
 {
@@ -2405,6 +2434,8 @@ static void tcpm_pd_data_request(struct tcpm_port *port,
 
 		tcpm_validate_caps(port, port->source_caps,
 				   port->nr_source_caps);
+
+		tcpm_register_source_caps(port);
 
 		/*
 		 * Adjust revision in subsequent message headers, as required,
@@ -2513,6 +2544,8 @@ static void tcpm_pd_data_request(struct tcpm_port *port,
 
 		port->nr_sink_caps = cnt;
 		port->sink_cap_done = true;
+		tcpm_register_sink_caps(port);
+
 		if (port->ams == GET_SINK_CAPABILITIES)
 			tcpm_set_state(port, ready_state(port), 0);
 		/* Unexpected Sink Capabilities */
@@ -2687,13 +2720,6 @@ static void tcpm_pd_ctrl_request(struct tcpm_port *port,
 			break;
 		case GET_SINK_CAP:
 			port->sink_cap_done = true;
-			tcpm_set_state(port, ready_state(port), 0);
-			break;
-		/*
-		 * Some port partners do not support GET_STATUS, avoid soft reset the link to
-		 * prevent redundant power re-negotiation
-		 */
-		case GET_STATUS_SEND:
 			tcpm_set_state(port, ready_state(port), 0);
 			break;
 		case SRC_READY:
@@ -3586,6 +3612,7 @@ static void tcpm_typec_connect(struct tcpm_port *port)
 		port->partner = typec_register_partner(port->typec_port,
 						       &port->partner_desc);
 		port->connected = true;
+		typec_partner_set_usb_power_delivery(port->partner, port->partner_pd);
 	}
 }
 
@@ -3654,6 +3681,7 @@ out_disable_mux:
 static void tcpm_typec_disconnect(struct tcpm_port *port)
 {
 	if (port->connected) {
+		typec_partner_set_usb_power_delivery(port->partner, NULL);
 		typec_unregister_partner(port->partner);
 		port->partner = NULL;
 		port->connected = false;
@@ -3716,6 +3744,13 @@ static void tcpm_reset_port(struct tcpm_port *port)
 	port->sink_cap_done = false;
 	if (port->tcpc->enable_frs)
 		port->tcpc->enable_frs(port->tcpc, false);
+
+	usb_power_delivery_unregister_capabilities(port->partner_sink_caps);
+	port->partner_sink_caps = NULL;
+	usb_power_delivery_unregister_capabilities(port->partner_source_caps);
+	port->partner_source_caps = NULL;
+	usb_power_delivery_unregister(port->partner_pd);
+	port->partner_pd = NULL;
 }
 
 static void tcpm_detach(struct tcpm_port *port)
@@ -4485,7 +4520,7 @@ static void run_state_machine(struct tcpm_port *port)
 		 * The specification suggests that dual mode ports in sink
 		 * mode should transition to state PE_SRC_Transition_to_default.
 		 * See USB power delivery specification chapter 8.3.3.6.1.3.
-		 * This would mean to to
+		 * This would mean to
 		 * - turn off VCONN, reset power supply
 		 * - request hardware reset
 		 * - turn on VCONN
@@ -4559,13 +4594,14 @@ static void run_state_machine(struct tcpm_port *port)
 		tcpm_set_state(port, ready_state(port), 0);
 		break;
 	case DR_SWAP_CHANGE_DR:
-		tcpm_unregister_altmodes(port);
-		if (port->data_role == TYPEC_HOST)
+		if (port->data_role == TYPEC_HOST) {
+			tcpm_unregister_altmodes(port);
 			tcpm_set_roles(port, true, port->pwr_role,
 				       TYPEC_DEVICE);
-		else
+		} else {
 			tcpm_set_roles(port, true, port->pwr_role,
 				       TYPEC_HOST);
+		}
 		tcpm_ams_finish(port);
 		tcpm_set_state(port, ready_state(port), 0);
 		break;
@@ -5253,10 +5289,6 @@ static void _tcpm_pd_vbus_off(struct tcpm_port *port)
 		/* Do nothing, vbus drop expected */
 		break;
 
-	case SNK_HARD_RESET_WAIT_VBUS:
-		/* Do nothing, its OK to receive vbus off events */
-		break;
-
 	default:
 		if (port->pwr_role == TYPEC_SINK && port->attached)
 			tcpm_set_state(port, SNK_UNATTACHED, tcpm_wait_for_discharge(port));
@@ -5302,9 +5334,6 @@ static void _tcpm_pd_vbus_vsafe0v(struct tcpm_port *port)
 	case SNK_ATTACH_WAIT:
 	case SNK_DEBOUNCED:
 		/*Do nothing, still waiting for VSAFE5V for connect */
-		break;
-	case SNK_HARD_RESET_WAIT_VBUS:
-		/* Do nothing, its OK to receive vbus off events */
 		break;
 	default:
 		if (port->pwr_role == TYPEC_SINK && port->auto_vbus_discharge_enabled)
@@ -5962,6 +5991,68 @@ void tcpm_tcpc_reset(struct tcpm_port *port)
 }
 EXPORT_SYMBOL_GPL(tcpm_tcpc_reset);
 
+static void tcpm_port_unregister_pd(struct tcpm_port *port)
+{
+	usb_power_delivery_unregister_capabilities(port->port_sink_caps);
+	port->port_sink_caps = NULL;
+	usb_power_delivery_unregister_capabilities(port->port_source_caps);
+	port->port_source_caps = NULL;
+	usb_power_delivery_unregister(port->pd);
+	port->pd = NULL;
+}
+
+static int tcpm_port_register_pd(struct tcpm_port *port)
+{
+	struct usb_power_delivery_desc desc = { port->typec_caps.pd_revision };
+	struct usb_power_delivery_capabilities_desc caps = { };
+	struct usb_power_delivery_capabilities *cap;
+	int ret;
+
+	if (!port->nr_src_pdo && !port->nr_snk_pdo)
+		return 0;
+
+	port->pd = usb_power_delivery_register(port->dev, &desc);
+	if (IS_ERR(port->pd)) {
+		ret = PTR_ERR(port->pd);
+		goto err_unregister;
+	}
+
+	if (port->nr_src_pdo) {
+		memcpy_and_pad(caps.pdo, sizeof(caps.pdo), port->src_pdo,
+			       port->nr_src_pdo * sizeof(u32), 0);
+		caps.role = TYPEC_SOURCE;
+
+		cap = usb_power_delivery_register_capabilities(port->pd, &caps);
+		if (IS_ERR(cap)) {
+			ret = PTR_ERR(cap);
+			goto err_unregister;
+		}
+
+		port->port_source_caps = cap;
+	}
+
+	if (port->nr_snk_pdo) {
+		memcpy_and_pad(caps.pdo, sizeof(caps.pdo), port->snk_pdo,
+			       port->nr_snk_pdo * sizeof(u32), 0);
+		caps.role = TYPEC_SINK;
+
+		cap = usb_power_delivery_register_capabilities(port->pd, &caps);
+		if (IS_ERR(cap)) {
+			ret = PTR_ERR(cap);
+			goto err_unregister;
+		}
+
+		port->port_sink_caps = cap;
+	}
+
+	return 0;
+
+err_unregister:
+	tcpm_port_unregister_pd(port);
+
+	return ret;
+}
+
 static int tcpm_fw_get_caps(struct tcpm_port *port,
 			    struct fwnode_handle *fwnode)
 {
@@ -6427,10 +6518,16 @@ struct tcpm_port *tcpm_register_port(struct device *dev, struct tcpc_dev *tcpc)
 		goto out_role_sw_put;
 	power_supply_changed(port->psy);
 
+	err = tcpm_port_register_pd(port);
+	if (err)
+		goto out_role_sw_put;
+
+	port->typec_caps.pd = port->pd;
+
 	port->typec_port = typec_register_port(port->dev, &port->typec_caps);
 	if (IS_ERR(port->typec_port)) {
 		err = PTR_ERR(port->typec_port);
-		goto out_role_sw_put;
+		goto out_unregister_pd;
 	}
 
 	typec_port_register_altmodes(port->typec_port,
@@ -6445,6 +6542,8 @@ struct tcpm_port *tcpm_register_port(struct device *dev, struct tcpc_dev *tcpc)
 	tcpm_log(port, "%s: registered", dev_name(dev));
 	return port;
 
+out_unregister_pd:
+	tcpm_port_unregister_pd(port);
 out_role_sw_put:
 	usb_role_switch_put(port->role_sw);
 out_destroy_wq:
@@ -6467,6 +6566,9 @@ void tcpm_unregister_port(struct tcpm_port *port)
 	hrtimer_cancel(&port->state_machine_timer);
 
 	tcpm_reset_port(port);
+
+	tcpm_port_unregister_pd(port);
+
 	for (i = 0; i < ARRAY_SIZE(port->port_altmode); i++)
 		typec_unregister_altmode(port->port_altmode[i]);
 	typec_unregister_port(port->typec_port);

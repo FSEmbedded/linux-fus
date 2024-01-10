@@ -15,7 +15,6 @@
 #include <linux/elf.h>
 #include <linux/errno.h>
 #include <linux/ptrace.h>
-#include <linux/tracehook.h>
 #include <linux/user.h>
 #include <linux/personality.h>
 #include <linux/regset.h>
@@ -127,12 +126,6 @@ long arch_ptrace(struct task_struct *child, long request,
 	unsigned long tmp;
 	long ret = -EIO;
 
-	unsigned long user_regs_struct_size = sizeof(struct user_regs_struct);
-#ifdef CONFIG_64BIT
-	if (is_compat_task())
-		user_regs_struct_size /= 2;
-#endif
-
 	switch (request) {
 
 	/* Read the word at location addr in the USER area.  For ptraced
@@ -188,14 +181,14 @@ long arch_ptrace(struct task_struct *child, long request,
 		return copy_regset_to_user(child,
 					   task_user_regset_view(current),
 					   REGSET_GENERAL,
-					   0, user_regs_struct_size,
+					   0, sizeof(struct user_regs_struct),
 					   datap);
 
 	case PTRACE_SETREGS:	/* Set all gp regs in the child. */
 		return copy_regset_from_user(child,
 					     task_user_regset_view(current),
 					     REGSET_GENERAL,
-					     0, user_regs_struct_size,
+					     0, sizeof(struct user_regs_struct),
 					     datap);
 
 	case PTRACE_GETFPREGS:	/* Get the child FPU state. */
@@ -309,11 +302,6 @@ long compat_arch_ptrace(struct task_struct *child, compat_long_t request,
 			}
 		}
 		break;
-	case PTRACE_GETREGS:
-	case PTRACE_SETREGS:
-	case PTRACE_GETFPREGS:
-	case PTRACE_SETFPREGS:
-		return arch_ptrace(child, request, addr, data);
 
 	default:
 		ret = compat_ptrace_request(child, request, addr, data);
@@ -327,7 +315,7 @@ long compat_arch_ptrace(struct task_struct *child, compat_long_t request,
 long do_syscall_trace_enter(struct pt_regs *regs)
 {
 	if (test_thread_flag(TIF_SYSCALL_TRACE)) {
-		int rc = tracehook_report_syscall_entry(regs);
+		int rc = ptrace_report_syscall_entry(regs);
 
 		/*
 		 * As tracesys_next does not set %r28 to -ENOSYS
@@ -338,7 +326,7 @@ long do_syscall_trace_enter(struct pt_regs *regs)
 		if (rc) {
 			/*
 			 * A nonzero return code from
-			 * tracehook_report_syscall_entry() tells us
+			 * ptrace_report_syscall_entry() tells us
 			 * to prevent the syscall execution.  Skip
 			 * the syscall call and the syscall restart handling.
 			 *
@@ -392,7 +380,7 @@ void do_syscall_trace_exit(struct pt_regs *regs)
 #endif
 
 	if (stepping || test_thread_flag(TIF_SYSCALL_TRACE))
-		tracehook_report_syscall_exit(regs, stepping);
+		ptrace_report_syscall_exit(regs, stepping);
 }
 
 

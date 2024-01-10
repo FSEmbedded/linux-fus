@@ -45,7 +45,20 @@
 #define DT_SOCK        0xc
 
 /* commonly an fd_set represents 256 FDs */
+#ifndef FD_SETSIZE
 #define FD_SETSIZE     256
+#endif
+
+/* PATH_MAX and MAXPATHLEN are often used and found with plenty of different
+ * values.
+ */
+#ifndef PATH_MAX
+#define PATH_MAX       4096
+#endif
+
+#ifndef MAXPATHLEN
+#define MAXPATHLEN     (PATH_MAX)
+#endif
 
 /* Special FD used by all the *at functions */
 #ifndef AT_FDCWD
@@ -69,13 +82,56 @@
 #define WEXITSTATUS(status) (((status) & 0xff00) >> 8)
 #define WIFEXITED(status)   (((status) & 0x7f) == 0)
 
+/* waitpid() flags */
+#define WNOHANG      1
+
+/* standard exit() codes */
+#define EXIT_SUCCESS 0
+#define EXIT_FAILURE 1
 
 /* for select() */
 typedef struct {
-	uint32_t fd32[FD_SETSIZE / 32];
+	uint32_t fd32[(FD_SETSIZE + 31) / 32];
 } fd_set;
 
+#define FD_CLR(fd, set) do {                                            \
+		fd_set *__set = (set);                                  \
+		int __fd = (fd);                                        \
+		if (__fd >= 0)                                          \
+			__set->fd32[__fd / 32] &= ~(1U << (__fd & 31)); \
+	} while (0)
+
+#define FD_SET(fd, set) do {                                            \
+		fd_set *__set = (set);                                  \
+		int __fd = (fd);                                        \
+		if (__fd >= 0)                                          \
+			__set->fd32[__fd / 32] |= 1U << (__fd & 31);    \
+	} while (0)
+
+#define FD_ISSET(fd, set) ({                                                  \
+		fd_set *__set = (set);                                        \
+		int __fd = (fd);                                              \
+		int __r = 0;                                                  \
+		if (__fd >= 0)                                                \
+			__r = !!(__set->fd32[__fd / 32] & 1U << (__fd & 31)); \
+		__r;                                                          \
+	})
+
+#define FD_ZERO(set) do {                                               \
+		fd_set *__set = (set);                                  \
+		int __idx;                                              \
+		for (__idx = 0; __idx < (FD_SETSIZE+31) / 32; __idx ++) \
+			__set->fd32[__idx] = 0;                         \
+	} while (0)
+
 /* for poll() */
+#define POLLIN          0x0001
+#define POLLPRI         0x0002
+#define POLLOUT         0x0004
+#define POLLERR         0x0008
+#define POLLHUP         0x0010
+#define POLLNVAL        0x0020
+
 struct pollfd {
 	int fd;
 	short int events;
@@ -129,5 +185,21 @@ struct stat {
 	time_t    st_mtime;   /* time of last modification */
 	time_t    st_ctime;   /* time of last status change */
 };
+
+/* WARNING, it only deals with the 4096 first majors and 256 first minors */
+#define makedev(major, minor) ((dev_t)((((major) & 0xfff) << 8) | ((minor) & 0xff)))
+#define major(dev) ((unsigned int)(((dev) >> 8) & 0xfff))
+#define minor(dev) ((unsigned int)(((dev) & 0xff))
+
+#ifndef offsetof
+#define offsetof(TYPE, FIELD) ((size_t) &((TYPE *)0)->FIELD)
+#endif
+
+#ifndef container_of
+#define container_of(PTR, TYPE, FIELD) ({			\
+	__typeof__(((TYPE *)0)->FIELD) *__FIELD_PTR = (PTR);	\
+	(TYPE *)((char *) __FIELD_PTR - offsetof(TYPE, FIELD));	\
+})
+#endif
 
 #endif /* _NOLIBC_TYPES_H */

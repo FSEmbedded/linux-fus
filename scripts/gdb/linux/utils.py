@@ -88,10 +88,7 @@ def get_target_endianness():
 
 
 def read_memoryview(inf, start, length):
-    m = inf.read_memory(start, length)
-    if type(m) is memoryview:
-        return m
-    return memoryview(m)
+    return memoryview(inf.read_memory(start, length))
 
 
 def read_u16(buffer, offset):

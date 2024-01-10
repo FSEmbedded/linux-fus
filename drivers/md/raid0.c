@@ -37,7 +37,6 @@ static void dump_zones(struct mddev *mddev)
 	int j, k;
 	sector_t zone_size = 0;
 	sector_t zone_start = 0;
-	char b[BDEVNAME_SIZE];
 	struct r0conf *conf = mddev->private;
 	int raid_disks = conf->strip_zone[0].nb_dev;
 	pr_debug("md: RAID0 configuration for %s - %d zone%s\n",
@@ -48,9 +47,8 @@ static void dump_zones(struct mddev *mddev)
 		int len = 0;
 
 		for (k = 0; k < conf->strip_zone[j].nb_dev; k++)
-			len += scnprintf(line+len, 200-len, "%s%s", k?"/":"",
-					bdevname(conf->devlist[j*raid_disks
-							       + k]->bdev, b));
+			len += scnprintf(line+len, 200-len, "%s%pg", k?"/":"",
+				conf->devlist[j * raid_disks + k]->bdev);
 		pr_debug("md: zone%d=[%s]\n", j, line);
 
 		zone_size  = conf->strip_zone[j].zone_end - zone_start;
@@ -69,8 +67,6 @@ static int create_strip_zones(struct mddev *mddev, struct r0conf **private_conf)
 	struct md_rdev *smallest, *rdev1, *rdev2, *rdev, **dev;
 	struct strip_zone *zone;
 	int cnt;
-	char b[BDEVNAME_SIZE];
-	char b2[BDEVNAME_SIZE];
 	struct r0conf *conf = kzalloc(sizeof(*conf), GFP_KERNEL);
 	unsigned blksize = 512;
 
@@ -78,9 +74,9 @@ static int create_strip_zones(struct mddev *mddev, struct r0conf **private_conf)
 	if (!conf)
 		return -ENOMEM;
 	rdev_for_each(rdev1, mddev) {
-		pr_debug("md/raid0:%s: looking at %s\n",
+		pr_debug("md/raid0:%s: looking at %pg\n",
 			 mdname(mddev),
-			 bdevname(rdev1->bdev, b));
+			 rdev1->bdev);
 		c = 0;
 
 		/* round size to chunk_size */
@@ -92,12 +88,12 @@ static int create_strip_zones(struct mddev *mddev, struct r0conf **private_conf)
 				      rdev1->bdev->bd_disk->queue));
 
 		rdev_for_each(rdev2, mddev) {
-			pr_debug("md/raid0:%s:   comparing %s(%llu)"
-				 " with %s(%llu)\n",
+			pr_debug("md/raid0:%s:   comparing %pg(%llu)"
+				 " with %pg(%llu)\n",
 				 mdname(mddev),
-				 bdevname(rdev1->bdev,b),
+				 rdev1->bdev,
 				 (unsigned long long)rdev1->sectors,
-				 bdevname(rdev2->bdev,b2),
+				 rdev2->bdev,
 				 (unsigned long long)rdev2->sectors);
 			if (rdev2 == rdev1) {
 				pr_debug("md/raid0:%s:   END\n",
@@ -225,15 +221,15 @@ static int create_strip_zones(struct mddev *mddev, struct r0conf **private_conf)
 		for (j=0; j<cnt; j++) {
 			rdev = conf->devlist[j];
 			if (rdev->sectors <= zone->dev_start) {
-				pr_debug("md/raid0:%s: checking %s ... nope\n",
+				pr_debug("md/raid0:%s: checking %pg ... nope\n",
 					 mdname(mddev),
-					 bdevname(rdev->bdev, b));
+					 rdev->bdev);
 				continue;
 			}
-			pr_debug("md/raid0:%s: checking %s ..."
+			pr_debug("md/raid0:%s: checking %pg ..."
 				 " contained as device %d\n",
 				 mdname(mddev),
-				 bdevname(rdev->bdev, b), c);
+				 rdev->bdev, c);
 			dev[c] = rdev;
 			c++;
 			if (!smallest || rdev->sectors < smallest->sectors) {
@@ -272,18 +268,6 @@ static int create_strip_zones(struct mddev *mddev, struct r0conf **private_conf)
 		pr_err("md/raid0: please set raid0.default_layout to 1 or 2\n");
 		err = -EOPNOTSUPP;
 		goto abort;
-	}
-
-	if (conf->layout == RAID0_ORIG_LAYOUT) {
-		for (i = 1; i < conf->nr_strip_zones; i++) {
-			sector_t first_sector = conf->strip_zone[i-1].zone_end;
-
-			sector_div(first_sector, mddev->chunk_sectors);
-			zone = conf->strip_zone + i;
-			/* disk_shift is first disk index used in the zone */
-			zone->disk_shift = sector_div(first_sector,
-						      zone->nb_dev);
-		}
 	}
 
 	pr_debug("md/raid0:%s: done.\n", mdname(mddev));
@@ -411,10 +395,8 @@ static int raid0_run(struct mddev *mddev)
 	conf = mddev->private;
 	if (mddev->queue) {
 		struct md_rdev *rdev;
-		bool discard_supported = false;
 
 		blk_queue_max_hw_sectors(mddev->queue, mddev->chunk_sectors);
-		blk_queue_max_write_same_sectors(mddev->queue, mddev->chunk_sectors);
 		blk_queue_max_write_zeroes_sectors(mddev->queue, mddev->chunk_sectors);
 		blk_queue_max_discard_sectors(mddev->queue, UINT_MAX);
 
@@ -425,13 +407,7 @@ static int raid0_run(struct mddev *mddev)
 		rdev_for_each(rdev, mddev) {
 			disk_stack_limits(mddev->gendisk, rdev->bdev,
 					  rdev->data_offset << 9);
-			if (blk_queue_discard(bdev_get_queue(rdev->bdev)))
-				discard_supported = true;
 		}
-		if (!discard_supported)
-			blk_queue_flag_clear(QUEUE_FLAG_DISCARD, mddev->queue);
-		else
-			blk_queue_flag_set(QUEUE_FLAG_DISCARD, mddev->queue);
 	}
 
 	/* calculate array device size */
@@ -456,20 +432,6 @@ exit_acct_set:
 	return ret;
 }
 
-/*
- * Convert disk_index to the disk order in which it is read/written.
- *  For example, if we have 4 disks, they are numbered 0,1,2,3. If we
- *  write the disks starting at disk 3, then the read/write order would
- *  be disk 3, then 0, then 1, and then disk 2 and we want map_disk_shift()
- *  to map the disks as follows 0,1,2,3 => 1,2,3,0. So disk 0 would map
- *  to 1, 1 to 2, 2 to 3, and 3 to 0. That way we can compare disks in
- *  that 'output' space to understand the read/write disk ordering.
- */
-static int map_disk_shift(int disk_index, int num_disks, int disk_shift)
-{
-	return ((disk_index + num_disks - disk_shift) % num_disks);
-}
-
 static void raid0_handle_discard(struct mddev *mddev, struct bio *bio)
 {
 	struct r0conf *conf = mddev->private;
@@ -483,9 +445,7 @@ static void raid0_handle_discard(struct mddev *mddev, struct bio *bio)
 	sector_t end_disk_offset;
 	unsigned int end_disk_index;
 	unsigned int disk;
-	sector_t orig_start, orig_end;
 
-	orig_start = start;
 	zone = find_zone(conf, &start);
 
 	if (bio_end_sector(bio) > zone->zone_end) {
@@ -499,7 +459,6 @@ static void raid0_handle_discard(struct mddev *mddev, struct bio *bio)
 	} else
 		end = bio_end_sector(bio);
 
-	orig_end = end;
 	if (zone != conf->strip_zone)
 		end = end - zone[-1].zone_end;
 
@@ -511,26 +470,13 @@ static void raid0_handle_discard(struct mddev *mddev, struct bio *bio)
 	last_stripe_index = end;
 	sector_div(last_stripe_index, stripe_size);
 
-	/* In the first zone the original and alternate layouts are the same */
-	if ((conf->layout == RAID0_ORIG_LAYOUT) && (zone != conf->strip_zone)) {
-		sector_div(orig_start, mddev->chunk_sectors);
-		start_disk_index = sector_div(orig_start, zone->nb_dev);
-		start_disk_index = map_disk_shift(start_disk_index,
-						  zone->nb_dev,
-						  zone->disk_shift);
-		sector_div(orig_end, mddev->chunk_sectors);
-		end_disk_index = sector_div(orig_end, zone->nb_dev);
-		end_disk_index = map_disk_shift(end_disk_index,
-						zone->nb_dev, zone->disk_shift);
-	} else {
-		start_disk_index = (int)(start - first_stripe_index * stripe_size) /
-			mddev->chunk_sectors;
-		end_disk_index = (int)(end - last_stripe_index * stripe_size) /
-			mddev->chunk_sectors;
-	}
+	start_disk_index = (int)(start - first_stripe_index * stripe_size) /
+		mddev->chunk_sectors;
 	start_disk_offset = ((int)(start - first_stripe_index * stripe_size) %
 		mddev->chunk_sectors) +
 		first_stripe_index * mddev->chunk_sectors;
+	end_disk_index = (int)(end - last_stripe_index * stripe_size) /
+		mddev->chunk_sectors;
 	end_disk_offset = ((int)(end - last_stripe_index * stripe_size) %
 		mddev->chunk_sectors) +
 		last_stripe_index * mddev->chunk_sectors;
@@ -538,22 +484,18 @@ static void raid0_handle_discard(struct mddev *mddev, struct bio *bio)
 	for (disk = 0; disk < zone->nb_dev; disk++) {
 		sector_t dev_start, dev_end;
 		struct md_rdev *rdev;
-		int compare_disk;
 
-		compare_disk = map_disk_shift(disk, zone->nb_dev,
-					      zone->disk_shift);
-
-		if (compare_disk < start_disk_index)
+		if (disk < start_disk_index)
 			dev_start = (first_stripe_index + 1) *
 				mddev->chunk_sectors;
-		else if (compare_disk > start_disk_index)
+		else if (disk > start_disk_index)
 			dev_start = first_stripe_index * mddev->chunk_sectors;
 		else
 			dev_start = start_disk_offset;
 
-		if (compare_disk < end_disk_index)
+		if (disk < end_disk_index)
 			dev_end = (last_stripe_index + 1) * mddev->chunk_sectors;
-		else if (compare_disk > end_disk_index)
+		else if (disk > end_disk_index)
 			dev_end = last_stripe_index * mddev->chunk_sectors;
 		else
 			dev_end = end_disk_offset;
@@ -640,7 +582,6 @@ static bool raid0_make_request(struct mddev *mddev, struct bio *bio)
 	if (mddev->gendisk)
 		trace_block_bio_remap(bio, disk_devt(mddev->gendisk),
 				      bio_sector);
-	mddev_check_writesame(mddev, bio);
 	mddev_check_write_zeroes(mddev, bio);
 	submit_bio_noacct(bio);
 	return true;

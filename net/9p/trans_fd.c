@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * linux/fs/9p/trans_fd.c
- *
  * Fd transport layer.  Includes deprecated socket layer.
  *
  *  Copyright (C) 2006 by Russ Cox <rsc@swtch.com>
@@ -326,14 +324,6 @@ static void p9_read_work(struct work_struct *work)
 			goto error;
 		}
 
-		if (m->rc.size >= m->client->msize) {
-			p9_debug(P9_DEBUG_ERROR,
-				 "requested packet size too big: %d\n",
-				 m->rc.size);
-			err = -EIO;
-			goto error;
-		}
-
 		p9_debug(P9_DEBUG_TRANS,
 			 "mux %p pkt: size: %d bytes tag: %d\n",
 			 m, m->rc.size, m->rc.tag);
@@ -342,6 +332,14 @@ static void p9_read_work(struct work_struct *work)
 		if (!m->rreq || (m->rreq->status != REQ_STATUS_SENT)) {
 			p9_debug(P9_DEBUG_ERROR, "Unexpected packet tag %d\n",
 				 m->rc.tag);
+			err = -EIO;
+			goto error;
+		}
+
+		if (m->rc.size > m->rreq->rc.capacity) {
+			p9_debug(P9_DEBUG_ERROR,
+				 "requested packet size too big: %d for tag %d with capacity %zd\n",
+				 m->rc.size, m->rc.tag, m->rreq->rc.capacity);
 			err = -EIO;
 			goto error;
 		}
@@ -1080,7 +1078,9 @@ p9_fd_create(struct p9_client *client, const char *addr, char *args)
 	int err;
 	struct p9_fd_opts opts;
 
-	parse_opts(args, &opts);
+	err = parse_opts(args, &opts);
+	if (err < 0)
+		return err;
 	client->trans_opts.fd.rfd = opts.rfd;
 	client->trans_opts.fd.wfd = opts.wfd;
 
@@ -1101,6 +1101,7 @@ p9_fd_create(struct p9_client *client, const char *addr, char *args)
 static struct p9_trans_module p9_tcp_trans = {
 	.name = "tcp",
 	.maxsize = MAX_SOCK_BUF,
+	.pooled_rbuffers = false,
 	.def = 0,
 	.create = p9_fd_create_tcp,
 	.close = p9_fd_close,
@@ -1110,6 +1111,7 @@ static struct p9_trans_module p9_tcp_trans = {
 	.show_options = p9_fd_show_options,
 	.owner = THIS_MODULE,
 };
+MODULE_ALIAS_9P("tcp");
 
 static struct p9_trans_module p9_unix_trans = {
 	.name = "unix",
@@ -1123,6 +1125,7 @@ static struct p9_trans_module p9_unix_trans = {
 	.show_options = p9_fd_show_options,
 	.owner = THIS_MODULE,
 };
+MODULE_ALIAS_9P("unix");
 
 static struct p9_trans_module p9_fd_trans = {
 	.name = "fd",
@@ -1136,6 +1139,7 @@ static struct p9_trans_module p9_fd_trans = {
 	.show_options = p9_fd_show_options,
 	.owner = THIS_MODULE,
 };
+MODULE_ALIAS_9P("fd");
 
 /**
  * p9_poll_workfn - poll worker thread
@@ -1169,7 +1173,7 @@ static void p9_poll_workfn(struct work_struct *work)
 	p9_debug(P9_DEBUG_TRANS, "finish\n");
 }
 
-int p9_trans_fd_init(void)
+static int __init p9_trans_fd_init(void)
 {
 	v9fs_register_trans(&p9_tcp_trans);
 	v9fs_register_trans(&p9_unix_trans);
@@ -1178,10 +1182,17 @@ int p9_trans_fd_init(void)
 	return 0;
 }
 
-void p9_trans_fd_exit(void)
+static void __exit p9_trans_fd_exit(void)
 {
 	flush_work(&p9_poll_work);
 	v9fs_unregister_trans(&p9_tcp_trans);
 	v9fs_unregister_trans(&p9_unix_trans);
 	v9fs_unregister_trans(&p9_fd_trans);
 }
+
+module_init(p9_trans_fd_init);
+module_exit(p9_trans_fd_exit);
+
+MODULE_AUTHOR("Eric Van Hensbergen <ericvh@gmail.com>");
+MODULE_DESCRIPTION("Filedescriptor Transport for 9P");
+MODULE_LICENSE("GPL");

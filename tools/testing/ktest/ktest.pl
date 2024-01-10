@@ -178,7 +178,6 @@ my $store_failures;
 my $store_successes;
 my $test_name;
 my $timeout;
-my $run_timeout;
 my $connect_timeout;
 my $config_bisect_exec;
 my $booted_timeout;
@@ -341,7 +340,6 @@ my %option_map = (
     "STORE_SUCCESSES"		=> \$store_successes,
     "TEST_NAME"			=> \$test_name,
     "TIMEOUT"			=> \$timeout,
-    "RUN_TIMEOUT"		=> \$run_timeout,
     "CONNECT_TIMEOUT"		=> \$connect_timeout,
     "CONFIG_BISECT_EXEC"	=> \$config_bisect_exec,
     "BOOTED_TIMEOUT"		=> \$booted_timeout,
@@ -1490,8 +1488,7 @@ sub reboot {
 
 	# Still need to wait for the reboot to finish
 	wait_for_monitor($time, $reboot_success_line);
-    }
-    if ($powercycle || $time) {
+
 	end_monitor;
     }
 }
@@ -1853,14 +1850,6 @@ sub run_command {
     $command =~ s/\$SSH_USER/$ssh_user/g;
     $command =~ s/\$MACHINE/$machine/g;
 
-    if (!defined($timeout)) {
-	$timeout = $run_timeout;
-    }
-
-    if (!defined($timeout)) {
-	$timeout = -1; # tell wait_for_input to wait indefinitely
-    }
-
     doprint("$command ... ");
     $start_time = time;
 
@@ -1887,10 +1876,13 @@ sub run_command {
 
     while (1) {
 	my $fp = \*CMD;
+	if (defined($timeout)) {
+	    doprint "timeout = $timeout\n";
+	}
 	my $line = wait_for_input($fp, $timeout);
 	if (!defined($line)) {
 	    my $now = time;
-	    if ($timeout >= 0 && (($now - $start_time) >= $timeout)) {
+	    if (defined($timeout) && (($now - $start_time) >= $timeout)) {
 		doprint "Hit timeout of $timeout, killing process\n";
 		$hit_timeout = 1;
 		kill 9, $pid;
@@ -1971,7 +1963,7 @@ sub run_scp_mod {
 
 sub _get_grub_index {
 
-    my ($command, $target, $skip, $submenu) = @_;
+    my ($command, $target, $skip) = @_;
 
     return if (defined($grub_number) && defined($last_grub_menu) &&
 	$last_grub_menu eq $grub_menu && defined($last_machine) &&
@@ -1988,16 +1980,11 @@ sub _get_grub_index {
 
     my $found = 0;
 
-    my $submenu_number = 0;
-
     while (<IN>) {
 	if (/$target/) {
 	    $grub_number++;
 	    $found = 1;
 	    last;
-	} elsif (defined($submenu) && /$submenu/) {
-		$submenu_number++;
-		$grub_number = -1;
 	} elsif (/$skip/) {
 	    $grub_number++;
 	}
@@ -2006,9 +1993,6 @@ sub _get_grub_index {
 
     dodie "Could not find '$grub_menu' through $command on $machine"
 	if (!$found);
-    if ($submenu_number > 0) {
-	$grub_number = "$submenu_number>$grub_number";
-    }
     doprint "$grub_number\n";
     $last_grub_menu = $grub_menu;
     $last_machine = $machine;
@@ -2019,7 +2003,6 @@ sub get_grub_index {
     my $command;
     my $target;
     my $skip;
-    my $submenu;
     my $grub_menu_qt;
 
     if ($reboot_type !~ /^grub/) {
@@ -2034,9 +2017,8 @@ sub get_grub_index {
 	$skip = '^\s*title\s';
     } elsif ($reboot_type eq "grub2") {
 	$command = "cat $grub_file";
-	$target = '^\s*menuentry.*' . $grub_menu_qt;
-	$skip = '^\s*menuentry';
-	$submenu = '^\s*submenu\s';
+	$target = '^menuentry.*' . $grub_menu_qt;
+	$skip = '^menuentry\s|^submenu\s';
     } elsif ($reboot_type eq "grub2bls") {
 	$command = $grub_bls_get;
 	$target = '^title=.*' . $grub_menu_qt;
@@ -2045,7 +2027,7 @@ sub get_grub_index {
 	return;
     }
 
-    _get_grub_index($command, $target, $skip, $submenu);
+    _get_grub_index($command, $target, $skip);
 }
 
 sub wait_for_input {
@@ -2060,11 +2042,6 @@ sub wait_for_input {
 
     if (!defined($time)) {
 	$time = $timeout;
-    }
-
-    if ($time < 0) {
-	# Negative number means wait indefinitely
-	undef $time;
     }
 
     $rin = '';
@@ -2113,7 +2090,7 @@ sub reboot_to {
     if ($reboot_type eq "grub") {
 	run_ssh "'(echo \"savedefault --default=$grub_number --once\" | grub --batch)'";
     } elsif (($reboot_type eq "grub2") or ($reboot_type eq "grub2bls")) {
-	run_ssh "$grub_reboot \"'$grub_number'\"";
+	run_ssh "$grub_reboot $grub_number";
     } elsif ($reboot_type eq "syslinux") {
 	run_ssh "$syslinux --once \\\"$syslinux_label\\\" $syslinux_path";
     } elsif (defined $reboot_script) {
@@ -3791,10 +3768,9 @@ sub test_this_config {
     # .config to make sure it is missing the config that
     # we had before
     my %configs = %min_configs;
-    $configs{$config} = "# $config is not set";
+    delete $configs{$config};
     make_new_config ((values %configs), (values %keep_configs));
     make_oldconfig;
-    delete $configs{$config};
     undef %configs;
     assign_configs \%configs, $output_config;
 
@@ -4206,9 +4182,6 @@ sub send_email {
 }
 
 sub cancel_test {
-    if ($monitor_cnt) {
-	end_monitor;
-    }
     if ($email_when_canceled) {
 	my $name = get_test_name;
 	send_email("KTEST: Your [$name] test was cancelled",

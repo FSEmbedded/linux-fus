@@ -161,7 +161,6 @@ int qed_hw_stop_fastpath(struct qed_dev *cdev);
  */
 int qed_hw_start_fastpath(struct qed_hwfn *p_hwfn);
 
-
 /**
  * qed_hw_prepare(): Prepare Qed hardware.
  *
@@ -193,22 +192,6 @@ void qed_hw_remove(struct qed_dev *cdev);
  * exported function).
  */
 struct qed_ptt *qed_ptt_acquire(struct qed_hwfn *p_hwfn);
-
-/**
- * qed_ptt_acquire_context(): Allocate a PTT window honoring the context
- *			      atomicy.
- *
- * @p_hwfn: HW device data.
- * @is_atomic: Hint from the caller - if the func can sleep or not.
- *
- * Context: The function should not sleep in case is_atomic == true.
- * Return: struct qed_ptt.
- *
- * Should be called at the entry point to the driver
- * (at the beginning of an exported function).
- */
-struct qed_ptt *qed_ptt_acquire_context(struct qed_hwfn *p_hwfn,
-					bool is_atomic);
 
 /**
  * qed_ptt_release(): Release PTT Window.
@@ -381,7 +364,7 @@ int qed_llh_set_roce_affinity(struct qed_dev *cdev, enum qed_eng eng);
  * Return: Int.
  */
 int qed_llh_add_mac_filter(struct qed_dev *cdev,
-			   u8 ppfid, u8 mac_addr[ETH_ALEN]);
+			   u8 ppfid, const u8 mac_addr[ETH_ALEN]);
 
 /**
  * qed_llh_remove_mac_filter(): Remove a LLH MAC filter from the given
@@ -525,7 +508,6 @@ int qed_db_recovery_add(struct qed_dev *cdev,
  */
 int qed_db_recovery_del(struct qed_dev *cdev,
 			void __iomem *db_addr, void *db_data);
-
 
 const char *qed_hw_get_resc_name(enum qed_resources res_id);
 #endif

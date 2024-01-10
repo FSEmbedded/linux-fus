@@ -13,11 +13,11 @@
 #include "dlm_internal.h"
 #include "lockspace.h"
 
-static spinlock_t ops_lock;
-static struct list_head send_list;
-static struct list_head recv_list;
-static wait_queue_head_t send_wq;
-static wait_queue_head_t recv_wq;
+static DEFINE_SPINLOCK(ops_lock);
+static LIST_HEAD(send_list);
+static LIST_HEAD(recv_list);
+static DECLARE_WAIT_QUEUE_HEAD(send_wq);
+static DECLARE_WAIT_QUEUE_HEAD(recv_wq);
 
 struct plock_async_data {
 	void *fl;
@@ -29,6 +29,8 @@ struct plock_async_data {
 struct plock_op {
 	struct list_head list;
 	int done;
+	/* if lock op got interrupted while waiting dlm_controld reply */
+	bool sigint;
 	struct dlm_plock_info info;
 	/* if set indicates async handling */
 	struct plock_async_data *data;
@@ -67,7 +69,6 @@ static void dlm_release_plock_op(struct plock_op *op)
 static void send_op(struct plock_op *op)
 {
 	set_version(&op->info);
-	INIT_LIST_HEAD(&op->list);
 	spin_lock(&ops_lock);
 	list_add_tail(&op->list, &send_list);
 	spin_unlock(&ops_lock);
@@ -155,26 +156,28 @@ int dlm_posix_lock(dlm_lockspace_t *lockspace, u64 number, struct file *file,
 
 	send_op(op);
 
-	rv = wait_event_killable(recv_wq, (op->done != 0));
+	rv = wait_event_interruptible(recv_wq, (op->done != 0));
 	if (rv == -ERESTARTSYS) {
 		spin_lock(&ops_lock);
-		list_del(&op->list);
+		/* recheck under ops_lock if we got a done != 0,
+		 * if so this interrupt case should be ignored
+		 */
+		if (op->done != 0) {
+			spin_unlock(&ops_lock);
+			goto do_lock_wait;
+		}
+
+		op->sigint = true;
 		spin_unlock(&ops_lock);
 		log_debug(ls, "%s: wait interrupted %x %llx pid %d",
 			  __func__, ls->ls_global_id,
 			  (unsigned long long)number, op->info.pid);
-		dlm_release_plock_op(op);
-		do_unlock_close(&op->info);
 		goto out;
 	}
 
-	spin_lock(&ops_lock);
-	if (!list_empty(&op->list)) {
-		log_error(ls, "dlm_posix_lock: op on list %llx",
-			  (unsigned long long)number);
-		list_del(&op->list);
-	}
-	spin_unlock(&ops_lock);
+do_lock_wait:
+
+	WARN_ON(!list_empty(&op->list));
 
 	rv = op->info.rv;
 
@@ -201,13 +204,7 @@ static int dlm_plock_callback(struct plock_op *op)
 	int (*notify)(struct file_lock *fl, int result) = NULL;
 	int rv = 0;
 
-	spin_lock(&ops_lock);
-	if (!list_empty(&op->list)) {
-		log_print("dlm_plock_callback: op on list %llx",
-			  (unsigned long long)op->info.number);
-		list_del(&op->list);
-	}
-	spin_unlock(&ops_lock);
+	WARN_ON(!list_empty(&op->list));
 
 	/* check if the following 2 are still valid or make a copy */
 	file = op_data->file;
@@ -300,13 +297,7 @@ int dlm_posix_unlock(dlm_lockspace_t *lockspace, u64 number, struct file *file,
 	send_op(op);
 	wait_event(recv_wq, (op->done != 0));
 
-	spin_lock(&ops_lock);
-	if (!list_empty(&op->list)) {
-		log_error(ls, "dlm_posix_unlock: op on list %llx",
-			  (unsigned long long)number);
-		list_del(&op->list);
-	}
-	spin_unlock(&ops_lock);
+	WARN_ON(!list_empty(&op->list));
 
 	rv = op->info.rv;
 
@@ -354,13 +345,7 @@ int dlm_posix_get(dlm_lockspace_t *lockspace, u64 number, struct file *file,
 	send_op(op);
 	wait_event(recv_wq, (op->done != 0));
 
-	spin_lock(&ops_lock);
-	if (!list_empty(&op->list)) {
-		log_error(ls, "dlm_posix_get: op on list %llx",
-			  (unsigned long long)number);
-		list_del(&op->list);
-	}
-	spin_unlock(&ops_lock);
+	WARN_ON(!list_empty(&op->list));
 
 	/* info.rv from userspace is 1 for conflict, 0 for no-conflict,
 	   -ENOENT if there are no locks on the file */
@@ -374,9 +359,7 @@ int dlm_posix_get(dlm_lockspace_t *lockspace, u64 number, struct file *file,
 		locks_init_lock(fl);
 		fl->fl_type = (op->info.ex) ? F_WRLCK : F_RDLCK;
 		fl->fl_flags = FL_POSIX;
-		fl->fl_pid = op->info.pid;
-		if (op->info.nodeid != dlm_our_nodeid())
-			fl->fl_pid = -fl->fl_pid;
+		fl->fl_pid = -op->info.pid;
 		fl->fl_start = op->info.start;
 		fl->fl_end = op->info.end;
 		rv = 0;
@@ -401,11 +384,11 @@ static ssize_t dev_read(struct file *file, char __user *u, size_t count,
 
 	spin_lock(&ops_lock);
 	if (!list_empty(&send_list)) {
-		op = list_entry(send_list.next, struct plock_op, list);
+		op = list_first_entry(&send_list, struct plock_op, list);
 		if (op->info.flags & DLM_PLOCK_FL_CLOSE)
 			list_del(&op->list);
 		else
-			list_move_tail(&op->list, &recv_list);
+			list_move(&op->list, &recv_list);
 		memcpy(&info, &op->info, sizeof(info));
 	}
 	spin_unlock(&ops_lock);
@@ -443,52 +426,33 @@ static ssize_t dev_write(struct file *file, const char __user *u, size_t count,
 	if (check_version(&info))
 		return -EINVAL;
 
-	/*
-	 * The results for waiting ops (SETLKW) can be returned in any
-	 * order, so match all fields to find the op.  The results for
-	 * non-waiting ops are returned in the order that they were sent
-	 * to userspace, so match the result with the first non-waiting op.
-	 */
 	spin_lock(&ops_lock);
-	if (info.wait) {
-		list_for_each_entry(iter, &recv_list, list) {
-			if (iter->info.fsid == info.fsid &&
-			    iter->info.number == info.number &&
-			    iter->info.owner == info.owner &&
-			    iter->info.pid == info.pid &&
-			    iter->info.start == info.start &&
-			    iter->info.end == info.end &&
-			    iter->info.ex == info.ex &&
-			    iter->info.wait) {
-				op = iter;
-				break;
-			}
-		}
-	} else {
-		list_for_each_entry(iter, &recv_list, list) {
-			if (!iter->info.wait) {
-				op = iter;
-				break;
-			}
-		}
-	}
+	list_for_each_entry(iter, &recv_list, list) {
+		if (iter->info.fsid == info.fsid &&
+		    iter->info.number == info.number &&
+		    iter->info.owner == info.owner) {
+			if (iter->sigint) {
+				list_del(&iter->list);
+				spin_unlock(&ops_lock);
 
-	if (op) {
-		/* Sanity check that op and info match. */
-		if (info.wait)
-			WARN_ON(op->info.optype != DLM_PLOCK_OP_LOCK);
-		else
-			WARN_ON(op->info.fsid != info.fsid ||
-				op->info.number != info.number ||
-				op->info.owner != info.owner ||
-				op->info.optype != info.optype);
-
-		list_del_init(&op->list);
-		memcpy(&op->info, &info, sizeof(info));
-		if (op->data)
-			do_callback = 1;
-		else
-			op->done = 1;
+				pr_debug("%s: sigint cleanup %x %llx pid %d",
+					  __func__, iter->info.fsid,
+					  (unsigned long long)iter->info.number,
+					  iter->info.pid);
+				do_unlock_close(&iter->info);
+				memcpy(&iter->info, &info, sizeof(info));
+				dlm_release_plock_op(iter);
+				return count;
+			}
+			list_del_init(&iter->list);
+			memcpy(&iter->info, &info, sizeof(info));
+			if (iter->data)
+				do_callback = 1;
+			else
+				iter->done = 1;
+			op = iter;
+			break;
+		}
 	}
 	spin_unlock(&ops_lock);
 
@@ -534,12 +498,6 @@ static struct miscdevice plock_dev_misc = {
 int dlm_plock_init(void)
 {
 	int rv;
-
-	spin_lock_init(&ops_lock);
-	INIT_LIST_HEAD(&send_list);
-	INIT_LIST_HEAD(&recv_list);
-	init_waitqueue_head(&send_wq);
-	init_waitqueue_head(&recv_wq);
 
 	rv = misc_register(&plock_dev_misc);
 	if (rv)

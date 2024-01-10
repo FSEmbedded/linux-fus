@@ -111,27 +111,27 @@ static void svc_reclassify_socket(struct socket *sock)
 #endif
 
 /**
- * svc_tcp_release_ctxt - Release transport-related resources
- * @xprt: the transport which owned the context
- * @ctxt: the context from rqstp->rq_xprt_ctxt or dr->xprt_ctxt
+ * svc_tcp_release_rqst - Release transport-related resources
+ * @rqstp: request structure with resources to be released
  *
  */
-static void svc_tcp_release_ctxt(struct svc_xprt *xprt, void *ctxt)
+static void svc_tcp_release_rqst(struct svc_rqst *rqstp)
 {
 }
 
 /**
- * svc_udp_release_ctxt - Release transport-related resources
- * @xprt: the transport which owned the context
- * @ctxt: the context from rqstp->rq_xprt_ctxt or dr->xprt_ctxt
+ * svc_udp_release_rqst - Release transport-related resources
+ * @rqstp: request structure with resources to be released
  *
  */
-static void svc_udp_release_ctxt(struct svc_xprt *xprt, void *ctxt)
+static void svc_udp_release_rqst(struct svc_rqst *rqstp)
 {
-	struct sk_buff *skb = ctxt;
+	struct sk_buff *skb = rqstp->rq_xprt_ctxt;
 
-	if (skb)
+	if (skb) {
+		rqstp->rq_xprt_ctxt = NULL;
 		consume_skb(skb);
+	}
 }
 
 union svc_pktinfo_u {
@@ -298,9 +298,9 @@ static void svc_sock_setbufsize(struct svc_sock *svsk, unsigned int nreqs)
 static void svc_sock_secure_port(struct svc_rqst *rqstp)
 {
 	if (svc_port_is_privileged(svc_addr(rqstp)))
-		set_bit(RQ_SECURE, &rqstp->rq_flags);
+		__set_bit(RQ_SECURE, &rqstp->rq_flags);
 	else
-		clear_bit(RQ_SECURE, &rqstp->rq_flags);
+		__clear_bit(RQ_SECURE, &rqstp->rq_flags);
 }
 
 /*
@@ -453,7 +453,7 @@ static int svc_udp_recvfrom(struct svc_rqst *rqstp)
 			     0, 0, MSG_PEEK | MSG_DONTWAIT);
 	if (err < 0)
 		goto out_recv_err;
-	skb = skb_recv_udp(svsk->sk_sk, 0, 1, &err);
+	skb = skb_recv_udp(svsk->sk_sk, MSG_DONTWAIT, &err);
 	if (!skb)
 		goto out_recv_err;
 
@@ -559,8 +559,7 @@ static int svc_udp_sendto(struct svc_rqst *rqstp)
 	unsigned int sent;
 	int err;
 
-	svc_udp_release_ctxt(xprt, rqstp->rq_xprt_ctxt);
-	rqstp->rq_xprt_ctxt = NULL;
+	svc_udp_release_rqst(rqstp);
 
 	svc_set_cmsg_data(rqstp, cmh);
 
@@ -569,15 +568,18 @@ static int svc_udp_sendto(struct svc_rqst *rqstp)
 	if (svc_xprt_is_dead(xprt))
 		goto out_notconn;
 
+	err = xdr_alloc_bvec(xdr, GFP_KERNEL);
+	if (err < 0)
+		goto out_unlock;
+
 	err = xprt_sock_sendmsg(svsk->sk_sock, &msg, xdr, 0, 0, &sent);
-	xdr_free_bvec(xdr);
 	if (err == -ECONNREFUSED) {
 		/* ICMP error on earlier request. */
 		err = xprt_sock_sendmsg(svsk->sk_sock, &msg, xdr, 0, 0, &sent);
-		xdr_free_bvec(xdr);
 	}
+	xdr_free_bvec(xdr);
 	trace_svcsock_udp_send(xprt, err);
-
+out_unlock:
 	mutex_unlock(&xprt->xpt_mutex);
 	if (err < 0)
 		return err;
@@ -629,7 +631,7 @@ static const struct svc_xprt_ops svc_udp_ops = {
 	.xpo_recvfrom = svc_udp_recvfrom,
 	.xpo_sendto = svc_udp_sendto,
 	.xpo_result_payload = svc_sock_result_payload,
-	.xpo_release_ctxt = svc_udp_release_ctxt,
+	.xpo_release_rqst = svc_udp_release_rqst,
 	.xpo_detach = svc_sock_detach,
 	.xpo_free = svc_sock_free,
 	.xpo_has_wspace = svc_udp_has_wspace,
@@ -685,6 +687,12 @@ static void svc_tcp_listen_data_ready(struct sock *sk)
 {
 	struct svc_sock	*svsk = (struct svc_sock *)sk->sk_user_data;
 
+	if (svsk) {
+		/* Refer to svc_setup_socket() for details. */
+		rmb();
+		svsk->sk_odata(sk);
+	}
+
 	/*
 	 * This callback may called twice when a new connection
 	 * is established as a child socket inherits everything
@@ -693,18 +701,13 @@ static void svc_tcp_listen_data_ready(struct sock *sk)
 	 *    when one of child sockets become ESTABLISHED.
 	 * 2) data_ready method of the child socket may be called
 	 *    when it receives data before the socket is accepted.
-	 * In case of 2, we should ignore it silently and DO NOT
-	 * dereference svsk.
+	 * In case of 2, we should ignore it silently.
 	 */
-	if (sk->sk_state != TCP_LISTEN)
-		return;
-
-	if (svsk) {
-		/* Refer to svc_setup_socket() for details. */
-		rmb();
-		svsk->sk_odata(sk);
-		set_bit(XPT_CONN, &svsk->sk_xprt.xpt_flags);
-		svc_xprt_enqueue(&svsk->sk_xprt);
+	if (sk->sk_state == TCP_LISTEN) {
+		if (svsk) {
+			set_bit(XPT_CONN, &svsk->sk_xprt.xpt_flags);
+			svc_xprt_enqueue(&svsk->sk_xprt);
+		}
 	}
 }
 
@@ -1005,9 +1008,9 @@ static int svc_tcp_recvfrom(struct svc_rqst *rqstp)
 	rqstp->rq_xprt_ctxt   = NULL;
 	rqstp->rq_prot	      = IPPROTO_TCP;
 	if (test_bit(XPT_LOCAL, &svsk->sk_xprt.xpt_flags))
-		set_bit(RQ_LOCAL, &rqstp->rq_flags);
+		__set_bit(RQ_LOCAL, &rqstp->rq_flags);
 	else
-		clear_bit(RQ_LOCAL, &rqstp->rq_flags);
+		__clear_bit(RQ_LOCAL, &rqstp->rq_flags);
 
 	p = (__be32 *)rqstp->rq_arg.head[0].iov_base;
 	calldir = p[1];
@@ -1156,8 +1159,7 @@ static int svc_tcp_sendto(struct svc_rqst *rqstp)
 	unsigned int sent;
 	int err;
 
-	svc_tcp_release_ctxt(xprt, rqstp->rq_xprt_ctxt);
-	rqstp->rq_xprt_ctxt = NULL;
+	svc_tcp_release_rqst(rqstp);
 
 	atomic_inc(&svsk->sk_sendqlen);
 	mutex_lock(&xprt->xpt_mutex);
@@ -1202,7 +1204,7 @@ static const struct svc_xprt_ops svc_tcp_ops = {
 	.xpo_recvfrom = svc_tcp_recvfrom,
 	.xpo_sendto = svc_tcp_sendto,
 	.xpo_result_payload = svc_sock_result_payload,
-	.xpo_release_ctxt = svc_tcp_release_ctxt,
+	.xpo_release_rqst = svc_tcp_release_rqst,
 	.xpo_detach = svc_tcp_sock_detach,
 	.xpo_free = svc_sock_free,
 	.xpo_has_wspace = svc_tcp_has_wspace,

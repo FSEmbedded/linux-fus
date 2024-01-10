@@ -313,9 +313,7 @@ SYSCALL_DEFINE2(memfd_create,
 	}
 
 	if (flags & MFD_HUGETLB) {
-		struct ucounts *ucounts = NULL;
-
-		file = hugetlb_file_setup(name, 0, VM_NORESERVE, &ucounts,
+		file = hugetlb_file_setup(name, 0, VM_NORESERVE,
 					HUGETLB_ANONHUGE_INODE,
 					(flags >> MFD_HUGE_SHIFT) &
 					MFD_HUGE_MASK);
@@ -330,8 +328,7 @@ SYSCALL_DEFINE2(memfd_create,
 
 	if (flags & MFD_ALLOW_SEALING) {
 		file_seals = memfd_file_seals_ptr(file);
-		if (file_seals)
-			*file_seals &= ~F_SEAL_SEAL;
+		*file_seals &= ~F_SEAL_SEAL;
 	}
 
 	fd_install(fd, file);

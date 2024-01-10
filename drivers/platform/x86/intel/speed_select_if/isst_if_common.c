@@ -294,13 +294,14 @@ struct isst_if_pkg_info {
 static struct isst_if_cpu_info *isst_cpu_info;
 static struct isst_if_pkg_info *isst_pkg_info;
 
+#define ISST_MAX_PCI_DOMAINS	8
+
 static struct pci_dev *_isst_if_get_pci_dev(int cpu, int bus_no, int dev, int fn)
 {
 	struct pci_dev *matched_pci_dev = NULL;
 	struct pci_dev *pci_dev = NULL;
-	struct pci_dev *_pci_dev = NULL;
 	int no_matches = 0, pkg_id;
-	int bus_number;
+	int i, bus_number;
 
 	if (bus_no < 0 || bus_no >= ISST_MAX_BUS_NUMBER || cpu < 0 ||
 	    cpu >= nr_cpu_ids || cpu >= num_possible_cpus())
@@ -312,11 +313,12 @@ static struct pci_dev *_isst_if_get_pci_dev(int cpu, int bus_no, int dev, int fn
 	if (bus_number < 0)
 		return NULL;
 
-	for_each_pci_dev(_pci_dev) {
+	for (i = 0; i < ISST_MAX_PCI_DOMAINS; ++i) {
+		struct pci_dev *_pci_dev;
 		int node;
 
-		if (_pci_dev->bus->number != bus_number ||
-		    _pci_dev->devfn != PCI_DEVFN(dev, fn))
+		_pci_dev = pci_get_domain_bus_and_slot(i, bus_number, PCI_DEVFN(dev, fn));
+		if (!_pci_dev)
 			continue;
 
 		++no_matches;

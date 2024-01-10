@@ -188,7 +188,7 @@ static int dm_stat_in_flight(struct dm_stat_shared *shared)
 	       atomic_read(&shared->in_flight[WRITE]);
 }
 
-int dm_stats_init(struct dm_stats *stats)
+void dm_stats_init(struct dm_stats *stats)
 {
 	int cpu;
 	struct dm_stats_last_position *last;
@@ -197,16 +197,11 @@ int dm_stats_init(struct dm_stats *stats)
 	INIT_LIST_HEAD(&stats->list);
 	stats->precise_timestamps = false;
 	stats->last = alloc_percpu(struct dm_stats_last_position);
-	if (!stats->last)
-		return -ENOMEM;
-
 	for_each_possible_cpu(cpu) {
 		last = per_cpu_ptr(stats->last, cpu);
 		last->last_sector = (sector_t)ULLONG_MAX;
 		last->last_rw = UINT_MAX;
 	}
-
-	return 0;
 }
 
 void dm_stats_cleanup(struct dm_stats *stats)
@@ -404,6 +399,9 @@ static int dm_stats_create(struct dm_stats *stats, sector_t start, sector_t end,
 	list_add_tail_rcu(&s->list_entry, l);
 
 	dm_stats_recalc_precise_timestamps(stats);
+
+	if (!static_key_enabled(&stats_enabled.key))
+		static_branch_enable(&stats_enabled);
 
 	mutex_unlock(&stats->mutex);
 
@@ -1222,7 +1220,7 @@ int dm_stats_message(struct mapped_device *md, unsigned argc, char **argv,
 		return 2; /* this wasn't a stats message */
 
 	if (r == -EINVAL)
-		DMWARN("Invalid parameters for message %s", argv[0]);
+		DMCRIT("Invalid parameters for message %s", argv[0]);
 
 	return r;
 }

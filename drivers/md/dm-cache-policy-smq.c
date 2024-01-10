@@ -854,13 +854,7 @@ struct smq_policy {
 
 	struct background_tracker *bg_work;
 
-	bool migrations_allowed:1;
-
-	/*
-	 * If this is set the policy will try and clean the whole cache
-	 * even if the device is not idle.
-	 */
-	bool cleaner:1;
+	bool migrations_allowed;
 };
 
 /*----------------------------------------------------------------*/
@@ -1032,7 +1026,9 @@ static unsigned default_promote_level(struct smq_policy *mq)
 	 * This scheme reminds me of a graph of entropy vs probability of a
 	 * binary variable.
 	 */
-	static unsigned table[] = {1, 1, 1, 2, 4, 6, 7, 8, 7, 6, 4, 4, 3, 3, 2, 2, 1};
+	static const unsigned int table[] = {
+		1, 1, 1, 2, 4, 6, 7, 8, 7, 6, 4, 4, 3, 3, 2, 2, 1
+	};
 
 	unsigned hits = mq->cache_stats.hits;
 	unsigned misses = mq->cache_stats.misses;
@@ -1139,7 +1135,7 @@ static bool clean_target_met(struct smq_policy *mq, bool idle)
 	 * Cache entries may not be populated.  So we cannot rely on the
 	 * size of the clean queue.
 	 */
-	if (idle || mq->cleaner) {
+	if (idle) {
 		/*
 		 * We'd like to clean everything.
 		 */
@@ -1722,9 +1718,11 @@ static void calc_hotspot_params(sector_t origin_size,
 		*hotspot_block_size /= 2u;
 }
 
-static struct dm_cache_policy *
-__smq_create(dm_cblock_t cache_size, sector_t origin_size, sector_t cache_block_size,
-	     bool mimic_mq, bool migrations_allowed, bool cleaner)
+static struct dm_cache_policy *__smq_create(dm_cblock_t cache_size,
+					    sector_t origin_size,
+					    sector_t cache_block_size,
+					    bool mimic_mq,
+					    bool migrations_allowed)
 {
 	unsigned i;
 	unsigned nr_sentinels_per_queue = 2u * NR_CACHE_LEVELS;
@@ -1811,7 +1809,6 @@ __smq_create(dm_cblock_t cache_size, sector_t origin_size, sector_t cache_block_
 		goto bad_btracker;
 
 	mq->migrations_allowed = migrations_allowed;
-	mq->cleaner = cleaner;
 
 	return &mq->policy;
 
@@ -1835,24 +1832,21 @@ static struct dm_cache_policy *smq_create(dm_cblock_t cache_size,
 					  sector_t origin_size,
 					  sector_t cache_block_size)
 {
-	return __smq_create(cache_size, origin_size, cache_block_size,
-			    false, true, false);
+	return __smq_create(cache_size, origin_size, cache_block_size, false, true);
 }
 
 static struct dm_cache_policy *mq_create(dm_cblock_t cache_size,
 					 sector_t origin_size,
 					 sector_t cache_block_size)
 {
-	return __smq_create(cache_size, origin_size, cache_block_size,
-			    true, true, false);
+	return __smq_create(cache_size, origin_size, cache_block_size, true, true);
 }
 
 static struct dm_cache_policy *cleaner_create(dm_cblock_t cache_size,
 					      sector_t origin_size,
 					      sector_t cache_block_size)
 {
-	return __smq_create(cache_size, origin_size, cache_block_size,
-			    false, false, true);
+	return __smq_create(cache_size, origin_size, cache_block_size, false, false);
 }
 
 /*----------------------------------------------------------------*/

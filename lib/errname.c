@@ -21,7 +21,6 @@ static const char *names_0[] = {
 	E(EADDRNOTAVAIL),
 	E(EADV),
 	E(EAFNOSUPPORT),
-	E(EAGAIN), /* EWOULDBLOCK */
 	E(EALREADY),
 	E(EBADE),
 	E(EBADF),
@@ -32,17 +31,15 @@ static const char *names_0[] = {
 	E(EBADSLT),
 	E(EBFONT),
 	E(EBUSY),
-	E(ECANCELED), /* ECANCELLED */
+#ifdef ECANCELLED
+	E(ECANCELLED),
+#endif
 	E(ECHILD),
 	E(ECHRNG),
 	E(ECOMM),
 	E(ECONNABORTED),
-	E(ECONNREFUSED), /* EREFUSED */
 	E(ECONNRESET),
-	E(EDEADLK), /* EDEADLOCK */
-#if EDEADLK != EDEADLOCK /* mips, sparc, powerpc */
 	E(EDEADLOCK),
-#endif
 	E(EDESTADDRREQ),
 	E(EDOM),
 	E(EDOTDOT),
@@ -169,16 +166,13 @@ static const char *names_0[] = {
 	E(EUSERS),
 	E(EXDEV),
 	E(EXFULL),
+
+	E(ECANCELED), /* ECANCELLED */
+	E(EAGAIN), /* EWOULDBLOCK */
+	E(ECONNREFUSED), /* EREFUSED */
+	E(EDEADLK), /* EDEADLOCK */
 };
 #undef E
-
-#ifdef EREFUSED /* parisc */
-static_assert(EREFUSED == ECONNREFUSED);
-#endif
-#ifdef ECANCELLED /* parisc */
-static_assert(ECANCELLED == ECANCELED);
-#endif
-static_assert(EAGAIN == EWOULDBLOCK); /* everywhere */
 
 #define E(err) [err - 512 + BUILD_BUG_ON_ZERO(err < 512 || err > 550)] = "-" #err
 static const char *names_512[] = {

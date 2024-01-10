@@ -1038,7 +1038,7 @@ int efx_ef10_vadaptor_free(struct efx_nic *efx, unsigned int port_id)
 }
 
 int efx_ef10_vport_add_mac(struct efx_nic *efx,
-			   unsigned int port_id, u8 *mac)
+			   unsigned int port_id, const u8 *mac)
 {
 	MCDI_DECLARE_BUF(inbuf, MC_CMD_VPORT_ADD_MAC_ADDRESS_IN_LEN);
 
@@ -1050,7 +1050,7 @@ int efx_ef10_vport_add_mac(struct efx_nic *efx,
 }
 
 int efx_ef10_vport_del_mac(struct efx_nic *efx,
-			   unsigned int port_id, u8 *mac)
+			   unsigned int port_id, const u8 *mac)
 {
 	MCDI_DECLARE_BUF(inbuf, MC_CMD_VPORT_DEL_MAC_ADDRESS_IN_LEN);
 
@@ -1297,17 +1297,14 @@ static void efx_ef10_fini_nic(struct efx_nic *efx)
 {
 	struct efx_ef10_nic_data *nic_data = efx->nic_data;
 
-	spin_lock_bh(&efx->stats_lock);
 	kfree(nic_data->mc_stats);
 	nic_data->mc_stats = NULL;
-	spin_unlock_bh(&efx->stats_lock);
 }
 
 static int efx_ef10_init_nic(struct efx_nic *efx)
 {
 	struct efx_ef10_nic_data *nic_data = efx->nic_data;
-	struct net_device *net_dev = efx->net_dev;
-	netdev_features_t tun_feats, tso_feats;
+	netdev_features_t hw_enc_features = 0;
 	int rc;
 
 	if (nic_data->must_check_datapath_caps) {
@@ -1352,30 +1349,20 @@ static int efx_ef10_init_nic(struct efx_nic *efx)
 		nic_data->must_restore_piobufs = false;
 	}
 
-	/* encap features might change during reset if fw variant changed */
+	/* add encapsulated checksum offload features */
 	if (efx_has_cap(efx, VXLAN_NVGRE) && !efx_ef10_is_vf(efx))
-		net_dev->hw_enc_features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
-	else
-		net_dev->hw_enc_features &= ~(NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM);
-
-	tun_feats = NETIF_F_GSO_UDP_TUNNEL | NETIF_F_GSO_GRE |
-		    NETIF_F_GSO_UDP_TUNNEL_CSUM | NETIF_F_GSO_GRE_CSUM;
-	tso_feats = NETIF_F_TSO | NETIF_F_TSO6;
-
+		hw_enc_features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
+	/* add encapsulated TSO features */
 	if (efx_has_cap(efx, TX_TSO_V2_ENCAP)) {
-		/* If this is first nic_init, or if it is a reset and a new fw
-		 * variant has added new features, enable them by default.
-		 * If the features are not new, maintain their current value.
-		 */
-		if (!(net_dev->hw_features & tun_feats))
-			net_dev->features |= tun_feats;
-		net_dev->hw_enc_features |= tun_feats | tso_feats;
-		net_dev->hw_features |= tun_feats;
-	} else {
-		net_dev->hw_enc_features &= ~(tun_feats | tso_feats);
-		net_dev->hw_features &= ~tun_feats;
-		net_dev->features &= ~tun_feats;
+		netdev_features_t encap_tso_features;
+
+		encap_tso_features = NETIF_F_GSO_UDP_TUNNEL | NETIF_F_GSO_GRE |
+			NETIF_F_GSO_UDP_TUNNEL_CSUM | NETIF_F_GSO_GRE_CSUM;
+
+		hw_enc_features |= encap_tso_features | NETIF_F_TSO;
+		efx->net_dev->features |= encap_tso_features;
 	}
+	efx->net_dev->hw_enc_features = hw_enc_features;
 
 	/* don't fail init if RSS setup doesn't work */
 	rc = efx->type->rx_push_rss_config(efx, false,
@@ -1854,14 +1841,9 @@ static size_t efx_ef10_update_stats_pf(struct efx_nic *efx, u64 *full_stats,
 
 	efx_ef10_get_stat_mask(efx, mask);
 
-	/* If NIC was fini'd (probably resetting), then we can't read
-	 * updated stats right now.
-	 */
-	if (nic_data->mc_stats) {
-		efx_nic_copy_stats(efx, nic_data->mc_stats);
-		efx_nic_update_stats(efx_ef10_stat_desc, EF10_STAT_COUNT,
-				     mask, stats, nic_data->mc_stats, false);
-	}
+	efx_nic_copy_stats(efx, nic_data->mc_stats);
+	efx_nic_update_stats(efx_ef10_stat_desc, EF10_STAT_COUNT,
+			     mask, stats, nic_data->mc_stats, false);
 
 	/* Update derived statistics */
 	efx_nic_fix_nodesc_drop_stat(efx,
@@ -2556,21 +2538,31 @@ static int efx_ef10_filter_table_probe(struct efx_nic *efx)
 
 	if (rc)
 		return rc;
+	down_write(&efx->filter_sem);
 	rc = efx_mcdi_filter_table_probe(efx, nic_data->workaround_26807);
 
 	if (rc)
-		return rc;
+		goto out_unlock;
 
 	list_for_each_entry(vlan, &nic_data->vlan_list, list) {
 		rc = efx_mcdi_filter_add_vlan(efx, vlan->vid);
 		if (rc)
 			goto fail_add_vlan;
 	}
-	return 0;
+	goto out_unlock;
 
 fail_add_vlan:
 	efx_mcdi_filter_table_remove(efx);
+out_unlock:
+	up_write(&efx->filter_sem);
 	return rc;
+}
+
+static void efx_ef10_filter_table_remove(struct efx_nic *efx)
+{
+	down_write(&efx->filter_sem);
+	efx_mcdi_filter_table_remove(efx);
+	up_write(&efx->filter_sem);
 }
 
 /* This creates an entry in the RX descriptor queue */
@@ -3229,9 +3221,7 @@ static int efx_ef10_vport_set_mac_address(struct efx_nic *efx)
 
 	efx_device_detach_sync(efx);
 	efx_net_stop(efx->net_dev);
-	down_write(&efx->filter_sem);
-	efx_mcdi_filter_table_remove(efx);
-	up_write(&efx->filter_sem);
+	efx_ef10_filter_table_remove(efx);
 
 	rc = efx_ef10_vadaptor_free(efx, efx->vport_id);
 	if (rc)
@@ -3261,9 +3251,7 @@ restore_vadaptor:
 	if (rc2)
 		goto reset_nic;
 restore_filters:
-	down_write(&efx->filter_sem);
 	rc2 = efx_ef10_filter_table_probe(efx);
-	up_write(&efx->filter_sem);
 	if (rc2)
 		goto reset_nic;
 
@@ -3317,8 +3305,7 @@ static int efx_ef10_set_mac_address(struct efx_nic *efx)
 	efx_net_stop(efx->net_dev);
 
 	mutex_lock(&efx->mac_lock);
-	down_write(&efx->filter_sem);
-	efx_mcdi_filter_table_remove(efx);
+	efx_ef10_filter_table_remove(efx);
 
 	ether_addr_copy(MCDI_PTR(inbuf, VADAPTOR_SET_MAC_IN_MACADDR),
 			efx->net_dev->dev_addr);
@@ -3328,7 +3315,6 @@ static int efx_ef10_set_mac_address(struct efx_nic *efx)
 				sizeof(inbuf), NULL, 0, NULL);
 
 	efx_ef10_filter_table_probe(efx);
-	up_write(&efx->filter_sem);
 	mutex_unlock(&efx->mac_lock);
 
 	if (was_enabled)
@@ -3885,7 +3871,7 @@ static int efx_ef10_udp_tnl_set_port(struct net_device *dev,
 				     unsigned int table, unsigned int entry,
 				     struct udp_tunnel_info *ti)
 {
-	struct efx_nic *efx = netdev_priv(dev);
+	struct efx_nic *efx = efx_netdev_priv(dev);
 	struct efx_ef10_nic_data *nic_data;
 	int efx_tunnel_type, rc;
 
@@ -3945,7 +3931,7 @@ static int efx_ef10_udp_tnl_unset_port(struct net_device *dev,
 				       unsigned int table, unsigned int entry,
 				       struct udp_tunnel_info *ti)
 {
-	struct efx_nic *efx = netdev_priv(dev);
+	struct efx_nic *efx = efx_netdev_priv(dev);
 	struct efx_ef10_nic_data *nic_data;
 	int rc;
 
@@ -4006,15 +3992,36 @@ static unsigned int ef10_check_caps(const struct efx_nic *efx,
 	}
 }
 
+static unsigned int efx_ef10_recycle_ring_size(const struct efx_nic *efx)
+{
+	unsigned int ret = EFX_RECYCLE_RING_SIZE_10G;
+
+	/* There is no difference between PFs and VFs. The side is based on
+	 * the maximum link speed of a given NIC.
+	 */
+	switch (efx->pci_dev->device & 0xfff) {
+	case 0x0903:	/* Farmingdale can do up to 10G */
+		break;
+	case 0x0923:	/* Greenport can do up to 40G */
+	case 0x0a03:	/* Medford can do up to 40G */
+		ret *= 4;
+		break;
+	default:	/* Medford2 can do up to 100G */
+		ret *= 10;
+	}
+
+	if (IS_ENABLED(CONFIG_PPC64))
+		ret *= 4;
+
+	return ret;
+}
+
 #define EF10_OFFLOAD_FEATURES		\
 	(NETIF_F_IP_CSUM |		\
 	 NETIF_F_HW_VLAN_CTAG_FILTER |	\
 	 NETIF_F_IPV6_CSUM |		\
 	 NETIF_F_RXHASH |		\
-	 NETIF_F_NTUPLE |		\
-	 NETIF_F_SG |			\
-	 NETIF_F_RXCSUM |		\
-	 NETIF_F_RXALL)
+	 NETIF_F_NTUPLE)
 
 const struct efx_nic_type efx_hunt_a0_vf_nic_type = {
 	.is_vf = true,
@@ -4079,7 +4086,7 @@ const struct efx_nic_type efx_hunt_a0_vf_nic_type = {
 	.ev_test_generate = efx_ef10_ev_test_generate,
 	.filter_table_probe = efx_ef10_filter_table_probe,
 	.filter_table_restore = efx_mcdi_filter_table_restore,
-	.filter_table_remove = efx_mcdi_filter_table_remove,
+	.filter_table_remove = efx_ef10_filter_table_remove,
 	.filter_update_rx_scatter = efx_mcdi_update_rx_scatter,
 	.filter_insert = efx_mcdi_filter_insert,
 	.filter_remove_safe = efx_mcdi_filter_remove_safe,
@@ -4125,6 +4132,7 @@ const struct efx_nic_type efx_hunt_a0_vf_nic_type = {
 	.check_caps = ef10_check_caps,
 	.print_additional_fwver = efx_ef10_print_additional_fwver,
 	.sensor_event = efx_mcdi_sensor_event,
+	.rx_recycle_ring_size = efx_ef10_recycle_ring_size,
 };
 
 const struct efx_nic_type efx_hunt_a0_nic_type = {
@@ -4195,7 +4203,7 @@ const struct efx_nic_type efx_hunt_a0_nic_type = {
 	.ev_test_generate = efx_ef10_ev_test_generate,
 	.filter_table_probe = efx_ef10_filter_table_probe,
 	.filter_table_restore = efx_mcdi_filter_table_restore,
-	.filter_table_remove = efx_mcdi_filter_table_remove,
+	.filter_table_remove = efx_ef10_filter_table_remove,
 	.filter_update_rx_scatter = efx_mcdi_update_rx_scatter,
 	.filter_insert = efx_mcdi_filter_insert,
 	.filter_remove_safe = efx_mcdi_filter_remove_safe,
@@ -4262,4 +4270,5 @@ const struct efx_nic_type efx_hunt_a0_nic_type = {
 	.check_caps = ef10_check_caps,
 	.print_additional_fwver = efx_ef10_print_additional_fwver,
 	.sensor_event = efx_mcdi_sensor_event,
+	.rx_recycle_ring_size = efx_ef10_recycle_ring_size,
 };

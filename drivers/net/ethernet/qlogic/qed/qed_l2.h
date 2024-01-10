@@ -146,7 +146,6 @@ struct qed_sp_vport_start_params {
 int qed_sp_eth_vport_start(struct qed_hwfn *p_hwfn,
 			   struct qed_sp_vport_start_params *p_params);
 
-
 struct qed_filter_accept_flags {
 	u8	update_rx_mode_config;
 	u8	update_tx_mode_config;
@@ -250,31 +249,7 @@ qed_sp_eth_rx_queues_update(struct qed_hwfn *p_hwfn,
 			    enum spq_mode comp_mode,
 			    struct qed_spq_comp_cb *p_comp_data);
 
-/**
- * qed_get_vport_stats(): Fills provided statistics
- *			  struct with statistics.
- *
- * @cdev: Qed dev pointer.
- * @stats: Points to struct that will be filled with statistics.
- *
- * Return: Void.
- */
 void qed_get_vport_stats(struct qed_dev *cdev, struct qed_eth_stats *stats);
-
-/**
- * qed_get_vport_stats_context(): Fills provided statistics
- *				  struct with statistics.
- *
- * @cdev: Qed dev pointer.
- * @stats: Points to struct that will be filled with statistics.
- * @is_atomic: Hint from the caller - if the func can sleep or not.
- *
- * Context: The function should not sleep in case is_atomic == true.
- * Return: Void.
- */
-void qed_get_vport_stats_context(struct qed_dev *cdev,
-				 struct qed_eth_stats *stats,
-				 bool is_atomic);
 
 void qed_reset_vport_stats(struct qed_dev *cdev);
 

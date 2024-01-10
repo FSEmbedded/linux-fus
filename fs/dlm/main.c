@@ -17,7 +17,10 @@
 #include "user.h"
 #include "memory.h"
 #include "config.h"
-#include "midcomms.h"
+#include "lowcomms.h"
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/dlm.h>
 
 static int __init init_dlm(void)
 {
@@ -26,8 +29,6 @@ static int __init init_dlm(void)
 	error = dlm_memory_init();
 	if (error)
 		goto out;
-
-	dlm_midcomms_init();
 
 	error = dlm_lockspace_init();
 	if (error)
@@ -65,7 +66,6 @@ static int __init init_dlm(void)
  out_lockspace:
 	dlm_lockspace_exit();
  out_mem:
-	dlm_midcomms_exit();
 	dlm_memory_exit();
  out:
 	return error;
@@ -79,7 +79,7 @@ static void __exit exit_dlm(void)
 	dlm_config_exit();
 	dlm_memory_exit();
 	dlm_lockspace_exit();
-	dlm_midcomms_exit();
+	dlm_lowcomms_exit();
 	dlm_unregister_debugfs();
 }
 

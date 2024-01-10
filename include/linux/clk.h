@@ -183,39 +183,6 @@ int clk_get_scaled_duty_cycle(struct clk *clk, unsigned int scale);
  */
 bool clk_is_match(const struct clk *p, const struct clk *q);
 
-/**
- * clk_rate_exclusive_get - get exclusivity over the rate control of a
- *                          producer
- * @clk: clock source
- *
- * This function allows drivers to get exclusive control over the rate of a
- * provider. It prevents any other consumer to execute, even indirectly,
- * opereation which could alter the rate of the provider or cause glitches
- *
- * If exlusivity is claimed more than once on clock, even by the same driver,
- * the rate effectively gets locked as exclusivity can't be preempted.
- *
- * Must not be called from within atomic context.
- *
- * Returns success (0) or negative errno.
- */
-int clk_rate_exclusive_get(struct clk *clk);
-
-/**
- * clk_rate_exclusive_put - release exclusivity over the rate control of a
- *                          producer
- * @clk: clock source
- *
- * This function allows drivers to release the exclusivity it previously got
- * from clk_rate_exclusive_get()
- *
- * The caller must balance the number of clk_rate_exclusive_get() and
- * clk_rate_exclusive_put() calls.
- *
- * Must not be called from within atomic context.
- */
-void clk_rate_exclusive_put(struct clk *clk);
-
 #else
 
 static inline int clk_notifier_register(struct clk *clk,
@@ -268,13 +235,6 @@ static inline bool clk_is_match(const struct clk *p, const struct clk *q)
 {
 	return p == q;
 }
-
-static inline int clk_rate_exclusive_get(struct clk *clk)
-{
-	return 0;
-}
-
-static inline void clk_rate_exclusive_put(struct clk *clk) {}
 
 #endif
 
@@ -483,15 +443,16 @@ int __must_check devm_clk_bulk_get_all(struct device *dev,
  * @dev: device for clock "consumer"
  * @id: clock consumer ID
  *
- * Returns a struct clk corresponding to the clock producer, or
+ * Context: May sleep.
+ *
+ * Return: a struct clk corresponding to the clock producer, or
  * valid IS_ERR() condition containing errno.  The implementation
  * uses @dev and @id to determine the clock consumer, and thereby
  * the clock producer.  (IOW, @id may be identical strings, but
  * clk_get may return different clock producers depending on @dev.)
  *
- * Drivers must assume that the clock source is not enabled.
- *
- * devm_clk_get should not be called from within interrupt context.
+ * Drivers must assume that the clock source is neither prepared nor
+ * enabled.
  *
  * The clock will automatically be freed when the device is unbound
  * from the bus.
@@ -545,8 +506,20 @@ struct clk *devm_clk_get_enabled(struct device *dev, const char *id);
  * @dev: device for clock "consumer"
  * @id: clock consumer ID
  *
- * Behaves the same as devm_clk_get() except where there is no clock producer.
- * In this case, instead of returning -ENOENT, the function returns NULL.
+ * Context: May sleep.
+ *
+ * Return: a struct clk corresponding to the clock producer, or
+ * valid IS_ERR() condition containing errno.  The implementation
+ * uses @dev and @id to determine the clock consumer, and thereby
+ * the clock producer.  If no such clk is found, it returns NULL
+ * which serves as a dummy clk.  That's the only difference compared
+ * to devm_clk_get().
+ *
+ * Drivers must assume that the clock source is neither prepared nor
+ * enabled.
+ *
+ * The clock will automatically be freed when the device is unbound
+ * from the bus.
  */
 struct clk *devm_clk_get_optional(struct device *dev, const char *id);
 
@@ -610,6 +583,38 @@ struct clk *devm_clk_get_optional_enabled(struct device *dev, const char *id);
  */
 struct clk *devm_get_clk_from_child(struct device *dev,
 				    struct device_node *np, const char *con_id);
+/**
+ * clk_rate_exclusive_get - get exclusivity over the rate control of a
+ *                          producer
+ * @clk: clock source
+ *
+ * This function allows drivers to get exclusive control over the rate of a
+ * provider. It prevents any other consumer to execute, even indirectly,
+ * opereation which could alter the rate of the provider or cause glitches
+ *
+ * If exlusivity is claimed more than once on clock, even by the same driver,
+ * the rate effectively gets locked as exclusivity can't be preempted.
+ *
+ * Must not be called from within atomic context.
+ *
+ * Returns success (0) or negative errno.
+ */
+int clk_rate_exclusive_get(struct clk *clk);
+
+/**
+ * clk_rate_exclusive_put - release exclusivity over the rate control of a
+ *                          producer
+ * @clk: clock source
+ *
+ * This function allows drivers to release the exclusivity it previously got
+ * from clk_rate_exclusive_get()
+ *
+ * The caller must balance the number of clk_rate_exclusive_get() and
+ * clk_rate_exclusive_put() calls.
+ *
+ * Must not be called from within atomic context.
+ */
+void clk_rate_exclusive_put(struct clk *clk);
 
 /**
  * clk_enable - inform the system when the clock source should be running.
@@ -794,7 +799,7 @@ int clk_set_rate_exclusive(struct clk *clk, unsigned long rate);
  *
  * Returns true if @parent is a possible parent for @clk, false otherwise.
  */
-bool clk_has_parent(struct clk *clk, struct clk *parent);
+bool clk_has_parent(const struct clk *clk, const struct clk *parent);
 
 /**
  * clk_set_rate_range - set a rate range for a clock source
@@ -969,6 +974,14 @@ static inline void clk_bulk_put_all(int num_clks, struct clk_bulk_data *clks) {}
 
 static inline void devm_clk_put(struct device *dev, struct clk *clk) {}
 
+
+static inline int clk_rate_exclusive_get(struct clk *clk)
+{
+	return 0;
+}
+
+static inline void clk_rate_exclusive_put(struct clk *clk) {}
+
 static inline int clk_enable(struct clk *clk)
 {
 	return 0;
@@ -1093,6 +1106,17 @@ static inline void clk_bulk_disable_unprepare(int num_clks,
 {
 	clk_bulk_disable(num_clks, clks);
 	clk_bulk_unprepare(num_clks, clks);
+}
+
+/**
+ * clk_drop_range - Reset any range set on that clock
+ * @clk: clock source
+ *
+ * Returns success (0) or negative errno.
+ */
+static inline int clk_drop_range(struct clk *clk)
+{
+	return clk_set_rate_range(clk, 0, ULONG_MAX);
 }
 
 /**

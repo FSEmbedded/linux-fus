@@ -32,7 +32,7 @@
 #include <linux/bug.h>
 #include <linux/ratelimit.h>
 #include <linux/debugfs.h>
-#include <linux/sysfs.h>
+#include <trace/events/error_report.h>
 #include <asm/sections.h>
 
 #define PANIC_TIMER_STEP 100
@@ -50,7 +50,7 @@ static unsigned int __read_mostly sysctl_oops_all_cpu_backtrace;
 
 int panic_on_oops = CONFIG_PANIC_ON_OOPS_VALUE;
 static unsigned long tainted_mask =
-	IS_ENABLED(CONFIG_GCC_PLUGIN_RANDSTRUCT) ? (1 << TAINT_RANDSTRUCT) : 0;
+	IS_ENABLED(CONFIG_RANDSTRUCT) ? (1 << TAINT_RANDSTRUCT) : 0;
 static int pause_on_oops;
 static int pause_on_oops_flag;
 static DEFINE_SPINLOCK(pause_on_oops_lock);
@@ -58,7 +58,6 @@ bool crash_kexec_post_notifiers;
 int panic_on_warn __read_mostly;
 unsigned long panic_on_taint;
 bool panic_on_taint_nousertaint = false;
-static unsigned int warn_limit __read_mostly;
 
 int panic_timeout = CONFIG_PANIC_TIMEOUT;
 EXPORT_SYMBOL_GPL(panic_timeout);
@@ -69,15 +68,15 @@ EXPORT_SYMBOL_GPL(panic_timeout);
 #define PANIC_PRINT_LOCK_INFO		0x00000008
 #define PANIC_PRINT_FTRACE_INFO		0x00000010
 #define PANIC_PRINT_ALL_PRINTK_MSG	0x00000020
+#define PANIC_PRINT_ALL_CPU_BT		0x00000040
 unsigned long panic_print;
 
 ATOMIC_NOTIFIER_HEAD(panic_notifier_list);
 
 EXPORT_SYMBOL(panic_notifier_list);
 
-#ifdef CONFIG_SYSCTL
+#if defined(CONFIG_SMP) && defined(CONFIG_SYSCTL)
 static struct ctl_table kern_panic_table[] = {
-#ifdef CONFIG_SMP
 	{
 		.procname       = "oops_all_cpu_backtrace",
 		.data           = &sysctl_oops_all_cpu_backtrace,
@@ -86,14 +85,6 @@ static struct ctl_table kern_panic_table[] = {
 		.proc_handler   = proc_dointvec_minmax,
 		.extra1         = SYSCTL_ZERO,
 		.extra2         = SYSCTL_ONE,
-	},
-#endif
-	{
-		.procname       = "warn_limit",
-		.data           = &warn_limit,
-		.maxlen         = sizeof(warn_limit),
-		.mode           = 0644,
-		.proc_handler   = proc_douintvec,
 	},
 	{ }
 };
@@ -104,25 +95,6 @@ static __init int kernel_panic_sysctls_init(void)
 	return 0;
 }
 late_initcall(kernel_panic_sysctls_init);
-#endif
-
-static atomic_t warn_count = ATOMIC_INIT(0);
-
-#ifdef CONFIG_SYSFS
-static ssize_t warn_count_show(struct kobject *kobj, struct kobj_attribute *attr,
-			       char *page)
-{
-	return sysfs_emit(page, "%d\n", atomic_read(&warn_count));
-}
-
-static struct kobj_attribute warn_count_attr = __ATTR_RO(warn_count);
-
-static __init int kernel_panic_sysfs_init(void)
-{
-	sysfs_add_file_to_group(kernel_kobj, &warn_count_attr.attr, NULL);
-	return 0;
-}
-late_initcall(kernel_panic_sysfs_init);
 #endif
 
 static long no_blink(int state)
@@ -200,10 +172,16 @@ void nmi_panic(struct pt_regs *regs, const char *msg)
 }
 EXPORT_SYMBOL(nmi_panic);
 
-static void panic_print_sys_info(void)
+static void panic_print_sys_info(bool console_flush)
 {
-	if (panic_print & PANIC_PRINT_ALL_PRINTK_MSG)
-		console_flush_on_panic(CONSOLE_REPLAY_ALL);
+	if (console_flush) {
+		if (panic_print & PANIC_PRINT_ALL_PRINTK_MSG)
+			console_flush_on_panic(CONSOLE_REPLAY_ALL);
+		return;
+	}
+
+	if (panic_print & PANIC_PRINT_ALL_CPU_BT)
+		trigger_all_cpu_backtrace();
 
 	if (panic_print & PANIC_PRINT_TASK_INFO)
 		show_state();
@@ -219,19 +197,6 @@ static void panic_print_sys_info(void)
 
 	if (panic_print & PANIC_PRINT_FTRACE_INFO)
 		ftrace_dump(DUMP_ALL);
-}
-
-void check_panic_on_warn(const char *origin)
-{
-	unsigned int limit;
-
-	if (panic_on_warn)
-		panic("%s: panic_on_warn set ...\n", origin);
-
-	limit = READ_ONCE(warn_limit);
-	if (atomic_inc_return(&warn_count) >= limit && limit)
-		panic("%s: system warned too often (kernel.warn_limit is %d)",
-		      origin, limit);
 }
 
 /**
@@ -348,6 +313,8 @@ void panic(const char *fmt, ...)
 	 */
 	atomic_notifier_call_chain(&panic_notifier_list, 0, buf);
 
+	panic_print_sys_info(false);
+
 	kmsg_dump(KMSG_DUMP_PANIC);
 
 	/*
@@ -362,9 +329,6 @@ void panic(const char *fmt, ...)
 	if (_crash_kexec_post_notifiers)
 		__crash_kexec(NULL);
 
-#ifdef CONFIG_VT
-	unblank_screen();
-#endif
 	console_unblank();
 
 	/*
@@ -378,7 +342,7 @@ void panic(const char *fmt, ...)
 	debug_locks_off();
 	console_flush_on_panic(CONSOLE_FLUSH_PENDING);
 
-	panic_print_sys_info();
+	panic_print_sys_info(true);
 
 	if (!panic_blink)
 		panic_blink = no_blink;
@@ -461,6 +425,7 @@ const struct taint_flag taint_flags[TAINT_FLAGS_COUNT] = {
 	[ TAINT_LIVEPATCH ]		= { 'K', ' ', true },
 	[ TAINT_AUX ]			= { 'X', ' ', true },
 	[ TAINT_RANDSTRUCT ]		= { 'T', ' ', true },
+	[ TAINT_TEST ]			= { 'N', ' ', true },
 };
 
 /**
@@ -610,26 +575,9 @@ void oops_enter(void)
 		trigger_all_cpu_backtrace();
 }
 
-/*
- * 64-bit random ID for oopses:
- */
-static u64 oops_id;
-
-static int init_oops_id(void)
-{
-	if (!oops_id)
-		get_random_bytes(&oops_id, sizeof(oops_id));
-	else
-		oops_id++;
-
-	return 0;
-}
-late_initcall(init_oops_id);
-
 static void print_oops_end_marker(void)
 {
-	init_oops_id();
-	pr_warn("---[ end trace %016llx ]---\n", (unsigned long long)oops_id);
+	pr_warn("---[ end trace %016llx ]---\n", 0ULL);
 }
 
 /*
@@ -669,7 +617,8 @@ void __warn(const char *file, int line, void *caller, unsigned taint,
 	if (regs)
 		show_regs(regs);
 
-	check_panic_on_warn("kernel");
+	if (panic_on_warn)
+		panic("panic_on_warn set ...\n");
 
 	if (!regs)
 		dump_stack();
@@ -677,6 +626,7 @@ void __warn(const char *file, int line, void *caller, unsigned taint,
 	print_irqtrace_events(current);
 
 	print_oops_end_marker();
+	trace_error_report_end(ERROR_DETECTOR_WARN, (unsigned long)caller);
 
 	/* Just a warning, don't kill lockdep. */
 	add_taint(taint, LOCKDEP_STILL_OK);

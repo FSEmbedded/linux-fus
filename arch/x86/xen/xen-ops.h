@@ -76,9 +76,7 @@ irqreturn_t xen_debug_interrupt(int irq, void *dev_id);
 
 bool xen_vcpu_stolen(int vcpu);
 
-extern int xen_have_vcpu_info_placement;
-
-int xen_vcpu_setup(int cpu);
+void xen_vcpu_setup(int cpu);
 void xen_vcpu_info_reset(int cpu);
 void xen_setup_vcpu_info_placement(void);
 
@@ -110,12 +108,11 @@ static inline void xen_uninit_lock_cpu(int cpu)
 
 struct dom0_vga_console_info;
 
-#ifdef CONFIG_XEN_DOM0
-void __init xen_init_vga(const struct dom0_vga_console_info *, size_t size,
-			 struct screen_info *);
+#ifdef CONFIG_XEN_PV_DOM0
+void __init xen_init_vga(const struct dom0_vga_console_info *, size_t size);
 #else
 static inline void __init xen_init_vga(const struct dom0_vga_console_info *info,
-				       size_t size, struct screen_info *si)
+				       size_t size)
 {
 }
 #endif

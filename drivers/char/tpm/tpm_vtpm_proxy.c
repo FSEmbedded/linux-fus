@@ -91,7 +91,7 @@ static ssize_t vtpm_proxy_fops_read(struct file *filp, char __user *buf,
 
 	len = proxy_dev->req_len;
 
-	if (count < len) {
+	if (count < len || len > sizeof(proxy_dev->buffer)) {
 		mutex_unlock(&proxy_dev->buf_lock);
 		pr_debug("Invalid size in recv: count=%zd, req_len=%zd\n",
 			 count, len);
@@ -683,21 +683,37 @@ static struct miscdevice vtpmx_miscdev = {
 	.fops = &vtpmx_fops,
 };
 
+static int vtpmx_init(void)
+{
+	return misc_register(&vtpmx_miscdev);
+}
+
+static void vtpmx_cleanup(void)
+{
+	misc_deregister(&vtpmx_miscdev);
+}
+
 static int __init vtpm_module_init(void)
 {
 	int rc;
 
+	rc = vtpmx_init();
+	if (rc) {
+		pr_err("couldn't create vtpmx device\n");
+		return rc;
+	}
+
 	workqueue = create_workqueue("tpm-vtpm");
 	if (!workqueue) {
 		pr_err("couldn't create workqueue\n");
-		return -ENOMEM;
+		rc = -ENOMEM;
+		goto err_vtpmx_cleanup;
 	}
 
-	rc = misc_register(&vtpmx_miscdev);
-	if (rc) {
-		pr_err("couldn't create vtpmx device\n");
-		destroy_workqueue(workqueue);
-	}
+	return 0;
+
+err_vtpmx_cleanup:
+	vtpmx_cleanup();
 
 	return rc;
 }
@@ -705,7 +721,7 @@ static int __init vtpm_module_init(void)
 static void __exit vtpm_module_exit(void)
 {
 	destroy_workqueue(workqueue);
-	misc_deregister(&vtpmx_miscdev);
+	vtpmx_cleanup();
 }
 
 module_init(vtpm_module_init);

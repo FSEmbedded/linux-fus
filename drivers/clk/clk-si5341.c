@@ -655,7 +655,7 @@ static unsigned long si5341_synth_clk_recalc_rate(struct clk_hw *hw,
 	f = synth->data->freq_vco;
 	f *= n_den >> 4;
 
-	/* Now we need to to 64-bit division: f/n_num */
+	/* Now we need to do 64-bit division: f/n_num */
 	/* And compensate for the 4 bits we dropped */
 	f = div64_u64(f, (n_num >> 4));
 
@@ -1470,7 +1470,7 @@ static ssize_t input_present_show(struct device *dev,
 	if (res < 0)
 		return res;
 	res = !(status & SI5341_STATUS_LOSREF);
-	return snprintf(buf, PAGE_SIZE, "%d\n", res);
+	return sysfs_emit(buf, "%d\n", res);
 }
 static DEVICE_ATTR_RO(input_present);
 
@@ -1485,7 +1485,7 @@ static ssize_t input_present_sticky_show(struct device *dev,
 	if (res < 0)
 		return res;
 	res = !(status & SI5341_STATUS_LOSREF);
-	return snprintf(buf, PAGE_SIZE, "%d\n", res);
+	return sysfs_emit(buf, "%d\n", res);
 }
 static DEVICE_ATTR_RO(input_present_sticky);
 
@@ -1500,7 +1500,7 @@ static ssize_t pll_locked_show(struct device *dev,
 	if (res < 0)
 		return res;
 	res = !(status & SI5341_STATUS_LOL);
-	return snprintf(buf, PAGE_SIZE, "%d\n", res);
+	return sysfs_emit(buf, "%d\n", res);
 }
 static DEVICE_ATTR_RO(pll_locked);
 
@@ -1515,7 +1515,7 @@ static ssize_t pll_locked_sticky_show(struct device *dev,
 	if (res < 0)
 		return res;
 	res = !(status & SI5341_STATUS_LOL);
-	return snprintf(buf, PAGE_SIZE, "%d\n", res);
+	return sysfs_emit(buf, "%d\n", res);
 }
 static DEVICE_ATTR_RO(pll_locked_sticky);
 
@@ -1547,14 +1547,13 @@ static const struct attribute *si5341_attributes[] = {
 	NULL
 };
 
-static int si5341_probe(struct i2c_client *client,
-		const struct i2c_device_id *id)
+static int si5341_probe(struct i2c_client *client)
 {
 	struct clk_si5341 *data;
 	struct clk_init_data init;
 	struct clk *input;
 	const char *root_clock_name;
-	const char *synth_clock_names[SI5341_NUM_SYNTH] = { NULL };
+	const char *synth_clock_names[SI5341_NUM_SYNTH];
 	int err;
 	unsigned int i;
 	struct clk_si5341_output_config config[SI5341_MAX_NUM_OUTPUTS];
@@ -1698,10 +1697,6 @@ static int si5341_probe(struct i2c_client *client,
 	for (i = 0; i < data->num_synth; ++i) {
 		synth_clock_names[i] = devm_kasprintf(&client->dev, GFP_KERNEL,
 				"%s.N%u", client->dev.of_node->name, i);
-		if (!synth_clock_names[i]) {
-			err = -ENOMEM;
-			goto free_clk_names;
-		}
 		init.name = synth_clock_names[i];
 		data->synth[i].index = i;
 		data->synth[i].data = data;
@@ -1710,7 +1705,6 @@ static int si5341_probe(struct i2c_client *client,
 		if (err) {
 			dev_err(&client->dev,
 				"synth N%u registration failed\n", i);
-			goto free_clk_names;
 		}
 	}
 
@@ -1720,10 +1714,6 @@ static int si5341_probe(struct i2c_client *client,
 	for (i = 0; i < data->num_outputs; ++i) {
 		init.name = kasprintf(GFP_KERNEL, "%s.%d",
 			client->dev.of_node->name, i);
-		if (!init.name) {
-			err = -ENOMEM;
-			goto free_clk_names;
-		}
 		init.flags = config[i].synth_master ? CLK_SET_RATE_PARENT : 0;
 		data->clk[i].index = i;
 		data->clk[i].data = data;
@@ -1745,7 +1735,7 @@ static int si5341_probe(struct i2c_client *client,
 		if (err) {
 			dev_err(&client->dev,
 				"output %u registration failed\n", i);
-			goto free_clk_names;
+			goto cleanup;
 		}
 		if (config[i].always_on)
 			clk_prepare(data->clk[i].hw.clk);
@@ -1755,7 +1745,7 @@ static int si5341_probe(struct i2c_client *client,
 			data);
 	if (err) {
 		dev_err(&client->dev, "unable to add clk provider\n");
-		goto free_clk_names;
+		goto cleanup;
 	}
 
 	if (initialization_required) {
@@ -1763,11 +1753,11 @@ static int si5341_probe(struct i2c_client *client,
 		regcache_cache_only(data->regmap, false);
 		err = regcache_sync(data->regmap);
 		if (err < 0)
-			goto free_clk_names;
+			goto cleanup;
 
 		err = si5341_finalize_defaults(data);
 		if (err < 0)
-			goto free_clk_names;
+			goto cleanup;
 	}
 
 	/* wait for device to report input clock present and PLL lock */
@@ -1776,36 +1766,37 @@ static int si5341_probe(struct i2c_client *client,
 	       10000, 250000);
 	if (err) {
 		dev_err(&client->dev, "Error waiting for input clock or PLL lock\n");
-		goto free_clk_names;
+		goto cleanup;
 	}
 
 	/* clear sticky alarm bits from initialization */
 	err = regmap_write(data->regmap, SI5341_STATUS_STICKY, 0);
 	if (err) {
 		dev_err(&client->dev, "unable to clear sticky status\n");
-		goto free_clk_names;
+		goto cleanup;
 	}
 
 	err = sysfs_create_files(&client->dev.kobj, si5341_attributes);
-	if (err)
+	if (err) {
 		dev_err(&client->dev, "unable to create sysfs files\n");
+		goto cleanup;
+	}
 
-free_clk_names:
 	/* Free the names, clk framework makes copies */
 	for (i = 0; i < data->num_synth; ++i)
 		 devm_kfree(&client->dev, (void *)synth_clock_names[i]);
 
+	return 0;
+
 cleanup:
-	if (err) {
-		for (i = 0; i < SI5341_MAX_NUM_OUTPUTS; ++i) {
-			if (data->clk[i].vddo_reg)
-				regulator_disable(data->clk[i].vddo_reg);
-		}
+	for (i = 0; i < SI5341_MAX_NUM_OUTPUTS; ++i) {
+		if (data->clk[i].vddo_reg)
+			regulator_disable(data->clk[i].vddo_reg);
 	}
 	return err;
 }
 
-static int si5341_remove(struct i2c_client *client)
+static void si5341_remove(struct i2c_client *client)
 {
 	struct clk_si5341 *data = i2c_get_clientdata(client);
 	int i;
@@ -1816,8 +1807,6 @@ static int si5341_remove(struct i2c_client *client)
 		if (data->clk[i].vddo_reg)
 			regulator_disable(data->clk[i].vddo_reg);
 	}
-
-	return 0;
 }
 
 static const struct i2c_device_id si5341_id[] = {
@@ -1845,7 +1834,7 @@ static struct i2c_driver si5341_driver = {
 		.name = "si5341",
 		.of_match_table = clk_si5341_of_match,
 	},
-	.probe		= si5341_probe,
+	.probe_new	= si5341_probe,
 	.remove		= si5341_remove,
 	.id_table	= si5341_id,
 };

@@ -358,6 +358,7 @@ static struct inode *create_whiteout(struct inode *dir, struct dentry *dentry)
 	umode_t mode = S_IFCHR | WHITEOUT_MODE;
 	struct inode *inode;
 	struct ubifs_info *c = dir->i_sb->s_fs_info;
+	struct fscrypt_name nm;
 
 	/*
 	 * Create an inode('nlink = 1') for whiteout without updating journal,
@@ -367,6 +368,10 @@ static struct inode *create_whiteout(struct inode *dir, struct dentry *dentry)
 
 	dbg_gen("dent '%pd', mode %#hx in dir ino %lu",
 		dentry, mode, dir->i_ino);
+
+	err = fscrypt_setup_filename(dir, &dentry->d_name, 0, &nm);
+	if (err)
+		return ERR_PTR(err);
 
 	inode = ubifs_new_inode(c, dir, mode, false);
 	if (IS_ERR(inode)) {
@@ -390,6 +395,7 @@ out_inode:
 	make_bad_inode(inode);
 	iput(inode);
 out_free:
+	fscrypt_free_filename(&nm);
 	ubifs_err(c, "cannot create whiteout file, error %d", err);
 	return ERR_PTR(err);
 }
@@ -421,8 +427,9 @@ static void unlock_2_inodes(struct inode *inode1, struct inode *inode2)
 }
 
 static int ubifs_tmpfile(struct user_namespace *mnt_userns, struct inode *dir,
-			 struct dentry *dentry, umode_t mode)
+			 struct file *file, umode_t mode)
 {
+	struct dentry *dentry = file->f_path.dentry;
 	struct inode *inode;
 	struct ubifs_info *c = dir->i_sb->s_fs_info;
 	struct ubifs_budget_req req = { .new_ino = 1, .new_dent = 1,
@@ -472,7 +479,7 @@ static int ubifs_tmpfile(struct user_namespace *mnt_userns, struct inode *dir,
 
 	mutex_lock(&ui->ui_mutex);
 	insert_inode_hash(inode);
-	d_tmpfile(dentry, inode);
+	d_tmpfile(file, inode);
 	ubifs_assert(c, ui->dirty);
 
 	instantiated = 1;
@@ -485,9 +492,8 @@ static int ubifs_tmpfile(struct user_namespace *mnt_userns, struct inode *dir,
 	unlock_2_inodes(dir, inode);
 
 	ubifs_release_budget(c, &req);
-	fscrypt_free_filename(&nm);
 
-	return 0;
+	return finish_open_simple(file, 0);
 
 out_cancel:
 	unlock_2_inodes(dir, inode);
@@ -870,7 +876,7 @@ out_fname:
 }
 
 /**
- * check_dir_empty - check if a directory is empty or not.
+ * ubifs_check_dir_empty - check if a directory is empty or not.
  * @dir: VFS inode object of the directory to check
  *
  * This function checks if directory @dir is empty. Returns zero if the
@@ -1145,6 +1151,7 @@ static int ubifs_symlink(struct user_namespace *mnt_userns, struct inode *dir,
 	int err, sz_change, len = strlen(symname);
 	struct fscrypt_str disk_link;
 	struct ubifs_budget_req req = { .new_ino = 1, .new_dent = 1,
+					.new_ino_d = ALIGN(len, 8),
 					.dirtied_ino = 1 };
 	struct fscrypt_name nm;
 
@@ -1160,7 +1167,6 @@ static int ubifs_symlink(struct user_namespace *mnt_userns, struct inode *dir,
 	 * Budget request settings: new inode, new direntry and changing parent
 	 * directory inode.
 	 */
-	req.new_ino_d = ALIGN(disk_link.len - 1, 8);
 	err = ubifs_budget_space(c, &req);
 	if (err)
 		return err;
@@ -1239,7 +1245,7 @@ out_budg:
  * @inode1: first inode
  * @inode2: second inode
  * @inode3: third inode
- * @inode4: fouth inode
+ * @inode4: fourth inode
  *
  * This function is used for 'ubifs_rename()' and @inode1 may be the same as
  * @inode2 whereas @inode3 and @inode4 may be %NULL.
@@ -1265,7 +1271,7 @@ static void lock_4_inodes(struct inode *inode1, struct inode *inode2,
  * @inode1: first inode
  * @inode2: second inode
  * @inode3: third inode
- * @inode4: fouth inode
+ * @inode4: fourth inode
  */
 static void unlock_4_inodes(struct inode *inode1, struct inode *inode2,
 			    struct inode *inode3, struct inode *inode4)
@@ -1318,8 +1324,6 @@ static int do_rename(struct inode *old_dir, struct dentry *old_dentry,
 	if (unlink) {
 		ubifs_assert(c, inode_is_locked(new_inode));
 
-		/* Budget for old inode's data when its nlink > 1. */
-		req.dirtied_ino_d = ALIGN(ubifs_inode(new_inode)->data_len, 8);
 		err = ubifs_purge_xattrs(new_inode);
 		if (err)
 			return err;
@@ -1572,10 +1576,6 @@ static int ubifs_xrename(struct inode *old_dir, struct dentry *old_dentry,
 		return err;
 	}
 
-	err = ubifs_budget_space(c, &req);
-	if (err)
-		goto out;
-
 	lock_4_inodes(old_dir, new_dir, NULL, NULL);
 
 	time = current_time(old_dir);
@@ -1601,7 +1601,6 @@ static int ubifs_xrename(struct inode *old_dir, struct dentry *old_dentry,
 	unlock_4_inodes(old_dir, new_dir, NULL, NULL);
 	ubifs_release_budget(c, &req);
 
-out:
 	fscrypt_free_filename(&fst_nm);
 	fscrypt_free_filename(&snd_nm);
 	return err;

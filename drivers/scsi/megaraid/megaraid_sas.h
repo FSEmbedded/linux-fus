@@ -18,11 +18,13 @@
 #ifndef LSI_MEGARAID_SAS_H
 #define LSI_MEGARAID_SAS_H
 
+#include <scsi/scsi_cmnd.h>
+
 /*
  * MegaRAID SAS Driver meta data
  */
-#define MEGASAS_VERSION				"07.717.02.00-rc1"
-#define MEGASAS_RELDATE				"May 19, 2021"
+#define MEGASAS_VERSION				"07.719.03.00-rc1"
+#define MEGASAS_RELDATE				"Sep 29, 2021"
 
 #define MEGASAS_MSIX_NAME_LEN			32
 
@@ -1517,8 +1519,6 @@ struct megasas_ctrl_info {
 #define MEGASAS_MAX_LD_IDS			(MEGASAS_MAX_LD_CHANNELS * \
 						MEGASAS_MAX_DEV_PER_CHANNEL)
 
-#define MEGASAS_MAX_SUPPORTED_LD_IDS		240
-
 #define MEGASAS_MAX_SECTORS                    (2*1024)
 #define MEGASAS_MAX_SECTORS_IEEE		(2*128)
 #define MEGASAS_DBG_LVL				1
@@ -2598,6 +2598,16 @@ struct megasas_cmd {
 		u32 frame_count;
 	};
 };
+
+struct megasas_cmd_priv {
+	void	*cmd_priv;
+	u8	status;
+};
+
+static inline struct megasas_cmd_priv *megasas_priv(struct scsi_cmnd *cmd)
+{
+	return scsi_cmd_priv(cmd);
+}
 
 #define MAX_MGMT_ADAPTERS		1024
 #define MAX_IOCTL_SGE			16

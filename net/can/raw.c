@@ -50,6 +50,7 @@
 #include <linux/skbuff.h>
 #include <linux/can.h>
 #include <linux/can/core.h>
+#include <linux/can/dev.h> /* for can_is_canxl_dev_mtu() */
 #include <linux/can/skb.h>
 #include <linux/can/raw.h>
 #include <net/sock.h>
@@ -83,11 +84,11 @@ struct raw_sock {
 	struct sock sk;
 	int bound;
 	int ifindex;
-	struct net_device *dev;
 	struct list_head notifier;
 	int loopback;
 	int recv_own_msgs;
 	int fd_frames;
+	int xl_frames;
 	int join_filters;
 	int count;                 /* number of active filters */
 	struct can_filter dfilter; /* default/single filter */
@@ -130,21 +131,21 @@ static void raw_rcv(struct sk_buff *oskb, void *data)
 	if (!ro->recv_own_msgs && oskb->sk == sk)
 		return;
 
-	/* do not pass non-CAN2.0 frames to a legacy socket */
-	if (!ro->fd_frames && oskb->len != CAN_MTU)
+	/* make sure to not pass oversized frames to the socket */
+	if ((can_is_canfd_skb(oskb) && !ro->fd_frames && !ro->xl_frames) ||
+	    (can_is_canxl_skb(oskb) && !ro->xl_frames))
 		return;
 
 	/* eliminate multiple filter matches for the same skb */
 	if (this_cpu_ptr(ro->uniq)->skb == oskb &&
 	    this_cpu_ptr(ro->uniq)->skbcnt == can_skb_prv(oskb)->skbcnt) {
-		if (ro->join_filters) {
-			this_cpu_inc(ro->uniq->join_rx_count);
-			/* drop frame until all enabled filters matched */
-			if (this_cpu_ptr(ro->uniq)->join_rx_count < ro->count)
-				return;
-		} else {
+		if (!ro->join_filters)
 			return;
-		}
+
+		this_cpu_inc(ro->uniq->join_rx_count);
+		/* drop frame until all enabled filters matched */
+		if (this_cpu_ptr(ro->uniq)->join_rx_count < ro->count)
+			return;
 	} else {
 		this_cpu_ptr(ro->uniq)->skb = oskb;
 		this_cpu_ptr(ro->uniq)->skbcnt = can_skb_prv(oskb)->skbcnt;
@@ -276,24 +277,21 @@ static void raw_notify(struct raw_sock *ro, unsigned long msg,
 	if (!net_eq(dev_net(dev), sock_net(sk)))
 		return;
 
-	if (ro->dev != dev)
+	if (ro->ifindex != dev->ifindex)
 		return;
 
 	switch (msg) {
 	case NETDEV_UNREGISTER:
 		lock_sock(sk);
 		/* remove current filters & unregister */
-		if (ro->bound) {
+		if (ro->bound)
 			raw_disable_allfilters(dev_net(dev), dev, sk);
-			dev_put(dev);
-		}
 
 		if (ro->count > 1)
 			kfree(ro->filter);
 
 		ro->ifindex = 0;
 		ro->bound = 0;
-		ro->dev = NULL;
 		ro->count = 0;
 		release_sock(sk);
 
@@ -339,7 +337,6 @@ static int raw_init(struct sock *sk)
 
 	ro->bound            = 0;
 	ro->ifindex          = 0;
-	ro->dev              = NULL;
 
 	/* set default filter to single entry dfilter */
 	ro->dfilter.can_id   = 0;
@@ -351,6 +348,7 @@ static int raw_init(struct sock *sk)
 	ro->loopback         = 1;
 	ro->recv_own_msgs    = 0;
 	ro->fd_frames        = 0;
+	ro->xl_frames        = 0;
 	ro->join_filters     = 0;
 
 	/* alloc_percpu provides zero'ed memory */
@@ -385,14 +383,18 @@ static int raw_release(struct socket *sock)
 	list_del(&ro->notifier);
 	spin_unlock(&raw_notifier_lock);
 
-	rtnl_lock();
 	lock_sock(sk);
 
 	/* remove current filters & unregister */
 	if (ro->bound) {
-		if (ro->dev) {
-			raw_disable_allfilters(dev_net(ro->dev), ro->dev, sk);
-			dev_put(ro->dev);
+		if (ro->ifindex) {
+			struct net_device *dev;
+
+			dev = dev_get_by_index(sock_net(sk), ro->ifindex);
+			if (dev) {
+				raw_disable_allfilters(dev_net(dev), dev, sk);
+				dev_put(dev);
+			}
 		} else {
 			raw_disable_allfilters(sock_net(sk), NULL, sk);
 		}
@@ -403,7 +405,6 @@ static int raw_release(struct socket *sock)
 
 	ro->ifindex = 0;
 	ro->bound = 0;
-	ro->dev = NULL;
 	ro->count = 0;
 	free_percpu(ro->uniq);
 
@@ -411,8 +412,6 @@ static int raw_release(struct socket *sock)
 	sock->sk = NULL;
 
 	release_sock(sk);
-	rtnl_unlock();
-
 	sock_put(sk);
 
 	return 0;
@@ -423,7 +422,6 @@ static int raw_bind(struct socket *sock, struct sockaddr *uaddr, int len)
 	struct sockaddr_can *addr = (struct sockaddr_can *)uaddr;
 	struct sock *sk = sock->sk;
 	struct raw_sock *ro = raw_sk(sk);
-	struct net_device *dev = NULL;
 	int ifindex;
 	int err = 0;
 	int notify_enetdown = 0;
@@ -433,23 +431,24 @@ static int raw_bind(struct socket *sock, struct sockaddr *uaddr, int len)
 	if (addr->can_family != AF_CAN)
 		return -EINVAL;
 
-	rtnl_lock();
 	lock_sock(sk);
 
 	if (ro->bound && addr->can_ifindex == ro->ifindex)
 		goto out;
 
 	if (addr->can_ifindex) {
+		struct net_device *dev;
+
 		dev = dev_get_by_index(sock_net(sk), addr->can_ifindex);
 		if (!dev) {
 			err = -ENODEV;
 			goto out;
 		}
 		if (dev->type != ARPHRD_CAN) {
+			dev_put(dev);
 			err = -ENODEV;
-			goto out_put_dev;
+			goto out;
 		}
-
 		if (!(dev->flags & IFF_UP))
 			notify_enetdown = 1;
 
@@ -457,9 +456,7 @@ static int raw_bind(struct socket *sock, struct sockaddr *uaddr, int len)
 
 		/* filters set by default/setsockopt */
 		err = raw_enable_allfilters(sock_net(sk), dev, sk);
-		if (err)
-			goto out_put_dev;
-
+		dev_put(dev);
 	} else {
 		ifindex = 0;
 
@@ -470,30 +467,26 @@ static int raw_bind(struct socket *sock, struct sockaddr *uaddr, int len)
 	if (!err) {
 		if (ro->bound) {
 			/* unregister old filters */
-			if (ro->dev) {
-				raw_disable_allfilters(dev_net(ro->dev),
-						       ro->dev, sk);
-				/* drop reference to old ro->dev */
-				dev_put(ro->dev);
+			if (ro->ifindex) {
+				struct net_device *dev;
+
+				dev = dev_get_by_index(sock_net(sk),
+						       ro->ifindex);
+				if (dev) {
+					raw_disable_allfilters(dev_net(dev),
+							       dev, sk);
+					dev_put(dev);
+				}
 			} else {
 				raw_disable_allfilters(sock_net(sk), NULL, sk);
 			}
 		}
 		ro->ifindex = ifindex;
 		ro->bound = 1;
-		/* bind() ok -> hold a reference for new ro->dev */
-		ro->dev = dev;
-		if (ro->dev)
-			dev_hold(ro->dev);
 	}
 
-out_put_dev:
-	/* remove potential reference from dev_get_by_index() */
-	if (dev)
-		dev_put(dev);
-out:
+ out:
 	release_sock(sk);
-	rtnl_unlock();
 
 	if (notify_enetdown) {
 		sk->sk_err = ENETDOWN;
@@ -559,9 +552,9 @@ static int raw_setsockopt(struct socket *sock, int level, int optname,
 		rtnl_lock();
 		lock_sock(sk);
 
-		dev = ro->dev;
-		if (ro->bound && dev) {
-			if (dev->reg_state != NETREG_REGISTERED) {
+		if (ro->bound && ro->ifindex) {
+			dev = dev_get_by_index(sock_net(sk), ro->ifindex);
+			if (!dev) {
 				if (count > 1)
 					kfree(filter);
 				err = -ENODEV;
@@ -602,6 +595,7 @@ static int raw_setsockopt(struct socket *sock, int level, int optname,
 		ro->count  = count;
 
  out_fil:
+		dev_put(dev);
 		release_sock(sk);
 		rtnl_unlock();
 
@@ -619,9 +613,9 @@ static int raw_setsockopt(struct socket *sock, int level, int optname,
 		rtnl_lock();
 		lock_sock(sk);
 
-		dev = ro->dev;
-		if (ro->bound && dev) {
-			if (dev->reg_state != NETREG_REGISTERED) {
+		if (ro->bound && ro->ifindex) {
+			dev = dev_get_by_index(sock_net(sk), ro->ifindex);
+			if (!dev) {
 				err = -ENODEV;
 				goto out_err;
 			}
@@ -645,6 +639,7 @@ static int raw_setsockopt(struct socket *sock, int level, int optname,
 		ro->err_mask = err_mask;
 
  out_err:
+		dev_put(dev);
 		release_sock(sk);
 		rtnl_unlock();
 
@@ -673,6 +668,15 @@ static int raw_setsockopt(struct socket *sock, int level, int optname,
 			return -EINVAL;
 
 		if (copy_from_sockptr(&ro->fd_frames, optval, optlen))
+			return -EFAULT;
+
+		break;
+
+	case CAN_RAW_XL_FRAMES:
+		if (optlen != sizeof(ro->xl_frames))
+			return -EINVAL;
+
+		if (copy_from_sockptr(&ro->xl_frames, optval, optlen))
 			return -EFAULT;
 
 		break;
@@ -759,6 +763,12 @@ static int raw_getsockopt(struct socket *sock, int level, int optname,
 		val = &ro->fd_frames;
 		break;
 
+	case CAN_RAW_XL_FRAMES:
+		if (len > sizeof(int))
+			len = sizeof(int);
+		val = &ro->xl_frames;
+		break;
+
 	case CAN_RAW_JOIN_FILTERS:
 		if (len > sizeof(int))
 			len = sizeof(int);
@@ -780,10 +790,15 @@ static int raw_sendmsg(struct socket *sock, struct msghdr *msg, size_t size)
 {
 	struct sock *sk = sock->sk;
 	struct raw_sock *ro = raw_sk(sk);
+	struct sockcm_cookie sockc;
 	struct sk_buff *skb;
 	struct net_device *dev;
 	int ifindex;
-	int err;
+	int err = -EINVAL;
+
+	/* check for valid CAN frame sizes */
+	if (size < CANXL_HDR_SIZE + CANXL_MIN_DLEN || size > CANXL_MTU)
+		return -EINVAL;
 
 	if (msg->msg_name) {
 		DECLARE_SOCKADDR(struct sockaddr_can *, addr, msg->msg_name);
@@ -803,15 +818,6 @@ static int raw_sendmsg(struct socket *sock, struct msghdr *msg, size_t size)
 	if (!dev)
 		return -ENXIO;
 
-	err = -EINVAL;
-	if (ro->fd_frames && dev->mtu == CANFD_MTU) {
-		if (unlikely(size != CANFD_MTU && size != CAN_MTU))
-			goto put_dev;
-	} else {
-		if (unlikely(size != CAN_MTU))
-			goto put_dev;
-	}
-
 	skb = sock_alloc_send_skb(sk, size + sizeof(struct can_skb_priv),
 				  msg->msg_flags & MSG_DONTWAIT, &err);
 	if (!skb)
@@ -821,15 +827,39 @@ static int raw_sendmsg(struct socket *sock, struct msghdr *msg, size_t size)
 	can_skb_prv(skb)->ifindex = dev->ifindex;
 	can_skb_prv(skb)->skbcnt = 0;
 
+	/* fill the skb before testing for valid CAN frames */
 	err = memcpy_from_msg(skb_put(skb, size), msg, size);
 	if (err < 0)
 		goto free_skb;
 
-	skb_setup_tx_timestamp(skb, sk->sk_tsflags);
+	err = -EINVAL;
+	if (ro->xl_frames && can_is_canxl_dev_mtu(dev->mtu)) {
+		/* CAN XL, CAN FD and Classical CAN */
+		if (!can_is_canxl_skb(skb) && !can_is_canfd_skb(skb) &&
+		    !can_is_can_skb(skb))
+			goto free_skb;
+	} else if (ro->fd_frames && dev->mtu == CANFD_MTU) {
+		/* CAN FD and Classical CAN */
+		if (!can_is_canfd_skb(skb) && !can_is_can_skb(skb))
+			goto free_skb;
+	} else {
+		/* Classical CAN */
+		if (!can_is_can_skb(skb))
+			goto free_skb;
+	}
+
+	sockcm_init(&sockc, sk);
+	if (msg->msg_controllen) {
+		err = sock_cmsg_send(sk, msg, &sockc);
+		if (unlikely(err))
+			goto free_skb;
+	}
 
 	skb->dev = dev;
-	skb->sk = sk;
 	skb->priority = sk->sk_priority;
+	skb->tstamp = sockc.transmit_time;
+
+	skb_setup_tx_timestamp(skb, sockc.tsflags);
 
 	err = can_send(skb, ro->loopback);
 
@@ -854,16 +884,12 @@ static int raw_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 	struct sock *sk = sock->sk;
 	struct sk_buff *skb;
 	int err = 0;
-	int noblock;
-
-	noblock = flags & MSG_DONTWAIT;
-	flags &= ~MSG_DONTWAIT;
 
 	if (flags & MSG_ERRQUEUE)
 		return sock_recv_errqueue(sk, msg, size,
 					  SOL_CAN_RAW, SCM_CAN_RAW_ERRQUEUE);
 
-	skb = skb_recv_datagram(sk, flags, noblock, &err);
+	skb = skb_recv_datagram(sk, flags, &err);
 	if (!skb)
 		return err;
 
@@ -878,7 +904,7 @@ static int raw_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 		return err;
 	}
 
-	sock_recv_ts_and_drops(msg, sk, skb);
+	sock_recv_cmsgs(msg, sk, skb);
 
 	if (msg->msg_name) {
 		__sockaddr_check_size(RAW_MIN_NAMELEN);
@@ -946,12 +972,20 @@ static __init int raw_module_init(void)
 
 	pr_info("can: raw protocol\n");
 
-	err = can_proto_register(&raw_can_proto);
-	if (err < 0)
-		pr_err("can: registration of raw protocol failed\n");
-	else
-		register_netdevice_notifier(&canraw_notifier);
+	err = register_netdevice_notifier(&canraw_notifier);
+	if (err)
+		return err;
 
+	err = can_proto_register(&raw_can_proto);
+	if (err < 0) {
+		pr_err("can: registration of raw protocol failed\n");
+		goto register_proto_failed;
+	}
+
+	return 0;
+
+register_proto_failed:
+	unregister_netdevice_notifier(&canraw_notifier);
 	return err;
 }
 

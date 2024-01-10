@@ -77,6 +77,7 @@ struct dst_entry {
 #ifndef CONFIG_64BIT
 	atomic_t		__refcnt;	/* 32-bit offset 64 */
 #endif
+	netdevice_tracker	dev_tracker;
 };
 
 struct dst_metrics {
@@ -355,8 +356,9 @@ static inline void __skb_tunnel_rx(struct sk_buff *skb, struct net_device *dev,
 static inline void skb_tunnel_rx(struct sk_buff *skb, struct net_device *dev,
 				 struct net *net)
 {
-	DEV_STATS_INC(dev, rx_packets);
-	DEV_STATS_ADD(dev, rx_bytes, skb->len);
+	/* TODO : stats should be SMP safe */
+	dev->stats.rx_packets++;
+	dev->stats.rx_bytes += skb->len;
 	__skb_tunnel_rx(skb, dev, net);
 }
 

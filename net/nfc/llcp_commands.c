@@ -337,8 +337,6 @@ int nfc_llcp_send_disconnect(struct nfc_llcp_sock *sock)
 	struct nfc_dev *dev;
 	struct nfc_llcp_local *local;
 
-	pr_debug("Sending DISC\n");
-
 	local = sock->local;
 	if (local == NULL)
 		return -ENODEV;
@@ -361,9 +359,6 @@ int nfc_llcp_send_symm(struct nfc_dev *dev)
 	struct sk_buff *skb;
 	struct nfc_llcp_local *local;
 	u16 size = 0;
-	int err;
-
-	pr_debug("Sending SYMM\n");
 
 	local = nfc_llcp_find_local(dev);
 	if (local == NULL)
@@ -373,10 +368,8 @@ int nfc_llcp_send_symm(struct nfc_dev *dev)
 	size += dev->tx_headroom + dev->tx_tailroom + NFC_HEADER_SIZE;
 
 	skb = alloc_skb(size, GFP_KERNEL);
-	if (skb == NULL) {
-		err = -ENOMEM;
-		goto out;
-	}
+	if (skb == NULL)
+		return -ENOMEM;
 
 	skb_reserve(skb, dev->tx_headroom + NFC_HEADER_SIZE);
 
@@ -386,11 +379,8 @@ int nfc_llcp_send_symm(struct nfc_dev *dev)
 
 	nfc_llcp_send_to_raw_sock(local, skb, NFC_DIRECTION_TX);
 
-	err = nfc_data_exchange(dev, local->target_idx, skb,
+	return nfc_data_exchange(dev, local->target_idx, skb,
 				 nfc_llcp_recv, local);
-out:
-	nfc_llcp_local_put(local);
-	return err;
 }
 
 int nfc_llcp_send_connect(struct nfc_llcp_sock *sock)
@@ -400,13 +390,10 @@ int nfc_llcp_send_connect(struct nfc_llcp_sock *sock)
 	const u8 *service_name_tlv = NULL;
 	const u8 *miux_tlv = NULL;
 	const u8 *rw_tlv = NULL;
-	u8 service_name_tlv_length = 0;
-	u8 miux_tlv_length,  rw_tlv_length, rw;
+	u8 service_name_tlv_length, miux_tlv_length,  rw_tlv_length, rw;
 	int err;
 	u16 size = 0;
 	__be16 miux;
-
-	pr_debug("Sending CONNECT\n");
 
 	local = sock->local;
 	if (local == NULL)
@@ -481,8 +468,6 @@ int nfc_llcp_send_cc(struct nfc_llcp_sock *sock)
 	int err;
 	u16 size = 0;
 	__be16 miux;
-
-	pr_debug("Sending CC\n");
 
 	local = sock->local;
 	if (local == NULL)
