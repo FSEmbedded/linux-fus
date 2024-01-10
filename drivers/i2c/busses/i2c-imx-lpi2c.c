@@ -735,6 +735,51 @@ static int lpi2c_imx_xfer(struct i2c_adapter *adapter,
 		if (num == 1 && msgs[0].len == 0)
 			goto stop;
 
+		if (is_use_dma(lpi2c_imx, &msgs[i])) {
+			lpi2c_imx->using_dma = true;
+
+			writel(0x1, lpi2c_imx->base + LPI2C_MFCR);
+
+			lpi2c_imx->dma_buf = i2c_get_dma_safe_msg_buf(&msgs[i],
+							    I2C_DMA_THRESHOLD);
+			if (lpi2c_imx->dma_buf) {
+				/* Enable I2C DMA function */
+				writel(MDER_TDDE | MDER_RDDE, lpi2c_imx->base + LPI2C_MDER);
+
+				result = lpi2c_dma_xfer(lpi2c_imx, &msgs[i]);
+
+				/* Disable I2C DMA function */
+				writel(0, lpi2c_imx->base + LPI2C_MDER);
+				i2c_put_dma_safe_msg_buf(lpi2c_imx->dma_buf,
+							 lpi2c_imx->msg,
+							 lpi2c_imx->xferred);
+
+				switch (result) {
+				/* transfer success */
+				case 0:
+					if (!(msgs[i].flags & I2C_M_RD)) {
+						result = lpi2c_imx_txfifo_empty(lpi2c_imx);
+						if (result)
+							goto stop;
+					}
+					continue;
+				/* transfer failed, use pio */
+				case I2C_USE_PIO:
+					lpi2c_cleanup_dma(lpi2c_imx);
+					break;
+				/*
+				 * transfer failed, cannot use pio.
+				 * Send stop, and then return error.
+				 */
+				default:
+					lpi2c_cleanup_dma(lpi2c_imx);
+					writel(GEN_STOP << 8, lpi2c_imx->base + LPI2C_MTDR);
+					goto check_ndf;
+				}
+			}
+		}
+
+		lpi2c_imx->using_dma = false;
 		lpi2c_imx->rx_buf = NULL;
 		lpi2c_imx->tx_buf = NULL;
 		lpi2c_imx->delivered = 0;
