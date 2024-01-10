@@ -121,6 +121,39 @@ static int tmu_get_temp(struct thermal_zone_device *tz, int *temp)
 	return tmu->socdata->get_temp(sensor, temp);
 }
 
+static int tmu_get_trend(struct thermal_zone_device *tz, int trip,
+			 enum thermal_trend *trend)
+{
+	struct tmu_sensor *sensor = tz->devdata;
+	int trip_temp;
+
+	if (!sensor->tzd)
+		return 0;
+
+	trip_temp = (trip == IMX_TRIP_PASSIVE) ? sensor->temp_passive : sensor->temp_critical;
+
+	if (sensor->tzd->temperature >= (trip_temp - IMX_TEMP_PASSIVE_COOL_DELTA))
+		*trend = THERMAL_TREND_RAISING;
+	else
+		*trend = THERMAL_TREND_DROPPING;
+
+	return 0;
+}
+
+static int tmu_set_trip_temp(struct thermal_zone_device *tz, int trip, int temp)
+
+{
+	struct tmu_sensor *sensor = tz->devdata;
+
+	if (trip == IMX_TRIP_CRITICAL)
+		sensor->temp_critical = temp;
+
+	if (trip == IMX_TRIP_PASSIVE)
+		sensor->temp_passive = temp;
+
+	return 0;
+}
+
 static const struct thermal_zone_device_ops tmu_tz_ops = {
 	.get_temp = tmu_get_temp,
 	.get_trend = tmu_get_trend,

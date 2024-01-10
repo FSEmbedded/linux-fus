@@ -250,6 +250,18 @@ extern int __put_user_8(void *, unsigned long long);
 
 #else /* CONFIG_MMU */
 
+/*
+ * uClinux has only one addr space, so has simplified address limits.
+ */
+#define USER_DS			KERNEL_DS
+
+#define uaccess_kernel()	(true)
+#define get_fs()		(KERNEL_DS)
+
+static inline void set_fs(mm_segment_t fs)
+{
+}
+
 #define get_user(x, p)	__get_user(x, p)
 #define __put_user_check __put_user_nocheck
 

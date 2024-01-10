@@ -1209,7 +1209,7 @@ static int dsa_port_host_mdb_add(const struct dsa_port *dp,
 	if (!dp->ds->fdb_isolation)
 		info.db.bridge.num = 0;
 
-	return dsa_port_host_mdb_add(dp, mdb, db);
+	return dsa_port_notify(dp, DSA_NOTIFIER_HOST_MDB_ADD, &info);
 }
 
 int dsa_port_standalone_host_mdb_add(const struct dsa_port *dp,

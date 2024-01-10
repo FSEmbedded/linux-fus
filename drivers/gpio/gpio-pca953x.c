@@ -309,7 +309,7 @@ static bool pcal6534_check_register(struct pca953x_chip *chip, unsigned int reg,
 	int bank;
 	int offset;
 
-	if (reg >= 0x30) {
+	if (reg >= 0x30 && reg < 0x54) {
 		/*
 		 * Reserved block between 14h and 2Fh does not align on
 		 * expected bank boundaries like other devices.
@@ -453,7 +453,7 @@ static u8 pca953x_recalc_addr(struct pca953x_chip *chip, int reg, int off)
 static u8 pcal6534_recalc_addr(struct pca953x_chip *chip, int reg, int off)
 {
 	int addr;
-	int pinctrl;
+	int pinctrl = 0;
 
 	addr = (reg & PCAL_GPIO_MASK) * NBANK(chip);
 
@@ -1001,8 +1001,8 @@ static int pca953x_irq_setup(struct pca953x_chip *chip,
 static int device_pca95xx_init(struct pca953x_chip *chip, u32 invert)
 {
 	DECLARE_BITMAP(val, MAX_LINE);
-	int ret;
 	u8 regaddr;
+	int ret;
 
 	regaddr = chip->recalc_addr(chip, chip->regs->output, 0);
 	ret = regcache_sync_region(chip->regmap, regaddr,

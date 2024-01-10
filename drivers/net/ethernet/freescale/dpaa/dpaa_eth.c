@@ -2,6 +2,7 @@
 /*
  * Copyright 2008 - 2016 Freescale Semiconductor Inc.
  * Copyright 2020 NXP
+ * Copyright 2020 Puresoftware Ltd.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -284,7 +285,7 @@ static int dpaa_stop(struct net_device *net_dev)
 {
 	struct mac_device *mac_dev;
 	struct dpaa_priv *priv;
-	int i, err, error;
+	int i, error, err = 0;
 
 	priv = netdev_priv(net_dev);
 	mac_dev = priv->mac_dev;
@@ -2925,6 +2926,7 @@ static int dpaa_phy_init(struct net_device *net_dev)
 	struct mac_device *mac_dev;
 	struct phy_device *phy_dev;
 	struct dpaa_priv *priv;
+	struct device *dev;
 	u32 phy_vendor;
 
 	priv = netdev_priv(net_dev);

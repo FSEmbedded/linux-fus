@@ -101,6 +101,7 @@ struct mxc_jpeg_ctx {
 	bool				header_parsed;
 	struct v4l2_ctrl_handler	ctrl_handler;
 	u8				jpeg_quality;
+	struct delayed_work		task_timer;
 };
 
 struct mxc_jpeg_slot_data {
@@ -118,8 +119,8 @@ struct mxc_jpeg_dev {
 	spinlock_t			hw_lock; /* hardware access lock */
 	unsigned int			mode;
 	struct mutex			lock; /* v4l2 ioctls serialization */
-	struct clk_bulk_data		*clks;
-	int				num_clks;
+	struct clk			*clk_ipg;
+	struct clk			*clk_per;
 	struct platform_device		*pdev;
 	struct device			*dev;
 	void __iomem			*base_reg;

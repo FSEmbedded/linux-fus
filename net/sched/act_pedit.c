@@ -526,39 +526,6 @@ static int tcf_pedit_offload_act_setup(struct tc_action *act, void *entry_data,
 	return 0;
 }
 
-static int tcf_pedit_offload_act_setup(struct tc_action *act, void *entry_data,
-				       u32 *index_inc, bool bind)
-{
-	if (bind) {
-		struct flow_action_entry *entry = entry_data;
-		int k;
-
-		for (k = 0; k < tcf_pedit_nkeys(act); k++) {
-			switch (tcf_pedit_cmd(act, k)) {
-			case TCA_PEDIT_KEY_EX_CMD_SET:
-				entry->id = FLOW_ACTION_MANGLE;
-				break;
-			case TCA_PEDIT_KEY_EX_CMD_ADD:
-				entry->id = FLOW_ACTION_ADD;
-				break;
-			default:
-				return -EOPNOTSUPP;
-			}
-			entry->mangle.htype = tcf_pedit_htype(act, k);
-			entry->mangle.mask = tcf_pedit_mask(act, k);
-			entry->mangle.val = tcf_pedit_val(act, k);
-			entry->mangle.offset = tcf_pedit_offset(act, k);
-			entry->hw_stats = tc_act_hw_stats(act->hw_stats);
-			entry++;
-		}
-		*index_inc = k;
-	} else {
-		return -EOPNOTSUPP;
-	}
-
-	return 0;
-}
-
 static struct tc_action_ops act_pedit_ops = {
 	.kind		=	"pedit",
 	.id		=	TCA_ID_PEDIT,

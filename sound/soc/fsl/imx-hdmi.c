@@ -31,6 +31,21 @@ struct imx_hdmi_data {
 	u32 dai_fmt;
 };
 
+static int imx_hdmi_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	int ret;
+
+	/* Remove S20_3LE for clock issue */
+	ret = snd_pcm_hw_constraint_mask64(runtime,
+					   SNDRV_PCM_HW_PARAM_FORMAT,
+					   ~SNDRV_PCM_FMTBIT_S20_3LE);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
 static int imx_sii902x_startup(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -52,6 +67,13 @@ static int imx_sii902x_startup(struct snd_pcm_substream *substream)
 
 	ret = snd_pcm_hw_constraint_minmax(runtime, SNDRV_PCM_HW_PARAM_CHANNELS,
 					   1, 2);
+	if (ret < 0)
+		return ret;
+
+	/* Remove S20_3LE for clock issue */
+	ret = snd_pcm_hw_constraint_mask64(runtime,
+					   SNDRV_PCM_HW_PARAM_FORMAT,
+					   ~SNDRV_PCM_FMTBIT_S20_3LE);
 	if (ret)
 		return ret;
 
@@ -89,6 +111,7 @@ static int imx_hdmi_hw_params(struct snd_pcm_substream *substream,
 }
 
 static const struct snd_soc_ops imx_hdmi_ops = {
+	.startup = imx_hdmi_startup,
 	.hw_params = imx_hdmi_hw_params,
 };
 

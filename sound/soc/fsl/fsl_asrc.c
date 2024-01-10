@@ -1294,8 +1294,6 @@ static int fsl_asrc_runtime_resume(struct device *dev)
 	int reg, retry = INIT_RETRY_NUM;
 	int i, ret;
 	u32 asrctr;
-	u32 reg;
-	int retry = 50;
 
 	ret = clk_prepare_enable(asrc->mem_clk);
 	if (ret)

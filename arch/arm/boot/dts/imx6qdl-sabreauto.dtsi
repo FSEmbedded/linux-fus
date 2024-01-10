@@ -448,8 +448,7 @@
 	pinctrl-0 = <&pinctrl_enet>;
 	phy-mode = "rgmii-id";
 	/delete-property/ interrupts;
-	interrupts-extended = <&gpio1 6 IRQ_TYPE_LEVEL_HIGH>,
-			      <&intc 0 119 IRQ_TYPE_LEVEL_HIGH>;
+	fsl,magic-packet;
 	fsl,err006687-workaround-present;
 	fsl,magic-packet;
 	status = "okay";

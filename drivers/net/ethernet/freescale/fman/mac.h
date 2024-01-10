@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-or-later */
 /*
  * Copyright 2008 - 2015 Freescale Semiconductor Inc.
+ * Copyright 2020 Puresoftware Ltd.
  */
 
 #ifndef __MAC_H
@@ -28,9 +29,9 @@ struct mac_device {
 	struct phy_device	*phy_dev;
 	phy_interface_t		phy_if;
 	struct device_node	*phy_node;
+	struct fwnode_handle	*fwnode_phy;
 	struct net_device	*net_dev;
 
-	bool fixed_link_phy;
 	bool autoneg_pause;
 	bool rx_pause_req;
 	bool tx_pause_req;

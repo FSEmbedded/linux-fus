@@ -1340,7 +1340,9 @@ static int fsl_xcvr_probe(struct platform_device *pdev)
 
 static int fsl_xcvr_remove(struct platform_device *pdev)
 {
+	sysfs_remove_group(&pdev->dev.kobj, fsl_xcvr_get_attr_grp());
 	pm_runtime_disable(&pdev->dev);
+
 	return 0;
 }
 

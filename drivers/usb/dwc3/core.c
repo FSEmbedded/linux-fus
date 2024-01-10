@@ -332,63 +332,8 @@ done:
  */
 static void dwc3_frame_length_adjustment(struct dwc3 *dwc)
 {
-	struct dwc3_platform_data *dwc3_pdata;
 	u32 reg;
 	u32 dft;
-
-	dwc3_pdata = (struct dwc3_platform_data *)dev_get_platdata(dwc->dev);
-	if (dwc3_pdata && dwc3_pdata->quirks & DWC3_SOFT_ITP_SYNC) {
-		u32 ref_clk_hz, ref_clk_period_integer;
-		unsigned long long temp;
-		struct device_node *node = dwc->dev->of_node;
-		struct clk *ref_clk;
-
-		reg = dwc3_readl(dwc->regs, DWC3_GCTL);
-		reg |= DWC3_GCTL_SOFITPSYNC;
-		dwc3_writel(dwc->regs, DWC3_GCTL, reg);
-
-		/*
-		 * if GCTL.SOFITPSYNC is set to '1':
-		 * FLADJ_REF_CLK_FLADJ=
-		 * ((125000/ref_clk_period_integer)-(125000/ref_clk_period)) *
-		 * ref_clk_period
-		 * where
-		 * - the ref_clk_period_integer is the integer value of
-		 *   the ref_clk period got by truncating the decimal
-		 *   (fractional) value that is programmed in the
-		 *   GUCTL.REF_CLK_PERIOD field.
-		 * - the ref_clk_period is the ref_clk period including
-		 *   the fractional value.
-		 */
-		ref_clk = of_clk_get_by_name(node, "ref");
-		if (IS_ERR(ref_clk)) {
-			dev_err(dwc->dev, "Can't get ref clock for fladj\n");
-			return;
-		}
-		reg = dwc3_readl(dwc->regs, DWC3_GFLADJ);
-		ref_clk_hz = clk_get_rate(ref_clk);
-		clk_put(ref_clk);
-		if (ref_clk_hz == 0) {
-			dev_err(dwc->dev, "ref clk is 0, can't set fladj\n");
-			return;
-		}
-
-		/* nano seconds the period of ref_clk */
-		ref_clk_period_integer = DIV_ROUND_DOWN_ULL(1000000000, ref_clk_hz);
-		temp = 125000ULL * 1000000000ULL;
-		temp = DIV_ROUND_DOWN_ULL(temp, ref_clk_hz);
-		temp = DIV_ROUND_DOWN_ULL(temp, ref_clk_period_integer);
-		temp = temp - 125000;
-		temp = temp << GFLADJ_REFCLK_FLADJ_SHIFT;
-		reg &= ~GFLADJ_REFCLK_FLADJ_MASK;
-		reg |= temp;
-		dwc3_writel(dwc->regs, DWC3_GFLADJ, reg);
-
-		reg = dwc3_readl(dwc->regs, DWC3_GUCTL);
-		reg &= ~DWC3_GUCTL_REFCLKPER_MASK;
-		reg |= ref_clk_period_integer << DWC3_GUCTL_REFCLKPER_SHIFT;
-		dwc3_writel(dwc->regs, DWC3_GUCTL, reg);
-	}
 
 	if (DWC3_VER_IS_PRIOR(DWC3, 250A))
 		return;
@@ -939,6 +884,7 @@ static bool dwc3_core_is_valid(struct dwc3 *dwc)
 static void dwc3_core_setup_global_control(struct dwc3 *dwc)
 {
 	u32 hwparams4 = dwc->hwparams.hwparams4;
+	struct dwc3_platform_data *dwc3_pdata;
 	u32 reg;
 
 	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
@@ -996,6 +942,12 @@ static void dwc3_core_setup_global_control(struct dwc3 *dwc)
 
 	if (dwc->u2exit_lfps_quirk)
 		reg |= DWC3_GCTL_U2EXIT_LFPS;
+
+	dwc3_pdata = (struct dwc3_platform_data *)dev_get_platdata(dwc->dev);
+	if ((dwc3_pdata && dwc3_pdata->quirks & DWC3_SOFT_ITP_SYNC) &&
+	    (dwc->dr_mode == USB_DR_MODE_HOST ||
+	     dwc->dr_mode == USB_DR_MODE_OTG ))
+		reg |= DWC3_GCTL_SOFITPSYNC;
 
 	/*
 	 * WORKAROUND: DWC3 revisions <1.90a have a bug
@@ -1135,6 +1087,53 @@ static void dwc3_set_power_down_clk_scale(struct dwc3 *dwc)
 	}
 }
 
+#ifdef CONFIG_OF
+struct dwc3_cache_type {
+	u8 transfer_type_datard;
+	u8 transfer_type_descrd;
+	u8 transfer_type_datawr;
+	u8 transfer_type_descwr;
+};
+
+static const struct dwc3_cache_type ls1088a_dwc3_cache_type = {
+	.transfer_type_datard = 2,
+	.transfer_type_descrd = 2,
+	.transfer_type_datawr = 2,
+	.transfer_type_descwr = 2,
+};
+
+/**
+ * dwc3_set_cache_type - Configure cache type registers
+ * @dwc: Pointer to our controller context structure
+ */
+static void dwc3_set_cache_type(struct dwc3 *dwc)
+{
+	u32 tmp, reg;
+	const struct dwc3_cache_type *cache_type =
+		device_get_match_data(dwc->dev);
+
+	if (cache_type) {
+		reg = dwc3_readl(dwc->regs,  DWC3_GSBUSCFG0);
+		tmp = reg;
+
+		reg &= ~DWC3_GSBUSCFG0_DATARD(~0);
+		reg |= DWC3_GSBUSCFG0_DATARD(cache_type->transfer_type_datard);
+
+		reg &= ~DWC3_GSBUSCFG0_DESCRD(~0);
+		reg |= DWC3_GSBUSCFG0_DESCRD(cache_type->transfer_type_descrd);
+
+		reg &= ~DWC3_GSBUSCFG0_DATAWR(~0);
+		reg |= DWC3_GSBUSCFG0_DATAWR(cache_type->transfer_type_datawr);
+
+		reg &= ~DWC3_GSBUSCFG0_DESCWR(~0);
+		reg |= DWC3_GSBUSCFG0_DESCWR(cache_type->transfer_type_descwr);
+
+		if (tmp != reg)
+			dwc3_writel(dwc->regs, DWC3_GSBUSCFG0, reg);
+	}
+}
+#endif
+
 /**
  * dwc3_core_init - Low-level initialization of DWC3 Core
  * @dwc: Pointer to our controller context structure
@@ -1154,8 +1153,6 @@ static int dwc3_core_init(struct dwc3 *dwc)
 	 * out which kernel version a bug was found.
 	 */
 	dwc3_writel(dwc->regs, DWC3_GUID, LINUX_VERSION_CODE);
-
-	dwc3_set_power_down_clk_scale(dwc);
 
 	ret = dwc3_phy_setup(dwc);
 	if (ret)
@@ -1540,17 +1537,6 @@ static void dwc3_get_properties(struct dwc3 *dwc)
 	dwc->maximum_speed = usb_get_maximum_speed(dev);
 	dwc->max_ssp_rate = usb_get_maximum_ssp_rate(dev);
 	dwc->dr_mode = usb_get_dr_mode(dev);
-	if (dwc->dr_mode == USB_DR_MODE_OTG) {
-		dwc->otg_caps.otg_rev = 0x0300;
-		dwc->otg_caps.hnp_support = true;
-		dwc->otg_caps.srp_support = true;
-		dwc->otg_caps.adp_support = true;
-
-		/* Update otg capabilities by DT properties */
-		of_usb_update_otg_caps(dev->of_node,
-				       &dwc->otg_caps);
-	}
-
 	dwc->hsphy_mode = of_usb_get_phy_mode(dev->of_node);
 
 	dwc->sysdev_is_parent = device_property_read_bool(dev,

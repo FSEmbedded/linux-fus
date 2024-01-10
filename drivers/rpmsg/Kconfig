@@ -10,7 +10,6 @@ config RPMSG_CHAR
 	tristate "RPMSG device interface"
 	depends on RPMSG
 	depends on NET
-	select RPMSG_CTRL
 	help
 	  Say Y here to export rpmsg endpoints as device files, usually found
 	  in /dev. They make it possible for user-space programs to send and

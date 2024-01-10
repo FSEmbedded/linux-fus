@@ -285,6 +285,9 @@ struct dma_heap *dma_heap_add(const struct dma_heap_export_info *exp_info)
 		goto err2;
 	}
 
+	/* Make sure it doesn't disappear on us */
+	heap->heap_dev = get_device(heap->heap_dev);
+
 	mutex_lock(&heap_list_lock);
 	/* check the name is unique */
 	list_for_each_entry(h, &heap_list, list) {

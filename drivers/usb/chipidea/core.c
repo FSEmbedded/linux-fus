@@ -1359,13 +1359,13 @@ static void ci_extcon_wakeup_int(struct ci_hdrc *ci)
 	cable_vbus = &ci->platdata->vbus_extcon;
 
 	if ((!IS_ERR(cable_id->edev) || ci->role_switch)
-		&& ci->is_otg && (otgsc & OTGSC_IDIE)
-		&& (otgsc & OTGSC_IDIS))
+		&& ci->is_otg &&
+		(otgsc & OTGSC_IDIE) && (otgsc & OTGSC_IDIS))
 		ci_irq(ci);
 
 	if ((!IS_ERR(cable_vbus->edev) || ci->role_switch)
-		&& ci->is_otg && (otgsc & OTGSC_BSVIE)
-		&& (otgsc & OTGSC_BSVIS))
+		&& ci->is_otg &&
+		(otgsc & OTGSC_BSVIE) && (otgsc & OTGSC_BSVIS))
 		ci_irq(ci);
 }
 

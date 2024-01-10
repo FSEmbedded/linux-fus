@@ -596,6 +596,9 @@ static int _genpd_power_off(struct generic_pm_domain *genpd, bool timed)
 	if (!genpd->power_off)
 		goto out;
 
+	if (atomic_read(&genpd->sd_count) > 0)
+		return -EBUSY;
+
 	timed = timed && genpd->gd && !genpd->states[state_idx].fwnode;
 	if (!timed) {
 		ret = genpd->power_off(genpd);
@@ -1016,6 +1019,7 @@ static int genpd_runtime_resume(struct device *dev)
 	struct generic_pm_domain_data *gpd_data = dev_gpd_data(dev);
 	struct gpd_timing_data *td = gpd_data->td;
 	bool timed = td && pm_runtime_enabled(dev);
+	bool pd_was_on = false;
 	ktime_t time_start = 0;
 	s64 elapsed_ns;
 	int ret;
@@ -2183,6 +2187,8 @@ int pm_genpd_init(struct generic_pm_domain *genpd,
 	genpd->device_count = 0;
 	genpd->provider = NULL;
 	genpd->has_provider = false;
+	genpd->clks = NULL;
+	genpd->num_clks = 0;
 	genpd->accounting_time = ktime_get_mono_fast_ns();
 	genpd->domain.ops.runtime_suspend = genpd_runtime_suspend;
 	genpd->domain.ops.runtime_resume = genpd_runtime_resume;
@@ -2214,7 +2220,7 @@ int pm_genpd_init(struct generic_pm_domain *genpd,
 
 	/* Multiple states but no governor doesn't make sense. */
 	if (!gov && genpd->state_count > 1)
-		pr_warn("%s: no governor for states\n", genpd->name);
+		pr_debug("%s: no governor for states\n", genpd->name);
 
 	ret = genpd_alloc_data(genpd);
 	if (ret)

@@ -22,12 +22,8 @@
 
 #include "pcie-mobiveil.h"
 
-#define REV_1_0				0x10
-
 /* LUT and PF control registers */
 #define PCIE_LUT_OFF			0x80000
-#define PCIE_LUT_GCR			0x28
-#define PCIE_LUT_GCR_RRE		BIT(0)
 #define PCIE_PF_OFF			0xc0000
 #define PCIE_PF_INT_STAT		0x18
 #define PF_INT_STAT_PABRST		BIT(31)
@@ -44,7 +40,6 @@ struct ls_g4_pcie {
 	struct mobiveil_pcie pci;
 	struct delayed_work dwork;
 	int irq;
-	u8 rev;
 };
 
 static inline u32 ls_g4_pcie_pf_readl(struct ls_g4_pcie *pcie, u32 off)

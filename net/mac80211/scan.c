@@ -235,8 +235,6 @@ ieee80211_bss_info_update(struct ieee80211_local *local,
 		kfree(elems);
 	}
 
-	kfree(elems);
-
 	return bss;
 }
 

@@ -8,6 +8,7 @@
 #define _CDN_DP_CORE_H
 
 #include <drm/display/drm_dp_helper.h>
+#include <drm/bridge/cdns-mhdp.h>
 #include <drm/drm_panel.h>
 #include <drm/drm_probe_helper.h>
 #include <sound/hdmi-codec.h>
@@ -36,10 +37,7 @@ struct cdn_dp_port {
 struct cdn_dp_device {
 	struct cdns_mhdp_device mhdp;
 	struct drm_device *drm_dev;
-	struct drm_connector connector;
 	struct rockchip_encoder encoder;
-	struct drm_display_mode mode;
-	struct platform_device *audio_pdev;
 	struct work_struct event_work;
 	struct edid *edid;
 

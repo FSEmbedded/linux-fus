@@ -305,37 +305,6 @@ static bool bbm_in_data_chunk(struct gpmi_nand_data *this,
 	return false;
 }
 
-static inline bool bbm_in_data_chunk(struct gpmi_nand_data *this,
-			unsigned int *chunk_num)
-{
-	struct bch_geometry *geo = &this->bch_geometry;
-	struct nand_chip *chip = &this->nand;
-	struct mtd_info *mtd = nand_to_mtd(chip);
-	unsigned int i, j;
-
-	if (geo->ecc_chunk0_size != geo->ecc_chunkn_size) {
-		dev_err(this->dev, "The size of chunk0 must equal to chunkn\n");
-		return false;
-	}
-
-	i = (mtd->writesize * 8 - geo->metadata_size * 8) /
-		(geo->gf_len * geo->ecc_strength +
-			geo->ecc_chunkn_size * 8);
-
-	j = (mtd->writesize * 8 - geo->metadata_size * 8) -
-		(geo->gf_len * geo->ecc_strength +
-			geo->ecc_chunkn_size * 8) * i;
-
-	if (j < geo->ecc_chunkn_size * 8) {
-		*chunk_num = i+1;
-		dev_dbg(this->dev, "Set ecc to %d and bbm in chunk %d\n",
-				geo->ecc_strength, *chunk_num);
-		return true;
-	}
-
-	return false;
-}
-
 /*
  * If we can get the ECC information from the nand chip, we do not
  * need to calculate them ourselves.
@@ -1053,7 +1022,8 @@ static int gpmi_setup_interface(struct nand_chip *chip, int chipnr,
 		return PTR_ERR(sdr);
 
 	/* Only MX28/MX6 GPMI controller can reach EDO timings */
-	if (sdr->tRC_min <= 25000 && !GPMI_IS_MX28(this) && !GPMI_IS_MX6(this))
+	if (sdr->tRC_min <= 25000 && !GPMI_IS_MX28(this) &&
+	    !(GPMI_IS_MX6(this) || GPMI_IS_MX8(this)))
 		return -ENOTSUPP;
 
 	/* Stop here if this call was just a check */
@@ -1365,15 +1335,6 @@ static int gpmi_get_clks(struct gpmi_nand_data *this)
 
 		r->clock[i] = clk;
 	}
-
-	if (GPMI_IS_MX6(this) || GPMI_IS_MX8(this))
-		/*
-		 * Set the default value for the gpmi clock.
-		 *
-		 * If you want to use the ONFI nand which is in the
-		 * Synchronous Mode, you should change the clock as you need.
-		 */
-		clk_set_rate(r->clock[0], 22000000);
 
 	return 0;
 

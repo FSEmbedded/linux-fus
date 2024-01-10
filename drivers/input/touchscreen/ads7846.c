@@ -1133,7 +1133,6 @@ static const struct ads7846_platform_data *ads7846_probe_dt(struct device *dev)
 	struct device_node *node = dev->of_node;
 	const struct of_device_id *match;
 	u32 value;
-	int ret;
 
 	if (!node) {
 		dev_err(dev, "Device does not have associated DT data\n");
@@ -1187,11 +1186,8 @@ static const struct ads7846_platform_data *ads7846_probe_dt(struct device *dev)
 	of_property_read_u16(node, "ti,debounce-tol", &pdata->debounce_tol);
 	of_property_read_u16(node, "ti,debounce-rep", &pdata->debounce_rep);
 
-	ret = of_property_read_u32(node, "ti,pendown-gpio-debounce",
+	of_property_read_u32(node, "ti,pendown-gpio-debounce",
 			     &pdata->gpio_pendown_debounce);
-	if (!ret)
-		dev_info(dev, "Set pendown gpio debounce time to %d microseconds\n",
-			pdata->gpio_pendown_debounce);
 
 	pdata->wakeup = of_property_read_bool(node, "wakeup-source") ||
 			of_property_read_bool(node, "linux,wakeup");

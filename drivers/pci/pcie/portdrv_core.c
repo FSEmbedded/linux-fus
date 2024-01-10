@@ -181,9 +181,6 @@ static int pcie_init_service_irqs(struct pci_dev *dev, int *irqs, int mask)
 	int ret, i;
 	int irq = -1;
 
-	for (i = 0; i < PCIE_PORT_DEVICE_MAXSERVICES; i++)
-		irqs[i] = -1;
-
 	/* Check if some platforms owns independent irq pins for AER/PME etc.
 	 * Some platforms may own independent AER/PME interrupts and set
 	 * them in the device tree file.
@@ -197,6 +194,9 @@ static int pcie_init_service_irqs(struct pci_dev *dev, int *irqs, int mask)
 				irqs[i] = irq;
 		return 0;
 	}
+
+	for (i = 0; i < PCIE_PORT_DEVICE_MAXSERVICES; i++)
+		irqs[i] = -1;
 
 	/*
 	 * If we support PME but can't use MSI/MSI-X for it, we have to

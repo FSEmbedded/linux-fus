@@ -425,12 +425,6 @@ int do_ipv6_setsockopt(struct sock *sk, int level, int optname,
 	if (unlikely(sk->sk_family != AF_INET6))
 		goto unlock;
 
-	/* Another thread has converted the socket into IPv4 with
-	 * IPV6_ADDRFORM concurrently.
-	 */
-	if (unlikely(sk->sk_family != AF_INET6))
-		goto unlock;
-
 	switch (optname) {
 
 	case IPV6_ADDRFORM:

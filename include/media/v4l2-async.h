@@ -22,7 +22,6 @@ struct v4l2_async_notifier;
  * enum v4l2_async_match_type - type of asynchronous subdevice logic to be used
  *	in order to identify a match
  *
- * @V4L2_ASYNC_MATCH_DEVNAME: Match will use the device name
  * @V4L2_ASYNC_MATCH_I2C: Match will check for I2C adapter ID and address
  * @V4L2_ASYNC_MATCH_FWNODE: Match will use firmware node
  *
@@ -30,7 +29,6 @@ struct v4l2_async_notifier;
  * algorithm that will be used to match an asynchronous device.
  */
 enum v4l2_async_match_type {
-	V4L2_ASYNC_MATCH_DEVNAME,
 	V4L2_ASYNC_MATCH_I2C,
 	V4L2_ASYNC_MATCH_FWNODE,
 };
@@ -43,9 +41,6 @@ enum v4l2_async_match_type {
  * @match.fwnode:
  *		pointer to &struct fwnode_handle to be matched.
  *		Used if @match_type is %V4L2_ASYNC_MATCH_FWNODE.
- * @match.device_name:
- *		string containing the device name to be matched.
- *		Used if @match_type is %V4L2_ASYNC_MATCH_DEVNAME.
  * @match.i2c:	embedded struct with I2C parameters to be matched.
  *		Both @match.i2c.adapter_id and @match.i2c.address
  *		should be matched.
@@ -69,7 +64,6 @@ struct v4l2_async_subdev {
 	enum v4l2_async_match_type match_type;
 	union {
 		struct fwnode_handle *fwnode;
-		const char *device_name;
 		struct {
 			int adapter_id;
 			unsigned short address;

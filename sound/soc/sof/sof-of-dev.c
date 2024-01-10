@@ -41,6 +41,28 @@ static void sof_of_probe_complete(struct device *dev)
 	pm_runtime_enable(dev);
 }
 
+static int sof_of_parse(struct platform_device *pdev)
+{
+	struct snd_sof_pdata *sof_pdata = platform_get_drvdata(pdev);
+	struct device_node *np = pdev->dev.of_node;
+	int ret;
+
+	/* firmware-name is optional in DT */
+	of_property_read_string(np, "firmware-name", &sof_pdata->fw_filename);
+
+	ret = of_property_read_string(np, "tplg-name",
+				      &sof_pdata->tplg_filename);
+	if (ret < 0)
+		return ret;
+
+	ret = of_property_read_string(np, "machine-drv-name",
+				      &sof_pdata->machine_drv_name);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
 int sof_of_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -79,6 +101,12 @@ int sof_of_probe(struct platform_device *pdev)
 	else
 		sof_pdata->tplg_filename_prefix = sof_pdata->desc->default_tplg_path[SOF_IPC];
 
+	ret = sof_of_parse(pdev);
+	if (ret < 0) {
+		dev_err(dev, "Could not parse SOF OF DSP node\n");
+		return ret;
+	}
+
 	/* set callback to be called on successful device probe to enable runtime_pm */
 	sof_pdata->sof_probe_complete = sof_of_probe_complete;
 
@@ -90,8 +118,6 @@ EXPORT_SYMBOL(sof_of_probe);
 int sof_of_remove(struct platform_device *pdev)
 {
 	pm_runtime_disable(&pdev->dev);
-	pm_runtime_set_suspended(&pdev->dev);
-	pm_runtime_put_noidle(&pdev->dev);
 
 	/* call sof helper for DSP hardware remove */
 	snd_sof_device_remove(&pdev->dev);

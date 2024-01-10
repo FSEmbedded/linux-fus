@@ -27,7 +27,7 @@
 
 static inline struct cdn_dp_device *connector_to_dp(struct drm_connector *connector)
 {
-	return container_of(connector, struct cdn_dp_device, connector);
+	return container_of(connector, struct cdn_dp_device, mhdp.connector.base);
 }
 
 static inline struct cdn_dp_device *encoder_to_dp(struct drm_encoder *encoder)
@@ -739,8 +739,8 @@ static int cdn_dp_parse_dt(struct cdn_dp_device *dp)
 		return PTR_ERR(dp->grf);
 	}
 
-	dp->regs = devm_platform_ioremap_resource(pdev, 0);
-	if (IS_ERR(dp->regs)) {
+	dp->mhdp.regs_base = devm_platform_ioremap_resource(pdev, 0);
+	if (IS_ERR(dp->mhdp.regs_base)) {
 		DRM_DEV_ERROR(dev, "ioremap reg failed\n");
 		return PTR_ERR(dp->mhdp.regs_base);
 	}
@@ -1143,7 +1143,7 @@ static void cdn_dp_unbind(struct device *dev, struct device *master, void *data)
 {
 	struct cdn_dp_device *dp = dev_get_drvdata(dev);
 	struct drm_encoder *encoder = &dp->encoder.encoder;
-	struct drm_connector *connector = &dp->connector;
+	struct drm_connector *connector = &dp->mhdp.connector.base;
 
 	cancel_work_sync(&dp->event_work);
 	cdn_dp_encoder_disable(encoder);

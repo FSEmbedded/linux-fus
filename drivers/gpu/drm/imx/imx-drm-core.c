@@ -86,9 +86,9 @@ static int imx_drm_ipu_dumb_create(struct drm_file *file_priv,
 	return ret;
 }
 
-static struct drm_driver imx_drm_driver = {
+static const struct drm_driver imx_drm_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
-	DRM_GEM_DMA_DRIVER_OPS_WITH_DUMB_CREATE(imx_drm_dumb_create),
+	DRM_GEM_DMA_DRIVER_OPS,
 	.ioctls			= imx_drm_ioctls,
 	.num_ioctls		= ARRAY_SIZE(imx_drm_ioctls),
 	.fops			= &imx_drm_driver_fops,
@@ -102,7 +102,7 @@ static struct drm_driver imx_drm_driver = {
 
 static const struct drm_driver imx_drm_ipu_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
-	DRM_GEM_CMA_DRIVER_OPS_WITH_DUMB_CREATE(imx_drm_ipu_dumb_create),
+	DRM_GEM_DMA_DRIVER_OPS_WITH_DUMB_CREATE(imx_drm_ipu_dumb_create),
 	.ioctls			= imx_drm_ioctls,
 	.num_ioctls		= ARRAY_SIZE(imx_drm_ioctls),
 	.fops			= &imx_drm_driver_fops,
@@ -117,7 +117,7 @@ static const struct drm_driver imx_drm_ipu_driver = {
 static const struct drm_driver imx_drm_dpu_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC |
 				  DRIVER_RENDER,
-	DRM_GEM_CMA_DRIVER_OPS,
+	DRM_GEM_DMA_DRIVER_OPS,
 	.ioctls			= imx_drm_dpu_ioctls,
 	.num_ioctls		= ARRAY_SIZE(imx_drm_dpu_ioctls),
 	.fops			= &imx_drm_driver_fops,
@@ -426,23 +426,18 @@ static struct platform_driver imx_drm_pdrv = {
 	},
 };
 
-static struct platform_driver * const drivers[] = {
-	&imx_drm_pdrv,
-	&ipu_drm_driver,
-};
-
 static int __init imx_drm_init(void)
 {
 	if (drm_firmware_drivers_only())
 		return -ENODEV;
 
-	return platform_register_drivers(drivers, ARRAY_SIZE(drivers));
+	return platform_driver_register(&imx_drm_pdrv);
 }
 module_init(imx_drm_init);
 
 static void __exit imx_drm_exit(void)
 {
-	platform_unregister_drivers(drivers, ARRAY_SIZE(drivers));
+	platform_driver_unregister(&imx_drm_pdrv);
 }
 module_exit(imx_drm_exit);
 

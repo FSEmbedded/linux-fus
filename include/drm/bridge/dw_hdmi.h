@@ -121,9 +121,6 @@ struct dw_hdmi_phy_ops {
 	void (*update_hpd)(struct dw_hdmi *hdmi, void *data,
 			   bool force, bool disabled, bool rxsense);
 	void (*setup_hpd)(struct dw_hdmi *hdmi, void *data);
-	void (*enable_audio)(struct dw_hdmi *hdmi, void *data, int channel,
-			     int width, int rate, int non_pcm);
-	void (*disable_audio)(struct dw_hdmi *hdmi, void *data);
 };
 
 struct dw_hdmi_plat_data {

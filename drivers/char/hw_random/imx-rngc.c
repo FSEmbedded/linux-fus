@@ -264,6 +264,7 @@ static int imx_rngc_probe(struct platform_device *pdev)
 	if (rng_type != RNGC_TYPE_RNGC && rng_type != RNGC_TYPE_RNGB)
 		return -ENODEV;
 
+	init_completion(&rngc->rng_op_done);
 
 	rngc->rng.name = pdev->name;
 	rngc->rng.init = imx_rngc_init;

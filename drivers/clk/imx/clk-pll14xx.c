@@ -104,7 +104,10 @@ static const struct imx_pll14xx_rate_table *imx_get_pll_settings(
 static long pll14xx_calc_rate(struct clk_pll14xx *pll, int mdiv, int pdiv,
 			      int sdiv, int kdiv, unsigned long prate)
 {
+	const struct imx_pll14xx_rate_table *rate_table = pll->rate_table;
+	unsigned long rate = 0;
 	u64 fvco = prate;
+	int i;
 
 	/*
 	 * Sometimes, the recalculated rate has deviation due to
@@ -483,7 +486,7 @@ void clk_set_delta_k(struct clk_hw *hw, short int delta_k)
 
 	val = readl_relaxed(pll->base + 8);
 	k = (val & KDIV_MASK) + delta_k;
-	writel_relaxed(k << KDIV_SHIFT, pll->base + 8);
+	writel_relaxed(k, pll->base + 8);
 }
 
 void clk_get_pll_setting(struct clk_hw *hw, u32 *pll_div_ctrl0,

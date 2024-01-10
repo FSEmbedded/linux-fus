@@ -60,6 +60,7 @@
 #define DRIVER_NAME "imx-i2c"
 
 #define I2C_IMX_CHECK_DELAY 30000 /* Time to check for bus idle, in NS */
+#define IMX_I2C_MAX_E_BIT_RATE	384000	/* 384kHz from e7805 errata*/
 
 /*
  * Enable DMA if transfer byte size is bigger than this threshold.
@@ -154,9 +155,9 @@ static struct pinmux_cfg ls1046a_pinmux_cfg = {
 };
 
 static const struct of_device_id pinmux_of_match[] = {
-	{ .compatible = "fsl,ls1012a-vf610-i2c", .data = &ls1012a_pinmux_cfg},
-	{ .compatible = "fsl,ls1043a-vf610-i2c", .data = &ls1043a_pinmux_cfg},
-	{ .compatible = "fsl,ls1046a-vf610-i2c", .data = &ls1046a_pinmux_cfg},
+	{ .compatible = "fsl,ls1012a-i2c", .data = &ls1012a_pinmux_cfg},
+	{ .compatible = "fsl,ls1043a-i2c", .data = &ls1043a_pinmux_cfg},
+	{ .compatible = "fsl,ls1046a-i2c", .data = &ls1046a_pinmux_cfg},
 	{},
 };
 MODULE_DEVICE_TABLE(of, pinmux_of_match);

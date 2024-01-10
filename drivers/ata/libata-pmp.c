@@ -10,7 +10,6 @@
 #include <linux/export.h>
 #include <linux/libata.h>
 #include <linux/slab.h>
-#include <linux/ktime.h>
 #include "libata.h"
 #include "libata-transport.h"
 #include "ahci.h"
@@ -264,12 +263,9 @@ struct hotplug_priv {
 };
 static struct hotplug_priv hpriv;
 
-#define HOTPLUG_COOLDOWN_MS 1000
 static int poll_thread(void *t)
 {
 	u32 rc;
-	ktime_t hp_time_now = ktime_get_real();
-	ktime_t hp_cooldown_end = ktime_add_ms(hp_time_now, HOTPLUG_COOLDOWN_MS);
 
 	for (;;) {
 		struct ata_port *ap = hpriv.ap;
@@ -279,11 +275,7 @@ static int poll_thread(void *t)
 		if (rc == 0)
 			continue;
 
-		hp_time_now = ktime_get_real();
-		if (ktime_before(hp_time_now, hp_cooldown_end))
-		  continue;
 		ata_port_info(ap, "i.MX8QM PMP SNotification detected.\n");
-		hp_cooldown_end = ktime_add_ms(hp_time_now, HOTPLUG_COOLDOWN_MS);
 
 		mutex_lock(&(hpriv.mutex));
 		hpriv.ap->flags |= (1 << 31);
@@ -368,17 +360,17 @@ static int sata_pmp_configure(struct ata_device *dev, int print_info)
 #ifdef CONFIG_AHCI_IMX_PMP
 	/* create a polling thread for hotplug */
 	if (hpriv.poll_thread_created) {
-	  mutex_lock(&(hpriv.mutex));
-	  hpriv.ap = ap;
-	  hpriv.port_mmio = ahci_port_base(ap);
-	  mutex_unlock(&(hpriv.mutex));
+		mutex_lock(&(hpriv.mutex));
+		hpriv.ap = ap;
+		hpriv.port_mmio = ahci_port_base(ap);
+		mutex_unlock(&(hpriv.mutex));
 	} else {
-	  mutex_init(&(hpriv.mutex));
-	  hpriv.ap = ap;
-	  hpriv.port_mmio = ahci_port_base(ap);
-	  ata_port_info(ap, "i.MX8QM PMP SNotification polling thread created.\n");
-	  kernel_thread(poll_thread, NULL, CLONE_SIGHAND | SIGCHLD);
-	  hpriv.poll_thread_created = true;
+		mutex_init(&(hpriv.mutex));
+		hpriv.ap = ap;
+		hpriv.port_mmio = ahci_port_base(ap);
+		ata_port_info(ap, "i.MX8QM PMP SNotification polling thread created.\n");
+		kernel_thread(poll_thread, NULL, CLONE_SIGHAND | SIGCHLD);
+		hpriv.poll_thread_created = true;
 	}
 #endif
 

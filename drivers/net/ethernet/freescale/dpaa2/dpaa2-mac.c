@@ -109,9 +109,6 @@ static struct fwnode_handle *dpaa2_mac_get_node(struct device *dev,
 		return ERR_PTR(-EPROBE_DEFER);
 	}
 
-	if (!parent)
-		return NULL;
-
 	fwnode_for_each_child_node(parent, child) {
 		err = -EINVAL;
 		if (is_acpi_device_node(child))
@@ -340,12 +337,20 @@ static void dpaa2_mac_set_supported_interfaces(struct dpaa2_mac *mac)
 
 void dpaa2_mac_start(struct dpaa2_mac *mac)
 {
+	ASSERT_RTNL();
+
 	if (mac->serdes_phy)
 		phy_power_on(mac->serdes_phy);
+
+	phylink_start(mac->phylink);
 }
 
 void dpaa2_mac_stop(struct dpaa2_mac *mac)
 {
+	ASSERT_RTNL();
+
+	phylink_stop(mac->phylink);
+
 	if (mac->serdes_phy)
 		phy_power_off(mac->serdes_phy);
 }
@@ -424,6 +429,7 @@ int dpaa2_mac_connect(struct dpaa2_mac *mac)
 	}
 	mac->phylink = phylink;
 
+	rtnl_lock();
 	err = phylink_fwnode_phy_connect(mac->phylink, dpmac_node, 0);
 	rtnl_unlock();
 	if (err) {
@@ -443,12 +449,10 @@ err_pcs_destroy:
 
 void dpaa2_mac_disconnect(struct dpaa2_mac *mac)
 {
-	if (!mac->phylink)
-		return;
-
 	rtnl_lock();
 	phylink_disconnect_phy(mac->phylink);
 	rtnl_unlock();
+
 	phylink_destroy(mac->phylink);
 	dpaa2_pcs_destroy(mac);
 	of_phy_put(mac->serdes_phy);

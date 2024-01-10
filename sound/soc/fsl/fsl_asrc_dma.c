@@ -151,7 +151,6 @@ static int fsl_asrc_dma_hw_params(struct snd_soc_component *component,
 	u8 dir = tx ? OUT : IN;
 	dma_cap_mask_t mask;
 	int ret, width;
-	enum sdma_peripheral_type be_peripheral_type = IMX_DMATYPE_SSI;
 
 	/* Fetch the Back-End dma_data from DPCM */
 	for_each_dpcm_be(rtd, stream, dpcm) {
@@ -265,7 +264,6 @@ static int fsl_asrc_dma_hw_params(struct snd_soc_component *component,
 	else
 		buswidth = DMA_SLAVE_BUSWIDTH_8_BYTES;
 
-	memset(&config_be, 0, sizeof(config_be));
 	config_be.direction = DMA_DEV_TO_DEV;
 	config_be.src_addr_width = buswidth;
 	config_be.src_maxburst = dma_params_be->maxburst;

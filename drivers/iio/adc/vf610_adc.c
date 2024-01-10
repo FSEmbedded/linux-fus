@@ -12,6 +12,7 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/kernel.h>
+#include <linux/of.h>
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/clk.h>

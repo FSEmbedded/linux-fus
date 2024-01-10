@@ -1511,6 +1511,14 @@ int ahci_do_softreset(struct ata_link *link, unsigned int *class,
 	if (fbs_disabled)
 		ahci_enable_fbs(ap);
 
+#ifdef CONFIG_AHCI_IMX_PMP
+	if (ap->flags & (1 << 31)) {
+		if (ap->flags & (1 << 29))
+			ap->flags |= (1 << 30);
+		ata_msleep(ap, 40);
+	}
+#endif
+
 	return 0;
 
  fail:
@@ -2077,10 +2085,10 @@ static bool ahci_qc_fill_rtf(struct ata_queued_cmd *qc)
 
 #ifdef CONFIG_AHCI_IMX_PMP
 	if (qc->ap->flags & (1 << 31)) {
-			if (!(qc->ap->flags & (1 << 30))) {
-				fis = pp->rx_fis + RX_FIS_D2H_REG;
-				memcpy(rx_fis + RX_FIS_D2H_REG, fis, 0x14);
-			}
+		if (!(qc->ap->flags & (1 << 30))) {
+			fis = pp->rx_fis + RX_FIS_D2H_REG;
+			memcpy(rx_fis + RX_FIS_D2H_REG, fis, 0x14);
+		}
 	}
 #endif
 

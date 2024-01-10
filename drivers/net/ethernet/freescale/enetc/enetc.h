@@ -40,6 +40,7 @@ struct enetc_tx_swbd {
 	u8 is_eof:1;
 	u8 is_xdp_tx:1;
 	u8 is_xdp_redirect:1;
+	u8 is_xsk:1;
 	u8 qbv_en:1;
 };
 
@@ -242,9 +243,9 @@ enum enetc_errata {
 	ENETC_ERR_UCMCSWP	= BIT(1),
 };
 
-#define ENETC_SI_F_QBV BIT(0)
-#define ENETC_SI_F_QBU BIT(1)
-#define ENETC_SI_F_PSFP BIT(1)
+#define ENETC_SI_F_PSFP BIT(0)
+#define ENETC_SI_F_QBV  BIT(1)
+#define ENETC_SI_F_QBU  BIT(2)
 
 /* PCI IEP device data */
 struct enetc_si {
@@ -588,15 +589,16 @@ static inline int enetc_set_psfp(struct net_device *ndev, bool en)
 	return 0;
 }
 #endif
+
 #ifdef CONFIG_ENETC_TSN
 void enetc_tsn_pf_init(struct net_device *netdev, struct pci_dev *pdev);
 void enetc_tsn_pf_deinit(struct net_device *netdev);
-#ifndef CONFIG_FSL_ENETC_QOS
 void enetc_pspeed_set(struct enetc_ndev_priv *priv, int speed);
-#undef enetc_sched_speed_set
-#define enetc_sched_speed_set(priv, speed) enetc_pspeed_set(priv, speed)
-#endif
+
 #else
+
 #define enetc_tsn_pf_init(netdev, pdev) (void)0
 #define enetc_tsn_pf_deinit(netdev) (void)0
+#define enetc_pspeed_set(priv, speed) (void)0
+
 #endif

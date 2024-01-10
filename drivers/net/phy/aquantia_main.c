@@ -23,6 +23,8 @@
 #define PHY_ID_AQCS109	0x03a1b5c2
 #define PHY_ID_AQR405	0x03a1b4b0
 #define PHY_ID_AQR113C	0x31c31c12
+#define PHY_ID_AQR112	0x03a1b662
+#define PHY_ID_AQR412	0x03a1b712
 
 #define MDIO_PHYXS_VEND_IF_STATUS		0xe812
 #define MDIO_PHYXS_VEND_IF_STATUS_TYPE_MASK	GENMASK(7, 3)
@@ -147,6 +149,12 @@
 #define VEND1_GLOBAL_INT_VEND_MASK_GLOBAL2	BIT(1)
 #define VEND1_GLOBAL_INT_VEND_MASK_GLOBAL3	BIT(0)
 
+/* Sleep and timeout for checking if the Processor-Intensive
+ * MDIO operation is finished
+ */
+#define AQR107_OP_IN_PROG_SLEEP		1000
+#define AQR107_OP_IN_PROG_TIMEOUT	100000
+
 /* registers in MDIO_MMD_VEND1 region */
 #define AQUANTIA_VND1_GLOBAL_SC			0x000
 #define  AQUANTIA_VND1_GLOBAL_SC_LP		BIT(0xb)
@@ -169,11 +177,6 @@
 #define AQUANTIA_VND1_GSYSCFG_2_5G		2
 #define AQUANTIA_VND1_GSYSCFG_5G		3
 #define AQUANTIA_VND1_GSYSCFG_10G		4
-/* Sleep and timeout for checking if the Processor-Intensive
- * MDIO operation is finished
- */
-#define AQR107_OP_IN_PROG_SLEEP		1000
-#define AQR107_OP_IN_PROG_TIMEOUT	100000
 
 struct aqr107_hw_stat {
 	const char *name;
@@ -899,6 +902,22 @@ static struct phy_driver aqr_driver[] = {
 	.get_stats      = aqr107_get_stats,
 	.link_change_notify = aqr107_link_change_notify,
 },
+{
+	PHY_ID_MATCH_MODEL(PHY_ID_AQR112),
+	.name		= "Aquantia AQR112",
+	.config_aneg    = aqr_config_aneg_set_prot,
+	.config_intr	= aqr_config_intr,
+	.handle_interrupt = aqr_handle_interrupt,
+	.read_status	= aqr_read_status,
+},
+{
+	PHY_ID_MATCH_MODEL(PHY_ID_AQR412),
+	.name		= "Aquantia AQR412",
+	.config_aneg    = aqr_config_aneg_set_prot,
+	.config_intr	= aqr_config_intr,
+	.handle_interrupt = aqr_handle_interrupt,
+	.read_status	= aqr_read_status,
+},
 };
 
 module_phy_driver(aqr_driver);
@@ -912,6 +931,8 @@ static struct mdio_device_id __maybe_unused aqr_tbl[] = {
 	{ PHY_ID_MATCH_MODEL(PHY_ID_AQCS109) },
 	{ PHY_ID_MATCH_MODEL(PHY_ID_AQR405) },
 	{ PHY_ID_MATCH_MODEL(PHY_ID_AQR113C) },
+	{ PHY_ID_MATCH_MODEL(PHY_ID_AQR112) },
+	{ PHY_ID_MATCH_MODEL(PHY_ID_AQR412) },
 	{ }
 };
 

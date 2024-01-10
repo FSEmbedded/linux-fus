@@ -19,6 +19,7 @@ EXPORT_SYMBOL_GPL(imx_ccm_lock);
 
 bool mcore_booted;
 EXPORT_SYMBOL_GPL(mcore_booted);
+bool uart_from_osc;
 
 void imx_unregister_clocks(struct clk *clks[], unsigned int count)
 {

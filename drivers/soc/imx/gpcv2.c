@@ -9,12 +9,16 @@
  */
 
 #include <linux/clk.h>
+#include <linux/mfd/syscon.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/pm_domain.h>
+#include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
+#include <linux/reset.h>
 #include <linux/sizes.h>
+#include <soc/imx/gpcv2.h>
 #include <dt-bindings/power/imx7-power.h>
 #include <dt-bindings/power/imx8mq-power.h>
 #include <dt-bindings/power/imx8mm-power.h>
@@ -156,6 +160,9 @@
 #define IMX8MP_GPC_PU_PWRHSK		0x190
 #define GPC_PU_PWRHSK			0x1fc
 
+#define IMX8M_GPU_HSK_PWRDNACKN			BIT(26)
+#define IMX8M_VPU_HSK_PWRDNACKN			BIT(25)
+#define IMX8M_DISP_HSK_PWRDNACKN		BIT(24)
 #define IMX8M_GPU_HSK_PWRDNREQN			BIT(6)
 #define IMX8M_VPU_HSK_PWRDNREQN			BIT(5)
 #define IMX8M_DISP_HSK_PWRDNREQN		BIT(4)
@@ -269,12 +276,23 @@ struct imx_pgc_regs {
 	u16 hsk;
 };
 
+#define DOMAIN_MAX_NOC	6
+
+struct imx_pgc_noc_data {
+	u32 off;
+	u32 priority;
+	u32 mode;
+	u32 extctrl;
+};
+
 struct imx_pgc_domain {
 	struct generic_pm_domain genpd;
 	struct regmap *regmap;
+	struct regmap *noc_regmap;
 	const struct imx_pgc_regs *regs;
 	struct regulator *regulator;
-	struct clk *clk[GPC_CLK_MAX];
+	struct reset_control *reset;
+	struct clk_bulk_data *clks;
 	int num_clks;
 
 	unsigned long pgc;
@@ -282,7 +300,8 @@ struct imx_pgc_domain {
 	const struct {
 		u32 pxx;
 		u32 map;
-		u32 hsk;
+		u32 hskreq;
+		u32 hskack;
 	} bits;
 
 	const int voltage;
@@ -291,6 +310,7 @@ struct imx_pgc_domain {
 
 	unsigned int pgc_sw_pup_reg;
 	unsigned int pgc_sw_pdn_reg;
+	const struct imx_pgc_noc_data *noc_data[DOMAIN_MAX_NOC];
 };
 
 struct imx_pgc_domain_data {
@@ -300,18 +320,31 @@ struct imx_pgc_domain_data {
 	const struct imx_pgc_regs *pgc_regs;
 };
 
-static int imx_gpc_pu_pgc_sw_pxx_req(struct generic_pm_domain *genpd,
-				      bool on)
+static inline struct imx_pgc_domain *
+to_imx_pgc_domain(struct generic_pm_domain *genpd)
 {
-	struct imx_pgc_domain *domain = container_of(genpd,
-						      struct imx_pgc_domain,
-						      genpd);
-	unsigned int offset = on ?
-		GPC_PU_PGC_SW_PUP_REQ : GPC_PU_PGC_SW_PDN_REQ;
-	const bool enable_power_control = !on;
-	const bool has_regulator = !IS_ERR(domain->regulator);
-	int i, ret = 0;
-	u32 pxx_req;
+	return container_of(genpd, struct imx_pgc_domain, genpd);
+}
+
+static int imx_pgc_noc_set(struct imx_pgc_domain *domain)
+{
+	const struct imx_pgc_noc_data **data = domain->noc_data;
+	struct regmap *regmap = domain->noc_regmap;
+	int i;
+
+	if (!data || !regmap)
+		return 0;
+
+	for (i = 0; i < DOMAIN_MAX_NOC; i++) {
+		if (!data[i])
+			continue;
+		regmap_write(regmap, data[i]->off + 0x8, data[i]->priority);
+		regmap_write(regmap, data[i]->off + 0xc, data[i]->mode);
+		regmap_write(regmap, data[i]->off + 0x18, data[i]->extctrl);
+	}
+
+	return 0;
+}
 
 static int imx_pgc_power_up(struct generic_pm_domain *genpd)
 {
@@ -319,7 +352,13 @@ static int imx_pgc_power_up(struct generic_pm_domain *genpd)
 	u32 reg_val, pgc;
 	int ret;
 
-	if (has_regulator && on) {
+	ret = pm_runtime_get_sync(domain->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(domain->dev);
+		return ret;
+	}
+
+	if (!IS_ERR(domain->regulator)) {
 		ret = regulator_enable(domain->regulator);
 		if (ret) {
 			dev_err(domain->dev,
@@ -329,9 +368,16 @@ static int imx_pgc_power_up(struct generic_pm_domain *genpd)
 		}
 	}
 
+	reset_control_assert(domain->reset);
+
 	/* Enable reset clocks for all devices in the domain */
-	for (i = 0; i < domain->num_clks; i++)
-		clk_prepare_enable(domain->clk[i]);
+	ret = clk_bulk_prepare_enable(domain->num_clks, domain->clks);
+	if (ret) {
+		dev_err(domain->dev, "failed to enable reset clocks\n");
+		goto out_regulator_disable;
+	}
+
+	raw_notifier_call_chain(&genpd->power_notifiers, IMX_GPCV2_NOTIFY_ON_CLK_ENABLED, NULL);
 
 	/* delays for reset to propagate */
 	udelay(5);
@@ -365,6 +411,8 @@ static int imx_pgc_power_up(struct generic_pm_domain *genpd)
 
 	reset_control_deassert(domain->reset);
 
+	raw_notifier_call_chain(&genpd->power_notifiers, IMX_GPCV2_NOTIFY_ON_ADB400, NULL);
+
 	/* request the ADB400 to power up */
 	if (domain->bits.hskreq) {
 		regmap_update_bits(domain->regmap, domain->regs->hsk,
@@ -387,6 +435,8 @@ static int imx_pgc_power_up(struct generic_pm_domain *genpd)
 	/* Disable reset clocks for all devices in the domain */
 	if (!domain->keep_clocks)
 		clk_bulk_disable_unprepare(domain->num_clks, domain->clks);
+
+	imx_pgc_noc_set(domain);
 
 	return 0;
 
@@ -431,6 +481,8 @@ static int imx_pgc_power_down(struct generic_pm_domain *genpd)
 		}
 	}
 
+	raw_notifier_call_chain(&genpd->power_notifiers, IMX_GPCV2_NOTIFY_OFF_ADB400, NULL);
+
 	if (domain->bits.pxx) {
 		/* enable power control */
 		for_each_set_bit(pgc, &domain->pgc, 32) {
@@ -442,11 +494,8 @@ static int imx_pgc_power_down(struct generic_pm_domain *genpd)
 		regmap_update_bits(domain->regmap, domain->regs->pdn,
 				   domain->bits.pxx, domain->bits.pxx);
 		/*
-		 * If we were in a process of enabling a
-		 * domain and failed we might as well disable
-		 * the regulator we just enabled. And if it
-		 * was the opposite situation and we failed to
-		 * power down -- keep the regulator on
+		 * As per "5.5.9.4 Example Code 4" in IMX7DRM.pdf wait
+		 * for PUP_REQ/PDN_REQ bit to be cleared
 		 */
 		ret = regmap_read_poll_timeout(domain->regmap,
 					       domain->regs->pdn, reg_val,
@@ -458,13 +507,8 @@ static int imx_pgc_power_down(struct generic_pm_domain *genpd)
 		}
 	}
 
-	if (enable_power_control)
-		regmap_update_bits(domain->regmap, GPC_PGC_CTRL(domain->pgc),
-				   GPC_PGC_CTRL_PCR, 0);
-
 	/* Disable reset clocks for all devices in the domain */
-	for (i = 0; i < domain->num_clks; i++)
-		clk_disable_unprepare(domain->clk[i]);
+	clk_bulk_disable_unprepare(domain->num_clks, domain->clks);
 
 	if (!IS_ERR(domain->regulator)) {
 		ret = regulator_disable(domain->regulator);
@@ -485,16 +529,6 @@ out_clk_disable:
 		clk_bulk_disable_unprepare(domain->num_clks, domain->clks);
 
 	return ret;
-}
-
-static int imx_gpc_pu_pgc_sw_pup_req(struct generic_pm_domain *genpd)
-{
-	return imx_gpc_pu_pgc_sw_pxx_req(genpd, true);
-}
-
-static int imx_gpc_pu_pgc_sw_pdn_req(struct generic_pm_domain *genpd)
-{
-	return imx_gpc_pu_pgc_sw_pxx_req(genpd, false);
 }
 
 static const struct imx_pgc_domain imx7_pgc_domains[] = {
@@ -628,7 +662,8 @@ static const struct imx_pgc_domain imx8m_pgc_domains[] = {
 		.bits  = {
 			.pxx = IMX8M_GPU_SW_Pxx_REQ,
 			.map = IMX8M_GPU_A53_DOMAIN,
-			.hsk = IMX8M_GPU_HSK_PWRDNREQN,
+			.hskreq = IMX8M_GPU_HSK_PWRDNREQN,
+			.hskack = IMX8M_GPU_HSK_PWRDNACKN,
 		},
 		.pgc   = BIT(IMX8M_PGC_GPU),
 	},
@@ -640,7 +675,8 @@ static const struct imx_pgc_domain imx8m_pgc_domains[] = {
 		.bits  = {
 			.pxx = IMX8M_VPU_SW_Pxx_REQ,
 			.map = IMX8M_VPU_A53_DOMAIN,
-			.hsk = IMX8M_VPU_HSK_PWRDNREQN,
+			.hskreq = IMX8M_VPU_HSK_PWRDNREQN,
+			.hskack = IMX8M_VPU_HSK_PWRDNACKN,
 		},
 		.pgc   = BIT(IMX8M_PGC_VPU),
 		.keep_clocks = true,
@@ -653,7 +689,8 @@ static const struct imx_pgc_domain imx8m_pgc_domains[] = {
 		.bits  = {
 			.pxx = IMX8M_DISP_SW_Pxx_REQ,
 			.map = IMX8M_DISP_A53_DOMAIN,
-			.hsk = IMX8M_DISP_HSK_PWRDNREQN,
+			.hskreq = IMX8M_DISP_HSK_PWRDNREQN,
+			.hskack = IMX8M_DISP_HSK_PWRDNACKN,
 		},
 		.pgc   = BIT(IMX8M_PGC_DISP),
 	},
@@ -759,6 +796,7 @@ static const struct imx_pgc_domain imx8mm_pgc_domains[] = {
 	[IMX8MM_POWER_DOMAIN_OTG1] = {
 		.genpd = {
 			.name = "usb-otg1",
+			.flags = GENPD_FLAG_ACTIVE_WAKEUP,
 		},
 		.bits  = {
 			.pxx = IMX8MM_OTG1_SW_Pxx_REQ,
@@ -770,6 +808,7 @@ static const struct imx_pgc_domain imx8mm_pgc_domains[] = {
 	[IMX8MM_POWER_DOMAIN_OTG2] = {
 		.genpd = {
 			.name = "usb-otg2",
+			.flags = GENPD_FLAG_ACTIVE_WAKEUP,
 		},
 		.bits  = {
 			.pxx = IMX8MM_OTG2_SW_Pxx_REQ,
@@ -922,6 +961,55 @@ static const struct imx_pgc_domain_data imx8mm_pgc_domain_data = {
 	.pgc_regs = &imx7_pgc_regs,
 };
 
+#define IMX8MP_MLMIX			0
+#define IMX8MP_GPU2D			1
+#define IMX8MP_GPU3D			2
+#define IMX8MP_AUDIO_DSP		3
+#define IMX8MP_AUDIO_SDMA2_PER		4
+#define IMX8MP_AUDIO_SDMA2_BURST	5
+#define IMX8MP_AUDIO_SDMA3_PER		6
+#define IMX8MP_AUDIO_SDMA3_BURST	7
+#define IMX8MP_AUDIO_EDMA3		8
+
+static const struct imx_pgc_noc_data imx8mp_pgc_noc_data[] = {
+	[IMX8MP_MLMIX] = {
+		.off = 0x180,
+		.priority = 0x80000303,
+	},
+	[IMX8MP_GPU2D] = {
+		.off = 0x500,
+		.priority = 0x80000303,
+	},
+	[IMX8MP_GPU3D] = {
+		.off = 0x580,
+		.priority = 0x80000303,
+	},
+	[IMX8MP_AUDIO_DSP] = {
+		.off = 0x200,
+		.priority = 0x80000303,
+	},
+	[IMX8MP_AUDIO_SDMA2_PER] = {
+		.off = 0x280,
+		.priority = 0x80000404,
+	},
+	[IMX8MP_AUDIO_SDMA2_BURST] = {
+		.off = 0x300,
+		.priority = 0x80000404,
+	},
+	[IMX8MP_AUDIO_SDMA3_PER] = {
+		.off = 0x380,
+		.priority = 0x80000404,
+	},
+	[IMX8MP_AUDIO_SDMA3_BURST] = {
+		.off = 0x400,
+		.priority = 0x80000404,
+	},
+	[IMX8MP_AUDIO_EDMA3] = {
+		.off = 0x480,
+		.priority = 0x80000404,
+	},
+};
+
 static const struct imx_pgc_domain imx8mp_pgc_domains[] = {
 	[IMX8MP_POWER_DOMAIN_MIPI_PHY1] = {
 		.genpd = {
@@ -948,6 +1036,7 @@ static const struct imx_pgc_domain imx8mp_pgc_domains[] = {
 	[IMX8MP_POWER_DOMAIN_USB1_PHY] = {
 		.genpd = {
 			.name = "usb-otg1",
+			.flags = GENPD_FLAG_ACTIVE_WAKEUP,
 		},
 		.bits = {
 			.pxx = IMX8MP_USB1_PHY_Pxx_REQ,
@@ -959,6 +1048,7 @@ static const struct imx_pgc_domain imx8mp_pgc_domains[] = {
 	[IMX8MP_POWER_DOMAIN_USB2_PHY] = {
 		.genpd = {
 			.name = "usb-otg2",
+			.flags = GENPD_FLAG_ACTIVE_WAKEUP,
 		},
 		.bits = {
 			.pxx = IMX8MP_USB2_PHY_Pxx_REQ,
@@ -979,6 +1069,9 @@ static const struct imx_pgc_domain imx8mp_pgc_domains[] = {
 		},
 		.pgc = BIT(IMX8MP_PGC_MLMIX),
 		.keep_clocks = true,
+		.noc_data = {
+			&imx8mp_pgc_noc_data[IMX8MP_MLMIX],
+		},
 	},
 
 	[IMX8MP_POWER_DOMAIN_AUDIOMIX] = {
@@ -993,6 +1086,14 @@ static const struct imx_pgc_domain imx8mp_pgc_domains[] = {
 		},
 		.pgc = BIT(IMX8MP_PGC_AUDIOMIX),
 		.keep_clocks = true,
+		.noc_data = {
+			&imx8mp_pgc_noc_data[IMX8MP_AUDIO_DSP],
+			&imx8mp_pgc_noc_data[IMX8MP_AUDIO_SDMA2_PER],
+			&imx8mp_pgc_noc_data[IMX8MP_AUDIO_SDMA2_BURST],
+			&imx8mp_pgc_noc_data[IMX8MP_AUDIO_SDMA3_PER],
+			&imx8mp_pgc_noc_data[IMX8MP_AUDIO_SDMA3_BURST],
+			&imx8mp_pgc_noc_data[IMX8MP_AUDIO_EDMA3],
+		},
 	},
 
 	[IMX8MP_POWER_DOMAIN_GPU2D] = {
@@ -1004,6 +1105,9 @@ static const struct imx_pgc_domain imx8mp_pgc_domains[] = {
 			.map = IMX8MP_GPU2D_A53_DOMAIN,
 		},
 		.pgc = BIT(IMX8MP_PGC_GPU2D),
+		.noc_data = {
+			&imx8mp_pgc_noc_data[IMX8MP_GPU2D],
+		},
 	},
 
 	[IMX8MP_POWER_DOMAIN_GPUMIX] = {
@@ -1043,6 +1147,9 @@ static const struct imx_pgc_domain imx8mp_pgc_domains[] = {
 			.map = IMX8MP_GPU3D_A53_DOMAIN,
 		},
 		.pgc = BIT(IMX8MP_PGC_GPU3D),
+		.noc_data = {
+			&imx8mp_pgc_noc_data[IMX8MP_GPU3D],
+		},
 	},
 
 	[IMX8MP_POWER_DOMAIN_MEDIAMIX] = {
@@ -1236,6 +1343,7 @@ static const struct imx_pgc_domain imx8mn_pgc_domains[] = {
 	[IMX8MN_POWER_DOMAIN_OTG1] = {
 		.genpd = {
 			.name = "usb-otg1",
+			.flags = GENPD_FLAG_ACTIVE_WAKEUP,
 		},
 		.bits  = {
 			.pxx = IMX8MN_OTG1_SW_Pxx_REQ,
@@ -1347,8 +1455,7 @@ static int imx_pgc_domain_probe(struct platform_device *pdev)
 	ret = pm_genpd_init(&domain->genpd, NULL, true);
 	if (ret) {
 		dev_err(domain->dev, "Failed to init power domain\n");
-		imx_pgc_put_clocks(domain);
-		return ret;
+		goto out_domain_unmap;
 	}
 
 	if (IS_ENABLED(CONFIG_LOCKDEP) &&
@@ -1359,8 +1466,7 @@ static int imx_pgc_domain_probe(struct platform_device *pdev)
 					   &domain->genpd);
 	if (ret) {
 		dev_err(domain->dev, "Failed to add genpd provider\n");
-		pm_genpd_remove(&domain->genpd);
-		imx_pgc_put_clocks(domain);
+		goto out_genpd_remove;
 	}
 
 	return 0;
@@ -1453,7 +1559,7 @@ static int imx_gpcv2_probe(struct platform_device *pdev)
 	};
 	struct device *dev = &pdev->dev;
 	struct device_node *pgc_np, *np;
-	struct regmap *regmap;
+	struct regmap *regmap, *noc_regmap;
 	void __iomem *base;
 	int ret;
 
@@ -1474,10 +1580,13 @@ static int imx_gpcv2_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	noc_regmap = syscon_regmap_lookup_by_compatible("fsl,imx8m-noc");
+
 	for_each_child_of_node(pgc_np, np) {
 		struct platform_device *pd_pdev;
 		struct imx_pgc_domain *domain;
 		u32 domain_index;
+		int i;
 
 		if (!of_device_is_available(np))
 			continue;
@@ -1516,6 +1625,13 @@ static int imx_gpcv2_probe(struct platform_device *pdev)
 		domain = pd_pdev->dev.platform_data;
 		domain->regmap = regmap;
 		domain->regs = domain_data->pgc_regs;
+		for (i = 0; i < DOMAIN_MAX_NOC; i++)
+			domain->noc_data[i] = domain_data->domains[domain_index].noc_data[i];
+
+		if (!IS_ERR(noc_regmap))
+			domain->noc_regmap = noc_regmap;
+		else
+			domain->noc_regmap = NULL;
 
 		domain->genpd.power_on  = imx_pgc_power_up;
 		domain->genpd.power_off = imx_pgc_power_down;

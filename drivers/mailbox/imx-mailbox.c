@@ -112,6 +112,7 @@ struct imx_mu_dcfg {
 	u32	xRR;		/* Receive Register0 */
 	u32	xSR[IMX_MU_xSR_MAX];	/* Status Registers */
 	u32	xCR[IMX_MU_xCR_MAX];	/* Control Registers */
+	u32	xBUF;		/* MU Buffer Register */
 };
 
 #define IMX_MU_xSR_GIPn(type, x) (type & IMX_MU_V2 ? BIT(x) : BIT(28 + (3 - (x))))
@@ -351,7 +352,7 @@ static int imx_mu_specific_rx(struct imx_mu_priv *priv, struct imx_mu_con_priv *
 					 xsr & IMX_MU_xSR_RFn(priv->dcfg->type, i % 4), 0,
 					 5 * USEC_PER_SEC);
 		if (ret) {
-			dev_err(priv->dev, "Send data index: %d timeout, \n", i);
+			dev_err(priv->dev, "timeout read idx %d\n", i);
 			return ret;
 		}
 		*data++ = imx_mu_read(priv, priv->dcfg->xRR + (i % 4) * 4);
@@ -922,7 +923,6 @@ static const struct imx_mu_dcfg imx_mu_cfg_imx8ulp = {
 	.rx	= imx_mu_generic_rx,
 	.rxdb	= imx_mu_generic_rxdb,
 	.init	= imx_mu_init_generic,
-	.rxdb	= imx_mu_generic_rxdb,
 	.type	= IMX_MU_V2,
 	.xTR	= 0x200,
 	.xRR	= 0x280,
@@ -952,28 +952,6 @@ static const struct imx_mu_dcfg imx_mu_cfg_imx93_s4 = {
 	.xCR	= {0x8, 0x110, 0x114, 0x120, 0x128},
 };
 
-static const struct imx_mu_dcfg imx_mu_cfg_imx8ulp_s4 = {
-	.tx	= imx_mu_specific_tx,
-	.rx	= imx_mu_specific_rx,
-	.init	= imx_mu_init_specific,
-	.type	= IMX_MU_V2 | IMX_MU_V2_S4,
-	.xTR	= 0x200,
-	.xRR	= 0x280,
-	.xSR	= {0xC, 0x118, 0x124, 0x12C},
-	.xCR	= {0x110, 0x114, 0x120, 0x128},
-};
-
-static const struct imx_mu_dcfg imx_mu_cfg_imx93_s4 = {
-	.tx	= imx_mu_specific_tx,
-	.rx	= imx_mu_specific_rx,
-	.init	= imx_mu_init_specific,
-	.type	= IMX_MU_V2 | IMX_MU_V2_S4 | IMX_MU_V2_IRQ,
-	.xTR	= 0x200,
-	.xRR	= 0x280,
-	.xSR	= {0xC, 0x118, 0x124, 0x12C},
-	.xCR	= {0x110, 0x114, 0x120, 0x128},
-};
-
 static const struct imx_mu_dcfg imx_mu_cfg_imx8_scu = {
 	.tx	= imx_mu_specific_tx,
 	.rx	= imx_mu_specific_rx,
@@ -994,17 +972,6 @@ static const struct imx_mu_dcfg imx_mu_cfg_imx8_seco = {
 	.xRR	= 0x10,
 	.xSR	= {0x20, 0x20, 0x20, 0x20},
 	.xCR	= {0x24, 0x24, 0x24, 0x24, 0x24},
-};
-
-static const struct imx_mu_dcfg imx_mu_cfg_imx8_seco = {
-	.tx	= imx_mu_seco_tx,
-	.rx	= imx_mu_generic_rx,
-	.rxdb	= imx_mu_seco_rxdb,
-	.init	= imx_mu_init_seco,
-	.xTR	= 0x0,
-	.xRR	= 0x10,
-	.xSR	= {0x20, 0x20, 0x20, 0x20},
-	.xCR	= {0x24, 0x24, 0x24, 0x24},
 	.xBUF	= 0x8000,
 };
 

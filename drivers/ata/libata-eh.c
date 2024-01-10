@@ -548,6 +548,10 @@ void ata_scsi_error(struct Scsi_Host *host)
 	/* finish or retry handled scmd's and clean up */
 	WARN_ON(!list_empty(&eh_work_q));
 
+#ifdef CONFIG_AHCI_IMX_PMP
+	ap->flags &= ~(0x7 << 29);
+#endif
+
 }
 
 /**
@@ -3570,6 +3574,11 @@ int ata_eh_recover(struct ata_port *ap, ata_prereset_fn_t prereset,
 	struct ata_device *dev;
 	int rc, nr_fails;
 	unsigned long flags, deadline;
+
+#ifdef CONFIG_AHCI_IMX_PMP
+	if (ap->flags & (1 << 31))
+		ap->flags |= (1 << 29);
+#endif
 
 	/* prep for recovery */
 	ata_for_each_link(link, ap, EDGE) {

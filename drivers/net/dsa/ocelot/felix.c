@@ -274,25 +274,6 @@ static int felix_tag_8021q_vlan_del(struct dsa_switch *ds, int port, u16 vid)
 	if (err)
 		goto del_tx_failed;
 
-	err = dsa_port_walk_mdbs(ds, cpu, felix_migrate_mdbs_to_tag_8021q_port);
-	if (err)
-		goto out_migrate_fdbs;
-
-	felix_migrate_flood_to_tag_8021q_port(ds, cpu);
-
-	err = felix_update_trapping_destinations(ds, true);
-	if (err)
-		goto out_migrate_flood;
-
-	/* The ownership of the CPU port module's queues might have just been
-	 * transferred to the tag_8021q tagger from the NPI-based tagger.
-	 * So there might still be all sorts of crap in the queues. On the
-	 * other hand, the MMIO-based matching of PTP frames is very brittle,
-	 * so we need to be careful that there are no extra frames to be
-	 * dequeued over MMIO, since we would never know to discard them.
-	 */
-	ocelot_drain_cpu_queue(ocelot, 0);
-
 	return 0;
 
 del_tx_failed:
@@ -444,11 +425,6 @@ static int felix_tag_npi_setup(struct dsa_switch *ds)
 	felix_npi_port_init(ocelot, first_cpu_dp->index);
 
 	return 0;
-
-out_migrate_fdbs:
-	dsa_port_walk_fdbs(ds, cpu, felix_migrate_fdbs_to_tag_8021q_port);
-
-	return err;
 }
 
 static void felix_tag_npi_teardown(struct dsa_switch *ds)
@@ -1463,6 +1439,10 @@ static int felix_init_structs(struct felix *felix, int num_phys_ports)
 		ocelot_port->ocelot = ocelot;
 		ocelot_port->target = target;
 		ocelot_port->index = port;
+		/* Enable cut-through forwarding on all traffic classes by
+		 * default, to be compatible with the upstream kernel.
+		 */
+		ocelot_port->cut_thru = GENMASK(7, 0);
 		ocelot->ports[port] = ocelot_port;
 	}
 

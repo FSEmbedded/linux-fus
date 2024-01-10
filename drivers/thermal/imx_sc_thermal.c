@@ -91,6 +91,41 @@ static int imx_sc_thermal_get_temp(struct thermal_zone_device *tz, int *temp)
 	return 0;
 }
 
+static int imx_sc_thermal_get_trend(struct thermal_zone_device *tz, int trip,
+				    enum thermal_trend *trend)
+{
+	int trip_temp;
+	struct imx_sc_sensor *sensor = tz->devdata;
+
+	if (!sensor->tzd)
+		return 0;
+
+	trip_temp = (trip == IMX_TRIP_PASSIVE) ? sensor->temp_passive :
+					     sensor->temp_critical;
+
+	if (sensor->tzd->temperature >=
+		(trip_temp - IMX_SC_TEMP_PASSIVE_COOL_DELTA))
+		*trend = THERMAL_TREND_RAISING;
+	else
+		*trend = THERMAL_TREND_DROPPING;
+
+	return 0;
+}
+
+static int imx_sc_thermal_set_trip_temp(struct thermal_zone_device *tz, int trip,
+					int temp)
+{
+	struct imx_sc_sensor *sensor = tz->devdata;
+
+	if (trip == IMX_TRIP_CRITICAL)
+		sensor->temp_critical = temp;
+
+	if (trip == IMX_TRIP_PASSIVE)
+		sensor->temp_passive = temp;
+
+	return 0;
+}
+
 static const struct thermal_zone_device_ops imx_sc_thermal_ops = {
 	.get_temp = imx_sc_thermal_get_temp,
 	.get_trend = imx_sc_thermal_get_trend,
@@ -100,6 +135,7 @@ static const struct thermal_zone_device_ops imx_sc_thermal_ops = {
 static int imx_sc_thermal_probe(struct platform_device *pdev)
 {
 	struct imx_sc_sensor *sensor;
+	const struct thermal_trip *trip;
 	const int *resource_id;
 	int i, ret;
 
@@ -111,7 +147,7 @@ static int imx_sc_thermal_probe(struct platform_device *pdev)
 	if (!resource_id)
 		return -EINVAL;
 
-	for (i = 0; resource_id[i] > 0; i++) {
+	for (i = 0; resource_id[i] >= 0; i++) {
 
 		sensor = devm_kzalloc(&pdev->dev, sizeof(*sensor), GFP_KERNEL);
 		if (!sensor)
@@ -181,7 +217,11 @@ static int imx_sc_thermal_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static int imx_sc_sensors[] = { IMX_SC_R_SYSTEM, IMX_SC_R_PMIC_0, -1 };
+static const int imx_sc_sensors[] = {
+	IMX_SC_R_SYSTEM, IMX_SC_R_PMIC_0,
+	IMX_SC_R_AP_0, IMX_SC_R_AP_1,
+	IMX_SC_R_GPU_0_PID0, IMX_SC_R_GPU_1_PID0,
+	IMX_SC_R_DRC_0, -1 };
 
 static const struct of_device_id imx_sc_thermal_table[] = {
 	{ .compatible = "fsl,imx-sc-thermal", .data =  imx_sc_sensors },

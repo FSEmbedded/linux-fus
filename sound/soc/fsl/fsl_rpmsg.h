@@ -6,15 +6,6 @@
 #ifndef __FSL_RPMSG_H
 #define __FSL_RPMSG_H
 
-/* struct fsl_rpmsg_soc_data
- * @rates: supported rates
- * @formats: supported formats
- */
-struct fsl_rpmsg_soc_data {
-	int rates;
-	u64 formats;
-};
-
 /*
  * struct fsl_rpmsg_soc_data
  * @rates: supported rates

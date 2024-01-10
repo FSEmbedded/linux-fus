@@ -907,6 +907,12 @@ enum macaccess_entry_type {
 	ENTRYTYPE_MACv6,
 };
 
+struct ocelot_mact_entry {
+	u8 mac[ETH_ALEN];
+	u16 vid;
+	enum macaccess_entry_type type;
+};
+
 #define OCELOT_QUIRK_PCS_PERFORMS_RATE_ADAPTATION	BIT(0)
 #define OCELOT_QUIRK_QSGMII_PORTS_MUST_BE_UP		BIT(1)
 
@@ -959,6 +965,10 @@ struct ocelot_port {
 	bool				lag_tx_active;
 
 	int				bridge_num;
+
+	bool				force_forward;
+	u8				cut_thru;
+	u8				preemptable_prios;
 
 	int				speed;
 };
@@ -1032,13 +1042,6 @@ struct ocelot {
 	/* Lock for serializing Time-Aware Shaper changes */
 	struct mutex			tas_lock;
 
-	/* Lock for serializing access to the MAC table */
-	struct mutex			mact_lock;
-	/* Lock for serializing forwarding domain changes */
-	struct mutex			fwd_domain_lock;
-	/* Lock for serializing Time-Aware Shaper changes */
-	struct mutex			tas_lock;
-
 	struct workqueue_struct		*owq;
 
 	u8				ptp:1;
@@ -1061,6 +1064,22 @@ struct ocelot_policer {
 	u32 rate; /* kilobit per second */
 	u32 burst; /* bytes */
 };
+
+int ocelot_mact_read(struct ocelot *ocelot, int row, int col, int *dst,
+		     struct ocelot_mact_entry *entry);
+int ocelot_mact_learn(struct ocelot *ocelot, int port,
+		      const unsigned char mac[ETH_ALEN],
+		      unsigned int vid, enum macaccess_entry_type type);
+int ocelot_mact_forget(struct ocelot *ocelot, const unsigned char mac[ETH_ALEN],
+		       unsigned int vid);
+int ocelot_mact_lookup(struct ocelot *ocelot, int *dst_idx,
+		       const unsigned char mac[ETH_ALEN],
+		       unsigned int vid, enum macaccess_entry_type *type);
+int ocelot_mact_learn_streamdata(struct ocelot *ocelot, int dst_idx,
+				 const unsigned char mac[ETH_ALEN],
+				 unsigned int vid,
+				 enum macaccess_entry_type type,
+				 int sfid, int ssid);
 
 #define ocelot_bulk_read(ocelot, reg, buf, count) \
 	__ocelot_bulk_read_ix(ocelot, reg, 0, buf, count)

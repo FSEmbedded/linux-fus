@@ -686,11 +686,57 @@ static void mxsfb_plane_primary_atomic_update(struct drm_plane *plane,
 	struct mxsfb_drm_private *mxsfb = to_mxsfb_drm_private(plane->dev);
 	struct drm_plane_state *new_pstate = drm_atomic_get_new_plane_state(state,
 									    plane);
+	struct drm_plane_state *old_pstate = drm_atomic_get_old_plane_state(state,
+									    plane);
+	struct drm_framebuffer *fb = new_pstate->fb;
+	struct drm_framebuffer *old_fb = old_pstate->fb;
 	dma_addr_t dma_addr;
+	u32 src_off, src_w, stride, cpp = 0;
 
 	dma_addr = drm_fb_dma_get_gem_addr(new_pstate->fb, new_pstate, 0);
-	if (dma_addr)
-		writel(dma_addr, mxsfb->base + mxsfb->devdata->next_buf);
+	if (!dma_addr)
+		return;
+
+	/* We will use the 'has_ctrl2' to assume IP version larger than 4 */
+	if (mxsfb->devdata->has_ctrl2) {
+		cpp = fb->format->cpp[0];
+		src_off = (new_pstate->src_y >> 16) * fb->pitches[0] +
+			  (new_pstate->src_x >> 16) * cpp;
+		dma_addr += fb->offsets[0] + src_off;
+	}
+
+	writel(dma_addr, mxsfb->base + mxsfb->devdata->next_buf);
+
+	if (mxsfb->devdata->has_ctrl2 &&
+	    unlikely(drm_atomic_crtc_needs_modeset(new_pstate->crtc->state))) {
+		stride = DIV_ROUND_UP(fb->pitches[0], cpp);
+		src_w = new_pstate->src_w >> 16;
+		mxsfb_set_fb_hcrop(mxsfb, src_w, stride);
+	}
+
+	/* Update format if changed */
+	if (old_fb && old_fb->format->format != fb->format->format) {
+		u32 bus_format = 0;
+		struct drm_bridge_state *bridge_state;
+
+		/* If there is a bridge attached to the LCDIF, use its bus format */
+		if (mxsfb->bridge) {
+			bridge_state =
+				drm_atomic_get_new_bridge_state(state,
+								mxsfb->bridge);
+			bus_format = bridge_state->input_bus_cfg.format;
+		}
+
+		/* If there is no bridge, use bus format from connector */
+		if (!bus_format && mxsfb->connector->display_info.num_bus_formats)
+			bus_format = mxsfb->connector->display_info.bus_formats[0];
+
+		/* If all else fails, default to RGB888_1X24 */
+		if (!bus_format)
+			bus_format = MEDIA_BUS_FMT_RGB888_1X24;
+
+		mxsfb_set_formats(mxsfb, bus_format);
+	}
 }
 
 static void mxsfb_plane_overlay_atomic_update(struct drm_plane *plane,

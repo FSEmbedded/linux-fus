@@ -415,8 +415,6 @@ int dw_pcie_host_init(struct dw_pcie_rp *pp)
 			return PTR_ERR(pci->dbi_base);
 	}
 
-	dw_pcie_iatu_detect(pci);
-
 	bridge = devm_pci_alloc_host_bridge(dev, 0);
 	if (!bridge)
 		return -ENOMEM;

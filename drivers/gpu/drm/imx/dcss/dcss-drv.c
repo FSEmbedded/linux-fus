@@ -8,6 +8,7 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <drm/drm_module.h>
+#include <linux/component.h>
 #include <drm/drm_of.h>
 
 #include "dcss-dev.h"

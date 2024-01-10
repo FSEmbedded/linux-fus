@@ -379,6 +379,8 @@ void __iomem *ioremap_wc(resource_size_t res_cookie, size_t size);
 #define ioremap_wc ioremap_wc
 #define ioremap_wt ioremap_wc
 
+void __iomem *ioremap_cache_ns(resource_size_t res_cookie, size_t size);
+
 void iounmap(volatile void __iomem *io_addr);
 #define iounmap iounmap
 

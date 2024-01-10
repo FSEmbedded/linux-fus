@@ -6,6 +6,8 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_blend.h>
+#include <linux/dma-buf.h>
+#include <drm/drm_drv.h>
 #include <drm/drm_fb_dma_helper.h>
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_gem_atomic_helper.h>
@@ -296,7 +298,6 @@ static int dcss_plane_atomic_check(struct drm_plane *plane,
 	struct dcss_plane *dcss_plane = to_dcss_plane(plane);
 	struct dcss_dev *dcss = plane->dev->dev_private;
 	struct drm_framebuffer *fb = new_plane_state->fb;
-	bool is_primary_plane = plane->type == DRM_PLANE_TYPE_PRIMARY;
 	struct drm_gem_dma_object *dma_obj;
 	struct drm_crtc_state *crtc_state;
 	int hdisplay, vdisplay;
@@ -390,8 +391,8 @@ static void dcss_plane_set_primary_base(struct dcss_plane *dcss_plane,
 	struct dcss_dev *dcss = plane->dev->dev_private;
 	struct drm_plane_state *state = plane->state;
 	struct drm_framebuffer *fb = state->fb;
-	struct drm_gem_cma_object *cma_obj = drm_fb_cma_get_gem_obj(fb, 0);
-	struct dma_buf *dma_buf = cma_obj->base.dma_buf;
+	struct drm_gem_dma_object *dma_obj = drm_fb_dma_get_gem_obj(fb, 0);
+	struct dma_buf *dma_buf = dma_obj->base.dma_buf;
 	struct drm_gem_object *gem_obj;
 	dma_addr_t caddr;
 	bool compressed = true;
@@ -407,7 +408,7 @@ static void dcss_plane_set_primary_base(struct dcss_plane *dcss_plane,
 	}
 
 	if (!dma_buf) {
-		caddr = cma_obj->paddr + ALIGN(fb->height, 64) * fb->pitches[0];
+		caddr = dma_obj->dma_addr + ALIGN(fb->height, 64) * fb->pitches[0];
 	} else {
 		mdata = dma_buf->priv;
 		if (!mdata || mdata->magic != VIV_VIDMEM_METADATA_MAGIC)
@@ -417,7 +418,7 @@ static void dcss_plane_set_primary_base(struct dcss_plane *dcss_plane,
 		if (IS_ERR(gem_obj))
 			return;
 
-		caddr = to_drm_gem_cma_obj(gem_obj)->paddr;
+		caddr = to_drm_gem_dma_obj(gem_obj)->dma_addr;
 
 		/* release gem_obj */
 		drm_gem_object_put(gem_obj);
@@ -467,21 +468,36 @@ static void dcss_plane_atomic_set_base(struct dcss_plane *dcss_plane)
 	    format->format == DRM_FORMAT_NV12 ||
 	    format->format == DRM_FORMAT_NV21)
 		p1_ba = dma_obj->dma_addr + fb->offsets[0] +
-			fb->pitches[0] * (state->src.y1 >> 16) +
-			format->char_per_block[0] * (state->src.x1 >> 16);
+			fb->pitches[0] * y1 +
+			format->char_per_block[0] * x1;
+	else if (format->format == DRM_FORMAT_NV15)
+		p1_ba = dma_obj->dma_addr + fb->offsets[0] +
+			fb->pitches[0] * y1 +
+			format->char_per_block[0] * (x1 >> 2);
 	else if (format->format == DRM_FORMAT_UYVY ||
 		 format->format == DRM_FORMAT_VYUY ||
 		 format->format == DRM_FORMAT_YUYV ||
 		 format->format == DRM_FORMAT_YVYU)
 		p1_ba = dma_obj->dma_addr + fb->offsets[0] +
-			fb->pitches[0] * (state->src.y1 >> 16) +
-			2 * format->char_per_block[0] * (state->src.x1 >> 17);
+			fb->pitches[0] * y1 +
+			2 * format->char_per_block[0] * (x1 >> 1);
 
 	if (format->format == DRM_FORMAT_NV12 ||
 	    format->format == DRM_FORMAT_NV21)
 		p2_ba = dma_obj->dma_addr + fb->offsets[1] +
-			(((fb->pitches[1] >> 1) * (state->src.y1 >> 17) +
-			(state->src.x1 >> 17)) << 1);
+			(((fb->pitches[1] >> 1) * (y1 >> 1) +
+			(x1 >> 1)) << 1);
+	else if (format->format == DRM_FORMAT_NV15)
+		p2_ba = dma_obj->dma_addr + fb->offsets[1] +
+			(((fb->pitches[1] >> 1) * (y1 >> 1)) << 1) +
+			format->char_per_block[1] * (x1 >> 2);
+
+	if (plane->type == DRM_PLANE_TYPE_PRIMARY)
+		dcss_plane_set_primary_base(dcss_plane, p1_ba);
+	else
+		dcss_plane_set_dtrc_base(dcss_plane,
+					 dma_obj->dma_addr + fb->offsets[0],
+					 dma_obj->dma_addr + fb->offsets[1]);
 
 	dcss_dpr_addr_set(dcss->dpr, dcss_plane->ch_num, p1_ba, p2_ba,
 			  fb->pitches[0]);

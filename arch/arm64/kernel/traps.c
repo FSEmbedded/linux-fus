@@ -543,6 +543,24 @@ NOKPROBE_SYMBOL(do_el1_fpac)
 		uaccess_ttbr0_disable();			\
 	}
 
+#define __user_cache_maint_ivau(insn, address, res)			\
+	do {								\
+		if (address >= TASK_SIZE_MAX) {			\
+			res = -EFAULT;					\
+		} else {						\
+			uaccess_ttbr0_enable();				\
+			asm volatile (					\
+				"1:	" insn "\n"			\
+				"	mov	%w0, #0\n"		\
+				"2:\n"					\
+				_ASM_EXTABLE_UACCESS_ERR(1b, 2b, %w0)	\
+				: "=r" (res)				\
+				: "r" (address));			\
+			uaccess_ttbr0_disable();			\
+		}							\
+	} while (0)
+
+extern bool TKT340553_SW_WORKAROUND;
 static void user_cache_maint_handler(unsigned long esr, struct pt_regs *regs)
 {
 	unsigned long tagged_address, address;

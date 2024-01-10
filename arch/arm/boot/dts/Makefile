@@ -721,6 +721,8 @@ dtb-$(CONFIG_SOC_IMX6SL) += \
 	imx6sl-warp.dtb
 dtb-$(CONFIG_SOC_IMX6SLL) += \
 	imx6sll-evk.dtb \
+	imx6sll-evk-reva.dtb \
+	imx6sll-evk-btwifi.dtb \
 	imx6sll-kobo-clarahd.dtb \
 	imx6sll-kobo-librah2o.dtb
 dtb-$(CONFIG_SOC_IMX6SX) += \
@@ -776,6 +778,14 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	imx6ul-tx6ul-0011.dtb \
 	imx6ul-tx6ul-mainboard.dtb \
 	imx6ull-14x14-evk.dtb \
+	imx6ull-14x14-evk-emmc.dtb \
+	imx6ull-14x14-evk-btwifi.dtb \
+	imx6ull-14x14-evk-btwifi-sdio3_0.dtb \
+	imx6ull-14x14-evk-gpmi-weim.dtb \
+	imx6ull-9x9-evk.dtb \
+	imx6ull-9x9-evk-ldo.dtb \
+	imx6ull-9x9-evk-btwifi.dtb \
+	imx6ull-9x9-evk-btwifi-sdio3_0.dtb \
 	imx6ull-colibri-aster.dtb \
 	imx6ull-colibri-emmc-aster.dtb \
 	imx6ull-colibri-emmc-eval-v3.dtb \
@@ -800,6 +810,10 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	imx6ull-tqma6ull2-mba6ulx.dtb \
 	imx6ull-tqma6ull2l-mba6ulx.dtb \
 	imx6ulz-14x14-evk.dtb \
+	imx6ulz-14x14-evk-btwifi.dtb \
+	imx6ulz-14x14-evk-btwifi-sdio3_0.dtb \
+	imx6ulz-14x14-evk-emmc.dtb \
+	imx6ulz-14x14-evk-gpmi-weim.dtb \
 	imx6ulz-bsh-smm-m2.dtb
 dtb-$(CONFIG_SOC_IMX7D) += \
 	imx7d-cl-som-imx7.dtb \
@@ -831,7 +845,11 @@ dtb-$(CONFIG_SOC_IMX7D) += \
 	imx7d-sdb-qspi.dtb \
 	imx7d-sdb-reva.dtb \
 	imx7d-sdb-sht11.dtb \
+	imx7d-sdb-usd-wifi.dtb \
+	imx7d-sdb-pcie-ep.dtb \
 	imx7d-smegw01.dtb \
+	imx7d-12x12-lpddr3-val.dtb \
+	imx7d-12x12-lpddr3-val-sai.dtb \
 	imx7d-zii-rmu2.dtb \
 	imx7d-zii-rpu2.dtb \
 	imx7s-colibri-aster.dtb \
@@ -842,7 +860,19 @@ dtb-$(CONFIG_SOC_IMX7D) += \
 	imx7s-warp.dtb
 dtb-$(CONFIG_SOC_IMX7ULP) += \
 	imx7ulp-com.dtb \
-	imx7ulp-evk.dtb
+	imx7ulp-evk.dtb \
+	imx7ulp-evk-ft5416.dtb \
+	imx7ulp-evk-mipi.dtb \
+	imx7ulp-evkb.dtb \
+	imx7ulp-evkb-emmc.dtb \
+	imx7ulp-evkb-sd1.dtb \
+	imx7ulp-evkb-spi-slave.dtb \
+	imx7ulp-evkb-sensors-to-i2c5.dtb \
+	imx7ulp-evkb-lpuart.dtb \
+	imx7ulp-evkb-mipi.dtb \
+	imx7ulp-evkb-rm68200-wxga.dtb \
+	imx7ulp-evkb-rm68200-wxga.dtb \
+	imx7ulp-evkb-rm68191-qhd.dtb
 dtb-$(CONFIG_SOC_IMXRT) += \
 	imxrt1050-evk.dtb
 dtb-$(CONFIG_SOC_LAN966) += \

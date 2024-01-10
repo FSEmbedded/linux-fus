@@ -82,11 +82,6 @@ struct rtl821x_priv {
 	bool has_phycr2;
 };
 
-static bool is_rtl8211fvd(u32 phy_id)
-{
-	return phy_id == RTL_8211FVD_PHYID;
-}
-
 static int rtl821x_read_page(struct phy_device *phydev)
 {
 	return __phy_read(phydev, RTL821x_PAGE_SELECT);
@@ -344,7 +339,6 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 {
 	struct rtl821x_priv *priv = phydev->priv;
 	struct device *dev = &phydev->mdio.dev;
-	u32 phy_id = phydev->drv->phy_id;
 	u16 val_txdly, val_rxdly;
 	int ret;
 

@@ -3839,7 +3839,6 @@ static int __stmmac_open(struct net_device *dev,
 	stmmac_enable_all_queues(priv);
 	netif_tx_start_all_queues(priv->dev);
 	stmmac_enable_all_dma_irq(priv);
-	phylink_set_mac_pm(priv->phylink);
 
 	return 0;
 
@@ -7493,8 +7492,10 @@ static void stmmac_reset_queues_param(struct stmmac_priv *priv)
 	for (queue = 0; queue < rx_cnt; queue++)
 		stmmac_reset_rx_queue(priv, queue);
 
-	for (queue = 0; queue < tx_cnt; queue++)
+	for (queue = 0; queue < tx_cnt; queue++) {
 		stmmac_reset_tx_queue(priv, queue);
+		stmmac_clear_tx_descriptors(priv, &priv->dma_conf, queue);
+	}
 }
 
 /**
@@ -7554,7 +7555,6 @@ int stmmac_resume(struct device *dev)
 	stmmac_reset_queues_param(priv);
 
 	stmmac_free_tx_skbufs(priv);
-	stmmac_clear_descriptors(priv, &priv->dma_conf);
 
 	stmmac_hw_setup(ndev, false);
 	stmmac_init_coalesce(priv);

@@ -855,23 +855,6 @@ connect:
 		}
 	}
 
-connect:
-	if (tag_ops->connect) {
-		err = tag_ops->connect(ds);
-		if (err)
-			return err;
-	}
-
-	if (ds->ops->connect_tag_protocol) {
-		err = ds->ops->connect_tag_protocol(ds, tag_ops->proto);
-		if (err) {
-			dev_err(ds->dev,
-				"Unable to connect to tag protocol \"%s\": %pe\n",
-				tag_ops->name, ERR_PTR(err));
-			goto disconnect;
-		}
-	}
-
 	return 0;
 
 disconnect:

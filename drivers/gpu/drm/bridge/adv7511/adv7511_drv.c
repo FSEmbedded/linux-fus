@@ -8,6 +8,7 @@
 #include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/gpio/consumer.h>
+#include <linux/media-bus-format.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
@@ -988,6 +989,9 @@ static int adv7511_bridge_attach(struct drm_bridge *bridge,
 			return ret;
 	}
 
+	if (adv->type == ADV7533 || adv->type == ADV7535)
+		ret = adv7533_attach_dsi(adv);
+
 	if (adv->i2c_main->irq)
 		regmap_write(adv->regmap, ADV7511_REG_INT_ENABLE(0),
 			     ADV7511_INT0_HPD);
@@ -1026,8 +1030,10 @@ static void adv7511_bridge_detach(struct drm_bridge *bridge)
 	if (adv->i2c_main->irq)
 		regmap_write(adv->regmap, ADV7511_REG_INT_ENABLE(0), 0);
 
-	if (adv->type == ADV7533 || adv->type == ADV7535)
-		adv7533_detach_dsi(adv);
+	if (adv->type == ADV7533 || adv->type == ADV7535) {
+		mipi_dsi_detach(adv->dsi);
+		mipi_dsi_device_unregister(adv->dsi);
+	}
 
 	drm_connector_cleanup(&adv->connector);
 }
@@ -1415,18 +1421,8 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	drm_bridge_add(&adv7511->bridge);
 
 	adv7511_audio_init(dev, adv7511);
-
-	if (adv7511->type == ADV7533 || adv7511->type == ADV7535) {
-		ret = adv7533_attach_dsi(adv7511);
-		if (ret)
-			goto err_unregister_audio;
-	}
-
 	return 0;
 
-err_unregister_audio:
-	adv7511_audio_exit(adv7511);
-	drm_bridge_remove(&adv7511->bridge);
 err_unregister_cec:
 	cec_unregister_adapter(adv7511->cec_adap);
 	i2c_unregister_device(adv7511->i2c_cec);
@@ -1438,6 +1434,9 @@ err_i2c_unregister_edid:
 uninit_regulators:
 	adv7511_uninit_regulators(adv7511);
 #if IS_ENABLED(CONFIG_OF_DYNAMIC)
+	if (ret == -EPROBE_DEFER)
+		return ret;
+
 	endpoint = of_graph_get_next_endpoint(dev->of_node, NULL);
 	if (endpoint)
 		remote_node = of_graph_get_remote_port_parent(endpoint);

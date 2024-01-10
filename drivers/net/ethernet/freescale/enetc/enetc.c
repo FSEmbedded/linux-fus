@@ -10,6 +10,7 @@
 #include <net/ip6_checksum.h>
 #include <net/pkt_sched.h>
 #include <net/tso.h>
+#include <net/xdp_sock_drv.h>
 
 static int enetc_num_stack_tx_queues(struct enetc_ndev_priv *priv)
 {
@@ -580,255 +581,6 @@ err_chained_bd:
 	return 0;
 }
 
-static void enetc_map_tx_tso_hdr(struct enetc_bdr *tx_ring, struct sk_buff *skb,
-				 struct enetc_tx_swbd *tx_swbd,
-				 union enetc_tx_bd *txbd, int *i, int hdr_len,
-				 int data_len)
-{
-	union enetc_tx_bd txbd_tmp;
-	u8 flags = 0, e_flags = 0;
-	dma_addr_t addr;
-
-	enetc_clear_tx_bd(&txbd_tmp);
-	addr = tx_ring->tso_headers_dma + *i * TSO_HEADER_SIZE;
-
-	if (skb_vlan_tag_present(skb))
-		flags |= ENETC_TXBD_FLAGS_EX;
-
-	txbd_tmp.addr = cpu_to_le64(addr);
-	txbd_tmp.buf_len = cpu_to_le16(hdr_len);
-
-	/* first BD needs frm_len and offload flags set */
-	txbd_tmp.frm_len = cpu_to_le16(hdr_len + data_len);
-	txbd_tmp.flags = flags;
-
-	/* For the TSO header we do not set the dma address since we do not
-	 * want it unmapped when we do cleanup. We still set len so that we
-	 * count the bytes sent.
-	 */
-	tx_swbd->len = hdr_len;
-	tx_swbd->do_twostep_tstamp = false;
-	tx_swbd->check_wb = false;
-
-	/* Actually write the header in the BD */
-	*txbd = txbd_tmp;
-
-	/* Add extension BD for VLAN */
-	if (flags & ENETC_TXBD_FLAGS_EX) {
-		/* Get the next BD */
-		enetc_bdr_idx_inc(tx_ring, i);
-		txbd = ENETC_TXBD(*tx_ring, *i);
-		tx_swbd = &tx_ring->tx_swbd[*i];
-		prefetchw(txbd);
-
-		/* Setup the VLAN fields */
-		enetc_clear_tx_bd(&txbd_tmp);
-		txbd_tmp.ext.vid = cpu_to_le16(skb_vlan_tag_get(skb));
-		txbd_tmp.ext.tpid = 0; /* < C-TAG */
-		e_flags |= ENETC_TXBD_E_FLAGS_VLAN_INS;
-
-		/* Write the BD */
-		txbd_tmp.ext.e_flags = e_flags;
-		*txbd = txbd_tmp;
-	}
-}
-
-static int enetc_map_tx_tso_data(struct enetc_bdr *tx_ring, struct sk_buff *skb,
-				 struct enetc_tx_swbd *tx_swbd,
-				 union enetc_tx_bd *txbd, char *data,
-				 int size, bool last_bd)
-{
-	union enetc_tx_bd txbd_tmp;
-	dma_addr_t addr;
-	u8 flags = 0;
-
-	enetc_clear_tx_bd(&txbd_tmp);
-
-	addr = dma_map_single(tx_ring->dev, data, size, DMA_TO_DEVICE);
-	if (unlikely(dma_mapping_error(tx_ring->dev, addr))) {
-		netdev_err(tx_ring->ndev, "DMA map error\n");
-		return -ENOMEM;
-	}
-
-	if (last_bd) {
-		flags |= ENETC_TXBD_FLAGS_F;
-		tx_swbd->is_eof = 1;
-	}
-
-	txbd_tmp.addr = cpu_to_le64(addr);
-	txbd_tmp.buf_len = cpu_to_le16(size);
-	txbd_tmp.flags = flags;
-
-	tx_swbd->dma = addr;
-	tx_swbd->len = size;
-	tx_swbd->dir = DMA_TO_DEVICE;
-
-	*txbd = txbd_tmp;
-
-	return 0;
-}
-
-static __wsum enetc_tso_hdr_csum(struct tso_t *tso, struct sk_buff *skb,
-				 char *hdr, int hdr_len, int *l4_hdr_len)
-{
-	char *l4_hdr = hdr + skb_transport_offset(skb);
-	int mac_hdr_len = skb_network_offset(skb);
-
-	if (tso->tlen != sizeof(struct udphdr)) {
-		struct tcphdr *tcph = (struct tcphdr *)(l4_hdr);
-
-		tcph->check = 0;
-	} else {
-		struct udphdr *udph = (struct udphdr *)(l4_hdr);
-
-		udph->check = 0;
-	}
-
-	/* Compute the IP checksum. This is necessary since tso_build_hdr()
-	 * already incremented the IP ID field.
-	 */
-	if (!tso->ipv6) {
-		struct iphdr *iph = (void *)(hdr + mac_hdr_len);
-
-		iph->check = 0;
-		iph->check = ip_fast_csum((unsigned char *)iph, iph->ihl);
-	}
-
-	/* Compute the checksum over the L4 header. */
-	*l4_hdr_len = hdr_len - skb_transport_offset(skb);
-	return csum_partial(l4_hdr, *l4_hdr_len, 0);
-}
-
-static void enetc_tso_complete_csum(struct enetc_bdr *tx_ring, struct tso_t *tso,
-				    struct sk_buff *skb, char *hdr, int len,
-				    __wsum sum)
-{
-	char *l4_hdr = hdr + skb_transport_offset(skb);
-	__sum16 csum_final;
-
-	/* Complete the L4 checksum by appending the pseudo-header to the
-	 * already computed checksum.
-	 */
-	if (!tso->ipv6)
-		csum_final = csum_tcpudp_magic(ip_hdr(skb)->saddr,
-					       ip_hdr(skb)->daddr,
-					       len, ip_hdr(skb)->protocol, sum);
-	else
-		csum_final = csum_ipv6_magic(&ipv6_hdr(skb)->saddr,
-					     &ipv6_hdr(skb)->daddr,
-					     len, ipv6_hdr(skb)->nexthdr, sum);
-
-	if (tso->tlen != sizeof(struct udphdr)) {
-		struct tcphdr *tcph = (struct tcphdr *)(l4_hdr);
-
-		tcph->check = csum_final;
-	} else {
-		struct udphdr *udph = (struct udphdr *)(l4_hdr);
-
-		udph->check = csum_final;
-	}
-}
-
-static int enetc_map_tx_tso_buffs(struct enetc_bdr *tx_ring, struct sk_buff *skb)
-{
-	int hdr_len, total_len, data_len;
-	struct enetc_tx_swbd *tx_swbd;
-	union enetc_tx_bd *txbd;
-	struct tso_t tso;
-	__wsum csum, csum2;
-	int count = 0, pos;
-	int err, i, bd_data_num;
-
-	/* Initialize the TSO handler, and prepare the first payload */
-	hdr_len = tso_start(skb, &tso);
-	total_len = skb->len - hdr_len;
-	i = tx_ring->next_to_use;
-
-	while (total_len > 0) {
-		char *hdr;
-
-		/* Get the BD */
-		txbd = ENETC_TXBD(*tx_ring, i);
-		tx_swbd = &tx_ring->tx_swbd[i];
-		prefetchw(txbd);
-
-		/* Determine the length of this packet */
-		data_len = min_t(int, skb_shinfo(skb)->gso_size, total_len);
-		total_len -= data_len;
-
-		/* prepare packet headers: MAC + IP + TCP */
-		hdr = tx_ring->tso_headers + i * TSO_HEADER_SIZE;
-		tso_build_hdr(skb, hdr, &tso, data_len, total_len == 0);
-
-		/* compute the csum over the L4 header */
-		csum = enetc_tso_hdr_csum(&tso, skb, hdr, hdr_len, &pos);
-		enetc_map_tx_tso_hdr(tx_ring, skb, tx_swbd, txbd, &i, hdr_len, data_len);
-		bd_data_num = 0;
-		count++;
-
-		while (data_len > 0) {
-			int size;
-
-			size = min_t(int, tso.size, data_len);
-
-			/* Advance the index in the BDR */
-			enetc_bdr_idx_inc(tx_ring, &i);
-			txbd = ENETC_TXBD(*tx_ring, i);
-			tx_swbd = &tx_ring->tx_swbd[i];
-			prefetchw(txbd);
-
-			/* Compute the checksum over this segment of data and
-			 * add it to the csum already computed (over the L4
-			 * header and possible other data segments).
-			 */
-			csum2 = csum_partial(tso.data, size, 0);
-			csum = csum_block_add(csum, csum2, pos);
-			pos += size;
-
-			err = enetc_map_tx_tso_data(tx_ring, skb, tx_swbd, txbd,
-						    tso.data, size,
-						    size == data_len);
-			if (err)
-				goto err_map_data;
-
-			data_len -= size;
-			count++;
-			bd_data_num++;
-			tso_build_data(skb, &tso, size);
-
-			if (unlikely(bd_data_num >= ENETC_MAX_SKB_FRAGS && data_len))
-				goto err_chained_bd;
-		}
-
-		enetc_tso_complete_csum(tx_ring, &tso, skb, hdr, pos, csum);
-
-		if (total_len == 0)
-			tx_swbd->skb = skb;
-
-		/* Go to the next BD */
-		enetc_bdr_idx_inc(tx_ring, &i);
-	}
-
-	tx_ring->next_to_use = i;
-	enetc_update_tx_ring_tail(tx_ring);
-
-	return count;
-
-err_map_data:
-	dev_err(tx_ring->dev, "DMA map error");
-
-err_chained_bd:
-	do {
-		tx_swbd = &tx_ring->tx_swbd[i];
-		enetc_free_tx_frame(tx_ring, tx_swbd);
-		if (i == 0)
-			i = tx_ring->bd_count;
-		i--;
-	} while (count--);
-
-	return 0;
-}
-
 static netdev_tx_t enetc_start_xmit(struct sk_buff *skb,
 				    struct net_device *ndev)
 {
@@ -1371,7 +1123,9 @@ static void enetc_flip_rx_buff(struct enetc_bdr *rx_ring,
 
 		enetc_put_rx_buff(rx_ring, rx_swbd);
 	} else {
-		enetc_free_rx_swbd(rx_ring, rx_swbd);
+		dma_unmap_page(rx_ring->dev, rx_swbd->dma, PAGE_SIZE,
+			       rx_swbd->dir);
+		rx_swbd->page = NULL;
 	}
 }
 
@@ -1888,7 +1642,7 @@ static bool enetc_xsk_xdp_tx(struct enetc_bdr *tx_ring,
 {
 	struct enetc_tx_swbd tx_swbd = {
 		.dma = xsk_buff_xdp_get_dma(xsk_buff),
-		.len = xsk_buff->data_end - xsk_buff->data,
+		.len = xdp_get_buff_len(xsk_buff),
 		.is_xdp_tx = true,
 		.is_xsk = true,
 		.is_eof = true,
@@ -2073,7 +1827,7 @@ static void enetc_xsk_buff_to_skb(struct xdp_buff *xsk_buff,
 				  union enetc_rx_bd *rxbd,
 				  struct napi_struct *napi)
 {
-	size_t len = xsk_buff->data_end - xsk_buff->data;
+	size_t len = xdp_get_buff_len(xsk_buff);
 	struct sk_buff *skb;
 
 	skb = napi_alloc_skb(napi, len);
@@ -2148,7 +1902,7 @@ static int enetc_clean_rx_ring_xsk(struct enetc_bdr *rx_ring,
 		xdp_act = bpf_prog_run_xdp(prog, xsk_buff);
 		switch (xdp_act) {
 		default:
-			bpf_warn_invalid_xdp_action(xdp_act);
+			bpf_warn_invalid_xdp_action(ndev, prog, xdp_act);
 			fallthrough;
 		case XDP_ABORTED:
 			trace_xdp_exception(ndev, prog, xdp_act);
@@ -2321,20 +2075,17 @@ void enetc_get_si_caps(struct enetc_si *si)
 
 static int enetc_dma_alloc_bdr(struct enetc_bdr *r, size_t bd_size)
 {
-	size_t size = r->bd_count * bd_size;
-
-	r->bd_base = dma_alloc_coherent(r->dev, size, &r->bd_dma_base,
-					GFP_KERNEL);
+	r->bd_base = dma_alloc_coherent(r->dev, r->bd_count * bd_size,
+					&r->bd_dma_base, GFP_KERNEL);
 	if (!r->bd_base)
 		return -ENOMEM;
 
 	/* h/w requires 128B alignment */
 	if (!IS_ALIGNED(r->bd_dma_base, 128)) {
-		dma_free_coherent(r->dev, size, r->bd_base, r->bd_dma_base);
+		dma_free_coherent(r->dev, r->bd_count * bd_size, r->bd_base,
+				  r->bd_dma_base);
 		return -EINVAL;
 	}
-
-	memset(r->bd_base, 0, size);
 
 	return 0;
 }

@@ -193,15 +193,15 @@ static const struct {
 	int reg;
 	char name[ETH_GSTRING_LEN];
 } enetc_pmac_counters[] = {
-	{ ENETC_PM1_RFRM,   "PMAC rx frames" },
-	{ ENETC_PM1_RPKT,   "PMAC rx packets" },
-	{ ENETC_PM1_RDRP,   "PMAC rx dropped packets" },
-	{ ENETC_PM1_RFRG,   "PMAC rx fragment packets" },
-	{ ENETC_PM1_TFRM,   "PMAC tx frames" },
-	{ ENETC_PM1_TERR,   "PMAC tx error frames" },
-	{ ENETC_PM1_TPKT,   "PMAC tx packets" },
-	{ ENETC_MAC_MERGE_MMFCRXR,   "MAC merge fragment rx counter" },
-	{ ENETC_MAC_MERGE_MMFCTXR,   "MAC merge fragment tx counter"},
+	{ ENETC_PM_RFRM(1),	"PMAC rx frames" },
+	{ ENETC_PM_RPKT(1),	"PMAC rx packets" },
+	{ ENETC_PM_RDRP(1),	"PMAC rx dropped packets" },
+	{ ENETC_PM_RFRG(1),	"PMAC rx fragment packets" },
+	{ ENETC_PM_TFRM(1),	"PMAC tx frames" },
+	{ ENETC_PM_TERR(1),	"PMAC tx error frames" },
+	{ ENETC_PM_TPKT(1),	"PMAC tx packets" },
+	{ ENETC_MAC_MERGE_MMFCRXR,	"MAC merge fragment rx counter" },
+	{ ENETC_MAC_MERGE_MMFCTXR,	"MAC merge fragment tx counter"},
 };
 
 static const char rx_ring_stats[][ETH_GSTRING_LEN] = {
@@ -241,9 +241,6 @@ static int enetc_get_sset_count(struct net_device *ndev, int sset)
 
 	if (priv->active_offloads & ENETC_F_QBU)
 		len += ARRAY_SIZE(enetc_pmac_counters);
-
-	if (priv->active_offloads & ENETC_F_QBV)
-		len += ARRAY_SIZE(tx_windrop_stats) * priv->num_tx_rings;
 
 	return len;
 }
@@ -291,18 +288,6 @@ static void enetc_get_strings(struct net_device *ndev, u32 stringset, u8 *data)
 			strlcpy(p, enetc_pmac_counters[i].name,
 				ETH_GSTRING_LEN);
 			p += ETH_GSTRING_LEN;
-		}
-
-		if (!((priv->active_offloads & ENETC_F_QBV)))
-			break;
-
-		for (i = 0; i < priv->num_tx_rings; i++) {
-			for (j = 0; j < ARRAY_SIZE(tx_windrop_stats); j++) {
-				snprintf(p, ETH_GSTRING_LEN,
-					 tx_windrop_stats[j],
-					 i);
-				p += ETH_GSTRING_LEN;
-			}
 		}
 
 		break;

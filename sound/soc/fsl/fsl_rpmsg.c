@@ -172,37 +172,6 @@ static const struct fsl_rpmsg_soc_data imx8mp_data = {
 		   SNDRV_PCM_FMTBIT_S32_LE,
 };
 
-static const struct fsl_rpmsg_soc_data imx7ulp_data = {
-	.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
-		 SNDRV_PCM_RATE_48000,
-	.formats = SNDRV_PCM_FMTBIT_S16_LE,
-};
-
-static const struct fsl_rpmsg_soc_data imx8mm_data = {
-	.rates = SNDRV_PCM_RATE_KNOT,
-	.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE |
-		   SNDRV_PCM_FMTBIT_S32_LE | SNDRV_PCM_FMTBIT_DSD_U8 |
-		   SNDRV_PCM_FMTBIT_DSD_U16_LE | SNDRV_PCM_FMTBIT_DSD_U32_LE,
-};
-
-static const struct fsl_rpmsg_soc_data imx8mn_data = {
-	.rates = SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |
-		 SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_88200 |
-		 SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_176400 |
-		 SNDRV_PCM_RATE_192000,
-	.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE |
-		   SNDRV_PCM_FMTBIT_S32_LE,
-};
-
-static const struct fsl_rpmsg_soc_data imx8mp_data = {
-	.rates = SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |
-		 SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_88200 |
-		 SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_176400 |
-		 SNDRV_PCM_RATE_192000,
-	.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE |
-		   SNDRV_PCM_FMTBIT_S32_LE,
-};
-
 static const struct of_device_id fsl_rpmsg_ids[] = {
 	{ .compatible = "fsl,imx7ulp-rpmsg-audio", .data = &imx7ulp_data},
 	{ .compatible = "fsl,imx8mm-rpmsg-audio", .data = &imx8mm_data},
@@ -232,11 +201,27 @@ static int fsl_rpmsg_probe(struct platform_device *pdev)
 
 	rpmsg->soc_data = of_device_get_match_data(&pdev->dev);
 
-	fsl_rpmsg_dai.playback.rates = rpmsg->soc_data->rates;
-	fsl_rpmsg_dai.capture.rates = rpmsg->soc_data->rates;
-	fsl_rpmsg_dai.playback.formats = rpmsg->soc_data->formats;
-	fsl_rpmsg_dai.capture.formats = rpmsg->soc_data->formats;
+	if (rpmsg->soc_data) {
+		dai_drv->playback.rates = rpmsg->soc_data->rates;
+		dai_drv->capture.rates = rpmsg->soc_data->rates;
+		dai_drv->playback.formats = rpmsg->soc_data->formats;
+		dai_drv->capture.formats = rpmsg->soc_data->formats;
 
+		/* setup rpmsg-micfil channels and rates */
+		if (of_node_name_eq(np, "rpmsg_micfil")) {
+			rpmsg->buffer_size[SNDRV_PCM_STREAM_CAPTURE] = RPMSG_CAPTURE_BUFFER_SIZE;
+			dai_drv->capture.channels_min = 1;
+			dai_drv->capture.channels_max = 8;
+			dai_drv->capture.rates = SNDRV_PCM_RATE_8000_48000;
+			dai_drv->capture.formats = SNDRV_PCM_FMTBIT_S32_LE;
+			if (of_device_is_compatible(np, "fsl,imx8mm-rpmsg-audio"))
+				dai_drv->capture.formats = SNDRV_PCM_FMTBIT_S16_LE;
+		}
+		/* constrain rates of wm8524 codec */
+		of_property_read_string(np, "model", &model_string);
+		if (!strcmp("wm8524-audio", model_string))
+			dai_drv->playback.rates = SNDRV_PCM_RATE_8000_192000;
+	}
 	if (of_property_read_bool(np, "fsl,enable-lpa")) {
 		rpmsg->enable_lpa = 1;
 		rpmsg->buffer_size[SNDRV_PCM_STREAM_PLAYBACK] = LPA_LARGE_BUFFER_SIZE;

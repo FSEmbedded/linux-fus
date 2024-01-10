@@ -135,6 +135,18 @@ void settlbcam(int index, unsigned long virt, phys_addr_t phys,
 	tlbcam_addrs[index].phys = phys;
 }
 
+void cleartlbcam(unsigned long virt, unsigned int pid)
+{
+	int i = 0;
+	for (i = 0; i < NUM_TLBCAMS; i++) {
+		if (tlbcam_addrs[i].start == virt) {
+			TLBCAM[i].MAS1 = 0;
+			loadcam_entry(i);
+			return;
+		}
+	}
+}
+
 static unsigned long calc_cam_sz(unsigned long ram, unsigned long virt,
 				 phys_addr_t phys)
 {

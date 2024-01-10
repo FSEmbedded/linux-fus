@@ -463,9 +463,15 @@ static int sg_io(struct scsi_device *sdev, struct sg_io_hdr *hdr, fmode_t mode)
 	if (ret < 0)
 		goto out_put_request;
 
-	ret = blk_rq_map_user_io(rq, NULL, hdr->dxferp, hdr->dxfer_len,
-			GFP_KERNEL, hdr->iovec_count && hdr->dxfer_len,
-			hdr->iovec_count, 0, rq_data_dir(rq));
+	if (sg_io_buffer_hack && !hdr->iovec_count) {
+		if (hdr->dxfer_len)
+			ret = blk_rq_map_kern(rq->q, rq, sg_io_buffer_hack,
+					hdr->dxfer_len, GFP_KERNEL);
+	} else {
+		ret = blk_rq_map_user_io(rq, NULL, hdr->dxferp, hdr->dxfer_len,
+				GFP_KERNEL, hdr->iovec_count && hdr->dxfer_len,
+				hdr->iovec_count, 0, rq_data_dir(rq));
+	}
 	if (ret)
 		goto out_put_request;
 

@@ -41,6 +41,8 @@
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/dma/imx-dma.h>
+#include <linux/pm_runtime.h>
+#include <linux/busfreq-imx.h>
 
 #include <sound/core.h>
 #include <sound/pcm.h>
@@ -813,7 +815,6 @@ static int fsl_ssi_hw_params(struct snd_pcm_substream *substream,
 	unsigned int sample_size = params_width(hw_params);
 	u32 wl = SSI_SxCCR_WL(sample_size);
 	int ret;
-	struct fsl_ssi_regvals *vals = ssi->regvals;
 
 	if (fsl_ssi_is_i2s_clock_provider(ssi)) {
 		ret = fsl_ssi_set_bclk(substream, dai, hw_params);
@@ -1377,8 +1378,6 @@ static int fsl_ssi_imx_probe(struct platform_device *pdev,
 		dev_dbg(dev, "failed to get baud clock: %ld\n",
 			 PTR_ERR(ssi->baudclk));
 
-	ssi->dma_params_rx.chan_name = "rx";
-	ssi->dma_params_tx.chan_name = "tx";
 	ssi->dma_params_tx.maxburst = ssi->dma_maxburst;
 	ssi->dma_params_rx.maxburst = ssi->dma_maxburst;
 	ssi->dma_params_tx.addr = ssi->ssi_phys + REG_SSI_STX0;

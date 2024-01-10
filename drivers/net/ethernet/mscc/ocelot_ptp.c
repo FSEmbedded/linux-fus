@@ -14,11 +14,15 @@
 #include <soc/mscc/ocelot.h>
 #include "ocelot.h"
 
-static void __ocelot_ptp_gettime64(struct ocelot *ocelot, struct timespec64 *ts)
+int ocelot_ptp_gettime64(struct ptp_clock_info *ptp, struct timespec64 *ts)
 {
+	struct ocelot *ocelot = container_of(ptp, struct ocelot, ptp_info);
+	unsigned long flags;
 	time64_t s;
 	u32 val;
 	s64 ns;
+
+	spin_lock_irqsave(&ocelot->ptp_clock_lock, flags);
 
 	val = ocelot_read_rix(ocelot, PTP_PIN_CFG, TOD_ACC_PIN);
 	val &= ~(PTP_PIN_CFG_SYNC | PTP_PIN_CFG_ACTION_MASK | PTP_PIN_CFG_DOM);
@@ -30,6 +34,8 @@ static void __ocelot_ptp_gettime64(struct ocelot *ocelot, struct timespec64 *ts)
 	s += ocelot_read_rix(ocelot, PTP_PIN_TOD_SEC_LSB, TOD_ACC_PIN);
 	ns = ocelot_read_rix(ocelot, PTP_PIN_TOD_NSEC, TOD_ACC_PIN);
 
+	spin_unlock_irqrestore(&ocelot->ptp_clock_lock, flags);
+
 	/* Deal with negative values */
 	if (ns >= 0x3ffffff0 && ns <= 0x3fffffff) {
 		s--;
@@ -38,27 +44,18 @@ static void __ocelot_ptp_gettime64(struct ocelot *ocelot, struct timespec64 *ts)
 	}
 
 	set_normalized_timespec64(ts, s, ns);
-}
-
-int ocelot_ptp_gettime64(struct ptp_clock_info *ptp, struct timespec64 *ts)
-{
-	struct ocelot *ocelot = container_of(ptp, struct ocelot, ptp_info);
-	unsigned long flags;
-
-	spin_lock_irqsave(&ocelot->ptp_clock_lock, flags);
-
-	__ocelot_ptp_gettime64(ocelot, ts);
-
-	spin_unlock_irqrestore(&ocelot->ptp_clock_lock, flags);
-
 	return 0;
 }
 EXPORT_SYMBOL(ocelot_ptp_gettime64);
 
-static void __ocelot_ptp_settime64(struct ocelot *ocelot,
-				   const struct timespec64 *ts)
+int ocelot_ptp_settime64(struct ptp_clock_info *ptp,
+			 const struct timespec64 *ts)
 {
+	struct ocelot *ocelot = container_of(ptp, struct ocelot, ptp_info);
+	unsigned long flags;
 	u32 val;
+
+	spin_lock_irqsave(&ocelot->ptp_clock_lock, flags);
 
 	val = ocelot_read_rix(ocelot, PTP_PIN_CFG, TOD_ACC_PIN);
 	val &= ~(PTP_PIN_CFG_SYNC | PTP_PIN_CFG_ACTION_MASK | PTP_PIN_CFG_DOM);
@@ -77,20 +74,6 @@ static void __ocelot_ptp_settime64(struct ocelot *ocelot,
 	val |= PTP_PIN_CFG_ACTION(PTP_PIN_ACTION_LOAD);
 
 	ocelot_write_rix(ocelot, val, PTP_PIN_CFG, TOD_ACC_PIN);
-}
-
-int ocelot_ptp_settime64(struct ptp_clock_info *ptp,
-			 const struct timespec64 *ts)
-{
-	struct ocelot *ocelot = container_of(ptp, struct ocelot,
-					     ptp_info);
-	unsigned long flags;
-
-	mutex_lock(&ocelot->tas_lock);
-
-	spin_lock_irqsave(&ocelot->ptp_clock_lock, flags);
-
-	__ocelot_ptp_settime64(ocelot, ts);
 
 	spin_unlock_irqrestore(&ocelot->ptp_clock_lock, flags);
 
@@ -103,16 +86,13 @@ EXPORT_SYMBOL(ocelot_ptp_settime64);
 
 int ocelot_ptp_adjtime(struct ptp_clock_info *ptp, s64 delta)
 {
-	struct ocelot *ocelot = container_of(ptp, struct ocelot,
-					     ptp_info);
-	unsigned long flags;
-
-	mutex_lock(&ocelot->tas_lock);
-
-	spin_lock_irqsave(&ocelot->ptp_clock_lock, flags);
-
 	if (delta > -(NSEC_PER_SEC / 2) && delta < (NSEC_PER_SEC / 2)) {
+		struct ocelot *ocelot = container_of(ptp, struct ocelot,
+						     ptp_info);
+		unsigned long flags;
 		u32 val;
+
+		spin_lock_irqsave(&ocelot->ptp_clock_lock, flags);
 
 		val = ocelot_read_rix(ocelot, PTP_PIN_CFG, TOD_ACC_PIN);
 		val &= ~(PTP_PIN_CFG_SYNC | PTP_PIN_CFG_ACTION_MASK |
@@ -141,12 +121,12 @@ int ocelot_ptp_adjtime(struct ptp_clock_info *ptp, s64 delta)
 		struct timespec64 ts;
 		u64 now;
 
-		__ocelot_ptp_gettime64(ocelot, &ts);
+		ocelot_ptp_gettime64(ptp, &ts);
 
 		now = ktime_to_ns(timespec64_to_ktime(ts));
 		ts = ns_to_timespec64(now + delta);
 
-		__ocelot_ptp_settime64(ocelot, &ts);
+		ocelot_ptp_settime64(ptp, &ts);
 	}
 
 	return 0;
@@ -355,8 +335,8 @@ static void
 ocelot_populate_ipv6_ptp_event_trap_key(struct ocelot_vcap_filter *trap)
 {
 	trap->key_type = OCELOT_VCAP_KEY_IPV6;
-	trap->key.ipv4.proto.value[0] = IPPROTO_UDP;
-	trap->key.ipv4.proto.mask[0] = 0xff;
+	trap->key.ipv6.proto.value[0] = IPPROTO_UDP;
+	trap->key.ipv6.proto.mask[0] = 0xff;
 	trap->key.ipv6.dport.value = PTP_EV_PORT;
 	trap->key.ipv6.dport.mask = 0xffff;
 }
@@ -375,8 +355,8 @@ static void
 ocelot_populate_ipv6_ptp_general_trap_key(struct ocelot_vcap_filter *trap)
 {
 	trap->key_type = OCELOT_VCAP_KEY_IPV6;
-	trap->key.ipv4.proto.value[0] = IPPROTO_UDP;
-	trap->key.ipv4.proto.mask[0] = 0xff;
+	trap->key.ipv6.proto.value[0] = IPPROTO_UDP;
+	trap->key.ipv6.proto.mask[0] = 0xff;
 	trap->key.ipv6.dport.value = PTP_GEN_PORT;
 	trap->key.ipv6.dport.mask = 0xffff;
 }

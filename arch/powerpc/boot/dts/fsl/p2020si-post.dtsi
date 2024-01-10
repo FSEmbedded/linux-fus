@@ -214,8 +214,5 @@
 		fsl,has-rstcr;
 	};
 
-	pmc: power@e0070 {
-		compatible = "fsl,mpc8548-pmc";
-		reg = <0xe0070 0x20>;
-	};
+/include/ "pq3-power.dtsi"
 };

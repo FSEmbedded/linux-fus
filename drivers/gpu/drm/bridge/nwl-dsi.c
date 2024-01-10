@@ -126,6 +126,7 @@ struct nwl_dsi {
 	struct drm_encoder encoder;
 	struct drm_bridge bridge;
 	struct mipi_dsi_host dsi_host;
+	struct drm_bridge *panel_bridge;
 	struct device *dev;
 	struct phy *phy;
 	union phy_configure_opts phy_cfg;
@@ -461,7 +462,7 @@ static int nwl_dsi_init_interrupts(struct nwl_dsi *dsi)
 	u32 irq_enable = ~(u32)(NWL_DSI_TX_PKT_DONE_MASK |
 				NWL_DSI_RX_PKT_HDR_RCVD_MASK |
 				NWL_DSI_TX_FIFO_OVFLW_MASK |
-				NWL_DSI_HS_TX_TIMEOUT_MASK);
+				dsi->pdata->bit_hs_tx_timeout);
 
 	nwl_dsi_write(dsi, NWL_DSI_IRQ_MASK, irq_enable);
 	nwl_dsi_write(dsi, NWL_DSI_IRQ_MASK2, 0x7);
@@ -1293,8 +1294,12 @@ nwl_dsi_bridge_mode_set(struct drm_bridge *bridge,
 	memcpy(&dsi->phy_cfg, &new_cfg, sizeof(new_cfg));
 }
 
-	drm_mode_copy(&dsi->mode, adjusted_mode);
-	drm_mode_debug_printmodeline(adjusted_mode);
+static void
+nwl_dsi_bridge_atomic_pre_enable(struct drm_bridge *bridge,
+				 struct drm_bridge_state *old_bridge_state)
+{
+	struct nwl_dsi *dsi = bridge_to_dsi(bridge);
+	int ret;
 
 	if (pm_runtime_resume_and_get(dsi->dev) < 0)
 		return;
@@ -1371,13 +1376,37 @@ static int nwl_dsi_bridge_attach(struct drm_bridge *bridge,
 				 enum drm_bridge_attach_flags flags)
 {
 	struct nwl_dsi *dsi = bridge_to_dsi(bridge);
-	struct drm_bridge *panel_bridge;
+	struct clk *phy_parent;
+	int ret;
 
-	panel_bridge = devm_drm_of_get_bridge(dsi->dev, dsi->dev->of_node, 1, 0);
-	if (IS_ERR(panel_bridge))
-		return PTR_ERR(panel_bridge);
+	dsi->panel_bridge = devm_drm_of_get_bridge(dsi->dev, dsi->dev->of_node,
+						   1, 0);
+	if (IS_ERR(dsi->panel_bridge))
+		return PTR_ERR(dsi->panel_bridge);
 
-	return drm_bridge_attach(bridge->encoder, panel_bridge, bridge, flags);
+	phy_parent = devm_clk_get(dsi->dev, "phy_parent");
+	if (!IS_ERR_OR_NULL(phy_parent)) {
+		ret = clk_set_parent(dsi->phy_ref_clk, phy_parent);
+		ret |= clk_set_parent(dsi->tx_esc_clk, phy_parent);
+		ret |= clk_set_parent(dsi->rx_esc_clk, phy_parent);
+
+		if (ret) {
+			dev_err(dsi->dev,
+				"Error re-parenting phy/tx/rx clocks: %d",
+				ret);
+
+			return ret;
+		}
+
+		if (dsi->pdata->tx_clk_rate)
+			clk_set_rate(dsi->tx_esc_clk, dsi->pdata->tx_clk_rate);
+
+		if (dsi->pdata->rx_clk_rate)
+			clk_set_rate(dsi->rx_esc_clk, dsi->pdata->rx_clk_rate);
+	}
+
+	return drm_bridge_attach(bridge->encoder, dsi->panel_bridge, bridge,
+				 flags);
 }
 
 static u32 *nwl_bridge_atomic_get_input_bus_fmts(struct drm_bridge *bridge,

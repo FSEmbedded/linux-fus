@@ -54,11 +54,17 @@
 	regulator-always-on;
 };
 
-&pcie {
-	status = "okay";
+&ov564x {
+	AVDD-supply = <&vgen6_reg>; /* 2.8v */
+	DOVDD-supply = <&sw4_reg>; /* 1.8v */
 };
 
-&sata {
+&ov564x_mipi {
+	AVDD-supply = <&vgen6_reg>; /* 2.8v */
+	DOVDD-supply = <&sw4_reg>; /* 1.8v */
+};
+
+&pcie {
 	status = "okay";
 };
 

@@ -18,7 +18,6 @@
 #include <sound/sof/ipc4/header.h>
 #include <trace/events/sof_intel.h>
 #include "../ops.h"
-#include "../sof-audio.h"
 #include "hda.h"
 
 static void hda_dsp_ipc_host_done(struct snd_sof_dev *sdev)
@@ -346,10 +345,9 @@ int hda_ipc_msg_data(struct snd_sof_dev *sdev,
 		     struct snd_pcm_substream *substream,
 		     void *p, size_t sz)
 {
-	if (!sps || !sdev->stream_box.size) {
+	if (!substream || !sdev->stream_box.size) {
 		sof_mailbox_read(sdev, sdev->dsp_box.offset, p, sz);
 	} else {
-		struct snd_pcm_substream *substream = sps->substream;
 		struct hdac_stream *hstream = substream->runtime->private_data;
 		struct sof_intel_hda_stream *hda_stream;
 

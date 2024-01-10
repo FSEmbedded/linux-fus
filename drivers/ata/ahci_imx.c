@@ -1576,24 +1576,6 @@ static int imx_ahci_probe(struct platform_device *pdev)
 		writel(reg_val, hpriv->mmio + IMX_TIMER1MS);
 	}
 
-	/*
-	 * Due to IP bug on the Synopsis 3.00 SATA version,
-	 * which is present on mx6q, and not on mx53,
-	 * we should use sg_tablesize = 1 for reliable operation
-	 */
-	if (imxpriv->type == AHCI_IMX6Q || imxpriv->type == AHCI_IMX6QP) {
-		dma_addr_t dma;
-
-		ahci_platform_sht.sg_tablesize = 1;
-
-		sg_io_buffer_hack = dma_alloc_coherent(dev, 0x10000,
-				&dma, GFP_KERNEL);
-		if (!sg_io_buffer_hack) {
-			ret = -ENOMEM;
-			goto disable_sata;
-		}
-	}
-
 	if (imxpriv->type == AHCI_IMX8QM && bist_enable) {
 		dev_info(dev, "AHCI SATA compliance test patterns.\n");
 		ret = clk_prepare_enable(imxpriv->phy_pclk0);
@@ -1612,6 +1594,23 @@ static int imx_ahci_probe(struct platform_device *pdev)
 			ret = -EINVAL;
 		dev_info(dev, "Register AHCI SATA BIST sysfile callback.\n");
 	} else {
+		/*
+		 * Due to IP bug on the Synopsis 3.00 SATA version,
+		 * which is present on mx6q, and not on mx53,
+		 * we should use sg_tablesize = 1 for reliable operation
+		 */
+		if (imxpriv->type == AHCI_IMX6Q || imxpriv->type == AHCI_IMX6QP) {
+			dma_addr_t dma;
+
+			ahci_platform_sht.sg_tablesize = 1;
+
+			sg_io_buffer_hack = dma_alloc_coherent(dev, 0x10000,
+					&dma, GFP_KERNEL);
+			if (!sg_io_buffer_hack) {
+				ret = -ENOMEM;
+				goto disable_sata;
+			}
+		}
 
 		ret = ahci_platform_init_host(pdev, hpriv, &ahci_imx_port_info,
 					      &ahci_platform_sht);

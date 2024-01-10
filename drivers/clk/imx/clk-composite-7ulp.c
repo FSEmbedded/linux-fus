@@ -38,6 +38,9 @@ static int pcc_gate_enable(struct clk_hw *hw)
 	if (ret)
 		return ret;
 
+	/* wait before release reset */
+	udelay(1);
+
 	spin_lock_irqsave(gate->lock, flags);
 	/*
 	 * release the sw reset for peripherals associated with
@@ -48,6 +51,9 @@ static int pcc_gate_enable(struct clk_hw *hw)
 	writel(val, gate->reg);
 
 	spin_unlock_irqrestore(gate->lock, flags);
+
+	/* wait sync reset done */
+	udelay(1);
 
 	return 0;
 }

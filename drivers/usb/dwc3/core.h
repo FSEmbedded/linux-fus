@@ -273,8 +273,6 @@
 
 /* Global User Control Register */
 #define DWC3_GUCTL_HSTINAUTORETRY	BIT(14)
-#define DWC3_GUCTL_REFCLKPER_MASK	GENMASK(31, 22)
-#define DWC3_GUCTL_REFCLKPER_SHIFT	22
 
 /* Global User Control 1 Register */
 #define DWC3_GUCTL1_DEV_DECOUPLE_L1L2_EVT	BIT(31)
@@ -987,7 +985,7 @@ struct dwc3_platform_data {
 	struct xhci_plat_priv *xhci_priv;
 	void	(*set_role_post)(struct dwc3 *dwc, u32 role);
 	unsigned long long quirks;
-#define DWC3_SOFT_ITP_SYNC		BIT(0)
+#define DWC3_SOFT_ITP_SYNC	BIT(0)
 };
 
 /**
@@ -1035,7 +1033,6 @@ struct dwc3_platform_data {
  * @ip: controller's ID
  * @revision: controller's version of an IP
  * @version_type: VERSIONTYPE register contents, a sub release of a revision
- * @otg_caps: the OTG capabilities from hardware point
  * @dr_mode: requested mode of operation
  * @current_dr_role: current role of operation when in dual-role mode
  * @desired_dr_role: desired role of operation when in dual-role mode
@@ -1222,7 +1219,6 @@ struct dwc3 {
 	u32			gadget_max_speed;
 	enum usb_ssp_rate	max_ssp_rate;
 	enum usb_ssp_rate	gadget_ssp_rate;
-	struct usb_otg_caps	otg_caps;
 
 	u32			ip;
 

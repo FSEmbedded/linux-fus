@@ -32,6 +32,8 @@
 
 #include <asm/irq.h>
 #include <linux/dma/imx-dma.h>
+#include <linux/busfreq-imx.h>
+#include <linux/pm_qos.h>
 
 #include "serial_mctrl_gpio.h"
 
@@ -174,7 +176,6 @@
 #define DRIVER_NAME "IMX-uart"
 
 #define UART_NR 8
-#define IMX_MODULE_MAX_CLK_RATE	80000000
 
 /* i.MX21 type uart runs on all i.mx except i.MX1 and i.MX6q */
 enum imx_uart_type {
@@ -1329,8 +1330,6 @@ static int imx_uart_dma_init(struct imx_port *sport)
 	slave_config.src_addr_width = DMA_SLAVE_BUSWIDTH_1_BYTE;
 	/* one byte less than the watermark level to enable the aging timer */
 	slave_config.src_maxburst = RXTL_DMA - 1;
-	slave_config.peripheral_config = NULL;
-	slave_config.peripheral_size = 0;
 	ret = dmaengine_slave_config(sport->dma_chan_rx, &slave_config);
 	if (ret) {
 		dev_err(dev, "error in RX dma configuration.\n");
@@ -1357,8 +1356,6 @@ static int imx_uart_dma_init(struct imx_port *sport)
 	slave_config.dst_addr = sport->port.mapbase + URTX0;
 	slave_config.dst_addr_width = DMA_SLAVE_BUSWIDTH_1_BYTE;
 	slave_config.dst_maxburst = TXTL_DMA;
-	slave_config.peripheral_config = NULL;
-	slave_config.peripheral_size = 0;
 	ret = dmaengine_slave_config(sport->dma_chan_tx, &slave_config);
 	if (ret) {
 		dev_err(dev, "error in TX dma configuration.");
@@ -1575,7 +1572,8 @@ static void imx_uart_shutdown(struct uart_port *port)
 	spin_lock_irqsave(&sport->port.lock, flags);
 
 	ucr1 = imx_uart_readl(sport, UCR1);
-	ucr1 &= ~(UCR1_TRDYEN | UCR1_RRDYEN | UCR1_RTSDEN | UCR1_UARTEN | UCR1_RXDMAEN | UCR1_ATDMAEN);
+	ucr1 &= ~(UCR1_TRDYEN | UCR1_RRDYEN | UCR1_RTSDEN | UCR1_UARTEN |
+		  UCR1_RXDMAEN | UCR1_ATDMAEN | UCR1_SNDBRK);
 	imx_uart_writel(sport, ucr1, UCR1);
 
 	ucr4 = imx_uart_readl(sport, UCR4);
@@ -2237,7 +2235,7 @@ static int imx_uart_probe(struct platform_device *pdev)
 	void __iomem *base;
 	u32 dma_buf_conf[2];
 	int ret = 0;
-	u32 ucr1;
+	u32 ucr1, ucr2;
 	struct resource *res;
 	int txirq, rxirq, rtsirq;
 
@@ -2332,14 +2330,6 @@ static int imx_uart_probe(struct platform_device *pdev)
 	}
 
 	sport->port.uartclk = clk_get_rate(sport->clk_per);
-	if (sport->port.uartclk > IMX_MODULE_MAX_CLK_RATE) {
-		ret = clk_set_rate(sport->clk_per, IMX_MODULE_MAX_CLK_RATE);
-		if (ret < 0) {
-			dev_err(&pdev->dev, "clk_set_rate() failed\n");
-			return ret;
-		}
-	}
-	sport->port.uartclk = clk_get_rate(sport->clk_per);
 
 	/* For register access, we only need to enable the ipg clock. */
 	ret = clk_prepare_enable(sport->clk_ipg);
@@ -2381,6 +2371,11 @@ static int imx_uart_probe(struct platform_device *pdev)
 	ucr1 = imx_uart_readl(sport, UCR1);
 	ucr1 &= ~(UCR1_ADEN | UCR1_TRDYEN | UCR1_IDEN | UCR1_RRDYEN | UCR1_RTSDEN);
 	imx_uart_writel(sport, ucr1, UCR1);
+
+	/* Disable Ageing Timer interrupt */
+	ucr2 = imx_uart_readl(sport, UCR2);
+	ucr2 &= ~UCR2_ATEN;
+	imx_uart_writel(sport, ucr2, UCR2);
 
 	if (!imx_uart_is_imx1(sport) && sport->dte_mode) {
 		/*

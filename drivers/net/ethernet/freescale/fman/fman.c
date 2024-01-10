@@ -2,6 +2,7 @@
 /*
  * Copyright 2008 - 2015 Freescale Semiconductor Inc.
  * Copyright 2020 NXP
+ * Copyright 2020 Puresoftware Ltd.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -2704,7 +2705,7 @@ static struct fman *read_acpi_node(struct platform_device *pdev)
 
 	fman = kzalloc(sizeof(*fman), GFP_KERNEL);
 	if (!fman)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
 	fw_fmnode = fwnode_handle_get(pdev->dev.fwnode);
 	err = fwnode_property_read_u32(pdev->dev.fwnode,
@@ -2722,6 +2723,7 @@ static struct fman *read_acpi_node(struct platform_device *pdev)
 	if (!res) {
 		dev_err(&pdev->dev, "%s: Can't get FMan IRQ resource\n",
 			__func__);
+		err = -EINVAL;
 		goto fman_free;
 	}
 	irq = res->start;
@@ -2731,6 +2733,7 @@ static struct fman *read_acpi_node(struct platform_device *pdev)
 	if (!res) {
 		dev_err(&pdev->dev, "%s: Can't get FMan Error IRQ resource\n",
 			__func__);
+		err = -EINVAL;
 		goto fman_free;
 	}
 	fman->dts_params.err_irq = res->start;
@@ -2740,6 +2743,7 @@ static struct fman *read_acpi_node(struct platform_device *pdev)
 	if (!res) {
 		dev_err(&pdev->dev, "%s: Can't get FMan memory resource\n",
 			__func__);
+		err = -EINVAL;
 		goto fman_free;
 	}
 
@@ -2813,6 +2817,7 @@ static struct fman *read_acpi_node(struct platform_device *pdev)
 	if (!fman->dts_params.res) {
 		dev_err(&pdev->dev, "%s: platform_get_resource() failed\n",
 			__func__);
+		err = -EINVAL;
 		goto fman_free;
 	}
 
@@ -2820,6 +2825,7 @@ static struct fman *read_acpi_node(struct platform_device *pdev)
 		devm_ioremap(&pdev->dev, phys_base_addr, mem_size);
 	if (!fman->dts_params.base_addr) {
 		dev_err(&pdev->dev, "%s: devm_ioremap() failed\n", __func__);
+		err = -ENOMEM;
 		goto fman_free;
 	}
 
@@ -2834,7 +2840,7 @@ static struct fman *read_acpi_node(struct platform_device *pdev)
 
 fman_free:
 	kfree(fman);
-	return NULL;
+	return ERR_PTR(err);
 }
 
 static struct fman *read_dts_node(struct platform_device *of_dev)
@@ -3003,7 +3009,11 @@ static int fman_probe(struct platform_device *of_dev)
 
 	dev = &of_dev->dev;
 
-	fman = read_dts_node(of_dev);
+	if (is_acpi_node(dev->fwnode))
+		fman = read_acpi_node(of_dev);
+	else
+		fman = read_dts_node(of_dev);
+
 	if (IS_ERR(fman))
 		return PTR_ERR(fman);
 

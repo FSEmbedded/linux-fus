@@ -17,6 +17,7 @@
 #include <linux/mdio.h>
 #include <linux/pci.h>
 #include <linux/time.h>
+#include "felix_tsn.h"
 #include "felix.h"
 
 #define VSC9959_NUM_PORTS		6
@@ -1367,11 +1368,14 @@ static void vsc9959_sched_speed_set(struct ocelot *ocelot, int port,
 		vsc9959_tas_guard_bands_update(ocelot, port);
 
 	mutex_unlock(&ocelot->tas_lock);
+
+#ifdef CONFIG_MSCC_FELIX_SWITCH_TSN
+	felix_cbs_reset(ocelot, port, speed);
+#endif
 }
 
-static void vsc9959_new_base_time(struct ocelot *ocelot, ktime_t base_time,
-				  u64 cycle_time,
-				  struct timespec64 *new_base_ts)
+void vsc9959_new_base_time(struct ocelot *ocelot, ktime_t base_time,
+			   u64 cycle_time, struct timespec64 *new_base_ts)
 {
 	struct timespec64 ts;
 	ktime_t new_base_time;
@@ -1473,8 +1477,6 @@ static int vsc9959_qos_port_tas_set(struct ocelot *ocelot, int port,
 		       QSYS_TAG_CONFIG_SCH_TRAFFIC_QUEUES_M,
 		       QSYS_TAG_CONFIG, port);
 
-	ocelot_port->base_time = taprio->base_time;
-
 	vsc9959_new_base_time(ocelot, taprio->base_time,
 			      taprio->cycle_time, &base_ts);
 	ocelot_write(ocelot, base_ts.tv_nsec, QSYS_PARAM_CFG_REG_1);
@@ -1502,9 +1504,6 @@ static int vsc9959_qos_port_tas_set(struct ocelot *ocelot, int port,
 
 	ocelot_port->taprio = taprio_offload_get(taprio);
 	vsc9959_tas_guard_bands_update(ocelot, port);
-
-err:
-	mutex_unlock(&ocelot->tas_lock);
 
 err:
 	mutex_unlock(&ocelot->tas_lock);
@@ -2534,12 +2533,12 @@ static void vsc9959_cut_through_fwd(struct ocelot *ocelot)
 				min_speed = other_ocelot_port->speed;
 		}
 
-		/* Enable cut-through forwarding for all traffic classes that
-		 * don't have oversized dropping enabled, since this check is
-		 * bypassed in cut-through mode.
+		/* Enable cut-through forwarding for all traffic classes
+		 * selected by ethtool that don't have oversized dropping
+		 * enabled, since this check is bypassed in cut-through mode.
 		 */
 		if (ocelot_port->speed == min_speed) {
-			val = GENMASK(7, 0);
+			val = ocelot_port->cut_thru;
 
 			for (tc = 0; tc < OCELOT_NUM_TC; tc++)
 				if (vsc9959_port_qmaxsdu_get(ocelot, port, tc))

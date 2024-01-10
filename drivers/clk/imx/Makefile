@@ -40,8 +40,6 @@ obj-$(CONFIG_CLK_IMX8QXP) += clk-imx8qxp-acm.o clk-imx8qm-acm.o clk-imx8dxl-acm.
 
 obj-$(CONFIG_CLK_IMX8ULP) += clk-imx8ulp.o
 
-obj-$(CONFIG_CLK_IMX8ULP) += clk-imx8ulp.o
-
 obj-$(CONFIG_CLK_IMX1)   += clk-imx1.o
 obj-$(CONFIG_CLK_IMX25)  += clk-imx25.o
 obj-$(CONFIG_CLK_IMX27)  += clk-imx27.o

@@ -2902,10 +2902,6 @@ static int mv88e6xxx_port_bridge_join(struct dsa_switch *ds, int port,
 	if (err)
 		goto unlock;
 
-	err = mv88e6xxx_port_set_map_da(chip, port, true);
-	if (err)
-		return err;
-
 	err = mv88e6xxx_port_commit_pvid(chip, port);
 	if (err)
 		goto unlock;

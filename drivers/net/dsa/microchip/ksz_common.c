@@ -1596,8 +1596,6 @@ static void ksz_get_strings(struct dsa_switch *ds, int port,
 		memcpy(buf + i * ETH_GSTRING_LEN,
 		       dev->info->mib_names[i].string, ETH_GSTRING_LEN);
 	}
-
-	dev->dev_ops->cfg_port_member(dev, port, port_member | cpu_port);
 }
 
 static void ksz_update_port_member(struct ksz_device *dev, int port)

@@ -269,7 +269,7 @@ static int dsa_port_do_fdb_add(struct dsa_port *dp, const unsigned char *addr,
 	a->vid = vid;
 	a->db = db;
 	refcount_set(&a->refcount, 1);
-	list_add_tail(&a->list, &lag->fdbs);
+	list_add_tail(&a->list, &dp->fdbs);
 
 out:
 	mutex_unlock(&dp->addr_lists_lock);
@@ -910,9 +910,6 @@ dsa_switch_master_state_change(struct dsa_switch *ds,
 
 	ds->ops->master_state_change(ds, info->master, info->operational);
 
-	/* No need to notify the switch, since it shouldn't have any
-	 * resources to tear down
-	 */
 	return 0;
 }
 

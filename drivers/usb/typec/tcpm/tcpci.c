@@ -904,6 +904,7 @@ static void tcpci_remove(struct i2c_client *client)
 		dev_warn(&client->dev, "Failed to disable irqs (%pe)\n", ERR_PTR(err));
 
 	tcpci_unregister_port(chip->tcpci);
+	irq_clear_status_flags(client->irq, IRQ_DISABLE_UNLAZY);
 }
 
 static int __maybe_unused tcpci_suspend(struct device *dev)

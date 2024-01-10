@@ -56,33 +56,6 @@ static int vfio_fsl_mc_open_device(struct vfio_device *core_vdev)
 	return 0;
 }
 
-static int vfio_fsl_mc_reset_device(struct vfio_fsl_mc_device *vdev)
-{
-	struct fsl_mc_device *mc_dev = vdev->mc_dev;
-	int ret = 0;
-
-	if (is_fsl_mc_bus_dprc(vdev->mc_dev)) {
-		return dprc_reset_container(mc_dev->mc_io, 0,
-					mc_dev->mc_handle,
-					mc_dev->obj_desc.id,
-					DPRC_RESET_OPTION_NON_RECURSIVE);
-	} else {
-		int err;
-		u16 token;
-
-		err = fsl_mc_obj_open(mc_dev->mc_io, 0, mc_dev->obj_desc.id,
-				      mc_dev->obj_desc.type,
-				      &token);
-		if (err)
-			return err;
-		ret = fsl_mc_obj_reset(mc_dev->mc_io, 0, token);
-		err = fsl_mc_obj_close(mc_dev->mc_io, 0, token);
-		if (err)
-			return err;
-	}
-	return ret;
-}
-
 static void vfio_fsl_mc_regions_cleanup(struct vfio_fsl_mc_device *vdev)
 {
 	struct fsl_mc_device *mc_dev = vdev->mc_dev;

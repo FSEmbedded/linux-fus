@@ -105,6 +105,8 @@ struct lpi2c_imx_struct {
 	struct i2c_adapter	adapter;
 	int			num_clks;
 	struct clk_bulk_data	*clks;
+	resource_size_t		phy_addr;
+	int			irq;
 	void __iomem		*base;
 	__u8			*rx_buf;
 	__u8			*tx_buf;
@@ -240,6 +242,11 @@ static int lpi2c_imx_config(struct lpi2c_imx_struct *lpi2c_imx)
 	lpi2c_imx_set_mode(lpi2c_imx);
 
 	clk_rate = clk_get_rate(lpi2c_imx->clks[0].clk);
+	if (!clk_rate) {
+		dev_dbg(&lpi2c_imx->adapter.dev, "clk_per rate is 0\n");
+		return -EINVAL;
+	}
+
 	if (lpi2c_imx->mode == HS || lpi2c_imx->mode == ULTRA_FAST)
 		filt = 0;
 	else
@@ -969,10 +976,6 @@ static int lpi2c_imx_probe(struct platform_device *pdev)
 	i2c_set_adapdata(&lpi2c_imx->adapter, lpi2c_imx);
 	platform_set_drvdata(pdev, lpi2c_imx);
 
-	ret = clk_bulk_prepare_enable(lpi2c_imx->num_clks, lpi2c_imx->clks);
-	if (ret)
-		return ret;
-
 	pm_runtime_set_autosuspend_delay(&pdev->dev, I2C_PM_TIMEOUT);
 	pm_runtime_use_autosuspend(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
@@ -1035,8 +1038,9 @@ static int __maybe_unused lpi2c_runtime_suspend(struct device *dev)
 {
 	struct lpi2c_imx_struct *lpi2c_imx = dev_get_drvdata(dev);
 
+	devm_free_irq(dev, lpi2c_imx->irq, lpi2c_imx);
 	clk_bulk_disable_unprepare(lpi2c_imx->num_clks, lpi2c_imx->clks);
-	pinctrl_pm_select_sleep_state(dev);
+	pinctrl_pm_select_idle_state(dev);
 
 	return 0;
 }
@@ -1049,14 +1053,8 @@ static int __maybe_unused lpi2c_runtime_resume(struct device *dev)
 	pinctrl_pm_select_default_state(dev);
 	ret = clk_bulk_prepare_enable(lpi2c_imx->num_clks, lpi2c_imx->clks);
 	if (ret) {
-		dev_err(dev, "can't enable I2C per clock, ret=%d\n", ret);
+		dev_err(dev, "failed to enable I2C clock, ret=%d\n", ret);
 		return ret;
-	}
-
-	ret = clk_prepare_enable(lpi2c_imx->clk_ipg);
-	if (ret) {
-		clk_disable_unprepare(lpi2c_imx->clk_per);
-		dev_err(dev, "can't enable I2C ipg clock, ret=%d\n", ret);
 	}
 
 	ret = devm_request_irq(dev, lpi2c_imx->irq, lpi2c_imx_isr,

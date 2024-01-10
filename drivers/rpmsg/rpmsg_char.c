@@ -29,7 +29,7 @@
 #include "rpmsg_char.h"
 #include "rpmsg_internal.h"
 
-#define RPMSG_CHAR_DEVNAME "rpmsg-raw"
+#define RPMSG_DEV_MAX	(MINORMASK + 1)
 
 static dev_t rpmsg_major;
 
@@ -409,7 +409,7 @@ static int rpmsg_chrdev_eptdev_add(struct rpmsg_eptdev *eptdev, struct rpmsg_cha
 	/* We can now rely on the release function for cleanup */
 	dev->release = rpmsg_eptdev_release_device;
 
-	return eptdev;
+	return ret;
 
 free_ept_ida:
 	ida_simple_remove(&rpmsg_ept_ida, dev->id);
@@ -419,7 +419,7 @@ free_eptdev:
 	put_device(dev);
 	kfree(eptdev);
 
-	return ERR_PTR(ret);
+	return ret;
 }
 
 int rpmsg_chrdev_eptdev_create(struct rpmsg_device *rpdev, struct device *parent,

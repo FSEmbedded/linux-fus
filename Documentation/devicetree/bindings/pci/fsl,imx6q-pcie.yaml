@@ -27,6 +27,17 @@ properties:
       - fsl,imx8mq-pcie
       - fsl,imx8mm-pcie
       - fsl,imx8mp-pcie
+      - fsl,imx6q-pcie-ep
+      - fsl,imx6sx-pcie-ep
+      - fsl,imx6qp-pcie-ep
+      - fsl,imx7d-pcie-ep
+      - fsl,imx8mq-pcie-ep
+      - fsl,imx8mm-pcie-ep
+      - fsl,imx8mp-pcie-ep
+      - fsl,imx8qm-pcie
+      - fsl,imx8qxp-pcie
+      - fsl,imx8qm-pcie-ep
+      - fsl,imx8qxp-pcie-ep
 
   reg:
     items:
@@ -165,14 +176,6 @@ properties:
 
   local-addr:
     description: the local address used in hsio module.
-
-  reset-names:
-    description: Must contain the following entries: "clkreq"
-
-  l1ss-disabled:
-    description: Force to disable L1SS or not. If present then the L1
-      substate would be force disabled although it might be supported by the
-      chip.
 
 required:
   - compatible

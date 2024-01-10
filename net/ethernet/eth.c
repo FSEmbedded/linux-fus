@@ -547,10 +547,8 @@ EXPORT_SYMBOL(platform_get_ethdev_address);
 int nvmem_get_mac_address(struct device *dev, void *addrbuf)
 {
 	struct nvmem_cell *cell;
-	const unsigned char *mac;
-	unsigned char macaddr[ETH_ALEN];
+	const void *mac;
 	size_t len;
-	int i = 0;
 
 	cell = nvmem_cell_get(dev, "mac-address");
 	if (IS_ERR(cell))
@@ -562,28 +560,15 @@ int nvmem_get_mac_address(struct device *dev, void *addrbuf)
 	if (IS_ERR(mac))
 		return PTR_ERR(mac);
 
-	if (len != ETH_ALEN)
-		goto invalid_addr;
-
-	if (dev->of_node &&
-	    of_property_read_bool(dev->of_node, "nvmem_macaddr_swap")) {
-		for (i = 0; i < ETH_ALEN; i++)
-			macaddr[i] = mac[ETH_ALEN - i - 1];
-	} else {
-		ether_addr_copy(macaddr, mac);
+	if (len != ETH_ALEN || !is_valid_ether_addr(mac)) {
+		kfree(mac);
+		return -EINVAL;
 	}
 
-	if (!is_valid_ether_addr(macaddr))
-		goto invalid_addr;
-
-	ether_addr_copy(addrbuf, macaddr);
+	ether_addr_copy(addrbuf, mac);
 	kfree(mac);
 
 	return 0;
-
-invalid_addr:
-	kfree(mac);
-	return -EINVAL;
 }
 
 static int fwnode_get_mac_addr(struct fwnode_handle *fwnode,
