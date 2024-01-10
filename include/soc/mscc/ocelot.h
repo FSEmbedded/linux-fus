@@ -11,6 +11,8 @@
 #include <linux/regmap.h>
 #include <net/dsa.h>
 
+struct phy;
+
 /* Port Group IDs (PGID) are masks of destination ports.
  *
  * For L2 forwarding, the switch performs 3 lookups in the PGID table for each
@@ -898,6 +900,7 @@ enum ocelot_tag_prefix {
 };
 
 struct ocelot;
+struct device_node;
 
 struct ocelot_ops {
 	struct net_device *(*port_to_netdev)(struct ocelot *ocelot, int port);
@@ -981,6 +984,12 @@ enum macaccess_entry_type {
 	ENTRYTYPE_MACv6,
 };
 
+struct ocelot_mact_entry {
+	u8 mac[ETH_ALEN];
+	u16 vid;
+	enum macaccess_entry_type type;
+};
+
 enum ocelot_proto {
 	OCELOT_PROTO_PTP_L2 = BIT(0),
 	OCELOT_PROTO_PTP_L4 = BIT(1),
@@ -1019,6 +1028,7 @@ struct ocelot_port {
 	struct tc_taprio_qopt_offload	*taprio;
 
 	phy_interface_t			phy_mode;
+	struct phy			*serdes;
 
 	unsigned int			ptp_skbs_in_flight;
 	struct sk_buff_head		tx_skbs;
@@ -1374,6 +1384,9 @@ int ocelot_sb_occ_tc_port_bind_get(struct ocelot *ocelot, int port,
 				   enum devlink_sb_pool_type pool_type,
 				   u32 *p_cur, u32 *p_max);
 
+void ocelot_phylink_mac_config(struct ocelot *ocelot, int port,
+			       unsigned int link_an_mode,
+			       const struct phylink_link_state *state);
 void ocelot_phylink_mac_link_down(struct ocelot *ocelot, int port,
 				  unsigned int link_an_mode,
 				  phy_interface_t interface,

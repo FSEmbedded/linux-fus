@@ -157,6 +157,8 @@ struct ddr_pmu {
 	const struct fsl_ddr_devtype_data *devtype_data;
 	int irq;
 	int id;
+	struct clk *clk_ipg;
+	struct clk *clk_cnt;
 	int active_counter;
 };
 
@@ -536,13 +538,16 @@ static void ddr_perf_counter_enable(struct ddr_pmu *pmu, int config,
 		val |= FIELD_PREP(CNTL_CSV_MASK, config);
 
 		/*
-		 * On i.MX8MP we need to bias the cycle counter to overflow more often.
-		 * We do this by initializing bits [23:16] of the counter value via the
-		 * COUNTER_CTRL Counter Parameter (CP) field.
+		 * Workaround for i.MX8MP:
+		 * Common counters and byte counters share the same COUNTER_CNTL,
+		 * and byte counters could overflow before cycle counter. Need set
+		 * counter parameter(CP) of cycle counter to give it initial value
+		 * which can speed up cycle counter overflow frequency.
 		 */
-		if (pmu->devtype_data->quirks & DDR_CAP_AXI_ID_FILTER_ENHANCED) {
+		if ((pmu->devtype_data->quirks & DDR_CAP_AXI_ID_FILTER_ENHANCED) ==
+		    DDR_CAP_AXI_ID_FILTER_ENHANCED) {
 			if (counter == EVENT_CYCLES_COUNTER)
-				val |= FIELD_PREP(CNTL_CP_MASK, 0xf0);
+				val |= FIELD_PREP(CNTL_CP_MASK, 0xe8);
 		}
 
 		writel(val, pmu->base + reg);
