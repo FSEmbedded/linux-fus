@@ -70,6 +70,7 @@ static void register_algs(struct device *dev)
 	caam_algapi_init(dev);
 	caam_algapi_hash_init(dev);
 	caam_pkc_init(dev);
+	jrpriv->hwrng = !caam_rng_init(dev);
 	caam_prng_register(dev);
 	caam_qi_algapi_init(dev);
 

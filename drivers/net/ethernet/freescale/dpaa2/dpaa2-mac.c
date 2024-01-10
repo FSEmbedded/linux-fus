@@ -424,7 +424,6 @@ int dpaa2_mac_connect(struct dpaa2_mac *mac)
 	}
 	mac->phylink = phylink;
 
-	rtnl_lock();
 	err = phylink_fwnode_phy_connect(mac->phylink, dpmac_node, 0);
 	rtnl_unlock();
 	if (err) {
@@ -557,7 +556,7 @@ void dpaa2_mac_get_strings(u8 *data)
 	int i;
 
 	for (i = 0; i < DPAA2_MAC_NUM_STATS; i++) {
-		strlcpy(p, dpaa2_mac_ethtool_stats[i], ETH_GSTRING_LEN);
+		strscpy(p, dpaa2_mac_ethtool_stats[i], ETH_GSTRING_LEN);
 		p += ETH_GSTRING_LEN;
 	}
 }

@@ -23,6 +23,7 @@
 #include <linux/remoteproc.h>
 #include <linux/workqueue.h>
 
+#include "imx_rproc.h"
 #include "remoteproc_internal.h"
 
 #define IMX7D_SRC_SCR			0x0C
@@ -84,34 +85,6 @@ struct imx_rproc_mem {
 /* I = [0:7] */
 #define ATT_CORE_MASK	0xffff
 #define ATT_CORE(I)	BIT((I))
-
-/* address translation table */
-struct imx_rproc_att {
-	u32 da;	/* device address (From Cortex M4 view)*/
-	u32 sa;	/* system bus address */
-	u32 size; /* size of reg range */
-	int flags;
-};
-
-/* Remote core start/stop method */
-enum imx_rproc_method {
-	IMX_RPROC_NONE,
-	/* Through syscon regmap */
-	IMX_RPROC_MMIO,
-	/* Through ARM SMCCC */
-	IMX_RPROC_SMC,
-	IMX_SCU_API,
-};
-
-struct imx_rproc_dcfg {
-	u32				src_reg;
-	u32				src_mask;
-	u32				src_start;
-	u32				src_stop;
-	const struct imx_rproc_att	*att;
-	size_t				att_size;
-	enum imx_rproc_method		method;
-};
 
 struct imx_rproc {
 	struct device			*dev;
@@ -194,6 +167,32 @@ static const struct imx_rproc_att imx_rproc_att_imx93[] = {
 
 	{ 0xC0000000, 0xc0000000, 0x10000000, 0 },
 	{ 0xD0000000, 0xc0000000, 0x10000000, 0 },
+};
+
+static const struct imx_rproc_att imx_rproc_att_imx93[] = {
+	/* dev addr , sys addr  , size	    , flags */
+	/* TCM CODE NON-SECURE */
+	{ 0x0FFC0000, 0x201C0000, 0x00020000, ATT_OWN | ATT_IOMEM },
+	{ 0x0FFE0000, 0x201E0000, 0x00020000, ATT_OWN | ATT_IOMEM },
+
+	/* TCM CODE SECURE */
+	{ 0x1FFC0000, 0x201C0000, 0x00020000, ATT_OWN | ATT_IOMEM },
+	{ 0x1FFE0000, 0x201E0000, 0x00020000, ATT_OWN | ATT_IOMEM },
+
+	/* TCM SYS NON-SECURE*/
+	{ 0x20000000, 0x20200000, 0x00020000, ATT_OWN | ATT_IOMEM },
+	{ 0x20020000, 0x20220000, 0x00020000, ATT_OWN | ATT_IOMEM },
+
+	/* TCM SYS SECURE*/
+	{ 0x30000000, 0x20200000, 0x00020000, ATT_OWN | ATT_IOMEM },
+	{ 0x30020000, 0x20220000, 0x00020000, ATT_OWN | ATT_IOMEM },
+
+	/* DDR */
+	{ 0x80000000, 0x80000000, 0x10000000, 0 },
+	{ 0x90000000, 0x80000000, 0x10000000, 0 },
+
+	{ 0xC0000000, 0xa0000000, 0x10000000, 0 },
+	{ 0xD0000000, 0xa0000000, 0x10000000, 0 },
 };
 
 static const struct imx_rproc_att imx_rproc_att_imx8mn[] = {
@@ -366,111 +365,11 @@ static const struct imx_rproc_dcfg imx_rproc_cfg_imx6sx = {
 	.method		= IMX_RPROC_MMIO,
 };
 
-static const struct imx_rproc_dcfg imx_rproc_cfg_imx8qxp = {
-	.att		= imx_rproc_att_imx8qxp,
-	.att_size	= ARRAY_SIZE(imx_rproc_att_imx8qxp),
-	.method		= IMX_SCU_API,
-};
-
-static const struct imx_rproc_dcfg imx_rproc_cfg_imx8qm = {
-	.att		= imx_rproc_att_imx8qm,
-	.att_size	= ARRAY_SIZE(imx_rproc_att_imx8qm),
-	.method		= IMX_SCU_API,
-};
-
 static const struct imx_rproc_dcfg imx_rproc_cfg_imx93 = {
 	.att		= imx_rproc_att_imx93,
 	.att_size	= ARRAY_SIZE(imx_rproc_att_imx93),
 	.method		= IMX_RPROC_SMC,
 };
-
-static int imx_rproc_ready(struct rproc *rproc)
-{
-	struct imx_rproc *priv = rproc->priv;
-	int i;
-
-	if (!priv->rxdb_ch)
-		return 0;
-
-	for (i = 0; i < REMOTE_READY_WAIT_MAX_RETRIES; i++) {
-		if (priv->flags & REMOTE_IS_READY)
-			return 0;
-		udelay(100);
-	}
-
-	/* Not return -ETIMEOUT, remote processor might not implement doorbell */
-	return 0;
-}
-
-static int imx_rproc_rebuild_channels(struct rproc *rproc)
-{
-	struct imx_rproc *priv = rproc->priv;
-	struct mbox_client *cl = &priv->cl;
-	struct device *dev = priv->dev;
-	int ret = 0;
-
-	if (!priv->tx_ch) {
-		priv->tx_ch = mbox_request_channel_byname(cl, "tx");
-		if (IS_ERR(priv->tx_ch)) {
-			ret = PTR_ERR(priv->tx_ch);
-			dev_err(dev, "failed to restart tx chan %d\n", ret);
-			priv->tx_ch = NULL;
-
-			goto err_exit;
-		}
-	}
-
-	if (!priv->rx_ch) {
-		priv->rx_ch = mbox_request_channel_byname(cl, "rx");
-		if (IS_ERR(priv->rx_ch)) {
-			ret = PTR_ERR(priv->rx_ch);
-			dev_err(dev, "failed to restart rx chan %d\n", ret);
-			priv->rx_ch = NULL;
-
-			goto err_exit;
-		}
-	}
-
-	if (!priv->rxdb_ch) {
-		priv->rxdb_ch = mbox_request_channel_byname(cl, "rxdb");
-		if (IS_ERR(priv->rxdb_ch)) {
-			ret = PTR_ERR(priv->rxdb_ch);
-			dev_err(dev, "failed to restart rxdb chan %d\n", ret);
-			priv->rxdb_ch = NULL;
-
-			goto err_exit;
-		}
-	}
-
-	/* txdb is optional */
-	if (!priv->txdb_ch) {
-		priv->txdb_ch = mbox_request_channel_byname(cl, "txdb");
-		if (IS_ERR(priv->txdb_ch))
-			priv->txdb_ch = NULL;
-	}
-
-err_exit:
-	return ret;
-}
-
-static void imx_rproc_free_channels(struct rproc *rproc)
-{
-	struct imx_rproc *priv = rproc->priv;
-	__u32 mmsg;
-
-	if (priv->txdb_ch)
-		mbox_send_message(priv->txdb_ch, (void *)&mmsg);
-
-	mbox_free_channel(priv->tx_ch);
-	mbox_free_channel(priv->rx_ch);
-	mbox_free_channel(priv->rxdb_ch);
-	mbox_free_channel(priv->txdb_ch);
-
-	priv->tx_ch = NULL;
-	priv->rx_ch = NULL;
-	priv->rxdb_ch = NULL;
-	priv->txdb_ch = NULL;
-}
 
 static int imx_rproc_start(struct rproc *rproc)
 {
@@ -936,7 +835,6 @@ static int imx_rproc_xtr_mbox_init(struct rproc *rproc)
 	const struct imx_rproc_dcfg *dcfg = priv->dcfg;
 	struct device *dev = priv->dev;
 	struct mbox_client *cl;
-	int ret;
 
 	if (!of_get_property(dev->of_node, "mbox-names", NULL))
 		return 0;
@@ -951,52 +849,15 @@ static int imx_rproc_xtr_mbox_init(struct rproc *rproc)
 	cl->rx_callback = imx_rproc_rx_callback;
 
 	priv->tx_ch = mbox_request_channel_byname(cl, "tx");
-	if (IS_ERR(priv->tx_ch)) {
-		ret = PTR_ERR(priv->tx_ch);
-		dev_dbg(cl->dev, "failed to request tx mailbox channel: %d\n",
-			ret);
-		goto err_out;
-	}
+	if (IS_ERR(priv->tx_ch))
+		return dev_err_probe(cl->dev, PTR_ERR(priv->tx_ch),
+				     "failed to request tx mailbox channel\n");
 
 	priv->rx_ch = mbox_request_channel_byname(cl, "rx");
 	if (IS_ERR(priv->rx_ch)) {
-		ret = PTR_ERR(priv->rx_ch);
-		dev_dbg(cl->dev, "failed to request rx mailbox channel: %d\n",
-			ret);
-		goto err_out;
-	}
-
-	if (dcfg->method != IMX_SCU_API)
-		return 0;
-
-	cl = &priv->cl_rxdb;
-	cl->dev = dev;
-	cl->rx_callback = imx_rproc_rxdb_callback;
-
-	/*
-	 * RX door bell is used to receive the ready signal from remote
-	 * after the partition reset of A core.
-	 */
-	priv->rxdb_ch = mbox_request_channel_byname(cl, "rxdb");
-	if (IS_ERR(priv->rxdb_ch)) {
-	        ret = PTR_ERR(priv->rxdb_ch);
-		dev_dbg(cl->dev, "failed to request mbox chan rxdb, ret %d\n",
-			ret);
-		goto err_out;
-	}
-
-	cl = &priv->cl_txdb;
-	cl->dev = dev;
-	cl->tx_block = true;
-	cl->tx_tout = 20;
-	cl->knows_txdone = false;
-
-	/* txdb is optional */
-	priv->txdb_ch = mbox_request_channel_byname(cl, "txdb");
-	if (IS_ERR(priv->txdb_ch)) {
-	        ret = PTR_ERR(priv->txdb_ch);
-		dev_info(cl->dev, "No txdb, ret %d\n", ret);
-		priv->txdb_ch = NULL;
+		mbox_free_channel(priv->tx_ch);
+		return dev_err_probe(cl->dev, PTR_ERR(priv->rx_ch),
+				     "failed to request rx mailbox channel\n");
 	}
 
 	return 0;
@@ -1152,7 +1013,7 @@ static int imx_rproc_detect_mode(struct imx_rproc *priv)
 		return ret;
 	}
 
-	if ((val & dcfg->src_mask) != dcfg->src_stop) {
+	if ((val & dcfg->src_mask) != dcfg->src_stop)
 		priv->rproc->state = RPROC_DETACHED;
 		priv->early_boot = true;
 	}

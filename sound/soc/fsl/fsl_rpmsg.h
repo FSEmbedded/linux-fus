@@ -16,6 +16,16 @@ struct fsl_rpmsg_soc_data {
 };
 
 /*
+ * struct fsl_rpmsg_soc_data
+ * @rates: supported rates
+ * @formats: supported formats
+ */
+struct fsl_rpmsg_soc_data {
+	int rates;
+	u64 formats;
+};
+
+/*
  * struct fsl_rpmsg - rpmsg private data
  *
  * @ipg: ipg clock for cpu dai (SAI)

@@ -35,7 +35,7 @@
  * it, enable dynamic debug for this module and:
  * echo 1 > /sys/module/mxc_jpeg_encdec/parameters/jpeg_tracing
  *
- * This is inspired by the drivers/media/platform/s5p-jpeg driver
+ * This is inspired by the drivers/media/platform/samsung/s5p-jpeg driver
  *
  * Copyright 2018-2019 NXP
  */
@@ -1306,7 +1306,7 @@ static int mxc_jpeg_queue_setup(struct vb2_queue *q,
 
 	/* Handle CREATE_BUFS situation - *nplanes != 0 */
 	if (*nplanes) {
-		if (*nplanes != q_data->fmt->mem_planes)
+		if (*nplanes != q_data->fmt->colplanes)
 			return -EINVAL;
 		for (i = 0; i < *nplanes; i++) {
 			if (sizes[i] < mxc_jpeg_get_plane_size(q_data, i))
@@ -1444,6 +1444,17 @@ static u32 mxc_jpeg_get_image_format(struct device *dev,
 			header->frame.subsampling,
 			header->frame.precision);
 		return fourcc;
+	}
+	/*
+	 * If the transform flag from APP14 marker is 0, images that are
+	 * encoded with 3 components have RGB colorspace, see Recommendation
+	 * ITU-T T.872 chapter 6.5.3 APP14 marker segment for colour encoding
+	 */
+	if (fourcc == V4L2_PIX_FMT_YUV24 || fourcc == V4L2_PIX_FMT_BGR24) {
+		if (header->app14_tf == V4L2_JPEG_APP14_TF_CMYK_RGB)
+			fourcc = V4L2_PIX_FMT_BGR24;
+		else
+			fourcc = V4L2_PIX_FMT_YUV24;
 	}
 
 	return fourcc;
@@ -1841,12 +1852,8 @@ free:
 static int mxc_jpeg_querycap(struct file *file, void *priv,
 			     struct v4l2_capability *cap)
 {
-	struct mxc_jpeg_dev *mxc_jpeg = video_drvdata(file);
-
 	strscpy(cap->driver, MXC_JPEG_NAME " codec", sizeof(cap->driver));
 	strscpy(cap->card, MXC_JPEG_NAME " codec", sizeof(cap->card));
-	snprintf(cap->bus_info, sizeof(cap->bus_info), "platform:%s",
-		 dev_name(mxc_jpeg->dev));
 	cap->device_caps = V4L2_CAP_STREAMING | V4L2_CAP_VIDEO_M2M_MPLANE;
 	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS;
 
@@ -1871,25 +1878,10 @@ static int mxc_jpeg_enum_fmt_vid_cap(struct file *file, void *priv,
 		 * (more precisely what was propagated on capture queue
 		 * after jpeg parse on the output buffer)
 		 */
-		int ret = -EINVAL;
-		const struct mxc_jpeg_fmt *sibling;
-
-		switch (f->index) {
-		case 0:
-			f->pixelformat = q_data->fmt->fourcc;
-			ret = 0;
-			break;
-		case 1:
-			sibling = mxc_jpeg_get_sibling_format(q_data->fmt);
-			if (sibling) {
-				f->pixelformat = sibling->fourcc;
-				ret = 0;
-			}
-			break;
-		default:
-			break;
-		}
-		return ret;
+		if (f->index)
+			return -EINVAL;
+		f->pixelformat = q_data->fmt->fourcc;
+		return 0;
 	}
 }
 
@@ -2120,6 +2112,10 @@ static int mxc_jpeg_s_fmt_vid_out(struct file *file, void *priv,
 	struct mxc_jpeg_q_data *q_data_cap;
 	enum v4l2_buf_type cap_type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 	struct v4l2_format fc;
+
+	ret = mxc_jpeg_s_fmt(mxc_jpeg_fh_to_ctx(priv), f);
+	if (ret)
+		return ret;
 
 	ret = mxc_jpeg_s_fmt(mxc_jpeg_fh_to_ctx(priv), f);
 	if (ret)
@@ -2464,7 +2460,6 @@ static int mxc_jpeg_probe(struct platform_device *pdev)
 	for (slot = 0; slot < MXC_MAX_SLOTS; slot++) {
 		dec_irq = platform_get_irq(pdev, slot);
 		if (dec_irq < 0) {
-			dev_err(&pdev->dev, "Failed to get irq %d\n", dec_irq);
 			ret = dec_irq;
 			goto err_irq;
 		}

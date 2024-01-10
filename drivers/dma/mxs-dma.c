@@ -682,7 +682,7 @@ static enum dma_status mxs_dma_tx_status(struct dma_chan *chan,
 	return mxs_chan->status;
 }
 
-static int mxs_dma_init_rpm(struct mxs_dma_engine *mxs_dma)
+static int mxs_dma_init(struct mxs_dma_engine *mxs_dma)
 {
 	struct device *dev = &mxs_dma->pdev->dev;
 
@@ -959,10 +959,8 @@ static struct platform_driver mxs_dma_driver = {
 		.pm = &mxs_dma_pm_ops,
 		.of_match_table = mxs_dma_dt_ids,
 	},
-	.remove		= mxs_dma_remove,
 	.probe = mxs_dma_probe,
 };
 module_platform_driver(mxs_dma_driver);
 
-MODULE_DESCRIPTION("MXS DMA driver");
-MODULE_LICENSE("GPL");
+builtin_platform_driver(mxs_dma_driver);

@@ -26,6 +26,7 @@ config FSL_MC_DPIO
         select SOC_BUS
         select DIMLIB
         select FSL_GUTS
+        select DIMLIB
         help
 	  Driver for the DPAA2 DPIO object.  A DPIO provides queue and
 	  buffer management facilities for software to interact with

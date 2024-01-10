@@ -28,7 +28,6 @@ struct dpaa2_mac {
 	struct phylink_pcs *pcs;
 	struct fwnode_handle *fw_node;
 
-	int phy_req_state;
 	struct phy *serdes_phy;
 };
 
@@ -48,10 +47,6 @@ int dpaa2_mac_get_sset_count(void);
 void dpaa2_mac_get_strings(u8 *data);
 
 void dpaa2_mac_get_ethtool_stats(struct dpaa2_mac *mac, u64 *data);
-
-void dpaa2_mac_driver_attach(struct fsl_mc_device *dpmac_dev);
-
-void dpaa2_mac_driver_detach(struct fsl_mc_device *dpmac_dev);
 
 void dpaa2_mac_start(struct dpaa2_mac *mac);
 

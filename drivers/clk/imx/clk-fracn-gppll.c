@@ -64,15 +64,14 @@ struct clk_fracn_gppll {
  * Fout = Fvco / (rdiv * odiv)
  */
 static const struct imx_fracn_gppll_rate_table fracn_tbl[] = {
-	PLL_FRACN_GP(650000000U, 162, 50, 100, 0, 6),
+	PLL_FRACN_GP(650000000U, 81, 0, 1, 0, 3),
 	PLL_FRACN_GP(594000000U, 198, 0, 1, 0, 8),
-	PLL_FRACN_GP(560000000U, 140, 0, 1, 0, 6),
-	PLL_FRACN_GP(498000000U, 166, 0, 1, 0, 8),
+	PLL_FRACN_GP(560000000U, 70, 0, 1, 0, 3),
+	PLL_FRACN_GP(498000000U, 83, 0, 1, 0, 4),
 	PLL_FRACN_GP(484000000U, 121, 0, 1, 0, 6),
 	PLL_FRACN_GP(445333333U, 167, 0, 1, 0, 9),
-	PLL_FRACN_GP(400000000U, 200, 0, 1, 0, 12),
-	PLL_FRACN_GP(393216000U, 163, 84, 100, 0, 10),
-	PLL_FRACN_GP(300000000U, 150, 0, 1, 0, 12)
+	PLL_FRACN_GP(400000000U, 50, 0, 1, 0, 3),
+	PLL_FRACN_GP(393216000U, 81, 92, 100, 0, 5)
 };
 
 struct imx_fracn_gppll_clk imx_fracn_gppll = {
@@ -153,7 +152,8 @@ static unsigned long clk_fracn_gppll_recalc_rate(struct clk_hw *hw, unsigned lon
 	if (rate)
 		return (unsigned long)rate;
 
-	rdiv = rdiv + 1;
+	if (!rdiv)
+		rdiv = rdiv + 1;
 
 	switch (odiv) {
 	case 0:

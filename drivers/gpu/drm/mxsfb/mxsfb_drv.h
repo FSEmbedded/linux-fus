@@ -23,6 +23,7 @@ struct mxsfb_devdata {
 	unsigned int	hs_wdth_shift;
 	bool		has_overlay;
 	bool		has_ctrl2;
+	bool		has_crc32;
 };
 
 struct mxsfb_drm_private {
@@ -44,7 +45,8 @@ struct mxsfb_drm_private {
 	struct drm_encoder		encoder;
 	struct drm_connector		*connector;
 	struct drm_bridge		*bridge;
-	u32				max_bw;
+
+	bool				crc_active;
 };
 
 static inline struct mxsfb_drm_private *

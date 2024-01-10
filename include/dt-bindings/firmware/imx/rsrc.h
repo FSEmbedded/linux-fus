@@ -36,7 +36,7 @@
 #define IMX_SC_R_DC_0_BLIT1		20
 #define IMX_SC_R_DC_0_BLIT2		21
 #define IMX_SC_R_DC_0_BLIT_OUT		22
-#define IMX_SC_R_PERF_0			23
+#define IMX_SC_R_PERF			23
 #define IMX_SC_R_USB_1_PHY		24
 #define IMX_SC_R_DC_0_WARP		25
 #define IMX_SC_R_V2X_MU_0		26
@@ -56,7 +56,6 @@
 #define IMX_SC_R_V2X_MU_3		40
 #define IMX_SC_R_V2X_MU_4		41
 #define IMX_SC_R_DC_1_WARP		42
-#define IMX_SC_R_STM			43
 #define IMX_SC_R_SECVIO			44
 #define IMX_SC_R_DC_1_VIDEO0		45
 #define IMX_SC_R_DC_1_VIDEO1		46

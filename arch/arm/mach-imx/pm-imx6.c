@@ -1223,6 +1223,23 @@ static int __init imx6q_suspend_init(const struct imx6_pm_socdata *socdata)
 		&imx6_suspend,
 		MX6Q_SUSPEND_OCRAM_SIZE - sizeof(*pm_info));
 
+	__arm_iomem_set_ro(suspend_ocram_base, MX6Q_SUSPEND_OCRAM_SIZE);
+
+	goto put_device;
+
+pl310_cache_map_failed:
+	iounmap(pm_info->gpc_base.vbase);
+gpc_map_failed:
+	iounmap(pm_info->iomuxc_base.vbase);
+iomuxc_map_failed:
+	iounmap(pm_info->src_base.vbase);
+src_map_failed:
+	iounmap(pm_info->mmdc_base.vbase);
+put_device:
+	put_device(&pdev->dev);
+put_node:
+	of_node_put(node);
+
 	return ret;
 }
 

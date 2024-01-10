@@ -71,3 +71,7 @@
 &usbotg3_cdns3 {
 	iommus = <&smmu 0x4 0x7f80>;
 };
+
+&usdhc3 {
+	compatible = "fsl,imx8qm-usdhc", "fsl,imx8qxp-usdhc", "fsl,imx7d-usdhc";
+};

@@ -22,6 +22,68 @@
 				SNDRV_PCM_FMTBIT_S20_3LE | \
 				SNDRV_PCM_FMTBIT_S24_LE)
 
+/**
+ * struct fsl_esai_soc_data - soc specific data
+ * @reset_at_xrun: flags for enable reset operaton
+ */
+struct fsl_esai_soc_data {
+	bool reset_at_xrun;
+};
+
+/**
+ * struct fsl_esai - ESAI private data
+ * @dma_params_rx: DMA parameters for receive channel
+ * @dma_params_tx: DMA parameters for transmit channel
+ * @pdev: platform device pointer
+ * @regmap: regmap handler
+ * @coreclk: clock source to access register
+ * @extalclk: esai clock source to derive HCK, SCK and FS
+ * @fsysclk: system clock source to derive HCK, SCK and FS
+ * @spbaclk: SPBA clock (optional, depending on SoC design)
+ * @work: work to handle the reset operation
+ * @soc: soc specific data
+ * @lock: spin lock between hw_reset() and trigger()
+ * @fifo_depth: depth of tx/rx FIFO
+ * @slot_width: width of each DAI slot
+ * @slots: number of slots
+ * @tx_mask: slot mask for TX
+ * @rx_mask: slot mask for RX
+ * @channels: channel num for tx or rx
+ * @hck_rate: clock rate of desired HCKx clock
+ * @sck_rate: clock rate of desired SCKx clock
+ * @hck_dir: the direction of HCKx pads
+ * @sck_div: if using PSR/PM dividers for SCKx clock
+ * @consumer_mode: if fully using DAI clock consumer mode
+ * @synchronous: if using tx/rx synchronous mode
+ * @name: driver name
+ */
+struct fsl_esai {
+	struct snd_dmaengine_dai_dma_data dma_params_rx;
+	struct snd_dmaengine_dai_dma_data dma_params_tx;
+	struct platform_device *pdev;
+	struct regmap *regmap;
+	struct clk *coreclk;
+	struct clk *extalclk;
+	struct clk *fsysclk;
+	struct clk *spbaclk;
+	struct work_struct work;
+	const struct fsl_esai_soc_data *soc;
+	spinlock_t lock; /* Protect hw_reset and trigger */
+	u32 fifo_depth;
+	u32 slot_width;
+	u32 slots;
+	u32 tx_mask;
+	u32 rx_mask;
+	u32 channels[2];
+	u32 hck_rate[2];
+	u32 sck_rate[2];
+	bool hck_dir[2];
+	bool sck_div[2];
+	bool consumer_mode;
+	bool synchronous;
+	char name[32];
+};
+
 static struct fsl_esai_soc_data fsl_esai_vf610 = {
 	.reset_at_xrun = true,
 };
@@ -305,8 +367,8 @@ static int fsl_esai_set_bclk(struct snd_soc_dai *dai, bool tx, u32 freq)
 	u32 sub, ratio = hck_rate / freq;
 	int ret;
 
-	/* Don't apply for fully slave mode or unchanged bclk */
-	if (esai_priv->slave_mode[tx] || esai_priv->sck_rate[tx] == freq)
+	/* Don't apply for fully consumer mode or unchanged bclk */
+	if (esai_priv->consumer_mode || esai_priv->sck_rate[tx] == freq)
 		return 0;
 
 	if (ratio * freq > hck_rate)
@@ -415,56 +477,24 @@ static int fsl_esai_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 		return -EINVAL;
 	}
 
-	if (esai_priv->slave_mode[0] == esai_priv->slave_mode[1]) {
-		/* DAI clock master masks */
-		switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
-		case SND_SOC_DAIFMT_CBM_CFM:
-			esai_priv->slave_mode[0] = true;
-			esai_priv->slave_mode[1] = true;
-			break;
-		case SND_SOC_DAIFMT_CBS_CFM:
-			xccr |= ESAI_xCCR_xCKD;
-			break;
-		case SND_SOC_DAIFMT_CBM_CFS:
-			xccr |= ESAI_xCCR_xFSD;
-			break;
-		case SND_SOC_DAIFMT_CBS_CFS:
-			xccr |= ESAI_xCCR_xFSD | ESAI_xCCR_xCKD;
-			esai_priv->slave_mode[0] = false;
-			esai_priv->slave_mode[1] = false;
-			break;
-		default:
-			return -EINVAL;
-		}
+	esai_priv->consumer_mode = false;
 
-		mask = ESAI_xCCR_xCKP | ESAI_xCCR_xHCKP | ESAI_xCCR_xFSP |
-			ESAI_xCCR_xFSD | ESAI_xCCR_xCKD;
-		regmap_update_bits(esai_priv->regmap,
-					REG_ESAI_TCCR, mask, xccr);
-		regmap_update_bits(esai_priv->regmap,
-					REG_ESAI_RCCR, mask, xccr);
-
-	} else {
-
-		mask = ESAI_xCCR_xCKP | ESAI_xCCR_xHCKP | ESAI_xCCR_xFSP |
-			ESAI_xCCR_xFSD | ESAI_xCCR_xCKD;
-		if (esai_priv->slave_mode[0])
-			regmap_update_bits(esai_priv->regmap,
-					REG_ESAI_RCCR, mask, xccr);
-		else
-			regmap_update_bits(esai_priv->regmap, REG_ESAI_RCCR,
-						mask,
-						xccr | ESAI_xCCR_xFSD |
-							ESAI_xCCR_xCKD);
-
-		if (esai_priv->slave_mode[1])
-			regmap_update_bits(esai_priv->regmap,
-						REG_ESAI_TCCR, mask, xccr);
-		else
-			regmap_update_bits(esai_priv->regmap, REG_ESAI_TCCR,
-						mask,
-						xccr | ESAI_xCCR_xFSD |
-							ESAI_xCCR_xCKD);
+	/* DAI clock provider masks */
+	switch (fmt & SND_SOC_DAIFMT_CLOCK_PROVIDER_MASK) {
+	case SND_SOC_DAIFMT_BC_FC:
+		esai_priv->consumer_mode = true;
+		break;
+	case SND_SOC_DAIFMT_BP_FC:
+		xccr |= ESAI_xCCR_xCKD;
+		break;
+	case SND_SOC_DAIFMT_BC_FP:
+		xccr |= ESAI_xCCR_xFSD;
+		break;
+	case SND_SOC_DAIFMT_BP_FP:
+		xccr |= ESAI_xCCR_xFSD | ESAI_xCCR_xCKD;
+		break;
+	default:
+		return -EINVAL;
 	}
 
 	mask = ESAI_xCR_xFSL | ESAI_xCR_xFSR | ESAI_xCR_xWA;
@@ -825,7 +855,8 @@ static struct snd_soc_dai_driver fsl_esai_dai = {
 };
 
 static const struct snd_soc_component_driver fsl_esai_component = {
-	.name		= "fsl-esai",
+	.name			= "fsl-esai",
+	.legacy_dai_naming	= 1,
 };
 
 static const struct reg_default fsl_esai_reg_defaults[] = {
@@ -1017,6 +1048,9 @@ static int fsl_esai_probe(struct platform_device *pdev)
 	/* Set a default slot number */
 	esai_priv->slots = 2;
 
+	/* Set a default clock provider state */
+	esai_priv->consumer_mode = true;
+
 	/* Determine the FIFO depth */
 	iprop = of_get_property(np, "fsl,fifo-depth", NULL);
 	if (iprop)
@@ -1062,11 +1096,9 @@ static int fsl_esai_probe(struct platform_device *pdev)
 			goto err_pm_disable;
 	}
 
-	ret = pm_runtime_get_sync(&pdev->dev);
-	if (ret < 0) {
-		pm_runtime_put_noidle(&pdev->dev);
+	ret = pm_runtime_resume_and_get(&pdev->dev);
+	if (ret < 0)
 		goto err_pm_get_sync;
-	}
 
 	ret = fsl_esai_hw_init(esai_priv);
 	if (ret)
@@ -1082,26 +1114,17 @@ static int fsl_esai_probe(struct platform_device *pdev)
 	regmap_write(esai_priv->regmap, REG_ESAI_RSMB, 0);
 
 	ret = pm_runtime_put_sync(&pdev->dev);
-	if (ret < 0)
+	if (ret < 0 && ret != -ENOSYS)
 		goto err_pm_get_sync;
 
 	/*
 	 * Register platform component before registering cpu dai for there
 	 * is not defer probe for platform component in snd_soc_add_pcm_runtime().
 	 */
-	if (of_property_read_bool(pdev->dev.of_node, "client-dais")) {
-		esai_priv->sw_mix = true;
-		ret = fsl_esai_mix_probe(&pdev->dev, &esai_priv->mix[0], &esai_priv->mix[1]);
-		if (ret) {
-			dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
-			goto err_pm_get_sync;
-		}
-	} else {
-		ret = imx_pcm_dma_init(pdev, IMX_ESAI_DMABUF_SIZE);
-		if (ret) {
-			dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
-			goto err_pm_get_sync;
-		}
+	ret = imx_pcm_dma_init(pdev);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
+		goto err_pm_get_sync;
 	}
 
 	ret = devm_snd_soc_register_component(&pdev->dev, &fsl_esai_component,

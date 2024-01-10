@@ -136,7 +136,6 @@ enum dpaa2_eth_swa_type {
 	DPAA2_ETH_SWA_SINGLE,
 	DPAA2_ETH_SWA_SG,
 	DPAA2_ETH_SWA_XDP,
-	DPAA2_ETH_SWA_XSK,
 	DPAA2_ETH_SWA_SW_TSO,
 };
 
@@ -158,9 +157,6 @@ struct dpaa2_eth_swa {
 			int dma_size;
 			struct xdp_frame *xdpf;
 		} xdp;
-		struct {
-			struct xdp_buff *xdp_buff;
-		} xsk;
 		struct {
 			struct sk_buff *skb;
 			int num_sg;
@@ -537,7 +533,7 @@ struct dpaa2_eth_trap_data {
 
 #define DPAA2_ETH_DEFAULT_COPYBREAK	512
 
-#define DPAA2_ETH_ENQUEUE_MAX_FDS	256
+#define DPAA2_ETH_ENQUEUE_MAX_FDS	200
 struct dpaa2_eth_fds {
 	struct dpaa2_fd array[DPAA2_ETH_ENQUEUE_MAX_FDS];
 };
@@ -564,8 +560,9 @@ struct dpaa2_eth_priv {
 	u16 tx_data_offset;
 	void __iomem *onestep_reg_base;
 	u8 ptp_correction_off;
-	struct dpaa2_eth_buf_pool *bp[DPAA2_ETH_MAX_BPS];
-	int num_bps;
+	void (*dpaa2_set_onestep_params_cb)(struct dpaa2_eth_priv *priv,
+					    u32 offset, u8 udp);
+	struct fsl_mc_device *dpbp_dev;
 	u16 rx_buf_size;
 	struct iommu_domain *iommu_domain;
 
@@ -625,7 +622,7 @@ struct dpaa2_eth_priv {
 	struct devlink_port devlink_port;
 
 	u32 rx_copybreak;
-	bool ceetm_en;
+
 	struct dpaa2_eth_fds __percpu *fd;
 };
 
@@ -791,7 +788,10 @@ void dpaa2_eth_set_rx_taildrop(struct dpaa2_eth_priv *priv,
 
 extern const struct dcbnl_rtnl_ops dpaa2_eth_dcbnl_ops;
 
-int dpaa2_eth_dl_register(struct dpaa2_eth_priv *priv);
+int dpaa2_eth_dl_alloc(struct dpaa2_eth_priv *priv);
+void dpaa2_eth_dl_free(struct dpaa2_eth_priv *priv);
+
+void dpaa2_eth_dl_register(struct dpaa2_eth_priv *priv);
 void dpaa2_eth_dl_unregister(struct dpaa2_eth_priv *priv);
 
 int dpaa2_eth_dl_port_add(struct dpaa2_eth_priv *priv);

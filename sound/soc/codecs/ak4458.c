@@ -449,6 +449,13 @@ static int ak4458_hw_params(struct snd_pcm_substream *substream,
 	snd_soc_component_update_bits(component, AK4458_0B_CONTROL7,
 				      AK4458_DCHAIN_MASK, dchn);
 
+	if (ak4458->drvdata->type == AK4497) {
+		ret = snd_soc_component_update_bits(component, AK4458_09_DSD2,
+						    0x4, (ak4458->dsd_path << 2));
+		if (ret < 0)
+			return ret;
+	}
+
 	ret = ak4458_rstn_control(component, 0);
 	if (ret)
 		return ret;
@@ -466,14 +473,14 @@ static int ak4458_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	struct ak4458_priv *ak4458 = snd_soc_component_get_drvdata(component);
 	int ret;
 
-	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
-	case SND_SOC_DAIFMT_CBS_CFS: /* Slave Mode */
+	switch (fmt & SND_SOC_DAIFMT_CLOCK_PROVIDER_MASK) {
+	case SND_SOC_DAIFMT_CBC_CFC: /* Consumer Mode */
 		break;
-	case SND_SOC_DAIFMT_CBM_CFM: /* Master Mode is not supported */
-	case SND_SOC_DAIFMT_CBS_CFM:
-	case SND_SOC_DAIFMT_CBM_CFS:
+	case SND_SOC_DAIFMT_CBP_CFP: /* Provider Mode is not supported */
+	case SND_SOC_DAIFMT_CBC_CFP:
+	case SND_SOC_DAIFMT_CBP_CFC:
 	default:
-		dev_err(component->dev, "Master mode unsupported\n");
+		dev_err(component->dev, "Clock provider mode unsupported\n");
 		return -EINVAL;
 	}
 
@@ -688,7 +695,6 @@ static const struct snd_soc_component_driver soc_codec_dev_ak4458 = {
 	.idle_bias_on		= 1,
 	.use_pmdown_time	= 1,
 	.endianness		= 1,
-	.non_legacy_dai_naming	= 1,
 };
 
 static const struct snd_soc_component_driver soc_codec_dev_ak4497 = {
@@ -701,7 +707,6 @@ static const struct snd_soc_component_driver soc_codec_dev_ak4497 = {
 	.idle_bias_on		= 1,
 	.use_pmdown_time	= 1,
 	.endianness		= 1,
-	.non_legacy_dai_naming	= 1,
 };
 
 static const struct regmap_config ak4458_regmap = {
@@ -825,6 +830,7 @@ static int ak4458_i2c_probe(struct i2c_client *i2c)
 
 	pm_runtime_enable(&i2c->dev);
 	regcache_cache_only(ak4458->regmap, true);
+	ak4458_reset(ak4458, false);
 
 err_init:
 	ak4458_reset(ak4458, true);
@@ -833,11 +839,12 @@ err_init:
 	return ret;
 }
 
-static int ak4458_i2c_remove(struct i2c_client *i2c)
+static void ak4458_i2c_remove(struct i2c_client *i2c)
 {
-	pm_runtime_disable(&i2c->dev);
+	struct ak4458_priv *ak4458 = i2c_get_clientdata(i2c);
 
-	return 0;
+	ak4458_reset(ak4458, true);
+	pm_runtime_disable(&i2c->dev);
 }
 
 static const struct of_device_id ak4458_of_match[] = {

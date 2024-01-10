@@ -6,8 +6,7 @@
 #ifndef __FSL_SAI_H
 #define __FSL_SAI_H
 
-#include <linux/pm_qos.h>
-#include <linux/platform_data/dma-imx.h>
+#include <linux/dma/imx-dma.h>
 #include <sound/dmaengine_pcm.h>
 
 #define FAL_SAI_NUM_RATES  20
@@ -206,9 +205,6 @@
 #define FSL_SAI_REC_SYN		BIT(4)
 #define FSL_SAI_USE_I2S_SLAVE	BIT(5)
 
-#define FSL_FMT_TRANSMITTER	0
-#define FSL_FMT_RECEIVER	1
-
 /* SAI clock sources */
 #define FSL_SAI_CLK_BUS		0
 #define FSL_SAI_CLK_MAST1	1
@@ -224,30 +220,35 @@
 
 #define PMQOS_CPU_LATENCY   BIT(0)
 
+/* Max number of dataline */
+#define FSL_SAI_DL_NUM		(8)
+/* default dataline type is zero */
+#define FSL_SAI_DL_DEFAULT	(0)
+#define FSL_SAI_DL_I2S		BIT(0)
+#define FSL_SAI_DL_PDM		BIT(1)
+
 struct fsl_sai_soc_data {
 	bool use_imx_pcm;
 	bool use_edma;
 	bool mclk0_is_mclk1;
 	unsigned int fifo_depth;
+	unsigned int pins;
 	unsigned int reg_offset;
 	unsigned int fifos;
 	unsigned int dataline;
 	unsigned int flags;
 	unsigned int max_register;
-	unsigned int max_burst[2];
 };
 
 /**
  * struct fsl_sai_verid - version id data
- * @major: major version number
- * @minor: minor version number
+ * @version: version number
  * @feature: feature specification number
  *           0000000000000000b - Standard feature set
  *           0000000000000000b - Standard feature set
  */
 struct fsl_sai_verid {
-	u32 major;
-	u32 minor;
+	u32 version;
 	u32 feature;
 };
 
@@ -264,7 +265,8 @@ struct fsl_sai_param {
 };
 
 struct fsl_sai_dl_cfg {
-	unsigned int pins;
+	unsigned int type;
+	unsigned int pins[2];
 	unsigned int mask[2];
 	unsigned int start_off[2];
 	unsigned int next_off[2];
@@ -280,22 +282,14 @@ struct fsl_sai {
 	struct clk *pll11k_clk;
 	struct resource *res;
 
-	bool slave_mode[2];
+	bool is_consumer_mode;
 	bool is_lsb_first;
 	bool is_dsp_mode;
-	bool is_multi_lane;
+	bool is_pdm_mode;
+	bool is_multi_fifo_dma;
 	bool synchronous[2];
-	bool is_dsd;
-	bool monitor_spdif;
-	bool monitor_spdif_start;
-
-	int gpr_idx;
-	int pcm_dl_cfg_cnt;
-	int dsd_dl_cfg_cnt;
-	struct fsl_sai_dl_cfg *pcm_dl_cfg;
-	struct fsl_sai_dl_cfg *dsd_dl_cfg;
-
-	unsigned int masterflag[2];
+	struct fsl_sai_dl_cfg *dl_cfg;
+	unsigned int dl_cfg_cnt;
 
 	unsigned int mclk_id[2];
 	unsigned int mclk_streams;
@@ -310,11 +304,9 @@ struct fsl_sai {
 	struct fsl_sai_verid verid;
 	struct fsl_sai_param param;
 	struct pm_qos_request pm_qos_req;
-	struct sdma_audio_config audio_config[2];
 	struct pinctrl *pinctrl;
 	struct pinctrl_state *pins_state;
-	struct snd_pcm_hw_constraint_list constraint_rates;
-	unsigned int constraint_rates_list[FAL_SAI_NUM_RATES];
+	struct sdma_peripheral_config audio_config[2];
 };
 
 const struct attribute_group *fsl_sai_get_dev_attribute_group(bool monitor_spdif);

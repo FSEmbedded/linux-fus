@@ -18,7 +18,7 @@ config RPMSG_CHAR
 
 config RPMSG_CTRL
 	tristate "RPMSG control interface"
-	depends on RPMSG
+	depends on RPMSG && ( RPMSG_CHAR || RPMSG_CHAR=n )
 	help
 	  Say Y here to enable the support of the /dev/rpmsg_ctrlX API. This API
 	  allows user-space programs to create endpoints with specific service name,

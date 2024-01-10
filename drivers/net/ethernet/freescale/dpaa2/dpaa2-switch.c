@@ -1126,7 +1126,7 @@ static int dpaa2_switch_port_set_mac_addr(struct ethsw_port_priv *port_priv)
 
 	/* First check if firmware has any address configured by bootloader */
 	if (!is_zero_ether_addr(mac_addr)) {
-		memcpy(net_dev->dev_addr, mac_addr, net_dev->addr_len);
+		eth_hw_addr_set(net_dev, mac_addr);
 	} else {
 		/* No MAC address configured, fill in net_dev->dev_addr
 		 * with a random one
@@ -1699,8 +1699,7 @@ static int dpaa2_switch_setup_irqs(struct fsl_mc_device *sw_dev)
 
 	irq = sw_dev->irqs[DPSW_IRQ_INDEX_IF];
 
-	err = devm_request_threaded_irq(dev, irq->msi_desc->irq,
-					NULL,
+	err = devm_request_threaded_irq(dev, irq->virq, NULL,
 					dpaa2_switch_irq0_handler_thread,
 					IRQF_NO_SUSPEND | IRQF_ONESHOT,
 					dev_name(dev), dev);
@@ -1726,7 +1725,7 @@ static int dpaa2_switch_setup_irqs(struct fsl_mc_device *sw_dev)
 	return 0;
 
 free_devm_irq:
-	devm_free_irq(dev, irq->msi_desc->irq, dev);
+	devm_free_irq(dev, irq->virq, dev);
 free_irq:
 	fsl_mc_free_irqs(sw_dev);
 	return err;
@@ -3795,9 +3794,8 @@ static int dpaa2_switch_probe(struct fsl_mc_device *sw_dev)
 	 * different queues for each switch ports.
 	 */
 	for (i = 0; i < DPAA2_SWITCH_RX_NUM_FQS; i++)
-		netif_napi_add(ethsw->ports[0]->netdev,
-			       &ethsw->fq[i].napi, dpaa2_switch_poll,
-			       NAPI_POLL_WEIGHT);
+		netif_napi_add(ethsw->ports[0]->netdev, &ethsw->fq[i].napi,
+			       dpaa2_switch_poll);
 
 	/* Setup IRQs */
 	err = dpaa2_switch_setup_irqs(sw_dev);

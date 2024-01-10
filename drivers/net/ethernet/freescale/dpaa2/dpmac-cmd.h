@@ -83,56 +83,6 @@ struct dpmac_rsp_get_counter {
 	__le64 counter;
 };
 
-struct dpmac_cmd_set_irq_enable {
-	u8 enable;
-	u8 pad[3];
-	u8 irq_index;
-};
-
-struct dpmac_cmd_get_irq_enable {
-	u32 pad;
-	u8 irq_index;
-};
-
-struct dpmac_rsp_get_irq_enable {
-	u8 enabled;
-};
-
-struct dpmac_cmd_set_irq_mask {
-	u32 mask;
-	u8 irq_index;
-};
-
-struct dpmac_cmd_get_irq_mask {
-	u32 pad;
-	u8 irq_index;
-};
-
-struct dpmac_rsp_get_irq_mask {
-	u32 mask;
-};
-
-struct dpmac_cmd_get_irq_status {
-	u32 status;
-	u8 irq_index;
-};
-
-struct dpmac_rsp_get_irq_status {
-	u32 status;
-};
-
-struct dpmac_cmd_clear_irq_status {
-	u32 status;
-	u8 irq_index;
-};
-
-struct dpmac_rsp_get_link_cfg {
-	u64 options;
-	u32 rate;
-	u32 pad;
-	u64 advertising;
-};
-
 struct dpmac_rsp_get_api_version {
 	__le16 major;
 	__le16 minor;

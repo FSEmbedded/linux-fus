@@ -102,7 +102,7 @@ config CLK_IMX8QXP
 config CLK_IMX8ULP
 	tristate "IMX8ULP CCM Clock Driver"
 	depends on ARCH_MXC || COMPILE_TEST
-	select RESET_CONTROLLER
+	select MXC_CLK
 	help
 	    Build the driver for i.MX8ULP CCM Clock Driver
 
@@ -112,3 +112,10 @@ config CLK_IMX93
 	select MXC_CLK
 	help
 	    Build the driver for i.MX93 CCM Clock Driver
+
+config CLK_IMXRT1050
+	tristate "IMXRT1050 CCM Clock Driver"
+	depends on SOC_IMXRT
+	select MXC_CLK
+	help
+	    Build the driver for i.MXRT1050 CCM Clock Driver

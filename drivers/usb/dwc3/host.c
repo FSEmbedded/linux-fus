@@ -7,50 +7,25 @@
  * Authors: Felipe Balbi <balbi@ti.com>,
  */
 
-#include <linux/acpi.h>
+#include <linux/irq.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
-
-#include "../host/xhci.h"
 
 #include "core.h"
 
-
-#define XHCI_HCSPARAMS1		0x4
-#define XHCI_PORTSC_BASE	0x400
-
-/*
- * dwc3_power_off_all_roothub_ports - Power off all Root hub ports
- * @dwc3: Pointer to our controller context structure
- */
-static void dwc3_power_off_all_roothub_ports(struct dwc3 *dwc)
+static void dwc3_host_fill_xhci_irq_res(struct dwc3 *dwc,
+					int irq, char *name)
 {
-	int i, port_num;
-	u32 reg, op_regs_base, offset;
-	void __iomem *xhci_regs;
+	struct platform_device *pdev = to_platform_device(dwc->dev);
+	struct device_node *np = dev_of_node(&pdev->dev);
 
-	/* xhci regs is not mapped yet, do it temperary here */
-	if (dwc->xhci_resources[0].start) {
-		xhci_regs = ioremap(dwc->xhci_resources[0].start,
-				DWC3_XHCI_REGS_END);
-		if (IS_ERR(xhci_regs)) {
-			dev_err(dwc->dev, "Failed to ioremap xhci_regs\n");
-			return;
-		}
-
-		op_regs_base = HC_LENGTH(readl(xhci_regs));
-		reg = readl(xhci_regs + XHCI_HCSPARAMS1);
-		port_num = HCS_MAX_PORTS(reg);
-
-		for (i = 1; i <= port_num; i++) {
-			offset = op_regs_base + XHCI_PORTSC_BASE + 0x10*(i-1);
-			reg = readl(xhci_regs + offset);
-			reg &= ~PORT_POWER;
-			writel(reg, xhci_regs + offset);
-		}
-
-		iounmap(xhci_regs);
-	} else
-		dev_err(dwc->dev, "xhci base reg invalid\n");
+	dwc->xhci_resources[1].start = irq;
+	dwc->xhci_resources[1].end = irq;
+	dwc->xhci_resources[1].flags = IORESOURCE_IRQ | irq_get_trigger_type(irq);
+	if (!name && np)
+		dwc->xhci_resources[1].name = of_node_full_name(pdev->dev.of_node);
+	else
+		dwc->xhci_resources[1].name = name;
 }
 
 static int dwc3_host_get_irq(struct dwc3 *dwc)
@@ -59,22 +34,28 @@ static int dwc3_host_get_irq(struct dwc3 *dwc)
 	int irq;
 
 	irq = platform_get_irq_byname_optional(dwc3_pdev, "host");
-	if (irq > 0)
+	if (irq > 0) {
+		dwc3_host_fill_xhci_irq_res(dwc, irq, "host");
 		goto out;
+	}
 
 	if (irq == -EPROBE_DEFER)
 		goto out;
 
 	irq = platform_get_irq_byname_optional(dwc3_pdev, "dwc_usb3");
-	if (irq > 0)
+	if (irq > 0) {
+		dwc3_host_fill_xhci_irq_res(dwc, irq, "dwc_usb3");
 		goto out;
+	}
 
 	if (irq == -EPROBE_DEFER)
 		goto out;
 
 	irq = platform_get_irq(dwc3_pdev, 0);
-	if (irq > 0)
+	if (irq > 0) {
+		dwc3_host_fill_xhci_irq_res(dwc, irq, NULL);
 		goto out;
+	}
 
 	if (!irq)
 		irq = -EINVAL;
@@ -89,8 +70,6 @@ int dwc3_host_init(struct dwc3 *dwc)
 	struct platform_device	*xhci;
 	struct dwc3_platform_data *dwc3_pdata;
 	int			ret, irq;
-	struct resource		*res;
-	struct platform_device	*dwc3_pdev = to_platform_device(dwc->dev);
 	int			prop_idx = 0;
 
 	/*
@@ -104,20 +83,6 @@ int dwc3_host_init(struct dwc3 *dwc)
 	if (irq < 0)
 		return irq;
 
-	res = platform_get_resource_byname(dwc3_pdev, IORESOURCE_IRQ, "host");
-	if (!res)
-		res = platform_get_resource_byname(dwc3_pdev, IORESOURCE_IRQ,
-				"dwc_usb3");
-	if (!res)
-		res = platform_get_resource(dwc3_pdev, IORESOURCE_IRQ, 0);
-	if (!res)
-		return -ENOMEM;
-
-	dwc->xhci_resources[1].start = irq;
-	dwc->xhci_resources[1].end = irq;
-	dwc->xhci_resources[1].flags = res->flags;
-	dwc->xhci_resources[1].name = res->name;
-
 	xhci = platform_device_alloc("xhci-hcd", PLATFORM_DEVID_AUTO);
 	if (!xhci) {
 		dev_err(dwc->dev, "couldn't allocate xHCI device\n");
@@ -125,7 +90,6 @@ int dwc3_host_init(struct dwc3 *dwc)
 	}
 
 	xhci->dev.parent	= dwc->dev;
-	ACPI_COMPANION_SET(&xhci->dev, ACPI_COMPANION(dwc->dev));
 
 	dwc->xhci = xhci;
 

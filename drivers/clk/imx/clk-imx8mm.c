@@ -413,7 +413,6 @@ static int imx8mm_clocks_probe(struct platform_device *pdev)
 
 	/* SYS PLL2 fixed output */
 	hws[IMX8MM_SYS_PLL2_OUT] = imx_clk_hw_gate("sys_pll2_out", "sys_pll2", base + 0x104, 11);
-
 	hws[IMX8MM_SYS_PLL2_50M] = imx_clk_hw_fixed_factor("sys_pll2_50m", "sys_pll2_out", 1, 20);
 	hws[IMX8MM_SYS_PLL2_100M] = imx_clk_hw_fixed_factor("sys_pll2_100m", "sys_pll2_out", 1, 10);
 	hws[IMX8MM_SYS_PLL2_125M] = imx_clk_hw_fixed_factor("sys_pll2_125m", "sys_pll2_out", 1, 8);
@@ -594,7 +593,6 @@ static int imx8mm_clocks_probe(struct platform_device *pdev)
 	hws[IMX8MM_CLK_SAI5_IPG] = imx_clk_hw_gate2_shared2("sai5_ipg_clk", "ipg_audio_root", base + 0x4370, 0, &share_count_sai5);
 	hws[IMX8MM_CLK_SAI6_ROOT] = imx_clk_hw_gate2_shared2("sai6_root_clk", "sai6", base + 0x4380, 0, &share_count_sai6);
 	hws[IMX8MM_CLK_SAI6_IPG] = imx_clk_hw_gate2_shared2("sai6_ipg_clk", "ipg_audio_root", base + 0x4380, 0, &share_count_sai6);
-	hws[IMX8MM_CLK_SNVS_ROOT] = imx_clk_hw_gate2_flags("snvs_root_clk", "ipg_root", base + 0x4470, 0, CLK_IS_CRITICAL);
 	hws[IMX8MM_CLK_UART1_ROOT] = imx_clk_hw_gate4("uart1_root_clk", "uart1", base + 0x4490, 0);
 	hws[IMX8MM_CLK_UART2_ROOT] = imx_clk_hw_gate4("uart2_root_clk", "uart2", base + 0x44a0, 0);
 	hws[IMX8MM_CLK_UART3_ROOT] = imx_clk_hw_gate4("uart3_root_clk", "uart3", base + 0x44b0, 0);
@@ -681,83 +679,6 @@ static struct platform_driver imx8mm_clk_driver = {
 module_platform_driver(imx8mm_clk_driver);
 module_param(mcore_booted, bool, S_IRUGO);
 MODULE_PARM_DESC(mcore_booted, "See Cortex-M core is booted or not");
-
-/*
- * Debugfs interface for audio PLL K divider change dynamically.
- * Monitor control for the Audio PLL K-Divider
- */
-#ifdef CONFIG_DEBUG_FS
-
-#define KDIV_MASK	GENMASK(15, 0)
-#define MDIV_SHIFT	12
-#define MDIV_MASK	GENMASK(21, 12)
-#define PDIV_SHIFT	4
-#define PDIV_MASK	GENMASK(9, 4)
-#define SDIV_SHIFT	0
-#define SDIV_MASK	GENMASK(2, 0)
-
-static int pll_delta_k_set(void *data, u64 val)
-{
-	struct clk_hw *hw;
-	short int delta_k;
-
-	hw = data;
-	delta_k = (short int) (val & KDIV_MASK);
-
-	clk_set_delta_k(hw, val);
-
-	pr_debug("the delta k is %d\n", delta_k);
-	return 0;
-}
-DEFINE_DEBUGFS_ATTRIBUTE(delta_k_fops, NULL, pll_delta_k_set, "%lld\n");
-
-static int pll_setting_show(struct seq_file *s, void *data)
-{
-	struct clk_hw *hw;
-	u32 pll_div_ctrl0, pll_div_ctrl1;
-	u32 mdiv, pdiv, sdiv, kdiv;
-
-	hw = s->private;;
-
-	clk_get_pll_setting(hw, &pll_div_ctrl0, &pll_div_ctrl1);
-	mdiv = (pll_div_ctrl0 & MDIV_MASK) >> MDIV_SHIFT;
-	pdiv = (pll_div_ctrl0 & PDIV_MASK) >> PDIV_SHIFT;
-	sdiv = (pll_div_ctrl0 & SDIV_MASK) >> SDIV_SHIFT;
-	kdiv = (pll_div_ctrl1 & KDIV_MASK);
-
-	seq_printf(s, "Mdiv: 0x%x; Pdiv: 0x%x; Sdiv: 0x%x; Kdiv: 0x%x\n",
-		mdiv, pdiv, sdiv, kdiv);
-
-	return 0;
-}
-DEFINE_SHOW_ATTRIBUTE(pll_setting);
-
-#ifndef MODULE
-static int __init pll_debug_init(void)
-{
-	struct dentry *root, *audio_pll1, *audio_pll2;
-
-	if (of_machine_is_compatible("fsl,imx8mm") && hws) {
-		/* create a root dir for audio pll monitor */
-		root = debugfs_create_dir("audio_pll_monitor", NULL);
-		audio_pll1 = debugfs_create_dir("audio_pll1", root);
-		audio_pll2 = debugfs_create_dir("audio_pll2", root);
-
-		debugfs_create_file_unsafe("delta_k", 0444, audio_pll1,
-			hws[IMX8MM_AUDIO_PLL1], &delta_k_fops);
-		debugfs_create_file("pll_parameter", 0x444, audio_pll1,
-			hws[IMX8MM_AUDIO_PLL1], &pll_setting_fops);
-		debugfs_create_file_unsafe("delta_k", 0444, audio_pll2,
-			hws[IMX8MM_AUDIO_PLL2], &delta_k_fops);
-		debugfs_create_file("pll_parameter", 0x444, audio_pll2,
-			hws[IMX8MM_AUDIO_PLL2], &pll_setting_fops);
-	}
-
-	return 0;
-}
-late_initcall(pll_debug_init);
-#endif /* MODULE */
-#endif /* CONFIG_DEBUG_FS */
 
 MODULE_AUTHOR("Bai Ping <ping.bai@nxp.com>");
 MODULE_DESCRIPTION("NXP i.MX8MM clock driver");

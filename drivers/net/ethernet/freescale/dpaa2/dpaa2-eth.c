@@ -20,7 +20,6 @@
 #include <net/pkt_cls.h>
 #include <net/sock.h>
 #include <net/tso.h>
-#include <net/xdp_sock_drv.h>
 
 #include "dpaa2-eth.h"
 #include "dpaa2-eth-ceetm.h"
@@ -38,9 +37,6 @@ MODULE_DESCRIPTION("Freescale DPAA2 Ethernet Driver");
 struct ptp_qoriq *dpaa2_ptp;
 EXPORT_SYMBOL(dpaa2_ptp);
 
-static void (*dpaa2_set_onestep_params_cb)(struct dpaa2_eth_priv *priv,
-					   u32 offset, u8 udp);
-
 static void dpaa2_eth_detect_features(struct dpaa2_eth_priv *priv)
 {
 	priv->features = 0;
@@ -50,13 +46,10 @@ static void dpaa2_eth_detect_features(struct dpaa2_eth_priv *priv)
 		priv->features |= DPAA2_ETH_FEATURE_ONESTEP_CFG_DIRECT;
 }
 
-static void dpaa2_update_ptp_onesestep_indirect(struct dpaa2_eth_priv *priv,
-						u32 offset, u8 udp)
+static void dpaa2_update_ptp_onestep_indirect(struct dpaa2_eth_priv *priv,
+					      u32 offset, u8 udp)
 {
 	struct dpni_single_step_cfg cfg;
-
-	if (priv->ptp_correction_off == offset)
-		return;
 
 	cfg.en = 1;
 	cfg.ch_update = udp;
@@ -65,19 +58,14 @@ static void dpaa2_update_ptp_onesestep_indirect(struct dpaa2_eth_priv *priv,
 
 	if (dpni_set_single_step_cfg(priv->mc_io, 0, priv->mc_token, &cfg))
 		WARN_ONCE(1, "Failed to set single step register");
-
-	priv->ptp_correction_off = offset;
 }
 
-static void dpaa2_update_ptp_onesestep_direct(struct dpaa2_eth_priv *priv,
-					      u32 offset, u8 udp)
+static void dpaa2_update_ptp_onestep_direct(struct dpaa2_eth_priv *priv,
+					    u32 offset, u8 udp)
 {
 	u32 val = 0;
 
-	if (priv->ptp_correction_off == offset)
-		return;
-
-	val =  DPAA2_PTP_SINGLE_STEP_ENABLE |
+	val = DPAA2_PTP_SINGLE_STEP_ENABLE |
 	       DPAA2_PTP_SINGLE_CORRECTION_OFF(offset);
 
 	if (udp)
@@ -85,40 +73,41 @@ static void dpaa2_update_ptp_onesestep_direct(struct dpaa2_eth_priv *priv,
 
 	if (priv->onestep_reg_base)
 		writel(val, priv->onestep_reg_base);
-
-	priv->ptp_correction_off = offset;
 }
 
 static void dpaa2_ptp_onestep_reg_update_method(struct dpaa2_eth_priv *priv)
 {
 	struct device *dev = priv->net_dev->dev.parent;
-	struct dpni_single_step_cfg ptp_cfg = {0};
+	struct dpni_single_step_cfg ptp_cfg;
 
-	dpaa2_set_onestep_params_cb = dpaa2_update_ptp_onesestep_indirect;
+	priv->dpaa2_set_onestep_params_cb = dpaa2_update_ptp_onestep_indirect;
 
 	if (!(priv->features & DPAA2_ETH_FEATURE_ONESTEP_CFG_DIRECT))
 		return;
 
-	if (dpni_get_single_step_cfg(priv->mc_io, 0, priv->mc_token, &ptp_cfg))
-		goto fallback;
+	if (dpni_get_single_step_cfg(priv->mc_io, 0,
+				     priv->mc_token, &ptp_cfg)) {
+		dev_err(dev, "dpni_get_single_step_cfg cannot retrieve onestep reg, falling back to indirect update\n");
+		return;
+	}
 
-	if (!ptp_cfg.ptp_onestep_reg_base)
-		goto fallback;
+	if (!ptp_cfg.ptp_onestep_reg_base) {
+		dev_err(dev, "1588 onestep reg not available, falling back to indirect update\n");
+		return;
+	}
 
-	priv->onestep_reg_base = ioremap(ptp_cfg.ptp_onestep_reg_base, sizeof(u32));
-	if (!priv->onestep_reg_base)
-		goto fallback;
+	priv->onestep_reg_base = ioremap(ptp_cfg.ptp_onestep_reg_base,
+					 sizeof(u32));
+	if (!priv->onestep_reg_base) {
+		dev_err(dev, "1588 onestep reg cannot be mapped, falling back to indirect update\n");
+		return;
+	}
 
-	dpaa2_set_onestep_params_cb = dpaa2_update_ptp_onesestep_direct;
-
-	return;
-
-fallback:
-	dev_err(dev, "1588 onestep reg not available, falling back to indirect update\n");
+	priv->dpaa2_set_onestep_params_cb = dpaa2_update_ptp_onestep_direct;
 }
 
-void *dpaa2_iova_to_virt(struct iommu_domain *domain,
-			 dma_addr_t iova_addr)
+static void *dpaa2_iova_to_virt(struct iommu_domain *domain,
+				dma_addr_t iova_addr)
 {
 	phys_addr_t phys_addr;
 
@@ -468,7 +457,7 @@ static u32 dpaa2_eth_run_xdp(struct dpaa2_eth_priv *priv,
 		dpaa2_eth_xdp_enqueue(priv, ch, fd, vaddr, rx_fq->flowid);
 		break;
 	default:
-		bpf_warn_invalid_xdp_action(xdp_act);
+		bpf_warn_invalid_xdp_action(priv->net_dev, xdp_prog, xdp_act);
 		fallthrough;
 	case XDP_ABORTED:
 		trace_xdp_exception(priv->net_dev, xdp_prog, xdp_act);
@@ -661,7 +650,35 @@ void dpaa2_eth_rx(struct dpaa2_eth_priv *priv,
 	if (unlikely(!skb))
 		goto err_build_skb;
 
-	dpaa2_eth_receive_skb(priv, ch, fd, vaddr, fq, percpu_stats, skb);
+	prefetch(skb->data);
+
+	/* Get the timestamp value */
+	if (priv->rx_tstamp) {
+		struct skb_shared_hwtstamps *shhwtstamps = skb_hwtstamps(skb);
+		__le64 *ts = dpaa2_get_ts(vaddr, false);
+		u64 ns;
+
+		memset(shhwtstamps, 0, sizeof(*shhwtstamps));
+
+		ns = DPAA2_PTP_CLK_PERIOD_NS * le64_to_cpup(ts);
+		shhwtstamps->hwtstamp = ns_to_ktime(ns);
+	}
+
+	/* Check if we need to validate the L4 csum */
+	if (likely(dpaa2_fd_get_frc(fd) & DPAA2_FD_FRC_FASV)) {
+		status = le32_to_cpu(fas->status);
+		dpaa2_eth_validate_rx_csum(priv, status, skb);
+	}
+
+	skb->protocol = eth_type_trans(skb, priv->net_dev);
+	skb_record_rx_queue(skb, fq->flowid);
+
+	percpu_stats->rx_packets++;
+	percpu_stats->rx_bytes += dpaa2_fd_get_len(fd);
+	ch->stats.bytes_per_cdan += dpaa2_fd_get_len(fd);
+
+	list_add_tail(&skb->list, ch->rx_list);
+
 	return;
 
 err_build_skb:
@@ -873,7 +890,12 @@ static void dpaa2_eth_enable_tx_tstamp(struct dpaa2_eth_priv *priv,
 			htonl(origin_timestamp.sec_lsb);
 		*(__be32 *)(data + offset2 + 6) = htonl(origin_timestamp.nsec);
 
-		dpaa2_set_onestep_params_cb(priv, offset1, udp);
+		if (priv->ptp_correction_off == offset1)
+			return;
+
+		priv->dpaa2_set_onestep_params_cb(priv, offset1, udp);
+		priv->ptp_correction_off = offset1;
+
 	}
 }
 
@@ -1327,7 +1349,7 @@ static int dpaa2_eth_build_gso_fd(struct dpaa2_eth_priv *priv,
 		/* Setup the SG entry for the header */
 		dpaa2_sg_set_addr(sgt, tso_hdr_dma);
 		dpaa2_sg_set_len(sgt, hdr_len);
-		dpaa2_sg_set_final(sgt, data_left > 0 ? false : true);
+		dpaa2_sg_set_final(sgt, data_left <= 0);
 
 		/* Compose the SG entries for each fragment of data */
 		num_sge = 1;
@@ -1346,7 +1368,7 @@ static int dpaa2_eth_build_gso_fd(struct dpaa2_eth_priv *priv,
 			}
 			dpaa2_sg_set_addr(sgt, addr);
 			dpaa2_sg_set_len(sgt, size);
-			dpaa2_sg_set_final(sgt, size == data_left ? true : false);
+			dpaa2_sg_set_final(sgt, size == data_left);
 
 			num_sge++;
 
@@ -1407,7 +1429,7 @@ err_alloc_tso_hdr:
 err_sgt_get:
 	/* Free all the other FDs that were already fully created */
 	for (i = 0; i < index; i++)
-		dpaa2_eth_free_tx_fd(priv, NULL, NULL, &fd_start[i], false);
+		dpaa2_eth_free_tx_fd(priv, NULL, &fd_start[i], false);
 
 	return err;
 }
@@ -1423,11 +1445,11 @@ static netdev_tx_t __dpaa2_eth_tx(struct sk_buff *skb,
 	int num_fds = 1, max_retries;
 	struct dpaa2_eth_fq *fq;
 	struct netdev_queue *nq;
-	int err, i, ch_id = 0;
 	struct dpaa2_fd *fd;
 	u16 queue_mapping;
 	void *swa = NULL;
 	u8 prio = 0;
+	int err, i;
 	u32 fd_len;
 
 	percpu_stats = this_cpu_ptr(priv->percpu_stats);
@@ -1501,16 +1523,6 @@ static netdev_tx_t __dpaa2_eth_tx(struct sk_buff *skb,
 		queue_mapping %= dpaa2_eth_queue_count(priv);
 	}
 	fq = &priv->fq[queue_mapping];
-
-	if (dpaa2_eth_ceetm_is_enabled(priv)) {
-		err = dpaa2_ceetm_classify(skb, net_dev->qdisc, &ch_id, &prio);
-		if (err) {
-			dpaa2_eth_free_tx_fd(priv, NULL, fq, fd, false);
-			percpu_stats->tx_dropped++;
-			return NETDEV_TX_OK;
-		}
-	}
-
 	nq = netdev_get_tx_queue(net_dev, queue_mapping);
 	netdev_tx_sent_queue(nq, fd_len);
 
@@ -1533,7 +1545,7 @@ static netdev_tx_t __dpaa2_eth_tx(struct sk_buff *skb,
 	if (unlikely(err < 0)) {
 		percpu_stats->tx_errors++;
 		/* Clean up everything, including freeing the skb */
-		dpaa2_eth_free_tx_fd(priv, NULL, fq, fd, false);
+		dpaa2_eth_free_tx_fd(priv, fq, fd, false);
 		netdev_tx_completed_queue(nq, 1, fd_len);
 	} else {
 		percpu_stats->tx_packets += total_enqueued;
@@ -4509,7 +4521,7 @@ static int dpaa2_eth_set_mac_addr(struct dpaa2_eth_priv *priv)
 				return err;
 			}
 		}
-		memcpy(net_dev->dev_addr, mac_addr, net_dev->addr_len);
+		eth_hw_addr_set(net_dev, mac_addr);
 	} else if (is_zero_ether_addr(dpni_mac_addr)) {
 		/* No MAC address configured, fill in net_dev->dev_addr
 		 * with a random one
@@ -4534,7 +4546,7 @@ static int dpaa2_eth_set_mac_addr(struct dpaa2_eth_priv *priv)
 		/* NET_ADDR_PERM is default, all we have to do is
 		 * fill in the device addr.
 		 */
-		memcpy(net_dev->dev_addr, dpni_mac_addr, net_dev->addr_len);
+		eth_hw_addr_set(net_dev, dpni_mac_addr);
 	}
 
 	return 0;
@@ -4737,7 +4749,7 @@ static int dpaa2_eth_setup_irqs(struct fsl_mc_device *ls_dev)
 	}
 
 	irq = ls_dev->irqs[0];
-	err = devm_request_threaded_irq(&ls_dev->dev, irq->msi_desc->irq,
+	err = devm_request_threaded_irq(&ls_dev->dev, irq->virq,
 					NULL, dpni_irq0_handler_thread,
 					IRQF_NO_SUSPEND | IRQF_ONESHOT,
 					dev_name(&ls_dev->dev), &ls_dev->dev);
@@ -4764,7 +4776,7 @@ static int dpaa2_eth_setup_irqs(struct fsl_mc_device *ls_dev)
 	return 0;
 
 free_irq:
-	devm_free_irq(&ls_dev->dev, irq->msi_desc->irq, &ls_dev->dev);
+	devm_free_irq(&ls_dev->dev, irq->virq, &ls_dev->dev);
 free_mc_irq:
 	fsl_mc_free_irqs(ls_dev);
 
@@ -4779,8 +4791,7 @@ static void dpaa2_eth_add_ch_napi(struct dpaa2_eth_priv *priv)
 	for (i = 0; i < priv->num_channels; i++) {
 		ch = priv->channel[i];
 		/* NAPI weight *MUST* be a multiple of DPAA2_ETH_STORE_SIZE */
-		netif_napi_add(priv->net_dev, &ch->napi, dpaa2_eth_poll,
-			       NAPI_POLL_WEIGHT);
+		netif_napi_add(priv->net_dev, &ch->napi, dpaa2_eth_poll);
 	}
 }
 
@@ -4962,7 +4973,7 @@ static int dpaa2_eth_probe(struct fsl_mc_device *dpni_dev)
 	if (err)
 		goto err_connect_mac;
 
-	err = dpaa2_eth_dl_register(priv);
+	err = dpaa2_eth_dl_alloc(priv);
 	if (err)
 		goto err_dl_register;
 
@@ -4984,6 +4995,7 @@ static int dpaa2_eth_probe(struct fsl_mc_device *dpni_dev)
 	dpaa2_dbg_add(priv);
 #endif
 
+	dpaa2_eth_dl_register(priv);
 	dev_info(dev, "Probed interface %s\n", net_dev->name);
 	return 0;
 
@@ -4992,7 +5004,7 @@ err_netdev_reg:
 err_dl_port_add:
 	dpaa2_eth_dl_traps_unregister(priv);
 err_dl_trap_register:
-	dpaa2_eth_dl_unregister(priv);
+	dpaa2_eth_dl_free(priv);
 err_dl_register:
 	dpaa2_eth_disconnect_mac(priv);
 err_connect_mac:
@@ -5041,6 +5053,8 @@ static int dpaa2_eth_remove(struct fsl_mc_device *ls_dev)
 	net_dev = dev_get_drvdata(dev);
 	priv = netdev_priv(net_dev);
 
+	dpaa2_eth_dl_unregister(priv);
+
 #ifdef CONFIG_DEBUG_FS
 	dpaa2_dbg_remove(priv);
 #endif
@@ -5049,7 +5063,7 @@ static int dpaa2_eth_remove(struct fsl_mc_device *ls_dev)
 
 	dpaa2_eth_dl_port_del(priv);
 	dpaa2_eth_dl_traps_unregister(priv);
-	dpaa2_eth_dl_unregister(priv);
+	dpaa2_eth_dl_free(priv);
 
 	if (priv->do_link_poll)
 		kthread_stop(priv->poll_thread);

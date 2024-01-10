@@ -83,17 +83,6 @@ if TRUSTED_KEYS
 source "security/keys/trusted-keys/Kconfig"
 endif
 
-config SECURE_KEYS
-	tristate "SECURE_KEYS"
-	depends on KEYS && CRYPTO_DEV_FSL_CAAM && CRYPTO_DEV_FSL_CAAM_JR
-	help
-	  This option provide support for creating secure-type key and blobs
-	  in kernel. Secure keys are random number symmetric keys generated
-	  from CAAM. The CAAM creates the blobs for the random key.
-	  Userspace will only be able to see the blob.
-
-	  If you are unsure as to whether this is required, answer N.
-
 config ENCRYPTED_KEYS
 	tristate "ENCRYPTED KEYS"
 	depends on KEYS
@@ -105,10 +94,21 @@ config ENCRYPTED_KEYS
 	select CRYPTO_RNG
 	help
 	  This option provides support for create/encrypting/decrypting keys
-	  in the kernel.  Encrypted keys are kernel generated random numbers,
-	  which are encrypted/decrypted with a 'master' symmetric key. The
-	  'master' key can be either a trusted-key or user-key type.
-	  Userspace only ever sees/stores encrypted blobs.
+	  in the kernel.  Encrypted keys are instantiated using kernel
+	  generated random numbers or provided decrypted data, and are
+	  encrypted/decrypted with a 'master' symmetric key. The 'master'
+	  key can be either a trusted-key or user-key type. Only encrypted
+	  blobs are ever output to Userspace.
+
+	  If you are unsure as to whether this is required, answer N.
+
+config USER_DECRYPTED_DATA
+	bool "Allow encrypted keys with user decrypted data"
+	depends on ENCRYPTED_KEYS
+	help
+	  This option provides support for instantiating encrypted keys using
+	  user-provided decrypted data.  The decrypted data must be hex-ascii
+	  encoded.
 
 	  If you are unsure as to whether this is required, answer N.
 
@@ -116,7 +116,7 @@ config KEY_DH_OPERATIONS
        bool "Diffie-Hellman operations on retained keys"
        depends on KEYS
        select CRYPTO
-       select CRYPTO_HASH
+       select CRYPTO_KDF800108_CTR
        select CRYPTO_DH
        help
 	 This option provides support for calculating Diffie-Hellman
