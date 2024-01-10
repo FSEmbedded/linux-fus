@@ -959,15 +959,6 @@ static int adv7511_bridge_get_modes(struct drm_bridge *bridge,
 	return adv7511_get_modes(adv, connector);
 }
 
-static enum drm_mode_status adv7511_bridge_mode_valid(struct drm_bridge *bridge,
-					   const struct drm_display_info *info,
-					   const struct drm_display_mode *mode)
-{
-	struct adv7511 *adv = bridge_to_adv7511(bridge);
-
-	return adv7511_mode_valid(adv, mode);
-}
-
 static void adv7511_bridge_mode_set(struct drm_bridge *bridge,
 				    const struct drm_display_mode *mode,
 				    const struct drm_display_mode *adj_mode)
@@ -1054,7 +1045,6 @@ static const struct drm_bridge_funcs adv7511_bridge_funcs = {
 	.enable = adv7511_bridge_enable,
 	.disable = adv7511_bridge_disable,
 	.get_modes = adv7511_bridge_get_modes,
-	.mode_valid = adv7511_bridge_mode_valid,
 	.mode_set = adv7511_bridge_mode_set,
 	.mode_valid = adv7511_bridge_mode_valid,
 	.attach = adv7511_bridge_attach,

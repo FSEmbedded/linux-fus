@@ -162,11 +162,12 @@
 
 #define FXOS8700_DEVICE_ID          0xC7
 #define FXOS8700_PRE_DEVICE_ID      0xC4
+#define FXOS8700_DATA_BUF_SIZE      3
 
 struct fxos8700_data {
 	struct regmap *regmap;
 	struct iio_trigger *trig;
-	__be16 buf __aligned(IIO_DMA_MINALIGN);
+	__be16 buf[FXOS8700_DATA_BUF_SIZE] __aligned(IIO_DMA_MINALIGN);
 };
 
 /* Regmap info */
@@ -366,7 +367,12 @@ static int fxos8700_set_scale(struct fxos8700_data *data,
 		return ret;
 
 	active_mode = val & FXOS8700_ACTIVE;
+
 	if (active_mode) {
+		/*
+		 * The device must be in standby mode to change any of the
+		 * other fields within CTRL_REG1
+		 */
 		ret = regmap_write(data->regmap, FXOS8700_CTRL_REG1,
 				   val & ~FXOS8700_ACTIVE);
 		if (ret)
@@ -440,8 +446,10 @@ static int fxos8700_get_data(struct fxos8700_data *data, int chan_type,
 	ret = regmap_bulk_read(data->regmap, base, data->buf,
 			       sizeof(data->buf));
 	if (ret)
-		return -EIO;
+		return ret;
 
+	/* Convert axis to buffer index */
+	reg = axis - IIO_MOD_X;
 
 	/*
 	 * Convert to native endianness. The accel data and magn data

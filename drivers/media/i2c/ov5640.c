@@ -178,7 +178,7 @@ static const s64 ov5640_csi2_link_freqs[] = {
 };
 
 /* Link freq for default mode: UYVY 16 bpp, 2 data lanes. */
-#define OV5640_DEFAULT_LINK_FREQ	13
+#define OV5640_DEFAULT_LINK_FREQ	19
 
 enum ov5640_format_mux {
 	OV5640_FMT_MUX_YUV422 = 0,
@@ -2485,13 +2485,6 @@ static void ov5640_powerup_sequence(struct ov5640_dev *sensor)
 				 OV5640_REG_SYS_CTRL0_SW_RST);
 	}
 	usleep_range(20000, 25000);
-
-	/*
-	 * software standby: allows registers programming;
-	 * exit at restore_mode() for CSI, s_stream(1) for DVP
-	 */
-	ov5640_write_reg(sensor, OV5640_REG_SYS_CTRL0,
-			 OV5640_REG_SYS_CTRL0_SW_PWDN);
 }
 
 static int ov5640_set_power_on(struct ov5640_dev *sensor)

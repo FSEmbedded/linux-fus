@@ -5517,6 +5517,8 @@ void xhci_init_driver(struct hc_driver *drv,
 			drv->check_bandwidth = over->check_bandwidth;
 		if (over->reset_bandwidth)
 			drv->reset_bandwidth = over->reset_bandwidth;
+		if (over->bus_suspend)
+			drv->bus_suspend = over->bus_suspend;
 		if (over->update_hub_device)
 			drv->update_hub_device = over->update_hub_device;
 	}

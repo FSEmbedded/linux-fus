@@ -11,10 +11,6 @@
 #include "u_f.h"
 #include "u_os_desc.h"
 
-#define DRIVER_NAME "configfs-gadget"
-
-static DEFINE_IDA(driver_id_numbers);
-
 int check_user_usb_string(const char *name,
 		struct usb_gadget_strings *stringtab_dev)
 {

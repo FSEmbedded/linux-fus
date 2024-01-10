@@ -1945,6 +1945,7 @@ struct xhci_driver_overrides {
 			     struct usb_host_endpoint *ep);
 	int (*check_bandwidth)(struct usb_hcd *, struct usb_device *);
 	void (*reset_bandwidth)(struct usb_hcd *, struct usb_device *);
+	int (*bus_suspend)(struct usb_hcd *hcd);
 	int (*update_hub_device)(struct usb_hcd *hcd, struct usb_device *hdev,
 			    struct usb_tt *tt, gfp_t mem_flags);
 };
