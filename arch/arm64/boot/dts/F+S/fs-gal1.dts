@@ -132,10 +132,18 @@
 		};
 	};
 
-	sfp_eth0: sfp_eth0 {
+	sfp_ext: sfp_ext {
 	 	compatible = "sff,sfp";
 	 	i2c-bus = <&i2c1>;
 		vcc-supply = <&regulator_3v3>;
+	};
+
+	sfp_int: sfp_int {
+		//enabled in u-boot
+	 	compatible = "sff,sfp";
+	 	i2c-bus = <&i2c4>;
+		vcc-supply = <&regulator_3v3>;
+		status = "disabled";
 	};
 	
 	esdhc1_pwrseq: emmc_pwrseq {
@@ -314,6 +322,7 @@
 		reset-gpios = <&gpio4 19 GPIO_ACTIVE_HIGH>;
 		reset-assert-us = <50000>;
 		reset-deassert-us = <200000>;
+		sfp = <&sfp_int>;
 	};
 
 	qsgmii_phy0: ethernet-phy@10 {
@@ -351,7 +360,7 @@
 	label = "eth2";
 	phy-connection-type = "sgmii";
 	managed = "in-band-status";
-	sfp = <&sfp_eth0>;
+	sfp = <&sfp_ext>;
 	link-gpios = <&gpio1 15 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 };
