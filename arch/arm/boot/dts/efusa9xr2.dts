@@ -75,16 +75,16 @@ lcd_wvga {				\
 #define CONFIG_EFUSA9X_LVDS_BUS_WIDTH	24
 #define CONFIG_EFUSA9X_LVDS_MAPPING	"spwg"
 #define CONFIG_EFUSA9X_LVDS_TIMING \
-wvga {					\
-	clock-frequency = <33300000>;	\
+lvds_wvga {					\
+	clock-frequency = <33500000>;	\
 	hactive = <800>;		\
 	vactive = <480>;		\
-	hfront-porch = <210>;		\
-	hback-porch = <45>;		\
-	hsync-len = <1>;		\
-	vback-porch = <22>;		\
-	vfront-porch = <22>;		\
-	vsync-len = <1>;		\
+	hfront-porch = <4>;		\
+	hback-porch = <44>;		\
+	hsync-len = <2>;		\
+	vback-porch = <21>;		\
+	vfront-porch = <11>;		\
+	vsync-len = <2>;		\
 	hsync-active = <0>;		\
 	vsync-active = <0>;		\
 	de-active = <1>;		\
@@ -293,11 +293,6 @@ lvds_wvga {				\
 / {
 	model = "F&S efusA9X";
 	compatible = "fus,imx6sx-efusa9x", "fsl,imx6sx";
-
- 	aliases {
- 		nand = &gpmi;
-		rpmsg = &rpmsg;
- 	};
 
 #ifdef CONFIG_EFUSA9X_I2C_A
 #if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LCD
@@ -680,12 +675,24 @@ lvds_wvga {				\
 		ethphy0: ethernet-phy@4 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <4>;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <2>;
+			rtl821x,led-act = <1>;
 		};
 
 #ifdef CONFIG_EFUSA9X_ETH1
 		ethphy1: ethernet-phy@5 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <5>;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <2>;
+			rtl821x,led-act = <1>;
 		};
 #endif
 	};
@@ -852,11 +859,8 @@ lvds_wvga {				\
 		interrupt-parent = <&gpio7>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpio = <&gpio3 21 GPIO_ACTIVE_LOW>;
-		/* using global touchscreen_parse_properties, instead of
-		 * specific parsing.
-		 */
-		touchscreen-inverted-x;
-		touchscreen-inverted-y;
+		x-rev;
+		y-rev;
 	};
 #endif
 
@@ -941,9 +945,9 @@ lvds_wvga {				\
 	status = "okay";
 
 #ifdef CONFIG_EFUSA9X_AUDIO
-	sgtl5000: sgtl5000@a {
+	sgtl5000: sgtl5000@0a {
 		compatible = "fsl,sgtl5000";
-		reg = <0xa>;
+		reg = <0x0a>;
 		mono2both;
 		clocks = <&clks IMX6SX_CLK_AUDIO>;
 		VDDA-supply = <&reg_sgtl5000_vdda>;
@@ -1197,7 +1201,7 @@ lvds_wvga {				\
 	pinctrl-0 = <&pinctrl_usbotg2>;
 //###	vbus-supply = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
-	power-active-high;
+	pwr-active-high;
 	disable-over-current;
 	status = "okay";
 };

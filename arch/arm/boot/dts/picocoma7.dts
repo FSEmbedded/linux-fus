@@ -538,7 +538,7 @@ lcd_wvga {				\
 		ethphy1: ethernet-phy@17 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <17>;
-		};
+	};
 #endif
 	};
 };
@@ -731,7 +731,7 @@ lcd_wvga {				\
 				MX6ULL_PAD_UART1_CTS_B__UART5_DCE_CTS   0x1b0b1
 #endif
 			>;
-		};
+};
 #endif
 
 #ifdef CONFIG_PICOCOMA7_UART_B
@@ -864,8 +864,8 @@ lcd_wvga {				\
 		pinctrl_enet1: enet1grp {
 			fsl,pins = <
 				/* MDIO */
-				MX6UL_PAD_GPIO1_IO07__ENET1_MDC				0x1b0b0
-				MX6UL_PAD_GPIO1_IO06__ENET1_MDIO			0x1b829
+				MX6UL_PAD_GPIO1_IO07__ENET1_MDC		0x1b0b0
+				MX6UL_PAD_GPIO1_IO06__ENET1_MDIO	0x1b829
 
 				/* FEC1 */
 				MX6UL_PAD_ENET1_RX_EN__ENET1_RX_EN			0x0b0e9
@@ -880,7 +880,7 @@ lcd_wvga {				\
 
 				/* phy reset */
 #ifndef CONFIG_PICOCOMA7_ULL
-				MX6UL_PAD_SNVS_TAMPER5__GPIO5_IO05 			0x0b0b0
+				MX6UL_PAD_SNVS_TAMPER5__GPIO5_IO05	0x0b0b0
 #endif
 			>;
 		};

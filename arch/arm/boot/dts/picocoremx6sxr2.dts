@@ -167,7 +167,7 @@ lcd_wvga {				\
  		emmc = &usdhc2;
 		rpmsg = &rpmsg;
 		gpc = &gpc;
-		gpu3d = &gpu3d;
+		gpu3d = &gpu; // This entry needs to be changed to gpu3d for kernel 5.4.70
  	};
 
 #if defined(CONFIG_PICOCOREMX6SX_I2C_B) && (CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD)
@@ -487,12 +487,24 @@ lcd_wvga {				\
 		ethphy0: ethernet-phy@4 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <4>;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <1>;
+			rtl821x,led-act = <1>;
 		};
 
 #ifdef CONFIG_PICOCOREMX6SX_ETH1
 		ethphy1: ethernet-phy@5 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <5>;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <1>;
+			rtl821x,led-act = <1>;
 		};
 #endif
 	};
@@ -716,9 +728,9 @@ lcd_wvga {				\
 	status = "okay";
 
 #ifdef CONFIG_PICOCOREMX6SX_AUDIO
-	sgtl5000: sgtl5000@a {
+	sgtl5000: sgtl5000@0a {
 		compatible = "fsl,sgtl5000";
-		reg = <0xa>;
+		reg = <0x0a>;
 		mono2both;
 		clocks = <&clks IMX6SX_CLK_AUDIO>;
 		VDDA-supply = <&reg_sgtl5000_vdda>;
@@ -730,7 +742,7 @@ lcd_wvga {				\
 	rtc85063@51 {
 		compatible = "nxp,pcf85063";
 		reg = <0x51>;
-		quartz-load-femtofarads = <12500>;
+		cap_12_5pf;
 	};
 };
 #endif /* CONFIG_PICOCOREMX6SX_I2C_C */
@@ -837,7 +849,7 @@ lcd_wvga {				\
 	pinctrl-0 = <&pinctrl_usbotg2>;
 //	vbus-supply = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
-	power-active-high;
+	pwr-active-high;
 	disable-over-current;
 	status = "okay";
 };
