@@ -61,19 +61,19 @@
 		compatible = "pwm-leds";
 		red {
 			label = "rgb-r";
-			pwms = <&pwm6 0 7812500>;
+			pwms = <&pwm6 0 7812500 0>;
 			max-brightness = <255>;
 			active-low;
 		};
 		green {
 			label = "rgb-g";
-			pwms = <&pwm7 0 7812500>;
+			pwms = <&pwm7 0 7812500 0>;
 			max-brightness = <255>;
 			active-low;
 		};
 		blue {
 			label = "rgb-b";
-			pwms = <&pwm8 0 7812500>;
+			pwms = <&pwm8 0 7812500 0>;
 			max-brightness = <255>;
 			active-low;
 		};

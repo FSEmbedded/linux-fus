@@ -50,14 +50,14 @@
 		compatible = "pwm-leds";
 		yellow {
 			label = "yellow";
-			pwms = <&pwm6 0 7812500>;
+			pwms = <&pwm6 0 7812500 0>;
 			max-brightness = <255>;
 			active-low;
 			gamma2;
 		};
 		green {
 			label = "green";
-			pwms = <&pwm7 0 7812500>;
+			pwms = <&pwm7 0 7812500 0>;
 			max-brightness = <255>;
 			active-low;
 			gamma2;

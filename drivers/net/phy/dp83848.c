@@ -142,7 +142,6 @@ static irqreturn_t dp83848_handle_interrupt(struct phy_device *phydev)
 static int dp83848_config_init(struct phy_device *phydev)
 {
 	u16 reg;
-	int val;
 
 	struct dp83848_priv *priv = phydev->priv;
 
