@@ -12,6 +12,8 @@
 #include <linux/phy.h>
 #include <linux/module.h>
 #include <linux/delay.h>
+#include <linux/phylink.h>
+#include <linux/sfp.h>
 
 #define RTL821x_PHYSR				0x11
 #define RTL821x_PHYSR_DUPLEX			BIT(13)
@@ -30,6 +32,7 @@
 #define RTL8211F_PHYCR1				0x18
 #define RTL8211F_PHYCR2				0x19
 #define RTL8211F_INSR				0x1d
+#define RTL8211FSI_FIBER_BMCR_DEFAULT 0x1140
 
 #define RTL8211F_TX_DELAY			BIT(8)
 #define RTL8211F_RX_DELAY			BIT(3)
@@ -71,6 +74,7 @@
 
 #define RTL_GENERIC_PHYID			0x001cc800
 #define RTL_8211FVD_PHYID			0x001cc878
+#define RTL_8211FSI_PHYID			0x001cc916
 
 MODULE_DESCRIPTION("Realtek PHY driver");
 MODULE_AUTHOR("Johnson Leung");
@@ -80,6 +84,8 @@ struct rtl821x_priv {
 	u16 phycr1;
 	u16 phycr2;
 	bool has_phycr2;
+	bool is_fiber;
+	int fiber_speed;
 };
 
 static int rtl821x_read_page(struct phy_device *phydev)
@@ -91,6 +97,50 @@ static int rtl821x_write_page(struct phy_device *phydev, int page)
 {
 	return __phy_write(phydev, RTL821x_PAGE_SELECT, page);
 }
+
+static int rtl8211fsi_module_insert(void *upstream, const struct sfp_eeprom_id *id){
+	struct phy_device *phydev = upstream;
+	struct rtl821x_priv *priv = phydev->priv;
+	phy_interface_t interface;
+	DECLARE_PHY_INTERFACE_MASK(interfaces);
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(supported) = { 0, };
+	u16 bmcr;
+
+	bmcr = phy_read(phydev, MII_BMCR);
+	bmcr &= !BMCR_PDOWN;
+
+	sfp_parse_support(phydev->sfp_bus, id, supported, interfaces);
+	interface = sfp_select_interface(phydev->sfp_bus, supported);
+	switch(interface) {
+	case PHY_INTERFACE_MODE_1000BASEX:
+		priv->fiber_speed = SPEED_1000;
+		phydev->port = PORT_FIBRE;
+		break;
+	default:
+		dev_err(&phydev->mdio.dev, "incompatible sfp module inserted\n");
+		return -EINVAL;
+	}
+
+	phy_write(phydev, MII_BMCR, bmcr);
+	return 0;
+}
+
+static void rtl8211fsi_module_remove(void *upstream)
+{
+	struct phy_device *phydev = upstream;
+	u16 bmcr;
+
+	bmcr = phy_read(phydev, MII_BMCR);
+	bmcr |= BMCR_PDOWN;
+	phy_write(phydev, MII_BMCR, bmcr);
+}
+
+static const struct sfp_upstream_ops rtl8211fsi_sfp_ops = {
+	.attach = phy_sfp_attach,
+	.detach = phy_sfp_detach,
+	.module_insert = rtl8211fsi_module_insert,
+	.module_remove = rtl8211fsi_module_remove,
+};
 
 static int rtl821x_probe(struct phy_device *phydev)
 {
@@ -125,6 +175,26 @@ static int rtl821x_probe(struct phy_device *phydev)
 	phydev->priv = priv;
 
 	return 0;
+}
+
+static int rtl8211fsi_probe(struct phy_device *phydev)
+{
+	struct rtl821x_priv *priv;
+	int err;
+
+	err = rtl821x_probe(phydev);
+	if(err)
+		return err;
+
+	//check if phy is in fiber mode
+	if(phy_read_paged(phydev, MII_BMCR, 0x0) == RTL8211FSI_FIBER_BMCR_DEFAULT)
+	{
+		priv = phydev->priv;
+		priv->is_fiber = true;
+		err = phy_sfp_probe(phydev, &rtl8211fsi_sfp_ops);
+	}
+
+	return err;
 }
 
 static int rtl8201_ack_interrupt(struct phy_device *phydev)
@@ -546,6 +616,21 @@ static int rtlgen_get_speed(struct phy_device *phydev)
 	return 0;
 }
 
+static int rtl8211fsi_get_speed(struct phy_device *phydev)
+{
+	struct rtl821x_priv *priv = phydev->priv;
+
+	if (!phydev->link)
+		return 0;
+
+	if(priv->is_fiber){
+		phydev->speed = priv->fiber_speed;
+		return 0;
+	}
+
+	return rtlgen_get_speed(phydev);
+}
+
 static int rtlgen_read_status(struct phy_device *phydev)
 {
 	int ret;
@@ -555,6 +640,17 @@ static int rtlgen_read_status(struct phy_device *phydev)
 		return ret;
 
 	return rtlgen_get_speed(phydev);
+}
+
+static int rtl8211fsi_read_status(struct phy_device *phydev)
+{
+	int ret;
+
+	ret = genphy_read_status(phydev);
+	if (ret < 0)
+		return ret;
+
+	return rtl8211fsi_get_speed(phydev);
 }
 
 static int rtlgen_read_mmd(struct phy_device *phydev, int devnum, u16 regnum)
@@ -920,11 +1016,11 @@ static struct phy_driver realtek_drvs[] = {
 		.read_page	= rtl821x_read_page,
 		.write_page	= rtl821x_write_page,
 	}, {
-		PHY_ID_MATCH_EXACT(0x001cc916),
-		.name		= "RTL8211F Gigabit Ethernet",
-		.probe		= rtl821x_probe,
+		PHY_ID_MATCH_EXACT(RTL_8211FSI_PHYID),
+		.name		= "RTL8211FSI Gigabit Ethernet",
+		.probe		= rtl8211fsi_probe,
 		.config_init	= &rtl8211f_config_init,
-		.read_status	= rtlgen_read_status,
+		.read_status	= rtl8211fsi_read_status,
 		.config_intr	= &rtl8211f_config_intr,
 		.handle_interrupt = rtl8211f_handle_interrupt,
 		.suspend	= genphy_suspend,
