@@ -1,2 +1,0 @@
-#include "fsimx8ulp.dts"
-#include "displays/imx8ulp-epdc.dtsi"

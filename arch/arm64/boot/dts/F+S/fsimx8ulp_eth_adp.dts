@@ -1,2 +1,0 @@
-#include "fsimx8ulp.dts"
-#include "ethernet_adp/imx8ulp-adp-sc8ulp-eth.dtsi"
