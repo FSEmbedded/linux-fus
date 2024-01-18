@@ -107,7 +107,7 @@ static int rtl8211fsi_module_insert(void *upstream, const struct sfp_eeprom_id *
 	u16 bmcr;
 
 	bmcr = phy_read(phydev, MII_BMCR);
-	bmcr &= !BMCR_PDOWN;
+	bmcr &= ~BMCR_PDOWN;
 
 	sfp_parse_support(phydev->sfp_bus, id, supported, interfaces);
 	interface = sfp_select_interface(phydev->sfp_bus, supported);
