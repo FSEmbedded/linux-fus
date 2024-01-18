@@ -103,25 +103,25 @@ static int rtl8211fsi_module_insert(void *upstream, const struct sfp_eeprom_id *
 	struct rtl821x_priv *priv = phydev->priv;
 	phy_interface_t interface;
 	DECLARE_PHY_INTERFACE_MASK(interfaces);
-	__ETHTOOL_DECLARE_LINK_MODE_MASK(supported) = { 0, };
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(sfp_supported) = { 0, };
 	u16 bmcr;
 
-	bmcr = phy_read(phydev, MII_BMCR);
+	bmcr = phy_read_paged(phydev, 0x0, MII_BMCR);
 	bmcr &= ~BMCR_PDOWN;
 
-	sfp_parse_support(phydev->sfp_bus, id, supported, interfaces);
-	interface = sfp_select_interface(phydev->sfp_bus, supported);
+	sfp_parse_support(phydev->sfp_bus, id, sfp_supported, interfaces);
+	phydev->port = sfp_parse_port(phydev->sfp_bus, id, sfp_supported);
+	interface = sfp_select_interface(phydev->sfp_bus, sfp_supported);
 	switch(interface) {
 	case PHY_INTERFACE_MODE_1000BASEX:
 		priv->fiber_speed = SPEED_1000;
-		phydev->port = PORT_FIBRE;
 		break;
 	default:
 		dev_err(&phydev->mdio.dev, "incompatible sfp module inserted\n");
 		return -EINVAL;
 	}
 
-	phy_write(phydev, MII_BMCR, bmcr);
+	phy_write_paged(phydev, 0x0, MII_BMCR, bmcr);
 	return 0;
 }
 
@@ -130,9 +130,9 @@ static void rtl8211fsi_module_remove(void *upstream)
 	struct phy_device *phydev = upstream;
 	u16 bmcr;
 
-	bmcr = phy_read(phydev, MII_BMCR);
+	bmcr = phy_read_paged(phydev, 0x0, MII_BMCR);
 	bmcr |= BMCR_PDOWN;
-	phy_write(phydev, MII_BMCR, bmcr);
+	phy_write_paged(phydev, 0x0, MII_BMCR, bmcr);
 }
 
 static const struct sfp_upstream_ops rtl8211fsi_sfp_ops = {
@@ -187,14 +187,17 @@ static int rtl8211fsi_probe(struct phy_device *phydev)
 		return err;
 
 	//check if phy is in fiber mode
-	if(phy_read_paged(phydev, MII_BMCR, 0x0) == RTL8211FSI_FIBER_BMCR_DEFAULT)
+	if(phy_read_paged(phydev, 0x0, MII_BMCR) == RTL8211FSI_FIBER_BMCR_DEFAULT)
 	{
+		dev_info(&phydev->mdio.dev, "configured for Fiber-Mode\n");
 		priv = phydev->priv;
 		priv->is_fiber = true;
-		err = phy_sfp_probe(phydev, &rtl8211fsi_sfp_ops);
+		return phy_sfp_probe(phydev, &rtl8211fsi_sfp_ops);
 	}
 
-	return err;
+	dev_info(&phydev->mdio.dev, "configured for UTP-Mode\n");
+
+	return 0;
 }
 
 static int rtl8201_ack_interrupt(struct phy_device *phydev)
@@ -489,6 +492,17 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 	return genphy_soft_reset(phydev);
 }
 
+static int rtl8211fsi_config_aneg(struct phy_device *phydev)
+{
+	struct rtl821x_priv *priv = phydev->priv;
+
+	if(priv->is_fiber){
+		return genphy_c37_config_aneg(phydev);
+	}
+
+	return genphy_config_aneg(phydev);
+}
+
 static int rtl821x_resume(struct phy_device *phydev)
 {
 	int ret;
@@ -616,21 +630,6 @@ static int rtlgen_get_speed(struct phy_device *phydev)
 	return 0;
 }
 
-static int rtl8211fsi_get_speed(struct phy_device *phydev)
-{
-	struct rtl821x_priv *priv = phydev->priv;
-
-	if (!phydev->link)
-		return 0;
-
-	if(priv->is_fiber){
-		phydev->speed = priv->fiber_speed;
-		return 0;
-	}
-
-	return rtlgen_get_speed(phydev);
-}
-
 static int rtlgen_read_status(struct phy_device *phydev)
 {
 	int ret;
@@ -644,13 +643,19 @@ static int rtlgen_read_status(struct phy_device *phydev)
 
 static int rtl8211fsi_read_status(struct phy_device *phydev)
 {
+	struct rtl821x_priv *priv = phydev->priv;
 	int ret;
 
-	ret = genphy_read_status(phydev);
-	if (ret < 0)
-		return ret;
+	if(priv->is_fiber){
+		ret = genphy_c37_read_status(phydev);
+		if (ret < 0)
+			return ret;
 
-	return rtl8211fsi_get_speed(phydev);
+		phydev->speed = priv->fiber_speed;
+		return 0;
+	}
+
+	return rtlgen_read_status(phydev);
 }
 
 static int rtlgen_read_mmd(struct phy_device *phydev, int devnum, u16 regnum)
@@ -1020,6 +1025,7 @@ static struct phy_driver realtek_drvs[] = {
 		.name		= "RTL8211FSI Gigabit Ethernet",
 		.probe		= rtl8211fsi_probe,
 		.config_init	= &rtl8211f_config_init,
+		.config_aneg	= rtl8211fsi_config_aneg,
 		.read_status	= rtl8211fsi_read_status,
 		.config_intr	= &rtl8211f_config_intr,
 		.handle_interrupt = rtl8211f_handle_interrupt,
