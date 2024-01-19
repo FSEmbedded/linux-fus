@@ -95,6 +95,7 @@ struct pwm_imx27_chip {
 	 */
 	unsigned int duty_cycle;
 	spinlock_t lock;
+	unsigned int keep_power;
 };
 
 #define to_pwm_imx27_chip(chip)	container_of(chip, struct pwm_imx27_chip, chip)
@@ -349,12 +350,12 @@ static int pwm_imx27_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 		cr |= FIELD_PREP(MX3_PWMCR_POUTC,
 				MX3_PWMCR_POUTC_INVERTED);
 
-	if (state->enabled)
+	if (state->enabled || imx->keep_power)
 		cr |= MX3_PWMCR_EN;
 
 	writel(cr, imx->mmio_base + MX3_PWMCR);
 
-	if (!state->enabled)
+	if (!state->enabled && !imx->keep_power)
 		pwm_imx27_clk_disable_unprepare(imx);
 
 	return 0;
@@ -377,6 +378,7 @@ static int pwm_imx27_probe(struct platform_device *pdev)
 	struct pwm_imx27_chip *imx;
 	int ret;
 	u32 pwmcr;
+	struct device_node *np = pdev->dev.of_node;
 
 	imx = devm_kzalloc(&pdev->dev, sizeof(*imx), GFP_KERNEL);
 	if (imx == NULL)
@@ -417,6 +419,11 @@ static int pwm_imx27_probe(struct platform_device *pdev)
 	pwmcr = readl(imx->mmio_base + MX3_PWMCR);
 	if (!(pwmcr & MX3_PWMCR_EN))
 		pwm_imx27_clk_disable_unprepare(imx);
+
+	if (of_property_read_bool(np, "keep-power"))
+		imx->keep_power = 1;
+	else
+		imx->keep_power = 0;
 
 	return devm_pwmchip_add(&pdev->dev, &imx->chip);
 }
