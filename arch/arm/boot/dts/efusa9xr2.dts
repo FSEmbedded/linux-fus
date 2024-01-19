@@ -289,10 +289,16 @@ lvds_wvga {				\
 
 #include "imx6sx.dtsi"
 #include <dt-bindings/pwm/pwm.h>
+#include <fsversion.h>
 
 / {
-	model = "F&S efusA9X";
+	model = "F&S efusA9Xr2";
 	compatible = "fus,imx6sx-efusa9x", "fsl,imx6sx";
+
+ 	aliases {
+ 		nand = &gpmi;
+		rpmsg = &rpmsg;
+ 	};
 
 #ifdef CONFIG_EFUSA9X_I2C_A
 #if CONFIG_EFUSA9X_LCDIF0 == DISPLAY_LCD
@@ -535,8 +541,9 @@ lvds_wvga {				\
 	/* F&S board information */
 	bdinfo {
 		compatible = "bdinfo";
-		board_name = "efusa9x";
+		board_name = "efusa9xr2";
 		ecc_strength = "8";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 #ifdef SUPPORT_M4
@@ -859,8 +866,11 @@ lvds_wvga {				\
 		interrupt-parent = <&gpio7>;
 		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpio = <&gpio3 21 GPIO_ACTIVE_LOW>;
-		x-rev;
-		y-rev;
+		/* using global touchscreen_parse_properties, instead of
+		 * specific parsing.
+		 */
+		touchscreen-inverted-x;
+		touchscreen-inverted-y;
 	};
 #endif
 
@@ -945,9 +955,9 @@ lvds_wvga {				\
 	status = "okay";
 
 #ifdef CONFIG_EFUSA9X_AUDIO
-	sgtl5000: sgtl5000@0a {
+	sgtl5000: sgtl5000@a {
 		compatible = "fsl,sgtl5000";
-		reg = <0x0a>;
+		reg = <0xa>;
 		mono2both;
 		clocks = <&clks IMX6SX_CLK_AUDIO>;
 		VDDA-supply = <&reg_sgtl5000_vdda>;
@@ -1201,7 +1211,7 @@ lvds_wvga {				\
 	pinctrl-0 = <&pinctrl_usbotg2>;
 //###	vbus-supply = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
-	pwr-active-high;
+	power-active-high;
 	disable-over-current;
 	status = "okay";
 };

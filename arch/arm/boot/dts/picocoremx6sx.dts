@@ -157,6 +157,7 @@ lcd_wvga {				\
 
 #include "imx6sx.dtsi"
 #include <dt-bindings/pwm/pwm.h>
+#include <fsversion.h>
 
 / {
 	model = "F&S picocoreMX6SX";
@@ -343,6 +344,7 @@ lcd_wvga {				\
 		compatible = "bdinfo";
 		board_name = "picocoremx6sx";
 		ecc_strength = "8";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 #ifdef SUPPORT_M4

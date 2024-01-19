@@ -59,8 +59,8 @@ lcd_wvga {				\
 /* TOUCH */
 #define CONFIG_PICOCOMA9X_4WTOUCH_ONBOARD /* TSC2004 or SX8655 res. touch */
 
-/* CMA: Set 160 MB for Continuous Memory Allocator */
-#define CONFIG_PICOCOMA9X_CMA_SIZE 0x0A000000
+/* CMA: Set 200 MB for Continuous Memory Allocator */
+#define CONFIG_PICOCOMA9X_CMA_SIZE 0x0C000000
 
 /* ETH_A */
 #define CONFIG_PICOCOMA9X_ETH_A
@@ -187,6 +187,7 @@ lcd_wvga {				\
 
 #include "imx6sx.dtsi"
 #include <dt-bindings/pwm/pwm.h>
+#include <fsversion.h>
 
 / {
 	model = "F&S PicoCOMA9X";
@@ -324,6 +325,7 @@ lcd_wvga {				\
 		compatible = "bdinfo";
 		board_name = "picocoma9x";
 		ecc_strength = "8";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 #ifdef SUPPORT_M4
@@ -973,8 +975,10 @@ lcd_wvga {				\
 			fsl,pins = <
 				MX6SX_PAD_SD3_CMD__UART4_TX		0x1b0b1
 				MX6SX_PAD_SD3_DATA3__UART4_RX		0x1b0b1
+#ifdef CONFIG_PICOCOMA9X_UART_A_RTSCTS
 				MX6SX_PAD_SD3_CLK__UART4_RTS_B		0x1b0b1
 				MX6SX_PAD_SD3_DATA2__UART4_CTS_B	0x1b0b1
+#endif
 			>;
 		};
 #endif

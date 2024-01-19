@@ -157,9 +157,10 @@ lcd_wvga {				\
 
 #include "imx6sx.dtsi"
 #include <dt-bindings/pwm/pwm.h>
+#include <fsversion.h>
 
 / {
-	model = "F&S picocoreMX6SX";
+	model = "F&S picocoreMX6SXr2";
 	compatible = "fus,imx6sx-picocoremx6sx", "fsl,imx6sx";
 
  	aliases {
@@ -167,7 +168,7 @@ lcd_wvga {				\
  		emmc = &usdhc2;
 		rpmsg = &rpmsg;
 		gpc = &gpc;
-		gpu3d = &gpu; // This entry needs to be changed to gpu3d for kernel 5.4.70
+		gpu3d = &gpu3d;
  	};
 
 #if defined(CONFIG_PICOCOREMX6SX_I2C_B) && (CONFIG_PICOCOREMX6SX_LCDIF0 == DISPLAY_LCD)
@@ -341,8 +342,9 @@ lcd_wvga {				\
 	/* F&S board information */
 	bdinfo {
 		compatible = "bdinfo";
-		board_name = "picocoremx6sx";
+		board_name = "picocoremx6sxr2";
 		ecc_strength = "8";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 #ifdef SUPPORT_M4
@@ -728,9 +730,9 @@ lcd_wvga {				\
 	status = "okay";
 
 #ifdef CONFIG_PICOCOREMX6SX_AUDIO
-	sgtl5000: sgtl5000@0a {
+	sgtl5000: sgtl5000@a {
 		compatible = "fsl,sgtl5000";
-		reg = <0x0a>;
+		reg = <0xa>;
 		mono2both;
 		clocks = <&clks IMX6SX_CLK_AUDIO>;
 		VDDA-supply = <&reg_sgtl5000_vdda>;
@@ -742,7 +744,7 @@ lcd_wvga {				\
 	rtc85063@51 {
 		compatible = "nxp,pcf85063";
 		reg = <0x51>;
-		cap_12_5pf;
+		quartz-load-femtofarads = <12500>;
 	};
 };
 #endif /* CONFIG_PICOCOREMX6SX_I2C_C */
@@ -849,7 +851,7 @@ lcd_wvga {				\
 	pinctrl-0 = <&pinctrl_usbotg2>;
 //	vbus-supply = <&reg_usb_otg2_vbus>;
 	dr_mode = "host";
-	pwr-active-high;
+	power-active-high;
 	disable-over-current;
 	status = "okay";
 };

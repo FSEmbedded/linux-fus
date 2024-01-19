@@ -75,16 +75,16 @@ lcd_wvga {				\
 #define CONFIG_EFUSA9X_LVDS_BUS_WIDTH	24
 #define CONFIG_EFUSA9X_LVDS_MAPPING	"spwg"
 #define CONFIG_EFUSA9X_LVDS_TIMING \
-wvga {					\
-	clock-frequency = <33300000>;	\
+lvds_wvga {					\
+	clock-frequency = <33500000>;	\
 	hactive = <800>;		\
 	vactive = <480>;		\
-	hfront-porch = <210>;		\
-	hback-porch = <45>;		\
-	hsync-len = <1>;		\
-	vback-porch = <22>;		\
-	vfront-porch = <22>;		\
-	vsync-len = <1>;		\
+	hfront-porch = <4>;		\
+	hback-porch = <44>;		\
+	hsync-len = <2>;		\
+	vback-porch = <21>;		\
+	vfront-porch = <11>;		\
+	vsync-len = <2>;		\
 	hsync-active = <0>;		\
 	vsync-active = <0>;		\
 	de-active = <1>;		\
@@ -289,6 +289,7 @@ lvds_wvga {				\
 
 #include "imx6sx.dtsi"
 #include <dt-bindings/pwm/pwm.h>
+#include <fsversion.h>
 
 / {
 	model = "F&S efusA9X";
@@ -542,6 +543,7 @@ lvds_wvga {				\
 		compatible = "bdinfo";
 		board_name = "efusa9x";
 		ecc_strength = "8";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 #ifdef SUPPORT_M4
