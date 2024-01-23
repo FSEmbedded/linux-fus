@@ -226,35 +226,33 @@ static int qoriq_tmu_register_tmu_zone(struct device *dev,
 		if (devm_thermal_add_hwmon_sysfs(tzd))
 			dev_warn(dev,
 				 "Failed to add hwmon sysfs attributes\n");
-		/* first thermal zone takes care of system-wide device cooling */
-		if (id == 0) {
-			sensor->cdev = devfreq_cooling_register();
-			if (IS_ERR(sensor->cdev)) {
-				ret = PTR_ERR(sensor->cdev);
-				pr_err("failed to register devfreq cooling device: %d\n",
-					ret);
-				return ret;
-			}
 
-			ret = thermal_zone_bind_cooling_device(sensor->tzd,
-				TMU_TRIP_PASSIVE,
-				sensor->cdev,
-				THERMAL_NO_LIMIT,
-				THERMAL_NO_LIMIT,
-				THERMAL_WEIGHT_DEFAULT);
-			if (ret) {
-				pr_err("binding zone %s with cdev %s failed:%d\n",
-					sensor->tzd->type,
-					sensor->cdev->type,
-					ret);
-				devfreq_cooling_unregister(sensor->cdev);
-				return ret;
-			}
-
-			trip = of_thermal_get_trip_points(sensor->tzd);
-			sensor->temp_passive = trip[0].temperature;
-			sensor->temp_critical = trip[1].temperature;
+		sensor->cdev = devfreq_cooling_register();
+		if (IS_ERR(sensor->cdev)) {
+			ret = PTR_ERR(sensor->cdev);
+			pr_err("failed to register devfreq cooling device: %d\n",
+				ret);
+			return ret;
 		}
+
+		ret = thermal_zone_bind_cooling_device(sensor->tzd,
+			TMU_TRIP_PASSIVE,
+			sensor->cdev,
+			THERMAL_NO_LIMIT,
+			THERMAL_NO_LIMIT,
+			THERMAL_WEIGHT_DEFAULT);
+		if (ret) {
+			pr_err("binding zone %s with cdev %s failed:%d\n",
+				sensor->tzd->type,
+				sensor->cdev->type,
+				ret);
+			devfreq_cooling_unregister(sensor->cdev);
+			return ret;
+		}
+
+		trip = of_thermal_get_trip_points(sensor->tzd);
+		sensor->temp_passive = trip[0].temperature;
+		sensor->temp_critical = trip[1].temperature;
 	}
 
 	if (sites) {
