@@ -560,8 +560,12 @@ static int auxiliary_core_probe_dts(struct platform_device *pdev)
 	dt_node = of_find_node_by_path("/reserved-memory");
 	dt_node = of_get_child_by_name (dt_node,"by-uboot");
 	if (!dt_node){
-		dev_err(&pdev->dev, "could not find by-uboot node!\n");
-		return -1;
+		dev_warn(&pdev->dev, "Could not find reserved memory node.\n");
+		dev_warn(&pdev->dev, "Cannot load RPMSG or DRAM examples!\n");
+		ac.allowed_dram.start=0;
+		ac.allowed_dram.end=0;
+		ac.allowed_dram.size=0;
+		return 0;
 	}
 
 	of_property_read_u32_index(dt_node, "reg",0, &dt_value);
