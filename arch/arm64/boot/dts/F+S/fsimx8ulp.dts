@@ -18,7 +18,7 @@
 		stdout-path = &lpuart5;
 	};
 
-	memory@40000000 {
+	memory@80000000 {
 		device_type = "memory";
 		reg = <0x0 0x80000000 0 0x80000000>;
 	};
@@ -31,7 +31,7 @@
 		linux,cma {
 			compatible = "shared-dma-pool";
 			reusable;
-			size = <0 0x28000000>;
+			size = <0 0x10000000>;
 			linux,cma-default;
 		};
 
@@ -59,6 +59,12 @@
 		dsp_vdev0buffer: vdev0buffer@8ff00000 {
 			compatible = "shared-dma-pool";
 			reg = <0 0x8ff00000 0 0x100000>;
+			no-map;
+		};
+
+		ele_reserved: ele-reserved@90000000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x90000000 0 0x100000>;
 			no-map;
 		};
 
@@ -220,6 +226,10 @@
 	non-removable;
 	bus-width = <8>;
 	status = "okay";
+};
+
+&ele_mu {
+	memory-region = <&ele_reserved>;
 };
 
 &lpi2c7 {
