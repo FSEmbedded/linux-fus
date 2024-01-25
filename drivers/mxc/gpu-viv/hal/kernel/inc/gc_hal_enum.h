@@ -2,7 +2,7 @@
 *
 *    The MIT License (MIT)
 *
-*    Copyright (c) 2014 - 2022 Vivante Corporation
+*    Copyright (c) 2014 - 2023 Vivante Corporation
 *
 *    Permission is hereby granted, free of charge, to any person obtaining a
 *    copy of this software and associated documentation files (the "Software"),
@@ -26,7 +26,7 @@
 *
 *    The GPL License (GPL)
 *
-*    Copyright (C) 2014 - 2022 Vivante Corporation
+*    Copyright (C) 2014 - 2023 Vivante Corporation
 *
 *    This program is free software; you can redistribute it and/or
 *    modify it under the terms of the GNU General Public License
@@ -257,6 +257,7 @@ typedef enum _gceSURF_YUV_COLOR_SPACE {
 } gceSURF_YUV_COLOR_SPACE;
 
 typedef enum _gceSURF_YUV_SAMPLE_RANGE {
+    gcvSURF_YUV_UNKNOWN_RANGE,
     gcvSURF_YUV_FULL_RANGE,
     gcvSURF_YUV_NARROW_RANGE,
 } gceSURF_YUV_SAMPLE_RANGE;
@@ -866,8 +867,10 @@ typedef enum _gceMACHINECODE {
     gcvMACHINECODE_GLB25_RELEASE_0,
     gcvMACHINECODE_GLB25_RELEASE_1,
 
-    /* keep it as the last enum */
-    gcvMACHINECODE_COUNT
+    gcvMACHINECODE_COUNT,
+
+    /* flag as dynamic allocation for shader partial replace */
+    gcvSHADER_SRC_PARTIAL_REPLACE,
 } gceMACHINECODE;
 
 typedef enum _gceUNIFORMCVT {
@@ -1260,6 +1263,7 @@ typedef enum _gcePLS_VALUE {
     gcePLS_VALUE_EGL_DISPLAY_INFO,
     gcePLS_VALUE_EGL_CONFIG_FORMAT_INFO,
     gcePLS_VALUE_EGL_DESTRUCTOR_INFO,
+    gcePLS_VALUE_OPENCL_DESTRUCTOR_INFO,
 } gcePLS_VALUE;
 
 #if gcdENABLE_3D
@@ -1328,6 +1332,8 @@ typedef enum _gceAPI {
     gcvAPI_OPENVG,
     gcvAPI_OPENCL,
     gcvAPI_OPENVK,
+    gcvAPI_EGL,
+    gcvAPI_COUNT,
 } gceAPI;
 
 typedef enum _gceWHERE {
@@ -2055,6 +2061,7 @@ typedef struct _gcsSTATE_DELTA        *gcsSTATE_DELTA_PTR;
 typedef struct _gcsQUEUE              *gcsQUEUE_PTR;
 typedef struct _gcoQUEUE              *gcoQUEUE;
 typedef struct _gcsHAL_INTERFACE      *gcsHAL_INTERFACE_PTR;
+typedef struct _gcsEVENT_INTERFACE    *gcsEVENT_INTERFACE_PTR;
 #if VIVANTE_PROFILER
 typedef struct _gcsHAL_PROFILER_INTERFACE   *gcsHAL_PROFILER_INTERFACE_PTR;
 #endif

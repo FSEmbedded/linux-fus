@@ -172,12 +172,20 @@ static const struct fsl_rpmsg_soc_data imx8mp_data = {
 		   SNDRV_PCM_FMTBIT_S32_LE,
 };
 
+static const struct fsl_rpmsg_soc_data imx93_data = {
+	.rates = SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_48000 |
+		 SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_192000,
+	.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE |
+		   SNDRV_PCM_FMTBIT_S32_LE,
+};
+
 static const struct of_device_id fsl_rpmsg_ids[] = {
 	{ .compatible = "fsl,imx7ulp-rpmsg-audio", .data = &imx7ulp_data},
 	{ .compatible = "fsl,imx8mm-rpmsg-audio", .data = &imx8mm_data},
 	{ .compatible = "fsl,imx8mn-rpmsg-audio", .data = &imx8mn_data},
 	{ .compatible = "fsl,imx8mp-rpmsg-audio", .data = &imx8mp_data},
 	{ .compatible = "fsl,imx8ulp-rpmsg-audio", .data = &imx7ulp_data},
+	{ .compatible = "fsl,imx93-rpmsg-audio", .data= &imx93_data},
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, fsl_rpmsg_ids);
@@ -187,7 +195,6 @@ static int fsl_rpmsg_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct snd_soc_dai_driver *dai_drv;
 	struct fsl_rpmsg *rpmsg;
-	const char *model_string;
 	int ret;
 
 	dai_drv = devm_kzalloc(&pdev->dev, sizeof(struct snd_soc_dai_driver), GFP_KERNEL);
@@ -217,10 +224,6 @@ static int fsl_rpmsg_probe(struct platform_device *pdev)
 			if (of_device_is_compatible(np, "fsl,imx8mm-rpmsg-audio"))
 				dai_drv->capture.formats = SNDRV_PCM_FMTBIT_S16_LE;
 		}
-		/* constrain rates of wm8524 codec */
-		of_property_read_string(np, "model", &model_string);
-		if (!strcmp("wm8524-audio", model_string))
-			dai_drv->playback.rates = SNDRV_PCM_RATE_8000_192000;
 	}
 	if (of_property_read_bool(np, "fsl,enable-lpa")) {
 		rpmsg->enable_lpa = 1;

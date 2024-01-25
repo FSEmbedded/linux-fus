@@ -89,7 +89,7 @@ static const struct mxc_jpeg_fmt mxc_formats[] = {
 	},
 	{
 		.name		= "BGR 12bit", /*12-bit BGR packed format*/
-		.fourcc		= V4L2_PIX_FMT_B312,
+		.fourcc		= V4L2_PIX_FMT_BGR48_12,
 		.subsampling	= V4L2_JPEG_CHROMA_SUBSAMPLING_444,
 		.nc		= 3,
 		.depth		= 36,
@@ -117,7 +117,7 @@ static const struct mxc_jpeg_fmt mxc_formats[] = {
 	},
 	{
 		.name		= "ABGR 12bit", /* 12-bit ABGR packed format */
-		.fourcc		= V4L2_PIX_FMT_B412,
+		.fourcc		= V4L2_PIX_FMT_ABGR64_12,
 		.subsampling	= V4L2_JPEG_CHROMA_SUBSAMPLING_444,
 		.nc		= 4,
 		.depth		= 48,
@@ -222,7 +222,7 @@ static const struct mxc_jpeg_fmt mxc_formats[] = {
 	},
 	{
 		.name		= "YUV444 12bit", /* YUVYUV */
-		.fourcc		= V4L2_PIX_FMT_Y312,
+		.fourcc		= V4L2_PIX_FMT_YUV48_12,
 		.subsampling	= V4L2_JPEG_CHROMA_SUBSAMPLING_444,
 		.nc		= 3,
 		.depth		= 36,
@@ -675,13 +675,13 @@ static enum mxc_jpeg_image_format mxc_jpeg_fourcc_to_imgfmt(u32 fourcc)
 	case V4L2_PIX_FMT_P012M:
 		return MXC_JPEG_YUV420;
 	case V4L2_PIX_FMT_YUV24:
-	case V4L2_PIX_FMT_Y312:
+	case V4L2_PIX_FMT_YUV48_12:
 		return MXC_JPEG_YUV444;
 	case V4L2_PIX_FMT_BGR24:
-	case V4L2_PIX_FMT_B312:
+	case V4L2_PIX_FMT_BGR48_12:
 		return MXC_JPEG_BGR;
 	case V4L2_PIX_FMT_ABGR32:
-	case V4L2_PIX_FMT_B412:
+	case V4L2_PIX_FMT_ABGR64_12:
 		return MXC_JPEG_ABGR;
 	default:
 		return MXC_JPEG_INVALID;
@@ -1032,14 +1032,14 @@ static int mxc_jpeg_fixup_sof(struct mxc_jpeg_sof *sof,
 		sof->comp[0].h = 0x2;
 		break;
 	case V4L2_PIX_FMT_YUV24:
-	case V4L2_PIX_FMT_Y312:
+	case V4L2_PIX_FMT_YUV48_12:
 	case V4L2_PIX_FMT_BGR24:
-	case V4L2_PIX_FMT_B312:
+	case V4L2_PIX_FMT_BGR48_12:
 	default:
 		sof->components_no = 3;
 		break;
 	case V4L2_PIX_FMT_ABGR32:
-	case V4L2_PIX_FMT_B412:
+	case V4L2_PIX_FMT_ABGR64_12:
 		sof->components_no = 4;
 		break;
 	case V4L2_PIX_FMT_GREY:
@@ -1072,14 +1072,14 @@ static int mxc_jpeg_fixup_sos(struct mxc_jpeg_sos *sos,
 		sos->components_no = 3;
 		break;
 	case V4L2_PIX_FMT_YUV24:
-	case V4L2_PIX_FMT_Y312:
+	case V4L2_PIX_FMT_YUV48_12:
 	case V4L2_PIX_FMT_BGR24:
-	case V4L2_PIX_FMT_B312:
+	case V4L2_PIX_FMT_BGR48_12:
 	default:
 		sos->components_no = 3;
 		break;
 	case V4L2_PIX_FMT_ABGR32:
-	case V4L2_PIX_FMT_B412:
+	case V4L2_PIX_FMT_ABGR64_12:
 		sos->components_no = 4;
 		break;
 	case V4L2_PIX_FMT_GREY:
@@ -1333,6 +1333,20 @@ static bool mxc_jpeg_compare_format(const struct mxc_jpeg_fmt *fmt1,
 	return false;
 }
 
+static void mxc_jpeg_set_last_buffer(struct mxc_jpeg_ctx *ctx)
+{
+	struct vb2_v4l2_buffer *next_dst_buf;
+
+	next_dst_buf = v4l2_m2m_dst_buf_remove(ctx->fh.m2m_ctx);
+	if (!next_dst_buf) {
+		ctx->fh.m2m_ctx->is_draining = true;
+		ctx->fh.m2m_ctx->next_buf_last = true;
+		return;
+	}
+
+	v4l2_m2m_last_buffer_done(ctx->fh.m2m_ctx, next_dst_buf);
+}
+
 static bool mxc_jpeg_source_change(struct mxc_jpeg_ctx *ctx,
 				   struct mxc_jpeg_src_buf *jpeg_src_buf)
 {
@@ -1345,7 +1359,8 @@ static bool mxc_jpeg_source_change(struct mxc_jpeg_ctx *ctx,
 	q_data_cap = mxc_jpeg_get_q_data(ctx, V4L2_BUF_TYPE_VIDEO_CAPTURE);
 	if (mxc_jpeg_compare_format(q_data_cap->fmt, jpeg_src_buf->fmt))
 		jpeg_src_buf->fmt = q_data_cap->fmt;
-	if (q_data_cap->fmt != jpeg_src_buf->fmt ||
+	if (ctx->need_initial_source_change_evt ||
+	    q_data_cap->fmt != jpeg_src_buf->fmt ||
 	    q_data_cap->w != jpeg_src_buf->w ||
 	    q_data_cap->h != jpeg_src_buf->h) {
 		dev_dbg(dev, "Detected jpeg res=(%dx%d)->(%dx%d), pixfmt=%c%c%c%c\n",
@@ -1389,6 +1404,9 @@ static bool mxc_jpeg_source_change(struct mxc_jpeg_ctx *ctx,
 		mxc_jpeg_sizeimage(q_data_cap);
 		notify_src_chg(ctx);
 		ctx->source_change = 1;
+		ctx->need_initial_source_change_evt = false;
+		if (vb2_is_streaming(v4l2_m2m_get_dst_vq(ctx->fh.m2m_ctx)))
+			mxc_jpeg_set_last_buffer(ctx);
 	}
 
 	return ctx->source_change ? true : false;
@@ -1606,6 +1624,9 @@ static int mxc_jpeg_queue_setup(struct vb2_queue *q,
 	for (i = 0; i < *nplanes; i++)
 		sizes[i] = mxc_jpeg_get_plane_size(q_data, i);
 
+	if (V4L2_TYPE_IS_OUTPUT(q->type))
+		ctx->need_initial_source_change_evt = true;
+
 	return 0;
 }
 
@@ -1649,8 +1670,13 @@ static void mxc_jpeg_stop_streaming(struct vb2_queue *q)
 		v4l2_m2m_buf_done(vbuf, VB2_BUF_STATE_ERROR);
 	}
 
-	if (V4L2_TYPE_IS_OUTPUT(q->type) || !ctx->source_change)
-		v4l2_m2m_update_stop_streaming_state(ctx->fh.m2m_ctx, q);
+	v4l2_m2m_update_stop_streaming_state(ctx->fh.m2m_ctx, q);
+	/* if V4L2_DEC_CMD_STOP is sent before the source change triggered,
+	 * restore the is_draining flag
+	 */
+	if (V4L2_TYPE_IS_CAPTURE(q->type) && ctx->source_change && ctx->fh.m2m_ctx->last_src_buf)
+		ctx->fh.m2m_ctx->is_draining = true;
+
 	if (V4L2_TYPE_IS_OUTPUT(q->type) &&
 	    v4l2_m2m_has_stopped(ctx->fh.m2m_ctx)) {
 		notify_eos(ctx);
@@ -1927,7 +1953,7 @@ static int mxc_jpeg_buf_prepare(struct vb2_buffer *vb)
 		return -EINVAL;
 	for (i = 0; i < q_data->fmt->mem_planes; i++) {
 		sizeimage = mxc_jpeg_get_plane_size(q_data, i);
-		if (vb2_plane_size(vb, i) < sizeimage) {
+		if (!ctx->source_change && vb2_plane_size(vb, i) < sizeimage) {
 			dev_err(dev, "plane %d too small (%lu < %lu)",
 				i, vb2_plane_size(vb, i), sizeimage);
 			return -EINVAL;
@@ -2763,19 +2789,12 @@ static int mxc_jpeg_probe(struct platform_device *pdev)
 	jpeg->mode = mode;
 
 	/* Get clocks */
-	jpeg->clk_ipg = devm_clk_get(dev, "ipg");
-	if (IS_ERR(jpeg->clk_ipg)) {
-		dev_err(dev, "failed to get clock: ipg\n");
-		ret = PTR_ERR(jpeg->clk_ipg);
+	ret = devm_clk_bulk_get_all(&pdev->dev, &jpeg->clks);
+	if (ret < 0) {
+		dev_err(dev, "failed to get clock\n");
 		goto err_clk;
 	}
-
-	jpeg->clk_per = devm_clk_get(dev, "per");
-	if (IS_ERR(jpeg->clk_per)) {
-		dev_err(dev, "failed to get clock: per\n");
-		ret = PTR_ERR(jpeg->clk_per);
-		goto err_clk;
-	}
+	jpeg->num_clks = ret;
 
 	ret = mxc_jpeg_attach_pm_domains(jpeg);
 	if (ret < 0) {
@@ -2872,32 +2891,20 @@ static int mxc_jpeg_runtime_resume(struct device *dev)
 	struct mxc_jpeg_dev *jpeg = dev_get_drvdata(dev);
 	int ret;
 
-	ret = clk_prepare_enable(jpeg->clk_ipg);
+	ret = clk_bulk_prepare_enable(jpeg->num_clks, jpeg->clks);
 	if (ret < 0) {
-		dev_err(dev, "failed to enable clock: ipg\n");
-		goto err_ipg;
-	}
-
-	ret = clk_prepare_enable(jpeg->clk_per);
-	if (ret < 0) {
-		dev_err(dev, "failed to enable clock: per\n");
-		goto err_per;
+		dev_err(dev, "failed to enable clock\n");
+		return ret;
 	}
 
 	return 0;
-
-err_per:
-	clk_disable_unprepare(jpeg->clk_ipg);
-err_ipg:
-	return ret;
 }
 
 static int mxc_jpeg_runtime_suspend(struct device *dev)
 {
 	struct mxc_jpeg_dev *jpeg = dev_get_drvdata(dev);
 
-	clk_disable_unprepare(jpeg->clk_ipg);
-	clk_disable_unprepare(jpeg->clk_per);
+	clk_bulk_disable_unprepare(jpeg->num_clks, jpeg->clks);
 
 	return 0;
 }

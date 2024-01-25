@@ -114,6 +114,7 @@ obj-$(CONFIG_MFD_TWL4030_AUDIO)	+= twl4030-audio.o
 obj-$(CONFIG_TWL6040_CORE)	+= twl6040.o
 
 obj-$(CONFIG_MFD_MX25_TSADC)	+= fsl-imx25-tsadc.o
+obj-$(CONFIG_MFD_IMX_FLEXIO)	+= imx-flexio.o
 obj-$(CONFIG_MFD_MXC_HDMI)	+= mxc-hdmi-core.o
 
 obj-$(CONFIG_MFD_MC13XXX)	+= mc13xxx-core.o
@@ -176,6 +177,11 @@ max8925-objs			:= max8925-core.o max8925-i2c.o
 obj-$(CONFIG_MFD_MAX8925)	+= max8925.o
 obj-$(CONFIG_MFD_MAX8997)	+= max8997.o max8997-irq.o
 obj-$(CONFIG_MFD_MAX8998)	+= max8998.o max8998-irq.o
+obj-$(CONFIG_MFD_MAXIM_SERDES)  += maxim_serdes.o
+obj-$(CONFIG_MFD_MAX96752)	+= max96752-core.o
+obj-$(CONFIG_MFD_MAX96752_I2C)	+= max96752-i2c.o
+obj-$(CONFIG_MFD_MAX96789)	+= max96789-core.o
+obj-$(CONFIG_MFD_MAX96789_I2C)	+= max96789-i2c.o
 
 obj-$(CONFIG_MFD_MP2629)	+= mp2629.o
 
