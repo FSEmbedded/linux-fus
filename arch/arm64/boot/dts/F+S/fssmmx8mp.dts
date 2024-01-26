@@ -1,0 +1,225 @@
+/*
+* Copyright (C) 2024 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_FSSMMX8MP_BOARD_REVISION	100
+
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_HDMI	1	/* DVI/HDMI via HDMI connector */
+#define DISPLAY_LVDS0	2	/* LVDS channel 0 - LVDSA on J9 */
+#define DISPLAY_LVDS1	3	/* LVDS channel 1 - LVDSB on J9 */
+#define DISPLAY_MIPI0	4	/* MIPI_DSI1 - LVDSA on J9 */
+//#define DISPLAY_MIPI1	5	/* MIPI_DSI2 - not used */
+
+/*
+ * Set the display configuration:
+ *
+ * - If you have no display, set all three settings to DISPLAY_NONE.
+ * - If you have one display, set PANEL0 to one of the display types above and
+ *   leave the other settings at DISPLAY_NONE.
+ * - If you have two displays, set PANEL0 and PANEL1 to a display type from
+ *   above and leave PANEL2 at DISPLAY_NONE.
+ * - If you have three displays, set all three settings to a display type.
+ * - LVDS0 and MIPI0 at same time are not allowed. In case both are
+ *   configured LVDS0 would be used and MIPI0 disabled.
+ * - If dual mode is enabled LVDS1 would not used.
+ *
+ * You have to use a different type for each display. If you want two LVDS
+ * displays, set one to DISPLAY_LVDS0 and the other to DISPLAY_LVDS1. This
+ * corresponds to the LVDS channel where the display is connected to.
+ *
+ */
+#define CONFIG_FSSMMX8MP_PANEL0	DISPLAY_HDMI//DISPLAY_LVDS1
+#define CONFIG_FSSMMX8MP_PANEL1	DISPLAY_NONE
+#define CONFIG_FSSMMX8MP_PANEL2	DISPLAY_NONE
+
+/*
+ * F&S has changed the default LVDS display. To use the previous settings
+ * activate the following define.
+ */
+#define DISPLAY_LVDS_J070WVTC0211
+
+/* Enables support for AUO G133HAN01.0 - 19:9 FHD, 1920(H)x1080(V) panel */
+//#define DISPLAY_LVDS_G133HAN010
+
+/* The mode allows to use dual asynchronous channels (8 data, 2 clocks).
+ * This is intended for single panel with 2 interfaces, transferring
+ * across two channels (even pixel/odd pixel). This is supported at up to
+ * 160MHz pixel clock, which is up to 80MHz LVDS clock.
+ *  */
+//#define CONFIG_FSSMMX8MP_LVDS_DUAL_CHANNEL
+
+/*
+ * Configure LVDS0 settings here (ignored if LVDS0 is not used)
+ * Mapping (refers to LVDS_DATA_WIDTH, not LVDS_BPP):
+ *
+ * - "spwg":  18 bpp or 24 bpp, in case of 24 bpp, bits 6 and 7 of each color
+ *            are encoded on fourth LVDS differential data pair
+ * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
+ *            all other data bits on all four differential data pairs
+ */
+#define CONFIG_FSSMMX8MP_LVDS1_CHANNEL_MAPPING	"spwg"
+#define CONFIG_FSSMMX8MP_LVDS1_CHANNEL_DATA_WIDTH	24
+
+#define CONFIG_FSSMMX8MP_LVDS1_PANEL_MAPPING	"vesa-24"
+#define CONFIG_FSSMMX8MP_LVDS1_PANEL_LABEL	"j070wvtc0211"
+#define CONFIG_FSSMMX8MP_LVDS1_PANEL_WIDTH	154
+#define CONFIG_FSSMMX8MP_LVDS1_PANEL_HEIGHT	85
+#define CONFIG_FSSMMX8MP_LVDS1_PANEL_TIMING \
+	clock-frequency = <33300000>;	\
+	hactive = <800>; \
+	vactive = <480>; \
+	hback-porch = <46>; \
+	hfront-porch = <209>;	\
+	hsync-len = <1>;	\
+	vback-porch = <23>;	\
+	vfront-porch = <11>;	\
+	vsync-len = <1>;	\
+	de-active = <1>;	\
+	vsync-active = <1>;	\
+	hsync-active = <1>;
+
+#define CONFIG_FSSMMX8MP_LVDS0_CHANNEL_MAPPING	"spwg"
+#define CONFIG_FSSMMX8MP_LVDS0_CHANNEL_DATA_WIDTH	24
+
+#define CONFIG_FSSMMX8MP_LVDS0_PANEL_MAPPING	"vesa-24"
+#define CONFIG_FSSMMX8MP_LVDS0_PANEL_LABEL	"j070wvtc0211"
+#define CONFIG_FSSMMX8MP_LVDS0_PANEL_WIDTH	154
+#define CONFIG_FSSMMX8MP_LVDS0_PANEL_HEIGHT	85
+#define CONFIG_FSSMMX8MP_LVDS0_PANEL_TIMING \
+	clock-frequency = <33300000>;	\
+	hactive = <800>; \
+	vactive = <480>; \
+	hback-porch = <46>; \
+	hfront-porch = <209>;	\
+	hsync-len = <1>;	\
+	vback-porch = <23>;	\
+	vfront-porch = <11>;	\
+	vsync-len = <1>;	\
+	de-active = <1>;	\
+	vsync-active = <1>;	\
+	hsync-active = <1>;
+
+/*
+ * Configure touch screen:
+ *
+ * - PCAP touch based on Focaltech controller (FT5x26), on Touch Connector
+ *
+ * Select none if you do not need touch support.
+ */
+#ifdef DISPLAY_LVDS_J070WVTC0211
+//#define CONFIG_FSSMMX8MP_CAPTOUCH_FT5x26
+//#define CONFIG_FSSMMX8MP_CAPTOUCH_FT5x26_INVERTED_XY
+#endif
+
+/* Network */
+#define CONFIG_FSSMMX8MP_ETH_A
+#define CONFIG_FSSMMX8MP_ETH_B
+
+/* Add entry configuration for marvell wlan, bluetooth driver.
+ * The entry is for NXP driver not needed. */
+#define CONFIG_FSSMMX8MP_WLAN_MARVELL_DRV
+
+/* CAN */
+/* CAN0 */
+#define CONFIG_FSSMMX8MP_CAN_A
+/* CAN1 */
+#define CONFIG_FSSMMX8MP_CAN_B
+
+/* I2C */
+#define CONFIG_FSSMMX8MP_I2C_GP
+#define CONFIG_FSSMMX8MP_I2C_LCD
+#define CONFIG_FSSMMX8MP_I2C_CAM0
+#define CONFIG_FSSMMX8MP_I2C_CAM1
+
+/*
+ * SDIO - External SD port with Card Detect (CD) and Write Protect (WP).
+ */
+#define CONFIG_FSSMMX8MP_SDIO
+
+/* PWM and backlight brightness */
+/* GPIO5 / PWM_OUT */
+#define CONFIG_FSSMMX8MP_PWM_OUT
+/* LCD0_BKLT_EN */
+#define CONFIG_FSSMMX8MP_BL_CTRL_A
+/* LCD1_BKLT_EN */
+//#define CONFIG_FSSMMX8MP_BL_CTRL_B
+
+/* SER1 */
+#define CONFIG_FSSMMX8MP_UART_A
+/* SER0 */
+#define CONFIG_FSSMMX8MP_UART_B
+#define CONFIG_FSSMMX8MP_UART_B_RTSCTS
+/* SER3 */
+#define CONFIG_FSSMMX8MP_UART_C
+/* SER2 */
+#define CONFIG_FSSMMX8MP_UART_D
+#define CONFIG_FSSMMX8MP_UART_D_RTSCTS
+
+/* SPI_A - Feature connector J20 pins 12,14,16,17 */
+#define CONFIG_FSSMMX8MP_SPI_A
+/* SPI_B - Feature connector J20 pins 4,6,8,10 */
+#define CONFIG_FSSMMX8MP_SPI_B
+
+/* Audio */
+/* If codec isn't equipped I2S only
+ * Feature connector J20 pins 41,44,45,48,49
+ * // TODO: detected but not work
+ *  */
+#define CONFIG_FSSMMX8MP_I2S_A
+
+/* Camera on serial MIPI CSI interface */
+//#define CONFIG_FSSMMX8MP_CSI_A
+/* Enable Basler da4200 camera */
+//#define CONFIG_FSSMMX8MP_CAMERA_BASLER_daA4200
+#define CONFIG_FSSMMX8MP_CAMERA_BASLER_daA3840
+/* USB Device TypeC and USB Host 2 Type A*/
+#define CONFIG_FSSMMX8MP_USB_OTG
+#define CONFIG_FSSMMX8MP_USB_HOST
+/* External RTC */
+#define CONFIG_FSSMMX8MP_EXT_RTC
+/* Analog I/O */
+#define CONFIG_FSSMMX8MP_ADC
+/* Security chip */
+#define CONFIG_FSSMMX8MP_SECURE
+#define CONFIG_FSSMMX8MP_EEPROM
+/* Keypad matrix on feature connector - J20 */
+#define CONFIG_FSSMMX8MP_KEYPAD_MATRIX
+
+#include "../freescale/imx8mp.dtsi"
+#include "fssmmx8mp.dtsi"
+
+/ {
+	model = "F&S FSSMMX8MP";
+	compatible = "fus,imx8mp-fssmmx8mp", "fsl,imx8mp";
+};
+
+&bdinfo {
+	board_name = "fssmmx8mp";
+};
+
+#ifdef DISPLAY_LVDS_J070WVTC0211
+#if defined(CONFIG_FSSMMX8MP_LVDS0)
+&backlight_ldb_a {
+	pwms = <&pwm4 0 250000 PWM_POLARITY_INVERTED>;
+	brightness-levels = <135 143 151 159 167 175 183 191
+			     199 207 215 223 231 239 247 255>;
+	default-brightness-level = <14>;
+};
+#elif defined(CONFIG_FSSMMX8MP_LVDS1)
+&backlight_ldb_b {
+	pwms = <&pwm2 0 250000 PWM_POLARITY_INVERTED>;
+	brightness-levels = <135 143 151 159 167 175 183 191
+			     199 207 215 223 231 239 247 255>;
+	default-brightness-level = <14>;
+};
+#endif
+
+#endif
