@@ -116,6 +116,9 @@ static int rtl8211fsi_module_insert(void *upstream, const struct sfp_eeprom_id *
 	case PHY_INTERFACE_MODE_1000BASEX:
 		priv->fiber_speed = SPEED_1000;
 		break;
+	case PHY_INTERFACE_MODE_100BASEX:
+		priv->fiber_speed = SPEED_100;
+		break;
 	default:
 		dev_err(&phydev->mdio.dev, "incompatible sfp module inserted\n");
 		return -EINVAL;
@@ -496,7 +499,7 @@ static int rtl8211fsi_config_aneg(struct phy_device *phydev)
 {
 	struct rtl821x_priv *priv = phydev->priv;
 
-	if(priv->is_fiber){
+	if(priv->is_fiber && (priv->fiber_speed == SPEED_1000)){
 		return genphy_c37_config_aneg(phydev);
 	}
 
@@ -646,16 +649,20 @@ static int rtl8211fsi_read_status(struct phy_device *phydev)
 	struct rtl821x_priv *priv = phydev->priv;
 	int ret;
 
-	if(priv->is_fiber){
-		ret = genphy_c37_read_status(phydev);
-		if (ret < 0)
-			return ret;
+	if(! priv->is_fiber)
+		return rtlgen_read_status(phydev);
 
-		phydev->speed = priv->fiber_speed;
-		return 0;
+	if(priv->fiber_speed==SPEED_1000){
+		ret = genphy_c37_read_status(phydev);
+	}else{
+		ret = genphy_read_status(phydev);
 	}
 
-	return rtlgen_read_status(phydev);
+	if (ret < 0)
+		return ret;
+
+	phydev->speed = priv->fiber_speed;
+	return 0;
 }
 
 static int rtlgen_read_mmd(struct phy_device *phydev, int devnum, u16 regnum)
