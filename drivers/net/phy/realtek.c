@@ -665,6 +665,37 @@ static int rtl8211fsi_read_status(struct phy_device *phydev)
 	return 0;
 }
 
+static int rtl8211fsi_get_features(struct phy_device *phydev)
+{
+	struct rtl821x_priv *priv = phydev->priv;
+	u16 val;
+
+	if(! priv->is_fiber)
+		return genphy_read_abilities(phydev);
+
+	linkmode_set_bit_array(phy_basic_ports_array,
+			       ARRAY_SIZE(phy_basic_ports_array),
+			       phydev->supported);
+
+	val = phy_read_paged(phydev, 0x0, MII_BMSR);
+	if (val < 0)
+		return val;
+
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_100baseFX_Full_BIT, phydev->supported, val & BMSR_100FULL);
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_100baseFX_Half_BIT, phydev->supported, val & BMSR_100HALF);
+
+	if(! (val & BMSR_ERCAP))
+		return 0;
+
+	val = phy_read_paged(phydev, 0x0, MII_ESTATUS);
+	if (val < 0)
+		return val;
+
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_1000baseX_Full_BIT, phydev->supported, val & ESTATUS_1000_XFULL);
+
+	return 0;
+}
+
 static int rtlgen_read_mmd(struct phy_device *phydev, int devnum, u16 regnum)
 {
 	int ret;
@@ -1031,6 +1062,7 @@ static struct phy_driver realtek_drvs[] = {
 		PHY_ID_MATCH_EXACT(RTL_8211FSI_PHYID),
 		.name		= "RTL8211FSI Gigabit Ethernet",
 		.probe		= rtl8211fsi_probe,
+		.get_features = rtl8211fsi_get_features,
 		.config_init	= &rtl8211f_config_init,
 		.config_aneg	= rtl8211fsi_config_aneg,
 		.read_status	= rtl8211fsi_read_status,
