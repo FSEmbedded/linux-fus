@@ -135,6 +135,7 @@
 
 /* I2C */
 #define CONFIG_FSSMMX8MP_I2C_GP
+#define CONFIG_FSSMMX8MP_I2C_PM
 #define CONFIG_FSSMMX8MP_I2C_LCD
 #define CONFIG_FSSMMX8MP_I2C_CAM0
 #define CONFIG_FSSMMX8MP_I2C_CAM1
@@ -150,7 +151,7 @@
 /* LCD0_BKLT_EN */
 #define CONFIG_FSSMMX8MP_BL_CTRL_A
 /* LCD1_BKLT_EN */
-//#define CONFIG_FSSMMX8MP_BL_CTRL_B
+#define CONFIG_FSSMMX8MP_BL_CTRL_B
 
 /* SER1 */
 #define CONFIG_FSSMMX8MP_UART_A
@@ -190,8 +191,6 @@
 /* Security chip */
 #define CONFIG_FSSMMX8MP_SECURE
 #define CONFIG_FSSMMX8MP_EEPROM
-/* Keypad matrix on feature connector - J20 */
-#define CONFIG_FSSMMX8MP_KEYPAD_MATRIX
 
 #include "../freescale/imx8mp.dtsi"
 #include "fssmmx8mp.dtsi"
@@ -206,14 +205,15 @@
 };
 
 #ifdef DISPLAY_LVDS_J070WVTC0211
-#if defined(CONFIG_FSSMMX8MP_LVDS0)
+#if defined(CONFIG_FSSMMX8MP_BL_CTRL_A)
 &backlight_ldb_a {
 	pwms = <&pwm4 0 250000 PWM_POLARITY_INVERTED>;
 	brightness-levels = <135 143 151 159 167 175 183 191
 			     199 207 215 223 231 239 247 255>;
 	default-brightness-level = <14>;
 };
-#elif defined(CONFIG_FSSMMX8MP_LVDS1)
+#endif
+#if defined(CONFIG_FSSMMX8MP_BL_CTRL_B)
 &backlight_ldb_b {
 	pwms = <&pwm2 0 250000 PWM_POLARITY_INVERTED>;
 	brightness-levels = <135 143 151 159 167 175 183 191
@@ -221,5 +221,4 @@
 	default-brightness-level = <14>;
 };
 #endif
-
 #endif

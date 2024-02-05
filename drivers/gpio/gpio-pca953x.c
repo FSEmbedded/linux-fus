@@ -1470,6 +1470,12 @@ static int pca953x_probe(struct i2c_client *client,
 	if (ret == -EPROBE_DEFER)
 		return -EPROBE_DEFER;
 
+	/* Configure output: set open-drain or default to push-pull */
+	if (device_property_read_bool(&client->dev, "pcal6416,open-drain")) {
+		/* Enable ODEN0 and ODEN1 */
+		i2c_smbus_write_byte_data(client, 0x4F, 0x3);
+	}
+
 	/* initialize cached registers from their original values.
 	 * we can't share this chip with another i2c master.
 	 */
