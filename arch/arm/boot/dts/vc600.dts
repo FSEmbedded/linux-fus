@@ -29,6 +29,9 @@
 #define CONFIG_VC600_I2C_A
 #define CONFIG_VC600_I2C_C
 
+/* GPU is only available on CPU variants MCIMX6X3... and MCIMX6X4... */
+//#define CONFIG_VC600_GPU
+
 /* UART */
 #define CONFIG_VC600_UART_A
 #define CONFIG_VC600_UART_C
@@ -270,6 +273,12 @@
 };
 #endif /* CONFIG_VC600_I2C_C */
 
+#ifndef CONFIG_VC600_GPU
+&gpu {
+	status = "disabled";
+};
+#endif /* CONFIG_VC600_GPU */
+
 #ifdef CONFIG_VC600_UART_A
 /* UART_A implemented by UART1: TXD, RXD only */
 &uart1 {
@@ -324,6 +333,23 @@
 	status = "okay";
 };
 #endif
+&dma_apbh {
+	/* Switch to F&S implementation of APBH DMA driver for GPMI (NAND) */
+	compatible = "fus,imx6sx-dma-apbh", "fus,imx28-dma-apbh";
+	iram = <&ocram>;
+};
+
+&gpmi {
+	/* Switch to F&S implementation of GPMI NAND driver */
+	compatible = "fus,imx6sx-gpmi-nand";
+	pinctrl-names = "default";
+//###	pinctrl-0 = <&pinctrl_gpmi_nand>;
+	fus,skipblocks = <2>;
+	fus,chunk1k;
+	fus,ecc_strength = <8>;		/* Spare area 64 bytes */
+//###	fus,ecc_strength = <52>;	/* Spare area 224 bytes */
+	status = "okay";
+};
 
 &iomuxc {
 	pinctrl-names = "default";

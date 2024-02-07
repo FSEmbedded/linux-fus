@@ -292,7 +292,7 @@ lvds_wvga {				\
 #include <fsversion.h>
 
 / {
-	model = "F&S efusA9X";
+	model = "F&S efusA9Xr2";
 	compatible = "fus,imx6sx-efusa9x", "fsl,imx6sx";
 
  	aliases {
@@ -541,7 +541,7 @@ lvds_wvga {				\
 	/* F&S board information */
 	bdinfo {
 		compatible = "bdinfo";
-		board_name = "efusa9x";
+		board_name = "efusa9xr2";
 		ecc_strength = "8";
 		dts_version = FS_LINUX_VERSION;
 	};
@@ -682,12 +682,24 @@ lvds_wvga {				\
 		ethphy0: ethernet-phy@4 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <4>;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <2>;
+			rtl821x,led-act = <1>;
 		};
 
 #ifdef CONFIG_EFUSA9X_ETH1
 		ethphy1: ethernet-phy@5 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <5>;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <2>;
+			rtl821x,led-act = <1>;
 		};
 #endif
 	};

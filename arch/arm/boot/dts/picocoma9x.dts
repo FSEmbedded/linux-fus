@@ -9,7 +9,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_PICOCOMA9X_BOARD_REVISION	111
+#define CONFIG_PICOCOMA9X_BOARD_REVISION	120
 
 /* Activate this if you want to use the Cortex-M4 core */
 //#define SUPPORT_M4
@@ -57,10 +57,10 @@ lcd_wvga {				\
 //#define CONFIG_PICOCOMA9X_LCD_18BPP_DE
 
 /* TOUCH */
-#define CONFIG_PICOCOMA9X_4WTOUCH_SX8655_ONBOARD /* SX8655 res. touch */
+#define CONFIG_PICOCOMA9X_4WTOUCH_ONBOARD /* TSC2004 or SX8655 res. touch */
 
-/* CMA: Set 160 MB for Continuous Memory Allocator */
-#define CONFIG_PICOCOMA9X_CMA_SIZE 0x0A000000
+/* CMA: Set 200 MB for Continuous Memory Allocator */
+#define CONFIG_PICOCOMA9X_CMA_SIZE 0x0C000000
 
 /* ETH_A */
 #define CONFIG_PICOCOMA9X_ETH_A
@@ -187,6 +187,7 @@ lcd_wvga {				\
 
 #include "imx6sx.dtsi"
 #include <dt-bindings/pwm/pwm.h>
+#include <fsversion.h>
 
 / {
 	model = "F&S PicoCOMA9X";
@@ -324,6 +325,7 @@ lcd_wvga {				\
 		compatible = "bdinfo";
 		board_name = "picocoma9x";
 		ecc_strength = "8";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 #ifdef SUPPORT_M4
@@ -456,8 +458,28 @@ lcd_wvga {				\
 		interrupts = <8 IRQ_TYPE_EDGE_FALLING>;
 	};
 
+#ifdef CONFIG_PICOCOMA9X_4WTOUCH_ONBOARD
+#if (CONFIG_PICOCOMA9X_BOARD_REVISION >= 120)
+	/* Touch driver TSC2004 */
+	tsc2004@4a {
+		compatible = "ti,tsc2004";
+		reg = <0x4a>;
+		vio-supply = <&reg_vref_3v3>;
+		interrupts-extended = <&gpio1 4 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpio = <&gpio1 2 GPIO_ACTIVE_LOW>;
+		touchscreen-fuzz-x = <4>;
+		touchscreen-fuzz-y = <7>;
+		touchscreen-fuzz-pressure = <20>;
+		touchscreen-size-x = <4096>;
+		touchscreen-size-y = <4096>;
+		touchscreen-max-pressure = <2048>;
+		touchscreen-inverted-y;
+		ti,x-plate-ohms = <280>;
+		ti,pre-charge-time = <4>;
+		ti,sense-time-sel = <3>;
+	};
+#else
 	/* Touch driver SX8654 */
-#ifdef CONFIG_PICOCOMA9X_4WTOUCH_SX8655_ONBOARD
 	sx8654@48 {
 		compatible = "semtech,sx8654";
 		reg = <0x48>;
@@ -470,6 +492,7 @@ lcd_wvga {				\
 		interrupts = <4 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpio = <&gpio1 2 GPIO_ACTIVE_LOW>;
 	};
+#endif
 #endif
 };
 
@@ -952,8 +975,10 @@ lcd_wvga {				\
 			fsl,pins = <
 				MX6SX_PAD_SD3_CMD__UART4_TX		0x1b0b1
 				MX6SX_PAD_SD3_DATA3__UART4_RX		0x1b0b1
+#ifdef CONFIG_PICOCOMA9X_UART_A_RTSCTS
 				MX6SX_PAD_SD3_CLK__UART4_RTS_B		0x1b0b1
 				MX6SX_PAD_SD3_DATA2__UART4_CTS_B	0x1b0b1
+#endif
 			>;
 		};
 #endif

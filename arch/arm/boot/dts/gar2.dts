@@ -46,25 +46,25 @@
 		compatible = "pwm-leds";
 		s-led {
 			label = "s-led";
-			pwms = <&pwm1 0 7812500>;
+			pwms = <&pwm1 0 7812500 0>;
 			max-brightness = <255>;
 			gamma2;
 		};
 		w1-led {
 			label = "w1-led";
-			pwms = <&pwm2 0 7812500>;
+			pwms = <&pwm2 0 7812500 0>;
 			max-brightness = <255>;
 			gamma2;
 		};
 		w2-green-led {
 			label = "w2-green-led";
-			pwms = <&pwm4 0 7812500>;
+			pwms = <&pwm4 0 7812500 0>;
 			max-brightness = <255>;
 			gamma2;
 		};
 		w2-red-led {
 			label = "w2-red-led";
-			pwms = <&pwm3 0 7812500>;
+			pwms = <&pwm3 0 7812500 0>;
 			max-brightness = <255>;
 			gamma2;
 		};

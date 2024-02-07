@@ -2756,12 +2756,19 @@ static int gpmi_nand_fus_pm_resume(struct device *dev)
 		return ret;
 	}
 
+	/* Set flag to get timing setup restored for next exec_op */
+	if (this->hw.clk_rate)
+		this->hw.must_apply_timings = true;
+
 	/* re-init the BCH registers */
 	ret = bch_set_geometry(this, mtd->oobavail, 0);
 	if (ret) {
 		dev_err(this->dev, "Error setting BCH : %d\n", ret);
 		return ret;
 	}
+
+	/* re-apply the timing setting */
+	this->hw.must_apply_timings = true;
 
 	return 0;
 }
