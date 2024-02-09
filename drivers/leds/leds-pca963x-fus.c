@@ -34,6 +34,7 @@
 #include <linux/property.h>
 #include <linux/slab.h>
 #include <linux/of.h>
+#include <linux/regulator/consumer.h>
 
 
 enum pca963x_outdrv {
@@ -88,6 +89,8 @@ struct pca963x_chipdef {
 	u8			grpfreq;
 	u8			ledout_base;
 	int			n_leds;
+	u32			single_period;
+	u32			grp_period;
 };
 
 static struct pca963x_chipdef pca963x_chipdefs[] = {
@@ -96,18 +99,24 @@ static struct pca963x_chipdef pca963x_chipdefs[] = {
 		.grpfreq	= 0x7,
 		.ledout_base	= 0x8,
 		.n_leds		= 4,
+		.single_period  = 640000,
+		.grp_period     = 5263157,
 	},
 	[pca9634] = {
 		.grppwm		= 0xa,
 		.grpfreq	= 0xb,
 		.ledout_base	= 0xc,
 		.n_leds		= 8,
+		.single_period  = 10752,
+		.grp_period     = 5263157,
 	},
 	[pca9635] = {
 		.grppwm		= 0x12,
 		.grpfreq	= 0x13,
 		.ledout_base	= 0x14,
 		.n_leds		= 16,
+		.single_period  = 10752,
+		.grp_period     = 5263157,
 	},
 };
 
@@ -131,6 +140,7 @@ struct pca963x_entry;
 struct pca963x {
 	struct pca963x_chipdef *chipdef;
 	struct mutex mutex;
+	struct regulator *vdd;
 	struct i2c_client *client;
 	struct pca963x_entry *entries;
 	int n_led;
@@ -144,6 +154,7 @@ struct pca963x {
 	int n_pwm;
 	struct pwm_chip pwm_chip;
 #endif
+	int period;
 };
 
 #define PCA963X_LED_STATE_BLINKING BIT(0)
@@ -228,15 +239,28 @@ static int pca963x_set_pwm(struct pca963x *pca963x, int value, int offset)
 	else if (value == 0)
 		ret = PCA963X_LED_OFF;
 	else {
-		ret = pca963x_write_reg(pca963x, PCA963X_PWM_BASE + offset,
-					value);
-		if (ret < 0)
-			return ret;
+		if (pca963x->period == pca963x->chipdef->single_period) {
+			ret = pca963x_write_reg(pca963x, PCA963X_PWM_BASE + offset,
+						value);
+			if (ret < 0)
+				return ret;
 
-		if (entry->state & PCA963X_LED_STATE_BLINKING)
+			if (entry->state & PCA963X_LED_STATE_BLINKING)
+				ret = PCA963X_LED_GRP_PWM;
+			else
+				ret = PCA963X_LED_PWM;
+		}
+		else if (pca963x->period == pca963x->chipdef->grp_period) {
+			ret = pca963x_write_reg(pca963x, pca963x->chipdef->grppwm,
+					value);
+			if (ret < 0)
+				return ret;
+			ret = pca963x_write_reg(pca963x, PCA963X_PWM_BASE + offset,
+			255);
+			if (ret < 0)
+				return ret;
 			ret = PCA963X_LED_GRP_PWM;
-		else
-			ret = PCA963X_LED_PWM;
+		}
 	}
 
 	return ret;
@@ -418,11 +442,14 @@ static int pca963x_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	int value;
 	struct pca963x *pca963x = container_of(chip, struct pca963x, pwm_chip);
 
-	if (period_ns != 640000) {
+	if (period_ns != pca963x->chipdef->single_period &&
+		period_ns != pca963x->chipdef->grp_period ) {
 		dev_warn(&pca963x->client->dev,
-			 "Signal period must be fix at 640000 (1.5625 kHz)\n");
+			 "Signal period must be fix at %i or %i\n",
+			 pca963x->chipdef->single_period, pca963x->chipdef->grp_period);
 		return -EINVAL;
 	}
+	pca963x->period = period_ns;
 
 #if 0 //###
 	/*
@@ -473,9 +500,8 @@ static int pca963x_pwm_request(struct pwm_chip *chip, struct pwm_device *pwm)
 	if (!(entry->flags & PCA963X_LED_FLAGS_TYPE_PWM))
 		return -ENODEV;
 
-	/* fixed frequency signal 1.5625kHz */
 	pwm->label = entry->name;
-	pwm->state.period = 640000;
+	pwm->state.period = pca963x->period;
 
 	value = pca963x_get_brightness(pca963x, pwm->hwpwm);
 	if (value < 0)
@@ -812,9 +838,17 @@ static int pca963x_probe(struct i2c_client *client,
 
 	i2c_set_clientdata(client, pca963x);
 
+	pca963x->vdd = devm_regulator_get_optional(&client->dev, "vdd");
+	if (!IS_ERR(pca963x->vdd)){
+		err = regulator_enable(pca963x->vdd);
+		msleep(10);
+		if (err)
+			goto err_reg;
+	}
+
 	err = pca963x_set_default_values(pca963x);
 	if (err < 0)
-		return err;
+		goto err_reg;
 
 	for (i = 0; i < pca963x->chipdef->n_leds; i++) {
 		entry = &pca963x->entries[i];
@@ -831,7 +865,7 @@ static int pca963x_probe(struct i2c_client *client,
 			if (err < 0) {
 				dev_err(&client->dev,
 					"could not register LED %d\n", i);
-				return err;
+				goto err_reg;
 			}
 		}
 	}
@@ -881,6 +915,9 @@ err_gpio:
 	pwmchip_remove(&pca963x->pwm_chip);
 exit:
 	pca963x_free_leds(pca963x, i);
+err_reg:
+	if (!IS_ERR(pca963x->vdd))
+		regulator_disable(pca963x->vdd);
 	return err;
 }
 
@@ -898,6 +935,8 @@ static int pca963x_remove(struct i2c_client *client)
 	if (pca963x->n_pwm > 0)
 		pwmchip_remove(&pca963x->pwm_chip);
 #endif
+	if (!IS_ERR(pca963x->vdd))
+		regulator_disable(pca963x->vdd);
 	/* LEDs are automatically removed by the devm infrastructure */
  
 	return 0;
