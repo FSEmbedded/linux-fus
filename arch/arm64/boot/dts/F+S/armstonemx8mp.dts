@@ -74,7 +74,7 @@
 #define CONFIG_ARMSTONEMX8MP_LVDS1_PANEL_WIDTH	154
 #define CONFIG_ARMSTONEMX8MP_LVDS1_PANEL_HEIGHT	85
 #define CONFIG_ARMSTONEMX8MP_LVDS1_PANEL_TIMING \
-	clock-frequency = <33300000>;	\
+	clock-frequency = <37125000>;	\
 	hactive = <800>; \
 	vactive = <480>; \
 	hback-porch = <46>; \
