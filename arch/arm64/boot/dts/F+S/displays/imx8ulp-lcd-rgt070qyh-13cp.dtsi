@@ -90,78 +90,68 @@
 };
 
 &lpi2c4 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			clock-frequency = <100000>;
-			pinctrl-names = "default", "sleep";
-			pinctrl-0 = <&pinctrl_lpi2c4>;
-			pinctrl-1 = <&pinctrl_lpi2c4>;
-			status = "okay";
-
-
-			pca963x: pca9634@61 {
-			compatible = "nxp,pca9634";
-			//status = "disabled";
-			status = "okay";
-			reg = <0x61>;
-			nxp,totem-pole;
-			#address-cells = <1>;
-			#size-cells = <0>;
-			#pwm-cells = <3>;
-			#gpio-cells = <2>;
-			led@0 {
-				reg = <0>;
-				label = "BL_ON";
-				type = "GPIO";
-				active-high;
-				default-on;		/* or: keep-value */
-			};
-			led@1 {
-				reg = <1>;
-				label = "BL_PWM";
-				type = "PWM";
-				active-high;
-			};
-			led@2 {
-				reg = <2>;
-				label = "2-unused";
-				type = "LED";
-				active-low;
-			};
-			led@3 {
-				reg = <3>;
-				label = "MIPI_RST";
-				type = "GPIO";
-				active-high;
-				default-on;		/* or: keep-value */
-			};
-			led@4 {
-				reg = <4>;
-				label = "4-unused";
-				type = "LED";
-				active-low;
-			};
-			led@5 {
-				reg = <5>;
-				label = "TOUCH_RST";
-				type = "GPIO";
-				active-high;
-				default-on;		/* or: keep-value */
-			};
-			led@6 {
-				reg = <6>;
-				label = "6-unused";
-				type = "LED";
-				active-low;
-			};
-			led@7 {
-				reg = <7>;
-				label = "7-unused";
-				type = "LED";
-				active-low;
-			};
+	pca963x: pca9634@61 {
+		compatible = "nxp,pca9634";
+		//status = "disabled";
+		status = "okay";
+		reg = <0x61>;
+		nxp,totem-pole;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#pwm-cells = <3>;
+		#gpio-cells = <2>;
+		led@0 {
+			reg = <0>;
+			label = "BL_ON";
+			type = "GPIO";
+			active-high;
+			default-on;		/* or: keep-value */
 		};
-
+		led@1 {
+			reg = <1>;
+			label = "BL_PWM";
+			type = "PWM";
+			active-high;
+		};
+		led@2 {
+			reg = <2>;
+			label = "2-unused";
+			type = "LED";
+			active-low;
+		};
+		led@3 {
+			reg = <3>;
+			label = "MIPI_RST";
+			type = "GPIO";
+			active-high;
+			default-on;		/* or: keep-value */
+		};
+		led@4 {
+			reg = <4>;
+			label = "4-unused";
+			type = "LED";
+			active-low;
+		};
+		led@5 {
+			reg = <5>;
+			label = "TOUCH_RST";
+			type = "GPIO";
+			active-high;
+			default-on;		/* or: keep-value */
+		};
+		led@6 {
+			reg = <6>;
+			label = "6-unused";
+			type = "LED";
+			active-low;
+		};
+		led@7 {
+			reg = <7>;
+			label = "7-unused";
+			type = "LED";
+			active-low;
+		};
+	};
 
 	focaltech@38 {
 		//status = "disabled";
@@ -189,13 +179,6 @@
 	pinctrl_dsi: dsigrp {
 		fsl,pins = <
 			MX8ULP_PAD_PTE9__PTE9		0x3
-		>;
-	};
-
-	pinctrl_lpi2c4: lpi2c4grp {
-		fsl,pins = <
-			MX8ULP_PAD_PTE0__LPI2C4_SCL 0x20
-			MX8ULP_PAD_PTE1__LPI2C4_SDA 0x20
 		>;
 	};
 
