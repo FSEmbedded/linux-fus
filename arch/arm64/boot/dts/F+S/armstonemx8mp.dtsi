@@ -271,6 +271,9 @@
 		label = CONFIG_ARMSTONEMX8MP_LVDS1_PANEL_LABEL;
 		width-mm = <CONFIG_ARMSTONEMX8MP_LVDS1_PANEL_WIDTH>;
 		height-mm = <CONFIG_ARMSTONEMX8MP_LVDS1_PANEL_HEIGHT>;
+#ifdef DISPLAY_LVDS_BT070L1060CS0I1ADA
+		reset-gpios = <&pca963x 3 GPIO_ACTIVE_LOW>;
+#endif
 		status = "okay";
 
 		panel-timing {
@@ -665,6 +668,15 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c3>;
 	status = "okay";
+#ifdef CONFIG_ARMSTONEMX8MP_CAPTOUCH_ILITEK
+touch: ilitek2130@41 {
+        compatible = "ilitek,ili2130";
+        reg = <0x41>;
+        interrupt-parent = <&gpio1>;
+        interrupts = <7 IRQ_TYPE_EDGE_RISING>;
+        reset-gpios = <&pca963x 5 GPIO_ACTIVE_LOW>;
+        };
+#endif
 #ifdef CONFIG_ARMSTONEMX8MP_CAPTOUCH_FT5x26
 	/* touch I2C */
 	focaltech@38 {
@@ -684,6 +696,70 @@
 		focaltech,display-coords = <0 0 800 480>;
 	};
 #endif
+#ifdef DISPLAY_LVDS_BT070L1060CS0I1ADA
+	pca963x: pca9634@61 {
+    	compatible = "nxp,pca9634";
+        reg = <0x61>;
+		vdd-supply = <&reg_vlcd>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#pwm-cells = <3>;
+		#gpio-cells = <2>;
+		led@0 {
+				reg = <0>;
+				label = "BL_ON";
+				type = "GPIO";
+				default-on;             /* or: keep-value */
+				active-high;
+		};
+		led@1 {
+				reg = <1>;
+				label = "BL_PWM";
+				type = "PWM";
+				default-on;             /* or: keep-value */
+				active-low;
+		};
+		led@2 {
+				reg = <2>;
+				label = "2-unused";
+				type = "LED";
+				active-low;
+		};
+		led@3 {
+				reg = <3>;
+				label = "MIPI_RST";
+				type = "GPIO";
+				active-low;
+				default-on;             /* or: keep-value */
+		};
+		led@4 {
+				reg = <4>;
+				label = "4-unused";
+				type = "LED";
+				active-low;
+		};
+		led@5 {
+				reg = <5>;
+				label = "I2C_RST";
+				type = "GPIO";
+				active-high;
+				default-on;             /* or: keep-value */
+		};
+		led@6 {
+				reg = <6>;
+				label = "6-unused";
+				type = "LED";
+				active-low;
+		};
+		led@7 {
+				reg = <7>;
+				label = "TOUCH_ON";
+				type = "GPIO";
+				active-high;
+				default-on;
+		};
+    };
+#endif	/* DISPLAY_LVDS_BT070L1060CS0I1ADA */
 };
 #endif /* CONFIG_ARMSTONEMX8MP_I2C_B */
 
