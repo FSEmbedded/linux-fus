@@ -1,0 +1,88 @@
+/*
+ * Copyright (C) 2024 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/ {
+        lvds_panel {
+                compatible = "panel-lvds";
+                power-supply = <&reg_vlcd>;
+                backlight = <&backlight_ldb>;
+                data-mapping = "vesa-24";
+                label = "BT070L1060CS0I1AD-A";
+                width-mm = <155>;
+                height-mm = <86>;
+                status = "okay";
+
+                panel-timing {
+                        clock-frequency = <49500000>;
+                        hactive = <1024>;
+                        vactive = <600>;
+                        hback-porch = <160>;
+                        hfront-porch = <76>;
+                        hsync-len = <140>;
+                        vback-porch = <23>;
+                        vfront-porch = <107>;
+                        vsync-len = <20>;
+                        pixelclk-active = <0>;
+                        de-active = <1>;
+                };
+                port {
+                        panel_lvds_in: endpoint {
+                                remote-endpoint = <&lvds_out>;
+                        };
+                };
+        };
+};
+
+&reg_bl_on {
+	status = "okay";
+};
+
+&reg_vlcd {
+	status = "okay";
+};
+
+&backlight_ldb {
+	status = "okay";
+};
+
+/* LVDS */
+&lcdif {
+	status = "okay";
+        assigned-clock-rates = <1039500000>, <49500000>, <400000000>, <133333333>;
+};
+
+&ldb_phy {
+	status = "okay";
+};
+
+&ldb {
+	status = "okay";
+	lvds-channel@0 {
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <24>;
+		status = "okay";
+                port@1 {
+			reg = <1>;
+
+			lvds_out: endpoint {
+				remote-endpoint = <&panel_lvds_in>;
+			};
+		};
+	};
+};
+
+&IMX93_TOUCH_I2C {
+        /* Ilitek PCAP touch on Touch-Connector (I2C) */
+        touch: ilitek2130@41 {
+                compatible = "ilitek,ili2130";
+                reg = <0x41>;
+                interrupt-parent = <&IMX93_TOUCH_INTERRUPT_GPIO_BANK>;
+                interrupts = <IMX93_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_RISING>;
+                reset-gpios = <&gpio2 19 GPIO_ACTIVE_LOW>;
+        };
+};
