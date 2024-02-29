@@ -16,6 +16,7 @@
 #include <linux/uts.h>
 #include <linux/utsname.h>
 #include <generated/utsrelease.h>
+#include <generated/fsversion.h>
 #include <linux/proc_ns.h>
 
 static int __init early_hostname(char *arg)
@@ -37,6 +38,9 @@ const char linux_proc_banner[] =
 	"%s version %s"
 	" (" LINUX_COMPILE_BY "@" LINUX_COMPILE_HOST ")"
 	" (" LINUX_COMPILER ") %s\n";
+
+const char fs_linux_version[] =
+	UTS_RELEASE FS_LINUX_VERSION;
 
 BUILD_SALT;
 BUILD_LTO_INFO;
