@@ -95,8 +95,8 @@
 			default-state = "off";
 		};
 
-		D24_SFP_EXT_LINK {
-			label = "SFP_EXT_LINK";
+		D24_SFP_ONBOARD_LINK {
+			label = "SFP_ONBOARD_LINK";
 			linux,default-trigger = "netdev";
 			gpios = <&gpio1 15 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
@@ -105,7 +105,7 @@
 		SFP_INT_LINK {
 			label = "SFP_INT_LINK";
 			linux,default-trigger = "netdev";
-			gpios = <&gpio4 23 GPIO_ACTIVE_HIGH>;
+			gpios = <&gpio4 23 GPIO_ACTIVE_LOW>;
 			default-state = "off";
 		};
 	};
@@ -186,7 +186,7 @@
 		};
 	};
 
-	sfp_ext: sfp_ext {
+	sfp_onboard: sfp_onboard {
 	 	compatible = "sff,sfp";
 	 	i2c-bus = <&i2c1>;
 		vcc-supply = <&regulator_3v3>;
@@ -303,7 +303,7 @@
 		"","","","","","","","","","",
 		"","","","","",
 		/* LED (15)*/
-		"SFP_EXT_LINK_1V8",
+		"SFP_ONBOARD_LINK_1V8",
 		/* Line 16-31 */
 		"","","","","","","","","","",
 		"","","","","","";
@@ -414,7 +414,7 @@
 	label = "eth2";
 	phy-connection-type = "sgmii";
 	managed = "in-band-status";
-	sfp = <&sfp_ext>;
+	sfp = <&sfp_onboard>;
 	status = "okay";
 };
 
