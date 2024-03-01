@@ -76,9 +76,12 @@ static void set_baseline_state(struct led_netdev_data *trigger_data)
 	if (!test_bit(NETDEV_LED_MODE_LINKUP, &trigger_data->mode))
 		led_set_brightness(led_cdev, LED_OFF);
 	else {
-		if (test_bit(NETDEV_LED_LINK, &trigger_data->mode))
+		if (test_bit(NETDEV_LED_LINK, &trigger_data->mode) &&
+				netif_carrier_ok(trigger_data->net_dev) &&
+				!netif_dormant(trigger_data->net_dev) &&
+				trigger_data->net_dev->flags & IFF_UP)
 			led_set_brightness(led_cdev,
-					   led_cdev->blink_brightness);
+					   led_cdev->max_brightness);
 		else
 			led_set_brightness(led_cdev, LED_OFF);
 
