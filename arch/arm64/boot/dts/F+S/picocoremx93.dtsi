@@ -832,6 +832,10 @@
 };
 #endif /* CONFIG_PICOCOREMX93_ADC */
 
+&epxp {
+	status = "okay";
+};
+
 &wdog3 {
 	status = "okay";
 };
