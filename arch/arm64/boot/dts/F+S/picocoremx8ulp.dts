@@ -28,7 +28,14 @@
 #define CONFIG_PICOCOREMX8ULP_EEPROM
 
 /* AUDIO */
+#define CONFIG_PICOCOREMX8ULP_AUDIO_APD
+/* LPAUDIO is currently not supported */
+// #define CONFIG_PICOCOREMX8ULP_AUDIO_RTD
+
+#if defined(CONFIG_PICOCOREMX8ULP_AUDIO_APD) || \
+	defined(CONFIG_PICOCOREMX8ULP_AUDIO_RTD)
 #define CONFIG_PICOCOREMX8ULP_AUDIO
+#endif
 
 /* External RTC - default not mounted */
 #define CONFIG_PICOCOREMX8ULP_EXT_RTC
@@ -112,59 +119,71 @@
 };
 #endif /* CONFIG_PICOCOREMX8ULP_WLAN */
 
-// #if defined(CONFIG_PICOCOREMX8ULP_AUDIO)
-// /{
-//     regulators {
-// 		/* SGTL5000 analog voltage */
-// 		reg_sgtl5000_vdda: sgtl5000_vdda {
-// 			compatible = "regulator-fixed";
-// 			regulator-name = "VDDA-supply";
-// 			regulator-min-microvolt = <3300000>;
-// 			regulator-max-microvolt = <3300000>;
-// 			regulator-always-on;
-// 		};
+#if defined(CONFIG_PICOCOREMX8ULP_AUDIO)
+ /{
+     regulators {
+ 		/* SGTL5000 analog voltage */
+ 		reg_sgtl5000_vdda: sgtl5000_vdda {
+ 			compatible = "regulator-fixed";
+ 			regulator-name = "VDDA-supply";
+ 			regulator-min-microvolt = <3300000>;
+ 			regulator-max-microvolt = <3300000>;
+ 			regulator-always-on;
+ 		};
 
-// 		/* SGTL5000 I/O voltage */
-// 		reg_sgtl5000_vddio: sgtl5000_vddio {
-// 			compatible = "regulator-fixed";
-// 			regulator-name = "VDDIO-supply";
-// 			regulator-min-microvolt = <3300000>;
-// 			regulator-max-microvolt = <3300000>;
-// 			regulator-always-on;
-// 		};
+ 		/* SGTL5000 I/O voltage */
+ 		reg_sgtl5000_vddio: sgtl5000_vddio {
+ 			compatible = "regulator-fixed";
+ 			regulator-name = "VDDIO-supply";
+ 			regulator-min-microvolt = <3300000>;
+ 			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+ 		};
 
-// 		/* SGTL5000 internal digital voltage */
-// 		reg_sgtl5000_vddd: sgtl5000_vddd {
-// 			compatible = "regulator-fixed";
-// 			regulator-name = "VDDD-supply";
-// 			regulator-min-microvolt = <1800000>;
-// 			regulator-max-microvolt = <1800000>;
-// 			regulator-always-on;
-// 		};
-//     };
+ 		/* SGTL5000 internal digital voltage */
+ 		reg_sgtl5000_vddd: sgtl5000_vddd {
+ 			compatible = "regulator-fixed";
+ 			regulator-name = "VDDD-supply";
+ 			regulator-min-microvolt = <1800000>;
+ 			regulator-max-microvolt = <1800000>;
+ 			regulator-always-on;
+		};
+    };
+#endif
 
-// 	sound-sgtl5000 {
-// 		compatible = "fsl,imx-audio-sgtl5000";
-// 		cpu-dai = <&sai2>;
-// 		audio-codec = <&sgtl5000>;
-// 		model = "imx-sgtl5000";
-// 		audio-routing =
-// 			"LINE_IN", "Line In Jack",
-// 			"MIC_IN", "Mic Jack",
-// 			"Line Out Jack", "LINE_OUT",
-// 			"Headphone Jack", "HP_OUT";
-// 	};
-// };
+#if defined(CONFIG_PICOCOREMX8ULP_AUDIO_APD)
+	sound-sgtl5000 {
+ 		compatible = "fsl,imx-audio-sgtl5000";
+ 		audio-cpu = <&sai4>;
+ 		audio-codec = <&sgtl5000>;
+ 		model = "imx-sgtl5000";
+ 		audio-routing =
+ 			"LINE_IN", "Line In Jack",
+ 			// "MIC_IN", "Mic Jack",
+ 			//"Line Out Jack", "LINE_OUT",
+ 			"Headphone Jack", "HP_OUT";
+ 	};
+};
 
-// &lpi2c4 {
-//     sgtl5000: sgtl5000@a {
-// 		compatible = "fsl,sgtl5000";
-// 		reg = <0x0a>;
-// 		mono2both;
-// 		clocks = <&clks IMX6UL_CLK_SAI2>;
-// 		VDDA-supply = <&reg_sgtl5000_vdda>;
-// 		VDDIO-supply = <&reg_sgtl5000_vddio>;
-// 		VDDD-supply = <&reg_sgtl5000_vddd>;
-// 	};
-// };
-// #endif
+&lpi2c4 {
+    sgtl5000: sgtl5000@a {
+ 		compatible = "fsl,sgtl5000";
+ 		reg = <0x0a>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_sgtl5000>;
+ 		mono2both;
+		clocks = <&cgc1 IMX8ULP_CLK_SAI4_SEL>; //MCLK1
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+ 		VDDIO-supply = <&reg_sgtl5000_vddio>;
+ 		VDDD-supply = <&reg_sgtl5000_vddd>;
+ 	};
+};
+
+&iomuxc1 {
+	pinctrl_sgtl5000: sgtl5000grp {
+		fsl,pins = <
+			MX8ULP_PAD_PTF14__I2S4_MCLK		0x43
+		>;
+	};
+};
+#endif

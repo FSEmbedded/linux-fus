@@ -650,6 +650,32 @@
 };
 #endif /* SOLDERCORE8ULP_USB1; PICOCOREMX8ULP_USB_HOST */
 
+/* SAI Decleration */
+#if defined(CONFIG_PICOCOREMX8ULP_AUDIO_APD)
+&sai4 {
+	#sound-dai-cells = <0>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_sai4>;
+	pinctrl-1 = <&pinctrl_sai4>;
+	assigned-clocks = <&cgc1 IMX8ULP_CLK_SAI4_SEL>;
+	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
+	// fsl,dataline = <1 0x08 0x01>;
+	fsl,sai-mclk-direction-output;
+	status = "okay";
+};
+
+&iomuxc1 {
+	pinctrl_sai4: sai4grp {
+		fsl,pins = <
+			MX8ULP_PAD_PTF12__I2S4_RXD0		0x43
+			MX8ULP_PAD_PTF15__I2S4_TX_BCLK	0x43
+			MX8ULP_PAD_PTF16__I2S4_TX_FS	0x43
+			MX8ULP_PAD_PTF17__I2S4_TXD0		0x43
+		>;
+	};
+};
+#endif
+
 &epxp {
 	status = "okay";
 };
