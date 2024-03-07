@@ -45,7 +45,8 @@ dtb-$(CONFIG_ARCH_MXC) += picocoremx8mp.dtb \
 			  picocoremx8mp-lcdif-g133han01.dtb \
 			  picocoremx8mp-adp-aud1.dtb \
 			  picocoremx8mp-basler-isp.dtb \
-			  picocoremx8mpr2-basler-isp.dtb
+			  picocoremx8mpr2-basler-isp.dtb \
+			  picocoremx8mp-BT070L1060CS0I1AD-A.dtb
 dtb-$(CONFIG_ARCH_MXC) += picocoremx8mmr2-lpddr4.dtb \
 			  picocoremx8mmr2-lpddr4-lcdif-tc358764-g070y2-l01.dtb \
 			  picocoremx8mmr2-lpddr4-lcdif-tc358775-j070wvtc0211.dtb \
@@ -59,6 +60,7 @@ dtb-$(CONFIG_ARCH_MXC) += picocoremx8mpr2.dtb \
 			  picocoremx8mpr2-lcdif-adp-mipi2lvds1-j070wvtc0211-single-display.dtb \
 			  picocoremx8mpr2-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtb \
 			  picocoremx8mpr2-lcdif-g133han01.dtb \
-			  picocoremx8mpr2-adp-aud1.dtb
+			  picocoremx8mpr2-adp-aud1.dtb \
+			  picocoremx8mpr2-BT070L1060CS0I1AD-A.dtb
 dtb-$(CONFIG_ARCH_MXC) += efusmx8mp.dtb
 dtb-$(CONFIG_ARCH_MXC) += fssmmx8mp.dtb

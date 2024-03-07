@@ -1,0 +1,159 @@
+/*
+ * Copyright (C) 2021 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/ {
+
+        lvds1_panel {
+                compatible = "panel-lvds";
+                backlight = <&backlight_ldb>;
+                reset-gpios = <&pca963x 3 GPIO_ACTIVE_LOW>;
+                data-mapping = "vesa-24";
+                label = "BT070L1060CS0I1AD-A";
+                width-mm = <155>;
+                height-mm = <86>;
+                status = "okay";
+                panel-timing {
+                        clock-frequency = <49500000>;
+                        hactive = <1024>;
+                        vactive = <600>;
+                        hback-porch = <160>;
+                        hfront-porch = <76>;
+                        hsync-len = <140>;
+                        vback-porch = <23>;
+                        vfront-porch = <107>;
+                        vsync-len = <20>;
+                        pixelclk-active = <0>;
+                        de-active = <1>;
+                };
+                port {
+                        panel_lvds1_in: endpoint {
+                                remote-endpoint = <&lvds1_out>;
+                        };
+                };
+        };
+};
+
+&backlight_ldb {
+	pwms = <&pca963x 1 5263157 1>;
+	brightness-levels = <0 1 5 10 18 28 41 56
+		                 73 92 113 137 163 192 222 255>;
+	default-brightness-level = <14>;
+};
+
+&reg_ldb_bl{
+	gpio = <&pca963x 0 GPIO_ACTIVE_HIGH>;
+};
+
+/* LVDS */
+&lcdif2 {
+	status = "okay";
+};
+
+&ldb_phy {
+	status = "okay";
+};
+
+&ldb {
+	status = "okay";
+	/* TODO: disabled for now because does not work */
+#ifdef CONFIG_PICOCOREMX8MP_LDB_DUAL_CHANNEL
+	fsl,dual-channel;
+#endif /* CONFIG_PICOCOREMX8MP_LDB_DUAL_CHANNEL */
+	/* DSI_A */
+	lvds-channel@0 {
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <24>;
+		status = "disabled";
+	};
+	/* DSI_B */
+	lvds-channel@1 {
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <24>;
+		status = "okay";
+		port@1 {
+			reg = <1>;
+			lvds1_out: endpoint {
+				remote-endpoint = <&panel_lvds1_in>;
+			};
+		};
+	};
+};
+
+&IMX8MP_TOUCH_I2C {
+	clock-frequency = <400000>;
+	pca963x: pca9634@61 {
+                        compatible = "nxp,pca9634";
+                        reg = <0x61>;
+						vdd-supply = <&reg_vlcd>;
+                        #address-cells = <1>;
+                        #size-cells = <0>;
+                        #pwm-cells = <3>;
+                        #gpio-cells = <2>;
+                        led@0 {
+                                reg = <0>;
+                                label = "BL_ON";
+                                type = "GPIO";
+                                default-on;             /* or: keep-value */
+                                active-high;
+                        };
+                        led@1 {
+                                reg = <1>;
+                                label = "BL_PWM";
+                                type = "PWM";
+                                default-on;             /* or: keep-value */
+                                active-low;
+                        };
+                        led@2 {
+                                reg = <2>;
+                                label = "2-unused";
+                                type = "LED";
+                                active-low;
+                        };
+                        led@3 {
+                                reg = <3>;
+                                label = "MIPI_RST";
+                                type = "GPIO";
+                                active-low;
+                                default-on;             /* or: keep-value */
+                        };
+                        led@4 {
+                                reg = <4>;
+                                label = "4-unused";
+                                type = "LED";
+                                active-low;
+                        };
+                        led@5 {
+                                reg = <5>;
+                                label = "I2C_RST";
+                                type = "GPIO";
+                                active-high;
+                                default-on;             /* or: keep-value */
+                        };
+                        led@6 {
+                                reg = <6>;
+                                label = "6-unused";
+                                type = "LED";
+                                active-low;
+                        };
+                        led@7 {
+                                reg = <7>;
+                                label = "TOUCH_ON";
+                                type = "GPIO";
+                                active-high;
+                                default-on;
+                        };
+                };
+        /* Ilitek PCAP touch on Touch-Connector (I2C) */
+        touch: ilitek2130@41 {
+                compatible = "ilitek,ili2130";
+                reg = <0x41>;
+                interrupt-parent = <&IMX8MP_TOUCH_INTERRUPT_GPIO_BANK>;
+                interrupts = <IMX8MP_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_RISING>;
+                reset-gpios = <&pca963x 5 GPIO_ACTIVE_LOW>;
+        };
+};
