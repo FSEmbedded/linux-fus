@@ -768,8 +768,7 @@ int goodix_reset_no_int_sync(struct goodix_ts_data *ts)
 	msleep(20);				/* T2: > 10ms */
 
 	/* HIGH: 0x28/0x29, LOW: 0xBA/0xBB */
-	/* 0x28 needs low !*/
-	error = goodix_irq_direction_output(ts, 0);
+	error = goodix_irq_direction_output(ts, ts->client->addr == 0x14);
 	if (error)
 		goto error;
 
