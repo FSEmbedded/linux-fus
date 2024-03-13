@@ -23,9 +23,9 @@
 			vactive = <600>;
 			hback-porch = <160>;
 			hfront-porch = <76>;
-			hsync-len = <140>;
+			hsync-len = <10>;
 			vback-porch = <23>;
-			vfront-porch = <107>;
+			vfront-porch = <12>;
 			vsync-len = <20>;
 			pixelclk-active = <0>;
 			de-active = <1>;
