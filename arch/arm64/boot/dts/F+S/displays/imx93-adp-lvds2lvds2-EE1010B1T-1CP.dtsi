@@ -12,7 +12,7 @@
 		backlight = <&backlight_ldb>;
 		reset-gpios = <&gpio_adp 3 GPIO_ACTIVE_LOW>;
 		data-mapping = "vesa-24";
-		label = "BT070L1060CS0I1AD-A";
+		label = "EE1010B1T-1CP";
                 width-mm = <223>;
                 height-mm = <125>;
 		status = "okay";
@@ -150,6 +150,6 @@
                 touchscreen-inverted-y;
                 interrupt-parent = <&IMX93_TOUCH_INTERRUPT_GPIO_BANK>;
                 interrupts = <IMX93_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_RISING>;
-                reset-gpios = <&gpio2 19 GPIO_ACTIVE_LOW>;
+                reset-gpios = <&gpio_adp 5 GPIO_ACTIVE_LOW>;
         };
 };

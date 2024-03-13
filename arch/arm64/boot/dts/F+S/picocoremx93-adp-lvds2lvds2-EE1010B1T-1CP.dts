@@ -6,7 +6,7 @@
  * published by the Free Software Foundation.
  */
 //#define CONFIG_PICOCOREMX93_MIPI_DSI_LVDS
-#define IMX93_TOUCH_I2C 					lpi2c8
+#define IMX93_TOUCH_I2C 			lpi2c8
 #define IMX93_TOUCH_INTERRUPT_GPIO_BANK 	gpio2
 #define IMX93_TOUCH_INTERRUPT_GPIO_NUM 		18
 
