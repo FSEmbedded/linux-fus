@@ -1,0 +1,11 @@
+/*
+* Copyright (C) 2024 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+
+#define CONFIG_PICOCOREMX8ULP_MIPI_DSI
+#include "picocoremx8ulp.dts"
+#include "displays/imx8ulp-adp-mipi2lvds1-BT070L1060CS0I1AD-A.dtsi"
