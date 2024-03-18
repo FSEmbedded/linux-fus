@@ -4,9 +4,7 @@
  */
 
 / {
-
-
-      reg_mipi_bl: backlight_mipi {
+	reg_mipi_bl: backlight_mipi {
 			compatible = "regulator-fixed";
 			regulator-name = "mipi-bl";
 			gpio = <&pca963x 0 0>;
@@ -14,8 +12,6 @@
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
 		};
-
-
 
 	backlight_mipi_dsi: backlight_mipi_dsi {
 		compatible = "pwm-backlight";

@@ -5,16 +5,15 @@
 * it under the terms of the GNU General Public License version 2 as
 * published by the Free Software Foundation.
 */
+#if defined(CONFIG_PICOCOREMX8ULP_MIPI_DSI)
 
 #if CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION != 120 && \
-    CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION != 100 && \
-	!defined(CONFIG_SOLDERCORE8ULP_MIPI_DSI)
+    CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION != 100
 #error "no revision defined or unsupported"
 #endif
 
 #include <dt-bindings/pwm/pwm.h>
 
-#if !defined(CONFIG_SOLDERCORE8ULP_MIPI_DSI)
 / {
     /* MIPI-DSI backlight PWM on adapter MIPI2MIPI1 */
     backlight_mipi_dsi {
@@ -35,7 +34,7 @@
         default-brightness-level = <14>;
 	};
 };
-#endif
+
 
 &{/regulators} {
 	reg_mipi_bl: backlight_mipi@10 {
@@ -63,8 +62,6 @@
 		reset-gpios = <&max7315 4 GPIO_ACTIVE_LOW>;
 #elif CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION == 100
 		reset-gpios = <&pca963x 2 GPIO_ACTIVE_HIGH>;
-#elif defined(CONFIG_SOLDERCORE8ULP_MIPI_DSI)
-		reset-gpios = <&gpioe 9 GPIO_ACTIVE_LOW>;
 #endif
 
 		port {
@@ -85,10 +82,6 @@
 	};
 };
 
-#if defined(CONFIG_PICOCOREMX8ULP_I2C_B) ||\
-		defined(CONFIG_SOLDERCORE8ULP_MIPI_DSI)
-
-#ifdef CONFIG_PICOCOREMX8ULP_I2C_B
 &lpi2c6 {
 #if CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION == 120
 	/* LED-driver on adapter board MIPI2MIPI1 */
@@ -149,9 +142,6 @@
 		};
 	};
 #endif
-#elif defined(CONFIG_SOLDERCORE8ULP_MIPI_DSI)
-&lpi2c4 {
-#endif
 	/* Atmel PCAP touch on Touch Connector (I2C) */
 	touch: mxt336u@4a {
 		compatible = "atmel,maxtouch";
@@ -159,36 +149,13 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_touch>;
 		atmel,cfg_name = "atmel/mxt336u-gloves.cfg";
-#if defined(CONFIG_SOLDERCORE8ULP_MIPI_DSI)
-		reset-gpios = <&gpioe 5 GPIO_ACTIVE_LOW>;
-		interrupt-parent = <&gpioe>;
-		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
-#elif defined(CONFIG_PICOCOREMX8ULP_MIPI_DSI)
 		reset-gpios = <&gpiof 0 GPIO_ACTIVE_LOW>;
 		interrupt-parent = <&gpioa>;
 		interrupts = <18 IRQ_TYPE_EDGE_FALLING>;
-#endif
 	};
 };
-#endif /* CONFIG_PICOCOREMX8ULP_I2C_B */
-
-/* GPIO configuration in Cortex-M needed! */
 
 &iomuxc1 {
-#if defined(CONFIG_SOLDERCORE8ULP_MIPI_DSI)
-	pinctrl_dsi: dsigrp {
-		fsl,pins = <
-			MX8ULP_PAD_PTE9__PTE9		0x3
-		>;
-	};
-
-	pinctrl_touch: touchgrp {
-		fsl,pins = <
-		MX8ULP_PAD_PTE2__PTE2	0x3 //int
-		MX8ULP_PAD_PTE5__PTE5	0x3 //reset
-		>;
-	};
-#elif defined(CONFIG_PICOCOREMX8ULP_MIPI_DSI)
 	pinctrl_dsi: dsigrp {
 		fsl,pins = <
 			MX8ULP_PAD_PTF1__PTF1		0x3 // MIPI_RESET
@@ -197,8 +164,8 @@
 
 	pinctrl_touch: touchgrp {
 		fsl,pins = <
-			MX8ULP_PAD_PTF0__PTF0	0x3 //reset
+			MX8ULP_PAD_PTF0__PTF0	0x3 //touch_reset
 		>;
 	};
-#endif
 };
+#endif /* CONFIG_PICOCOREMX8ULP_MIPI_DSI */

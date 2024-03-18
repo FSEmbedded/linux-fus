@@ -15,11 +15,11 @@
 #define CONFIG_SOLDERCORE8ULP_EPDC
 #define CONFIG_SOLDERCORE8ULP_MIPI_DSI
 
-#include "fsimx8ulp.dtsi"
+#include "soldercore8ulp.dtsi"
 
 / {
 	model = "F&S SolderCore8ULP";
 	compatible = "fus,soldercore8ulp", "fus,fsimx8ulp", "fsl,imx8ulp";
 };
 
-#include "displays/imx8ulp-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtsi"
+#include "displays/imx8ulp-ee0350et-2cp.dtsi"

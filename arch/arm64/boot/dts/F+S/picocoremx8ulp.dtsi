@@ -35,11 +35,6 @@
 			linux,cma-default;
 		};
 
-		rsc_table: rsc-table@1fff8000{
-			reg = <0 0x1fff8000 0 0x1000>;
-			no-map;
-		};
-
 		dsp_reserved: dsp_reserved@8e000000 {
 			reg = <0 0x8e000000 0 0x1000000>;
 			no-map;
@@ -68,42 +63,6 @@
 			no-map;
 		};
 
-		vdev0vring0: vdev0vring0@aff00000 {
-			reg = <0 0xaff00000 0 0x8000>;
-			no-map;
-		};
-
-		vdev0vring1: vdev0vring1@aff08000 {
-			reg = <0 0xaff08000 0 0x8000>;
-			no-map;
-		};
-
-		vdev1vring0: vdev1vring0@aff10000 {
-			reg = <0 0xaff10000 0 0x8000>;
-			no-map;
-		};
-
-		vdev1vring1: vdev1vring1@aff18000 {
-			reg = <0 0xaff18000 0 0x8000>;
-			no-map;
-		};
-
-		vdevbuffer: vdevbuffer@a8400000 {
-			compatible = "shared-dma-pool";
-			reg = <0 0xa8400000 0 0x100000>;
-			no-map;
-		};
-
-		audio_reserved: audio@a8500000 {
-			compatible = "shared-dma-pool";
-			no-map;
-			reg = <0 0xa8500000 0 0x100000>;
-		};
-
-		m33_reserved: m33_noncacheable_section@a8600000 {
-			no-map;
-			reg = <0 0xa8600000 0 0x1000000>;
-		};
 	};
 
 	regulators{
@@ -118,11 +77,90 @@
 			regulator-max-microvolt = <5000000>;
 			regulator-always-on;
 		};
+
+		reg_vlcd: regulator_vlcd {
+			compatible = "regulator-fixed";
+			pinctrl-names = "default";
+			pinctrl-0 = <&pinctrl_vlcd>;
+ 			regulator-name = "reg_vlcd";
+ 			regulator-min-microvolt = <3300000>;
+ 			regulator-max-microvolt = <3300000>;
+			gpio = <&gpiof 30 GPIO_ACTIVE_LOW>;
+ 		};
 	};
 };
 
+#if defined(SUPPORT_M33)
+&{/reserved-memory} {
+	rsc_table: rsc-table@1fff8000{
+		reg = <0 0x1fff8000 0 0x1000>;
+		no-map;
+	};
+
+	m33_reserved: m33_noncacheable_section@a8600000 {
+		reg = <0 0xa8600000 0 0x1000000>;
+		no-map;
+	};
+	
+	vdev0vring0: vdev0vring0@aff00000 {
+		reg = <0 0xaff00000 0 0x8000>;
+		no-map;
+	};
+
+	vdev0vring1: vdev0vring1@aff08000 {
+		reg = <0 0xaff08000 0 0x8000>;
+		no-map;
+	};
+
+	vdev1vring0: vdev1vring0@aff10000 {
+		reg = <0 0xaff10000 0 0x8000>;
+		no-map;
+	};
+
+	vdev1vring1: vdev1vring1@aff18000 {
+		reg = <0 0xaff18000 0 0x8000>;
+		no-map;
+	};
+
+	vdevbuffer: vdevbuffer@a8400000 {
+		compatible = "shared-dma-pool";
+		reg = <0 0xa8400000 0 0x100000>;
+		no-map;
+	};
+};
+
+/* remoteproc */
+&imx8ulp_cm33 {
+	ipc-only;
+	rsc-da=<0x1fff8000>;
+	mbox-names = "tx", "rx", "rxdb";
+	mboxes = <&mu 0 1
+			&mu 1 1
+			&mu 3 1>;
+	memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
+			<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
+	status = "okay";
+};
+
+/* MU M33 <--> A35 */
+&mu {
+	status = "okay";
+};
+
+#if defined(CONFIG_PICOCOREMX8ULP_AUDIO_RTD)
+/* TODO: LPAUDIO */
+&{/reserved-memory} {
+	audio_reserved: audio@a8500000 {
+		compatible = "shared-dma-pool";
+		no-map;
+		reg = <0 0xa8500000 0 0x100000>;
+	};
+};
+#endif /* CONFIG_PICOCOREMX8ULP_AUDIO_RTD */
+#endif /* SUPPORT_M33 */
+
 /* Ethernet decleration */
-#if defined(CONFIG_PICOCOREMX8ULP_ETH_A) || defined(CONFIG_SOLDERCORE8ULP_ETH_ADP)
+#if defined(CONFIG_PICOCOREMX8ULP_ETH_A)
 / {
 	clock_ext_rmii: clock-ext-rmii {
 		compatible = "fixed-clock";
@@ -159,68 +197,50 @@
 		#size-cells = <0>;
 
 		ethphy: ethernet-phy@0 {
-            // use broadcast addr,
-            // since only on phy is in use.
+			// use broadcast addr,
+			// since only on phy is in use.
 			reg = <0>;
 			pinctrl-names = "default", "sleep";
-            pinctrl-0 = <&pinctrl_ethphy>;
-	        pinctrl-1 = <&pinctrl_ethphy>;
+			pinctrl-0 = <&pinctrl_ethphy>;
+			pinctrl-1 = <&pinctrl_ethphy>;
+			interrupt-parent = <&gpioe>;
+			interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
+			reset-gpios = <&gpiof 31 GPIO_ACTIVE_LOW>;
 		};
 	};
 };
 
-#if defined(CONFIG_PICOCOREMX8ULP_ETH_A)
-&ethphy {
-	interrupt-parent = <&gpioe>;
-	interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
-    reset-gpios = <&gpiof 31 GPIO_ACTIVE_LOW>;
-};
-#elif defined(CONFIG_SOLDERCORE8ULP_ETH_ADP)
-&ethphy {
-    reset-gpios = <&gpioe 3 GPIO_ACTIVE_LOW>;
-};
-#endif
-
 &iomuxc1 {
 	pinctrl_enet: enetgrp {
 		fsl,pins = <
-			MX8ULP_PAD_PTE15__ENET0_MDC     0x43
-			MX8ULP_PAD_PTE14__ENET0_MDIO    0x43
-			MX8ULP_PAD_PTE17__ENET0_RXER    0x43
+			MX8ULP_PAD_PTE15__ENET0_MDC	0x43
+			MX8ULP_PAD_PTE14__ENET0_MDIO	0x43
+			MX8ULP_PAD_PTE17__ENET0_RXER	0x43
 			MX8ULP_PAD_PTE18__ENET0_CRS_DV  0x43
 			MX8ULP_PAD_PTE21__ENET0_RXD0	0x43
-			MX8ULP_PAD_PTE20__ENET0_RXD1    0x43
-			MX8ULP_PAD_PTE16__ENET0_TXEN    0x43
-			MX8ULP_PAD_PTE23__ENET0_TXD0    0x43
-			MX8ULP_PAD_PTE22__ENET0_TXD1    0x43
+			MX8ULP_PAD_PTE20__ENET0_RXD1	0x43
+			MX8ULP_PAD_PTE16__ENET0_TXEN	0x43
+			MX8ULP_PAD_PTE23__ENET0_TXD0	0x43
+			MX8ULP_PAD_PTE22__ENET0_TXD1	0x43
 			MX8ULP_PAD_PTE19__ENET0_REFCLK  0x42 //PHYAD2=0
 		>;
 	};
 
-#if defined(CONFIG_PICOCOREMX8ULP_ETH_A)
-    pinctrl_ethphy: ethphygrp {
-        fsl,pins = <
-            MX8ULP_PAD_PTE2__PTE2           0x3  //INT
-            MX8ULP_PAD_PTF31__PTF31         0x3  //RST  
-        >;
-    };
-
-#elif defined(CONFIG_SOLDERCORE8ULP_ETH_ADP)
-    pinctrl_ethphy: ethphygrp {
-        fsl,pins = <
-            MX8ULP_PAD_PTE3__PTE3         0x3	//RST
-        >;
-    };
-#endif
+	pinctrl_ethphy: ethphygrp {
+		fsl,pins = <
+			MX8ULP_PAD_PTE2__PTE2		0x3  //INT
+			MX8ULP_PAD_PTF31__PTF31		0x3  //RST  
+		>;
+	};
 };
 #endif /* Ethernet decleration */
 
 /* SPI decleration */
 #if defined(CONFIG_PICOCOREMX8ULP_SPI_A)
 &lpspi4 {
-    pinctrl-names = "default";
-    pinctrl-0 = <&pinctrl_lpspi4>;
-    status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lpspi4>;
+	status = "okay";
 
 	spidev0: spidev@0 {
 		/* use default driver */
@@ -233,13 +253,13 @@
 
 &iomuxc1 {
 	pinctrl_lpspi4: lpspi4grp {
-        fsl,pins = <
-            MX8ULP_PAD_PTF8__LPSPI4_SIN     0x42
-            MX8ULP_PAD_PTF9__LPSPI4_SOUT    0x42
-            MX8ULP_PAD_PTF10__LPSPI4_SCK    0x42
-            MX8ULP_PAD_PTF11__LPSPI4_PCS0   0x42
-        >;
-    };
+		fsl,pins = <
+			MX8ULP_PAD_PTF8__LPSPI4_SIN	0x42
+			MX8ULP_PAD_PTF9__LPSPI4_SOUT	0x42
+			MX8ULP_PAD_PTF10__LPSPI4_SCK	0x42
+			MX8ULP_PAD_PTF11__LPSPI4_PCS0   0x42
+		>;
+	};
 };
 #endif /* CONFIG_PICOCOREMX8ULP_SPI_A */
 
@@ -247,7 +267,7 @@
 
 /* UART decleration */
 /* lpuart5 */
-#if defined(CONFIG_PICOCOREMX8ULP_UART_A) || defined(CONFIG_SOLDERCORE8ULP_UART)
+#if defined(CONFIG_PICOCOREMX8ULP_UART_A)
 &lpuart5 {
 	/* console */
 	pinctrl-names = "default", "sleep";
@@ -257,25 +277,16 @@
 };
 
 &iomuxc1 {
-#if defined(CONFIG_PICOCOREMX8ULP_UART_A)
 	pinctrl_lpuart5: lpuart5grp {
 		fsl,pins = <
-            MX8ULP_PAD_PTE4__LPUART5_CTS_B  0x3
-            MX8ULP_PAD_PTE5__LPUART5_RTS_B  0x3
-			MX8ULP_PAD_PTE6__LPUART5_TX     0x3
+			MX8ULP_PAD_PTE4__LPUART5_CTS_B	0x3
+			MX8ULP_PAD_PTE5__LPUART5_RTS_B	0x3
+			MX8ULP_PAD_PTE6__LPUART5_TX	0x3
 			MX8ULP_PAD_PTE7__LPUART5_RX 	0x3
 		>;
 	};
-#elif defined(CONFIG_SOLDERCORE8ULP_UART)
-	pinctrl_lpuart5: lpuart5grp {
-		fsl,pins = <
-			MX8ULP_PAD_PTE6__LPUART5_TX     0x3
-			MX8ULP_PAD_PTE7__LPUART5_RX 	0x3
-		>;
-	};
-#endif
 };
-#endif
+#endif /* CONFIG_PICOCOREMX8ULP_UART_A */
 
 /* lpuart6 */
 #if defined(CONFIG_PICOCOREMX8ULP_UART_C)
@@ -289,8 +300,8 @@
 &iomuxc1 {
 	pinctrl_lpuart6: lpuart6grp {
 		fsl,pins = <
-			MX8ULP_PAD_PTE10__LPUART6_TX    0x3
-			MX8ULP_PAD_PTE11__LPUART6_RX    0x3
+			MX8ULP_PAD_PTE10__LPUART6_TX	0x3
+			MX8ULP_PAD_PTE11__LPUART6_RX	0x3
 		>;
 	};
 };
@@ -301,10 +312,9 @@
 
 /* I2C decleration */
 /* lpi2c4 */
-#if defined(CONFIG_PICOCOREMX8ULP_I2C_INT) ||\
-		defined(CONFIG_SOLDERCORE8ULP_MIPI_DSI)
+#if defined(CONFIG_PICOCOREMX8ULP_I2C_INT)
 &lpi2c4 {
-    #address-cells = <1>;
+	#address-cells = <1>;
 	#size-cells = <0>;
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
@@ -312,30 +322,29 @@
 	status = "okay";
 };
 
+#if defined(CONFIG_PICOCOREMX8ULP_EXT_RTC)
+&lpi2c4 {
+	rtc85263: rtc85263@51 {
+		compatible = "nxp,pcf85263";
+		reg = <0x51>;
+	};
+};
+#endif /* CONFIG_PICOCOREMX8ULP_EXT_RTC */
+
 &iomuxc1 {
-#if defined(CONFIG_PICOCOREMX8ULP_I2C_INT)
-    pinctrl_lpi2c4: lpi2c4grp {
-        fsl,pins = <
-            MX8ULP_PAD_PTE0__LPI2C4_SCL	0x20
-			MX8ULP_PAD_PTE1__LPI2C4_SDA	0x20
-        >;
-    };
-#elif defined(CONFIG_SOLDERCORE8ULP_MIPI_DSI)
 	pinctrl_lpi2c4: lpi2c4grp {
 		fsl,pins = <
-			MX8ULP_PAD_PTE0__LPI2C4_SCL 0x20
-			MX8ULP_PAD_PTE1__LPI2C4_SDA 0x20
+			MX8ULP_PAD_PTE0__LPI2C4_SCL	0x20
+			MX8ULP_PAD_PTE1__LPI2C4_SDA	0x20
 		>;
 	};
-#endif
-
 };
 #endif /* lpi2c4 */
 
 /* lpi2c6 */
 #if defined(CONFIG_PICOCOREMX8ULP_I2C_B)
 &lpi2c6 {
-    #address-cells = <1>;
+	#address-cells = <1>;
 	#size-cells = <0>;
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
@@ -344,19 +353,19 @@
 };
 
 &iomuxc1 {
-    pinctrl_lpi2c6: lpi2c6grp {
-        fsl,pins = <
-            MX8ULP_PAD_PTE8__LPI2C6_SCL	0x20
+	pinctrl_lpi2c6: lpi2c6grp {
+		fsl,pins = <
+			MX8ULP_PAD_PTE8__LPI2C6_SCL	0x20
 			MX8ULP_PAD_PTE9__LPI2C6_SDA	0x20
-        >;
-    };
+		>;
+	};
 };
 #endif /* CONFIG_PICOCOREMX8ULP_I2C_B */
 
 /* lpi2c7 */
-#if defined(CONFIG_PICOCOREMX8ULP_I2C_A) || defined(CONFIG_SOLDERCORE8ULP_EPDC)
+#if defined(CONFIG_PICOCOREMX8ULP_I2C_A)
 &lpi2c7 {
-    #address-cells = <1>;
+	#address-cells = <1>;
 	#size-cells = <0>;
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
@@ -364,28 +373,29 @@
 	status = "okay";
 };
 
+#if defined(CONFIG_PICOCOREMX8ULP_EEPROM)
+&lpi2c7 {
+    eeprom: eeprom@50 {
+		compatible = "atmel,24c02";
+		reg = <0x50>;
+		pagesize = <8>;
+	};
+};
+#endif /* CONFIG_PICOCOREMX8ULP_EEPROM */
+
 &iomuxc1 {
-#if defined(CONFIG_PICOCOREMX8ULP_I2C_A)
-    pinctrl_lpi2c7: lpi2c7grp {
-        fsl,pins = <
-            MX8ULP_PAD_PTE12__LPI2C7_SCL	0x20
+	pinctrl_lpi2c7: lpi2c7grp {
+		fsl,pins = <
+			MX8ULP_PAD_PTE12__LPI2C7_SCL	0x20
 			MX8ULP_PAD_PTE13__LPI2C7_SDA	0x20
-        >;
-    };
-#elif defined(CONFIG_SOLDERCORE8ULP_EPDC)
-    pinctrl_lpi2c7: lpi2c7grp {
-        fsl,pins = <
-			MX8ULP_PAD_PTF4__LPI2C7_SCL	0x20
-			MX8ULP_PAD_PTF5__LPI2C7_SDA	0x20
-        >;
-    };
-#endif
+		>;
+	};
 };
 #endif /* lpi2c7 */
 
 /* USDHC decleration */
 /* usdhc0 */
-#if defined(CONFIG_PICOCOREMX8ULP_EMMC) || defined(CONFIG_SOLDERCORE8ULP_EMMC)
+#if defined(CONFIG_PICOCOREMX8ULP_EMMC)
 &usdhc0 {
 	pinctrl-names = "default", "state_100mhz", "state_200mhz", "sleep";
 	pinctrl-0 = <&pinctrl_usdhc0>;
@@ -397,55 +407,27 @@
 	status = "okay";
 };
 
-#if defined(CONFIG_SOLDERCORE8ULP_MMC_HS400)
 &usdhc0 {
-    mmc-hs400-1_8v;
+	cap-mmc-highspeed;
+	no-1-8-v;
 };
-#elif defined(CONFIG_SOLDERCORE8ULP_MMC_HS200)
-&usdhc0 {
-    mmc-hs200-1_8v;
-};
-#else
-&usdhc0 {
-    cap-mmc-highspeed;
-    no-1-8-v;
-};
-#endif
 
 &iomuxc1 {
-#if defined(CONFIG_PICOCOREMX8ULP_EMMC)
 	pinctrl_usdhc0: usdhc0grp {
 		fsl,pins = <
-            MX8ULP_PAD_PTD0__SDHC0_RESET_B  0x3
-			MX8ULP_PAD_PTD1__SDHC0_CMD	    0x3
-			MX8ULP_PAD_PTD2__SDHC0_CLK	    0x10002
-			MX8ULP_PAD_PTD10__SDHC0_D0	    0x3
-			MX8ULP_PAD_PTD9__SDHC0_D1	    0x3
-			MX8ULP_PAD_PTD8__SDHC0_D2	    0x3
-			MX8ULP_PAD_PTD7__SDHC0_D3	    0x3
-			MX8ULP_PAD_PTD6__SDHC0_D4	    0x3
-			MX8ULP_PAD_PTD5__SDHC0_D5	    0x3
-			MX8ULP_PAD_PTD4__SDHC0_D6	    0x3
-			MX8ULP_PAD_PTD3__SDHC0_D7	    0x3
+			MX8ULP_PAD_PTD0__SDHC0_RESET_B  0x3
+			MX8ULP_PAD_PTD1__SDHC0_CMD		0x3
+			MX8ULP_PAD_PTD2__SDHC0_CLK		0x10002
+			MX8ULP_PAD_PTD10__SDHC0_D0		0x3
+			MX8ULP_PAD_PTD9__SDHC0_D1		0x3
+			MX8ULP_PAD_PTD8__SDHC0_D2		0x3
+			MX8ULP_PAD_PTD7__SDHC0_D3		0x3
+			MX8ULP_PAD_PTD6__SDHC0_D4		0x3
+			MX8ULP_PAD_PTD5__SDHC0_D5		0x3
+			MX8ULP_PAD_PTD4__SDHC0_D6		0x3
+			MX8ULP_PAD_PTD3__SDHC0_D7		0x3
 		>;
 	};
-#elif defined(CONFIG_SOLDERCORE8ULP_EMMC)
-	pinctrl_usdhc0: usdhc0grp {
-		fsl,pins = <
-            MX8ULP_PAD_PTD11__SDHC0_DQS     0x10002
-			MX8ULP_PAD_PTD1__SDHC0_CMD	    0x3
-			MX8ULP_PAD_PTD2__SDHC0_CLK	    0x10002
-			MX8ULP_PAD_PTD10__SDHC0_D0	    0x3
-			MX8ULP_PAD_PTD9__SDHC0_D1	    0x3
-			MX8ULP_PAD_PTD8__SDHC0_D2	    0x3
-			MX8ULP_PAD_PTD7__SDHC0_D3	    0x3
-			MX8ULP_PAD_PTD6__SDHC0_D4	    0x3
-			MX8ULP_PAD_PTD5__SDHC0_D5	    0x3
-			MX8ULP_PAD_PTD4__SDHC0_D6	    0x3
-			MX8ULP_PAD_PTD3__SDHC0_D7	    0x3
-		>;
-	};
-#endif
 };
 #endif /* usdhc0 */
 
@@ -453,7 +435,7 @@
 #if defined(CONFIG_PICOCOREMX8ULP_SD_A) || defined(CONFIG_PICOCOREMX8ULP_WLAN)
 #if defined(CONFIG_PICOCOREMX8ULP_WLAN)
 &{/regulators} {
-    reg_usdhc1_vmmc: regulator_usdhc1_wlan@2 {
+	reg_usdhc1_vmmc: regulator_usdhc1_wlan@2 {
 		compatible = "regulator-fixed";
 		regulator-name = "WLAN_RESET";
 		regulator-min-microvolt = <3300000>;
@@ -462,26 +444,27 @@
 		gpio = <&gpiob 12 GPIO_ACTIVE_HIGH>;
 		off-on-delay-us = <1000>;
 		enable-active-high;
-    };
+	};
 };
-#else
+#elif defined(CONFIG_PICOCOREMX8ULP_SD_A)
 &{/regulators} {
-    reg_usdhc1_vmmc: regulator_usdhc1_vmmc@2 {
+	reg_usdhc1_vmmc: regulator_usdhc1_vmmc@2 {
 		compatible = "regulator-fixed";
-		regulator-name = "USDHC2_VMMC";
+		regulator-name = "USDHC1_VMMC";
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
 		regulator-always-on;
-    };
+	};
 };
 #endif
 
-#if !defined(CONFIG_PICOCOREMX8ULP_MIPI_DSI)
+#if defined(CONFIG_PICOCOREMX8ULP_SD_A) && \
+	!defined(CONFIG_PICOCOREMX8ULP_MIPI_DSI)
 /* PTF0 is shared with MIPI_DSI and SD_A */
 / {
-    usdhc1_pwrseq: usdhc1_pwrseq {
+	usdhc1_pwrseq: usdhc1_pwrseq {
 		compatible = "mmc-pwrseq-simple";
-        pinctrl-names = "default";
+		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_usdhc1_rst>;
 		reset-gpios = <&gpiof 0 GPIO_ACTIVE_LOW>;
 	};
@@ -499,8 +482,8 @@
 	pinctrl-2 = <&pinctrl_usdhc1>;
 	pinctrl-3 = <&pinctrl_usdhc1>;
 	bus-width = <4>;
-    vmmc-supply = <&reg_usdhc1_vmmc>;
-    status = "okay";
+	vmmc-supply = <&reg_usdhc1_vmmc>;
+	status = "okay";
 };
 
 #if defined(CONFIG_PICOCOREMX8ULP_SD_A_CD)
@@ -513,12 +496,32 @@
 };
 #endif
 
-#if defined(CONFIG_PICOCOREMX8ULP_SD_A_WP) && !defined(CONFIG_PICOCOREMX8ULP_MIPI_DSI)
+#if defined(CONFIG_PICOCOREMX8ULP_SD_A_WP) && \
+	!defined(CONFIG_PICOCOREMX8ULP_MIPI_DSI)
 /* PTF1 is shared with MIPI_DSI and SD_A*/
 &usdhc1 {
 	wp-gpios = <&gpiof 1 GPIO_ACTIVE_HIGH>;
 };
 #endif
+
+#if defined(CONFIG_PICOCOREMX8ULP_WLAN)
+&usdhc1 {
+	fsl,sdio-async-interrupt-enabled;
+	pm-ignore-notify;
+	keep-power-in-suspend;
+	non-removable;
+	cap-power-off-card;
+
+#if defined(CONFIG_PICOCOREMX8ULP_WLAN_MARVELL_DRV)
+	#address-cells = <1>;
+	#size-cells = <0>;
+	mwifiex: wifi@1 {
+		compatible = "marvell,sd8997";
+		reg = <1>;
+	};
+#endif
+};
+#endif /* CONFIG_PICOCOREMX8ULP_WLAN */
 
 &iomuxc1 {
 	pinctrl_usdhc1: usdhc1grp {
@@ -545,7 +548,7 @@
 #endif  /* usdhc1 */
 
 /* USB decleration */
-#if defined(CONFIG_PICOCOREMX8ULP_USB_OTG) || defined(CONFIG_SOLDERCORE8ULP_USB0)
+#if defined(CONFIG_PICOCOREMX8ULP_USB_OTG)
 &usbotg1 {
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_otgid1>;
@@ -567,42 +570,30 @@
 };
 
 &iomuxc1 {
-#if defined(CONFIG_PICOCOREMX8ULP_USB_OTG)
 	pinctrl_otgid1: usb1grp {
 		fsl,pins = <
-            MX8ULP_PAD_PTD13__USB0_PWR  0x2
+			MX8ULP_PAD_PTD13__USB0_PWR  0x2
 			MX8ULP_PAD_PTD12__USB0_ID	0x10003
 		>;
 	};
-
-#elif defined(CONFIG_SOLDERCORE8ULP_USB0)
-	pinctrl_otgid1: usb1grp {
-		fsl,pins = <
-			MX8ULP_PAD_PTD12__USB0_ID	0x10003
-			MX8ULP_PAD_PTD14__USB0_OC	0x10003
-		>;
-	};
-
-#endif
 };
-#endif /* PICOCOREMX8ULP_USB_OTG; SOLDERCORE8ULP_USB0 */
+#endif /* PICOCOREMX8ULP_USB_OTG */
 
-#if defined(CONFIG_SOLDERCORE8ULP_USB1) || defined(CONFIG_PICOCOREMX8ULP_USB_HOST)
+#if defined(CONFIG_PICOCOREMX8ULP_USB_HOST)
 &usbotg2 {
 	status = "okay";
 };
 
-#if defined(CONFIG_PICOCOREMX8ULP_USB_HOST)
 &{/regulators} {
-	reg_usb2: regulator_usb2@3 {
+	reg_usb2: regulator_usb2 {
 		compatible = "regulator-fixed";
-       	regulator-name = "usb-host";
+	   	regulator-name = "usb-host";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_usb2pwr>;
-       	regulator-min-microvolt = <3300000>;
-       	regulator-max-microvolt = <3300000>;
-       	gpio = <&gpiod 11 GPIO_ACTIVE_HIGH>;
-       	enable-active-high;
+	   	regulator-min-microvolt = <3300000>;
+	   	regulator-max-microvolt = <3300000>;
+	   	gpio = <&gpiod 11 GPIO_ACTIVE_HIGH>;
+	   	enable-active-high;
 	};
 };
 
@@ -610,19 +601,6 @@
 	vbus-supply = <&reg_usb2>;
 	dr_mode = "host";
 };
-
-#elif defined(CONFIG_SOLDERCORE8ULP_USB1)
-&usbotg2 {
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&pinctrl_otgid2>;
-	pinctrl-1 = <&pinctrl_otgid2>;
-	dr_mode = "otg";
-	hnp-disable;
-	srp-disable;
-	adp-disable;
-	over-current-active-low;
-};
-#endif
 
 &usbphy2 {
 	status = "okay";
@@ -633,68 +611,15 @@
 };
 
 &iomuxc1 {
-#if defined(CONFIG_PICOCOREMX8ULP_USB_HOST)
 	pinctrl_usb2pwr: usb2pwrgrp {
 		fsl,pins = <
-			MX8ULP_PAD_PTD11__PTD11     0x2
-		>;
-	};
-#elif defined(CONFIG_SOLDERCORE8ULP_USB1)
-	pinctrl_otgid2: usb2grp {
-		fsl,pins = <
-			MX8ULP_PAD_PTD23__USB1_ID	0x10003
-			MX8ULP_PAD_PTD22__USB1_OC	0x10003
-		>;
-	};
-#endif
-};
-#endif /* SOLDERCORE8ULP_USB1; PICOCOREMX8ULP_USB_HOST */
-
-/* SAI Decleration */
-#if defined(CONFIG_PICOCOREMX8ULP_AUDIO_APD)
-&sai4 {
-	#sound-dai-cells = <0>;
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&pinctrl_sai4>;
-	pinctrl-1 = <&pinctrl_sai4>;
-	assigned-clocks = <&cgc1 IMX8ULP_CLK_SAI4_SEL>;
-	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
-	// fsl,dataline = <1 0x08 0x01>;
-	fsl,sai-mclk-direction-output;
-	status = "okay";
-};
-
-&iomuxc1 {
-	pinctrl_sai4: sai4grp {
-		fsl,pins = <
-			MX8ULP_PAD_PTF12__I2S4_RXD0		0x43
-			MX8ULP_PAD_PTF15__I2S4_TX_BCLK	0x43
-			MX8ULP_PAD_PTF16__I2S4_TX_FS	0x43
-			MX8ULP_PAD_PTF17__I2S4_TXD0		0x43
+			MX8ULP_PAD_PTD11__PTD11	 0x2
 		>;
 	};
 };
-#endif
+#endif /* PICOCOREMX8ULP_USB_HOST */
 
 &epxp {
-	status = "okay";
-};
-
-/* remoteproc */
-&imx8ulp_cm33 {
-	ipc-only;
-	rsc-da=<0x1fff8000>;
-	mbox-names = "tx", "rx", "rxdb";
-	mboxes = <&mu 0 1
-			&mu 1 1
-			&mu 3 1>;
-	memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
-			<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
-	status = "okay";
-};
-
-/* MU M33 <--> A35 */
-&mu {
 	status = "okay";
 };
 
@@ -708,7 +633,7 @@
 	memory-region = <&ele_reserved>;
 };
 
-#if defined(CONFIG_PICOCOREMX8ULP_MIPI_DSI) || defined(CONFIG_SOLDERCORE8ULP_MIPI_DSI)
+#if defined(CONFIG_PICOCOREMX8ULP_MIPI_DSI)
 &dcnano {
 	status = "okay";
 };
@@ -731,6 +656,97 @@
 			<&dsp_vdev0vring1>, <&dsp_reserved>;
 	status = "okay";
 };
+
+#if defined(CONFIG_PICOCOREMX8ULP_AUDIO)
+/{
+    regulators {
+ 		/* SGTL5000 analog voltage */
+ 		reg_sgtl5000_vdda: sgtl5000_vdda {
+ 			compatible = "regulator-fixed";
+ 			regulator-name = "VDDA-supply";
+ 			regulator-min-microvolt = <3300000>;
+ 			regulator-max-microvolt = <3300000>;
+ 			regulator-always-on;
+ 		};
+
+ 		/* SGTL5000 I/O voltage */
+ 		reg_sgtl5000_vddio: sgtl5000_vddio {
+ 			compatible = "regulator-fixed";
+ 			regulator-name = "VDDIO-supply";
+ 			regulator-min-microvolt = <3300000>;
+ 			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+ 		};
+
+ 		/* SGTL5000 internal digital voltage */
+ 		reg_sgtl5000_vddd: sgtl5000_vddd {
+ 			compatible = "regulator-fixed";
+ 			regulator-name = "VDDD-supply";
+ 			regulator-min-microvolt = <1800000>;
+ 			regulator-max-microvolt = <1800000>;
+ 			regulator-always-on;
+		};
+    };
+};
+#endif /* CONFIG_PICOCOREMX8ULP_AUDIO */
+
+#if defined(CONFIG_PICOCOREMX8ULP_AUDIO_APD)
+/ {
+	sound-sgtl5000 {
+ 		compatible = "fsl,imx-audio-sgtl5000";
+ 		audio-cpu = <&sai4>;
+ 		audio-codec = <&sgtl5000>;
+ 		model = "imx-sgtl5000";
+ 		audio-routing =
+ 			"LINE_IN", "Line In Jack",
+ 			// "MIC_IN", "Mic Jack",
+ 			//"Line Out Jack", "LINE_OUT",
+ 			"Headphone Jack", "HP_OUT";
+ 	};
+};
+
+&lpi2c4 {
+    sgtl5000: sgtl5000@a {
+ 		compatible = "fsl,sgtl5000";
+ 		reg = <0x0a>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_sgtl5000>;
+ 		mono2both;
+		clocks = <&cgc1 IMX8ULP_CLK_SAI4_SEL>; //MCLK1
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+ 		VDDIO-supply = <&reg_sgtl5000_vddio>;
+ 		VDDD-supply = <&reg_sgtl5000_vddd>;
+ 	};
+};
+
+&sai4 {
+	#sound-dai-cells = <0>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_sai4>;
+	pinctrl-1 = <&pinctrl_sai4>;
+	assigned-clocks = <&cgc1 IMX8ULP_CLK_SAI4_SEL>;
+	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
+	fsl,sai-mclk-direction-output;
+	status = "okay";
+};
+
+&iomuxc1 {
+	pinctrl_sgtl5000: sgtl5000grp {
+		fsl,pins = <
+			MX8ULP_PAD_PTF14__I2S4_MCLK		0x43
+		>;
+	};
+
+	pinctrl_sai4: sai4grp {
+		fsl,pins = <
+			MX8ULP_PAD_PTF12__I2S4_RXD0		0x43
+			MX8ULP_PAD_PTF15__I2S4_TX_BCLK	0x43
+			MX8ULP_PAD_PTF16__I2S4_TX_FS	0x43
+			MX8ULP_PAD_PTF17__I2S4_TXD0		0x43
+		>;
+	};
+};
+#endif /* CONFIG_PICOCOREMX8ULP_AUDIO_APD */
 
 #if defined(CONFIG_RTD_PCC1)
 	/* Clock for GPIOA to C is currently configured by the Cortex-M processor.
@@ -768,7 +784,7 @@
 		gpio-ranges = <&iomuxc1 0 32 24>;
 	};
 };
-#endif
+#endif /* CONFIG_PICOCOREMX8ULP_GPIOA */
 
 #if defined(CONFIG_PICOCOREMX8ULP_GPIOB)
 &soc {
@@ -787,7 +803,7 @@
 		gpio-ranges = <&iomuxc1 0 32 24>;
 	};
 };
-#endif
+#endif /* CONFIG_PICOCOREMX8ULP_GPIOB */
 
 #if defined(CONFIG_PICOCOREMX8ULP_GPIOC)
 &soc {
@@ -808,3 +824,11 @@
 	};
 };
 #endif /* CONFIG_PICOCOREMX8ULP_GPIOC */
+
+&iomuxc1 {
+	pinctrl_vlcd: vlcdgrp {
+		fsl,pins = <
+			MX8ULP_PAD_PTF30__PTF30	0x2
+		>;
+	};
+};

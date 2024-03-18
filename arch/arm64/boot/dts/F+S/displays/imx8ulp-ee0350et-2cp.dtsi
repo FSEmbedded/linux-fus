@@ -1,0 +1,80 @@
+/*
+* Copyright (C) 2024 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+#ifdef CONFIG_SOLDERCORE8ULP_MIPI_DSI
+
+#include <dt-bindings/pwm/pwm.h>
+
+&{/regulators} {
+	reg_mipi_bl: backlight_mipi@10 {
+        compatible = "regulator-fixed";
+        regulator-name = "mipi-bl";
+        regulator-min-microvolt = <3300000>;
+        regulator-max-microvolt = <3300000>;
+        enable-active-high;
+		regulator-always-on;
+	};
+};
+
+&dsi {
+	panel@0 {
+        compatible = "eagleeyetech,ee0350et-2";
+        reg = <0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_dsi>;
+		reset-gpios = <&gpioe 9 GPIO_ACTIVE_LOW>;
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&mipi_dsi_out>;
+			};
+		};
+	};
+
+	ports {
+		port@1 {
+			reg = <1>;
+
+			mipi_dsi_out: endpoint {
+				remote-endpoint = <&panel_in>;
+			};
+		};
+	};
+};
+
+&lpi2c4 {
+	/* Atmel PCAP touch on Touch Connector (I2C) */
+	touch: mxt336u@4a {
+		compatible = "atmel,maxtouch";
+		reg = <0x4a>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_touch>;
+		atmel,cfg_name = "atmel/mxt336u-gloves.cfg";
+		reset-gpios = <&gpioe 5 GPIO_ACTIVE_LOW>;
+		interrupt-parent = <&gpioe>;
+		interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
+	};
+};
+
+/* GPIO configuration in Cortex-M needed! */
+
+&iomuxc1 {
+	pinctrl_dsi: dsigrp {
+		fsl,pins = <
+			MX8ULP_PAD_PTE9__PTE9		0x3
+		>;
+	};
+
+	pinctrl_touch: touchgrp {
+		fsl,pins = <
+		MX8ULP_PAD_PTE2__PTE2	0x3 //int
+		MX8ULP_PAD_PTE5__PTE5	0x3 //reset
+		>;
+	};
+};
+
+#endif

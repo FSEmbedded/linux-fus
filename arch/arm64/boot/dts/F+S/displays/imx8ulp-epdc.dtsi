@@ -17,22 +17,6 @@
 	status = "disabled";
 };
 
-&sai5 {	/* conflict PAD_PTF23 */
-	status = "disabled";
-};
-
-&spdif {/* conflict PAD_PTF25 */
-	status = "disabled";
-};
-
-&lpspi5 {/* conflict PAD_PTF19 */
-	status = "disabled";
-};
-
-&lpuart7 {/* conflict PAD_PTF23 */
-	status = "disabled";
-};
-
 &lpi2c7 {
 	tps65185: tps65185@68 {
 		compatible = "ti,tps65185";
@@ -80,7 +64,6 @@
 };
 
 &iomuxc1 {
-
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hoggrp>;
 

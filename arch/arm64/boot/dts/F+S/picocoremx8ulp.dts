@@ -44,9 +44,11 @@
  * SD_A - External SD port with Card Detect (CD) and Write Protect (WP)
  * On picocoremx8ulp SKIT: external port is Micro-SD card slot with CD but without WP
  */
-// #define CONFIG_PICOCOREMX8ULP_SD_A
-// #define CONFIG_PICOCOREMX8ULP_SD_A_CD
-// #define CONFIG_PICOCOREMX8ULP_SD_A_WP
+#if !defined(CONFIG_PICOCOREMX8ULP_WLAN)
+#define CONFIG_PICOCOREMX8ULP_SD_A
+#define CONFIG_PICOCOREMX8ULP_SD_A_CD
+#define CONFIG_PICOCOREMX8ULP_SD_A_WP
+#endif
 
 /* UART */
 #define CONFIG_PICOCOREMX8ULP_UART_A
@@ -74,116 +76,9 @@
 #define CONFIG_RTD_PCC1
 #endif
 
-#include "fsimx8ulp.dtsi"
+#include "picocoremx8ulp.dtsi"
 
 / {
 	model = "F&S PicoCoreMX8ULP";
 	compatible = "fus,picocoremx8ulp", "fus,fsimx8ulp", "fsl,imx8ulp";
 };
-
-#if defined(CONFIG_PICOCOREMX8ULP_EXT_RTC)
-&lpi2c4 {
-    rtc85263: rtc85263@51 {
-		compatible = "nxp,pcf85263";
-		reg = <0x51>;
-	};
-};
-#endif /* CONFIG_PICOCOREMX8ULP_EXT_RTC */
-
-#if defined(CONFIG_PICOCOREMX8ULP_EEPROM)
-&lpi2c7 {
-    eeprom: eeprom@50 {
-		compatible = "atmel,24c02";
-		reg = <0x50>;
-		pagesize = <8>;
-	};
-};
-#endif /* CONFIG_PICOCOREMX8ULP_EEPROM */
-
-#if defined(CONFIG_PICOCOREMX8ULP_WLAN)
-&usdhc2 {
-    fsl,sdio-async-interrupt-enabled;
-	pm-ignore-notify;
-	keep-power-in-suspend;
-	non-removable;
-	cap-power-off-card;
-
-#if defined(CONFIG_PICOCOREMX8ULP_WLAN_MARVELL_DRV)
-	#address-cells = <1>;
-	#size-cells = <0>;
-	mwifiex: wifi@1 {
-		compatible = "marvell,sd8997";
-		reg = <1>;
-	};
-#endif
-};
-#endif /* CONFIG_PICOCOREMX8ULP_WLAN */
-
-#if defined(CONFIG_PICOCOREMX8ULP_AUDIO)
- /{
-     regulators {
- 		/* SGTL5000 analog voltage */
- 		reg_sgtl5000_vdda: sgtl5000_vdda {
- 			compatible = "regulator-fixed";
- 			regulator-name = "VDDA-supply";
- 			regulator-min-microvolt = <3300000>;
- 			regulator-max-microvolt = <3300000>;
- 			regulator-always-on;
- 		};
-
- 		/* SGTL5000 I/O voltage */
- 		reg_sgtl5000_vddio: sgtl5000_vddio {
- 			compatible = "regulator-fixed";
- 			regulator-name = "VDDIO-supply";
- 			regulator-min-microvolt = <3300000>;
- 			regulator-max-microvolt = <3300000>;
-			regulator-always-on;
- 		};
-
- 		/* SGTL5000 internal digital voltage */
- 		reg_sgtl5000_vddd: sgtl5000_vddd {
- 			compatible = "regulator-fixed";
- 			regulator-name = "VDDD-supply";
- 			regulator-min-microvolt = <1800000>;
- 			regulator-max-microvolt = <1800000>;
- 			regulator-always-on;
-		};
-    };
-#endif
-
-#if defined(CONFIG_PICOCOREMX8ULP_AUDIO_APD)
-	sound-sgtl5000 {
- 		compatible = "fsl,imx-audio-sgtl5000";
- 		audio-cpu = <&sai4>;
- 		audio-codec = <&sgtl5000>;
- 		model = "imx-sgtl5000";
- 		audio-routing =
- 			"LINE_IN", "Line In Jack",
- 			// "MIC_IN", "Mic Jack",
- 			//"Line Out Jack", "LINE_OUT",
- 			"Headphone Jack", "HP_OUT";
- 	};
-};
-
-&lpi2c4 {
-    sgtl5000: sgtl5000@a {
- 		compatible = "fsl,sgtl5000";
- 		reg = <0x0a>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_sgtl5000>;
- 		mono2both;
-		clocks = <&cgc1 IMX8ULP_CLK_SAI4_SEL>; //MCLK1
-		VDDA-supply = <&reg_sgtl5000_vdda>;
- 		VDDIO-supply = <&reg_sgtl5000_vddio>;
- 		VDDD-supply = <&reg_sgtl5000_vddd>;
- 	};
-};
-
-&iomuxc1 {
-	pinctrl_sgtl5000: sgtl5000grp {
-		fsl,pins = <
-			MX8ULP_PAD_PTF14__I2S4_MCLK		0x43
-		>;
-	};
-};
-#endif

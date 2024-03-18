@@ -10,4 +10,4 @@
 #define CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION	120
 
 #include "picocoremx8ulp.dts"
-#include "displays/imx8ulp-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtsi"
+#include "displays/imx8ulp-adp-mipi2mipi1-ee0350et-2cp.dtsi"
