@@ -157,6 +157,7 @@
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/rtc/nxp,pcf85263.h>
 #include <dt-bindings/usb/pd.h>
+#include <fsversion.h>
 
 / {
 	model = "F&S PicoCoreMX8MN";
@@ -178,7 +179,8 @@
 	/* -------------------- BOARD INFO -------------------- */
 	bdinfo {
 		compatible = "bdinfo";
-		board_name = "picocoremx8mn";
+		board_name = "picocoremx8mn-lpddr4";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 #if 0
@@ -203,11 +205,6 @@
 			 * uncomment the following line
 			 */
 			//no-uboot-override;
-		};
-
-		rpmsg_reserved: rpmsg@0xb8000000 {
-			no-map;
-			reg = <0 0xb8000000 0 0x400000>;
 		};
 	};
 
@@ -439,10 +436,15 @@
 	pmic@4b {
 		compatible = "rohm,bd71847";
 		reg = <0x4b>;
+		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_pmic>;
 		interrupt-parent = <&gpio5>;
 		interrupts = <2 GPIO_ACTIVE_LOW>;
 		rohm,reset-snvs-powered;
+
+		#clock-cells = <0>;
+		clocks = <&osc_32k 0>;
+		clock-output-names = "clk-32k-out";
 
 		regulators {
 			buck1_reg: BUCK1 {
@@ -452,6 +454,8 @@
 				regulator-boot-on;
 				regulator-always-on;
 				regulator-ramp-delay = <1250>;
+				rohm,dvs-run-voltage = <850000>;
+				rohm,dvs-suspend-voltage = <750000>;
 			};
 
 			buck2_reg: BUCK2 {
@@ -463,6 +467,7 @@
 				regulator-ramp-delay = <1250>;
 				rohm,dvs-run-voltage = <1000000>;
 				rohm,dvs-idle-voltage = <900000>;
+				rohm,dvs-suspend-voltage = <0>;
 			};
 
 			buck3_reg: BUCK3 {
@@ -654,18 +659,6 @@
 };
 #endif
 
-#ifdef SUPPORT_M4
-&rpmsg{
-	/*
-	 * 64K for one rpmsg instance:
-	 * --0xb8000000~0xb800ffff: pingpong
-	 */
-	vdev-nums = <1>;
-	reg = <0x0 0xb8000000 0x0 0x10000>;
-	status = "okay";
-};
-#endif
-
 #ifdef CONFIG_PICOCOREMX8MN_SGTL5000_AUDIO
 &sai5 {
 	#sound-dai-cells = <0>;
@@ -847,6 +840,8 @@
 
 #ifdef CONFIG_PICOCOREMX8MN_SD_A
 &usdhc1 {
+	assigned-clocks = <&clk IMX8MN_CLK_USDHC1>;
+	assigned-clock-rates = <200000000>;
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
 	pinctrl-0 = <&pinctrl_usdhc1>, <&pinctrl_usdhc1_gpio>;
 	pinctrl-1 = <&pinctrl_usdhc1_100mhz>, <&pinctrl_usdhc1_gpio>;
@@ -913,6 +908,8 @@
 
 #ifdef CONFIG_PICOCOREMX8MN_EMMC
 &usdhc3 {
+	assigned-clocks = <&clk IMX8MN_CLK_USDHC3>;
+	assigned-clock-rates = <400000000>;
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
 	pinctrl-0 = <&pinctrl_usdhc3>;
 	pinctrl-1 = <&pinctrl_usdhc3_100mhz>;
@@ -994,6 +991,17 @@
 &A53_0 {
 	cpu-supply = <&buck2_reg>;
 };
+&A53_1 {
+	cpu-supply = <&buck2_reg>;
+};
+
+&A53_2 {
+	cpu-supply = <&buck2_reg>;
+};
+
+&A53_3 {
+	cpu-supply = <&buck2_reg>;
+};
 
 &gpu {
 	status = "okay";
@@ -1014,6 +1022,10 @@
 };
 #endif
 #endif
+
+&snvs_pwrkey {
+	status = "okay";
+};
 
 &iomuxc {
 	pinctrl-names = "default";

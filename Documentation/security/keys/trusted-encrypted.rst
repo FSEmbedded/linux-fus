@@ -123,6 +123,9 @@ selected trust source:
      from platform specific hardware RNG or a software based Fortuna CSPRNG
      which can be seeded via multiple entropy sources.
 
+Users may override this by specifying ``trusted.rng=kernel`` on the kernel
+command-line to override the used RNG with the kernel's random number pool.
+
   *  CAAM: Kernel RNG
 
      The normal kernel random number generator is used. To seed it from the

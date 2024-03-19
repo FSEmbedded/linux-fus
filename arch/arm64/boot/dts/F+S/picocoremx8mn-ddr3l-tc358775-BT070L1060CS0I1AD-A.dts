@@ -1,0 +1,27 @@
+/*
+* Copyright (C) 2024 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+#define CONFIG_PICOCOREMX8MX_NANO_MIPI_DSI_LVDS
+
+#define IMX8MM_LVDS_RESET_GPIO_BANK		gpio1
+#define IMX8MM_LVDS_RESET_GPIO_NUM		8
+
+#define IMX8MM_LVDS_STBY_GPIO_BANK		gpio1
+#define IMX8MM_LVDS_STBY_GPIO_NUM		4
+
+#define IMX8MM_TOUCH_INTERRUPT_GPIO_BANK	gpio5
+#define IMX8MM_TOUCH_INTERRUPT_GPIO_NUM		2
+
+#define IMX8MM_TOUCH_RESET_GPIO_BANK gpio1
+#define IMX8MM_TOUCH_RESET_GPIO_NUM 13
+
+#define IMX8MM_TOUCH_I2C i2c2
+#define IMX8MM_LVDS_I2C i2c1
+#define IMX8MM_BACKLIGHT_PWM pwm2
+
+#include "picocoremx8mn-ddr3l.dts"
+#include "displays/imx8mm-tc358775-BT070L1060CS0I1AD-A.dtsi"
