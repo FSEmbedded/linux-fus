@@ -96,7 +96,7 @@
 };
 
 &lpi2c6 {
-	clock-frequency = <100000>;
+	clock-frequency = <400000>;
 	gpio_bridge: pca9634@63 {
 		compatible = "nxp,pca9634";
 		reg = <0x63>;
