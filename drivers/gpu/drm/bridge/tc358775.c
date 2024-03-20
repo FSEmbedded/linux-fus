@@ -408,7 +408,7 @@ static void tc_bridge_enable(struct drm_bridge *bridge)
 		 (val >> 8) & 0xFF, val & 0xFF);
 
 	d2l_write(tc->i2c, SYSRST, SYS_RST_REG | SYS_RST_DSIRX | SYS_RST_BM |
-		  SYS_RST_LCD | SYS_RST_I2CM | SYS_RST_I2CS);
+		  SYS_RST_LCD | SYS_RST_I2CM);
 	usleep_range(30000, 40000);
 
 	d2l_write(tc->i2c, PPI_TX_RX_TA, TTA_GET | TTA_SURE);
@@ -449,7 +449,8 @@ static void tc_bridge_enable(struct drm_bridge *bridge)
 	d2l_write(tc->i2c, VTIM2, vtime2);
 
 	d2l_write(tc->i2c, VFUEN, VFUEN_EN);
-	d2l_write(tc->i2c, SYSRST, SYS_RST_LCD);
+	d2l_write(tc->i2c, LVPHY0, LV_PHY0_RST(1));
+	usleep_range(30000,40000);
 	d2l_write(tc->i2c, LVPHY0, LV_PHY0_PRBS_ON(4) | LV_PHY0_ND(6));
 
 	dev_dbg(tc->dev, "bus_formats %04x bpc %d\n",
