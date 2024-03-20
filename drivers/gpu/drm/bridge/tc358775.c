@@ -233,6 +233,8 @@ static inline u32 TC358775_VPCTRL_MSF(uint32_t val)
 			TC358775_VPCTRL_MSF__MASK;
 }
 
+#define TC358775_VPCTRL_FRAMESYNC_BIT BIT(4)
+
 #define TC358775_LVCFG_PCLKDIV__MASK	0x000000f0
 #define TC358775_LVCFG_PCLKDIV__SHIFT	4
 static inline u32 TC358775_LVCFG_PCLKDIV(uint32_t val)
@@ -441,6 +443,7 @@ static void tc_bridge_enable(struct drm_bridge *bridge)
 	vsdelay = (clkdiv * (t1 + t3) / byteclk) - hback_porch - hsync_len - hactive;
 
 	val |= TC358775_VPCTRL_VSDELAY(vsdelay);
+	val |= TC358775_VPCTRL_FRAMESYNC_BIT;
 	d2l_write(tc->i2c, VPCTRL, val);
 
 	d2l_write(tc->i2c, HTIM1, htime1);
@@ -627,7 +630,7 @@ static int tc_attach_host(struct tc_data *tc)
 
 	dsi->lanes = tc->num_dsi_lanes;
 	dsi->format = MIPI_DSI_FMT_RGB888;
-	dsi->mode_flags = MIPI_DSI_MODE_VIDEO;
+	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST;
 
 	ret = devm_mipi_dsi_attach(dev, dsi);
 	if (ret < 0) {
