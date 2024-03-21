@@ -106,6 +106,7 @@ static int fus_wm9715_probe(struct platform_device *pdev)
 	struct device_node *cpu_np;
 	struct platform_device *cpu_pdev;
 	int ret;
+	struct snd_soc_dai *cpu;
 
 	data = devm_kzalloc(&pdev->dev, sizeof(struct fus_audio_data),
 			     GFP_KERNEL);
@@ -122,7 +123,7 @@ static int fus_wm9715_probe(struct platform_device *pdev)
 	cpu_pdev = of_find_device_by_node(cpu_np);
 	if (!cpu_pdev) {
 		dev_err(&pdev->dev, "failed to find CPU DAI device\n");
-		ret = -EINVAL;
+		ret = -EPROBE_DEFER;
 		goto codec_put;
 	}
 
@@ -153,11 +154,6 @@ static int fus_wm9715_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	/* transfer device node for touchscreen */
-	ret = platform_device_add(data->codec);
-	if (ret)
-		goto codec_put;
-
 	/* initialize sound card */
 	data->card = &fs_wm9715_card;
 	data->card->dev = &pdev->dev;
@@ -166,9 +162,24 @@ static int fus_wm9715_probe(struct platform_device *pdev)
 
 	ret = snd_soc_of_parse_card_name(data->card, "fus,model");
 	if (ret)
-		goto codec_unregister;
+		goto codec_put;
+
+	/* We have to make sure, that ssi is available befor registering
+	 * an other device or we end up in an endless probe-defer-loop */
+	cpu = snd_soc_find_dai (data->card->dai_link->cpus);
+	if (!cpu) {
+		dev_err(&pdev->dev, "failed to find CPU DAI device\n");
+		ret = -EPROBE_DEFER;
+		goto codec_put;
+	}
+
+	/* transfer device node for touchscreen */
+	ret = platform_device_add(data->codec);
+	if (ret)
+		goto codec_put;
 
 	ret = snd_soc_register_card(data->card);
+
 	if (ret) {
 		dev_err(&pdev->dev, "snd_soc_register_card failed (%d)\n",
 			ret);
@@ -200,7 +211,7 @@ static const struct of_device_id fus_audio_match[] = {
 	{ .compatible = "fus,imx-audio-wm9715", },
 	{}
 };
-MODULE_DEVICE_TABLE(of, fs_audio_match);
+MODULE_DEVICE_TABLE(of, fus_audio_match);
 
 static struct platform_driver fs_wm9715_driver = {
 	.probe		= fus_wm9715_probe,

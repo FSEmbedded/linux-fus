@@ -95,5 +95,6 @@ obj-$(CONFIG_SND_SOC_IMX_CARD) += snd-soc-imx-card.o
 obj-$(CONFIG_SND_SOC_IMX_PDM_MIC) += snd-soc-imx-pdm.o
 obj-$(CONFIG_SND_SOC_IMX_PCM512X) += snd-soc-imx-pcm512x.o
 obj-$(CONFIG_SND_SOC_IMX6QDL_HDMI) += snd-soc-imx6qdl-hdmi.o
+obj-$(CONFIG_SND_SOC_FSL_FUS_WM9715) += snd-soc-imx-fus-ac97.o
 
 AFLAGS_hdmi_pcm.o := -march=armv7-a -mtune=cortex-a9 -mfpu=neon -mfloat-abi=softfp
