@@ -221,6 +221,10 @@ static int panel_lvds_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	/* KM 2024-03-20: If we have a reset defined, release it */
+	if (lvds->reset_gpio)
+		gpiod_set_value_cansleep(lvds->reset_gpio, 0);
+
 	/*
 	 * TODO: Handle all power supplies specified in the DT node in a generic
 	 * way for panels that don't care about power supply ordering. LVDS

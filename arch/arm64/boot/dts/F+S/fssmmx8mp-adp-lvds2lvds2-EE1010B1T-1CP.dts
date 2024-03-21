@@ -1,0 +1,16 @@
+/*
+ * Copyright (C) 2024 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+//#define CONFIG_FSSMMX8MP_MIPI_DSI_LVDS
+#define IMX8MP_TOUCH_I2C 			i2c5
+#define IMX8MP_TOUCH_INTERRUPT_GPIO_BANK 	gpio4
+#define IMX8MP_TOUCH_INTERRUPT_GPIO_NUM 		1
+#define IMX8MP_MIPI_RESET_GPIO_BANK 	gpio5
+#define IMX8MP_MIPI_RESET_GPIO_NUM 		2
+
+#include "fssmmx8mp.dts"
+#include "displays/imx8mp-lcdif-adp-lvds2lvds2-EE1010B1T-1CP.dtsi"

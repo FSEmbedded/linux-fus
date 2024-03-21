@@ -1,0 +1,13 @@
+/*
+ * Copyright (C) 2021 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+//#define CONFIG_FSSMMX8MP_MIPI_DSI_LVDS
+#define CONFIG_FSSMMX8MP_INVERTED_XY
+/* TODO: does not work */
+//#define CONFIG_FSSMMX8MP_LDB_DUAL_CHANNEL
+#include "fssmmx8mp.dts"
+#include "displays/imx8mp-lcdif-j070wvtc0211.dtsi"

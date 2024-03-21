@@ -83,7 +83,7 @@
 
 /* MIPI-DSI */
 &lcdif1 {
-	status = "okay";
+	status = "disabled";
 };
 
 /* LVDS */

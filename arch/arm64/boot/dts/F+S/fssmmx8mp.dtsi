@@ -16,42 +16,6 @@
 #include <dt-bindings/rtc/nxp,pcf85263.h>
 #include <fsversion.h>
 
-/* Do we have HDMI? */
-#if ((CONFIG_FSSMMX8MP_PANEL0 == DISPLAY_HDMI) \
-    || (CONFIG_FSSMMX8MP_PANEL1 == DISPLAY_HDMI) \
-    || (CONFIG_FSSMMX8MP_PANEL2 == DISPLAY_HDMI))
-#define CONFIG_FSSMMX8MP_HDMI
-#define CONFIG_FSSMMX8MP_HDMI_AUDIO // TODO:
-#define CONFIG_FSSMMX8MP_HDMI_CEC
-#endif
-
-/* Do we have LVDS0? */
-#if ((CONFIG_FSSMMX8MP_PANEL0 == DISPLAY_LVDS0) \
-    || (CONFIG_FSSMMX8MP_PANEL1 == DISPLAY_LVDS0) \
-    || (CONFIG_FSSMMX8MP_PANEL2 == DISPLAY_LVDS0))
-#define CONFIG_FSSMMX8MP_LVDS0
-#endif
-
-/* Do we have LVDS1? */
-#if ((CONFIG_FSSMMX8MP_PANEL0 == DISPLAY_LVDS1) \
-    || (CONFIG_FSSMMX8MP_PANEL1 == DISPLAY_LVDS1) \
-    || (CONFIG_FSSMMX8MP_PANEL2 == DISPLAY_LVDS1))
-/* Is dual mode enabled? */
-#ifndef CONFIG_FSSMMX8MP_LVDS_DUAL_CHANNEL
-#define CONFIG_FSSMMX8MP_LVDS1
-#endif
-#endif
-
-/* Do we have MIPI_DSI1? */
-#if ((CONFIG_FSSMMX8MP_PANEL0 == DISPLAY_MIPI0) \
-    || (CONFIG_FSSMMX8MP_PANEL1 == DISPLAY_MIPI0) \
-    || (CONFIG_FSSMMX8MP_PANEL2 == DISPLAY_MIPI0))
-/* LVDS0 and MIPI_DSI0 don't allowed at same time */
-#ifndef CONFIG_FSSMMX8MP_LVDS0
-#define CONFIG_FSSMMX8MP_MIPI_DSI0
-#endif
-#endif
-
 / {
 	chosen {
 		stdout-path = &uart2;
@@ -132,7 +96,7 @@
 
 			/* LCD0 power on voltage */
 			/omit-if-no-ref/
-			reg_vlcd_a: vlcd_a {
+			reg_vlcd: vlcd_a {
 				compatible = "regulator-fixed";
 				regulator-name = "LCD0_VDD_EN";
 				gpio = <&gpio4 20 GPIO_ACTIVE_HIGH>;
@@ -167,7 +131,7 @@
 	};
 
 #ifdef CONFIG_FSSMMX8MP_BL_CTRL_A
-	backlight_ldb_a: backlight_ldb_a {
+	backlight_ldb_a {
 		compatible = "pwm-backlight";
 		#pwm-cells = <3>;
 		pwms = <&pwm4 0 3000000 PWM_POLARITY_INVERTED>;
@@ -189,18 +153,18 @@
 #endif
 
 #ifdef CONFIG_FSSMMX8MP_BL_CTRL_B
-	backlight_ldb_b: backlight_ldb_b {
+	backlight_ldb: backlight_ldb_b {
 		compatible = "pwm-backlight";
 		#pwm-cells = <3>;
 		pwms = <&pwm2 0 3000000 PWM_POLARITY_INVERTED>;
-		power-supply = <&reg_ldb_bl_b>;
+		power-supply = <&reg_ldb_bl>;
 		brightness-levels = <0 1 5 10 18 28 41 56
 				     73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
 		fb-names = "mxs-lcdif1";
 	};
 
-	reg_ldb_bl_b: ldb-bl-b {
+	reg_ldb_bl: ldb-bl-b {
 		compatible = "regulator-fixed";
 		regulator-name = "ldb-bl1";
 		gpio = <&gpio4 3 GPIO_ACTIVE_HIGH>;
@@ -243,52 +207,6 @@
 		status = "okay";
 	};
 #endif /* CONFIG_FSSMMX8MP_HDMI_AUDIO */
-
-#ifdef CONFIG_FSSMMX8MP_LVDS0
-	lvds0_panel {
-		compatible = "panel-lvds";
-		power-supply = <&reg_vlcd_a>;
-		backlight = <&backlight_ldb_a>;
-		data-mapping = CONFIG_FSSMMX8MP_LVDS0_PANEL_MAPPING;
-		label = CONFIG_FSSMMX8MP_LVDS0_PANEL_LABEL;
-		width-mm = <CONFIG_FSSMMX8MP_LVDS0_PANEL_WIDTH>;
-		height-mm = <CONFIG_FSSMMX8MP_LVDS0_PANEL_HEIGHT>;
-		status = "okay";
-
-		panel-timing {
-			CONFIG_FSSMMX8MP_LVDS0_PANEL_TIMING
-		};
-
-		port {
-			panel_lvds0_in: endpoint {
-				remote-endpoint = <&lvds0_out>;
-			};
-		};
-	};
-#endif /* CONFIG_FSSMMX8MP_LVDS0 */
-
-#ifdef CONFIG_FSSMMX8MP_LVDS1
-	lvds1_panel {
-		compatible = "panel-lvds";
-		power-supply = <&reg_vlcd_b>;
-		backlight = <&backlight_ldb_b>;
-		data-mapping = CONFIG_FSSMMX8MP_LVDS1_PANEL_MAPPING;
-		label = CONFIG_FSSMMX8MP_LVDS1_PANEL_LABEL;
-		width-mm = <CONFIG_FSSMMX8MP_LVDS1_PANEL_WIDTH>;
-		height-mm = <CONFIG_FSSMMX8MP_LVDS1_PANEL_HEIGHT>;
-		status = "okay";
-
-		panel-timing {
-			CONFIG_FSSMMX8MP_LVDS1_PANEL_TIMING
-		};
-
-		port {
-			panel_lvds1_in: endpoint {
-				remote-endpoint = <&lvds1_out>;
-			};
-		};
-	};
-#endif /* CONFIG_FSSMMX8MP_LVDS1 */
 };
 
 &aud2htx {
@@ -592,25 +510,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c5>;
 	status = "okay";
-#ifdef CONFIG_FSSMMX8MP_CAPTOUCH_FT5x26
-	/* touch I2C */
-	focaltech@38 {
-		compatible = "focaltech,fts";
-		reg = <0x38>;
-		/* I2C_B_IRQn */
-		interrupt-parent = <&gpio1>;
-		interrupts = <7 IRQ_TYPE_EDGE_FALLING>;
-		focaltech,irq-gpio = <&gpio1 13 IRQ_TYPE_EDGE_FALLING>;
-#ifdef CONFIG_FSSMMX8MP_CAPTOUCH_FT5x26_INVERTED_XY
-		focaltech,touchscreen-inverted-x;
-		focaltech,touchscreen-inverted-y;
-#endif
-		/* TOUCH_RSTn */
-		focaltech,reset-gpio = <&gpio1 1 GPIO_ACTIVE_LOW>;
-		focaltech,num-max-touches = <10>;
-		focaltech,display-coords = <0 0 800 480>;
-	};
-#endif
 };
 #endif /* CONFIG_FSSMMX8MP_I2C_LCD */
 
@@ -1063,24 +962,44 @@
 };
 
 &irqsteer_hdmi {
+#ifdef CONFIG_FSSMMX8MP_HDMI
 	status = "okay";
+#else
+	status = "disabled";
+#endif
 };
 
 &hdmi_pavi {
+#ifdef CONFIG_FSSMMX8MP_HDMI
 	status = "okay";
+#else
+	status = "disabled";
+#endif
 };
 
 &hdmi {
+#ifdef CONFIG_FSSMMX8MP_HDMI
 	status = "okay";
+#else
+	status = "disabled";
+#endif
 };
 
 &hdmiphy {
+#ifdef CONFIG_FSSMMX8MP_HDMI
 	status = "okay";
+#else
+	status = "disabled";
+#endif
 };
 
 
 &hdmi_blk_ctrl {
+#ifdef CONFIG_FSSMMX8MP_HDMI
 	status = "okay";
+#else
+	status = "disabled";
+#endif
 };
 
 
@@ -1089,59 +1008,25 @@
 };
 
 &lcdif2 {
-	status = "okay";
+	status = "disabled";
 };
 
 &lcdif3 {
+#ifdef CONFIG_FSSMMX8MP_HDMI
 	status = "okay";
 	thres-low  = <1 2>;             /* (FIFO * 1 / 2) */
 	thres-high = <3 4>;             /* (FIFO * 3 / 4) */
-
+#else
+	status = "disabled";
+#endif
 };
 
 &ldb {
-	status = "okay";
-#ifdef CONFIG_FSSMMX8MP_LVDS_DUAL_CHANNEL
-	fsl,dual-channel;
-#endif /* CONFIG_FSSMMX8MP_LVDS_DUAL_CHANNEL */
-
-#ifdef CONFIG_FSSMMX8MP_LVDS0
-	/* LVDSA or DSI */
-	lvds-channel@0 {
-		fsl,data-mapping = CONFIG_FSSMMX8MP_LVDS0_CHANNEL_MAPPING;
-		fsl,data-width = <CONFIG_FSSMMX8MP_LVDS0_CHANNEL_DATA_WIDTH>;
-		status = "okay";
-
-		port@1 {
-			reg = <1>;
-			lvds0_out: endpoint {
-				remote-endpoint = <&panel_lvds0_in>;
-			};
-		};
-	};
-#endif
-
-#ifdef CONFIG_FSSMMX8MP_LVDS1
-	/* LVDSB */
-	lvds-channel@1 {
-		fsl,data-mapping = CONFIG_FSSMMX8MP_LVDS1_CHANNEL_MAPPING;
-		fsl,data-width = <CONFIG_FSSMMX8MP_LVDS1_CHANNEL_DATA_WIDTH>;
-#ifndef CONFIG_FSSMMX8MP_LVDS_DUAL_CHANNEL
-		status = "okay";
-#endif
-
-		port@1 {
-			reg = <1>;
-			lvds1_out: endpoint {
-				remote-endpoint = <&panel_lvds1_in>;
-			};
-		};
-	};
-#endif
+	status = "disabled";
 };
 
 &ldb_phy {
-	status = "okay";
+	status = "disabled";
 };
 
 &mipi_dsi {
@@ -1332,8 +1217,8 @@ gpio-line-names =
 				MX8MP_IOMUXC_GPIO1_IO01__GPIO1_IO01			0x00014
 				/* LVDS_RSTn */
 				MX8MP_IOMUXC_GPIO1_IO15__GPIO1_IO15			0x00014
-				/* LCD0_BL_EN */
-				MX8MP_IOMUXC_SAI1_RXC__GPIO4_IO01			0x00104
+				/* LCD0_BL_EN / LCD0_IRQ (FSSMBB) */
+				MX8MP_IOMUXC_SAI1_RXC__GPIO4_IO01			0x00144
 				/* LCD1_BL_EN */
 				MX8MP_IOMUXC_SAI1_RXD1__GPIO4_IO03			0x00104
 				/* LCD0_VDD_EN */
@@ -1341,8 +1226,8 @@ gpio-line-names =
 				/* LCD1_VDD_EN */
 				MX8MP_IOMUXC_SAI1_RXD0__GPIO4_IO02			0x00104
 #ifndef CONFIG_FSSMMX8MP_BL_CTRL_A
-				/* LCD0_BKLT_PWM */
-				MX8MP_IOMUXC_SAI3_MCLK__GPIO5_IO02			0x00004
+				/* LCD0_BKLT_PWM / LCD0_RST (FSSMBB) */
+				MX8MP_IOMUXC_SAI3_MCLK__GPIO5_IO02			0x00104
 #endif
 #ifndef CONFIG_FSSMMX8MP_BL_CTRL_B
 				/* LCD1_BKLT_PWM */
