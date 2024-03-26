@@ -153,3 +153,16 @@
                 reset-gpios = <&gpio_adp 5 GPIO_ACTIVE_LOW>;
         };
 };
+
+/delete-node/ &pinctrl_touch_i2c;
+
+&iomuxc {
+	pinctrl_touch_i2c: touchi2cgrp {
+		fsl,pins = <
+			/* I2C_B_IRQ */
+			MX93_PAD_GPIO_IO18__GPIO2_IO18		0x5fe
+			/* GPIO_J1_52, TOUCH_RESET  */
+			MX93_PAD_GPIO_IO19__GPIO2_IO19		0x3fe
+		>;
+	};
+};

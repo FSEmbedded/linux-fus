@@ -862,14 +862,10 @@
 
 &iomuxc {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_hog>;
+	pinctrl-0 = <&pinctrl_hog>, <&pinctrl_touch_i2c>;
 
 	pinctrl_hog: hoggrp {
 		fsl,pins = <
-			/* I2C_B_IRQ */
-			MX93_PAD_GPIO_IO18__GPIO2_IO18		0x3fe
-			/* GPIO_J1_52, TOUCH_RESET  */
-			MX93_PAD_GPIO_IO19__GPIO2_IO19		0x3fe
 #ifndef CONFIG_PICOCOREMX93_SPI_B
 			/* GPIO pins if SPI_B is not used */
 			MX93_PAD_GPIO_IO08__GPIO2_IO08		0x3fe
@@ -877,6 +873,15 @@
 			MX93_PAD_GPIO_IO10__GPIO2_IO10		0x3fe
 			MX93_PAD_GPIO_IO11__GPIO2_IO11		0x3fe
 #endif
+		>;
+	};
+
+	pinctrl_touch_i2c: touchi2cgrp {
+	fsl,pins = <
+			/* I2C_B_IRQ */
+			MX93_PAD_GPIO_IO18__GPIO2_IO18		0x3fe
+			/* GPIO_J1_52, TOUCH_RESET  */
+			MX93_PAD_GPIO_IO19__GPIO2_IO19		0x3fe
 		>;
 	};
 
