@@ -7,6 +7,7 @@
  */
 
 #include <dt-bindings/pwm/pwm.h>
+#include <fsversion.h>
 
 /* Do we have HDMI? */
 #if ((CONFIG_ARMSTONEA9R2_MXCFB0 == DISPLAY_HDMI) \
@@ -216,6 +217,7 @@
 		compatible = "bdinfo";
 		board_name = "armstonea9r2";
 		ecc_strength = "8";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 	sdhci1_pwrseq: sdhci1_pwrseq {

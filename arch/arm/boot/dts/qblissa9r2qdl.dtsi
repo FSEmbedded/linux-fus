@@ -7,6 +7,7 @@
  */
 
 #include <dt-bindings/pwm/pwm.h>
+#include <fsversion.h>
 
 /* Do we have HDMI? */
 #if ((CONFIG_QBLISSA9R2_MXCFB0 == DISPLAY_HDMI) \
@@ -221,6 +222,7 @@
 		compatible = "bdinfo";
 		board_name = "qblissa9r2";
 		ecc_strength = "8";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 #if 1 //###

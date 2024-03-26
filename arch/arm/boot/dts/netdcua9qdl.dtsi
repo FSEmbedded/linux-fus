@@ -7,6 +7,7 @@
  */
 
 #include <dt-bindings/pwm/pwm.h>
+#include <fsversion.h>
 
 /*
  * When using one IPU, having LCD and LVDS0 at the same time is not possible,
@@ -288,6 +289,7 @@
 		compatible = "bdinfo";
 		board_name = "netdcua9";
 		ecc_strength = "8";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 #ifdef CONFIG_NETDCUA9_WM9715_AUDIO

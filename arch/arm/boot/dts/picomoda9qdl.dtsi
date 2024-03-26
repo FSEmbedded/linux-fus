@@ -7,6 +7,7 @@
  */
 
 #include <dt-bindings/pwm/pwm.h>
+#include <fsversion.h>
 
 #define DISPLAY_LVDS1	4	/* LVDS channel 1 */
 
@@ -378,6 +379,7 @@
 		board_name = "picomoda9";
 		//ecc_strength = "40";
 		ecc_strength = "8";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 #ifdef CONFIG_PICOMODA9_HDMI
