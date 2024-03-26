@@ -585,18 +585,6 @@
 	phy-handle = <&ethphy0>;
 	phy-supply = <&reg_vref_3v3>;
 	status = "okay";
-
-	mdio {
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		ethphy0: ethernet-phy@4 {
-			compatible = "ethernet-phy-ieee802.3-c22";
-			reg = <4>;
-			/* Set the maximum link speed if required */
-			//max-speed = <100>;
-		};
-	};
 };
 
 /* CANRX2 J13 Pin 3 & CANTX2 Pin 4 */
@@ -654,13 +642,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
-
-	rtc8565@51 {
-		compatible = "nxp,pcf8565", "nxp,pcf8563";
-		reg = <0x51>;
-		interrupt-parent = <&gpio1>;
-		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
-	};
 
 #ifdef CONFIG_ARMSTONEA9R2_HDMI
 	hdmi_edid: edid@50 {

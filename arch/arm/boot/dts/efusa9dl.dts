@@ -9,7 +9,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_EFUSA9_BOARD_REVISION	120
+#define CONFIG_EFUSA9_BOARD_REVISION	121
 
 #define DISPLAY_NONE	0	/* No display on this port */
 #define DISPLAY_LCD	1	/* LCD via RGB adapter */
@@ -305,4 +305,18 @@ wvga {					\
 /* i.MX6 Solo and DualLite have a PXP engine */
 &pxp {
 	status = "okay";
+};
+
+&fec {
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy0: ethernet-phy@4 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <4>;
+			/* Set the maximum link speed if required */
+			//max-speed = <100>;
+		};
+	};
 };

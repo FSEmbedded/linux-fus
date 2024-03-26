@@ -9,7 +9,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_ARMSTONEA9R2_BOARD_REVISION	120
+#define CONFIG_ARMSTONEA9R2_BOARD_REVISION	130
 
 #define DISPLAY_NONE	0	/* No display on this port */
 #define DISPLAY_HDMI	1	/* DVI/HDMI via HDMI connector */
@@ -289,3 +289,26 @@ wvga {					\
 	status = "okay";
 };
 #endif
+
+&i2c1 {
+	rtc8565@51 {
+		compatible = "nxp,pcf8565", "nxp,pcf8563";
+		reg = <0x51>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
+	};
+};
+
+&fec {
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy0: ethernet-phy@4 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <4>;
+			/* Set the maximum link speed if required */
+			//max-speed = <100>;
+		};
+	};
+};

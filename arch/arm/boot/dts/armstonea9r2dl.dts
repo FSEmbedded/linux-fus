@@ -272,3 +272,26 @@ wvga {					\
 &pxp {
 	status = "okay";
 };
+
+&i2c1 {
+	rtc8565@51 {
+		compatible = "nxp,pcf8565", "nxp,pcf8563";
+		reg = <0x51>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
+	};
+};
+
+&fec {
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy0: ethernet-phy@4 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <4>;
+			/* Set the maximum link speed if required */
+			//max-speed = <100>;
+		};
+	};
+};

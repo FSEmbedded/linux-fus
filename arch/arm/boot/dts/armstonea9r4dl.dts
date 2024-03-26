@@ -9,7 +9,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_ARMSTONEA9R4_BOARD_REVISION	200
+#define CONFIG_ARMSTONEA9R2_BOARD_REVISION	200
 
 #define DISPLAY_NONE	0	/* No display on this port */
 #define DISPLAY_HDMI	1	/* DVI/HDMI via HDMI connector */
@@ -28,16 +28,16 @@
  * The first display will also get a video overlay, so MXCFB0 will use /dev/fb0
  * and /dev/fb1 and MXCFB1 will use /dev/fb2.
  */
-#define CONFIG_ARMSTONEA9R4_MXCFB0	DISPLAY_LVDS0
-#define CONFIG_ARMSTONEA9R4_MXCFB1	DISPLAY_NONE
+#define CONFIG_ARMSTONEA9R2_MXCFB0	DISPLAY_LVDS0
+#define CONFIG_ARMSTONEA9R2_MXCFB1	DISPLAY_NONE
 
 /* i.MX6 Solo and DualLite only have one IPU, do not change */
-#define CONFIG_ARMSTONEA9R4_USE_ONE_IPU
+#define CONFIG_ARMSTONEA9R2_USE_ONE_IPU
 
 /* Configure HDMI settings here (ignored if HDMI is not used) */
-#define CONFIG_ARMSTONEA9R4_HDMI_BPP		32
-#define CONFIG_ARMSTONEA9R4_HDMI_PIX_FMT	"RGB24"
-#define CONFIG_ARMSTONEA9R4_HDMI_MODE_STR	"1920x1080M@60"
+#define CONFIG_ARMSTONEA9R2_HDMI_BPP		32
+#define CONFIG_ARMSTONEA9R2_HDMI_PIX_FMT	"RGB24"
+#define CONFIG_ARMSTONEA9R2_HDMI_MODE_STR	"1920x1080M@60"
 
 /*
  * F&S has changed the default LVDS display. To use the previous settings
@@ -55,11 +55,11 @@
  *            all other data bits on all four differential data pairs
  */
 #ifndef DISPLAY_LVDS_CHIMEI
-#define CONFIG_ARMSTONEA9R4_LVDS0_BPP		32
-#define CONFIG_ARMSTONEA9R4_LVDS0_PIX_FMT	"RGB24"
-#define CONFIG_ARMSTONEA9R4_LVDS0_DATA_WIDTH	24
-#define CONFIG_ARMSTONEA9R4_LVDS0_MAPPING	"spwg"
-#define CONFIG_ARMSTONEA9R4_LVDS0_TIMING \
+#define CONFIG_ARMSTONEA9R2_LVDS0_BPP		32
+#define CONFIG_ARMSTONEA9R2_LVDS0_PIX_FMT	"RGB24"
+#define CONFIG_ARMSTONEA9R2_LVDS0_DATA_WIDTH	24
+#define CONFIG_ARMSTONEA9R2_LVDS0_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9R2_LVDS0_TIMING \
 wvga {					\
 	clock-frequency = <33300000>;	\
 	hactive = <800>;		\
@@ -76,11 +76,11 @@ wvga {					\
 	pixelclk-active = <0>;		\
 }
 #else
-#define CONFIG_ARMSTONEA9R4_LVDS0_BPP		32
-#define CONFIG_ARMSTONEA9R4_LVDS0_PIX_FMT	"RGB666"
-#define CONFIG_ARMSTONEA9R4_LVDS0_DATA_WIDTH	18
-#define CONFIG_ARMSTONEA9R4_LVDS0_MAPPING	"spwg"
-#define CONFIG_ARMSTONEA9R4_LVDS0_TIMING \
+#define CONFIG_ARMSTONEA9R2_LVDS0_BPP		32
+#define CONFIG_ARMSTONEA9R2_LVDS0_PIX_FMT	"RGB666"
+#define CONFIG_ARMSTONEA9R2_LVDS0_DATA_WIDTH	18
+#define CONFIG_ARMSTONEA9R2_LVDS0_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9R2_LVDS0_TIMING \
 wvga {					\
 	clock-frequency = <33500000>;	\
 	hactive = <800>;		\
@@ -103,11 +103,11 @@ wvga {					\
  * For mapping value see above.
  */
 #ifndef DISPLAY_LVDS_CHIMEI
-#define CONFIG_ARMSTONEA9R4_LVDS1_BPP		32
-#define CONFIG_ARMSTONEA9R4_LVDS1_PIX_FMT	"RGB24"
-#define CONFIG_ARMSTONEA9R4_LVDS1_DATA_WIDTH	24
-#define CONFIG_ARMSTONEA9R4_LVDS1_MAPPING	"spwg"
-#define CONFIG_ARMSTONEA9R4_LVDS1_TIMING \
+#define CONFIG_ARMSTONEA9R2_LVDS1_BPP		32
+#define CONFIG_ARMSTONEA9R2_LVDS1_PIX_FMT	"RGB24"
+#define CONFIG_ARMSTONEA9R2_LVDS1_DATA_WIDTH	24
+#define CONFIG_ARMSTONEA9R2_LVDS1_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9R2_LVDS1_TIMING \
 wvga {					\
 	clock-frequency = <33300000>;	\
 	hactive = <800>;		\
@@ -124,11 +124,11 @@ wvga {					\
 	pixelclk-active = <0>;		\
 }
 #else
-#define CONFIG_ARMSTONEA9R4_LVDS1_BPP		32
-#define CONFIG_ARMSTONEA9R4_LVDS1_PIX_FMT	"RGB666"
-#define CONFIG_ARMSTONEA9R4_LVDS1_DATA_WIDTH	18
-#define CONFIG_ARMSTONEA9R4_LVDS1_MAPPING	"spwg"
-#define CONFIG_ARMSTONEA9R4_LVDS1_TIMING \
+#define CONFIG_ARMSTONEA9R2_LVDS1_BPP		32
+#define CONFIG_ARMSTONEA9R2_LVDS1_PIX_FMT	"RGB666"
+#define CONFIG_ARMSTONEA9R2_LVDS1_DATA_WIDTH	18
+#define CONFIG_ARMSTONEA9R2_LVDS1_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9R2_LVDS1_TIMING \
 wvga {					\
 	clock-frequency = <33500000>;	\
 	hactive = <800>;		\
@@ -154,10 +154,10 @@ wvga {					\
  * other to PLL5. If you have activated the displays in U-Boot already and want
  * to keep these settings in Linux, de-activate all four lines.
  */
-//#define CONFIG_ARMSTONEA9R4_LVDS0_CLK  IMX6QDL_CLK_PLL2_PFD0_352M
-#define CONFIG_ARMSTONEA9R4_LVDS0_CLK  IMX6QDL_CLK_PLL5_VIDEO_DIV
-//#define CONFIG_ARMSTONEA9R4_LVDS1_CLK  IMX6QDL_CLK_PLL2_PFD0_352M
-#define CONFIG_ARMSTONEA9R4_LVDS1_CLK  IMX6QDL_CLK_PLL5_VIDEO_DIV
+//#define CONFIG_ARMSTONEA9R2_LVDS0_CLK  IMX6QDL_CLK_PLL2_PFD0_352M
+#define CONFIG_ARMSTONEA9R2_LVDS0_CLK  IMX6QDL_CLK_PLL5_VIDEO_DIV
+//#define CONFIG_ARMSTONEA9R2_LVDS1_CLK  IMX6QDL_CLK_PLL2_PFD0_352M
+#define CONFIG_ARMSTONEA9R2_LVDS1_CLK  IMX6QDL_CLK_PLL5_VIDEO_DIV
 
 /*
  * Define this for a two-channel display, i.e. one display, one framebuffer,
@@ -165,7 +165,7 @@ wvga {					\
  * other channel. Only define either DISPLAY_LVDS0 or DISPLAY_LVDS1 in this
  * case, using the full display resolution.
  */
-//#define CONFIG_ARMSTONEA9R4_LVDS_SPLIT_MODE
+//#define CONFIG_ARMSTONEA9R2_LVDS_SPLIT_MODE
 
 /*
  * Define this if you have two similar displays (same resolution and timings),
@@ -173,7 +173,7 @@ wvga {					\
  * on both displays simultaneously (cloned). Only define either DISPLAY_LVDS0
  * or DISPLAY_LVDS1 in this case, using the resolution of one of the displays.
  */
-//#define CONFIG_ARMSTONEA9R4_LVDS_DUAL_MODE
+//#define CONFIG_ARMSTONEA9R2_LVDS_DUAL_MODE
 
 /*
  * Configure touch screen:
@@ -186,37 +186,37 @@ wvga {					\
  *
  * Select none if you do not need touch support.
  */
-//#define CONFIG_ARMSTONEA9R4_4WTOUCH_SX8655
-//#define CONFIG_ARMSTONEA9R4_4WTOUCH_TSC2004
-//#define CONFIG_ARMSTONEA9R4_CAPTOUCH_MXT224
-#define CONFIG_ARMSTONEA9R4_CAPTOUCH_FT5x06
-//#define CONFIG_ARMSTONEA9R4_CAPTOUCH_SITRONIX
-//#define CONFIG_ARMSTONEA9R4_CAPTOUCH_ILITEK
+//#define CONFIG_ARMSTONEA9R2_4WTOUCH_SX8655
+//#define CONFIG_ARMSTONEA9R2_4WTOUCH_TSC2004
+//#define CONFIG_ARMSTONEA9R2_CAPTOUCH_MXT224
+#define CONFIG_ARMSTONEA9R2_CAPTOUCH_FT5x06
+//#define CONFIG_ARMSTONEA9R2_CAPTOUCH_SITRONIX
+//#define CONFIG_ARMSTONEA9R2_CAPTOUCH_ILITEK
 
 /* CMA: Set 320 MB for Continuous Memory Allocator */
-#define CONFIG_ARMSTONEA9R4_CMA_SIZE	0x14000000
+#define CONFIG_ARMSTONEA9R2_CMA_SIZE	0x14000000
 
 /* NAND */
-#define CONFIG_ARMSTONEA9R4_NAND
+#define CONFIG_ARMSTONEA9R2_NAND
 
 /* AUDIO */
-#define CONFIG_ARMSTONEA9R4_SGTL5000_AUDIO
+#define CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO
 
 /* Use 12.288 MHz instead of 24.576 MHz for Audio */
-//#define CONFIG_ARMSTONEA9R4_AUDIO_12M288
+//#define CONFIG_ARMSTONEA9R2_AUDIO_12M288
 
 /* Camera on serial MIPI CSI interface */
-//#define CONFIG_ARMSTONEA9R4_SERIAL_CAMERA
+//#define CONFIG_ARMSTONEA9R2_SERIAL_CAMERA
 
 /* In case of MIPI, select one of the following cameras */
-//#define CONFIG_ARMSTONEA9R4_MIPI_CAMERA_OV564X
-#define CONFIG_ARMSTONEA9R4_MIPI_CAMERA_ISL7998X
+//#define CONFIG_ARMSTONEA9R2_MIPI_CAMERA_OV564X
+#define CONFIG_ARMSTONEA9R2_MIPI_CAMERA_ISL7998X
 
 /* SD-CARD - SD_A is micro SD */
-#define CONFIG_ARMSTONEA9R4_SD_A
+#define CONFIG_ARMSTONEA9R2_SD_A
 
 /* WLAN */
-#define CONFIG_ARMSTONEA9R4_WLAN
+#define CONFIG_ARMSTONEA9R2_WLAN
 
 /* PCIe */
 /* On PCIe wire PCIECLKN/P there are some missing terminating resistor
@@ -224,40 +224,40 @@ wvga {					\
  * corresponding adapter have these resistors or there must be a redesign
  * for armstone. The resistors can be found on efusA9.
  */
-//#define CONFIG_ARMSTONEA9R4_PCIE
+//#define CONFIG_ARMSTONEA9R2_PCIE
 
 /* EMMC */
-#define CONFIG_ARMSTONEA9R4_EMMC
+#define CONFIG_ARMSTONEA9R2_EMMC
 
 /* I2C */
-#define CONFIG_ARMSTONEA9R4_I2C_A
-#define CONFIG_ARMSTONEA9R4_I2C_B
-#define CONFIG_ARMSTONEA9R4_I2C_C
+#define CONFIG_ARMSTONEA9R2_I2C_A
+#define CONFIG_ARMSTONEA9R2_I2C_B
+#define CONFIG_ARMSTONEA9R2_I2C_C
 /* only available in revison >= 1.20 and if SPI_B is not activated */
-//#define CONFIG_ARMSTONEA9R4_I2C_D
+//#define CONFIG_ARMSTONEA9R2_I2C_D
 
 /* SPI */
-#define CONFIG_ARMSTONEA9R4_SPI_A
-#define CONFIG_ARMSTONEA9R4_SPI_B
-#define CONFIG_ARMSTONEA9R4_SPI_FLASH
+#define CONFIG_ARMSTONEA9R2_SPI_A
+#define CONFIG_ARMSTONEA9R2_SPI_B
+#define CONFIG_ARMSTONEA9R2_SPI_FLASH
 
 /* UART */
-#define CONFIG_ARMSTONEA9R4_UART_A
-#define CONFIG_ARMSTONEA9R4_UART_A_RTSCTS
-#define CONFIG_ARMSTONEA9R4_UART_B
-#define CONFIG_ARMSTONEA9R4_UART_B_RTSCTS
-#define CONFIG_ARMSTONEA9R4_UART_C
-#define CONFIG_ARMSTONEA9R4_UART_D
-#define CONFIG_ARMSTONEA9R4_UART_D_RTSCTS
-#define CONFIG_ARMSTONEA9R4_UART_E
+#define CONFIG_ARMSTONEA9R2_UART_A
+#define CONFIG_ARMSTONEA9R2_UART_A_RTSCTS
+#define CONFIG_ARMSTONEA9R2_UART_B
+#define CONFIG_ARMSTONEA9R2_UART_B_RTSCTS
+#define CONFIG_ARMSTONEA9R2_UART_C
+#define CONFIG_ARMSTONEA9R2_UART_D
+#define CONFIG_ARMSTONEA9R2_UART_D_RTSCTS
+#define CONFIG_ARMSTONEA9R2_UART_E
 
 /* If SPI_B is activated, I2C_D is not available */
-#if defined(CONFIG_ARMSTONEA9R4_SPI_B)
-#undef CONFIG_ARMSTONEA9R4_I2C_D
+#if defined(CONFIG_ARMSTONEA9R2_SPI_B)
+#undef CONFIG_ARMSTONEA9R2_I2C_D
 #endif
 
 #include "imx6dl.dtsi"
-#include "armstonea9r4qdl.dtsi"
+#include "armstonea9r2qdl.dtsi"
 
 / {
 	model = "F&S i.MX6 Solo/DualLite armStoneA9r4";
@@ -272,3 +272,33 @@ wvga {					\
 &pxp {
 	status = "okay";
 };
+
+&i2c1 {
+	rtc8263@51 {
+		compatible = "nxp,pcf85263";
+		reg = <0x51>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
+	};
+};
+
+&fec {
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy0: ethernet-phy@4 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <4>;
+			/* Set the maximum link speed if required */
+			//max-speed = <100>;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <2>;
+			rtl821x,led-act = <1>;
+		};
+	};
+};
+

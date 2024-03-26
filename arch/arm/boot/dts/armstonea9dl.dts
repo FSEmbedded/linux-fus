@@ -269,3 +269,32 @@ wvga {					\
 &pxp {
 	status = "okay";
 };
+
+&fec {
+
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy0: ethernet-phy@4 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <4>;
+			/* Set the maximum link speed if required */
+			//max-speed = <100>;
+		};
+	};
+};
+
+&iomuxc {
+	imx6qdl-armstonea9 {
+#ifdef CONFIG_ARMSTONEA9_I2C_A
+		/* I2C_A: Feature Connector (SKIT) */
+		pinctrl_i2c3_5: i2c3grp-1 {
+			fsl,pins = <
+				MX6QDL_PAD_GPIO_3__I2C3_SCL		0x4001b8b1
+				MX6QDL_PAD_GPIO_16__I2C3_SDA		0x4001b8b1
+			>;
+		};
+#endif /* CONFIG_ARMSTONEA9_I2C_A */
+	};
+};
