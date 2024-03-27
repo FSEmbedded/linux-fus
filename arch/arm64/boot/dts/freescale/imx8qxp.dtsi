@@ -50,27 +50,9 @@
 		serial1 = &lpuart1;
 		serial2 = &lpuart2;
 		serial3 = &lpuart3;
-		isi0 = &isi_0;
-		isi1 = &isi_1;
-		isi2 = &isi_2;
-		isi3 = &isi_3;
-		isi4 = &isi_4;
-		isi5 = &isi_5;
-		isi6 = &isi_6;
-		isi7 = &isi_7;
-		csi0 = &mipi_csi_0;
-		can0 = &flexcan1;
-		can1 = &flexcan2;
-		can2 = &flexcan3;
-		i2c5 = &i2c_rpbus_5;
-		i2c12 = &i2c_rpbus_12;
-		i2c13 = &i2c_rpbus_13;
-		i2c14 = &i2c_rpbus_14;
-		i2c15 = &i2c_rpbus_15;
-		mipi_dsi0 = &mipi0_dsi_host;
-		mipi_dsi1 = &mipi1_dsi_host;
-		vpu_core0 = &vpu_core0;
-		vpu_core1 = &vpu_core1;
+		vpu-core0 = &vpu_core0;
+		vpu-core1 = &vpu_core1;
+		vpu-core2 = &vpu_core2;
 	};
 
 	cpus: cpus {
@@ -149,6 +131,7 @@
 		A35_L2: l2-cache0 {
 			compatible = "cache";
 			cache-level = <2>;
+			cache-unified;
 			cache-size = <0x80000>;
 			cache-line-size = <64>;
 			cache-sets = <1024>;

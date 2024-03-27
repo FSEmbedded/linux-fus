@@ -9,11 +9,6 @@
 #include <linux/pcs-lynx.h>
 #include <linux/property.h>
 
-#include "mtip_backplane.h"
-
-#define PRIMARY_LANE			0
-#define MAX_NUM_LANES			4
-
 #define SGMII_CLOCK_PERIOD_NS		8 /* PCS is clocked at 125 MHz */
 #define LINK_TIMER_VAL(ns)		((u32)((ns) / SGMII_CLOCK_PERIOD_NS))
 
@@ -165,7 +160,6 @@ static int lynx_pcs_config_giga(struct mdio_device *pcs,
 }
 
 static int lynx_pcs_config_usxgmii(struct mdio_device *pcs,
-				   phy_interface_t interface,
 				   const unsigned long *advertising,
 				   unsigned int neg_mode)
 {
@@ -173,8 +167,7 @@ static int lynx_pcs_config_usxgmii(struct mdio_device *pcs,
 	int addr = pcs->addr;
 
 	if (neg_mode != PHYLINK_PCS_NEG_INBAND_ENABLED) {
-		dev_err(&pcs->dev, "%s only supports in-band AN for now\n",
-			phy_modes(interface));
+		dev_err(&pcs->dev, "USXGMII only supports in-band AN for now\n");
 		return -EOPNOTSUPP;
 	}
 
@@ -183,21 +176,6 @@ static int lynx_pcs_config_usxgmii(struct mdio_device *pcs,
 				 MDIO_USXGMII_10G | MDIO_USXGMII_LINK |
 				 MDIO_USXGMII_FULL_DUPLEX |
 				 ADVERTISE_SGMII | ADVERTISE_LPACK);
-}
-
-static int lynx_pcs_config_c73(struct phylink_pcs *pcs, unsigned int neg_mode,
-			       const unsigned long *advertising)
-{
-	bool autoneg = !!(neg_mode & PHYLINK_PCS_NEG_ENABLED);
-	struct lynx_pcs *lynx = phylink_pcs_to_lynx(pcs);
-
-	if (!lynx->num_phys) {
-		dev_err(&lynx->mdio->dev, "C73 autoneg requires SerDes\n");
-		return -ENODEV;
-	}
-
-	return mtip_backplane_config_aneg(lynx->anlt[PRIMARY_LANE], autoneg,
-					  advertising);
 }
 
 static int lynx_pcs_config(struct phylink_pcs *pcs, unsigned int neg_mode,
@@ -236,8 +214,7 @@ static int lynx_pcs_config(struct phylink_pcs *pcs, unsigned int neg_mode,
 		}
 		break;
 	case PHY_INTERFACE_MODE_USXGMII:
-	case PHY_INTERFACE_MODE_10G_QXGMII:
-		return lynx_pcs_config_usxgmii(lynx->mdio, ifmode, advertising,
+		return lynx_pcs_config_usxgmii(lynx->mdio, advertising,
 					       neg_mode);
 	case PHY_INTERFACE_MODE_10GBASER:
 	case PHY_INTERFACE_MODE_25GBASER:
@@ -464,46 +441,7 @@ static const struct phylink_pcs_ops lynx_pcs_phylink_ops = {
 	.pcs_disable = lynx_pcs_disable,
 };
 
-void lynx_pcs_set_supported_interfaces(struct phylink_pcs *pcs,
-				       phy_interface_t default_interface,
-				       unsigned long *supported_interfaces)
-{
-	struct lynx_pcs *lynx = phylink_pcs_to_lynx(pcs);
-	phy_interface_t iface;
-	int err;
-
-	__set_bit(default_interface, supported_interfaces);
-
-	if (default_interface == PHY_INTERFACE_MODE_1000BASEX ||
-	    default_interface == PHY_INTERFACE_MODE_SGMII) {
-		__set_bit(PHY_INTERFACE_MODE_1000BASEX, supported_interfaces);
-		__set_bit(PHY_INTERFACE_MODE_SGMII, supported_interfaces);
-	}
-
-	if (!lynx->num_phys)
-		return;
-
-	/* In case we have access to the SerDes phy/lane, then ask the SerDes
-	 * driver what interfaces are supported based on the current PLL
-	 * configuration.
-	 */
-	for (iface = 0; iface < PHY_INTERFACE_MODE_MAX; iface++) {
-		if (iface == PHY_INTERFACE_MODE_NA)
-			continue;
-
-		err = phy_validate(lynx->serdes[PRIMARY_LANE],
-				   PHY_MODE_ETHERNET, iface, NULL);
-		if (err)
-			continue;
-
-		__set_bit(iface, supported_interfaces);
-	}
-}
-EXPORT_SYMBOL(lynx_pcs_set_supported_interfaces);
-
-static struct phylink_pcs *lynx_pcs_create(struct mdio_device *mdio,
-					   struct phy **phys, size_t num_phys,
-					   enum mtip_model model)
+static struct phylink_pcs *lynx_pcs_create(struct mdio_device *mdio)
 {
 	struct lynx_pcs *lynx;
 	size_t i;
@@ -516,21 +454,6 @@ static struct phylink_pcs *lynx_pcs_create(struct mdio_device *mdio,
 	if (!lynx)
 		return ERR_PTR(-ENOMEM);
 
-	for (i = 0; i < num_phys; i++) {
-		lynx->serdes[i] = phys[i];
-		err = phy_init(lynx->serdes[i]);
-		if (err) {
-			dev_err(&mdio->dev,
-				"Failed to initialize SerDes: %pe\n",
-				ERR_PTR(err));
-
-			while (i--)
-				phy_exit(lynx->serdes[i]);
-			kfree(lynx);
-			return ERR_PTR(err);
-		}
-	}
-
 	mdio_device_get(mdio);
 	lynx->mdio = mdio;
 	lynx->pcs.ops = &lynx_pcs_phylink_ops;
@@ -542,8 +465,7 @@ static struct phylink_pcs *lynx_pcs_create(struct mdio_device *mdio,
 	return lynx_to_phylink_pcs(lynx);
 }
 
-struct phylink_pcs *lynx_pcs_create_mdiodev(struct mii_bus *bus, int addr,
-					    struct phy **phys, size_t num_phys)
+struct phylink_pcs *lynx_pcs_create_mdiodev(struct mii_bus *bus, int addr)
 {
 	struct mdio_device *mdio;
 	struct phylink_pcs *pcs;
@@ -552,7 +474,7 @@ struct phylink_pcs *lynx_pcs_create_mdiodev(struct mii_bus *bus, int addr,
 	if (IS_ERR(mdio))
 		return ERR_CAST(mdio);
 
-	pcs = lynx_pcs_create(mdio, phys, num_phys, MTIP_MODEL_AUTODETECT);
+	pcs = lynx_pcs_create(mdio);
 
 	/* lynx_create() has taken a refcount on the mdiodev if it was
 	 * successful. If lynx_create() fails, this will free the mdio
@@ -576,24 +498,19 @@ EXPORT_SYMBOL(lynx_pcs_create_mdiodev);
  *  -ENOMEM if we fail to allocate memory
  *  pointer to a phylink_pcs on success
  */
-struct phylink_pcs *lynx_pcs_create_fwnode(struct fwnode_handle *node,
-					   struct phy **phys, size_t num_phys)
+struct phylink_pcs *lynx_pcs_create_fwnode(struct fwnode_handle *node)
 {
-	enum mtip_model model = MTIP_MODEL_AUTODETECT;
 	struct mdio_device *mdio;
 	struct phylink_pcs *pcs;
 
 	if (!fwnode_device_is_available(node))
 		return ERR_PTR(-ENODEV);
 
-	if (fwnode_device_is_compatible(node, "fsl,lx2160a-lynx-pcs"))
-		model = MTIP_MODEL_LX2160A;
-
 	mdio = fwnode_mdio_find_device(node);
 	if (!mdio)
 		return ERR_PTR(-EPROBE_DEFER);
 
-	pcs = lynx_pcs_create(mdio, phys, num_phys, model);
+	pcs = lynx_pcs_create(mdio);
 
 	/* lynx_create() has taken a refcount on the mdiodev if it was
 	 * successful. If lynx_create() fails, this will free the mdio
@@ -617,6 +534,7 @@ void lynx_pcs_destroy(struct phylink_pcs *pcs)
 
 	mdio_device_put(lynx->mdio);
 
+	mdio_device_put(lynx->mdio);
 	kfree(lynx);
 }
 EXPORT_SYMBOL(lynx_pcs_destroy);

@@ -20,8 +20,6 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
-#include <linux/of_gpio.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
@@ -294,10 +292,8 @@ static int lpi2c_imx_config(struct lpi2c_imx_struct *lpi2c_imx)
 	lpi2c_imx_set_mode(lpi2c_imx);
 
 	clk_rate = clk_get_rate(lpi2c_imx->clks[0].clk);
-	if (!clk_rate) {
-		dev_dbg(&lpi2c_imx->adapter.dev, "clk_per rate is 0\n");
+	if (!clk_rate)
 		return -EINVAL;
-	}
 
 	if (lpi2c_imx->mode == HS || lpi2c_imx->mode == ULTRA_FAST)
 		filt = 0;
@@ -306,8 +302,8 @@ static int lpi2c_imx_config(struct lpi2c_imx_struct *lpi2c_imx)
 
 	for (prescale = 0; prescale <= 7; prescale++) {
 		clk_cycle = clk_rate / ((1 << prescale) * lpi2c_imx->bitrate)
-			    - (2 + filt) / (1 << prescale);
-		clkhi = clk_cycle * I2C_CLK_RATIO;
+			    - 3 - (filt >> 1);
+		clkhi = DIV_ROUND_UP(clk_cycle, I2C_CLK_RATIO + 1);
 		clklo = clk_cycle - clkhi;
 		if (clklo < 64)
 			break;
@@ -878,13 +874,9 @@ static irqreturn_t lpi2c_imx_master_isr(struct lpi2c_imx_struct *lpi2c_imx)
 	temp = readl(lpi2c_imx->base + LPI2C_MSR);
 	temp &= enabled;
 
-	if (temp & MSR_NDF) {
-		lpi2c_imx->is_ndf = true;
+	if (temp & MSR_NDF)
 		complete(&lpi2c_imx->complete);
-		return IRQ_HANDLED;
-	}
-
-	if (temp & MSR_RDF)
+	else if (temp & MSR_RDF)
 		lpi2c_imx_read_rxfifo(lpi2c_imx);
 	else if (temp & MSR_TDF)
 		lpi2c_imx_write_txfifo(lpi2c_imx);
@@ -1188,16 +1180,19 @@ static int lpi2c_imx_probe(struct platform_device *pdev)
 		sizeof(lpi2c_imx->adapter.name));
 
 	ret = devm_clk_bulk_get_all(&pdev->dev, &lpi2c_imx->clks);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "can't get I2C peripheral clock, ret=%d\n", ret);
-		return ret;
-	}
+	if (ret < 0)
+		return dev_err_probe(&pdev->dev, ret, "can't get I2C peripheral clock\n");
 	lpi2c_imx->num_clks = ret;
 
 	ret = of_property_read_u32(pdev->dev.of_node,
 				   "clock-frequency", &lpi2c_imx->bitrate);
 	if (ret)
 		lpi2c_imx->bitrate = I2C_MAX_STANDARD_MODE_FREQ;
+
+	ret = devm_request_irq(&pdev->dev, irq, lpi2c_imx_isr, 0,
+			       pdev->name, lpi2c_imx);
+	if (ret)
+		return dev_err_probe(&pdev->dev, ret, "can't claim irq %d\n", irq);
 
 	i2c_set_adapdata(&lpi2c_imx->adapter, lpi2c_imx);
 	platform_set_drvdata(pdev, lpi2c_imx);
@@ -1248,7 +1243,7 @@ rpm_disable:
 	return ret;
 }
 
-static int lpi2c_imx_remove(struct platform_device *pdev)
+static void lpi2c_imx_remove(struct platform_device *pdev)
 {
 	struct lpi2c_imx_struct *lpi2c_imx = platform_get_drvdata(pdev);
 
@@ -1256,17 +1251,14 @@ static int lpi2c_imx_remove(struct platform_device *pdev)
 
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
-
-	return 0;
 }
 
 static int __maybe_unused lpi2c_runtime_suspend(struct device *dev)
 {
 	struct lpi2c_imx_struct *lpi2c_imx = dev_get_drvdata(dev);
 
-	devm_free_irq(dev, lpi2c_imx->irq, lpi2c_imx);
-	clk_bulk_disable_unprepare(lpi2c_imx->num_clks, lpi2c_imx->clks);
-	pinctrl_pm_select_idle_state(dev);
+	clk_bulk_disable(lpi2c_imx->num_clks, lpi2c_imx->clks);
+	pinctrl_pm_select_sleep_state(dev);
 
 	return 0;
 }
@@ -1277,7 +1269,7 @@ static int __maybe_unused lpi2c_runtime_resume(struct device *dev)
 	int ret;
 
 	pinctrl_pm_select_default_state(dev);
-	ret = clk_bulk_prepare_enable(lpi2c_imx->num_clks, lpi2c_imx->clks);
+	ret = clk_bulk_enable(lpi2c_imx->num_clks, lpi2c_imx->clks);
 	if (ret) {
 		dev_err(dev, "failed to enable I2C clock, ret=%d\n", ret);
 		return ret;
@@ -1343,7 +1335,7 @@ static const struct dev_pm_ops lpi2c_pm_ops = {
 
 static struct platform_driver lpi2c_imx_driver = {
 	.probe = lpi2c_imx_probe,
-	.remove = lpi2c_imx_remove,
+	.remove_new = lpi2c_imx_remove,
 	.driver = {
 		.name = DRIVER_NAME,
 		.of_match_table = lpi2c_imx_of_match,

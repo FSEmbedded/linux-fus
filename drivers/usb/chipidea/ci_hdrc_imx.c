@@ -6,6 +6,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
@@ -161,12 +162,12 @@ static struct imx_usbmisc_data *usbmisc_get_init_data(struct device *dev)
 	 * Check the various over current related properties. If over current
 	 * detection is disabled we're not interested in the polarity.
 	 */
-	if (of_find_property(np, "disable-over-current", NULL)) {
+	if (of_property_read_bool(np, "disable-over-current")) {
 		data->disable_oc = 1;
-	} else if (of_find_property(np, "over-current-active-high", NULL)) {
+	} else if (of_property_read_bool(np, "over-current-active-high")) {
 		data->oc_pol_active_low = 0;
 		data->oc_pol_configured = 1;
-	} else if (of_find_property(np, "over-current-active-low", NULL)) {
+	} else if (of_property_read_bool(np, "over-current-active-low")) {
 		data->oc_pol_active_low = 1;
 		data->oc_pol_configured = 1;
 	} else {
@@ -381,7 +382,7 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 		data->hsic_pad_regulator =
 				devm_regulator_get_optional(dev, "hsic");
 		if (PTR_ERR(data->hsic_pad_regulator) == -ENODEV) {
-			/* no pad regualator is needed */
+			/* no pad regulator is needed */
 			data->hsic_pad_regulator = NULL;
 		} else if (IS_ERR(data->hsic_pad_regulator))
 			return dev_err_probe(dev, PTR_ERR(data->hsic_pad_regulator),
@@ -444,15 +445,19 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 	data->phy = devm_usb_get_phy_by_phandle(dev, "fsl,usbphy", 0);
 	if (IS_ERR(data->phy)) {
 		ret = PTR_ERR(data->phy);
-		if (ret != -ENODEV)
+		if (ret != -ENODEV) {
+			dev_err_probe(dev, ret, "Failed to parse fsl,usbphy\n");
 			goto err_clk;
+		}
 		data->phy = devm_usb_get_phy_by_phandle(dev, "phys", 0);
 		if (IS_ERR(data->phy)) {
 			ret = PTR_ERR(data->phy);
-			if (ret == -ENODEV)
+			if (ret == -ENODEV) {
 				data->phy = NULL;
-			else
+			} else {
+				dev_err_probe(dev, ret, "Failed to parse phys\n");
 				goto err_clk;
+			}
 		}
 	}
 
@@ -537,7 +542,7 @@ disable_hsic_regulator:
 	return ret;
 }
 
-static int ci_hdrc_imx_remove(struct platform_device *pdev)
+static void ci_hdrc_imx_remove(struct platform_device *pdev)
 {
 	struct ci_hdrc_imx_data *data = platform_get_drvdata(pdev);
 
@@ -559,8 +564,6 @@ static int ci_hdrc_imx_remove(struct platform_device *pdev)
 		if (data->hsic_pad_regulator)
 			regulator_disable(data->hsic_pad_regulator);
 	}
-
-	return 0;
 }
 
 static void ci_hdrc_imx_shutdown(struct platform_device *pdev)
@@ -685,7 +688,7 @@ static const struct dev_pm_ops ci_hdrc_imx_pm_ops = {
 };
 static struct platform_driver ci_hdrc_imx_driver = {
 	.probe = ci_hdrc_imx_probe,
-	.remove = ci_hdrc_imx_remove,
+	.remove_new = ci_hdrc_imx_remove,
 	.shutdown = ci_hdrc_imx_shutdown,
 	.driver = {
 		.name = "imx_usb",

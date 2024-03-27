@@ -114,7 +114,6 @@ static int imx_rpmsg_probe(struct platform_device *pdev)
 	struct device_node *np = rpmsg_pdev->dev.of_node;
 	struct of_phandle_args args;
 	const char *platform_name;
-	const char *model_string;
 	struct imx_rpmsg *data;
 	int ret = 0;
 
@@ -157,22 +156,11 @@ static int imx_rpmsg_probe(struct platform_device *pdev)
 	of_property_read_string(np, "model", &model_string);
 	ret = of_parse_phandle_with_fixed_args(np, "audio-codec", 0, 0, &args);
 	if (ret) {
-		if (of_device_is_compatible(np, "fsl,imx7ulp-rpmsg-audio")) {
-			data->dai.codecs->dai_name = "rpmsg-wm8960-hifi";
-			data->dai.codecs->name = RPMSG_CODEC_DRV_NAME_WM8960;
-		} else if (of_device_is_compatible(np, "fsl,imx8mm-rpmsg-audio") &&
-				!strcmp("ak4497-audio", model_string)) {
-			data->dai.codecs->dai_name = "rpmsg-ak4497-aif";
-			data->dai.codecs->name = RPMSG_CODEC_DRV_NAME_AK4497;
-		} else {
-			data->dai.codecs->dai_name = "snd-soc-dummy-dai";
-			data->dai.codecs->name = "snd-soc-dummy";
-		}
+		*data->dai.codecs = asoc_dummy_dlc;
 	} else {
 		struct clk *clk;
 
-		data->dai.codecs->of_node = args.np;
-		ret = snd_soc_get_dai_name(&args, &data->dai.codecs->dai_name);
+		ret = snd_soc_get_dlc(&args, data->dai.codecs);
 		if (ret) {
 			dev_err(&pdev->dev, "Unable to get codec_dai_name\n");
 			goto fail;
@@ -184,10 +172,10 @@ static int imx_rpmsg_probe(struct platform_device *pdev)
 	}
 
 	data->dai.cpus->dai_name = dev_name(&rpmsg_pdev->dev);
-	data->dai.platforms->name = IMX_PCM_DRV_NAME;
-	if (!of_property_read_string(np, "fsl,platform", &platform_name))
+	if (!of_property_read_string(np, "fsl,rpmsg-channel-name", &platform_name))
 		data->dai.platforms->name = platform_name;
-
+	else
+		data->dai.platforms->name = "rpmsg-audio-channel";
 	data->dai.playback_only = true;
 	data->dai.capture_only = true;
 	data->card.num_links = 1;

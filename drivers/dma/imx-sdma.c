@@ -33,7 +33,6 @@
 #include <linux/dmaengine.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
-#include <linux/of_device.h>
 #include <linux/of_dma.h>
 #include <linux/workqueue.h>
 
@@ -1255,6 +1254,10 @@ static int sdma_get_pc(struct sdma_channel *sdmac,
 		emi_2_per = sdma->script_addrs->hdmi_dma_addr;
 		sdmac->is_ram_script = true;
 		break;
+	case IMX_DMATYPE_HDMI:
+		emi_2_per = sdma->script_addrs->hdmi_dma_addr;
+		sdmac->is_ram_script = true;
+		break;
 	default:
 		dev_err(sdma->dev, "Unsupported transfer type %d\n",
 			peripheral_type);
@@ -2045,14 +2048,10 @@ static struct dma_async_tx_descriptor *sdma_prep_dma_cyclic(
 
 	dev_dbg(sdma->dev, "%s channel: %d\n", __func__, channel);
 
-	sdma_pm_clk_enable(sdmac->sdma, false, true);
-
 	if (sdmac->peripheral_type != IMX_DMATYPE_HDMI)
 		num_periods = buf_len / period_len;
 
-	ret = sdma_config_write(chan, &sdmac->slave_config, direction);
-	if (ret)
-		goto err_out;
+	sdma_config_write(chan, &sdmac->slave_config, direction);
 
 	desc = sdma_transfer_init(sdmac, direction, num_periods);
 	if (!desc)
@@ -2480,7 +2479,6 @@ static int sdma_probe(struct platform_device *pdev)
 	const char *fw_name;
 	int ret;
 	int irq;
-	struct resource *iores;
 	struct resource spba_res;
 	int i;
 	struct sdma_engine *sdma;
@@ -2503,8 +2501,7 @@ static int sdma_probe(struct platform_device *pdev)
 	if (irq < 0)
 		return irq;
 
-	iores = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	sdma->regs = devm_ioremap_resource(&pdev->dev, iores);
+	sdma->regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(sdma->regs))
 		return PTR_ERR(sdma->regs);
 
@@ -2545,6 +2542,7 @@ static int sdma_probe(struct platform_device *pdev)
 	dma_cap_set(DMA_SLAVE, sdma->dma_device.cap_mask);
 	dma_cap_set(DMA_CYCLIC, sdma->dma_device.cap_mask);
 	dma_cap_set(DMA_MEMCPY, sdma->dma_device.cap_mask);
+	dma_cap_set(DMA_PRIVATE, sdma->dma_device.cap_mask);
 
 	INIT_LIST_HEAD(&sdma->dma_device.channels);
 	/* Initialize channel parameters */

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 // Copyright 2018 NXP
 
 #include <linux/bitfield.h>
@@ -56,8 +56,6 @@ struct fsl_micfil {
 	struct snd_dmaengine_dai_dma_data dma_params_rx;
 	struct sdma_peripheral_config sdmacfg;
 	struct snd_soc_card *card;
-	struct snd_pcm_hw_constraint_list constraint_rates;
-	unsigned int constraint_rates_list[MICFIL_NUM_RATES];
 	unsigned int dataline;
 	char name[32];
 	int irq[MICFIL_IRQ_LINES];
@@ -98,11 +96,11 @@ static struct fsl_micfil_soc_data fsl_micfil_imx8mp = {
 
 static struct fsl_micfil_soc_data fsl_micfil_imx93 = {
 	.imx = true,
-	.use_edma = true,
 	.fifos = 8,
 	.fifo_depth = 32,
 	.dataline =  0xf,
 	.formats = SNDRV_PCM_FMTBIT_S32_LE,
+	.use_edma = true,
 	.use_verid = true,
 };
 
@@ -790,17 +788,9 @@ static int fsl_micfil_hw_params(struct snd_pcm_substream *substream,
 	micfil->dma_params_rx.maxburst = channels * MICFIL_DMA_MAXBURST_RX;
 	if (micfil->soc->use_edma)
 		micfil->dma_params_rx.maxburst = channels;
-	else
-		micfil->dma_params_rx.maxburst = channels * MICFIL_DMA_MAXBURST_RX;
 
 	return 0;
 }
-
-static const struct snd_soc_dai_ops fsl_micfil_dai_ops = {
-	.startup = fsl_micfil_startup,
-	.trigger = fsl_micfil_trigger,
-	.hw_params = fsl_micfil_hw_params,
-};
 
 static int fsl_micfil_dai_probe(struct snd_soc_dai *cpu_dai)
 {
@@ -839,8 +829,14 @@ static int fsl_micfil_dai_probe(struct snd_soc_dai *cpu_dai)
 	return 0;
 }
 
+static const struct snd_soc_dai_ops fsl_micfil_dai_ops = {
+	.probe		= fsl_micfil_dai_probe,
+	.startup	= fsl_micfil_startup,
+	.trigger	= fsl_micfil_trigger,
+	.hw_params	= fsl_micfil_hw_params,
+};
+
 static struct snd_soc_dai_driver fsl_micfil_dai = {
-	.probe = fsl_micfil_dai_probe,
 	.capture = {
 		.stream_name = "CPU-Capture",
 		.channels_min = 1,
@@ -1132,7 +1128,7 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	micfil->pdev = pdev;
-	strncpy(micfil->name, np->name, sizeof(micfil->name) - 1);
+	strscpy(micfil->name, np->name, sizeof(micfil->name));
 
 	micfil->soc = of_device_get_match_data(&pdev->dev);
 
@@ -1356,4 +1352,4 @@ module_platform_driver(fsl_micfil_driver);
 
 MODULE_AUTHOR("Cosmin-Gabriel Samoila <cosmin.samoila@nxp.com>");
 MODULE_DESCRIPTION("NXP PDM Microphone Interface (MICFIL) driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("Dual BSD/GPL");

@@ -9,7 +9,6 @@
 
 #include <linux/module.h>
 #include <linux/interrupt.h>
-#include <linux/msi.h>
 #include <linux/kthread.h>
 #include <linux/workqueue.h>
 #include <linux/iommu.h>
@@ -1646,7 +1645,6 @@ static void dpaa2_switch_port_disconnect_mac(struct ethsw_port_priv *port_priv)
 		dpaa2_mac_disconnect(mac);
 
 	dpaa2_mac_close(mac);
-	dpaa2_mac_driver_attach(mac->mc_dev);
 	kfree(mac);
 }
 
@@ -1673,7 +1671,6 @@ static irqreturn_t dpaa2_switch_irq0_handler_thread(int irq_num, void *arg)
 		dpaa2_switch_port_link_state_update(port_priv->netdev);
 
 	if (status & DPSW_IRQ_EVENT_ENDPOINT_CHANGED) {
-		dpaa2_switch_port_set_mac_addr(port_priv);
 		/* We can avoid locking because the "endpoint changed" IRQ
 		 * handler is the only one who changes priv->mac at runtime,
 		 * so we are not racing with anyone.
@@ -3631,7 +3628,7 @@ static void dpaa2_switch_teardown(struct fsl_mc_device *sw_dev)
 		dev_warn(dev, "dpsw_close err %d\n", err);
 }
 
-static int dpaa2_switch_remove(struct fsl_mc_device *sw_dev)
+static void dpaa2_switch_remove(struct fsl_mc_device *sw_dev)
 {
 	struct ethsw_port_priv *port_priv;
 	struct ethsw_core *ethsw;
@@ -3663,8 +3660,6 @@ static int dpaa2_switch_remove(struct fsl_mc_device *sw_dev)
 	kfree(ethsw);
 
 	dev_set_drvdata(dev, NULL);
-
-	return 0;
 }
 
 static int dpaa2_switch_probe_port(struct ethsw_core *ethsw,
@@ -3685,6 +3680,8 @@ static int dpaa2_switch_probe_port(struct ethsw_core *ethsw,
 	port_priv->netdev = port_netdev;
 	port_priv->ethsw_data = ethsw;
 	port_priv->lag = NULL;
+
+	mutex_init(&port_priv->mac_lock);
 
 	mutex_init(&port_priv->mac_lock);
 
@@ -3886,7 +3883,6 @@ MODULE_DEVICE_TABLE(fslmc, dpaa2_switch_match_id_table);
 static struct fsl_mc_driver dpaa2_switch_drv = {
 	.driver = {
 		.name = KBUILD_MODNAME,
-		.owner = THIS_MODULE,
 	},
 	.probe = dpaa2_switch_probe,
 	.remove = dpaa2_switch_remove,

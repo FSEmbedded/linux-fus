@@ -2,13 +2,14 @@
 /* Distributed Switch Architecture VSC9953 driver
  * Copyright (C) 2020, Maxim Kochetkov <fido_max@inbox.ru>
  */
+#include <linux/platform_device.h>
 #include <linux/types.h>
 #include <soc/mscc/ocelot_vcap.h>
 #include <soc/mscc/ocelot_sys.h>
 #include <soc/mscc/ocelot.h>
 #include <linux/mdio/mdio-mscc-miim.h>
+#include <linux/mod_devicetable.h>
 #include <linux/of_mdio.h>
-#include <linux/of_platform.h>
 #include <linux/pcs-lynx.h>
 #include <linux/phy/phy.h>
 #include <linux/dsa/ocelot.h>
@@ -544,10 +545,6 @@ static const struct reg_field vsc9953_regfields[REGFIELD_MAX] = {
 	[SYS_PAUSE_CFG_PAUSE_ENA] = REG_FIELD_ID(SYS_PAUSE_CFG, 0, 1, 11, 4),
 };
 
-static const struct ocelot_stat_layout vsc9953_stats_layout[OCELOT_NUM_STATS] = {
-	OCELOT_COMMON_STATS,
-};
-
 static const struct vcap_field vsc9953_vcap_es0_keys[] = {
 	[VCAP_ES0_EGR_PORT]			= {  0,  4},
 	[VCAP_ES0_IGR_PORT]			= {  4,  4},
@@ -841,32 +838,6 @@ static int vsc9953_reset(struct ocelot *ocelot)
 	return 0;
 }
 
-static void vsc9953_phylink_validate(struct ocelot *ocelot, int port,
-				     unsigned long *supported,
-				     struct phylink_link_state *state)
-{
-	__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
-
-	phylink_set_port_modes(mask);
-	phylink_set(mask, Autoneg);
-	phylink_set(mask, Pause);
-	phylink_set(mask, Asym_Pause);
-	phylink_set(mask, 10baseT_Full);
-	phylink_set(mask, 10baseT_Half);
-	phylink_set(mask, 100baseT_Full);
-	phylink_set(mask, 100baseT_Half);
-	phylink_set(mask, 1000baseT_Full);
-	phylink_set(mask, 1000baseX_Full);
-
-	if (state->interface == PHY_INTERFACE_MODE_INTERNAL) {
-		phylink_set(mask, 2500baseT_Full);
-		phylink_set(mask, 2500baseX_Full);
-	}
-
-	linkmode_and(supported, supported, mask);
-	linkmode_and(state->advertising, state->advertising, mask);
-}
-
 /* Watermark encode
  * Bit 9:   Unit; 0:1, 1:16
  * Bit 8-0: Value to be multiplied with unit
@@ -945,18 +916,19 @@ static int vsc9953_mdio_bus_alloc(struct ocelot *ocelot)
 		struct ocelot_port *ocelot_port = ocelot->ports[dp->index];
 		size_t num_phys = ocelot_port->serdes ? 1 : 0;
 		struct phylink_pcs *phylink_pcs;
-		int addr = dp->index + 4;
+		int addr = port + 4;
+
+		if (dsa_is_unused_port(felix->ds, port))
+			continue;
 
 		if (ocelot_port->phy_mode == PHY_INTERFACE_MODE_INTERNAL)
 			continue;
 
-		phylink_pcs = lynx_pcs_create_mdiodev(felix->imdio, addr,
-						      &ocelot_port->serdes,
-						      num_phys);
+		phylink_pcs = lynx_pcs_create_mdiodev(felix->imdio, addr);
 		if (IS_ERR(phylink_pcs))
 			continue;
 
-		felix->pcs[dp->index] = phylink_pcs;
+		felix->pcs[port] = phylink_pcs;
 
 		dev_info(dev, "Found PCS at internal MDIO address %d\n", addr);
 	}
@@ -986,18 +958,17 @@ static const struct felix_info seville_info_vsc9953 = {
 	.regfields		= vsc9953_regfields,
 	.map			= vsc9953_regmap,
 	.ops			= &vsc9953_ops,
-	.stats_layout		= vsc9953_stats_layout,
 	.vcap			= vsc9953_vcap_props,
 	.vcap_pol_base		= VSC9953_VCAP_POLICER_BASE,
 	.vcap_pol_max		= VSC9953_VCAP_POLICER_MAX,
 	.vcap_pol_base2		= VSC9953_VCAP_POLICER_BASE2,
 	.vcap_pol_max2		= VSC9953_VCAP_POLICER_MAX2,
+	.quirks			= FELIX_MAC_QUIRKS,
 	.num_mact_rows		= 2048,
 	.num_ports		= VSC9953_NUM_PORTS,
 	.num_tx_queues		= OCELOT_NUM_TC,
 	.mdio_bus_alloc		= vsc9953_mdio_bus_alloc,
 	.mdio_bus_free		= vsc9953_mdio_bus_free,
-	.phylink_validate	= vsc9953_phylink_validate,
 	.port_modes		= vsc9953_port_modes,
 };
 
@@ -1100,7 +1071,7 @@ static struct platform_driver seville_vsc9953_driver = {
 	.shutdown	= seville_shutdown,
 	.driver = {
 		.name		= "mscc_seville",
-		.of_match_table	= of_match_ptr(seville_of_match),
+		.of_match_table	= seville_of_match,
 	},
 };
 module_platform_driver(seville_vsc9953_driver);

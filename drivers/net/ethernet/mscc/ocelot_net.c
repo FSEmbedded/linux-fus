@@ -194,15 +194,6 @@ void ocelot_port_devlink_teardown(struct ocelot *ocelot, int port)
 	devlink_port_unregister(dlp);
 }
 
-static struct devlink_port *ocelot_get_devlink_port(struct net_device *dev)
-{
-	struct ocelot_port_private *priv = netdev_priv(dev);
-	struct ocelot *ocelot = priv->port.ocelot;
-	int port = priv->port.index;
-
-	return &ocelot->devlink_ports[port];
-}
-
 int ocelot_setup_tc_cls_flower(struct ocelot_port_private *priv,
 			       struct flow_cls_offload *f,
 			       bool ingress)
@@ -925,7 +916,6 @@ static const struct net_device_ops ocelot_port_netdev_ops = {
 	.ndo_set_features		= ocelot_set_features,
 	.ndo_setup_tc			= ocelot_setup_tc,
 	.ndo_eth_ioctl			= ocelot_ioctl,
-	.ndo_get_devlink_port		= ocelot_get_devlink_port,
 };
 
 struct net_device *ocelot_port_to_netdev(struct ocelot *ocelot, int port)
@@ -1722,7 +1712,6 @@ static void vsc7514_phylink_mac_link_up(struct phylink_config *config,
 }
 
 static const struct phylink_mac_ops ocelot_phylink_ops = {
-	.validate		= phylink_generic_validate,
 	.mac_config		= vsc7514_phylink_mac_config,
 	.mac_link_down		= vsc7514_phylink_mac_link_down,
 	.mac_link_up		= vsc7514_phylink_mac_link_up,
@@ -1755,16 +1744,9 @@ static int ocelot_port_phylink_create(struct ocelot *ocelot, int port,
 
 	ocelot_port->phy_mode = phy_mode;
 
-	if (phy_mode != PHY_INTERFACE_MODE_INTERNAL) {
-		ocelot_port->serdes = devm_of_phy_get(dev, portnp, NULL);
-		if (IS_ERR(ocelot_port->serdes)) {
-			err = PTR_ERR(ocelot_port->serdes);
-			dev_err_probe(dev, err,
-				      "missing SerDes phys for port %d\n",
-				      port);
-			return err;
-		}
-	}
+	err = ocelot_port_configure_serdes(ocelot, port, portnp);
+	if (err)
+		return err;
 
 	priv = container_of(ocelot_port, struct ocelot_port_private, port);
 
@@ -1842,6 +1824,7 @@ int ocelot_probe_port(struct ocelot *ocelot, int port, struct regmap *target,
 	if (ocelot->fdma)
 		ocelot_fdma_netdev_init(ocelot, dev);
 
+	SET_NETDEV_DEVLINK_PORT(dev, &ocelot->devlink_ports[port]);
 	err = register_netdev(dev);
 	if (err) {
 		dev_err(ocelot->dev, "register_netdev failed\n");

@@ -4,11 +4,12 @@
  * JobR backend functionality
  *
  * Copyright 2008-2012 Freescale Semiconductor, Inc.
- * Copyright 2019-2020 NXP
+ * Copyright 2019, 2023 NXP
  */
 
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
+#include <linux/platform_device.h>
 
 #include "compat.h"
 #include "ctrl.h"
@@ -156,7 +157,6 @@ static int caam_jr_flush(struct device *dev)
 	return caam_jr_stop_processing(dev, JRCR_RESET);
 }
 
-#ifdef CONFIG_PM_SLEEP
 /* The resume can be used after a park or a flush if CAAM has not been reset */
 static int caam_jr_restart_processing(struct device *dev)
 {
@@ -173,20 +173,17 @@ static int caam_jr_restart_processing(struct device *dev)
 
 	return 0;
 }
-#endif /* CONFIG_PM_SLEEP */
 
 static int caam_reset_hw_jr(struct device *dev)
 {
 	struct caam_drv_private_jr *jrp = dev_get_drvdata(dev);
 	unsigned int timeout = 100000;
 	int err;
-
 	/*
 	 * mask interrupts since we are going to poll
 	 * for reset completion status
 	 */
 	clrsetbits_32(&jrp->rregs->rconfig_lo, 0, JRCFG_IMSK);
-
 	err = caam_jr_flush(dev);
 	if (err)
 		return err;
@@ -257,6 +254,11 @@ static int caam_jr_remove(struct platform_device *pdev)
 	jr_driver_probed--;
 
 	return ret;
+}
+
+static void caam_jr_platform_shutdown(struct platform_device *pdev)
+{
+	caam_jr_remove(pdev);
 }
 
 /* Main per-ring interrupt handler */
@@ -566,57 +568,6 @@ int caam_jr_enqueue(struct device *dev, u32 *desc,
 }
 EXPORT_SYMBOL(caam_jr_enqueue);
 
-/**
- * caam_jr_run_and_wait_for_completion() - Enqueue a job and wait for its
- * completion. Returns 0 if OK, -ENOSPC if the queue is full,
- * -EIO if it cannot map the caller's descriptor.
- * @dev:  struct device of the job ring to be used
- * @desc: points to a job descriptor that execute our request. All
- *        descriptors (and all referenced data) must be in a DMAable
- *        region, and all data references must be physical addresses
- *        accessible to CAAM (i.e. within a PAMU window granted
- *        to it).
- * @cbk:  pointer to a callback function to be invoked upon completion
- *        of this request. This has the form:
- *        callback(struct device *dev, u32 *desc, u32 stat, void *arg)
- *        where:
- *        @dev:    contains the job ring device that processed this
- *                 response.
- *        @desc:   descriptor that initiated the request, same as
- *                 "desc" being argued to caam_jr_enqueue().
- *        @status: untranslated status received from CAAM. See the
- *                 reference manual for a detailed description of
- *                 error meaning, or see the JRSTA definitions in the
- *                 register header file
- *        @areq:   optional pointer to an argument passed with the
- *                 original request
- **/
-int caam_jr_run_and_wait_for_completion(struct device *dev, u32 *desc,
-					void (*cbk)(struct device *dev,
-						    u32 *desc, u32 status,
-						    void *areq))
-{
-	int ret = 0;
-	struct jr_job_result jobres = {0};
-
-	/* Initialize the completion structure */
-	init_completion(&jobres.completion);
-
-	/* Enqueue job for execution */
-	ret = caam_jr_enqueue(dev, desc, cbk, &jobres);
-	if (ret != -EINPROGRESS)
-		return ret;
-
-	/* Wait for job completion */
-	wait_for_completion(&jobres.completion);
-
-	/* Get return code processed in cbk */
-	ret = jobres.error;
-
-	return ret;
-}
-EXPORT_SYMBOL(caam_jr_run_and_wait_for_completion);
-
 static void caam_jr_init_hw(struct device *dev, dma_addr_t inpbusaddr,
 			    dma_addr_t outbusaddr)
 {
@@ -799,14 +750,11 @@ static int caam_jr_probe(struct platform_device *pdev)
 	device_init_wakeup(&pdev->dev, 1);
 	device_set_wakeup_enable(&pdev->dev, false);
 
-	register_algs(jrdev->parent);
-	init_misc_func(jrpriv, jrdev->parent);
-	jr_driver_probed++;
+	register_algs(jrpriv, jrdev->parent);
 
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
 static void caam_jr_get_hw_state(struct device *dev)
 {
 	struct caam_drv_private_jr *jrp = dev_get_drvdata(dev);
@@ -925,8 +873,7 @@ add_jr:
 	return 0;
 }
 
-SIMPLE_DEV_PM_OPS(caam_jr_pm_ops, caam_jr_suspend, caam_jr_resume);
-#endif /* CONFIG_PM_SLEEP */
+static DEFINE_SIMPLE_DEV_PM_OPS(caam_jr_pm_ops, caam_jr_suspend, caam_jr_resume);
 
 static const struct of_device_id caam_jr_match[] = {
 	{
@@ -943,12 +890,11 @@ static struct platform_driver caam_jr_driver = {
 	.driver = {
 		.name = "caam_jr",
 		.of_match_table = caam_jr_match,
-#ifdef CONFIG_PM_SLEEP
-		.pm = &caam_jr_pm_ops,
-#endif
+		.pm = pm_ptr(&caam_jr_pm_ops),
 	},
 	.probe       = caam_jr_probe,
 	.remove      = caam_jr_remove,
+	.shutdown    = caam_jr_platform_shutdown,
 };
 
 static int __init jr_driver_init(void)

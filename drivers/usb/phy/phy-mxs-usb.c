@@ -15,7 +15,7 @@
 #include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/io.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/regmap.h>
 #include <linux/mfd/syscon.h>
 #include <linux/iopoll.h>
@@ -515,8 +515,8 @@ static void mxs_phy_disconnect_line(struct mxs_phy *mxs_phy, bool on)
 
 	vbus_is_on = mxs_phy_get_vbus_status(mxs_phy);
 
-	if (on && ((!vbus_is_on && mxs_phy->mode != CUR_USB_MODE_HOST) ||
-			(last_event == USB_EVENT_VBUS)))
+	if (on && ((!vbus_is_on && !mxs_phy_is_otg_host(mxs_phy))
+		|| (last_event == USB_EVENT_VBUS)))
 		__mxs_phy_disconnect_line(mxs_phy, true);
 	else
 		__mxs_phy_disconnect_line(mxs_phy, false);
@@ -1044,7 +1044,7 @@ static int mxs_phy_probe(struct platform_device *pdev)
 
 	mxs_phy->clk_rate = clk_get_rate(clk);
 	/* Some SoCs don't have anatop registers */
-	if (of_get_property(np, "fsl,anatop", NULL)) {
+	if (of_property_present(np, "fsl,anatop")) {
 		mxs_phy->regmap_anatop = syscon_regmap_lookup_by_phandle
 			(np, "fsl,anatop");
 		if (IS_ERR(mxs_phy->regmap_anatop)) {
@@ -1150,16 +1150,11 @@ static int mxs_phy_probe(struct platform_device *pdev)
 	return usb_add_phy_dev(&mxs_phy->phy);
 }
 
-static int mxs_phy_remove(struct platform_device *pdev)
+static void mxs_phy_remove(struct platform_device *pdev)
 {
 	struct mxs_phy *mxs_phy = platform_get_drvdata(pdev);
 
 	usb_remove_phy(&mxs_phy->phy);
-	pm_runtime_get_sync(&pdev->dev);
-	pm_runtime_disable(&pdev->dev);
-	pm_runtime_put_noidle(&pdev->dev);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -1256,7 +1251,7 @@ static const struct dev_pm_ops mxs_phy_pm_ops = {
 
 static struct platform_driver mxs_phy_driver = {
 	.probe = mxs_phy_probe,
-	.remove = mxs_phy_remove,
+	.remove_new = mxs_phy_remove,
 	.driver = {
 		.name = DRIVER_NAME,
 		.of_match_table = mxs_phy_dt_ids,

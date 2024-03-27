@@ -294,13 +294,7 @@ struct fsl_sai {
 	bool synchronous[2];
 	struct fsl_sai_dl_cfg *dl_cfg;
 	unsigned int dl_cfg_cnt;
-	bool monitor_spdif;
-	bool monitor_spdif_start;
 	bool mclk_direction_output;
-
-	int gpr_idx;
-
-	unsigned int masterflag[2];
 
 	unsigned int mclk_id[2];
 	unsigned int mclk_streams;

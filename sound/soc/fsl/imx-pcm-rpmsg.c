@@ -141,7 +141,6 @@ static int imx_rpmsg_pcm_hw_params(struct snd_soc_component *component,
 {
 	struct rpmsg_info *info = dev_get_drvdata(component->dev);
 	struct rpmsg_msg *msg;
-	int ret = 0;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		msg = &info->msg[TX_HW_PARAM];
@@ -185,7 +184,7 @@ static int imx_rpmsg_pcm_hw_params(struct snd_soc_component *component,
 
 	info->send_message(msg, info);
 
-	return ret;
+	return 0;
 }
 
 static snd_pcm_uframes_t imx_rpmsg_pcm_pointer(struct snd_soc_component *component,
@@ -234,6 +233,7 @@ static int imx_rpmsg_pcm_open(struct snd_soc_component *component,
 	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
 	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
 	struct fsl_rpmsg *rpmsg = dev_get_drvdata(cpu_dai->dev);
+	struct snd_pcm_hardware pcm_hardware;
 	struct rpmsg_msg *msg;
 	int ret = 0;
 	int cmd;
@@ -261,9 +261,9 @@ static int imx_rpmsg_pcm_open(struct snd_soc_component *component,
 
 	info->send_message(msg, info);
 
-	pcm_hardware.buffer_bytes_max = rpmsg->buffer_size[substream->stream];
-	pcm_hardware.period_bytes_max =
-			pcm_hardware.buffer_bytes_max / 2;
+	pcm_hardware = imx_rpmsg_pcm_hardware;
+	pcm_hardware.buffer_bytes_max = rpmsg->buffer_size;
+	pcm_hardware.period_bytes_max = pcm_hardware.buffer_bytes_max / 2;
 
 	snd_soc_set_runtime_hwparams(substream, &pcm_hardware);
 
@@ -288,7 +288,6 @@ static int imx_rpmsg_pcm_close(struct snd_soc_component *component,
 	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
 	struct rpmsg_info *info = dev_get_drvdata(component->dev);
 	struct rpmsg_msg *msg;
-	int ret = 0;
 
 	/* Flush work in workqueue to make TX_CLOSE is the last message */
 	flush_workqueue(info->rpmsg_wq);
@@ -311,7 +310,7 @@ static int imx_rpmsg_pcm_close(struct snd_soc_component *component,
 		dev_warn(rtd->dev, "Msg is dropped!, number is %d\n",
 			 info->msg_drop_count[substream->stream]);
 
-	return ret;
+	return 0;
 }
 
 static int imx_rpmsg_pcm_prepare(struct snd_soc_component *component,
@@ -606,22 +605,8 @@ static int imx_rpmsg_pcm_new(struct snd_soc_component *component,
 	if (ret)
 		return ret;
 
-	substream = pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
-	if (substream) {
-		ret = snd_pcm_set_fixed_buffer(substream, SNDRV_DMA_TYPE_DEV_WC,
-						 pcm->card->dev, rpmsg->buffer_size[SNDRV_PCM_STREAM_PLAYBACK]);
-		if (ret < 0)
-			return ret;
-	}
-	substream = pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream;
-	if (substream) {
-		ret = snd_pcm_set_fixed_buffer(substream, SNDRV_DMA_TYPE_DEV_WC,
-						 pcm->card->dev, rpmsg->buffer_size[SNDRV_PCM_STREAM_CAPTURE]);
-		if (ret < 0)
-			return ret;
-	}
-
-	return ret;
+	return snd_pcm_set_fixed_buffer_all(pcm, SNDRV_DMA_TYPE_DEV_WC,
+					    pcm->card->dev, rpmsg->buffer_size);
 }
 
 static const struct snd_soc_component_driver imx_rpmsg_soc_component = {
@@ -749,11 +734,9 @@ static int imx_rpmsg_pcm_probe(struct platform_device *pdev)
 		ret = -EINVAL;
 		goto fail;
 	}
+
 	/* platform component name is used by machine driver to link with */
-	component->name = IMX_PCM_DRV_NAME;
-	np = of_find_node_by_name(NULL, "rpmsg_audio");
-	if (np && of_property_read_bool(np, "fsl,platform"))
-		component->name = info->rpdev->id.name;
+	component->name = info->rpdev->id.name;
 
 #ifdef CONFIG_DEBUG_FS
 	component->debugfs_prefix = "rpmsg";
@@ -768,14 +751,12 @@ fail:
 	return ret;
 }
 
-static int imx_rpmsg_pcm_remove(struct platform_device *pdev)
+static void imx_rpmsg_pcm_remove(struct platform_device *pdev)
 {
 	struct rpmsg_info *info = platform_get_drvdata(pdev);
 
 	if (info->rpmsg_wq)
 		destroy_workqueue(info->rpmsg_wq);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -846,7 +827,7 @@ static const struct dev_pm_ops imx_rpmsg_pcm_pm_ops = {
 
 static struct platform_driver imx_pcm_rpmsg_driver = {
 	.probe  = imx_rpmsg_pcm_probe,
-	.remove	= imx_rpmsg_pcm_remove,
+	.remove_new = imx_rpmsg_pcm_remove,
 	.driver = {
 		.name = IMX_PCM_DRV_NAME,
 		.pm = &imx_rpmsg_pcm_pm_ops,

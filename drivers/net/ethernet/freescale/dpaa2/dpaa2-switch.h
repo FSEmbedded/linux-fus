@@ -169,8 +169,6 @@ struct ethsw_port_priv {
 	struct dpaa2_mac	*mac;
 	/* Protects against changes to port_priv->mac */
 	struct mutex		mac_lock;
-
-	struct dpaa2_switch_lag	*lag;
 };
 
 /* Switch data */

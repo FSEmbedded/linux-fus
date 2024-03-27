@@ -9,12 +9,10 @@
 #include <linux/firmware/imx/sci.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/thermal.h>
 
-#include "thermal_core.h"
 #include "thermal_hwmon.h"
 
 #define IMX_SC_MISC_FUNC_GET_TEMP	13
@@ -63,7 +61,7 @@ static int imx_sc_thermal_get_temp(struct thermal_zone_device *tz, int *temp)
 {
 	struct imx_sc_msg_misc_get_temp msg;
 	struct imx_sc_rpc_msg *hdr = &msg.hdr;
-	struct imx_sc_sensor *sensor = tz->devdata;
+	struct imx_sc_sensor *sensor = thermal_zone_device_priv(tz);
 	int ret;
 
 	msg.data.req.resource_id = sensor->resource_id;
@@ -75,16 +73,8 @@ static int imx_sc_thermal_get_temp(struct thermal_zone_device *tz, int *temp)
 	hdr->size = 2;
 
 	ret = imx_scu_call_rpc(thermal_ipc_handle, &msg, true);
-	if (ret) {
-		/*
-		 * if the SS power domain is down, read temp will fail, so
-		 * we can print error once and return 0 directly.
-		 */
-		pr_err_once("read temp sensor %d failed, could be SS powered off, ret %d\n",
-			     sensor->resource_id, ret);
-		*temp = 0;
-		return 0;
-	}
+	if (ret)
+		return ret;
 
 	*temp = msg.data.resp.celsius * 1000 + msg.data.resp.tenths * 100;
 
@@ -179,34 +169,7 @@ static int imx_sc_thermal_probe(struct platform_device *pdev)
 			return ret;
 		}
 
-		if (devm_thermal_add_hwmon_sysfs(sensor->tzd))
-			dev_warn(&pdev->dev, "failed to add hwmon sysfs attributes\n");
-
-		trip = of_thermal_get_trip_points(sensor->tzd);
-		sensor->temp_passive = trip[0].temperature;
-		sensor->temp_critical = trip[1].temperature;
-
-		sensor->cdev = devfreq_cooling_register();
-		if (IS_ERR(sensor->cdev)) {
-			dev_err(&pdev->dev,
-				"failed to register devfreq cooling device: %d\n",
-				ret);
-			return ret;
-		}
-
-		ret = thermal_zone_bind_cooling_device(sensor->tzd,
-			IMX_TRIP_PASSIVE,
-			sensor->cdev,
-			THERMAL_NO_LIMIT,
-			THERMAL_NO_LIMIT,
-			THERMAL_WEIGHT_DEFAULT);
-		if (ret) {
-			dev_err(&sensor->tzd->device,
-				"binding zone %s with cdev %s failed:%d\n",
-				sensor->tzd->type, sensor->cdev->type, ret);
-			devfreq_cooling_unregister(sensor->cdev);
-			return ret;
-		}
+		devm_thermal_add_hwmon_sysfs(&pdev->dev, sensor->tzd);
 	}
 
 	return 0;

@@ -13,6 +13,34 @@
 #include "fsl_xcvr.h"
 #include "imx-pcm.h"
 
+#define FSL_XCVR_CAPDS_SIZE	256
+
+struct fsl_xcvr_soc_data {
+	const char *fw_name;
+	bool spdif_only;
+	bool use_edma;
+};
+
+struct fsl_xcvr {
+	const struct fsl_xcvr_soc_data *soc_data;
+	struct platform_device *pdev;
+	struct regmap *regmap;
+	struct clk *ipg_clk;
+	struct clk *pll_ipg_clk;
+	struct clk *phy_clk;
+	struct clk *spba_clk;
+	struct reset_control *reset;
+	u8 streams;
+	u32 mode;
+	u32 arc_mode;
+	void __iomem *ram_addr;
+	struct snd_dmaengine_dai_dma_data dma_prms_rx;
+	struct snd_dmaengine_dai_dma_data dma_prms_tx;
+	struct snd_aes_iec958 rx_iec958;
+	struct snd_aes_iec958 tx_iec958;
+	u8 cap_ds[FSL_XCVR_CAPDS_SIZE];
+};
+
 static const struct fsl_xcvr_pll_conf {
 	u8 mfi;   /* min=0x18, max=0x38 */
 	u32 mfn;  /* signed int, 2's compl., min=0x3FFF0000, max=0x00010000 */
@@ -874,13 +902,6 @@ static struct snd_kcontrol_new fsl_xcvr_tx_ctls[] = {
 	},
 };
 
-static const struct snd_soc_dai_ops fsl_xcvr_dai_ops = {
-	.prepare = fsl_xcvr_prepare,
-	.startup = fsl_xcvr_startup,
-	.shutdown = fsl_xcvr_shutdown,
-	.trigger = fsl_xcvr_trigger,
-};
-
 static int fsl_xcvr_dai_probe(struct snd_soc_dai *dai)
 {
 	struct fsl_xcvr *xcvr = snd_soc_dai_get_drvdata(dai);
@@ -901,8 +922,15 @@ static int fsl_xcvr_dai_probe(struct snd_soc_dai *dai)
 	return 0;
 }
 
+static const struct snd_soc_dai_ops fsl_xcvr_dai_ops = {
+	.probe		= fsl_xcvr_dai_probe,
+	.prepare	= fsl_xcvr_prepare,
+	.startup	= fsl_xcvr_startup,
+	.shutdown	= fsl_xcvr_shutdown,
+	.trigger	= fsl_xcvr_trigger,
+};
+
 static struct snd_soc_dai_driver fsl_xcvr_dai = {
-	.probe  = fsl_xcvr_dai_probe,
 	.ops = &fsl_xcvr_dai_ops,
 	.playback = {
 		.stream_name = "CPU-Playback",
@@ -1138,8 +1166,8 @@ static irqreturn_t irq0_isr(int irq, void *devid)
 		if (!xcvr->soc_data->spdif_only) {
 			/* Data RAM is 4KiB, last two pages: 8 and 9. Select page 8. */
 			regmap_update_bits(xcvr->regmap, FSL_XCVR_EXT_CTRL,
-					FSL_XCVR_EXT_CTRL_PAGE_MASK,
-					FSL_XCVR_EXT_CTRL_PAGE(8));
+					   FSL_XCVR_EXT_CTRL_PAGE_MASK,
+					   FSL_XCVR_EXT_CTRL_PAGE(8));
 
 			/* Find updated CS buffer */
 			reg_ctrl = xcvr->ram_addr + FSL_XCVR_RX_CS_CTRL_0;
@@ -1154,7 +1182,7 @@ static irqreturn_t irq0_isr(int irq, void *devid)
 			if (val) {
 				/* copy CS buffer */
 				memcpy_fromio(&xcvr->rx_iec958.status, reg_buff,
-						sizeof(xcvr->rx_iec958.status));
+					      sizeof(xcvr->rx_iec958.status));
 				for (i = 0; i < 6; i++) {
 					val = *(u32 *)(xcvr->rx_iec958.status + i*4);
 					*(u32 *)(xcvr->rx_iec958.status + i*4) =
@@ -1338,12 +1366,10 @@ static int fsl_xcvr_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int fsl_xcvr_remove(struct platform_device *pdev)
+static void fsl_xcvr_remove(struct platform_device *pdev)
 {
 	sysfs_remove_group(&pdev->dev.kobj, fsl_xcvr_get_attr_grp());
 	pm_runtime_disable(&pdev->dev);
-
-	return 0;
 }
 
 static __maybe_unused int fsl_xcvr_runtime_suspend(struct device *dev)
@@ -1492,7 +1518,7 @@ static struct platform_driver fsl_xcvr_driver = {
 		.pm = &fsl_xcvr_pm_ops,
 		.of_match_table = fsl_xcvr_dt_ids,
 	},
-	.remove = fsl_xcvr_remove,
+	.remove_new = fsl_xcvr_remove,
 };
 module_platform_driver(fsl_xcvr_driver);
 

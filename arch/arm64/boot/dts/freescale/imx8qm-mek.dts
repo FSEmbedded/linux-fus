@@ -17,6 +17,16 @@
 		stdout-path = &lpuart0;
 	};
 
+	cpus {
+		/delete-node/ cpu-map;
+		/delete-node/ cpu@100;
+		/delete-node/ cpu@101;
+	};
+
+	thermal-zones {
+		/delete-node/ cpu1-thermal;
+	};
+
 	memory@80000000 {
 		device_type = "memory";
 		reg = <0x00000000 0x80000000 0 0x40000000>;

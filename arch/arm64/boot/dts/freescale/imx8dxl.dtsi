@@ -71,6 +71,8 @@
 
 		A35_L2: l2-cache0 {
 			compatible = "cache";
+			cache-level = <2>;
+			cache-unified;
 		};
 	};
 
@@ -163,6 +165,12 @@
 			#clock-cells = <2>;
 		};
 
+		scu_gpio: gpio {
+			compatible = "fsl,imx8qxp-sc-gpio";
+			gpio-controller;
+			#gpio-cells = <2>;
+		};
+
 		iomuxc: pinctrl {
 			compatible = "fsl,imx8dxl-iomuxc";
 		};
@@ -211,7 +219,7 @@
 	};
 
 	thermal_zones: thermal-zones {
-		cpu-thermal0 {
+		cpu-thermal {
 			polling-delay-passive = <250>;
 			polling-delay = <2000>;
 			thermal-sensors = <&tsens IMX_SC_R_SYSTEM>;

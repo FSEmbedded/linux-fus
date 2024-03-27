@@ -4,10 +4,11 @@
  */
 
 #include <linux/module.h>
-#include <linux/of_platform.h>
+#include <linux/of.h>
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/delay.h>
+#include <linux/platform_device.h>
 #include <linux/usb/otg.h>
 
 #include "ci_hdrc_imx.h"
@@ -1308,14 +1309,8 @@ static int usbmisc_imx_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int usbmisc_imx_remove(struct platform_device *pdev)
-{
-	return 0;
-}
-
 static struct platform_driver usbmisc_imx_driver = {
 	.probe = usbmisc_imx_probe,
-	.remove = usbmisc_imx_remove,
 	.driver = {
 		.name = "usbmisc_imx",
 		.of_match_table = usbmisc_imx_dt_ids,

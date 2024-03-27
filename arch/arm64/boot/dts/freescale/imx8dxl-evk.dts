@@ -202,97 +202,12 @@
 		regulator-max-microvolt = <1800000>;
 	};
 
-	bt_sco_codec: bt_sco_codec {
-		#sound-dai-cells = <1>;
-		compatible = "linux,bt-sco";
-	};
-
-	sound-bt-sco {
-		compatible = "simple-audio-card";
-		simple-audio-card,name = "bt-sco-audio";
-		simple-audio-card,format = "dsp_a";
-		simple-audio-card,bitclock-inversion;
-		simple-audio-card,frame-master = <&btcpu>;
-		simple-audio-card,bitclock-master = <&btcpu>;
-
-		btcpu: simple-audio-card,cpu {
-			sound-dai = <&sai0>;
-			dai-tdm-slot-num = <2>;
-			dai-tdm-slot-width = <16>;
-		};
-
-		simple-audio-card,codec {
-			sound-dai = <&bt_sco_codec 1>;
-		};
-	};
-
-	sound-wm8960 {
-		compatible = "fsl,imx7d-evk-wm8960",
-			   "fsl,imx-audio-wm8960";
-		model = "wm8960-audio";
-		audio-cpu = <&sai1>;
-		audio-codec = <&wm8960_1>;
-		audio-asrc = <&asrc0>;
-		audio-routing =
-			"Headphone Jack", "HP_L",
-			"Headphone Jack", "HP_R",
-			"Ext Spk", "SPK_LP",
-			"Ext Spk", "SPK_LN",
-			"Ext Spk", "SPK_RP",
-			"Ext Spk", "SPK_RN",
-			"LINPUT1", "Mic Jack",
-			"Mic Jack", "MICB";
-	};
-
-	sound-wm8960-2 {
-		compatible = "fsl,imx7d-evk-wm8960",
-			   "fsl,imx-audio-wm8960";
-		model = "wm8960-audio-2";
-		audio-cpu = <&sai2>;
-		audio-codec = <&wm8960_2>;
-		capture-only;
-		audio-routing =
-			"Headphone Jack", "HP_L",
-			"Headphone Jack", "HP_R",
-			"Ext Spk", "SPK_LP",
-			"Ext Spk", "SPK_LN",
-			"Ext Spk", "SPK_RP",
-			"Ext Spk", "SPK_RN",
-			"LINPUT1", "Mic Jack",
-			"Mic Jack", "MICB";
-	};
-
-	sound-wm8960-3 {
-		compatible = "fsl,imx7d-evk-wm8960",
-			   "fsl,imx-audio-wm8960";
-		model = "wm8960-audio-3";
-		audio-cpu = <&sai3>;
-		audio-codec = <&wm8960_3>;
-		capture-only;
-		audio-routing =
-			"Headphone Jack", "HP_L",
-			"Headphone Jack", "HP_R",
-			"Ext Spk", "SPK_LP",
-			"Ext Spk", "SPK_LN",
-			"Ext Spk", "SPK_RP",
-			"Ext Spk", "SPK_RN",
-			"LINPUT1", "Mic Jack",
-			"Mic Jack", "MICB";
-	};
-
-	scu_gpio0: scu-gpio0 {
-		compatible = "fsl,imx8qxp-sc-gpio";
-		gpio-controller;
-		#gpio-cells = <2>;
-		#interrupt-cells = <2>;
-	};
-
-	mii_select: mii_select {
+	mii_select: regulator-4 {
 		compatible = "regulator-fixed";
 		regulator-name = "mii-select";
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
-		gpio = <&scu_gpio0 6 GPIO_ACTIVE_HIGH>;
+		gpio = <&scu_gpio 6 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
 		regulator-always-on;
 	};
@@ -300,19 +215,6 @@
 
 &adc0 {
 	vref-supply = <&reg_vref_1v8>;
-	status = "okay";
-};
-
-&asrc0 {
-	fsl,asrc-rate  = <48000>;
-	status = "okay";
-};
-
-&edma2 {
-	status = "okay";
-};
-
-&edma3 {
 	status = "okay";
 };
 
@@ -397,31 +299,6 @@
 		spi-max-frequency = <133000000>;
 		spi-tx-bus-width = <8>;
 		spi-rx-bus-width = <8>;
-	};
-};
-
-&imx8dxl_cm4 {
-	memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
-			<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
-	status = "okay";
-};
-
-&lsio_mu5 {
-	status = "okay";
-};
-
-&lpspi3 {
-	fsl,spi-num-chipselects = <1>;
-	fsl,spi-only-use-cs1-sel;
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_lpspi3>;
-	pinctrl-assert-gpios = <&pca6416_1 7 GPIO_ACTIVE_HIGH>;
-	status = "okay";
-
-	spidev0: spi@0 {
-		reg = <0>;
-		compatible = "rohm,dh2228fv";
-		spi-max-frequency = <30000000>;
 	};
 };
 
@@ -726,7 +603,7 @@
 };
 
 &thermal_zones {
-	pmic-thermal0 {
+	pmic-thermal {
 		polling-delay-passive = <250>;
 		polling-delay = <2000>;
 		thermal-sensors = <&tsens IMX_SC_R_PMIC_0>;
@@ -757,11 +634,40 @@
 };
 
 &usbphy1 {
-	status = "okay";
+	/* USB eye diagram tests result */
 	fsl,tx-d-cal = <114>;
+	status = "okay";
 };
 
 &usbotg1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg1>;
+	srp-disable;
+	hnp-disable;
+	adp-disable;
+	power-active-high;
+	disable-over-current;
+	status = "okay";
+};
+
+&usbphy2 {
+	/* USB eye diagram tests result */
+	fsl,tx-d-cal = <111>;
+	status = "okay";
+};
+
+&usbotg2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg2>;
+	srp-disable;
+	hnp-disable;
+	adp-disable;
+	power-active-high;
+	disable-over-current;
+	status = "okay";
+};
+
+&usdhc1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg1>;
 	srp-disable;
@@ -811,6 +717,20 @@
 	wp-gpios = <&lsio_gpio5 0 GPIO_ACTIVE_HIGH>;
 	max-frequency = <100000000>;
 	status = "okay";
+};
+
+&lpspi3 {
+	fsl,spi-only-use-cs1-sel;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lpspi3>;
+	pinctrl-assert-gpios = <&pca6416_1 7 GPIO_ACTIVE_HIGH>;
+	status = "okay";
+
+	spidev0: spi@0 {
+		reg = <0>;
+		compatible = "rohm,dh2228fv";
+		spi-max-frequency = <30000000>;
+	};
 };
 
 &iomuxc {
@@ -873,20 +793,6 @@
 			IMX8DXL_QSPI0B_DATA3_LSIO_QSPI0B_DATA3     0x06000021
 			IMX8DXL_QSPI0B_DQS_LSIO_QSPI0B_DQS         0x06000021
 			IMX8DXL_QSPI0B_SS0_B_LSIO_QSPI0B_SS0_B     0x06000021
-		>;
-	};
-
-	pinctrl_flexcan2: flexcan2grp {
-		fsl,pins = <
-			IMX8DXL_UART2_TX_ADMA_FLEXCAN1_TX	0x00000021
-			IMX8DXL_UART2_RX_ADMA_FLEXCAN1_RX	0x00000021
-		>;
-	};
-
-	pinctrl_flexcan3: flexcan3grp {
-		fsl,pins = <
-			IMX8DXL_FLEXCAN2_TX_ADMA_FLEXCAN2_TX	0x00000021
-			IMX8DXL_FLEXCAN2_RX_ADMA_FLEXCAN2_RX	0x00000021
 		>;
 	};
 

@@ -2,6 +2,7 @@
 /* Copyright (c) 2021-2022 NXP. */
 
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/phy.h>
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
@@ -963,10 +964,10 @@ static int lynx_28g_set_lane_mode(struct phy *phy, enum lynx_28g_lane_mode lane_
 
 	spin_lock(&priv->pcc_lock);
 
-	switch (lane_mode) {
-	case LANE_MODE_1000BASEX_SGMII:
-	case LANE_MODE_1000BASEKX:
-		lynx_28g_lane_set_1g(lane, lane_mode);
+	switch (submode) {
+	case PHY_INTERFACE_MODE_SGMII:
+	case PHY_INTERFACE_MODE_1000BASEX:
+		lynx_28g_lane_set_sgmii(lane);
 		break;
 	case LANE_MODE_10GBASER:
 	case LANE_MODE_USXGMII:
@@ -994,7 +995,7 @@ static int lynx_28g_set_lane_mode(struct phy *phy, enum lynx_28g_lane_mode lane_
 out:
 	spin_unlock(&priv->pcc_lock);
 
-	/* Reset the lane if necessary */
+	/* Power up the lane if necessary */
 	if (powered_up)
 		lynx_28g_lane_reset(phy);
 
@@ -1427,7 +1428,13 @@ static void lynx_28g_cdr_lock_check_work(struct work_struct *work)
 			continue;
 		}
 
-		lynx_28g_cdr_lock_check(lane);
+		rrstctl = lynx_28g_lane_read(lane, LNaRRSTCTL);
+		if (!(rrstctl & LYNX_28G_LNaRRSTCTL_CDR_LOCK)) {
+			lynx_28g_lane_rmw(lane, LNaRRSTCTL, RST_REQ, RST_REQ);
+			do {
+				rrstctl = lynx_28g_lane_read(lane, LNaRRSTCTL);
+			} while (!(rrstctl & LYNX_28G_LNaRRSTCTL_RST_DONE));
+		}
 
 		mutex_unlock(&lane->phy->mutex);
 	}
@@ -1518,7 +1525,7 @@ static int lynx_28g_probe(struct platform_device *pdev)
 	dev_set_drvdata(dev, priv);
 
 	spin_lock_init(&priv->pcc_lock);
-	INIT_DELAYED_WORK(&priv->cdr_check, lynx_28g_cdr_lock_check_work);
+	INIT_DELAYED_WORK(&priv->cdr_check, lynx_28g_cdr_lock_check);
 
 	queue_delayed_work(system_power_efficient_wq, &priv->cdr_check,
 			   msecs_to_jiffies(1000));

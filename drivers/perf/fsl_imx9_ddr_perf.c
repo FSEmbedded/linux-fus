@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-// Copyright 2022 NXP
+// Copyright 2023 NXP
 
 #include <linux/bitfield.h>
 #include <linux/init.h>
@@ -7,9 +7,7 @@
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_address.h>
-#include <linux/of_device.h>
-#include <linux/of_irq.h>
+#include <linux/platform_device.h>
 #include <linux/perf_event.h>
 
 /* Performance monitor configuration */
@@ -285,16 +283,21 @@ static u64 ddr_perf_read_counter(struct ddr_pmu *pmu, int counter)
 	u32 val_lower, val_upper;
 	u64 val;
 
-	if (counter == CYCLES_COUNTER) {
-		val_upper = readl_relaxed(pmu->base + PMC(counter) + 0x4);
-		val_lower = readl_relaxed(pmu->base + PMC(counter));
-		val = val_upper;
-		val = (val << 32);
-		val |= val_lower;
-	} else {
+	if (counter != CYCLES_COUNTER) {
 		val = readl_relaxed(pmu->base + PMC(counter));
+		goto out;
 	}
 
+	/* special handling for reading 64bit cycle counter */
+	do {
+		val_upper = readl_relaxed(pmu->base + PMC(counter) + 0x4);
+		val_lower = readl_relaxed(pmu->base + PMC(counter));
+	} while (val_upper != readl_relaxed(pmu->base + PMC(counter) + 0x4));
+
+	val = val_upper;
+	val = (val << 32);
+	val |= val_lower;
+out:
 	return val;
 }
 
@@ -599,15 +602,8 @@ static int ddr_perf_probe(struct platform_device *pdev)
 	void __iomem *base;
 	int ret, irq;
 	char *name;
-	struct resource *r;
 
-	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!r) {
-		dev_err(&pdev->dev, "platform_get_resource() failed\n");
-		return -ENOMEM;
-	}
-
-	base = devm_ioremap(&pdev->dev, r->start, resource_size(r));
+	base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(base))
 		return PTR_ERR(base);
 
@@ -647,7 +643,6 @@ static int ddr_perf_probe(struct platform_device *pdev)
 	/* Request irq */
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
-		dev_err(&pdev->dev, "Failed to get irq: %d", irq);
 		ret = irq;
 		goto ddr_perf_err;
 	}

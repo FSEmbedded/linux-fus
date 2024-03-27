@@ -8,7 +8,6 @@
 #include <linux/etherdevice.h>
 #include <linux/of_net.h>
 #include <linux/interrupt.h>
-#include <linux/msi.h>
 #include <linux/kthread.h>
 #include <linux/iommu.h>
 #include <linux/fsl/mc.h>
@@ -537,16 +536,6 @@ static struct sk_buff *dpaa2_eth_copybreak(struct dpaa2_eth_channel *ch,
 	return dpaa2_eth_alloc_skb(priv, ch, fd, fd_length, fd_vaddr);
 }
 
-static bool frame_is_tcp(const struct dpaa2_fd *fd, struct dpaa2_fas *fas)
-{
-	struct dpaa2_fapr *fapr = dpaa2_get_fapr(fas, false);
-
-	if (!(dpaa2_fd_get_frc(fd) & DPAA2_FD_FRC_FAPRV))
-		return false;
-
-	return !!(fapr->faf_hi & DPAA2_FAF_HI_TCP_PRESENT);
-}
-
 void dpaa2_eth_receive_skb(struct dpaa2_eth_priv *priv,
 			   struct dpaa2_eth_channel *ch,
 			   const struct dpaa2_fd *fd, void *vaddr,
@@ -586,10 +575,7 @@ void dpaa2_eth_receive_skb(struct dpaa2_eth_priv *priv,
 	percpu_stats->rx_bytes += dpaa2_fd_get_len(fd);
 	ch->stats.bytes_per_cdan += dpaa2_fd_get_len(fd);
 
-	if (frame_is_tcp(fd, fas))
-		napi_gro_receive(&ch->napi, skb);
-	else
-		list_add_tail(&skb->list, ch->rx_list);
+	list_add_tail(&skb->list, ch->rx_list);
 }
 
 /* Main Rx frame processing routine */
@@ -653,7 +639,6 @@ void dpaa2_eth_rx(struct dpaa2_eth_priv *priv,
 		goto err_build_skb;
 
 	dpaa2_eth_receive_skb(priv, ch, fd, vaddr, fq, percpu_stats, skb);
-
 	return;
 
 err_build_skb:
@@ -4631,6 +4616,12 @@ static int dpaa2_eth_netdev_init(struct net_device *net_dev)
 			    NETIF_F_LLTX | NETIF_F_HW_TC | NETIF_F_TSO;
 	net_dev->gso_max_segs = DPAA2_ETH_ENQUEUE_MAX_FDS;
 	net_dev->hw_features = net_dev->features;
+	net_dev->xdp_features = NETDEV_XDP_ACT_BASIC |
+				NETDEV_XDP_ACT_REDIRECT |
+				NETDEV_XDP_ACT_NDO_XMIT;
+	if (priv->dpni_attrs.wriop_version >= DPAA2_WRIOP_VERSION(3, 0, 0) &&
+	    priv->dpni_attrs.num_queues <= 8)
+		net_dev->xdp_features |= NETDEV_XDP_ACT_XSK_ZEROCOPY;
 
 	if (priv->dpni_attrs.vlan_filter_entries)
 		net_dev->hw_features |= NETIF_F_HW_VLAN_CTAG_FILTER;
@@ -4728,7 +4719,6 @@ static void dpaa2_eth_disconnect_mac(struct dpaa2_eth_priv *priv)
 		dpaa2_mac_disconnect(mac);
 
 	dpaa2_mac_close(mac);
-	dpaa2_mac_driver_attach(mac->mc_dev);
 	kfree(mac);
 }
 
@@ -4860,6 +4850,9 @@ static int dpaa2_eth_probe(struct fsl_mc_device *dpni_dev)
 
 	priv = netdev_priv(net_dev);
 	priv->net_dev = net_dev;
+	SET_NETDEV_DEVLINK_PORT(net_dev, &priv->devlink_port);
+
+	mutex_init(&priv->mac_lock);
 
 	mutex_init(&priv->mac_lock);
 
@@ -5080,7 +5073,7 @@ err_wq_alloc:
 	return err;
 }
 
-static int dpaa2_eth_remove(struct fsl_mc_device *ls_dev)
+static void dpaa2_eth_remove(struct fsl_mc_device *ls_dev)
 {
 	struct device *dev;
 	struct net_device *net_dev;
@@ -5128,8 +5121,6 @@ static int dpaa2_eth_remove(struct fsl_mc_device *ls_dev)
 	dev_dbg(net_dev->dev.parent, "Removed interface %s\n", net_dev->name);
 
 	free_netdev(net_dev);
-
-	return 0;
 }
 
 static const struct fsl_mc_device_id dpaa2_eth_match_id_table[] = {
@@ -5144,7 +5135,6 @@ MODULE_DEVICE_TABLE(fslmc, dpaa2_eth_match_id_table);
 static struct fsl_mc_driver dpaa2_eth_driver = {
 	.driver = {
 		.name = KBUILD_MODNAME,
-		.owner = THIS_MODULE,
 	},
 	.probe = dpaa2_eth_probe,
 	.remove = dpaa2_eth_remove,
