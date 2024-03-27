@@ -13,34 +13,6 @@
 #include "fsl_xcvr.h"
 #include "imx-pcm.h"
 
-#define FSL_XCVR_CAPDS_SIZE	256
-
-struct fsl_xcvr_soc_data {
-	const char *fw_name;
-	bool spdif_only;
-	bool use_edma;
-};
-
-struct fsl_xcvr {
-	const struct fsl_xcvr_soc_data *soc_data;
-	struct platform_device *pdev;
-	struct regmap *regmap;
-	struct clk *ipg_clk;
-	struct clk *pll_ipg_clk;
-	struct clk *phy_clk;
-	struct clk *spba_clk;
-	struct reset_control *reset;
-	u8 streams;
-	u32 mode;
-	u32 arc_mode;
-	void __iomem *ram_addr;
-	struct snd_dmaengine_dai_dma_data dma_prms_rx;
-	struct snd_dmaengine_dai_dma_data dma_prms_tx;
-	struct snd_aes_iec958 rx_iec958;
-	struct snd_aes_iec958 tx_iec958;
-	u8 cap_ds[FSL_XCVR_CAPDS_SIZE];
-};
-
 static const struct fsl_xcvr_pll_conf {
 	u8 mfi;   /* min=0x18, max=0x38 */
 	u32 mfn;  /* signed int, 2's compl., min=0x3FFF0000, max=0x00010000 */
@@ -354,7 +326,7 @@ static int fsl_xcvr_en_aud_pll(struct fsl_xcvr *xcvr, u32 freq)
 	struct device *dev = &xcvr->pdev->dev;
 	int ret;
 
-	freq = xcvr->soc_data->spdif_only ? freq / 10 : freq;
+	freq = xcvr->soc_data->spdif_only ? freq / 5 : freq;
 	clk_disable_unprepare(xcvr->phy_clk);
 	ret = clk_set_rate(xcvr->phy_clk, freq);
 	if (ret < 0) {
@@ -405,11 +377,21 @@ static int fsl_xcvr_prepare(struct snd_pcm_substream *substream,
 	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
 	u32 m_ctl = 0, v_ctl = 0;
 	u32 r = substream->runtime->rate, ch = substream->runtime->channels;
-	u32 fout = 32 * r * ch * 10 * 2;
+	u32 fout = 32 * r * ch * 10;
 	int ret = 0;
 
 	switch (xcvr->mode) {
 	case FSL_XCVR_MODE_SPDIF:
+		if (xcvr->soc_data->spdif_only && tx) {
+			ret = regmap_update_bits(xcvr->regmap, FSL_XCVR_TX_DPTH_CTRL_SET,
+						 FSL_XCVR_TX_DPTH_CTRL_BYPASS_FEM,
+						 FSL_XCVR_TX_DPTH_CTRL_BYPASS_FEM);
+			if (ret < 0) {
+				dev_err(dai->dev, "Failed to set bypass fem: %d\n", ret);
+				return ret;
+			}
+		}
+		fallthrough;
 	case FSL_XCVR_MODE_ARC:
 		if (tx) {
 			ret = fsl_xcvr_en_aud_pll(xcvr, fout);
@@ -1410,7 +1392,6 @@ static __maybe_unused int fsl_xcvr_runtime_resume(struct device *dev)
 {
 	struct fsl_xcvr *xcvr = dev_get_drvdata(dev);
 	int ret;
-	u64 rate, div;
 
 	ret = reset_control_assert(xcvr->reset);
 	if (ret < 0) {
@@ -1422,17 +1403,6 @@ static __maybe_unused int fsl_xcvr_runtime_resume(struct device *dev)
 	if (ret) {
 		dev_err(dev, "failed to start IPG clock.\n");
 		return ret;
-	}
-
-	/* set clk div for xcvr ip internal use */
-	if (xcvr->soc_data->spdif_only) {
-		rate = clk_get_rate(xcvr->ipg_clk);
-		div = rate / 1000000 - 1;
-		ret = regmap_write(xcvr->regmap, FSL_XCVR_CLK_CTRL, div);
-		if (ret < 0) {
-			dev_err(dev, "Error while setting CLK_CTRL: %d\n", ret);
-			return ret;
-		}
 	}
 
 	ret = clk_prepare_enable(xcvr->pll_ipg_clk);
@@ -1512,7 +1482,6 @@ static const struct dev_pm_ops fsl_xcvr_pm_ops = {
 
 static struct platform_driver fsl_xcvr_driver = {
 	.probe = fsl_xcvr_probe,
-	.remove = fsl_xcvr_remove,
 	.driver = {
 		.name = "fsl,imx8mp-audio-xcvr",
 		.pm = &fsl_xcvr_pm_ops,

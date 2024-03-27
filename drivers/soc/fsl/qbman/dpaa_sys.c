@@ -47,13 +47,12 @@ int qbman_init_private_mem(struct device *dev, int idx, dma_addr_t *addr,
 	struct device_node *mem_node = NULL;
 	struct reserved_mem fw_mem;
 	struct reserved_mem *rmem;
-	int err;
 	__be32 *res_array;
 	u32 qbman_vals[4];
 	u32 *pr_value;
-	int len, err;
 	int val_cnt;
 	u32 val[2];
+	int err;
 
 	if (is_of_node(dev->fwnode)) {
 		mem_node = of_parse_phandle(dev->of_node, "memory-region", idx);
@@ -161,27 +160,50 @@ int qbman_init_private_mem(struct device *dev, int idx, dma_addr_t *addr,
 	 * This is needed because QBMan HW does not allow the base address/
 	 * size to be modified once set.
 	 */
-	if (!of_property_present(mem_node, "reg")) {
-		struct property *prop;
+	if (is_of_node(dev->fwnode)) {
+		if (!of_property_present(mem_node, "reg")) {
+			struct property *prop;
 
-		prop = devm_kzalloc(dev, sizeof(*prop), GFP_KERNEL);
-		if (!prop)
-			return -ENOMEM;
-		prop->value = res_array = devm_kzalloc(dev, sizeof(__be32) * 4,
-						       GFP_KERNEL);
-		if (!prop->value)
-			return -ENOMEM;
-		res_array[0] = cpu_to_be32(upper_32_bits(*addr));
-		res_array[1] = cpu_to_be32(lower_32_bits(*addr));
-		res_array[2] = cpu_to_be32(upper_32_bits(*size));
-		res_array[3] = cpu_to_be32(lower_32_bits(*size));
-		prop->length = sizeof(__be32) * 4;
-		prop->name = devm_kstrdup(dev, "reg", GFP_KERNEL);
-		if (!prop->name)
-			return -ENOMEM;
-		err = of_add_property(mem_node, prop);
-		if (err)
-			return err;
+			prop = devm_kzalloc(dev, sizeof(*prop), GFP_KERNEL);
+			if (!prop)
+				return -ENOMEM;
+			prop->value = devm_kzalloc(dev, sizeof(__be32) * 4,
+						   GFP_KERNEL);
+			if (!prop->value)
+				return -ENOMEM;
+			res_array = prop->value;
+			res_array[0] = cpu_to_be32(upper_32_bits(*addr));
+			res_array[1] = cpu_to_be32(lower_32_bits(*addr));
+			res_array[2] = cpu_to_be32(upper_32_bits(*size));
+			res_array[3] = cpu_to_be32(lower_32_bits(*size));
+			prop->length = sizeof(__be32) * 4;
+			prop->name = devm_kstrdup(dev, "reg", GFP_KERNEL);
+			if (!prop->name)
+				return -ENOMEM;
+			err = of_add_property(mem_node, prop);
+			if (err)
+				return err;
+		}
+	} else {
+		if (!device_property_present(dev, "reg")) {
+			/* Fill properties here */
+			pr_value = devm_kzalloc(dev, sizeof(u32) * 4,
+						GFP_KERNEL);
+			pr_value[0] = upper_32_bits(*addr);
+			pr_value[1] = lower_32_bits(*addr);
+			pr_value[2] = upper_32_bits(*size);
+			pr_value[3] = lower_32_bits(*size);
+
+			qbman_vals[0] = pr_value[0];
+			qbman_vals[1] = pr_value[1];
+			qbman_vals[2] = pr_value[2];
+			qbman_vals[3] = pr_value[3];
+
+			properties[0] =
+				PROPERTY_ENTRY_U32_ARRAY("reg", qbman_vals);
+
+			device_create_managed_software_node(dev, properties, NULL);
+		}
 	}
 
 	return 0;

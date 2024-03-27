@@ -10,6 +10,7 @@
 
 #include <linux/clk.h>
 #include <linux/of.h>
+#include <linux/mfd/syscon.h>
 #include <linux/platform_device.h>
 #include <linux/pm_domain.h>
 #include <linux/pm_runtime.h>

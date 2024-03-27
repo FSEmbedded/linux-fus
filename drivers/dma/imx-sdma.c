@@ -125,6 +125,7 @@
  */
 #define CHANGE_ENDIANNESS   0x80
 
+#define SPBA_BUS_NUM_MAX    0x4
 /*
  *  p_2_p watermark_level description
  *	Bits		Name			Description
@@ -1254,10 +1255,6 @@ static int sdma_get_pc(struct sdma_channel *sdmac,
 		emi_2_per = sdma->script_addrs->hdmi_dma_addr;
 		sdmac->is_ram_script = true;
 		break;
-	case IMX_DMATYPE_HDMI:
-		emi_2_per = sdma->script_addrs->hdmi_dma_addr;
-		sdmac->is_ram_script = true;
-		break;
 	default:
 		dev_err(sdma->dev, "Unsupported transfer type %d\n",
 			peripheral_type);
@@ -2048,10 +2045,14 @@ static struct dma_async_tx_descriptor *sdma_prep_dma_cyclic(
 
 	dev_dbg(sdma->dev, "%s channel: %d\n", __func__, channel);
 
+	sdma_pm_clk_enable(sdmac->sdma, false, true);
+
 	if (sdmac->peripheral_type != IMX_DMATYPE_HDMI)
 		num_periods = buf_len / period_len;
 
-	sdma_config_write(chan, &sdmac->slave_config, direction);
+	ret = sdma_config_write(chan, &sdmac->slave_config, direction);
+	if (ret)
+		goto err_out;
 
 	desc = sdma_transfer_init(sdmac, direction, num_periods);
 	if (!desc)
@@ -2475,7 +2476,8 @@ static struct dma_chan *sdma_xlate(struct of_phandle_args *dma_spec,
 static int sdma_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
-	struct device_node *spba_bus;
+	struct device_node *spba_bus = NULL;
+	struct device_node *spba_parent_np, *sdma_parent_np;
 	const char *fw_name;
 	int ret;
 	int irq;
@@ -2616,13 +2618,28 @@ static int sdma_probe(struct platform_device *pdev)
 			goto err_register;
 		}
 
-		spba_bus = of_find_compatible_node(NULL, NULL, "fsl,spba-bus");
-		ret = of_address_to_resource(spba_bus, 0, &spba_res);
-		if (!ret) {
-			sdma->spba_start_addr = spba_res.start;
-			sdma->spba_end_addr = spba_res.end;
+		sdma_parent_np = of_get_parent(np);
+
+		for (i = 0; i < SPBA_BUS_NUM_MAX; i++) {
+			spba_bus = of_find_compatible_node(spba_bus, NULL, "fsl,spba-bus");
+			if (!spba_bus)
+				break;
+
+			spba_parent_np = of_get_parent(spba_bus);
+			if (!strcmp(sdma_parent_np->full_name, spba_parent_np->full_name)) {
+				ret = of_address_to_resource(spba_bus, 0, &spba_res);
+				if (!ret) {
+					sdma->spba_start_addr = spba_res.start;
+					sdma->spba_end_addr = spba_res.end;
+				}
+				of_node_put(spba_bus);
+				of_node_put(spba_parent_np);
+				break;
+			}
+			of_node_put(spba_bus);
+			of_node_put(spba_parent_np);
 		}
-		of_node_put(spba_bus);
+		of_node_put(sdma_parent_np);
 	}
 
 	/*

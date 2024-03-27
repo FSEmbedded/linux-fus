@@ -155,9 +155,9 @@ struct ddr_pmu {
 	const struct fsl_ddr_devtype_data *devtype_data;
 	int irq;
 	int id;
+	int active_counter;
 	struct clk *clk_ipg;
 	struct clk *clk_cnt;
-	int active_counter;
 };
 
 static ssize_t ddr_perf_identifier_show(struct device *dev,
@@ -536,16 +536,13 @@ static void ddr_perf_counter_enable(struct ddr_pmu *pmu, int config,
 		val |= FIELD_PREP(CNTL_CSV_MASK, config);
 
 		/*
-		 * Workaround for i.MX8MP:
-		 * Common counters and byte counters share the same COUNTER_CNTL,
-		 * and byte counters could overflow before cycle counter. Need set
-		 * counter parameter(CP) of cycle counter to give it initial value
-		 * which can speed up cycle counter overflow frequency.
+		 * On i.MX8MP we need to bias the cycle counter to overflow more often.
+		 * We do this by initializing bits [23:16] of the counter value via the
+		 * COUNTER_CTRL Counter Parameter (CP) field.
 		 */
-		if ((pmu->devtype_data->quirks & DDR_CAP_AXI_ID_FILTER_ENHANCED) ==
-		    DDR_CAP_AXI_ID_FILTER_ENHANCED) {
+		if (pmu->devtype_data->quirks & DDR_CAP_AXI_ID_FILTER_ENHANCED) {
 			if (counter == EVENT_CYCLES_COUNTER)
-				val |= FIELD_PREP(CNTL_CP_MASK, 0xe8);
+				val |= FIELD_PREP(CNTL_CP_MASK, 0xf0);
 		}
 
 		writel(val, pmu->base + reg);
@@ -618,14 +615,7 @@ static void ddr_perf_event_start(struct perf_event *event, int flags)
 	struct hw_perf_event *hwc = &event->hw;
 	int counter = hwc->idx;
 
-	/* Workaround for i.MXMP */
-	if ((pmu->devtype_data->quirks & DDR_CAP_AXI_ID_FILTER_ENHANCED) ==
-	     DDR_CAP_AXI_ID_FILTER_ENHANCED) {
-		if (counter == EVENT_CYCLES_COUNTER)
-			local64_set(&hwc->prev_count, 0xe8000000);
-	} else {
-		local64_set(&hwc->prev_count, 0);
-	}
+	local64_set(&hwc->prev_count, 0);
 
 	ddr_perf_counter_enable(pmu, event->attr.config, counter, true);
 

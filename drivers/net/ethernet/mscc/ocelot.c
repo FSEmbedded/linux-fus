@@ -805,8 +805,7 @@ static int ocelot_port_flush(struct ocelot *ocelot, int port)
 	return err;
 }
 
-int ocelot_port_configure_serdes(struct ocelot *ocelot, int port,
-				 struct device_node *portnp)
+static void ocelot_port_configure_serdes(struct ocelot *ocelot, int port)
 {
 	struct ocelot_port *ocelot_port = ocelot->ports[port];
 	struct device *dev = ocelot->dev;
@@ -820,35 +819,22 @@ int ocelot_port_configure_serdes(struct ocelot *ocelot, int port,
 				 DEV_CLOCK_CFG);
 
 	if (ocelot_port->phy_mode != PHY_INTERFACE_MODE_INTERNAL) {
-		struct phy *serdes = of_phy_get(portnp, NULL);
-
-		if (IS_ERR(serdes)) {
-			err = PTR_ERR(serdes);
-			dev_err_probe(dev, err,
-				      "missing SerDes phys for port %d\n",
-				      port);
-			return err;
-		}
-
-		err = phy_set_mode_ext(serdes, PHY_MODE_ETHERNET,
+		err = phy_set_mode_ext(ocelot_port->serdes, PHY_MODE_ETHERNET,
 				       ocelot_port->phy_mode);
-		of_phy_put(serdes);
 		if (err) {
 			dev_err(dev, "Could not SerDes mode on port %d: %pe\n",
 				port, ERR_PTR(err));
-			return err;
 		}
 	}
-
-	return 0;
 }
-EXPORT_SYMBOL_GPL(ocelot_port_configure_serdes);
 
 void ocelot_phylink_mac_config(struct ocelot *ocelot, int port,
 			       unsigned int link_an_mode,
 			       const struct phylink_link_state *state)
 {
 	struct ocelot_port *ocelot_port = ocelot->ports[port];
+
+	ocelot_port_configure_serdes(ocelot, port);
 
 	/* Disable HDX fast control */
 	ocelot_port_writel(ocelot_port, DEV_PORT_MISC_HDX_FAST_DIS,
@@ -1569,7 +1555,12 @@ u32 ocelot_get_bridge_fwd_mask(struct ocelot *ocelot, int src_port)
 		if (!ocelot_port)
 			continue;
 
-		if (ocelot_port->stp_state == BR_STATE_FORWARDING &&
+		/* Keep the bridge port in the forwarding mask if the port
+		 * is in the forwarding state, or in forced forwarding mode.
+		 * The latter is needed for 802.1CB.
+		 */
+		if ((ocelot_port->stp_state == BR_STATE_FORWARDING ||
+		     ocelot_port->force_forward) &&
 		    ocelot_port->bridge == bridge)
 			mask |= BIT(port);
 	}
@@ -2777,7 +2768,9 @@ int ocelot_port_mqprio(struct ocelot *ocelot, int port,
 	if (err)
 		goto err_reset_tc;
 
-	ocelot_port_change_fp(ocelot, port, mqprio->preemptible_tcs);
+	err = ocelot_port_change_fp(ocelot, port, mqprio->preemptible_tcs);
+	if (err)
+		goto err_reset_tc;
 
 	return 0;
 

@@ -255,8 +255,7 @@ void taprio_offload_free(struct tc_taprio_qopt_offload *offload);
 #else
 
 /* Reference counting */
-static inline struct tc_taprio_qopt_offload *
-taprio_offload_alloc(int num_entries)
+static inline struct tc_taprio_qopt_offload *taprio_offload_alloc(int num_entries)
 {
 	return NULL;
 }

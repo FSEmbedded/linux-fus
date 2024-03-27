@@ -12,7 +12,6 @@
 #include <linux/platform_device.h>
 
 #include "../host/xhci.h"
-
 #include "core.h"
 
 static void dwc3_host_fill_xhci_irq_res(struct dwc3 *dwc,

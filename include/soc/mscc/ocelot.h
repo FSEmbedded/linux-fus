@@ -11,6 +11,7 @@
 #include <linux/regmap.h>
 #include <net/dsa.h>
 
+struct phy;
 struct tc_mqprio_qopt_offload;
 
 /* Port Group IDs (PGID) are masks of destination ports.
@@ -810,7 +811,7 @@ struct ocelot_port {
 
 	bool				force_forward;
 	u8				cut_thru;
-	u8				preemptable_prios;
+	u8				cut_thru_selected_by_user;
 
 	int				speed;
 };
@@ -1153,9 +1154,6 @@ int ocelot_sb_occ_tc_port_bind_get(struct ocelot *ocelot, int port,
 				   enum devlink_sb_pool_type pool_type,
 				   u32 *p_cur, u32 *p_max);
 
-int ocelot_port_configure_serdes(struct ocelot *ocelot, int port,
-				 struct device_node *portnp);
-
 void ocelot_phylink_mac_config(struct ocelot *ocelot, int port,
 			       unsigned int link_an_mode,
 			       const struct phylink_link_state *state);
@@ -1195,6 +1193,8 @@ int ocelot_port_get_mm(struct ocelot *ocelot, int port,
 		       struct ethtool_mm_state *state);
 int ocelot_port_mqprio(struct ocelot *ocelot, int port,
 		       struct tc_mqprio_qopt_offload *mqprio);
+int ocelot_port_change_fp(struct ocelot *ocelot, int port,
+			  unsigned long preemptible_tcs);
 
 #if IS_ENABLED(CONFIG_BRIDGE_MRP)
 int ocelot_mrp_add(struct ocelot *ocelot, int port,

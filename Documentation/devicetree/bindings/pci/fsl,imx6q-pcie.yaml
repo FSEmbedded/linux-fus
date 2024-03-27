@@ -29,17 +29,9 @@ properties:
       - fsl,imx8mq-pcie
       - fsl,imx8mm-pcie
       - fsl,imx8mp-pcie
-      - fsl,imx6q-pcie-ep
-      - fsl,imx6sx-pcie-ep
-      - fsl,imx6qp-pcie-ep
-      - fsl,imx7d-pcie-ep
-      - fsl,imx8mq-pcie-ep
-      - fsl,imx8mm-pcie-ep
-      - fsl,imx8mp-pcie-ep
       - fsl,imx8qm-pcie
       - fsl,imx8qxp-pcie
-      - fsl,imx8qm-pcie-ep
-      - fsl,imx8qxp-pcie-ep
+      - fsl,imx95-pcie
 
   reg:
     items:
@@ -82,6 +74,10 @@ properties:
       specified in the "reset-gpio" property is reversed (H=reset state,
       L=operation state) (optional required).
     type: boolean
+
+  host-wake-gpio:
+    description: Should specify the GPIO for controlling the PCI bus device
+      wake signal, used to wakeup the host processor. Default to active-low.
 
 required:
   - compatible

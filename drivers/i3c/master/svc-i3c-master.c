@@ -1672,23 +1672,6 @@ static void svc_i3c_restore_regs(struct svc_i3c_master *master)
 	}
 }
 
-static void svc_i3c_save_regs(struct svc_i3c_master *master)
-{
-	master->saved_regs.mconfig = readl(master->regs + SVC_I3C_MCONFIG);
-	master->saved_regs.mdynaddr = readl(master->regs + SVC_I3C_MDYNADDR);
-}
-
-static void svc_i3c_restore_regs(struct svc_i3c_master *master)
-{
-	if (readl(master->regs + SVC_I3C_MDYNADDR) !=
-	    master->saved_regs.mdynaddr) {
-		writel(master->saved_regs.mconfig,
-		       master->regs + SVC_I3C_MCONFIG);
-		writel(master->saved_regs.mdynaddr,
-		       master->regs + SVC_I3C_MDYNADDR);
-	}
-}
-
 static int __maybe_unused svc_i3c_runtime_suspend(struct device *dev)
 {
 	struct svc_i3c_master *master = dev_get_drvdata(dev);

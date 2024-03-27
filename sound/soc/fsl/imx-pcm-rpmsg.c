@@ -228,7 +228,6 @@ static void imx_rpmsg_timer_callback(struct timer_list *t)
 static int imx_rpmsg_pcm_open(struct snd_soc_component *component,
 			      struct snd_pcm_substream *substream)
 {
-	struct snd_pcm_hardware pcm_hardware = imx_rpmsg_pcm_hardware;
 	struct rpmsg_info *info = dev_get_drvdata(component->dev);
 	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
 	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
@@ -262,7 +261,7 @@ static int imx_rpmsg_pcm_open(struct snd_soc_component *component,
 	info->send_message(msg, info);
 
 	pcm_hardware = imx_rpmsg_pcm_hardware;
-	pcm_hardware.buffer_bytes_max = rpmsg->buffer_size;
+	pcm_hardware.buffer_bytes_max = rpmsg->buffer_size[substream->stream];
 	pcm_hardware.period_bytes_max = pcm_hardware.buffer_bytes_max / 2;
 
 	snd_soc_set_runtime_hwparams(substream, &pcm_hardware);
@@ -605,8 +604,22 @@ static int imx_rpmsg_pcm_new(struct snd_soc_component *component,
 	if (ret)
 		return ret;
 
-	return snd_pcm_set_fixed_buffer_all(pcm, SNDRV_DMA_TYPE_DEV_WC,
-					    pcm->card->dev, rpmsg->buffer_size);
+	substream = pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
+	if (substream) {
+		ret = snd_pcm_set_fixed_buffer(substream, SNDRV_DMA_TYPE_DEV_WC,
+						 pcm->card->dev, rpmsg->buffer_size[SNDRV_PCM_STREAM_PLAYBACK]);
+		if (ret < 0)
+			return ret;
+	}
+	substream = pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream;
+	if (substream) {
+		ret = snd_pcm_set_fixed_buffer(substream, SNDRV_DMA_TYPE_DEV_WC,
+						 pcm->card->dev, rpmsg->buffer_size[SNDRV_PCM_STREAM_CAPTURE]);
+		if (ret < 0)
+			return ret;
+	}
+
+	return ret;
 }
 
 static const struct snd_soc_component_driver imx_rpmsg_soc_component = {
@@ -677,7 +690,6 @@ static void imx_rpmsg_pcm_work(struct work_struct *work)
 static int imx_rpmsg_pcm_probe(struct platform_device *pdev)
 {
 	struct snd_soc_component *component;
-	struct device_node *np;
 	struct rpmsg_info *info;
 	int ret, i;
 

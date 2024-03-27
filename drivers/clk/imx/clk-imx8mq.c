@@ -15,6 +15,7 @@
 #include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <soc/imx/soc.h>
 
 #include "clk.h"
 
@@ -317,6 +318,8 @@ static int imx8mq_clocks_probe(struct platform_device *pdev)
 	struct device_node *np = dev->of_node;
 	void __iomem *base;
 	int err;
+
+	check_m4_enabled();
 
 	clk_hw_data = devm_kzalloc(dev, struct_size(clk_hw_data, hws, IMX8MQ_CLK_END), GFP_KERNEL);
 	if (WARN_ON(!clk_hw_data))
@@ -640,6 +643,16 @@ static int imx8mq_clocks_probe(struct platform_device *pdev)
 		dev_err(dev, "failed to register hws for i.MX8MQ\n");
 		goto unregister_hws;
 	}
+
+	/* enable all the clocks just for bringup */
+	imx_clk_init_on(np, hws);
+
+	clk_set_parent(hws[IMX8MQ_CLK_CSI1_CORE]->clk, hws[IMX8MQ_SYS1_PLL_266M]->clk);
+	clk_set_parent(hws[IMX8MQ_CLK_CSI1_PHY_REF]->clk, hws[IMX8MQ_SYS2_PLL_1000M]->clk);
+	clk_set_parent(hws[IMX8MQ_CLK_CSI1_ESC]->clk, hws[IMX8MQ_SYS1_PLL_800M]->clk);
+	clk_set_parent(hws[IMX8MQ_CLK_CSI2_CORE]->clk, hws[IMX8MQ_SYS1_PLL_266M]->clk);
+	clk_set_parent(hws[IMX8MQ_CLK_CSI2_PHY_REF]->clk, hws[IMX8MQ_SYS2_PLL_1000M]->clk);
+	clk_set_parent(hws[IMX8MQ_CLK_CSI2_ESC]->clk, hws[IMX8MQ_SYS1_PLL_800M]->clk);
 
 	imx_register_uart_clocks();
 

@@ -18,6 +18,7 @@
 #include <linux/interrupt.h>
 #include <linux/i2c.h>
 #include <linux/platform_data/max732x.h>
+#include <linux/reset.h>
 
 /*
  * Each port of MAX732x (including MAX7319) falls into one of the

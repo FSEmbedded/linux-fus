@@ -10,8 +10,6 @@
 #include <linux/irqreturn.h>
 #include <linux/io-64-nonatomic-lo-hi.h>
 
-#include <linux/io-64-nonatomic-lo-hi.h>
-
 #include "dw-edma-core.h"
 #include "dw-edma-v0-core.h"
 #include "dw-edma-v0-regs.h"

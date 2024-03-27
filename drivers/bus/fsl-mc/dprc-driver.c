@@ -842,15 +842,8 @@ EXPORT_SYMBOL_GPL(dprc_cleanup);
  */
 static void dprc_remove(struct fsl_mc_device *mc_dev)
 {
-	struct fsl_mc_bus *mc_bus = to_fsl_mc_bus(mc_dev);
-
-	if (!mc_bus->irq_resources) {
-		dev_err(&mc_dev->dev, "No irq resources, so unbinding the device failed\n");
+	if (!is_fsl_mc_bus_dprc(mc_dev))
 		return;
-	}
-
-	if (dev_get_msi_domain(&mc_dev->dev))
-		dprc_teardown_irq(mc_dev);
 
 	device_for_each_child(&mc_dev->dev, NULL, __fsl_mc_device_remove);
 

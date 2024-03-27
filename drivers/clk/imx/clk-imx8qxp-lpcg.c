@@ -31,9 +31,6 @@ static int imx8qxp_lpcg_clk_probe(struct platform_device *pdev)
 	int ret;
 	int i;
 
-	if (!of_device_is_compatible(np, "fsl,imx8qxp-lpcg"))
-		return -EINVAL;
-
 	base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(base))
 		return PTR_ERR(base);

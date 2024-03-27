@@ -17,12 +17,8 @@
 
 #define IMX_SC_PAD_FUNC_GET_WAKEUP	9
 #define IMX_SC_PAD_FUNC_SET_WAKEUP	4
-#define IMX_SC_IRQ_GROUP_WAKE           3   /* Wakeup interrupts */
-#define IMX_SC_IRQ_PAD			2   /* Pad wakeup */
 
 enum pad_func_e {
-	IMX_SC_PAD_FUNC_SET_WAKEUP = 4,
-	IMX_SC_PAD_FUNC_GET_WAKEUP = 9,
 	IMX_SC_PAD_FUNC_SET = 15,
 	IMX_SC_PAD_FUNC_GET = 16,
 };

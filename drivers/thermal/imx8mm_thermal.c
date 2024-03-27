@@ -7,7 +7,6 @@
 
 #include <linux/bitfield.h>
 #include <linux/clk.h>
-#include <linux/device_cooling.h>
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/module.h>
@@ -89,7 +88,6 @@ struct tmu_sensor {
 	struct imx8mm_tmu *priv;
 	u32 hw_id;
 	struct thermal_zone_device *tzd;
-	struct thermal_cooling_device *cdev;
 	int temp_passive;
 	int temp_critical;
 };
@@ -163,7 +161,8 @@ static int tmu_get_temp(struct thermal_zone_device *tz, int *temp)
 	return tmu->socdata->get_temp(sensor, temp);
 }
 
-static int tmu_get_trend(struct thermal_zone_device *tz, int trip,
+static int tmu_get_trend(struct thermal_zone_device *tz,
+			 const struct thermal_trip *trip,
 			 enum thermal_trend *trend)
 {
 	struct tmu_sensor *sensor = tz->devdata;
@@ -172,7 +171,7 @@ static int tmu_get_trend(struct thermal_zone_device *tz, int trip,
 	if (!sensor->tzd)
 		return 0;
 
-	trip_temp = (trip == IMX_TRIP_PASSIVE) ? sensor->temp_passive : sensor->temp_critical;
+	trip_temp = (trip->type == THERMAL_TRIP_PASSIVE) ? sensor->temp_passive : sensor->temp_critical;
 
 	if (sensor->tzd->temperature >= (trip_temp - IMX_TEMP_PASSIVE_COOL_DELTA))
 		*trend = THERMAL_TREND_RAISING;
@@ -346,10 +345,10 @@ static int imx8mm_tmu_probe_set_calib(struct platform_device *pdev,
 static int imx8mm_tmu_probe(struct platform_device *pdev)
 {
 	const struct thermal_soc_data *data;
-	const struct thermal_trip *trips;
+	struct thermal_trip trip;
 	struct imx8mm_tmu *tmu;
 	int ret;
-	int i;
+	int i, j;
 
 	data = of_device_get_match_data(&pdev->dev);
 
@@ -394,6 +393,18 @@ static int imx8mm_tmu_probe(struct platform_device *pdev)
 		tmu->sensors[i].hw_id = i;
 
 		devm_thermal_add_hwmon_sysfs(&pdev->dev, tmu->sensors[i].tzd);
+
+		for (j = 0; j < thermal_zone_get_num_trips(tmu->sensors[i].tzd); j++) {
+			ret = thermal_zone_get_trip(tmu->sensors[i].tzd, j, &trip);
+			if (ret)
+				continue;
+
+			if (trip.type == THERMAL_TRIP_CRITICAL) {
+				tmu->sensors[i].temp_critical = trip.temperature;
+			} else if(trip.type == THERMAL_TRIP_PASSIVE) {
+				tmu->sensors[i].temp_passive = trip.temperature;
+			}
+		}
 	}
 
 	platform_set_drvdata(pdev, tmu);

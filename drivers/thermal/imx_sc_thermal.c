@@ -4,7 +4,6 @@
  */
 
 #include <dt-bindings/firmware/imx/rsrc.h>
-#include <linux/device_cooling.h>
 #include <linux/err.h>
 #include <linux/firmware/imx/sci.h>
 #include <linux/module.h>
@@ -23,7 +22,6 @@ static struct imx_sc_ipc *thermal_ipc_handle;
 struct imx_sc_sensor {
 	struct thermal_zone_device *tzd;
 	u32 resource_id;
-	struct thermal_cooling_device *cdev;
 	int temp_passive;
 	int temp_critical;
 };
@@ -73,15 +71,24 @@ static int imx_sc_thermal_get_temp(struct thermal_zone_device *tz, int *temp)
 	hdr->size = 2;
 
 	ret = imx_scu_call_rpc(thermal_ipc_handle, &msg, true);
-	if (ret)
-		return ret;
+	if (ret) {
+		/*
+		 * if the SS power domain is down, read temp will fail, so
+		 * we can print error once and return 0 directly.
+		 */
+		pr_err_once("read temp sensor %d failed, could be SS powered off, ret %d\n",
+			     sensor->resource_id, ret);
+		*temp = 0;
+		return 0;
+	}
 
 	*temp = msg.data.resp.celsius * 1000 + msg.data.resp.tenths * 100;
 
 	return 0;
 }
 
-static int imx_sc_thermal_get_trend(struct thermal_zone_device *tz, int trip,
+static int imx_sc_thermal_get_trend(struct thermal_zone_device *tz,
+				    const struct thermal_trip *trip,
 				    enum thermal_trend *trend)
 {
 	int trip_temp;
@@ -90,7 +97,7 @@ static int imx_sc_thermal_get_trend(struct thermal_zone_device *tz, int trip,
 	if (!sensor->tzd)
 		return 0;
 
-	trip_temp = (trip == IMX_TRIP_PASSIVE) ? sensor->temp_passive :
+	trip_temp = (trip->type == THERMAL_TRIP_PASSIVE) ? sensor->temp_passive :
 					     sensor->temp_critical;
 
 	if (sensor->tzd->temperature >=
@@ -125,9 +132,9 @@ static const struct thermal_zone_device_ops imx_sc_thermal_ops = {
 static int imx_sc_thermal_probe(struct platform_device *pdev)
 {
 	struct imx_sc_sensor *sensor;
-	const struct thermal_trip *trip;
+	struct thermal_trip trip;
 	const int *resource_id;
-	int i, ret;
+	int i, j, ret;
 
 	ret = imx_scu_get_handle(&thermal_ipc_handle);
 	if (ret)
@@ -170,6 +177,19 @@ static int imx_sc_thermal_probe(struct platform_device *pdev)
 		}
 
 		devm_thermal_add_hwmon_sysfs(&pdev->dev, sensor->tzd);
+
+		for (j = 0; j < thermal_zone_get_num_trips(sensor->tzd); j++) {
+			ret = thermal_zone_get_trip(sensor->tzd, j, &trip);
+			if (ret)
+				continue;
+
+			if (trip.type == THERMAL_TRIP_CRITICAL) {
+				sensor->temp_critical = trip.temperature;
+			} else if(trip.type == THERMAL_TRIP_PASSIVE) {
+				sensor->temp_passive = trip.temperature;
+			}
+		}
+
 	}
 
 	return 0;

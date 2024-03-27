@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2012-2016 Freescale Semiconductor, Inc.
- * Copyright 2017 NXP
+ * Copyright 2012-2015 Freescale Semiconductor, Inc.
  * Copyright (C) 2012 Marek Vasut <marex@denx.de>
  * on behalf of DENX Software Engineering GmbH
  */
@@ -279,7 +278,6 @@ struct mxs_phy {
 	u32 tx_reg_mask;
 	struct regulator *phy_3p0;
 	bool hardware_control_phy2_clk;
-	enum usb_current_mode mode;
 	unsigned long clk_rate;
 };
 
@@ -498,6 +496,12 @@ static void __mxs_phy_disconnect_line(struct mxs_phy *mxs_phy, bool disconnect)
 	/* Delay some time, and let Linestate be SE0 for controller */
 	if (disconnect)
 		usleep_range(500, 1000);
+}
+
+static bool mxs_phy_is_otg_host(struct mxs_phy *mxs_phy)
+{
+	return IS_ENABLED(CONFIG_USB_OTG) &&
+		mxs_phy->phy.last_event == USB_EVENT_ID;
 }
 
 static void mxs_phy_disconnect_line(struct mxs_phy *mxs_phy, bool on)
@@ -894,19 +898,6 @@ static int mxs_phy_on_resume(struct usb_phy *phy,
 	return 0;
 }
 
-/*
- * Set the usb current role for phy.
- */
-static int mxs_phy_set_mode(struct usb_phy *phy,
-		enum usb_current_mode mode)
-{
-	struct mxs_phy *mxs_phy = to_mxs_phy(phy);
-
-	mxs_phy->mode = mode;
-
-	return 0;
-}
-
 static int mxs_phy_dcd_start(struct mxs_phy *mxs_phy)
 {
 	void __iomem *base = mxs_phy->phy.io_priv;
@@ -1113,7 +1104,6 @@ static int mxs_phy_probe(struct platform_device *pdev)
 	mxs_phy->phy.set_wakeup		= mxs_phy_set_wakeup;
 	mxs_phy->clk = clk;
 	mxs_phy->data = of_device_get_match_data(&pdev->dev);
-	mxs_phy->phy.set_mode		= mxs_phy_set_mode;
 
 	if (mxs_phy->data->flags & MXS_PHY_HAS_DCD)
 		mxs_phy->phy.charger_detect	= mxs_phy_dcd_flow;
@@ -1155,6 +1145,9 @@ static void mxs_phy_remove(struct platform_device *pdev)
 	struct mxs_phy *mxs_phy = platform_get_drvdata(pdev);
 
 	usb_remove_phy(&mxs_phy->phy);
+	pm_runtime_get_sync(&pdev->dev);
+	pm_runtime_disable(&pdev->dev);
+	pm_runtime_put_noidle(&pdev->dev);
 }
 
 #ifdef CONFIG_PM

@@ -473,7 +473,7 @@ static int ak5558_i2c_probe(struct i2c_client *i2c)
 		return ret;
 	}
 
-	/* toggle the reset gpio */
+	/* tog the reset gpio */
 	ak5558_reset(ak5558, true);
 	ak5558_reset(ak5558, false);
 

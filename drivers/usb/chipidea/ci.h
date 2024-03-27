@@ -176,6 +176,7 @@ struct hw_bank {
  * @enabled_otg_timer_bits: bits of enabled otg timers
  * @next_otg_timer: next nearest enabled timer to be expired
  * @work: work for role changing
+ * @power_lost_work: work for power lost handling
  * @wq: workqueue thread
  * @qh_pool: allocation pool for queue heads
  * @td_pool: allocation pool for transfer descriptors
@@ -208,8 +209,6 @@ struct hw_bank {
  * @in_lpm: if the core in low power mode
  * @wakeup_int: if wakeup interrupt occur
  * @rev: The revision number for controller
- * @power_lost_work: work item when controller power is lost
- * @power_lost_wq: work queue for controller power is lost
  * @mutex: protect code from concorrent running when doing role switch
  */
 struct ci_hdrc {
@@ -228,6 +227,7 @@ struct ci_hdrc {
 	enum otg_fsm_timer		next_otg_timer;
 	struct usb_role_switch		*role_switch;
 	struct work_struct		work;
+	struct work_struct		power_lost_work;
 	struct workqueue_struct		*wq;
 
 	struct dma_pool			*qh_pool;
@@ -264,20 +264,7 @@ struct ci_hdrc {
 	bool				in_lpm;
 	bool				wakeup_int;
 	enum ci_revision		rev;
-	struct work_struct		power_lost_work;
-	struct workqueue_struct		*power_lost_wq;
-	/* register save area for suspend&resume */
-	u32				pm_command;
-	u32				pm_status;
-	u32				pm_intr_enable;
-	u32				pm_frame_index;
-	u32				pm_segment;
-	u32				pm_frame_list;
-	u32				pm_async_next;
-	u32				pm_configured_flag;
-	u32				pm_portsc;
-	u32				pm_usbmode;
-	struct mutex			mutex;
+	struct mutex                    mutex;
 };
 
 static inline struct ci_role_driver *ci_role(struct ci_hdrc *ci)

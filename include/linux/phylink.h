@@ -49,24 +49,6 @@ enum {
 	PHYLINK_PCS_NEG_C73_ENABLED = PHYLINK_PCS_NEG_C73 |
 				      PHYLINK_PCS_NEG_ENABLED,
 
-	/* PCS "negotiation" mode.
-	 *  PHYLINK_PCS_NEG_NONE - protocol has no inband capability
-	 *  PHYLINK_PCS_NEG_OUTBAND - some out of band or fixed link setting
-	 *  PHYLINK_PCS_NEG_INBAND_DISABLED - inband mode disabled, e.g.
-	 *				      1000base-X with autoneg off
-	 *  PHYLINK_PCS_NEG_INBAND_ENABLED - inband mode enabled
-	 * Additionally, this can be tested using bitmasks:
-	 *  PHYLINK_PCS_NEG_INBAND - inband mode selected
-	 *  PHYLINK_PCS_NEG_ENABLED - negotiation mode enabled
-	 */
-	PHYLINK_PCS_NEG_NONE = 0,
-	PHYLINK_PCS_NEG_ENABLED = BIT(4),
-	PHYLINK_PCS_NEG_OUTBAND = BIT(5),
-	PHYLINK_PCS_NEG_INBAND = BIT(6),
-	PHYLINK_PCS_NEG_INBAND_DISABLED = PHYLINK_PCS_NEG_INBAND,
-	PHYLINK_PCS_NEG_INBAND_ENABLED = PHYLINK_PCS_NEG_INBAND |
-					 PHYLINK_PCS_NEG_ENABLED,
-
 	/* MAC_SYM_PAUSE and MAC_ASYM_PAUSE are used when configuring our
 	 * autonegotiation advertisement. They correspond to the PAUSE and
 	 * ASM_DIR bits defined by 802.3, respectively.
@@ -133,72 +115,6 @@ static inline bool phylink_autoneg_c73(unsigned int mode)
 static inline bool phylink_autoneg_any(unsigned int mode)
 {
 	return phylink_autoneg_inband(mode) || phylink_autoneg_c73(mode);
-}
-
-/**
- * phylink_pcs_neg_mode() - helper to determine PCS inband mode
- * @mode: one of %MLO_AN_FIXED, %MLO_AN_PHY, %MLO_AN_INBAND.
- * @interface: interface mode to be used
- * @advertising: adertisement ethtool link mode mask
- *
- * Determines the negotiation mode to be used by the PCS, and returns
- * one of:
- *
- * - %PHYLINK_PCS_NEG_NONE: interface mode does not support inband
- * - %PHYLINK_PCS_NEG_OUTBAND: an out of band mode (e.g. reading the PHY)
- *   will be used.
- * - %PHYLINK_PCS_NEG_INBAND_DISABLED: inband mode selected but autoneg
- *   disabled
- * - %PHYLINK_PCS_NEG_INBAND_ENABLED: inband mode selected and autoneg enabled
- *
- * Note: this is for cases where the PCS itself is involved in negotiation
- * (e.g. Clause 37, SGMII and similar) not Clause 73.
- */
-static inline unsigned int phylink_pcs_neg_mode(unsigned int mode,
-						phy_interface_t interface,
-						const unsigned long *advertising)
-{
-	unsigned int neg_mode;
-
-	switch (interface) {
-	case PHY_INTERFACE_MODE_SGMII:
-	case PHY_INTERFACE_MODE_QSGMII:
-	case PHY_INTERFACE_MODE_QUSGMII:
-	case PHY_INTERFACE_MODE_USXGMII:
-		/* These protocols are designed for use with a PHY which
-		 * communicates its negotiation result back to the MAC via
-		 * inband communication. Note: there exist PHYs that run
-		 * with SGMII but do not send the inband data.
-		 */
-		if (!phylink_autoneg_inband(mode))
-			neg_mode = PHYLINK_PCS_NEG_OUTBAND;
-		else
-			neg_mode = PHYLINK_PCS_NEG_INBAND_ENABLED;
-		break;
-
-	case PHY_INTERFACE_MODE_1000BASEX:
-	case PHY_INTERFACE_MODE_2500BASEX:
-		/* 1000base-X is designed for use media-side for Fibre
-		 * connections, and thus the Autoneg bit needs to be
-		 * taken into account. We also do this for 2500base-X
-		 * as well, but drivers may not support this, so may
-		 * need to override this.
-		 */
-		if (!phylink_autoneg_inband(mode))
-			neg_mode = PHYLINK_PCS_NEG_OUTBAND;
-		else if (linkmode_test_bit(ETHTOOL_LINK_MODE_Autoneg_BIT,
-					   advertising))
-			neg_mode = PHYLINK_PCS_NEG_INBAND_ENABLED;
-		else
-			neg_mode = PHYLINK_PCS_NEG_INBAND_DISABLED;
-		break;
-
-	default:
-		neg_mode = PHYLINK_PCS_NEG_NONE;
-		break;
-	}
-
-	return neg_mode;
 }
 
 /**
@@ -647,6 +563,10 @@ void pcs_get_state(struct phylink_pcs *pcs,
  *
  * For most 10GBASE-R, there is no advertisement.
  *
+ * For %MLO_AN_C73, the "interface" argument should be ignored, since clause 73
+ * autonegotiation has not started, and thus, it has not resolved a link mode
+ * yet, either.
+ *
  * The %neg_mode argument should be tested via the phylink_mode_*() family of
  * functions, or for PCS that set pcs->neg_mode true, should be tested
  * against the PHYLINK_PCS_NEG_* definitions.
@@ -763,6 +683,7 @@ static inline int phylink_get_link_timer_ns(phy_interface_t interface)
 	case PHY_INTERFACE_MODE_SGMII:
 	case PHY_INTERFACE_MODE_QSGMII:
 	case PHY_INTERFACE_MODE_USXGMII:
+	case PHY_INTERFACE_MODE_10G_QXGMII:
 		return 1600000;
 
 	case PHY_INTERFACE_MODE_1000BASEX:

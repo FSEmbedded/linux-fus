@@ -26,8 +26,6 @@ static DEFINE_MUTEX(phy_provider_mutex);
 static LIST_HEAD(phy_provider_list);
 static LIST_HEAD(phys);
 static DEFINE_IDA(phy_ida);
-struct dentry *phy_debugfs_root;
-EXPORT_SYMBOL_GPL(phy_debugfs_root);
 
 static void devm_phy_release(struct device *dev, void *res)
 {

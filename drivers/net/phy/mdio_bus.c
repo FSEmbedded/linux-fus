@@ -1282,30 +1282,6 @@ int mdiobus_c45_modify(struct mii_bus *bus, int addr, int devad, u32 regnum,
 EXPORT_SYMBOL_GPL(mdiobus_c45_modify);
 
 /**
- * mdiobus_c45_modify - Convenience function for modifying a given mdio device
- *	register
- * @bus: the mii_bus struct
- * @addr: the phy address
- * @devad: device address to read
- * @regnum: register number to write
- * @mask: bit mask of bits to clear
- * @set: bit mask of bits to set
- */
-int mdiobus_c45_modify(struct mii_bus *bus, int addr, int devad, u32 regnum,
-		       u16 mask, u16 set)
-{
-	int err;
-
-	mutex_lock(&bus->mdio_lock);
-	err = __mdiobus_c45_modify_changed(bus, addr, devad, regnum,
-					   mask, set);
-	mutex_unlock(&bus->mdio_lock);
-
-	return err < 0 ? err : 0;
-}
-EXPORT_SYMBOL_GPL(mdiobus_c45_modify);
-
-/**
  * mdiobus_modify_changed - Convenience function for modifying a given mdio
  *	device register and returning if it changed
  * @bus: the mii_bus struct

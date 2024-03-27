@@ -14,6 +14,7 @@
 #include <linux/mtd/partitions.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/busfreq-imx.h>
 #include <linux/pm_runtime.h>
 #include <linux/debugfs.h>
 #include <linux/pinctrl/consumer.h>

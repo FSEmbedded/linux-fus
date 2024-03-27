@@ -6,7 +6,6 @@
 #include <linux/cpufreq.h>
 #include <linux/cpu_cooling.h>
 #include <linux/delay.h>
-#include <linux/device_cooling.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/mfd/syscon.h>
@@ -205,7 +204,7 @@ struct imx_thermal_data {
 	struct device *dev;
 	struct cpufreq_policy *policy;
 	struct thermal_zone_device *tz;
-	struct thermal_cooling_device *cdev[2];
+	struct thermal_cooling_device *cdev;
 	struct regmap *tempmon;
 	u32 c1, c2; /* See formula in imx_init_calib() */
 	int temp_max;
@@ -348,15 +347,22 @@ static int imx_set_trip_temp(struct thermal_zone_device *tz, int trip_id,
 	if (ret)
 		return ret;
 
-	/* do not allow changing critical threshold */
-	if (trip.type == THERMAL_TRIP_CRITICAL)
-		return -EPERM;
-
 	/* do not allow passive to be set higher than critical */
 	if (temp < 0 || temp > trips[IMX_TRIP_CRITICAL].temperature)
 		return -EINVAL;
 
-	imx_set_alarm_temp(data, temp);
+	if (trip.type == THERMAL_TRIP_CRITICAL) {
+		trips[IMX_TRIP_CRITICAL].temperature = temp;
+		if (data->socdata->version == TEMPMON_IMX6SX)
+			imx_set_panic_temp(data, temp);
+	}
+
+	if (trip.type == THERMAL_TRIP_PASSIVE) {
+		if (temp > (data->temp_max - (1000 * 10)))
+			return -EINVAL;
+		trips[IMX_TRIP_PASSIVE].temperature = temp;
+		imx_set_alarm_temp(data, temp);
+	}
 
 	pm_runtime_put(data->dev);
 
@@ -364,14 +370,13 @@ static int imx_set_trip_temp(struct thermal_zone_device *tz, int trip_id,
 }
 
 static int imx_get_trend(struct thermal_zone_device *tz,
-			 int trip, enum thermal_trend *trend)
+			 const struct thermal_trip *trip,
+			 enum thermal_trend *trend)
 {
-	int ret;
 	int trip_temp;
 
-	ret = imx_get_trip_temp(tz, trip, &trip_temp);
-	if (ret < 0)
-		return ret;
+	trip_temp = (trip->type == THERMAL_TRIP_PASSIVE) ? trips[0].temperature :
+		    trips[1].temperature;
 
 	if (tz->temperature >= (trip_temp - IMX_TEMP_PASSIVE_COOL_DELTA))
 		*trend = THERMAL_TREND_RAISING;
@@ -600,25 +605,13 @@ static int imx_thermal_register_legacy_cooling(struct imx_thermal_data *data)
 	if (ret)
 		return ret;
 
-	data->cdev[1] = devfreq_cooling_register();
-	if (IS_ERR(data->cdev[1])) {
-		ret = PTR_ERR(data->cdev[1]);
-		if (ret != -EPROBE_DEFER) {
-			pr_err("failed to register cpufreq cooling device: %d\n",
-				ret);
-			cpufreq_cooling_unregister(data->cdev[0]);
-		}
-		return ret;
-	}
-
 	return 0;
 }
 
 static void imx_thermal_unregister_legacy_cooling(struct imx_thermal_data *data)
 {
-	cpufreq_cooling_unregister(data->cdev[0]);
+	cpufreq_cooling_unregister(data->cdev);
 	cpufreq_cpu_put(data->policy);
-	devfreq_cooling_unregister(data->cdev[1]);
 }
 
 #else
@@ -735,7 +728,8 @@ static int imx_thermal_probe(struct platform_device *pdev)
 	data->tz = thermal_zone_device_register_with_trips("imx_thermal_zone",
 							   trips,
 							   ARRAY_SIZE(trips),
-							   BIT(IMX_TRIP_PASSIVE), data,
+							   BIT(IMX_TRIP_PASSIVE) | BIT(IMX_TRIP_CRITICAL),
+							   data,
 							   &imx_tz_ops, NULL,
 							   IMX_PASSIVE_DELAY,
 							   IMX_POLLING_DELAY);

@@ -6,6 +6,7 @@
 
 #include <linux/clk-provider.h>
 #include <linux/export.h>
+#include <linux/imx_sema4.h>
 #include <linux/io.h>
 #include <linux/slab.h>
 #include <linux/err.h>

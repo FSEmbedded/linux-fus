@@ -1028,19 +1028,19 @@ static int vsc9959_mdio_bus_alloc(struct ocelot *ocelot)
 		size_t num_phys = ocelot_port->serdes ? 1 : 0;
 		struct phylink_pcs *phylink_pcs;
 
-		if (dsa_is_unused_port(felix->ds, port))
-			continue;
-
 		if (ocelot_port->phy_mode == PHY_INTERFACE_MODE_INTERNAL)
 			continue;
 
-		phylink_pcs = lynx_pcs_create_mdiodev(felix->imdio, port);
+		phylink_pcs = lynx_pcs_create_mdiodev(felix->imdio, dp->index,
+						      &ocelot_port->serdes,
+						      num_phys);
 		if (IS_ERR(phylink_pcs))
 			continue;
 
-		felix->pcs[port] = phylink_pcs;
+		felix->pcs[dp->index] = phylink_pcs;
 
-		dev_info(dev, "Found PCS at internal MDIO address %d\n", port);
+		dev_info(dev, "Found PCS at internal MDIO address %d\n",
+			 dp->index);
 	}
 
 	return 0;
@@ -1209,17 +1209,6 @@ static u32 vsc9959_tas_tc_max_sdu(struct tc_taprio_qopt_offload *taprio, int tc)
 	return taprio->max_sdu[tc] + ETH_HLEN + 2 * VLAN_HLEN + ETH_FCS_LEN;
 }
 
-/**
- * ethtool_mm_frag_size_add_to_min - Translate (standard) additional fragment
- *	size expressed as multiplier into (absolute) minimum fragment size
- *	value expressed in octets
- * @val_add: Value of addFragSize multiplier
- */
-static inline u32 ethtool_mm_frag_size_add_to_min(u32 val_add)
-{
-	return (ETH_ZLEN + ETH_FCS_LEN) * (1 + val_add) - ETH_FCS_LEN;
-}
-
 /* Update QSYS_PORT_MAX_SDU to make sure the static guard bands added by the
  * switch (see the ALWAYS_GUARD_BAND_SCH_Q comment) are correct at all MTU
  * values (the default value is 1518). Also, for traffic class windows smaller
@@ -1357,7 +1346,7 @@ static void vsc9959_tas_guard_bands_update(struct ocelot *ocelot, int port)
 }
 
 static void vsc9959_sched_speed_set(struct ocelot *ocelot, int port,
-				    int speed)
+				    u32 speed)
 {
 	struct ocelot_port *ocelot_port = ocelot->ports[port];
 	u8 tas_speed;
@@ -1391,6 +1380,8 @@ static void vsc9959_sched_speed_set(struct ocelot *ocelot, int port,
 		vsc9959_tas_guard_bands_update(ocelot, port);
 
 	mutex_unlock(&ocelot->fwd_domain_lock);
+
+	felix_cbs_reset(ocelot, port, speed);
 }
 
 void vsc9959_new_base_time(struct ocelot *ocelot, ktime_t base_time,
@@ -2596,7 +2587,7 @@ static void vsc9959_cut_through_fwd(struct ocelot *ocelot)
 		 * reason, if sent as cut-through.
 		 */
 		if (ocelot_port->speed == min_speed) {
-			val = GENMASK(7, 0) & ~mm->active_preemptible_tcs;
+			val = ocelot_port->cut_thru & ~mm->active_preemptible_tcs;
 
 			for (tc = 0; tc < OCELOT_NUM_TC; tc++)
 				if (vsc9959_port_qmaxsdu_get(ocelot, port, tc))
@@ -2739,9 +2730,7 @@ static int felix_pci_probe(struct pci_dev *pdev,
 		goto err_register_ds;
 	}
 
-#ifdef CONFIG_MSCC_FELIX_SWITCH_TSN
 	felix_tsn_enable(ds);
-#endif
 
 	return 0;
 

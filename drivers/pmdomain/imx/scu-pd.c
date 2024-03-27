@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * Copyright 2017-2018,2020 NXP
+ * Copyright 2017-2018 NXP
  *	Dong Aisheng <aisheng.dong@nxp.com>
  *
  * Implementation of the SCU based Power Domains
@@ -435,10 +435,6 @@ static int imx_sc_pd_power(struct generic_pm_domain *domain, bool power_on)
 		   IMX_SC_PM_PW_MODE_OFF : IMX_SC_PM_PW_MODE_LP;
 
 	/* keep uart console power on for no_console_suspend */
-        if (imx_con_rsrc == pd->rsrc && !console_suspend_enabled && !power_on)
-                return 0;
-
-	/* keep uart console power on for no_console_suspend */
 	if (imx_con_rsrc == pd->rsrc && !console_suspend_enabled && !power_on)
 		return -EBUSY;
 
@@ -491,6 +487,7 @@ imx_scu_add_pm_domain(struct device *dev, int idx,
 		      const struct imx_sc_pd_range *pd_ranges)
 {
 	struct imx_sc_pm_domain *sc_pd;
+	struct genpd_power_state *states;
 	bool is_off;
 	int mode, ret;
 
@@ -528,7 +525,7 @@ imx_scu_add_pm_domain(struct device *dev, int idx,
 
 	sc_pd->pd.name = sc_pd->name;
 	if (imx_con_rsrc == sc_pd->rsrc)
-		sc_pd->pd.flags = GENPD_FLAG_RPM_ALWAYS_ON;
+		sc_pd->pd.flags |= GENPD_FLAG_RPM_ALWAYS_ON;
 
 	mode = imx_sc_get_pd_power(dev, pd_ranges->rsrc + idx);
 	if (mode == IMX_SC_PM_PW_MODE_ON)

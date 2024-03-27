@@ -21,6 +21,7 @@
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
 #include <linux/seq_file.h>
+#include <linux/reset.h>
 #include <linux/slab.h>
 
 #include <asm/unaligned.h>
@@ -451,7 +452,7 @@ static u8 pca953x_recalc_addr(struct pca953x_chip *chip, int reg, int off)
 static u8 pcal6534_recalc_addr(struct pca953x_chip *chip, int reg, int off)
 {
 	int addr;
-	int pinctrl = 0;
+	int pinctrl;
 
 	addr = (reg & PCAL_GPIO_MASK) * NBANK(chip);
 

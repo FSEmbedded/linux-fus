@@ -82,13 +82,8 @@ static void dcss_drv_deinit(struct device *dev, bool componentized)
 {
 	struct dcss_drv *mdrv = dev_get_drvdata(dev);
 
-	if (!mdrv)
-		return;
-
 	dcss_kms_detach(mdrv->kms, componentized);
 	dcss_dev_destroy(mdrv->dcss);
-
-	dev_set_drvdata(dev, NULL);
 
 	kfree(mdrv);
 }
@@ -141,10 +136,10 @@ static int dcss_drv_platform_remove(struct platform_device *pdev)
 {
 	struct dcss_drv *mdrv = dev_get_drvdata(&pdev->dev);
 
-	dcss_kms_detach(mdrv->kms);
-	dcss_dev_destroy(mdrv->dcss);
-
-	kfree(mdrv);
+	if (mdrv->is_componentized)
+		component_master_del(&pdev->dev, &dcss_master_ops);
+	else
+		dcss_drv_deinit(&pdev->dev, false);
 
 	return 0;
 }

@@ -240,9 +240,10 @@
 		fsl,has-rstcr;
 	};
 
+/include/ "pq3-power.dtsi"
 	power@e0070 {
-		compatible = "fsl,mpc8536-pmc", "fsl,mpc8548-pmc";
-		reg = <0xe0070 0x20>;
+		compatible = "fsl,p1022-pmc", "fsl,mpc8536-pmc",
+				"fsl,mpc8548-pmc";
 	};
 
 };

@@ -93,15 +93,6 @@ struct caam_ctl_state {
 	u32 scfgr;
 };
 
-#ifdef CONFIG_PM_SLEEP
-struct caam_ctl_state {
-	struct masterid deco_mid[16];
-	struct masterid jr_mid[4];
-	u32 mcr;
-	u32 scfgr;
-};
-#endif
-
 /*
  * Driver-private storage for a single CAAM block instance
  */
@@ -128,9 +119,9 @@ struct caam_drv_private {
 	u8 blob_present;	/* Nonzero if BLOB support present in device */
 	u8 sm_present;		/* Nonzero if Secure Memory is supported */
 	u8 mc_en;		/* Nonzero if MC f/w is active */
+	u8 scu_en;		/* Nonzero if SCU f/w is active */
 	u8 optee_en;		/* Nonzero if OP-TEE f/w is active */
 	bool pr_support;        /* RNG prediction resistance available */
-	int secvio_irq;		/* Security violation interrupt number */
 	int virt_en;		/* Virtualization enabled in CAAM */
 	int era;		/* CAAM Era (internal HW revision) */
 

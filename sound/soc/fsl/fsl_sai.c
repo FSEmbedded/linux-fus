@@ -684,6 +684,20 @@ static int fsl_sai_hw_params(struct snd_pcm_substream *substream,
 			   FSL_SAI_CR3_TRCE_MASK,
 			   FSL_SAI_CR3_TRCE((dl_cfg[dl_cfg_idx].mask[tx] & trce_mask)));
 
+	/*
+	 * When the TERE and FSD_MSTR enabled before configuring the word width
+	 * There will be no frame sync clock issue, because word width impact
+	 * the generation of frame sync clock.
+	 *
+	 * TERE enabled earlier only for i.MX8MP case for the hardware limitation,
+	 * We need to disable FSD_MSTR before configuring word width, then enable
+	 * FSD_MSTR bit for this specific case.
+	 */
+	if (sai->soc_data->mclk_with_tere && sai->mclk_direction_output &&
+	    !sai->is_consumer_mode[tx])
+		regmap_update_bits(sai->regmap, FSL_SAI_xCR4(tx, ofs),
+				   FSL_SAI_CR4_FSD_MSTR, 0);
+
 	regmap_update_bits(sai->regmap, FSL_SAI_xCR4(tx, ofs),
 			   FSL_SAI_CR4_SYWD_MASK | FSL_SAI_CR4_FRSZ_MASK |
 			   FSL_SAI_CR4_CHMOD_MASK,
@@ -691,6 +705,13 @@ static int fsl_sai_hw_params(struct snd_pcm_substream *substream,
 	regmap_update_bits(sai->regmap, FSL_SAI_xCR5(tx, ofs),
 			   FSL_SAI_CR5_WNW_MASK | FSL_SAI_CR5_W0W_MASK |
 			   FSL_SAI_CR5_FBT_MASK, val_cr5);
+
+	/* Enable FSD_MSTR after configuring word width */
+	if (sai->soc_data->mclk_with_tere && sai->mclk_direction_output &&
+	    !sai->is_consumer_mode[tx])
+		regmap_update_bits(sai->regmap, FSL_SAI_xCR4(tx, ofs),
+				   FSL_SAI_CR4_FSD_MSTR, FSL_SAI_CR4_FSD_MSTR);
+
 	regmap_write(sai->regmap, FSL_SAI_xMR(tx),
 		     ~0UL - ((1 << min(channels, slots)) - 1));
 
@@ -703,6 +724,9 @@ static int fsl_sai_hw_free(struct snd_pcm_substream *substream,
 	struct fsl_sai *sai = snd_soc_dai_get_drvdata(cpu_dai);
 	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
 	unsigned int ofs = sai->soc_data->reg_offset;
+
+	/* Clear xMR to avoid channel swap with mclk_with_tere enabled case */
+	regmap_write(sai->regmap, FSL_SAI_xMR(tx), 0);
 
 	regmap_update_bits(sai->regmap, FSL_SAI_xCR3(tx, ofs),
 			   FSL_SAI_CR3_TRCE_MASK, 0);
@@ -846,8 +870,7 @@ static int fsl_sai_startup(struct snd_pcm_substream *substream,
 {
 	struct fsl_sai *sai = snd_soc_dai_get_drvdata(cpu_dai);
 	bool tx = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
-	int ret, i, j, k = 0;
-	u64 clk_rate[2];
+	int ret;
 
 	/*
 	 * EDMA controller needs period size to be a multiple of
@@ -859,26 +882,6 @@ static int fsl_sai_startup(struct snd_pcm_substream *substream,
 					   tx ? sai->dma_params_tx.maxburst :
 					   sai->dma_params_rx.maxburst);
 
-	sai->constraint_rates = fsl_sai_rate_constraints;
-	if (sai->pll8k_clk || sai->pll11k_clk) {
-		sai->constraint_rates.list = sai->constraint_rates_list;
-		sai->constraint_rates.count = 0;
-		for (i = 0; i < FAL_SAI_NUM_RATES; i++) {
-			clk_rate[0] = clk_get_rate(sai->pll8k_clk);
-			clk_rate[1] = clk_get_rate(sai->pll11k_clk);
-			for (j = 0; j < 2; j++) {
-				if (clk_rate[j] != 0 &&
-				    do_div(clk_rate[j], fsl_sai_rates[i]) == 0) {
-					sai->constraint_rates_list[k++] = fsl_sai_rates[i];
-					sai->constraint_rates.count++;
-				}
-			}
-		}
-
-		/* protection for if there is no proper rate found*/
-		if (!sai->constraint_rates.count)
-			sai->constraint_rates = fsl_sai_rate_constraints;
-	}
 	ret = snd_pcm_hw_constraint_list(substream->runtime, 0,
 			SNDRV_PCM_HW_PARAM_RATE, &sai->constraint_rates);
 
@@ -1335,6 +1338,8 @@ static int fsl_sai_probe(struct platform_device *pdev)
 	char tmp[8];
 	int irq, ret, i;
 	int index;
+	int j, k = 0;
+	u64 clk_rate[2];
 	u32 dmas[4];
 
 	sai = devm_kzalloc(dev, sizeof(*sai), GFP_KERNEL);
@@ -1391,6 +1396,27 @@ static int fsl_sai_probe(struct platform_device *pdev)
 
 	fsl_asoc_get_pll_clocks(&pdev->dev, &sai->pll8k_clk,
 				&sai->pll11k_clk);
+
+	sai->constraint_rates = fsl_sai_rate_constraints;
+	if (sai->pll8k_clk || sai->pll11k_clk) {
+		sai->constraint_rates.list = sai->constraint_rates_list;
+		sai->constraint_rates.count = 0;
+		for (i = 0; i < FAL_SAI_NUM_RATES; i++) {
+			clk_rate[0] = clk_get_rate(sai->pll8k_clk);
+			clk_rate[1] = clk_get_rate(sai->pll11k_clk);
+			for (j = 0; j < 2; j++) {
+				if (clk_rate[j] != 0 &&
+				    do_div(clk_rate[j], fsl_sai_rates[i]) == 0) {
+					sai->constraint_rates_list[k++] = fsl_sai_rates[i];
+					sai->constraint_rates.count++;
+				}
+			}
+		}
+
+		/* protection for if there is no proper rate found*/
+		if (!sai->constraint_rates.count)
+			sai->constraint_rates = fsl_sai_rate_constraints;
+	}
 
 	/* Use Multi FIFO mode depending on the support from SDMA script */
 	ret = of_property_read_u32_array(np, "dmas", dmas, 4);
@@ -1543,7 +1569,7 @@ static int fsl_sai_probe(struct platform_device *pdev)
 		ret = devm_snd_dmaengine_pcm_register(dev, NULL, 0);
 		if (ret) {
 			dev_err_probe(dev, ret, "Registering PCM dmaengine failed\n");
-			goto err_pm_get_sync;
+			goto err_component_register;
 		}
 	}
 
@@ -1574,6 +1600,9 @@ static void fsl_sai_remove(struct platform_device *pdev)
 	pm_runtime_disable(&pdev->dev);
 	if (!pm_runtime_status_suspended(&pdev->dev))
 		fsl_sai_runtime_suspend(&pdev->dev);
+
+	if (sai->verid.feature & FSL_SAI_VERID_TSTMP_EN)
+		sysfs_remove_group(&pdev->dev.kobj,  fsl_sai_get_dev_attribute_group(sai->monitor_spdif));
 }
 
 static const struct fsl_sai_soc_data fsl_sai_vf610_data = {
@@ -1688,6 +1717,18 @@ static const struct fsl_sai_soc_data fsl_sai_imx93_data = {
 	.max_burst = {8, 8},
 };
 
+static const struct fsl_sai_soc_data fsl_sai_imx95_data = {
+	.use_imx_pcm = true,
+	.use_edma = true,
+	.fifo_depth = 128,
+	.reg_offset = 8,
+	.mclk0_is_mclk1 = false,
+	.pins = 8,
+	.flags = 0,
+	.max_register = FSL_SAI_MCTL,
+	.max_burst = {8, 8},
+};
+
 static const struct of_device_id fsl_sai_ids[] = {
 	{ .compatible = "fsl,vf610-sai", .data = &fsl_sai_vf610_data },
 	{ .compatible = "fsl,imx6sx-sai", .data = &fsl_sai_imx6sx_data },
@@ -1700,6 +1741,7 @@ static const struct of_device_id fsl_sai_ids[] = {
 	{ .compatible = "fsl,imx8ulp-sai", .data = &fsl_sai_imx8ulp_data },
 	{ .compatible = "fsl,imx8mn-sai", .data = &fsl_sai_imx8mn_data },
 	{ .compatible = "fsl,imx93-sai", .data = &fsl_sai_imx93_data },
+	{ .compatible = "fsl,imx95-sai", .data = &fsl_sai_imx95_data },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, fsl_sai_ids);

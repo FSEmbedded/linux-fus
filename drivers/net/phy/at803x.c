@@ -887,6 +887,14 @@ static int at803x_probe(struct phy_device *phydev)
 			break;
 		}
 
+		/* Disable WoL in 1588 register which is enabled
+		 * by default
+		 */
+		ret = phy_modify_mmd(phydev, MDIO_MMD_PCS,
+				     AT803X_PHY_MMD3_WOL_CTRL,
+				     AT803X_WOL_EN, 0);
+		if (ret)
+			return ret;
 	}
 
 	return 0;

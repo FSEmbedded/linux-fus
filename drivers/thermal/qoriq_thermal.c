@@ -4,7 +4,6 @@
 // Copyright 2022 NXP
 
 #include <linux/clk.h>
-#include <linux/device_cooling.h>
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/module.h>
@@ -76,7 +75,6 @@ struct qoriq_sensor {
 	struct thermal_zone_device	*tzd;
 	int				temp_passive;
 	int				temp_critical;
-	struct thermal_cooling_device	*cdev;
 };
 
 struct qoriq_tmu_data {
@@ -147,6 +145,43 @@ static int tmu_get_temp(struct thermal_zone_device *tz, int *temp)
 	return 0;
 }
 
+static int tmu_get_trend(struct thermal_zone_device *tz,
+			 const struct thermal_trip *trip,
+			 enum thermal_trend *trend)
+
+{
+	struct qoriq_sensor *qsensor = tz->devdata;
+	int trip_temp;
+
+	if (!qsensor->tzd)
+		return 0;
+
+	trip_temp = (trip->type == THERMAL_TRIP_PASSIVE) ? qsensor->temp_passive :
+					     qsensor->temp_critical;
+
+	if (qsensor->tzd->temperature >=
+		(trip_temp - TMU_TEMP_PASSIVE_COOL_DELTA))
+		*trend = THERMAL_TREND_RAISING;
+	else
+		*trend = THERMAL_TREND_DROPPING;
+
+	return 0;
+}
+
+static int tmu_set_trip_temp(struct thermal_zone_device *tz, int trip,
+			     int temp)
+{
+	struct qoriq_sensor *qsensor = tz->devdata;
+
+	if (trip == TMU_TRIP_CRITICAL)
+		qsensor->temp_critical = temp;
+
+	if (trip == TMU_TRIP_PASSIVE)
+		qsensor->temp_passive = temp;
+
+	return 0;
+}
+
 static const struct thermal_zone_device_ops tmu_tz_ops = {
 	.get_temp = tmu_get_temp,
 	.get_trend = tmu_get_trend,
@@ -156,7 +191,8 @@ static const struct thermal_zone_device_ops tmu_tz_ops = {
 static int qoriq_tmu_register_tmu_zone(struct device *dev,
 				       struct qoriq_tmu_data *qdata)
 {
-	int id, sites = 0;
+	int i, id, sites = 0;
+	struct thermal_trip trip;
 
 	for (id = 0; id < SITES_MAX; id++) {
 		struct thermal_zone_device *tzd;
@@ -181,7 +217,26 @@ static int qoriq_tmu_register_tmu_zone(struct device *dev,
 		else
 			sites |= 0x1 << id;
 
+		sensor->tzd = tzd;
+
 		devm_thermal_add_hwmon_sysfs(dev, tzd);
+
+		/* first thermal zone takes care of system-wide device cooling */
+		if (id == 0) {
+
+			for (i = 0; i < thermal_zone_get_num_trips(sensor->tzd); i++) {
+				ret = thermal_zone_get_trip(sensor->tzd, i, &trip);
+				if (ret)
+					continue;
+
+				if (trip.type == THERMAL_TRIP_CRITICAL) {
+					sensor->temp_critical = trip.temperature;
+				} else if(trip.type == THERMAL_TRIP_PASSIVE) {
+					sensor->temp_passive = trip.temperature;
+				}
+			}
+		}
+
 	}
 
 	if (sites) {
@@ -231,33 +286,6 @@ static int qoriq_tmu_calibration(struct device *dev,
 		regmap_write(data->regmap, REGS_TTCFGR, val);
 		val = of_read_number(calibration + 1, 1);
 		regmap_write(data->regmap, REGS_TSCFGR, val);
-	}
-
-	return 0;
-}
-
-static int imx93_tmu_calibration(struct device *dev,
-				 struct qoriq_tmu_data *data)
-{
-	const u32 *calibration = NULL;
-	u32 cal_pt = 0;
-	u32 val = 0;
-	unsigned int len = 0;
-	unsigned int i = 0;
-
-	calibration = of_get_property(dev->of_node, "fsl,tmu-calibration", &len);
-	if (calibration == NULL || len / 8 > 16 || len % 8) {
-		dev_err(dev, "invalid tmu calibration\n");
-		return -ENODEV;
-	}
-
-	for (i = 0; i < len; i += 0x8, calibration += 2) {
-		cal_pt = i / 8;
-		regmap_write(data->regmap, REGS_TTCFGR, cal_pt);
-		val = of_read_number(calibration, 1);
-		regmap_write(data->regmap, REGS_TSCFGR, val);
-		val = of_read_number(calibration + 1, 1);
-		regmap_write(data->regmap, REGS_TTRnCR(cal_pt), val);
 	}
 
 	return 0;
@@ -379,10 +407,7 @@ static int qoriq_tmu_probe(struct platform_device *pdev)
 
 	qoriq_tmu_init_device(data);	/* TMU initialization */
 
-	if (data->ver == TMU_VER93)
-		ret = imx93_tmu_calibration(dev, data);
-	else
-		ret = qoriq_tmu_calibration(dev, data);	/* TMU calibration */
+	ret = qoriq_tmu_calibration(dev, data);	/* TMU calibration */
 	if (ret < 0)
 		return ret;
 

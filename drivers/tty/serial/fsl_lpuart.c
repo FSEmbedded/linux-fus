@@ -22,6 +22,7 @@
 #include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/reset.h>
 #include <linux/serial_core.h>
 #include <linux/slab.h>
 #include <linux/tty_flip.h>
@@ -236,9 +237,6 @@
 #define GLOBAL_RST_MIN_US	20
 #define GLOBAL_RST_MAX_US	40
 
-#define UARTFIFO_RXIDEN_RDRF	0x3
-#define UARTCTRL_IDLECFG	0x7
-
 /* Rx DMA timeout in ms, which is used to calculate Rx ring buffer size */
 #define DMA_RX_TIMEOUT		(10)
 #define DMA_RX_IDLE_CHARS	8
@@ -286,6 +284,7 @@ struct lpuart_port {
 	struct scatterlist	rx_sgl, tx_sgl[2];
 	struct circ_buf		rx_ring;
 	int			rx_dma_rng_buf_len;
+	int			rx_dma_periods;
 	int                     last_residue;
 	unsigned int		dma_tx_nents;
 	wait_queue_head_t	dma_wait;
@@ -310,7 +309,7 @@ static const struct lpuart_soc_data vf_data = {
 static const struct lpuart_soc_data ls1021a_data = {
 	.devtype = LS1021A_LPUART,
 	.iotype = UPIO_MEM32BE,
-	.rx_watermark = 0,
+	.rx_watermark = 1,
 };
 
 static const struct lpuart_soc_data ls1028a_data = {
@@ -323,14 +322,7 @@ static struct lpuart_soc_data imx7ulp_data = {
 	.devtype = IMX7ULP_LPUART,
 	.iotype = UPIO_MEM32,
 	.reg_off = IMX_REG_OFF,
-	.rx_watermark = 0,
-};
-
-static struct lpuart_soc_data imx8ulp_data = {
-	.devtype = IMX8ULP_LPUART,
-	.iotype = UPIO_MEM32,
-	.reg_off = IMX_REG_OFF,
-	.rx_watermark = 3,
+	.rx_watermark = 1,
 };
 
 static struct lpuart_soc_data imx8ulp_data = {
@@ -1124,7 +1116,7 @@ static void lpuart_copy_rx_to_tty(struct lpuart_port *sport)
 	struct dma_chan *chan = sport->dma_rx_chan;
 	struct circ_buf *ring = &sport->rx_ring;
 	unsigned long flags;
-	int count = 0, copied;
+	int count, copied;
 
 	if (lpuart_is_32(sport)) {
 		unsigned long sr = lpuart32_read(&sport->port, UARTSTAT);
@@ -1886,6 +1878,7 @@ static void lpuart32_hw_setup(struct lpuart_port *sport)
 static int lpuart32_startup(struct uart_port *port)
 {
 	struct lpuart_port *sport = container_of(port, struct lpuart_port, port);
+	struct tty_port *tty_port = &sport->port.state->port;
 	unsigned long temp;
 	int ret;
 
@@ -2432,7 +2425,6 @@ static const struct uart_ops lpuart_pops = {
 	.break_ctl	= lpuart_break_ctl,
 	.startup	= lpuart_startup,
 	.shutdown	= lpuart_shutdown,
-	.pm		= lpuart_uart_pm,
 	.set_termios	= lpuart_set_termios,
 	.pm		= lpuart_uart_pm,
 	.type		= lpuart_type,
@@ -2458,7 +2450,6 @@ static const struct uart_ops lpuart32_pops = {
 	.break_ctl	= lpuart32_break_ctl,
 	.startup	= lpuart32_startup,
 	.shutdown	= lpuart32_shutdown,
-	.pm		= lpuart_uart_pm,
 	.set_termios	= lpuart32_set_termios,
 	.pm		= lpuart_uart_pm,
 	.type		= lpuart_type,
@@ -2856,29 +2847,6 @@ static int lpuart_global_reset(struct lpuart_port *sport)
 	return 0;
 }
 
-static int lpuart_attach_pd(struct device *dev)
-{
-	struct device *pd_uart;
-	struct device_link *link;
-
-	if (dev->pm_domain)
-		return 0;
-
-	pd_uart = dev_pm_domain_attach_by_name(dev, "uart");
-	if (IS_ERR(pd_uart))
-		return PTR_ERR(pd_uart);
-	link = device_link_add(dev, pd_uart, DL_FLAG_STATELESS |
-					     DL_FLAG_PM_RUNTIME |
-					     DL_FLAG_RPM_ACTIVE);
-	if (IS_ERR(link)) {
-		dev_err(dev, "Failed to add device_link to uart pd: %ld\n",
-			PTR_ERR(link));
-		return PTR_ERR(link);
-	}
-
-	return 0;
-}
-
 static int lpuart_probe(struct platform_device *pdev)
 {
 	const struct lpuart_soc_data *sdata = of_device_get_match_data(&pdev->dev);
@@ -2921,10 +2889,6 @@ static int lpuart_probe(struct platform_device *pdev)
 	else
 		sport->port.rs485_config = lpuart_config_rs485;
 	sport->port.rs485_supported = lpuart_rs485_supported;
-
-	ret = lpuart_attach_pd(&pdev->dev);
-	if (ret)
-		return ret;
 
 	sport->ipg_clk = devm_clk_get(&pdev->dev, "ipg");
 	if (IS_ERR(sport->ipg_clk)) {
@@ -3099,7 +3063,7 @@ static bool lpuart_uport_is_active(struct lpuart_port *sport)
 static int lpuart_suspend_noirq(struct device *dev)
 {
 	struct lpuart_port *sport = dev_get_drvdata(dev);
-	int ret;
+	bool irq_wake = irqd_is_wakeup_set(irq_get_irq_data(sport->port.irq));
 
 	if (lpuart_uport_is_active(sport))
 		serial_lpuart_enable_wakeup(sport, !!irq_wake);

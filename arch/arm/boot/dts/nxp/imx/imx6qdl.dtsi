@@ -150,6 +150,11 @@
 		interrupt-parent = <&gpc>;
 		ranges;
 
+		caam_sm: caam-sm@100000 {
+			compatible = "fsl,imx6q-caam-sm";
+			reg = <0x100000 0x4000>;
+		};
+
 		dma_apbh: dma-controller@110000 {
 			compatible = "fsl,imx6q-dma-apbh", "fsl,imx28-dma-apbh";
 			reg = <0x00110000 0x2000>;
@@ -1163,9 +1168,12 @@
 					 <&clks IMX6QDL_CLK_ENET_REF>,
 					 <&clks IMX6QDL_CLK_ENET_REF_SEL>;
 				clock-names = "ipg", "ahb", "ptp", "enet_clk_ref";
+				assigned-clocks = <&clks IMX6QDL_CLK_ENET_REF>;
+				assigned-clock-rates = <125000000>;
 				fsl,stop-mode = <&gpr 0x34 27>;
 				nvmem-cells = <&fec_mac_addr>;
 				nvmem-cell-names = "mac-address";
+				fsl,wakeup_irq = <0>;
 				status = "disabled";
 			};
 

@@ -1024,7 +1024,7 @@ static void do_unregister_framebuffer(struct fb_info *fb_info)
 	fb_destroy_modelist(&fb_info->modelist);
 	registered_fb[fb_info->node] = NULL;
 	num_registered_fb--;
-#ifdef CONFIG_GUMSTIX_AM200EPD
+#if (defined CONFIG_GUMSTIX_AM200EPD) || (defined CONFIG_FB_MXC_HDMI) || (defined CONFIG_FB_MXS_SII902X)
 	{
 		struct fb_event event;
 		event.info = fb_info;

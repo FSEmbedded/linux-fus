@@ -285,6 +285,9 @@
 			resets = <&src 0>;
 			reset-names = "gpu3d";
 			power-domains = <&pd_pu>;
+
+			throttle,max_state = <1>;
+			#cooling-cells = <2>;
 		};
 
 		dma_apbh: dma-controller@1804000 {
@@ -297,6 +300,11 @@
 			#dma-cells = <1>;
 			dma-channels = <4>;
 			clocks = <&clks IMX6SX_CLK_APBH_DMA>;
+		};
+
+		caam_sm: caam-sm@100000 {
+			compatible = "fsl,imx6q-caam-sm";
+			reg = <0x100000 0x8000>;
 		};
 
 		gpmi: nand-controller@1806000 {

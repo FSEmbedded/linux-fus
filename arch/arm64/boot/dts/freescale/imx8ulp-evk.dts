@@ -34,6 +34,22 @@
 		reg = <0x0 0x80000000 0 0x80000000>;
 	};
 
+	rpmsg_keys: rpmsg-keys {
+		compatible = "fsl,rpmsg-keys";
+
+		volume-up {
+			label = "VolumeUp";
+			linux,code = <KEY_VOLUMEUP>;
+			rpmsg-key,wakeup;
+		};
+
+		volume-down {
+			label = "VolumeDown";
+			linux,code = <KEY_VOLUMEDOWN>;
+			rpmsg-key,wakeup;
+		};
+	};
+
 	reserved-memory {
 		#address-cells = <2>;
 		#size-cells = <2>;
@@ -53,6 +69,34 @@
 
 		rsc_table: rsc-table@1fff8000{
 			reg = <0 0x1fff8000 0 0x1000>;
+			no-map;
+		};
+
+		dsp_reserved: dsp_reserved@8e000000 {
+			reg = <0 0x8e000000 0 0x1000000>;
+			no-map;
+		};
+		dsp_reserved_heap: dsp_reserved_heap@8f000000 {
+			reg = <0 0x8f000000 0 0xef0000>;
+			no-map;
+		};
+		dsp_vdev0vring0: vdev0vring0@8fef0000 {
+			reg = <0 0x8fef0000 0 0x8000>;
+			no-map;
+		};
+		dsp_vdev0vring1: vdev0vring1@8fef8000 {
+			reg = <0 0x8fef8000 0 0x8000>;
+			no-map;
+		};
+		dsp_vdev0buffer: vdev0buffer@8ff00000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x8ff00000 0 0x100000>;
+			no-map;
+		};
+
+		ele_reserved: ele-reserved@90000000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x90000000 0 0x100000>;
 			no-map;
 		};
 
@@ -80,6 +124,12 @@
 			compatible = "shared-dma-pool";
 			reg = <0 0xa8400000 0 0x100000>;
 			no-map;
+		};
+
+		audio_reserved: audio@a8500000 {
+			compatible = "shared-dma-pool";
+			no-map;
+			reg = <0 0xa8500000 0 0x100000>;
 		};
 	};
 
@@ -167,6 +217,16 @@
 	};
 };
 
+&cm33 {
+	mbox-names = "tx", "rx", "rxdb";
+	mboxes = <&mu 0 1>,
+		 <&mu 1 1>,
+		 <&mu 3 1>;
+	memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
+			<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
+	status = "okay";
+};
+
 &dcnano {
 	status = "okay";
 };
@@ -203,10 +263,8 @@
 	status = "okay";
 
 	mx25uw51345gxdi00: flash@0 {
-		reg = <0>;
-		#address-cells = <1>;
-		#size-cells = <1>;
 		compatible = "jedec,spi-nor";
+		reg = <0>;
 		spi-max-frequency = <200000000>;
 		spi-tx-bus-width = <8>;
 		spi-rx-bus-width = <8>;
@@ -278,18 +336,6 @@
 	status = "okay";
 };
 
-&imx8ulp_cm33 {
-	ipc-only;
-	rsc-da=<0x1fff8000>;
-	mbox-names = "tx", "rx", "rxdb";
-	mboxes = <&mu 0 1
-			&mu 1 1
-			&mu 3 1>;
-	memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
-			<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
-	status = "okay";
-};
-
 &lpspi5 {
 	fsl,spi-num-chipselects = <1>;
 	pinctrl-names = "default", "sleep";
@@ -306,36 +352,31 @@
 	};
 };
 
-&cm33 {
-	mbox-names = "tx", "rx", "rxdb";
-	mboxes = <&mu 0 1>,
-		 <&mu 1 1>,
-		 <&mu 3 1>;
-	memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
-			<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
-	status = "okay";
-};
-
-&flexspi2 {
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&pinctrl_flexspi2_ptd>;
-	pinctrl-1 = <&pinctrl_flexspi2_ptd>;
-	status = "okay";
-
-	mx25uw51345gxdi00: flash@0 {
-		compatible = "jedec,spi-nor";
-		reg = <0>;
-		spi-max-frequency = <200000000>;
-		spi-tx-bus-width = <8>;
-		spi-rx-bus-width = <8>;
-	};
-};
-
 &lpuart5 {
 	/* console */
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_lpuart5>;
 	pinctrl-1 = <&pinctrl_lpuart5>;
+	status = "okay";
+};
+
+&lpuart6 {
+	/* BT */
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_lpuart6>;
+	pinctrl-1 = <&pinctrl_lpuart6>;
+	status = "okay";
+
+	bluetooth {
+		compatible = "nxp,88w8987-bt";
+	};
+};
+
+&lpuart7 {
+	/* FT4232 PortD: need to connect J25/J26 2-3 */
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_lpuart7>;
+	pinctrl-1 = <&pinctrl_lpuart7>;
 	status = "okay";
 };
 
@@ -354,6 +395,72 @@
 		gpio-controller;
 		#gpio-cells = <2>;
 	};
+};
+
+&sai5 {
+	#sound-dai-cells = <0>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_sai5>;
+	pinctrl-1 = <&pinctrl_sai5>;
+	assigned-clocks = <&cgc1 IMX8ULP_CLK_SAI5_SEL>;
+	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
+	fsl,dataline = <1 0x08 0x01>;
+	status = "okay";
+};
+
+&spdif {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_spdif>;
+	pinctrl-1 = <&pinctrl_spdif>;
+	assigned-clocks = <&cgc2 IMX8ULP_CLK_SPDIF_SEL>;
+	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
+	status = "okay";
+};
+
+&tpm_rpchip_0 {
+	status = "okay";
+};
+
+&usbotg1 {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_otgid1>;
+	pinctrl-1 = <&pinctrl_otgid1>;
+	dr_mode = "otg";
+	hnp-disable;
+	srp-disable;
+	adp-disable;
+	over-current-active-low;
+	status = "okay";
+};
+
+&usbphy1 {
+	status = "okay";
+	fsl,tx-d-cal = <110>;
+};
+
+&usbmisc1 {
+	status = "okay";
+};
+
+&usbotg2 {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_otgid2>;
+	pinctrl-1 = <&pinctrl_otgid2>;
+	dr_mode = "otg";
+	hnp-disable;
+	srp-disable;
+	adp-disable;
+	over-current-active-low;
+	status = "okay";
+};
+
+&usbphy2 {
+	status = "okay";
+	fsl,tx-d-cal = <110>;
+};
+
+&usbmisc2 {
+	status = "okay";
 };
 
 &usdhc0 {
@@ -379,8 +486,8 @@
 	bus-width = <4>;
 	keep-power-in-suspend;
 	non-removable;
-	wakeup-source;
 	fsl,sdio-async-interrupt-enabled;
+	wakeup-source;
 	status = "okay";
 
 	wifi_wake_host {
@@ -391,7 +498,7 @@
 	};
 };
 
-&ele_mu {
+&ele_fw2 {
 	memory-region = <&ele_reserved>;
 };
 
@@ -422,6 +529,10 @@
 };
 
 &mu {
+	status = "okay";
+};
+
+&mu3 {
 	status = "okay";
 };
 
@@ -465,6 +576,21 @@
 		>;
 	};
 
+	pinctrl_gpio_keys: gpiokeys {
+		fsl,pins = <
+			MX8ULP_PAD_PTF31__PTF31		0x3
+		>;
+	};
+
+	pinctrl_lpspi5: lpspi5grp {
+		fsl,pins = <
+			MX8ULP_PAD_PTF16__LPSPI5_SIN	0x43
+			MX8ULP_PAD_PTF17__LPSPI5_SOUT	0x43
+			MX8ULP_PAD_PTF18__LPSPI5_SCK	0x43
+			MX8ULP_PAD_PTF19__PTF19		0x43
+		>;
+	};
+
 	pinctrl_lpuart5: lpuart5grp {
 		fsl,pins = <
 			MX8ULP_PAD_PTF14__LPUART5_TX	0x3
@@ -472,26 +598,12 @@
 		>;
 	};
 
-	pinctrl_lpi2c7: lpi2c7grp {
+	pinctrl_lpuart6: lpuart6grp {
 		fsl,pins = <
-			MX8ULP_PAD_PTE12__LPI2C7_SCL	0x20
-			MX8ULP_PAD_PTE13__LPI2C7_SDA	0x20
-		>;
-	};
-
-	pinctrl_usdhc0: usdhc0grp {
-		fsl,pins = <
-			MX8ULP_PAD_PTD1__SDHC0_CMD	0x3
-			MX8ULP_PAD_PTD2__SDHC0_CLK	0x10002
-			MX8ULP_PAD_PTD10__SDHC0_D0	0x3
-			MX8ULP_PAD_PTD9__SDHC0_D1	0x3
-			MX8ULP_PAD_PTD8__SDHC0_D2	0x3
-			MX8ULP_PAD_PTD7__SDHC0_D3	0x3
-			MX8ULP_PAD_PTD6__SDHC0_D4	0x3
-			MX8ULP_PAD_PTD5__SDHC0_D5	0x3
-			MX8ULP_PAD_PTD4__SDHC0_D6	0x3
-			MX8ULP_PAD_PTD3__SDHC0_D7	0x3
-			MX8ULP_PAD_PTD11__SDHC0_DQS	0x10002
+			MX8ULP_PAD_PTE10__LPUART6_TX	0x3
+			MX8ULP_PAD_PTE11__LPUART6_RX	0x3
+			MX8ULP_PAD_PTE9__LPUART6_RTS_B	0x3
+			MX8ULP_PAD_PTE8__LPUART6_CTS_B	0x3
 		>;
 	};
 
@@ -581,12 +693,8 @@
 };
 
 &mipi_csi0 {
-	#address-cells = <1>;
-	#size-cells = <0>;
-
 	status = "okay";
-	port@0 {
-		reg = <0>;
+	port {
 		mipi_csi0_ep: endpoint {
 			remote-endpoint = <&ov5640_mipi_ep>;
 			data-lanes = <1 2>;

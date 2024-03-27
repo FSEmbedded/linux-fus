@@ -106,17 +106,11 @@ static int dwc3_get_dr_mode(struct dwc3 *dwc)
 
 void dwc3_set_prtcap(struct dwc3 *dwc, u32 mode)
 {
-	u32 reg, reg_mode;
-
-	/* Set PRTCAPDIR to be device mode for disconnect */
-	if (mode == DWC3_GCTL_PRTCAP_NONE)
-		reg_mode = DWC3_GCTL_PRTCAP_DEVICE;
-	else
-		reg_mode = mode;
+	u32 reg;
 
 	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
 	reg &= ~(DWC3_GCTL_PRTCAPDIR(DWC3_GCTL_PRTCAP_OTG));
-	reg |= DWC3_GCTL_PRTCAPDIR(reg_mode);
+	reg |= DWC3_GCTL_PRTCAPDIR(mode);
 	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
 
 	dwc->current_dr_role = mode;
@@ -140,6 +134,9 @@ static void __dwc3_set_mode(struct work_struct *work)
 
 	if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_OTG)
 		dwc3_otg_update(dwc, 0);
+
+	if (!desired_dr_role)
+		goto out;
 
 	if (desired_dr_role == dwc->current_dr_role)
 		goto out;
@@ -1104,6 +1101,52 @@ static void dwc3_set_power_down_clk_scale(struct dwc3 *dwc)
 	}
 }
 
+#ifdef CONFIG_OF
+struct dwc3_cache_type {
+	u8 transfer_type_datard;
+	u8 transfer_type_descrd;
+	u8 transfer_type_datawr;
+	u8 transfer_type_descwr;
+};
+
+static const struct dwc3_cache_type ls1088a_dwc3_cache_type = {
+	.transfer_type_datard = 2,
+	.transfer_type_descrd = 2,
+	.transfer_type_datawr = 2,
+	.transfer_type_descwr = 2,
+};
+
+/**
+ * dwc3_set_cache_type - Configure cache type registers
+ * @dwc: Pointer to our controller context structure
+ */
+static void dwc3_set_cache_type(struct dwc3 *dwc)
+{
+	u32 tmp, reg;
+	const struct dwc3_cache_type *cache_type =
+		device_get_match_data(dwc->dev);
+
+	if (cache_type) {
+		reg = dwc3_readl(dwc->regs,  DWC3_GSBUSCFG0);
+		tmp = reg;
+
+		reg &= ~DWC3_GSBUSCFG0_DATARD(~0);
+		reg |= DWC3_GSBUSCFG0_DATARD(cache_type->transfer_type_datard);
+
+		reg &= ~DWC3_GSBUSCFG0_DESCRD(~0);
+		reg |= DWC3_GSBUSCFG0_DESCRD(cache_type->transfer_type_descrd);
+
+		reg &= ~DWC3_GSBUSCFG0_DATAWR(~0);
+		reg |= DWC3_GSBUSCFG0_DATAWR(cache_type->transfer_type_datawr);
+
+		reg &= ~DWC3_GSBUSCFG0_DESCWR(~0);
+		reg |= DWC3_GSBUSCFG0_DESCWR(cache_type->transfer_type_descwr);
+
+		if (tmp != reg)
+			dwc3_writel(dwc->regs, DWC3_GSBUSCFG0, reg);
+	}
+}
+#endif
 static void dwc3_config_threshold(struct dwc3 *dwc)
 {
 	u32 reg;
@@ -1292,6 +1335,10 @@ static int dwc3_core_init(struct dwc3 *dwc)
 	ret = dwc3_phy_power_on(dwc);
 	if (ret)
 		goto err_exit_phy;
+
+#ifdef CONFIG_OF
+	dwc3_set_cache_type(dwc);
+#endif
 
 	ret = dwc3_event_buffers_setup(dwc);
 	if (ret) {
@@ -2115,11 +2162,6 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
 	u32 reg;
 
 	switch (dwc->current_dr_role) {
-	case DWC3_GCTL_PRTCAP_NONE:
-		if (pm_runtime_suspended(dwc->dev))
-			break;
-		dwc3_core_exit(dwc);
-		break;
 	case DWC3_GCTL_PRTCAP_DEVICE:
 		if (pm_runtime_suspended(dwc->dev))
 			break;
@@ -2178,14 +2220,6 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
 	u32		reg;
 
 	switch (dwc->current_dr_role) {
-	case DWC3_GCTL_PRTCAP_NONE:
-		if (dwc->core_inited)
-			break;
-
-		ret = dwc3_core_init_for_resume(dwc);
-		if (ret)
-			return ret;
-		break;
 	case DWC3_GCTL_PRTCAP_DEVICE:
 		/*
 		 * system resume may come after runtime resume

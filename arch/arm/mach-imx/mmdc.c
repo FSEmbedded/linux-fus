@@ -506,7 +506,7 @@ static int imx_mmdc_perf_init(struct platform_device *pdev, void __iomem *mmdc_b
 	pmu_mmdc->mmdc_ipg_clk = mmdc_ipg_clk;
 	pmu_mmdc->devtype_data = &imx6q_data;
 	if (of_id)
-		pmu_mmdc->devtype_data = (struct fsl_mmdc_devtype_data *)of_id->data;
+		pmu_mmdc->devtype_data = of_id->data;
 
 	hrtimer_init(&pmu_mmdc->hrtimer, CLOCK_MONOTONIC,
 			HRTIMER_MODE_REL);

@@ -219,7 +219,6 @@ static const struct of_device_id ls_pcie_ep_of_match[] = {
 	{ .compatible = "fsl,ls1028a-pcie-ep", .data = &ls1_ep_drvdata },
 	{ .compatible = "fsl,ls1046a-pcie-ep", .data = &ls1_ep_drvdata },
 	{ .compatible = "fsl,ls1088a-pcie-ep", .data = &ls2_ep_drvdata },
-	{ .compatible = "fsl,ls1028a-pcie-ep", .data = &ls1_ep_drvdata },
 	{ .compatible = "fsl,ls2088a-pcie-ep", .data = &ls2_ep_drvdata },
 	{ .compatible = "fsl,lx2160ar2-pcie-ep", .data = &lx2_ep_drvdata },
 	{ },
@@ -266,6 +265,10 @@ static int __init ls_pcie_ep_probe(struct platform_device *pdev)
 	pci->ep.ops = &ls_pcie_ep_ops;
 
 	pcie->big_endian = of_property_read_bool(dev->of_node, "big-endian");
+
+	/* set 64-bit DMA mask and coherent DMA mask */
+	if (dma_set_mask_and_coherent(dev, DMA_BIT_MASK(64)))
+		dev_warn(dev, "Failed to set 64-bit DMA mask.\n");
 
 	platform_set_drvdata(pdev, pcie);
 

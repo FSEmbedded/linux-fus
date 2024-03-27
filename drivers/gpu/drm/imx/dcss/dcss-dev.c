@@ -310,6 +310,9 @@ static int dcss_dev_suspend(struct device *dev)
 	struct drm_device *ddev = dcss_drv_dev_to_drm(dev);
 	int ret;
 
+	if (!dcss)
+		return 0;
+
 	drm_mode_config_helper_suspend(ddev);
 
 	if (pm_runtime_suspended(dev))

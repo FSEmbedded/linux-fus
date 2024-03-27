@@ -510,6 +510,36 @@ static void ci_hdrc_host_resume(struct ci_hdrc *ci, bool power_lost)
 }
 #endif
 
+static int ci_ehci_bus_resume(struct usb_hcd *hcd)
+{
+	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
+	int port;
+
+	int ret = orig_bus_resume(hcd);
+
+	if (ret)
+		return ret;
+
+	port = HCS_N_PORTS(ehci->hcs_params);
+	while (port--) {
+		u32 __iomem *reg = &ehci->regs->port_status[port];
+		u32 portsc = ehci_readl(ehci, reg);
+		/*
+		 * Notify PHY after resume signal has finished, it is
+		 * for global suspend case.
+		 */
+		if (hcd->usb_phy
+			&& test_bit(port, &ehci->bus_suspended)
+			&& (portsc & PORT_CONNECT)
+			&& (ehci_port_speed(ehci, portsc) ==
+				USB_PORT_STAT_HIGH_SPEED))
+			/* notify the USB PHY */
+			usb_phy_notify_resume(hcd->usb_phy, USB_SPEED_HIGH);
+	}
+
+	return 0;
+}
+
 int ci_hdrc_host_init(struct ci_hdrc *ci)
 {
 	struct ci_role_driver *rdrv;

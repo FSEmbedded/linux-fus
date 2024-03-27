@@ -29,13 +29,12 @@ struct mac_device {
 	struct phylink		*phylink;
 	struct phylink_config	phylink_config;
 	phy_interface_t		phy_if;
+	struct fwnode_handle	*fwnode_phy;
 
 	bool promisc;
 	bool allmulti;
 
 	const struct phylink_mac_ops *phylink_ops;
-	int (*enable)(struct fman_mac *mac_dev);
-	void (*disable)(struct fman_mac *mac_dev);
 	int (*set_promisc)(struct fman_mac *mac_dev, bool enable);
 	int (*change_addr)(struct fman_mac *mac_dev, const enet_addr_t *enet_addr);
 	int (*set_allmulti)(struct fman_mac *mac_dev, bool enable);

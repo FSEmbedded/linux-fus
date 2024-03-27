@@ -16,7 +16,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/string.h>
-#include <soc/fsl/qman.h>
+#include <linux/fsl_qman.h>
 
 #include "debugfs.h"
 #include "regs.h"

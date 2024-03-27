@@ -916,19 +916,18 @@ static int vsc9953_mdio_bus_alloc(struct ocelot *ocelot)
 		struct ocelot_port *ocelot_port = ocelot->ports[dp->index];
 		size_t num_phys = ocelot_port->serdes ? 1 : 0;
 		struct phylink_pcs *phylink_pcs;
-		int addr = port + 4;
-
-		if (dsa_is_unused_port(felix->ds, port))
-			continue;
+		int addr = dp->index + 4;
 
 		if (ocelot_port->phy_mode == PHY_INTERFACE_MODE_INTERNAL)
 			continue;
 
-		phylink_pcs = lynx_pcs_create_mdiodev(felix->imdio, addr);
+		phylink_pcs = lynx_pcs_create_mdiodev(felix->imdio, addr,
+						      &ocelot_port->serdes,
+						      num_phys);
 		if (IS_ERR(phylink_pcs))
 			continue;
 
-		felix->pcs[port] = phylink_pcs;
+		felix->pcs[dp->index] = phylink_pcs;
 
 		dev_info(dev, "Found PCS at internal MDIO address %d\n", addr);
 	}

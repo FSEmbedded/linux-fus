@@ -224,7 +224,7 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_gpio_leds>;
 
-		led-red {
+		charger-led {
 			gpios = <&gpio1 2 0>;
 			linux,default-trigger = "max8903-charger-charging";
 			retain-state-suspended;
@@ -250,6 +250,14 @@
 
 	v4l2_out {
 		compatible = "fsl,mxc_v4l2_output";
+		status = "okay";
+	};
+
+	mipi_dsi_reset: reset-controller {
+		compatible = "gpio-reset";
+		reset-gpios = <&gpio6 11 GPIO_ACTIVE_LOW>;
+		reset-delay-us = <50>;
+		#reset-cells = <0>;
 		status = "okay";
 	};
 };
@@ -297,8 +305,7 @@
         disp_id = <1>;
         lcd_panel = "TRULY-WVGA";
         disp-power-on-supply = <&reg_mipi_dsi_pwr_on>;
-        reset-gpios = <&gpio6 11 GPIO_ACTIVE_LOW>;
-        reset-delay-us = <50>;
+	resets = <&mipi_dsi_reset>;
         status = "okay";
 };
 

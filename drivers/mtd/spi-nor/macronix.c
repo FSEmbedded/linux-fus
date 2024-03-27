@@ -46,7 +46,7 @@ static const struct spi_nor_fixups mx25l25635_fixups = {
  *
  * Return: 0 on success, -errno otherwise.
  */
-static int spi_nor_macronix_octal_dtr_enable(struct spi_nor *nor, bool enable)
+static int spi_nor_macronix_set_octal_dtr(struct spi_nor *nor, bool enable)
 {
 	struct spi_mem_op op;
 	u8 *buf = nor->bouncebuf, i;
@@ -111,19 +111,21 @@ static int spi_nor_macronix_octal_dtr_enable(struct spi_nor *nor, bool enable)
 
 static void octaflash_default_init(struct spi_nor *nor)
 {
-	nor->params->octal_dtr_enable = spi_nor_macronix_octal_dtr_enable;
+	nor->params->set_octal_dtr = spi_nor_macronix_set_octal_dtr;
 }
 
 static struct spi_nor_fixups octaflash_fixups = {
 	.default_init = octaflash_default_init,
 };
 
-static void mx25uw51345g_post_sfdp_fixup(struct spi_nor *nor)
+static int mx25uw51345g_post_sfdp_fixup(struct spi_nor *nor)
 {
 	nor->params->hwcaps.mask |= SNOR_HWCAPS_READ_8_8_8_DTR;
 	spi_nor_set_read_settings(&nor->params->reads[SNOR_CMD_READ_8_8_8_DTR],
 				  0, 20, SPINOR_OP_OPI_DTR_RD,
 				  SNOR_PROTO_8_8_8_DTR);
+
+	return 0;
 }
 
 static struct spi_nor_fixups mx25uw51345g_fixups = {

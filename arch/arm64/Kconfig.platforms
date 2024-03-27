@@ -211,18 +211,16 @@ config ARCH_MXC
 	select GPIOLIB
 	select IMX_GPCV2
 	select IMX_GPCV2_PM_DOMAINS
-	select HAVE_IMX_BUSFREQ
 	select PM
 	select PM_GENERIC_DOMAINS
 	select SOC_BUS
-	select TIMER_IMX_SYS_CTR
-	select CLKSRC_IMX_TPM
 	help
 	  This enables support for the ARMv8 based SoCs in the
 	  NXP i.MX family.
 
 config HAVE_IMX_BUSFREQ
 	bool "i.MX8 busfreq"
+	default ARCH_MXC
 
 config ARCH_S32
 	bool "NXP S32 SoC Family"

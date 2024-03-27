@@ -19,16 +19,12 @@
 		reg = <0x0 0x40000000 0 0x80000000>;
 	};
 
-	hdmi-connector {
-		compatible = "hdmi-connector";
-		label = "hdmi";
-		type = "a";
-
-		port {
-			hdmi_connector_in: endpoint {
-				remote-endpoint = <&adv7535_out>;
-			};
-		};
+	ir_recv: ir-receiver {
+		compatible = "gpio-ir-receiver";
+		gpios = <&gpio1 13 GPIO_ACTIVE_LOW>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_ir_recv>;
+		linux,autosuspend-period = <125>;
 	};
 
 	leds {
@@ -421,39 +417,22 @@
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 
-	hdmi@3d {
+	adv_bridge: adv7535@3d {
 		compatible = "adi,adv7535";
 		reg = <0x3d>;
-		interrupt-parent = <&gpio1>;
-		interrupts = <9 IRQ_TYPE_EDGE_FALLING>;
+		adi,addr-cec = <0x3b>;
 		adi,dsi-lanes = <4>;
-		avdd-supply = <&buck5_reg>;
-		dvdd-supply = <&buck5_reg>;
-		pvdd-supply = <&buck5_reg>;
-		a2vdd-supply = <&buck5_reg>;
-		v3p3-supply = <&reg_vddext_3v3>;
-		v1p2-supply = <&buck5_reg>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_i2c2_synaptics_dsx_io>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <9 IRQ_TYPE_LEVEL_LOW>;
 
-		ports {
-			#address-cells = <1>;
-			#size-cells = <0>;
+		status = "okay";
 
-			port@0 {
-				reg = <0>;
-
-				adv7535_in: endpoint {
-					remote-endpoint = <&dsi_out>;
-				};
+		port {
+			adv7535_from_dsim: endpoint {
+				remote-endpoint = <&dsim_to_adv7535>;
 			};
-
-			port@1 {
-				reg = <1>;
-
-				adv7535_out: endpoint {
-					remote-endpoint = <&hdmi_connector_in>;
-				};
-			};
-
 		};
 	};
 
@@ -487,11 +466,6 @@
 	};
 };
 
-
-&csi {
-	status = "okay";
-};
-
 &i2c3 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
@@ -504,61 +478,6 @@
 		gpio-controller;
 		#gpio-cells = <2>;
 		vcc-supply = <&buck4_reg>;
-	};
-
-	camera@3c {
-		compatible = "ovti,ov5640";
-		reg = <0x3c>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_camera>;
-		clocks = <&clk IMX8MM_CLK_CLKO1>;
-		clock-names = "xclk";
-		assigned-clocks = <&clk IMX8MM_CLK_CLKO1>;
-		assigned-clock-parents = <&clk IMX8MM_CLK_24M>;
-		assigned-clock-rates = <24000000>;
-		powerdown-gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>;
-		reset-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;
-
-		port {
-			ov5640_to_mipi_csi2: endpoint {
-				remote-endpoint = <&imx8mm_mipi_csi_in>;
-				clock-lanes = <0>;
-				data-lanes = <1 2>;
-			};
-		};
-	};
-};
-
-&lcdif {
-	status = "okay";
-};
-
-&mipi_csi {
-	status = "okay";
-
-	ports {
-		port@0 {
-			imx8mm_mipi_csi_in: endpoint {
-				remote-endpoint = <&ov5640_to_mipi_csi2>;
-				data-lanes = <1 2>;
-			};
-		};
-	};
-};
-
-&mipi_dsi {
-	samsung,esc-clock-frequency = <10000000>;
-	status = "okay";
-
-	ports {
-		port@1 {
-			reg = <1>;
-
-			dsi_out: endpoint {
-				remote-endpoint = <&adv7535_in>;
-				data-lanes = <1 2 3 4>;
-			};
-		};
 	};
 
 	ak4458_1: ak4458@10 {
@@ -626,11 +545,13 @@
 };
 
 &mipi_csi_1 {
-	#address-cells = <1>;
-	#size-cells = <0>;
 	status = "okay";
 	port {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
 		mipi1_sensor_ep: endpoint@1 {
+			reg = <1>;
 			remote-endpoint = <&ov5640_mipi1_ep>;
 			data-lanes = <2>;
 			csis-hs-settle = <13>;
@@ -639,6 +560,7 @@
 		};
 
 		csi1_mipi_ep: endpoint@2 {
+			reg = <2>;
 			remote-endpoint = <&csi1_ep>;
 		};
 	};
@@ -686,18 +608,6 @@
 				 <&clk IMX8MM_SYS_PLL2_250M>;
 	vpcie-supply = <&reg_pcie0>;
 	status = "okay";
-};
-
-&pcie0_ep{
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_pcie0>;
-	clocks = <&clk IMX8MM_CLK_PCIE1_ROOT>,
-		 <&clk IMX8MM_CLK_PCIE1_AUX>,
-		 <&clk IMX8MM_CLK_PCIE1_PHY>,
-		 <&pcie0_refclk>;
-	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
-	ext_osc = <1>;
-	status = "disabled";
 };
 
 &sai2 {
@@ -801,6 +711,15 @@
 &uart2 { /* console */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2>;
+	status = "okay";
+};
+
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3>;
+	assigned-clocks = <&clk IMX8MM_CLK_UART3>;
+	assigned-clock-parents = <&clk IMX8MM_SYS_PLL1_80M>;
+	fsl,uart-has-rtscts;
 	status = "okay";
 };
 
@@ -1199,14 +1118,6 @@
 	pinctrl_backlight: backlightgrp {
 		fsl,pins = <
 			MX8MM_IOMUXC_GPIO1_IO01_PWM1_OUT	0x06
-		>;
-	};
-
-	pinctrl_camera: cameragrp {
-		fsl,pins = <
-			MX8MM_IOMUXC_GPIO1_IO06_GPIO1_IO6		0x19
-			MX8MM_IOMUXC_GPIO1_IO07_GPIO1_IO7		0x19
-			MX8MM_IOMUXC_GPIO1_IO14_CCMSRCGPCMIX_CLKO1	0x59
 		>;
 	};
 };

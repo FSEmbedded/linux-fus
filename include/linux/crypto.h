@@ -16,6 +16,7 @@
 #include <linux/refcount.h>
 #include <linux/slab.h>
 #include <linux/types.h>
+#include <linux/hw_bound_key.h>
 
 /*
  * Algorithm masks and types.

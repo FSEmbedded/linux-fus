@@ -25,6 +25,7 @@
 #define ENETC_SIPCAPR0_RSS	BIT(8)
 #define ENETC_SIPCAPR0_QBV	BIT(4)
 #define ENETC_SIPCAPR0_QBU	BIT(3)
+#define ENETC_SIPCAPR0_RFS	BIT(2)
 #define ENETC_SIPCAPR1	0x24
 #define ENETC_SITGTGR	0x30
 #define ENETC_SIRBGCR	0x38
@@ -42,6 +43,10 @@
 
 #define ENETC_SIPMAR0	0x80
 #define ENETC_SIPMAR1	0x84
+
+#define ENETC_SICVLANR1	0x90
+#define ENETC_SICVLANR2	0x94
+#define  SICVLANR_ETYPE	GENMASK(15, 0)
 
 /* VF-PF Message passing */
 #define ENETC_DEFAULT_MSG_SIZE	1024	/* and max size */
@@ -138,6 +143,8 @@ enum enetc_bdr_type {TX, RX};
 #define ENETC_TBMR_VIH	BIT(9)
 #define ENETC_TBMR_PRIO_MASK		GENMASK(2, 0)
 #define ENETC_TBMR_SET_PRIO(val)	((val) & ENETC_TBMR_PRIO_MASK)
+#define ENETC_TBMR_WRR	GENMASK(6, 4)
+#define ENETC_TBMR_FWB	BIT(24)
 #define ENETC_TBMR_EN	BIT(31)
 #define ENETC_TBSR	0x4
 #define ENETC_TBBAR0	0x10
@@ -184,7 +191,7 @@ enum enetc_bdr_type {TX, RX};
 #define ENETC_PVCLCTR_OVTPIDL(bmp)	((bmp) & 0xff) /* VLAN_TYPE */
 #define ENETC_PSIVLANR(n)	(0x0240 + (n) * 4) /* n = SI index */
 #define ENETC_PSIVLAN_EN	BIT(31)
-#define ENETC_PSIVLAN_SET_QOS(val)	((u32)(val) << 12)
+#define ENETC_PSIVLAN_SET_QOS(val)	((u32)(val) << 13)
 #define ENETC_PPAUONTR		0x0410
 #define ENETC_PPAUOFFTR		0x0414
 #define ENETC_PTXMBAR		0x0608
@@ -250,6 +257,7 @@ enum enetc_bdr_type {TX, RX};
 #define ENETC_MMFCTXR		0x1f18
 #define ENETC_MMHCR		0x1f1c
 #define ENETC_PTCMSDUR(n)	(0x2020 + (n) * 4) /* n = TC index [0..7] */
+#define ENETC_PTCMSDUR_MAXSDU	GENMASK(15, 0)
 
 #define ENETC_PMAC_OFFSET	0x1000
 
@@ -279,7 +287,6 @@ enum enetc_bdr_type {TX, RX};
 #define ENETC_SET_SINGLE_STEP_OFFSET(v)	(((v) & 0xff) << 8)
 
 #define ENETC_PM0_IF_MODE	0x8300
-#define ENETC_PM1_IF_MODE	0x9300
 #define ENETC_PM0_IFM_RG	BIT(2)
 #define ENETC_PM0_IFM_RLP	(BIT(5) | BIT(11))
 #define ENETC_PM0_IFM_EN_AUTO	BIT(15)
@@ -355,10 +362,6 @@ enum enetc_bdr_type {TX, RX};
 #define ENETC_PM_TSCOL(mac)	(0x82E0 + ENETC_PMAC_OFFSET * (mac))
 #define ENETC_PM_TLCOL(mac)	(0x82E8 + ENETC_PMAC_OFFSET * (mac))
 #define ENETC_PM_TECOL(mac)	(0x82F0 + ENETC_PMAC_OFFSET * (mac))
-
-#define ENETC_MAC_MERGE_MMFCRXR	0x1f14
-#define ENETC_MAC_MERGE_MMFCTXR	0x1f18
-
 
 /* Port counters */
 #define ENETC_PICDR(n)		(0x0700 + (n) * 8) /* n = [0..3] */
@@ -538,11 +541,21 @@ static inline u64 _enetc_rd_reg64_wa(void __iomem *reg)
 union enetc_tx_bd {
 	struct {
 		__le64 addr;
-		__le16 buf_len;
-		__le16 frm_len;
+		struct {
+			union {
+				__le16 buf_len;
+				__le16 hdr_len;	// For LSO only
+			};
+			__le16 frm_len;
+		};
 		union {
 			struct {
-				u8 reserved[3];
+				u8 l3_start:7;
+				u8 ipcs:1;
+				u8 l3_hdr_size:7;
+				u8 l3t:1;
+				u8 resv:5;
+				u8 l4t:3;
 				u8 flags;
 			}; /* default layout */
 			__le32 txstart;
@@ -553,23 +566,27 @@ union enetc_tx_bd {
 		__le32 tstamp;
 		__le16 tpid;
 		__le16 vid;
-		u8 reserved[6];
+		__le16 lso_sg_size;	// For enetc4
+		__le16 frm_len_ext;	// For enetc4
+		u8 resv[2];
 		u8 e_flags;
 		u8 flags;
 	} ext; /* Tx BD extension */
 	struct {
 		__le32 tstamp;
-		u8 reserved[10];
+		u8 resv[8];
+		__le16 lso_err_count;	// For enetc4
 		u8 status;
 		u8 flags;
 	} wb; /* writeback descriptor */
 };
 
 enum enetc_txbd_flags {
-	ENETC_TXBD_FLAGS_RES0 = BIT(0), /* reserved */
+	ENETC_TXBD_FLAGS_L4CS = BIT(0),
 	ENETC_TXBD_FLAGS_TSE = BIT(1),
+	ENETC_TXBD_FLAGS_LSO = BIT(1), // For ENETC4
 	ENETC_TXBD_FLAGS_W = BIT(2),
-	ENETC_TXBD_FLAGS_RES3 = BIT(3), /* reserved */
+	ENETC_TXBD_FLAGS_CSUM_LSO = BIT(3), // For ENETC4
 	ENETC_TXBD_FLAGS_TXSTART = BIT(4),
 	ENETC_TXBD_FLAGS_EX = BIT(6),
 	ENETC_TXBD_FLAGS_F = BIT(7)
@@ -577,6 +594,10 @@ enum enetc_txbd_flags {
 #define ENETC_TXBD_STATS_WIN	BIT(7)
 #define ENETC_TXBD_TXSTART_MASK GENMASK(24, 0)
 #define ENETC_TXBD_FLAGS_OFFSET 24
+
+#define ENETC_TXBD_L4T_NONE	0
+#define ENETC_TXBD_L4T_UDP	BIT(0)
+#define ENETC_TXBD_L4T_TCP	BIT(1)
 
 static inline __le32 enetc_txbd_set_tx_start(u64 tx_start, u8 flags)
 {
@@ -597,8 +618,6 @@ static inline void enetc_clear_tx_bd(union enetc_tx_bd *txbd)
 #define ENETC_TXBD_E_FLAGS_VLAN_INS	BIT(0)
 #define ENETC_TXBD_E_FLAGS_ONE_STEP_PTP	BIT(1)
 #define ENETC_TXBD_E_FLAGS_TWO_STEP_PTP	BIT(2)
-
-#define enetc_tsn_is_enabled() IS_ENABLED(CONFIG_ENETC_TSN)
 
 union enetc_rx_bd {
 	struct {
@@ -621,7 +640,10 @@ union enetc_rx_bd {
 	} r;
 	struct {
 		__le32 tstamp;
-		u8 reserved[12];
+		u8 rsc_framse;	/* For ENETC4 */
+		u8 resv0[3];
+		__le32 rsc_abs_ts_delta; /*For ENETC4*/
+		u8 resv1[4];
 	} ext;
 };
 
@@ -631,6 +653,7 @@ union enetc_rx_bd {
 #define ENETC_RXBD_LSTATUS(flags)	((flags) << 16)
 #define ENETC_RXBD_FLAG_VLAN	BIT(9)
 #define ENETC_RXBD_FLAG_TSTMP	BIT(10)
+#define ENETC_RXBD_FLAG_L4_CSUM_OK	BIT(12) /* Only TCP and UDP */
 #define ENETC_RXBD_FLAG_TPID	GENMASK(1, 0)
 
 #define ENETC_MAC_ADDR_FILT_CNT	8 /* # of supported entries per port */
@@ -688,7 +711,8 @@ static inline void enetc_load_primary_mac_addr(struct enetc_hw *hw,
 /* Command completion status */
 enum enetc_msg_cmd_status {
 	ENETC_MSG_CMD_STATUS_OK,
-	ENETC_MSG_CMD_STATUS_FAIL
+	ENETC_MSG_CMD_STATUS_FAIL,
+	ENETC_MSG_CMD_NOT_SUPPORT
 };
 
 /* VSI-PSI command message types */
@@ -799,7 +823,6 @@ struct streamid_conf {
 		u8	en;
 };
 
-#define ENETC_CDBR_SID_ENABLE	BIT(7)
 #define ENETC_CBDR_SID_VID_MASK 0xfff
 #define ENETC_CBDR_SID_VIDM BIT(12)
 #define ENETC_CBDR_SID_TG_MASK 0xc000
@@ -1117,14 +1140,15 @@ struct enetc_cbd {
 };
 
 #define ENETC_CLK  400000000ULL
-static inline u32 enetc_cycles_to_usecs(u32 cycles)
+#define ENETC4_CLK 333000000ULL
+static inline u32 enetc_cycles_to_usecs(u32 cycles, u64 clk_freq)
 {
-	return (u32)div_u64(cycles * 1000000ULL, ENETC_CLK);
+	return (u32)div_u64(cycles * 1000000ULL, clk_freq);
 }
 
-static inline u32 enetc_usecs_to_cycles(u32 usecs)
+static inline u32 enetc_usecs_to_cycles(u32 usecs, u64 clk_freq)
 {
-	return (u32)div_u64(usecs * ENETC_CLK, 1000000ULL);
+	return (u32)div_u64(usecs * clk_freq, 1000000ULL);
 }
 
 /* Port traffic class frame preemption register */
@@ -1144,66 +1168,10 @@ static inline u32 enetc_usecs_to_cycles(u32 usecs)
 #define ENETC_PTCTSDR(n)	(0x1210 + 4 * (n))
 #define ENETC_TSDE		BIT(31)
 
-/* Port time gating tick granularity register */
-#define ENETC_QBV_PTGTGR_OFFSET 0x11a0c
-#define ENETC_QBV_TICK_GRAN_MASK 0xffffffff
-
 /* Port time gating admin gate list status register */
 #define ENETC_QBV_PTGAGLSR_OFFSET 0x11a10
 
 #define ENETC_QBV_CFG_PEND_MASK 0x00000002
-
-/* Port time gating admin gate list length register */
-#define ENETC_QBV_PTGAGLLR_OFFSET 0x11a14
-#define ENETC_QBV_ADMIN_GATE_LIST_LENGTH_MASK 0xffff
-
-/* Port time gating operational gate list status register */
-#define ENETC_QBV_PTGOGLSR_OFFSET 0x11a18
-#define ENETC_QBV_HTA_POS_MASK 0xffff0000
-
-#define ENETC_QBV_CURR_POS_MASK 0x0000ffff
-
-/* Port time gating operational gate list length register */
-#define ENETC_QBV_PTGOGLLR_OFFSET 0x11a1c
-#define ENETC_QBV_OPER_GATE_LIST_LENGTH_MASK 0xffff
-
-/* Port time gating current time register */
-#define ENETC_QBV_PTGCTR_OFFSET 0x11a20
-#define ENETC_QBV_CURR_TIME_MASK 0xffffffffffffffff
-
-/* Port traffic class a time gating control register */
-#define ENETC_QBV_PTC0TGCR_OFFSET  0x11a40
-#define ENETC_QBV_PTC1TGCR_OFFSET  0x11a50
-#define ENETC_QBV_PTC2TGCR_OFFSET  0x11a60
-#define ENETC_QBV_PTC3TGCR_OFFSET  0x11a70
-#define ENETC_QBV_PTC4TGCR_OFFSET  0x11a80
-#define ENETC_QBV_PTC5TGCR_OFFSET  0x11a90
-#define ENETC_QBV_PTC6TGCR_OFFSET  0x11aa0
-#define ENETC_QBV_PTC7TGCR_OFFSET  0x11ab0
-
-/* Maximum Service Data Unit. */
-#define ENETC_PTC0MSDUR 0x12020
-#define ENETC_PTC1MSDUR 0x12024
-#define ENETC_PTC2MSDUR 0x12028
-#define ENETC_PTC3MSDUR 0x1202c
-#define ENETC_PTC4MSDUR 0x12030
-#define ENETC_PTC5MSDUR 0x12034
-#define ENETC_PTC6MSDUR 0x12038
-#define ENETC_PTC7MSDUR 0x1203c
-
-#define ENETC_QBV_MAXSDU_MASK 0xffff
-
-/* Port traffic class a time gating status register */
-#define ENETC_QBV_PTC0TGSR_OFFSET  0x11a44
-#define ENETC_QBV_HTA_STATE_MASK  0x10000
-#define ENETC_QBV_CURR_STATE_MASK 0x1
-
-/* Port traffic class a time gating transmission overrun counter register*/
-#define ENETC_QBV_PTC0TGTOCR_OFFSET 0x11a48
-#define ENETC_QBV_TX_OVERRUN_MASK 0xffffffffffffffff
-#define ENETC_TGLSTR 0xa200
-#define ENETC_TGS_MIN_DIS_MASK 0x80000000
-#define ENETC_MIN_LOOKAHEAD_MASK 0xffff
 
 /* PSFP setting */
 #define ENETC_PPSFPMR 0x11b00

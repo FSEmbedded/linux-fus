@@ -185,6 +185,33 @@ static int imx8mp_hsio_blk_ctrl_probe(struct imx8mp_blk_ctrl *bc)
 	return devm_of_clk_add_hw_provider(bc->dev, of_clk_hw_simple_get, hw);
 }
 
+static int imx8mp_qos_set(struct imx8mp_blk_ctrl_domain *domain)
+{
+	const struct imx8mp_blk_ctrl_domain_data *data = domain->data;
+	struct imx8mp_blk_ctrl *bc = domain->bc;
+	struct regmap *regmap = bc->noc_regmap;
+	int i;
+
+	if (!data)
+		return 0;
+
+	if (data->hurry_data)
+		regmap_set_bits(bc->regmap, data->hurry_data->off, data->hurry_data->hurry_mask);
+
+	if (!regmap)
+		return 0;
+
+	for (i = 0; i < DOMAIN_MAX_NOC; i++) {
+		if (!data->noc_data[i])
+			continue;
+		regmap_write(regmap, data->noc_data[i]->off + 0x8, data->noc_data[i]->priority);
+		regmap_write(regmap, data->noc_data[i]->off + 0xc, data->noc_data[i]->mode);
+		regmap_write(regmap, data->noc_data[i]->off + 0x18, data->noc_data[i]->extctrl);
+	}
+
+	return 0;
+}
+
 static void imx8mp_hsio_blk_ctrl_power_on(struct imx8mp_blk_ctrl *bc,
 					  struct imx8mp_blk_ctrl_domain *domain)
 {

@@ -2,7 +2,6 @@
 /*
  * Copyright 2008 - 2016 Freescale Semiconductor Inc.
  * Copyright 2020 NXP
- * Copyright 2020 Puresoftware Ltd.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -34,7 +33,6 @@
 #include <linux/bpf_trace.h>
 #include <soc/fsl/bman.h>
 #include <soc/fsl/qman.h>
-#include <linux/acpi.h>
 #include "fman.h"
 #include "fman_port.h"
 #include "mac.h"
@@ -315,7 +313,6 @@ static int dpaa_stop(struct net_device *net_dev)
 	msleep(200);
 
 	phylink_stop(mac_dev->phylink);
-	mac_dev->disable(mac_dev->fman_mac);
 
 	for (i = 0; i < ARRAY_SIZE(mac_dev->port); i++) {
 		error = fman_port_disable(mac_dev->port[i]);
@@ -2749,7 +2746,7 @@ static enum qman_cb_dqrr_result rx_default_dqrr(struct qman_portal *portal,
 	if (net_dev->features & NETIF_F_RXHASH && priv->keygen_in_use &&
 	    !fman_port_get_hash_result_offset(priv->mac_dev->port[RX],
 					      &hash_offset)) {
-		hash = be32_to_cpu(*(u32 *)(vaddr + hash_offset));
+		hash = be32_to_cpu(*(__be32 *)(vaddr + hash_offset));
 		hash_valid = true;
 	}
 
@@ -2938,11 +2935,6 @@ static int dpaa_open(struct net_device *net_dev)
 			goto mac_start_failed;
 	}
 
-	err = priv->mac_dev->enable(mac_dev->fman_mac);
-	if (err < 0) {
-		netif_err(priv, ifup, net_dev, "mac_dev->enable() = %d\n", err);
-		goto mac_start_failed;
-	}
 	phylink_start(mac_dev->phylink);
 
 	netif_tx_start_all_queues(net_dev);

@@ -44,7 +44,7 @@ static int dcss_kms_atomic_check(struct drm_device *dev,
 
 static const struct drm_mode_config_funcs dcss_drm_mode_config_funcs = {
 	.fb_create = drm_gem_fb_create,
-	.atomic_check = drm_atomic_helper_check,
+	.atomic_check = dcss_kms_atomic_check,
 	.atomic_commit = drm_atomic_helper_commit,
 };
 

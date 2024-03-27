@@ -35,14 +35,6 @@ module_param_named(no_mailboxes, no_mailboxes, int, 0644);
 MODULE_PARM_DESC(no_mailboxes,
 		 "There is no mailbox between cores, so ignore remote proc reply after start, default is 0 (off).");
 
-/*
- * Module parameters
- */
-static unsigned int no_mailboxes;
-module_param_named(no_mailboxes, no_mailboxes, int, 0644);
-MODULE_PARM_DESC(no_mailboxes,
-		 "There is no mailbox between cores, so ignore remote proc reply after start, default is 0 (off).");
-
 #define REMOTE_IS_READY				BIT(0)
 #define REMOTE_READY_WAIT_MAX_RETRIES		500
 

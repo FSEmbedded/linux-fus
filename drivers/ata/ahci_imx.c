@@ -871,7 +871,7 @@ static u32 imx_ahci_parse_props(struct device *dev,
 	return reg_value;
 }
 
-static const struct scsi_host_template ahci_platform_sht = {
+static struct scsi_host_template ahci_platform_sht = {
 	AHCI_SHT(DRV_NAME),
 };
 

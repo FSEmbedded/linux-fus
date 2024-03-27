@@ -23,18 +23,6 @@
 		};
 	};
 
-	hdmi-connector {
-		compatible = "hdmi-connector";
-		label = "hdmi";
-		type = "a";
-
-		port {
-			hdmi_connector_in: endpoint {
-				remote-endpoint = <&adv7533_out>;
-			};
-		};
-	};
-
 	memory@40000000 {
 		device_type = "memory";
 		reg = <0x0 0x40000000 0 0x80000000>;
@@ -265,38 +253,17 @@
 	sda-gpios = <&gpio5 17 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
 	status = "okay";
 
-	hdmi@3d {
+	adv_bridge: adv7535@3d {
 		compatible = "adi,adv7535";
-		reg = <0x3d>, <0x3c>, <0x3e>, <0x3f>;
-		reg-names = "main", "cec", "edid", "packet";
+		reg = <0x3d>;
+		adi,addr-cec = <0x3b>;
 		adi,dsi-lanes = <4>;
+		status = "okay";
 
-		adi,input-depth = <8>;
-		adi,input-colorspace = "rgb";
-		adi,input-clock = "1x";
-		adi,input-style = <1>;
-		adi,input-justification = "evenly";
-
-		ports {
-			#address-cells = <1>;
-			#size-cells = <0>;
-
-			port@0 {
-				reg = <0>;
-
-				adv7533_in: endpoint {
-					remote-endpoint = <&dsi_out>;
-				};
+		port {
+			adv7535_from_dsim: endpoint {
+				remote-endpoint = <&dsim_to_adv7535>;
 			};
-
-			port@1 {
-				reg = <1>;
-
-				adv7533_out: endpoint {
-					remote-endpoint = <&hdmi_connector_in>;
-				};
-			};
-
 		};
 	};
 
@@ -331,7 +298,7 @@
 };
 
 &i2c3 {
-	clock-frequency = <400000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default", "gpio";
 	pinctrl-0 = <&pinctrl_i2c3>;
 	pinctrl-1 = <&pinctrl_i2c3_gpio>;
@@ -346,43 +313,76 @@
 		#gpio-cells = <2>;
 	};
 
-	camera@3c {
+	ak4458_1: ak4458@10 {
+		#sound-dai-cells = <0>;
+		compatible = "asahi-kasei,ak4458";
+		reg = <0x10>;
+		AVDD-supply = <&reg_audio_board>;
+		DVDD-supply = <&reg_audio_board>;
+		status = "disabled";
+	};
+
+	ak4458_2: ak4458@12 {
+		#sound-dai-cells = <0>;
+		compatible = "asahi-kasei,ak4458";
+		reg = <0x12>;
+		AVDD-supply = <&reg_audio_board>;
+		DVDD-supply = <&reg_audio_board>;
+		status = "disabled";
+	};
+
+	ak5558: ak5558@13 {
+		#sound-dai-cells = <0>;
+		compatible = "asahi-kasei,ak5558";
+		reg = <0x13>;
+		reset-gpios = <&pca6416 3 GPIO_ACTIVE_LOW>;
+		AVDD-supply = <&reg_audio_board>;
+		DVDD-supply = <&reg_audio_board>;
+		status = "disabled";
+	};
+
+	ak4497: ak4497@11 {
+		#sound-dai-cells = <0>;
+		compatible = "asahi-kasei,ak4497";
+		reg = <0x11>;
+		reset-gpios = <&pca6416 5 GPIO_ACTIVE_LOW>;
+		AVDD-supply = <&reg_audio_board>;
+		DVDD-supply = <&reg_audio_board>;
+		status = "disabled";
+	};
+
+	ov5640_mipi_0: ov5640_mipi@3c {
 		compatible = "ovti,ov5640";
 		reg = <0x3c>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_camera>;
+		pinctrl-0 = <&pinctrl_csi_pwn>, <&pinctrl_csi_rst>;
 		clocks = <&clk IMX8MN_CLK_CLKO1>;
 		clock-names = "xclk";
 		assigned-clocks = <&clk IMX8MN_CLK_CLKO1>;
 		assigned-clock-parents = <&clk IMX8MN_CLK_24M>;
 		assigned-clock-rates = <24000000>;
+		csi_id = <0>;
 		powerdown-gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>;
 		reset-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;
-
+		mclk = <24000000>;
+		mclk_source = <0>;
+		mipi_csi;
+		status = "okay";
 		port {
-			ov5640_to_mipi_csi2: endpoint {
-				remote-endpoint = <&imx8mn_mipi_csi_in>;
-				clock-lanes = <0>;
+			ov5640_ep: endpoint {
+				remote-endpoint = <&mipi1_sensor_ep>;
 				data-lanes = <1 2>;
+				clocks-lanes = <0>;
 			};
 		};
 	};
 };
 
-&isi {
-	status = "okay";
-};
-
-&mipi_csi {
+&isi_0 {
 	status = "okay";
 
-	ports {
-		port@0 {
-			imx8mn_mipi_csi_in: endpoint {
-				remote-endpoint = <&ov5640_to_mipi_csi2>;
-				data-lanes = <1 2>;
-			};
-		};
+	cap_device {
+		status = "okay";
 	};
 };
 
@@ -391,17 +391,36 @@
 };
 
 &mipi_dsi {
-	samsung,esc-clock-frequency = <10000000>;
 	status = "okay";
 
-	ports {
-		port@1 {
-			reg = <1>;
+	port@1 {
 
-			dsi_out: endpoint {
-				remote-endpoint = <&adv7533_in>;
-				data-lanes = <1 2 3 4>;
-			};
+		dsim_to_adv7535: endpoint {
+			remote-endpoint = <&adv7535_from_dsim>;
+			attach-bridge;
+		};
+	};
+};
+
+&micfil {
+	#sound-dai-cells = <0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pdm>;
+	assigned-clocks = <&clk IMX8MN_CLK_PDM>;
+	assigned-clock-parents = <&clk IMX8MN_AUDIO_PLL1_OUT>;
+	assigned-clock-rates = <196608000>;
+	status = "okay";
+};
+
+&mipi_csi_1 {
+	status = "okay";
+	port {
+		mipi1_sensor_ep: endpoint {
+			remote-endpoint = <&ov5640_ep>;
+			data-lanes = <2>;
+			csis-hs-settle = <13>;
+			csis-clk-settle = <2>;
+			csis-wclk;
 		};
 	};
 };
@@ -474,6 +493,10 @@
 	assigned-clock-parents = <&clk IMX8MN_SYS_PLL1_80M>;
 	uart-has-rtscts;
 	status = "okay";
+
+	bluetooth {
+		compatible = "nxp,88w8987-bt";
+	};
 };
 
 &uart2 { /* console */
@@ -513,6 +536,27 @@
 	};
 };
 
+&usdhc1 {
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-0 = <&pinctrl_usdhc1>, <&pinctrl_wlan>;
+	pinctrl-1 = <&pinctrl_usdhc1_100mhz>, <&pinctrl_wlan>;
+	pinctrl-2 = <&pinctrl_usdhc1_200mhz>, <&pinctrl_wlan>;
+	bus-width = <4>;
+	keep-power-in-suspend;
+	non-removable;
+	wakeup-source;
+	fsl,sdio-async-interrupt-enabled;
+	vmmc-supply = <&reg_usdhc1_vmmc>;
+	status = "okay";
+
+	wifi_wake_host {
+		compatible = "nxp,wifi-wake-host";
+		interrupt-parent = <&gpio2>;
+		interrupts = <9 IRQ_TYPE_LEVEL_LOW>;
+		interrupt-names = "host-wake";
+	};
+};
+
 &usdhc2 {
 	assigned-clocks = <&clk IMX8MN_CLK_USDHC2>;
 	assigned-clock-rates = <200000000>;
@@ -546,11 +590,22 @@
 };
 
 &iomuxc {
-	pinctrl_camera: cameragrp {
+	pinctrl_csi_pwn: csi_pwn_grp {
+		fsl,pins = <
+			MX8MN_IOMUXC_GPIO1_IO07_GPIO1_IO7		0x19
+		>;
+	};
+
+	pinctrl_csi_rst: csi_rst_grp {
 		fsl,pins = <
 			MX8MN_IOMUXC_GPIO1_IO06_GPIO1_IO6		0x19
-			MX8MN_IOMUXC_GPIO1_IO07_GPIO1_IO7		0x19
 			MX8MN_IOMUXC_GPIO1_IO14_CCMSRCGPCMIX_CLKO1	0x59
+		>;
+	};
+
+	pinctrl_ir_recv: ir-recv {
+		fsl,pins = <
+			MX8MN_IOMUXC_GPIO1_IO13_GPIO1_IO13		0x4f
 		>;
 	};
 
@@ -588,13 +643,6 @@
 	pinctrl_gpio_led: gpioledgrp {
 		fsl,pins = <
 			MX8MN_IOMUXC_NAND_READY_B_GPIO3_IO16	0x19
-		>;
-	};
-
-	pinctrl_i2c2_gpio: i2c2grp-gpio {
-		fsl,pins = <
-			MX8MN_IOMUXC_I2C2_SCL_GPIO5_IO16		0x1c3
-			MX8MN_IOMUXC_I2C2_SDA_GPIO5_IO17		0x1c3
 		>;
 	};
 

@@ -178,18 +178,6 @@
 			};
 		};
 	};
-
-&csi {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_csi1>;
-	status = "okay";
-
-	port {
-		parallel_from_ov5640: endpoint {
-			remote-endpoint = <&ov5640_to_parallel>;
-			bus-type = <MEDIA_BUS_TYPE_PARALLEL>;
-		};
-	};
 };
 
 &fec1 {

@@ -86,6 +86,7 @@ static enum dpmac_eth_if dpmac_eth_if_mode(phy_interface_t if_mode)
 	case PHY_INTERFACE_MODE_1000BASEX:
 		return DPMAC_ETH_IF_1000BASEX;
 	case PHY_INTERFACE_MODE_25GBASER:
+	case PHY_INTERFACE_MODE_25GKR:
 		return DPMAC_ETH_IF_CAUI;
 	default:
 		return DPMAC_ETH_IF_MII;
@@ -291,7 +292,7 @@ static int dpaa2_pcs_create(struct dpaa2_mac *mac,
 		return 0;
 	}
 
-	pcs = lynx_pcs_create_fwnode(node);
+	pcs = lynx_pcs_create_fwnode(node, mac->phys, mac->num_lanes);
 	fwnode_handle_put(node);
 
 	if (pcs == ERR_PTR(-EPROBE_DEFER)) {
@@ -342,9 +343,6 @@ void dpaa2_mac_start(struct dpaa2_mac *mac)
 {
 	ASSERT_RTNL();
 
-	if (mac->serdes_phy)
-		phy_power_on(mac->serdes_phy);
-
 	phylink_start(mac->phylink);
 }
 
@@ -353,9 +351,62 @@ void dpaa2_mac_stop(struct dpaa2_mac *mac)
 	ASSERT_RTNL();
 
 	phylink_stop(mac->phylink);
+}
 
-	if (mac->serdes_phy)
-		phy_power_off(mac->serdes_phy);
+static int dpaa2_mac_get_phys(struct dpaa2_mac *mac)
+{
+	struct device_node *dn = to_of_node(mac->fw_node);
+	struct device *dev = &mac->mc_dev->dev;
+	struct phy *phy;
+	size_t i;
+	int err;
+	u32 val;
+
+	err = of_count_phandle_with_args(dn, "phys", "#phy-cells");
+	if (err <= 0) {
+		mac->num_phys = 0;
+		return 0;
+	}
+	mac->num_phys = err;
+
+	if (fwnode_property_read_u32(mac->fw_node, "num-lanes", &val))
+		mac->num_lanes = 1;
+	else
+		mac->num_lanes = val;
+
+	mac->phys = devm_kcalloc(dev, mac->num_phys, sizeof(struct phy *),
+				 GFP_KERNEL);
+	if (!mac->phys)
+		return -ENOMEM;
+
+	for (i = 0; i < mac->num_phys; i++) {
+		phy = devm_of_phy_get_by_index(dev, dn, i);
+		if (IS_ERR(phy))
+			return PTR_ERR(phy);
+
+		mac->phys[i] = phy;
+	}
+
+	/* PHYs 0 .. num_lanes-1 are SerDes lanes and are managed by the PCS.
+	 * The rest up to num_phys are optional retimers or other PHYs that
+	 * may be in the signal path and need to be managed. These will be
+	 * managed by the dpaa2-mac driver.
+	 */
+	for (i = mac->num_lanes; i < mac->num_phys; i++) {
+		err = phy_init(mac->phys[i]);
+		if (err)
+			return err;
+	}
+
+	return 0;
+}
+
+static void dpaa2_mac_put_phys(struct dpaa2_mac *mac)
+{
+	size_t i;
+
+	for (i = mac->num_lanes; i < mac->num_phys; i++)
+		phy_exit(mac->phys[i]);
 }
 
 int dpaa2_mac_connect(struct dpaa2_mac *mac)
@@ -412,7 +463,7 @@ int dpaa2_mac_connect(struct dpaa2_mac *mac)
 
 	mac->phylink_config.mac_capabilities = MAC_SYM_PAUSE | MAC_ASYM_PAUSE |
 		MAC_10FD | MAC_100FD | MAC_1000FD | MAC_2500FD | MAC_5000FD |
-		MAC_10000FD | MAC_25000FD;
+		MAC_10000FD | MAC_25000FD | MAC_40000FD | MAC_100000FD;
 
 	dpaa2_mac_set_supported_interfaces(mac);
 

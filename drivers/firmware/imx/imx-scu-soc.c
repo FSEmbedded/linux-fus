@@ -81,6 +81,7 @@ static const char *imx_scu_soc_name(u32 id)
 {
 	switch (id) {
 	case 0x1:
+		TKT340553_SW_WORKAROUND = true;
 		return "i.MX8QM";
 	case 0x2:
 		return "i.MX8QXP";

@@ -166,7 +166,7 @@ static int acpi_mac_probe(struct platform_device *pdev)
 	struct mac_priv_s	*priv;
 	u32			val;
 	u8			fman_id;
-	int			phy_if;
+	phy_interface_t		phy_if;
 	struct device		*fman_dev = NULL;
 	struct fwnode_handle	*fman_fwnode = NULL;
 	struct device		*fman_port_dev = NULL;
@@ -307,27 +307,6 @@ static int acpi_mac_probe(struct platform_device *pdev)
 	}
 	mac_dev->phy_if = phy_if;
 
-	priv->speed		= phy2speed[mac_dev->phy_if];
-	params.max_speed	= priv->speed;
-	mac_dev->if_support	= DTSEC_SUPPORTED;
-	/* We don't support half-duplex in SGMII mode */
-	if (mac_dev->phy_if == PHY_INTERFACE_MODE_SGMII)
-		mac_dev->if_support &= ~(SUPPORTED_10baseT_Half |
-					 SUPPORTED_100baseT_Half);
-
-	/* Gigabit support (no half-duplex) */
-	if (params.max_speed == 1000)
-		mac_dev->if_support |= SUPPORTED_1000baseT_Full;
-
-	/* The 10G interface only supports one mode */
-	if (mac_dev->phy_if == PHY_INTERFACE_MODE_XGMII)
-		mac_dev->if_support = SUPPORTED_10000baseT_Full;
-
-	/* Get the rest of the PHY information */
-	mac_dev->fwnode_phy =
-		fwnode_find_reference(dev->fwnode, "phy-handle", 0);
-
-	params.basex_if		= false;
 	params.mac_id		= priv->cell_index;
 	params.fm		= (void *)priv->fman;
 	params.exception_cb	= mac_exception;
@@ -338,21 +317,6 @@ static int acpi_mac_probe(struct platform_device *pdev)
 		dev_err(dev, "%s: mac_dev->init() = %d\n", __func__, err);
 		goto _return;
 	}
-
-	/* pause frame autonegotiation enabled */
-	mac_dev->autoneg_pause = true;
-
-	/* By intializing the values to false, force FMD to enable PAUSE frames
-	 * on RX and TX
-	 */
-	mac_dev->rx_pause_req = true;
-	mac_dev->tx_pause_req = true;
-	mac_dev->rx_pause_active = false;
-	mac_dev->tx_pause_active = false;
-	err = fman_set_mac_active_pause(mac_dev, true, true);
-	if (err < 0)
-		dev_err(dev, "%s : fman_set_mac_active_pause() = %d\n",
-			__func__, err);
 
 	if (!is_zero_ether_addr(mac_dev->addr))
 		dev_info(dev, "FMan MAC address: %pM\n", mac_dev->addr);
@@ -390,7 +354,9 @@ static int mac_probe(struct platform_device *_of_dev)
 	u32			 val;
 	u8			fman_id;
 	phy_interface_t          phy_if;
+	const char		*managed;
 
+	phy_if = PHY_INTERFACE_MODE_NA;
 	dev = &_of_dev->dev;
 	mac_node = dev->of_node;
 	init = of_device_get_match_data(dev);
@@ -524,13 +490,25 @@ static int mac_probe(struct platform_device *_of_dev)
 		of_node_put(dev_node);
 	}
 
-	/* Get the PHY connection type */
-	err = of_get_phy_mode(mac_node, &phy_if);
-	if (err) {
-		dev_warn(dev,
-			 "of_get_phy_mode() for %pOF failed. Defaulting to SGMII\n",
-			 mac_node);
-		phy_if = PHY_INTERFACE_MODE_SGMII;
+	/* Get the PHY connection type, except for C73 managed links where we
+	 * let phylink select state->interface, regardless of what's in the
+	 * device tree.
+	 *
+	 * Although, U-Boot's board_ft_fman_fixup_port() will "fix up" the
+	 * device tree and force a fixed-link on 10G ports, unless we use
+	 * phy-connection-type = "10gbase-kr". So we do expect to find device
+	 * trees with this phy-connection-type value, yet we still deliberately
+	 * ignore it.
+	 */
+	if (of_property_read_string(mac_node, "managed", &managed) != 0 ||
+	    strcmp(managed, "c73") != 0) {
+		err = of_get_phy_mode(mac_node, &phy_if);
+		if (err) {
+			dev_warn(dev,
+				 "of_get_phy_mode() for %pOF failed. Defaulting to SGMII\n",
+				 mac_node);
+			phy_if = PHY_INTERFACE_MODE_SGMII;
+		}
 	}
 	mac_dev->phy_if = phy_if;
 
@@ -539,7 +517,7 @@ static int mac_probe(struct platform_device *_of_dev)
 	params.exception_cb	= mac_exception;
 	params.event_cb		= mac_exception;
 
-	err = init(mac_dev, mac_node, &params);
+	err = init(mac_dev, &params);
 	if (err < 0)
 		return err;
 
