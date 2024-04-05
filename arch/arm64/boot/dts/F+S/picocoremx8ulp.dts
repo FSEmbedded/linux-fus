@@ -1,0 +1,84 @@
+/*
+ * Copyright (C) 2024 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Network*/
+#define CONFIG_PICOCOREMX8ULP_ETH_A
+
+/* WLAN/BLUETOOTH */
+#define CONFIG_PICOCOREMX8ULP_WLAN
+#define CONFIG_PICOCOREMX8ULP_WLAN_MARVELL_DRV
+
+/* USB */
+#define CONFIG_PICOCOREMX8ULP_USB_HOST
+#define CONFIG_PICOCOREMX8ULP_USB_OTG
+
+/* I2C */
+#define CONFIG_PICOCOREMX8ULP_I2C_A
+#define CONFIG_PICOCOREMX8ULP_I2C_B
+#define CONFIG_PICOCOREMX8ULP_I2C_INT
+
+/* EEPROM */
+#define CONFIG_PICOCOREMX8ULP_EEPROM
+
+/* AUDIO */
+#define CONFIG_PICOCOREMX8ULP_AUDIO_APD
+/* LPAUDIO is currently not supported */
+// #define CONFIG_PICOCOREMX8ULP_AUDIO_RTD
+
+#if defined(CONFIG_PICOCOREMX8ULP_AUDIO_APD) || \
+	defined(CONFIG_PICOCOREMX8ULP_AUDIO_RTD)
+#define CONFIG_PICOCOREMX8ULP_AUDIO
+#endif
+
+/* External RTC - default not mounted */
+#define CONFIG_PICOCOREMX8ULP_EXT_RTC
+
+/*
+ * SD_A - External SD port with Card Detect (CD) and Write Protect (WP)
+ * On picocoremx8ulp SKIT: external port is Micro-SD card slot with CD but without WP
+ */
+#if !defined(CONFIG_PICOCOREMX8ULP_WLAN)
+#define CONFIG_PICOCOREMX8ULP_SD_A
+#define CONFIG_PICOCOREMX8ULP_SD_A_CD
+#define CONFIG_PICOCOREMX8ULP_SD_A_WP
+#endif
+
+/* UART */
+#define CONFIG_PICOCOREMX8ULP_UART_A
+#define CONFIG_PICOCOREMX8ULP_UART_C
+
+/* EMMC */
+#define CONFIG_PICOCOREMX8ULP_EMMC
+
+/*SPI*/
+#define CONFIG_PICOCOREMX8ULP_SPI_A
+
+/* RTD GPIO */
+/*
+ * To Use the RGPIO controler from RTD, configurations in m33_image are needed.
+ * T-MBC0 must be configured in TRDC from Cortex-M to allow non-secure access
+ * to RGPIO controller via Cortex-A.
+ */
+#define CONFIG_PICOCOREMX8ULP_GPIOA
+#define CONFIG_PICOCOREMX8ULP_GPIOB
+#define CONFIG_PICOCOREMX8ULP_GPIOC
+
+#if defined(CONFIG_PICOCOREMX8ULP_GPIOA) || \
+	defined(CONFIG_PICOCOREMX8ULP_GPIOB) || \
+	defined(CONFIG_PICOCOREMX8ULP_GPIOC)
+#define CONFIG_RTD_PCC1
+#endif
+
+#include "picocoremx8ulp.dtsi"
+
+/ {
+	model = "F&S PicoCoreMX8ULP";
+	compatible = "fus,picocoremx8ulp", "fus,fsimx8ulp", "fsl,imx8ulp";
+};

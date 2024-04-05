@@ -1,0 +1,29 @@
+&i2c_rpbus_0 {
+    ov5640_mipi: ov5640_mipi@3c {
+		compatible = "ovti,ov5640";
+		reg = <0x3c>;
+		clocks = <&cgc2 IMX8ULP_CLK_DSI_PHY_REF>;
+		clock-names = "xclk";
+		powerdown-gpios = <&gpioe 8 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpioe 7 GPIO_ACTIVE_LOW>;
+		status = "okay";
+		port {
+			ov5640_mipi_ep: endpoint {
+				remote-endpoint = <&mipi_csi0_ep>;
+				data-lanes = <1 2>;
+				clocks-lanes = <0>;
+			};
+		};
+	};
+};
+
+&mipi_csi0 {
+	port@0 {
+		reg = <0>;
+		mipi_csi0_ep: endpoint {
+			remote-endpoint = <&ov5640_mipi_ep>;
+			data-lanes = <1 2>;
+			bus-type = <4>;
+		};
+	};
+};

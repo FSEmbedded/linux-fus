@@ -233,6 +233,8 @@ static inline u32 TC358775_VPCTRL_MSF(uint32_t val)
 			TC358775_VPCTRL_MSF__MASK;
 }
 
+#define TC358775_VPCTRL_FRAMESYNC_BIT BIT(4)
+
 #define TC358775_LVCFG_PCLKDIV__MASK	0x000000f0
 #define TC358775_LVCFG_PCLKDIV__SHIFT	4
 static inline u32 TC358775_LVCFG_PCLKDIV(uint32_t val)
@@ -408,7 +410,7 @@ static void tc_bridge_enable(struct drm_bridge *bridge)
 		 (val >> 8) & 0xFF, val & 0xFF);
 
 	d2l_write(tc->i2c, SYSRST, SYS_RST_REG | SYS_RST_DSIRX | SYS_RST_BM |
-		  SYS_RST_LCD | SYS_RST_I2CM | SYS_RST_I2CS);
+		  SYS_RST_LCD | SYS_RST_I2CM);
 	usleep_range(30000, 40000);
 
 	d2l_write(tc->i2c, PPI_TX_RX_TA, TTA_GET | TTA_SURE);
@@ -441,6 +443,7 @@ static void tc_bridge_enable(struct drm_bridge *bridge)
 	vsdelay = (clkdiv * (t1 + t3) / byteclk) - hback_porch - hsync_len - hactive;
 
 	val |= TC358775_VPCTRL_VSDELAY(vsdelay);
+	val |= TC358775_VPCTRL_FRAMESYNC_BIT;
 	d2l_write(tc->i2c, VPCTRL, val);
 
 	d2l_write(tc->i2c, HTIM1, htime1);
@@ -449,7 +452,8 @@ static void tc_bridge_enable(struct drm_bridge *bridge)
 	d2l_write(tc->i2c, VTIM2, vtime2);
 
 	d2l_write(tc->i2c, VFUEN, VFUEN_EN);
-	d2l_write(tc->i2c, SYSRST, SYS_RST_LCD);
+	d2l_write(tc->i2c, LVPHY0, LV_PHY0_RST(1));
+	usleep_range(30000,40000);
 	d2l_write(tc->i2c, LVPHY0, LV_PHY0_PRBS_ON(4) | LV_PHY0_ND(6));
 
 	dev_dbg(tc->dev, "bus_formats %04x bpc %d\n",
@@ -626,7 +630,7 @@ static int tc_attach_host(struct tc_data *tc)
 
 	dsi->lanes = tc->num_dsi_lanes;
 	dsi->format = MIPI_DSI_FMT_RGB888;
-	dsi->mode_flags = MIPI_DSI_MODE_VIDEO;
+	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST;
 
 	ret = devm_mipi_dsi_attach(dev, dsi);
 	if (ret < 0) {

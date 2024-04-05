@@ -1,0 +1,114 @@
+&epdc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_epdc0>;
+	DISPLAY-supply = <&vdisp_reg>;
+	V3P3-supply = <&v3p3_reg>;
+	VCOM-supply = <&vcom_reg>;
+	VPOS-supply = <&vpos_reg>;
+	VNEG-supply = <&vneg_reg>;
+	status = "okay";
+};
+
+&epxp {
+	status = "okay";
+};
+
+&fec {
+	status = "disabled";
+};
+
+&lpi2c7 {
+	tps65185: tps65185@68 {
+		compatible = "ti,tps65185";
+		reg = <0x68>;
+		status = "okay";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_tps65185>;
+		gpio-pmic-pwrgood = <&gpioe 17 GPIO_ACTIVE_HIGH>;
+		gpio-pmic-wakeup = <&gpioe 18 GPIO_ACTIVE_HIGH>;
+		gpio-pmic-pwrup = <&gpioe 22 GPIO_ACTIVE_HIGH>;
+
+		regulators {
+			vdisp_reg: DISPLAY {
+				regulator-name = "DISPLAY";
+			};
+
+			vpos_reg: VPOS-LDO {
+				regulator-name = "VPOS";
+				regulator-min-microvolt = <7040000>;
+				regulator-max-microvolt = <15060000>;
+			};
+
+			vneg_reg: VNEG-LDO {
+				regulator-name = "VNEG";
+				regulator-min-microvolt = <7040000>;
+				regulator-max-microvolt = <15060000>;
+			};
+
+			vgl_reg: VGL-CHARGE-PUMP {
+				regulator-name = "VGL";
+			};
+
+			vcom_reg: VCOM {
+				regulator-name = "VCOM";
+				regulator-min-microvolt = <19608>;
+				regulator-max-microvolt = <5000000>;
+			};
+
+			v3p3_reg: V3P3 {
+				regulator-name = "V3P3";
+			};
+		};
+	};
+};
+
+&iomuxc1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hoggrp>;
+
+	pinctrl_hoggrp: hoggpp {
+		fsl,pins = <
+			MX8ULP_PAD_PTE23__PTE23 0x3
+		>;
+	};
+	
+	pinctrl_epdc0: epdcgrp0 {
+		fsl,pins = <
+			MX8ULP_PAD_PTF23__EPDC0_D0	0x43
+			MX8ULP_PAD_PTF22__EPDC0_D1	0x43
+			MX8ULP_PAD_PTF21__EPDC0_D2	0x43
+			MX8ULP_PAD_PTF20__EPDC0_D3	0x43
+			MX8ULP_PAD_PTF19__EPDC0_D4	0x43
+			MX8ULP_PAD_PTF18__EPDC0_D5	0x43
+			MX8ULP_PAD_PTF17__EPDC0_D6	0x43
+			MX8ULP_PAD_PTF16__EPDC0_D7	0x43
+			MX8ULP_PAD_PTF24__EPDC0_SDCLK	0x43
+			MX8ULP_PAD_PTF25__EPDC0_GDSP	0x43
+			MX8ULP_PAD_PTF26__EPDC0_SDLE	0x43
+			MX8ULP_PAD_PTF27__EPDC0_SDCE0	0x43
+
+			MX8ULP_PAD_PTF0__EPDC0_SDOE		0x43
+			MX8ULP_PAD_PTE19__EPDC0_GDCLK	0x43
+			MX8ULP_PAD_PTE20__EPDC0_GDOE	0x43
+			MX8ULP_PAD_PTE21__EPDC0_GDRL	0x43
+
+			MX8ULP_PAD_PTF15__EPDC0_D8	0x43
+			MX8ULP_PAD_PTF14__EPDC0_D9	0x43
+			MX8ULP_PAD_PTF13__EPDC0_D10	0x43
+			MX8ULP_PAD_PTF12__EPDC0_D11	0x43
+			MX8ULP_PAD_PTF11__EPDC0_D12	0x43
+			MX8ULP_PAD_PTF10__EPDC0_D13	0x43
+			MX8ULP_PAD_PTF9__EPDC0_D14	0x43
+			MX8ULP_PAD_PTF8__EPDC0_D15	0x43
+		>;
+	};
+
+	pinctrl_tps65185: tps65185grp {
+		fsl,pins = <
+		MX8ULP_PAD_PTE17__PTE17		0x3 /* PWRSTAT */
+		MX8ULP_PAD_PTE18__PTE18		0x3 /* WAKEUP */
+		MX8ULP_PAD_PTE22__PTE22		0x3 /* PWRUP */
+		>;
+	};
+};

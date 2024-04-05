@@ -12,18 +12,22 @@
 #include <linux/bitmap.h>
 #include <linux/gpio/driver.h>
 #include <linux/gpio/consumer.h>
+#include <linux/gpio/machine.h>
 #include <linux/i2c.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/platform_data/pca953x.h>
+#include <linux/pwm.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
 #include <linux/reset.h>
 #include <linux/slab.h>
 
 #include <asm/unaligned.h>
+
+#include "gpiolib.h"
 
 #define PCA953X_INPUT		0x00
 #define PCA953X_OUTPUT		0x01
@@ -64,11 +68,18 @@
 
 #define PCA_INT			BIT(8)
 #define PCA_PCAL		BIT(9)
+#define MAX_PWM			BIT(10)
 #define PCA_LATCH_INT		(PCA_PCAL | PCA_INT)
 #define PCA953X_TYPE		BIT(12)
 #define PCA957X_TYPE		BIT(13)
 #define PCAL653X_TYPE		BIT(14)
 #define PCA_TYPE_MASK		GENMASK(15, 12)
+
+#define MAX7313_MASTER		0x0E
+#define MAX7313_CONFIGURATION	0x0F
+#define MAX7313_INTENSITY	0x10
+
+#define MAX7313_GLOB_INTENSITY	BIT(2)
 
 #define PCA_CHIP_TYPE(x)	((x) & PCA_TYPE_MASK)
 
@@ -101,8 +112,8 @@ static const struct i2c_device_id pca953x_id[] = {
 
 	{ "max7310", 8  | PCA953X_TYPE, },
 	{ "max7312", 16 | PCA953X_TYPE | PCA_INT, },
-	{ "max7313", 16 | PCA953X_TYPE | PCA_INT, },
-	{ "max7315", 8  | PCA953X_TYPE | PCA_INT, },
+	{ "max7313", 16 | PCA953X_TYPE | PCA_INT | MAX_PWM, },
+	{ "max7315", 8  | PCA953X_TYPE | PCA_INT | MAX_PWM, },
 	{ "max7318", 16 | PCA953X_TYPE | PCA_INT, },
 	{ "pca6107", 8  | PCA953X_TYPE | PCA_INT, },
 	{ "tca6408", 8  | PCA953X_TYPE | PCA_INT, },
@@ -173,6 +184,15 @@ MODULE_DEVICE_TABLE(acpi, pca953x_acpi_ids);
 
 #define NBANK(chip) DIV_ROUND_UP(chip->gpio_chip.ngpio, BANK_SZ)
 
+#define MAX_PWM_MAX_COUNT 16
+#define MAX_PWM_PER_REG 2
+#define MAX_PWM_BITS_PER_REG 4
+#define MAX_PWM_MASTER_INTENSITY_SHIFT 4
+#define MAX_PWM_INTENSITY_MASK GENMASK(3, 0)
+
+#define MAX_PWM_PERIOD_NS 31250U
+#define MAX_PWM_DC_STATES 16
+
 struct pca953x_reg_config {
 	int direction;
 	int output;
@@ -192,6 +212,20 @@ static const struct pca953x_reg_config pca957x_regs = {
 	.output = PCA957X_OUT,
 	.input = PCA957X_IN,
 	.invert = PCA957X_INVRT,
+};
+
+struct max7313_pwm_data {
+	struct gpio_desc *desc;
+};
+
+struct max7313_pwm {
+	struct pwm_chip chip;
+	/*
+	 * Protect races when counting active PWMs for enabling or disabling
+	 * the internal oscillator.
+	 */
+	struct mutex count_lock;
+	DECLARE_BITMAP(active_pwm, MAX_PWM_MAX_COUNT);
 };
 
 struct pca953x_chip {
@@ -215,6 +249,8 @@ struct pca953x_chip {
 	struct regulator *regulator;
 
 	const struct pca953x_reg_config *regs;
+
+	struct max7313_pwm pwm;
 
 	u8 (*recalc_addr)(struct pca953x_chip *chip, int reg, int off);
 	bool (*check_reg)(struct pca953x_chip *chip, unsigned int reg,
@@ -296,6 +332,17 @@ static bool pca953x_check_register(struct pca953x_chip *chip, unsigned int reg,
 	return true;
 }
 
+static bool max7313_pwm_reg_is_accessible(struct device *dev, unsigned int reg)
+{
+	struct pca953x_chip *chip = dev_get_drvdata(dev);
+	unsigned int bank_sz = chip->driver_data & PCA_GPIO_MASK;
+
+	if (reg >= MAX7313_MASTER && reg < (MAX7313_INTENSITY + bank_sz))
+		return true;
+
+	return false;
+}
+
 /*
  * Unfortunately, whilst the PCAL6534 chip (and compatibles) broadly follow the
  * same register layout as the PCAL6524, the spacing of the registers has been
@@ -350,6 +397,10 @@ static bool pca953x_readable_register(struct device *dev, unsigned int reg)
 	struct pca953x_chip *chip = dev_get_drvdata(dev);
 	u32 bank;
 
+	if ((chip->driver_data & MAX_PWM) &&
+	    max7313_pwm_reg_is_accessible(dev, reg))
+		return true;
+
 	if (PCA_CHIP_TYPE(chip->driver_data) == PCA957X_TYPE) {
 		bank = PCA957x_BANK_INPUT | PCA957x_BANK_OUTPUT |
 		       PCA957x_BANK_POLARITY | PCA957x_BANK_CONFIG |
@@ -372,6 +423,10 @@ static bool pca953x_writeable_register(struct device *dev, unsigned int reg)
 {
 	struct pca953x_chip *chip = dev_get_drvdata(dev);
 	u32 bank;
+
+	if ((chip->driver_data & MAX_PWM) &&
+	    max7313_pwm_reg_is_accessible(dev, reg))
+		return true;
 
 	if (PCA_CHIP_TYPE(chip->driver_data) == PCA957X_TYPE) {
 		bank = PCA957x_BANK_OUTPUT | PCA957x_BANK_POLARITY |
@@ -1053,6 +1108,364 @@ out:
 	return ret;
 }
 
+/*
+ * Max7313 PWM specific methods
+ *
+ * Limitations:
+ * - Does not support a disabled state
+ * - Period fixed to 31.25ms
+ * - Only supports normal polarity
+ * - Some glitches cannot be prevented
+ */
+
+static struct max7313_pwm *to_max7313_pwm(struct pwm_chip *chip)
+{
+	return container_of(chip, struct max7313_pwm, chip);
+}
+
+static struct pca953x_chip *to_pca953x(struct max7313_pwm *chip)
+{
+	return container_of(chip, struct pca953x_chip, pwm);
+}
+
+static unsigned int max7313_pwm_intensity_to_duty(u8 intensity)
+{
+	unsigned long long value = intensity;
+
+	return DIV_ROUND_UP_ULL(value * MAX_PWM_PERIOD_NS, MAX_PWM_DC_STATES);
+}
+
+static u8 max7313_pwm_duty_to_intensity(unsigned int duty)
+{
+	unsigned long long value = duty;
+
+	return DIV_ROUND_DOWN_ULL(value * MAX_PWM_DC_STATES, MAX_PWM_PERIOD_NS);
+}
+
+static u8 max7313_pwm_get_intensity(struct pca953x_chip *pca_chip,
+				    unsigned int idx)
+{
+	struct device *dev = &pca_chip->client->dev;
+	unsigned int reg, shift, val, output;
+	u8 intensity;
+	bool phase;
+	int ret;
+
+	/* Retrieve the intensity */
+	reg = MAX7313_INTENSITY + (idx / MAX_PWM_PER_REG);
+	shift = (idx % MAX_PWM_PER_REG) * MAX_PWM_BITS_PER_REG;
+
+	mutex_lock(&pca_chip->i2c_lock);
+	ret = regmap_read(pca_chip->regmap, reg, &val);
+	mutex_unlock(&pca_chip->i2c_lock);
+	if (ret < 0) {
+		dev_err(dev, "Cannot retrieve PWM intensity (%pe)\n",
+			ERR_PTR(ret));
+		return 0;
+	}
+
+	val >>= shift;
+	val &= MAX_PWM_INTENSITY_MASK;
+
+	/* Retrieve the phase */
+	reg = pca953x_recalc_addr(pca_chip, pca_chip->regs->output, idx);
+
+	mutex_lock(&pca_chip->i2c_lock);
+	ret = regmap_read(pca_chip->regmap, reg, &output);
+	mutex_unlock(&pca_chip->i2c_lock);
+	if (ret < 0) {
+		dev_err(dev, "Cannot retrieve PWM phase (%pe)\n", ERR_PTR(ret));
+		return 0;
+	}
+
+	phase = output & BIT(idx % BANK_SZ);
+
+	/*
+	 * Register values in the [0;15] range mean a value in the [1/16;16/16]
+	 * range if the phase is set, a [15/16;0/16] range otherwise.
+	 */
+	if (phase)
+		intensity = val + 1;
+	else
+		intensity = MAX_PWM_INTENSITY_MASK - val;
+
+	return intensity;
+}
+
+static int max7313_pwm_set_intensity(struct pca953x_chip *pca_chip,
+				     unsigned int idx, u8 intensity)
+{
+	unsigned int reg, shift;
+	u8 val, mask;
+	int ret;
+
+	reg = MAX7313_INTENSITY + (idx / MAX_PWM_PER_REG);
+	shift = (idx % MAX_PWM_PER_REG) ? MAX_PWM_BITS_PER_REG : 0;
+
+	mask = MAX_PWM_INTENSITY_MASK << shift;
+	val = (intensity & MAX_PWM_INTENSITY_MASK) << shift;
+
+	mutex_lock(&pca_chip->i2c_lock);
+	ret = regmap_write_bits(pca_chip->regmap, reg, mask, val);
+	mutex_unlock(&pca_chip->i2c_lock);
+
+	return ret;
+}
+
+/*
+ * For a given PWM channel, when the blink phase 0 bit is set, the intensity
+ * range is only [1/16;16/16]. With this range, a static low output is
+ * physically not possible. When the blink phase 0 bit is cleared, the intensity
+ * range is [15/16;0/16] which then allows a static low output but not a static
+ * high output.
+ *
+ * In this driver we choose to switch the blink phase only when mandatory
+ * because there is no way to atomically flip the register *and* change the PWM
+ * value at the same time so, in this case, it will produce a small glitch.
+ */
+static int max7313_pwm_set_state(struct pca953x_chip *pca_chip,
+				 struct pwm_device *pwm,
+				 unsigned int intensity)
+{
+	struct max7313_pwm_data *data = pwm_get_chip_data(pwm);
+	struct gpio_desc *desc = data->desc;
+	unsigned int idx = pwm->hwpwm, reg, output;
+	bool phase;
+	int ret;
+
+	/* Retrieve the phase */
+	reg = pca953x_recalc_addr(pca_chip, pca_chip->regs->output, idx);
+
+	mutex_lock(&pca_chip->i2c_lock);
+	ret = regmap_read(pca_chip->regmap, reg, &output);
+	mutex_unlock(&pca_chip->i2c_lock);
+	if (ret < 0)
+		return ret;
+
+	phase = output & BIT(idx % BANK_SZ);
+
+	/* Need to blink the phase */
+	if ((phase && !intensity) ||
+	    (!phase && intensity == MAX_PWM_DC_STATES)) {
+		phase = !phase;
+		ret = gpiod_direction_output(desc, phase);
+		if (ret)
+			return ret;
+	} else {
+		/* Ensure the pin is in output state (default might be input) */
+		ret = gpiod_direction_output(desc, phase);
+		if (ret)
+			return ret;
+	}
+
+	if (phase)
+		intensity = intensity - 1;
+	else
+		intensity = MAX_PWM_INTENSITY_MASK - intensity;
+
+	return max7313_pwm_set_intensity(pca_chip, idx, intensity);
+}
+
+static int max7313_pwm_set_master_intensity(struct pca953x_chip *pca_chip,
+					    u8 intensity)
+{
+	int ret;
+
+	intensity &= MAX_PWM_INTENSITY_MASK;
+
+	mutex_lock(&pca_chip->i2c_lock);
+	ret = regmap_write_bits(pca_chip->regmap, MAX7313_MASTER,
+				MAX_PWM_INTENSITY_MASK << MAX_PWM_MASTER_INTENSITY_SHIFT,
+				intensity << MAX_PWM_MASTER_INTENSITY_SHIFT);
+	mutex_unlock(&pca_chip->i2c_lock);
+
+	return ret;
+}
+
+static int max7313_pwm_request(struct pwm_chip *chip,
+			       struct pwm_device *pwm)
+{
+	struct max7313_pwm *max_pwm = to_max7313_pwm(chip);
+	struct pca953x_chip *pca_chip = to_pca953x(max_pwm);
+	struct device *dev = &pca_chip->client->dev;
+	struct max7313_pwm_data *data;
+	struct gpio_desc *desc;
+
+	desc = gpiochip_request_own_desc(&pca_chip->gpio_chip, pwm->hwpwm,
+					 "max7313-pwm", GPIO_ACTIVE_HIGH, 0);
+	if (IS_ERR(desc)) {
+		dev_err(dev, "pin already in use (probably as GPIO): %pe\n",
+			desc);
+		return PTR_ERR(desc);
+	}
+
+	data = kzalloc(sizeof(*data), GFP_KERNEL);
+	if (!data) {
+		gpiochip_free_own_desc(desc);
+		return -ENOMEM;
+	}
+
+	data->desc = desc;
+	pwm_set_chip_data(pwm, data);
+
+	return 0;
+}
+
+static void max7313_pwm_free(struct pwm_chip *chip,
+			     struct pwm_device *pwm)
+{
+	struct max7313_pwm_data *data = pwm_get_chip_data(pwm);
+
+	gpiochip_free_own_desc(data->desc);
+	kfree(data);
+}
+
+static int max7313_pwm_apply(struct pwm_chip *chip,
+			     struct pwm_device *pwm,
+			     const struct pwm_state *state)
+{
+	struct max7313_pwm *max_pwm = to_max7313_pwm(chip);
+	struct pca953x_chip *pca_chip = to_pca953x(max_pwm);
+	unsigned int intensity, active, duty_cycle;
+	int ret = 0;
+
+	if (state->period != MAX_PWM_PERIOD_NS) {
+		dev_warn(&pca_chip->client->dev,
+			 "Signal period must be fix at %d (32.000 kHz)\n", MAX_PWM_PERIOD_NS);
+		return -EINVAL;
+	}
+
+	if (!state->enabled)
+		duty_cycle = 0;
+	else
+		duty_cycle = min(state->duty_cycle, (u64)MAX_PWM_PERIOD_NS);
+
+	if (state->polarity != PWM_POLARITY_NORMAL)
+		duty_cycle = MAX_PWM_PERIOD_NS - duty_cycle;
+
+	/* Convert the duty-cycle to be in the [0;16] range */
+	intensity = max7313_pwm_duty_to_intensity(duty_cycle);
+
+	/*
+	 * If this is the first PWM to enable, set the master intensity to the
+	 * maximum level to let individual outputs the greatest flexibility
+	 * range. It also enables the internal oscillator.
+	 *
+	 * When shutting down the last active PWM, the oscillator is disabled.
+	 *
+	 * Lazy logic is applied to simplify the code: always enable the
+	 * oscillator when there is 1 active pwm, always disable it when there
+	 * is none.
+	 */
+	mutex_lock(&max_pwm->count_lock);
+
+	__assign_bit(pwm->hwpwm, max_pwm->active_pwm, (bool)intensity);
+	active = bitmap_weight(max_pwm->active_pwm, MAX_PWM_MAX_COUNT);
+	if (!active)
+		ret = max7313_pwm_set_master_intensity(pca_chip, 0);
+	else if (active == 1)
+		ret = max7313_pwm_set_master_intensity(pca_chip,
+						       MAX_PWM_INTENSITY_MASK);
+	mutex_unlock(&max_pwm->count_lock);
+
+	if (ret)
+		return ret;
+
+	/*
+	 * The hardware is supposedly glitch-free when changing the intensity,
+	 * unless we need to flip the blink phase to reach an extremity or the
+	 * other end of the spectrum (0/16 from phase 1, 16/16 from phase 0).
+	 */
+	return max7313_pwm_set_state(pca_chip, pwm, intensity);
+}
+
+static int max7313_pwm_get_state(struct pwm_chip *chip,
+				  struct pwm_device *pwm,
+				  struct pwm_state *state)
+{
+	struct max7313_pwm *max_pwm = to_max7313_pwm(chip);
+	struct pca953x_chip *pca_chip = to_pca953x(max_pwm);
+	u8 intensity;
+
+	state->enabled = true;
+	state->period = MAX_PWM_PERIOD_NS;
+	state->polarity = PWM_POLARITY_NORMAL;
+
+	intensity = max7313_pwm_get_intensity(pca_chip, pwm->hwpwm);
+	state->duty_cycle = max7313_pwm_intensity_to_duty(intensity);
+
+	return 0;
+};
+
+static const struct pwm_ops max7313_pwm_ops = {
+	.request = max7313_pwm_request,
+	.free = max7313_pwm_free,
+	.apply = max7313_pwm_apply,
+	.get_state = max7313_pwm_get_state,
+	.owner = THIS_MODULE,
+};
+
+static int max7313_pwm_probe(struct device *dev,
+			     struct pca953x_chip *pca_chip)
+{
+	struct max7313_pwm *max_pwm = &pca_chip->pwm;
+	struct pwm_chip *chip = &max_pwm->chip;
+	int ret, i;
+
+	if (!(pca_chip->driver_data & MAX_PWM))
+		return 0;
+
+	chip->of_pwm_n_cells = 3;
+	chip->of_xlate = of_pwm_xlate_with_flags;
+	chip->dev = dev;
+	chip->ops = &max7313_pwm_ops;
+	chip->npwm = pca_chip->gpio_chip.ngpio;
+	chip->base = -1;
+
+	/* Disable global control (does not affect GPIO functionality) */
+	mutex_lock(&pca_chip->i2c_lock);
+	ret = regmap_write_bits(pca_chip->regmap, MAX7313_CONFIGURATION,
+				MAX7313_GLOB_INTENSITY, 0);
+	mutex_unlock(&pca_chip->i2c_lock);
+	if (ret)
+		return ret;
+
+	mutex_init(&max_pwm->count_lock);
+	bitmap_zero(max_pwm->active_pwm, MAX_PWM_MAX_COUNT);
+
+	/* Count currently active PWM */
+	mutex_lock(&max_pwm->count_lock);
+	for (i = 0; i < chip->npwm; i++) {
+		if (max7313_pwm_get_intensity(pca_chip, i))
+			set_bit(i, max_pwm->active_pwm);
+	}
+
+	if (bitmap_weight(max_pwm->active_pwm, MAX_PWM_MAX_COUNT))
+		ret = max7313_pwm_set_master_intensity(pca_chip,
+						       MAX_PWM_INTENSITY_MASK);
+
+	mutex_unlock(&max_pwm->count_lock);
+
+	if (ret)
+		return ret;
+
+	ret = pwmchip_add(chip);
+
+	return ret;
+}
+
+static int max7313_pwm_remove(struct pca953x_chip *pca_chip)
+{
+	struct max7313_pwm *max_pwm = &pca_chip->pwm;
+	struct pwm_chip *chip = &max_pwm->chip;
+
+	if (!(pca_chip->driver_data & MAX_PWM))
+		return 0;
+
+	pwmchip_remove(chip);
+	return 0;
+}
+
 static int pca953x_probe(struct i2c_client *client,
 			 const struct i2c_device_id *i2c_id)
 {
@@ -1200,6 +1613,15 @@ static int pca953x_probe(struct i2c_client *client,
 			dev_warn(&client->dev, "setup failed, %d\n", ret);
 	}
 
+	if (IS_ENABLED(CONFIG_PWM)) {
+		ret = max7313_pwm_probe(&client->dev, chip);
+		if (ret) {
+			dev_err(&client->dev, "pwm probe failed, %pe\n",
+				ERR_PTR(ret));
+			return ret;
+		}
+	}
+
 	return 0;
 
 err_exit:
@@ -1211,6 +1633,13 @@ static void pca953x_remove(struct i2c_client *client)
 {
 	struct pca953x_platform_data *pdata = dev_get_platdata(&client->dev);
 	struct pca953x_chip *chip = i2c_get_clientdata(client);
+	int ret;
+
+	if (IS_ENABLED(CONFIG_PWM)) {
+		ret = max7313_pwm_remove(chip);
+		if (ret)
+			return;
+	}
 
 	if (pdata && pdata->teardown) {
 		pdata->teardown(client, chip->gpio_chip.base,
@@ -1353,8 +1782,8 @@ static const struct of_device_id pca953x_dt_ids[] = {
 
 	{ .compatible = "maxim,max7310", .data = OF_953X( 8, 0), },
 	{ .compatible = "maxim,max7312", .data = OF_953X(16, PCA_INT), },
-	{ .compatible = "maxim,max7313", .data = OF_953X(16, PCA_INT), },
-	{ .compatible = "maxim,max7315", .data = OF_953X( 8, PCA_INT), },
+	{ .compatible = "maxim,max7313", .data = OF_953X(16, PCA_INT | MAX_PWM), },
+	{ .compatible = "maxim,max7315", .data = OF_953X( 8, PCA_INT | MAX_PWM), },
 	{ .compatible = "maxim,max7318", .data = OF_953X(16, PCA_INT), },
 
 	{ .compatible = "ti,pca6107", .data = OF_953X( 8, PCA_INT), },
