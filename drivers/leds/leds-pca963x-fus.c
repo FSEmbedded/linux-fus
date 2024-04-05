@@ -28,6 +28,7 @@
 #include <linux/ctype.h>
 #include <linux/leds.h>
 #include <linux/pwm.h>
+#include <linux/gpio/driver.h>
 #include <linux/gpio.h>
 #include <linux/err.h>
 #include <linux/i2c.h>
@@ -797,9 +798,9 @@ static void pca963x_free_leds(struct pca963x *pca963x, int count)
 	}
 }
 
-static int pca963x_probe(struct i2c_client *client,
-			 const struct i2c_device_id *id)
+static int pca963x_probe(struct i2c_client *client)
 {
+	const struct i2c_device_id *id = i2c_client_get_device_id(client);
 	struct pca963x *pca963x;
 	struct pca963x_platform_data *pdata;
 	struct pca963x_entry *entry;

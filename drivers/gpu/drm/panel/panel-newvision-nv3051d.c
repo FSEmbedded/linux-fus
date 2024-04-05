@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Driver for panels based on NewVision NV3051D-T controller
+ * NV3051D MIPI-DSI panel driver for Anbernic RG353x
+ * Copyright (C) 2022 Chris Morgan
  *
- * Copyright (C) Purism SPC 2019
+ * based on
+ *
+ * Elida kd35t133 3.5" MIPI-DSI panel driver
+ * Copyright (C) Theobroma Systems 2020
  */
 
-#include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
 #include <linux/media-bus-format.h>
-#include <linux/mod_devicetable.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/regulator/consumer.h>
 
 #include <video/display_timing.h>
@@ -20,603 +22,744 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
-#include <drm/drm_print.h>
 
-#define DRV_NAME "panel-newvision-nv3051d"
+struct panel_nv3051d;
 
-/* Manufacturer specific Commands send via DSI */
-#define NV3051D_CMD_ENEXTC			0xFF
-#define NV3051D_CMD_ALL_PIXEL_OFF 	0x22
-#define NV3051D_CMD_ALL_PIXEL_ON 	0x23
+struct nv3051d_panel_info {
+	const struct drm_display_mode *display_modes;
+	unsigned int num_modes;
+	u16 width_mm, height_mm;
+	u32 bus_flags;
+	unsigned int lanes;
+	int (*init_sequence)(struct panel_nv3051d *ctx);
+};
 
-struct nv3051d {
+struct panel_nv3051d {
 	struct device *dev;
 	struct drm_panel panel;
 	struct gpio_desc *reset_gpio;
-	struct regulator *vci;
-	struct regulator *iovcc;
-	bool prepared;
-
-	struct dentry *debugfs;
-	const struct nv3051d_panel_desc *desc;
+	const struct nv3051d_panel_info *panel_info;
+	struct regulator *vdd;
 };
 
-struct nv3051d_panel_desc {
-	const struct drm_display_mode *mode;
-	unsigned int lanes;
-	unsigned long mode_flags;
-	enum mipi_dsi_pixel_format format;
-	int (*init_sequence)(struct nv3051d *ctx);
-};
-
-static const u32 nv3051d_bus_formats[] = {
-	MEDIA_BUS_FMT_RGB888_1X24,
-};
-
-static inline struct nv3051d *panel_to_nv3051d(struct drm_panel *panel)
+static inline struct panel_nv3051d *panel_to_panelnv3051d(struct drm_panel *panel)
 {
-	return container_of(panel, struct nv3051d, panel);
+	return container_of(panel, struct panel_nv3051d, panel);
 }
 
-#define dsi_generic_write_seq(dsi, seq...) do {				\
-		static const u8 d[] = { seq };				\
-		int ret;						\
-		ret = mipi_dsi_generic_write(dsi, d, ARRAY_SIZE(d));	\
-		if (ret < 0)						\
-			return ret;					\
-	} while (0)
-
-
-static int ee0350et_init_sequence(struct nv3051d *ctx)
+static int panel_nv3051d_rgxx3_init_sequence(struct panel_nv3051d *ctx)
 {
 	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
-	dsi->mode_flags |= MIPI_DSI_MODE_LPM;
 
-	dsi_generic_write_seq(dsi, 0xFF,0x30);
-	dsi_generic_write_seq(dsi, 0xFF,0x52);
-	dsi_generic_write_seq(dsi, 0xFF,0x01);
-	dsi_generic_write_seq(dsi, 0xE3,0x00);
+	/*
+	 * Init sequence was supplied by device vendor with no
+	 * documentation.
+	 */
 
-	dsi_generic_write_seq(dsi, 0x40,0x0a);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF, 0x30);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF, 0x52);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF, 0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0xE3, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x03, 0x40);
+	mipi_dsi_dcs_write_seq(dsi, 0x04, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x05, 0x03);
+	mipi_dsi_dcs_write_seq(dsi, 0x24, 0x12);
+	mipi_dsi_dcs_write_seq(dsi, 0x25, 0x1E);
+	mipi_dsi_dcs_write_seq(dsi, 0x26, 0x28);
+	mipi_dsi_dcs_write_seq(dsi, 0x27, 0x52);
+	mipi_dsi_dcs_write_seq(dsi, 0x28, 0x57);
+	mipi_dsi_dcs_write_seq(dsi, 0x29, 0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0x2A, 0xDF);
+	mipi_dsi_dcs_write_seq(dsi, 0x38, 0x9C);
+	mipi_dsi_dcs_write_seq(dsi, 0x39, 0xA7);
+	mipi_dsi_dcs_write_seq(dsi, 0x3A, 0x53);
+	mipi_dsi_dcs_write_seq(dsi, 0x44, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x49, 0x3C);
+	mipi_dsi_dcs_write_seq(dsi, 0x59, 0xFE);
+	mipi_dsi_dcs_write_seq(dsi, 0x5C, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x91, 0x77);
+	mipi_dsi_dcs_write_seq(dsi, 0x92, 0x77);
+	mipi_dsi_dcs_write_seq(dsi, 0xA0, 0x55);
+	mipi_dsi_dcs_write_seq(dsi, 0xA1, 0x50);
+	mipi_dsi_dcs_write_seq(dsi, 0xA4, 0x9C);
+	mipi_dsi_dcs_write_seq(dsi, 0xA7, 0x02);
+	mipi_dsi_dcs_write_seq(dsi, 0xA8, 0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0xA9, 0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0xAA, 0xFC);
+	mipi_dsi_dcs_write_seq(dsi, 0xAB, 0x28);
+	mipi_dsi_dcs_write_seq(dsi, 0xAC, 0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0xAD, 0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0xAE, 0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0xAF, 0x03);
+	mipi_dsi_dcs_write_seq(dsi, 0xB0, 0x08);
+	mipi_dsi_dcs_write_seq(dsi, 0xB1, 0x26);
+	mipi_dsi_dcs_write_seq(dsi, 0xB2, 0x28);
+	mipi_dsi_dcs_write_seq(dsi, 0xB3, 0x28);
+	mipi_dsi_dcs_write_seq(dsi, 0xB4, 0x33);
+	mipi_dsi_dcs_write_seq(dsi, 0xB5, 0x08);
+	mipi_dsi_dcs_write_seq(dsi, 0xB6, 0x26);
+	mipi_dsi_dcs_write_seq(dsi, 0xB7, 0x08);
+	mipi_dsi_dcs_write_seq(dsi, 0xB8, 0x26);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF, 0x30);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF, 0x52);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF, 0x02);
+	mipi_dsi_dcs_write_seq(dsi, 0xB1, 0x0E);
+	mipi_dsi_dcs_write_seq(dsi, 0xD1, 0x0E);
+	mipi_dsi_dcs_write_seq(dsi, 0xB4, 0x29);
+	mipi_dsi_dcs_write_seq(dsi, 0xD4, 0x2B);
+	mipi_dsi_dcs_write_seq(dsi, 0xB2, 0x0C);
+	mipi_dsi_dcs_write_seq(dsi, 0xD2, 0x0A);
+	mipi_dsi_dcs_write_seq(dsi, 0xB3, 0x28);
+	mipi_dsi_dcs_write_seq(dsi, 0xD3, 0x28);
+	mipi_dsi_dcs_write_seq(dsi, 0xB6, 0x11);
+	mipi_dsi_dcs_write_seq(dsi, 0xD6, 0x0D);
+	mipi_dsi_dcs_write_seq(dsi, 0xB7, 0x32);
+	mipi_dsi_dcs_write_seq(dsi, 0xD7, 0x30);
+	mipi_dsi_dcs_write_seq(dsi, 0xC1, 0x04);
+	mipi_dsi_dcs_write_seq(dsi, 0xE1, 0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0xB8, 0x0A);
+	mipi_dsi_dcs_write_seq(dsi, 0xD8, 0x0A);
+	mipi_dsi_dcs_write_seq(dsi, 0xB9, 0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0xD9, 0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0xBD, 0x13);
+	mipi_dsi_dcs_write_seq(dsi, 0xDD, 0x13);
+	mipi_dsi_dcs_write_seq(dsi, 0xBC, 0x11);
+	mipi_dsi_dcs_write_seq(dsi, 0xDC, 0x11);
+	mipi_dsi_dcs_write_seq(dsi, 0xBB, 0x0F);
+	mipi_dsi_dcs_write_seq(dsi, 0xDB, 0x0F);
+	mipi_dsi_dcs_write_seq(dsi, 0xBA, 0x0F);
+	mipi_dsi_dcs_write_seq(dsi, 0xDA, 0x0F);
+	mipi_dsi_dcs_write_seq(dsi, 0xBE, 0x18);
+	mipi_dsi_dcs_write_seq(dsi, 0xDE, 0x18);
+	mipi_dsi_dcs_write_seq(dsi, 0xBF, 0x0F);
+	mipi_dsi_dcs_write_seq(dsi, 0xDF, 0x0F);
+	mipi_dsi_dcs_write_seq(dsi, 0xC0, 0x17);
+	mipi_dsi_dcs_write_seq(dsi, 0xE0, 0x17);
+	mipi_dsi_dcs_write_seq(dsi, 0xB5, 0x3B);
+	mipi_dsi_dcs_write_seq(dsi, 0xD5, 0x3C);
+	mipi_dsi_dcs_write_seq(dsi, 0xB0, 0x0B);
+	mipi_dsi_dcs_write_seq(dsi, 0xD0, 0x0C);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF, 0x30);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF, 0x52);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF, 0x03);
+	mipi_dsi_dcs_write_seq(dsi, 0x00, 0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x01, 0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x02, 0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x03, 0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x04, 0x61);
+	mipi_dsi_dcs_write_seq(dsi, 0x05, 0x80);
+	mipi_dsi_dcs_write_seq(dsi, 0x06, 0xC7);
+	mipi_dsi_dcs_write_seq(dsi, 0x07, 0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0x08, 0x82);
+	mipi_dsi_dcs_write_seq(dsi, 0x09, 0x83);
+	mipi_dsi_dcs_write_seq(dsi, 0x30, 0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x31, 0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x32, 0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x33, 0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x34, 0x61);
+	mipi_dsi_dcs_write_seq(dsi, 0x35, 0xC5);
+	mipi_dsi_dcs_write_seq(dsi, 0x36, 0x80);
+	mipi_dsi_dcs_write_seq(dsi, 0x37, 0x23);
+	mipi_dsi_dcs_write_seq(dsi, 0x40, 0x82);
+	mipi_dsi_dcs_write_seq(dsi, 0x41, 0x83);
+	mipi_dsi_dcs_write_seq(dsi, 0x42, 0x80);
+	mipi_dsi_dcs_write_seq(dsi, 0x43, 0x81);
+	mipi_dsi_dcs_write_seq(dsi, 0x44, 0x11);
+	mipi_dsi_dcs_write_seq(dsi, 0x45, 0xF2);
+	mipi_dsi_dcs_write_seq(dsi, 0x46, 0xF1);
+	mipi_dsi_dcs_write_seq(dsi, 0x47, 0x11);
+	mipi_dsi_dcs_write_seq(dsi, 0x48, 0xF4);
+	mipi_dsi_dcs_write_seq(dsi, 0x49, 0xF3);
+	mipi_dsi_dcs_write_seq(dsi, 0x50, 0x02);
+	mipi_dsi_dcs_write_seq(dsi, 0x51, 0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0x52, 0x04);
+	mipi_dsi_dcs_write_seq(dsi, 0x53, 0x03);
+	mipi_dsi_dcs_write_seq(dsi, 0x54, 0x11);
+	mipi_dsi_dcs_write_seq(dsi, 0x55, 0xF6);
+	mipi_dsi_dcs_write_seq(dsi, 0x56, 0xF5);
+	mipi_dsi_dcs_write_seq(dsi, 0x57, 0x11);
+	mipi_dsi_dcs_write_seq(dsi, 0x58, 0xF8);
+	mipi_dsi_dcs_write_seq(dsi, 0x59, 0xF7);
+	mipi_dsi_dcs_write_seq(dsi, 0x7E, 0x02);
+	mipi_dsi_dcs_write_seq(dsi, 0x7F, 0x80);
+	mipi_dsi_dcs_write_seq(dsi, 0xE0, 0x5A);
+	mipi_dsi_dcs_write_seq(dsi, 0xB1, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xB4, 0x0E);
+	mipi_dsi_dcs_write_seq(dsi, 0xB5, 0x0F);
+	mipi_dsi_dcs_write_seq(dsi, 0xB6, 0x04);
+	mipi_dsi_dcs_write_seq(dsi, 0xB7, 0x07);
+	mipi_dsi_dcs_write_seq(dsi, 0xB8, 0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0xB9, 0x05);
+	mipi_dsi_dcs_write_seq(dsi, 0xBA, 0x0F);
+	mipi_dsi_dcs_write_seq(dsi, 0xC7, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xCA, 0x0E);
+	mipi_dsi_dcs_write_seq(dsi, 0xCB, 0x0F);
+	mipi_dsi_dcs_write_seq(dsi, 0xCC, 0x04);
+	mipi_dsi_dcs_write_seq(dsi, 0xCD, 0x07);
+	mipi_dsi_dcs_write_seq(dsi, 0xCE, 0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0xCF, 0x05);
+	mipi_dsi_dcs_write_seq(dsi, 0xD0, 0x0F);
+	mipi_dsi_dcs_write_seq(dsi, 0x81, 0x0F);
+	mipi_dsi_dcs_write_seq(dsi, 0x84, 0x0E);
+	mipi_dsi_dcs_write_seq(dsi, 0x85, 0x0F);
+	mipi_dsi_dcs_write_seq(dsi, 0x86, 0x07);
+	mipi_dsi_dcs_write_seq(dsi, 0x87, 0x04);
+	mipi_dsi_dcs_write_seq(dsi, 0x88, 0x05);
+	mipi_dsi_dcs_write_seq(dsi, 0x89, 0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0x8A, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x97, 0x0F);
+	mipi_dsi_dcs_write_seq(dsi, 0x9A, 0x0E);
+	mipi_dsi_dcs_write_seq(dsi, 0x9B, 0x0F);
+	mipi_dsi_dcs_write_seq(dsi, 0x9C, 0x07);
+	mipi_dsi_dcs_write_seq(dsi, 0x9D, 0x04);
+	mipi_dsi_dcs_write_seq(dsi, 0x9E, 0x05);
+	mipi_dsi_dcs_write_seq(dsi, 0x9F, 0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0xA0, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF, 0x30);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF, 0x52);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF, 0x02);
+	mipi_dsi_dcs_write_seq(dsi, 0x01, 0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0x02, 0xDA);
+	mipi_dsi_dcs_write_seq(dsi, 0x03, 0xBA);
+	mipi_dsi_dcs_write_seq(dsi, 0x04, 0xA8);
+	mipi_dsi_dcs_write_seq(dsi, 0x05, 0x9A);
+	mipi_dsi_dcs_write_seq(dsi, 0x06, 0x70);
+	mipi_dsi_dcs_write_seq(dsi, 0x07, 0xFF);
+	mipi_dsi_dcs_write_seq(dsi, 0x08, 0x91);
+	mipi_dsi_dcs_write_seq(dsi, 0x09, 0x90);
+	mipi_dsi_dcs_write_seq(dsi, 0x0A, 0xFF);
+	mipi_dsi_dcs_write_seq(dsi, 0x0B, 0x8F);
+	mipi_dsi_dcs_write_seq(dsi, 0x0C, 0x60);
+	mipi_dsi_dcs_write_seq(dsi, 0x0D, 0x58);
+	mipi_dsi_dcs_write_seq(dsi, 0x0E, 0x48);
+	mipi_dsi_dcs_write_seq(dsi, 0x0F, 0x38);
+	mipi_dsi_dcs_write_seq(dsi, 0x10, 0x2B);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF, 0x30);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF, 0x52);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x36, 0x02);
+	mipi_dsi_dcs_write_seq(dsi, 0x3A, 0x70);
 
-	dsi_generic_write_seq(dsi, 0x03,0x40);
-	dsi_generic_write_seq(dsi, 0x04,0x00);
-	dsi_generic_write_seq(dsi, 0x05,0x03);
+	dev_dbg(ctx->dev, "Panel init sequence done\n");
 
-	dsi_generic_write_seq(dsi, 0x20,0x90);//2LANE
+	return 0;
+}
 
-	dsi_generic_write_seq(dsi, 0x24,0x0c);
-	dsi_generic_write_seq(dsi, 0x25,0x06);
-	dsi_generic_write_seq(dsi, 0x26,0x14);
-	dsi_generic_write_seq(dsi, 0x27,0x14);
+static int panel_nv3051d_ee0350et_init_sequence(struct panel_nv3051d *ctx)
+{
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
 
-	dsi_generic_write_seq(dsi, 0x28,0x57);
-	dsi_generic_write_seq(dsi, 0x29,0x01);
-	dsi_generic_write_seq(dsi, 0x2A,0xdf);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF,0x30);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF,0x52);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF,0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0xE3,0x00);
 
-	dsi_generic_write_seq(dsi, 0x38,0x9C);
-	dsi_generic_write_seq(dsi, 0x39,0xA7);
-	dsi_generic_write_seq(dsi, 0x3A,0x53);
+	mipi_dsi_dcs_write_seq(dsi, 0x40,0x0a);
 
-	dsi_generic_write_seq(dsi, 0x44,0x00);
-	dsi_generic_write_seq(dsi, 0x49,0x3C);
-	dsi_generic_write_seq(dsi, 0x59,0xfe);
-	dsi_generic_write_seq(dsi, 0x5c,0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x03,0x40);
+	mipi_dsi_dcs_write_seq(dsi, 0x04,0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x05,0x03);
 
-	dsi_generic_write_seq(dsi, 0x91,0x57);
-	dsi_generic_write_seq(dsi, 0x92,0x57);
-	dsi_generic_write_seq(dsi, 0xA0,0x55);
-	dsi_generic_write_seq(dsi, 0xA1,0x50);
+	mipi_dsi_dcs_write_seq(dsi, 0x20,0x90);//2LANE
 
-	dsi_generic_write_seq(dsi, 0xA4,0x9C);
-	dsi_generic_write_seq(dsi, 0xA7,0x02);
-	dsi_generic_write_seq(dsi, 0xA8,0x01);
-	dsi_generic_write_seq(dsi, 0xA9,0x01);
-	dsi_generic_write_seq(dsi, 0xAA,0xFC);
-	dsi_generic_write_seq(dsi, 0xAB,0x28);
-	dsi_generic_write_seq(dsi, 0xAC,0x06);
-	dsi_generic_write_seq(dsi, 0xAD,0x06);
-	dsi_generic_write_seq(dsi, 0xAE,0x06);
-	dsi_generic_write_seq(dsi, 0xAF,0x03);
-	dsi_generic_write_seq(dsi, 0xB0,0x08);
-	dsi_generic_write_seq(dsi, 0xB1,0x26);
-	dsi_generic_write_seq(dsi, 0xB2,0x28);
-	dsi_generic_write_seq(dsi, 0xB3,0x28);
-	dsi_generic_write_seq(dsi, 0xB4,0x33);
-	dsi_generic_write_seq(dsi, 0xB5,0x08);
-	dsi_generic_write_seq(dsi, 0xB6,0x26);
-	dsi_generic_write_seq(dsi, 0xB7,0x08);
-	dsi_generic_write_seq(dsi, 0xB8,0x26);
+	mipi_dsi_dcs_write_seq(dsi, 0x24,0x0c);
+	mipi_dsi_dcs_write_seq(dsi, 0x25,0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0x26,0x14);
+	mipi_dsi_dcs_write_seq(dsi, 0x27,0x14);
 
-	dsi_generic_write_seq(dsi, 0xFF,0x30);
-	dsi_generic_write_seq(dsi, 0xFF,0x52);
-	dsi_generic_write_seq(dsi, 0xFF,0x02);
-	dsi_generic_write_seq(dsi, 0xB0,0x0B);
-	dsi_generic_write_seq(dsi, 0xB1,0x16);
-	dsi_generic_write_seq(dsi, 0xB2,0x17);
-	dsi_generic_write_seq(dsi, 0xB3,0x2C);
-	dsi_generic_write_seq(dsi, 0xB4,0x32);
-	dsi_generic_write_seq(dsi, 0xB5,0x3B);
-	dsi_generic_write_seq(dsi, 0xB6,0x29);
-	dsi_generic_write_seq(dsi, 0xB7,0x40);
-	dsi_generic_write_seq(dsi, 0xB8,0x0d);
-	dsi_generic_write_seq(dsi, 0xB9,0x05);
-	dsi_generic_write_seq(dsi, 0xBA,0x12);
-	dsi_generic_write_seq(dsi, 0xBB,0x10);
-	dsi_generic_write_seq(dsi, 0xBC,0x12);
-	dsi_generic_write_seq(dsi, 0xBD,0x15);
-	dsi_generic_write_seq(dsi, 0xBE,0x19);
-	dsi_generic_write_seq(dsi, 0xBF,0x0E);
-	dsi_generic_write_seq(dsi, 0xC0,0x16);
-	dsi_generic_write_seq(dsi, 0xC1,0x0A);
-	dsi_generic_write_seq(dsi, 0xD0,0x0C);
-	dsi_generic_write_seq(dsi, 0xD1,0x17);
-	dsi_generic_write_seq(dsi, 0xD2,0x14);
-	dsi_generic_write_seq(dsi, 0xD3,0x2E);
-	dsi_generic_write_seq(dsi, 0xD4,0x32);
-	dsi_generic_write_seq(dsi, 0xD5,0x3C);
-	dsi_generic_write_seq(dsi, 0xD6,0x22);
-	dsi_generic_write_seq(dsi, 0xD7,0x3D);
-	dsi_generic_write_seq(dsi, 0xD8,0x0D);
-	dsi_generic_write_seq(dsi, 0xD9,0x07);
-	dsi_generic_write_seq(dsi, 0xDA,0x13);
-	dsi_generic_write_seq(dsi, 0xDB,0x13);
-	dsi_generic_write_seq(dsi, 0xDC,0x11);
-	dsi_generic_write_seq(dsi, 0xDD,0x15);
-	dsi_generic_write_seq(dsi, 0xDE,0x19);
-	dsi_generic_write_seq(dsi, 0xDF,0x10);
-	dsi_generic_write_seq(dsi, 0xE0,0x17);
-	dsi_generic_write_seq(dsi, 0xE1,0x0A);
+	mipi_dsi_dcs_write_seq(dsi, 0x28,0x57);
+	mipi_dsi_dcs_write_seq(dsi, 0x29,0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0x2A,0xdf);
 
-	dsi_generic_write_seq(dsi, 0xFF,0x30);
-	dsi_generic_write_seq(dsi, 0xFF,0x52);
-	dsi_generic_write_seq(dsi, 0xFF,0x03);
+	mipi_dsi_dcs_write_seq(dsi, 0x38,0x9C);
+	mipi_dsi_dcs_write_seq(dsi, 0x39,0xA7);
+	mipi_dsi_dcs_write_seq(dsi, 0x3A,0x53);
 
-	dsi_generic_write_seq(dsi, 0x00,0x2A);
-	dsi_generic_write_seq(dsi, 0x01,0x2A);
-	dsi_generic_write_seq(dsi, 0x02,0x2A);
-	dsi_generic_write_seq(dsi, 0x03,0x2A);
-	dsi_generic_write_seq(dsi, 0x04,0x61);
-	dsi_generic_write_seq(dsi, 0x05,0x80);
-	dsi_generic_write_seq(dsi, 0x06,0xc7);
-	dsi_generic_write_seq(dsi, 0x07,0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0x44,0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x49,0x3C);
+	mipi_dsi_dcs_write_seq(dsi, 0x59,0xfe);
+	mipi_dsi_dcs_write_seq(dsi, 0x5c,0x00);
 
-	dsi_generic_write_seq(dsi, 0x08,0x82);
-	dsi_generic_write_seq(dsi, 0x09,0x83);
+	mipi_dsi_dcs_write_seq(dsi, 0x91,0x57);
+	mipi_dsi_dcs_write_seq(dsi, 0x92,0x57);
+	mipi_dsi_dcs_write_seq(dsi, 0xA0,0x55);
+	mipi_dsi_dcs_write_seq(dsi, 0xA1,0x50);
 
-	dsi_generic_write_seq(dsi, 0x30,0x2A);
-	dsi_generic_write_seq(dsi, 0x31,0x2A);
-	dsi_generic_write_seq(dsi, 0x32,0x2A);
-	dsi_generic_write_seq(dsi, 0x33,0x2A);
-	dsi_generic_write_seq(dsi, 0x34,0x61);
-	dsi_generic_write_seq(dsi, 0x35,0xc5);
-	dsi_generic_write_seq(dsi, 0x36,0x80);
-	dsi_generic_write_seq(dsi, 0x37,0x23);
+	mipi_dsi_dcs_write_seq(dsi, 0xA4,0x9C);
+	mipi_dsi_dcs_write_seq(dsi, 0xA7,0x02);
+	mipi_dsi_dcs_write_seq(dsi, 0xA8,0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0xA9,0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0xAA,0xFC);
+	mipi_dsi_dcs_write_seq(dsi, 0xAB,0x28);
+	mipi_dsi_dcs_write_seq(dsi, 0xAC,0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0xAD,0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0xAE,0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0xAF,0x03);
+	mipi_dsi_dcs_write_seq(dsi, 0xB0,0x08);
+	mipi_dsi_dcs_write_seq(dsi, 0xB1,0x26);
+	mipi_dsi_dcs_write_seq(dsi, 0xB2,0x28);
+	mipi_dsi_dcs_write_seq(dsi, 0xB3,0x28);
+	mipi_dsi_dcs_write_seq(dsi, 0xB4,0x33);
+	mipi_dsi_dcs_write_seq(dsi, 0xB5,0x08);
+	mipi_dsi_dcs_write_seq(dsi, 0xB6,0x26);
+	mipi_dsi_dcs_write_seq(dsi, 0xB7,0x08);
+	mipi_dsi_dcs_write_seq(dsi, 0xB8,0x26);
 
-	dsi_generic_write_seq(dsi, 0x40,0x82);
-	dsi_generic_write_seq(dsi, 0x41,0x83);
-	dsi_generic_write_seq(dsi, 0x42,0x80);
-	dsi_generic_write_seq(dsi, 0x43,0x81);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF,0x30);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF,0x52);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF,0x02);
+	mipi_dsi_dcs_write_seq(dsi, 0xB0,0x0B);
+	mipi_dsi_dcs_write_seq(dsi, 0xB1,0x16);
+	mipi_dsi_dcs_write_seq(dsi, 0xB2,0x17);
+	mipi_dsi_dcs_write_seq(dsi, 0xB3,0x2C);
+	mipi_dsi_dcs_write_seq(dsi, 0xB4,0x32);
+	mipi_dsi_dcs_write_seq(dsi, 0xB5,0x3B);
+	mipi_dsi_dcs_write_seq(dsi, 0xB6,0x29);
+	mipi_dsi_dcs_write_seq(dsi, 0xB7,0x40);
+	mipi_dsi_dcs_write_seq(dsi, 0xB8,0x0d);
+	mipi_dsi_dcs_write_seq(dsi, 0xB9,0x05);
+	mipi_dsi_dcs_write_seq(dsi, 0xBA,0x12);
+	mipi_dsi_dcs_write_seq(dsi, 0xBB,0x10);
+	mipi_dsi_dcs_write_seq(dsi, 0xBC,0x12);
+	mipi_dsi_dcs_write_seq(dsi, 0xBD,0x15);
+	mipi_dsi_dcs_write_seq(dsi, 0xBE,0x19);
+	mipi_dsi_dcs_write_seq(dsi, 0xBF,0x0E);
+	mipi_dsi_dcs_write_seq(dsi, 0xC0,0x16);
+	mipi_dsi_dcs_write_seq(dsi, 0xC1,0x0A);
+	mipi_dsi_dcs_write_seq(dsi, 0xD0,0x0C);
+	mipi_dsi_dcs_write_seq(dsi, 0xD1,0x17);
+	mipi_dsi_dcs_write_seq(dsi, 0xD2,0x14);
+	mipi_dsi_dcs_write_seq(dsi, 0xD3,0x2E);
+	mipi_dsi_dcs_write_seq(dsi, 0xD4,0x32);
+	mipi_dsi_dcs_write_seq(dsi, 0xD5,0x3C);
+	mipi_dsi_dcs_write_seq(dsi, 0xD6,0x22);
+	mipi_dsi_dcs_write_seq(dsi, 0xD7,0x3D);
+	mipi_dsi_dcs_write_seq(dsi, 0xD8,0x0D);
+	mipi_dsi_dcs_write_seq(dsi, 0xD9,0x07);
+	mipi_dsi_dcs_write_seq(dsi, 0xDA,0x13);
+	mipi_dsi_dcs_write_seq(dsi, 0xDB,0x13);
+	mipi_dsi_dcs_write_seq(dsi, 0xDC,0x11);
+	mipi_dsi_dcs_write_seq(dsi, 0xDD,0x15);
+	mipi_dsi_dcs_write_seq(dsi, 0xDE,0x19);
+	mipi_dsi_dcs_write_seq(dsi, 0xDF,0x10);
+	mipi_dsi_dcs_write_seq(dsi, 0xE0,0x17);
+	mipi_dsi_dcs_write_seq(dsi, 0xE1,0x0A);
 
-	dsi_generic_write_seq(dsi, 0x44,0x11);
-	dsi_generic_write_seq(dsi, 0x45,0xe6);
-	dsi_generic_write_seq(dsi, 0x46,0xe5);
-	dsi_generic_write_seq(dsi, 0x47,0x11);
-	dsi_generic_write_seq(dsi, 0x48,0xe8);
-	dsi_generic_write_seq(dsi, 0x49,0xe7);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF,0x30);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF,0x52);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF,0x03);
 
-	dsi_generic_write_seq(dsi, 0x50,0x02);
-	dsi_generic_write_seq(dsi, 0x51,0x01);
-	dsi_generic_write_seq(dsi, 0x52,0x04);
-	dsi_generic_write_seq(dsi, 0x53,0x03);
+	mipi_dsi_dcs_write_seq(dsi, 0x00,0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x01,0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x02,0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x03,0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x04,0x61);
+	mipi_dsi_dcs_write_seq(dsi, 0x05,0x80);
+	mipi_dsi_dcs_write_seq(dsi, 0x06,0xc7);
+	mipi_dsi_dcs_write_seq(dsi, 0x07,0x01);
 
-	dsi_generic_write_seq(dsi, 0x54,0x11);
-	dsi_generic_write_seq(dsi, 0x55,0xea);
-	dsi_generic_write_seq(dsi, 0x56,0xe9);
-	dsi_generic_write_seq(dsi, 0x57,0x11);
-	dsi_generic_write_seq(dsi, 0x58,0xec);
-	dsi_generic_write_seq(dsi, 0x59,0xeb);
+	mipi_dsi_dcs_write_seq(dsi, 0x08,0x82);
+	mipi_dsi_dcs_write_seq(dsi, 0x09,0x83);
 
-	dsi_generic_write_seq(dsi, 0x7e,0x02);
-	dsi_generic_write_seq(dsi, 0x7f,0x80);
-	dsi_generic_write_seq(dsi, 0xe0,0x5a);
+	mipi_dsi_dcs_write_seq(dsi, 0x30,0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x31,0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x32,0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x33,0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0x34,0x61);
+	mipi_dsi_dcs_write_seq(dsi, 0x35,0xc5);
+	mipi_dsi_dcs_write_seq(dsi, 0x36,0x80);
+	mipi_dsi_dcs_write_seq(dsi, 0x37,0x23);
 
-	dsi_generic_write_seq(dsi, 0xB1,0x00);
-	dsi_generic_write_seq(dsi, 0xB4,0x0e);
-	dsi_generic_write_seq(dsi, 0xB5,0x0f);
-	dsi_generic_write_seq(dsi, 0xB6,0x04);
-	dsi_generic_write_seq(dsi, 0xB7,0x07);
-	dsi_generic_write_seq(dsi, 0xB8,0x06);
-	dsi_generic_write_seq(dsi, 0xB9,0x05);
-	dsi_generic_write_seq(dsi, 0xBA,0x0f);
-	dsi_generic_write_seq(dsi, 0xC7,0x00);
-	dsi_generic_write_seq(dsi, 0xCA,0x0e);
-	dsi_generic_write_seq(dsi, 0xCB,0x0f);
-	dsi_generic_write_seq(dsi, 0xCC,0x04);
-	dsi_generic_write_seq(dsi, 0xCD,0x07);
-	dsi_generic_write_seq(dsi, 0xCE,0x06);
-	dsi_generic_write_seq(dsi, 0xCF,0x05);
-	dsi_generic_write_seq(dsi, 0xD0,0x0f);
+	mipi_dsi_dcs_write_seq(dsi, 0x40,0x82);
+	mipi_dsi_dcs_write_seq(dsi, 0x41,0x83);
+	mipi_dsi_dcs_write_seq(dsi, 0x42,0x80);
+	mipi_dsi_dcs_write_seq(dsi, 0x43,0x81);
 
-	dsi_generic_write_seq(dsi, 0x81,0x0f);
-	dsi_generic_write_seq(dsi, 0x84,0x0e);
-	dsi_generic_write_seq(dsi, 0x85,0x0f);
-	dsi_generic_write_seq(dsi, 0x86,0x07);
-	dsi_generic_write_seq(dsi, 0x87,0x04);
-	dsi_generic_write_seq(dsi, 0x88,0x05);
-	dsi_generic_write_seq(dsi, 0x89,0x06);
-	dsi_generic_write_seq(dsi, 0x8A,0x00);
-	dsi_generic_write_seq(dsi, 0x97,0x0f);
-	dsi_generic_write_seq(dsi, 0x9A,0x0e);
-	dsi_generic_write_seq(dsi, 0x9B,0x0f);
-	dsi_generic_write_seq(dsi, 0x9C,0x07);
-	dsi_generic_write_seq(dsi, 0x9D,0x04);
-	dsi_generic_write_seq(dsi, 0x9E,0x05);
-	dsi_generic_write_seq(dsi, 0x9F,0x06);
-	dsi_generic_write_seq(dsi, 0xA0,0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x44,0x11);
+	mipi_dsi_dcs_write_seq(dsi, 0x45,0xe6);
+	mipi_dsi_dcs_write_seq(dsi, 0x46,0xe5);
+	mipi_dsi_dcs_write_seq(dsi, 0x47,0x11);
+	mipi_dsi_dcs_write_seq(dsi, 0x48,0xe8);
+	mipi_dsi_dcs_write_seq(dsi, 0x49,0xe7);
 
-	dsi_generic_write_seq(dsi, 0xFF,0x30);
-	dsi_generic_write_seq(dsi, 0xFF,0x52);
-	dsi_generic_write_seq(dsi, 0xFF,0x02);
-	dsi_generic_write_seq(dsi, 0x01,0x01);
-	dsi_generic_write_seq(dsi, 0x02,0xDA);
-	dsi_generic_write_seq(dsi, 0x03,0xBA);
-	dsi_generic_write_seq(dsi, 0x04,0xA8);
-	dsi_generic_write_seq(dsi, 0x05,0x9A);
-	dsi_generic_write_seq(dsi, 0x06,0x70);
-	dsi_generic_write_seq(dsi, 0x07,0xFF);
-	dsi_generic_write_seq(dsi, 0x08,0x91);
-	dsi_generic_write_seq(dsi, 0x09,0x90);
-	dsi_generic_write_seq(dsi, 0x0A,0xFF);
-	dsi_generic_write_seq(dsi, 0x0B,0x8F);
-	dsi_generic_write_seq(dsi, 0x0C,0x60);
-	dsi_generic_write_seq(dsi, 0x0D,0x58);
-	dsi_generic_write_seq(dsi, 0x0E,0x48);
-	dsi_generic_write_seq(dsi, 0x0F,0x38);
-	dsi_generic_write_seq(dsi, 0x10,0x2B);
+	mipi_dsi_dcs_write_seq(dsi, 0x50,0x02);
+	mipi_dsi_dcs_write_seq(dsi, 0x51,0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0x52,0x04);
+	mipi_dsi_dcs_write_seq(dsi, 0x53,0x03);
 
-	dsi_generic_write_seq(dsi, 0xFF,0x30);
-	dsi_generic_write_seq(dsi, 0xFF,0x52);
-	dsi_generic_write_seq(dsi, 0xFF,0x00);
-	dsi_generic_write_seq(dsi, 0x36,0x02);
+	mipi_dsi_dcs_write_seq(dsi, 0x54,0x11);
+	mipi_dsi_dcs_write_seq(dsi, 0x55,0xea);
+	mipi_dsi_dcs_write_seq(dsi, 0x56,0xe9);
+	mipi_dsi_dcs_write_seq(dsi, 0x57,0x11);
+	mipi_dsi_dcs_write_seq(dsi, 0x58,0xec);
+	mipi_dsi_dcs_write_seq(dsi, 0x59,0xeb);
 
-	dsi_generic_write_seq(dsi, 0x11,0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x7e,0x02);
+	mipi_dsi_dcs_write_seq(dsi, 0x7f,0x80);
+	mipi_dsi_dcs_write_seq(dsi, 0xe0,0x5a);
+
+	mipi_dsi_dcs_write_seq(dsi, 0xB1,0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xB4,0x0e);
+	mipi_dsi_dcs_write_seq(dsi, 0xB5,0x0f);
+	mipi_dsi_dcs_write_seq(dsi, 0xB6,0x04);
+	mipi_dsi_dcs_write_seq(dsi, 0xB7,0x07);
+	mipi_dsi_dcs_write_seq(dsi, 0xB8,0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0xB9,0x05);
+	mipi_dsi_dcs_write_seq(dsi, 0xBA,0x0f);
+	mipi_dsi_dcs_write_seq(dsi, 0xC7,0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xCA,0x0e);
+	mipi_dsi_dcs_write_seq(dsi, 0xCB,0x0f);
+	mipi_dsi_dcs_write_seq(dsi, 0xCC,0x04);
+	mipi_dsi_dcs_write_seq(dsi, 0xCD,0x07);
+	mipi_dsi_dcs_write_seq(dsi, 0xCE,0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0xCF,0x05);
+	mipi_dsi_dcs_write_seq(dsi, 0xD0,0x0f);
+
+	mipi_dsi_dcs_write_seq(dsi, 0x81,0x0f);
+	mipi_dsi_dcs_write_seq(dsi, 0x84,0x0e);
+	mipi_dsi_dcs_write_seq(dsi, 0x85,0x0f);
+	mipi_dsi_dcs_write_seq(dsi, 0x86,0x07);
+	mipi_dsi_dcs_write_seq(dsi, 0x87,0x04);
+	mipi_dsi_dcs_write_seq(dsi, 0x88,0x05);
+	mipi_dsi_dcs_write_seq(dsi, 0x89,0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0x8A,0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x97,0x0f);
+	mipi_dsi_dcs_write_seq(dsi, 0x9A,0x0e);
+	mipi_dsi_dcs_write_seq(dsi, 0x9B,0x0f);
+	mipi_dsi_dcs_write_seq(dsi, 0x9C,0x07);
+	mipi_dsi_dcs_write_seq(dsi, 0x9D,0x04);
+	mipi_dsi_dcs_write_seq(dsi, 0x9E,0x05);
+	mipi_dsi_dcs_write_seq(dsi, 0x9F,0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0xA0,0x00);
+
+	mipi_dsi_dcs_write_seq(dsi, 0xFF,0x30);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF,0x52);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF,0x02);
+	mipi_dsi_dcs_write_seq(dsi, 0x01,0x01);
+	mipi_dsi_dcs_write_seq(dsi, 0x02,0xDA);
+	mipi_dsi_dcs_write_seq(dsi, 0x03,0xBA);
+	mipi_dsi_dcs_write_seq(dsi, 0x04,0xA8);
+	mipi_dsi_dcs_write_seq(dsi, 0x05,0x9A);
+	mipi_dsi_dcs_write_seq(dsi, 0x06,0x70);
+	mipi_dsi_dcs_write_seq(dsi, 0x07,0xFF);
+	mipi_dsi_dcs_write_seq(dsi, 0x08,0x91);
+	mipi_dsi_dcs_write_seq(dsi, 0x09,0x90);
+	mipi_dsi_dcs_write_seq(dsi, 0x0A,0xFF);
+	mipi_dsi_dcs_write_seq(dsi, 0x0B,0x8F);
+	mipi_dsi_dcs_write_seq(dsi, 0x0C,0x60);
+	mipi_dsi_dcs_write_seq(dsi, 0x0D,0x58);
+	mipi_dsi_dcs_write_seq(dsi, 0x0E,0x48);
+	mipi_dsi_dcs_write_seq(dsi, 0x0F,0x38);
+	mipi_dsi_dcs_write_seq(dsi, 0x10,0x2B);
+
+	mipi_dsi_dcs_write_seq(dsi, 0xFF,0x30);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF,0x52);
+	mipi_dsi_dcs_write_seq(dsi, 0xFF,0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x36,0x02);
+
+	mipi_dsi_dcs_write_seq(dsi, 0x11,0x00);
 	msleep( 200 );
 
-	dsi_generic_write_seq(dsi, 0x29,0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0x29,0x00);
 	msleep(10);
 
 
 	return 0;
 }
 
-static const struct drm_display_mode ee0350et_mode = {
-	.hdisplay    = 640,
-	.hsync_start = 640 + 20,
-	.hsync_end   = 640 + 20 + 2,
-	.htotal	     = 640 + 20 + 2 + 20,
-	.vdisplay    = 480,
-	.vsync_start = 480 + 4,
-	.vsync_end   = 480 + 4 + 2,
-	.vtotal	     = 480 + 4 + 2 + 12,
-	//.clock	     = 20378,
-	.clock	     = 20000,
-	.flags	     = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
-	.width_mm    = 70,
-	.height_mm   = 52,
-};
-
-static const struct nv3051d_panel_desc ee0350et_desc = {
-	.mode = &ee0350et_mode,
-	.lanes = 2,
-	.mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST,
-	.format = MIPI_DSI_FMT_RGB888,
-	.init_sequence = ee0350et_init_sequence,
-};
-
-static int nv3051d_enable(struct drm_panel *panel)
+static int panel_nv3051d_unprepare(struct drm_panel *panel)
 {
-	struct nv3051d *ctx = panel_to_nv3051d(panel);
-	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
-	int ret;
-
-	ret = ctx->desc->init_sequence(ctx);
-	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev, "Panel init sequence failed: %d\n",
-			      ret);
-		return ret;
-	}
-
-	msleep(20);
-
-	ret = mipi_dsi_dcs_exit_sleep_mode(dsi);
-	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev, "Failed to exit sleep mode: %d\n", ret);
-		return ret;
-	}
-
-	/* Panel is operational 200 msec after exit sleep mode */
-	msleep(200);
-
-	ret = mipi_dsi_dcs_set_display_on(dsi);
-	if (ret)
-		return ret;
-
-	/* Panel is operational 10 msec after display on */
-	msleep(10);
-
-	DRM_DEV_DEBUG_DRIVER(ctx->dev, "Panel init sequence done\n");
-
-	return 0;
-}
-
-static int nv3051d_disable(struct drm_panel *panel)
-{
-	struct nv3051d *ctx = panel_to_nv3051d(panel);
+	struct panel_nv3051d *ctx = panel_to_panelnv3051d(panel);
 	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
 	int ret;
 
 	ret = mipi_dsi_dcs_set_display_off(dsi);
 	if (ret < 0)
-		DRM_DEV_ERROR(ctx->dev,
-			      "Failed to turn off the display: %d\n", ret);
+		dev_err(ctx->dev, "failed to set display off: %d\n", ret);
+
+	msleep(20);
 
 	ret = mipi_dsi_dcs_enter_sleep_mode(dsi);
-	if (ret < 0)
-		DRM_DEV_ERROR(ctx->dev,
-			      "Failed to enter sleep mode: %d\n", ret);
-
-	return 0;
-}
-
-static int nv3051d_unprepare(struct drm_panel *panel)
-{
-	struct nv3051d *ctx = panel_to_nv3051d(panel);
-
-	if (!ctx->prepared)
-		return 0;
-
-	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
-	regulator_disable(ctx->iovcc);
-	regulator_disable(ctx->vci);
-	ctx->prepared = false;
-
-	return 0;
-}
-
-static int nv3051d_prepare(struct drm_panel *panel)
-{
-	struct nv3051d *ctx = panel_to_nv3051d(panel);
-	int ret;
-
-	if (ctx->prepared)
-		return 0;
-
-	DRM_DEV_DEBUG_DRIVER(ctx->dev, "Resetting the panel\n");
-	ret = regulator_enable(ctx->vci);
 	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev,
-			      "Failed to enable vci supply: %d\n", ret);
+		dev_err(ctx->dev, "failed to enter sleep mode: %d\n", ret);
 		return ret;
 	}
-	ret = regulator_enable(ctx->iovcc);
+
+	usleep_range(10000, 15000);
+
+	regulator_disable(ctx->vdd);
+
+	return 0;
+}
+
+static int panel_nv3051d_prepare(struct drm_panel *panel)
+{
+	struct panel_nv3051d *ctx = panel_to_panelnv3051d(panel);
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
+	int ret;
+
+	dev_dbg(ctx->dev, "Resetting the panel\n");
+	ret = regulator_enable(ctx->vdd);
 	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev,
-			      "Failed to enable iovcc supply: %d\n", ret);
-		goto disable_vci;
+		dev_err(ctx->dev, "Failed to enable vdd supply: %d\n", ret);
+		return ret;
 	}
 
+	usleep_range(2000, 3000);
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
-	usleep_range(20, 40);
+	msleep(150);
 	gpiod_set_value_cansleep(ctx->reset_gpio, 0);
 	msleep(20);
 
-	ctx->prepared = true;
+	ret = ctx->panel_info->init_sequence(ctx);
+	if (ret < 0) {
+		dev_err(ctx->dev, "Panel init sequence failed: %d\n", ret);
+		goto disable_vdd;
+	}
+
+	ret = mipi_dsi_dcs_exit_sleep_mode(dsi);
+	if (ret < 0) {
+		dev_err(ctx->dev, "Failed to exit sleep mode: %d\n", ret);
+		goto disable_vdd;
+	}
+
+	msleep(200);
+
+	ret = mipi_dsi_dcs_set_display_on(dsi);
+	if (ret < 0) {
+		dev_err(ctx->dev, "Failed to set display on: %d\n", ret);
+		goto disable_vdd;
+	}
+
+	usleep_range(10000, 15000);
 
 	return 0;
 
-disable_vci:
-	regulator_disable(ctx->vci);
+disable_vdd:
+	regulator_disable(ctx->vdd);
 	return ret;
 }
 
-static int nv3051d_get_modes(struct drm_panel *panel,
-			     struct drm_connector *connector)
+static int panel_nv3051d_get_modes(struct drm_panel *panel,
+				   struct drm_connector *connector)
 {
-	struct nv3051d *ctx = panel_to_nv3051d(panel);
+	struct panel_nv3051d *ctx = panel_to_panelnv3051d(panel);
+	const struct nv3051d_panel_info *panel_info = ctx->panel_info;
 	struct drm_display_mode *mode;
-	int ret;
+	unsigned int i;
 
-	mode = drm_mode_duplicate(connector->dev, &ee0350et_mode);
-	if (!mode) {
-		DRM_DEV_ERROR(ctx->dev, "Failed to add mode %ux%u@%u\n",
-			      ctx->desc->mode->hdisplay, ctx->desc->mode->vdisplay,
-			      drm_mode_vrefresh(ctx->desc->mode));
-		return -ENOMEM;
+	for (i = 0; i < panel_info->num_modes; i++) {
+		mode = drm_mode_duplicate(connector->dev,
+					  &panel_info->display_modes[i]);
+		if (!mode)
+			return -ENOMEM;
+
+		drm_mode_set_name(mode);
+
+		mode->type = DRM_MODE_TYPE_DRIVER;
+		if (panel_info->num_modes == 1)
+			mode->type |= DRM_MODE_TYPE_PREFERRED;
+
+		drm_mode_probed_add(connector, mode);
 	}
 
-	drm_mode_set_name(mode);
+	connector->display_info.bpc = 8;
+	connector->display_info.width_mm = panel_info->width_mm;
+	connector->display_info.height_mm = panel_info->height_mm;
+	connector->display_info.bus_flags = panel_info->bus_flags;
 
-	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-	connector->display_info.width_mm = mode->width_mm;
-	connector->display_info.height_mm = mode->height_mm;
-
-	ret = drm_display_info_set_bus_formats(&connector->display_info,
-			nv3051d_bus_formats, ARRAY_SIZE(nv3051d_bus_formats));
-	if (ret)
-		return ret;
-
-	drm_mode_probed_add(connector, mode);
-
-	return 1;
+	return panel_info->num_modes;
 }
 
-static const struct drm_panel_funcs nv3051d_drm_funcs = {
-	.disable   = nv3051d_disable,
-	.unprepare = nv3051d_unprepare,
-	.prepare   = nv3051d_prepare,
-	.enable	   = nv3051d_enable,
-	.get_modes = nv3051d_get_modes,
+static const struct drm_panel_funcs panel_nv3051d_funcs = {
+	.unprepare	= panel_nv3051d_unprepare,
+	.prepare	= panel_nv3051d_prepare,
+	.get_modes	= panel_nv3051d_get_modes,
 };
 
-static int allpixelson_set(void *data, u64 val)
-{
-	struct nv3051d *ctx = data;
-	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
-
-	DRM_DEV_DEBUG_DRIVER(ctx->dev, "Setting all pixels on\n");
-	/* Switch to Page 0 */
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ENEXTC, 0x30);
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ENEXTC, 0x52);
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ENEXTC, 0x00);
-
-	dsi_generic_write_seq(dsi, NV3051D_CMD_ALL_PIXEL_ON);
-	msleep(val * 1000);
-	/* Reset the panel to get video back */
-	drm_panel_disable(&ctx->panel);
-	drm_panel_unprepare(&ctx->panel);
-	drm_panel_prepare(&ctx->panel);
-	drm_panel_enable(&ctx->panel);
-
-	return 0;
-}
-
-DEFINE_SIMPLE_ATTRIBUTE(allpixelson_fops, NULL,
-			allpixelson_set, "%llu\n");
-
-static void nv3051d_debugfs_init(struct nv3051d *ctx)
-{
-	ctx->debugfs = debugfs_create_dir(DRV_NAME, NULL);
-
-	debugfs_create_file("allpixelson", 0600, ctx->debugfs, ctx,
-			    &allpixelson_fops);
-}
-
-static void nv3051d_debugfs_remove(struct nv3051d *ctx)
-{
-	debugfs_remove_recursive(ctx->debugfs);
-	ctx->debugfs = NULL;
-}
-
-static int nv3051d_probe(struct mipi_dsi_device *dsi)
+static int panel_nv3051d_probe(struct mipi_dsi_device *dsi)
 {
 	struct device *dev = &dsi->dev;
-	struct nv3051d *ctx;
+	struct panel_nv3051d *ctx;
 	int ret;
 
 	ctx = devm_kzalloc(dev, sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
 		return -ENOMEM;
 
-	ctx->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
+	ctx->dev = dev;
+
+	ctx->panel_info = of_device_get_match_data(dev);
+	if (!ctx->panel_info)
+		return -EINVAL;
+
+	ctx->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset_gpio)) {
-		DRM_DEV_ERROR(dev, "cannot get reset gpio\n");
+		dev_err(dev, "cannot get reset gpio\n");
 		return PTR_ERR(ctx->reset_gpio);
+	}
+
+	ctx->vdd = devm_regulator_get(dev, "vdd");
+	if (IS_ERR(ctx->vdd)) {
+		ret = PTR_ERR(ctx->vdd);
+		if (ret != -EPROBE_DEFER)
+			dev_err(dev, "Failed to request vdd regulator: %d\n", ret);
+		return ret;
+	}
+
+	if(ctx->panel_info->init_sequence == NULL){
+		dev_err(dev, "No initsequence defined\n");
+		return -EINVAL;
 	}
 
 	mipi_dsi_set_drvdata(dsi, ctx);
 
-	ctx->dev = dev;
-	ctx->desc = of_device_get_match_data(dev);
+	dsi->lanes = ctx->panel_info->lanes;
+	dsi->format = MIPI_DSI_FMT_RGB888;
+	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST |
+			  MIPI_DSI_MODE_LPM | MIPI_DSI_MODE_NO_EOT_PACKET;
 
-	dsi->mode_flags = ctx->desc->mode_flags;
-	dsi->format = ctx->desc->format;
-	dsi->lanes = ctx->desc->lanes;
+	
+	drm_panel_init(&ctx->panel, &dsi->dev, &panel_nv3051d_funcs,
+		       DRM_MODE_CONNECTOR_DSI);
 
-	ctx->vci = devm_regulator_get(dev, "vci");
-	if (IS_ERR(ctx->vci)) {
-		ret = PTR_ERR(ctx->vci);
-		if (ret != -EPROBE_DEFER)
-			DRM_DEV_ERROR(dev,
-				      "Failed to request vci regulator: %d\n",
-				      ret);
+	ret = drm_panel_of_backlight(&ctx->panel);
+	if (ret)
 		return ret;
-	}
-	ctx->iovcc = devm_regulator_get(dev, "iovcc");
-	if (IS_ERR(ctx->iovcc)) {
-		ret = PTR_ERR(ctx->iovcc);
-		if (ret != -EPROBE_DEFER)
-			DRM_DEV_ERROR(dev,
-				      "Failed to request iovcc regulator: %d\n",
-				      ret);
-		return ret;
-	}
-
-	drm_panel_init(&ctx->panel, dev, &nv3051d_drm_funcs, DRM_MODE_CONNECTOR_DSI);
-	ctx->panel.dev = &dsi->dev;
-	ctx->panel.funcs = &nv3051d_drm_funcs;
 
 	drm_panel_add(&ctx->panel);
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
-		DRM_DEV_ERROR(dev,
-			      "mipi_dsi_attach failed (%d). Is host ready?\n",
-			      ret);
+		dev_err(dev, "mipi_dsi_attach failed: %d\n", ret);
 		drm_panel_remove(&ctx->panel);
 		return ret;
 	}
 
-	DRM_DEV_INFO(dev, "%ux%u@%u %ubpp dsi %udl - ready\n",
-		     ctx->desc->mode->hdisplay, ctx->desc->mode->vdisplay,
-		     drm_mode_vrefresh(ctx->desc->mode),
-		     mipi_dsi_pixel_format_to_bpp(dsi->format), dsi->lanes);
-
-	nv3051d_debugfs_init(ctx);
 	return 0;
 }
 
-static void nv3051d_shutdown(struct mipi_dsi_device *dsi)
+static void panel_nv3051d_shutdown(struct mipi_dsi_device *dsi)
 {
-	struct nv3051d *ctx = mipi_dsi_get_drvdata(dsi);
+	struct panel_nv3051d *ctx = mipi_dsi_get_drvdata(dsi);
 	int ret;
 
 	ret = drm_panel_unprepare(&ctx->panel);
 	if (ret < 0)
-		DRM_DEV_ERROR(&dsi->dev, "Failed to unprepare panel: %d\n",
-			      ret);
+		dev_err(&dsi->dev, "Failed to unprepare panel: %d\n", ret);
 
 	ret = drm_panel_disable(&ctx->panel);
 	if (ret < 0)
-		DRM_DEV_ERROR(&dsi->dev, "Failed to disable panel: %d\n",
-			      ret);
+		dev_err(&dsi->dev, "Failed to disable panel: %d\n", ret);
 }
 
-static void nv3051d_remove(struct mipi_dsi_device *dsi)
+static void panel_nv3051d_remove(struct mipi_dsi_device *dsi)
 {
-	struct nv3051d *ctx = mipi_dsi_get_drvdata(dsi);
+	struct panel_nv3051d *ctx = mipi_dsi_get_drvdata(dsi);
 	int ret;
 
-	nv3051d_shutdown(dsi);
+	panel_nv3051d_shutdown(dsi);
 
 	ret = mipi_dsi_detach(dsi);
 	if (ret < 0)
-		DRM_DEV_ERROR(&dsi->dev, "Failed to detach from DSI host: %d\n",
-			      ret);
+		dev_err(&dsi->dev, "Failed to detach from DSI host: %d\n", ret);
 
 	drm_panel_remove(&ctx->panel);
-
-	nv3051d_debugfs_remove(ctx);
-
 }
 
-static const struct of_device_id nv3051d_of_match[] = {
-	{ .compatible = "eagleeyetech,ee0350et-2", .data = &ee0350et_desc },
-	{ /* sentinel */ }
-};
-MODULE_DEVICE_TABLE(of, nv3051d_of_match);
-
-static struct mipi_dsi_driver nv3051d_driver = {
-	.probe	= nv3051d_probe,
-	.remove = nv3051d_remove,
-	.shutdown = nv3051d_shutdown,
-	.driver = {
-		.name = DRV_NAME,
-		.of_match_table = nv3051d_of_match,
+static const struct drm_display_mode nv3051d_rgxx3_modes[] = {
+	{ /* 120hz */
+		.hdisplay	= 640,
+		.hsync_start	= 640 + 40,
+		.hsync_end	= 640 + 40 + 2,
+		.htotal		= 640 + 40 + 2 + 80,
+		.vdisplay	= 480,
+		.vsync_start	= 480 + 18,
+		.vsync_end	= 480 + 18 + 2,
+		.vtotal		= 480 + 18 + 2 + 28,
+		.clock		= 48300,
+		.flags		= DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+	},
+	{ /* 100hz */
+		.hdisplay       = 640,
+		.hsync_start    = 640 + 40,
+		.hsync_end      = 640 + 40 + 2,
+		.htotal         = 640 + 40 + 2 + 80,
+		.vdisplay       = 480,
+		.vsync_start    = 480 + 18,
+		.vsync_end      = 480 + 18 + 2,
+		.vtotal         = 480 + 18 + 2 + 28,
+		.clock          = 40250,
+		.flags		= DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+	},
+	{ /* 60hz */
+		.hdisplay	= 640,
+		.hsync_start	= 640 + 40,
+		.hsync_end	= 640 + 40 + 2,
+		.htotal		= 640 + 40 + 2 + 80,
+		.vdisplay	= 480,
+		.vsync_start	= 480 + 18,
+		.vsync_end	= 480 + 18 + 2,
+		.vtotal		= 480 + 18 + 2 + 28,
+		.clock		= 24150,
+		.flags		= DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
 	},
 };
-module_mipi_dsi_driver(nv3051d_driver);
 
-MODULE_AUTHOR("Patrick Jakob <jakob@fs-net.de>");
-MODULE_DESCRIPTION("DRM driver for NewVision NV3051D-T based MIPI DSI panels");
-MODULE_LICENSE("GPL v2");
+static const struct nv3051d_panel_info nv3051d_rgxx3_info = {
+	.display_modes = nv3051d_rgxx3_modes,
+	.num_modes = ARRAY_SIZE(nv3051d_rgxx3_modes),
+	.width_mm = 70,
+	.height_mm = 57,
+	.bus_flags = DRM_BUS_FLAG_DE_LOW | DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE,
+	.lanes = 4,
+	.init_sequence = panel_nv3051d_rgxx3_init_sequence,
+};
+
+static const struct drm_display_mode nv3051d_ee0350et_modes[] = {
+	{
+		.hdisplay    = 640,
+		.hsync_start = 640 + 20,
+		.hsync_end   = 640 + 20 + 2,
+		.htotal	     = 640 + 20 + 2 + 20,
+		.vdisplay    = 480,
+		.vsync_start = 480 + 4,
+		.vsync_end   = 480 + 4 + 2,
+		.vtotal	     = 480 + 4 + 2 + 12,
+		//.clock	     = 20378,
+		.clock	     = 20000,
+		.flags	     = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+	},
+};
+
+static const struct nv3051d_panel_info nv3051d_ee0350et_info = {
+	.display_modes = nv3051d_ee0350et_modes,
+	.num_modes = ARRAY_SIZE(nv3051d_ee0350et_modes),
+	.height_mm = 70,
+	.height_mm = 52,
+	.bus_flags = DRM_BUS_FLAG_DE_LOW | DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE,
+	.lanes = 2,
+	.init_sequence = panel_nv3051d_ee0350et_init_sequence,
+};
+
+static const struct of_device_id newvision_nv3051d_of_match[] = {
+	{ .compatible = "newvision,nv3051d", .data = &nv3051d_rgxx3_info },
+	{ .compatible = "newvision,nv3051d-ee0350et", .data = &nv3051d_ee0350et_info},
+	{ /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(of, newvision_nv3051d_of_match);
+
+static struct mipi_dsi_driver newvision_nv3051d_driver = {
+	.driver = {
+		.name = "panel-newvision-nv3051d",
+		.of_match_table = newvision_nv3051d_of_match,
+	},
+	.probe	= panel_nv3051d_probe,
+	.remove = panel_nv3051d_remove,
+	.shutdown = panel_nv3051d_shutdown,
+};
+module_mipi_dsi_driver(newvision_nv3051d_driver);
+
+MODULE_AUTHOR("Chris Morgan <macromorgan@hotmail.com>");
+MODULE_DESCRIPTION("DRM driver for Newvision NV3051D based MIPI DSI panels");
+MODULE_LICENSE("GPL");

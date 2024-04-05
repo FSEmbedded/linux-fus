@@ -97,8 +97,7 @@ static int tps65185_i2c_detect(struct i2c_client *client,
 	return ret;
 }
 
-static int tps65185_i2c_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+static int tps65185_i2c_probe(struct i2c_client *client)
 {
 	int ret;
 	struct tps65185 *tps65185;

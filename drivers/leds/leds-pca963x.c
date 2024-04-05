@@ -27,47 +27,17 @@
 #include <linux/string.h>
 #include <linux/ctype.h>
 #include <linux/leds.h>
-#include <linux/pwm.h>
-#include <linux/gpio.h>
 #include <linux/err.h>
 #include <linux/i2c.h>
 #include <linux/property.h>
 #include <linux/slab.h>
 #include <linux/of.h>
 
-
-enum pca963x_outdrv {
-	PCA963X_OPEN_DRAIN,
-	PCA963X_TOTEM_POLE, /* aka push-pull */
-};
-
-enum pca963x_blink_type {
-	PCA963X_SW_BLINK,
-	PCA963X_HW_BLINK,
-};
-
-/* Flags for each LED (leds->leds[i].flags) */
-#define PCA963X_LED_FLAGS_ACTIVE_HIGH	BIT(0)
-#define PCA963X_LED_FLAGS_KEEP_VALUE	BIT(1)
-#define PCA963X_LED_FLAGS_DEFAULT_ON	BIT(2)
-#define PCA963X_LED_FLAGS_TYPE_PWM	BIT(3)
-#define PCA963X_LED_FLAGS_TYPE_GPIO	BIT(4)
-#define PCA963X_LED_FLAGS_TYPE_MASK					\
-	(PCA963X_LED_FLAGS_TYPE_PWM | PCA963X_LED_FLAGS_TYPE_GPIO)
-
-struct pca963x_platform_data {
-	struct led_platform_data leds;
-	enum pca963x_outdrv outdrv;
-	enum pca963x_blink_type blink_type;
-};
-
 /* LED select registers determine the source that drives LED outputs */
 #define PCA963X_LED_OFF		0x0	/* LED driver off */
 #define PCA963X_LED_ON		0x1	/* LED driver on */
 #define PCA963X_LED_PWM		0x2	/* Controlled through PWM */
 #define PCA963X_LED_GRP_PWM	0x3	/* Controlled through PWM/GRPPWM */
-#define PCA963X_LED_MASK	0x3	/* MASK LED */
-#define PCA963X_LED_OUT		0x8	/* LEDOUT Register */
 
 #define PCA963X_MODE2_OUTDRV	0x04	/* Open-drain or totem pole */
 #define PCA963X_MODE2_INVRT	0x10	/* Normal or inverted direction */
@@ -88,6 +58,7 @@ struct pca963x_chipdef {
 	u8			grpfreq;
 	u8			ledout_base;
 	int			n_leds;
+	unsigned int		scaling;
 };
 
 static struct pca963x_chipdef pca963x_chipdefs[] = {
@@ -126,244 +97,161 @@ MODULE_DEVICE_TABLE(i2c, pca963x_id);
 
 struct pca963x;
 
-struct pca963x_entry;
+struct pca963x_led {
+	struct pca963x *chip;
+	struct led_classdev led_cdev;
+	int led_num; /* 0 .. 15 potentially */
+	bool blinking;
+	u8 gdc;
+	u8 gfrq;
+};
 
 struct pca963x {
 	struct pca963x_chipdef *chipdef;
 	struct mutex mutex;
 	struct i2c_client *client;
-	struct pca963x_entry *entries;
-	int n_led;
-	enum pca963x_blink_type blink_type;
-	enum pca963x_outdrv outdrv;
-#ifdef CONFIG_GPIOLIB
-	int n_gpio;
-	struct gpio_chip gpio_chip;
-#endif
-#ifdef CONFIG_PWM
-	int n_pwm;
-	struct pwm_chip pwm_chip;
-#endif
+	unsigned long leds_on;
+	struct pca963x_led leds[];
 };
 
-#define PCA963X_LED_STATE_BLINKING BIT(0)
-
-struct pca963x_entry {
-	struct pca963x *chip;
-	struct led_classdev led_cdev;
-	int state;
-	int flags;			/* see leds-pca963x.h */
-	int led_num;			/* 0 .. 15 potentially */
-	int defval;
-	char name[32];
-	u8 gdc;
-	u8 gfrq;
-};
-
-/* -------- Helper functions -------- */
-
-/* Read a register via I2C */
-static int pca963x_read_reg(struct pca963x *pca963x, u8 reg)
+static int pca963x_brightness(struct pca963x_led *led,
+			      enum led_brightness brightness)
 {
-	int value;
-
-	value = i2c_smbus_read_byte_data(pca963x->client, reg);
-	if (value < 0) {
-		dev_err(&pca963x->client->dev,
-			"can not read from PCA963x register %d\n", reg);
-	}
-
-	return value;
-}
-
-/* Write a register via I2C */
-static int pca963x_write_reg(struct pca963x *pca963x, u8 reg, u8 value)
-{
-	int err;
-
-	err = i2c_smbus_write_byte_data(pca963x->client, reg, value);
-	if (err < 0) {
-		dev_err(&pca963x->client->dev,
-			"can not write to PCA963x register %d\n", reg);
-	}
-
-	return err;
-}
-
-/* Read value, clear and/or set some bits, write back */
-static int pca963x_clear_set_reg(struct pca963x *pca963x, u8 reg, u8 mask,
-				 u8 value)
-{
-	u8 old;
-	int err;
-
-	err = pca963x_read_reg(pca963x, reg);
-	if (err < 0)
-		return err;
-
-	old = (u8)err;
-	value = (value & mask) | (old & ~mask);
-
-	/* Spare the writeback if there are no changes */
-	if (old != value) {
-		err = pca963x_write_reg(pca963x, reg, value);
-		if (err < 0)
-			return err;
-	}
-
-	return 0;
-}
-
-/* Set the PWM value if necessary and return the LED mode */
-static int pca963x_set_pwm(struct pca963x *pca963x, int value, int offset)
-{
+	struct i2c_client *client = led->chip->client;
+	struct pca963x_chipdef *chipdef = led->chip->chipdef;
+	u8 ledout_addr, ledout, mask, val;
+	int shift;
 	int ret;
-	struct pca963x_entry *entry = &pca963x->entries[offset];
 
-	if (entry->flags & PCA963X_LED_FLAGS_ACTIVE_HIGH)
-		value = 256 - value;
+	ledout_addr = chipdef->ledout_base + (led->led_num / 4);
+	shift = 2 * (led->led_num % 4);
+	mask = 0x3 << shift;
+	ledout = i2c_smbus_read_byte_data(client, ledout_addr);
 
-	if (value == 256)
-		ret = PCA963X_LED_ON;
-	else if (value == 0)
-		ret = PCA963X_LED_OFF;
-	else {
-		ret = pca963x_write_reg(pca963x, PCA963X_PWM_BASE + offset,
-					value);
+	switch (brightness) {
+	case LED_FULL:
+		if (led->blinking) {
+			val = (ledout & ~mask) | (PCA963X_LED_GRP_PWM << shift);
+			ret = i2c_smbus_write_byte_data(client,
+						PCA963X_PWM_BASE +
+						led->led_num,
+						LED_FULL);
+		} else {
+			val = (ledout & ~mask) | (PCA963X_LED_ON << shift);
+		}
+		ret = i2c_smbus_write_byte_data(client, ledout_addr, val);
+		break;
+	case LED_OFF:
+		val = ledout & ~mask;
+		ret = i2c_smbus_write_byte_data(client, ledout_addr, val);
+		led->blinking = false;
+		break;
+	default:
+		ret = i2c_smbus_write_byte_data(client,
+						PCA963X_PWM_BASE +
+						led->led_num,
+						brightness);
 		if (ret < 0)
 			return ret;
 
-		if (entry->state & PCA963X_LED_STATE_BLINKING)
-			ret = PCA963X_LED_GRP_PWM;
+		if (led->blinking)
+			val = (ledout & ~mask) | (PCA963X_LED_GRP_PWM << shift);
 		else
-			ret = PCA963X_LED_PWM;
+			val = (ledout & ~mask) | (PCA963X_LED_PWM << shift);
+
+		ret = i2c_smbus_write_byte_data(client, ledout_addr, val);
+		break;
 	}
 
 	return ret;
 }
 
-/* Set the LED brightness (0..256) */
-static int pca963x_set_brightness(struct pca963x *pca963x, int offset, int val)
+static void pca963x_blink(struct pca963x_led *led)
 {
-	int ret;
+	struct i2c_client *client = led->chip->client;
+	struct pca963x_chipdef *chipdef = led->chip->chipdef;
+	u8 ledout_addr, ledout, mask, val, mode2;
+	int shift;
 
-	mutex_lock(&pca963x->mutex);
+	ledout_addr = chipdef->ledout_base + (led->led_num / 4);
+	shift = 2 * (led->led_num % 4);
+	mask = 0x3 << shift;
+	mode2 = i2c_smbus_read_byte_data(client, PCA963X_MODE2);
 
-	ret = pca963x_set_pwm(pca963x, val, offset);
-	if (ret >= 0) {
-		u8 reg = pca963x->chipdef->ledout_base + offset/4;
-		int shift = (offset % 4) * 2;
+	i2c_smbus_write_byte_data(client, chipdef->grppwm, led->gdc);
 
-		ret = pca963x_clear_set_reg(pca963x, reg,
-					    PCA963X_LED_MASK << shift,
-					    ret << shift);
-	}
-
-	mutex_unlock(&pca963x->mutex);
-
-	return ret;
-}
-
-/* Return current LED brightness (0=off..256=fully on) */
-static int pca963x_get_brightness(struct pca963x *pca963x, int offset)
-{
-	u8 reg = pca963x->chipdef->ledout_base + offset/4;
-	int shift = (offset % 4) * 2;
-	int value;
-
-	mutex_lock(&pca963x->mutex);
-
-	value = pca963x_read_reg(pca963x, reg);
-	if (value < 0)
-		goto unlock;
-
-	value = (value >> shift) & PCA963X_LED_MASK;
-	switch (value) {
-	case PCA963X_LED_ON:
-		value = 256;
-		break;
-	case PCA963X_LED_OFF:
-		value = 0;
-		break;
-	default:
-		value = pca963x_read_reg(pca963x, PCA963X_PWM_BASE + offset);
-		if (value < 0)
-			goto unlock;
-		break;
-	}
-
-	if (pca963x->entries[offset].flags & PCA963X_LED_FLAGS_ACTIVE_HIGH)
-		value = 256 - value;
-
-unlock:
-	mutex_unlock(&pca963x->mutex);
-
-	return value;
-}
-
-/* -------- LED interface -------- */
-
-static void pca963x_blink(struct pca963x *pca963x, int offset)
-{
-	u8 ledout_addr = pca963x->chipdef->ledout_base + offset / 4;
-	u8 ledout;
-	u8 mode2 = i2c_smbus_read_byte_data(pca963x->client, PCA963X_MODE2);
-	int shift = 2 * (offset % 4);
-	u8 mask = 0x3 << shift;
-	struct pca963x_entry *entry = &pca963x->entries[offset];
-
-	i2c_smbus_write_byte_data(pca963x->client,
-			pca963x->chipdef->grppwm, entry->gdc);
-
-	i2c_smbus_write_byte_data(pca963x->client,
-			pca963x->chipdef->grpfreq, entry->gfrq);
+	i2c_smbus_write_byte_data(client, chipdef->grpfreq, led->gfrq);
 
 	if (!(mode2 & PCA963X_MODE2_DMBLNK))
-		i2c_smbus_write_byte_data(pca963x->client, PCA963X_MODE2,
+		i2c_smbus_write_byte_data(client, PCA963X_MODE2,
 					  mode2 | PCA963X_MODE2_DMBLNK);
 
-	mutex_lock(&pca963x->mutex);
-	ledout = i2c_smbus_read_byte_data(pca963x->client, ledout_addr);
-	if ((ledout & mask) != (PCA963X_LED_GRP_PWM << shift))
-		i2c_smbus_write_byte_data(pca963x->client, ledout_addr,
-			(ledout & ~mask) | (PCA963X_LED_GRP_PWM << shift));
-	mutex_unlock(&pca963x->mutex);
+	mutex_lock(&led->chip->mutex);
+
+	ledout = i2c_smbus_read_byte_data(client, ledout_addr);
+	if ((ledout & mask) != (PCA963X_LED_GRP_PWM << shift)) {
+		val = (ledout & ~mask) | (PCA963X_LED_GRP_PWM << shift);
+		i2c_smbus_write_byte_data(client, ledout_addr, val);
+	}
+
+	mutex_unlock(&led->chip->mutex);
+	led->blinking = true;
+}
+
+static int pca963x_power_state(struct pca963x_led *led)
+{
+	struct i2c_client *client = led->chip->client;
+	unsigned long *leds_on = &led->chip->leds_on;
+	unsigned long cached_leds = *leds_on;
+
+	if (led->led_cdev.brightness)
+		set_bit(led->led_num, leds_on);
+	else
+		clear_bit(led->led_num, leds_on);
+
+	if (!(*leds_on) != !cached_leds)
+		return i2c_smbus_write_byte_data(client, PCA963X_MODE1,
+						 *leds_on ? 0 : BIT(4));
+
+	return 0;
 }
 
 static int pca963x_led_set(struct led_classdev *led_cdev,
 			   enum led_brightness value)
 {
-	struct pca963x_entry *entry;
-	struct pca963x *pca963x;
+	struct pca963x_led *led;
+	int ret;
 
-	if (value >= LED_FULL)
-		value = 256;
+	led = container_of(led_cdev, struct pca963x_led, led_cdev);
 
-	entry = container_of(led_cdev, struct pca963x_entry, led_cdev);
-	pca963x = entry->chip;
+	mutex_lock(&led->chip->mutex);
 
-	return pca963x_set_brightness(pca963x, entry->led_num, value);
+	ret = pca963x_brightness(led, value);
+	if (ret < 0)
+		goto unlock;
+	ret = pca963x_power_state(led);
+
+unlock:
+	mutex_unlock(&led->chip->mutex);
+	return ret;
 }
 
-enum led_brightness pca963x_led_get(struct led_classdev *led_cdev)
+static unsigned int pca963x_period_scale(struct pca963x_led *led,
+					 unsigned int val)
 {
-	struct pca963x_entry *entry;
-	struct pca963x *pca963x;
+	unsigned int scaling = led->chip->chipdef->scaling;
 
-	entry = container_of(led_cdev, struct pca963x_entry, led_cdev);
-	pca963x = entry->chip;
-
-	return pca963x_get_brightness(pca963x, entry->led_num);
+	return scaling ? DIV_ROUND_CLOSEST(val * scaling, 1000) : val;
 }
 
 static int pca963x_blink_set(struct led_classdev *led_cdev,
-		unsigned long *delay_on, unsigned long *delay_off)
+			     unsigned long *delay_on, unsigned long *delay_off)
 {
-	struct pca963x_entry *entry;
 	unsigned long time_on, time_off, period;
+	struct pca963x_led *led;
 	u8 gdc, gfrq;
 
-	entry = container_of(led_cdev, struct pca963x_entry, led_cdev);
+	led = container_of(led_cdev, struct pca963x_led, led_cdev);
 
 	time_on = *delay_on;
 	time_off = *delay_off;
@@ -374,14 +262,14 @@ static int pca963x_blink_set(struct led_classdev *led_cdev,
 		time_off = 500;
 	}
 
-	period = time_on + time_off;
+	period = pca963x_period_scale(led, time_on + time_off);
 
 	/* If period not supported by hardware, default to someting sane. */
 	if ((period < PCA963X_BLINK_PERIOD_MIN) ||
 	    (period > PCA963X_BLINK_PERIOD_MAX)) {
 		time_on = 500;
 		time_off = 500;
-		period = time_on + time_off;
+		period = pca963x_period_scale(led, 1000);
 	}
 
 	/*
@@ -389,7 +277,7 @@ static int pca963x_blink_set(struct led_classdev *led_cdev,
 	 *	(time_on / period) = (GDC / 256) ->
 	 *		GDC = ((time_on * 256) / period)
 	 */
-	gdc = (time_on * 256) / period;
+	gdc = (pca963x_period_scale(led, time_on) * 256) / period;
 
 	/*
 	 * From manual: period = ((GFRQ + 1) / 24) in seconds.
@@ -398,10 +286,12 @@ static int pca963x_blink_set(struct led_classdev *led_cdev,
 	 */
 	gfrq = (period * 24 / 1000) - 1;
 
-	entry->gdc = gdc;
-	entry->gfrq = gfrq;
+	led->gdc = gdc;
+	led->gfrq = gfrq;
 
-	pca963x_blink(entry->chip, entry->led_num);
+	pca963x_blink(led);
+	led->led_cdev.brightness = LED_FULL;
+	pca963x_led_set(led_cdev, LED_FULL);
 
 	*delay_on = time_on;
 	*delay_off = time_off;
@@ -409,279 +299,85 @@ static int pca963x_blink_set(struct led_classdev *led_cdev,
 	return 0;
 }
 
-/* -------- PWM interface -------- */
-
-#ifdef CONFIG_PWM
-static int pca963x_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
-			     const struct pwm_state *state)
+static int pca963x_register_leds(struct i2c_client *client,
+				 struct pca963x *chip)
 {
-	int value;
-	struct pca963x *pca963x = container_of(chip, struct pca963x, pwm_chip);
-	int duty_ns, period_ns;
-
-	if (!state->enabled)
-		duty_ns = 0;
-	else
-		duty_ns = pwm->state.duty_cycle;
-
-	period_ns = pwm->state.period;
-
-	if (period_ns != 640000) {
-		dev_warn(&pca963x->client->dev,
-			 "Signal period must be fix at 640000 (1.5625 kHz)\n");
-		return -EINVAL;
-	}
-
-#if 0 //###
-	/*
-	 * When PWM is off, do not change the hardware, just save the new
-	 * period_ns and duty_ns (already done in PWM infrastructure).
-	 */
-	if (!pwm->state.enabled)
-		return 0;
-#endif //###
-
-	value = ((duty_ns * 256 + period_ns/2) / period_ns);
-	if (pwm->state.polarity == PWM_POLARITY_INVERSED)
-		value = 256 - value;
-
-	return pca963x_set_brightness(pca963x, pwm->hwpwm, value);
-}
-
-static int pca963x_pwm_request(struct pwm_chip *chip, struct pwm_device *pwm)
-{
-	struct pca963x *pca963x = container_of(chip, struct pca963x, pwm_chip);
-	struct pca963x_entry *entry = &pca963x->entries[pwm->hwpwm];
-	int value;
-
-	if (!(entry->flags & PCA963X_LED_FLAGS_TYPE_PWM))
-		return -ENODEV;
-
-	/* fixed frequency signal 1.5625kHz */
-	pwm->label = entry->name;
-	pwm->state.period = 640000;
-
-	value = pca963x_get_brightness(pca963x, pwm->hwpwm);
-	if (value < 0)
-		return value;
-
-	if (pwm->state.polarity == PWM_POLARITY_INVERSED)
-		value = 256 - value;
-
-	pwm->state.duty_cycle = (value * pwm->state.period + 128) / 256;
-
-	return 0;
-}
-
-static const struct pwm_ops pca963x_pwm_ops = {
-	.apply = pca963x_pwm_apply,
-	.request = pca963x_pwm_request,
-	.owner = THIS_MODULE,
-};
-#endif
-
-/* -------- GPIO interface -------- */
-
-#ifdef CONFIG_GPIOLIB
-static void pca963x_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
-{
-	struct pca963x *pca963x;
-
-	pca963x = container_of(chip, struct pca963x, gpio_chip);
-
-	if (value > 0)
-		value = 256;
-
-	pca963x_set_brightness(pca963x, offset, value);
-}
-
-static int pca963x_gpio_get(struct gpio_chip *chip, unsigned offset)
-{
-	int value;
-	struct pca963x *pca963x;
-
-	pca963x = container_of(chip, struct pca963x, gpio_chip);
-
-	value = pca963x_get_brightness(pca963x, offset);
-	if (value > 0)
-		value = 1;
-
-	return value;
-}
-
-static int pca963x_gpio_direction_output(struct gpio_chip *chip,
-						unsigned offset, int value)
-{
-	pca963x_gpio_set(chip, offset, value);
-
-	return 0;
-}
-
-static int pca963x_gpio_request(struct gpio_chip *chip, unsigned offset)
-{
-	struct pca963x *pca963x;
-
-	pca963x = container_of(chip, struct pca963x, gpio_chip);
-	if (!(pca963x->entries[offset].flags & PCA963X_LED_FLAGS_TYPE_GPIO))
-		return -ENODEV;
-
-	return 0;
-}
-
-const struct gpio_chip pca963x_gpio_ops = {
-	.request	= pca963x_gpio_request,
-	.get		= pca963x_gpio_get,
-	.set		= pca963x_gpio_set,
-	.direction_output = pca963x_gpio_direction_output,
-	.owner		= THIS_MODULE,
-};
-#endif
-
-/* -------- Initialization -------- */
-
-/* Set default value for all LEDs with PCA963X_LED_FLAGS_KEEP_VALUE not set */
-static int pca963x_set_default_values(struct pca963x *pca963x)
-{
-	u8 reg = pca963x->chipdef->ledout_base;
-	u8 mask, val;
-	int i, offset, ret, shift;
-	struct pca963x_entry *entry;
-
-	/* No need to aquire mutex, nobody knows us yet */
-	for (offset = 0; offset < pca963x->chipdef->n_leds; offset += 4) {
-		mask = 0;
-		val = 0;
-		for (i = offset; i < offset + 4; i++) {
-			entry = &pca963x->entries[i];
-			if (entry->flags & PCA963X_LED_FLAGS_KEEP_VALUE)
-				continue;
-
-			ret = pca963x_set_pwm(pca963x, entry->defval, i);
-			if (ret < 0)
-				return ret;
-
-			shift = (i % 4) * 2;
-			val |= ret << shift;
-			mask |= PCA963X_LED_MASK << shift;
-		}
-
-		/* Write LED mode register if there are any changes */
-		if (mask) {
-			/* If whole register changes, spare reading it first */
-			if (mask == 0xFF)
-				ret = pca963x_write_reg(pca963x, reg, val);
-			else
-				ret = pca963x_clear_set_reg(pca963x, reg,
-							    mask, val);
-			if (ret < 0)
-				return ret;
-		}
-		reg++;
-	}
-
-	return 0;
-}
-
-static int pca963x_get_pdata(struct i2c_client *client, struct pca963x *pca963x)
-{
-	u32 reg;
-	int res;
-	const char *type;
-	const char *label;
+	struct pca963x_chipdef *chipdef = chip->chipdef;
+	struct pca963x_led *led = chip->leds;
+	struct device *dev = &client->dev;
 	struct fwnode_handle *child;
-	int count;
-	int value;
+	bool hw_blink;
+	s32 mode2;
+	u32 reg;
+	int ret;
 
-	count = device_get_child_node_count(&client->dev);
-	if (!count || count > pca963x->chipdef->n_leds) {
-		dev_err(&pca963x->client->dev,
-			"device tree node must have 1..%d children\n",
-			pca963x->chipdef->n_leds);
-		return -EINVAL;
-	}
+	if (device_property_read_u32(dev, "nxp,period-scale",
+				     &chipdef->scaling))
+		chipdef->scaling = 1000;
 
-	device_for_each_child_node(&client->dev, child) {
-		struct pca963x_entry *entry;
+	hw_blink = device_property_read_bool(dev, "nxp,hw-blink");
 
-		res = fwnode_property_read_u32(child, "reg", &reg);
-		if ((res != 0) || (reg >= pca963x->chipdef->n_leds))
-			continue;
-		entry = &pca963x->entries[reg];
-
-		/*
-		 * The active state defines how any consumers see this pin. It
-		 * is common practice to set the active state for the pin in
-		 * such a way that any consumers can use it straight away
-		 * without any further inversion. If a user needs to switch
-		 * function at runtime, he can add an additional (!) inversion
-		 * on GPIOs and PWMs via sysfs. For pins configured as LED, no
-		 * additional inversion is available. If this is necessary,
-		 * configure these pins as PWM and use pwm-leds instead.
-		 */
-		if (fwnode_property_read_bool(child, "active-high"))
-			entry->flags |= PCA963X_LED_FLAGS_ACTIVE_HIGH;
-		else if (fwnode_property_read_bool(child, "active-low"))
-			entry->flags &= ~PCA963X_LED_FLAGS_ACTIVE_HIGH;
-
-		value = 0;
-		if (fwnode_property_read_bool(child, "keep-value"))
-			entry->flags |= PCA963X_LED_FLAGS_KEEP_VALUE;
-		else if (fwnode_property_read_u32(child, "value", &value) != 0) {
-			if (fwnode_property_read_bool(child, "default-on"))
-				value = 256;
-		}
-		entry->defval = value;
-
-		res = fwnode_property_read_string(child, "label", &label);
-		if (label) {
-			snprintf(entry->name, sizeof(entry->name),
-				"pca963x:%s", label);
-		} else {
-			snprintf(entry->name, sizeof(entry->name),
-				"pca963x:%d:%.2x:%d",
-				pca963x->client->adapter->nr,
-				pca963x->client->addr, reg);
-		}
-
-		res = fwnode_property_read_string(child, "type", &type);
-		if (!type || !strcmp(type, "LED") || !strcmp(type, "")) {
-			pca963x->n_led++;
-			entry->led_cdev.name = entry->name;
-			entry->led_cdev.flags = 0;
-			res = fwnode_property_read_string(child, "linux,default-trigger",
-				&entry->led_cdev.default_trigger);
-		}
-#ifdef CONFIG_PWM
-		else if (!strcmp(type, "PWM")) {
-			pca963x->n_pwm++;
-			entry->flags |= PCA963X_LED_FLAGS_TYPE_PWM;
-		}
-#endif
-#ifdef CONFIG_GPIOLIB
-		else if (!strcmp(type, "GPIO")) {
-			pca963x->n_gpio++;
-			entry->flags |= PCA963X_LED_FLAGS_TYPE_GPIO;
-		}
-#endif
-		else {
-			dev_err(&pca963x->client->dev, "unknown entry type\n");
-			return -EINVAL;
-		}
-	}
+	mode2 = i2c_smbus_read_byte_data(client, PCA963X_MODE2);
+	if (mode2 < 0)
+		return mode2;
 
 	/* default to open-drain unless totem pole (push-pull) is specified */
-	if (device_property_read_bool(&client->dev, "nxp,totem-pole"))
-		pca963x->outdrv = PCA963X_TOTEM_POLE;
+	if (device_property_read_bool(dev, "nxp,totem-pole"))
+		mode2 |= PCA963X_MODE2_OUTDRV;
 	else
-		pca963x->outdrv = PCA963X_OPEN_DRAIN;
+		mode2 &= ~PCA963X_MODE2_OUTDRV;
 
-	/* default to software blinking unless hardware blinking is specified */
-	if (device_property_read_bool(&client->dev, "nxp,hw-blink"))
-		pca963x->blink_type = PCA963X_HW_BLINK;
+	/* default to non-inverted output, unless inverted is specified */
+	if (device_property_read_bool(dev, "nxp,inverted-out"))
+		mode2 |= PCA963X_MODE2_INVRT;
 	else
-		pca963x->blink_type = PCA963X_SW_BLINK;
+		mode2 &= ~PCA963X_MODE2_INVRT;
+
+	ret = i2c_smbus_write_byte_data(client, PCA963X_MODE2, mode2);
+	if (ret < 0)
+		return ret;
+
+	device_for_each_child_node(dev, child) {
+		struct led_init_data init_data = {};
+		char default_label[32];
+
+		ret = fwnode_property_read_u32(child, "reg", &reg);
+		if (ret || reg >= chipdef->n_leds) {
+			dev_err(dev, "Invalid 'reg' property for node %pfw\n",
+				child);
+			ret = -EINVAL;
+			goto err;
+		}
+
+		led->led_num = reg;
+		led->chip = chip;
+		led->led_cdev.brightness_set_blocking = pca963x_led_set;
+		if (hw_blink)
+			led->led_cdev.blink_set = pca963x_blink_set;
+		led->blinking = false;
+
+		init_data.fwnode = child;
+		/* for backwards compatibility */
+		init_data.devicename = "pca963x";
+		snprintf(default_label, sizeof(default_label), "%d:%.2x:%u",
+			 client->adapter->nr, client->addr, reg);
+		init_data.default_label = default_label;
+
+		ret = devm_led_classdev_register_ext(dev, &led->led_cdev,
+						     &init_data);
+		if (ret) {
+			dev_err(dev, "Failed to register LED for node %pfw\n",
+				child);
+			goto err;
+		}
+
+		++led;
+	}
 
 	return 0;
+err:
+	fwnode_handle_put(child);
+	return ret;
 }
 
 static const struct of_device_id of_pca963x_match[] = {
@@ -693,193 +389,41 @@ static const struct of_device_id of_pca963x_match[] = {
 };
 MODULE_DEVICE_TABLE(of, of_pca963x_match);
 
-/* Copy info from platform data */
-static int pca963x_platform_init(struct pca963x *pca963x,
-				 struct pca963x_platform_data *pdata)
+static int pca963x_probe(struct i2c_client *client)
 {
-	int i;
+	const struct i2c_device_id *id = i2c_client_get_device_id(client);
+	struct device *dev = &client->dev;
+	struct pca963x_chipdef *chipdef;
+	struct pca963x *chip;
+	int i, count;
 
-	if ((pdata->leds.num_leds < 1)
-	    || (pdata->leds.num_leds > pca963x->chipdef->n_leds)) {
-		dev_err(&pca963x->client->dev,
-			"board info must claim 1..%d LEDs\n",
-			pca963x->chipdef->n_leds);
+	chipdef = &pca963x_chipdefs[id->driver_data];
+
+	count = device_get_child_node_count(dev);
+	if (!count || count > chipdef->n_leds) {
+		dev_err(dev, "Node %pfw must define between 1 and %d LEDs\n",
+			dev_fwnode(dev), chipdef->n_leds);
 		return -EINVAL;
 	}
 
-	for (i = 0; i < pdata->leds.num_leds; i++) {
-		struct pca963x_entry *entry = &pca963x->entries[i];
-		struct led_info *pdata_led = &pdata->leds.leds[i];
-
-		entry->flags = pdata_led->flags;
-		if (entry->flags & PCA963X_LED_FLAGS_DEFAULT_ON)
-			entry->defval = 256;
-		else
-			entry->defval = 0;
-
-#ifdef CONFIG_PWM
-		/* PWM takes precedence over GPIO if both flags are set */
-		if (entry->flags & PCA963X_LED_FLAGS_TYPE_PWM) {
-			entry->flags &= ~PCA963X_LED_FLAGS_TYPE_GPIO;
-			pca963x->n_pwm++;
-		}
-#else
-		entry->flags &= ~PCA963X_LED_FLAGS_TYPE_PWM;
-#endif
-#ifdef CONFIG_GPIOLIB
-		if (entry->flags & PCA963X_LED_FLAGS_TYPE_GPIO)
-			pca963x->n_gpio++;
-#else
-		entry->flags &= ~PCA963X_LED_FLAGS_TYPE_GPIO;
-#endif
-		if (!(entry->flags & PCA963X_LED_FLAGS_TYPE_MASK))
-			pca963x->n_led++;
-		if (pdata_led->name)
-			snprintf(entry->name, sizeof(entry->name),
-				"pca963x:%s", pdata_led->name);
-		if (pdata_led->default_trigger)
-			entry->led_cdev.default_trigger =
-				pdata_led->default_trigger;
-	}
-	pca963x->outdrv = pdata->outdrv;
-	pca963x->blink_type = pdata->blink_type;
-
-	return 0;
-}
-
-/* Unregister all LEDS from count-1 to 0 (i.e. in reverse order) */
-static void pca963x_free_leds(struct pca963x *pca963x, int count)
-{
-	while (count > 0) {
-		struct pca963x_entry *entry = &pca963x->entries[--count];
-
-		if (!(entry->flags & PCA963X_LED_FLAGS_TYPE_MASK)) {
-			led_classdev_unregister(&entry->led_cdev);
-		}
-	}
-}
-
-static int pca963x_probe(struct i2c_client *client,
-			 const struct i2c_device_id *id)
-{
-	struct pca963x *pca963x;
-	struct pca963x_platform_data *pdata;
-	struct pca963x_entry *entry;
-	int i, err;
-	size_t size;
-
-	pca963x = devm_kzalloc(&client->dev, sizeof(struct pca963x),
-			       GFP_KERNEL);
-	if (!pca963x)
+	chip = devm_kzalloc(dev, struct_size(chip, leds, count), GFP_KERNEL);
+	if (!chip)
 		return -ENOMEM;
 
-	pca963x->chipdef = &pca963x_chipdefs[id->driver_data];
+	i2c_set_clientdata(client, chip);
 
-	pca963x->client = client;
-	mutex_init(&pca963x->mutex);
+	mutex_init(&chip->mutex);
+	chip->chipdef = chipdef;
+	chip->client = client;
 
-	size = sizeof(struct pca963x_entry) * pca963x->chipdef->n_leds;
-	pca963x->entries = devm_kzalloc(&client->dev, size, GFP_KERNEL);
-	if (!pca963x->entries)
-		return -ENOMEM;
+	/* Turn off LEDs by default*/
+	for (i = 0; i < chipdef->n_leds / 4; i++)
+		i2c_smbus_write_byte_data(client, chipdef->ledout_base + i, 0x00);
 
-	pdata = dev_get_platdata(&client->dev);
-	if (pdata)
-		err = pca963x_platform_init(pca963x, pdata);
-	else
-		err = pca963x_get_pdata(client, pca963x);
-	if (err)
-		return err;
+	/* Disable LED all-call address, and power down initially */
+	i2c_smbus_write_byte_data(client, PCA963X_MODE1, BIT(4));
 
-	i2c_set_clientdata(client, pca963x);
-
-	err = pca963x_set_default_values(pca963x);
-	if (err < 0)
-		return err;
-
-	for (i = 0; i < pca963x->chipdef->n_leds; i++) {
-		entry = &pca963x->entries[i];
-		entry->led_num = i;
-		entry->chip = pca963x;
-		if (!(entry->flags & PCA963X_LED_FLAGS_TYPE_MASK)) {
-			struct led_classdev *led_cdev = &entry->led_cdev;
-
-			led_cdev->brightness_set_blocking = pca963x_led_set;
-			led_cdev->brightness_get = pca963x_led_get;
-			if (pca963x->blink_type == PCA963X_HW_BLINK)
-				led_cdev->blink_set = pca963x_blink_set;
-			err = devm_led_classdev_register(&client->dev, led_cdev);
-			if (err < 0) {
-				dev_err(&client->dev,
-					"could not register LED %d\n", i);
-				return err;
-			}
-		}
-	}
-#ifdef CONFIG_PWM
-	if (pca963x->n_pwm > 0) {
-		pca963x->pwm_chip.of_pwm_n_cells = 3;
-		pca963x->pwm_chip.of_xlate = of_pwm_xlate_with_flags;
-		pca963x->pwm_chip.dev = &client->dev;
-		pca963x->pwm_chip.ops = &pca963x_pwm_ops;
-		pca963x->pwm_chip.npwm = pca963x->chipdef->n_leds;
-		pca963x->pwm_chip.base = -1;
-		err = pwmchip_add(&pca963x->pwm_chip);
-		if (err < 0) {
-			dev_err(&client->dev,"could not register PWM chip\n");
-			goto exit;
-		}
-	}
-#endif
-
-#ifdef CONFIG_GPIOLIB
-	if (pca963x->n_gpio > 0) {
-		pca963x->gpio_chip = pca963x_gpio_ops;
-		pca963x->gpio_chip.label = client->name;
-		pca963x->gpio_chip.ngpio = pca963x->chipdef->n_leds;
-		pca963x->gpio_chip.parent = &client->dev;
-		pca963x->gpio_chip.base = -1;
-		err = gpiochip_add(&pca963x->gpio_chip);
-		if (err < 0) {
-			dev_err(&client->dev, "could not register GPIO chip\n");
-			goto err_gpio;
-		}
-	}
-#endif
-
-	/* Disable LED all-call address and set normal mode */
-	pca963x_write_reg(pca963x, PCA963X_MODE1, 0x00);
-
-	/* Configure output: open-drain or totem pole (push-pull) */
-	if (pca963x->outdrv == PCA963X_OPEN_DRAIN)
-		pca963x_write_reg(pca963x, PCA963X_MODE2, 0x01);
-	else
-		pca963x_write_reg(pca963x, PCA963X_MODE2, 0x05);
-
-	return 0;
-
-err_gpio:
-	pwmchip_remove(&pca963x->pwm_chip);
-exit:
-	pca963x_free_leds(pca963x, i);
-	return err;
-}
-
-static void pca963x_remove(struct i2c_client *client)
-{
-	struct pca963x *pca963x;
-
-	pca963x = i2c_get_clientdata(client);
-
-#ifdef CONFIG_GPIOLIB
-	if (pca963x->n_gpio > 0)
-		gpiochip_remove(&pca963x->gpio_chip);
-#endif
-#ifdef CONFIG_PWM
-	if (pca963x->n_pwm > 0)
-		pwmchip_remove(&pca963x->pwm_chip);
-#endif
-	/* LEDs are automatically removed by the devm infrastructure */
+	return pca963x_register_leds(client, chip);
 }
 
 static struct i2c_driver pca963x_driver = {
@@ -887,23 +431,11 @@ static struct i2c_driver pca963x_driver = {
 		.name	= "leds-pca963x",
 		.of_match_table = of_pca963x_match,
 	},
-	.probe	= pca963x_probe,
-	.remove	= pca963x_remove,
+	.probe = pca963x_probe,
 	.id_table = pca963x_id,
 };
 
-static int __init pca963x_init(void)
-{
-	return i2c_add_driver(&pca963x_driver);
-}
-subsys_initcall(pca963x_init);
-
-static void __exit pca963x_exit(void)
-{
-	return i2c_del_driver(&pca963x_driver);
-}
-
-module_exit(pca963x_exit);
+module_i2c_driver(pca963x_driver);
 
 MODULE_AUTHOR("Peter Meerwald <p.meerwald@bct-electronic.com>");
 MODULE_DESCRIPTION("PCA963X LED driver");

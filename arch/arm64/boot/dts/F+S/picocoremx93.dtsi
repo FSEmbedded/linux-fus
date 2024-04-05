@@ -14,7 +14,7 @@
 #include "../freescale/imx93.dtsi"
 #include <fsversion.h>
 
-&ele_mu {
+&ele_fw2 {
 	memory-region = <&ele_reserved>;
 };
 
