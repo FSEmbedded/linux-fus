@@ -58,7 +58,7 @@
 	status = "okay";
 	
 	panel@0 {
-        compatible = "eagleeyetech,ee0350et-2";
+        compatible = "newvision,nv3051d-ee0350et";
         reg = <0>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_dsi>;
