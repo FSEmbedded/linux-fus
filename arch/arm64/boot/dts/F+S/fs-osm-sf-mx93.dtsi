@@ -269,6 +269,7 @@
 		brightness-levels = <0 1 5 10 18 28 41 56
 							 73 92 113 137 163 192 222 255>;
 		default-brightness-level = <14>;
+		status = "disabled";
 	};
 };
 
@@ -328,6 +329,7 @@ osm_eth_a: &eqos {
 		#address-cells = <1>;
 		#size-cells = <0>;
 		clock-frequency = <5000000>;
+		status = "disabled";
 	};
 };
 

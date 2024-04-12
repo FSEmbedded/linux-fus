@@ -18,6 +18,8 @@
     phy-handle = <&ethphy1>;
     status = "okay";
     mdio {
+        status = "okay";
+        
         /* Note: Broadcast address*/
 		ethphy1: rtl8211fdi@0 {
 			reg = <0>;
