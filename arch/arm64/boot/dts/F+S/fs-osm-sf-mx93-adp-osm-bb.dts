@@ -1,0 +1,79 @@
+/*
+ * Copyright (C) 2024 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+
+/* When Undefined, IO of UARTC and UARTD will be configured as GPIO */
+// #define CONFIG_OSMSFMX93_UARTC
+// #define CONFIG_OSMSFMX93_UARTD
+
+#include "fs-osm-sf-mx93.dtsi"
+
+&osm_eth_a {
+    phy-mode = "rgmii-id";
+    phy-handle = <&ethphy1>;
+    status = "okay";
+    mdio {
+        /* Note: Broadcast address*/
+		ethphy1: rtl8211fdi@0 {
+			reg = <0>;
+		};
+	};
+};
+
+&osm_uart_b {
+    status = "okay";
+};
+
+#if defined(CONFIG_OSMSFMX93_UARTC)
+&osm_uart_c {
+    status = "okay";
+};
+#endif
+
+#if defined(CONFIG_OSMSFMX93_UARTD)
+&osm_uart_d {
+    status = "okay";
+};
+#endif
+
+&osm_can_a {
+    status = "okay";
+};
+
+&osm_usb_a {
+    dr_mode = "otg";
+    hnp-disable;
+	srp-disable;
+	adp-disable;
+    status = "okay";
+};
+
+&osm_usb_b {
+    dr_mode = "host";
+    status = "okay";
+};
+
+&osm_i2c_a {
+    status = "okay";
+};
+
+&osm_i2c_b {
+    status = "okay";
+};
+
+&osm_i2c_cam {
+    status = "okay";
+};
+
+&osm_i2s_a {
+    status = "okay";
+};
+
+&osm_sdio_a {
+    status = "okay";
+};

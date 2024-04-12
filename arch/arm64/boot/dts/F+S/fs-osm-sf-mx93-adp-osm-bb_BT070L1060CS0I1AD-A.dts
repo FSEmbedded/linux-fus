@@ -1,0 +1,10 @@
+#define IMX93_TOUCH_INTERRUPT_GPIO_NUM OSM_GPIO_A_3_PIN 
+
+#include "fs-osm-sf-mx93-adp-osm-bb.dts"
+
+reg_bl_on: &reg_disp_bl {};
+reg_vlcd: &reg_disp_vdd_en {};
+IMX93_TOUCH_I2C: &osm_i2c_cam {};
+IMX93_TOUCH_INTERRUPT_GPIO_BANK: &osm_gpio_a25{};
+
+#include "displays/imx93-BT070L1060CS0I1AD-A.dtsi"

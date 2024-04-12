@@ -20,7 +20,7 @@
 
 / {
 	model = "F+S PicoCoreMX93";
-	compatible = "fus,imx93-picocoremx8mp", "fsl,imx93";
+	compatible = "fus,imx93-picocoremx93", "fsl,imx93";
 
 	chosen {
 		bootargs = "console=ttyLP1,115200";
