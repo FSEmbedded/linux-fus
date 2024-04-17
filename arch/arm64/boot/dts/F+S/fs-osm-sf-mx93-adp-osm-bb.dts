@@ -13,6 +13,87 @@
 
 #include "fs-osm-sf-mx93.dtsi"
 
+&{/aliases} {
+	sound-sgtl5000 = &sound_sgtl5000;
+	sgtl5000 = &sgtl5000;
+};
+
+/ {
+	carrier_regulators{
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		reg_adp_osm_3v3: regulator_adp_osm_3v3@0 {
+			compatible = "regulator-fixed";
+			reg = <0>;
+			regulator-name = "ADP-OSM-3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			vin-supply = <&reg_carrier_pwr>;
+			regulator-always-on;
+			regulator-boot-on;
+		};
+
+		reg_adp_osm_1v8: regulator_adp_osm_1v8@1 {
+			compatible = "regulator-fixed";
+			reg = <1>;
+			regulator-name = "ADP-OSM-1V8";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			vin-supply = <&reg_adp_osm_3v3>;
+			regulator-always-on;
+			regulator-boot-on;
+		};
+
+		/* SGTL5000 analog voltage */
+		reg_sgtl5000_vdda: sgtl5000_vdda {
+			compatible = "regulator-fixed";
+			regulator-name = "SGTL5000-VDDA-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			vin-supply = <&reg_adp_osm_3v3>;
+			regulator-always-on;
+			regulator-boot-on;
+		};
+
+		/* SGTL5000 I/O voltage */
+		reg_sgtl5000_vddio: sgtl5000_vddio {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			vin-supply = <&reg_adp_osm_1v8>;
+			regulator-always-on;
+			regulator-boot-on;
+		};
+
+		/* SGTL5000 internal digital voltage */
+		reg_sgtl5000_vddd: sgtl5000_vddd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDD-supply";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			vin-supply = <&reg_adp_osm_1v8>;
+			regulator-always-on;
+			regulator-boot-on;
+		};
+	};
+
+	sound_sgtl5000: sound-sgtl5000 {
+		compatible = "fsl,imx-audio-sgtl5000";
+		model = "imx-sgtl5000";
+		audio-cpu = <&osm_i2s_a>;
+		audio-codec = <&sgtl5000>;
+		audio-routing =
+			"LINE_IN", "Line In Jack",
+			"Mic Jack", "Mic Bias",
+			"MIC_IN", "Mic Jack",
+			"Line Out Jack", "LINE_OUT",
+			"Headphone Jack", "HP_OUT";
+	};
+};
+
 &osm_eth_a {
 	phy-mode = "rgmii-id";
 	phy-handle = <&ethphy1>;
@@ -69,7 +150,20 @@
 };
 
 &osm_i2c_b {
+	clock-frequency = <400000>;
 	status = "okay";
+
+	sgtl5000: sgtl5000@a {
+		#sound-dai-cells = <0>;
+		compatible = "fsl,sgtl5000";
+		reg = <0xa>;
+		clocks = <&clk IMX93_CLK_SAI3_GATE>;
+		mono2both;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+		status = "okay";
+	};
 };
 
 &osm_i2c_cam {
@@ -77,6 +171,10 @@
 };
 
 &osm_i2s_a {
+	assigned-clocks = <&clk IMX93_CLK_SAI3>;
+	assigned-clock-parents = <&clk IMX93_CLK_AUDIO_PLL>;
+	assigned-clock-rates = <24576000>; //512*48kHz
+	fsl,sai-mclk-direction-output;
 	status = "okay";
 };
 
