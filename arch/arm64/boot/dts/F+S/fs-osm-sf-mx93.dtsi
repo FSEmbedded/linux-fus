@@ -359,9 +359,11 @@ osm_eth_b: &fec {
 };
 
 osm_gpio_a25: &gpio2 {
+#if !defined(CONFIG_OSMSFMX93_UARTD) || !defined(CONFIG_OSMSFMX93_UARTC)
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_gpio2>;
 	pinctrl-1 = <&pinctrl_gpio2>;
+#endif
 	status = "okay";
 	gpio-line-names = \
 		"","","","","","","", 
@@ -717,6 +719,7 @@ osm_pwm_1: &tpm3 {
 		>;
 	};
 
+#if !defined(CONFIG_OSMSFMX93_UARTD) || !defined(CONFIG_OSMSFMX93_UARTC)
 	pinctrl_gpio2: gpio2grp {
 		fsl,pins = <
 #if !defined(CONFIG_OSMSFMX93_UARTD)
@@ -729,6 +732,7 @@ osm_pwm_1: &tpm3 {
 #endif
 		>;
 	};
+#endif
 
 	pinctrl_gpio3: gpio3grp {
 		fsl,pins = <
