@@ -189,7 +189,7 @@
 		reg_sdio_a_pwr: regulator-sdioa-en@2 {
 			compatible = "regulator-fixed";
 			reg = <2>;
-			regulator-name = "sdio-pwr";
+			regulator-name = "sdio-a-pwr";
 			pinctrl-names = "default";
 			pinctrl-0 = <&pinctrl_sdio_pwr_en>;
 			gpio = <&gpio3 7 GPIO_ACTIVE_HIGH>;
@@ -197,6 +197,7 @@
 			regulator-max-microvolt = <3300000>;
 			vin-supply = <&reg_carrier_pwr>;
 			enable-active-high;
+			off-on-delay-us = <12000>;
 		};
 
 		reg_disp_vdd_en: regulator_disp_vdd_en@3 {
@@ -380,6 +381,9 @@ osm_gpio_a25: &gpio2 {
 };
 
 osm_gpio_a01: &gpio3 {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_gpio3>;
+	pinctrl-1 = <&pinctrl_gpio3>;
 	gpio-line-names = \
 		"","","","","",
 		"","",
@@ -392,6 +396,7 @@ osm_gpio_a01: &gpio3 {
 		"OSM_GPIO_A_1",
 		"OSM_GPIO_A_0",
 		"";
+	status = "okay";
 };
 
 &gpio4 {
@@ -615,7 +620,6 @@ osm_sdio_a: &usdhc2 {
 	pinctrl-2 = <&pinctrl_usdhc2_200mhz>;
 	vmmc-supply = <&reg_sdio_a_pwr>;
 	bus-width = <4>;
-	keep-power-in-suspend;
 	wp-gpios = <&gpio2 25 GPIO_ACTIVE_HIGH>;
 };
 
@@ -715,8 +719,6 @@ osm_pwm_1: &tpm3 {
 
 	pinctrl_gpio2: gpio2grp {
 		fsl,pins = <
-			MX93_PAD_DAP_TCLK_SWCLK__JTAG_MUX_TCK		0x31e
-			MX93_PAD_DAP_TMS_SWDIO__JTAG_MUX_TMS		0x31e
 #if !defined(CONFIG_OSMSFMX93_UARTD)
 			MX93_PAD_GPIO_IO12__GPIO2_IO12			0x31e
 			MX93_PAD_GPIO_IO13__GPIO2_IO13			0x31e
