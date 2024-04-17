@@ -1204,13 +1204,13 @@
 
 	pinctrl_usb1_pwr: usb1grp {
 		fsl,pins = <
-			MX93_PAD_GPIO_IO29__GPIO2_IO29	0x3fe
+			MX93_PAD_GPIO_IO29__GPIO2_IO29	0x31e
 		>;
 	};
 
 	pinctrl_usb2_pwr: usb2grp {
 		fsl,pins = <
-			MX93_PAD_GPIO_IO28__GPIO2_IO28	0x3fe
+			MX93_PAD_GPIO_IO28__GPIO2_IO28	0x31e
 		>;
 	};
 };
