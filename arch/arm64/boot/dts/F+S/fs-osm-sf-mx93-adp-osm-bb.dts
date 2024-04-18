@@ -188,3 +188,7 @@
 	sd-uhs-ddr50;
 	status = "okay";
 };
+
+&osm_pwm_0 {
+	status = "okay";
+};

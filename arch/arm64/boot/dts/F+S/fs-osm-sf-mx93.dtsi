@@ -58,7 +58,7 @@
 		csi0 = &osm_csi; 
 		rtc0 = &bbnsm_rtc;
 		rtc1 = &rtc85263;
-		pwm0 = &osm_dsi_pwm;
+		pwm0 = &osm_pwm_0;
 		pwm1 = &osm_pwm_1;
 		pwm2 = &osm_pwm_2;
 		
@@ -265,7 +265,8 @@
 
 	backlight_ldb: backlight_ldb {
 		compatible = "pwm-backlight";
-		pwms = <&osm_dsi_pwm 0 5263157 PWM_POLARITY_INVERTED>;
+		/* example configuration. adaptation may needed */
+		pwms = <&osm_pwm_0 0 100000 PWM_POLARITY_INVERTED>;
 		power-supply = <&reg_disp_bl>;
 		brightness-levels = <0 1 5 10 18 28 41 56
 							 73 92 113 137 163 192 222 255>;
@@ -641,7 +642,7 @@ osm_dsi: &dsi {
 	status = "disabled";
 };
 
-osm_dsi_pwm: &tpm5 {
+osm_pwm_0: &tpm5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_tpm5>;
 	status = "disabled";
