@@ -14,3 +14,4 @@ dtb-$(CONFIG_ARCH_MXC) += picocoremx93.dtb \
 
 dtb-$(CONFIG_ARCH_MXC) += fs-osm-sf-mx93-adp-osm-bb.dtb \
 						fs-osm-sf-mx93-adp-osm-bb_BT070L1060CS0I1AD-A.dtb \
+						fs-osm-sf-mx93-fert2x.dtb
