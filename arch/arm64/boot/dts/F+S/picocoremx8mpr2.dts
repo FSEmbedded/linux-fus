@@ -215,40 +215,6 @@
 			eee-broken-1000t;
 		};
 	};
-};
-#endif /* CONFIG_PICOCOREMX8MP_ETH_A */
-
-#ifdef CONFIG_PICOCOREMX8MP_ETH_B
-&fec {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_fec>;
-	phy-mode = "rgmii-id";
-	phy-handle = <&ethphy1>;
-	fsl,magic-packet;
-	status = "okay";
-
-	mdio {
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		ethphy1: ethernet-phy@5 {
-			compatible = "ethernet-phy-ieee802.3-c22";
-			reg = <5>;
-			rtl821x,clkout-disable;
-			rtl821x,aldps-enable;
-			rtl821x,ssc-rxc-enable;
-			rtl821x,ssc-sysclk-enable;
-			rtl821x,ssc-clkout-enable;
-			rtl821x,led-link = <1>; // LED1 for link indication
-			rtl821x,led-act = <1>; // LED1 for activity
-			reset-gpios = <&gpio4 28 GPIO_ACTIVE_LOW>;
-			reset-assert-us = <10000>;
-			reset-deassert-us = <50000>;
-			interrupt-parent = <&gpio4>;
-			interrupts = <29 IRQ_TYPE_LEVEL_LOW>;
-			eee-broken-1000t;
-		};
-	};
 
 	mtl_tx_setup: tx-queues-config {
 		snps,tx-queues-to-use = <5>;
@@ -303,6 +269,42 @@
 			snps,map-to-dma-channel = <4>;
 		};
 	};
+};
+#endif /* CONFIG_PICOCOREMX8MP_ETH_A */
+
+#ifdef CONFIG_PICOCOREMX8MP_ETH_B
+&fec {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_fec>;
+	phy-mode = "rgmii-id";
+	phy-handle = <&ethphy1>;
+	fsl,magic-packet;
+	status = "okay";
+
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy1: ethernet-phy@5 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <5>;
+			rtl821x,clkout-disable;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <1>; // LED1 for link indication
+			rtl821x,led-act = <1>; // LED1 for activity
+			reset-gpios = <&gpio4 28 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <10000>;
+			reset-deassert-us = <50000>;
+			interrupt-parent = <&gpio4>;
+			interrupts = <29 IRQ_TYPE_LEVEL_LOW>;
+			eee-broken-1000t;
+		};
+	};
+
+
 };
 #endif /* CONFIG_PICOCOREMX8MP_ETH_B */
 
