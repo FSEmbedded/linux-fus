@@ -107,6 +107,8 @@
 #define CONFIG_PICOCOREMX8MP_SD_B_CD
 #define CONFIG_PICOCOREMX8MP_SD_B_WP
 
+/* HIFI4 DSP */
+//#define CONFIG_PICOCOREMX8MP_DSP
 
 /* If WLAN is equipped, SD_B is not available */
 #ifdef CONFIG_PICOCOREMX8MP_WLAN
