@@ -77,7 +77,6 @@
 			 */
 			//no-uboot-override;
 		};
-#ifdef SUPPORT_RPMSG
 
 		reserved-memory {
 			#address-cells = <2>;
@@ -111,7 +110,6 @@
 				no-map;
 			};
 		};
-#endif
 
 		/* remove this node because the region used
 		 * only by tuning tool
@@ -122,14 +120,12 @@
 	imx8mp-cm7 {
 		compatible = "fsl,imx8mn-cm7";
 		clocks = <&clk IMX8MP_CLK_M7_DIV>;
-#ifdef SUPPORT_RPMSG
 		rsc-da = <0x55000000>;
 		mbox-names = "tx", "rx", "rxdb";
 		mboxes = <&mu 0 1
 			  &mu 1 1
 			  &mu 3 1>;
 		memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>, <&rsc_table>;
-#endif
 		status = "okay";
 		fsl,startup-delay-ms = <500>;
 	};

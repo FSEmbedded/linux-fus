@@ -13,7 +13,6 @@
 /* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_PICOCOREBBDSI_BOARD_REVISION	140
 //#define SUPPORT_M7
-//#define SUPPORT_RPMSG
 
 /* HDMI */
 //#define CONFIG_PICOCOREMX8MP_HDMI
@@ -157,8 +156,6 @@
 #undef CONFIG_PICOCOREMX8MP_CAN_A
 #undef CONFIG_PICOCOREMX8MP_I2C_A
 #undef CONFIG_PICOCOREMX8MP_SPI_B
-#else
-#undef SUPPORT_RPMSG
 #endif
 
 #include "picocoremx8mp.dtsi"
