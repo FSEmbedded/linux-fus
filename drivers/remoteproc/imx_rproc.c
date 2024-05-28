@@ -783,6 +783,12 @@ static struct resource_table *imx_rproc_get_loaded_rsc_table(struct rproc *rproc
 	if (!priv->rsc_table)
 		return NULL;
 
+	/* If there is no valid resource table, skip init, else the board will fail
+	   to boot */
+	if(((struct resource_table *)(priv->rsc_table))->ver > 10) {
+		return NULL;
+	}		
+
 	rproc->table_ptr = (struct resource_table *)priv->rsc_table;
 	rproc->table_sz = SZ_1K;
 	rproc->cached_table = NULL;
