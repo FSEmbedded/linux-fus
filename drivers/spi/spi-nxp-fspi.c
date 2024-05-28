@@ -588,7 +588,7 @@ static void nxp_fspi_prepare_lut(struct nxp_fspi *f,
 		 * Due to FlexSPI controller limitation number of PAD for dummy
 		 * buswidth needs to be programmed as equal to data buswidth.
 		 */
-					      LUT_PAD(op->dummy.buswidth),
+					      LUT_PAD(op->data.buswidth),
 					      op->dummy.nbytes * 8 /
 					      op->dummy.buswidth);
 		lutidx++;
