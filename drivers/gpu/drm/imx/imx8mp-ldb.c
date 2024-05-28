@@ -115,6 +115,7 @@ imx8mp_ldb_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	struct ldb *ldb = &imx8mp_ldb->base;
 	struct drm_display_mode *mode = &crtc_state->adjusted_mode;
 	unsigned long serial_clk;
+	unsigned long ldb_clk_rate;
 
 	if (mode->clock > 160000) {
 		dev_warn(ldb->dev,
@@ -127,6 +128,12 @@ imx8mp_ldb_encoder_atomic_mode_set(struct drm_encoder *encoder,
 
 	serial_clk = mode->clock * (ldb->dual ? 3500UL : 7000UL);
 	clk_set_rate(imx8mp_ldb->clk_root, serial_clk);
+
+	ldb_clk_rate = clk_get_rate(imx8mp_ldb->clk_root);
+	if ( ldb_clk_rate % (serial_clk) != 0)
+		dev_warn(ldb->dev,
+			"%s: serial_clk (%li) is not equal to ldb root clock(%li)!\n",
+			 __func__, serial_clk ,ldb_clk_rate);
 
 	if (!ldb_ch->bus_format) {
 		struct drm_connector *connector = connector_state->connector;
