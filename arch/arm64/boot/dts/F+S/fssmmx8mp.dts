@@ -12,6 +12,7 @@
 #define CONFIG_FSSMMX8MP_BOARD_REVISION	100
 /* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_FSSMBB_BOARD_REVISION	100
+//#define SUPPORT_M7
 
 /* HDMI */
 //#define CONFIG_FSSMMX8MP_HDMI
@@ -90,6 +91,14 @@
 /* Security chip */
 #define CONFIG_FSSMMX8MP_SECURE
 #define CONFIG_FSSMMX8MP_EEPROM
+
+#ifdef SUPPORT_M7
+#undef CONFIG_FSSMMX8MP_I2C_PM
+#undef CONFIG_FSSMMX8MP_UART_A
+#undef CONFIG_FSSMMX8MP_SPI_A
+#undef CONFIG_FSSMMX8MP_CAN_A
+#undef CONFIG_FSSMMX8MP_PWM_OUT
+#endif
 
 #include "../freescale/imx8mp.dtsi"
 #include "fssmmx8mp.dtsi"

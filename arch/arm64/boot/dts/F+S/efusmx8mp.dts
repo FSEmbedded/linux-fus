@@ -10,6 +10,7 @@
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_EFUSMX8MP_BOARD_REVISION	100
+//#define SUPPORT_M7
 
 #define DISPLAY_NONE	0	/* No display on this port */
 #define DISPLAY_HDMI	1	/* DVI/HDMI via HDMI connector */
@@ -323,7 +324,13 @@
 /* PCIE */
 #define CONFIG_EFUSMX8MP_PCIE
 
-/* TODO: */
+#ifdef SUPPORT_M7
+#undef CONFIG_EFUSMX8MP_I2C_B
+#undef CONFIG_EFUSMX8MP_UART_B
+#undef CONFIG_EFUSMX8MP_SPI_B
+#undef CONFIG_EFUSMX8MP_CAN_A
+#undef CONFIG_EFUSMX8MP_PWM_A
+#endif
 
 #include "../freescale/imx8mp.dtsi"
 #include "efusmx8mp.dtsi"
