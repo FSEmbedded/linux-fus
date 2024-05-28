@@ -498,7 +498,7 @@ wvga {					\
 
 #ifdef CONFIG_PICOCOREMX6UL100_SPI_A
 &ecspi2 {
-	fsl,spi-num-chipselects = <1>;
+	num-cs = <1>;
 	cs-gpios = <&gpio4 22 0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi2>;
@@ -516,7 +516,7 @@ wvga {					\
 
 #ifdef CONFIG_PICOCOREMX6UL100_SPI_B
 &ecspi1 {
-	fsl,spi-num-chipselects = <1>;
+	num-cs = <1>;
 	cs-gpios = <&gpio4 26 0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi1>;
@@ -534,7 +534,7 @@ wvga {					\
 
 #ifdef CONFIG_PICOCOREMX6UL100_SPI_C
 &ecspi4 {
-	fsl,spi-num-chipselects = <1>;
+	num-cs = <1>;
 	cs-gpios = <&gpio2 15 0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi4>;

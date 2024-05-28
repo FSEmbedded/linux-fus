@@ -837,7 +837,7 @@ wvga {					\
 
 /* SPI_A (1x CS) */
 &ecspi1 {
-	fsl,spi-num-chipselects = <1>;
+	num-cs = <1>;
 	cs-gpios = <&gpio4 26 0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi1>;
@@ -854,7 +854,7 @@ wvga {					\
 
 /* SPI_B (1x CS) */
 &ecspi2 {
-	fsl,spi-num-chipselects = <1>;
+	num-cs = <1>;
 	cs-gpios = <&gpio1 29 0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi2>;

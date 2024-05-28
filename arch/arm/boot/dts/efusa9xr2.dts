@@ -1413,7 +1413,7 @@ lvds_wvga {				\
 &ecspi5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi5>;
-	fsl,spi-num-chipselects = <2>;
+	num-cs = <2>;
 	cs-gpios = <&gpio4 28 0>, <&gpio4 18 0>;
 	status = "okay";
 
@@ -1442,11 +1442,11 @@ lvds_wvga {				\
 	pinctrl-0 = <&pinctrl_ecspi1>;
 #if defined(CONFIG_EFUSA9X_BLUETOOTH) || defined(CONFIG_EFUSA9X_UART_C_RTSCTS)
 	/* If UART_C uses RTS, we have only one CS for SPI_B */
-	fsl,spi-num-chipselects = <1>;
+	num-cs = <1>;
 	cs-gpios = <&gpio4 22 0>;
 #else
 	/* If UART_C does not use RTS, we can have a second CS on SPI_B */
-	fsl,spi-num-chipselects = <2>;
+	num-cs = <2>;
 	cs-gpios = <&gpio4 22 0>, <&gpio2 17 0>;
 #endif
 	status = "okay";

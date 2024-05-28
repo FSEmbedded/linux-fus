@@ -643,7 +643,7 @@
 
 #ifdef CONFIG_PICOCOREMX7ULP_SPI_A
 &lpspi3 {
-	fsl,spi-num-chipselects = <1>;
+	num-cs = <1>;
 	cs-gpios = <&gpio_ptf 19 0>;
 	#address-cells = <1>;
 	#size-cells = <0>;

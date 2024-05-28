@@ -421,7 +421,7 @@ lcd_wvga {				\
 
 #ifdef CONFIG_PICOCOMA7_SPI_A
 &ecspi2 {
-	fsl,spi-num-chipselects = <1>;
+	num-cs = <1>;
 	cs-gpios = <&gpio1 29 0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi2>;

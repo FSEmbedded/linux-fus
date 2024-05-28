@@ -754,7 +754,7 @@
 #ifdef CONFIG_PICOMODA9_SPI_A
 /* SPI_A (2x CS), J1 pins 1-4 */
 &ecspi1 {
-	fsl,spi-num-chipselects = <2>;
+	num-cs = <2>;
 	cs-gpios = <&gpio5 17 GPIO_ACTIVE_HIGH>; /* SPI_A_CS1 */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi1_1 &pinctrl_ecspi1_cs>;

@@ -588,7 +588,7 @@
 #ifdef CONFIG_NETDCUA9_SPI_A
 /* SPI_A (1x CS) */
 &ecspi1 {
-	fsl,spi-num-chipselects = <1>;
+	num-cs = <1>;
 	cs-gpios = <&gpio5 25 0>;	/* SPI_A_CS0 */
 
 	pinctrl-names = "default";

@@ -655,7 +655,7 @@ chosen {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi1 &pinctrl_ecspi1_cs>;
 	cs-gpios = <&gpio4 26 0>, <&gpio3 10 0>, <&gpio3 11 0>;
-	fsl,spi-num-chipselects = <3>;
+	num-cs = <3>;
 	status = "okay";
 
 	spidev@0 {
@@ -690,7 +690,7 @@ chosen {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi2>;
 	cs-gpios = <&gpio4 22 0>;
-	fsl,spi-num-chipselects = <1>;
+	num-cs = <1>;
 	status = "okay";
 
 	spidev@0 {

@@ -925,7 +925,7 @@ lcd_wvga {				\
 &ecspi5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi5>;
-	fsl,spi-num-chipselects = <1>;
+	num-cs = <1>;
 	cs-gpios = <&gpio4 28 0>;
 	status = "okay";
 
