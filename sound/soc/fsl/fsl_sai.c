@@ -735,7 +735,7 @@ static void fsl_sai_config_disable(struct fsl_sai *sai, int dir)
 	u32 xcsr, count = 100;
 
 	regmap_update_bits(sai->regmap, FSL_SAI_xCSR(tx, ofs),
-			   FSL_SAI_CSR_TERE | FSL_SAI_CSR_BCE, 0);
+			   FSL_SAI_CSR_TERE, 0);
 
 	/* TERE will remain set till the end of current frame */
 	do {
@@ -1433,7 +1433,10 @@ static int fsl_sai_probe(struct platform_device *pdev)
 		sai->cpu_dai_drv.symmetric_sample_bits = 0;
 	}
 
-	if (of_find_property(np, "fsl,sai-mclk-direction-output", NULL) &&
+	if (of_find_property(np, "fsl,sai-mclk-direction-output", NULL))
+		sai->mclk_direction_output = true;
+
+	if (sai->mclk_direction_output &&
 	    of_device_is_compatible(np, "fsl,imx6ul-sai")) {
 		gpr = syscon_regmap_lookup_by_compatible("fsl,imx6ul-iomuxc-gpr");
 		if (IS_ERR(gpr)) {
@@ -1478,13 +1481,12 @@ static int fsl_sai_probe(struct platform_device *pdev)
 		dev_warn(dev, "Error reading SAI version: %d\n", ret);
 
 	/* Select MCLK direction */
-	if (of_find_property(np, "fsl,sai-mclk-direction-output", NULL) &&
+	if (sai->mclk_direction_output &&
 	    sai->soc_data->max_register >= FSL_SAI_MCTL) {
 		/* SAI is in master mode so enable MCLK as output */
 		regmap_update_bits(sai->regmap, FSL_SAI_MCTL,
 				   FSL_SAI_MCTL_MCLK_EN, FSL_SAI_MCTL_MCLK_EN);
 	}
-
 	ret = pm_runtime_put_sync(dev);
 	if (ret < 0 && ret != -ENOSYS)
 		goto err_pm_get_sync;
@@ -1641,6 +1643,7 @@ static const struct fsl_sai_soc_data fsl_sai_imx8mp_data = {
 	.fifos = 8,
 	.flags = 0,
 	.max_register = FSL_SAI_MDIV,
+	.mclk_with_tere = true,
 };
 
 static const struct fsl_sai_soc_data fsl_sai_imx8ulp_data = {
@@ -1743,24 +1746,12 @@ static int fsl_sai_runtime_resume(struct device *dev)
 	regmap_write(sai->regmap, FSL_SAI_TCSR(ofs), 0);
 	regmap_write(sai->regmap, FSL_SAI_RCSR(ofs), 0);
 
-	/*
-	 * Audio codecs like SGTL5000 need the MCLK during setup of the codec.
-	 * For the i.MX8MP it is gated with the receiver/transmiter BCE
-	 * bit. So enable the bit already here.
-	 */
-
-	if((sai->masterflag[FSL_FMT_TRANSMITTER] & SND_SOC_DAIFMT_CBM_CFM) == SND_SOC_DAIFMT_CBM_CFM)
-	{
-		if(!fsl_sai_check_version(dev) && sai->verid.major >= 3 && sai->verid.minor >= 1) {
-			/* Enable transmit clock early.*/
-			regmap_update_bits(sai->regmap, FSL_SAI_xCSR(1, ofs),
-					FSL_SAI_CSR_BCE, FSL_SAI_CSR_BCE);
-		}
-	}
-
 	ret = regcache_sync(sai->regmap);
 	if (ret)
 		goto disable_rx_clk;
+	if (sai->soc_data->mclk_with_tere && sai->mclk_direction_output)
+		regmap_update_bits(sai->regmap, FSL_SAI_TCSR(ofs),
+				   FSL_SAI_CSR_TERE, FSL_SAI_CSR_TERE);
 
 	return 0;
 
@@ -1775,12 +1766,28 @@ disable_bus_clk:
 
 	return ret;
 }
+static int fsl_sai_force_resume(struct device *dev)
+{
+	int err;
+	struct fsl_sai *sai = dev_get_drvdata(dev);
+
+	err = pm_runtime_force_resume(dev);
+	if (err)
+		return err;
+
+	/* The mclock to has be enabled again after a resume from deep sleep*/
+	if (sai->soc_data->mclk_with_tere && sai->mclk_direction_output)
+		fsl_sai_runtime_resume(dev);
+
+	return err;
+};
+
 
 static const struct dev_pm_ops fsl_sai_pm_ops = {
 	SET_RUNTIME_PM_OPS(fsl_sai_runtime_suspend,
 			   fsl_sai_runtime_resume, NULL)
 	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
-				pm_runtime_force_resume)
+				fsl_sai_force_resume)
 };
 
 static struct platform_driver fsl_sai_driver = {

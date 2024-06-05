@@ -229,6 +229,7 @@ struct fsl_sai_soc_data {
 	bool use_imx_pcm;
 	bool use_edma;
 	bool mclk0_is_mclk1;
+	bool mclk_with_tere;
 	unsigned int fifo_depth;
 	unsigned int reg_offset;
 	unsigned int fifos;
@@ -289,6 +290,7 @@ struct fsl_sai {
 	bool is_dsd;
 	bool monitor_spdif;
 	bool monitor_spdif_start;
+	bool mclk_direction_output;
 
 	int gpr_idx;
 	int pcm_dl_cfg_cnt;
