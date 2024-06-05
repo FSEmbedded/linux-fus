@@ -1372,7 +1372,8 @@ static int imx_uart_dma_init(struct imx_port *sport)
 	slave_config.direction = DMA_DEV_TO_MEM;
 	slave_config.src_addr = sport->port.mapbase + URXD0;
 	slave_config.src_addr_width = DMA_SLAVE_BUSWIDTH_1_BYTE;
-	slave_config.src_maxburst = sport->rx_fifo_trig;
+	/* one byte less than the watermark level to enable the aging timer */
+	slave_config.src_maxburst = sport->rx_fifo_trig -1;
 	slave_config.peripheral_config = NULL;
 	slave_config.peripheral_size = 0;
 	ret = dmaengine_slave_config(sport->dma_chan_rx, &slave_config);
@@ -2343,6 +2344,12 @@ static int imx_uart_probe(struct platform_device *pdev)
 
 	if(of_property_read_u32(np, "fsl,rx_fifo_trig", &sport->rx_fifo_trig))
 		sport->rx_fifo_trig = RXTL_DMA;
+
+	if (sport->rx_fifo_trig < 2) {
+		dev_warn(&pdev->dev,
+			"For \"fsl,rx_fifo_trig\" < 2 use \"no-dma\"! Forcing rx_fifo_trig=2");
+		sport->rx_fifo_trig = 2;
+	}
 
 	if(of_property_read_u32(np, "fsl,tx_fifo_trig", &sport->tx_fifo_trig))
 			sport->tx_fifo_trig = TXTL_DMA;

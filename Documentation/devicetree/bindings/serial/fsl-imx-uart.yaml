@@ -94,7 +94,7 @@ properties:
     $ref: /schemas/types.yaml#/definitions/flag
     description: |
       Level when the receice FIFO triggers the interrupt
-      or DMA request (default 16, or 1 on console). Maximum
+      or DMA request (default 9). Minimum value is 2 and maximum
       value is 32.
   no-dma:
     $ref: /schemas/types.yaml#/definitions/flag
