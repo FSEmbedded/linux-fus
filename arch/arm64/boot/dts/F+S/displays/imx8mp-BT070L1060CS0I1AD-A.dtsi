@@ -11,7 +11,10 @@
         lvds1_panel {
                 compatible = "panel-lvds";
                 backlight = <&backlight_ldb>;
-                reset-gpios = <&pca963x 3 GPIO_ACTIVE_LOW>;
+                /* MIPI_RST from board */
+                //reset-gpios = <&IMX8MP_MIPI_RESET_GPIO_BANK IMX8MP_MIPI_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
+                /* Mounting option for MIPI_RST on pca9634 (ADP-LVDS2LVDS2) */
+                reset-gpios = <&pca963x 3 GPIO_ACTIVE_HIGH>;
                 data-mapping = "vesa-24";
                 label = "BT070L1060CS0I1AD-A";
                 width-mm = <155>;
