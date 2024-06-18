@@ -1077,6 +1077,14 @@ int memac_initialization(struct mac_device *mac_dev,
 	struct fwnode_handle	*mac_fwnode = dev->fwnode;
 	struct fwnode_handle	*fixed;
 
+	/* The internal connection to the serdes is XGMII, but this isn't
+	 * really correct for the phy mode (which is the external connection).
+	 * However, this is how all older device trees say that they want
+	 * 10GBASE-R (aka XFI), so just convert it for them.
+	 */
+	if (mac_dev->phy_if == PHY_INTERFACE_MODE_XGMII)
+		mac_dev->phy_if = PHY_INTERFACE_MODE_10GBASER;
+
 	mac_dev->phylink_ops		= &memac_mac_ops;
 	mac_dev->set_promisc		= memac_set_promiscuous;
 	mac_dev->change_addr		= memac_modify_mac_address;
@@ -1130,26 +1138,44 @@ int memac_initialization(struct mac_device *mac_dev,
 	/* For compatibility, if pcs-handle-names is missing, we assume this
 	 * phy is the first one in pcsphy-handle
 	 */
-	if (mac_dev->phy_if == PHY_INTERFACE_MODE_XGMII && !memac->xfi_pcs) {
-		err = memac_get_default_pcs(mac_dev, mac_fwnode,
-					    &memac->xfi_pcs, serdes);
-		if (err)
-			goto _return_fm_mac_free;
-	} else if (!memac->sgmii_pcs) {
-		err = memac_get_default_pcs(mac_dev, mac_fwnode,
-					    &memac->sgmii_pcs, serdes);
-		if (err)
-			goto _return_fm_mac_free;
+	err = of_property_match_string(mac_node, "pcs-handle-names", "sgmii");
+	if (err == -EINVAL || err == -ENODATA)
+		pcs = memac_pcs_create(mac_node, 0);
+	else if (err < 0)
+		goto _return_fm_mac_free;
+	else
+		pcs = memac_pcs_create(mac_node, err);
+
+	if (IS_ERR(pcs)) {
+		err = PTR_ERR(pcs);
+		dev_err_probe(mac_dev->dev, err, "missing pcs\n");
+		goto _return_fm_mac_free;
 	}
 
-	/* The internal connection to the serdes is XGMII, but this isn't
-	 * really correct for the phy mode (which is the external connection).
-	 * However, this is how all older device trees say that they want
-	 * 10GBASE-R (aka XFI), so just convert it for them.
+	/* If err is set here, it means that pcs-handle-names was missing above
+	 * (and therefore that xfi_pcs cannot be set). If we are defaulting to
+	 * XGMII, assume this is for XFI. Otherwise, assume it is for SGMII.
 	 */
-	if (mac_dev->phy_if == PHY_INTERFACE_MODE_XGMII)
-		mac_dev->phy_if = PHY_INTERFACE_MODE_10GBASER;
+	if (err && mac_dev->phy_if == PHY_INTERFACE_MODE_10GBASER)
+		memac->xfi_pcs = pcs;
+	else
+		memac->sgmii_pcs = pcs;
 
+	memac->serdes = devm_of_phy_optional_get(mac_dev->dev, mac_node,
+						 "serdes");
+	if (!memac->serdes) {
+		dev_dbg(mac_dev->dev, "could not get (optional) serdes\n");
+	} else if (IS_ERR(memac->serdes)) {
+		err = PTR_ERR(memac->serdes);
+		goto _return_fm_mac_free;
+	}
+
+	/* TODO: The following interface modes are supported by (some) hardware
+	 * but not by this driver:
+	 * - 1000BASE-KX
+	 * - 10GBASE-KR
+	 * - XAUI/HiGig
+	 */
 	supported = mac_dev->phylink_config.supported_interfaces;
 
 	/* Note that half duplex is only supported on 10/100M interfaces. */

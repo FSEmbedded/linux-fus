@@ -2268,36 +2268,6 @@
 				snps,parkmode-disable-ss-quirk;
 			};
 		};
-	};
-
-	ldb: ldb-display-controller {
-		#address-cells = <1>;
-		#size-cells = <0>;
-		compatible = "fsl,imx8mp-ldb";
-		clocks = <&clk IMX8MP_CLK_MEDIA_LDB_ROOT>;
-		clock-names = "ldb";
-		assigned-clocks = <&clk IMX8MP_CLK_MEDIA_LDB>;
-		assigned-clock-parents = <&clk IMX8MP_VIDEO_PLL1_OUT>;
-		gpr = <&media_blk_ctrl>;
-		power-domains = <&pgc_mediamix>;
-		status = "disabled";
-
-		lvds-channel@0 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <0>;
-			phys = <&ldb_phy1>;
-			phy-names = "ldb_phy";
-			status = "disabled";
-
-			port@0 {
-				reg = <0>;
-
-				ldb_ch0: endpoint {
-					remote-endpoint = <&lcdif2_disp_ldb_ch0>;
-				};
-			};
-		};
 
 		lvds-channel@1 {
 			reg = <1>;

@@ -119,6 +119,11 @@ struct scmi_perf_domain_info {
 	bool set_perf;
 };
 
+struct scmi_perf_domain_info {
+	char name[SCMI_MAX_STR_SIZE];
+	bool set_perf;
+};
+
 /**
  * struct scmi_perf_proto_ops - represents the various operations provided
  *	by SCMI Performance Protocol
