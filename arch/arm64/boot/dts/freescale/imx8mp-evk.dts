@@ -17,18 +17,6 @@
 		stdout-path = &uart2;
 	};
 
-	hdmi-connector {
-		compatible = "hdmi-connector";
-		label = "hdmi";
-		type = "a";
-
-		port {
-			hdmi_connector_in: endpoint {
-				remote-endpoint = <&adv7535_out>;
-			};
-		};
-	};
-
 	gpio-leds {
 		compatible = "gpio-leds";
 		pinctrl-names = "default";
@@ -110,33 +98,15 @@
 		enable-active-high;
 	};
 
-	reg_vext_3v3: regulator-vext-3v3 {
+	reg_audio_pwr: regulator-audio-pwr {
 		compatible = "regulator-fixed";
-		regulator-name = "VEXT_3V3";
+		regulator-name = "audio-pwr";
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
+		gpio = <&gpio4 29 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-always-on;
 	};
-
-	sound {
-		compatible = "simple-audio-card";
-		simple-audio-card,name = "wm8960-audio";
-		simple-audio-card,format = "i2s";
-		simple-audio-card,frame-master = <&cpudai>;
-		simple-audio-card,bitclock-master = <&cpudai>;
-		simple-audio-card,widgets =
-			"Headphone", "Headphone Jack",
-			"Speaker", "External Speaker",
-			"Microphone", "Mic Jack";
-		simple-audio-card,routing =
-			"Headphone Jack", "HP_L",
-			"Headphone Jack", "HP_R",
-			"External Speaker", "SPK_LP",
-			"External Speaker", "SPK_LN",
-			"External Speaker", "SPK_RP",
-			"External Speaker", "SPK_RN",
-			"LINPUT1", "Mic Jack",
-			"LINPUT3", "Mic Jack",
-			"Mic Jack", "MICB";
 
 	bt_sco_codec: bt_sco_codec {
 		#sound-dai-cells = <1>;
@@ -500,7 +470,7 @@
 				regulator-always-on;
 			};
 
-			reg_buck5: BUCK5 {
+			buck5: BUCK5{
 				regulator-name = "BUCK5";
 				regulator-min-microvolt = <600000>;
 				regulator-max-microvolt = <3400000>;
@@ -568,15 +538,9 @@
 	adv_bridge: adv7535@3d {
 		compatible = "adi,adv7535";
 		reg = <0x3d>;
-		interrupt-parent = <&gpio1>;
-		interrupts = <9 IRQ_TYPE_EDGE_FALLING>;
+		adi,addr-cec = <0x3b>;
 		adi,dsi-lanes = <4>;
-		avdd-supply = <&reg_buck5>;
-		dvdd-supply = <&reg_buck5>;
-		pvdd-supply = <&reg_buck5>;
-		a2vdd-supply = <&reg_buck5>;
-		v3p3-supply = <&reg_vext_3v3>;
-		v1p2-supply = <&reg_buck5>;
+		status = "okay";
 
 		port {
 			adv7535_from_dsim: endpoint {
@@ -590,19 +554,73 @@
 		reg = <0x4c>;
 		reset-gpios = <&gpio1 10 GPIO_ACTIVE_LOW>;
 
-				adv7535_in: endpoint {
-					remote-endpoint = <&dsi_out>;
+		port {
+			it6263_in: endpoint {
+				remote-endpoint = <&lvds_out>;
+			};
+		};
+	};
+
+	ov5640_0: ov5640_mipi@3c {
+		compatible = "ovti,ov5640";
+		reg = <0x3c>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_csi0_pwn>, <&pinctrl_csi0_rst>, <&pinctrl_csi_mclk>;
+		clocks = <&clk IMX8MP_CLK_IPP_DO_CLKO2>;
+		clock-names = "xclk";
+		assigned-clocks = <&clk IMX8MP_CLK_IPP_DO_CLKO2>;
+		assigned-clock-parents = <&clk IMX8MP_CLK_24M>;
+		assigned-clock-rates = <24000000>;
+		powerdown-gpios = <&gpio2 11 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;
+		status = "okay";
+
+		port {
+			ov5640_mipi_0_ep: endpoint {
+				remote-endpoint = <&mipi_csi0_ep>;
+				data-lanes = <1 2>;
+				clock-lanes = <0>;
+			};
+		};
+	};
+
+	ptn5110: tcpc@50 {
+		compatible = "nxp,ptn5110";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_typec>;
+		reg = <0x50>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <19 8>;
+
+		port {
+			typec_dr_sw: endpoint {
+				remote-endpoint = <&usb3_drd_sw>;
+			};
+		};
+
+		usb_con: connector {
+			compatible = "usb-c-connector";
+			label = "USB-C";
+			power-role = "dual";
+			data-role = "dual";
+			try-power-role = "sink";
+			source-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)>;
+			sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
+				     PDO_VAR(5000, 20000, 3000)>;
+			op-sink-microwatt = <15000000>;
+			self-powered;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@1 {
+					reg = <1>;
+					typec_con_ss: endpoint {
+						remote-endpoint = <&usb3_data_ss>;
+					};
 				};
 			};
-
-			port@1 {
-				reg = <1>;
-
-				adv7535_out: endpoint {
-					remote-endpoint = <&hdmi_connector_in>;
-				};
-			};
-
 		};
 	};
 };
@@ -740,9 +758,8 @@
 		port@1 {
 			reg = <1>;
 
-			dsi_out: endpoint {
-				remote-endpoint = <&adv7535_in>;
-				data-lanes = <1 2 3 4>;
+			lvds_out: endpoint {
+				remote-endpoint = <&it6263_in>;
 			};
 		};
 	};

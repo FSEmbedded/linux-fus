@@ -119,11 +119,6 @@ struct scmi_perf_domain_info {
 	bool set_perf;
 };
 
-struct scmi_perf_domain_info {
-	char name[SCMI_MAX_STR_SIZE];
-	bool set_perf;
-};
-
 /**
  * struct scmi_perf_proto_ops - represents the various operations provided
  *	by SCMI Performance Protocol
@@ -881,7 +876,13 @@ enum scmi_system_events {
 	SCMI_SYSTEM_WARMRESET,
 	SCMI_SYSTEM_POWERUP,
 	SCMI_SYSTEM_SUSPEND,
-	SCMI_SYSTEM_MAX
+	SCMI_SYSTEM_MAX,
+	SCMI_IMX_SYSTEM_WAKE = 0x80000000U,
+	SCMI_IMX_SYSTEM_FULL_SHUTDOWN = 0x80000001U,
+	SCMI_IMX_SYSTEM_FULL_RESET = 0x80000002U,
+	SCMI_IMX_SYSTEM_FULL_SUSPEND = 0x80000003U,
+	SCMI_IMX_SYSTEM_FULL_WAKE = 0x80000004U,
+	SCMI_IMX_SYSTEM_MAX = 0x80000005U
 };
 
 struct scmi_device {

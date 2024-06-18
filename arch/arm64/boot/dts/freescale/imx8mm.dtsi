@@ -1268,10 +1268,9 @@
 				interrupts = <GIC_SPI 17 IRQ_TYPE_LEVEL_HIGH>;
 				clock-frequency = <333000000>;
 				clocks = <&clk IMX8MM_CLK_CSI1_CORE>,
-					<&clk IMX8MM_CLK_CSI1_PHY_REF>,
 					<&clk IMX8MM_CLK_DISP_AXI_ROOT>,
 					<&clk IMX8MM_CLK_DISP_APB_ROOT>;
-				clock-names = "mipi_clk", "phy_clk", "disp_axi", "disp_apb";
+				clock-names = "mipi_clk", "disp_axi", "disp_apb";
 				bus-width = <4>;
 				power-domains = <&disp_blk_ctrl IMX8MM_DISPBLK_PD_MIPI_CSI>;
 				status = "disabled";
@@ -1295,7 +1294,7 @@
 					 <&clk IMX8MM_CLK_DSI_CORE>,
 					 <&clk IMX8MM_CLK_DSI_PHY_REF>,
 					 <&clk IMX8MM_CLK_CSI1_CORE>,
-					 <&clk IMX8MM_CLK_CSI1_PHY_REF>;
+					 <&clk IMX8MM_CLK_DISP_APB_ROOT>;
 				clock-names = "csi-bridge-axi","csi-bridge-apb",
 					      "csi-bridge-core", "lcdif-axi",
 					      "lcdif-apb", "lcdif-pix",
@@ -1426,9 +1425,11 @@
 
 		pcie0_ep: pcie-ep@33800000 {
 			compatible = "fsl,imx8mm-pcie-ep";
-			reg = <0x33800000 0x400000>,
+			reg = <0x33800000 0x100000>,
+			      <0x33900000 0x100000>,
+			      <0x33b00000 0x100000>,
 			      <0x18000000 0x8000000>;
-			reg-names = "dbi", "addr_space";
+			reg-names = "dbi", "dbi2", "atu", "addr_space";
 			num-lanes = <1>;
 			interrupts = <GIC_SPI 127 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "dma";
@@ -1446,53 +1447,6 @@
 			num-ib-windows = <4>;
 			num-ob-windows = <4>;
 			status = "disabled";
-		};
-
-		gpu_3d: gpu@38000000 {
-			compatible = "vivante,gc";
-			reg = <0x38000000 0x8000>;
-			interrupts = <GIC_SPI 3 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&clk IMX8MM_CLK_GPU_AHB>,
-				 <&clk IMX8MM_CLK_GPU_BUS_ROOT>,
-				 <&clk IMX8MM_CLK_GPU3D_ROOT>,
-				 <&clk IMX8MM_CLK_GPU3D_ROOT>;
-			clock-names = "reg", "bus", "core", "shader";
-			assigned-clocks = <&clk IMX8MM_CLK_GPU3D_CORE>,
-					  <&clk IMX8MM_GPU_PLL_OUT>;
-			assigned-clock-parents = <&clk IMX8MM_GPU_PLL_OUT>;
-			assigned-clock-rates = <0>, <800000000>;
-			power-domains = <&pgc_gpu>;
-		};
-
-		gpu_2d: gpu@38008000 {
-			compatible = "vivante,gc";
-			reg = <0x38008000 0x8000>;
-			interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&clk IMX8MM_CLK_GPU_AHB>,
-				 <&clk IMX8MM_CLK_GPU_BUS_ROOT>,
-				 <&clk IMX8MM_CLK_GPU2D_ROOT>;
-			clock-names = "reg", "bus", "core";
-			assigned-clocks = <&clk IMX8MM_CLK_GPU2D_CORE>,
-					  <&clk IMX8MM_GPU_PLL_OUT>;
-			assigned-clock-parents = <&clk IMX8MM_GPU_PLL_OUT>;
-			assigned-clock-rates = <0>, <800000000>;
-			power-domains = <&pgc_gpu>;
-		};
-
-		vpu_g1: video-codec@38300000 {
-			compatible = "nxp,imx8mm-vpu-g1";
-			reg = <0x38300000 0x10000>;
-			interrupts = <GIC_SPI 7 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&clk IMX8MM_CLK_VPU_G1_ROOT>;
-			power-domains = <&vpu_blk_ctrl IMX8MM_VPUBLK_PD_G1>;
-		};
-
-		vpu_g2: video-codec@38310000 {
-			compatible = "nxp,imx8mq-vpu-g2";
-			reg = <0x38310000 0x10000>;
-			interrupts = <GIC_SPI 8 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&clk IMX8MM_CLK_VPU_G2_ROOT>;
-			power-domains = <&vpu_blk_ctrl IMX8MM_VPUBLK_PD_G2>;
 		};
 
 		vpu_blk_ctrl: blk-ctrl@38330000 {

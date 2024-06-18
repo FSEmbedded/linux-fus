@@ -694,7 +694,7 @@ static int fsl_sai_hw_params(struct snd_pcm_substream *substream,
 	 * FSD_MSTR bit for this specific case.
 	 */
 	if (sai->soc_data->mclk_with_tere && sai->mclk_direction_output &&
-	    !sai->is_consumer_mode)
+	    !sai->is_consumer_mode[tx])
 		regmap_update_bits(sai->regmap, FSL_SAI_xCR4(tx, ofs),
 				   FSL_SAI_CR4_FSD_MSTR, 0);
 
@@ -708,7 +708,7 @@ static int fsl_sai_hw_params(struct snd_pcm_substream *substream,
 
 	/* Enable FSD_MSTR after configuring word width */
 	if (sai->soc_data->mclk_with_tere && sai->mclk_direction_output &&
-	    !sai->is_consumer_mode)
+	    !sai->is_consumer_mode[tx])
 		regmap_update_bits(sai->regmap, FSL_SAI_xCR4(tx, ofs),
 				   FSL_SAI_CR4_FSD_MSTR, FSL_SAI_CR4_FSD_MSTR);
 

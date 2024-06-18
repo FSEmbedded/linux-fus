@@ -1457,7 +1457,9 @@
 			phys = <&usb3_phy0>, <&usb3_phy0>;
 			phy-names = "usb2-phy", "usb3-phy";
 			power-domains = <&pgc_otg1>;
+			snps,power-down-scale = <2>;
 			snps,parkmode-disable-ss-quirk;
+			snps,dis_rxdet_inp3_quirk;
 			status = "disabled";
 		};
 
@@ -1489,7 +1491,9 @@
 			phys = <&usb3_phy1>, <&usb3_phy1>;
 			phy-names = "usb2-phy", "usb3-phy";
 			power-domains = <&pgc_otg2>;
+			snps,power-down-scale = <2>;
 			snps,parkmode-disable-ss-quirk;
+			snps,dis_rxdet_inp3_quirk;
 			status = "disabled";
 		};
 
@@ -1622,9 +1626,11 @@
 
 		pcie1_ep: pcie-ep@33c00000 {
 			compatible = "fsl,imx8mq-pcie-ep";
-			reg = <0x33c00000 0x000400000>,
-			      <0x20000000 0x08000000>;
-			reg-names = "dbi", "addr_space";
+			reg = <0x33c00000 0x100000>,
+			      <0x33d00000 0x100000>,
+			      <0x33f00000 0x100000>,
+			      <0x20000000 0x8000000>;
+			reg-names = "dbi", "dbi2", "atu", "addr_space";
 			num-lanes = <1>;
 			interrupts = <GIC_SPI 80 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "dma";
