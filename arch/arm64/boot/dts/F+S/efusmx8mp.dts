@@ -45,11 +45,12 @@
  * activate the following define.
  */
 #define DISPLAY_LVDS_BT070L1060CS0I1ADA
+//#define DISPLAY_LVDS_EE1010B1T1CP
 
  /*
   * Enables legacy support for J070WVTC0211
   */
-#define DISPLAY_LVDS_J070WVTC0211
+//#define DISPLAY_LVDS_J070WVTC0211
 
 /* Enables support for AUO G133HAN01.0 - 19:9 FHD, 1920(H)x1080(V) panel */
 //#define DISPLAY_LVDS_G133HAN010
@@ -130,6 +131,64 @@
 #endif
 
 #endif /* DISPLAY_LVDS_BT070L1060CS0I1ADA */
+
+#ifdef DISPLAY_LVDS_EE1010B1T1CP
+
+#if ((CONFIG_EFUSMX8MP_PANEL0 == DISPLAY_LVDS1) \
+	|| (CONFIG_EFUSMX8MP_PANEL1 == DISPLAY_LVDS1))
+#define CONFIG_EFUSMX8MP_LVDS1_CHANNEL_MAPPING	"spwg"
+#define CONFIG_EFUSMX8MP_LVDS1_CHANNEL_DATA_WIDTH	24
+
+#define CONFIG_EFUSMX8MP_LVDS1_PANEL_MAPPING	"vesa-24"
+#define CONFIG_EFUSMX8MP_LVDS1_PANEL_LABEL	"EE10101B1T1-CP"
+#define CONFIG_EFUSMX8MP_LVDS1_PANEL_WIDTH	223
+#define CONFIG_EFUSMX8MP_LVDS1_PANEL_HEIGHT	125
+#define CONFIG_EFUSMX8MP_LVDS1_PANEL_TIMING \
+		clock-frequency = <49500000>; \
+		hactive = <1024>; \
+		vactive = <600>; \
+		hback-porch = <160>; \
+		hfront-porch = <76>; \
+		hsync-len = <140>; \
+		vback-porch = <23>; \
+		vfront-porch = <107>; \
+		vsync-len = <20>; \
+		pixelclk-active = <1>; \
+		de-active = <1>;
+#endif
+
+#if ((CONFIG_EFUSMX8MP_PANEL0 == DISPLAY_LVDS0) \
+	|| (CONFIG_EFUSMX8MP_PANEL1 == DISPLAY_LVDS0))
+#define CONFIG_EFUSMX8MP_LVDS0_CHANNEL_MAPPING	"spwg"
+#define CONFIG_EFUSMX8MP_LVDS0_CHANNEL_DATA_WIDTH	24
+
+#define CONFIG_EFUSMX8MP_LVDS0_PANEL_MAPPING	"vesa-24"
+#define CONFIG_EFUSMX8MP_LVDS0_PANEL_LABEL	"EE10101B1T1-CP"
+#define CONFIG_EFUSMX8MP_LVDS0_PANEL_WIDTH	223
+#define CONFIG_EFUSMX8MP_LVDS0_PANEL_HEIGHT	125
+#define CONFIG_EFUSMX8MP_LVDS0_PANEL_TIMING \
+		clock-frequency = <49500000>; \
+		hactive = <1024>; \
+		vactive = <600>; \
+		hback-porch = <160>; \
+		hfront-porch = <76>; \
+		hsync-len = <140>; \
+		vback-porch = <23>; \
+		vfront-porch = <107>; \
+		vsync-len = <20>; \
+		pixelclk-active = <1>; \
+		de-active = <1>;
+#endif
+
+/* G133HAN010 can't be configured together with another Display
+ * because G133HAN010 has 8 lanes support.
+*/
+#ifdef DISPLAY_LVDS_G133HAN010
+#warning "Undefine  DISPLAY_LVDS_G133HAN010 because of other DISPLAY_LVDS_* configuration!"
+#undef DISPLAY_LVDS_G133HAN010
+#endif
+
+#endif /* DISPLAY_LVDS_EE1010B1T1CP */
 
 #ifdef DISPLAY_LVDS_J070WVTC0211
 
@@ -217,10 +276,15 @@
  *
  * - PCAP touch based on Focaltech controller (FT5x26), on Touch Connector
  * - PCAP touch based on ILITEK (Ilitek2130), on ADP-LVDS2LVDS1
+ * - PCAP touch based on Goodix (GT928), on ADP-LVDS2LVDS2
+ *
  * Select none if you do not need touch support.
  */
 #ifdef DISPLAY_LVDS_BT070L1060CS0I1ADA
 #define CONFIG_EFUSMX8MP_CAPTOUCH_ILITEK
+#endif
+#ifdef DISPLAY_LVDS_EE1010B1T1CP
+#define CONFIG_EFUSMX8MP_CAPTOUCH_GOODIX
 #endif
 #ifdef DISPLAY_LVDS_J070WVTC0211
 #define CONFIG_EFUSMX8MP_CAPTOUCH_FT5x26
@@ -346,7 +410,7 @@
 	board_name = "efusmx8mp";
 };
 
-#ifdef DISPLAY_LVDS_BT070L1060CS0I1ADA
+#if defined(DISPLAY_LVDS_BT070L1060CS0I1ADA) || defined(DISPLAY_LVDS_EE1010B1T1CP)
 &reg_ldb_bl{
 	gpio = <&pca9634 0 GPIO_ACTIVE_HIGH>;
 };

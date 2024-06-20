@@ -11,6 +11,7 @@
 #define IMX8MP_TOUCH_INTERRUPT_GPIO_NUM 		1
 #define IMX8MP_MIPI_RESET_GPIO_BANK 	gpio5
 #define IMX8MP_MIPI_RESET_GPIO_NUM 		2
+#define IMX8MP_LVDS_CHANNEL 1
 
 #include "fssmmx8mp.dts"
-#include "displays/imx8mp-lcdif-adp-lvds2lvds2-EE1010B1T-1CP.dtsi"
+#include "displays/imx8mp-EE1010B1T-1CP.dtsi"

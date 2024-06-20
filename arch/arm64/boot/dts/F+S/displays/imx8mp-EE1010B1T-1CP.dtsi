@@ -10,11 +10,10 @@
 	lvds_panel {
 		compatible = "panel-lvds";
 		backlight = <&backlight_ldb>;
-		enable-gpios = <&gpio4 3 GPIO_ACTIVE_HIGH>;
 		/* MIPI_RST from board */
-		reset-gpios = <&IMX8MP_MIPI_RESET_GPIO_BANK IMX8MP_MIPI_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
+		//enable-gpios = <&IMX8MP_MIPI_RESET_GPIO_BANK IMX8MP_MIPI_RESET_GPIO_NUM GPIO_ACTIVE_HIGH>;
 		/* Mounting option for MIPI_RST on pca9634 (ADP-LVDS2LVDS2) */
-		//reset-gpios = <&gpio_adp 3 GPIO_ACTIVE_LOW>;
+		enable-gpios = <&gpio_adp 3 GPIO_ACTIVE_HIGH>;
 		data-mapping = "vesa-24";
 		label = "EE1010B1T-1CP";
                 width-mm = <223>;
@@ -65,14 +64,13 @@
 
 &ldb {
 	status = "okay";
-	lvds-channel@0 {
+	lvds-channel@IMX8MP_LVDS_CHANNEL {
 		fsl,data-mapping = "spwg";
 		fsl,data-width = <24>;
 		status = "okay";
 
-                port@1 {
+		port@1 {
 			reg = <1>;
-
 			lvds_out: endpoint {
 				remote-endpoint = <&panel_lvds_in>;
 			};
@@ -114,8 +112,7 @@
 				reg = <3>;
 				label = "MIPI_RST";
 				type = "GPIO";
-				active-low;
-				default-on;             /* or: keep-value */
+				active-high;
 			};
 			led@4 {
 				reg = <4>;

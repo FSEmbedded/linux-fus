@@ -369,7 +369,7 @@
 		label = CONFIG_EFUSMX8MP_LVDS0_PANEL_LABEL;
 		width-mm = <CONFIG_EFUSMX8MP_LVDS0_PANEL_WIDTH>;
 		height-mm = <CONFIG_EFUSMX8MP_LVDS0_PANEL_HEIGHT>;
-#ifdef DISPLAY_LVDS_BT070L1060CS0I1ADA
+#if defined(DISPLAY_LVDS_BT070L1060CS0I1ADA) || defined(DISPLAY_LVDS_EE1010B1T1CP)
 		enable-gpios = <&pca9634 3 GPIO_ACTIVE_HIGH>;
 #endif
 		status = "okay";
@@ -395,7 +395,7 @@
 		label = CONFIG_EFUSMX8MP_LVDS1_PANEL_LABEL;
 		width-mm = <CONFIG_EFUSMX8MP_LVDS1_PANEL_WIDTH>;
 		height-mm = <CONFIG_EFUSMX8MP_LVDS1_PANEL_HEIGHT>;
-#ifdef DISPLAY_LVDS_BT070L1060CS0I1ADA
+#if defined(DISPLAY_LVDS_BT070L1060CS0I1ADA) || defined(DISPLAY_LVDS_EE1010B1T1CP)
 		enable-gpios = <&pca9634 3 GPIO_ACTIVE_HIGH>;
 #endif
 		status = "okay";
@@ -740,7 +740,21 @@ touch: ilitek2130@41 {
         reset-gpios = <&pca9634 5 GPIO_ACTIVE_LOW>;
         };
 #endif
-#ifdef DISPLAY_LVDS_BT070L1060CS0I1ADA
+
+#ifdef CONFIG_EFUSMX8MP_CAPTOUCH_GOODIX
+touch: goodix@5d {
+        compatible = "goodix,gt928";
+        reg = <0x5d>;
+        interrupt-parent = <&gpio3>;
+        interrupts = <15 IRQ_TYPE_EDGE_RISING>;
+        reset-gpios = <&pca9634 5 GPIO_ACTIVE_HIGH>;
+        irq-gpios = <&gpio3 15 GPIO_ACTIVE_HIGH>;
+        touchscreen-inverted-x;
+        touchscreen-inverted-y;
+        };
+#endif
+
+#if defined(DISPLAY_LVDS_BT070L1060CS0I1ADA) || defined(DISPLAY_LVDS_EE1010B1T1CP)
 pca9634: pca9634@61 {
     	compatible = "nxp,pca9634";
         reg = <0x61>;
@@ -802,7 +816,7 @@ pca9634: pca9634@61 {
 				default-on;
 		};
     };
-#endif	/* DISPLAY_LVDS_BT070L1060CS0I1ADA */
+#endif	/* DISPLAY_LVDS_BT070L1060CS0I1ADA || DISPLAY_LVDS_EE1010B1T1CP */
 };
 
 #ifdef CONFIG_EFUSMX8MP_I2C_A

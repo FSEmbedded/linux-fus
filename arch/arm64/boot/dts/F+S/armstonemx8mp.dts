@@ -46,6 +46,7 @@
  * activate the following define.
  */
 #define DISPLAY_LVDS_BT070L1060CS0I1ADA
+//#define DISPLAY_LVDS_EE1010B1T1CP
 
 /*
  * Enables legacy support for J070WVTC0211
@@ -92,6 +93,28 @@
 	pixelclk-active = <0>; \
 	de-active = <1>;
 #endif /* DISPLAY_LVDS_BT070L1060CS0I1ADA */
+
+#ifdef DISPLAY_LVDS_EE1010B1T1CP
+#define CONFIG_ARMSTONEMX8MP_LVDS1_CHANNEL_MAPPING	"spwg"
+#define CONFIG_ARMSTONEMX8MP_LVDS1_CHANNEL_DATA_WIDTH	24
+
+#define CONFIG_ARMSTONEMX8MP_LVDS1_PANEL_MAPPING	"vesa-24"
+#define CONFIG_ARMSTONEMX8MP_LVDS1_PANEL_LABEL	"EE1010B1T1-CP"
+#define CONFIG_ARMSTONEMX8MP_LVDS1_PANEL_WIDTH	223
+#define CONFIG_ARMSTONEMX8MP_LVDS1_PANEL_HEIGHT	125
+#define CONFIG_ARMSTONEMX8MP_LVDS1_PANEL_TIMING \
+	clock-frequency = <49500000>; \
+	hactive = <1024>; \
+	vactive = <600>; \
+	hback-porch = <160>; \
+	hfront-porch = <76>; \
+	hsync-len = <140>; \
+	vback-porch = <23>; \
+	vfront-porch = <107>; \
+	vsync-len = <20>; \
+	pixelclk-active = <1>; \
+	de-active = <1>;
+#endif /* DISPLAY_LVDS_EE1010B1T1CP */
 
 #ifdef DISPLAY_LVDS_J070WVTC0211
 #define CONFIG_ARMSTONEMX8MP_LVDS1_CHANNEL_MAPPING	"spwg"
@@ -142,11 +165,15 @@
  *
  * - PCAP touch based on Focaltech controller (FT5x26), on Touch Connector
  * - PCAP touch based on ILITEK (Ilitek2130), on ADP-LVDS2LVDS1
+ * - PCAP touch based on Goodix (GT928), on ADP-LVDS2LVDS2
  *
  * Select none if you do not need touch support.
  */
 #ifdef DISPLAY_LVDS_BT070L1060CS0I1ADA
 #define CONFIG_ARMSTONEMX8MP_CAPTOUCH_ILITEK
+#endif
+#ifdef DISPLAY_LVDS_EE1010B1T1CP
+#define  CONFIG_ARMSTONEMX8MP_CAPTOUCH_GOODIX
 #endif
 #ifdef DISPLAY_LVDS_J070WVTC0211
 #define CONFIG_ARMSTONEMX8MP_CAPTOUCH_FT5x26
@@ -263,7 +290,7 @@
 	board_name = "armstonemx8mp";
 };
 
-#ifdef DISPLAY_LVDS_BT070L1060CS0I1ADA
+#if defined(DISPLAY_LVDS_BT070L1060CS0I1ADA) || defined(DISPLAY_LVDS_EE1010B1T1CP)
 &reg_ldb_bl{
 	gpio = <&pca963x 0 GPIO_ACTIVE_HIGH>;
 };
