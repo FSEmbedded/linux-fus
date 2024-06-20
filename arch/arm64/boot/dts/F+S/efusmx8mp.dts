@@ -44,7 +44,7 @@
  * F&S has changed the default LVDS display. To use the previous settings
  * activate the following define.
  */
-//#define DISPLAY_LVDS_BT070L1060CS0I1ADA
+#define DISPLAY_LVDS_BT070L1060CS0I1ADA
 
  /*
   * Enables legacy support for J070WVTC0211

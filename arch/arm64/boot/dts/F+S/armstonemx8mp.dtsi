@@ -343,7 +343,7 @@
 		width-mm = <CONFIG_ARMSTONEMX8MP_LVDS1_PANEL_WIDTH>;
 		height-mm = <CONFIG_ARMSTONEMX8MP_LVDS1_PANEL_HEIGHT>;
 #ifdef DISPLAY_LVDS_BT070L1060CS0I1ADA
-		reset-gpios = <&pca963x 3 GPIO_ACTIVE_LOW>;
+		enable-gpios = <&pca963x 3 GPIO_ACTIVE_HIGH>;
 #endif
 		status = "okay";
 
@@ -800,8 +800,7 @@ touch: ilitek2130@41 {
 				reg = <3>;
 				label = "MIPI_RST";
 				type = "GPIO";
-				active-low;
-				default-on;             /* or: keep-value */
+				active-high;
 		};
 		led@4 {
 				reg = <4>;
