@@ -226,6 +226,10 @@
 		/* extern GPIO controller */
 		compatible = "nxp,pcal6524";
 		reg  = <0x22>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <6 IRQ_TYPE_EDGE_FALLING>;
+		interrupt-controller;
+		#interrupt-cells = <2>;
 		gpio-controller;
 		#gpio-cells = <2>;
 		vcc-supply = <&regulator_1v8>;
@@ -373,6 +377,8 @@
 	rgmii_phy0: ethernet-phy@1 {
 		/* Realtek RTL8211FSI-PHY */
 		reg = <0x1>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <20 IRQ_TYPE_EDGE_RISING>;
 		reset-gpios = <&gpio4 19 GPIO_ACTIVE_HIGH>;
 		reset-assert-us = <50000>;
 		reset-deassert-us = <200000>;
