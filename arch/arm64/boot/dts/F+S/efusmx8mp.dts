@@ -36,15 +36,21 @@
  * corresponds to the LVDS channel where the display is connected to.
  *
  */
-#define CONFIG_EFUSMX8MP_PANEL0	DISPLAY_HDMI //DISPLAY_LVDS1
-#define CONFIG_EFUSMX8MP_PANEL1	DISPLAY_LVDS0
+#ifndef CONFIG_EFUSMX8MP_PANEL0
+#define CONFIG_EFUSMX8MP_PANEL0	DISPLAY_HDMI
+#endif
+#ifndef CONFIG_EFUSMX8MP_PANEL1
+#define CONFIG_EFUSMX8MP_PANEL1	DISPLAY_NONE
+#endif
+#ifndef CONFIG_EFUSMX8MP_PANEL2
 #define CONFIG_EFUSMX8MP_PANEL2	DISPLAY_NONE
+#endif
 
 /*
  * F&S has changed the default LVDS display. To use the previous settings
  * activate the following define.
  */
-#define DISPLAY_LVDS_BT070L1060CS0I1ADA
+//#define DISPLAY_LVDS_BT070L1060CS0I1ADA
 //#define DISPLAY_LVDS_EE1010B1T1CP
 
  /*

@@ -1254,6 +1254,7 @@ touch: goodix@5d {
 	status = "okay";
 };
 
+#ifdef CONFIG_ARMSTONEMX8MP_HDMI
 &irqsteer_hdmi {
 	status = "okay";
 };
@@ -1275,20 +1276,17 @@ touch: goodix@5d {
 	status = "okay";
 };
 
-
-&lcdif1 {
-	status = "disabled";
-};
-
-&lcdif2 {
-	status = "okay";
-};
-
 &lcdif3 {
 	status = "okay";
 	thres-low  = <1 2>;             /* (FIFO * 1 / 2) */
 	thres-high = <3 4>;             /* (FIFO * 3 / 4) */
 
+};
+#endif
+
+#if defined(CONFIG_ARMSTONEMX8MP_LVDS0) || defined(CONFIG_ARMSTONEMX8MP_LVDS1)
+&lcdif2 {
+	status = "okay";
 };
 
 &ldb {
@@ -1334,6 +1332,12 @@ touch: goodix@5d {
 
 &ldb_phy {
 	status = "okay";
+};
+#endif
+/* defined(CONFIG_ARMSTONEMX8MP_LVDS0) || defined(CONFIG_ARMSTONEMX8MP_LVDS1) */
+
+&lcdif1 {
+	status = "disabled";
 };
 
 &mipi_dsi {
