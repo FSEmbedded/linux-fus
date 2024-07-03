@@ -329,8 +329,18 @@
 #define IMX8MP_CLK_SAI6_ROOT			321
 #define IMX8MP_CLK_SAI7_ROOT			322
 #define IMX8MP_CLK_PDM_ROOT			323
+/* KM 2024-06-27:
+ * NXP includes clkout1/2 in lf-6.1.1-1.0.0.
+ * For the merge just copy from NXP.
+ */
+#define IMX8MP_CLK_CLKOUT1_SEL			324
+#define IMX8MP_CLK_CLKOUT1_DIV			325
+#define IMX8MP_CLK_CLKOUT1			326
+#define IMX8MP_CLK_CLKOUT2_SEL			327
+#define IMX8MP_CLK_CLKOUT2_DIV			328
+#define IMX8MP_CLK_CLKOUT2			329
 
-#define IMX8MP_CLK_END				331
+#define IMX8MP_CLK_END				330
 
 #define IMX8MP_CLK_AUDIO_BLK_CTRL_SAI1_IPG		0
 #define IMX8MP_CLK_AUDIO_BLK_CTRL_SAI1_MCLK1		1

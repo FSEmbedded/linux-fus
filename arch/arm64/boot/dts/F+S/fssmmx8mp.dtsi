@@ -188,6 +188,35 @@
 				enable-active-high;
 			};
 
+#ifdef CONFIG_FSSMMX8MP_SGTL5000_AUDIO
+		/* SGTL5000 analog voltage */
+		reg_sgtl5000_vdda: sgtl5000_vdda {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDA-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 I/O voltage */
+		reg_sgtl5000_vddio: sgtl5000_vddio {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 internal digital voltage */
+		reg_sgtl5000_vddd: sgtl5000_vddd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDD-supply";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-always-on;
+		};
+#endif /* CONFIG_PICOCOREMX8MX_SGTL5000_AUDIO */
+
 #ifdef CONFIG_FSSMMX8MP_SECURE
 			/* SE050 power on voltage */
 			reg_vref_se050: regulator_se050 {
@@ -246,6 +275,22 @@
 	};
 #endif
 
+#ifdef CONFIG_FSSMMX8MP_SGTL5000_AUDIO
+	sound_sgtl5000: sound-sgtl5000 {
+		compatible = "fsl,imx-audio-sgtl5000";
+		model = "imx-sgtl5000";
+		audio-cpu = <&sai2>;
+		audio-codec = <&sgtl5000>;
+		audio-asrc = <&easrc>;
+		audio-routing =
+			"LINE_IN", "Line In Jack",
+			"Mic Jack", "Mic Bias",
+			"MIC_IN", "Mic Jack",
+			"Line Out Jack", "LINE_OUT",
+			"Headphone Jack", "HP_OUT";
+	};
+#endif
+
 #ifdef CONFIG_FSSMMX8MP_USB_HOST
 	usb_host_reset: gpio-reset {
 		compatible = "gpio-reset";
@@ -291,7 +336,29 @@
 
 
 &clk {
-	init-on-array = <IMX8MP_CLK_HSIO_ROOT>;
+	assigned-clocks = <&clk IMX8MP_CLK_A53_SRC>,
+			  <&clk IMX8MP_CLK_A53_CORE>,
+			  <&clk IMX8MP_CLK_NOC>,
+			  <&clk IMX8MP_CLK_NOC_IO>,
+			  <&clk IMX8MP_CLK_GIC>,
+			  <&clk IMX8MP_CLK_AUDIO_AHB>,
+			  <&clk IMX8MP_CLK_AUDIO_AXI_SRC>,
+			  <&clk IMX8MP_AUDIO_PLL1>,
+			  <&clk IMX8MP_AUDIO_PLL2>,
+			  <&clk IMX8MP_VIDEO_PLL1>,
+			  <&clk IMX8MP_CLK_CLKOUT1>;
+	assigned-clock-rates = <0>, <0>,
+			       <1000000000>,
+			       <800000000>,
+			       <500000000>,
+			       <400000000>,
+			       <800000000>,
+			       <393216000>,
+			       <361267200>,
+			       <1039500000>,
+			       <24576000>;
+
+	init-on-array = <IMX8MP_CLK_HSIO_ROOT>, <IMX8MP_CLK_CLKOUT1>;
 };
 
 &A53_0 {
@@ -548,6 +615,13 @@
 };
 #endif /* CONFIG_FSSMMX8MP_I2C_CAM1 */
 
+&audio_blk_ctrl {
+#ifdef CONFIG_FSSMMX8MP_SGTL5000_AUDIO
+	assigned-clocks = <&clk IMX8MP_CLK_SAI2>;
+	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
+#endif
+};
+
 #ifdef CONFIG_FSSMMX8MP_I2C_GP
 &i2c3 {
 	clock-frequency = <400000>;
@@ -564,6 +638,20 @@
 		vcc-supply = <&reg_vref_1v8>;
 	};
 #endif /* CONFIG_FSSMMX8MP_EEPROM */
+
+#ifdef CONFIG_FSSMMX8MP_SGTL5000_AUDIO
+	sgtl5000: sgtl5000@a {
+		#sound-dai-cells = <0>;
+		compatible = "fsl,sgtl5000";
+		clocks = <&clk IMX8MP_CLK_CLKOUT1>;
+		reg = <0xa>;
+		//mono2both;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+		status = "okay";
+	};
+#endif
 };
 #endif /* CONFIG_FSSMMX8MP_I2C_GP */
 
@@ -813,15 +901,15 @@
 	pinctrl-0 = <&pinctrl_sai2>;
 	assigned-clocks = <&clk IMX8MP_CLK_SAI2>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <12288000>;
+	assigned-clock-rates = <24576000>;
 	clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI2_IPG>, <&clk IMX8MP_CLK_DUMMY>,
-		 <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI2_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
+		 <&clk IMX8MP_CLK_CLKOUT1>, <&clk IMX8MP_CLK_DUMMY>,
 		 <&clk IMX8MP_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 	fsl,sai-mclk-direction-output;
 	/* sai to clock and frame tx/rx master */
-	//fsl,txmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
-	//fsl,rxmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
+	fsl,txmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
+	fsl,rxmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
 	status = "okay";
 };
 #endif /* CONFIG_FSSMMX8MP_I2S_A */

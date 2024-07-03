@@ -75,6 +75,7 @@
  * // TODO: detected but not work
  *  */
 #define CONFIG_FSSMMX8MP_I2S_A
+#define CONFIG_FSSMMX8MP_SGTL5000_AUDIO
 
 /* Camera on serial MIPI CSI interface */
 //#define CONFIG_FSSMMX8MP_CSI_A
