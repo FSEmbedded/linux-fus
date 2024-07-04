@@ -60,7 +60,8 @@ dtb-$(CONFIG_ARCH_MXC) += picocoremx8mpr2.dtb \
 			  picocoremx8mpr2-EE1010B1T-1CP.dtb
 dtb-$(CONFIG_ARCH_MXC) += efusmx8mp.dtb \
 			  efusmx8mp-BT070L1060CS0I1AD-A.dtb \
-			  efusmx8mp-EE1010B1T-1CP.dtb
+			  efusmx8mp-EE1010B1T-1CP.dtb \
+			  efusmx8mp-ET070080DH6.dtb
 dtb-$(CONFIG_ARCH_MXC) += fssmmx8mp.dtb \
 			  fssmmx8mp-lcdif-j070wvtc0211.dtb \
 			  fssmmx8mp-BT070L1060CS0I1AD-A.dtb \
