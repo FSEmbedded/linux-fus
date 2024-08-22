@@ -84,6 +84,12 @@
 		i2c3 = &i2c4;
 		i2c4 = &i2c5;
 		i2c5 = &i2c6;
+#ifdef CONFIG_ARMSTONEMX8MP_AUDIO_CODEC
+		sound-wm8960 = &sound_wm8960;
+		sound-wm8904 = &sound_wm8904;
+		wm8960 = &wm8960;
+		wm8904 = &wm8904;
+#endif
 	};
 
 	reserved-memory {
@@ -272,11 +278,11 @@
 #endif
 
 #ifdef CONFIG_ARMSTONEMX8MP_AUDIO_CODEC
-	sound-wm8960 {
+	sound_wm8960: sound-wm8960 {
 		compatible = "fsl,imx-audio-wm8960";
 		model = "wm8960-audio";
 		audio-cpu = <&sai2>;
-		audio-codec = <&codec>;
+		audio-codec = <&wm8960>;
 		audio-asrc = <&easrc>;
 		audio-routing =
 			"Headphone Jack", "HP_L",
@@ -289,6 +295,23 @@
 			"Mic Jack", "MICB",
             "LINPUT3", "Line In Jack",
 			"RINPUT3", "Line In Jack";
+	};
+
+	sound_wm8904: sound-wm8904 {
+		compatible = "fsl,imx-audio-wm8904";
+		model = "wm8904-audio";
+		audio-cpu = <&sai2>;
+		audio-codec = <&wm8904>;
+		audio-asrc = <&easrc>;
+		audio-routing =
+			"IN2L", "Line In Jack",
+			"IN2R", "Line In Jack",
+			"Mic Jack", "MICBIAS",
+			"IN1L", "Mic Jack",
+			"Line Out Jack", "LINEOUTL",
+			"Line Out Jack", "LINEOUTR",
+			"Headphone Jack", "HPOUTL",
+			"Headphone Jack", "HPOUTR";
 	};
 #endif /* CONFIG_ARMSTONEMX8MP_AUDIO_CODEC */
 
@@ -666,8 +689,19 @@
 #endif /* CONFIG_ARMSTONEMX8MP_ADC */
 
 #ifdef CONFIG_ARMSTONEMX8MP_AUDIO_CODEC
-	codec: wm8960@1a {
+	wm8960: wm8960@1a {
 		compatible = "wlf,wm8960";
+		#sound-dai-cells = <0>;
+		reg = <0x1a>;
+		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI2_MCLK1>;
+		clock-names = "mclk";
+		wlf,shared-lrclk;
+		wlf,gpio-cfg = <1 0>;
+		SPKVDD1-supply = <&reg_vref_3v3>;
+	};
+
+	wm8904: wm8904@1a {
+		compatible = "wlf,wm8904";
 		#sound-dai-cells = <0>;
 		reg = <0x1a>;
 		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI2_MCLK1>;

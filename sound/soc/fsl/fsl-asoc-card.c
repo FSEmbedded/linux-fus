@@ -24,6 +24,7 @@
 #include "imx-audmux.h"
 
 #include "../codecs/sgtl5000.h"
+#include "../codecs/wm8904.h"
 #include "../codecs/wm8962.h"
 #include "../codecs/wm8960.h"
 #include "../codecs/wm8994.h"
@@ -38,6 +39,7 @@
 
 enum fsl_asoc_card_type {
 	CARD_CS42888 = 1,
+	CARD_WM8904,
 	CARD_WM8960,
 	CARD_WM8962,
 	CARD_SGTL5000,
@@ -367,7 +369,8 @@ static int fsl_asoc_card_startup(struct snd_pcm_substream *substream)
 				 priv->codec_priv.mclk_freq);
 	}
 
-	if ((priv->card_type == CARD_WM8960 ||
+	if ((priv->card_type == CARD_WM8904 ||
+	     priv->card_type == CARD_WM8960 ||
 	     priv->card_type == CARD_WM8962 ||
 	     priv->card_type == CARD_WM8958)
 	    && !priv->is_codec_master) {
@@ -800,6 +803,13 @@ static int fsl_asoc_card_probe(struct platform_device *pdev)
 		codec_dai_name = "tlv320aic32x4-hifi";
 		priv->dai_fmt |= SND_SOC_DAIFMT_CBM_CFM;
 		priv->card_type = CARD_TLV320AIC32X4;
+	} else if (of_device_is_compatible(np, "fsl,imx-audio-wm8904")) {
+		codec_dai_name = "wm8904-hifi";
+		priv->codec_priv.mclk_id = WM8904_CLK_MCLK;
+		priv->codec_priv.fll_id = WM8904_CLK_FLL;
+		priv->codec_priv.pll_id = WM8904_FLL_MCLK;
+		priv->dai_fmt |= SND_SOC_DAIFMT_CBM_CFM;
+		priv->card_type = CARD_WM8904;
 	} else if (of_device_is_compatible(np, "fsl,imx-audio-wm8962")) {
 		codec_dai_name = "wm8962";
 		priv->codec_priv.mclk_id = WM8962_SYSCLK_MCLK;
@@ -1165,6 +1175,7 @@ static const struct of_device_id fsl_asoc_card_dt_ids[] = {
 	{ .compatible = "fsl,imx-audio-cs427x", },
 	{ .compatible = "fsl,imx-audio-tlv320aic32x4", },
 	{ .compatible = "fsl,imx-audio-sgtl5000", },
+	{ .compatible = "fsl,imx-audio-wm8904", },
 	{ .compatible = "fsl,imx-audio-wm8962", },
 	{ .compatible = "fsl,imx-audio-wm8960", },
 	{ .compatible = "fsl,imx-audio-mqs", },
