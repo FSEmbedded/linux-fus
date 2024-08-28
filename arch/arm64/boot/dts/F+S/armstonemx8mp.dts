@@ -206,7 +206,7 @@
 /* I2C_B - Feature connector J18 pins 2,3 */
 #define CONFIG_ARMSTONEMX8MP_I2C_B
 /* I2C_C - Feature connector J20 pins 19,21 optional */
-#define CONFIG_ARMSTONEMX8MP_I2C_C
+//#define CONFIG_ARMSTONEMX8MP_I2C_C
 /* I2C_D - Feature connector J20 pins 29,31 optional */
 #define CONFIG_ARMSTONEMX8MP_I2C_D
 
@@ -237,6 +237,7 @@
 /* TODO: RX <-> TX inverted in Rev. 1.00 */
 #define CONFIG_ARMSTONEMX8MP_UART_B
 #define CONFIG_ARMSTONEMX8MP_UART_B_RTSCTS
+//#define CONFIG_ARMSTONEMX8MP_RS485
 /* UART_C - Feature connector J20 pins 36,38 */
 #define CONFIG_ARMSTONEMX8MP_UART_C
 /* UART_D - Feature connector J20 pins 18,20,22,24*/
@@ -275,6 +276,8 @@
 #define CONFIG_ARMSTONEMX8MP_KEYPAD_MATRIX
 /* HIFI4 DSP */
 //#define CONFIG_ARMSTONEMX8MP_DSP
+/* EEPROM */
+#define  CONFIG_ARMSTONEMX8MP_EEPROM
 
 #ifdef SUPPORT_M7
 #undef CONFIG_ARMSTONEMX8MP_UART_C
