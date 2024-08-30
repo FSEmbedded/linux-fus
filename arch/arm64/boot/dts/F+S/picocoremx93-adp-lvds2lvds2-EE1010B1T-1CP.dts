@@ -6,9 +6,36 @@
  * published by the Free Software Foundation.
  */
 //#define CONFIG_PICOCOREMX93_MIPI_DSI_LVDS
+/* touch reset */
+#define CONFIG_IMX93_TOUCH_RESET
+/* lvds panel can use optional parameter like
+ * power-supply, reset-gpios and so one. These parameters
+ * can be different and are specific for the board type.
+ */
+/* use power_supply parameter */
+#define CONFIG_IMX93_LVDS_PANEL_POWER_SUPPLY
+/* use reset_gpios parameter */
+//#define CONFIG_IMX93_LVDS_PANEL_RESET_GPIOS
+
 #define IMX93_TOUCH_I2C 			lpi2c8
 #define IMX93_TOUCH_INTERRUPT_GPIO_BANK 	gpio2
-#define IMX93_TOUCH_INTERRUPT_GPIO_NUM 		18
+#define IMX93_TOUCH_INTERRUPT_GPIO_NUM 		15
+
+#ifdef CONFIG_IMX93_TOUCH_RESET
+/* GPIO_J1_2 for Rev. 1.10 */
+#define IMX93_TOUCH_RESET_GPIO_BANK gpio2
+#define IMX93_TOUCH_RESET_GPIO_NUM  19
+#endif
+
+#ifdef CONFIG_IMX93_LVDS_PANEL_POWER_SUPPLY
+#define IMX93_LVDS_PANEL_POWER_SUPPLY reg_vlcd
+#endif
+
+#ifdef CONFIG_IMX93_LVDS_PANEL_RESET_GPIOS
+/* IMX93_LVDS_PANEL_RESET_GPIOS */
+#error configure IMX93_LVDS_PANEL_RESET_GPIO_BANK and IMX93_LVDS_PANEL_RESET_GPIO_NUM defines
+#endif
+
 
 #include "picocoremx93.dts"
 #include "displays/imx93-adp-lvds2lvds2-EE1010B1T-1CP.dtsi"

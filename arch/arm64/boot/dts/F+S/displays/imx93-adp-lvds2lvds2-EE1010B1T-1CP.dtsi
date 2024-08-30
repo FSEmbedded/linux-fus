@@ -9,12 +9,17 @@
 / {
 	lvds_panel {
 		compatible = "panel-lvds";
+#ifdef CONFIG_IMX93_LVDS_PANEL_POWER_SUPPLY
+		power-supply = <&IMX93_LVDS_PANEL_POWER_SUPPLY>;
+#endif
 		backlight = <&backlight_ldb>;
-		reset-gpios = <&gpio_adp 3 GPIO_ACTIVE_LOW>;
+#ifdef CONFIG_IMX93_LVDS_PANEL_RESET_GPIOS
+		reset-gpios = <&IMX93_LVDS_PANEL_RESET_GPIO_BANK IMX93_LVDS_PANEL_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
+#endif
 		data-mapping = "vesa-24";
 		label = "EE1010B1T-1CP";
-                width-mm = <223>;
-                height-mm = <125>;
+		width-mm = <223>;
+		height-mm = <125>;
 		status = "okay";
 
 		panel-timing {
@@ -39,21 +44,10 @@
 	};
 };
 
-&backlight_ldb {
-	pwms = <&gpio_adp 1 5263157 1>;
-	brightness-levels = <0 1 5 10 18 28 41 56
-				 73 92 113 137 163 192 222 255>;
-	default-brightness-level = <14>;
-};
-
-&reg_bl_on{
-	gpio = <&gpio_adp 0 GPIO_ACTIVE_HIGH>;
-};
-
 /* LVDS */
 &lcdif {
 	status = "okay";
-        assigned-clock-rates = <1039500000>, <49500000>, <400000000>, <133333333>;
+	assigned-clock-rates = <1039500000>, <49500000>, <400000000>, <133333333>;
 };
 
 &ldb_phy {
@@ -66,8 +60,7 @@
 		fsl,data-mapping = "spwg";
 		fsl,data-width = <24>;
 		status = "okay";
-
-                port@1 {
+		port@1 {
 			reg = <1>;
 
 			lvds_out: endpoint {
@@ -79,90 +72,19 @@
 
 &IMX93_TOUCH_I2C {
 	clock-frequency = <400000>;
-	gpio_adp: pca9634@61 {
-			compatible = "nxp,pca9634";
-			reg = <0x61>;
-			vdd-supply = <&reg_vlcd>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-			#pwm-cells = <3>;
-			#gpio-cells = <2>;
-			led@0 {
-				reg = <0>;
-				label = "BL_ON";
-				type = "GPIO";
-				default-on;	        /* or: keep-value */
-				active-high;
-			};
-			led@1 {
-				reg = <1>;
-				label = "BL_PWM";
-				type = "PWM";
-				default-on;             /* or: keep-value */
-				active-low;
-			};
-			led@2 {
-				reg = <2>;
-				label = "2-unused";
-				type = "LED";
-				active-low;
-			};
-			led@3 {
-				reg = <3>;
-				label = "MIPI_RST";
-				type = "GPIO";
-				active-low;
-				default-on;             /* or: keep-value */
-			};
-			led@4 {
-				reg = <4>;
-				label = "4-unused";
-				type = "LED";
-				active-low;
-			};
-			led@5 {
-				reg = <5>;
-				label = "I2C_RST";
-				type = "GPIO";
-				active-high;
-				default-on;     /* or: keep-value */
-			};
-			led@6 {
-				reg = <6>;
-				label = "6-unused";
-				type = "LED";
-				active-low;
-			};
-			led@7 {
-				reg = <7>;
-				label = "TOUCH_ON";
-				type = "GPIO";
-				active-high;
-				default-on;
-			};
-		};
-        /* GOODIX PCAP touch on Touch-Connector (I2C) */
-        touch: gt928@14 {
-                compatible = "goodix,gt928";
-                reg = <0x14>;
-                vdd-supply = <&reg_vlcd>;
-                touchscreen-inverted-x;
-                touchscreen-inverted-y;
-                interrupt-parent = <&IMX93_TOUCH_INTERRUPT_GPIO_BANK>;
-                interrupts = <IMX93_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_RISING>;
-                reset-gpios = <&gpio_adp 5 GPIO_ACTIVE_LOW>;
-        };
-};
-
-/delete-node/ &pinctrl_touch_i2c;
-
-&iomuxc {
-	pinctrl_touch_i2c: touchi2cgrp {
-		fsl,pins = <
-			/* I2C_B_IRQ */
-			MX93_PAD_GPIO_IO18__GPIO2_IO18		0x5fe
-			/* GPIO_J1_52, TOUCH_RESET  */
-			MX93_PAD_GPIO_IO19__GPIO2_IO19		0x3fe
-		>;
+	/* GOODIX PCAP touch on Touch-Connector (I2C) */
+	touch: gt928@14 {
+		compatible = "goodix,gt928";
+		reg = <0x14>;
+		vdd-supply = <&reg_vlcd>;
+#ifdef CONFIG_IMX93_INVERTED_XY
+		touchscreen-inverted-x;
+		touchscreen-inverted-y;
+#endif /* CONFIG_IMX93_INVERTED_XY */
+		interrupt-parent = <&IMX93_TOUCH_INTERRUPT_GPIO_BANK>;
+		interrupts = <IMX93_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_RISING>;
+#ifdef CONFIG_IMX93_TOUCH_RESET
+		reset-gpios = <&IMX93_TOUCH_RESET_GPIO_BANK IMX93_TOUCH_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
+#endif /* CONFIG_IMX93_TOUCH_RESET */
 	};
 };
