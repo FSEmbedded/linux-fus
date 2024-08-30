@@ -9,7 +9,9 @@ dtb-$(CONFIG_ARCH_MXC) += \
 dtb-$(CONFIG_ARCH_MXC) += \
 		picocoremx93.dtb \
 		picocoremx93-BT070L1060CS0I1AD-A.dtb \
-		picocoremx93-adp-lvds2lvds2-EE1010B1T-1CP.dtb
+		picocoremx93-ee0350et-2cp.dtb \
+		picocoremx93-adp-lvds2lvds2-EE1010B1T-1CP.dtb \
+		picocoremx93-adp-mipi2mip1-ee0350et-2cp.dtb
 
 dtb-$(CONFIG_ARCH_MXC) += \
 		fs-osm-sf-mx93-adp-osm-bb.dtb \
