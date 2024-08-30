@@ -9,8 +9,13 @@
 / {
 	lvds_panel {
 		compatible = "panel-lvds";
+#ifdef CONFIG_IMX93_LVDS_PANEL_POWER_SUPPLY
+		power-supply = <&IMX93_LVDS_PANEL_POWER_SUPPLY>;
+#endif
 		backlight = <&backlight_ldb>;
-		reset-gpios = <&gpio_adp 3 GPIO_ACTIVE_LOW>;
+#ifdef CONFIG_IMX93_LVDS_PANEL_RESET_GPIOS
+		reset-gpios = <&IMX93_LVDS_PANEL_RESET_GPIO_BANK IMX93_LVDS_PANEL_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
+#endif
 		data-mapping = "vesa-24";
 		label = "BT070L1060CS0I1AD-A";
 		width-mm = <155>;
@@ -36,25 +41,6 @@
 			};
 		};
 	};
-};
-
-&reg_bl_on {
-	status = "okay";
-};
-
-&reg_vlcd {
-	status = "okay";
-};
-
-&backlight_ldb {
-	pwms = <&gpio_adp 1 5263157 1>;
-	brightness-levels = <0 1 5 10 18 28 41 56
-				 73 92 113 137 163 192 222 255>;
-	default-brightness-level = <14>;
-};
-
-&reg_bl_on{
-	gpio = <&gpio_adp 0 GPIO_ACTIVE_HIGH>;
 };
 
 /* LVDS */
@@ -84,75 +70,14 @@
 };
 
 &IMX93_TOUCH_I2C {
-	gpio_adp: pca9634@61 {
-		compatible = "nxp,pca9634";
-		reg = <0x61>;
-		vdd-supply = <&reg_vlcd>;
-		#address-cells = <1>;
-		#size-cells = <0>;
-		#pwm-cells = <3>;
-		#gpio-cells = <2>;
-		led@0 {
-			reg = <0>;
-			label = "BL_ON";
-			type = "GPIO";
-			default-on;		/* or: keep-value */
-			active-high;
-		};
-		led@1 {
-			reg = <1>;
-			label = "BL_PWM";
-			type = "PWM";
-			default-on;	     /* or: keep-value */
-			active-low;
-		};
-		led@2 {
-			reg = <2>;
-			label = "2-unused";
-			type = "LED";
-			active-low;
-		};
-		led@3 {
-			reg = <3>;
-			label = "MIPI_RST";
-			type = "GPIO";
-			active-low;
-			default-on;	     /* or: keep-value */
-		};
-		led@4 {
-			reg = <4>;
-			label = "4-unused";
-			type = "LED";
-			active-low;
-		};
-		led@5 {
-			reg = <5>;
-			label = "I2C_RST";
-			type = "GPIO";
-			active-high;
-			default-on;     /* or: keep-value */
-		};
-		led@6 {
-			reg = <6>;
-			label = "6-unused";
-			type = "LED";
-			active-low;
-		};
-		led@7 {
-			reg = <7>;
-			label = "TOUCH_ON";
-			type = "GPIO";
-			active-high;
-			default-on;
-		};
-	};
-
 	/* Ilitek PCAP touch on Touch-Connector (I2C) */
 	touch: ilitek2130@41 {
 		compatible = "ilitek,ili2130";
 		reg = <0x41>;
 		interrupt-parent = <&IMX93_TOUCH_INTERRUPT_GPIO_BANK>;
 		interrupts = <IMX93_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_RISING>;
-		reset-gpios = <&gpio_adp 5 GPIO_ACTIVE_LOW>;
+#ifdef CONFIG_IMX93_TOUCH_RESET
+		reset-gpios = <&IMX93_TOUCH_RESET_GPIO_BANK IMX93_TOUCH_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
+#endif /* CONFIG_IMX93_TOUCH_RESET */
 	};
 };
