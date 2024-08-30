@@ -9,7 +9,7 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_PICOCOREMX93_BOARD_REVISION	100
+#define CONFIG_PICOCOREMX93_BOARD_REVISION	110
 /* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_PICOCOREBBDSI_BOARD_REVISION	140
 //#define SUPPORT_M33
@@ -17,7 +17,12 @@
 
 /* Network */
 #define CONFIG_PICOCOREMX93_ETH_A
+#define CONFIG_PICOCOREMX93_ETH_A_LED_LINK
+//#define CONFIG_PICOCOREMX93_ETH_A_LED_ACT
+
 #define CONFIG_PICOCOREMX93_ETH_B
+#define CONFIG_PICOCOREMX93_ETH_B_LED_LINK
+//#define CONFIG_PICOCOREMX93_ETH_B_LED_ACT
 
 /* CAN - CAN1 extern J1 pins 10,12*/
 #define CONFIG_PICOCOREMX93_CAN
@@ -44,11 +49,12 @@
 
 /* UART_A - UART2 */
 #define CONFIG_PICOCOREMX93_UART_A
+#define CONFIG_PICOCOREMX93_UART_A_RTSCTS
 
 /* UART_B - UART6 */
-/* TODO: */
-//#define CONFIG_PICOCOREMX93_UART_B
-//#define CONFIG_PICOCOREMX93_UART_B_BT
+#define CONFIG_PICOCOREMX93_UART_B
+#define CONFIG_PICOCOREMX93_UART_B_RTSCTS
+#define CONFIG_PICOCOREMX93_UART_B_BT
 
 /* UART_C - UART1 */
 #define CONFIG_PICOCOREMX93_UART_C
@@ -85,11 +91,19 @@
  *
  */
 
- #ifdef SUPPORT_M33
- /* TODO: */
- #else
- #undef SUPPORT_RPMSG
- #endif
+#ifdef SUPPORT_M33
+/* TODO: */
+#else
+#undef SUPPORT_RPMSG
+#endif
+
+#ifdef CONFIG_PICOCOREMX93_ETH_A_LED_LINK
+#undef CONFIG_PICOCOREMX93_ETH_A_LED_ACT
+#endif
+
+#ifdef CONFIG_PICOCOREMX93_ETH_B_LED_LINK
+#undef CONFIG_PICOCOREMX93_ETH_B_LED_ACT
+#endif
 
 #include "picocoremx93.dtsi"
 
