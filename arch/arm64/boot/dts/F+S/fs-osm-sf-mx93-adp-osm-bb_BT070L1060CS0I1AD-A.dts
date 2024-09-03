@@ -6,7 +6,7 @@
  * can be different and are specific for the board type.
  */
 /* use power_supply parameter */
-//#define CONFIG_IMX93_LVDS_PANEL_POWER_SUPPLY
+#define CONFIG_IMX93_LVDS_PANEL_POWER_SUPPLY
 /* use reset_gpios parameter */
 #define CONFIG_IMX93_LVDS_PANEL_RESET_GPIOS
 
@@ -19,7 +19,7 @@
 #endif
 
 #ifdef CONFIG_IMX93_LVDS_PANEL_POWER_SUPPLY
-#error configure MX93_LVDS_PANEL_POWER_SUPPLY define
+#define IMX93_LVDS_PANEL_POWER_SUPPLY reg_vlcd
 #endif
 
 #ifdef CONFIG_IMX93_LVDS_PANEL_RESET_GPIOS
@@ -30,10 +30,23 @@
 
 #include "fs-osm-sf-mx93-adp-osm-bb.dts"
 
-reg_bl_on: &reg_disp_bl {};
-reg_vlcd: &reg_disp_vdd_en {};
+reg_vlcd: &reg_disp_vdd_en {
+    status = "okay";
+};
 IMX93_TOUCH_I2C: &osm_i2c_cam {};
-IMX93_TOUCH_INTERRUPT_GPIO_BANK: &osm_gpio_a25{};
+IMX93_TOUCH_INTERRUPT_GPIO_BANK: &osm_gpio_a25 {};
+
+&backlight_ldb {
+    pwms = <&gpio_adp 1 5263157 1>;
+    brightness-levels = <0 1 5 10 18 28 41 56
+               73 92 113 137 163 192 222 255>;
+    default-brightness-level = <14>;
+    status = "okay";
+};
+
+&reg_disp_bl {
+    gpio = <&gpio_adp 0 GPIO_ACTIVE_HIGH>;
+};
 
 &IMX93_TOUCH_I2C {
     /* use board type specific nodes */
