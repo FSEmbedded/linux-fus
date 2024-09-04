@@ -88,6 +88,9 @@
 #ifdef CONFIG_ARMSTONEMX8MP_EEPROM
 		eeprom = &eeprom;
 #endif
+#ifdef CONFIG_ARMSTONEMX8MP_ADC
+		adc = &adc;
+#endif
 	};
 
 	reserved-memory {
@@ -672,7 +675,7 @@
 #endif /* CONFIG_ARMSTONEMX8MP_EXT_RTC */
 
 #ifdef CONFIG_ARMSTONEMX8MP_ADC
-	ads1015@49 {
+	adc: ads1015@49 {
 		compatible = "ti,ads1015";
 		reg = <0x49>;
 		#address-cells = <1>;
