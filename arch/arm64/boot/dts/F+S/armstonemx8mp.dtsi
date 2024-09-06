@@ -1270,6 +1270,12 @@ touch: goodix@5d {
 	pinctrl-1 = <&pinctrl_usdhc3_100mhz>, <&pinctrl_usdhc3_gpio>;
 	pinctrl-2 = <&pinctrl_usdhc3_200mhz>, <&pinctrl_usdhc3_gpio>;
 	cd-gpios = <&gpio1 14 GPIO_ACTIVE_LOW>;
+#ifndef CONFIG_ARMSTONEMX8MP_SD_A_UHS
+	/* There may be some pullups on the SD_A_VCC line, that prevent
+	   voltage to go down to 1V8, which is needed for UHS support
+	   so we disable 1V8 support by default. */
+	no-1-8-v;
+#endif
 	bus-width = <4>;
 	status = "okay";
 };

@@ -216,6 +216,10 @@
  */
 #define CONFIG_ARMSTONEMX8MP_SD_A
 #define CONFIG_ARMSTONEMX8MP_SD_A_CD
+/* There may be some pullups on the SD_A_VCC line, that prevent
+   voltage to go down to 1V8, which is needed for UHS support
+   so we disable 1V8 support by default. */
+//#define CONFIG_ARMSTONEMX8MP_SD_A_UHS
 
 /* PWM and backlight brightness */
 /* PWM_A - Feature connector J20 pin 28 */
