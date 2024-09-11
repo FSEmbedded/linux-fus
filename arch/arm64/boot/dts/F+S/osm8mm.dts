@@ -1,0 +1,145 @@
+/*
+ * Copyright (C) 2024 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Comment this out for OSM module without ADP-OSM-BB */
+#define CONFIG_ADP_OSM_BB
+
+#ifdef CONFIG_ADP_OSM_BB
+#include "osm8mm-adp.dtsi"
+#else
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_OSM8MM_BOARD_REVISION	110
+
+/* Activate this if you want to use the Cortex-M4 core */
+//#define SUPPORT_M4
+
+/* Display device-trees enables MIPI DSI */
+/* MIPI DSI */
+//#define CONFIG_OSM8MM_MIPI_DSI
+
+/* Network */
+#define CONFIG_OSM8MM_ETH_A
+
+/* USB */
+#define CONFIG_OSM8MM_USB_A
+#define CONFIG_OSM8MM_USB_B
+//#define CONFIG_OSM8MM_USB_A_USBC
+/* USB Type-C ALERT signal is available on J2_77 on BBDSI baseboard since
+   Revision 1.40. Otherwise use polling with ~100ms */
+//#define CONFIG_OSM8MM_USB_A_USBC_ALERT
+
+/* PCIe */
+#define CONFIG_OSM8MM_PCIE_A
+
+/* I2C */
+#define CONFIG_OSM8MM_I2C_A /* OSM: EEPROM BB: I2C_A */
+#define CONFIG_OSM8MM_I2C_B /* ADP: SGTL5000 BB: I2C_D */
+/* OSM: I2C_CAM_PCI ADP: I2C_CAM  BB: I2C_B */
+/* OSM: I2C_CAM_PCI ADP: MPCIE_SM BB: I2C_C */
+#define CONFIG_OSM8MM_I2C_CAM_PCI
+
+/* PWM and backlight brightness */
+//#define CONFIG_OSM8MM_BL_CTRL
+#define CONFIG_OSM8MM_PWM_0
+#define CONFIG_OSM8MM_PWM_1
+#define CONFIG_OSM8MM_PWM_2
+#define CONFIG_OSM8MM_PWM_3
+
+/* UART_CONN - UART1 */
+#define CONFIG_OSM8MM_UART_CONN
+
+/* UART_A - UART2 */
+#define CONFIG_OSM8MM_UART_A
+#define CONFIG_OSM8MM_UART_A_RTSCTS
+
+/* UART_B - UART3 */
+#define CONFIG_OSM8MM_UART_B
+#define CONFIG_OSM8MM_UART_B_RTSCTS
+
+/* UART_C - UART4 */
+#define CONFIG_OSM8MM_UART_C
+
+/* FSPI (Single/Dual/Quad) */
+#define CONFIG_OSM8MM_SPI_A
+#define CONFIG_OSM8MM_SPI_A_CS1
+
+/* ECSPI */
+#define CONFIG_OSM8MM_SPI_B
+#define CONFIG_OSM8MM_SPI_B_CS1
+
+
+/* Audio */
+#define CONFIG_OSM8MM_I2S_A
+
+/* Camera on serial MIPI CSI interface */
+#define CONFIG_OSM8MM_SERIAL_CAMERA
+/* Experimental implementation for Basler dart daA4200-30mci.
+ * Define CONFIG_OSM8MM_SERIAL_CAMERA must also be set.
+ */
+#define CONFIG_OSM8MM_CAMERA_BASLER_daA4200
+
+/*
+ * SD_A - External SD port with Card Detect (CD) and Write Protect (WP)
+ * On picocoremx8mm SKIT: external port is Micro-SD card slot with CD but
+ * without WP
+ */
+#define CONFIG_OSM8MM_SDIO_A
+#define CONFIG_OSM8MM_SDIO_A_CD
+#define CONFIG_OSM8MM_SDIO_A_WP
+
+/*
+ * SD_B - External SD port with Card Detect (CD) and Write Protect (WP)
+ */
+#define CONFIG_OSM8MM_SDIO_B
+#define CONFIG_OSM8MM_SDIO_B_CD
+#define CONFIG_OSM8MM_SDIO_B_WP
+#define CONFIG_OSM8MM_SDIO_B_8_BIT
+
+/* Check for invalid CONFIG combinations */
+
+/*
+ * Exclude devices from Linux that are used by the Cortex-M4 FreeRTOS examples
+ *
+ * - UART_D: Debug Console for Cortex-M4
+ * - I2C_A:  I2C Bus used in I2C examples
+ * - I2C_D:  I2C Bus used by the Audio Codec in SAI examples
+ * - SPI_B:  SPI_B is used for ECSPI examples
+ * - SDMA1:  Gets removed at another Point, it is used by SPI_B and UART driver
+ *           examples
+ * - SPI_A:  SPI_A using SDMA1 but SDMA1 is excluded so also exclude SPI_A
+ *
+ * In addition the following pins are already predefined in FreeRTOS to be used
+ * as arbitrary GPIOs. Please remove the comment of the appropriate line of
+ * each device from which you use any signal in your own application.
+ *
+ * - AUDIO_3: GPT capture driver example uses one of its Pins
+ */
+#ifdef SUPPORT_M4
+#undef CONFIG_OSM8MM_UART_C
+//#undef CONFIG_OSM8MM_I2C_A
+//#undef CONFIG_OSM8MM_SPI_A
+//#undef CONFIG_OSM8MM_SPI_B
+/* Only undef if using audio/sai examples */
+//#undef CONFIG_OSM8MM_I2C_B
+//#undef CONFIG_OSM8MM_I2S_A
+#endif
+
+#include "osm8mm.dtsi"
+
+/ {
+	model = "F&S OSM8MM";
+};
+
+&bdinfo{
+	board_name = "osm8mm";
+};
+
+#endif /* !CONFIG_ADP_OSM8MM_BB */

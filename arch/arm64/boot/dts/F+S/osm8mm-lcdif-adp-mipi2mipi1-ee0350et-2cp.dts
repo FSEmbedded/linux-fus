@@ -1,0 +1,18 @@
+/*
+* Copyright (C) 2024 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+
+#define CONFIG_OSM8MM_MIPI_DSI
+
+#define IMX8MM_TOUCH_INTERRUPT_GPIO_BANK	gpio1
+#define IMX8MM_TOUCH_INTERRUPT_GPIO_NUM		5
+
+#define IMX8MM_TOUCH_I2C osm_i2c_cam_pci
+
+#include "osm8mm-adp.dtsi"
+#include "displays/imx8mm-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtsi"
+
