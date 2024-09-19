@@ -10,7 +10,7 @@
 
 #include <dt-bindings/pwm/pwm.h>
 // #include <dt-bindings/usb/pd.h>
-#include <dt-bindings/rtc/nxp,pcf85263.h>
+#include <dt-bindings/rtc/pcf85363.h>
 #include <fsversion.h>
 #include "../freescale/imx93.dtsi"
 
@@ -514,9 +514,9 @@ i2c_int: &lpi2c2 {
 	rtc85263: rtc85263@51 {
 		compatible = "nxp,pcf85263";
 		reg = <0x51>;
-		clock-out = <PCF85263_CLK_OUT_32p768kHz>;
-		quartz-load-capacitance = <PCF85263_QUARTZCAP_12p5pF>;
-		quartz-drive-strength = <PCF85263_QUARTZDRIVE_LOW>;
+		clock-out = <PCF85363_COF_32768Hz>;
+		quartz-load-femtofarads = <PCF85363_CAP_12p5pF>;
+		quartz-drive-strength = <PCF85363_OSC_DRIVE_LOW>;
 	};
 };
 
