@@ -100,9 +100,26 @@
 #define PIN_IO_INTA_OUT	2
 #define PIN_IO_INTA_HIZ	3
 
-#define OSC_CAP_SEL	GENMASK(1, 0)
-#define OSC_CAP_6000	0x01
-#define OSC_CAP_12500	0x02
+#define OSC_CAP_SEL		GENMASK(1, 0)
+#define OSC_CAP_6000		0x01
+#define OSC_CAP_12500		0x02
+
+#define OSC_DRIVE_CNTRL 	GENMASK(3,2)
+#define OSC_DRIVE_SHIFT		0x2
+#define OSC_DRIVE_NORMAL	0x0
+#define OSC_DRIVE_LOW		0x1
+#define OSC_DRIVE_HIGH 		0x2
+
+
+#define COF_MASK	GENMASK(2,0)
+#define COF_32768Hz	0x0	/* clock output 32,768 kHz */
+#define COF_16384Hz	0x1	/* clock output 16,384 kHz */
+#define COF_8192Hz	0x2	/* clock output 8,192 kHz */
+#define COF_4096Hz	0x3	/* clock output 4,096 kHz */
+#define COF_2048Hz	0x4	/* clock output 2,048 kHz */
+#define COF_1024Hz	0x5	/* clock output 1,024 kHz */
+#define COF_1Hz		0x6	/* clock output 1 Hz */
+#define COF_OFF		0x7	/* No clock output */
 
 #define STOP_EN_STOP	BIT(0)
 
@@ -142,8 +159,67 @@ static int pcf85363_load_capacitance(struct pcf85363 *pcf85363, struct device_no
 		break;
 	}
 
+	load = 0;
+	of_property_read_u32(node, "quartz-drive-strength", &load);
+	switch (load) {
+	default:
+		dev_warn(&pcf85363->rtc->dev, "Unknown quartz-drive-strength: %d. Assuming Normal Drive (0)",
+			 load);
+		fallthrough;
+	case OSC_DRIVE_NORMAL:
+		value |= (OSC_DRIVE_NORMAL << OSC_DRIVE_SHIFT);
+		break;
+	case OSC_DRIVE_LOW:
+		value |= (OSC_DRIVE_LOW << OSC_DRIVE_SHIFT);
+		break;
+	case OSC_DRIVE_HIGH:
+		value |= (OSC_DRIVE_HIGH << OSC_DRIVE_SHIFT);
+		break;
+	}
+
 	return regmap_update_bits(pcf85363->regmap, CTRL_OSCILLATOR,
-				  OSC_CAP_SEL, value);
+				  OSC_CAP_SEL | OSC_DRIVE_CNTRL, value);
+}
+
+static int pcf85363_clk_ctrl(struct pcf85363 *pcf85363, struct device_node *node)
+{
+	u32 prop;
+	u8 value;
+
+	prop = COF_32768Hz;
+	of_property_read_u32(node, "clock-out", &prop);
+	switch (prop) {
+	default:
+		dev_warn(&pcf85363->rtc->dev, "Unknown CLK OUT value: %d. Assuming %dHz", prop, COF_32768Hz);
+		fallthrough;
+	case COF_32768Hz:
+		value = COF_32768Hz;
+		break;
+	case COF_16384Hz:
+		value = COF_16384Hz;
+		break;
+	case COF_8192Hz:
+		value = COF_8192Hz;
+		break;
+	case COF_4096Hz:
+		value = COF_4096Hz;
+		break;
+	case COF_2048Hz:
+		value = COF_2048Hz;
+		break;
+	case COF_1024Hz:
+		value = COF_1024Hz;
+		break;
+	case COF_1Hz:
+		value = COF_1Hz;
+		break;
+	case COF_OFF:
+		value = COF_OFF;
+		break;
+	}
+
+	return regmap_update_bits(pcf85363->regmap, CTRL_FUNCTION,
+				COF_MASK, value);
 }
 
 static int pcf85363_rtc_read_time(struct device *dev, struct rtc_time *tm)
@@ -426,8 +502,12 @@ static int pcf85363_probe(struct i2c_client *client)
 
 	err = pcf85363_load_capacitance(pcf85363, client->dev.of_node);
 	if (err < 0)
-		dev_warn(&client->dev, "failed to set xtal load capacitance: %d",
+		dev_warn(&client->dev, "failed to set xtal load capacitance: %d\n",
 			 err);
+
+	err = pcf85363_clk_ctrl(pcf85363, client->dev.of_node);
+	if(err < 0)
+		dev_warn(&client->dev, "failed to set clk ctrl\n");
 
 	pcf85363->rtc->ops = &rtc_ops;
 	pcf85363->rtc->range_min = RTC_TIMESTAMP_BEGIN_2000;
