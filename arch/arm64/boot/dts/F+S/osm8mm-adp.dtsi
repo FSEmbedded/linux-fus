@@ -53,8 +53,8 @@
 /* UART_C - UART4 */
 #define CONFIG_OSM8MM_UART_C
 
-/* FSPI (Single/Dual/Quad) */
-#define CONFIG_OSM8MM_SPI_A
+/* FSPI (Single/Dual/Quad) -> Uncommented because of SPI-GPIO */
+//#define CONFIG_OSM8MM_SPI_A
 
 /* Audio */
 #define CONFIG_OSM8MM_I2S_A
@@ -114,6 +114,9 @@
 #endif
 
 #include "osm8mm.dtsi"
+
+/* osm_spi_a overwritten by SPI bitbanging driver */
+/delete-node/ &osm_spi_a;
 
 / {
 	model = "F&S OSM8MM";
@@ -183,6 +186,26 @@
 //###			"MIC_IN", "Mic Jack",
 //###			"Line Out Jack", "LINE_OUT",
 			"Headphone Jack", "HP_OUT";
+	};
+
+	/* SPI bitbanging driver */
+	osm_spi_a: spi {
+		compatible = "spi-gpio";
+		#address-cells = <0x1>;
+		#size-cells = <0x0>;
+
+		sck-gpios = <&gpio3 0 0>;
+		miso-gpios = <&gpio3 7 0>;
+		mosi-gpios = <&gpio3 6 0>;
+		cs-gpios = <&gpio3 1 0>;
+		num-chipselects = <1>;
+
+		spidev@0 {
+			compatible = "linux,spidev";
+			spi-max-frequency = <20000000>;
+			reg = <0>;
+			status = "okay";
+		};
 	};
 };
 
@@ -273,6 +296,8 @@
 	};
 };
 
+#if 0
+/* SPI not implemented in NXP FlexSPI driver, so use SPI-GPIO */
 &osm_spi_a {
 	cs-gpios = <0>;
 
@@ -281,6 +306,7 @@
 		spi-rx-bus-width = <1>;
 	};
 };
+#endif
 
 &osm_eth_a {
 	phy-mode = "rgmii-id";
