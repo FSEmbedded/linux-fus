@@ -40,7 +40,8 @@
 #define CONFIG_OSM8MM_I2C_CAM_PCI
 
 /* PWM and backlight brightness */
-#define CONFIG_OSM8MM_BL_CTRL
+//#define CONFIG_OSM8MM_BL_CTRL
+#define CONFIG_OSM8MM_PWM_0
 #define CONFIG_OSM8MM_PWM_1
 
 /* UART_CONN - UART1 */
@@ -101,6 +102,11 @@
 /* Only undef if using audio/sai examples */
 //#undef CONFIG_OSM8MM_I2C_B
 //#undef CONFIG_OSM8MM_I2S_A
+#endif
+
+/* Disable PWM_0 if BL_CTRL is enabled */
+#ifdef CONFIG_OSM8MM_BL_CTRL
+#undef CONFIG_OSM8MM_PWM_0
 #endif
 
 /* Set different settings for corresponding baseboard revision */

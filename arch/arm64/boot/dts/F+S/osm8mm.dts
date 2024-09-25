@@ -132,6 +132,11 @@
 //#undef CONFIG_OSM8MM_I2S_A
 #endif
 
+/* Disable PWM_0 if BL_CTRL is enabled */
+#ifdef CONFIG_OSM8MM_BL_CTRL
+#undef CONFIG_OSM8MM_PWM_0
+#endif
+
 #include "osm8mm.dtsi"
 
 / {
