@@ -294,9 +294,9 @@
 				 * to be held in sync with the information
 				 * stored in the mipi1_sensor_ep node.
 				 */
-				 data-lanes = < 1>;
+				 data-lanes = <1 2 3 4>;
 				 clock-lanes = <0>;
-				 link-frequenc = /bits/ 64 <594000000>;
+				 link-frequencies = /bits/ 64 <496000000>;
 			};
 		};
 	};
@@ -379,12 +379,22 @@
 			csis-clk-settle = <2>;
 			csis-wclk;
 		};
+
+		csi1_mipi_ep: endpoint@2 {
+			remote-endpoint = <&csi1_ep>;
+		};
 	};
 };
 
 &osm_csi_bridge {
 	dma-coherent;
 	bsl,dma-invalidate;
+
+	port {
+		csi1_ep: endpoint {
+			remote-endpoint = <&csi1_mipi_ep>;
+		};
+	};
 };
 
 /delete-node/ &pinctrl_osm_i2s_a;

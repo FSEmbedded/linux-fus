@@ -704,6 +704,7 @@ osm_pcie_a: &pcie0 {};
 };
 
 &osm_csi_bridge {
+	fsl,mipi-mode;
 	status = "okay";
 };
 #endif

@@ -250,9 +250,9 @@
 				 * to be held in sync with the information
 				 * stored in the mipi1_sensor_ep node.
 				 */
-				 data-lanes = < 1>;
+				 data-lanes = <1 2 3 4>;
 				 clock-lanes = <0>;
-				 link-frequenc = /bits/ 64 <594000000>;
+				 link-frequencies = /bits/ 64 <496000000>;
 			};
 		};
 	};
@@ -811,8 +811,9 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 	status = "okay";
-#if 0
+
 	port {
+#if 0
 		mipi1_sensor_ep: endpoint@1 {
 			remote-endpoint = <&ov5640_mipi1_ep>;
 			data-lanes = <2>;
@@ -820,14 +821,9 @@
 			csis-clk-settle = <2>;
 			csis-wclk;
 		};
-
-		csi1_mipi_ep: endpoint@2 {
-			remote-endpoint = <&csi1_ep>;
-		};
-	};
 #endif
+
 #ifdef CONFIG_PICOCOREMX8MM_CAMERA_BASLER_daA4200
-	port {
 		mipi1_sensor_ep: endpoint@1 {
 			remote-endpoint = <&basler_camera_mipi1_ep>;
 			/* If the following entries are changed, then
@@ -846,23 +842,28 @@
 			csis-clk-settle = <2>;
 			csis-wclk;
 		};
-	};
 #endif
+
+		csi1_mipi_ep: endpoint@2 {
+			remote-endpoint = <&csi1_ep>;
+		};
+	};
 };
 
 &csi1_bridge {
+	fsl,mipi-mode;
 	status = "okay";
-#if 0
+
+#ifdef CONFIG_PICOCOREMX8MM_CAMERA_BASLER_daA4200
+	dma-coherent;
+	bsl,dma-invalidate;
+#endif
+
 	port {
 		csi1_ep: endpoint {
 			remote-endpoint = <&csi1_mipi_ep>;
 		};
 	};
-#endif
-#ifdef CONFIG_PICOCOREMX8MM_CAMERA_BASLER_daA4200
-	dma-coherent;
-	bsl,dma-invalidate;
-#endif
 };
 #endif
 
