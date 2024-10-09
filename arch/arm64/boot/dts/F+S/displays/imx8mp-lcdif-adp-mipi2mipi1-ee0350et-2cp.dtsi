@@ -33,7 +33,7 @@
 		brightness-levels = <0 17 34 51 68 85 102 119 136
 				     153 170 187 204 221 238 255>;
 #elif CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION == 100
-		pwms = <&pca963x 0 640000 0>; /* 1.5625 kHz */
+		pwms = <&pca963x 0 10752 0>; /* 1.5625 kHz */
 		power-supply = <&reg_mipi_bl>;
 		brightness-levels = <0 30 32 35 39 46 55 66
 				     80 96 115 137 162 190 221 255>;
