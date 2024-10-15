@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+* Copyright 2024 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*/
+
+/dts-v1/;
+#include "fsgal1.dts"
+
+/ {
+     model = "F&S GAL2 Board";
+     compatible = "fus,gal2", "fsl,ls1028a";
+};
+
+&enetc_port0 {
+	/* SFP Connector */
+	label = "eth4";
+};
+
+&enetc_port1 {
+	/* internal Ethernet */
+	label = "eth5";
+};
+
+&mscc_felix_port0 {
+	label = "eth3";
+};
+
+&mscc_felix_port1 {
+	label = "eth1";
+};
+
+&mscc_felix_port2 {
+	label = "eth2";
+};
+
+&mscc_felix_port3 {
+	label = "eth0";
+};
