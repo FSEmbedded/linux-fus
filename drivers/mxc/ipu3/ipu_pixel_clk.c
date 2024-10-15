@@ -81,6 +81,8 @@ struct clk *clk_register_mux_pix_clk(struct device *dev, const char *name,
 	struct clk_di_mux *mux;
 	struct clk *clk;
 	struct clk_init_data init;
+	struct ipu_soc *ipu = ipu_get_soc(ipu_id);
+	u32 di_gen = ipu_di_read(ipu, di_id, DI_GENERAL);
 
 	mux = kzalloc(sizeof(struct clk_di_mux), GFP_KERNEL);
 	if (!mux)
@@ -96,6 +98,8 @@ struct clk *clk_register_mux_pix_clk(struct device *dev, const char *name,
 	mux->di_id = di_id;
 	mux->flags = clk_mux_flags | CLK_SET_RATE_PARENT;
 	mux->hw.init = &init;
+	if (di_gen & DI_GEN_DI_CLK_EXT)
+		mux->index = 1;
 
 	clk = clk_register(dev, &mux->hw);
 	if (IS_ERR(clk))
