@@ -39,6 +39,7 @@ struct irqsteer_data {
 	int			channel;
 	struct irq_domain	*domain;
 	u32			*saved_reg;
+
 	struct device		*dev;
 	struct device		*pd_csi;
 	struct device		*pd_isi;
@@ -125,9 +126,9 @@ static void imx_irqsteer_irq_bus_sync_unlock(struct irq_data *d)
 }
 
 static const struct irq_chip imx_irqsteer_irq_chip = {
-	.name			= "irqsteer",
-	.irq_mask		= imx_irqsteer_irq_mask,
-	.irq_unmask		= imx_irqsteer_irq_unmask,
+	.name		= "irqsteer",
+	.irq_mask	= imx_irqsteer_irq_mask,
+	.irq_unmask	= imx_irqsteer_irq_unmask,
 	.irq_bus_lock		= imx_irqsteer_irq_bus_lock,
 	.irq_bus_sync_unlock	= imx_irqsteer_irq_bus_sync_unlock,
 };
@@ -287,6 +288,8 @@ static int imx_irqsteer_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, data);
 
+	pm_runtime_set_autosuspend_delay(&pdev->dev, 100);
+	pm_runtime_use_autosuspend(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 
 	return 0;
