@@ -1678,7 +1678,7 @@ size_t perf_pmu__num_events(struct perf_pmu *pmu)
 	nr = pmu->sysfs_aliases + pmu->sys_json_aliases;;
 
 	if (pmu->cpu_aliases_added)
-		 nr += pmu->cpu_json_aliases;
+		nr += pmu->cpu_json_aliases;
 	else if (pmu->events_table)
 		nr += pmu_events_table__num_events(pmu->events_table, pmu) - pmu->cpu_json_aliases;
 	else

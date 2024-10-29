@@ -111,6 +111,9 @@ static int fec_ptp_enable_pps(struct fec_enet_private *fep, uint enable)
 		return 0;
 	}
 
+	fep->pps_channel = DEFAULT_PPS_CHANNEL;
+	fep->reload_period = PPS_OUPUT_RELOAD_PERIOD;
+
 	if (enable) {
 		/* clear capture or output compare interrupt status if have.
 		 */
