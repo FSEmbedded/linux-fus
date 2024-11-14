@@ -11,12 +11,12 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " L" __stringify(__LINE__) ": " fmt
 
 #include <linux/module.h>
-#include <linux/mempool.h>
 
 #include "rtrs-srv.h"
 #include "rtrs-log.h"
 #include <rdma/ib_cm.h>
 #include <rdma/ib_verbs.h>
+#include "rtrs-srv-trace.h"
 
 MODULE_DESCRIPTION("RDMA Transport Server");
 MODULE_LICENSE("GPL");
@@ -26,12 +26,10 @@ MODULE_LICENSE("GPL");
 #define DEFAULT_SESS_QUEUE_DEPTH 512
 #define MAX_HDR_SIZE PAGE_SIZE
 
-/* We guarantee to serve 10 paths at least */
-#define CHUNK_POOL_SZ 10
-
 static struct rtrs_rdma_dev_pd dev_pd;
-static mempool_t *chunk_pool;
-struct class *rtrs_dev_class;
+const struct class rtrs_dev_class = {
+	.name = "rtrs-server",
+};
 static struct rtrs_srv_ib_ctx ib_ctx;
 
 static int __read_mostly max_chunk_size = DEFAULT_MAX_CHUNK_SIZE;
@@ -60,11 +58,6 @@ static struct workqueue_struct *rtrs_wq;
 static inline struct rtrs_srv_con *to_srv_con(struct rtrs_con *c)
 {
 	return container_of(c, struct rtrs_srv_con, c);
-}
-
-static inline struct rtrs_srv_path *to_srv_path(struct rtrs_path *s)
-{
-	return container_of(s, struct rtrs_srv_path, s);
 }
 
 static bool rtrs_srv_change_state(struct rtrs_srv_path *srv_path,
@@ -109,7 +102,7 @@ static void free_id(struct rtrs_srv_op *id)
 
 static void rtrs_srv_free_ops_ids(struct rtrs_srv_path *srv_path)
 {
-	struct rtrs_srv *srv = srv_path->srv;
+	struct rtrs_srv_sess *srv = srv_path->srv;
 	int i;
 
 	if (srv_path->ops_ids) {
@@ -138,7 +131,7 @@ static inline void rtrs_srv_inflight_ref_release(struct percpu_ref *ref)
 
 static int rtrs_srv_alloc_ops_ids(struct rtrs_srv_path *srv_path)
 {
-	struct rtrs_srv *srv = srv_path->srv;
+	struct rtrs_srv_sess *srv = srv_path->srv;
 	struct rtrs_srv_op *id;
 	int i, ret;
 
@@ -381,6 +374,8 @@ static int send_io_resp_imm(struct rtrs_srv_con *con, struct rtrs_srv_op *id,
 		}
 	}
 
+	trace_send_io_resp_imm(id, need_inval, always_invalidate, errno);
+
 	if (need_inval && always_invalidate) {
 		wr = &inv_wr;
 		inv_wr.next = &rwr.wr;
@@ -542,7 +537,7 @@ EXPORT_SYMBOL(rtrs_srv_resp_rdma);
  * @srv:	Session pointer
  * @priv:	The private pointer that is associated with the session.
  */
-void rtrs_srv_set_sess_priv(struct rtrs_srv *srv, void *priv)
+void rtrs_srv_set_sess_priv(struct rtrs_srv_sess *srv, void *priv)
 {
 	srv->priv = priv;
 }
@@ -570,11 +565,13 @@ static void unmap_cont_bufs(struct rtrs_srv_path *srv_path)
 
 static int map_cont_bufs(struct rtrs_srv_path *srv_path)
 {
-	struct rtrs_srv *srv = srv_path->srv;
+	struct rtrs_srv_sess *srv = srv_path->srv;
 	struct rtrs_path *ss = &srv_path->s;
-	int i, mri, err, mrs_num;
+	int i, err, mrs_num;
 	unsigned int chunk_bits;
 	int chunks_per_mr = 1;
+	struct ib_mr *mr;
+	struct sg_table *sgt;
 
 	/*
 	 * Here we map queue_depth chunks to MR.  Firstly we have to
@@ -597,16 +594,14 @@ static int map_cont_bufs(struct rtrs_srv_path *srv_path)
 	if (!srv_path->mrs)
 		return -ENOMEM;
 
-	srv_path->mrs_num = mrs_num;
-
-	for (mri = 0; mri < mrs_num; mri++) {
-		struct rtrs_srv_mr *srv_mr = &srv_path->mrs[mri];
-		struct sg_table *sgt = &srv_mr->sgt;
+	for (srv_path->mrs_num = 0; srv_path->mrs_num < mrs_num;
+	     srv_path->mrs_num++) {
+		struct rtrs_srv_mr *srv_mr = &srv_path->mrs[srv_path->mrs_num];
 		struct scatterlist *s;
-		struct ib_mr *mr;
 		int nr, nr_sgt, chunks;
 
-		chunks = chunks_per_mr * mri;
+		sgt = &srv_mr->sgt;
+		chunks = chunks_per_mr * srv_path->mrs_num;
 		if (!always_invalidate)
 			chunks_per_mr = min_t(int, chunks_per_mr,
 					      srv->queue_depth - chunks);
@@ -633,7 +628,7 @@ static int map_cont_bufs(struct rtrs_srv_path *srv_path)
 		}
 		nr = ib_map_mr_sg(mr, sgt->sgl, nr_sgt,
 				  NULL, max_chunk_size);
-		if (nr < 0 || nr < sgt->nents) {
+		if (nr != nr_sgt) {
 			err = nr < 0 ? nr : -EINVAL;
 			goto dereg_mr;
 		}
@@ -655,31 +650,24 @@ static int map_cont_bufs(struct rtrs_srv_path *srv_path)
 
 		ib_update_fast_reg_key(mr, ib_inc_rkey(mr->rkey));
 		srv_mr->mr = mr;
-
-		continue;
-err:
-		while (mri--) {
-			srv_mr = &srv_path->mrs[mri];
-			sgt = &srv_mr->sgt;
-			mr = srv_mr->mr;
-			rtrs_iu_free(srv_mr->iu, srv_path->s.dev->ib_dev, 1);
-dereg_mr:
-			ib_dereg_mr(mr);
-unmap_sg:
-			ib_dma_unmap_sg(srv_path->s.dev->ib_dev, sgt->sgl,
-					sgt->nents, DMA_BIDIRECTIONAL);
-free_sg:
-			sg_free_table(sgt);
-		}
-		kfree(srv_path->mrs);
-
-		return err;
 	}
 
 	chunk_bits = ilog2(srv->queue_depth - 1) + 1;
 	srv_path->mem_bits = (MAX_IMM_PAYL_BITS - chunk_bits);
 
 	return 0;
+
+dereg_mr:
+	ib_dereg_mr(mr);
+unmap_sg:
+	ib_dma_unmap_sg(srv_path->s.dev->ib_dev, sgt->sgl,
+			sgt->nents, DMA_BIDIRECTIONAL);
+free_sg:
+	sg_free_table(sgt);
+err:
+	unmap_cont_bufs(srv_path);
+
+	return err;
 }
 
 static void rtrs_srv_hb_err_handler(struct rtrs_con *c)
@@ -727,7 +715,7 @@ static void rtrs_srv_info_rsp_done(struct ib_cq *cq, struct ib_wc *wc)
 
 static int rtrs_srv_path_up(struct rtrs_srv_path *srv_path)
 {
-	struct rtrs_srv *srv = srv_path->srv;
+	struct rtrs_srv_sess *srv = srv_path->srv;
 	struct rtrs_srv_ctx *ctx = srv->ctx;
 	int up, ret = 0;
 
@@ -746,7 +734,7 @@ static int rtrs_srv_path_up(struct rtrs_srv_path *srv_path)
 
 static void rtrs_srv_path_down(struct rtrs_srv_path *srv_path)
 {
-	struct rtrs_srv *srv = srv_path->srv;
+	struct rtrs_srv_sess *srv = srv_path->srv;
 	struct rtrs_srv_ctx *ctx = srv->ctx;
 
 	if (!srv_path->established)
@@ -763,7 +751,7 @@ static void rtrs_srv_path_down(struct rtrs_srv_path *srv_path)
 static bool exist_pathname(struct rtrs_srv_ctx *ctx,
 			   const char *pathname, const uuid_t *path_uuid)
 {
-	struct rtrs_srv *srv;
+	struct rtrs_srv_sess *srv;
 	struct rtrs_srv_path *srv_path;
 	bool found = false;
 
@@ -989,7 +977,7 @@ static int post_recv_io(struct rtrs_srv_con *con, size_t q_size)
 
 static int post_recv_path(struct rtrs_srv_path *srv_path)
 {
-	struct rtrs_srv *srv = srv_path->srv;
+	struct rtrs_srv_sess *srv = srv_path->srv;
 	struct rtrs_path *s = &srv_path->s;
 	size_t q_size;
 	int err, cid;
@@ -1016,7 +1004,7 @@ static void process_read(struct rtrs_srv_con *con,
 {
 	struct rtrs_path *s = con->c.path;
 	struct rtrs_srv_path *srv_path = to_srv_path(s);
-	struct rtrs_srv *srv = srv_path->srv;
+	struct rtrs_srv_sess *srv = srv_path->srv;
 	struct rtrs_srv_ctx *ctx = srv->ctx;
 	struct rtrs_srv_op *id;
 
@@ -1045,7 +1033,7 @@ static void process_read(struct rtrs_srv_con *con,
 	usr_len = le16_to_cpu(msg->usr_len);
 	data_len = off - usr_len;
 	data = page_address(srv->chunks[buf_id]);
-	ret = ctx->ops.rdma_ev(srv->priv, id, READ, data, data_len,
+	ret = ctx->ops.rdma_ev(srv->priv, id, data, data_len,
 			   data + data_len, usr_len);
 
 	if (ret) {
@@ -1074,7 +1062,7 @@ static void process_write(struct rtrs_srv_con *con,
 {
 	struct rtrs_path *s = con->c.path;
 	struct rtrs_srv_path *srv_path = to_srv_path(s);
-	struct rtrs_srv *srv = srv_path->srv;
+	struct rtrs_srv_sess *srv = srv_path->srv;
 	struct rtrs_srv_ctx *ctx = srv->ctx;
 	struct rtrs_srv_op *id;
 
@@ -1098,7 +1086,7 @@ static void process_write(struct rtrs_srv_con *con,
 	usr_len = le16_to_cpu(req->usr_len);
 	data_len = off - usr_len;
 	data = page_address(srv->chunks[buf_id]);
-	ret = ctx->ops.rdma_ev(srv->priv, id, WRITE, data, data_len,
+	ret = ctx->ops.rdma_ev(srv->priv, id, data, data_len,
 			       data + data_len, usr_len);
 	if (ret) {
 		rtrs_err_rl(s,
@@ -1161,7 +1149,7 @@ static void rtrs_srv_inv_rkey_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct rtrs_srv_con *con = to_srv_con(wc->qp->qp_context);
 	struct rtrs_path *s = con->c.path;
 	struct rtrs_srv_path *srv_path = to_srv_path(s);
-	struct rtrs_srv *srv = srv_path->srv;
+	struct rtrs_srv_sess *srv = srv_path->srv;
 	u32 msg_id, off;
 	void *data;
 
@@ -1218,7 +1206,7 @@ static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 	struct rtrs_srv_con *con = to_srv_con(wc->qp->qp_context);
 	struct rtrs_path *s = con->c.path;
 	struct rtrs_srv_path *srv_path = to_srv_path(s);
-	struct rtrs_srv *srv = srv_path->srv;
+	struct rtrs_srv_sess *srv = srv_path->srv;
 	u32 imm_type, imm_payload;
 	int err;
 
@@ -1241,6 +1229,7 @@ static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
 		 */
 		if (WARN_ON(wc->wr_cqe != &io_comp_cqe))
 			return;
+		srv_path->s.hb_missed_cnt = 0;
 		err = rtrs_post_recv_empty(&con->c, &io_comp_cqe);
 		if (err) {
 			rtrs_err(s, "rtrs_post_recv(), err: %d\n", err);
@@ -1311,7 +1300,7 @@ static void rtrs_srv_rdma_done(struct ib_cq *cq, struct ib_wc *wc)
  * @pathname:	Pathname buffer
  * @len:	Length of sessname buffer
  */
-int rtrs_srv_get_path_name(struct rtrs_srv *srv, char *pathname,
+int rtrs_srv_get_path_name(struct rtrs_srv_sess *srv, char *pathname,
 			   size_t len)
 {
 	struct rtrs_srv_path *srv_path;
@@ -1336,7 +1325,7 @@ EXPORT_SYMBOL(rtrs_srv_get_path_name);
  * rtrs_srv_get_queue_depth() - Get rtrs_srv qdepth.
  * @srv:	Session
  */
-int rtrs_srv_get_queue_depth(struct rtrs_srv *srv)
+int rtrs_srv_get_queue_depth(struct rtrs_srv_sess *srv)
 {
 	return srv->queue_depth;
 }
@@ -1362,18 +1351,19 @@ static int rtrs_srv_get_next_cq_vector(struct rtrs_srv_path *srv_path)
 
 static void rtrs_srv_dev_release(struct device *dev)
 {
-	struct rtrs_srv *srv = container_of(dev, struct rtrs_srv, dev);
+	struct rtrs_srv_sess *srv = container_of(dev, struct rtrs_srv_sess,
+						 dev);
 
 	kfree(srv);
 }
 
-static void free_srv(struct rtrs_srv *srv)
+static void free_srv(struct rtrs_srv_sess *srv)
 {
 	int i;
 
 	WARN_ON(refcount_read(&srv->refcount));
 	for (i = 0; i < srv->queue_depth; i++)
-		mempool_free(srv->chunks[i], chunk_pool);
+		__free_pages(srv->chunks[i], get_order(max_chunk_size));
 	kfree(srv->chunks);
 	mutex_destroy(&srv->paths_mutex);
 	mutex_destroy(&srv->paths_ev_mutex);
@@ -1381,11 +1371,11 @@ static void free_srv(struct rtrs_srv *srv)
 	put_device(&srv->dev);
 }
 
-static struct rtrs_srv *get_or_create_srv(struct rtrs_srv_ctx *ctx,
+static struct rtrs_srv_sess *get_or_create_srv(struct rtrs_srv_ctx *ctx,
 					  const uuid_t *paths_uuid,
 					  bool first_conn)
 {
-	struct rtrs_srv *srv;
+	struct rtrs_srv_sess *srv;
 	int i;
 
 	mutex_lock(&ctx->srv_mutex);
@@ -1426,7 +1416,8 @@ static struct rtrs_srv *get_or_create_srv(struct rtrs_srv_ctx *ctx,
 		goto err_free_srv;
 
 	for (i = 0; i < srv->queue_depth; i++) {
-		srv->chunks[i] = mempool_alloc(chunk_pool, GFP_KERNEL);
+		srv->chunks[i] = alloc_pages(GFP_KERNEL,
+					     get_order(max_chunk_size));
 		if (!srv->chunks[i])
 			goto err_free_chunks;
 	}
@@ -1439,7 +1430,7 @@ static struct rtrs_srv *get_or_create_srv(struct rtrs_srv_ctx *ctx,
 
 err_free_chunks:
 	while (i--)
-		mempool_free(srv->chunks[i], chunk_pool);
+		__free_pages(srv->chunks[i], get_order(max_chunk_size));
 	kfree(srv->chunks);
 
 err_free_srv:
@@ -1447,7 +1438,7 @@ err_free_srv:
 	return ERR_PTR(-ENOMEM);
 }
 
-static void put_srv(struct rtrs_srv *srv)
+static void put_srv(struct rtrs_srv_sess *srv)
 {
 	if (refcount_dec_and_test(&srv->refcount)) {
 		struct rtrs_srv_ctx *ctx = srv->ctx;
@@ -1461,7 +1452,7 @@ static void put_srv(struct rtrs_srv *srv)
 	}
 }
 
-static void __add_path_to_srv(struct rtrs_srv *srv,
+static void __add_path_to_srv(struct rtrs_srv_sess *srv,
 			      struct rtrs_srv_path *srv_path)
 {
 	list_add_tail(&srv_path->s.entry, &srv->paths_list);
@@ -1471,7 +1462,7 @@ static void __add_path_to_srv(struct rtrs_srv *srv,
 
 static void del_path_from_srv(struct rtrs_srv_path *srv_path)
 {
-	struct rtrs_srv *srv = srv_path->srv;
+	struct rtrs_srv_sess *srv = srv_path->srv;
 
 	if (WARN_ON(!srv))
 		return;
@@ -1507,7 +1498,7 @@ static int sockaddr_cmp(const struct sockaddr *a, const struct sockaddr *b)
 	}
 }
 
-static bool __is_path_w_addr_exists(struct rtrs_srv *srv,
+static bool __is_path_w_addr_exists(struct rtrs_srv_sess *srv,
 				    struct rdma_addr *addr)
 {
 	struct rtrs_srv_path *srv_path;
@@ -1528,6 +1519,7 @@ static void free_path(struct rtrs_srv_path *srv_path)
 		kobject_del(&srv_path->kobj);
 		kobject_put(&srv_path->kobj);
 	} else {
+		free_percpu(srv_path->stats->rdma_stats);
 		kfree(srv_path->stats);
 		kfree(srv_path);
 	}
@@ -1591,7 +1583,7 @@ static void rtrs_srv_close_work(struct work_struct *work)
 static int rtrs_rdma_do_accept(struct rtrs_srv_path *srv_path,
 			       struct rdma_cm_id *cm_id)
 {
-	struct rtrs_srv *srv = srv_path->srv;
+	struct rtrs_srv_sess *srv = srv_path->srv;
 	struct rtrs_msg_conn_rsp msg;
 	struct rdma_conn_param param;
 	int err;
@@ -1640,7 +1632,7 @@ static int rtrs_rdma_do_reject(struct rdma_cm_id *cm_id, int errno)
 }
 
 static struct rtrs_srv_path *
-__find_path(struct rtrs_srv *srv, const uuid_t *sess_uuid)
+__find_path(struct rtrs_srv_sess *srv, const uuid_t *sess_uuid)
 {
 	struct rtrs_srv_path *srv_path;
 
@@ -1656,7 +1648,7 @@ static int create_con(struct rtrs_srv_path *srv_path,
 		      struct rdma_cm_id *cm_id,
 		      unsigned int cid)
 {
-	struct rtrs_srv *srv = srv_path->srv;
+	struct rtrs_srv_sess *srv = srv_path->srv;
 	struct rtrs_path *s = &srv_path->s;
 	struct rtrs_srv_con *con;
 
@@ -1699,12 +1691,6 @@ static int create_con(struct rtrs_srv_path *srv_path,
 				      srv->queue_depth * (1 + 2) + 1);
 
 		max_recv_wr = srv->queue_depth + 1;
-		/*
-		 * If we have all receive requests posted and
-		 * all write requests posted and each read request
-		 * requires an invalidate request + drain
-		 * and qp gets into error state.
-		 */
 	}
 	cq_num = max_send_wr + max_recv_wr;
 	atomic_set(&con->c.sq_wr_avail, max_send_wr);
@@ -1743,7 +1729,7 @@ err:
 	return err;
 }
 
-static struct rtrs_srv_path *__alloc_path(struct rtrs_srv *srv,
+static struct rtrs_srv_path *__alloc_path(struct rtrs_srv_sess *srv,
 					   struct rdma_cm_id *cm_id,
 					   unsigned int con_num,
 					   unsigned int recon_cnt,
@@ -1771,13 +1757,17 @@ static struct rtrs_srv_path *__alloc_path(struct rtrs_srv *srv,
 	if (!srv_path->stats)
 		goto err_free_sess;
 
+	srv_path->stats->rdma_stats = alloc_percpu(struct rtrs_srv_stats_rdma_stats);
+	if (!srv_path->stats->rdma_stats)
+		goto err_free_stats;
+
 	srv_path->stats->srv_path = srv_path;
 
 	srv_path->dma_addr = kcalloc(srv->queue_depth,
 				     sizeof(*srv_path->dma_addr),
 				     GFP_KERNEL);
 	if (!srv_path->dma_addr)
-		goto err_free_stats;
+		goto err_free_percpu;
 
 	srv_path->s.con = kcalloc(con_num, sizeof(*srv_path->s.con),
 				  GFP_KERNEL);
@@ -1829,6 +1819,8 @@ err_free_con:
 	kfree(srv_path->s.con);
 err_free_dma_addr:
 	kfree(srv_path->dma_addr);
+err_free_percpu:
+	free_percpu(srv_path->stats->rdma_stats);
 err_free_stats:
 	kfree(srv_path->stats);
 err_free_sess:
@@ -1843,7 +1835,7 @@ static int rtrs_rdma_connect(struct rdma_cm_id *cm_id,
 {
 	struct rtrs_srv_ctx *ctx = cm_id->context;
 	struct rtrs_srv_path *srv_path;
-	struct rtrs_srv *srv;
+	struct rtrs_srv_sess *srv;
 
 	u16 version, con_num, cid;
 	u16 recon_cnt;
@@ -1965,22 +1957,21 @@ static int rtrs_srv_rdma_cm_handler(struct rdma_cm_id *cm_id,
 {
 	struct rtrs_srv_path *srv_path = NULL;
 	struct rtrs_path *s = NULL;
+	struct rtrs_con *c = NULL;
 
-	if (ev->event != RDMA_CM_EVENT_CONNECT_REQUEST) {
-		struct rtrs_con *c = cm_id->context;
-
-		s = c->path;
-		srv_path = to_srv_path(s);
-	}
-
-	switch (ev->event) {
-	case RDMA_CM_EVENT_CONNECT_REQUEST:
+	if (ev->event == RDMA_CM_EVENT_CONNECT_REQUEST)
 		/*
 		 * In case of error cma.c will destroy cm_id,
 		 * see cma_process_remove()
 		 */
 		return rtrs_rdma_connect(cm_id, ev->param.conn.private_data,
 					  ev->param.conn.private_data_len);
+
+	c = cm_id->context;
+	s = c->path;
+	srv_path = to_srv_path(s);
+
+	switch (ev->event) {
 	case RDMA_CM_EVENT_ESTABLISHED:
 		/* Nothing here */
 		break;
@@ -2202,7 +2193,7 @@ struct rtrs_srv_ctx *rtrs_srv_open(struct rtrs_srv_ops *ops, u16 port)
 }
 EXPORT_SYMBOL(rtrs_srv_open);
 
-static void close_paths(struct rtrs_srv *srv)
+static void close_paths(struct rtrs_srv_sess *srv)
 {
 	struct rtrs_srv_path *srv_path;
 
@@ -2214,7 +2205,7 @@ static void close_paths(struct rtrs_srv *srv)
 
 static void close_ctx(struct rtrs_srv_ctx *ctx)
 {
-	struct rtrs_srv *srv;
+	struct rtrs_srv_sess *srv;
 
 	mutex_lock(&ctx->srv_mutex);
 	list_for_each_entry(srv, &ctx->srv_list, ctx_list)
@@ -2282,15 +2273,10 @@ static int __init rtrs_server_init(void)
 		       err);
 		return err;
 	}
-	chunk_pool = mempool_create_page_pool(sess_queue_depth * CHUNK_POOL_SZ,
-					      get_order(max_chunk_size));
-	if (!chunk_pool)
-		return -ENOMEM;
-	rtrs_dev_class = class_create(THIS_MODULE, "rtrs-server");
-	if (IS_ERR(rtrs_dev_class)) {
-		err = PTR_ERR(rtrs_dev_class);
-		goto out_chunk_pool;
-	}
+	err = class_register(&rtrs_dev_class);
+	if (err)
+		goto out_err;
+
 	rtrs_wq = alloc_workqueue("rtrs_server_wq", 0, 0);
 	if (!rtrs_wq) {
 		err = -ENOMEM;
@@ -2300,18 +2286,15 @@ static int __init rtrs_server_init(void)
 	return 0;
 
 out_dev_class:
-	class_destroy(rtrs_dev_class);
-out_chunk_pool:
-	mempool_destroy(chunk_pool);
-
+	class_unregister(&rtrs_dev_class);
+out_err:
 	return err;
 }
 
 static void __exit rtrs_server_exit(void)
 {
 	destroy_workqueue(rtrs_wq);
-	class_destroy(rtrs_dev_class);
-	mempool_destroy(chunk_pool);
+	class_unregister(&rtrs_dev_class);
 	rtrs_rdma_dev_pd_deinit(&dev_pd);
 }
 

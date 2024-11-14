@@ -19,8 +19,6 @@
 #include "xdp_umem.h"
 #include "xsk_queue.h"
 
-#define XDP_UMEM_MIN_CHUNK_SIZE 2048
-
 static DEFINE_IDA(umem_ida);
 
 static void xdp_umem_unpin_pages(struct xdp_umem *umem)
@@ -57,7 +55,7 @@ static int xdp_umem_addr_map(struct xdp_umem *umem, struct page **pages,
 static void xdp_umem_release(struct xdp_umem *umem)
 {
 	umem->zc = false;
-	ida_simple_remove(&umem_ida, umem->id);
+	ida_free(&umem_ida, umem->id);
 
 	xdp_umem_addr_unmap(umem);
 	xdp_umem_unpin_pages(umem);
@@ -105,7 +103,7 @@ static int xdp_umem_pin_pages(struct xdp_umem *umem, unsigned long address)
 
 	mmap_read_lock(current->mm);
 	npgs = pin_user_pages(address, umem->npgs,
-			      gup_flags | FOLL_LONGTERM, &umem->pgs[0], NULL);
+			      gup_flags | FOLL_LONGTERM, &umem->pgs[0]);
 	mmap_read_unlock(current->mm);
 
 	if (npgs != umem->npgs) {
@@ -153,7 +151,6 @@ static int xdp_umem_account_pages(struct xdp_umem *umem)
 static int xdp_umem_reg(struct xdp_umem *umem, struct xdp_umem_reg *mr)
 {
 	bool unaligned_chunks = mr->flags & XDP_UMEM_UNALIGNED_CHUNK_FLAG;
-	u32 tx_headroom = mr->tx_headroom;
 	u32 chunk_size = mr->chunk_size, headroom = mr->headroom;
 	u64 addr = mr->addr, size = mr->len;
 	u32 chunks_rem, npgs_rem;
@@ -210,7 +207,6 @@ static int xdp_umem_reg(struct xdp_umem *umem, struct xdp_umem_reg *mr)
 	umem->pgs = NULL;
 	umem->user = NULL;
 	umem->flags = mr->flags;
-	umem->tx_headroom = tx_headroom;
 
 	INIT_LIST_HEAD(&umem->xsk_dma_list);
 	refcount_set(&umem->users, 1);
@@ -245,7 +241,7 @@ struct xdp_umem *xdp_umem_create(struct xdp_umem_reg *mr)
 	if (!umem)
 		return ERR_PTR(-ENOMEM);
 
-	err = ida_simple_get(&umem_ida, 0, 0, GFP_KERNEL);
+	err = ida_alloc(&umem_ida, GFP_KERNEL);
 	if (err < 0) {
 		kfree(umem);
 		return ERR_PTR(err);
@@ -254,7 +250,7 @@ struct xdp_umem *xdp_umem_create(struct xdp_umem_reg *mr)
 
 	err = xdp_umem_reg(umem, mr);
 	if (err) {
-		ida_simple_remove(&umem_ida, umem->id);
+		ida_free(&umem_ida, umem->id);
 		kfree(umem);
 		return ERR_PTR(err);
 	}

@@ -28,6 +28,14 @@ EXPORT_SYMBOL_GPL(ebu_lock);
  */
 static struct ltq_soc_info soc_info;
 
+/*
+ * These structs are used to override vsmp_init_secondary()
+ */
+#if defined(CONFIG_MIPS_MT_SMP)
+extern const struct plat_smp_ops vsmp_smp_ops;
+static struct plat_smp_ops lantiq_smp_ops;
+#endif
+
 const char *get_system_type(void)
 {
 	return soc_info.sys_type;
@@ -78,10 +86,16 @@ void __init plat_mem_setup(void)
 	__dt_setup_arch(dtb);
 }
 
-void __init device_tree_init(void)
+#if defined(CONFIG_MIPS_MT_SMP)
+static void lantiq_init_secondary(void)
 {
-	unflatten_and_copy_device_tree();
+	/*
+	 * MIPS CPU startup function vsmp_init_secondary() will only
+	 * enable some of the interrupts for the second CPU/VPE.
+	 */
+	set_c0_status(ST0_IM);
 }
+#endif
 
 void __init prom_init(void)
 {
@@ -94,7 +108,9 @@ void __init prom_init(void)
 	prom_init_cmdline();
 
 #if defined(CONFIG_MIPS_MT_SMP)
-	if (register_vsmp_smp_ops())
-		panic("failed to register_vsmp_smp_ops()");
+	lantiq_smp_ops = vsmp_smp_ops;
+	if (cpu_has_mipsmt)
+		lantiq_smp_ops.init_secondary = lantiq_init_secondary;
+	register_smp_ops(&lantiq_smp_ops);
 #endif
 }

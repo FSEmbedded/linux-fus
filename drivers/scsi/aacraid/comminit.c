@@ -272,11 +272,11 @@ static void aac_queue_init(struct aac_dev * dev, struct aac_queue * q, u32 *mem,
 	q->entries = qsize;
 }
 
-static bool wait_for_io_iter(struct scsi_cmnd *cmd, void *data, bool rsvd)
+static bool wait_for_io_iter(struct scsi_cmnd *cmd, void *data)
 {
 	int *active = data;
 
-	if (cmd->SCp.phase == AAC_OWNER_FIRMWARE)
+	if (aac_priv(cmd)->owner == AAC_OWNER_FIRMWARE)
 		*active = *active + 1;
 	return true;
 }
@@ -642,6 +642,7 @@ struct aac_dev *aac_init_adapter(struct aac_dev *dev)
 
 	if (aac_comm_init(dev)<0){
 		kfree(dev->queues);
+		dev->queues = NULL;
 		return NULL;
 	}
 	/*
@@ -649,6 +650,7 @@ struct aac_dev *aac_init_adapter(struct aac_dev *dev)
 	 */
 	if (aac_fib_setup(dev) < 0) {
 		kfree(dev->queues);
+		dev->queues = NULL;
 		return NULL;
 	}
 		

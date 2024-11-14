@@ -176,7 +176,7 @@ static ssize_t adc128_in_store(struct device *dev,
 
 	mutex_lock(&data->update_lock);
 	/* 10 mV LSB on limit registers */
-	regval = clamp_val(DIV_ROUND_CLOSEST(val, 10), 0, 255);
+	regval = DIV_ROUND_CLOSEST(clamp_val(val, 0, 2550), 10);
 	data->in[index][nr] = regval << 4;
 	reg = index == 1 ? ADC128_REG_IN_MIN(nr) : ADC128_REG_IN_MAX(nr);
 	i2c_smbus_write_byte_data(data->client, reg, regval);
@@ -214,7 +214,7 @@ static ssize_t adc128_temp_store(struct device *dev,
 		return err;
 
 	mutex_lock(&data->update_lock);
-	regval = clamp_val(DIV_ROUND_CLOSEST(val, 1000), -128, 127);
+	regval = DIV_ROUND_CLOSEST(clamp_val(val, -128000, 127000), 1000);
 	data->temp[index] = regval << 1;
 	i2c_smbus_write_byte_data(data->client,
 				  index == 1 ? ADC128_REG_TEMP_MAX
@@ -384,7 +384,7 @@ static int adc128_detect(struct i2c_client *client, struct i2c_board_info *info)
 	if (i2c_smbus_read_byte_data(client, ADC128_REG_BUSY_STATUS) & 0xfc)
 		return -ENODEV;
 
-	strlcpy(info->type, "adc128d818", I2C_NAME_SIZE);
+	strscpy(info->type, "adc128d818", I2C_NAME_SIZE);
 
 	return 0;
 }
@@ -495,14 +495,12 @@ error:
 	return err;
 }
 
-static int adc128_remove(struct i2c_client *client)
+static void adc128_remove(struct i2c_client *client)
 {
 	struct adc128_data *data = i2c_get_clientdata(client);
 
 	if (data->regulator)
 		regulator_disable(data->regulator);
-
-	return 0;
 }
 
 static const struct i2c_device_id adc128_id[] = {
@@ -523,7 +521,7 @@ static struct i2c_driver adc128_driver = {
 		.name	= "adc128d818",
 		.of_match_table = of_match_ptr(adc128_of_match),
 	},
-	.probe_new	= adc128_probe,
+	.probe		= adc128_probe,
 	.remove		= adc128_remove,
 	.id_table	= adc128_id,
 	.detect		= adc128_detect,

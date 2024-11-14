@@ -103,6 +103,9 @@ static const struct snd_soc_component_driver aiu_cpu_component = {
 	.pointer		= aiu_fifo_pointer,
 	.probe			= aiu_cpu_component_probe,
 	.remove			= aiu_cpu_component_remove,
+#ifdef CONFIG_DEBUG_FS
+	.debugfs_prefix		= "cpu",
+#endif
 };
 
 static struct snd_soc_dai_driver aiu_cpu_dai_drv[] = {
@@ -118,9 +121,6 @@ static struct snd_soc_dai_driver aiu_cpu_dai_drv[] = {
 			.formats	= AIU_FORMATS,
 		},
 		.ops		= &aiu_fifo_i2s_dai_ops,
-		.pcm_new	= aiu_fifo_pcm_new,
-		.probe		= aiu_fifo_i2s_dai_probe,
-		.remove		= aiu_fifo_dai_remove,
 	},
 	[CPU_SPDIF_FIFO] = {
 		.name = "SPDIF FIFO",
@@ -134,9 +134,6 @@ static struct snd_soc_dai_driver aiu_cpu_dai_drv[] = {
 			.formats	= AIU_FORMATS,
 		},
 		.ops		= &aiu_fifo_spdif_dai_ops,
-		.pcm_new	= aiu_fifo_pcm_new,
-		.probe		= aiu_fifo_spdif_dai_probe,
-		.remove		= aiu_fifo_dai_remove,
 	},
 	[CPU_I2S_ENCODER] = {
 		.name = "I2S Encoder",
@@ -317,11 +314,9 @@ err:
 	return ret;
 }
 
-static int aiu_remove(struct platform_device *pdev)
+static void aiu_remove(struct platform_device *pdev)
 {
 	snd_soc_unregister_component(&pdev->dev);
-
-	return 0;
 }
 
 static const struct aiu_platform_data aiu_gxbb_pdata = {
@@ -350,7 +345,7 @@ MODULE_DEVICE_TABLE(of, aiu_of_match);
 
 static struct platform_driver aiu_pdrv = {
 	.probe = aiu_probe,
-	.remove = aiu_remove,
+	.remove_new = aiu_remove,
 	.driver = {
 		.name = "meson-aiu",
 		.of_match_table = aiu_of_match,

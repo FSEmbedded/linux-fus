@@ -41,12 +41,18 @@ static const struct spi_device_id fxls8962af_spi_id_table[] = {
 };
 MODULE_DEVICE_TABLE(spi, fxls8962af_spi_id_table);
 
+static void fxls8962af_shutdown(struct spi_device *spi)
+{
+	fxls8962af_core_shutdown(&spi->dev);
+};
+
 static struct spi_driver fxls8962af_driver = {
 	.driver = {
 		   .name = "fxls8962af_spi",
-		   .pm = &fxls8962af_pm_ops,
+		   .pm = pm_ptr(&fxls8962af_pm_ops),
 		   .of_match_table = fxls8962af_spi_of_match,
 		   },
+	.shutdown = fxls8962af_shutdown,
 	.probe = fxls8962af_probe,
 	.id_table = fxls8962af_spi_id_table,
 };
@@ -55,3 +61,4 @@ module_spi_driver(fxls8962af_driver);
 MODULE_AUTHOR("Sean Nyekjaer <sean@geanix.com>");
 MODULE_DESCRIPTION("NXP FXLS8962AF/FXLS8964AF accelerometer spi driver");
 MODULE_LICENSE("GPL v2");
+MODULE_IMPORT_NS(IIO_FXLS8962AF);

@@ -20,8 +20,8 @@
 #include <linux/module.h>
 #include <linux/spinlock.h>
 
-#include <mach/mux.h>
-#include <mach/common.h>
+#include "mux.h"
+#include "common.h"
 
 static void __iomem *pinmux_base;
 
@@ -96,19 +96,4 @@ int davinci_cfg_reg(const unsigned long index)
 #endif
 
 	return 0;
-}
-EXPORT_SYMBOL(davinci_cfg_reg);
-
-int davinci_cfg_reg_list(const short pins[])
-{
-	int i, error = -EINVAL;
-
-	if (pins)
-		for (i = 0; pins[i] >= 0; i++) {
-			error = davinci_cfg_reg(pins[i]);
-			if (error)
-				break;
-		}
-
-	return error;
 }

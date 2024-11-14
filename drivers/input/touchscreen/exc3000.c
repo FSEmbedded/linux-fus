@@ -7,6 +7,7 @@
  * minimal implementation based on egalax_ts.c and egalax_i2c.c
  */
 
+#include <linux/acpi.h>
 #include <linux/bitops.h>
 #include <linux/delay.h>
 #include <linux/device.h>
@@ -18,6 +19,7 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/regulator/consumer.h>
 #include <linux/sizes.h>
 #include <linux/timer.h>
 #include <asm/unaligned.h>
@@ -75,9 +77,10 @@ struct exc3000_data {
 	struct touchscreen_properties prop;
 	struct gpio_desc *reset;
 	struct timer_list timer;
-	u8 buf[2 * EXC3000_LEN_FRAME];
+	u8 buf[EXC3000_LEN_FRAME];
 	struct completion wait_event;
 	struct mutex query_lock;
+	u8 slots_in_second_frame;
 };
 
 static void exc3000_report_slots(struct input_dev *input,
@@ -109,6 +112,11 @@ static inline void exc3000_schedule_timer(struct exc3000_data *data)
 	mod_timer(&data->timer, jiffies + msecs_to_jiffies(EXC3000_TIMEOUT_MS));
 }
 
+static void exc3000_shutdown_timer(void *timer)
+{
+	timer_shutdown_sync(timer);
+}
+
 static int exc3000_read_frame(struct exc3000_data *data, u8 *buf)
 {
 	struct i2c_client *client = data->client;
@@ -137,40 +145,37 @@ static int exc3000_read_frame(struct exc3000_data *data, u8 *buf)
 static int exc3000_handle_mt_event(struct exc3000_data *data)
 {
 	struct input_dev *input = data->input;
-	int ret, total_slots;
+	int ret, slots, total_slots;
 	u8 *buf = data->buf;
 
 	total_slots = buf[3];
-	if (!total_slots || total_slots > EXC3000_NUM_SLOTS) {
+	if (total_slots > EXC3000_NUM_SLOTS) {
 		ret = -EINVAL;
 		goto out_fail;
 	}
 
-	if (total_slots > EXC3000_SLOTS_PER_FRAME) {
-		/* Read 2nd frame to get the rest of the contacts. */
-		ret = exc3000_read_frame(data, buf + EXC3000_LEN_FRAME);
-		if (ret)
-			goto out_fail;
-
-		/* 2nd chunk must have number of contacts set to 0. */
-		if (buf[EXC3000_LEN_FRAME + 3] != 0) {
-			ret = -EINVAL;
-			goto out_fail;
-		}
-	}
+	/*
+	 * If the total slots is larger than 5, which means there
+	 * is a second frame need to read in the next interrupt.
+	 */
+	if (total_slots > EXC3000_SLOTS_PER_FRAME)
+		data->slots_in_second_frame = total_slots - EXC3000_SLOTS_PER_FRAME;
 
 	/*
 	 * We read full state successfully, no contacts will be "stuck".
 	 */
 	del_timer_sync(&data->timer);
 
-	while (total_slots > 0) {
-		int slots = min(total_slots, EXC3000_SLOTS_PER_FRAME);
+	/*
+	 * For the second frame, the number of contact must be 0, so
+	 * need to use the contacts saved in the previous first frame.
+	 */
+	if (total_slots == 0)
+		slots = data->slots_in_second_frame;
+	else
+		slots = min(total_slots, EXC3000_SLOTS_PER_FRAME);
 
-		exc3000_report_slots(input, &data->prop, buf + 4, slots);
-		total_slots -= slots;
-		buf += EXC3000_LEN_FRAME;
-	}
+	exc3000_report_slots(input, &data->prop, buf + 4, slots);
 
 	input_mt_sync_frame(input);
 	input_sync(input);
@@ -355,6 +360,12 @@ static int exc3000_probe(struct i2c_client *client)
 	if (IS_ERR(data->reset))
 		return PTR_ERR(data->reset);
 
+	/* For proper reset sequence, enable power while reset asserted */
+	error = devm_regulator_get_enable(&client->dev, "vdd");
+	if (error && error != -ENODEV)
+		return dev_err_probe(&client->dev, error,
+				     "failed to request vdd regulator\n");
+
 	if (data->reset) {
 		msleep(EXC3000_RESET_MS);
 		gpiod_set_value_cansleep(data->reset, 0);
@@ -383,6 +394,11 @@ static int exc3000_probe(struct i2c_client *client)
 		return error;
 
 	error = input_register_device(input);
+	if (error)
+		return error;
+
+	error = devm_add_action_or_reset(&client->dev, exc3000_shutdown_timer,
+					 &data->timer);
 	if (error)
 		return error;
 
@@ -444,13 +460,22 @@ static const struct of_device_id exc3000_of_match[] = {
 MODULE_DEVICE_TABLE(of, exc3000_of_match);
 #endif
 
+#ifdef CONFIG_ACPI
+static const struct acpi_device_id exc3000_acpi_match[] = {
+	{ "EGA00001", .driver_data = (kernel_ulong_t)&exc3000_info[EETI_EXC80H60] },
+	{ }
+};
+MODULE_DEVICE_TABLE(acpi, exc3000_acpi_match);
+#endif
+
 static struct i2c_driver exc3000_driver = {
 	.driver = {
 		.name	= "exc3000",
 		.of_match_table = of_match_ptr(exc3000_of_match),
+		.acpi_match_table = ACPI_PTR(exc3000_acpi_match),
 	},
 	.id_table	= exc3000_id,
-	.probe_new	= exc3000_probe,
+	.probe		= exc3000_probe,
 };
 
 module_i2c_driver(exc3000_driver);

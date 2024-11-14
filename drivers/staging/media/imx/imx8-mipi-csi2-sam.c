@@ -425,7 +425,7 @@ struct csi_state {
 	struct csis_pktbuf pkt_buf;
 	struct mipi_csis_event events[MIPI_CSIS_NUM_EVENTS];
 
-	struct v4l2_async_subdev    asd;
+	struct v4l2_async_connection asd;
 	struct v4l2_async_notifier  subdev_notifier;
 	struct v4l2_async_subdev    *async_subdevs[2];
 
@@ -460,6 +460,10 @@ static const struct csis_pix_format mipi_csis_formats[] = {
 		.fmt_reg = MIPI_CSIS_ISPCFG_FMT_RGB888,
 		.data_alignment = 24,
 	}, {
+		.code = MEDIA_BUS_FMT_UYVY8_1X16,
+		.fmt_reg = MIPI_CSIS_ISPCFG_FMT_YCBCR422_8BIT,
+		.data_alignment = 16,
+	}, {
 		.code = MEDIA_BUS_FMT_UYVY8_2X8,
 		.fmt_reg = MIPI_CSIS_ISPCFG_FMT_YCBCR422_8BIT,
 		.data_alignment = 16,
@@ -469,6 +473,18 @@ static const struct csis_pix_format mipi_csis_formats[] = {
 		.data_alignment = 16,
 	}, {
 		.code = MEDIA_BUS_FMT_SBGGR8_1X8,
+		.fmt_reg = MIPI_CSIS_ISPCFG_FMT_RAW8,
+		.data_alignment = 8,
+	}, {
+		.code = MEDIA_BUS_FMT_SGBRG8_1X8,
+		.fmt_reg = MIPI_CSIS_ISPCFG_FMT_RAW8,
+		.data_alignment = 8,
+	}, {
+		.code = MEDIA_BUS_FMT_SGRBG8_1X8,
+		.fmt_reg = MIPI_CSIS_ISPCFG_FMT_RAW8,
+		.data_alignment = 8,
+	}, {
+		.code = MEDIA_BUS_FMT_SRGGB8_1X8,
 		.fmt_reg = MIPI_CSIS_ISPCFG_FMT_RAW8,
 		.data_alignment = 8,
 	}, {
@@ -591,7 +607,7 @@ static struct media_pad *csis_get_remote_sensor_pad(struct csi_state *state)
 			sink_pad = &subdev->entity.pads[i];
 
 			if (sink_pad->flags & MEDIA_PAD_FL_SINK) {
-				source_pad = media_entity_remote_pad(sink_pad);
+				source_pad = media_pad_remote_pad_first(sink_pad);
 				if (source_pad)
 					break;
 			}
@@ -728,9 +744,6 @@ static void __mipi_csis_set_format(struct csi_state *state)
 		val |= (PIXEL_MODE_DUAL_PIXEL_MODE <<
 			MIPI_CSIS_ISPCONFIG_CH0_PIXEL_MODE_SHIFT);
 	mipi_csis_write(state, MIPI_CSIS_ISPCONFIG_CH0, val);
-
-	/* clean 32bit , with normal mode */
-	val &= ~MIPI_CSIS_ISPCFG_ALIGN_32BIT;
 
 	/* Pixel resolution */
 	val = mf->width | (mf->height << 16);
@@ -949,12 +962,23 @@ static void disp_mix_gasket_config(struct csi_state *state)
 	case MEDIA_BUS_FMT_YUYV8_2X8:
 	case MEDIA_BUS_FMT_YVYU8_2X8:
 	case MEDIA_BUS_FMT_UYVY8_2X8:
+	case MEDIA_BUS_FMT_UYVY8_1X16:
 	case MEDIA_BUS_FMT_VYUY8_2X8:
 		fmt_val = GASKET_0_CTRL_DATA_TYPE_YUV422_8;
 		break;
 	case MEDIA_BUS_FMT_SBGGR8_1X8:
 		fmt_val = GASKET_0_CTRL_DATA_TYPE_RAW8;
 		break;
+	case MEDIA_BUS_FMT_SGBRG8_1X8:
+		fmt_val = GASKET_0_CTRL_DATA_TYPE_RAW8;
+		break;
+	case MEDIA_BUS_FMT_SGRBG8_1X8:
+		fmt_val = GASKET_0_CTRL_DATA_TYPE_RAW8;
+		break;
+	case MEDIA_BUS_FMT_SRGGB8_1X8:
+		fmt_val = GASKET_0_CTRL_DATA_TYPE_RAW8;
+		break;
+
 	case MEDIA_BUS_FMT_SBGGR10_1X10:
 		fmt_val = GASKET_0_CTRL_DATA_TYPE_RAW10;
 		break;
@@ -1137,7 +1161,6 @@ static int mipi_csis_set_fmt(struct v4l2_subdev *mipi_sd,
 	}
 
 	format->pad = source_pad->index;
-	mf->code = MEDIA_BUS_FMT_UYVY8_2X8;
 	ret = v4l2_subdev_call(sen_sd, pad, set_fmt, NULL, format);
 	if (ret < 0) {
 		v4l2_err(&state->sd, "%s, set sensor format fail\n", __func__);
@@ -1293,6 +1316,18 @@ static int csis_s_fmt(struct v4l2_subdev *sd, struct csi_sam_format *fmt)
 	struct csi_state *state = container_of(sd, struct csi_state, sd);
 
 	switch (fmt->format) {
+	case V4L2_PIX_FMT_SBGGR8:
+	    code = MEDIA_BUS_FMT_SBGGR8_1X8;
+	    break;
+	case V4L2_PIX_FMT_SGBRG8:
+	    code = MEDIA_BUS_FMT_SGBRG8_1X8;
+	    break;
+	case V4L2_PIX_FMT_SGRBG8:
+	    code = MEDIA_BUS_FMT_SGRBG8_1X8;
+	    break;
+	case V4L2_PIX_FMT_SRGGB8:
+	    code = MEDIA_BUS_FMT_SRGGB8_1X8;
+	    break;
 	case V4L2_PIX_FMT_SBGGR10:
 	    code = MEDIA_BUS_FMT_SBGGR10_1X10;
 	    break;
@@ -1327,6 +1362,8 @@ static int csis_s_fmt(struct v4l2_subdev *sd, struct csi_sam_format *fmt)
 	state->csis_fmt = csis_format;
 	state->format.width = fmt->width;
 	state->format.height = fmt->height;
+	state->format.code = csis_format->code;
+
 	disp_mix_gasket_config(state);
 	mipi_csis_set_params(state);
 	return 0;
@@ -1558,7 +1595,7 @@ static int mipi_csis_imx8mn_parse_resets(struct csi_state *state)
 	ret = of_parse_phandle_with_args(np, "resets", "#reset-cells",
 					 0, &args);
 	if (ret)
-		return ret;
+		return ret == -ENOENT ? 0 : ret;
 
 	parent = args.np;
 	for_each_child_of_node(parent, child) {
@@ -1597,7 +1634,7 @@ static int mipi_csis_imx8mn_parse_resets(struct csi_state *state)
 static int mipi_csis_imx8mn_resets_assert(struct csi_state *state)
 {
 	if (!state->soft_resetn)
-		return -EINVAL;
+		return 0;
 
 	return reset_control_assert(state->soft_resetn);
 }
@@ -1605,7 +1642,7 @@ static int mipi_csis_imx8mn_resets_assert(struct csi_state *state)
 static int mipi_csis_imx8mn_resets_deassert(struct csi_state *state)
 {
 	if (!state->soft_resetn)
-		return -EINVAL;
+		return 0;
 
 	return reset_control_deassert(state->soft_resetn);
 }
@@ -1627,7 +1664,7 @@ static int mipi_csis_imx8mn_gclk_get(struct csi_state *state)
 static int mipi_csis_imx8mn_gclk_enable(struct csi_state *state)
 {
 	if (!state->clk_enable)
-		return -EINVAL;
+		return 0;
 
 	return reset_control_assert(state->clk_enable);
 }
@@ -1635,7 +1672,7 @@ static int mipi_csis_imx8mn_gclk_enable(struct csi_state *state)
 static int mipi_csis_imx8mn_gclk_disable(struct csi_state *state)
 {
 	if (!state->clk_enable)
-		return -EINVAL;
+		return 0;
 
 	return reset_control_deassert(state->clk_enable);
 }
@@ -1676,7 +1713,7 @@ static int mipi_csis_imx8mp_parse_resets(struct csi_state *state)
 	struct device *dev = state->dev;
 	struct reset_control *reset;
 
-	reset = devm_reset_control_get(dev, "csi_rst_pclk");
+	reset = devm_reset_control_get_optional(dev, "csi_rst_pclk");
 	if (IS_ERR(reset)) {
 		if (PTR_ERR(reset) != -EPROBE_DEFER)
 			dev_err(dev, "Failed to get csi pclk reset control\n");
@@ -1684,7 +1721,7 @@ static int mipi_csis_imx8mp_parse_resets(struct csi_state *state)
 	}
 	state->csi_rst_pclk = reset;
 
-	reset = devm_reset_control_get(dev, "csi_rst_aclk");
+	reset = devm_reset_control_get_optional(dev, "csi_rst_aclk");
 	if (IS_ERR(reset)) {
 		if (PTR_ERR(reset) != -EPROBE_DEFER)
 			dev_err(dev, "Failed to get csi aclk reset control\n");
@@ -1701,7 +1738,7 @@ static int mipi_csis_imx8mp_resets_assert(struct csi_state *state)
 	int ret;
 
 	if (!state->csi_rst_pclk || !state->csi_rst_aclk)
-		return -EINVAL;
+		return 0;
 
 	ret = reset_control_assert(state->csi_rst_pclk);
 	if (ret) {
@@ -1721,7 +1758,7 @@ static int mipi_csis_imx8mp_resets_assert(struct csi_state *state)
 static int mipi_csis_imx8mp_resets_deassert(struct csi_state *state)
 {
 	if (!state->csi_rst_pclk || !state->csi_rst_aclk)
-		return -EINVAL;
+		return 0;
 
 	reset_control_deassert(state->csi_rst_pclk);
 	reset_control_deassert(state->csi_rst_aclk);
@@ -1739,18 +1776,18 @@ static int mipi_csis_imx8mp_gclk_get(struct csi_state *state)
 {
 	struct device *dev = state->dev;
 
-	state->csi_pclk = devm_clk_get(dev, "media_blk_csi_pclk");
+	state->csi_pclk = devm_clk_get_optional(dev, "media_blk_csi_pclk");
 	if (IS_ERR(state->csi_pclk)) {
 		if (PTR_ERR(state->csi_pclk) != -EPROBE_DEFER)
 			dev_err(dev, "Failed to get media csi pclk\n");
 		return PTR_ERR(state->csi_pclk);
 	}
 
-	state->csi_aclk = devm_clk_get(dev, "media_blk_csi_aclk");
+	state->csi_aclk = devm_clk_get_optional(dev, "media_blk_csi_aclk");
 	if (IS_ERR(state->csi_aclk)) {
-		if (PTR_ERR(state->csi_pclk) != -EPROBE_DEFER)
+		if (PTR_ERR(state->csi_aclk) != -EPROBE_DEFER)
 			dev_err(dev, "Failed to get media csi aclk\n");
-		return PTR_ERR(state->csi_pclk);
+		return PTR_ERR(state->csi_aclk);
 	}
 
 	return 0;
@@ -1877,7 +1914,8 @@ csi_phy_initial_cfg:
 write_regmap:
 	state->val |= ISP_DEWARP_CTRL_ID_MODE(ISP_DEWARP_CTRL_ID_MODE_012);
 	mipi_csis_imx8mp_dewarp_ctl_left_just_mode(state);
-	regmap_update_bits(state->mix_gpr, ISP_DEWARP_CTRL,
+	if (state->mix_gpr)
+		regmap_update_bits(state->mix_gpr, ISP_DEWARP_CTRL,
 			state->val, state->val);
 
 	return;

@@ -270,7 +270,6 @@ static int af9035_i2c_master_xfer(struct i2c_adapter *adap,
 	struct dvb_usb_device *d = i2c_get_adapdata(adap);
 	struct state *state = d_to_priv(d);
 	int ret;
-	u32 reg;
 
 	if (mutex_lock_interruptible(&d->i2c_mutex) < 0)
 		return -EAGAIN;
@@ -328,7 +327,7 @@ static int af9035_i2c_master_xfer(struct i2c_adapter *adap,
 				goto unlock;
 			}
 			/* demod access via firmware interface */
-			reg = msg[0].buf[0] << 16 | msg[0].buf[1] << 8 |
+			u32 reg = msg[0].buf[0] << 16 | msg[0].buf[1] << 8 |
 					msg[0].buf[2];
 
 			if (msg[0].addr == state->af9033_i2c_addr[1])
@@ -391,7 +390,7 @@ static int af9035_i2c_master_xfer(struct i2c_adapter *adap,
 				goto unlock;
 			}
 			/* demod access via firmware interface */
-			reg = msg[0].buf[0] << 16 | msg[0].buf[1] << 8 |
+			u32 reg = msg[0].buf[0] << 16 | msg[0].buf[1] << 8 |
 					msg[0].buf[2];
 
 			if (msg[0].addr == state->af9033_i2c_addr[1])
@@ -1504,7 +1503,7 @@ static int af9035_tuner_attach(struct dvb_usb_adapter *adap)
 		/*
 		 * AF9035 gpiot2 = FC0012 enable
 		 * XXX: there seems to be something on gpioh8 too, but on my
-		 * my test I didn't find any difference.
+		 * test I didn't find any difference.
 		 */
 
 		if (adap->id == 0) {

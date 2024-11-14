@@ -512,7 +512,7 @@ mmc_spi_command_send(struct mmc_spi_host *host,
 static void
 mmc_spi_setup_data_message(
 	struct mmc_spi_host	*host,
-	int			multiple,
+	bool			multiple,
 	enum dma_data_direction	direction)
 {
 	struct spi_transfer	*t;
@@ -777,14 +777,14 @@ mmc_spi_data_do(struct mmc_spi_host *host, struct mmc_command *cmd,
 {
 	struct spi_device	*spi = host->spi;
 	struct spi_transfer	*t;
-	enum dma_data_direction	direction;
+	enum dma_data_direction	direction = mmc_get_dma_dir(data);
 	struct scatterlist	*sg;
 	unsigned		n_sg;
-	int			multiple = (data->blocks > 1);
+	bool			multiple = (data->blocks > 1);
+	const char		*write_or_read = (direction == DMA_TO_DEVICE) ? "write" : "read";
 	u32			clock_rate;
 	unsigned long		timeout;
 
-	direction = mmc_get_dma_dir(data);
 	mmc_spi_setup_data_message(host, multiple, direction);
 	t = &host->t;
 
@@ -816,9 +816,7 @@ mmc_spi_data_do(struct mmc_spi_host *host, struct mmc_command *cmd,
 		while (length) {
 			t->len = min(length, blk_size);
 
-			dev_dbg(&host->spi->dev, "    %s block, %d bytes\n",
-				(direction == DMA_TO_DEVICE) ? "write" : "read",
-				t->len);
+			dev_dbg(&spi->dev, "    %s block, %d bytes\n", write_or_read, t->len);
 
 			if (direction == DMA_TO_DEVICE)
 				status = mmc_spi_writeblock(host, t, timeout);
@@ -841,9 +839,7 @@ mmc_spi_data_do(struct mmc_spi_host *host, struct mmc_command *cmd,
 
 		if (status < 0) {
 			data->error = status;
-			dev_dbg(&spi->dev, "%s status %d\n",
-				(direction == DMA_TO_DEVICE) ? "write" : "read",
-				status);
+			dev_dbg(&spi->dev, "%s status %d\n", write_or_read, status);
 			break;
 		}
 	}
@@ -1318,7 +1314,7 @@ nomem:
 }
 
 
-static int mmc_spi_remove(struct spi_device *spi)
+static void mmc_spi_remove(struct spi_device *spi)
 {
 	struct mmc_host		*mmc = dev_get_drvdata(&spi->dev);
 	struct mmc_spi_host	*host = mmc_priv(mmc);
@@ -1335,7 +1331,6 @@ static int mmc_spi_remove(struct spi_device *spi)
 	spi->max_speed_hz = mmc->f_max;
 	mmc_spi_put_pdata(spi);
 	mmc_free_host(mmc);
-	return 0;
 }
 
 static const struct spi_device_id mmc_spi_dev_ids[] = {
