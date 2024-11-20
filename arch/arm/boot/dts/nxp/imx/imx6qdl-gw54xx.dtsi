@@ -197,7 +197,7 @@
 	};
 };
 
-&flexcan1 {
+&can1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1>;
 	xceiver-supply = <&reg_can1_stby>;

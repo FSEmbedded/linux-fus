@@ -11,8 +11,8 @@
 	};
 
 	aliases {
-		can0 = &flexcan1;
-		can1 = &flexcan2;
+		can0 = &can1;
+		can1 = &can2;
 		mdio-gpio0 = &mdio;
 		nand = &gpmi;
 		rtc0 = &i2c_rtc;
@@ -191,14 +191,14 @@
 	};
 };
 
-&flexcan1 {
+&can1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_can1>;
 	xceiver-supply = <&reg_can1_stby>;
 	status = "okay";
 };
 
-&flexcan2 {
+&can2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_can2>;
 	xceiver-supply = <&reg_can2_stby>;

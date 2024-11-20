@@ -347,7 +347,7 @@
 	};
 };
 
-&flexcan1 {
+&can1 {
 	pinctrl-0 = <&pinctrl_can1 &pinctrl_can1phy>;
 };
 

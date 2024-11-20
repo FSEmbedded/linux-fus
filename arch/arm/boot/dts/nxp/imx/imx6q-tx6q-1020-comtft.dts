@@ -54,11 +54,11 @@
 	/delete-property/ turn-on-delay-ms;
 };
 
-&flexcan1 {
+&can1 {
 	status = "disabled";
 };
 
-&flexcan2 {
+&can2 {
 	xceiver-supply = <&reg_3v3>;
 };
 

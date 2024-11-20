@@ -206,7 +206,7 @@
 	};
 };
 
-&flexcan1 {
+&can1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_can1>;
 	termination-gpios = <&gpio1 0 GPIO_ACTIVE_LOW>;
@@ -214,7 +214,7 @@
 	status = "okay";
 };
 
-&flexcan2 {
+&can2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_can2>;
 	status = "okay";

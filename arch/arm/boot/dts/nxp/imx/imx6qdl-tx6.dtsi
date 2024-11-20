@@ -47,8 +47,8 @@
 
 / {
 	aliases {
-		can0 = &flexcan2;
-		can1 = &flexcan1;
+		can0 = &can2;
+		can1 = &can1;
 		ethernet0 = &fec;
 		lcdif-23bit-pins-a = &pinctrl_disp0_1;
 		lcdif-24bit-pins-a = &pinctrl_disp0_2;
@@ -237,14 +237,14 @@
 	};
 };
 
-&flexcan1 {
+&can1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1>;
 	xceiver-supply = <&reg_can_xcvr>;
 	status = "okay";
 };
 
-&flexcan2 {
+&can2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
 	xceiver-supply = <&reg_can_xcvr>;

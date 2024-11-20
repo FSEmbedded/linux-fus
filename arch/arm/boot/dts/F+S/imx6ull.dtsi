@@ -1,0 +1,7 @@
+#include "../nxp/imx/imx6ull.dtsi"
+#include "imx6ul.dtsi"
+/ {
+	soc {
+		busfreq: busfreq {};
+	};
+};

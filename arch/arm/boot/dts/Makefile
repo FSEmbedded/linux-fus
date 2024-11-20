@@ -12,6 +12,7 @@ subdir-y += broadcom
 subdir-y += calxeda
 subdir-y += cirrus
 subdir-y += cnxt
+subdir-y += F+S
 subdir-y += gemini
 subdir-y += hisilicon
 subdir-y += hpe

@@ -30,7 +30,7 @@
 	};
 };
 
-&flexcan1 {
+&can1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_can1 &pinctrl_can1phy>;
 	status = "okay";

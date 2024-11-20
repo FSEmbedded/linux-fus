@@ -78,7 +78,7 @@
 	};
 };
 
-&flexcan1 {
+&can1 {
 	pinctrl-0 = <&pinctrl_flexcan1>;
 	pinctrl-names = "default";
 	status = "okay";
@@ -91,7 +91,7 @@
  * the board device tree file, the micro SD card must be disabled and the uart1
  * rts/cts must be disabled or output on other DHCOM pins.
  */
-&flexcan2 {
+&can2 {
 	pinctrl-0 = <&pinctrl_flexcan2>;
 	pinctrl-names = "default";
 	status = "disabled";

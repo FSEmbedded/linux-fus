@@ -1,0 +1,68 @@
+#include "../nxp/imx/imx6sx.dtsi"
+
+/ {
+	aliases {
+		lcdif0 = &lcdif1;
+		lcdif1 = &lcdif2;
+	};
+
+	cpus {
+		reserved-memory {
+			cma: linux,cma {};
+		};
+	};
+
+	soc {
+		busfreq: busfreq {};
+	};
+};
+
+&pwm1 {
+	status = "disabled";
+};
+&pwm2 {
+	status = "disabled";
+};
+&pwm3 {
+	status = "disabled";
+};
+&pwm4 {
+	status = "disabled";
+};
+&pwm5 {
+	status = "disabled";
+};
+&pwm6 {
+	status = "disabled";
+};
+&pwm7 {
+	status = "disabled";
+};
+&pwm8 {
+	status = "disabled";
+};
+
+&irq_sec_vio {
+	status = "disabled";
+};
+
+&snvs {
+	status = "disabled";
+};
+
+&sdma {
+	iram = <&ocram>;
+};
+
+&fec2 {
+	clocks = <&clks IMX6SX_CLK_ENET>,
+		 <&clks IMX6SX_CLK_ENET_AHB>,
+		 <&clks IMX6SX_CLK_ENET_PTP>,
+		 <&clks IMX6SX_CLK_ENET2_REF>,
+		 <&clks IMX6SX_CLK_ENET_PTP>;
+};
+
+&ecspi5 {
+	dmas = <&sdma 11 7 1>, <&sdma 12 7 2>;
+	dma-names = "rx", "tx";
+};

@@ -57,11 +57,11 @@
 	/delete-node/ sound;
 };
 
-&flexcan1 {
+&can1 {
 	xceiver-supply = <&reg_3v3>;
 };
 
-&flexcan2 {
+&can2 {
 	xceiver-supply = <&reg_3v3>;
 };
 

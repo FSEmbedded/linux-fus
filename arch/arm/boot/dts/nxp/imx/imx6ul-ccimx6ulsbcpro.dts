@@ -52,7 +52,7 @@
 	status = "okay";
 };
 
-&flexcan1 {
+&can1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1>;
 	xceiver-supply = <&ext_3v3>;
@@ -60,7 +60,7 @@
 };
 
 /* CAN2 is multiplexed with UART2 RTS/CTS */
-&flexcan2 {
+&can2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
 	xceiver-supply = <&ext_3v3>;

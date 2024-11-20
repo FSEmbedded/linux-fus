@@ -206,14 +206,14 @@
 	status = "okay";
 };
 
-&flexcan1 {
+&can1 {
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_flexcan1_default>;
 	pinctrl-1 = <&pinctrl_flexcan1_sleep>;
 	status = "disabled";
 };
 
-&flexcan2 {
+&can2 {
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_flexcan2_default>;
 	pinctrl-1 = <&pinctrl_flexcan2_sleep>;

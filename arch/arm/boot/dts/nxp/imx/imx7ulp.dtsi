@@ -31,8 +31,6 @@
 		serial2 = &lpuart6;
 		serial3 = &lpuart7;
 		usbphy0 = &usbphy1;
-		spi0 = &lpspi2;
-		spi1 = &lpspi3;
 	};
 
 	cpus {
@@ -80,7 +78,7 @@
                 ranges;
 
                 /* global autoconfigured region for contiguous allocations */
-                cma: linux,cma {
+                linux,cma {
                         compatible = "shared-dma-pool";
                         reusable;
                         size = <0xC000000>;
@@ -294,8 +292,6 @@
 			assigned-clocks = <&pcc2 IMX7ULP_CLK_LPUART4>;
 			assigned-clock-parents = <&scg1 IMX7ULP_CLK_SOSC_BUS_CLK>;
 			assigned-clock-rates = <24000000>;
-			dmas = <&edma1 0 18>, <&edma1 0 17>;
-			dma-names = "tx","rx";
 			status = "disabled";
 		};
 

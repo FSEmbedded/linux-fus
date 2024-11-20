@@ -169,7 +169,7 @@
                 ranges;
 
                 /* global autoconfigured region for contiguous allocations */
-		cma: linux,cma {
+                linux,cma {
                         compatible = "shared-dma-pool";
                         reusable;
                         size = <0x14000000>;
@@ -221,11 +221,8 @@
 				};
 			};
 		};
-		/* F&S Hotfix: Add the leading zeros of the aips-bus@ again for backwards
-		 * compatibility with uboots < fsimx6-B2021.10. This may be reversed
-		 * as soon as the backwards compatibility is not needed anymore.
-		 */
-		aips-bus@02100000 { /* AIPS2 */
+
+		bus@2100000 { /* AIPS2 */
 			mipi_dsi: mipi@21e0000 {
 				compatible = "fsl,imx6q-mipi-dsi";
 				reg = <0x21e0000 0x4000>;

@@ -10,8 +10,8 @@
 /delete-node/ &csi;
 /delete-node/ &fec1;
 /delete-node/ &fec2;
-/delete-node/ &flexcan1;
-/delete-node/ &flexcan2;
+/delete-node/ &can1;
+/delete-node/ &can2;
 /delete-node/ &lcdif;
 /delete-node/ &ov5640;
 /delete-node/ &pxp;
@@ -23,12 +23,6 @@
 
 	/delete-node/ panel;
 	/delete-node/ pxp_v4l2;
-
-	aliases {
-		/delete-property/ can0;
-		/delete-property/  can1;
-		/delete-property/ lcdif;
-	};
 };
 
 &iomuxc {

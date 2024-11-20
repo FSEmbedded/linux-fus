@@ -32,11 +32,8 @@
 			#size-cells = <1>;
 			clocks = <&clks IMX6QDL_CLK_OCRAM>;
 		};
-		/* F&S Hotfix: Add the leading zeros of the aips-bus@ again for backwards
-		 * compatibility with uboots < fsimx6-B2021.10. This may be reversed
-		 * as soon as the backwards compatibility is not needed anymore.
-		 */
-		aips-bus@02100000 {
+
+		bus@2100000 {
 			pre1: pre@21c8000 {
 				compatible = "fsl,imx6q-pre";
 				reg = <0x021c8000 0x1000>;

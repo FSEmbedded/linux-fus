@@ -16,7 +16,7 @@
  * card must be disabled and the uart1 rts/cts must be output on other DHCOM
  * pins, see uart1 and usdhc3 node below.
  */
-&flexcan2 {
+&can2 {
 	status = "okay";
 };
 

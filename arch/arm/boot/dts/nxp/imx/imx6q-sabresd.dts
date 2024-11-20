@@ -11,22 +11,6 @@
 / {
 	model = "Freescale i.MX6 Quad SABRE Smart Device Board";
 	compatible = "fsl,imx6q-sabresd", "fsl,imx6q";
-
-	v4l2_cap_2 {
-		compatible = "fsl,imx6q-v4l2-capture";
-		ipu_id = <1>;
-		csi_id = <0>;
-		mclk_source = <0>;
-		status = "okay";
- 	};
-
-	v4l2_cap_3 {
-		compatible = "fsl,imx6q-v4l2-capture";
-		ipu_id = <1>;
-		csi_id = <1>;
-		mclk_source = <0>;
-		status = "okay";
- 	};
 };
 
 &battery {
@@ -43,57 +27,6 @@
 	lvds-channel@1 {
 		crtc = "ipu2-di1";
 	};
-};
-
-&i2c2 {
-	ov564x_mipi: ov564x_mipi@3c {
-		ipu_id = <1>;
-		csi_id = <1>;
-		v_channel_id = <3>;
-	};
-
-	isl7998x_mipi: isl7998x_mipi@44 {
-		compatible = "intersil,isl7998x_mipi";
-		reg = <0x44>;
-		clocks = <&clks 201>;
-		clock-names = "csi_mclk";
-		csi_id = <0>;
-		mclk = <27000000>;
-		mclk_source = <0>;
-	};
-};
-
-&mipi_csi {
-	status = "okay";
-	lanes = <2>;
-
-	mipi-csi2-channel@0 {
-		ipu_id = <0>;
-		csi_id = <0>;
-		v_channel = <0>;
-		status = "okay";
-	};
-
-	mipi-csi2-channel@1 {
-		ipu_id = <0>;
-		csi_id = <1>;
-		v_channel = <1>;
-		status = "okay";
-	};
-
-	mipi-csi2-channel@2 {
-		ipu_id = <1>;
-		csi_id = <0>;
-		v_channel = <2>;
-		status = "okay";
-	};
-
-	mipi-csi2-channel@3 {
- 		ipu_id = <1>;
- 		csi_id = <1>;
- 		v_channel = <3>;
-		status = "okay";
- 	};
 };
 
 &mxcfb1 {

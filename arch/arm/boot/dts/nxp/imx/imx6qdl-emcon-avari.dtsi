@@ -75,11 +75,11 @@
 	status = "okay";
 };
 
-&flexcan1 {
+&can1 {
 	status = "okay";
 };
 
-&flexcan2 {
+&can2 {
 	status = "okay";
 };
 
