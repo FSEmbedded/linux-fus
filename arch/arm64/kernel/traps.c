@@ -9,7 +9,6 @@
 #include <linux/bug.h>
 #include <linux/context_tracking.h>
 #include <linux/signal.h>
-#include <linux/personality.h>
 #include <linux/kallsyms.h>
 #include <linux/kprobes.h>
 #include <linux/spinlock.h>
@@ -19,6 +18,7 @@
 #include <linux/module.h>
 #include <linux/kexec.h>
 #include <linux/delay.h>
+#include <linux/efi.h>
 #include <linux/init.h>
 #include <linux/sched/signal.h>
 #include <linux/sched/debug.h>
@@ -27,12 +27,15 @@
 #include <linux/syscalls.h>
 #include <linux/mm_types.h>
 #include <linux/kasan.h>
+#include <linux/ubsan.h>
+#include <linux/cfi.h>
 
 #include <asm/atomic.h>
 #include <asm/bug.h>
 #include <asm/cpufeature.h>
 #include <asm/daifflags.h>
 #include <asm/debug-monitors.h>
+#include <asm/efi.h>
 #include <asm/esr.h>
 #include <asm/exception.h>
 #include <asm/extable.h>
@@ -162,10 +165,8 @@ static void dump_kernel_instr(const char *lvl, struct pt_regs *regs)
 
 		if (!bad)
 			p += sprintf(p, i == 0 ? "(%08x) " : "%08x ", val);
-		else {
-			p += sprintf(p, "bad PC value");
-			break;
-		}
+		else
+			p += sprintf(p, i == 0 ? "(????????) " : "???????? ");
 	}
 
 	printk("%sCode: %s\n", lvl, str);
@@ -376,7 +377,7 @@ void arm64_skip_faulting_instruction(struct pt_regs *regs, unsigned long size)
 static int user_insn_read(struct pt_regs *regs, u32 *insnp)
 {
 	u32 instr;
-	void __user *pc = (void __user *)instruction_pointer(regs);
+	unsigned long pc = instruction_pointer(regs);
 
 	if (compat_thumb_mode(regs)) {
 		/* 16-bit Thumb instruction */
@@ -492,6 +493,10 @@ void do_el0_bti(struct pt_regs *regs)
 
 void do_el1_bti(struct pt_regs *regs, unsigned long esr)
 {
+	if (efi_runtime_fixup_exception(regs, "BTI violation")) {
+		regs->pstate &= ~PSR_BTYPE_MASK;
+		return;
+	}
 	die("Oops - BTI", regs, esr);
 }
 
@@ -509,8 +514,65 @@ void do_el1_fpac(struct pt_regs *regs, unsigned long esr)
 	die("Oops - FPAC", regs, esr);
 }
 
+void do_el0_mops(struct pt_regs *regs, unsigned long esr)
+{
+	bool wrong_option = esr & ESR_ELx_MOPS_ISS_WRONG_OPTION;
+	bool option_a = esr & ESR_ELx_MOPS_ISS_OPTION_A;
+	int dstreg = ESR_ELx_MOPS_ISS_DESTREG(esr);
+	int srcreg = ESR_ELx_MOPS_ISS_SRCREG(esr);
+	int sizereg = ESR_ELx_MOPS_ISS_SIZEREG(esr);
+	unsigned long dst, src, size;
+
+	dst = pt_regs_read_reg(regs, dstreg);
+	src = pt_regs_read_reg(regs, srcreg);
+	size = pt_regs_read_reg(regs, sizereg);
+
+	/*
+	 * Put the registers back in the original format suitable for a
+	 * prologue instruction, using the generic return routine from the
+	 * Arm ARM (DDI 0487I.a) rules CNTMJ and MWFQH.
+	 */
+	if (esr & ESR_ELx_MOPS_ISS_MEM_INST) {
+		/* SET* instruction */
+		if (option_a ^ wrong_option) {
+			/* Format is from Option A; forward set */
+			pt_regs_write_reg(regs, dstreg, dst + size);
+			pt_regs_write_reg(regs, sizereg, -size);
+		}
+	} else {
+		/* CPY* instruction */
+		if (!(option_a ^ wrong_option)) {
+			/* Format is from Option B */
+			if (regs->pstate & PSR_N_BIT) {
+				/* Backward copy */
+				pt_regs_write_reg(regs, dstreg, dst - size);
+				pt_regs_write_reg(regs, srcreg, src - size);
+			}
+		} else {
+			/* Format is from Option A */
+			if (size & BIT(63)) {
+				/* Forward copy */
+				pt_regs_write_reg(regs, dstreg, dst + size);
+				pt_regs_write_reg(regs, srcreg, src + size);
+				pt_regs_write_reg(regs, sizereg, -size);
+			}
+		}
+	}
+
+	if (esr & ESR_ELx_MOPS_ISS_FROM_EPILOGUE)
+		regs->pc -= 8;
+	else
+		regs->pc -= 4;
+
+	/*
+	 * If single stepping then finish the step before executing the
+	 * prologue instruction.
+	 */
+	user_fastforward_single_step(current);
+}
+
 #define __user_cache_maint(insn, address, res)			\
-	if (address >= user_addr_max()) {			\
+	if (address >= TASK_SIZE_MAX) {				\
 		res = -EFAULT;					\
 	} else {						\
 		uaccess_ttbr0_enable();				\
@@ -518,20 +580,15 @@ void do_el1_fpac(struct pt_regs *regs, unsigned long esr)
 			"1:	" insn ", %1\n"			\
 			"	mov	%w0, #0\n"		\
 			"2:\n"					\
-			"	.pushsection .fixup,\"ax\"\n"	\
-			"	.align	2\n"			\
-			"3:	mov	%w0, %w2\n"		\
-			"	b	2b\n"			\
-			"	.popsection\n"			\
-			_ASM_EXTABLE(1b, 3b)			\
+			_ASM_EXTABLE_UACCESS_ERR(1b, 2b, %w0)	\
 			: "=r" (res)				\
-			: "r" (address), "i" (-EFAULT));	\
+			: "r" (address));			\
 		uaccess_ttbr0_disable();			\
 	}
 
 #define __user_cache_maint_ivau(insn, address, res)			\
 	do {								\
-		if (address >= user_addr_max()) {			\
+		if (address >= TASK_SIZE_MAX) {			\
 			res = -EFAULT;					\
 		} else {						\
 			uaccess_ttbr0_enable();				\
@@ -539,14 +596,9 @@ void do_el1_fpac(struct pt_regs *regs, unsigned long esr)
 				"1:	" insn "\n"			\
 				"	mov	%w0, #0\n"		\
 				"2:\n"					\
-				"	.pushsection .fixup,\"ax\"\n"	\
-				"	.align	2\n"			\
-				"3:	mov	%w0, %w2\n"		\
-				"	b	2b\n"			\
-				"	.popsection\n"			\
-				_ASM_EXTABLE(1b, 3b)			\
+				_ASM_EXTABLE_UACCESS_ERR(1b, 2b, %w0)	\
 				: "=r" (res)				\
-				: "r" (address), "i" (-EFAULT));	\
+				: "r" (address));			\
 			uaccess_ttbr0_disable();			\
 		}							\
 	} while (0)
@@ -602,11 +654,11 @@ static void ctr_read_handler(unsigned long esr, struct pt_regs *regs)
 
 	if (cpus_have_const_cap(ARM64_WORKAROUND_1542419)) {
 		/* Hide DIC so that we can trap the unnecessary maintenance...*/
-		val &= ~BIT(CTR_DIC_SHIFT);
+		val &= ~BIT(CTR_EL0_DIC_SHIFT);
 
 		/* ... and fake IminLine to reduce the number of traps. */
-		val &= ~CTR_IMINLINE_MASK;
-		val |= (PAGE_SHIFT - 2) & CTR_IMINLINE_MASK;
+		val &= ~CTR_EL0_IminLine_MASK;
+		val |= (PAGE_SHIFT - 2) & CTR_EL0_IminLine_MASK;
 	}
 
 	pt_regs_write_reg(regs, rt, val);
@@ -668,6 +720,12 @@ static const struct sys64_hook sys64_hooks[] = {
 		/* Trap read access to CNTVCT_EL0 */
 		.esr_mask = ESR_ELx_SYS64_ISS_SYS_OP_MASK,
 		.esr_val = ESR_ELx_SYS64_ISS_SYS_CNTVCT,
+		.handler = cntvct_read_handler,
+	},
+	{
+		/* Trap read access to CNTVCTSS_EL0 */
+		.esr_mask = ESR_ELx_SYS64_ISS_SYS_OP_MASK,
+		.esr_val = ESR_ELx_SYS64_ISS_SYS_CNTVCTSS,
 		.handler = cntvct_read_handler,
 	},
 	{
@@ -744,6 +802,11 @@ static const struct sys64_hook cp15_64_hooks[] = {
 	{
 		.esr_mask = ESR_ELx_CP15_64_ISS_SYS_MASK,
 		.esr_val = ESR_ELx_CP15_64_ISS_SYS_CNTVCT,
+		.handler = compat_cntvct_read_handler,
+	},
+	{
+		.esr_mask = ESR_ELx_CP15_64_ISS_SYS_MASK,
+		.esr_val = ESR_ELx_CP15_64_ISS_SYS_CNTVCTSS,
 		.handler = compat_cntvct_read_handler,
 	},
 	{},
@@ -831,6 +894,7 @@ static const char *esr_class_str[] = {
 	[ESR_ELx_EC_SVE]		= "SVE",
 	[ESR_ELx_EC_ERET]		= "ERET/ERETAA/ERETAB",
 	[ESR_ELx_EC_FPAC]		= "FPAC",
+	[ESR_ELx_EC_SME]		= "SME",
 	[ESR_ELx_EC_IMP_DEF]		= "EL3 IMP DEF",
 	[ESR_ELx_EC_IABT_LOW]		= "IABT (lower EL)",
 	[ESR_ELx_EC_IABT_CUR]		= "IABT (current EL)",
@@ -838,6 +902,7 @@ static const char *esr_class_str[] = {
 	[ESR_ELx_EC_DABT_LOW]		= "DABT (lower EL)",
 	[ESR_ELx_EC_DABT_CUR]		= "DABT (current EL)",
 	[ESR_ELx_EC_SP_ALIGN]		= "SP Alignment",
+	[ESR_ELx_EC_MOPS]		= "MOPS",
 	[ESR_ELx_EC_FP_EXC32]		= "FP (AArch32)",
 	[ESR_ELx_EC_FP_EXC64]		= "FP (AArch64)",
 	[ESR_ELx_EC_SERROR]		= "SError",
@@ -877,7 +942,7 @@ void bad_el0_sync(struct pt_regs *regs, int reason, unsigned long esr)
 DEFINE_PER_CPU(unsigned long [OVERFLOW_STACK_SIZE/sizeof(long)], overflow_stack)
 	__aligned(16);
 
-void panic_bad_stack(struct pt_regs *regs, unsigned long esr, unsigned long far)
+void __noreturn panic_bad_stack(struct pt_regs *regs, unsigned long esr, unsigned long far)
 {
 	unsigned long tsk_stk = (unsigned long)current->stack;
 	unsigned long irq_stk = (unsigned long)this_cpu_read(irq_stack_ptr);
@@ -919,7 +984,6 @@ void __noreturn arm64_serror_panic(struct pt_regs *regs, unsigned long esr)
 	nmi_panic(regs, "Asynchronous SError Interrupt");
 
 	cpu_park_loop();
-	unreachable();
 }
 
 bool arm64_is_fatal_ras_serror(struct pt_regs *regs, unsigned long esr)
@@ -962,7 +1026,7 @@ void do_serror(struct pt_regs *regs, unsigned long esr)
 }
 
 /* GENERIC_BUG traps */
-
+#ifdef CONFIG_GENERIC_BUG
 int is_valid_bugaddr(unsigned long addr)
 {
 	/*
@@ -974,6 +1038,7 @@ int is_valid_bugaddr(unsigned long addr)
 	 */
 	return 1;
 }
+#endif
 
 static int bug_handler(struct pt_regs *regs, unsigned long esr)
 {
@@ -999,6 +1064,38 @@ static struct break_hook bug_break_hook = {
 	.fn = bug_handler,
 	.imm = BUG_BRK_IMM,
 };
+
+#ifdef CONFIG_CFI_CLANG
+static int cfi_handler(struct pt_regs *regs, unsigned long esr)
+{
+	unsigned long target;
+	u32 type;
+
+	target = pt_regs_read_reg(regs, FIELD_GET(CFI_BRK_IMM_TARGET, esr));
+	type = (u32)pt_regs_read_reg(regs, FIELD_GET(CFI_BRK_IMM_TYPE, esr));
+
+	switch (report_cfi_failure(regs, regs->pc, &target, type)) {
+	case BUG_TRAP_TYPE_BUG:
+		die("Oops - CFI", regs, esr);
+		break;
+
+	case BUG_TRAP_TYPE_WARN:
+		break;
+
+	default:
+		return DBG_HOOK_ERROR;
+	}
+
+	arm64_skip_faulting_instruction(regs, AARCH64_INSN_SIZE);
+	return DBG_HOOK_HANDLED;
+}
+
+static struct break_hook cfi_break_hook = {
+	.fn = cfi_handler,
+	.imm = CFI_BRK_IMM_BASE,
+	.mask = CFI_BRK_IMM_MASK,
+};
+#endif /* CONFIG_CFI_CLANG */
 
 static int reserved_fault_handler(struct pt_regs *regs, unsigned long esr)
 {
@@ -1027,7 +1124,7 @@ static int kasan_handler(struct pt_regs *regs, unsigned long esr)
 	bool recover = esr & KASAN_ESR_RECOVER;
 	bool write = esr & KASAN_ESR_WRITE;
 	size_t size = KASAN_ESR_SIZE(esr);
-	u64 addr = regs->regs[0];
+	void *addr = (void *)regs->regs[0];
 	u64 pc = regs->pc;
 
 	kasan_report(addr, size, write, pc);
@@ -1061,6 +1158,22 @@ static struct break_hook kasan_break_hook = {
 };
 #endif
 
+#ifdef CONFIG_UBSAN_TRAP
+static int ubsan_handler(struct pt_regs *regs, unsigned long esr)
+{
+	die(report_ubsan_failure(regs, esr & UBSAN_BRK_MASK), regs, esr);
+	return DBG_HOOK_HANDLED;
+}
+
+static struct break_hook ubsan_break_hook = {
+	.fn	= ubsan_handler,
+	.imm	= UBSAN_BRK_IMM,
+	.mask	= UBSAN_BRK_MASK,
+};
+#endif
+
+#define esr_comment(esr) ((esr) & ESR_ELx_BRK64_ISS_COMMENT_MASK)
+
 /*
  * Initial handler for AArch64 BRK exceptions
  * This handler only used until debug_traps_init().
@@ -1068,11 +1181,17 @@ static struct break_hook kasan_break_hook = {
 int __init early_brk64(unsigned long addr, unsigned long esr,
 		struct pt_regs *regs)
 {
+#ifdef CONFIG_CFI_CLANG
+	if ((esr_comment(esr) & ~CFI_BRK_IMM_MASK) == CFI_BRK_IMM_BASE)
+		return cfi_handler(regs, esr) != DBG_HOOK_HANDLED;
+#endif
 #ifdef CONFIG_KASAN_SW_TAGS
-	unsigned long comment = esr & ESR_ELx_BRK64_ISS_COMMENT_MASK;
-
-	if ((comment & ~KASAN_BRK_MASK) == KASAN_BRK_IMM)
+	if ((esr_comment(esr) & ~KASAN_BRK_MASK) == KASAN_BRK_IMM)
 		return kasan_handler(regs, esr) != DBG_HOOK_HANDLED;
+#endif
+#ifdef CONFIG_UBSAN_TRAP
+	if ((esr_comment(esr) & ~UBSAN_BRK_MASK) == UBSAN_BRK_IMM)
+		return ubsan_handler(regs, esr) != DBG_HOOK_HANDLED;
 #endif
 	return bug_handler(regs, esr) != DBG_HOOK_HANDLED;
 }
@@ -1080,9 +1199,15 @@ int __init early_brk64(unsigned long addr, unsigned long esr,
 void __init trap_init(void)
 {
 	register_kernel_break_hook(&bug_break_hook);
+#ifdef CONFIG_CFI_CLANG
+	register_kernel_break_hook(&cfi_break_hook);
+#endif
 	register_kernel_break_hook(&fault_break_hook);
 #ifdef CONFIG_KASAN_SW_TAGS
 	register_kernel_break_hook(&kasan_break_hook);
+#endif
+#ifdef CONFIG_UBSAN_TRAP
+	register_kernel_break_hook(&ubsan_break_hook);
 #endif
 	debug_traps_init();
 }

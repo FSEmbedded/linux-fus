@@ -135,7 +135,7 @@ static void nft_target_eval_bridge(const struct nft_expr *expr,
 
 static const struct nla_policy nft_target_policy[NFTA_TARGET_MAX + 1] = {
 	[NFTA_TARGET_NAME]	= { .type = NLA_NUL_STRING },
-	[NFTA_TARGET_REV]	= { .type = NLA_U32 },
+	[NFTA_TARGET_REV]	= NLA_POLICY_MAX(NLA_BE32, 255),
 	[NFTA_TARGET_INFO]	= { .type = NLA_BINARY },
 };
 
@@ -331,7 +331,8 @@ static int nft_extension_dump_info(struct sk_buff *skb, int attr,
 	return 0;
 }
 
-static int nft_target_dump(struct sk_buff *skb, const struct nft_expr *expr)
+static int nft_target_dump(struct sk_buff *skb,
+			   const struct nft_expr *expr, bool reset)
 {
 	const struct xt_target *target = expr->ops->data;
 	void *info = nft_expr_priv(expr);
@@ -435,7 +436,7 @@ static void nft_match_eval(const struct nft_expr *expr,
 
 static const struct nla_policy nft_match_policy[NFTA_MATCH_MAX + 1] = {
 	[NFTA_MATCH_NAME]	= { .type = NLA_NUL_STRING },
-	[NFTA_MATCH_REV]	= { .type = NLA_U32 },
+	[NFTA_MATCH_REV]	= NLA_POLICY_MAX(NLA_BE32, 255),
 	[NFTA_MATCH_INFO]	= { .type = NLA_BINARY },
 };
 
@@ -595,12 +596,14 @@ nla_put_failure:
 	return -1;
 }
 
-static int nft_match_dump(struct sk_buff *skb, const struct nft_expr *expr)
+static int nft_match_dump(struct sk_buff *skb,
+			  const struct nft_expr *expr, bool reset)
 {
 	return __nft_match_dump(skb, expr, nft_expr_priv(expr));
 }
 
-static int nft_match_large_dump(struct sk_buff *skb, const struct nft_expr *e)
+static int nft_match_large_dump(struct sk_buff *skb,
+				const struct nft_expr *e, bool reset)
 {
 	struct nft_xt_match_priv *priv = nft_expr_priv(e);
 
@@ -748,7 +751,7 @@ out_put:
 static const struct nla_policy nfnl_compat_policy_get[NFTA_COMPAT_MAX+1] = {
 	[NFTA_COMPAT_NAME]	= { .type = NLA_NUL_STRING,
 				    .len = NFT_COMPAT_NAME_MAX-1 },
-	[NFTA_COMPAT_REV]	= { .type = NLA_U32 },
+	[NFTA_COMPAT_REV]	= NLA_POLICY_MAX(NLA_BE32, 255),
 	[NFTA_COMPAT_TYPE]	= { .type = NLA_U32 },
 };
 
@@ -769,6 +772,14 @@ static const struct nfnetlink_subsystem nfnl_compat_subsys = {
 };
 
 static struct nft_expr_type nft_match_type;
+
+static bool nft_match_reduce(struct nft_regs_track *track,
+			     const struct nft_expr *expr)
+{
+	const struct xt_match *match = expr->ops->data;
+
+	return strcmp(match->name, "comment") == 0;
+}
 
 static const struct nft_expr_ops *
 nft_match_select_ops(const struct nft_ctx *ctx,
@@ -812,6 +823,7 @@ nft_match_select_ops(const struct nft_ctx *ctx,
 	ops->dump = nft_match_dump;
 	ops->validate = nft_match_validate;
 	ops->data = match;
+	ops->reduce = nft_match_reduce;
 
 	matchsize = NFT_EXPR_SIZE(XT_ALIGN(match->matchsize));
 	if (matchsize > NFT_MATCH_LARGE_THRESH) {
@@ -901,6 +913,7 @@ nft_target_select_ops(const struct nft_ctx *ctx,
 	ops->dump = nft_target_dump;
 	ops->validate = nft_target_validate;
 	ops->data = target;
+	ops->reduce = NFT_REDUCE_READONLY;
 
 	if (family == NFPROTO_BRIDGE)
 		ops->eval = nft_target_eval_bridge;

@@ -16,10 +16,10 @@
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
+#include <linux/iopoll.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
@@ -44,6 +44,20 @@
 #define LPI2C_MFSR	0x5C	/* i2c master FIFO status */
 #define LPI2C_MTDR	0x60	/* i2c master TX data register */
 #define LPI2C_MRDR	0x70	/* i2c master RX data register */
+
+#define LPI2C_SCR	0x110	/* i2c slave contrl register */
+#define LPI2C_SSR	0x114	/* i2c slave status register */
+#define LPI2C_SIER	0x118	/* i2c slave interrupt enable */
+#define LPI2C_SDER	0x11C	/* i2c slave DMA enable */
+#define LPI2C_SCFGR0	0x120	/* i2c slave configuration */
+#define LPI2C_SCFGR1	0x124	/* i2c slave configuration */
+#define LPI2C_SCFGR2	0x128	/* i2c slave configuration */
+#define LPI2C_SAMR	0x140	/* i2c slave address match */
+#define LPI2C_SASR	0x150	/* i2c slave address status */
+#define LPI2C_STAR	0x154	/* i2c slave transmit ACK */
+#define LPI2C_STDR	0x160	/* i2c slave transmit data */
+#define LPI2C_SRDR	0x170	/* i2c slave receive data */
+#define LPI2C_SRDROR	0x178	/* i2c slave receive data read only */
 
 /* i2c command */
 #define TRAN_DATA	0X00
@@ -78,6 +92,41 @@
 #define MDER_TDDE	BIT(0)
 #define MDER_RDDE	BIT(1)
 
+#define SCR_SEN		BIT(0)
+#define SCR_RST		BIT(1)
+#define SCR_FILTEN	BIT(4)
+#define SCR_RTF		BIT(8)
+#define SCR_RRF		BIT(9)
+#define SCFGR1_RXSTALL	BIT(1)
+#define SCFGR1_TXDSTALL	BIT(2)
+#define SCFGR2_FILTSDA_SHIFT	24
+#define SCFGR2_FILTSCL_SHIFT	16
+#define SCFGR2_CLKHOLD(x)	(x)
+#define SCFGR2_FILTSDA(x)	((x) << SCFGR2_FILTSDA_SHIFT)
+#define SCFGR2_FILTSCL(x)	((x) << SCFGR2_FILTSCL_SHIFT)
+#define SSR_TDF		BIT(0)
+#define SSR_RDF		BIT(1)
+#define SSR_AVF		BIT(2)
+#define SSR_TAF		BIT(3)
+#define SSR_RSF		BIT(8)
+#define SSR_SDF		BIT(9)
+#define SSR_BEF		BIT(10)
+#define SSR_FEF		BIT(11)
+#define SSR_SBF		BIT(24)
+#define SSR_BBF		BIT(25)
+#define SSR_CLEAR_BITS	(SSR_RSF | SSR_SDF | SSR_BEF | SSR_FEF)
+#define SIER_TDIE	BIT(0)
+#define SIER_RDIE	BIT(1)
+#define SIER_AVIE	BIT(2)
+#define SIER_TAIE	BIT(3)
+#define SIER_RSIE	BIT(8)
+#define SIER_SDIE	BIT(9)
+#define SIER_BEIE	BIT(10)
+#define SIER_FEIE	BIT(11)
+#define SIER_AM0F	BIT(12)
+#define SLAVE_INT_FLAG	(SIER_TDIE | SIER_RDIE | SIER_AVIE | \
+						SIER_SDIE | SIER_BEIE)
+
 #define I2C_CLK_RATIO	24 / 59
 #define CHUNK_DATA	256
 
@@ -103,14 +152,15 @@ enum lpi2c_imx_pincfg {
 
 struct lpi2c_imx_struct {
 	struct i2c_adapter	adapter;
+	int			num_clks;
+	struct clk_bulk_data	*clks;
 	resource_size_t		phy_addr;
 	int			irq;
-	struct clk		*clk_per;
-	struct clk		*clk_ipg;
 	void __iomem		*base;
 	__u8			*rx_buf;
 	__u8			*tx_buf;
 	struct completion	complete;
+	unsigned long		rate_per;
 	unsigned int		msglen;
 	unsigned int		delivered;
 	unsigned int		block_data;
@@ -135,6 +185,8 @@ struct lpi2c_imx_struct {
 	enum dma_data_direction dma_direction;
 	u8			*dma_buf;
 	unsigned int		dma_len;
+
+	struct i2c_client	*slave;
 };
 
 static void lpi2c_imx_intctrl(struct lpi2c_imx_struct *lpi2c_imx,
@@ -241,11 +293,7 @@ static int lpi2c_imx_config(struct lpi2c_imx_struct *lpi2c_imx)
 
 	lpi2c_imx_set_mode(lpi2c_imx);
 
-	clk_rate = clk_get_rate(lpi2c_imx->clk_per);
-	if (!clk_rate) {
-		dev_dbg(&lpi2c_imx->adapter.dev, "clk_per rate is 0\n");
-		return -EINVAL;
-	}
+	clk_rate = lpi2c_imx->rate_per;
 
 	if (lpi2c_imx->mode == HS || lpi2c_imx->mode == ULTRA_FAST)
 		filt = 0;
@@ -600,15 +648,25 @@ static int lpi2c_imx_push_rx_cmd(struct lpi2c_imx_struct *lpi2c_imx,
 {
 	unsigned int temp, rx_remain;
 	unsigned long orig_jiffies = jiffies;
+	int fifo_watermark;
 
+	/*
+	 * The master of LPI2C needs to read data from the slave by writing
+	 * the number of received data to txfifo. However, the TXFIFO register
+	 * only has one byte length, and if the length of the data that needs
+	 * to be read exceeds 256 bytes, it needs to be written to TXFIFO
+	 * multiple times. TXFIFO has a depth limit, so the "while wait loop"
+	 * here is needed to prevent TXFIFO from overflowing.
+	 */
 	rx_remain = msg->len;
+	fifo_watermark = lpi2c_imx->txfifosize >> 1;
 	do {
 		temp = rx_remain > CHUNK_DATA ?
 			CHUNK_DATA - 1 : rx_remain - 1;
 		temp |= (RECV_DATA << 8);
-		while ((readl(lpi2c_imx->base + LPI2C_MFSR) & 0xff) > 2) {
+		while ((readl(lpi2c_imx->base + LPI2C_MFSR) & 0xff) > fifo_watermark) {
 			if (time_after(jiffies, orig_jiffies + msecs_to_jiffies(1000))) {
-				dev_dbg(&lpi2c_imx->adapter.dev, "txfifo empty timeout\n");
+				dev_dbg(&lpi2c_imx->adapter.dev, "push receive data command timeout\n");
 				if (lpi2c_imx->adapter.bus_recovery_info)
 					i2c_recover_bus(&lpi2c_imx->adapter);
 				return -ETIMEDOUT;
@@ -617,6 +675,7 @@ static int lpi2c_imx_push_rx_cmd(struct lpi2c_imx_struct *lpi2c_imx,
 		}
 		writel(temp, lpi2c_imx->base + LPI2C_MTDR);
 		rx_remain = rx_remain - (temp & 0xff) - 1;
+		orig_jiffies = jiffies;
 	} while (rx_remain > 0);
 
 	return 0;
@@ -757,10 +816,55 @@ disable:
 
 	return (result < 0) ? result : num;
 }
-
-static irqreturn_t lpi2c_imx_isr(int irq, void *dev_id)
+static irqreturn_t lpi2c_imx_slave_isr(struct lpi2c_imx_struct *lpi2c_imx, u32 ssr, u32 sier_filter)
 {
-	struct lpi2c_imx_struct *lpi2c_imx = dev_id;
+	u8 value;
+	u32 sasr;
+
+	if (sier_filter & SSR_BEF) { /* Arbitration lost */
+		writel(0, lpi2c_imx->base + LPI2C_SIER);
+		return IRQ_HANDLED;
+	}
+
+	/* address detected */
+	if (sier_filter & SSR_AVF) {
+		sasr = readl(lpi2c_imx->base + LPI2C_SASR);
+		if (1 & sasr) {
+			/*controller give a read request and send first value with start*/
+			i2c_slave_event(lpi2c_imx->slave, I2C_SLAVE_READ_REQUESTED, &value);
+			writel(value, lpi2c_imx->base + LPI2C_STDR);
+			goto ret;
+		} else {
+			/*controller request to write to us*/
+			i2c_slave_event(lpi2c_imx->slave, I2C_SLAVE_WRITE_REQUESTED, &value);
+		}
+	}
+
+	if (sier_filter & SSR_SDF) {
+		/* STOP */
+		i2c_slave_event(lpi2c_imx->slave, I2C_SLAVE_STOP, &value);
+	}
+
+	if (sier_filter & SSR_TDF) {
+		/* controller wants to read from us */
+		i2c_slave_event(lpi2c_imx->slave, I2C_SLAVE_READ_PROCESSED, &value);
+		writel(value, lpi2c_imx->base + LPI2C_STDR);
+	}
+
+	if (sier_filter & SSR_RDF) {
+		/* controller wants to send data to us */
+		value = readl(lpi2c_imx->base + LPI2C_SRDR);
+		i2c_slave_event(lpi2c_imx->slave, I2C_SLAVE_WRITE_RECEIVED, &value);
+	}
+
+ret:
+	/* Clear SSR, too, because of old STOPs to other clients than us */
+	writel(ssr & SSR_CLEAR_BITS, lpi2c_imx->base + LPI2C_SSR);
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t lpi2c_imx_master_isr(struct lpi2c_imx_struct *lpi2c_imx)
+{
 	unsigned int enabled;
 	unsigned int temp;
 
@@ -773,16 +877,124 @@ static irqreturn_t lpi2c_imx_isr(int irq, void *dev_id)
 	if (temp & MSR_NDF) {
 		lpi2c_imx->is_ndf = true;
 		complete(&lpi2c_imx->complete);
-		goto ret;
 	}
-
-	if (temp & MSR_RDF)
+	else if (temp & MSR_RDF)
 		lpi2c_imx_read_rxfifo(lpi2c_imx);
 	else if (temp & MSR_TDF)
 		lpi2c_imx_write_txfifo(lpi2c_imx);
 
-ret:
 	return IRQ_HANDLED;
+}
+
+static irqreturn_t lpi2c_imx_isr(int irq, void *dev_id)
+{
+	struct lpi2c_imx_struct *lpi2c_imx = dev_id;
+	unsigned int scr;
+	u32 ssr, sier_filter;
+
+	if (lpi2c_imx->slave) {
+		scr = readl(lpi2c_imx->base + LPI2C_SCR);
+		ssr = readl(lpi2c_imx->base + LPI2C_SSR);
+		sier_filter = ssr & readl(lpi2c_imx->base + LPI2C_SIER);
+		if ((scr & SCR_SEN) && sier_filter)
+			return lpi2c_imx_slave_isr(lpi2c_imx, ssr, sier_filter);
+		else
+			return lpi2c_imx_master_isr(lpi2c_imx);
+	} else
+		return lpi2c_imx_master_isr(lpi2c_imx);
+}
+
+static void lpi2c_imx_slave_init(struct lpi2c_imx_struct *lpi2c_imx)
+{
+	int temp;
+
+	/* reset slave module */
+	temp = SCR_RST;
+	writel(temp, lpi2c_imx->base + LPI2C_SCR);
+	writel(0, lpi2c_imx->base + LPI2C_SCR);
+
+	/* Set slave addr */
+	writel((lpi2c_imx->slave->addr << 1), lpi2c_imx->base + LPI2C_SAMR);
+
+	temp = SCFGR1_RXSTALL | SCFGR1_TXDSTALL;
+	writel(temp, lpi2c_imx->base + LPI2C_SCFGR1);
+
+	/*
+	 * set SCFGR2: FILTSDA, FILTSCL and CLKHOLD
+	 * FILTSCL/FILTSDA can eliminate signal skew. It should generally be set to
+	 * the same value and should be set >= 50ns.
+	 * CLKHOLD is only used when clock stretching is enabled, but it will extend
+	 * the clock stretching to ensure there is an additional delay between the
+	 * slave driving SDA and the slave releasing the SCL pin.
+	 * CLKHOLD setting is crucial for lpi2c slave. When master read data from
+	 * slave, if there is a delay caused by cpu idle, excessive load, or other
+	 * delays between two bytes in one message transmission, it will cause very
+	 * short interval time between the driving SDA signal and releasing SCL signal.
+	 * Lpi2c master will mistakenly think that this is a stop signal resulting
+	 * in an arbitration failure. This lpi2c issue can be avoided by setting
+	 * CLKHOLD. In order to ensure lpi2c function normally when the lpi2c clock
+	 * frequency is as low as 100kHz, CLKHOLD should be set 3 and it is also
+	 * compatible with higher clock frequency like 400kHz and 1MHz.
+	 */
+	temp = SCFGR2_FILTSDA(2) | SCFGR2_FILTSCL(2) | SCFGR2_CLKHOLD(3);
+	writel(temp, lpi2c_imx->base + LPI2C_SCFGR2);
+
+	/*
+	 * Enable module
+	 * SCR_FILTEN can enable digital filter and output delay counter for slave mode.
+	 * So SCR_FILTEN need be asserted when enable SDA/SCL FILTER and CLKHOLD.
+	 */
+	writel(SCR_SEN | SCR_FILTEN, lpi2c_imx->base + LPI2C_SCR);
+
+	/* Enable interrupt from i2c module */
+	writel(SLAVE_INT_FLAG, lpi2c_imx->base + LPI2C_SIER);
+}
+
+static int lpi2c_imx_reg_slave(struct i2c_client *client)
+{
+	struct lpi2c_imx_struct *lpi2c_imx = i2c_get_adapdata(client->adapter);
+	int ret;
+
+	if (lpi2c_imx->slave)
+		return -EBUSY;
+
+	lpi2c_imx->slave = client;
+
+	/* Resume */
+	ret = pm_runtime_resume_and_get(lpi2c_imx->adapter.dev.parent);
+	if (ret < 0) {
+		dev_err(&lpi2c_imx->adapter.dev, "failed to resume i2c controller");
+		return ret;
+	}
+
+	lpi2c_imx_slave_init(lpi2c_imx);
+
+	return 0;
+}
+
+static int lpi2c_imx_unreg_slave(struct i2c_client *client)
+{
+	struct lpi2c_imx_struct *lpi2c_imx = i2c_get_adapdata(client->adapter);
+	int ret, temp;
+
+	if (!lpi2c_imx->slave)
+		return -EINVAL;
+
+	/* Reset slave address. */
+	writel(0, lpi2c_imx->base + LPI2C_SAMR);
+
+	temp = SCR_RST;
+	writel(temp, lpi2c_imx->base + LPI2C_SCR);
+	writel(0, lpi2c_imx->base + LPI2C_SCR);
+
+	lpi2c_imx->slave = NULL;
+
+	/* Suspend */
+	ret = pm_runtime_put_sync(lpi2c_imx->adapter.dev.parent);
+	if (ret < 0)
+		dev_err(&lpi2c_imx->adapter.dev, "failed to suspend i2c controller");
+
+	return ret;
 }
 
 static void lpi2c_imx_prepare_recovery(struct i2c_adapter *adap)
@@ -859,6 +1071,8 @@ static u32 lpi2c_imx_func(struct i2c_adapter *adapter)
 static const struct i2c_algorithm lpi2c_imx_algo = {
 	.master_xfer	= lpi2c_imx_xfer,
 	.functionality	= lpi2c_imx_func,
+	.reg_slave		= lpi2c_imx_reg_slave,
+	.unreg_slave	= lpi2c_imx_unreg_slave,
 };
 
 static const struct of_device_id lpi2c_imx_of_match[] = {
@@ -964,20 +1178,13 @@ static int lpi2c_imx_probe(struct platform_device *pdev)
 	lpi2c_imx->adapter.algo		= &lpi2c_imx_algo;
 	lpi2c_imx->adapter.dev.parent	= &pdev->dev;
 	lpi2c_imx->adapter.dev.of_node	= pdev->dev.of_node;
-	strlcpy(lpi2c_imx->adapter.name, pdev->name,
+	strscpy(lpi2c_imx->adapter.name, pdev->name,
 		sizeof(lpi2c_imx->adapter.name));
 
-	lpi2c_imx->clk_per = devm_clk_get(&pdev->dev, "per");
-	if (IS_ERR(lpi2c_imx->clk_per)) {
-		dev_err(&pdev->dev, "can't get I2C peripheral clock\n");
-		return PTR_ERR(lpi2c_imx->clk_per);
-	}
-
-	lpi2c_imx->clk_ipg = devm_clk_get(&pdev->dev, "ipg");
-	if (IS_ERR(lpi2c_imx->clk_ipg)) {
-		dev_err(&pdev->dev, "can't get I2C ipg clock\n");
-		return PTR_ERR(lpi2c_imx->clk_ipg);
-	}
+	ret = devm_clk_bulk_get_all(&pdev->dev, &lpi2c_imx->clks);
+	if (ret < 0)
+		return dev_err_probe(&pdev->dev, ret, "can't get I2C peripheral clock\n");
+	lpi2c_imx->num_clks = ret;
 
 	ret = of_property_read_u32(pdev->dev.of_node,
 				   "clock-frequency", &lpi2c_imx->bitrate);
@@ -986,6 +1193,22 @@ static int lpi2c_imx_probe(struct platform_device *pdev)
 
 	i2c_set_adapdata(&lpi2c_imx->adapter, lpi2c_imx);
 	platform_set_drvdata(pdev, lpi2c_imx);
+
+	/*
+	 * Lock the parent clock rate to avoid getting parent clock upon
+	 * each transfer
+	 */
+	ret = clk_rate_exclusive_get(lpi2c_imx->clks[0].clk);
+	if (ret)
+		return dev_err_probe(&pdev->dev, ret,
+				     "can't lock I2C peripheral clock rate\n");
+
+	lpi2c_imx->rate_per = clk_get_rate(lpi2c_imx->clks[0].clk);
+	if (!lpi2c_imx->rate_per) {
+		clk_rate_exclusive_put(lpi2c_imx->clks[0].clk);
+		return dev_err_probe(&pdev->dev, -EINVAL,
+				     "can't get I2C peripheral clock rate\n");
+	}
 
 	pm_runtime_set_autosuspend_delay(&pdev->dev, I2C_PM_TIMEOUT);
 	pm_runtime_use_autosuspend(&pdev->dev);
@@ -1030,10 +1253,12 @@ rpm_disable:
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 
+	clk_rate_exclusive_put(lpi2c_imx->clks[0].clk);
+
 	return ret;
 }
 
-static int lpi2c_imx_remove(struct platform_device *pdev)
+static void lpi2c_imx_remove(struct platform_device *pdev)
 {
 	struct lpi2c_imx_struct *lpi2c_imx = platform_get_drvdata(pdev);
 
@@ -1041,8 +1266,6 @@ static int lpi2c_imx_remove(struct platform_device *pdev)
 
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
-
-	return 0;
 }
 
 static int __maybe_unused lpi2c_runtime_suspend(struct device *dev)
@@ -1050,8 +1273,7 @@ static int __maybe_unused lpi2c_runtime_suspend(struct device *dev)
 	struct lpi2c_imx_struct *lpi2c_imx = dev_get_drvdata(dev);
 
 	devm_free_irq(dev, lpi2c_imx->irq, lpi2c_imx);
-	clk_disable_unprepare(lpi2c_imx->clk_ipg);
-	clk_disable_unprepare(lpi2c_imx->clk_per);
+	clk_bulk_disable_unprepare(lpi2c_imx->num_clks, lpi2c_imx->clks);
 	pinctrl_pm_select_idle_state(dev);
 
 	return 0;
@@ -1063,16 +1285,10 @@ static int __maybe_unused lpi2c_runtime_resume(struct device *dev)
 	int ret;
 
 	pinctrl_pm_select_default_state(dev);
-	ret = clk_prepare_enable(lpi2c_imx->clk_per);
+	ret = clk_bulk_prepare_enable(lpi2c_imx->num_clks, lpi2c_imx->clks);
 	if (ret) {
-		dev_err(dev, "can't enable I2C per clock, ret=%d\n", ret);
+		dev_err(dev, "failed to enable I2C clock, ret=%d\n", ret);
 		return ret;
-	}
-
-	ret = clk_prepare_enable(lpi2c_imx->clk_ipg);
-	if (ret) {
-		clk_disable_unprepare(lpi2c_imx->clk_per);
-		dev_err(dev, "can't enable I2C ipg clock, ret=%d\n", ret);
 	}
 
 	ret = devm_request_irq(dev, lpi2c_imx->irq, lpi2c_imx_isr,
@@ -1089,6 +1305,18 @@ static int __maybe_unused lpi2c_runtime_resume(struct device *dev)
 static int lpi2c_suspend_noirq(struct device *dev)
 {
 	int ret;
+	u32 scr, ssr;
+	struct lpi2c_imx_struct *lpi2c_imx = dev_get_drvdata(dev);
+
+	if (lpi2c_imx->slave) {
+		scr = readl(lpi2c_imx->base + LPI2C_SCR);
+		if (scr & SCR_SEN) {
+			ret = readl_poll_timeout(lpi2c_imx->base + LPI2C_SSR, ssr,
+				!(ssr & (SSR_BBF | SSR_SBF)), 10, 4000000);
+			if (ret)
+				return ret;
+		}
+	}
 
 	ret = pm_runtime_force_suspend(dev);
 	if (ret)
@@ -1101,7 +1329,17 @@ static int lpi2c_suspend_noirq(struct device *dev)
 
 static int lpi2c_resume_noirq(struct device *dev)
 {
-	return pm_runtime_force_resume(dev);
+	int ret;
+	struct lpi2c_imx_struct *lpi2c_imx = dev_get_drvdata(dev);
+
+	ret = pm_runtime_force_resume(dev);
+	if (ret)
+		return ret;
+
+	if (lpi2c_imx->slave)
+		lpi2c_imx_slave_init(lpi2c_imx);
+
+	return 0;
 }
 
 static const struct dev_pm_ops lpi2c_pm_ops = {
@@ -1113,7 +1351,7 @@ static const struct dev_pm_ops lpi2c_pm_ops = {
 
 static struct platform_driver lpi2c_imx_driver = {
 	.probe = lpi2c_imx_probe,
-	.remove = lpi2c_imx_remove,
+	.remove_new = lpi2c_imx_remove,
 	.driver = {
 		.name = DRIVER_NAME,
 		.of_match_table = lpi2c_imx_of_match,

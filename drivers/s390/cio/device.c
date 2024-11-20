@@ -80,7 +80,7 @@ ccw_bus_match (struct device * dev, struct device_driver * drv)
  * specified size. Return length of resulting string (excluding trailing '\0')
  * even if string doesn't fit buffer (snprintf semantics). */
 static int snprint_alias(char *buf, size_t size,
-			 struct ccw_device_id *id, const char *suffix)
+			 const struct ccw_device_id *id, const char *suffix)
 {
 	int len;
 
@@ -101,10 +101,10 @@ static int snprint_alias(char *buf, size_t size,
 
 /* Set up environment variables for ccw device uevent. Return 0 on success,
  * non-zero otherwise. */
-static int ccw_uevent(struct device *dev, struct kobj_uevent_env *env)
+static int ccw_uevent(const struct device *dev, struct kobj_uevent_env *env)
 {
-	struct ccw_device *cdev = to_ccwdev(dev);
-	struct ccw_device_id *id = &(cdev->id);
+	const struct ccw_device *cdev = to_ccwdev(dev);
+	const struct ccw_device_id *id = &(cdev->id);
 	int ret;
 	char modalias_buf[30];
 
@@ -244,10 +244,13 @@ int ccw_device_is_orphan(struct ccw_device *cdev)
 
 static void ccw_device_unregister(struct ccw_device *cdev)
 {
+	mutex_lock(&cdev->reg_mutex);
 	if (device_is_registered(&cdev->dev)) {
 		/* Undo device_add(). */
 		device_del(&cdev->dev);
 	}
+	mutex_unlock(&cdev->reg_mutex);
+
 	if (cdev->private->flags.initialized) {
 		cdev->private->flags.initialized = 0;
 		/* Release reference from device_initialize(). */
@@ -656,11 +659,13 @@ static void ccw_device_do_unbind_bind(struct ccw_device *cdev)
 {
 	int ret;
 
+	mutex_lock(&cdev->reg_mutex);
 	if (device_is_registered(&cdev->dev)) {
 		device_release_driver(&cdev->dev);
 		ret = device_attach(&cdev->dev);
 		WARN_ON(ret == -ENODEV);
 	}
+	mutex_unlock(&cdev->reg_mutex);
 }
 
 static void
@@ -743,6 +748,7 @@ static int io_subchannel_initialize_dev(struct subchannel *sch,
 	INIT_LIST_HEAD(&priv->cmb_list);
 	init_waitqueue_head(&priv->wait_q);
 	timer_setup(&priv->timer, ccw_device_timeout, 0);
+	mutex_init(&cdev->reg_mutex);
 
 	atomic_set(&priv->onoff, 0);
 	cdev->ccwlock = sch->lock;
@@ -828,6 +834,7 @@ static void io_subchannel_register(struct ccw_device *cdev)
 	 * be registered). We need to reprobe since we may now have sense id
 	 * information.
 	 */
+	mutex_lock(&cdev->reg_mutex);
 	if (device_is_registered(&cdev->dev)) {
 		if (!cdev->drv) {
 			ret = device_reprobe(&cdev->dev);
@@ -841,14 +848,6 @@ static void io_subchannel_register(struct ccw_device *cdev)
 		adjust_init_count = 0;
 		goto out;
 	}
-	/*
-	 * Now we know this subchannel will stay, we can throw
-	 * our delayed uevent.
-	 */
-	if (dev_get_uevent_suppress(&sch->dev)) {
-		dev_set_uevent_suppress(&sch->dev, 0);
-		kobject_uevent(&sch->dev.kobj, KOBJ_ADD);
-	}
 	/* make it known to the system */
 	ret = device_add(&cdev->dev);
 	if (ret) {
@@ -858,12 +857,14 @@ static void io_subchannel_register(struct ccw_device *cdev)
 		spin_lock_irqsave(sch->lock, flags);
 		sch_set_cdev(sch, NULL);
 		spin_unlock_irqrestore(sch->lock, flags);
+		mutex_unlock(&cdev->reg_mutex);
 		/* Release initial device reference. */
 		put_device(&cdev->dev);
 		goto out_err;
 	}
 out:
 	cdev->private->flags.recog_done = 1;
+	mutex_unlock(&cdev->reg_mutex);
 	wake_up(&cdev->private->wait_q);
 out_err:
 	if (adjust_init_count && atomic_dec_and_test(&ccw_device_init_count))
@@ -945,9 +946,9 @@ static int ccw_device_move_to_sch(struct ccw_device *cdev,
 			      cdev->private->dev_id.devno, sch->schid.ssid,
 			      sch->schib.pmcw.dev, rc);
 		if (old_enabled) {
-			/* Try to reenable the old subchannel. */
+			/* Try to re-enable the old subchannel. */
 			spin_lock_irq(old_sch->lock);
-			cio_enable_subchannel(old_sch, (u32)(addr_t)old_sch);
+			cio_enable_subchannel(old_sch, (u32)virt_to_phys(old_sch));
 			spin_unlock_irq(old_sch->lock);
 		}
 		/* Release child reference for new parent. */
@@ -1039,15 +1040,9 @@ static int io_subchannel_probe(struct subchannel *sch)
 				      "0.%x.%04x (rc=%d)\n",
 				      sch->schid.ssid, sch->schid.sch_no, rc);
 		/*
-		 * The console subchannel already has an associated ccw_device.
-		 * Throw the delayed uevent for the subchannel, register
-		 * the ccw_device and exit.
-		 */
-		if (dev_get_uevent_suppress(&sch->dev)) {
-			/* should always be the case for the console */
-			dev_set_uevent_suppress(&sch->dev, 0);
-			kobject_uevent(&sch->dev.kobj, KOBJ_ADD);
-		}
+		* The console subchannel already has an associated ccw_device.
+		* Register it and exit.
+		*/
 		cdev = sch_get_cdev(sch);
 		rc = device_add(&cdev->dev);
 		if (rc) {
@@ -1327,6 +1322,7 @@ static int purge_fn(struct device *dev, void *data)
 {
 	struct ccw_device *cdev = to_ccwdev(dev);
 	struct ccw_dev_id *id = &cdev->private->dev_id;
+	struct subchannel *sch = to_subchannel(cdev->dev.parent);
 
 	spin_lock_irq(cdev->ccwlock);
 	if (is_blacklisted(id->ssid, id->devno) &&
@@ -1335,6 +1331,7 @@ static int purge_fn(struct device *dev, void *data)
 		CIO_MSG_EVENT(3, "ccw: purging 0.%x.%04x\n", id->ssid,
 			      id->devno);
 		ccw_device_sched_todo(cdev, CDEV_TODO_UNREG);
+		css_sched_sch_todo(sch, SCH_TODO_UNREG);
 		atomic_set(&cdev->private->onoff, 0);
 	}
 	spin_unlock_irq(cdev->ccwlock);

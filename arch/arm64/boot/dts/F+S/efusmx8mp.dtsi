@@ -454,7 +454,7 @@
 #ifdef CONFIG_EFUSMX8MP_SGTL5000_AUDIO
 	assigned-clocks = <&clk IMX8MP_CLK_SAI2>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
-	init-on-array = <IMX8MP_CLK_AUDIO_BLK_CTRL_SAI2_MCLK1>;
+	init-on-array = <IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>;
 #endif
 };
 
@@ -960,7 +960,7 @@ pca9634: pca9634@61 {
 		compatible = "fsl,sgtl5000";
 		reg = <0xa>;
 		mono2both;
-		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI2_MCLK1>;
+		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>;
 		VDDA-supply = <&reg_sgtl5000_vdda>;
 		VDDIO-supply = <&reg_sgtl5000_vddio>;
 		VDDD-supply = <&reg_sgtl5000_vddd>;
@@ -1155,8 +1155,8 @@ pca9634: pca9634@61 {
 	assigned-clocks = <&clk IMX8MP_CLK_SAI2>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <24576000>;
-	clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI2_IPG>, <&clk IMX8MP_CLK_DUMMY>,
-		 <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI2_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
+	clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIOMIX_SAI2_IPG>, <&clk IMX8MP_CLK_DUMMY>,
+		 <&audio_blk_ctrl IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
 		 <&clk IMX8MP_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 	fsl,sai-mclk-direction-output;

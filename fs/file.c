@@ -46,27 +46,23 @@ static void free_fdtable_rcu(struct rcu_head *rcu)
 #define BITBIT_NR(nr)	BITS_TO_LONGS(BITS_TO_LONGS(nr))
 #define BITBIT_SIZE(nr)	(BITBIT_NR(nr) * sizeof(long))
 
+#define fdt_words(fdt) ((fdt)->max_fds / BITS_PER_LONG) // words in ->open_fds
 /*
  * Copy 'count' fd bits from the old table to the new table and clear the extra
  * space if any.  This does not copy the file pointers.  Called with the files
  * spinlock held for write.
  */
-static void copy_fd_bitmaps(struct fdtable *nfdt, struct fdtable *ofdt,
-			    unsigned int count)
+static inline void copy_fd_bitmaps(struct fdtable *nfdt, struct fdtable *ofdt,
+			    unsigned int copy_words)
 {
-	unsigned int cpy, set;
+	unsigned int nwords = fdt_words(nfdt);
 
-	cpy = count / BITS_PER_BYTE;
-	set = (nfdt->max_fds - count) / BITS_PER_BYTE;
-	memcpy(nfdt->open_fds, ofdt->open_fds, cpy);
-	memset((char *)nfdt->open_fds + cpy, 0, set);
-	memcpy(nfdt->close_on_exec, ofdt->close_on_exec, cpy);
-	memset((char *)nfdt->close_on_exec + cpy, 0, set);
-
-	cpy = BITBIT_SIZE(count);
-	set = BITBIT_SIZE(nfdt->max_fds) - cpy;
-	memcpy(nfdt->full_fds_bits, ofdt->full_fds_bits, cpy);
-	memset((char *)nfdt->full_fds_bits + cpy, 0, set);
+	bitmap_copy_and_extend(nfdt->open_fds, ofdt->open_fds,
+			copy_words * BITS_PER_LONG, nwords * BITS_PER_LONG);
+	bitmap_copy_and_extend(nfdt->close_on_exec, ofdt->close_on_exec,
+			copy_words * BITS_PER_LONG, nwords * BITS_PER_LONG);
+	bitmap_copy_and_extend(nfdt->full_fds_bits, ofdt->full_fds_bits,
+			copy_words, nwords);
 }
 
 /*
@@ -84,7 +80,7 @@ static void copy_fdtable(struct fdtable *nfdt, struct fdtable *ofdt)
 	memcpy(nfdt->fd, ofdt->fd, cpy);
 	memset((char *)nfdt->fd + cpy, 0, set);
 
-	copy_fd_bitmaps(nfdt, ofdt, ofdt->max_fds);
+	copy_fd_bitmaps(nfdt, ofdt, fdt_words(ofdt));
 }
 
 /*
@@ -374,7 +370,7 @@ struct files_struct *dup_fd(struct files_struct *oldf, unsigned int max_fds, int
 		open_files = sane_fdtable_size(old_fdt, max_fds);
 	}
 
-	copy_fd_bitmaps(new_fdt, old_fdt, open_files);
+	copy_fd_bitmaps(new_fdt, old_fdt, open_files / BITS_PER_LONG);
 
 	old_fds = old_fdt->fd;
 	new_fds = new_fdt->fd;
@@ -481,12 +477,12 @@ struct files_struct init_files = {
 
 static unsigned int find_next_fd(struct fdtable *fdt, unsigned int start)
 {
-	unsigned int maxfd = fdt->max_fds;
+	unsigned int maxfd = fdt->max_fds; /* always multiple of BITS_PER_LONG */
 	unsigned int maxbit = maxfd / BITS_PER_LONG;
 	unsigned int bitbit = start / BITS_PER_LONG;
 
 	bitbit = find_next_zero_bit(fdt->full_fds_bits, maxbit, bitbit) * BITS_PER_LONG;
-	if (bitbit > maxfd)
+	if (bitbit >= maxfd)
 		return maxfd;
 	if (bitbit > start)
 		start = bitbit;
@@ -630,33 +626,24 @@ EXPORT_SYMBOL(fd_install);
  * @files: file struct to retrieve file from
  * @fd: file descriptor to retrieve file for
  *
- * If this functions returns an EINVAL error pointer the fd was beyond the
- * current maximum number of file descriptors for that fdtable.
+ * Context: files_lock must be held.
  *
- * Returns: The file associated with @fd, on error returns an error pointer.
+ * Returns: The file associated with @fd (NULL if @fd is not open)
  */
 static struct file *pick_file(struct files_struct *files, unsigned fd)
 {
+	struct fdtable *fdt = files_fdtable(files);
 	struct file *file;
-	struct fdtable *fdt;
 
-	spin_lock(&files->file_lock);
-	fdt = files_fdtable(files);
-	if (fd >= fdt->max_fds) {
-		file = ERR_PTR(-EINVAL);
-		goto out_unlock;
-	}
+	if (fd >= fdt->max_fds)
+		return NULL;
+
 	fd = array_index_nospec(fd, fdt->max_fds);
 	file = fdt->fd[fd];
-	if (!file) {
-		file = ERR_PTR(-EBADF);
-		goto out_unlock;
+	if (file) {
+		rcu_assign_pointer(fdt->fd[fd], NULL);
+		__put_unused_fd(files, fd);
 	}
-	rcu_assign_pointer(fdt->fd[fd], NULL);
-	__put_unused_fd(files, fd);
-
-out_unlock:
-	spin_unlock(&files->file_lock);
 	return file;
 }
 
@@ -665,8 +652,10 @@ int close_fd(unsigned fd)
 	struct files_struct *files = current->files;
 	struct file *file;
 
+	spin_lock(&files->file_lock);
 	file = pick_file(files, fd);
-	if (IS_ERR(file))
+	spin_unlock(&files->file_lock);
+	if (!file)
 		return -EBADF;
 
 	return filp_close(file, files);
@@ -675,7 +664,7 @@ EXPORT_SYMBOL(close_fd); /* for ksys_close() */
 
 /**
  * last_fd - return last valid index into fd table
- * @cur_fds: files struct
+ * @fdt: File descriptor table.
  *
  * Context: Either rcu read lock or files_lock must be held.
  *
@@ -700,24 +689,30 @@ static inline void __range_cloexec(struct files_struct *cur_fds,
 	spin_unlock(&cur_fds->file_lock);
 }
 
-static inline void __range_close(struct files_struct *cur_fds, unsigned int fd,
+static inline void __range_close(struct files_struct *files, unsigned int fd,
 				 unsigned int max_fd)
 {
-	while (fd <= max_fd) {
-		struct file *file;
+	struct file *file;
+	unsigned n;
 
-		file = pick_file(cur_fds, fd++);
-		if (!IS_ERR(file)) {
-			/* found a valid file to close */
-			filp_close(file, cur_fds);
+	spin_lock(&files->file_lock);
+	n = last_fd(files_fdtable(files));
+	max_fd = min(max_fd, n);
+
+	for (; fd <= max_fd; fd++) {
+		file = pick_file(files, fd);
+		if (file) {
+			spin_unlock(&files->file_lock);
+			filp_close(file, files);
 			cond_resched();
-			continue;
+			spin_lock(&files->file_lock);
+		} else if (need_resched()) {
+			spin_unlock(&files->file_lock);
+			cond_resched();
+			spin_lock(&files->file_lock);
 		}
-
-		/* beyond the last fd in that table */
-		if (PTR_ERR(file) == -EINVAL)
-			return;
 	}
+	spin_unlock(&files->file_lock);
 }
 
 /**
@@ -725,6 +720,7 @@ static inline void __range_close(struct files_struct *cur_fds, unsigned int fd,
  *
  * @fd:     starting file descriptor to close
  * @max_fd: last file descriptor to close
+ * @flags:  CLOSE_RANGE flags.
  *
  * This closes a range of file descriptors. All file descriptors
  * from @fd up to and including @max_fd are closed.
@@ -796,43 +792,25 @@ int __close_range(unsigned fd, unsigned max_fd, unsigned int flags)
  * See close_fd_get_file() below, this variant assumes current->files->file_lock
  * is held.
  */
-int __close_fd_get_file(unsigned int fd, struct file **res)
+struct file *__close_fd_get_file(unsigned int fd)
 {
-	struct files_struct *files = current->files;
-	struct file *file;
-	struct fdtable *fdt;
-
-	fdt = files_fdtable(files);
-	if (fd >= fdt->max_fds)
-		goto out_err;
-	file = fdt->fd[fd];
-	if (!file)
-		goto out_err;
-	rcu_assign_pointer(fdt->fd[fd], NULL);
-	__put_unused_fd(files, fd);
-	get_file(file);
-	*res = file;
-	return 0;
-out_err:
-	*res = NULL;
-	return -ENOENT;
+	return pick_file(current->files, fd);
 }
 
 /*
  * variant of close_fd that gets a ref on the file for later fput.
- * The caller must ensure that filp_close() called on the file, and then
- * an fput().
+ * The caller must ensure that filp_close() called on the file.
  */
-int close_fd_get_file(unsigned int fd, struct file **res)
+struct file *close_fd_get_file(unsigned int fd)
 {
 	struct files_struct *files = current->files;
-	int ret;
+	struct file *file;
 
 	spin_lock(&files->file_lock);
-	ret = __close_fd_get_file(fd, res);
+	file = pick_file(files, fd);
 	spin_unlock(&files->file_lock);
 
-	return ret;
+	return file;
 }
 
 void do_close_on_exec(struct files_struct *files)
@@ -872,7 +850,7 @@ void do_close_on_exec(struct files_struct *files)
 }
 
 static inline struct file *__fget_files_rcu(struct files_struct *files,
-	unsigned int fd, fmode_t mask, unsigned int refs)
+	unsigned int fd, fmode_t mask)
 {
 	for (;;) {
 		struct file *file;
@@ -898,10 +876,9 @@ static inline struct file *__fget_files_rcu(struct files_struct *files,
 		 * Such a race can take two forms:
 		 *
 		 *  (a) the file ref already went down to zero,
-		 *      and get_file_rcu_many() fails. Just try
-		 *      again:
+		 *      and get_file_rcu() fails. Just try again:
 		 */
-		if (unlikely(!get_file_rcu_many(file, refs)))
+		if (unlikely(!get_file_rcu(file)))
 			continue;
 
 		/*
@@ -910,11 +887,11 @@ static inline struct file *__fget_files_rcu(struct files_struct *files,
 		 *       pointer having changed, because it always goes
 		 *       hand-in-hand with 'fdt'.
 		 *
-		 * If so, we need to put our refs and try again.
+		 * If so, we need to put our ref and try again.
 		 */
 		if (unlikely(rcu_dereference_raw(files->fdt) != fdt) ||
 		    unlikely(rcu_dereference_raw(*fdentry) != file)) {
-			fput_many(file, refs);
+			fput(file);
 			continue;
 		}
 
@@ -927,37 +904,31 @@ static inline struct file *__fget_files_rcu(struct files_struct *files,
 }
 
 static struct file *__fget_files(struct files_struct *files, unsigned int fd,
-				 fmode_t mask, unsigned int refs)
+				 fmode_t mask)
 {
 	struct file *file;
 
 	rcu_read_lock();
-	file = __fget_files_rcu(files, fd, mask, refs);
+	file = __fget_files_rcu(files, fd, mask);
 	rcu_read_unlock();
 
 	return file;
 }
 
-static inline struct file *__fget(unsigned int fd, fmode_t mask,
-				  unsigned int refs)
+static inline struct file *__fget(unsigned int fd, fmode_t mask)
 {
-	return __fget_files(current->files, fd, mask, refs);
-}
-
-struct file *fget_many(unsigned int fd, unsigned int refs)
-{
-	return __fget(fd, FMODE_PATH, refs);
+	return __fget_files(current->files, fd, mask);
 }
 
 struct file *fget(unsigned int fd)
 {
-	return __fget(fd, FMODE_PATH, 1);
+	return __fget(fd, FMODE_PATH);
 }
 EXPORT_SYMBOL(fget);
 
 struct file *fget_raw(unsigned int fd)
 {
-	return __fget(fd, 0, 1);
+	return __fget(fd, 0);
 }
 EXPORT_SYMBOL(fget_raw);
 
@@ -967,7 +938,7 @@ struct file *fget_task(struct task_struct *task, unsigned int fd)
 
 	task_lock(task);
 	if (task->files)
-		file = __fget_files(task->files, fd, 0, 1);
+		file = __fget_files(task->files, fd, 0);
 	task_unlock(task);
 
 	return file;
@@ -1008,6 +979,7 @@ struct file *task_lookup_next_fd_rcu(struct task_struct *task, unsigned int *ret
 	*ret_fd = fd;
 	return file;
 }
+EXPORT_SYMBOL(task_lookup_next_fd_rcu);
 
 /*
  * Lightweight file lookup - no refcnt increment if fd table isn't shared.
@@ -1045,7 +1017,7 @@ static unsigned long __fget_light(unsigned int fd, fmode_t mask)
 			return 0;
 		return (unsigned long)file;
 	} else {
-		file = __fget(fd, mask, 1);
+		file = __fget(fd, mask);
 		if (!file)
 			return 0;
 		return FDPUT_FPUT | (unsigned long)file;
@@ -1075,7 +1047,7 @@ unsigned long __fdget_raw(unsigned int fd)
 static inline bool file_needs_f_pos_lock(struct file *file)
 {
 	return (file->f_mode & FMODE_ATOMIC_POS) &&
-		(file_count(file) > 1 || S_ISDIR(file_inode(file)->i_mode));
+		(file_count(file) > 1 || file->f_op->iterate_shared);
 }
 
 unsigned long __fdget_pos(unsigned int fd)
@@ -1148,6 +1120,7 @@ __releases(&files->file_lock)
 	 * tables and this condition does not arise without those.
 	 */
 	fdt = files_fdtable(files);
+	fd = array_index_nospec(fd, fdt->max_fds);
 	tofree = fdt->fd[fd];
 	if (!tofree && fd_is_open(fd, fdt))
 		goto Ebusy;

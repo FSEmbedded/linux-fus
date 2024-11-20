@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-3-Clause-Clear */
 /*
  * Copyright (c) 2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _ATH11K_THERMAL_
@@ -19,7 +20,7 @@ struct ath11k_thermal {
 
 	/* protected by conf_mutex */
 	u32 throttle_state;
-	/* temperature value in Celcius degree
+	/* temperature value in Celsius degree
 	 * protected by data_lock
 	 */
 	int temperature;

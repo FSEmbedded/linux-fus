@@ -5,7 +5,10 @@
 #include <asm/page_64_types.h>
 
 #ifndef __ASSEMBLY__
+#include <asm/cpufeatures.h>
 #include <asm/alternative.h>
+
+#include <linux/kmsan-checks.h>
 
 /* duplicated to the one in bootmem.h */
 extern unsigned long max_pfn;
@@ -14,6 +17,7 @@ extern unsigned long phys_base;
 extern unsigned long page_offset_base;
 extern unsigned long vmalloc_base;
 extern unsigned long vmemmap_base;
+extern unsigned long physmem_end;
 
 static __always_inline unsigned long __phys_addr_nodebug(unsigned long x)
 {
@@ -36,16 +40,17 @@ extern unsigned long __phys_addr_symbol(unsigned long);
 
 #define __phys_reloc_hide(x)	(x)
 
-#ifdef CONFIG_FLATMEM
-#define pfn_valid(pfn)          ((pfn) < max_pfn)
-#endif
-
 void clear_page_orig(void *page);
 void clear_page_rep(void *page);
 void clear_page_erms(void *page);
 
 static inline void clear_page(void *page)
 {
+	/*
+	 * Clean up KMSAN metadata for the page being cleared. The assembly call
+	 * below clobbers @page, so we perform unpoisoning before it.
+	 */
+	kmsan_unpoison_memory(page, PAGE_SIZE);
 	alternative_call_2(clear_page_orig,
 			   clear_page_rep, X86_FEATURE_REP_GOOD,
 			   clear_page_erms, X86_FEATURE_ERMS,

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
- * Copyright 2021-2022 NXP
+ * Copyright 2021 NXP
  */
 
 #include <dt-bindings/clock/imx8ulp-clock.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/power/imx8ulp-power.h>
 #include <dt-bindings/reset/imx8ulp-pcc-reset.h>
 #include <dt-bindings/power/imx8ulp-power.h>
 #include <dt-bindings/reset/imx8ulp-sim-reset.h>
@@ -64,6 +65,8 @@
 
 		A35_L2: l2-cache0 {
 			compatible = "cache";
+			cache-level = <2>;
+			cache-unified;
 		};
 
 		idle-states {
@@ -89,12 +92,13 @@
 		interrupts = <GIC_PPI 9 IRQ_TYPE_LEVEL_HIGH>;
 	};
 
-	gpu: gpu {
+	gpu: gpu@2e000000 {
 		compatible = "fsl,imx8-gpu-ss";
 		cores = <&gpu3d>, <&gpu2d>;
 		reg = <0x0 0x80000000 0x0 0x80000000>,
 			<0x0 0x0 0x0 0x08000000>;
 		reg-names = "phys_baseaddr", "contiguous_mem";
+		timeout-scale = <10>;
 	};
 
 	pmu {
@@ -124,7 +128,8 @@
 		cpu-thermal {
 			polling-delay-passive = <250>;
 			polling-delay = <2000>;
-			thermal-sensors = <&scmi_sensor>;
+			thermal-sensors = <&scmi_sensor 0>;
+
 			trips {
 				cpu_alert0: trip0 {
 					temperature = <85000>;
@@ -177,19 +182,6 @@
 		#clock-cells = <0>;
 	};
 
-	clock_ext_rmii: clock-ext-rmii {
-		compatible = "fixed-clock";
-		clock-frequency = <50000000>;
-		#clock-cells = <0>;
-		clock-output-names = "ext_rmii_clk";
-	};
-
-	clock_ext_ts: clock-ext-ts {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-output-names = "ext_ts_clk";
-	};
-
 	sram0: sram@22010000 {
 		compatible = "mmio-sram";
 		reg = <0x0 0x22010000 0x0 0x00010000>;
@@ -198,7 +190,7 @@
 		#size-cells = <1>;
 		ranges = <0 0x0 0x2201f000 0x1000>;
 
-		scmi_buf: scmi_buf@0 {
+		scmi_buf: scmi-sram-section@0 {
 			compatible = "arm,scmi-shmem";
 			reg = <0x0 0x400>;
 		};
@@ -219,7 +211,7 @@
 
 			scmi_sensor: protocol@15 {
 				reg = <0x15>;
-				#thermal-sensor-cells = <0>;
+				#thermal-sensor-cells = <1>;
 			};
 		};
 	};
@@ -228,7 +220,18 @@
 		compatible = "fsl,imx-rpmsg-rtc";
 	};
 
-	soc@0 {
+	ele_mu: ele-mu {
+		compatible = "fsl,imx-ele";
+		mboxes = <&s4muap 0 0 &s4muap 1 0>;
+		mbox-names = "tx", "rx";
+		fsl,ele_mu_did = <7>;
+		fsl,ele_mu_id = <2>;
+		fsl,ele_mu_max_users = <4>;
+		status = "okay";
+		sram-pool = <&sram0>;
+	};
+
+	soc: soc@0 {
 		compatible = "simple-bus";
 		#address-cells = <1>;
 		#size-cells = <1>;
@@ -246,25 +249,17 @@
 			compatible = "fsl,imx8ulp-ocotp", "syscon";
 			reg = <0x27010000 0x1000>;
 			status = "okay";
+
+			fec_mac_address: mac-address@ac {
+				reg = <0xac 6>;
+			};
 		};
 
-		s4muap: s4muap@27020000 {
+		s4muap: mailbox@27020000 {
 			compatible = "fsl,imx8ulp-mu-s4";
 			reg = <0x27020000 0x10000>;
 			interrupts = <GIC_SPI 79 IRQ_TYPE_LEVEL_HIGH>;
 			#mbox-cells = <2>;
-			status = "okay";
-		};
-
-		ele_mu: ele-mu {
-			compatible = "fsl,imx-ele";
-			mboxes = <&s4muap 0 0 &s4muap 1 0>;
-			mbox-names = "tx", "rx";
-			fsl,ele_mu_did = <7>;
-			fsl,ele_mu_id = <2>;
-			fsl,ele_mu_max_users = <4>;
-			status = "okay";
-			sram-pool = <&sram0>;
 		};
 
 		dsp: dsp@21170000 {
@@ -274,7 +269,7 @@
 				 <&cgc2 IMX8ULP_CLK_LPAV_BUS_DIV>,
 				 <&cgc2 IMX8ULP_CLK_HIFI_DIVPLAT>,
 				 <&pcc5 IMX8ULP_CLK_MU3_B>;
-			clock-names = "dsp_clk1", "dsp_clk2", "dsp_clk3", "per_clk1";
+			clock-names = "core", "ipg", "ocram", "mu";
 			power-domains = <&scmi_devpd IMX8ULP_PD_HIFI4>;
 			firmware-name = "imx/dsp/hifi4.bin";
 			mbox-names = "tx", "rx", "rxdb";
@@ -312,6 +307,7 @@
 				      <0x291e0000 0x10000>, <0x291f0000 0x10000>,
 				      <0x29200000 0x10000>, <0x29210000 0x10000>;
 				#dma-cells = <3>;
+				shared-interrupt;
 				dma-channels = <32>;
 				interrupts = <GIC_SPI 0 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 1 IRQ_TYPE_LEVEL_HIGH>,
@@ -421,15 +417,13 @@
 				interrupts = <GIC_SPI 76 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&pcc3 IMX8ULP_CLK_WDOG3>;
 				assigned-clocks = <&pcc3 IMX8ULP_CLK_WDOG3>;
-				assigned-clocks-parents = <&cgc1 IMX8ULP_CLK_SOSC_DIV2>;
+				assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SOSC_DIV2>;
 				timeout-sec = <40>;
 			};
 
 			cgc1: clock-controller@292c0000 {
 				compatible = "fsl,imx8ulp-cgc1";
 				reg = <0x292c0000 0x10000>;
-				clocks = <&rosc>, <&sosc>, <&frosc>, <&lposc>;
-				clock-names = "rosc", "sosc", "frosc", "lposc";
 				#clock-cells = <1>;
 				assigned-clocks = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
 				assigned-clock-rates = <12288000>;
@@ -483,8 +477,8 @@
 				status = "okay";
 			};
 
-			flexio_i2c_master: flexio@29350000 {
-				compatible = "imx,flexio_i2c_master";
+			flexio1: flexio@29350000 {
+				compatible = "nxp,imx-flexio";
 				reg = <0x29350000 0x10000>;
 				interrupts = <GIC_SPI 91 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&pcc3 IMX8ULP_CLK_FLEXIO1>,
@@ -494,6 +488,14 @@
 				assigned-clock-parents = <&cgc1 IMX8ULP_CLK_XBAR_DIVBUS>;
 				assigned-clock-rates = <24000000>;
 				status = "disabled";
+
+				flexio_i2c: flexio-i2c {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					compatible = "nxp,imx-flexio-i2c-master";
+					clock-frequency = <100000>;
+					status = "disabled";
+				};
 			};
 
 			i3c2: i3c-master@29360000 {
@@ -551,8 +553,8 @@
 				assigned-clocks = <&pcc3 IMX8ULP_CLK_LPUART4>;
 				assigned-clock-parents = <&cgc1 IMX8ULP_CLK_FROSC_DIV2>;
 				assigned-clock-rates = <48000000>;
-				dmas = <&edma1 56 0 0>, <&edma1 55 0 1>;
-				dma-names = "tx","rx";
+				dmas = <&edma1 55 0 1>, <&edma1 56 0 0> ;
+				dma-names = "rx", "tx";
 				status = "disabled";
 			};
 
@@ -565,6 +567,8 @@
 				assigned-clocks = <&pcc3 IMX8ULP_CLK_LPUART5>;
 				assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SOSC_DIV2>;
 				assigned-clock-rates = <24000000>;
+				dmas = <&edma1 57 0 1>, <&edma1 58 0 0> ;
+				dma-names = "rx", "tx";
 				status = "disabled";
 			};
 
@@ -618,17 +622,17 @@
 			};
 
 			flexspi2: spi@29810000 {
-				#address-cells = <1>;
-				#size-cells = <0>;
 				compatible = "nxp,imx8mm-fspi";
 				reg = <0x29810000 0x10000>, <0x60000000 0x10000000>;
 				reg-names = "fspi_base", "fspi_mmap";
+				#address-cells = <1>;
+				#size-cells = <0>;
 				interrupts = <GIC_SPI 141 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&pcc4 IMX8ULP_CLK_FLEXSPI2>,
 					 <&pcc4 IMX8ULP_CLK_FLEXSPI2>;
 				clock-names = "fspi", "fspi_en";
 				assigned-clocks = <&pcc4 IMX8ULP_CLK_FLEXSPI2>;
-				assigned-clock-parents = <&cgc1 IMX8ULP_CLK_FROSC_DIV1>;
+				assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD3_DIV2>;
 				status = "disabled";
 			};
 
@@ -671,8 +675,8 @@
 				assigned-clocks = <&pcc4 IMX8ULP_CLK_LPUART6>;
 				assigned-clock-parents = <&cgc1 IMX8ULP_CLK_FROSC_DIV2>;
 				assigned-clock-rates = <48000000>;
-				dmas = <&edma1 60 0 0>, <&edma1 59 0 1>;
-				dma-names = "tx","rx";
+				dmas = <&edma1 59 0 1>, <&edma1 60 0 0>;
+				dma-names = "rx", "tx";
 				status = "disabled";
 			};
 
@@ -685,8 +689,8 @@
 				assigned-clocks = <&pcc4 IMX8ULP_CLK_LPUART7>;
 				assigned-clock-parents = <&cgc1 IMX8ULP_CLK_FROSC_DIV2>;
 				assigned-clock-rates = <48000000>;
-				dmas = <&edma1 62 0 0>, <&edma1 61 0 1>;
-				dma-names = "tx","rx";
+				dmas = <&edma1 61 0 1>, <&edma1 62 0 0>;
+				dma-names = "rx", "tx";
 				status = "disabled";
 			};
 
@@ -732,11 +736,12 @@
 					 <&pcc4 IMX8ULP_CLK_USDHC0>;
 				clock-names = "ipg", "ahb", "per";
 				power-domains = <&scmi_devpd IMX8ULP_PD_USDHC0>;
-				assigned-clocks = <&cgc1 IMX8ULP_CLK_SPLL3_PFD3_DIV1>, <&pcc4 IMX8ULP_CLK_USDHC0>;
+				assigned-clocks = <&cgc1 IMX8ULP_CLK_SPLL3_PFD3_DIV1>,
+						  <&pcc4 IMX8ULP_CLK_USDHC0>;
 				assigned-clock-parents = <0>, <&cgc1 IMX8ULP_CLK_SPLL3_PFD3_DIV1>;
 				assigned-clock-rates = <389283840>, <389283840>;
 				fsl,tuning-start-tap = <20>;
-				fsl,tuning-step= <2>;
+				fsl,tuning-step = <2>;
 				bus-width = <4>;
 				status = "disabled";
 			};
@@ -750,11 +755,12 @@
 					 <&pcc4 IMX8ULP_CLK_USDHC1>;
 				clock-names = "ipg", "ahb", "per";
 				power-domains = <&scmi_devpd IMX8ULP_PD_USDHC1>;
-				assigned-clocks = <&cgc1 IMX8ULP_CLK_SPLL3_PFD3_DIV2>, <&pcc4 IMX8ULP_CLK_USDHC1>;
+				assigned-clocks = <&cgc1 IMX8ULP_CLK_SPLL3_PFD3_DIV2>,
+						  <&pcc4 IMX8ULP_CLK_USDHC1>;
 				assigned-clock-parents = <0>, <&cgc1 IMX8ULP_CLK_SPLL3_PFD3_DIV2>;
 				assigned-clock-rates = <194641920>, <194641920>;
 				fsl,tuning-start-tap = <20>;
-				fsl,tuning-step= <2>;
+				fsl,tuning-step = <2>;
 				bus-width = <4>;
 				status = "disabled";
 			};
@@ -768,11 +774,12 @@
 					 <&pcc4 IMX8ULP_CLK_USDHC2>;
 				clock-names = "ipg", "ahb", "per";
 				power-domains = <&scmi_devpd IMX8ULP_PD_USDHC2_USB1>;
-				assigned-clocks = <&cgc1 IMX8ULP_CLK_SPLL3_PFD3_DIV2>, <&pcc4 IMX8ULP_CLK_USDHC2>;
+				assigned-clocks = <&cgc1 IMX8ULP_CLK_SPLL3_PFD3_DIV2>,
+						  <&pcc4 IMX8ULP_CLK_USDHC2>;
 				assigned-clock-parents = <0>, <&cgc1 IMX8ULP_CLK_SPLL3_PFD3_DIV2>;
 				assigned-clock-rates = <194641920>, <194641920>;
 				fsl,tuning-start-tap = <20>;
-				fsl,tuning-step= <2>;
+				fsl,tuning-step = <2>;
 				bus-width = <4>;
 				status = "disabled";
 			};
@@ -838,27 +845,25 @@
 			};
 
 			fec: ethernet@29950000 {
-				compatible = "fsl,imx8ulp-fec", "fsl,imx6ul-fec";
+				compatible = "fsl,imx8ulp-fec", "fsl,imx6ul-fec", "fsl,imx6q-fec";
 				reg = <0x29950000 0x10000>;
 				interrupts = <GIC_SPI 107 IRQ_TYPE_LEVEL_HIGH>;
 				interrupt-names = "int0";
-				clocks = <&cgc1 IMX8ULP_CLK_XBAR_DIVBUS>,
-					 <&pcc4 IMX8ULP_CLK_ENET>,
-					 <&cgc1 IMX8ULP_CLK_ENET_TS_SEL>,
-					 <&clock_ext_rmii>;
-				clock-names = "ipg", "ahb", "ptp", "enet_clk_ref";
 				fsl,num-tx-queues = <1>;
 				fsl,num-rx-queues = <1>;
+				nvmem-cells = <&fec_mac_address>;
+				nvmem-cell-names = "mac-address";
 				status = "disabled";
 			};
 		};
 
 		gpioe: gpio@2d000000 {
-				compatible = "fsl,imx8ulp-gpio", "fsl,imx7ulp-gpio";
-				reg = <0x2d000080 0x1000>, <0x2d000040 0x40>;
+				compatible = "fsl,imx8ulp-gpio";
+				reg = <0x2d000000 0x1000>;
 				gpio-controller;
 				#gpio-cells = <2>;
-				interrupts = <GIC_SPI 129 IRQ_TYPE_LEVEL_HIGH>;
+				interrupts = <GIC_SPI 129 IRQ_TYPE_LEVEL_HIGH>,
+					     <GIC_SPI 130 IRQ_TYPE_LEVEL_HIGH>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				clocks = <&pcc4 IMX8ULP_CLK_RGPIOE>,
@@ -868,11 +873,12 @@
 		};
 
 		gpiof: gpio@2d010000 {
-				compatible = "fsl,imx8ulp-gpio", "fsl,imx7ulp-gpio";
-				reg = <0x2d010080 0x1000>, <0x2d010040 0x40>;
+				compatible = "fsl,imx8ulp-gpio";
+				reg = <0x2d010000 0x1000>;
 				gpio-controller;
 				#gpio-cells = <2>;
-				interrupts = <GIC_SPI 131 IRQ_TYPE_LEVEL_HIGH>;
+				interrupts = <GIC_SPI 131 IRQ_TYPE_LEVEL_HIGH>,
+					     <GIC_SPI 132 IRQ_TYPE_LEVEL_HIGH>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				clocks = <&pcc4 IMX8ULP_CLK_RGPIOF>,
@@ -908,6 +914,7 @@
 				      <0x2d9d0000 0x10000>, <0x2d9e0000 0x10000>,
 				      <0x2d9f0000 0x10000>, <0x2da00000 0x10000>;
 				#dma-cells = <3>;
+				shared-interrupt;
 				dma-channels = <32>;
 				interrupts = <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>,
@@ -1014,8 +1021,6 @@
 			cgc2: clock-controller@2da60000 {
 				compatible = "fsl,imx8ulp-cgc2";
 				reg = <0x2da60000 0x10000>;
-				clocks = <&sosc>, <&frosc>;
-				clock-names = "sosc", "frosc";
 				#clock-cells = <1>;
 			};
 
@@ -1094,15 +1099,17 @@
 					power-domains = <&scmi_devpd IMX8ULP_PD_ISI>;
 					interface = <2 0 2>;
 					no-reset-control;
-					statu = "disabled";
+					runtime_suspend;
+					status = "disabled";
 
 					cap_device {
 						compatible = "imx-isi-capture";
+						runtime_suspend;
 						status = "disabled";
 					};
 				};
 
-				mipi_csi0: csi@2dad0000 {
+				mipi_csi0: csi@2daf0000 {
 					compatible = "fsl,imx8ulp-mipi-csi2", "fsl,mxc-mipi-csi2";
 					reg = <0x2daf0000 0x10000>,
 					      <0x2dad0000 0x10000>;
@@ -1115,21 +1122,20 @@
 					assigned-clocks = <&cgc2 IMX8ULP_CLK_PLL4_PFD1>,
 							  <&cgc2 IMX8ULP_CLK_PLL4_PFD1_DIV1>,
 							  <&cgc2 IMX8ULP_CLK_PLL4_PFD1_DIV2>,
-							  <&cgc2 IMX8ULP_CLK_PLL4_PFD3>,
 							  <&pcc5 IMX8ULP_CLK_CSI>,
 							  <&pcc5 IMX8ULP_CLK_CSI_CLK_UI>,
 							  <&pcc5 IMX8ULP_CLK_CSI_CLK_ESC>;
-					assigned-clock-parents = <0>, <0>, <0>, <0>,
+					assigned-clock-parents = <0>, <0>, <0>,
 								 <&cgc2 IMX8ULP_CLK_PLL4_PFD1_DIV1>,
 								 <&cgc2 IMX8ULP_CLK_PLL4_PFD1_DIV2>,
-								 <&cgc2 IMX8ULP_CLK_PLL4_PFD3_DIV2>;
-					assigned-clock-rates =  <528000000>,
-								<176000000>,
-								<132000000>,
-								<396000000>,
-								<176000000>,
-								<132000000>,
+								 <&cgc2 IMX8ULP_CLK_PLL4_PFD1_DIV2>;
+					assigned-clock-rates =  <316800000>,
+								<316800000>,
+								<316800000>,
+								<105600000>,
+								<79200000>,
 								<79200000>;
+					runtime_suspend;
 					status = "disabled";
 				};
 			};
@@ -1137,8 +1143,6 @@
 			dsi: dsi@2db00000 {
 				compatible = "fsl,imx8ulp-nwl-dsi";
 				reg = <0x2db00000 0x300>;
-				#address-cells = <1>;
-				#size-cells = <0>;
 				clocks = <&cgc2 IMX8ULP_CLK_LPAV_BUS_DIV>,
 					 <&pcc5 IMX8ULP_CLK_DSI>,
 					 <&pcc5 IMX8ULP_CLK_DSI_TX_ESC>,
@@ -1146,7 +1150,7 @@
 				clock-names = "core", "rx_esc", "tx_esc", "phy_ref";
 				power-domains = <&scmi_devpd IMX8ULP_PD_MIPI_DSI>;
 				assigned-clocks = <&pcc5 IMX8ULP_CLK_DSI>;
-				assigned-clock-parents = <&cgc2 IMX8ULP_CLK_PLL4_PFD3_DIV2>;
+				assigned-clock-parents = <&cgc2 IMX8ULP_CLK_PLL4_PFD1_DIV2>;
 				assigned-clock-rates = <79200000>;
 				interrupts = <GIC_SPI 114 IRQ_TYPE_LEVEL_HIGH>;
 				mux-controls = <&mux 0>;
@@ -1197,9 +1201,8 @@
 					 <&pcc5 IMX8ULP_CLK_EPDC>,
 					 <&cgc2 IMX8ULP_CLK_LPAV_AHB_DIV>;
 				clock-names = "epdc_axi", "epdc_pix", "epdc_ahb";
-				assigned-clocks = <&pcc5 IMX8ULP_CLK_EPDC>, <&cgc2 IMX8ULP_CLK_PLL4_PFD0_DIV2>;
-				assigned-clock-parents = <&cgc2 IMX8ULP_CLK_PLL4_PFD0_DIV2>;
-				assigned-clock-rates = <0>, <40000000>;
+				assigned-clocks = <&pcc5 IMX8ULP_CLK_EPDC>;
+				assigned-clock-parents = <&cgc2 IMX8ULP_CLK_PLL4_PFD1_DIV1>;
 				power-domains = <&scmi_devpd IMX8ULP_PD_PXP>;
 				interrupts = <GIC_SPI 117 IRQ_TYPE_LEVEL_HIGH>;
 				status = "disabled";
@@ -1222,36 +1225,40 @@
 			reg = <0x2e000000 0x10000>;
 			interrupts =  <GIC_SPI 115 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&pcc5 IMX8ULP_CLK_GPU3D>,
-				<&cgc1 IMX8ULP_CLK_DUMMY>;
+				<&cgc1 IMX8ULP_CLK_DUMMY>,
+				<&cgc2 IMX8ULP_CLK_LPAV_AXI_DIV>,
+				<&cgc2 IMX8ULP_CLK_LPAV_AHB_DIV>;
 			power-domains = <&scmi_devpd IMX8ULP_PD_GPU3D>;
-			clock-names = "core", "shader";
+			clock-names = "core", "shader", "axi", "ahb";
 			assigned-clocks = <&cgc2 IMX8ULP_CLK_PLL4_PFD2>,
 				<&cgc2 IMX8ULP_CLK_PLL4_PFD2_DIV2>,
 				<&pcc5 IMX8ULP_CLK_GPU3D>;
 			assigned-clock-parents = <0>,
 				<0>,
 				<&cgc2 IMX8ULP_CLK_PLL4_PFD2_DIV2>;
-			assigned-clock-rates = <316800000>,
-				<316800000>,
-				<316800000>;
+			assigned-clock-rates = <288000000>,
+				<288000000>,
+				<288000000>;
 		};
 
 		gpu2d: gpu2d@2e010000 {
 			compatible = "fsl,imx8-gpu";
 			reg = <0x2e010000 0x40000>;
 			interrupts =  <GIC_SPI 116 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&pcc5 IMX8ULP_CLK_GPU2D>;
+			clocks = <&pcc5 IMX8ULP_CLK_GPU2D>,
+				<&cgc2 IMX8ULP_CLK_LPAV_AXI_DIV>,
+				<&cgc2 IMX8ULP_CLK_LPAV_AHB_DIV>;
 			power-domains = <&scmi_devpd IMX8ULP_PD_GPU2D>;
-			clock-names = "core";
+			clock-names = "core", "axi", "ahb";
 			assigned-clocks = <&cgc2 IMX8ULP_CLK_PLL4_PFD2>,
 				<&cgc2 IMX8ULP_CLK_PLL4_PFD2_DIV2>,
 				<&pcc5 IMX8ULP_CLK_GPU2D>;
 			assigned-clock-parents = <0>,
 				<0>,
 				<&cgc2 IMX8ULP_CLK_PLL4_PFD2_DIV2>;
-			assigned-clock-rates = <316800000>,
-				<316800000>,
-				<316800000>;
+			assigned-clock-rates = <288000000>,
+				<288000000>,
+				<288000000>;
 		};
 
 		dcnano: display-controller@2e050000 {
@@ -1265,7 +1272,7 @@
 			resets = <&pcc5 PCC5_DC_NANO_SWRST>;
 			power-domains = <&scmi_devpd IMX8ULP_PD_DCNANO>;
 			assigned-clocks = <&pcc5 IMX8ULP_CLK_DC_NANO>;
-			assigned-clock-parents = <&cgc2 IMX8ULP_CLK_PLL4_PFD0_DIV1>;
+			assigned-clock-parents = <&cgc2 IMX8ULP_CLK_PLL4_PFD3_DIV2>;
 			status = "disabled";
 
 			ports {
@@ -1303,12 +1310,19 @@
 			};
 		};
 
+		ddrc: memory-controller@2e060000 {
+			compatible = "nxp,imx8ulp-ddrc";
+			reg = <0x2e060000 0x10000>;
+			interrupts = <GIC_SPI 145 IRQ_TYPE_LEVEL_HIGH>;
+		};
+
 		gpiod: gpio@2e200000 {
-			compatible = "fsl,imx8ulp-gpio", "fsl,imx7ulp-gpio";
-			reg = <0x2e200080 0x1000>, <0x2e200040 0x40>;
+			compatible = "fsl,imx8ulp-gpio";
+			reg = <0x2e200000 0x1000>;
 			gpio-controller;
 			#gpio-cells = <2>;
-			interrupts = <GIC_SPI 127 IRQ_TYPE_LEVEL_HIGH>;
+			interrupts = <GIC_SPI 127 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 128 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-controller;
 			#interrupt-cells = <2>;
 			clocks = <&pcc5 IMX8ULP_CLK_RGPIOD>,
@@ -1321,4 +1335,12 @@
 	rpmsg-lifecycle {
 		compatible = "nxp,rpmsg-lifecycle";
 	};
+
+	ele_fw2: se-fw2 {
+		 compatible = "fsl,imx8ulp-se-fw";
+		 mbox-names = "tx", "rx";
+		 mboxes = <&s4muap 0 0>,
+			<&s4muap 1 0>;
+		 sram = <&sram0>;
+	 };
 };

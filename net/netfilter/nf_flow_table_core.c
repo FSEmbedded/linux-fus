@@ -39,22 +39,28 @@ flow_offload_fill_dir(struct flow_offload *flow,
 
 	ft->l3proto = ctt->src.l3num;
 	ft->l4proto = ctt->dst.protonum;
-	ft->src_port = ctt->src.u.tcp.port;
-	ft->dst_port = ctt->dst.u.tcp.port;
+
+	switch (ctt->dst.protonum) {
+	case IPPROTO_TCP:
+	case IPPROTO_UDP:
+		ft->src_port = ctt->src.u.tcp.port;
+		ft->dst_port = ctt->dst.u.tcp.port;
+		break;
+	}
 }
 
 struct flow_offload *flow_offload_alloc(struct nf_conn *ct)
 {
 	struct flow_offload *flow;
 
-	if (unlikely(nf_ct_is_dying(ct) ||
-	    !refcount_inc_not_zero(&ct->ct_general.use)))
+	if (unlikely(nf_ct_is_dying(ct)))
 		return NULL;
 
 	flow = kzalloc(sizeof(*flow), GFP_ATOMIC);
 	if (!flow)
-		goto err_ct_refcnt;
+		return NULL;
 
+	refcount_inc(&ct->ct_general.use);
 	flow->ct = ct;
 
 	flow_offload_fill_dir(flow, FLOW_OFFLOAD_DIR_ORIGINAL);
@@ -66,11 +72,6 @@ struct flow_offload *flow_offload_alloc(struct nf_conn *ct)
 		__set_bit(NF_FLOW_DNAT, &flow->flags);
 
 	return flow;
-
-err_ct_refcnt:
-	nf_ct_put(ct);
-
-	return NULL;
 }
 EXPORT_SYMBOL_GPL(flow_offload_alloc);
 
@@ -185,8 +186,11 @@ static void flow_offload_fixup_ct(struct nf_conn *ct)
 		timeout -= tn->offload_timeout;
 	} else if (l4num == IPPROTO_UDP) {
 		struct nf_udp_net *tn = nf_udp_pernet(net);
+		enum udp_conntrack state =
+			test_bit(IPS_SEEN_REPLY_BIT, &ct->status) ?
+			UDP_CT_REPLIED : UDP_CT_UNREPLIED;
 
-		timeout = tn->timeouts[UDP_CT_REPLIED];
+		timeout = tn->timeouts[state];
 		timeout -= tn->offload_timeout;
 	} else {
 		return;
@@ -306,12 +310,12 @@ int flow_offload_add(struct nf_flowtable *flow_table, struct flow_offload *flow)
 EXPORT_SYMBOL_GPL(flow_offload_add);
 
 void flow_offload_refresh(struct nf_flowtable *flow_table,
-			  struct flow_offload *flow)
+			  struct flow_offload *flow, bool force)
 {
 	u32 timeout;
 
 	timeout = nf_flowtable_time_stamp + flow_offload_get_timeout(flow);
-	if (timeout - READ_ONCE(flow->timeout) > HZ)
+	if (force || timeout - READ_ONCE(flow->timeout) > HZ)
 		WRITE_ONCE(flow->timeout, timeout);
 	else
 		return;
@@ -408,11 +412,18 @@ nf_flow_table_iterate(struct nf_flowtable *flow_table,
 	return err;
 }
 
+static bool nf_flow_custom_gc(struct nf_flowtable *flow_table,
+			      const struct flow_offload *flow)
+{
+	return flow_table->type->gc && flow_table->type->gc(flow);
+}
+
 static void nf_flow_offload_gc_step(struct nf_flowtable *flow_table,
 				    struct flow_offload *flow, void *data)
 {
 	if (nf_flow_has_expired(flow) ||
-	    nf_ct_is_dying(flow->ct))
+	    nf_ct_is_dying(flow->ct) ||
+	    nf_flow_custom_gc(flow_table, flow))
 		flow_offload_teardown(flow);
 
 	if (test_bit(NF_FLOW_TEARDOWN, &flow->flags)) {

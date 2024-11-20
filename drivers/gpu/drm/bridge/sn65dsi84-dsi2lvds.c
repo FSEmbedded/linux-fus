@@ -92,8 +92,7 @@ static int sn65dsi84_write_reg(struct i2c_client *client, u8 addr, const u8 val)
 	return sn65dsi84_i2c_write(client, buf, sizeof(buf));
 }
 
-static int sn65dsi84_probe(struct i2c_client *client,
-			   const struct i2c_device_id *id)
+static int sn65dsi84_probe(struct i2c_client *client)
 {
 	struct property *prop;
 	int err;
@@ -193,15 +192,13 @@ static int sn65dsi84_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int sn65dsi84_remove(struct i2c_client *client)
+static void sn65dsi84_remove(struct i2c_client *client)
 {
 	struct gpio_desc *enable_gpio;
 
 	enable_gpio = devm_gpiod_get_optional(&client->dev, "enable", GPIOD_OUT_LOW);
 	if (enable_gpio)
 		gpiod_set_value_cansleep(enable_gpio, 0);
-
-	return 0;
 }
 
 static const struct i2c_device_id sn65dsi84_id[] = {

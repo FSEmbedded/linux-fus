@@ -13,7 +13,7 @@
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/of_irq.h>
+#include <linux/property.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
 
@@ -34,6 +34,7 @@ static int smbus_do_alert(struct device *dev, void *addrp)
 	struct i2c_client *client = i2c_verify_client(dev);
 	struct alert_data *data = addrp;
 	struct i2c_driver *driver;
+	int ret;
 
 	if (!client || client->addr != data->addr)
 		return 0;
@@ -47,16 +48,47 @@ static int smbus_do_alert(struct device *dev, void *addrp)
 	device_lock(dev);
 	if (client->dev.driver) {
 		driver = to_i2c_driver(client->dev.driver);
-		if (driver->alert)
+		if (driver->alert) {
+			/* Stop iterating after we find the device */
 			driver->alert(client, data->type, data->data);
-		else
+			ret = -EBUSY;
+		} else {
 			dev_warn(&client->dev, "no driver alert()!\n");
-	} else
+			ret = -EOPNOTSUPP;
+		}
+	} else {
 		dev_dbg(&client->dev, "alert with no driver\n");
+		ret = -ENODEV;
+	}
 	device_unlock(dev);
 
-	/* Stop iterating after we find the device */
-	return -EBUSY;
+	return ret;
+}
+
+/* Same as above, but call back all drivers with alert handler */
+
+static int smbus_do_alert_force(struct device *dev, void *addrp)
+{
+	struct i2c_client *client = i2c_verify_client(dev);
+	struct alert_data *data = addrp;
+	struct i2c_driver *driver;
+
+	if (!client || (client->flags & I2C_CLIENT_TEN))
+		return 0;
+
+	/*
+	 * Drivers should either disable alerts, or provide at least
+	 * a minimal handler. Lock so the driver won't change.
+	 */
+	device_lock(dev);
+	if (client->dev.driver) {
+		driver = to_i2c_driver(client->dev.driver);
+		if (driver->alert)
+			driver->alert(client, data->type, data->data);
+	}
+	device_unlock(dev);
+
+	return 0;
 }
 
 /*
@@ -67,6 +99,7 @@ static irqreturn_t smbus_alert(int irq, void *d)
 {
 	struct i2c_smbus_alert *alert = d;
 	struct i2c_client *ara;
+	unsigned short prev_addr = I2C_CLIENT_END; /* Not a valid address */
 
 	ara = alert->ara;
 
@@ -94,8 +127,25 @@ static irqreturn_t smbus_alert(int irq, void *d)
 			data.addr, data.data);
 
 		/* Notify driver for the device which issued the alert */
-		device_for_each_child(&ara->adapter->dev, &data,
-				      smbus_do_alert);
+		status = device_for_each_child(&ara->adapter->dev, &data,
+					       smbus_do_alert);
+		/*
+		 * If we read the same address more than once, and the alert
+		 * was not handled by a driver, it won't do any good to repeat
+		 * the loop because it will never terminate. Try again, this
+		 * time calling the alert handlers of all devices connected to
+		 * the bus, and abort the loop afterwards. If this helps, we
+		 * are all set. If it doesn't, there is nothing else we can do,
+		 * so we might as well abort the loop.
+		 * Note: This assumes that a driver with alert handler handles
+		 * the alert properly and clears it if necessary.
+		 */
+		if (data.addr == prev_addr && status != -EBUSY) {
+			device_for_each_child(&ara->adapter->dev, &data,
+					      smbus_do_alert_force);
+			break;
+		}
+		prev_addr = data.addr;
 	}
 
 	return IRQ_HANDLED;
@@ -112,8 +162,7 @@ static void smbalert_work(struct work_struct *work)
 }
 
 /* Setup SMBALERT# infrastructure */
-static int smbalert_probe(struct i2c_client *ara,
-			  const struct i2c_device_id *id)
+static int smbalert_probe(struct i2c_client *ara)
 {
 	struct i2c_smbus_alert_setup *setup = dev_get_platdata(&ara->dev);
 	struct i2c_smbus_alert *alert;
@@ -128,7 +177,8 @@ static int smbalert_probe(struct i2c_client *ara,
 	if (setup) {
 		irq = setup->irq;
 	} else {
-		irq = of_irq_get_byname(adapter->dev.of_node, "smbus_alert");
+		irq = fwnode_irq_get_byname(dev_fwnode(adapter->dev.parent),
+					    "smbus_alert");
 		if (irq <= 0)
 			return irq;
 	}
@@ -152,12 +202,11 @@ static int smbalert_probe(struct i2c_client *ara,
 }
 
 /* IRQ and memory resources are managed so they are freed automatically */
-static int smbalert_remove(struct i2c_client *ara)
+static void smbalert_remove(struct i2c_client *ara)
 {
 	struct i2c_smbus_alert *alert = i2c_get_clientdata(ara);
 
 	cancel_work_sync(&alert->alert);
-	return 0;
 }
 
 static const struct i2c_device_id smbalert_ids[] = {
@@ -361,9 +410,15 @@ void i2c_register_spd(struct i2c_adapter *adap)
 		return;
 	}
 
+	/*
+	 * Memory types could be found at section 7.18.2 (Memory Device — Type), table 78
+	 * https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_3.6.0.pdf
+	 */
 	switch (common_mem_type) {
+	case 0x12:	/* DDR */
 	case 0x13:	/* DDR2 */
 	case 0x18:	/* DDR3 */
+	case 0x1B:	/* LPDDR */
 	case 0x1C:	/* LPDDR2 */
 	case 0x1D:	/* LPDDR3 */
 		name = "spd";
@@ -390,7 +445,7 @@ void i2c_register_spd(struct i2c_adapter *adap)
 		unsigned short addr_list[2];
 
 		memset(&info, 0, sizeof(struct i2c_board_info));
-		strlcpy(info.type, name, I2C_NAME_SIZE);
+		strscpy(info.type, name, I2C_NAME_SIZE);
 		addr_list[0] = 0x50 + n;
 		addr_list[1] = I2C_CLIENT_END;
 

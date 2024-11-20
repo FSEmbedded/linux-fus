@@ -75,6 +75,8 @@
 	};
 	/* DSI_B */
 	lvds-channel@1 {
+		#address-cells = <1>;
+		#size-cells = <0>;
 		fsl,data-mapping = "spwg";
 		fsl,data-width = <24>;
 		status = "okay";

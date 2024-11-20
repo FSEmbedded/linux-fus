@@ -987,6 +987,7 @@ struct pxp_devdata {
 	void (*pxp_data_path_config)(struct pxps *pxp);
 	void (*pxp_restart)(struct pxps *pxp);
 	unsigned int version;
+	bool input_fetch_arbit_en;
 };
 
 static const struct pxp_devdata pxp_devdata[] = {
@@ -1000,6 +1001,7 @@ static const struct pxp_devdata pxp_devdata[] = {
 		.pxp_data_path_config = NULL,
 		.pxp_restart = NULL,
 		.version = PXP_V3,
+		.input_fetch_arbit_en = false,
 	},
 	[PXP_V3P] = {
 		.pxp_wfe_a_configure = pxp_wfe_a_configure_v3p,
@@ -1011,6 +1013,7 @@ static const struct pxp_devdata pxp_devdata[] = {
 		.pxp_data_path_config = pxp_data_path_config_v3p,
 		.pxp_restart = NULL,
 		.version = PXP_V3P,
+		.input_fetch_arbit_en = false,
 	},
 	[PXP_V3_8ULP] = {
 		.pxp_wfe_a_configure = pxp_wfe_a_configure,
@@ -1022,6 +1025,7 @@ static const struct pxp_devdata pxp_devdata[] = {
 		.pxp_data_path_config = NULL,
 		.pxp_restart = pxp_software_restart,
 		.version = PXP_V3_8ULP,
+		.input_fetch_arbit_en = false,
 	},
 	[PXP_V3_IMX93] = {
 		.pxp_wfe_a_configure = NULL,
@@ -1033,6 +1037,11 @@ static const struct pxp_devdata pxp_devdata[] = {
 		.pxp_data_path_config = NULL,
 		.pxp_restart = imx93_pxp_software_restart,
 		.version = PXP_V3_IMX93,
+		/*
+		 * Due to iMX93 only connect one AXI bus to PXP, so need to
+		 * enable arbitration when use two PXP input fetch channels
+		 */
+		.input_fetch_arbit_en = true,
 	},
 };
 
@@ -1099,7 +1108,9 @@ static void dump_pxp_reg(struct pxps *pxp)
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(regs); i++) {
-		if (pxp->devdata->version == PXP_V3_IMX93 && regs[i].opt)
+		if (pxp->devdata &&
+		    pxp->devdata->version == PXP_V3_IMX93 &&
+		    regs[i].opt)
 			continue;
 
 		val = __raw_readl(pxp->base + regs[i].offset);
@@ -1556,10 +1567,9 @@ static uint32_t pxp_store_ctrl_config(struct pxp_pixmap *out, uint8_t mode,
 			ctrl.store_memory_en = 1;
 		}
 	} else {
-		if (fill_en) {
+		if (fill_en)
 			ctrl.fill_data_en = 1;
-			ctrl.wr_num_bytes = 3;
-		}
+
 		ctrl.store_memory_en = 1;
 	}
 
@@ -1568,6 +1578,7 @@ static uint32_t pxp_store_ctrl_config(struct pxp_pixmap *out, uint8_t mode,
 
 	ctrl.ch_en = 1;
 	ctrl.block_16 = 1;
+	ctrl.wr_num_bytes = 3;
 
 	return *(uint32_t *)&ctrl;
 }
@@ -1758,7 +1769,9 @@ static uint32_t pxp_fetch_ctrl_config(struct pxp_pixmap *in,
 	if (in->rotate || in->flip)
 		ctrl.block_en = 1;
 
+	ctrl.block_16 = 1;
 	ctrl.ch_en = 1;
+	ctrl.rd_num_bytes = 3;
 
 	return *(uint32_t *)&ctrl;
 }
@@ -1781,8 +1794,13 @@ static uint32_t pxp_fetch_active_size_lrc(struct pxp_pixmap *in)
 
 	memset((void*)&size_lrc, 0x0, sizeof(size_lrc));
 
-	size_lrc.active_size_lrc_x = in->crop.width - 1;
-	size_lrc.active_size_lrc_y = in->crop.height - 1;
+	if (in->crop.width > 0 && in->crop.height > 0) {
+		size_lrc.active_size_lrc_x = in->crop.width - 1;
+		size_lrc.active_size_lrc_y = in->crop.height - 1;
+	} else {
+		size_lrc.active_size_lrc_x = in->width - 1;
+		size_lrc.active_size_lrc_y = in->height - 1;
+	}
 
 	return *(uint32_t *)&size_lrc;
 }
@@ -1879,16 +1897,24 @@ static uint32_t pxp_fetch_shift_calc(uint32_t in_fmt, uint32_t out_fmt,
 
 static int pxp_start(struct pxps *pxp)
 {
+	struct pxp_proc_data *proc_data = &pxp->pxp_conf_state.proc_data;
 	u32 val;
 
-	val = (BM_PXP_CTRL_ENABLE_ROTATE1 |
-	       BM_PXP_CTRL_ENABLE |
-	       BM_PXP_CTRL_ENABLE_CSC2 |
-	       BM_PXP_CTRL_ENABLE_PS_AS_OUT |
-	       BM_PXP_CTRL_ENABLE_ROTATE0 |
-	       BM_PXP_CTRL_BLOCK_SIZE);
+	if (pxp->devdata && pxp->devdata->input_fetch_arbit_en)
+		__raw_writel(BF_PXP_INPUT_FETCH_CTRL_CH0_ARBIT_EN(1),
+			     pxp->base + HW_PXP_INPUT_FETCH_CTRL_CH0_SET);
 
-	if (pxp->devdata->version <= PXP_V3_8ULP) {
+	val = (BM_PXP_CTRL_ENABLE | BM_PXP_CTRL_BLOCK_SIZE);
+
+	if (pxp->devdata &&
+	    pxp_is_v3(pxp) &&
+	    proc_data->lut_transform) {
+		val |= (BM_PXP_CTRL_ENABLE_CSC2 |
+		        BM_PXP_CTRL_ENABLE_ROTATE0 |
+			BM_PXP_CTRL_ENABLE_ROTATE1);
+	}
+
+	if (pxp->devdata && pxp->devdata->version <= PXP_V3_8ULP) {
 		val |= BM_PXP_CTRL_ENABLE_LUT;
 		val &= ~(BM_PXP_CTRL_BLOCK_SIZE);
 	}
@@ -1962,6 +1988,7 @@ static bool fmt_out_support(uint32_t format)
 {
 	switch (format) {
 	case PXP_PIX_FMT_ARGB32:
+	case PXP_PIX_FMT_ABGR32:
 	case PXP_PIX_FMT_XRGB32:
 	case PXP_PIX_FMT_BGRA32:
 	case PXP_PIX_FMT_RGB24:
@@ -2143,6 +2170,36 @@ static void filter_possible_outputs(struct pxp_pixmap *output,
 	} while (1);
 }
 
+/*
+ * PXP support PS/AS -> OUT, INPUT FETCH -> STORE data path
+ * don't support cross them, such as PS/AS -> STORE and ROTATION2
+ * (or ROTATION1 in some IMX platform reference manul)
+ * engine only can be used to rotate data from input fetch engine.
+ * So replace ROTATION1 with ROTATION0 when AS/PS engine are used
+ */
+static void filter_nodes_by_inputs_outputs(size_t *nodes_in_path,
+					   size_t *nodes_used)
+{
+	bool ps_as_engine_used;
+
+	ps_as_engine_used = (((*nodes_in_path) & (1 << PXP_2D_PS)) |
+			     ((*nodes_in_path) & (1 << PXP_2D_AS)) |
+			     ((*nodes_used) & (1 << PXP_2D_PS)) |
+			     ((*nodes_used) & (1 << PXP_2D_AS))) ? true : false;
+
+	if (ps_as_engine_used) {
+		if (*nodes_in_path & (1 << PXP_2D_ROTATION1)) {
+			clear_bit(PXP_2D_ROTATION1, (unsigned long *)nodes_in_path);
+			set_bit(PXP_2D_ROTATION0, (unsigned long *)nodes_in_path);
+		}
+
+		if (*nodes_used & (1 << PXP_2D_ROTATION1)) {
+			clear_bit(PXP_2D_ROTATION1, (unsigned long *)nodes_used);
+			set_bit(PXP_2D_ROTATION0, (unsigned long *)nodes_used);
+		}
+	}
+}
+
 static uint32_t calc_shortest_path(size_t *nodes_used)
 {
 	uint32_t distance = 0;
@@ -2193,8 +2250,8 @@ static uint32_t calc_shortest_path(size_t *nodes_used)
 	return distance;
 }
 
-static uint32_t find_best_path(uint32_t inputs,
-			       uint32_t outputs,
+static uint32_t find_best_path(size_t inputs,
+			       size_t outputs,
 			       struct pxp_pixmap *in,
 			       size_t *nodes_used)
 {
@@ -2460,16 +2517,29 @@ static int pxp_ps_config(struct pxp_pixmap *input,
 
 	switch (is_yuv(input->format)) {
 	case 0:		/* RGB */
-	case 1:		/* 1 Plane YUV */
+	case 1:
+		/*
+		 * 1 Plane YUV.
+		 * Refer to PXP manual, in monochrome modes Y8 and Y4,
+		 * the low 16 bits of PS_VBUF register are used as the
+		 * U/V data in the datapath instead of sourcing U/V data
+		 * from external buffers.
+		 */
+		if (input->format == PXP_PIX_FMT_GY04 ||
+		    input->format == PXP_PIX_FMT_GREY)
+			pxp_writel(0x8080, HW_PXP_PS_VBUF);
 		break;
 	case 2:		/* NV16,NV61,NV12,NV21 */
 		U = (input->paddr_u) ? input->paddr_u :
 				       input->paddr + input->width * input->height;
 		if ((input->format == PXP_PIX_FMT_NV16) ||
-		    (input->format == PXP_PIX_FMT_NV61))
+		    (input->format == PXP_PIX_FMT_NV61)) {
 			pxp_writel(U + offset, HW_PXP_PS_UBUF);
-		else
-			pxp_writel(U + (offset >> 1), HW_PXP_PS_UBUF);
+		} else {
+			offset = input->crop.y * input->pitch >> 1;
+			offset += input->crop.x;
+			pxp_writel(U + offset, HW_PXP_PS_UBUF);
+		}
 		break;
 	case 3:		/* YUV422P, YUV420P */
 		U = (input->paddr_u) ? input->paddr_u :
@@ -2480,15 +2550,19 @@ static int pxp_ps_config(struct pxp_pixmap *input,
 					       U + (input->width * input->height >> 1);
 			pxp_writel(V + (offset >> 1), HW_PXP_PS_VBUF);
 		} else if (input->format == PXP_PIX_FMT_YUV420P) {
-			pxp_writel(U + (offset >> 2), HW_PXP_PS_UBUF);
+			offset = input->crop.y * input->pitch >> 2;
+			offset += input->crop.x >> 1;
+			pxp_writel(U + offset, HW_PXP_PS_UBUF);
 			V = (input->paddr_v) ? input->paddr_v :
 					       U + (input->width * input->height >> 2);
-			pxp_writel(V + (offset >> 2), HW_PXP_PS_VBUF);
+			pxp_writel(V + offset, HW_PXP_PS_VBUF);
 		} else if (input->format == PXP_PIX_FMT_YVU420P) {
 			V = (input->paddr_v) ? input->paddr_v :
 					       U + (input->width * input->height >> 2);
-			pxp_writel(U + (offset >> 2), HW_PXP_PS_VBUF);
-			pxp_writel(V + (offset >> 2), HW_PXP_PS_UBUF);
+			offset = input->crop.y * input->pitch >> 2;
+			offset += input->crop.x >> 1;
+			pxp_writel(U + offset, HW_PXP_PS_VBUF);
+			pxp_writel(V + offset, HW_PXP_PS_UBUF);
 		}
 
 		break;
@@ -3164,7 +3238,7 @@ static void mux_config_helper(struct mux_config *path_ctrl,
 	}
 }
 
-static void pxp_2d_calc_mux(uint32_t nodes, struct mux_config *path_ctrl)
+static void pxp_2d_calc_mux(size_t nodes, struct mux_config *path_ctrl)
 {
 	struct edge_node *enode;
 	uint8_t from = 0, to = 0;
@@ -3200,6 +3274,48 @@ static void pxp_2d_calc_mux(uint32_t nodes, struct mux_config *path_ctrl)
 
 		from = to + 1;
 	} while (1);
+}
+
+/*
+ * Workaround to support RGB with alpha channel of PS engine
+ */
+static void pxp_config_alpha(struct pxp_pixmap *input)
+{
+	struct pxp_alpha_ctrl alpha_ctrl;
+
+	memset((void*)&alpha_ctrl, 0x0, sizeof(alpha_ctrl));
+
+	switch (input->format) {
+	case PXP_PIX_FMT_ARGB32:
+	case PXP_PIX_FMT_ARGB555:
+	case PXP_PIX_FMT_ARGB444:
+	case PXP_PIX_FMT_RGBA32:
+	case PXP_PIX_FMT_RGBA555:
+	case PXP_PIX_FMT_RGBA444:
+		alpha_ctrl.poter_duff_enable = 1;
+		alpha_ctrl.s0_s1_factor_mode = 1;
+		alpha_ctrl.s0_global_alpha_mode = 1;
+		break;
+	default:
+		break;
+	}
+	pxp_writel(*(uint32_t *)&alpha_ctrl, HW_PXP_ALPHA_A_CTRL);
+}
+
+/*
+ * Workaround to support data copy when only use AS engine
+ * It will use MERGEAS raster operation and only remain pixel
+ * data from As engine
+ */
+static void pxp_as_alpha_config(struct pxp_pixmap *input)
+{
+	if (alpha_blending_version != PXP_ALPHA_BLENDING_NONE)
+		return;
+
+	if (input->g_alpha.global_alpha_enable)
+		return;
+
+	alpha_blending_version = PXP_ALPHA_BLENDING_V1;
 }
 
 static int pxp_2d_op_handler(struct pxps *pxp)
@@ -3293,15 +3409,7 @@ reparse:
 					       possible_outputs,
 					       input, &nodes_used);
 
-		if (nodes_in_path & (1 << PXP_2D_ROTATION1)) {
-			clear_bit(PXP_2D_ROTATION1, (unsigned long *)&nodes_in_path);
-			set_bit(PXP_2D_ROTATION0, (unsigned long *)&nodes_in_path);
-		}
-
-		if (nodes_used & (1 << PXP_2D_ROTATION1)) {
-			clear_bit(PXP_2D_ROTATION1, (unsigned long *)&nodes_used);
-			set_bit(PXP_2D_ROTATION0, (unsigned long *)&nodes_used);
-		}
+		filter_nodes_by_inputs_outputs(&nodes_in_path, &nodes_used);
 
 		pr_debug("%s: nodes_in_path = 0x%x, nodes_used = 0x%x\n",
 			  __func__, (u32)nodes_in_path, (u32)nodes_used);
@@ -3347,6 +3455,15 @@ reparse:
 			op->alpha_info.rop_type = 0x0;
 			task->input_num = 2;
 			goto reparse;
+		}
+
+		if (nodes_used & (1 << PXP_2D_PS))
+			pxp_config_alpha(input);
+
+		if (nodes_used & (1 << PXP_2D_AS)) {
+			/* Need to select mux3 port 0 when use AS engine */
+			path_ctrl0.mux3_sel = 0;
+			pxp_as_alpha_config(input);
 		}
 
 		pxp_2d_calc_mux(nodes_in_path, &path_ctrl0);
@@ -7091,7 +7208,7 @@ static void pxp_dithering_process(struct pxps *pxp)
 	if (pxp->devdata && pxp->devdata->pxp_dithering_configure)
 		pxp->devdata->pxp_dithering_configure(pxp);
 
-	if (pxp_is_v3(pxp))
+	if (pxp->devdata && pxp_is_v3(pxp))
 		val = BF_PXP_DITHER_CTRL_ENABLE0            (1) |
 		      BF_PXP_DITHER_CTRL_ENABLE1            (0) |
 		      BF_PXP_DITHER_CTRL_ENABLE2            (0) |
@@ -7105,7 +7222,7 @@ static void pxp_dithering_process(struct pxps *pxp)
 		      BF_PXP_DITHER_CTRL_BUSY2              (0) |
 		      BF_PXP_DITHER_CTRL_BUSY1              (0) |
 		      BF_PXP_DITHER_CTRL_BUSY0              (0);
-	else if (pxp_is_v3p(pxp)) {
+	else if (pxp->devdata && pxp_is_v3p(pxp)) {
 		if (proc_data->dither_mode != 0 &&
 			proc_data->dither_mode != 3) {
 			dev_err(pxp->dev, "Not supported dithering mode. "

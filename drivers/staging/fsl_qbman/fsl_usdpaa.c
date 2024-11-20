@@ -1,5 +1,5 @@
 /* Copyright (C) 2008-2012 Freescale Semiconductor, Inc.
- * Copyright 2020 NXP
+ * Copyright 2020,2023-2024 NXP
  * Authors: Andy Fleming <afleming@freescale.com>
  *	    Timur Tabi <timur@freescale.com>
  *	    Geoff Thorpe <Geoff.Thorpe@freescale.com>
@@ -412,7 +412,7 @@ static int usdpaa_open(struct inode *inode, struct file *filp)
 
 
 /* Invalidate a portal */
-void dbci_portal(void *addr)
+static void dbci_portal(void *addr)
 {
 	int i;
 
@@ -879,28 +879,30 @@ static unsigned long usdpaa_get_unmapped_area(struct file *file,
 {
 	struct vm_area_struct *vma;
 
+	/* Need to align the address to the largest pagesize of the mapping
+	 * because the MMU requires the virtual address to have the same
+	 * alignment as the physical address
+	 */
+	unsigned long align_addr = USDPAA_MEM_ROUNDUP(addr,
+						      largest_page_size(len));
+	VMA_ITERATOR(vmi, current->mm, align_addr);
+
 	if (len % PAGE_SIZE)
 		return -EINVAL;
 	if (!len)
 		return -EINVAL;
 
-	/* Need to align the address to the largest pagesize of the mapping
-	 * because the MMU requires the virtual address to have the same
-	 * alignment as the physical address */
-	addr = USDPAA_MEM_ROUNDUP(addr, largest_page_size(len));
-	vma = find_vma(current->mm, addr);
 	/* Keep searching until we reach the end of currently-used virtual
 	 * address-space or we find a big enough gap. */
-	while (vma) {
-		if ((addr + len) < vma->vm_start)
-			return addr;
+	for_each_vma(vmi, vma) {
+		if ((align_addr + len) < vma->vm_start)
+			return align_addr;
 
-		addr = USDPAA_MEM_ROUNDUP(vma->vm_end,  largest_page_size(len));
-		vma = vma->vm_next;
+		align_addr = USDPAA_MEM_ROUNDUP(vma->vm_end, largest_page_size(len));
 	}
-	if ((TASK_SIZE - len) < addr)
+	if ((TASK_SIZE - len) < align_addr)
 		return -ENOMEM;
-	return addr;
+	return align_addr;
 }
 
 static long ioctl_id_alloc(struct ctx *ctx, void __user *arg)
@@ -1036,15 +1038,19 @@ static long ioctl_dma_map(struct file *fp, struct ctx *ctx,
 	int frag_count = 0;
 	unsigned long next_addr = PAGE_SIZE, populate;
 
-	/* error checking to ensure values copied from user space are valid */
-	if (i->len % PAGE_SIZE)
-		return -EINVAL;
-
 	map = kmalloc(sizeof(*map), GFP_KERNEL);
 	if (!map)
 		return -ENOMEM;
 
 	spin_lock(&mem_lock);
+
+	/* error checking to ensure values copied from user space are valid */
+	if (i->len % PAGE_SIZE) {
+		spin_unlock(&mem_lock);
+		kfree(map);
+		return -EINVAL;
+	}
+
 	if (i->flags & USDPAA_DMA_FLAG_SHARE) {
 		list_for_each_entry(frag, &mem_list, list) {
 			if (frag->refs && (frag->flags &
@@ -1179,8 +1185,8 @@ do_map:
 	if (i->did_create) {
 		size_t name_len = 0;
 		start_frag->flags = i->flags;
-		memset(start_frag->name, '\0', USDPAA_DMA_NAME_MAX);
-		strncpy(start_frag->name, i->name, USDPAA_DMA_NAME_MAX - 1);
+		strncpy(start_frag->name, i->name, USDPAA_DMA_NAME_MAX);
+		start_frag->name[USDPAA_DMA_NAME_MAX - 1] = '\0';
 		name_len = strnlen(start_frag->name, USDPAA_DMA_NAME_MAX);
 		if (name_len >= USDPAA_DMA_NAME_MAX) {
 			ret = -EFAULT;
@@ -1211,6 +1217,7 @@ out:
 					 USDPAA_DMA_FLAG_RDONLY ? 0
 					 : PROT_WRITE),
 					MAP_SHARED,
+					0,
 					start_frag->pfn_base,
 					&populate,
 					NULL);
@@ -1331,21 +1338,22 @@ static long ioctl_dma_lock(struct ctx *ctx, void __user *arg)
 	struct mem_mapping *map;
 	struct vm_area_struct *vma;
 
+	spin_lock(&mem_lock);
 	down_read(&current->mm->mmap_lock);
 	vma = find_vma(current->mm, (unsigned long)arg);
 	if (!vma || (vma->vm_start > (unsigned long)arg)) {
 		up_read(&current->mm->mmap_lock);
+		spin_unlock(&mem_lock);
 		return -EFAULT;
 	}
-	spin_lock(&mem_lock);
 	list_for_each_entry(map, &ctx->maps, list) {
 		if (map->root_frag->pfn_base == vma->vm_pgoff)
 			goto map_match;
 	}
 	map = NULL;
 map_match:
-	spin_unlock(&mem_lock);
 	up_read(&current->mm->mmap_lock);
+	spin_unlock(&mem_lock);
 
 	if (!map)
 		return -EFAULT;
@@ -1360,12 +1368,12 @@ static long ioctl_dma_unlock(struct ctx *ctx, void __user *arg)
 	struct vm_area_struct *vma;
 	int ret;
 
+	spin_lock(&mem_lock);
 	down_read(&current->mm->mmap_lock);
 	vma = find_vma(current->mm, (unsigned long)arg);
 	if (!vma || (vma->vm_start > (unsigned long)arg))
 		ret = -EFAULT;
 	else {
-		spin_lock(&mem_lock);
 		list_for_each_entry(map, &ctx->maps, list) {
 			if (map->root_frag->pfn_base == vma->vm_pgoff) {
 				if (!map->root_frag->has_locking)
@@ -1380,10 +1388,10 @@ static long ioctl_dma_unlock(struct ctx *ctx, void __user *arg)
 			}
 		}
 		ret = -EINVAL;
-map_match:
-		spin_unlock(&mem_lock);
 	}
+map_match:
 	up_read(&current->mm->mmap_lock);
+	spin_unlock(&mem_lock);
 	return ret;
 }
 
@@ -1397,7 +1405,7 @@ static int portal_mmap(struct file *fp, struct resource *res, void **ptr)
 	if (len != (unsigned long)len)
 		return -EINVAL;
 	longret = do_mmap(fp, PAGE_SIZE, (unsigned long)len,
-				PROT_READ | PROT_WRITE, MAP_SHARED,
+				PROT_READ | PROT_WRITE, MAP_SHARED, 0,
 				res->start >> PAGE_SHIFT, &populate, NULL);
 	up_write(&current->mm->mmap_lock);
 
@@ -2351,7 +2359,8 @@ static long usdpaa_ioctl_compat(struct file *fp, unsigned int cmd,
 		converted.len = input.len;
 		converted.flags = input.flags;
 		memset(converted.name, '\0', USDPAA_DMA_NAME_MAX);
-		strncpy(converted.name, input.name, USDPAA_DMA_NAME_MAX - 1);
+		strncpy(converted.name, input.name, USDPAA_DMA_NAME_MAX);
+		converted.name[USDPAA_DMA_NAME_MAX - 1] = '\0';
 		converted.has_locking = input.has_locking;
 		converted.did_create = input.did_create;
 
@@ -2361,7 +2370,8 @@ static long usdpaa_ioctl_compat(struct file *fp, unsigned int cmd,
 		input.len = converted.len;
 		input.flags = converted.flags;
 		memset(input.name, '\0', USDPAA_DMA_NAME_MAX);
-		strncpy(input.name, converted.name, USDPAA_DMA_NAME_MAX - 1);
+		strncpy(input.name, converted.name, USDPAA_DMA_NAME_MAX);
+		input.name[USDPAA_DMA_NAME_MAX - 1] = '\0';
 		input.has_locking = converted.has_locking;
 		input.did_create = converted.did_create;
 		if (copy_to_user(a, &input, sizeof(input)))

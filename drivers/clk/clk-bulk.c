@@ -43,7 +43,7 @@ err:
 	return ret;
 }
 
-int __must_check of_clk_bulk_get_all(struct device_node *np,
+static int __must_check of_clk_bulk_get_all(struct device_node *np,
 					    struct clk_bulk_data **clks)
 {
 	struct clk_bulk_data *clk_bulk;
@@ -68,7 +68,6 @@ int __must_check of_clk_bulk_get_all(struct device_node *np,
 
 	return num_clks;
 }
-EXPORT_SYMBOL_GPL(of_clk_bulk_get_all);
 
 void clk_bulk_put(int num_clks, struct clk_bulk_data *clks)
 {
@@ -97,9 +96,9 @@ static int __clk_bulk_get(struct device *dev, int num_clks,
 			if (ret == -ENOENT && optional)
 				continue;
 
-			if (ret != -EPROBE_DEFER)
-				dev_err(dev, "Failed to get clk '%s': %d\n",
-					clks[i].id, ret);
+			dev_err_probe(dev, ret,
+				      "Failed to get clk '%s'\n",
+				      clks[i].id);
 			goto err;
 		}
 	}

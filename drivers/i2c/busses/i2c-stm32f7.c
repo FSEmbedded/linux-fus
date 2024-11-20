@@ -357,6 +357,7 @@ struct stm32f7_i2c_dev {
 	u32 dnf_dt;
 	u32 dnf;
 	struct stm32f7_i2c_alert *alert;
+	bool atomic;
 };
 
 /*
@@ -408,6 +409,12 @@ static const struct stm32f7_i2c_setup stm32mp15_setup = {
 	.rise_time = STM32F7_I2C_RISE_TIME_DEFAULT,
 	.fall_time = STM32F7_I2C_FALL_TIME_DEFAULT,
 	.fmp_clr_offset = 0x40,
+};
+
+static const struct stm32f7_i2c_setup stm32mp13_setup = {
+	.rise_time = STM32F7_I2C_RISE_TIME_DEFAULT,
+	.fall_time = STM32F7_I2C_FALL_TIME_DEFAULT,
+	.fmp_clr_offset = 0x4,
 };
 
 static inline void stm32f7_i2c_set_bits(void __iomem *reg, u32 mask)
@@ -828,18 +835,14 @@ static void stm32f7_i2c_smbus_reload(struct stm32f7_i2c_dev *i2c_dev)
 	writel_relaxed(cr2, i2c_dev->base + STM32F7_I2C_CR2);
 }
 
-static int stm32f7_i2c_release_bus(struct i2c_adapter *i2c_adap)
+static void stm32f7_i2c_release_bus(struct i2c_adapter *i2c_adap)
 {
 	struct stm32f7_i2c_dev *i2c_dev = i2c_get_adapdata(i2c_adap);
-
-	dev_info(i2c_dev->dev, "Trying to recover bus\n");
 
 	stm32f7_i2c_clr_bits(i2c_dev->base + STM32F7_I2C_CR1,
 			     STM32F7_I2C_CR1_PE);
 
 	stm32f7_i2c_hw_config(i2c_dev);
-
-	return 0;
 }
 
 static int stm32f7_i2c_wait_free_bus(struct stm32f7_i2c_dev *i2c_dev)
@@ -854,13 +857,7 @@ static int stm32f7_i2c_wait_free_bus(struct stm32f7_i2c_dev *i2c_dev)
 	if (!ret)
 		return 0;
 
-	dev_info(i2c_dev->dev, "bus busy\n");
-
-	ret = stm32f7_i2c_release_bus(&i2c_dev->adap);
-	if (ret) {
-		dev_err(i2c_dev->dev, "Failed to recover the bus (%d)\n", ret);
-		return ret;
-	}
+	stm32f7_i2c_release_bus(&i2c_dev->adap);
 
 	return -EBUSY;
 }
@@ -919,7 +916,8 @@ static void stm32f7_i2c_xfer_msg(struct stm32f7_i2c_dev *i2c_dev,
 
 	/* Configure DMA or enable RX/TX interrupt */
 	i2c_dev->use_dma = false;
-	if (i2c_dev->dma && f7_msg->count >= STM32F7_I2C_DMA_LEN_MIN) {
+	if (i2c_dev->dma && f7_msg->count >= STM32F7_I2C_DMA_LEN_MIN
+	    && !i2c_dev->atomic) {
 		ret = stm32_i2c_prep_dma_xfer(i2c_dev->dev, i2c_dev->dma,
 					      msg->flags & I2C_M_RD,
 					      f7_msg->count, f7_msg->buf,
@@ -942,6 +940,9 @@ static void stm32f7_i2c_xfer_msg(struct stm32f7_i2c_dev *i2c_dev,
 		else
 			cr1 |= STM32F7_I2C_CR1_TXDMAEN;
 	}
+
+	if (i2c_dev->atomic)
+		cr1 &= ~STM32F7_I2C_ALL_IRQ_MASK; /* Disable all interrupts */
 
 	/* Configure Start/Repeated Start */
 	cr2 |= STM32F7_I2C_CR2_START;
@@ -1524,7 +1525,7 @@ static irqreturn_t stm32f7_i2c_isr_event(int irq, void *data)
 		writel_relaxed(STM32F7_I2C_ICR_NACKCF, base + STM32F7_I2C_ICR);
 		if (i2c_dev->use_dma) {
 			stm32f7_i2c_disable_dma_req(i2c_dev);
-			dmaengine_terminate_all(dma->chan_using);
+			dmaengine_terminate_async(dma->chan_using);
 		}
 		f7_msg->result = -ENXIO;
 	}
@@ -1591,7 +1592,7 @@ static irqreturn_t stm32f7_i2c_isr_event_thread(int irq, void *data)
 	if (!ret) {
 		dev_dbg(i2c_dev->dev, "<%s>: Timed out\n", __func__);
 		stm32f7_i2c_disable_dma_req(i2c_dev);
-		dmaengine_terminate_all(dma->chan_using);
+		dmaengine_terminate_async(dma->chan_using);
 		f7_msg->result = -ETIMEDOUT;
 	}
 
@@ -1668,7 +1669,7 @@ static irqreturn_t stm32f7_i2c_isr_error(int irq, void *data)
 	/* Disable dma */
 	if (i2c_dev->use_dma) {
 		stm32f7_i2c_disable_dma_req(i2c_dev);
-		dmaengine_terminate_all(dma->chan_using);
+		dmaengine_terminate_async(dma->chan_using);
 	}
 
 	i2c_dev->master_mode = false;
@@ -1677,7 +1678,22 @@ static irqreturn_t stm32f7_i2c_isr_error(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static int stm32f7_i2c_xfer(struct i2c_adapter *i2c_adap,
+static int stm32f7_i2c_wait_polling(struct stm32f7_i2c_dev *i2c_dev)
+{
+	ktime_t timeout = ktime_add_ms(ktime_get(), i2c_dev->adap.timeout);
+
+	while (ktime_compare(ktime_get(), timeout) < 0) {
+		udelay(5);
+		stm32f7_i2c_isr_event(0, i2c_dev);
+
+		if (completion_done(&i2c_dev->complete))
+			return 1;
+	}
+
+	return 0;
+}
+
+static int stm32f7_i2c_xfer_core(struct i2c_adapter *i2c_adap,
 			    struct i2c_msg msgs[], int num)
 {
 	struct stm32f7_i2c_dev *i2c_dev = i2c_get_adapdata(i2c_adap);
@@ -1701,10 +1717,17 @@ static int stm32f7_i2c_xfer(struct i2c_adapter *i2c_adap,
 
 	stm32f7_i2c_xfer_msg(i2c_dev, msgs);
 
-	time_left = wait_for_completion_timeout(&i2c_dev->complete,
-						i2c_dev->adap.timeout);
+	if (!i2c_dev->atomic)
+		time_left = wait_for_completion_timeout(&i2c_dev->complete,
+							i2c_dev->adap.timeout);
+	else
+		time_left = stm32f7_i2c_wait_polling(i2c_dev);
+
 	ret = f7_msg->result;
 	if (ret) {
+		if (i2c_dev->use_dma)
+			dmaengine_synchronize(dma->chan_using);
+
 		/*
 		 * It is possible that some unsent data have already been
 		 * written into TXDR. To avoid sending old data in a
@@ -1719,7 +1742,7 @@ static int stm32f7_i2c_xfer(struct i2c_adapter *i2c_adap,
 		dev_dbg(i2c_dev->dev, "Access to slave 0x%x timed out\n",
 			i2c_dev->msg->addr);
 		if (i2c_dev->use_dma)
-			dmaengine_terminate_all(dma->chan_using);
+			dmaengine_terminate_sync(dma->chan_using);
 		stm32f7_i2c_wait_free_bus(i2c_dev);
 		ret = -ETIMEDOUT;
 	}
@@ -1729,6 +1752,24 @@ pm_free:
 	pm_runtime_put_autosuspend(i2c_dev->dev);
 
 	return (ret < 0) ? ret : num;
+}
+
+static int stm32f7_i2c_xfer(struct i2c_adapter *i2c_adap,
+			    struct i2c_msg msgs[], int num)
+{
+	struct stm32f7_i2c_dev *i2c_dev = i2c_get_adapdata(i2c_adap);
+
+	i2c_dev->atomic = false;
+	return stm32f7_i2c_xfer_core(i2c_adap, msgs, num);
+}
+
+static int stm32f7_i2c_xfer_atomic(struct i2c_adapter *i2c_adap,
+			    struct i2c_msg msgs[], int num)
+{
+	struct stm32f7_i2c_dev *i2c_dev = i2c_get_adapdata(i2c_adap);
+
+	i2c_dev->atomic = true;
+	return stm32f7_i2c_xfer_core(i2c_adap, msgs, num);
 }
 
 static int stm32f7_i2c_smbus_xfer(struct i2c_adapter *adapter, u16 addr,
@@ -1764,6 +1805,9 @@ static int stm32f7_i2c_smbus_xfer(struct i2c_adapter *adapter, u16 addr,
 					      i2c_dev->adap.timeout);
 	ret = f7_msg->result;
 	if (ret) {
+		if (i2c_dev->use_dma)
+			dmaengine_synchronize(dma->chan_using);
+
 		/*
 		 * It is possible that some unsent data have already been
 		 * written into TXDR. To avoid sending old data in a
@@ -1777,7 +1821,7 @@ static int stm32f7_i2c_smbus_xfer(struct i2c_adapter *adapter, u16 addr,
 	if (!timeout) {
 		dev_dbg(dev, "Access to slave 0x%x timed out\n", f7_msg->addr);
 		if (i2c_dev->use_dma)
-			dmaengine_terminate_all(dma->chan_using);
+			dmaengine_terminate_sync(dma->chan_using);
 		stm32f7_i2c_wait_free_bus(i2c_dev);
 		ret = -ETIMEDOUT;
 		goto pm_free;
@@ -2096,6 +2140,7 @@ static u32 stm32f7_i2c_func(struct i2c_adapter *adap)
 
 static const struct i2c_algorithm stm32f7_i2c_algo = {
 	.master_xfer = stm32f7_i2c_xfer,
+	.master_xfer_atomic = stm32f7_i2c_xfer_atomic,
 	.smbus_xfer = stm32f7_i2c_smbus_xfer,
 	.functionality = stm32f7_i2c_func,
 	.reg_slave = stm32f7_i2c_reg_slave,
@@ -2122,12 +2167,12 @@ static int stm32f7_i2c_probe(struct platform_device *pdev)
 	phy_addr = (dma_addr_t)res->start;
 
 	irq_event = platform_get_irq(pdev, 0);
-	if (irq_event <= 0)
-		return irq_event ? : -ENOENT;
+	if (irq_event < 0)
+		return irq_event;
 
 	irq_error = platform_get_irq(pdev, 1);
-	if (irq_error <= 0)
-		return irq_error ? : -ENOENT;
+	if (irq_error < 0)
+		return irq_error;
 
 	i2c_dev->wakeup_src = of_property_read_bool(pdev->dev.of_node,
 						    "wakeup-source");
@@ -2310,7 +2355,7 @@ clk_free:
 	return ret;
 }
 
-static int stm32f7_i2c_remove(struct platform_device *pdev)
+static void stm32f7_i2c_remove(struct platform_device *pdev)
 {
 	struct stm32f7_i2c_dev *i2c_dev = platform_get_drvdata(pdev);
 
@@ -2342,8 +2387,6 @@ static int stm32f7_i2c_remove(struct platform_device *pdev)
 	stm32f7_i2c_write_fm_plus_bits(i2c_dev, false);
 
 	clk_disable_unprepare(i2c_dev->clk);
-
-	return 0;
 }
 
 static int __maybe_unused stm32f7_i2c_runtime_suspend(struct device *dev)
@@ -2475,6 +2518,7 @@ static const struct dev_pm_ops stm32f7_i2c_pm_ops = {
 static const struct of_device_id stm32f7_i2c_match[] = {
 	{ .compatible = "st,stm32f7-i2c", .data = &stm32f7_setup},
 	{ .compatible = "st,stm32mp15-i2c", .data = &stm32mp15_setup},
+	{ .compatible = "st,stm32mp13-i2c", .data = &stm32mp13_setup},
 	{},
 };
 MODULE_DEVICE_TABLE(of, stm32f7_i2c_match);
@@ -2486,7 +2530,7 @@ static struct platform_driver stm32f7_i2c_driver = {
 		.pm = &stm32f7_i2c_pm_ops,
 	},
 	.probe = stm32f7_i2c_probe,
-	.remove = stm32f7_i2c_remove,
+	.remove_new = stm32f7_i2c_remove,
 };
 
 module_platform_driver(stm32f7_i2c_driver);

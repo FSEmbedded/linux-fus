@@ -5,6 +5,7 @@
  * it under the terms of the gnu general public license version 2 as
  * published by the free software foundation.
  */
+#include <linux/media-bus-format.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/component.h>
@@ -12,6 +13,7 @@
 #include <drm/drm_vblank.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_encoder_slave.h>
+#include <drm/drm_modeset_helper_vtables.h>
 
 #include "cdns-mhdp-imx.h"
 #include "cdns-mhdp-phy.h"
@@ -96,6 +98,7 @@ static struct cdns_plat_data imx8qm_hdmi_drv_data = {
 	.phy_set = cdns_hdmi_phy_set_imx8qm,
 	.phy_video_valid = cdns_hdmi_phy_video_valid_imx8qm,
 	.power_on = cdns_mhdp_power_on_imx8qm,
+	.power_off = cdns_mhdp_power_off_imx8qm,
 	.firmware_init = cdns_mhdp_firmware_init_imx8qm,
 	.resume = cdns_mhdp_resume_imx8qm,
 	.suspend = cdns_mhdp_suspend_imx8qm,
@@ -112,6 +115,7 @@ static struct cdns_plat_data imx8qm_dp_drv_data = {
 	.unbind	= cdns_dp_unbind,
 	.phy_set = cdns_dp_phy_set_imx8qm,
 	.power_on = cdns_mhdp_power_on_imx8qm,
+	.power_off = cdns_mhdp_power_off_imx8qm,
 	.firmware_init = cdns_mhdp_firmware_init_imx8qm,
 	.resume = cdns_mhdp_resume_imx8qm,
 	.suspend = cdns_mhdp_suspend_imx8qm,
@@ -128,6 +132,7 @@ static struct cdns_plat_data ls1028a_dp_drv_data = {
 	.unbind = cdns_dp_unbind,
 	.phy_set = cdns_dp_phy_set_imx8mq,
 	.power_on = cdns_mhdp_power_on_ls1028a,
+	.power_off = cdns_mhdp_power_off_ls1028a,
 	.firmware_init = cdns_mhdp_firmware_init_imx8qm,
 	.pclk_rate = cdns_mhdp_pclk_rate_ls1028a,
 	.bus_type = BUS_TYPE_NORMAL_APB,

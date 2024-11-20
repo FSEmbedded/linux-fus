@@ -139,6 +139,7 @@ static struct pci_ops pcie_ops = {
 static int __init pcie_setup(struct pci_sys_data *sys)
 {
 	struct resource *res;
+	struct resource realio;
 	int dev;
 
 	/*
@@ -161,7 +162,9 @@ static int __init pcie_setup(struct pci_sys_data *sys)
 		pcie_ops.read = pcie_rd_conf_wa;
 	}
 
-	pci_ioremap_io(sys->busnr * SZ_64K, ORION5X_PCIE_IO_PHYS_BASE);
+	realio.start = sys->busnr * SZ_64K;
+	realio.end = realio.start + SZ_64K - 1;
+	pci_remap_iospace(&realio, ORION5X_PCIE_IO_PHYS_BASE);
 
 	/*
 	 * Request resources.
@@ -463,6 +466,7 @@ static void __init orion5x_setup_pci_wins(void)
 static int __init pci_setup(struct pci_sys_data *sys)
 {
 	struct resource *res;
+	struct resource realio;
 
 	/*
 	 * Point PCI unit MBUS decode windows to DRAM space.
@@ -479,7 +483,9 @@ static int __init pci_setup(struct pci_sys_data *sys)
 	 */
 	orion5x_setbits(PCI_CMD, PCI_CMD_HOST_REORDER);
 
-	pci_ioremap_io(sys->busnr * SZ_64K, ORION5X_PCI_IO_PHYS_BASE);
+	realio.start = sys->busnr * SZ_64K;
+	realio.end = realio.start + SZ_64K - 1;
+	pci_remap_iospace(&realio, ORION5X_PCI_IO_PHYS_BASE);
 
 	/*
 	 * Request resources
@@ -506,18 +512,24 @@ static int __init pci_setup(struct pci_sys_data *sys)
 /*****************************************************************************
  * General PCIe + PCI
  ****************************************************************************/
+
+/*
+ * The root complex has a hardwired class of PCI_CLASS_MEMORY_OTHER, when it
+ * is operating as a root complex this needs to be switched to
+ * PCI_CLASS_BRIDGE_HOST or Linux will errantly try to process the BAR's on
+ * the device. Decoding setup is handled by the orion code.
+ */
 static void rc_pci_fixup(struct pci_dev *dev)
 {
-	/*
-	 * Prevent enumeration of root complex.
-	 */
 	if (dev->bus->parent == NULL && dev->devfn == 0) {
-		int i;
+		struct resource *r;
 
-		for (i = 0; i < DEVICE_COUNT_RESOURCE; i++) {
-			dev->resource[i].start = 0;
-			dev->resource[i].end   = 0;
-			dev->resource[i].flags = 0;
+		dev->class &= 0xff;
+		dev->class |= PCI_CLASS_BRIDGE_HOST << 8;
+		pci_dev_for_each_resource(dev, r) {
+			r->start	= 0;
+			r->end		= 0;
+			r->flags	= 0;
 		}
 	}
 }

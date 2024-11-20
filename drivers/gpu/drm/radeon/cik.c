@@ -3603,7 +3603,7 @@ void cik_fence_compute_ring_emit(struct radeon_device *rdev,
  * @rdev: radeon_device pointer
  * @ring: radeon ring buffer object
  * @semaphore: radeon semaphore object
- * @emit_wait: Is this a sempahore wait?
+ * @emit_wait: Is this a semaphore wait?
  *
  * Emits a semaphore signal/wait packet to the CP ring and prevents the PFP
  * from running ahead of semaphore waits.
@@ -8517,8 +8517,8 @@ int cik_suspend(struct radeon_device *rdev)
 	cik_cp_enable(rdev, false);
 	cik_sdma_enable(rdev, false);
 	if (rdev->has_uvd) {
-		uvd_v1_0_fini(rdev);
 		radeon_uvd_suspend(rdev);
+		uvd_v1_0_fini(rdev);
 	}
 	if (rdev->has_vce)
 		radeon_vce_suspend(rdev);

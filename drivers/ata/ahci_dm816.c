@@ -134,7 +134,7 @@ static const struct ata_port_info ahci_dm816_port_info = {
 	.port_ops	= &ahci_dm816_port_ops,
 };
 
-static struct scsi_host_template ahci_dm816_platform_sht = {
+static const struct scsi_host_template ahci_dm816_platform_sht = {
 	AHCI_SHT(AHCI_DM816_DRV_NAME),
 };
 
@@ -176,13 +176,13 @@ static SIMPLE_DEV_PM_OPS(ahci_dm816_pm_ops,
 
 static const struct of_device_id ahci_dm816_of_match[] = {
 	{ .compatible = "ti,dm816-ahci", },
-	{ },
+	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, ahci_dm816_of_match);
 
 static struct platform_driver ahci_dm816_driver = {
 	.probe = ahci_dm816_probe,
-	.remove = ata_platform_remove_one,
+	.remove_new = ata_platform_remove_one,
 	.driver = {
 		.name = AHCI_DM816_DRV_NAME,
 		.of_match_table = ahci_dm816_of_match,

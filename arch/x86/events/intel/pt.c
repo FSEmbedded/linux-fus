@@ -59,6 +59,8 @@ static struct pt_cap_desc {
 	PT_CAP(mtc,			0, CPUID_EBX, BIT(3)),
 	PT_CAP(ptwrite,			0, CPUID_EBX, BIT(4)),
 	PT_CAP(power_event_trace,	0, CPUID_EBX, BIT(5)),
+	PT_CAP(event_trace,		0, CPUID_EBX, BIT(7)),
+	PT_CAP(tnt_disable,		0, CPUID_EBX, BIT(8)),
 	PT_CAP(topa_output,		0, CPUID_ECX, BIT(0)),
 	PT_CAP(topa_multiple_entries,	0, CPUID_ECX, BIT(1)),
 	PT_CAP(single_range_output,	0, CPUID_ECX, BIT(2)),
@@ -110,6 +112,8 @@ PMU_FORMAT_ATTR(tsc,		"config:10"	);
 PMU_FORMAT_ATTR(noretcomp,	"config:11"	);
 PMU_FORMAT_ATTR(ptw,		"config:12"	);
 PMU_FORMAT_ATTR(branch,		"config:13"	);
+PMU_FORMAT_ATTR(event,		"config:31"	);
+PMU_FORMAT_ATTR(notnt,		"config:55"	);
 PMU_FORMAT_ATTR(mtc_period,	"config:14-17"	);
 PMU_FORMAT_ATTR(cyc_thresh,	"config:19-22"	);
 PMU_FORMAT_ATTR(psb_period,	"config:24-27"	);
@@ -118,6 +122,8 @@ static struct attribute *pt_formats_attr[] = {
 	&format_attr_pt.attr,
 	&format_attr_cyc.attr,
 	&format_attr_pwr_evt.attr,
+	&format_attr_event.attr,
+	&format_attr_notnt.attr,
 	&format_attr_fup_on_ptw.attr,
 	&format_attr_mtc.attr,
 	&format_attr_tsc.attr,
@@ -298,6 +304,8 @@ fail:
 			RTIT_CTL_CYC_PSB	| \
 			RTIT_CTL_MTC		| \
 			RTIT_CTL_PWR_EVT_EN	| \
+			RTIT_CTL_EVENT_EN	| \
+			RTIT_CTL_NOTNT		| \
 			RTIT_CTL_FUP_ON_PTW	| \
 			RTIT_CTL_PTW_EN)
 
@@ -350,6 +358,14 @@ static bool pt_event_valid(struct perf_event *event)
 
 	if (config & RTIT_CTL_PWR_EVT_EN &&
 	    !intel_pt_validate_hw_cap(PT_CAP_power_event_trace))
+		return false;
+
+	if (config & RTIT_CTL_EVENT_EN &&
+	    !intel_pt_validate_hw_cap(PT_CAP_event_trace))
+		return false;
+
+	if (config & RTIT_CTL_NOTNT &&
+	    !intel_pt_validate_hw_cap(PT_CAP_tnt_disable))
 		return false;
 
 	if (config & RTIT_CTL_PTW) {
@@ -861,7 +877,7 @@ static void pt_update_head(struct pt *pt)
  */
 static void *pt_buffer_region(struct pt_buffer *buf)
 {
-	return phys_to_virt(TOPA_ENTRY(buf->cur, buf->cur_idx)->base << TOPA_SHIFT);
+	return phys_to_virt((phys_addr_t)TOPA_ENTRY(buf->cur, buf->cur_idx)->base << TOPA_SHIFT);
 }
 
 /**
@@ -973,7 +989,7 @@ pt_topa_entry_for_page(struct pt_buffer *buf, unsigned int pg)
 	 * order allocations, there shouldn't be many of these.
 	 */
 	list_for_each_entry(topa, &buf->tables, list) {
-		if (topa->offset + topa->size > pg << PAGE_SHIFT)
+		if (topa->offset + topa->size > (unsigned long)pg << PAGE_SHIFT)
 			goto found;
 	}
 
@@ -1586,6 +1602,7 @@ static void pt_event_stop(struct perf_event *event, int mode)
 	 * see comment in intel_pt_interrupt().
 	 */
 	WRITE_ONCE(pt->handle_nmi, 0);
+	barrier();
 
 	pt_config_stop(event);
 
@@ -1637,11 +1654,10 @@ static long pt_event_snapshot_aux(struct perf_event *event,
 		return 0;
 
 	/*
-	 * Here, handle_nmi tells us if the tracing is on
+	 * There is no PT interrupt in this mode, so stop the trace and it will
+	 * remain stopped while the buffer is copied.
 	 */
-	if (READ_ONCE(pt->handle_nmi))
-		pt_config_stop(event);
-
+	pt_config_stop(event);
 	pt_read_offset(buf);
 	pt_update_head(pt);
 
@@ -1653,11 +1669,10 @@ static long pt_event_snapshot_aux(struct perf_event *event,
 	ret = perf_output_copy_aux(&pt->handle, handle, from, to);
 
 	/*
-	 * If the tracing was on when we turned up, restart it.
-	 * Compiler barrier not needed as we couldn't have been
-	 * preempted by anything that touches pt->handle_nmi.
+	 * Here, handle_nmi tells us if the tracing was on.
+	 * If the tracing was on, restart it.
 	 */
-	if (pt->handle_nmi)
+	if (READ_ONCE(pt->handle_nmi))
 		pt_config_start(event);
 
 	return ret;

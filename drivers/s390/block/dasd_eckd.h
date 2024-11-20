@@ -13,6 +13,7 @@
 /*****************************************************************************
  * SECTION: CCW Definitions
  ****************************************************************************/
+#define DASD_ECKD_CCW_NOP		 0x03
 #define DASD_ECKD_CCW_WRITE		 0x05
 #define DASD_ECKD_CCW_READ		 0x06
 #define DASD_ECKD_CCW_WRITE_HOME_ADDRESS 0x09
@@ -664,16 +665,19 @@ struct dasd_conf_data {
 	struct dasd_gneq gneq;
 } __packed;
 
-struct dasd_eckd_private {
-	struct dasd_eckd_characteristics rdc_data;
-	u8 *conf_data;
-	int conf_len;
-
+struct dasd_conf {
+	u8 *data;
+	int len;
 	/* pointers to specific parts in the conf_data */
 	struct dasd_ned *ned;
 	struct dasd_sneq *sneq;
 	struct vd_sneq *vdsneq;
 	struct dasd_gneq *gneq;
+};
+
+struct dasd_eckd_private {
+	struct dasd_eckd_characteristics rdc_data;
+	struct dasd_conf conf;
 
 	struct eckd_count count_area[5];
 	int init_cqr_status;

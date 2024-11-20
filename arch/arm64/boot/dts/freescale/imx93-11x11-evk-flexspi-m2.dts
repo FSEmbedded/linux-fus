@@ -5,6 +5,10 @@
 
 #include "imx93-11x11-evk.dts"
 
+&reg_usdhc3_vmmc {
+	status = "disabled";
+};
+
 &usdhc3_pwrseq {
 	status = "disabled";
 };
@@ -35,8 +39,8 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 		compatible = "jedec,spi-nor";
-		spi-max-frequency = <20000000>;
-		spi-tx-bus-width = <1>;
+		spi-max-frequency = <133000000>;
+		spi-tx-bus-width = <4>;
 		spi-rx-bus-width = <4>;
 	};
 };

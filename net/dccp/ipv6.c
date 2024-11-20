@@ -174,17 +174,18 @@ static int dccp_v6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 			 */
 			sk_error_report(sk);
 			dccp_done(sk);
-		} else
-			sk->sk_err_soft = err;
+		} else {
+			WRITE_ONCE(sk->sk_err_soft, err);
+		}
 		goto out;
 	}
 
 	if (!sock_owned_by_user(sk) && np->recverr) {
 		sk->sk_err = err;
 		sk_error_report(sk);
-	} else
-		sk->sk_err_soft = err;
-
+	} else {
+		WRITE_ONCE(sk->sk_err_soft, err);
+	}
 out:
 	bh_unlock_sock(sk);
 	sock_put(sk);
@@ -237,8 +238,8 @@ static int dccp_v6_send_response(const struct sock *sk, struct request_sock *req
 		opt = ireq->ipv6_opt;
 		if (!opt)
 			opt = rcu_dereference(np->opt);
-		err = ip6_xmit(sk, skb, &fl6, sk->sk_mark, opt, np->tclass,
-			       sk->sk_priority);
+		err = ip6_xmit(sk, skb, &fl6, READ_ONCE(sk->sk_mark), opt,
+			       np->tclass, sk->sk_priority);
 		rcu_read_unlock();
 		err = net_xmit_eval(err);
 	}
@@ -374,10 +375,10 @@ static int dccp_v6_conn_request(struct sock *sk, struct sk_buff *skb)
 		refcount_inc(&skb->users);
 		ireq->pktopts = skb;
 	}
-	ireq->ir_iif = sk->sk_bound_dev_if;
+	ireq->ir_iif = READ_ONCE(sk->sk_bound_dev_if);
 
 	/* So that link locals have meaning */
-	if (!sk->sk_bound_dev_if &&
+	if (!ireq->ir_iif &&
 	    ipv6_addr_type(&ireq->ir_v6_rmt_addr) & IPV6_ADDR_LINKLOCAL)
 		ireq->ir_iif = inet6_iif(skb);
 
@@ -397,8 +398,11 @@ static int dccp_v6_conn_request(struct sock *sk, struct sk_buff *skb)
 	if (dccp_v6_send_response(sk, req))
 		goto drop_and_free;
 
-	inet_csk_reqsk_queue_hash_add(sk, req, DCCP_TIMEOUT_INIT);
-	reqsk_put(req);
+	if (unlikely(!inet_csk_reqsk_queue_hash_add(sk, req, DCCP_TIMEOUT_INIT)))
+		reqsk_free(req);
+	else
+		reqsk_put(req);
+
 	return 0;
 
 drop_and_free:
@@ -783,6 +787,7 @@ lookup:
 
 	if (!xfrm6_policy_check(sk, XFRM_POLICY_IN, skb))
 		goto discard_and_relse;
+	nf_reset_ct(skb);
 
 	return __sk_receive_skb(sk, skb, 1, dh->dccph_doff * 4,
 				refcounted) ? -1 : 0;
@@ -889,7 +894,7 @@ static int dccp_v6_connect(struct sock *sk, struct sockaddr *uaddr,
 
 		SOCK_DEBUG(sk, "connect: ipv4 mapped\n");
 
-		if (__ipv6_only_sock(sk))
+		if (ipv6_only_sock(sk))
 			return -ENETUNREACH;
 
 		sin.sin_family = AF_INET;
@@ -932,7 +937,10 @@ static int dccp_v6_connect(struct sock *sk, struct sockaddr *uaddr,
 
 	if (saddr == NULL) {
 		saddr = &fl6.saddr;
-		sk->sk_v6_rcv_saddr = *saddr;
+
+		err = inet_bhash2_update_saddr(sk, saddr, AF_INET6);
+		if (err)
+			goto failure;
 	}
 
 	/* set the source address */
@@ -964,8 +972,7 @@ static int dccp_v6_connect(struct sock *sk, struct sockaddr *uaddr,
 
 late_failure:
 	dccp_set_state(sk, DCCP_CLOSED);
-	if (!(sk->sk_userlocks & SOCK_BINDADDR_LOCK))
-		inet_reset_saddr(sk);
+	inet_bhash2_reset_saddr(sk);
 	__sk_dst_reset(sk);
 failure:
 	inet->inet_dport = 0;
@@ -1052,6 +1059,7 @@ static struct proto dccp_v6_prot = {
 	.orphan_count	   = &dccp_orphan_count,
 	.max_header	   = MAX_DCCP_HEADER,
 	.obj_size	   = sizeof(struct dccp6_sock),
+	.ipv6_pinfo_offset = offsetof(struct dccp6_sock, inet6),
 	.slab_flags	   = SLAB_TYPESAFE_BY_RCU,
 	.rsk_prot	   = &dccp6_request_sock_ops,
 	.twsk_prot	   = &dccp6_timewait_sock_ops,
@@ -1083,7 +1091,6 @@ static const struct proto_ops inet6_dccp_ops = {
 	.sendmsg	   = inet_sendmsg,
 	.recvmsg	   = sock_common_recvmsg,
 	.mmap		   = sock_no_mmap,
-	.sendpage	   = sock_no_sendpage,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	   = inet6_compat_ioctl,
 #endif
@@ -1115,15 +1122,9 @@ static void __net_exit dccp_v6_exit_net(struct net *net)
 	inet_ctl_sock_destroy(pn->v6_ctl_sk);
 }
 
-static void __net_exit dccp_v6_exit_batch(struct list_head *net_exit_list)
-{
-	inet_twsk_purge(&dccp_hashinfo, AF_INET6);
-}
-
 static struct pernet_operations dccp_v6_ops = {
 	.init   = dccp_v6_init_net,
 	.exit   = dccp_v6_exit_net,
-	.exit_batch = dccp_v6_exit_batch,
 	.id	= &dccp_v6_pernet_id,
 	.size   = sizeof(struct dccp_v6_pernet),
 };

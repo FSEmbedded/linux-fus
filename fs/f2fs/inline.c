@@ -16,7 +16,7 @@
 
 static bool support_inline_data(struct inode *inode)
 {
-	if (f2fs_is_atomic_file(inode))
+	if (f2fs_used_in_atomic_write(inode))
 		return false;
 	if (!S_ISREG(inode->i_mode) && !S_ISLNK(inode->i_mode))
 		return false;
@@ -33,9 +33,27 @@ bool f2fs_may_inline_data(struct inode *inode)
 	return !f2fs_post_read_required(inode);
 }
 
-bool f2fs_sanity_check_inline_data(struct inode *inode)
+static bool inode_has_blocks(struct inode *inode, struct page *ipage)
+{
+	struct f2fs_inode *ri = F2FS_INODE(ipage);
+	int i;
+
+	if (F2FS_HAS_BLOCKS(inode))
+		return true;
+
+	for (i = 0; i < DEF_NIDS_PER_INODE; i++) {
+		if (ri->i_nid[i])
+			return true;
+	}
+	return false;
+}
+
+bool f2fs_sanity_check_inline_data(struct inode *inode, struct page *ipage)
 {
 	if (!f2fs_has_inline_data(inode))
+		return false;
+
+	if (inode_has_blocks(inode, ipage))
 		return false;
 
 	if (!support_inline_data(inode))
@@ -160,6 +178,7 @@ int f2fs_convert_inline_page(struct dnode_of_data *dn, struct page *page)
 		set_sbi_flag(fio.sbi, SBI_NEED_FSCK);
 		f2fs_warn(fio.sbi, "%s: corrupted inline inode ino=%lx, i_addr[0]:0x%x, run fsck to fix.",
 			  __func__, dn->inode->i_ino, dn->data_blkaddr);
+		f2fs_handle_error(fio.sbi, ERROR_INVALID_BLKADDR);
 		return -EFSCORRUPTED;
 	}
 
@@ -173,7 +192,6 @@ int f2fs_convert_inline_page(struct dnode_of_data *dn, struct page *page)
 
 	/* write data page to try to make data consistent */
 	set_page_writeback(page);
-	ClearPageError(page);
 	fio.old_blkaddr = dn->data_blkaddr;
 	set_inode_flag(dn->inode, FI_HOT_DATA);
 	f2fs_outplace_write_data(dn, &fio);
@@ -203,8 +221,10 @@ int f2fs_convert_inline_inode(struct inode *inode)
 	struct page *ipage, *page;
 	int err = 0;
 
-	if (!f2fs_has_inline_data(inode) ||
-			f2fs_hw_is_readonly(sbi) || f2fs_readonly(sbi->sb))
+	if (f2fs_hw_is_readonly(sbi) || f2fs_readonly(sbi->sb))
+		return -EROFS;
+
+	if (!f2fs_has_inline_data(inode))
 		return 0;
 
 	err = f2fs_dquot_initialize(inode);
@@ -412,6 +432,7 @@ static int f2fs_move_inline_dirents(struct inode *dir, struct page *ipage,
 		set_sbi_flag(F2FS_P_SB(page), SBI_NEED_FSCK);
 		f2fs_warn(F2FS_P_SB(page), "%s: corrupted inline inode ino=%lx, i_addr[0]:0x%x, run fsck to fix.",
 			  __func__, dir->i_ino, dn.data_blkaddr);
+		f2fs_handle_error(F2FS_P_SB(page), ERROR_INVALID_BLKADDR);
 		err = -EFSCORRUPTED;
 		goto out;
 	}
@@ -496,7 +517,7 @@ static int f2fs_add_inline_entries(struct inode *dir, void *inline_dentry)
 		fname.hash = de->hash_code;
 
 		ino = le32_to_cpu(de->ino);
-		fake_mode = f2fs_get_de_type(de) << S_SHIFT;
+		fake_mode = fs_ftype_to_dtype(de->file_type) << S_DT_SHIFT;
 
 		err = f2fs_add_regular_entry(dir, &fname, NULL, ino, fake_mode);
 		if (err)
@@ -640,7 +661,8 @@ int f2fs_add_inline_entry(struct inode *dir, const struct f2fs_filename *fname,
 	}
 
 	if (inode) {
-		down_write(&F2FS_I(inode)->i_sem);
+		f2fs_down_write_nested(&F2FS_I(inode)->i_sem,
+						SINGLE_DEPTH_NESTING);
 		page = f2fs_init_inode_metadata(inode, dir, fname, ipage);
 		if (IS_ERR(page)) {
 			err = PTR_ERR(page);
@@ -669,7 +691,7 @@ int f2fs_add_inline_entry(struct inode *dir, const struct f2fs_filename *fname,
 	f2fs_update_parent_metadata(dir, inode, 0);
 fail:
 	if (inode)
-		up_write(&F2FS_I(inode)->i_sem);
+		f2fs_up_write(&F2FS_I(inode)->i_sem);
 out:
 	f2fs_put_page(ipage, 1);
 	return err;
@@ -697,7 +719,7 @@ void f2fs_delete_inline_entry(struct f2fs_dir_entry *dentry, struct page *page,
 	set_page_dirty(page);
 	f2fs_put_page(page, 1);
 
-	dir->i_ctime = dir->i_mtime = current_time(dir);
+	dir->i_mtime = inode_set_ctime_current(dir);
 	f2fs_mark_inode_dirty_sync(dir, false);
 
 	if (inode)

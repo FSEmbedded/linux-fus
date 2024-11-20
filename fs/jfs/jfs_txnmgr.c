@@ -783,7 +783,7 @@ struct tlock *txLock(tid_t tid, struct inode *ip, struct metapage * mp,
 			if (mp->xflag & COMMIT_PAGE)
 				p = (xtpage_t *) mp->data;
 			else
-				p = &jfs_ip->i_xtroot;
+				p = (xtpage_t *) &jfs_ip->i_xtroot;
 			xtlck->lwm.offset =
 			    le16_to_cpu(p->header.nextindex);
 		}
@@ -1495,40 +1495,6 @@ static void diLog(struct jfs_log *log, struct tblock *tblk, struct lrd *lrd,
 		tlck->flag |= tlckWRITEPAGE;
 	} else
 		jfs_err("diLog: UFO type tlck:0x%p", tlck);
-#ifdef  _JFS_WIP
-	/*
-	 *	alloc/free external EA extent
-	 *
-	 * a maplock for txUpdateMap() to update bPWMAP for alloc/free
-	 * of the extent has been formatted at txLock() time;
-	 */
-	else {
-		assert(tlck->type & tlckEA);
-
-		/* log LOG_UPDATEMAP for logredo() to update bmap for
-		 * alloc of new (and free of old) external EA extent;
-		 */
-		lrd->type = cpu_to_le16(LOG_UPDATEMAP);
-		pxdlock = (struct pxd_lock *) & tlck->lock;
-		nlock = pxdlock->index;
-		for (i = 0; i < nlock; i++, pxdlock++) {
-			if (pxdlock->flag & mlckALLOCPXD)
-				lrd->log.updatemap.type =
-				    cpu_to_le16(LOG_ALLOCPXD);
-			else
-				lrd->log.updatemap.type =
-				    cpu_to_le16(LOG_FREEPXD);
-			lrd->log.updatemap.nxd = cpu_to_le16(1);
-			lrd->log.updatemap.pxd = pxdlock->pxd;
-			lrd->backchain =
-			    cpu_to_le32(lmLog(log, tblk, lrd, NULL));
-		}
-
-		/* update bmap */
-		tlck->flag |= tlckUPDATEMAP;
-	}
-#endif				/* _JFS_WIP */
-
 	return;
 }
 
@@ -1710,7 +1676,7 @@ static void xtLog(struct jfs_log * log, struct tblock * tblk, struct lrd * lrd,
 
 	if (tlck->type & tlckBTROOT) {
 		lrd->log.redopage.type |= cpu_to_le16(LOG_BTROOT);
-		p = &JFS_IP(ip)->i_xtroot;
+		p = (xtpage_t *) &JFS_IP(ip)->i_xtroot;
 		if (S_ISDIR(ip->i_mode))
 			lrd->log.redopage.type |=
 			    cpu_to_le16(LOG_DIR_XTREE);

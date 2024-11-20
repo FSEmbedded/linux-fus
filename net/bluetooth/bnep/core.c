@@ -385,7 +385,8 @@ static int bnep_rx_frame(struct bnep_session *s, struct sk_buff *skb)
 
 	case BNEP_COMPRESSED_DST_ONLY:
 		__skb_put_data(nskb, skb_mac_header(skb), ETH_ALEN);
-		__skb_put_data(nskb, s->eh.h_source, ETH_ALEN + 2);
+		__skb_put_data(nskb, s->eh.h_source, ETH_ALEN);
+		put_unaligned(s->eh.h_proto, (__be16 *)__skb_put(nskb, 2));
 		break;
 
 	case BNEP_GENERAL:
@@ -400,7 +401,7 @@ static int bnep_rx_frame(struct bnep_session *s, struct sk_buff *skb)
 	dev->stats.rx_packets++;
 	nskb->ip_summed = CHECKSUM_NONE;
 	nskb->protocol  = eth_type_trans(nskb, dev);
-	netif_rx_ni(nskb);
+	netif_rx(nskb);
 	return 0;
 
 badframe:
@@ -594,7 +595,7 @@ int bnep_add_connection(struct bnep_connadd_req *req, struct socket *sock)
 	 * ie. eh.h_dest is our local address. */
 	memcpy(s->eh.h_dest,   &src, ETH_ALEN);
 	memcpy(s->eh.h_source, &dst, ETH_ALEN);
-	memcpy(dev->dev_addr, s->eh.h_dest, ETH_ALEN);
+	eth_hw_addr_set(dev, s->eh.h_dest);
 
 	s->dev   = dev;
 	s->sock  = sock;

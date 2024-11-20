@@ -1206,9 +1206,8 @@ static int hix5hd2_dev_probe(struct platform_device *pdev)
 	}
 
 	ndev->irq = platform_get_irq(pdev, 0);
-	if (ndev->irq <= 0) {
-		netdev_err(ndev, "No irq resource\n");
-		ret = -EINVAL;
+	if (ndev->irq < 0) {
+		ret = ndev->irq;
 		goto out_phy_node;
 	}
 
@@ -1243,7 +1242,7 @@ static int hix5hd2_dev_probe(struct platform_device *pdev)
 	if (ret)
 		goto out_phy_node;
 
-	netif_napi_add(ndev, &priv->napi, hix5hd2_poll, NAPI_POLL_WEIGHT);
+	netif_napi_add(ndev, &priv->napi, hix5hd2_poll);
 
 	if (HAS_CAP_TSO(priv->hw_cap)) {
 		ret = hix5hd2_init_sg_desc_queue(priv);

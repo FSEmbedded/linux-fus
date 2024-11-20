@@ -694,7 +694,7 @@
 		compatible = "wlf,wm8960";
 		#sound-dai-cells = <0>;
 		reg = <0x1a>;
-		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI2_MCLK1>;
+		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>;
 		clock-names = "mclk";
 		wlf,shared-lrclk;
 		wlf,gpio-cfg = <1 0>;
@@ -705,7 +705,7 @@
 		compatible = "wlf,wm8904";
 		#sound-dai-cells = <0>;
 		reg = <0x1a>;
-		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI2_MCLK1>;
+		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>;
 		clock-names = "mclk";
 		wlf,shared-lrclk;
 		wlf,gpio-cfg = <1 0>;
@@ -1073,8 +1073,8 @@ touch: goodix@5d {
 	assigned-clocks = <&clk IMX8MP_CLK_SAI2>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <12288000>;
-	clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI2_IPG>, <&clk IMX8MP_CLK_DUMMY>,
-		 <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI2_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
+	clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIOMIX_SAI2_IPG>, <&clk IMX8MP_CLK_DUMMY>,
+		 <&audio_blk_ctrl IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
 		 <&clk IMX8MP_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 	fsl,sai-mclk-direction-output;
@@ -1368,6 +1368,8 @@ touch: goodix@5d {
 #ifdef CONFIG_ARMSTONEMX8MP_LVDS1
 	/* LVDSB */
 	lvds-channel@1 {
+		#address-cells = <1>;
+		#size-cells = <0>;
 		fsl,data-mapping = CONFIG_ARMSTONEMX8MP_LVDS1_CHANNEL_MAPPING;
 		fsl,data-width = <CONFIG_ARMSTONEMX8MP_LVDS1_CHANNEL_DATA_WIDTH>;
 #ifndef CONFIG_ARMSTONEMX8MP_LVDS_DUAL_CHANNEL

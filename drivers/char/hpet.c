@@ -16,6 +16,7 @@
 #include <linux/ioport.h>
 #include <linux/fcntl.h>
 #include <linux/init.h>
+#include <linux/io-64-nonatomic-lo-hi.h>
 #include <linux/poll.h>
 #include <linux/mm.h>
 #include <linux/proc_fs.h>
@@ -119,22 +120,6 @@ static struct hpets *hpets;
 #define	HPET_IE			0x0002	/* interrupt enabled */
 #define	HPET_PERIODIC		0x0004
 #define	HPET_SHARED_IRQ		0x0008
-
-
-#ifndef readq
-static inline unsigned long long readq(void __iomem *addr)
-{
-	return readl(addr) | (((unsigned long long)readl(addr + 4)) << 32LL);
-}
-#endif
-
-#ifndef writeq
-static inline void writeq(unsigned long long v, void __iomem *addr)
-{
-	writel(v & 0xffffffff, addr);
-	writel(v >> 32, addr + 4);
-}
-#endif
 
 static irqreturn_t hpet_interrupt(int irq, void *data)
 {
@@ -268,9 +253,9 @@ static int hpet_open(struct inode *inode, struct file *file)
 
 	for (devp = NULL, hpetp = hpets; hpetp && !devp; hpetp = hpetp->hp_next)
 		for (i = 0; i < hpetp->hp_ntimer; i++)
-			if (hpetp->hp_dev[i].hd_flags & HPET_OPEN)
+			if (hpetp->hp_dev[i].hd_flags & HPET_OPEN) {
 				continue;
-			else {
+			} else {
 				devp = &hpetp->hp_dev[i];
 				break;
 			}
@@ -304,8 +289,13 @@ hpet_read(struct file *file, char __user *buf, size_t count, loff_t * ppos)
 	if (!devp->hd_ireqfreq)
 		return -EIO;
 
-	if (count < sizeof(unsigned long))
-		return -EINVAL;
+	if (in_compat_syscall()) {
+		if (count < sizeof(compat_ulong_t))
+			return -EINVAL;
+	} else {
+		if (count < sizeof(unsigned long))
+			return -EINVAL;
+	}
 
 	add_wait_queue(&devp->hd_waitqueue, &wait);
 
@@ -317,9 +307,9 @@ hpet_read(struct file *file, char __user *buf, size_t count, loff_t * ppos)
 		devp->hd_irqdata = 0;
 		spin_unlock_irq(&hpet_lock);
 
-		if (data)
+		if (data) {
 			break;
-		else if (file->f_flags & O_NONBLOCK) {
+		} else if (file->f_flags & O_NONBLOCK) {
 			retval = -EAGAIN;
 			goto out;
 		} else if (signal_pending(current)) {
@@ -329,9 +319,16 @@ hpet_read(struct file *file, char __user *buf, size_t count, loff_t * ppos)
 		schedule();
 	}
 
-	retval = put_user(data, (unsigned long __user *)buf);
-	if (!retval)
-		retval = sizeof(unsigned long);
+	if (in_compat_syscall()) {
+		retval = put_user(data, (compat_ulong_t __user *)buf);
+		if (!retval)
+			retval = sizeof(compat_ulong_t);
+	} else {
+		retval = put_user(data, (unsigned long __user *)buf);
+		if (!retval)
+			retval = sizeof(unsigned long);
+	}
+
 out:
 	__set_current_state(TASK_RUNNING);
 	remove_wait_queue(&devp->hd_waitqueue, &wait);
@@ -686,11 +683,23 @@ struct compat_hpet_info {
 	unsigned short hi_timer;
 };
 
+/* 32-bit types would lead to different command codes which should be
+ * translated into 64-bit ones before passed to hpet_ioctl_common
+ */
+#define COMPAT_HPET_INFO       _IOR('h', 0x03, struct compat_hpet_info)
+#define COMPAT_HPET_IRQFREQ    _IOW('h', 0x6, compat_ulong_t)
+
 static long
 hpet_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct hpet_info info;
 	int err;
+
+	if (cmd == COMPAT_HPET_INFO)
+		cmd = HPET_INFO;
+
+	if (cmd == COMPAT_HPET_IRQFREQ)
+		cmd = HPET_IRQFREQ;
 
 	mutex_lock(&hpet_mutex);
 	err = hpet_ioctl_common(file->private_data, cmd, arg, &info);
@@ -742,26 +751,6 @@ static struct ctl_table hpet_table[] = {
 	 .maxlen = sizeof(int),
 	 .mode = 0644,
 	 .proc_handler = proc_dointvec,
-	 },
-	{}
-};
-
-static struct ctl_table hpet_root[] = {
-	{
-	 .procname = "hpet",
-	 .maxlen = 0,
-	 .mode = 0555,
-	 .child = hpet_table,
-	 },
-	{}
-};
-
-static struct ctl_table dev_root[] = {
-	{
-	 .procname = "dev",
-	 .maxlen = 0,
-	 .mode = 0555,
-	 .child = hpet_root,
 	 },
 	{}
 };
@@ -1002,7 +991,8 @@ static acpi_status hpet_resources(struct acpi_resource *res, void *data)
 				break;
 
 			irq = acpi_register_gsi(NULL, irqp->interrupts[i],
-				      irqp->triggering, irqp->polarity);
+						irqp->triggering,
+						irqp->polarity);
 			if (irq < 0)
 				return AE_ERROR;
 
@@ -1061,7 +1051,7 @@ static int __init hpet_init(void)
 	if (result < 0)
 		return -ENODEV;
 
-	sysctl_header = register_sysctl_table(dev_root);
+	sysctl_header = register_sysctl("dev/hpet", hpet_table);
 
 	result = acpi_bus_register_driver(&hpet_acpi_driver);
 	if (result < 0) {

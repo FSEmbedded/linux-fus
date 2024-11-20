@@ -65,20 +65,6 @@ extern void setup_clear_cpu_cap(unsigned int bit);
 
 #define setup_force_cpu_bug(bit) setup_force_cpu_cap(bit)
 
-#if defined(__clang__) && !defined(CONFIG_CC_HAS_ASM_GOTO)
-
-/*
- * Workaround for the sake of BPF compilation which utilizes kernel
- * headers, but clang does not support ASM GOTO and fails the build.
- */
-#ifndef __BPF_TRACING__
-#warning "Compiler lacks ASM_GOTO support. Add -D __BPF_TRACING__ to your compiler arguments"
-#endif
-
-#define static_cpu_has(bit)            boot_cpu_has(bit)
-
-#else
-
 /*
  * Static testing of CPU features. Used the same as boot_cpu_has(). It
  * statically patches the target code for additional performance. Use
@@ -89,7 +75,7 @@ extern void setup_clear_cpu_cap(unsigned int bit);
  */
 static __always_inline bool _static_cpu_has(u16 bit)
 {
-	asm_volatile_goto("1: jmp 6f\n"
+	asm goto("1: jmp 6f\n"
 		 "2:\n"
 		 ".skip -(((5f-4f) - (2b-1b)) > 0) * "
 			 "((5f-4f) - (2b-1b)),0x90\n"
@@ -137,7 +123,6 @@ t_no:
 		boot_cpu_has(bit) :				\
 		_static_cpu_has(bit)				\
 )
-#endif
 
 #define cpu_has_bug(c, bit)		cpu_has(c, (bit))
 #define set_cpu_bug(c, bit)		set_cpu_cap(c, (bit))

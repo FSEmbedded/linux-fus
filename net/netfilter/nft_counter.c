@@ -13,6 +13,7 @@
 #include <linux/netfilter.h>
 #include <linux/netfilter/nf_tables.h>
 #include <net/netfilter/nf_tables.h>
+#include <net/netfilter/nf_tables_core.h>
 #include <net/netfilter/nf_tables_offload.h>
 
 struct nft_counter {
@@ -106,11 +107,16 @@ static void nft_counter_reset(struct nft_counter_percpu_priv *priv,
 			      struct nft_counter *total)
 {
 	struct nft_counter *this_cpu;
+	seqcount_t *myseq;
 
 	local_bh_disable();
 	this_cpu = this_cpu_ptr(priv->counter);
+	myseq = this_cpu_ptr(&nft_counter_seq);
+
+	write_seqcount_begin(myseq);
 	this_cpu->packets -= total->packets;
 	this_cpu->bytes -= total->bytes;
+	write_seqcount_end(myseq);
 	local_bh_enable();
 }
 
@@ -174,7 +180,7 @@ static const struct nla_policy nft_counter_policy[NFTA_COUNTER_MAX + 1] = {
 	[NFTA_COUNTER_BYTES]	= { .type = NLA_U64 },
 };
 
-static struct nft_object_type nft_counter_obj_type;
+struct nft_object_type nft_counter_obj_type;
 static const struct nft_object_ops nft_counter_obj_ops = {
 	.type		= &nft_counter_obj_type,
 	.size		= sizeof(struct nft_counter_percpu_priv),
@@ -184,7 +190,7 @@ static const struct nft_object_ops nft_counter_obj_ops = {
 	.dump		= nft_counter_obj_dump,
 };
 
-static struct nft_object_type nft_counter_obj_type __read_mostly = {
+struct nft_object_type nft_counter_obj_type __read_mostly = {
 	.type		= NFT_OBJECT_COUNTER,
 	.ops		= &nft_counter_obj_ops,
 	.maxattr	= NFTA_COUNTER_MAX,
@@ -192,20 +198,20 @@ static struct nft_object_type nft_counter_obj_type __read_mostly = {
 	.owner		= THIS_MODULE,
 };
 
-static void nft_counter_eval(const struct nft_expr *expr,
-			     struct nft_regs *regs,
-			     const struct nft_pktinfo *pkt)
+void nft_counter_eval(const struct nft_expr *expr, struct nft_regs *regs,
+		      const struct nft_pktinfo *pkt)
 {
 	struct nft_counter_percpu_priv *priv = nft_expr_priv(expr);
 
 	nft_counter_do_eval(priv, regs, pkt);
 }
 
-static int nft_counter_dump(struct sk_buff *skb, const struct nft_expr *expr)
+static int nft_counter_dump(struct sk_buff *skb,
+			    const struct nft_expr *expr, bool reset)
 {
 	struct nft_counter_percpu_priv *priv = nft_expr_priv(expr);
 
-	return nft_counter_do_dump(skb, priv, false);
+	return nft_counter_do_dump(skb, priv, reset);
 }
 
 static int nft_counter_init(const struct nft_ctx *ctx,
@@ -264,7 +270,7 @@ static void nft_counter_offload_stats(struct nft_expr *expr,
 	struct nft_counter *this_cpu;
 	seqcount_t *myseq;
 
-	preempt_disable();
+	local_bh_disable();
 	this_cpu = this_cpu_ptr(priv->counter);
 	myseq = this_cpu_ptr(&nft_counter_seq);
 
@@ -272,10 +278,18 @@ static void nft_counter_offload_stats(struct nft_expr *expr,
 	this_cpu->packets += stats->pkts;
 	this_cpu->bytes += stats->bytes;
 	write_seqcount_end(myseq);
-	preempt_enable();
+	local_bh_enable();
 }
 
-static struct nft_expr_type nft_counter_type;
+void nft_counter_init_seqcount(void)
+{
+	int cpu;
+
+	for_each_possible_cpu(cpu)
+		seqcount_init(per_cpu_ptr(&nft_counter_seq, cpu));
+}
+
+struct nft_expr_type nft_counter_type;
 static const struct nft_expr_ops nft_counter_ops = {
 	.type		= &nft_counter_type,
 	.size		= NFT_EXPR_SIZE(sizeof(struct nft_counter_percpu_priv)),
@@ -285,11 +299,12 @@ static const struct nft_expr_ops nft_counter_ops = {
 	.destroy_clone	= nft_counter_destroy,
 	.dump		= nft_counter_dump,
 	.clone		= nft_counter_clone,
+	.reduce		= NFT_REDUCE_READONLY,
 	.offload	= nft_counter_offload,
 	.offload_stats	= nft_counter_offload_stats,
 };
 
-static struct nft_expr_type nft_counter_type __read_mostly = {
+struct nft_expr_type nft_counter_type __read_mostly = {
 	.name		= "counter",
 	.ops		= &nft_counter_ops,
 	.policy		= nft_counter_policy,
@@ -297,39 +312,3 @@ static struct nft_expr_type nft_counter_type __read_mostly = {
 	.flags		= NFT_EXPR_STATEFUL,
 	.owner		= THIS_MODULE,
 };
-
-static int __init nft_counter_module_init(void)
-{
-	int cpu, err;
-
-	for_each_possible_cpu(cpu)
-		seqcount_init(per_cpu_ptr(&nft_counter_seq, cpu));
-
-	err = nft_register_obj(&nft_counter_obj_type);
-	if (err < 0)
-		return err;
-
-	err = nft_register_expr(&nft_counter_type);
-	if (err < 0)
-		goto err1;
-
-	return 0;
-err1:
-	nft_unregister_obj(&nft_counter_obj_type);
-	return err;
-}
-
-static void __exit nft_counter_module_exit(void)
-{
-	nft_unregister_expr(&nft_counter_type);
-	nft_unregister_obj(&nft_counter_obj_type);
-}
-
-module_init(nft_counter_module_init);
-module_exit(nft_counter_module_exit);
-
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Patrick McHardy <kaber@trash.net>");
-MODULE_ALIAS_NFT_EXPR("counter");
-MODULE_ALIAS_NFT_OBJ(NFT_OBJECT_COUNTER);
-MODULE_DESCRIPTION("nftables counter rule support");

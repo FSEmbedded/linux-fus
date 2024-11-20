@@ -1287,8 +1287,7 @@ static const struct iio_chan_spec bme280_channels[] = {
 	}
 };
 
-static int bme280_probe(struct i2c_client *client,
-                const struct i2c_device_id *id)
+static int bme280_probe(struct i2c_client *client)
 {
 	int ret;
 	struct iio_dev *indio_dev;
@@ -1324,12 +1323,11 @@ static int bme280_probe(struct i2c_client *client,
 	return iio_device_register(indio_dev);
 }
 
-static int bme280_remove(struct i2c_client *client)
+static void bme280_remove(struct i2c_client *client)
 {
 	struct iio_dev *indio_dev = i2c_get_clientdata(client);
 
 	iio_device_unregister(indio_dev);
-        return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP

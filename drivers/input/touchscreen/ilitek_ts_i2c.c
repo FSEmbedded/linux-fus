@@ -37,6 +37,8 @@
 #define ILITEK_TP_CMD_GET_MCU_VER			0x61
 #define ILITEK_TP_CMD_GET_IC_MODE			0xC0
 
+#define ILITEK_TP_I2C_REPORT_ID				0x48
+
 #define REPORT_COUNT_ADDRESS				61
 #define ILITEK_SUPPORT_MAX_POINT			40
 
@@ -160,15 +162,19 @@ static int ilitek_process_and_report_v6(struct ilitek_ts_data *ts)
 	error = ilitek_i2c_write_and_read(ts, NULL, 0, 0, buf, 64);
 	if (error) {
 		dev_err(dev, "get touch info failed, err:%d\n", error);
-		goto err_sync_frame;
+		return error;
+	}
+
+	if (buf[0] != ILITEK_TP_I2C_REPORT_ID) {
+		dev_err(dev, "get touch info failed. Wrong id: 0x%02X\n", buf[0]);
+		return -EINVAL;
 	}
 
 	report_max_point = buf[REPORT_COUNT_ADDRESS];
 	if (report_max_point > ts->max_tp) {
 		dev_err(dev, "FW report max point:%d > panel info. max:%d\n",
 			report_max_point, ts->max_tp);
-		error = -EINVAL;
-		goto err_sync_frame;
+		return -EINVAL;
 	}
 
 	count = DIV_ROUND_UP(report_max_point, packet_max_point);
@@ -178,7 +184,7 @@ static int ilitek_process_and_report_v6(struct ilitek_ts_data *ts)
 		if (error) {
 			dev_err(dev, "get touch info. failed, cnt:%d, err:%d\n",
 				count, error);
-			goto err_sync_frame;
+			return error;
 		}
 	}
 
@@ -203,10 +209,10 @@ static int ilitek_process_and_report_v6(struct ilitek_ts_data *ts)
 		ilitek_touch_down(ts, id, x, y);
 	}
 
-err_sync_frame:
 	input_mt_sync_frame(input);
 	input_sync(input);
-	return error;
+
+	return 0;
 }
 
 /* APIs of cmds for ILITEK Touch IC */
@@ -391,9 +397,9 @@ static const struct ilitek_protocol_map ptl_func_map[] = {
 static void ilitek_reset(struct ilitek_ts_data *ts, int delay)
 {
 	if (ts->reset_gpio) {
-		gpiod_set_value(ts->reset_gpio, 1);
+		gpiod_set_value_cansleep(ts->reset_gpio, 1);
 		mdelay(10);
-		gpiod_set_value(ts->reset_gpio, 0);
+		gpiod_set_value_cansleep(ts->reset_gpio, 0);
 		mdelay(delay);
 	}
 }
@@ -542,8 +548,7 @@ static struct attribute_group ilitek_attrs_group = {
 	.attrs = ilitek_sysfs_attrs,
 };
 
-static int ilitek_ts_i2c_probe(struct i2c_client *client,
-			       const struct i2c_device_id *id)
+static int ilitek_ts_i2c_probe(struct i2c_client *client)
 {
 	struct ilitek_ts_data *ts;
 	struct device *dev = &client->dev;
@@ -605,7 +610,7 @@ static int ilitek_ts_i2c_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int __maybe_unused ilitek_suspend(struct device *dev)
+static int ilitek_suspend(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct ilitek_ts_data *ts = i2c_get_clientdata(client);
@@ -622,7 +627,7 @@ static int __maybe_unused ilitek_suspend(struct device *dev)
 	return 0;
 }
 
-static int __maybe_unused ilitek_resume(struct device *dev)
+static int ilitek_resume(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct ilitek_ts_data *ts = i2c_get_clientdata(client);
@@ -641,7 +646,7 @@ static int __maybe_unused ilitek_resume(struct device *dev)
 	return 0;
 }
 
-static SIMPLE_DEV_PM_OPS(ilitek_pm_ops, ilitek_suspend, ilitek_resume);
+static DEFINE_SIMPLE_DEV_PM_OPS(ilitek_pm_ops, ilitek_suspend, ilitek_resume);
 
 static const struct i2c_device_id ilitek_ts_i2c_id[] = {
 	{ ILITEK_TS_NAME, 0 },
@@ -676,7 +681,7 @@ MODULE_DEVICE_TABLE(of, ilitek_ts_i2c_match);
 static struct i2c_driver ilitek_ts_i2c_driver = {
 	.driver = {
 		.name = ILITEK_TS_NAME,
-		.pm = &ilitek_pm_ops,
+		.pm = pm_sleep_ptr(&ilitek_pm_ops),
 		.of_match_table = of_match_ptr(ilitek_ts_i2c_match),
 		.acpi_match_table = ACPI_PTR(ilitekts_acpi_id),
 	},

@@ -74,16 +74,11 @@ static int clk_rcg2_is_enabled(struct clk_hw *hw)
 	return (cmd & CMD_ROOT_OFF) == 0;
 }
 
-static u8 clk_rcg2_get_parent(struct clk_hw *hw)
+static u8 __clk_rcg2_get_parent(struct clk_hw *hw, u32 cfg)
 {
 	struct clk_rcg2 *rcg = to_clk_rcg2(hw);
 	int num_parents = clk_hw_get_num_parents(hw);
-	u32 cfg;
-	int i, ret;
-
-	ret = regmap_read(rcg->clkr.regmap, RCG_CFG_OFFSET(rcg), &cfg);
-	if (ret)
-		goto err;
+	int i;
 
 	cfg &= CFG_SRC_SEL_MASK;
 	cfg >>= CFG_SRC_SEL_SHIFT;
@@ -92,10 +87,25 @@ static u8 clk_rcg2_get_parent(struct clk_hw *hw)
 		if (cfg == rcg->parent_map[i].cfg)
 			return i;
 
-err:
 	pr_debug("%s: Clock %s has invalid parent, using default.\n",
 		 __func__, clk_hw_get_name(hw));
 	return 0;
+}
+
+static u8 clk_rcg2_get_parent(struct clk_hw *hw)
+{
+	struct clk_rcg2 *rcg = to_clk_rcg2(hw);
+	u32 cfg;
+	int ret;
+
+	ret = regmap_read(rcg->clkr.regmap, RCG_CFG_OFFSET(rcg), &cfg);
+	if (ret) {
+		pr_debug("%s: Unable to read CFG register for %s\n",
+			 __func__, clk_hw_get_name(hw));
+		return 0;
+	}
+
+	return __clk_rcg2_get_parent(hw, cfg);
 }
 
 static int update_config(struct clk_rcg2 *rcg)
@@ -158,12 +168,10 @@ calc_rate(unsigned long rate, u32 m, u32 n, u32 mode, u32 hid_div)
 }
 
 static unsigned long
-clk_rcg2_recalc_rate(struct clk_hw *hw, unsigned long parent_rate)
+__clk_rcg2_recalc_rate(struct clk_hw *hw, unsigned long parent_rate, u32 cfg)
 {
 	struct clk_rcg2 *rcg = to_clk_rcg2(hw);
-	u32 cfg, hid_div, m = 0, n = 0, mode = 0, mask;
-
-	regmap_read(rcg->clkr.regmap, RCG_CFG_OFFSET(rcg), &cfg);
+	u32 hid_div, m = 0, n = 0, mode = 0, mask;
 
 	if (rcg->mnd_width) {
 		mask = BIT(rcg->mnd_width) - 1;
@@ -182,6 +190,17 @@ clk_rcg2_recalc_rate(struct clk_hw *hw, unsigned long parent_rate)
 	hid_div &= mask;
 
 	return calc_rate(parent_rate, m, n, mode, hid_div);
+}
+
+static unsigned long
+clk_rcg2_recalc_rate(struct clk_hw *hw, unsigned long parent_rate)
+{
+	struct clk_rcg2 *rcg = to_clk_rcg2(hw);
+	u32 cfg;
+
+	regmap_read(rcg->clkr.regmap, RCG_CFG_OFFSET(rcg), &cfg);
+
+	return __clk_rcg2_recalc_rate(hw, parent_rate, cfg);
 }
 
 static int _freq_tbl_determine_rate(struct clk_hw *hw, const struct freq_tbl *f,
@@ -257,7 +276,8 @@ static int clk_rcg2_determine_floor_rate(struct clk_hw *hw,
 	return _freq_tbl_determine_rate(hw, rcg->freq_tbl, req, FLOOR);
 }
 
-static int __clk_rcg2_configure(struct clk_rcg2 *rcg, const struct freq_tbl *f)
+static int __clk_rcg2_configure(struct clk_rcg2 *rcg, const struct freq_tbl *f,
+				u32 *_cfg)
 {
 	u32 cfg, mask, d_val, not2d_val, n_minus_m;
 	struct clk_hw *hw = &rcg->clkr.hw;
@@ -299,15 +319,29 @@ static int __clk_rcg2_configure(struct clk_rcg2 *rcg, const struct freq_tbl *f)
 	cfg |= rcg->parent_map[index].cfg << CFG_SRC_SEL_SHIFT;
 	if (rcg->mnd_width && f->n && (f->m != f->n))
 		cfg |= CFG_MODE_DUAL_EDGE;
-	return regmap_update_bits(rcg->clkr.regmap, RCG_CFG_OFFSET(rcg),
-					mask, cfg);
+	if (rcg->hw_clk_ctrl)
+		cfg |= CFG_HW_CLK_CTRL_MASK;
+
+	*_cfg &= ~mask;
+	*_cfg |= cfg;
+
+	return 0;
 }
 
 static int clk_rcg2_configure(struct clk_rcg2 *rcg, const struct freq_tbl *f)
 {
+	u32 cfg;
 	int ret;
 
-	ret = __clk_rcg2_configure(rcg, f);
+	ret = regmap_read(rcg->clkr.regmap, RCG_CFG_OFFSET(rcg), &cfg);
+	if (ret)
+		return ret;
+
+	ret = __clk_rcg2_configure(rcg, f, &cfg);
+	if (ret)
+		return ret;
+
+	ret = regmap_write(rcg->clkr.regmap, RCG_CFG_OFFSET(rcg), cfg);
 	if (ret)
 		return ret;
 
@@ -470,6 +504,13 @@ const struct clk_ops clk_rcg2_floor_ops = {
 	.set_duty_cycle = clk_rcg2_set_duty_cycle,
 };
 EXPORT_SYMBOL_GPL(clk_rcg2_floor_ops);
+
+const struct clk_ops clk_rcg2_mux_closest_ops = {
+	.determine_rate = __clk_mux_determine_rate_closest,
+	.get_parent = clk_rcg2_get_parent,
+	.set_parent = clk_rcg2_set_parent,
+};
+EXPORT_SYMBOL_GPL(clk_rcg2_mux_closest_ops);
 
 struct frac_entry {
 	int num;
@@ -820,7 +861,7 @@ EXPORT_SYMBOL_GPL(clk_pixel_ops);
 static int clk_gfx3d_determine_rate(struct clk_hw *hw,
 				    struct clk_rate_request *req)
 {
-	struct clk_rate_request parent_req = { };
+	struct clk_rate_request parent_req = { .min_rate = 0, .max_rate = ULONG_MAX };
 	struct clk_rcg2_gfx3d *cgfx = to_clk_rcg2_gfx3d(hw);
 	struct clk_hw *xo, *p0, *p1, *p2;
 	unsigned long p0_rate;
@@ -869,6 +910,15 @@ static int clk_gfx3d_determine_rate(struct clk_hw *hw,
 	} else {
 		req->best_parent_hw = p2;
 	}
+
+	clk_hw_get_rate_range(req->best_parent_hw,
+			      &parent_req.min_rate, &parent_req.max_rate);
+
+	if (req->min_rate > parent_req.min_rate)
+		parent_req.min_rate = req->min_rate;
+
+	if (req->max_rate < parent_req.max_rate)
+		parent_req.max_rate = req->max_rate;
 
 	ret = __clk_determine_rate(req->best_parent_hw, &parent_req);
 	if (ret)
@@ -981,11 +1031,12 @@ static int clk_rcg2_shared_set_rate(struct clk_hw *hw, unsigned long rate,
 		return -EINVAL;
 
 	/*
-	 * In case clock is disabled, update the CFG, M, N and D registers
-	 * and don't hit the update bit of CMD register.
+	 * In case clock is disabled, update the M, N and D registers, cache
+	 * the CFG value in parked_cfg and don't hit the update bit of CMD
+	 * register.
 	 */
-	if (!__clk_is_enabled(hw->clk))
-		return __clk_rcg2_configure(rcg, f);
+	if (!clk_hw_is_enabled(hw))
+		return __clk_rcg2_configure(rcg, f, &rcg->parked_cfg);
 
 	return clk_rcg2_shared_force_enable_clear(hw, f);
 }
@@ -1009,6 +1060,11 @@ static int clk_rcg2_shared_enable(struct clk_hw *hw)
 	if (ret)
 		return ret;
 
+	/* Write back the stored configuration corresponding to current rate */
+	ret = regmap_write(rcg->clkr.regmap, rcg->cmd_rcgr + CFG_REG, rcg->parked_cfg);
+	if (ret)
+		return ret;
+
 	ret = update_config(rcg);
 	if (ret)
 		return ret;
@@ -1019,13 +1075,12 @@ static int clk_rcg2_shared_enable(struct clk_hw *hw)
 static void clk_rcg2_shared_disable(struct clk_hw *hw)
 {
 	struct clk_rcg2 *rcg = to_clk_rcg2(hw);
-	u32 cfg;
 
 	/*
 	 * Store current configuration as switching to safe source would clear
 	 * the SRC and DIV of CFG register
 	 */
-	regmap_read(rcg->clkr.regmap, rcg->cmd_rcgr + CFG_REG, &cfg);
+	regmap_read(rcg->clkr.regmap, rcg->cmd_rcgr + CFG_REG, &rcg->parked_cfg);
 
 	/*
 	 * Park the RCG at a safe configuration - sourced off of safe source.
@@ -1043,22 +1098,119 @@ static void clk_rcg2_shared_disable(struct clk_hw *hw)
 	update_config(rcg);
 
 	clk_rcg2_clear_force_enable(hw);
+}
 
-	/* Write back the stored configuration corresponding to current rate */
-	regmap_write(rcg->clkr.regmap, rcg->cmd_rcgr + CFG_REG, cfg);
+static u8 clk_rcg2_shared_get_parent(struct clk_hw *hw)
+{
+	struct clk_rcg2 *rcg = to_clk_rcg2(hw);
+
+	/* If the shared rcg is parked use the cached cfg instead */
+	if (!clk_hw_is_enabled(hw))
+		return __clk_rcg2_get_parent(hw, rcg->parked_cfg);
+
+	return clk_rcg2_get_parent(hw);
+}
+
+static int clk_rcg2_shared_set_parent(struct clk_hw *hw, u8 index)
+{
+	struct clk_rcg2 *rcg = to_clk_rcg2(hw);
+
+	/* If the shared rcg is parked only update the cached cfg */
+	if (!clk_hw_is_enabled(hw)) {
+		rcg->parked_cfg &= ~CFG_SRC_SEL_MASK;
+		rcg->parked_cfg |= rcg->parent_map[index].cfg << CFG_SRC_SEL_SHIFT;
+
+		return 0;
+	}
+
+	return clk_rcg2_set_parent(hw, index);
+}
+
+static unsigned long
+clk_rcg2_shared_recalc_rate(struct clk_hw *hw, unsigned long parent_rate)
+{
+	struct clk_rcg2 *rcg = to_clk_rcg2(hw);
+
+	/* If the shared rcg is parked use the cached cfg instead */
+	if (!clk_hw_is_enabled(hw))
+		return __clk_rcg2_recalc_rate(hw, parent_rate, rcg->parked_cfg);
+
+	return clk_rcg2_recalc_rate(hw, parent_rate);
+}
+
+static int clk_rcg2_shared_init(struct clk_hw *hw)
+{
+	/*
+	 * This does a few things:
+	 *
+	 *  1. Sets rcg->parked_cfg to reflect the value at probe so that the
+	 *     proper parent is reported from clk_rcg2_shared_get_parent().
+	 *
+	 *  2. Clears the force enable bit of the RCG because we rely on child
+	 *     clks (branches) to turn the RCG on/off with a hardware feedback
+	 *     mechanism and only set the force enable bit in the RCG when we
+	 *     want to make sure the clk stays on for parent switches or
+	 *     parking.
+	 *
+	 *  3. Parks shared RCGs on the safe source at registration because we
+	 *     can't be certain that the parent clk will stay on during boot,
+	 *     especially if the parent is shared. If this RCG is enabled at
+	 *     boot, and the parent is turned off, the RCG will get stuck on. A
+	 *     GDSC can wedge if is turned on and the RCG is stuck on because
+	 *     the GDSC's controller will hang waiting for the clk status to
+	 *     toggle on when it never does.
+	 *
+	 * The safest option here is to "park" the RCG at init so that the clk
+	 * can never get stuck on or off. This ensures the GDSC can't get
+	 * wedged.
+	 */
+	clk_rcg2_shared_disable(hw);
+
+	return 0;
 }
 
 const struct clk_ops clk_rcg2_shared_ops = {
+	.init = clk_rcg2_shared_init,
 	.enable = clk_rcg2_shared_enable,
 	.disable = clk_rcg2_shared_disable,
-	.get_parent = clk_rcg2_get_parent,
-	.set_parent = clk_rcg2_set_parent,
-	.recalc_rate = clk_rcg2_recalc_rate,
+	.get_parent = clk_rcg2_shared_get_parent,
+	.set_parent = clk_rcg2_shared_set_parent,
+	.recalc_rate = clk_rcg2_shared_recalc_rate,
 	.determine_rate = clk_rcg2_determine_rate,
 	.set_rate = clk_rcg2_shared_set_rate,
 	.set_rate_and_parent = clk_rcg2_shared_set_rate_and_parent,
 };
 EXPORT_SYMBOL_GPL(clk_rcg2_shared_ops);
+
+static int clk_rcg2_shared_no_init_park(struct clk_hw *hw)
+{
+	struct clk_rcg2 *rcg = to_clk_rcg2(hw);
+
+	/*
+	 * Read the config register so that the parent is properly mapped at
+	 * registration time.
+	 */
+	regmap_read(rcg->clkr.regmap, rcg->cmd_rcgr + CFG_REG, &rcg->parked_cfg);
+
+	return 0;
+}
+
+/*
+ * Like clk_rcg2_shared_ops but skip the init so that the clk frequency is left
+ * unchanged at registration time.
+ */
+const struct clk_ops clk_rcg2_shared_no_init_park_ops = {
+	.init = clk_rcg2_shared_no_init_park,
+	.enable = clk_rcg2_shared_enable,
+	.disable = clk_rcg2_shared_disable,
+	.get_parent = clk_rcg2_shared_get_parent,
+	.set_parent = clk_rcg2_shared_set_parent,
+	.recalc_rate = clk_rcg2_shared_recalc_rate,
+	.determine_rate = clk_rcg2_determine_rate,
+	.set_rate = clk_rcg2_shared_set_rate,
+	.set_rate_and_parent = clk_rcg2_shared_set_rate_and_parent,
+};
+EXPORT_SYMBOL_GPL(clk_rcg2_shared_no_init_park_ops);
 
 /* Common APIs to be used for DFS based RCGR */
 static void clk_rcg2_dfs_populate_freq(struct clk_hw *hw, unsigned int l,

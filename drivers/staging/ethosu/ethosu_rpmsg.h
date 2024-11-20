@@ -21,6 +21,7 @@ struct ethosu_core_msg;
 typedef void (*ethosu_rpmsg_cb)(void *user_arg, void *data);
 
 struct ethosu_rpmsg {
+	rwlock_t		lock;
 	struct rpmsg_device	*rpdev;
 	ethosu_rpmsg_cb		callback;
 	void			*user_arg;
@@ -88,6 +89,8 @@ int ethosu_rpmsg_inference(struct ethosu_rpmsg *erp,
 			   uint8_t *pmu_event_config,
 			   uint8_t pmu_event_config_count,
 			   uint8_t pmu_cycle_counter_enable,
+			   u32 flash_offset,
+			   u32 arena_offset,
 			   uint32_t inference_type
 			   );
 

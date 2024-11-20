@@ -5,6 +5,7 @@
  */
 
 #include <linux/clk.h>
+#include <linux/of.h>
 
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge_connector.h>
@@ -117,10 +118,6 @@ static void tegra_rgb_encoder_enable(struct drm_encoder *encoder)
 	value = DISP_DATA_FORMAT_DF1P1C | DISP_ALIGNMENT_MSB |
 		DISP_ORDER_RED_BLUE;
 	tegra_dc_writel(rgb->dc, value, DC_DISP_DISP_INTERFACE_CONTROL);
-
-	/* XXX: parameterize? */
-	value = SC0_H_QUALIFIER_NONE | SC1_H_QUALIFIER_NONE;
-	tegra_dc_writel(rgb->dc, value, DC_DISP_SHIFT_CLOCK_OPTIONS);
 
 	tegra_dc_commit(rgb->dc);
 }
@@ -262,12 +259,12 @@ remove:
 	return err;
 }
 
-int tegra_dc_rgb_remove(struct tegra_dc *dc)
+void tegra_dc_rgb_remove(struct tegra_dc *dc)
 {
 	struct tegra_rgb *rgb;
 
 	if (!dc->rgb)
-		return 0;
+		return;
 
 	rgb = to_rgb(dc->rgb);
 	clk_put(rgb->pll_d2_out0);
@@ -275,8 +272,6 @@ int tegra_dc_rgb_remove(struct tegra_dc *dc)
 
 	tegra_output_remove(dc->rgb);
 	dc->rgb = NULL;
-
-	return 0;
 }
 
 int tegra_dc_rgb_init(struct drm_device *drm, struct tegra_dc *dc)

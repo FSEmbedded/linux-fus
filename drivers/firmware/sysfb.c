@@ -77,6 +77,8 @@ static __init int sysfb_init(void)
 	bool compatible;
 	int ret = 0;
 
+	screen_info_apply_fixups();
+
 	mutex_lock(&disable_lock);
 	if (disabled)
 		goto unlock_mutex;
@@ -96,6 +98,10 @@ static __init int sysfb_init(void)
 		name = "efi-framebuffer";
 	else if (si->orig_video_isVGA == VIDEO_TYPE_VLFB)
 		name = "vesa-framebuffer";
+	else if (si->orig_video_isVGA == VIDEO_TYPE_VGAC)
+		name = "vga-framebuffer";
+	else if (si->orig_video_isVGA == VIDEO_TYPE_EGAC)
+		name = "ega-framebuffer";
 	else
 		name = "platform-framebuffer";
 

@@ -185,7 +185,8 @@ static void nft_connlimit_eval(const struct nft_expr *expr,
 	nft_connlimit_do_eval(priv, regs, pkt, NULL);
 }
 
-static int nft_connlimit_dump(struct sk_buff *skb, const struct nft_expr *expr)
+static int nft_connlimit_dump(struct sk_buff *skb,
+			      const struct nft_expr *expr, bool reset)
 {
 	struct nft_connlimit *priv = nft_expr_priv(expr);
 
@@ -257,6 +258,7 @@ static const struct nft_expr_ops nft_connlimit_ops = {
 	.destroy_clone	= nft_connlimit_destroy_clone,
 	.dump		= nft_connlimit_dump,
 	.gc		= nft_connlimit_gc,
+	.reduce		= NFT_REDUCE_READONLY,
 };
 
 static struct nft_expr_type nft_connlimit_type __read_mostly = {

@@ -2,6 +2,16 @@
 #ifndef _NET_IP6_ROUTE_H
 #define _NET_IP6_ROUTE_H
 
+#include <net/addrconf.h>
+#include <net/flow.h>
+#include <net/ip6_fib.h>
+#include <net/sock.h>
+#include <net/lwtunnel.h>
+#include <linux/ip.h>
+#include <linux/ipv6.h>
+#include <linux/route.h>
+#include <net/nexthop.h>
+
 struct route_info {
 	__u8			type;
 	__u8			length;
@@ -18,16 +28,6 @@ struct route_info {
 	__be32			lifetime;
 	__u8			prefix[];	/* 0,8 or 16 */
 };
-
-#include <net/addrconf.h>
-#include <net/flow.h>
-#include <net/ip6_fib.h>
-#include <net/sock.h>
-#include <net/lwtunnel.h>
-#include <linux/ip.h>
-#include <linux/ipv6.h>
-#include <linux/route.h>
-#include <net/nexthop.h>
 
 #define RT6_LOOKUP_F_IFACE		0x00000001
 #define RT6_LOOKUP_F_REACHABLE		0x00000002
@@ -84,10 +84,6 @@ struct dst_entry *ip6_route_input_lookup(struct net *net,
 					 struct flowi6 *fl6,
 					 const struct sk_buff *skb, int flags);
 
-struct dst_entry *ip6_route_output_flags_noref(struct net *net,
-					       const struct sock *sk,
-					       struct flowi6 *fl6, int flags);
-
 struct dst_entry *ip6_route_output_flags(struct net *net, const struct sock *sk,
 					 struct flowi6 *fl6, int flags);
 
@@ -104,7 +100,7 @@ static inline struct dst_entry *ip6_route_output(struct net *net,
 static inline void ip6_rt_put_flags(struct rt6_info *rt, int flags)
 {
 	if (!(flags & RT6_LOOKUP_F_DST_NOREF) ||
-	    !list_empty(&rt->rt6i_uncached))
+	    !list_empty(&rt->dst.rt_uncached))
 		ip6_rt_put(rt);
 }
 
@@ -132,18 +128,26 @@ void rt6_age_exceptions(struct fib6_info *f6i, struct fib6_gc_args *gc_args,
 
 static inline int ip6_route_get_saddr(struct net *net, struct fib6_info *f6i,
 				      const struct in6_addr *daddr,
-				      unsigned int prefs,
+				      unsigned int prefs, int l3mdev_index,
 				      struct in6_addr *saddr)
 {
+	struct net_device *l3mdev;
+	struct net_device *dev;
+	bool same_vrf;
 	int err = 0;
 
-	if (f6i && f6i->fib6_prefsrc.plen) {
-		*saddr = f6i->fib6_prefsrc.addr;
-	} else {
-		struct net_device *dev = f6i ? fib6_info_nh_dev(f6i) : NULL;
+	rcu_read_lock();
 
-		err = ipv6_dev_get_saddr(net, dev, daddr, prefs, saddr);
-	}
+	l3mdev = dev_get_by_index_rcu(net, l3mdev_index);
+	if (!f6i || !f6i->fib6_prefsrc.plen || l3mdev)
+		dev = f6i ? fib6_info_nh_dev(f6i) : NULL;
+	same_vrf = !l3mdev || l3mdev_master_dev_rcu(dev) == l3mdev;
+	if (f6i && f6i->fib6_prefsrc.plen && same_vrf)
+		*saddr = f6i->fib6_prefsrc.addr;
+	else
+		err = ipv6_dev_get_saddr(net, same_vrf ? dev : l3mdev, daddr, prefs, saddr);
+
+	rcu_read_unlock();
 
 	return err;
 }
@@ -160,7 +164,7 @@ void fib6_force_start_gc(struct net *net);
 
 struct fib6_info *addrconf_f6i_alloc(struct net *net, struct inet6_dev *idev,
 				     const struct in6_addr *addr, bool anycast,
-				     gfp_t gfp_flags);
+				     gfp_t gfp_flags, struct netlink_ext_ack *extack);
 
 struct rt6_info *ip6_dst_alloc(struct net *net, struct net_device *dev,
 			       int flags);
@@ -263,19 +267,19 @@ static inline bool ipv6_anycast_destination(const struct dst_entry *dst,
 int ip6_fragment(struct net *net, struct sock *sk, struct sk_buff *skb,
 		 int (*output)(struct net *, struct sock *, struct sk_buff *));
 
-static inline unsigned int ip6_skb_dst_mtu(struct sk_buff *skb)
+static inline unsigned int ip6_skb_dst_mtu(const struct sk_buff *skb)
 {
+	const struct ipv6_pinfo *np = skb->sk && !dev_recursion_level() ?
+				inet6_sk(skb->sk) : NULL;
+	const struct dst_entry *dst = skb_dst(skb);
 	unsigned int mtu;
 
-	struct ipv6_pinfo *np = skb->sk && !dev_recursion_level() ?
-				inet6_sk(skb->sk) : NULL;
-
 	if (np && np->pmtudisc >= IPV6_PMTUDISC_PROBE) {
-		mtu = READ_ONCE(skb_dst(skb)->dev->mtu);
-		mtu -= lwtunnel_headroom(skb_dst(skb)->lwtstate, mtu);
-	} else
-		mtu = dst_mtu(skb_dst(skb));
-
+		mtu = READ_ONCE(dst->dev->mtu);
+		mtu -= lwtunnel_headroom(dst->lwtstate, mtu);
+	} else {
+		mtu = dst_mtu(dst);
+	}
 	return mtu;
 }
 

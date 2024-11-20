@@ -652,8 +652,7 @@ static int hts221_init(struct hts221_status *stat)
 	return err;
 }
 
-static int hts221_probe(struct i2c_client *client,
-						const struct i2c_device_id *id)
+static int hts221_probe(struct i2c_client *client)
 {
         struct hts221_status *stat;
 	struct iio_dev *indio_dev;
@@ -736,7 +735,7 @@ exit_check_functionality_failed:
         return err;
 }
 
-static int hts221_remove(struct i2c_client *client)
+static void hts221_remove(struct i2c_client *client)
 {
 	struct iio_dev *indio_dev = i2c_get_clientdata(client);
 	struct hts221_status *stat = iio_priv(indio_dev);
@@ -748,7 +747,6 @@ static int hts221_remove(struct i2c_client *client)
 		stat->pdata.exit();
 
         kfree(stat);
-        return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP

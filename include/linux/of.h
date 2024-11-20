@@ -13,17 +13,14 @@
  */
 #include <linux/types.h>
 #include <linux/bitops.h>
+#include <linux/cleanup.h>
 #include <linux/errno.h>
 #include <linux/kobject.h>
 #include <linux/mod_devicetable.h>
-#include <linux/spinlock.h>
-#include <linux/topology.h>
-#include <linux/notifier.h>
 #include <linux/property.h>
 #include <linux/list.h>
 
 #include <asm/byteorder.h>
-#include <asm/errno.h>
 
 typedef u32 phandle;
 typedef u32 ihandle;
@@ -100,9 +97,19 @@ struct of_reconfig_data {
 	struct property		*old_prop;
 };
 
-/* initialize a node */
-extern struct kobj_type of_node_ktype;
+extern const struct kobj_type of_node_ktype;
 extern const struct fwnode_operations of_fwnode_ops;
+
+/**
+ * of_node_init - initialize a devicetree node
+ * @node: Pointer to device node that has been created by kzalloc()
+ *
+ * On return the device_node refcount is set to one.  Use of_node_put()
+ * on @node when done to free the memory allocated for it.  If the node
+ * is NOT a dynamic node the memory will not be freed. The decision of
+ * whether to free the memory will be done by node->release(), which is
+ * of_node_release().
+ */
 static inline void of_node_init(struct device_node *node)
 {
 #if defined(CONFIG_OF_KOBJ)
@@ -128,13 +135,13 @@ static inline struct device_node *of_node_get(struct device_node *node)
 }
 static inline void of_node_put(struct device_node *node) { }
 #endif /* !CONFIG_OF_DYNAMIC */
+DEFINE_FREE(device_node, struct device_node *, if (_T) of_node_put(_T))
 
 /* Pointer for first entry in chain of all nodes. */
 extern struct device_node *of_root;
 extern struct device_node *of_chosen;
 extern struct device_node *of_aliases;
 extern struct device_node *of_stdout;
-extern raw_spinlock_t devtree_lock;
 
 /*
  * struct device_node flag descriptions
@@ -185,7 +192,7 @@ static inline bool of_node_is_root(const struct device_node *node)
 	return node && (node->parent == NULL);
 }
 
-static inline int of_node_check_flag(struct device_node *n, unsigned long flag)
+static inline int of_node_check_flag(const struct device_node *n, unsigned long flag)
 {
 	return test_bit(flag, &n->_flags);
 }
@@ -207,7 +214,7 @@ static inline void of_node_clear_flag(struct device_node *n, unsigned long flag)
 }
 
 #if defined(CONFIG_OF_DYNAMIC) || defined(CONFIG_SPARC)
-static inline int of_property_check_flag(struct property *p, unsigned long flag)
+static inline int of_property_check_flag(const struct property *p, unsigned long flag)
 {
 	return test_bit(flag, &p->_flags);
 }
@@ -342,7 +349,7 @@ extern int of_property_read_string_helper(const struct device_node *np,
 					      const char **out_strs, size_t sz, int index);
 extern int of_device_is_compatible(const struct device_node *device,
 				   const char *);
-extern int of_device_compatible_match(struct device_node *device,
+extern int of_device_compatible_match(const struct device_node *device,
 				      const char *const *compat);
 extern bool of_device_is_available(const struct device_node *device);
 extern bool of_device_is_big_endian(const struct device_node *device);
@@ -350,9 +357,12 @@ extern const void *of_get_property(const struct device_node *node,
 				const char *name,
 				int *lenp);
 extern struct device_node *of_get_cpu_node(int cpu, unsigned int *thread);
+extern struct device_node *of_cpu_device_node_get(int cpu);
+extern int of_cpu_node_to_id(struct device_node *np);
 extern struct device_node *of_get_next_cpu_node(struct device_node *prev);
 extern struct device_node *of_get_cpu_state_node(struct device_node *cpu_node,
 						 int index);
+extern u64 of_get_cpu_hwid(struct device_node *cpun, unsigned int thread);
 
 #define for_each_property_of_node(dn, pp) \
 	for (pp = dn->properties; pp != NULL; pp = pp->next)
@@ -361,22 +371,22 @@ extern int of_n_addr_cells(struct device_node *np);
 extern int of_n_size_cells(struct device_node *np);
 extern const struct of_device_id *of_match_node(
 	const struct of_device_id *matches, const struct device_node *node);
-extern int of_modalias_node(struct device_node *node, char *modalias, int len);
+extern const void *of_device_get_match_data(const struct device *dev);
+extern int of_alias_from_compatible(const struct device_node *node, char *alias,
+				    int len);
 extern void of_print_phandle_args(const char *msg, const struct of_phandle_args *args);
-extern struct device_node *of_parse_phandle(const struct device_node *np,
-					    const char *phandle_name,
-					    int index);
-extern int of_parse_phandle_with_args(const struct device_node *np,
-	const char *list_name, const char *cells_name, int index,
-	struct of_phandle_args *out_args);
+extern int __of_parse_phandle_with_args(const struct device_node *np,
+	const char *list_name, const char *cells_name, int cell_count,
+	int index, struct of_phandle_args *out_args);
 extern int of_parse_phandle_with_args_map(const struct device_node *np,
 	const char *list_name, const char *stem_name, int index,
 	struct of_phandle_args *out_args);
-extern int of_parse_phandle_with_fixed_args(const struct device_node *np,
-	const char *list_name, int cells_count, int index,
-	struct of_phandle_args *out_args);
 extern int of_count_phandle_with_args(const struct device_node *np,
 	const char *list_name, const char *cells_name);
+
+/* module functions */
+extern ssize_t of_modalias(const struct device_node *np, char *str, ssize_t len);
+extern int of_request_module(const struct device_node *np);
 
 /* phandle iterator functions */
 extern int of_phandle_iterator_init(struct of_phandle_iterator *it,
@@ -393,9 +403,6 @@ extern int of_phandle_iterator_args(struct of_phandle_iterator *it,
 extern void of_alias_scan(void * (*dt_alloc)(u64 size, u64 align));
 extern int of_alias_get_id(struct device_node *np, const char *stem);
 extern int of_alias_get_highest_id(const char *stem);
-extern int of_alias_get_alias_list(const struct of_device_id *matches,
-				   const char *stem, unsigned long *bitmap,
-				   unsigned int nbits);
 
 extern int of_machine_is_compatible(const char *compat);
 
@@ -436,8 +443,6 @@ const char *of_prop_next_string(struct property *prop, const char *cur);
 
 bool of_console_check(struct device_node *dn, char *name, int index);
 
-extern int of_cpu_node_to_id(struct device_node *np);
-
 int of_map_id(struct device_node *np, u32 id,
 	       const char *map_name, const char *map_mask_name,
 	       struct device_node **target, u32 *id_out);
@@ -449,8 +454,6 @@ void *of_kexec_alloc_and_setup_fdt(const struct kimage *image,
 				   unsigned long initrd_load_addr,
 				   unsigned long initrd_len,
 				   const char *cmdline, size_t extra_fdt_size);
-int ima_get_kexec_buffer(void **addr, size_t *size);
-int __init ima_free_kexec_buffer(void);
 #else /* CONFIG_OF */
 
 static inline void of_core_init(void)
@@ -572,7 +575,7 @@ static inline int of_device_is_compatible(const struct device_node *device,
 	return 0;
 }
 
-static inline  int of_device_compatible_match(struct device_node *device,
+static inline  int of_device_compatible_match(const struct device_node *device,
 					      const char *const *compat)
 {
 	return 0;
@@ -632,6 +635,16 @@ static inline struct device_node *of_get_cpu_node(int cpu,
 					unsigned int *thread)
 {
 	return NULL;
+}
+
+static inline struct device_node *of_cpu_device_node_get(int cpu)
+{
+	return NULL;
+}
+
+static inline int of_cpu_node_to_id(struct device_node *np)
+{
+	return -ENODEV;
 }
 
 static inline struct device_node *of_get_next_cpu_node(struct device_node *prev)
@@ -714,18 +727,12 @@ static inline int of_property_read_string_helper(const struct device_node *np,
 	return -ENOSYS;
 }
 
-static inline struct device_node *of_parse_phandle(const struct device_node *np,
-						   const char *phandle_name,
-						   int index)
-{
-	return NULL;
-}
-
-static inline int of_parse_phandle_with_args(const struct device_node *np,
-					     const char *list_name,
-					     const char *cells_name,
-					     int index,
-					     struct of_phandle_args *out_args)
+static inline int __of_parse_phandle_with_args(const struct device_node *np,
+					       const char *list_name,
+					       const char *cells_name,
+					       int cell_count,
+					       int index,
+					       struct of_phandle_args *out_args)
 {
 	return -ENOSYS;
 }
@@ -739,18 +746,22 @@ static inline int of_parse_phandle_with_args_map(const struct device_node *np,
 	return -ENOSYS;
 }
 
-static inline int of_parse_phandle_with_fixed_args(const struct device_node *np,
-	const char *list_name, int cells_count, int index,
-	struct of_phandle_args *out_args)
-{
-	return -ENOSYS;
-}
-
 static inline int of_count_phandle_with_args(const struct device_node *np,
 					     const char *list_name,
 					     const char *cells_name)
 {
 	return -ENOSYS;
+}
+
+static inline ssize_t of_modalias(const struct device_node *np, char *str,
+				  ssize_t len)
+{
+	return -ENODEV;
+}
+
+static inline int of_request_module(const struct device_node *np)
+{
+	return -ENODEV;
 }
 
 static inline int of_phandle_iterator_init(struct of_phandle_iterator *it,
@@ -780,13 +791,6 @@ static inline int of_alias_get_id(struct device_node *np, const char *stem)
 }
 
 static inline int of_alias_get_highest_id(const char *stem)
-{
-	return -ENOSYS;
-}
-
-static inline int of_alias_get_alias_list(const struct of_device_id *matches,
-					  const char *stem, unsigned long *bitmap,
-					  unsigned int nbits)
 {
 	return -ENOSYS;
 }
@@ -842,7 +846,8 @@ static inline void of_node_clear_flag(struct device_node *n, unsigned long flag)
 {
 }
 
-static inline int of_property_check_flag(struct property *p, unsigned long flag)
+static inline int of_property_check_flag(const struct property *p,
+					 unsigned long flag)
 {
 	return 0;
 }
@@ -855,11 +860,6 @@ static inline void of_property_clear_flag(struct property *p, unsigned long flag
 {
 }
 
-static inline int of_cpu_node_to_id(struct device_node *np)
-{
-	return -ENODEV;
-}
-
 static inline int of_map_id(struct device_node *np, u32 id,
 			     const char *map_name, const char *map_mask_name,
 			     struct device_node **target, u32 *id_out)
@@ -870,6 +870,11 @@ static inline int of_map_id(struct device_node *np, u32 id,
 static inline phys_addr_t of_dma_get_max_cpu_address(struct device_node *np)
 {
 	return PHYS_ADDR_MAX;
+}
+
+static inline const void *of_device_get_match_data(const struct device *dev)
+{
+	return NULL;
 }
 
 #define of_match_ptr(_ptr)	NULL
@@ -924,6 +929,142 @@ static inline bool of_node_is_type(const struct device_node *np, const char *typ
 	const char *match = of_node_get_device_type(np);
 
 	return np && match && type && !strcmp(match, type);
+}
+
+/**
+ * of_parse_phandle - Resolve a phandle property to a device_node pointer
+ * @np: Pointer to device node holding phandle property
+ * @phandle_name: Name of property holding a phandle value
+ * @index: For properties holding a table of phandles, this is the index into
+ *         the table
+ *
+ * Return: The device_node pointer with refcount incremented.  Use
+ * of_node_put() on it when done.
+ */
+static inline struct device_node *of_parse_phandle(const struct device_node *np,
+						   const char *phandle_name,
+						   int index)
+{
+	struct of_phandle_args args;
+
+	if (__of_parse_phandle_with_args(np, phandle_name, NULL, 0,
+					 index, &args))
+		return NULL;
+
+	return args.np;
+}
+
+/**
+ * of_parse_phandle_with_args() - Find a node pointed by phandle in a list
+ * @np:		pointer to a device tree node containing a list
+ * @list_name:	property name that contains a list
+ * @cells_name:	property name that specifies phandles' arguments count
+ * @index:	index of a phandle to parse out
+ * @out_args:	optional pointer to output arguments structure (will be filled)
+ *
+ * This function is useful to parse lists of phandles and their arguments.
+ * Returns 0 on success and fills out_args, on error returns appropriate
+ * errno value.
+ *
+ * Caller is responsible to call of_node_put() on the returned out_args->np
+ * pointer.
+ *
+ * Example::
+ *
+ *  phandle1: node1 {
+ *	#list-cells = <2>;
+ *  };
+ *
+ *  phandle2: node2 {
+ *	#list-cells = <1>;
+ *  };
+ *
+ *  node3 {
+ *	list = <&phandle1 1 2 &phandle2 3>;
+ *  };
+ *
+ * To get a device_node of the ``node2`` node you may call this:
+ * of_parse_phandle_with_args(node3, "list", "#list-cells", 1, &args);
+ */
+static inline int of_parse_phandle_with_args(const struct device_node *np,
+					     const char *list_name,
+					     const char *cells_name,
+					     int index,
+					     struct of_phandle_args *out_args)
+{
+	int cell_count = -1;
+
+	/* If cells_name is NULL we assume a cell count of 0 */
+	if (!cells_name)
+		cell_count = 0;
+
+	return __of_parse_phandle_with_args(np, list_name, cells_name,
+					    cell_count, index, out_args);
+}
+
+/**
+ * of_parse_phandle_with_fixed_args() - Find a node pointed by phandle in a list
+ * @np:		pointer to a device tree node containing a list
+ * @list_name:	property name that contains a list
+ * @cell_count: number of argument cells following the phandle
+ * @index:	index of a phandle to parse out
+ * @out_args:	optional pointer to output arguments structure (will be filled)
+ *
+ * This function is useful to parse lists of phandles and their arguments.
+ * Returns 0 on success and fills out_args, on error returns appropriate
+ * errno value.
+ *
+ * Caller is responsible to call of_node_put() on the returned out_args->np
+ * pointer.
+ *
+ * Example::
+ *
+ *  phandle1: node1 {
+ *  };
+ *
+ *  phandle2: node2 {
+ *  };
+ *
+ *  node3 {
+ *	list = <&phandle1 0 2 &phandle2 2 3>;
+ *  };
+ *
+ * To get a device_node of the ``node2`` node you may call this:
+ * of_parse_phandle_with_fixed_args(node3, "list", 2, 1, &args);
+ */
+static inline int of_parse_phandle_with_fixed_args(const struct device_node *np,
+						   const char *list_name,
+						   int cell_count,
+						   int index,
+						   struct of_phandle_args *out_args)
+{
+	return __of_parse_phandle_with_args(np, list_name, NULL, cell_count,
+					    index, out_args);
+}
+
+/**
+ * of_parse_phandle_with_optional_args() - Find a node pointed by phandle in a list
+ * @np:		pointer to a device tree node containing a list
+ * @list_name:	property name that contains a list
+ * @cells_name:	property name that specifies phandles' arguments count
+ * @index:	index of a phandle to parse out
+ * @out_args:	optional pointer to output arguments structure (will be filled)
+ *
+ * Same as of_parse_phandle_with_args() except that if the cells_name property
+ * is not found, cell_count of 0 is assumed.
+ *
+ * This is used to useful, if you have a phandle which didn't have arguments
+ * before and thus doesn't have a '#*-cells' property but is now migrated to
+ * having arguments while retaining backwards compatibility.
+ */
+static inline int of_parse_phandle_with_optional_args(const struct device_node *np,
+						      const char *list_name,
+						      const char *cells_name,
+						      int index,
+						      struct of_phandle_args *out_args)
+{
+	return __of_parse_phandle_with_args(np, list_name, cells_name,
+					    0, index, out_args);
 }
 
 /**
@@ -1289,8 +1430,21 @@ static inline int of_property_read_s32(const struct device_node *np,
 #define for_each_child_of_node(parent, child) \
 	for (child = of_get_next_child(parent, NULL); child != NULL; \
 	     child = of_get_next_child(parent, child))
+
+#define for_each_child_of_node_scoped(parent, child) \
+	for (struct device_node *child __free(device_node) =		\
+	     of_get_next_child(parent, NULL);				\
+	     child != NULL;						\
+	     child = of_get_next_child(parent, child))
+
 #define for_each_available_child_of_node(parent, child) \
 	for (child = of_get_next_available_child(parent, NULL); child != NULL; \
+	     child = of_get_next_available_child(parent, child))
+
+#define for_each_available_child_of_node_scoped(parent, child) \
+	for (struct device_node *child __free(device_node) =		\
+	     of_get_next_available_child(parent, NULL);			\
+	     child != NULL;						\
 	     child = of_get_next_available_child(parent, child))
 
 #define for_each_of_cpu_node(cpu) \
@@ -1394,6 +1548,8 @@ enum of_reconfig_change {
 	OF_RECONFIG_CHANGE_REMOVE,
 };
 
+struct notifier_block;
+
 #ifdef CONFIG_OF_DYNAMIC
 extern int of_reconfig_notifier_register(struct notifier_block *);
 extern int of_reconfig_notifier_unregister(struct notifier_block *);
@@ -1438,6 +1594,29 @@ static inline int of_changeset_update_property(struct of_changeset *ocs,
 {
 	return of_changeset_action(ocs, OF_RECONFIG_UPDATE_PROPERTY, np, prop);
 }
+
+struct device_node *of_changeset_create_node(struct of_changeset *ocs,
+					     struct device_node *parent,
+					     const char *full_name);
+int of_changeset_add_prop_string(struct of_changeset *ocs,
+				 struct device_node *np,
+				 const char *prop_name, const char *str);
+int of_changeset_add_prop_string_array(struct of_changeset *ocs,
+				       struct device_node *np,
+				       const char *prop_name,
+				       const char **str_array, size_t sz);
+int of_changeset_add_prop_u32_array(struct of_changeset *ocs,
+				    struct device_node *np,
+				    const char *prop_name,
+				    const u32 *array, size_t sz);
+static inline int of_changeset_add_prop_u32(struct of_changeset *ocs,
+					    struct device_node *np,
+					    const char *prop_name,
+					    const u32 val)
+{
+	return of_changeset_add_prop_u32_array(ocs, np, prop_name, &val, 1);
+}
+
 #else /* CONFIG_OF_DYNAMIC */
 static inline int of_reconfig_notifier_register(struct notifier_block *nb)
 {
@@ -1482,9 +1661,9 @@ enum of_overlay_notify_action {
 	OF_OVERLAY_POST_REMOVE,
 };
 
-static inline char *of_overlay_action_name(enum of_overlay_notify_action action)
+static inline const char *of_overlay_action_name(enum of_overlay_notify_action action)
 {
-	static char *of_overlay_action_name[] = {
+	static const char *const of_overlay_action_name[] = {
 		"init",
 		"pre-apply",
 		"post-apply",
@@ -1503,7 +1682,7 @@ struct of_overlay_notify_data {
 #ifdef CONFIG_OF_OVERLAY
 
 int of_overlay_fdt_apply(const void *overlay_fdt, u32 overlay_fdt_size,
-			 int *ovcs_id);
+			 int *ovcs_id, struct device_node *target_base);
 int of_overlay_remove(int *ovcs_id);
 int of_overlay_remove_all(void);
 
@@ -1512,8 +1691,8 @@ int of_overlay_notifier_unregister(struct notifier_block *nb);
 
 #else
 
-static inline int of_overlay_fdt_apply(void *overlay_fdt, u32 overlay_fdt_size,
-				       int *ovcs_id)
+static inline int of_overlay_fdt_apply(const void *overlay_fdt, u32 overlay_fdt_size,
+				       int *ovcs_id, struct device_node *target_base)
 {
 	return -ENOTSUPP;
 }

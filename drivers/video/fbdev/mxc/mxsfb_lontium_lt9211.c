@@ -678,8 +678,7 @@ put_display_node:
 	return ret;
 }
 
-static int lt9211_probe(struct i2c_client *client,
-		const struct i2c_device_id *id) {
+static int lt9211_probe(struct i2c_client *client) {
 
 	struct device *dev = &client->dev;
 	int ret;
@@ -734,12 +733,10 @@ err_disable_regulators:
 	return ret;
 }
 
-static int lt9211_remove(struct i2c_client *client) {
+static void lt9211_remove(struct i2c_client *client) {
 	fb_unregister_client(&nb);
 	disable_irq(client->irq);
 	regulator_bulk_disable(ARRAY_SIZE(lt9211.supplies), lt9211.supplies);
-
-	return 0;
 }
 
 static const struct i2c_device_id lt9211_id[] = {

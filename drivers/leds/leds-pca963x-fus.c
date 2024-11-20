@@ -28,7 +28,7 @@
 #include <linux/ctype.h>
 #include <linux/leds.h>
 #include <linux/pwm.h>
-#include <linux/gpio.h>
+#include <linux/gpio/driver.h>
 #include <linux/err.h>
 #include <linux/i2c.h>
 #include <linux/property.h>
@@ -479,18 +479,6 @@ static void pca963x_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
 	pca963x_pwm_config(chip, pwm, 0, pwm->state.period);
 }
 
-static int pca963x_pwm_set_polarity(struct pwm_chip *chip,
-			struct pwm_device *pwm, enum pwm_polarity polarity)
-{
-	/*
-	 * Setting pwm->state.polarity is all that needs to be done and this
-	 * is already done in the PWM infrastructure. However we still need
-	 * this empty function to indicate support for polarity inversion.
-	 */
-
-	return 0;
-}
-
 static int pca963x_pwm_request(struct pwm_chip *chip, struct pwm_device *pwm)
 {
 	struct pca963x *pca963x = container_of(chip, struct pca963x, pwm_chip);
@@ -515,11 +503,29 @@ static int pca963x_pwm_request(struct pwm_chip *chip, struct pwm_device *pwm)
 	return 0;
 }
 
+static int pca963x_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
+			     const struct pwm_state *state)
+{
+	int err;
+
+	if (!state->enabled) {
+		if (pwm->state.enabled)
+			pca963x_pwm_disable(chip, pwm);
+		return 0;
+	}
+	err = pca963x_pwm_config(pwm->chip, pwm, state->duty_cycle, state->period);
+
+	if (err)
+		return err;
+
+	if (!pwm->state.enabled)
+		err = pca963x_pwm_enable(chip, pwm);
+
+	return err;
+}
+
 static const struct pwm_ops pca963x_pwm_ops = {
-	.config = pca963x_pwm_config,
-	.set_polarity = pca963x_pwm_set_polarity,
-	.enable = pca963x_pwm_enable,
-	.disable = pca963x_pwm_disable,
+	.apply = pca963x_pwm_apply,
 	.request = pca963x_pwm_request,
 	.owner = THIS_MODULE,
 };
@@ -804,9 +810,9 @@ static void pca963x_free_leds(struct pca963x *pca963x, int count)
 	}
 }
 
-static int pca963x_probe(struct i2c_client *client,
-			 const struct i2c_device_id *id)
+static int pca963x_probe(struct i2c_client *client)
 {
+	const struct i2c_device_id *id = i2c_client_get_device_id(client);
 	struct pca963x *pca963x;
 	struct pca963x_platform_data *pdata;
 	struct pca963x_entry *entry;
@@ -921,7 +927,7 @@ err_reg:
 	return err;
 }
 
-static int pca963x_remove(struct i2c_client *client)
+static void pca963x_remove(struct i2c_client *client)
 {
 	struct pca963x *pca963x;
 
@@ -938,8 +944,6 @@ static int pca963x_remove(struct i2c_client *client)
 	if (!IS_ERR(pca963x->vdd))
 		regulator_disable(pca963x->vdd);
 	/* LEDs are automatically removed by the devm infrastructure */
- 
-	return 0;
 }
 
 static struct i2c_driver pca963x_driver = {

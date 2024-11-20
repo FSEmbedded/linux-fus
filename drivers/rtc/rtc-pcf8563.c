@@ -375,8 +375,7 @@ static const struct rtc_class_ops pcf8563_rtc_ops = {
 	.alarm_irq_enable = pcf8563_irq_enable,
 };
 
-static int pcf8563_probe(struct i2c_client *client,
-				const struct i2c_device_id *id)
+static int pcf8563_probe(struct i2c_client *client)
 {
 	struct pcf8563 *pcf8563;
 	int err;
@@ -420,21 +419,29 @@ static int pcf8563_probe(struct i2c_client *client,
 
 	pcf8563->rtc->ops = &pcf8563_rtc_ops;
 	/* the pcf8563 alarm only supports a minute accuracy */
-	pcf8563->rtc->uie_unsupported = 1;
+	set_bit(RTC_FEATURE_ALARM_RES_MINUTE, pcf8563->rtc->features);
+	clear_bit(RTC_FEATURE_UPDATE_INTERRUPT, pcf8563->rtc->features);
 	pcf8563->rtc->range_min = RTC_TIMESTAMP_BEGIN_2000;
 	pcf8563->rtc->range_max = RTC_TIMESTAMP_END_2099;
 	pcf8563->rtc->set_start_time = true;
 
 	if (client->irq > 0) {
+		unsigned long irqflags = IRQF_TRIGGER_LOW;
+
+		if (dev_fwnode(&client->dev))
+			irqflags = 0;
+
 		err = devm_request_threaded_irq(&client->dev, client->irq,
 				NULL, pcf8563_irq,
-				IRQF_SHARED | IRQF_ONESHOT | IRQF_TRIGGER_LOW,
+				IRQF_SHARED | IRQF_ONESHOT | irqflags,
 				pcf8563_driver.driver.name, client);
 		if (err) {
 			dev_err(&client->dev, "unable to request IRQ %d\n",
 								client->irq);
 			return err;
 		}
+	} else {
+		clear_bit(RTC_FEATURE_ALARM, pcf8563->rtc->features);
 	}
 
 	err = devm_rtc_register_device(pcf8563->rtc);

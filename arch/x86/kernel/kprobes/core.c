@@ -44,6 +44,8 @@
 #include <linux/objtool.h>
 #include <linux/vmalloc.h>
 #include <linux/pgtable.h>
+#include <linux/set_memory.h>
+#include <linux/cfi.h>
 
 #include <asm/text-patching.h>
 #include <asm/cacheflush.h>
@@ -52,14 +54,12 @@
 #include <asm/alternative.h>
 #include <asm/insn.h>
 #include <asm/debugreg.h>
-#include <asm/set_memory.h>
+#include <asm/ibt.h>
 
 #include "common.h"
 
 DEFINE_PER_CPU(struct kprobe *, current_kprobe) = NULL;
 DEFINE_PER_CPU(struct kprobe_ctlblk, kprobe_ctlblk);
-
-#define stack_addr(regs) ((unsigned long *)regs->sp)
 
 #define W(row, b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, ba, bb, bc, bd, be, bf)\
 	(((b0##UL << 0x0)|(b1##UL << 0x1)|(b2##UL << 0x2)|(b3##UL << 0x3) |   \
@@ -194,17 +194,10 @@ static unsigned long
 __recover_probed_insn(kprobe_opcode_t *buf, unsigned long addr)
 {
 	struct kprobe *kp;
-	unsigned long faddr;
+	bool faddr;
 
 	kp = get_kprobe((void *)addr);
-	faddr = ftrace_location(addr);
-	/*
-	 * Addresses inside the ftrace location are refused by
-	 * arch_check_ftrace_location(). Something went terribly wrong
-	 * if such an address is checked here.
-	 */
-	if (WARN_ON(faddr && faddr != addr))
-		return 0UL;
+	faddr = ftrace_location(addr) == addr;
 	/*
 	 * Use the current code if it is not modified by Kprobe
 	 * and it cannot be modified by ftrace.
@@ -301,8 +294,66 @@ static int can_probe(unsigned long paddr)
 #endif
 		addr += insn.length;
 	}
+	if (IS_ENABLED(CONFIG_CFI_CLANG)) {
+		/*
+		 * The compiler generates the following instruction sequence
+		 * for indirect call checks and cfi.c decodes this;
+		 *
+		 *   movl    -<id>, %r10d       ; 6 bytes
+		 *   addl    -4(%reg), %r10d    ; 4 bytes
+		 *   je      .Ltmp1             ; 2 bytes
+		 *   ud2                        ; <- regs->ip
+		 *   .Ltmp1:
+		 *
+		 * Also, these movl and addl are used for showing expected
+		 * type. So those must not be touched.
+		 */
+		__addr = recover_probed_instruction(buf, addr);
+		if (!__addr)
+			return 0;
 
+		if (insn_decode_kernel(&insn, (void *)__addr) < 0)
+			return 0;
+
+		if (insn.opcode.value == 0xBA)
+			offset = 12;
+		else if (insn.opcode.value == 0x3)
+			offset = 6;
+		else
+			goto out;
+
+		/* This movl/addl is used for decoding CFI. */
+		if (is_cfi_trap(addr + offset))
+			return 0;
+	}
+
+out:
 	return (addr == paddr);
+}
+
+/* If x86 supports IBT (ENDBR) it must be skipped. */
+kprobe_opcode_t *arch_adjust_kprobe_addr(unsigned long addr, unsigned long offset,
+					 bool *on_func_entry)
+{
+	u32 insn;
+
+	/*
+	 * Since 'addr' is not guaranteed to be safe to access, use
+	 * copy_from_kernel_nofault() to read the instruction:
+	 */
+	if (copy_from_kernel_nofault(&insn, (void *)addr, sizeof(u32)))
+		return NULL;
+
+	if (is_endbr(insn)) {
+		*on_func_entry = !offset || offset == 4;
+		if (*on_func_entry)
+			offset = 4;
+
+	} else {
+		*on_func_entry = !offset;
+	}
+
+	return (kprobe_opcode_t *)(addr + offset);
 }
 
 /*
@@ -410,18 +461,11 @@ void *alloc_insn_page(void)
 	if (!page)
 		return NULL;
 
-	set_vm_flush_reset_perms(page);
-	/*
-	 * First make the page read-only, and only then make it executable to
-	 * prevent it from being W+X in between.
-	 */
-	set_memory_ro((unsigned long)page, 1);
-
 	/*
 	 * TODO: Once additional kernel code protection mechanisms are set, ensure
 	 * that the page was not maliciously altered and it is still zeroed.
 	 */
-	set_memory_x((unsigned long)page, 1);
+	set_memory_rox((unsigned long)page, 1);
 
 	return page;
 }
@@ -603,7 +647,7 @@ static int prepare_emulation(struct kprobe *p, struct insn *insn)
 		/* 1 byte conditional jump */
 		p->ainsn.emulate_op = kprobe_emulate_jcc;
 		p->ainsn.jcc.type = opcode & 0xf;
-		p->ainsn.rel32 = *(char *)insn->immediate.bytes;
+		p->ainsn.rel32 = insn->immediate.value;
 		break;
 	case 0x0f:
 		opcode = insn->opcode.bytes[1];
@@ -637,17 +681,19 @@ static int prepare_emulation(struct kprobe *p, struct insn *insn)
 		 * is determined by the MOD/RM byte.
 		 */
 		opcode = insn->modrm.bytes[0];
-		if ((opcode & 0x30) == 0x10) {
-			if ((opcode & 0x8) == 0x8)
-				return -EOPNOTSUPP;	/* far call */
-			/* call absolute, indirect */
+		switch (X86_MODRM_REG(opcode)) {
+		case 0b010:	/* FF /2, call near, absolute indirect */
 			p->ainsn.emulate_op = kprobe_emulate_call_indirect;
-		} else if ((opcode & 0x30) == 0x20) {
-			if ((opcode & 0x8) == 0x8)
-				return -EOPNOTSUPP;	/* far jmp */
-			/* jmp near absolute indirect */
+			break;
+		case 0b100:	/* FF /4, jmp near, absolute indirect */
 			p->ainsn.emulate_op = kprobe_emulate_jmp_indirect;
-		} else
+			break;
+		case 0b011:	/* FF /3, call far, absolute indirect */
+		case 0b101:	/* FF /5, jmp far, absolute indirect */
+			return -EOPNOTSUPP;
+		}
+
+		if (!p->ainsn.emulate_op)
 			break;
 
 		if (insn->addr_bytes != sizeof(unsigned long))
@@ -783,18 +829,6 @@ set_current_kprobe(struct kprobe *p, struct pt_regs *regs,
 	kcb->kprobe_saved_flags = kcb->kprobe_old_flags
 		= (regs->flags & X86_EFLAGS_IF);
 }
-
-void arch_prepare_kretprobe(struct kretprobe_instance *ri, struct pt_regs *regs)
-{
-	unsigned long *sara = stack_addr(regs);
-
-	ri->ret_addr = (kprobe_opcode_t *) *sara;
-	ri->fp = sara;
-
-	/* Replace the return addr with trampoline addr */
-	*sara = (unsigned long) &kretprobe_trampoline;
-}
-NOKPROBE_SYMBOL(arch_prepare_kretprobe);
 
 static void kprobe_post_process(struct kprobe *cur, struct pt_regs *regs,
 			       struct kprobe_ctlblk *kcb)
@@ -980,80 +1014,11 @@ int kprobe_int3_handler(struct pt_regs *regs)
 			kprobe_post_process(p, regs, kcb);
 			return 1;
 		}
-	}
-
-	if (*addr != INT3_INSN_OPCODE) {
-		/*
-		 * The breakpoint instruction was removed right
-		 * after we hit it.  Another cpu has removed
-		 * either a probepoint or a debugger breakpoint
-		 * at this address.  In either case, no further
-		 * handling of this interrupt is appropriate.
-		 * Back up over the (now missing) int3 and run
-		 * the original instruction.
-		 */
-		regs->ip = (unsigned long)addr;
-		return 1;
 	} /* else: not a kprobe fault; let the kernel handle it */
 
 	return 0;
 }
 NOKPROBE_SYMBOL(kprobe_int3_handler);
-
-/*
- * When a retprobed function returns, this code saves registers and
- * calls trampoline_handler() runs, which calls the kretprobe's handler.
- */
-asm(
-	".text\n"
-	".global kretprobe_trampoline\n"
-	".type kretprobe_trampoline, @function\n"
-	"kretprobe_trampoline:\n"
-	/* We don't bother saving the ss register */
-#ifdef CONFIG_X86_64
-	"	pushq %rsp\n"
-	"	pushfq\n"
-	SAVE_REGS_STRING
-	"	movq %rsp, %rdi\n"
-	"	call trampoline_handler\n"
-	/* Replace saved sp with true return address. */
-	"	movq %rax, 19*8(%rsp)\n"
-	RESTORE_REGS_STRING
-	"	popfq\n"
-#else
-	"	pushl %esp\n"
-	"	pushfl\n"
-	SAVE_REGS_STRING
-	"	movl %esp, %eax\n"
-	"	call trampoline_handler\n"
-	/* Replace saved sp with true return address. */
-	"	movl %eax, 15*4(%esp)\n"
-	RESTORE_REGS_STRING
-	"	popfl\n"
-#endif
-	ASM_RET
-	".size kretprobe_trampoline, .-kretprobe_trampoline\n"
-);
-NOKPROBE_SYMBOL(kretprobe_trampoline);
-STACK_FRAME_NON_STANDARD(kretprobe_trampoline);
-
-
-/*
- * Called from kretprobe_trampoline
- */
-__used __visible void *trampoline_handler(struct pt_regs *regs)
-{
-	/* fixup registers */
-	regs->cs = __KERNEL_CS;
-#ifdef CONFIG_X86_32
-	regs->gs = 0;
-#endif
-	regs->ip = (unsigned long)&kretprobe_trampoline;
-	regs->orig_ax = ~0UL;
-
-	return (void *)kretprobe_trampoline_handler(regs, &kretprobe_trampoline, &regs->sp);
-}
-NOKPROBE_SYMBOL(trampoline_handler);
 
 int kprobe_fault_handler(struct pt_regs *regs, int trapnr)
 {

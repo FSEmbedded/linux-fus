@@ -18,7 +18,7 @@
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 #include <sound/tlv.h>
-#include "../fsl/fsl_rpmsg_i2s.h"
+#include "../fsl/imx-pcm-rpmsg.h"
 #include "sgtl5000.h"
 
 #define SGTL5000_SUPPLY_NUM 3

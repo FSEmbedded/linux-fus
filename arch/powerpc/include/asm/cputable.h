@@ -32,14 +32,6 @@ extern int machine_check_440A(struct pt_regs *regs);
 extern int machine_check_e500mc(struct pt_regs *regs);
 extern int machine_check_e500(struct pt_regs *regs);
 extern int machine_check_47x(struct pt_regs *regs);
-
-#if defined(CONFIG_E500) || defined(CONFIG_PPC_E500MC)
-extern void __flush_caches_e500v2(void);
-extern void __flush_caches_e500mc(void);
-extern void __flush_caches_e5500(void);
-extern void __flush_caches_e6500(void);
-#endif
-
 int machine_check_8xx(struct pt_regs *regs);
 int machine_check_83xx(struct pt_regs *regs);
 
@@ -67,10 +59,6 @@ struct cpu_spec {
 	/* flush caches inside the current cpu */
 	void (*cpu_down_flush)(void);
 
-#if defined(CONFIG_E500) || defined(CONFIG_PPC_E500MC)
-	/* flush caches of the cpu which is running the function */
-	void (*cpu_flush_caches)(void);
-#endif
 	/* number of performance monitor counters */
 	unsigned int	num_pmcs;
 	enum powerpc_pmc_type pmc_type;
@@ -81,9 +69,6 @@ struct cpu_spec {
 	cpu_setup_t	cpu_setup;
 	/* Used to restore cpu setup on secondary processors and at resume */
 	cpu_restore_t	cpu_restore;
-
-	/* Used by oprofile userspace to select the right counters */
-	char		*oprofile_cpu_type;
 
 	/* Name of processor class, for the ELF AT_PLATFORM entry */
 	char		*platform;
@@ -207,6 +192,7 @@ static inline void cpu_feature_keys_init(void) { }
 #define CPU_FTR_P9_RADIX_PREFETCH_BUG	LONG_ASM_CONST(0x0002000000000000)
 #define CPU_FTR_ARCH_31			LONG_ASM_CONST(0x0004000000000000)
 #define CPU_FTR_DAWR1			LONG_ASM_CONST(0x0008000000000000)
+#define CPU_FTR_DEXCR_NPHIE		LONG_ASM_CONST(0x0010000000000000)
 
 #ifndef __ASSEMBLY__
 
@@ -266,7 +252,7 @@ static inline void cpu_feature_keys_init(void) { }
  * This is also required by 52xx family.
  */
 #if defined(CONFIG_SMP) || defined(CONFIG_MPC10X_BRIDGE) \
-	|| defined(CONFIG_PPC_83xx) || defined(CONFIG_8260) \
+	|| defined(CONFIG_PPC_83xx) || defined(CONFIG_PPC_82xx) \
 	|| defined(CONFIG_PPC_MPC52xx)
 #define CPU_FTR_COMMON                  CPU_FTR_NEED_COHERENT
 #else
@@ -452,6 +438,10 @@ static inline void cpu_feature_keys_init(void) { }
 #define CPU_FTRS_POWER9_DD2_2 (CPU_FTRS_POWER9 | CPU_FTR_POWER9_DD2_1 | \
 			       CPU_FTR_P9_TM_HV_ASSIST | \
 			       CPU_FTR_P9_TM_XER_SO_BUG)
+#define CPU_FTRS_POWER9_DD2_3 (CPU_FTRS_POWER9 | CPU_FTR_POWER9_DD2_1 | \
+			       CPU_FTR_P9_TM_HV_ASSIST | \
+			       CPU_FTR_P9_TM_XER_SO_BUG | \
+			       CPU_FTR_DAWR)
 #define CPU_FTRS_POWER10 (CPU_FTR_LWSYNC | \
 	    CPU_FTR_PPCAS_ARCH_V2 | CPU_FTR_CTRL | CPU_FTR_ARCH_206 |\
 	    CPU_FTR_MMCRA | CPU_FTR_SMT | \
@@ -462,7 +452,8 @@ static inline void cpu_feature_keys_init(void) { }
 	    CPU_FTR_CFAR | CPU_FTR_HVMODE | CPU_FTR_VMX_COPY | \
 	    CPU_FTR_DBELL | CPU_FTR_HAS_PPR | CPU_FTR_ARCH_207S | \
 	    CPU_FTR_ARCH_300 | CPU_FTR_ARCH_31 | \
-	    CPU_FTR_DAWR | CPU_FTR_DAWR1)
+	    CPU_FTR_DAWR | CPU_FTR_DAWR1 | \
+	    CPU_FTR_DEXCR_NPHIE)
 #define CPU_FTRS_CELL	(CPU_FTR_LWSYNC | \
 	    CPU_FTR_PPCAS_ARCH_V2 | CPU_FTR_CTRL | \
 	    CPU_FTR_ALTIVEC_COMP | CPU_FTR_MMCRA | CPU_FTR_SMT | \
@@ -474,21 +465,23 @@ static inline void cpu_feature_keys_init(void) { }
 #define CPU_FTRS_COMPATIBLE	(CPU_FTR_PPCAS_ARCH_V2)
 
 #ifdef CONFIG_PPC64
-#ifdef CONFIG_PPC_BOOK3E
+#ifdef CONFIG_PPC_BOOK3E_64
 #define CPU_FTRS_POSSIBLE	(CPU_FTRS_E6500 | CPU_FTRS_E5500)
 #else
 #ifdef CONFIG_CPU_LITTLE_ENDIAN
 #define CPU_FTRS_POSSIBLE	\
 	    (CPU_FTRS_POWER7 | CPU_FTRS_POWER8E | CPU_FTRS_POWER8 | \
 	     CPU_FTR_ALTIVEC_COMP | CPU_FTR_VSX_COMP | CPU_FTRS_POWER9 | \
-	     CPU_FTRS_POWER9_DD2_1 | CPU_FTRS_POWER9_DD2_2 | CPU_FTRS_POWER10)
+	     CPU_FTRS_POWER9_DD2_1 | CPU_FTRS_POWER9_DD2_2 | \
+	     CPU_FTRS_POWER9_DD2_3 | CPU_FTRS_POWER10)
 #else
 #define CPU_FTRS_POSSIBLE	\
 	    (CPU_FTRS_PPC970 | CPU_FTRS_POWER5 | \
 	     CPU_FTRS_POWER6 | CPU_FTRS_POWER7 | CPU_FTRS_POWER8E | \
 	     CPU_FTRS_POWER8 | CPU_FTRS_CELL | CPU_FTRS_PA6T | \
 	     CPU_FTR_VSX_COMP | CPU_FTR_ALTIVEC_COMP | CPU_FTRS_POWER9 | \
-	     CPU_FTRS_POWER9_DD2_1 | CPU_FTRS_POWER9_DD2_2 | CPU_FTRS_POWER10)
+	     CPU_FTRS_POWER9_DD2_1 | CPU_FTRS_POWER9_DD2_2 | \
+	     CPU_FTRS_POWER9_DD2_3 | CPU_FTRS_POWER10)
 #endif /* CONFIG_CPU_LITTLE_ENDIAN */
 #endif
 #else
@@ -519,7 +512,7 @@ enum {
 #elif defined(CONFIG_44x)
 	    CPU_FTRS_44X | CPU_FTRS_440x6 |
 #endif
-#ifdef CONFIG_E500
+#ifdef CONFIG_PPC_E500
 	    CPU_FTRS_E500 | CPU_FTRS_E500_2 |
 #endif
 #ifdef CONFIG_PPC_E500MC
@@ -530,7 +523,7 @@ enum {
 #endif /* __powerpc64__ */
 
 #ifdef CONFIG_PPC64
-#ifdef CONFIG_PPC_BOOK3E
+#ifdef CONFIG_PPC_BOOK3E_64
 #define CPU_FTRS_ALWAYS		(CPU_FTRS_E6500 & CPU_FTRS_E5500)
 #else
 
@@ -553,14 +546,16 @@ enum {
 #define CPU_FTRS_ALWAYS \
 	    (CPU_FTRS_POSSIBLE & ~CPU_FTR_HVMODE & CPU_FTRS_POWER7 & \
 	     CPU_FTRS_POWER8E & CPU_FTRS_POWER8 & CPU_FTRS_POWER9 & \
-	     CPU_FTRS_POWER9_DD2_1 & CPU_FTRS_DT_CPU_BASE)
+	     CPU_FTRS_POWER9_DD2_1 & CPU_FTRS_POWER9_DD2_2 & \
+	     CPU_FTRS_POWER10 & CPU_FTRS_DT_CPU_BASE)
 #else
 #define CPU_FTRS_ALWAYS		\
 	    (CPU_FTRS_PPC970 & CPU_FTRS_POWER5 & \
 	     CPU_FTRS_POWER6 & CPU_FTRS_POWER7 & CPU_FTRS_CELL & \
 	     CPU_FTRS_PA6T & CPU_FTRS_POWER8 & CPU_FTRS_POWER8E & \
 	     ~CPU_FTR_HVMODE & CPU_FTRS_POSSIBLE & CPU_FTRS_POWER9 & \
-	     CPU_FTRS_POWER9_DD2_1 & CPU_FTRS_DT_CPU_BASE)
+	     CPU_FTRS_POWER9_DD2_1 & CPU_FTRS_POWER9_DD2_2 & \
+	     CPU_FTRS_POWER10 & CPU_FTRS_DT_CPU_BASE)
 #endif /* CONFIG_CPU_LITTLE_ENDIAN */
 #endif
 #else
@@ -591,7 +586,7 @@ enum {
 #elif defined(CONFIG_44x)
 	    CPU_FTRS_44X & CPU_FTRS_440x6 &
 #endif
-#ifdef CONFIG_E500
+#ifdef CONFIG_PPC_E500
 	    CPU_FTRS_E500 & CPU_FTRS_E500_2 &
 #endif
 #ifdef CONFIG_PPC_E500MC

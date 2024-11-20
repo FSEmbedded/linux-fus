@@ -21,6 +21,7 @@
 #define PPC_STLCX	stringify_in_c(stdcx.)
 #define PPC_CNTLZL	stringify_in_c(cntlzd)
 #define PPC_MTOCRF(FXM, RS) MTOCRF((FXM), RS)
+#define PPC_SRL		stringify_in_c(srd)
 #define PPC_LR_STKOFF	16
 #define PPC_MIN_STKFRM	112
 
@@ -36,6 +37,12 @@
 #define LDX_BE	stringify_in_c(ldbrx)
 #define STWX_BE	stringify_in_c(stwbrx)
 #define STDX_BE	stringify_in_c(stdbrx)
+#endif
+
+#ifdef CONFIG_CC_IS_CLANG
+#define DS_FORM_CONSTRAINT "Z<>"
+#else
+#define DS_FORM_CONSTRAINT "YZ<>"
 #endif
 
 #else /* 32-bit */
@@ -54,6 +61,7 @@
 #define PPC_STLCX	stringify_in_c(stwcx.)
 #define PPC_CNTLZL	stringify_in_c(cntlzw)
 #define PPC_MTOCRF	stringify_in_c(mtcrf)
+#define PPC_SRL		stringify_in_c(srw)
 #define PPC_LR_STKOFF	4
 #define PPC_MIN_STKFRM	16
 

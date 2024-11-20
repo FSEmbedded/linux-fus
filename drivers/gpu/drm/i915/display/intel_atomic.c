@@ -32,8 +32,9 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_fourcc.h>
-#include <drm/drm_plane_helper.h>
 
+#include "i915_drv.h"
+#include "i915_reg.h"
 #include "intel_atomic.h"
 #include "intel_cdclk.h"
 #include "intel_display_types.h"
@@ -62,9 +63,9 @@ int intel_digital_connector_atomic_get_property(struct drm_connector *connector,
 	struct intel_digital_connector_state *intel_conn_state =
 		to_intel_digital_connector_state(state);
 
-	if (property == dev_priv->force_audio_property)
+	if (property == dev_priv->display.properties.force_audio)
 		*val = intel_conn_state->force_audio;
-	else if (property == dev_priv->broadcast_rgb_property)
+	else if (property == dev_priv->display.properties.broadcast_rgb)
 		*val = intel_conn_state->broadcast_rgb;
 	else {
 		drm_dbg_atomic(&dev_priv->drm,
@@ -95,12 +96,12 @@ int intel_digital_connector_atomic_set_property(struct drm_connector *connector,
 	struct intel_digital_connector_state *intel_conn_state =
 		to_intel_digital_connector_state(state);
 
-	if (property == dev_priv->force_audio_property) {
+	if (property == dev_priv->display.properties.force_audio) {
 		intel_conn_state->force_audio = val;
 		return 0;
 	}
 
-	if (property == dev_priv->broadcast_rgb_property) {
+	if (property == dev_priv->display.properties.broadcast_rgb) {
 		intel_conn_state->broadcast_rgb = val;
 		return 0;
 	}
@@ -140,6 +141,7 @@ int intel_digital_connector_atomic_check(struct drm_connector *conn,
 	    new_conn_state->base.picture_aspect_ratio != old_conn_state->base.picture_aspect_ratio ||
 	    new_conn_state->base.content_type != old_conn_state->base.content_type ||
 	    new_conn_state->base.scaling_mode != old_conn_state->base.scaling_mode ||
+	    new_conn_state->base.privacy_screen_sw_state != old_conn_state->base.privacy_screen_sw_state ||
 	    !drm_connector_atomic_hdr_metadata_equal(old_state, new_state))
 		crtc_state->mode_changed = true;
 
@@ -251,15 +253,21 @@ intel_crtc_duplicate_state(struct drm_crtc *crtc)
 	if (crtc_state->hw.gamma_lut)
 		drm_property_blob_get(crtc_state->hw.gamma_lut);
 
+	if (crtc_state->pre_csc_lut)
+		drm_property_blob_get(crtc_state->pre_csc_lut);
+	if (crtc_state->post_csc_lut)
+		drm_property_blob_get(crtc_state->post_csc_lut);
+
 	crtc_state->update_pipe = false;
+	crtc_state->update_m_n = false;
 	crtc_state->disable_lp_wm = false;
 	crtc_state->disable_cxsr = false;
 	crtc_state->update_wm_pre = false;
 	crtc_state->update_wm_post = false;
 	crtc_state->fifo_changed = false;
 	crtc_state->preload_luts = false;
-	crtc_state->inherited = false;
 	crtc_state->wm.need_postvbl_update = false;
+	crtc_state->do_async_flip = false;
 	crtc_state->fb_bits = 0;
 	crtc_state->update_planes = 0;
 	crtc_state->dsb = NULL;
@@ -272,22 +280,14 @@ static void intel_crtc_put_color_blobs(struct intel_crtc_state *crtc_state)
 	drm_property_blob_put(crtc_state->hw.degamma_lut);
 	drm_property_blob_put(crtc_state->hw.gamma_lut);
 	drm_property_blob_put(crtc_state->hw.ctm);
+
+	drm_property_blob_put(crtc_state->pre_csc_lut);
+	drm_property_blob_put(crtc_state->post_csc_lut);
 }
 
 void intel_crtc_free_hw_state(struct intel_crtc_state *crtc_state)
 {
 	intel_crtc_put_color_blobs(crtc_state);
-}
-
-void intel_crtc_copy_color_blobs(struct intel_crtc_state *crtc_state,
-				 const struct intel_crtc_state *from_crtc_state)
-{
-	drm_property_replace_blob(&crtc_state->hw.degamma_lut,
-				  from_crtc_state->uapi.degamma_lut);
-	drm_property_replace_blob(&crtc_state->hw.gamma_lut,
-				  from_crtc_state->uapi.gamma_lut);
-	drm_property_replace_blob(&crtc_state->hw.ctm,
-				  from_crtc_state->uapi.ctm);
 }
 
 /**
@@ -342,6 +342,8 @@ void intel_atomic_state_clear(struct drm_atomic_state *s)
 
 	drm_atomic_state_default_clear(&state->base);
 	intel_atomic_clear_global_state(state);
+
+	/* state->internal not reset on purpose */
 
 	state->dpll_set = state->modeset = false;
 }
