@@ -347,6 +347,15 @@ config DRM_PANEL_NEWVISION_NV3051D
 	  This driver supports the NV3051D based panel found on the Anbernic
 	  RG353P and RG353V.
 
+config DRM_PANEL_NEWVISION_NV3051D_FUS
+	tristate "NewVision NV3051D DSI panel"
+	depends on OF
+	depends on DRM_MIPI_DSI
+	depends on BACKLIGHT_CLASS_DEVICE
+	help
+	  This driver supports NV3051D based panels with F&S boards.
+
+
 config DRM_PANEL_NEWVISION_NV3052C
 	tristate "NewVision NV3052C RGB/SPI panel"
 	depends on OF && SPI
