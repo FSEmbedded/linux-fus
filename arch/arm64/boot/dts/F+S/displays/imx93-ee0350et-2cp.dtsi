@@ -1,0 +1,65 @@
+/*
+* Copyright (C) 2024 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+#ifdef CONFIG_PICOCOREMX93_MIPI_DSI
+
+&dsi {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	ports {
+		port@1 {
+			reg = <1>;
+
+			mipi_dsi_out: endpoint {
+				remote-endpoint = <&panel_in>;
+			};
+		};
+	};
+
+	panel: panel@0 {
+		compatible = "newvision,nv3051d-ee0350et";
+		reg = <0>;
+#ifdef CONFIG_IMX93_MIPI_PANEL_POWER_SUPPLY
+		vdd-supply = <&IMX93_PANEL_POWER_SUPPLY>;
+#endif
+		backlight = <&backlight_ldb>;
+#ifdef CONFIG_IMX93_MIPI_RESET
+		reset-gpios = <&IMX93_MIPI_RESET_GPIO_BANK IMX93_MIPI_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
+#endif
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&mipi_dsi_out>;
+			};
+		};
+	};
+};
+
+&lcdif {
+	status = "okay";
+};
+
+&dphy {
+	status = "okay";
+};
+
+&IMX93_TOUCH_I2C {
+	/* Atmel PCAP touch on Touch Connector (I2C) */
+	touch: mxt336u@4a {
+		compatible = "atmel,maxtouch";
+		reg = <0x4a>;
+		atmel,cfg_name = "atmel/mxt336u-gloves.cfg";
+#ifdef CONFIG_IMX93_TOUCH_RESET
+		reset-gpios = <&IMX93_TOUCH_RESET_GPIO_BANK IMX93_TOUCH_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
+#endif
+		interrupt-parent = <&IMX93_TOUCH_INTERRUPT_GPIO_BANK>;
+		interrupts = <IMX93_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_FALLING>;
+	};
+};
+
+#endif /* CONFIG_PICOCOREMX93_MIPI_DSI */

@@ -1,0 +1,117 @@
+/*
+ * Copyright (C) 2024 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOREMX93_BOARD_REVISION	110
+/* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOREBBDSI_BOARD_REVISION	140
+//#define SUPPORT_M33
+//#define SUPPORT_RPMSG
+
+/* Network */
+#define CONFIG_PICOCOREMX93_ETH_A
+#define CONFIG_PICOCOREMX93_ETH_A_LED_LINK
+//#define CONFIG_PICOCOREMX93_ETH_A_LED_ACT
+
+#define CONFIG_PICOCOREMX93_ETH_B
+#define CONFIG_PICOCOREMX93_ETH_B_LED_LINK
+//#define CONFIG_PICOCOREMX93_ETH_B_LED_ACT
+
+/* CAN - CAN1 extern J1 pins 10,12*/
+#define CONFIG_PICOCOREMX93_CAN
+/* I2C */
+/* intern EEPROM and extern J1 pins 4,6 */
+#define CONFIG_PICOCOREMX93_I2C_A
+/* extern J1 pins 3,5 */
+#define CONFIG_PICOCOREMX93_I2C_B
+/* extern J1 pins 40, 42 */
+#define CONFIG_PICOCOREMX93_I2C_C
+/* intern RTC, Audio, PMIC, GPIO_Exp.
+ * and extern pins J1 48,50
+ */
+#define CONFIG_PICOCOREMX93_I2C_D
+
+/* SPI_A - LPSPI6 extern pins 64,66,68,70 */
+#define CONFIG_PICOCOREMX93_SPI_A
+/* SPI_B - LPSPI3 extern pins 56,58,60,62 */
+#define CONFIG_PICOCOREMX93_SPI_B
+
+/* PWM and backlight brightness */
+#define CONFIG_PICOCOREMX93_PWM_A
+#define CONFIG_PICOCOREMX93_BL_CTRL
+
+/* UART_A - UART2 */
+#define CONFIG_PICOCOREMX93_UART_A
+#define CONFIG_PICOCOREMX93_UART_A_RTSCTS
+
+/* UART_B - UART6 */
+#define CONFIG_PICOCOREMX93_UART_B
+#define CONFIG_PICOCOREMX93_UART_B_RTSCTS
+#define CONFIG_PICOCOREMX93_UART_B_BT
+
+/* UART_C - UART1 */
+#define CONFIG_PICOCOREMX93_UART_C
+
+/* UART_D - UART3 extern J1 34,36
+ * SKIT: J11 13,15
+ */
+#define CONFIG_PICOCOREMX93_UART_D
+
+/* SD_A - SD2 */
+#define CONFIG_PICOCOREMX93_SD_A
+
+/* SD_B - SD3 */
+#define CONFIG_PICOCOREMX93_SD_B
+
+/* ADC0..3 extern J2 73,75,77,79
+ * SKIT: J11 7,9,10,12
+ */
+#define CONFIG_PICOCOREMX93_ADC
+/* extern RTC */
+#define CONFIG_PICOCOREMX93_EXT_RTC
+/* Audio: SGTL5000 codec */
+#define CONFIG_PICOCOREMX93_SGTL5000_AUDIO
+#define CONFIG_PICOCOREMX93_I2S_A
+
+/*
+ * Exclude devices from Linux that are used by the Cortex-M33 FreeRTOS examples
+ *
+ * - UART_C: Debug Console for Cortex-M33
+ * - PWM_A: PWM Signal for the PWM example
+ * - CAN_A: CAN-Signal for FlexCAN examples
+ * - I2C_A:  I2C Bus used in I2C examples
+ * - SPI_B:  SPI_B is used for ECSPI examples
+ *
+ */
+
+#ifdef SUPPORT_M33
+/* TODO: */
+#else
+#undef SUPPORT_RPMSG
+#endif
+
+#ifdef CONFIG_PICOCOREMX93_ETH_A_LED_LINK
+#undef CONFIG_PICOCOREMX93_ETH_A_LED_ACT
+#endif
+
+#ifdef CONFIG_PICOCOREMX93_ETH_B_LED_LINK
+#undef CONFIG_PICOCOREMX93_ETH_B_LED_ACT
+#endif
+
+#include "picocoremx93.dtsi"
+
+/ {
+	model = "F&S PicoCoreMX93";
+};
+
+/* -------------------- BOARD INFO -------------------- */
+&bdinfo {
+	board_name = "picocoremx93";
+};

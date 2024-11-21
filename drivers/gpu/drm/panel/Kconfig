@@ -353,7 +353,11 @@ config DRM_PANEL_NEWVISION_NV3051D_FUS
 	depends on DRM_MIPI_DSI
 	depends on BACKLIGHT_CLASS_DEVICE
 	help
-	  This driver supports NV3051D based panels with F&S boards.
+	  Say Y here if you want to enable support for NewVision NV3051D based
+	  panels, souch as Eagleeyetech EE0350ET-2 MIPI DSI panel. It has a
+	  resolution of 480x640 pixels, a built in backlight and touch controller.
+	  Touch input support is provided by the atmel mxt336U driver and needs to
+	  be selected separately.
 
 
 config DRM_PANEL_NEWVISION_NV3052C

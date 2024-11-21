@@ -1,0 +1,271 @@
+/*
+* Copyright (C) 2024 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+
+#include <dt-bindings/pwm/pwm.h>
+
+#if defined(CONFIG_PICOCOREMX8ULP_MIPI_DSI)
+
+/{
+	panel: panel {
+		compatible = "panel-lvds";
+		backlight = <&backlight_ldb>;
+		reset-gpios = <&gpio_adp 3 GPIO_ACTIVE_LOW>;
+		data-mapping = "vesa-24";
+		label = "BT070L1060CS0I1AD-A";
+		width-mm = <155>;
+		height-mm = <86>;
+		status = "okay";
+
+		panel-timing {
+			clock-frequency = <52800000>;
+			hactive = <1024>;
+			vactive = <600>;
+			hback-porch = <160>;
+			hfront-porch = <160>;
+			hsync-len = <4>;
+			vback-porch = <23>;
+			vfront-porch = <25>;
+			vsync-len = <1>;
+			pixelclk-active = <0>;
+			de-active = <1>;
+		};
+
+		port@0 {
+			panel_from_lvds: endpoint {
+				remote-endpoint = <&lvds_to_panel>;
+			};
+		};
+	};
+
+	backlight_ldb: backlight_ldb {
+		compatible = "pwm-backlight";
+		pwms = <&gpio_adp 1 5263157 1>;
+		power-supply = <&reg_bl_on>;
+		brightness-levels = <0 1 5 10 18 28 41 56
+					 73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+		status = "okay";
+	};
+
+	regulators{
+		reg_vref_1v8: regulator_1v8 {
+			compatible = "regulator-fixed";
+ 			regulator-name = "reg_1v8";
+ 			regulator-min-microvolt = <1800000>;
+ 			regulator-max-microvolt = <1800000>;
+ 			regulator-always-on;
+		};
+
+		reg_vref_3v3: regulator_3v3 {
+			compatible = "regulator-fixed";
+ 			regulator-name = "reg_3v3";
+ 			regulator-min-microvolt = <3300000>;
+ 			regulator-max-microvolt = <3300000>;
+ 			regulator-always-on;
+		};
+
+		reg_bl_on: regulator_bl {
+			compatible = "regulator-fixed";
+			regulator-name = "BL_ON";
+			gpio = <&gpio_adp 0 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+	};
+};
+
+&dsi {
+	ports {
+		port@1 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <1>;
+			dsim_to_lvds: endpoint {
+				remote-endpoint = <&lvds_from_dsim>;
+				data-lanes = <0 1 2 3>;
+				attach-bridge;
+			};
+		};
+	};
+};
+
+&lpi2c6 {
+	clock-frequency = <400000>;
+	gpio_bridge: pca9634@63 {
+		compatible = "nxp,pca9634";
+		reg = <0x63>;
+		vdd-supply = <&reg_vlcd>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#pwm-cells = <3>;
+		#gpio-cells = <2>;
+		nxp,totem-pole;
+		led@0 {
+			reg = <0>;
+			label = "BL_ON";
+			type = "GPIO";
+			default-on;		 /* or: keep-value */
+			active-high;
+		};
+		led@1 {
+			reg = <1>;
+			label = "BL_PWM";
+			type = "PWM";
+			default-on;		 /* or: keep-value */
+			active-low;
+		};
+		led@2 {
+			reg = <2>;
+			label = "2-unused";
+			type = "LED";
+			active-low;
+		};
+		led@3 {
+			reg = <3>;
+			label = "MIPI_RST";
+			type = "GPIO";
+			active-high;
+			default-on;		 /* or: keep-value */
+		};
+		led@4 {
+			reg = <4>;
+			label = "MIPI_STBY";
+			type = "GPIO";
+			active-high;
+			default-on;
+		};
+		led@5 {
+			reg = <5>;
+			label = "I2C_RST";
+			type = "GPIO";
+			active-high;
+			default-on;		 /* or: keep-value */
+		};
+		led@6 {
+			reg = <6>;
+			label = "6-unused";
+			type = "LED";
+			active-low;
+		};
+		led@7 {
+			reg = <7>;
+			label = "7-unused";
+			type = "GPIO";
+			active-high;
+			default-on;
+		};
+	};
+
+	gpio_adp: pca9634@61 {
+		compatible = "nxp,pca9634";
+		reg = <0x61>;
+		vdd-supply = <&reg_vlcd>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#pwm-cells = <3>;
+		#gpio-cells = <2>;
+		led@0 {
+			reg = <0>;
+			label = "BL_ON";
+			type = "GPIO";
+			default-on;		/* or: keep-value */
+			active-high;
+		};
+		led@1 {
+			reg = <1>;
+			label = "BL_PWM";
+			type = "PWM";
+			default-on;		 /* or: keep-value */
+			active-low;
+		};
+		led@2 {
+			reg = <2>;
+			label = "2-unused";
+			type = "LED";
+			active-low;
+		};
+		led@3 {
+			reg = <3>;
+			label = "MIPI_RST";
+			type = "GPIO";
+			active-low;
+			default-on;		 /* or: keep-value */
+		};
+		led@4 {
+			reg = <4>;
+			label = "4-unused";
+			type = "LED";
+			active-low;
+		};
+		led@5 {
+			reg = <5>;
+			label = "I2C_RST";
+			type = "GPIO";
+			active-high;
+			default-on;	 /* or: keep-value */
+		};
+		led@6 {
+			reg = <6>;
+			label = "6-unused";
+			type = "LED";
+			active-low;
+		};
+		led@7 {
+			reg = <7>;
+			label = "TOUCH_ON";
+			type = "GPIO";
+			active-high;
+			default-on;
+		};
+	};
+
+	/* Ilitek PCAP touch on Touch-Connector (I2C) */
+	touch: ilitek2130@41 {
+		compatible = "ilitek,ili2130";
+		reg = <0x41>;
+		interrupt-parent = <&gpioa>;
+		interrupts = <18 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&gpio_adp 5 GPIO_ACTIVE_LOW>;
+	};
+	
+	tc358775@f {
+		compatible = "toshiba,tc358775";
+		reg = <0x0f>;
+		vdd-supply = <&reg_vref_1v8>;
+		vddio-supply = <&reg_vref_3v3>;
+		reset-gpios = <&gpio_bridge 3 GPIO_ACTIVE_LOW>;
+		stby-gpios  = <&gpio_bridge 4 GPIO_ACTIVE_LOW>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0>;
+ 
+				lvds_from_dsim: endpoint {
+					remote-endpoint = <&dsim_to_lvds>;
+				};
+			};
+
+			port@1 {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <1>;
+
+				lvds_to_panel: endpoint {
+					remote-endpoint = <&panel_from_lvds>;
+				};
+			};
+		};
+	};
+};
+#endif

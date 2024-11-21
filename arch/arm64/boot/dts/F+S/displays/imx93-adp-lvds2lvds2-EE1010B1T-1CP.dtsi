@@ -1,0 +1,90 @@
+/*
+ * Copyright (C) 2021 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/ {
+	lvds_panel {
+		compatible = "panel-lvds";
+#ifdef CONFIG_IMX93_LVDS_PANEL_POWER_SUPPLY
+		power-supply = <&IMX93_LVDS_PANEL_POWER_SUPPLY>;
+#endif
+		backlight = <&backlight_ldb>;
+#ifdef CONFIG_IMX93_LVDS_PANEL_RESET_GPIOS
+		reset-gpios = <&IMX93_LVDS_PANEL_RESET_GPIO_BANK IMX93_LVDS_PANEL_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
+#endif
+		data-mapping = "vesa-24";
+		label = "EE1010B1T-1CP";
+		width-mm = <223>;
+		height-mm = <125>;
+		status = "okay";
+
+		panel-timing {
+			clock-frequency = <49500000>;
+			hactive = <1024>;
+			vactive = <600>;
+			hback-porch = <160>;
+			hfront-porch = <76>;
+			hsync-len = <10>;
+			vback-porch = <23>;
+			vfront-porch = <12>;
+			vsync-len = <20>;
+			pixelclk-active = <0>;
+			de-active = <1>;
+		};
+
+		port {
+			panel_lvds_in: endpoint {
+				remote-endpoint = <&lvds_out>;
+			};
+		};
+	};
+};
+
+/* LVDS */
+&lcdif {
+	status = "okay";
+	assigned-clock-rates = <1039500000>, <49500000>, <400000000>, <133333333>;
+};
+
+&ldb_phy {
+	status = "okay";
+};
+
+&ldb {
+	status = "okay";
+	lvds-channel@0 {
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <24>;
+		status = "okay";
+		port@1 {
+			reg = <1>;
+
+			lvds_out: endpoint {
+				remote-endpoint = <&panel_lvds_in>;
+			};
+		};
+	};
+};
+
+&IMX93_TOUCH_I2C {
+	clock-frequency = <400000>;
+	/* GOODIX PCAP touch on Touch-Connector (I2C) */
+	touch: gt928@14 {
+		compatible = "goodix,gt928";
+		reg = <0x14>;
+		vdd-supply = <&reg_vlcd>;
+#ifdef CONFIG_IMX93_INVERTED_XY
+		touchscreen-inverted-x;
+		touchscreen-inverted-y;
+#endif /* CONFIG_IMX93_INVERTED_XY */
+		interrupt-parent = <&IMX93_TOUCH_INTERRUPT_GPIO_BANK>;
+		interrupts = <IMX93_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_RISING>;
+#ifdef CONFIG_IMX93_TOUCH_RESET
+		reset-gpios = <&IMX93_TOUCH_RESET_GPIO_BANK IMX93_TOUCH_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
+#endif /* CONFIG_IMX93_TOUCH_RESET */
+	};
+};

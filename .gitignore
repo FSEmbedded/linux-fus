@@ -110,6 +110,7 @@ modules.order
 /include/config/
 /include/generated/
 /arch/*/include/generated/
+/scripts/dtc/include-prefixes/fsversion.h
 
 # stgit generated dirs
 patches-*

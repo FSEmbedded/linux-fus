@@ -1,0 +1,71 @@
+/*
+ * Copyright (C) 2024 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+ #define CONFIG_PICOCOREMX93_MIPI_DSI
+ /* touch reset */
+#define CONFIG_IMX93_TOUCH_RESET
+/* MIPI_RESET */
+#define CONFIG_IMX93_MIPI_RESET
+/* use vdd supply */
+#define CONFIG_IMX93_MIPI_PANEL_POWER_SUPPLY
+
+
+#define IMX93_TOUCH_I2C 	lpi2c8
+#define IMX93_TOUCH_INTERRUPT_GPIO_BANK 	gpio2
+#define IMX93_TOUCH_INTERRUPT_GPIO_NUM 	15
+
+#ifdef CONFIG_IMX93_TOUCH_RESET
+/* GPIO_J1_2 for Rev. 1.10 */
+#define IMX93_TOUCH_RESET_GPIO_BANK 	gpio2
+#define IMX93_TOUCH_RESET_GPIO_NUM 	19
+#endif /* CONFIG_IMX93_TOUCH_RESET */
+
+#ifdef CONFIG_IMX93_MIPI_RESET
+/* GPIO_J1_7 for Rev. 1.10 */
+#define IMX93_MIPI_RESET_GPIO_BANK 	max7315
+#define IMX93_MIPI_RESET_GPIO_NUM 	4
+#endif /* CONFIG_IMX93_MIPI_RESET */
+
+#ifdef CONFIG_IMX93_MIPI_PANEL_POWER_SUPPLY
+#define IMX93_PANEL_POWER_SUPPLY reg_vlcd
+#endif
+
+#include "picocoremx93.dts"
+
+&reg_bl_on {
+    gpio = <&max7315 0 GPIO_ACTIVE_HIGH>;
+};
+
+&backlight_ldb {
+    pwms = <&max7315 1 31250 PWM_POLARITY_INVERTED>;
+    power-supply = <&reg_bl_on>;
+    /* calculated without sigma so it´s linear */
+    brightness-levels = <0 17 34 51 68 85 102 119 136
+            153 170 187 204 221 238 255>;
+    default-brightness-level = <14>;
+    fb-names = "mipi_dsi";
+};
+
+&IMX93_TOUCH_I2C {
+    /* LED-driver on adapter board MIPI2MIPI1 */
+    max7315: max7315@20 { /* LED-driver */
+        compatible = "maxim,max7315";
+        reg = <0x20>;
+        /* interrupt not yet supported */
+        //interrupt-parent = <&gpio4>;
+        //interrupts = <31 IRQ_TYPE_LEVEL_LOW>;
+        //#interrupt-cells = <2>;
+        //interrupt-controller;
+        gpio-controller;
+        #gpio-cells = <2>;
+        pwm-controller;
+        #pwm-cells = <3>;
+    };
+};
+
+#include "displays/imx93-ee0350et-2cp.dtsi"

@@ -1,0 +1,74 @@
+TPS65185 PMIC for Electrophoretic Displays
+
+Required properties:
+- compatible: "ti, tps65185"
+- reg: i2c slave address
+- regulators: This is the list of child nodes that specify the regulator
+  initialization data for defined regulators. Not all regulators for the
+  given device need to be present. The definition for each of these nodes
+  is defined using the standard binding for regulators found at
+  Documentation/devicetree/bindings/regulator/regulator.txt.
+  The regulator is matched with the regulator-compatible.
+- GPIO: The PMIC requires defined GPIO signals for WakeUp, PowerUp and Powergood.
+  See the example below for the property-definition.
+
+The valid regulator-compatible values are:
+  tps65185: vdisp_reg, vpos_reg, vneg_reg, vgl_reg, vcom_reg, v3p3_reg
+
+Example:
+&epdc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_epdc0>;
+	DISPLAY-supply = <&vdisp_reg>;
+	V3P3-supply = <&v3p3_reg>;
+	VCOM-supply = <&vcom_reg>;
+	VPOS-supply = <&vpos_reg>;
+	VNEG-supply = <&vneg_reg>;
+	status = "okay";
+};
+
+&lpi2c7 {
+	tps65185: tps65185@68 {
+		compatible = "ti,tps65185";
+		reg = <0x68>;
+		status = "okay";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_tps65185>;
+		gpio-pmic-pwrgood = <&gpioe 17 GPIO_ACTIVE_HIGH>;
+		gpio-pmic-wakeup = <&gpioe 18 GPIO_ACTIVE_HIGH>;
+		gpio-pmic-pwrup = <&gpioe 22 GPIO_ACTIVE_HIGH>;
+
+		regulators {
+			vdisp_reg: DISPLAY {
+				regulator-name = "DISPLAY";
+			};
+
+			vpos_reg: VPOS-LDO {
+				regulator-name = "VPOS";
+				regulator-min-microvolt = <7040000>;
+				regulator-max-microvolt = <15060000>;
+			};
+
+			vneg_reg: VNEG-LDO {
+				regulator-name = "VNEG";
+				regulator-min-microvolt = <7040000>;
+				regulator-max-microvolt = <15060000>;
+			};
+
+			vgl_reg: VGL-CHARGE-PUMP {
+				regulator-name = "VGL";
+			};
+
+			vcom_reg: VCOM {
+				regulator-name = "VCOM";
+				regulator-min-microvolt = <19608>;
+				regulator-max-microvolt = <5000000>;
+			};
+
+			v3p3_reg: V3P3 {
+				regulator-name = "V3P3";
+			};
+		};
+	};
+};

@@ -1,0 +1,39 @@
+/*
+ * Copyright (C) 2024 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+ #define CONFIG_PICOCOREMX93_MIPI_DSI
+ /* touch reset */
+#define CONFIG_IMX93_TOUCH_RESET
+/* MIPI_RESET */
+#define CONFIG_IMX93_MIPI_RESET
+/* use vdd supply */
+#define CONFIG_IMX93_MIPI_PANEL_POWER_SUPPLY
+
+
+#define IMX93_TOUCH_I2C 	lpi2c8
+#define IMX93_TOUCH_INTERRUPT_GPIO_BANK 	gpio2
+#define IMX93_TOUCH_INTERRUPT_GPIO_NUM 	15
+
+#ifdef CONFIG_IMX93_TOUCH_RESET
+/* GPIO_J1_2 for Rev. 1.10 */
+#define IMX93_TOUCH_RESET_GPIO_BANK 	gpio2
+#define IMX93_TOUCH_RESET_GPIO_NUM 	19
+#endif /* CONFIG_IMX93_TOUCH_RESET */
+
+#ifdef CONFIG_IMX93_MIPI_RESET
+/* GPIO_J1_7 for Rev. 1.10 */
+#define IMX93_MIPI_RESET_GPIO_BANK 	gpio2
+#define IMX93_MIPI_RESET_GPIO_NUM 	14
+#endif /* CONFIG_IMX93_MIPI_RESET */
+
+#ifdef CONFIG_IMX93_MIPI_PANEL_POWER_SUPPLY
+#define IMX93_PANEL_POWER_SUPPLY reg_vlcd
+#endif
+
+#include "picocoremx93.dts"
+#include "displays/imx93-ee0350et-2cp.dtsi"

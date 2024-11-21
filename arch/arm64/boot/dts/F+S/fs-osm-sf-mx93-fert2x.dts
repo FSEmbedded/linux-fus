@@ -1,0 +1,4 @@
+#include "fs-osm-sf-mx93.dtsi"
+#include "fs-osm-sf-mx93-fert2x.dtsi"
+
+/* carrier definitions ... */

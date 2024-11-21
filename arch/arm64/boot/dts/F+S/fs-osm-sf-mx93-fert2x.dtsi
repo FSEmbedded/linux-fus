@@ -1,0 +1,367 @@
+/*
+ * Copyright (C) 2024 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+ 
+ /*
+ * This devicetree includefile provides pinmuxing and device configuration
+ * for other OSM-MX93 variants. This file needs to be included after 
+ * fs-osm-sf-mx93.dtsi.
+ *
+ * FS-OSM-MX93-FERT2x is not pincompatible with the OSM Specification!
+ */
+
+// /dts-v1/;
+
+ /* set default aliases */
+ /delete-node/ &{/aliases};
+/{
+	model = "F+S OSM-SF-MX93 FERT2x";
+
+	aliases {
+		gpio0 = &gpio1;
+		gpio1 = &gpio2;
+		gpio2 = &gpio3;
+		gpio3 = &gpio4;
+		i2c0 = &lpi2c1;
+		i2c1 = &lpi2c2;
+		i2c2 = &lpi2c3;
+		i2c3 = &lpi2c4;
+		i2c4 = &lpi2c5;
+		i2c5 = &lpi2c6;
+		i2c6 = &lpi2c7;
+		i2c7 = &lpi2c8;
+		mmc0 = &usdhc1;
+		mmc1 = &usdhc2;
+		mmc2 = &usdhc3;
+		serial0 = &lpuart1;
+		serial1 = &lpuart2;
+		serial2 = &lpuart3;
+		serial3 = &lpuart4;
+		serial4 = &lpuart5;
+		serial5 = &lpuart6;
+		serial6 = &lpuart7;
+		serial7 = &lpuart8;
+		isi0 = &isi_0;
+		csi0 = &mipi_csi;
+		rtc0 = &bbnsm_rtc;
+	};
+};
+
+/* prepare properties */
+&eeprom {
+	status = "disabled";
+};
+
+&gpio1 {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_gpio1>;
+	pinctrl-1 = <&pinctrl_gpio1>;
+	/delete-property/ gpio-line-names;
+};
+
+&gpio2 {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_gpio2>;
+	pinctrl-1 = <&pinctrl_gpio2>;
+	/delete-property/ gpio-line-names;
+};
+
+&gpio3 {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_gpio3>;
+	pinctrl-1 = <&pinctrl_gpio3>;
+	/delete-property/ gpio-line-names;
+};
+
+&gpio4 {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_gpio4>;
+	pinctrl-1 = <&pinctrl_gpio4>;
+	/delete-property/ gpio-line-names;
+};
+
+&lpuart4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart4>;
+	status = "disabled";
+};
+
+&lpspi6 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lpspi6>;
+	status = "disabled";
+};
+
+&lpspi7 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lpspi7>;
+	status = "disabled";
+};
+
+&lpspi8 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lpspi8>;
+	status = "disabled";
+};
+
+&lpspi5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lpspi5>;
+	status = "disabled";
+};
+
+&tpm6 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_tpm6>;
+	status = "disabled";
+};
+
+&fec {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+};
+
+&sai3 {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+};
+
+&usdhc2 {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-1;
+	/delete-property/ pinctrl-2;
+	/delete-property/ vmmc-supply;
+};
+
+&reg_carrier_pwr {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+	/delete-property/ gpio;
+};
+
+&tpm3 {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+};
+
+&tpm4 {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+};
+
+&usbotg1 {
+	/delete-property/ vbus-supply;
+};
+
+&usbotg2 {
+	/delete-property/ vbus-supply;
+};
+
+&lpi2c5 {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+};
+
+/* Overwrite Pinctrl */
+/* delete all conflicting configurations and redefine */
+/delete-node/ &pinctrl_gpio3;
+/delete-node/ &pinctrl_usdhc2;
+/delete-node/ &pinctrl_sdio_pwr_en;
+/delete-node/ &pinctrl_dsi;
+/delete-node/ &pinctrl_eqos;
+/delete-node/ &pinctrl_disp_vdd_en;
+/delete-node/ &pinctrl_fec;
+/delete-node/ &pinctrl_gpio2;
+/delete-node/ &pinctrl_sai3;
+/delete-node/ &pinctrl_uart2;
+/delete-node/ &pinctrl_carrier_en;
+/delete-node/ &pinctrl_uart5;
+/delete-node/ &pinctrl_flexcan2;
+/delete-node/ &pinctrl_tpm3;
+/delete-node/ &pinctrl_tpm4;
+/delete-node/ &pinctrl_tpm5;
+/delete-node/ &pinctrl_disp_bl_en;
+/delete-node/ &pinctrl_lpspi3;
+/delete-node/ &pinctrl_uart8;
+/delete-node/ &pinctrl_uart3;
+/delete-node/ &pinctrl_usb2_en;
+/delete-node/ &pinctrl_usb1_en;
+/delete-node/ &pinctrl_lpi2c5;
+
+/delete-node/ &reg_disp_vdd_en;
+/delete-node/ &reg_disp_bl;
+/delete-node/ &reg_sdio_a_pwr;
+/delete-node/ &reg_usb1_vbus;
+/delete-node/ &reg_usb2_vbus;
+
+/delete-node/ &backlight_ldb;
+
+&iomuxc {
+	pinctrl_gpio1: gpio1grp {
+		/* default: pulldown */
+		fsl,pins = <
+			MX93_PAD_SAI1_TXC__GPIO1_IO12		0x51e
+			MX93_PAD_SAI1_TXD0__GPIO1_IO13		0x51e
+			MX93_PAD_SAI1_TXFS__GPIO1_IO11		0x51e
+		>;
+	};
+
+	pinctrl_gpio2: gpio2grp {
+		/* default: pulldown */
+		fsl,pins = <
+			MX93_PAD_GPIO_IO16__GPIO2_IO16		0x51e
+			MX93_PAD_GPIO_IO17__GPIO2_IO17		0x51e
+		>;
+	};
+
+	pinctrl_gpio3: gpio3grp {
+		/* default: pulldown */
+		fsl,pins = <
+			MX93_PAD_CCM_CLKO1__GPIO3_IO26		0x51e
+			MX93_PAD_CCM_CLKO2__GPIO3_IO27		0x51e
+			MX93_PAD_DAP_TCLK_SWCLK__GPIO3_IO30	0x51e
+			MX93_PAD_SD2_CD_B__GPIO3_IO00		0x51e
+			MX93_PAD_SD2_CLK__GPIO3_IO01		0x51e
+			MX93_PAD_SD2_CMD__GPIO3_IO02		0x51e
+			MX93_PAD_SD2_DATA2__GPIO3_IO05		0x51e
+			MX93_PAD_SD2_DATA3__GPIO3_IO06		0x51e
+			MX93_PAD_SD2_RESET_B__GPIO3_IO07	0x51e
+			MX93_PAD_SD3_CLK__GPIO3_IO20		0x51e
+			MX93_PAD_SD3_CMD__GPIO3_IO21		0x51e
+			MX93_PAD_SD3_DATA0__GPIO3_IO22		0x51e
+			MX93_PAD_SD3_DATA1__GPIO3_IO23		0x51e
+			MX93_PAD_SD3_DATA2__GPIO3_IO24		0x51e
+			MX93_PAD_SD3_DATA3__GPIO3_IO25		0x51e
+		>;
+	};
+
+	pinctrl_gpio4: gpio4grp {
+		/* default: pulldown */
+		fsl,pins = <
+			MX93_PAD_CCM_CLKO3__GPIO4_IO28		0x51e
+			MX93_PAD_CCM_CLKO4__GPIO4_IO29		0x51e
+			MX93_PAD_ENET1_RD2__GPIO4_IO12		0x51e
+			MX93_PAD_ENET1_RD3__GPIO4_IO13		0x51e
+			MX93_PAD_ENET1_TD2__GPIO4_IO03		0x51e
+			MX93_PAD_ENET1_TD3__GPIO4_IO02		0x51e
+			MX93_PAD_ENET2_MDC__GPIO4_IO14		0x51e
+			MX93_PAD_ENET2_MDIO__GPIO4_IO15		0x51e
+			MX93_PAD_ENET2_RD1__GPIO4_IO25		0x51e
+			MX93_PAD_ENET2_RD2__GPIO4_IO26		0x51e
+			MX93_PAD_ENET2_RD3__GPIO4_IO27		0x51e
+			MX93_PAD_ENET2_RX_CTL__GPIO4_IO22	0x51e
+			MX93_PAD_ENET2_RXC__GPIO4_IO23		0x51e
+			MX93_PAD_ENET2_TD1__GPIO4_IO18		0x51e
+			MX93_PAD_ENET2_TD2__GPIO4_IO17		0x51e
+			MX93_PAD_ENET2_TD3__GPIO4_IO16		0x51e
+			MX93_PAD_ENET2_TX_CTL__GPIO4_IO20	0x51e
+			MX93_PAD_ENET2_TXC__GPIO4_IO21		0x51e
+		>;
+	};
+
+	pinctrl_uart4: uart4grp {
+		fsl,pins = <
+			MX93_PAD_ENET2_RD0__LPUART4_RX		0x31e
+			MX93_PAD_ENET2_TD0__LPUART4_TX		0x31e
+		>;
+	};
+
+	pinctrl_uart5: uart5grp {
+		fsl,pins = <
+			MX93_PAD_DAP_TDI__LPUART5_RX		0x31e
+			MX93_PAD_DAP_TDO_TRACESWO__LPUART5_TX	0x31e
+		>;
+	};
+
+	pinctrl_eqos: eqosgrp {
+		fsl,pins = <
+			MX93_PAD_ENET1_MDC__ENET_QOS_MDC			0x57e
+			MX93_PAD_ENET1_MDIO__ENET_QOS_MDIO			0x57e
+			MX93_PAD_ENET1_RD0__ENET_QOS_RGMII_RD0			0x57e
+			MX93_PAD_ENET1_RD1__ENET_QOS_RGMII_RD1			0x57e
+			MX93_PAD_ENET1_RX_CTL__ENET_QOS_RGMII_RX_CTL		0x57e
+			MX93_PAD_ENET1_RXC__CCM_ENET_QOS_CLOCK_GENERATE_RX_CLK	0x57e
+			MX93_PAD_ENET1_TD0__ENET_QOS_RGMII_TD0			0x57e
+			MX93_PAD_ENET1_TD1__ENET_QOS_RGMII_TD1			0x57e
+			MX93_PAD_ENET1_TX_CTL__ENET_QOS_RGMII_TX_CTL		0x57e
+			MX93_PAD_ENET1_TXC__CCM_ENET_QOS_CLOCK_GENERATE_TX_CLK	0x57e
+		>;
+	};
+
+	pinctrl_lpspi6: lpspi6grp {
+		fsl,pins = <
+			MX93_PAD_GPIO_IO00__LPSPI6_PCS0		0x3fe
+			MX93_PAD_GPIO_IO01__LPSPI6_SIN		0x3fe
+			MX93_PAD_GPIO_IO02__LPSPI6_SOUT		0x3fe
+			MX93_PAD_GPIO_IO03__LPSPI6_SCK		0x3fe
+		>;
+	};
+
+	pinctrl_lpspi7: lpspi7grp {
+		fsl,pins = <
+			MX93_PAD_GPIO_IO04__LPSPI7_PCS0		0x3fe
+			MX93_PAD_GPIO_IO05__LPSPI7_SIN		0x3fe
+			MX93_PAD_GPIO_IO06__LPSPI7_SOUT		0x3fe
+			MX93_PAD_GPIO_IO07__LPSPI7_SCK		0x3fe
+		>;
+	}; 
+
+	pinctrl_lpspi3: lpspi3grp {
+		fsl,pins = <
+			MX93_PAD_GPIO_IO08__LPSPI3_PCS0		0x3fe
+			MX93_PAD_GPIO_IO09__LPSPI3_SIN		0x3fe
+			MX93_PAD_GPIO_IO10__LPSPI3_SOUT		0x3fe
+			MX93_PAD_GPIO_IO11__LPSPI3_SCK		0x3fe
+		>;
+	};
+
+	pinctrl_lpspi8: lpspi8grp {
+		fsl,pins = <
+			MX93_PAD_GPIO_IO12__LPSPI8_PCS0		0x3fe
+			MX93_PAD_GPIO_IO13__LPSPI8_SIN		0x3fe
+			MX93_PAD_GPIO_IO14__LPSPI8_SOUT		0x3fe
+			MX93_PAD_GPIO_IO15__LPSPI8_SCK		0x3fe
+		>;
+	};
+
+	pinctrl_lpspi5: lpspi5grp {
+		fsl,pins = <
+			MX93_PAD_GPIO_IO18__LPSPI5_PCS0		0x3fe
+			MX93_PAD_GPIO_IO19__LPSPI5_SIN		0x3fe
+			MX93_PAD_GPIO_IO20__LPSPI5_SOUT		0x3fe
+			MX93_PAD_GPIO_IO21__LPSPI5_SCK		0x3fe
+		>;
+	};
+
+	pinctrl_tpm5: tpm5grp {
+		fsl,pins = <
+			MX93_PAD_GPIO_IO22__TPM5_CH1		0x51e
+		>;
+	};
+
+	pinctrl_tpm6: tpm6grp {
+		fsl,pins = <
+			MX93_PAD_GPIO_IO23__TPM6_CH1		0x51e
+			MX93_PAD_GPIO_IO27__TPM6_CH3		0x51e
+		>;
+	};
+
+	pinctrl_flexcan2: flexcan2grp {
+		fsl,pins = <
+			MX93_PAD_SD2_DATA0__CAN2_TX		0x139e
+			MX93_PAD_SD2_DATA1__CAN2_RX		0x139e
+		>;
+	};
+
+	pinctrl_uart2: uart2grp {
+		fsl,pins = <
+			MX93_PAD_UART2_TXD__LPUART2_TX		0x31e
+			MX93_PAD_UART2_RXD__LPUART2_RX		0x31e
+		>;
+	};
+};
