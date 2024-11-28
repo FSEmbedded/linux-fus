@@ -48,7 +48,7 @@ reg_vlcd: &reg_disp_vdd_en {
     status = "okay";
 };
 IMX93_TOUCH_I2C: &osm_i2c_cam {};
-IMX93_TOUCH_INTERRUPT_GPIO_BANK: &osm_gpio_a25 {};
+IMX93_TOUCH_INTERRUPT_GPIO_BANK: &gpio2 {};
 
 &backlight_ldb {
     pwms = <&gpio_adp 1 5263157 1>;
