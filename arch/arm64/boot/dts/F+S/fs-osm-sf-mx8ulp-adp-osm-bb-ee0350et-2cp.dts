@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+* Copyright 2024 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*/
+
+#define CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION 120
+
+/dts-v1/;
+
+#include "fs-osm-sf-mx8ulp-adp-osm-bb.dts"
+
+adp_i2c: &osm_i2c_cam{};
+
+#include "displays/imx8ulp-adp-mipi2mipi1-ee0350et-2cp.dtsi"
+
+&touch {
+    reset-gpios = <&rp_gpioc 15 GPIO_ACTIVE_LOW>;
+	interrupt-parent = <&rp_gpioc>;
+	interrupts = <13 IRQ_TYPE_EDGE_FALLING>;
+};

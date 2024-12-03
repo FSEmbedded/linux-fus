@@ -47,16 +47,12 @@ osm_dsi_pwm: &tpm7 {};
 		ethernet0 = &osm_eth_a;
 		serial0 = &osm_uart_con;
 		serial1 = &osm_uart_a;
-		/* uart b,c,d via m33 */
 		i2c0 = &osm_i2c_int;
 		i2c1 = &osm_i2c_a;
 		i2c2 = &osm_i2c_b;
 		i2c3 = &osm_i2c_cam;
 		mmc0 = &emmc;
 		mmc1 = &osm_sdio_a;
-		// spi0 = &osm_spi_a;
-		/* spi b via m33 */
-		// spi1 = &osm_spi_b;
 		gpio0 = &rp_gpioa;
 		gpio1 = &rp_gpiob;
 		gpio2 = &rp_gpioc;
@@ -515,7 +511,7 @@ osm_dsi_pwm: &tpm7 {};
 		fsl,pins = <
 			// MX8ULP_PAD_PTE3__ENET0_TXCLK	0x43
 			MX8ULP_PAD_PTE14__ENET0_MDIO	0x43
-			MX8ULP_PAD_PTE15__ENET0_MDC     0x43
+			MX8ULP_PAD_PTE15__ENET0_MDC	0x43
 			MX8ULP_PAD_PTE16__ENET0_TXEN	0x43
 			MX8ULP_PAD_PTE17__ENET0_RXER	0x43
 			MX8ULP_PAD_PTE18__ENET0_CRS_DV	0x43

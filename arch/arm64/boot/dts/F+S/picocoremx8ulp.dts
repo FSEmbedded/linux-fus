@@ -1,44 +1,34 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2024 F&S Elektronik Systeme GmbH
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+* Copyright 2024 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*/
 
 /dts-v1/;
 
-/* Network*/
-#define CONFIG_PICOCOREMX8ULP_ETH_A
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOREMX8ULP_BOARD_REVISION	110
+/* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOREBBDSI_BOARD_REVISION	140
 
+/* Cortex-M is always supported */
+
+/* Network*/
 /* WLAN/BLUETOOTH */
 #define CONFIG_PICOCOREMX8ULP_WLAN
-#define CONFIG_PICOCOREMX8ULP_WLAN_MARVELL_DRV
-
-/* USB */
-#define CONFIG_PICOCOREMX8ULP_USB_HOST
-#define CONFIG_PICOCOREMX8ULP_USB_OTG
-
-/* I2C */
-#define CONFIG_PICOCOREMX8ULP_I2C_A
-#define CONFIG_PICOCOREMX8ULP_I2C_B
-#define CONFIG_PICOCOREMX8ULP_I2C_INT
-
-/* EEPROM */
-#define CONFIG_PICOCOREMX8ULP_EEPROM
 
 /* AUDIO */
 #define CONFIG_PICOCOREMX8ULP_AUDIO_APD
 /* LPAUDIO is currently not supported */
 // #define CONFIG_PICOCOREMX8ULP_AUDIO_RTD
-
-#if defined(CONFIG_PICOCOREMX8ULP_AUDIO_APD) || \
-	defined(CONFIG_PICOCOREMX8ULP_AUDIO_RTD)
-#define CONFIG_PICOCOREMX8ULP_AUDIO
-#endif
-
-/* External RTC - default not mounted */
-#define CONFIG_PICOCOREMX8ULP_EXT_RTC
 
 /*
  * SD_A - External SD port with Card Detect (CD) and Write Protect (WP)
@@ -50,35 +40,107 @@
 #define CONFIG_PICOCOREMX8ULP_SD_A_WP
 #endif
 
-/* UART */
-#define CONFIG_PICOCOREMX8ULP_UART_A
-#define CONFIG_PICOCOREMX8ULP_UART_C
-
-/* EMMC */
-#define CONFIG_PICOCOREMX8ULP_EMMC
-
-/*SPI*/
-#define CONFIG_PICOCOREMX8ULP_SPI_A
-
-/* RTD GPIO */
-/*
- * To Use the RGPIO controler from RTD, configurations in m33_image are needed.
- * T-MBC0 must be configured in TRDC from Cortex-M to allow non-secure access
- * to RGPIO controller via Cortex-A.
- */
-#define CONFIG_PICOCOREMX8ULP_GPIOA
-#define CONFIG_PICOCOREMX8ULP_GPIOB
-#define CONFIG_PICOCOREMX8ULP_GPIOC
-
-#if defined(CONFIG_PICOCOREMX8ULP_GPIOA) || \
-	defined(CONFIG_PICOCOREMX8ULP_GPIOB) || \
-	defined(CONFIG_PICOCOREMX8ULP_GPIOC)
-#define CONFIG_RTD_PCC1
-#endif
-
 #include "picocoremx8ulp.dtsi"
+#include <dt-bindings/usb/pd.h>
 
 / {
 	model = "F&S PicoCoreMX8ULP";
 	compatible = "fus,picocoremx8ulp", "fus,fsimx8ulp", "fsl,imx8ulp";
+};
+
+&pc_eth {
+	status = "okay";
+};
+
+&pc_uart_a {
+	status = "okay";
+};
+
+&pc_uart_c {
+	status = "okay";
+};
+
+&pc_i2c_a {
+	status = "okay";
+};
+
+&pc_i2c_b {
+	status = "okay";
+};
+
+&pc_i2c_c {
+	status = "okay";
+};
+
+&pc_i2c_d {
+	status = "okay";
+	ptn5110: tcpc@52 {
+		compatible = "nxp,ptn5110";
+		reg = <0x52>;
+		interrupt-parent = <&rp_gpioc>;
+		interrupts = <3 IRQ_TYPE_LEVEL_LOW>;
+
+		port {
+			typec_dr_sw: endpoint {
+				remote-endpoint = <&usb1_drd_sw>;
+			};
+		};
+
+		usb_con: connector {
+			compatible = "usb-c-connector";
+			label = "USB-C";
+			power-role = "dual";
+			data-role = "dual";
+			try-power-role = "sink";
+			source-pdos = <PDO_FIXED(5000, 3000,
+			PDO_FIXED_USB_COMM)>;
+			sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
+				     PDO_VAR(5000, 20000, 3000)>;
+			op-sink-microwatt = <15000000>;
+			self-powered;
+		};
+	};
+};
+
+&pc_spi_a {
+	status = "okay";
+
+	spidev0: spidev@0 {
+		/* use default driver */
+		compatible = "lwn,bk4";
+		spi-max-frequency = <1000000>;
+		reg = <0>;
+		status = "okay";
+	};
+};
+
+&pc_sdio_a {
+	status = "okay";
+};
+
+&pc_usb_1 {
+	dr_mode = "otg";
+	hnp-disable;
+	srp-disable;
+	adp-disable;
+	disable-over-current;
+	usb-role-switch;
+	status = "okay";
+
+	port {
+		usb1_drd_sw: endpoint {
+			remote-endpoint = <&typec_dr_sw>;
+		};
+	};
+};
+
+&pc_usb_2 {
+	dr_mode = "host";
+	power-active-high;
+	disable-over-current;
+	status = "okay";
+};
+
+&pc_bl_pwm {
+	status = "okay";
 };
