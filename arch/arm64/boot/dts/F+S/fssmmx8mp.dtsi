@@ -1030,18 +1030,37 @@
 
 &usb3_0 {
 	status = "okay";
+
+	connector {
+		compatible = "gpio-usb-b-connector", "usb-b-connector";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_usb3_0_id>;
+		id-gpios = <&gpio1 10 GPIO_ACTIVE_HIGH>;
+
+		port {
+			connector_dr_sw: endpoint {
+				remote-endpoint = <&usb3_drd_sw>;
+			};
+		};
+	};
 };
 
 &usb_dwc3_0 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usb3_0>;
+	pinctrl-0 = <&pinctrl_usb3_0_pwr>;
+	dr_mode = "otg";
 	hnp-disable;
 	srp-disable;
 	adp-disable;
 	usb-role-switch;
 	role-switch-default-mode = "none";
-	dr_mode = "otg";
 	status = "okay";
+
+	port {
+		usb3_drd_sw: endpoint {
+			remote-endpoint = <&connector_dr_sw>;
+		};
+	};
 };
 #endif
 
@@ -1679,10 +1698,15 @@ gpio-line-names =
 #endif /* CONFIG_FSSMMX8MP_UART_D */
 
 #ifdef CONFIG_FSSMMX8MP_USB_OTG
-		pinctrl_usb3_0: usb0grp {
+		pinctrl_usb3_0_pwr: usb0grp {
 			fsl,pins = <
-				MX8MP_IOMUXC_GPIO1_IO10__USB1_ID	0x19
 				MX8MP_IOMUXC_GPIO1_IO12__USB1_PWR	0x19
+			>;
+		};
+
+		pinctrl_usb3_0_id: usb0idgrp {
+			fsl,pins = <
+				MX8MP_IOMUXC_GPIO1_IO10__GPIO1_IO10	0x149
 			>;
 		};
 #endif /* CONFIG_FSSMMX8MP_USB_OTG */
