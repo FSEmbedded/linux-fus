@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+* Copyright 2024 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*/
+
+/dts-v1/;
+
+#include "../freescale/imx8ulp.dtsi"
+
+/delete-node/ &tpm5;
+
+&per_bridge3 {
+	tpm4: tpm@29330000 {
+		compatible = "fsl,imx7ulp-pwm";
+		reg = <0x29330000 0x1000>;
+		interrupts = <GIC_SPI 86 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&pcc3 IMX8ULP_CLK_TPM4>;
+		assigned-clocks = <&pcc3 IMX8ULP_CLK_TPM4>;
+		assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SOSC_DIV2>;
+		assigned-clock-rates = <24000000>;
+		status = "disabled";
+	};
+
+	tpm5: tpm@29340000 {
+		compatible = "fsl,imx7ulp-pwm";
+		reg = <0x29340000 0x1000>;
+		interrupts = <GIC_SPI 87 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&pcc3 IMX8ULP_CLK_TPM4>;
+		assigned-clocks = <&pcc3 IMX8ULP_CLK_TPM4>;
+		assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SOSC_DIV2>;
+		assigned-clock-rates = <24000000>;
+		status = "disabled";
+	};
+};
+
+&per_bridge4 {
+	tpm6: tpm@29820000 {
+		compatible = "fsl,imx7ulp-pwm";
+		reg = <0x29820000 0x10000>;
+		interrupts = <GIC_SPI 88 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&pcc4 IMX8ULP_CLK_TPM6>;
+		assigned-clocks = <&pcc4 IMX8ULP_CLK_TPM6>;
+		assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SOSC_DIV2>;
+		assigned-clock-rates = <24000000>;
+		#pwm-cells = <3>;
+		status = "disabled";
+	};
+
+	tpm7: tpm@29830000 {
+		compatible = "fsl,imx7ulp-pwm";
+		reg = <0x29830000 0x10000>;
+		interrupts = <GIC_SPI 89 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&pcc4 IMX8ULP_CLK_TPM7>;
+		assigned-clocks = <&pcc4 IMX8ULP_CLK_TPM7>;
+		assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SOSC_DIV2>;
+		assigned-clock-rates = <24000000>;
+		#pwm-cells = <3>;
+		status = "disabled";
+	};
+};
