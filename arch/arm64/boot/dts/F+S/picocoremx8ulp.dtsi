@@ -177,6 +177,18 @@ pc_bl_pwm: &tpm7 {};
 			enable-active-high;
 		};
 
+		reg_vlcd_en: regulator_vlcd {
+			compatible = "regulator-fixed";
+			regulator-name = "VLCD_ON";
+			// pinctrl-names = "default";
+			// pinctrl-0 = <&pinctrl_vlcd>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			vin-supply = <&reg_vdd_pte_f>;
+			// gpio = <&gpiof 30 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+
 #if defined(CONFIG_PICOCOREMX8ULP_WLAN)
 		reg_usdhc1_vmmc: regulator_usdhc1_wlan {
 			compatible = "regulator-fixed";
@@ -473,6 +485,7 @@ pc_bl_pwm: &tpm7 {};
 };
 
 &gpiof {
+
 	status = "okay";
 	gpio-line-names = 
 	"", "", "", "", "",

@@ -25,5 +25,5 @@ adp_i2c: &osm_i2c_cam{};
 &touch {
     reset-gpios = <&rp_gpioc 15 GPIO_ACTIVE_LOW>;
 	interrupt-parent = <&rp_gpioc>;
-	interrupts = <13 IRQ_TYPE_EDGE_FALLING>;
+	interrupts = <13 IRQ_TYPE_LEVEL_LOW>;
 };

@@ -63,7 +63,7 @@
 	status = "okay";
 	
 	panel@0 {
-        compatible = "newvision,nv3051d-ee0350et";
+        compatible = "eagleeyetech,ee0350et-2";
         reg = <0>;
 #if CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION == 120
 		reset-gpios = <&max7315 4 GPIO_ACTIVE_LOW>;
