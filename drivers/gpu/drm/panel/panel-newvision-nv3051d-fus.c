@@ -42,7 +42,9 @@ struct nv3051d {
 };
 
 struct nv3051d_panel_desc {
-	const struct drm_display_mode *mode;
+	const struct drm_display_mode *modes;
+	unsigned int num_modes;
+	u16 width_mm, height_mm;
 	unsigned int lanes;
 	unsigned long mode_flags;
 	enum mipi_dsi_pixel_format format;
@@ -290,23 +292,38 @@ static int ee0350et_init_sequence(struct nv3051d *ctx)
 	return 0;
 }
 
-static const struct drm_display_mode ee0350et_mode = {
-	.hdisplay    = 640,
-	.hsync_start = 640 + 20,
-	.hsync_end   = 640 + 20 + 2,
-	.htotal	     = 640 + 20 + 2 + 20,
-	.vdisplay    = 480,
-	.vsync_start = 480 + 4,
-	.vsync_end   = 480 + 4 + 2,
-	.vtotal	     = 480 + 4 + 2 + 12,
-	.clock	     = 20378,
-	.flags	     = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
-	.width_mm    = 70,
-	.height_mm   = 52,
+static const struct drm_display_mode ee0350et_modes[] = {
+	{ /* 60Hz */
+		.hdisplay	= 640,
+		.hsync_start	= 640 + 20,
+		.hsync_end	= 640 + 20 + 2,
+		.htotal		= 640 + 20 + 2 + 20,
+		.vdisplay	= 480,
+		.vsync_start	= 480 + 4,
+		.vsync_end	= 480 + 4 + 2,
+		.vtotal		= 480 + 4 + 2 + 12,
+		.clock		= 20378,
+		.flags		= DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+	},
+	{ /* 60Hz */
+		.hdisplay	= 640,
+		.hsync_start	= 640 + 40,
+		.hsync_end	= 640 + 40 + 2,
+		.htotal		= 640 + 40 + 2 + 80,
+		.vdisplay	= 480,
+		.vsync_start	= 480 + 4,
+		.vsync_end	= 480 + 4 + 2,
+		.vtotal		= 480 + 4 + 2 + 12,
+		.clock		= 24000,
+		.flags		= DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+	}
 };
 
 static const struct nv3051d_panel_desc ee0350et_desc = {
-	.mode = &ee0350et_mode,
+	.modes = ee0350et_modes,
+	.num_modes = ARRAY_SIZE(ee0350et_modes),
+	.width_mm = 70,
+	.height_mm = 52,
 	.lanes = 2,
 	.mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST,
 	.format = MIPI_DSI_FMT_RGB888,
@@ -423,31 +440,28 @@ static int nv3051d_get_modes(struct drm_panel *panel,
 				struct drm_connector *connector)
 {
 	struct nv3051d *ctx = panel_to_nv3051d(panel);
+	const struct nv3051d_panel_desc *descr = ctx->desc;
 	struct drm_display_mode *mode;
-	int ret;
+	unsigned int i;
 
-	mode = drm_mode_duplicate(connector->dev, ctx->desc->mode);
-	if (!mode) {
-		DRM_DEV_ERROR(ctx->dev, "Failed to add mode %ux%u@%u\n",
-			      ctx->desc->mode->hdisplay, ctx->desc->mode->vdisplay,
-			      drm_mode_vrefresh(ctx->desc->mode));
-		return -ENOMEM;
+	for(i = 0; i < descr->num_modes; i++){
+		mode = drm_mode_duplicate(connector->dev, &descr->modes[i]);
+		if (!mode)
+			return -ENOMEM;
+
+		drm_mode_set_name(mode);
+
+		mode->type = DRM_MODE_TYPE_DRIVER;
+		if (descr->num_modes == 1)
+			mode->type |= DRM_MODE_TYPE_PREFERRED;
+
+		drm_mode_probed_add(connector, mode);
 	}
 
-	drm_mode_set_name(mode);
-
-	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-	connector->display_info.width_mm = mode->width_mm;
-	connector->display_info.height_mm = mode->height_mm;
-
-	ret = drm_display_info_set_bus_formats(&connector->display_info,
-			nv3051d_bus_formats, ARRAY_SIZE(nv3051d_bus_formats));
-	if (ret)
-		return ret;
-
-	drm_mode_probed_add(connector, mode);
-
-	return 1;
+	connector->display_info.bpc = 8;
+	connector->display_info.width_mm = descr->width_mm;
+	connector->display_info.height_mm = descr->height_mm;
+	return descr->num_modes;
 }
 
 static const struct drm_panel_funcs nv3051d_drm_funcs = {
@@ -554,11 +568,6 @@ static int nv3051d_probe(struct mipi_dsi_device *dsi)
 		drm_panel_remove(&ctx->panel);
 		return ret;
 	}
-
-	DRM_DEV_INFO(dev, "%ux%u@%u %ubpp dsi %udl - ready\n",
-		     ctx->desc->mode->hdisplay, ctx->desc->mode->vdisplay,
-		     drm_mode_vrefresh(ctx->desc->mode),
-		     mipi_dsi_pixel_format_to_bpp(dsi->format), dsi->lanes);
 
 	nv3051d_debugfs_init(ctx);
 	return 0;
