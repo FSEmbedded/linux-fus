@@ -1146,6 +1146,8 @@ nwl_dsi_bridge_atomic_pre_enable(struct drm_bridge *bridge,
 	 * bridge_enable, where we will enable the DPI and start streaming
 	 * pixels on the data lanes.
 	 */
+	drm_atomic_bridge_chain_pre_enable(dsi->panel_bridge,
+					   old_bridge_state->base.state);
 	drm_atomic_bridge_chain_enable(dsi->panel_bridge,
 				       old_bridge_state->base.state);
 
