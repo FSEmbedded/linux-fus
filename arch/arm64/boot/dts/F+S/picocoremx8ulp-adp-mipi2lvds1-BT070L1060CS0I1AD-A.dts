@@ -14,5 +14,4 @@ reg_vlcd: &reg_vlcd_en {};
 &touch {
 	interrupt-parent = <&rp_gpioa>;
 	interrupts = <18 IRQ_TYPE_EDGE_FALLING>;
-	reset-gpios = <&gpio_adp 5 GPIO_ACTIVE_LOW>;
 };

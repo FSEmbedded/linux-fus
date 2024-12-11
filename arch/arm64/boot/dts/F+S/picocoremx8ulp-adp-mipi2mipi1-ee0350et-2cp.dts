@@ -16,7 +16,7 @@ adp_i2c: &pc_i2c_b {};
 #include "displays/imx8ulp-adp-mipi2mipi1-ee0350et-2cp.dtsi"
 
 &touch {
-    reset-gpios = <&gpiof 23 GPIO_ACTIVE_LOW>;
+    reset-gpios = <&gpiof 0 GPIO_ACTIVE_LOW>;
 	interrupt-parent = <&rp_gpioa>;
-	interrupts = <18 IRQ_TYPE_EDGE_FALLING>;
+	interrupts = <18 IRQ_TYPE_LEVEL_LOW>;
 };

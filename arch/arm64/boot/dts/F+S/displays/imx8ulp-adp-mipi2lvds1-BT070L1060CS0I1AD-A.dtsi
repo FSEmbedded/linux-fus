@@ -235,6 +235,7 @@
 	touch: ilitek2130@41 {
 		compatible = "ilitek,ili2130";
 		reg = <0x41>;
+		reset-gpios = <&gpio_adp 5 GPIO_ACTIVE_LOW>;
 	};
 	
 	tc358775@f {

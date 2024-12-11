@@ -180,12 +180,12 @@ pc_bl_pwm: &tpm7 {};
 		reg_vlcd_en: regulator_vlcd {
 			compatible = "regulator-fixed";
 			regulator-name = "VLCD_ON";
-			// pinctrl-names = "default";
-			// pinctrl-0 = <&pinctrl_vlcd>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&pinctrl_vlcd>;
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			vin-supply = <&reg_vdd_pte_f>;
-			// gpio = <&gpiof 30 GPIO_ACTIVE_HIGH>;
+			gpio = <&gpiof 30 GPIO_ACTIVE_HIGH>;
 			enable-active-high;
 		};
 
@@ -815,5 +815,11 @@ pc_bl_pwm: &tpm7 {};
 		>;
 	};
 #endif /* defined(CONFIG_PICOCOREMX8ULP_AUDIO_APD) */
+
+	pinctrl_vlcd: vlcdgrp {
+		fsl,pins = <
+			MX8ULP_PAD_PTF30__PTF30		0x2
+		>;
+	};
 };
 
