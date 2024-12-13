@@ -1,9 +1,15 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
-* Copyright (C) 2024 F&S Elektronik Systeme GmbH
+* Copyright 2024 F&S Elektronik Systeme GmbH
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License version 2 as
 * published by the Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
 */
 
 #include <dt-bindings/pwm/pwm.h>
@@ -229,8 +235,6 @@
 	touch: ilitek2130@41 {
 		compatible = "ilitek,ili2130";
 		reg = <0x41>;
-		interrupt-parent = <&gpioa>;
-		interrupts = <18 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpios = <&gpio_adp 5 GPIO_ACTIVE_LOW>;
 	};
 	

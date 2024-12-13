@@ -1,11 +1,16 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
-* Copyright (C) 2024 F&S Elektronik Systeme GmbH
+* Copyright 2024 F&S Elektronik Systeme GmbH
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License version 2 as
 * published by the Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
 */
-#if defined(CONFIG_PICOCOREMX8ULP_MIPI_DSI)
 
 #if CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION != 120 && \
     CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION != 100
@@ -58,10 +63,8 @@
 	status = "okay";
 	
 	panel@0 {
-        compatible = "newvision,nv3051d-ee0350et";
+        compatible = "eagleeyetech,ee0350et-2";
         reg = <0>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_dsi>;
 #if CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION == 120
 		reset-gpios = <&max7315 4 GPIO_ACTIVE_LOW>;
 #elif CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION == 100
@@ -86,7 +89,7 @@
 	};
 };
 
-&lpi2c6 {
+&adp_i2c {
 #if CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION == 120
 	/* LED-driver on adapter board MIPI2MIPI1 */
 	max7315: max7315@20 { /* LED-driver */
@@ -150,26 +153,6 @@
 	touch: mxt336u@4a {
 		compatible = "atmel,maxtouch";
 		reg = <0x4a>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_touch>;
 		atmel,cfg_name = "atmel/mxt336u-gloves.cfg";
-		reset-gpios = <&gpiof 0 GPIO_ACTIVE_LOW>;
-		interrupt-parent = <&gpioa>;
-		interrupts = <18 IRQ_TYPE_EDGE_FALLING>;
 	};
 };
-
-&iomuxc1 {
-	pinctrl_dsi: dsigrp {
-		fsl,pins = <
-			MX8ULP_PAD_PTF1__PTF1		0x3 // MIPI_RESET
-		>;
-	};
-
-	pinctrl_touch: touchgrp {
-		fsl,pins = <
-			MX8ULP_PAD_PTF0__PTF0	0x3 //touch_reset
-		>;
-	};
-};
-#endif /* CONFIG_PICOCOREMX8ULP_MIPI_DSI */
