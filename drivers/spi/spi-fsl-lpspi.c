@@ -151,17 +151,23 @@ static inline int is_imx95_lpspi(struct fsl_lpspi_data *d)
 	return d->devtype_data->devtype == IMX95_LPSPI;
 };
 
-
+/*
+ * ERR051608 fixed or not:
+ * https://www.nxp.com/docs/en/errata/i.MX93_1P87f.pdf
+ */
 static struct fsl_lpspi_devtype_data imx93_lpspi_devtype_data = {
 	.devtype = IMX93_LPSPI,
+	.prescale_max = 1,
 };
 
 static struct fsl_lpspi_devtype_data imx95_lpspi_devtype_data = {
 	.devtype = IMX95_LPSPI,
+	.prescale_max = 7,
 };
 
 static struct fsl_lpspi_devtype_data imx7ulp_lpspi_devtype_data = {
 	.devtype = IMX7ULP_LPSPI,
+	.prescale_max = 7,
 };
 
 /*
@@ -346,15 +352,17 @@ static void fsl_lpspi_set_watermark(struct fsl_lpspi_data *fsl_lpspi)
 static int fsl_lpspi_set_bitrate(struct fsl_lpspi_data *fsl_lpspi)
 {
 	struct lpspi_config config = fsl_lpspi->config;
-	unsigned int perclk_rate, scldiv, div;
+	unsigned int perclk_rate, div;
 	u8 prescale_max;
 	u8 prescale;
+	int scldiv;
 
 	perclk_rate = clk_get_rate(fsl_lpspi->clk_per);
 	if (!perclk_rate) {
 		dev_err(fsl_lpspi->dev, "per-clk rate was not set\n");
 		return -EINVAL;
 	}
+	prescale_max = fsl_lpspi->devtype_data->prescale_max;
 
 	if (!config.speed_hz) {
 		dev_err(fsl_lpspi->dev,
@@ -372,13 +380,13 @@ static int fsl_lpspi_set_bitrate(struct fsl_lpspi_data *fsl_lpspi)
 
 	for (prescale = 0; prescale <= prescale_max; prescale++) {
 		scldiv = div / (1 << prescale) - 2;
-		if (scldiv < 256) {
+		if (scldiv >= 0 && scldiv < 256) {
 			fsl_lpspi->config.prescale = prescale;
 			break;
 		}
 	}
 
-	if (scldiv >= 256)
+	if (scldiv < 0 || scldiv >= 256)
 		return -EINVAL;
 
 	writel(scldiv | (scldiv << 8) | ((scldiv >> 1) << 16),
@@ -1032,7 +1040,6 @@ static int fsl_lpspi_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, controller);
 
 	fsl_lpspi = spi_controller_get_devdata(controller);
-	devtype_data =	of_device_get_match_data(&pdev->dev);
 	fsl_lpspi->dev = &pdev->dev;
 	fsl_lpspi->is_target = is_target;
 	fsl_lpspi->is_only_cs1 = of_property_read_bool((&pdev->dev)->of_node,
@@ -1054,7 +1061,7 @@ static int fsl_lpspi_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	ret = devm_request_irq(&pdev->dev, irq, fsl_lpspi_isr, 0,
+	ret = devm_request_irq(&pdev->dev, irq, fsl_lpspi_isr, IRQF_NO_AUTOEN,
 			       dev_name(&pdev->dev), fsl_lpspi);
 	if (ret) {
 		dev_err(&pdev->dev, "can't get irq%d: %d\n", irq, ret);
@@ -1111,14 +1118,10 @@ static int fsl_lpspi_probe(struct platform_device *pdev)
 	ret = fsl_lpspi_dma_init(&pdev->dev, fsl_lpspi, controller);
 	if (ret == -EPROBE_DEFER)
 		goto out_pm_get;
-	if (ret < 0)
+	if (ret < 0) {
 		dev_warn(&pdev->dev, "dma setup error %d, use pio\n", ret);
-	else
-		/*
-		 * disable LPSPI module IRQ when enable DMA mode successfully,
-		 * to prevent the unexpected LPSPI module IRQ events.
-		 */
-		disable_irq(irq);
+		enable_irq(irq);
+	}
 
 	ret = devm_spi_register_controller(&pdev->dev, controller);
 	if (ret < 0) {
