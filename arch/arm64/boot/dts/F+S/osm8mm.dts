@@ -16,7 +16,7 @@
 #else
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_OSM8MM_BOARD_REVISION	110
+#define CONFIG_OSM8MM_BOARD_REVISION	120
 
 /* Activate this if you want to use the Cortex-M4 core */
 //#define SUPPORT_M4
