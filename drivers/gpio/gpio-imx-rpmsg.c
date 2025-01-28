@@ -431,6 +431,13 @@ static struct irq_chip imx_rpmsg_irq_chip = {
 	.irq_bus_sync_unlock = imx_rpmsg_irq_bus_sync_unlock,
 };
 
+static int imx_rpmsg_gpio_to_irq(struct gpio_chip *gc, unsigned offset)
+{
+	struct imx_rpmsg_gpio_port *port = gpiochip_get_data(gc);
+
+	return irq_find_mapping(port->domain, offset);
+}
+
 static int imx_rpmsg_gpio_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -460,6 +467,7 @@ static int imx_rpmsg_gpio_probe(struct platform_device *pdev)
 	gc->direction_output = imx_rpmsg_gpio_direction_output;
 	gc->get = imx_rpmsg_gpio_get;
 	gc->set = imx_rpmsg_gpio_set;
+	gc->can_sleep = true;
 
 	platform_set_drvdata(pdev, port);
 
@@ -474,6 +482,8 @@ static int imx_rpmsg_gpio_probe(struct platform_device *pdev)
 	irq_base = irq_alloc_descs(-1, 0, IMX_RPMSG_GPIO_PER_PORT,
 				   numa_node_id());
 	WARN_ON(irq_base < 0);
+
+	port->gc.to_irq = imx_rpmsg_gpio_to_irq;
 
 	port->domain = irq_domain_add_legacy(np, IMX_RPMSG_GPIO_PER_PORT,
 					     irq_base, 0,
