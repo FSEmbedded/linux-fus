@@ -467,18 +467,6 @@ static int pca963x_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	return pca963x_set_brightness(pca963x, pwm->hwpwm, value);
 }
 
-static int pca963x_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm)
-{
-	/* Activate PWM with the current duty_ns value */
-	return pca963x_pwm_config(chip, pwm, pwm->state.duty_cycle,
-				  pwm->state.period);
-}
-
-static void pca963x_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
-{
-	pca963x_pwm_config(chip, pwm, 0, pwm->state.period);
-}
-
 static int pca963x_pwm_request(struct pwm_chip *chip, struct pwm_device *pwm)
 {
 	struct pca963x *pca963x = container_of(chip, struct pca963x, pwm_chip);
@@ -510,16 +498,11 @@ static int pca963x_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 
 	if (!state->enabled) {
 		if (pwm->state.enabled)
-			pca963x_pwm_disable(chip, pwm);
+			pca963x_pwm_config(chip, pwm, 0, state->period);
 		return 0;
 	}
+
 	err = pca963x_pwm_config(pwm->chip, pwm, state->duty_cycle, state->period);
-
-	if (err)
-		return err;
-
-	if (!pwm->state.enabled)
-		err = pca963x_pwm_enable(chip, pwm);
 
 	return err;
 }
@@ -736,10 +719,10 @@ static int pca963x_get_pdata(struct i2c_client *client, struct pca963x *pca963x)
 }
 
 static const struct of_device_id of_pca963x_match[] = {
-	{ .compatible = "nxp,pca9632", },
-	{ .compatible = "nxp,pca9633", },
-	{ .compatible = "nxp,pca9634", },
-	{ .compatible = "nxp,pca9635", },
+	{ .compatible = "fus,pca9632", },
+	{ .compatible = "fus,pca9633", },
+	{ .compatible = "fus,pca9634", },
+	{ .compatible = "fus,pca9635", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, of_pca963x_match);

@@ -104,7 +104,7 @@
 &lpi2c6 {
 	clock-frequency = <400000>;
 	gpio_bridge: pca9634@63 {
-		compatible = "nxp,pca9634";
+		compatible = "fus,pca9634";
 		reg = <0x63>;
 		vdd-supply = <&reg_vlcd>;
 		#address-cells = <1>;
@@ -169,7 +169,7 @@
 	};
 
 	gpio_adp: pca9634@61 {
-		compatible = "nxp,pca9634";
+		compatible = "fus,pca9634";
 		reg = <0x61>;
 		vdd-supply = <&reg_vlcd>;
 		#address-cells = <1>;

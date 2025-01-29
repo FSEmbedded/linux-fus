@@ -775,7 +775,7 @@ wvga {					\
         };
 
 	pca963x: pca9634@61 {
-    	compatible = "nxp,pca9634";
+    	compatible = "fus,pca9634";
         reg = <0x61>;
 		vdd-supply = <&reg_vlcd>;
 		#address-cells = <1>;
