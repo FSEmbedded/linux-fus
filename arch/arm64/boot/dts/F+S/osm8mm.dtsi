@@ -166,6 +166,7 @@ osm_pcie_a: &pcie0 {};
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			enable-active-high;
+			startup-delay-us = <10000>;
 		};
 #endif
 
@@ -983,13 +984,6 @@ osm_pcie_a: &pcie0 {};
 #ifdef CONFIG_OSM8MM_MIPI_DSI_LVDS
 		pinctrl_mipi_dsi_lvds_en: mipi_dsi_lvds_en {
 			fsl,pins = <
-				/* LVDS RESET / TC358764 RST */
-				MX8MM_IOMUXC_SAI3_TXFS_GPIO4_IO31	0x00016
-				/* For EXTCLK use the following setting
-				 * in your display DTS
-				 */
-//				 MX8MM_IOMUXC_GPIO1_IO15_CCMSRCGPCMIX_CLKO2	0x00059
-				MX8MM_IOMUXC_GPIO1_IO15_GPIO1_IO15	0x00016
 			>;
 		};
 #endif

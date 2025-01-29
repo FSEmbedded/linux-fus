@@ -10,6 +10,8 @@
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_OSM8MM_BOARD_REVISION	120
+/* Set adapter revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_ADP_OSM_BOARD_REVISION	120
 /* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_PICOCOREBBDSI_BOARD_REVISION	140
 
@@ -219,6 +221,7 @@
 	board_name = "osm8mm";
 };
 
+#if CONFIG_ADP_OSM_BOARD_REVISION < 120
 #if defined(CONFIG_OSM8MM_MIPI_DSI) \
 || defined(CONFIG_OSM8MM_MIPI_DSI_LVDS)
 &reg_vlcd {
@@ -230,6 +233,7 @@
 &reg_ldb_bl {
 	gpio = <&gpio1 1 GPIO_ACTIVE_HIGH>;
 };
+#endif
 #endif
 
 &osm_i2c_b {

@@ -1,0 +1,124 @@
+/*
+* Copyright (C) 2025 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+
+/{
+        panel: panel {
+                compatible = "panel-lvds";
+                backlight = <&backlight_ldb>;
+                reset-gpios = <&pca963x 3 GPIO_ACTIVE_LOW>;
+                data-mapping = "vesa-24";
+                width-mm = <155>;
+                height-mm = <86>;
+
+                panel-timing {
+                                clock-frequency = <63000000>;
+                                hactive = <1024>;
+                                vactive = <600>;
+                                hback-porch = <160>;
+                                hfront-porch = <76>;
+                                hsync-len = <140>;
+                                vback-porch = <23>;
+                                vfront-porch = <107>;
+                                vsync-len = <20>;
+                                pixelclk-active = <0>;
+                                de-active = <1>;
+                };
+
+                port@0 {
+                        panel_from_lvds: endpoint {
+                                remote-endpoint = <&lvds_to_panel>;
+                        };
+                };
+        };
+
+        backlight_ldb: backlight_ldb {
+                pwms = <&pca963x 1 5263157 1>;
+                brightness-levels = <0 1 5 10 18 28 41 56
+                                     73 92 113 137 163 192 222 255>;
+                default-brightness-level = <14>;
+        };
+};
+
+&reg_ldb_bl{
+	gpio = <&pca963x 0 GPIO_ACTIVE_HIGH>;
+};
+
+&IMX8MM_TOUCH_I2C {
+	clock-frequency = <400000>;
+	pca963x: pca9634@61 {
+                        compatible = "nxp,pca9634";
+                        reg = <0x61>;
+						vdd-supply = <&reg_vlcd>;
+                        #address-cells = <1>;
+                        #size-cells = <0>;
+                        #pwm-cells = <3>;
+                        #gpio-cells = <2>;
+                        led@0 {
+                                reg = <0>;
+                                label = "BL_ON";
+                                type = "GPIO";
+                                default-on;             /* or: keep-value */
+                                active-high;
+                        };
+                        led@1 {
+                                reg = <1>;
+                                label = "BL_PWM";
+                                type = "PWM";
+                                default-on;             /* or: keep-value */
+                                active-low;
+                        };
+                        led@2 {
+                                reg = <2>;
+                                label = "2-unused";
+                                type = "LED";
+                                active-low;
+                        };
+                        led@3 {
+                                reg = <3>;
+                                label = "MIPI_RST";
+                                type = "GPIO";
+                                active-low;
+                                default-on;             /* or: keep-value */
+                        };
+                        led@4 {
+                                reg = <4>;
+                                label = "4-unused";
+                                type = "LED";
+                                active-low;
+                        };
+                        led@5 {
+                                reg = <5>;
+                                label = "I2C_RST";
+                                type = "GPIO";
+                                active-high;
+                                default-on;             /* or: keep-value */
+                        };
+                        led@6 {
+                                reg = <6>;
+                                label = "6-unused";
+                                type = "LED";
+                                active-low;
+                        };
+                        led@7 {
+                                reg = <7>;
+                                label = "TOUCH_ON";
+                                type = "GPIO";
+                                active-high;
+                                default-on;
+                        };
+                };
+
+        /* Ilitek PCAP touch on Touch-Connector (I2C) */
+        touch: ilitek2130@41 {
+                compatible = "ilitek,ili2130";
+                reg = <0x41>;
+                interrupt-parent = <&IMX8MM_TOUCH_INTERRUPT_GPIO_BANK>;
+                interrupts = <IMX8MM_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_FALLING>;
+                reset-gpios = <&pca963x 5 GPIO_ACTIVE_LOW>;
+        };
+};
