@@ -722,8 +722,6 @@ static const struct drm_display_mode nv3051d_ee0350et_modes[] = {
 		.vtotal	     = 480 + 4 + 2 + 12,
 		.clock	     = 20378,
 		.flags	     = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
-		.width_mm    = 70,
-		.height_mm   = 52,
 	},
 	{ /* 60hz */
 		.hdisplay    = 640,
@@ -742,8 +740,8 @@ static const struct drm_display_mode nv3051d_ee0350et_modes[] = {
 static const struct nv3051d_panel_info nv3051d_ee0350et_info = {
 	.display_modes = nv3051d_ee0350et_modes,
 	.num_modes = ARRAY_SIZE(nv3051d_ee0350et_modes),
-	.height_mm = 70,
-	.height_mm = 52,
+	.width_mm    = 70,
+	.height_mm   = 52,
 	.bus_flags = DRM_BUS_FLAG_DE_LOW | DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE,
 	.lanes = 2,
 	.init_sequence = panel_nv3051d_ee0350et_init_sequence,
