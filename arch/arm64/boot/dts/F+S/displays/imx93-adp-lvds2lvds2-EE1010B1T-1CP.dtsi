@@ -15,13 +15,11 @@
 / {
 	lvds_panel {
 		compatible = "panel-lvds";
-#ifdef CONFIG_IMX93_LVDS_PANEL_POWER_SUPPLY
-		power-supply = <&IMX93_LVDS_PANEL_POWER_SUPPLY>;
-#endif
+		power-supply = <&reg_vlcd>;
 		backlight = <&backlight_ldb>;
-#ifdef CONFIG_IMX93_LVDS_PANEL_RESET_GPIOS
-		reset-gpios = <&IMX93_LVDS_PANEL_RESET_GPIO_BANK IMX93_LVDS_PANEL_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
-#endif
+
+		reset-gpios = <&gpio_adp 3 GPIO_ACTIVE_LOW>;
+
 		data-mapping = "vesa-24";
 		label = "EE1010B1T-1CP";
 		width-mm = <223>;
@@ -41,13 +39,35 @@
 			pixelclk-active = <0>;
 			de-active = <1>;
 		};
-
 		port {
 			panel_lvds_in: endpoint {
 				remote-endpoint = <&lvds_out>;
 			};
 		};
 	};
+
+	reg_bl_on: bl_on {
+		compatible = "regulator-fixed";
+		regulator-name = "BL_ON";
+		gpio = <&gpio_adp 0 GPIO_ACTIVE_HIGH>;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		enable-active-high;
+	};
+
+
+	backlight_ldb: backlight_ldb {
+		compatible = "pwm-backlight";
+		#pwm-cells = <3>;
+		pwms = <&gpio_adp 1 5263157 1>;
+		power-supply = <&reg_bl_on>;
+		brightness-levels = <0 1 5 10 18 28 41 56
+			                 73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+		fb-names = "mxs-lcdif0";
+		status = "okay";
+	};
+
 };
 
 /* LVDS */
@@ -92,5 +112,69 @@
 #ifdef CONFIG_IMX93_TOUCH_RESET
 		reset-gpios = <&IMX93_TOUCH_RESET_GPIO_BANK IMX93_TOUCH_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
 #endif /* CONFIG_IMX93_TOUCH_RESET */
+	};
+
+    /* use board type specific nodes */
+    gpio_adp: pca9634@61 {
+		compatible = "fus,pca9634";
+		reg = <0x61>;
+		vdd-supply = <&reg_vlcd>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#pwm-cells = <3>;
+		#gpio-cells = <2>;
+		led@0 {
+			reg = <0>;
+			label = "BL_ON";
+			type = "GPIO";
+			default-on;		/* or: keep-value */
+			active-high;
+		};
+		led@1 {
+			reg = <1>;
+			label = "BL_PWM";
+			type = "PWM";
+			default-on;	     /* or: keep-value */
+			active-low;
+		};
+		led@2 {
+			reg = <2>;
+			label = "2-unused";
+			type = "LED";
+			active-low;
+		};
+		led@3 {
+			reg = <3>;
+			label = "MIPI_RST";
+			type = "GPIO";
+			active-low;
+			default-on;	     /* or: keep-value */
+		};
+		led@4 {
+			reg = <4>;
+			label = "4-unused";
+			type = "LED";
+			active-low;
+		};
+		led@5 {
+			reg = <5>;
+			label = "I2C_RST";
+			type = "GPIO";
+			active-high;
+			default-on;     /* or: keep-value */
+		};
+		led@6 {
+			reg = <6>;
+			label = "6-unused";
+			type = "LED";
+			active-low;
+		};
+		led@7 {
+			reg = <7>;
+			label = "TOUCH_ON";
+			type = "GPIO";
+			active-high;
+			default-on;
+		};
 	};
 };

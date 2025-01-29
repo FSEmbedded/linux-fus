@@ -12,7 +12,30 @@
 * GNU General Public License for more details.
 */
 
-#ifdef CONFIG_PICOCOREMX93_MIPI_DSI
+
+/ {
+	reg_bl_on: bl_on {
+		compatible = "regulator-fixed";
+		regulator-name = "BL_ON";
+		gpio = <&gpio_adp 0 GPIO_ACTIVE_HIGH>;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		enable-active-high;
+	};
+
+
+	backlight_mipi_dsi: backlight_mipi_dsi {
+		compatible = "pwm-backlight";
+		#pwm-cells = <3>;
+		pwms = <&gpio_adp 1 31250 1>;
+		power-supply = <&reg_bl_on>;
+		brightness-levels = <0 17 34 51 68 85 102 119 136
+				     153 170 187 204 221 238 255>;
+		default-brightness-level = <14>;
+		fb-names = "mxs-lcdif0";
+		status = "okay";
+	};
+};
 
 &dsi {
 	#address-cells = <1>;
@@ -32,13 +55,9 @@
 	panel: panel@0 {
 		compatible = "newvision,nv3051d-ee0350et";
 		reg = <0>;
-#ifdef CONFIG_IMX93_MIPI_PANEL_POWER_SUPPLY
-		vdd-supply = <&IMX93_PANEL_POWER_SUPPLY>;
-#endif
-		backlight = <&backlight_ldb>;
-#ifdef CONFIG_IMX93_MIPI_RESET
-		reset-gpios = <&IMX93_MIPI_RESET_GPIO_BANK IMX93_MIPI_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
-#endif
+		vdd-supply = <&reg_vlcd>;
+		backlight = <&backlight_mipi_dsi>;
+		reset-gpios = <&gpio_adp 4 GPIO_ACTIVE_LOW>;
 		port {
 			panel_in: endpoint {
 				remote-endpoint = <&mipi_dsi_out>;
@@ -48,6 +67,7 @@
 };
 
 &lcdif {
+	assigned-clock-rates = <400000000>, <20000000>, <400000000>, <133333333>;
 	status = "okay";
 };
 
@@ -56,17 +76,31 @@
 };
 
 &IMX93_TOUCH_I2C {
+
 	/* Atmel PCAP touch on Touch Connector (I2C) */
 	touch: mxt336u@4a {
 		compatible = "atmel,maxtouch";
 		reg = <0x4a>;
 		atmel,cfg_name = "atmel/mxt336u-gloves.cfg";
-#ifdef CONFIG_IMX93_TOUCH_RESET
 		reset-gpios = <&IMX93_TOUCH_RESET_GPIO_BANK IMX93_TOUCH_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
-#endif
 		interrupt-parent = <&IMX93_TOUCH_INTERRUPT_GPIO_BANK>;
 		interrupts = <IMX93_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_FALLING>;
 	};
+
+    /* LED-driver on adapter board MIPI2MIPI1 */
+    gpio_adp: max7315@20 { /* LED-driver */
+        compatible = "maxim,max7315";
+        reg = <0x20>;
+        /* interrupt not yet supported */
+        //interrupt-parent = <&gpio4>;
+        //interrupts = <31 IRQ_TYPE_LEVEL_LOW>;
+        //#interrupt-cells = <2>;
+        //interrupt-controller;
+        gpio-controller;
+        #gpio-cells = <2>;
+        pwm-controller;
+        #pwm-cells = <3>;
+    };
+
 };
 
-#endif /* CONFIG_PICOCOREMX93_MIPI_DSI */
