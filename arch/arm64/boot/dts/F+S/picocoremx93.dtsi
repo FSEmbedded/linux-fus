@@ -256,6 +256,7 @@ pc_sai: &sai3	{};
 		enable-active-high;
 	};
 
+#ifdef CONFIG_IMX93_DISPLAY
 #ifdef CONFIG_PICOCOREMX93_BL_CTRL
 	reg_bl_on: bl_on {
 		compatible = "regulator-fixed";
@@ -290,6 +291,7 @@ pc_sai: &sai3	{};
 		status = "okay";
 	};
 #endif /* CONFIG_PICOCOREMX93_BL_CTRL */
+#endif /* CONFIG_IMX93_TOUCH_DISPLAY */
 
 #ifdef CONFIG_PICOCOREMX93_SGTL5000_AUDIO
 	sound_sgtl5000: sound-sgtl5000 {
@@ -466,6 +468,7 @@ pc_sai: &sai3	{};
 
 &lpm {
 	soc-supply = <&buck1>;
+	ld-mode-enabled;
 	status = "okay";
 };
 
@@ -670,6 +673,9 @@ pc_sai: &sai3	{};
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_lpspi1>;
 	pinctrl-1 = <&pinctrl_lpspi1>;
+	assigned-clocks = <&clk IMX93_CLK_LPSPI1>;
+	assigned-clock-parents = <&clk IMX93_CLK_SYS_PLL_PFD0_DIV2>;
+	assigned-clock-rates = <100000000>;
 	cs-gpios = <&gpio1 11 GPIO_ACTIVE_LOW>;
 	status = "okay";
 
@@ -688,6 +694,9 @@ pc_sai: &sai3	{};
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_lpspi6>;
 	pinctrl-1 = <&pinctrl_lpspi6>;
+	assigned-clocks = <&clk IMX93_CLK_LPSPI6>;
+	assigned-clock-parents = <&clk IMX93_CLK_SYS_PLL_PFD0_DIV2>;
+	assigned-clock-rates = <100000000>;
 	cs-gpios = <&gpio2 1 GPIO_ACTIVE_LOW>;
 	status = "okay";
 
@@ -824,9 +833,6 @@ pc_sai: &sai3	{};
 
 	wlan_wake: wifi_wake_host {
 		compatible = "nxp,wifi-wake-host";
-		interrupt-parent = <&gpio3>;
-		interrupts = <26 IRQ_TYPE_LEVEL_LOW>;
-		interrupt-names = "host-wake";
 	};
 };
 #endif /* CONFIG_PICOCOREMX93_SD_B */
@@ -1342,7 +1348,7 @@ pc_sai: &sai3	{};
 #ifdef CONFIG_PICOCOREMX93_PWM_A
 	pinctrl_tpm3: tpm3grp {
 		fsl,pins = <
-			MX93_PAD_GPIO_IO24__TPM3_CH3		0x02
+			MX93_PAD_GPIO_IO24__TPM3_CH3		0x51e
 		>;
 	};
 #endif /* CONFIG_PICOCOREMX93_PWM_A */
@@ -1350,7 +1356,7 @@ pc_sai: &sai3	{};
 #ifdef CONFIG_PICOCOREMX93_BL_CTRL
 	pinctrl_tpm5: tpm5grp {
 		fsl,pins = <
-			MX93_PAD_GPIO_IO18__TPM5_CH2		0x02
+			MX93_PAD_GPIO_IO18__TPM5_CH2		0x51e
 		>;
 	};
 #endif /* CONFIG_PICOCOREMX93_BL_CTRL */
