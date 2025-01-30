@@ -224,10 +224,9 @@
 		};
 		led@7 {
 			reg = <7>;
-			label = "TOUCH_ON";
-			type = "GPIO";
-			active-high;
-			default-on;
+			label = "7-doNotUse";
+			type = "LED";
+			active-low;
 		};
 	};
 

@@ -164,7 +164,7 @@
 		};
 		led@7 {
 			reg = <7>;
-			label = "7-unused";
+			label = "7-doNotUse";
 			type = "LED";
 			active-low;
 		};
