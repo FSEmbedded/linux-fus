@@ -688,6 +688,8 @@
 		ethphy0: ethernet-phy@0 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <4>;
+			interrupt-parent = <&gpio1>;
+			interrupts = <4 0>;
 			at803x,led-act-blind-workaround;
 			at803x,eee-okay;
 			at803x,vddio-1p8v;
