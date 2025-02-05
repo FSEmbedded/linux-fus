@@ -119,5 +119,9 @@
                 interrupt-parent = <&IMX8MM_TOUCH_INTERRUPT_GPIO_BANK>;
                 interrupts = <IMX8MM_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_FALLING>;
                 reset-gpios = <&pca963x 5 GPIO_ACTIVE_LOW>;
+#ifdef IMX8MM_TOUCH_INTERRUPT_PINCTRL
+                pinctrl-names = "default";
+                pinctrl-0 = <&pinctrl_touch_int>;
+#endif
         };
 };
