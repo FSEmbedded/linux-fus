@@ -18,6 +18,7 @@
 #include "fsimx8ulp-rpmsg.dtsi"
 #include <dt-bindings/rtc/pcf85363.h>
 #include <dt-bindings/input/input.h>
+#include <fsversion.h>
 
 osm_eth_a: &fec {};
 osm_uart_con: &lpuart5 {};
@@ -68,6 +69,12 @@ osm_dsi_pwm: &tpm7 {};
 		/* pwm 1,2,3,4,5 via m33 */
 		isi0 = &isi_0;
 		csi0 = &mipi_csi0;
+	};
+
+	/* -------------------- BOARD INFO -------------------- */
+	bdinfo: bdinfo {
+		compatible = "bdinfo";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 	memory@80000000 {
