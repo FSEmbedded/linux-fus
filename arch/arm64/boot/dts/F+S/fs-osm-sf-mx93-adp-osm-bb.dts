@@ -18,6 +18,7 @@
 #define CONFIG_OSMSFMX93_UARTD
 
 #include "fs-osm-sf-mx93.dtsi"
+#include <dt-bindings/usb/pd.h>
 
 &{/aliases} {
 	sound-sgtl5000 = &sound_sgtl5000;
@@ -106,12 +107,20 @@
 	status = "okay";
 	mdio {
 		status = "okay";
+		ethphy1: rtl8211fdi@4 {
+			reg = <4>;
+		};
 
-		/* Note: Broadcast address*/
-		ethphy1: rtl8211fdi@0 {
-			reg = <0>;
+		ethphy2: rtl8211fdi@2 {
+			reg = <2>;
 		};
 	};
+};
+
+&osm_eth_b {
+	phy-mode = "rgmii-id";
+	phy-handle = <&ethphy2>;
+	status = "okay";
 };
 
 &osm_uart_b {
@@ -143,7 +152,15 @@
 	hnp-disable;
 	srp-disable;
 	adp-disable;
+	disable-over-current;
+	usb-role-switch;
 	status = "okay";
+
+	port {
+		usb1_drd_sw: endpoint {
+			remote-endpoint = <&typec_dr_sw>;
+		};
+	};
 };
 
 &osm_usb_b {
@@ -158,6 +175,31 @@
 &osm_i2c_b {
 	clock-frequency = <400000>;
 	status = "okay";
+
+	ptn5110: tcpc@52 {
+		compatible = "nxp,ptn5110";
+		reg = <0x52>;
+
+		port {
+			typec_dr_sw: endpoint {
+				remote-endpoint = <&usb1_drd_sw>;
+			};
+		};
+
+		usb_con: connector {
+			compatible = "usb-c-connector";
+			label = "USB-C";
+			power-role = "dual";
+			data-role = "dual";
+			try-power-role = "sink";
+			source-pdos = <PDO_FIXED(5000, 3000,
+			PDO_FIXED_USB_COMM)>;
+			sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
+				     PDO_VAR(5000, 20000, 3000)>;
+			op-sink-microwatt = <15000000>;
+			self-powered;
+		};
+	};
 
 	sgtl5000: sgtl5000@a {
 		#sound-dai-cells = <0>;
@@ -197,4 +239,20 @@
 
 &osm_dsi_pwm {
 	status = "okay";
+};
+
+&osm_spi_b {
+	fsl,spi-num-chipselects = <1>;
+	assigned-clocks = <&clk IMX93_CLK_LPSPI3>;
+	assigned-clock-parents = <&clk IMX93_CLK_SYS_PLL_PFD0_DIV2>;
+	assigned-clock-rates = <100000000>;
+	cs-gpios = <&gpio2 24 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	spidev@0 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
+	};
 };

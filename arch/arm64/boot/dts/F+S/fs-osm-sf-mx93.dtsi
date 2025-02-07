@@ -594,7 +594,6 @@ osm_uart_b: &lpuart5 {
 	disable-over-current;
 	samsung,picophy-pre-emp-curr-control = <3>;
 	samsung,picophy-dc-vol-level-adjust = <7>;
-	
 	status = "disabled";
 };
 
@@ -753,7 +752,7 @@ osm_uart_b: &lpuart5 {
 	pinctrl_gpio1: gpio1grp {
 		fsl,pins = <
 			MX93_PAD_PDM_BIT_STREAM1__GPIO1_IO10	0x31e
-		>; 
+		>;
 	};
 
 	pinctrl_gpio2: gpio2grp {
