@@ -18,6 +18,7 @@
 #include "fsimx8ulp-rpmsg.dtsi"
 #include <dt-bindings/rtc/pcf85363.h>
 #include <dt-bindings/input/input.h>
+#include <fsversion.h>
 
 pc_i2c_int: &lpi2c4 {};
 pc_i2c_a: &lpi2c7 {};
@@ -72,6 +73,12 @@ pc_bl_pwm: &tpm7 {};
 		csi0 = &mipi_csi0;
 		// pwm0 = rp_pwm not available;
 		pwm1 = &tpm7;
+	};
+
+	/* -------------------- BOARD INFO -------------------- */
+	bdinfo: bdinfo {
+		compatible = "bdinfo";
+		dts_version = FS_LINUX_VERSION;
 	};
 
 	memory@80000000 {
@@ -485,7 +492,6 @@ pc_bl_pwm: &tpm7 {};
 };
 
 &gpiof {
-
 	status = "okay";
 	gpio-line-names = 
 	"", "", "", "", "",
