@@ -1,0 +1,51 @@
+/*
+* Copyright (C) 2025 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+
+#define CONFIG_OSM8MP_MIPI_DSI_LVDS
+#define CONFIG_OSM8MP_BL_CTRL
+#define CONFIG_OSM8MP_DSP
+
+#define IMX8MP_TOUCH_INTERRUPT_GPIO_BANK	gpio1
+#define IMX8MP_TOUCH_INTERRUPT_GPIO_NUM		1
+#define IMX8MP_TOUCH_INTERRUPT_PINCTRL
+
+#define IMX8MP_LVDS_I2C osm_i2c_cam_pci
+#define IMX8MP_TOUCH_I2C osm_i2c_cam_pci
+
+#include "osm8mp-adp.dtsi"
+#include "displays/imx8mp-BT070L1060CS0I1AD-A.dtsi"
+
+&ldb {
+	status = "okay";
+	/* DSI_A */
+	lvds-channel@0 {
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <24>;
+		status = "okay";
+		port@1 {
+			reg = <1>;
+			lvds1_out: endpoint {
+				remote-endpoint = <&panel_lvds1_in>;
+			};
+		};
+	};
+	/* DSI_B */
+	lvds-channel@1 {
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <24>;
+		status = "disabled";
+		/delete-node/ port@1;
+	};
+};
+
+#ifdef IMX8MP_TOUCH_INTERRUPT_PINCTRL
+&touch {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_touch_int>;
+};
+#endif

@@ -69,3 +69,6 @@ dtb-$(CONFIG_ARCH_MXC) += fssmmx8mp.dtb \
 dtb-$(CONFIG_ARCH_MXC) += osm8mm.dtb \
 			  osm8mm-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtb \
 			  osm8mm-lcdif-adp-mipi2lvds1-BT070L1060CS0I1AD-A.dtb
+dtb-$(CONFIG_ARCH_MXC) += osm8mp.dtb \
+			  osm8mp-BT070L1060CS0I1AD-A.dtb \
+			  osm8mp-EE1010B1T-1CP.dtb
