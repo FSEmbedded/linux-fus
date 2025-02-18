@@ -483,9 +483,9 @@ pc_sai: &sai3	{};
 	status = "okay";
 
 	eeprom: eeprom@50 {
-		compatible = "atmel,24c02";
-		vcc-supply = <&reg_vref_3v3>;
+		compatible = "onnn,n24s64b", "atmel,24c64";
 		reg = <0x50>;
+		size = <8192>;
 		pagesize = <32>;
 	};
 };

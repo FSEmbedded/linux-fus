@@ -552,8 +552,9 @@ osm_uart_b: &lpuart5 {
 	status = "disabled";
 
 	eeprom: eeprom@50 {
-		compatible = "atmel,24c02";
+		compatible = "onnn,n24s64b", "atmel,24c64";
 		reg = <0x50>;
+		size = <8192>;
 		pagesize = <32>;
 	};
 };
