@@ -1817,14 +1817,6 @@ static int fsl_sai_runtime_resume(struct device *dev)
 		regmap_update_bits(sai->regmap, FSL_SAI_TCSR(ofs),
 				   FSL_SAI_CSR_TERE, FSL_SAI_CSR_TERE);
 
-	if (sai->soc_data->mclk_with_tere && sai->mclk_direction_output)
-		regmap_update_bits(sai->regmap, FSL_SAI_TCSR(ofs),
-				   FSL_SAI_CSR_TERE, FSL_SAI_CSR_TERE);
-
-	if (sai->soc_data->mclk_with_tere && sai->mclk_direction_output)
-		regmap_update_bits(sai->regmap, FSL_SAI_TCSR(ofs),
-				   FSL_SAI_CSR_TERE, FSL_SAI_CSR_TERE);
-
 	return 0;
 
 disable_rx_clk:
