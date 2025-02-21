@@ -12,8 +12,8 @@
 #define CONFIG_PICOCOREMX93_BOARD_REVISION	110
 /* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_PICOCOREBBDSI_BOARD_REVISION	140
-//#define SUPPORT_M33
-//#define SUPPORT_RPMSG
+// #define SUPPORT_M33
+// #define SUPPORT_RPMSG
 
 /* Network */
 #define CONFIG_PICOCOREMX93_ETH_A
