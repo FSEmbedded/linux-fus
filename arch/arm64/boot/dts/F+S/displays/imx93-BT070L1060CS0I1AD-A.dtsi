@@ -96,6 +96,7 @@
 };
 
 &IMX93_TOUCH_I2C {
+	clock-frequency = <400000>;
 	/* Ilitek PCAP touch on Touch-Connector (I2C) */
 	touch: ilitek2130@41 {
 		compatible = "ilitek,ili2130";
