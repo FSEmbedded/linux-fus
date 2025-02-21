@@ -14,8 +14,12 @@
 
 
 /* When Undefined, IO of UARTC and UARTD will be configured as GPIO */
-#define CONFIG_OSMSFMX93_UARTC
-#define CONFIG_OSMSFMX93_UARTD
+// #define CONFIG_OSMSFMX93_UARTC
+// #define CONFIG_OSMSFMX93_UARTD
+
+/* Enable to use CM33 and RPMSG */
+// #define SUPPORT_M33
+// #define SUPPORT_RPMSG
 
 #include "fs-osm-sf-mx93.dtsi"
 #include <dt-bindings/usb/pd.h>
