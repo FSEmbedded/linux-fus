@@ -2776,6 +2776,9 @@ static int gpmi_fus_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 	bool direct_dma_map_ok;
 	dma_addr_t try_phys;
 	dma_addr_t payload_phys;
+	uint8_t *payload_virt;
+	int chunk_size;
+	uint8_t *chunk_virt;
 
 //	showdesc = 1;//###
 
@@ -2798,12 +2801,14 @@ static int gpmi_fus_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 	   buffer. */
 	direct_dma_map_ok = 0;
 	payload_phys = priv->page_buffer_phys;
+	payload_virt = priv->page_buffer_virt;
 	if (virt_addr_valid(buf)) {
 		try_phys = dma_map_single(priv->dev, buf, mtd->writesize,
 					  DMA_FROM_DEVICE);
 		if (!dma_mapping_error(priv->dev, try_phys)) {
 			direct_dma_map_ok = 1;
 			payload_phys = try_phys;
+			payload_virt = buf;
 		}
 	}
 
@@ -2899,7 +2904,23 @@ static int gpmi_fus_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 	for (i = 0; i < chip->ecc.steps + 1; i++) {
 		switch (status[i]) {
 		case STATUS_GOOD:
+			break;
+
 		case STATUS_ERASED:
+			/*
+			 * In an erased chunk, a few 0-bits are tolerated, but
+			 * not fixed by BCH engine; manually "correct" them by
+			 * using all 0xff; status[0] is for oob data.
+			 */
+			if (i == 0) {
+				chunk_size = mtd->oobavail;
+				chunk_virt = priv->page_buffer_virt
+						+ mtd->writesize + 4;
+			} else {
+				chunk_size = chip->ecc.size;
+				chunk_virt = payload_virt + (i-1) * chunk_size;
+			}
+			memset(chunk_virt, 0xff, chunk_size);
 			break;
 
 		case STATUS_UNCORRECTABLE:
