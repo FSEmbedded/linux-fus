@@ -1,5 +1,5 @@
 /*
-* Copyright (C) 2020 F&S Elektronik Systeme GmbH
+* Copyright (C) 2025 F&S Elektronik Systeme GmbH
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License version 2 as
@@ -31,15 +31,12 @@
         tc358775@f {
                 compatible = "toshiba,tc358775";
                 reg = <0x0f>;
-                pinctrl-names = "default";
-                pinctrl-0 = <&pinctrl_mipi_dsi_lvds_en>;
                 vdd-supply = <&reg_vref_1v8>;
                 vddio-supply = <&reg_vref_3v3>;
 
-                reset-gpios = <&IMX8MM_LVDS_RESET_GPIO_BANK IMX8MM_LVDS_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
-#ifdef IMX8MM_LVDS_STBY_GPIO_BANK
-                stby-gpios  = <&IMX8MM_LVDS_STBY_GPIO_BANK IMX8MM_LVDS_STBY_GPIO_NUM GPIO_ACTIVE_LOW>;
-#endif
+                reset-gpios = <&adp_pca963x 3 GPIO_ACTIVE_HIGH>;
+                stby-gpios  = <&adp_pca963x 4 GPIO_ACTIVE_HIGH>;
+
                 ports {
                         #address-cells = <1>;
                         #size-cells = <0>;
@@ -61,56 +58,11 @@
                         };
                 };
         };
-};
 
-/{
-        panel: panel {
-                compatible = "panel-lvds";
-                backlight = <&backlight_ldb>;
-                reset-gpios = <&pca963x 3 GPIO_ACTIVE_LOW>;
-                data-mapping = "vesa-24";
-                width-mm = <155>;
-                height-mm = <86>;
-
-                panel-timing {
-                                clock-frequency = <63000000>;
-                                hactive = <1024>;
-                                vactive = <600>;
-                                hback-porch = <160>;
-                                hfront-porch = <76>;
-                                hsync-len = <140>;
-                                vback-porch = <23>;
-                                vfront-porch = <107>;
-                                vsync-len = <20>;
-                                pixelclk-active = <0>;
-                                de-active = <1>;
-                };
-
-                port@0 {
-                        panel_from_lvds: endpoint {
-                                remote-endpoint = <&lvds_to_panel>;
-                        };
-                };
-        };
-
-        backlight_ldb: backlight_ldb {
-                pwms = <&pca963x 1 5263157 1>;
-                brightness-levels = <0 1 5 10 18 28 41 56
-                                     73 92 113 137 163 192 222 255>;
-                default-brightness-level = <14>;
-        };
-};
-
-&reg_ldb_bl{
-	gpio = <&pca963x 0 GPIO_ACTIVE_HIGH>;
-};
-
-&IMX8MM_TOUCH_I2C {
-	clock-frequency = <400000>;
-	pca963x: pca9634@61 {
+	adp_pca963x: adp-pca9634@63 {
                         compatible = "nxp,pca9634";
-                        reg = <0x61>;
-						vdd-supply = <&reg_vlcd>;
+                        reg = <0x63>;
+						nxp,totem-pole;
                         #address-cells = <1>;
                         #size-cells = <0>;
                         #pwm-cells = <3>;
@@ -144,13 +96,14 @@
                         };
                         led@4 {
                                 reg = <4>;
-                                label = "4-unused";
-                                type = "LED";
+                                label = "MIPI_STBY";
+                                type = "GPIO";
                                 active-low;
+                                default-on;             /* or: keep-value */
                         };
                         led@5 {
                                 reg = <5>;
-                                label = "I2C_RST";
+                                label = "TOUCH_RST";
                                 type = "GPIO";
                                 active-high;
                                 default-on;             /* or: keep-value */
@@ -163,18 +116,9 @@
                         };
                         led@7 {
                                 reg = <7>;
-                                label = "7-doNotUse";
+                                label = "7-unused";
                                 type = "LED";
                                 active-low;
                         };
                 };
-
-        /* Ilitek PCAP touch on Touch-Connector (I2C) */
-        touch: ilitek2130@41 {
-                compatible = "ilitek,ili2130";
-                reg = <0x41>;
-                interrupt-parent = <&IMX8MM_TOUCH_INTERRUPT_GPIO_BANK>;
-                interrupts = <IMX8MM_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_RISING>;
-                reset-gpios = <&pca963x 5 GPIO_ACTIVE_LOW>;
-        };
 };

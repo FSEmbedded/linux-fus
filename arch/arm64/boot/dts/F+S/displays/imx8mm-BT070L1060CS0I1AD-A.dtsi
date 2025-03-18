@@ -1,67 +1,10 @@
 /*
-* Copyright (C) 2020 F&S Elektronik Systeme GmbH
+* Copyright (C) 2025 F&S Elektronik Systeme GmbH
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License version 2 as
 * published by the Free Software Foundation.
 */
-
-&lcdif {
-        status = "okay";
-        /* important to overwrite max-res otherwise DRM lcdif will fail to
-         * find a suitable connector
-         */
-        max-res = <4096>, <4096>;
-};
-
-&mipi_dsi {
-        status = "okay";
-        bus-fmt = <0x100a>;
-        port@1 {
-                reg = <1>;
-                dsim_to_lvds: endpoint {
-                        remote-endpoint = <&lvds_from_dsim>;
-                        data-lanes = <0 1 2 3>;
-                        attach-bridge;
-                };
-        };
-};
-
-&IMX8MM_LVDS_I2C {
-        tc358775@f {
-                compatible = "toshiba,tc358775";
-                reg = <0x0f>;
-                pinctrl-names = "default";
-                pinctrl-0 = <&pinctrl_mipi_dsi_lvds_en>;
-                vdd-supply = <&reg_vref_1v8>;
-                vddio-supply = <&reg_vref_3v3>;
-
-                reset-gpios = <&IMX8MM_LVDS_RESET_GPIO_BANK IMX8MM_LVDS_RESET_GPIO_NUM GPIO_ACTIVE_LOW>;
-#ifdef IMX8MM_LVDS_STBY_GPIO_BANK
-                stby-gpios  = <&IMX8MM_LVDS_STBY_GPIO_BANK IMX8MM_LVDS_STBY_GPIO_NUM GPIO_ACTIVE_LOW>;
-#endif
-                ports {
-                        #address-cells = <1>;
-                        #size-cells = <0>;
-
-                        port@0 {
-                                reg = <0>;
- 
-                                lvds_from_dsim: endpoint {
-                                        remote-endpoint = <&dsim_to_lvds>;
-                                };
-                        };
-
-                        port@1 {
-                                reg = <1>;
-
-                                lvds_to_panel: endpoint {
-                                        remote-endpoint = <&panel_from_lvds>;
-                                };
-                        };
-                };
-        };
-};
 
 /{
         panel: panel {
@@ -174,7 +117,11 @@
                 compatible = "ilitek,ili2130";
                 reg = <0x41>;
                 interrupt-parent = <&IMX8MM_TOUCH_INTERRUPT_GPIO_BANK>;
-                interrupts = <IMX8MM_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_RISING>;
+                interrupts = <IMX8MM_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_FALLING>;
                 reset-gpios = <&pca963x 5 GPIO_ACTIVE_LOW>;
+#ifdef IMX8MM_TOUCH_INTERRUPT_PINCTRL
+                pinctrl-names = "default";
+                pinctrl-0 = <&pinctrl_touch_int>;
+#endif
         };
 };
