@@ -229,6 +229,32 @@
 				enable-active-high;
 			};
 #endif
+
+#ifdef CONFIG_FSSMMX8MP_CSI_A
+			/* CAM_PWR# power on voltage */
+			reg_vref_cam0_pwr: regulator_cam0_pwr {
+				compatible = "regulator-fixed";
+				regulator-name = "CAM0_PWR";
+				gpio = <&gpio1 9 GPIO_ACTIVE_HIGH>;
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-boot-on;
+				regulator-always-on;
+			};
+#endif
+
+#ifdef CONFIG_FSSMMX8MP_CSI_B
+			/* CAM_PWR# power on voltage */
+			reg_vref_cam1_pwr: regulator_cam1_pwr {
+				compatible = "regulator-fixed";
+				regulator-name = "CAM1_PWR";
+				gpio = <&gpio1 7 GPIO_ACTIVE_HIGH>;
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-boot-on;
+				regulator-always-on;
+			};
+#endif
 	};
 
 #ifdef CONFIG_FSSMMX8MP_BL_CTRL_A
@@ -402,7 +428,7 @@
 			rtl821x,led-act = <0>; // LED0 for activity
 			reset-gpios = <&pca6416 11 GPIO_ACTIVE_LOW>;
 			reset-assert-us = <10000>;
-			reset-deassert-us = <50000>;
+			reset-deassert-us = <100000>;
 			interrupt-parent = <&gpio1>;
 			interrupts = <6 IRQ_TYPE_LEVEL_LOW>;
 			eee-broken-1000t;
@@ -490,7 +516,7 @@
 			rtl821x,led-act = <0>; // LED0 for activity
 			reset-gpios = <&pca6416 12 GPIO_ACTIVE_LOW>;
 			reset-assert-us = <10000>;
-			reset-deassert-us = <50000>;
+			reset-deassert-us = <100000>;
 			interrupt-parent = <&gpio5>;
 			interrupts = <1 IRQ_TYPE_LEVEL_LOW>;
 			eee-broken-1000t;
@@ -557,9 +583,19 @@
 		};
 	};
 #endif /* CONFIG_FSSMMX8MP_ADC */
+#endif
+};
+#endif /* CONFIG_FSSMMX8MP_I2C_CAM0 */
+
+#ifdef CONFIG_FSSMMX8MP_I2C_CAM1
+&i2c2 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c2>;
+	status = "okay";
 
 #ifdef CONFIG_FSSMMX8MP_CAMERA_BASLER_daA4200
-	basler_csi_a: basler_camera_vvcam@36 {
+	basler_camera_vvcam@36 {
 		compatible = "basler,basler-camera";
 		reg = <0x36>;
 		csi_id = <0x00>;
@@ -567,7 +603,7 @@
 
 		port {
 			basler_ep_0: endpoint {
-				remote-endpoint = <&mipi_csi0_ep>;
+				remote-endpoint = <&mipi_csi1_ep>;
 				data-lanes = <1 2 3 4>;
 				clock-lanes = <0>;
 				//link-frequenc = /bits/ 64 <594000000>;
@@ -597,21 +633,11 @@
 				max-lane-frequency = /bits/ 64 <750000000>;
 				max-pixel-frequency = /bits/ 64 <500000000>;
 				max-data-rate = /bits/ 64 <0>;
-				remote-endpoint = <&mipi_csi0_ep>;
+				remote-endpoint = <&mipi_csi1_ep>;
 			};
 		};
 	};
 #endif
-#endif
-};
-#endif /* CONFIG_FSSMMX8MP_I2C_CAM0 */
-
-#ifdef CONFIG_FSSMMX8MP_I2C_CAM1
-&i2c2 {
-	clock-frequency = <400000>;
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c2>;
-	status = "okay";
 };
 #endif /* CONFIG_FSSMMX8MP_I2C_CAM1 */
 
@@ -1004,18 +1030,37 @@
 
 &usb3_0 {
 	status = "okay";
+
+	connector {
+		compatible = "gpio-usb-b-connector", "usb-b-connector";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_usb3_0_id>;
+		id-gpios = <&gpio1 10 GPIO_ACTIVE_HIGH>;
+
+		port {
+			connector_dr_sw: endpoint {
+				remote-endpoint = <&usb3_drd_sw>;
+			};
+		};
+	};
 };
 
 &usb_dwc3_0 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usb3_0>;
+	pinctrl-0 = <&pinctrl_usb3_0_pwr>;
+	dr_mode = "otg";
 	hnp-disable;
 	srp-disable;
 	adp-disable;
 	usb-role-switch;
 	role-switch-default-mode = "none";
-	dr_mode = "otg";
 	status = "okay";
+
+	port {
+		usb3_drd_sw: endpoint {
+			remote-endpoint = <&connector_dr_sw>;
+		};
+	};
 };
 #endif
 
@@ -1099,11 +1144,19 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 	status = "okay";
+};
+#endif
+
+#ifdef CONFIG_FSSMMX8MP_CSI_B
+&mipi_csi_1 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
 #if defined (CONFIG_FSSMMX8MP_CAMERA_BASLER_daA4200) || \
     defined (CONFIG_FSSMMX8MP_CAMERA_BASLER_daA3840)
-	port@0 {
-		reg = <0>;
-		mipi_csi0_ep: endpoint {
+	port@1 {
+		reg = <1>;
+		mipi_csi1_ep: endpoint {
 			remote-endpoint = <&basler_ep_0>;
 			data-lanes = <4>;
 			csis-hs-settle = <16>;
@@ -1234,19 +1287,14 @@
 	status = "okay";
 };
 
-&isp_0 {
-	/* remove this property because this region used
-	 * only by tuning tool
-	 * */
-	/delete-property/memory-region;
-#ifdef CONFIG_FSSMMX8MP_CAMERA_BASLER_daA3840
-	status = "okay";
-#else
+&isi_0 {
 	status = "disabled";
-#endif
+	dma-coherent;
+	bsl,dma-invalidate;
+	fsl,chain_buf;
 };
 
-&isi_0 {
+&isi_1 {
 #ifdef CONFIG_FSSMMX8MP_CAMERA_BASLER_daA4200
 	status = "okay";
 #else
@@ -1255,23 +1303,22 @@
 	dma-coherent;
 	bsl,dma-invalidate;
 	fsl,chain_buf;
-
-	cap_device {
-		status = "okay";
-	};
-#if 0
-	m2m_device {
-		status = "okay";
-	};
-#endif
 };
 
-&isi_1 {
+&isp_0 {
+	/* remove this property because this region used
+	 * only by tuning tool
+	 * */
+	/delete-property/memory-region;
 	status = "disabled";
+};
 
-	cap_device {
-		status = "okay";
-	};
+&isp_1 {
+#ifdef CONFIG_FSSMMX8MP_CAMERA_BASLER_daA3840
+	status = "okay";
+#else
+	status = "disabled";
+#endif
 };
 
 &dsp {
@@ -1651,10 +1698,15 @@ gpio-line-names =
 #endif /* CONFIG_FSSMMX8MP_UART_D */
 
 #ifdef CONFIG_FSSMMX8MP_USB_OTG
-		pinctrl_usb3_0: usb0grp {
+		pinctrl_usb3_0_pwr: usb0grp {
 			fsl,pins = <
-				MX8MP_IOMUXC_GPIO1_IO10__USB1_ID	0x19
 				MX8MP_IOMUXC_GPIO1_IO12__USB1_PWR	0x19
+			>;
+		};
+
+		pinctrl_usb3_0_id: usb0idgrp {
+			fsl,pins = <
+				MX8MP_IOMUXC_GPIO1_IO10__GPIO1_IO10	0x149
 			>;
 		};
 #endif /* CONFIG_FSSMMX8MP_USB_OTG */
