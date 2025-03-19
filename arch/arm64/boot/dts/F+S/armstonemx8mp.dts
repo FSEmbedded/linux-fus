@@ -291,7 +291,7 @@
 #undef CONFIG_ARMSTONEMX8MP_SPI_B
 #endif
 
-#include "../freescale/imx8mp.dtsi"
+#include "fsimx8mp.dtsi"
 #include "armstonemx8mp.dtsi"
 
 / {

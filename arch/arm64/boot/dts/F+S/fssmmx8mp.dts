@@ -104,7 +104,7 @@
 #undef CONFIG_FSSMMX8MP_PWM_OUT
 #endif
 
-#include "../freescale/imx8mp.dtsi"
+#include "fsimx8mp.dtsi"
 #include "fssmmx8mp.dtsi"
 
 / {

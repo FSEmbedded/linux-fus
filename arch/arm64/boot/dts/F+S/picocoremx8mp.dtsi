@@ -11,7 +11,8 @@
 #include <dt-bindings/usb/pd.h>
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/rtc/nxp,pcf85263.h>
-#include "../freescale/imx8mp.dtsi"
+#include <dt-bindings/phy/phy-imx8-pcie.h>
+#include "fsimx8mp.dtsi"
 #include <fsversion.h>
 
 / {
@@ -306,6 +307,7 @@
 	sound_sgtl5000: sound-sgtl5000 {
 		compatible = "fsl,imx-audio-sgtl5000";
 		model = "imx-sgtl5000";
+
 		audio-cpu = <&sai2>;
 		audio-codec = <&sgtl5000>;
 		audio-asrc = <&easrc>;
@@ -491,15 +493,6 @@
 	};
 };
 
-
-&audio_blk_ctrl {
-#ifdef CONFIG_PICOCOREMX8MP_SGTL5000_AUDIO
-	assigned-clocks = <&clk IMX8MP_CLK_SAI2>;
-	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
-	init-on-array = <IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>;
-#endif
-};
-
 #ifdef CONFIG_PICOCOREMX8MP_I2C_E
 &i2c1 {
 	clock-frequency = <400000>;
@@ -534,6 +527,8 @@
 	sgtl5000: sgtl5000@a {
 		#sound-dai-cells = <0>;
 		compatible = "fsl,sgtl5000";
+		assigned-clocks = <&clk IMX8MP_CLK_SAI2>;
+		assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
 		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>;
 		reg = <0xa>;
 		mono2both;
@@ -806,28 +801,16 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcie>;
 	reset-gpio = <&gpio4 30 GPIO_ACTIVE_LOW>;
-	ext_osc = <0>;
-	bus-range = <0x00 0xff>;
-	clocks = <&clk IMX8MP_CLK_HSIO_ROOT>,
-		 <&clk IMX8MP_CLK_PCIE_AUX>,
-		 <&clk IMX8MP_CLK_HSIO_AXI>,
-		 <&clk IMX8MP_CLK_PCIE_ROOT>;
-	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
-	assigned-clocks = <&clk IMX8MP_CLK_HSIO_AXI>,
-			  <&clk IMX8MP_CLK_PCIE_AUX>;
-	assigned-clock-rates = <500000000>, <10000000>;
-	assigned-clock-parents = <&clk IMX8MP_SYS_PLL2_500M>,
-					 <&clk IMX8MP_SYS_PLL2_50M>;
+	vpcie-supply = <&reg_vref_3v3>;
 	status = "okay";
 };
 
-&pcie_ep{
-	status = "disabled";
-};
-
-&pcie_phy{
-	ext_osc = <0>;
-	status = "okay";
+&pcie_phy {
+    fsl,refclk-pad-mode = <IMX8_PCIE_REFCLK_PAD_UNUSED>;
+	fsl,clkreq-unsupported;
+    clocks = <&hsio_blk_ctrl>;
+    clock-names = "ref";
+    status = "okay";
 };
 #endif /* CONFIG_PICOCOREMX8MP_PCIE */
 

@@ -14,6 +14,7 @@
 #include <dt-bindings/usb/pd.h>
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/rtc/nxp,pcf85263.h>
+#include <dt-bindings/phy/phy-imx8-pcie.h>
 #include <fsversion.h>
 
 /* Do we have HDMI? */
@@ -818,7 +819,7 @@ touch: goodix@5d {
 #endif
 #if defined(DISPLAY_LVDS_BT070L1060CS0I1ADA) || defined(DISPLAY_LVDS_EE1010B1T1CP)
 	pca963x: pca9634@61 {
-    	compatible = "nxp,pca9634";
+    	compatible = "fus,pca9634";
         reg = <0x61>;
 		vdd-supply = <&reg_vlcd>;
 		#address-cells = <1>;
@@ -1145,28 +1146,16 @@ touch: goodix@5d {
 	pinctrl-0 = <&pinctrl_pcie>;
 	disable-gpio = <&gpio3 2 GPIO_ACTIVE_LOW>;
 	reset-gpio = <&gpio3 3 GPIO_ACTIVE_LOW>;
-	ext_osc = <0>;
-	bus-range = <0x00 0xff>;
-	clocks = <&clk IMX8MP_CLK_HSIO_ROOT>,
-		 <&clk IMX8MP_CLK_PCIE_AUX>,
-		 <&clk IMX8MP_CLK_HSIO_AXI>,
-		 <&clk IMX8MP_CLK_PCIE_ROOT>;
-	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
-	assigned-clocks = <&clk IMX8MP_CLK_HSIO_AXI>,
-			  <&clk IMX8MP_CLK_PCIE_AUX>;
-	assigned-clock-rates = <500000000>, <10000000>;
-	assigned-clock-parents = <&clk IMX8MP_SYS_PLL2_500M>,
-					 <&clk IMX8MP_SYS_PLL2_50M>;
+	vpcie-supply = <&reg_vref_3v3>;
 	status = "okay";
 };
 
-&pcie_ep{
-	status = "disabled";
-};
-
-&pcie_phy{
-	ext_osc = <0>;
-	status = "okay";
+&pcie_phy {
+    fsl,refclk-pad-mode = <IMX8_PCIE_REFCLK_PAD_UNUSED>;
+    fsl,clkreq-unsupported;
+    clocks = <&hsio_blk_ctrl>;
+    clock-names = "ref";
+    status = "okay";
 };
 
 #ifdef CONFIG_ARMSTONEMX8MP_USB_HOST

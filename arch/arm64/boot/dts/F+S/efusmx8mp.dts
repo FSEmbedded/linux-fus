@@ -404,7 +404,7 @@
 #undef CONFIG_EFUSMX8MP_PWM_A
 #endif
 
-#include "../freescale/imx8mp.dtsi"
+#include "fsimx8mp.dtsi"
 #include "efusmx8mp.dtsi"
 
 / {
