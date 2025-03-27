@@ -639,7 +639,7 @@ wvga {					\
 #if (CONFIG_PICOCOREMX6UL100_LCDIF0 == DISPLAY_LVDS)
 	/* LVDS CHIP address: 0x2D */
 	lt9211@2d {
-		compatible = "lontium,lt9211";
+		compatible = "lontium,lt9211-fus";
 		reg = <0x2d>;
 		reset-gpios = <&gpio3 4 GPIO_ACTIVE_HIGH>;
 

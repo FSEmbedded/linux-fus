@@ -1545,19 +1545,19 @@ static void lt9211_remove(struct i2c_client *client) {
 }
 
 static struct i2c_device_id lt9211_id[] = {
-	{ "lontium,lt9211", 0 },
+	{ "lontium,lt9211-fus", 0 },
 	{ }
 };
 
 static const struct of_device_id lt9211_match_table[] = {
-	{ .compatible = "lontium,lt9211" },
+	{ .compatible = "lontium,lt9211-fus" },
 	{ }
 };
 MODULE_DEVICE_TABLE( of, lt9211_match_table);
 
 static struct i2c_driver lt9211_driver = {
 	.driver = {
-		.name = "lt9211",
+		.name = "lt9211-fus",
 		.of_match_table = lt9211_match_table,
 	},
 	.probe = lt9211_probe,
