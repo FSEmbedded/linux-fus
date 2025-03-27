@@ -976,15 +976,15 @@ static int nxp_fspi_do_op(struct nxp_fspi *f, const struct spi_mem_op *op)
 	 * address A-1, need to read one more byte to get all
 	 * data needed.
 	 */
-
+	seqid_lut = f->devtype_data->lut_num - 1;
 	if (f->flags & FSPI_DTR_ODD_ADDR)
 		fspi_writel(f, (op->data.nbytes + 1) |
-			 (SEQID_LUT << FSPI_IPCR1_SEQID_SHIFT) |
+			 (seqid_lut  << FSPI_IPCR1_SEQID_SHIFT) |
 			 (seqnum << FSPI_IPCR1_SEQNUM_SHIFT),
 			 base + FSPI_IPCR1);
 	else
 		fspi_writel(f, op->data.nbytes |
-			 (SEQID_LUT << FSPI_IPCR1_SEQID_SHIFT) |
+			 (seqid_lut  << FSPI_IPCR1_SEQID_SHIFT) |
 			 (seqnum << FSPI_IPCR1_SEQNUM_SHIFT),
 			 base + FSPI_IPCR1);
 
