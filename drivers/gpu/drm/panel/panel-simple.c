@@ -602,7 +602,7 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc)
 	if (!panel)
 		return -ENOMEM;
 
-	if (!desc) {
+	if (!desc->modes) {
 		pdesc = devm_kzalloc(dev, sizeof(*pdesc), GFP_KERNEL);
 		desc = panel_parse_dt_settings(dev, panel, pdesc);
 		if (!desc)
@@ -4255,6 +4255,11 @@ static const struct panel_desc arm_rtsm = {
 	.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
 };
 
+static const struct panel_desc fus_disp_template = {
+	.modes = NULL,
+};
+
+
 static const struct of_device_id platform_of_match[] = {
 	{
 		.compatible = "ampire,am-1280800n3tzqw-t00h",
@@ -4408,7 +4413,7 @@ static const struct of_device_id platform_of_match[] = {
 		.data = &evervision_vgg804821,
 	}, {
 		.compatible = "fus,disp-template",
-		.data = NULL,
+		.data = &fus_disp_template,
 	}, {
 		.compatible = "foxlink,fl500wvr00-a0t",
 		.data = &foxlink_fl500wvr00_a0t,

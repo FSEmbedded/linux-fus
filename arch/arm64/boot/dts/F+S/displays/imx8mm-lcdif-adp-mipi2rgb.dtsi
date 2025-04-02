@@ -228,6 +228,8 @@
 		touchscreen-max-pressure = <2048>;
 		touchscreen-inverted-y;
 		ti,x-plate-ohms = <280>;
+		ti,pre-charge-time = <4>;
+		ti,sense-time-sel = <3>;
 		//ti,esd-recovery-timeout-ms = <8000>;
 	};
 };

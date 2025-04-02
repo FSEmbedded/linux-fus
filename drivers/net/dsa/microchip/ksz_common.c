@@ -252,7 +252,6 @@ static const struct ksz_dev_ops ksz9477_dev_ops = {
 	.mdb_del = ksz9477_mdb_del,
 	.change_mtu = ksz9477_change_mtu,
 	.phylink_mac_link_up = ksz9477_phylink_mac_link_up,
-	.phylink_mac_link_down = ksz9477_mac_link_down,
 	.config_cpu_port = ksz9477_config_cpu_port,
 	.tc_cbs_set_cinc = ksz9477_tc_cbs_set_cinc,
 	.enable_stp_addr = ksz9477_enable_stp_addr,
@@ -2356,6 +2355,35 @@ static u32 ksz_get_phy_flags(struct dsa_switch *ds, int port)
 	return 0;
 }
 
+static void ksz9477_set_gpio_phylink(struct ksz_device *dev, int port, bool up)
+{
+	uint16_t LED_OVERRIDE_REGISTER = 0x123;
+	uint16_t LED_OUTPUT_REGISTER = 0x127;
+	uint8_t reg_led_override = 0, reg_led_output = 0;
+	int shift = 0;
+
+	/* return of port connection between CPU and switch */
+	if (port == dev->info->port_cnt - 1)
+	{
+		return;
+	} else {
+		ksz_read8(dev, LED_OVERRIDE_REGISTER, &reg_led_override);
+		ksz_read8(dev, LED_OUTPUT_REGISTER, &reg_led_output);
+
+		shift = (port * 2) + dev->led_gpio_phy_link;
+
+		reg_led_override |= 0x1 << shift;
+
+		if (up)
+			reg_led_output |= 0x1 << shift;
+		else
+			reg_led_output &= ~(0x1 << shift);
+
+		ksz_write8(dev, LED_OUTPUT_REGISTER, reg_led_output);
+		ksz_write8(dev, LED_OVERRIDE_REGISTER, reg_led_override);
+	}
+}
+
 static void ksz_mac_link_down(struct dsa_switch *ds, int port,
 			      unsigned int mode, phy_interface_t interface)
 {
@@ -2373,20 +2401,6 @@ static void ksz_mac_link_down(struct dsa_switch *ds, int port,
 	/* timer started */
 	if (dev->mib_read_interval)
 		schedule_delayed_work(&dev->mib_read, 0);
-}
-
-static void ksz9477_mac_link_down(struct dsa_switch *ds, int port,
-								  unsigned int mode,
-								  phy_interface_t interface)
-{
-	struct ksz_device *dev = ds->priv;
-
-	/* Check if LEDs are used as GPIO */
-	if (dev->led_gpio_phy_link >= 0)
-	{
-		ksz9477_set_gpio_phylink(dev, port, 1);
-	}
-	ksz_mac_link_down(ds, port, mode, interface);
 }
 
 static int ksz_sset_count(struct dsa_switch *ds, int port, int sset)
@@ -2857,6 +2871,14 @@ static void ksz_set_xmii(struct ksz_device *dev, int port,
 	if (p->rgmii_rx_val)
 		data8 |= P_RGMII_ID_IG_ENABLE;
 
+		/* MAC MODE */
+	if (dev->xmii_mac_mode >= 0) {
+		if (dev->xmii_mac_mode == 0)
+			data8 &= ~P_MII_MAC_MODE;
+		else
+			data8 |= P_MII_MAC_MODE;
+	}
+
 	/* Write the updated value */
 	ksz_pwrite8(dev, port, regs[P_XMII_CTRL_1], data8);
 }
@@ -3012,35 +3034,6 @@ static void ksz_duplex_flowctrl(struct ksz_device *dev, int port, int duplex,
 		val |= masks[P_MII_RX_FLOW_CTRL];
 
 	ksz_prmw8(dev, port, regs[P_XMII_CTRL_0], mask, val);
-}
-
-static void ksz9477_set_gpio_phylink(struct ksz_device *dev, int port, bool up)
-{
-	uint16_t LED_OVERRIDE_REGISTER = 0x123;
-	uint16_t LED_OUTPUT_REGISTER = 0x127;
-	uint8_t reg_led_override = 0, reg_led_output = 0;
-	int shift = 0;
-
-	/* return of port connection between CPU and switch */
-	if (port == dev->port_cnt - 1)
-	{
-		return;
-	} else {
-		ksz_read8(dev, LED_OVERRIDE_REGISTER, &reg_led_override);
-		ksz_read8(dev, LED_OUTPUT_REGISTER, &reg_led_output);
-
-		shift = (port * 2) + dev->led_gpio_phy_link;
-
-		reg_led_override |= 0x1 << shift;
-
-		if (up)
-			reg_led_output |= 0x1 << shift;
-		else
-			reg_led_output &= ~(0x1 << shift);
-
-		ksz_write8(dev, LED_OUTPUT_REGISTER, reg_led_output);
-		ksz_write8(dev, LED_OVERRIDE_REGISTER, reg_led_override);
-	}
 }
 
 static void ksz9477_phylink_mac_link_up(struct ksz_device *dev, int port,
@@ -3703,6 +3696,14 @@ int ksz_switch_register(struct ksz_device *dev)
 			return -EINVAL;
 		}
 	}
+
+	if(of_property_read_u32(dev->dev->of_node, "xmii-mac-mode",
+		&dev->xmii_mac_mode))
+		dev->xmii_mac_mode = -EINVAL;
+
+	if(of_property_read_u32(dev->dev->of_node, "led-gpio-phy-link",
+		&dev->led_gpio_phy_link))
+		dev->led_gpio_phy_link = -EINVAL;
 
 	ret = dsa_register_switch(dev->ds);
 	if (ret) {

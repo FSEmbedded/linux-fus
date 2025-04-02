@@ -9,10 +9,11 @@
 /dts-v1/;
 
 
-#include "../freescale/imx8mm.dtsi"
+#include "fsimx8mm.dtsi"
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/rtc/nxp,pcf85263.h>
 #include <dt-bindings/usb/pd.h>
+#include <dt-bindings/phy/phy-imx8-pcie.h>
 #include <fsversion.h>
 
 / {
@@ -202,22 +203,31 @@
 
 #ifdef CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
 	sound-sgtl5000 {
-		compatible = "fsl,imx-audio-sgtl5000";
-		cpu-dai = <&sai5>;
-		audio-codec = <&sgtl5000>;
-		model = "imx-sgtl5000";
-		audio-routing =
-			"LINE_IN", "Line In Jack",
-//###			"MIC_IN", "Mic Jack",
-//###			"Line Out Jack", "LINE_OUT",
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "imx-sgtl5000";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,frame-master = <&codecdai>;
+		simple-audio-card,bitclock-master = <&codecdai>;
+		simple-audio-card,widgets =
+			"Line", "Line Out Jack",
+			"Line", "Line In Jack",
+			"Microphone", "Microphone Jack",
+			"Headphone", "Headphone Jack";
+		simple-audio-card,routing =
+			"Line Out Jack", "LINE_OUT",
+			"LINE_IN", "Line In Jack", 
+			"MIC_IN", "Microphone Jack",
 			"Headphone Jack", "HP_OUT";
+
+		cpudai: simple-audio-card,cpu {
+			sound-dai = <&sai5>;
+		};
+
+		codecdai: simple-audio-card,codec {
+			sound-dai = <&sgtl5000>;
+		};
 	};
 #endif
-	pcie0_refclk: pcie0-refclk {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <100000000>;
-	};
 };
 
 #ifdef CONFIG_PICOCOREMX8MM_I2C_A
@@ -281,6 +291,7 @@
 
 #ifdef CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
 	sgtl5000: sgtl5000@a {
+		#sound-dai-cells = <0>;
 		compatible = "fsl,sgtl5000";
 		/* MCLK is needed for i2c sgtl driver */
 		pinctrl-names = "default";
@@ -615,6 +626,15 @@
 #endif
 
 #ifdef CONFIG_PICOCOREMX8MM_PCIE
+
+&pcie_phy {
+    fsl,refclk-pad-mode = <IMX8_PCIE_REFCLK_PAD_OUTPUT>;
+	fsl,clkreq-unsupported;
+	fsl,tx-deemph-gen1 = <0x2d>;
+	fsl,tx-deemph-gen2 = <0xf>;
+	status = "okay";
+};
+
 &pcie0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcie0>;
@@ -623,20 +643,12 @@
 	 * wakeup source and it is not a specific driver issue
 	 */
 	//wake-gpio = <&gpio3 20 GPIO_ACTIVE_LOW>;
-	clocks = <&clk IMX8MM_CLK_PCIE1_ROOT>,
-		 <&clk IMX8MM_CLK_PCIE1_AUX>,
-		 <&clk IMX8MM_CLK_PCIE1_PHY>,
-		 <&pcie0_refclk>;
-	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
 	assigned-clocks = <&clk IMX8MM_CLK_PCIE1_AUX>,
-			  <&clk IMX8MM_CLK_PCIE1_PHY>,
 			  <&clk IMX8MM_CLK_PCIE1_CTRL>;
-	assigned-clock-rates = <10000000>, <100000000>, <250000000>;
+	assigned-clock-rates = <10000000>, <250000000>;
 	assigned-clock-parents = <&clk IMX8MM_SYS_PLL2_50M>,
-				 <&clk IMX8MM_SYS_PLL2_100M>,
 				 <&clk IMX8MM_SYS_PLL2_250M>;
 	ext_osc = <0>;
-	l1ss-disabled;
 	status = "okay";
 };
 #endif
@@ -910,6 +922,7 @@
 &gpmi {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
+	fsl,use-minimum-ecc;
 	status = "okay";
 };
 #endif
