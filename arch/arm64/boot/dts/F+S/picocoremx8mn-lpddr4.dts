@@ -153,7 +153,7 @@
 #undef CONFIG_PICOCOREMX8MN_USB_OTG1_USBC_ALERT
 #endif
 
-#include "../freescale/imx8mn.dtsi"
+#include "fsimx8mn.dtsi"
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/rtc/nxp,pcf85263.h>
 #include <dt-bindings/usb/pd.h>
@@ -347,15 +347,18 @@
 #endif
 
 #ifdef CONFIG_PICOCOREMX8MN_SGTL5000_AUDIO
-	sound-sgtl5000 {
+	sound_sgtl5000: sound-sgtl5000 {
+		#sound-dai-cells = <0>;
 		compatible = "fsl,imx-audio-sgtl5000";
-		cpu-dai = <&sai5>;
-		audio-codec = <&sgtl5000>;
 		model = "imx-sgtl5000";
+		audio-cpu = <&sai5>;
+		audio-codec = <&sgtl5000>;
+		audio-asrc = <&easrc>;
 		audio-routing =
 			"LINE_IN", "Line In Jack",
-//###			"MIC_IN", "Mic Jack",
-//###			"Line Out Jack", "LINE_OUT",
+			"Mic Jack", "Mic Bias",
+			"MIC_IN", "Mic Jack",
+			"Line Out Jack", "LINE_OUT",
 			"Headphone Jack", "HP_OUT";
 	};
 #endif
@@ -419,6 +422,7 @@
 
 #ifdef CONFIG_PICOCOREMX8MN_SGTL5000_AUDIO
 	sgtl5000: sgtl5000@a {
+		#sound-dai-cells = <0>;
 		compatible = "fsl,sgtl5000";
 		/* MCLK is needed for i2c sgtl driver */
 		pinctrl-names = "default";
@@ -668,6 +672,11 @@
 	assigned-clock-parents = <&clk IMX8MN_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <24576000>;
 
+	status = "okay";
+};
+
+&easrc {
+	fsl,asrc-rate  = <48000>;
 	status = "okay";
 };
 #endif
@@ -1013,6 +1022,7 @@
 &gpmi {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
+	fsl,use-minimum-ecc;
 	status = "okay";
 };
 #endif
