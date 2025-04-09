@@ -605,8 +605,10 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc)
 	if (!desc->modes) {
 		pdesc = devm_kzalloc(dev, sizeof(*pdesc), GFP_KERNEL);
 		desc = panel_parse_dt_settings(dev, panel, pdesc);
-		if (!desc)
-			dev_warn(dev, "No display timings from dt\n");
+		if (!desc){
+			dev_err(dev, "No display timings from dt\n");
+			return -ENODEV;
+		}
 	}
 
 	panel->enabled = false;
@@ -4696,8 +4698,6 @@ static int panel_simple_platform_probe(struct platform_device *pdev)
 	const struct panel_desc *desc;
 
 	desc = of_device_get_match_data(&pdev->dev);
-	if (!desc)
-		return -ENODEV;
 
 	return panel_simple_probe(&pdev->dev, desc);
 }
