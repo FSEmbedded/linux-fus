@@ -701,7 +701,7 @@ pc_sai: &sai3	{};
 	assigned-clocks = <&clk IMX93_CLK_LPSPI6>;
 	assigned-clock-parents = <&clk IMX93_CLK_SYS_PLL_PFD0_DIV2>;
 	assigned-clock-rates = <100000000>;
-	cs-gpios = <&gpio2 1 GPIO_ACTIVE_LOW>;
+	cs-gpios = <&gpio2 0 GPIO_ACTIVE_LOW>;
 	status = "okay";
 
 	spidev@0 {
