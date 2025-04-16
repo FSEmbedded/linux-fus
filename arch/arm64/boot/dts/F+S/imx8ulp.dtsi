@@ -34,8 +34,8 @@
 		compatible = "fsl,imx7ulp-pwm";
 		reg = <0x29340000 0x1000>;
 		interrupts = <GIC_SPI 87 IRQ_TYPE_LEVEL_HIGH>;
-		clocks = <&pcc3 IMX8ULP_CLK_TPM4>;
-		assigned-clocks = <&pcc3 IMX8ULP_CLK_TPM4>;
+		clocks = <&pcc3 IMX8ULP_CLK_TPM5>;
+		assigned-clocks = <&pcc3 IMX8ULP_CLK_TPM5>;
 		assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SOSC_DIV2>;
 		assigned-clock-rates = <24000000>;
 		status = "disabled";
