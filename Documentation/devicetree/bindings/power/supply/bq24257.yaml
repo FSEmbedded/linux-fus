@@ -25,6 +25,9 @@ properties:
 
   interrupts:
     maxItems: 1
+  
+  vin-supply:
+    maxItems: 1
 
   ti,battery-regulation-voltage:
     $ref: /schemas/types.yaml#/definitions/uint32

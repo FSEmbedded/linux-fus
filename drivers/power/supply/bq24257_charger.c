@@ -82,6 +82,7 @@ struct bq24257_state {
 struct bq24257_device {
 	struct i2c_client *client;
 	struct device *dev;
+	struct regulator *vin_reg;
 	struct power_supply *charger;
 
 	enum bq2425x_chip chip;
@@ -967,6 +968,18 @@ static int bq24257_probe(struct i2c_client *client)
 	bq->client = client;
 	bq->dev = dev;
 
+	bq->vin_reg = devm_regulator_get(bq->dev, "vin");
+	if (IS_ERR(bq->vin_reg)) {
+		dev_err(bq->dev, "Failed to get vin regulator\n");
+		return PTR_ERR(bq->vin_reg);
+	}
+
+	ret = regulator_enable(bq->vin_reg);
+	if (ret) {
+		dev_err(bq->dev, "Failed to enable vin regulator\n");
+		return ret;
+	}
+
 	if (ACPI_HANDLE(dev)) {
 		acpi_id = acpi_match_device(dev->driver->acpi_match_table,
 					    &client->dev);
@@ -1083,6 +1096,8 @@ static void bq24257_remove(struct i2c_client *client)
 		cancel_delayed_work_sync(&bq->iilimit_setup_work);
 
 	bq24257_field_write(bq, F_RESET, 1); /* reset to defaults */
+
+	regulator_disable(bq->vin_reg);
 }
 
 #ifdef CONFIG_PM_SLEEP
