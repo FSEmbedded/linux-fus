@@ -18,6 +18,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
+#include <linux/workqueue.h>
 
 #include <linux/acpi.h>
 #include <linux/of.h>
@@ -34,6 +35,9 @@
 #define BQ24257_PG_GPIO			"pg"
 
 #define BQ24257_ILIM_SET_DELAY		1000	/* msec */
+
+/* Polling time in msecs */
+#define BQ24257_IRQ_POLL_TIME 100
 
 /*
  * When adding support for new devices make sure that enum bq2425x_chip and
@@ -84,6 +88,8 @@ struct bq24257_device {
 	struct device *dev;
 	struct regulator *vin_reg;
 	struct power_supply *charger;
+
+	struct delayed_work irqpoll;
 
 	enum bq2425x_chip chip;
 
@@ -674,6 +680,20 @@ static irqreturn_t bq24257_irq_handler_thread(int irq, void *private)
 	return IRQ_HANDLED;
 }
 
+static void bq24257_irqpoll(struct work_struct *work)
+{
+	struct delayed_work *irqpoll = to_delayed_work(work);
+	struct bq24257_device *bq = container_of(irqpoll, struct bq24257_device, irqpoll);
+
+	/* Call interrupt routine */
+	bq24257_irq_handler_thread(0, bq);
+
+	/* Schedule next work */
+	schedule_delayed_work(&bq->irqpoll, msecs_to_jiffies(BQ24257_IRQ_POLL_TIME));
+
+	return;
+}
+
 static int bq24257_hw_init(struct bq24257_device *bq)
 {
 	int ret;
@@ -1075,11 +1095,18 @@ static int bq24257_probe(struct i2c_client *client)
 		return ret;
 	}
 
-	ret = devm_request_threaded_irq(dev, client->irq, NULL,
+	if(client->irq){
+		ret = devm_request_threaded_irq(dev, client->irq, NULL,
 					bq24257_irq_handler_thread,
 					IRQF_TRIGGER_FALLING |
 					IRQF_TRIGGER_RISING | IRQF_ONESHOT,
 					bq2425x_chip_name[bq->chip], bq);
+	} else {
+		INIT_DELAYED_WORK(&bq->irqpoll, bq24257_irqpoll);
+		schedule_delayed_work(&bq->irqpoll, msecs_to_jiffies(BQ24257_IRQ_POLL_TIME));
+		ret = 0;
+	}
+
 	if (ret) {
 		dev_err(dev, "Failed to request IRQ #%d\n", client->irq);
 		return ret;
