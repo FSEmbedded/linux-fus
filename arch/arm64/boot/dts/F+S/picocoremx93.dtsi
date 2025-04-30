@@ -762,7 +762,7 @@ pc_sai: &sai3	{};
 	uart-has-rtscts;
 #endif /* CONFIG_PICOCOREMX93_UART_B_RTSCTS */
 #ifdef CONFIG_PICOCOREMX93_UART_B_BT
-	bluetooth {
+	bluetooth: bluetooth {
 		compatible = "nxp,88w8987-bt";
 		fw-init-baudrate = <115200>;
 	};
