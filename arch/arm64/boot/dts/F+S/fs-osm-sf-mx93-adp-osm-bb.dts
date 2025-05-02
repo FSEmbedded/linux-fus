@@ -12,7 +12,6 @@
 * GNU General Public License for more details.
 */
 
-
 /* When Undefined, IO of UARTC and UARTD will be configured as GPIO */
 // #define CONFIG_OSMSFMX93_UARTC
 // #define CONFIG_OSMSFMX93_UARTD
@@ -20,6 +19,8 @@
 /* Enable to use CM33 and RPMSG */
 // #define SUPPORT_M33
 // #define SUPPORT_RPMSG
+
+#define ADP_OSM_BB_REV 130
 
 #include "fs-osm-sf-mx93.dtsi"
 #include <dt-bindings/usb/pd.h>
@@ -109,16 +110,47 @@
 	phy-mode = "rgmii-id";
 	phy-handle = <&ethphy1>;
 	status = "okay";
+#if ADP_OSM_BB_REV == 130
 	mdio {
 		status = "okay";
 		ethphy1: rtl8211fdi@4 {
 			reg = <4>;
+			reset-gpios = <&pcal6416 0 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <10000>;
+			reset-deassert-us = <50000>;
+			interrupt-parent = <&pcal6416>;
+			interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
+			rtl821x,led-link = <2>; // LED2 for link indication
+			rtl821x,led-act = <1>; // LED1 for activity
 		};
 
 		ethphy2: rtl8211fdi@2 {
 			reg = <2>;
+			reset-gpios = <&pcal6416 1 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <10000>;
+			reset-deassert-us = <50000>;
+			interrupt-parent = <&pcal6416>;
+			interrupts = <3 IRQ_TYPE_EDGE_FALLING>;
+			rtl821x,led-link = <2>; // LED2 for link indication
+			rtl821x,led-act = <1>; // LED1 for activity
 		};
 	};
+#else
+	mdio {
+		status = "okay";
+		ethphy1: rtl8211fdi@4 {
+			reg = <4>;
+			rtl821x,led-link = <2>; // LED2 for link indication
+			rtl821x,led-act = <1>; // LED1 for activity
+		};
+
+		ethphy2: rtl8211fdi@2 {
+			reg = <2>;
+			rtl821x,led-link = <2>; // LED2 for link indication
+			rtl821x,led-act = <1>; // LED1 for activity
+		};
+	};
+#endif
 };
 
 &osm_eth_b {
@@ -183,7 +215,15 @@
 	ptn5110: tcpc@52 {
 		compatible = "nxp,ptn5110";
 		reg = <0x52>;
-
+#if ADP_OSM_BB_REV ==  130
+		/**
+		 * TODO:
+		 * IRQ_TRIGGER_TYPE_LOW is not supported by pcal6416.
+		 * Edgle Level Support for tcpci.c will come with v6.12
+		 */
+		// interrupt-parent = <&pcal6416>;
+		// interrupts = <4 IRQ_TYPE_EDGE_FALLING>;
+#endif
 		port {
 			typec_dr_sw: endpoint {
 				remote-endpoint = <&usb1_drd_sw>;
@@ -216,6 +256,25 @@
 		VDDD-supply = <&reg_sgtl5000_vddd>;
 		status = "okay";
 	};
+
+#if ADP_OSM_BB_REV == 130
+	pcal6416: pcal6416a@20 {
+		compatible = "nxp,pcal6416";
+		reg = <0x20>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		interrupt-parent = <&gpio3>;
+		interrupts = <OSM_GPIO_A_1_PIN IRQ_TYPE_EDGE_FALLING>;
+		interrupt-controller;
+		#interrupt-cells = <2>;
+		vcc-supply = <&reg_adp_osm_3v3>;
+		gpio-line-names = 
+		/* 0-4 */	"PHY_RST_A","PHY_RST_B","PHY_IRQ_A","PHY_IRQ_B","USB_TYPEC_ALERT",
+		/* 5-9 */	"MIPI_RESET","TOUCH_RESET","BL_ON","VLCD_ON","GPIO_J1_44",
+		/* 10-14 */	"GPIO_J1_46","","","","",
+		/* 15 */	"";
+	};
+#endif
 };
 
 &osm_i2c_cam {
