@@ -804,7 +804,7 @@ pc_bl_pwm: &tpm7 {};
 
 	pinctrl_tpm7: tpm7grp {
 		fsl,pins = <
-			MX8ULP_PAD_PTF29__TPM7_CH2	0x3
+			MX8ULP_PAD_PTF29__TPM7_CH2	0x2
 		>;
 	};
 
