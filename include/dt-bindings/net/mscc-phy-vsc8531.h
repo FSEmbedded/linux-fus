@@ -28,4 +28,18 @@
 #define VSC8531_FORCE_LED_OFF           14
 #define VSC8531_FORCE_LED_ON            15
 
+/* PHY LEDS BEHAVIOR */
+#define VSC8531_LED0_COMBINE_DISABLE    0x1
+#define VSC8531_LED1_COMBINE_DISABLE    0x2
+#define VSC8531_LED2_COMBINE_DISABLE    0x4
+#define VSC8531_LED3_COMBINE_DISABLE    0x8
+#define VSC8531_LED0_PULSE_SEL          0x20
+#define VSC8531_LED1_PULSE_SEL          0x40
+#define VSC8531_LED2_PULSE_SEL          0x80
+#define VSC8531_LED3_PULSE_SEL          0x100
+#define VSC8531_LED_BP_2_5Hz            0x000
+#define VSC8531_LED_BP_5Hz              0x400
+#define VSC8531_LED_BP_10Hz             0x800
+#define VSC8531_LED_BP_20Hz             0xc00
+#define VSC8531_LED_PULSE_EN            0x1000
 #endif

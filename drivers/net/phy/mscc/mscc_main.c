@@ -186,6 +186,19 @@ static int vsc85xx_led_cntl_set(struct phy_device *phydev,
 	return rc;
 }
 
+static int vsc85xx_led_behavior_set(struct phy_device *phydev, u32 behavior)
+{
+	u16 reg_val = (u16)behavior;
+	int rc;
+
+
+	mutex_lock(&phydev->lock);
+	rc = phy_write(phydev, MSCC_PHY_LED_BEHAVIOR, reg_val);
+	mutex_unlock(&phydev->lock);
+
+	return rc;
+}
+
 static int vsc85xx_mdix_get(struct phy_device *phydev, u8 *mdix)
 {
 	u16 reg_val;
@@ -432,9 +445,32 @@ static int vsc85xx_dt_led_mode_get(struct phy_device *phydev,
 	return led_mode;
 }
 
+static u32 vsc85xx_dt_led_behavior_get(struct phy_device *phydev, char *led)
+{
+	struct device *dev = &phydev->mdio.dev;
+	struct device_node *of_node = dev->of_node;
+	u32 led_behavior;
+	int err;
+
+	if (!of_node)
+		return -ENODEV;
+
+	err = of_property_read_u32(of_node, led, &led_behavior);
+	if (err < 0){
+		phydev_err(phydev, "DT %s invalid: %d\n", led, err);
+		return 0;
+	}
+
+	return led_behavior;
+}
+
 #else
 static int vsc85xx_edge_rate_magic_get(struct phy_device *phydev)
 {
+	return 0;
+}
+
+static int vsc85xx_dt_led_behavior_get(struct phy_device *phydev, char *led){
 	return 0;
 }
 
@@ -464,6 +500,8 @@ static int vsc85xx_dt_led_modes_get(struct phy_device *phydev,
 			return ret;
 		priv->leds_mode[i] = ret;
 	}
+
+	priv->leds_behavior = vsc85xx_dt_led_behavior_get(phydev, "vsc8531,leds-behavior");
 
 	return 0;
 }
@@ -2105,6 +2143,9 @@ static int vsc8514_config_init(struct phy_device *phydev)
 		if (ret)
 			return ret;
 	}
+
+	if(vsc8531->leds_behavior != 0)
+		ret = vsc85xx_led_behavior_set(phydev, vsc8531->leds_behavior);
 
 	return ret;
 

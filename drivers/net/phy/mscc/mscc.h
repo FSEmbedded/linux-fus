@@ -85,6 +85,8 @@ enum rgmii_clock_delay {
 #define LED_MODE_SEL_MASK(x)		  (GENMASK(3, 0) << LED_MODE_SEL_POS(x))
 #define LED_MODE_SEL(x, mode)		  (((mode) << LED_MODE_SEL_POS(x)) & LED_MODE_SEL_MASK(x))
 
+#define MSCC_PHY_LED_BEHAVIOR		  30
+
 #define MSCC_EXT_PAGE_CSR_CNTL_17	  17
 #define MSCC_EXT_PAGE_CSR_CNTL_18	  18
 
@@ -366,6 +368,7 @@ struct vsc8531_private {
 	int rate_magic;
 	u16 supp_led_modes;
 	u32 leds_mode[MAX_LEDS];
+	u32 leds_behavior;
 	u8 nleds;
 	const struct vsc85xx_hw_stat *hw_stats;
 	u64 *stats;
