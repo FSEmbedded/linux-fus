@@ -19,6 +19,8 @@
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/net/mscc-phy-vsc8531.h>
 
+#define VSC8531_LED_BEHAVIOR (VSC8531_LED2_COMBINE_DISABLE|VSC8531_LED_BP_5Hz)
+
 /delete-node/ &dpclk;
 /delete-node/ &hdptx0;
 /delete-node/ &malidp0;
@@ -393,28 +395,32 @@
 	qsgmii_phy0: ethernet-phy@10 {
 		/* Microsemi VSC8514XMK */
 		vsc8531,led-0-mode = <VSC8531_ACTIVITY>;
-		vsc8531,led-2-mode = <VSC8531_DUPLEX_COLLISION>;
+		vsc8531,led-2-mode = <VSC8531_LINK_ACTIVITY>;
+		vsc8531,leds-behavior = <VSC8531_LED_BEHAVIOR>;
 		reg = <0x10>;
 	};
 
 	qsgmii_phy1: ethernet-phy@11 {
 		/* Microsemi VSC8514XMK */
 		vsc8531,led-0-mode = <VSC8531_ACTIVITY>;
-		vsc8531,led-2-mode = <VSC8531_DUPLEX_COLLISION>;
+		vsc8531,led-2-mode = <VSC8531_LINK_ACTIVITY>;
+		vsc8531,leds-behavior = <VSC8531_LED_BEHAVIOR>;
 		reg = <0x11>;
 	};
 
 	qsgmii_phy2: ethernet-phy@12 {
 		/* Microsemi VSC8514XMK */
 		vsc8531,led-0-mode = <VSC8531_ACTIVITY>;
-		vsc8531,led-2-mode = <VSC8531_DUPLEX_COLLISION>;
+		vsc8531,led-2-mode = <VSC8531_LINK_ACTIVITY>;
+		vsc8531,leds-behavior = <VSC8531_LED_BEHAVIOR>;
 		reg = <0x12>;
 	};
 
 	qsgmii_phy3: ethernet-phy@13 {
 		/* Microsemi VSC8514XMK */
 		vsc8531,led-0-mode = <VSC8531_ACTIVITY>;
-		vsc8531,led-2-mode = <VSC8531_DUPLEX_COLLISION>;
+		vsc8531,led-2-mode = <VSC8531_LINK_ACTIVITY>;
+		vsc8531,leds-behavior = <VSC8531_LED_BEHAVIOR>;
 		reg = <0x13>;
 	};
 
