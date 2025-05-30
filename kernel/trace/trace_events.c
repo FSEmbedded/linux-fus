@@ -82,7 +82,7 @@ static int system_refcount_dec(struct event_subsystem *system)
 	}
 
 static struct ftrace_event_field *
-__find_event_field(struct list_head *head, char *name)
+__find_event_field(struct list_head *head, const char *name)
 {
 	struct ftrace_event_field *field;
 
@@ -114,7 +114,8 @@ trace_find_event_field(struct trace_event_call *call, char *name)
 
 static int __trace_define_field(struct list_head *head, const char *type,
 				const char *name, int offset, int size,
-				int is_signed, int filter_type, int len)
+				int is_signed, int filter_type, int len,
+				int need_test)
 {
 	struct ftrace_event_field *field;
 
@@ -133,6 +134,7 @@ static int __trace_define_field(struct list_head *head, const char *type,
 	field->offset = offset;
 	field->size = size;
 	field->is_signed = is_signed;
+	field->needs_test = need_test;
 	field->len = len;
 
 	list_add(&field->link, head);
@@ -151,13 +153,13 @@ int trace_define_field(struct trace_event_call *call, const char *type,
 
 	head = trace_get_fields(call);
 	return __trace_define_field(head, type, name, offset, size,
-				    is_signed, filter_type, 0);
+				    is_signed, filter_type, 0, 0);
 }
 EXPORT_SYMBOL_GPL(trace_define_field);
 
 static int trace_define_field_ext(struct trace_event_call *call, const char *type,
 		       const char *name, int offset, int size, int is_signed,
-		       int filter_type, int len)
+		       int filter_type, int len, int need_test)
 {
 	struct list_head *head;
 
@@ -166,13 +168,13 @@ static int trace_define_field_ext(struct trace_event_call *call, const char *typ
 
 	head = trace_get_fields(call);
 	return __trace_define_field(head, type, name, offset, size,
-				    is_signed, filter_type, len);
+				    is_signed, filter_type, len, need_test);
 }
 
 #define __generic_field(type, item, filter_type)			\
 	ret = __trace_define_field(&ftrace_generic_fields, #type,	\
 				   #item, 0, 0, is_signed_type(type),	\
-				   filter_type, 0);			\
+				   filter_type, 0, 0);			\
 	if (ret)							\
 		return ret;
 
@@ -181,7 +183,8 @@ static int trace_define_field_ext(struct trace_event_call *call, const char *typ
 				   "common_" #item,			\
 				   offsetof(typeof(ent), item),		\
 				   sizeof(ent.item),			\
-				   is_signed_type(type), FILTER_OTHER, 0);	\
+				   is_signed_type(type), FILTER_OTHER,	\
+				   0, 0);				\
 	if (ret)							\
 		return ret;
 
@@ -332,6 +335,7 @@ static bool process_pointer(const char *fmt, int len, struct trace_event_call *c
 /* Return true if the string is safe */
 static bool process_string(const char *fmt, int len, struct trace_event_call *call)
 {
+	struct trace_event_fields *field;
 	const char *r, *e, *s;
 
 	e = fmt + len;
@@ -361,6 +365,18 @@ static bool process_string(const char *fmt, int len, struct trace_event_call *ca
 	} while (s < e);
 
 	/*
+	 * Check for arrays. If the argument has: foo[REC->val]
+	 * then it is very likely that foo is an array of strings
+	 * that are safe to use.
+	 */
+	r = strstr(s, "[");
+	if (r && r < e) {
+		r = strstr(r, "REC->");
+		if (r && r < e)
+			return true;
+	}
+
+	/*
 	 * If there's any strings in the argument consider this arg OK as it
 	 * could be: REC->field ? "foo" : "bar" and we don't want to get into
 	 * verifying that logic here.
@@ -372,8 +388,16 @@ static bool process_string(const char *fmt, int len, struct trace_event_call *ca
 	if (process_pointer(fmt, len, call))
 		return true;
 
-	/* Make sure the field is found, and consider it OK for now if it is */
-	return find_event_field(fmt, call) != NULL;
+	/* Make sure the field is found */
+	field = find_event_field(fmt, call);
+	if (!field)
+		return false;
+
+	/* Test this field's string before printing the event */
+	call->flags |= TRACE_EVENT_FL_TEST_STR;
+	field->needs_test = 1;
+
+	return true;
 }
 
 /*
@@ -446,6 +470,7 @@ static void test_event_printk(struct trace_event_call *call)
 			case '%':
 				continue;
 			case 'p':
+ do_pointer:
 				/* Find dereferencing fields */
 				switch (fmt[i + 1]) {
 				case 'B': case 'R': case 'r':
@@ -474,6 +499,12 @@ static void test_event_printk(struct trace_event_call *call)
 						continue;
 					if (fmt[i + j] == '*') {
 						star = true;
+						/* Handle %*pbl case */
+						if (!j && fmt[i + 1] == 'p') {
+							arg++;
+							i++;
+							goto do_pointer;
+						}
 						continue;
 					}
 					if ((fmt[i + j] == 's')) {
@@ -766,7 +797,9 @@ static int __ftrace_event_enable_disable(struct trace_event_file *file,
 				clear_bit(EVENT_FILE_FL_RECORDED_TGID_BIT, &file->flags);
 			}
 
-			call->class->reg(call, TRACE_REG_UNREGISTER, file);
+			ret = call->class->reg(call, TRACE_REG_UNREGISTER, file);
+
+			WARN_ON_ONCE(ret);
 		}
 		/* If in SOFT_MODE, just set the SOFT_DISABLE_BIT, else clear it */
 		if (file->flags & EVENT_FILE_FL_SOFT_MODE)
@@ -2552,7 +2585,7 @@ event_define_fields(struct trace_event_call *call)
 			ret = trace_define_field_ext(call, field->type, field->name,
 						 offset, field->size,
 						 field->is_signed, field->filter_type,
-						 field->len);
+						 field->len, field->needs_test);
 			if (WARN_ON_ONCE(ret)) {
 				pr_err("error code is %d\n", ret);
 				break;
@@ -3032,6 +3065,41 @@ void trace_event_eval_update(struct trace_eval_map **map, int len)
 	up_write(&trace_event_sem);
 }
 
+static bool event_in_systems(struct trace_event_call *call,
+			     const char *systems)
+{
+	const char *system;
+	const char *p;
+
+	if (!systems)
+		return true;
+
+	system = call->class->system;
+	p = strstr(systems, system);
+	if (!p)
+		return false;
+
+	if (p != systems && !isspace(*(p - 1)) && *(p - 1) != ',')
+		return false;
+
+	p += strlen(system);
+	return !*p || isspace(*p) || *p == ',';
+}
+
+#ifdef CONFIG_HIST_TRIGGERS
+/*
+ * Wake up waiter on the hist_poll_wq from irq_work because the hist trigger
+ * may happen in any context.
+ */
+static void hist_poll_event_irq_work(struct irq_work *work)
+{
+	wake_up_all(&hist_poll_wq);
+}
+
+DEFINE_IRQ_WORK(hist_poll_work, hist_poll_event_irq_work);
+DECLARE_WAIT_QUEUE_HEAD(hist_poll_wq);
+#endif
+
 static struct trace_event_file *
 trace_create_new_event(struct trace_event_call *call,
 		       struct trace_array *tr)
@@ -3041,9 +3109,12 @@ trace_create_new_event(struct trace_event_call *call,
 	struct trace_event_file *file;
 	unsigned int first;
 
+	if (!event_in_systems(call, tr->system_names))
+		return NULL;
+
 	file = kmem_cache_alloc(file_cachep, GFP_TRACE);
 	if (!file)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
 	pid_list = rcu_dereference_protected(tr->filtered_pids,
 					     lockdep_is_held(&event_mutex));
@@ -3108,8 +3179,17 @@ __trace_add_new_event(struct trace_event_call *call, struct trace_array *tr)
 	struct trace_event_file *file;
 
 	file = trace_create_new_event(call, tr);
+	/*
+	 * trace_create_new_event() returns ERR_PTR(-ENOMEM) if failed
+	 * allocation, or NULL if the event is not part of the tr->system_names.
+	 * When the event is not part of the tr->system_names, return zero, not
+	 * an error.
+	 */
 	if (!file)
-		return -ENOMEM;
+		return 0;
+
+	if (IS_ERR(file))
+		return PTR_ERR(file);
 
 	if (eventdir_initialized)
 		return event_create_dir(tr->event_dir, file);
@@ -3148,8 +3228,17 @@ __trace_early_add_new_event(struct trace_event_call *call,
 	int ret;
 
 	file = trace_create_new_event(call, tr);
+	/*
+	 * trace_create_new_event() returns ERR_PTR(-ENOMEM) if failed
+	 * allocation, or NULL if the event is not part of the tr->system_names.
+	 * When the event is not part of the tr->system_names, return zero, not
+	 * an error.
+	 */
 	if (!file)
-		return -ENOMEM;
+		return 0;
+
+	if (IS_ERR(file))
+		return PTR_ERR(file);
 
 	ret = event_define_fields(call);
 	if (ret)
