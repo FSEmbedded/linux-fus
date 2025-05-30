@@ -381,7 +381,7 @@ static int enetc_map_tx_buffs(struct enetc_bdr *tx_ring, struct sk_buff *skb)
 
 		if (do_onestep_tstamp) {
 			__be32 new_sec_l, new_nsec;
-			u32 lo, hi, nsec, val;
+			u32 lo, hi, nsec;
 			__be16 new_sec_h;
 			u8 *data;
 			u64 sec;

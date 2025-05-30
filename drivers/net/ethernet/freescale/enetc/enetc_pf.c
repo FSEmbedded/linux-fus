@@ -867,7 +867,6 @@ err_alloc_si_res:
 err_alloc_netdev:
 err_setup_mac_addresses:
 	kfree(pf->vf_state);
-err_alloc_vf_state:
 	enetc_psi_destroy(pdev);
 err_psi_create:
 	return err;
