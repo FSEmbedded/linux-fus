@@ -714,6 +714,12 @@ osm_uart_b: &lpuart5 {
 	status = "disabled";
 };
 
+&lpm {
+	soc-supply = <&buck1>;
+	ld-mode-enabled;
+	status = "okay";
+};
+
 &iomuxc {
 	pinctrl_uart1: uart1grp {
 		fsl,pins = <
