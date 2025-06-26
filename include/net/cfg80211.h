@@ -4761,6 +4761,8 @@ struct cfg80211_ops {
 	int	(*set_hw_timestamp)(struct wiphy *wiphy, struct net_device *dev,
 				    struct cfg80211_set_hw_timestamp *hwts);
 	void	(*bangradar)(struct wiphy *wiphy, struct net_device *dev);
+	int	(*get_power_mgmt)(struct wiphy *wiphy, struct net_device *dev,
+				  bool *enabled, int timeout);
 };
 
 /*
