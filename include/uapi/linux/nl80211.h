@@ -1569,6 +1569,8 @@ enum nl80211_commands {
 
 	NL80211_CMD_LINKS_REMOVED,
 
+	NL80211_CMD_BANGRADAR,
+
 	/* add new commands above here */
 
 	/* used to define NL80211_CMD_MAX below */
