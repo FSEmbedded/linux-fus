@@ -9247,4 +9247,10 @@ bool cfg80211_valid_disable_subchannel_bitmap(u16 *bitmap,
  */
 void cfg80211_links_removed(struct net_device *dev, u16 link_mask);
 
+struct cfg80211_bss * __must_check
+cfg80211_channel_switch_update_channel(struct wiphy *wiphy,
+                                       struct cfg80211_inform_bss *data,
+                                       struct ieee80211_mgmt *mgmt, size_t len,
+                                       gfp_t gfp);
+
 #endif /* __NET_CFG80211_H */
