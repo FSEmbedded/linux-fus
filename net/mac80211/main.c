@@ -5,7 +5,7 @@
  * Copyright 2006-2007	Jiri Benc <jbenc@suse.cz>
  * Copyright 2013-2014  Intel Mobile Communications GmbH
  * Copyright (C) 2017     Intel Deutschland GmbH
- * Copyright (C) 2018-2022 Intel Corporation
+ * Copyright (C) 2018-2023 Intel Corporation
  */
 
 #include <net/mac80211.h>
@@ -22,6 +22,7 @@
 #include <linux/bitmap.h>
 #include <linux/inetdevice.h>
 #include <net/net_namespace.h>
+#include <net/dropreason.h>
 #include <net/cfg80211.h>
 #include <net/addrconf.h>
 
@@ -144,6 +145,8 @@ static u32 ieee80211_hw_conf_chan(struct ieee80211_local *local)
 	}
 
 	power = ieee80211_chandef_max_power(&chandef);
+	if (local->user_power_level != IEEE80211_UNSET_POWER_LEVEL)
+		power = min(local->user_power_level, power);
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(sdata, &local->interfaces, list) {
@@ -214,6 +217,8 @@ void ieee80211_bss_info_change_notify(struct ieee80211_sub_if_data *sdata,
 
 	might_sleep();
 
+	WARN_ON_ONCE(ieee80211_vif_is_mld(&sdata->vif));
+
 	if (!changed || sdata->vif.type == NL80211_IFTYPE_AP_VLAN)
 		return;
 
@@ -246,7 +251,6 @@ void ieee80211_bss_info_change_notify(struct ieee80211_sub_if_data *sdata,
 	if (changed & ~BSS_CHANGED_VIF_CFG_FLAGS) {
 		u64 ch = changed & ~BSS_CHANGED_VIF_CFG_FLAGS;
 
-		/* FIXME: should be for each link */
 		trace_drv_link_info_changed(local, sdata, &sdata->vif.bss_conf,
 					    changed);
 		if (local->ops->link_info_changed)
@@ -290,7 +294,7 @@ void ieee80211_link_info_change_notify(struct ieee80211_sub_if_data *sdata,
 	drv_link_info_changed(local, sdata, link->conf, link->link_id, changed);
 }
 
-u32 ieee80211_reset_erp_info(struct ieee80211_sub_if_data *sdata)
+u64 ieee80211_reset_erp_info(struct ieee80211_sub_if_data *sdata)
 {
 	sdata->vif.bss_conf.use_cts_prot = false;
 	sdata->vif.bss_conf.use_short_preamble = false;
@@ -300,9 +304,9 @@ u32 ieee80211_reset_erp_info(struct ieee80211_sub_if_data *sdata)
 	       BSS_CHANGED_ERP_SLOT;
 }
 
-static void ieee80211_tasklet_handler(struct tasklet_struct *t)
+/* context: requires softirqs disabled */
+void ieee80211_handle_queued_frames(struct ieee80211_local *local)
 {
-	struct ieee80211_local *local = from_tasklet(local, t, tasklet);
 	struct sk_buff *skb;
 
 	while ((skb = skb_dequeue(&local->skb_queue)) ||
@@ -327,6 +331,13 @@ static void ieee80211_tasklet_handler(struct tasklet_struct *t)
 	}
 }
 
+static void ieee80211_tasklet_handler(struct tasklet_struct *t)
+{
+	struct ieee80211_local *local = from_tasklet(local, t, tasklet);
+
+	ieee80211_handle_queued_frames(local);
+}
+
 static void ieee80211_restart_work(struct work_struct *work)
 {
 	struct ieee80211_local *local =
@@ -334,10 +345,7 @@ static void ieee80211_restart_work(struct work_struct *work)
 	struct ieee80211_sub_if_data *sdata;
 	int ret;
 
-	/* wait for scan work complete */
 	flush_workqueue(local->workqueue);
-	flush_work(&local->sched_scan_stopped_work);
-	flush_work(&local->radar_detected_work);
 
 	rtnl_lock();
 	/* we might do interface manipulations, so need both */
@@ -363,7 +371,8 @@ static void ieee80211_restart_work(struct work_struct *work)
 			 * The exception is ieee80211_chswitch_done.
 			 * Then we can have a race...
 			 */
-			cancel_work_sync(&sdata->u.mgd.csa_connection_drop_work);
+			wiphy_work_cancel(local->hw.wiphy,
+					  &sdata->u.mgd.csa_connection_drop_work);
 			if (sdata->vif.bss_conf.csa_active) {
 				sdata_lock(sdata);
 				ieee80211_sta_connection_lost(sdata,
@@ -377,8 +386,8 @@ static void ieee80211_restart_work(struct work_struct *work)
 	ieee80211_scan_cancel(local);
 
 	/* make sure any new ROC will consider local->in_reconfig */
-	flush_delayed_work(&local->roc_work);
-	flush_work(&local->hw_roc_done);
+	wiphy_delayed_work_flush(local->hw.wiphy, &local->roc_work);
+	wiphy_work_flush(local->hw.wiphy, &local->hw_roc_done);
 
 	/* wait for all packet processing to be done */
 	synchronize_net();
@@ -437,7 +446,7 @@ static int ieee80211_ifa_changed(struct notifier_block *nb,
 	if (!wdev)
 		return NOTIFY_DONE;
 
-	if (wdev->wiphy != local->hw.wiphy)
+	if (wdev->wiphy != local->hw.wiphy || !wdev->registered)
 		return NOTIFY_DONE;
 
 	sdata = IEEE80211_DEV_TO_SUB_IF(ndev);
@@ -452,6 +461,25 @@ static int ieee80211_ifa_changed(struct notifier_block *nb,
 		return NOTIFY_DONE;
 
 	ifmgd = &sdata->u.mgd;
+
+	/*
+	 * The nested here is needed to convince lockdep that this is
+	 * all OK. Yes, we lock the wiphy mutex here while we already
+	 * hold the notifier rwsem, that's the normal case. And yes,
+	 * we also acquire the notifier rwsem again when unregistering
+	 * a netdev while we already hold the wiphy mutex, so it does
+	 * look like a typical ABBA deadlock.
+	 *
+	 * However, both of these things happen with the RTNL held
+	 * already. Therefore, they can't actually happen, since the
+	 * lock orders really are ABC and ACB, which is fine due to
+	 * the RTNL (A).
+	 *
+	 * We still need to prevent recursion, which is accomplished
+	 * by the !wdev->registered check above.
+	 */
+	mutex_lock_nested(&local->hw.wiphy->mtx, 1);
+	__acquire(&local->hw.wiphy->mtx);
 	sdata_lock(sdata);
 
 	/* Copy the addresses to the vif config list */
@@ -470,6 +498,7 @@ static int ieee80211_ifa_changed(struct notifier_block *nb,
 		ieee80211_vif_cfg_change_notify(sdata, BSS_CHANGED_ARP_FILTER);
 
 	sdata_unlock(sdata);
+	wiphy_unlock(local->hw.wiphy);
 
 	return NOTIFY_OK;
 }
@@ -630,7 +659,7 @@ struct ieee80211_hw *ieee80211_alloc_hw_nm(size_t priv_data_len,
 
 	if (WARN_ON(!ops->tx || !ops->start || !ops->stop || !ops->config ||
 		    !ops->add_interface || !ops->remove_interface ||
-		    !ops->configure_filter))
+		    !ops->configure_filter || !ops->wake_tx_queue))
 		return NULL;
 
 	if (WARN_ON(ops->sta_state && (ops->sta_add || ops->sta_remove)))
@@ -719,9 +748,7 @@ struct ieee80211_hw *ieee80211_alloc_hw_nm(size_t priv_data_len,
 	if (!ops->set_key)
 		wiphy->flags |= WIPHY_FLAG_IBSS_RSN;
 
-	if (ops->wake_tx_queue)
-		wiphy_ext_feature_set(wiphy, NL80211_EXT_FEATURE_TXQS);
-
+	wiphy_ext_feature_set(wiphy, NL80211_EXT_FEATURE_TXQS);
 	wiphy_ext_feature_set(wiphy, NL80211_EXT_FEATURE_RRM);
 
 	wiphy->bss_priv_size = sizeof(struct ieee80211_bss);
@@ -804,15 +831,17 @@ struct ieee80211_hw *ieee80211_alloc_hw_nm(size_t priv_data_len,
 	local->aql_threshold = IEEE80211_AQL_THRESHOLD;
 	atomic_set(&local->aql_total_pending_airtime, 0);
 
+	spin_lock_init(&local->handle_wake_tx_queue_lock);
+
 	INIT_LIST_HEAD(&local->chanctx_list);
 	mutex_init(&local->chanctx_mtx);
 
-	INIT_DELAYED_WORK(&local->scan_work, ieee80211_scan_work);
+	wiphy_delayed_work_init(&local->scan_work, ieee80211_scan_work);
 
 	INIT_WORK(&local->restart_work, ieee80211_restart_work);
 
-	INIT_WORK(&local->radar_detected_work,
-		  ieee80211_dfs_radar_detected_work);
+	wiphy_work_init(&local->radar_detected_work,
+			ieee80211_dfs_radar_detected_work);
 
 	INIT_WORK(&local->reconfig_filter, ieee80211_reconfig_filter);
 	local->smps_mode = IEEE80211_SMPS_OFF;
@@ -823,8 +852,8 @@ struct ieee80211_hw *ieee80211_alloc_hw_nm(size_t priv_data_len,
 		  ieee80211_dynamic_ps_disable_work);
 	timer_setup(&local->dynamic_ps_timer, ieee80211_dynamic_ps_timer, 0);
 
-	INIT_WORK(&local->sched_scan_stopped_work,
-		  ieee80211_sched_scan_stopped_work);
+	wiphy_work_init(&local->sched_scan_stopped_work,
+			ieee80211_sched_scan_stopped_work);
 
 	spin_lock_init(&local->ack_status_lock);
 	idr_init(&local->ack_status_frames);
@@ -834,10 +863,7 @@ struct ieee80211_hw *ieee80211_alloc_hw_nm(size_t priv_data_len,
 		atomic_set(&local->agg_queue_stop[i], 0);
 	}
 	tasklet_setup(&local->tx_pending_tasklet, ieee80211_tx_pending);
-
-	if (ops->wake_tx_queue)
-		tasklet_setup(&local->wake_txqs_tasklet, ieee80211_wake_txqs);
-
+	tasklet_setup(&local->wake_txqs_tasklet, ieee80211_wake_txqs);
 	tasklet_setup(&local->tasklet, ieee80211_tasklet_handler);
 
 	skb_queue_head_init(&local->skb_queue);
@@ -1087,6 +1113,16 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 
 		channels += sband->n_channels;
 
+		/*
+		 * Due to the way the aggregation code handles this and it
+		 * being an HT capability, we can't really support delayed
+		 * BA in MLO (yet).
+		 */
+		if (WARN_ON(sband->ht_cap.ht_supported &&
+			    (sband->ht_cap.cap & IEEE80211_HT_CAP_DELAY_BA) &&
+			    hw->wiphy->flags & WIPHY_FLAG_SUPPORTS_MLO))
+			return -EINVAL;
+
 		if (max_bitrates < sband->n_bitrates)
 			max_bitrates = sband->n_bitrates;
 		supp_ht = supp_ht || sband->ht_cap.ht_supported;
@@ -1154,6 +1190,8 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 				      sizeof(void *) * channels, GFP_KERNEL);
 	if (!local->int_scan_req)
 		return -ENOMEM;
+
+	eth_broadcast_addr(local->int_scan_req->bssid);
 
 	for (band = 0; band < NUM_NL80211_BANDS; band++) {
 		if (!local->hw.wiphy->bands[band])
@@ -1471,13 +1509,15 @@ void ieee80211_unregister_hw(struct ieee80211_hw *hw)
 	 */
 	ieee80211_remove_interfaces(local);
 
+	wiphy_lock(local->hw.wiphy);
+	wiphy_delayed_work_cancel(local->hw.wiphy, &local->roc_work);
+	wiphy_work_cancel(local->hw.wiphy, &local->sched_scan_stopped_work);
+	wiphy_work_cancel(local->hw.wiphy, &local->radar_detected_work);
+	wiphy_unlock(local->hw.wiphy);
 	rtnl_unlock();
 
-	cancel_delayed_work_sync(&local->roc_work);
 	cancel_work_sync(&local->restart_work);
 	cancel_work_sync(&local->reconfig_filter);
-	flush_work(&local->sched_scan_stopped_work);
-	flush_work(&local->radar_detected_work);
 
 	ieee80211_clear_tx_pending(local);
 	rate_control_deinitialize(local);
@@ -1533,6 +1573,28 @@ void ieee80211_free_hw(struct ieee80211_hw *hw)
 }
 EXPORT_SYMBOL(ieee80211_free_hw);
 
+static const char * const drop_reasons_monitor[] = {
+#define V(x)	#x,
+	[0] = "RX_DROP_MONITOR",
+	MAC80211_DROP_REASONS_MONITOR(V)
+};
+
+static struct drop_reason_list drop_reason_list_monitor = {
+	.reasons = drop_reasons_monitor,
+	.n_reasons = ARRAY_SIZE(drop_reasons_monitor),
+};
+
+static const char * const drop_reasons_unusable[] = {
+	[0] = "RX_DROP_UNUSABLE",
+	MAC80211_DROP_REASONS_UNUSABLE(V)
+#undef V
+};
+
+static struct drop_reason_list drop_reason_list_unusable = {
+	.reasons = drop_reasons_unusable,
+	.n_reasons = ARRAY_SIZE(drop_reasons_unusable),
+};
+
 static int __init ieee80211_init(void)
 {
 	struct sk_buff *skb;
@@ -1550,6 +1612,11 @@ static int __init ieee80211_init(void)
 	if (ret)
 		goto err_netdev;
 
+	drop_reasons_register_subsys(SKB_DROP_REASON_SUBSYS_MAC80211_MONITOR,
+				     &drop_reason_list_monitor);
+	drop_reasons_register_subsys(SKB_DROP_REASON_SUBSYS_MAC80211_UNUSABLE,
+				     &drop_reason_list_unusable);
+
 	return 0;
  err_netdev:
 	rc80211_minstrel_exit();
@@ -1564,6 +1631,9 @@ static void __exit ieee80211_exit(void)
 	ieee80211s_stop();
 
 	ieee80211_iface_exit();
+
+	drop_reasons_unregister_subsys(SKB_DROP_REASON_SUBSYS_MAC80211_MONITOR);
+	drop_reasons_unregister_subsys(SKB_DROP_REASON_SUBSYS_MAC80211_UNUSABLE);
 
 	rcu_barrier();
 }

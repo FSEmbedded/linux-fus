@@ -8,7 +8,7 @@
 #include <dt-bindings/usb/pd.h>
 #include "imx93.dtsi"
 
-&ele_mu {
+&ele_fw2 {
 	memory-region = <&ele_reserved>;
 };
 
@@ -48,7 +48,7 @@
 			no-map;
 		};
 
-		vdev1vring0: vdev1vring0@a4000000 {
+		vdev1vring0: vdev1vring0@a4010000 {
 			reg = <0 0xa4010000 0 0x8000>;
 			no-map;
 		};
@@ -74,17 +74,6 @@
 			reg = <0 0xa4120000 0 0x100000>;
 			no-map;
 		};
-	};
-
-	cm33: imx93-cm33 {
-		compatible = "fsl,imx93-cm33";
-		mbox-names = "tx", "rx", "rxdb";
-		mboxes = <&mu1 0 1
-			  &mu1 1 1
-			  &mu1 3 1>;
-		memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
-				<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
-		fsl,startup-delay-ms = <500>;
 	};
 
 	ethosu {
@@ -219,6 +208,17 @@
 	status = "okay";
 };
 
+&cm33 {
+	mbox-names = "tx", "rx", "rxdb";
+	mboxes = <&mu1 0 1>,
+		 <&mu1 1 1>,
+		 <&mu1 3 1>;
+	memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
+			<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
+	fsl,startup-delay-ms = <500>;
+	status = "okay";
+};
+
 &eqos {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_eqos>;
@@ -235,7 +235,10 @@
 		ethphy1: ethernet-phy@1 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <1>;
-			eee-broken-1000t;
+			reset-gpios = <&pcal6524 15 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <10000>;
+			reset-deassert-us = <80000>;
+			realtek,clkout-disable;
 		};
 	};
 };
@@ -314,6 +317,11 @@
 	lsm6dsm@6a {
 		compatible = "st,lsm6dso";
 		reg = <0x6a>;
+	};
+
+	p3t1085: temp-sensor@48 {
+		compatible = "nxp,p3t1085";
+		reg = <0x48>;
 	};
 };
 
@@ -509,6 +517,7 @@
 	pinctrl-1 = <&pinctrl_usdhc2_100mhz>, <&pinctrl_usdhc2_gpio>;
 	pinctrl-2 = <&pinctrl_usdhc2_200mhz>, <&pinctrl_usdhc2_gpio>;
 	cd-gpios = <&gpio3 00 GPIO_ACTIVE_LOW>;
+	fsl,cd-gpio-wakeup-disable;
 	vmmc-supply = <&reg_usdhc2_vmmc>;
 	bus-width = <4>;
 	status = "okay";
@@ -528,7 +537,6 @@
 	keep-power-in-suspend;
 	non-removable;
 	wakeup-source;
-	fsl,sdio-async-interrupt-enabled;
 	status = "okay";
 
 	wifi_wake_host {
@@ -540,6 +548,10 @@
 	};
 };
 
+&wdog3 {
+	status = "okay";
+};
+
 &iomuxc {
 	pinctrl_eqos: eqosgrp {
 		fsl,pins = <
@@ -549,13 +561,13 @@
 			MX93_PAD_ENET1_RD1__ENET_QOS_RGMII_RD1			0x57e
 			MX93_PAD_ENET1_RD2__ENET_QOS_RGMII_RD2			0x57e
 			MX93_PAD_ENET1_RD3__ENET_QOS_RGMII_RD3			0x57e
-			MX93_PAD_ENET1_RXC__CCM_ENET_QOS_CLOCK_GENERATE_RX_CLK	0x5fe
+			MX93_PAD_ENET1_RXC__CCM_ENET_QOS_CLOCK_GENERATE_RX_CLK	0x58e
 			MX93_PAD_ENET1_RX_CTL__ENET_QOS_RGMII_RX_CTL		0x57e
 			MX93_PAD_ENET1_TD0__ENET_QOS_RGMII_TD0			0x57e
 			MX93_PAD_ENET1_TD1__ENET_QOS_RGMII_TD1			0x57e
 			MX93_PAD_ENET1_TD2__ENET_QOS_RGMII_TD2			0x57e
 			MX93_PAD_ENET1_TD3__ENET_QOS_RGMII_TD3			0x57e
-			MX93_PAD_ENET1_TXC__CCM_ENET_QOS_CLOCK_GENERATE_TX_CLK	0x5fe
+			MX93_PAD_ENET1_TXC__CCM_ENET_QOS_CLOCK_GENERATE_TX_CLK	0x58e
 			MX93_PAD_ENET1_TX_CTL__ENET_QOS_RGMII_TX_CTL		0x57e
 		>;
 	};

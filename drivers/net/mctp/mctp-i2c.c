@@ -547,6 +547,9 @@ static int mctp_i2c_header_create(struct sk_buff *skb, struct net_device *dev,
 	if (len > MCTP_I2C_MAXMTU)
 		return -EMSGSIZE;
 
+	if (!daddr || !saddr)
+		return -EINVAL;
+
 	lldst = *((u8 *)daddr);
 	llsrc = *((u8 *)saddr);
 
@@ -1058,7 +1061,7 @@ static struct i2c_driver mctp_i2c_driver = {
 		.name = "mctp-i2c-interface",
 		.of_match_table = mctp_i2c_of_match,
 	},
-	.probe_new = mctp_i2c_probe,
+	.probe = mctp_i2c_probe,
 	.remove = mctp_i2c_remove,
 	.id_table = mctp_i2c_id,
 };

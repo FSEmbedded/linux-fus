@@ -41,6 +41,8 @@
 #include <asm/desc.h>
 #include <asm/ldt.h>
 #include <asm/unwind.h>
+#include <asm/uprobes.h>
+#include <asm/ibt.h>
 
 #include "perf_event.h"
 
@@ -90,6 +92,8 @@ DEFINE_STATIC_CALL_NULL(x86_pmu_swap_task_ctx, *x86_pmu.swap_task_ctx);
 DEFINE_STATIC_CALL_NULL(x86_pmu_drain_pebs,   *x86_pmu.drain_pebs);
 DEFINE_STATIC_CALL_NULL(x86_pmu_pebs_aliases, *x86_pmu.pebs_aliases);
 
+DEFINE_STATIC_CALL_NULL(x86_pmu_filter, *x86_pmu.filter);
+
 /*
  * This one is magic, it will get called even when PMU init fails (because
  * there is no PMU), in which case it should simply return NULL.
@@ -127,13 +131,11 @@ u64 x86_perf_event_update(struct perf_event *event)
 	 * exchange a new raw count - then add that new-prev delta
 	 * count to the generic event atomically:
 	 */
-again:
 	prev_raw_count = local64_read(&hwc->prev_count);
-	rdpmcl(hwc->event_base_rdpmc, new_raw_count);
-
-	if (local64_cmpxchg(&hwc->prev_count, prev_raw_count,
-					new_raw_count) != prev_raw_count)
-		goto again;
+	do {
+		rdpmcl(hwc->event_base_rdpmc, new_raw_count);
+	} while (!local64_try_cmpxchg(&hwc->prev_count,
+				      &prev_raw_count, new_raw_count));
 
 	/*
 	 * Now we have the new raw value and have updated the prev
@@ -1644,6 +1646,7 @@ static void x86_pmu_del(struct perf_event *event, int flags)
 	while (++i < cpuc->n_events) {
 		cpuc->event_list[i-1] = cpuc->event_list[i];
 		cpuc->event_constraint[i-1] = cpuc->event_constraint[i];
+		cpuc->assign[i-1] = cpuc->assign[i];
 	}
 	cpuc->event_constraint[i-1] = NULL;
 	--cpuc->n_events;
@@ -1701,10 +1704,8 @@ int x86_pmu_handle_irq(struct pt_regs *regs)
 
 		perf_sample_data_init(&data, 0, event->hw.last_period);
 
-		if (has_branch_stack(event)) {
-			data.br_stack = &cpuc->lbr_stack;
-			data.sample_flags |= PERF_SAMPLE_BRANCH_STACK;
-		}
+		if (has_branch_stack(event))
+			perf_sample_save_brstack(&data, event, &cpuc->lbr_stack);
 
 		if (perf_event_overflow(event, &data, regs))
 			x86_pmu_stop(event, 0);
@@ -2031,6 +2032,7 @@ static void x86_pmu_static_call_update(void)
 	static_call_update(x86_pmu_pebs_aliases, x86_pmu.pebs_aliases);
 
 	static_call_update(x86_pmu_guest_get_msrs, x86_pmu.guest_get_msrs);
+	static_call_update(x86_pmu_filter, x86_pmu.filter);
 }
 
 static void _x86_pmu_read(struct perf_event *event)
@@ -2050,23 +2052,6 @@ void x86_pmu_show_pmu_cap(int num_counters, int num_counters_fixed,
 			hweight64((((1ULL << num_counters_fixed) - 1)
 					<< INTEL_PMC_IDX_FIXED) & intel_ctrl));
 	pr_info("... event mask:             %016Lx\n", intel_ctrl);
-}
-
-/*
- * The generic code is not hybrid friendly. The hybrid_pmu->pmu
- * of the first registered PMU is unconditionally assigned to
- * each possible cpuctx->ctx.pmu.
- * Update the correct hybrid PMU to the cpuctx->ctx.pmu.
- */
-void x86_pmu_update_cpu_context(struct pmu *pmu, int cpu)
-{
-	struct perf_cpu_context *cpuctx;
-
-	if (!pmu->pmu_cpu_context)
-		return;
-
-	cpuctx = per_cpu_ptr(pmu->pmu_cpu_context, cpu);
-	cpuctx->ctx.pmu = pmu;
 }
 
 static int __init init_hw_perf_events(void)
@@ -2175,12 +2160,8 @@ static int __init init_hw_perf_events(void)
 		if (err)
 			goto out2;
 	} else {
-		u8 cpu_type = get_this_hybrid_cpu_type();
 		struct x86_hybrid_pmu *hybrid_pmu;
 		int i, j;
-
-		if (!cpu_type && x86_pmu.get_hybrid_cpu_type)
-			cpu_type = x86_pmu.get_hybrid_cpu_type();
 
 		for (i = 0; i < x86_pmu.num_hybrid_pmus; i++) {
 			hybrid_pmu = &x86_pmu.hybrid_pmu[i];
@@ -2188,16 +2169,12 @@ static int __init init_hw_perf_events(void)
 			hybrid_pmu->pmu = pmu;
 			hybrid_pmu->pmu.type = -1;
 			hybrid_pmu->pmu.attr_update = x86_pmu.attr_update;
-			hybrid_pmu->pmu.capabilities |= PERF_PMU_CAP_HETEROGENEOUS_CPUS;
 			hybrid_pmu->pmu.capabilities |= PERF_PMU_CAP_EXTENDED_HW_TYPE;
 
 			err = perf_pmu_register(&hybrid_pmu->pmu, hybrid_pmu->name,
 						(hybrid_pmu->cpu_type == hybrid_big) ? PERF_TYPE_RAW : -1);
 			if (err)
 				break;
-
-			if (cpu_type == hybrid_pmu->cpu_type)
-				x86_pmu_update_cpu_context(&hybrid_pmu->pmu, raw_smp_processor_id());
 		}
 
 		if (i < x86_pmu.num_hybrid_pmus) {
@@ -2572,6 +2549,7 @@ static ssize_t set_attr_rdpmc(struct device *cdev,
 			      struct device_attribute *attr,
 			      const char *buf, size_t count)
 {
+	static DEFINE_MUTEX(rdpmc_mutex);
 	unsigned long val;
 	ssize_t ret;
 
@@ -2584,6 +2562,8 @@ static ssize_t set_attr_rdpmc(struct device *cdev,
 
 	if (x86_pmu.attr_rdpmc_broken)
 		return -ENOTSUPP;
+
+	guard(mutex)(&rdpmc_mutex);
 
 	if (val != x86_pmu.attr_rdpmc) {
 		/*
@@ -2646,15 +2626,15 @@ static const struct attribute_group *x86_pmu_attr_groups[] = {
 	NULL,
 };
 
-static void x86_pmu_sched_task(struct perf_event_context *ctx, bool sched_in)
+static void x86_pmu_sched_task(struct perf_event_pmu_context *pmu_ctx, bool sched_in)
 {
-	static_call_cond(x86_pmu_sched_task)(ctx, sched_in);
+	static_call_cond(x86_pmu_sched_task)(pmu_ctx, sched_in);
 }
 
-static void x86_pmu_swap_task_ctx(struct perf_event_context *prev,
-				  struct perf_event_context *next)
+static void x86_pmu_swap_task_ctx(struct perf_event_pmu_context *prev_epc,
+				  struct perf_event_pmu_context *next_epc)
 {
-	static_call_cond(x86_pmu_swap_task_ctx)(prev, next);
+	static_call_cond(x86_pmu_swap_task_ctx)(prev_epc, next_epc);
 }
 
 void perf_check_microcode(void)
@@ -2689,12 +2669,13 @@ static int x86_pmu_aux_output_match(struct perf_event *event)
 	return 0;
 }
 
-static int x86_pmu_filter_match(struct perf_event *event)
+static bool x86_pmu_filter(struct pmu *pmu, int cpu)
 {
-	if (x86_pmu.filter_match)
-		return x86_pmu.filter_match(event);
+	bool ret = false;
 
-	return 1;
+	static_call_cond(x86_pmu_filter)(pmu, cpu, &ret);
+
+	return ret;
 }
 
 static struct pmu pmu = {
@@ -2725,7 +2706,7 @@ static struct pmu pmu = {
 
 	.aux_output_match	= x86_pmu_aux_output_match,
 
-	.filter_match		= x86_pmu_filter_match,
+	.filter			= x86_pmu_filter,
 };
 
 void arch_perf_update_userpage(struct perf_event *event,
@@ -2837,6 +2818,46 @@ static unsigned long get_segment_base(unsigned int segment)
 	return get_desc_base(desc);
 }
 
+#ifdef CONFIG_UPROBES
+/*
+ * Heuristic-based check if uprobe is installed at the function entry.
+ *
+ * Under assumption of user code being compiled with frame pointers,
+ * `push %rbp/%ebp` is a good indicator that we indeed are.
+ *
+ * Similarly, `endbr64` (assuming 64-bit mode) is also a common pattern.
+ * If we get this wrong, captured stack trace might have one extra bogus
+ * entry, but the rest of stack trace will still be meaningful.
+ */
+static bool is_uprobe_at_func_entry(struct pt_regs *regs)
+{
+	struct arch_uprobe *auprobe;
+
+	if (!current->utask)
+		return false;
+
+	auprobe = current->utask->auprobe;
+	if (!auprobe)
+		return false;
+
+	/* push %rbp/%ebp */
+	if (auprobe->insn[0] == 0x55)
+		return true;
+
+	/* endbr64 (64-bit only) */
+	if (user_64bit_mode(regs) && is_endbr(*(u32 *)auprobe->insn))
+		return true;
+
+	return false;
+}
+
+#else
+static bool is_uprobe_at_func_entry(struct pt_regs *regs)
+{
+	return false;
+}
+#endif /* CONFIG_UPROBES */
+
 #ifdef CONFIG_IA32_EMULATION
 
 #include <linux/compat.h>
@@ -2848,6 +2869,7 @@ perf_callchain_user32(struct pt_regs *regs, struct perf_callchain_entry_ctx *ent
 	unsigned long ss_base, cs_base;
 	struct stack_frame_ia32 frame;
 	const struct stack_frame_ia32 __user *fp;
+	u32 ret_addr;
 
 	if (user_64bit_mode(regs))
 		return 0;
@@ -2857,6 +2879,12 @@ perf_callchain_user32(struct pt_regs *regs, struct perf_callchain_entry_ctx *ent
 
 	fp = compat_ptr(ss_base + regs->bp);
 	pagefault_disable();
+
+	/* see perf_callchain_user() below for why we do this */
+	if (is_uprobe_at_func_entry(regs) &&
+	    !get_user(ret_addr, (const u32 __user *)regs->sp))
+		perf_callchain_store(entry, ret_addr);
+
 	while (entry->nr < entry->max_stack) {
 		if (!valid_user_frame(fp, sizeof(frame)))
 			break;
@@ -2885,6 +2913,7 @@ perf_callchain_user(struct perf_callchain_entry_ctx *entry, struct pt_regs *regs
 {
 	struct stack_frame frame;
 	const struct stack_frame __user *fp;
+	unsigned long ret_addr;
 
 	if (perf_guest_state()) {
 		/* TODO: We don't support guest os callchain now */
@@ -2908,6 +2937,19 @@ perf_callchain_user(struct perf_callchain_entry_ctx *entry, struct pt_regs *regs
 		return;
 
 	pagefault_disable();
+
+	/*
+	 * If we are called from uprobe handler, and we are indeed at the very
+	 * entry to user function (which is normally a `push %rbp` instruction,
+	 * under assumption of application being compiled with frame pointers),
+	 * we should read return address from *regs->sp before proceeding
+	 * to follow frame pointers, otherwise we'll skip immediate caller
+	 * as %rbp is not yet setup.
+	 */
+	if (is_uprobe_at_func_entry(regs) &&
+	    !get_user(ret_addr, (const unsigned long __user *)regs->sp))
+		perf_callchain_store(entry, ret_addr);
+
 	while (entry->nr < entry->max_stack) {
 		if (!valid_user_frame(fp, sizeof(frame)))
 			break;

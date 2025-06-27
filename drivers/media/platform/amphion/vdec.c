@@ -195,7 +195,6 @@ static int vdec_op_s_ctrl(struct v4l2_ctrl *ctrl)
 	struct vdec_t *vdec = inst->priv;
 	int ret = 0;
 
-	vpu_inst_lock(inst);
 	switch (ctrl->id) {
 	case V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY_ENABLE:
 		vdec->params.display_delay_enable = ctrl->val;
@@ -207,7 +206,6 @@ static int vdec_op_s_ctrl(struct v4l2_ctrl *ctrl)
 		ret = -EINVAL;
 		break;
 	}
-	vpu_inst_unlock(inst);
 
 	return ret;
 }
@@ -742,6 +740,21 @@ static int vdec_frame_decoded(struct vpu_inst *inst, void *arg)
 		dev_info(inst->dev, "[%d] buf[%d] has been decoded\n", inst->id, info->id);
 	vpu_set_buffer_state(vbuf, VPU_BUF_STATE_DECODED);
 	vdec->decoded_frame_count++;
+	if (vdec->params.display_delay_enable) {
+		struct vpu_format *cur_fmt;
+
+		cur_fmt = vpu_get_format(inst, inst->cap_format.type);
+		vpu_set_buffer_state(vbuf, VPU_BUF_STATE_READY);
+		for (int i = 0; i < vbuf->vb2_buf.num_planes; i++)
+			vb2_set_plane_payload(&vbuf->vb2_buf,
+					      i, vpu_get_fmt_plane_size(cur_fmt, i));
+		vbuf->field = cur_fmt->field;
+		vbuf->sequence = vdec->sequence++;
+		dev_dbg(inst->dev, "[%d][OUTPUT TS]%32lld\n", inst->id, vbuf->vb2_buf.timestamp);
+
+		v4l2_m2m_buf_done(vbuf, VB2_BUF_STATE_DONE);
+		vdec->display_frame_count++;
+	}
 exit:
 	vpu_inst_unlock(inst);
 
@@ -769,14 +782,14 @@ static void vdec_buf_done(struct vpu_inst *inst, struct vpu_frame_info *frame)
 	struct vpu_format *cur_fmt;
 	struct vpu_vb2_buffer *vpu_buf;
 	struct vb2_v4l2_buffer *vbuf;
-	u32 sequence;
 	int i;
 
 	if (!frame)
 		return;
 
 	vpu_inst_lock(inst);
-	sequence = vdec->sequence++;
+	if (!vdec->params.display_delay_enable)
+		vdec->sequence++;
 	vpu_buf = vdec_find_buffer(inst, frame->luma);
 	vpu_inst_unlock(inst);
 	if (!vpu_buf) {
@@ -795,13 +808,17 @@ static void vdec_buf_done(struct vpu_inst *inst, struct vpu_frame_info *frame)
 		dev_err(inst->dev, "[%d] buffer id(%d, %d) dismatch\n",
 			inst->id, vbuf->vb2_buf.index, frame->id);
 
+	if (vpu_get_buffer_state(vbuf) == VPU_BUF_STATE_READY && vdec->params.display_delay_enable)
+		return;
+
 	if (vpu_get_buffer_state(vbuf) != VPU_BUF_STATE_DECODED)
 		dev_err(inst->dev, "[%d] buffer(%d) ready without decoded\n", inst->id, frame->id);
+
 	vpu_set_buffer_state(vbuf, VPU_BUF_STATE_READY);
 	for (i = 0; i < vbuf->vb2_buf.num_planes; i++)
 		vb2_set_plane_payload(&vbuf->vb2_buf, i, vpu_get_fmt_plane_size(cur_fmt, i));
 	vbuf->field = cur_fmt->field;
-	vbuf->sequence = sequence;
+	vbuf->sequence = vdec->sequence;
 	dev_dbg(inst->dev, "[%d][OUTPUT TS]%32lld\n", inst->id, vbuf->vb2_buf.timestamp);
 
 	v4l2_m2m_buf_done(vbuf, VB2_BUF_STATE_DONE);
@@ -1578,9 +1595,11 @@ static int vdec_stop_session(struct vpu_inst *inst, u32 type)
 	if (V4L2_TYPE_IS_OUTPUT(type)) {
 		vdec_update_state(inst, VPU_CODEC_STATE_SEEK, 0);
 		vdec->drain = 0;
+		vdec_abort(inst);
 	} else {
 		if (inst->state != VPU_CODEC_STATE_DYAMIC_RESOLUTION_CHANGE) {
-			vdec_abort(inst);
+			if (vb2_is_streaming(v4l2_m2m_get_src_vq(inst->fh.m2m_ctx)))
+				vdec_abort(inst);
 			vdec->eos_received = 0;
 		}
 		vdec_clear_slots(inst);

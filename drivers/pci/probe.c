@@ -8,7 +8,6 @@
 #include <linux/init.h>
 #include <linux/pci.h>
 #include <linux/msi.h>
-#include <linux/of_device.h>
 #include <linux/of_pci.h>
 #include <linux/pci_hotplug.h>
 #include <linux/slab.h>
@@ -533,7 +532,7 @@ void pci_read_bridge_bases(struct pci_bus *child)
 	pci_read_bridge_mmio_pref(child);
 
 	if (dev->transparent) {
-		pci_bus_for_each_resource(child->parent, res, i) {
+		pci_bus_for_each_resource(child->parent, res) {
 			if (res && res->flags) {
 				pci_bus_add_resource(child, res,
 						     PCI_SUBTRACTIVE_DECODE);
@@ -596,6 +595,7 @@ static void pci_init_host_bridge(struct pci_host_bridge *bridge)
 	bridge->native_ltr = 1;
 	bridge->native_dpc = 1;
 	bridge->domain_nr = PCI_DOMAIN_NR_NOT_SET;
+	bridge->native_cxl_error = 1;
 
 	device_initialize(&bridge->dev);
 }
@@ -819,7 +819,6 @@ static void pci_set_bus_speed(struct pci_bus *bus)
 
 		pcie_capability_read_dword(bridge, PCI_EXP_LNKCAP, &linkcap);
 		bus->max_bus_speed = pcie_link_speed[linkcap & PCI_EXP_LNKCAP_SLS];
-		bridge->link_active_reporting = !!(linkcap & PCI_EXP_LNKCAP_DLLLARC);
 
 		pcie_capability_read_word(bridge, PCI_EXP_LNKSTA, &linksta);
 		pcie_update_link_speed(bus, linksta);
@@ -842,7 +841,6 @@ static struct irq_domain *pci_host_bridge_msi_domain(struct pci_bus *bus)
 	if (!d)
 		d = pci_host_bridge_acpi_msi_domain(bus);
 
-#ifdef CONFIG_PCI_MSI_IRQ_DOMAIN
 	/*
 	 * If no IRQ domain was found via the OF tree, try looking it up
 	 * directly through the fwnode_handle.
@@ -854,7 +852,6 @@ static struct irq_domain *pci_host_bridge_msi_domain(struct pci_bus *bus)
 			d = irq_find_matching_fwnode(fwnode,
 						     DOMAIN_BUS_PCI_MSI);
 	}
-#endif
 
 	return d;
 }
@@ -906,6 +903,10 @@ static int pci_register_host_bridge(struct pci_host_bridge *bridge)
 		bus->domain_nr = pci_bus_find_domain_nr(bus, parent);
 	else
 		bus->domain_nr = bridge->domain_nr;
+	if (bus->domain_nr < 0) {
+		err = bus->domain_nr;
+		goto free;
+	}
 #endif
 
 	b = pci_find_bus(pci_domain_nr(bus), bridge->busnr);
@@ -1033,6 +1034,9 @@ unregister:
 	device_del(&bridge->dev);
 
 free:
+#ifdef CONFIG_PCI_DOMAINS_GENERIC
+	pci_bus_release_domain_nr(bus, parent);
+#endif
 	kfree(bus);
 	return err;
 }
@@ -1524,6 +1528,7 @@ void set_pcie_port_type(struct pci_dev *pdev)
 {
 	int pos;
 	u16 reg16;
+	u32 reg32;
 	int type;
 	struct pci_dev *parent;
 
@@ -1536,6 +1541,10 @@ void set_pcie_port_type(struct pci_dev *pdev)
 	pdev->pcie_flags_reg = reg16;
 	pci_read_config_dword(pdev, pos + PCI_EXP_DEVCAP, &pdev->devcap);
 	pdev->pcie_mpss = FIELD_GET(PCI_EXP_DEVCAP_PAYLOAD, pdev->devcap);
+
+	pcie_capability_read_dword(pdev, PCI_EXP_LNKCAP, &reg32);
+	if (reg32 & PCI_EXP_LNKCAP_DLLLARC)
+		pdev->link_active_reporting = 1;
 
 	parent = pci_upstream_bridge(pdev);
 	if (!parent)
@@ -1593,23 +1602,33 @@ static void set_pcie_thunderbolt(struct pci_dev *dev)
 
 static void set_pcie_untrusted(struct pci_dev *dev)
 {
-	struct pci_dev *parent;
+	struct pci_dev *parent = pci_upstream_bridge(dev);
 
+	if (!parent)
+		return;
 	/*
-	 * If the upstream bridge is untrusted we treat this device
+	 * If the upstream bridge is untrusted we treat this device as
 	 * untrusted as well.
 	 */
-	parent = pci_upstream_bridge(dev);
-	if (parent && (parent->untrusted || parent->external_facing))
+	if (parent->untrusted) {
 		dev->untrusted = true;
+		return;
+	}
+
+	if (arch_pci_dev_is_removable(dev)) {
+		pci_dbg(dev, "marking as untrusted\n");
+		dev->untrusted = true;
+	}
 }
 
 static void pci_set_removable(struct pci_dev *dev)
 {
 	struct pci_dev *parent = pci_upstream_bridge(dev);
 
+	if (!parent)
+		return;
 	/*
-	 * We (only) consider everything downstream from an external_facing
+	 * We (only) consider everything tunneled below an external_facing
 	 * device to be removable by the user. We're mainly concerned with
 	 * consumer platforms with user accessible thunderbolt ports that are
 	 * vulnerable to DMA attacks, and we expect those ports to be marked by
@@ -1619,9 +1638,15 @@ static void pci_set_removable(struct pci_dev *dev)
 	 * accessible to user / may not be removed by end user, and thus not
 	 * exposed as "removable" to userspace.
 	 */
-	if (parent &&
-	    (parent->external_facing || dev_is_removable(&parent->dev)))
+	if (dev_is_removable(&parent->dev)) {
 		dev_set_removable(&dev->dev, DEVICE_REMOVABLE);
+		return;
+	}
+
+	if (arch_pci_dev_is_removable(dev)) {
+		pci_dbg(dev, "marking as removable\n");
+		dev_set_removable(&dev->dev, DEVICE_REMOVABLE);
+	}
 }
 
 /**
@@ -1643,15 +1668,15 @@ static void pci_set_removable(struct pci_dev *dev)
 static bool pci_ext_cfg_is_aliased(struct pci_dev *dev)
 {
 #ifdef CONFIG_PCI_QUIRKS
-	int pos;
+	int pos, ret;
 	u32 header, tmp;
 
 	pci_read_config_dword(dev, PCI_VENDOR_ID, &header);
 
 	for (pos = PCI_CFG_SPACE_SIZE;
 	     pos < PCI_CFG_SPACE_EXP_SIZE; pos += PCI_CFG_SPACE_SIZE) {
-		if (pci_read_config_dword(dev, pos, &tmp) != PCIBIOS_SUCCESSFUL
-		    || header != tmp)
+		ret = pci_read_config_dword(dev, pos, &tmp);
+		if ((ret != PCIBIOS_SUCCESSFUL) || (header != tmp))
 			return false;
 	}
 
@@ -1823,7 +1848,7 @@ int pci_setup_device(struct pci_dev *dev)
 	u32 class;
 	u16 cmd;
 	u8 hdr_type;
-	int pos = 0;
+	int err, pos = 0;
 	struct pci_bus_region region;
 	struct resource *res;
 
@@ -1837,7 +1862,9 @@ int pci_setup_device(struct pci_dev *dev)
 	dev->error_state = pci_channel_io_normal;
 	set_pcie_port_type(dev);
 
-	pci_set_of_node(dev);
+	err = pci_set_of_node(dev);
+	if (err)
+		return err;
 	pci_set_acpi_fwnode(dev);
 
 	pci_dev_assign_slot(dev);
@@ -2126,7 +2153,7 @@ static void pci_configure_relaxed_ordering(struct pci_dev *dev)
 {
 	struct pci_dev *root;
 
-	/* PCI_EXP_DEVICE_RELAX_EN is RsvdP in VFs */
+	/* PCI_EXP_DEVCTL_RELAX_EN is RsvdP in VFs */
 	if (dev->is_virtfn)
 		return;
 
@@ -2475,6 +2502,7 @@ static void pci_init_capabilities(struct pci_dev *dev)
 	pci_aer_init(dev);		/* Advanced Error Reporting */
 	pci_dpc_init(dev);		/* Downstream Port Containment */
 	pci_rcec_init(dev);		/* Root Complex Event Collector */
+	pci_doe_init(dev);		/* Data Object Exchange */
 
 	pcie_report_downtraining(dev);
 	pci_init_reset_methods(dev);
@@ -2540,6 +2568,8 @@ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 
 	dma_set_max_seg_size(&dev->dev, 65536);
 	dma_set_seg_boundary(&dev->dev, 0xffffffff);
+
+	pcie_failed_link_retrain(dev);
 
 	/* Fix up broken headers */
 	pci_fixup_device(pci_fixup_header, dev);
@@ -3066,20 +3096,18 @@ int pci_host_probe(struct pci_host_bridge *bridge)
 
 	bus = bridge->bus;
 
-	/*
-	 * We insert PCI resources into the iomem_resource and
-	 * ioport_resource trees in either pci_bus_claim_resources()
-	 * or pci_bus_assign_resources().
-	 */
-	if (pci_has_flag(PCI_PROBE_ONLY)) {
+	/* If we must preserve the resource configuration, claim now */
+	if (bridge->preserve_config)
 		pci_bus_claim_resources(bus);
-	} else {
-		pci_bus_size_bridges(bus);
-		pci_bus_assign_resources(bus);
 
-		list_for_each_entry(child, &bus->children, node)
-			pcie_bus_configure_settings(child);
-	}
+	/*
+	 * Assign whatever was left unassigned. If we didn't claim above,
+	 * this will reassign everything.
+	 */
+	pci_assign_unassigned_root_bus_resources(bus);
+
+	list_for_each_entry(child, &bus->children, node)
+		pcie_bus_configure_settings(child);
 
 	pci_bus_add_devices(bus);
 	return 0;

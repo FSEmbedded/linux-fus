@@ -21,6 +21,7 @@ config OPENRISC
 	select GENERIC_IRQ_PROBE
 	select GENERIC_IRQ_SHOW
 	select GENERIC_PCI_IOMAP
+	select GENERIC_IOREMAP
 	select GENERIC_CPU_DEVICES
 	select HAVE_PCI
 	select HAVE_UID16
@@ -62,6 +63,9 @@ config STACKTRACE_SUPPORT
 
 config LOCKDEP_SUPPORT
 	def_bool  y
+
+config FIX_EARLYCON_MEM
+	def_bool y
 
 menu "Processor type and features"
 

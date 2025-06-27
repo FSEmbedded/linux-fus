@@ -454,8 +454,7 @@ static __init void armada_xp_ipi_init(struct device_node *node)
 		return;
 
 	irq_domain_update_bus_token(ipi_domain, DOMAIN_BUS_IPI);
-	base_ipi = __irq_domain_alloc_irqs(ipi_domain, -1, IPI_DOORBELL_END,
-					   NUMA_NO_NODE, NULL, false, NULL);
+	base_ipi = irq_domain_alloc_irqs(ipi_domain, IPI_DOORBELL_END, NUMA_NO_NODE, NULL);
 	if (WARN_ON(!base_ipi))
 		return;
 
@@ -567,6 +566,10 @@ static struct irq_chip armada_370_xp_irq_chip = {
 static int armada_370_xp_mpic_irq_map(struct irq_domain *h,
 				      unsigned int virq, irq_hw_number_t hw)
 {
+	/* IRQs 0 and 1 cannot be mapped, they are handled internally */
+	if (hw <= 1)
+		return -EINVAL;
+
 	armada_370_xp_irq_mask(irq_get_irq_data(virq));
 	if (!is_percpu_irq(hw))
 		writel(hw, per_cpu_int_base +

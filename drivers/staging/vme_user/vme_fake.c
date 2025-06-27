@@ -329,7 +329,6 @@ err_aspace:
 err_dwidth:
 err_window:
 	return retval;
-
 }
 
 /*
@@ -356,7 +355,6 @@ static int __fake_master_get(struct vme_master_resource *image, int *enabled,
 	return 0;
 }
 
-
 static int fake_master_get(struct vme_master_resource *image, int *enabled,
 		unsigned long long *vme_base, unsigned long long *size,
 		u32 *aspace, u32 *cycle, u32 *dwidth)
@@ -372,7 +370,6 @@ static int fake_master_get(struct vme_master_resource *image, int *enabled,
 
 	return retval;
 }
-
 
 static void fake_lm_check(struct fake_driver *bridge, unsigned long long addr,
 			  u32 aspace, u32 cycle)
@@ -640,7 +637,6 @@ static noinline_for_stack void fake_vmewrite8(struct fake_driver *bridge,
 	}
 
 	fake_lm_check(bridge, addr, aspace, cycle);
-
 }
 
 static noinline_for_stack void fake_vmewrite16(struct fake_driver *bridge,
@@ -671,7 +667,6 @@ static noinline_for_stack void fake_vmewrite16(struct fake_driver *bridge,
 	}
 
 	fake_lm_check(bridge, addr, aspace, cycle);
-
 }
 
 static noinline_for_stack void fake_vmewrite32(struct fake_driver *bridge,
@@ -702,7 +697,6 @@ static noinline_for_stack void fake_vmewrite32(struct fake_driver *bridge,
 	}
 
 	fake_lm_check(bridge, addr, aspace, cycle);
-
 }
 
 static ssize_t fake_master_write(struct vme_master_resource *image, void *buf,
@@ -1060,7 +1054,6 @@ static void fake_crcsr_exit(struct vme_bridge *fake_bridge)
 	kfree(bridge->crcsr_kernel);
 }
 
-
 static int __init fake_init(void)
 {
 	int retval, i;
@@ -1071,8 +1064,14 @@ static int __init fake_init(void)
 	struct vme_slave_resource *slave_image;
 	struct vme_lm_resource *lm;
 
+	if (geoid < 0 || geoid >= VME_MAX_SLOTS) {
+		pr_err("VME geographical address must be between 0 and %d (exclusive), but got %d\n",
+			VME_MAX_SLOTS, geoid);
+		return -EINVAL;
+	}
+
 	/* We need a fake parent device */
-	vme_root = __root_device_register("vme", THIS_MODULE);
+	vme_root = root_device_register("vme");
 	if (IS_ERR(vme_root))
 		return PTR_ERR(vme_root);
 
@@ -1237,9 +1236,7 @@ err_driver:
 	kfree(fake_bridge);
 err_struct:
 	return retval;
-
 }
-
 
 static void __exit fake_exit(void)
 {
@@ -1295,7 +1292,6 @@ static void __exit fake_exit(void)
 
 	root_device_unregister(vme_root);
 }
-
 
 MODULE_PARM_DESC(geoid, "Set geographical addressing");
 module_param(geoid, int, 0);

@@ -12,6 +12,7 @@
 #include <linux/swap.h>
 #include <linux/ctype.h>
 #include <linux/sched.h>
+#include <linux/iversion.h>
 #include <linux/task_io_accounting_ops.h>
 #include "internal.h"
 #include "afs_fs.h"
@@ -28,17 +29,17 @@ static bool afs_lookup_one_filldir(struct dir_context *ctx, const char *name, in
 				  loff_t fpos, u64 ino, unsigned dtype);
 static bool afs_lookup_filldir(struct dir_context *ctx, const char *name, int nlen,
 			      loff_t fpos, u64 ino, unsigned dtype);
-static int afs_create(struct user_namespace *mnt_userns, struct inode *dir,
+static int afs_create(struct mnt_idmap *idmap, struct inode *dir,
 		      struct dentry *dentry, umode_t mode, bool excl);
-static int afs_mkdir(struct user_namespace *mnt_userns, struct inode *dir,
+static int afs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 		     struct dentry *dentry, umode_t mode);
 static int afs_rmdir(struct inode *dir, struct dentry *dentry);
 static int afs_unlink(struct inode *dir, struct dentry *dentry);
 static int afs_link(struct dentry *from, struct inode *dir,
 		    struct dentry *dentry);
-static int afs_symlink(struct user_namespace *mnt_userns, struct inode *dir,
+static int afs_symlink(struct mnt_idmap *idmap, struct inode *dir,
 		       struct dentry *dentry, const char *content);
-static int afs_rename(struct user_namespace *mnt_userns, struct inode *old_dir,
+static int afs_rename(struct mnt_idmap *idmap, struct inode *old_dir,
 		      struct dentry *old_dentry, struct inode *new_dir,
 		      struct dentry *new_dentry, unsigned int flags);
 static bool afs_dir_release_folio(struct folio *folio, gfp_t gfp_flags);
@@ -77,6 +78,7 @@ const struct address_space_operations afs_dir_aops = {
 	.dirty_folio	= afs_dir_dirty_folio,
 	.release_folio	= afs_dir_release_folio,
 	.invalidate_folio = afs_dir_invalidate_folio,
+	.migrate_folio	= filemap_migrate_folio,
 };
 
 const struct dentry_operations afs_fs_dentry_operations = {
@@ -321,16 +323,16 @@ expand:
 		struct folio *folio;
 
 		folio = filemap_get_folio(mapping, i);
-		if (!folio) {
+		if (IS_ERR(folio)) {
 			if (test_and_clear_bit(AFS_VNODE_DIR_VALID, &dvnode->flags))
 				afs_stat_v(dvnode, n_inval);
-
-			ret = -ENOMEM;
 			folio = __filemap_get_folio(mapping,
 						    i, FGP_LOCK | FGP_CREAT,
 						    mapping->gfp_mask);
-			if (!folio)
+			if (IS_ERR(folio)) {
+				ret = PTR_ERR(folio);
 				goto error;
+			}
 			folio_attach_private(folio, (void *)1);
 			folio_unlock(folio);
 		}
@@ -527,7 +529,7 @@ static int afs_dir_iterate(struct inode *dir, struct dir_context *ctx,
 		 */
 		folio = __filemap_get_folio(dir->i_mapping, ctx->pos / PAGE_SIZE,
 					    FGP_ACCESSED, 0);
-		if (!folio) {
+		if (IS_ERR(folio)) {
 			ret = afs_bad(dvnode, afs_file_error_dir_missing_page);
 			break;
 		}
@@ -1335,7 +1337,7 @@ static const struct afs_operation_ops afs_mkdir_operation = {
 /*
  * create a directory on an AFS filesystem
  */
-static int afs_mkdir(struct user_namespace *mnt_userns, struct inode *dir,
+static int afs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 		     struct dentry *dentry, umode_t mode)
 {
 	struct afs_operation *op;
@@ -1634,7 +1636,7 @@ static const struct afs_operation_ops afs_create_operation = {
 /*
  * create a regular file on an AFS filesystem
  */
-static int afs_create(struct user_namespace *mnt_userns, struct inode *dir,
+static int afs_create(struct mnt_idmap *idmap, struct inode *dir,
 		      struct dentry *dentry, umode_t mode, bool excl)
 {
 	struct afs_operation *op;
@@ -1765,7 +1767,7 @@ static const struct afs_operation_ops afs_symlink_operation = {
 /*
  * create a symlink in an AFS filesystem
  */
-static int afs_symlink(struct user_namespace *mnt_userns, struct inode *dir,
+static int afs_symlink(struct mnt_idmap *idmap, struct inode *dir,
 		       struct dentry *dentry, const char *content)
 {
 	struct afs_operation *op;
@@ -1808,6 +1810,8 @@ error:
 
 static void afs_rename_success(struct afs_operation *op)
 {
+	struct afs_vnode *vnode = AFS_FS_I(d_inode(op->dentry));
+
 	_enter("op=%08x", op->debug_id);
 
 	op->ctime = op->file[0].scb.status.mtime_client;
@@ -1816,6 +1820,22 @@ static void afs_rename_success(struct afs_operation *op)
 	if (op->file[1].vnode != op->file[0].vnode) {
 		op->ctime = op->file[1].scb.status.mtime_client;
 		afs_vnode_commit_status(op, &op->file[1]);
+	}
+
+	/* If we're moving a subdir between dirs, we need to update
+	 * its DV counter too as the ".." will be altered.
+	 */
+	if (S_ISDIR(vnode->netfs.inode.i_mode) &&
+	    op->file[0].vnode != op->file[1].vnode) {
+		u64 new_dv;
+
+		write_seqlock(&vnode->cb_lock);
+
+		new_dv = vnode->status.data_version + 1;
+		vnode->status.data_version = new_dv;
+		inode_set_iversion_raw(&vnode->netfs.inode, new_dv);
+
+		write_sequnlock(&vnode->cb_lock);
 	}
 }
 
@@ -1857,6 +1877,12 @@ static void afs_rename_edit_dir(struct afs_operation *op)
 		afs_edit_dir_add(new_dvnode, &new_dentry->d_name,
 				 &vnode->fid, afs_edit_dir_for_rename_2);
 	}
+
+	if (S_ISDIR(vnode->netfs.inode.i_mode) &&
+	    new_dvnode != orig_dvnode &&
+	    test_bit(AFS_VNODE_DIR_VALID, &vnode->flags))
+		afs_edit_dir_update_dotdot(vnode, new_dvnode,
+					   afs_edit_dir_for_rename_sub);
 
 	new_inode = d_inode(new_dentry);
 	if (new_inode) {
@@ -1903,7 +1929,7 @@ static const struct afs_operation_ops afs_rename_operation = {
 /*
  * rename a file in an AFS filesystem and/or move it between directories
  */
-static int afs_rename(struct user_namespace *mnt_userns, struct inode *old_dir,
+static int afs_rename(struct mnt_idmap *idmap, struct inode *old_dir,
 		      struct dentry *old_dentry, struct inode *new_dir,
 		      struct dentry *new_dentry, unsigned int flags)
 {

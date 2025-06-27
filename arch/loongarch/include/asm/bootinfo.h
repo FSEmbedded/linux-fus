@@ -13,7 +13,6 @@ const char *get_system_type(void);
 extern void init_environ(void);
 extern void memblock_init(void);
 extern void platform_init(void);
-extern void plat_swiotlb_setup(void);
 extern int __init init_numa_memory(void);
 
 struct loongson_board_info {
@@ -25,6 +24,10 @@ struct loongson_board_info {
 	const char *board_vendor;
 };
 
+/*
+ * The "core" of cores_per_node and cores_per_package stands for a
+ * logical core, which means in a SMT system it stands for a thread.
+ */
 struct loongson_system_configuration {
 	int nr_cpus;
 	int nr_nodes;
@@ -32,6 +35,7 @@ struct loongson_system_configuration {
 	int cores_per_node;
 	int cores_per_package;
 	unsigned long cores_io_master;
+	unsigned long suspend_addr;
 	const char *cpuname;
 };
 

@@ -8,6 +8,8 @@
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
 #include <linux/workqueue.h>
+#include <linux/fsl/guts.h>
+#include <linux/phy/phy-fsl-lynx.h>
 
 #include "phy-fsl-lynx-xgkr-algorithm.h"
 
@@ -87,6 +89,10 @@
 #define PLLnCR0_FRATE_4G		0x70000
 #define PLLnCR0_FRATE_3_125G		0x90000
 #define PLLnCR0_FRATE_3G		0xa0000
+
+#define PLLnCR0_DLYDIV_SEL(x)		((x) & GENMASK(1, 0))
+#define  DLYDIV_SEL_MSK			PLLnCR0_DLYDIV_SEL(3)
+#define  DLYDIV_SEL_312_5_MHZ		PLLnCR0_DLYDIV_SEL(1)
 
 /* Per SerDes lane registers */
 
@@ -270,19 +276,6 @@ struct lynx_pccr {
 	int offset;
 	int width;
 	int shift;
-};
-
-enum lynx_lane_mode {
-	LANE_MODE_UNKNOWN,
-	LANE_MODE_1000BASEX_SGMII,
-	LANE_MODE_1000BASEKX,
-	LANE_MODE_2500BASEX,
-	LANE_MODE_QSGMII,
-	LANE_MODE_10G_QXGMII,
-	LANE_MODE_USXGMII,
-	LANE_MODE_10GBASER,
-	LANE_MODE_10GBASEKR,
-	LANE_MODE_MAX,
 };
 
 static const struct lynx_10g_proto_conf lynx_10g_proto_conf[LANE_MODE_MAX] = {
@@ -494,7 +487,13 @@ struct lynx_10g_pll {
 	struct lynx_10g_priv *priv;
 	u32 cr0;
 	int id;
+	int ex_dly_clk_use_count;
 	DECLARE_BITMAP(supported, LANE_MODE_MAX);
+	/*
+	 * There are fewer PLLs than lanes. This serializes calls to
+	 * lynx_10g_pll_get_ex_dly_clk() and lynx_10g_pll_put_ex_dly_clk().
+	 */
+	spinlock_t lock;
 };
 
 struct lynx_10g_lane {
@@ -504,7 +503,6 @@ struct lynx_10g_lane {
 	bool init;
 	unsigned id;
 	enum lynx_lane_mode mode;
-	enum lynx_lane_mode supported_backplane_mode;
 	struct lynx_xgkr_algorithm *algorithm;
 	u32 default_pccr[LANE_MODE_MAX];
 };
@@ -516,6 +514,7 @@ struct lynx_info {
 	bool (*lane_supports_mode)(int lane, enum lynx_lane_mode mode);
 	int num_lanes;
 	bool has_hardcoded_usxgmii;
+	int index;
 };
 
 struct lynx_10g_priv {
@@ -590,6 +589,9 @@ static void lynx_10g_rmw(struct lynx_10g_priv *priv, unsigned long off,
 
 #define lynx_10g_pll_read(pll, reg)			\
 	lynx_10g_read32((pll)->priv, reg((pll)->id))
+
+#define lynx_10g_pll_write(pll, reg, val)		\
+	lynx_10g_write32((pll)->priv, reg((pll)->id), val)
 
 static int ls1028a_get_pccr(enum lynx_lane_mode lane_mode, int lane,
 			    struct lynx_pccr *pccr)
@@ -675,6 +677,7 @@ static const struct lynx_info lynx_info_ls1028a = {
 	.lane_supports_mode = ls1028a_lane_supports_mode,
 	.num_lanes = 4,
 	.has_hardcoded_usxgmii = true,
+	.index = 1,
 };
 
 static int ls1046a_serdes1_get_pccr(enum lynx_lane_mode lane_mode, int lane,
@@ -769,6 +772,7 @@ static const struct lynx_info lynx_info_ls1046a_serdes1 = {
 	.get_pcvt_offset = ls1046a_serdes1_get_pcvt_offset,
 	.lane_supports_mode = ls1046a_serdes1_lane_supports_mode,
 	.num_lanes = 4,
+	.index = 1,
 };
 
 static int ls1046a_serdes2_get_pccr(enum lynx_lane_mode lane_mode, int lane,
@@ -825,6 +829,7 @@ static const struct lynx_info lynx_info_ls1046a_serdes2 = {
 	.get_pcvt_offset = ls1046a_serdes2_get_pcvt_offset,
 	.lane_supports_mode = ls1046a_serdes2_lane_supports_mode,
 	.num_lanes = 4,
+	.index = 2,
 };
 
 static int ls1088a_serdes1_get_pccr(enum lynx_lane_mode lane_mode, int lane,
@@ -942,6 +947,7 @@ static const struct lynx_info lynx_info_ls1088a_serdes1 = {
 	.get_pcvt_offset = ls1088a_serdes1_get_pcvt_offset,
 	.lane_supports_mode = ls1088a_serdes1_lane_supports_mode,
 	.num_lanes = 4,
+	.index = 1,
 };
 
 static int ls2088a_serdes1_get_pccr(enum lynx_lane_mode lane_mode, int lane,
@@ -1057,6 +1063,7 @@ static const struct lynx_info lynx_info_ls2088a_serdes1 = {
 	.get_pcvt_offset = ls2088a_serdes1_get_pcvt_offset,
 	.lane_supports_mode = ls2088a_serdes1_lane_supports_mode,
 	.num_lanes = 8,
+	.index = 1,
 };
 
 static int ls2088a_serdes2_get_pccr(enum lynx_lane_mode lane_mode, int lane,
@@ -1106,6 +1113,7 @@ static const struct lynx_info lynx_info_ls2088a_serdes2 = {
 	.get_pcvt_offset = ls2088a_serdes2_get_pcvt_offset,
 	.lane_supports_mode = ls2088a_serdes2_lane_supports_mode,
 	.num_lanes = 8,
+	.index = 2,
 };
 
 static int lynx_pccr_read(struct lynx_10g_lane *lane, enum lynx_lane_mode mode,
@@ -1456,6 +1464,51 @@ static void lynx_10g_lane_set_pll(struct lynx_10g_lane *lane,
 	}
 }
 
+/* Enabling ex_dly_clk does not require turning the PLL off, and does not
+ * affect the state of the lanes mapped to it. It is one of the few safe things
+ * that can be done with it at runtime.
+ */
+static void lynx_10g_pll_ex_dly_clk_enable(struct lynx_10g_pll *pll,
+					   bool enable)
+{
+	dev_err(pll->priv->dev, "Turning %s EX_DLY_CLK on PLL%c\n",
+		enable ? "on" : "off", pll->id == 0 ? 'F' : 'S');
+
+	pll->cr0 &= ~DLYDIV_SEL_MSK;
+	if (enable)
+		pll->cr0 |= DLYDIV_SEL_312_5_MHZ;
+
+	lynx_10g_pll_write(pll, PLLnCR0, pll->cr0);
+}
+
+static void lynx_10g_pll_get_ex_dly_clk(struct lynx_10g_pll *pll)
+{
+	spin_lock(&pll->lock);
+
+	if (++pll->ex_dly_clk_use_count > 1) {
+		spin_unlock(&pll->lock);
+		return;
+	}
+
+	lynx_10g_pll_ex_dly_clk_enable(pll, true);
+
+	spin_unlock(&pll->lock);
+}
+
+static void lynx_10g_pll_put_ex_dly_clk(struct lynx_10g_pll *pll)
+{
+	spin_lock(&pll->lock);
+
+	if (--pll->ex_dly_clk_use_count != 0) {
+		spin_unlock(&pll->lock);
+		return;
+	}
+
+	lynx_10g_pll_ex_dly_clk_enable(pll, false);
+
+	spin_unlock(&pll->lock);
+}
+
 static void lynx_10g_lane_remap_pll(struct lynx_10g_lane *lane,
 				    enum lynx_lane_mode lane_mode)
 {
@@ -1629,9 +1682,24 @@ out:
 	return err;
 }
 
+static bool lynx_10g_switch_needs_rcw_override(enum lynx_lane_mode crr,
+					       enum lynx_lane_mode new)
+{
+	if ((crr == LANE_MODE_1000BASEKX ||
+	     crr == LANE_MODE_1000BASEX_SGMII ||
+	     crr == LANE_MODE_2500BASEX) &&
+	    (new == LANE_MODE_1000BASEKX ||
+	     new == LANE_MODE_1000BASEX_SGMII ||
+	     new == LANE_MODE_2500BASEX))
+		return false;
+
+	return true;
+}
+
 static int lynx_10g_set_lane_mode(struct phy *phy, enum lynx_lane_mode lane_mode)
 {
 	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
+	struct lynx_10g_priv *priv = lane->priv;
 	bool powered_up = lane->powered_up;
 	int err;
 
@@ -1650,6 +1718,12 @@ static int lynx_10g_set_lane_mode(struct phy *phy, enum lynx_lane_mode lane_mode
 	if (powered_up)
 		lynx_10g_lane_halt(phy);
 
+	if (lynx_10g_switch_needs_rcw_override(lane->mode, lane_mode)) {
+		err = fsl_guts_lane_set_mode(priv->info->index, lane->id, lane_mode);
+		if (err)
+			goto out;
+	}
+
 	err = lynx_10g_lane_disable_pcvt(lane, lane->mode);
 	if (err)
 		goto out;
@@ -1657,6 +1731,14 @@ static int lynx_10g_set_lane_mode(struct phy *phy, enum lynx_lane_mode lane_mode
 	lynx_10g_lane_change_proto_conf(lane, lane_mode);
 	lynx_10g_lane_remap_pll(lane, lane_mode);
 	WARN_ON(lynx_10g_lane_enable_pcvt(lane, lane_mode));
+
+	/* 1000Base-KX lanes need their PLL to generate a 312.5 MHz frequency
+	 * through EX_DLY_CLK.
+	 */
+	if (lane_mode == LANE_MODE_1000BASEKX)
+		lynx_10g_pll_get_ex_dly_clk(lynx_10g_pll_get(priv, lane_mode));
+	else if (lane->mode == LANE_MODE_1000BASEKX)
+		lynx_10g_pll_put_ex_dly_clk(lynx_10g_pll_get(priv, lane->mode));
 
 	lane->mode = lane_mode;
 
@@ -1872,21 +1954,13 @@ static int lynx_10g_validate_interface(struct phy *phy, phy_interface_t submode)
 {
 	enum lynx_lane_mode lane_mode = phy_interface_to_lane_mode(submode);
 	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
+	struct lynx_10g_priv *priv = lane->priv;
 
 	if (!lynx_lane_supports_mode(lane, lane_mode))
 		return -EOPNOTSUPP;
 
-	/* The only protocol change currently supported is between
-	 * 1000Base-X/SGMII and 2500Base-X. The others require an RCW overwrite
-	 * procedure as documented here:
-	 * https://lore.kernel.org/linux-phy/20230810102631.bvozjer3t67r67iy@skbuf/
-	 * which is SoC-specific, and not yet implemented in drivers/soc/fsl/guts.c.
-	 */
-	if ((lane_mode != LANE_MODE_1000BASEX_SGMII &&
-	     lane_mode != LANE_MODE_2500BASEX) ||
-	    (lane->mode != LANE_MODE_1000BASEX_SGMII &&
-	     lane->mode != LANE_MODE_2500BASEX))
-		return -EOPNOTSUPP;
+	if (lynx_10g_switch_needs_rcw_override(lane->mode, lane_mode))
+		return fsl_guts_lane_validate(priv->info->index, lane->id, lane_mode);
 
 	return 0;
 }
@@ -1898,9 +1972,6 @@ static int lynx_10g_validate_link_mode(struct phy *phy,
 	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
 
 	if (!lynx_lane_supports_mode(lane, lane_mode))
-		return -EOPNOTSUPP;
-
-	if (lane_mode != lane->supported_backplane_mode)
 		return -EOPNOTSUPP;
 
 	return 0;
@@ -1959,6 +2030,46 @@ static void lynx_10g_check_cdr_lock(struct phy *phy,
 	cdr->cdr_locked = lynx_10g_cdr_lock_check(lane);
 }
 
+static void lynx_10g_get_pcvt_count(struct phy *phy,
+				    struct phy_status_opts_pcvt_count *opts)
+{
+	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
+	enum lynx_lane_mode lane_mode = lane->mode;
+
+	switch (opts->type) {
+	case PHY_PCVT_ETHERNET_PCS:
+		switch (lane_mode) {
+		case LANE_MODE_1000BASEX_SGMII:
+		case LANE_MODE_1000BASEKX:
+		case LANE_MODE_2500BASEX:
+		case LANE_MODE_USXGMII:
+		case LANE_MODE_10GBASER:
+		case LANE_MODE_10GBASEKR:
+			opts->num_pcvt = 1;
+			break;
+		case LANE_MODE_QSGMII:
+		case LANE_MODE_10G_QXGMII:
+			opts->num_pcvt = 4;
+			break;
+		default:
+			break;
+		}
+		break;
+	case PHY_PCVT_ETHERNET_ANLT:
+		switch (lane_mode) {
+		case LANE_MODE_1000BASEKX:
+		case LANE_MODE_10GBASEKR:
+			opts->num_pcvt = 1;
+			break;
+		default:
+			break;
+		}
+		break;
+	default:
+		break;
+	}
+}
+
 static void lynx_10g_get_pcvt_addr(struct phy *phy,
 				   struct phy_status_opts_pcvt *pcvt)
 {
@@ -1969,7 +2080,7 @@ static void lynx_10g_get_pcvt_addr(struct phy *phy,
 	case PHY_PCVT_ETHERNET_PCS:
 	case PHY_PCVT_ETHERNET_ANLT:
 		WARN_ON(lynx_pcvt_read(lane, lane->mode, CR(1), &cr1));
-		pcvt->addr.mdio = MDEV_PORT_X(cr1);
+		pcvt->addr.mdio = MDEV_PORT_X(cr1) + pcvt->index;
 		break;
 	default:
 		break;
@@ -1982,6 +2093,9 @@ static int lynx_10g_get_status(struct phy *phy, enum phy_status_type type,
 	switch (type) {
 	case PHY_STATUS_CDR_LOCK:
 		lynx_10g_check_cdr_lock(phy, &opts->cdr);
+		break;
+	case PHY_STATUS_PCVT_COUNT:
+		lynx_10g_get_pcvt_count(phy, &opts->pcvt_count);
 		break;
 	case PHY_STATUS_PCVT_ADDR:
 		lynx_10g_get_pcvt_addr(phy, &opts->pcvt);
@@ -2089,6 +2203,7 @@ static void lynx_10g_pll_dump(struct lynx_10g_pll *pll)
 static void lynx_10g_pll_read_configuration(struct lynx_10g_priv *priv)
 {
 	struct lynx_10g_pll *pll;
+	int dlydiv_sel;
 	int i;
 
 	for (i = 0; i < NUM_PLL; i++) {
@@ -2100,12 +2215,25 @@ static void lynx_10g_pll_read_configuration(struct lynx_10g_priv *priv)
 		if (PLLnCR0_POFF(pll->cr0))
 			continue;
 
+		dlydiv_sel = PLLnCR0_DLYDIV_SEL(pll->cr0);
+		if (dlydiv_sel) {
+			dev_dbg(priv->dev, "PLL%cCR0[DLYDIV_SEL] found set\n",
+				pll->id == 0 ? 'F' : 'S');
+			pll->ex_dly_clk_use_count = 1;
+		}
+
 		switch (PLLnCR0_FRATE_SEL(pll->cr0)) {
 		case PLLnCR0_FRATE_5G:
 			/* 5GHz clock net */
 			__set_bit(LANE_MODE_1000BASEX_SGMII, pll->supported);
-			__set_bit(LANE_MODE_1000BASEKX, pll->supported);
 			__set_bit(LANE_MODE_QSGMII, pll->supported);
+			if (dlydiv_sel && dlydiv_sel != DLYDIV_SEL_312_5_MHZ) {
+				dev_dbg(priv->dev,
+					"PLL%c has ex_dly_clk provisioned for a frequency incompatible with 1000Base-KX\n",
+					pll->id == 0 ? 'F' : 'S');
+			} else {
+				__set_bit(LANE_MODE_1000BASEKX, pll->supported);
+			}
 			break;
 		case PLLnCR0_FRATE_3_125G:
 			__set_bit(LANE_MODE_2500BASEX, pll->supported);
@@ -2200,7 +2328,6 @@ static void lynx_10g_lane_read_configuration(struct lynx_10g_lane *lane)
 			lane->mode = LANE_MODE_QSGMII;
 		else
 			lane->mode = LANE_MODE_1000BASEX_SGMII;
-		lane->supported_backplane_mode = LANE_MODE_1000BASEKX;
 		break;
 	case PROTO_SEL_XFI_10GBASER_KR_SXGMII:
 		if (LNaPSSR0_IS_QUAD_X(pssr0))
@@ -2209,7 +2336,6 @@ static void lynx_10g_lane_read_configuration(struct lynx_10g_lane *lane)
 			lane->mode = LANE_MODE_USXGMII;
 		else
 			lane->mode = LANE_MODE_10GBASER;
-		lane->supported_backplane_mode = LANE_MODE_10GBASEKR;
 		break;
 	case PROTO_SEL_PCIE:
 	case PROTO_SEL_SATA:
@@ -2269,6 +2395,7 @@ static int lynx_10g_probe(struct platform_device *pdev)
 		lane->id = i;
 		phy_set_drvdata(phy, lane);
 		lynx_10g_lane_read_configuration(lane);
+		fsl_guts_lane_init(priv->info->index, lane->id, lane->mode);
 	}
 
 	for (i = 0; i < NUM_PLL; i++)

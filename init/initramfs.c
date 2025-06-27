@@ -11,6 +11,7 @@
 #include <linux/syscalls.h>
 #include <linux/utime.h>
 #include <linux/file.h>
+#include <linux/kstrtox.h>
 #include <linux/memblock.h>
 #include <linux/mm.h>
 #include <linux/namei.h>
@@ -59,15 +60,8 @@ static void __init error(char *x)
 		message = x;
 }
 
-static void panic_show_mem(const char *fmt, ...)
-{
-	va_list args;
-
-	show_mem(0, NULL);
-	va_start(args, fmt);
-	panic(fmt, args);
-	va_end(args);
-}
+#define panic_show_mem(fmt, ...) \
+	({ show_mem(); panic(fmt, ##__VA_ARGS__); })
 
 /* link hash */
 
@@ -364,6 +358,15 @@ static int __init do_name(void)
 {
 	state = SkipIt;
 	next_state = Reset;
+
+	/* name_len > 0 && name_len <= PATH_MAX checked in do_header */
+	if (collected[name_len - 1] != '\0') {
+		pr_err("initramfs name without nulterm: %.*s\n",
+		       (int)name_len, collected);
+		error("malformed archive");
+		return 1;
+	}
+
 	if (strcmp(collected, "TRAILER!!!") == 0) {
 		free_hash();
 		return 0;
@@ -428,6 +431,12 @@ static int __init do_copy(void)
 
 static int __init do_symlink(void)
 {
+	if (collected[name_len - 1] != '\0') {
+		pr_err("initramfs symlink without nulterm: %.*s\n",
+		       (int)name_len, collected);
+		error("malformed archive");
+		return 1;
+	}
 	collected[N_ALIGN(name_len) + body_len] = '\0';
 	clean_path(collected, 0);
 	init_symlink(collected + N_ALIGN(name_len), collected);
@@ -461,7 +470,7 @@ static long __init write_buffer(char *buf, unsigned long len)
 
 static long __init flush_buffer(void *bufv, unsigned long len)
 {
-	char *buf = (char *) bufv;
+	char *buf = bufv;
 	long written;
 	long origLen = len;
 	if (message)
@@ -571,8 +580,7 @@ __setup("keepinitrd", keepinitrd_setup);
 static bool __initdata initramfs_async = true;
 static int __init initramfs_async_setup(char *str)
 {
-	strtobool(str, &initramfs_async);
-	return 1;
+	return kstrtobool(str, &initramfs_async) == 0;
 }
 __setup("initramfs_async=", initramfs_async_setup);
 
@@ -680,7 +688,7 @@ static void __init populate_initrd_image(char *err)
 
 	printk(KERN_INFO "rootfs image is not initramfs (%s); looks like an initrd\n",
 			err);
-	file = filp_open("/initrd.image", O_WRONLY | O_CREAT, 0700);
+	file = filp_open("/initrd.image", O_WRONLY|O_CREAT|O_LARGEFILE, 0700);
 	if (IS_ERR(file))
 		return;
 

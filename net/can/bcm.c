@@ -1428,6 +1428,12 @@ static void bcm_notify(struct bcm_sock *bo, unsigned long msg,
 
 		/* remove device reference, if this is our bound device */
 		if (bo->bound && bo->ifindex == dev->ifindex) {
+#if IS_ENABLED(CONFIG_PROC_FS)
+			if (sock_net(sk)->can.bcmproc_dir && bo->bcm_proc_read) {
+				remove_proc_entry(bo->procname, sock_net(sk)->can.bcmproc_dir);
+				bo->bcm_proc_read = NULL;
+			}
+#endif
 			bo->bound   = 0;
 			bo->ifindex = 0;
 			notify_enodev = 1;
@@ -1703,7 +1709,6 @@ static const struct proto_ops bcm_ops = {
 	.sendmsg       = bcm_sendmsg,
 	.recvmsg       = bcm_recvmsg,
 	.mmap          = sock_no_mmap,
-	.sendpage      = sock_no_sendpage,
 };
 
 static struct proto bcm_proto __read_mostly = {

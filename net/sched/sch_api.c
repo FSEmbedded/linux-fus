@@ -31,6 +31,7 @@
 #include <net/netlink.h>
 #include <net/pkt_sched.h>
 #include <net/pkt_cls.h>
+#include <net/tc_wrapper.h>
 
 #include <trace/events/qdisc.h>
 
@@ -593,7 +594,6 @@ out:
 		pkt_len = 1;
 	qdisc_skb_cb(skb)->pkt_len = pkt_len;
 }
-EXPORT_SYMBOL(__qdisc_calculate_pkt_len);
 
 void qdisc_warn_nonwc(const char *txt, struct Qdisc *qdisc)
 {
@@ -645,14 +645,16 @@ void qdisc_watchdog_schedule_range_ns(struct qdisc_watchdog *wd, u64 expires,
 		return;
 
 	if (hrtimer_is_queued(&wd->timer)) {
+		u64 softexpires;
+
+		softexpires = ktime_to_ns(hrtimer_get_softexpires(&wd->timer));
 		/* If timer is already set in [expires, expires + delta_ns],
 		 * do not reprogram it.
 		 */
-		if (wd->last_expires - expires <= delta_ns)
+		if (softexpires - expires <= delta_ns)
 			return;
 	}
 
-	wd->last_expires = expires;
 	hrtimer_start_range_ns(&wd->timer,
 			       ns_to_ktime(expires),
 			       delta_ns,
@@ -790,7 +792,7 @@ void qdisc_tree_reduce_backlog(struct Qdisc *sch, int n, int len)
 	drops = max_t(int, n, 0);
 	rcu_read_lock();
 	while ((parentid = sch->parent)) {
-		if (TC_H_MAJ(parentid) == TC_H_MAJ(TC_H_INGRESS))
+		if (parentid == TC_H_ROOT)
 			break;
 
 		if (sch->flags & TCQ_F_NOPARENT)
@@ -807,7 +809,7 @@ void qdisc_tree_reduce_backlog(struct Qdisc *sch, int n, int len)
 		notify = !sch->q.qlen && !WARN_ON_ONCE(!n &&
 						       !qdisc_is_offloaded);
 		/* TODO: perform the search on a per txq basis */
-		sch = qdisc_lookup(qdisc_dev(sch), TC_H_MAJ(parentid));
+		sch = qdisc_lookup_rcu(qdisc_dev(sch), TC_H_MAJ(parentid));
 		if (sch == NULL) {
 			WARN_ON_ONCE(parentid != TC_H_ROOT);
 			break;
@@ -1170,6 +1172,12 @@ skip:
 			return -EINVAL;
 		}
 
+		if (new &&
+		    !(parent->flags & TCQ_F_MQROOT) &&
+		    rcu_access_pointer(new->stab)) {
+			NL_SET_ERR_MSG(extack, "STAB not supported on a non root");
+			return -EINVAL;
+		}
 		err = cops->graft(parent, cl, new, &old, extack);
 		if (err)
 			return err;
@@ -1311,20 +1319,21 @@ static struct Qdisc *qdisc_create(struct net_device *dev,
 	if (err)
 		goto err_out3;
 
-	if (ops->init) {
-		err = ops->init(sch, tca[TCA_OPTIONS], extack);
-		if (err != 0)
-			goto err_out5;
-	}
-
 	if (tca[TCA_STAB]) {
 		stab = qdisc_get_stab(tca[TCA_STAB], extack);
 		if (IS_ERR(stab)) {
 			err = PTR_ERR(stab);
-			goto err_out4;
+			goto err_out3;
 		}
 		rcu_assign_pointer(sch->stab, stab);
 	}
+
+	if (ops->init) {
+		err = ops->init(sch, tca[TCA_OPTIONS], extack);
+		if (err != 0)
+			goto err_out4;
+	}
+
 	if (tca[TCA_RATE]) {
 		err = -EOPNOTSUPP;
 		if (sch->flags & TCQ_F_MQROOT) {
@@ -1349,11 +1358,15 @@ static struct Qdisc *qdisc_create(struct net_device *dev,
 
 	return sch;
 
-err_out5:
-	/* ops->init() failed, we call ->destroy() like qdisc_create_dflt() */
+err_out4:
+	/* Even if ops->init() failed, we call ops->destroy()
+	 * like qdisc_create_dflt().
+	 */
 	if (ops->destroy)
 		ops->destroy(sch);
+	qdisc_put_stab(rtnl_dereference(sch->stab));
 err_out3:
+	lockdep_unregister_key(&sch->root_lock_key);
 	netdev_put(dev, &sch->dev_tracker);
 	qdisc_free(sch);
 err_out2:
@@ -1361,16 +1374,6 @@ err_out2:
 err_out:
 	*errp = err;
 	return NULL;
-
-err_out4:
-	/*
-	 * Any broken qdiscs that would require a ops->reset() here?
-	 * The qdisc was never in action so it shouldn't be necessary.
-	 */
-	qdisc_put_stab(rtnl_dereference(sch->stab));
-	if (ops->destroy)
-		ops->destroy(sch);
-	goto err_out3;
 }
 
 static int qdisc_change(struct Qdisc *sch, struct nlattr **tca,
@@ -2357,6 +2360,10 @@ static struct pernet_operations psched_net_ops = {
 	.exit = psched_net_exit,
 };
 
+#if IS_ENABLED(CONFIG_RETPOLINE)
+DEFINE_STATIC_KEY_FALSE(tc_skip_wrapper);
+#endif
+
 static int __init pktsched_init(void)
 {
 	int err;
@@ -2383,6 +2390,8 @@ static int __init pktsched_init(void)
 	rtnl_register(PF_UNSPEC, RTM_DELTCLASS, tc_ctl_tclass, NULL, 0);
 	rtnl_register(PF_UNSPEC, RTM_GETTCLASS, tc_ctl_tclass, tc_dump_tclass,
 		      0);
+
+	tc_wrapper_init();
 
 	return 0;
 }

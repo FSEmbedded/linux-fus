@@ -14,6 +14,7 @@
 #include <linux/sizes.h>
 #include <linux/slab.h>
 #include <linux/soc/qcom/smem.h>
+#include <linux/soc/qcom/socinfo.h>
 
 /*
  * The Qualcomm shared memory system is a allocate only heap structure that
@@ -85,7 +86,7 @@
 #define SMEM_GLOBAL_HOST	0xfffe
 
 /* Max number of processors/hosts in a system */
-#define SMEM_HOST_COUNT		15
+#define SMEM_HOST_COUNT		20
 
 /**
   * struct smem_proc_comm - proc_comm communication struct (legacy)
@@ -358,6 +359,43 @@ static struct qcom_smem *__smem;
 /* Timeout (ms) for the trylock of remote spinlocks */
 #define HWSPINLOCK_TIMEOUT	1000
 
+/* The qcom hwspinlock id is always plus one from the smem host id */
+#define SMEM_HOST_ID_TO_HWSPINLOCK_ID(__x) ((__x) + 1)
+
+/**
+ * qcom_smem_bust_hwspin_lock_by_host() - bust the smem hwspinlock for a host
+ * @host:	remote processor id
+ *
+ * Busts the hwspin_lock for the given smem host id. This helper is intended
+ * for remoteproc drivers that manage remoteprocs with an equivalent smem
+ * driver instance in the remote firmware. Drivers can force a release of the
+ * smem hwspin_lock if the rproc unexpectedly goes into a bad state.
+ *
+ * Context: Process context.
+ *
+ * Returns: 0 on success, otherwise negative errno.
+ */
+int qcom_smem_bust_hwspin_lock_by_host(unsigned int host)
+{
+	/* This function is for remote procs, so ignore SMEM_HOST_APPS */
+	if (host == SMEM_HOST_APPS || host >= SMEM_HOST_COUNT)
+		return -EINVAL;
+
+	return hwspin_lock_bust(__smem->hwlock, SMEM_HOST_ID_TO_HWSPINLOCK_ID(host));
+}
+EXPORT_SYMBOL_GPL(qcom_smem_bust_hwspin_lock_by_host);
+
+/**
+ * qcom_smem_is_available() - Check if SMEM is available
+ *
+ * Return: true if SMEM is available, false otherwise.
+ */
+bool qcom_smem_is_available(void)
+{
+	return !!__smem;
+}
+EXPORT_SYMBOL(qcom_smem_is_available);
+
 static int qcom_smem_alloc_private(struct qcom_smem *smem,
 				   struct smem_partition *part,
 				   unsigned item,
@@ -500,7 +538,7 @@ int qcom_smem_alloc(unsigned host, unsigned item, size_t size)
 
 	return ret;
 }
-EXPORT_SYMBOL(qcom_smem_alloc);
+EXPORT_SYMBOL_GPL(qcom_smem_alloc);
 
 static void *qcom_smem_get_global(struct qcom_smem *smem,
 				  unsigned item,
@@ -674,7 +712,7 @@ void *qcom_smem_get(unsigned host, unsigned item, size_t *size)
 	return ptr;
 
 }
-EXPORT_SYMBOL(qcom_smem_get);
+EXPORT_SYMBOL_GPL(qcom_smem_get);
 
 /**
  * qcom_smem_get_free_space() - retrieve amount of free space in a partition
@@ -719,7 +757,7 @@ int qcom_smem_get_free_space(unsigned host)
 
 	return ret;
 }
-EXPORT_SYMBOL(qcom_smem_get_free_space);
+EXPORT_SYMBOL_GPL(qcom_smem_get_free_space);
 
 static bool addr_in_range(void __iomem *base, size_t size, void *addr)
 {
@@ -770,7 +808,29 @@ phys_addr_t qcom_smem_virt_to_phys(void *p)
 
 	return 0;
 }
-EXPORT_SYMBOL(qcom_smem_virt_to_phys);
+EXPORT_SYMBOL_GPL(qcom_smem_virt_to_phys);
+
+/**
+ * qcom_smem_get_soc_id() - return the SoC ID
+ * @id:	On success, we return the SoC ID here.
+ *
+ * Look up SoC ID from HW/SW build ID and return it.
+ *
+ * Return: 0 on success, negative errno on failure.
+ */
+int qcom_smem_get_soc_id(u32 *id)
+{
+	struct socinfo *info;
+
+	info = qcom_smem_get(QCOM_SMEM_HOST_ANY, SMEM_HW_SW_BUILD_ID, NULL);
+	if (IS_ERR(info))
+		return PTR_ERR(info);
+
+	*id = __le32_to_cpu(info->id);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(qcom_smem_get_soc_id);
 
 static int qcom_smem_get_sbl_version(struct qcom_smem *smem)
 {
@@ -1036,7 +1096,6 @@ static int qcom_smem_probe(struct platform_device *pdev)
 	struct reserved_mem *rmem;
 	struct qcom_smem *smem;
 	unsigned long flags;
-	size_t array_size;
 	int num_regions;
 	int hwlock_id;
 	u32 version;
@@ -1045,11 +1104,11 @@ static int qcom_smem_probe(struct platform_device *pdev)
 	int i;
 
 	num_regions = 1;
-	if (of_find_property(pdev->dev.of_node, "qcom,rpm-msg-ram", NULL))
+	if (of_property_present(pdev->dev.of_node, "qcom,rpm-msg-ram"))
 		num_regions++;
 
-	array_size = num_regions * sizeof(struct smem_region);
-	smem = devm_kzalloc(&pdev->dev, sizeof(*smem) + array_size, GFP_KERNEL);
+	smem = devm_kzalloc(&pdev->dev, struct_size(smem, regions, num_regions),
+			    GFP_KERNEL);
 	if (!smem)
 		return -ENOMEM;
 

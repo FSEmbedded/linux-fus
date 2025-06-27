@@ -165,7 +165,7 @@ static void wl_tree_add(struct ubi_wl_entry *e, struct rb_root *root)
 }
 
 /**
- * wl_tree_destroy - destroy a wear-leveling entry.
+ * wl_entry_destroy - destroy a wear-leveling entry.
  * @ubi: UBI device description object
  * @e: the wear-leveling entry to add
  *
@@ -671,7 +671,7 @@ static int wear_leveling_worker(struct ubi_device *ubi, struct ubi_work *wrk,
 	ubi_assert(!ubi->move_to_put);
 
 #ifdef CONFIG_MTD_UBI_FASTMAP
-	if (!next_peb_for_wl(ubi) ||
+	if (!next_peb_for_wl(ubi, true) ||
 #else
 	if (!ubi->free.rb_node ||
 #endif
@@ -834,7 +834,14 @@ static int wear_leveling_worker(struct ubi_device *ubi, struct ubi_work *wrk,
 			goto out_not_moved;
 		}
 		if (err == MOVE_RETRY) {
-			scrubbing = 1;
+			/*
+			 * For source PEB:
+			 * 1. The scrubbing is set for scrub type PEB, it will
+			 *    be put back into ubi->scrub list.
+			 * 2. Non-scrub type PEB will be put back into ubi->used
+			 *    list.
+			 */
+			keep = 1;
 			dst_leb_clean = 1;
 			goto out_not_moved;
 		}

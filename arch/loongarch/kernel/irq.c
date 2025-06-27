@@ -92,7 +92,7 @@ static int __init get_ipi_irq(void)
 	struct irq_domain *d = irq_find_matching_fwnode(cpuintc_handle, DOMAIN_BUS_ANY);
 
 	if (d)
-		return irq_create_mapping(d, EXCCODE_IPI - EXCCODE_INT_START);
+		return irq_create_mapping(d, INT_IPI);
 
 	return -EINVAL;
 }
@@ -121,9 +121,6 @@ void __init init_IRQ(void)
 	if (r < 0)
 		panic("IPI IRQ request failed\n");
 #endif
-
-	for (i = 0; i < NR_IRQS; i++)
-		irq_set_noprobe(i);
 
 	for_each_possible_cpu(i) {
 		page = alloc_pages_node(cpu_to_node(i), GFP_KERNEL, order);

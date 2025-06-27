@@ -85,6 +85,7 @@
 #include <linux/elf.h>
 #include <linux/pid_namespace.h>
 #include <linux/user_namespace.h>
+#include <linux/fs_parser.h>
 #include <linux/fs_struct.h>
 #include <linux/slab.h>
 #include <linux/sched/autogroup.h>
@@ -96,6 +97,7 @@
 #include <linux/time_namespace.h>
 #include <linux/resctrl.h>
 #include <linux/cn_proc.h>
+#include <linux/ksm.h>
 #include <trace/events/oom.h>
 #include "internal.h"
 #include "fd.h"
@@ -114,6 +116,40 @@
 
 static u8 nlink_tid __ro_after_init;
 static u8 nlink_tgid __ro_after_init;
+
+enum proc_mem_force {
+	PROC_MEM_FORCE_ALWAYS,
+	PROC_MEM_FORCE_PTRACE,
+	PROC_MEM_FORCE_NEVER
+};
+
+static enum proc_mem_force proc_mem_force_override __ro_after_init =
+	IS_ENABLED(CONFIG_PROC_MEM_NO_FORCE) ? PROC_MEM_FORCE_NEVER :
+	IS_ENABLED(CONFIG_PROC_MEM_FORCE_PTRACE) ? PROC_MEM_FORCE_PTRACE :
+	PROC_MEM_FORCE_ALWAYS;
+
+static const struct constant_table proc_mem_force_table[] __initconst = {
+	{ "always", PROC_MEM_FORCE_ALWAYS },
+	{ "ptrace", PROC_MEM_FORCE_PTRACE },
+	{ "never", PROC_MEM_FORCE_NEVER },
+	{ }
+};
+
+static int __init early_proc_mem_force_override(char *buf)
+{
+	if (!buf)
+		return -EINVAL;
+
+	/*
+	 * lookup_constant() defaults to proc_mem_force_override to preseve
+	 * the initial Kconfig choice in case an invalid param gets passed.
+	 */
+	proc_mem_force_override = lookup_constant(proc_mem_force_table,
+						  buf, proc_mem_force_override);
+
+	return 0;
+}
+early_param("proc_mem.force_override", early_proc_mem_force_override);
 
 struct pid_entry {
 	const char *name;
@@ -685,7 +721,7 @@ static bool proc_fd_access_allowed(struct inode *inode)
 	return allowed;
 }
 
-int proc_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
+int proc_setattr(struct mnt_idmap *idmap, struct dentry *dentry,
 		 struct iattr *attr)
 {
 	int error;
@@ -694,12 +730,11 @@ int proc_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
 	if (attr->ia_valid & ATTR_MODE)
 		return -EPERM;
 
-	error = setattr_prepare(&init_user_ns, dentry, attr);
+	error = setattr_prepare(&nop_mnt_idmap, dentry, attr);
 	if (error)
 		return error;
 
-	setattr_copy(&init_user_ns, inode, attr);
-	mark_inode_dirty(inode);
+	setattr_copy(&nop_mnt_idmap, inode, attr);
 	return 0;
 }
 
@@ -727,7 +762,7 @@ static bool has_pid_permissions(struct proc_fs_info *fs_info,
 }
 
 
-static int proc_pid_permission(struct user_namespace *mnt_userns,
+static int proc_pid_permission(struct mnt_idmap *idmap,
 			       struct inode *inode, int mask)
 {
 	struct proc_fs_info *fs_info = proc_sb_info(inode->i_sb);
@@ -753,7 +788,7 @@ static int proc_pid_permission(struct user_namespace *mnt_userns,
 
 		return -EPERM;
 	}
-	return generic_permission(&init_user_ns, inode, mask);
+	return generic_permission(&nop_mnt_idmap, inode, mask);
 }
 
 
@@ -834,6 +869,28 @@ static int mem_open(struct inode *inode, struct file *file)
 	return ret;
 }
 
+static bool proc_mem_foll_force(struct file *file, struct mm_struct *mm)
+{
+	struct task_struct *task;
+	bool ptrace_active = false;
+
+	switch (proc_mem_force_override) {
+	case PROC_MEM_FORCE_NEVER:
+		return false;
+	case PROC_MEM_FORCE_PTRACE:
+		task = get_proc_task(file_inode(file));
+		if (task) {
+			ptrace_active =	READ_ONCE(task->ptrace) &&
+					READ_ONCE(task->mm) == mm &&
+					READ_ONCE(task->parent) == current;
+			put_task_struct(task);
+		}
+		return ptrace_active;
+	default:
+		return true;
+	}
+}
+
 static ssize_t mem_rw(struct file *file, char __user *buf,
 			size_t count, loff_t *ppos, int write)
 {
@@ -854,7 +911,9 @@ static ssize_t mem_rw(struct file *file, char __user *buf,
 	if (!mmget_not_zero(mm))
 		goto free;
 
-	flags = FOLL_FORCE | (write ? FOLL_WRITE : 0);
+	flags = write ? FOLL_WRITE : 0;
+	if (proc_mem_foll_force(file, mm))
+		flags |= FOLL_FORCE;
 
 	while (count > 0) {
 		size_t this_len = min_t(size_t, count, PAGE_SIZE);
@@ -1902,7 +1961,7 @@ struct inode *proc_pid_make_inode(struct super_block *sb,
 	ei = PROC_I(inode);
 	inode->i_mode = mode;
 	inode->i_ino = get_next_ino();
-	inode->i_mtime = inode->i_atime = inode->i_ctime = current_time(inode);
+	inode->i_mtime = inode->i_atime = inode_set_ctime_current(inode);
 	inode->i_op = &proc_def_inode_operations;
 
 	/*
@@ -1959,14 +2018,14 @@ static struct inode *proc_pid_make_base_inode(struct super_block *sb,
 	return inode;
 }
 
-int pid_getattr(struct user_namespace *mnt_userns, const struct path *path,
+int pid_getattr(struct mnt_idmap *idmap, const struct path *path,
 		struct kstat *stat, u32 request_mask, unsigned int query_flags)
 {
 	struct inode *inode = d_inode(path->dentry);
 	struct proc_fs_info *fs_info = proc_sb_info(inode->i_sb);
 	struct task_struct *task;
 
-	generic_fillattr(&init_user_ns, inode, stat);
+	generic_fillattr(&nop_mnt_idmap, request_mask, inode, stat);
 
 	stat->uid = GLOBAL_ROOT_UID;
 	stat->gid = GLOBAL_ROOT_GID;
@@ -2817,7 +2876,7 @@ static int proc_##LSM##_attr_dir_iterate(struct file *filp, \
 \
 static const struct file_operations proc_##LSM##_attr_dir_ops = { \
 	.read		= generic_read_dir, \
-	.iterate	= proc_##LSM##_attr_dir_iterate, \
+	.iterate_shared	= proc_##LSM##_attr_dir_iterate, \
 	.llseek		= default_llseek, \
 }; \
 \
@@ -3207,6 +3266,9 @@ static int proc_pid_ksm_stat(struct seq_file *m, struct pid_namespace *ns,
 	mm = get_task_mm(task);
 	if (mm) {
 		seq_printf(m, "ksm_rmap_items %lu\n", mm->ksm_rmap_items);
+		seq_printf(m, "ksm_zero_pages %ld\n", mm_ksm_zero_pages(mm));
+		seq_printf(m, "ksm_merging_pages %lu\n", mm->ksm_merging_pages);
+		seq_printf(m, "ksm_process_profit %ld\n", ksm_process_profit(mm));
 		mmput(mm);
 	}
 
@@ -3557,7 +3619,7 @@ int proc_pid_readdir(struct file *file, struct dir_context *ctx)
  * This function makes sure that the node is always accessible for members of
  * same thread group.
  */
-static int proc_tid_comm_permission(struct user_namespace *mnt_userns,
+static int proc_tid_comm_permission(struct mnt_idmap *idmap,
 				    struct inode *inode, int mask)
 {
 	bool is_same_tgroup;
@@ -3577,7 +3639,7 @@ static int proc_tid_comm_permission(struct user_namespace *mnt_userns,
 		return 0;
 	}
 
-	return generic_permission(&init_user_ns, inode, mask);
+	return generic_permission(&nop_mnt_idmap, inode, mask);
 }
 
 static const struct inode_operations proc_tid_comm_inode_operations = {
@@ -3812,11 +3874,10 @@ static struct task_struct *first_tid(struct pid *pid, int tid, loff_t f_pos,
 	/* If we haven't found our starting place yet start
 	 * with the leader and walk nr threads forward.
 	 */
-	pos = task = task->group_leader;
-	do {
+	for_each_thread(task, pos) {
 		if (!nr--)
 			goto found;
-	} while_each_thread(task, pos);
+	};
 fail:
 	pos = NULL;
 	goto out;
@@ -3892,13 +3953,13 @@ static int proc_task_readdir(struct file *file, struct dir_context *ctx)
 	return 0;
 }
 
-static int proc_task_getattr(struct user_namespace *mnt_userns,
+static int proc_task_getattr(struct mnt_idmap *idmap,
 			     const struct path *path, struct kstat *stat,
 			     u32 request_mask, unsigned int query_flags)
 {
 	struct inode *inode = d_inode(path->dentry);
 	struct task_struct *p = get_proc_task(inode);
-	generic_fillattr(&init_user_ns, inode, stat);
+	generic_fillattr(&nop_mnt_idmap, request_mask, inode, stat);
 
 	if (p) {
 		stat->nlink += get_nr_threads(p);

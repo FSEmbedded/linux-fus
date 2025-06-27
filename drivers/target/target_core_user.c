@@ -1928,7 +1928,7 @@ static int tcmu_mmap(struct uio_info *info, struct vm_area_struct *vma)
 {
 	struct tcmu_dev *udev = container_of(info, struct tcmu_dev, uio_info);
 
-	vma->vm_flags |= VM_DONTEXPAND | VM_DONTDUMP;
+	vm_flags_set(vma, VM_DONTEXPAND | VM_DONTDUMP);
 	vma->vm_ops = &tcmu_vm_ops;
 
 	vma->vm_private_data = udev;
@@ -2129,8 +2129,7 @@ static int tcmu_netlink_event_send(struct tcmu_dev *udev,
 		return ret;
 	}
 
-	ret = genlmsg_multicast_allns(&tcmu_genl_family, skb, 0,
-				      TCMU_MCGRP_CONFIG, GFP_KERNEL);
+	ret = genlmsg_multicast_allns(&tcmu_genl_family, skb, 0,TCMU_MCGRP_CONFIG);
 
 	/* Wait during an add as the listener may not be up yet */
 	if (ret == 0 ||
@@ -2820,14 +2819,14 @@ static ssize_t tcmu_dev_config_store(struct config_item *item, const char *page,
 			pr_err("Unable to reconfigure device\n");
 			return ret;
 		}
-		strlcpy(udev->dev_config, page, TCMU_CONFIG_LEN);
+		strscpy(udev->dev_config, page, TCMU_CONFIG_LEN);
 
 		ret = tcmu_update_uio_info(udev);
 		if (ret)
 			return ret;
 		return count;
 	}
-	strlcpy(udev->dev_config, page, TCMU_CONFIG_LEN);
+	strscpy(udev->dev_config, page, TCMU_CONFIG_LEN);
 
 	return count;
 }

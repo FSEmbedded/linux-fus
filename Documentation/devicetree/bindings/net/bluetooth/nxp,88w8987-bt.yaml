@@ -24,11 +24,21 @@ properties:
       - nxp,88w8997-bt
 
   fw-init-baudrate:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    default: 115200
     description:
       Chip baudrate after FW is downloaded and initialized.
       This property depends on the module vendor's
-      configuration. If this property is not specified,
-      115200 is set as default.
+      configuration.
+
+  firmware-name:
+    maxItems: 1
+
+  device-wakeup-gpios:
+    maxItems: 1
+    description:
+      Host-To-Chip power save mechanism is driven by this GPIO
+      connected to BT_WAKE_IN pin of the NXP chipset.
 
 required:
   - compatible
@@ -37,9 +47,12 @@ additionalProperties: false
 
 examples:
   - |
+    #include <dt-bindings/gpio/gpio.h>
     serial {
         bluetooth {
             compatible = "nxp,88w8987-bt";
             fw-init-baudrate = <3000000>;
+            firmware-name = "uartuart8987_bt_v0.bin";
+            device-wakeup-gpios = <&gpio 11 GPIO_ACTIVE_HIGH>;
         };
     };

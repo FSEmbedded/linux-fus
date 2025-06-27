@@ -550,17 +550,22 @@ static void ts2020_regmap_unlock(void *__dev)
 	mutex_unlock(&dev->regmap_mutex);
 }
 
-static int ts2020_probe(struct i2c_client *client,
-		const struct i2c_device_id *id)
+static int ts2020_probe(struct i2c_client *client)
 {
 	struct ts2020_config *pdata = client->dev.platform_data;
-	struct dvb_frontend *fe = pdata->fe;
+	struct dvb_frontend *fe;
 	struct ts2020_priv *dev;
 	int ret;
 	u8 u8tmp;
 	unsigned int utmp;
 	char *chip_str;
 
+	if (!pdata) {
+		dev_err(&client->dev, "platform data is mandatory\n");
+		return -EINVAL;
+	}
+
+	fe = pdata->fe;
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (!dev) {
 		ret = -ENOMEM;

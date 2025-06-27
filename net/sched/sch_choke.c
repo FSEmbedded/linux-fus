@@ -123,10 +123,10 @@ static void choke_drop_by_idx(struct Qdisc *sch, unsigned int idx,
 	if (idx == q->tail)
 		choke_zap_tail_holes(q);
 
+	--sch->q.qlen;
 	qdisc_qstats_backlog_dec(sch, skb);
 	qdisc_tree_reduce_backlog(sch, 1, qdisc_pkt_len(skb));
 	qdisc_drop(skb, sch, to_free);
-	--sch->q.qlen;
 }
 
 struct choke_skb_cb {
@@ -183,7 +183,7 @@ static struct sk_buff *choke_peek_random(const struct choke_sched_data *q,
 	int retrys = 3;
 
 	do {
-		*pidx = (q->head + prandom_u32_max(choke_len(q))) & q->tab_mask;
+		*pidx = (q->head + get_random_u32_below(choke_len(q))) & q->tab_mask;
 		skb = q->tab[*pidx];
 		if (skb)
 			return skb;

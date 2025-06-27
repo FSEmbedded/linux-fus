@@ -984,6 +984,10 @@ xfs_attr_shortform_to_leaf(
 		nargs.hashval = xfs_da_hashname(sfe->nameval,
 						sfe->namelen);
 		nargs.attr_filter = sfe->flags & XFS_ATTR_NSP_ONDISK_MASK;
+		if (!xfs_attr_check_namespace(sfe->flags)) {
+			error = -EFSCORRUPTED;
+			goto out;
+		}
 		error = xfs_attr3_leaf_lookup_int(bp, &nargs); /* set a->index */
 		ASSERT(error == -ENOATTR);
 		error = xfs_attr3_leaf_add(bp, &nargs);
@@ -1105,7 +1109,7 @@ xfs_attr_shortform_verify(
 		 * one namespace flag per xattr, so we can just count the
 		 * bits (i.e. hweight) here.
 		 */
-		if (hweight8(sfep->flags & XFS_ATTR_NSP_ONDISK_MASK) > 1)
+		if (!xfs_attr_check_namespace(sfep->flags))
 			return __this_address;
 
 		sfep = next_sfep;
@@ -2293,8 +2297,6 @@ xfs_attr3_leaf_unbalance(
 
 	trace_xfs_attr_leaf_unbalance(state->args);
 
-	drop_leaf = drop_blk->bp->b_addr;
-	save_leaf = save_blk->bp->b_addr;
 	xfs_attr3_leaf_hdr_from_disk(state->args->geo, &drophdr, drop_leaf);
 	xfs_attr3_leaf_hdr_from_disk(state->args->geo, &savehdr, save_leaf);
 	entry = xfs_attr3_leaf_entryp(drop_leaf);

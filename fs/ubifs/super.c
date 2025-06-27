@@ -146,8 +146,8 @@ struct inode *ubifs_iget(struct super_block *sb, unsigned long inum)
 	inode->i_atime.tv_nsec = le32_to_cpu(ino->atime_nsec);
 	inode->i_mtime.tv_sec  = (int64_t)le64_to_cpu(ino->mtime_sec);
 	inode->i_mtime.tv_nsec = le32_to_cpu(ino->mtime_nsec);
-	inode->i_ctime.tv_sec  = (int64_t)le64_to_cpu(ino->ctime_sec);
-	inode->i_ctime.tv_nsec = le32_to_cpu(ino->ctime_nsec);
+	inode_set_ctime(inode, (int64_t)le64_to_cpu(ino->ctime_sec),
+			le32_to_cpu(ino->ctime_nsec));
 	inode->i_mode = le32_to_cpu(ino->mode);
 	inode->i_size = le64_to_cpu(ino->size);
 
@@ -777,10 +777,10 @@ static void init_constants_master(struct ubifs_info *c)
 	 * necessary to report something for the 'statfs()' call.
 	 *
 	 * Subtract the LEB reserved for GC, the LEB which is reserved for
-	 * deletions, minimum LEBs for the index, and assume only one journal
-	 * head is available.
+	 * deletions, minimum LEBs for the index, the LEBs which are reserved
+	 * for each journal head.
 	 */
-	tmp64 = c->main_lebs - 1 - 1 - MIN_INDEX_LEBS - c->jhead_cnt + 1;
+	tmp64 = c->main_lebs - 1 - 1 - MIN_INDEX_LEBS - c->jhead_cnt;
 	tmp64 *= (long long)c->leb_size - c->leb_overhead;
 	tmp64 = ubifs_reported_space(c, tmp64);
 	c->block_cnt = tmp64 >> UBIFS_BLOCK_SHIFT;

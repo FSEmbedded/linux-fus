@@ -56,6 +56,7 @@ enum phy_media {
 enum phy_status_type {
 	/* Valid for PHY_MODE_ETHERNET and PHY_MODE_ETHERNET_LINKMODE */
 	PHY_STATUS_CDR_LOCK,
+	PHY_STATUS_PCVT_COUNT,
 	PHY_STATUS_PCVT_ADDR,
 };
 
@@ -80,9 +81,15 @@ enum phy_pcvt_type {
 
 struct phy_status_opts_pcvt {
 	enum phy_pcvt_type type;
+	size_t index;
 	union {
 		unsigned int mdio;
 	} addr;
+};
+
+struct phy_status_opts_pcvt_count {
+	enum phy_pcvt_type type;
+	size_t num_pcvt;
 };
 
 /* If the CDR (Clock and Data Recovery) block is able to lock onto the RX bit
@@ -98,10 +105,12 @@ struct phy_status_opts_cdr {
  * union phy_status_opts - Opaque generic phy status
  *
  * @cdr:	Configuration set applicable for PHY_STATUS_CDR_LOCK.
+ * @pcvt_count:	Configuration set applicable for PHY_STATUS_PCVT_COUNT.
  * @pcvt:	Configuration set applicable for PHY_STATUS_PCVT_ADDR.
  */
 union phy_status_opts {
 	struct phy_status_opts_cdr		cdr;
+	struct phy_status_opts_pcvt_count	pcvt_count;
 	struct phy_status_opts_pcvt		pcvt;
 };
 
@@ -220,6 +229,7 @@ struct phy_attrs {
  * @power_count: used to protect when the PHY is used by multiple consumers
  * @attrs: used to specify PHY specific attributes
  * @pwr: power regulator associated with the phy
+ * @debugfs: debugfs directory
  */
 struct phy {
 	struct device		dev;
@@ -230,6 +240,7 @@ struct phy {
 	int			power_count;
 	struct phy_attrs	attrs;
 	struct regulator	*pwr;
+	struct dentry		*debugfs;
 };
 
 /**
@@ -287,8 +298,6 @@ static inline void *phy_get_drvdata(struct phy *phy)
 	return dev_get_drvdata(&phy->dev);
 }
 
-extern struct dentry *phy_debugfs_root;
-
 #if IS_ENABLED(CONFIG_GENERIC_PHY)
 int phy_pm_runtime_get(struct phy *phy);
 int phy_pm_runtime_get_sync(struct phy *phy);
@@ -326,7 +335,6 @@ static inline void phy_set_bus_width(struct phy *phy, int bus_width)
 	phy->attrs.bus_width = bus_width;
 }
 struct phy *phy_get(struct device *dev, const char *string);
-struct phy *phy_optional_get(struct device *dev, const char *string);
 struct phy *devm_phy_get(struct device *dev, const char *string);
 struct phy *devm_phy_optional_get(struct device *dev, const char *string);
 struct phy *devm_of_phy_get(struct device *dev, struct device_node *np,
@@ -509,12 +517,6 @@ static inline void phy_set_bus_width(struct phy *phy, int bus_width)
 }
 
 static inline struct phy *phy_get(struct device *dev, const char *string)
-{
-	return ERR_PTR(-ENOSYS);
-}
-
-static inline struct phy *phy_optional_get(struct device *dev,
-					   const char *string)
 {
 	return ERR_PTR(-ENOSYS);
 }

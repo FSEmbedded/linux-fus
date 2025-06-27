@@ -79,8 +79,8 @@ MODULE_PARM_DESC(debug, "Debug level (0=none,...,16=all)");
 #define GMAC0_IRQ4_8 (GMAC0_MIB_INT_BIT | GMAC0_RX_OVERRUN_INT_BIT)
 
 #define GMAC_OFFLOAD_FEATURES (NETIF_F_SG | NETIF_F_IP_CSUM | \
-		NETIF_F_IPV6_CSUM | NETIF_F_RXCSUM | \
-		NETIF_F_TSO | NETIF_F_TSO_ECN | NETIF_F_TSO6)
+			       NETIF_F_IPV6_CSUM | NETIF_F_RXCSUM | \
+			       NETIF_F_TSO | NETIF_F_TSO_ECN | NETIF_F_TSO6)
 
 /**
  * struct gmac_queue_page - page buffer per-page info
@@ -432,8 +432,8 @@ static const struct gmac_max_framelen gmac_maxlens[] = {
 		.val = CONFIG0_MAXLEN_1536,
 	},
 	{
-		.max_l3_len = 1542,
-		.val = CONFIG0_MAXLEN_1542,
+		.max_l3_len = 1548,
+		.val = CONFIG0_MAXLEN_1548,
 	},
 	{
 		.max_l3_len = 9212,
@@ -1108,9 +1108,12 @@ static void gmac_tx_irq_enable(struct net_device *netdev,
 {
 	struct gemini_ethernet_port *port = netdev_priv(netdev);
 	struct gemini_ethernet *geth = port->geth;
+	unsigned long flags;
 	u32 val, mask;
 
 	netdev_dbg(netdev, "%s device %d\n", __func__, netdev->dev_id);
+
+	spin_lock_irqsave(&geth->irq_lock, flags);
 
 	mask = GMAC0_IRQ0_TXQ0_INTS << (6 * netdev->dev_id + txq);
 
@@ -1120,6 +1123,8 @@ static void gmac_tx_irq_enable(struct net_device *netdev,
 	val = readl(geth->base + GLOBAL_INTERRUPT_ENABLE_0_REG);
 	val = en ? val | mask : val & ~mask;
 	writel(val, geth->base + GLOBAL_INTERRUPT_ENABLE_0_REG);
+
+	spin_unlock_irqrestore(&geth->irq_lock, flags);
 }
 
 static void gmac_tx_irq(struct net_device *netdev, unsigned int txq_num)
@@ -1143,25 +1148,51 @@ static int gmac_map_tx_bufs(struct net_device *netdev, struct sk_buff *skb,
 	struct gmac_txdesc *txd;
 	skb_frag_t *skb_frag;
 	dma_addr_t mapping;
-	unsigned short mtu;
 	void *buffer;
-
-	mtu  = ETH_HLEN;
-	mtu += netdev->mtu;
-	if (skb->protocol == htons(ETH_P_8021Q))
-		mtu += VLAN_HLEN;
+	u16 mss;
+	int ret;
 
 	word1 = skb->len;
 	word3 = SOF_BIT;
 
-	if (word1 > mtu) {
+	mss = skb_shinfo(skb)->gso_size;
+	if (mss) {
+		/* This means we are dealing with TCP and skb->len is the
+		 * sum total of all the segments. The TSO will deal with
+		 * chopping this up for us.
+		 */
+		/* The accelerator needs the full frame size here */
+		mss += skb_tcp_all_headers(skb);
+		netdev_dbg(netdev, "segment offloading mss = %04x len=%04x\n",
+			   mss, skb->len);
 		word1 |= TSS_MTU_ENABLE_BIT;
-		word3 |= mtu;
+		word3 |= mss;
+	} else if (skb->len >= ETH_FRAME_LEN) {
+		/* Hardware offloaded checksumming isn't working on frames
+		 * bigger than 1514 bytes. A hypothesis about this is that the
+		 * checksum buffer is only 1518 bytes, so when the frames get
+		 * bigger they get truncated, or the last few bytes get
+		 * overwritten by the FCS.
+		 *
+		 * Just use software checksumming and bypass on bigger frames.
+		 */
+		if (skb->ip_summed == CHECKSUM_PARTIAL) {
+			ret = skb_checksum_help(skb);
+			if (ret)
+				return ret;
+		}
+		word1 |= TSS_BYPASS_BIT;
 	}
 
-	if (skb->ip_summed != CHECKSUM_NONE) {
+	if (skb->ip_summed == CHECKSUM_PARTIAL) {
 		int tcp = 0;
 
+		/* We do not switch off the checksumming on non TCP/UDP
+		 * frames: as is shown from tests, the checksumming engine
+		 * is smart enough to see that a frame is not actually TCP
+		 * or UDP and then just pass it through without any changes
+		 * to the frame.
+		 */
 		if (skb->protocol == htons(ETH_P_IP)) {
 			word1 |= TSS_IP_CHKSUM_BIT;
 			tcp = ip_hdr(skb)->protocol == IPPROTO_TCP;
@@ -1404,15 +1435,19 @@ static unsigned int gmac_rx(struct net_device *netdev, unsigned int budget)
 	union gmac_rxdesc_3 word3;
 	struct page *page = NULL;
 	unsigned int page_offs;
+	unsigned long flags;
 	unsigned short r, w;
 	union dma_rwptr rw;
 	dma_addr_t mapping;
 	int frag_nr = 0;
 
+	spin_lock_irqsave(&geth->irq_lock, flags);
 	rw.bits32 = readl(ptr_reg);
 	/* Reset interrupt as all packages until here are taken into account */
 	writel(DEFAULT_Q0_INT_BIT << netdev->dev_id,
 	       geth->base + GLOBAL_INTERRUPT_STATUS_1_REG);
+	spin_unlock_irqrestore(&geth->irq_lock, flags);
+
 	r = rw.bits.rptr;
 	w = rw.bits.wptr;
 
@@ -1715,10 +1750,9 @@ static irqreturn_t gmac_irq(int irq, void *data)
 		gmac_update_hw_stats(netdev);
 
 	if (val & (GMAC0_RX_OVERRUN_INT_BIT << (netdev->dev_id * 8))) {
+		spin_lock(&geth->irq_lock);
 		writel(GMAC0_RXDERR_INT_BIT << (netdev->dev_id * 8),
 		       geth->base + GLOBAL_INTERRUPT_STATUS_4_REG);
-
-		spin_lock(&geth->irq_lock);
 		u64_stats_update_begin(&port->ir_stats_syncp);
 		++port->stats.rx_fifo_errors;
 		u64_stats_update_end(&port->ir_stats_syncp);
@@ -1919,7 +1953,7 @@ static void gmac_get_stats64(struct net_device *netdev,
 
 	/* Racing with RX NAPI */
 	do {
-		start = u64_stats_fetch_begin_irq(&port->rx_stats_syncp);
+		start = u64_stats_fetch_begin(&port->rx_stats_syncp);
 
 		stats->rx_packets = port->stats.rx_packets;
 		stats->rx_bytes = port->stats.rx_bytes;
@@ -1931,11 +1965,11 @@ static void gmac_get_stats64(struct net_device *netdev,
 		stats->rx_crc_errors = port->stats.rx_crc_errors;
 		stats->rx_frame_errors = port->stats.rx_frame_errors;
 
-	} while (u64_stats_fetch_retry_irq(&port->rx_stats_syncp, start));
+	} while (u64_stats_fetch_retry(&port->rx_stats_syncp, start));
 
 	/* Racing with MIB and TX completion interrupts */
 	do {
-		start = u64_stats_fetch_begin_irq(&port->ir_stats_syncp);
+		start = u64_stats_fetch_begin(&port->ir_stats_syncp);
 
 		stats->tx_errors = port->stats.tx_errors;
 		stats->tx_packets = port->stats.tx_packets;
@@ -1945,15 +1979,15 @@ static void gmac_get_stats64(struct net_device *netdev,
 		stats->rx_missed_errors = port->stats.rx_missed_errors;
 		stats->rx_fifo_errors = port->stats.rx_fifo_errors;
 
-	} while (u64_stats_fetch_retry_irq(&port->ir_stats_syncp, start));
+	} while (u64_stats_fetch_retry(&port->ir_stats_syncp, start));
 
 	/* Racing with hard_start_xmit */
 	do {
-		start = u64_stats_fetch_begin_irq(&port->tx_stats_syncp);
+		start = u64_stats_fetch_begin(&port->tx_stats_syncp);
 
 		stats->tx_dropped = port->stats.tx_dropped;
 
-	} while (u64_stats_fetch_retry_irq(&port->tx_stats_syncp, start));
+	} while (u64_stats_fetch_retry(&port->tx_stats_syncp, start));
 
 	stats->rx_dropped += stats->rx_missed_errors;
 }
@@ -1976,15 +2010,6 @@ static int gmac_change_mtu(struct net_device *netdev, int new_mtu)
 	gmac_enable_tx_rx(netdev);
 
 	return 0;
-}
-
-static netdev_features_t gmac_fix_features(struct net_device *netdev,
-					   netdev_features_t features)
-{
-	if (netdev->mtu + ETH_HLEN + VLAN_HLEN > MTU_SIZE_BIT_MASK)
-		features &= ~GMAC_OFFLOAD_FEATURES;
-
-	return features;
 }
 
 static int gmac_set_features(struct net_device *netdev,
@@ -2031,18 +2056,18 @@ static void gmac_get_ethtool_stats(struct net_device *netdev,
 	/* Racing with MIB interrupt */
 	do {
 		p = values;
-		start = u64_stats_fetch_begin_irq(&port->ir_stats_syncp);
+		start = u64_stats_fetch_begin(&port->ir_stats_syncp);
 
 		for (i = 0; i < RX_STATS_NUM; i++)
 			*p++ = port->hw_stats[i];
 
-	} while (u64_stats_fetch_retry_irq(&port->ir_stats_syncp, start));
+	} while (u64_stats_fetch_retry(&port->ir_stats_syncp, start));
 	values = p;
 
 	/* Racing with RX NAPI */
 	do {
 		p = values;
-		start = u64_stats_fetch_begin_irq(&port->rx_stats_syncp);
+		start = u64_stats_fetch_begin(&port->rx_stats_syncp);
 
 		for (i = 0; i < RX_STATUS_NUM; i++)
 			*p++ = port->rx_stats[i];
@@ -2050,13 +2075,13 @@ static void gmac_get_ethtool_stats(struct net_device *netdev,
 			*p++ = port->rx_csum_stats[i];
 		*p++ = port->rx_napi_exits;
 
-	} while (u64_stats_fetch_retry_irq(&port->rx_stats_syncp, start));
+	} while (u64_stats_fetch_retry(&port->rx_stats_syncp, start));
 	values = p;
 
 	/* Racing with TX start_xmit */
 	do {
 		p = values;
-		start = u64_stats_fetch_begin_irq(&port->tx_stats_syncp);
+		start = u64_stats_fetch_begin(&port->tx_stats_syncp);
 
 		for (i = 0; i < TX_MAX_FRAGS; i++) {
 			*values++ = port->tx_frag_stats[i];
@@ -2065,7 +2090,7 @@ static void gmac_get_ethtool_stats(struct net_device *netdev,
 		*values++ = port->tx_frags_linearized;
 		*values++ = port->tx_hw_csummed;
 
-	} while (u64_stats_fetch_retry_irq(&port->tx_stats_syncp, start));
+	} while (u64_stats_fetch_retry(&port->tx_stats_syncp, start));
 }
 
 static int gmac_get_ksettings(struct net_device *netdev,
@@ -2212,7 +2237,6 @@ static const struct net_device_ops gmac_351x_ops = {
 	.ndo_set_mac_address	= gmac_set_mac_address,
 	.ndo_get_stats64	= gmac_get_stats64,
 	.ndo_change_mtu		= gmac_change_mtu,
-	.ndo_fix_features	= gmac_fix_features,
 	.ndo_set_features	= gmac_set_features,
 };
 
@@ -2415,8 +2439,8 @@ static int gemini_ethernet_port_probe(struct platform_device *pdev)
 
 	/* Interrupt */
 	irq = platform_get_irq(pdev, 0);
-	if (irq <= 0)
-		return irq ? irq : -ENODEV;
+	if (irq < 0)
+		return irq;
 	port->irq = irq;
 
 	/* Clock the port */
@@ -2464,11 +2488,12 @@ static int gemini_ethernet_port_probe(struct platform_device *pdev)
 
 	netdev->hw_features = GMAC_OFFLOAD_FEATURES;
 	netdev->features |= GMAC_OFFLOAD_FEATURES | NETIF_F_GRO;
-	/* We can handle jumbo frames up to 10236 bytes so, let's accept
-	 * payloads of 10236 bytes minus VLAN and ethernet header
+	/* We can receive jumbo frames up to 10236 bytes but only
+	 * transmit 2047 bytes so, let's accept payloads of 2047
+	 * bytes minus VLAN and ethernet header
 	 */
 	netdev->min_mtu = ETH_MIN_MTU;
-	netdev->max_mtu = 10236 - VLAN_ETH_HLEN;
+	netdev->max_mtu = MTU_SIZE_BIT_MASK - VLAN_ETH_HLEN;
 
 	port->freeq_refill = 0;
 	netif_napi_add(netdev, &port->napi, gmac_napi_poll);
@@ -2538,7 +2563,7 @@ MODULE_DEVICE_TABLE(of, gemini_ethernet_port_of_match);
 static struct platform_driver gemini_ethernet_port_driver = {
 	.driver = {
 		.name = "gemini-ethernet-port",
-		.of_match_table = of_match_ptr(gemini_ethernet_port_of_match),
+		.of_match_table = gemini_ethernet_port_of_match,
 	},
 	.probe = gemini_ethernet_port_probe,
 	.remove = gemini_ethernet_port_remove,
@@ -2604,7 +2629,7 @@ MODULE_DEVICE_TABLE(of, gemini_ethernet_of_match);
 static struct platform_driver gemini_ethernet_driver = {
 	.driver = {
 		.name = DRV_NAME,
-		.of_match_table = of_match_ptr(gemini_ethernet_of_match),
+		.of_match_table = gemini_ethernet_of_match,
 	},
 	.probe = gemini_ethernet_probe,
 	.remove = gemini_ethernet_remove,

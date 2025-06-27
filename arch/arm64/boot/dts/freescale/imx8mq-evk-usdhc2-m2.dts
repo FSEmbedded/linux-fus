@@ -81,7 +81,7 @@
 
 &pcie1{
 	status = "disabled";
-	/delete-node/ wifi_wake_host;
+	/delete-property/ host-wake-gpio;
 };
 
 &reg_usdhc2_vmmc {
@@ -95,7 +95,6 @@
 	keep-power-in-suspend;
 	non-removable;
 	wakeup-source;
-	fsl,sdio-async-interrupt-enabled;
 	mmc-pwrseq = <&usdhc2_pwrseq>;
 
 	wifi_wake_host {

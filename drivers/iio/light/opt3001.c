@@ -139,6 +139,10 @@ static const struct opt3001_scale opt3001_scales[] = {
 		.val2 = 400000,
 	},
 	{
+		.val = 41932,
+		.val2 = 800000,
+	},
+	{
 		.val = 83865,
 		.val2 = 600000,
 	},
@@ -735,8 +739,7 @@ out:
 	return IRQ_HANDLED;
 }
 
-static int opt3001_probe(struct i2c_client *client,
-		const struct i2c_device_id *id)
+static int opt3001_probe(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
 

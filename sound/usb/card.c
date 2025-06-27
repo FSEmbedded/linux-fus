@@ -44,6 +44,7 @@
 #include "usbaudio.h"
 #include "card.h"
 #include "midi.h"
+#include "midi2.h"
 #include "mixer.h"
 #include "proc.h"
 #include "quirks.h"
@@ -178,9 +179,8 @@ static int snd_usb_create_stream(struct snd_usb_audio *chip, int ctrlif, int int
 	if ((altsd->bInterfaceClass == USB_CLASS_AUDIO ||
 	     altsd->bInterfaceClass == USB_CLASS_VENDOR_SPEC) &&
 	    altsd->bInterfaceSubClass == USB_SUBCLASS_MIDISTREAMING) {
-		int err = __snd_usbmidi_create(chip->card, iface,
-					     &chip->midi_list, NULL,
-					     chip->usb_id);
+		int err = snd_usb_midi_v2_create(chip, iface, NULL,
+						 chip->usb_id);
 		if (err < 0) {
 			dev_err(&dev->dev,
 				"%u:%d: cannot create sequencer device\n",
@@ -382,6 +382,12 @@ static const struct usb_audio_device_name usb_audio_names[] = {
 	/* Creative/Toshiba Multimedia Center SB-0500 */
 	DEVICE_NAME(0x041e, 0x3048, "Toshiba", "SB-0500"),
 
+	/* Logitech Audio Devices */
+	DEVICE_NAME(0x046d, 0x0867, "Logitech, Inc.", "Logi-MeetUp"),
+	DEVICE_NAME(0x046d, 0x0874, "Logitech, Inc.", "Logi-Tap-Audio"),
+	DEVICE_NAME(0x046d, 0x087c, "Logitech, Inc.", "Logi-Huddle"),
+	DEVICE_NAME(0x046d, 0x0898, "Logitech, Inc.", "Logi-RB-Audio"),
+	DEVICE_NAME(0x046d, 0x08d2, "Logitech, Inc.", "Logi-RBM-Audio"),
 	DEVICE_NAME(0x046d, 0x0990, "Logitech, Inc.", "QuickCam Pro 9000"),
 
 	DEVICE_NAME(0x05e1, 0x0408, "Syntek", "STK1160"),
@@ -485,6 +491,7 @@ static void snd_usb_audio_free(struct snd_card *card)
 	struct snd_usb_audio *chip = card->private_data;
 
 	snd_usb_endpoint_free_all(chip);
+	snd_usb_midi_v2_free_all(chip);
 
 	mutex_destroy(&chip->mutex);
 	if (!atomic_read(&chip->shutdown))
@@ -609,7 +616,6 @@ static int snd_usb_audio_create(struct usb_interface *intf,
 	case USB_SPEED_LOW:
 	case USB_SPEED_FULL:
 	case USB_SPEED_HIGH:
-	case USB_SPEED_WIRELESS:
 	case USB_SPEED_SUPER:
 	case USB_SPEED_SUPER_PLUS:
 		break;
@@ -645,6 +651,7 @@ static int snd_usb_audio_create(struct usb_interface *intf,
 	INIT_LIST_HEAD(&chip->iface_ref_list);
 	INIT_LIST_HEAD(&chip->clock_ref_list);
 	INIT_LIST_HEAD(&chip->midi_list);
+	INIT_LIST_HEAD(&chip->midi_v2_list);
 	INIT_LIST_HEAD(&chip->mixer_list);
 
 	if (quirk_flags[idx])
@@ -969,6 +976,7 @@ static void usb_audio_disconnect(struct usb_interface *intf)
 		list_for_each(p, &chip->midi_list) {
 			snd_usbmidi_disconnect(p);
 		}
+		snd_usb_midi_v2_disconnect_all(chip);
 		/*
 		 * Nice to check quirk && quirk->shares_media_device and
 		 * then call the snd_media_device_delete(). Don't have
@@ -1080,6 +1088,7 @@ static int usb_audio_suspend(struct usb_interface *intf, pm_message_t message)
 			snd_usbmidi_suspend(p);
 		list_for_each_entry(mixer, &chip->mixer_list, list)
 			snd_usb_mixer_suspend(mixer);
+		snd_usb_midi_v2_suspend_all(chip);
 	}
 
 	if (!PMSG_IS_AUTO(message) && !chip->system_suspend) {
@@ -1124,6 +1133,8 @@ static int usb_audio_resume(struct usb_interface *intf)
 	list_for_each(p, &chip->midi_list) {
 		snd_usbmidi_resume(p);
 	}
+
+	snd_usb_midi_v2_resume_all(chip);
 
  out:
 	if (chip->num_suspended_intf == chip->system_suspend) {

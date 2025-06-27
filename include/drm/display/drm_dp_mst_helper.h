@@ -138,12 +138,7 @@ struct drm_dp_mst_port {
 	 * @cached_edid: for DP logical ports - make tiling work by ensuring
 	 * that the EDID for all connectors is read immediately.
 	 */
-	struct edid *cached_edid;
-	/**
-	 * @has_audio: Tracks whether the sink connector to this port is
-	 * audio-capable.
-	 */
-	bool has_audio;
+	const struct drm_edid *cached_edid;
 
 	/**
 	 * @fec_capable: bool indicating if FEC can be supported up to that
@@ -695,6 +690,13 @@ struct drm_dp_mst_topology_mgr {
 	bool payload_id_table_cleared : 1;
 
 	/**
+	 * @reset_rx_state: The down request's reply and up request message
+	 * receiver state must be reset, after the topology manager got
+	 * removed. Protected by @lock.
+	 */
+	bool reset_rx_state : 1;
+
+	/**
 	 * @payload_count: The number of currently active payloads in hardware. This value is only
 	 * intended to be used internally by MST helpers for payload tracking, and is only safe to
 	 * read/write from the atomic commit (not check) context.
@@ -827,12 +829,17 @@ drm_dp_mst_detect_port(struct drm_connector *connector,
 		       struct drm_dp_mst_topology_mgr *mgr,
 		       struct drm_dp_mst_port *port);
 
-struct edid *drm_dp_mst_get_edid(struct drm_connector *connector, struct drm_dp_mst_topology_mgr *mgr, struct drm_dp_mst_port *port);
+const struct drm_edid *drm_dp_mst_edid_read(struct drm_connector *connector,
+					    struct drm_dp_mst_topology_mgr *mgr,
+					    struct drm_dp_mst_port *port);
+struct edid *drm_dp_mst_get_edid(struct drm_connector *connector,
+				 struct drm_dp_mst_topology_mgr *mgr,
+				 struct drm_dp_mst_port *port);
 
 int drm_dp_get_vc_payload_bw(const struct drm_dp_mst_topology_mgr *mgr,
 			     int link_rate, int link_lane_count);
 
-int drm_dp_calc_pbn_mode(int clock, int bpp, bool dsc);
+int drm_dp_calc_pbn_mode(int clock, int bpp);
 
 void drm_dp_mst_update_slots(struct drm_dp_mst_topology_state *mst_state, uint8_t link_encoding_cap);
 

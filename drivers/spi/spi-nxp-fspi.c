@@ -47,7 +47,6 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/pm_runtime.h>
@@ -268,9 +267,6 @@
 #define FSPI_TFDR			0x180
 
 #define FSPI_LUT_BASE			0x200
-#define FSPI_LUT_OFFSET			(SEQID_LUT * 4 * 4)
-#define FSPI_LUT_REG(idx) \
-	(FSPI_LUT_BASE + FSPI_LUT_OFFSET + (idx) * 4)
 
 /* register map end */
 
@@ -349,6 +345,7 @@ struct nxp_fspi_devtype_data {
 	unsigned int txfifo;
 	unsigned int ahb_buf_size;
 	unsigned int quirks;
+	unsigned int lut_num;
 	bool little_endian;
 };
 
@@ -357,6 +354,7 @@ static struct nxp_fspi_devtype_data lx2160a_data = {
 	.txfifo = SZ_1K,        /* (128 * 64 bits)  */
 	.ahb_buf_size = SZ_2K,  /* (256 * 64 bits)  */
 	.quirks = FSPI_QUIRK_DISABLE_DTR,
+	.lut_num = 32,
 	.little_endian = true,  /* little-endian    */
 };
 
@@ -365,6 +363,7 @@ static struct nxp_fspi_devtype_data imx8mm_data = {
 	.txfifo = SZ_1K,        /* (128 * 64 bits)  */
 	.ahb_buf_size = SZ_2K,  /* (256 * 64 bits)  */
 	.quirks = 0,
+	.lut_num = 32,
 	.little_endian = true,  /* little-endian    */
 };
 
@@ -373,6 +372,7 @@ static struct nxp_fspi_devtype_data imx8qxp_data = {
 	.txfifo = SZ_1K,        /* (128 * 64 bits)  */
 	.ahb_buf_size = SZ_2K,  /* (256 * 64 bits)  */
 	.quirks = 0,
+	.lut_num = 32,
 	.little_endian = true,  /* little-endian    */
 };
 
@@ -381,6 +381,16 @@ static struct nxp_fspi_devtype_data imx8dxl_data = {
 	.txfifo = SZ_1K,        /* (128 * 64 bits)  */
 	.ahb_buf_size = SZ_2K,  /* (256 * 64 bits)  */
 	.quirks = FSPI_QUIRK_USE_IP_ONLY,
+	.lut_num = 32,
+	.little_endian = true,  /* little-endian    */
+};
+
+static struct nxp_fspi_devtype_data imx8ulp_data = {
+	.rxfifo = SZ_512,       /* (64  * 64 bits)  */
+	.txfifo = SZ_1K,        /* (128 * 64 bits)  */
+	.ahb_buf_size = SZ_2K,  /* (256 * 64 bits)  */
+	.quirks = 0,
+	.lut_num = 16,
 	.little_endian = true,  /* little-endian    */
 };
 
@@ -557,6 +567,8 @@ static void nxp_fspi_prepare_lut(struct nxp_fspi *f,
 	void __iomem *base = f->iobase;
 	u32 lutval[4] = {};
 	int lutidx = 1, i;
+	u32 lut_offset = (f->devtype_data->lut_num - 1) * 4 * 4;
+	u32 target_lut_reg;
 
 	/* cmd */
 	if (op->cmd.dtr) {
@@ -613,8 +625,10 @@ static void nxp_fspi_prepare_lut(struct nxp_fspi *f,
 	fspi_writel(f, FSPI_LCKER_UNLOCK, f->iobase + FSPI_LCKCR);
 
 	/* fill LUT */
-	for (i = 0; i < ARRAY_SIZE(lutval); i++)
-		fspi_writel(f, lutval[i], base + FSPI_LUT_REG(i));
+	for (i = 0; i < ARRAY_SIZE(lutval); i++) {
+		target_lut_reg = FSPI_LUT_BASE + lut_offset + i * 4;
+		fspi_writel(f, lutval[i], base + target_lut_reg);
+	}
 
 	dev_dbg(f->dev, "CMD[%x] lutval[0:%x \t 1:%x \t 2:%x \t 3:%x], size: 0x%08x\n",
 		op->cmd.opcode, lutval[0], lutval[1], lutval[2], lutval[3], op->data.nbytes);
@@ -644,15 +658,15 @@ static int nxp_fspi_clk_prep_enable(struct nxp_fspi *f)
 	return 0;
 }
 
-static int nxp_fspi_clk_disable_unprep(struct nxp_fspi *f)
+static void nxp_fspi_clk_disable_unprep(struct nxp_fspi *f)
 {
 	if (is_acpi_node(dev_fwnode(f->dev)))
-		return 0;
+		return;
 
 	clk_disable_unprepare(f->clk);
 	clk_disable_unprepare(f->clk_en);
 
-	return 0;
+	return;
 }
 
 static void nxp_fspi_dll_calibration(struct nxp_fspi *f)
@@ -682,6 +696,12 @@ static void nxp_fspi_dll_calibration(struct nxp_fspi *f)
 				   0, POLL_TOUT, true);
 	if (ret)
 		dev_warn(f->dev, "DLL lock failed, please fix it!\n");
+
+	/*
+	 * For ERR050272, DLL lock status bit is not accurate,
+	 * wait for 4us more as a workaround.
+	 */
+	udelay(4);
 }
 
 /*
@@ -732,7 +752,7 @@ static void nxp_fspi_select_mem(struct nxp_fspi *f, struct spi_device *spi)
 	 * Return, if previously selected slave device is same as current
 	 * requested slave device.
 	 */
-	if (f->selected == spi->chip_select)
+	if (f->selected == spi_get_chipselect(spi, 0))
 		return;
 
 	/* Reset FLSHxxCR0 registers */
@@ -745,9 +765,9 @@ static void nxp_fspi_select_mem(struct nxp_fspi *f, struct spi_device *spi)
 	size_kb = FSPI_FLSHXCR0_SZ(f->memmap_phy_size);
 
 	fspi_writel(f, size_kb, f->iobase + FSPI_FLSHA1CR0 +
-		    4 * spi->chip_select);
+		    4 * spi_get_chipselect(spi, 0));
 
-	dev_dbg(f->dev, "Slave device [CS:%x] selected\n", spi->chip_select);
+	dev_dbg(f->dev, "Slave device [CS:%x] selected\n", spi_get_chipselect(spi, 0));
 
 	nxp_fspi_clk_disable_unprep(f);
 
@@ -766,7 +786,7 @@ static void nxp_fspi_select_mem(struct nxp_fspi *f, struct spi_device *spi)
 	if (rate > 100000000)
 		nxp_fspi_dll_calibration(f);
 
-	f->selected = spi->chip_select;
+	f->selected = spi_get_chipselect(spi, 0);
 }
 
 static int nxp_fspi_read_ahb(struct nxp_fspi *f, const struct spi_mem_op *op)
@@ -784,7 +804,7 @@ static int nxp_fspi_read_ahb(struct nxp_fspi *f, const struct spi_mem_op *op)
 		f->memmap_len = len > NXP_FSPI_MIN_IOMAP ?
 				len : NXP_FSPI_MIN_IOMAP;
 
-		f->ahb_addr = ioremap_wc(f->memmap_phy + f->memmap_start,
+		f->ahb_addr = ioremap(f->memmap_phy + f->memmap_start,
 					 f->memmap_len);
 
 		if (!f->ahb_addr) {
@@ -830,14 +850,15 @@ static void nxp_fspi_fill_txfifo(struct nxp_fspi *f,
 	if (i < op->data.nbytes) {
 		u32 data = 0;
 		int j;
+		int remaining = op->data.nbytes - i;
 		/* Wait for TXFIFO empty */
 		ret = fspi_readl_poll_tout(f, f->iobase + FSPI_INTR,
 					   FSPI_INTR_IPTXWE, 0,
 					   POLL_TOUT, true);
 		WARN_ON(ret);
 
-		for (j = 0; j < ALIGN(op->data.nbytes - i, 4); j += 4) {
-			memcpy(&data, buf + i + j, 4);
+		for (j = 0; j < ALIGN(remaining, 4); j += 4) {
+			memcpy(&data, buf + i + j, min_t(int, 4, remaining - j));
 			fspi_writel(f, data, base + FSPI_TFDR + j);
 		}
 		fspi_writel(f, FSPI_INTR_IPTXWE, base + FSPI_INTR);
@@ -933,7 +954,7 @@ static int nxp_fspi_do_op(struct nxp_fspi *f, const struct spi_mem_op *op)
 	void __iomem *base = f->iobase;
 	int seqnum = 0;
 	int err = 0;
-	u32 reg;
+	u32 reg, seqid_lut;
 
 	reg = fspi_readl(f, base + FSPI_IPRXFCR);
 	/* invalid RXFIFO first */
@@ -1120,7 +1141,7 @@ static int nxp_fspi_adjust_op_size(struct spi_mem *mem, struct spi_mem_op *op)
 
 static void erratum_err050568(struct nxp_fspi *f)
 {
-	const struct soc_device_attribute ls1028a_soc_attr[] = {
+	static const struct soc_device_attribute ls1028a_soc_attr[] = {
 		{ .family = "QorIQ LS1028A" },
 		{ /* sentinel */ }
 	};
@@ -1161,7 +1182,7 @@ static int nxp_fspi_default_setup(struct nxp_fspi *f)
 {
 	void __iomem *base = f->iobase;
 	int ret, i;
-	u32 reg;
+	u32 reg, seqid_lut;
 
 	/* disable and unprepare clock to avoid glitch pass to controller */
 	nxp_fspi_clk_disable_unprep(f);
@@ -1210,7 +1231,6 @@ static int nxp_fspi_default_setup(struct nxp_fspi *f)
 		reg |= FSPI_MCR0_OCTCOMB_EN;
 
 	fspi_writel(f, reg, base + FSPI_MCR0);
-
 	/*
 	 * Disable same device enable bit and configure all slave devices
 	 * independently.
@@ -1234,18 +1254,24 @@ static int nxp_fspi_default_setup(struct nxp_fspi *f)
 	fspi_writel(f, FSPI_AHBCR_PREF_EN | FSPI_AHBCR_RDADDROPT,
 		 base + FSPI_AHBCR);
 
-	/* Reset the flashx control1 registers. */
+	/* Reset the FLSHxCR1 registers. */
 	reg = FSPI_FLSHXCR1_TCSH(0x3) | FSPI_FLSHXCR1_TCSS(0x3);
 	fspi_writel(f, reg, base + FSPI_FLSHA1CR1);
 	fspi_writel(f, reg, base + FSPI_FLSHA2CR1);
 	fspi_writel(f, reg, base + FSPI_FLSHB1CR1);
 	fspi_writel(f, reg, base + FSPI_FLSHB2CR1);
 
+	/*
+	 * The driver only uses one single LUT entry, that is updated on
+	 * each call of exec_op(). Index 0 is preset at boot with a basic
+	 * read operation, so let's use the last entry.
+	 */
+	seqid_lut = f->devtype_data->lut_num - 1;
 	/* AHB Read - Set lut sequence ID for all CS. */
-	fspi_writel(f, SEQID_LUT, base + FSPI_FLSHA1CR2);
-	fspi_writel(f, SEQID_LUT, base + FSPI_FLSHA2CR2);
-	fspi_writel(f, SEQID_LUT, base + FSPI_FLSHB1CR2);
-	fspi_writel(f, SEQID_LUT, base + FSPI_FLSHB2CR2);
+	fspi_writel(f, seqid_lut, base + FSPI_FLSHA1CR2);
+	fspi_writel(f, seqid_lut, base + FSPI_FLSHA2CR2);
+	fspi_writel(f, seqid_lut, base + FSPI_FLSHB1CR2);
+	fspi_writel(f, seqid_lut, base + FSPI_FLSHB2CR2);
 
 	f->selected = -1;
 
@@ -1267,7 +1293,7 @@ static const char *nxp_fspi_get_name(struct spi_mem *mem)
 
 	name = devm_kasprintf(dev, GFP_KERNEL,
 			      "%s-%d", dev_name(f->dev),
-			      mem->spi->chip_select);
+			      spi_get_chipselect(mem->spi, 0));
 
 	if (!name) {
 		dev_err(dev, "failed to get memory for custom flash name\n");
@@ -1321,12 +1347,10 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 
 	/* find the resources - configuration register address space */
 	if (is_acpi_node(dev_fwnode(f->dev)))
-		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+		f->iobase = devm_platform_ioremap_resource(pdev, 0);
 	else
-		res = platform_get_resource_byname(pdev,
-				IORESOURCE_MEM, "fspi_base");
+		f->iobase = devm_platform_ioremap_resource_byname(pdev, "fspi_base");
 
-	f->iobase = devm_ioremap_resource(dev, res);
 	if (IS_ERR(f->iobase)) {
 		ret = PTR_ERR(f->iobase);
 		goto err_put_ctrl;
@@ -1434,12 +1458,21 @@ err_put_ctrl:
 	return ret;
 }
 
-static int nxp_fspi_remove(struct platform_device *pdev)
+static void nxp_fspi_remove(struct platform_device *pdev)
 {
 	struct nxp_fspi *f = platform_get_drvdata(pdev);
+	int ret;
+
+	/* enable clock first since there is reigster access */
+	ret = pm_runtime_get_sync(&pdev->dev);
+	if (ret < 0)
+		dev_err(f->dev, "Failed to enable clock %d\n", __LINE__);
 
 	/* disable the hardware */
 	fspi_writel(f, FSPI_MCR0_MDIS, f->iobase + FSPI_MCR0);
+
+	pm_runtime_disable(&pdev->dev);
+	pm_runtime_put_noidle(&pdev->dev);
 
 	nxp_fspi_clk_disable_unprep(f);
 
@@ -1447,8 +1480,6 @@ static int nxp_fspi_remove(struct platform_device *pdev)
 
 	if (f->ahb_addr)
 		iounmap(f->ahb_addr);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -1480,8 +1511,11 @@ static int nxp_fspi_runtime_suspend(struct device *dev)
 static int nxp_fspi_runtime_resume(struct device *dev)
 {
 	struct nxp_fspi *f = dev_get_drvdata(dev);
+	int ret;
 
-	nxp_fspi_clk_prep_enable(f);
+	ret = nxp_fspi_clk_prep_enable(f);
+	if (ret)
+		return ret;
 
 	if (nxp_fspi_initialized(f) && nxp_fspi_need_reinit(f))
 		nxp_fspi_default_setup(f);
@@ -1530,6 +1564,7 @@ static const struct of_device_id nxp_fspi_dt_ids[] = {
 	{ .compatible = "nxp,imx8mp-fspi", .data = (void *)&imx8mm_data, },
 	{ .compatible = "nxp,imx8qxp-fspi", .data = (void *)&imx8qxp_data, },
 	{ .compatible = "nxp,imx8dxl-fspi", .data = (void *)&imx8dxl_data, },
+	{ .compatible = "nxp,imx8ulp-fspi", .data = (void *)&imx8ulp_data, },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, nxp_fspi_dt_ids);
@@ -1550,7 +1585,7 @@ static struct platform_driver nxp_fspi_driver = {
 		.pm =   &nxp_fspi_pm_ops,
 	},
 	.probe          = nxp_fspi_probe,
-	.remove		= nxp_fspi_remove,
+	.remove_new	= nxp_fspi_remove,
 };
 module_platform_driver(nxp_fspi_driver);
 

@@ -38,9 +38,28 @@ static unsigned char default_operstate(const struct net_device *dev)
 	if (netif_testing(dev))
 		return IF_OPER_TESTING;
 
-	if (!netif_carrier_ok(dev))
-		return (dev->ifindex != dev_get_iflink(dev) ?
-			IF_OPER_LOWERLAYERDOWN : IF_OPER_DOWN);
+	/* Some uppers (DSA) have additional sources for being down, so
+	 * first check whether lower is indeed the source of its down state.
+	 */
+	if (!netif_carrier_ok(dev)) {
+		int iflink = dev_get_iflink(dev);
+		struct net_device *peer;
+
+		/* If called from netdev_run_todo()/linkwatch_sync_dev(),
+		 * dev_net(dev) can be already freed, and RTNL is not held.
+		 */
+		if (dev->reg_state == NETREG_UNREGISTERED ||
+		    iflink == dev->ifindex)
+			return IF_OPER_DOWN;
+
+		ASSERT_RTNL();
+		peer = __dev_get_by_index(dev_net(dev), iflink);
+		if (!peer)
+			return IF_OPER_DOWN;
+
+		return netif_carrier_ok(peer) ? IF_OPER_DOWN :
+						IF_OPER_LOWERLAYERDOWN;
+	}
 
 	if (netif_dormant(dev))
 		return IF_OPER_DORMANT;
@@ -53,7 +72,7 @@ static void rfc2863_policy(struct net_device *dev)
 {
 	unsigned char operstate = default_operstate(dev);
 
-	if (operstate == dev->operstate)
+	if (operstate == READ_ONCE(dev->operstate))
 		return;
 
 	write_lock(&dev_base_lock);
@@ -73,7 +92,7 @@ static void rfc2863_policy(struct net_device *dev)
 		break;
 	}
 
-	dev->operstate = operstate;
+	WRITE_ONCE(dev->operstate, operstate);
 
 	write_unlock(&dev_base_lock);
 }
@@ -139,9 +158,9 @@ static void linkwatch_schedule_work(int urgent)
 	 * override the existing timer.
 	 */
 	if (test_bit(LW_URGENT, &linkwatch_flags))
-		mod_delayed_work(system_wq, &linkwatch_work, 0);
+		mod_delayed_work(system_unbound_wq, &linkwatch_work, 0);
 	else
-		schedule_delayed_work(&linkwatch_work, delay);
+		queue_delayed_work(system_unbound_wq, &linkwatch_work, delay);
 }
 
 

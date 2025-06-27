@@ -431,6 +431,17 @@ static int smmu_pmu_event_init(struct perf_event *event)
 			return -EINVAL;
 	}
 
+	/*
+	 * Ensure all events are on the same cpu so all events are in the
+	 * same cpu context, to avoid races on pmu_enable etc.
+	 */
+	event->cpu = smmu_pmu->on_cpu;
+
+	hwc->idx = -1;
+
+	if (event->group_leader == event)
+		return 0;
+
 	for_each_sibling_event(sibling, event->group_leader) {
 		if (is_software_event(sibling))
 			continue;
@@ -441,14 +452,6 @@ static int smmu_pmu_event_init(struct perf_event *event)
 		if (++group_num_events > smmu_pmu->num_counters)
 			return -EINVAL;
 	}
-
-	hwc->idx = -1;
-
-	/*
-	 * Ensure all events are on the same cpu so all events are in the
-	 * same cpu context, to avoid races on pmu_enable etc.
-	 */
-	event->cpu = smmu_pmu->on_cpu;
 
 	return 0;
 }
@@ -1028,6 +1031,7 @@ static void __exit arm_smmu_pmu_exit(void)
 
 module_exit(arm_smmu_pmu_exit);
 
+MODULE_ALIAS("platform:arm-smmu-v3-pmcg");
 MODULE_DESCRIPTION("PMU driver for ARM SMMUv3 Performance Monitors Extension");
 MODULE_AUTHOR("Neil Leeder <nleeder@codeaurora.org>");
 MODULE_AUTHOR("Shameer Kolothum <shameerali.kolothum.thodi@huawei.com>");

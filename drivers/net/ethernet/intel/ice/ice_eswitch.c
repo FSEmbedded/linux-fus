@@ -4,24 +4,24 @@
 #include "ice.h"
 #include "ice_lib.h"
 #include "ice_eswitch.h"
+#include "ice_eswitch_br.h"
 #include "ice_fltr.h"
 #include "ice_repr.h"
 #include "ice_devlink.h"
 #include "ice_tc_lib.h"
 
 /**
- * ice_eswitch_add_vf_mac_rule - add adv rule with VF's MAC
+ * ice_eswitch_add_vf_sp_rule - add adv rule with VF's VSI index
  * @pf: pointer to PF struct
  * @vf: pointer to VF struct
- * @mac: VF's MAC address
  *
  * This function adds advanced rule that forwards packets with
- * VF's MAC address (src MAC) to the corresponding switchdev ctrl VSI queue.
+ * VF's VSI index to the corresponding eswitch ctrl VSI queue.
  */
-int
-ice_eswitch_add_vf_mac_rule(struct ice_pf *pf, struct ice_vf *vf, const u8 *mac)
+static int
+ice_eswitch_add_vf_sp_rule(struct ice_pf *pf, struct ice_vf *vf)
 {
-	struct ice_vsi *ctrl_vsi = pf->switchdev.control_vsi;
+	struct ice_vsi *ctrl_vsi = pf->eswitch.control_vsi;
 	struct ice_adv_rule_info rule_info = { 0 };
 	struct ice_adv_lkup_elem *list;
 	struct ice_hw *hw = &pf->hw;
@@ -32,80 +32,45 @@ ice_eswitch_add_vf_mac_rule(struct ice_pf *pf, struct ice_vf *vf, const u8 *mac)
 	if (!list)
 		return -ENOMEM;
 
-	list[0].type = ICE_MAC_OFOS;
-	ether_addr_copy(list[0].h_u.eth_hdr.src_addr, mac);
-	eth_broadcast_addr(list[0].m_u.eth_hdr.src_addr);
+	ice_rule_add_src_vsi_metadata(list);
 
-	rule_info.sw_act.flag |= ICE_FLTR_TX;
+	rule_info.sw_act.flag = ICE_FLTR_TX;
 	rule_info.sw_act.vsi_handle = ctrl_vsi->idx;
 	rule_info.sw_act.fltr_act = ICE_FWD_TO_Q;
-	rule_info.rx = false;
 	rule_info.sw_act.fwd_id.q_id = hw->func_caps.common_cap.rxq_first_id +
 				       ctrl_vsi->rxq_map[vf->vf_id];
 	rule_info.flags_info.act |= ICE_SINGLE_ACT_LB_ENABLE;
 	rule_info.flags_info.act_valid = true;
 	rule_info.tun_type = ICE_SW_TUN_AND_NON_TUN;
+	rule_info.src_vsi = vf->lan_vsi_idx;
 
 	err = ice_add_adv_rule(hw, list, lkups_cnt, &rule_info,
-			       vf->repr->mac_rule);
+			       &vf->repr->sp_rule);
 	if (err)
-		dev_err(ice_pf_to_dev(pf), "Unable to add VF mac rule in switchdev mode for VF %d",
+		dev_err(ice_pf_to_dev(pf), "Unable to add VF slow-path rule in switchdev mode for VF %d",
 			vf->vf_id);
-	else
-		vf->repr->rule_added = true;
 
 	kfree(list);
 	return err;
 }
 
 /**
- * ice_eswitch_replay_vf_mac_rule - replay adv rule with VF's MAC
- * @vf: pointer to vF struct
- *
- * This function replays VF's MAC rule after reset.
- */
-void ice_eswitch_replay_vf_mac_rule(struct ice_vf *vf)
-{
-	int err;
-
-	if (!ice_is_switchdev_running(vf->pf))
-		return;
-
-	if (is_valid_ether_addr(vf->hw_lan_addr.addr)) {
-		err = ice_eswitch_add_vf_mac_rule(vf->pf, vf,
-						  vf->hw_lan_addr.addr);
-		if (err) {
-			dev_err(ice_pf_to_dev(vf->pf), "Failed to add MAC %pM for VF %d\n, error %d\n",
-				vf->hw_lan_addr.addr, vf->vf_id, err);
-			return;
-		}
-		vf->num_mac++;
-
-		ether_addr_copy(vf->dev_lan_addr.addr, vf->hw_lan_addr.addr);
-	}
-}
-
-/**
- * ice_eswitch_del_vf_mac_rule - delete adv rule with VF's MAC
+ * ice_eswitch_del_vf_sp_rule - delete adv rule with VF's VSI index
  * @vf: pointer to the VF struct
  *
- * Delete the advanced rule that was used to forward packets with the VF's MAC
- * address (src MAC) to the corresponding switchdev ctrl VSI queue.
+ * Delete the advanced rule that was used to forward packets with the VF's VSI
+ * index to the corresponding eswitch ctrl VSI queue.
  */
-void ice_eswitch_del_vf_mac_rule(struct ice_vf *vf)
+static void ice_eswitch_del_vf_sp_rule(struct ice_vf *vf)
 {
-	if (!ice_is_switchdev_running(vf->pf))
+	if (!vf->repr)
 		return;
 
-	if (!vf->repr->rule_added)
-		return;
-
-	ice_rem_adv_rule_by_id(&vf->pf->hw, vf->repr->mac_rule);
-	vf->repr->rule_added = false;
+	ice_rem_adv_rule_by_id(&vf->pf->hw, &vf->repr->sp_rule);
 }
 
 /**
- * ice_eswitch_setup_env - configure switchdev HW filters
+ * ice_eswitch_setup_env - configure eswitch HW filters
  * @pf: pointer to PF struct
  *
  * This function adds HW filters configuration specific for switchdev
@@ -113,22 +78,18 @@ void ice_eswitch_del_vf_mac_rule(struct ice_vf *vf)
  */
 static int ice_eswitch_setup_env(struct ice_pf *pf)
 {
-	struct ice_vsi *uplink_vsi = pf->switchdev.uplink_vsi;
-	struct net_device *uplink_netdev = uplink_vsi->netdev;
-	struct ice_vsi *ctrl_vsi = pf->switchdev.control_vsi;
+	struct ice_vsi *uplink_vsi = pf->eswitch.uplink_vsi;
+	struct ice_vsi *ctrl_vsi = pf->eswitch.control_vsi;
+	struct net_device *netdev = uplink_vsi->netdev;
 	struct ice_vsi_vlan_ops *vlan_ops;
 	bool rule_added = false;
 
-	vlan_ops = ice_get_compat_vsi_vlan_ops(ctrl_vsi);
-	if (vlan_ops->dis_stripping(ctrl_vsi))
-		return -ENODEV;
-
 	ice_remove_vsi_fltr(&pf->hw, uplink_vsi->idx);
 
-	netif_addr_lock_bh(uplink_netdev);
-	__dev_uc_unsync(uplink_netdev, NULL);
-	__dev_mc_unsync(uplink_netdev, NULL);
-	netif_addr_unlock_bh(uplink_netdev);
+	netif_addr_lock_bh(netdev);
+	__dev_uc_unsync(netdev, NULL);
+	__dev_mc_unsync(netdev, NULL);
+	netif_addr_unlock_bh(netdev);
 
 	if (ice_vsi_add_vlan_zero(uplink_vsi))
 		goto err_def_rx;
@@ -139,17 +100,28 @@ static int ice_eswitch_setup_env(struct ice_pf *pf)
 		rule_added = true;
 	}
 
+	vlan_ops = ice_get_compat_vsi_vlan_ops(uplink_vsi);
+	if (vlan_ops->dis_rx_filtering(uplink_vsi))
+		goto err_dis_rx;
+
 	if (ice_vsi_update_security(uplink_vsi, ice_vsi_ctx_set_allow_override))
 		goto err_override_uplink;
 
 	if (ice_vsi_update_security(ctrl_vsi, ice_vsi_ctx_set_allow_override))
 		goto err_override_control;
 
+	if (ice_vsi_update_local_lb(uplink_vsi, true))
+		goto err_override_local_lb;
+
 	return 0;
 
+err_override_local_lb:
+	ice_vsi_update_security(ctrl_vsi, ice_vsi_ctx_clear_allow_override);
 err_override_control:
 	ice_vsi_update_security(uplink_vsi, ice_vsi_ctx_clear_allow_override);
 err_override_uplink:
+	vlan_ops->ena_rx_filtering(uplink_vsi);
+err_dis_rx:
 	if (rule_added)
 		ice_clear_dflt_vsi(uplink_vsi);
 err_def_rx:
@@ -160,10 +132,10 @@ err_def_rx:
 }
 
 /**
- * ice_eswitch_remap_rings_to_vectors - reconfigure rings of switchdev ctrl VSI
+ * ice_eswitch_remap_rings_to_vectors - reconfigure rings of eswitch ctrl VSI
  * @pf: pointer to PF struct
  *
- * In switchdev number of allocated Tx/Rx rings is equal.
+ * In eswitch number of allocated Tx/Rx rings is equal.
  *
  * This function fills q_vectors structures associated with representor and
  * move each ring pairs to port representor netdevs. Each port representor
@@ -172,7 +144,7 @@ err_def_rx:
  */
 static void ice_eswitch_remap_rings_to_vectors(struct ice_pf *pf)
 {
-	struct ice_vsi *vsi = pf->switchdev.control_vsi;
+	struct ice_vsi *vsi = pf->eswitch.control_vsi;
 	int q_id;
 
 	ice_for_each_txq(vsi, q_id) {
@@ -217,7 +189,7 @@ static void ice_eswitch_remap_rings_to_vectors(struct ice_pf *pf)
 /**
  * ice_eswitch_release_reprs - clear PR VSIs configuration
  * @pf: poiner to PF struct
- * @ctrl_vsi: pointer to switchdev control VSI
+ * @ctrl_vsi: pointer to eswitch control VSI
  */
 static void
 ice_eswitch_release_reprs(struct ice_pf *pf, struct ice_vsi *ctrl_vsi)
@@ -237,7 +209,8 @@ ice_eswitch_release_reprs(struct ice_pf *pf, struct ice_vsi *ctrl_vsi)
 		ice_vsi_update_security(vsi, ice_vsi_ctx_set_antispoof);
 		metadata_dst_free(vf->repr->dst);
 		vf->repr->dst = NULL;
-		ice_fltr_add_mac_and_broadcast(vsi, vf->hw_lan_addr.addr,
+		ice_eswitch_del_vf_sp_rule(vf);
+		ice_fltr_add_mac_and_broadcast(vsi, vf->hw_lan_addr,
 					       ICE_FWD_TO_VSI);
 
 		netif_napi_del(&vf->repr->q_vector->napi);
@@ -250,7 +223,7 @@ ice_eswitch_release_reprs(struct ice_pf *pf, struct ice_vsi *ctrl_vsi)
  */
 static int ice_eswitch_setup_reprs(struct ice_pf *pf)
 {
-	struct ice_vsi *ctrl_vsi = pf->switchdev.control_vsi;
+	struct ice_vsi *ctrl_vsi = pf->eswitch.control_vsi;
 	int max_vsi_num = 0;
 	struct ice_vf *vf;
 	unsigned int bkt;
@@ -264,25 +237,30 @@ static int ice_eswitch_setup_reprs(struct ice_pf *pf)
 		vf->repr->dst = metadata_dst_alloc(0, METADATA_HW_PORT_MUX,
 						   GFP_KERNEL);
 		if (!vf->repr->dst) {
-			ice_fltr_add_mac_and_broadcast(vsi,
-						       vf->hw_lan_addr.addr,
+			ice_fltr_add_mac_and_broadcast(vsi, vf->hw_lan_addr,
+						       ICE_FWD_TO_VSI);
+			goto err;
+		}
+
+		if (ice_eswitch_add_vf_sp_rule(pf, vf)) {
+			ice_fltr_add_mac_and_broadcast(vsi, vf->hw_lan_addr,
 						       ICE_FWD_TO_VSI);
 			goto err;
 		}
 
 		if (ice_vsi_update_security(vsi, ice_vsi_ctx_clear_antispoof)) {
-			ice_fltr_add_mac_and_broadcast(vsi,
-						       vf->hw_lan_addr.addr,
+			ice_fltr_add_mac_and_broadcast(vsi, vf->hw_lan_addr,
 						       ICE_FWD_TO_VSI);
+			ice_eswitch_del_vf_sp_rule(vf);
 			metadata_dst_free(vf->repr->dst);
 			vf->repr->dst = NULL;
 			goto err;
 		}
 
 		if (ice_vsi_add_vlan_zero(vsi)) {
-			ice_fltr_add_mac_and_broadcast(vsi,
-						       vf->hw_lan_addr.addr,
+			ice_fltr_add_mac_and_broadcast(vsi, vf->hw_lan_addr,
 						       ICE_FWD_TO_VSI);
+			ice_eswitch_del_vf_sp_rule(vf);
 			metadata_dst_free(vf->repr->dst);
 			vf->repr->dst = NULL;
 			ice_vsi_update_security(vsi, ice_vsi_ctx_set_antispoof);
@@ -336,9 +314,12 @@ void ice_eswitch_update_repr(struct ice_vsi *vsi)
 	repr->src_vsi = vsi;
 	repr->dst->u.port_info.port_id = vsi->vsi_num;
 
+	if (repr->br_port)
+		repr->br_port->vsi = vsi;
+
 	ret = ice_vsi_update_security(vsi, ice_vsi_ctx_clear_antispoof);
 	if (ret) {
-		ice_fltr_add_mac_and_broadcast(vsi, vf->hw_lan_addr.addr, ICE_FWD_TO_VSI);
+		ice_fltr_add_mac_and_broadcast(vsi, vf->hw_lan_addr, ICE_FWD_TO_VSI);
 		dev_err(ice_pf_to_dev(pf), "Failed to update VF %d port representor",
 			vsi->vf->vf_id);
 	}
@@ -378,7 +359,7 @@ ice_eswitch_port_start_xmit(struct sk_buff *skb, struct net_device *netdev)
 }
 
 /**
- * ice_eswitch_set_target_vsi - set switchdev context in Tx context descriptor
+ * ice_eswitch_set_target_vsi - set eswitch context in Tx context descriptor
  * @skb: pointer to send buffer
  * @off: pointer to offload struct
  */
@@ -401,7 +382,7 @@ ice_eswitch_set_target_vsi(struct sk_buff *skb,
 }
 
 /**
- * ice_eswitch_release_env - clear switchdev HW filters
+ * ice_eswitch_release_env - clear eswitch HW filters
  * @pf: pointer to PF struct
  *
  * This function removes HW filters configuration specific for switchdev
@@ -409,11 +390,16 @@ ice_eswitch_set_target_vsi(struct sk_buff *skb,
  */
 static void ice_eswitch_release_env(struct ice_pf *pf)
 {
-	struct ice_vsi *uplink_vsi = pf->switchdev.uplink_vsi;
-	struct ice_vsi *ctrl_vsi = pf->switchdev.control_vsi;
+	struct ice_vsi *uplink_vsi = pf->eswitch.uplink_vsi;
+	struct ice_vsi *ctrl_vsi = pf->eswitch.control_vsi;
+	struct ice_vsi_vlan_ops *vlan_ops;
 
+	vlan_ops = ice_get_compat_vsi_vlan_ops(uplink_vsi);
+
+	ice_vsi_update_local_lb(uplink_vsi, false);
 	ice_vsi_update_security(ctrl_vsi, ice_vsi_ctx_clear_allow_override);
 	ice_vsi_update_security(uplink_vsi, ice_vsi_ctx_clear_allow_override);
+	vlan_ops->ena_rx_filtering(uplink_vsi);
 	ice_clear_dflt_vsi(uplink_vsi);
 	ice_fltr_add_mac_and_broadcast(uplink_vsi,
 				       uplink_vsi->port_info->mac.perm_addr,
@@ -421,14 +407,20 @@ static void ice_eswitch_release_env(struct ice_pf *pf)
 }
 
 /**
- * ice_eswitch_vsi_setup - configure switchdev control VSI
+ * ice_eswitch_vsi_setup - configure eswitch control VSI
  * @pf: pointer to PF structure
  * @pi: pointer to port_info structure
  */
 static struct ice_vsi *
 ice_eswitch_vsi_setup(struct ice_pf *pf, struct ice_port_info *pi)
 {
-	return ice_vsi_setup(pf, pi, ICE_VSI_SWITCHDEV_CTRL, NULL, NULL);
+	struct ice_vsi_cfg_params params = {};
+
+	params.type = ICE_VSI_SWITCHDEV_CTRL;
+	params.pi = pi;
+	params.flags = ICE_VSI_FLAG_INIT;
+
+	return ice_vsi_setup(pf, &params);
 }
 
 /**
@@ -482,16 +474,24 @@ static void ice_eswitch_napi_disable(struct ice_pf *pf)
  */
 static int ice_eswitch_enable_switchdev(struct ice_pf *pf)
 {
-	struct ice_vsi *ctrl_vsi;
+	struct ice_vsi *ctrl_vsi, *uplink_vsi;
 
-	pf->switchdev.control_vsi = ice_eswitch_vsi_setup(pf, pf->hw.port_info);
-	if (!pf->switchdev.control_vsi)
+	uplink_vsi = ice_get_main_vsi(pf);
+	if (!uplink_vsi)
 		return -ENODEV;
 
-	ctrl_vsi = pf->switchdev.control_vsi;
-	pf->switchdev.uplink_vsi = ice_get_main_vsi(pf);
-	if (!pf->switchdev.uplink_vsi)
-		goto err_vsi;
+	if (netif_is_any_bridge_port(uplink_vsi->netdev)) {
+		dev_err(ice_pf_to_dev(pf),
+			"Uplink port cannot be a bridge port\n");
+		return -EINVAL;
+	}
+
+	pf->eswitch.control_vsi = ice_eswitch_vsi_setup(pf, pf->hw.port_info);
+	if (!pf->eswitch.control_vsi)
+		return -ENODEV;
+
+	ctrl_vsi = pf->eswitch.control_vsi;
+	pf->eswitch.uplink_vsi = uplink_vsi;
 
 	if (ice_eswitch_setup_env(pf))
 		goto err_vsi;
@@ -507,10 +507,15 @@ static int ice_eswitch_enable_switchdev(struct ice_pf *pf)
 	if (ice_vsi_open(ctrl_vsi))
 		goto err_setup_reprs;
 
+	if (ice_eswitch_br_offloads_init(pf))
+		goto err_br_offloads;
+
 	ice_eswitch_napi_enable(pf);
 
 	return 0;
 
+err_br_offloads:
+	ice_vsi_close(ctrl_vsi);
 err_setup_reprs:
 	ice_repr_rem_from_all_vfs(pf);
 err_repr_add:
@@ -521,16 +526,16 @@ err_vsi:
 }
 
 /**
- * ice_eswitch_disable_switchdev - disable switchdev resources
+ * ice_eswitch_disable_switchdev - disable eswitch resources
  * @pf: pointer to PF structure
  */
 static void ice_eswitch_disable_switchdev(struct ice_pf *pf)
 {
-	struct ice_vsi *ctrl_vsi = pf->switchdev.control_vsi;
+	struct ice_vsi *ctrl_vsi = pf->eswitch.control_vsi;
 
 	ice_eswitch_napi_disable(pf);
+	ice_eswitch_br_offloads_deinit(pf);
 	ice_eswitch_release_env(pf);
-	ice_rem_adv_rule_for_vsi(&pf->hw, ctrl_vsi->idx);
 	ice_eswitch_release_reprs(pf, ctrl_vsi);
 	ice_vsi_release(ctrl_vsi);
 	ice_repr_rem_from_all_vfs(pf);
@@ -620,7 +625,7 @@ void ice_eswitch_release(struct ice_pf *pf)
 		return;
 
 	ice_eswitch_disable_switchdev(pf);
-	pf->switchdev.is_running = false;
+	pf->eswitch.is_running = false;
 }
 
 /**
@@ -631,14 +636,15 @@ int ice_eswitch_configure(struct ice_pf *pf)
 {
 	int status;
 
-	if (pf->eswitch_mode == DEVLINK_ESWITCH_MODE_LEGACY || pf->switchdev.is_running)
+	if (pf->eswitch_mode == DEVLINK_ESWITCH_MODE_LEGACY ||
+	    pf->eswitch.is_running)
 		return 0;
 
 	status = ice_eswitch_enable_switchdev(pf);
 	if (status)
 		return status;
 
-	pf->switchdev.is_running = true;
+	pf->eswitch.is_running = true;
 	return 0;
 }
 
@@ -688,7 +694,7 @@ void ice_eswitch_stop_all_tx_queues(struct ice_pf *pf)
  */
 int ice_eswitch_rebuild(struct ice_pf *pf)
 {
-	struct ice_vsi *ctrl_vsi = pf->switchdev.control_vsi;
+	struct ice_vsi *ctrl_vsi = pf->eswitch.control_vsi;
 	int status;
 
 	ice_eswitch_napi_disable(pf);

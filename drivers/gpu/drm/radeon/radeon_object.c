@@ -152,7 +152,7 @@ int radeon_bo_create(struct radeon_device *rdev,
 	bo = kzalloc(sizeof(struct radeon_bo), GFP_KERNEL);
 	if (bo == NULL)
 		return -ENOMEM;
-	drm_gem_private_object_init(rdev->ddev, &bo->tbo.base, size);
+	drm_gem_private_object_init(rdev_to_drm(rdev), &bo->tbo.base, size);
 	bo->rdev = rdev;
 	bo->surface_reg = -1;
 	INIT_LIST_HEAD(&bo->list);
@@ -232,7 +232,7 @@ int radeon_bo_kmap(struct radeon_bo *bo, void **ptr)
 		}
 		return 0;
 	}
-	r = ttm_bo_kmap(&bo->tbo, 0, bo->tbo.resource->num_pages, &bo->kmap);
+	r = ttm_bo_kmap(&bo->tbo, 0, PFN_UP(bo->tbo.base.size), &bo->kmap);
 	if (r) {
 		return r;
 	}
@@ -737,7 +737,7 @@ vm_fault_t radeon_bo_fault_reserve_notify(struct ttm_buffer_object *bo)
 	if (bo->resource->mem_type != TTM_PL_VRAM)
 		return 0;
 
-	size = bo->resource->num_pages << PAGE_SHIFT;
+	size = bo->resource->size;
 	offset = bo->resource->start << PAGE_SHIFT;
 	if ((offset + size) <= rdev->mc.visible_vram_size)
 		return 0;

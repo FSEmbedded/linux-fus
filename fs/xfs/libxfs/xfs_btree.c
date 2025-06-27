@@ -2067,8 +2067,7 @@ xfs_btree_get_leaf_keys(
 		for (n = 2; n <= xfs_btree_get_numrecs(block); n++) {
 			rec = xfs_btree_rec_addr(cur, n, block);
 			cur->bc_ops->init_high_key_from_rec(&hkey, rec);
-			if (cur->bc_ops->diff_two_keys(cur, &hkey, &max_hkey)
-					> 0)
+			if (xfs_btree_keycmp_gt(cur, &hkey, &max_hkey))
 				max_hkey = hkey;
 		}
 
@@ -2096,7 +2095,7 @@ xfs_btree_get_node_keys(
 		max_hkey = xfs_btree_high_key_addr(cur, 1, block);
 		for (n = 2; n <= xfs_btree_get_numrecs(block); n++) {
 			hkey = xfs_btree_high_key_addr(cur, n, block);
-			if (cur->bc_ops->diff_two_keys(cur, hkey, max_hkey) > 0)
+			if (xfs_btree_keycmp_gt(cur, hkey, max_hkey))
 				max_hkey = hkey;
 		}
 
@@ -2183,8 +2182,8 @@ __xfs_btree_updkeys(
 		nlkey = xfs_btree_key_addr(cur, ptr, block);
 		nhkey = xfs_btree_high_key_addr(cur, ptr, block);
 		if (!force_all &&
-		    !(cur->bc_ops->diff_two_keys(cur, nlkey, lkey) != 0 ||
-		      cur->bc_ops->diff_two_keys(cur, nhkey, hkey) != 0))
+		    xfs_btree_keycmp_eq(cur, nlkey, lkey) &&
+		    xfs_btree_keycmp_eq(cur, nhkey, hkey))
 			break;
 		xfs_btree_copy_keys(cur, nlkey, lkey, 1);
 		xfs_btree_log_keys(cur, bp, ptr, ptr);
@@ -2913,9 +2912,22 @@ xfs_btree_split_worker(
 }
 
 /*
- * BMBT split requests often come in with little stack to work on. Push
+ * BMBT split requests often come in with little stack to work on so we push
  * them off to a worker thread so there is lots of stack to use. For the other
  * btree types, just call directly to avoid the context switch overhead here.
+ *
+ * Care must be taken here - the work queue rescuer thread introduces potential
+ * AGF <> worker queue deadlocks if the BMBT block allocation has to lock new
+ * AGFs to allocate blocks. A task being run by the rescuer could attempt to
+ * lock an AGF that is already locked by a task queued to run by the rescuer,
+ * resulting in an ABBA deadlock as the rescuer cannot run the lock holder to
+ * release it until the current thread it is running gains the lock.
+ *
+ * To avoid this issue, we only ever queue BMBT splits that don't have an AGF
+ * already locked to allocate from. The only place that doesn't hold an AGF
+ * locked is unwritten extent conversion at IO completion, but that has already
+ * been offloaded to a worker thread and hence has no stack consumption issues
+ * we have to worry about.
  */
 STATIC int					/* error */
 xfs_btree_split(
@@ -2929,7 +2941,8 @@ xfs_btree_split(
 	struct xfs_btree_split_args	args;
 	DECLARE_COMPLETION_ONSTACK(done);
 
-	if (cur->bc_btnum != XFS_BTNUM_BMAP)
+	if (cur->bc_btnum != XFS_BTNUM_BMAP ||
+	    cur->bc_tp->t_highest_agno == NULLAGNUMBER)
 		return __xfs_btree_split(cur, level, ptrp, key, curp, stat);
 
 	args.cur = cur;
@@ -3416,14 +3429,31 @@ xfs_btree_insrec(
 	xfs_btree_log_block(cur, bp, XFS_BB_NUMRECS);
 
 	/*
-	 * If we just inserted into a new tree block, we have to
-	 * recalculate nkey here because nkey is out of date.
+	 * Update btree keys to reflect the newly added record or keyptr.
+	 * There are three cases here to be aware of.  Normally, all we have to
+	 * do is walk towards the root, updating keys as necessary.
 	 *
-	 * Otherwise we're just updating an existing block (having shoved
-	 * some records into the new tree block), so use the regular key
-	 * update mechanism.
+	 * If the caller had us target a full block for the insertion, we dealt
+	 * with that by calling the _make_block_unfull function.  If the
+	 * "make unfull" function splits the block, it'll hand us back the key
+	 * and pointer of the new block.  We haven't yet added the new block to
+	 * the next level up, so if we decide to add the new record to the new
+	 * block (bp->b_bn != old_bn), we have to update the caller's pointer
+	 * so that the caller adds the new block with the correct key.
+	 *
+	 * However, there is a third possibility-- if the selected block is the
+	 * root block of an inode-rooted btree and cannot be expanded further,
+	 * the "make unfull" function moves the root block contents to a new
+	 * block and updates the root block to point to the new block.  In this
+	 * case, no block pointer is passed back because the block has already
+	 * been added to the btree.  In this case, we need to use the regular
+	 * key update function, just like the first case.  This is critical for
+	 * overlapping btrees, because the high key must be updated to reflect
+	 * the entire tree, not just the subtree accessible through the first
+	 * child of the root (which is now two levels down from the root).
 	 */
-	if (bp && xfs_buf_daddr(bp) != old_bn) {
+	if (!xfs_btree_ptr_is_null(cur, &nptr) &&
+	    bp && xfs_buf_daddr(bp) != old_bn) {
 		xfs_btree_get_keys(cur, block, lkey);
 	} else if (xfs_btree_needs_key_update(cur, optr)) {
 		error = xfs_btree_update_keys(cur, level);
@@ -4666,7 +4696,12 @@ xfs_btree_space_to_height(
 	const unsigned int	*limits,
 	unsigned long long	leaf_blocks)
 {
-	unsigned long long	node_blocks = limits[1];
+	/*
+	 * The root btree block can have fewer than minrecs pointers in it
+	 * because the tree might not be big enough to require that amount of
+	 * fanout. Hence it has a minimum size of 2 pointers, not limits[1].
+	 */
+	unsigned long long	node_blocks = 2;
 	unsigned long long	blocks_left = leaf_blocks - 1;
 	unsigned int		height = 1;
 
@@ -4697,7 +4732,6 @@ xfs_btree_simple_query_range(
 {
 	union xfs_btree_rec		*recp;
 	union xfs_btree_key		rec_key;
-	int64_t				diff;
 	int				stat;
 	bool				firstrec = true;
 	int				error;
@@ -4727,20 +4761,17 @@ xfs_btree_simple_query_range(
 		if (error || !stat)
 			break;
 
-		/* Skip if high_key(rec) < low_key. */
+		/* Skip if low_key > high_key(rec). */
 		if (firstrec) {
 			cur->bc_ops->init_high_key_from_rec(&rec_key, recp);
 			firstrec = false;
-			diff = cur->bc_ops->diff_two_keys(cur, low_key,
-					&rec_key);
-			if (diff > 0)
+			if (xfs_btree_keycmp_gt(cur, low_key, &rec_key))
 				goto advloop;
 		}
 
-		/* Stop if high_key < low_key(rec). */
+		/* Stop if low_key(rec) > high_key. */
 		cur->bc_ops->init_key_from_rec(&rec_key, recp);
-		diff = cur->bc_ops->diff_two_keys(cur, &rec_key, high_key);
-		if (diff > 0)
+		if (xfs_btree_keycmp_gt(cur, &rec_key, high_key))
 			break;
 
 		/* Callback */
@@ -4794,8 +4825,6 @@ xfs_btree_overlapped_query_range(
 	union xfs_btree_key		*hkp;
 	union xfs_btree_rec		*recp;
 	struct xfs_btree_block		*block;
-	int64_t				ldiff;
-	int64_t				hdiff;
 	int				level;
 	struct xfs_buf			*bp;
 	int				i;
@@ -4835,25 +4864,23 @@ pop_up:
 					block);
 
 			cur->bc_ops->init_high_key_from_rec(&rec_hkey, recp);
-			ldiff = cur->bc_ops->diff_two_keys(cur, &rec_hkey,
-					low_key);
-
 			cur->bc_ops->init_key_from_rec(&rec_key, recp);
-			hdiff = cur->bc_ops->diff_two_keys(cur, high_key,
-					&rec_key);
 
 			/*
+			 * If (query's high key < record's low key), then there
+			 * are no more interesting records in this block.  Pop
+			 * up to the leaf level to find more record blocks.
+			 *
 			 * If (record's high key >= query's low key) and
 			 *    (query's high key >= record's low key), then
 			 * this record overlaps the query range; callback.
 			 */
-			if (ldiff >= 0 && hdiff >= 0) {
+			if (xfs_btree_keycmp_lt(cur, high_key, &rec_key))
+				goto pop_up;
+			if (xfs_btree_keycmp_ge(cur, &rec_hkey, low_key)) {
 				error = fn(cur, recp, priv);
 				if (error)
 					break;
-			} else if (hdiff < 0) {
-				/* Record is larger than high key; pop. */
-				goto pop_up;
 			}
 			cur->bc_levels[level].ptr++;
 			continue;
@@ -4865,15 +4892,18 @@ pop_up:
 				block);
 		pp = xfs_btree_ptr_addr(cur, cur->bc_levels[level].ptr, block);
 
-		ldiff = cur->bc_ops->diff_two_keys(cur, hkp, low_key);
-		hdiff = cur->bc_ops->diff_two_keys(cur, high_key, lkp);
-
 		/*
+		 * If (query's high key < pointer's low key), then there are no
+		 * more interesting keys in this block.  Pop up one leaf level
+		 * to continue looking for records.
+		 *
 		 * If (pointer's high key >= query's low key) and
 		 *    (query's high key >= pointer's low key), then
 		 * this record overlaps the query range; follow pointer.
 		 */
-		if (ldiff >= 0 && hdiff >= 0) {
+		if (xfs_btree_keycmp_lt(cur, high_key, lkp))
+			goto pop_up;
+		if (xfs_btree_keycmp_ge(cur, hkp, low_key)) {
 			level--;
 			error = xfs_btree_lookup_get_block(cur, level, pp,
 					&block);
@@ -4888,9 +4918,6 @@ pop_up:
 #endif
 			cur->bc_levels[level].ptr = 1;
 			continue;
-		} else if (hdiff < 0) {
-			/* The low key is larger than the upper range; pop. */
-			goto pop_up;
 		}
 		cur->bc_levels[level].ptr++;
 	}
@@ -4918,6 +4945,19 @@ out:
 	return error;
 }
 
+static inline void
+xfs_btree_key_from_irec(
+	struct xfs_btree_cur		*cur,
+	union xfs_btree_key		*key,
+	const union xfs_btree_irec	*irec)
+{
+	union xfs_btree_rec		rec;
+
+	cur->bc_rec = *irec;
+	cur->bc_ops->init_rec_from_cur(cur, &rec);
+	cur->bc_ops->init_key_from_rec(key, &rec);
+}
+
 /*
  * Query a btree for all records overlapping a given interval of keys.  The
  * supplied function will be called with each record found; return one of the
@@ -4932,21 +4972,15 @@ xfs_btree_query_range(
 	xfs_btree_query_range_fn	fn,
 	void				*priv)
 {
-	union xfs_btree_rec		rec;
 	union xfs_btree_key		low_key;
 	union xfs_btree_key		high_key;
 
 	/* Find the keys of both ends of the interval. */
-	cur->bc_rec = *high_rec;
-	cur->bc_ops->init_rec_from_cur(cur, &rec);
-	cur->bc_ops->init_key_from_rec(&high_key, &rec);
+	xfs_btree_key_from_irec(cur, &high_key, high_rec);
+	xfs_btree_key_from_irec(cur, &low_key, low_rec);
 
-	cur->bc_rec = *low_rec;
-	cur->bc_ops->init_rec_from_cur(cur, &rec);
-	cur->bc_ops->init_key_from_rec(&low_key, &rec);
-
-	/* Enforce low key < high key. */
-	if (cur->bc_ops->diff_two_keys(cur, &low_key, &high_key) > 0)
+	/* Enforce low key <= high key. */
+	if (!xfs_btree_keycmp_le(cur, &low_key, &high_key))
 		return -EINVAL;
 
 	if (!(cur->bc_flags & XFS_BTREE_OVERLAPPING))
@@ -5008,34 +5042,132 @@ xfs_btree_diff_two_ptrs(
 	return (int64_t)be32_to_cpu(a->s) - be32_to_cpu(b->s);
 }
 
-/* If there's an extent, we're done. */
+struct xfs_btree_has_records {
+	/* Keys for the start and end of the range we want to know about. */
+	union xfs_btree_key		start_key;
+	union xfs_btree_key		end_key;
+
+	/* Mask for key comparisons, if desired. */
+	const union xfs_btree_key	*key_mask;
+
+	/* Highest record key we've seen so far. */
+	union xfs_btree_key		high_key;
+
+	enum xbtree_recpacking		outcome;
+};
+
 STATIC int
-xfs_btree_has_record_helper(
+xfs_btree_has_records_helper(
 	struct xfs_btree_cur		*cur,
 	const union xfs_btree_rec	*rec,
 	void				*priv)
 {
-	return -ECANCELED;
+	union xfs_btree_key		rec_key;
+	union xfs_btree_key		rec_high_key;
+	struct xfs_btree_has_records	*info = priv;
+	enum xbtree_key_contig		key_contig;
+
+	cur->bc_ops->init_key_from_rec(&rec_key, rec);
+
+	if (info->outcome == XBTREE_RECPACKING_EMPTY) {
+		info->outcome = XBTREE_RECPACKING_SPARSE;
+
+		/*
+		 * If the first record we find does not overlap the start key,
+		 * then there is a hole at the start of the search range.
+		 * Classify this as sparse and stop immediately.
+		 */
+		if (xfs_btree_masked_keycmp_lt(cur, &info->start_key, &rec_key,
+					info->key_mask))
+			return -ECANCELED;
+	} else {
+		/*
+		 * If a subsequent record does not overlap with the any record
+		 * we've seen so far, there is a hole in the middle of the
+		 * search range.  Classify this as sparse and stop.
+		 * If the keys overlap and this btree does not allow overlap,
+		 * signal corruption.
+		 */
+		key_contig = cur->bc_ops->keys_contiguous(cur, &info->high_key,
+					&rec_key, info->key_mask);
+		if (key_contig == XBTREE_KEY_OVERLAP &&
+				!(cur->bc_flags & XFS_BTREE_OVERLAPPING))
+			return -EFSCORRUPTED;
+		if (key_contig == XBTREE_KEY_GAP)
+			return -ECANCELED;
+	}
+
+	/*
+	 * If high_key(rec) is larger than any other high key we've seen,
+	 * remember it for later.
+	 */
+	cur->bc_ops->init_high_key_from_rec(&rec_high_key, rec);
+	if (xfs_btree_masked_keycmp_gt(cur, &rec_high_key, &info->high_key,
+				info->key_mask))
+		info->high_key = rec_high_key; /* struct copy */
+
+	return 0;
 }
 
-/* Is there a record covering a given range of keys? */
+/*
+ * Scan part of the keyspace of a btree and tell us if that keyspace does not
+ * map to any records; is fully mapped to records; or is partially mapped to
+ * records.  This is the btree record equivalent to determining if a file is
+ * sparse.
+ *
+ * For most btree types, the record scan should use all available btree key
+ * fields to compare the keys encountered.  These callers should pass NULL for
+ * @mask.  However, some callers (e.g.  scanning physical space in the rmapbt)
+ * want to ignore some part of the btree record keyspace when performing the
+ * comparison.  These callers should pass in a union xfs_btree_key object with
+ * the fields that *should* be a part of the comparison set to any nonzero
+ * value, and the rest zeroed.
+ */
 int
-xfs_btree_has_record(
+xfs_btree_has_records(
 	struct xfs_btree_cur		*cur,
 	const union xfs_btree_irec	*low,
 	const union xfs_btree_irec	*high,
-	bool				*exists)
+	const union xfs_btree_key	*mask,
+	enum xbtree_recpacking		*outcome)
 {
+	struct xfs_btree_has_records	info = {
+		.outcome		= XBTREE_RECPACKING_EMPTY,
+		.key_mask		= mask,
+	};
 	int				error;
 
-	error = xfs_btree_query_range(cur, low, high,
-			&xfs_btree_has_record_helper, NULL);
-	if (error == -ECANCELED) {
-		*exists = true;
-		return 0;
+	/* Not all btrees support this operation. */
+	if (!cur->bc_ops->keys_contiguous) {
+		ASSERT(0);
+		return -EOPNOTSUPP;
 	}
-	*exists = false;
-	return error;
+
+	xfs_btree_key_from_irec(cur, &info.start_key, low);
+	xfs_btree_key_from_irec(cur, &info.end_key, high);
+
+	error = xfs_btree_query_range(cur, low, high,
+			xfs_btree_has_records_helper, &info);
+	if (error == -ECANCELED)
+		goto out;
+	if (error)
+		return error;
+
+	if (info.outcome == XBTREE_RECPACKING_EMPTY)
+		goto out;
+
+	/*
+	 * If the largest high_key(rec) we saw during the walk is greater than
+	 * the end of the search range, classify this as full.  Otherwise,
+	 * there is a hole at the end of the search range.
+	 */
+	if (xfs_btree_masked_keycmp_ge(cur, &info.high_key, &info.end_key,
+				mask))
+		info.outcome = XBTREE_RECPACKING_FULL;
+
+out:
+	*outcome = info.outcome;
+	return 0;
 }
 
 /* Are there more records in this btree? */

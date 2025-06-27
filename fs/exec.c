@@ -64,6 +64,8 @@
 #include <linux/io_uring.h>
 #include <linux/syscall_user_dispatch.h>
 #include <linux/coredump.h>
+#include <linux/time_namespace.h>
+#include <linux/user_events.h>
 
 #include <linux/uaccess.h>
 #include <asm/mmu_context.h>
@@ -141,16 +143,12 @@ SYSCALL_DEFINE1(uselib, const char __user *, library)
 		goto out;
 
 	/*
-	 * may_open() has already checked for this, so it should be
-	 * impossible to trip now. But we need to be extra cautious
-	 * and check again at the very end too.
+	 * Check do_open_execat() for an explanation.
 	 */
 	error = -EACCES;
-	if (WARN_ON_ONCE(!S_ISREG(file_inode(file)->i_mode) ||
-			 path_noexec(&file->f_path)))
+	if (WARN_ON_ONCE(!S_ISREG(file_inode(file)->i_mode)) ||
+	    path_noexec(&file->f_path))
 		goto exit;
-
-	fsnotify_open(file);
 
 	error = -ENOEXEC;
 
@@ -171,7 +169,7 @@ SYSCALL_DEFINE1(uselib, const char __user *, library)
 exit:
 	fput(file);
 out:
-  	return error;
+	return error;
 }
 #endif /* #ifdef CONFIG_USELIB */
 
@@ -224,7 +222,7 @@ static struct page *get_arg_page(struct linux_binprm *bprm, unsigned long pos,
 	 */
 	ret = get_user_pages_remote(mm, pos, 1,
 			write ? FOLL_WRITE : 0,
-			&page, NULL, NULL);
+			&page, NULL);
 	mmap_read_unlock(mm);
 	if (ret <= 0)
 		return NULL;
@@ -275,7 +273,7 @@ static int __bprm_mm_init(struct linux_binprm *bprm)
 	BUILD_BUG_ON(VM_STACK_FLAGS & VM_STACK_INCOMPLETE_SETUP);
 	vma->vm_end = STACK_TOP_MAX;
 	vma->vm_start = vma->vm_end - PAGE_SIZE;
-	vma->vm_flags = VM_SOFTDIRTY | VM_STACK_FLAGS | VM_STACK_INCOMPLETE_SETUP;
+	vm_flags_init(vma, VM_SOFTDIRTY | VM_STACK_FLAGS | VM_STACK_INCOMPLETE_SETUP);
 	vma->vm_page_prot = vm_get_page_prot(vma->vm_flags);
 
 	err = insert_vm_struct(mm, vma);
@@ -701,10 +699,11 @@ static int shift_arg_pages(struct vm_area_struct *vma, unsigned long shift)
 	if (vma != vma_next(&vmi))
 		return -EFAULT;
 
+	vma_iter_prev_range(&vmi);
 	/*
 	 * cover the whole range: [new_start, old_end)
 	 */
-	if (vma_adjust(vma, new_start, old_end, vma->vm_pgoff, NULL))
+	if (vma_expand(&vmi, vma, new_start, old_end, vma->vm_pgoff, NULL))
 		return -ENOMEM;
 
 	/*
@@ -736,12 +735,9 @@ static int shift_arg_pages(struct vm_area_struct *vma, unsigned long shift)
 	}
 	tlb_finish_mmu(&tlb);
 
-	/*
-	 * Shrink the vma to just the new range.  Always succeeds.
-	 */
-	vma_adjust(vma, new_start, new_end, vma->vm_pgoff, NULL);
-
-	return 0;
+	vma_prev(&vmi);
+	/* Shrink the vma to just the new range */
+	return vma_shrink(&vmi, vma, new_start, new_end, vma->vm_pgoff);
 }
 
 /*
@@ -763,6 +759,7 @@ int setup_arg_pages(struct linux_binprm *bprm,
 	unsigned long stack_expand;
 	unsigned long rlim_stack;
 	struct mmu_gather tlb;
+	struct vma_iterator vmi;
 
 #ifdef CONFIG_STACK_GROWSUP
 	/* Limit stack size */
@@ -771,7 +768,8 @@ int setup_arg_pages(struct linux_binprm *bprm,
 	stack_base = calc_max_stack_size(stack_base);
 
 	/* Add space for stack randomization. */
-	stack_base += (STACK_RND_MASK << PAGE_SHIFT);
+	if (current->flags & PF_RANDOMIZE)
+		stack_base += (STACK_RND_MASK << PAGE_SHIFT);
 
 	/* Make sure we didn't let the argument array grow too large. */
 	if (vma->vm_end - vma->vm_start > stack_base)
@@ -817,8 +815,10 @@ int setup_arg_pages(struct linux_binprm *bprm,
 	vm_flags |= mm->def_flags;
 	vm_flags |= VM_STACK_INCOMPLETE_SETUP;
 
+	vma_iter_init(&vmi, mm, vma->vm_start);
+
 	tlb_gather_mmu(&tlb, mm);
-	ret = mprotect_fixup(&tlb, vma, &prev, vma->vm_start, vma->vm_end,
+	ret = mprotect_fixup(&vmi, &tlb, vma, &prev, vma->vm_start, vma->vm_end,
 			vm_flags);
 	tlb_finish_mmu(&tlb);
 
@@ -839,7 +839,7 @@ int setup_arg_pages(struct linux_binprm *bprm,
 	}
 
 	/* mprotect_fixup is overkill to remove the temporary stack flags */
-	vma->vm_flags &= ~VM_STACK_INCOMPLETE_SETUP;
+	vm_flags_clear(vma, VM_STACK_INCOMPLETE_SETUP);
 
 	stack_expand = 131072UL; /* randomly 32*4k (or 2*64k) pages */
 	stack_size = vma->vm_end - vma->vm_start;
@@ -848,16 +848,13 @@ int setup_arg_pages(struct linux_binprm *bprm,
 	 * will align it up.
 	 */
 	rlim_stack = bprm->rlim_stack.rlim_cur & PAGE_MASK;
+
+	stack_expand = min(rlim_stack, stack_size + stack_expand);
+
 #ifdef CONFIG_STACK_GROWSUP
-	if (stack_size + stack_expand > rlim_stack)
-		stack_base = vma->vm_start + rlim_stack;
-	else
-		stack_base = vma->vm_end + stack_expand;
+	stack_base = vma->vm_start + stack_expand;
 #else
-	if (stack_size + stack_expand > rlim_stack)
-		stack_base = vma->vm_end - rlim_stack;
-	else
-		stack_base = vma->vm_start - stack_expand;
+	stack_base = vma->vm_end - stack_expand;
 #endif
 	current->mm->start_stack = bprm->p;
 	ret = expand_stack_locked(vma, stack_base);
@@ -896,6 +893,7 @@ int transfer_args_to_stack(struct linux_binprm *bprm,
 			goto out;
 	}
 
+	bprm->exec += *sp_location - MAX_ARG_PAGES * PAGE_SIZE;
 	*sp_location = sp;
 
 out:
@@ -925,26 +923,22 @@ static struct file *do_open_execat(int fd, struct filename *name, int flags)
 
 	file = do_filp_open(fd, name, &open_exec_flags);
 	if (IS_ERR(file))
-		goto out;
+		return file;
 
 	/*
-	 * may_open() has already checked for this, so it should be
-	 * impossible to trip now. But we need to be extra cautious
-	 * and check again at the very end too.
+	 * In the past the regular type check was here. It moved to may_open() in
+	 * 633fb6ac3980 ("exec: move S_ISREG() check earlier"). Since then it is
+	 * an invariant that all non-regular files error out before we get here.
 	 */
 	err = -EACCES;
-	if (WARN_ON_ONCE(!S_ISREG(file_inode(file)->i_mode) ||
-			 path_noexec(&file->f_path)))
+	if (WARN_ON_ONCE(!S_ISREG(file_inode(file)->i_mode)) ||
+	    path_noexec(&file->f_path))
 		goto exit;
 
 	err = deny_write_access(file);
 	if (err)
 		goto exit;
 
-	if (name->name[0] != '\0')
-		fsnotify_open(file);
-
-out:
 	return file;
 
 exit:
@@ -1018,6 +1012,7 @@ static int exec_mmap(struct mm_struct *mm)
 	active_mm = tsk->active_mm;
 	tsk->active_mm = mm;
 	tsk->mm = mm;
+	mm_init_cid(mm);
 	/*
 	 * This prevents preemption while active_mm is being loaded and
 	 * it and mm are being updated, which could cause problems for
@@ -1041,7 +1036,7 @@ static int exec_mmap(struct mm_struct *mm)
 		mmput(old_mm);
 		return 0;
 	}
-	mmdrop(active_mm);
+	mmdrop_lazy_tlb(active_mm);
 	return 0;
 }
 
@@ -1281,8 +1276,8 @@ int begin_new_exec(struct linux_binprm * bprm)
 
 	/*
 	 * Must be called _before_ exec_mmap() as bprm->mm is
-	 * not visible until then. This also enables the update
-	 * to be lockless.
+	 * not visible until then. Doing it here also ensures
+	 * we don't race against replace_mm_exe_file().
 	 */
 	retval = set_mm_exe_file(bprm->mm, bprm->file);
 	if (retval)
@@ -1302,6 +1297,10 @@ int begin_new_exec(struct linux_binprm * bprm)
 		goto out;
 
 	bprm->mm = NULL;
+
+	retval = exec_task_namespaces();
+	if (retval)
+		goto out_unlock;
 
 #ifdef CONFIG_POSIX_TIMERS
 	spin_lock_irq(&me->sighand->siglock);
@@ -1410,6 +1409,9 @@ int begin_new_exec(struct linux_binprm * bprm)
 
 out_unlock:
 	up_write(&me->signal->exec_update_lock);
+	if (!bprm->cred)
+		mutex_unlock(&me->signal->cred_guard_mutex);
+
 out:
 	return retval;
 }
@@ -1418,15 +1420,15 @@ EXPORT_SYMBOL(begin_new_exec);
 void would_dump(struct linux_binprm *bprm, struct file *file)
 {
 	struct inode *inode = file_inode(file);
-	struct user_namespace *mnt_userns = file_mnt_user_ns(file);
-	if (inode_permission(mnt_userns, inode, MAY_READ) < 0) {
+	struct mnt_idmap *idmap = file_mnt_idmap(file);
+	if (inode_permission(idmap, inode, MAY_READ) < 0) {
 		struct user_namespace *old, *user_ns;
 		bprm->interp_flags |= BINPRM_FLAGS_ENFORCE_NONDUMP;
 
 		/* Ensure mm->user_ns contains the executable */
 		user_ns = old = bprm->mm->user_ns;
 		while ((user_ns != &init_user_ns) &&
-		       !privileged_wrt_inode_uidgid(user_ns, mnt_userns, inode))
+		       !privileged_wrt_inode_uidgid(user_ns, idmap, inode))
 			user_ns = user_ns->parent;
 
 		if (old != user_ns) {
@@ -1574,6 +1576,12 @@ static void check_unsafe_exec(struct linux_binprm *bprm)
 	if (task_no_new_privs(current))
 		bprm->unsafe |= LSM_UNSAFE_NO_NEW_PRIVS;
 
+	/*
+	 * If another task is sharing our fs, we cannot safely
+	 * suid exec because the differently privileged task
+	 * will be able to manipulate the current directory, etc.
+	 * It would be nice to force an unshare instead...
+	 */
 	t = p;
 	n_fs = 1;
 	spin_lock(&p->fs->lock);
@@ -1594,11 +1602,12 @@ static void check_unsafe_exec(struct linux_binprm *bprm)
 static void bprm_fill_uid(struct linux_binprm *bprm, struct file *file)
 {
 	/* Handle suid and sgid on files */
-	struct user_namespace *mnt_userns;
+	struct mnt_idmap *idmap;
 	struct inode *inode = file_inode(file);
 	unsigned int mode;
-	kuid_t uid;
-	kgid_t gid;
+	vfsuid_t vfsuid;
+	vfsgid_t vfsgid;
+	int err;
 
 	if (!mnt_may_suid(file->f_path.mnt))
 		return;
@@ -1610,30 +1619,35 @@ static void bprm_fill_uid(struct linux_binprm *bprm, struct file *file)
 	if (!(mode & (S_ISUID|S_ISGID)))
 		return;
 
-	mnt_userns = file_mnt_user_ns(file);
+	idmap = file_mnt_idmap(file);
 
 	/* Be careful if suid/sgid is set */
 	inode_lock(inode);
 
-	/* reload atomically mode/uid/gid now that lock held */
+	/* Atomically reload and check mode/uid/gid now that lock held. */
 	mode = inode->i_mode;
-	uid = i_uid_into_mnt(mnt_userns, inode);
-	gid = i_gid_into_mnt(mnt_userns, inode);
+	vfsuid = i_uid_into_vfsuid(idmap, inode);
+	vfsgid = i_gid_into_vfsgid(idmap, inode);
+	err = inode_permission(idmap, inode, MAY_EXEC);
 	inode_unlock(inode);
 
+	/* Did the exec bit vanish out from under us? Give up. */
+	if (err)
+		return;
+
 	/* We ignore suid/sgid if there are no mappings for them in the ns */
-	if (!kuid_has_mapping(bprm->cred->user_ns, uid) ||
-		 !kgid_has_mapping(bprm->cred->user_ns, gid))
+	if (!vfsuid_has_mapping(bprm->cred->user_ns, vfsuid) ||
+	    !vfsgid_has_mapping(bprm->cred->user_ns, vfsgid))
 		return;
 
 	if (mode & S_ISUID) {
 		bprm->per_clear |= PER_CLEAR_ON_SETID;
-		bprm->cred->euid = uid;
+		bprm->cred->euid = vfsuid_into_kuid(vfsuid);
 	}
 
 	if ((mode & (S_ISGID | S_IXGRP)) == (S_ISGID | S_IXGRP)) {
 		bprm->per_clear |= PER_CLEAR_ON_SETID;
-		bprm->cred->egid = gid;
+		bprm->cred->egid = vfsgid_into_kgid(vfsgid);
 	}
 }
 
@@ -1754,6 +1768,7 @@ static int search_binary_handler(struct linux_binprm *bprm)
 	return retval;
 }
 
+/* binfmt handlers will call back into begin_new_exec() on success. */
 static int exec_binprm(struct linux_binprm *bprm)
 {
 	pid_t old_pid, old_vpid;
@@ -1812,8 +1827,14 @@ static int bprm_execve(struct linux_binprm *bprm,
 	if (retval)
 		return retval;
 
+	/*
+	 * Check for unsafe execution states before exec_binprm(), which
+	 * will call back into begin_new_exec(), into bprm_creds_from_file(),
+	 * where setuid-ness is evaluated.
+	 */
 	check_unsafe_exec(bprm);
 	current->in_execve = 1;
+	sched_mm_cid_before_execve(current);
 
 	file = do_open_execat(fd, filename, flags);
 	retval = PTR_ERR(file);
@@ -1844,10 +1865,12 @@ static int bprm_execve(struct linux_binprm *bprm,
 	if (retval < 0)
 		goto out;
 
+	sched_mm_cid_after_execve(current);
 	/* execve succeeded */
 	current->fs->in_exec = 0;
 	current->in_execve = 0;
 	rseq_execve(current);
+	user_events_execve(current);
 	acct_update_integrals(current);
 	task_numa_free(current, false);
 	return retval;
@@ -1863,6 +1886,7 @@ out:
 		force_fatal_sig(SIGSEGV);
 
 out_unmark:
+	sched_mm_cid_after_execve(current);
 	current->fs->in_exec = 0;
 	current->in_execve = 0;
 

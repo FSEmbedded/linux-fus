@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
  * PDM Microphone Interface for the NXP i.MX SoC
  * Copyright 2018 NXP
@@ -72,7 +72,7 @@
 #define MICFIL_STAT_CHXF(ch)		BIT(ch)
 
 /* MICFIL FIFO Control Register -- REG_MICFIL_FIFO_CTRL 0x10 */
-#define MICFIL_FIFO_CTRL_FIFOWMK	GENMASK(2, 0)
+#define MICFIL_FIFO_CTRL_FIFOWMK	GENMASK(4, 0)
 
 /* MICFIL FIFO Status Register -- REG_MICFIL_FIFO_STAT 0x14 */
 #define MICFIL_FIFO_STAT_FIFOX_OVER(ch)	BIT(ch)

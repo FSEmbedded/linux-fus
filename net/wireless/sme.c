@@ -5,7 +5,7 @@
  * (for nl80211's connect() and wext)
  *
  * Copyright 2009	Johannes Berg <johannes@sipsolutions.net>
- * Copyright (C) 2009, 2020, 2022 Intel Corporation. All rights reserved.
+ * Copyright (C) 2009, 2020, 2022-2023 Intel Corporation. All rights reserved.
  * Copyright 2017	Intel Deutschland GmbH
  */
 
@@ -83,6 +83,7 @@ static int cfg80211_conn_scan(struct wireless_dev *wdev)
 	if (!request)
 		return -ENOMEM;
 
+	request->n_channels = n_channels;
 	if (wdev->conn->params.channel) {
 		enum nl80211_band band = wdev->conn->params.channel->band;
 		struct ieee80211_supported_band *sband =
@@ -115,7 +116,8 @@ static int cfg80211_conn_scan(struct wireless_dev *wdev)
 		n_channels = i;
 	}
 	request->n_channels = n_channels;
-	request->ssids = (void *)&request->channels[n_channels];
+	request->ssids = (void *)request +
+		struct_size(request, channels, n_channels);
 	request->n_ssids = 1;
 
 	memcpy(request->ssids[0].ssid, wdev->conn->params.ssid,
@@ -491,6 +493,21 @@ static void cfg80211_wdev_release_bsses(struct wireless_dev *wdev)
 	}
 }
 
+void cfg80211_wdev_release_link_bsses(struct wireless_dev *wdev, u16 link_mask)
+{
+	unsigned int link;
+
+	for_each_valid_link(wdev, link) {
+		if (!wdev->links[link].client.current_bss ||
+		    !(link_mask & BIT(link)))
+			continue;
+		cfg80211_unhold_bss(wdev->links[link].client.current_bss);
+		cfg80211_put_bss(wdev->wiphy,
+				 &wdev->links[link].client.current_bss->pub);
+		wdev->links[link].client.current_bss = NULL;
+	}
+}
+
 static int cfg80211_sme_get_conn_ies(struct wireless_dev *wdev,
 				     const u8 *ies, size_t ies_len,
 				     const u8 **out_ies, size_t *out_ies_len)
@@ -806,6 +823,10 @@ void __cfg80211_connect_result(struct net_device *dev,
 		}
 
 		for_each_valid_link(cr, link) {
+			/* don't do extra lookups for failures */
+			if (cr->links[link].status != WLAN_STATUS_SUCCESS)
+				continue;
+
 			if (cr->links[link].bss)
 				continue;
 
@@ -842,6 +863,16 @@ void __cfg80211_connect_result(struct net_device *dev,
 	}
 
 	memset(wdev->links, 0, sizeof(wdev->links));
+	for_each_valid_link(cr, link) {
+		if (cr->links[link].status == WLAN_STATUS_SUCCESS)
+			continue;
+		cr->valid_links &= ~BIT(link);
+		/* don't require bss pointer for failed links */
+		if (!cr->links[link].bss)
+			continue;
+		cfg80211_unhold_bss(bss_from_pub(cr->links[link].bss));
+		cfg80211_put_bss(wdev->wiphy, cr->links[link].bss);
+	}
 	wdev->valid_links = cr->valid_links;
 	for_each_valid_link(cr, link)
 		wdev->links[link].client.current_bss =
@@ -854,8 +885,7 @@ void __cfg80211_connect_result(struct net_device *dev,
 			       ETH_ALEN);
 	}
 
-	if (!(wdev->wiphy->flags & WIPHY_FLAG_HAS_STATIC_WEP))
-		cfg80211_upload_connect_keys(wdev);
+	cfg80211_upload_connect_keys(wdev);
 
 	rcu_read_lock();
 	for_each_valid_link(cr, link) {
@@ -1029,6 +1059,7 @@ void cfg80211_connect_done(struct net_device *dev,
 			cfg80211_hold_bss(
 				bss_from_pub(params->links[link].bss));
 		ev->cr.links[link].bss = params->links[link].bss;
+		ev->cr.links[link].status = params->links[link].status;
 
 		if (params->links[link].addr) {
 			ev->cr.links[link].addr = next;
@@ -1266,7 +1297,8 @@ out:
 }
 EXPORT_SYMBOL(cfg80211_roamed);
 
-void __cfg80211_port_authorized(struct wireless_dev *wdev, const u8 *bssid)
+void __cfg80211_port_authorized(struct wireless_dev *wdev, const u8 *bssid,
+					const u8 *td_bitmap, u8 td_bitmap_len)
 {
 	ASSERT_WDEV_LOCK(wdev);
 
@@ -1279,11 +1311,11 @@ void __cfg80211_port_authorized(struct wireless_dev *wdev, const u8 *bssid)
 		return;
 
 	nl80211_send_port_authorized(wiphy_to_rdev(wdev->wiphy), wdev->netdev,
-				     bssid);
+				     bssid, td_bitmap, td_bitmap_len);
 }
 
 void cfg80211_port_authorized(struct net_device *dev, const u8 *bssid,
-			      gfp_t gfp)
+			      const u8 *td_bitmap, u8 td_bitmap_len, gfp_t gfp)
 {
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wdev->wiphy);
@@ -1293,12 +1325,15 @@ void cfg80211_port_authorized(struct net_device *dev, const u8 *bssid,
 	if (WARN_ON(!bssid))
 		return;
 
-	ev = kzalloc(sizeof(*ev), gfp);
+	ev = kzalloc(sizeof(*ev) + td_bitmap_len, gfp);
 	if (!ev)
 		return;
 
 	ev->type = EVENT_PORT_AUTHORIZED;
 	memcpy(ev->pa.bssid, bssid, ETH_ALEN);
+	ev->pa.td_bitmap = ((u8 *)ev) + sizeof(*ev);
+	ev->pa.td_bitmap_len = td_bitmap_len;
+	memcpy((void *)ev->pa.td_bitmap, td_bitmap, td_bitmap_len);
 
 	/*
 	 * Use the wdev event list so that if there are pending
@@ -1473,9 +1508,6 @@ int cfg80211_connect(struct cfg80211_registered_device *rdev,
 				connect->crypto.ciphers_pairwise[0] = cipher;
 			}
 		}
-
-		connect->crypto.wep_keys = connkeys->params;
-		connect->crypto.wep_tx_key = connkeys->def;
 	} else {
 		if (WARN_ON(connkeys))
 			return -EINVAL;
@@ -1555,6 +1587,7 @@ void cfg80211_autodisconnect_wk(struct work_struct *work)
 		container_of(work, struct wireless_dev, disconnect_wk);
 	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wdev->wiphy);
 
+	wiphy_lock(wdev->wiphy);
 	wdev_lock(wdev);
 
 	if (wdev->conn_owner_nlportid) {
@@ -1593,4 +1626,5 @@ void cfg80211_autodisconnect_wk(struct work_struct *work)
 	}
 
 	wdev_unlock(wdev);
+	wiphy_unlock(wdev->wiphy);
 }

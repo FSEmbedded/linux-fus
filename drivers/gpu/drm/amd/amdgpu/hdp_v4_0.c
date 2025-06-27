@@ -40,23 +40,28 @@
 static void hdp_v4_0_flush_hdp(struct amdgpu_device *adev,
 				struct amdgpu_ring *ring)
 {
-	if (!ring || !ring->funcs->emit_wreg)
-		WREG32_NO_KIQ((adev->rmmio_remap.reg_offset + KFD_MMIO_REMAP_HDP_MEM_FLUSH_CNTL) >> 2, 0);
-	else
+	if (!ring || !ring->funcs->emit_wreg) {
+		WREG32((adev->rmmio_remap.reg_offset + KFD_MMIO_REMAP_HDP_MEM_FLUSH_CNTL) >> 2, 0);
+		RREG32((adev->rmmio_remap.reg_offset + KFD_MMIO_REMAP_HDP_MEM_FLUSH_CNTL) >> 2);
+	} else {
 		amdgpu_ring_emit_wreg(ring, (adev->rmmio_remap.reg_offset + KFD_MMIO_REMAP_HDP_MEM_FLUSH_CNTL) >> 2, 0);
+	}
 }
 
 static void hdp_v4_0_invalidate_hdp(struct amdgpu_device *adev,
 				    struct amdgpu_ring *ring)
 {
-	if (adev->ip_versions[HDP_HWIP][0] == IP_VERSION(4, 4, 0))
+	if (adev->ip_versions[HDP_HWIP][0] == IP_VERSION(4, 4, 0) ||
+	    adev->ip_versions[HDP_HWIP][0] == IP_VERSION(4, 4, 2))
 		return;
 
-	if (!ring || !ring->funcs->emit_wreg)
+	if (!ring || !ring->funcs->emit_wreg) {
 		WREG32_SOC15_NO_KIQ(HDP, 0, mmHDP_READ_CACHE_INVALIDATE, 1);
-	else
+		RREG32_SOC15_NO_KIQ(HDP, 0, mmHDP_READ_CACHE_INVALIDATE);
+	} else {
 		amdgpu_ring_emit_wreg(ring, SOC15_REG_OFFSET(
 			HDP, 0, mmHDP_READ_CACHE_INVALIDATE), 1);
+	}
 }
 
 static void hdp_v4_0_query_ras_error_count(struct amdgpu_device *adev,
@@ -160,11 +165,6 @@ struct amdgpu_ras_block_hw_ops hdp_v4_0_ras_hw_ops = {
 
 struct amdgpu_hdp_ras hdp_v4_0_ras = {
 	.ras_block = {
-		.ras_comm = {
-			.name = "hdp",
-			.block = AMDGPU_RAS_BLOCK__HDP,
-			.type = AMDGPU_RAS_ERROR__MULTI_UNCORRECTABLE,
-		},
 		.hw_ops = &hdp_v4_0_ras_hw_ops,
 	},
 };

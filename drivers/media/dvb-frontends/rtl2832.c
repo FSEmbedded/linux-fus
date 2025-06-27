@@ -983,7 +983,7 @@ static int rtl2832_pid_filter(struct dvb_frontend *fe, u8 index, u16 pid,
 		index, pid, onoff, dev->slave_ts);
 
 	/* skip invalid PIDs (0x2000) */
-	if (pid > 0x1fff || index > 32)
+	if (pid > 0x1fff || index >= 32)
 		return 0;
 
 	if (onoff)
@@ -1021,8 +1021,7 @@ err:
 	return ret;
 }
 
-static int rtl2832_probe(struct i2c_client *client,
-		const struct i2c_device_id *id)
+static int rtl2832_probe(struct i2c_client *client)
 {
 	struct rtl2832_platform_data *pdata = client->dev.platform_data;
 	struct i2c_adapter *i2c = client->adapter;

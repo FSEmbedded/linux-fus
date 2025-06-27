@@ -4,7 +4,6 @@
 
 #include <linux/rhashtable.h>
 #include <linux/atomic.h>
-#include <linux/workqueue.h>
 #include <net/sock.h>
 
 /* flags */
@@ -39,16 +38,18 @@ struct netlink_sock {
 	bool			cb_running;
 	int			dump_done_errno;
 	struct netlink_callback	cb;
-	struct mutex		*cb_mutex;
-	struct mutex		cb_def_mutex;
+	struct mutex		nl_cb_mutex;
+
+	struct mutex		*dump_cb_mutex;
 	void			(*netlink_rcv)(struct sk_buff *skb);
 	int			(*netlink_bind)(struct net *net, int group);
 	void			(*netlink_unbind)(struct net *net, int group);
+	void			(*netlink_release)(struct sock *sk,
+						   unsigned long *groups);
 	struct module		*module;
 
 	struct rhash_head	node;
 	struct rcu_head		rcu;
-	struct work_struct	work;
 };
 
 static inline struct netlink_sock *nlk_sk(struct sock *sk)
@@ -68,7 +69,8 @@ struct netlink_table {
 	struct module		*module;
 	int			(*bind)(struct net *net, int group);
 	void			(*unbind)(struct net *net, int group);
-	bool			(*compare)(struct net *net, struct sock *sock);
+	void                    (*release)(struct sock *sk,
+					   unsigned long *groups);
 	int			registered;
 };
 

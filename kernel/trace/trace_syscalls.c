@@ -299,6 +299,12 @@ static void ftrace_syscall_enter(void *data, struct pt_regs *regs, long id)
 	int syscall_nr;
 	int size;
 
+	/*
+	 * Syscall probe called with preemption enabled, but the ring
+	 * buffer and per-cpu data require preemption to be disabled.
+	 */
+	guard(preempt_notrace)();
+
 	syscall_nr = trace_get_syscall_nr(current, regs);
 	if (syscall_nr < 0 || syscall_nr >= NR_syscalls)
 		return;
@@ -337,6 +343,12 @@ static void ftrace_syscall_exit(void *data, struct pt_regs *regs, long ret)
 	struct syscall_metadata *sys_data;
 	struct trace_event_buffer fbuffer;
 	int syscall_nr;
+
+	/*
+	 * Syscall probe called with preemption enabled, but the ring
+	 * buffer and per-cpu data require preemption to be disabled.
+	 */
+	guard(preempt_notrace)();
 
 	syscall_nr = trace_get_syscall_nr(current, regs);
 	if (syscall_nr < 0 || syscall_nr >= NR_syscalls)
@@ -555,12 +567,15 @@ static int perf_call_bpf_enter(struct trace_event_call *call, struct pt_regs *re
 			       struct syscall_trace_enter *rec)
 {
 	struct syscall_tp_t {
-		unsigned long long regs;
+		struct trace_entry ent;
 		unsigned long syscall_nr;
 		unsigned long args[SYSCALL_DEFINE_MAXARGS];
-	} param;
+	} __aligned(8) param;
 	int i;
 
+	BUILD_BUG_ON(sizeof(param.ent) < sizeof(void *));
+
+	/* bpf prog requires 'regs' to be the first member in the ctx (a.k.a. &param) */
 	*(struct pt_regs **)&param = regs;
 	param.syscall_nr = rec->nr;
 	for (i = 0; i < sys_data->nb_args; i++)
@@ -657,11 +672,12 @@ static int perf_call_bpf_exit(struct trace_event_call *call, struct pt_regs *reg
 			      struct syscall_trace_exit *rec)
 {
 	struct syscall_tp_t {
-		unsigned long long regs;
+		struct trace_entry ent;
 		unsigned long syscall_nr;
 		unsigned long ret;
-	} param;
+	} __aligned(8) param;
 
+	/* bpf prog requires 'regs' to be the first member in the ctx (a.k.a. &param) */
 	*(struct pt_regs **)&param = regs;
 	param.syscall_nr = rec->nr;
 	param.ret = rec->ret;

@@ -17,6 +17,7 @@ extern unsigned long phys_base;
 extern unsigned long page_offset_base;
 extern unsigned long vmalloc_base;
 extern unsigned long vmemmap_base;
+extern unsigned long physmem_end;
 
 static __always_inline unsigned long __phys_addr_nodebug(unsigned long x)
 {
@@ -38,10 +39,6 @@ extern unsigned long __phys_addr_symbol(unsigned long);
 #endif
 
 #define __phys_reloc_hide(x)	(x)
-
-#ifdef CONFIG_FLATMEM
-#define pfn_valid(pfn)          ((pfn) < max_pfn)
-#endif
 
 void clear_page_orig(void *page);
 void clear_page_rep(void *page);

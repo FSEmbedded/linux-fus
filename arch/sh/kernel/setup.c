@@ -260,7 +260,7 @@ void __ref sh_fdt_init(phys_addr_t dt_phys)
 	dt_virt = phys_to_virt(dt_phys);
 #endif
 
-	if (!dt_virt || !early_init_dt_scan(dt_virt)) {
+	if (!dt_virt || !early_init_dt_scan(dt_virt, __pa(dt_virt))) {
 		pr_crit("Error: invalid device tree blob"
 			" at physical address %p\n", (void *)dt_phys);
 
@@ -305,9 +305,9 @@ void __init setup_arch(char **cmdline_p)
 	bss_resource.end = virt_to_phys(__bss_stop)-1;
 
 #ifdef CONFIG_CMDLINE_OVERWRITE
-	strlcpy(command_line, CONFIG_CMDLINE, sizeof(command_line));
+	strscpy(command_line, CONFIG_CMDLINE, sizeof(command_line));
 #else
-	strlcpy(command_line, COMMAND_LINE, sizeof(command_line));
+	strscpy(command_line, COMMAND_LINE, sizeof(command_line));
 #ifdef CONFIG_CMDLINE_EXTEND
 	strlcat(command_line, " ", sizeof(command_line));
 	strlcat(command_line, CONFIG_CMDLINE, sizeof(command_line));

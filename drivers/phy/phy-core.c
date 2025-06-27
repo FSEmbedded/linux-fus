@@ -21,12 +21,11 @@
 #include <linux/regulator/consumer.h>
 
 static struct class *phy_class;
+static struct dentry *phy_debugfs_root;
 static DEFINE_MUTEX(phy_provider_mutex);
 static LIST_HEAD(phy_provider_list);
 static LIST_HEAD(phys);
 static DEFINE_IDA(phy_ida);
-struct dentry *phy_debugfs_root;
-EXPORT_SYMBOL_GPL(phy_debugfs_root);
 
 static void devm_phy_release(struct device *dev, void *res)
 {
@@ -141,8 +140,10 @@ static struct phy_provider *of_phy_provider_lookup(struct device_node *node)
 			return phy_provider;
 
 		for_each_child_of_node(phy_provider->children, child)
-			if (child == node)
+			if (child == node) {
+				of_node_put(child);
 				return phy_provider;
+			}
 	}
 
 	return ERR_PTR(-EPROBE_DEFER);
@@ -609,8 +610,10 @@ static struct phy *_of_phy_get(struct device_node *np, int index)
 		return ERR_PTR(-ENODEV);
 
 	/* This phy type handled by the usb-phy subsystem for now */
-	if (of_device_is_compatible(args.np, "usb-nop-xceiv"))
-		return ERR_PTR(-ENODEV);
+	if (of_device_is_compatible(args.np, "usb-nop-xceiv")) {
+		phy = ERR_PTR(-ENODEV);
+		goto out_put_node;
+	}
 
 	mutex_lock(&phy_provider_mutex);
 	phy_provider = of_phy_provider_lookup(args.np);
@@ -632,6 +635,7 @@ out_put_module:
 
 out_unlock:
 	mutex_unlock(&phy_provider_mutex);
+out_put_node:
 	of_node_put(args.np);
 
 	return phy;
@@ -717,7 +721,7 @@ void devm_phy_put(struct device *dev, struct phy *phy)
 	if (!phy)
 		return;
 
-	r = devres_destroy(dev, devm_phy_release, devm_phy_match, phy);
+	r = devres_release(dev, devm_phy_release, devm_phy_match, phy);
 	dev_WARN_ONCE(dev, r, "couldn't find PHY resource\n");
 }
 EXPORT_SYMBOL_GPL(devm_phy_put);
@@ -799,27 +803,6 @@ struct phy *phy_get(struct device *dev, const char *string)
 	return phy;
 }
 EXPORT_SYMBOL_GPL(phy_get);
-
-/**
- * phy_optional_get() - lookup and obtain a reference to an optional phy.
- * @dev: device that requests this phy
- * @string: the phy name as given in the dt data or the name of the controller
- * port for non-dt case
- *
- * Returns the phy driver, after getting a refcount to it; or
- * NULL if there is no such phy.  The caller is responsible for
- * calling phy_put() to release that count.
- */
-struct phy *phy_optional_get(struct device *dev, const char *string)
-{
-	struct phy *phy = phy_get(dev, string);
-
-	if (PTR_ERR(phy) == -ENODEV)
-		phy = NULL;
-
-	return phy;
-}
-EXPORT_SYMBOL_GPL(phy_optional_get);
 
 /**
  * devm_phy_get() - lookup and obtain a reference to a phy.
@@ -1051,6 +1034,8 @@ struct phy *phy_create(struct device *dev, struct device_node *node,
 		pm_runtime_no_callbacks(&phy->dev);
 	}
 
+	phy->debugfs = debugfs_create_dir(dev_name(&phy->dev), phy_debugfs_root);
+
 	return phy;
 
 put_dev:
@@ -1120,7 +1105,7 @@ void devm_phy_destroy(struct device *dev, struct phy *phy)
 {
 	int r;
 
-	r = devres_destroy(dev, devm_phy_consume, devm_phy_match, phy);
+	r = devres_release(dev, devm_phy_consume, devm_phy_match, phy);
 	dev_WARN_ONCE(dev, r, "couldn't find PHY resource\n");
 }
 EXPORT_SYMBOL_GPL(devm_phy_destroy);
@@ -1258,12 +1243,12 @@ EXPORT_SYMBOL_GPL(of_phy_provider_unregister);
  * of_phy_provider_unregister to unregister the phy provider.
  */
 void devm_of_phy_provider_unregister(struct device *dev,
-	struct phy_provider *phy_provider)
+				     struct phy_provider *phy_provider)
 {
 	int r;
 
-	r = devres_destroy(dev, devm_phy_provider_release, devm_phy_match,
-		phy_provider);
+	r = devres_release(dev, devm_phy_provider_release, devm_phy_match,
+			   phy_provider);
 	dev_WARN_ONCE(dev, r, "couldn't find PHY provider device resource\n");
 }
 EXPORT_SYMBOL_GPL(devm_of_phy_provider_unregister);
@@ -1281,6 +1266,7 @@ static void phy_release(struct device *dev)
 
 	phy = to_phy(dev);
 	dev_vdbg(dev, "releasing '%s'\n", dev_name(dev));
+	debugfs_remove_recursive(phy->debugfs);
 	regulator_put(phy->pwr);
 	ida_simple_remove(&phy_ida, phy->id);
 	kfree(phy);
@@ -1288,7 +1274,7 @@ static void phy_release(struct device *dev)
 
 static int __init phy_core_init(void)
 {
-	phy_class = class_create(THIS_MODULE, "phy");
+	phy_class = class_create("phy");
 	if (IS_ERR(phy_class)) {
 		pr_err("failed to create phy class --> %ld\n",
 			PTR_ERR(phy_class));
@@ -1302,3 +1288,10 @@ static int __init phy_core_init(void)
 	return 0;
 }
 device_initcall(phy_core_init);
+
+static void __exit phy_core_exit(void)
+{
+	debugfs_remove_recursive(phy_debugfs_root);
+	class_destroy(phy_class);
+}
+module_exit(phy_core_exit);

@@ -26,6 +26,7 @@
 #include "host.h"
 #include "bus.h"
 #include "mmc_ops.h"
+#include "quirks.h"
 #include "sd.h"
 #include "sd_ops.h"
 
@@ -1117,7 +1118,7 @@ static int sd_parse_ext_reg_power(struct mmc_card *card, u8 fno, u8 page,
 	card->ext_power.rev = reg_buf[0] & 0xf;
 
 	/* Power Off Notification support at bit 4. */
-	if (reg_buf[1] & BIT(4))
+	if ((reg_buf[1] & BIT(4)) && !mmc_card_broken_sd_poweroff_notify(card))
 		card->ext_power.feature_support |= SD_EXT_POWER_OFF_NOTIFY;
 
 	/* Power Sustenance support at bit 5. */
@@ -1475,6 +1476,9 @@ retry:
 			goto free_card;
 	}
 
+	/* Apply quirks prior to card setup */
+	mmc_fixup_device(card, mmc_sd_fixups);
+
 	err = mmc_sd_setup_card(host, card, oldcard != NULL);
 	if (err)
 		goto free_card;
@@ -1518,6 +1522,13 @@ retry:
 		 */
 		mmc_set_clock(host, mmc_sd_get_max_clock(card));
 
+		if (host->ios.timing == MMC_TIMING_SD_HS &&
+			host->ops->prepare_sd_hs_tuning) {
+			err = host->ops->prepare_sd_hs_tuning(host, card);
+			if (err)
+				goto free_card;
+		}
+
 		/*
 		 * Switch to wider bus (if supported).
 		 */
@@ -1528,6 +1539,13 @@ retry:
 				goto free_card;
 
 			mmc_set_bus_width(host, MMC_BUS_WIDTH_4);
+		}
+
+		if (host->ios.timing == MMC_TIMING_SD_HS &&
+			host->ops->execute_sd_hs_tuning) {
+			err = host->ops->execute_sd_hs_tuning(host, card);
+			if (err)
+				goto free_card;
 		}
 	}
 cont:

@@ -116,6 +116,11 @@ static void __ioremap_check_other(resource_size_t addr, struct ioremap_desc *des
 	if (!cc_platform_has(CC_ATTR_GUEST_MEM_ENCRYPT))
 		return;
 
+	if (x86_platform.hyper.is_private_mmio(addr)) {
+		desc->flags |= IORES_MAP_ENCRYPTED;
+		return;
+	}
+
 	if (!IS_ENABLED(CONFIG_EFI))
 		return;
 
@@ -650,7 +655,8 @@ static bool memremap_is_setup_data(resource_size_t phys_addr,
 		paddr_next = data->next;
 		len = data->len;
 
-		if ((phys_addr > paddr) && (phys_addr < (paddr + len))) {
+		if ((phys_addr > paddr) &&
+		    (phys_addr < (paddr + sizeof(struct setup_data) + len))) {
 			memunmap(data);
 			return true;
 		}
@@ -712,7 +718,8 @@ static bool __init early_memremap_is_setup_data(resource_size_t phys_addr,
 		paddr_next = data->next;
 		len = data->len;
 
-		if ((phys_addr > paddr) && (phys_addr < (paddr + len))) {
+		if ((phys_addr > paddr) &&
+		    (phys_addr < (paddr + sizeof(struct setup_data) + len))) {
 			early_memunmap(data, sizeof(*data));
 			return true;
 		}

@@ -422,8 +422,7 @@ static struct regulator *analog_regulator;
 static struct regulator *gpo_regulator;
 static DEFINE_MUTEX(ov5640_mutex);
 
-static int ov5640_probe(struct i2c_client *adapter,
-				const struct i2c_device_id *device_id);
+static int ov5640_probe(struct i2c_client *adapter);
 static void ov5640_remove(struct i2c_client *client);
 
 static s32 ov5640_read_reg(struct ov5640 *sensor, u16 reg, u8 *val);
@@ -1222,8 +1221,7 @@ static int ov5640_init_mode(struct ov5640 *sensor,
 	int retval = 0;
 	enum ov5640_downsize_mode dn_mode, orig_dn_mode;
 
-	if ((mode > ov5640_mode_MAX || mode < ov5640_mode_MIN)
-		&& (mode != ov5640_mode_INIT)) {
+	if ((mode > ov5640_mode_MAX) && (mode != ov5640_mode_INIT)) {
 		dev_err(dev, "Wrong ov5640 mode detected!\n");
 		return -1;
 	}
@@ -1687,8 +1685,7 @@ static void ov5640_adjust_setting_20mhz(void)
  * @param adapter            struct i2c_adapter *
  * @return  Error code indicating success or failure
  */
-static int ov5640_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+static int ov5640_probe(struct i2c_client *client)
 {
 	struct pinctrl *pinctrl;
 	struct device *dev = &client->dev;

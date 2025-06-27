@@ -171,6 +171,7 @@ static int can_create(struct net *net, struct socket *sock, int protocol,
 		/* release sk on errors */
 		sock_orphan(sk);
 		sock_put(sk);
+		sock->sk = NULL;
 	}
 
  errout:
@@ -446,7 +447,6 @@ int can_rx_register(struct net *net, struct net_device *dev, canid_t can_id,
 	struct hlist_head *rcv_list;
 	struct can_dev_rcv_lists *dev_rcv_lists;
 	struct can_rcv_lists_stats *rcv_lists_stats = net->can.rcv_lists_stats;
-	int err = 0;
 
 	/* insert new receiver  (dev,canid,mask) -> (func,data) */
 
@@ -481,7 +481,7 @@ int can_rx_register(struct net *net, struct net_device *dev, canid_t can_id,
 					       rcv_lists_stats->rcv_entries);
 	spin_unlock_bh(&net->can.rcvlists_lock);
 
-	return err;
+	return 0;
 }
 EXPORT_SYMBOL(can_rx_register);
 

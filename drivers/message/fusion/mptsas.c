@@ -1952,12 +1952,12 @@ mptsas_qcmd(struct Scsi_Host *shost, struct scsi_cmnd *SCpnt)
  *	@sc: scsi command that the midlayer is about to time out
  *
  **/
-static enum blk_eh_timer_return mptsas_eh_timed_out(struct scsi_cmnd *sc)
+static enum scsi_timeout_action mptsas_eh_timed_out(struct scsi_cmnd *sc)
 {
 	MPT_SCSI_HOST *hd;
 	MPT_ADAPTER   *ioc;
 	VirtDevice    *vdevice;
-	enum blk_eh_timer_return rc = BLK_EH_DONE;
+	enum scsi_timeout_action rc = SCSI_EH_NOT_HANDLED;
 
 	hd = shost_priv(sc->device->host);
 	if (hd == NULL) {
@@ -1980,7 +1980,7 @@ static enum blk_eh_timer_return mptsas_eh_timed_out(struct scsi_cmnd *sc)
 		dtmprintk(ioc, printk(MYIOC_s_WARN_FMT ": %s: ioc is in reset,"
 		    "SML need to reset the timer (sc=%p)\n",
 		    ioc->name, __func__, sc));
-		rc = BLK_EH_RESET_TIMER;
+		rc = SCSI_EH_RESET_TIMER;
 	}
 	vdevice = sc->device->hostdata;
 	if (vdevice && vdevice->vtarget && (vdevice->vtarget->inDMD
@@ -1988,7 +1988,7 @@ static enum blk_eh_timer_return mptsas_eh_timed_out(struct scsi_cmnd *sc)
 		dtmprintk(ioc, printk(MYIOC_s_WARN_FMT ": %s: target removed "
 		    "or in device removal delay (sc=%p)\n",
 		    ioc->name, __func__, sc));
-		rc = BLK_EH_RESET_TIMER;
+		rc = SCSI_EH_RESET_TIMER;
 		goto done;
 	}
 
@@ -1997,7 +1997,7 @@ done:
 }
 
 
-static struct scsi_host_template mptsas_driver_template = {
+static const struct scsi_host_template mptsas_driver_template = {
 	.module				= THIS_MODULE,
 	.proc_name			= "mptsas",
 	.show_info			= mptscsih_show_info,
@@ -4234,10 +4234,8 @@ mptsas_find_phyinfo_by_phys_disk_num(MPT_ADAPTER *ioc, u8 phys_disk_num,
 static void
 mptsas_reprobe_lun(struct scsi_device *sdev, void *data)
 {
-	int rc;
-
 	sdev->no_uld_attach = data ? 1 : 0;
-	rc = scsi_device_reprobe(sdev);
+	WARN_ON(scsi_device_reprobe(sdev));
 }
 
 static void

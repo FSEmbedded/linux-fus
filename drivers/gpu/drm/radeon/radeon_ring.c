@@ -464,7 +464,7 @@ void radeon_ring_fini(struct radeon_device *rdev, struct radeon_ring *ring)
 
 static int radeon_debugfs_ring_info_show(struct seq_file *m, void *unused)
 {
-	struct radeon_ring *ring = (struct radeon_ring *) m->private;
+	struct radeon_ring *ring = m->private;
 	struct radeon_device *rdev = ring->rdev;
 
 	uint32_t rptr, wptr, rptr_next;
@@ -548,7 +548,7 @@ static void radeon_debugfs_ring_init(struct radeon_device *rdev, struct radeon_r
 {
 #if defined(CONFIG_DEBUG_FS)
 	const char *ring_name = radeon_debugfs_ring_idx_to_name(ring->idx);
-	struct dentry *root = rdev->ddev->primary->debugfs_root;
+	struct dentry *root = rdev_to_drm(rdev)->primary->debugfs_root;
 
 	if (ring_name)
 		debugfs_create_file(ring_name, 0444, root, ring,

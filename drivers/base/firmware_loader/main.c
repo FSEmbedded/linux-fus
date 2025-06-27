@@ -493,9 +493,9 @@ fw_get_filesystem_firmware(struct device *device, struct fw_priv *fw_priv,
 					     const void *in_buffer))
 {
 	size_t size;
-	int i, len;
+	int i, len, maxlen = 0;
 	int rc = -ENOENT;
-	char *path;
+	char *path, *nt = NULL;
 	size_t msize = INT_MAX;
 	void *buffer = NULL;
 
@@ -518,8 +518,17 @@ fw_get_filesystem_firmware(struct device *device, struct fw_priv *fw_priv,
 		if (!fw_path[i][0])
 			continue;
 
-		len = snprintf(path, PATH_MAX, "%s/%s%s",
-			       fw_path[i], fw_priv->fw_name, suffix);
+		/* strip off \n from customized path */
+		maxlen = strlen(fw_path[i]);
+		if (i == 0) {
+			nt = strchr(fw_path[i], '\n');
+			if (nt)
+				maxlen = nt - fw_path[i];
+		}
+
+		len = snprintf(path, PATH_MAX, "%.*s/%s%s",
+			       maxlen, fw_path[i],
+			       fw_priv->fw_name, suffix);
 		if (len >= PATH_MAX) {
 			rc = -ENAMETOOLONG;
 			break;
@@ -791,6 +800,69 @@ static void fw_abort_batch_reqs(struct firmware *fw)
 	mutex_unlock(&fw_lock);
 }
 
+#if defined(CONFIG_FW_LOADER_DEBUG)
+#include <crypto/hash.h>
+#include <crypto/sha2.h>
+
+static void fw_log_firmware_info(const struct firmware *fw, const char *name, struct device *device)
+{
+	struct shash_desc *shash;
+	struct crypto_shash *alg;
+	u8 *sha256buf;
+	char *outbuf;
+
+	alg = crypto_alloc_shash("sha256", 0, 0);
+	if (IS_ERR(alg))
+		return;
+
+	sha256buf = kmalloc(SHA256_DIGEST_SIZE, GFP_KERNEL);
+	outbuf = kmalloc(SHA256_BLOCK_SIZE + 1, GFP_KERNEL);
+	shash = kmalloc(sizeof(*shash) + crypto_shash_descsize(alg), GFP_KERNEL);
+	if (!sha256buf || !outbuf || !shash)
+		goto out_free;
+
+	shash->tfm = alg;
+
+	if (crypto_shash_digest(shash, fw->data, fw->size, sha256buf) < 0)
+		goto out_free;
+
+	for (int i = 0; i < SHA256_DIGEST_SIZE; i++)
+		sprintf(&outbuf[i * 2], "%02x", sha256buf[i]);
+	outbuf[SHA256_BLOCK_SIZE] = 0;
+	dev_dbg(device, "Loaded FW: %s, sha256: %s\n", name, outbuf);
+
+out_free:
+	kfree(shash);
+	kfree(outbuf);
+	kfree(sha256buf);
+	crypto_free_shash(alg);
+}
+#else
+static void fw_log_firmware_info(const struct firmware *fw, const char *name,
+				 struct device *device)
+{}
+#endif
+
+/*
+ * Reject firmware file names with ".." path components.
+ * There are drivers that construct firmware file names from device-supplied
+ * strings, and we don't want some device to be able to tell us "I would like to
+ * be sent my firmware from ../../../etc/shadow, please".
+ *
+ * Search for ".." surrounded by either '/' or start/end of string.
+ *
+ * This intentionally only looks at the firmware name, not at the firmware base
+ * directory or at symlink contents.
+ */
+static bool name_contains_dotdot(const char *name)
+{
+	size_t name_len = strlen(name);
+
+	return strcmp(name, "..") == 0 || strncmp(name, "../", 3) == 0 ||
+	       strstr(name, "/../") != NULL ||
+	       (name_len >= 3 && strcmp(name+name_len-3, "/..") == 0);
+}
+
 /* called from request_firmware() and request_firmware_work_func() */
 static int
 _request_firmware(const struct firmware **firmware_p, const char *name,
@@ -811,6 +883,14 @@ _request_firmware(const struct firmware **firmware_p, const char *name,
 		goto out;
 	}
 
+	if (name_contains_dotdot(name)) {
+		dev_warn(device,
+			 "Firmware load for '%s' refused, path contains '..' component\n",
+			 name);
+		ret = -EINVAL;
+		goto out;
+	}
+
 	ret = _request_firmware_prepare(&fw, name, device, buf, size,
 					offset, opt_flags);
 	if (ret <= 0) /* error or already assigned */
@@ -821,7 +901,7 @@ _request_firmware(const struct firmware **firmware_p, const char *name,
 	 * called by a driver when serving an unrelated request from userland, we use
 	 * the kernel credentials to read the file.
 	 */
-	kern_cred = prepare_kernel_cred(NULL);
+	kern_cred = prepare_kernel_cred(&init_task);
 	if (!kern_cred) {
 		ret = -ENOMEM;
 		goto out;
@@ -861,11 +941,13 @@ _request_firmware(const struct firmware **firmware_p, const char *name,
 	revert_creds(old_cred);
 	put_cred(kern_cred);
 
- out:
+out:
 	if (ret < 0) {
 		fw_abort_batch_reqs(fw);
 		release_firmware(fw);
 		fw = NULL;
+	} else {
+		fw_log_firmware_info(fw, name, device);
 	}
 
 	*firmware_p = fw;
@@ -886,6 +968,8 @@ _request_firmware(const struct firmware **firmware_p, const char *name,
  *      @name will be used as $FIRMWARE in the uevent environment and
  *      should be distinctive enough not to be confused with any other
  *      firmware image for this or any other device.
+ *	It must not contain any ".." path components - "foo/bar..bin" is
+ *	allowed, but "foo/../bar.bin" is not.
  *
  *	Caller must hold the reference count of @device.
  *

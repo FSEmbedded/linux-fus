@@ -224,9 +224,9 @@ static int usb_stream_hwdep_mmap(struct snd_hwdep *hw,
 	}
 
 	area->vm_ops = &usb_stream_hwdep_vm_ops;
-	area->vm_flags |= VM_DONTDUMP;
+	vm_flags_set(area, VM_DONTDUMP);
 	if (!read)
-		area->vm_flags |= VM_DONTEXPAND;
+		vm_flags_set(area, VM_DONTEXPAND);
 	area->vm_private_data = us122l;
 	atomic_inc(&us122l->mmap_count);
 out:
@@ -617,10 +617,7 @@ static void snd_us122l_disconnect(struct usb_interface *intf)
 	usb_put_intf(usb_ifnum_to_if(us122l->dev, 1));
 	usb_put_dev(us122l->dev);
 
-	while (atomic_read(&us122l->mmap_count))
-		msleep(500);
-
-	snd_card_free(card);
+	snd_card_free_when_closed(card);
 }
 
 static int snd_us122l_suspend(struct usb_interface *intf, pm_message_t message)

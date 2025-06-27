@@ -609,7 +609,7 @@ static int rtl2830_pid_filter(struct dvb_frontend *fe, u8 index, u16 pid, int on
 		index, pid, onoff);
 
 	/* skip invalid PIDs (0x2000) */
-	if (pid > 0x1fff || index > 32)
+	if (pid > 0x1fff || index >= 32)
 		return 0;
 
 	if (onoff)
@@ -768,8 +768,7 @@ static int rtl2830_regmap_gather_write(void *context, const void *reg,
 	return 0;
 }
 
-static int rtl2830_probe(struct i2c_client *client,
-			 const struct i2c_device_id *id)
+static int rtl2830_probe(struct i2c_client *client)
 {
 	struct rtl2830_platform_data *pdata = client->dev.platform_data;
 	struct rtl2830_dev *dev;

@@ -74,6 +74,8 @@ SECTIONS
 	.got		: { *(.got) }			:text
 	.plt		: { *(.plt) }
 
+	.rela.dyn	: { *(.rela .rela*) }
+
 	_end = .;
 	__end = .;
 	PROVIDE(end = .);
@@ -83,9 +85,11 @@ SECTIONS
 
 	/DISCARD/	: {
 		*(.note.GNU-stack)
+		*(*.EMB.apuinfo)
+		*(.branch_lt)
 		*(.data .data.* .gnu.linkonce.d.* .sdata*)
 		*(.bss .sbss .dynbss .dynsbss)
-		*(.got1)
+		*(.got1 .glink .iplt)
 	}
 }
 

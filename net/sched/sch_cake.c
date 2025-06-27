@@ -65,6 +65,7 @@
 #include <linux/reciprocal_div.h>
 #include <net/netlink.h>
 #include <linux/if_vlan.h>
+#include <net/gso.h>
 #include <net/pkt_sched.h>
 #include <net/pkt_cls.h>
 #include <net/tcp.h>
@@ -785,12 +786,15 @@ skip_hash:
 		 * queue, accept the collision, update the host tags.
 		 */
 		q->way_collisions++;
-		if (q->flows[outer_hash + k].set == CAKE_SET_BULK) {
-			q->hosts[q->flows[reduced_hash].srchost].srchost_bulk_flow_count--;
-			q->hosts[q->flows[reduced_hash].dsthost].dsthost_bulk_flow_count--;
-		}
 		allocate_src = cake_dsrc(flow_mode);
 		allocate_dst = cake_ddst(flow_mode);
+
+		if (q->flows[outer_hash + k].set == CAKE_SET_BULK) {
+			if (allocate_src)
+				q->hosts[q->flows[reduced_hash].srchost].srchost_bulk_flow_count--;
+			if (allocate_dst)
+				q->hosts[q->flows[reduced_hash].dsthost].dsthost_bulk_flow_count--;
+		}
 found:
 		/* reserve queue for future packets in same flow */
 		reduced_hash = outer_hash + k;
@@ -1209,7 +1213,7 @@ static struct sk_buff *cake_ack_filter(struct cake_sched_data *q,
 			    iph_check->daddr != iph->daddr)
 				continue;
 
-			seglen = ntohs(iph_check->tot_len) -
+			seglen = iph_totlen(skb, iph_check) -
 				       (4 * iph_check->ihl);
 		} else if (iph_check->version == 6) {
 			ipv6h = (struct ipv6hdr *)iph;
@@ -1360,7 +1364,7 @@ static u32 cake_overhead(struct cake_sched_data *q, const struct sk_buff *skb)
 		return cake_calc_overhead(q, len, off);
 
 	/* borrowed from qdisc_pkt_len_init() */
-	hdr_len = skb_transport_header(skb) - skb_mac_header(skb);
+	hdr_len = skb_transport_offset(skb);
 
 	/* + transport layer */
 	if (likely(shinfo->gso_type & (SKB_GSO_TCPV4 |
@@ -1368,14 +1372,14 @@ static u32 cake_overhead(struct cake_sched_data *q, const struct sk_buff *skb)
 		const struct tcphdr *th;
 		struct tcphdr _tcphdr;
 
-		th = skb_header_pointer(skb, skb_transport_offset(skb),
+		th = skb_header_pointer(skb, hdr_len,
 					sizeof(_tcphdr), &_tcphdr);
 		if (likely(th))
 			hdr_len += __tcp_hdrlen(th);
 	} else {
 		struct udphdr _udphdr;
 
-		if (skb_header_pointer(skb, skb_transport_offset(skb),
+		if (skb_header_pointer(skb, hdr_len,
 				       sizeof(_udphdr), &_udphdr))
 			hdr_len += sizeof(struct udphdr);
 	}
@@ -1538,7 +1542,6 @@ static unsigned int cake_drop(struct Qdisc *sch, struct sk_buff **to_free)
 	b->backlogs[idx]    -= len;
 	b->tin_backlog      -= len;
 	sch->qstats.backlog -= len;
-	qdisc_tree_reduce_backlog(sch, 1, len);
 
 	flow->dropped++;
 	b->tin_dropped++;
@@ -1549,6 +1552,7 @@ static unsigned int cake_drop(struct Qdisc *sch, struct sk_buff **to_free)
 
 	__qdisc_drop(skb, to_free);
 	sch->q.qlen--;
+	qdisc_tree_reduce_backlog(sch, 1, len);
 
 	cake_heapify(q, 0);
 

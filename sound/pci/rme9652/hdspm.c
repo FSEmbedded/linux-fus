@@ -1838,8 +1838,10 @@ static inline int snd_hdspm_midi_output_possible (struct hdspm *hdspm, int id)
 
 static void snd_hdspm_flush_midi_input(struct hdspm *hdspm, int id)
 {
-	while (snd_hdspm_midi_input_available (hdspm, id))
-		snd_hdspm_midi_read_byte (hdspm, id);
+	int count = 256;
+
+	while (snd_hdspm_midi_input_available(hdspm, id) && --count)
+		snd_hdspm_midi_read_byte(hdspm, id);
 }
 
 static int snd_hdspm_midi_output_write (struct hdspm_midi *hmidi)
@@ -6144,12 +6146,6 @@ static int snd_hdspm_hwdep_dummy_op(struct snd_hwdep *hw, struct file *file)
 {
 	/* we have nothing to initialize but the call is required */
 	return 0;
-}
-
-static inline int copy_u32_le(void __user *dest, void __iomem *src)
-{
-	u32 val = readl(src);
-	return copy_to_user(dest, &val, 4);
 }
 
 static int snd_hdspm_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,

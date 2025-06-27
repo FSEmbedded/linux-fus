@@ -811,6 +811,7 @@ struct cdnsp_stream_info {
  *        generate Missed Service Error Event.
  *        Set skip flag when receive a Missed Service Error Event and
  *        process the missed tds on the endpoint ring.
+ * @wa1_nop_trb: hold pointer to NOP trb.
  */
 struct cdnsp_ep {
 	struct usb_ep endpoint;
@@ -838,6 +839,8 @@ struct cdnsp_ep {
 #define EP_UNCONFIGURED		BIT(7)
 
 	bool skip;
+	union cdnsp_trb	 *wa1_nop_trb;
+
 };
 
 /**
@@ -1532,8 +1535,8 @@ void cdnsp_queue_stop_endpoint(struct cdnsp_device *pdev,
 			       unsigned int ep_index);
 int cdnsp_queue_ctrl_tx(struct cdnsp_device *pdev, struct cdnsp_request *preq);
 int cdnsp_queue_bulk_tx(struct cdnsp_device *pdev, struct cdnsp_request *preq);
-int cdnsp_queue_isoc_tx_prepare(struct cdnsp_device *pdev,
-				struct cdnsp_request *preq);
+int cdnsp_queue_isoc_tx(struct cdnsp_device *pdev,
+			struct cdnsp_request *preq);
 void cdnsp_queue_configure_endpoint(struct cdnsp_device *pdev,
 				    dma_addr_t in_ctx_ptr);
 void cdnsp_queue_reset_ep(struct cdnsp_device *pdev, unsigned int ep_index);

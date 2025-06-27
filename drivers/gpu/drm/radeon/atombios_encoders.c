@@ -30,6 +30,7 @@
 
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_file.h>
+#include <drm/drm_modeset_helper_vtables.h>
 #include <drm/radeon_drm.h>
 
 #include <acpi/video.h>
@@ -2177,7 +2178,7 @@ assigned:
 void
 radeon_atom_encoder_init(struct radeon_device *rdev)
 {
-	struct drm_device *dev = rdev->ddev;
+	struct drm_device *dev = rdev_to_drm(rdev);
 	struct drm_encoder *encoder;
 
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {

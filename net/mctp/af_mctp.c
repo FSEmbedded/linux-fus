@@ -485,7 +485,6 @@ static const struct proto_ops mctp_dgram_ops = {
 	.sendmsg	= mctp_sendmsg,
 	.recvmsg	= mctp_recvmsg,
 	.mmap		= sock_no_mmap,
-	.sendpage	= sock_no_sendpage,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= mctp_compat_ioctl,
 #endif
@@ -677,10 +676,14 @@ static __init int mctp_init(void)
 	if (rc)
 		goto err_unreg_routes;
 
-	mctp_device_init();
+	rc = mctp_device_init();
+	if (rc)
+		goto err_unreg_neigh;
 
 	return 0;
 
+err_unreg_neigh:
+	mctp_neigh_exit();
 err_unreg_routes:
 	mctp_routes_exit();
 err_unreg_proto:
@@ -704,7 +707,6 @@ subsys_initcall(mctp_init);
 module_exit(mctp_exit);
 
 MODULE_DESCRIPTION("MCTP core");
-MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Jeremy Kerr <jk@codeconstruct.com.au>");
 
 MODULE_ALIAS_NETPROTO(PF_MCTP);

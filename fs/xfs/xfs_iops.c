@@ -25,6 +25,7 @@
 #include "xfs_error.h"
 #include "xfs_ioctl.h"
 #include "xfs_xattr.h"
+#include "xfs_file.h"
 
 #include <linux/posix_acl.h>
 #include <linux/security.h>
@@ -162,12 +163,12 @@ xfs_create_need_xattr(
 
 STATIC int
 xfs_generic_create(
-	struct user_namespace	*mnt_userns,
-	struct inode	*dir,
-	struct dentry	*dentry,
-	umode_t		mode,
-	dev_t		rdev,
-	struct file	*tmpfile)	/* unnamed file */
+	struct mnt_idmap	*idmap,
+	struct inode		*dir,
+	struct dentry		*dentry,
+	umode_t			mode,
+	dev_t			rdev,
+	struct file		*tmpfile)	/* unnamed file */
 {
 	struct inode	*inode;
 	struct xfs_inode *ip = NULL;
@@ -196,11 +197,11 @@ xfs_generic_create(
 		goto out_free_acl;
 
 	if (!tmpfile) {
-		error = xfs_create(mnt_userns, XFS_I(dir), &name, mode, rdev,
+		error = xfs_create(idmap, XFS_I(dir), &name, mode, rdev,
 				xfs_create_need_xattr(dir, default_acl, acl),
 				&ip);
 	} else {
-		error = xfs_create_tmpfile(mnt_userns, XFS_I(dir), mode, &ip);
+		error = xfs_create_tmpfile(idmap, XFS_I(dir), mode, &ip);
 	}
 	if (unlikely(error))
 		goto out_free_acl;
@@ -255,35 +256,34 @@ xfs_generic_create(
 
 STATIC int
 xfs_vn_mknod(
-	struct user_namespace	*mnt_userns,
+	struct mnt_idmap	*idmap,
 	struct inode		*dir,
 	struct dentry		*dentry,
 	umode_t			mode,
 	dev_t			rdev)
 {
-	return xfs_generic_create(mnt_userns, dir, dentry, mode, rdev, NULL);
+	return xfs_generic_create(idmap, dir, dentry, mode, rdev, NULL);
 }
 
 STATIC int
 xfs_vn_create(
-	struct user_namespace	*mnt_userns,
+	struct mnt_idmap	*idmap,
 	struct inode		*dir,
 	struct dentry		*dentry,
 	umode_t			mode,
 	bool			flags)
 {
-	return xfs_generic_create(mnt_userns, dir, dentry, mode, 0, NULL);
+	return xfs_generic_create(idmap, dir, dentry, mode, 0, NULL);
 }
 
 STATIC int
 xfs_vn_mkdir(
-	struct user_namespace	*mnt_userns,
+	struct mnt_idmap	*idmap,
 	struct inode		*dir,
 	struct dentry		*dentry,
 	umode_t			mode)
 {
-	return xfs_generic_create(mnt_userns, dir, dentry, mode | S_IFDIR, 0,
-				  NULL);
+	return xfs_generic_create(idmap, dir, dentry, mode | S_IFDIR, 0, NULL);
 }
 
 STATIC struct dentry *
@@ -400,7 +400,7 @@ xfs_vn_unlink(
 
 STATIC int
 xfs_vn_symlink(
-	struct user_namespace	*mnt_userns,
+	struct mnt_idmap	*idmap,
 	struct inode		*dir,
 	struct dentry		*dentry,
 	const char		*symname)
@@ -417,7 +417,7 @@ xfs_vn_symlink(
 	if (unlikely(error))
 		goto out;
 
-	error = xfs_symlink(mnt_userns, XFS_I(dir), &name, symname, mode, &cip);
+	error = xfs_symlink(idmap, XFS_I(dir), &name, symname, mode, &cip);
 	if (unlikely(error))
 		goto out;
 
@@ -443,7 +443,7 @@ xfs_vn_symlink(
 
 STATIC int
 xfs_vn_rename(
-	struct user_namespace	*mnt_userns,
+	struct mnt_idmap	*idmap,
 	struct inode		*odir,
 	struct dentry		*odentry,
 	struct inode		*ndir,
@@ -472,7 +472,7 @@ xfs_vn_rename(
 	if (unlikely(error))
 		return error;
 
-	return xfs_rename(mnt_userns, XFS_I(odir), &oname,
+	return xfs_rename(idmap, XFS_I(odir), &oname,
 			  XFS_I(d_inode(odentry)), XFS_I(ndir), &nname,
 			  new_inode ? XFS_I(new_inode) : NULL, flags);
 }
@@ -549,7 +549,7 @@ xfs_stat_blksize(
 
 STATIC int
 xfs_vn_getattr(
-	struct user_namespace	*mnt_userns,
+	struct mnt_idmap	*idmap,
 	const struct path	*path,
 	struct kstat		*stat,
 	u32			request_mask,
@@ -558,8 +558,8 @@ xfs_vn_getattr(
 	struct inode		*inode = d_inode(path->dentry);
 	struct xfs_inode	*ip = XFS_I(inode);
 	struct xfs_mount	*mp = ip->i_mount;
-	vfsuid_t		vfsuid = i_uid_into_vfsuid(mnt_userns, inode);
-	vfsgid_t		vfsgid = i_gid_into_vfsgid(mnt_userns, inode);
+	vfsuid_t		vfsuid = i_uid_into_vfsuid(idmap, inode);
+	vfsgid_t		vfsgid = i_gid_into_vfsgid(idmap, inode);
 
 	trace_xfs_getattr(ip);
 
@@ -575,7 +575,7 @@ xfs_vn_getattr(
 	stat->ino = ip->i_ino;
 	stat->atime = inode->i_atime;
 	stat->mtime = inode->i_mtime;
-	stat->ctime = inode->i_ctime;
+	stat->ctime = inode_get_ctime(inode);
 	stat->blocks = XFS_FSB_TO_BB(mp, ip->i_nblocks + ip->i_delayed_blks);
 
 	if (xfs_has_v3inodes(mp)) {
@@ -583,6 +583,11 @@ xfs_vn_getattr(
 			stat->result_mask |= STATX_BTIME;
 			stat->btime = ip->i_crtime;
 		}
+	}
+
+	if ((request_mask & STATX_CHANGE_COOKIE) && IS_I_VERSION(inode)) {
+		stat->change_cookie = inode_query_iversion(inode);
+		stat->result_mask |= STATX_CHANGE_COOKIE;
 	}
 
 	/*
@@ -627,7 +632,7 @@ xfs_vn_getattr(
 
 static int
 xfs_vn_change_ok(
-	struct user_namespace	*mnt_userns,
+	struct mnt_idmap	*idmap,
 	struct dentry		*dentry,
 	struct iattr		*iattr)
 {
@@ -639,7 +644,7 @@ xfs_vn_change_ok(
 	if (xfs_is_shutdown(mp))
 		return -EIO;
 
-	return setattr_prepare(mnt_userns, dentry, iattr);
+	return setattr_prepare(idmap, dentry, iattr);
 }
 
 /*
@@ -650,7 +655,8 @@ xfs_vn_change_ok(
  */
 static int
 xfs_setattr_nonsize(
-	struct user_namespace	*mnt_userns,
+	struct mnt_idmap	*idmap,
+	struct dentry		*dentry,
 	struct xfs_inode	*ip,
 	struct iattr		*iattr)
 {
@@ -678,14 +684,14 @@ xfs_setattr_nonsize(
 		uint	qflags = 0;
 
 		if ((mask & ATTR_UID) && XFS_IS_UQUOTA_ON(mp)) {
-			uid = from_vfsuid(mnt_userns, i_user_ns(inode),
+			uid = from_vfsuid(idmap, i_user_ns(inode),
 					  iattr->ia_vfsuid);
 			qflags |= XFS_QMOPT_UQUOTA;
 		} else {
 			uid = inode->i_uid;
 		}
 		if ((mask & ATTR_GID) && XFS_IS_GQUOTA_ON(mp)) {
-			gid = from_vfsgid(mnt_userns, i_user_ns(inode),
+			gid = from_vfsgid(idmap, i_user_ns(inode),
 					  iattr->ia_vfsgid);
 			qflags |= XFS_QMOPT_GQUOTA;
 		}  else {
@@ -718,18 +724,18 @@ xfs_setattr_nonsize(
 	 * also.
 	 */
 	if (XFS_IS_UQUOTA_ON(mp) &&
-	    i_uid_needs_update(mnt_userns, iattr, inode)) {
+	    i_uid_needs_update(idmap, iattr, inode)) {
 		ASSERT(udqp);
 		old_udqp = xfs_qm_vop_chown(tp, ip, &ip->i_udquot, udqp);
 	}
 	if (XFS_IS_GQUOTA_ON(mp) &&
-	    i_gid_needs_update(mnt_userns, iattr, inode)) {
+	    i_gid_needs_update(idmap, iattr, inode)) {
 		ASSERT(xfs_has_pquotino(mp) || !XFS_IS_PQUOTA_ON(mp));
 		ASSERT(gdqp);
 		old_gdqp = xfs_qm_vop_chown(tp, ip, &ip->i_gdquot, gdqp);
 	}
 
-	setattr_copy(mnt_userns, inode, iattr);
+	setattr_copy(idmap, inode, iattr);
 	xfs_trans_log_inode(tp, ip, XFS_ILOG_CORE);
 
 	XFS_STATS_INC(mp, xs_ig_attrchg);
@@ -757,7 +763,7 @@ xfs_setattr_nonsize(
 	 * 	     Posix ACL code seems to care about this issue either.
 	 */
 	if (mask & ATTR_MODE) {
-		error = posix_acl_chmod(mnt_userns, inode, inode->i_mode);
+		error = posix_acl_chmod(idmap, dentry, inode->i_mode);
 		if (error)
 			return error;
 	}
@@ -778,7 +784,8 @@ out_dqrele:
  */
 STATIC int
 xfs_setattr_size(
-	struct user_namespace	*mnt_userns,
+	struct mnt_idmap	*idmap,
+	struct dentry		*dentry,
 	struct xfs_inode	*ip,
 	struct iattr		*iattr)
 {
@@ -810,7 +817,7 @@ xfs_setattr_size(
 		 * Use the regular setattr path to update the timestamps.
 		 */
 		iattr->ia_valid &= ~ATTR_SIZE;
-		return xfs_setattr_nonsize(mnt_userns, ip, iattr);
+		return xfs_setattr_nonsize(idmap, dentry, ip, iattr);
 	}
 
 	/*
@@ -954,7 +961,7 @@ xfs_setattr_size(
 	}
 
 	ASSERT(!(iattr->ia_valid & (ATTR_UID | ATTR_GID)));
-	setattr_copy(mnt_userns, inode, iattr);
+	setattr_copy(idmap, inode, iattr);
 	xfs_trans_log_inode(tp, ip, XFS_ILOG_CORE);
 
 	XFS_STATS_INC(mp, xs_ig_attrchg);
@@ -975,7 +982,7 @@ out_trans_cancel:
 
 int
 xfs_vn_setattr_size(
-	struct user_namespace	*mnt_userns,
+	struct mnt_idmap	*idmap,
 	struct dentry		*dentry,
 	struct iattr		*iattr)
 {
@@ -984,15 +991,15 @@ xfs_vn_setattr_size(
 
 	trace_xfs_setattr(ip);
 
-	error = xfs_vn_change_ok(mnt_userns, dentry, iattr);
+	error = xfs_vn_change_ok(idmap, dentry, iattr);
 	if (error)
 		return error;
-	return xfs_setattr_size(mnt_userns, ip, iattr);
+	return xfs_setattr_size(idmap, dentry, ip, iattr);
 }
 
 STATIC int
 xfs_vn_setattr(
-	struct user_namespace	*mnt_userns,
+	struct mnt_idmap	*idmap,
 	struct dentry		*dentry,
 	struct iattr		*iattr)
 {
@@ -1012,14 +1019,14 @@ xfs_vn_setattr(
 			return error;
 		}
 
-		error = xfs_vn_setattr_size(mnt_userns, dentry, iattr);
+		error = xfs_vn_setattr_size(idmap, dentry, iattr);
 		xfs_iunlock(ip, XFS_MMAPLOCK_EXCL);
 	} else {
 		trace_xfs_setattr(ip);
 
-		error = xfs_vn_change_ok(mnt_userns, dentry, iattr);
+		error = xfs_vn_change_ok(idmap, dentry, iattr);
 		if (!error)
-			error = xfs_setattr_nonsize(mnt_userns, ip, iattr);
+			error = xfs_setattr_nonsize(idmap, dentry, ip, iattr);
 	}
 
 	return error;
@@ -1028,7 +1035,6 @@ xfs_vn_setattr(
 STATIC int
 xfs_vn_update_time(
 	struct inode		*inode,
-	struct timespec64	*now,
 	int			flags)
 {
 	struct xfs_inode	*ip = XFS_I(inode);
@@ -1036,13 +1042,16 @@ xfs_vn_update_time(
 	int			log_flags = XFS_ILOG_TIMESTAMP;
 	struct xfs_trans	*tp;
 	int			error;
+	struct timespec64	now;
 
 	trace_xfs_update_time(ip);
 
 	if (inode->i_sb->s_flags & SB_LAZYTIME) {
 		if (!((flags & S_VERSION) &&
-		      inode_maybe_inc_iversion(inode, false)))
-			return generic_update_time(inode, now, flags);
+		      inode_maybe_inc_iversion(inode, false))) {
+			generic_update_time(inode, flags);
+			return 0;
+		}
 
 		/* Capture the iversion update that just occurred */
 		log_flags |= XFS_ILOG_CORE;
@@ -1053,12 +1062,15 @@ xfs_vn_update_time(
 		return error;
 
 	xfs_ilock(ip, XFS_ILOCK_EXCL);
-	if (flags & S_CTIME)
-		inode->i_ctime = *now;
+	if (flags & (S_CTIME|S_MTIME))
+		now = inode_set_ctime_current(inode);
+	else
+		now = current_time(inode);
+
 	if (flags & S_MTIME)
-		inode->i_mtime = *now;
+		inode->i_mtime = now;
 	if (flags & S_ATIME)
-		inode->i_atime = *now;
+		inode->i_atime = now;
 
 	xfs_trans_ijoin(tp, ip, XFS_ILOCK_EXCL);
 	xfs_trans_log_inode(tp, ip, log_flags);
@@ -1090,18 +1102,18 @@ xfs_vn_fiemap(
 
 STATIC int
 xfs_vn_tmpfile(
-	struct user_namespace	*mnt_userns,
+	struct mnt_idmap	*idmap,
 	struct inode		*dir,
 	struct file		*file,
 	umode_t			mode)
 {
-	int err = xfs_generic_create(mnt_userns, dir, file->f_path.dentry, mode, 0, file);
+	int err = xfs_generic_create(idmap, dir, file->f_path.dentry, mode, 0, file);
 
 	return finish_open_simple(file, err);
 }
 
 static const struct inode_operations xfs_inode_operations = {
-	.get_acl		= xfs_get_acl,
+	.get_inode_acl		= xfs_get_acl,
 	.set_acl		= xfs_set_acl,
 	.getattr		= xfs_vn_getattr,
 	.setattr		= xfs_vn_setattr,
@@ -1128,7 +1140,7 @@ static const struct inode_operations xfs_dir_inode_operations = {
 	.rmdir			= xfs_vn_unlink,
 	.mknod			= xfs_vn_mknod,
 	.rename			= xfs_vn_rename,
-	.get_acl		= xfs_get_acl,
+	.get_inode_acl		= xfs_get_acl,
 	.set_acl		= xfs_set_acl,
 	.getattr		= xfs_vn_getattr,
 	.setattr		= xfs_vn_setattr,
@@ -1155,7 +1167,7 @@ static const struct inode_operations xfs_dir_ci_inode_operations = {
 	.rmdir			= xfs_vn_unlink,
 	.mknod			= xfs_vn_mknod,
 	.rename			= xfs_vn_rename,
-	.get_acl		= xfs_get_acl,
+	.get_inode_acl		= xfs_get_acl,
 	.set_acl		= xfs_set_acl,
 	.getattr		= xfs_vn_getattr,
 	.setattr		= xfs_vn_setattr,
@@ -1183,10 +1195,6 @@ xfs_inode_supports_dax(
 
 	/* Only supported on regular files. */
 	if (!S_ISREG(VFS_I(ip)->i_mode))
-		return false;
-
-	/* Only supported on non-reflinked files. */
-	if (xfs_is_reflink_inode(ip))
 		return false;
 
 	/* Block size must match page size */
@@ -1290,6 +1298,13 @@ xfs_setup_inode(
 	 */
 	gfp_mask = mapping_gfp_mask(inode->i_mapping);
 	mapping_set_gfp_mask(inode->i_mapping, (gfp_mask & ~(__GFP_FS)));
+
+	/*
+	 * For real-time inodes update the stable write flags to that of the RT
+	 * device instead of the data device.
+	 */
+	if (S_ISREG(inode->i_mode) && XFS_IS_REALTIME_INODE(ip))
+		xfs_update_stable_writes(ip);
 
 	/*
 	 * If there is no attribute fork no ACL can exist on this inode,

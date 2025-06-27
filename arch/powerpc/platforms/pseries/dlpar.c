@@ -22,6 +22,7 @@
 #include <asm/machdep.h>
 #include <linux/uaccess.h>
 #include <asm/rtas.h>
+#include <asm/rtas-work-area.h>
 
 static struct workqueue_struct *pseries_hp_wq;
 
@@ -137,37 +138,27 @@ struct device_node *dlpar_configure_connector(__be32 drc_index,
 	struct property *property;
 	struct property *last_property = NULL;
 	struct cc_workarea *ccwa;
+	struct rtas_work_area *work_area;
 	char *data_buf;
 	int cc_token;
 	int rc = -1;
 
-	cc_token = rtas_token("ibm,configure-connector");
+	cc_token = rtas_function_token(RTAS_FN_IBM_CONFIGURE_CONNECTOR);
 	if (cc_token == RTAS_UNKNOWN_SERVICE)
 		return NULL;
 
-	data_buf = kzalloc(RTAS_DATA_BUF_SIZE, GFP_KERNEL);
-	if (!data_buf)
-		return NULL;
+	work_area = rtas_work_area_alloc(SZ_4K);
+	data_buf = rtas_work_area_raw_buf(work_area);
 
 	ccwa = (struct cc_workarea *)&data_buf[0];
 	ccwa->drc_index = drc_index;
 	ccwa->zero = 0;
 
 	do {
-		/* Since we release the rtas_data_buf lock between configure
-		 * connector calls we want to re-populate the rtas_data_buffer
-		 * with the contents of the previous call.
-		 */
-		spin_lock(&rtas_data_buf_lock);
-
-		memcpy(rtas_data_buf, data_buf, RTAS_DATA_BUF_SIZE);
-		rc = rtas_call(cc_token, 2, 1, NULL, rtas_data_buf, NULL);
-		memcpy(data_buf, rtas_data_buf, RTAS_DATA_BUF_SIZE);
-
-		spin_unlock(&rtas_data_buf_lock);
-
-		if (rtas_busy_delay(rc))
-			continue;
+		do {
+			rc = rtas_call(cc_token, 2, 1, NULL,
+				       rtas_work_area_phys(work_area), NULL);
+		} while (rtas_busy_delay(rc));
 
 		switch (rc) {
 		case COMPLETE:
@@ -227,7 +218,7 @@ struct device_node *dlpar_configure_connector(__be32 drc_index,
 	} while (rc);
 
 cc_error:
-	kfree(data_buf);
+	rtas_work_area_free(work_area);
 
 	if (rc) {
 		if (first_dn)
@@ -342,23 +333,6 @@ int dlpar_unisolate_drc(u32 drc_index)
 int handle_dlpar_errorlog(struct pseries_hp_errorlog *hp_elog)
 {
 	int rc;
-
-	/* pseries error logs are in BE format, convert to cpu type */
-	switch (hp_elog->id_type) {
-	case PSERIES_HP_ELOG_ID_DRC_COUNT:
-		hp_elog->_drc_u.drc_count =
-				be32_to_cpu(hp_elog->_drc_u.drc_count);
-		break;
-	case PSERIES_HP_ELOG_ID_DRC_INDEX:
-		hp_elog->_drc_u.drc_index =
-				be32_to_cpu(hp_elog->_drc_u.drc_index);
-		break;
-	case PSERIES_HP_ELOG_ID_DRC_IC:
-		hp_elog->_drc_u.ic.count =
-				be32_to_cpu(hp_elog->_drc_u.ic.count);
-		hp_elog->_drc_u.ic.index =
-				be32_to_cpu(hp_elog->_drc_u.ic.index);
-	}
 
 	switch (hp_elog->resource) {
 	case PSERIES_HP_ELOG_RESOURCE_MEM:
@@ -521,7 +495,7 @@ static int dlpar_parse_id_type(char **cmd, struct pseries_hp_errorlog *hp_elog)
 	return 0;
 }
 
-static ssize_t dlpar_store(struct class *class, struct class_attribute *attr,
+static ssize_t dlpar_store(const struct class *class, const struct class_attribute *attr,
 			   const char *buf, size_t count)
 {
 	struct pseries_hp_errorlog hp_elog;
@@ -560,7 +534,7 @@ dlpar_store_out:
 	return rc ? rc : count;
 }
 
-static ssize_t dlpar_show(struct class *class, struct class_attribute *attr,
+static ssize_t dlpar_show(const struct class *class, const struct class_attribute *attr,
 			  char *buf)
 {
 	return sprintf(buf, "%s\n", "memory,cpu");
@@ -573,8 +547,7 @@ int __init dlpar_workqueue_init(void)
 	if (pseries_hp_wq)
 		return 0;
 
-	pseries_hp_wq = alloc_workqueue("pseries hotplug workqueue",
-			WQ_UNBOUND, 1);
+	pseries_hp_wq = alloc_ordered_workqueue("pseries hotplug workqueue", 0);
 
 	return pseries_hp_wq ? 0 : -ENOMEM;
 }

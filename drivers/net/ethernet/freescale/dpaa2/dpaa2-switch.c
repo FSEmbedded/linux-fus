@@ -9,7 +9,6 @@
 
 #include <linux/module.h>
 #include <linux/interrupt.h>
-#include <linux/msi.h>
 #include <linux/kthread.h>
 #include <linux/workqueue.h>
 #include <linux/iommu.h>
@@ -3020,13 +3019,14 @@ static int dpaa2_switch_refill_bp(struct ethsw_core *ethsw)
 
 static int dpaa2_switch_seed_bp(struct ethsw_core *ethsw)
 {
-	int *count, i;
+	int *count, ret, i;
 
 	for (i = 0; i < DPAA2_ETHSW_NUM_BUFS; i += BUFS_PER_CMD) {
+		ret = dpaa2_switch_add_bufs(ethsw, ethsw->bpid);
 		count = &ethsw->buf_count;
-		*count += dpaa2_switch_add_bufs(ethsw, ethsw->bpid);
+		*count += ret;
 
-		if (unlikely(*count < BUFS_PER_CMD))
+		if (unlikely(ret < BUFS_PER_CMD))
 			return -ENOMEM;
 	}
 
@@ -3631,7 +3631,7 @@ static void dpaa2_switch_teardown(struct fsl_mc_device *sw_dev)
 		dev_warn(dev, "dpsw_close err %d\n", err);
 }
 
-static int dpaa2_switch_remove(struct fsl_mc_device *sw_dev)
+static void dpaa2_switch_remove(struct fsl_mc_device *sw_dev)
 {
 	struct ethsw_port_priv *port_priv;
 	struct ethsw_core *ethsw;
@@ -3663,8 +3663,6 @@ static int dpaa2_switch_remove(struct fsl_mc_device *sw_dev)
 	kfree(ethsw);
 
 	dev_set_drvdata(dev, NULL);
-
-	return 0;
 }
 
 static int dpaa2_switch_probe_port(struct ethsw_core *ethsw,
@@ -3886,7 +3884,6 @@ MODULE_DEVICE_TABLE(fslmc, dpaa2_switch_match_id_table);
 static struct fsl_mc_driver dpaa2_switch_drv = {
 	.driver = {
 		.name = KBUILD_MODNAME,
-		.owner = THIS_MODULE,
 	},
 	.probe = dpaa2_switch_probe,
 	.remove = dpaa2_switch_remove,

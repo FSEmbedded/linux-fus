@@ -42,8 +42,6 @@ static const struct usb_device_id ath9k_hif_usb_ids[] = {
 
 	{ USB_DEVICE(0x0cf3, 0x7015),
 	  .driver_info = AR9287_USB },  /* Atheros */
-	{ USB_DEVICE(0x1668, 0x1200),
-	  .driver_info = AR9287_USB },  /* Verizon */
 
 	{ USB_DEVICE(0x0cf3, 0x7010),
 	  .driver_info = AR9280_USB },  /* Atheros */
@@ -718,8 +716,7 @@ static void ath9k_hif_usb_rx_cb(struct urb *urb)
 	}
 
 resubmit:
-	skb_reset_tail_pointer(skb);
-	skb_trim(skb, 0);
+	__skb_set_length(skb, 0);
 
 	usb_anchor_urb(urb, &hif_dev->rx_submitted);
 	ret = usb_submit_urb(urb, GFP_ATOMIC);
@@ -756,8 +753,7 @@ static void ath9k_hif_usb_reg_in_cb(struct urb *urb)
 	case -ESHUTDOWN:
 		goto free_skb;
 	default:
-		skb_reset_tail_pointer(skb);
-		skb_trim(skb, 0);
+		__skb_set_length(skb, 0);
 
 		goto resubmit;
 	}
@@ -1434,7 +1430,7 @@ static void ath9k_hif_usb_disconnect(struct usb_interface *interface)
 {
 	struct usb_device *udev = interface_to_usbdev(interface);
 	struct hif_device_usb *hif_dev = usb_get_intfdata(interface);
-	bool unplugged = (udev->state == USB_STATE_NOTATTACHED) ? true : false;
+	bool unplugged = udev->state == USB_STATE_NOTATTACHED;
 
 	if (!hif_dev)
 		return;
