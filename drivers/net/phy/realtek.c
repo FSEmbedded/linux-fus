@@ -12,6 +12,7 @@
 #include <linux/phy.h>
 #include <linux/module.h>
 #include <linux/delay.h>
+#include <linux/sfp.h>
 #include <linux/clk.h>
 
 #define RTL821x_PHYSR				0x11
