@@ -11,6 +11,8 @@
 #include <net/ip6_checksum.h>
 #include <net/pkt_sched.h>
 #include <net/tso.h>
+#include <linux/of.h>
+#include <uapi/linux/if.h>
 
 u32 enetc_port_mac_rd(struct enetc_si *si, u32 reg)
 {
@@ -3898,6 +3900,31 @@ static void enetc_detect_errata(struct enetc_si *si)
 	if (is_enetc_rev1(si))
 		si->errata = ENETC_ERR_VLAN_ISOL | ENETC_ERR_UCMCSWP;
 }
+
+#if defined(CONFIG_OF)
+void enetc_set_netdev_name(struct enetc_si *si, struct net_device *ndev)
+{
+	struct device_node *of_node;
+	const char *of_label;
+	char dev_name[IFNAMSIZ];
+
+	if (!si->pdev->dev.of_node)
+		return;
+
+	of_node = si->pdev->dev.of_node;
+	of_label = of_get_property(of_node, "label", NULL);
+
+	if (!of_label)
+		return;
+
+	strncpy(dev_name, of_label, IFNAMSIZ);
+
+	if (dev_alloc_name(ndev, dev_name) < 0)
+		dev_err(&si->pdev->dev,
+			"Failed to set label \"%s\" as netdev name",
+			dev_name);
+}
+#endif
 
 int enetc_pci_probe(struct pci_dev *pdev, const char *name, int sizeof_priv)
 {

@@ -578,6 +578,10 @@ void enetc_add_mac_addr_ht_filter(struct enetc_mac_filter *filter,
 int enetc_vid_hash_idx(unsigned int vid);
 void enetc_refresh_vlan_ht_filter(struct enetc_si *si);
 
+#if defined(CONFIG_OF)
+void enetc_set_netdev_name(struct enetc_si *si, struct net_device *ndev);
+#endif
+
 /* ethtool */
 void enetc_set_ethtool_ops(struct net_device *ndev);
 void enetc_mm_link_state_update(struct enetc_ndev_priv *priv, bool link);
