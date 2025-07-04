@@ -160,3 +160,15 @@
 	};
 };
 
+#ifdef CONFIG_PICOCOREMX93_SD_A
+&pc_sdio_a {
+	cd-inverted;
+	cap-sd-highspeed;
+	sd-uhs-sdr12;
+	sd-uhs-sdr25;
+	sd-uhs-sdr50;
+	sd-uhs-sdr104;
+	sd-uhs-ddr50;
+	status = "okay";
+};
+#endif /* CONFIG_PICOCOREMX93_SD_A */

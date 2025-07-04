@@ -67,7 +67,7 @@ fs_can_b: &flexcan2 {};
 		usb1 = &fs_usb_dev;
 		mmc0 = &emmc;
 		mmc1 = &fs_sdio_a;
-        mmc2 = &fs_sdio_b;
+		mmc2 = &fs_sdio_b;
 		csi0 = &fs_csi; 
 		rtc0 = &rtc85263;
 		rtc1 = &bbnsm_rtc;
