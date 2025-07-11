@@ -47,6 +47,8 @@
 #define RTL8211F_CLKOUT_EN			BIT(0)
 #define RTL8211FVD_CLKOUT_EN			BIT(8)
 
+#define RTL8211F_CLKOUT_FREQ_SELECT			BIT(11)
+
 #define RTL8201F_ISR				0x1e
 #define RTL8201F_ISR_ANERR			BIT(15)
 #define RTL8201F_ISR_DUPLEX			BIT(13)
@@ -111,6 +113,7 @@
 #define RTL821X_SSC_SYSCLK_EN_FEATURE   (1 << 3)
 #define RTL821X_SSC_CLKOUT_EN_FEATURE   (1 << 4)
 #define RTL821X_GBIT_DISABLE            (1 << 5)
+#define RTL821X_CLKOUT_25M              (1 << 6)
 
 #define LED_MODE_B                      BIT(15)
 #define LED_LINK(X)                     (0x0b << (5*X))
@@ -186,6 +189,9 @@ static int rtl821x_probe(struct phy_device *phydev)
 
 	if (of_property_read_bool(dev->of_node, "rtl821x,clkout-disable"))
 		priv->quirks |= RTL821X_CLKOUT_DISABLE;
+
+	if (of_property_read_bool(dev->of_node, "rtl821x,clkout-25mhz"))
+		priv->quirks |= RTL821X_CLKOUT_25M;
 
 	if (of_property_read_bool(dev->of_node, "rtl821x,aldps-enable"))
 		priv->quirks |= RTL821X_ALDPS_ENABLE;
@@ -504,8 +510,11 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 	else {
 		if ((priv->quirks & RTL821X_CLKOUT_DISABLE))
 			ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2, RTL8211F_CLKOUT_EN, 0);
-		else 
+		else {
 			ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2, RTL8211F_CLKOUT_EN, RTL8211F_CLKOUT_EN);
+			if ((priv->quirks & RTL821X_CLKOUT_25M))
+				ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2, RTL8211F_CLKOUT_FREQ_SELECT, 0);
+		}
 	}	
 	if (ret < 0) {
 		dev_err(dev, "clkout configuration failed: %pe\n",
