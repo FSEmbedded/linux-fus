@@ -356,7 +356,7 @@ static int pwm_rpchip_probe(struct platform_device *pdev)
 	struct device_node *np = dev->of_node;
 	struct imx_rpmsg_pwm_data *rdata;
 	struct pwm_chip *chip;
-	int ret;
+	int ret, alias_id;
 
 	if (!pwm_rpmsg.rpdev)
 		return -EPROBE_DEFER;
@@ -378,12 +378,12 @@ static int pwm_rpchip_probe(struct platform_device *pdev)
 			     ret);
 		return -EINVAL;
 	}
-	rdata->chip_id = of_alias_get_id(np, "pwm");
-	if (rdata->chip_id < 0) {
-		dev_err(dev, "failed to get pwm alias number: %d\n",
-			     rdata->chip_id);
+	alias_id = of_alias_get_id(np, "pwm");
+	if (alias_id < 0) {
+		dev_err(dev, "failed to get pwm alias number: %d\n", alias_id);
 		return -EINVAL;
 	}
+	rdata->chip_id = alias_id;
 
 	platform_set_drvdata(pdev, rdata);
 
