@@ -65,6 +65,9 @@
 &ldb {
 	status = "okay";
 	lvds-channel@IMX8MP_LVDS_CHANNEL {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
 		fsl,data-mapping = "spwg";
 		fsl,data-width = <24>;
 		status = "okay";
@@ -81,7 +84,7 @@
 &IMX8MP_TOUCH_I2C {
 	clock-frequency = <400000>;
 	gpio_adp: pca9634@61 {
-			compatible = "nxp,pca9634";
+			compatible = "fus,pca9634";
 			reg = <0x61>;
 			vdd-supply = <&reg_vlcd>;
 			#address-cells = <1>;

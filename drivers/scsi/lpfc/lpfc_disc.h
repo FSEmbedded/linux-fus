@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2017-2021 Broadcom. All Rights Reserved. The term *
+ * Copyright (C) 2017-2022 Broadcom. All Rights Reserved. The term *
  * “Broadcom” refers to Broadcom Inc. and/or its subsidiaries.     *
  * Copyright (C) 2004-2013 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
@@ -90,6 +90,8 @@ enum lpfc_nlp_save_flags {
 	NLP_IN_RECOV_POST_DEV_LOSS	= 0x1,
 	/* wait for outstanding LOGO to cmpl */
 	NLP_WAIT_FOR_LOGO		= 0x2,
+	/* wait for outstanding DA_ID to finish */
+	NLP_WAIT_FOR_DA_ID              = 0x4
 };
 
 struct lpfc_nodelist {
@@ -149,7 +151,6 @@ struct lpfc_nodelist {
 	uint32_t cmd_qdepth;
 	unsigned long last_change_time;
 	unsigned long *active_rrqs_xri_bitmap;
-	struct lpfc_scsicmd_bkt *lat_data;	/* Latency data */
 	uint32_t fc4_prli_sent;
 
 	/* flags to keep ndlp alive until special conditions are met */
@@ -160,7 +161,12 @@ struct lpfc_nodelist {
 	uint32_t nvme_fb_size; /* NVME target's supported byte cnt */
 #define NVME_FB_BIT_SHIFT 9    /* PRLI Rsp first burst in 512B units. */
 	uint32_t nlp_defer_did;
+
+	/* These wait objects are NPIV specific.  These IOs must complete
+	 * synchronously.
+	 */
 	wait_queue_head_t *logo_waitq;
+	wait_queue_head_t *da_id_waitq;
 };
 
 struct lpfc_node_rrq {
@@ -188,7 +194,6 @@ struct lpfc_node_rrq {
 #define NLP_RNID_SND       0x00000400	/* sent RNID request for this entry */
 #define NLP_ELS_SND_MASK   0x000007e0	/* sent ELS request for this entry */
 #define NLP_NVMET_RECOV    0x00001000   /* NVMET auditing node for recovery. */
-#define NLP_FCP_PRLI_RJT   0x00002000   /* Rport does not support FCP PRLI. */
 #define NLP_UNREG_INP      0x00008000	/* UNREG_RPI cmd is in progress */
 #define NLP_DROPPED        0x00010000	/* Init ref count has been dropped */
 #define NLP_DELAY_TMO      0x00020000	/* delay timeout is running for node */

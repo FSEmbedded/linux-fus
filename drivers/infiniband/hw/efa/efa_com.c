@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-2-Clause
 /*
- * Copyright 2018-2021 Amazon.com, Inc. or its affiliates. All rights reserved.
+ * Copyright 2018-2024 Amazon.com, Inc. or its affiliates. All rights reserved.
  */
 
 #include "efa_com.h"
@@ -56,9 +56,17 @@ static const char *efa_com_cmd_str(u8 cmd)
 	EFA_CMD_STR_CASE(DEALLOC_PD);
 	EFA_CMD_STR_CASE(ALLOC_UAR);
 	EFA_CMD_STR_CASE(DEALLOC_UAR);
+	EFA_CMD_STR_CASE(CREATE_EQ);
+	EFA_CMD_STR_CASE(DESTROY_EQ);
 	default: return "unknown command opcode";
 	}
 #undef EFA_CMD_STR_CASE
+}
+
+void efa_com_set_dma_addr(dma_addr_t addr, u32 *addr_high, u32 *addr_low)
+{
+	*addr_low = lower_32_bits(addr);
+	*addr_high = upper_32_bits(addr);
 }
 
 static u32 efa_com_reg_read32(struct efa_com_dev *edev, u16 offset)
@@ -398,8 +406,8 @@ static struct efa_comp_ctx *efa_com_submit_admin_cmd(struct efa_com_admin_queue 
 	return comp_ctx;
 }
 
-static void efa_com_handle_single_admin_completion(struct efa_com_admin_queue *aq,
-						   struct efa_admin_acq_entry *cqe)
+static int efa_com_handle_single_admin_completion(struct efa_com_admin_queue *aq,
+						  struct efa_admin_acq_entry *cqe)
 {
 	struct efa_comp_ctx *comp_ctx;
 	u16 cmd_id;
@@ -408,11 +416,11 @@ static void efa_com_handle_single_admin_completion(struct efa_com_admin_queue *a
 			 EFA_ADMIN_ACQ_COMMON_DESC_COMMAND_ID);
 
 	comp_ctx = efa_com_get_comp_ctx(aq, cmd_id, false);
-	if (!comp_ctx) {
+	if (comp_ctx->status != EFA_CMD_SUBMITTED) {
 		ibdev_err(aq->efa_dev,
-			  "comp_ctx is NULL. Changing the admin queue running state\n");
-		clear_bit(EFA_AQ_STATE_RUNNING_BIT, &aq->state);
-		return;
+			  "Received completion with unexpected command id[%d], sq producer: %d, sq consumer: %d, cq consumer: %d\n",
+			  cmd_id, aq->sq.pc, aq->sq.cc, aq->cq.cc);
+		return -EINVAL;
 	}
 
 	comp_ctx->status = EFA_CMD_COMPLETED;
@@ -420,14 +428,17 @@ static void efa_com_handle_single_admin_completion(struct efa_com_admin_queue *a
 
 	if (!test_bit(EFA_AQ_STATE_POLLING_BIT, &aq->state))
 		complete(&comp_ctx->wait_event);
+
+	return 0;
 }
 
 static void efa_com_handle_admin_completion(struct efa_com_admin_queue *aq)
 {
 	struct efa_admin_acq_entry *cqe;
 	u16 queue_size_mask;
-	u16 comp_num = 0;
+	u16 comp_cmds = 0;
 	u8 phase;
+	int err;
 	u16 ci;
 
 	queue_size_mask = aq->depth - 1;
@@ -445,10 +456,12 @@ static void efa_com_handle_admin_completion(struct efa_com_admin_queue *aq)
 		 * phase bit was validated
 		 */
 		dma_rmb();
-		efa_com_handle_single_admin_completion(aq, cqe);
+		err = efa_com_handle_single_admin_completion(aq, cqe);
+		if (!err)
+			comp_cmds++;
 
+		aq->cq.cc++;
 		ci++;
-		comp_num++;
 		if (ci == aq->depth) {
 			ci = 0;
 			phase = !phase;
@@ -457,10 +470,9 @@ static void efa_com_handle_admin_completion(struct efa_com_admin_queue *aq)
 		cqe = &aq->cq.entries[ci];
 	}
 
-	aq->cq.cc += comp_num;
 	aq->cq.phase = phase;
-	aq->sq.cc += comp_num;
-	atomic64_add(comp_num, &aq->stats.completed_cmd);
+	aq->sq.cc += comp_cmds;
+	atomic64_add(comp_cmds, &aq->stats.completed_cmd);
 }
 
 static int efa_com_comp_status_to_errno(u8 comp_status)
@@ -1080,4 +1092,160 @@ int efa_com_dev_reset(struct efa_com_dev *edev,
 		edev->aq.completion_timeout = ADMIN_CMD_TIMEOUT_US;
 
 	return 0;
+}
+
+static int efa_com_create_eq(struct efa_com_dev *edev,
+			     struct efa_com_create_eq_params *params,
+			     struct efa_com_create_eq_result *result)
+{
+	struct efa_com_admin_queue *aq = &edev->aq;
+	struct efa_admin_create_eq_resp resp = {};
+	struct efa_admin_create_eq_cmd cmd = {};
+	int err;
+
+	cmd.aq_common_descriptor.opcode = EFA_ADMIN_CREATE_EQ;
+	EFA_SET(&cmd.caps, EFA_ADMIN_CREATE_EQ_CMD_ENTRY_SIZE_WORDS,
+		params->entry_size_in_bytes / 4);
+	cmd.depth = params->depth;
+	cmd.event_bitmask = params->event_bitmask;
+	cmd.msix_vec = params->msix_vec;
+
+	efa_com_set_dma_addr(params->dma_addr, &cmd.ba.mem_addr_high,
+			     &cmd.ba.mem_addr_low);
+
+	err = efa_com_cmd_exec(aq,
+			       (struct efa_admin_aq_entry *)&cmd,
+			       sizeof(cmd),
+			       (struct efa_admin_acq_entry *)&resp,
+			       sizeof(resp));
+	if (err) {
+		ibdev_err_ratelimited(edev->efa_dev,
+				      "Failed to create eq[%d]\n", err);
+		return err;
+	}
+
+	result->eqn = resp.eqn;
+
+	return 0;
+}
+
+static void efa_com_destroy_eq(struct efa_com_dev *edev,
+			       struct efa_com_destroy_eq_params *params)
+{
+	struct efa_com_admin_queue *aq = &edev->aq;
+	struct efa_admin_destroy_eq_resp resp = {};
+	struct efa_admin_destroy_eq_cmd cmd = {};
+	int err;
+
+	cmd.aq_common_descriptor.opcode = EFA_ADMIN_DESTROY_EQ;
+	cmd.eqn = params->eqn;
+
+	err = efa_com_cmd_exec(aq,
+			       (struct efa_admin_aq_entry *)&cmd,
+			       sizeof(cmd),
+			       (struct efa_admin_acq_entry *)&resp,
+			       sizeof(resp));
+	if (err)
+		ibdev_err_ratelimited(edev->efa_dev,
+				      "Failed to destroy EQ-%u [%d]\n", cmd.eqn,
+				      err);
+}
+
+static void efa_com_arm_eq(struct efa_com_dev *edev, struct efa_com_eq *eeq)
+{
+	u32 val = 0;
+
+	EFA_SET(&val, EFA_REGS_EQ_DB_EQN, eeq->eqn);
+	EFA_SET(&val, EFA_REGS_EQ_DB_ARM, 1);
+
+	writel(val, edev->reg_bar + EFA_REGS_EQ_DB_OFF);
+}
+
+void efa_com_eq_comp_intr_handler(struct efa_com_dev *edev,
+				  struct efa_com_eq *eeq)
+{
+	struct efa_admin_eqe *eqe;
+	u32 processed = 0;
+	u8 phase;
+	u32 ci;
+
+	ci = eeq->cc & (eeq->depth - 1);
+	phase = eeq->phase;
+	eqe = &eeq->eqes[ci];
+
+	/* Go over all the events */
+	while ((READ_ONCE(eqe->common) & EFA_ADMIN_EQE_PHASE_MASK) == phase) {
+		/*
+		 * Do not read the rest of the completion entry before the
+		 * phase bit was validated
+		 */
+		dma_rmb();
+
+		eeq->cb(eeq, eqe);
+
+		/* Get next event entry */
+		ci++;
+		processed++;
+
+		if (ci == eeq->depth) {
+			ci = 0;
+			phase = !phase;
+		}
+
+		eqe = &eeq->eqes[ci];
+	}
+
+	eeq->cc += processed;
+	eeq->phase = phase;
+	efa_com_arm_eq(eeq->edev, eeq);
+}
+
+void efa_com_eq_destroy(struct efa_com_dev *edev, struct efa_com_eq *eeq)
+{
+	struct efa_com_destroy_eq_params params = {
+		.eqn = eeq->eqn,
+	};
+
+	efa_com_destroy_eq(edev, &params);
+	dma_free_coherent(edev->dmadev, eeq->depth * sizeof(*eeq->eqes),
+			  eeq->eqes, eeq->dma_addr);
+}
+
+int efa_com_eq_init(struct efa_com_dev *edev, struct efa_com_eq *eeq,
+		    efa_eqe_handler cb, u16 depth, u8 msix_vec)
+{
+	struct efa_com_create_eq_params params = {};
+	struct efa_com_create_eq_result result = {};
+	int err;
+
+	params.depth = depth;
+	params.entry_size_in_bytes = sizeof(*eeq->eqes);
+	EFA_SET(&params.event_bitmask,
+		EFA_ADMIN_CREATE_EQ_CMD_COMPLETION_EVENTS, 1);
+	params.msix_vec = msix_vec;
+
+	eeq->eqes = dma_alloc_coherent(edev->dmadev,
+				       params.depth * sizeof(*eeq->eqes),
+				       &params.dma_addr, GFP_KERNEL);
+	if (!eeq->eqes)
+		return -ENOMEM;
+
+	err = efa_com_create_eq(edev, &params, &result);
+	if (err)
+		goto err_free_coherent;
+
+	eeq->eqn = result.eqn;
+	eeq->edev = edev;
+	eeq->dma_addr = params.dma_addr;
+	eeq->phase = 1;
+	eeq->depth = params.depth;
+	eeq->cb = cb;
+	efa_com_arm_eq(edev, eeq);
+
+	return 0;
+
+err_free_coherent:
+	dma_free_coherent(edev->dmadev, params.depth * sizeof(*eeq->eqes),
+			  eeq->eqes, params.dma_addr);
+	return err;
 }

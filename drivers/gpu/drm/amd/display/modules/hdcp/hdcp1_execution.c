@@ -432,18 +432,18 @@ static enum mod_hdcp_status authenticated_dp(struct mod_hdcp *hdcp,
 		goto out;
 	}
 
-	if (status == MOD_HDCP_STATUS_SUCCESS)
-		mod_hdcp_execute_and_set(mod_hdcp_read_bstatus,
-				&input->bstatus_read, &status,
-				hdcp, "bstatus_read");
-	if (status == MOD_HDCP_STATUS_SUCCESS)
-		mod_hdcp_execute_and_set(check_link_integrity_dp,
-				&input->link_integrity_check, &status,
-				hdcp, "link_integrity_check");
-	if (status == MOD_HDCP_STATUS_SUCCESS)
-		mod_hdcp_execute_and_set(check_no_reauthentication_request_dp,
-				&input->reauth_request_check, &status,
-				hdcp, "reauth_request_check");
+	mod_hdcp_execute_and_set(mod_hdcp_read_bstatus,
+			&input->bstatus_read, &status,
+			hdcp, "bstatus_read");
+
+	mod_hdcp_execute_and_set(check_link_integrity_dp,
+			&input->link_integrity_check, &status,
+			hdcp, "link_integrity_check");
+
+	mod_hdcp_execute_and_set(check_no_reauthentication_request_dp,
+			&input->reauth_request_check, &status,
+			hdcp, "reauth_request_check");
+
 out:
 	return status;
 }
@@ -497,9 +497,9 @@ enum mod_hdcp_status mod_hdcp_hdcp1_execution(struct mod_hdcp *hdcp,
 	return status;
 }
 
-extern enum mod_hdcp_status mod_hdcp_hdcp1_dp_execution(struct mod_hdcp *hdcp,
-		struct mod_hdcp_event_context *event_ctx,
-		struct mod_hdcp_transition_input_hdcp1 *input)
+enum mod_hdcp_status mod_hdcp_hdcp1_dp_execution(struct mod_hdcp *hdcp,
+						 struct mod_hdcp_event_context *event_ctx,
+						 struct mod_hdcp_transition_input_hdcp1 *input)
 {
 	enum mod_hdcp_status status = MOD_HDCP_STATUS_SUCCESS;
 

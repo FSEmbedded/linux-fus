@@ -194,7 +194,7 @@ static ssize_t brightness_show(struct device *dev, struct device_attribute *a,
 	if (ret < 0)
 		return ret;
 
-	return sprintf(buf, "%d\n", ret);
+	return sysfs_emit(buf, "%d\n", ret);
 }
 
 static ssize_t brightness_store(struct device *dev, struct device_attribute *a,
@@ -222,8 +222,7 @@ static struct attribute *omnia_led_controller_attrs[] = {
 };
 ATTRIBUTE_GROUPS(omnia_led_controller);
 
-static int omnia_leds_probe(struct i2c_client *client,
-			    const struct i2c_device_id *id)
+static int omnia_leds_probe(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
 	struct device_node *np = dev_of_node(dev), *child;
@@ -260,13 +259,10 @@ static int omnia_leds_probe(struct i2c_client *client,
 		led += ret;
 	}
 
-	if (devm_device_add_groups(dev, omnia_led_controller_groups))
-		dev_warn(dev, "Could not add attribute group!\n");
-
 	return 0;
 }
 
-static int omnia_leds_remove(struct i2c_client *client)
+static void omnia_leds_remove(struct i2c_client *client)
 {
 	u8 buf[5];
 
@@ -282,8 +278,6 @@ static int omnia_leds_remove(struct i2c_client *client)
 	buf[4] = 255;
 
 	i2c_master_send(client, buf, 5);
-
-	return 0;
 }
 
 static const struct of_device_id of_omnia_leds_match[] = {
@@ -304,6 +298,7 @@ static struct i2c_driver omnia_leds_driver = {
 	.driver		= {
 		.name	= "leds-turris-omnia",
 		.of_match_table = of_omnia_leds_match,
+		.dev_groups = omnia_led_controller_groups,
 	},
 };
 

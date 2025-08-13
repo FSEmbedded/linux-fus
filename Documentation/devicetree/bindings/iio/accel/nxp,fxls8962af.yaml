@@ -14,20 +14,24 @@ description: |
   SPI and I2C interface.
     https://www.nxp.com/docs/en/data-sheet/FXLS8962AF.pdf
     https://www.nxp.com/docs/en/data-sheet/FXLS8964AF.pdf
+    https://www.nxp.com/docs/en/data-sheet/FXLS8967AF.pdf
+    https://www.nxp.com/docs/en/data-sheet/FXLS8974CF.pdf
 
 properties:
   compatible:
+    description:
+      These chips are compatible with each other, just have different IDs.
     enum:
       - nxp,fxls8962af
       - nxp,fxls8964af
+      - nxp,fxls8967af
+      - nxp,fxls8974cf
 
   reg:
     maxItems: 1
 
   vdd-supply:
     description: phandle to the regulator that provides power to the accelerometer
-
-  spi-max-frequency: true
 
   interrupts:
     maxItems: 1
@@ -44,12 +48,15 @@ required:
   - compatible
   - reg
 
-additionalProperties: false
+allOf:
+  - $ref: /schemas/spi/spi-peripheral-props.yaml#
+
+unevaluatedProperties: false
 
 examples:
   - |
     #include <dt-bindings/interrupt-controller/irq.h>
-    i2c0 {
+    i2c {
         #address-cells = <1>;
         #size-cells = <0>;
 
@@ -64,7 +71,7 @@ examples:
     };
   - |
     #include <dt-bindings/interrupt-controller/irq.h>
-    spi0 {
+    spi {
         #address-cells = <1>;
         #size-cells = <0>;
 

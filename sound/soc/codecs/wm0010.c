@@ -789,7 +789,6 @@ static const struct snd_soc_component_driver soc_component_dev_wm0010 = {
 	.num_dapm_routes	= ARRAY_SIZE(wm0010_dapm_routes),
 	.use_pmdown_time	= 1,
 	.endianness		= 1,
-	.non_legacy_dai_naming	= 1,
 };
 
 #define WM0010_RATES (SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000)
@@ -952,7 +951,7 @@ static int wm0010_spi_probe(struct spi_device *spi)
 	if (ret) {
 		dev_err(wm0010->dev, "Failed to set IRQ %d as wake source: %d\n",
 			irq, ret);
-		return ret;
+		goto free_irq;
 	}
 
 	if (spi->max_speed_hz)
@@ -964,12 +963,21 @@ static int wm0010_spi_probe(struct spi_device *spi)
 				     &soc_component_dev_wm0010, wm0010_dai,
 				     ARRAY_SIZE(wm0010_dai));
 	if (ret < 0)
-		return ret;
+		goto disable_irq_wake;
 
 	return 0;
+
+disable_irq_wake:
+	irq_set_irq_wake(wm0010->irq, 0);
+
+free_irq:
+	if (wm0010->irq)
+		free_irq(wm0010->irq, wm0010);
+
+	return ret;
 }
 
-static int wm0010_spi_remove(struct spi_device *spi)
+static void wm0010_spi_remove(struct spi_device *spi)
 {
 	struct wm0010_priv *wm0010 = spi_get_drvdata(spi);
 
@@ -980,8 +988,6 @@ static int wm0010_spi_remove(struct spi_device *spi)
 
 	if (wm0010->irq)
 		free_irq(wm0010->irq, wm0010);
-
-	return 0;
 }
 
 static struct spi_driver wm0010_spi_driver = {
@@ -997,3 +1003,6 @@ module_spi_driver(wm0010_spi_driver);
 MODULE_DESCRIPTION("ASoC WM0010 driver");
 MODULE_AUTHOR("Mark Brown <broonie@opensource.wolfsonmicro.com>");
 MODULE_LICENSE("GPL");
+
+MODULE_FIRMWARE("wm0010.dfw");
+MODULE_FIRMWARE("wm0010_stage2.bin");

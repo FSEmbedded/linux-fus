@@ -1,0 +1,154 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+* Copyright 2024 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*/
+
+/dts-v1/;
+#include <dt-bindings/usb/pd.h>
+#include "fs-osm-sf-mx8ulp.dtsi"
+
+/ {
+	carrier_regulators{
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		reg_adp_osm_3v3: regulator_adp_osm_3v3@0 {
+			compatible = "regulator-fixed";
+			reg = <0>;
+			regulator-name = "ADP-OSM-3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			vin-supply = <&reg_carrier_pwr>;
+			regulator-always-on;
+			regulator-boot-on;
+		};
+
+		reg_adp_osm_1v8: regulator_adp_osm_1v8@1 {
+			compatible = "regulator-fixed";
+			reg = <1>;
+			regulator-name = "ADP-OSM-1V8";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			vin-supply = <&reg_adp_osm_3v3>;
+			regulator-always-on;
+			regulator-boot-on;
+		};
+
+		/* SGTL5000 analog voltage */
+		reg_sgtl5000_vdda: sgtl5000_vdda {
+			compatible = "regulator-fixed";
+			regulator-name = "SGTL5000-VDDA-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			vin-supply = <&reg_adp_osm_3v3>;
+			regulator-always-on;
+			regulator-boot-on;
+		};
+
+		/* SGTL5000 I/O voltage */
+		reg_sgtl5000_vddio: sgtl5000_vddio {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			vin-supply = <&reg_adp_osm_1v8>;
+			regulator-always-on;
+			regulator-boot-on;
+		};
+
+		/* SGTL5000 internal digital voltage */
+		reg_sgtl5000_vddd: sgtl5000_vddd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDD-supply";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			vin-supply = <&reg_adp_osm_1v8>;
+			regulator-always-on;
+			regulator-boot-on;
+		};
+	};
+};
+
+/* osm_eth_a example */
+// &osm_eth_a {
+// 	 phy-mode = "rmii";
+// 	 phy-handle = <&ethphy1>;
+
+// 	 mdio {
+//  		status = "disabled";
+
+// 		ethphy1: ethphy1@0 {
+//  			reg = <0>;
+//  		};
+// 	};
+// };
+
+&osm_uart_con {
+	status = "okay";
+};
+
+&osm_uart_a {
+	status = "okay";
+};
+
+&osm_usb_a {
+	dr_mode = "otg";
+	hnp-disable;
+	srp-disable;
+	adp-disable;
+	disable-over-current;
+	usb-role-switch;
+	status = "okay";
+
+	port {
+		usb1_drd_sw: endpoint {
+			remote-endpoint = <&typec_dr_sw>;
+		};
+	};
+};
+
+&osm_usb_b {
+	dr_mode = "host";
+	power-active-high;
+	disable-over-current;
+	status = "okay";
+};
+
+&osm_i2c_b {
+	ptn5110: tcpc@52 {
+		compatible = "nxp,ptn5110";
+		reg = <0x52>;
+		interrupt-parent = <&rp_gpioc>;
+		interrupts = <14 IRQ_TYPE_LEVEL_LOW>;
+
+		port {
+			typec_dr_sw: endpoint {
+				remote-endpoint = <&usb1_drd_sw>;
+			};
+		};
+
+		usb_con: connector {
+			compatible = "usb-c-connector";
+			label = "USB-C";
+			power-role = "dual";
+			data-role = "dual";
+			try-power-role = "sink";
+			source-pdos = <PDO_FIXED(5000, 3000,
+			PDO_FIXED_USB_COMM)>;
+			sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
+				     PDO_VAR(5000, 20000, 3000)>;
+			op-sink-microwatt = <15000000>;
+			self-powered;
+		};
+	};
+};

@@ -123,7 +123,7 @@
 		#size-cells = <2>;
 		ranges;
 
-		its: gic-its@6020000 {
+		its: msi-controller@6020000 {
 			compatible = "arm,gic-v3-its";
 			msi-controller;
 			reg = <0x0 0x6020000 0 0x20000>;
@@ -206,18 +206,12 @@
 		clock-output-names = "sysclk";
 	};
 
-	rstcr: syscon@1e60000 {
-		compatible = "fsl,ls1088a-rstcr", "syscon";
-		reg = <0x0 0x1e60000 0x0 0x4>;
-	};
-
 	reboot {
 		compatible = "syscon-reboot";
-		regmap = <&rstcr>;
+		regmap = <&reset>;
 		offset = <0x0>;
 		mask = <0x02>;
 	};
-
 
 	soc {
 		compatible = "simple-bus";
@@ -235,8 +229,27 @@
 
 		dcfg: dcfg@1e00000 {
 			compatible = "fsl,ls1088a-dcfg", "syscon";
-			reg = <0x0 0x1e00000 0x0 0x10000>;
+			reg = <0x0 0x1e00000 0x0 0x10000>,
+			      <0x7 0x00100000 0x0 0x10000>;
+			reg-names = "dcfg_ccsr", "dcfg_dcsr";
 			little-endian;
+		};
+
+		reset: syscon@1e60000 {
+			compatible = "fsl,ls1088a-reset", "syscon";
+			reg = <0x0 0x1e60000 0x0 0x10000>;
+		};
+
+		serdes1: phy@1ea0000 {
+			compatible = "fsl,ls1088a-serdes1", "fsl,lynx-10g";
+			reg = <0x00 0x1ea0000 0x0 0xffff>;
+			#phy-cells = <1>;
+		};
+
+		serdes2: phy@1eb0000 {
+			compatible = "fsl,ls1088a-serdes2", "fsl,lynx-10g";
+			reg = <0x00 0x1eb0000 0x0 0xffff>;
+			#phy-cells = <1>;
 		};
 
 		isc: syscon@1f70000 {
@@ -266,8 +279,16 @@
 					<9 0 &gic GIC_SPI 9 IRQ_TYPE_LEVEL_HIGH>,
 					<10 0 &gic GIC_SPI 10 IRQ_TYPE_LEVEL_HIGH>,
 					<11 0 &gic GIC_SPI 11 IRQ_TYPE_LEVEL_HIGH>;
-				interrupt-map-mask = <0xffffffff 0x0>;
+				interrupt-map-mask = <0xf 0x0>;
 			};
+		};
+
+		sfp: efuse@1e80000 {
+			compatible = "fsl,ls1028a-sfp";
+			reg = <0x0 0x1e80000 0x0 0x10000>;
+			clocks = <&clockgen QORIQ_CLK_PLATFORM_PLL
+					    QORIQ_CLK_PLL_DIV(4)>;
+			clock-names = "sfp";
 		};
 
 		tmu: tmu@1f80000 {
@@ -408,47 +429,49 @@
 		};
 
 		i2c0: i2c@2000000 {
-			compatible = "fsl,vf610-i2c", "fsl,ls1088a-vf610-i2c";
+			compatible = "fsl,ls1088a-i2c", "fsl,vf610-i2c";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <0x0 0x2000000 0x0 0x10000>;
 			interrupts = <0 34 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&clockgen QORIQ_CLK_PLATFORM_PLL
 					    QORIQ_CLK_PLL_DIV(8)>;
-			scl-gpios = <&gpio3 30 0>;
 			status = "disabled";
 		};
 
 		i2c1: i2c@2010000 {
-			compatible = "fsl,vf610-i2c";
+			compatible = "fsl,ls1088a-i2c", "fsl,vf610-i2c";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <0x0 0x2010000 0x0 0x10000>;
 			interrupts = <0 34 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&clockgen QORIQ_CLK_PLATFORM_PLL
 					    QORIQ_CLK_PLL_DIV(8)>;
+			scl-gpios = <&gpio2 12 0>;
 			status = "disabled";
 		};
 
 		i2c2: i2c@2020000 {
-			compatible = "fsl,vf610-i2c";
+			compatible = "fsl,ls1088a-i2c", "fsl,vf610-i2c";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <0x0 0x2020000 0x0 0x10000>;
 			interrupts = <0 35 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&clockgen QORIQ_CLK_PLATFORM_PLL
 					    QORIQ_CLK_PLL_DIV(8)>;
+			scl-gpios = <&gpio3 28 0>;
 			status = "disabled";
 		};
 
 		i2c3: i2c@2030000 {
-			compatible = "fsl,vf610-i2c";
+			compatible = "fsl,ls1088a-i2c", "fsl,vf610-i2c";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <0x0 0x2030000 0x0 0x10000>;
 			interrupts = <0 35 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&clockgen QORIQ_CLK_PLATFORM_PLL
 					    QORIQ_CLK_PLL_DIV(8)>;
+			scl-gpios = <&gpio3 30 0>;
 			status = "disabled";
 		};
 
@@ -532,28 +555,28 @@
 			sec_jr0: jr@10000 {
 				compatible = "fsl,sec-v5.0-job-ring",
 					     "fsl,sec-v4.0-job-ring";
-				reg	   = <0x10000 0x10000>;
+				reg = <0x10000 0x10000>;
 				interrupts = <GIC_SPI 140 IRQ_TYPE_LEVEL_HIGH>;
 			};
 
 			sec_jr1: jr@20000 {
 				compatible = "fsl,sec-v5.0-job-ring",
 					     "fsl,sec-v4.0-job-ring";
-				reg	   = <0x20000 0x10000>;
+				reg = <0x20000 0x10000>;
 				interrupts = <GIC_SPI 141 IRQ_TYPE_LEVEL_HIGH>;
 			};
 
 			sec_jr2: jr@30000 {
 				compatible = "fsl,sec-v5.0-job-ring",
 					     "fsl,sec-v4.0-job-ring";
-				reg	   = <0x30000 0x10000>;
+				reg = <0x30000 0x10000>;
 				interrupts = <GIC_SPI 142 IRQ_TYPE_LEVEL_HIGH>;
 			};
 
 			sec_jr3: jr@40000 {
 				compatible = "fsl,sec-v5.0-job-ring",
 					     "fsl,sec-v4.0-job-ring";
-				reg	   = <0x40000 0x10000>;
+				reg = <0x40000 0x10000>;
 				interrupts = <GIC_SPI 143 IRQ_TYPE_LEVEL_HIGH>;
 			};
 		};
@@ -594,7 +617,6 @@
 			num-ib-windows = <24>;
 			num-ob-windows = <256>;
 			max-functions = /bits/ 8 <2>;
-			big-endian;
 			status = "disabled";
 		};
 
@@ -633,7 +655,6 @@
 			interrupt-names = "pme";
 			num-ib-windows = <6>;
 			num-ob-windows = <6>;
-			big-endian;
 			status = "disabled";
 		};
 
@@ -672,7 +693,6 @@
 			interrupt-names = "pme";
 			num-ib-windows = <6>;
 			num-ob-windows = <6>;
-			big-endian;
 			status = "disabled";
 		};
 
@@ -681,6 +701,7 @@
 			reg = <0 0x5000000 0 0x800000>;
 			#iommu-cells = <1>;
 			stream-match-mask = <0x7C00>;
+			dma-coherent;
 			#global-interrupts = <12>;
 				     // global secure fault
 			interrupts = <GIC_SPI 13 IRQ_TYPE_LEVEL_HIGH>,

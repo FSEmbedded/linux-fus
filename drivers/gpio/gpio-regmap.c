@@ -5,11 +5,17 @@
  * Copyright 2020 Michael Walle <michael@walle.cc>
  */
 
-#include <linux/gpio/driver.h>
-#include <linux/gpio/regmap.h>
-#include <linux/kernel.h>
+#include <linux/bits.h>
+#include <linux/device.h>
+#include <linux/err.h>
+#include <linux/io.h>
 #include <linux/module.h>
 #include <linux/regmap.h>
+#include <linux/slab.h>
+#include <linux/types.h>
+
+#include <linux/gpio/driver.h>
+#include <linux/gpio/regmap.h>
 
 struct gpio_regmap {
 	struct device *parent;
@@ -23,6 +29,8 @@ struct gpio_regmap {
 	unsigned int reg_clr_base;
 	unsigned int reg_dir_in_base;
 	unsigned int reg_dir_out_base;
+
+	int (*get_direction)(struct gpio_regmap *gpio, unsigned int offset);
 
 	int (*reg_mask_xlate)(struct gpio_regmap *gpio, unsigned int base,
 			      unsigned int offset, unsigned int *reg,
@@ -111,6 +119,14 @@ static int gpio_regmap_get_direction(struct gpio_chip *chip,
 	unsigned int base, val, reg, mask;
 	int invert, ret;
 
+	if (gpio->get_direction)
+		return gpio->get_direction(gpio, offset);
+
+	if (gpio->reg_dat_base && !gpio->reg_set_base)
+		return GPIO_LINE_DIRECTION_IN;
+	if (gpio->reg_set_base && !gpio->reg_dat_base)
+		return GPIO_LINE_DIRECTION_OUT;
+
 	if (gpio->reg_dir_out_base) {
 		base = gpio_regmap_addr(gpio->reg_dir_out_base);
 		invert = 0;
@@ -140,7 +156,16 @@ static int gpio_regmap_set_direction(struct gpio_chip *chip,
 {
 	struct gpio_regmap *gpio = gpiochip_get_data(chip);
 	unsigned int base, val, reg, mask;
-	int invert, ret;
+	int invert, ret, dir;
+
+	if (gpio->get_direction) {
+		dir = gpio->get_direction(gpio, offset);
+		if (dir == GPIO_LINE_DIRECTION_IN && output)
+			return -EOPNOTSUPP;
+		if (dir == GPIO_LINE_DIRECTION_OUT && !output)
+			return -EOPNOTSUPP;
+		return 0;
+	}
 
 	if (gpio->reg_dir_out_base) {
 		base = gpio_regmap_addr(gpio->reg_dir_out_base);
@@ -230,6 +255,7 @@ struct gpio_regmap *gpio_regmap_register(const struct gpio_regmap_config *config
 	gpio->reg_clr_base = config->reg_clr_base;
 	gpio->reg_dir_in_base = config->reg_dir_in_base;
 	gpio->reg_dir_out_base = config->reg_dir_out_base;
+	gpio->get_direction = config->get_direction;
 
 	/* if not set, assume there is only one register */
 	if (!gpio->ngpio_per_reg)
@@ -244,24 +270,12 @@ struct gpio_regmap *gpio_regmap_register(const struct gpio_regmap_config *config
 
 	chip = &gpio->gpio_chip;
 	chip->parent = config->parent;
+	chip->fwnode = config->fwnode;
 	chip->base = -1;
 	chip->ngpio = config->ngpio;
 	chip->names = config->names;
 	chip->label = config->label ?: dev_name(config->parent);
-
-#if defined(CONFIG_OF_GPIO)
-	/* gpiolib will use of_node of the parent if chip->of_node is NULL */
-	chip->of_node = to_of_node(config->fwnode);
-#endif /* CONFIG_OF_GPIO */
-
-	/*
-	 * If our regmap is fast_io we should probably set can_sleep to false.
-	 * Right now, the regmap doesn't save this property, nor is there any
-	 * access function for it.
-	 * The only regmap type which uses fast_io is regmap-mmio. For now,
-	 * assume a safe default of true here.
-	 */
-	chip->can_sleep = true;
+	chip->can_sleep = regmap_might_sleep(config->regmap);
 
 	chip->get = gpio_regmap_get;
 	if (gpio->reg_set_base && gpio->reg_clr_base)
@@ -269,8 +283,8 @@ struct gpio_regmap *gpio_regmap_register(const struct gpio_regmap_config *config
 	else if (gpio->reg_set_base)
 		chip->set = gpio_regmap_set;
 
+	chip->get_direction = gpio_regmap_get_direction;
 	if (gpio->reg_dir_in_base || gpio->reg_dir_out_base) {
-		chip->get_direction = gpio_regmap_get_direction;
 		chip->direction_input = gpio_regmap_direction_input;
 		chip->direction_output = gpio_regmap_direction_output;
 	}

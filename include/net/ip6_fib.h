@@ -20,6 +20,7 @@
 #include <net/inetpeer.h>
 #include <net/fib_notifier.h>
 #include <linux/indirect_call_wrapper.h>
+#include <uapi/linux/bpf.h>
 
 #ifdef CONFIG_IPV6_MULTIPLE_TABLES
 #define FIB6_TABLE_HASHSZ 256
@@ -216,9 +217,6 @@ struct rt6_info {
 	struct inet6_dev		*rt6i_idev;
 	u32				rt6i_flags;
 
-	struct list_head		rt6i_uncached;
-	struct uncached_list		*rt6i_uncached_list;
-
 	/* more non-fragment space at head required */
 	unsigned short			rt6i_nfheader_len;
 };
@@ -239,9 +237,11 @@ struct fib6_result {
 	for (rt = (w)->leaf; rt;					\
 	     rt = rcu_dereference_protected(rt->fib6_next, 1))
 
-static inline struct inet6_dev *ip6_dst_idev(struct dst_entry *dst)
+#define dst_rt6_info(_ptr) container_of_const(_ptr, struct rt6_info, dst)
+
+static inline struct inet6_dev *ip6_dst_idev(const struct dst_entry *dst)
 {
-	return ((struct rt6_info *)dst)->rt6i_idev;
+	return dst_rt6_info(dst)->rt6i_idev;
 }
 
 static inline bool fib6_requires_src(const struct fib6_info *rt)
@@ -368,9 +368,8 @@ struct rt6_statistics {
 	__u32		fib_rt_cache;		/* cached rt entries in exception table */
 	__u32		fib_discarded_routes;	/* total number of routes delete */
 
-	/* The following stats are not protected by any lock */
+	/* The following stat is not protected by any lock */
 	atomic_t	fib_rt_alloc;		/* total number of routes alloced */
-	atomic_t	fib_rt_uncache;		/* rt entries in uncached list */
 };
 
 #define RTN_TL_ROOT	0x0001
@@ -472,13 +471,10 @@ void rt6_get_prefsrc(const struct rt6_info *rt, struct in6_addr *addr)
 	rcu_read_lock();
 
 	from = rcu_dereference(rt->from);
-	if (from) {
+	if (from)
 		*addr = from->fib6_prefsrc.addr;
-	} else {
-		struct in6_addr in6_zero = {};
-
-		*addr = in6_zero;
-	}
+	else
+		*addr = in6addr_any;
 
 	rcu_read_unlock();
 }

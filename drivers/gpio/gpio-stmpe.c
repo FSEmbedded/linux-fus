@@ -191,7 +191,7 @@ static void stmpe_gpio_irq_sync_unlock(struct irq_data *d)
 		[REG_IE][CSB] = STMPE_IDX_IEGPIOR_CSB,
 		[REG_IE][MSB] = STMPE_IDX_IEGPIOR_MSB,
 	};
-	int i, j;
+	int ret, i, j;
 
 	/*
 	 * STMPE1600: to be able to get IRQ from pins,
@@ -199,8 +199,16 @@ static void stmpe_gpio_irq_sync_unlock(struct irq_data *d)
 	 * GPSR or GPCR registers
 	 */
 	if (stmpe->partnum == STMPE1600) {
-		stmpe_reg_read(stmpe, stmpe->regs[STMPE_IDX_GPMR_LSB]);
-		stmpe_reg_read(stmpe, stmpe->regs[STMPE_IDX_GPMR_CSB]);
+		ret = stmpe_reg_read(stmpe, stmpe->regs[STMPE_IDX_GPMR_LSB]);
+		if (ret < 0) {
+			dev_err(stmpe->dev, "Failed to read GPMR_LSB: %d\n", ret);
+			goto err;
+		}
+		ret = stmpe_reg_read(stmpe, stmpe->regs[STMPE_IDX_GPMR_CSB]);
+		if (ret < 0) {
+			dev_err(stmpe->dev, "Failed to read GPMR_CSB: %d\n", ret);
+			goto err;
+		}
 	}
 
 	for (i = 0; i < CACHE_NR_REGS; i++) {
@@ -222,6 +230,7 @@ static void stmpe_gpio_irq_sync_unlock(struct irq_data *d)
 		}
 	}
 
+err:
 	mutex_unlock(&stmpe_gpio->irq_lock);
 }
 
@@ -234,6 +243,7 @@ static void stmpe_gpio_irq_mask(struct irq_data *d)
 	int mask = BIT(offset % 8);
 
 	stmpe_gpio->regs[REG_IE][regoffset] &= ~mask;
+	gpiochip_disable_irq(gc, offset);
 }
 
 static void stmpe_gpio_irq_unmask(struct irq_data *d)
@@ -244,6 +254,7 @@ static void stmpe_gpio_irq_unmask(struct irq_data *d)
 	int regoffset = offset / 8;
 	int mask = BIT(offset % 8);
 
+	gpiochip_enable_irq(gc, offset);
 	stmpe_gpio->regs[REG_IE][regoffset] |= mask;
 }
 
@@ -357,13 +368,15 @@ static void stmpe_dbg_show(struct seq_file *s, struct gpio_chip *gc)
 	}
 }
 
-static struct irq_chip stmpe_gpio_irq_chip = {
+static const struct irq_chip stmpe_gpio_irq_chip = {
 	.name			= "stmpe-gpio",
 	.irq_bus_lock		= stmpe_gpio_irq_lock,
 	.irq_bus_sync_unlock	= stmpe_gpio_irq_sync_unlock,
 	.irq_mask		= stmpe_gpio_irq_mask,
 	.irq_unmask		= stmpe_gpio_irq_unmask,
 	.irq_set_type		= stmpe_gpio_irq_set_type,
+	.flags			= IRQCHIP_IMMUTABLE,
+	GPIOCHIP_IRQ_RESOURCE_HELPERS,
 };
 
 #define MAX_GPIOS 24
@@ -477,7 +490,6 @@ static int stmpe_gpio_probe(struct platform_device *pdev)
 	stmpe_gpio->chip = template_chip;
 	stmpe_gpio->chip.ngpio = stmpe->num_gpios;
 	stmpe_gpio->chip.parent = &pdev->dev;
-	stmpe_gpio->chip.of_node = np;
 	stmpe_gpio->chip.base = -1;
 
 	if (IS_ENABLED(CONFIG_DEBUG_FS))
@@ -512,7 +524,7 @@ static int stmpe_gpio_probe(struct platform_device *pdev)
 		}
 
 		girq = &stmpe_gpio->chip.irq;
-		girq->chip = &stmpe_gpio_irq_chip;
+		gpio_irq_chip_set_chip(girq, &stmpe_gpio_irq_chip);
 		/* This will let us handle the parent IRQ in the driver */
 		girq->parent_handler = NULL;
 		girq->num_parents = 0;

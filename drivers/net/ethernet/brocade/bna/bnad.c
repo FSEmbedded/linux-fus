@@ -1037,8 +1037,7 @@ bnad_cb_ccb_destroy(struct bnad *bnad, struct bna_ccb *ccb)
 static void
 bnad_cb_tx_stall(struct bnad *bnad, struct bna_tx *tx)
 {
-	struct bnad_tx_info *tx_info =
-			(struct bnad_tx_info *)tx->priv;
+	struct bnad_tx_info *tx_info = tx->priv;
 	struct bna_tcb *tcb;
 	u32 txq_id;
 	int i;
@@ -1056,7 +1055,7 @@ bnad_cb_tx_stall(struct bnad *bnad, struct bna_tx *tx)
 static void
 bnad_cb_tx_resume(struct bnad *bnad, struct bna_tx *tx)
 {
-	struct bnad_tx_info *tx_info = (struct bnad_tx_info *)tx->priv;
+	struct bnad_tx_info *tx_info = tx->priv;
 	struct bna_tcb *tcb;
 	u32 txq_id;
 	int i;
@@ -1133,7 +1132,7 @@ bnad_tx_cleanup(struct delayed_work *work)
 static void
 bnad_cb_tx_cleanup(struct bnad *bnad, struct bna_tx *tx)
 {
-	struct bnad_tx_info *tx_info = (struct bnad_tx_info *)tx->priv;
+	struct bnad_tx_info *tx_info = tx->priv;
 	struct bna_tcb *tcb;
 	int i;
 
@@ -1149,7 +1148,7 @@ bnad_cb_tx_cleanup(struct bnad *bnad, struct bna_tx *tx)
 static void
 bnad_cb_rx_stall(struct bnad *bnad, struct bna_rx *rx)
 {
-	struct bnad_rx_info *rx_info = (struct bnad_rx_info *)rx->priv;
+	struct bnad_rx_info *rx_info = rx->priv;
 	struct bna_ccb *ccb;
 	struct bnad_rx_ctrl *rx_ctrl;
 	int i;
@@ -1208,7 +1207,7 @@ bnad_rx_cleanup(void *work)
 static void
 bnad_cb_rx_cleanup(struct bnad *bnad, struct bna_rx *rx)
 {
-	struct bnad_rx_info *rx_info = (struct bnad_rx_info *)rx->priv;
+	struct bnad_rx_info *rx_info = rx->priv;
 	struct bna_ccb *ccb;
 	struct bnad_rx_ctrl *rx_ctrl;
 	int i;
@@ -1231,7 +1230,7 @@ bnad_cb_rx_cleanup(struct bnad *bnad, struct bna_rx *rx)
 static void
 bnad_cb_rx_post(struct bnad *bnad, struct bna_rx *rx)
 {
-	struct bnad_rx_info *rx_info = (struct bnad_rx_info *)rx->priv;
+	struct bnad_rx_info *rx_info = rx->priv;
 	struct bna_ccb *ccb;
 	struct bna_rcb *rcb;
 	struct bnad_rx_ctrl *rx_ctrl;
@@ -1535,8 +1534,9 @@ bnad_tx_msix_register(struct bnad *bnad, struct bnad_tx_info *tx_info,
 
 	for (i = 0; i < num_txqs; i++) {
 		vector_num = tx_info->tcb[i]->intr_vector;
-		sprintf(tx_info->tcb[i]->name, "%s TXQ %d", bnad->netdev->name,
-				tx_id + tx_info->tcb[i]->id);
+		snprintf(tx_info->tcb[i]->name, BNA_Q_NAME_SIZE, "%s TXQ %d",
+			 bnad->netdev->name,
+			 tx_id + tx_info->tcb[i]->id);
 		err = request_irq(bnad->msix_table[vector_num].vector,
 				  (irq_handler_t)bnad_msix_tx, 0,
 				  tx_info->tcb[i]->name,
@@ -1586,9 +1586,9 @@ bnad_rx_msix_register(struct bnad *bnad, struct bnad_rx_info *rx_info,
 
 	for (i = 0; i < num_rxps; i++) {
 		vector_num = rx_info->rx_ctrl[i].ccb->intr_vector;
-		sprintf(rx_info->rx_ctrl[i].ccb->name, "%s CQ %d",
-			bnad->netdev->name,
-			rx_id + rx_info->rx_ctrl[i].ccb->id);
+		snprintf(rx_info->rx_ctrl[i].ccb->name, BNA_Q_NAME_SIZE,
+			 "%s CQ %d", bnad->netdev->name,
+			 rx_id + rx_info->rx_ctrl[i].ccb->id);
 		err = request_irq(bnad->msix_table[vector_num].vector,
 				  (irq_handler_t)bnad_msix_rx, 0,
 				  rx_info->rx_ctrl[i].ccb->name,
@@ -1891,7 +1891,7 @@ bnad_napi_add(struct bnad *bnad, u32 rx_id)
 	for (i = 0; i <	bnad->num_rxp_per_rx; i++) {
 		rx_ctrl = &bnad->rx_info[rx_id].rx_ctrl[i];
 		netif_napi_add(bnad->netdev, &rx_ctrl->napi,
-			       bnad_napi_poll_rx, NAPI_POLL_WEIGHT);
+			       bnad_napi_poll_rx);
 	}
 }
 
@@ -2823,8 +2823,7 @@ bnad_txq_wi_prepare(struct bnad *bnad, struct bna_tcb *tcb,
 			BNAD_UPDATE_CTR(bnad, tx_skb_mss_too_long);
 			return -EINVAL;
 		}
-		if (unlikely((gso_size + skb_transport_offset(skb) +
-			      tcp_hdrlen(skb)) >= skb->len)) {
+		if (unlikely((gso_size + skb_tcp_all_headers(skb)) >= skb->len)) {
 			txqent->hdr.wi.opcode = htons(BNA_TXQ_WI_SEND);
 			txqent->hdr.wi.lso_mss = 0;
 			BNAD_UPDATE_CTR(bnad, tx_skb_tso_too_short);
@@ -2872,8 +2871,7 @@ bnad_txq_wi_prepare(struct bnad *bnad, struct bna_tcb *tcb,
 				BNAD_UPDATE_CTR(bnad, tcpcsum_offload);
 
 				if (unlikely(skb_headlen(skb) <
-					    skb_transport_offset(skb) +
-				    tcp_hdrlen(skb))) {
+					    skb_tcp_all_headers(skb))) {
 					BNAD_UPDATE_CTR(bnad, tx_skb_tcp_hdr);
 					return -EINVAL;
 				}
@@ -3420,7 +3418,7 @@ static const struct net_device_ops bnad_netdev_ops = {
 };
 
 static void
-bnad_netdev_init(struct bnad *bnad, bool using_dac)
+bnad_netdev_init(struct bnad *bnad)
 {
 	struct net_device *netdev = bnad->netdev;
 
@@ -3433,10 +3431,8 @@ bnad_netdev_init(struct bnad *bnad, bool using_dac)
 		NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
 		NETIF_F_TSO | NETIF_F_TSO6;
 
-	netdev->features |= netdev->hw_features | NETIF_F_HW_VLAN_CTAG_FILTER;
-
-	if (using_dac)
-		netdev->features |= NETIF_F_HIGHDMA;
+	netdev->features |= netdev->hw_features | NETIF_F_HW_VLAN_CTAG_FILTER |
+			    NETIF_F_HIGHDMA;
 
 	netdev->mem_start = bnad->mmio_start;
 	netdev->mem_end = bnad->mmio_start + bnad->mmio_len - 1;
@@ -3514,7 +3510,6 @@ static void
 bnad_uninit(struct bnad *bnad)
 {
 	if (bnad->work_q) {
-		flush_workqueue(bnad->work_q);
 		destroy_workqueue(bnad->work_q);
 		bnad->work_q = NULL;
 	}
@@ -3544,8 +3539,7 @@ bnad_lock_uninit(struct bnad *bnad)
 
 /* PCI Initialization */
 static int
-bnad_pci_init(struct bnad *bnad,
-	      struct pci_dev *pdev, bool *using_dac)
+bnad_pci_init(struct bnad *bnad, struct pci_dev *pdev)
 {
 	int err;
 
@@ -3555,14 +3549,9 @@ bnad_pci_init(struct bnad *bnad,
 	err = pci_request_regions(pdev, BNAD_NAME);
 	if (err)
 		goto disable_device;
-	if (!dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64))) {
-		*using_dac = true;
-	} else {
-		err = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
-		if (err)
-			goto release_regions;
-		*using_dac = false;
-	}
+	err = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
+	if (err)
+		goto release_regions;
 	pci_set_master(pdev);
 	return 0;
 
@@ -3585,7 +3574,6 @@ static int
 bnad_pci_probe(struct pci_dev *pdev,
 		const struct pci_device_id *pcidev_id)
 {
-	bool	using_dac;
 	int	err;
 	struct bnad *bnad;
 	struct bna *bna;
@@ -3615,13 +3603,8 @@ bnad_pci_probe(struct pci_dev *pdev,
 	bnad->id = atomic_inc_return(&bna_id) - 1;
 
 	mutex_lock(&bnad->conf_mutex);
-	/*
-	 * PCI initialization
-	 *	Output : using_dac = 1 for 64 bit DMA
-	 *			   = 0 for 32 bit DMA
-	 */
-	using_dac = false;
-	err = bnad_pci_init(bnad, pdev, &using_dac);
+	/* PCI initialization */
+	err = bnad_pci_init(bnad, pdev);
 	if (err)
 		goto unlock_mutex;
 
@@ -3634,7 +3617,7 @@ bnad_pci_probe(struct pci_dev *pdev,
 		goto pci_uninit;
 
 	/* Initialize netdev structure, set up ethtool ops */
-	bnad_netdev_init(bnad, using_dac);
+	bnad_netdev_init(bnad);
 
 	/* Set link to down state */
 	netif_carrier_off(netdev);

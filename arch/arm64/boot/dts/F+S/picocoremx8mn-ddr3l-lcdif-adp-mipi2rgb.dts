@@ -73,7 +73,7 @@
 	rgb-bridge@2d {
 		#address-cells = <1>;
 		#size-cells = <0>;
-	      	compatible = "lontium,lt9211";
+	      	compatible = "lontium,lt9211-fus";
 //		lt,debug-pattern;
 		/* 0 = LVDS, 1 = MIPI, 2 = TTL */
 		rx-source = /bits/ 8 <1>;

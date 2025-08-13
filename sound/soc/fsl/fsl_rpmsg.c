@@ -119,14 +119,14 @@ static struct snd_soc_dai_driver fsl_rpmsg_dai = {
 	.playback = {
 		.stream_name = "CPU-Playback",
 		.channels_min = 2,
-		.channels_max = 2,
+		.channels_max = 32,
 		.rates = SNDRV_PCM_RATE_KNOT,
 		.formats = FSL_RPMSG_FORMATS,
 	},
 	.capture = {
 		.stream_name = "CPU-Capture",
 		.channels_min = 2,
-		.channels_max = 2,
+		.channels_max = 32,
 		.rates = SNDRV_PCM_RATE_KNOT,
 		.formats = FSL_RPMSG_FORMATS,
 	},
@@ -137,7 +137,7 @@ static struct snd_soc_dai_driver fsl_rpmsg_dai = {
 };
 
 static const struct snd_soc_component_driver fsl_component = {
-	.name           = "fsl-rpmsg",
+	.name			= "fsl-rpmsg",
 };
 
 static const struct fsl_rpmsg_soc_data imx7ulp_data = {
@@ -171,12 +171,29 @@ static const struct fsl_rpmsg_soc_data imx8mp_data = {
 		   SNDRV_PCM_FMTBIT_S32_LE,
 };
 
+static const struct fsl_rpmsg_soc_data imx93_data = {
+	.rates = SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_32000 |
+		 SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_96000,
+	.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE |
+		   SNDRV_PCM_FMTBIT_S32_LE,
+};
+
+static const struct fsl_rpmsg_soc_data imx95_data = {
+	.rates = SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_32000 |
+		 SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000 |
+		 SNDRV_PCM_RATE_88200 | SNDRV_PCM_RATE_96000,
+	.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE |
+		   SNDRV_PCM_FMTBIT_S32_LE,
+};
+
 static const struct of_device_id fsl_rpmsg_ids[] = {
 	{ .compatible = "fsl,imx7ulp-rpmsg-audio", .data = &imx7ulp_data},
 	{ .compatible = "fsl,imx8mm-rpmsg-audio", .data = &imx8mm_data},
 	{ .compatible = "fsl,imx8mn-rpmsg-audio", .data = &imx8mn_data},
 	{ .compatible = "fsl,imx8mp-rpmsg-audio", .data = &imx8mp_data},
 	{ .compatible = "fsl,imx8ulp-rpmsg-audio", .data = &imx7ulp_data},
+	{ .compatible = "fsl,imx93-rpmsg-audio", .data = &imx93_data},
+	{ .compatible = "fsl,imx95-rpmsg-audio", .data = &imx95_data},
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, fsl_rpmsg_ids);
@@ -185,8 +202,8 @@ static int fsl_rpmsg_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct snd_soc_dai_driver *dai_drv;
+	const char *dai_name;
 	struct fsl_rpmsg *rpmsg;
-	const char *model_string;
 	int ret;
 
 	dai_drv = devm_kzalloc(&pdev->dev, sizeof(struct snd_soc_dai_driver), GFP_KERNEL);
@@ -199,6 +216,7 @@ static int fsl_rpmsg_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	rpmsg->soc_data = of_device_get_match_data(&pdev->dev);
+
 	if (rpmsg->soc_data) {
 		dai_drv->playback.rates = rpmsg->soc_data->rates;
 		dai_drv->capture.rates = rpmsg->soc_data->rates;
@@ -214,12 +232,25 @@ static int fsl_rpmsg_probe(struct platform_device *pdev)
 			dai_drv->capture.formats = SNDRV_PCM_FMTBIT_S32_LE;
 			if (of_device_is_compatible(np, "fsl,imx8mm-rpmsg-audio"))
 				dai_drv->capture.formats = SNDRV_PCM_FMTBIT_S16_LE;
+
+			if (of_device_is_compatible(np, "fsl,imx8ulp-rpmsg-audio") ||
+			    of_device_is_compatible(np, "fsl,imx93-rpmsg-audio"))
+				dai_drv->capture.rates = SNDRV_PCM_RATE_16000;
 		}
-		/* constrain rates of wm8524 codec */
-		of_property_read_string(np, "model", &model_string);
-		if (!strcmp("wm8524-audio", model_string))
-			dai_drv->playback.rates = SNDRV_PCM_RATE_8000_192000;
 	}
+
+	/* Use rpmsg channel name as cpu dai name */
+	ret = of_property_read_string(np, "fsl,rpmsg-channel-name", &dai_name);
+	if (ret) {
+		if (ret == -EINVAL) {
+			dai_name = "rpmsg-audio-channel";
+		} else {
+			dev_err(&pdev->dev, "Failed to get rpmsg channel name: %d!\n", ret);
+			return ret;
+		}
+	}
+	dai_drv->name = dai_name;
+
 	if (of_property_read_bool(np, "fsl,enable-lpa")) {
 		rpmsg->enable_lpa = 1;
 		rpmsg->buffer_size[SNDRV_PCM_STREAM_PLAYBACK] = LPA_LARGE_BUFFER_SIZE;
@@ -258,17 +289,6 @@ static int fsl_rpmsg_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_pm_disable;
 
-	rpmsg->card_pdev = platform_device_register_data(&pdev->dev,
-							 "imx-audio-rpmsg",
-							 PLATFORM_DEVID_AUTO,
-							 NULL,
-							 0);
-	if (IS_ERR(rpmsg->card_pdev)) {
-		dev_err(&pdev->dev, "failed to register rpmsg card\n");
-		ret = PTR_ERR(rpmsg->card_pdev);
-		goto err_pm_disable;
-	}
-
 	return 0;
 
 err_pm_disable:
@@ -276,7 +296,7 @@ err_pm_disable:
 	return ret;
 }
 
-static int fsl_rpmsg_remove(struct platform_device *pdev)
+static void fsl_rpmsg_remove(struct platform_device *pdev)
 {
 	struct fsl_rpmsg *rpmsg = platform_get_drvdata(pdev);
 
@@ -284,8 +304,6 @@ static int fsl_rpmsg_remove(struct platform_device *pdev)
 
 	if (rpmsg->card_pdev)
 		platform_device_unregister(rpmsg->card_pdev);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -333,7 +351,7 @@ static const struct dev_pm_ops fsl_rpmsg_pm_ops = {
 
 static struct platform_driver fsl_rpmsg_driver = {
 	.probe  = fsl_rpmsg_probe,
-	.remove = fsl_rpmsg_remove,
+	.remove_new = fsl_rpmsg_remove,
 	.driver = {
 		.name = "fsl_rpmsg",
 		.pm = &fsl_rpmsg_pm_ops,

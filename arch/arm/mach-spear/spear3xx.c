@@ -13,12 +13,13 @@
 #include <linux/amba/pl022.h>
 #include <linux/amba/pl080.h>
 #include <linux/clk.h>
+#include <linux/clk/spear.h>
 #include <linux/io.h>
 #include <asm/mach/map.h>
 #include "pl080.h"
 #include "generic.h"
-#include <mach/spear.h>
-#include <mach/misc_regs.h>
+#include "spear.h"
+#include "misc_regs.h"
 
 /* ssp device registration */
 struct pl022_ssp_controller pl022_plat_data = {

@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
+# add __symbols__ for label references
+DTC_FLAGS += -@
 
 dtb-$(CONFIG_ARCH_MXC) += armstonemx8mp.dtb \
 			  armstonemx8mp-BT070L1060CS0I1AD-A.dtb \
@@ -72,3 +74,24 @@ dtb-$(CONFIG_ARCH_MXC) += osm8mm.dtb \
 dtb-$(CONFIG_ARCH_MXC) += osm8mp.dtb \
 			  osm8mp-BT070L1060CS0I1AD-A.dtb \
 			  osm8mp-EE1010B1T-1CP.dtb
+dtb-$(CONFIG_ARCH_MXC) += \
+			  soldercore8ulp-bbhd.dtb
+dtb-$(CONFIG_ARCH_MXC) += \
+			  picocoremx8ulp.dtb \
+			  picocoremx8ulp-adp-mipi2mipi1-ee0350et-2cp.dtb \
+			  picocoremx8ulp-adp-mipi2lvds1-BT070L1060CS0I1AD-A.dtb
+dtb-$(CONFIG_ARCH_MXC) += \
+			  fs-osm-sf-mx8ulp-adp-osm-bb.dtb \
+			  fs-osm-sf-mx8ulp-adp-osm-bb-ee0350et-2cp.dtb
+dtb-$(CONFIG_ARCH_MXC) += \
+			  picocoremx93.dtb \
+			  picocoremx93-BT070L1060CS0I1AD-A.dtb \
+			  picocoremx93-adp-lvds2lvds2-EE1010B1T-1CP.dtb \
+			  picocoremx93-adp-mipi2mip1-ee0350et-2cp.dtb
+dtb-$(CONFIG_ARCH_MXC) += \
+			  fs-osm-sf-mx93-adp-osm-bb.dtb \
+			  fs-osm-sf-mx93-adp-osm-bb_BT070L1060CS0I1AD-A.dtb
+dtb-$(CONFIG_ARCH_MXC) += \
+			  efusmx93-SINTF.dtb \
+			  efusmx93-SINTF-ET070080DH6.dtb \
+			  efusmx93-SINTF-BT070L1060CS0I1AD-A.dtb

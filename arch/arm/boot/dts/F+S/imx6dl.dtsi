@@ -1,0 +1,14 @@
+#include "../nxp/imx/imx6dl.dtsi"
+#include "imx6qdl.dtsi"
+
+/ {
+	cpus {
+		reserved-memory {
+			cma: linux,cma {};
+		};
+	};
+
+	soc {
+		busfreq: busfreq {};
+	};
+};

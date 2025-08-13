@@ -296,7 +296,7 @@ static ssize_t fast_charge_timer_show(struct device *dev,
 		break;
 	}
 
-	return scnprintf(buf, PAGE_SIZE, "%u\n", val);
+	return sysfs_emit(buf, "%u\n", val);
 }
 
 static int max77693_set_fast_charge_timer(struct max77693_charger *chg,
@@ -357,7 +357,7 @@ static ssize_t top_off_threshold_current_show(struct device *dev,
 	else
 		val = data * 50000;
 
-	return scnprintf(buf, PAGE_SIZE, "%u\n", val);
+	return sysfs_emit(buf, "%u\n", val);
 }
 
 static int max77693_set_top_off_threshold_current(struct max77693_charger *chg,
@@ -405,7 +405,7 @@ static ssize_t top_off_timer_show(struct device *dev,
 
 	val = data * 10;
 
-	return scnprintf(buf, PAGE_SIZE, "%u\n", val);
+	return sysfs_emit(buf, "%u\n", val);
 }
 
 static int max77693_set_top_off_timer(struct max77693_charger *chg,
@@ -556,7 +556,7 @@ static int max77693_set_charge_input_threshold_volt(struct max77693_charger *chg
 	case 4700000:
 	case 4800000:
 	case 4900000:
-		data = (uvolt - 4700000) / 100000;
+		data = ((uvolt - 4700000) / 100000) + 1;
 		break;
 	default:
 		dev_err(chg->dev, "Wrong value for charge input voltage regulation threshold\n");

@@ -14,7 +14,7 @@
 #include <linux/kdebug.h>
 #include <linux/syscalls.h>
 #include <linux/signal.h>
-#include <linux/tracehook.h>
+#include <linux/ptrace.h>
 #include <asm/traps.h>
 #include <asm/vm_fault.h>
 #include <asm/syscall.h>
@@ -195,8 +195,10 @@ int die(const char *str, struct pt_regs *regs, long err)
 	printk(KERN_EMERG "Oops: %s[#%d]:\n", str, ++die.counter);
 
 	if (notify_die(DIE_OOPS, str, regs, err, pt_cause(regs), SIGSEGV) ==
-	    NOTIFY_STOP)
+	    NOTIFY_STOP) {
+		spin_unlock_irq(&die.lock);
 		return 1;
+	}
 
 	print_modules();
 	show_regs(regs);
@@ -348,7 +350,7 @@ void do_trap0(struct pt_regs *regs)
 
 		/* allow strace to catch syscall args  */
 		if (unlikely(test_thread_flag(TIF_SYSCALL_TRACE) &&
-			tracehook_report_syscall_entry(regs)))
+			ptrace_report_syscall_entry(regs)))
 			return;  /*  return -ENOSYS somewhere?  */
 
 		/* Interrupts should be re-enabled for syscall processing */
@@ -386,7 +388,7 @@ void do_trap0(struct pt_regs *regs)
 
 		/* allow strace to get the syscall return state  */
 		if (unlikely(test_thread_flag(TIF_SYSCALL_TRACE)))
-			tracehook_report_syscall_exit(regs, 0);
+			ptrace_report_syscall_exit(regs, 0);
 
 		break;
 	case TRAP_DEBUG:

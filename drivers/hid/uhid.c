@@ -387,7 +387,7 @@ static int uhid_hid_output_report(struct hid_device *hid, __u8 *buf,
 	return uhid_hid_output_raw(hid, buf, count, HID_OUTPUT_REPORT);
 }
 
-struct hid_ll_driver uhid_hid_driver = {
+static const struct hid_ll_driver uhid_hid_driver = {
 	.start = uhid_hid_start,
 	.stop = uhid_hid_stop,
 	.open = uhid_hid_open,
@@ -397,7 +397,6 @@ struct hid_ll_driver uhid_hid_driver = {
 	.output_report = uhid_hid_output_report,
 	.max_buffer_size = UHID_DATA_MAX,
 };
-EXPORT_SYMBOL_GPL(uhid_hid_driver);
 
 #ifdef CONFIG_COMPAT
 
@@ -748,7 +747,7 @@ static ssize_t uhid_char_write(struct file *file, const char __user *buffer,
 		 * copied from, so it's unsafe to allow this with elevated
 		 * privileges (e.g. from a setuid binary) or via kernel_write().
 		 */
-		if (file->f_cred != current_cred() || uaccess_kernel()) {
+		if (file->f_cred != current_cred()) {
 			pr_err_once("UHID_CREATE from different security context by process %d (%s), this is not allowed.\n",
 				    task_tgid_vnr(current), current->comm);
 			ret = -EACCES;

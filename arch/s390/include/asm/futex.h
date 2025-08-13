@@ -4,6 +4,7 @@
 
 #include <linux/uaccess.h>
 #include <linux/futex.h>
+#include <asm/asm-extable.h>
 #include <asm/mmu_context.h>
 #include <asm/errno.h>
 
@@ -43,7 +44,7 @@ static inline int arch_futex_atomic_op_inuser(int op, int oparg, int *oval,
 		break;
 	case FUTEX_OP_ANDN:
 		__futex_atomic_op("lr %2,%1\nnr %2,%5\n",
-				  ret, oldval, newval, uaddr, oparg);
+				  ret, oldval, newval, uaddr, ~oparg);
 		break;
 	case FUTEX_OP_XOR:
 		__futex_atomic_op("lr %2,%1\nxr %2,%5\n",

@@ -23,6 +23,8 @@
 #include <linux/imx_rpmsg.h>
 #include "rpmsg_internal.h"
 
+#define IMX_SC_IRQ_GROUP_REBOOTED       5
+
 enum imx_rpmsg_variants {
 	IMX8QM,
 	IMX8QXP,
@@ -133,7 +135,7 @@ static bool imx_rpmsg_notify(struct virtqueue *vq)
 		if (ret < 0)
 			return false;
 	} else {
-		rpdev->cl.tx_tout = 0;
+		rpdev->cl.tx_tout = 1000;
 		ret = mbox_send_message(rpdev->tx_ch, &rpvq->mmsg);
 		if (ret < 0)
 			return false;

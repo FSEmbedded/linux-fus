@@ -649,8 +649,7 @@ static bool pcf85263_can_wakeup_machine(struct pcf85263 *pcf85263)
 		of_property_read_bool(pcf85263->dev->of_node, "wakeup-source");
 }
 
-static int pcf85263_probe(struct i2c_client *client,
-				const struct i2c_device_id *id)
+static int pcf85263_probe(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
 	struct pcf85263 *pcf85263;
@@ -724,7 +723,7 @@ static int pcf85263_probe(struct i2c_client *client,
 
 	/* We cannot support UIE mode if we do not have an IRQ line */
 	if (!pcf85263->irq)
-		pcf85263->rtc->uie_unsupported = 1;
+		clear_bit(RTC_FEATURE_UPDATE_INTERRUPT, pcf85263->rtc->features);
 
 	dev_info(pcf85263->dev,
 		 "PCF85263 RTC (irqpin=%s irq=%d)\n",
@@ -734,14 +733,12 @@ static int pcf85263_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int pcf85263_remove(struct i2c_client *client)
+static void pcf85263_remove(struct i2c_client *client)
 {
 	struct pcf85263 *pcf85263 = i2c_get_clientdata(client);
 
 	if (pcf85263_can_wakeup_machine(pcf85263))
 		device_init_wakeup(pcf85263->dev, false);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP

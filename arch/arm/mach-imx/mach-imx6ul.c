@@ -3,16 +3,16 @@
  * Copyright (C) 2015 Freescale Semiconductor, Inc.
  */
 #include <linux/irqchip.h>
-#include <linux/mfd/syscon.h>
-#include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
-#include <linux/micrel_phy.h>
 #include <linux/of_address.h>
 #include <linux/of_platform.h>
 #include <linux/phy.h>
 #include <linux/pm_opp.h>
 #include <linux/regmap.h>
+#include <linux/mfd/syscon.h>
+#include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
 #include <asm/mach/arch.h>
-#include <asm/mach/map.h>
+#include <linux/micrel_phy.h>
+
 
 #include "common.h"
 #include "cpuidle.h"
@@ -161,6 +161,7 @@ static void __init imx6ul_map_io(void)
 static const char * const imx6ul_dt_compat[] __initconst = {
 	"fsl,imx6ul",
 	"fsl,imx6ull",
+	"fsl,imx6ulz",
 	NULL,
 };
 

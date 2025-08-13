@@ -11,6 +11,7 @@
 
 #include <linux/spi/spi.h>
 #include <linux/interrupt.h>
+#include <linux/iio/iio.h>
 #include <linux/iio/types.h>
 
 #define ADIS_WRITE_REG(reg) ((0x80 | (reg)))
@@ -131,7 +132,7 @@ struct adis {
 	unsigned long		irq_flag;
 	void			*buffer;
 
-	u8			tx[10] ____cacheline_aligned;
+	u8			tx[10] __aligned(IIO_DMA_MINALIGN);
 	u8			rx[4];
 };
 
@@ -382,10 +383,8 @@ static inline int adis_update_bits_base(struct adis *adis, unsigned int reg,
  * @val can lead to undesired behavior if the register to update is 16bit.
  */
 #define adis_update_bits(adis, reg, mask, val) ({			\
-	BUILD_BUG_ON(sizeof(val) == 1 || sizeof(val) == 8);		\
-	__builtin_choose_expr(sizeof(val) == 4,				\
-		adis_update_bits_base(adis, reg, mask, val, 4),         \
-		adis_update_bits_base(adis, reg, mask, val, 2));	\
+	BUILD_BUG_ON(sizeof(val) != 2 && sizeof(val) != 4);		\
+	adis_update_bits_base(adis, reg, mask, val, sizeof(val));	\
 })
 
 /**
@@ -400,10 +399,8 @@ static inline int adis_update_bits_base(struct adis *adis, unsigned int reg,
  * @val can lead to undesired behavior if the register to update is 16bit.
  */
 #define __adis_update_bits(adis, reg, mask, val) ({			\
-	BUILD_BUG_ON(sizeof(val) == 1 || sizeof(val) == 8);		\
-	__builtin_choose_expr(sizeof(val) == 4,				\
-		__adis_update_bits_base(adis, reg, mask, val, 4),	\
-		__adis_update_bits_base(adis, reg, mask, val, 2));	\
+	BUILD_BUG_ON(sizeof(val) != 2 && sizeof(val) != 4);		\
+	__adis_update_bits_base(adis, reg, mask, val, sizeof(val));	\
 })
 
 int __adis_check_status(struct adis *adis);
@@ -427,18 +424,6 @@ static inline int adis_check_status(struct adis *adis)
 
 	mutex_lock(&adis->state_lock);
 	ret = __adis_check_status(adis);
-	mutex_unlock(&adis->state_lock);
-
-	return ret;
-}
-
-/* locked version of __adis_initial_startup() */
-static inline int adis_initial_startup(struct adis *adis)
-{
-	int ret;
-
-	mutex_lock(&adis->state_lock);
-	ret = __adis_initial_startup(adis);
 	mutex_unlock(&adis->state_lock);
 
 	return ret;

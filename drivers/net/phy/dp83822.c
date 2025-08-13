@@ -40,8 +40,8 @@
 /* Control Register 2 bits */
 #define DP83822_FX_ENABLE	BIT(14)
 
-#define DP83822_HW_RESET	BIT(15)
-#define DP83822_SW_RESET	BIT(14)
+#define DP83822_SW_RESET	BIT(15)
+#define DP83822_DIG_RESTART	BIT(14)
 
 /* PHY STS bits */
 #define DP83822_PHYSTS_DUPLEX			BIT(2)
@@ -528,6 +528,8 @@ static int dp83822_read_straps(struct phy_device *phydev)
 	val = phy_read_mmd(phydev, DP83822_DEVADDR, MII_DP83822_SOR1);
 	if (val < 0)
 		return val;
+
+	phydev_dbg(phydev, "SOR1 strap register: 0x%04x\n", val);
 
 	fx_enabled = (val & DP83822_COL_STRAP_MASK) >> DP83822_COL_SHIFT;
 	if (fx_enabled == DP83822_STRAP_MODE2 ||

@@ -519,11 +519,9 @@ int dispc_runtime_get(void)
 
 	DSSDBG("dispc_runtime_get\n");
 
-	r = pm_runtime_get_sync(&dispc.pdev->dev);
-	if (WARN_ON(r < 0)) {
-		pm_runtime_put_sync(&dispc.pdev->dev);
+	r = pm_runtime_resume_and_get(&dispc.pdev->dev);
+	if (WARN_ON(r < 0))
 		return r;
-	}
 	return 0;
 }
 EXPORT_SYMBOL(dispc_runtime_get);
@@ -2751,9 +2749,13 @@ int dispc_ovl_setup(enum omap_plane plane, const struct omap_overlay_info *oi,
 		bool mem_to_mem)
 {
 	int r;
-	enum omap_overlay_caps caps = dss_feat_get_overlay_caps(plane);
+	enum omap_overlay_caps caps;
 	enum omap_channel channel;
 
+	if (plane == OMAP_DSS_WB)
+		return -EINVAL;
+
+	caps = dss_feat_get_overlay_caps(plane);
 	channel = dispc_ovl_get_channel_out(plane);
 
 	DSSDBG("dispc_ovl_setup %d, pa %pad, pa_uv %pad, sw %d, %d,%d, %dx%d ->"
@@ -4019,10 +4021,9 @@ static int dispc_probe(struct platform_device *pdev)
 	return component_add(&pdev->dev, &dispc_component_ops);
 }
 
-static int dispc_remove(struct platform_device *pdev)
+static void dispc_remove(struct platform_device *pdev)
 {
 	component_del(&pdev->dev, &dispc_component_ops);
-	return 0;
 }
 
 static int dispc_runtime_suspend(struct device *dev)
@@ -4075,7 +4076,7 @@ static const struct of_device_id dispc_of_match[] = {
 
 static struct platform_driver omap_dispchw_driver = {
 	.probe		= dispc_probe,
-	.remove         = dispc_remove,
+	.remove_new     = dispc_remove,
 	.driver         = {
 		.name   = "omapdss_dispc",
 		.pm	= &dispc_pm_ops,

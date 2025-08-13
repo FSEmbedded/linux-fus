@@ -18,18 +18,18 @@
 #elif defined(__aarch64__)
 #define VDSO_VERSION		3
 #define VDSO_NAMES		0
+#elif defined(__powerpc64__)
+#define VDSO_VERSION		1
+#define VDSO_NAMES		0
 #elif defined(__powerpc__)
 #define VDSO_VERSION		1
 #define VDSO_NAMES		0
 #define VDSO_32BIT		1
-#elif defined(__powerpc64__)
-#define VDSO_VERSION		1
-#define VDSO_NAMES		0
-#elif defined (__s390__)
+#elif defined (__s390__) && !defined(__s390x__)
 #define VDSO_VERSION		2
 #define VDSO_NAMES		0
 #define VDSO_32BIT		1
-#elif defined (__s390X__)
+#elif defined (__s390x__)
 #define VDSO_VERSION		2
 #define VDSO_NAMES		0
 #elif defined(__mips__)
@@ -53,10 +53,6 @@
 #if __riscv_xlen == 32
 #define VDSO_32BIT		1
 #endif
-#else /* nds32 */
-#define VDSO_VERSION		4
-#define VDSO_NAMES		1
-#define VDSO_32BIT		1
 #endif
 
 static const char *versions[6] = {

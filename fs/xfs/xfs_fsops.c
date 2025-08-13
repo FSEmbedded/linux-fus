@@ -17,6 +17,7 @@
 #include "xfs_fsops.h"
 #include "xfs_trans_space.h"
 #include "xfs_log.h"
+#include "xfs_log_priv.h"
 #include "xfs_ag.h"
 #include "xfs_ag_resv.h"
 #include "xfs_trace.h"
@@ -40,6 +41,7 @@ xfs_resizefs_init_new_ags(
 	xfs_agnumber_t		oagcount,
 	xfs_agnumber_t		nagcount,
 	xfs_rfsblock_t		delta,
+	struct xfs_perag	*last_pag,
 	bool			*lastag_extended)
 {
 	struct xfs_mount	*mp = tp->t_mountp;
@@ -72,7 +74,7 @@ xfs_resizefs_init_new_ags(
 
 	if (delta) {
 		*lastag_extended = true;
-		error = xfs_ag_extend_space(mp, tp, id, delta);
+		error = xfs_ag_extend_space(last_pag, tp, delta);
 	}
 	return error;
 }
@@ -85,16 +87,17 @@ xfs_growfs_data_private(
 	struct xfs_mount	*mp,		/* mount point for filesystem */
 	struct xfs_growfs_data	*in)		/* growfs data input struct */
 {
+	xfs_agnumber_t		oagcount = mp->m_sb.sb_agcount;
 	struct xfs_buf		*bp;
 	int			error;
 	xfs_agnumber_t		nagcount;
 	xfs_agnumber_t		nagimax = 0;
 	xfs_rfsblock_t		nb, nb_div, nb_mod;
 	int64_t			delta;
-	bool			lastag_extended;
-	xfs_agnumber_t		oagcount;
+	bool			lastag_extended = false;
 	struct xfs_trans	*tp;
 	struct aghdr_init_data	id = {};
+	struct xfs_perag	*last_pag;
 
 	nb = in->newblocks;
 	error = xfs_sb_validate_fsb_count(&mp->m_sb, nb);
@@ -112,11 +115,16 @@ xfs_growfs_data_private(
 
 	nb_div = nb;
 	nb_mod = do_div(nb_div, mp->m_sb.sb_agblocks);
-	nagcount = nb_div + (nb_mod != 0);
-	if (nb_mod && nb_mod < XFS_MIN_AG_BLOCKS) {
-		nagcount--;
-		nb = (xfs_rfsblock_t)nagcount * mp->m_sb.sb_agblocks;
+	if (nb_mod && nb_mod >= XFS_MIN_AG_BLOCKS)
+		nb_div++;
+	else if (nb_mod)
+		nb = nb_div * mp->m_sb.sb_agblocks;
+
+	if (nb_div > XFS_MAX_AGNUMBER + 1) {
+		nb_div = XFS_MAX_AGNUMBER + 1;
+		nb = nb_div * mp->m_sb.sb_agblocks;
 	}
+	nagcount = nb_div;
 	delta = nb - mp->m_sb.sb_dblocks;
 	/*
 	 * Reject filesystems with a single AG because they are not
@@ -126,38 +134,40 @@ xfs_growfs_data_private(
 	if (delta < 0 && nagcount < 2)
 		return -EINVAL;
 
-	oagcount = mp->m_sb.sb_agcount;
+	/* No work to do */
+	if (delta == 0)
+		return 0;
+
+	/* TODO: shrinking the entire AGs hasn't yet completed */
+	if (nagcount < oagcount)
+		return -EINVAL;
 
 	/* allocate the new per-ag structures */
-	if (nagcount > oagcount) {
-		error = xfs_initialize_perag(mp, nagcount, &nagimax);
-		if (error)
-			return error;
-	} else if (nagcount < oagcount) {
-		/* TODO: shrinking the entire AGs hasn't yet completed */
-		return -EINVAL;
-	}
-
-	error = xfs_trans_alloc(mp, &M_RES(mp)->tr_growdata,
-			(delta > 0 ? XFS_GROWFS_SPACE_RES(mp) : -delta), 0,
-			XFS_TRANS_RESERVE, &tp);
+	error = xfs_initialize_perag(mp, oagcount, nagcount, nb, &nagimax);
 	if (error)
 		return error;
 
+	if (delta > 0)
+		error = xfs_trans_alloc(mp, &M_RES(mp)->tr_growdata,
+				XFS_GROWFS_SPACE_RES(mp), 0, XFS_TRANS_RESERVE,
+				&tp);
+	else
+		error = xfs_trans_alloc(mp, &M_RES(mp)->tr_growdata, -delta, 0,
+				0, &tp);
+	if (error)
+		goto out_free_unused_perag;
+
+	last_pag = xfs_perag_get(mp, oagcount - 1);
 	if (delta > 0) {
 		error = xfs_resizefs_init_new_ags(tp, &id, oagcount, nagcount,
-						  delta, &lastag_extended);
+				delta, last_pag, &lastag_extended);
 	} else {
-		static struct ratelimit_state shrink_warning = \
-			RATELIMIT_STATE_INIT("shrink_warning", 86400 * HZ, 1);
-		ratelimit_set_flags(&shrink_warning, RATELIMIT_MSG_ON_RELEASE);
-
-		if (__ratelimit(&shrink_warning))
-			xfs_alert(mp,
+		xfs_warn_mount(mp, XFS_OPSTATE_WARNED_SHRINK,
 	"EXPERIMENTAL online shrink feature in use. Use at your own risk!");
 
-		error = xfs_ag_shrink_space(mp, &tp, nagcount - 1, -delta);
+		error = xfs_ag_shrink_space(last_pag, &tp, -delta);
 	}
+	xfs_perag_put(last_pag);
 	if (error)
 		goto out_trans_cancel;
 
@@ -219,6 +229,9 @@ xfs_growfs_data_private(
 
 out_trans_cancel:
 	xfs_trans_cancel(tp);
+out_free_unused_perag:
+	if (nagcount > oagcount)
+		xfs_free_unused_perag_range(mp, oagcount, nagcount);
 	return error;
 }
 
@@ -347,11 +360,8 @@ xfs_fs_counts(
 	cnt->allocino = percpu_counter_read_positive(&mp->m_icount);
 	cnt->freeino = percpu_counter_read_positive(&mp->m_ifree);
 	cnt->freedata = percpu_counter_read_positive(&mp->m_fdblocks) -
-						mp->m_alloc_set_aside;
-
-	spin_lock(&mp->m_sb_lock);
-	cnt->freertx = mp->m_sb.sb_frextents;
-	spin_unlock(&mp->m_sb_lock);
+						xfs_fdblocks_unavailable(mp);
+	cnt->freertx = percpu_counter_read_positive(&mp->m_frextents);
 }
 
 /*
@@ -511,15 +521,18 @@ xfs_fs_goingdown(
 void
 xfs_do_force_shutdown(
 	struct xfs_mount *mp,
-	int		flags,
+	uint32_t	flags,
 	char		*fname,
 	int		lnnum)
 {
 	int		tag;
 	const char	*why;
 
-	if (test_and_set_bit(XFS_OPSTATE_SHUTDOWN, &mp->m_opstate))
+
+	if (test_and_set_bit(XFS_OPSTATE_SHUTDOWN, &mp->m_opstate)) {
+		xlog_shutdown_wait(mp->m_log);
 		return;
+	}
 	if (mp->m_sb_bp)
 		mp->m_sb_bp->b_flags |= XBF_DONE;
 
@@ -532,6 +545,12 @@ xfs_do_force_shutdown(
 	} else if (flags & SHUTDOWN_CORRUPT_INCORE) {
 		tag = XFS_PTAG_SHUTDOWN_CORRUPT;
 		why = "Corruption of in-memory data";
+	} else if (flags & SHUTDOWN_CORRUPT_ONDISK) {
+		tag = XFS_PTAG_SHUTDOWN_CORRUPT;
+		why = "Corruption of on-disk metadata";
+	} else if (flags & SHUTDOWN_DEVICE_REMOVED) {
+		tag = XFS_PTAG_SHUTDOWN_IOERROR;
+		why = "Block device removal";
 	} else {
 		tag = XFS_PTAG_SHUTDOWN_IOERROR;
 		why = "Metadata I/O Error";

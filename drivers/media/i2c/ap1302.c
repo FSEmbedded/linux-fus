@@ -558,8 +558,7 @@ static const struct media_entity_operations ap1302_sd_media_ops = {
  * @param adapter            struct i2c_adapter *
  * @return  Error code indicating success or failure
  */
-static int ap1302_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+static int ap1302_probe(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
 	struct ap1302_device *ap1302_dev;
@@ -683,7 +682,7 @@ fail:
 	return ret;
 }
 
-static int ap1302_remove(struct i2c_client *client)
+static void ap1302_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct ap1302_device *ap1302_dev = to_ap1302_device(sd);
@@ -691,7 +690,6 @@ static int ap1302_remove(struct i2c_client *client)
 	v4l2_async_unregister_subdev(sd);
 	media_entity_cleanup(&sd->entity);
 	mutex_destroy(&ap1302_dev->lock);
-	return 0;
 }
 
 static const struct i2c_device_id ap1302_id[] = {

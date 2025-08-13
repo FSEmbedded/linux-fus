@@ -82,6 +82,13 @@
 #define TCO2_CNT(p)	(TCOBASE(p) + 0x0a) /* TCO2 Control Register	*/
 #define TCOv2_TMR(p)	(TCOBASE(p) + 0x12) /* TCOv2 Timer Initial Value*/
 
+/*
+ * NMI_NOW is bit 8 of TCO1_CNT register
+ * Read/Write
+ * This bit is implemented as RW but has no effect on HW.
+ */
+#define NMI_NOW		BIT(8)
+
 /* internal variables */
 struct iTCO_wdt_private {
 	struct watchdog_device wddev;
@@ -94,7 +101,6 @@ struct iTCO_wdt_private {
 	 * NO_REBOOT flag is Memory-Mapped GCS register bit 5 (TCO version 2),
 	 * or memory-mapped PMC register bit 4 (TCO version 3).
 	 */
-	struct resource *gcs_pmc_res;
 	unsigned long __iomem *gcs_pmc;
 	/* the lock for io operations */
 	spinlock_t io_lock;
@@ -220,13 +226,23 @@ static int update_no_reboot_bit_cnt(void *priv, bool set)
 	struct iTCO_wdt_private *p = priv;
 	u16 val, newval;
 
-	val = inw(TCO1_CNT(p));
+	/*
+	 * writing back 1b1 to NMI_NOW of TCO1_CNT register
+	 * causes NMI_NOW bit inversion what consequently does
+	 * not allow to perform the register's value comparison
+	 * properly.
+	 *
+	 * NMI_NOW bit masking for TCO1_CNT register values
+	 * helps to avoid possible NMI_NOW bit inversions on
+	 * following write operation.
+	 */
+	val = inw(TCO1_CNT(p)) & ~NMI_NOW;
 	if (set)
 		val |= BIT(0);
 	else
 		val &= ~BIT(0);
 	outw(val, TCO1_CNT(p));
-	newval = inw(TCO1_CNT(p));
+	newval = inw(TCO1_CNT(p)) & ~NMI_NOW;
 
 	/* make sure the update is successful */
 	return val != newval ? -EIO : 0;
@@ -442,11 +458,10 @@ static bool iTCO_wdt_set_running(struct iTCO_wdt_private *p)
  *	Kernel Interfaces
  */
 
-static const struct watchdog_info ident = {
+static struct watchdog_info ident = {
 	.options =		WDIOF_SETTIMEOUT |
 				WDIOF_KEEPALIVEPING |
 				WDIOF_MAGICCLOSE,
-	.firmware_version =	0,
 	.identity =		DRV_NAME,
 };
 
@@ -511,10 +526,7 @@ static int iTCO_wdt_probe(struct platform_device *pdev)
 	 */
 	if (p->iTCO_version >= 2 && p->iTCO_version < 6 &&
 	    !pdata->no_reboot_use_pmc) {
-		p->gcs_pmc_res = platform_get_resource(pdev,
-						       IORESOURCE_MEM,
-						       ICH_RES_MEM_GCS_PMC);
-		p->gcs_pmc = devm_ioremap_resource(dev, p->gcs_pmc_res);
+		p->gcs_pmc = devm_platform_ioremap_resource(pdev, ICH_RES_MEM_GCS_PMC);
 		if (IS_ERR(p->gcs_pmc))
 			return PTR_ERR(p->gcs_pmc);
 	}
@@ -567,6 +579,7 @@ static int iTCO_wdt_probe(struct platform_device *pdev)
 		break;
 	}
 
+	ident.firmware_version = p->iTCO_version;
 	p->wddev.info = &ident,
 	p->wddev.ops = &iTCO_wdt_ops,
 	p->wddev.bootstatus = 0;
@@ -607,7 +620,6 @@ static int iTCO_wdt_probe(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
 /*
  * Suspend-to-idle requires this, because it stops the ticks and timekeeping, so
  * the watchdog cannot be pinged while in that state.  In ACPI sleep states the
@@ -615,15 +627,15 @@ static int iTCO_wdt_probe(struct platform_device *pdev)
  */
 
 #ifdef CONFIG_ACPI
-static inline bool need_suspend(void)
+static inline bool __maybe_unused need_suspend(void)
 {
 	return acpi_target_system_state() == ACPI_STATE_S0;
 }
 #else
-static inline bool need_suspend(void) { return true; }
+static inline bool __maybe_unused need_suspend(void) { return true; }
 #endif
 
-static int iTCO_wdt_suspend_noirq(struct device *dev)
+static int __maybe_unused iTCO_wdt_suspend_noirq(struct device *dev)
 {
 	struct iTCO_wdt_private *p = dev_get_drvdata(dev);
 	int ret = 0;
@@ -637,7 +649,7 @@ static int iTCO_wdt_suspend_noirq(struct device *dev)
 	return ret;
 }
 
-static int iTCO_wdt_resume_noirq(struct device *dev)
+static int __maybe_unused iTCO_wdt_resume_noirq(struct device *dev)
 {
 	struct iTCO_wdt_private *p = dev_get_drvdata(dev);
 
@@ -648,20 +660,15 @@ static int iTCO_wdt_resume_noirq(struct device *dev)
 }
 
 static const struct dev_pm_ops iTCO_wdt_pm = {
-	.suspend_noirq = iTCO_wdt_suspend_noirq,
-	.resume_noirq = iTCO_wdt_resume_noirq,
+	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(iTCO_wdt_suspend_noirq,
+				      iTCO_wdt_resume_noirq)
 };
-
-#define ITCO_WDT_PM_OPS	(&iTCO_wdt_pm)
-#else
-#define ITCO_WDT_PM_OPS	NULL
-#endif /* CONFIG_PM_SLEEP */
 
 static struct platform_driver iTCO_wdt_driver = {
 	.probe          = iTCO_wdt_probe,
 	.driver         = {
 		.name   = DRV_NAME,
-		.pm     = ITCO_WDT_PM_OPS,
+		.pm     = &iTCO_wdt_pm,
 	},
 };
 

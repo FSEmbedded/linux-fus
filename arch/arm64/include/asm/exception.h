@@ -26,7 +26,7 @@ static inline unsigned long disr_to_esr(u64 disr)
 	return esr;
 }
 
-asmlinkage void handle_bad_stack(struct pt_regs *regs);
+asmlinkage void __noreturn handle_bad_stack(struct pt_regs *regs);
 
 asmlinkage void el1t_64_sync_handler(struct pt_regs *regs);
 asmlinkage void el1t_64_irq_handler(struct pt_regs *regs);
@@ -61,17 +61,20 @@ void do_debug_exception(unsigned long addr_if_watchpoint, unsigned long esr,
 			struct pt_regs *regs);
 void do_fpsimd_acc(unsigned long esr, struct pt_regs *regs);
 void do_sve_acc(unsigned long esr, struct pt_regs *regs);
+void do_sme_acc(unsigned long esr, struct pt_regs *regs);
 void do_fpsimd_exc(unsigned long esr, struct pt_regs *regs);
 void do_el0_sys(unsigned long esr, struct pt_regs *regs);
 void do_sp_pc_abort(unsigned long addr, unsigned long esr, struct pt_regs *regs);
 void bad_el0_sync(struct pt_regs *regs, int reason, unsigned long esr);
 void do_el0_cp15(unsigned long esr, struct pt_regs *regs);
+int do_compat_alignment_fixup(unsigned long addr, struct pt_regs *regs);
 void do_el0_svc(struct pt_regs *regs);
 void do_el0_svc_compat(struct pt_regs *regs);
 void do_el0_fpac(struct pt_regs *regs, unsigned long esr);
 void do_el1_fpac(struct pt_regs *regs, unsigned long esr);
+void do_el0_mops(struct pt_regs *regs, unsigned long esr);
 void do_serror(struct pt_regs *regs, unsigned long esr);
 void do_notify_resume(struct pt_regs *regs, unsigned long thread_flags);
 
-void panic_bad_stack(struct pt_regs *regs, unsigned long esr, unsigned long far);
+void __noreturn panic_bad_stack(struct pt_regs *regs, unsigned long esr, unsigned long far);
 #endif	/* __ASM_EXCEPTION_H */

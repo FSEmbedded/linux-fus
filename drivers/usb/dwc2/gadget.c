@@ -22,7 +22,6 @@
 #include <linux/delay.h>
 #include <linux/io.h>
 #include <linux/slab.h>
-#include <linux/of_platform.h>
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
@@ -886,10 +885,10 @@ static void dwc2_gadget_config_nonisoc_xfer_ddma(struct dwc2_hsotg_ep *hs_ep,
 	}
 
 	/* DMA sg buffer */
-	for_each_sg(ureq->sg, sg, ureq->num_sgs, i) {
+	for_each_sg(ureq->sg, sg, ureq->num_mapped_sgs, i) {
 		dwc2_gadget_fill_nonisoc_xfer_ddma_one(hs_ep, &desc,
 			sg_dma_address(sg) + sg->offset, sg_dma_len(sg),
-			sg_is_last(sg));
+			(i == (ureq->num_mapped_sgs - 1)));
 		desc_count += hs_ep->desc_count;
 	}
 
@@ -4613,6 +4612,7 @@ static int dwc2_hsotg_udc_stop(struct usb_gadget *gadget)
 	spin_lock_irqsave(&hsotg->lock, flags);
 
 	hsotg->driver = NULL;
+	hsotg->gadget.dev.of_node = NULL;
 	hsotg->gadget.speed = USB_SPEED_UNKNOWN;
 	hsotg->enabled = 0;
 
@@ -4998,6 +4998,7 @@ int dwc2_gadget_init(struct dwc2_hsotg *hsotg)
 
 	hsotg->gadget.ops = &dwc2_hsotg_gadget_ops;
 	hsotg->gadget.name = dev_name(dev);
+	hsotg->gadget.otg_caps = &hsotg->params.otg_caps;
 	hsotg->remote_wakeup_allowed = 0;
 
 	if (hsotg->params.lpm)
@@ -5237,7 +5238,7 @@ int dwc2_restore_device_registers(struct dwc2_hsotg *hsotg, int remote_wakeup)
 		 * as result BNA interrupt asserted on hibernation exit
 		 * by restoring from saved area.
 		 */
-		if (hsotg->params.g_dma_desc &&
+		if (using_desc_dma(hsotg) &&
 		    (dr->diepctl[i] & DXEPCTL_EPENA))
 			dr->diepdma[i] = hsotg->eps_in[i]->desc_list_dma;
 		dwc2_writel(hsotg, dr->dtxfsiz[i], DPTXFSIZN(i));
@@ -5249,7 +5250,7 @@ int dwc2_restore_device_registers(struct dwc2_hsotg *hsotg, int remote_wakeup)
 		 * as result BNA interrupt asserted on hibernation exit
 		 * by restoring from saved area.
 		 */
-		if (hsotg->params.g_dma_desc &&
+		if (using_desc_dma(hsotg) &&
 		    (dr->doepctl[i] & DXEPCTL_EPENA))
 			dr->doepdma[i] = hsotg->eps_out[i]->desc_list_dma;
 		dwc2_writel(hsotg, dr->doepdma[i], DOEPDMA(i));

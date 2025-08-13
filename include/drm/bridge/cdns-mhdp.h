@@ -18,8 +18,8 @@
 
 #include <drm/drm_bridge.h>
 #include <drm/drm_connector.h>
-#include <drm/drm_dp_helper.h>
-#include <drm/drm_dp_mst_helper.h>
+#include <drm/display/drm_dp_helper.h>
+#include <drm/display/drm_dp_mst_helper.h>
 #include <media/cec.h>
 #include <linux/bitops.h>
 #include <sound/hdmi-codec.h>
@@ -383,8 +383,7 @@
 #define DPTX_I2C_READ              0x15
 #define DPTX_I2C_WRITE             0x16
 #define DPTX_GET_LAST_I2C_STATUS   0x17
-
-
+#define DPTX_SET_AUX_MAX_DEFER_TRIES 0x19
 
 /* HDMI TX opcode */
 #define HDMI_TX_READ				0x00
@@ -783,6 +782,7 @@ struct cdns_mhdp_device {
 	struct cec_notifier *cec_notifier;
 
 	u32 lane_mapping;
+	u32 i2c_over_aux_retries;
 	bool link_up;
 	bool force_disconnected_sts;
 	bool power_up;
@@ -817,6 +817,7 @@ struct cdns_mhdp_device {
 			struct cdns_mhdp_cec cec;
 			u32 char_rate;
 			u32 hdmi_type;
+			bool hdr_enable;
 		} hdmi;
 	};
 	const struct cdns_plat_data *plat_data;
@@ -852,6 +853,7 @@ int cdns_mhdp_train_link(struct cdns_mhdp_device *mhdp);
 int cdns_mhdp_set_video_status(struct cdns_mhdp_device *mhdp, int active);
 int cdns_mhdp_config_video(struct cdns_mhdp_device *mhdp);
 int cdns_mhdp_apb_conf(struct cdns_mhdp_device *mhdp, u8 sel);
+int cdns_mhdp_set_maximum_defer_retry(struct cdns_mhdp_device *mhdp, int msg);
 
 /* Audio */
 int cdns_mhdp_audio_stop(struct cdns_mhdp_device *mhdp,
@@ -881,7 +883,8 @@ int cdns_mhdp_mailbox_validate_receive(struct cdns_mhdp_device *mhdp,
 					      u8 module_id, u8 opcode,
 					      u16 req_size);
 void cdns_mhdp_infoframe_set(struct cdns_mhdp_device *mhdp,
-					u8 entry_id, u8 packet_len, u8 *packet, u8 packet_type);
+			     u8 entry_id, u8 packet_len, u8 *packet, u8 packet_type);
+void cdns_mhdp_infoframe_clean(struct cdns_mhdp_device *mhdp, u8 entry_id);
 int cdns_hdmi_get_edid_block(void *data, u8 *edid, u32 block, size_t length);
 int cdns_hdmi_scdc_read(struct cdns_mhdp_device *mhdp, u8 addr, u8 *data);
 int cdns_hdmi_scdc_write(struct cdns_mhdp_device *mhdp, u8 addr, u8 value);

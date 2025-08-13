@@ -41,6 +41,8 @@
 
 &mipi0_dsi_host {
 	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
 
 	mipi0_panel {
 		#address-cells = <1>;

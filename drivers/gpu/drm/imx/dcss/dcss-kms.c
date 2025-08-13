@@ -6,10 +6,11 @@
 #include <drm/bridge/cdns-mhdp.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_blend.h>
 #include <drm/drm_bridge_connector.h>
 #include <drm/drm_drv.h>
-#include <drm/drm_fb_helper.h>
-#include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_fbdev_dma.h>
+#include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_of.h>
 #include <drm/drm_probe_helper.h>
@@ -19,7 +20,7 @@
 #include "dcss-dev.h"
 #include "dcss-kms.h"
 
-DEFINE_DRM_GEM_CMA_FOPS(dcss_cma_fops);
+DEFINE_DRM_GEM_DMA_FOPS(dcss_cma_fops);
 
 static int dcss_kms_atomic_check(struct drm_device *dev,
 				 struct drm_atomic_state *state)
@@ -43,14 +44,13 @@ static int dcss_kms_atomic_check(struct drm_device *dev,
 
 static const struct drm_mode_config_funcs dcss_drm_mode_config_funcs = {
 	.fb_create = drm_gem_fb_create,
-	.output_poll_changed = drm_fb_helper_output_poll_changed,
 	.atomic_check = dcss_kms_atomic_check,
 	.atomic_commit = drm_atomic_helper_commit,
 };
 
 static const struct drm_driver dcss_kms_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
-	DRM_GEM_CMA_DRIVER_OPS,
+	DRM_GEM_DMA_DRIVER_OPS,
 	.gem_prime_import	= drm_gem_prime_import,
 	.fops			= &dcss_cma_fops,
 	.name			= "imx-dcss",
@@ -179,13 +179,11 @@ struct dcss_kms_dev *dcss_kms_attach(struct dcss_dev *dcss, bool componentized)
 	if (ret)
 		goto cleanup_crtc;
 
-	drm_fbdev_generic_setup(drm, 32);
+	drm_fbdev_dma_setup(drm, 32);
 
 	return kms;
 
 cleanup_crtc:
-	if (!componentized)
-		drm_bridge_connector_disable_hpd(kms->connector);
 	drm_kms_helper_poll_fini(drm);
 	dcss_crtc_deinit(crtc, drm);
 
@@ -202,8 +200,6 @@ void dcss_kms_detach(struct dcss_kms_dev *kms, bool componentized)
 	struct dcss_dev *dcss = drm->dev_private;
 
 	drm_dev_unregister(drm);
-	if (!componentized)
-		drm_bridge_connector_disable_hpd(kms->connector);
 	drm_kms_helper_poll_fini(drm);
 	drm_atomic_helper_shutdown(drm);
 	drm_crtc_vblank_off(&kms->crtc.base);

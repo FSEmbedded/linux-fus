@@ -25,6 +25,12 @@
  * application.
  */
 #define XDP_USE_NEED_WAKEUP (1 << 3)
+/* By setting this option, userspace application indicates that it can
+ * handle multiple descriptors per packet thus enabling xsk core to split
+ * multi-buffer XDP frames into multiple Rx descriptors. Without this set
+ * such frames will be dropped by xsk.
+ */
+#define XDP_USE_SG     (1 << 4)
 
 /* Flags for xsk_umem_config flags */
 #define XDP_UMEM_UNALIGNED_CHUNK_FLAG (1 << 0)
@@ -70,7 +76,6 @@ struct xdp_umem_reg {
 	__u32 chunk_size;
 	__u32 headroom;
 	__u32 flags;
-	__u32 tx_headroom;
 };
 
 struct xdp_statistics {
@@ -106,6 +111,9 @@ struct xdp_desc {
 	__u32 len;
 	__u32 options;
 };
+
+/* Flag indicating packet constitutes of multiple buffers*/
+#define XDP_PKT_CONTD (1 << 0)
 
 /* UMEM descriptor is __u64 */
 

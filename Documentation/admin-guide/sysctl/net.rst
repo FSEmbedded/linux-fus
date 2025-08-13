@@ -102,6 +102,9 @@ Values:
 	- 1 - enable JIT hardening for unprivileged users only
 	- 2 - enable JIT hardening for all users
 
+where "privileged user" in this context means a process having
+CAP_BPF or CAP_SYS_ADMIN in the root user name space.
+
 bpf_jit_kallsyms
 ----------------
 
@@ -202,6 +205,11 @@ Will increase power usage.
 
 Default: 0 (off)
 
+mem_pcpu_rsv
+------------
+
+Per-cpu reserved forward alloc cache size in page units. Default 1MB per CPU.
+
 rmem_default
 ------------
 
@@ -211,6 +219,12 @@ rmem_max
 --------
 
 The maximum receive socket buffer size in bytes.
+
+rps_default_mask
+----------------
+
+The default RPS CPU mask used on newly created network devices. An empty
+mask means RPS disabled by default.
 
 tstamp_allow_data
 -----------------
@@ -323,6 +337,14 @@ a leaked reference faster. A larger value may be useful to prevent false
 warnings on slow/loaded systems.
 Default value is 10, minimum 1, maximum 3600.
 
+skb_defer_max
+-------------
+
+Max size (in skbs) of the per-cpu list of skbs being freed
+by the cpu which allocated them. Used by TCP stack so far.
+
+Default: 64
+
 optmem_max
 ----------
 
@@ -365,6 +387,36 @@ settings are forced to inherit from current ones in the netns where this
 new netns has been created.
 
 Default : 0  (for compatibility reasons)
+
+txrehash
+--------
+
+Controls default hash rethink behaviour on socket when SO_TXREHASH option is set
+to SOCK_TXREHASH_DEFAULT (i. e. not overridden by setsockopt).
+
+If set to 1 (default), hash rethink is performed on listening socket.
+If set to 0, hash rethink is not performed.
+
+gro_normal_batch
+----------------
+
+Maximum number of the segments to batch up on output of GRO. When a packet
+exits GRO, either as a coalesced superframe or as an original packet which
+GRO has decided not to coalesce, it is placed on a per-NAPI list. This
+list is then passed to the stack when the number of segments reaches the
+gro_normal_batch limit.
+
+high_order_alloc_disable
+------------------------
+
+By default the allocator for page frags tries to use high order pages (order-3
+on x86). While the default behavior gives good results in most cases, some users
+might have hit a contention in page allocations/freeing. This was especially
+true on older kernels (< 5.14) when high-order pages were not stored on per-cpu
+lists. This allows to opt-in for order-0 allocation instead but is now mostly of
+historical importance.
+
+Default: 0
 
 2. /proc/sys/net/unix - Parameters for Unix domain sockets
 ----------------------------------------------------------

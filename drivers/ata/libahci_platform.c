@@ -20,6 +20,7 @@
 #include <linux/ahci_platform.h>
 #include <linux/phy/phy.h>
 #include <linux/pm_runtime.h>
+#include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/reset.h>
 #include "ahci.h"
@@ -59,7 +60,7 @@ int ahci_platform_enable_phys(struct ahci_host_priv *hpriv)
 		}
 
 		rc = phy_power_on(hpriv->phys[i]);
-		if (rc && !(rc == -EOPNOTSUPP && (hpriv->flags & AHCI_HFLAG_IGN_NOTSUPP_POWER_ON))) {
+		if (rc) {
 			phy_exit(hpriv->phys[i]);
 			goto disable_phys;
 		}
@@ -92,6 +93,30 @@ void ahci_platform_disable_phys(struct ahci_host_priv *hpriv)
 	}
 }
 EXPORT_SYMBOL_GPL(ahci_platform_disable_phys);
+
+/**
+ * ahci_platform_find_clk - Find platform clock
+ * @hpriv: host private area to store config values
+ * @con_id: clock connection ID
+ *
+ * This function returns a pointer to the clock descriptor of the clock with
+ * the passed ID.
+ *
+ * RETURNS:
+ * Pointer to the clock descriptor on success otherwise NULL
+ */
+struct clk *ahci_platform_find_clk(struct ahci_host_priv *hpriv, const char *con_id)
+{
+	int i;
+
+	for (i = 0; i < hpriv->n_clks; i++) {
+		if (hpriv->clks[i].id && !strcmp(hpriv->clks[i].id, con_id))
+			return hpriv->clks[i].clk;
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL_GPL(ahci_platform_find_clk);
 
 /**
  * ahci_platform_enable_clks - Enable platform clocks
@@ -339,7 +364,7 @@ static int ahci_platform_get_phy(struct ahci_host_priv *hpriv, u32 port,
 	switch (rc) {
 	case -ENOSYS:
 		/* No PHY support. Check if PHY is required. */
-		if (of_find_property(node, "phys", NULL)) {
+		if (of_property_present(node, "phys")) {
 			dev_err(dev,
 				"couldn't get PHY in node %pOFn: ENOSYS\n",
 				node);
@@ -382,6 +407,34 @@ static int ahci_platform_get_regulator(struct ahci_host_priv *hpriv, u32 port,
 	return rc;
 }
 
+static int ahci_platform_get_firmware(struct ahci_host_priv *hpriv,
+				      struct device *dev)
+{
+	struct device_node *child;
+	u32 port;
+
+	if (!of_property_read_u32(dev->of_node, "hba-cap", &hpriv->saved_cap))
+		hpriv->saved_cap &= (HOST_CAP_SSS | HOST_CAP_MPS);
+
+	of_property_read_u32(dev->of_node,
+			     "ports-implemented", &hpriv->saved_port_map);
+
+	for_each_child_of_node(dev->of_node, child) {
+		if (!of_device_is_available(child))
+			continue;
+
+		if (of_property_read_u32(child, "reg", &port)) {
+			of_node_put(child);
+			return -EINVAL;
+		}
+
+		if (!of_property_read_u32(child, "hba-port-cap", &hpriv->saved_port_cap[port]))
+			hpriv->saved_port_cap[port] &= PORT_CMD_CAP;
+	}
+
+	return 0;
+}
+
 /**
  * ahci_platform_get_resources - Get platform resources
  * @pdev: platform device to get resources for
@@ -420,8 +473,14 @@ struct ahci_host_priv *ahci_platform_get_resources(struct platform_device *pdev,
 
 	devres_add(dev, hpriv);
 
-	hpriv->mmio = devm_ioremap_resource(dev,
-			      platform_get_resource(pdev, IORESOURCE_MEM, 0));
+	/*
+	 * If the DT provided an "ahci" named resource, use it. Otherwise,
+	 * fallback to using the default first resource for the device node.
+	 */
+	if (platform_get_resource_byname(pdev, IORESOURCE_MEM, "ahci"))
+		hpriv->mmio = devm_platform_ioremap_resource_byname(pdev, "ahci");
+	else
+		hpriv->mmio = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(hpriv->mmio)) {
 		rc = PTR_ERR(hpriv->mmio);
 		goto err_out;
@@ -583,6 +642,15 @@ struct ahci_host_priv *ahci_platform_get_resources(struct platform_device *pdev,
 		if (rc == -EPROBE_DEFER)
 			goto err_out;
 	}
+
+	/*
+	 * Retrieve firmware-specific flags which then will be used to set
+	 * the HW-init fields of HBA and its ports
+	 */
+	rc = ahci_platform_get_firmware(hpriv, dev);
+	if (rc)
+		goto err_out;
+
 	pm_runtime_enable(dev);
 	pm_runtime_get_sync(dev);
 	hpriv->got_runtime_pm = true;
@@ -613,7 +681,7 @@ EXPORT_SYMBOL_GPL(ahci_platform_get_resources);
 int ahci_platform_init_host(struct platform_device *pdev,
 			    struct ahci_host_priv *hpriv,
 			    const struct ata_port_info *pi_template,
-			    struct scsi_host_template *sht)
+			    const struct scsi_host_template *sht)
 {
 	struct device *dev = &pdev->dev;
 	struct ata_port_info pi = *pi_template;
@@ -622,11 +690,8 @@ int ahci_platform_init_host(struct platform_device *pdev,
 	int i, irq, n_ports, rc;
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq < 0) {
-		if (irq != -EPROBE_DEFER)
-			dev_err(dev, "no irq\n");
+	if (irq < 0)
 		return irq;
-	}
 	if (!irq)
 		return -EINVAL;
 
@@ -685,13 +750,8 @@ int ahci_platform_init_host(struct platform_device *pdev,
 	if (hpriv->cap & HOST_CAP_64) {
 		rc = dma_coerce_mask_and_coherent(dev, DMA_BIT_MASK(64));
 		if (rc) {
-			rc = dma_coerce_mask_and_coherent(dev,
-							  DMA_BIT_MASK(32));
-			if (rc) {
-				dev_err(dev, "Failed to enable 64-bit DMA.\n");
-				return rc;
-			}
-			dev_warn(dev, "Enable 32-bit DMA instead of 64-bit.\n");
+			dev_err(dev, "Failed to enable 64-bit DMA.\n");
+			return rc;
 		}
 	}
 
@@ -784,7 +844,8 @@ int ahci_platform_suspend_host(struct device *dev)
 	if (hpriv->flags & AHCI_HFLAG_SUSPEND_PHYS)
 		ahci_platform_disable_phys(hpriv);
 
-	return ata_host_suspend(host, PMSG_SUSPEND);
+	ata_host_suspend(host, PMSG_SUSPEND);
+	return 0;
 }
 EXPORT_SYMBOL_GPL(ahci_platform_suspend_host);
 

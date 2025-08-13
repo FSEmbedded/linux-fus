@@ -25,7 +25,7 @@ Below is the list of affected Intel processors [#f1]_:
    ATOM_TREMONT_L          06_9CH
    RAPTORLAKE              06_B7H
    RAPTORLAKE_P            06_BAH
-   ALDERLAKE_N             06_BEH
+   ATOM_GRACEMONT          06_BEH
    RAPTORLAKE_S            06_BFH
    ===================  ============
 

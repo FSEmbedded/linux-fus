@@ -40,7 +40,7 @@
 
 /* PPI */
 #define EnContCK		TRUE
-#define HSSetNum		1
+#define HSSetNum		3
 #define EnDeSkew		TRUE
 #define PPIDbgSel		12
 #define RegIgnrNull		1
@@ -904,14 +904,14 @@ static void hdmi_tx_set_capability_from_edid_parse(struct it6161 *it6161, struct
 	it6161->hdmi_tx_output_color_space = OUTPUT_COLOR_MODE;
 	it6161->hdmi_tx_input_color_space = INPUT_COLOR_MODE;
 	if (it6161->hdmi_tx_output_color_space == F_MODE_YUV444) {
-		if ((info->color_formats & DRM_COLOR_FORMAT_YCRCB444) != DRM_COLOR_FORMAT_YCRCB444) {
+		if ((info->color_formats & DRM_COLOR_FORMAT_YCBCR444) != DRM_COLOR_FORMAT_YCBCR444) {
 			it6161->hdmi_tx_output_color_space &= ~F_MODE_CLRMOD_MASK;
 			it6161->hdmi_tx_output_color_space |= F_MODE_RGB444;
 		}
 	}
 
 	if (it6161->hdmi_tx_output_color_space == F_MODE_YUV422) {
-		if ((info->color_formats & DRM_COLOR_FORMAT_YCRCB422) != DRM_COLOR_FORMAT_YCRCB422) {
+		if ((info->color_formats & DRM_COLOR_FORMAT_YCBCR422) != DRM_COLOR_FORMAT_YCBCR422) {
 			it6161->hdmi_tx_output_color_space &= ~F_MODE_CLRMOD_MASK;
 			it6161->hdmi_tx_output_color_space |= F_MODE_RGB444;
 		}
@@ -925,9 +925,9 @@ static void hdmi_tx_set_capability_from_edid_parse(struct it6161 *it6161, struct
 
 	if ((info->color_formats & DRM_COLOR_FORMAT_RGB444) == DRM_COLOR_FORMAT_RGB444)
 		DRM_DEV_INFO(dev, "support RGB444 output");
-	if ((info->color_formats & DRM_COLOR_FORMAT_YCRCB444) == DRM_COLOR_FORMAT_YCRCB444)
+	if ((info->color_formats & DRM_COLOR_FORMAT_YCBCR444) == DRM_COLOR_FORMAT_YCBCR444)
 		DRM_DEV_INFO(dev, "support YUV444 output");
-	if ((info->color_formats & DRM_COLOR_FORMAT_YCRCB422) == DRM_COLOR_FORMAT_YCRCB422)
+	if ((info->color_formats & DRM_COLOR_FORMAT_YCBCR422) == DRM_COLOR_FORMAT_YCBCR422)
 		DRM_DEV_INFO(dev, "support YUV422 output");
 }
 
@@ -1045,7 +1045,9 @@ static int it6161_attach_dsi(struct it6161 *it6161)
 	dsi->lanes = MIPI_RX_LANE_COUNT;
 	dsi->format = MIPI_DSI_FMT_RGB888;
 	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE |
-	    MIPI_DSI_MODE_NO_EOT_PACKET | MIPI_DSI_MODE_VIDEO_HSE;
+	    MIPI_DSI_MODE_NO_EOT_PACKET | MIPI_DSI_MODE_VIDEO_HSE |
+	    MIPI_DSI_MODE_VIDEO_NO_HFP | MIPI_DSI_MODE_VIDEO_NO_HBP |
+	    MIPI_DSI_MODE_VIDEO_NO_HSA;
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
@@ -2293,8 +2295,7 @@ static int it6161_parse_dt(struct it6161 *it6161, struct device_node *np)
 	return 0;
 }
 
-static int it6161_i2c_probe(struct i2c_client *i2c_mipi_rx,
-			    const struct i2c_device_id *id)
+static int it6161_i2c_probe(struct i2c_client *i2c_mipi_rx)
 {
 	struct device *dev = &i2c_mipi_rx->dev;
 	int err, intp_irq;
@@ -2368,14 +2369,13 @@ static int it6161_i2c_probe(struct i2c_client *i2c_mipi_rx,
 	return 0;
 }
 
-static int it6161_remove(struct i2c_client *i2c_mipi_rx)
+static void it6161_remove(struct i2c_client *i2c_mipi_rx)
 {
 	struct it6161 *it6161 = i2c_get_clientdata(i2c_mipi_rx);
 
 	drm_connector_unregister(&it6161->connector);
 	drm_connector_cleanup(&it6161->connector);
 	drm_bridge_remove(&it6161->bridge);
-	return 0;
 }
 
 static const struct i2c_device_id it6161_id[] = {

@@ -19,6 +19,7 @@ config SND_SOC_FSL_SAI
 	select REGMAP_MMIO
 	select SND_SOC_IMX_PCM_DMA if SND_IMX_SOC != n
 	select SND_SOC_GENERIC_DMAENGINE_PCM
+	select SND_SOC_FSL_UTILS
 	help
 	  Say Y if you want to add Synchronous Audio Interface (SAI)
 	  support for the Freescale CPUs.
@@ -59,6 +60,7 @@ config SND_SOC_FSL_SPDIF
 	select SND_SOC_IMX_PCM_DMA if SND_IMX_SOC != n
 	select SND_SOC_IMX_PCM_FIQ if SND_IMX_SOC != n && (MXC_TZIC || MXC_AVIC)
 	select BITREVERSE
+	select SND_SOC_FSL_UTILS
 	help
 	  Say Y if you want to add Sony/Philips Digital Interface (SPDIF)
 	  support for the Freescale CPUs.
@@ -80,6 +82,7 @@ config SND_SOC_FSL_MICFIL
 	select REGMAP_MMIO
 	select SND_SOC_IMX_PCM_DMA if SND_IMX_SOC != n
 	select SND_SOC_GENERIC_DMAENGINE_PCM
+	select SND_SOC_FSL_UTILS
 	help
 	  Say Y if you want to add Pulse Density Modulation microphone
 	  interface (MICFIL) support for NXP.
@@ -111,12 +114,6 @@ config SND_SOC_FSL_AUD2HTX
 	select SND_SOC_IMX_PCM_DMA if SND_IMX_SOC != n
 	help
 	  Say Y if you want to add AUDIO TO HDMI TX support for NXP.
-
-config SND_SOC_FSL_ESAI_CLIENT
-	tristate "NXP ESAI CLIENT module support"
-	select SND_SOC_IMX_PCM_DMA if SND_IMX_SOC != n
-	help
-	  Say Y if you want to add ESAI CLIENT module support for NXP.
 
 config SND_SOC_FSL_UTILS
 	tristate
@@ -177,6 +174,15 @@ config SND_MPC52xx_DMA
 
 config SND_SOC_POWERPC_DMA
 	tristate
+
+config SND_SOC_POWERPC_QMC_AUDIO
+	tristate "QMC ALSA SoC support"
+	depends on CPM_QMC
+	help
+	  ALSA SoC Audio support using the Freescale QUICC Multichannel
+	  Controller (QMC).
+	  Say Y or M if you want to add support for SoC audio using Freescale
+	  QMC.
 
 comment "SoC Audio support for Freescale PPC boards:"
 
@@ -316,6 +322,10 @@ config SND_SOC_IMX_SGTL5000
 	  Say Y if you want to add support for SoC audio on an i.MX board with
 	  a sgtl5000 codec.
 
+	  Note that this is an old driver. Consider enabling
+	  SND_SOC_FSL_ASOC_CARD and SND_SOC_SGTL5000 to use the newer
+	  driver.
+
 config SND_SOC_FSL_FUS_WM9715
  	tristate "SoC Audio support for i.MX boards with WM9715"
  	depends on OF
@@ -355,6 +365,7 @@ config SND_SOC_FSL_ASOC_CARD
 	select SND_SOC_FSL_ESAI
 	select SND_SOC_FSL_SAI
 	select SND_SOC_FSL_SSI
+	select SND_SOC_TLV320AIC31XX
 	select SND_SOC_WM8994
 	select MFD_WM8994
 	help
@@ -408,20 +419,11 @@ config SND_SOC_IMX_CARD
 	  with OF-graph DT bindings.
 	  It also support DPCM of single CPU multi Codec ststem.
 
-config SND_SOC_IMX_PDM_MIC
-	tristate "SoC Audio support for i.MX boards with PDM mic on SAI"
-	depends on OF
-	select SND_SOC_IMX_PDM_DMA
-	select SND_SOC_FSL_SAI
-	help
-	  SoC Audio support for i.MX boards with PDM microphones on SAI
-	  Say Y if you want to add support for SoC Audio support for i.MX boards
-	  with PDM microphones on SAI.
-
 config SND_SOC_IMX_PCM512X
-	tristate "SoC Audio support for i.MX boards with PCM512x and headphone amp"
+	tristate "SoC Audio support for i.MX boards with PCM512x, PCM186x ADC and headphone amp"
 	depends on OF && I2C
 	select SND_SOC_PCM512x_I2C
+	select SND_SOC_PCM186X_I2C
 	select SND_SOC_TPA6130A2
 	select SND_SOC_IMX_PCM_DMA
 	select SND_SOC_FSL_SAI

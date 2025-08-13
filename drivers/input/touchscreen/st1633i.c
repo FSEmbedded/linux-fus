@@ -1316,7 +1316,7 @@ static int sitronix_ts_probe_dt(struct i2c_client *client)
 }
 #endif
 
-static int sitronix_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int sitronix_ts_probe(struct i2c_client *client)
 {
 	int i;
 	int ret = 0;
@@ -1540,7 +1540,7 @@ err_check_functionality_failed:
 	return ret;
 }
 
-static int sitronix_ts_remove(struct i2c_client *client)
+static void sitronix_ts_remove(struct i2c_client *client)
 {
 	struct sitronix_ts_data *ts = i2c_get_clientdata(client);
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -1567,7 +1567,6 @@ static int sitronix_ts_remove(struct i2c_client *client)
 		input_unregister_device(ts->input_dev);
 	if(ts->keyevent_input)
 		input_unregister_device(ts->keyevent_input);
-	return 0;
 }
 
 static int sitronix_ts_suspend(struct i2c_client *client, pm_message_t mesg)
@@ -1749,7 +1748,7 @@ static int __init sitronix_ts_init(void)
 		return 0;
 	}
 
-	sitronix_class = class_create(THIS_MODULE, SITRONIX_I2C_TOUCH_DEV_NAME);
+	sitronix_class = class_create(SITRONIX_I2C_TOUCH_DEV_NAME);
 	if (IS_ERR(sitronix_class)) {
 		result = PTR_ERR(sitronix_class);
 		unregister_chrdev(sitronix_major, SITRONIX_I2C_TOUCH_DEV_NAME);

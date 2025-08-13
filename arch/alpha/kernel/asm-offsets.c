@@ -17,6 +17,8 @@ void foo(void)
 	DEFINE(TI_TASK, offsetof(struct thread_info, task));
 	DEFINE(TI_FLAGS, offsetof(struct thread_info, flags));
 	DEFINE(TI_CPU, offsetof(struct thread_info, cpu));
+	DEFINE(TI_FP, offsetof(struct thread_info, fp));
+	DEFINE(TI_STATUS, offsetof(struct thread_info, status));
 	BLANK();
 
         DEFINE(TASK_BLOCKED, offsetof(struct task_struct, blocked));
@@ -32,7 +34,9 @@ void foo(void)
         DEFINE(CRED_EGID, offsetof(struct cred, egid));
         BLANK();
 
+	DEFINE(SP_OFF, offsetof(struct pt_regs, ps));
 	DEFINE(SIZEOF_PT_REGS, sizeof(struct pt_regs));
+	DEFINE(SWITCH_STACK_SIZE, sizeof(struct switch_stack));
 	DEFINE(PT_PTRACED, PT_PTRACED);
 	DEFINE(CLONE_VM, CLONE_VM);
 	DEFINE(CLONE_UNTRACED, CLONE_UNTRACED);

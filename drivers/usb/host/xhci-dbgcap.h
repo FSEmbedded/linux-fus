@@ -81,7 +81,6 @@ enum dbc_state {
 	DS_ENABLED,
 	DS_CONNECTED,
 	DS_CONFIGURED,
-	DS_STALLED,
 };
 
 struct dbc_ep {
@@ -89,6 +88,7 @@ struct dbc_ep {
 	struct list_head		list_pending;
 	struct xhci_ring		*ring;
 	unsigned int			direction:1;
+	unsigned int			halted:1;
 };
 
 #define DBC_QUEUE_SIZE			16
@@ -100,6 +100,7 @@ struct dbc_ep {
 struct dbc_port {
 	struct tty_port			port;
 	spinlock_t			port_lock;	/* port access */
+	int				minor;
 
 	struct list_head		read_pool;
 	struct list_head		read_queue;
@@ -107,7 +108,7 @@ struct dbc_port {
 	struct tasklet_struct		push;
 
 	struct list_head		write_pool;
-	struct kfifo			write_fifo;
+	unsigned int			tx_boundary;
 
 	bool				registered;
 };
@@ -131,6 +132,10 @@ struct xhci_dbc {
 	struct dbc_str_descs		*string;
 	dma_addr_t			string_dma;
 	size_t				string_size;
+	u16				idVendor;
+	u16				idProduct;
+	u16				bcdDevice;
+	u8				bInterfaceProtocol;
 
 	enum dbc_state			state;
 	struct delayed_work		event_work;
@@ -196,6 +201,10 @@ static inline struct dbc_ep *get_out_ep(struct xhci_dbc *dbc)
 #ifdef CONFIG_USB_XHCI_DBGCAP
 int xhci_create_dbc_dev(struct xhci_hcd *xhci);
 void xhci_remove_dbc_dev(struct xhci_hcd *xhci);
+int xhci_dbc_init(void);
+void xhci_dbc_exit(void);
+int dbc_tty_init(void);
+void dbc_tty_exit(void);
 int xhci_dbc_tty_probe(struct device *dev, void __iomem *res, struct xhci_hcd *xhci);
 void xhci_dbc_tty_remove(struct xhci_dbc *dbc);
 struct xhci_dbc *xhci_alloc_dbc(struct device *dev, void __iomem *res,
@@ -219,7 +228,13 @@ static inline int xhci_create_dbc_dev(struct xhci_hcd *xhci)
 static inline void xhci_remove_dbc_dev(struct xhci_hcd *xhci)
 {
 }
-
+static inline int xhci_dbc_init(void)
+{
+	return 0;
+}
+static inline void xhci_dbc_exit(void)
+{
+}
 static inline int xhci_dbc_suspend(struct xhci_hcd *xhci)
 {
 	return 0;

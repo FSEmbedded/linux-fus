@@ -830,8 +830,8 @@ static int hip04_set_coalesce(struct net_device *netdev,
 static void hip04_get_drvinfo(struct net_device *netdev,
 			      struct ethtool_drvinfo *drvinfo)
 {
-	strlcpy(drvinfo->driver, DRV_NAME, sizeof(drvinfo->driver));
-	strlcpy(drvinfo->version, DRV_VERSION, sizeof(drvinfo->version));
+	strscpy(drvinfo->driver, DRV_NAME, sizeof(drvinfo->driver));
+	strscpy(drvinfo->version, DRV_VERSION, sizeof(drvinfo->version));
 }
 
 static const struct ethtool_ops hip04_ethtool_ops = {
@@ -947,6 +947,7 @@ static int hip04_mac_probe(struct platform_device *pdev)
 	priv->tx_coalesce_timer.function = tx_done;
 
 	priv->map = syscon_node_to_regmap(arg.np);
+	of_node_put(arg.np);
 	if (IS_ERR(priv->map)) {
 		dev_warn(d, "no syscon hisilicon,hip04-ppe\n");
 		ret = PTR_ERR(priv->map);
@@ -960,8 +961,8 @@ static int hip04_mac_probe(struct platform_device *pdev)
 	}
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq <= 0) {
-		ret = -EINVAL;
+	if (irq < 0) {
+		ret = irq;
 		goto init_fail;
 	}
 
@@ -990,7 +991,7 @@ static int hip04_mac_probe(struct platform_device *pdev)
 	ndev->watchdog_timeo = TX_TIMEOUT;
 	ndev->priv_flags |= IFF_UNICAST_FLT;
 	ndev->irq = irq;
-	netif_napi_add(ndev, &priv->napi, hip04_rx_poll, NAPI_POLL_WEIGHT);
+	netif_napi_add(ndev, &priv->napi, hip04_rx_poll);
 
 	hip04_reset_dreq(priv);
 	hip04_reset_ppe(priv);
@@ -998,7 +999,7 @@ static int hip04_mac_probe(struct platform_device *pdev)
 		hip04_config_port(ndev, SPEED_100, DUPLEX_FULL);
 
 	hip04_config_fifo(priv);
-	eth_random_addr(ndev->dev_addr);
+	eth_hw_addr_random(ndev);
 	hip04_update_mac_address(ndev);
 
 	ret = hip04_alloc_ring(ndev, d);

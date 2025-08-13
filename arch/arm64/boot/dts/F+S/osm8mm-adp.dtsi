@@ -185,15 +185,29 @@
 	};
 
 	sound-sgtl5000 {
-		compatible = "fsl,imx-audio-sgtl5000";
-		cpu-dai = <&osm_i2s_a>;
-		audio-codec = <&sgtl5000>;
-		model = "imx-sgtl5000";
-		audio-routing =
-			"LINE_IN", "Line In Jack",
-//###			"MIC_IN", "Mic Jack",
-//###			"Line Out Jack", "LINE_OUT",
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "imx-sgtl5000";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,frame-master = <&codecdai>;
+		simple-audio-card,bitclock-master = <&codecdai>;
+		simple-audio-card,widgets =
+			"Line", "Line Out Jack",
+			"Line", "Line In Jack",
+			"Microphone", "Microphone Jack",
+			"Headphone", "Headphone Jack";
+		simple-audio-card,routing =
+			"Line Out Jack", "LINE_OUT",
+			"LINE_IN", "Line In Jack", 
+			"MIC_IN", "Microphone Jack",
 			"Headphone Jack", "HP_OUT";
+
+		cpudai: simple-audio-card,cpu {
+			sound-dai = <&osm_i2s_a>;
+		};
+
+		codecdai: simple-audio-card,codec {
+			sound-dai = <&sgtl5000>;
+		};
 	};
 
 	/* SPI bitbanging driver */
@@ -238,6 +252,7 @@
 
 &osm_i2c_b {
 	sgtl5000: sgtl5000@a {
+		#sound-dai-cells = <0>;
 		compatible = "fsl,sgtl5000";
 		/* MCLK is needed for i2c sgtl driver */
 		pinctrl-names = "default";

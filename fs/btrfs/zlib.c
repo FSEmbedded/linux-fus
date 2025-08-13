@@ -63,7 +63,7 @@ struct list_head *zlib_alloc_workspace(unsigned int level)
 
 	workspacesize = max(zlib_deflate_workspacesize(MAX_WBITS, MAX_MEM_LEVEL),
 			zlib_inflate_workspacesize());
-	workspace->strm.workspace = kvzalloc(workspacesize, GFP_KERNEL);
+	workspace->strm.workspace = kvzalloc(workspacesize, GFP_KERNEL | __GFP_NOWARN);
 	workspace->level = level;
 	workspace->buf = NULL;
 	/*
@@ -97,7 +97,7 @@ int zlib_compress_pages(struct list_head *ws, struct address_space *mapping,
 {
 	struct workspace *workspace = list_entry(ws, struct workspace, list);
 	int ret;
-	char *data_in;
+	char *data_in = NULL;
 	char *cpage_out;
 	int nr_pages = 0;
 	struct page *in_page = NULL;
@@ -126,7 +126,7 @@ int zlib_compress_pages(struct list_head *ws, struct address_space *mapping,
 		ret = -ENOMEM;
 		goto out;
 	}
-	cpage_out = kmap(out_page);
+	cpage_out = page_address(out_page);
 	pages[0] = out_page;
 	nr_pages = 1;
 
@@ -148,26 +148,26 @@ int zlib_compress_pages(struct list_head *ws, struct address_space *mapping,
 				int i;
 
 				for (i = 0; i < in_buf_pages; i++) {
-					if (in_page) {
-						kunmap(in_page);
+					if (data_in) {
+						kunmap_local(data_in);
 						put_page(in_page);
 					}
 					in_page = find_get_page(mapping,
 								start >> PAGE_SHIFT);
-					data_in = kmap(in_page);
-					memcpy(workspace->buf + i * PAGE_SIZE,
-					       data_in, PAGE_SIZE);
+					data_in = kmap_local_page(in_page);
+					copy_page(workspace->buf + i * PAGE_SIZE,
+						  data_in);
 					start += PAGE_SIZE;
 				}
 				workspace->strm.next_in = workspace->buf;
 			} else {
-				if (in_page) {
-					kunmap(in_page);
+				if (data_in) {
+					kunmap_local(data_in);
 					put_page(in_page);
 				}
 				in_page = find_get_page(mapping,
 							start >> PAGE_SHIFT);
-				data_in = kmap(in_page);
+				data_in = kmap_local_page(in_page);
 				start += PAGE_SIZE;
 				workspace->strm.next_in = data_in;
 			}
@@ -196,9 +196,7 @@ int zlib_compress_pages(struct list_head *ws, struct address_space *mapping,
 		 * the stream end if required
 		 */
 		if (workspace->strm.avail_out == 0) {
-			kunmap(out_page);
 			if (nr_pages == nr_dest_pages) {
-				out_page = NULL;
 				ret = -E2BIG;
 				goto out;
 			}
@@ -207,7 +205,7 @@ int zlib_compress_pages(struct list_head *ws, struct address_space *mapping,
 				ret = -ENOMEM;
 				goto out;
 			}
-			cpage_out = kmap(out_page);
+			cpage_out = page_address(out_page);
 			pages[nr_pages] = out_page;
 			nr_pages++;
 			workspace->strm.avail_out = PAGE_SIZE;
@@ -234,9 +232,7 @@ int zlib_compress_pages(struct list_head *ws, struct address_space *mapping,
 			goto out;
 		} else if (workspace->strm.avail_out == 0) {
 			/* get another page for the stream end */
-			kunmap(out_page);
 			if (nr_pages == nr_dest_pages) {
-				out_page = NULL;
 				ret = -E2BIG;
 				goto out;
 			}
@@ -245,7 +241,7 @@ int zlib_compress_pages(struct list_head *ws, struct address_space *mapping,
 				ret = -ENOMEM;
 				goto out;
 			}
-			cpage_out = kmap(out_page);
+			cpage_out = page_address(out_page);
 			pages[nr_pages] = out_page;
 			nr_pages++;
 			workspace->strm.avail_out = PAGE_SIZE;
@@ -264,13 +260,11 @@ int zlib_compress_pages(struct list_head *ws, struct address_space *mapping,
 	*total_in = workspace->strm.total_in;
 out:
 	*out_pages = nr_pages;
-	if (out_page)
-		kunmap(out_page);
-
-	if (in_page) {
-		kunmap(in_page);
+	if (data_in) {
+		kunmap_local(data_in);
 		put_page(in_page);
 	}
+
 	return ret;
 }
 
@@ -287,7 +281,7 @@ int zlib_decompress_bio(struct list_head *ws, struct compressed_bio *cb)
 	unsigned long buf_start;
 	struct page **pages_in = cb->compressed_pages;
 
-	data_in = kmap(pages_in[page_in_index]);
+	data_in = kmap_local_page(pages_in[page_in_index]);
 	workspace->strm.next_in = data_in;
 	workspace->strm.avail_in = min_t(size_t, srclen, PAGE_SIZE);
 	workspace->strm.total_in = 0;
@@ -309,7 +303,7 @@ int zlib_decompress_bio(struct list_head *ws, struct compressed_bio *cb)
 
 	if (Z_OK != zlib_inflateInit2(&workspace->strm, wbits)) {
 		pr_warn("BTRFS: inflateInit failed\n");
-		kunmap(pages_in[page_in_index]);
+		kunmap_local(data_in);
 		return -EIO;
 	}
 	while (workspace->strm.total_in < srclen) {
@@ -336,13 +330,13 @@ int zlib_decompress_bio(struct list_head *ws, struct compressed_bio *cb)
 
 		if (workspace->strm.avail_in == 0) {
 			unsigned long tmp;
-			kunmap(pages_in[page_in_index]);
+			kunmap_local(data_in);
 			page_in_index++;
 			if (page_in_index >= total_pages_in) {
 				data_in = NULL;
 				break;
 			}
-			data_in = kmap(pages_in[page_in_index]);
+			data_in = kmap_local_page(pages_in[page_in_index]);
 			workspace->strm.next_in = data_in;
 			tmp = srclen - workspace->strm.total_in;
 			workspace->strm.avail_in = min(tmp, PAGE_SIZE);
@@ -355,25 +349,18 @@ int zlib_decompress_bio(struct list_head *ws, struct compressed_bio *cb)
 done:
 	zlib_inflateEnd(&workspace->strm);
 	if (data_in)
-		kunmap(pages_in[page_in_index]);
-	if (!ret)
-		zero_fill_bio(cb->orig_bio);
+		kunmap_local(data_in);
 	return ret;
 }
 
-int zlib_decompress(struct list_head *ws, unsigned char *data_in,
-		struct page *dest_page, unsigned long start_byte, size_t srclen,
+int zlib_decompress(struct list_head *ws, const u8 *data_in,
+		struct page *dest_page, unsigned long dest_pgoff, size_t srclen,
 		size_t destlen)
 {
 	struct workspace *workspace = list_entry(ws, struct workspace, list);
 	int ret = 0;
 	int wbits = MAX_WBITS;
-	unsigned long bytes_left;
-	unsigned long total_out = 0;
-	unsigned long pg_offset = 0;
-
-	destlen = min_t(unsigned long, destlen, PAGE_SIZE);
-	bytes_left = destlen;
+	unsigned long to_copy;
 
 	workspace->strm.next_in = data_in;
 	workspace->strm.avail_in = srclen;
@@ -398,60 +385,30 @@ int zlib_decompress(struct list_head *ws, unsigned char *data_in,
 		return -EIO;
 	}
 
-	while (bytes_left > 0) {
-		unsigned long buf_start;
-		unsigned long buf_offset;
-		unsigned long bytes;
+	/*
+	 * Everything (in/out buf) should be at most one sector, there should
+	 * be no need to switch any input/output buffer.
+	 */
+	ret = zlib_inflate(&workspace->strm, Z_FINISH);
+	to_copy = min(workspace->strm.total_out, destlen);
+	if (ret != Z_STREAM_END)
+		goto out;
 
-		ret = zlib_inflate(&workspace->strm, Z_NO_FLUSH);
-		if (ret != Z_OK && ret != Z_STREAM_END)
-			break;
+	memcpy_to_page(dest_page, dest_pgoff, workspace->buf, to_copy);
 
-		buf_start = total_out;
-		total_out = workspace->strm.total_out;
-
-		if (total_out == buf_start) {
-			ret = -EIO;
-			break;
-		}
-
-		if (total_out <= start_byte)
-			goto next;
-
-		if (total_out > start_byte && buf_start < start_byte)
-			buf_offset = start_byte - buf_start;
-		else
-			buf_offset = 0;
-
-		bytes = min(PAGE_SIZE - pg_offset,
-			    PAGE_SIZE - (buf_offset % PAGE_SIZE));
-		bytes = min(bytes, bytes_left);
-
-		memcpy_to_page(dest_page, pg_offset,
-			       workspace->buf + buf_offset, bytes);
-
-		pg_offset += bytes;
-		bytes_left -= bytes;
-next:
-		workspace->strm.next_out = workspace->buf;
-		workspace->strm.avail_out = workspace->buf_size;
-	}
-
-	if (ret != Z_STREAM_END && bytes_left != 0)
+out:
+	if (unlikely(to_copy != destlen)) {
+		pr_warn_ratelimited("BTRFS: infalte failed, decompressed=%lu expected=%zu\n",
+					to_copy, destlen);
 		ret = -EIO;
-	else
+	} else {
 		ret = 0;
+	}
 
 	zlib_inflateEnd(&workspace->strm);
 
-	/*
-	 * this should only happen if zlib returned fewer bytes than we
-	 * expected.  btrfs_get_block is responsible for zeroing from the
-	 * end of the inline extent (destlen) to the end of the page
-	 */
-	if (pg_offset < destlen) {
-		memzero_page(dest_page, pg_offset, destlen - pg_offset);
-	}
+	if (unlikely(to_copy < destlen))
+		memzero_page(dest_page, dest_pgoff + to_copy, destlen - to_copy);
 	return ret;
 }
 

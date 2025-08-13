@@ -1,0 +1,9 @@
+#include "../nxp/imx/imx7ulp.dtsi"
+
+/ {
+	cpus {
+        reserved-memory {
+                cma:linux,cma {};
+        };
+	};
+};

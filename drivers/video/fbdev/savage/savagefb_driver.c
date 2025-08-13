@@ -41,6 +41,7 @@
  *
  */
 
+#include <linux/aperture.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/errno.h>
@@ -2137,8 +2138,7 @@ static int savage_init_fb_info(struct fb_info *info, struct pci_dev *dev,
 	info->var.accel_flags = 0;
 
 	info->fbops          = &savagefb_ops;
-	info->flags          = FBINFO_DEFAULT |
-		               FBINFO_HWACCEL_YPAN |
+	info->flags          = FBINFO_HWACCEL_YPAN |
 		               FBINFO_HWACCEL_XPAN;
 
 	info->pseudo_palette = par->pseudo_palette;
@@ -2173,10 +2173,15 @@ static int savagefb_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	struct fb_info *info;
 	struct savagefb_par *par;
 	u_int h_sync, v_sync;
+	unsigned char __maybe_unused *edid;
 	int err, lpitch;
 	int video_len;
 
 	DBG("savagefb_probe");
+
+	err = aperture_remove_conflicting_pci_devices(dev, "savagefb");
+	if (err)
+		return err;
 
 	info = framebuffer_alloc(sizeof(struct savagefb_par), &dev->dev);
 	if (!info)
@@ -2215,9 +2220,9 @@ static int savagefb_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	INIT_LIST_HEAD(&info->modelist);
 #if defined(CONFIG_FB_SAVAGE_I2C)
 	savagefb_create_i2c_busses(info);
-	savagefb_probe_i2c_connector(info, &par->edid);
-	fb_edid_to_monspecs(par->edid, &info->monspecs);
-	kfree(par->edid);
+	savagefb_probe_i2c_connector(info, &edid);
+	fb_edid_to_monspecs(edid, &info->monspecs);
+	kfree(edid);
 	fb_videomode_to_modelist(info->monspecs.modedb,
 				 info->monspecs.modedb_len,
 				 &info->modelist);
@@ -2271,7 +2276,10 @@ static int savagefb_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	if (info->var.xres_virtual > 0x1000)
 		info->var.xres_virtual = 0x1000;
 #endif
-	savagefb_check_var(&info->var, info);
+	err = savagefb_check_var(&info->var, info);
+	if (err)
+		goto failed;
+
 	savagefb_set_fix(info);
 
 	/*
@@ -2552,6 +2560,9 @@ static int __init savagefb_init(void)
 	char *option;
 
 	DBG("savagefb_init");
+
+	if (fb_modesetting_disabled("savagefb"))
+		return -ENODEV;
 
 	if (fb_get_options("savagefb", &option))
 		return -ENODEV;

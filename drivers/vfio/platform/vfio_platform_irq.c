@@ -291,7 +291,8 @@ int vfio_platform_irq_init(struct vfio_platform_device *vdev)
 	while (vdev->get_irq(vdev, cnt) >= 0)
 		cnt++;
 
-	vdev->irqs = kcalloc(cnt, sizeof(struct vfio_platform_irq), GFP_KERNEL);
+	vdev->irqs = kcalloc(cnt, sizeof(struct vfio_platform_irq),
+			     GFP_KERNEL_ACCOUNT);
 	if (!vdev->irqs)
 		return -ENOMEM;
 
@@ -317,7 +318,7 @@ int vfio_platform_irq_init(struct vfio_platform_device *vdev)
 		vdev->irqs[i].count = 1;
 		vdev->irqs[i].hwirq = hwirq;
 		vdev->irqs[i].masked = false;
-		vdev->irqs[i].name = kasprintf(GFP_KERNEL,
+		vdev->irqs[i].name = kasprintf(GFP_KERNEL_ACCOUNT,
 					       "vfio-irq[%d](%s)", hwirq,
 					       vdev->name);
 		if (!vdev->irqs[i].name) {

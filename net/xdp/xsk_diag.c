@@ -65,7 +65,6 @@ static int xsk_diag_put_umem(const struct xdp_sock *xs, struct sk_buff *nlskb)
 	if (umem->zc)
 		du.flags |= XDP_DU_F_ZEROCOPY;
 	du.refs = refcount_read(&umem->users);
-	du.tx_headroom = umem->tx_headroom;
 
 	err = nla_put(nlskb, XDP_DIAG_UMEM, sizeof(du), &du);
 	if (!err && pool && pool->fq)
@@ -195,6 +194,7 @@ static int xsk_diag_handler_dump(struct sk_buff *nlskb, struct nlmsghdr *hdr)
 }
 
 static const struct sock_diag_handler xsk_diag_handler = {
+	.owner = THIS_MODULE,
 	.family = AF_XDP,
 	.dump = xsk_diag_handler_dump,
 };

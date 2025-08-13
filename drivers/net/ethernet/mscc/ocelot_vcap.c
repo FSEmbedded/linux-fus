@@ -671,12 +671,10 @@ static void is1_entry_set(struct ocelot *ocelot, int ix,
 {
 	const struct vcap_props *vcap = &ocelot->vcap[VCAP_IS1];
 	struct ocelot_vcap_key_vlan *tag = &filter->vlan;
-	struct ocelot_vcap_u64 payload;
 	struct vcap_data data;
 	int row = ix / 2;
 	u32 type;
 
-	memset(&payload, 0, sizeof(payload));
 	memset(&data, 0, sizeof(data));
 
 	/* Read row */
@@ -697,6 +695,7 @@ static void is1_entry_set(struct ocelot *ocelot, int ix,
 	vcap_key_bit_set(vcap, &data, VCAP_IS1_HK_L2_MC, filter->dmac_mc);
 	vcap_key_bit_set(vcap, &data, VCAP_IS1_HK_L2_BC, filter->dmac_bc);
 	vcap_key_bit_set(vcap, &data, VCAP_IS1_HK_VLAN_TAGGED, tag->tagged);
+	vcap_key_bit_set(vcap, &data, VCAP_IS1_HK_TPID, tag->tpid);
 	vcap_key_set(vcap, &data, VCAP_IS1_HK_VID,
 		     tag->vid.value, tag->vid.mask);
 	vcap_key_set(vcap, &data, VCAP_IS1_HK_PCP,
@@ -812,11 +811,9 @@ static void es0_entry_set(struct ocelot *ocelot, int ix,
 {
 	const struct vcap_props *vcap = &ocelot->vcap[VCAP_ES0];
 	struct ocelot_vcap_key_vlan *tag = &filter->vlan;
-	struct ocelot_vcap_u64 payload;
 	struct vcap_data data;
 	int row = ix;
 
-	memset(&payload, 0, sizeof(payload));
 	memset(&data, 0, sizeof(data));
 
 	/* Read row */

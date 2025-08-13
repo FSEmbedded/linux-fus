@@ -495,7 +495,7 @@ static int mxc_streamoff(cam_data *cam)
 	 * 3. disable idmac
 	 * 4. disable smfc (CSI--MEM channel)
 	 */
-	if (mxc_capture_inputs[cam->current_input].name != NULL) {
+	if (mxc_capture_inputs[cam->current_input].name[0] != '\0') {
 		if (cam->enc_disable_csi) {
 			err = cam->enc_disable_csi(cam);
 			if (err != 0)
@@ -2458,7 +2458,7 @@ static int mxc_mmap(struct file *file, struct vm_area_struct *vma)
 		goto mxc_mmap_exit;
 	}
 
-	vma->vm_flags &= ~VM_IO;	/* using shared anonymous pages */
+	vm_flags_clear(vma, VM_IO);	/* using shared anonymous pages */
 
 mxc_mmap_exit:
 	up(&cam->busy_lock);

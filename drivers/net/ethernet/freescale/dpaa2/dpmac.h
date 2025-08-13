@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause) */
 /* Copyright 2013-2016 Freescale Semiconductor Inc.
- * Copyright 2019 NXP
+ * Copyright 2019, 2024 NXP
  */
 #ifndef __FSL_DPMAC_H
 #define __FSL_DPMAC_H
@@ -222,6 +222,12 @@ enum dpmac_counter_id {
 int dpmac_get_counter(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token,
 		      enum dpmac_counter_id id, u64 *value);
 
+int dpmac_get_api_version(struct fsl_mc_io *mc_io, u32 cmd_flags,
+			  u16 *major_ver, u16 *minor_ver);
+
+int dpmac_set_protocol(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token,
+		       enum dpmac_eth_if protocol);
+
 /**
  * DPMAC IRQ Index and Events
  */
@@ -280,9 +286,7 @@ int dpmac_clear_irq_status(struct fsl_mc_io *mc_io,
 			   u8 irq_index,
 			   u32 status);
 
-int dpmac_get_api_version(struct fsl_mc_io *mc_io, u32 cmd_flags,
-			  u16 *major_ver, u16 *minor_ver);
+int dpmac_get_statistics(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token,
+			 u64 iova_cnt, u64 iova_values, u32 num_cnt);
 
-int dpmac_set_protocol(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token,
-		       enum dpmac_eth_if protocol);
 #endif /* __FSL_DPMAC_H */

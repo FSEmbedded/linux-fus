@@ -52,8 +52,9 @@
 #include "buffer_head_io.h"
 
 
-static int ocfs2_fast_symlink_readpage(struct file *unused, struct page *page)
+static int ocfs2_fast_symlink_read_folio(struct file *f, struct folio *folio)
 {
+	struct page *page = &folio->page;
 	struct inode *inode = page->mapping->host;
 	struct buffer_head *bh = NULL;
 	int status = ocfs2_read_inode_block(inode, &bh);
@@ -64,7 +65,7 @@ static int ocfs2_fast_symlink_readpage(struct file *unused, struct page *page)
 
 	if (status < 0) {
 		mlog_errno(status);
-		return status;
+		goto out;
 	}
 
 	fe = (struct ocfs2_dinode *) bh->b_data;
@@ -75,13 +76,14 @@ static int ocfs2_fast_symlink_readpage(struct file *unused, struct page *page)
 	memcpy(kaddr, link, len + 1);
 	kunmap_atomic(kaddr);
 	SetPageUptodate(page);
+out:
 	unlock_page(page);
 	brelse(bh);
-	return 0;
+	return status;
 }
 
 const struct address_space_operations ocfs2_fast_symlink_aops = {
-	.readpage		= ocfs2_fast_symlink_readpage,
+	.read_folio		= ocfs2_fast_symlink_read_folio,
 };
 
 const struct inode_operations ocfs2_symlink_inode_operations = {

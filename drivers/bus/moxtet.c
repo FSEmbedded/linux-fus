@@ -755,7 +755,7 @@ static int moxtet_irq_setup(struct moxtet *moxtet)
 	moxtet->irq.masked = ~0;
 
 	ret = request_threaded_irq(moxtet->dev_irq, NULL, moxtet_irq_thread_fn,
-				   IRQF_ONESHOT, "moxtet", moxtet);
+				   IRQF_SHARED | IRQF_ONESHOT, "moxtet", moxtet);
 	if (ret < 0)
 		goto err_free;
 
@@ -815,7 +815,7 @@ static int moxtet_probe(struct spi_device *spi)
 	return 0;
 }
 
-static int moxtet_remove(struct spi_device *spi)
+static void moxtet_remove(struct spi_device *spi)
 {
 	struct moxtet *moxtet = spi_get_drvdata(spi);
 
@@ -828,8 +828,6 @@ static int moxtet_remove(struct spi_device *spi)
 	device_for_each_child(moxtet->dev, NULL, __unregister);
 
 	mutex_destroy(&moxtet->lock);
-
-	return 0;
 }
 
 static const struct spi_device_id moxtet_spi_ids[] = {

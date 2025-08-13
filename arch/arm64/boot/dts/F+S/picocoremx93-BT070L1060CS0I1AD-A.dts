@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+* Copyright 2024 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*/
+
+#define CONFIG_IMX93_DISPLAY
+
+#define IMX93_TOUCH_I2C 				lpi2c8
+#define IMX93_TOUCH_INTERRUPT_GPIO_BANK 		gpio2
+#define IMX93_TOUCH_INTERRUPT_GPIO_NUM 		15
+
+#define CONFIG_IMX93_TOUCH_RESET
+#define IMX93_TOUCH_RESET_GPIO_BANK gpio_adp
+#define IMX93_TOUCH_RESET_GPIO_NUM  5
+
+#include "picocoremx93.dts"
+#include "displays/imx93-BT070L1060CS0I1AD-A.dtsi"

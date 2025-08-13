@@ -199,12 +199,11 @@ codec_put:
 static int fus_wm9715_remove(struct platform_device *pdev)
 {
 	struct fus_audio_data *data = platform_get_drvdata(pdev);
-	int ret;
 
-	ret = snd_soc_unregister_card(data->card);
+	snd_soc_unregister_card(data->card);
 	platform_device_unregister(data->codec);
 
-	return ret;
+	return 0;
 }
 
 static const struct of_device_id fus_audio_match[] = {

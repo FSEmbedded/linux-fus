@@ -11,7 +11,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/io.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/pm_runtime.h>
 #include <linux/reset.h>
 #include <linux/slab.h>
@@ -312,8 +312,10 @@ static int usbhsc_clk_get(struct device *dev, struct usbhs_priv *priv)
 	priv->clks[1] = of_clk_get(dev_of_node(dev), 1);
 	if (PTR_ERR(priv->clks[1]) == -ENOENT)
 		priv->clks[1] = NULL;
-	else if (IS_ERR(priv->clks[1]))
+	else if (IS_ERR(priv->clks[1])) {
+		clk_put(priv->clks[0]);
 		return PTR_ERR(priv->clks[1]);
+	}
 
 	return 0;
 }
@@ -589,11 +591,11 @@ static int usbhs_probe(struct platform_device *pdev)
 {
 	const struct renesas_usbhs_platform_info *info;
 	struct usbhs_priv *priv;
-	struct resource *irq_res;
 	struct device *dev = &pdev->dev;
 	struct gpio_desc *gpiod;
 	int ret;
 	u32 tmp;
+	int irq;
 
 	/* check device node */
 	if (dev_of_node(dev))
@@ -608,11 +610,9 @@ static int usbhs_probe(struct platform_device *pdev)
 	}
 
 	/* platform data */
-	irq_res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	if (!irq_res) {
-		dev_err(dev, "Not enough Renesas USB platform resources.\n");
-		return -ENODEV;
-	}
+	irq = platform_get_irq(pdev, 0);
+	if (irq < 0)
+		return irq;
 
 	/* usb private data */
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
@@ -669,9 +669,7 @@ static int usbhs_probe(struct platform_device *pdev)
 	/*
 	 * priv settings
 	 */
-	priv->irq	= irq_res->start;
-	if (irq_res->flags & IORESOURCE_IRQ_SHAREABLE)
-		priv->irqflags = IRQF_SHARED;
+	priv->irq = irq;
 	priv->pdev	= pdev;
 	INIT_DELAYED_WORK(&priv->notify_hotplug_work, usbhsc_notify_hotplug);
 	spin_lock_init(usbhs_priv_to_lock(priv));
@@ -766,11 +764,13 @@ probe_end_pipe_exit:
 	return ret;
 }
 
-static int usbhs_remove(struct platform_device *pdev)
+static void usbhs_remove(struct platform_device *pdev)
 {
 	struct usbhs_priv *priv = usbhs_pdev_to_priv(pdev);
 
 	dev_dbg(&pdev->dev, "usb remove\n");
+
+	flush_delayed_work(&priv->notify_hotplug_work);
 
 	/* power off */
 	if (!usbhs_get_dparam(priv, runtime_pwctrl))
@@ -784,8 +784,6 @@ static int usbhs_remove(struct platform_device *pdev)
 	usbhs_mod_remove(priv);
 	usbhs_fifo_remove(priv);
 	usbhs_pipe_remove(priv);
-
-	return 0;
 }
 
 static __maybe_unused int usbhsc_suspend(struct device *dev)
@@ -827,10 +825,10 @@ static struct platform_driver renesas_usbhs_driver = {
 	.driver		= {
 		.name	= "renesas_usbhs",
 		.pm	= &usbhsc_pm_ops,
-		.of_match_table = of_match_ptr(usbhs_of_match),
+		.of_match_table = usbhs_of_match,
 	},
 	.probe		= usbhs_probe,
-	.remove		= usbhs_remove,
+	.remove_new	= usbhs_remove,
 };
 
 module_platform_driver(renesas_usbhs_driver);

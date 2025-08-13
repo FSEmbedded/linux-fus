@@ -472,8 +472,7 @@ static int adv739x_parse_dt(struct adv739x_state *state)
 	return 0;
 }
 
-static int adv739x_probe(struct i2c_client *client,
-				const struct i2c_device_id *id)
+static int adv739x_probe(struct i2c_client *client)
 {
 	struct adv739x_state *state;
 	int err;
@@ -544,15 +543,13 @@ static int adv739x_probe(struct i2c_client *client,
 	return err;
 }
 
-static int adv739x_remove(struct i2c_client *client)
+static void adv739x_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct adv739x_state *state = to_state(sd);
 
 	v4l2_device_unregister_subdev(sd);
 	v4l2_ctrl_handler_free(&state->hdl);
-
-	return 0;
 }
 static struct i2c_driver adv739x_driver = {
 	.driver = {

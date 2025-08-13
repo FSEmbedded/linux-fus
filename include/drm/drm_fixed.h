@@ -25,6 +25,7 @@
 #ifndef DRM_FIXED_H
 #define DRM_FIXED_H
 
+#include <linux/kernel.h>
 #include <linux/math64.h>
 
 typedef union dfixed {
@@ -84,6 +85,11 @@ static inline s64 drm_int2fixp(int a)
 static inline int drm_fixp2int(s64 a)
 {
 	return ((s64)a) >> DRM_FIXED_POINT;
+}
+
+static inline int drm_fixp2int_round(s64 a)
+{
+	return drm_fixp2int(a + DRM_FIXED_ONE / 2);
 }
 
 static inline int drm_fixp2int_ceil(s64 a)

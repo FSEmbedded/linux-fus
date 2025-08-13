@@ -140,9 +140,8 @@ static int stm32_pwm_lp_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 
 	if (reenable) {
 		/* Start LP timer in continuous mode */
-		ret = regmap_update_bits(priv->regmap, STM32_LPTIM_CR,
-					 STM32_LPTIM_CNTSTRT,
-					 STM32_LPTIM_CNTSTRT);
+		ret = regmap_set_bits(priv->regmap, STM32_LPTIM_CR,
+				      STM32_LPTIM_CNTSTRT);
 		if (ret) {
 			regmap_write(priv->regmap, STM32_LPTIM_CR, 0);
 			goto err;
@@ -157,9 +156,9 @@ err:
 	return ret;
 }
 
-static void stm32_pwm_lp_get_state(struct pwm_chip *chip,
-				   struct pwm_device *pwm,
-				   struct pwm_state *state)
+static int stm32_pwm_lp_get_state(struct pwm_chip *chip,
+				  struct pwm_device *pwm,
+				  struct pwm_state *state)
 {
 	struct stm32_pwm_lp *priv = to_stm32_pwm_lp(chip);
 	unsigned long rate = clk_get_rate(priv->clk);
@@ -169,8 +168,12 @@ static void stm32_pwm_lp_get_state(struct pwm_chip *chip,
 	regmap_read(priv->regmap, STM32_LPTIM_CR, &val);
 	state->enabled = !!FIELD_GET(STM32_LPTIM_ENABLE, val);
 	/* Keep PWM counter clock refcount in sync with PWM initial state */
-	if (state->enabled)
-		clk_enable(priv->clk);
+	if (state->enabled) {
+		int ret = clk_enable(priv->clk);
+
+		if (ret)
+			return ret;
+	}
 
 	regmap_read(priv->regmap, STM32_LPTIM_CFGR, &val);
 	presc = FIELD_GET(STM32_LPTIM_PRESC, val);
@@ -185,6 +188,8 @@ static void stm32_pwm_lp_get_state(struct pwm_chip *chip,
 	tmp = prd - val;
 	tmp = (tmp << presc) * NSEC_PER_SEC;
 	state->duty_cycle = DIV_ROUND_CLOSEST_ULL(tmp, rate);
+
+	return 0;
 }
 
 static const struct pwm_ops stm32_pwm_lp_ops = {
@@ -251,7 +256,7 @@ static struct platform_driver stm32_pwm_lp_driver = {
 	.probe	= stm32_pwm_lp_probe,
 	.driver	= {
 		.name = "stm32-pwm-lp",
-		.of_match_table = of_match_ptr(stm32_pwm_lp_of_match),
+		.of_match_table = stm32_pwm_lp_of_match,
 		.pm = &stm32_pwm_lp_pm_ops,
 	},
 };

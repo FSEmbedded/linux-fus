@@ -79,8 +79,8 @@ struct hwlat_kthread_data {
 	int			nmi_cpu;
 };
 
-struct hwlat_kthread_data hwlat_single_cpu_data;
-DEFINE_PER_CPU(struct hwlat_kthread_data, hwlat_per_cpu_data);
+static struct hwlat_kthread_data hwlat_single_cpu_data;
+static DEFINE_PER_CPU(struct hwlat_kthread_data, hwlat_per_cpu_data);
 
 /* Tells NMIs to call back to the hwlat tracer to record timestamps */
 bool trace_hwlat_callback_enabled;
@@ -520,6 +520,8 @@ static void hwlat_hotplug_workfn(struct work_struct *dummy)
 	if (!hwlat_busy || hwlat_data.thread_mode != MODE_PER_CPU)
 		goto out_unlock;
 
+	if (!cpu_online(cpu))
+		goto out_unlock;
 	if (!cpumask_test_cpu(cpu, tr->tracing_cpumask))
 		goto out_unlock;
 

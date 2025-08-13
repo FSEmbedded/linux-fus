@@ -2,7 +2,7 @@
 /*
  * Broadcom GENET (Gigabit Ethernet) Wake-on-LAN support
  *
- * Copyright (c) 2014-2020 Broadcom
+ * Copyright (c) 2014-2024 Broadcom
  */
 
 #define pr_fmt(fmt)				"bcmgenet_wol: " fmt
@@ -41,17 +41,27 @@ void bcmgenet_get_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 {
 	struct bcmgenet_priv *priv = netdev_priv(dev);
 	struct device *kdev = &priv->pdev->dev;
+	u32 phy_wolopts = 0;
 
-	if (!device_can_wakeup(kdev)) {
-		wol->supported = 0;
-		wol->wolopts = 0;
-		return;
+	if (dev->phydev) {
+		phy_ethtool_get_wol(dev->phydev, wol);
+		phy_wolopts = wol->wolopts;
 	}
 
-	wol->supported = WAKE_MAGIC | WAKE_MAGICSECURE | WAKE_FILTER;
-	wol->wolopts = priv->wolopts;
-	memset(wol->sopass, 0, sizeof(wol->sopass));
+	/* MAC is not wake-up capable, return what the PHY does */
+	if (!device_can_wakeup(kdev))
+		return;
 
+	/* Overlay MAC capabilities with that of the PHY queried before */
+	wol->supported |= WAKE_MAGIC | WAKE_MAGICSECURE | WAKE_FILTER;
+	wol->wolopts |= priv->wolopts;
+
+	/* Return the PHY configured magic password */
+	if (phy_wolopts & WAKE_MAGICSECURE)
+		return;
+
+	/* Otherwise the MAC one */
+	memset(wol->sopass, 0, sizeof(wol->sopass));
 	if (wol->wolopts & WAKE_MAGICSECURE)
 		memcpy(wol->sopass, priv->sopass, sizeof(priv->sopass));
 }
@@ -63,6 +73,14 @@ int bcmgenet_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 {
 	struct bcmgenet_priv *priv = netdev_priv(dev);
 	struct device *kdev = &priv->pdev->dev;
+	int ret;
+
+	/* Try Wake-on-LAN from the PHY first */
+	if (dev->phydev) {
+		ret = phy_ethtool_set_wol(dev->phydev, wol);
+		if (ret != -EOPNOTSUPP && wol->wolopts)
+			return ret;
+	}
 
 	if (!device_can_wakeup(kdev))
 		return -ENOTSUPP;
@@ -77,14 +95,18 @@ int bcmgenet_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 	if (wol->wolopts) {
 		device_set_wakeup_enable(kdev, 1);
 		/* Avoid unbalanced enable_irq_wake calls */
-		if (priv->wol_irq_disabled)
+		if (priv->wol_irq_disabled) {
 			enable_irq_wake(priv->wol_irq);
+			enable_irq_wake(priv->irq0);
+		}
 		priv->wol_irq_disabled = false;
 	} else {
 		device_set_wakeup_enable(kdev, 0);
 		/* Avoid unbalanced disable_irq_wake calls */
-		if (!priv->wol_irq_disabled)
+		if (!priv->wol_irq_disabled) {
 			disable_irq_wake(priv->wol_irq);
+			disable_irq_wake(priv->irq0);
+		}
 		priv->wol_irq_disabled = true;
 	}
 

@@ -170,6 +170,14 @@ static void thrustmaster_interrupts(struct hid_device *hdev)
 	ep = &usbif->cur_altsetting->endpoint[1];
 	b_ep = ep->desc.bEndpointAddress;
 
+	/* Are the expected endpoints present? */
+	u8 ep_addr[2] = {b_ep, 0};
+
+	if (!usb_check_int_endpoints(usbif, ep_addr)) {
+		hid_err(hdev, "Unexpected non-int endpoint\n");
+		return;
+	}
+
 	for (i = 0; i < ARRAY_SIZE(setup_arr); ++i) {
 		memcpy(send_buf, setup_arr[i], setup_arr_sizes[i]);
 
@@ -214,7 +222,7 @@ static void thrustmaster_model_handler(struct urb *urb)
 	struct tm_wheel *tm_wheel = hid_get_drvdata(hdev);
 	uint16_t model = 0;
 	int i, ret;
-	const struct tm_wheel_info *twi = 0;
+	const struct tm_wheel_info *twi = NULL;
 
 	if (urb->status) {
 		hid_err(hdev, "URB to get model id failed with error %d\n", urb->status);
@@ -247,7 +255,7 @@ static void thrustmaster_model_handler(struct urb *urb)
 		tm_wheel->usb_dev,
 		usb_sndctrlpipe(tm_wheel->usb_dev, 0),
 		(char *)tm_wheel->change_request,
-		0, 0, // We do not expect any response from the wheel
+		NULL, 0, // We do not expect any response from the wheel
 		thrustmaster_change_handler,
 		hdev
 	);
@@ -281,7 +289,7 @@ static void thrustmaster_remove(struct hid_device *hdev)
 static int thrustmaster_probe(struct hid_device *hdev, const struct hid_device_id *id)
 {
 	int ret = 0;
-	struct tm_wheel *tm_wheel = 0;
+	struct tm_wheel *tm_wheel = NULL;
 
 	if (!hid_is_usb(hdev))
 		return -EINVAL;

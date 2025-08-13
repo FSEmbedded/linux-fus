@@ -6,28 +6,6 @@
 #ifndef _ASM_POWERPC_LPPACA_H
 #define _ASM_POWERPC_LPPACA_H
 
-/*
- * The below VPHN macros are outside the __KERNEL__ check since these are
- * used for compiling the vphn selftest in userspace
- */
-
-/* The H_HOME_NODE_ASSOCIATIVITY h_call returns 6 64-bit registers. */
-#define VPHN_REGISTER_COUNT 6
-
-/*
- * 6 64-bit registers unpacked into up to 24 be32 associativity values. To
- * form the complete property we have to add the length in the first cell.
- */
-#define VPHN_ASSOC_BUFSIZE (VPHN_REGISTER_COUNT*sizeof(u64)/sizeof(u16) + 1)
-
-/*
- * The H_HOME_NODE_ASSOCIATIVITY hcall takes two values for flags:
- * 1 for retrieving associativity information for a guest cpu
- * 2 for retrieving associativity information for a host/hypervisor cpu
- */
-#define VPHN_FLAG_VCPU	1
-#define VPHN_FLAG_PCPU	2
-
 #ifdef __KERNEL__
 
 /*
@@ -105,14 +83,18 @@ struct lppaca {
 	volatile __be32 dispersion_count; /* dispatch changed physical cpu */
 	volatile __be64 cmo_faults;	/* CMO page fault count */
 	volatile __be64 cmo_fault_time;	/* CMO page fault time */
-	u8	reserved10[104];
+	u8	reserved10[64];		/* [S]PURR expropriated/donated */
+	volatile __be64 enqueue_dispatch_tb; /* Total TB enqueue->dispatch */
+	volatile __be64 ready_enqueue_tb; /* Total TB ready->enqueue */
+	volatile __be64 wait_ready_tb;	/* Total TB wait->ready */
+	u8	reserved11[16];
 
 	/* cacheline 4-5 */
 
 	__be32	page_ins;		/* CMO Hint - # page ins by OS */
-	u8	reserved11[148];
+	u8	reserved12[148];
 	volatile __be64 dtl_idx;	/* Dispatch Trace Log head index */
-	u8	reserved12[96];
+	u8	reserved13[96];
 } ____cacheline_aligned;
 
 #define lppaca_of(cpu)	(*paca_ptrs[cpu]->lppaca_ptr)
@@ -155,8 +137,6 @@ struct slb_shadow {
 		__be64	vsid;
 	} save_area[SLB_NUM_BOLTED];
 } ____cacheline_aligned;
-
-extern long hcall_vphn(unsigned long cpu, u64 flags, __be32 *associativity);
 
 #endif /* CONFIG_PPC_BOOK3S */
 #endif /* __KERNEL__ */

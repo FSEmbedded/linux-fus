@@ -1,0 +1,10 @@
+#include "../nxp/imx/imx6q.dtsi"
+#include "imx6qdl.dtsi"
+
+/ {
+	cpus {
+		reserved-memory {
+			cma: linux,cma {};
+		};
+	};
+};

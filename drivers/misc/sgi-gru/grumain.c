@@ -152,7 +152,7 @@ static int gru_assign_asid(struct gru_state *gru)
  * Optionally, build an array of chars that contain the bit numbers allocated.
  */
 static unsigned long reserve_resources(unsigned long *p, int n, int mmax,
-				       char *idx)
+				       signed char *idx)
 {
 	unsigned long bits = 0;
 	int i;
@@ -170,14 +170,14 @@ static unsigned long reserve_resources(unsigned long *p, int n, int mmax,
 }
 
 unsigned long gru_reserve_cb_resources(struct gru_state *gru, int cbr_au_count,
-				       char *cbmap)
+				       signed char *cbmap)
 {
 	return reserve_resources(&gru->gs_cbr_map, cbr_au_count, GRU_CBR_AU,
 				 cbmap);
 }
 
 unsigned long gru_reserve_ds_resources(struct gru_state *gru, int dsr_au_count,
-				       char *dsmap)
+				       signed char *dsmap)
 {
 	return reserve_resources(&gru->gs_dsr_map, dsr_au_count, GRU_DSR_AU,
 				 dsmap);
@@ -941,10 +941,8 @@ vm_fault_t gru_fault(struct vm_fault *vmf)
 
 again:
 	mutex_lock(&gts->ts_ctxlock);
-	preempt_disable();
 
 	if (gru_check_context_placement(gts)) {
-		preempt_enable();
 		mutex_unlock(&gts->ts_ctxlock);
 		gru_unload_context(gts, 1);
 		return VM_FAULT_NOPAGE;
@@ -953,7 +951,6 @@ again:
 	if (!gts->ts_gru) {
 		STAT(load_user_context);
 		if (!gru_assign_gru_context(gts)) {
-			preempt_enable();
 			mutex_unlock(&gts->ts_ctxlock);
 			set_current_state(TASK_INTERRUPTIBLE);
 			schedule_timeout(GRU_ASSIGN_DELAY);  /* true hack ZZZ */
@@ -969,7 +966,6 @@ again:
 				vma->vm_page_prot);
 	}
 
-	preempt_enable();
 	mutex_unlock(&gts->ts_ctxlock);
 
 	return VM_FAULT_NOPAGE;

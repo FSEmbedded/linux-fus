@@ -24,7 +24,7 @@
 #include <linux/delay.h>
 #include <linux/console.h>
 #include <linux/mxcfb.h>
-#include <linux/platform_data/dma-imx.h>
+#include <linux/dma/imx-dma.h>
 
 #include <media/videobuf-dma-contig.h>
 #include <media/v4l2-common.h>
@@ -564,6 +564,9 @@ static int pxp_s_fmt_video_output(struct file *file, void *fh,
 	ret = pxp_try_fmt_video_output(file, fh, f);
 	if (ret == 0) {
 		pxp->s0_fmt = pxp_get_format(f);
+		if (!pxp->s0_fmt)
+			return -EINVAL;
+
 		pxp->pxp_conf.s0_param.pixel_fmt =
 			v4l2_fmt_to_pxp_fmt(pxp->s0_fmt->fourcc);
 		pxp->pxp_conf.s0_param.width = pf->width;
@@ -716,10 +719,6 @@ static int pxp_streamoff(struct file *file, void *priv,
 
 	ret = videobuf_streamoff(&pxp->s0_vbq);
 
-	pxp_show_buf(pxp, (unsigned long)pxp->fb.base);
-
-	if (pxp->fb_blank)
-		set_fb_blank(FB_BLANK_POWERDOWN);
 
 	return ret;
 }
@@ -802,7 +801,7 @@ static int pxp_buf_prepare(struct videobuf_queue *q,
 		sg_init_table(sg, 3);
 
 		buf->txd = pchan->dma_chan.device->device_prep_slave_sg(
-			&pchan->dma_chan, sg, 3, DMA_FROM_DEVICE,
+			&pchan->dma_chan, sg, 3, DMA_DEV_TO_MEM,
 			DMA_PREP_INTERRUPT, NULL);
 		if (!buf->txd) {
 			ret = -EIO;
@@ -1154,6 +1153,11 @@ static int pxp_close(struct file *file)
 	videobuf_stop(&pxp->s0_vbq);
 	videobuf_mmap_free(&pxp->s0_vbq);
 	pxp->active = NULL;
+
+	pxp_show_buf(pxp, (unsigned long)pxp->fb.base);
+
+	if (pxp->fb_blank)
+		set_fb_blank(FB_BLANK_POWERDOWN);
 
 	mutex_lock(&pxp->mutex);
 	pxp->users--;

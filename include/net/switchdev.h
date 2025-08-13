@@ -19,6 +19,7 @@
 enum switchdev_attr_id {
 	SWITCHDEV_ATTR_ID_UNDEFINED,
 	SWITCHDEV_ATTR_ID_PORT_STP_STATE,
+	SWITCHDEV_ATTR_ID_PORT_MST_STATE,
 	SWITCHDEV_ATTR_ID_PORT_BRIDGE_FLAGS,
 	SWITCHDEV_ATTR_ID_PORT_PRE_BRIDGE_FLAGS,
 	SWITCHDEV_ATTR_ID_PORT_MROUTER,
@@ -27,12 +28,24 @@ enum switchdev_attr_id {
 	SWITCHDEV_ATTR_ID_BRIDGE_VLAN_PROTOCOL,
 	SWITCHDEV_ATTR_ID_BRIDGE_MC_DISABLED,
 	SWITCHDEV_ATTR_ID_BRIDGE_MROUTER,
+	SWITCHDEV_ATTR_ID_BRIDGE_MST,
 	SWITCHDEV_ATTR_ID_MRP_PORT_ROLE,
+	SWITCHDEV_ATTR_ID_VLAN_MSTI,
+};
+
+struct switchdev_mst_state {
+	u16 msti;
+	u8 state;
 };
 
 struct switchdev_brport_flags {
 	unsigned long val;
 	unsigned long mask;
+};
+
+struct switchdev_vlan_msti {
+	u16 vid;
+	u16 msti;
 };
 
 struct switchdev_attr {
@@ -43,13 +56,16 @@ struct switchdev_attr {
 	void (*complete)(struct net_device *dev, int err, void *priv);
 	union {
 		u8 stp_state;				/* PORT_STP_STATE */
+		struct switchdev_mst_state mst_state;	/* PORT_MST_STATE */
 		struct switchdev_brport_flags brport_flags; /* PORT_BRIDGE_FLAGS */
 		bool mrouter;				/* PORT_MROUTER */
 		clock_t ageing_time;			/* BRIDGE_AGEING_TIME */
 		bool vlan_filtering;			/* BRIDGE_VLAN_FILTERING */
 		u16 vlan_protocol;			/* BRIDGE_VLAN_PROTOCOL */
+		bool mst;				/* BRIDGE_MST */
 		bool mc_disabled;			/* MC_DISABLED */
 		u8 mrp_port_role;			/* MRP_PORT_ROLE */
+		struct switchdev_vlan_msti vlan_msti;	/* VLAN_MSTI */
 	} u;
 };
 
@@ -185,8 +201,6 @@ struct switchdev_obj_in_state_mrp {
 #define SWITCHDEV_OBJ_IN_STATE_MRP(OBJ) \
 	container_of((OBJ), struct switchdev_obj_in_state_mrp, obj)
 
-typedef int switchdev_obj_dump_cb_t(struct switchdev_obj *obj);
-
 struct switchdev_brport {
 	struct net_device *dev;
 	const void *ctx;
@@ -215,6 +229,7 @@ enum switchdev_notifier_type {
 
 	SWITCHDEV_BRPORT_OFFLOADED,
 	SWITCHDEV_BRPORT_UNOFFLOADED,
+	SWITCHDEV_BRPORT_REPLAY,
 };
 
 struct switchdev_notifier_info {
@@ -223,12 +238,16 @@ struct switchdev_notifier_info {
 	const void *ctx;
 };
 
+/* Remember to update br_switchdev_fdb_populate() when adding
+ * new members to this structure
+ */
 struct switchdev_notifier_fdb_info {
 	struct switchdev_notifier_info info; /* must be first */
 	const unsigned char *addr;
 	u16 vid;
 	u8 added_by_user:1,
 	   is_local:1,
+	   locked:1,
 	   offloaded:1;
 };
 
@@ -279,11 +298,19 @@ void switchdev_bridge_port_unoffload(struct net_device *brport_dev,
 				     const void *ctx,
 				     struct notifier_block *atomic_nb,
 				     struct notifier_block *blocking_nb);
+int switchdev_bridge_port_replay(struct net_device *brport_dev,
+				 struct net_device *dev, const void *ctx,
+				 struct notifier_block *atomic_nb,
+				 struct notifier_block *blocking_nb,
+				 struct netlink_ext_ack *extack);
 
 void switchdev_deferred_process(void);
 int switchdev_port_attr_set(struct net_device *dev,
 			    const struct switchdev_attr *attr,
 			    struct netlink_ext_ack *extack);
+bool switchdev_port_obj_act_is_deferred(struct net_device *dev,
+					enum switchdev_notifier_type nt,
+					const struct switchdev_obj *obj);
 int switchdev_port_obj_add(struct net_device *dev,
 			   const struct switchdev_obj *obj,
 			   struct netlink_ext_ack *extack);
@@ -301,10 +328,6 @@ int unregister_switchdev_blocking_notifier(struct notifier_block *nb);
 int call_switchdev_blocking_notifiers(unsigned long val, struct net_device *dev,
 				      struct switchdev_notifier_info *info,
 				      struct netlink_ext_ack *extack);
-
-void switchdev_port_fwd_mark_set(struct net_device *dev,
-				 struct net_device *group_dev,
-				 bool joining);
 
 int switchdev_handle_fdb_event_to_device(struct net_device *dev, unsigned long event,
 		const struct switchdev_notifier_fdb_info *fdb_info,

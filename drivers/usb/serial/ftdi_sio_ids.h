@@ -25,6 +25,13 @@
 #define FTDI_4232H_PID 0x6011 /* Quad channel hi-speed device */
 #define FTDI_232H_PID  0x6014 /* Single channel hi-speed device */
 #define FTDI_FTX_PID   0x6015 /* FT-X series (FT201X, FT230X, FT231X, etc) */
+#define FTDI_FT2233HP_PID	0x6040 /* Dual channel hi-speed device with PD */
+#define FTDI_FT4233HP_PID	0x6041 /* Quad channel hi-speed device with PD */
+#define FTDI_FT2232HP_PID	0x6042 /* Dual channel hi-speed device with PD */
+#define FTDI_FT4232HP_PID	0x6043 /* Quad channel hi-speed device with PD */
+#define FTDI_FT233HP_PID	0x6044 /* Dual channel hi-speed device with PD */
+#define FTDI_FT232HP_PID	0x6045 /* Dual channel hi-speed device with PD */
+#define FTDI_FT4232HA_PID	0x6048 /* Quad channel automotive grade hi-speed device */
 #define FTDI_SIO_PID	0x8372	/* Product Id SIO application of 8U100AX */
 #define FTDI_232RL_PID  0xFBFA  /* Product ID for FT232RL */
 
@@ -434,6 +441,11 @@
 #define LINX_FUTURE_0_PID   0xF44A	/* Linx future device */
 #define LINX_FUTURE_1_PID   0xF44B	/* Linx future device */
 #define LINX_FUTURE_2_PID   0xF44C	/* Linx future device */
+
+/*
+ * Abacus Electrics
+ */
+#define ABACUS_OPTICAL_PROBE_PID	0xf458 /* ABACUS ELECTRICS Optical Probe */
 
 /*
  * Oceanic product ids
@@ -1605,3 +1617,16 @@
  */
 #define GMC_VID				0x1cd7
 #define GMC_Z216C_PID			0x0217 /* GMC Z216C Adapter IR-USB */
+
+/*
+ *  Altera USB Blaster 3 (http://www.altera.com).
+ */
+#define ALTERA_VID			0x09fb
+#define ALTERA_UB3_6022_PID		0x6022
+#define ALTERA_UB3_6025_PID		0x6025
+#define ALTERA_UB3_6026_PID		0x6026
+#define ALTERA_UB3_6029_PID		0x6029
+#define ALTERA_UB3_602A_PID		0x602a
+#define ALTERA_UB3_602C_PID		0x602c
+#define ALTERA_UB3_602D_PID		0x602d
+#define ALTERA_UB3_602E_PID		0x602e

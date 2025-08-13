@@ -33,7 +33,7 @@ static int logical_die_id;
 
 static int get_device_die_id(struct pci_dev *dev)
 {
-	int cpu, node = pcibus_to_node(dev->bus);
+	int node = pcibus_to_node(dev->bus);
 
 	/*
 	 * If the NUMA info is not available, assume that the logical die id is
@@ -43,19 +43,7 @@ static int get_device_die_id(struct pci_dev *dev)
 	if (node < 0)
 		return logical_die_id++;
 
-	for_each_cpu(cpu, cpumask_of_node(node)) {
-		struct cpuinfo_x86 *c = &cpu_data(cpu);
-
-		if (c->initialized && cpu_to_node(cpu) == node)
-			return c->logical_die_id;
-	}
-
-	/*
-	 * All CPUs of a node may be offlined. For this case,
-	 * the PCI and MMIO type of uncore blocks which are
-	 * enumerated by the device will be unavailable.
-	 */
-	return -1;
+	return uncore_device_to_die(dev);
 }
 
 #define __node_2_type(cur)	\
@@ -214,8 +202,25 @@ free_box_offset:
 
 }
 
+static bool
+uncore_ignore_unit(struct uncore_unit_discovery *unit, int *ignore)
+{
+	int i;
+
+	if (!ignore)
+		return false;
+
+	for (i = 0; ignore[i] != UNCORE_IGNORE_END ; i++) {
+		if (unit->box_type == ignore[i])
+			return true;
+	}
+
+	return false;
+}
+
 static int parse_discovery_table(struct pci_dev *dev, int die,
-				 u32 bar_offset, bool *parsed)
+				 u32 bar_offset, bool *parsed,
+				 int *ignore)
 {
 	struct uncore_global_discovery global;
 	struct uncore_unit_discovery unit;
@@ -227,10 +232,18 @@ static int parse_discovery_table(struct pci_dev *dev, int die,
 
 	pci_read_config_dword(dev, bar_offset, &val);
 
-	if (val & UNCORE_DISCOVERY_MASK)
+	if (val & ~PCI_BASE_ADDRESS_MEM_MASK & ~PCI_BASE_ADDRESS_MEM_TYPE_64)
 		return -EINVAL;
 
-	addr = (resource_size_t)(val & ~UNCORE_DISCOVERY_MASK);
+	addr = (resource_size_t)(val & PCI_BASE_ADDRESS_MEM_MASK);
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
+	if ((val & PCI_BASE_ADDRESS_MEM_TYPE_MASK) == PCI_BASE_ADDRESS_MEM_TYPE_64) {
+		u32 val2;
+
+		pci_read_config_dword(dev, bar_offset + 4, &val2);
+		addr |= ((resource_size_t)val2) << 32;
+	}
+#endif
 	size = UNCORE_DISCOVERY_GLOBAL_MAP_SIZE;
 	io_addr = ioremap(addr, size);
 	if (!io_addr)
@@ -262,6 +275,9 @@ static int parse_discovery_table(struct pci_dev *dev, int die,
 		if (unit.access_type >= UNCORE_ACCESS_MAX)
 			continue;
 
+		if (uncore_ignore_unit(&unit, ignore))
+			continue;
+
 		uncore_insert_box_info(&unit, die, *parsed);
 	}
 
@@ -270,7 +286,7 @@ static int parse_discovery_table(struct pci_dev *dev, int die,
 	return 0;
 }
 
-bool intel_uncore_has_discovery_tables(void)
+bool intel_uncore_has_discovery_tables(int *ignore)
 {
 	u32 device, val, entry_id, bar_offset;
 	int die, dvsec = 0, ret = true;
@@ -306,7 +322,7 @@ bool intel_uncore_has_discovery_tables(void)
 			if (die < 0)
 				continue;
 
-			parse_discovery_table(dev, die, bar_offset, &parsed);
+			parse_discovery_table(dev, die, bar_offset, &parsed, ignore);
 		}
 	}
 
@@ -456,7 +472,7 @@ static struct intel_uncore_ops generic_uncore_pci_ops = {
 
 #define UNCORE_GENERIC_MMIO_SIZE		0x4000
 
-static unsigned int generic_uncore_mmio_box_ctl(struct intel_uncore_box *box)
+static u64 generic_uncore_mmio_box_ctl(struct intel_uncore_box *box)
 {
 	struct intel_uncore_type *type = box->pmu->type;
 
@@ -468,7 +484,7 @@ static unsigned int generic_uncore_mmio_box_ctl(struct intel_uncore_box *box)
 
 void intel_generic_uncore_mmio_init_box(struct intel_uncore_box *box)
 {
-	unsigned int box_ctl = generic_uncore_mmio_box_ctl(box);
+	u64 box_ctl = generic_uncore_mmio_box_ctl(box);
 	struct intel_uncore_type *type = box->pmu->type;
 	resource_size_t addr;
 
@@ -506,8 +522,8 @@ void intel_generic_uncore_mmio_enable_box(struct intel_uncore_box *box)
 	writel(0, box->io_addr);
 }
 
-static void intel_generic_uncore_mmio_enable_event(struct intel_uncore_box *box,
-					     struct perf_event *event)
+void intel_generic_uncore_mmio_enable_event(struct intel_uncore_box *box,
+					    struct perf_event *event)
 {
 	struct hw_perf_event *hwc = &event->hw;
 

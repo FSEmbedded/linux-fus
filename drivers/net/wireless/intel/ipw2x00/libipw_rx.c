@@ -870,8 +870,8 @@ void libipw_rx_any(struct libipw_device *ieee,
 	switch (ieee->iw_mode) {
 	case IW_MODE_ADHOC:
 		/* our BSS and not from/to DS */
-		if (ether_addr_equal(hdr->addr3, ieee->bssid))
-		if ((fc & (IEEE80211_FCTL_TODS+IEEE80211_FCTL_FROMDS)) == 0) {
+		if (ether_addr_equal(hdr->addr3, ieee->bssid) &&
+		    ((fc & (IEEE80211_FCTL_TODS + IEEE80211_FCTL_FROMDS)) == 0)) {
 			/* promisc: get all */
 			if (ieee->dev->flags & IFF_PROMISC)
 				is_packet_for_us = 1;
@@ -885,8 +885,8 @@ void libipw_rx_any(struct libipw_device *ieee,
 		break;
 	case IW_MODE_INFRA:
 		/* our BSS (== from our AP) and from DS */
-		if (ether_addr_equal(hdr->addr2, ieee->bssid))
-		if ((fc & (IEEE80211_FCTL_TODS+IEEE80211_FCTL_FROMDS)) == IEEE80211_FCTL_FROMDS) {
+		if (ether_addr_equal(hdr->addr2, ieee->bssid) &&
+		    ((fc & (IEEE80211_FCTL_TODS + IEEE80211_FCTL_FROMDS)) == IEEE80211_FCTL_FROMDS)) {
 			/* promisc: get all */
 			if (ieee->dev->flags & IFF_PROMISC)
 				is_packet_for_us = 1;
@@ -1329,8 +1329,8 @@ static int libipw_handle_assoc_resp(struct libipw_device *ieee, struct libipw_as
 	network->wpa_ie_len = 0;
 	network->rsn_ie_len = 0;
 
-	if (libipw_parse_info_param
-	    (frame->info_element, stats->len - sizeof(*frame), network))
+	if (libipw_parse_info_param((void *)frame->variable,
+				    stats->len - sizeof(*frame), network))
 		return 1;
 
 	network->mode = 0;
@@ -1389,8 +1389,8 @@ static int libipw_network_init(struct libipw_device *ieee, struct libipw_probe_r
 	network->wpa_ie_len = 0;
 	network->rsn_ie_len = 0;
 
-	if (libipw_parse_info_param
-	    (beacon->info_element, stats->len - sizeof(*beacon), network))
+	if (libipw_parse_info_param((void *)beacon->variable,
+				    stats->len - sizeof(*beacon), network))
 		return 1;
 
 	network->mode = 0;
@@ -1510,7 +1510,7 @@ static void libipw_process_probe_response(struct libipw_device
 	struct libipw_network *target;
 	struct libipw_network *oldest = NULL;
 #ifdef CONFIG_LIBIPW_DEBUG
-	struct libipw_info_element *info_element = beacon->info_element;
+	struct libipw_info_element *info_element = (void *)beacon->variable;
 #endif
 	unsigned long flags;
 

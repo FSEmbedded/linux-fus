@@ -5,8 +5,6 @@
 #include <linux/sysctl.h>
 #include <uapi/linux/fanotify.h>
 
-extern struct ctl_table fanotify_table[]; /* for sysctl */
-
 #define FAN_GROUP_FLAG(group, flag) \
 	((group)->fanotify_data.flags & (flag))
 
@@ -38,6 +36,7 @@ extern struct ctl_table fanotify_table[]; /* for sysctl */
 #define FANOTIFY_ADMIN_INIT_FLAGS	(FANOTIFY_PERM_CLASSES | \
 					 FAN_REPORT_TID | \
 					 FAN_REPORT_PIDFD | \
+					 FAN_REPORT_FD_ERROR | \
 					 FAN_UNLIMITED_QUEUE | \
 					 FAN_UNLIMITED_MARKS)
 
@@ -123,6 +122,11 @@ extern struct ctl_table fanotify_table[]; /* for sysctl */
 
 #define ALL_FANOTIFY_EVENT_BITS		(FANOTIFY_OUTGOING_EVENTS | \
 					 FANOTIFY_EVENT_FLAGS)
+
+/* These masks check for invalid bits in permission responses. */
+#define FANOTIFY_RESPONSE_ACCESS (FAN_ALLOW | FAN_DENY)
+#define FANOTIFY_RESPONSE_FLAGS (FAN_AUDIT | FAN_INFO)
+#define FANOTIFY_RESPONSE_VALID_MASK (FANOTIFY_RESPONSE_ACCESS | FANOTIFY_RESPONSE_FLAGS)
 
 /* Do not use these old uapi constants internally */
 #undef FAN_ALL_CLASS_BITS

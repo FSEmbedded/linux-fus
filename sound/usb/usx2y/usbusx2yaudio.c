@@ -28,33 +28,6 @@
 #include "usx2y.h"
 #include "usbusx2y.h"
 
-/* Default value used for nr of packs per urb.
- * 1 to 4 have been tested ok on uhci.
- * To use 3 on ohci, you'd need a patch:
- * look for "0000425-linux-2.6.9-rc4-mm1_ohci-hcd.patch.gz" on
- * "https://bugtrack.alsa-project.org/alsa-bug/bug_view_page.php?bug_id=0000425"
- *
- * 1, 2 and 4 work out of the box on ohci, if I recall correctly.
- * Bigger is safer operation, smaller gives lower latencies.
- */
-#define USX2Y_NRPACKS 4
-
-/* If your system works ok with this module's parameter
- * nrpacks set to 1, you might as well comment
- * this define out, and thereby produce smaller, faster code.
- * You'd also set USX2Y_NRPACKS to 1 then.
- */
-#define USX2Y_NRPACKS_VARIABLE 1
-
-#ifdef USX2Y_NRPACKS_VARIABLE
-static int nrpacks = USX2Y_NRPACKS; /* number of packets per urb */
-#define  nr_of_packs() nrpacks
-module_param(nrpacks, int, 0444);
-MODULE_PARM_DESC(nrpacks, "Number of packets per URB.");
-#else
-#define nr_of_packs() USX2Y_NRPACKS
-#endif
-
 static int usx2y_urb_capt_retire(struct snd_usx2y_substream *subs)
 {
 	struct urb	*urb = subs->completed_urb;
@@ -421,7 +394,7 @@ static int usx2y_urbs_allocate(struct snd_usx2y_substream *subs)
 
 	pipe = is_playback ? usb_sndisocpipe(dev, subs->endpoint) :
 			usb_rcvisocpipe(dev, subs->endpoint);
-	subs->maxpacksize = usb_maxpacket(dev, pipe, is_playback);
+	subs->maxpacksize = usb_maxpacket(dev, pipe);
 	if (!subs->maxpacksize)
 		return -EINVAL;
 
@@ -668,14 +641,15 @@ static void i_usx2y_04int(struct urb *urb)
 
 static int usx2y_rate_set(struct usx2ydev *usx2y, int rate)
 {
-	int			err = 0, i;
-	struct snd_usx2y_urb_seq	*us = NULL;
-	int			*usbdata = NULL;
-	const struct s_c2	*ra = rate == 48000 ? setrate_48000 : setrate_44100;
+	int err = 0, i;
+	struct snd_usx2y_urb_seq *us = NULL;
+	int *usbdata = NULL;
+	const struct s_c2 *ra = rate == 48000 ? setrate_48000 : setrate_44100;
 	struct urb *urb;
 
 	if (usx2y->rate != rate) {
-		us = kzalloc(sizeof(*us) + sizeof(struct urb *) * NOOF_SETRATE_URBS, GFP_KERNEL);
+		us = kzalloc(struct_size(us, urb, NOOF_SETRATE_URBS),
+			     GFP_KERNEL);
 		if (!us) {
 			err = -ENOMEM;
 			goto cleanup;
@@ -821,8 +795,7 @@ static int snd_usx2y_pcm_hw_free(struct snd_pcm_substream *substream)
 		usx2y_urbs_release(subs);
 		if (!cap_subs->pcm_substream ||
 		    !cap_subs->pcm_substream->runtime ||
-		    !cap_subs->pcm_substream->runtime->status ||
-		    cap_subs->pcm_substream->runtime->status->state < SNDRV_PCM_STATE_PREPARED) {
+		    cap_subs->pcm_substream->runtime->state < SNDRV_PCM_STATE_PREPARED) {
 			atomic_set(&cap_subs->state, STATE_STOPPED);
 			usx2y_urbs_release(cap_subs);
 		}

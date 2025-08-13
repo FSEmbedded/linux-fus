@@ -63,6 +63,13 @@ static int ehci_ci_portpower(struct usb_hcd *hcd, int portnum, bool enable)
 		priv->enabled = enable;
 	}
 
+	if (ci->platdata->flags & CI_HDRC_PHY_VBUS_CONTROL) {
+		if (enable)
+			usb_phy_vbus_on(ci->usb_phy);
+		else
+			usb_phy_vbus_off(ci->usb_phy);
+	}
+
 	if (enable && (ci->platdata->phy_mode == USBPHY_INTERFACE_MODE_HSIC)) {
 		/*
 		 * Marvell 28nm HSIC PHY requires forcing the port to HS mode.
@@ -144,6 +151,7 @@ static int host_start(struct ci_hdrc *ci)
 	ehci->has_hostpc = ci->hw_bank.lpm;
 	ehci->has_tdi_phy_lpm = ci->hw_bank.lpm;
 	ehci->imx28_write_fix = ci->imx28_write_fix;
+	ehci->has_ci_pec_bug = ci->has_portsc_pec_bug;
 
 	priv = (struct ehci_ci_priv *)ehci->priv;
 	priv->reg_vbus = NULL;
@@ -490,88 +498,17 @@ static void ci_hdrc_unmap_urb_for_dma(struct usb_hcd *hcd, struct urb *urb)
 	ci_hdrc_free_dma_aligned_buffer(urb, true);
 }
 
-static void ci_hdrc_host_save_for_power_lost(struct ci_hdrc *ci)
-{
-	struct ehci_hcd *ehci;
-
-	if (!ci->hcd)
-		return;
-
-	ehci = hcd_to_ehci(ci->hcd);
-	/* save EHCI registers */
-	ci->pm_usbmode = ehci_readl(ehci, &ehci->regs->usbmode);
-	ci->pm_command = ehci_readl(ehci, &ehci->regs->command);
-	ci->pm_command &= ~CMD_RUN;
-	ci->pm_status  = ehci_readl(ehci, &ehci->regs->status);
-	ci->pm_intr_enable  = ehci_readl(ehci, &ehci->regs->intr_enable);
-	ci->pm_frame_index  = ehci_readl(ehci, &ehci->regs->frame_index);
-	ci->pm_segment  = ehci_readl(ehci, &ehci->regs->segment);
-	ci->pm_frame_list  = ehci_readl(ehci, &ehci->regs->frame_list);
-	ci->pm_async_next  = ehci_readl(ehci, &ehci->regs->async_next);
-	ci->pm_configured_flag  =
-			ehci_readl(ehci, &ehci->regs->configured_flag);
-	ci->pm_portsc = ehci_readl(ehci, &ehci->regs->port_status[0]);
-}
-
-static void ci_hdrc_host_restore_from_power_lost(struct ci_hdrc *ci)
-{
-	struct ehci_hcd *ehci;
-	unsigned long   flags;
-	u32 tmp;
-	int step_ms;
-	/*
-	 * If the vbus is off during system suspend, most of devices will pull
-	 * DP up within 200ms when they see vbus, set 1000ms for safety.
-	 */
-	int timeout_ms = 1000;
-
-	if (!ci->hcd)
-		return;
-
-	hw_controller_reset(ci);
-
-	ehci = hcd_to_ehci(ci->hcd);
-	spin_lock_irqsave(&ehci->lock, flags);
-	/* Restore EHCI registers */
-	ehci_writel(ehci, ci->pm_usbmode, &ehci->regs->usbmode);
-	ehci_writel(ehci, ci->pm_portsc, &ehci->regs->port_status[0]);
-	ehci_writel(ehci, ci->pm_command, &ehci->regs->command);
-	ehci_writel(ehci, ci->pm_intr_enable, &ehci->regs->intr_enable);
-	ehci_writel(ehci, ci->pm_frame_index, &ehci->regs->frame_index);
-	ehci_writel(ehci, ci->pm_segment, &ehci->regs->segment);
-	ehci_writel(ehci, ci->pm_frame_list, &ehci->regs->frame_list);
-	ehci_writel(ehci, ci->pm_async_next, &ehci->regs->async_next);
-	ehci_writel(ehci, ci->pm_configured_flag,
-					&ehci->regs->configured_flag);
-	/* Restore the PHY's connect notifier setting */
-	if (ci->pm_portsc & PORTSC_HSP)
-		usb_phy_notify_connect(ci->usb_phy, USB_SPEED_HIGH);
-
-	tmp = ehci_readl(ehci, &ehci->regs->command);
-	tmp |= CMD_RUN;
-	ehci_writel(ehci, tmp, &ehci->regs->command);
-	spin_unlock_irqrestore(&ehci->lock, flags);
-
-	if (!(ci->pm_portsc & PORTSC_CCS))
-		return;
-
-	for (step_ms = 0; step_ms < timeout_ms; step_ms += 25) {
-		if (ehci_readl(ehci, &ehci->regs->port_status[0]) & PORTSC_CCS)
-			break;
-		msleep(25);
-	}
-}
-
+#ifdef CONFIG_PM_SLEEP
 static void ci_hdrc_host_suspend(struct ci_hdrc *ci)
 {
-	ci_hdrc_host_save_for_power_lost(ci);
+	ehci_suspend(ci->hcd, device_may_wakeup(ci->dev));
 }
 
 static void ci_hdrc_host_resume(struct ci_hdrc *ci, bool power_lost)
 {
-	if (power_lost)
-		ci_hdrc_host_restore_from_power_lost(ci);
+	ehci_resume(ci->hcd, power_lost);
 }
+#endif
 
 static int ci_ehci_bus_resume(struct usb_hcd *hcd)
 {
@@ -616,8 +553,10 @@ int ci_hdrc_host_init(struct ci_hdrc *ci)
 
 	rdrv->start	= host_start;
 	rdrv->stop	= host_stop;
+#ifdef CONFIG_PM_SLEEP
 	rdrv->suspend	= ci_hdrc_host_suspend;
 	rdrv->resume	= ci_hdrc_host_resume;
+#endif
 	rdrv->irq	= host_irq;
 	rdrv->name	= "host";
 	ci->roles[CI_ROLE_HOST] = rdrv;

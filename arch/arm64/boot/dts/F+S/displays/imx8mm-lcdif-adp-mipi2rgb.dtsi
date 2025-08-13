@@ -106,7 +106,7 @@
 	rgb-bridge@2d {
 		#address-cells = <1>;
 		#size-cells = <0>;
-		compatible = "lontium,lt9211";
+		compatible = "lontium,lt9211-fus";
 		reg = <0x2d>;
 		/* 0 = LVDS, 1 = MIPI, 2 = TTL */
 		rx-source = /bits/ 8 <1>;
@@ -151,7 +151,7 @@
     };
 
 	pca963x: pca9634@61 {
-			compatible = "nxp,pca9634";
+			compatible = "fus,pca9634";
 			reg = <0x61>;
 			nxp,totem-pole;
 			#address-cells = <1>;
@@ -228,6 +228,8 @@
 		touchscreen-max-pressure = <2048>;
 		touchscreen-inverted-y;
 		ti,x-plate-ohms = <280>;
+		ti,pre-charge-time = <4>;
+		ti,sense-time-sel = <3>;
 		//ti,esd-recovery-timeout-ms = <8000>;
 	};
 };

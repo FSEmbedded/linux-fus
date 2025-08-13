@@ -7,6 +7,7 @@
 
 #include <linux/fiemap.h>
 #include <linux/fs.h>
+#include <linux/minmax.h>
 #include <linux/vmalloc.h>
 
 #include "debug.h"
@@ -75,8 +76,8 @@ struct ATTR_STD_INFO *ni_std(struct ntfs_inode *ni)
 	const struct ATTRIB *attr;
 
 	attr = mi_find_attr(&ni->mi, NULL, ATTR_STD, NULL, 0, NULL);
-	return attr ? resident_data_ex(attr, sizeof(struct ATTR_STD_INFO))
-		    : NULL;
+	return attr ? resident_data_ex(attr, sizeof(struct ATTR_STD_INFO)) :
+		      NULL;
 }
 
 /*
@@ -90,8 +91,8 @@ struct ATTR_STD_INFO5 *ni_std5(struct ntfs_inode *ni)
 
 	attr = mi_find_attr(&ni->mi, NULL, ATTR_STD, NULL, 0, NULL);
 
-	return attr ? resident_data_ex(attr, sizeof(struct ATTR_STD_INFO5))
-		    : NULL;
+	return attr ? resident_data_ex(attr, sizeof(struct ATTR_STD_INFO5)) :
+		      NULL;
 }
 
 /*
@@ -101,7 +102,9 @@ void ni_clear(struct ntfs_inode *ni)
 {
 	struct rb_node *node;
 
-	if (!ni->vfs_inode.i_nlink && ni->mi.mrec && is_rec_inuse(ni->mi.mrec))
+	if (!ni->vfs_inode.i_nlink && ni->mi.mrec &&
+	    is_rec_inuse(ni->mi.mrec) &&
+	    !(ni->mi.sbi->flags & NTFS_FLAGS_LOG_REPLAYING))
 		ni_delete_all(ni);
 
 	al_destroy(ni);
@@ -235,6 +238,7 @@ struct ATTRIB *ni_find_attr(struct ntfs_inode *ni, struct ATTRIB *attr,
 	return attr;
 
 out:
+	ntfs_inode_err(&ni->vfs_inode, "failed to parse mft record");
 	ntfs_set_state(ni->mi.sbi, NTFS_DIRTY_ERROR);
 	return NULL;
 }
@@ -383,7 +387,7 @@ bool ni_add_subrecord(struct ntfs_inode *ni, CLST rno, struct mft_inode **mi)
  * ni_remove_attr - Remove all attributes for the given type/name/id.
  */
 int ni_remove_attr(struct ntfs_inode *ni, enum ATTR_TYPE type,
-		   const __le16 *name, size_t name_len, bool base_only,
+		   const __le16 *name, u8 name_len, bool base_only,
 		   const __le16 *id)
 {
 	int err;
@@ -468,7 +472,7 @@ ni_ins_new_attr(struct ntfs_inode *ni, struct mft_inode *mi,
 				&ref, &le);
 		if (err) {
 			/* No memory or no space. */
-			return NULL;
+			return ERR_PTR(err);
 		}
 		le_added = true;
 
@@ -516,6 +520,9 @@ out:
  */
 static int ni_repack(struct ntfs_inode *ni)
 {
+#if 1
+	return 0;
+#else
 	int err = 0;
 	struct ntfs_sb_info *sbi = ni->mi.sbi;
 	struct mft_inode *mi, *mi_p = NULL;
@@ -556,7 +563,7 @@ static int ni_repack(struct ntfs_inode *ni)
 		}
 
 		if (!mi_p) {
-			/* Do not try if not enogh free space. */
+			/* Do not try if not enough free space. */
 			if (le32_to_cpu(mi->mrec->used) + 8 >= rs)
 				continue;
 
@@ -638,6 +645,7 @@ static int ni_repack(struct ntfs_inode *ni)
 
 	run_close(&run);
 	return err;
+#endif
 }
 
 /*
@@ -655,6 +663,7 @@ static int ni_try_remove_attr_list(struct ntfs_inode *ni)
 	struct mft_inode *mi;
 	u32 asize, free;
 	struct MFT_REF ref;
+	struct MFT_REC *mrec;
 	__le16 id;
 
 	if (!ni->attr_list.dirty)
@@ -698,11 +707,17 @@ static int ni_try_remove_attr_list(struct ntfs_inode *ni)
 		free -= asize;
 	}
 
+	/* Make a copy of primary record to restore if error. */
+	mrec = kmemdup(ni->mi.mrec, sbi->record_size, GFP_NOFS);
+	if (!mrec)
+		return 0; /* Not critical. */
+
 	/* It seems that attribute list can be removed from primary record. */
 	mi_remove_attr(NULL, &ni->mi, attr_list);
 
 	/*
-	 * Repeat the cycle above and move all attributes to primary record.
+	 * Repeat the cycle above and copy all attributes to primary record.
+	 * Do not remove original attributes from subrecords!
 	 * It should be success!
 	 */
 	le = NULL;
@@ -713,14 +728,14 @@ static int ni_try_remove_attr_list(struct ntfs_inode *ni)
 		mi = ni_find_mi(ni, ino_get(&le->ref));
 		if (!mi) {
 			/* Should never happened, 'cause already checked. */
-			goto bad;
+			goto out;
 		}
 
 		attr = mi_find_attr(mi, NULL, le->type, le_name(le),
 				    le->name_len, &le->id);
 		if (!attr) {
 			/* Should never happened, 'cause already checked. */
-			goto bad;
+			goto out;
 		}
 		asize = le32_to_cpu(attr->size);
 
@@ -730,18 +745,33 @@ static int ni_try_remove_attr_list(struct ntfs_inode *ni)
 					  le16_to_cpu(attr->name_off));
 		if (!attr_ins) {
 			/*
-			 * Internal error.
-			 * Either no space in primary record (already checked).
-			 * Either tried to insert another
-			 * non indexed attribute (logic error).
+			 * No space in primary record (already checked).
 			 */
-			goto bad;
+			goto out;
 		}
 
 		/* Copy all except id. */
 		id = attr_ins->id;
 		memcpy(attr_ins, attr, asize);
 		attr_ins->id = id;
+	}
+
+	/*
+	 * Repeat the cycle above and remove all attributes from subrecords.
+	 */
+	le = NULL;
+	while ((le = al_enumerate(ni, le))) {
+		if (!memcmp(&le->ref, &ref, sizeof(ref)))
+			continue;
+
+		mi = ni_find_mi(ni, ino_get(&le->ref));
+		if (!mi)
+			continue;
+
+		attr = mi_find_attr(mi, NULL, le->type, le_name(le),
+				    le->name_len, &le->id);
+		if (!attr)
+			continue;
 
 		/* Remove from original record. */
 		mi_remove_attr(NULL, mi, attr);
@@ -750,15 +780,17 @@ static int ni_try_remove_attr_list(struct ntfs_inode *ni)
 	run_deallocate(sbi, &ni->attr_list.run, true);
 	run_close(&ni->attr_list.run);
 	ni->attr_list.size = 0;
-	kfree(ni->attr_list.le);
+	kvfree(ni->attr_list.le);
 	ni->attr_list.le = NULL;
 	ni->attr_list.dirty = false;
 
+	kfree(mrec);
 	return 0;
-bad:
-	ntfs_inode_err(&ni->vfs_inode, "Internal error");
-	make_bad_inode(&ni->vfs_inode);
-	return -EINVAL;
+out:
+	/* Restore primary record. */
+	swap(mrec, ni->mi.mrec);
+	kfree(mrec);
+	return 0;
 }
 
 /*
@@ -788,10 +820,8 @@ int ni_create_attr_list(struct ntfs_inode *ni)
 	 * Looks like one record_size is always enough.
 	 */
 	le = kmalloc(al_aligned(rs), GFP_NOFS);
-	if (!le) {
-		err = -ENOMEM;
-		goto out;
-	}
+	if (!le)
+		return -ENOMEM;
 
 	mi_get_ref(&ni->mi, &le->ref);
 	ni->attr_list.le = le;
@@ -840,14 +870,14 @@ int ni_create_attr_list(struct ntfs_inode *ni)
 
 		if (to_free > free_b) {
 			err = -EINVAL;
-			goto out1;
+			goto out;
 		}
 	}
 
 	/* Allocate child MFT. */
 	err = ntfs_look_free_mft(sbi, &rno, is_mft, ni, &mi);
 	if (err)
-		goto out1;
+		goto out;
 
 	err = -EINVAL;
 	/* Call mi_remove_attr() in reverse order to keep pointers 'arr_move' valid. */
@@ -859,7 +889,7 @@ int ni_create_attr_list(struct ntfs_inode *ni)
 		attr = mi_insert_attr(mi, b->type, Add2Ptr(b, name_off),
 				      b->name_len, asize, name_off);
 		if (!attr)
-			goto out1;
+			goto out;
 
 		mi_get_ref(mi, &le_b[nb]->ref);
 		le_b[nb]->id = attr->id;
@@ -870,19 +900,19 @@ int ni_create_attr_list(struct ntfs_inode *ni)
 
 		/* Remove from primary record. */
 		if (!mi_remove_attr(NULL, &ni->mi, b))
-			goto out1;
+			goto out;
 
 		if (to_free <= asize)
 			break;
 		to_free -= asize;
 		if (!nb)
-			goto out1;
+			goto out;
 	}
 
 	attr = mi_insert_attr(&ni->mi, ATTR_LIST, NULL, 0,
 			      lsize + SIZEOF_RESIDENT, SIZEOF_RESIDENT);
 	if (!attr)
-		goto out1;
+		goto out;
 
 	attr->non_res = 0;
 	attr->flags = 0;
@@ -896,16 +926,13 @@ int ni_create_attr_list(struct ntfs_inode *ni)
 	ni->attr_list.dirty = false;
 
 	mark_inode_dirty(&ni->vfs_inode);
-	goto out;
+	return 0;
 
-out1:
-	kfree(ni->attr_list.le);
+out:
+	kvfree(ni->attr_list.le);
 	ni->attr_list.le = NULL;
 	ni->attr_list.size = 0;
 	return err;
-
-out:
-	return 0;
 }
 
 /*
@@ -998,6 +1025,8 @@ static int ni_ins_attr_ext(struct ntfs_inode *ni, struct ATTR_LIST_ENTRY *le,
 				       name_off, svcn, ins_le);
 		if (!attr)
 			continue;
+		if (IS_ERR(attr))
+			return PTR_ERR(attr);
 
 		if (ins_attr)
 			*ins_attr = attr;
@@ -1019,8 +1048,15 @@ insert_ext:
 
 	attr = ni_ins_new_attr(ni, mi, le, type, name, name_len, asize,
 			       name_off, svcn, ins_le);
-	if (!attr)
+	if (!attr) {
+		err = -EINVAL;
 		goto out2;
+	}
+
+	if (IS_ERR(attr)) {
+		err = PTR_ERR(attr);
+		goto out2;
+	}
 
 	if (ins_attr)
 		*ins_attr = attr;
@@ -1032,10 +1068,9 @@ insert_ext:
 out2:
 	ni_remove_mi(ni, mi);
 	mi_put(mi);
-	err = -EINVAL;
 
 out1:
-	ntfs_mark_rec_free(sbi, rno);
+	ntfs_mark_rec_free(sbi, rno, is_mft);
 
 out:
 	return err;
@@ -1088,6 +1123,11 @@ static int ni_insert_attr(struct ntfs_inode *ni, enum ATTR_TYPE type,
 	if (asize <= free) {
 		attr = ni_ins_new_attr(ni, &ni->mi, NULL, type, name, name_len,
 				       asize, name_off, svcn, ins_le);
+		if (IS_ERR(attr)) {
+			err = PTR_ERR(attr);
+			goto out;
+		}
+
 		if (attr) {
 			if (ins_attr)
 				*ins_attr = attr;
@@ -1185,6 +1225,11 @@ static int ni_insert_attr(struct ntfs_inode *ni, enum ATTR_TYPE type,
 		goto out;
 	}
 
+	if (IS_ERR(attr)) {
+		err = PTR_ERR(attr);
+		goto out;
+	}
+
 	if (ins_attr)
 		*ins_attr = attr;
 	if (ins_mi)
@@ -1230,7 +1275,7 @@ static int ni_expand_mft_list(struct ntfs_inode *ni)
 		mft_min = mft_new;
 		mi_min = mi_new;
 	} else {
-		ntfs_mark_rec_free(sbi, mft_new);
+		ntfs_mark_rec_free(sbi, mft_new, true);
 		mft_new = 0;
 		ni_remove_mi(ni, mi_new);
 	}
@@ -1274,7 +1319,7 @@ static int ni_expand_mft_list(struct ntfs_inode *ni)
 	done = asize - run_size - SIZEOF_NONRESIDENT;
 	le32_sub_cpu(&ni->mi.mrec->used, done);
 
-	/* Estimate the size of second part: run_buf=NULL. */
+	/* Estimate packed size (run_buf=NULL). */
 	err = run_pack(run, svcn, evcn + 1 - svcn, NULL, sbi->record_size,
 		       &plen);
 	if (err < 0)
@@ -1300,10 +1345,16 @@ static int ni_expand_mft_list(struct ntfs_inode *ni)
 		goto out;
 	}
 
+	if (IS_ERR(attr)) {
+		err = PTR_ERR(attr);
+		goto out;
+	}
+
 	attr->non_res = 1;
 	attr->name_off = SIZEOF_NONRESIDENT_LE;
 	attr->flags = 0;
 
+	/* This function can't fail - cause already checked above. */
 	run_pack(run, svcn, evcn + 1 - svcn, Add2Ptr(attr, SIZEOF_NONRESIDENT),
 		 run_size, &plen);
 
@@ -1313,7 +1364,7 @@ static int ni_expand_mft_list(struct ntfs_inode *ni)
 
 out:
 	if (mft_new) {
-		ntfs_mark_rec_free(sbi, mft_new);
+		ntfs_mark_rec_free(sbi, mft_new, true);
 		ni_remove_mi(ni, mi_new);
 	}
 
@@ -1379,8 +1430,6 @@ int ni_expand_list(struct ntfs_inode *ni)
 
 	/* Split MFT data as much as possible. */
 	err = ni_expand_mft_list(ni);
-	if (err)
-		goto out;
 
 out:
 	return !err && !done ? -EOPNOTSUPP : err;
@@ -1393,19 +1442,20 @@ int ni_insert_nonresident(struct ntfs_inode *ni, enum ATTR_TYPE type,
 			  const __le16 *name, u8 name_len,
 			  const struct runs_tree *run, CLST svcn, CLST len,
 			  __le16 flags, struct ATTRIB **new_attr,
-			  struct mft_inode **mi)
+			  struct mft_inode **mi, struct ATTR_LIST_ENTRY **le)
 {
 	int err;
 	CLST plen;
 	struct ATTRIB *attr;
-	bool is_ext =
-		(flags & (ATTR_FLAG_SPARSED | ATTR_FLAG_COMPRESSED)) && !svcn;
+	bool is_ext = (flags & (ATTR_FLAG_SPARSED | ATTR_FLAG_COMPRESSED)) &&
+		      !svcn;
 	u32 name_size = ALIGN(name_len * sizeof(short), 8);
 	u32 name_off = is_ext ? SIZEOF_NONRESIDENT_EX : SIZEOF_NONRESIDENT;
 	u32 run_off = name_off + name_size;
 	u32 run_size, asize;
 	struct ntfs_sb_info *sbi = ni->mi.sbi;
 
+	/* Estimate packed size (run_buf=NULL). */
 	err = run_pack(run, svcn, len, NULL, sbi->max_bytes_per_attr - run_off,
 		       &plen);
 	if (err < 0)
@@ -1426,7 +1476,7 @@ int ni_insert_nonresident(struct ntfs_inode *ni, enum ATTR_TYPE type,
 	}
 
 	err = ni_insert_attr(ni, type, name, name_len, asize, name_off, svcn,
-			     &attr, mi, NULL);
+			     &attr, mi, le);
 
 	if (err)
 		goto out;
@@ -1435,12 +1485,12 @@ int ni_insert_nonresident(struct ntfs_inode *ni, enum ATTR_TYPE type,
 	attr->name_off = cpu_to_le16(name_off);
 	attr->flags = flags;
 
+	/* This function can't fail - cause already checked above. */
 	run_pack(run, svcn, len, Add2Ptr(attr, run_off), run_size, &plen);
 
 	attr->nres.svcn = cpu_to_le64(svcn);
 	attr->nres.evcn = cpu_to_le64((u64)svcn + len - 1);
 
-	err = 0;
 	if (new_attr)
 		*new_attr = attr;
 
@@ -1453,7 +1503,7 @@ int ni_insert_nonresident(struct ntfs_inode *ni, enum ATTR_TYPE type,
 
 	if (is_ext) {
 		if (flags & ATTR_FLAG_COMPRESSED)
-			attr->nres.c_unit = COMPRESSION_UNIT;
+			attr->nres.c_unit = NTFS_LZNT_CUNIT;
 		attr->nres.total_size = attr->nres.alloc_size;
 	}
 
@@ -1553,8 +1603,10 @@ int ni_delete_all(struct ntfs_inode *ni)
 		asize = le32_to_cpu(attr->size);
 		roff = le16_to_cpu(attr->nres.run_off);
 
-		if (roff > asize)
+		if (roff > asize) {
+			_ntfs_bad_inode(&ni->vfs_inode);
 			return -EINVAL;
+		}
 
 		/* run==1 means unpack and deallocate. */
 		run_unpack_ex(RUN_DEALLOCATE, sbi, ni->mi.rno, svcn, evcn, svcn,
@@ -1575,7 +1627,7 @@ int ni_delete_all(struct ntfs_inode *ni)
 		mi->dirty = true;
 		mi_write(mi, 0);
 
-		ntfs_mark_rec_free(sbi, mi->rno);
+		ntfs_mark_rec_free(sbi, mi->rno, false);
 		ni_remove_mi(ni, mi);
 		mi_put(mi);
 		node = next;
@@ -1586,7 +1638,7 @@ int ni_delete_all(struct ntfs_inode *ni)
 	ni->mi.dirty = true;
 	err = mi_write(&ni->mi, 0);
 
-	ntfs_mark_rec_free(sbi, ni->mi.rno);
+	ntfs_mark_rec_free(sbi, ni->mi.rno, false);
 
 	return err;
 }
@@ -1596,7 +1648,7 @@ int ni_delete_all(struct ntfs_inode *ni)
  * Return: File name attribute by its value.
  */
 struct ATTR_FILE_NAME *ni_fname_name(struct ntfs_inode *ni,
-				     const struct cpu_str *uni,
+				     const struct le_str *uni,
 				     const struct MFT_REF *home_dir,
 				     struct mft_inode **mi,
 				     struct ATTR_LIST_ENTRY **le)
@@ -1604,7 +1656,8 @@ struct ATTR_FILE_NAME *ni_fname_name(struct ntfs_inode *ni,
 	struct ATTRIB *attr = NULL;
 	struct ATTR_FILE_NAME *fname;
 
-	*le = NULL;
+	if (le)
+		*le = NULL;
 
 	/* Enumerate all names. */
 next:
@@ -1620,15 +1673,14 @@ next:
 		goto next;
 
 	if (!uni)
-		goto next;
+		return fname;
 
 	if (uni->len != fname->name_len)
 		goto next;
 
-	if (ntfs_cmp_names_cpu(uni, (struct le_str *)&fname->name_len, NULL,
-			       false))
+	if (ntfs_cmp_names(uni->name, uni->len, fname->name, uni->len, NULL,
+			   false))
 		goto next;
-
 	return fname;
 }
 
@@ -1712,9 +1764,9 @@ int ni_new_attr_flags(struct ntfs_inode *ni, enum FILE_ATTRIBUTE new_fa)
 	}
 
 	/* Resize nonresident empty attribute in-place only. */
-	new_asize = (new_aflags & (ATTR_FLAG_COMPRESSED | ATTR_FLAG_SPARSED))
-			    ? (SIZEOF_NONRESIDENT_EX + 8)
-			    : (SIZEOF_NONRESIDENT + 8);
+	new_asize = (new_aflags & (ATTR_FLAG_COMPRESSED | ATTR_FLAG_SPARSED)) ?
+			    (SIZEOF_NONRESIDENT_EX + 8) :
+			    (SIZEOF_NONRESIDENT + 8);
 
 	if (!mi_resize_attr(mi, attr, new_asize - le32_to_cpu(attr->size)))
 		return -EOPNOTSUPP;
@@ -1860,8 +1912,7 @@ int ni_fiemap(struct ntfs_inode *ni, struct fiemap_extent_info *fieinfo,
 	int err = 0;
 	struct ntfs_sb_info *sbi = ni->mi.sbi;
 	u8 cluster_bits = sbi->cluster_bits;
-	struct runs_tree *run;
-	struct rw_semaphore *run_lock;
+	struct runs_tree run;
 	struct ATTRIB *attr;
 	CLST vcn = vbo >> cluster_bits;
 	CLST lcn, clen;
@@ -1872,13 +1923,11 @@ int ni_fiemap(struct ntfs_inode *ni, struct fiemap_extent_info *fieinfo,
 	u32 flags;
 	bool ok;
 
+	run_init(&run);
 	if (S_ISDIR(ni->vfs_inode.i_mode)) {
-		run = &ni->dir.alloc_run;
 		attr = ni_find_attr(ni, NULL, NULL, ATTR_ALLOC, I30_NAME,
 				    ARRAY_SIZE(I30_NAME), NULL, NULL);
-		run_lock = &ni->dir.run_lock;
 	} else {
-		run = &ni->file.run;
 		attr = ni_find_attr(ni, NULL, NULL, ATTR_DATA, NULL, 0, NULL,
 				    NULL);
 		if (!attr) {
@@ -1893,7 +1942,6 @@ int ni_fiemap(struct ntfs_inode *ni, struct fiemap_extent_info *fieinfo,
 				"fiemap is not supported for compressed file (cp -r)");
 			goto out;
 		}
-		run_lock = &ni->file.run_lock;
 	}
 
 	if (!attr || !attr->non_res) {
@@ -1910,35 +1958,28 @@ int ni_fiemap(struct ntfs_inode *ni, struct fiemap_extent_info *fieinfo,
 	if (end > alloc_size)
 		end = alloc_size;
 
-	down_read(run_lock);
 
 	while (vbo < end) {
 		if (idx == -1) {
-			ok = run_lookup_entry(run, vcn, &lcn, &clen, &idx);
+			ok = run_lookup_entry(&run, vcn, &lcn, &clen, &idx);
 		} else {
 			CLST vcn_next = vcn;
 
-			ok = run_get_entry(run, ++idx, &vcn, &lcn, &clen) &&
+			ok = run_get_entry(&run, ++idx, &vcn, &lcn, &clen) &&
 			     vcn == vcn_next;
 			if (!ok)
 				vcn = vcn_next;
 		}
 
 		if (!ok) {
-			up_read(run_lock);
-			down_write(run_lock);
-
 			err = attr_load_runs_vcn(ni, attr->type,
 						 attr_name(attr),
-						 attr->name_len, run, vcn);
-
-			up_write(run_lock);
-			down_read(run_lock);
+						 attr->name_len, &run, vcn);
 
 			if (err)
 				break;
 
-			ok = run_lookup_entry(run, vcn, &lcn, &clen, &idx);
+			ok = run_lookup_entry(&run, vcn, &lcn, &clen, &idx);
 
 			if (!ok) {
 				err = -EINVAL;
@@ -1963,8 +2004,9 @@ int ni_fiemap(struct ntfs_inode *ni, struct fiemap_extent_info *fieinfo,
 		} else if (is_attr_compressed(attr)) {
 			CLST clst_data;
 
-			err = attr_is_frame_compressed(
-				ni, attr, vcn >> attr->nres.c_unit, &clst_data);
+			err = attr_is_frame_compressed(ni, attr,
+						       vcn >> attr->nres.c_unit,
+						       &clst_data, &run);
 			if (err)
 				break;
 			if (clst_data < NTFS_LZNT_CLUSTERS)
@@ -1995,6 +2037,7 @@ int ni_fiemap(struct ntfs_inode *ni, struct fiemap_extent_info *fieinfo,
 
 			err = fiemap_fill_next_extent(fieinfo, vbo, lbo, dlen,
 						      flags);
+
 			if (err < 0)
 				break;
 			if (err == 1) {
@@ -2025,9 +2068,8 @@ int ni_fiemap(struct ntfs_inode *ni, struct fiemap_extent_info *fieinfo,
 		vbo += bytes;
 	}
 
-	up_read(run_lock);
-
 out:
+	run_close(&run);
 	return err;
 }
 
@@ -2051,7 +2093,7 @@ int ni_readpage_cmpr(struct ntfs_inode *ni, struct page *page)
 	gfp_t gfp_mask;
 	struct page *pg;
 
-	if (vbo >= ni->vfs_inode.i_size) {
+	if (vbo >= i_size_read(&ni->vfs_inode)) {
 		SetPageUptodate(page);
 		err = 0;
 		goto out;
@@ -2125,7 +2167,7 @@ int ni_decompress_file(struct ntfs_inode *ni)
 {
 	struct ntfs_sb_info *sbi = ni->mi.sbi;
 	struct inode *inode = &ni->vfs_inode;
-	loff_t i_size = inode->i_size;
+	loff_t i_size = i_size_read(inode);
 	struct address_space *mapping = inode->i_mapping;
 	gfp_t gfp_mask = mapping_gfp_mask(mapping);
 	struct page **pages = NULL;
@@ -2180,7 +2222,7 @@ int ni_decompress_file(struct ntfs_inode *ni)
 
 		for (vcn = vbo >> sbi->cluster_bits; vcn < end; vcn += clen) {
 			err = attr_data_get_block(ni, vcn, cend - vcn, &lcn,
-						  &clen, &new);
+						  &clen, &new, false);
 			if (err)
 				goto out;
 		}
@@ -2322,10 +2364,8 @@ remove_wof:
 
 out:
 	kfree(pages);
-	if (err) {
-		make_bad_inode(inode);
-		ntfs_set_state(sbi, NTFS_DIRTY_ERROR);
-	}
+	if (err)
+		_ntfs_bad_inode(inode);
 
 	return err;
 }
@@ -2462,6 +2502,7 @@ int ni_read_frame(struct ntfs_inode *ni, u64 frame_vbo, struct page **pages,
 		err = -EOPNOTSUPP;
 		goto out1;
 #else
+		loff_t i_size = i_size_read(&ni->vfs_inode);
 		u32 frame_bits = ni_ext_compress_bits(ni);
 		u64 frame64 = frame_vbo >> frame_bits;
 		u64 frames, vbo_data;
@@ -2502,7 +2543,7 @@ int ni_read_frame(struct ntfs_inode *ni, u64 frame_vbo, struct page **pages,
 			}
 		}
 
-		frames = (ni->vfs_inode.i_size - 1) >> frame_bits;
+		frames = (i_size - 1) >> frame_bits;
 
 		err = attr_wof_frame_info(ni, attr, run, frame64, frames,
 					  frame_bits, &ondisk_size, &vbo_data);
@@ -2510,8 +2551,7 @@ int ni_read_frame(struct ntfs_inode *ni, u64 frame_vbo, struct page **pages,
 			goto out2;
 
 		if (frame64 == frames) {
-			unc_size = 1 + ((ni->vfs_inode.i_size - 1) &
-					(frame_size - 1));
+			unc_size = 1 + ((i_size - 1) & (frame_size - 1));
 			ondisk_size = attr_size(attr) - vbo_data;
 		} else {
 			unc_size = frame_size;
@@ -2560,7 +2600,8 @@ int ni_read_frame(struct ntfs_inode *ni, u64 frame_vbo, struct page **pages,
 		down_write(&ni->file.run_lock);
 		run_truncate_around(run, le64_to_cpu(attr->nres.svcn));
 		frame = frame_vbo >> (cluster_bits + NTFS_LZNT_CUNIT);
-		err = attr_is_frame_compressed(ni, attr, frame, &clst_data);
+		err = attr_is_frame_compressed(ni, attr, frame, &clst_data,
+					       run);
 		up_write(&ni->file.run_lock);
 		if (err)
 			goto out1;
@@ -2868,7 +2909,7 @@ int ni_remove_name(struct ntfs_inode *dir_ni, struct ntfs_inode *ni,
 	/* Find name in record. */
 	mi_get_ref(&dir_ni->mi, &de_name->home);
 
-	fname = ni_fname_name(ni, (struct cpu_str *)&de_name->name_len,
+	fname = ni_fname_name(ni, (struct le_str *)&de_name->name_len,
 			      &de_name->home, &mi, &le);
 	if (!fname)
 		return -ENOENT;
@@ -2923,14 +2964,14 @@ bool ni_remove_name_undo(struct ntfs_inode *dir_ni, struct ntfs_inode *ni,
 {
 	struct ntfs_sb_info *sbi = ni->mi.sbi;
 	struct ATTRIB *attr;
-	u16 de_key_size = de2 ? le16_to_cpu(de2->key_size) : 0;
+	u16 de_key_size;
 
 	switch (undo_step) {
 	case 4:
+		de_key_size = le16_to_cpu(de2->key_size);
 		if (ni_insert_resident(ni, de_key_size, ATTR_NAME, NULL, 0,
-				       &attr, NULL, NULL)) {
+				       &attr, NULL, NULL))
 			return false;
-		}
 		memcpy(Add2Ptr(attr, SIZEOF_RESIDENT), de2 + 1, de_key_size);
 
 		mi_get_ref(&ni->mi, &de2->ref);
@@ -2939,19 +2980,16 @@ bool ni_remove_name_undo(struct ntfs_inode *dir_ni, struct ntfs_inode *ni,
 		de2->flags = 0;
 		de2->res = 0;
 
-		if (indx_insert_entry(&dir_ni->dir, dir_ni, de2, sbi, NULL,
-				      1)) {
+		if (indx_insert_entry(&dir_ni->dir, dir_ni, de2, sbi, NULL, 1))
 			return false;
-		}
 		fallthrough;
 
 	case 2:
 		de_key_size = le16_to_cpu(de->key_size);
 
 		if (ni_insert_resident(ni, de_key_size, ATTR_NAME, NULL, 0,
-				       &attr, NULL, NULL)) {
+				       &attr, NULL, NULL))
 			return false;
-		}
 
 		memcpy(Add2Ptr(attr, SIZEOF_RESIDENT), de + 1, de_key_size);
 		mi_get_ref(&ni->mi, &de->ref);
@@ -2964,22 +3002,43 @@ bool ni_remove_name_undo(struct ntfs_inode *dir_ni, struct ntfs_inode *ni,
 }
 
 /*
- * ni_add_name - Add new name in MFT and in directory.
+ * ni_add_name - Add new name into MFT and into directory.
  */
 int ni_add_name(struct ntfs_inode *dir_ni, struct ntfs_inode *ni,
 		struct NTFS_DE *de)
 {
 	int err;
+	struct ntfs_sb_info *sbi = ni->mi.sbi;
 	struct ATTRIB *attr;
 	struct ATTR_LIST_ENTRY *le;
 	struct mft_inode *mi;
+	struct ATTR_FILE_NAME *fname;
 	struct ATTR_FILE_NAME *de_name = (struct ATTR_FILE_NAME *)(de + 1);
 	u16 de_key_size = le16_to_cpu(de->key_size);
+
+	if (sbi->options->windows_names &&
+	    !valid_windows_name(sbi, (struct le_str *)&de_name->name_len))
+		return -EINVAL;
+
+	/* If option "hide_dot_files" then set hidden attribute for dot files. */
+	if (ni->mi.sbi->options->hide_dot_files) {
+		if (de_name->name_len > 0 &&
+		    le16_to_cpu(de_name->name[0]) == '.')
+			ni->std_fa |= FILE_ATTRIBUTE_HIDDEN;
+		else
+			ni->std_fa &= ~FILE_ATTRIBUTE_HIDDEN;
+	}
 
 	mi_get_ref(&ni->mi, &de->ref);
 	mi_get_ref(&dir_ni->mi, &de_name->home);
 
-	/* Insert new name in MFT. */
+	/* Fill duplicate from any ATTR_NAME. */
+	fname = ni_fname_name(ni, NULL, NULL, NULL, NULL);
+	if (fname)
+		memcpy(&de_name->dup, &fname->dup, sizeof(fname->dup));
+	de_name->dup.fa = ni->std_fa;
+
+	/* Insert new name into MFT. */
 	err = ni_insert_resident(ni, de_key_size, ATTR_NAME, NULL, 0, &attr,
 				 &mi, &le);
 	if (err)
@@ -2987,8 +3046,8 @@ int ni_add_name(struct ntfs_inode *dir_ni, struct ntfs_inode *ni,
 
 	memcpy(Add2Ptr(attr, SIZEOF_RESIDENT), de_name, de_key_size);
 
-	/* Insert new name in directory. */
-	err = indx_insert_entry(&dir_ni->dir, dir_ni, de, ni->mi.sbi, NULL, 0);
+	/* Insert new name into directory. */
+	err = indx_insert_entry(&dir_ni->dir, dir_ni, de, sbi, NULL, 0);
 	if (err)
 		ni_remove_attr_le(ni, attr, mi, le);
 
@@ -3011,7 +3070,7 @@ int ni_rename(struct ntfs_inode *dir_ni, struct ntfs_inode *new_dir_ni,
 	 * 1) Add new name and remove old name.
 	 * 2) Remove old name and add new name.
 	 *
-	 * In most cases (not all!) adding new name in MFT and in directory can
+	 * In most cases (not all!) adding new name into MFT and into directory can
 	 * allocate additional cluster(s).
 	 * Second way may result to bad inode if we can't add new name
 	 * and then can't restore (add) old name.
@@ -3099,9 +3158,9 @@ static bool ni_update_parent(struct ntfs_inode *ni, struct NTFS_DUP_INFO *dup,
 			u64 data_size = le64_to_cpu(attr->nres.data_size);
 			__le64 valid_le;
 
-			dup->alloc_size = is_attr_ext(attr)
-						  ? attr->nres.total_size
-						  : attr->nres.alloc_size;
+			dup->alloc_size = is_attr_ext(attr) ?
+						  attr->nres.total_size :
+						  attr->nres.alloc_size;
 			dup->data_size = attr->nres.data_size;
 
 			if (new_valid > data_size)
@@ -3195,6 +3254,9 @@ int ni_write_inode(struct inode *inode, int sync, const char *hint)
 	if (is_bad_inode(inode) || sb_rdonly(sb))
 		return 0;
 
+	if (unlikely(ntfs3_forced_shutdown(sb)))
+		return -EIO;
+
 	if (!ni_trylock(ni)) {
 		/* 'ni' is under modification, skip for now. */
 		mark_inode_dirty_sync(inode);
@@ -3207,6 +3269,7 @@ int ni_write_inode(struct inode *inode, int sync, const char *hint)
 	if (is_rec_inuse(ni->mi.mrec) &&
 	    !(sbi->flags & NTFS_FLAGS_LOG_REPLAYING) && inode->i_nlink) {
 		bool modified = false;
+		struct timespec64 ctime = inode_get_ctime(inode);
 
 		/* Update times in standard attribute. */
 		std = ni_std(ni);
@@ -3222,7 +3285,7 @@ int ni_write_inode(struct inode *inode, int sync, const char *hint)
 			modified = true;
 		}
 
-		dup.c_time = kernel2nt(&inode->i_ctime);
+		dup.c_time = kernel2nt(&ctime);
 		if (std->c_time != dup.c_time) {
 			std->c_time = dup.c_time;
 			modified = true;
@@ -3240,6 +3303,7 @@ int ni_write_inode(struct inode *inode, int sync, const char *hint)
 			modified = true;
 		}
 
+		/* std attribute is always in primary MFT record. */
 		if (modified)
 			ni->mi.dirty = true;
 
@@ -3290,7 +3354,7 @@ int ni_write_inode(struct inode *inode, int sync, const char *hint)
 			err = err2;
 
 		if (is_empty) {
-			ntfs_mark_rec_free(sbi, mi->rno);
+			ntfs_mark_rec_free(sbi, mi->rno, false);
 			rb_erase(node, &ni->mi_tree);
 			mi_put(mi);
 		}
@@ -3305,7 +3369,7 @@ out:
 	ni_unlock(ni);
 
 	if (err) {
-		ntfs_err(sb, "%s r=%lx failed, %d.", hint, inode->i_ino, err);
+		ntfs_inode_err(inode, "%s failed, %d.", hint, err);
 		ntfs_set_state(sbi, NTFS_DIRTY_ERROR);
 		return err;
 	}

@@ -21,9 +21,11 @@
 #include <linux/of.h>
 #include <linux/regulator/consumer.h>
 #include <linux/delay.h>
+#include <linux/backlight.h>
 #include <video/mipi_display.h>
 #include <video/of_videomode.h>
 #include <video/videomode.h>
+#include <linux/media-bus-format.h>
 
 #define MAX_DATA_LEN 20
 
@@ -738,7 +740,7 @@ static int nt35521_probe(struct mipi_dsi_device *dsi)
 	return ret;
 }
 
-static int nt35521_remove(struct mipi_dsi_device *dsi)
+static void nt35521_remove(struct mipi_dsi_device *dsi)
 {
 	struct nt35521 *nt = mipi_dsi_get_drvdata(dsi);
 	int ret;
@@ -753,8 +755,6 @@ static int nt35521_remove(struct mipi_dsi_device *dsi)
 		dev_err(nt->dev, "Failed to power off (%d)\n",
 			ret);
 	drm_panel_remove(&nt->panel);
-
-	return ret;
 }
 
 static void nt35521_shutdown(struct mipi_dsi_device *dsi)

@@ -47,12 +47,22 @@ void cdns_mhdp_infoframe_set(struct cdns_mhdp_device *mhdp,
 	cdns_mhdp_bus_write(F_PKT_ALLOC_WR_EN(1), mhdp, SOURCE_PIF_PKT_ALLOC_WR_EN);
 }
 
+void cdns_mhdp_infoframe_clean(struct cdns_mhdp_device *mhdp, u8 entry_id)
+{
+	u8 buf[32] = {0};
+
+	/* Send empty info frame to stop infoframe */
+	cdns_mhdp_infoframe_set(mhdp, entry_id, sizeof(buf), buf, 0);
+}
+
 int cdns_hdmi_get_edid_block(void *data, u8 *edid,
 			  u32 block, size_t length)
 {
 	struct cdns_mhdp_device *mhdp = data;
 	u8 msg[2], reg[5], i;
 	int ret;
+
+	mutex_lock(&mhdp->api_lock);
 
 	for (i = 0; i < 4; i++) {
 		msg[0] = block / 2;
@@ -80,6 +90,8 @@ int cdns_hdmi_get_edid_block(void *data, u8 *edid,
 			break;
 	}
 
+	mutex_unlock(&mhdp->api_lock);
+
 	if (ret)
 		DRM_ERROR("get block[%d] edid failed: %d\n", block, ret);
 	return ret;
@@ -89,6 +101,8 @@ int cdns_hdmi_scdc_read(struct cdns_mhdp_device *mhdp, u8 addr, u8 *data)
 {
 	u8 msg[4], reg[6];
 	int ret;
+
+	mutex_lock(&mhdp->api_lock);
 
 	msg[0] = 0x54;
 	msg[1] = addr;
@@ -111,6 +125,7 @@ int cdns_hdmi_scdc_read(struct cdns_mhdp_device *mhdp, u8 addr, u8 *data)
 	*data = reg[5];
 
 err_scdc_read:
+	mutex_unlock(&mhdp->api_lock);
 	if (ret)
 		DRM_ERROR("scdc read failed: %d\n", ret);
 	return ret;
@@ -120,6 +135,8 @@ int cdns_hdmi_scdc_write(struct cdns_mhdp_device *mhdp, u8 addr, u8 value)
 {
 	u8 msg[5], reg[5];
 	int ret;
+
+	mutex_lock(&mhdp->api_lock);
 
 	msg[0] = 0x54;
 	msg[1] = addr;
@@ -144,6 +161,7 @@ int cdns_hdmi_scdc_write(struct cdns_mhdp_device *mhdp, u8 addr, u8 value)
 		ret = -EINVAL;
 
 err_scdc_write:
+	mutex_unlock(&mhdp->api_lock);
 	if (ret)
 		DRM_ERROR("scdc write failed: %d\n", ret);
 	return ret;

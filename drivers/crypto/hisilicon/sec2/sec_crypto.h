@@ -23,17 +23,6 @@ enum sec_hash_alg {
 	SEC_A_HMAC_SHA512 = 0x15,
 };
 
-enum sec_mac_len {
-	SEC_HMAC_CCM_MAC   = 16,
-	SEC_HMAC_GCM_MAC   = 16,
-	SEC_SM3_MAC        = 32,
-	SEC_HMAC_SM3_MAC   = 32,
-	SEC_HMAC_MD5_MAC   = 16,
-	SEC_HMAC_SHA1_MAC   = 20,
-	SEC_HMAC_SHA256_MAC = 32,
-	SEC_HMAC_SHA512_MAC = 64,
-};
-
 enum sec_cmode {
 	SEC_CMODE_ECB    = 0x0,
 	SEC_CMODE_CBC    = 0x1,
@@ -355,8 +344,10 @@ struct sec_sqe3 {
 	 * akey_len: 9~14 bits
 	 * a_alg: 15~20 bits
 	 * key_sel: 21~24 bits
-	 * updata_key: 25 bits
-	 * reserved: 26~31 bits
+	 * ctr_count_mode/sm4_xts: 25~26 bits
+	 * sva_prefetch: 27 bits
+	 * key_wrap_num: 28~30 bits
+	 * update_key: 31 bits
 	 */
 	__le32 auth_mac_key;
 	__le32 salt;

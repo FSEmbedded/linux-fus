@@ -1,0 +1,50 @@
+&lpi2c6 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	clock-frequency = <10000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lpi2c6>;
+	pinctrl-1 = <&pinctrl_lpi2c6>;
+	status = "okay";
+
+    basler_csi_a: basler_camera_vvcam@36 {
+		compatible = "basler,basler-camera";
+		reg = <0x36>;
+		status = "okay";
+
+		port {
+			basler_ep_0: endpoint {
+				remote-endpoint = <&mipi_csi0_ep>;
+
+				/* IMPORTANT: The following three entries needs
+				 * to be held in sync with the information
+				 * stored in the mipi_csi0_ep node.
+				 */
+				 data-lanes = <1 2>;
+				 clocks-lanes = <0>;
+				 link-frequenc = /bits/ 64 <594000000>;
+			};
+		};
+	};
+};
+
+&mipi_csi0 {
+	port@0 {
+		reg = <0>;
+		mipi_csi0_ep: endpoint {
+		remote-endpoint = <&basler_ep_0>;
+			data-lanes = <1 2>;
+			bus-type = <4>;
+			link-frequenc = /bits/ 64 <594000000>;
+		};
+	};
+};
+
+&iomuxc1{
+    pinctrl_lpi2c6: lpi2c6ptfgrp {
+        fsl,pins = <
+            MX8ULP_PAD_PTF0__LPI2C6_SCL		0x20
+			MX8ULP_PAD_PTF1__LPI2C6_SDA		0x20
+        >;
+    };
+};

@@ -1,0 +1,20 @@
+#include <dt-bindings/gpio/gpio.h>
+
+&ssi1 {
+	clocks = <&clks IMX6QDL_CLK_SSI1>;
+	clock-names = "baud";
+};
+
+&snvs {
+	status="disabled";
+};
+
+&sdma {
+	iram = <&ocram>;
+};
+
+&aips1 {
+			flexcan1: can@2090000 {};
+			flexcan2: can@2094000 {};
+};
+

@@ -38,7 +38,7 @@ static const struct device_type nd_dax_device_type = {
 	.groups = nd_pfn_attribute_groups,
 };
 
-bool is_nd_dax(struct device *dev)
+bool is_nd_dax(const struct device *dev)
 {
 	return dev ? dev->type == &nd_dax_device_type : false;
 }
@@ -80,7 +80,7 @@ struct device *nd_dax_create(struct nd_region *nd_region)
 	nd_dax = nd_dax_alloc(nd_region);
 	if (nd_dax)
 		dev = nd_pfn_devinit(&nd_dax->nd_pfn, NULL);
-	__nd_device_register(dev);
+	nd_device_register(dev);
 	return dev;
 }
 
@@ -106,12 +106,12 @@ int nd_dax_probe(struct device *dev, struct nd_namespace_common *ndns)
 
 	nvdimm_bus_lock(&ndns->dev);
 	nd_dax = nd_dax_alloc(nd_region);
-	nd_pfn = &nd_dax->nd_pfn;
-	dax_dev = nd_pfn_devinit(nd_pfn, ndns);
+	dax_dev = nd_dax_devinit(nd_dax, ndns);
 	nvdimm_bus_unlock(&ndns->dev);
 	if (!dax_dev)
 		return -ENOMEM;
 	pfn_sb = devm_kmalloc(dev, sizeof(*pfn_sb), GFP_KERNEL);
+	nd_pfn = &nd_dax->nd_pfn;
 	nd_pfn->pfn_sb = pfn_sb;
 	rc = nd_pfn_validate(nd_pfn, DAX_SIG);
 	dev_dbg(dev, "dax: %s\n", rc == 0 ? dev_name(dax_dev) : "<none>");
@@ -119,7 +119,7 @@ int nd_dax_probe(struct device *dev, struct nd_namespace_common *ndns)
 		nd_detach_ndns(dax_dev, &nd_pfn->ndns);
 		put_device(dax_dev);
 	} else
-		__nd_device_register(dax_dev);
+		nd_device_register(dax_dev);
 
 	return rc;
 }

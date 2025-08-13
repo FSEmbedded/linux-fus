@@ -1,0 +1,23 @@
+#ifndef _DT_BINDINGS_RTC_NXP_PCF85363_H
+#define _DT_BINDINGS_RTC_NXP_PCF85363_H
+
+/* Quartz capacitance */
+#define PCF85363_CAP_7pF	7000
+#define PCF85363_CAP_6pF	6000
+#define PCF85363_CAP_12p5pF	12500
+
+/* Quartz drive strength */
+#define PCF85363_OSC_DRIVE_NORMAL	0
+#define PCF85363_OSC_DRIVE_LOW		1
+#define PCF85363_OSC_DRIVE_HIGH		2
+
+/* Clock out frequency */
+#define PCF85363_COF_32768Hz	0
+#define PCF85363_COF_16384Hz	1
+#define PCF85363_COF_8192Hz2	2
+#define PCF85363_COF_4096Hz	3
+#define PCF85363_COF_2048Hz	4
+#define PCF85363_COF_1024Hz	5
+#define PCF85363_COF_1Hz	6
+
+#endif /* _DT_BINDINGS_RTC_NXP_PCF85363_H */

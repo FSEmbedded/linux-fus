@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause) */
-/* Copyright 2019 NXP */
+/* Copyright 2019, 2024 NXP */
 #ifndef DPAA2_MAC_H
 #define DPAA2_MAC_H
 
@@ -7,7 +7,6 @@
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
 #include <linux/phylink.h>
-
 #include "dpmac.h"
 #include "dpmac-cmd.h"
 
@@ -28,12 +27,24 @@ struct dpaa2_mac {
 	struct phylink_pcs *pcs;
 	struct fwnode_handle *fw_node;
 
+	struct phy **phys;
+	size_t num_phys;
+	size_t num_lanes;
+
 	int phy_req_state;
-	struct phy *serdes_phy;
+	u32 *cnt_idx_dma_mem;
+	u64 *cnt_values_dma_mem;
+	dma_addr_t cnt_idx_iova, cnt_values_iova;
 };
 
-bool dpaa2_mac_is_type_fixed(struct fsl_mc_device *dpmac_dev,
-			     struct fsl_mc_io *mc_io);
+static inline bool dpaa2_mac_is_type_phy(struct dpaa2_mac *mac)
+{
+	if (!mac)
+		return false;
+
+	return mac->attr.link_type == DPMAC_LINK_TYPE_PHY ||
+	       mac->attr.link_type == DPMAC_LINK_TYPE_BACKPLANE;
+}
 
 int dpaa2_mac_open(struct dpaa2_mac *mac);
 
@@ -49,12 +60,12 @@ void dpaa2_mac_get_strings(u8 *data);
 
 void dpaa2_mac_get_ethtool_stats(struct dpaa2_mac *mac, u64 *data);
 
-void dpaa2_mac_driver_attach(struct fsl_mc_device *dpmac_dev);
-
-void dpaa2_mac_driver_detach(struct fsl_mc_device *dpmac_dev);
-
 void dpaa2_mac_start(struct dpaa2_mac *mac);
 
 void dpaa2_mac_stop(struct dpaa2_mac *mac);
+
+void dpaa2_mac_driver_attach(struct fsl_mc_device *dpmac_dev);
+
+void dpaa2_mac_driver_detach(struct fsl_mc_device *dpmac_dev);
 
 #endif /* DPAA2_MAC_H */

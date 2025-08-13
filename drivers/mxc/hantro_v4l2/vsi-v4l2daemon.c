@@ -54,7 +54,7 @@ module_param(invoke_vsidaemon, bool, 0644);
 static int loglevel;
 module_param(loglevel, int, 0644);
 
-static ulong g_seqid;
+static u64 g_seqid;
 static struct idr *cmdarray, *retarray;
 static atomic_t daemon_fn = ATOMIC_INIT(0);
 
@@ -136,7 +136,7 @@ int vsi_clear_daemonmsg(int instid)
 		if (obj) {
 			msg = (struct vsi_v4l2_msg *)obj;
 			if (msg->inst_id == instid) {
-				v4l2_klog(LOGLVL_WARNING, "clear unused cmd %x:%ld:%d", instid, msg->seq_id, msg->cmd_id);
+				v4l2_klog(LOGLVL_WARNING, "clear unused cmd %x:%lld:%d", instid, msg->seq_id, msg->cmd_id);
 				idr_remove(cmdarray, id);
 				kfree(obj);
 			}
@@ -149,7 +149,7 @@ int vsi_clear_daemonmsg(int instid)
 		if (obj) {
 			msg = (struct vsi_v4l2_msg *)obj;
 			if (msg->inst_id == instid) {
-				v4l2_klog(LOGLVL_WARNING, "clear unused msg %x:%ld:%d", instid, msg->seq_id, msg->cmd_id);
+				v4l2_klog(LOGLVL_WARNING, "clear unused msg %x:%lld:%d", instid, msg->seq_id, msg->cmd_id);
 				idr_remove(retarray, id);
 				kfree(obj);
 			}
@@ -172,7 +172,7 @@ static int getMsg(struct file *fh, char __user *buf, size_t size)
 		if (obj) {
 			if (copy_to_user((void __user *)buf + offset, (void *)obj, sizeof(struct vsi_v4l2_msg_hdr) + obj->size) != 0)
 				break;
-			v4l2_klog(LOGLVL_VERBOSE, "%lx send msg  id = %d", obj->inst_id, obj->cmd_id);
+			v4l2_klog(LOGLVL_VERBOSE, "%llx send msg  id = %d", obj->inst_id, obj->cmd_id);
 			offset += sizeof(struct vsi_v4l2_msg_hdr) + obj->size;
 			accubytes += sizeof(struct vsi_v4l2_msg_hdr) + obj->size;
 			idr_remove(cmdarray, id);
@@ -198,7 +198,7 @@ static int getRet(unsigned long seqid, int *error, s32 *retflag)
 	idr_for_each_entry(retarray, obj, id) {
 		if (obj) {
 			if (obj->seq_id == seqid) {
-				v4l2_klog(LOGLVL_VERBOSE, "%lx get ack %d", obj->inst_id, obj->cmd_id);
+				v4l2_klog(LOGLVL_VERBOSE, "%llx get ack %d", obj->inst_id, obj->cmd_id);
 				*error = obj->error;
 				*retflag = obj->param_type;
 				idr_remove(retarray, id);
@@ -237,14 +237,26 @@ static int vsi_v4l2_sendcmd(
 	v4l2_klog(LOGLVL_VERBOSE, "%s:%lx:%d:%x", __func__, instid, cmdid, param_type);
 	if (msgsize == 0) {
 		msghdr = kzalloc(sizeof(struct vsi_v4l2_msg_hdr), GFP_KERNEL);
+		if (!msghdr) {
+			mutex_unlock(&cmd_lock);
+			return -ENOMEM;
+		}
 		msghdr->inst_id = instid;
 		msghdr->cmd_id = cmdid;
 		msghdr->codec_fmt = codecformat;
 		msghdr->param_type = param_type;
 		mid = msghdr->seq_id = g_seqid;
-		idr_alloc(cmdarray, (void *)msghdr, 1, 0, GFP_KERNEL);
+		if (idr_alloc(cmdarray, (void *)msghdr, 1, 0, GFP_KERNEL) < 0) {
+			kfree(msghdr);
+			mutex_unlock(&cmd_lock);
+			return -ENOMEM;
+		}
 	} else {
 		pmsg = kzalloc(sizeof(struct vsi_v4l2_msg), GFP_KERNEL);
+		if (!pmsg) {
+			mutex_unlock(&cmd_lock);
+			return -ENOMEM;
+		}
 		pmsg->inst_id = instid;
 		pmsg->cmd_id = cmdid;
 		pmsg->codec_fmt = codecformat;
@@ -252,7 +264,11 @@ static int vsi_v4l2_sendcmd(
 		mid = pmsg->seq_id = g_seqid;
 		pmsg->size = msgsize;
 		memcpy((void *)&pmsg->params, msgcontent, msgsize);
-		idr_alloc(cmdarray, (void *)pmsg, 1, 0, GFP_KERNEL);
+		if (idr_alloc(cmdarray, (void *)pmsg, 1, 0, GFP_KERNEL) < 0) {
+			kfree(pmsg);
+			mutex_unlock(&cmd_lock);
+			return -ENOMEM;
+		}
 	}
 	g_seqid++;
 	if (g_seqid >= SEQID_UPLIMT)
@@ -277,8 +293,8 @@ static long vsi_v4l2_daemon_ioctl(
 	int error = 0;
 	struct vsi_v4l2_dev_info hwinfo;
 
-	switch (cmd) {
-	case VSI_IOCTL_CMD_INITDEV:
+	switch (_IOC_NR(cmd)) {
+	case _IOC_NR(VSI_IOCTL_CMD_INITDEV):
 		if (copy_from_user((void *)&hwinfo, (void __user *)arg, sizeof(hwinfo)) != 0) {
 			v4l2_klog(LOGLVL_ERROR, "%s fail to get data", __func__);
 			return -EINVAL;
@@ -321,7 +337,7 @@ static u32 format_bufinfo_enc(struct vsi_v4l2_ctx *ctx, struct vsi_v4l2_msg *pms
 {
 	u32 planeno, size;
 	struct v4l2_daemon_enc_buffers *encbufinfo;
-	dma_addr_t  busaddr[4];
+	dma_addr_t  busaddr[4] = { 0 };
 
 	vsi_convertROI(ctx);
 	vsi_convertIPCM(ctx);
@@ -393,7 +409,7 @@ static u32 format_bufinfo_enc(struct vsi_v4l2_ctx *ctx, struct vsi_v4l2_msg *pms
 static void format_bufinfo_dec(struct vsi_v4l2_ctx *ctx, struct vsi_v4l2_msg *pmsg, struct vb2_buffer *buf)
 {
 	struct v4l2_daemon_dec_buffers *decbufinfo;
-	dma_addr_t  busaddr[4];
+	dma_addr_t  busaddr[4] = { 0 };
 
 	memcpy((void *)&pmsg->params.dec_params.io_buffer, (void *)&ctx->mediacfg.decparams.io_buffer, sizeof(struct v4l2_daemon_dec_buffers));
 	if (binputqueue(buf->type)) {
@@ -516,7 +532,7 @@ tail:
 	if (ctx) {
 		if (ret < 0) {
 			vsi_set_ctx_error(ctx, ret);
-			v4l2_klog(LOGLVL_ERROR, "%lx fail to communicate with daemon, error=%d, cmd=%d", ctx->ctxid, ret, id);
+			v4l2_klog(LOGLVL_ERROR, "%llx fail to communicate with daemon, error=%d, cmd=%d", ctx->ctxid, ret, id);
 		} else
 			set_bit(CTX_FLAG_DAEMONLIVE_BIT, &ctx->flag);
 	}
@@ -667,11 +683,13 @@ static ssize_t v4l2_msg_write(struct file *fh, const char __user *buf, size_t si
 		return size;
 	if (size < sizeof(struct vsi_v4l2_msg_hdr))
 		return size;
-	if (!access_ok((void *) buf, size)) {
+	if (!access_ok((void __user *) buf, size)) {
 		v4l2_klog(LOGLVL_ERROR, "input data unaccessable");
 		return size;
 	}
 	pmsg = kzalloc(sizeof(struct vsi_v4l2_msg), GFP_KERNEL);
+	if (!pmsg)
+		goto error;
 	if (copy_from_user((void *)pmsg,
 		(void __user *)buf, sizeof(struct vsi_v4l2_msg_hdr)) != 0) {
 		kfree(pmsg);
@@ -689,11 +707,11 @@ static ssize_t v4l2_msg_write(struct file *fh, const char __user *buf, size_t si
 			goto error;
 		}
 	}
-	v4l2_klog(LOGLVL_VERBOSE, "get msg  id = %d, flag = %x, seqid = %lx, err = %d",
+	v4l2_klog(LOGLVL_VERBOSE, "get msg  id = %d, flag = %x, seqid = %llx, err = %d",
 		pmsg->cmd_id, pmsg->param_type, pmsg->seq_id, pmsg->error);
 	accubytes += sizeof(struct vsi_v4l2_msg_hdr) + msgsize;
 
-	if (pmsg->seq_id == NO_RESPONSE_SEQID) {
+	if (pmsg->seq_id == (u64)NO_RESPONSE_SEQID) {
 		vsi_handle_daemonmsg(pmsg);
 		kfree(pmsg);
 		return size;
@@ -771,6 +789,9 @@ static const struct file_operations daemon_fops = {
 	.open = v4l2_daemon_open,
 	.release = v4l2_daemon_release,
 	.unlocked_ioctl = vsi_v4l2_daemon_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = compat_ptr_ioctl,
+#endif
 	.read = v4l2_msg_read,
 	.write = v4l2_msg_write,
 	.mmap = vsi_v4l2_mmap,

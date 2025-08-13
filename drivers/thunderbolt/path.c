@@ -166,6 +166,9 @@ struct tb_path *tb_path_discover(struct tb_port *src, int src_hopid,
 		return NULL;
 	}
 
+	tb_dbg(path->tb, "discovering %s path starting from %llx:%u\n",
+	       path->name, tb_route(src->sw), src->port);
+
 	p = src;
 	h = src_hopid;
 
@@ -198,10 +201,13 @@ struct tb_path *tb_path_discover(struct tb_port *src, int src_hopid,
 		path->hops[i].out_port = out_port;
 		path->hops[i].next_hop_index = next_hop;
 
+		tb_dump_hop(&path->hops[i], &hop);
+
 		h = next_hop;
 		p = out_port->remote;
 	}
 
+	tb_dbg(path->tb, "path discovery complete\n");
 	return path;
 
 err:
@@ -438,6 +444,19 @@ static int __tb_path_deactivate_hop(struct tb_port *port, int hop_index,
 	} while (ktime_before(ktime_get(), timeout));
 
 	return -ETIMEDOUT;
+}
+
+/**
+ * tb_path_deactivate_hop() - Deactivate one path in path config space
+ * @port: Lane or protocol adapter
+ * @hop_index: HopID of the path to be cleared
+ *
+ * This deactivates or clears a single path config space entry at
+ * @hop_index. Returns %0 in success and negative errno otherwise.
+ */
+int tb_path_deactivate_hop(struct tb_port *port, int hop_index)
+{
+	return __tb_path_deactivate_hop(port, hop_index, true);
 }
 
 static void __tb_path_deactivate_hops(struct tb_path *path, int first_hop)

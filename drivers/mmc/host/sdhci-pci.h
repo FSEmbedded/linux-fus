@@ -11,6 +11,10 @@
 #define PCI_DEVICE_ID_O2_FUJIN2		0x8520
 #define PCI_DEVICE_ID_O2_SEABIRD0	0x8620
 #define PCI_DEVICE_ID_O2_SEABIRD1	0x8621
+#define PCI_DEVICE_ID_O2_GG8_9860	0x9860
+#define PCI_DEVICE_ID_O2_GG8_9861	0x9861
+#define PCI_DEVICE_ID_O2_GG8_9862	0x9862
+#define PCI_DEVICE_ID_O2_GG8_9863	0x9863
 
 #define PCI_DEVICE_ID_INTEL_PCH_SDIO0	0x8809
 #define PCI_DEVICE_ID_INTEL_PCH_SDIO1	0x880a
@@ -76,6 +80,7 @@
 #define PCI_DEVICE_ID_GLI_9755		0x9755
 #define PCI_DEVICE_ID_GLI_9750		0x9750
 #define PCI_DEVICE_ID_GLI_9763E		0xe763
+#define PCI_DEVICE_ID_GLI_9767		0x9767
 
 /*
  * PCI device class and mask
@@ -151,17 +156,13 @@ struct sdhci_pci_fixes {
 #endif
 
 	const struct sdhci_ops	*ops;
+	const struct dmi_system_id *cd_gpio_override;
 	size_t			priv_size;
 };
 
 struct sdhci_pci_slot {
 	struct sdhci_pci_chip	*chip;
 	struct sdhci_host	*host;
-	struct sdhci_pci_data	*data;
-
-	int			rst_n_gpio;
-	int			cd_gpio;
-	int			cd_irq;
 
 	int			cd_idx;
 	bool			cd_override_level;
@@ -200,5 +201,6 @@ extern const struct sdhci_pci_fixes sdhci_o2;
 extern const struct sdhci_pci_fixes sdhci_gl9750;
 extern const struct sdhci_pci_fixes sdhci_gl9755;
 extern const struct sdhci_pci_fixes sdhci_gl9763e;
+extern const struct sdhci_pci_fixes sdhci_gl9767;
 
 #endif /* __SDHCI_PCI_H */

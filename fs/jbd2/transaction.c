@@ -63,28 +63,6 @@ void jbd2_journal_free_transaction(transaction_t *transaction)
 }
 
 /*
- * Base amount of descriptor blocks we reserve for each transaction.
- */
-static int jbd2_descriptor_blocks_per_trans(journal_t *journal)
-{
-	int tag_space = journal->j_blocksize - sizeof(journal_header_t);
-	int tags_per_block;
-
-	/* Subtract UUID */
-	tag_space -= 16;
-	if (jbd2_journal_has_csum_v2or3(journal))
-		tag_space -= sizeof(struct jbd2_journal_block_tail);
-	/* Commit code leaves a slack space of 16 bytes at the end of block */
-	tags_per_block = (tag_space - 16) / journal_tag_bytes(journal);
-	/*
-	 * Revoke descriptors are accounted separately so we need to reserve
-	 * space for commit block and normal transaction descriptor blocks.
-	 */
-	return 1 + DIV_ROUND_UP(journal->j_max_transaction_buffers,
-				tags_per_block);
-}
-
-/*
  * jbd2_get_transaction: obtain a new transaction_t object.
  *
  * Simply initialise a new transaction. Initialize it in
@@ -109,7 +87,7 @@ static void jbd2_get_transaction(journal_t *journal,
 	transaction->t_expires = jiffies + journal->j_commit_interval;
 	atomic_set(&transaction->t_updates, 0);
 	atomic_set(&transaction->t_outstanding_credits,
-		   jbd2_descriptor_blocks_per_trans(journal) +
+		   journal->j_transaction_overhead_buffers +
 		   atomic_read(&journal->j_reserved_credits));
 	atomic_set(&transaction->t_outstanding_revokes, 0);
 	atomic_set(&transaction->t_handle_count, 0);
@@ -141,20 +119,19 @@ static void jbd2_get_transaction(journal_t *journal,
  * t_max_wait is carefully updated here with use of atomic compare exchange.
  * Note that there could be multiplre threads trying to do this simultaneously
  * hence using cmpxchg to avoid any use of locks in this case.
+ * With this t_max_wait can be updated w/o enabling jbd2_journal_enable_debug.
  */
 static inline void update_t_max_wait(transaction_t *transaction,
 				     unsigned long ts)
 {
-#ifdef CONFIG_JBD2_DEBUG
 	unsigned long oldts, newts;
-	if (jbd2_journal_enable_debug &&
-	    time_after(transaction->t_start, ts)) {
+
+	if (time_after(transaction->t_start, ts)) {
 		newts = jbd2_time_diff(ts, transaction->t_start);
 		oldts = READ_ONCE(transaction->t_max_wait);
 		while (oldts < newts)
 			oldts = cmpxchg(&transaction->t_max_wait, oldts, newts);
 	}
-#endif
 }
 
 /*
@@ -214,6 +191,13 @@ static void sub_reserved_credits(journal_t *journal, int blocks)
 	wake_up(&journal->j_wait_reserved);
 }
 
+/* Maximum number of blocks for user transaction payload */
+static int jbd2_max_user_trans_buffers(journal_t *journal)
+{
+	return journal->j_max_transaction_buffers -
+				journal->j_transaction_overhead_buffers;
+}
+
 /*
  * Wait until we can add credits for handle to the running transaction.  Called
  * with j_state_lock held for reading. Returns 0 if handle joined the running
@@ -263,12 +247,12 @@ __must_hold(&journal->j_state_lock)
 		 * big to fit this handle? Wait until reserved credits are freed.
 		 */
 		if (atomic_read(&journal->j_reserved_credits) + total >
-		    journal->j_max_transaction_buffers) {
+		    jbd2_max_user_trans_buffers(journal)) {
 			read_unlock(&journal->j_state_lock);
 			jbd2_might_wait_for_commit(journal);
 			wait_event(journal->j_wait_reserved,
 				   atomic_read(&journal->j_reserved_credits) + total <=
-				   journal->j_max_transaction_buffers);
+				   jbd2_max_user_trans_buffers(journal));
 			__acquire(&journal->j_state_lock); /* fake out sparse */
 			return 1;
 		}
@@ -308,14 +292,14 @@ __must_hold(&journal->j_state_lock)
 
 	needed = atomic_add_return(rsv_blocks, &journal->j_reserved_credits);
 	/* We allow at most half of a transaction to be reserved */
-	if (needed > journal->j_max_transaction_buffers / 2) {
+	if (needed > jbd2_max_user_trans_buffers(journal) / 2) {
 		sub_reserved_credits(journal, rsv_blocks);
 		atomic_sub(total, &t->t_outstanding_credits);
 		read_unlock(&journal->j_state_lock);
 		jbd2_might_wait_for_commit(journal);
 		wait_event(journal->j_wait_reserved,
 			 atomic_read(&journal->j_reserved_credits) + rsv_blocks
-			 <= journal->j_max_transaction_buffers / 2);
+			 <= jbd2_max_user_trans_buffers(journal) / 2);
 		__acquire(&journal->j_state_lock); /* fake out sparse */
 		return 1;
 	}
@@ -345,12 +329,12 @@ static int start_this_handle(journal_t *journal, handle_t *handle,
 	 * size and limit the number of total credits to not exceed maximum
 	 * transaction size per operation.
 	 */
-	if ((rsv_blocks > journal->j_max_transaction_buffers / 2) ||
-	    (rsv_blocks + blocks > journal->j_max_transaction_buffers)) {
+	if (rsv_blocks > jbd2_max_user_trans_buffers(journal) / 2 ||
+	    rsv_blocks + blocks > jbd2_max_user_trans_buffers(journal)) {
 		printk(KERN_ERR "JBD2: %s wants too many credits "
 		       "credits:%d rsv_credits:%d max:%d\n",
 		       current->comm, blocks, rsv_blocks,
-		       journal->j_max_transaction_buffers);
+		       jbd2_max_user_trans_buffers(journal));
 		WARN_ON(1);
 		return -ENOSPC;
 	}
@@ -936,19 +920,15 @@ static void warn_dirty_buffer(struct buffer_head *bh)
 /* Call t_frozen trigger and copy buffer data into jh->b_frozen_data. */
 static void jbd2_freeze_jh_data(struct journal_head *jh)
 {
-	struct page *page;
-	int offset;
 	char *source;
 	struct buffer_head *bh = jh2bh(jh);
 
 	J_EXPECT_JH(jh, buffer_uptodate(bh), "Possible IO failure.\n");
-	page = bh->b_page;
-	offset = offset_in_page(bh->b_data);
-	source = kmap_atomic(page);
+	source = kmap_local_folio(bh->b_folio, bh_offset(bh));
 	/* Fire data frozen trigger just before we copy the data */
-	jbd2_buffer_frozen_trigger(jh, source + offset, jh->b_triggers);
-	memcpy(jh->b_frozen_data, source + offset, bh->b_size);
-	kunmap_atomic(source);
+	jbd2_buffer_frozen_trigger(jh, source, jh->b_triggers);
+	memcpy(jh->b_frozen_data, source, bh->b_size);
+	kunmap_local(source);
 
 	/*
 	 * Now that the frozen data is saved off, we need to store any matching
@@ -2100,33 +2080,10 @@ void jbd2_journal_unfile_buffer(journal_t *journal, struct journal_head *jh)
 	__brelse(bh);
 }
 
-/*
- * Called from jbd2_journal_try_to_free_buffers().
- *
- * Called under jh->b_state_lock
- */
-static void
-__journal_try_to_free_buffer(journal_t *journal, struct buffer_head *bh)
-{
-	struct journal_head *jh;
-
-	jh = bh2jh(bh);
-
-	if (jh->b_next_transaction != NULL || jh->b_transaction != NULL)
-		return;
-
-	spin_lock(&journal->j_list_lock);
-	/* Remove written-back checkpointed metadata buffer */
-	if (jh->b_cp_transaction != NULL)
-		jbd2_journal_try_remove_checkpoint(jh);
-	spin_unlock(&journal->j_list_lock);
-	return;
-}
-
 /**
  * jbd2_journal_try_to_free_buffers() - try to free page buffers.
  * @journal: journal for operation
- * @page: to try and free
+ * @folio: Folio to detach data from.
  *
  * For all the buffers on this page,
  * if they are fully written out ordered data, move them onto BUF_CLEAN
@@ -2155,17 +2112,17 @@ __journal_try_to_free_buffer(journal_t *journal, struct buffer_head *bh)
  * cannot happen because we never reallocate freed data as metadata
  * while the data is part of a transaction.  Yes?
  *
- * Return 0 on failure, 1 on success
+ * Return false on failure, true on success
  */
-int jbd2_journal_try_to_free_buffers(journal_t *journal, struct page *page)
+bool jbd2_journal_try_to_free_buffers(journal_t *journal, struct folio *folio)
 {
 	struct buffer_head *head;
 	struct buffer_head *bh;
-	int ret = 0;
+	bool ret = false;
 
-	J_ASSERT(PageLocked(page));
+	J_ASSERT(folio_test_locked(folio));
 
-	head = page_buffers(page);
+	head = folio_buffers(folio);
 	bh = head;
 	do {
 		struct journal_head *jh;
@@ -2180,14 +2137,20 @@ int jbd2_journal_try_to_free_buffers(journal_t *journal, struct page *page)
 			continue;
 
 		spin_lock(&jh->b_state_lock);
-		__journal_try_to_free_buffer(journal, bh);
+		if (!jh->b_transaction && !jh->b_next_transaction) {
+			spin_lock(&journal->j_list_lock);
+			/* Remove written-back checkpointed metadata buffer */
+			if (jh->b_cp_transaction != NULL)
+				jbd2_journal_try_remove_checkpoint(jh);
+			spin_unlock(&journal->j_list_lock);
+		}
 		spin_unlock(&jh->b_state_lock);
 		jbd2_journal_put_journal_head(jh);
 		if (buffer_jbd(bh))
 			goto busy;
 	} while ((bh = bh->b_this_page) != head);
 
-	ret = try_to_free_buffers(page);
+	ret = try_to_free_buffers(folio);
 busy:
 	return ret;
 }
@@ -2229,14 +2192,14 @@ static int __dispose_buffer(struct journal_head *jh, transaction_t *transaction)
 }
 
 /*
- * jbd2_journal_invalidatepage
+ * jbd2_journal_invalidate_folio
  *
  * This code is tricky.  It has a number of cases to deal with.
  *
  * There are two invariants which this code relies on:
  *
- * i_size must be updated on disk before we start calling invalidatepage on the
- * data.
+ * i_size must be updated on disk before we start calling invalidate_folio
+ * on the data.
  *
  *  This is done in ext3 by defining an ext3_setattr method which
  *  updates i_size before truncate gets going.  By maintaining this
@@ -2441,9 +2404,9 @@ zap_buffer_unlocked:
 }
 
 /**
- * jbd2_journal_invalidatepage()
+ * jbd2_journal_invalidate_folio()
  * @journal: journal to use for flush...
- * @page:    page to flush
+ * @folio:    folio to flush
  * @offset:  start of the range to invalidate
  * @length:  length of the range to invalidate
  *
@@ -2452,30 +2415,29 @@ zap_buffer_unlocked:
  * the page is straddling i_size. Caller then has to wait for current commit
  * and try again.
  */
-int jbd2_journal_invalidatepage(journal_t *journal,
-				struct page *page,
-				unsigned int offset,
-				unsigned int length)
+int jbd2_journal_invalidate_folio(journal_t *journal, struct folio *folio,
+				size_t offset, size_t length)
 {
 	struct buffer_head *head, *bh, *next;
 	unsigned int stop = offset + length;
 	unsigned int curr_off = 0;
-	int partial_page = (offset || length < PAGE_SIZE);
+	int partial_page = (offset || length < folio_size(folio));
 	int may_free = 1;
 	int ret = 0;
 
-	if (!PageLocked(page))
+	if (!folio_test_locked(folio))
 		BUG();
-	if (!page_has_buffers(page))
+	head = folio_buffers(folio);
+	if (!head)
 		return 0;
 
-	BUG_ON(stop > PAGE_SIZE || stop < length);
+	BUG_ON(stop > folio_size(folio) || stop < length);
 
 	/* We will potentially be playing with lists other than just the
 	 * data lists (especially for journaled data mode), so be
 	 * cautious in our locking. */
 
-	head = bh = page_buffers(page);
+	bh = head;
 	do {
 		unsigned int next_off = curr_off + bh->b_size;
 		next = bh->b_this_page;
@@ -2498,8 +2460,8 @@ int jbd2_journal_invalidatepage(journal_t *journal,
 	} while (bh != head);
 
 	if (!partial_page) {
-		if (may_free && try_to_free_buffers(page))
-			J_ASSERT(!page_has_buffers(page));
+		if (may_free && try_to_free_buffers(folio))
+			J_ASSERT(!folio_buffers(folio));
 	}
 	return 0;
 }

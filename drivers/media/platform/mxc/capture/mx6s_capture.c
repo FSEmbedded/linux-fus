@@ -1457,6 +1457,9 @@ static int mx6s_vidioc_s_fmt_vid_cap(struct file *file, void *priv,
 		return ret;
 
 	csi_dev->fmt           = format_by_fourcc(f->fmt.pix.pixelformat);
+	if (!csi_dev->fmt)
+		return -EINVAL;
+
 	csi_dev->mbus_code     = csi_dev->fmt->mbus_code;
 	csi_dev->pix.width     = f->fmt.pix.width;
 	csi_dev->pix.height    = f->fmt.pix.height;
@@ -1623,7 +1626,7 @@ static int mx6s_vidioc_enum_framesizes(struct file *file, void *priv,
 	int ret;
 
 	fmt = format_by_fourcc(fsize->pixel_format);
-	if (fmt->pixelformat != fsize->pixel_format)
+	if (!fmt || fmt->pixelformat != fsize->pixel_format)
 		return -EINVAL;
 	fse.code = fmt->mbus_code;
 
@@ -1665,7 +1668,7 @@ static int mx6s_vidioc_enum_frameintervals(struct file *file, void *priv,
 	int ret;
 
 	fmt = format_by_fourcc(interval->pixel_format);
-	if (fmt->pixelformat != interval->pixel_format)
+	if (!fmt || fmt->pixelformat != interval->pixel_format)
 		return -EINVAL;
 	fie.code = fmt->mbus_code;
 
@@ -1707,7 +1710,7 @@ static const struct v4l2_ioctl_ops mx6s_csi_ioctl_ops = {
 
 static int subdev_notifier_bound(struct v4l2_async_notifier *notifier,
 			    struct v4l2_subdev *subdev,
-			    struct v4l2_async_subdev *asd)
+			    struct v4l2_async_connection *asd)
 {
 	struct mx6s_csi_dev *csi_dev = notifier_to_mx6s_dev(notifier);
 
@@ -1789,10 +1792,10 @@ static int mx6sx_register_subdevs(struct mx6s_csi_dev *csi_dev)
 {
 	struct device_node *parent = csi_dev->dev->of_node;
 	struct device_node *node, *port, *rem;
-	struct v4l2_async_subdev *asd;
+	struct v4l2_async_connection *asd;
 	int ret;
 
-	v4l2_async_notifier_init(&csi_dev->subdev_notifier);
+	v4l2_async_nf_init(&csi_dev->subdev_notifier, &csi_dev->v4l2_dev);
 
 	/* Attach sensors linked to csi receivers */
 	for_each_available_child_of_node(parent, node) {
@@ -1813,18 +1816,17 @@ static int mx6sx_register_subdevs(struct mx6s_csi_dev *csi_dev)
 		}
 
 		csi_dev->fwnode = of_fwnode_handle(rem);
-		asd = v4l2_async_notifier_add_fwnode_subdev(
+		asd = v4l2_async_nf_add_fwnode(
 					&csi_dev->subdev_notifier,
 					csi_dev->fwnode,
-					struct v4l2_async_subdev);
+					struct v4l2_async_connection);
 		of_node_put(rem);
 		break;
 	}
 
 	csi_dev->subdev_notifier.ops = &mx6s_capture_async_ops;
 
-	ret = v4l2_async_notifier_register(&csi_dev->v4l2_dev,
-					&csi_dev->subdev_notifier);
+	ret = v4l2_async_nf_register(&csi_dev->subdev_notifier);
 	if (ret)
 		dev_err(csi_dev->dev,
 					"Error register async notifier regoster\n");
@@ -1970,8 +1972,8 @@ static int mx6s_csi_remove(struct platform_device *pdev)
 	struct mx6s_csi_dev *csi_dev =
 				container_of(v4l2_dev, struct mx6s_csi_dev, v4l2_dev);
 
-	v4l2_async_notifier_cleanup(&csi_dev->subdev_notifier);
-	v4l2_async_notifier_unregister(&csi_dev->subdev_notifier);
+	v4l2_async_nf_unregister(&csi_dev->subdev_notifier);
+	v4l2_async_nf_cleanup(&csi_dev->subdev_notifier);
 
 	video_unregister_device(csi_dev->vdev);
 	v4l2_device_unregister(&csi_dev->v4l2_dev);

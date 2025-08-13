@@ -1,0 +1,21 @@
+#include "../freescale/imx8mp.dtsi"
+
+/delete-node/ &gpu_reserved;
+
+&mix_gpu_ml {
+	/delete-property/ memory-region;
+};
+
+
+&pgc_vpu_g1 {
+	/delete-property/ power-domains;
+};
+
+&pgc_vpu_g2 {
+	/delete-property/ power-domains;
+};
+
+&pgc_vpu_vc8000e {
+	/delete-property/ power-domains;
+};
+

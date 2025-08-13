@@ -641,6 +641,7 @@ static int starfire_init_one(struct pci_dev *pdev,
 	struct netdev_private *np;
 	int i, irq, chip_idx = ent->driver_data;
 	struct net_device *dev;
+	u8 addr[ETH_ALEN];
 	long ioaddr;
 	void __iomem *base;
 	int drv_flags, io_size;
@@ -696,7 +697,8 @@ static int starfire_init_one(struct pci_dev *pdev,
 
 	/* Serial EEPROM reads are hidden by the hardware. */
 	for (i = 0; i < 6; i++)
-		dev->dev_addr[i] = readb(base + EEPROMCtrl + 20 - i);
+		addr[i] = readb(base + EEPROMCtrl + 20 - i);
+	eth_hw_addr_set(dev, addr);
 
 #if ! defined(final_version) /* Dump the EEPROM contents during development. */
 	if (debug > 4)
@@ -770,7 +772,7 @@ static int starfire_init_one(struct pci_dev *pdev,
 	dev->watchdog_timeo = TX_TIMEOUT;
 	dev->ethtool_ops = &ethtool_ops;
 
-	netif_napi_add(dev, &np->napi, netdev_poll, max_interrupt_work);
+	netif_napi_add_weight(dev, &np->napi, netdev_poll, max_interrupt_work);
 
 	if (mtu)
 		dev->mtu = mtu;
@@ -1842,8 +1844,8 @@ static int check_if_running(struct net_device *dev)
 static void get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info)
 {
 	struct netdev_private *np = netdev_priv(dev);
-	strlcpy(info->driver, DRV_NAME, sizeof(info->driver));
-	strlcpy(info->bus_info, pci_name(np->pci_dev), sizeof(info->bus_info));
+	strscpy(info->driver, DRV_NAME, sizeof(info->driver));
+	strscpy(info->bus_info, pci_name(np->pci_dev), sizeof(info->bus_info));
 }
 
 static int get_link_ksettings(struct net_device *dev,

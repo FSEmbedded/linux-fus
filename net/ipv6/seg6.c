@@ -438,7 +438,11 @@ static int __net_init seg6_net_init(struct net *net)
 	net->ipv6.seg6_data = sdata;
 
 #ifdef CONFIG_IPV6_SEG6_HMAC
-	seg6_hmac_net_init(net);
+	if (seg6_hmac_net_init(net)) {
+		kfree(rcu_dereference_raw(sdata->tun_src));
+		kfree(sdata);
+		return -ENOMEM;
+	}
 #endif
 
 	return 0;
@@ -452,7 +456,7 @@ static void __net_exit seg6_net_exit(struct net *net)
 	seg6_hmac_net_exit(net);
 #endif
 
-	kfree(sdata->tun_src);
+	kfree(rcu_dereference_raw(sdata->tun_src));
 	kfree(sdata);
 }
 
@@ -500,6 +504,7 @@ static struct genl_family seg6_genl_family __ro_after_init = {
 	.parallel_ops	= true,
 	.ops		= seg6_genl_ops,
 	.n_ops		= ARRAY_SIZE(seg6_genl_ops),
+	.resv_start_op	= SEG6_CMD_GET_TUNSRC + 1,
 	.module		= THIS_MODULE,
 };
 
@@ -546,6 +551,8 @@ out_unregister_iptun:
 #endif
 #ifdef CONFIG_IPV6_SEG6_LWTUNNEL
 out_unregister_genl:
+#endif
+#if IS_ENABLED(CONFIG_IPV6_SEG6_LWTUNNEL) || IS_ENABLED(CONFIG_IPV6_SEG6_HMAC)
 	genl_unregister_family(&seg6_genl_family);
 #endif
 out_unregister_pernet:
@@ -559,8 +566,9 @@ void seg6_exit(void)
 	seg6_hmac_exit();
 #endif
 #ifdef CONFIG_IPV6_SEG6_LWTUNNEL
+	seg6_local_exit();
 	seg6_iptunnel_exit();
 #endif
-	unregister_pernet_subsys(&ip6_segments_ops);
 	genl_unregister_family(&seg6_genl_family);
+	unregister_pernet_subsys(&ip6_segments_ops);
 }

@@ -2147,7 +2147,7 @@ err_destroy_lock:
 	return ret;
 }
 
-static int trf7970a_remove(struct spi_device *spi)
+static void trf7970a_remove(struct spi_device *spi)
 {
 	struct trf7970a *trf = spi_get_drvdata(spi);
 
@@ -2164,8 +2164,6 @@ static int trf7970a_remove(struct spi_device *spi)
 	regulator_disable(trf->vin_regulator);
 
 	mutex_destroy(&trf->lock);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -2173,8 +2171,6 @@ static int trf7970a_suspend(struct device *dev)
 {
 	struct spi_device *spi = to_spi_device(dev);
 	struct trf7970a *trf = spi_get_drvdata(spi);
-
-	dev_dbg(dev, "Suspend\n");
 
 	mutex_lock(&trf->lock);
 
@@ -2190,8 +2186,6 @@ static int trf7970a_resume(struct device *dev)
 	struct spi_device *spi = to_spi_device(dev);
 	struct trf7970a *trf = spi_get_drvdata(spi);
 	int ret;
-
-	dev_dbg(dev, "Resume\n");
 
 	mutex_lock(&trf->lock);
 
@@ -2210,8 +2204,6 @@ static int trf7970a_pm_runtime_suspend(struct device *dev)
 	struct trf7970a *trf = spi_get_drvdata(spi);
 	int ret;
 
-	dev_dbg(dev, "Runtime suspend\n");
-
 	mutex_lock(&trf->lock);
 
 	ret = trf7970a_power_down(trf);
@@ -2227,8 +2219,6 @@ static int trf7970a_pm_runtime_resume(struct device *dev)
 	struct trf7970a *trf = spi_get_drvdata(spi);
 	int ret;
 
-	dev_dbg(dev, "Runtime resume\n");
-
 	ret = trf7970a_power_up(trf);
 	if (!ret)
 		pm_runtime_mark_last_busy(dev);
@@ -2243,7 +2233,7 @@ static const struct dev_pm_ops trf7970a_pm_ops = {
 			   trf7970a_pm_runtime_resume, NULL)
 };
 
-static const struct of_device_id trf7970a_of_match[] = {
+static const struct of_device_id trf7970a_of_match[] __maybe_unused = {
 	{.compatible = "ti,trf7970a",},
 	{},
 };

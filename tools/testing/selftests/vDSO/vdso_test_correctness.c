@@ -20,6 +20,7 @@
 #include <limits.h>
 
 #include "vdso_config.h"
+#include "../kselftest.h"
 
 static const char **name;
 
@@ -112,6 +113,12 @@ static void fill_function_pointers()
 			    RTLD_LAZY | RTLD_LOCAL | RTLD_NOLOAD);
 	if (!vdso)
 		vdso = dlopen("linux-gate.so.1",
+			      RTLD_LAZY | RTLD_LOCAL | RTLD_NOLOAD);
+	if (!vdso)
+		vdso = dlopen("linux-vdso32.so.1",
+			      RTLD_LAZY | RTLD_LOCAL | RTLD_NOLOAD);
+	if (!vdso)
+		vdso = dlopen("linux-vdso64.so.1",
 			      RTLD_LAZY | RTLD_LOCAL | RTLD_NOLOAD);
 	if (!vdso) {
 		printf("[WARN]\tfailed to find vDSO\n");
@@ -306,10 +313,8 @@ static void test_clock_gettime(void)
 		return;
 	}
 
-	for (int clock = 0; clock < sizeof(clocknames) / sizeof(clocknames[0]);
-	     clock++) {
+	for (int clock = 0; clock < ARRAY_SIZE(clocknames); clock++)
 		test_one_clock_gettime(clock, clocknames[clock]);
-	}
 
 	/* Also test some invalid clock ids */
 	test_one_clock_gettime(-1, "invalid");
@@ -370,10 +375,8 @@ static void test_clock_gettime64(void)
 		return;
 	}
 
-	for (int clock = 0; clock < sizeof(clocknames) / sizeof(clocknames[0]);
-	     clock++) {
+	for (int clock = 0; clock < ARRAY_SIZE(clocknames); clock++)
 		test_one_clock_gettime64(clock, clocknames[clock]);
-	}
 
 	/* Also test some invalid clock ids */
 	test_one_clock_gettime64(-1, "invalid");

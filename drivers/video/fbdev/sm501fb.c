@@ -326,6 +326,13 @@ static int sm501fb_check_var(struct fb_var_screeninfo *var,
 	if (var->xres_virtual > 4096 || var->yres_virtual > 2048)
 		return -EINVAL;
 
+	/* geometry sanity checks */
+	if (var->xres + var->xoffset > var->xres_virtual)
+		return -EINVAL;
+
+	if (var->yres + var->yoffset > var->yres_virtual)
+		return -EINVAL;
+
 	/* can cope with 8,16 or 32bpp */
 
 	if (var->bits_per_pixel <= 8)
@@ -1166,7 +1173,7 @@ static ssize_t sm501fb_crtsrc_show(struct device *dev,
 	ctrl = smc501_readl(info->regs + SM501_DC_CRT_CONTROL);
 	ctrl &= SM501_DC_CRT_CONTROL_SEL;
 
-	return snprintf(buf, PAGE_SIZE, "%s\n", ctrl ? "crt" : "panel");
+	return sysfs_emit(buf, "%s\n", ctrl ? "crt" : "panel");
 }
 
 /* sm501fb_crtsrc_show
@@ -1293,7 +1300,7 @@ static int sm501fb_sync(struct fb_info *info)
 		count--;
 
 	if (count <= 0) {
-		dev_err(info->dev, "Timeout waiting for 2d engine sync\n");
+		fb_err(info, "Timeout waiting for 2d engine sync\n");
 		return 1;
 	}
 	return 0;
@@ -1719,7 +1726,7 @@ static int sm501fb_init_fb(struct fb_info *fb, enum sm501_controller head,
 		enable = 0;
 	}
 
-	strlcpy(fb->fix.id, fbname, sizeof(fb->fix.id));
+	strscpy(fb->fix.id, fbname, sizeof(fb->fix.id));
 
 	memcpy(&par->ops,
 	       (head == HEAD_CRT) ? &sm501fb_ops_crt : &sm501fb_ops_pnl,
@@ -1731,16 +1738,16 @@ static int sm501fb_init_fb(struct fb_info *fb, enum sm501_controller head,
 		par->ops.fb_cursor = NULL;
 
 	fb->fbops = &par->ops;
-	fb->flags = FBINFO_FLAG_DEFAULT | FBINFO_READS_FAST |
+	fb->flags = FBINFO_READS_FAST |
 		FBINFO_HWACCEL_COPYAREA | FBINFO_HWACCEL_FILLRECT |
 		FBINFO_HWACCEL_XPAN | FBINFO_HWACCEL_YPAN;
 
 #if defined(CONFIG_OF)
 #ifdef __BIG_ENDIAN
-	if (of_get_property(info->dev->parent->of_node, "little-endian", NULL))
+	if (of_property_read_bool(info->dev->parent->of_node, "little-endian"))
 		fb->flags |= FBINFO_FOREIGN_ENDIAN;
 #else
-	if (of_get_property(info->dev->parent->of_node, "big-endian", NULL))
+	if (of_property_read_bool(info->dev->parent->of_node, "big-endian"))
 		fb->flags |= FBINFO_FOREIGN_ENDIAN;
 #endif
 #endif
@@ -2045,7 +2052,7 @@ err_alloc:
 /*
  *  Cleanup
  */
-static int sm501fb_remove(struct platform_device *pdev)
+static void sm501fb_remove(struct platform_device *pdev)
 {
 	struct sm501fb_info *info = platform_get_drvdata(pdev);
 	struct fb_info	   *fbinfo_crt = info->fb[0];
@@ -2064,8 +2071,6 @@ static int sm501fb_remove(struct platform_device *pdev)
 
 	framebuffer_release(fbinfo_pnl);
 	framebuffer_release(fbinfo_crt);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -2209,7 +2214,7 @@ static int sm501fb_resume(struct platform_device *pdev)
 
 static struct platform_driver sm501fb_driver = {
 	.probe		= sm501fb_probe,
-	.remove		= sm501fb_remove,
+	.remove_new	= sm501fb_remove,
 	.suspend	= sm501fb_suspend,
 	.resume		= sm501fb_resume,
 	.driver		= {

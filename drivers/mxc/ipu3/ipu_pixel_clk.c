@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2013-2015 Freescale Semiconductor, Inc. All Rights Reserved.
+ * Copyright 2023 NXP
  */
 
 /*
@@ -72,6 +73,7 @@ static u8 _ipu_pixel_clk_get_parent(struct clk_hw *hw)
 const struct clk_ops clk_mux_di_ops = {
 	.get_parent = _ipu_pixel_clk_get_parent,
 	.set_parent = _ipu_pixel_clk_set_parent,
+	.determine_rate = clk_hw_determine_rate_no_reparent,
 };
 
 struct clk *clk_register_mux_pix_clk(struct device *dev, const char *name,
@@ -84,7 +86,7 @@ struct clk *clk_register_mux_pix_clk(struct device *dev, const char *name,
 	struct ipu_soc *ipu = ipu_get_soc(ipu_id);
 	u32 di_gen = ipu_di_read(ipu, di_id, DI_GENERAL);
 
-	mux = kzalloc(sizeof(struct clk_di_mux), GFP_KERNEL);
+	mux = devm_kzalloc(dev, sizeof(struct clk_di_mux), GFP_KERNEL);
 	if (!mux)
 		return ERR_PTR(-ENOMEM);
 
@@ -223,7 +225,7 @@ struct clk *clk_register_div_pix_clk(struct device *dev, const char *name,
 	struct clk *clk;
 	struct clk_init_data init;
 
-	di_div = kzalloc(sizeof(struct clk_di_div), GFP_KERNEL);
+	di_div = devm_kzalloc(dev, sizeof(struct clk_di_div), GFP_KERNEL);
 	if (!di_div)
 		return ERR_PTR(-ENOMEM);
 
@@ -297,7 +299,7 @@ struct clk *clk_register_gate_pix_clk(struct device *dev, const char *name,
 	struct clk *clk;
 	struct clk_init_data init;
 
-	gate = kzalloc(sizeof(struct clk_di_gate), GFP_KERNEL);
+	gate = devm_kzalloc(dev, sizeof(struct clk_di_gate), GFP_KERNEL);
 	if (!gate)
 		return ERR_PTR(-ENOMEM);
 

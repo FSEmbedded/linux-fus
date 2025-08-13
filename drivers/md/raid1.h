@@ -87,7 +87,6 @@ struct r1conf {
 
 	/* queue pending writes to be submitted on unplug */
 	struct bio_list		pending_bio_list;
-	int			pending_count;
 
 	/* for use when syncing mirrors:
 	 * We don't allow both normal IO and resync/recovery IO at
@@ -131,7 +130,7 @@ struct r1conf {
 	/* When taking over an array from a different personality, we store
 	 * the new thread here until we fully activate the array.
 	 */
-	struct md_thread	*thread;
+	struct md_thread __rcu	*thread;
 
 	/* Keep track of cluster resync window to send to other
 	 * nodes.
@@ -158,7 +157,6 @@ struct r1bio {
 	sector_t		sector;
 	int			sectors;
 	unsigned long		state;
-	unsigned long		start_time;
 	struct mddev		*mddev;
 	/*
 	 * original bio going to /dev/mdx
@@ -189,7 +187,6 @@ struct r1bio {
 enum r1bio_state {
 	R1BIO_Uptodate,
 	R1BIO_IsSync,
-	R1BIO_Degraded,
 	R1BIO_BehindIO,
 /* Set ReadError on bios that experience a readerror so that
  * raid1d knows what to do with them.

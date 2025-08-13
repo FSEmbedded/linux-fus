@@ -95,7 +95,7 @@ int radeon_vce_init(struct radeon_device *rdev)
 
 	size = rdev->vce_fw->size - strlen(fw_version) - 9;
 	c = rdev->vce_fw->data;
-	for (;size > 0; --size, ++c)
+	for (; size > 0; --size, ++c)
 		if (strncmp(c, fw_version, strlen(fw_version)) == 0)
 			break;
 
@@ -110,7 +110,7 @@ int radeon_vce_init(struct radeon_device *rdev)
 
 	size = rdev->vce_fw->size - strlen(fb_version) - 3;
 	c = rdev->vce_fw->data;
-	for (;size > 0; --size, ++c)
+	for (; size > 0; --size, ++c)
 		if (strncmp(c, fb_version, strlen(fb_version)) == 0)
 			break;
 
@@ -513,7 +513,7 @@ int radeon_vce_cs_reloc(struct radeon_cs_parser *p, int lo, int hi,
  * @allocated: allocated a new handle?
  *
  * Validates the handle and return the found session index or -EINVAL
- * we we don't have another free session index.
+ * we don't have another free session index.
  */
 static int radeon_vce_validate_handle(struct radeon_cs_parser *p,
 				      uint32_t handle, bool *allocated)
@@ -557,7 +557,7 @@ int radeon_vce_cs_parse(struct radeon_cs_parser *p)
 {
 	int session_idx = -1;
 	bool destroyed = false, created = false, allocated = false;
-	uint32_t tmp, handle = 0;
+	uint32_t tmp = 0, handle = 0;
 	uint32_t *size = &tmp;
 	int i, r = 0;
 

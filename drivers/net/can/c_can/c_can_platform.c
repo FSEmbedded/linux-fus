@@ -285,13 +285,12 @@ static int c_can_plat_probe(struct platform_device *pdev)
 
 	/* get the platform data */
 	irq = platform_get_irq(pdev, 0);
-	if (irq <= 0) {
-		ret = -ENODEV;
+	if (irq < 0) {
+		ret = irq;
 		goto exit;
 	}
 
-	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	addr = devm_ioremap_resource(&pdev->dev, mem);
+	addr = devm_platform_get_and_ioremap_resource(pdev, 0, &mem);
 	if (IS_ERR(addr)) {
 		ret =  PTR_ERR(addr);
 		goto exit;
@@ -395,15 +394,16 @@ static int c_can_plat_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "registering %s failed (err=%d)\n",
 			KBUILD_MODNAME, ret);
-		goto exit_free_device;
+		goto exit_pm_runtime;
 	}
 
 	dev_info(&pdev->dev, "%s device registered (regs=%p, irq=%d)\n",
 		 KBUILD_MODNAME, priv->base, dev->irq);
 	return 0;
 
-exit_free_device:
+exit_pm_runtime:
 	pm_runtime_disable(priv->device);
+exit_free_device:
 	free_c_can_dev(dev);
 exit:
 	dev_err(&pdev->dev, "probe failed\n");
@@ -411,7 +411,7 @@ exit:
 	return ret;
 }
 
-static int c_can_plat_remove(struct platform_device *pdev)
+static void c_can_plat_remove(struct platform_device *pdev)
 {
 	struct net_device *dev = platform_get_drvdata(pdev);
 	struct c_can_priv *priv = netdev_priv(dev);
@@ -419,8 +419,6 @@ static int c_can_plat_remove(struct platform_device *pdev)
 	unregister_c_can_dev(dev);
 	pm_runtime_disable(priv->device);
 	free_c_can_dev(dev);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -488,7 +486,7 @@ static struct platform_driver c_can_plat_driver = {
 		.of_match_table = c_can_of_table,
 	},
 	.probe = c_can_plat_probe,
-	.remove = c_can_plat_remove,
+	.remove_new = c_can_plat_remove,
 	.suspend = c_can_suspend,
 	.resume = c_can_resume,
 	.id_table = c_can_id_table,

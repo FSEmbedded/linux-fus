@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+* Copyright 2024 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*/
+
+#define CONFIG_IMX93_DISPLAY
+
+#define IMX93_TOUCH_I2C 				fs_i2c_a
+#define IMX93_TOUCH_INTERRUPT_GPIO_BANK 		gpio2
+#define IMX93_TOUCH_INTERRUPT_GPIO_NUM 		29
+
+#include "efusmx93-SINTF.dts"
+
+/ {
+	/* LCD power on voltage */
+	reg_vlcd: vlcd {
+		compatible = "regulator-fixed";
+		regulator-name = "VLCD_ON";
+		gpio = <&expander 8 GPIO_ACTIVE_HIGH>;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		enable-active-high;
+	};
+};
+
+#include "displays/imx93-ET070080DH6.dtsi"

@@ -28,12 +28,16 @@
 #include <asm/atarihw.h>
 #include <asm/atariints.h>
 #include <asm/atari_stdma.h>
-#include <asm/ide.h>
 
 #define DRV_NAME "pata_falcon"
 #define DRV_VERSION "0.1.0"
 
-static struct scsi_host_template pata_falcon_sht = {
+static int pata_falcon_swap_mask;
+
+module_param_named(data_swab, pata_falcon_swap_mask, int, 0444);
+MODULE_PARM_DESC(data_swab, "Data byte swap enable/disable bitmap (0x1==drive1, 0x2==drive2, 0x4==drive3, 0x8==drive4, default==0)");
+
+static const struct scsi_host_template pata_falcon_sht = {
 	ATA_PIO_SHT(DRV_NAME),
 };
 
@@ -50,19 +54,19 @@ static unsigned int pata_falcon_data_xfer(struct ata_queued_cmd *qc,
 
 	if (dev->class == ATA_DEV_ATA && cmd &&
 	    !blk_rq_is_passthrough(scsi_cmd_to_rq(cmd)))
-		swap = 0;
+		swap = (uintptr_t)ap->private_data & BIT(dev->devno);
 
 	/* Transfer multiple of 2 bytes */
 	if (rw == READ) {
 		if (swap)
-			raw_insw_swapw((u16 *)data_addr, (u16 *)buf, words);
+			raw_insw_swapw(data_addr, (u16 *)buf, words);
 		else
-			raw_insw((u16 *)data_addr, (u16 *)buf, words);
+			raw_insw(data_addr, (u16 *)buf, words);
 	} else {
 		if (swap)
-			raw_outsw_swapw((u16 *)data_addr, (u16 *)buf, words);
+			raw_outsw_swapw(data_addr, (u16 *)buf, words);
 		else
-			raw_outsw((u16 *)data_addr, (u16 *)buf, words);
+			raw_outsw(data_addr, (u16 *)buf, words);
 	}
 
 	/* Transfer trailing byte, if any. */
@@ -74,16 +78,16 @@ static unsigned int pata_falcon_data_xfer(struct ata_queued_cmd *qc,
 
 		if (rw == READ) {
 			if (swap)
-				raw_insw_swapw((u16 *)data_addr, (u16 *)pad, 1);
+				raw_insw_swapw(data_addr, (u16 *)pad, 1);
 			else
-				raw_insw((u16 *)data_addr, (u16 *)pad, 1);
+				raw_insw(data_addr, (u16 *)pad, 1);
 			*buf = pad[0];
 		} else {
 			pad[0] = *buf;
 			if (swap)
-				raw_outsw_swapw((u16 *)data_addr, (u16 *)pad, 1);
+				raw_outsw_swapw(data_addr, (u16 *)pad, 1);
 			else
-				raw_outsw((u16 *)data_addr, (u16 *)pad, 1);
+				raw_outsw(data_addr, (u16 *)pad, 1);
 		}
 		words++;
 	}
@@ -124,6 +128,7 @@ static int __init pata_falcon_init_one(struct platform_device *pdev)
 	struct ata_host *host;
 	struct ata_port *ap;
 	void __iomem *base, *ctl_base;
+	int mask_shift = 0; /* Q40 & Falcon default */
 	int irq = 0, io_offset = 1, reg_shift = 2; /* Falcon defaults */
 
 	dev_info(&pdev->dev, "Atari Falcon and Q40/Q60 PATA controller\n");
@@ -193,6 +198,10 @@ static int __init pata_falcon_init_one(struct platform_device *pdev)
 
 	ata_port_desc(ap, "cmd %px ctl %px data %px",
 		      base, ctl_base, ap->ioaddr.data_addr);
+
+	if (pdev->id > 0)
+		mask_shift = 2;
+	ap->private_data = (void *)(uintptr_t)(pata_falcon_swap_mask >> mask_shift);
 
 	irq_res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (irq_res && irq_res->start > 0) {

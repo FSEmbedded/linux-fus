@@ -6,11 +6,11 @@
  */
 
 #include <linux/module.h>
+#include <crypto/internal/ecc.h>
 #include <crypto/internal/kpp.h>
 #include <crypto/kpp.h>
 #include <crypto/ecdh.h>
 #include <linux/scatterlist.h>
-#include "ecc.h"
 
 struct ecdh_ctx {
 	unsigned int curve_id;
@@ -32,6 +32,8 @@ static int ecdh_set_secret(struct crypto_kpp *tfm, const void *buf,
 	if (crypto_ecdh_decode_key(buf, len, &params) < 0 ||
 	    params.key_size > sizeof(u64) * ctx->ndigits)
 		return -EINVAL;
+
+	memset(ctx->private_key, 0, sizeof(ctx->private_key));
 
 	if (!params.key || !params.key_size)
 		return ecc_gen_privkey(ctx->curve_id, ctx->ndigits,
@@ -200,7 +202,7 @@ static struct kpp_alg ecdh_nist_p384 = {
 
 static bool ecdh_nist_p192_registered;
 
-static int ecdh_init(void)
+static int __init ecdh_init(void)
 {
 	int ret;
 
@@ -227,7 +229,7 @@ nist_p256_error:
 	return ret;
 }
 
-static void ecdh_exit(void)
+static void __exit ecdh_exit(void)
 {
 	if (ecdh_nist_p192_registered)
 		crypto_unregister_kpp(&ecdh_nist_p192);

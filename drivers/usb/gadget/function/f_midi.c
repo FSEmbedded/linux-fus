@@ -282,7 +282,7 @@ f_midi_complete(struct usb_ep *ep, struct usb_request *req)
 			/* Our transmit completed. See if there's more to go.
 			 * f_midi_transmit eats req, don't queue it again. */
 			req->length = 0;
-			f_midi_transmit(midi);
+			queue_work(system_highpri_wq, &midi->work);
 			return;
 		}
 		break;
@@ -906,6 +906,15 @@ static int f_midi_bind(struct usb_configuration *c, struct usb_function *f)
 
 	status = -ENODEV;
 
+	/*
+	 * Reset wMaxPacketSize with maximum packet size of FS bulk transfer before
+	 * endpoint claim. This ensures that the wMaxPacketSize does not exceed the
+	 * limit during bind retries where configured dwc3 TX/RX FIFO's maxpacket
+	 * size of 512 bytes for IN/OUT endpoints in support HS speed only.
+	 */
+	bulk_in_desc.wMaxPacketSize = cpu_to_le16(64);
+	bulk_out_desc.wMaxPacketSize = cpu_to_le16(64);
+
 	/* allocate instance-specific endpoints */
 	midi->in_ep = usb_ep_autoconfig(cdev->gadget, &bulk_in_desc);
 	if (!midi->in_ep)
@@ -999,11 +1008,11 @@ static int f_midi_bind(struct usb_configuration *c, struct usb_function *f)
 	}
 
 	/* configure the endpoint descriptors ... */
-	ms_out_desc.bLength = USB_DT_MS_ENDPOINT_SIZE(midi->in_ports);
-	ms_out_desc.bNumEmbMIDIJack = midi->in_ports;
+	ms_out_desc.bLength = USB_DT_MS_ENDPOINT_SIZE(midi->out_ports);
+	ms_out_desc.bNumEmbMIDIJack = midi->out_ports;
 
-	ms_in_desc.bLength = USB_DT_MS_ENDPOINT_SIZE(midi->out_ports);
-	ms_in_desc.bNumEmbMIDIJack = midi->out_ports;
+	ms_in_desc.bLength = USB_DT_MS_ENDPOINT_SIZE(midi->in_ports);
+	ms_in_desc.bNumEmbMIDIJack = midi->in_ports;
 
 	/* ... and add them to the list */
 	endpoint_descriptor_index = i;
@@ -1023,40 +1032,30 @@ static int f_midi_bind(struct usb_configuration *c, struct usb_function *f)
 	if (!f->fs_descriptors)
 		goto fail_f_midi;
 
-	if (gadget_is_dualspeed(c->cdev->gadget)) {
-		bulk_in_desc.wMaxPacketSize = cpu_to_le16(512);
-		bulk_out_desc.wMaxPacketSize = cpu_to_le16(512);
-		f->hs_descriptors = usb_copy_descriptors(midi_function);
-		if (!f->hs_descriptors)
-			goto fail_f_midi;
-	}
+	bulk_in_desc.wMaxPacketSize = cpu_to_le16(512);
+	bulk_out_desc.wMaxPacketSize = cpu_to_le16(512);
+	f->hs_descriptors = usb_copy_descriptors(midi_function);
+	if (!f->hs_descriptors)
+		goto fail_f_midi;
 
-	if (gadget_is_superspeed(c->cdev->gadget)) {
-		bulk_in_desc.wMaxPacketSize = cpu_to_le16(1024);
-		bulk_out_desc.wMaxPacketSize = cpu_to_le16(1024);
-		i = endpoint_descriptor_index;
-		midi_function[i++] = (struct usb_descriptor_header *)
-				     &bulk_out_desc;
-		midi_function[i++] = (struct usb_descriptor_header *)
-				     &bulk_out_ss_comp_desc;
-		midi_function[i++] = (struct usb_descriptor_header *)
-				     &ms_out_desc;
-		midi_function[i++] = (struct usb_descriptor_header *)
-				     &bulk_in_desc;
-		midi_function[i++] = (struct usb_descriptor_header *)
-				     &bulk_in_ss_comp_desc;
-		midi_function[i++] = (struct usb_descriptor_header *)
-				     &ms_in_desc;
-		f->ss_descriptors = usb_copy_descriptors(midi_function);
-		if (!f->ss_descriptors)
-			goto fail_f_midi;
-
-		if (gadget_is_superspeed_plus(c->cdev->gadget)) {
-			f->ssp_descriptors = usb_copy_descriptors(midi_function);
-			if (!f->ssp_descriptors)
-				goto fail_f_midi;
-		}
-	}
+	bulk_in_desc.wMaxPacketSize = cpu_to_le16(1024);
+	bulk_out_desc.wMaxPacketSize = cpu_to_le16(1024);
+	i = endpoint_descriptor_index;
+	midi_function[i++] = (struct usb_descriptor_header *)
+			     &bulk_out_desc;
+	midi_function[i++] = (struct usb_descriptor_header *)
+			     &bulk_out_ss_comp_desc;
+	midi_function[i++] = (struct usb_descriptor_header *)
+			     &ms_out_desc;
+	midi_function[i++] = (struct usb_descriptor_header *)
+			     &bulk_in_desc;
+	midi_function[i++] = (struct usb_descriptor_header *)
+			     &bulk_in_ss_comp_desc;
+	midi_function[i++] = (struct usb_descriptor_header *)
+			     &ms_in_desc;
+	f->ss_descriptors = usb_copy_descriptors(midi_function);
+	if (!f->ss_descriptors)
+		goto fail_f_midi;
 
 	kfree(midi_function);
 
@@ -1097,7 +1096,7 @@ static ssize_t f_midi_opts_##name##_show(struct config_item *item, char *page) \
 	int result;							\
 									\
 	mutex_lock(&opts->lock);					\
-	result = sprintf(page, "%d\n", opts->name);			\
+	result = sprintf(page, "%u\n", opts->name);			\
 	mutex_unlock(&opts->lock);					\
 									\
 	return result;							\
@@ -1134,7 +1133,51 @@ end:									\
 									\
 CONFIGFS_ATTR(f_midi_opts_, name);
 
-F_MIDI_OPT(index, true, SNDRV_CARDS);
+#define F_MIDI_OPT_SIGNED(name, test_limit, limit)				\
+static ssize_t f_midi_opts_##name##_show(struct config_item *item, char *page) \
+{									\
+	struct f_midi_opts *opts = to_f_midi_opts(item);		\
+	int result;							\
+									\
+	mutex_lock(&opts->lock);					\
+	result = sprintf(page, "%d\n", opts->name);			\
+	mutex_unlock(&opts->lock);					\
+									\
+	return result;							\
+}									\
+									\
+static ssize_t f_midi_opts_##name##_store(struct config_item *item,	\
+					 const char *page, size_t len)	\
+{									\
+	struct f_midi_opts *opts = to_f_midi_opts(item);		\
+	int ret;							\
+	s32 num;							\
+									\
+	mutex_lock(&opts->lock);					\
+	if (opts->refcnt > 1) {						\
+		ret = -EBUSY;						\
+		goto end;						\
+	}								\
+									\
+	ret = kstrtos32(page, 0, &num);					\
+	if (ret)							\
+		goto end;						\
+									\
+	if (test_limit && num > limit) {				\
+		ret = -EINVAL;						\
+		goto end;						\
+	}								\
+	opts->name = num;						\
+	ret = len;							\
+									\
+end:									\
+	mutex_unlock(&opts->lock);					\
+	return ret;							\
+}									\
+									\
+CONFIGFS_ATTR(f_midi_opts_, name);
+
+F_MIDI_OPT_SIGNED(index, true, SNDRV_CARDS);
 F_MIDI_OPT(buflen, false, 0);
 F_MIDI_OPT(qlen, false, 0);
 F_MIDI_OPT(in_ports, true, MAX_PORTS);

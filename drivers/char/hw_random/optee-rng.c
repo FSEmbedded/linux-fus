@@ -115,7 +115,7 @@ static size_t get_optee_rng_data(struct optee_rng_private *pvt_data,
 static int optee_rng_read(struct hwrng *rng, void *buf, size_t max, bool wait)
 {
 	struct optee_rng_private *pvt_data = to_optee_rng_private(rng);
-	size_t read = 0, rng_size = 0;
+	size_t read = 0, rng_size;
 	int timeout = 1;
 	u8 *data = buf;
 
@@ -145,10 +145,10 @@ static int optee_rng_init(struct hwrng *rng)
 	struct optee_rng_private *pvt_data = to_optee_rng_private(rng);
 	struct tee_shm *entropy_shm_pool = NULL;
 
-	entropy_shm_pool = tee_shm_alloc(pvt_data->ctx, MAX_ENTROPY_REQ_SZ,
-					 TEE_SHM_MAPPED | TEE_SHM_DMA_BUF);
+	entropy_shm_pool = tee_shm_alloc_kernel_buf(pvt_data->ctx,
+						    MAX_ENTROPY_REQ_SZ);
 	if (IS_ERR(entropy_shm_pool)) {
-		dev_err(pvt_data->dev, "tee_shm_alloc failed\n");
+		dev_err(pvt_data->dev, "tee_shm_alloc_kernel_buf failed\n");
 		return PTR_ERR(entropy_shm_pool);
 	}
 
@@ -272,6 +272,8 @@ static int optee_rng_remove(struct device *dev)
 static const struct tee_client_device_id optee_rng_id_table[] = {
 	{UUID_INIT(0xab7a617c, 0xb8e7, 0x4d8f,
 		   0x83, 0x01, 0xd0, 0x9b, 0x61, 0x03, 0x6b, 0x64)},
+	{UUID_INIT(0x035a4479, 0xc369, 0x47f4,
+		   0x94, 0x51, 0xc6, 0xfd, 0xff, 0x28, 0xad, 0x65)},
 	{}
 };
 

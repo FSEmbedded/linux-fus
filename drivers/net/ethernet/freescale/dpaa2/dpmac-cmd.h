@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause) */
 /* Copyright 2013-2016 Freescale Semiconductor Inc.
- * Copyright 2019 NXP
+ * Copyright 2019, 2024 NXP
  */
 #ifndef _FSL_DPMAC_CMD_H
 #define _FSL_DPMAC_CMD_H
@@ -36,6 +36,8 @@
 #define DPMAC_CMDID_GET_COUNTER		DPMAC_CMD(0x0c4)
 
 #define DPMAC_CMDID_SET_PROTOCOL	DPMAC_CMD(0x0c7)
+
+#define DPMAC_CMDID_GET_STATISTICS	DPMAC_CMD(0x0c8)
 
 /* Macros for accessing command fields smaller than 1byte */
 #define DPMAC_MASK(field)        \
@@ -81,6 +83,15 @@ struct dpmac_cmd_get_counter {
 struct dpmac_rsp_get_counter {
 	__le64 pad;
 	__le64 counter;
+};
+
+struct dpmac_rsp_get_api_version {
+	__le16 major;
+	__le16 minor;
+};
+
+struct dpmac_cmd_set_protocol {
+	u8 eth_if;
 };
 
 struct dpmac_cmd_set_irq_enable {
@@ -133,12 +144,10 @@ struct dpmac_rsp_get_link_cfg {
 	u64 advertising;
 };
 
-struct dpmac_rsp_get_api_version {
-	__le16 major;
-	__le16 minor;
+struct dpmac_cmd_get_statistics {
+	__le64 iova_cnt;
+	__le64 iova_values;
+	__le32 num_cnt;
 };
 
-struct dpmac_cmd_set_protocol {
-	u8 eth_if;
-};
 #endif /* _FSL_DPMAC_CMD_H */

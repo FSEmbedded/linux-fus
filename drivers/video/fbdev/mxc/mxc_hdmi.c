@@ -2721,6 +2721,12 @@ static void mxc_hdmi_disp_deinit(struct mxc_dispdrv_handle *disp)
 
 	dev_dbg(&hdmi->pdev->dev, "%s\n", __func__);
 
+	device_remove_file(&hdmi->pdev->dev, &dev_attr_fb_name);
+	device_remove_file(&hdmi->pdev->dev, &dev_attr_cable_state);
+	device_remove_file(&hdmi->pdev->dev, &dev_attr_edid);
+	device_remove_file(&hdmi->pdev->dev, &dev_attr_rgb_out_enable);
+	device_remove_file(&hdmi->pdev->dev, &dev_attr_hdcp_enable);
+
 	fb_unregister_client(&hdmi->nb);
 
 	clk_disable_unprepare(hdmi->hdmi_isfr_clk);
@@ -2729,8 +2735,6 @@ static void mxc_hdmi_disp_deinit(struct mxc_dispdrv_handle *disp)
 	clk_put(hdmi->hdmi_iahb_clk);
 	clk_disable_unprepare(hdmi->mipi_core_clk);
 	clk_put(hdmi->mipi_core_clk);
-
-	platform_device_unregister(hdmi->pdev);
 
 	hdmi_inited = false;
 }
@@ -2818,7 +2822,7 @@ static int mxc_hdmi_probe(struct platform_device *pdev)
 		goto ealloc;
 	}
 
-	hdmi_class = class_create(THIS_MODULE, "mxc_hdmi");
+	hdmi_class = class_create("mxc_hdmi");
 	if (IS_ERR(hdmi_class)) {
 		ret = PTR_ERR(hdmi_class);
 		goto err_out_chrdev;
@@ -2943,8 +2947,7 @@ static void __exit mxc_hdmi_exit(void)
 }
 module_exit(mxc_hdmi_exit);
 
-static int mxc_hdmi_i2c_probe(struct i2c_client *client,
-		const struct i2c_device_id *id)
+static int mxc_hdmi_i2c_probe(struct i2c_client *client)
 {
 	if (!i2c_check_functionality(client->adapter,
 				I2C_FUNC_SMBUS_BYTE | I2C_FUNC_I2C))
@@ -2955,10 +2958,9 @@ static int mxc_hdmi_i2c_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int mxc_hdmi_i2c_remove(struct i2c_client *client)
+static void mxc_hdmi_i2c_remove(struct i2c_client *client)
 {
 	hdmi_i2c = NULL;
-	return 0;
 }
 
 static const struct of_device_id imx_hdmi_i2c_match[] = {

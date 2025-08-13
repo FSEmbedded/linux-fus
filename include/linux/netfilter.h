@@ -11,6 +11,7 @@
 #include <linux/wait.h>
 #include <linux/list.h>
 #include <linux/static_key.h>
+#include <linux/module.h>
 #include <linux/netfilter_defs.h>
 #include <linux/netdevice.h>
 #include <linux/sockptr.h>
@@ -80,6 +81,7 @@ typedef unsigned int nf_hookfn(void *priv,
 enum nf_hook_ops_type {
 	NF_HOOK_OP_UNDEFINED,
 	NF_HOOK_OP_NF_TABLES,
+	NF_HOOK_OP_BPF,
 };
 
 struct nf_hook_ops {
@@ -374,6 +376,7 @@ struct nf_nat_hook {
 	unsigned int (*manip_pkt)(struct sk_buff *skb, struct nf_conn *ct,
 				  enum nf_nat_manip_type mtype,
 				  enum ip_conntrack_dir dir);
+	void (*remove_nat_bysrc)(struct nf_conn *ct);
 };
 
 extern const struct nf_nat_hook __rcu *nf_nat_hook;
@@ -480,7 +483,16 @@ struct nfnl_ct_hook {
 };
 extern const struct nfnl_ct_hook __rcu *nfnl_ct_hook;
 
-/**
+struct nf_defrag_hook {
+	struct module *owner;
+	int (*enable)(struct net *net);
+	void (*disable)(struct net *net);
+};
+
+extern const struct nf_defrag_hook __rcu *nf_defrag_v4_hook;
+extern const struct nf_defrag_hook __rcu *nf_defrag_v6_hook;
+
+/*
  * nf_skb_duplicated - TEE target has sent a packet
  *
  * When a xtables target sends a packet, the OUTPUT and POSTROUTING
@@ -491,4 +503,9 @@ extern const struct nfnl_ct_hook __rcu *nfnl_ct_hook;
  */
 DECLARE_PER_CPU(bool, nf_skb_duplicated);
 
+/*
+ * Contains bitmask of ctnetlink event subscribers, if any.
+ * Can't be pernet due to NETLINK_LISTEN_ALL_NSID setsockopt flag.
+ */
+extern u8 nf_ctnetlink_has_listener;
 #endif /*__LINUX_NETFILTER_H*/

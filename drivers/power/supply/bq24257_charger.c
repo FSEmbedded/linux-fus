@@ -18,6 +18,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
+#include <linux/workqueue.h>
 
 #include <linux/acpi.h>
 #include <linux/of.h>
@@ -34,6 +35,9 @@
 #define BQ24257_PG_GPIO			"pg"
 
 #define BQ24257_ILIM_SET_DELAY		1000	/* msec */
+
+/* Polling time in msecs */
+#define BQ24257_IRQ_POLL_TIME 100
 
 /*
  * When adding support for new devices make sure that enum bq2425x_chip and
@@ -82,7 +86,10 @@ struct bq24257_state {
 struct bq24257_device {
 	struct i2c_client *client;
 	struct device *dev;
+	struct regulator *vin_reg;
 	struct power_supply *charger;
+
+	struct delayed_work irqpoll;
 
 	enum bq2425x_chip chip;
 
@@ -287,7 +294,7 @@ static int bq24257_set_input_current_limit(struct bq24257_device *bq,
 {
 	/*
 	 * Address the case where the user manually sets an input current limit
-	 * while the charger auto-detection mechanism is is active. In this
+	 * while the charger auto-detection mechanism is active. In this
 	 * case we want to abort and go straight to the user-specified value.
 	 */
 	if (bq->iilimit_autoset_enable)
@@ -673,6 +680,20 @@ static irqreturn_t bq24257_irq_handler_thread(int irq, void *private)
 	return IRQ_HANDLED;
 }
 
+static void bq24257_irqpoll(struct work_struct *work)
+{
+	struct delayed_work *irqpoll = to_delayed_work(work);
+	struct bq24257_device *bq = container_of(irqpoll, struct bq24257_device, irqpoll);
+
+	/* Call interrupt routine */
+	bq24257_irq_handler_thread(0, bq);
+
+	/* Schedule next work */
+	schedule_delayed_work(&bq->irqpoll, msecs_to_jiffies(BQ24257_IRQ_POLL_TIME));
+
+	return;
+}
+
 static int bq24257_hw_init(struct bq24257_device *bq)
 {
 	int ret;
@@ -767,8 +788,7 @@ static ssize_t bq24257_show_ovp_voltage(struct device *dev,
 	struct power_supply *psy = dev_get_drvdata(dev);
 	struct bq24257_device *bq = power_supply_get_drvdata(psy);
 
-	return scnprintf(buf, PAGE_SIZE, "%u\n",
-			 bq24257_vovp_map[bq->init_data.vovp]);
+	return sysfs_emit(buf, "%u\n", bq24257_vovp_map[bq->init_data.vovp]);
 }
 
 static ssize_t bq24257_show_in_dpm_voltage(struct device *dev,
@@ -778,8 +798,7 @@ static ssize_t bq24257_show_in_dpm_voltage(struct device *dev,
 	struct power_supply *psy = dev_get_drvdata(dev);
 	struct bq24257_device *bq = power_supply_get_drvdata(psy);
 
-	return scnprintf(buf, PAGE_SIZE, "%u\n",
-			 bq24257_vindpm_map[bq->init_data.vindpm]);
+	return sysfs_emit(buf, "%u\n", bq24257_vindpm_map[bq->init_data.vindpm]);
 }
 
 static ssize_t bq24257_sysfs_show_enable(struct device *dev,
@@ -800,7 +819,7 @@ static ssize_t bq24257_sysfs_show_enable(struct device *dev,
 	if (ret < 0)
 		return ret;
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", ret);
+	return sysfs_emit(buf, "%d\n", ret);
 }
 
 static ssize_t bq24257_sysfs_set_enable(struct device *dev,
@@ -947,9 +966,9 @@ static int bq24257_fw_probe(struct bq24257_device *bq)
 	return 0;
 }
 
-static int bq24257_probe(struct i2c_client *client,
-			 const struct i2c_device_id *id)
+static int bq24257_probe(struct i2c_client *client)
 {
+	const struct i2c_device_id *id = i2c_client_get_device_id(client);
 	struct i2c_adapter *adapter = client->adapter;
 	struct device *dev = &client->dev;
 	const struct acpi_device_id *acpi_id;
@@ -968,6 +987,18 @@ static int bq24257_probe(struct i2c_client *client,
 
 	bq->client = client;
 	bq->dev = dev;
+
+	bq->vin_reg = devm_regulator_get(bq->dev, "vin");
+	if (IS_ERR(bq->vin_reg)) {
+		dev_err(bq->dev, "Failed to get vin regulator\n");
+		return PTR_ERR(bq->vin_reg);
+	}
+
+	ret = regulator_enable(bq->vin_reg);
+	if (ret) {
+		dev_err(bq->dev, "Failed to enable vin regulator\n");
+		return ret;
+	}
 
 	if (ACPI_HANDLE(dev)) {
 		acpi_id = acpi_match_device(dev->driver->acpi_match_table,
@@ -1064,11 +1095,18 @@ static int bq24257_probe(struct i2c_client *client,
 		return ret;
 	}
 
-	ret = devm_request_threaded_irq(dev, client->irq, NULL,
+	if(client->irq){
+		ret = devm_request_threaded_irq(dev, client->irq, NULL,
 					bq24257_irq_handler_thread,
 					IRQF_TRIGGER_FALLING |
 					IRQF_TRIGGER_RISING | IRQF_ONESHOT,
 					bq2425x_chip_name[bq->chip], bq);
+	} else {
+		INIT_DELAYED_WORK(&bq->irqpoll, bq24257_irqpoll);
+		schedule_delayed_work(&bq->irqpoll, msecs_to_jiffies(BQ24257_IRQ_POLL_TIME));
+		ret = 0;
+	}
+
 	if (ret) {
 		dev_err(dev, "Failed to request IRQ #%d\n", client->irq);
 		return ret;
@@ -1077,7 +1115,7 @@ static int bq24257_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int bq24257_remove(struct i2c_client *client)
+static void bq24257_remove(struct i2c_client *client)
 {
 	struct bq24257_device *bq = i2c_get_clientdata(client);
 
@@ -1086,7 +1124,7 @@ static int bq24257_remove(struct i2c_client *client)
 
 	bq24257_field_write(bq, F_RESET, 1); /* reset to defaults */
 
-	return 0;
+	regulator_disable(bq->vin_reg);
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -1144,7 +1182,7 @@ static const struct i2c_device_id bq24257_i2c_ids[] = {
 };
 MODULE_DEVICE_TABLE(i2c, bq24257_i2c_ids);
 
-static const struct of_device_id bq24257_of_match[] = {
+static const struct of_device_id bq24257_of_match[] __maybe_unused = {
 	{ .compatible = "ti,bq24250", },
 	{ .compatible = "ti,bq24251", },
 	{ .compatible = "ti,bq24257", },

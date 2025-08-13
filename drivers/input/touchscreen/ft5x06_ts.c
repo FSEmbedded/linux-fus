@@ -427,7 +427,7 @@ static int ft5x0x_i2c_ts_probe_dt(struct ft5x0x_ts_data *tsdata)
 
 
 static int
-ft5x0x_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
+ft5x0x_ts_probe(struct i2c_client *client)
 {
 	struct ft5x0x_ts_data *tsdata;
 	struct input_dev *input_dev;
@@ -550,11 +550,9 @@ exit_unset_i2c_clientdata:
 	return err;
 }
 
-static int ft5x0x_ts_remove(struct i2c_client *client)
+static void ft5x0x_ts_remove(struct i2c_client *client)
 {
 	sysfs_remove_group(&client->dev.kobj, &ft5x0x_attr_group);
-
-	return 0;
 }
 
 static int __maybe_unused ft5x0x_ts_suspend(struct device *dev)

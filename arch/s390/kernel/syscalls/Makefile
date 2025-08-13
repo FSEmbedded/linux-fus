@@ -12,7 +12,7 @@ kapi-hdrs-y := $(kapi)/unistd_nr.h
 uapi-hdrs-y := $(uapi)/unistd_32.h
 uapi-hdrs-y += $(uapi)/unistd_64.h
 
-targets += $(addprefix ../../../,$(gen-y) $(kapi-hdrs-y) $(uapi-hdrs-y))
+targets += $(addprefix ../../../../,$(gen-y) $(kapi-hdrs-y) $(uapi-hdrs-y))
 
 PHONY += kapi uapi
 
@@ -21,8 +21,7 @@ uapi:	$(uapi-hdrs-y)
 
 
 # Create output directory if not already present
-_dummy := $(shell [ -d '$(uapi)' ] || mkdir -p '$(uapi)') \
-	  $(shell [ -d '$(kapi)' ] || mkdir -p '$(kapi)')
+$(shell mkdir -p $(uapi) $(kapi))
 
 filechk_syshdr = $(CONFIG_SHELL) '$(systbl)' -H -a $(syshdr_abi_$(basetarget)) -f "$2" < $<
 

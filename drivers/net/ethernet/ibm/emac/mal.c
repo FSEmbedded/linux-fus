@@ -22,7 +22,9 @@
 
 #include <linux/delay.h>
 #include <linux/slab.h>
+#include <linux/of.h>
 #include <linux/of_irq.h>
+#include <linux/platform_device.h>
 
 #include "core.h"
 #include <asm/dcr-regs.h>
@@ -576,7 +578,7 @@ static int mal_probe(struct platform_device *ofdev)
 		printk(KERN_ERR "%pOF: Support for 405EZ not enabled!\n",
 				ofdev->dev.of_node);
 		err = -ENODEV;
-		goto fail;
+		goto fail_unmap;
 #endif
 	}
 
@@ -605,8 +607,8 @@ static int mal_probe(struct platform_device *ofdev)
 
 	init_dummy_netdev(&mal->dummy_dev);
 
-	netif_napi_add(&mal->dummy_dev, &mal->napi, mal_poll,
-		       CONFIG_IBM_EMAC_POLL_WEIGHT);
+	netif_napi_add_weight(&mal->dummy_dev, &mal->napi, mal_poll,
+			      CONFIG_IBM_EMAC_POLL_WEIGHT);
 
 	/* Load power-on reset defaults */
 	mal_reset(mal);

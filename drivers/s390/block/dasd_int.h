@@ -47,7 +47,6 @@
 #include <linux/module.h>
 #include <linux/wait.h>
 #include <linux/blkdev.h>
-#include <linux/genhd.h>
 #include <linux/hdreg.h>
 #include <linux/interrupt.h>
 #include <linux/log2.h>
@@ -226,7 +225,7 @@ struct dasd_ccw_req {
  * The following flags are used to suppress output of certain errors.
  */
 #define DASD_CQR_SUPPRESS_NRF	4	/* Suppress 'No Record Found' error */
-#define DASD_CQR_SUPPRESS_FP	5	/* Suppress 'File Protected' error*/
+#define DASD_CQR_SUPPRESS_IT	5	/* Suppress 'Invalid Track' error*/
 #define DASD_CQR_SUPPRESS_IL	6	/* Suppress 'Incorrect Length' error */
 #define DASD_CQR_SUPPRESS_CR	7	/* Suppress 'Command Reject' error */
 
@@ -259,6 +258,10 @@ struct dasd_uid {
 	__u8 base_unit_addr;
 	char vduit[33];
 };
+
+#define DASD_UID_STRLEN ( /* vendor */ 3 + 1 + /* serial    */ 14 + 1 +	\
+			  /* SSID   */ 4 + 1 + /* unit addr */ 2 + 1 +	\
+			  /* vduit */ 32 + 1)
 
 /*
  * PPRC Status data
@@ -439,27 +442,28 @@ struct dasd_discipline {
 	int (*ese_read)(struct dasd_ccw_req *, struct irb *);
 	int (*pprc_status)(struct dasd_device *, struct	dasd_pprc_data_sc4 *);
 	bool (*pprc_enabled)(struct dasd_device *);
+	int (*copy_pair_swap)(struct dasd_device *, char *, char *);
+	int (*device_ping)(struct dasd_device *);
 };
 
 extern struct dasd_discipline *dasd_diag_discipline_pointer;
 
-/*
- * Notification numbers for extended error reporting notifications:
- * The DASD_EER_DISABLE notification is sent before a dasd_device (and it's
- * eer pointer) is freed. The error reporting module needs to do all necessary
- * cleanup steps.
- * The DASD_EER_TRIGGER notification sends the actual error reports (triggers).
- */
-#define DASD_EER_DISABLE 0
-#define DASD_EER_TRIGGER 1
+/* Trigger IDs for extended error reporting DASD EER and autoquiesce */
+enum eer_trigger {
+	DASD_EER_FATALERROR = 1,
+	DASD_EER_NOPATH,
+	DASD_EER_STATECHANGE,
+	DASD_EER_PPRCSUSPEND,
+	DASD_EER_NOSPC,
+	DASD_EER_TIMEOUTS,
+	DASD_EER_STARTIO,
 
-/* Trigger IDs for extended error reporting DASD_EER_TRIGGER notification */
-#define DASD_EER_FATALERROR  1
-#define DASD_EER_NOPATH      2
-#define DASD_EER_STATECHANGE 3
-#define DASD_EER_PPRCSUSPEND 4
-#define DASD_EER_NOSPC	     5
-#define DASD_EER_AUTOQUIESCE 31
+	/* enum end marker, only add new trigger above */
+	DASD_EER_MAX,
+	DASD_EER_AUTOQUIESCE = 31, /* internal only */
+};
+
+#define DASD_EER_VALID ((1U << DASD_EER_MAX) - 1)
 
 /* DASD path handling */
 
@@ -638,12 +642,12 @@ struct dasd_device {
 	struct kset *paths_info;
 	struct dasd_copy_relation *copy;
 	unsigned long aq_mask;
+	unsigned int aq_timeouts;
 };
 
 struct dasd_block {
 	/* Block device stuff. */
 	struct gendisk *gdp;
-	struct request_queue *request_queue;
 	spinlock_t request_queue_lock;
 	struct blk_mq_tag_set tag_set;
 	struct block_device *bdev;
@@ -684,6 +688,7 @@ struct dasd_queue {
 #define DASD_STOPPED_PENDING 4         /* long busy */
 #define DASD_STOPPED_DC_WAIT 8         /* disconnected, wait */
 #define DASD_STOPPED_SU      16        /* summary unit check handling */
+#define DASD_STOPPED_PPRC    32        /* PPRC swap */
 #define DASD_STOPPED_NOSPC   128       /* no space left */
 
 /* per device flags */
@@ -707,6 +712,22 @@ struct dasd_queue {
 #define DASD_SLEEPON_END_TAG	((void *) 2)
 
 void dasd_put_device_wake(struct dasd_device *);
+
+/*
+ * return values to be returned from the copy pair swap function
+ * 0x00: swap successful
+ * 0x01: swap data invalid
+ * 0x02: no active device found
+ * 0x03: wrong primary specified
+ * 0x04: secondary device not found
+ * 0x05: swap already running
+ */
+#define DASD_COPYPAIRSWAP_SUCCESS	0
+#define DASD_COPYPAIRSWAP_INVALID	1
+#define DASD_COPYPAIRSWAP_NOACTIVE	2
+#define DASD_COPYPAIRSWAP_PRIMARY	3
+#define DASD_COPYPAIRSWAP_SECONDARY	4
+#define DASD_COPYPAIRSWAP_MULTIPLE	5
 
 /*
  * Reference count inliners
@@ -834,6 +855,7 @@ extern debug_info_t *dasd_debug_area;
 extern struct dasd_profile dasd_global_profile;
 extern unsigned int dasd_global_profile_level;
 extern const struct block_device_operations dasd_device_operations;
+extern struct blk_mq_ops dasd_mq_ops;
 
 extern struct kmem_cache *dasd_page_cache;
 
@@ -850,7 +872,7 @@ void dasd_free_device(struct dasd_device *);
 struct dasd_block *dasd_alloc_block(void);
 void dasd_free_block(struct dasd_block *);
 
-enum blk_eh_timer_return dasd_times_out(struct request *req, bool reserved);
+enum blk_eh_timer_return dasd_times_out(struct request *req);
 
 void dasd_enable_device(struct dasd_device *);
 void dasd_set_target_state(struct dasd_device *, int);
@@ -891,6 +913,8 @@ void dasd_generic_path_event(struct ccw_device *, int *);
 int dasd_generic_verify_path(struct dasd_device *, __u8);
 void dasd_generic_space_exhaust(struct dasd_device *, struct dasd_ccw_req *);
 void dasd_generic_space_avail(struct dasd_device *);
+
+int dasd_generic_requeue_all_requests(struct dasd_device *);
 
 int dasd_generic_read_dev_chars(struct dasd_device *, int, void *, int);
 char *dasd_get_sense(struct irb *);
@@ -945,7 +969,8 @@ int dasd_scan_partitions(struct dasd_block *);
 void dasd_destroy_partitions(struct dasd_block *);
 
 /* externals in dasd_ioctl.c */
-int dasd_ioctl(struct block_device *, fmode_t, unsigned int, unsigned long);
+int dasd_ioctl(struct block_device *bdev, blk_mode_t mode, unsigned int cmd,
+		unsigned long arg);
 int dasd_set_read_only(struct block_device *bdev, bool ro);
 
 /* externals in dasd_proc.c */
@@ -955,7 +980,7 @@ void dasd_proc_exit(void);
 /* externals in dasd_erp.c */
 struct dasd_ccw_req *dasd_default_erp_action(struct dasd_ccw_req *);
 struct dasd_ccw_req *dasd_default_erp_postaction(struct dasd_ccw_req *);
-struct dasd_ccw_req *dasd_alloc_erp_request(char *, int, int,
+struct dasd_ccw_req *dasd_alloc_erp_request(unsigned int, int, int,
 					    struct dasd_device *);
 void dasd_free_erp_request(struct dasd_ccw_req *, struct dasd_device *);
 void dasd_log_sense(struct dasd_ccw_req *, struct irb *);
@@ -1371,6 +1396,15 @@ static inline void dasd_path_add_ppm(struct dasd_device *device, __u8 pm)
 	for (chp = 0; chp < 8; chp++)
 		if (pm & (0x80 >> chp))
 			dasd_path_preferred(device, chp);
+}
+
+static inline void dasd_path_add_fcsecpm(struct dasd_device *device, __u8 pm)
+{
+	int chp;
+
+	for (chp = 0; chp < 8; chp++)
+		if (pm & (0x80 >> chp))
+			dasd_path_fcsec(device, chp);
 }
 
 /*

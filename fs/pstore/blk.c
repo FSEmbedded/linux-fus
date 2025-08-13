@@ -89,7 +89,7 @@ static struct pstore_device_info *pstore_device_info;
 		_##name_ = check_size(name, alignsize);		\
 	else							\
 		_##name_ = 0;					\
-	/* Synchronize module parameters with resuls. */	\
+	/* Synchronize module parameters with results. */	\
 	name = _##name_ / 1024;					\
 	dev->zone.name = _##name_;				\
 }
@@ -121,7 +121,7 @@ static int __register_pstore_device(struct pstore_device_info *dev)
 	if (pstore_device_info)
 		return -EBUSY;
 
-	/* zero means not limit on which backends to attempt to store. */
+	/* zero means no limit on which backends attempt to store. */
 	if (!dev->flags)
 		dev->flags = UINT_MAX;
 
@@ -205,7 +205,6 @@ static ssize_t psblk_generic_blk_write(const char *buf, size_t bytes,
 static int __register_pstore_blk(struct pstore_device_info *dev,
 				 const char *devpath)
 {
-	struct inode *inode;
 	int ret = -ENODEV;
 
 	lockdep_assert_held(&pstore_blk_lock);
@@ -217,14 +216,13 @@ static int __register_pstore_blk(struct pstore_device_info *dev,
 		goto err;
 	}
 
-	inode = file_inode(psblk_file);
-	if (!S_ISBLK(inode->i_mode)) {
+	if (!S_ISBLK(file_inode(psblk_file)->i_mode)) {
 		pr_err("'%s' is not block device!\n", devpath);
 		goto err_fput;
 	}
 
-	inode = I_BDEV(psblk_file->f_mapping->host)->bd_inode;
-	dev->zone.total_size = i_size_read(inode);
+	dev->zone.total_size =
+		bdev_nr_bytes(I_BDEV(psblk_file->f_mapping->host));
 
 	ret = __register_pstore_device(dev);
 	if (ret)
@@ -265,9 +263,9 @@ static __init const char *early_boot_devpath(const char *initial_devname)
 	 * same scheme to find the device that we use for mounting
 	 * the root file system.
 	 */
-	dev_t dev = name_to_dev_t(initial_devname);
+	dev_t dev;
 
-	if (!dev) {
+	if (early_lookup_bdev(initial_devname, &dev)) {
 		pr_err("failed to resolve '%s'!\n", initial_devname);
 		return initial_devname;
 	}

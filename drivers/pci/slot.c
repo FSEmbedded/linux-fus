@@ -79,6 +79,7 @@ static void pci_slot_release(struct kobject *kobj)
 	up_read(&pci_bus_sem);
 
 	list_del(&slot->list);
+	pci_bus_put(slot->bus);
 
 	kfree(slot);
 }
@@ -96,11 +97,12 @@ static struct attribute *pci_slot_default_attrs[] = {
 	&pci_slot_attr_cur_speed.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(pci_slot_default);
 
-static struct kobj_type pci_slot_ktype = {
+static const struct kobj_type pci_slot_ktype = {
 	.sysfs_ops = &pci_slot_sysfs_ops,
 	.release = &pci_slot_release,
-	.default_attrs = pci_slot_default_attrs,
+	.default_groups = pci_slot_default_groups,
 };
 
 static char *make_slot_name(const char *name)
@@ -260,7 +262,7 @@ placeholder:
 		goto err;
 	}
 
-	slot->bus = parent;
+	slot->bus = pci_bus_get(parent);
 	slot->number = slot_nr;
 
 	slot->kobj.kset = pci_slots_kset;
@@ -268,6 +270,7 @@ placeholder:
 	slot_name = make_slot_name(name);
 	if (!slot_name) {
 		err = -ENOMEM;
+		pci_bus_put(slot->bus);
 		kfree(slot);
 		goto err;
 	}

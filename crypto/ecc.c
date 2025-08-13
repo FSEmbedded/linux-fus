@@ -32,10 +32,10 @@
 #include <linux/fips.h>
 #include <crypto/ecdh.h>
 #include <crypto/rng.h>
+#include <crypto/internal/ecc.h>
 #include <asm/unaligned.h>
 #include <linux/ratelimit.h>
 
-#include "ecc.h"
 #include "ecc_curve_defs.h"
 
 typedef struct {
@@ -66,6 +66,28 @@ const struct ecc_curve *ecc_get_curve(unsigned int curve_id)
 }
 EXPORT_SYMBOL(ecc_get_curve);
 
+void ecc_digits_from_bytes(const u8 *in, unsigned int nbytes,
+			   u64 *out, unsigned int ndigits)
+{
+	int diff = ndigits - DIV_ROUND_UP(nbytes, sizeof(u64));
+	unsigned int o = nbytes & 7;
+	__be64 msd = 0;
+
+	/* diff > 0: not enough input bytes: set most significant digits to 0 */
+	if (diff > 0) {
+		ndigits -= diff;
+		memset(&out[ndigits - 1], 0, diff * sizeof(u64));
+	}
+
+	if (o) {
+		memcpy((u8 *)&msd + sizeof(msd) - o, in, o);
+		out[--ndigits] = be64_to_cpu(msd);
+		in += o;
+	}
+	ecc_swap_digits(in, out, ndigits);
+}
+EXPORT_SYMBOL(ecc_digits_from_bytes);
+
 static u64 *ecc_alloc_digits_space(unsigned int ndigits)
 {
 	size_t len = ndigits * sizeof(u64);
@@ -81,7 +103,7 @@ static void ecc_free_digits_space(u64 *space)
 	kfree_sensitive(space);
 }
 
-static struct ecc_point *ecc_alloc_point(unsigned int ndigits)
+struct ecc_point *ecc_alloc_point(unsigned int ndigits)
 {
 	struct ecc_point *p = kmalloc(sizeof(*p), GFP_KERNEL);
 
@@ -106,8 +128,9 @@ err_alloc_x:
 	kfree(p);
 	return NULL;
 }
+EXPORT_SYMBOL(ecc_alloc_point);
 
-static void ecc_free_point(struct ecc_point *p)
+void ecc_free_point(struct ecc_point *p)
 {
 	if (!p)
 		return;
@@ -116,6 +139,7 @@ static void ecc_free_point(struct ecc_point *p)
 	kfree_sensitive(p->y);
 	kfree_sensitive(p);
 }
+EXPORT_SYMBOL(ecc_free_point);
 
 static void vli_clear(u64 *vli, unsigned int ndigits)
 {
@@ -165,7 +189,7 @@ static unsigned int vli_num_digits(const u64 *vli, unsigned int ndigits)
 }
 
 /* Counts the number of bits required for vli. */
-static unsigned int vli_num_bits(const u64 *vli, unsigned int ndigits)
+unsigned int vli_num_bits(const u64 *vli, unsigned int ndigits)
 {
 	unsigned int i, num_digits;
 	u64 digit;
@@ -180,6 +204,7 @@ static unsigned int vli_num_bits(const u64 *vli, unsigned int ndigits)
 
 	return ((num_digits - 1) * 64 + i);
 }
+EXPORT_SYMBOL(vli_num_bits);
 
 /* Set dest from unaligned bit string src. */
 void vli_from_be64(u64 *dest, const void *src, unsigned int ndigits)
@@ -1062,11 +1087,12 @@ EXPORT_SYMBOL(vli_mod_inv);
 /* ------ Point operations ------ */
 
 /* Returns true if p_point is the point at infinity, false otherwise. */
-static bool ecc_point_is_zero(const struct ecc_point *point)
+bool ecc_point_is_zero(const struct ecc_point *point)
 {
 	return (vli_is_zero(point->x, point->ndigits) &&
 		vli_is_zero(point->y, point->ndigits));
 }
+EXPORT_SYMBOL(ecc_point_is_zero);
 
 /* Point multiplication algorithm using Montgomery's ladder with co-Z
  * coordinates. From https://eprint.iacr.org/2011/338.pdf
@@ -1380,7 +1406,8 @@ void ecc_point_mult_shamir(const struct ecc_point *result,
 
 	num_bits = max(vli_num_bits(u1, ndigits), vli_num_bits(u2, ndigits));
 	i = num_bits - 1;
-	idx = (!!vli_test_bit(u1, i)) | ((!!vli_test_bit(u2, i)) << 1);
+	idx = !!vli_test_bit(u1, i);
+	idx |= (!!vli_test_bit(u2, i)) << 1;
 	point = points[idx];
 
 	vli_set(rx, point->x, ndigits);
@@ -1390,7 +1417,8 @@ void ecc_point_mult_shamir(const struct ecc_point *result,
 
 	for (--i; i >= 0; i--) {
 		ecc_point_double_jacobian(rx, ry, z, curve);
-		idx = (!!vli_test_bit(u1, i)) | ((!!vli_test_bit(u2, i)) << 1);
+		idx = !!vli_test_bit(u1, i);
+		idx |= (!!vli_test_bit(u2, i)) << 1;
 		point = points[idx];
 		if (point) {
 			u64 tx[ECC_MAX_DIGITS];

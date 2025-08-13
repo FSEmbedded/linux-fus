@@ -153,7 +153,7 @@ static const struct ata_port_info ahci_da850_port_info = {
 	.port_ops	= &ahci_da850_port_ops,
 };
 
-static struct scsi_host_template ahci_platform_sht = {
+static const struct scsi_host_template ahci_platform_sht = {
 	AHCI_SHT(DRV_NAME),
 };
 
@@ -232,13 +232,13 @@ static SIMPLE_DEV_PM_OPS(ahci_da850_pm_ops, ahci_platform_suspend,
 
 static const struct of_device_id ahci_da850_of_match[] = {
 	{ .compatible = "ti,da850-ahci", },
-	{ },
+	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, ahci_da850_of_match);
 
 static struct platform_driver ahci_da850_driver = {
 	.probe = ahci_da850_probe,
-	.remove = ata_platform_remove_one,
+	.remove_new = ata_platform_remove_one,
 	.driver = {
 		.name = DRV_NAME,
 		.of_match_table = ahci_da850_of_match,

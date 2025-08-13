@@ -185,8 +185,7 @@ function_trace_call(unsigned long ip, unsigned long parent_ip,
 	if (bit < 0)
 		return;
 
-	trace_ctx = tracing_gen_ctx();
-	preempt_disable_notrace();
+	trace_ctx = tracing_gen_ctx_dec();
 
 	cpu = smp_processor_id();
 	data = per_cpu_ptr(tr->array_buffer.data, cpu);
@@ -194,7 +193,6 @@ function_trace_call(unsigned long ip, unsigned long parent_ip,
 		trace_function(tr, ip, parent_ip, trace_ctx);
 
 	ftrace_test_recursion_unlock(bit);
-	preempt_enable_notrace();
 }
 
 #ifdef CONFIG_UNWINDER_ORC
@@ -287,7 +285,6 @@ function_no_repeats_trace_call(unsigned long ip, unsigned long parent_ip,
 	struct trace_array *tr = op->private;
 	struct trace_array_cpu *data;
 	unsigned int trace_ctx;
-	unsigned long flags;
 	int bit;
 	int cpu;
 
@@ -297,8 +294,6 @@ function_no_repeats_trace_call(unsigned long ip, unsigned long parent_ip,
 	bit = ftrace_test_recursion_trylock(ip, parent_ip);
 	if (bit < 0)
 		return;
-
-	preempt_disable_notrace();
 
 	cpu = smp_processor_id();
 	data = per_cpu_ptr(tr->array_buffer.data, cpu);
@@ -316,15 +311,13 @@ function_no_repeats_trace_call(unsigned long ip, unsigned long parent_ip,
 	if (is_repeat_check(tr, last_info, ip, parent_ip))
 		goto out;
 
-	local_save_flags(flags);
-	trace_ctx = tracing_gen_ctx_flags(flags);
+	trace_ctx = tracing_gen_ctx_dec();
 	process_repeats(tr, ip, parent_ip, last_info, trace_ctx);
 
 	trace_function(tr, ip, parent_ip, trace_ctx);
 
 out:
 	ftrace_test_recursion_unlock(bit);
-	preempt_enable_notrace();
 }
 
 static void

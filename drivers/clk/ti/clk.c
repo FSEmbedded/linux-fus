@@ -1,18 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * TI clock support
  *
  * Copyright (C) 2013 Texas Instruments, Inc.
  *
  * Tero Kristo <t-kristo@ti.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed "as is" WITHOUT ANY WARRANTY of any
- * kind, whether express or implied; without even the implied warranty
- * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/clk.h>
@@ -24,6 +16,7 @@
 #include <linux/of_address.h>
 #include <linux/list.h>
 #include <linux/regmap.h>
+#include <linux/string_helpers.h>
 #include <linux/memblock.h>
 #include <linux/device.h>
 
@@ -119,12 +112,52 @@ int ti_clk_setup_ll_ops(struct ti_clk_ll_ops *ops)
 	return 0;
 }
 
+/*
+ * Eventually we could standardize to using '_' for clk-*.c files to follow the
+ * TRM naming and leave out the tmp name here.
+ */
+static struct device_node *ti_find_clock_provider(struct device_node *from,
+						  const char *name)
+{
+	struct device_node *np;
+	bool found = false;
+	const char *n;
+	char *tmp;
+
+	tmp = kstrdup_and_replace(name, '-', '_', GFP_KERNEL);
+	if (!tmp)
+		return NULL;
+
+	/* Node named "clock" with "clock-output-names" */
+	for_each_of_allnodes_from(from, np) {
+		if (of_property_read_string_index(np, "clock-output-names",
+						  0, &n))
+			continue;
+
+		if (!strncmp(n, tmp, strlen(tmp))) {
+			of_node_get(np);
+			found = true;
+			break;
+		}
+	}
+	kfree(tmp);
+
+	if (found) {
+		of_node_put(from);
+		return np;
+	}
+
+	/* Fall back to using old node name base provider name */
+	return of_find_node_by_name(from, name);
+}
+
 /**
  * ti_dt_clocks_register - register DT alias clocks during boot
  * @oclks: list of clocks to register
  *
  * Register alias or non-standard DT clock entries during boot. By
- * default, DT clocks are found based on their node name. If any
+ * default, DT clocks are found based on their clock-output-names
+ * property, or the clock node name for legacy cases. If any
  * additional con-id / dev-id -> clock mapping is required, use this
  * function to list these.
  */
@@ -168,7 +201,7 @@ void __init ti_dt_clocks_register(struct ti_dt_clk oclks[])
 		if (num_args && clkctrl_nodes_missing)
 			continue;
 
-		node = of_find_node_by_name(NULL, buf);
+		node = ti_find_clock_provider(NULL, buf);
 		if (num_args && compat_mode) {
 			parent = node;
 			child = of_get_child_by_name(parent, "clock");
@@ -230,7 +263,7 @@ static LIST_HEAD(retry_list);
 
 /**
  * ti_clk_retry_init - retries a failed clock init at later phase
- * @node: device not for the clock
+ * @node: device node for the clock
  * @user: user data pointer
  * @func: init function to be called for the clock
  *
@@ -274,6 +307,8 @@ int ti_clk_get_reg_addr(struct device_node *node, int index,
 	for (i = 0; i < CLK_MAX_MEMMAPS; i++) {
 		if (clocks_node_ptr[i] == node->parent)
 			break;
+		if (clocks_node_ptr[i] == node->parent->parent)
+			break;
 	}
 
 	if (i == CLK_MAX_MEMMAPS) {
@@ -284,8 +319,12 @@ int ti_clk_get_reg_addr(struct device_node *node, int index,
 	reg->index = i;
 
 	if (of_property_read_u32_index(node, "reg", index, &val)) {
-		pr_err("%pOFn must have reg[%d]!\n", node, index);
-		return -EINVAL;
+		if (of_property_read_u32_index(node->parent, "reg",
+					       index, &val)) {
+			pr_err("%pOFn or parent must have reg[%d]!\n",
+			       node, index);
+			return -EINVAL;
+		}
 	}
 
 	reg->offset = val;

@@ -7,6 +7,8 @@
  * Copyright 2008 Embedded Alley Solutions, Inc All Rights Reserved.
  */
 
+//#define CONFIG_FB_MXC_EINK_AUTO_UPDATE_MODE
+
 #include <linux/busfreq-imx.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -41,7 +43,7 @@
 #include <linux/fsl_devices.h>
 #include <linux/bitops.h>
 #include <linux/pinctrl/consumer.h>
-#include <linux/platform_data/dma-imx.h>
+#include <linux/dma/imx-dma.h>
 #include <asm/cacheflush.h>
 
 #include "epdc_v2_regs.h"
@@ -54,7 +56,7 @@
  * Enable this define to have a default panel
  * loaded during driver initialization
  */
-/*#define DEFAULT_PANEL_HW_INIT*/
+#define DEFAULT_PANEL_HW_INIT
 
 #define SG_NUM				14 /* 2+4+4+4  */
 #define NUM_SCREENS_MIN	2
@@ -380,7 +382,84 @@ static struct fb_videomode e97_v110_mode = {
 	.flag = 0,
 };
 
+static struct fb_videomode ed103tc2mode = {
+	.name = "ED103TC2",
+	.refresh = 85,
+	.xres = 1872,
+	.yres = 1404,
+	.pixclock = 133320000,
+	.left_margin = 17*4,
+	.right_margin = 7*4,
+	.upper_margin = 4,
+	.lower_margin = 12,
+	.hsync_len = 18*4,
+	.vsync_len = 1,
+	.sync = 0,
+	.vmode = FB_VMODE_NONINTERLACED,
+	.flag = 0,
+};
+
+static struct fb_videomode ed060kc1 = {
+	.name = "ED060KC1",
+	.refresh = 85,
+	.xres = 1072,
+	.yres = 1448,
+	.pixclock = 80000000,
+	.left_margin = 8*2,
+	.right_margin = 51*2,
+	.upper_margin = 4,
+	.lower_margin = 4,
+	.hsync_len = 14*2,
+	.vsync_len = 2,
+	.sync = 0,
+	.vmode = FB_VMODE_NONINTERLACED,
+	.flag = 0,
+};
+
+static struct fb_videomode opm103E2mode = {
+	.name = "OPM103E2",
+	.refresh = 85,
+	.xres = 2240,
+	.yres = 1680,
+	.pixclock = 133320000,
+	.left_margin = 17*4,
+	.right_margin = 7*4,
+	.upper_margin = 4,
+	.lower_margin = 12,
+	.hsync_len = 18*4,
+	.vsync_len = 1,
+	.sync = 0,
+	.vmode = FB_VMODE_NONINTERLACED,
+	.flag = 0,
+};
+
 static struct imx_epdc_fb_mode panel_modes[] = {
+	{
+		&ed060kc1,
+		4,      /* vscan_holdoff */
+		10,     /* sdoed_width */
+		20,     /* sdoed_delay */
+		10,     /* sdoez_width */
+		20,     /* sdoez_delay */
+		550,    /* gdclk_hp_offs */
+		20,     /* gdsp_offs */
+		0,      /* gdoe_offs */
+		1,      /* gdclk_offs */
+		1,      /* num_ce */
+	},
+	{
+		&ed103tc2mode,
+		8,      /* vscan_holdoff */
+		10,     /* sdoed_width */
+		20,     /* sdoed_delay */
+		10,     /* sdoez_width */
+		20,     /* sdoez_delay */
+		930,    /* gdclk_hp_offs */
+		20,     /* gdsp_offs */
+		0,      /* gdoe_offs */
+		1,      /* gdclk_offs */
+		1,      /* num_ce */
+	},
 	{
 		&ed060xh2c1mode,	/* struct fb_videomode *mode */
 		4, 	/* vscan_holdoff */
@@ -448,6 +527,19 @@ static struct imx_epdc_fb_mode panel_modes[] = {
 	},
 	{
 		&e97_v110_mode,
+		8,      /* vscan_holdoff */
+		10,     /* sdoed_width */
+		20,     /* sdoed_delay */
+		10,     /* sdoez_width */
+		20,     /* sdoez_delay */
+		632,    /* gdclk_hp_offs */
+		20,     /* gdsp_offs */
+		0,      /* gdoe_offs */
+		1,      /* gdclk_offs */
+		3,      /* num_ce */
+	},
+	{
+		&opm103E2mode,
 		8,      /* vscan_holdoff */
 		10,     /* sdoed_width */
 		20,     /* sdoed_delay */
@@ -1338,7 +1430,15 @@ static void epdc_init_settings(struct mxc_epdc_fb_data *fb_data)
 	reg_val =
 	    ((epdc_mode->vscan_holdoff << EPDC_TCE_CTRL_VSCAN_HOLDOFF_OFFSET) &
 	     EPDC_TCE_CTRL_VSCAN_HOLDOFF_MASK)
-	    | EPDC_TCE_CTRL_PIXELS_PER_SDCLK_4;
+#if 1
+	    | EPDC_TCE_CTRL_PIXELS_PER_SDCLK_8
+		| EPDC_TCE_CTRL_SDDO_WIDTH_16BIT
+		| EPDC_TCE_CTRL_SCAN_DIR_0_UP;
+#else
+		| EPDC_TCE_CTRL_PIXELS_PER_SDCLK_4
+		| EPDC_TCE_CTRL_SDDO_WIDTH_16BIT
+		| EPDC_TCE_CTRL_SCAN_DIR_0_UP;
+#endif
 	__raw_writel(reg_val, EPDC_TCE_CTRL);
 
 	/* EPDC_TCE_HSCAN */
@@ -1477,6 +1577,21 @@ static void epdc_powerup(struct mxc_epdc_fb_data *fb_data)
 
 	fb_data->updates_active = true;
 
+	/* Enable power to the EPD panel */
+	if (fb_data->display_regulator) {
+		ret = regulator_enable(fb_data->display_regulator);
+		if (ret) {
+			dev_err(fb_data->dev, "Unable to enable DISPLAY regulator."
+				"err = 0x%x\n", ret);
+			mutex_unlock(&fb_data->power_mutex);
+			return;
+		}
+	} else {
+		val = __raw_readl(EPDC_GPIO);
+		val |= EPDC_GPIO_PWRWAKE;
+		__raw_writel(val, EPDC_GPIO);
+	}
+
 	if (fb_data->vpos_regulator) {
 		ret = regulator_set_voltage(fb_data->vpos_regulator,
 						15000000, 15060000);
@@ -1515,19 +1630,14 @@ static void epdc_powerup(struct mxc_epdc_fb_data *fb_data)
 
 	epdc_init_settings(fb_data);
 
-	/* Enable power to the EPD panel */
-	if (fb_data->display_regulator) {
-		ret = regulator_enable(fb_data->display_regulator);
-		if (ret) {
-			dev_err(fb_data->dev, "Unable to enable DISPLAY regulator."
-				"err = 0x%x\n", ret);
-			mutex_unlock(&fb_data->power_mutex);
-			return;
-		}
-	} else {
-		val = __raw_readl(EPDC_GPIO);
-		val |= EPDC_GPIO_PWRWAKE;
-		__raw_writel(val, EPDC_GPIO);
+/* TODO: Use devicetree Propety for Voltage regulation */
+	ret = regulator_set_voltage(fb_data->vcom_regulator,
+						800000, 800000);
+	if (ret) {
+		dev_dbg(fb_data->dev, "Unable to set VCOM voltage "
+			"ret = %d\n", ret);
+		mutex_unlock(&fb_data->power_mutex);
+		return;
 	}
 
 	ret = regulator_enable(fb_data->vcom_regulator);
@@ -1559,16 +1669,6 @@ static void epdc_powerdown(struct mxc_epdc_fb_data *fb_data)
 
 	dev_dbg(fb_data->dev, "EPDC Powerdown\n");
 
-	/* Disable power to the EPD panel */
-	regulator_disable(fb_data->vcom_regulator);
-
-	if (fb_data->display_regulator)
-		regulator_disable(fb_data->display_regulator);
-	else {
-		val = __raw_readl(EPDC_GPIO);
-		val &= ~EPDC_GPIO_PWRWAKE;
-		__raw_writel(val, EPDC_GPIO);
-	}
 
 	/* Disable clocks to EPDC */
 	__raw_writel(EPDC_CTRL_CLKGATE, EPDC_CTRL_SET);
@@ -1577,6 +1677,9 @@ static void epdc_powerdown(struct mxc_epdc_fb_data *fb_data)
 	clk_disable_unprepare(fb_data->epdc_clk_axi);
 
 	pm_runtime_put_sync_suspend(fb_data->dev);
+
+	/* Disable power to the EPD panel */
+	regulator_disable(fb_data->vcom_regulator);
 
 	/* turn off the V3p3 */
 	regulator_disable(fb_data->v3p3_regulator);
@@ -1587,6 +1690,14 @@ static void epdc_powerdown(struct mxc_epdc_fb_data *fb_data)
 	if (fb_data->wait_for_powerdown) {
 		fb_data->wait_for_powerdown = false;
 		complete(&fb_data->powerdown_compl);
+	}
+
+	if (fb_data->display_regulator)
+		regulator_disable(fb_data->display_regulator);
+	else {
+		val = __raw_readl(EPDC_GPIO);
+		val &= ~EPDC_GPIO_PWRWAKE;
+		__raw_writel(val, EPDC_GPIO);
 	}
 
 	mutex_unlock(&fb_data->power_mutex);
@@ -4768,7 +4879,7 @@ static void mxc_epdc_fb_fw_handler(const struct firmware *fw,
 	struct mxcfb_waveform_data_file *wv_file;
 	int wv_data_offs;
 	int i;
-	struct mxcfb_update_data update;
+	struct mxcfb_update_data update = { 0 };
 	struct mxcfb_update_marker_data upd_marker_data;
 	struct fb_var_screeninfo *screeninfo = &fb_data->epdc_fb_var;
 	u32 xres, yres;
@@ -4922,6 +5033,7 @@ static void mxc_epdc_fb_fw_handler(const struct firmware *fw,
 	update.temp = TEMP_USE_AMBIENT;
 	update.flags = 0;
 	update.dither_mode = 0;
+	update.quant_bit = 0;
 
 	upd_marker_data.update_marker = update.update_marker;
 
@@ -4969,7 +5081,7 @@ static ssize_t store_update(struct device *device,
 			     struct device_attribute *attr,
 			     const char *buf, size_t count)
 {
-	struct mxcfb_update_data update;
+	struct mxcfb_update_data update = { 0 };
 	struct fb_info *info = dev_get_drvdata(device);
 	struct mxc_epdc_fb_data *fb_data = (struct mxc_epdc_fb_data *)info;
 
@@ -4979,6 +5091,8 @@ static ssize_t store_update(struct device *device,
 		update.waveform_mode = fb_data->wv_modes.mode_gc16;
 	else if (strncmp(buf, "gc4", 3) == 0)
 		update.waveform_mode = fb_data->wv_modes.mode_gc4;
+	else
+		update.waveform_mode = fb_data->wv_modes.mode_du;
 
 	/* Now, request full screen update */
 	update.update_region.left = 0;
@@ -4996,7 +5110,7 @@ static ssize_t store_update(struct device *device,
 }
 
 static struct device_attribute fb_attrs[] = {
-	__ATTR(update, S_IRUGO|S_IWUSR, NULL, store_update),
+	__ATTR(update, S_IWUSR, NULL, store_update),
 };
 
 static const struct of_device_id imx_epdc_dt_ids[] = {
@@ -5034,7 +5148,6 @@ static int mxc_epdc_fb_probe(struct platform_device *pdev)
 	phandle phandle;
 	u32 out_val[3];
 	int enable_gpio;
-	enum of_gpio_flags flag;
 	unsigned short *wk_p;
 
 	if (!np)
@@ -5074,7 +5187,7 @@ static int mxc_epdc_fb_probe(struct platform_device *pdev)
 	}
 
 	if (of_find_property(np, "en-gpios", NULL)) {
-		enable_gpio = of_get_named_gpio_flags(np, "en-gpios", 0, &flag);
+		enable_gpio = of_get_named_gpio(np, "en-gpios", 0);
 		if (enable_gpio == -EPROBE_DEFER) {
 			dev_info(&pdev->dev, "GPIO requested is not"
 				"here yet, deferring the probe\n");
@@ -5086,8 +5199,6 @@ static int mxc_epdc_fb_probe(struct platform_device *pdev)
 
 			ret = devm_gpio_request_one(&pdev->dev,
 						    enable_gpio,
-						    (flag & OF_GPIO_ACTIVE_LOW)
-						    ? GPIOF_OUT_INIT_LOW :
 						    GPIOF_OUT_INIT_HIGH,
 						    "en_pins");
 			if (ret) {
@@ -5309,7 +5420,6 @@ static int mxc_epdc_fb_probe(struct platform_device *pdev)
 	info->var.activate = FB_ACTIVATE_NOW;
 	info->pseudo_palette = fb_data->pseudo_palette;
 	info->screen_size = info->fix.smem_len;
-	info->flags = FBINFO_FLAG_DEFAULT;
 
 	mxc_epdc_fb_set_fix(info);
 
@@ -5603,9 +5713,6 @@ static int mxc_epdc_fb_probe(struct platform_device *pdev)
 		fb_data->vneg_regulator = NULL;
 	}
 
-	if (device_create_file(info->dev, &fb_attrs[0]))
-		dev_err(&pdev->dev, "Unable to create file from fb_attrs\n");
-
 	fb_data->cur_update = NULL;
 
 	mutex_init(&fb_data->queue_mutex);
@@ -5723,6 +5830,9 @@ static int mxc_epdc_fb_probe(struct platform_device *pdev)
 			"register_framebuffer failed with error %d\n", ret);
 		goto out_lutmap;
 	}
+
+	if (device_create_file(info->dev, &fb_attrs[0]))
+		dev_err(&pdev->dev, "Unable to create file from fb_attrs\n");
 
 	g_fb_data = fb_data;
 

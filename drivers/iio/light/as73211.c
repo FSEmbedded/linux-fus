@@ -154,6 +154,12 @@ struct as73211_data {
 	BIT(AS73211_SCAN_INDEX_TEMP) | \
 	AS73211_SCAN_MASK_COLOR)
 
+static const unsigned long as73211_scan_masks[] = {
+	AS73211_SCAN_MASK_COLOR,
+	AS73211_SCAN_MASK_ALL,
+	0
+};
+
 static const struct iio_chan_spec as73211_channels[] = {
 	{
 		.type = IIO_TEMP,
@@ -602,9 +608,12 @@ static irqreturn_t as73211_trigger_handler(int irq __always_unused, void *p)
 
 		/* AS73211 starts reading at address 2 */
 		ret = i2c_master_recv(data->client,
-				(char *)&scan.chan[1], 3 * sizeof(scan.chan[1]));
+				(char *)&scan.chan[0], 3 * sizeof(scan.chan[0]));
 		if (ret < 0)
 			goto done;
+
+		/* Avoid pushing uninitialized data */
+		scan.chan[3] = 0;
 	}
 
 	if (data_result) {
@@ -612,9 +621,15 @@ static irqreturn_t as73211_trigger_handler(int irq __always_unused, void *p)
 		 * Saturate all channels (in case of overflows). Temperature channel
 		 * is not affected by overflows.
 		 */
-		scan.chan[1] = cpu_to_le16(U16_MAX);
-		scan.chan[2] = cpu_to_le16(U16_MAX);
-		scan.chan[3] = cpu_to_le16(U16_MAX);
+		if (*indio_dev->active_scan_mask == AS73211_SCAN_MASK_ALL) {
+			scan.chan[1] = cpu_to_le16(U16_MAX);
+			scan.chan[2] = cpu_to_le16(U16_MAX);
+			scan.chan[3] = cpu_to_le16(U16_MAX);
+		} else {
+			scan.chan[0] = cpu_to_le16(U16_MAX);
+			scan.chan[1] = cpu_to_le16(U16_MAX);
+			scan.chan[2] = cpu_to_le16(U16_MAX);
+		}
 	}
 
 	iio_push_to_buffers_with_timestamp(indio_dev, &scan, iio_get_time_ns(indio_dev));
@@ -684,6 +699,7 @@ static int as73211_probe(struct i2c_client *client)
 	indio_dev->channels = as73211_channels;
 	indio_dev->num_channels = ARRAY_SIZE(as73211_channels);
 	indio_dev->modes = INDIO_DIRECT_MODE;
+	indio_dev->available_scan_masks = as73211_scan_masks;
 
 	ret = i2c_smbus_read_byte_data(data->client, AS73211_REG_OSR);
 	if (ret < 0)
@@ -755,21 +771,22 @@ static int as73211_probe(struct i2c_client *client)
 	return devm_iio_device_register(dev, indio_dev);
 }
 
-static int __maybe_unused as73211_suspend(struct device *dev)
+static int as73211_suspend(struct device *dev)
 {
 	struct iio_dev *indio_dev = i2c_get_clientdata(to_i2c_client(dev));
 
 	return as73211_power(indio_dev, false);
 }
 
-static int __maybe_unused as73211_resume(struct device *dev)
+static int as73211_resume(struct device *dev)
 {
 	struct iio_dev *indio_dev = i2c_get_clientdata(to_i2c_client(dev));
 
 	return as73211_power(indio_dev, true);
 }
 
-static SIMPLE_DEV_PM_OPS(as73211_pm_ops, as73211_suspend, as73211_resume);
+static DEFINE_SIMPLE_DEV_PM_OPS(as73211_pm_ops, as73211_suspend,
+				as73211_resume);
 
 static const struct of_device_id as73211_of_match[] = {
 	{ .compatible = "ams,as73211" },
@@ -787,9 +804,9 @@ static struct i2c_driver as73211_driver = {
 	.driver = {
 		.name           = AS73211_DRV_NAME,
 		.of_match_table = as73211_of_match,
-		.pm             = &as73211_pm_ops,
+		.pm             = pm_sleep_ptr(&as73211_pm_ops),
 	},
-	.probe_new  = as73211_probe,
+	.probe      = as73211_probe,
 	.id_table   = as73211_id,
 };
 module_i2c_driver(as73211_driver);

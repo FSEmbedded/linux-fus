@@ -340,10 +340,17 @@ static int ldb_init(struct mxc_dispdrv_handle *mddh,
 	return 0;
 }
 
-void ldb_deinit(struct mxc_dispdrv_handle *disp)
+static void ldb_deinit(struct mxc_dispdrv_handle *mddh)
 {
-	struct ldb_data *ldb = mxc_dispdrv_getdata(disp);
+	struct ldb_data *ldb = mxc_dispdrv_getdata(mddh);
+	struct ldb_chan *chan;
+	int i;
 	int ret;
+
+	for (i = 0; i < 2; i++) {
+		chan = &ldb->chan[i];
+		chan->is_used = false;
+	}
 
 	if (ldb->enabled == 1) {
 		if (ldb->reg_ldb) {
