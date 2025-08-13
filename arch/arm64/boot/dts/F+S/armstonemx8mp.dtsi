@@ -141,7 +141,7 @@
 		 * our own memory regions
 		 * */
 		/delete-node/dsp@92400000;
-		/delete-node/dsp_reserved_heap;
+		/delete-node/dsp_reserved_heap@93400000;
 		/delete-node/vdev0vring0@942f0000;
 		/delete-node/vdev0vring1@942f8000;
 		/delete-node/vdev0buffer@94300000;
@@ -150,7 +150,7 @@
 			reg = <0 0x53000000 0 0x1000000>;
 			no-map;
 		};
-		dsp_reserved_heap: dsp_reserved_heap {
+		dsp_reserved_heap: dsp_reserved_heap@54000000 {
 			reg = <0 0x54000000 0 0xef0000>;
 			no-map;
 		};
