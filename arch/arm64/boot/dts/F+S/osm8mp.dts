@@ -92,6 +92,8 @@
 #define CONFIG_OSM8MP_SDIO_B_WP
 #define CONFIG_OSM8MP_SDIO_B_8_BIT
 
+/* DSP */
+//#define CONFIG_OSM8MP_DSP
 /* Check for invalid CONFIG combinations */
 
 /*
