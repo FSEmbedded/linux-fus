@@ -18,8 +18,20 @@
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/net/mscc-phy-vsc8531.h>
+#include <dt-bindings/net/realtek-phy.h>
 
 #define VSC8531_LED_BEHAVIOR (VSC8531_LED2_COMBINE_DISABLE|VSC8531_LED_BP_5Hz)
+#define RTL8211FSI_LED_BEHAVIOR (\
+		RTL8211F_LCR_LED0_LINK_10|\
+		RTL8211F_LCR_LED0_LINK_100|\
+		RTL8211F_LCR_LED0_LINK_1000|\
+		RTL8211F_LCR_LED1_LINK_10|\
+		RTL8211F_LCR_LED1_LINK_100|\
+		RTL8211F_LCR_LED1_LINK_1000|\
+		RTL8211F_LCR_LED2_LINK_10|\
+		RTL8211F_LCR_LED2_LINK_100|\
+		RTL8211F_LCR_LED2_LINK_1000|\
+		RTL8211F_LCR_LED2_ACT)
 
 /delete-node/ &dpclk;
 /delete-node/ &hdptx0;
@@ -65,7 +77,7 @@
 		D4_GN {
 			label = "D4-LED_green";
 			gpios = <&gpio4 4 GPIO_ACTIVE_HIGH>;
-			default-state = "off";	
+			default-state = "off";
 		};
 
 		D5_GN {
@@ -208,7 +220,7 @@
 		vcc-supply = <&regulator_3v3>;
 		status = "disabled";
 	};
-	
+
 	esdhc1_pwrseq: emmc_pwrseq {
 		compatible = "mmc-pwrseq-emmc";
 		reset-gpios = <&gpio4 1 (GPIO_ACTIVE_LOW|GPIO_OPEN_DRAIN)>;
@@ -259,7 +271,7 @@
 				  "PCIe2_RST_B_1V8",
 				  "PCIe2_WAKE_B_1V8",
 				  "PCIe1_PWR_EN",
-				  "PCIe1_RST_B_1V8", 
+				  "PCIe1_RST_B_1V8",
 				  /* Port 3 */
 				  "PCIe1_WAKE_B_1V8",
 				  "PCIe1_CLKREQ_B_1V8",
@@ -389,6 +401,7 @@
 		reset-gpios = <&gpio4 19 GPIO_ACTIVE_HIGH>;
 		reset-assert-us = <50000>;
 		reset-deassert-us = <200000>;
+		realtek,reg-lcr = <RTL8211FSI_LED_BEHAVIOR>;
 		sfp = <&sfp_int>;
 	};
 
