@@ -33,7 +33,9 @@
 #define RTL8211F_PHYCR2				0x19
 #define RTL8211FVD_PHYCR2			0x11
 #define RTL8211F_INSR				0x1d
-#define RTL8211FSI_FIBER_BMCR_DEFAULT 0x1140
+#define RTL8211FSI_FIBER_BMCR_DEFAULT		0x1140
+#define RTL8211F_PAGE_LCR			0xd04
+#define RTL8211F_REG_LCR			0x10
 
 #define RTL8211F_TX_DELAY			BIT(8)
 #define RTL8211F_RX_DELAY			BIT(3)
@@ -196,6 +198,25 @@ static int rtl821x_probe(struct phy_device *phydev)
 	return 0;
 }
 
+static int rtl8211f_config_leds(struct phy_device *phydev)
+{
+	struct device *dev = &phydev->mdio.dev;
+	uint32_t led_value;
+	int ret;
+
+	if (!dev->of_node)
+		return 0;
+
+	ret = of_property_read_u32(dev->of_node, "realtek,reg-lcr", &led_value);
+	if (ret)
+		return 0;
+
+	dev_dbg(dev, "set LCR register to 0x%04x\n", led_value);
+	phy_modify_paged_changed(phydev, RTL8211F_PAGE_LCR, RTL8211F_REG_LCR, 0xffff, (uint16_t)led_value);
+
+	return 0;
+}
+
 static int rtl8211fsi_probe(struct phy_device *phydev)
 {
 	struct rtl821x_priv *priv;
@@ -215,6 +236,7 @@ static int rtl8211fsi_probe(struct phy_device *phydev)
 	}
 
 	dev_info(&phydev->mdio.dev, "configured for UTP-Mode\n");
+	rtl8211f_config_leds(phydev);
 
 	return 0;
 }
@@ -510,6 +532,8 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 			ERR_PTR(ret));
 		return ret;
 	}
+
+	rtl8211f_config_leds(phydev);
 
 	return genphy_soft_reset(phydev);
 }
