@@ -112,9 +112,9 @@
 
 #ifdef SUPPORT_M4
 #undef CONFIG_PICOCOREMX8MX_UART_C
-//#undef CONFIG_PICOCOREMX8MX_I2C_A
-//#undef CONFIG_PICOCOREMX8MX_SPI_A
-//#undef CONFIG_PICOCOREMX8MX_SPI_B
+#undef CONFIG_PICOCOREMX8MX_I2C_A
+#undef CONFIG_PICOCOREMX8MX_SPI_A
+#undef CONFIG_PICOCOREMX8MX_SPI_B
 /* Only undef if using audio/sai examples */
 //#undef CONFIG_PICOCOREMX8MX_I2C_D
 //#undef CONFIG_PICOCOREMX8MX_SGTL5000_AUDIO
@@ -203,7 +203,50 @@
 			 */
 			//no-uboot-override;
 		};
+
+#ifdef SUPPORT_M4
+		m4_reserved: m4@55500000 {
+			reg = <0 0x55500000 0 0x1000000>;
+			no-map;
+		};
+
+		vdev0vring0: vdev0vring0@50000000 {
+			reg = <0 0x50000000 0 0x8000>;
+			no-map;
+		};
+
+		vdev0vring1: vdev0vring1@50008000 {
+			reg = <0 0x50008000 0 0x8000>;
+			no-map;
+		};
+		// TODO: Has to be rsc-table in kernel 6.12
+		rsc_table: rsc_table@500ff000 {
+			reg = <0 0x500ff000 0 0x1000>;
+			no-map;
+		};
+
+		vdevbuffer: vdevbuffer@50400000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x50400000 0 0x100000>;
+			no-map;
+		};
+#endif
 	};
+
+#ifdef SUPPORT_M4
+	imx8mm-cm4 {
+		compatible = "fsl,imx8mm-cm4";
+		rsc-da = <0x50000000>;
+		clocks = <&clk IMX8MM_CLK_M4_DIV>;
+		mbox-names = "tx", "rx", "rxdb";
+		mboxes = <&mu 0 1
+			  &mu 1 1
+			  &mu 3 1>;
+		memory-region = <&vdev0vring0>, <&vdev0vring1>, <&vdevbuffer>, <&rsc_table>, <&m4_reserved>;
+		syscon = <&src>;
+		fsl,startup-delay-ms = <500>;
+	};
+#endif
 
 #ifdef CONFIG_PICOCOREMX8MX_BL_CTRL
 	backlight_ldb {
@@ -305,7 +348,6 @@
 #endif /* CONFIG_PICOCOREMX8MX_SGTL5000_AUDIO */
 	};
 #ifdef SUPPORT_M4
-	// ###TODO - not implemented yet
 #if 0
 	rpmsg_i2s: rpmsg-i2s {
 		compatible = "fsl,imx8mq-rpmsg-i2s";

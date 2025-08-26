@@ -124,9 +124,9 @@
  */
 #ifdef SUPPORT_M4
 #undef CONFIG_OSM8MM_UART_C
-//#undef CONFIG_OSM8MM_I2C_A
-//#undef CONFIG_OSM8MM_SPI_A
-//#undef CONFIG_OSM8MM_SPI_B
+#undef CONFIG_OSM8MM_I2C_A
+#undef CONFIG_OSM8MM_SPI_A
+#undef CONFIG_OSM8MM_SPI_B
 /* Only undef if using audio/sai examples */
 //#undef CONFIG_OSM8MM_I2C_B
 //#undef CONFIG_OSM8MM_I2S_A
