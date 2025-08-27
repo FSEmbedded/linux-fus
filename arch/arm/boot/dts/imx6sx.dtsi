@@ -204,9 +204,6 @@
 		ocrams: sram@8f8000 {
 			compatible = "fsl,lpm-sram";
 			reg = <0x8f8000 0x4000>;
-			ranges = <0 0x008f8000 0x4000>;
-			#address-cells = <1>;
-			#size-cells = <1>;
 			clocks = <&clks IMX6SX_CLK_OCRAM_S>;
 		};
 
@@ -219,9 +216,6 @@
 		ocram: sram@901000 {
 			compatible = "mmio-sram";
 			reg = <0x901000 0x1F000>;
-			ranges = <0 0x00901000 0x1F000>;
-			#address-cells = <1>;
-			#size-cells = <1>;
 			clocks = <&clks IMX6SX_CLK_OCRAM>;
 		};
 
@@ -287,7 +281,7 @@
 			power-domains = <&pd_pu>;
 		};
 
-		dma_apbh: dma-apbh@1804000 {
+		dma_apbh: dma-controller@1804000 {
 			compatible = "fsl,imx6sx-dma-apbh", "fsl,imx28-dma-apbh";
 			reg = <0x01804000 0x2000>;
 			interrupts = <GIC_SPI 13 IRQ_TYPE_LEVEL_HIGH>,
@@ -970,7 +964,7 @@
 				};
 			};
 
-			sdma: sdma@20ec000 {
+			sdma: dma-controller@20ec000 {
 				compatible = "fsl,imx6sx-sdma", "fsl,imx6q-sdma";
 				reg = <0x020ec000 0x4000>;
 				interrupts = <GIC_SPI 2 IRQ_TYPE_LEVEL_HIGH>;

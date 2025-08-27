@@ -785,8 +785,6 @@ static inline int get_pdm_clk(struct fsl_micfil *micfil,
 	regmap_read(micfil->regmap, REG_MICFIL_CTRL2, &ctrl2_reg);
 	osr = 16 - ((ctrl2_reg & MICFIL_CTRL2_CICOSR_MASK)
 		    >> MICFIL_CTRL2_CICOSR_SHIFT);
-
-	regmap_read(micfil->regmap, REG_MICFIL_CTRL2, &ctrl2_reg);
 	qsel = ctrl2_reg & MICFIL_CTRL2_QSEL_MASK;
 
 	switch (qsel) {
@@ -857,6 +855,31 @@ static int fsl_micfil_reset(struct device *dev)
 		dev_err(dev, "failed to reset MICFIL: %d\n", ret);
 		return ret;
 	}
+
+	/* w1c */
+	regmap_write_bits(micfil->regmap, REG_MICFIL_STAT, 0xFF, 0xFF);
+
+	/* w1c */
+	regmap_write_bits(micfil->regmap, REG_MICFIL_STAT, 0xFF, 0xFF);
+
+	/*
+	 * SRES is self-cleared bit, but REG_MICFIL_CTRL1 is defined
+	 * as non-volatile register, so SRES still remain in regmap
+	 * cache after set, that every update of REG_MICFIL_CTRL1,
+	 * software reset happens. so clear it explicitly.
+	 */
+	ret = regmap_clear_bits(micfil->regmap, REG_MICFIL_CTRL1,
+				MICFIL_CTRL1_SRES);
+	if (ret)
+		return ret;
+
+	/*
+	 * Set SRES should clear CHnF flags, But even add delay here
+	 * the CHnF may not be cleared sometimes, so clear CHnF explicitly.
+	 */
+	ret = regmap_write_bits(micfil->regmap, REG_MICFIL_STAT, 0xFF, 0xFF);
+	if (ret)
+		return ret;
 
 	return 0;
 }
@@ -2385,18 +2408,21 @@ static int fsl_micfil_probe(struct platform_device *pdev)
 	/* create sysfs entry used to enable hwvad from userspace */
 	micfil->hwvad_kobject = kobject_create_and_add("hwvad",
 						       &pdev->dev.kobj);
-	if (!micfil->hwvad_kobject)
-		return -ENOMEM;
+	if (!micfil->hwvad_kobject) {
+		ret = -ENOMEM;
+		goto err_pm_disable;
+	}
 
 	ret = sysfs_create_file(micfil->hwvad_kobject,
 				&hwvad_en_attr.attr);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to create file for hwvad_enable\n");
 		kobject_put(micfil->hwvad_kobject);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto err_pm_disable;
 	}
 
-	return 0;
+	return ret;
 
 err_pm_disable:
 	pm_runtime_disable(&pdev->dev);
