@@ -9,9 +9,9 @@
 /dts-v1/;
 
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_OSM8MP_BOARD_REVISION	100
+#define CONFIG_OSM8MP_BOARD_REVISION	110
 /* Set adapter revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_ADP_OSM_BOARD_REVISION	120
+#define CONFIG_ADP_OSM_BOARD_REVISION	130
 /* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_PICOCOREBBDSI_BOARD_REVISION	140
 
@@ -298,6 +298,36 @@
 #endif
 #endif
 
+#if CONFIG_ADP_OSM_BOARD_REVISION >= 130
+&osm_i2c_b {
+	/* GPIO expander */
+	pca6416: gpio@20 {
+		compatible = "nxp,pcal6416";
+		reg = <0x20>;
+		vcc-supply = <&reg_vref_1v8>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		interrupt-controller;
+		#interrupt-cells = <2>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <6 IRQ_TYPE_LEVEL_LOW>;
+		/* Enable Open-Drain for Port 0 and 1 */
+		pcal6416,open-drain;
+	};
+};
+
+&reg_mipi_rst {
+	gpio = <&pca6416 5 GPIO_ACTIVE_HIGH>;
+};
+
+&reg_touch_rst {
+	gpio = <&pca6416 6 GPIO_ACTIVE_HIGH>;
+};
+
+/delete-node/ &reg_eth_rst;
+
+#endif
+
 &clk {
 	assigned-clocks = <&clk IMX8MP_CLK_A53_SRC>,
 			  <&clk IMX8MP_CLK_A53_CORE>,
@@ -340,8 +370,10 @@
 	ptn5110: tcpc@52 {
 		compatible = "nxp,ptn5110";
 #ifdef CONFIG_OSM8MP_USB_A_USBC_ALERT
+#if CONFIG_ADP_OSM_BOARD_REVISION < 130
 		interrupt-parent = <&gpio1>;
 		interrupts = <10 IRQ_TYPE_LEVEL_LOW>;
+#endif
 #endif
 		reg = <0x52>;
 		status = "okay";
@@ -421,6 +453,13 @@
 			rtl821x,ssc-clkout-enable;
 			rtl821x,led-link = <2>; // LED1 for link indication
 			rtl821x,led-act = <2>; // LED1 for activity
+#if CONFIG_ADP_OSM_BOARD_REVISION >= 130
+			reset-gpios = <&pca6416 0 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <10000>;
+			reset-deassert-us = <100000>;
+			interrupt-parent = <&pca6416>;
+			interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
+#endif
 			eee-broken-1000t;
 		};
 	};
@@ -444,6 +483,13 @@
 			rtl821x,ssc-clkout-enable;
 			rtl821x,led-link = <2>; // LED1 for link indication
 			rtl821x,led-act = <2>; // LED1 for activity
+#if CONFIG_ADP_OSM_BOARD_REVISION >= 130
+			reset-gpios = <&pca6416 1 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <10000>;
+			reset-deassert-us = <100000>;
+			interrupt-parent = <&pca6416>;
+			interrupts = <3 IRQ_TYPE_EDGE_FALLING>;
+#endif
 			eee-broken-1000t;
 		};
 	};
@@ -498,7 +544,11 @@
 #ifdef IMX8MP_TOUCH_INTERRUPT_PINCTRL
 	pinctrl_touch_int: touchintgrp {
 		fsl,pins = <
+#if CONFIG_ADP_OSM_BOARD_REVISION < 130
 			MX8MP_IOMUXC_GPIO1_IO01__GPIO1_IO01	0x00084
+#else
+			MX8MP_IOMUXC_GPIO1_IO05__GPIO1_IO05	0x00084
+#endif
 		>;
 	};
 #endif
@@ -510,12 +560,18 @@
 		MX8MP_IOMUXC_SPDIF_EXT_CLK__GPIO5_IO05	0x00004
 
 		/* GPIO_A */
-		/* 0 */ MX8MP_IOMUXC_GPIO1_IO05__GPIO1_IO05	0x00004
-		/* 1 */ MX8MP_IOMUXC_GPIO1_IO06__GPIO1_IO06	0x00004
-		/* 2 */ MX8MP_IOMUXC_GPIO1_IO07__GPIO1_IO07	0x00004
 #ifndef IMX8MP_TOUCH_INTERRUPT_PINCTRL
+		/* 0 */ MX8MP_IOMUXC_GPIO1_IO05__GPIO1_IO05	0x00004
+		/* 3 */ MX8MP_IOMUXC_GPIO1_IO01__GPIO1_IO01	0x00004
+#else
+#if CONFIG_ADP_OSM_BOARD_REVISION < 130
+		/* 0 */ MX8MP_IOMUXC_GPIO1_IO05__GPIO1_IO05	0x00004
+#else
 		/* 3 */ MX8MP_IOMUXC_GPIO1_IO01__GPIO1_IO01	0x00004
 #endif
+#endif
+		/* 1 */ MX8MP_IOMUXC_GPIO1_IO06__GPIO1_IO06	0x00004
+		/* 2 */ MX8MP_IOMUXC_GPIO1_IO07__GPIO1_IO07	0x00004
 		/* 4 */ MX8MP_IOMUXC_GPIO1_IO10__GPIO1_IO10	0x00004
 		/* 5 */ MX8MP_IOMUXC_GPIO1_IO08__GPIO1_IO08	0x00004
 #ifndef CONFIG_OSM8MP_PWM_2
