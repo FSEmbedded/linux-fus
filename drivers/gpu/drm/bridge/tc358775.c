@@ -452,7 +452,8 @@ static void tc_bridge_enable(struct drm_bridge *bridge)
 	d2l_write(tc->i2c, VTIM2, vtime2);
 
 	d2l_write(tc->i2c, VFUEN, VFUEN_EN);
-	d2l_write(tc->i2c, SYSRST, SYS_RST_LCD);
+	d2l_write(tc->i2c, LVPHY0, LV_PHY0_RST(1));
+	usleep_range(30000,40000);
 	d2l_write(tc->i2c, LVPHY0, LV_PHY0_PRBS_ON(4) | LV_PHY0_ND(6));
 
 	dev_dbg(tc->dev, "bus_formats %04x bpc %d\n",
