@@ -8,6 +8,7 @@
 
 #define CONFIG_PICOCOREMX8ULP_MIPI_DSI
 #include "picocoremx8ulp.dts"
+adp_i2c: &lpi2c6 {};
 reg_vlcd: &reg_vlcd_en {};
 #include "displays/imx8ulp-adp-mipi2lvds1-BT070L1060CS0I1AD-A.dtsi"
 

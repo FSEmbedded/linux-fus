@@ -27,6 +27,7 @@ pc_i2c_c: &rp_i2c0 {};
 pc_i2c_d: &rp_i2c1 {};
 pc_uart_a: &lpuart5 {};
 pc_uart_c: &lpuart6 {};
+pc_uart_d: &tty0_rpchip {};
 pc_eth: &fec {};
 pc_usb_1: &usbotg1 {};
 pc_usb_2: &usbotg2 {};
@@ -35,6 +36,7 @@ pc_sdio_a: &usdhc1 {};
 pc_spi_a: &lpspi4 {};
 pc_sai: &sai4 {};
 pc_bl_pwm: &tpm7 {};
+pc_pwm: &tpm0_rpchip{};
 
 / {
 	model = "F&S PicoCoreMX8ULP";
@@ -50,6 +52,7 @@ pc_bl_pwm: &tpm7 {};
 		ethernet0 = &pc_eth;
 		serial0 = &pc_uart_a;
 		serial1 = &pc_uart_c;
+		serial2 = &pc_uart_d;
 		i2c0 = &pc_i2c_int;
 		i2c1 = &pc_i2c_a;
 		i2c2 = &pc_i2c_b;
@@ -71,8 +74,8 @@ pc_bl_pwm: &tpm7 {};
 		rtc0 = &ext_rtc;
 		isi0 = &isi_0;
 		csi0 = &mipi_csi0;
-		// pwm0 = rp_pwm not available;
-		pwm1 = &tpm7;
+		pwm0 = &pc_pwm;
+		pwm1 = &pc_bl_pwm;
 	};
 
 	/* -------------------- BOARD INFO -------------------- */
@@ -270,7 +273,7 @@ pc_bl_pwm: &tpm7 {};
 		reg = <0 0x1fff8000 0 0x1000>;
 		no-map;
 	};
-	
+
 	vdev0vring0: vdev0vring0@aff00000 {
 		reg = <0 0xaff00000 0 0x8000>;
 		no-map;
@@ -296,6 +299,14 @@ pc_bl_pwm: &tpm7 {};
 		reg = <0 0xa8400000 0 0x100000>;
 		no-map;
 	};
+
+#if defined(CONFIG_PICOCOREMX8ULP_AUDIO_RTD)
+	audio_reserved: audio@a8500000 {
+			compatible = "shared-dma-pool";
+			no-map;
+			reg = <0 0xa8500000 0 0x100000>;
+	};
+#endif
 };
 
 /* remoteproc */
@@ -423,7 +434,11 @@ pc_bl_pwm: &tpm7 {};
 };
 
 /* UART_B is controlled by M33 */
+
 /* UART_D is controlled by M33 */
+&pc_uart_d {
+	status = "disabled";
+};
 
 /* I2C decleration */
 &pc_i2c_int {
@@ -530,12 +545,15 @@ pc_bl_pwm: &tpm7 {};
 	vqmmc-supply = <&reg_vdd_ptd>;
 #if defined(CONFIG_PICOCOREMX8ULP_SD_A_CD)
 	cd-gpios = <&gpiof 2 GPIO_ACTIVE_LOW>;
+#else
+	broken-cd;
 #endif
 #if defined(CONFIG_PICOCOREMX8ULP_SD_A_WP)
 	wp-gpios = <&gpiof 1 GPIO_ACTIVE_HIGH>;
 #endif
 	status = "disabled";
 #if defined(CONFIG_PICOCOREMX8ULP_WLAN)
+	/delete-property/ broken-cd;
 	fsl,sdio-async-interrupt-enabled;
 	enable-sdio-wakeup;
 	non-removable;
@@ -556,6 +574,10 @@ pc_bl_pwm: &tpm7 {};
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_tpm7>;
 	status = "disabled";
+};
+
+&pc_pwm {
+	status = "okay";
 };
 
 /* USB decleration */
@@ -648,31 +670,42 @@ pc_bl_pwm: &tpm7 {};
 	fsl,sai-mclk-direction-output;
 	status = "okay";
 };
-#endif /* CONFIG_PICOCOREMX8ULP_AUDIO_APD */
-
-#if defined(CONFIG_PICOCOREMX8ULP_AUDIO_RTD)
+#elif defined(CONFIG_PICOCOREMX8ULP_AUDIO_RTD)
 / {
-	sgtl5000_mclk:  sgtl5000_mclk {
-		compatible = "fixed-clock";
-		clock-frequency = <12288000>;
-		clock-output-names = "sgtl5000_mclk";
-		#clock-cells = <0>;
-	}
+	rpmsg_audio: rpmsg-audio {
+			compatible = "fsl,imx8ulp-rpmsg-audio";
+			model = "sgtl5000-audio";
+			fsl,rpmsg-out;
+			fsl,rpmsg-in;
+			audio-codec = <&sgtl5000>;
+			memory-region = <&audio_reserved>;
+			audio-routing =
+				"Capture Mux", "LINE_IN",
+				"Capture Mux", "MIC_IN",
+				"ADC", "Capture Mux",
+				"DAP", "ADC",
+				"Digital Input Mux", "DAP",
+				"DAC", "Digital Input Mux",
+				"Headphone Mux", "DAC",
+				"HP_OUT", "Headphone Mux",
+				"LO", "DAC",
+				"LINE_OUT", "LO";
+
+			status = "okay";
+	};
 };
 
 &pc_i2c_int {
-    sgtl5000: sgtl5000@a {
- 		compatible = "fsl,sgtl5000";
- 		reg = <0x0a>;
+	sgtl5000: sgtl5000@a {
+		compatible = "fsl,sgtl5000";
+		reg = <0x0a>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_sgtl5000>;
- 		mono2both;
+		mono2both;
 		clocks = <&sgtl5000_mclk>;
-		clock-names = "mclk";
 		VDDA-supply = <&reg_sgtl5000_vdda>;
- 		VDDIO-supply = <&reg_sgtl5000_vddio>;
- 		VDDD-supply = <&reg_sgtl5000_vddd>;
- 	};
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+	};
 };
 #endif /* CONFIG_PICOCOREMX8ULP_AUDIO_RTD */
 
@@ -694,8 +727,8 @@ pc_bl_pwm: &tpm7 {};
 
 	pinctrl_ethphy: ethphygrp {
 		fsl,pins = <
-			MX8ULP_PAD_PTE2__PTE2		   0x3  //INT
-			MX8ULP_PAD_PTF31__PTF31		 0x3  //RST  
+			MX8ULP_PAD_PTE2__PTE2		0x3  //INT
+			MX8ULP_PAD_PTF31__PTF31		0x3  //RST
 		>;
 	};
 
@@ -710,10 +743,10 @@ pc_bl_pwm: &tpm7 {};
 
 	pinctrl_lpuart5: lpuart5grp {
 		fsl,pins = <
-			MX8ULP_PAD_PTE4__LPUART5_CTS_B  0x3
-			MX8ULP_PAD_PTE5__LPUART5_RTS_B  0x3
-			MX8ULP_PAD_PTE6__LPUART5_TX	 0x3
-			MX8ULP_PAD_PTE7__LPUART5_RX 	0x3
+			MX8ULP_PAD_PTE4__LPUART5_CTS_B	0x3
+			MX8ULP_PAD_PTE5__LPUART5_RTS_B	0x3
+			MX8ULP_PAD_PTE6__LPUART5_TX	0x3
+			MX8ULP_PAD_PTE7__LPUART5_RX	0x3
 		>;
 	};
 
@@ -747,7 +780,7 @@ pc_bl_pwm: &tpm7 {};
 
 	pinctrl_usdhc0: usdhc0grp {
 		fsl,pins = <
-			MX8ULP_PAD_PTD0__SDHC0_RESET_B  0x3
+			MX8ULP_PAD_PTD0__SDHC0_RESET_B		0x3
 			MX8ULP_PAD_PTD1__SDHC0_CMD		0x3
 			MX8ULP_PAD_PTD2__SDHC0_CLK		0x10002
 			MX8ULP_PAD_PTD3__SDHC0_D7		0x3
@@ -770,10 +803,10 @@ pc_bl_pwm: &tpm7 {};
 			MX8ULP_PAD_PTD22__SDHC1_CLK	0x10002
 			MX8ULP_PAD_PTD23__SDHC1_CMD	0x3
 #if defined(CONFIG_PICOCOREMX8ULP_SD_A_WP)
-			MX8ULP_PAD_PTF1__PTF1	   0x2	 //GPIO_WP
+			MX8ULP_PAD_PTF1__PTF1		0x2	 //GPIO_WP
 #endif
 #if defined(CONFIG_PICOCOREMX8ULP_SD_A_CD)
-			MX8ULP_PAD_PTF2__PTF2	   0x2	 //GPIO_CD
+			MX8ULP_PAD_PTF2__PTF2		0x2	 //GPIO_CD
 #endif
 		>;
 	};

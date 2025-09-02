@@ -27,7 +27,6 @@
 
 /* AUDIO */
 #define CONFIG_PICOCOREMX8ULP_AUDIO_APD
-/* LPAUDIO is currently not supported */
 // #define CONFIG_PICOCOREMX8ULP_AUDIO_RTD
 
 /*
@@ -57,6 +56,10 @@
 };
 
 &pc_uart_c {
+	status = "okay";
+};
+
+&pc_uart_d {
 	status = "okay";
 };
 
