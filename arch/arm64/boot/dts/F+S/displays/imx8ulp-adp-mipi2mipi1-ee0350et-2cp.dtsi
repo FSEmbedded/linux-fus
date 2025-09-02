@@ -61,7 +61,7 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 	status = "okay";
-	
+
 	panel@0 {
         compatible = "eagleeyetech,ee0350et-2";
         reg = <0>;
@@ -101,7 +101,7 @@
 		#gpio-cells = <2>;
 		pwm-controller;
 		#pwm-cells = <3>;
-		gpio-line-names = 
+		gpio-line-names =
 			"LEDPWRCTRL",
 			"PWMCTRL",
 			"",

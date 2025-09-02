@@ -14,9 +14,16 @@
 
 / {
 
-    cm33: remoteproc-cm33 {
+	cm33: remoteproc-cm33 {
 		compatible = "fsl,imx8ulp-cm33";
 		status = "disabled";
+	};
+
+	sgtl5000_mclk: sgtl5000-mclk {
+			compatible = "fixed-clock";
+			clock-frequency = <12288000>;
+			clock-output-names = "sgtl5000_mclk";
+			#clock-cells = <0>;
 	};
 
 	srtm_services {
@@ -54,6 +61,49 @@
 			#interrupt-cells = <2>;
 			interrupt-controller;
 			interrupt-parent = <&rp_gpioc>;
+			status = "disabled";
+		};
+
+		tpm0_rpchip: pwm-rpbus-0 {
+			compatible = "fsl,pwm-rpchip";
+			#pwm-cells = <3>;
+			fsl,pwm-channel-number = <6>;
+			status = "disabled";
+		};
+
+		tpm1_rpchip: pwm-rpbus-1 {
+			compatible = "fsl,pwm-rpchip";
+			#pwm-cells = <3>;
+			fsl,pwm-channel-number = <2>;
+			status = "disabled";
+		};
+
+		tpm2_rpchip: pwm-rpbus-2 {
+			compatible = "fsl,pwm-rpchip";
+			#pwm-cells = <3>;
+			fsl,pwm-channel-number = <2>;
+			status = "disabled";
+		};
+
+		tpm3_rpchip: pwm-rpbus-3 {
+			compatible = "fsl,pwm-rpchip";
+			#pwm-cells = <3>;
+			fsl,pwm-channel-number = <6>;
+			status = "disabled";
+		};
+
+		tty0_rpchip: tty-rpbus-0 {
+			compatible = "fus,tty-rpchip";
+			status = "disabled";
+		};
+
+		tty1_rpchip: tty-rpbus-1 {
+			compatible = "fus,tty-rpchip";
+			status = "disabled";
+		};
+
+		tty2_rpchip: tty-rpbus-2 {
+			compatible = "fus,tty-rpchip";
 			status = "disabled";
 		};
 

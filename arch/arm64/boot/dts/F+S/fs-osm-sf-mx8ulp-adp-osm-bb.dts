@@ -12,6 +12,8 @@
 * GNU General Public License for more details.
 */
 
+#define OSM8ULP_REV 110
+
 /dts-v1/;
 #include <dt-bindings/usb/pd.h>
 #include "fs-osm-sf-mx8ulp.dtsi"
@@ -80,18 +82,22 @@
 };
 
 /* osm_eth_a example */
-// &osm_eth_a {
-// 	 phy-mode = "rmii";
-// 	 phy-handle = <&ethphy1>;
-
-// 	 mdio {
-//  		status = "disabled";
-
-// 		ethphy1: ethphy1@0 {
-//  			reg = <0>;
-//  		};
-// 	};
-// };
+&osm_eth_a {
+	phy-mode = "rmii";
+	phy-handle = <&ethphy1>;
+	status = "okay";
+	mdio {
+		status = "okay";
+		ethphy1: ethphy1@0 {
+			reg = <0>;
+			interrupt-parent = <&gpioe>;
+			interrupts = <1 IRQ_TYPE_EDGE_FALLING>;
+			reset-assert-us = <15000>;
+			reset-deassert-us = <100000>;
+			reset-gpios = <&gpiof 29 GPIO_ACTIVE_LOW>;
+		};
+	};
+};
 
 &osm_uart_con {
 	status = "okay";
@@ -99,6 +105,58 @@
 
 &osm_uart_a {
 	status = "okay";
+};
+
+&osm_uart_c {
+	status = "okay";
+};
+
+&osm_uart_d {
+	status = "okay";
+};
+
+&osm_dsi_pwm {
+	status = "okay";
+};
+
+&osm_pwm_1 {
+	status = "okay";
+};
+
+&osm_pwm_2 {
+	status = "okay";
+};
+
+&osm_pwm_3_4 {
+	status = "okay";
+};
+
+&osm_sdio_a {
+	status = "okay";
+};
+
+/ {
+	rpmsg_audio: rpmsg-audio {
+			compatible = "fsl,imx8ulp-rpmsg-audio";
+			model = "sgtl5000-audio";
+			fsl,rpmsg-out;
+			fsl,rpmsg-in;
+			audio-codec = <&sgtl5000>;
+			memory-region = <&audio_reserved>;
+			audio-routing =
+				"Capture Mux", "LINE_IN",
+				"Capture Mux", "MIC_IN",
+				"ADC", "Capture Mux",
+				"DAP", "ADC",
+				"Digital Input Mux", "DAP",
+				"DAC", "Digital Input Mux",
+				"Headphone Mux", "DAC",
+				"HP_OUT", "Headphone Mux",
+				"LO", "DAC",
+				"LINE_OUT", "LO";
+
+			status = "okay";
+	};
 };
 
 &osm_usb_a {
@@ -128,8 +186,8 @@
 	ptn5110: tcpc@52 {
 		compatible = "nxp,ptn5110";
 		reg = <0x52>;
-		interrupt-parent = <&rp_gpioc>;
-		interrupts = <14 IRQ_TYPE_LEVEL_LOW>;
+		interrupt-parent = <&gpioe>;
+		interrupts = <0 IRQ_TYPE_EDGE_FALLING>;
 
 		port {
 			typec_dr_sw: endpoint {
@@ -151,4 +209,52 @@
 			self-powered;
 		};
 	};
+
+	sgtl5000: sgtl5000@a {
+ 		compatible = "fsl,sgtl5000";
+ 		reg = <0x0a>;
+ 		mono2both;
+		clocks = <&sgtl5000_mclk>;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+ 		VDDIO-supply = <&reg_sgtl5000_vddio>;
+ 		VDDD-supply = <&reg_sgtl5000_vddd>;
+		status = "okay";
+ 	};
+};
+
+&pinctrl_enet {
+	fsl,pins = <
+			MX8ULP_PAD_PTE3__ENET0_TXCLK	0x43
+			MX8ULP_PAD_PTE14__ENET0_MDIO	0x43
+			MX8ULP_PAD_PTE15__ENET0_MDC	0x43
+			MX8ULP_PAD_PTE16__ENET0_TXEN	0x43
+			MX8ULP_PAD_PTE17__ENET0_RXER	0x43
+			MX8ULP_PAD_PTE18__ENET0_CRS_DV	0x42 //PHYAD[1:0]
+			MX8ULP_PAD_PTE19__ENET0_REFCLK	0x42 //PHYAD[2]
+			MX8ULP_PAD_PTE20__ENET0_RXD1	0x43
+			MX8ULP_PAD_PTE21__ENET0_RXD0	0x43
+			MX8ULP_PAD_PTE22__ENET0_TXD1	0x43
+			MX8ULP_PAD_PTE23__ENET0_TXD0	0x43
+		>;
+};
+
+&pinctrl_gpioe {
+	fsl,pins = <
+			MX8ULP_PAD_PTE0__PTE0		0x2
+			MX8ULP_PAD_PTE1__PTE1		0x3 // INT-ethphy1
+			MX8ULP_PAD_PTE2__PTE2		0x2
+			MX8ULP_PAD_PTE4__PTE4		0x2
+			MX8ULP_PAD_PTE5__PTE5		0x2
+		>;
+};
+
+&pinctrl_gpiof {
+	fsl,pins = <
+			MX8ULP_PAD_PTF2__PTF2		0x2
+			MX8ULP_PAD_PTF3__PTF3		0x3
+			MX8ULP_PAD_PTF4__PTF4		0x2
+			MX8ULP_PAD_PTF29__PTF29		0x3 // reset-ethphy1
+			MX8ULP_PAD_PTF30__PTF30		0x2
+			MX8ULP_PAD_PTF31__PTF31		0x2
+		>;
 };

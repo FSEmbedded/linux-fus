@@ -12,18 +12,14 @@
 * GNU General Public License for more details.
 */
 
-#define CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION 120
-
-/dts-v1/;
-
 #include "fs-osm-sf-mx8ulp-adp-osm-bb.dts"
 
 adp_i2c: &osm_i2c_cam{};
+reg_vlcd: &reg_disp_vdd_en{};
 
-#include "displays/imx8ulp-adp-mipi2mipi1-ee0350et-2cp.dtsi"
+#include "displays/imx8ulp-adp-mipi2lvds1-BT070L1060CS0I1AD-A.dtsi"
 
 &touch {
-    	reset-gpios = <&gpiof 30 GPIO_ACTIVE_LOW>;
 	interrupt-parent = <&rp_gpioc>;
-	interrupts = <0 IRQ_TYPE_LEVEL_HIGH>;
+	interrupts = <0 IRQ_TYPE_EDGE_RISING>;
 };

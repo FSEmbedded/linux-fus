@@ -14,8 +14,6 @@
 
 #include <dt-bindings/pwm/pwm.h>
 
-#if defined(CONFIG_PICOCOREMX8ULP_MIPI_DSI)
-
 /{
 	panel: panel {
 		compatible = "panel-lvds";
@@ -87,6 +85,7 @@
 };
 
 &dsi {
+	status = "okay";
 	ports {
 		port@1 {
 			#address-cells = <1>;
@@ -101,7 +100,7 @@
 	};
 };
 
-&lpi2c6 {
+&adp_i2c {
 	clock-frequency = <400000>;
 	gpio_bridge: pca9634@63 {
 		compatible = "fus,pca9634";
@@ -236,7 +235,7 @@
 		reg = <0x41>;
 		reset-gpios = <&gpio_adp 5 GPIO_ACTIVE_LOW>;
 	};
-	
+
 	tc358775@f {
 		compatible = "toshiba,tc358775";
 		reg = <0x0f>;
@@ -253,7 +252,7 @@
 				#address-cells = <1>;
 				#size-cells = <0>;
 				reg = <0>;
- 
+
 				lvds_from_dsim: endpoint {
 					remote-endpoint = <&dsim_to_lvds>;
 				};
@@ -271,4 +270,3 @@
 		};
 	};
 };
-#endif
