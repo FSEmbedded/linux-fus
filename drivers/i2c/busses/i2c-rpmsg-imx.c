@@ -183,7 +183,7 @@ static int rpmsg_xfer(struct i2c_rpmsg_msg *rmsg, struct i2c_rpmsg_info *info)
 	}
 
 	if (info->msg->ret_val) {
-		dev_dbg(&info->rpdev->dev,
+		dev_err(&info->rpdev->dev,
 			"%s failed: %d\n", __func__, info->msg->ret_val);
 		return -(info->msg->ret_val);
 	}
