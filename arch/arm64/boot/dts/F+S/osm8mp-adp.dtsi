@@ -554,6 +554,22 @@
 #endif
 };
 
+/*
+ * MK 2025-09-18:
+ * The drive-strength for SDIO_A must be increased to compensate
+ * for a longer route through the adapter (OSM -> ADP -> BB)
+ */
+&pinctrl_osm_sdio_a {
+	fsl,pins = <
+		MX8MP_IOMUXC_SD2_CLK__USDHC2_CLK	0x194
+		MX8MP_IOMUXC_SD2_CMD__USDHC2_CMD	0x1d4
+		MX8MP_IOMUXC_SD2_DATA0__USDHC2_DATA0	0x1d4
+		MX8MP_IOMUXC_SD2_DATA1__USDHC2_DATA1	0x1d4
+		MX8MP_IOMUXC_SD2_DATA2__USDHC2_DATA2	0x1d4
+		MX8MP_IOMUXC_SD2_DATA3__USDHC2_DATA3	0x1d4
+	>;
+};
+
 &pinctrl_hog {
 	fsl,pins = <
 		/* CARRIER_PWR_EN */
