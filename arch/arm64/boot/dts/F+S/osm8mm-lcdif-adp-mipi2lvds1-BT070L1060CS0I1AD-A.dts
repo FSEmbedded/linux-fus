@@ -26,3 +26,9 @@
 #include "displays/imx8mm-adp-mipi2lvds1.dtsi"
 #include "displays/imx8mm-BT070L1060CS0I1AD-A.dtsi"
 
+
+#if CONFIG_ADP_OSM_BOARD_REVISION >= 130
+&touch {
+        interrupts = <IMX8MM_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_RISING>;
+};
+#endif

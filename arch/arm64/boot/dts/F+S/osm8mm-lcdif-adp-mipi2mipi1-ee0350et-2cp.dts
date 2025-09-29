@@ -21,3 +21,11 @@
 
 #include "displays/imx8mm-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtsi"
 
+#if CONFIG_ADP_OSM_BOARD_REVISION >= 130
+&IMX8MM_TOUCH_I2C {
+	/* Atmel PCAP touch on Touch Connector (I2C) */
+	mxt336u@4a {
+		interrupts = <IMX8MM_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_RISING>;
+	};
+};
+#endif
