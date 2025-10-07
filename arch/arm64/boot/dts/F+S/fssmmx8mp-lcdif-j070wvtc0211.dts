@@ -11,3 +11,23 @@
 //#define CONFIG_FSSMMX8MP_LDB_DUAL_CHANNEL
 #include "fssmmx8mp.dts"
 #include "displays/imx8mp-lcdif-j070wvtc0211.dtsi"
+
+&i2c4 {
+	/delete-node/ focaltech@38;
+};
+
+&i2c5 {
+	/* touch I2C */
+	focaltech@38 {
+		compatible = "focaltech,fts";
+		reg = <0x38>;
+		interrupt-parent = <&gpio3>;
+		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
+		focaltech,irq-gpio = <&gpio1 13 IRQ_TYPE_EDGE_FALLING>;
+		focaltech,touchscreen-inverted-x;
+		focaltech,touchscreen-inverted-y;
+		focaltech,reset-gpio = <&gpio3 14 GPIO_ACTIVE_LOW>;
+		focaltech,num-max-touches = <10>;
+		focaltech,display-coords = <0 0 800 480>;
+	};
+};

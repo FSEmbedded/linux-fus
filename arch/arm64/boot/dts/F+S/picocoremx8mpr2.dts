@@ -211,7 +211,7 @@
 			rtl821x,led-act = <1>; // LED1 for activity
 			reset-gpios = <&gpio1 11 GPIO_ACTIVE_LOW>;
 			reset-assert-us = <10000>;
-			reset-deassert-us = <50000>;
+			reset-deassert-us = <100000>;
 			interrupt-parent = <&gpio1>;
 			interrupts = <4 IRQ_TYPE_LEVEL_LOW>;
 			eee-broken-1000t;
@@ -299,7 +299,7 @@
 			rtl821x,led-act = <1>; // LED1 for activity
 			reset-gpios = <&gpio4 28 GPIO_ACTIVE_LOW>;
 			reset-assert-us = <10000>;
-			reset-deassert-us = <50000>;
+			reset-deassert-us = <100000>;
 			interrupt-parent = <&gpio4>;
 			interrupts = <29 IRQ_TYPE_LEVEL_LOW>;
 			eee-broken-1000t;

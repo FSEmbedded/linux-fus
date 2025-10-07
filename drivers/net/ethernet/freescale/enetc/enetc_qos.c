@@ -68,10 +68,9 @@ static int enetc_setup_taprio(struct net_device *ndev,
 
 	tge = enetc_rd(hw, ENETC_QBV_PTGCR_OFFSET);
 	if (!admin_conf->enable) {
-		enetc_wr(hw, ENETC_QBV_PTGCR_OFFSET, tge & ~ENETC_QBV_TGE);
-
-		priv->active_offloads &= ~ENETC_F_QBV;
-
+		enetc_wr(&priv->si->hw,
+			 ENETC_QBV_PTGCR_OFFSET,
+			 tge & (~ENETC_QBV_TGE));
 
 		priv->active_offloads &= ~ENETC_F_QBV;
 

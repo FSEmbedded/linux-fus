@@ -288,6 +288,7 @@ struct dma_heap *dma_heap_add(const struct dma_heap_export_info *exp_info)
 	/* Make sure it doesn't disappear on us */
 	heap->heap_dev = get_device(heap->heap_dev);
 
+	/* Add heap to the list */
 	mutex_lock(&heap_list_lock);
 	/* check the name is unique */
 	list_for_each_entry(h, &heap_list, list) {
@@ -299,7 +300,6 @@ struct dma_heap *dma_heap_add(const struct dma_heap_export_info *exp_info)
 			goto err3;
 		}
 	}
-
 	/* Add heap to the list */
 	list_add(&heap->list, &heap_list);
 	mutex_unlock(&heap_list_lock);

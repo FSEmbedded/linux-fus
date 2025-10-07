@@ -385,8 +385,8 @@ static int fxos8700_set_scale(struct fxos8700_data *data,
 			    fxos8700_accel_scale[i].bits);
 	if (ret)
 		return ret;
-	return regmap_write(data->regmap, FXOS8700_CTRL_REG1,
-				  active_mode);
+	return regmap_update_bits(data->regmap, FXOS8700_CTRL_REG1,
+				  FXOS8700_ACTIVE, active_mode);
 }
 
 static int fxos8700_get_scale(struct fxos8700_data *data,
@@ -441,10 +441,8 @@ static int fxos8700_get_data(struct fxos8700_data *data, int chan_type,
 	ret = regmap_bulk_read(data->regmap, base, data->buf,
 			       sizeof(data->buf));
 	if (ret)
-		return ret;
+		return -EIO;
 
-	/* Convert axis to buffer index */
-	reg = axis - IIO_MOD_X;
 
 	/*
 	 * Convert to native endianness. The accel data and magn data
