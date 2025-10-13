@@ -7,9 +7,17 @@
 */
 
 #define CONFIG_PICOCOREMX8ULP_MIPI_DSI
+
 #include "picocoremx8ulp.dts"
-adp_i2c: &lpi2c6 {};
+
+#if defined(CONFIG_PICOCOREMX8ULP_MIPI_DSI) && defined(CONFIG_PICOCOREMX8ULP_LVDS)
+#error "Set only on config at a time"
+#endif
+
+adp_i2c: &fs_i2c_b {};
 reg_vlcd: &reg_vlcd_en {};
+
+
 #include "displays/imx8ulp-adp-mipi2lvds1-BT070L1060CS0I1AD-A.dtsi"
 
 &touch {
