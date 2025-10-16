@@ -324,6 +324,13 @@ static bool sfp_module_supported(const struct sfp_eeprom_id *id)
 	    !memcmp(id->base.vendor_pn, "UF-INSTANT      ", 16))
 		return true;
 
+	/* SFP FlexDSL COPSFPMSPAM is sfp */
+	if (id->base.phys_id == SFF8024_ID_UNK &&
+	    id->base.phys_ext_id == SFP_PHYS_EXT_ID_SFP &&
+	    !memcmp(id->base.vendor_name, "FlexDSL         ", 16) &&
+	    !memcmp(id->base.vendor_pn, "COPSFPMSPAM     ", 16))
+		return true;
+
 	return false;
 }
 
@@ -433,6 +440,15 @@ static void sfp_quirk_ubnt_uf_instant(const struct sfp_eeprom_id *id,
 	linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseX_Full_BIT, modes);
 }
 
+static void sfp_quirk_flexdsl_copsfpmsap(const struct sfp_eeprom_id *id,
+				      unsigned long *modes,
+				      unsigned long *interfaces)
+{
+	linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseX_Full_BIT, modes);
+	sfp_quirk_disable_autoneg(id, modes, interfaces);
+	__set_bit(PHY_INTERFACE_MODE_1000BASEX, interfaces);
+}
+
 #define SFP_QUIRK(_v, _p, _m, _f) \
 	{ .vendor = _v, .part = _p, .modes = _m, .fixup = _f, }
 #define SFP_QUIRK_M(_v, _p, _m) SFP_QUIRK(_v, _p, _m, NULL)
@@ -477,6 +493,8 @@ static const struct sfp_quirk sfp_quirks[] = {
 	SFP_QUIRK_M("Lantech", "8330-262D-E", sfp_quirk_2500basex),
 
 	SFP_QUIRK_M("UBNT", "UF-INSTANT", sfp_quirk_ubnt_uf_instant),
+
+	SFP_QUIRK_M("FlexDSL", "COPSFPMSPAM", sfp_quirk_flexdsl_copsfpmsap),
 
 	// Walsun HXSX-ATR[CI]-1 don't identify as copper, and use the
 	// Rollball protocol to talk to the PHY.
