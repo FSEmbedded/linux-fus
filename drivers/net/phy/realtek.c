@@ -128,6 +128,12 @@ static int rtl8211fsi_module_insert(void *upstream, const struct sfp_eeprom_id *
 		return -EINVAL;
 	}
 
+	if (linkmode_test_bit(ETHTOOL_LINK_MODE_Autoneg_BIT, sfp_supported)) {
+		phydev->autoneg = AUTONEG_ENABLE;
+	} else {
+		phydev->autoneg = AUTONEG_DISABLE;
+	}
+
 	phy_write_paged(phydev, 0x0, MII_BMCR, bmcr);
 	return 0;
 }
