@@ -137,9 +137,7 @@ static inline int clk_on_imx6ull(void)
 static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 {
 	struct device_node *np;
-	struct property *prop;
 	void __iomem *base;
-	const __be32 *p;
 	u32 val;
 
 	clk_hw_data = kzalloc(struct_size(clk_hw_data, hws,
@@ -554,7 +552,7 @@ static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 	}
 
 	/* enable additional clocks given in device tree at startup */
-	of_property_for_each_u32(np, "startup_clocks", prop, p, val) {
+	of_property_for_each_u32(np, "startup_clocks", val) {
 		if(val > IMX6UL_CLK_DUMMY && val < IMX6UL_CLK_END)
 			clk_prepare_enable(hws[val]->clk);
 	}
