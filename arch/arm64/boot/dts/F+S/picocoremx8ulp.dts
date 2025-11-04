@@ -15,7 +15,7 @@
 /dts-v1/;
 
 /* Cortex-M is always supported */
-#define CONFIG_PICOCOREMX8ULP_REV 120
+#define CONFIG_PICOCOREMX8ULP_REV 110
 
 #if CONFIG_PICOCOREMX8ULP_REV >= 120
 /* Network */
@@ -91,9 +91,15 @@
 	status = "okay";
 };
 
+#if CONFIG_PICOCOREMX8ULP_REV >= 120
 &fs_uart_b {
 	status = "okay";
 };
+#else
+&fs_uart_d {
+	status = "okay";
+};
+#endif
 
 &fs_uart_c {
 	status = "okay";
