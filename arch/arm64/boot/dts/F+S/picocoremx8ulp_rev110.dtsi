@@ -404,9 +404,20 @@ fs_pwm: &tpm0_rpchip{};
 			interrupt-parent = <&gpioe>;
 			interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
 			reset-gpios = <&gpiof 31 GPIO_ACTIVE_LOW>;
+			status = "disabled";
 		};
 	};
 };
+
+#if defined(CONFIG_PICOCOREMX8ULP_ETH_PHY)
+&fs_eth {
+	status = "okay";
+};
+
+&fs_eth_phy {
+	status = "okay";
+};
+#endif
 
 /* SPI decleration */
 &fs_spi_a {

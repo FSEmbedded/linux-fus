@@ -65,6 +65,9 @@
 /* TODO: Support of rev 110 or lower will be droped after next release */
 
 /* Network*/
+/* ETHERNET */
+#define CONFIG_PICOCOREMX8ULP_ETH_PHY
+
 /* WLAN/BLUETOOTH */
 #define CONFIG_PICOCOREMX8ULP_WLAN
 
@@ -122,9 +125,13 @@
 	ptn5110: tcpc@52 {
 		compatible = "nxp,ptn5110";
 		reg = <0x52>;
+#if CONFIG_PICOCOREMX8ULP_REV >= 120
 		interrupt-parent = <&rp_gpiob>;
 		interrupts = <14 IRQ_TYPE_LEVEL_LOW>;
-
+#else
+		interrupt-parent = <&rp_gpioc>;
+		interrupts = <3 IRQ_TYPE_LEVEL_LOW>;
+#endif
 		port {
 			typec_dr_sw: endpoint {
 				remote-endpoint = <&usb1_drd_sw>;
@@ -145,6 +152,24 @@
 			self-powered;
 		};
 	};
+};
+
+#if CONFIG_PICOCOREMX8ULP_REV < 120
+&fs_spi_a {
+	status = "okay";
+
+	spidev0: spidev@0 {
+		/* use default driver */
+		compatible = "lwn,bk4";
+		spi-max-frequency = <1000000>;
+		reg = <0>;
+		status = "okay";
+	};
+};
+#endif
+
+&fs_sdio_a {
+	status = "okay";
 };
 
 &fs_usb_1 {
