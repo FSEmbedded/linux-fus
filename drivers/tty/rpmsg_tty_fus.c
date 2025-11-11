@@ -507,7 +507,8 @@ static int __init rpmsg_tty_init(void)
 	/* Disable unused mode by default */
 	rpmsg_tty_driver->init_termios = tty_std_termios;
 	rpmsg_tty_driver->init_termios.c_lflag &= ~(ECHO | ICANON);
-	rpmsg_tty_driver->init_termios.c_oflag &= ~(OPOST | ONLCR);
+	rpmsg_tty_driver->init_termios.c_iflag |= ICRNL;
+	rpmsg_tty_driver->init_termios.c_oflag |= (OPOST | ONLCR);
 
 	tty_set_operations(rpmsg_tty_driver, &rpmsg_tty_ops);
 
