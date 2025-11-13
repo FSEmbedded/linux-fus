@@ -11,7 +11,7 @@
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_OSM8MM_BOARD_REVISION	120
 /* Set adapter revision as 3-digit number, e.g. 110 for board rev. 1.10 */
-#define CONFIG_ADP_OSM_BOARD_REVISION	120
+#define CONFIG_ADP_OSM_BOARD_REVISION	130
 /* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_PICOCOREBBDSI_BOARD_REVISION	140
 
@@ -250,6 +250,34 @@
 #endif
 #endif
 
+#if CONFIG_ADP_OSM_BOARD_REVISION >= 130
+&osm_i2c_b {
+	/* GPIO expander */
+	pca6416: gpio@20 {
+		compatible = "nxp,pcal6416";
+		reg = <0x20>;
+		vcc-supply = <&reg_vref_1v8>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		interrupt-controller;
+		#interrupt-cells = <2>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <1 IRQ_TYPE_LEVEL_LOW>;
+		/* Enable Open-Drain for Port 0 and 1 */
+		pcal6416,open-drain;
+	};
+};
+
+&reg_mipi_rst {
+	gpio = <&pca6416 5 GPIO_ACTIVE_HIGH>;
+};
+
+&reg_touch_rst {
+	gpio = <&pca6416 6 GPIO_ACTIVE_HIGH>;
+};
+
+#endif
+
 &osm_i2c_b {
 	sgtl5000: sgtl5000@a {
 		#sound-dai-cells = <0>;
@@ -270,8 +298,10 @@
 	ptn5110: tcpc@52 {
 		compatible = "nxp,ptn5110";
 #ifdef CONFIG_OSM8MM_USB_A_USBC_ALERT
+#if CONFIG_ADP_OSM_BOARD_REVISION < 130
 		interrupt-parent = <&gpio1>;
 		interrupts = <6 IRQ_TYPE_LEVEL_LOW>;
+#endif
 #endif
 		reg = <0x52>;
 		status = "okay";
@@ -351,6 +381,13 @@
 			rtl821x,ssc-clkout-enable;
 			rtl821x,led-link = <2>; // LED1 for link indication
 			rtl821x,led-act = <2>; // LED1 for activity
+#if CONFIG_ADP_OSM_BOARD_REVISION >= 130
+			reset-gpios = <&pca6416 0 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <10000>;
+			reset-deassert-us = <100000>;
+			interrupt-parent = <&pca6416>;
+			interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
+#endif
 			eee-broken-1000t;
 		};
 	};
@@ -438,25 +475,53 @@
 #ifdef IMX8MM_TOUCH_INTERRUPT_PINCTRL
 		pinctrl_touch_int: touchintgrp {
 			fsl,pins = <
+#if CONFIG_ADP_OSM_BOARD_REVISION < 130
 				MX8MM_IOMUXC_GPIO1_IO05_GPIO1_IO5	0x00084
+#else
+				MX8MM_IOMUXC_GPIO1_IO00_GPIO1_IO0	0x00084
+#endif
 			>;
 		};
 #endif
 	};
 };
 
+/*
+ * MK 2025-09-03:
+ * The drive-strength for SDIO_A must be increased to compensate
+ * for a longer route through the adapter (OSM -> ADP -> BB)
+ */
+&pinctrl_osm_sdio_a {
+	fsl,pins = <
+		MX8MM_IOMUXC_SD2_CLK_USDHC2_CLK		0x00194
+		MX8MM_IOMUXC_SD2_CMD_USDHC2_CMD		0x001d4
+		MX8MM_IOMUXC_SD2_DATA0_USDHC2_DATA0	0x001d4
+		MX8MM_IOMUXC_SD2_DATA1_USDHC2_DATA1	0x001d4
+		MX8MM_IOMUXC_SD2_DATA2_USDHC2_DATA2	0x001d4
+		MX8MM_IOMUXC_SD2_DATA3_USDHC2_DATA3	0x001d4
+	>;
+};
+
 &pinctrl_hog {
 	fsl,pins = <
 		/* CARRIER_PWR_EN */
 		MX8MM_IOMUXC_SAI2_MCLK_GPIO4_IO27	0x00004
+		/* SD_A_VSEL */
+		MX8MM_IOMUXC_GPIO1_IO03_GPIO1_IO3	0x00004
 
 		/* GPIO_A */
-		/* 0 */ MX8MM_IOMUXC_GPIO1_IO00_GPIO1_IO0	0x00004
-		/* 1 */ MX8MM_IOMUXC_GPIO1_IO01_GPIO1_IO1	0x00004
-		/* 2 */ MX8MM_IOMUXC_GPIO1_IO04_GPIO1_IO4	0x00004
 #ifndef IMX8MM_TOUCH_INTERRUPT_PINCTRL
+		/* 0 */ MX8MM_IOMUXC_GPIO1_IO00_GPIO1_IO0	0x00004
+		/* 3 */ MX8MM_IOMUXC_GPIO1_IO05_GPIO1_IO5	0x00004
+#else
+#if CONFIG_ADP_OSM_BOARD_REVISION < 130
+		/* 0 */ MX8MM_IOMUXC_GPIO1_IO00_GPIO1_IO0	0x00004
+#else
 		/* 3 */ MX8MM_IOMUXC_GPIO1_IO05_GPIO1_IO5	0x00004
 #endif
+#endif
+		/* 1 */ MX8MM_IOMUXC_GPIO1_IO01_GPIO1_IO1	0x00004
+		/* 2 */ MX8MM_IOMUXC_GPIO1_IO04_GPIO1_IO4	0x00004
 		/* 4 */ MX8MM_IOMUXC_GPIO1_IO06_GPIO1_IO6	0x00004
 		/* 5 */ MX8MM_IOMUXC_GPIO1_IO07_GPIO1_IO7	0x00004
 #ifndef CONFIG_OSM8MM_SPI_A_CS1
