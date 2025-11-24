@@ -45,15 +45,15 @@
 };
 
 &per_bridge4 {
+	/*
+	 * NOTE: TPM6 is used as CLOCKSOURCE for System Time
+	 */
 	tpm6: tpm@29820000 {
-		compatible = "fsl,imx7ulp-pwm";
+		compatible = "fsl,imx8ulp-tpm", "fsl,imx7ulp-tpm";
 		reg = <0x29820000 0x10000>;
 		interrupts = <GIC_SPI 88 IRQ_TYPE_LEVEL_HIGH>;
-		clocks = <&pcc4 IMX8ULP_CLK_TPM6>;
-		assigned-clocks = <&pcc4 IMX8ULP_CLK_TPM6>;
-		assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SOSC_DIV2>;
-		assigned-clock-rates = <24000000>;
-		#pwm-cells = <3>;
+		clocks = <&sosc>, <&sosc>;
+		clock-names = "ipg", "per";
 		status = "disabled";
 	};
 
