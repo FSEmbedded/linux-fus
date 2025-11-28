@@ -446,7 +446,6 @@ static void tc_bridge_enable(struct drm_bridge *bridge)
 	vsdelay = (clkdiv * (t1 + t3) / byteclk) - hback_porch - hsync_len - hactive;
 
 	val |= TC358775_VPCTRL_VSDELAY(vsdelay);
-	val |= TC358775_VPCTRL_FRAMESYNC_BIT;
 	d2l_write(tc->i2c, VPCTRL, val);
 
 	d2l_write(tc->i2c, HTIM1, htime1);
@@ -456,8 +455,9 @@ static void tc_bridge_enable(struct drm_bridge *bridge)
 
 	d2l_write(tc->i2c, VFUEN, VFUEN_EN);
 	d2l_write(tc->i2c, LVPHY0, LV_PHY0_RST(1));
-	usleep_range(30000,40000);
+	usleep_range(100,200);
 	d2l_write(tc->i2c, LVPHY0, LV_PHY0_PRBS_ON(4) | LV_PHY0_ND(6));
+	d2l_write(tc->i2c, SYSRST, SYS_RST_LCD);
 
 	dev_dbg(tc->dev, "bus_formats %04x bpc %d\n",
 		connector->display_info.bus_formats[0],
