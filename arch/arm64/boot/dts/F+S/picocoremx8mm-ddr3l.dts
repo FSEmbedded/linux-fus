@@ -380,6 +380,9 @@
 		simple-audio-card,format = "i2s";
 		simple-audio-card,frame-master = <&codecdai>;
 		simple-audio-card,bitclock-master = <&codecdai>;
+		assigned-clocks = <&clk IMX8MM_CLK_SAI5>;
+		assigned-clock-parents = <&clk IMX8MM_AUDIO_PLL1_OUT>;
+		assigned-clock-rates = <24576000>;
 		simple-audio-card,widgets =
 			"Line", "Line Out Jack",
 			"Line", "Line In Jack",
@@ -735,10 +738,6 @@
 	#sound-dai-cells = <0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai5>;
-	assigned-clocks = <&clk IMX8MM_CLK_SAI5>;
-	assigned-clock-parents = <&clk IMX8MM_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <24576000>;
-	//assigned-clock-rates = <12288000>;
 
 	status = "okay";
 };

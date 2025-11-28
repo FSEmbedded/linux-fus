@@ -186,6 +186,9 @@
 
 	sound-sgtl5000 {
 		compatible = "simple-audio-card";
+		assigned-clocks = <&clk IMX8MM_CLK_SAI5>;
+		assigned-clock-parents = <&clk IMX8MM_AUDIO_PLL1_OUT>;
+		assigned-clock-rates = <24576000>;
 		simple-audio-card,name = "imx-sgtl5000";
 		simple-audio-card,format = "i2s";
 		simple-audio-card,frame-master = <&codecdai>;

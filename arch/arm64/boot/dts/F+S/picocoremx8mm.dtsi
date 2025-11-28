@@ -245,6 +245,10 @@
 
 #ifdef CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
 	sound-sgtl5000 {
+
+		assigned-clocks = <&clk IMX8MM_CLK_SAI5>;
+		assigned-clock-parents = <&clk IMX8MM_AUDIO_PLL1_OUT>;
+		assigned-clock-rates = <24576000>;
 		compatible = "simple-audio-card";
 		simple-audio-card,name = "imx-sgtl5000";
 		simple-audio-card,format = "i2s";
@@ -341,6 +345,7 @@
 		reg = <0xa>;
 		mono2both;
 		clocks = <&clk IMX8MM_CLK_SAI5_ROOT>;
+
 		VDDA-supply = <&reg_sgtl5000_vdda>;
 		VDDIO-supply = <&reg_sgtl5000_vddio>;
 		VDDD-supply = <&reg_sgtl5000_vddd>;
@@ -579,10 +584,6 @@
 	#sound-dai-cells = <0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai5>;
-	assigned-clocks = <&clk IMX8MM_CLK_SAI5>;
-	assigned-clock-parents = <&clk IMX8MM_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <24576000>;
-
 	status = "okay";
 };
 #endif
