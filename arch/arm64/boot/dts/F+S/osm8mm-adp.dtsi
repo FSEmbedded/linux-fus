@@ -63,7 +63,7 @@
 #define CONFIG_OSM8MM_I2S_A
 
 /* Camera on serial MIPI CSI interface */
-#define CONFIG_OSM8MM_SERIAL_CAMERA
+//#define CONFIG_OSM8MM_SERIAL_CAMERA
 /* Experimental implementation for Basler dart daA4200-30mci.
  * Define CONFIG_OSM8MM_SERIAL_CAMERA must also be set.
  */
@@ -331,7 +331,7 @@
 	};
 #endif
 };
-
+#ifdef CONFIG_OSM8MM_SERIAL_CAMERA
 &osm_i2c_cam_pci {
 	basler_camera_mipi1: basler_camera_mipi@36 {
 		compatible = "basler,basler-camera";
@@ -353,7 +353,7 @@
 		};
 	};
 };
-
+#endif
 #if 0
 /* SPI not implemented in NXP FlexSPI driver, so use SPI-GPIO */
 &osm_spi_a {
@@ -415,7 +415,7 @@
 &osm_usb_b {
 	dr_mode = "host";
 };
-
+#ifdef CONFIG_OSM8MM_SERIAL_CAMERA
 &osm_csi {
 	/delete-property/ csi,mipi_rst;
 
@@ -455,7 +455,7 @@
 		};
 	};
 };
-
+#endif
 /delete-node/ &pinctrl_osm_i2s_a;
 
 &iomuxc {
