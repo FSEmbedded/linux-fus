@@ -589,10 +589,10 @@
 /* SPI_A (1x CS) */
 &ecspi1 {
 	num-cs = <1>;
-	cs-gpios = <&gpio5 25 0>;	/* SPI_A_CS0 */
+	cs-gpios = <&gpio5 25 1>;	/* SPI_A_CS0 */
 
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_ecspi1_1 &pinctrl_ecspi1_cs>;
+	pinctrl-0 = <&pinctrl_ecspi1_1>, <&pinctrl_ecspi1_cs>;
 	status = "okay";
 
 	spidev@0 {
@@ -1250,7 +1250,8 @@
 		pinctrl_ecspi1_cs: ecspi1cs {
 			fsl,pins = <
 				/* ECSPI1_SS0 */
-				MX6QDL_PAD_CSI0_DAT7__ECSPI1_SS0	0x1b0b0
+				//MX6QDL_PAD_CSI0_DAT7__ECSPI1_SS0	0x1b0b0
+				MX6QDL_PAD_CSI0_DAT7__GPIO5_IO25	0x1b0b0
 			>;
 		};
 #endif /* CONFIG_NETDCUA9_SPI_A */
