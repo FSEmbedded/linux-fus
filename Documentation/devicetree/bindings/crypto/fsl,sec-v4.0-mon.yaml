@@ -111,6 +111,29 @@ properties:
         maxItems: 1
         default: 116
 
+      on-time:
+        maxItems: 1
+        default: 0x0
+        description:
+          The ON_TIME configures the period of time to boot after ON_OFF is
+          asserted. The valid values are straight from the BIT_MASK.
+          0x0 - 500ms
+          0x1 -  50ms
+          0x2 - 100ms
+          0x3 -   0ms
+
+      btn-press-time:
+        maxItems: 1
+        default: 0x0
+        description:
+          The BTN_PRESS_TIME configures the period of time to hold the ON_OFF
+          button to immediately shutdown the power without graceful shutdown.
+          The valid values are straight from the BIT_MASK.
+          0x0 -  5s
+          0x1 - 10s
+          0x2 - 15s
+          0x3 - long press disabled
+
     required:
       - compatible
       - interrupts

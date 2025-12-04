@@ -1144,6 +1144,7 @@
 
 &snvs_pwrkey {
 	status = "okay";
+	on-time = <0x3>; /* Disable off->on transition time */
 };
 
 /* Disable CPU RTC - external available */

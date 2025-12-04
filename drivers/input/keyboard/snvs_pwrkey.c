@@ -26,6 +26,8 @@
 #define SNVS_HPSR_BTN		BIT(6)
 #define SNVS_LPSR_SPO		BIT(18)
 #define SNVS_LPCR_DEP_EN	BIT(5)
+#define SNVS_LPCR_BTN_PRESS_TIME	BIT(16)|BIT(17)
+#define SNVS_LPCR_ON_TIME		BIT(20)|BIT(21)
 
 #define DEBOUNCE_TIME		30
 #define REPEAT_INTERVAL		60
@@ -41,6 +43,8 @@ struct pwrkey_drv_data {
 	struct timer_list check_timer;
 	struct input_dev *input;
 	bool  emulate_press;
+	int   on_time;
+	int   btn_press_time;
 };
 
 static void imx_imx_snvs_check_for_events(struct timer_list *t)
@@ -215,6 +219,12 @@ static int imx_snvs_pwrkey_probe(struct platform_device *pdev)
 	}
 
 	regmap_update_bits(pdata->snvs, SNVS_LPCR_REG, SNVS_LPCR_DEP_EN, SNVS_LPCR_DEP_EN);
+
+	if(!of_property_read_u32(np, "on-time", &pdata->on_time))
+		regmap_update_bits(pdata->snvs, SNVS_LPCR_REG, pdata->on_time << 20, SNVS_LPCR_ON_TIME);
+
+	if(!of_property_read_u32(np, "btn-press-time", &pdata->btn_press_time))
+		regmap_update_bits(pdata->snvs, SNVS_LPCR_REG, pdata->btn_press_time << 16, SNVS_LPCR_BTN_PRESS_TIME);
 
 	/* clear the unexpected interrupt before driver ready */
 	regmap_write(pdata->snvs, SNVS_LPSR_REG, SNVS_LPSR_SPO);
