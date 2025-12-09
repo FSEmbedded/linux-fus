@@ -998,7 +998,11 @@ fs_usb_host: &usb_dwc3_0 {};
 	pinctrl-0 = <&pinctrl_usdhc1>, <&pinctrl_usdhc1_gpio>;
 	pinctrl-1 = <&pinctrl_usdhc1_100mhz>, <&pinctrl_usdhc1_gpio>;
 	pinctrl-2 = <&pinctrl_usdhc1_200mhz>, <&pinctrl_usdhc1_gpio>;
+#ifdef CONFIG_PICOCOREMX8MP_SD_A_CD
 	cd-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;
+#else
+	broken-cd;
+#endif
 	vmmc-supply = <&reg_usdhc1_vmmc>;
 #ifdef CONFIG_PICOCOREMX8MP_SD_A_8_Bit
 	bus-width = <8>;
