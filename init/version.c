@@ -39,8 +39,7 @@ const char linux_proc_banner[] =
 	" (" LINUX_COMPILE_BY "@" LINUX_COMPILE_HOST ")"
 	" (" LINUX_COMPILER ") %s\n";
 
-const char fs_linux_version[] =
-	UTS_RELEASE FS_LINUX_VERSION;
+const char fs_linux_version[] = FS_LINUX_VERSION;
 
 BUILD_SALT;
 BUILD_LTO_INFO;
