@@ -12,6 +12,7 @@
 #include <linux/pm.h>
 #include <linux/i2c.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/log2.h>
 #include <linux/regmap.h>
 #include <linux/regulator/driver.h>
@@ -149,6 +150,7 @@ struct sgtl5000_priv {
 	int revision;
 	int mono2both;
 	int no_standby;
+	int mclk_extern_enabled;
 	u8 micbias_resistor;
 	u8 micbias_voltage;
 	u8 lrclk_strength;
@@ -1699,18 +1701,31 @@ static int sgtl5000_i2c_probe(struct i2c_client *client)
 		goto disable_regs;
 	}
 
-	ret = clk_prepare_enable(sgtl5000->mclk);
-	if (ret) {
-		dev_err(&client->dev, "Error enabling clock %d\n", ret);
-		goto disable_regs;
-	}
+	sgtl5000->mclk_extern_enabled = 0;
+	if (of_property_read_bool(np, "mclk-extern-enabled"))
+		sgtl5000->mclk_extern_enabled = 1;
 
+	if ( sgtl5000->mclk_extern_enabled ) {
+		if ( ! __clk_is_enabled(sgtl5000->mclk)) {
+			ret = -EPROBE_DEFER;
+			dev_err_probe(&client->dev, ret, "mclock not running\n");
+			goto disable_regs;
+		}
+	} else {
+		ret = clk_prepare_enable(sgtl5000->mclk);
+		if (ret) {
+			dev_err(&client->dev, "Error enabling clock %d\n", ret);
+			goto disable_regs;
+		}
+	}
 	/* Need 8 clocks before I2C accesses + time for clk enable*/
 	usleep_range(200000,300000);
 
 	/* read chip information */
 	ret = regmap_read(sgtl5000->regmap, SGTL5000_CHIP_ID, &reg);
 	if (ret) {
+		if ( sgtl5000->mclk_extern_enabled )
+			ret = -EPROBE_DEFER;
 		dev_err(&client->dev, "Error reading chip id %d\n", ret);
 		goto disable_clk;
 	}
@@ -1874,7 +1889,6 @@ static int sgtl5000_i2c_probe(struct i2c_client *client)
 
 disable_clk:
 	clk_disable_unprepare(sgtl5000->mclk);
-
 disable_regs:
 	regulator_bulk_disable(sgtl5000->num_supplies, sgtl5000->supplies);
 	regulator_bulk_free(sgtl5000->num_supplies, sgtl5000->supplies);
@@ -1889,8 +1903,9 @@ static void sgtl5000_i2c_remove(struct i2c_client *client)
 	regmap_write(sgtl5000->regmap, SGTL5000_CHIP_CLK_CTRL, SGTL5000_CHIP_CLK_CTRL_DEFAULT);
 	regmap_write(sgtl5000->regmap, SGTL5000_CHIP_DIG_POWER, SGTL5000_DIG_POWER_DEFAULT);
 	regmap_write(sgtl5000->regmap, SGTL5000_CHIP_ANA_POWER, SGTL5000_ANA_POWER_DEFAULT);
+	if ( ! sgtl5000->mclk_extern_enabled)
+		clk_disable_unprepare(sgtl5000->mclk);
 
-	clk_disable_unprepare(sgtl5000->mclk);
 	regulator_bulk_disable(sgtl5000->num_supplies, sgtl5000->supplies);
 	regulator_bulk_free(sgtl5000->num_supplies, sgtl5000->supplies);
 }

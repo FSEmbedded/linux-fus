@@ -562,9 +562,8 @@ fs_usb_host: &usb_dwc3_0 {};
 	sgtl5000: sgtl5000@a {
 		#sound-dai-cells = <0>;
 		compatible = "fsl,sgtl5000";
-		assigned-clocks = <&clk IMX8MP_CLK_SAI2>;
-		assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
 		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>;
+		mclk-extern-enabled;
 		reg = <0xa>;
 		mono2both;
 		VDDA-supply = <&reg_sgtl5000_vdda>;
@@ -879,6 +878,7 @@ fs_usb_host: &usb_dwc3_0 {};
 		 <&clk IMX8MP_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 	fsl,sai-mclk-direction-output;
+	fsl,sai-mclk-always-on;
 	/* sai to clock and frame tx/rx master */
 	fsl,txmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
 	fsl,rxmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM

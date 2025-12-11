@@ -985,9 +985,8 @@ pca9634: pca9634@61 {
 		compatible = "fsl,sgtl5000";
 		reg = <0xa>;
 		mono2both;
-		assigned-clocks = <&clk IMX8MP_CLK_SAI2>;
-		assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
 		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>;
+		mclk-extern-enabled;
 		VDDA-supply = <&reg_sgtl5000_vdda>;
 		VDDIO-supply = <&reg_sgtl5000_vddio>;
 		VDDD-supply = <&reg_sgtl5000_vddd>;
@@ -1187,6 +1186,7 @@ pca9634: pca9634@61 {
 		 <&clk IMX8MP_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 	fsl,sai-mclk-direction-output;
+	fsl,sai-mclk-always-on;
 	/* sai to clock and frame tx/rx master */
 	fsl,txmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
 	fsl,rxmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM

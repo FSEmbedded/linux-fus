@@ -88,6 +88,10 @@ properties:
       Instead of just playing mono sound on the left channel, copy
       it to both channels
 
+  mclk-extern-enabled;:
+    description: |
+      Defer the probe of the driver until mlock is enabled externally.
+
   no-standby:
     description: |
       keep DAP active all the time for line out and headphone.

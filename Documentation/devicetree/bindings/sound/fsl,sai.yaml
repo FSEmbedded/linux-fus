@@ -111,6 +111,11 @@ properties:
     description: SAI will output the SAI MCLK clock.
     type: boolean
 
+  fsl,sai-mclk-always-on:
+    description: SAI will enable the SAI MCLK on probe and keep it enabled
+                 until remove
+    type: boolean
+
   fsl,sai-synchronous-rx:
     description: |
       SAI will work in the synchronous mode (sync Tx with Rx) which means

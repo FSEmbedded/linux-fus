@@ -297,6 +297,7 @@ struct fsl_sai {
 	struct fsl_sai_dl_cfg *dl_cfg;
 	unsigned int dl_cfg_cnt;
 	bool mclk_direction_output;
+	bool mclk_always_on;
 	bool monitor_spdif;
 	bool monitor_spdif_start;
 

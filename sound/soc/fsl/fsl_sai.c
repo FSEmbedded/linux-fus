@@ -1359,7 +1359,7 @@ static int fsl_sai_probe(struct platform_device *pdev)
 	sai->soc_data = of_device_get_match_data(dev);
 
 	sai->is_lsb_first = of_property_read_bool(np, "lsb-first");
-
+	sai->mclk_always_on = of_property_read_bool(np, "fsl,sai-mclk-always-on");
 	base = devm_platform_get_and_ioremap_resource(pdev, 0, &sai->res);
 	if (IS_ERR(base))
 		return PTR_ERR(base);
@@ -1524,6 +1524,15 @@ static int fsl_sai_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto err_pm_get_sync;
 
+	if (sai->mclk_always_on) {
+		dev_info(dev, "mlock is always on\n");
+		ret = clk_prepare_enable(sai->mclk_clk[1]);
+		if (ret) {
+			dev_err(dev, "failed to enable mclk: %d\n", ret);
+		goto err_mclk;
+		}
+	}
+
 	/* Get sai version */
 	ret = fsl_sai_check_version(dev);
 	if (ret < 0)
@@ -1538,7 +1547,7 @@ static int fsl_sai_probe(struct platform_device *pdev)
 	}
 	ret = pm_runtime_put_sync(dev);
 	if (ret < 0 && ret != -ENOSYS)
-		goto err_pm_get_sync;
+		goto err_mclk;
 
 	if (sai->verid.feature & FSL_SAI_VERID_TSTMP_EN) {
 		if (of_find_property(np, "fsl,sai-monitor-spdif", NULL) &&
@@ -1558,7 +1567,7 @@ static int fsl_sai_probe(struct platform_device *pdev)
 		ret = sysfs_create_group(&pdev->dev.kobj, fsl_sai_get_dev_attribute_group(sai->monitor_spdif));
 		if (ret) {
 			dev_err(&pdev->dev, "fail to create sys group\n");
-			goto err_pm_get_sync;
+			goto err_mclk;
 		}
 	}
 
@@ -1593,6 +1602,9 @@ err_component_register:
 	if (sai->verid.feature & FSL_SAI_VERID_TSTMP_EN)
 		sysfs_remove_group(&pdev->dev.kobj,
 				   fsl_sai_get_dev_attribute_group(sai->monitor_spdif));
+err_mclk:
+	if (sai->mclk_always_on)
+		clk_disable_unprepare(sai->mclk_clk[1]);
 err_pm_get_sync:
 	if (!pm_runtime_status_suspended(dev))
 		fsl_sai_runtime_suspend(dev);
@@ -1612,6 +1624,8 @@ static void fsl_sai_remove(struct platform_device *pdev)
 
 	if (sai->verid.feature & FSL_SAI_VERID_TSTMP_EN)
 		sysfs_remove_group(&pdev->dev.kobj,  fsl_sai_get_dev_attribute_group(sai->monitor_spdif));
+	if (sai->mclk_always_on)
+		clk_disable_unprepare(sai->mclk_clk[1]);
 }
 
 static const struct fsl_sai_soc_data fsl_sai_vf610_data = {
