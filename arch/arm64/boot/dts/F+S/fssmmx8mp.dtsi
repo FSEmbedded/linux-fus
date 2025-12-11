@@ -53,9 +53,9 @@
 			linux,cma-default;
 		};
 #ifdef SUPPORT_M7
-		m4_reserved: m4@0x80000000 {
+		m7_reserved: m7@55500000 {
 			no-map;
-			reg = <0 0x80000000 0 0x1000000>;
+			reg = <0 0x55500000 0 0x1000000>;
 		};
 
 		vdev0vring0: vdev0vring0@55000000 {
@@ -74,7 +74,7 @@
 			no-map;
 		};
 
-		rsc_table: rsc_table@550ff000 {
+		rsc_table: rsc-table@550ff000 {
 			reg = <0 0x550ff000 0 0x1000>;
 			no-map;
 		};
@@ -118,14 +118,14 @@
 	};
 #ifdef SUPPORT_M7
 	imx8mp-cm7 {
-		compatible = "fsl,imx8mn-cm7";
+		compatible = "fsl,imx8mp-cm7";
 		clocks = <&clk IMX8MP_CLK_M7_DIV>;
 		rsc-da = <0x55000000>;
 		mbox-names = "tx", "rx", "rxdb";
 		mboxes = <&mu 0 1
 			  &mu 1 1
 			  &mu 3 1>;
-		memory-region = <&m4_reserved>, <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>, <&rsc_table>;
+		memory-region = <&m7_reserved>, <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>, <&rsc_table>;
 		status = "okay";
 		fsl,startup-delay-ms = <500>;
 	};

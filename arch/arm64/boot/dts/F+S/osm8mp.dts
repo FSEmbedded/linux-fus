@@ -19,7 +19,7 @@
 #define CONFIG_OSM8MP_BOARD_REVISION	110
 
 /* Activate this if you want to use the Cortex-M4 core */
-//#define SUPPORT_M4
+//#define SUPPORT_M7
 
 /* Display device-trees enables MIPI DSI */
 /* MIPI DSI */
@@ -113,11 +113,12 @@
  *
  * - AUDIO_3: GPT capture driver example uses one of its Pins
  */
-#ifdef SUPPORT_M4
+#ifdef SUPPORT_M7
 #undef CONFIG_OSM8MP_UART_C
-//#undef CONFIG_OSM8MP_I2C_A
-//#undef CONFIG_OSM8MP_SPI_A
-//#undef CONFIG_OSM8MP_SPI_B
+#undef CONFIG_OSM8MP_I2C_B
+#undef CONFIG_OSM8MP_SPI_A
+#undef CONFIG_OSM8MP_CAN_A
+#undef CONFIG_OSM8MP_PWM_1
 /* Only undef if using audio/sai examples */
 //#undef CONFIG_OSM8MP_I2C_B
 //#undef CONFIG_OSM8MP_I2S_A
