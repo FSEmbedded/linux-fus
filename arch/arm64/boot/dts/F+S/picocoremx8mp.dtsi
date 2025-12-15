@@ -15,6 +15,41 @@
 #include "fsimx8mp.dtsi"
 #include <fsversion.h>
 
+/* SOC-nodes to PicoCore-nodes */
+
+/* Internal nodes */
+emmc: &usdhc3 {};
+i2c_pmic: &i2c5 {};
+rtc_soc: &snvs_rtc {};
+
+/* External nodes */
+fs_can_a: &flexcan1 {};
+fs_can_b: &flexcan2 {};
+fs_csi: &mipi_csi_0 {};
+fs_csi_b: &mipi_csi_1 {};
+fs_eth_a: &eqos {};
+fs_eth_b: &fec {};
+fs_i2c_a: &i2c6 {};
+fs_i2c_b: &i2c4 {};
+fs_i2c_c: &i2c2 {};
+fs_i2c_d: &i2c3 {};
+fs_i2c_e: &i2c1 {};
+fs_i2s_a: &sai2 {};
+fs_i2s_b: &sai5 {};
+fs_pcie: &pcie {};
+fs_pwm_a: &pwm3 {};
+fs_sdio_a: &usdhc1 {};
+fs_sdio_b: &usdhc2 {};
+fs_spi_a: &ecspi3 {};
+fs_spi_b: &ecspi2 {};
+fs_spi_c: &ecspi1 {};
+fs_uart_a: &uart2 {};
+fs_uart_b: &uart4 {};
+fs_uart_c: &uart1 {};
+fs_uart_d: &uart3 {};
+fs_usb_otg: &usb_dwc3_1 {};
+fs_usb_host: &usb_dwc3_0 {};
+
 / {
 	compatible = "fus,imx8mp-picocoremx8mp", "fsl,imx8mp";
 
@@ -1150,6 +1185,72 @@
 /* Disable CPU RTC - external available */
 &snvs_rtc {
 	status = "disabled";
+};
+
+/* GPIOs for Feature Connector, Capacitive Touch and Backlight */
+&gpio1 {
+	gpio-line-names =
+	/*  0 */ "", "GPIO_J1_54", "", "",
+	/*  4 */ "ETH_B_D4N", "USB_OTG_TYPEC_EN", "SD_A_CD", "SD_A_WP",
+	/*  8 */ "USB_OTG_TYPEC_ALERT", "USB_OTG_TYPEC_SEL", "PWM", "ETH_B_D4P",
+	/* 12 */ "USB_HOST_PWR", "I2C_B_IRQ", "USB_OTG_PWR", "GPIO_J1_2",
+	/* 16 */ "ETH_A_D1P", "ETH_A_D1N", "ETH_A_D4N", "ETH_A_D4P",
+	/* 20 */ "ETH_A_D3N", "ETH_A_D3P", "ETH_A_D2P", "ETH_A_D2N",
+	/* 24 */ "ETH_B_D1P", "ETH_B_D1N", "ETH_B_D2P", "ETH_B_D2N",
+	/* 28 */ "ETH_B_D3P", "ETH_B_D3N", "", "";
+	status = "okay";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/*  0 */ "SD_A_CLK", "SD_A_CMD", "SD_A_DATA0", "SD_A_DATA1",
+	/*  4 */ "SD_A_DATA2", "SD_A_DATA3", "SD_A_DATA4", "SD_A_DATA5",
+	/*  8 */ "SD_A_DATA6", "SD_A_DATA7", "SD_A_RST", "SD_A_VSEL",
+	/* 12 */ "SD_B_CD", "SD_B_CLK", "SD_B_CMD", "SD_B_DATA0",
+	/* 16 */ "SD_B_DATA1", "SD_B_DATA2", "SD_B_DATA3", "SD_B_RST",
+	/* 20 */ "SD_B_WP", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
+	status = "okay";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/*  0 */ "GPIO_J1_44", "GPIO_J1_46", "", "",
+	/*  4 */ "", "", "UART_B_RXD", "UART_B_TXD",
+	/*  8 */ "UART_B_RTS", "UART_B_CTS", "", "",
+	/* 12 */ "", "", "GPIO_J1_52", "",
+	/* 16 */ "", "", "", "AUDIO_B_I2S_RXFS",
+	/* 20 */ "AUDIO_B_I2S_RXC", "", "AUDIO_B_I2S_TXFS", "AUDIO_B_I2S_TXC",
+	/* 24 */ "AUDIO_B_I2S_TXD", "", "CAN_A_TX", "CAN_A_RX",
+	/* 28 */ "I2C_A_SCL", "I2C_A_SDA", "", "";
+	status = "okay";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/*  0 */ "", "", "AUDIO_B_I2S_RXD", "",
+	/*  4 */ "", "", "", "",
+	/*  8 */ "", "", "", "",
+	/* 12 */ "", "", "", "",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "AUDIO_B_I2S_MCLK", "UART_C_TXD", "UART_C_RXD", "AUDIO_A_HP_R",
+	/* 24 */ "AUDIO_A_LOUT_R", "AUDIO_A_LOUT_L", "AUDIO_A_HP_L", "AUDIO_A_LIN_L",
+	/* 28 */ "ETH_A_LED", "ETH_B_LED", "mPCIE_PERST", "UART_A_RXD";
+	status = "okay";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/*  0 */ "UART_A_TXD", "mPCIE_WAKE", "VLCD_ON", "BL_ON",
+	/*  4 */ "BL_PWM", "GPIO_J1_7", "SPI_C_SCLK", "SPI_C_MOSI",
+	/*  8 */ "I2C_C_SCL", "I2C_C_SDA", "SPI_B_SCLK", "SPI_B_MOSI",
+	/* 12 */ "SPI_B_MISO", "SPI_B_SS0", "", "",
+	/* 16 */ "SPI_C_MISO", "SPI_C_SS0", "I2C_D_SCL", "I2C_D_SDA",
+	/* 20 */ "I2C_B_SCL", "I2C_B_SDA", "SPI_A_SCLK", "SPI_A_MOSI",
+	/* 24 */ "SPI_A_MISO", "SPI_A_SS0", "UART_D_RXD", "UART_D_TXD",
+	/* 28 */ "UART_A_RTS", "UART_A_CTS", "", "";
+	status = "okay";
 };
 
 &iomuxc {

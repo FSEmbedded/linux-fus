@@ -17,6 +17,44 @@
 #include <dt-bindings/phy/phy-imx8-pcie.h>
 #include <fsversion.h>
 
+/* SOC-nodes to SMARC-nodes */
+
+/* Internal nodes */
+emmc: &usdhc1 {};
+i2c_int: &i2c6 {};
+rtc_soc: &snvs_rtc {};
+
+/* External nodes */
+sm_can0: &flexcan1 {};
+sm_can1: &flexcan2 {};
+sm_csi0: &mipi_csi_0 {};
+sm_csi1: &mipi_csi_1 {};
+sm_gbe0: &eqos {};
+sm_gbe1: &fec {};
+sm_i2c_cam0: &i2c1 {};
+sm_i2c_cam1: &i2c2 {};
+sm_i2c_gp: &i2c3 {};
+sm_i2c_pm: &i2c4 {};
+sm_i2c_lcd: &i2c5 {};
+sm_i2s0: &sai2 {};
+sm_i2s2: &sai3 {};
+sm_pcie: &pcie {};
+sm_pwm_out: &pwm1 {};
+sm_lcd0_bklt_pwm: &pwm4 {};
+sm_lcd1_bklt_pwm: &pwm2 {};
+sm_sdio: &usdhc2 {};
+sm_spi0: &ecspi1 {};
+sm_spi1: &ecspi2 {};
+sm_ser0: &uart2 {};
+sm_ser1: &uart1 {};
+sm_ser2: &uart4 {};
+sm_ser3: &uart3 {};
+sm_usb0: &usb_dwc3_0 {};
+sm_usb1: &usb_dwc3_1 {};
+/* sm_usb2: sm_usb1 over HUB if mounted */
+/* sm_usb3: sm_usb1 over HUB if mounted */
+/* sm_usb4: sm_usb1 over HUB if mounted */
+
 / {
 	chosen {
 		stdout-path = &uart2;
@@ -231,7 +269,7 @@
 			};
 #endif
 
-#ifdef CONFIG_FSSMMX8MP_CSI_A
+#ifdef CONFIG_FSSMMX8MP_CSI0
 			/* CAM_PWR# power on voltage */
 			reg_vref_cam0_pwr: regulator_cam0_pwr {
 				compatible = "regulator-fixed";
@@ -244,7 +282,7 @@
 			};
 #endif
 
-#ifdef CONFIG_FSSMMX8MP_CSI_B
+#ifdef CONFIG_FSSMMX8MP_CSI1
 			/* CAM_PWR# power on voltage */
 			reg_vref_cam1_pwr: regulator_cam1_pwr {
 				compatible = "regulator-fixed";
@@ -258,7 +296,7 @@
 #endif
 	};
 
-#ifdef CONFIG_FSSMMX8MP_BL_CTRL_A
+#ifdef CONFIG_FSSMMX8MP_LCD0_BKLT
 	backlight_ldb_a {
 		compatible = "pwm-backlight";
 		#pwm-cells = <3>;
@@ -280,7 +318,7 @@
 	};
 #endif
 
-#ifdef CONFIG_FSSMMX8MP_BL_CTRL_B
+#ifdef CONFIG_FSSMMX8MP_LCD1_BKLT
 	backlight_ldb: backlight_ldb_b {
 		compatible = "pwm-backlight";
 		#pwm-cells = <3>;
@@ -318,7 +356,7 @@
 	};
 #endif
 
-#ifdef CONFIG_FSSMMX8MP_USB_HOST
+#ifdef CONFIG_FSSMMX8MP_USB1
 	usb_host_reset: gpio-reset {
 		compatible = "gpio-reset";
 		reset-gpios = <&pca6416 14 GPIO_ACTIVE_LOW>;
@@ -401,7 +439,7 @@
 	cpu-supply = <&buck2>;
 };
 
-#ifdef CONFIG_FSSMMX8MP_ETH_A
+#ifdef CONFIG_FSSMMX8MP_GBE0
 &eqos {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_eqos>;
@@ -490,9 +528,9 @@
 		};
 	};
 };
-#endif /* CONFIG_FSSMMX8MP_ETH_A */
+#endif /* CONFIG_FSSMMX8MP_GBE0 */
 
-#ifdef CONFIG_FSSMMX8MP_ETH_B
+#ifdef CONFIG_FSSMMX8MP_GBE1
 &fec {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_fec>;
@@ -524,7 +562,7 @@
 		};
 	};
 };
-#endif /* CONFIG_FSSMMX8MP_ETH_B */
+#endif /* CONFIG_FSSMMX8MP_GBE1 */
 
 #ifdef CONFIG_FSSMMX8MP_PWM_OUT
 &pwm1 {
@@ -534,7 +572,7 @@
 };
 #endif /* CONFIG_FSSMMX8MP_PWM_OUT */
 
-#ifdef CONFIG_FSSMMX8MP_BL_CTRL_A
+#ifdef CONFIG_FSSMMX8MP_LCD0_BKLT
 &pwm4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm4>;
@@ -542,9 +580,9 @@
 	keep-power;
 	status = "okay";
 };
-#endif /* CONFIG_FSSMMX8MP_BL_CTRL_A */
+#endif /* CONFIG_FSSMMX8MP_LCD0_BKLT */
 
-#ifdef CONFIG_FSSMMX8MP_BL_CTRL_B
+#ifdef CONFIG_FSSMMX8MP_LCD1_BKLT
 &pwm2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm2>;
@@ -552,7 +590,7 @@
 	keep-power;
 	status = "okay";
 };
-#endif /* CONFIG_FSSMMX8MP_BL_CTRL_B */
+#endif /* CONFIG_FSSMMX8MP_LCD1_BKLT */
 
 &snvs_pwrkey {
 	status = "okay";
@@ -842,7 +880,7 @@
 	};
 };
 
-#ifdef CONFIG_FSSMMX8MP_SPI_A
+#ifdef CONFIG_FSSMMX8MP_SPI0
 &ecspi1 {
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -867,9 +905,9 @@
 	};
 
 };
-#endif /* CONFIG_FSSMMX8MP_SPI_A */
+#endif /* CONFIG_FSSMMX8MP_SPI0 */
 
-#ifdef CONFIG_FSSMMX8MP_SPI_B
+#ifdef CONFIG_FSSMMX8MP_SPI1
 &ecspi2 {
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -894,27 +932,27 @@
 	};
 
 };
-#endif /* CONFIG_FSSMMX8MP_SPI_B */
+#endif /* CONFIG_FSSMMX8MP_SPI1 */
 
 /* Feature Connector J20 - Pins 63, 64 */
-#ifdef CONFIG_FSSMMX8MP_CAN_A
+#ifdef CONFIG_FSSMMX8MP_CAN0
 &flexcan1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1>;
 	status = "okay";
 };
-#endif /* CONFIG_FSSMMX8MP_CAN_A */
+#endif /* CONFIG_FSSMMX8MP_CAN0 */
 
 /* CAN Connector J15 */
-#ifdef CONFIG_FSSMMX8MP_CAN_B
+#ifdef CONFIG_FSSMMX8MP_CAN1
 &flexcan2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
 	status = "okay";
 };
-#endif /* CONFIG_FSSMMX8MP_CAN_B */
+#endif /* CONFIG_FSSMMX8MP_CAN1 */
 
-#ifdef CONFIG_FSSMMX8MP_I2S_A
+#ifdef CONFIG_FSSMMX8MP_I2S0
 &sai2 {
 	#sound-dai-cells = <0>;
 	pinctrl-names = "default";
@@ -932,14 +970,33 @@
 	fsl,rxmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
 	status = "okay";
 };
-#endif /* CONFIG_FSSMMX8MP_I2S_A */
+#endif /* CONFIG_FSSMMX8MP_I2S0 */
+
+#ifdef CONFIG_FSSMMX8MP_I2S2
+&sai3 {
+	#sound-dai-cells = <0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sai3>;
+	assigned-clocks = <&clk IMX8MP_CLK_SAI3>;
+	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
+	assigned-clock-rates = <24576000>;
+	clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIOMIX_SAI3_IPG>, <&clk IMX8MP_CLK_DUMMY>,
+		 <&clk IMX8MP_CLK_CLKOUT1>, <&clk IMX8MP_CLK_DUMMY>,
+		 <&clk IMX8MP_CLK_DUMMY>;
+	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
+	fsl,sai-mclk-direction-output;
+	/* sai to clock and frame tx/rx master */
+	fsl,txmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
+	fsl,rxmasterflag = <1>; // SND_SOC_DAIFMT_CBM_CFM
+	status = "okay";
+};
+#endif /* CONFIG_FSSMMX8MP_I2S2 */
 
 &sdma2 {
 	status = "okay";
 };
 
-#ifdef CONFIG_FSSMMX8MP_UART_A
-/* SER1 */
+#ifdef CONFIG_FSSMMX8MP_SER1
 &uart1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1>;
@@ -947,23 +1004,21 @@
 	assigned-clock-parents = <&clk IMX8MP_SYS_PLL1_80M>;
 	status = "okay";
 };
-#endif /* CONFIG_FSSMMX8MP_UART_A */
+#endif /* CONFIG_FSSMMX8MP_SER1 */
 
-#ifdef CONFIG_FSSMMX8MP_UART_B
-/* SER0 (RTSCTS) */
+#ifdef CONFIG_FSSMMX8MP_SER0
 &uart2 {
 	/* console */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2>;
-#ifdef CONFIG_FSSMMX8MP_UART_B_RTSCTS
+#ifdef CONFIG_FSSMMX8MP_SER0_RTSCTS
 	fsl,uart-has-rtscts;
 #endif
 	status = "okay";
 };
-#endif /* CONFIG_FSSMMX8MP_UART_B */
+#endif /* CONFIG_FSSMMX8MP_SER0 */
 
-#ifdef CONFIG_FSSMMX8MP_UART_C
-/* SER3 */
+#ifdef CONFIG_FSSMMX8MP_SER3
 &uart3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3>;
@@ -971,21 +1026,20 @@
 	assigned-clock-parents = <&clk IMX8MP_SYS_PLL1_80M>;
 	status = "okay";
 };
-#endif /* CONFIG_FSSMMX8MP_UART_C */
+#endif /* CONFIG_FSSMMX8MP_SER3 */
 
-#ifdef CONFIG_FSSMMX8MP_UART_D
-/* SER2 (RTSCTS) */
+#ifdef CONFIG_FSSMMX8MP_SER2
 &uart4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart4>;
 	assigned-clocks = <&clk IMX8MP_CLK_UART4>;
 	assigned-clock-parents = <&clk IMX8MP_SYS_PLL1_80M>;
-#ifdef CONFIG_FSSMMX8MP_UART_D_RTSCTS
+#ifdef CONFIG_FSSMMX8MP_SER2_RTSCTS
 	fsl,uart-has-rtscts;
 #endif
 	status = "okay";
 };
-#endif /* CONFIG_FSSMMX8MP_UART_D */
+#endif /* CONFIG_FSSMMX8MP_SER2 */
 
 &pcie{
 	clkreq-gpio = <&pca6416 15 GPIO_ACTIVE_LOW>;
@@ -1001,7 +1055,7 @@
     status = "okay";
 };
 
-#ifdef CONFIG_FSSMMX8MP_USB_OTG
+#ifdef CONFIG_FSSMMX8MP_USB0
 /* USB_A */
 &usb3_phy0 {
 	fsl,phy-tx-preemp-amp-tune = <3>;
@@ -1045,7 +1099,7 @@
 };
 #endif
 
-#ifdef CONFIG_FSSMMX8MP_USB_HOST
+#ifdef CONFIG_FSSMMX8MP_USB1
 /* USB_B */
 &usb3_phy1 {
 	/* vbus-power-supply = <&ptn5110>; */
@@ -1120,7 +1174,7 @@
 };
 #endif
 
-#ifdef CONFIG_FSSMMX8MP_CSI_A
+#ifdef CONFIG_FSSMMX8MP_CSI0
 &mipi_csi_0 {
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -1128,7 +1182,7 @@
 };
 #endif
 
-#ifdef CONFIG_FSSMMX8MP_CSI_B
+#ifdef CONFIG_FSSMMX8MP_CSI1
 &mipi_csi_1 {
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -1321,54 +1375,79 @@
 #endif
 };
 
+/* GPIOs at SMARC Connector */
 &gpio1 {
-gpio-line-names =
- "GPIO_0", "GPIO_1", "GPIO_2", "GPIO_3", "GPIO_4",  "GPIO2",
- "GPIO_6",  "GPIO1",  "GPIO3",  "GPIO0","GPIO_10",  "GPIO7",
-"GPIO_12","GPIO_13","GPIO_14","GPIO_15","GPIO_16","GPIO_17",
-"GPIO_18","GPIO_19","GPIO_20","GPIO_21","GPIO_22","GPIO_23",
-"GPIO_24","GPIO_25","GPIO_26","GPIO_27","GPIO_28","GPIO_29",
-"GPIO_30","GPIO_31";
+	gpio-line-names =
+	/*  0 */ "", "WDT_TIME_OUT#", "", "SPI1_CS1#",
+	/*  4 */ "", "GPIO2", "", "GPIO1",
+	/*  8 */ "GPIO3", "GPIO0", "USB0_OTG_ID", "GPIO7",
+	/* 12 */ "", "", "", "",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
+	status = "okay";
 };
 
 &gpio2 {
-gpio-line-names =
-"GPIO_32","GPIO_33","GPIO_34","GPIO_35","GPIO_36","GPIO_37",
-"GPIO_38","GPIO_39","GPIO_40","GPIO_41","GPIO_42","GPIO_43",
-"GPIO_44","GPIO_45","GPIO_46","GPIO_47","GPIO_48","GPIO_49",
-"GPIO_50","GPIO_51","GPIO_52","GPIO_53","GPIO_54","GPIO_55",
-"GPIO_56","GPIO_57","GPIO_58","GPIO_59","GPIO_60","GPIO_61",
-"GPIO_62","GPIO_63";
+	gpio-line-names =
+	/*  0 */ "", "", "", "",
+	/*  4 */ "", "", "", "",
+	/*  8 */ "", "", "", "",
+	/* 12 */ "SDIO_CD#", "SDIO_CK", "SDIO_CMD", "SDIO_D0",
+	/* 16 */ "SDIO_D1", "SDIO_D2", "SDIO_D3", "SDIO_PWR_EN",
+	/* 20 */ "SDIO_WP", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
+	status = "okay";
 };
 
 &gpio3 {
-gpio-line-names =
-"GPIO_64","GPIO_65","GPIO_66","GPIO_67",  "GPIO8",  "GPIO9",
-"GPIO_70","GPIO_71","GPIO_72","GPIO_73","GPIO_74","GPIO_75",
-"GPIO_76","GPIO_77", "GPIO12", "GPIO10", "GPIO11","GPIO_81",
-"GPIO_82","GPIO_83","GPIO_84","GPIO_85","GPIO_86","GPIO_87",
-"GPIO_88","GPIO_89","GPIO_90","GPIO_91", "GPIO13","GPIO_93",
-"GPIO_94","GPIO_95";
+	gpio-line-names =
+	/*  0 */ "I2S2_CK", "I2S2_SDOUT", "I2C_PM_CK", "I2C_PM_DAT",
+	/*  4 */ "GPIO8", "GPIO9", "I2S2_SDIN", "I2S2_LRCK",
+	/*  8 */ "SER2_RTS#", "SER2_CTS#", "", "",
+	/* 12 */ "", "", "GPIO12", "GPIO10",
+	/* 16 */ "GPIO11", "", "", "",
+	/* 20 */ "", "LCD1_BKLT_PWM", "CAN0_TX", "CAN0_RX",
+	/* 24 */ "CAN1_TX", "CAN1_RX", "HDMI_CTRL_CK", "HDMI_CTRL_DAT",
+	/* 28 */ "GPIO13", "HDMI_HPD", "", "";
+	status = "okay";
 };
 
 &gpio4 {
-gpio-line-names =
- "GPIO_96", "GPIO_97", "GPIO_98", "GPIO_99","GPIO_100","GPIO_101",
-"GPIO_102","GPIO_103","GPIO_104","GPIO_105","GPIO_106","GPIO_107",
-"GPIO_108","GPIO_109","GPIO_110","GPIO_111","GPIO_112","GPIO_113",
-"GPIO_114","GPIO_115","GPIO_116","GPIO_117","GPIO_118","GPIO_119",
-"GPIO_120","GPIO_121","GPIO_122","GPIO_123",   "GPIO4","GPIO_125",
-"GPIO_126","GPIO_127";
+	gpio-line-names =
+	/*  0 */ "RESET_OUT#", "LCD0_BKLT_EN", "LCD1_VDD_EN", "LCD1_BKLT_EN",
+	/*  4 */ "", "", "", "",
+	/*  8 */ "", "", "", "",
+	/* 12 */ "", "", "", "",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "LCD0_VDD_EN", "", "", "I2S0_SDIN",
+	/* 24 */ "I2S0_LRCK", "I2S0_CK", "I2S0_SDOUT", "TEMPSENS_OS",
+	/* 28 */ "GPIO4", "SER0_RTS#", "SER0_CTS#", "RTC_IRQ#";
+	status = "okay";
 };
 
 &gpio5 {
-gpio-line-names =
-   "GPIO6","GPIO_129","GPIO_130","GPIO_131","GPIO_132",   "GPIO5",
-"GPIO_134","GPIO_135","GPIO_136","GPIO_137","GPIO_138","GPIO_139",
-"GPIO_140","GPIO_141","GPIO_142","GPIO_143","GPIO_144","GPIO_145",
-"GPIO_146","GPIO_147","GPIO_148","GPIO_149","GPIO_150","GPIO_151",
-"GPIO_152","GPIO_153","GPIO_154","GPIO_155","GPIO_156","GPIO_157",
-"GPIO_158","GPIO_159";
+	gpio-line-names =
+	/*  0 */ "GPIO6", "", "LCD0_BKLT_PWM", "I2C_LCD_CK",
+	/*  4 */ "I2C_LCD_DAT", "GPIO5", "SPI0_CK", "SPI0_DO",
+	/*  8 */ "SPI0_DIN", "SPI0_CS0#", "SPI1_CK", "SPI1_DO",
+	/* 12 */ "SPI1_DIN", "SPI1_CS0#", "I2C_CAM0_CK", "I2C_CAM0_DAT",
+	/* 16 */ "I2C_CAM1_CK", "I2C_CAM1_DAT", "I2C_GP_CK", "I2C_GP_DAT",
+	/* 20 */ "PCIE_A_CKREQ#", "SPI0_CS1#", "SER1_RX", "SER1_TX",
+	/* 24 */ "SER0_RX", "SER0_TX", "SER3_RX", "SER3_TX",
+	/* 28 */ "SER2_RX", "SER2_TX", "", "";
+	status = "okay";
+};
+
+&pca6416 {
+	gpio-line-names =
+	/*  0 */ "BATLOW#", "SMB_ALERT#", "LID#", "SLEEP#",
+	/*  4 */ "CHARGING#", "CHARGER_PRSNT#", "TEST#", "",
+	/*  8 */ "BOOT_SEL0#", "BOOT_SEL1#", "BOOT_SEL2#", "",
+	/* 12 */ "", "", "", "";
+	status = "okay";
 };
 
 &iomuxc {
@@ -1420,11 +1499,11 @@ gpio-line-names =
 				MX8MP_IOMUXC_SAI1_MCLK__GPIO4_IO20			0x00104
 				/* LCD1_VDD_EN */
 				MX8MP_IOMUXC_SAI1_RXD0__GPIO4_IO02			0x00104
-#ifndef CONFIG_FSSMMX8MP_BL_CTRL_A
+#ifndef CONFIG_FSSMMX8MP_LCD0_BKLT
 				/* LCD0_BKLT_PWM / LCD0_RST (FSSMBB) */
 				MX8MP_IOMUXC_SAI3_MCLK__GPIO5_IO02			0x00104
 #endif
-#ifndef CONFIG_FSSMMX8MP_BL_CTRL_B
+#ifndef CONFIG_FSSMMX8MP_LCD1_BKLT
 				/* LCD1_BKLT_PWM */
 				MX8MP_IOMUXC_SAI5_RXD0__GPIO3_IO21			0x00004
 #endif
@@ -1441,7 +1520,7 @@ gpio-line-names =
 			>;
 		};
 
-#ifdef CONFIG_FSSMMX8MP_SPI_A
+#ifdef CONFIG_FSSMMX8MP_SPI0
 		pinctrl_ecspi1: ecspi1grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_ECSPI1_SCLK__ECSPI1_SCLK		0x82
@@ -1456,9 +1535,9 @@ gpio-line-names =
 				MX8MP_IOMUXC_I2C4_SDA__GPIO5_IO21		0x40000
 			>;
 		};
-#endif /* CONFIG_FSSMMX8MP_SPI_A */
+#endif /* CONFIG_FSSMMX8MP_SPI0 */
 
-#ifdef CONFIG_FSSMMX8MP_SPI_B
+#ifdef CONFIG_FSSMMX8MP_SPI1
 		pinctrl_ecspi2: ecspi2grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_ECSPI2_SCLK__ECSPI2_SCLK		0x82
@@ -1473,9 +1552,9 @@ gpio-line-names =
 				MX8MP_IOMUXC_GPIO1_IO03__GPIO1_IO03		0x40000
 			>;
 		};
-#endif /* CONFIG_FSSMMX8MP_SPI_B */
+#endif /* CONFIG_FSSMMX8MP_SPI1 */
 
-#ifdef CONFIG_FSSMMX8MP_ETH_A
+#ifdef CONFIG_FSSMMX8MP_GBE0
 		pinctrl_eqos: eqosgrp {
 			fsl,pins = <
 				MX8MP_IOMUXC_ENET_MDC__ENET_QOS_MDC	0x3
@@ -1496,9 +1575,9 @@ gpio-line-names =
 				MX8MP_IOMUXC_GPIO1_IO06__GPIO1_IO06		0x39
 			>;
 		};
-#endif /* CONFIG_FSSMMX8MP_ETH_A */
+#endif /* CONFIG_FSSMMX8MP_GBE0 */
 
-#ifdef CONFIG_FSSMMX8MP_ETH_B
+#ifdef CONFIG_FSSMMX8MP_GBE1
 		pinctrl_fec: fecgrp {
 			fsl,pins = <
 				MX8MP_IOMUXC_SAI1_RXD2__ENET1_MDC		0x3
@@ -1519,7 +1598,7 @@ gpio-line-names =
 				MX8MP_IOMUXC_SAI3_TXD__GPIO5_IO01		0x39
 			>;
 		};
-#endif /* CONFIG_FSSMMX8MP_ETH_B */
+#endif /* CONFIG_FSSMMX8MP_GBE1 */
 
 #ifdef CONFIG_FSSMMX8MP_PWM_OUT
 		pinctrl_pwm1: pwm1grp {
@@ -1529,39 +1608,39 @@ gpio-line-names =
 		};
 #endif /* CONFIG_FSSMMX8MP_PWM_OUT */
 
-#ifdef CONFIG_FSSMMX8MP_BL_CTRL_A
+#ifdef CONFIG_FSSMMX8MP_LCD0_BKLT
 		pinctrl_pwm4: pwm4grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_SAI3_MCLK__PWM4_OUT	0x116
 			>;
 		};
-#endif /* CONFIG_FSSMMX8MP_BL_CTRL_A */
+#endif /* CONFIG_FSSMMX8MP_LCD0_BKLT */
 
-#ifdef CONFIG_FSSMMX8MP_BL_CTRL_B
+#ifdef CONFIG_FSSMMX8MP_LCD1_BKLT
 		pinctrl_pwm2: pwm2grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_SAI5_RXD0__PWM2_OUT	0x116
 			>;
 		};
-#endif /* CONFIG_FSSMMX8MP_BL_CTRL_B */
+#endif /* CONFIG_FSSMMX8MP_LCD1_BKLT */
 
-#ifdef CONFIG_FSSMMX8MP_CAN_A
+#ifdef CONFIG_FSSMMX8MP_CAN0
 		pinctrl_flexcan1: flexcan1grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_SAI5_RXD2__CAN1_RX		0x154
 				MX8MP_IOMUXC_SAI5_RXD1__CAN1_TX		0x154
 			>;
 		};
-#endif /* CONFIG_FSSMMX8MP_CAN_A */
+#endif /* CONFIG_FSSMMX8MP_CAN0 */
 
-#ifdef CONFIG_FSSMMX8MP_CAN_B
+#ifdef CONFIG_FSSMMX8MP_CAN1
 		pinctrl_flexcan2: flexcan2grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_SAI5_MCLK__CAN2_RX		0x154
 				MX8MP_IOMUXC_SAI5_RXD3__CAN2_TX		0x154
 			>;
 		};
-#endif /* CONFIG_FSSMMX8MP_CAN_B */
+#endif /* CONFIG_FSSMMX8MP_CAN1 */
 
 #ifdef CONFIG_FSSMMX8MP_I2C_CAM0
 		pinctrl_i2c1: i2c1grp {
@@ -1621,64 +1700,74 @@ gpio-line-names =
 			>;
 		};
 
-#ifdef CONFIG_FSSMMX8MP_I2S_A
+#ifdef CONFIG_FSSMMX8MP_I2S0
 		pinctrl_sai2: sai2grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_SAI2_TXFS__AUDIOMIX_SAI2_TX_SYNC	0xd6
 				MX8MP_IOMUXC_SAI2_TXC__AUDIOMIX_SAI2_TX_BCLK	0xd6
 				MX8MP_IOMUXC_SAI2_TXD0__AUDIOMIX_SAI2_TX_DATA00	0xd6
 				MX8MP_IOMUXC_SAI2_RXD0__AUDIOMIX_SAI2_RX_DATA00	0xd6
-				MX8MP_IOMUXC_SAI2_MCLK__AUDIOMIX_SAI2_MCLK	0xd6
 			>;
 		};
-#endif /* CONFIG_FSSMMX8MP_I2S_A */
+#endif /* CONFIG_FSSMMX8MP_I2S0 */
 
-#ifdef CONFIG_FSSMMX8MP_UART_A
+#ifdef CONFIG_FSSMMX8MP_I2S2
+		pinctrl_sai3: sai3grp {
+			fsl,pins = <
+				MX8MP_IOMUXC_NAND_DATA01__AUDIOMIX_SAI3_TX_SYNC		0xd6
+				MX8MP_IOMUXC_NAND_ALE__AUDIOMIX_SAI3_TX_BCLK		0xd6
+				MX8MP_IOMUXC_NAND_CE0_B__AUDIOMIX_SAI3_TX_DATA00	0xd6
+				MX8MP_IOMUXC_NAND_DATA00__AUDIOMIX_SAI3_RX_DATA00	0xd6
+			>;
+		};
+#endif /* CONFIG_FSSMMX8MP_I2S2 */
+
+#ifdef CONFIG_FSSMMX8MP_SER1
 		pinctrl_uart1: uart1grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_UART1_RXD__UART1_DCE_RX 	0x140
 				MX8MP_IOMUXC_UART1_TXD__UART1_DCE_TX	0x140
 			>;
 		};
-#endif /* CONFIG_FSSMMX8MP_UART_A */
+#endif /* CONFIG_FSSMMX8MP_SER1 */
 
-#ifdef CONFIG_FSSMMX8MP_UART_B
+#ifdef CONFIG_FSSMMX8MP_SER0
 		pinctrl_uart2: uart2grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_UART2_RXD__UART2_DCE_RX	0x140
 				MX8MP_IOMUXC_UART2_TXD__UART2_DCE_TX	0x140
-#ifdef CONFIG_FSSMMX8MP_UART_B_RTSCTS
+#ifdef CONFIG_FSSMMX8MP_SER0_RTSCTS
 				MX8MP_IOMUXC_SAI3_RXC__UART2_DCE_CTS	0x140
 				MX8MP_IOMUXC_SAI3_RXD__UART2_DCE_RTS	0x140
 #endif
 			>;
 		};
-#endif /* CONFIG_FSSMMX8MP_UART_B */
+#endif /* CONFIG_FSSMMX8MP_SER0 */
 
-#ifdef CONFIG_FSSMMX8MP_UART_C
+#ifdef CONFIG_FSSMMX8MP_SER3
 		pinctrl_uart3: uart3grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_UART3_RXD__UART3_DCE_RX	0x140
 				MX8MP_IOMUXC_UART3_TXD__UART3_DCE_TX	0x140
 			>;
 		};
-#endif /* CONFIG_FSSMMX8MP_UART_C */
+#endif /* CONFIG_FSSMMX8MP_SER3 */
 
 
-#ifdef CONFIG_FSSMMX8MP_UART_D
+#ifdef CONFIG_FSSMMX8MP_SER2
 		pinctrl_uart4: uart4grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_UART4_RXD__UART4_DCE_RX	0x140
 				MX8MP_IOMUXC_UART4_TXD__UART4_DCE_TX	0x140
-#ifdef CONFIG_FSSMMX8MP_UART_D_RTSCTS
+#ifdef CONFIG_FSSMMX8MP_SER2_RTSCTS
 				MX8MP_IOMUXC_NAND_DATA02__UART4_DCE_CTS	0x140
 				MX8MP_IOMUXC_NAND_DATA03__UART4_DCE_RTS	0x140
 #endif
 			>;
 		};
-#endif /* CONFIG_FSSMMX8MP_UART_D */
+#endif /* CONFIG_FSSMMX8MP_SER2 */
 
-#ifdef CONFIG_FSSMMX8MP_USB_OTG
+#ifdef CONFIG_FSSMMX8MP_USB0
 		pinctrl_usb3_0_pwr: usb0grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_GPIO1_IO12__USB1_PWR	0x19
@@ -1690,15 +1779,15 @@ gpio-line-names =
 				MX8MP_IOMUXC_GPIO1_IO10__GPIO1_IO10	0x149
 			>;
 		};
-#endif /* CONFIG_FSSMMX8MP_USB_OTG */
+#endif /* CONFIG_FSSMMX8MP_USB0 */
 
-#ifdef CONFIG_FSSMMX8MP_USB_HOST
+#ifdef CONFIG_FSSMMX8MP_USB1
 		pinctrl_usb3_1_pwr: usb1grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_GPIO1_IO14__USB2_PWR	0x19
 			>;
 		};
-#endif /* CONFIG_FSSMMX8MP_USB_HOST */
+#endif /* CONFIG_FSSMMX8MP_USB1 */
 
 		pinctrl_usdhc1: usdhc1grp {
 			fsl,pins = <

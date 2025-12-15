@@ -17,6 +17,39 @@
 #include <dt-bindings/phy/phy-imx8-pcie.h>
 #include <fsversion.h>
 
+/* SOC-nodes to armStone-nodes */
+
+/* Internal nodes */
+emmc: &usdhc1 {};
+i2c_pmic: &i2c5 {};
+rtc_soc: &snvs_rtc {};
+
+/* External nodes */
+fs_can_a: &flexcan1 {};
+fs_can_b: &flexcan2 {};
+fs_csi_a: &mipi_csi_0 {};
+fs_eth_a: &eqos {};
+fs_eth_b: &fec {};
+fs_i2c_a: &i2c4 {};
+fs_i2c_b: &i2c3 {};
+fs_i2c_c: &i2c2 {};
+fs_i2c_d: &i2c1 {};
+fs_i2s: &sai2 {};
+fs_pcie: &pcie {};
+fs_pwm_a: &pwm2 {};
+fs_pwm_b: &pwm1 {};
+fs_pwm_c: &pwm4 {};
+fs_sdio_a: &usdhc3 {};
+fs_sdio_b: &usdhc2 {};
+fs_spi_a: &ecspi3 {};
+fs_spi_b: &ecspi2 {};
+fs_uart_a: &uart2 {};
+fs_uart_b: &uart3 {};
+fs_uart_c: &uart1 {};
+fs_uart_d: &uart4 {};
+fs_usb_otg: &usb_dwc3_1 {};
+fs_usb_host: &usb_dwc3_0 {};
+
 /* Do we have HDMI? */
 #if ((CONFIG_ARMSTONEMX8MP_PANEL0 == DISPLAY_HDMI) \
     || (CONFIG_ARMSTONEMX8MP_PANEL1 == DISPLAY_HDMI) \
@@ -1214,7 +1247,7 @@ touch: goodix@5d {
 };
 #endif
 
-/* SD_C - internal eMCC boot device */
+/* SD_C - internal eMMC boot device */
 &usdhc1 {
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
 	pinctrl-0 = <&pinctrl_usdhc1>;
@@ -1487,6 +1520,72 @@ touch: goodix@5d {
 #else
 	status = "disabled";
 #endif
+};
+
+/* GPIOs for Feature Connector, Capacitive Touch and Backlight */
+&gpio1 {
+	gpio-line-names =
+	/*  0 */ "", "TOUCH_RSTn", "", "",
+	/*  4 */ "", "", "", "I2C_B_IRQ",
+	/*  8 */ "", "", "BL_PWM", "",
+	/* 12 */ "", "PWM_A", "", "",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
+	status = "okay";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/*  0 */ "", "", "", "",
+	/*  4 */ "", "", "", "",
+	/*  8 */ "", "", "", "",
+	/* 12 */ "", "", "", "",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
+	status = "okay";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/*  0 */ "COL2", "COL0", "", "",
+	/*  4 */ "COL6", "", "UART_D_RXD", "UART_D_TXD",
+	/*  8 */ "UART_D_RTS", "UART_D_CTS", "", "",
+	/* 12 */ "", "", "COL4", "",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
+	status = "okay";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/*  0 */ "", "", "", "",
+	/*  4 */ "", "", "", "",
+	/*  8 */ "", "", "", "",
+	/* 12 */ "", "", "", "",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "", "UART_C_TXD", "UART_C_RXD", "AUDIO_LOUT_L",
+	/* 24 */ "AUDIO_LIN_L", "AUDIO_LOUT_R", "AUDIO_MICIN", "AUDIO_LIN_R",
+	/* 28 */ "BL_ON", "", "", "";
+	status = "okay";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/*  0 */ "", "GPIO_A", "PWM_C", "CAN1H/CAN1TX",
+	/*  4 */ "CAN1L/CAN1RX", "PWM_B", "UART_B_RXD", "UART_B_TXD",
+	/*  8 */ "I2C_C_SCL", "I2C_C_SDA", "SPI_B_SCLK", "SPI_B_MOSI",
+	/* 12 */ "SPI_B_MISO", "SPI_B_SS0", "AIN_B", "AIN_A",
+	/* 16 */ "VLCD_ON", "", "I2C_B_SCL", "I2C_B_SDA",
+	/* 20 */ "I2C_A_SCL", "I2C_A_SDA", "SPI_A_SCLK", "SPI_A_MOSI",
+	/* 24 */ "SPI_A_MISO", "SPI_A_SS0", "", "",
+	/* 28 */ "AIN_C", "AIN_D", "", "";
+	status = "okay";
 };
 
 &iomuxc {

@@ -91,6 +91,13 @@
 			#size-cells = <0>;
 			#pwm-cells = <3>;
 			#gpio-cells = <2>;
+
+			gpio-line-names =
+			/*  0 */ "AL2L2_BL_ON", "AL2L2_BL_PWM",
+			/*  2 */ "", "AL2L2_MIPI_RST",
+			/*  4 */ "", "AL2L2_I2C_RST",
+			/*  6 */ "", "";
+
 			led@0 {
 				reg = <0>;
 				label = "BL_ON";

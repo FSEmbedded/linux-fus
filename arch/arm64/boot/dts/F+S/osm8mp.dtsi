@@ -18,7 +18,7 @@
 /* SOC-nodes to OSM-nodes */
 
 /* Internal nodes */
-osm_emmc: &usdhc1 {};
+emmc: &usdhc1 {};
 i2c_int: &i2c1 {};
 rtc_soc: &snvs_rtc {};
 
@@ -67,7 +67,6 @@ osm_usb_b
 
 	aliases {
 		/* Internal nodes */
-		emmc = &osm_emmc;
 		i2c0 = &i2c_int;
 		rtc0 = &rtc85263;
 		rtc1 = &rtc_soc;
@@ -854,13 +853,13 @@ osm_usb_b
 };
 #endif
 
-&osm_emmc {
+&emmc {
 	assigned-clocks = <&clk IMX8MP_CLK_USDHC1>;
 	assigned-clock-rates = <400000000>;
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
-	pinctrl-0 = <&pinctrl_osm_emmc>;
-	pinctrl-1 = <&pinctrl_osm_emmc_100mhz>;
-	pinctrl-2 = <&pinctrl_osm_emmc_200mhz>;
+	pinctrl-0 = <&pinctrl_emmc>;
+	pinctrl-1 = <&pinctrl_emmc_100mhz>;
+	pinctrl-2 = <&pinctrl_emmc_200mhz>;
 	vmmc-supply = <&reg_vref_3v3>;
 	vqmmc-supply = <&reg_vref_1v8>;
 	bus-width = <8>;
@@ -966,6 +965,72 @@ osm_usb_b
 /* Disable CPU RTC - external available */
 &rtc_soc {
 	status = "disabled";
+};
+
+/* GPIOs at OSM Grid */
+&gpio1 {
+	gpio-line-names =
+	/*  0 */ "GPIO_B_2", "GPIO_A_3", "", "GPIO_B_0",
+	/*  4 */ "", "GPIO_A_0", "GPIO_A_1", "GPIO_A_2",
+	/*  8 */ "GPIO_A_5", "GPIO_B_3", "GPIO_A_4", "GPIO_B_1",
+	/* 12 */ "USB_A_EN", "USB_A_OC#", "USB_C_EN", "USB_C_OC#",
+	/* 16 */ "ETH_A_MDC", "ETH_A_MDIO", "ETH_A_RGMII_TXD3", "ETH_A_RGMII_TXD2",
+	/* 20 */ "ETH_A_RGMII_TXD1", "ETH_A_RGMII_TXD0", "ETH_A_RGMII_TX_EN", "ETH_A_RGMII_TX_CLK",
+	/* 24 */ "ETH_A_RGMII_RX_DV", "ETH_A_RGMII_RX_CLK", "ETH_A_RGMII_RXD0", "ETH_A_RGMII_RXD1",
+	/* 28 */ "ETH_A_RGMII_RXD2", "ETH_A_RGMII_RXD3", "", "";
+	status = "okay";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/*  0 */ "", "", "", "",
+	/*  4 */ "", "", "", "",
+	/*  8 */ "", "", "", "",
+	/* 12 */ "SDIO_A_CD#", "SDIO_A_CLK", "SDIO_A_CMD", "SDIO_A_D0",
+	/* 16 */ "SDIO_A_D1", "SDIO_A_D2", "SDIO_A_D3", "SDIO_A_PWR_EN",
+	/* 20 */ "SDIO_A_WP", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
+	status = "okay";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/*  0 */ "SPI_A_SCK", "SPI_A_CS0#", "PCIe_SM_ALERT#", "SDIO_B_D5",
+	/*  4 */ "SDIO_B_D6", "SDIO_B_D7", "SPI_A_IO0", "SPI_A_IO1",
+	/*  8 */ "SPI_A_IO2", "SPI_A_IO3", "SDIO_B_D0", "SDIO_B_D1",
+	/* 12 */ "SDIO_B_D2", "SDIO_B_D3", "DSI_TE", "SDIO_B_D4",
+	/* 16 */ "SDIO_B_PWR_EN", "SDIO_B_CLK", "SDIO_B_CMD", "PWM_0",
+	/* 20 */ "PWM_3/GPIO_A_7", "PWM_2/GPIO_A_6", "PCIe_CLKREQ#", "GPIO_B_6",
+	/* 24 */ "GPIO_B_4", "PWM_1", "I2C_C_SCL", "I2C_C_SDA",
+	/* 28 */ "CAN_B_TX", "CAN_B_RX", "", "";
+	status = "okay";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/*  0 */ "GPIO_C_4", "GPIO_C_6", "GPIO_C_7", "GPIO_C_1",
+	/*  4 */ "ETH_B_MDC", "ETH_B_MDIO", "ETH_B_RGMII_RXD0", "ETH_B_RGMII_RXD1",
+	/*  8 */ "ETH_B_RGMII_RXD2", "ETH_B_RGMII_RXD3", "ETH_B_RGMII_RX_DV", "ETH_B_RGMII_RX_CLK",
+	/* 12 */ "ETH_B_RGMII_TXD0", "ETH_B_RGMII_TXD1", "ETH_B_RGMII_TXD2", "ETH_B_RGMII_TXD3",
+	/* 16 */ "ETH_B_RGMII_TX_EN", "ETH_B_RGMII_TX_CLK", "GPIO_C_3", "GPIO_C_2",
+	/* 20 */ "GPIO_C_5", "GPIO_B_7", "GPIO_B_5", "I2S_A_DATA_IN",
+	/* 24 */ "I2S_A_LRCLK", "I2S_A_BITCLK", "I2S_A_DATA_OUT", "GPIO_C_0",
+	/* 28 */ "PCIe_WAKE#", "PCIe_PERST#", "I2S_B_DATA_IN", "I2S_A_LRCLK";
+	status = "okay";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/*  0 */ "I2S_A_BITCLK", "I2S_B_DATA_OUT", "", "CAN_A_TX",
+	/*  4 */ "CAN_A_RX", "CARRIER_PWR_EN", "UART_B_RX", "UART_B_TX",
+	/*  8 */ "UART_B_RTS", "UART_B_CTS", "SPI_B_SCK", "SPI_B_SDO",
+	/* 12 */ "SPI_B_SDI", "SPI_B_CS0#", "", "",
+	/* 16 */ "SDIO_B_CD#", "SDIO_B_WP", "I2C_A_SCL", "I2C_A_SDA",
+	/* 20 */ "I2C_B_SCL", "I2C_B_SDA", "UART_A_RX", "UART_A_TX",
+	/* 24 */ "UART_CON_RX", "UART_CON_TX", "UART_A_RTS", "UART_A_CTS",
+	/* 28 */ "UART_C_RX", "UART_C_TX", "", "";
+	status = "okay";
 };
 
 &iomuxc {
@@ -1467,7 +1532,7 @@ osm_usb_b
 	};
 #endif
 
-	pinctrl_osm_emmc: usdhc1grp {
+	pinctrl_emmc: usdhc1grp {
 		fsl,pins = <
 			MX8MP_IOMUXC_SD1_CLK__USDHC1_CLK			0x190
 			MX8MP_IOMUXC_SD1_CMD__USDHC1_CMD			0x090
@@ -1484,7 +1549,7 @@ osm_usb_b
 		>;
 	};
 
-	pinctrl_osm_emmc_100mhz: usdhc1grp-100mhz {
+	pinctrl_emmc_100mhz: usdhc1grp-100mhz {
 		fsl,pins = <
 			MX8MP_IOMUXC_SD1_CLK__USDHC1_CLK			0x194
 			MX8MP_IOMUXC_SD1_CMD__USDHC1_CMD			0x094
@@ -1501,7 +1566,7 @@ osm_usb_b
 		>;
 	};
 
-	pinctrl_osm_emmc_200mhz: usdhc1grp-200mhz {
+	pinctrl_emmc_200mhz: usdhc1grp-200mhz {
 		fsl,pins = <
 			MX8MP_IOMUXC_SD1_CLK__USDHC1_CLK			0x196
 			MX8MP_IOMUXC_SD1_CMD__USDHC1_CMD			0x096

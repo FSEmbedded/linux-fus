@@ -540,6 +540,15 @@
 	status = "okay";
 };
 
+&pca6416 {
+	gpio-line-names =
+	/*  0 */ "", "", "", "",
+	/*  4 */ "AUDIO_B_I2S_RXFS", "GPIO_J1_7", "GPIO_J1_2", "BL_ON",
+	/*  8 */ "VLCD_ON", "GPIO_J1_44", "GPIO_J1_46", "",
+	/* 12 */ "", "", "", "";
+	status = "okay";
+};
+
 &iomuxc {
 #ifdef IMX8MP_TOUCH_INTERRUPT_PINCTRL
 	pinctrl_touch_int: touchintgrp {

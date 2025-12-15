@@ -94,11 +94,18 @@
 	pca963x: pca9634@61 {
                         compatible = "fus,pca9634";
                         reg = <0x61>;
-						vdd-supply = <&reg_vlcd>;
+                        vdd-supply = <&reg_vlcd>;
                         #address-cells = <1>;
                         #size-cells = <0>;
                         #pwm-cells = <3>;
                         #gpio-cells = <2>;
+
+                        gpio-line-names =
+                        /*  0 */ "AL2L1_BL_ON", "AL2L1_BL_PWM",
+                        /*  2 */ "", "AL2L1_MIPI_RST",
+                        /*  4 */ "", "AL2L1_I2C_RST",
+                        /*  6 */ "", "";
+
                         led@0 {
                                 reg = <0>;
                                 label = "BL_ON";
