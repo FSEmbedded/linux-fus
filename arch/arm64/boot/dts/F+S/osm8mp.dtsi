@@ -573,13 +573,14 @@ osm_usb_b
 &osm_spi_a {
 	#address-cells = <1>;
 	#size-cells = <0>;
-	num-cs = <1>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_osm_spi_a>;
 #ifdef CONFIG_OSM8MP_SPI_A_CS1
-	cs-gpios = <0>, <&gpio3 21 GPIO_ACTIVE_LOW>;
+	cs-gpios = <&gpio3 1 GPIO_ACTIVE_LOW>, <&gpio3 21 GPIO_ACTIVE_LOW>;
+	num-cs = <2>;
 #else
-	cs-gpios = <0>;
+	cs-gpios = <&gpio3 1 GPIO_ACTIVE_LOW>;
+	num-cs = <1>;
 #endif
 	status = "okay";
 
@@ -596,13 +597,14 @@ osm_usb_b
 &osm_spi_b {
 	#address-cells = <1>;
 	#size-cells = <0>;
-	num-cs = <1>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_osm_spi_b>;
 #ifdef CONFIG_OSM8MP_SPI_B_CS1
-	cs-gpios = <0>, <&gpio3 20 GPIO_ACTIVE_LOW>;
+	cs-gpios = <&gpio5 13 GPIO_ACTIVE_LOW>, <&gpio3 20 GPIO_ACTIVE_LOW>;
+	num-cs = <2>;
 #else
-	cs-gpios = <0>;
+	cs-gpios = <&gpio5 13 GPIO_ACTIVE_LOW>;
+	num-cs = <1>;
 #endif
 	status = "okay";
 
@@ -1307,7 +1309,7 @@ osm_usb_b
 			MX8MP_IOMUXC_NAND_DATA01__FLEXSPI_A_DATA01		0x82
 			MX8MP_IOMUXC_NAND_DATA02__FLEXSPI_A_DATA02		0x82
 			MX8MP_IOMUXC_NAND_DATA03__FLEXSPI_A_DATA03		0x82
-			MX8MP_IOMUXC_NAND_CE0_B__FLEXSPI_A_SS0_B		0x40000
+			MX8MP_IOMUXC_NAND_CE0_B__GPIO3_IO01			0x40000
 #ifdef CONFIG_OSM8MP_SPI_A_CS1
 			MX8MP_IOMUXC_SAI5_RXD0__GPIO3_IO21				0x40000
 #endif
