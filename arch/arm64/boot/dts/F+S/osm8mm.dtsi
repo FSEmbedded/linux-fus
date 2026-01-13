@@ -548,9 +548,11 @@ osm_pcie_a: &pcie0 {};
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_osm_spi_b>;
 #ifdef CONFIG_OSM8MM_SPI_B_CS1
-	cs-gpios = <0>, <&gpio5 6 0>;
+	num-cs = <2>;
+	cs-gpios = <&gpio5 13 GPIO_ACTIVE_LOW>, <&gpio5 6 GPIO_ACTIVE_LOW>;
 #else
-	cs-gpios = <0>;
+	num-cs = <1>;
+	cs-gpios = <&gpio5 13 GPIO_ACTIVE_LOW>;
 #endif
 	status = "okay";
 
@@ -1100,9 +1102,9 @@ osm_pcie_a: &pcie0 {};
 				MX8MM_IOMUXC_ECSPI2_SCLK_ECSPI2_SCLK	0x00082
 				MX8MM_IOMUXC_ECSPI2_MOSI_ECSPI2_MOSI	0x00082
 				MX8MM_IOMUXC_ECSPI2_MISO_ECSPI2_MISO	0x00082
-				MX8MM_IOMUXC_ECSPI2_SS0_ECSPI2_SS0		0x40000
+				MX8MM_IOMUXC_ECSPI2_SS0_GPIO5_IO13		0x00004
 #ifdef CONFIG_OSM8MM_SPI_B_CS1
-				MX8MM_IOMUXC_ECSPI1_SCLK_GPIO5_IO6		0x40000
+				MX8MM_IOMUXC_ECSPI1_SCLK_GPIO5_IO6		0x00004
 #endif
 			>;
 		};
