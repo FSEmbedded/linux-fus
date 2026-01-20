@@ -41,6 +41,7 @@ osm_dsi_pwm: &tpm7 {};
 osm_pwm_1: &tpm1_rpchip {};
 osm_pwm_2: &tpm0_rpchip {};
 osm_pwm_3_4: &tpm2_rpchip {};
+osm_can_a: &flexcan{};
 
 / {
 	model = "F+S OSM-SF-MX8ULP";
@@ -508,6 +509,11 @@ osm_pwm_3_4: &tpm2_rpchip {};
 	vmmc-supply = <&reg_sdio_a_pwr>;
 	vqmmc-supply = <&reg_sdio_a_pwr>;
 	status = "disabled";
+};
+
+/* CAN decleration */
+&osm_can_a {
+	status = "okay";
 };
 
 /* USB decleration */

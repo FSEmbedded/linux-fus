@@ -50,6 +50,7 @@ emmc: &usdhc0 {};
 fs_sdio_a: &usdhc1 {};
 fs_bl_pwm: &tpm7 {};
 fs_pwm: &tpm2_rpchip{};
+fs_can_a: &flexcan {};
 
 / {
 	model = "F&S PicoCoreMX8ULP";
@@ -746,6 +747,11 @@ fs_pwm: &tpm2_rpchip{};
 
 &fs_pwm {
 	status = "disabled";
+};
+
+/* CAN decleration */
+&fs_can_a {
+	status = "okay";
 };
 
 /* USB decleration */
