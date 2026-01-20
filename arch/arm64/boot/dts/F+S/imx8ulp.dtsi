@@ -16,6 +16,32 @@
 
 #include "../freescale/imx8ulp.dtsi"
 
+&soc {
+	per_bridge1: bus@28080000 {
+		compatible = "simple-bus";
+		reg = <0x28080000 0x2c000>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		/*
+		* NOTE: Feature CAN_IN_APD is required in BOARD-CFG (NBOOT)
+		* realtimed version > 0.3.3 is required for CAN support !
+		*/
+		flexcan: flexcan@280a8000 {
+			compatible = "fsl,imx8ulp-flexcan";
+			reg = <0x280a8000 0x10000>;
+			interrupts = <GIC_SPI 164 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&sosc>,
+					<&sosc>;
+			clock-names = "ipg", "per";
+			// reserved bit, keep reset default!
+			fsl,clk-source = /bits/ 8 <0>;
+			status = "disabled";
+		};
+	};
+};
+
 /delete-node/ &tpm5;
 
 &per_bridge3 {
