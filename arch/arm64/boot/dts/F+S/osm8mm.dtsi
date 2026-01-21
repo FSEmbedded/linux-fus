@@ -114,6 +114,7 @@ osm_pcie_a: &pcie0 {};
 			reg = <0 0x50008000 0 0x8000>;
 			no-map;
 		};
+
 		rsc_table: rsc-table@500ff000 {
 			reg = <0 0x500ff000 0 0x1000>;
 			no-map;

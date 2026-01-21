@@ -11,6 +11,9 @@
 /* Comment this out for OSM module without ADP-OSM-BB */
 #define CONFIG_ADP_OSM_BB
 
+/* Activate this if you want to use the Cortex-M4 core */
+#define SUPPORT_M4
+
 #ifdef CONFIG_ADP_OSM_BB
 #include "osm8mm-adp.dtsi"
 #else
@@ -18,8 +21,6 @@
 /* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
 #define CONFIG_OSM8MM_BOARD_REVISION	120
 
-/* Activate this if you want to use the Cortex-M4 core */
-//#define SUPPORT_M4
 
 /* Display device-trees enables MIPI DSI */
 /* MIPI DSI */
@@ -122,6 +123,14 @@
  *
  * - AUDIO_3: GPT capture driver example uses one of its Pins
  */
+
+/* Disable PWM_0 if BL_CTRL is enabled */
+#ifdef CONFIG_OSM8MM_BL_CTRL
+#undef CONFIG_OSM8MM_PWM_0
+#endif
+
+#include "osm8mm.dtsi"
+
 #ifdef SUPPORT_M4
 #undef CONFIG_OSM8MM_UART_C
 #undef CONFIG_OSM8MM_I2C_A
@@ -131,13 +140,6 @@
 //#undef CONFIG_OSM8MM_I2C_B
 //#undef CONFIG_OSM8MM_I2S_A
 #endif
-
-/* Disable PWM_0 if BL_CTRL is enabled */
-#ifdef CONFIG_OSM8MM_BL_CTRL
-#undef CONFIG_OSM8MM_PWM_0
-#endif
-
-#include "osm8mm.dtsi"
 
 / {
 	model = "F&S OSM8MM";
