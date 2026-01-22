@@ -20,7 +20,6 @@
 #include <linux/err.h>
 
 #define DRV_VERSION "0.4.3"
-
 #define PCF8563_REG_ST1		0x00 /* status */
 #define PCF8563_REG_ST2		0x01
 #define PCF8563_BIT_AIE		BIT(1)
@@ -38,6 +37,7 @@
 #define PCF8563_REG_AMN		0x09 /* alarm */
 
 #define PCF8563_REG_CLKO	0x0D /* clock out */
+
 #define PCF8563_REG_TMRC	0x0E /* timer control */
 #define PCF8563_TMRC_ENABLE	BIT(7)
 #define PCF8563_TMRC_4096	0
@@ -155,7 +155,6 @@ static int pcf8563_get_alarm_mode(struct i2c_client *client, unsigned char *en,
 		*en = 0;
 	if (pen)
 		*pen = 0;
-
 	err = pcf8563_read_block_data(client, PCF8563_REG_ST2, 1, &buf);
 	if (err)
 		return err;
@@ -238,7 +237,6 @@ static int pcf8563_rtc_read_time(struct device *dev, struct rtc_time *tm)
 	 */
 	if (rtc_valid_tm(tm) < 0)
 		dev_err(&client->dev, "retrieved date/time is not valid.\n");
-
 	return 0;
 }
 
@@ -393,7 +391,6 @@ static int pcf8563_probe(struct i2c_client *client,
 		return -ENOMEM;
 
 	dev_info(&client->dev, "chip found, driver version " DRV_VERSION "\n");
-
 	i2c_set_clientdata(client, pcf8563);
 	pcf8563->client = client;
 	device_set_wakeup_capable(&client->dev, 1);
@@ -440,6 +437,7 @@ static int pcf8563_probe(struct i2c_client *client,
 	err = devm_rtc_register_device(pcf8563->rtc);
 	if (err)
 		return err;
+
 
 	return 0;
 }
