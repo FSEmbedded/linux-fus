@@ -113,7 +113,6 @@
 #ifdef SUPPORT_M4
 #undef CONFIG_PICOCOREMX8MX_UART_C
 #undef CONFIG_PICOCOREMX8MX_I2C_A
-#undef CONFIG_PICOCOREMX8MX_SPI_A
 #undef CONFIG_PICOCOREMX8MX_SPI_B
 /* Only undef if using audio/sai examples */
 //#undef CONFIG_PICOCOREMX8MX_I2C_D
@@ -219,8 +218,8 @@
 			reg = <0 0x50008000 0 0x8000>;
 			no-map;
 		};
-		// TODO: Has to be rsc-table in kernel 6.12
-		rsc_table: rsc_table@500ff000 {
+
+		rsc_table: rsc-table@500ff000 {
 			reg = <0 0x500ff000 0 0x1000>;
 			no-map;
 		};
@@ -1289,11 +1288,13 @@
 #endif
 
 #ifndef CONFIG_PICOCOREMX8MX_SPI_B
+#ifndef	SUPPORT_M4
 				/* SPI_B */
 				MX8MM_IOMUXC_UART1_RXD_GPIO5_IO22	0x00104
 				MX8MM_IOMUXC_UART1_TXD_GPIO5_IO23	0x00104
 				MX8MM_IOMUXC_UART2_RXD_GPIO5_IO24	0x00104
 				MX8MM_IOMUXC_UART2_TXD_GPIO5_IO25	0x00104
+#endif
 #endif
 
 #ifndef CONFIG_PICOCOREMX8MX_SPI_C
