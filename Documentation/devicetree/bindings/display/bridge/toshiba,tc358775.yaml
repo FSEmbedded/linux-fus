@@ -41,6 +41,14 @@ properties:
     maxItems: 1
     description: Hardware reset, Low active
 
+  framesync-mode:
+    type: boolean
+    description: |
+      If set, enables VPCTRL[FrameSync] mode for LVDS output.
+      This causes a host syncronisation only on VSS signals.
+      Please refer to TC358774/75XBG Functional Specification,
+      chaper 5.5.1 "Video Timing Generation"
+
   ports:
     $ref: /schemas/graph.yaml#/properties/ports
 
