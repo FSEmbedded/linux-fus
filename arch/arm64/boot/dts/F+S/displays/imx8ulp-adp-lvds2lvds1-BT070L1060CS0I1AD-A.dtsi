@@ -26,7 +26,7 @@
 		status = "okay";
 
 		panel-timing {
-			clock-frequency = <52800000>;
+			clock-frequency = <66000000>;
 			hactive = <1024>;
 			vactive = <600>;
 			hback-porch = <160>;

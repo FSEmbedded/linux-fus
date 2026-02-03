@@ -76,7 +76,8 @@ dtb-$(CONFIG_ARCH_MXC) += \
 dtb-$(CONFIG_ARCH_MXC) += \
 			  picocoremx8ulp.dtb \
 			  picocoremx8ulp-adp-mipi2mipi1-ee0350et-2cp.dtb \
-			  picocoremx8ulp-adp-mipi2lvds1-BT070L1060CS0I1AD-A.dtb
+			  picocoremx8ulp-adp-mipi2lvds1-BT070L1060CS0I1AD-A.dtb \
+			  picocoremx8ulp-adp-lvds2lvd1-BT070L1060CS0I1AD-A.dtb
 dtb-$(CONFIG_ARCH_MXC) += \
 			  fs-osm-sf-mx8ulp-adp-osm-bb.dtb \
 			  fs-osm-sf-mx8ulp-adp-osm-bb-ee0350et-2cp.dtb \
