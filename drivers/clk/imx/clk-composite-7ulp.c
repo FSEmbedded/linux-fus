@@ -142,9 +142,14 @@ static struct clk_hw *imx_ulp_clk_hw_composite(const char *name,
 		 * change since the prepare count is zero, but HW actually
 		 * prevent the parent/rate change due to the clock is enabled.
 		 */
-		val = readl_relaxed(reg);
-		val &= ~(1 << PCG_CGC_SHIFT);
-		writel_relaxed(val, reg);
+		/*
+		 * Skip DCNANO for Boot-Splash-Screen
+		 */
+		if (strcmp(name, "dc_nano") != 0) {
+			val = readl_relaxed(reg);
+			val &= ~(1 << PCG_CGC_SHIFT);
+			writel_relaxed(val, reg);
+		}
 	}
 
 	hw = clk_hw_register_composite(NULL, name, parent_names, num_parents,
