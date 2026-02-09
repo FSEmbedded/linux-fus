@@ -94,3 +94,6 @@ dtb-$(CONFIG_ARCH_MXC) += \
 			  efusmx93-SINTF.dtb \
 			  efusmx93-SINTF-ET070080DH6.dtb \
 			  efusmx93-SINTF-BT070L1060CS0I1AD-A.dtb
+dtb-$(CONFIG_ARCH_MXC) += \
+			  picocom93.dtb \
+			  picocom93-ET070080DH6.dtb

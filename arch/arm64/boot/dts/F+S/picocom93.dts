@@ -1,0 +1,96 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (C) 2024 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOM93_BOARD_REVISION	100
+/* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOMSINTF2_BOARD_REVISION	100
+//#define SUPPORT_M33
+
+/* Network */
+#define CONFIG_PICOCOM93_ETH_A
+#define CONFIG_PICOCOM93_ETH_B
+
+/* CAN */
+/* CAN_1 - CAN1 extern J1 pins 30,31*/
+#define CONFIG_PICOCOM93_CAN_1
+/* CAN_2 - CAN2 extern J1 pins 32,33*/
+//#define CONFIG_PICOCOM93_CAN_2 //alternative to I2C1
+
+/* I2C */
+/* I2C_1 - I2C1 extern J1 pins 32,33*/
+#define CONFIG_PICOCOM93_I2C_1
+/* I2C_2 - I2C5 extern J1 pins 30,31*/
+//#define CONFIG_PICOCOM93_I2C_2 //alternative to CAN1
+
+/* SPI */
+/* SPI - SPI1 extern J1 pins 26-29 */
+#define CONFIG_PICOCOM93_SPI
+
+/* PWM and backlight brightness */
+/* PWM - TPM3, extern J1 pin 41*/
+#define CONFIG_PICOCOM93_PWM
+
+/* UART_1 - UART5, extern J1 pins 1,18 */
+#define CONFIG_PICOCOM93_UART_1
+/* J1 pins 11,69 */
+#define CONFIG_PICOCOM93_UART_1_RTSCTS
+
+/* UART_2 - UART1, extern J1 pins 13,14 */
+#define CONFIG_PICOCOM93_UART_2
+/* J1 pins 15,16 */
+//#define CONFIG_PICOCOM93_UART_2_RTSCTS //alternative to UART_3
+
+/* UART_3 - UART2, extern J1 pins 15,16 */
+#define CONFIG_PICOCOM93_UART_3
+
+/* SD - SD2, extern J1 34-39 */
+#define CONFIG_PICOCOM93_SD
+/* WLAN */
+#define CONFIG_PICOCOM93_WLAN
+/*  BLUETOOTH */
+#define CONFIG_PICOCOM93_BT
+
+/* ADC0..3 extern J1 71,74-76*/
+//#define CONFIG_PICOCOM93_ADC //alternative to TOUCH
+/* extern RTC */
+#define CONFIG_PICOCOM93_EXT_RTC
+/* Audio: SGTL5000 codec, extern 1 pins 77-80 */
+#define CONFIG_PICOCOM93_SGTL5000_AUDIO
+#define CONFIG_PICOCOM93_I2S
+
+/*
+ * Exclude devices from Linux that are used by the Cortex-M33 FreeRTOS examples
+ *
+ * - UART_2: Debug Console for Cortex-M33
+ * - PWM:    PWM Signal for the PWM example
+ * - CAN_1:  CAN-Signal for FlexCAN examples
+ * - I2C_1:  I2C Bus used in I2C examples
+ * - SPI:    SPI is used for ECSPI examples
+ *
+ */
+
+#ifdef SUPPORT_M33
+/* TODO: */
+#else
+#undef SUPPORT_RPMSG
+#endif
+
+#include "picocom93.dtsi"
+
+/ {
+	model = "F&S PicoCOM93";
+};
+
+/* -------------------- BOARD INFO -------------------- */
+&bdinfo {
+	board_name = "picocom93";
+};
