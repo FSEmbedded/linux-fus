@@ -661,16 +661,15 @@ static int acquire_bch_irq(struct gpmi_nand_data *this, irq_handler_t irq_h)
 {
 	struct platform_device *pdev = this->pdev;
 	const char *res_name = GPMI_NAND_BCH_INTERRUPT_RES_NAME;
-	struct resource *r;
-	int err;
+	int irq, err;
 
-	r = platform_get_resource_byname(pdev, IORESOURCE_IRQ, res_name);
-	if (!r) {
-		dev_err(this->dev, "Can't get resource for %s\n", res_name);
-		return -ENODEV;
+	irq = platform_get_irq_byname(pdev, res_name);
+	if (irq < 0) {
+		dev_err(this->dev, "Can't get IRQ for %s\n", res_name);
+		return irq;
 	}
 
-	err = devm_request_irq(this->dev, r->start, irq_h, 0, res_name, this);
+	err = devm_request_irq(this->dev, irq, irq_h, 0, res_name, this);
 	if (err)
 		dev_err(this->dev, "error requesting BCH IRQ\n");
 
