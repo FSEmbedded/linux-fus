@@ -532,6 +532,9 @@ fs_can_b: &flexcan2 {};
 				<&expander 15 GPIO_ACTIVE_LOW>,
 				<&gpio4 23 GPIO_ACTIVE_LOW>;
 #endif
+#if CONFIG_EFUS93_BOARD_REVISION <= 100
+	swap_sout_sin;
+#endif
 	 status = "okay";
 
 	spidev@0 {
