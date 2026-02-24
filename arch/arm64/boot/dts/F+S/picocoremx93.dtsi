@@ -682,6 +682,9 @@ pc_sai: &sai3	{};
 	assigned-clock-rates = <100000000>;
 	cs-gpios = <&gpio1 11 GPIO_ACTIVE_LOW>;
 	status = "okay";
+#if CONFIG_PICOCOREMX93_BOARD_REVISION <= 110
+	swap_sout_sin;
+#endif
 
 	spidev@0 {
 		compatible = "linux,spidev";
