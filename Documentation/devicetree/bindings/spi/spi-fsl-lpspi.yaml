@@ -67,6 +67,12 @@ properties:
   power-domains:
     maxItems: 1
 
+  swap_sout_sin:
+    description:
+      This property is used to swap the SOUT and SIN pins.
+      It can be used when MISO/MOSI is swapped in HW.
+    type: boolean
+
 required:
   - compatible
   - reg

@@ -113,6 +113,7 @@ struct fsl_lpspi_data {
 	bool is_target;
 	bool is_only_cs1;
 	bool is_first_byte;
+	bool swap_sout_sin;
 
 	void *rx_buf;
 	const void *tx_buf;
@@ -476,6 +477,13 @@ static int fsl_lpspi_config(struct fsl_lpspi_data *fsl_lpspi)
 		temp = CFGR1_HOST;
 	else
 		temp = CFGR1_PINCFG;
+
+	if (!fsl_lpspi->is_target && fsl_lpspi->swap_sout_sin)
+		temp |= CFGR1_PINCFG;
+
+	if (fsl_lpspi->is_target && fsl_lpspi->swap_sout_sin)
+		temp &= ~CFGR1_PINCFG;
+
 	if (fsl_lpspi->config.mode & SPI_CS_HIGH)
 		temp |= FIELD_PREP(CFGR1_PCSPOL_MASK,
 				   BIT(fsl_lpspi->config.chip_select));
@@ -1044,6 +1052,7 @@ static int fsl_lpspi_probe(struct platform_device *pdev)
 	fsl_lpspi->is_target = is_target;
 	fsl_lpspi->is_only_cs1 = of_property_read_bool((&pdev->dev)->of_node,
 						"fsl,spi-only-use-cs1-sel");
+	fsl_lpspi->swap_sout_sin = of_property_read_bool((&pdev->dev)->of_node, "swap_sout_sin");
 	fsl_lpspi->devtype_data = devtype_data;
 
 	init_completion(&fsl_lpspi->xfer_done);
