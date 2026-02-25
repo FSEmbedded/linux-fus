@@ -26,6 +26,7 @@
 #include <linux/serial_core.h>
 #include <linux/slab.h>
 #include <linux/tty_flip.h>
+#include "serial_mctrl_gpio.h"
 
 /* All registers are 8-bit width */
 #define UARTBDH			0x00
@@ -292,6 +293,7 @@ struct lpuart_port {
 	bool			is_cs7; /* Set to true when character size is 7 */
 					/* and the parity is enabled		*/
 	bool			dma_idle_int;
+	struct mctrl_gpios 	*gpios;
 };
 
 struct lpuart_soc_data {
@@ -440,22 +442,77 @@ static unsigned int lpuart_get_baud_clk_rate(struct lpuart_port *sport)
 #define lpuart_enable_clks(x)	__lpuart_enable_clks(x, true)
 #define lpuart_disable_clks(x)	__lpuart_enable_clks(x, false)
 
+static void lpuart_rs485_set_gpios(struct uart_port *port)
+{
+	struct lpuart_port *sport = container_of(port, struct lpuart_port, port);
+	unsigned int mctrl;
+
+	if (!sport->gpios)
+		return;
+
+	mctrl = mctrl_gpio_get(sport->gpios, &mctrl);
+
+	if (port->rs485.flags & SER_RS485_RTS_ON_SEND)
+		mctrl |= TIOCM_RTS;
+
+	if (port->rs485.flags & SER_RS485_RTS_AFTER_SEND)
+		mctrl &= ~TIOCM_RTS;
+
+	mctrl_gpio_set(sport->gpios, mctrl);
+}
+
+static void lpuart_rs485_clear_gpios(struct uart_port *port)
+{
+	struct lpuart_port *sport = container_of(port, struct lpuart_port, port);
+	unsigned int mctrl;
+
+	if (!sport->gpios)
+		return;
+
+	mctrl = mctrl_gpio_get(sport->gpios , &mctrl);
+
+	if (port->rs485.flags & SER_RS485_RTS_ON_SEND)
+		mctrl &= ~TIOCM_RTS;
+
+	if (port->rs485.flags & SER_RS485_RTS_AFTER_SEND)
+		mctrl |= TIOCM_RTS;
+
+	mctrl_gpio_set(sport->gpios, mctrl);
+}
+
+static unsigned int lpuart_tx_empty(struct uart_port *port);
+static unsigned int lpuart32_tx_empty(struct uart_port *port);
+
 static void lpuart_stop_tx(struct uart_port *port)
 {
 	unsigned char temp;
+	unsigned int val = 0;
 
 	temp = readb(port->membase + UARTCR2);
 	temp &= ~(UARTCR2_TIE | UARTCR2_TCIE);
 	writeb(temp, port->membase + UARTCR2);
+
+	if(!(port->rs485.flags & SER_RS485_ENABLED))
+		return;
+
+	read_poll_timeout_atomic(lpuart_tx_empty, val, val, 1, 100000, false, port);
+	lpuart_rs485_clear_gpios(port);
 }
 
 static void lpuart32_stop_tx(struct uart_port *port)
 {
 	unsigned long temp;
+	unsigned int val = 0;
 
 	temp = lpuart32_read(port, UARTCTRL);
 	temp &= ~(UARTCTRL_TIE | UARTCTRL_TCIE);
 	lpuart32_write(port, temp, UARTCTRL);
+
+	if(!(port->rs485.flags & SER_RS485_ENABLED))
+		return;
+
+	read_poll_timeout_atomic(lpuart32_tx_empty, val, val, 1, 100000, false, port);
+	lpuart_rs485_clear_gpios(port);
 }
 
 static void lpuart_stop_rx(struct uart_port *port)
@@ -798,6 +855,9 @@ static void lpuart_start_tx(struct uart_port *port)
 			struct lpuart_port, port);
 	unsigned char temp;
 
+	if(port->rs485.flags & SER_RS485_ENABLED)
+		lpuart_rs485_set_gpios(port);
+
 	temp = readb(port->membase + UARTCR2);
 	writeb(temp | UARTCR2_TIE, port->membase + UARTCR2);
 
@@ -814,6 +874,9 @@ static void lpuart32_start_tx(struct uart_port *port)
 {
 	struct lpuart_port *sport = container_of(port, struct lpuart_port, port);
 	unsigned long temp;
+
+	if(port->rs485.flags & SER_RS485_ENABLED)
+		lpuart_rs485_set_gpios(port);
 
 	if (sport->lpuart_dma_tx_use) {
 		if (!lpuart_stopped_or_empty(port))
@@ -1533,6 +1596,7 @@ static int lpuart32_config_rs485(struct uart_port *port, struct ktermios *termio
 
 static unsigned int lpuart_get_mctrl(struct uart_port *port)
 {
+	struct lpuart_port *sport = container_of(port, struct lpuart_port, port);
 	unsigned int mctrl = 0;
 	u8 reg;
 
@@ -1540,11 +1604,15 @@ static unsigned int lpuart_get_mctrl(struct uart_port *port)
 	if (reg & UARTCR1_LOOPS)
 		mctrl |= TIOCM_LOOP;
 
+	if (sport->gpios)
+		return mctrl_gpio_get(sport->gpios, &mctrl);
+
 	return mctrl;
 }
 
 static unsigned int lpuart32_get_mctrl(struct uart_port *port)
 {
+	struct lpuart_port *sport = container_of(port, struct lpuart_port, port);
 	unsigned int mctrl = TIOCM_CAR | TIOCM_DSR | TIOCM_CTS;
 	u32 reg;
 
@@ -1552,11 +1620,15 @@ static unsigned int lpuart32_get_mctrl(struct uart_port *port)
 	if (reg & UARTCTRL_LOOPS)
 		mctrl |= TIOCM_LOOP;
 
+	if (sport->gpios)
+		return mctrl_gpio_get(sport->gpios, &mctrl);
+
 	return mctrl;
 }
 
 static void lpuart_set_mctrl(struct uart_port *port, unsigned int mctrl)
 {
+	struct lpuart_port *sport = container_of(port, struct lpuart_port, port);
 	u8 reg;
 
 	reg = readb(port->membase + UARTCR1);
@@ -1567,10 +1639,14 @@ static void lpuart_set_mctrl(struct uart_port *port, unsigned int mctrl)
 		reg |= UARTCR1_LOOPS;
 
 	writeb(reg, port->membase + UARTCR1);
+
+	if (sport->gpios)
+		mctrl_gpio_set(sport->gpios, mctrl);
 }
 
 static void lpuart32_set_mctrl(struct uart_port *port, unsigned int mctrl)
 {
+	struct lpuart_port *sport = container_of(port, struct lpuart_port, port);
 	u32 reg;
 
 	reg = lpuart32_read(port, UARTCTRL);
@@ -1581,6 +1657,9 @@ static void lpuart32_set_mctrl(struct uart_port *port, unsigned int mctrl)
 		reg |= UARTCTRL_LOOPS;
 
 	lpuart32_write(port, reg, UARTCTRL);
+
+	if (sport->gpios)
+		mctrl_gpio_set(sport->gpios, mctrl);
 }
 
 static void lpuart_break_ctl(struct uart_port *port, int break_state)
@@ -2950,6 +3029,18 @@ static int lpuart_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 	sport->port.uartclk = lpuart_get_baud_clk_rate(sport);
+
+	sport->gpios = mctrl_gpio_init(&sport->port, 0);
+	if(IS_ERR(sport->gpios)) {
+		ret = PTR_ERR(sport->gpios);
+
+		dev_err(&pdev->dev, "failed to get mctrl gpios: %d\n", ret);
+
+		if (ret == -EPROBE_DEFER)
+			return ret;
+
+		sport->gpios = NULL;
+	}
 
 	lpuart_ports[sport->port.line] = sport;
 
