@@ -750,7 +750,7 @@ pcom_adc: &adc1{};
 	status = "okay";
 };
 
-&pcom_eth_1 {
+&pcom_usb_host {
 	dr_mode = "host";
 	vbus-supply = <&reg_usb2_vbus>;
 	disable-over-current;
