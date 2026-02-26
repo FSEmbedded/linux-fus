@@ -15,7 +15,7 @@
 /dts-v1/;
 
 /* Cortex-M is always supported */
-#define CONFIG_PICOCOREMX8ULP_REV 110
+#define CONFIG_PICOCOREMX8ULP_REV 130
 
 #if CONFIG_PICOCOREMX8ULP_REV >= 120
 /* Network */
@@ -30,8 +30,8 @@
 #define CONFIG_PICOCOREMX8ULP_AUDIO
 
 /* I2C_INT */
-#define CONFIG_PICOCOREMX8ULP_I2C_INT_RTD
-// #define CONFIG_PICOCOREMX8ULP_I2C_INT_APD
+// #define CONFIG_PICOCOREMX8ULP_I2C_INT_RTD
+#define CONFIG_PICOCOREMX8ULP_I2C_INT_APD
 
 /* GPIO */
 #define CONFIG_PICOCOREMX8ULP_GPIO_EXP
@@ -95,10 +95,17 @@
 };
 
 #if CONFIG_PICOCOREMX8ULP_REV >= 120
+#if defined(CONFIG_PICOCOREMX8ULP_BLUETOOTH)
 &fs_uart_b {
 	status = "okay";
 };
 #else
+&fs_uart_d {
+	status = "okay";
+};
+#endif
+#else
+
 &fs_uart_d {
 	status = "okay";
 };

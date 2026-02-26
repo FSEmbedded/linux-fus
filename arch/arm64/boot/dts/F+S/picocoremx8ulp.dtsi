@@ -67,6 +67,7 @@ fs_can_a: &flexcan {};
 		serial0 = &fs_uart_a;
 		serial1 = &fs_uart_b;
 		serial2 = &fs_uart_c;
+		serial3 = &fs_uart_d;
 		i2c0 = &fs_i2c_int;
 		i2c1 = &fs_i2c_a;
 		i2c2 = &fs_i2c_b;
@@ -445,8 +446,13 @@ fs_can_a: &flexcan {};
 			// since only one phy is in use.
 			reg = <0>;
 			interrupt-parent = <&pca6416a>;
+#if CONFIG_PICOCOREMX8ULP_REV == 120
 			interrupts = <14 IRQ_TYPE_EDGE_FALLING>;
 			reset-gpios = <&pca6416a 13 GPIO_ACTIVE_LOW>;
+#else
+			interrupts = <13 IRQ_TYPE_EDGE_FALLING>;
+			reset-gpios = <&pca6416a 14 GPIO_ACTIVE_LOW>;
+#endif
 			status = "disabled";
 		};
 	};
@@ -534,13 +540,13 @@ fs_can_a: &flexcan {};
 		interrupts = <3 IRQ_TYPE_LEVEL_LOW>;
 #endif
 		gpio-line-names = 
-			/* 0-2 */ "BT_IRQ", "BT_HOST_WAKE",
-			/* 3-4 */ "BT_LED", "WLAN_LED", "WLAN_HOST_WAKE",
+			/* 0-2 */ "BT_IRQ", "BT_HOST_WAKE", "BT_LED",
+			/* 3-4 */ "WLAN_LED", "WLAN_HOST_WAKE",
 			/* 5-6 */ "GPIO-EXP_GPIO1", "GPIO-EXP_GPIO2",
 			/* 7-8 */ "WLAN_WAKE_HOST", "BL_EN",
-			/* 9-10 */ "VLCD_EN", "VLCD_EN",
-			/* 11-12 */ "", "USB_OTG_PWR",
-			/* 13-14 */ "ETH_RST", "ETH_IRQ",
+			/* 9-10 */ "VLCD_EN", "",
+			/* 11-12 */ "USB_HOST_PWR", "USB_OTG_PWR",
+			/* 13-14 */ "ETH_IRQ", "ETH_RST",
 			/* 15 */ "LVDS_CONV_STBY";
 		status = "okay";
 	};
@@ -552,6 +558,7 @@ fs_can_a: &flexcan {};
 		vddio-supply = <&reg_pta_e>;
 		reset-gpios = <&rp_gpioc 3 GPIO_ACTIVE_LOW>;
 		stby-gpios  = <&pca6416a 15 GPIO_ACTIVE_LOW>;
+		framesync-mode;
 #if defined(CONFIG_PICOCOREMX8ULP_LVDS)
 		status = "okay";
 #else

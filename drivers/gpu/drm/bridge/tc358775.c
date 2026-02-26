@@ -273,6 +273,7 @@ struct tc_data {
 	struct gpio_desc	*stby_gpio;
 	u8			lvds_link; /* single-link or dual-link */
 	u8			bpc;
+	bool			framesync;
 };
 
 static inline struct tc_data *bridge_to_tc(struct drm_bridge *b)
@@ -446,6 +447,8 @@ static void tc_bridge_enable(struct drm_bridge *bridge)
 	vsdelay = (clkdiv * (t1 + t3) / byteclk) - hback_porch - hsync_len - hactive;
 
 	val |= TC358775_VPCTRL_VSDELAY(vsdelay);
+	if (tc->framesync)
+		val |= TC358775_VPCTRL_FRAMESYNC_BIT;
 	d2l_write(tc->i2c, VPCTRL, val);
 
 	d2l_write(tc->i2c, HTIM1, htime1);
@@ -454,10 +457,9 @@ static void tc_bridge_enable(struct drm_bridge *bridge)
 	d2l_write(tc->i2c, VTIM2, vtime2);
 
 	d2l_write(tc->i2c, VFUEN, VFUEN_EN);
-	d2l_write(tc->i2c, LVPHY0, LV_PHY0_RST(1));
-	usleep_range(100,200);
-	d2l_write(tc->i2c, LVPHY0, LV_PHY0_PRBS_ON(4) | LV_PHY0_ND(6));
 	d2l_write(tc->i2c, SYSRST, SYS_RST_LCD);
+	usleep_range(30000,50000);
+	d2l_write(tc->i2c, LVPHY0, LV_PHY0_PRBS_ON(4) | LV_PHY0_ND(6));
 
 	dev_dbg(tc->dev, "bus_formats %04x bpc %d\n",
 		connector->display_info.bus_formats[0],
@@ -578,6 +580,9 @@ static int tc358775_parse_dt(struct device_node *np, struct tc_data *tc)
 			of_node_put(remote);
 		}
 	}
+
+	tc->framesync = of_property_read_bool(tc->dev->of_node,
+						"framesync-mode");
 
 	dev_dbg(tc->dev, "no.of dsi lanes: %d\n", tc->num_dsi_lanes);
 	dev_dbg(tc->dev, "operating in %d-link mode\n",	tc->lvds_link);

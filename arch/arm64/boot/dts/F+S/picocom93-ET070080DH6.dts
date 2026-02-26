@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (C) 2024 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* DISPLAY and TOUCH */
+/* DISPLAY - RGB656, extern pins J1, pins 43-60, 63-64, 66, 68 */
+#define CONFIG_IMX93_DISPLAY
+/* TOUCH - TSC2004 extern J1 pins 71,74-76*/
+#define CONFIG_PICOCOM93_TOUCH
+/* BL_CTRL - TPM2, extern J1 pins 65,67 */
+#define CONFIG_PICOCOM93_BL_CTRL
+
+#include "picocom93.dts"

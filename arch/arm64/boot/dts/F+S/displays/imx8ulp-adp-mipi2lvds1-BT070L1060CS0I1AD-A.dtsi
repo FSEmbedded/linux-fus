@@ -26,7 +26,7 @@
 		status = "okay";
 
 		panel-timing {
-			clock-frequency = <52800000>;
+			clock-frequency = <66000000>;
 			hactive = <1024>;
 			vactive = <600>;
 			hback-porch = <160>;
@@ -243,6 +243,7 @@
 		vddio-supply = <&reg_vref_3v3>;
 		reset-gpios = <&gpio_bridge 3 GPIO_ACTIVE_LOW>;
 		stby-gpios  = <&gpio_bridge 4 GPIO_ACTIVE_LOW>;
+		framesync-mode;
 
 		ports {
 			#address-cells = <1>;

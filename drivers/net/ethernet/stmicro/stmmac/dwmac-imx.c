@@ -40,6 +40,8 @@
 #define MX93_GPR_ENET_QOS_INTF_SEL_RMII		(0x4 << 1)
 #define MX93_GPR_ENET_QOS_INTF_SEL_RGMII	(0x1 << 1)
 #define MX93_GPR_ENET_QOS_CLK_GEN_EN		(0x1 << 0)
+#define MX93_ENET_CLK_ENET_QOS_TX_CLK_SEL_MASK GENMASK(0, 0)
+#define MX93_ENET_CLK_ENET_QOS_TX_CLK_SEL (0x1 << 0)
 #define MX93_GPR_ENET_QOS_CLK_SEL_MASK		BIT_MASK(0)
 #define MX93_GPR_CLK_SEL_OFFSET			(4)
 
@@ -68,6 +70,8 @@ struct imx_priv_data {
 	bool rmii_refclk_ext;
 	void __iomem *base_addr;
 
+	struct regmap *enet_clk_sel_regmap;
+	u32 enet_clk_sel_off;
 	const struct imx_dwmac_ops *ops;
 	struct plat_stmmacenet_data *plat_dat;
 };
@@ -98,7 +102,7 @@ static int imx8mp_set_intf_mode(struct plat_stmmacenet_data *plat_dat)
 		return -EINVAL;
 	}
 
-	val |= GPR_ENET_QOS_CLK_GEN_EN;
+	val |= MX93_GPR_ENET_QOS_CLK_GEN_EN;
 	return regmap_update_bits(dwmac->intf_regmap, dwmac->intf_reg_off,
 				  GPR_ENET_QOS_INTF_MODE_MASK, val);
 };
@@ -148,7 +152,21 @@ static int imx93_set_intf_mode(struct plat_stmmacenet_data *plat_dat)
 	struct imx_priv_data *dwmac = plat_dat->bsp_priv;
 	int val, ret;
 
-	switch (plat_dat->mac_interface) {
+	struct device_node *np = dwmac->dev->of_node;
+	if (plat_dat->mac_interface == PHY_INTERFACE_MODE_RMII) {
+		dwmac->enet_clk_sel_regmap = syscon_regmap_lookup_by_phandle(np, "enet_clk_sel");
+		if (IS_ERR(dwmac->enet_clk_sel_regmap))
+			return PTR_ERR(dwmac->enet_clk_sel_regmap);
+		ret = of_property_read_u32_index(np, "enet_clk_sel", 1, &dwmac->enet_clk_sel_off);
+		if (ret) {
+			dev_err(dwmac->dev, "Can't get enet_clk_sel register offset (%d)\n", ret);
+			return ret;
+		}
+		val = MX93_ENET_CLK_ENET_QOS_TX_CLK_SEL;
+		regmap_update_bits(dwmac->enet_clk_sel_regmap, dwmac->enet_clk_sel_off, MX93_ENET_CLK_ENET_QOS_TX_CLK_SEL_MASK, val);
+	}
+
+	switch (plat_dat->phy_interface) {
 	case PHY_INTERFACE_MODE_MII:
 		val = MX93_GPR_ENET_QOS_INTF_SEL_MII;
 		break;
