@@ -202,7 +202,9 @@ fs_can_a: &flexcan {};
 			regulator-name = "usb-otg";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
+#if defined(CONFIG_PICOCOREMX8ULP_GPIO_EXP)
 			gpio = <&pca6416a 12 GPIO_ACTIVE_HIGH>;
+#endif
 			enable-active-high;
 		};
 
@@ -211,7 +213,9 @@ fs_can_a: &flexcan {};
 			regulator-name = "usb-host";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
+#if defined(CONFIG_PICOCOREMX8ULP_GPIO_EXP)
 			gpio = <&pca6416a 11 GPIO_ACTIVE_HIGH>;
+#endif
 			enable-active-high;
 		};
 
@@ -220,7 +224,9 @@ fs_can_a: &flexcan {};
 			regulator-name = "VLCD_ON";
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
+#if defined(CONFIG_PICOCOREMX8ULP_GPIO_EXP)
 			gpio = <&pca6416a 9 GPIO_ACTIVE_HIGH>;
+#endif
 			enable-active-high;
 		};
 
@@ -229,7 +235,9 @@ fs_can_a: &flexcan {};
 			regulator-name = "BL_EN";
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
+#if defined(CONFIG_PICOCOREMX8ULP_GPIO_EXP)
 			gpio = <&pca6416a 8 GPIO_ACTIVE_HIGH>;
+#endif
 			enable-active-high;
 		};
 
@@ -548,7 +556,11 @@ fs_can_a: &flexcan {};
 			/* 11-12 */ "USB_HOST_PWR", "USB_OTG_PWR",
 			/* 13-14 */ "ETH_IRQ", "ETH_RST",
 			/* 15 */ "LVDS_CONV_STBY";
+#if defined(CONFIG_PICOCOREMX8ULP_GPIO_EXP)
 		status = "okay";
+#else
+		status = "disabled";
+#endif
 	};
 
 	tc358775@f {
