@@ -83,6 +83,9 @@ dtb-$(CONFIG_ARCH_MXC) += \
 			  fs-osm-sf-mx8ulp-adp-osm-bb-ee0350et-2cp.dtb \
 			  fs-osm-sf-mx8ulp-adp-osm-bb-BT070L1060CS0I1AD-A.dtb
 dtb-$(CONFIG_ARCH_MXC) += \
+			  armstonemx8ulp.dtb \
+			  armstonemx8ulp-adp-lvds2lvds1-BT070L1060CS0I1AD-A.dtb
+dtb-$(CONFIG_ARCH_MXC) += \
 			  picocoremx93.dtb \
 			  picocoremx93-BT070L1060CS0I1AD-A.dtb \
 			  picocoremx93-adp-lvds2lvds2-EE1010B1T-1CP.dtb \

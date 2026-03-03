@@ -1,0 +1,61 @@
+/*
+* Copyright (C) 2026 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+
+#include "armstonemx8ulp.dts"
+
+#define CONFIG_ARMSTONEMX8ULP_LVDS
+
+#if defined(CONFIG_ARMSTONEMX8ULP_MIPI_DSI) && defined(CONFIG_ARMSTONEMX8ULP_LVDS)
+#error "Set only on config at a time"
+#endif
+
+adp_i2c: &fs_i2c_b {};
+reg_vlcd: &reg_disp_vlcd_en {};
+
+
+#include "displays/imx8ulp-adp-lvds2lvds1-BT070L1060CS0I1AD-A.dtsi"
+
+&touch {
+	interrupt-parent = <&gpiof>;
+	interrupts = <14 IRQ_TYPE_EDGE_FALLING>;
+};
+
+&dsi {
+	status = "okay";
+};
+
+&dphy {
+	status = "okay";
+};
+
+&dcnano {
+	status = "okay";
+};
+
+&lvds_bridge {
+	status = "okay";
+};
+
+/* NOTE: fixup I3C-Address */
+&gpio_adp {
+	reg = <0x61 0x00 (I2C_FM | I2C_FILTER)>;
+	assigned-address = <0x61>;
+};
+
+&touch {
+	reg = <0x41 0x00 (I2C_FM | I2C_FILTER)>;
+	assigned-address = <0x41>;
+};
+
+// NODE: it seems, SCL needs to be PUSH/PULL, to work with ilitek and i3C?
+&pinctrl_lpi3c2 {
+	fsl,pins = <
+		MX8ULP_PAD_PTF24__I3C2_SCL	0x3
+		MX8ULP_PAD_PTF25__I3C2_SDA	0x20
+	>;
+};
