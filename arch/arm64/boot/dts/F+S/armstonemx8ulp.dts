@@ -23,7 +23,7 @@
 
 #define CONFIG_ARMSTONEMX8ULP_LVDS
 // #define CONFIG_ARMSTONEMX8ULP_MIPI_DSI
-// #define CONFIG_ARMSTONEMX8ULP_WLAN
+#define CONFIG_ARMSTONEMX8ULP_WLAN
 
 fs_uart_a: &lpuart7 {};
 fs_uart_b: &tty0_rpchip {};
