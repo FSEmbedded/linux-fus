@@ -1220,6 +1220,12 @@ config SPI_TLE62X0
 	  sysfs interface, with each line presented as a kind of GPIO
 	  exposing both switch control and diagnostic feedback.
 
+config SPI_RPMSG
+	tristate "SPI over RPMSG support"
+	depends on SPI_MASTER && RPMSG
+	help
+	  This driver provides a virtual SPI master over RPMsg transport.
+
 #
 # Add new SPI protocol masters in alphabetical order above this line
 #
