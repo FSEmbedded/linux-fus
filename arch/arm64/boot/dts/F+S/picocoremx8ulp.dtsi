@@ -51,6 +51,7 @@ fs_sdio_a: &usdhc1 {};
 fs_bl_pwm: &tpm7 {};
 fs_pwm: &tpm2_rpchip{};
 fs_can_a: &flexcan {};
+fs_spi_b: &spidev0_rpchip {};
 
 / {
 	model = "F&S PicoCoreMX8ULP";
@@ -81,6 +82,7 @@ fs_can_a: &flexcan {};
 		gpio3 = &gpiod;
 		gpio4 = &gpioe;
 		gpio5 = &gpiof;
+		spi1 = &fs_spi_b;
 		usbphy0 = &usbphy1;
 		usbphy1 = &usbphy2;
 		usb0 = &fs_usb_1;

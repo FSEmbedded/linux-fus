@@ -94,6 +94,13 @@
 			status = "disabled";
 		};
 
+		spidev0_rpchip: spidev-rpbus-0 {
+			compatible = "spi_rpbus";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+
 		tty0_rpchip: tty-rpbus-0 {
 			compatible = "fus,tty-rpchip";
 			status = "disabled";
