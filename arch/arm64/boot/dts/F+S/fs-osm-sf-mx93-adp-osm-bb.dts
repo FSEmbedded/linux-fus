@@ -309,7 +309,6 @@
 	assigned-clocks = <&clk IMX93_CLK_LPSPI3>;
 	assigned-clock-parents = <&clk IMX93_CLK_SYS_PLL_PFD0_DIV2>;
 	assigned-clock-rates = <100000000>;
-	cs-gpios = <&gpio2 24 GPIO_ACTIVE_LOW>;
 	status = "okay";
 
 	spidev@0 {

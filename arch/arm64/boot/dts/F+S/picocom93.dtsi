@@ -294,14 +294,14 @@ pcom_adc: &adc1{};
 	};
 
 #ifdef CONFIG_PICOCOM93_BL_CTRL
-	backlight_ldb: backlight_ldb {
+	backlight_lcd: backlight_lcd {
 		compatible = "pwm-backlight";
 		#pwm-cells = <3>;
 		pwms = <&tpm2 2 640000 1>;
 		power-supply = <&reg_bl_on>;
 		brightness-levels = <0 1 5 10 18 28 41 56
 			                 73 92 113 137 163 192 222 255>;
-		default-brightness-level = <1>;
+		default-brightness-level = <14>;
 		fb-names = "lcd";
 		status = "okay";
 	};
@@ -326,7 +326,7 @@ pcom_adc: &adc1{};
 #ifdef CONFIG_IMX93_DISPLAY
 	panel: panel@0 {
 		compatible = "edt,et070080dh6";
-		backlight = <&backlight_ldb>;
+		backlight = <&backlight_lcd>;
 		power-supply = <&reg_vlcd>;
 		enable-gpios = <&gpio4 2 GPIO_ACTIVE_LOW>;
 		port {
@@ -626,6 +626,7 @@ pcom_adc: &adc1{};
 		touchscreen-size-x = <4096>;
 		touchscreen-size-y = <4096>;
 		touchscreen-max-pressure = <2048>;
+		touchscreen-inverted-y;
 		ti,x-plate-ohms = <280>;
 		ti,pre-charge-time = <4>;
 		ti,sense-time-sel = <3>;
@@ -750,7 +751,7 @@ pcom_adc: &adc1{};
 	status = "okay";
 };
 
-&pcom_eth_1 {
+&pcom_usb_host {
 	dr_mode = "host";
 	vbus-supply = <&reg_usb2_vbus>;
 	disable-over-current;
