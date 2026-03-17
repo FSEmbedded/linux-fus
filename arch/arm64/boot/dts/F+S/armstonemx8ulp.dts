@@ -44,6 +44,7 @@ fs_eth: &fec {};
 emmc: &usdhc0 {};
 sdio: &usdhc1 {};
 fs_spi_a: &lpspi5 {};
+fs_spi_b: &spidev0_rpchip {};
 
 / {
 	model = "F+S ArmStoneMX8ULP";
@@ -86,6 +87,7 @@ fs_spi_a: &lpspi5 {};
 		isi0 = &isi_0;
 		csi0 = &mipi_csi0;
 		spi0 = &fs_spi_a;
+		spi1 = &fs_spi_b;
 	};
 
 	/* -------------------- BOARD INFO -------------------- */
@@ -744,6 +746,18 @@ fs_spi_a: &lpspi5 {};
 	spidev@0 {
 		compatible = "linux,spidev";
 		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
+	};
+};
+
+&fs_spi_b {
+	status = "okay";
+
+	spidev@0 {
+		/* use default driver */
+		compatible = "linux,spidev";
+		spi-max-frequency = <1000000>;
 		reg = <0>;
 		status = "okay";
 	};

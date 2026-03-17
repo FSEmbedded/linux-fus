@@ -167,7 +167,7 @@
 
 	spidev0: spidev@0 {
 		/* use default driver */
-		compatible = "lwn,bk4";
+		compatible = "linux,spidev";
 		spi-max-frequency = <1000000>;
 		reg = <0>;
 		status = "okay";
@@ -179,7 +179,7 @@
 
 	spidev0: spidev@0 {
 		/* use default driver */
-		compatible = "lwn,bk4";
+		compatible = "linux,spidev";
 		spi-max-frequency = <1000000>;
 		reg = <0>;
 		status = "okay";

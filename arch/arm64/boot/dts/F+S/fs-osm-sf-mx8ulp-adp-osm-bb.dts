@@ -222,6 +222,18 @@
  	};
 };
 
+&osm_spi_b {
+	status = "okay";
+
+	spidev@0 {
+		/* use default driver */
+		compatible = "linux,spidev";
+		spi-max-frequency = <1000000>;
+		reg = <0>;
+		status = "okay";
+	};
+};
+
 &pinctrl_enet {
 	fsl,pins = <
 			MX8ULP_PAD_PTE3__ENET0_TXCLK	0x43
