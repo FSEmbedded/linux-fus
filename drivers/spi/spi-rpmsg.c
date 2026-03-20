@@ -93,6 +93,8 @@ static int spi_rpmsg_transfer_one_message(struct spi_controller *ctlr,
     bool cs_change = false;
     int ret = 0;
 
+    gpiod_set_value_cansleep(spi_get_csgpiod(msg->spi, 0), true);
+
     list_for_each_entry(xfer, &msg->transfers, transfer_list) {
         xfer_count++;
         total_len += xfer->len;
@@ -169,6 +171,7 @@ static int spi_rpmsg_transfer_one_message(struct spi_controller *ctlr,
     msg->actual_length = total_len;
     msg->status = 0;
 
+    gpiod_set_value_cansleep(spi_get_csgpiod(msg->spi, 0), false);
     spi_finalize_current_message(ctlr);
 
     return 0;
@@ -227,6 +230,7 @@ static int spi_rpbus_probe(struct platform_device *pdev)
     master->bits_per_word_mask = SPI_BPW_MASK(8);
     master->transfer_one_message = spi_rpmsg_transfer_one_message;
     master->dev.of_node = np;
+    master->use_gpio_descriptors = true;
 
     ret = spi_register_master(master);
     if (ret < 0) {

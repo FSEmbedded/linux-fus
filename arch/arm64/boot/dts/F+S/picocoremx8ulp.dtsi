@@ -715,6 +715,11 @@ fs_spi_b: &spidev0_rpchip {};
 	status = "okay";
 };
 
+&fs_spi_b {
+	num-cs = <1>;
+	cs-gpios = <&rp_gpioa 19 GPIO_ACTIVE_LOW>;
+};
+
 /* USDHC decleration */
 &emmc {
 	pinctrl-names = "default", "state_100mhz", "state_200mhz", "sleep";
