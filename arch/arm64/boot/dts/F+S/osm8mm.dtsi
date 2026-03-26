@@ -698,25 +698,9 @@ osm_pcie_a: &pcie0 {};
 &osm_sdio_a {
 	assigned-clocks = <&clk IMX8MM_CLK_USDHC2>;
 	assigned-clock-rates = <200000000>;
-	pinctrl-names = "default", "state_100mhz", "state_200mhz";
-	pinctrl-0 = <&pinctrl_osm_sdio_a>, <&pinctrl_osm_sdio_a_gpio>;
-	pinctrl-1 = <&pinctrl_osm_sdio_a_100mhz>, <&pinctrl_osm_sdio_a_gpio>;
-	pinctrl-2 = <&pinctrl_osm_sdio_a_200mhz>, <&pinctrl_osm_sdio_a_gpio>;
-#ifndef CONFIG_OSM8MM_SDIO_A_CD
-	non-removable;
-#endif
-#ifndef CONFIG_OSM8MM_SDIO_A_WP
-	disable-wp;
-#endif
 	bus-width = <4>;
-	vmmc-supply = <&reg_vref_3v3>;
-	vqmmc-supply = <&reg_sdio_a_vsel>;
 	voltage-ranges = <1800 3300>;
-	keep-power-in-suspend;
-	status = "okay";
-
-	#address-cells = <1>;
-	#size-cells = <0>;
+	vqmmc-supply = <&reg_sdio_a_vsel>;
 };
 #endif
 
@@ -1325,7 +1309,7 @@ osm_pcie_a: &pcie0 {};
 			fsl,pins = <
 #ifdef CONFIG_OSM8MM_SDIO_A_CD
 				/* CD */
-				MX8MM_IOMUXC_SD2_CD_B_USDHC2_CD_B	0x00084
+				MX8MM_IOMUXC_SD2_CD_B_GPIO2_IO12	0x00084
 #endif
 #ifdef CONFIG_OSM8MM_SDIO_A_WP
 				/* WP */
@@ -1333,7 +1317,7 @@ osm_pcie_a: &pcie0 {};
 #endif
 #ifdef CONFIG_OSM8MM_SDIO_A
 				/* SDIO_A_RST */
-				MX8MM_IOMUXC_SD2_RESET_B_USDHC2_RESET_B	0x00041
+				//MX8MM_IOMUXC_SD2_RESET_B_USDHC2_RESET_B	0x00041
 #endif
 			>;
 		};

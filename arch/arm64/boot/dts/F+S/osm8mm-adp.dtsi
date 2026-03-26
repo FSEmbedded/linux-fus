@@ -131,6 +131,19 @@
 	model = "F&S OSM8MM";
 
 	regulators {
+
+		reg_sdioa_vmmc: regulator-sdioa {
+			compatible = "regulator-fixed";
+			pinctrl-names = "default";
+			pinctrl-0 = <&pinctrl_reg_sdioa_vmmc>;
+			regulator-name = "VSD_3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			gpio = <&gpio2 19 GPIO_ACTIVE_HIGH>;
+			off-on-delay-us = <20000>;
+			enable-active-high;
+		};
+
 		/* SGTL5000 analog voltage */
 		reg_sgtl5000_vdda: sgtl5000_vdda {
 			compatible = "regulator-fixed";
@@ -397,6 +410,32 @@
 	};
 };
 
+#ifdef CONFIG_OSM8MM_SDIO_A
+&osm_sdio_a {
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-0 = <&pinctrl_osm_sdio_a>, <&pinctrl_osm_sdio_a_gpio>;
+	pinctrl-1 = <&pinctrl_osm_sdio_a_100mhz>, <&pinctrl_osm_sdio_a_gpio>;
+	pinctrl-2 = <&pinctrl_osm_sdio_a_200mhz>, <&pinctrl_osm_sdio_a_gpio>;
+
+#ifdef CONFIG_OSM8MM_SDIO_A_CD
+	cd-gpios = <&gpio2 12 GPIO_ACTIVE_LOW>;
+#else
+	non-removable;
+#endif
+
+#ifndef CONFIG_OSM8MM_SDIO_A_WP
+	disable-wp;
+#endif
+	vmmc-supply = <&reg_sdioa_vmmc>;
+
+	keep-power-in-suspend;
+	status = "okay";
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+};
+#endif
+
 &osm_usb_a {
 	dr_mode = "otg";
 #ifdef CONFIG_OSM8MM_USB_A_USBC
@@ -475,6 +514,12 @@
 				MX8MM_IOMUXC_SAI5_MCLK_SAI5_MCLK	0x000d6
 			>;
 		};
+
+		pinctrl_reg_sdioa_vmmc: regsdioavmmcgrp {
+		fsl,pins = <
+			MX8MM_IOMUXC_SD2_RESET_B_GPIO2_IO19 0x00041
+		>;
+	};
 
 #ifdef IMX8MM_TOUCH_INTERRUPT_PINCTRL
 		pinctrl_touch_int: touchintgrp {

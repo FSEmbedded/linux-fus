@@ -124,6 +124,18 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 
+		reg_usdhc1_vmmc: regulator-usdhc1 {
+			compatible = "regulator-fixed";
+			pinctrl-names = "default";
+			pinctrl-0 = <&pinctrl_reg_usdhc1_vmmc>;
+			regulator-name = "VSD_3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			gpio = <&gpio2 10 GPIO_ACTIVE_HIGH>;
+			off-on-delay-us = <20000>;
+			enable-active-high;
+		};
+
 		/* necessary for lcdif-tc35874-j070wvtc0211 */
 		reg_vref_1v2: regulator_1v2 {
 			compatible = "regulator-fixed";
@@ -800,8 +812,7 @@
 #ifdef CONFIG_PICOCOREMX8MM_SD_A_WP
 	wp-gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>;
 #endif
-	vmmc-supply = <&reg_vref_3v3>;
-	vqmmc-supply = <&reg_vref_3v3>;
+	vmmc-supply = <&reg_usdhc1_vmmc>;
 	pm-ignore-notify;
 	keep-power-in-suspend;
 	status = "okay";
@@ -1493,6 +1504,13 @@
 #endif
 
 #ifdef CONFIG_PICOCOREMX8MM_SD_A
+
+		pinctrl_reg_usdhc1_vmmc: regusdhc1vmmcgrp {
+			fsl,pins = <
+				MX8MM_IOMUXC_SD1_RESET_B_GPIO2_IO10	0x00141
+			>;
+		};
+
 		pinctrl_usdhc1_gpio: usdhc1grpgpio {
 			fsl,pins = <
 				/* VSEL, 3,3V = PD, 1.8 = PU */
@@ -1500,7 +1518,7 @@
 //				MX8MM_IOMUXC_GPIO1_IO03_GPIO1_IO3	0x00041
 				MX8MM_IOMUXC_GPIO1_IO03_USDHC1_VSELECT	0x001d0
 				/* RESET, high active */
-				MX8MM_IOMUXC_SD1_RESET_B_USDHC1_RESET_B	0x00041
+				//MX8MM_IOMUXC_SD1_RESET_B_USDHC1_RESET_B	0x00041
 				//MX8MM_IOMUXC_SD1_RESET_B_GPIO2_IO10	0x00041
 				/* SD_A_STROBE */
 				MX8MM_IOMUXC_SD1_STROBE_GPIO2_IO11	0x00104
