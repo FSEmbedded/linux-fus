@@ -438,6 +438,7 @@
 
 &osm_usb_a {
 	dr_mode = "otg";
+	disable-over-current;
 #ifdef CONFIG_OSM8MM_USB_A_USBC
 	hnp-disable;
 	srp-disable;
@@ -454,7 +455,9 @@
 
 &osm_usb_b {
 	dr_mode = "host";
+	disable-over-current;
 };
+
 #ifdef CONFIG_OSM8MM_SERIAL_CAMERA
 &osm_csi {
 	/delete-property/ csi,mipi_rst;
