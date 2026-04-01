@@ -12,7 +12,7 @@
 #define CONFIG_ADP_OSM_BB
 
 /* Activate this if you want to use the Cortex-M4 core */
-#define SUPPORT_M4
+//#define SUPPORT_M4
 
 #ifdef CONFIG_ADP_OSM_BB
 #include "osm8mm-adp.dtsi"
