@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
+# add __symbols__ for label references
+DTC_FLAGS += -@
+
 dtb-$(CONFIG_SOC_IMX6Q) += \
 	netdcua9dl.dtb \
 	picomoda9dl.dtb \
