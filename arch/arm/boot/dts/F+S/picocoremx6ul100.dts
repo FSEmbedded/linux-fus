@@ -451,6 +451,77 @@ wvga {					\
 
 };
 
+
+/* GPIO declarations */
+&gpio1 {
+	gpio-line-names =
+	/* 0-4 */   "USB_OTG_ID", "I2C_B_IRQ", "UART_A_TXD", "UART_A_RXD",
+	 			"UART_B_TXD",
+	/* 5-9 */   "UART_B_RXD", "ETH_A_D1N", "ETH_A_D1P", "UART_B_CTS",
+	 			"UART_B_RTS",
+	/* 10-14 */ "JTAG_MOD", "JTAG_TMS", "JTAG_TDO", "JTAG_TDI", "JTAG_TCK",
+	/* 15-19 */ "JTAG_nTRST", "I2C_B_SCL", "I2C_B_SDA", "UART_A_RTS",
+	 			"UART_A_CTS",
+	/* 20-24 */ "I2C_C_SCL", "I2C_C_SDA", "GPIO_J1_44", "GPIO_J1_46",
+	 			"UART_C_TXD",
+	/* 25-29 */ "UART_C_RXD", "CAN_A_TX", "CAN_A_RX", "I2C_A_SCL", "I2C_A_SDA",
+	/* 30-31 */ "I2C_D_SCL", "I2C_D_SDA";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/* 0-4 */   "ETH_B_D2P", "ETH_B_D2N", "ETH_B_D1P", "ETH_A_D3P", "ETH_A_D3N",
+	/* 5-9 */   "ETH_A_D2P", "ETH_A_D4P", "ETH_B_D1N", "GPIO_J2_75",
+	 			"GPIO_J2_73",
+	/* 10-14 */ "GPIO_J2_77", "GPIO_J2_79", "SPI_C_SCLK", "SPI_C_MOSI",
+	 			"SPI_C_MISO",
+	/* 15-19 */ "SPI_C_SS0", "SD_A_CMD", "SD_A_CLK", "SD_A_DATA0", "SD_A_DATA1",
+	/* 20-24 */ "SD_A_DATA2", "SD_A_DATA3", "", "", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/* 0-4 */   "DSI_A_DATA0_N", "DSI_A_DATA0_P", "GPIO_J1_52", "GPIO_J1_54",
+	 			"DISP_RST",
+	/* 5-9 */   "DSI_A_DATA1_N", "DSI_A_DATA1_P", "DSI_A_DATA2_N",
+	 			"DSI_A_DATA2_P", "DSI_A_CLK_N",
+	/* 10-14 */ "DSI_A_CLK_P", "DSI_A_DATA3_N", "DSI_A_DATA3_P", "DSI_B_DATA0_N",
+	 			"DSI_B_DATA0_P",
+	/* 15-19 */ "DSI_B_DATA1_N", "DSI_B_DATA1_P", "DSI_B_DATA2_N",
+	 			"DSI_B_DATA2_P", "DSI_B_CLK_N",
+	/* 20-24 */ "DSI_B_CLK_P", "DSI_B_DATA3_N", "DSI_B_DATA3_P", "GPIO_J2_94",
+	 			"GPIO_J2_96",
+	/* 25-29 */ "GPIO_J2_67", "GPIO_J2_65", "GPIO_J1_7", "GPIO_J1_2", "",
+	/* 30-31 */ "", "";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/* 0-4 */   "NAND_RE_B", "NAND_WE_B", "NAND_DATA0", "NAND_DATA1",
+	 			"NAND_DATA2",
+	/* 5-9 */   "NAND_DATA3", "NAND_DATA4", "NAND_DATA5", "NAND_DATA6",
+	 			"NAND_DATA7",
+	/* 10-14 */ "NAND_ALE", "NAND_WP_B", "NAND_RB0", "NAND_CE0_B", "",
+	/* 15-19 */ "NAND_CLE", "", "UART_D_TXD", "UART_D_RXD", "BL_PWM",
+	/* 20-24 */ "PWM", "SPI_A_SCLK", "SPI_A_SS0", "SPI_A_MOSI", "SPI_A_MISO",
+	/* 25-29 */ "SPI_B_SCLK", "SPI_B_SS0", "SPI_B_MOSI", "SPI_B_MISO", "",
+	/* 30-31 */ "", "";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/* 0-4 */   "ETH_B_D4N", "GPIO_J2_69", "ETH_B_D4P", "DISP_IRQ", "BL_ON",
+	/* 5-9 */   "VLCD_ON", "SE050_ENA", "DVS", "USB_HOST_PWR", "USB_OTG_PWR",
+	/* 10-14 */ "VDD_SNVS", "WLAN_RST", "", "", "",
+	/* 15-19 */ "", "", "", "", "",
+	/* 20-24 */ "", "", "", "", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+};
+
+
 /* RAM size for Continues Memory Allocator */
 &cma {
 	size = <CONFIG_PICOCOREMX6UL100_CMA_SIZE>;
