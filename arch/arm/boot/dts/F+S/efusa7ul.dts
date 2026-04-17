@@ -383,6 +383,70 @@ wvga {					\
 	assigned-clock-rates = <786432000>, <0>, <12288000>;
 };
 
+/* GPIO declarations */
+&gpio1 {
+	gpio-line-names =
+	/* 0-4 */   "USB_OTG_ID", "USB_OTG_OC", "I2C1_SCL", "I2C1_SDA",
+	 			"USB_OTG_PWR",
+	/* 5-9 */   "PWM1", "ENET_MDIO", "ENET_MDC", "BKLT_PWM", "SD2_RESET_B",
+	/* 10-14 */ "JTAG_MOD", "I2S_MCLK", "I2S_LRCLK", "I2S_SCLK", "I2S_DIN",
+	/* 15-19 */ "I2S_DOUT", "UART1_TXD", "UART1_RXD", "SD1_WP", "SD1_CD",
+	/* 20-24 */ "UART2_TXD", "UART2_RXD", "CAN2_TXD", "CAN2_RXD", "UART2_RTS",
+	/* 25-29 */ "UART2_CTS", "CAN1_TXD", "CAN1_RXD", "ECSPI2_SCLK", "ECSPI2_SS0",
+	/* 30-31 */ "ECSPI2_MOSI", "ECSPI2_MISO";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/* 0-4 */   "RMII1_RXD0", "RMII1_RXD1", "RMII1_CRS_DV", "RMII1_TXD0",
+	 			"RMII1_TXD1",
+	/* 5-9 */   "RMII1_TXEN", "RMII1_TXCLK", "RMII1_RXER", "RMII2_RXD0",
+	 			"RMII2_RXD1",
+	/* 10-14 */ "RMII2_CRS_DV", "RMII2_TXD0", "RMII2_TXD1", "RMII2_TXEN",
+	 			"RMII2_TXCLK",
+	/* 15-19 */ "RMII2_RXER", "SD1_CMD", "SD1_CLK", "SD1_DATA0", "SD1_DATA1",
+	/* 20-24 */ "SD1_DATA2", "SD1_DATA3", "", "", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/* 0-4 */   "DISP_CLK", "DISP_DE", "DISP_HSYNC", "DISP_VSYNC", "ETH_IRQ",
+	/* 5-9 */   "DISP_DAT0", "DISP_DAT1", "DISP_DAT2", "DISP_DAT3", "DISP_DAT4",
+	/* 10-14 */ "DISP_DAT5", "DISP_DAT6", "DISP_DAT7", "DISP_DAT8", "DISP_DAT9",
+	/* 15-19 */ "DISP_DAT10", "DISP_DAT11", "DISP_DAT12", "DISP_DAT13",
+	 			"DISP_DAT14",
+	/* 20-24 */ "DISP_DAT15", "DISP_DAT16", "DISP_DAT17", "SD2_CMD", "SD2_CLK",
+	/* 25-29 */ "SD2_DATA0", "SD2_DATA1", "SD2_DATA2", "SD2_DATA3", "",
+	/* 30-31 */ "", "";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/* 0-4 */   "NAND_RE_B", "NAND_WE_B", "NAND_DATA0", "NAND_DATA1",
+	 			"NAND_DATA2",
+	/* 5-9 */   "NAND_DATA3", "NAND_DATA4", "NAND_DATA5", "NAND_DATA6",
+	 			"NAND_DATA7",
+	/* 10-14 */ "NAND_ALE", "NAND_WP_B", "NAND_RB0", "NAND_CE0_B", "QSPI_DATA2",
+	/* 15-19 */ "NAND_CLE", "QSPI_SS0_B", "UART6_TXD", "UART6_RXD", "I2C2_SDA",
+	/* 20-24 */ "I2C2_SCL", "UART5_TXD", "UART5_RXD", "UART5_CTS", "UART5_RTS",
+	/* 25-29 */ "ECSPI1_SCLK", "ECSPI1_SS0", "ECSPI1_MOSI", "ECSPI1_MISO", "",
+	/* 30-31 */ "", "";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/* 0-4 */   "I2C1_IRQ", "I2C2_IRQ", "I2C1_RST", "I2C2_RST", "VLCD_ON",
+	/* 5-9 */   "VCFL_ON", "ECSPI1_IRQ", "ECSPI2_IRQ", "I2C3_SDA", "I2C3_SCL",
+	/* 10-14 */ "BOOT_MODE0", "BOOT_MODE1", "", "", "",
+	/* 15-19 */ "", "", "", "", "",
+	/* 20-24 */ "", "", "", "", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+};
+
+
 #ifdef CONFIG_EFUSA7UL_ETH0
 &fec1 {
 	pinctrl-names = "default";
