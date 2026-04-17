@@ -430,6 +430,92 @@ lcd_wvga {				\
 #endif
 };
 
+
+/* GPIO declarations */
+&gpio1 {
+	gpio-line-names =
+	/* 0-4 */   "I2C1_SCL", "I2C1_SDA", "I2C2_SCL", "I2C2_SDA", "UART1_TXD",
+	/* 5-9 */   "UART1_RXD", "UART2_TXD", "UART2_RXD", "I2C2_IRQ",
+	 			"USB_OTG1_PWR",
+	/* 10-14 */ "USB_OTG1_ID", "BKLT_PWM", "USB_H1_PWR", "USB_TYPEC_EN", "",
+	/* 15-19 */ "", "", "", "", "",
+	/* 20-24 */ "", "", "", "", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/* 0-4 */   "AUD4_TXC", "AUD4_TXD", "PHY_RST", "AUDMUX_MCLK", "AUD4_TXFS",
+	/* 5-9 */   "AUD4_RXD", "ENET_MDC", "ENET_MDIO", "ENET_REF_CLK_25M",
+	 			"ENET_INT",
+	/* 10-14 */ "GPIO2_10", "GPIO2_11", "SD4_CD", "GPIO2_13", "GPIO2_14",
+	/* 15-19 */ "GPIO2_15", "SD4_VSEL", "SD4_WP", "GPIO2_18", "GPIO2_19",
+	/* 20-24 */ "", "", "", "", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/* 0-4 */   "DI0_DISP_CLK", "LCD_B0", "LCD_B1", "LCD_B2", "LCD_B3",
+	/* 5-9 */   "LCD_B4", "LCD_B5", "LCD_B6", "LCD_B7", "LCD_G0",
+	/* 10-14 */ "LCD_G1", "LCD_G2", "LCD_G3", "LCD_G4", "LCD_G5",
+	/* 15-19 */ "LCD_G6", "LCD_G7", "LCD_R0", "LCD_R1", "LCD_R2",
+	/* 20-24 */ "LCD_R3", "LCD_R4", "LCD_R5", "LCD_R6", "LCD_R7",
+	/* 25-29 */ "DI0_DE", "DI0_HSYNC", "VLCDEN", "DI0_VSYNC", "",
+	/* 30-31 */ "", "";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/* 0-4 */   "NANDF_ALE", "NANDF_CE0_B", "SEC_INT", "NANDF_CLE", "NANDF_D0",
+	/* 5-9 */   "NANDF_D1", "NANDF_D2", "NANDF_D3", "NANDF_D4", "NANDF_D5",
+	/* 10-14 */ "NANDF_D6", "NANDF_D7", "NANDF_RE_B", "NANDF_RB0", "NANDF_WE_B",
+	/* 15-19 */ "NANDF_WP_B", "GPIO4_16", "GPIO4_17", "GPIO4_18", "GPIO4_19",
+	/* 20-24 */ "ECSPI5_MOSI", "GPIO4_21", "GPIO4_22", "ECSPI5_MISO", "GPIO4_24",
+	/* 25-29 */ "GPIO4_25", "GPIO4_26", "GPIO4_27", "ECSPI5_SS0", "UART3_RXD",
+	/* 30-31 */ "UART3_TXD", "ECSPI5_SCLK";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/* 0-4 */   "RGMII1_RXD0", "RGMII1_RXD1", "RGMII1_RXD2", "RGMII1_RXD3",
+	 			"RGMII1_RXDV",
+	/* 5-9 */   "RGMII1_RXCLK", "RGMII1_TXD0", "RGMII1_TXD1", "RGMII1_TXD2",
+	 			"RGMII1_TXD3",
+	/* 10-14 */ "RGMII1_TXEN", "RGMII1_TXCLK", "RGMII2_RXD0", "RGMII2_RXD1",
+	 			"RGMII2_RXD2",
+	/* 15-19 */ "RGMII2_RXD3", "RGMII2_RXDV", "RGMII2_RXCLK", "RGMII2_TXD0",
+	 			"RGMII2_TXD1",
+	/* 20-24 */ "RGMII2_TXD2", "RGMII2_TXD3", "RGMII2_TXEN", "RGMII2_TXCLK", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+};
+
+&gpio6 {
+	gpio-line-names =
+	/* 0-4 */   "", "", "", "", "",
+	/* 5-9 */   "", "SD2_CLK", "SD2_CMD", "SD2_DAT0", "SD2_DAT1",
+	/* 10-14 */ "SD2_DAT2", "SD2_DAT3", "SD4_CLK", "SD4_CMD", "SD4_DAT0",
+	/* 15-19 */ "SD4_DAT1", "SD4_DAT2", "SD4_DAT3", "UART5_RXD", "UART5_TXD",
+	/* 20-24 */ "UART5_CTS", "UART5_RTS", "SD4_RST", "", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+};
+
+&gpio7 {
+	gpio-line-names =
+	/* 0-4 */   "UART4_RTS", "UART4_TXD", "I2C4_SCL", "I2C4_SDA", "UART4_CTS",
+	/* 5-9 */   "UART4_RXD", "GPIO7_06", "CAN1_TX", "GPIO7_08", "CAN1_RX",
+	/* 10-14 */ "", "DVS", "", "", "",
+	/* 15-19 */ "", "", "", "", "",
+	/* 20-24 */ "", "", "", "", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+};
+
+
 #ifdef SUPPORT_M4
 /* epit1 and epit2 are used by Cortex-M4 examples for timing purposes */
 &epit1{
