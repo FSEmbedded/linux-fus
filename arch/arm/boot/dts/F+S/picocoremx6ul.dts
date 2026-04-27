@@ -291,6 +291,67 @@ wvga {					\
 	};
 #endif
 
+/* GPIO declarations */
+&gpio1 {
+	gpio-line-names =
+	/* 0-4 */   "USB_OTG1_ID", "USB_SS_INT", "USB_SS_SDA", "USB_SS_SCL",
+	 			"USB_TYPEC_VACK",
+	/* 5-9 */   "ETH_IRQ", "ENET_MDIO", "ENET_MDC", "BKLT_PWM", "SD1_RESET_B",
+	/* 10-14 */ "JTAG_MOD", "JTAG_TMS", "JTAG_TDO", "JTAG_TD1", "JTAG_TCK",
+	/* 15-19 */ "JTAG_nTRST", "UART1_TXD", "UART1_RXD", "SD1_WP", "SD1_CD",
+	/* 20-24 */ "I2C4_SCL", "I2C4_SDA", "CAN2_TX", "CAN2_RX", "UART3_TXD",
+	/* 25-29 */ "UART3_RXD", "GPIO1_26", "GPIO1_27", "ECSPI2_SCLK", "ECSPI2_SS0",
+	/* 30-31 */ "ECSPI2_MOSI", "ECSPI2_MISO";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/* 0-4 */   "RMII1_RXD0", "RMII1_RXD1", "RMII1_CRS_DV", "RMII1_TXD0",
+	 			"RMII1_TXD1",
+	/* 5-9 */   "RMII1_TXEN", "RMII1_TXCLK", "RMII1_RXER", "RMII2_RXD0",
+	 			"RMII2_RXD1",
+	/* 10-14 */ "RMII2_CRS_DV", "RMII2_TXD0", "RMII2_TXD1", "RMII2_TXEN",
+	 			"RMII2_TXCLK",
+	/* 15-19 */ "RMII2_RXER", "SD1_CMD", "SD1_CLK", "SD1_DATA0", "SD1_DATA1",
+	/* 20-24 */ "SD1_DATA2", "SD1_DATA3", "", "", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/* 0-4 */   "DISP_CLK", "DISP_DE", "DISP_HSYNC", "DISP_VSYNC", "VLCDEN",
+	/* 5-9 */   "DISP_DAT0", "DISP_DAT1", "DISP_DAT2", "DISP_DAT3", "DISP_DAT4",
+	/* 10-14 */ "DISP_DAT5", "DISP_DAT6", "DISP_DAT7", "DISP_DAT8", "DISP_DAT9",
+	/* 15-19 */ "DISP_DAT10", "DISP_DAT11", "DISP_DAT12", "DISP_DAT13",
+	 			"DISP_DAT14",
+	/* 20-24 */ "DISP_DAT15", "DISP_DAT16", "DISP_DAT17", "DISP_DAT18", "DISP_DAT19",
+	/* 25-29 */ "DISP_DAT20", "DISP_DAT21", "DISP_DAT22", "DISP_DAT23", "",
+	/* 30-31 */ "", "";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/* 0-4 */   "", "", "", "", "",
+	/* 5-9 */   "", "", "", "", "",
+	/* 10-14 */ "", "", "", "", "",
+	/* 15-19 */ "", "GPIO4_16", "UART6_TXD", "UART6_RXD", "I2C2_SDA",
+	/* 20-24 */ "I2C2_SCL", "UART5_TXD", "UART5_RXD", "UART5_CTS", "UART5_RTS",
+	/* 25-29 */ "GPIO4_25", "GPIO4_26", "GPIO4_27", "GPIO4_28", "",
+	/* 30-31 */ "", "";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/* 0-4 */   "I2C4_IRQ", "SD1_VSEL", "USB_H1_PWR", "USB_OTG1_PWR", "GPIO5_4",
+	/* 5-9 */   "GPIO5_5", "GPIO5_6", "DVS", "I2C3_SDA", "I2C3_SCL",
+	/* 10-14 */ "VDD_SNVS", "RESETPHY", "", "", "",
+	/* 15-19 */ "", "", "", "", "",
+	/* 20-24 */ "", "", "", "", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+};
+
 #ifdef CONFIG_PICOCOREMX6UL_I2C_C
 	/* Bitbanging I2C */
 	i2c_gpio: i2c_gpio {

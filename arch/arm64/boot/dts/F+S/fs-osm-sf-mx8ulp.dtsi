@@ -319,9 +319,10 @@ osm_spi_b: &spidev0_rpchip {};
 
 &rp_gpioa {
 	status = "okay";
-	gpio-line-names = 
-	/* 0-4 */ "GPIO_B_3", "CARRIER_PWR_EN", "UART_B_TX", "UART_B_RX", "SPI_B_SDI",
-	/* 5-9 */ "SPI_B_SDO", "SPI_B_SCK", "SPI_B_CS0", "SPI_B_CS1", "PWM_1",
+	gpio-line-names =
+	/* 0-4 */   "GPIO_B_3", "CARRIER_PWR_EN", "UART_B_TX", "UART_B_RX",
+				"SPI_B_SDI",
+	/* 5-9 */   "SPI_B_SDO", "SPI_B_SCK", "SPI_B_CS0", "SPI_B_CS1", "PWM_1",
 	/* 10-14 */ "UART_D_TX", "UART_D_RX", "CAN_A_TX", "CAN_A_RX", "I2C_B_SCL",
 	/* 15-19 */ "I2C_B_SDA", "UART_B_CTS", "UART_B_RTS", "PWM_2", "JTAG_TRST",
 	/* 20-24 */ "JTAG_TMS", "JTAG_TDO", "JTAG_TDI", "JTAG_TCK", "GPIO_B_4",
@@ -331,9 +332,11 @@ osm_spi_b: &spidev0_rpchip {};
 
 &rp_gpiob {
 	status = "okay";
-	gpio-line-names = 
-	/* 0-4 */ "I2C_CAM_SCL", "I2C_CAM_SDA", "UART_C_TX", "UART_C_RX", "PMIC_WDOG",
-	/* 5-9 */ "GPIO_B_1", "GPIO_B_2", "PMIC_MODE2", "PMIC_MODE1", "PMIC_MODE0",
+	gpio-line-names =
+	/* 0-4 */   "I2C_CAM_SCL", "I2C_CAM_SDA", "UART_C_TX", "UART_C_RX",
+				"PMIC_WDOG",
+	/* 5-9 */   "GPIO_B_1", "GPIO_B_2", "PMIC_MODE2", "PMIC_MODE1",
+				"PMIC_MODE0",
 	/* 10-14 */ "PMIC_I2C_SDA", "PMIC_I2C_SCL", "CAM_MCK", "CAM_EN", "CAM_RST",
 	/* 15-19 */ "PMIC_IRQ", "", "", "", "",
 	/* 20-24 */ "", "", "", "", "",
@@ -343,14 +346,15 @@ osm_spi_b: &spidev0_rpchip {};
 
 &rp_gpioc {
 	status = "okay";
-	gpio-line-names = 
-	/* 0-4 */ "GPIO_A_0", "PWM_3", "PWM_4", "GPIO_A_1", "I2S_A_DATA_IN",
-	/* 5-9 */ "I2S_B_DATA_IN", "I2S_B_DATA_OUT", "I2S_A_DATA_OUT", "I2S_BITCLK", "I2S_LRCLK",
+	gpio-line-names =
+	/* 0-4 */   "GPIO_A_0", "PWM_3", "PWM_4", "GPIO_A_1", "I2S_A_DATA_IN",
+	/* 5-9 */   "I2S_B_DATA_IN", "I2S_B_DATA_OUT", "I2S_A_DATA_OUT",
+				"I2S_BITCLK", "I2S_LRCLK",
 	/* 10-14 */ "I2S_MCLK", "GPIO_A_2", "pSRAM_DQS", "pSRAM_DQ7", "pSRAM_DQ6",
 	/* 15-19 */ "pSRAM_DQ5", "pSRAM_DQ4", "pSRAM_CS", "pSRAM_CLK", "pSRAM_DQ3",
 	/* 20-24 */ "pSRAM_DQ2", "pSRAM_DQ1", "pSRAM_DQ0", "SPI_A_CS0", "",
 	/* 25-29 */ "", "", "", "", "",
-	/* 30-31 */ "","";
+	/* 30-31 */ "", "";
 };
 /* END: SUPPORT_RPMSG */
 
@@ -443,28 +447,35 @@ osm_spi_b: &spidev0_rpchip {};
 &gpiod {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_gpiod>;
-	gpio-line-names = 
-	/* 0-4 */ "SD_eMMC_RST", "SD_eMMC_CMD", "SD_eMMC_CLK", "SD_eMMC_D7", "SD_eMMC_D6",
-	/* 5-9 */ "SD_eMMC_D5", "SD_eMMC_D4", "SD_eMMC_D3", "SD_eMMC_D2", "SD_eMMC_D1",
+	gpio-line-names =
+	/* 0-4   */ "SD_eMMC_RST", "SD_eMMC_CMD", "SD_eMMC_CLK", "SD_eMMC_D7",
+				"SD_eMMC_D6",
+	/* 5-9   */ "SD_eMMC_D5", "SD_eMMC_D4", "SD_eMMC_D3", "SD_eMMC_D2",
+				"SD_eMMC_D1",
 	/* 10-14 */ "SD_eMMC_D0", "SD_eMMC_DS", "USB_A_ID", "USB_A_EN", "USB_A_OC",
-	/* 15-19 */ "SDIO_A_PWR_EN", "SDIO_A_CD", "SDIO_A_WP", "SDIO_A_D3", "SDIO_A_D2",
+	/* 15-19 */ "SDIO_A_PWR_EN", "SDIO_A_CD", "SDIO_A_WP", "SDIO_A_D3",
+				"SDIO_A_D2",
 	/* 20-24 */ "SDIO_A_D1", "SDIO_A_D0", "SDIO_A_CLK", "SDIO_A_CMD", "",
 	/* 25-29 */ "", "", "", "", "",
-	/* 30-31 */ "","";
+	/* 30-31 */ "", "";
 	status = "okay";
 };
 
 &gpioe {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_gpioe>;
-	gpio-line-names = 
-	/* 0-4 */ "GPIO_C_0", "GPIO_C_1", "USB_B_EN", "ETH_A_RMII_TX_CLK", "USB_B_ID",
-	/* 5-9 */ "USB_B_OC", "UART_CON_TX", "UART_CON_RX", "UART_A_CTS", "UART_A_RTS",
+	gpio-line-names =
+	/* 0-4 */   "GPIO_C_0", "GPIO_C_1", "USB_B_EN", "ETH_A_RMII_TX_CLK",
+			 	"USB_B_ID",
+	/* 5-9 */   "USB_B_OC", "UART_CON_TX", "UART_CON_RX", "UART_A_CTS",
+				"UART_A_RTS",
 	/* 10-14 */ "UART_A_TX", "UART_A_RX", "I2C_A_SCL", "I2C_A_SDA", "ETH_MDIO",
-	/* 15-19 */ "ETH_MDC", "ETH_A_RMII_TX_EN(_ER)", "ETH_A_RMII_RX_ER", "ETH_A_RMII_RX_DV(_ER)", "ETH_A_RMII_RX_CLK",
-	/* 20-24 */ "ETH_A_RMII_RXD1", "ETH_A_RMII_RXD0", "ETH_A_RMII_TXD1", "ETH_A_RMII_TXD0", "",
+	/* 15-19 */ "ETH_MDC", "ETH_A_RMII_TX_EN(_ER)", "ETH_A_RMII_RX_ER",
+				"ETH_A_RMII_RX_DV(_ER)", "ETH_A_RMII_RX_CLK",
+	/* 20-24 */ "ETH_A_RMII_RXD1", "ETH_A_RMII_RXD0", "ETH_A_RMII_TXD1",
+				"ETH_A_RMII_TXD0", "",
 	/* 25-29 */ "", "", "", "", "",
-	/* 30-31 */ "","";
+	/* 30-31 */ "", "";
 	status = "okay";
 };
 
@@ -472,14 +483,14 @@ osm_spi_b: &spidev0_rpchip {};
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_gpiof>;
 	/* DISP_BL_EN and DISP_BL_PWM may be swaped */
-	gpio-line-names = 
+	gpio-line-names =
 	/* 0-4 */ "RGB_RST", "RGB_DISP_EN", "RGB_CS", "DISP_BL_EN", "DISP_VDD_EN",
 	/* 5-9 */ "DISP_BL_PWM", "RGB_D17", "RGB_D16", "RGB_D15", "RGB_D14",
 	/* 10-14 */ "RGB_D13", "RGB_D12", "RGB_D11", "RGB_D10", "RGB_D09",
 	/* 15-19 */ "RGB_D08", "RGB_D07", "RGB_D06", "RGB_D05", "RGB_D04",
 	/* 20-24 */ "RGB_D03", "RGB_D02", "RGB_D01", "RGB_D00", "RGB_CLK",
-	/* 25-29 */ "RGB_VSYNC", "RGB_VSYNC", "RGB_DE", "DSI_TE", "GPIO_B_7",
-	/* 30-31 */ "GPIO_B_6","GPIO_B_5";
+	/* 25-29 */ "RGB_VSYNC", "RGB_HSYNC", "RGB_DE", "DSI_TE", "GPIO_B_7",
+	/* 30-31 */ "GPIO_B_6", "GPIO_B_5";
 	status = "okay";
 };
 

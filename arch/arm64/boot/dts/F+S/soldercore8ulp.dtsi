@@ -91,7 +91,7 @@
 		reg = <0 0xa8600000 0 0x1000000>;
 		no-map;
 	};
-	
+
 	vdev0vring0: vdev0vring0@aff00000 {
 		reg = <0 0xaff00000 0 0x8000>;
 		no-map;
@@ -137,6 +137,81 @@
 	status = "okay";
 };
 #endif /* SUPPORT_M33 */
+
+/* GPIO declarations */
+&rp_gpioa {
+	gpio-line-names =
+	/* 0-4 */   "PTA0", "PTA1", "PTA2", "PTA3", "PTA4",
+	/* 5-9 */   "PTA5", "PTA6", "PTA7", "PTA8", "PTA9",
+	/* 10-14 */ "PTA10", "PTA11", "PTA12", "PTA13", "PTA14",
+	/* 15-19 */ "PTA15", "PTA16", "PTA17", "PTA18", "PTA19",
+	/* 20-24 */ "PTA20", "PTA21", "PTA22", "PTA23", "PTA24",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+	status = "okay";
+};
+
+&rp_gpiob {
+	gpio-line-names =
+	/* 0-4 */   "PTB0", "PTBC1", "PTB2", "PTB3", "PTB4",
+	/* 5-9 */   "PTB5", "PTB6", "PTB7", "PTB8", "PTB9",
+	/* 10-14 */ "PTB10", "PTB11", "PTB12", "PTB13", "PTB14",
+	/* 15-19 */ "PTB15", "", "", "", "",
+	/* 20-24 */ "", "", "", "", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+	status = "okay";
+};
+
+&rp_gpioc {
+	gpio-line-names =
+	/* 0-4 */   "PTC0", "PTC1", "PTC2", "PTC3", "PTC4",
+	/* 5-9 */   "PTC5", "PTC6", "PTC7", "PTC8", "PTC9",
+	/* 10-14 */ "PTC10", "PTC11", "PTC12", "PTC13", "PTC14",
+	/* 15-19 */ "PTC15", "PTC16", "PTC17", "PTC18", "PTC19",
+	/* 20-24 */ "PTC20", "PTC21", "PTC22", "PTC23", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+	status = "okay";
+};
+
+&gpiod {
+	gpio-line-names =
+	/* 0-4 */   "SD_eMMC_RST", "SD_eMMC_CMD", "SD_eMMC_CLK", "SD_eMMC_D7",
+				"SD_eMMC_D6",
+	/* 5-9 */   "SD_eMMC_D5", "SD_eMMC_D4", "SD_eMMC_D3", "SD_eMMC_D2",
+				"SD_eMMC_D1",
+	/* 10-14 */ "SD_eMMC_D0", "SD_eMMC_DS", "PTD12", "PTD13", "PTD14",
+	/* 15-19 */ "PTD15", "PTD16", "PTD17", "PTD18", "PTD19",
+	/* 20-24 */ "PTD20", "PTD21", "PTD22", "PTD23", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+	status = "okay";
+};
+
+&gpioe {
+	gpio-line-names =
+	/* 0-4 */   "PTE0", "PTE1", "PTE2", "PTE3", "PTE4",
+	/* 5-9 */   "PTE5", "PTE6", "PTE7", "PTE8", "PTE9",
+	/* 10-14 */ "PTE10", "PTE11", "PTE12", "PTE13", "PTE14",
+	/* 15-19 */ "PTE15", "PTE16", "PTE17", "PTE18", "PTE19",
+	/* 20-24 */ "PTE20", "PTE21", "PTE22", "PTE23", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+	status = "okay";
+};
+
+&gpiof {
+	gpio-line-names =
+	/* 0-4 */   "PTF0", "PTF1", "PTF2", "PTF3", "PTF4",
+	/* 5-9 */   "PTF5", "PTF6", "PTF7", "PTF8", "PTF9",
+	/* 10-14 */ "PTF10", "PTF11", "PTF12", "PTF13", "PTF14",
+	/* 15-19 */ "PTF15", "PTF16", "PTF17", "PTF18", "PTF19",
+	/* 20-24 */ "PTF20", "PTF21", "PTF22", "PTF23", "PTF24",
+	/* 25-29 */ "PTF25", "PTF26", "PTF27", "PTF28", "PTF29",
+	/* 30-31 */ "PTF30", "PTF31";
+	status = "okay";
+};
 
 /* Ethernet decleration */
 #if defined(CONFIG_SOLDERCORE8ULP_ETH_ADP)

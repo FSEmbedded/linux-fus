@@ -229,6 +229,81 @@
 #endif /* CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO */
 
 	};
+
+
+/* GPIO declarations */
+&gpio1 {
+	gpio-line-names =
+	/* 0-4 */   "I2C_B_IRQ", "GPIO_J1_7", "PMIC_WDOG", "SD_A_VSEL",
+				"ETH_A_PHY_INT",
+	/* 5-9 */   "ETH_A_PHY_RST", "SD_A_CD", "SD_A_WP", "GPIO_J1_44",
+				"GPIO_J1_46",
+	/* 10-14 */ "GPIO_J1_52", "GPIO_J1_54", "USB_OTG_PWR", "GPIO_J1_2",
+				"USB_HOST_PWR",
+	/* 15-19 */ "LVDS_CLK", "ETH_A_D1P", "ETH_A_D1N", "ETH_A_D4N", "ETH_A_D4P",
+	/* 20-24 */ "ETH_A_D3N", "ETH_A_D3P", "ETH_A_D2P", "ETH_A_D2N", "ETH_B_D1P",
+	/* 25-29 */ "ETH_B_D1N", "ETH_B_D2P", "ETH_B_D2N", "ETH_B_D3P", "ETH_B_D3N",
+	/* 30-31 */ "", "";
+	status = "okay";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/* 0-4 */   "SD_A_CLK", "SD_A_CMD", "SD_A_DATA0", "SD_A_DATA1", "SD_A_DATA2",
+	/* 5-9 */   "SD_A_DATA3", "SD_A_DATA4", "SD_A_DATA5", "SD_A_DATA6",
+				"SD_A_DATA7",
+	/* 10-14 */ "SD_A_RST", "SD_A_STROBE", "SD_B_CD", "SD_B_CLK", "SD_B_CMD",
+	/* 15-19 */ "SD_B_DATA0", "SD_B_DATA1", "SD_B_DATA2", "SD_B_DATA3",
+				"SD_B_RST",
+	/* 20-24 */ "SD_B_WP", "", "", "", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+	status = "okay";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/* 0-4 */   "QSPI_SCLK", "QSPI_CS0", "SD_C_STROBE", "SD_C_DATA5",
+				"SD_C_DATA6",
+	/* 5-9 */   "SD_C_DATA7", "QSPI_DATA0", "QSPI_DATA1", "QSPI_DATA2",
+			 	"QSPI_DATA3",
+	/* 10-14 */ "SD_C_DATA0", "SD_C_DATA1", "SD_C_DATA2", "SD_C_DATA3", "",
+	/* 15-19 */ "SD_C_DATA4", "SD_C_RESET_B", "SD_C_CLK", "SD_C_CMD",
+	 			"mPCIE_PERST",
+	/* 20-24 */ "mPCIE_WAKE", "I2S_DIN", "I2S_LRCLK", "I2S_SCLK", "I2S_DOUT",
+	/* 25-29 */ "I2S_MCLK", "", "", "", "",
+	/* 30-31 */ "", "";
+	status = "okay";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/* 0-4 */   "AUDIO_A_MIC", "AUDIO_A_LIN_R", "GPIO_J2_89", "", "",
+	/* 5-9 */   "", "GPIO_J2_79", "GPIO_J2_75", "GPIO_J2_77", "GPIO_J2_85",
+	/* 10-14 */ "", "GPIO_J2_87", "", "", "",
+	/* 15-19 */ "", "GPIO_J2_69", "GPIO_J2_73", "GPIO_J2_67", "GPIO_J2_65",
+	/* 20-24 */ "GPIO_J2_83", "CAN_INT0", "CAN_INT1", "UART_A_CTS", "UART_A_RTS",
+	/* 25-29 */ "CAN_CLKO/SOF", "CAN_INT", "SAI2_MCLK", "VLCD_ON", "UART_B_RTS",
+	/* 30-31 */ "UART_B_CTS", "LVDS_RST";
+	status = "okay";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/* 0-4 */   "WLAN_RST", "SE050_ENA", "PMIC_IRQ_B", "BL_ON", "BL_PWM",
+	/* 5-9 */   "PWM", "SPI_A_SCLK", "SPI_A_MOSI", "SPI_A_MISO", "SPI_A_SS0",
+	/* 10-14 */ "SPI_B_SCLK", "SPI_B_MOSI", "SPI_B_MISO", "SPI_B_SS0",
+				"I2C_A_SCL",
+	/* 15-19 */ "I2C_A_SDA", "I2C_B_SCL", "I2C_B_SDA", "I2C_C_SCL", "I2C_C_SDA",
+	/* 20-24 */ "I2C_D_SCL", "I2C_D_SDA", "UART_A_RXD", "UART_A_TXD",
+				"UART_B_RXD",
+	/* 25-29 */ "UART_B_TXD", "UART_D_RXD", "UART_D_TXD", "UART_C_RXD",
+				"UART_C_TXD",
+	/* 30-31 */ "", "";
+	status = "okay";
+};
+
+
 #ifdef SUPPORT_M4
 #if 0
 	rpmsg_i2s: rpmsg-i2s {

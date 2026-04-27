@@ -310,6 +310,84 @@
 };
 #endif /* CONFIG_PICOCOREMX8MP_ETH_B */
 
+/* GPIO declarations */
+&gpio1 {
+	gpio-line-names =
+	/* 0-4 */   "SE050_ENA", "GPIO_J1_54", "PMIC_WDOG", "SD_A_VSEL",
+				"ETH_A_PHY_INT",
+	/* 5-9 */   "USB_OTG_TYPEC_EN", "SD_A_CD", "SD_A_WP", "USB_OTG_TYPEC_ALERT",
+				"USB_OTG_TYPEC_SEL",
+	/* 10-14 */ "PWM", "ETH_A_PHY_RST", "USB_HOST_PWR", "I2C_B_IRQ",
+				"USB_OTG_PWR",
+	/* 15-19 */ "GPIO_J1_2", "ENET_QOS_MDC", "ENET_QOS_MDIO", "ENET_QOS_TXD3",
+	 			"ENET_QOS_TXD2",
+	/* 20-24 */ "ENET_QOS_TXD1", "ENET_QOS_TXD0", "ENET_QOS_TX_CTL",
+	 			"ENET_QOS_TXC", "ENET_QOS_RX_CTL",
+	/* 25-29 */ "ENET_QOS_RXC", "ENET_QOS_RXD0", "ENET_QOS_RXD1",
+	 			"ENET_QOS_RXD2", "ENET_QOS_RXD3",
+	/* 30-31 */ "", "";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/* 0-4 */   "SD_A_CLK", "SD_A_CMD", "SD_A_DATA0", "SD_A_DATA1", "SD_A_DATA2",
+	/* 5-9 */   "SD_A_DATA3", "SD_A_DATA4", "SD_A_DATA5", "SD_A_DATA6",
+				"SD_A_DATA7",
+	/* 10-14 */ "SD_A_RST", "SD_A_STROBE", "SD_B_CD", "SD_B_CLK", "SD_B_CMD",
+	/* 15-19 */ "SD_B_DATA0", "SD_B_DATA1", "SD_B_DATA2", "SD_B_DATA3",
+				"SD_B_RST",
+	/* 20-24 */ "SD_B_WP", "", "", "", "",
+	/* 25-29 */ "", "", "", "", "",
+	/* 30-31 */ "", "";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/* 0-4 */   "GPIO_J1_44", "GPIO_J1_46", "SD_C_STROBE", "SD_C_DATA5",
+				"SD_C_DATA6",
+	/* 5-9 */   "SD_C_DATA7", "UART_B_RXD", "UART_B_TXD", "UART_B_RTS",
+				"UART_B_CTS",
+	/* 10-14 */ "SD_C_DATA0", "SD_C_DATA1", "SD_C_DATA2", "SD_C_DATA3",
+				"GPIO_J1_52",
+	/* 15-19 */ "SD_C_DATA4", "SD_C_RESET_B", "SD_C_CLK", "SD_C_CMD",
+				"I2S_B_RXFS",
+	/* 20-24 */ "I2S_B_RXC", "I2C_PMIC_SCL", "I2S_B_TXFS", "I2S_B_TXC",
+				"I2S_B_TXD0",
+	/* 25-29 */ "I2C_PMIC_SDA", "CAN_A_TX", "CAN_A_RX", "HDMI_CEC", "HDMI_HPD ",
+	/* 30-31 */ "", "";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/* 0-4 */   "", "", "I2S_B_RXD0", "", "ENET_RGMII_MDC",
+	/* 5-9 */   "ENET_RGMII_MDIO", "ENET_RGMII_RXD0", "ENET_RGMII_RXD1",
+				"ENET_RGMII_RXD2", "ENET_RGMII_RXD3",
+	/* 10-14 */ "ENET_RGMII_RX_CTL", "ENET_RGMII_RXC_R", "ENET_RGMII_TXD0",
+				"ENET_RGMII_TXD1", "ENET_RGMII_TXD2",
+	/* 15-19 */ "ENET_RGMII_TXD3", "ENET_RGMII_TX_CTL", "ENET_RGMII_TXC",
+				"WLAN_RST", "PMIC_IRQ_B",
+	/* 20-24 */ "I2S_B_MCLK", "UART_C_TXD", "UART_C_RXD", "I2S_A_RXD",
+				"I2S_A_TXFS",
+	/* 25-29 */ "I2S_A_TXC", "I2S_A_TXD", "I2S_A_MCLK", "ETH_B_PHY_RST",
+				"ETH_B_PHY_INT",
+	/* 30-31 */ "mPCIE_PERST", "UART_A_RXD";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/* 0-4 */   "UART_A_TXD", "mPCIE_WAKE", "VLCD_ON", "BL_ON", "BL_PWM",
+	/* 5-9 */   "GPIO_J1_7", "SPI_C_SCLK", "SPI_C_MOSI", "I2C_C_SCL",
+				"I2C_C_SDA",
+	/* 10-14 */ "SPI_B_SCLK", "SPI_B_MOSI", "SPI_B_MISO", "SPI_B_SS0",
+				"I2C_E_SCL",
+	/* 15-19 */ "I2C_E_SDA", "SPI_C_MISO", "SPI_C_SS0", "I2C_D_SCL", "I2C_D_SDA",
+	/* 20-24 */ "I2C_B_SCL", "I2C_B_SDA", "SPI_A_SCLK", "SPI_A_MOSI",
+				"SPI_A_MISO",
+	/* 25-29 */ "SPI_A_SS0", "UART_D_RXD", "UART_D_TXD", "UART_A_RTS",
+				"UART_A_CTS",
+	/* 30-31 */ "", "";
+};
+
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
