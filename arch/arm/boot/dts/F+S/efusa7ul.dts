@@ -318,6 +318,13 @@ wvga {					\
 			regulator-max-microvolt = <1500000>;
 			regulator-always-on;
 		};
+
+		reg_rtc_clk: regulator-rtc-clk {
+			compatible = "regulator-fixed-clock";
+			regulator-always-on;
+			regulator-name = "RTC_CLK";
+			clocks = <&rtc_clk>;
+		};
 	};
 
 	sound-sgtl5000 {
@@ -829,9 +836,11 @@ wvga {					\
 		VDDD-supply = <&reg_sgtl5000_vddd>;
 	};
 
-	rtc8565@51 {
+	rtc_clk:rtc8565@51 {
 		compatible = "nxp,pcf8565", "nxp,pcf8563";
 		reg = <0x51>;
+		#clock-cells = <0>;
+		clock-output-names = "rtc_clk32k";
 	};
 };
 

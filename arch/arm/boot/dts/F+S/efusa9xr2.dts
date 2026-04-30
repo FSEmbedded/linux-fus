@@ -520,6 +520,13 @@ lvds_wvga {				\
 			enable-active-high;
 		};
 #endif //###
+
+		reg_rtc_clk: regulator-rtc-clk {
+			compatible = "regulator-fixed-clock";
+			regulator-always-on;
+			regulator-name = "RTC_CLK";
+			clocks = <&rtc_clk>;
+		};
 	};
 
 #ifdef CONFIG_EFUSA9X_AUDIO
@@ -966,11 +973,13 @@ lvds_wvga {				\
 	};
 #endif
 
-	rtc8565@51 {
+	rtc_clk:rtc8565@51 {
 		compatible = "nxp,pcf8565", "nxp,pcf8563";
 		reg = <0x51>;
 		interrupt-parent = <&gpio2>;
 		interrupts = <4 IRQ_TYPE_EDGE_FALLING>;
+		#clock-cells = <0>;
+		clock-output-names = "rtc_clk32k";
 	};
 
 #if 0

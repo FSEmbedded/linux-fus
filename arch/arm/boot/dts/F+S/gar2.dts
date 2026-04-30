@@ -146,6 +146,12 @@
 			enable-active-high;
 		};
 #endif
+		reg_rtc_clk: regulator-rtc-clk {
+			compatible = "regulator-fixed-clock";
+			regulator-always-on;
+			regulator-name = "RTC_CLK";
+			clocks = <&rtc_clk>;
+		};
 	};
 	/* F&S board information */
 	bdinfo {
@@ -316,11 +322,13 @@
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 
-	rtc8565@51 {
+	rtc_clk:rtc8565@51 {
 		compatible = "nxp,pcf8565", "nxp,pcf8563";
 		reg = <0x51>;
 		interrupt-parent = <&gpio3>;
 		interrupts = <4 IRQ_TYPE_EDGE_FALLING>;
+		#clock-cells = <0>;
+		clock-output-names = "rtc_clk32k";
 	};
 };
 
