@@ -2,9 +2,7 @@
 #include "imx6qdl.dtsi"
 
 / {
-	cpus {
-		reserved-memory {
-			cma: linux,cma {};
-		};
+	reserved-memory {
+		cma: linux,cma {};
 	};
 };

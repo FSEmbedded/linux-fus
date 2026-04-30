@@ -617,6 +617,9 @@
 #endif
 &cma {
 	size = <CONFIG_EFUSA9_CMA_SIZE>;
+#ifdef CONFIG_EFUSA9_CMA_BASE
+	alloc-ranges = <0x10000000 CONFIG_EFUSA9_CMA_BASE>;
+#endif
 };
 
 &busfreq {

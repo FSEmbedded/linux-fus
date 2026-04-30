@@ -195,6 +195,8 @@ wvga {					\
 
 /* CMA: Set 320 MB for Continuous Memory Allocator */
 #define CONFIG_ARMSTONEA9R2_CMA_SIZE	0x14000000
+/*If CMA > 256 MB max base address hast to be 0x80000000 - CMA_SIZE*/
+#define CONFIG_ARMSTONEA9R2_CMA_BASE	0x6C000000
 
 /* NAND */
 #define CONFIG_ARMSTONEA9R2_NAND

@@ -591,6 +591,9 @@
 #endif
 &cma {
 	size = <CONFIG_ARMSTONEA9_CMA_SIZE>;
+#ifdef CONFIG_ARMSTONEA9_CMA_BASE
+	alloc-ranges = <0x10000000 CONFIG_ARMSTONEA9_CMA_BASE>;
+#endif
 };
 
 &busfreq {
