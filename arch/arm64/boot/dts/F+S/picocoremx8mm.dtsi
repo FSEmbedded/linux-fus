@@ -230,6 +230,63 @@
 
 	};
 
+#ifdef SUPPORT_M4
+#if 0
+	rpmsg_i2s: rpmsg-i2s {
+		compatible = "fsl,imx8mq-rpmsg-i2s";
+		/* the audio device index in m4 domain */
+		fsl,audioindex = <0> ;
+		clocks = <&clk IMX8MM_CLK_DUMMY>;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+		fsl,dma-buffer-size = <0x6000000>;
+		fsl,enable-lpa;
+		status = "okay";
+	};
+
+	sound-rpmsg {
+		compatible = "fsl,imx-audio-rpmsg";
+		model = "sgtl5000-audio";
+		cpu-dai = <&rpmsg_i2s>;
+		rpmsg-out;
+		status = "okay";
+	};
+#endif
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
+	sound-sgtl5000 {
+
+		assigned-clocks = <&clk IMX8MM_CLK_SAI5>;
+		assigned-clock-parents = <&clk IMX8MM_AUDIO_PLL1_OUT>;
+		assigned-clock-rates = <24576000>;
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "imx-sgtl5000";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,frame-master = <&codecdai>;
+		simple-audio-card,bitclock-master = <&codecdai>;
+		simple-audio-card,widgets =
+			"Line", "Line Out Jack",
+			"Line", "Line In Jack",
+			"Microphone", "Microphone Jack",
+			"Headphone", "Headphone Jack";
+		simple-audio-card,routing =
+			"Line Out Jack", "LINE_OUT",
+			"LINE_IN", "Line In Jack", 
+			"MIC_IN", "Microphone Jack",
+			"Headphone Jack", "HP_OUT";
+
+		cpudai: simple-audio-card,cpu {
+			sound-dai = <&sai5>;
+		};
+
+		codecdai: simple-audio-card,codec {
+			sound-dai = <&sgtl5000>;
+		};
+	};
+#endif
+};
 
 /* GPIO declarations */
 &gpio1 {
@@ -301,65 +358,6 @@
 				"UART_C_TXD",
 	/* 30-31 */ "", "";
 	status = "okay";
-};
-
-
-#ifdef SUPPORT_M4
-#if 0
-	rpmsg_i2s: rpmsg-i2s {
-		compatible = "fsl,imx8mq-rpmsg-i2s";
-		/* the audio device index in m4 domain */
-		fsl,audioindex = <0> ;
-		clocks = <&clk IMX8MM_CLK_DUMMY>;
-		VDDA-supply = <&reg_sgtl5000_vdda>;
-		VDDIO-supply = <&reg_sgtl5000_vddio>;
-		VDDD-supply = <&reg_sgtl5000_vddd>;
-		fsl,dma-buffer-size = <0x6000000>;
-		fsl,enable-lpa;
-		status = "okay";
-	};
-
-	sound-rpmsg {
-		compatible = "fsl,imx-audio-rpmsg";
-		model = "sgtl5000-audio";
-		cpu-dai = <&rpmsg_i2s>;
-		rpmsg-out;
-		status = "okay";
-	};
-#endif
-#endif
-
-#ifdef CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
-	sound-sgtl5000 {
-
-		assigned-clocks = <&clk IMX8MM_CLK_SAI5>;
-		assigned-clock-parents = <&clk IMX8MM_AUDIO_PLL1_OUT>;
-		assigned-clock-rates = <24576000>;
-		compatible = "simple-audio-card";
-		simple-audio-card,name = "imx-sgtl5000";
-		simple-audio-card,format = "i2s";
-		simple-audio-card,frame-master = <&codecdai>;
-		simple-audio-card,bitclock-master = <&codecdai>;
-		simple-audio-card,widgets =
-			"Line", "Line Out Jack",
-			"Line", "Line In Jack",
-			"Microphone", "Microphone Jack",
-			"Headphone", "Headphone Jack";
-		simple-audio-card,routing =
-			"Line Out Jack", "LINE_OUT",
-			"LINE_IN", "Line In Jack", 
-			"MIC_IN", "Microphone Jack",
-			"Headphone Jack", "HP_OUT";
-
-		cpudai: simple-audio-card,cpu {
-			sound-dai = <&sai5>;
-		};
-
-		codecdai: simple-audio-card,codec {
-			sound-dai = <&sgtl5000>;
-		};
-	};
-#endif
 };
 
 #ifdef CONFIG_PICOCOREMX8MM_I2C_A

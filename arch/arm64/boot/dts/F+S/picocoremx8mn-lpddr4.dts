@@ -321,6 +321,50 @@
 
 	};
 
+#ifdef SUPPORT_M4
+	// ###TODO - not implemented yet
+#if 0
+	rpmsg_i2s: rpmsg-i2s {
+		compatible = "fsl,imx8mq-rpmsg-i2s";
+		/* the audio device index in m4 domain */
+		fsl,audioindex = <0> ;
+		clocks = <&clk IMX8MN_CLK_DUMMY>;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+		fsl,dma-buffer-size = <0x6000000>;
+		fsl,enable-lpa;
+		status = "okay";
+	};
+
+	sound-rpmsg {
+		compatible = "fsl,imx-audio-rpmsg";
+		model = "sgtl5000-audio";
+		cpu-dai = <&rpmsg_i2s>;
+		rpmsg-out;
+		status = "okay";
+	};
+#endif
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MN_SGTL5000_AUDIO
+	sound_sgtl5000: sound-sgtl5000 {
+		#sound-dai-cells = <0>;
+		compatible = "fsl,imx-audio-sgtl5000";
+		model = "imx-sgtl5000";
+		audio-cpu = <&sai5>;
+		audio-codec = <&sgtl5000>;
+		audio-asrc = <&easrc>;
+		audio-routing =
+			"LINE_IN", "Line In Jack",
+			"Mic Jack", "Mic Bias",
+			"MIC_IN", "Mic Jack",
+			"Line Out Jack", "LINE_OUT",
+			"Headphone Jack", "HP_OUT";
+	};
+#endif
+};
+
 /* GPIO declarations */
 &gpio1 {
 	gpio-line-names =
@@ -386,50 +430,6 @@
 				"UART_C_TXD",
 	/* 30-31 */ "", "";
 
-}
-
-#ifdef SUPPORT_M4
-	// ###TODO - not implemented yet
-#if 0
-	rpmsg_i2s: rpmsg-i2s {
-		compatible = "fsl,imx8mq-rpmsg-i2s";
-		/* the audio device index in m4 domain */
-		fsl,audioindex = <0> ;
-		clocks = <&clk IMX8MN_CLK_DUMMY>;
-		VDDA-supply = <&reg_sgtl5000_vdda>;
-		VDDIO-supply = <&reg_sgtl5000_vddio>;
-		VDDD-supply = <&reg_sgtl5000_vddd>;
-		fsl,dma-buffer-size = <0x6000000>;
-		fsl,enable-lpa;
-		status = "okay";
-	};
-
-	sound-rpmsg {
-		compatible = "fsl,imx-audio-rpmsg";
-		model = "sgtl5000-audio";
-		cpu-dai = <&rpmsg_i2s>;
-		rpmsg-out;
-		status = "okay";
-	};
-#endif
-#endif
-
-#ifdef CONFIG_PICOCOREMX8MN_SGTL5000_AUDIO
-	sound_sgtl5000: sound-sgtl5000 {
-		#sound-dai-cells = <0>;
-		compatible = "fsl,imx-audio-sgtl5000";
-		model = "imx-sgtl5000";
-		audio-cpu = <&sai5>;
-		audio-codec = <&sgtl5000>;
-		audio-asrc = <&easrc>;
-		audio-routing =
-			"LINE_IN", "Line In Jack",
-			"Mic Jack", "Mic Bias",
-			"MIC_IN", "Mic Jack",
-			"Line Out Jack", "LINE_OUT",
-			"Headphone Jack", "HP_OUT";
-	};
-#endif
 };
 
 #ifdef CONFIG_PICOCOREMX8MN_I2C_A
